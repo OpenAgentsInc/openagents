@@ -1,0 +1,39 @@
+// Source static FMAT definitions -> extended OCM1 records; original character layers retain IDs.
+// CLI SOURCE_ROOT MATERIAL_DEFINITIONS_TSV CHARACTER_STREAMS OUTPUT_DIR
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "ocarina-material-core.coax";
+#load "../../coax/lib/sys/args.coax";
+KkMaterials :: struct {count:int;}
+#test "Shared terrain surfaces are identified without treating textured props as terrain" {#assert kk_terrain("Mt_TerraMaterial_014") && !kk_terrain("Mt_TerraMaterial_bad") && !kk_terrain("Mt_Wood_Kokiri_FieldProp_A");}
+kk_terrain :: (name:string)->bool {if name.count!=20 || name[0..<17]!="Mt_TerraMaterial_" {return false;}for c:name[17..<20] {if c<48 || c>57 {return false;}}return true;}
+kk_material :: (b:[]u8,e:[]u8,ab:[]u8,local:int,slot:int,out:[]u8,names:[]MpNames) {
+ f:=ob_ptr(b,40);#assert local>=0 && local<ob_u16(b,f+108);m:=ob_ptr(b,f+56)+local*176;base:=32+slot*256;#assert base+256<=out.count;
+ for k:0..<8 {sampler:=[8]string.["_a0","_n0","_rgh0","_ao0","_n1","_gn1","_gn0","_a1"][k];scan_put(out,base+k*4,cast(u32)mp_layer(names,ab,mp_texture(b,e,m,sampler)));}
+ scan_put(out,base+16*4,8);mode:=mp_render(b,e,m,"gsys_render_state_mode");mode_name:=ifx mode<0 then "opaque" else mp_name(b,mode,e);scan_put(out,base+17*4,ifx mode_name=="mask" then 1 else ifx mode_name=="translucent" then 2 else 0);
+ cut:=mp_render(b,e,m,"gsys_alpha_test_value");scan_put(out,base+18*4,f32_bits(mp_float(b,cut,0.5)));scan_put(out,base+19*4,f32_bits(0.8));
+ for k:0..<4 {scan_put(out,base+(20+k)*4,f32_bits(1));}
+ for c:0..<2 {p:=mp_parameter(b,e,m,[2]string.["ns_param_color0","ns_param_color1"][c]);for j:0..<4 {scan_put(out,base+(24+c*4+j)*4,f32_bits(ifx p>=0 then ob_float(b,p+j*4) else 1.0f32));}}
+ for c:0..<2 {p:=mp_parameter(b,e,m,[2]string.["ns_tex_mtx0","ns_tex_mtx1"][c]);for j:0..<6 {scan_put(out,base+(32+c*6+j)*4,f32_bits(ifx p>=0 then ob_float(b,p+j*4) else ifx j==1 || j==2 then 1.0f32 else 0.0f32));}}
+ for c:0..<8 {key:=[8]string.["ns_param_scalar0","ns_param_scalar1","ns_param_scalar2","ns_param_scalar3","ns_param_scalar4","ns_param_scalar5","ns_param_scalar6","ns_param_scalar7"][c];p:=mp_parameter(b,e,m,key);scan_put(out,base+(44+c)*4,f32_bits(mp_float(b,p,1)));}
+ scan_put(out,base+60*4,cast(u32)mp_layer(names,ab,mp_texture(b,e,m,"_mt0")));em:=mp_texture(b,e,m,"_em0");if em.count==0 {em=mp_texture(b,e,m,"_e0");}scan_put(out,base+61*4,cast(u32)mp_layer(names,ab,em));
+ name:=mp_name(b,m+8,e);if kk_terrain(name) || name=="Mt_Sand_Kokiri_Cliff" {scan_put(out,base+62*4,1);}if name=="Mt_InnerMesh" || name=="Mt_FadeBlack1" {scan_put(out,base+16*4,12);}if name=="Mt_BakeShadowProxy" {scan_put(out,base+16*4,6);}if scan_u32(out,base)==0 && scan_u32(out,base+7*4)!=0 {scan_put(out,base,scan_u32(out,base+7*4));scan_put(out,base+4,scan_u32(out,base+4*4));}if name.count>=8 && name[0..<8]=="Mt_Water" {scan_put(out,base+16*4,11);}print("Kokiri FMAT % source=% mode=%\n",slot,name,mode_name);
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}root:=args_at(a[..],0);definitions:=args_at(a[..],1);character:=args_at(a[..],2);dest:=args_at(a[..],3);
+ path:[4096]u8;model:[67108864]u8;external:[65536]u8;aliases:[1048576]u8;out:[32+1024*256]u8;text:[1048576]u8;names:[1]MpNames;
+ en:=fs_read(fs_join(root,"romfs/Shader/ExternalBinaryString.bfres",path[..]),external[..]);if en<0 {en=fs_read(fs_join(character,"../source/ExternalBinaryString.bfres",path[..]),external[..]);}
+ an:=fs_read(fs_join(root,"romfs/System/Gfx/UnifyTex.Product.100.byml",path[..]),aliases[..]);if an<0 {an=fs_read(fs_join(character,"../source/UnifyTex.Product.100.byml",path[..]),aliases[..]);}#assert en>0 && an>0;
+ cn:=fs_read(fs_join(character,"link.materials",path[..]),out[..]);#assert cn==6432;tn:=fs_read(fs_join(character,"link.textures",path[..]),text[..]);#assert tn>0;begin:=0;
+ for i:0..<tn {if text[i]=='\n' {filename:=cast(string)text[begin..<i];#assert filename.count>4 && filename[filename.count-4..<filename.count]==".png";name:=filename[0..<filename.count-4];#assert mp_layer(names[..],aliases[0..<an],name)==names[0].count;begin=i+1;}}#assert names[0].count==60;
+ dn:=fs_read(definitions,text[..]);#assert dn>0;start:=0;count:=25;last_model:string="";mn:=0;
+ for i:0..<dn {if text[i]=='\n' {line:=cast(string)text[start..<i];start=i+1;if line.count==0 {continue;}tab1:= -1;tab2:= -1;for k:0..<line.count {if line[k]=='\t' {if tab1<0 {tab1=k;}else if tab2<0 {tab2=k;}}}#assert tab1>0 && tab2>tab1;number:=args_number(line[0..<tab1]);local:=args_number(line[tab2+1..<line.count]);#assert number.ok && local.ok && cast(int)number.value==count-25;
+   source:=line[tab1+1..<tab2];if source!=last_model {mn=fs_read(fs_join(root,source,path[..]),model[..]);#assert mn>0;last_model=source;}
+   kk_material(model[0..<mn],external[0..<en],aliases[0..<an],cast(int)local.value,count,out[..],names[..]);count+=1;
+ }}#assert count>25 && count<1024 && names[0].count<=2048;
+ // Ground positions are original; this single source moss material is an explicit
+ // rendering approximation until the original TerrainArc material blend is decoded.
+ base:=32+count*256;scan_put(out[..],base,cast(u32)mp_layer(names[..],aliases[0..<an],"Sand_Kokiri_MossGround_A_Alb"));scan_put(out[..],base+4,cast(u32)mp_layer(names[..],aliases[0..<an],"Sand_Kokiri_MossGround_A_Nrm"));scan_put(out[..],base+8,cast(u32)mp_layer(names[..],aliases[0..<an],"Sand_Kokiri_MossGround_A_Rgh"));scan_put(out[..],base+16*4,9);scan_put(out[..],base+19*4,f32_bits(0.9));for row:25..<count {at:=32+row*256;if scan_u32(out[..],at+62*4)==1 {for k:0..<8 {scan_put(out[..],at+k*4,scan_u32(out[..],base+k*4));}scan_put(out[..],at+16*4,9);}}count+=1;
+ scan_put(out[..],8,cast(u32)count);scan_put(out[..],12,cast(u32)names[0].count);#assert fs_mkdir(dest);#assert fs_write(fs_join(dest,"scene.materials",path[..]),cast(string)out[0..<32+count*256]);
+ list:[524288]u8;at:=0;for i:0..<names[0].count {name:=cast(string)names[0].text[i][0..<names[0].n[i]];for c:name {list[at]=c;at+=1;}for c:".png\n" {list[at]=c;at+=1;}}#assert fs_write(fs_join(dest,"scene.textures",path[..]),cast(string)list[0..<at]);print("KOKIRI_MATERIALS=% LAYERS=%\n",count,names[0].count);return 0;
+}

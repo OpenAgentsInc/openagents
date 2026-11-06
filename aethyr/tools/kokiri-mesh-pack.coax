@@ -1,0 +1,32 @@
+// CLI MODEL EXTERNAL_STRING_BFRES UNIFY_TEX_BYML OUTPUT_DIR. Original decompressed inputs only.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-mesh.coax";
+#load "kokiri-byml.coax";
+KmpText :: struct {n:int;}
+#test "Kokiri mesh metadata text writes exact unsigned IDs and resolved names" {out:[32]u8;s:[1]KmpText;kmp_number(out[..],s[..],1024);kmp_add(out[..],s[..],"\tmesh\n");#assert cast(string)out[0..<s[0].n]=="1024\tmesh\n";}
+kmp_add :: (out:[]u8,s:[]KmpText,text:string) {#assert ob_span(out.count,s[0].n,text.count);for c:text {out[s[0].n]=c;s[0].n+=1;}}
+kmp_number :: (out:[]u8,s:[]KmpText,n:int) {#assert n>=0;digits:[24]u8;count:=0;v:=n;while v>=10 {digits[count]=cast(u8)(v%10+48);count+=1;v/=10;}digits[count]=cast(u8)(v+48);count+=1;for k:0..<count {one:=[1]u8.[digits[count-k-1]];kmp_add(out,s,cast(string)one[..]);}}
+kmp_u64 :: (b:[]u8,p:int)->u64 {return cast(u64)ob_word(b,p)|(cast(u64)ob_word(b,p+4)<<32);}
+kmp_name :: (b:[]u8,p:int,e:[]u8)->string {id:=kmp_u64(b,p);if id==0 {return "";}ids:=ob_ptr(e,0xb8);dic:=ob_ptr(e,0xc0);for i:0..<ob_int(e,dic+4) {if kmp_u64(e,ids+i*8)==id {return ob_name(e,dic+32+i*16);}}return ob_name(b,p);}
+kmp_alias :: (b:[]u8,name:string)->string {result:=name;for k:0..<8 {n:=kb_get(b,kb_root(b),result);if n.kind== -1 {return result;}#assert n.kind==0xa0;next:=kb_string(b,n);if next==result {return result;}result=next;}#assert false;return result;}
+kmp_bindings :: (b:[]u8,e:[]u8,aliases:[]u8,out:[]u8,text:[]KmpText,requests:[]u8,rt:[]KmpText) {
+ model:=ob_ptr(b,40);materials:=ob_u16(b,model+108);array:=ob_ptr(b,model+56);
+ for i:0..<materials {m:=array+i*176;#assert ob_word(b,m)==0x54414d46;name:=kmp_name(b,m+8,e);if b[m+163]==0 {print("Kokiri material without texture bindings %\n",name);continue;}samplers:=ob_ptr(b,m+56);n:=ob_int(b,samplers+4);#assert n==cast(int)b[m+163];textures:=ob_ptr(b,m+32);
+  for j:0..<n {sampler:=kmp_name(b,samplers+32+j*16,e);texture:=kmp_name(b,textures+j*8,e);resolved:=kmp_alias(aliases,texture);kmp_number(out,text,i);kmp_add(out,text,"\t");kmp_add(out,text,name);kmp_add(out,text,"\t");kmp_add(out,text,sampler);kmp_add(out,text,"\t");kmp_add(out,text,texture);kmp_add(out,text,"\t");kmp_add(out,text,resolved);kmp_add(out,text,"\n");
+   kmp_add(requests,rt,"romfs/Tex/");kmp_add(requests,rt,resolved);kmp_add(requests,rt,".bntx.zs\n");
+  }
+ }
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=4 {return 2;}source:[67108864]u8;external:[1048576]u8;aliases:[1048576]u8;vertices:[KM_VERTEX_CAP*128]u8;indices:[KM_INDEX_CAP*4]u8;ranges:[65536*32]u8;counts:[1]KmCounts;path:[4096]u8;
+ n:=fs_read(args_at(args[..],0),source[..]);en:=fs_read(args_at(args[..],1),external[..]);an:=fs_read(args_at(args[..],2),aliases[..]);#assert n>0 && en>0 && an>0;b:=source[0..<n];identity:=km_affine(v3(0,0,0),v3(0,0,0),v3(1,1,1));km_decode(b,identity[..],vertices[..],indices[..],ranges[..],counts[..]);
+ info:[32]u8;v:=[8]int.[0x314d534b,1,counts[0].vertices,counts[0].indices,counts[0].shapes,counts[0].materials,128,32];for k:0..<8 {scan_put(info[..],k*4,cast(u32)v[k]);}
+ bindings:[4194304]u8;requests:[4194304]u8;bt:[1]KmpText;rt:[1]KmpText;kmp_bindings(b,external[0..<en],aliases[0..<an],bindings[..],bt[..],requests[..],rt[..]);dest:=args_at(args[..],3);#assert fs_mkdir(dest) || fs_kind(dest)==2;
+ #assert fs_write(fs_join(dest,"mesh.vertices",path[..]),cast(string)vertices[0..<counts[0].vertices*128]);#assert fs_write(fs_join(dest,"mesh.indices",path[..]),cast(string)indices[0..<counts[0].indices*4]);#assert fs_write(fs_join(dest,"mesh.ranges",path[..]),cast(string)ranges[0..<counts[0].shapes*32]);#assert fs_write(fs_join(dest,"mesh.info",path[..]),cast(string)info[..]);#assert fs_write(fs_join(dest,"mesh.materials.tsv",path[..]),cast(string)bindings[0..<bt[0].n]);#assert fs_write(fs_join(dest,"textures.requests.txt",path[..]),cast(string)requests[0..<rt[0].n]);
+ #assert counts[0].indices<=source.count/12;for k:0..<counts[0].indices {index:=cast(int)scan_u32(indices[..],k*4);scan_write_point(source[..],k*12,scan_point(vertices[..],index*128));}#assert fs_write(fs_join(dest,"mesh.triangles",path[..]),cast(string)source[0..<counts[0].indices*12]);
+ low:=v3(1000000,1000000,1000000);high:=v3(-1000000,-1000000,-1000000);for k:0..<counts[0].vertices {p:=scan_point(vertices[..],k*128);low=v3(ob_min(low.x,p.x),ob_min(low.y,p.y),ob_min(low.z,p.z));high=v3(ob_max(high.x,p.x),ob_max(high.y,p.y),ob_max(high.z,p.z));}
+ print("KSM1 model=% vertices=% indices=% shapes=% materials=% bounds=(%,%,%)-(%,%,%)\n",args_at(args[..],0),counts[0].vertices,counts[0].indices,counts[0].shapes,counts[0].materials,low.x,low.y,low.z,high.x,high.y,high.z);return 0;
+}

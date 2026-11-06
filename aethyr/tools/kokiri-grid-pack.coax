@@ -1,0 +1,21 @@
+// Conservative source-triangle binning. CLI TRIANGLES OUTPUT_KCG1, two-metre cells.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../verse/ocarina/kokiri-grid.coax";
+#load "kokiri-phive.coax";
+kg_triangle :: (b:[]u8,k:int)->KokiriTriangle {return KokiriTriangle.{a=scan_point(b,k*36),b=scan_point(b,k*36+12),c=scan_point(b,k*36+24)};}
+kg_range :: (g:KokiriGrid,t:KokiriTriangle)->[4]int {x0:=lo(t.a.x,lo(t.b.x,t.c.x));x1:=hi(t.a.x,hi(t.b.x,t.c.x));z0:=lo(t.a.z,lo(t.b.z,t.c.z));z1:=hi(t.a.z,hi(t.b.z,t.c.z));return [4]int.[cast(int)floor((x0-g.west)/g.cell),cast(int)floor((z0-g.south)/g.cell),cast(int)floor((x1-g.west)/g.cell),cast(int)floor((z1-g.south)/g.cell)];}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}data:[134217728]u8;out:[201326592]u8;n:=fs_read(args_at(a[..],0),data[..]);#assert n>0 && n%36==0;b:=data[0..<n];count:=n/36;low:=v3(1000000,1000000,1000000);high:=v3(-1000000,-1000000,-1000000);
+ for k:0..<count {t:=kg_triangle(b,k);for p:[3]Point.[t.a,t.b,t.c] {#assert kokiri_point_finite(p);low=v3(lo(low.x,p.x),lo(low.y,p.y),lo(low.z,p.z));high=v3(hi(high.x,p.x),hi(high.y,p.y),hi(high.z,p.z));}}
+ g:=KokiriGrid.{west=floor(low.x/2)*2,south=floor(low.z/2)*2,cell=2};g.nx=cast(int)floor((high.x-g.west)/g.cell)+1;g.nz=cast(int)floor((high.z-g.south)/g.cell)+1;#assert g.nx>0 && g.nz>0 && g.nx*g.nz<=262144;
+ cells:[262144]KokiriCell;cursor:[262144]int;refs:=0;maxcell:=0;
+ for k:0..<count {range:=kg_range(g,kg_triangle(b,k));for z:range[1]..<range[3]+1 {for x:range[0]..<range[2]+1 {cells[z*g.nx+x].count+=1;}}}
+ for k:0..<g.nx*g.nz {cells[k].first=refs;refs+=cells[k].count;maxcell=ifx cells[k].count>maxcell then cells[k].count else maxcell;cursor[k]=cells[k].first;}#assert maxcell<=8192;
+ table:=64;reference:=table+g.nx*g.nz*8;triangles:=reference+refs*4;total:=triangles+n;#assert total<=out.count;
+ for k:0..<count {range:=kg_range(g,kg_triangle(b,k));for z:range[1]..<range[3]+1 {for x:range[0]..<range[2]+1 {cell:=z*g.nx+x;scan_put(out[..],reference+cursor[cell]*4,cast(u32)k);cursor[cell]+=1;}}}
+ scan_put(out[..],0,0x3147434b);scan_put(out[..],4,1);scan_put(out[..],8,cast(u32)count);scan_put(out[..],12,cast(u32)g.nx);scan_put(out[..],16,cast(u32)g.nz);scan_put(out[..],20,f32_bits(g.cell));scan_put(out[..],24,f32_bits(g.west));scan_put(out[..],28,f32_bits(g.south));scan_put(out[..],32,cast(u32)table);scan_put(out[..],36,cast(u32)reference);scan_put(out[..],40,cast(u32)refs);scan_put(out[..],44,cast(u32)triangles);scan_put(out[..],48,cast(u32)total);scan_put(out[..],52,cast(u32)maxcell);
+ for k:0..<g.nx*g.nz {scan_put(out[..],table+k*8,cast(u32)cells[k].first);scan_put(out[..],table+k*8+4,cast(u32)cells[k].count);}for k:0..<n {out[triangles+k]=b[k];}#assert fs_write(args_at(a[..],1),cast(string)out[0..<total]);print("KCG1 triangles=% grid=%x% cell=2 refs=% max_cell=% bytes=%\n",count,g.nx,g.nz,refs,maxcell,total);return 0;
+}

@@ -1,0 +1,13 @@
+// Real child Kokiri physical+stair-slope layers and exact visual-ground fallback.
+// tool.sh: stack-gib 2
+#load "kokiri-compound.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {print("usage: COMPOUND_DIR GROUND_TRIANGLES OUTPUT_TRIANGLES\n");return 2;}
+ data:[67108864]u8;out:[134217728]u8;stats:[1]KcStats;chain:[1]KcTransform;path:[4096]u8;filename:[128]u8;template:="KokiriForest_Child_X?_Z?.Nin_Ounce_NVN2.bphsc";
+ ground:=fs_read(args_at(a[..],1),out[..]);#assert ground>0 && ground%36==0;stats[0].triangles=ground/36;
+ for x:0..<4 {for z:0..<4 {slot:=0;for c,k:template {filename[k]=c;if c=='?' {filename[k]=cast(u8)(48+(ifx slot==0 then x else z));slot+=1;}}source:=fs_join(args_at(a[..],0),cast(string)filename[0..<template.count],path[..]);n:=fs_read(source,data[..]);#assert n>0;b:=data[0..<n];h:=kokiri_phive(b);#assert h.ok && h.kind==2;before:=stats[0].triangles;
+  for section:[2]int.[11,12] {p:=h.offset[section];if h.size[section]<64 || scan_u32(b,p+4)!=0x30474154 {continue;}#assert cast(string)b[p+16..<p+24]=="20250200";size:=kokiri_be32(b,p+24)&0x3fffffff;end:=p+24+size;#assert kokiri_span(b.count,p+24,size);kc_shape(b,p+32,end,chain[0..<0],0,out[..],stats[..]);}
+  print("compound=X%Z% triangles=%\n",x,z,stats[0].triangles-before);
+ }}
+ s:=stats[0];#assert fs_write(args_at(a[..],2),cast(string)out[0..<s.triangles*36]);print("total_triangles=% ground_triangles=% instances=%\n",s.triangles,ground/36,s.instances);for k:0..<256 {if s.unsupported[k]>0 {print("unsupported_type=% count=%\n",k,s.unsupported[k]);}}return 0;
+}

@@ -1,0 +1,11 @@
+// Decode only the source texture names referenced by the scene material table.
+// CLI TEXTURE_LIST SOURCE_TEX_DIR PNG_DIR ASTC_REFERENCE BC_REFERENCE
+// tool.sh: stack-gib 2
+#load "ocarina-texture-core.coax";
+#test "Kokiri texture names replace only the terminal PNG suffix" {#assert kt_name("Wood.Alb.png")=="Wood.Alb";#assert kt_name("x.png.extra")=="";}
+kt_name :: (name:string)->string {if name.count<=4 || name[name.count-4..<name.count]!=".png" {return "";}return name[0..<name.count-4];}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {return 2;}list:[1048576]u8;path:[4096]u8;filename:[512]u8;n:=fs_read(args_at(a[..],0),list[..]);#assert n>0;dest:=args_at(a[..],2);#assert fs_mkdir(dest);start:=0;count:=0;
+ for i:0..<n {if list[i]=='\n' {name:=cast(string)list[start..<i];start=i+1;count+=1;if count<=60 {continue;}base:=kt_name(name);#assert base.count>0 && base.count<500;if fs_kind(fs_join(dest,name,path[..]))==FS_FILE {continue;}for c,k:base {filename[k]=c;}for c,k:".bntx" {filename[base.count+k]=c;}source:=fs_join(args_at(a[..],1),cast(string)filename[0..<base.count+5],path[..]);ot_decode(source,dest,args_at(a[..],3),args_at(a[..],4));}}
+ #assert start==n;print("KOKIRI_TEXTURE_NAMES=%\n",count);return 0;
+}

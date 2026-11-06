@@ -1,0 +1,18 @@
+// Offline original shader inventory/extraction. This does not execute game code.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-byml.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 {return 2;}data:[33554432]u8;path:[4096]u8;namebuf:[512]u8;
+ n:=fs_read(args_at(a[..],0),data[..]);#assert n>=128;b:=data[0..<n];#assert cast(string)b[0..<4]=="FSHA" && ob_u16(b,12)==0xfeff && ob_int(b,28)==n;
+ models:=ob_ptr(b,0x48);count:=ob_u16(b,0x78);wanted:=args_at(a[..],2);dest:=args_at(a[..],1);#assert fs_mkdir(dest);
+ for k:0..<count {m:=models+k*256;name:=ob_name(b,m);programs:=ob_u16(b,m+0xe8);print("SHADER_MODEL % programs=% model_offset=%\n",name,programs,m);
+  if name!=wanted {continue;}for c:name {#assert (c>=97 && c<=122) || (c>=65 && c<=90) || (c>=48 && c<=57) || c==95;}
+  buffers:=ob_ptr(b,m+0x58);dictionary:=ob_ptr(b,m+0x60);ucount:=cast(int)b[m+0xef];for u:0..<ucount {p:=buffers+u*32;d:=ob_ptr(b,p+8);params:=ob_ptr(b,p);print(" UBO index=% name=% location=% size=%\n",u,ob_name(b,dictionary+32+u*16),b[p+24],ob_u16(b,p+26));for param:0..<ob_int(b,p+28) {at:=params+param*16;print("  param=% offset=% name=%\n",ob_int(b,at+8),ob_u16(b,at+12),ob_name(b,d+32+param*16));}}
+  #assert programs>0;program:=ob_ptr(b,m+0x88);variation:=ob_ptr(b,program+0x20);bnsh:=ob_ptr(b,m+0xa8);native:=bnsh+ob_ptr(b,variation+16);vertex:=ob_ptr(b,native+8);if vertex==0 {print(" NO_VERTEX_STAGE material program is fragment-only\n");continue;}ci:=bnsh+vertex;control:=bnsh+ob_ptr(b,ci+8);code:=bnsh+ob_ptr(b,ci+16);cs:=ob_int(b,ci+24);hs:=ob_int(b,ci+28);#assert ob_span(b.count,code,cs) && ob_span(b.count,control,hs);
+  length:=name.count;for c,i:name {namebuf[i]=c;}suffix:=".vertex.bin";for c,i:suffix {namebuf[length+i]=c;}#assert fs_write(fs_join(dest,cast(string)namebuf[0..<length+suffix.count],path[..]),cast(string)b[code..<code+cs]);suffix=".vertex.control.bin";for c,i:suffix {namebuf[length+i]=c;}#assert fs_write(fs_join(dest,cast(string)namebuf[0..<length+suffix.count],path[..]),cast(string)b[control..<control+hs]);
+  print(" ORIGINAL_VERTEX code_offset=% bytes=% control_offset=% bytes=%\n",code,cs,control,hs);
+ }
+ return 0;
+}

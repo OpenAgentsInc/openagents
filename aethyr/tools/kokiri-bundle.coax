@@ -1,0 +1,37 @@
+// Private source scene assembly; no source payload is checked into Git.
+// CLI CHARACTER_STREAMS SCENE_DIR GROUND_DIR ATLAS_DIR CHARACTER_PNG_DIR COLLISION OUT
+// tool.sh: stack-gib 4
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../verse/valley/scan.coax";
+#test "Kokiri static GPU packing preserves positions UVs IDs and signed normals" {
+ a:[128]u8;b:[64]u8;scan_write_point(a[..],0,v3(-45,116,-9));scan_write_point(a[..],12,v3(-1,0,1));scan_put(a[..],24,f32_bits(0.125));scan_put(a[..],32,7);scan_put(a[..],72,f32_bits(-1));scan_put(a[..],76,0xff123456);kb_vertex(a[..],0,b[..],0,25,false,0);#assert scan_point(b[..],0).y==116 && scan_float(b[..],16)==0.125 && scan_u32(b[..],32)==32 && scan_u32(b[..],40)==0xff123456 && (scan_u32(b[..],36)>>30)==3;#assert kb_snorm(-1)==513 && kb_snorm(1)==511 && kb_snorm(0)==0;
+}
+#test "Kokiri bundle entries align payloads without dropping bytes" {out:[256]u8;data:=[3]u8.[1,2,3];at:=kb_append(out[..],128,data[..],0,1,"catalog");#assert at==132 && scan_u32(out[..],36)==128 && scan_u32(out[..],40)==3 && out[130]==3;}
+kb_snorm :: (n:f32)->u32 {v:=cast(int)((ifx n< -1 then -1.0f32 else ifx n>1 then 1.0f32 else n)*511);return cast(u32)(ifx v<0 then v+1024 else v);}
+kb_normal :: (p:Point)->u32 {return kb_snorm(p.x)|(kb_snorm(p.y)<<10)|(kb_snorm(p.z)<<20);}
+kb_vertex :: (src:[]u8,at:int,out:[]u8,to:int,material_offset:int,ground:bool,ground_material:int) {
+ for k:0..<3 {scan_put(out,to+k*4,scan_u32(src,at+k*4));}scan_put(out,to+12,kb_normal(scan_point(src,at+12)));
+ for k:0..<2 {scan_put(out,to+16+k*4,scan_u32(src,at+24+k*4));scan_put(out,to+24+k*4,scan_u32(src,at+80+k*4));scan_put(out,to+48+k*4,scan_u32(src,at+88+k*4));scan_put(out,to+56+k*4,scan_u32(src,at+96+k*4));}
+ scan_put(out,to+32,cast(u32)(cast(int)scan_u32(src,at+32)+material_offset));t:=kb_normal(scan_point(src,at+60));sign:=ifx scan_float(src,at+72)<0 then cast(u32)3 else cast(u32)1;scan_put(out,to+36,t|(sign<<30));scan_put(out,to+40,scan_u32(src,at+76));scan_put(out,to+44,scan_u32(src,at+104));
+ if ground {scan_put(out,to+32,cast(u32)ground_material);scan_put(out,to+16,f32_bits(scan_float(src,at)*0.25));scan_put(out,to+20,f32_bits(scan_float(src,at+8)*0.25));scan_put(out,to+36,kb_normal(v3(1,0,0))|(cast(u32)1<<30));scan_put(out,to+40,0xffffffff);}
+}
+kb_append :: (out:[]u8,at:int,data:[]u8,entry:int,kind:u32,name:string)->int {#assert at>=0 && data.count<=out.count-at;tab:=32+entry*48;scan_put(out,tab,kind);scan_put(out,tab+4,cast(u32)at);scan_put(out,tab+8,cast(u32)data.count);for c,k:name {if k<31 {out[tab+16+k]=c;}}for k:0..<data.count {out[at+k]=data[k];}return (at+data.count+3)/4*4;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=7 && args_count(a[..])!=8) {return 2;}foliage:=args_count(a[..])==8;character:=args_at(a[..],0);scene:=args_at(a[..],1);ground:=args_at(a[..],2);atlas:=args_at(a[..],3);character_png:=args_at(a[..],4);
+ out:[805306368]u8;gpu:[268435456]u8;data:[100663296]u8;catalog:[100663296]u8;source:[536870912]u8;path:[4096]u8;list:[65536]u8;names:[256]string;
+ ln:=fs_read(fs_join(atlas,"scene.textures",path[..]),list[..]);#assert ln>0;begin:=0;layers:=0;for i:0..<ln {if list[i]=='\n' {#assert layers<256;names[layers]=cast(string)list[begin..<i];layers+=1;begin=i+1;}}#assert begin==ln && layers>=60;
+ mn:=fs_read(fs_join(atlas,"scene.materials",path[..]),data[..]);#assert mn>32 && scan_u32(data[..],0)==0x314d434f;materials:=cast(int)scan_u32(data[..],8);#assert materials>25 && materials<2047 && mn==32+materials*256;ground_material:= -1;for i:0..<materials {if scan_u32(data[..],32+i*256+64)==9 {ground_material=i;}}#assert ground_material>=25;for k:0..<materials*256 {gpu[256+k]=data[32+k];}
+ prefix:=131072*4;link_vertices:=110515;size:=fs_read(fs_join(character,"link.vertices",path[..]),gpu[prefix..<prefix+link_vertices*128]);#assert size==link_vertices*128;static_base:=prefix+size;cursor:=static_base;static_count:=0;
+ for part:0..<(ifx foliage then 3 else 2) {dir:=ifx part==0 then scene else ifx part==1 then ground else args_at(a[..],7);file:=ifx part==0 then "scene.vertices" else ifx part==1 then "mesh.vertices" else "foliage.vertices";n:=fs_read(fs_join(dir,file,path[..]),source[..]);#assert n>0 && n%128==0;#assert n/128*64<=gpu.count-cursor;for i:0..<n/128 {if part==2 {for k:0..<64 {gpu[cursor+i*64+k]=source[i*128+k];}}else {kb_vertex(source[..],i*128,gpu[..],cursor+i*64,25,part==1,ground_material);}}cursor+=n/2;static_count+=n/128;}
+ scan_put(gpu[..],0,0x3156434f);scan_put(gpu[..],4,2);scan_put(gpu[..],8,cast(u32)link_vertices);scan_put(gpu[..],16,cast(u32)(prefix/4));scan_put(gpu[..],20,64);scan_put(gpu[..],24,64);scan_put(gpu[..],28,cast(u32)materials);scan_put(gpu[..],32,218334);scan_put(gpu[..],36,cast(u32)(static_base/4));scan_put(gpu[..],40,16);scan_put(gpu[..],44,cast(u32)static_count);scan_put(gpu[..],48,1);
+ // Source indices reference Link then the two static streams in the same order.
+ index_bytes:=fs_read(fs_join(character,"link.indices",path[..]),source[..]);#assert index_bytes==218334*4;offset:=link_vertices;
+ for part:0..<(ifx foliage then 3 else 2) {dir:=ifx part==0 then scene else ifx part==1 then ground else args_at(a[..],7);file:=ifx part==0 then "scene.indices" else ifx part==1 then "mesh.indices" else "foliage.indices";n:=fs_read(fs_join(dir,file,path[..]),data[..]);#assert n>0 && n%12==0 && index_bytes+n<=source.count;for i:0..<n/4 {scan_put(source[..],index_bytes+i*4,scan_u32(data[..],i*4)+cast(u32)offset);}index_bytes+=n;if part==0 {info:[32]u8;#assert fs_read(fs_join(scene,"scene.info",path[..]),info[..])==32;offset+=cast(int)scan_u32(info[..],8);}else if part==1 {info:[32]u8;#assert fs_read(fs_join(ground,"mesh.info",path[..]),info[..])==32;offset+=cast(int)scan_u32(info[..],8);}}
+ scan_put(gpu[..],12,cast(u32)(index_bytes/4));entries:=3+layers;at:=32+entries*48;
+ rn:=fs_read(fs_join(character,"link.rig",path[..]),catalog[64..<catalog.count]);#assert rn==10961136;cn:=fs_read(args_at(a[..],5),catalog[64+rn..<catalog.count]);#assert cn>0;total:=64+rn+cn;words:=[11]int.[0x31434f4b,1,total,64,rn,64+rn,cn,cursor,index_bytes/4,layers,materials];for i:0..<11 {scan_put(catalog[..],i*4,cast(u32)words[i]);}scan_write_point(catalog[..],44,v3(-12,110.052536,0));scan_put(catalog[..],56,1);
+ #assert fs_write(fs_join(atlas,"scene.catalog",path[..]),cast(string)catalog[0..<total]);at=kb_append(out[..],at,catalog[0..<total],0,1,"kokiri-catalog");at=kb_append(out[..],at,gpu[0..<cursor],1,2,"source-scene-vertices");at=kb_append(out[..],at,source[0..<index_bytes],2,3,"source-scene-indices");
+ for i:0..<layers {dir:=ifx i<60 then character_png else atlas;n:=fs_read(fs_join(dir,names[i],path[..]),data[..]);#assert n>0;at=kb_append(out[..],at,data[0..<n],3+i,4,names[i]);}
+ scan_put(out[..],0,0x314b5056);scan_put(out[..],4,cast(u32)entries);scan_put(out[..],8,cast(u32)at);scan_put(out[..],12,cast(u32)at);scan_put(out[..],16,32);scan_put(out[..],20,cast(u32)(32+entries*48));#assert fs_write(args_at(a[..],6),cast(string)out[0..<at]);hex:[64]u8;#assert asset_hex(asset_id(cast(string)out[0..<at]),hex[..]);print("KOKIRI_PACK_BYTES=%\nKOKIRI_PACK_SHA256=%\nVERTEX_BYTES=% INDEX_COUNT=% LAYERS=% MATERIALS=%\n",at,cast(string)hex[..],cursor,index_bytes/4,layers,materials);return 0;
+}

@@ -1,0 +1,27 @@
+// Extract the shipped mesh/task decoding programs for offline inspection; no game execution.
+// CLI MODEL_BFSHA OUTPUT_DIR [PROGRAM [LAYOUT_MASK]]. PROGRAM -1 selects the source layout.
+// Awn c3c090bb container offsets; actual slot7 culls/task, slot8 writes vertices/mesh.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "ocarina-bfres.coax";
+KshCode :: struct {code:int;bytes:int;control:int;controlBytes:int;}
+#test "Kokiri meshlet dynamic option keys retain the complete source attribute mask" {#assert ksh_layout((97<<14)|(20<<6)|(1<<5)|(1<<28))==70753 && ksh_layout(268977152)==4129;}
+ksh_layout :: (key:u32)->u32 {return ((key>>14)&255)|(((key>>6)&255)<<8)|(((key>>5)&1)<<16);}
+#test "Kokiri native shader code pointers remain relative to the embedded BNSH base" {b:[512]u8;scan_put(b[..],96,16);scan_put(b[..],152,280);scan_put(b[..],160,256);scan_put(b[..],168,12);scan_put(b[..],172,16);c:=ksh_code(b[..],128,32,7);#assert c.code==384 && c.bytes==12 && c.control==408 && c.controlBytes==16;#assert ksh_code(b[..],128,32,8).bytes==0;}
+ksh_code :: (b:[]u8,bnsh:int,program:int,stage:int)->KshCode {#assert stage>=0 && stage<9;relative:=ob_ptr(b,program+8+stage*8);if relative==0 {return KshCode.{};}ci:=bnsh+relative;result:=KshCode.{code=bnsh+ob_ptr(b,ci+16),control=bnsh+ob_ptr(b,ci+8),bytes=ob_int(b,ci+24),controlBytes=ob_int(b,ci+28)};#assert ob_span(b.count,result.code,result.bytes) && ob_span(b.count,result.control,result.controlBytes);return result;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>4 {return 2;}selected:=0;desired:=0;if args_count(a[..])>=3 {value:=args_number(args_at(a[..],2));#assert value.ok;selected=cast(int)value.value;}if args_count(a[..])==4 {value:=args_number(args_at(a[..],3));#assert value.ok;desired=cast(int)value.value;}data:[536870912]u8;n:=fs_read(args_at(a[..],0),data[..]);#assert n>128;b:=data[0..<n];archive:=ob_ptr(b,32);count:=ob_u16(b,archive+64);models:=ob_ptr(b,archive+16);dest:=args_at(a[..],1);#assert fs_mkdir(dest) || fs_kind(dest)==2;path:[4096]u8;
+ for k:0..<count {m:=models+k*256;name:=ob_name(b,m);programCount:=ob_u16(b,m+232);print("BFSHA model=% name=% programs=%\n",k,name,programCount);if name!="model_meshlet_taskmesh_override" {continue;}
+  keySize:=cast(int)b[m+234]+cast(int)b[m+235];keys:=ob_ptr(b,m+144);if selected<0 {for j:0..<programCount {key:=ob_word(b,keys+(j*keySize+keySize-1)*4);if ksh_layout(key)==cast(u32)desired && (key>>28)==1 && ((key>>23)&15)==0 {selected=j;break;}}}#assert selected>=0 && selected<programCount;
+  dynamic:=ob_ptr(b,m+24);for option:0..<ob_u16(b,m+230) {o:=dynamic+option*40;choices:=ob_u16(b,o+24);dictionary:=ob_ptr(b,o+8);values:=ob_ptr(b,o+16);print("DYNAMIC name=% choices=% mask=% index=% bit=% base=%\n",ob_name(b,o),choices,ob_word(b,o+32),b[o+36],b[o+37],b[o+31]);for choice:0..<(ifx choices<128 then choices else 128) {print("CHOICE id=% name=% value=%\n",choice,ob_name(b,dictionary+32+choice*16),(ifx values==0 then cast(u32)choice else ob_word(b,values+choice*4)));}}
+  for j:0..<keySize {print("KEY program=% word=% value=%\n",selected,j,ob_word(b,keys+(selected*keySize+j)*4));}
+  bnsh:=ob_ptr(b,m+168);p:=ob_ptr(b,m+136)+selected*64;variation:=ob_ptr(b,p+32);program:=bnsh+ob_ptr(b,variation+16);print("MESHLET model=% bnsh=% program=% selection=%\n",m,bnsh,program,selected);
+  for stage:0..<9 {c:=ksh_code(b,bnsh,program,stage);if c.bytes==0 {continue;}code:=c.code;control:=c.control;size:=c.bytes;cs:=c.controlBytes;print("BNSH stage=% code=% size=% control=% size=%\n",stage,code,size,control,cs);
+   if stage==7 {#assert fs_write(fs_join(dest,"slot7.bin",path[..]),cast(string)b[code..<code+size]);#assert fs_write(fs_join(dest,"slot7.control.bin",path[..]),cast(string)b[control..<control+cs]);}if stage==8 {#assert fs_write(fs_join(dest,"slot8.bin",path[..]),cast(string)b[code..<code+size]);#assert fs_write(fs_join(dest,"slot8.control.bin",path[..]),cast(string)b[control..<control+cs]);}
+  }
+ }
+ return 0;
+}

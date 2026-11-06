@@ -1,0 +1,32 @@
+// Original Banc actors -> private KSP1 placements. CLI SOURCE_ROOT BANC_REL OUTPUT_DIR.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-byml.coax";
+#load "kokiri-mesh.coax";
+KP_RECORD :: 512; KP_CAP :: 16384;
+#test "Kokiri placement records preserve exact optional SRT defaults and source matrices" {
+ out:[512]u8;t:=v3(10,20,30);r:=v3(0,0,0);s:=v3(2,3,4);kp_transform(out[..],0,t,r,s);
+ #assert scan_point(out[..],96).x==10 && scan_point(out[..],120).z==4;
+ #assert scan_float(out[..],132)==2 && scan_float(out[..],132+5*4)==3 && scan_float(out[..],132+11*4)==30;
+}
+kp_transform :: (out:[]u8,at:int,t:Point,r:Point,s:Point) {scan_write_point(out,at+96,t);scan_write_point(out,at+108,r);scan_write_point(out,at+120,s);m:=km_affine(t,r,s);for k:0..<12 {scan_put(out,at+132+k*4,f32_bits(m[k]));}}
+kp_append :: (out:[]u8,cursor:[]int,s:string) {#assert ob_span(out.count,cursor[0],s.count);for c:s {out[cursor[0]]=c;cursor[0]+=1;}}
+kp_name :: (out:[]u8,at:int,s:string) {#assert s.count>0 && s.count<96 && ob_span(out.count,at,96);for k:0..<96 {out[at+k]=0;}for c,k:s {out[at+k]=c;}}
+kp_resource :: (pack:[]u8,reference:string)->[]u8 {name:=reference;if name.count>0 && name[0]=='?' {name=name[1..<name.count];}if name.count>=5 && name[0..<5]=="Work/" {name=name[5..<name.count];}path:[512]u8;cursor:[1]int;if name.count>=5 && name[name.count-5..<name.count]==".gyml" {kp_append(path[..],cursor[..],name[0..<name.count-5]);kp_append(path[..],cursor[..],".bgyml");name=cast(string)path[0..<cursor[0]];}return kb_sarc(pack,name);}
+kp_component :: (pack:[]u8,name:string)->[]u8 {path:[512]u8;cursor:[1]int;kp_append(path[..],cursor[..],"Actor/");kp_append(path[..],cursor[..],name);kp_append(path[..],cursor[..],".engine__actor__ActorParam.bgyml");actor:=kb_sarc(pack,cast(string)path[0..<cursor[0]]);for depth:0..<16 {if actor.count==0 {return actor;}node:=kb_root(actor);ref:=kb_get(actor,kb_get(actor,node,"Components"),"ModelInfoRef");if ref.kind==0xa0 {return kp_resource(pack,kb_string(actor,ref));}parent:=kb_get(actor,node,"$parent");if parent.kind!=0xa0 {return actor[0..<0];}actor=kp_resource(pack,kb_string(actor,parent));}#assert false;return pack[0..<0];}
+kp_model :: (pack:[]u8,name:string,out:[]u8,at:int)->bool {component:=kp_component(pack,name);arcSet:=false;modelSet:=false;for depth:0..<16 {if component.count==0 {break;}node:=kb_root(component);arc:=kb_get(component,node,"ModelProjectName");model:=kb_get(component,node,"FmdbName");if !arcSet && arc.kind==0xa0 {text:=kb_string(component,arc);if text.count==0 {return false;}kp_name(out,at+192,text);arcSet=true;}if !modelSet && model.kind==0xa0 {text:=kb_string(component,model);if text.count==0 {return false;}kp_name(out,at+288,text);modelSet=true;}if arcSet && modelSet {return true;}parent:=kb_get(component,node,"$parent");if parent.kind!=0xa0 {break;}component=kp_resource(pack,kb_string(component,parent));}return false;}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {return 2;}root:=args_at(args[..],0);banc:=args_at(args[..],1);dest:=args_at(args[..],2);path:[4096]u8;source:[16777216]u8;out:[16+KP_CAP*KP_RECORD]u8;requests:[4194304]u8;cursor:[1]int;
+ n:=fs_read(fs_join(root,banc,path[..]),source[..]);#assert n>0;b:=source[0..<n];node:=kb_root(b);actors:=kb_get(b,node,"Actors");#assert actors.kind==0xc0;count:=kb_count(b,actors);#assert count<=KP_CAP;pack:[4194304]u8;modelRequests:[4194304]u8;mc:[1]int;resolved:=0;missingPack:=0;
+ for i:0..<count {actor:=kb_at(b,actors,i);gyaml:=kb_get(b,actor,"Gyaml");#assert gyaml.kind==0xa0;name:=kb_string(b,gyaml);at:=16+i*KP_RECORD;kp_name(out[..],at,name);t:=kb_point(b,kb_get(b,actor,"Translate"),v3(0,0,0));r:=kb_point(b,kb_get(b,actor,"Rotate"),v3(0,0,0));s:=kb_point(b,kb_get(b,actor,"Scale"),v3(1,1,1));kp_transform(out[..],at,t,r,s);
+  hash:=kb_get(b,actor,"Hash");if hash.kind==0xd5 || hash.kind==0xd4 {#assert ob_span(b.count,hash.value,8);for k:0..<8 {out[at+180+k]=b[hash.value+k];}}else if hash.kind==0xd3 {scan_put(out[..],at+180,cast(u32)hash.value);}
+  kp_append(requests[..],cursor[..],"romfs/Pack/Actor/");kp_append(requests[..],cursor[..],name);kp_append(requests[..],cursor[..],".pack.zs\n");
+  relative:[512]u8;rc:[1]int;kp_append(relative[..],rc[..],"romfs/Pack/Actor/");kp_append(relative[..],rc[..],name);kp_append(relative[..],rc[..],".pack");pn:=fs_read(fs_join(root,cast(string)relative[0..<rc[0]],path[..]),pack[..]);
+  if pn>0 {if kp_model(pack[0..<pn],name,out[..],at) {scan_put(out[..],at+188,1);arc:=kb_zstring(out[..],at+192);model:=kb_zstring(out[..],at+288);kp_append(modelRequests[..],mc[..],"romfs/Model/");kp_append(modelRequests[..],mc[..],arc);kp_append(modelRequests[..],mc[..],".");kp_append(modelRequests[..],mc[..],model);kp_append(modelRequests[..],mc[..],".bfres.zs\n");resolved+=1;print("Kokiri resolved actor=% model=%.%\n",name,arc,model);}else {scan_put(out[..],at+188,4);}}else {scan_put(out[..],at+188,2);missingPack+=1;}
+  print("Kokiri actor % % T=(%,%,%) R=(%,%,%) S=(%,%,%)\n",i,name,t.x,t.y,t.z,r.x,r.y,r.z,s.x,s.y,s.z);
+ }
+ scan_put(out[..],0,0x3150534b);scan_put(out[..],4,1);scan_put(out[..],8,cast(u32)count);scan_put(out[..],12,KP_RECORD);#assert fs_mkdir(dest) || fs_kind(dest)==2;
+ #assert fs_write(fs_join(dest,"scene.placements",path[..]),cast(string)out[0..<16+count*KP_RECORD]);#assert fs_write(fs_join(dest,"actors.requests.txt",path[..]),cast(string)requests[0..<cursor[0]]);#assert fs_write(fs_join(dest,"models.requests.txt",path[..]),cast(string)modelRequests[0..<mc[0]]);print("KSP1 source=% actors=% resolved=% missing_packs=% bytes=%\n",banc,count,resolved,missingPack,16+count*KP_RECORD);return 0;
+}

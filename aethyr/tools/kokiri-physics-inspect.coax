@@ -1,0 +1,11 @@
+// Read source Phive section and root metadata without executing payloads.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-phive.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+ data:[67108864]u8;n:=fs_read(args_at(args[..],0),data[..]);if n<0 {return 3;}b:=data[0..<n];h:=kokiri_phive(b);print("bytes=% phive_valid=% kind=% capacity=%\n",n,h.ok,h.kind,h.count);
+ if h.ok {for k:0..<h.count {p:=h.offset[k];if h.size[k]>0 {print("section=% offset=% size=%\n",k,p,h.size[k]);if h.size[k]>=64 && scan_u32(b,p+4)==0x30474154 {root:=p+32;print("HKT root_type=% sdk=%\n",b[root+24],cast(string)b[p+16..<p+24]);if b[root+24]==9 {instances:=root+56+kokiri_s32(scan_u32(b,root+56));count:=cast(int)scan_u32(b,root+64);#assert kokiri_span(b.count,instances,count*64);types:[256]int;for j:0..<count {at:=instances+j*64+48;shape:=at+kokiri_s32(scan_u32(b,at));#assert kokiri_span(b.count,shape,32);types[cast(int)b[shape+24]]+=1;}print("instances=%\n",count);for t:0..<256 {if types[t]>0 {print("shape_type=% instances=%\n",t,types[t]);}}}}}}}
+ return 0;
+}

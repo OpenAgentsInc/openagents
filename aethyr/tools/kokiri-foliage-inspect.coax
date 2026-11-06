@@ -1,0 +1,31 @@
+// Bounded original foliage resource inspection; no invented graph or placement semantics.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-foliage.coax";
+kf_indent :: (depth:int) {for k:0..<depth {print("  ");}}
+kf_dump :: (b:[]u8,n:KbNode,depth:int,budget:[]int) {
+ if budget[0]<=0 {return;}budget[0]-=1;#assert depth<=32;
+ if n.kind==0xc0 || n.kind==0xc1 {count:=kb_count(b,n);print("%[%]\n",ifx n.kind==0xc1 then "dict" else "array",count);
+  for k:0..<count {if budget[0]<=0 {break;}kf_indent(depth+1);if n.kind==0xc1 {print("% = ",kb_key(b,n,k));}else {print("% = ",k);}kf_dump(b,kb_at(b,n,k),depth+1,budget);}
+ }else if n.kind==0xa0 {print("string %\n",kb_string(b,n));}
+ else if n.kind==0xd2 {print("float %\n",kb_float(b,n));}
+ else if n.kind==0xd0 || n.kind==0xd1 || n.kind==0xd3 {print("int %\n",kb_int(n));}
+ else {print("kind=% raw=%\n",n.kind,n.value);}
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {return 2;}data:[67108864]u8;
+ for k:0..<args_count(a[..]) {path:=args_at(a[..],k);n:=fs_read(path,data[..]);if n<4 {tool_errln("missing or truncated foliage input");return 3;}b:=data[0..<n];hash:[64]u8;#assert asset_hex(asset_id(cast(string)b),hash[..]);print("FILE % bytes=% sha256=%\n",path,n,cast(string)hash[..]);
+  if cast(string)b[0..<2]=="YB" {budget:=[1]int.[4096];kf_dump(b,kb_root(b),0,budget[..]);}
+  else if n==1168 && b[3]==1 {plant:=kf_plant(b);print("NODE_TREE bones=% leaves=% parameters=(%,%)\n",plant.bones,plant.leaves,plant.parameter0,plant.parameter1);for node:0..<plant.bones {print(" bone=% parent=% raw=(%,%,%)\n",node,kf_parent(b,node),ob_word(b,16+node*12),ob_word(b,20+node*12),ob_word(b,24+node*12));}for leaf:0..<plant.leaves {print(" leaf=% bone=% raw=(%,%,%)\n",leaf,kf_leaf_bone(b,leaf),ob_word(b,400+leaf*12),ob_word(b,404+leaf*12),ob_word(b,408+leaf*12));}}
+  else if n>=16 && ob_int(b,0)==2 && ob_int(b,4)==0 && ob_int(b,8)>0 && ob_int(b,8)<=256 {s:=kf_impostors(b);print("IMPOSTOR_INFO resources=% views=%\n",s.resources,s.views);for index:0..<s.resources {e:=kf_impostor_entry(b,s,index);print(" IMPOSTOR_RESOURCE index=% first=% count=% mode=% path=%\n",index,e.first,e.count,e.mode,kf_impostor_name(b,s,index));}for view:0..<s.views {p:=kf_impostor_view(b,s,view);area:f32=0;mincross:f32=100000;for v:0..<6 {vertex:=kf_impostor_point(b,p,v);next:=kf_impostor_point(b,p,(v+1)%6);third:=kf_impostor_point(b,p,(v+2)%6);area+=vertex.x*next.y-next.x*vertex.y;turn:=cross(sub(next,vertex),sub(third,next)).z;mincross=ob_min(mincross,turn);}print(" IMPOSTOR_POLYGON view=% area=% minimum_turn=%\n",view,area/2,mincross);if view<16 {print(" IMPOSTOR_VIEW index=%\n",view);for word:0..<20 {print("  float=% value=%\n",word,ob_float(b,p+word*4));}}}}
+  else if n>=32 && ob_int(b,8)==2 {scene:=kf_scene(b);counts:[256]int;minimum:=v3(100000,100000,100000);maximum:=v3(-100000,-100000,-100000);for instance:0..<scene.instances {o:=kf_instance(b,scene,instance);counts[o.resource]+=1;minimum=v3(ob_min(minimum.x,o.position.x),ob_min(minimum.y,o.position.y),ob_min(minimum.z,o.position.z));maximum=v3(ob_max(maximum.x,o.position.x),ob_max(maximum.y,o.position.y),ob_max(maximum.z,o.position.z));if instance<4 {print(" instance=% resource=% pos=(%,%,%) scale=% axis0=(%,%,%) axis1=(%,%,%)\n",instance,o.resource,o.position.x,o.position.y,o.position.z,o.scale,o.axis0.x,o.axis0.y,o.axis0.z,o.axis1.x,o.axis1.y,o.axis1.z);}}
+   print("SHOOT_SCENE resources=% instances=% auxBytes=% auxWords=% min=(%,%,%) max=(%,%,%)\n",scene.resources,scene.instances,scene.aux_bytes,scene.words,minimum.x,minimum.y,minimum.z,maximum.x,maximum.y,maximum.z);for resource:0..<scene.resources {print(" resource=% count=% name=%\n",resource,counts[resource],kf_resource(b,scene,resource));}
+   for instance:0..<(ifx scene.instances<16 then scene.instances else 16) {print(" AUX_INDEX instance=% value=%\n",instance,ob_word(b,scene.offsets_at+instance*4));}
+   for word:0..<(ifx scene.aux_bytes/4<64 then scene.aux_bytes/4 else 64) {value:=ob_word(b,scene.aux_at+word*4);print(" AUX_BYTE offset=% u32=% f32=%\n",word*4,value,f32_from_bits(value));}
+   for word:0..<(ifx scene.words<32 then scene.words else 32) {value:=ob_word(b,scene.words_at+word*4);print(" AUX_WORD index=% u32=% f32=%\n",word,value,f32_from_bits(value));}}
+  else {for word:0..<(ifx n/4<64 then n/4 else 64) {value:=ob_word(b,word*4);print("offset=% u32=% f32=%\n",word*4,value,f32_from_bits(value));}}
+ }
+ return 0;
+}

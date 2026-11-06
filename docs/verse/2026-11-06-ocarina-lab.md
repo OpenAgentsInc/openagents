@@ -1,6 +1,6 @@
 # Ocarina Lab
 
-An unlisted owner-local character lab at `/worlds/ocarina-lab?pack`. It reuses
+An unlisted owner-local source scene and character lab at `/worlds/ocarina-lab?pack`. It reuses
 Aethyr's paid fixed steps, walk trace, follow camera, collision and touch sticks,
 and Animation Lab's inspection conventions. No Nintendo payload is in Git.
 
@@ -18,7 +18,7 @@ influences, UV0/UV1, tangents and colors. Eight original clips retain translatio
 quaternion rotation, nonuniform scale and per-clip Maya SSC flags. Sampling uses
 an explicit 30 source frames/second assumption, not a measured game clock.
 See `aethyr/tools/ocarina-source-format.txt` for the binary schema and source
-references. The complete private pack is 49,448,496 bytes with SHA-256
+references. The earlier character-only private pack was 49,448,496 bytes with SHA-256
 `fad738db36516efd185a81b11ce00538096d4cbb4a7b824fc8d2d02d3fb585c7`.
 
 `ExternalBinaryString.bfres` resolves material name hashes. `UnifyTex.Product.100.byml`
@@ -35,8 +35,9 @@ coverage came from omitted aliases, UV1, and vertical GOB block height.
 The lighting is an Aethyr material translation. Skin scattering, anisotropic hair
 response and layered eyes are approximations; the outer corneal/eye-shadow meshes
 are suppressed in this opaque inspection renderer. This is not a reproduction of
-the game's full shader graph, physics or hair/cloth simulation. The forest is
-original procedural geometry, with the same placements used for collision.
+the game's full shader graph, physics or hair/cloth simulation. The current
+forest uses original source scenery, placement and ground; its collision and
+admission boundaries are described below. The old procedural forest is removed.
 
 ## Rebuild locally
 
@@ -62,8 +63,11 @@ coax/web/tool.sh aethyr/tools/ocarina-texture.coax \
 coax/web/tool.sh aethyr/tools/ocarina-material-pack.coax \
   "$src/Player_Child.Player_Child.bfres" "$src/ExternalBinaryString.bfres" \
   "$src/UnifyTex.Product.100.byml" "$tex" "$out"
-coax/web/tool.sh aethyr/tools/ocarina-bundle.coax "$out" "$tex" \
-  "$HOME/.openagents/verse/private-build/web/ocarina-lab.pack"
+k="$HOME/.openagents/verse/private-build/kokiri"
+# Prepared Kokiri inputs: see OpenAgentsInc/ore/docs/ocarina-of-time/kokiri-extraction.md.
+coax/web/tool.sh aethyr/tools/kokiri-bundle.coax "$out" "$k/scene-v4" \
+  "$k/scene-model" "$k/atlas-final" "$tex" "$k/terrain-decoded/world-collision.kcg" \
+  "$HOME/.openagents/verse/private-build/web/ocarina-lab.pack" "$k/atlas-final"
 coax/web/wasm.sh apps/openagents-web/ocarinalab.coax \
   apps/openagents-web/ocarinalab-face.c apps/openagents-web/build/ocarinalab.wasm
 coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/ocarinalab.coax \
@@ -75,13 +79,13 @@ Run the existing watching dev server and open `/worlds/ocarina-lab?pack`. The
 public build has no source assets. A changed source pack requires an intentional
 SHA/length update in the Coax admission policy, never silent fallback.
 
-## Verification
+## Earlier character-only verification
 
 The importer passes 70 checks. Rig admission kills all 250 root mutants; pack
 identity kills all 22; renderer adoption kills all 58. Texture and material tools
 pass their 63 and 69 loaded checks. Nonuniform scale and zero-scale SSC regression
 checks pass, including a case which failed with reciprocal parent-scale chaining.
-The runtime budget covers desktop, phone and high-DPR frames under 1.2 GiB,
+That character-only runtime budget covered desktop, phone and high-DPR frames under 1.2 GiB,
 including all 60 mipmapped 1536-square layers and retained source bytes.
 
 `coax/web/ocarina-check.coax` runs muted, headless Chrome against the actual
@@ -133,7 +137,117 @@ errors were reported. The updated Wasm is 70,026 bytes. The earlier complete
 36-check browser run also passed inspection, touch, landing/jump transitions and
 GPU recovery; the final motion capture uses the renderer's exact pelvis placement.
 
-These changes align travel and animation to the recovered source data. Gravity,
-jump impulse, acceleration, turning and the collision profile remain the shared
-Aethyr controller's lab tuning. They are not verified copies of the original
-game's controller or transition graph. The private pack bytes and hash are unchanged.
+These changes align travel and animation to the recovered source data. The
+current source scene retains this correction. Its expanded private pack has a
+different identity, pinned in `verse/ocarina/pack-policy.coax`; the historical
+character-only identity above is not its current admission pin.
+
+## Original Kokiri scene admission and collision
+
+KOC1 is the browser's source catalogue. Its 64-byte header binds the complete
+OCL1 rig, complete KCG1 collision index, finite spawn and dynamic GPU byte,
+index, texture-layer and material counts. GPU geometry mixes 128-byte character
+records and 64-byte static records, so admission bounds total bytes without
+pretending that the complete upload has one vertex stride. Materials and atlas
+layers have independent counts. The unchanged whole-pack SHA/length gate remains
+separate from structural validation.
+
+`scene-policy.coax` validates the entire collision stream before publication:
+bounded finite coordinates, exact nonoverlapping sections, contiguous cell
+ranges, sorted in-range triangle IDs and the declared maximum candidates per
+cell. It delegates rig validation to the existing OCL1 gate. The C browser face
+owns one 96 MiB source staging buffer. After successful admission its capacity
+closes to further writes: collision borrows that immutable retained buffer,
+while the smaller rig is copied into the existing animation state. GPU recovery
+retains these owners. Readiness requires the catalogue, both source streams,
+whole-pack authentication and all exact declared uploads.
+
+The source collision bundle contains 1,238,100 triangles: 481,558 original dense
+ground BFRES triangles plus original child Phive physical and smooth stair
+geometry. Two-metre bins contain 2,377,095 references, with at most 1,536 per
+cell. Original standalone shape bytes independently identify physical section
+11, stair-slope section 12 and detailed stair-step section 13. Original CCT
+mask definitions include the first two and exclude detailed stair steps. The
+runtime uses physical and smooth stair surfaces. The one unsupported cylinder
+is reported rather than replaced with an invented box. The TARB terrain wrapper
+can be unpacked, but its inner height descriptors remain unresolved; the dense
+original rendered ground is the explicit grounding fallback.
+
+Every paid 1/64-second step runs shared movement, source capsule resolution and
+source floor selection before publishing its history or advancing gait from
+actual resolved travel. The floor query is capped at the previous feet plus
+the recovered 0.35 m step height, preserving raised bridges without selecting
+roofs above the player. Reset uses `(-12, 110.052536, 0)`, a tested open village-floor location. This is a lab choice, not a recovered original-game spawn. The raised log floor at `(-45.6, 116.50062, -9.74)` remains part of the source regression. The shop approach base floor is approximately 110.6042 m.
+The follow camera queries source walls and ceilings with bounded indexed line
+segments. This does not provide swept camera-volume collision.
+
+The original child standing shape is a prism with radius 0.23 m, head height
+1.17 m and shoulder height 1.02 m. The lab uses an explicitly approximate
+capsule with radius 0.23 m and total height 1.17 m. It keeps three local
+depenetration passes, a 55-degree steep-face split and two-sided floor tests.
+Original Havok margins, interior/backface filtering, material response,
+continuous collision and the original controller's 74.9-degree maximum slope
+and slip behavior beginning at 50 degrees are not reproduced. Serialized
+contact-skin overrides were not found; omitted compiled defaults are unknown.
+
+The exact Ocarina route and producer now have their own immutable collision
+profile. The Wasm declaration is 4,096 pages (256 MiB), leaving Animation Lab's
+existing declaration intact. The browser exports a 256 MiB storage binding
+ceiling for the expanded GPU stream. Resident accounting derives geometry and
+all mipmapped texture bytes from the catalogue, includes the retained encoded
+pack, and uses a four-GiB frame budget. Guard probes return JavaScript numbers
+without truncating resident counts to signed 32-bit integers.
+
+Current verification: all 455 loaded runtime checks pass; scene admission kills
+all 258 root mutants, collision-profile binding all 39 and renderer adoption
+all 59, with zero survivors. The actual final foliage catalogue admits 65,766,052
+source bytes, 196,137,856 GPU vertex bytes, 10,234,311 indices, 163 physical texture layers and 758 materials. Native verification through the production
+`ocl_step` checks eight paid steps against eight frames, jumping and landing,
+128 bridge/shop movement steps and 360 samples spanning three loops each of
+original Wait, Run and Facial tracks. The jump rises 0.59765625 m; the maximum
+observed candidate work is 8,774 tests per frame. Original planar carrier
+transport remains removed in play and preserved in inspection.
+
+```sh
+coax/web/tool.sh aethyr/tools/kokiri-lab-runtime-check.coax \
+  "$HOME/.openagents/verse/private-build/kokiri/atlas-final/scene.catalog"
+```
+
+See `aethyr/tools/kokiri-collision-format.txt` for source layouts, exact geometry
+matches, index schema and regeneration commands. These native checks do not
+claim original-game physics or final browser visual parity; browser verification
+belongs to the assembled current pack and renderer.
+
+## Selected private scene and browser receipt
+
+The selected `scene-v4` bake contains 2,346,143 vertices, 2,691,473 triangles,
+724 scene-local materials and 3,202 source instances. All 24 previously unsupported
+meshlet shapes across 18 models now decode from the original shader-proven format.
+The separate dense source ground and 4,253 source-placed impostor plants join Link
+in the runtime pack. The model journal retains 43 unavailable model paths; cubemap
+and hiding-hole helpers are explicitly excluded. This is a scenery reconstruction,
+not the game's story/NPC/effect systems.
+
+Current private pack: **652,647,608 bytes**, SHA-256
+`e0febcde5885f5b1aab931da8cad06172e677d75623435d9630f1d883f2addc9`.
+The unchanged KOC1 catalogue is 65,766,052 bytes; declared high-DPR residency is
+4,237,718,336 bytes against a 4,294,967,296-byte budget.
+
+Muted headless Chrome verifies keyboard/run/jump/backflip, all eight clips,
+inspection, pause/frame stepping, material views, blur release and touch movement
+at desktop and phone sizes. Device loss recovers from retained private bytes with
+no refetch and an identical source/player digest. Actual forward movement crosses
+five original run loops: zero planar carrier residual, visible steps between
+-0.001793 and 0.092859 m. These are observed controller/renderer results, not a
+claim of original Havok or pixel parity.
+
+Static maps use explicit 496-square derivatives in padded 1536-square pages;
+character layers and original 128-square foliage images retain their existing
+layout. The original full source maps remain private. Shared terrain-array surfaces
+use an explicit source moss adaptation while TerrainArc blending is unresolved.
+Second-albedo-only props use their bound source second map; inner/fade meshes use
+an explicit dark adaptation and bake-shadow proxy meshes are suppressed. Water is
+a simple tinted adaptation. Native terrain/material graphs, baked light, full plant
+growth/wind/coverage, water/reflections and story-dependent actor visibility remain
+limits. The complete extraction report and 3,476-entry verified source manifest
+live in [ore](https://github.com/OpenAgentsInc/ore/blob/main/docs/ocarina-of-time/kokiri-extraction.md).

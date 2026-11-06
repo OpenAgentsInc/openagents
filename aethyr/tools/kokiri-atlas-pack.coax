@@ -1,0 +1,55 @@
+// Static scene texture derivatives. Character IDs1..60 retain original meaning.
+// tool.sh: stack-gib 2
+#load "ocarina-texture-core.coax";
+#load "../../coax/lib/json/json.coax";
+#test "Kokiri atlas encoding preserves missing and character layers across tile and page boundaries" {
+ #assert kap_id(0,80)==0 && kap_id(1,80)==1 && kap_id(60,80)==60;
+ #assert kap_id(61,80)==0x0301003d && kap_id(69,80)==0x0309003d && kap_id(70,80)==0x0301003e;
+}
+#test "Kokiri atlas remapping changes only all ten sampler words and physical count" {
+ b:[288]u8;b[0]='O';b[1]='C';b[2]='M';b[3]='1';scan_put(b[..],4,1);scan_put(b[..],8,1);scan_put(b[..],12,80);
+ for field:0..<64 {scan_put(b[..],32+field*4,61);}
+ kap_materials(b[..],80);
+ #assert scan_u32(b[..],12)==63;
+ for field:0..<64 {v:=scan_u32(b[..],32+field*4);#assert v==(ifx field<8 || field==60 || field==61 then cast(u32)0x0301003d else cast(u32)61);}
+}
+#test "Kokiri atlas cell gutters repeat corner pixels without bleeding adjacent cells" {
+ source:=[16]u8.[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];out:[8*8*4]u8;
+ kap_paste(out[..],source[..],8,4,1,2,1);
+ #assert out[(0*8+4)*4]==1 && out[(3*8+7)*4]==13 && out[(1*8+5)*4]==1 && out[(2*8+6)*4]==13;
+ #assert out[0]==0 && out[(4*8+4)*4]==0;
+}
+kap_id :: (id:int,layers:int)->u32 {#assert layers>=60 && layers<=2048 && id>=0 && id<=layers;if id<=60 {return cast(u32)id;}logical:=id-61;physical:=60+logical/9;tile:=logical%9;return (cast(u32)3<<24)|(cast(u32)(tile+1)<<16)|cast(u32)(physical+1);}
+kap_materials :: (b:[]u8,layers:int) {
+ #assert b.count>=32 && cast(string)b[0..<4]=="OCM1" && scan_u32(b,4)==1 && cast(int)scan_u32(b,12)==layers;count:=cast(int)scan_u32(b,8);#assert count>0 && count<=1024 && b.count==32+count*256;
+ for row:0..<count {for field:0..<64 {if field<8 || field==60 || field==61 {at:=32+row*256+field*4;scan_put(b,at,kap_id(cast(int)scan_u32(b,at),layers));}}}
+ scan_put(b,12,cast(u32)(60+(layers-60+8)/9));
+}
+kap_clamp :: (x:int,limit:int)->int {return ifx x<0 then 0 else ifx x>=limit then limit-1 else x;}
+kap_paste :: (atlas:[]u8,rgba:[]u8,side:int,cell:int,pad:int,inner:int,tile:int) {
+ #assert side>0 && cell>0 && side%cell==0 && inner>0 && inner+pad*2==cell && tile>=0 && tile<(side/cell)*(side/cell) && atlas.count>=side*side*4 && rgba.count>=inner*inner*4;
+ x0:=tile%(side/cell)*cell;y0:=tile/(side/cell)*cell;
+ for y:0..<cell {for x:0..<cell {from:=(kap_clamp(y-pad,inner)*inner+kap_clamp(x-pad,inner))*4;to:=((y0+y)*side+x0+x)*4;for c:0..<4 {atlas[to+c]=rgba[from+c];}}}
+}
+kap_filename :: (page:int,b:[]u8)->string {#assert page>=0 && page<1000 && b.count>=20;prefix:="scene-atlas-";for c,k:prefix {b[k]=c;}v:=page;for k:0..<3 {b[prefix.count+2-k]=cast(u8)(48+v%10);v/=10;}for c,k:".png" {b[prefix.count+3+k]=c;}return cast(string)b[0..<prefix.count+7];}
+kap_digest :: (j:[]Jo,key:string,b:[]u8) {d:[64]u8;#assert asset_hex(asset_id(cast(string)b),d[..]);jo_key(j,key);jo_str(j,cast(string)d[..]);}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=4 && args_count(a[..])!=5) {tool_errln("usage: kokiri-atlas-pack SCENE_MATERIALS SCENE_TEXTURES PNG_DIR OUTPUT_DIR");return 2;}
+ material:[32+1024*256]u8;text:[524288]u8;starts:[2048]int;ends:[2048]int;physical:[524288]u8;path:[4096]u8;file:[64]u8;metadata:[1048576]u8;j:[1]Jo;
+ mn:=fs_read(args_at(a[..],0),material[..]);tn:=fs_read(args_at(a[..],1),text[..]);#assert mn>=32 && tn>0;layers:=0;begin:=0;
+ for i:0..<tn+1 {if i==tn || text[i]=='\n' {if i>begin {#assert layers<2048;starts[layers]=begin;ends[layers]=i;name:=cast(string)text[begin..<i];#assert name.count>4 && name[name.count-4..<name.count]==".png";layers+=1;}begin=i+1;}}
+ #assert layers>=60 && layers<=2048;kap_materials(material[0..<mn],layers);pages:=(layers-60+8)/9;dest:=args_at(a[..],3);#assert fs_mkdir(dest);outn:=0;
+ for layer:0..<60 {for c:text[starts[layer]..<ends[layer]] {physical[outn]=c;outn+=1;}physical[outn]='\n';outn+=1;}
+ for page:0..<pages {for c:kap_filename(page,file[..]) {physical[outn]=c;outn+=1;}physical[outn]='\n';outn+=1;}
+ if args_count(a[..])==5 {#assert args_at(a[..],4)=="--materials-only";prior:[524288]u8;pn:=fs_read(fs_join(dest,"scene.textures",path[..]),prior[..]);#assert pn==outn;for k:0..<outn {#assert prior[k]==physical[k];}#assert fs_write(fs_join(dest,"scene.materials",path[..]),cast(string)material[0..<mn]);return 0;}
+ jo_start(j[..],metadata[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"kokiri.static-atlas.v1");jo_key(j[..],"preserved_character_layers");jo_int(j[..],60);jo_key(j[..],"source_layers");jo_int(j[..],layers);jo_key(j[..],"physical_layers");jo_int(j[..],60+pages);jo_key(j[..],"atlas_side");jo_int(j[..],1536);jo_key(j[..],"cell");jo_int(j[..],512);jo_key(j[..],"inner");jo_int(j[..],496);jo_key(j[..],"gutter");jo_int(j[..],8);jo_key(j[..],"resampling");jo_str(j[..],"derivative: Lanczos in premultiplied RGBA8; source PNGs retained separately");jo_key(j[..],"tiles");jo_arr(j[..]);
+ input:[100663296]u8;work:[201326592]u8;rgba:[67108864]u8;copy:[67108864]u8;tmp:[67108864]u8;tile:[496*496*4]u8;atlas:[1536*1536*4]u8;png:[16777216]u8;filtered:[10000000]u8;resample:[1]PiResample;z:[1]PiZ;
+ for page:0..<pages {for k:0..<atlas.count {atlas[k]=0;}
+  for slot:0..<9 {layer:=60+page*9+slot;if layer>=layers {break;}name:=cast(string)text[starts[layer]..<ends[layer]];n:=fs_read(fs_join(args_at(a[..],2),name,path[..]),input[..]);if n<=0 {tool_errln(name);}#assert n>0;info:=png_info(input[0..<n]);#assert info.status==PNG_OK && info.w>0 && info.w<=4096 && info.h>0 && info.h<=4096 && png_decode(input[0..<n],work[..],rgba[..])==PNG_OK;
+   #assert pi_resize_rgba(pi_img(rgba[..],info.w,info.h,4),pi_img(tile[..],496,496,4),PI_LANCZOS,resample[..],tmp[..],copy[..]);kap_paste(atlas[..],tile[..],1536,512,8,496,slot);
+   jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],name);jo_key(j[..],"source_logical_layer");jo_int(j[..],layer);jo_key(j[..],"source_width");jo_int(j[..],info.w);jo_key(j[..],"source_height");jo_int(j[..],info.h);kap_digest(j[..],"source_png_sha256",input[0..<n]);jo_key(j[..],"physical_layer");jo_int(j[..],60+page);jo_key(j[..],"tile");jo_int(j[..],slot);jo_key(j[..],"encoded_sampler_id");jo_int(j[..],cast(int)kap_id(layer+1,layers));jo_key(j[..],"x");jo_int(j[..],slot%3*512+8);jo_key(j[..],"y");jo_int(j[..],slot/3*512+8);kap_digest(j[..],"derivative_rgba_sha256",tile[..]);jo_end(j[..]);
+  }
+  size:=pi_png(pi_img(atlas[..],1536,1536,4),z[..],filtered[..],png[..]);#assert size>0 && png_decode(png[0..<size],work[..],rgba[..])==PNG_OK;for k:0..<atlas.count {#assert atlas[k]==rgba[k];}filename:=kap_filename(page,file[..]);#assert fs_write(fs_join(dest,filename,path[..]),cast(string)png[0..<size]);print("KOKIRI_ATLAS page=% physical_layer=% file=% bytes=%\n",page,60+page,filename,size);
+ }
+ jo_end(j[..]);jo_end(j[..]);#assert !j[0].bad;#assert fs_write(fs_join(dest,"scene.atlas.json",path[..]),jo_text(j[..]));#assert fs_write(fs_join(dest,"scene.materials",path[..]),cast(string)material[0..<mn]);#assert fs_write(fs_join(dest,"scene.textures",path[..]),cast(string)physical[0..<outn]);return 0;
+}

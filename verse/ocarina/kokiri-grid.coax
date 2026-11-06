@@ -1,0 +1,80 @@
+// KCG1 conservative X/Z bins over original source collision triangles.
+// Encoded stream identity belongs to the enclosing private pack gate.
+#load "kokiri-collision.coax";
+#load "../valley/scan.coax";
+KokiriGrid :: struct {west:f32;south:f32;cell:f32;nx:int;nz:int;}
+KokiriCell :: struct {first:int;count:int;}
+#test "Kokiri spatial cells refuse outside coordinates instead of clamping" {
+ g:=KokiriGrid.{west= -2,south=3,cell=2,nx=2,nz=2};
+ #assert kokiri_grid_cell(g,-2,3)==0 && kokiri_grid_cell(g,-0.1,4.9)==0 && kokiri_grid_cell(g,0,5)==3;
+ #assert kokiri_grid_cell(g,2,5)== -1 && kokiri_grid_cell(g,-2.01,3)== -1 && kokiri_grid_cell(g,0,7)== -1;
+}
+#test "Kokiri indexed floors only visit their local source candidates" {
+ t:=[2]KokiriTriangle.[KokiriTriangle.{a=v3(0,1,0),b=v3(2,1,0),c=v3(0,1,2)},KokiriTriangle.{a=v3(0,3,0),b=v3(2,3,0),c=v3(0,3,2)}];
+ cells:=[2]KokiriCell.[KokiriCell.{first=0,count=1},KokiriCell.{first=1,count=0}];refs:=[1]int.[0];g:=KokiriGrid.{cell=2,nx=2,nz=1};
+ q:=kokiri_indexed_floor(g,cells[..],refs[..],t[..],0.5,0.5,10);#assert q.hit && q.y==1 && q.triangle==0;
+ #assert !kokiri_indexed_floor(g,cells[..],refs[..],t[..],2.5,0.5,10).hit;
+}
+kokiri_grid_cell :: (g:KokiriGrid,x:f32,z:f32)->int {
+ if !kokiri_finite(x) || !kokiri_finite(z) || !kokiri_finite(g.cell) || !kokiri_finite(g.west) || !kokiri_finite(g.south) || g.cell<=0 || g.nx<=0 || g.nz<=0 {return -1;}
+ u:=(x-g.west)/g.cell;v:=(z-g.south)/g.cell;if u<0 || v<0 || u>=cast(f32)g.nx || v>=cast(f32)g.nz {return -1;}return cast(int)floor(v)*g.nx+cast(int)floor(u);
+}
+kokiri_indexed_floor :: (g:KokiriGrid,cells:[]KokiriCell,refs:[]int,triangles:[]KokiriTriangle,x:f32,z:f32,below:f32)->KokiriFloorHit {
+ index:=kokiri_grid_cell(g,x,z);if index<0 || index>=cells.count {return KokiriFloorHit.{};}cell:=cells[index];#assert cell.first>=0 && cell.count>=0 && cell.count<=8192 && cell.first<=refs.count && cell.count<=refs.count-cell.first;
+ out:=KokiriFloorHit.{};for k:0..<cell.count {id:=refs[cell.first+k];#assert id>=0 && id<triangles.count;q:=kokiri_triangle_floor(triangles[id],x,z,below);if q.hit && (!out.hit || q.y>out.y || (q.y==out.y && id<out.triangle)) {out=q;out.triangle=id;}}return out;
+}
+// The caller retains and authenticates the whole KCG1 buffer before queries.
+// Header/selected ranges are still bounded here; no source triangles are copied.
+kokiri_encoded_grid :: (b:[]u8)->KokiriGrid {
+ #assert b.count>=64 && scan_u32(b,0)==0x3147434b && scan_u32(b,4)==1 && cast(int)scan_u32(b,48)==b.count;
+ g:=KokiriGrid.{nx=cast(int)scan_u32(b,12),nz=cast(int)scan_u32(b,16),cell=scan_float(b,20),west=scan_float(b,24),south=scan_float(b,28)};
+ #assert g.nx>0 && g.nz>0 && g.nx<=262144 && g.nz<=262144 && g.nx*g.nz<=262144 && g.cell>0 && kokiri_finite(g.cell) && kokiri_finite(g.west) && kokiri_finite(g.south);return g;
+}
+kokiri_encoded_triangle :: (b:[]u8,id:int)->KokiriTriangle {
+ count:=cast(int)scan_u32(b,8);base:=cast(int)scan_u32(b,44);#assert id>=0 && id<count && base>=64 && base<=b.count && count<=(b.count-base)/36;
+ p:=base+id*36;return KokiriTriangle.{a=scan_point(b,p),b=scan_point(b,p+12),c=scan_point(b,p+24)};
+}
+kokiri_encoded_floor :: (b:[]u8,x:f32,z:f32,below:f32)->KokiriFloorHit {
+ g:=kokiri_encoded_grid(b);index:=kokiri_grid_cell(g,x,z);if index<0 {return KokiriFloorHit.{};}
+ table:=cast(int)scan_u32(b,32);#assert table>=64 && table<=b.count && g.nx*g.nz<=(b.count-table)/8;p:=table+index*8;first:=cast(int)scan_u32(b,p);count:=cast(int)scan_u32(b,p+4);
+ refs:=cast(int)scan_u32(b,36);total:=cast(int)scan_u32(b,40);#assert count<=8192 && first<=total && count<=total-first && refs>=64 && refs<=b.count && total<=(b.count-refs)/4;
+ out:=KokiriFloorHit.{};for k:0..<count {id:=cast(int)scan_u32(b,refs+(first+k)*4);q:=kokiri_triangle_floor(kokiri_encoded_triangle(b,id),x,z,below);if q.hit && (!out.hit || q.y>out.y || (q.y==out.y && id<out.triangle)) {out=q;out.triangle=id;}}return out;
+}
+KokiriResolve :: struct {feet:Point;tested:int;contacts:int;}
+#test "Kokiri encoded local grid bounds floor and capsule candidate work" {
+ b:[112]u8;scan_put(b[..],0,0x3147434b);scan_put(b[..],4,1);scan_put(b[..],8,1);scan_put(b[..],12,1);scan_put(b[..],16,1);scan_put(b[..],20,f32_bits(2));scan_put(b[..],24,f32_bits(-1));scan_put(b[..],28,f32_bits(-1));scan_put(b[..],32,64);scan_put(b[..],36,72);scan_put(b[..],40,1);scan_put(b[..],44,76);scan_put(b[..],48,112);scan_put(b[..],52,1);scan_put(b[..],68,1);
+ scan_write_point(b[..],76,v3(0,-1,-3));scan_write_point(b[..],88,v3(0,4,-3));scan_write_point(b[..],100,v3(0,1,3));
+ q:=kokiri_encoded_lateral(b[..],v3(-0.6,0,0),v3(-0.1,0,0),0.3,1.8);#assert abs(q.feet.x+0.3)<0.00001 && q.feet.y==0 && q.tested<=3 && q.contacts>0;
+ scan_write_point(b[..],76,v3(-1,2,-1));scan_write_point(b[..],88,v3(1,2,-1));scan_write_point(b[..],100,v3(-1,2,1));
+ h:=kokiri_encoded_floor(b[..],-0.5,-0.5,3);#assert h.hit && h.y==2 && h.triangle==0;
+ #assert !kokiri_encoded_floor(b[..],-0.5,-0.5,1).hit;
+}
+kokiri_encoded_lateral :: (b:[]u8,previous:Point,proposed:Point,radius:f32,height:f32)->KokiriResolve {
+ g:=kokiri_encoded_grid(b);#assert kokiri_point_finite(previous) && kokiri_point_finite(proposed) && kokiri_finite(radius) && kokiri_finite(height) && radius>0 && radius<=g.cell && height>=radius*2;
+ out:=KokiriResolve.{feet=proposed};table:=cast(int)scan_u32(b,32);refs:=cast(int)scan_u32(b,36);total:=cast(int)scan_u32(b,40);#assert table>=64 && table<=b.count && g.nx*g.nz<=(b.count-table)/8 && refs>=64 && refs<=b.count && total<=(b.count-refs)/4;
+ for pass:0..<3 {x0:=cast(int)floor((out.feet.x-radius-g.west)/g.cell);x1:=cast(int)floor((out.feet.x+radius-g.west)/g.cell);z0:=cast(int)floor((out.feet.z-radius-g.south)/g.cell);z1:=cast(int)floor((out.feet.z+radius-g.south)/g.cell);#assert x1-x0<=2 && z1-z0<=2;
+  for z:z0..<z1+1 {for x:x0..<x1+1 {if x<0 || z<0 || x>=g.nx || z>=g.nz {continue;}p:=table+(z*g.nx+x)*8;first:=cast(int)scan_u32(b,p);count:=cast(int)scan_u32(b,p+4);#assert count<=8192 && first<=total && count<=total-first;
+   for k:0..<count {out.tested+=1;#assert out.tested<=100000;id:=cast(int)scan_u32(b,refs+(first+k)*4);next:=kokiri_capsule_lateral(kokiri_encoded_triangle(b,id),previous,out.feet,radius,height);if next.x!=out.feet.x || next.z!=out.feet.z {out.contacts+=1;}out.feet=next;}
+  }}
+ }
+ return out;
+}
+KokiriRay :: struct {hit:bool;share:f32=1;tested:int;}
+kokiri_triangle_ray :: (t:KokiriTriangle,a:Point,b:Point)->KokiriRay {
+ normal:=cross(sub(t.b,t.a),sub(t.c,t.a));delta:=sub(b,a);denom:=dot(normal,delta);if denom==0 {return KokiriRay.{};}
+ share:=dot(normal,sub(t.a,a))/denom;if share<=0.00001 || share>1 {return KokiriRay.{};}p:=add(a,times(delta,share));s0:=dot(normal,cross(sub(t.b,t.a),sub(p,t.a)));s1:=dot(normal,cross(sub(t.c,t.b),sub(p,t.b)));s2:=dot(normal,cross(sub(t.a,t.c),sub(p,t.c)));if s0<0 || s1<0 || s2<0 {return KokiriRay.{};}return KokiriRay.{hit=true,share=share};
+}
+#test "Kokiri camera segment catches walls and ceilings in both windings" {
+ t:=KokiriTriangle.{a=v3(0,-1,-3),b=v3(0,4,-3),c=v3(0,1,3)};q:=kokiri_triangle_ray(t,v3(-1,1,0),v3(1,1,0));#assert q.hit && q.share==0.5;
+ r:=kokiri_triangle_ray(KokiriTriangle.{a=t.c,b=t.b,c=t.a},v3(-1,1,0),v3(1,1,0));#assert r.hit && r.share==0.5;
+ ceiling:=KokiriTriangle.{a=v3(-3,2,-3),b=v3(3,2,-3),c=v3(0,2,3)};#assert kokiri_triangle_ray(ceiling,v3(0,1,0),v3(0,3,0)).hit;
+ #assert !kokiri_triangle_ray(t,v3(-1,5,0),v3(1,5,0)).hit;
+}
+kokiri_encoded_ray :: (b:[]u8,a:Point,end:Point)->KokiriRay {
+ g:=kokiri_encoded_grid(b);#assert kokiri_point_finite(a) && kokiri_point_finite(end) && length(sub(end,a))<=8.001;
+ table:=cast(int)scan_u32(b,32);refs:=cast(int)scan_u32(b,36);total:=cast(int)scan_u32(b,40);#assert table>=64 && table<=b.count && g.nx*g.nz<=(b.count-table)/8 && refs>=64 && refs<=b.count && total<=(b.count-refs)/4;
+ x0:=cast(int)floor((lo(a.x,end.x)-g.west)/g.cell);x1:=cast(int)floor((hi(a.x,end.x)-g.west)/g.cell);z0:=cast(int)floor((lo(a.z,end.z)-g.south)/g.cell);z1:=cast(int)floor((hi(a.z,end.z)-g.south)/g.cell);#assert x1-x0<=64 && z1-z0<=64;out:=KokiriRay.{};
+ for z:z0..<z1+1 {for x:x0..<x1+1 {if x<0 || z<0 || x>=g.nx || z>=g.nz {continue;}p:=table+(z*g.nx+x)*8;first:=cast(int)scan_u32(b,p);count:=cast(int)scan_u32(b,p+4);#assert count<=8192 && first<=total && count<=total-first;
+  for k:0..<count {out.tested+=1;#assert out.tested<=100000;id:=cast(int)scan_u32(b,refs+(first+k)*4);q:=kokiri_triangle_ray(kokiri_encoded_triangle(b,id),a,end);if q.hit && q.share<out.share {out.hit=true;out.share=q.share;}}
+ }}return out;
+}

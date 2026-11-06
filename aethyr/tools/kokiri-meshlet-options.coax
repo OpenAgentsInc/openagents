@@ -1,0 +1,16 @@
+// Meshlet shader specialization evidence from original FMAT reflection/variation records.
+// CLI MODEL EXTERNAL_STRING_BFRES. Layout: Awn c3c090bb res_bfresmaterial.hpp.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "ocarina-material-core.coax";
+#test "Kokiri meshlet option filter matches only retained specialization names" {#assert kmo_contains("gsys_meshlet_vertex_attribute_bitmask_0","meshlet") && !kmo_contains("gsys_material","meshlet") && kmo_contains("vertex","vertex");}
+kmo_contains :: (s:string,part:string)->bool {if s.count<part.count {return false;}for k:0..<s.count-part.count+1 {if s[k..<k+part.count]==part {return true;}}return false;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}source:[67108864]u8;ext:[65536]u8;n:=fs_read(args_at(a[..],0),source[..]);en:=fs_read(args_at(a[..],1),ext[..]);#assert n>0 && en>0;b:=source[0..<n];e:=ext[0..<en];model:=ob_ptr(b,40);materials:=ob_u16(b,model+108);array:=ob_ptr(b,model+56);
+ for material:0..<materials {m:=array+material*176;info:=ob_ptr(b,m+16);reflection:=ob_ptr(b,info);print("FMAT id=% name=% shader=%\n",material,mp_name(b,m+8,e),mp_name(b,reflection+8,e));
+  options:=ob_ptr(b,reflection+64);used:=ob_u16(b,info+72);boolean:=ob_u16(b,info+70);remap:=ob_ptr(b,info+56);values:=ob_ptr(b,info+48);
+  for k:0..<ob_int(b,options+4) {name:=mp_name(b,options+32+k*16,e);if !kmo_contains(name,"meshlet") && !kmo_contains(name,"vertex_calc") {continue;}index:=ifx remap==0 then k else ob_s16(b,remap+(used+k)*2);if index<0 {print("OPTION name=% unused\n",name);}else if index<boolean {print("OPTION name=% boolbit=% rawword=%\n",name,index,ob_word(b,ob_ptr(b,info+40)+(index/32)*4));}else {#assert index<used;print("OPTION name=% index=% value=%\n",name,index,mp_name(b,values+(index-boolean)*8,e));}}
+  attributes:=ob_ptr(b,reflection+48);count:=cast(int)b[info+68];names:=ob_ptr(b,info+8);attributeRemap:=ob_ptr(b,info+16);for k:0..<count {print("ATTR materialIndex=% name=% forward=%\n",k,mp_name(b,names+k*8,e),(ifx attributeRemap==0 then k else cast(int)b[attributeRemap+k]));}for k:0..<ob_int(b,attributes+4) {print("ATTR_SHADER index=% name=% inverse=%\n",k,mp_name(b,attributes+32+k*16,e),(ifx attributeRemap==0 then k else cast(int)b[attributeRemap+count+k]));}
+ }
+ return 0;
+}

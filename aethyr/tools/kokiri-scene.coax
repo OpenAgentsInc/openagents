@@ -1,0 +1,53 @@
+// World-bake original Banc-resolved BFRES meshes. Source placements and files remain separate.
+// CLI SOURCE_ROOT STATIC_PLACEMENTS DYNAMIC_PLACEMENTS OUTPUT_DIR.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-mesh.coax";
+#load "kokiri-byml.coax";
+KsModel :: struct {arc:[96]u8;name:[96]u8;instances:int;material:int;materials:int;vertices:int;indices:int;}
+KS_MODELS :: 2048; KS_VERTEX_CAP :: 4194304;
+#test "Kokiri visible mesh bake excludes the two identified source render helpers exactly" {
+ #assert !ks_render_model("romfs/Model/Cubemap_Model.Land_Kokiri_Child_CubemapModel_A_01.bfres");
+ #assert !ks_render_model("romfs/Model/Land_HidingHoleCover_A.Land_HidingHoleCover_Base.bfres");
+ #assert ks_render_model("romfs/Model/Land_Kokiri_House_A.Land_Kokiri_House_Outside_A_00.bfres") && ks_render_model("romfs/Model/Land_HidingHoleCover_A.Land_HidingHoleCover_Base_01.bfres");
+}
+ks_render_model :: (path:string)->bool {return path!="romfs/Model/Cubemap_Model.Land_Kokiri_Child_CubemapModel_A_01.bfres" && path!="romfs/Model/Land_HidingHoleCover_A.Land_HidingHoleCover_Base.bfres";}
+#test "Kokiri baking copies all source attributes and offsets triangle indices" {
+ src:[384]u8;out:[384]u8;index:[12]u8;oi:[12]u8;scan_write_point(src[..],0,v3(1,2,3));scan_write_point(src[..],12,v3(0,1,0));scan_write_point(src[..],60,v3(1,0,0));scan_put(src[..],32,7);scan_put(src[..],80,f32_bits(0.25));scan_put(src[..],84,f32_bits(0.75));scan_put(index[..],4,1);scan_put(index[..],8,2);
+ matrix:=km_affine(v3(10,20,30),v3(0,0,0),v3(2,3,4));ks_bake(src[..],index[..],3,3,matrix[..],out[..],oi[..],0,0);
+ #assert scan_point(out[..],0).x==12 && scan_point(out[..],0).y==26 && scan_point(out[..],0).z==42;
+ #assert scan_u32(out[..],32)==7 && scan_float(out[..],80)==0.25 && scan_float(out[..],84)==0.75 && scan_u32(oi[..],8)==2;
+}
+ks_bake :: (src:[]u8,si:[]u8,nv:int,ni:int,m:[]f32,v:[]u8,indices:[]u8,base:int,start:int) {
+ #assert nv<=v.count/128-base && ni<=indices.count/4-start;
+ for k:0..<nv {a:=k*128;b:=(base+k)*128;for j:0..<128 {v[b+j]=src[a+j];}scan_write_point(v,b,km_point(m,scan_point(src,a)));scan_write_point(v,b+12,km_normal(m,scan_point(src,a+12)));scan_write_point(v,b+60,unit_or(km_vector(m,scan_point(src,a+60)),v3(1,0,0)));}
+ for k:0..<ni {scan_put(indices,(start+k)*4,scan_u32(si,k*4)+cast(u32)base);}
+}
+ks_add :: (out:[]u8,cursor:[]int,s:string) {#assert ob_span(out.count,cursor[0],s.count);for c:s {out[cursor[0]]=c;cursor[0]+=1;}}
+ks_number :: (out:[]u8,cursor:[]int,n:int) {#assert n>=0;digits:[24]u8;count:=0;v:=n;while v>=10 {digits[count]=cast(u8)(v%10+48);count+=1;v/=10;}digits[count]=cast(u8)(v+48);count+=1;for k:0..<count {one:=[1]u8.[digits[count-k-1]];ks_add(out,cursor,cast(string)one[..]);}}
+ks_relative :: (arc:string,name:string,out:[]u8)->string {cursor:[1]int;ks_add(out,cursor[..],"romfs/Model/");ks_add(out,cursor[..],arc);ks_add(out,cursor[..],".");ks_add(out,cursor[..],name);ks_add(out,cursor[..],".bfres");return cast(string)out[0..<cursor[0]];}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=4 {return 2;}root:=args_at(args[..],0);dest:=args_at(args[..],3);placements:[16777216]u8;count:=0;path:[4096]u8;
+ for file:1..<3 {data:[16777216]u8;n:=fs_read(args_at(args[..],file),data[..]);#assert n>=16 && ob_word(data[..],0)==0x3150534b && ob_int(data[..],12)==512;actors:=ob_int(data[..],8);#assert n==16+actors*512 && ob_span(placements.count,count*512,actors*512);for k:0..<actors*512 {placements[count*512+k]=data[16+k];}count+=actors;}
+ models:[KS_MODELS]KsModel;modelCount:=0;map:[32768]int;#assert count<=map.count;
+ for k:0..<count {p:=k*512;map[k]= -1;if ob_word(placements[..],p+188)!=1 {continue;}arc:=kb_zstring(placements[..],p+192);name:=kb_zstring(placements[..],p+288);found:= -1;
+  for j:0..<modelCount {if kb_zstring(models[j].arc[..],0)==arc && kb_zstring(models[j].name[..],0)==name {found=j;break;}}
+  if found<0 {#assert modelCount<KS_MODELS;found=modelCount;modelCount+=1;for c,j:arc {models[found].arc[j]=c;}for c,j:name {models[found].name[j]=c;}}
+  map[k]=found;models[found].instances+=1;
+ }
+ source:[67108864]u8;localVertices:[KM_VERTEX_CAP*128]u8;localIndices:[KM_INDEX_CAP*4]u8;localRanges:[65536*32]u8;vertices:[KS_VERTEX_CAP*128]u8;indices:[KM_INDEX_CAP*4]u8;counts:[1]KmCounts;metadata:[16777216]u8;mc:[1]int;requests:[4194304]u8;rc:[1]int;materialCount:=0;missing:=0;instances:=0;unsupported:[4194304]u8;uc:[1]int;excluded:[4194304]u8;ec:[1]int;
+ for model:0..<modelCount {arc:=kb_zstring(models[model].arc[..],0);name:=kb_zstring(models[model].name[..],0);relative:[512]u8;rel:=ks_relative(arc,name,relative[..]);if !ks_render_model(rel) {ks_add(excluded[..],ec[..],rel);ks_add(excluded[..],ec[..],"\tsource_helper_render_exclusion\n");print("Kokiri excluded render helper %\n",rel);continue;}n:=fs_read(fs_join(root,rel,path[..]),source[..]);if n<=0 {print("Kokiri missing model %\n",rel);ks_add(requests[..],rc[..],rel);ks_add(requests[..],rc[..],".zs\n");missing+=1;continue;}
+  print("Kokiri decode %\n",rel);local:[1]KmCounts;local[0].materials=materialCount;identity:=km_affine(v3(0,0,0),v3(0,0,0),v3(1,1,1));km_decode(source[0..<n],identity[..],localVertices[..],localIndices[..],localRanges[..],local[..]);if local[0].unsupported>0 {ks_add(unsupported[..],uc[..],rel);ks_add(unsupported[..],uc[..],"\t");ks_number(unsupported[..],uc[..],local[0].unsupported);ks_add(unsupported[..],uc[..],"\n");}materials:=local[0].materials-materialCount;models[model].material=materialCount;models[model].materials=materials;models[model].vertices=local[0].vertices;models[model].indices=local[0].indices;
+  for material:0..<materials {ks_number(metadata[..],mc[..],materialCount+material);ks_add(metadata[..],mc[..],"\t");ks_add(metadata[..],mc[..],rel);ks_add(metadata[..],mc[..],"\t");ks_number(metadata[..],mc[..],material);ks_add(metadata[..],mc[..],"\n");}materialCount+=materials;
+  print("Kokiri model id=% path=% instances=% compactVertices=% triangles=% materialBase=% materials=%\n",model,rel,models[model].instances,local[0].vertices,local[0].indices/3,models[model].material,materials);
+  for actor:0..<count {if map[actor]!=model {continue;}p:=actor*512;matrix:[12]f32;for j:0..<12 {matrix[j]=scan_float(placements[..],p+132+j*4);}
+   if local[0].vertices>KS_VERTEX_CAP-counts[0].vertices || local[0].indices>KM_INDEX_CAP-counts[0].indices {print("Kokiri scene exceeds vertex/index cap at model=% actor=% vertices=% indices=%\n",rel,actor,counts[0].vertices+local[0].vertices,counts[0].indices+local[0].indices);return 9;}
+   ks_bake(localVertices[..],localIndices[..],local[0].vertices,local[0].indices,matrix[..],vertices[..],indices[..],counts[0].vertices,counts[0].indices);counts[0].vertices+=local[0].vertices;counts[0].indices+=local[0].indices;counts[0].shapes+=local[0].shapes;instances+=1;
+  }
+ }
+ info:[32]u8;fields:=[8]int.[0x3142534b,1,counts[0].vertices,counts[0].indices,materialCount,instances,modelCount,missing];for k:0..<8 {scan_put(info[..],k*4,cast(u32)fields[k]);}#assert fs_mkdir(dest) || fs_kind(dest)==2;
+ #assert fs_write(fs_join(dest,"scene.vertices",path[..]),cast(string)vertices[0..<counts[0].vertices*128]);#assert fs_write(fs_join(dest,"scene.indices",path[..]),cast(string)indices[0..<counts[0].indices*4]);#assert fs_write(fs_join(dest,"scene.info",path[..]),cast(string)info[..]);#assert fs_write(fs_join(dest,"scene.materials.tsv",path[..]),cast(string)metadata[0..<mc[0]]);#assert fs_write(fs_join(dest,"models.missing.txt",path[..]),cast(string)requests[0..<rc[0]]);#assert fs_write(fs_join(dest,"scene.source-placements",path[..]),cast(string)placements[0..<count*512]);
+ #assert fs_write(fs_join(dest,"models.unsupported.tsv",path[..]),cast(string)unsupported[0..<uc[0]]);#assert fs_write(fs_join(dest,"models.excluded.tsv",path[..]),cast(string)excluded[0..<ec[0]]);print("KSB1 vertices=% triangles=% materials=% instances=% models=% missing=%\n",counts[0].vertices,counts[0].indices/3,materialCount,instances,modelCount,missing);return 0;
+}

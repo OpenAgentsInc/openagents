@@ -1,0 +1,138 @@
+Kokiri source collision extraction — 2026-11-06
+
+Scope and evidence
+  Source title 0400486024DEC000, child Kokiri Forest. Parent preparation
+  authenticated NUP entries before decompression; source-provenance.jsonl in
+  the owner's private kokiri directory records those entry and decoded hashes.
+  No original payload is committed. All coordinates retain source units and
+  +Y up; no origin shift, rescaling, axis flip, or rounding repair is applied.
+
+  Dense visual ground: romfs/Model/KokiriForest_01.KokiriForest_01.bfres,
+  SHA256 6aa0d83d82af079a7fabb36a2a3733d3e9579cdae2f9395e0a5ed809bbc86509.
+  Its 481,558 original triangles are the explicit base-ground fallback. This
+  is original rendered geometry, not recovered terrain height-map sampling.
+
+Phive profile implemented
+  Common header: Phive\0, LE BOM, kind2 compound or kind0 shape; dynamic u8
+  section capacity at0x0b, parallel u32 offset/size arrays at0x0c. Actual
+  compounds use capacity160. The terminal nonempty offset is whole-file size.
+  HKT profile is exactly SDKV20250200; other profiles refuse.
+  Mesh root: type7 at+0x18, inverse quantization at+0x50, relative section
+  array at+0x88. Geometry sections are0x40 bytes: primitive view+8,
+  byte vertex view+16, signed int32 section origins+32. Decode position as
+  (uint16_code + signed_origin) * float_inverse_scale. Vertex views can
+  contain2 trailing padding bytes; only indexed six-byte XYZ records decode.
+  Primitive ABCD emits ABC and, when C!=D, ACD. Raw winding survives.
+  Compound root type9: relative instances pointer+0x38, count+0x40.
+  Each64-byte instance stores quaternion+0, translation+16, scale+32,
+  relative shape pointer+48. Nested transforms apply scale, quaternion,
+  translation at each level; nonuniform scale is not collapsed or normalized.
+  Convex/type0 and box/type5 retain float3 vertices at relative view+0x38,
+  four-byte faces at+0x48, byte vertex-index list at+0x50. Convex faces are
+  fan-triangulated. These are collision cores; original margin/solver behavior
+  is not reconstructed. Type3 cylinder remains explicitly unsupported.
+
+Layer identification — actual independent geometry comparison
+  Land_Kokiri_Cliff_A_03__Physical.bphsh exactly matches compound Child_X1_Z2
+  section11 root205808: quantization, section origins, primitives and vertex
+  bytes all equal. ResidentCommon's Ptm_FldObjStatic_00_Physical explicitly
+  declares LayerEntity GroundHighRes. Thus section11 is the physical layer.
+  Land_Kokiri_Balcony_A_01__StairSlope.bphsh exactly matches Child_X1_Z2
+  section12 root899392. Its ResidentCommon template explicitly declares
+  GroundHighResSmooth. Thus section12 provides smooth walking ramps.
+  Land_Kokiri_Balcony_A_01__StairStep.bphsh exactly matches Child_X1_Z2
+  section13 root993232; its template declares GroundHighResRough. It is omitted.
+  Bootup PhiveConfig DefaultCharacterController mask is4177663(high0),
+  including layer bits6/7 and excluding bit8. FilterPlayerCharacter mask2735863
+  likewise excludes8. GroundForCharacterController558020 includes8, so it is
+  a different query mask. Selection11+12 agrees with the CCT mask definitions;
+  all compiled default/runtime filter interactions remain unrecovered.
+  Other layers/volumes are omitted. All16 compounds were inspected: only the
+  four central X1Z1/X1Z2/X2Z1/X2Z2 files contain HKT roots; outer files carry
+  metadata/terrain payloads. Numeric positions are tested for TAG0 before use.
+
+Private output and reproducibility
+  kokiri-world-collision.coax COMPOUND_DIR GROUND_TRIANGLES OUTPUT_TRIANGLES
+  emits ground plus all source physical11 and stair-slope12 triangles.
+  Result:1,238,100 triangles;2,939 compound instances;1 unsupported cylinder.
+  kokiri-grid-pack.coax TRIANGLES OUTPUT_KCG1 makes conservative two-metre
+  X/Z bins. The bounds of every triangle, including edges, enter all touched
+  cells. References retain ascending original triangle ids.
+  world-collision.kcg:54,804,852 bytes,
+  SHA256 34596622d2fe38aca94dde7ba2669914cc9eb765256944bfd2432df274014e2f.
+  301x301 bins,2,377,095 references,max1,536 references per bin.
+
+KCG1 little-endian layout
+  Header64 bytes:magic KCG1 at0,version1 at4,triangle count8,nx12,nz16,
+  float cell20,west24,south28,cell-table offset32,reference offset36,
+  reference count40,triangle offset44,total bytes48,max-cell-count52,
+  reserved zero56/60. Each cell is u32 first-reference,count. References are
+  u32 original triangle ids. Triangles are nine float32 values (ABC XYZ).
+  Whole-stream identity/admission and retained lifetime belong to the private
+  pack owner; runtime query preconditions require that admitted immutable view.
+
+Runtime helpers and limits
+  verse/ocarina/kokiri-grid.coax: kokiri_encoded_floor returns highest local
+  triangle at/below caller's height, exact slopes and original triangle id.
+  Outside the index is an explicit miss, never an edge-clamped invented floor.
+  Use current feet plus allowed step height; querying above all roofs changes
+  which layer is selected. Caller owns slope/step/grounded movement policy.
+  kokiri_encoded_lateral returns corrected feet plus tested/contact counters.
+  It uses capsule-segment/triangle closest points and three bounded local
+  depenetration passes on faces steeper than55degrees. Y is preserved.
+  This is fixed-step depenetration, not continuous CCD or original Havok
+  parity. Camera ceilings, triggers, original body filters, convex margins,
+  the one cylinder and arbitrary high-speed wall crossing remain separate.
+
+Validation
+  Full Coax suites for compound decoder and spatial query pass. Nine focused
+  collision/grid checks cover slopes, edges, winding, stacked floors, finite
+  rejection, nested transforms, capsule edge/interior/zero-distance contacts,
+  byte codecs, signed origins, padding and local candidate bounds.
+  kokiri-runtime-check.coax on the actual private bundle passes400 village
+  queries:366 valid floor samples,794 lateral contacts,max8,904 candidate
+  tests for one capsule query. House(-44.68,15.64) base floor112.98219;
+  bridge(-45.6,-9.74),below115, physical floor114.86463. Source visual ground
+  at the bridge is112.50751, demonstrating the independently raised geometry.
+
+Terrain investigation boundary
+  KokiriForest_01.tscb is version269 (0x10d),115868 bytes, not legacy BotW's
+  layout. World-scale500 and max-height800 survive, but other tables differ.
+  1000000000.hght is TARB version1: u16 codec1 at8,u16 header-size20 at10,
+  u32 decoded-size688244 at12,u32 stored-size34764 at16; nested zstd begins20.
+  The internal height/normal payload is not a legacy256x256 u16 heightmap and
+  remains unresolved. .mate is also TARB. Neither is silently treated as a
+  guessed grid. Dense original BFRES ground provides the stated fallback.
+
+Primary format references read, never executed
+  https://epd.zeldamods.org/wiki/Common_Phive
+  https://epd.zeldamods.org/wiki/Bphsh (older profile; actual offsets differ)
+  https://github.com/nvnprogram/PhiveConverter/blob/main/source/fivex/MeshShapeBuilder.cpp
+  https://github.com/nvnprogram/PhiveConverter/blob/main/source/havok/hknpShape.h
+
+Recovered child controller dimensions (original Actor/Player_Child.pack)
+  ControllerSetParam/Player_Child maps Player_cct to ShapeParam/Player_Child.
+  That standing shape is a Prism: Radius0.23,HeightHead1.17,
+  HeightShoulder1.02,HeightStep0.35; AutoCalc bounds are X/Z±0.23,Y0..1.17.
+  Independent child game parameters repeat PlayerHeight1.17,
+  PlayerShoulderHeight1.02,PlayerStepHeight0.35. These are metres.
+  Player_Capsule_Child is a different pose shape, mapped to cliff-hold jump:
+  its main radius0.184 and endpoint heights0.184/0.986 should not be mislabeled
+  as the standing CCT. A radius0.23,height1.17 capsule is an explicit Aethyr
+  approximation to the original standing prism, not a recovered capsule.
+  Parent CharacterControllerParam/Player has MaxSlopeAngle74.9deg and
+  slope-limit/slip acceleration starting50deg. The runtime's simple55deg
+  steep-face split is approximate and does not reproduce this two-part rule.
+  No contact skin/tolerance override was found by bounded field-name search
+  of all serialized Player_Child/ResidentCommon/PhiveConfig parameters;
+  omitted compiled defaults remain unknown, not zero.
+  Decoded Player_Child actor pack SHA256:
+  627fd46ee4edb62e6b9eb2132ff38eb4d0d8a4c3024b40bb6e601ee9c505fef3.
+  Additional landmark receipt: log(-45.6,-9.74),below116.8 ->116.50062;
+  shop(-3.6,-15.44),below111 ->110.6042. At shop, asking below115 instead
+  selects111.9502, demonstrating why the current-foot step cap is necessary.
+  Runtime triangle floors accept either winding. Original interior primitive
+  flags/backface contact filtering and material response are preserved only
+  in the private source files, not reconstructed in KCG1. This can expose an
+  underside as a candidate floor; the current-foot step cap limits selection
+  but does not establish original one-sided/contact semantics.

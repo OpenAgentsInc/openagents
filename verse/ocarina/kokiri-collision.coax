@@ -1,0 +1,93 @@
+// Source-local collision triangles. This does not reconstruct Havok body behavior.
+#load "../../aethyr/anim/pose.coax";
+KokiriTriangle :: struct {a:Point;b:Point;c:Point;}
+KokiriFloorHit :: struct {hit:bool;y:f32;gx:f32;gz:f32;triangle:int= -1;}
+
+#test "Kokiri triangle floor retains slopes edges and winding" {
+ t:=KokiriTriangle.{a=v3(0,1,0),b=v3(2,3,0),c=v3(0,1,2)};
+ q:=kokiri_triangle_floor(t,0.5,0.5,5);#assert q.hit && q.y==1.5 && q.gx==1 && q.gz==0;
+ r:=kokiri_triangle_floor(KokiriTriangle.{a=t.c,b=t.b,c=t.a},0.5,0.5,5);#assert r.hit && r.y==q.y && r.gx==q.gx;
+ #assert kokiri_triangle_floor(t,1,1,5).hit && !kokiri_triangle_floor(t,1.1,1.1,5).hit;
+ #assert !kokiri_triangle_floor(t,0.5,0.5,1.49).hit;
+}
+#test "Kokiri floor query selects the highest permitted layer with stable ties" {
+ t:=[3]KokiriTriangle.[KokiriTriangle.{a=v3(0,0,0),b=v3(2,0,0),c=v3(0,0,2)},KokiriTriangle.{a=v3(0,2,0),b=v3(2,2,0),c=v3(0,2,2)},KokiriTriangle.{a=v3(0,2,0),b=v3(2,2,0),c=v3(0,2,2)}];
+ a:=kokiri_floor(t[..],0.5,0.5,1);b:=kokiri_floor(t[..],0.5,0.5,3);
+ #assert a.hit && a.y==0 && a.triangle==0 && b.hit && b.y==2 && b.triangle==1;
+ #assert !kokiri_floor(t[..],4,4,3).hit;
+}
+#test "Kokiri floor rejects vertical degenerate and nonfinite geometry" {
+ a:=v3(0,0,0);b:=v3(0,2,0);c:=v3(0,0,2);
+ #assert !kokiri_triangle_floor(KokiriTriangle.{a=a,b=b,c=c},0,0,5).hit;
+ #assert !kokiri_triangle_floor(KokiriTriangle.{a=a,b=a,c=a},0,0,5).hit;
+ nan:=0.0f32;nan=nan/nan;#assert !kokiri_triangle_floor(KokiriTriangle.{a=v3(nan,0,0),b=b,c=c},0,0,5).hit;
+}
+#test "Kokiri placement applies scale then XYZ Euler rotation then translation" {
+ t:=kokiri_placed_point(v3(1,0,0),v3(2,3,4),v3(0,0,1.57079632679),v3(10,20,30));
+ #assert abs(t.x-10)<0.00001 && abs(t.y-22)<0.00001 && t.z==30;
+}
+kokiri_finite :: (v:f32)->bool {return (f32_bits(v)&0x7f800000)!=0x7f800000;}
+kokiri_point_finite :: (v:Point)->bool {return kokiri_finite(v.x) && kokiri_finite(v.y) && kokiri_finite(v.z);}
+kokiri_placed_point :: (p:Point,scale:Point,euler:Point,translation:Point)->Point {
+ v:=v3(p.x*scale.x,p.y*scale.y,p.z*scale.z);
+ x:=v3(v.x,cos(euler.x)*v.y-sin(euler.x)*v.z,sin(euler.x)*v.y+cos(euler.x)*v.z);
+ y:=v3(cos(euler.y)*x.x+sin(euler.y)*x.z,x.y,-sin(euler.y)*x.x+cos(euler.y)*x.z);
+ z:=v3(cos(euler.z)*y.x-sin(euler.z)*y.y,sin(euler.z)*y.x+cos(euler.z)*y.y,y.z);
+ return add(z,translation);
+}
+kokiri_triangle_floor :: (t:KokiriTriangle,x:f32,z:f32,below:f32)->KokiriFloorHit {
+ if !kokiri_point_finite(t.a) || !kokiri_point_finite(t.b) || !kokiri_point_finite(t.c) || !kokiri_finite(x) || !kokiri_finite(z) || !kokiri_finite(below) {return KokiriFloorHit.{};}
+ ab:=sub(t.b,t.a);ac:=sub(t.c,t.a);det:=ab.x*ac.z-ac.x*ab.z;
+ if det==0 || !kokiri_finite(det) {return KokiriFloorHit.{};}
+ dx:=x-t.a.x;dz:=z-t.a.z;u:=(dx*ac.z-ac.x*dz)/det;v:=(ab.x*dz-dx*ab.z)/det;
+ if u<0 || v<0 || u+v>1 {return KokiriFloorHit.{};}
+ y:=t.a.y+u*ab.y+v*ac.y;gx:=(ab.y*ac.z-ac.y*ab.z)/det;gz:=(ab.x*ac.y-ac.x*ab.y)/det;
+ if y>below || !kokiri_finite(y) || !kokiri_finite(gx) || !kokiri_finite(gz) {return KokiriFloorHit.{};}
+ return KokiriFloorHit.{hit=true,y=y,gx=gx,gz=gz};
+}
+kokiri_floor :: (triangles:[]KokiriTriangle,x:f32,z:f32,below:f32)->KokiriFloorHit {
+ out:=KokiriFloorHit.{};for t,k:triangles {q:=kokiri_triangle_floor(t,x,z,below);if q.hit && (!out.hit || q.y>out.y) {out=q;out.triangle=k;}}return out;
+}
+KokiriPair :: struct {a:Point;b:Point;distance2:f32;}
+#test "Kokiri capsule wall correction blocks both windings and keeps floors walkable" {
+ t:=KokiriTriangle.{a=v3(0,-1,-3),b=v3(0,4,-3),c=v3(0,1,3)};
+ a:=kokiri_capsule_lateral(t,v3(-0.6,0,0),v3(-0.1,0,0),0.3,1.8);#assert abs(a.x+0.3)<0.00001 && a.y==0 && abs(a.z)<0.00001;
+ b:=kokiri_capsule_lateral(KokiriTriangle.{a=t.c,b=t.b,c=t.a},v3(-0.6,0,0),v3(0,0,0),0.3,1.8);#assert abs(b.x+0.3)<0.00001 && b.y==0;
+ flat:=KokiriTriangle.{a=v3(-3,0,-3),b=v3(3,0,-3),c=v3(0,0,3)};p:=v3(0,0,0);q:=kokiri_capsule_lateral(flat,p,p,0.3,1.8);#assert q.x==0 && q.y==0 && q.z==0;
+}
+#test "Kokiri capsule closest points include triangle edges and segment interiors" {
+ t:=KokiriTriangle.{a=v3(0,0,0),b=v3(0,2,0),c=v3(0,0,2)};
+ q:=kokiri_segment_triangle(t,v3(-1,0.5,0.5),v3(1,0.5,0.5));#assert q.distance2==0;
+ edge:=kokiri_segment_triangle(t,v3(-1,1,2),v3(1,1,2));#assert abs(edge.distance2-0.5)<0.00001;
+}
+kokiri_closest_triangle :: (t:KokiriTriangle,p:Point)->Point {
+ ab:=sub(t.b,t.a);ac:=sub(t.c,t.a);ap:=sub(p,t.a);d1:=dot(ab,ap);d2:=dot(ac,ap);if d1<=0 && d2<=0 {return t.a;}
+ bp:=sub(p,t.b);d3:=dot(ab,bp);d4:=dot(ac,bp);if d3>=0 && d4<=d3 {return t.b;}
+ vc:=d1*d4-d3*d2;if vc<=0 && d1>=0 && d3<=0 {return add(t.a,times(ab,d1/(d1-d3)));}
+ cp:=sub(p,t.c);d5:=dot(ab,cp);d6:=dot(ac,cp);if d6>=0 && d5<=d6 {return t.c;}
+ vb:=d5*d2-d1*d6;if vb<=0 && d2>=0 && d6<=0 {return add(t.a,times(ac,d2/(d2-d6)));}
+ va:=d3*d6-d5*d4;if va<=0 && d4-d3>=0 && d5-d6>=0 {return add(t.b,times(sub(t.c,t.b),(d4-d3)/((d4-d3)+(d5-d6))));}
+ inverse:=1/(va+vb+vc);return add(t.a,add(times(ab,vb*inverse),times(ac,vc*inverse)));
+}
+kokiri_segment_pair :: (a:Point,b:Point,c:Point,d:Point)->KokiriPair {
+ u:=sub(b,a);v:=sub(d,c);w:=sub(a,c);aa:=dot(u,u);ee:=dot(v,v);f:=dot(v,w);s:f32=0;t:f32=0;
+ if aa<=0 && ee<=0 {delta:=sub(a,c);return KokiriPair.{a=a,b=c,distance2=dot(delta,delta)};}
+ if aa<=0 {t=clamp(f/ee,0,1);}else {cc:=dot(u,w);if ee<=0 {s=clamp(-cc/aa,0,1);}else {bb:=dot(u,v);denom:=aa*ee-bb*bb;if denom>0 {s=clamp((bb*f-cc*ee)/denom,0,1);}t=(bb*s+f)/ee;if t<0 {t=0;s=clamp(-cc/aa,0,1);}else if t>1 {t=1;s=clamp((bb-cc)/aa,0,1);}}}
+ pa:=add(a,times(u,s));pb:=add(c,times(v,t));delta:=sub(pa,pb);return KokiriPair.{a=pa,b=pb,distance2=dot(delta,delta)};
+}
+kokiri_segment_triangle :: (t:KokiriTriangle,a:Point,b:Point)->KokiriPair {
+ normal:=cross(sub(t.b,t.a),sub(t.c,t.a));delta:=sub(b,a);denom:=dot(normal,delta);
+ if denom!=0 {share:=dot(normal,sub(t.a,a))/denom;if share>=0 && share<=1 {p:=add(a,times(delta,share));s0:=dot(normal,cross(sub(t.b,t.a),sub(p,t.a)));s1:=dot(normal,cross(sub(t.c,t.b),sub(p,t.b)));s2:=dot(normal,cross(sub(t.a,t.c),sub(p,t.c)));if s0>=0 && s1>=0 && s2>=0 {return KokiriPair.{a=p,b=p};}}}
+ pa:=kokiri_closest_triangle(t,a);da:=sub(a,pa);out:=KokiriPair.{a=a,b=pa,distance2=dot(da,da)};pb:=kokiri_closest_triangle(t,b);db:=sub(b,pb);if dot(db,db)<out.distance2 {out=KokiriPair.{a=b,b=pb,distance2=dot(db,db)};}
+ for edge:0..<3 {c:=[3]Point.[t.a,t.b,t.c][edge];d:=[3]Point.[t.b,t.c,t.a][edge];q:=kokiri_segment_pair(a,b,c,d);if q.distance2<out.distance2 {out=q;}}return out;
+}
+// Fixed-step depenetration of steep triangles, not a continuous swept-volume solver.
+kokiri_capsule_lateral :: (t:KokiriTriangle,previous:Point,feet:Point,radius:f32,height:f32)->Point {
+ if !kokiri_point_finite(t.a) || !kokiri_point_finite(t.b) || !kokiri_point_finite(t.c) || !kokiri_point_finite(previous) || !kokiri_point_finite(feet) || !kokiri_finite(radius) || !kokiri_finite(height) || radius<=0 || height<radius*2 {return feet;}
+ normal:=cross(sub(t.b,t.a),sub(t.c,t.a));nl:=length(normal);if !kokiri_finite(nl) || nl<=0 || abs(normal.y)>=nl*0.573576436 {return feet;}
+ q:=kokiri_segment_triangle(t,add(feet,v3(0,radius,0)),add(feet,v3(0,height-radius,0)));if q.distance2>=radius*radius {return feet;}
+ v:=sub(q.a,q.b);horizontal:=sqrt(v.x*v.x+v.z*v.z);direction:=v3(0,0,0);push:f32=0;
+ if horizontal>0.000001 {direction=v3(v.x/horizontal,0,v.z/horizontal);push=sqrt(horizontal*horizontal+radius*radius-q.distance2)-horizontal;}
+ else {horizontal=sqrt(normal.x*normal.x+normal.z*normal.z);if horizontal<=0 {return feet;}direction=v3(normal.x/horizontal,0,normal.z/horizontal);side:=dot(sub(previous,t.a),direction);if side<0 {direction=times(direction,-1);}push=radius;}
+ return add(feet,times(direction,push));
+}

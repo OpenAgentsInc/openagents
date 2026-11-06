@@ -1,0 +1,13 @@
+// Small owned KOC1/KCG1 word fixtures; no original asset bytes.
+koc_grid_fixture :: (b:[]u8) {
+ for k:0..<b.count {b[k]=0;}scan_put(b,0,0x3147434b);scan_put(b,4,1);scan_put(b,8,1);scan_put(b,12,1);scan_put(b,16,1);scan_put(b,20,f32_bits(2));scan_put(b,32,64);scan_put(b,36,72);scan_put(b,40,1);scan_put(b,44,76);scan_put(b,48,112);scan_put(b,52,1);scan_put(b,68,1);scan_write_point(b,76,v3(0,0,0));scan_write_point(b,88,v3(2,0,0));scan_write_point(b,100,v3(0,0,2));
+}
+koc_fixture :: (b:[]u8) #effects(all) {
+ for k:0..<b.count {b[k]=0;}scan_put(b,0,0x31434f4b);scan_put(b,4,1);scan_put(b,8,cast(u32)b.count);scan_put(b,12,64);scan_put(b,16,OCL_TEST_BYTES);scan_put(b,20,64+OCL_TEST_BYTES);scan_put(b,24,112);scan_put(b,28,14145920);scan_put(b,32,3);scan_put(b,36,1);scan_put(b,40,25);scan_write_point(b,44,v3(0.5,0,0.5));scan_put(b,56,1);ocr_fixture(b[64..<64+OCL_TEST_BYTES]);koc_grid_fixture(b[64+OCL_TEST_BYTES..<b.count]);
+}
+koc_pair_fixture :: (b:[]u8,a:KokiriTriangle,c:KokiriTriangle) {
+ for k:0..<b.count {b[k]=0;}scan_put(b,0,0x3147434b);scan_put(b,4,1);scan_put(b,8,2);scan_put(b,12,1);scan_put(b,16,1);scan_put(b,20,f32_bits(2));scan_put(b,24,f32_bits(-1));scan_put(b,28,f32_bits(-1));scan_put(b,32,64);scan_put(b,36,72);scan_put(b,40,2);scan_put(b,44,80);scan_put(b,48,152);scan_put(b,52,2);scan_put(b,68,2);scan_put(b,76,1);for t,j:[2]KokiriTriangle.[a,c] {scan_write_point(b,80+j*36,t.a);scan_write_point(b,92+j*36,t.b);scan_write_point(b,104+j*36,t.c);}
+}
+koc_multi_fixture :: (b:[]u8) {
+ for k:0..<b.count {b[k]=0;}scan_put(b,0,0x3147434b);scan_put(b,4,1);scan_put(b,8,3);scan_put(b,12,2);scan_put(b,16,1);scan_put(b,20,f32_bits(2));scan_put(b,32,64);scan_put(b,36,80);scan_put(b,40,3);scan_put(b,44,92);scan_put(b,48,200);scan_put(b,52,2);scan_put(b,68,2);scan_put(b,72,2);scan_put(b,76,1);scan_put(b,80,0);scan_put(b,84,2);scan_put(b,88,1);
+}

@@ -63,12 +63,17 @@ CollisionDeclaration :: struct {
  #assert collision_profile_lookup("valley-canyon/").status==CollisionProfileStatus.unknown;
 }
 
+#test "Ocarina source controller binds only its exact route and producer" {
+ for name:[2]string.["ocarina-lab","ocarinalab"] {d:=collision_profile_lookup(name);#assert d.status==CollisionProfileStatus.ok && d.renderer==CollisionRenderer.grid;#assert d.profile.radius==0.23 && d.profile.height==1.17 && d.profile.step_up==0.35 && d.profile.max_passes==3 && d.profile.max_travel==0.115 && d.profile.epsilon==0.000001;}
+ for name:[3]string.["ocarina-lab/","ocarina","ocarinalabs"] {#assert collision_profile_lookup(name).status==CollisionProfileStatus.unknown;}
+}
+
 // ---- implementation
 
 collision_profile_lookup :: (name: string) -> CollisionDeclaration #effects(all) {
   answer: CollisionDeclaration;
   // newland's WK_ROOM and its page's data-app.
-  if name == "the-grid" || name == "newland" || name == "valley-lab" || name == "valleylab" || name == "valley-canyon" || name == "valleycanyon" { answer.renderer = CollisionRenderer.grid; }
+  if name == "the-grid" || name == "newland" || name == "valley-lab" || name == "valleylab" || name == "valley-canyon" || name == "valleycanyon" || name == "ocarina-lab" || name == "ocarinalab" { answer.renderer = CollisionRenderer.grid; }
   // realm-face.c reads the document world_id for these two worlds; the
   // two pages share the actual data-app="realm" renderer.
   if name == "haunted-house" || name == "sandbox" || name == "realm" { answer.renderer = CollisionRenderer.haunt; }
@@ -83,5 +88,6 @@ collision_profile_lookup :: (name: string) -> CollisionDeclaration #effects(all)
   answer.profile = capsule.CollideProfile.{radius = 0.3, height = 1.8, step_up = 0.55,
     max_passes = 3, max_travel = 0.15, epsilon = 0.000001};
   if name=="valley-canyon" || name=="valleycanyon" {answer.profile=capsule.CollideProfile.{radius=0.42,height=1.92,step_up=0.45,max_passes=3,max_travel=0.21,epsilon=0.000001};}
+  if name=="ocarina-lab" || name=="ocarinalab" {answer.profile=capsule.CollideProfile.{radius=0.23,height=1.17,step_up=0.35,max_passes=3,max_travel=0.115,epsilon=0.000001};}
   return answer;
 }

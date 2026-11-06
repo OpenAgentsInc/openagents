@@ -1,0 +1,54 @@
+// Observed source FLNT shoot placement and fixed-capacity node records.
+// Packed generator words remain explicit until their native interpretation is established.
+#load "kokiri-byml.coax";
+KfScene :: struct {resources:int;instances:int;instance_at:int;offsets_at:int;aux_at:int;aux_bytes:int;words_at:int;words:int;}
+KfInstance :: struct {position:Point;scale:f32;axis0:Point;axis1:Point;resource:int;packed0:u32;packed1:u32;packed2:u32;packed3:u32;tail:[2]u32;}
+KfPlant :: struct {bones:int;leaves:int;parameter0:f32;parameter1:f32;parameter2:f32;flags:int;anchor:u32;}
+KfImpostors :: struct {resources:int;views:int;names_at:int;entries_at:int;views_at:int;}
+KfImpostorEntry :: struct {first:int;count:int;mode:int;}
+#test "foliage shoot placement retains complete source extents transforms and resource names" {
+ b:[368]u8;scan_put(b[..],0,1);scan_put(b[..],4,1);scan_put(b[..],8,2);scan_put(b[..],16,4);scan_put(b[..],20,2);b[32]=3;b[33]='a';b[34]='b';b[35]='c';
+ scan_put(b[..],288,f32_bits(1));scan_put(b[..],292,f32_bits(2));scan_put(b[..],296,f32_bits(3));scan_put(b[..],300,f32_bits(2));scan_put(b[..],304,f32_bits(1));scan_put(b[..],324,f32_bits(1));
+ s:=kf_scene(b[..]);#assert s.resources==1 && s.instances==1 && s.instance_at==288 && s.offsets_at==352 && s.words_at==356 && s.aux_at==364;
+ #assert kf_resource(b[..],s,0)=="abc";p:=kf_instance(b[..],s,0);#assert p.position.x==1 && p.position.y==2 && p.position.z==3 && p.scale==2 && p.resource==0;
+ q:=kf_transform(p,v3(1,2,3));#assert q.x==3 && q.y==6 && q.z==9;
+}
+#test "foliage packed ancestor paths and leaf attachments are kept separate from generator parameters" {
+ b:[1168]u8;b[0]=3;b[1]=1;b[3]=1;scan_put(b[..],4,f32_bits(0.25));scan_put(b[..],8,f32_bits(0.5));scan_put(b[..],16,0x807f7f7f);scan_put(b[..],28,1);scan_put(b[..],40,3);b[400]=2;
+ p:=kf_plant(b[..]);#assert p.bones==3 && p.leaves==1 && p.parameter0==0.25 && p.parameter1==0.5;
+ #assert kf_parent(b[..],0)== -1 && kf_parent(b[..],1)==0 && kf_parent(b[..],2)==1 && kf_leaf_bone(b[..],0)==2;scan_put(b[..],28,0x80706050);scan_put(b[..],40,2);#assert kf_parent(b[..],1)== -1 && kf_parent(b[..],2)==1;
+}
+#test "foliage original impostor resources address complete eighty-byte view records" {
+ b:[448]u8;scan_put(b[..],0,2);scan_put(b[..],8,1);scan_put(b[..],12,2);b[16]=3;b[17]='o';b[18]='a';b[19]='k';scan_put(b[..],276,2);scan_put(b[..],280,1);
+ s:=kf_impostors(b[..]);#assert s.resources==1 && s.views==2 && s.names_at==16 && s.entries_at==272 && s.views_at==288;
+ #assert kf_impostor_name(b[..],s,0)=="oak";e:=kf_impostor_entry(b[..],s,0);#assert e.first==0 && e.count==2 && e.mode==1 && kf_impostor_view(b[..],s,1)==368;
+}
+kf_impostors :: (b:[]u8)->KfImpostors {
+ #assert b.count>=16 && ob_int(b,0)==2 && ob_int(b,4)==0;resources:=ob_int(b,8);views:=ob_int(b,12);#assert resources>0 && resources<=256 && views>0 && views<=4096;
+ entries:=16+resources*256;at:=entries+resources*16;#assert ob_span(b.count,entries,resources*16) && ob_span(b.count,at,views*80) && at+views*80==b.count;
+ return KfImpostors.{resources=resources,views=views,names_at=16,entries_at=entries,views_at=at};
+}
+kf_impostor_name :: (b:[]u8,s:KfImpostors,index:int)->string {#assert index>=0 && index<s.resources;p:=s.names_at+index*256;n:=cast(int)b[p];#assert n>0;return cast(string)b[p+1..<p+1+n];}
+kf_impostor_entry :: (b:[]u8,s:KfImpostors,index:int)->KfImpostorEntry {#assert index>=0 && index<s.resources;p:=s.entries_at+index*16;first:=ob_int(b,p);count:=ob_int(b,p+4);mode:=ob_int(b,p+8);#assert first>=0 && count>0 && first+count<=s.views && mode<=2 && ob_int(b,p+12)==0;return KfImpostorEntry.{first=first,count=count,mode=mode};}
+kf_impostor_view :: (b:[]u8,s:KfImpostors,index:int)->int {#assert index>=0 && index<s.views;p:=s.views_at+index*80;for word:0..<20 {v:=ob_float(b,p+word*4);#assert finite(v);}return p;}
+kf_impostor_point :: (b:[]u8,view_at:int,index:int)->Point {#assert index>=0 && index<6;return v3(ob_float(b,view_at+32+index*8),ob_float(b,view_at+36+index*8),0);}
+kf_scene :: (b:[]u8)->KfScene {
+ #assert b.count>=32 && ob_int(b,8)==2 && ob_int(b,12)==0 && ob_int(b,24)==0 && ob_int(b,28)==0;
+ r:=ob_int(b,0);n:=ob_int(b,4);#assert r>0 && r<=256 && n>=0 && n<=1000000;
+ instances:=32+r*256;offsets:=instances+n*64;bytes:=ob_int(b,16);words:=ob_int(b,20);word_at:=offsets+n*4;aux:=word_at+words*4;
+ #assert ob_span(b.count,instances,n*64) && ob_span(b.count,offsets,n*4) && ob_span(b.count,word_at,words*4) && ob_span(b.count,aux,bytes) && aux+bytes==b.count;
+ limit:=ifx words>0 then words else bytes;previous:=0;for k:0..<n {value:=ob_int(b,offsets+k*4);#assert value>=previous && value<=limit;previous=value;}
+ previous=0;for k:0..<words {value:=ob_int(b,word_at+k*4);#assert value>=previous && value<=bytes;previous=value;}
+ return KfScene.{resources=r,instances=n,instance_at=instances,offsets_at=offsets,aux_at=aux,aux_bytes=bytes,words_at=word_at,words=words};
+}
+kf_resource :: (b:[]u8,s:KfScene,index:int)->string {#assert index>=0 && index<s.resources;p:=32+index*256;n:=cast(int)b[p];#assert n>0 && n<256 && ob_span(b.count,p+1,n);return cast(string)b[p+1..<p+1+n];}
+kf_instance :: (b:[]u8,s:KfScene,index:int)->KfInstance {
+ #assert index>=0 && index<s.instances;p:=s.instance_at+index*64;o:=KfInstance.{position=scan_point(b,p),scale=ob_float(b,p+12),axis0=scan_point(b,p+16),axis1=scan_point(b,p+32),resource=ob_u16(b,p+48),packed0=ob_word(b,p+28),packed1=ob_word(b,p+44),packed2=cast(u32)ob_u16(b,p+50),packed3=ob_word(b,p+52),tail=[2]u32.[ob_word(b,p+56),ob_word(b,p+60)]};
+ #assert finite(o.position.x) && finite(o.position.y) && finite(o.position.z) && o.scale>0 && o.resource<s.resources;
+ #assert abs(dot(o.axis0,o.axis0)-1)<0.0001 && abs(dot(o.axis1,o.axis1)-1)<0.0001 && abs(dot(o.axis0,o.axis1))<0.0001;
+ return o;
+}
+kf_transform :: (o:KfInstance,p:Point)->Point {z:=cross(o.axis0,o.axis1);return add(o.position,times(add(add(times(o.axis0,p.x),times(o.axis1,p.y)),times(z,p.z)),o.scale));}
+kf_plant :: (b:[]u8)->KfPlant {#assert b.count==1168 && b[0]>0 && b[0]<=32 && b[1]<=64 && b[3]==1;return KfPlant.{bones=cast(int)b[0],leaves=cast(int)b[1],parameter0=ob_float(b,4),parameter1=ob_float(b,8),parameter2=ob_float(b,12),flags=cast(int)b[2],anchor=ob_word(b,16)};}
+kf_parent :: (b:[]u8,index:int)->int {#assert index>=0 && index<cast(int)b[0];mask:=ob_word(b,16+index*12);if (mask&0x80000000)!=0 {return -1;}parent:= -1;for k:0..<32 {if (mask&(cast(u32)1<<cast(u32)k))!=0 {parent=k;}}#assert parent>=0 && parent<index;expected:=cast(u32)1<<cast(u32)parent;parent_mask:=ob_word(b,16+parent*12);if (parent_mask&0x80000000)==0 {expected|=parent_mask;}#assert mask==expected;return parent;}
+kf_leaf_bone :: (b:[]u8,index:int)->int {#assert index>=0 && index<cast(int)b[1];bone:=cast(int)b[400+index*12];#assert bone<cast(int)b[0];return bone;}

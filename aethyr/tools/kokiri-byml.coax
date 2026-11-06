@@ -1,0 +1,29 @@
+// Original little-endian BYML and SARC resource traversal. Input identity is pinned by the caller.
+#load "ocarina-bfres.coax";
+KbNode :: struct {kind:int= -1;value:int;}
+#test "Kokiri BYML dictionaries arrays strings and scalar bits retain exact source values" {
+ b:[192]u8;b[0]='Y';b[1]='B';b[2]=7;scan_put(b[..],4,16);scan_put(b[..],8,40);scan_put(b[..],12,64);
+ scan_put(b[..],16,0x2c2);scan_put(b[..],20,16);scan_put(b[..],24,18);b[32]='a';b[34]='b';
+ scan_put(b[..],40,0x1c2);scan_put(b[..],44,8);b[48]='x';
+ scan_put(b[..],64,0x2c1);scan_put(b[..],68,0xc0000000);scan_put(b[..],72,96);scan_put(b[..],76,0xa0000001);
+ scan_put(b[..],96,0x3c0);b[100]=0xd2;b[101]=0xd1;b[102]=0xd0;scan_put(b[..],104,f32_bits(-1.25));scan_put(b[..],108,0xfffffffd);scan_put(b[..],112,1);
+ root:=kb_root(b[..]);#assert kb_count(b[..],root)==2 && kb_key(b[..],root,1)=="b";
+ list:=kb_get(b[..],root,"a");#assert kb_count(b[..],list)==3 && kb_float(b[..],kb_at(b[..],list,0))== -1.25;
+ #assert kb_int(kb_at(b[..],list,1))== -3 && kb_int(kb_at(b[..],list,2))==1;
+ #assert kb_string(b[..],kb_get(b[..],root,"b"))=="x" && kb_get(b[..],root,"absent").kind== -1;
+}
+kb_zstring :: (b:[]u8,p:int)->string {#assert p>=0 && p<b.count;n:=p;while n<b.count && b[n]!=0 {n+=1;}#assert n<b.count;return cast(string)b[p..<n];}
+kb_count :: (b:[]u8,n:KbNode)->int {#assert n.kind==0xc0 || n.kind==0xc1 || n.kind==0xc2;#assert ob_span(b.count,n.value,4) && cast(int)b[n.value]==n.kind;return ob_int(b,n.value)>>8;}
+kb_root :: (b:[]u8)->KbNode {#assert b.count>=16 && cast(string)b[0..<2]=="YB";p:=ob_int(b,12);#assert ob_span(b.count,p,4);return KbNode.{kind=cast(int)b[p],value=p};}
+kb_table_string :: (b:[]u8,table:int,index:int)->string {n:=KbNode.{kind=0xc2,value=table};#assert index>=0 && index<kb_count(b,n);p:=table+4+index*4;#assert ob_span(b.count,p,4);return kb_zstring(b,table+ob_int(b,p));}
+kb_key :: (b:[]u8,n:KbNode,index:int)->string {#assert n.kind==0xc1 && index>=0 && index<kb_count(b,n);p:=n.value+4+index*8;#assert ob_span(b.count,p,8);return kb_table_string(b,ob_int(b,4),ob_int(b,p)&0xffffff);}
+kb_at :: (b:[]u8,n:KbNode,index:int)->KbNode {#assert index>=0 && index<kb_count(b,n);p:=0;kind:=0;if n.kind==0xc1 {p=n.value+4+index*8;#assert ob_span(b.count,p,8);kind=cast(int)b[p+3];p+=4;}else {#assert n.kind==0xc0;#assert ob_span(b.count,n.value+4,index+1);kind=cast(int)b[n.value+4+index];p=(n.value+4+kb_count(b,n)+3)/4*4+index*4;}return KbNode.{kind=kind,value=ob_int(b,p)};}
+kb_get :: (b:[]u8,n:KbNode,key:string)->KbNode {if n.kind!=0xc1 {return KbNode.{};}for k:0..<kb_count(b,n) {if kb_key(b,n,k)==key {return kb_at(b,n,k);}}return KbNode.{};}
+kb_string :: (b:[]u8,n:KbNode)->string {#assert n.kind==0xa0;return kb_table_string(b,ob_int(b,8),n.value);}
+kb_int :: (n:KbNode)->int {#assert n.kind==0xd0 || n.kind==0xd1 || n.kind==0xd3;return ifx n.kind==0xd1 && n.value>=2147483648 then n.value-4294967296 else n.value;}
+kb_float :: (b:[]u8,n:KbNode)->f32 {if n.kind==0xd1 || n.kind==0xd3 {return cast(f32)kb_int(n);}#assert n.kind==0xd2;v:=f32_from_bits(cast(u32)n.value);#assert finite(v);return v;}
+kb_point :: (b:[]u8,n:KbNode,otherwise:Point)->Point {if n.kind== -1 {return otherwise;}#assert kb_count(b,n)==3;return v3(kb_float(b,kb_at(b,n,0)),kb_float(b,kb_at(b,n,1)),kb_float(b,kb_at(b,n,2)));}
+kb_sarc_count :: (b:[]u8)->int {#assert b.count>=32 && cast(string)b[0..<4]=="SARC" && ob_u16(b,6)==0xfeff && cast(string)b[20..<24]=="SFAT";return ob_u16(b,26);}
+kb_sarc_name :: (b:[]u8,index:int)->string {n:=kb_sarc_count(b);#assert index>=0 && index<n;p:=32+index*16;flags:=ob_int(b,p+4);#assert flags>>24==1;return kb_zstring(b,32+n*16+8+(flags&0xffffff)*4);}
+kb_sarc_at :: (b:[]u8,index:int)->[]u8 {#assert index>=0 && index<kb_sarc_count(b);p:=32+index*16;start:=ob_int(b,12)+ob_int(b,p+8);end:=ob_int(b,12)+ob_int(b,p+12);#assert ob_span(b.count,start,end-start);return b[start..<end];}
+kb_sarc :: (b:[]u8,name:string)->[]u8 {for k:0..<kb_sarc_count(b) {if kb_sarc_name(b,k)==name {return kb_sarc_at(b,k);}}return b[0..<0];}

@@ -1,0 +1,16 @@
+// Strict original meshlet geometry probe: per-cluster bounds, original index ranges and normal winding.
+// CLI MODEL, or SOURCE_ROOT OLD_UNSUPPORTED_TSV for the complete original source corpus.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-meshlet.coax";
+kml_check_model :: (b:[]u8) {model:=ob_ptr(b,40);shapes:=ob_u16(b,model+106);array:=ob_ptr(b,model+40);gpu:=ob_ptr(b,ob_ptr(b,176)+8);
+ for shape:0..<shapes {s:=array+shape*96;if (ob_word(b,s+4)&16)==0 {continue;}m:=ob_ptr(b,s+24);#assert b[m+68]==1;info:=ob_ptr(b,m+16);offsets:=ob_ptr(b,m+24);start:=gpu+ob_int(b,offsets);size:=ob_int(b,info);#assert ob_span(b.count,start,size);packed:=b[start..<start+size];count:=ob_int(packed,20);nv:=0;nt:=0;degenerate:=0;normalSum:f32=0;low:=v3(1000000,1000000,1000000);high:=v3(-1000000,-1000000,-1000000);
+  for cluster:0..<count {c:=kml_cluster(packed,cluster);#assert kml_vertex_bits(packed,c)==c.stride;p:[256]Point;normals:[256]Point;for vertex:0..<c.vertices {v:=kml_position(packed,c,vertex);#assert finite(v.x) && finite(v.y) && finite(v.z);p[vertex]=v;normals[vertex]=kml_normal(packed,c,vertex);#assert abs(dot(normals[vertex],normals[vertex])-1)<0.0001;for uv:0..<5 {if (ob_word(packed,16)&(cast(u32)1<<cast(u32)(12+uv)))!=0 {value:=kml_uv(packed,c,vertex,uv);#assert finite(value.x) && finite(value.y);}}low=v3(ob_min(low.x,v.x),ob_min(low.y,v.y),ob_min(low.z,v.z));high=v3(ob_max(high.x,v.x),ob_max(high.y,v.y),ob_max(high.z,v.z));}for tri:0..<c.triangles {ids:[3]int;for k:0..<3 {ids[k]=cast(int)kml_bits(packed,c.indexBit+(tri*3+k)*c.indexWidth,c.indexWidth);#assert ids[k]<c.vertices;}face:=cross(sub(p[ids[1]],p[ids[0]]),sub(p[ids[2]],p[ids[0]]));if dot(face,face)<0.0000000001 {degenerate+=1;}else {normalSum+=dot(unit_or(face,v3(0,1,0)),unit_or(add(add(normals[ids[0]],normals[ids[1]]),normals[ids[2]]),v3(0,1,0)));}}nv+=c.vertices;nt+=c.triangles;
+   if cluster==0 {print("FIRST descriptor=% nv=% nt=% strideBits=% vertexBit=% indexBit=% pwidths=(%,%,%) normalBits=%\n",c.descriptor,c.vertices,c.triangles,c.stride,c.vertexBit,c.indexBit,c.px,c.py,c.pz,c.normalBits);for k:0..<(ifx c.vertices<3 then c.vertices else 3) {print("VERTEX % p=(%,%,%) n=(%,%,%)\n",k,p[k].x,p[k].y,p[k].z,normals[k].x,normals[k].y,normals[k].z);}}
+  }
+  print("MESHLET_GEOMETRY shape=% name=% layout=% clusters=% vertices=% triangles=% degenerate=% normalDotAverage=% bounds=(%,%,%)-(%,%,%)\n",shape,ob_name(b,s+8),ob_word(packed,16),count,nv,nt,degenerate,normalSum/cast(f32)(nt-degenerate),low.x,low.y,low.z,high.x,high.y,high.z);
+ }
+}
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>2 {return 2;}data:[67108864]u8;path:[4096]u8;if args_count(a[..])==1 {n:=fs_read(args_at(a[..],0),data[..]);#assert n>240;kml_check_model(data[0..<n]);}else {list:[1048576]u8;ln:=fs_read(args_at(a[..],1),list[..]);#assert ln>0;begin:=0;for k:0..<ln {if list[k]=='\n' {end:=begin;while end<k && list[end]!='\t' {end+=1;}relative:=cast(string)list[begin..<end];n:=fs_read(fs_join(args_at(a[..],0),relative,path[..]),data[..]);#assert n>240;print("SOURCE %\n",relative);kml_check_model(data[0..<n]);begin=k+1;}}#assert begin==ln;}return 0;}

@@ -1,0 +1,63 @@
+// Original array layers become padded atlases with unchanged mip-zero texels.
+// Standard ASTC/BC decompression is delegated to the same pinned reference runners.
+// tool.sh: stack-gib 2
+#load "ocarina-texture-core.coax";
+#load "../../coax/lib/json/json.coax";
+KfaLayout :: struct {side:int;pad:int;width:int;height:int;columns:int;rows:int;capacity:int;pages:int;}
+KfaTile :: struct {page:int;x:int;y:int;}
+#test "foliage array atlas pages preserve exact source texel placement and edge padding" {
+ g:=kfa_layout(2,2,5,8,1);#assert g.columns==2 && g.rows==2 && g.capacity==4 && g.pages==2;
+ t:=kfa_tile(g,3);#assert t.page==0 && t.x==5 && t.y==5;t=kfa_tile(g,4);#assert t.page==1 && t.x==1 && t.y==1;
+ rgba:=[16]u8.[10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160];atlas:[256]u8;kfa_paste(atlas[..],rgba[..],g,1);
+ #assert atlas[(0*8+4)*4]==10 && atlas[(1*8+5)*4+3]==40 && atlas[(2*8+6)*4]==130 && atlas[(3*8+7)*4+3]==160;
+ #assert atlas[0]==0 && atlas[(4*8+4)*4]==0;
+}
+#test "foliage atlas filenames distinguish multiple array pages" {
+ b:[256]u8;#assert kfa_page_name("Leaf_Alb",0,b[..])=="Leaf_Alb.atlas-0.png";#assert kfa_page_name("Leaf_Alb",12,b[..])=="Leaf_Alb.atlas-12.png";
+}
+kfa_layout :: (width:int,height:int,layers:int,side:int,pad:int)->KfaLayout {
+ #assert width>0 && height>0 && layers>0 && layers<=1024 && side>0 && side<=4096 && pad>=0;
+ cols:=side/(width+pad*2);rows:=side/(height+pad*2);#assert cols>0 && rows>0;cap:=cols*rows;
+ return KfaLayout.{side=side,pad=pad,width=width,height=height,columns=cols,rows=rows,capacity=cap,pages=(layers+cap-1)/cap};
+}
+kfa_tile :: (g:KfaLayout,layer:int)->KfaTile {#assert layer>=0;slot:=layer%g.capacity;return KfaTile.{page=layer/g.capacity,x=slot%g.columns*(g.width+2*g.pad)+g.pad,y=slot/g.columns*(g.height+2*g.pad)+g.pad};}
+kfa_clamp :: (x:int,limit:int)->int {return ifx x<0 then 0 else ifx x>=limit then limit-1 else x;}
+kfa_paste :: (atlas:[]u8,rgba:[]u8,g:KfaLayout,layer:int) {
+ #assert atlas.count>=g.side*g.side*4 && rgba.count>=g.width*g.height*4;t:=kfa_tile(g,layer);
+ for y: -g.pad..<g.height+g.pad {for x: -g.pad..<g.width+g.pad {src:=(kfa_clamp(y,g.height)*g.width+kfa_clamp(x,g.width))*4;dst:=((t.y+y)*g.side+t.x+x)*4;for c:0..<4 {atlas[dst+c]=rgba[src+c];}}}
+}
+kfa_name :: (name:string,suffix:string,out:[]u8)->string {#assert name.count+suffix.count<=out.count;for c,k:name {out[k]=c;}for c,k:suffix {out[name.count+k]=c;}return cast(string)out[0..<name.count+suffix.count];}
+kfa_page_name :: (name:string,page:int,out:[]u8)->string {
+ #assert page>=0 && page<256;n:=name.count;#assert n+20<=out.count;for c,k:name {out[k]=c;}for c:".atlas-" {out[n]=c;n+=1;}digits:[3]u8;size:=0;value:=page;
+ while true {digits[size]=cast(u8)(48+value%10);size+=1;value/=10;if value==0 {break;}}
+ for k:0..<size {out[n]=digits[size-1-k];n+=1;}for c:".png" {out[n]=c;n+=1;}return cast(string)out[0..<n];
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: kokiri-foliage-texture BNTX OUTPUT_DIR ASTCENC BC_REFERENCE");return 2;}
+ source:=args_at(a[..],0);dest:=args_at(a[..],1);astc:=args_at(a[..],2);bc:=args_at(a[..],3);#assert fs_mkdir(dest);
+ input:[67108864]u8;blocks:[33554432]u8;rgba:[67108864]u8;work:[100663296]u8;png:[100663296]u8;filtered:[67125248]u8;atlas:[1536*1536*4]u8;z:[1]PiZ;
+ path:[4096]u8;file:[256]u8;temp:[4096]u8;raw:[4096]u8;ref:[4096]u8;scratch:[4096]u8;
+ n:=fs_read(source,input[..]);#assert n>=128;b:=input[0..<n];#assert cast(string)b[0..<4]=="BNTX" && cast(string)b[32..<36]=="Ounc" && scan_u32(b,0x24)==1;
+ table:=ot_u64(b,0x28);#assert table>=0 && table<=n-8;p:=ot_u64(b,table);#assert p>=0 && p<=n-0x2a8 && cast(string)b[p..<p+4]=="BRTI";
+ format:=cast(int)scan_u32(b,p+0x1c);channel:=format>>8;w:=cast(int)scan_u32(b,p+0x24);h:=cast(int)scan_u32(b,p+0x28);layers:=cast(int)scan_u32(b,p+0x30);mips:=ot_u16(b,p+0x16);image_size:=cast(int)scan_u32(b,p+0x50);
+ #assert w>0 && h>0 && w<=1024 && h<=1024 && layers>1 && layers<=1024 && image_size>0 && image_size%layers==0 && mips>0;
+ stride:=image_size/layers;pointer:=ot_u64(b,p+0x2a0);#assert pointer>=0 && image_size<=n-pointer;
+ bw:=4;bh:=4;bytes:=ifx channel==0x1a || channel==0x1d then 8 else 16;
+ if channel>=0x2d && channel<=0x3a {i:=channel-0x2d;bw=[14]int.[4,5,5,6,6,8,8,8,10,10,10,10,12,12][i];bh=[14]int.[4,4,5,5,6,5,6,8,5,6,8,10,10,12][i];}else {#assert channel==0x1a || channel==0x1c || channel==0x1d || channel==0x1e || channel==0x20;}
+ row:=(w+bw-1)/bw*bytes;rows:=(h+bh-1)/bh;gx:=(row+63)/64;bhlog:=cast(int)scan_u32(b,p+0x34)&7;#assert row*rows<=blocks.count-16;
+ namep:=ot_u64(b,p+0x60);length:=ot_u16(b,namep);#assert length>0 && length<160;name:=cast(string)b[namep+2..<namep+2+length];
+ scratch_name:=kfa_name(name,".decode",file[..]);scratch_dir:=fs_join(dest,scratch_name,scratch[..]);#assert fs_mkdir(scratch_dir);blockfile:=fs_join(scratch_dir,"source.blocks",temp[..]);rawfile:=fs_join(scratch_dir,"reference.rgba",raw[..]);pngfile:=fs_join(scratch_dir,"reference.png",ref[..]);
+ g:=kfa_layout(w,h,layers,1536,8);selector:=scan_u32(b,p+0x58);metadata:[131072]u8;j:[1]Jo;jo_start(j[..],metadata[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"kokiri.array-atlas.v1");jo_key(j[..],"name");jo_str(j[..],name);
+ jo_key(j[..],"width");jo_int(j[..],w);jo_key(j[..],"height");jo_int(j[..],h);jo_key(j[..],"layers");jo_int(j[..],layers);jo_key(j[..],"source_mips");jo_int(j[..],mips);jo_key(j[..],"source_format");jo_int(j[..],format);jo_key(j[..],"source_layer_stride");jo_int(j[..],stride);jo_key(j[..],"atlas_side");jo_int(j[..],g.side);jo_key(j[..],"gutter");jo_int(j[..],g.pad);jo_key(j[..],"pages");jo_int(j[..],g.pages);jo_key(j[..],"tiles");jo_arr(j[..]);
+ for page:0..<g.pages {for k:0..<atlas.count {atlas[k]=0;}
+  for layer:page*g.capacity..<(ifx (page+1)*g.capacity<layers then (page+1)*g.capacity else layers) {
+   for y:0..<rows {for x:0..<row {off:=ot_offset(x,y,gx,bhlog);#assert off>=0 && off<stride;blocks[16+y*row+x]=b[pointer+layer*stride+off];}}
+   if channel>=0x2d {scan_put(blocks[..],0,0x5ca1ab13);blocks[4]=cast(u8)bw;blocks[5]=cast(u8)bh;blocks[6]=1;for k:0..<3 {blocks[7+k]=cast,trunc(u8)(w>>(k*8));blocks[10+k]=cast,trunc(u8)(h>>(k*8));blocks[13+k]=ifx k==0 then cast(u8)1 else cast(u8)0;}#assert fs_write(blockfile,cast(string)blocks[0..<16+row*rows]);command:=[4]string.[astc,"-ds",blockfile,pngfile];ot_run(command[..]);pn:=fs_read(pngfile,png[..]);#assert pn>0 && png_decode(png[0..<pn],work[..],rgba[..])==PNG_OK;}
+   else {scan_put(blocks[..],0,0x31584342);scan_put(blocks[..],4,cast(u32)channel);scan_put(blocks[..],8,cast(u32)w);scan_put(blocks[..],12,cast(u32)h);#assert fs_write(blockfile,cast(string)blocks[0..<16+row*rows]);command:=[3]string.[bc,blockfile,rawfile];ot_run(command[..]);#assert fs_read(rawfile,rgba[..])==w*h*4;}
+   for i:0..<w*h {pixel:=[4]u8.[rgba[i*4],rgba[i*4+1],rgba[i*4+2],rgba[i*4+3]];for c:0..<4 {rgba[i*4+c]=ot_select(pixel[..],cast(int)((selector>>(c*8))&255));}}
+   kfa_paste(atlas[..],rgba[0..<w*h*4],g,layer);t:=kfa_tile(g,layer);jo_obj(j[..]);jo_key(j[..],"layer");jo_int(j[..],layer);jo_key(j[..],"page");jo_int(j[..],page);jo_key(j[..],"x");jo_int(j[..],t.x);jo_key(j[..],"y");jo_int(j[..],t.y);digest:[64]u8;#assert asset_hex(asset_id(cast(string)rgba[0..<w*h*4]),digest[..]);jo_key(j[..],"decoded_rgba_sha256");jo_str(j[..],cast(string)digest[..]);jo_end(j[..]);
+  }
+  filename:=kfa_page_name(name,page,file[..]);count:=pi_png(pi_img(atlas[..],g.side,g.side,4),z[..],filtered[..],png[..]);#assert count>0 && png_decode(png[0..<count],work[..],rgba[..])==PNG_OK;for k:0..<atlas.count {#assert rgba[k]==atlas[k];}#assert fs_write(fs_join(dest,filename,path[..]),cast(string)png[0..<count]);print("ARRAY_ATLAS % source=%x%x% page=%/% bytes=%\n",filename,w,h,layers,page,g.pages,count);
+ }
+ jo_end(j[..]);jo_end(j[..]);#assert !j[0].bad;filename:=kfa_name(name,".atlas.json",file[..]);#assert fs_write(fs_join(dest,filename,path[..]),jo_text(j[..]));return 0;
+}

@@ -1,0 +1,17 @@
+// Original OoT SDKV20250200 Phive mesh -> source-local float32 triangles.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-phive.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {print("usage: PHSH OUTPUT_TRIANGLES\n");return 2;}
+ data:[67108864]u8;out:[67108864]u8;n:=fs_read(args_at(args[..],0),data[..]);if n<=0 {return 3;}b:=data[0..<n];m:=kokiri_phive_mesh(b);if !m.ok {print("unsupported Phive mesh profile\n");return 4;}
+ count:=0;low:=v3(1000000,1000000,1000000);high:=v3(-1000000,-1000000,-1000000);
+ for section:0..<m.count {p:=m.sections+section*64;primitives:=kokiri_rel_array(b,p+8,4);pn:=cast(int)scan_u32(b,p+12);#assert primitives>=0 && kokiri_span(m.data_end,primitives,pn*4);max_index:=0;
+  for k:0..<pn {ids:[4]int;for lane:0..<4 {ids[lane]=cast(int)b[primitives+k*4+lane];if ids[lane]>max_index {max_index=ids[lane];}}
+   triangles:=ifx ids[2]==ids[3] then 1 else 2;for t:0..<triangles {for lane:0..<3 {index:=ids[[3]int.[0,1+t,2+t][lane]];v:=kokiri_phive_vertex(b,m,section,index);#assert kokiri_span(out.count,count*36+lane*12,12);scan_write_point(out[..],count*36+lane*12,v);low=v3(lo(low.x,v.x),lo(low.y,v.y),lo(low.z,v.z));high=v3(hi(high.x,v.x),hi(high.y,v.y),hi(high.z,v.z));}count+=1;}
+  }
+  print("section=% primitives=% max_index=% vertex_bytes=%\n",section,pn,max_index,scan_u32(b,p+20));
+ }
+ #assert count>0 && fs_write(args_at(args[..],1),cast(string)out[0..<count*36]);print("triangles=% bounds=[%,%,%][%,%,%]\n",count,low.x,low.y,low.z,high.x,high.y,high.z);return 0;
+}

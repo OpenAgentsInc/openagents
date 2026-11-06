@@ -1,0 +1,31 @@
+// Offline source BAHS v11 shader inventory. Original instructions are copied,
+// never executed. NVN2 records are validated against their embedded controls.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-byml.coax";
+KfsRecord :: struct {stage:int= -1;size:int;control:int;control_size:int;code:int;code_size:int;}
+#test "foliage v11 shader records keep control-relative and code-region offsets separate" {
+ b:[1024]u8;p:=128;scan_put(b[..],p,128);scan_put(b[..],p+4,3);scan_put(b[..],p+12,112);scan_put(b[..],p+16,16);scan_put(b[..],p+24,224);scan_put(b[..],p+28,112);scan_put(b[..],256,0x98761234);scan_put(b[..],256+0x38,128);scan_put(b[..],256+0x40,128);scan_put(b[..],256+0x44,128);
+ r:=kfs_record(b[..],p,768);#assert r.stage==3 && r.control==256 && r.control_size==224 && r.code==784 && r.code_size==128 && r.size==128;
+ scan_put(b[..],p+12,111);#assert kfs_record(b[..],p,768).stage== -1;
+}
+kfs_record :: (b:[]u8,p:int,region:int)->KfsRecord {
+ if !ob_span(b.count,p,32) {return KfsRecord.{};}
+ size:=ob_int(b,p);stage:=ob_int(b,p+4);if size<32 || size>65536 || ob_int(b,p+12)!=size-16 || (stage!=0 && stage!=1 && stage!=3) {return KfsRecord.{};}
+ relative:=ob_int(b,p+28);if relative>=2147483648 {relative-=4294967296;}control:=p+16+relative;cs:=ob_int(b,p+24);
+ if cs!=224 || !ob_span(b.count,control,cs) || ob_word(b,control)!=0x98761234 {return KfsRecord.{};}
+ code:=region+ob_int(b,p+16);bytes:=ob_int(b,control+0x38);allocation:=ob_int(b,control+0x40);if bytes<1 || bytes%16!=0 || allocation<bytes || allocation-bytes>=256 || allocation!=ob_int(b,control+0x44) || !ob_span(b.count,code,allocation) {return KfsRecord.{};}
+ return KfsRecord.{stage=stage,size=size,control=control,control_size=cs,code=code,code_size=bytes};
+}
+kfs_filename :: (index:int,suffix:string,b:[]u8)->string {#assert index>=0 && index<10000 && suffix.count<64 && b.count>=80;value:=index;for k:0..<4 {b[3-k]=cast(u8)(48+value%10);value/=10;}for c,k:suffix {b[4+k]=c;}return cast(string)b[0..<4+suffix.count];}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: kokiri-foliage-sharcb SHARCB OUTPUT_DIR");return 2;}
+ data:[33554432]u8;path:[4096]u8;name:[80]u8;n:=fs_read(args_at(a[..],0),data[..]);#assert n>=64;b:=data[0..<n];#assert cast(string)b[0..<4]=="BAHS" && ob_int(b,4)==11 && ob_int(b,8)==n;region:=ob_int(b,28);#assert region>=64 && region<n;dest:=args_at(a[..],1);#assert fs_mkdir(dest);p:=0;index:=0;
+ while p+32<=region {r:=kfs_record(b,p,region);if r.stage== -1 {p+=4;continue;}
+  #assert fs_write(fs_join(dest,kfs_filename(index,".code.bin",name[..]),path[..]),cast(string)b[r.code..<r.code+r.code_size]);
+  #assert fs_write(fs_join(dest,kfs_filename(index,".control.bin",name[..]),path[..]),cast(string)b[r.control..<r.control+r.control_size]);
+  print("ORIGINAL_SHADER index=% stage=% record=% control=% control_bytes=% code=% code_bytes=%\n",index,r.stage,p,r.control,r.control_size,r.code,r.code_size);p+=r.size;index+=1;
+ }
+ print("ORIGINAL_SHADERS count=%\n",index);return 0;
+}

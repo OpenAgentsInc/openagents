@@ -1,0 +1,19 @@
+// Original TARB wrapper admission and nested Zstandard extraction only.
+// The inner height/material/image descriptors are preserved, not guessed.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "kokiri-phive.coax";
+KokiriTarb :: struct {ok:bool;offset:int;stored:int;decoded:int;}
+#test "Kokiri TARB wrapper requires exact extents version codec and header" {
+ b:[28]u8;scan_put(b[..],0,0x42524154);scan_put(b[..],4,1);scan_put(b[..],8,0x00140001);scan_put(b[..],12,688244);scan_put(b[..],16,8);scan_put(b[..],20,0xfd2fb528);
+ h:=kokiri_tarb(b[..]);#assert h.ok && h.offset==20 && h.stored==8 && h.decoded==688244;
+ #assert !kokiri_tarb(b[0..<27]).ok;b[8]=0;#assert !kokiri_tarb(b[..]).ok;b[8]=1;b[10]=24;#assert !kokiri_tarb(b[..]).ok;
+}
+kokiri_tarb :: (b:[]u8)->KokiriTarb {
+ if b.count<28 || scan_u32(b,0)!=0x42524154 || scan_u32(b,4)!=1 || kokiri_u16(b,8)!=1 || kokiri_u16(b,10)!=20 {return KokiriTarb.{};}
+ size:=cast(int)scan_u32(b,12);stored:=cast(int)scan_u32(b,16);if size<1 || size>67108864 || stored!=b.count-20 || scan_u32(b,20)!=0xfd2fb528 {return KokiriTarb.{};}
+ return KokiriTarb.{ok=true,offset=20,stored=stored,decoded=size};
+}
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}data:[67108864]u8;decoded:[67108864]u8;n:=fs_read(args_at(a[..],0),data[..]);if n<=0 {return 3;}h:=kokiri_tarb(data[0..<n]);if !h.ok {print("unsupported TARB wrapper\n");return 4;}tempbuf:[4096]u8;pathbuf:[4096]u8;temp:=fs_temp("kokiri-terrain-",tempbuf[..]);#assert temp.count>0;payload:=fs_join(temp,"payload.zst",pathbuf[..]);#assert fs_write(payload,cast(string)data[h.offset..<n]);stdout:[4096]u8;stderr:[4096]u8;dest:=args_at(a[..],1);command:=[7]string.["/opt/homebrew/bin/zstd","-d","-q","-f",payload,"-o",dest];r:=proc_run(command[..],30000,stdout[..],stderr[..]);#assert fs_remove(temp);if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)stderr[0..<r.err_n]);return 5;}dn:=fs_read(dest,decoded[..]);#assert dn==h.decoded;print("TARB_PASS stored=% decoded=% inner_magic=%\n",h.stored,dn,scan_u32(decoded[..],0));return 0;}

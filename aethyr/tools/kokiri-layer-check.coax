@@ -1,0 +1,17 @@
+// Compare original standalone PHSH geometry against embedded compound layers.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "kokiri-phive.coax";
+kl_equal :: (a:[]u8,ma:KokiriPhiveMesh,b:[]u8,mb:KokiriPhiveMesh)->bool {
+ if !ma.ok || !mb.ok || ma.count!=mb.count {return false;}for k:0..<24 {if a[ma.root+64+k]!=b[mb.root+64+k] {return false;}}
+ for k:0..<ma.count {pa:=ma.sections+k*64;pb:=mb.sections+k*64;for j:0..<12 {if a[pa+32+j]!=b[pb+32+j] {return false;}}
+  for lane:[2]int.[8,16] {aa:=kokiri_rel_array(a,pa+lane,1);bb:=kokiri_rel_array(b,pb+lane,1);na:=cast(int)scan_u32(a,pa+lane+4);nb:=cast(int)scan_u32(b,pb+lane+4);if aa<0 || bb<0 || na!=nb {return false;}bytes:=ifx lane==8 then na*4 else na/6*6;#assert kokiri_span(a.count,aa,bytes) && kokiri_span(b.count,bb,bytes);for j:0..<bytes {if a[aa+j]!=b[bb+j] {return false;}}}
+ }return true;
+}
+kl_walk :: (target:[]u8,model:KokiriPhiveMesh,b:[]u8,root:int,end:int,layer:int,depth:int,count:[]int) {
+ #assert depth<=8 && kokiri_span(end,root,80);kind:=b[root+24];if kind==9 {p:=root+56+kokiri_s32(scan_u32(b,root+56));n:=cast(int)scan_u32(b,root+64);#assert kokiri_span(end,p,n*64);for k:0..<n {at:=p+k*64+48;child:=at+kokiri_s32(scan_u32(b,at));kl_walk(target,model,b,child,end,layer,depth+1,count);}}
+ else if kind==7 {if kl_equal(target,model,b,kokiri_mesh_root(b,root,end)) {count[layer]+=1;print("EXACT_GEOMETRY_MATCH section=% root=%\n",layer,root);}}
+}
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}target:[16777216]u8;data:[67108864]u8;tn:=fs_read(args_at(a[..],0),target[..]);n:=fs_read(args_at(a[..],1),data[..]);#assert tn>0 && n>0;t:=target[0..<tn];b:=data[0..<n];m:=kokiri_phive_mesh(t);#assert m.ok;h:=kokiri_phive(b);#assert h.ok && h.kind==2;counts:[256]int;
+ for k:0..<h.count {p:=h.offset[k];if h.size[k]>=64 && scan_u32(b,p+4)==0x30474154 {size:=kokiri_be32(b,p+24)&0x3fffffff;kl_walk(t,m,b,p+32,p+24+size,k,0,counts[..]);}}for k:0..<h.count {if counts[k]>0 {print("section=% matches=%\n",k,counts[k]);}}return 0;}

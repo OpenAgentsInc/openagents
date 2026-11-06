@@ -1,0 +1,82 @@
+// KOC1 whole-source structural admission; complete content identity is a separate pack gate.
+#load "rig-policy.coax";
+#load "kokiri-grid.coax";
+#load "scene-policy-fixture.coax";
+#authority;
+KOC_CAP :: 100663296;
+KocScene :: struct {ok:bool;rig:int;rig_bytes:int;world:int;world_bytes:int;vertex_bytes:int;indices:int;layers:int;materials:int;spawn:Point;}
+#test "Kokiri catalogue admits disjoint original rig and complete finite indexed collision" #steps 1000000000 {
+ b:[OCL_TEST_BYTES+176]u8;koc_fixture(b[..]);s:=koc_scene(b[..]);#assert s.ok && s.rig==64 && s.rig_bytes==OCL_TEST_BYTES && s.world==64+OCL_TEST_BYTES && s.world_bytes==112 && s.vertex_bytes==14145920 && s.indices==3 && s.layers==1 && s.materials==25 && s.spawn.x==0.5 && s.spawn.y==0 && s.spawn.z==0.5;
+ #assert !koc_scene(b[0..<63]).ok && !koc_scene(b[0..<b.count-1]).ok;
+}
+#forall "Kokiri catalogue rejects hostile independent header words" lane:0..<16 #steps 1000000000 {
+ b:[OCL_TEST_BYTES+176]u8;koc_fixture(b[..]);old:=scan_u32(b[..],lane*4);scan_put(b[..],lane*4,0xffffffff);#assert !koc_scene(b[..]).ok;scan_put(b[..],lane*4,old);
+}
+#test "Kokiri collision admission checks every span reference float and candidate cap" {
+ b:[112]u8;koc_grid_fixture(b[..]);#assert koc_grid_valid(b[..]);
+ for at:[15]int.[0,4,8,12,16,20,24,28,32,36,40,44,48,52,60] {old:=scan_u32(b[..],at);scan_put(b[..],at,0xffffffff);#assert !koc_grid_valid(b[..]);scan_put(b[..],at,old);}
+ for at:[6]int.[56,64,68,72,76,108] {old:=scan_u32(b[..],at);scan_put(b[..],at,0x7f800000);#assert !koc_grid_valid(b[..]);scan_put(b[..],at,old);}
+ #assert !koc_grid_valid(b[0..<111]);
+}
+koc_span :: (n:int,p:int,size:int)->bool #effects(all) {return p>=0 && size>=0 && p<=n && size<=n-p;}
+koc_number :: (b:[]u8,p:int)->bool #effects(all) {if (scan_u32(b,p)&0x7f800000)==0x7f800000 {return false;}v:=scan_float(b,p);return v> -1000000 && v<1000000;}
+koc_grid_valid :: (b:[]u8)->bool #effects(all) {
+ if !koc_grid_size(b.count) || scan_u32(b,0)!=0x3147434b || scan_u32(b,4)!=1 || scan_u32(b,48)!=cast(u32)b.count || scan_u32(b,56)!=0 || scan_u32(b,60)!=0 {return false;}
+ n:=cast(int)scan_u32(b,8);nx:=cast(int)scan_u32(b,12);nz:=cast(int)scan_u32(b,16);refs:=cast(int)scan_u32(b,40);maxcell:=cast(int)scan_u32(b,52);
+ if !koc_grid_meta(n,nx,nz,refs,maxcell) {return false;}
+ if !koc_number(b,20) || scan_float(b,20)<=0 || !koc_number(b,24) || !koc_number(b,28) {return false;}
+ cells:=nx*nz;refbase:=64+cells*8;tribase:=refbase+refs*4;
+ if scan_u32(b,32)!=64 || scan_u32(b,36)!=cast(u32)refbase || scan_u32(b,44)!=cast(u32)tribase || !koc_span(b.count,tribase,n*36) || tribase+n*36!=b.count {return false;}
+ cursor:=0;found_max:=false;for k:0..<cells {p:=64+k*8;first:=cast(int)scan_u32(b,p);count:=cast(int)scan_u32(b,p+4);if first!=cursor || count>maxcell || !koc_span(refs,cursor,count) {return false;}previous:= -1;
+  for j:0..<count {id:=cast(int)scan_u32(b,refbase+(first+j)*4);if id>=n || id<=previous {return false;}previous=id;}
+  cursor+=count;if count==maxcell {found_max=true;}
+ }
+ if cursor!=refs || !found_max {return false;}
+ for k:0..<n*9 {if !koc_number(b,tribase+k*4) {return false;}}return true;
+}
+koc_scene :: (b:[]u8)->KocScene #effects(all) {
+ out:=KocScene.{};if !koc_header_size(b.count) || scan_u32(b,0)!=0x31434f4b || scan_u32(b,4)!=1 || scan_u32(b,8)!=cast(u32)b.count || scan_u32(b,12)!=64 || scan_u32(b,56)!=1 || scan_u32(b,60)!=0 {return out;}
+ rig:=cast(int)scan_u32(b,16);world:=cast(int)scan_u32(b,20);bytes:=cast(int)scan_u32(b,24);vertex:=cast(int)scan_u32(b,28);indices:=cast(int)scan_u32(b,32);layers:=cast(int)scan_u32(b,36);materials:=cast(int)scan_u32(b,40);
+ if world!=64+rig || !koc_span(b.count,world,bytes) || world+bytes!=b.count || !koc_gpu(vertex,indices,layers,materials) {return out;}
+ if !koc_number(b,44) || !koc_number(b,48) || !koc_number(b,52) {return out;}
+ if !ocarina_rig_valid(b[64..<world]) || !koc_grid_valid(b[world..<b.count]) {return out;}
+ return KocScene.{ok=true,rig=64,rig_bytes=rig,world=world,world_bytes=bytes,vertex_bytes=vertex,indices=indices,layers=layers,materials=materials,spawn=scan_point(b,44)};
+}
+#test "Kokiri scene ranges and scalar bounds include only their exact limits" {
+ #assert koc_span(16,0,16) && koc_span(16,16,0) && koc_span(16,0,0);
+ #assert !koc_span(16,-1,1) && !koc_span(16,0,-1) && !koc_span(16,17,0) && !koc_span(16,15,2);
+ #assert koc_header_size(64) && !koc_header_size(63) && koc_header_size(KOC_CAP) && !koc_header_size(KOC_CAP+1);
+ #assert koc_grid_size(112) && !koc_grid_size(111) && koc_grid_size(KOC_CAP) && !koc_grid_size(KOC_CAP+1);
+ b:[8]u8;for value:[4]f32.[-1000000,1000000,-1000001,1000001] {scan_put(b[..],0,f32_bits(value));#assert !koc_number(b[..],0);}for value:[3]f32.[-999999.9375,999999.9375,0] {scan_put(b[..],0,f32_bits(value));#assert koc_number(b[..],0);}
+}
+#test "Kokiri GPU metadata binds independent mixed stream and atlas limits" {
+ #assert koc_gpu(14145920,3,1,25) && koc_gpu(268435456,19999998,256,2048);
+ #assert !koc_gpu(14145916,3,1,25) && !koc_gpu(268435460,3,1,25) && !koc_gpu(14145921,3,1,25);
+ #assert !koc_gpu(14145920,0,1,25) && !koc_gpu(14145920,4,1,25) && !koc_gpu(14145920,20000001,1,25);
+ #assert !koc_gpu(14145920,3,0,25) && !koc_gpu(14145920,3,257,25) && !koc_gpu(14145920,3,1,24) && !koc_gpu(14145920,3,1,2049);
+}
+#test "Kokiri grid dimensions and candidate counts retain admitted metadata boundaries" {
+ #assert koc_grid_meta(1,1,1,1,1) && koc_grid_meta(3000000,262144,1,8000000,8192) && koc_grid_meta(1,1,262144,1,1) && koc_grid_meta(1,512,512,1,1);
+ #assert !koc_grid_meta(0,1,1,1,1) && !koc_grid_meta(3000001,1,1,1,1) && !koc_grid_meta(1,0,1,1,1) && !koc_grid_meta(1,1,0,1,1);
+ #assert !koc_grid_meta(1,262145,1,1,1) && !koc_grid_meta(1,1,262145,1,1) && !koc_grid_meta(1,513,512,1,1);
+ #assert !koc_grid_meta(1,1,1,0,1) && !koc_grid_meta(1,1,1,8000001,1) && !koc_grid_meta(1,1,1,1,0) && !koc_grid_meta(1,1,1,1,8193);
+}
+#test "Kokiri complete grids retain multiple cells sorted identities and exact maxima" {
+ b:[200]u8;koc_multi_fixture(b[..]);#assert koc_grid_valid(b[..]);
+ for at:[3]int.[56,60,72] {old:=scan_u32(b[..],at);scan_put(b[..],at,1);#assert !koc_grid_valid(b[..]);scan_put(b[..],at,old);}
+ scan_put(b[..],84,0);#assert !koc_grid_valid(b[..]);scan_put(b[..],84,3);#assert !koc_grid_valid(b[..]);scan_put(b[..],84,2);
+ scan_put(b[..],76,0);#assert !koc_grid_valid(b[..]);scan_put(b[..],76,1);scan_put(b[..],52,3);#assert !koc_grid_valid(b[..]);scan_put(b[..],52,2);
+ scan_put(b[..],20,f32_bits(0));#assert !koc_grid_valid(b[..]);scan_put(b[..],20,f32_bits(-1));#assert !koc_grid_valid(b[..]);
+}
+#test "Kokiri catalogue independently delegates rig and collision refusal" #steps 1000000000 {
+ b:[OCL_TEST_BYTES+176]u8;koc_fixture(b[..]);scan_put(b[..],64,0);#assert !koc_scene(b[..]).ok;scan_put(b[..],64,0x314c434f);scan_put(b[..],64+OCL_TEST_BYTES,0);#assert !koc_scene(b[..]).ok;
+}
+koc_header_size :: (n:int)->bool #effects(all) {return n>=64 && n<=KOC_CAP;}
+koc_grid_size :: (n:int)->bool #effects(all) {return n>=112 && n<=KOC_CAP;}
+koc_gpu :: (vertex:int,indices:int,layers:int,materials:int)->bool #effects(all) {
+ if vertex%4!=0 || indices%3!=0 {return false;}words:=vertex/4;triangles:=indices/3;
+ return words>=3536480 && words<=67108864 && triangles>=1 && triangles<=6666666 && layers>=1 && layers<=256 && materials>=25 && materials<=2048;
+}
+koc_grid_meta :: (n:int,nx:int,nz:int,refs:int,maxcell:int)->bool #effects(all) {
+ if nx<1 || nz<1 {return false;}return n>=1 && n<=3000000 && nx<=262144/nz && refs>=1 && refs<=8000000 && maxcell>=1 && maxcell<=8192;
+}

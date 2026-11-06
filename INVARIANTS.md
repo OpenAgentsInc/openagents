@@ -5880,14 +5880,24 @@ The synchronized two-rig GPU upload stays within the inspector's combined
 64 MiB limit. Metrics and frame hashes are recorded in
 `docs/verification/animation-lab-a2-2026-11-06/README.md`.
 
-## Ocarina Lab keeps original character streams private and admits them whole
+## Ocarina Lab retains its complete private source scene across rendering
 
 `ocarina-lab` / `ocarinalab` is an exact tracked legacy renderer admission and an
 unlisted realm. Its owner-local VPK1 pack is gated by complete SHA-256 and byte
-count before upload. No extracted character payload belongs in Git or a public
+count before upload. No extracted game payload belongs in Git or a public
 build. Local loading retains the existing `?pack` opt-in.
 
-The Coax OCL1 gate requires the complete 309-joint/eight-clip profile, ordered
+The KOC1 catalogue binds disjoint complete OCL1 rig and KCG1 collision streams,
+finite spawn, and bounded GPU byte/index/material/texture counts. Full collision
+validation checks finite coordinates, complete disjoint spans, contiguous cell
+tables and sorted in-range triangle references before retaining any view. The
+96 MiB browser staging buffer becomes immutable after admission: the rig is
+copied, while collision borrows that retained buffer without a second 55 MiB
+copy. A replacement asset request cannot overwrite the live borrowed source.
+Readiness requires the catalogue, rig, collision, whole-pack identity and every
+exact declared upload. Device recovery retains these owners.
+
+The delegated Coax OCL1 gate requires the complete 309-joint/eight-clip profile, ordered
 parents, finite inverse binds, unit quaternions, positive finite scale tracks,
 whole disjoint payloads and the exact total size. Source flags preserve Maya SSC;
 playback keeps an unscaled world basis separately and never divides by parent
@@ -5895,9 +5905,20 @@ scale. The exact content gate and structural gate remain independent.
 
 Material import resolves original hash strings and texture aliases, preserves
 UV1 hair coverage, BNTX block height and component selectors. Special shader
-responses remain documented Aethyr approximations. The original procedural forest
-shares placements with its collision fixtures. Runtime budgets include retained
-encoded source and all mipmapped texture layers. See
+responses remain documented Aethyr approximations. The procedural forest is
+replaced by original source scenery and ground. Original Phive physical and
+smooth stair geometry joins the dense rendered ground fallback in a conservative
+two-metre collision index. Each paid 1/64-second step resolves source grounding
+and capsule contacts before committing history and following the camera. Camera
+segments query the same source index, including walls and ceilings. Reset uses a tested clearing on the original village floor.
+
+The original child standing controller is a prism (radius 0.23 m, head 1.17 m,
+shoulder 1.02 m, step 0.35 m); the lab explicitly approximates it with a capsule.
+Three-pass depenetration, two-sided floors and a 55-degree steep-face split do
+not reproduce Havok margins, filters, continuous sweeps or the original slope
+rules. One cylinder remains omitted. The source 256 MiB Wasm memory declaration,
+256 MiB GPU storage ceiling and dynamic four-GiB resident budget cover retained
+encoded source, source geometry and every mipmapped texture layer. See
 `docs/verse/2026-11-06-ocarina-lab.md` for reconstruction and verification evidence.
 
 During play the controller owns planar translation. The sampled carrier's X/Z
@@ -5906,7 +5927,7 @@ original vertical pose motion, rotations and all raw inspection tracks survive.
 Locomotion limits come from original carrier distance/duration, and gait time
 uses actual collision-resolved travel, not an extra animated world displacement
 or unresolved velocity. The source 30-fps assumption remains explicit; original
-controller physics and its transition graph have not been recovered.
+controller physics and its transition graph have not been fully recovered.
 
 ## Animation performance sampling is bounded and starts from source each frame
 

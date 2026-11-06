@@ -1,0 +1,127 @@
+Original Kokiri foliage evidence (decompressed files; little endian)
+=================================================================
+
+Private source root:
+~/.openagents/verse/private-build/kokiri/source/romfs/
+No game data is included in the repository.
+
+Placement/Scene/KokiriForest/KokiriForest_Child.{LowTree,Ornament}.flnt
+  Header32: resourceCount:u32@0, instanceCount:u32@4, type=2@8,
+  zero@12, byteBlobLength@16, auxiliaryOffsetCount@20, zero@24/28.
+  Resource names: resourceCount *256; first byte length, then original path.
+  Placements: instanceCount *64.
+    position float3@0; positive uniform scale float@12;
+    two orthonormal float3 axes@16/32; opaque words@28/44;
+    resource u16@48; opaque u16@50; opaque u32@52/56/60.
+  Then instanceCount*u32 offsets, auxiliaryOffsetCount*u32 offsets,
+  then byteBlobLength opaque bytes. All offsets are monotonic/in-bounds.
+  With auxiliary offsets, instance offsets index that array; otherwise they
+  address the byte blob directly. The auxiliary bytes are not decoded meshes.
+  Child.LowTree:4502 placements/15resources, auxiliary offsets71698,
+  byte blob851894. Child.Ornament:4618 placements/12resources,
+  auxiliary offsets0, byte blob86932.
+  Runtime basis ordering is inferred, rather than captured from the game.
+
+NodeTreeShoot{Branch,Leaf}/*.foliage.flnt
+  Exactly1168 bytes: header16, 32 capacity bone records*12,
+  64 capacity leaf records*12. Counts are header bytes0/1.
+  Bone word0 highbit marks a packed root anchor; otherwise it is an
+  ancestor bitmask whose highest bit is the immediate parent.
+  Leaf record byte0 is its bone attachment. All43 fetched source recipes
+  validate. Length, orientation, growth, bending and wind packing remain
+  unresolved. No invented plant mesh is emitted from these words.
+
+ImpostorInfo/{LowTreeShootLeaf,LowTreeShootBranch,OrnamentShootLeaf}.flnt
+  Header16: version2@0, zero@4, resourceCount@8, viewRecordCount@12.
+  resourceCount*256 name slots, resourceCount*16 entries, viewRecordCount*80.
+  Entry: firstRecord:u32@0, recordCount:u32@4, mode:u32@8, zero@12.
+  Source counts:64/396,63/378,36/200 resources/records respectively.
+  Record: first32 bytes are two float4 values (physical size/center-like;
+  original shader interpretation not yet proven); last48 bytes are six XY
+  silhouette points. All974 original silhouettes have positive area and
+  convex CCW winding. They are original geometry, rather than an authored
+  replacement. Native texture-coordinate, view-selection and wind semantics
+  remain unresolved; the approximate renderer described below is explicit.
+
+Tex/Foliage_ShootLeaf_{Alb,Nrm,Rgh}.bntx
+  Source128*128*88,8mips. BC3sRGB/BC5UNorm/BC4UNorm respectively.
+  Layer strides24064/24064/13312 bytes. ResTexArray/ShootLeaf's TexList
+  is the original88-element layer order. Three1536-square PNG atlases
+  preserve decoded mip0 RGBA exactly, including alpha/component swizzles.
+  10columns of144pixel slots (128source pixels plus8pixel gutters).
+  layer origin=(layer%10*144+8,layer/10*144+8).
+  UV=(origin+sourceUV*128)/1536. Each PNG is decoded and compared bytewise
+  with its source atlas; JSON metadata includes each layer's decoded RGBA hash.
+  Private output root:~/.openagents/verse/private-build/kokiri/textures/.
+
+Tex/Foliage_{LowTree,LowTreeShootLeaf}_Impostor_{Alb,Nrm}.bntx
+  Original128*128*378 and128*128*396 arrays match the corresponding source
+  ImpostorInfo record counts exactly.8mips;24064-byte layers. Alb is BC3sRGB;
+  all four source arrays decode into four1536-square pages each. The same
+  144pixel slots and8pixel gutters preserve the original128pixel texels.
+  Every output page round-trips to exactly the atlas RGBA. Per-layer decoded
+  RGBA hashes are recorded. Alb alpha contains source coverage (measured
+  last LowTree layer0..255); normal alpha in that layer is255.
+
+Approximate source-impostor assembly
+  kokiri-foliage-pack SOURCE_ROOT BASE_ATLAS_DIR FOLIAGE_TEXTURE_DIR OUTPUT_DIR
+  takes only exact recipe-path matches against available original arrays.
+  The current Child scene admits4253/9120 original placements and excludes
+  4867:4618 Ornament placements lack their original texture atlas, and249
+  LowTree placements lack exact full-branch impostors. No invented substitutes.
+  41407 original six-point view polygons yield248442 vertices/496884 indices;
+  the GPU vertex+index streams total17887824 bytes. All original views are
+  emitted; the GPU selects a view by uniformly divided camera yaw. Original
+  mode0/1/2 is retained, but its native angular meaning is not recovered.
+  UVs are inferred from each source record's physical size/center-like values,
+  clamped into its original128pixel image, then transformed into atlas space.
+  These approximations do not recover native view projection, depth, wind,
+  branch growth or dynamic source recoloring. Original RGB is already baked
+  into the impostor albedo; vertex tint defaults to white.
+  OUTPUT_DIR receives final complete scene.materials and scene.textures,
+  all existing static atlas pages,16 standalone foliage pages, foliage.json,
+  foliage.vertices and foliage.indices. Characters retain the first60 names.
+  The source atlas JSON is copied when available. Output can equal the base
+  directory for one append; existing kind10 materials reject a double append.
+  Eight material rows are added (four pages per source array);16 physical
+  layers are added (albedo/normal maps). Added material kind=10, alpha mask=.5.
+  Intermediate vertex stride128: first64 are the custom GPU record, tail64zero.
+  GPU words0..2=anchorXYZ;3=upSNORM10;4..5=UV;6..7=sourceXY*instanceScale;
+  8=global material ID;9=forwardSNORM10;10..11=white RGBA8;
+  12..13=relative view index/count asf32;14=original mode asf32;
+  15=original source array layer asf32. Indices are localu32 with a convex fan.
+
+Static texture derivative assembly
+  kokiri-atlas-pack MATERIALS TEXTURES PNG_DIR OUTPUT_DIR
+  preserves character sampler IDs0..60; later source images become explicitly
+  identified496-square Lanczos derivatives in premultiplied RGBA8. Each1536
+  page holds3*3 tiles with512pixel cells and8pixel edge-repeated gutters.
+  Only sampler fields0..7,60/61 change, plus the physical texture header count.
+  Encoded ID: lower16=physicalLayer+1; bits16..23=tile+1; bits24..31=3.
+  scene.atlas.json records source PNG hashes/dimensions, derivative RGBA hashes,
+  physical layers, slots, rectangles and sampler encodings. Source PNGs stay
+  outside the derivative output. Every written atlas is decoded and compared
+  byte-for-byte to the assembled atlas pixels.140 closure checks pass.
+
+FoliageShader.sharcb (cached original Application package)
+  BAHSv11;109 validated NVN2 compute records. Exact original code/control
+  bytes are extracted by kokiri-foliage-sharcb.coax without executing them.
+  Record offsets:size@0,stage@4,sizeMinus16@12,codeRegionOffset@16,
+  controlSize@24,relativeControl@28. Control=p+16+signedRelative;
+  controls224bytes with0x98761234 magic. Actual code length@control+0x38;
+  allocation length@0x40/44, rounded up by at most255bytes.
+  First source program lowers successfully through shader-sweep. Full SPIR-V
+  inspection requires uncaptured descriptor classifications; generated plant
+  formulas and program-name mapping have not been recovered.
+
+Offline tools:
+  kokiri-foliage.coax: reusable readers;66 closure checks pass.
+  kokiri-foliage-inspect.coax: actual file inventory and validation.
+  kokiri-foliage-texture.coax: array atlas conversion;139 checks pass.
+  kokiri-foliage-sharcb.coax: source code/control extraction;70 checks pass.
+  kokiri-foliage-pack.coax: explicitly approximate source-impostor assembly;
+  148 closure checks pass.
+  kokiri-foliage-native.coax: original material UBO inventory; material
+  vertex stages are absent in the inspected fragment-only foliage programs.
+  ocarina-texture-core.coax: mechanical helper extraction from the original
+  single-image CLI, preserving its63 checks and original decoder semantics.

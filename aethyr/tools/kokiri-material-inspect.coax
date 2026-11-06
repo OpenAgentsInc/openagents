@@ -1,0 +1,12 @@
+// Bounded source FMAT names and parameter records, without guessing shader semantics.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "ocarina-material-core.coax";
+#load "../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}b:[67108864]u8;e:[1048576]u8;n:=fs_read(args_at(a[..],0),b[..]);en:=fs_read(args_at(a[..],1),e[..]);#assert n>0 && en>0;f:=ob_ptr(b[..],40);array:=ob_ptr(b[..],f+56);
+ for i:0..<ob_u16(b[..],f+108) {m:=array+i*176;s:=ob_ptr(b[..],ob_ptr(b[..],m+16));print("FMAT % %\n",i,mp_name(b[..],m+8,e[..]));
+  list:=ob_ptr(b[..],s+16);for k:0..<ob_u16(b[..],s+72) {p:=list+k*16;value:=ob_ptr(b[..],m+64)+ob_u16(b[..],ob_ptr(b[..],m+80)+k*2);key:=mp_name(b[..],p,e[..]);print("render % word=% float=%\n",key,ob_word(b[..],value),ob_float(b[..],value));if key=="gsys_alpha_test_enable" {print("alpha_enabled=%\n",mp_name(b[..],value,e[..]));}}
+  list=ob_ptr(b[..],s+32);for k:0..<ob_u16(b[..],s+74) {p:=list+k*24;value:=ob_ptr(b[..],m+88)+ob_u16(b[..],p+16);print("param % type=% offset=% first=%\n",mp_name(b[..],p+8,e[..]),ob_word(b[..],p),ob_u16(b[..],p+16),ob_float(b[..],value));}
+ }return 0;
+}

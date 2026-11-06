@@ -1,0 +1,32 @@
+// BNTX/Ounc mip0 -> semantic RGBA8 PNG. Coax owns bounds, tiling and channel mapping.
+// ASTC and BC block decompression use pinned independent reference SDK runners; no Python.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/image/pillow.coax";
+#load "../../verse/valley/scan.coax";
+ceil :: (x:f64)->f64 #foreign #effects(all);
+ot_u64 :: (b:[]u8,p:int)->int {#assert p>=0 && p<=b.count-8 && scan_u32(b,p+4)==0;return cast(int)scan_u32(b,p);}
+ot_u16 :: (b:[]u8,p:int)->int {return cast(int)b[p]|(cast(int)b[p+1]<<8);}
+#test "Ounce vertical GOB blocks preserve x and y ordering at every block boundary" {#assert ot_offset(0,0,8,3)==0 && ot_offset(64,0,8,3)==4096 && ot_offset(0,8,8,3)==512 && ot_offset(0,64,8,3)==32768;#assert ot_offset(64,0,8,0)==512 && ot_offset(0,8,8,0)==4096;}
+ot_offset :: (x:int,y:int,gobs_x:int,bhlog:int)->int {height:=1<<bhlog;within:=((x&32)<<3)+((y&6)<<5)+((x&16)<<1)+((y&1)<<4);within^=(((within>>5)^(within>>6))&1)*96;return ((y/8)/height)*gobs_x*512*height+((y/8)%height)*512+(x/64)*512*height+within+(x&15);}
+#test "BNTX component selection distinguishes normal RG from stored RAAA" {b:=[4]u8.[120,120,120,140];#assert ot_select(b[..],2)==120 && ot_select(b[..],5)==140 && ot_select(b[..],0)==0 && ot_select(b[..],1)==255;}
+ot_select :: (pixel:[]u8,c:int)->u8 {#assert c>=0 && c<=5;return ifx c==0 then cast(u8)0 else ifx c==1 then cast(u8)255 else pixel[c-2];}
+ot_run :: (argv:[]string) {out:[8192]u8;err:[8192]u8;r:=proc_run(argv,60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);}#assert r.started==0 && r.status==0 && !r.timed_out;}
+ot_decode :: (source:string,dest:string,astc:string,bc:string) {
+ input:[33554432]u8;blocks:[33554432]u8;rgba:[67108864]u8;work:[100663296]u8;png:[100663296]u8;filtered:[67125248]u8;z:[1]PiZ;path:[4096]u8;tmp:[4096]u8;ref:[4096]u8;n:=fs_read(source,input[..]);#assert n>=128;b:=input[0..<n];#assert cast(string)b[0..<4]=="BNTX" && cast(string)b[32..<36]=="Ounc" && scan_u32(b,0x24)==1;
+ table:=ot_u64(b,0x28);p:=ot_u64(b,table);#assert p>=0 && p<=n-0x2a8 && cast(string)b[p..<p+4]=="BRTI";
+ format:=cast(int)scan_u32(b,p+0x1c);channel:=format>>8;w:=cast(int)scan_u32(b,p+0x24);h:=cast(int)scan_u32(b,p+0x28);#assert w>0 && h>0 && w<=4096 && h<=4096 && scan_u32(b,p+0x30)==1;
+ bw:=4;bh:=4;bytes:=ifx channel==0x1a || channel==0x1d then 8 else 16;
+ if channel>=0x2d && channel<=0x3a {i:=channel-0x2d;bw=[14]int.[4,5,5,6,6,8,8,8,10,10,10,10,12,12][i];bh=[14]int.[4,4,5,5,6,5,6,8,5,6,8,10,10,12][i];}else {#assert channel==0x1a || channel==0x1c || channel==0x1d || channel==0x1e || channel==0x20;}
+ row:=(w+bw-1)/bw*bytes;rows:=(h+bh-1)/bh;gx:=(row+63)/64;bhlog:=cast(int)scan_u32(b,p+0x34)&7;pointer:=ot_u64(b,p+0x2a0);#assert row*rows<=blocks.count-16;
+ for y:0..<rows {for x:0..<row {off:=pointer+ot_offset(x,y,gx,bhlog);#assert off>=pointer && off<n;blocks[16+y*row+x]=b[off];}}
+ blockfile:=fs_join(dest,"source.astc",tmp[..]);rawfile:=fs_join(dest,"reference.rgba",ref[..]);pngfile:=fs_join(dest,"reference.png",path[..]);
+ if channel>=0x2d {scan_put(blocks[..],0,0x5ca1ab13);blocks[4]=cast(u8)bw;blocks[5]=cast(u8)bh;blocks[6]=1;for k:0..<3 {blocks[7+k]=cast,trunc(u8)(w>>(k*8));blocks[10+k]=cast,trunc(u8)(h>>(k*8));blocks[13+k]=ifx k==0 then cast(u8)1 else cast(u8)0;}#assert fs_write(blockfile,cast(string)blocks[0..<16+row*rows]);command:=[4]string.[astc,"-ds",blockfile,pngfile];ot_run(command[..]);pn:=fs_read(pngfile,png[..]);#assert pn>0 && png_decode(png[0..<pn],work[..],rgba[..])==PNG_OK;}
+ else {scan_put(blocks[..],0,0x31584342);scan_put(blocks[..],4,cast(u32)channel);scan_put(blocks[..],8,cast(u32)w);scan_put(blocks[..],12,cast(u32)h);#assert fs_write(blockfile,cast(string)blocks[0..<16+row*rows]);command:=[3]string.[bc,blockfile,rawfile];ot_run(command[..]);#assert fs_read(rawfile,rgba[..])==w*h*4;}
+ selector:=scan_u32(b,p+0x58);for i:0..<w*h {pixel:=[4]u8.[rgba[i*4],rgba[i*4+1],rgba[i*4+2],rgba[i*4+3]];for c:0..<4 {rgba[i*4+c]=ot_select(pixel[..],cast(int)((selector>>(c*8))&255));}}
+ namep:=ot_u64(b,p+0x60);length:=ot_u16(b,namep);#assert length>0 && length<160;name:=cast(string)b[namep+2..<namep+2+length];filename:[256]u8;for c,k:name {filename[k]=c;}for c,k:".png" {filename[length+k]=c;}
+ count:=pi_png(pi_img(rgba[..],w,h,4),z[..],filtered[..],png[..]);#assert count>0;target:=fs_join(dest,cast(string)filename[0..<length+4],path[..]);#assert fs_write(target,cast(string)png[0..<count]);print("BNTX % %x% fmt=% bh=% swizzle=%\n",name,w,h,format,bhlog,selector);
+}
