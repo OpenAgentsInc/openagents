@@ -164,8 +164,8 @@ tool_main :: () -> int #export_c {
   if !af_finish(page_job, deadline) { return 1; }
   if !af_finish(worker_job,deadline) {return 1;}
   audio_stamp:=af_native_stamp(root,"aethyr/host/audio-carrier.coax",deadline);if audio_stamp<0 {return 1;}
-  for name:[4]string.["coax/web/audio-face.c","coax/web/build-audio.coax","coax/web/wasm.sh","coax/bin/coax"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>audio_stamp {audio_stamp=stamp;}}
-  if fs_mtime_ns(af_path(p[..],root,"apps/openagents-web/build/host-audio.wasm"))<audio_stamp {
+  for name:[6]string.["coax/web/audio-face.c","coax/web/build-audio.coax","coax/web/wasm.sh","coax/bin/coax","aethyr/host/audio-timeline.coax","coax/web/audio-timeline-face.c"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>audio_stamp {audio_stamp=stamp;}}
+  if fs_mtime_ns(af_path(p[..],root,"apps/openagents-web/build/host-audio.wasm"))<audio_stamp||fs_mtime_ns(af_path(p[..],root,"apps/openagents-web/build/host-audio-timeline.wasm"))<audio_stamp {
     print("Building the shared browser audio carrier…\n");audio_cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-audio.coax"),root];if af_run(audio_cmd[..],out[..],deadline)<0 {return 1;}
   }
   layer_stamp:=af_native_stamp(root,"aethyr/host/layers-carrier.coax",deadline);if layer_stamp<0 {return 1;}
@@ -228,7 +228,7 @@ tool_main :: () -> int #export_c {
   web := af_path(p[..], res, "web"); host := af_path(p[..], res, "host"); seed := af_path(p[..], res, "seed");
   if !fs_mkdir(web) || !fs_mkdir(host) || !fs_mkdir(seed) { return 1; }
   metal_voice:=[3]string.["ditto",af_path(p[..],here,"metal-voice.html"),af_path(p[..],web,"metal-voice.html")];if af_run(metal_voice[..],out[..],deadline)<0 {return 1;}
-  for name: [12] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "build/everglade-room.wasm", "build/host-audio.wasm", "build/host-layers.wasm", "build/host-media.wasm", "build/host-services.wasm", "build/host-sockets.wasm", "render-shaders"] {
+  for name: [13] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "build/everglade-room.wasm", "build/host-audio.wasm", "build/host-layers.wasm", "build/host-media.wasm", "build/host-services.wasm", "build/host-sockets.wasm", "build/host-audio-timeline.wasm", "render-shaders"] {
     src := af_path(p[..], root, "apps/openagents-web"); from := af_path(p[..], src, name); to := af_path(p[..], web, name);
     if fs_kind(from) == FS_NONE { if name == "render-shaders" { continue; } return 1; }
     cmd := [3] string.["ditto", from, to]; if af_run(cmd[..], out[..], deadline) < 0 { return 1; }

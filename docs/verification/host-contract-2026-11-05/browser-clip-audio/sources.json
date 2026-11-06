@@ -1,0 +1,89 @@
+{
+  "schema": "aethyr.host.clip-source-observation.v1",
+  "product_base": "f931b5ace1",
+  "scope": "Physical source/artifact hashes, not compiler admission or complete host conformance.",
+  "sources": [
+    {
+      "path": "aethyr/host/audio-timeline.coax",
+      "bytes": 4448,
+      "sha256": "0273b8e19d5637c7e31ec74b7981a2d72fad013641abfbb5c3e2585024059f96"
+    },
+    {
+      "path": "aethyr/host/audio-timeline-conformance.coax",
+      "bytes": 4061,
+      "sha256": "fee9209eb3331cae354e1d2fc0d854ab4ae3ab468e222f291ffb3085b3c8183d"
+    },
+    {
+      "path": "aethyr/host/check-browser-audio-timeline.coax",
+      "bytes": 7220,
+      "sha256": "c11f710682519e5b5294f437daf3eb1e2436c79b08fab6815edb279b6c3e33c8"
+    },
+    {
+      "path": "coax/web/audio-host.js",
+      "bytes": 13351,
+      "sha256": "a1369ea02ced0e3e2264accdf27cfeb8f8de75039fc22a52e16b85fc2fc783b5"
+    },
+    {
+      "path": "coax/web/audio-worklet.js",
+      "bytes": 3007,
+      "sha256": "b9429caac798fa95df8d59e65b0a0e0555d1b74b98fbef75c992a160d8c584f2"
+    },
+    {
+      "path": "coax/web/audio-timeline.js",
+      "bytes": 2295,
+      "sha256": "f4fb276cb3fd84abef44e89f09041eec001b20b7889e5d9924db5b2a864a8ffc"
+    },
+    {
+      "path": "coax/web/audio-timeline-face.c",
+      "bytes": 1264,
+      "sha256": "60e69d4c8dfebbc7ac7f95e09d74e04b628982c26312f428788339efb997e41b"
+    },
+    {
+      "path": "coax/web/host.js",
+      "bytes": 206541,
+      "sha256": "76cb822d780eadab88ac0e4e2b92f3d2da6c04455d32ac86f921f905a3132cec"
+    },
+    {
+      "path": "coax/web/build-audio.coax",
+      "bytes": 2183,
+      "sha256": "c35a7d8ede042ac9f712e177c7cd9a377f62470cda78111ca0d4f572942e0b4f"
+    },
+    {
+      "path": "apps/aethyrforge-desktop/aethyrforge-build.coax",
+      "bytes": 26768,
+      "sha256": "8bc700d8cbea8b2ff125108af0c33fe1995c711af55ff5180e77cc405d9fcad6"
+    },
+    {
+      "path": "apps/openagents-web/build.sh",
+      "bytes": 23436,
+      "sha256": "2d7312862639ae1287ee07a6033257b8916b1d56db4f653031657eac9e753d8d"
+    },
+    {
+      "path": "apps/openagents-web/wasm-budgets.txt",
+      "bytes": 5141,
+      "sha256": "2242a6772a082b47f10a193e50d7a4d52dda8ced8dd43277947d81c8f2d1fe4c"
+    }
+  ],
+  "prepared": [
+    {
+      "path": "fixture.wasm",
+      "bytes": 29931,
+      "sha256": "f11c2e6082e43307ec5130d23a7545080b93830fb0c7bf733423f1e16389206d"
+    },
+    {
+      "path": "fixture.wgsl",
+      "bytes": 2225,
+      "sha256": "83d13deff2a466eb988e657490870b7c2c532f52bd7aab5d76e78d39f4e32c23"
+    },
+    {
+      "path": "build/host-services.wasm",
+      "bytes": 20394,
+      "sha256": "b77d8a7cb22bb86d45896e5d52798ebdd9d80adaeae8a455adc808640e7137e0"
+    },
+    {
+      "path": "build/host-sockets.wasm",
+      "bytes": 18523,
+      "sha256": "e6a5478e54574015246b20e8f476b1c7e6ed715175b033110de65a8de67dfb36"
+    }
+  ]
+}

@@ -74,6 +74,8 @@ waterlab 190000
 bitcoin-lab 365000
 # Shared PCM interpreter, authored-room FFT and canonical WAV resampling.
 host-audio 140000
+# Offline clip command frontier and48kHz block/crop policy (16,649 release bytes).
+host-audio-timeline 20000
 # Canonical PNG/JPEG layer decode and complete mip generation (55,132 measured).
 host-layers 70000
 # Canonical natural PNG/JPEG media decode and shared607 notices (53,580 measured).

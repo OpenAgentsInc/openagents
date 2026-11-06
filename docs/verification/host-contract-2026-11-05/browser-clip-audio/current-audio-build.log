@@ -1,0 +1,5 @@
+coax: note[E0400]: compile-time steps: 18114373 of 20000000 used (90%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    18114373 steps  aethyr/audio/host-pcm-asset.coax:40:1  #test 'PCM companion corruption missing data and short output publish no prefix'
+  fix: run coax test --only 'PCM companion corruption missing data and short output publish no prefix' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+wasm.sh: current-host-audio.wasm: 1.6 s: Coax to C 1.1 s (0/1 cached), clang 0.1 s (1/2 cached), link 0.1 s, wasm-opt 0.1 s; 96229 bytes; report /tmp/aethyr-clip-12869/.c/current-host-audio.timings.json

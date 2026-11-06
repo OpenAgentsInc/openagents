@@ -1,0 +1,8 @@
+coax: note[E0400]: compile-time steps: 18114373 of 20000000 used (90%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    18114373 steps  /Users/christopherdavid/work/oa-character-recovery/aethyr/audio/host-pcm-asset.coax:40:1  #test 'PCM companion corruption missing data and short output publish no prefix'
+  fix: run coax test --only 'PCM companion corruption missing data and short output publish no prefix' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+Audio first.f32: 8192 samples, maxabs 4.470348358154297e-08, 0 past2^-20, first browser/native 1/1, simple gate true.
+Audio voices.f32: 24576 samples, maxabs 2.561137080192566e-08, 0 past2^-20, first browser/native 0/0, simple gate true.
+Audio bed-update.f32: 32768 samples, maxabs 7.450580596923828e-09, 0 past2^-20, first browser/native 0/0, simple gate true.
+Audio stop-tail.f32: 196608 samples, maxabs 3.725290298461914e-09, 0 past2^-20, first browser/native 0/0, simple gate true.

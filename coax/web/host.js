@@ -224,7 +224,8 @@ import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
 import { openHostServices, openPcmMemory } from "./services-host.js";
-import { openCoaxAudio, renderCoaxAudio } from "./audio-host.js";
+import { openCoaxAudio, renderCoaxAudio, renderClipAudio } from "./audio-host.js";
+import { openClipTimeline } from "./audio-timeline.js";
 import { RenderHost } from "./render.js";
 import {mediaSource} from "./media-source.js";
 
@@ -321,7 +322,7 @@ function beginEngine() {
   return generation;
 }
 function retireTransport() {
-  if(hostTransport)retireContractAudio();
+  if(hostTransport){retireContractAudio();const retired=clipTimeline?.retire();clipTimeline=null;if(retired)audioRetirement=audioRetirement.then(()=>retired);}
   httpRequests.reset();resetSockets();hostTransport?.reset();hostTransport=null;hostLifecycle=null;hostServices=null;
 }
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
@@ -393,7 +394,8 @@ async function loadEngine(bytes, generation) {
   x._initialize?.();
   hostTransport=makeHostTransport(x,memory);
   hostLifecycle=makeHostLifecycle(x);
-  if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;}
+  if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;
+    if(clipping&&globalThis.coaxialClipAudio){const timeline=await openClipTimeline();if(generation!==wanted){await timeline.retire();return false;}clipTimeline=timeline;}}
   if(hostTransport && sockets.some(Boolean)){reconnectAfterEngine=true;resetSockets();}
   if(hostTransport){
     const retention=await openSocketRetention(x.coaxial_inbox_cap());if(generation!==wanted)return false;
@@ -1842,6 +1844,7 @@ function drawMedia(x, pass, w, h, depth, over = false) {
 
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
 let audio = null, audioOut = null;
+let clipTimeline = null;
 let contractAudio = null, contractAudioReady = null, audioOwner = 0, audioStarted = false, audioFailure = null;
 let contractAudioMemory = null, audioRetirement = Promise.resolve(), lastAudioRetirement = null;
 let audioBankStatus = 0, audioPacketStatus = 0, audioOfferRefusals = 0;
@@ -1900,6 +1903,7 @@ function soundBank() {
   }
 }
 function startAudio(gesture = true) {
+  if(clipping&&hostTransport){soundBank();return;}
   if(gesture)audioStarted=true;
   if (audio) {if(hostTransport){prepareContractAudio();if(gesture&&!worldPaused)audio.resume().catch(()=>{});}return;}
   if (clipping && !globalThis.coaxialClipAudio) return;   // a clip is silent unless it records its sound
@@ -2053,6 +2057,7 @@ const clipVoices = [];  // when each counted voice ends, ms
 let clipMark = 0;       // the game time the recording starts at, ms
 function clipHear(line) {
   if (!line) return;
+  if(hostTransport){clipTimeline?.offer(clipNow,line);return;}
   if (line[0] === "~" || line[0] === "!" || line[0] === "-") { clipHeard.push([clipNow, line]); return; }
   const f = line.split(" "), [name, , , delay] = f;
   const a = soundAsset(name);
@@ -2117,12 +2122,20 @@ async function renderSoundLines(lines, seconds, zero, rate, asset = soundAsset, 
 }
 if (globalThis.coaxialClip === true) {
   // the recording starts after the frame drawn now: its first frame is the next step's
-  globalThis.coaxialClipMark = () => { clipMark = clipNow; return !!audio; };
+  globalThis.coaxialClipMark = () => { clipMark = clipNow; return hostTransport?!!clipTimeline:!!audio; };
   // The same offline graph used by conformance, serialized as the clip's WAV.
   globalThis.coaxialClipMix = async (seconds, fps, rate = 48000) => {
-    if (!audio) return "";
-    const n = Math.round(seconds * rate), zero = clipMark + 1000 / fps;
-    const r = await renderSoundLines(clipHeard, seconds, zero, rate), l = r.getChannelData(0), ri = r.getChannelData(1);
+    const timeline=clipTimeline,services=hostServices,contract=!!hostTransport;
+    if (!contract&&!audio) return "";
+    let capture,failure,cleanup;const offered=timeline?.info();
+    try {
+    if(contract&&rate!==48000)throw Error('host contract v1 clips require48kHz');
+    const zero = clipMark + 1000 / fps;
+    const plan=contract?timeline?.seal(zero,seconds):null;
+    if(contract&&!plan)throw Error('clip owner unavailable');
+    capture=contract?await renderClipAudio(timeline,plan,async(name,canonical)=>{const asset=soundAsset(name);if(!asset)return null;return asset.canonical?canonical(asset.bytes):asset.bytes?{opus:asset.bytes}:{url:asset.url};},services):null;
+    const n = contract?plan.frames:Math.round(seconds * rate);
+    const r = capture?capture.buffer:await renderSoundLines(clipHeard, seconds, zero, rate), l = r.getChannelData(0), ri = r.getChannelData(1);
     let peak = 0, sum = 0;
     const bytes = new Uint8Array(44 + n * 4), v = new DataView(bytes.buffer);
     const tag = (at, t) => { for (let i = 0; i < 4; i++) v.setUint8(at + i, t.charCodeAt(i)); };
@@ -2134,10 +2147,13 @@ if (globalThis.coaxialClip === true) {
       v.setInt16(44 + i * 4 + c * 2, Math.round(Math.max(-1, Math.min(1, x)) * 32767), true);
     }
     const db = (x) => x > 0 ? (20 * Math.log10(x)).toFixed(1) : "-inf";
-    globalThis.clipAudioFacts = `${clipHeard.filter(([ms]) => ms >= zero - 2000 && ms < zero + seconds * 1000).length} lines, peak ${db(peak)} dBFS, RMS ${db(Math.sqrt(sum / (2 * n)))} dBFS`;
+    globalThis.clipAudioFacts = `${capture?capture.receipt.offered.commands:clipHeard.filter(([ms]) => ms >= zero - 2000 && ms < zero + seconds * 1000).length} lines, peak ${db(peak)} dBFS, RMS ${db(Math.sqrt(sum / (2 * n)))} dBFS`;
+    if(capture)globalThis.coaxialClipReceipt=capture.receipt;
     let text = "";
     for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return btoa(text);
+    } catch(error){failure=String(error.message);cleanup=error.coaxClipMemory;throw error;}
+    finally {if(contract){capture?.release();const beforeRetire=timeline?.info();await timeline?.retire();const receipt=capture?.receipt??{version:1,offered,failure,memoryAfter:cleanup?.assets??services.words(),outputMemoryAfter:cleanup?.output??0};receipt.beforeRetire=beforeRetire;receipt.timelineAfter=timeline?.info();globalThis.coaxialClipReceipt=receipt;}}
   };
 }
 function bedLine(line) {
@@ -2232,7 +2248,7 @@ function setWorldPaused(paused) {
 }
 if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   // a clip that records its sound starts the audio once the engine is up (no gesture needed: nothing plays)
-  if (globalThis.coaxialClipAudio && engine && !audio) startAudio();
+  if (globalThis.coaxialClipAudio && engine) {if(hostTransport)soundBank();else if(!audio)startAudio();}
   for (let k = 0; k < frames; k++) { clipNow += 1000 / fps; draw(clipNow); a11yMirror(clipNow); }
   if (gpu?.device) await gpu.device.queue.onSubmittedWorkDone();
   return engine && gpu?.bg ? 1 : 0;
@@ -2729,6 +2745,7 @@ if (dev) {
     decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed,
     contract: async () => ({version:hostTransport?1:0,owner:audioOwner,started:audioStarted,state:audio?.state??"absent",failure:audioFailure,memory:contractAudioMemory?.total()??0,retirement:lastAudioRetirement,queue:hostServices?.audioQueueInfo()??[0,0],queueRefusals:audioOfferRefusals,worklet:await contractAudio?.info()}),
     bank: () => {soundBank();return {status:audioBankStatus,count:bankSounds.size,bytes:Object.fromEntries([...bankSounds].map(([name,asset])=>[name,asset.bytes.length])),packet:audioPacketStatus};},
+    clip:()=>({timeline:clipTimeline?.info()??null,memory:hostServices?.words()??0}),
     fixtureMode: mode => engine?.exports.coaxial_audio_fixture_mode?.(mode),fixtureProbe: field => Number(engine?.exports.coaxial_audio_fixture_probe?.(field)??-1n),
     bus: soundBus, busVoice, busLine,
     offlineCoax: renderCoaxAudio,

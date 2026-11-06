@@ -27,7 +27,7 @@ if [[ "${COAXIAL_MODE:-release}" != dev ]]; then
   (cd "$here/../.." && coax/web/tool.sh wasm-size budgets apps/openagents-web/wasm-budgets.txt apps/openagents-web/build.sh)
 fi
 # Host-contract v1 uses the same Coax PCM interpreter as native audio.
-"$here/../../coax/web/tool.sh" "$here/../../coax/web/build-audio.coax" "$here/../.." "$here/build/host-audio.wasm" &
+"$here/../../coax/web/tool.sh" "$here/../../coax/web/build-audio.coax" "$here/../.." "$here/build/host-audio.wasm" "$here/build/host-audio-timeline.wasm" &
 host_audio=$!
 # Canonical v1 image decode and mip bytes share the native Coax authority.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-layers.coax" "$here/../.." "$here/build/host-layers.wasm" &

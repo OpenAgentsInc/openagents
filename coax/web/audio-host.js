@@ -12,7 +12,7 @@ export async function openCoaxAudio(context,destination,decode,options={}){
   const hold=(frames,channels)=>{const q=memory.claim(frames,channels);if(!q)throw new AudioRefusal('Coax refused PCM allocation');owned.add(q);return q;};
   const drop=q=>{if(q&&owned.delete(q))q.release();};
   const module=await moduleForAudio(),parser=new AudioBridge(module,false);await context.audioWorklet.addModule(workletURL);
-  const node=new AudioWorkletNode(context,'aethyr-coax-audio-v1',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2],processorOptions:{module}});
+  const node=new AudioWorkletNode(context,'aethyr-coax-audio-v1',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2],processorOptions:{module,observe:options.observe===true}});
   node.connect(destination);const pending=new Map(),assets=new Map(),physical=new Set(),loads=new Set();let serial=0n,closed=false,tail=Promise.resolve(),readyResolve,readyReject,failure=null,retirement=null,allocationRefusals=0;
   const ready=new Promise((ok,no)=>{readyResolve=ok;readyReject=no;});
   ready.catch(()=>{});
@@ -62,17 +62,42 @@ export async function openCoaxAudio(context,destination,decode,options={}){
     }catch(error){if(error instanceof AudioRefusal)acknowledged=true;else if(submitted)keepOutput=true;throw error;}
     finally{decoded=null;drop(decodedLease);encoded=null;drop(encodedLease);if(!submitted||acknowledged){drop(transit);drop(input);for(const q of extra)drop(q);if(source){source.bytes=null;drop(source.lease);}if(companion){companion.bytes=null;drop(companion.lease);}}if(!keepOutput)drop(output);}
   }
-  async function command(line,started){
+  async function command(line,started,dispatch=true){
     await ready;if(closed)return -1;const effect=parser.parse(line);
     if(effect.name&&!assets.has(effect.name)){
-      try{const buffer=await decode(effect.name,bytes=>({wav:bytes}),parser.asset(effect.name));if(closed)return -1;if(!buffer)return -1;const task=install(effect.name,buffer);physical.add(task);try{if(await task<0)return -1;}finally{physical.delete(task);}}catch(error){if(error instanceof AudioRefusal){allocationRefusals++;return -1;}throw error;}
+      try{const task=(async()=>{const buffer=await decode(effect.name,bytes=>({wav:bytes}),parser.asset(effect.name));if(closed||!buffer)return -1;return install(effect.name,buffer);})();physical.add(task);try{if(await task<0)return -1;}finally{physical.delete(task);}}catch(error){if(error instanceof AudioRefusal){allocationRefusals++;return -1;}throw error;}
     }
+    if(!dispatch)return 0;
     const bytes=typeof line==='string'?parser.encoder.encode(line):line;return request('command',{line:bytes,started},[bytes.buffer]);
   }
   return {ready,node,play(line,started,granted=false){const offer=granted?null:services.audioLine(line);if(!granted&&!offer)return Promise.resolve(-1);const result=tail.then(()=>command(granted?line:offer.bytes,started)).finally(()=>offer?.release());tail=result.catch(()=>{});return result;},
+    prepare:line=>command(line,true,false),
+    schedule:events=>request('schedule',{schedule:events},events.map(row=>row[1].buffer)),
     info:async()=>({...await request('info',{}),memoryWords:memory.total(),assetCount:assets.size,allocationRefusals}),
     close(){if(retirement)return retirement;closed=true;memory.retire();node.disconnect();for(const load of loads)load.abort();const before=memory.total();
       retirement=(failure?Promise.reject(failure):request('retire',{},[],true)).then(async report=>{await Promise.allSettled([...physical]);for(const q of [...owned])drop(q);parser.close();return {memoryBefore:before,memoryAfter:memory.total(),nodeBefore:report.before.words,nodeAfter:report.after.words};}).finally(()=>{node.port.close();for(const q of pending.values())q.no(Error('audio engine retired'));pending.clear();readyReject(Error('audio engine retired'));});return retirement;}};
+}
+// The recording uses the live adapter's measured decoder/install ownership and
+// the same Worklet interpreter. Only the device clock is rendered offline.
+export async function renderClipAudio(timeline,plan,decode,services,outputs){
+ outputs??=await openHostServices();const memory=openPcmMemory(services),outputMemory=openPcmMemory(outputs),outputLease=outputMemory.claim(plan.total,2),cropLease=outputMemory.claim(plan.frames,2);
+ if(!outputLease||!cropLease){outputLease?.release();cropLease?.release();const error=new AudioRefusal('Coax refused complete clip PCM allocation');error.coaxClipMemory={assets:memory.total(),output:outputMemory.total()};throw error;}
+ let adapter,remove,output,crop,kept=false,problem;
+ try{
+  if(!timeline.active)throw new AudioRefusal('clip owner retired');
+  const context=new OfflineAudioContext(2,plan.total,48000);adapter=await openCoaxAudio(context,context.destination,decode,{services,memory,observe:true});
+  remove=timeline.onRetire(()=>adapter.close());await adapter.ready;
+  for(const [,line] of timeline.events){if(!timeline.active)throw new AudioRefusal('clip owner retired');if(await adapter.prepare(line)<0)throw new AudioRefusal('clip asset unavailable');}
+  if(!timeline.active)throw new AudioRefusal('clip owner retired');
+  const offered=timeline.info();await adapter.schedule(timeline.events);
+  output=await context.startRendering();const observed=await adapter.info();
+  if(!timeline.active||observed.frames!==plan.total||observed.deviceFrames!==plan.total||observed.failed)throw Error('clip PCM clock or owner differs');
+  const retired=await adapter.close();remove();remove=null;
+  crop=context.createBuffer(2,plan.frames,48000);for(let channel=0;channel<2;channel++)crop.copyToChannel(output.getChannelData(channel).subarray(plan.start,plan.start+plan.frames),channel);
+  output=null;const outputMemoryBefore=outputMemory.total();outputLease.release();const receipt={version:1,offered,plan,worklet:observed,retired,outputMemoryBefore,outputMemoryAfter:null,memoryAfter:null};
+  kept=true;return {get buffer(){return crop;},receipt,release(){crop=null;cropLease.release();receipt.memoryAfter=memory.total();receipt.outputMemoryAfter=outputMemory.total();}};
+ }catch(error){problem=error;throw error;}
+ finally{remove?.();try{if(adapter)await adapter.close();}finally{output=null;outputLease.release();if(!kept){crop=null;cropLease.release();}memory.retire();outputMemory.retire();if(problem&&typeof problem==='object')problem.coaxClipMemory={assets:memory.total(),output:outputMemory.total()};}}
 }
 export async function renderCoaxAudio(lines,frames,buffers){
   const module=await moduleForAudio(),context=new OfflineAudioContext(2,frames,48000);await context.audioWorklet.addModule(workletURL);

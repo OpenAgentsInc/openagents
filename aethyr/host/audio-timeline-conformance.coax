@@ -1,0 +1,54 @@
+// Ordinary host clip observations and an independent PCM16 pulse/crop oracle.
+#authority;
+#load "../audio/wav.coax";
+HCLC_FIELDS::[32]int.[1,2,26,3200,4800,8192,8192,8192,2,0,64,1,8,8,0,8,0,8,0,0,0,0,0,0,0,1,0,0,0,0,25984,0];
+#test "clip receipt requires actual commands clocks allocations retirement and absent live audio" {
+ rows:=HCLC_FIELDS;#assert hclc_accept(rows[..])&&!hclc_accept(rows[0..<31]);extra:[33]int;#assert !hclc_accept(extra[..]);
+ for i:0..<32{rows[i]+=1;#assert !hclc_accept(rows[..]);rows[i]-=1;}
+}
+#test "clip WAV oracle checks every silent frame both pulses and every canonical header byte" {
+ pcm:[9600]int;left:=[8]int.[0,2048,4096,2048,0,-2048,-4096,-2048];right:=[8]int.[0,1024,2048,1024,0,-1024,-2048,-1024];
+ for i:0..<8{pcm[2*(896+i)]=left[i];pcm[2*(1920+i)+1]=right[i];}
+ bytes:[19245]u8;#assert wav_write(pcm[..],2,48000,bytes[..])==19244&&hclc_wave(bytes[0..<19244]);
+ #assert !hclc_wave(bytes[..])&&!hclc_wave(bytes[0..<19243]);
+ for i:0..<44{bytes[i]+=1;#assert !hclc_wave(bytes[0..<19244]);bytes[i]-=1;}
+ for i:[6]int.[44,3628,3630,7726,7740,19242]{bytes[i]+=1;#assert !hclc_wave(bytes[0..<19244]);bytes[i]-=1;}
+ #assert hclc_pulse(897,0)==2048&&hclc_pulse(899,0)==2048&&hclc_pulse(901,0)== -2048;
+ #assert hclc_pulse(1921,1)==1024&&hclc_pulse(1923,1)==1024&&hclc_pulse(1925,1)== -1024;
+}
+hclc_accept::(rows:[]int)->bool #export_c{if rows.count!=32{return false;}for value,i:HCLC_FIELDS{if rows[i]!=value{return false;}}return true;}
+#test "clip refusal receipts distinguish event line and PCM limits and require complete cleanup" {
+ count:=[17]int.[1,1,1,8192,106496,1,0,0,0,0,0,1,0,0,0,0,0];line:=[17]int.[1,1,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0];pcm:=[17]int.[1,1,1,2,26,0,1,0,0,0,0,1,0,0,0,0,0];
+ missing:=[17]int.[1,1,1,1,15,0,1,0,0,0,0,1,0,0,0,0,0];#assert hclc_refused(4,missing[..]);
+ #assert hclc_refused(1,count[..])&&hclc_refused(2,line[..])&&hclc_refused(3,pcm[..]);
+ #assert !hclc_refused(0,line[..])&&!hclc_refused(5,line[..])&&!hclc_refused(2,line[0..<16]);extra:[18]int;#assert !hclc_refused(2,extra[..]);
+ for i:0..<17{line[i]+=1;#assert !hclc_refused(2,line[..]);line[i]-=1;}
+ count[3]-=1;#assert !hclc_refused(1,count[..]);count[3]+=1;count[4]-=1;#assert !hclc_refused(1,count[..]);
+ for i:3..<7{pcm[i]+=1;#assert !hclc_refused(3,pcm[..]);pcm[i]-=1;}
+ for i:3..<7{missing[i]+=1;#assert !hclc_refused(4,missing[..]);missing[i]-=1;}
+}
+hclc_refused::(kind:int,rows:[]int)->bool #export_c{
+ if kind<1||kind>4||rows.count!=17{return false;}
+ expected:=[17]int.[1,1,1,0,0,1,0,0,0,0,0,1,0,0,0,0,0];
+ if kind==1{expected[3]=8192;expected[4]=106496;}
+ if kind==3{expected[3]=2;expected[4]=26;expected[5]=0;expected[6]=1;}
+ if kind==4{expected[3]=1;expected[4]=15;expected[5]=0;expected[6]=1;}
+ for value,i:expected{if rows[i]!=value{return false;}}return true;
+}
+#test "retiring a held clip preserves its pending owner until completion and leaves the replacement independent" {
+ rows:=[15]int.[19840,19840,1,13,0,0,1,0,0,0,1,1,13,0,1];#assert hclc_cancel(rows[..])&&!hclc_cancel(rows[0..<14]);extra:[16]int;#assert !hclc_cancel(extra[..]);
+ for i:0..<15{rows[i]+=1;#assert !hclc_cancel(rows[..]);rows[i]-=1;}
+}
+hclc_cancel::(rows:[]int)->bool #export_c{
+ if rows.count!=15{return false;}expected:=[15]int.[19840,19840,1,13,0,0,1,0,0,0,1,1,13,0,1];for value,i:expected{if rows[i]!=value{return false;}}return true;
+}
+hclc_pulse::(frame:int,channel:int)->int{
+ p:=frame-(ifx channel==0 then 896 else 1920);if p<1||p>=8{return 0;}
+ wave:=[7]int.[2048,4096,2048,0,-2048,-4096,-2048];return wave[p-1]/(ifx channel==0 then 1 else 2);
+}
+hclc_wave::(bytes:[]u8)->bool #export_c{
+ if bytes.count!=19244{return false;}
+ header:=[44]u8.[82,73,70,70,36,75,0,0,87,65,86,69,102,109,116,32,16,0,0,0,1,0,2,0,128,187,0,0,0,238,2,0,4,0,16,0,100,97,116,97,0,75,0,0];
+ for b,i:header{if bytes[i]!=b{return false;}}
+ for frame:0..<4800{for channel:0..<2{value:=hclc_pulse(frame,channel);encoded:=ifx value<0 then value+65536 else value;at:=44+frame*4+channel*2;if int(bytes[at])+int(bytes[at+1])*256!=encoded{return false;}}}return true;
+}

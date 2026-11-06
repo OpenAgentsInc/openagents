@@ -91,6 +91,23 @@ source joins under the unchanged admitted c224/598 compiler. This qualifies
 small host components, not current realm/graphics/default admission. See
 `docs/verification/host-contract-2026-11-05/browser-opus.md`.
 
+Version 1 browser clips replay the complete admitted command history through
+that same 48 kHz Worklet interpreter, then crop the measured output. They do
+not start a live device or use the pre-contract Web Audio mixer. The Coax
+timeline owns at most 8,192 complete commands/8 MiB, each at most 1,024 bytes;
+a refused offer poisons the entire recording and a sealed frontier cannot
+change. Decoded sources and offline output/crop each use a separate existing
+32 MiB PCM owner. Required asset, command or output refusal produces no WAV.
+Retirement retains command bytes and output tickets until held descriptor/
+decode effects and the concrete Worklet finish, then releases all ownership.
+Actual ordinary-host receipts check every one of 9,600 PCM16 words and all
+32 observed owner/clock fields; five physical refusal/retirement cases pass.
+Timeline and observer root gates kill 103/202 mutants without equivalents.
+The normally rebuilt 96,229-byte audio reactor also passes all 262,144
+ordinary authored samples at unchanged 2^-20. These bounded clip/component
+receipts do not substitute for complete ordinary three-host qualification.
+See `docs/verification/host-contract-2026-11-05/browser-clip-audio.md`.
+
 The Linux audio SDK executes the same Coax PCM/WAV interpreter and bank/
 memory authorities. All 48 frozen bank assets decode byte-identically and
 eleven rendered ranges pass the unchanged sample bound. Actual allocator,

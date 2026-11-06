@@ -10,8 +10,9 @@ class AethyrAudio extends AudioWorkletProcessor {
       else if(m.op==='install-wav')result=this.bridge.installWav(m.name,m.wav,m.plan);
       else if(m.op==='install-pcm')result=this.bridge.installPcm(m.name,m.source,m.companion,m.plan,m.nameBytes);
       else if(m.op==='command')result=this.bridge.command(m.line,m.started);
+      else if(m.op==='schedule'){if(this.deviceFrames!==0||this.schedule.length)throw Error('audio schedule already started');this.schedule=m.schedule;this.next=0;result=this.schedule.length;}
       else if(m.op==='info')result={...this.bridge.info(),callbacks:this.callbacks,deviceFrames:this.deviceFrames,failed:this.failed};
-      else if(m.op==='retire'){this.retired=true;result=this.bridge.close();this.block=null;}
+      else if(m.op==='retire'){this.retired=true;result=this.bridge.close();this.block=null;this.schedule.length=0;}
       else throw Error('unsupported audio effect');
       this.port.postMessage({id:m.id,result});
     }catch(error){this.port.postMessage({id:m.id,error:String(error.message),refused:error instanceof AudioRefusal});}};

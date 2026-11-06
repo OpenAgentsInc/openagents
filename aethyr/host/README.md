@@ -483,6 +483,31 @@ decode completion and Worklet cleanup acknowledgment, releases all PCM
 ownership and closes that concrete context before replacement. SDK hidden
 workspace/platform buffers remain separate from measured application copies.
 
+## Browser recording
+
+A version 1 muted clip uses the same 48 kHz Coax PCM interpreter, canonical
+asset decoder and AudioWorklet as live playback. It retains commands from
+clock zero, including bed/room initialization before the recording mark,
+renders through the complete ending block, then crops to the admitted
+recording interval. Microseconds round to 48 kHz samples; commands enter at
+the next 1,024-frame mixer boundary. The recorder never creates a live
+AudioContext. Pre-contract recordings retain their earlier adapter.
+
+`audio-timeline.coax` bounds complete encoded lines to 1,024 bytes, 8,192
+commands and 8 MiB total. Times are monotonic integer microseconds in
+[0, 2147483647]. One bad offer poisons the recording; one successful seal
+freezes its frontier. Invalid crop extents, missing required assets or
+allocation refusal reject the whole WAV. Decoder/source PCM and the complete
+offline output plus crop use separate instances of the existing 32 MiB
+allocation authority. This keeps recording duration from consuming the
+ordinary decoded-bank allowance without making capture output unbounded.
+
+Retirement fences and waits for the actual pending descriptor/decode and
+Worklet cleanup before releasing timeline bytes or PCM tickets. A replacement
+owner cannot inherit the old recording. The actual ordinary-host PCM,
+refusal and held-retirement receipts, exact reactor identities and commands
+are in [`browser-clip-audio.md`](../../docs/verification/host-contract-2026-11-05/browser-clip-audio.md).
+
 ## Conformance and the desktop default
 
 The standalone `render_host_presentation` selector and its small shared

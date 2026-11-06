@@ -1,0 +1,66 @@
+// Offline recordings retain bounded commands and replay the same PCM clock.
+#authority;
+#test "clip timeline retains complete monotonic commands and poisons a refused recording" {
+ t:[1]HostAudioTimeline;
+ #assert hcl_offer(t[..],0,1)&&hcl_offer(t[..],20833,1024);
+ #assert t[0].count==2&&t[0].bytes==1025&&t[0].last_us==20833;
+ before:=t[0];#assert !hcl_offer(t[..],20832,1)&&t[0].failed;
+ #assert t[0].count==before.count&&t[0].bytes==before.bytes&&t[0].last_us==before.last_us;
+ #assert !hcl_offer(t[..],20834,1);
+}
+#test "clip timeline checks every byte and event bound before retaining any command" {
+ t:[1]HostAudioTimeline;
+ two:[2]HostAudioTimeline;#assert !hcl_offer(t[0..<0],0,1)&&!hcl_offer(two[..],0,1);
+ for n:[3]int.[-1,0,1025]{t[0]=HostAudioTimeline.{};#assert !hcl_offer(t[..],0,n)&&t[0].count==0&&t[0].failed;}
+ t[0]=HostAudioTimeline.{};#assert !hcl_offer(t[..],-1,1)&&t[0].failed;
+ t[0]=HostAudioTimeline.{count=8191,bytes=8387584,last_us=1};
+ #assert hcl_offer(t[..],1,1024)&&t[0].count==8192&&t[0].bytes==8388608;
+ #assert !hcl_offer(t[..],1,1)&&t[0].bytes==8388608;
+ t[0]=HostAudioTimeline.{count=8192};#assert !hcl_offer(t[..],0,1)&&t[0].bytes==0;
+ t[0]=HostAudioTimeline.{count=0,bytes=8388608};#assert !hcl_offer(t[..],0,1)&&t[0].count==0;
+ t[0]=HostAudioTimeline.{count=-1};#assert !hcl_offer(t[..],0,1);
+ t[0]=HostAudioTimeline.{bytes=-1};#assert !hcl_offer(t[..],0,1);
+ t[0]=HostAudioTimeline.{last_us=-2};#assert !hcl_offer(t[..],-1,1);
+ t[0]=HostAudioTimeline.{};#assert hcl_offer(t[..],2147483647,1);
+ t[0]=HostAudioTimeline.{};#assert !hcl_offer(t[..],2147483648,1);
+}
+#test "clip timestamps use the same 48kHz PCM block boundaries and measured crop" {
+ #assert hcl_sample(0)==0&&hcl_sample(10)==0&&hcl_sample(11)==1;
+ #assert hcl_sample(1000000)==48000&&hcl_sample(-1)== -1&&hcl_sample(2147483648)== -1;
+ #assert hcl_sample(52)==2&&hcl_sample(73)==4&&hcl_sample(2147483647)==103079215;
+ #assert hcl_boundary(0)==0&&hcl_boundary(11)==1024&&hcl_boundary(21333)==1024&&hcl_boundary(21334)==1024&&hcl_boundary(-1)== -1;
+ #assert hcl_boundary(21344)==2048;
+ p:=hcl_plan(1000000,500000);#assert p.valid&&p.start==48000&&p.frames==24000&&p.total==72704;
+ #assert !hcl_plan(-1,1).valid&&!hcl_plan(0,0).valid&&!hcl_plan(0,-1).valid;
+ #assert !hcl_plan(2147483647,1).valid&&!hcl_plan(0,2147483648).valid;
+ #assert !hcl_plan(0,1).valid;
+ p=hcl_plan(0,11);#assert p.valid&&p.start==0&&p.frames==1&&p.total==1024;
+ p=hcl_plan(0,21333);#assert p.valid&&p.frames==1024&&p.total==1024;
+ p=hcl_plan(0,21344);#assert p.valid&&p.frames==1025&&p.total==2048;
+ p=hcl_plan(0,2147483647);#assert p.valid&&p.frames==103079215&&p.total==103079936;
+ #assert hcl_plan(2147483636,11).valid&&!hcl_plan(2147483637,11).valid;
+ #assert !hcl_plan(2147483648,11).valid;
+}
+#test "clip handoff freezes one complete command frontier and refuses subsequent offers" {
+ t:[1]HostAudioTimeline;two:[2]HostAudioTimeline;
+ #assert !hcl_seal(t[0..<0])&&!hcl_seal(two[..]);
+ #assert hcl_seal(t[..])&&t[0].sealed&&!hcl_seal(t[..]);
+ #assert !hcl_offer(t[..],0,1)&&!t[0].failed&&t[0].count==0;
+ t[0]=HostAudioTimeline.{failed=true};#assert !hcl_seal(t[..])&&!t[0].sealed;
+ t[0]=HostAudioTimeline.{};#assert hcl_offer(t[..],1,1)&&hcl_seal(t[..])&&t[0].count==1;
+}
+HostAudioTimeline::struct{count:int=0;bytes:int;last_us:int;failed:bool;sealed:bool;}
+HostAudioClipPlan::struct{valid:bool=false;start:int;frames:int;total:int;}
+hcl_offer::(t:[]HostAudioTimeline,us:int,bytes:int)->bool #export_c{
+ if t.count!=1{return false;}if t[0].sealed{return false;}
+ q:=t[0];if q.failed||q.count<0||q.count>=8192||q.bytes<0||bytes<1||bytes>1024||bytes>8388608-q.bytes||us<q.last_us||us<0||us>2147483647{t[0].failed=true;return false;}
+ t[0].count+=1;t[0].bytes+=bytes;t[0].last_us=us;return true;
+}
+hcl_seal::(t:[]HostAudioTimeline)->bool #export_c{if t.count!=1{return false;}if t[0].failed||t[0].sealed{return false;}t[0].sealed=true;return true;}
+hcl_sample::(us:int)->int #export_c{if us<0||us>2147483647{return -1;}return (us*6+62)/125;}
+hcl_boundary::(us:int)->int #export_c{n:=hcl_sample(us);return ifx n<0 then -1 else ((n+1023)/1024)*1024;}
+hcl_plan::(start_us:int,duration_us:int)->HostAudioClipPlan #export_c{
+ start:=hcl_sample(start_us);frames:=hcl_sample(duration_us);
+ if start<0||frames<1||start_us>2147483647-duration_us{return HostAudioClipPlan.{};}
+ return HostAudioClipPlan.{valid=true,start=start,frames=frames,total=((start+frames+1023)/1024)*1024};
+}
