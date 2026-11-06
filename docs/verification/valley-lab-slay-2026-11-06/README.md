@@ -421,3 +421,29 @@ did ours.
   over 1068 to 1077: one smooth turn.
 - The pack's digest changed, so `canyon-pack-policy.coax` pins
   `a2d937dbe5deed4ec3e1085ddae039160cadae2f9d585cefd3fba14c422b4a56`.
+
+### Lips and creases
+
+At frame 1125, Unreal's lips are darker, with a dark seam and a shadow under
+the lower lip. Ours were 20 percent brighter, with a bright dotted seam: the
+skin's environment specular spiked at grazing angles in the creases.
+M_Head_Echo's AmbientOcclusion (ORM.r to the power 1.6, remapped to 0.25..1)
+was unused.
+
+- `cv_echo_head_ao` computes that AO term. It occludes the skin's
+  environment specular through Lagarde's specular occlusion, and the 0.08
+  ambient.
+- Unreal's ray-traced shadows darken creases even under direct light, and our
+  shadow map can't resolve them. Skin light is scaled by
+  `min(1, 1.1 * AO)` (`SLAY_SKIN_CONTACT`), which leaves open skin unchanged.
+- Measured on a 130x85 crop of the mouth (sRGB, ours then Unreal):
+
+  | Area | Before | Now | Unreal |
+  |---|---|---|---|
+  | Seam | 83 | 33 | 38 |
+  | Crease under the lower lip | 106 | 84 | 72 |
+  | Lower lip | 181/116/120 | 155/93/98 | 145/92/99 |
+  | Upper lip | 187/145/154 | 179/134/143 | 167/125/133 |
+
+- `MF_PerPartRoughnessModulation` (mouth x0.9, upper lip x1.1, chin x0.96 from
+  the `T_Head_Skin_00x_R` masks) is not ported yet; its effect is small.
