@@ -67,10 +67,10 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
 // with Everglade's passes until the catalog's profile names its module. Everglade Classic, the old
 // module, is a tracked legacy page under its own slug; /worlds/everglade-5e is a redirect, no page.
 #test "Everglade Experimental binds only the Everglade controller" {
-  r := render_adoption("everglade-experimental", "everglade5e");
+  r := render_adoption("everglade-experimental", "fivelab");
   #assert r.tracked_legacy && !r.shared && r.profile == -1;
   #assert !render_adoption("everglade-experimental", "everglade").tracked_legacy;
-  #assert !render_adoption("everglade-experiment", "everglade5e").tracked_legacy;
+  #assert !render_adoption("everglade-experiment", "fivelab").tracked_legacy;
 }
 #test "Everglade on the 5E module and Everglade Classic are tracked legacy consumers" {
   route := render_adoption("everglade", "everglade5e");
@@ -155,7 +155,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "character-creator" && app == "fivelab" {return RenderAdoption.{tracked_legacy=true};}
   if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
-  if slug == "everglade-experimental" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "everglade-experimental" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-classic" && app == "everglade" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "metahuman-lab" && app == "metahumanlab" { return RenderAdoption.{tracked_legacy = true}; }

@@ -12,6 +12,7 @@ VERTEX_FLOATS :: 16;
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
+  experimental:bool; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
   on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
@@ -197,6 +198,7 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
   a.t0=s.pose_at; a.fade_at=-100; a.phase=(s.clock-s.pose_at)/figs.bd_seconds(a.clip); a.yaw=s.yaw;
   if s.pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s.pose_at+floor((s.clock-s.pose_at)/dur)*dur; }
   if s.walk.on {a=walk_figure(s,a);}
+  if s.experimental {a.x=s.player_x;a.z=s.player_z;a.y=glade.cg_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;a.clip=ifx s.moving then figs.BD_RUN else figs.BD_IDLE;a.phase=s.clock/figs.bd_seconds(a.clip);}
   n:=0;
   for i:0..<40 { if s.worn[i] && available(s,i) && s.source_count[i+(ifx s.female then 0 else 40)]>0 {
     p:=i+ifx s.female then 0 else 40;
@@ -279,6 +281,11 @@ line :: (out:[]f32,n:int,x:f32,y:f32,bx:f32,by:f32,k:f32,r:f32,g:f32,b:f32)->int
 }
 frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->int {
   if s[0].walk.on || s[0].profile_go {ensure(s);layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
+  if s[0].experimental {
+    ensure(s);if !still && dt>0 && dt<1 {s[0].clock+=dt;}
+    for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=shadow_frame(s);u[11]=1;
+    camera(s[0],u,w,h,k);return 0;
+  }
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.70,0.76,0.74); gold:=ink(k,0.83,0.69,0.43);
   n=text(out,n,"Character Create",(ifx s[0].mobile then 24.0f32 else 30.0f32)*k,(ifx s[0].mobile then 58.0f32 else 60.0f32)*k,(ifx s[0].mobile then 18 else 22)*k,white);
@@ -309,6 +316,15 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   return n;
 }
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
+  if s.experimental {
+    target:=glade.cg_height(s.player_x,s.player_z)+s.player_y+1.2;
+    cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw); cz:=cos(s.yaw);
+    u[16]=s.player_x+sx*cy*s.dist;u[17]=target+sy*s.dist;u[18]=s.player_z+cz*cy*s.dist;u[19]=h*0.89;
+    u[20]= -sx*cy;u[21]= -sy;u[22]= -cz*cy;u[23]=w*0.5;
+    u[24]=cz;u[25]=0;u[26]= -sx;u[27]=h*0.48;
+    u[28]= -sx*sy;u[29]=cy;u[30]= -cz*sy;
+    u[32]= -0.45;u[33]=0.78;u[34]= -0.42;return;
+  }
   // A steady studio camera; dragging turns the figure, the wheel changes distance.
   dist:=s.dist; close:=cc_clamp((2.2-dist)/1.55,0,1);target:=1.2+0.58*close;
   ey:=target-0.4+0.50*close+sin(s.pitch-0.1)*dist;ez:=cos(s.pitch-0.1)*dist;
@@ -323,6 +339,11 @@ camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
 }
 pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if s[0].walk.on {return true;}
+  if s[0].experimental {
+    if phase==0 {s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
+    else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,0.1,1.2);s[0].dx=x;s[0].dy=y;}
+    else if phase==2 || phase==3 {s[0].dragging=false;}return true;
+  }
   if phase==0 {
     for i:0..<18 { if i==15 && !s[0].mobile {continue;}if inside(s[0].boxes[i],x,y) { s[0].down=i; s[0].drag_id=id; return true; } }
     s[0].drag_pan=s[0].pan_mode;s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;return true;
@@ -356,13 +377,16 @@ key :: (s:[]Creator,k:int)->bool {
 }
 wheel :: (s:[]Creator,dy:f32) { if s[0].walk.on {return;} s[0].dist=cc_clamp(s[0].dist+dy*0.003,0.65,6); }
 // Page identity is a bounded host fact, not a search over arbitrary message content.
-page :: (facts:string)->bool {
+page_path :: (facts:string,path:string)->bool {
   at:=0;
   while at<facts.count { e:=at;while e<facts.count && facts[e]!='\n' { e+=1; } fact:=facts[at..<e];at=e+1;
-    if fact.count>=4 && fact[0..<4]=="url=" { url:=fact[4..<fact.count];start:=0;for j:0..<url.count-2 {if url[j..<j+3]=="://" {start=j+3;while start<url.count && url[start]!='/' {start+=1;} break;}}end:=start;while end<url.count && url[end]!='?' && url[end]!='#' { end+=1; } return url[start..<end]=="/worlds/character-creator" || url[start..<end]=="/worlds/character-creator/"; }
+    if fact.count>=4 && fact[0..<4]=="url=" { url:=fact[4..<fact.count];start:=0;for j:0..<url.count-2 {if url[j..<j+3]=="://" {start=j+3;while start<url.count && url[start]!='/' {start+=1;} break;}}end:=start;while end<url.count && url[end]!='?' && url[end]!='#' { end+=1; } return url[start..<end]==path; }
   }
   return false;
 }
+
+page :: (facts:string)->bool {return page_path(facts,"/worlds/character-creator") || page_path(facts,"/worlds/character-creator/");}
+experimental_page :: (facts:string)->bool {return page_path(facts,"/worlds/everglade-experimental") || page_path(facts,"/worlds/everglade-experimental/");}
 
 cc_clamp :: (v:f32,a:f32,b:f32)->f32 { if v<a {return a;} if v>b {return b;} return v; }
 
@@ -430,6 +454,8 @@ probe :: (s:Creator,f:int)->int {
   if f==0 {return s.source_n;} if f==1 {return s.outfit;}if f==2 {return ifx s.female then 1 else 0;}
   if f==3 {return s.variant;}if f==4 {return s.dye;}if f==5 {return s.skin;}if f==6 {return s.pose;}
   if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}if f==13 {return int(s.yaw*1000);}if f==18 {return ifx s.profile_ok then 1 else 0;}if f==19 {return ifx s.profile_failed then 1 else 0;}if f==14 {return s.glade_count;}
+  if f==26 && s.experimental {return int(s.player_x*1000);}
+  if f==27 && s.experimental {return int(s.player_z*1000);}
   if f>=20 && f<=25 {return walk_probe(s,f);}
   return -1;
 }
@@ -506,6 +532,11 @@ catalog_ready :: (s:Creator)->bool {for i:0..<80 {if appearance.PART_NAMES[i]!="
 // DOM button numbers: left 0, right 2. Latch the gesture on down; moves may report -1.
 mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
   if s[0].walk.on {return true;}
+  if s[0].experimental {
+    if phase==0 {s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
+    else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,0.1,1.2);s[0].dx=x;s[0].dy=y;}
+    else if phase==2 || phase==3 {s[0].dragging=false;}return true;
+  }
   if phase==0 {
     if s[0].dragging || (button!=0 && button!=2) {return true;}
     s[0].drag_button=button;

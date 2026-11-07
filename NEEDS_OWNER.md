@@ -2,7 +2,7 @@
 
 ## Everglade Experimental local preview (2026-11-07)
 
-- Open http://127.0.0.1:8891/worlds/everglade-experimental?offline=worker to play the local development preview.
+- Open http://127.0.0.1:8891/worlds/everglade-experimental and reload the page to play the Character Create glade preview.
 
 ## Coax compiler builds: GitHub mirror on the release Mac (2026-11-07)
 

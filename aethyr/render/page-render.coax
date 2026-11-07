@@ -6,10 +6,11 @@
 RENDER_WEB_SHARED :: false;
 #test "Character Create names its private shader only for its established producer" {
  #assert render_page_shader("character-creator","fivelab")=="/charactercreator.wgsl";
+ #assert render_page_shader("everglade-experimental","fivelab")=="/charactercreator.wgsl";
  #assert render_page_shader("5e-lab","fivelab")=="" && render_page_shader("character-creator","other")=="";
  #assert render_page_shader("character-creators","fivelab")=="";
 }
-render_page_shader :: (slug:string,app:string)->string {return ifx slug=="character-creator" && app=="fivelab" then "/charactercreator.wgsl" else "";}
+render_page_shader :: (slug:string,app:string)->string {return ifx (slug=="character-creator" || slug=="everglade-experimental") && app=="fivelab" then "/charactercreator.wgsl" else "";}
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) != 2 { return 2; }

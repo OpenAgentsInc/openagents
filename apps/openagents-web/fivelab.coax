@@ -1926,6 +1926,7 @@ LabWalk :: struct { on: bool; put: bool; x: f32; z: f32; face: f32; }
 // token moved by what the rules did (a shove, a new battle).
 lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
   w: LabWalk;
+  if s[0].creator[0].experimental {w.on=true;if !s[0].you_on {w.put=true;s[0].you_on=true;}return w;}
   if !s[0].started || !s[0].player || s[0].me < 0 || s[0].golden { s[0].you_on = false; return w; }
   b := bt(s);
   me := s[0].me;
@@ -1950,7 +1951,7 @@ lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
 lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
-                   jump = h & HOLD_JUMP != 0, theta = you_theta(s)};
+                   jump = h & HOLD_JUMP != 0, theta = ifx s[0].creator[0].experimental then s[0].creator[0].yaw else you_theta(s)};
 }
 // The world where you stand, for Everglade's step: the figures round you (lab_move_bodies), your
 // Speed as the walk's pace (30 feet Everglade's own), still while you can't move. The glade has no
@@ -1958,6 +1959,7 @@ lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
+  if s[0].creator[0].experimental {return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }
@@ -1991,12 +1993,14 @@ you_box :: (s: [] Lab) -> Rect {
   return Rect.{x0 = hi(cx - r, -hx), y0 = hi(cz - r, -hz), x1 = lo(cx + r, hx), y1 = lo(cz + r, hz)};
 }
 lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
+  if s[0].creator[0].experimental {return P3.{x=lo(25,hi(-25,x)),z=lo(2,hi(-45,z))};}
   if s[0].me < 0 { return P3.{x = x, z = z}; }
   r := you_box(s);
   return P3.{x = lo(r.x1, hi(r.x0, x)), z = lo(r.y1, hi(r.y0, z))};
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
+  if s[0].creator[0].experimental {s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=face;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on;}
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -3199,6 +3203,21 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
   return false;
 }
 
+#test "experimental glade starts with a free Everglade walker and accepts held keys" {
+  s:[1]Lab;
+  lab_message(s[..],600,"url=http://localhost/worlds/everglade-experimental\n");
+  #assert s[0].creator[0].experimental && s[0].creator[0].on;
+  u:[64]f32; out:[1]f32; _:=cc.frame(s[0].creator[..],out[..],u[..],1280,720,1,0,false); #assert u[11]==1;
+  w:=lab_walk(s[..]); #assert w.on && w.put;
+  #assert lab_key(s[..],'w',0); input:=lab_move_in(s[..]); #assert input.key_y==1 && input.theta==0;
+  edge:=lab_keep(s[..],50,50); #assert edge.x==25 && edge.z==2;
+  #assert !lab_move_world(s[..],0,0).still;
+  lab_you(s[..],2,0,3,1,false,false,0,0,0,0);
+  #assert s[0].creator[0].player_x==2 && s[0].creator[0].player_z==3;
+  #assert cc.probe(s[0].creator[0],26)==2000 && cc.probe(s[0].creator[0],27)==3000;
+  released:=lab_key_up(s[..],'w',0); #assert lab_move_in(s[..]).key_y==0;
+}
+
 // ---- input
 
 leave_to :: (s: [] Lab, url: string) {
@@ -3212,6 +3231,7 @@ switch_mode :: (s: [] Lab) {
   new_battle(s);
 }
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s[0].creator[0].experimental {if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
   if s[0].creator[0].on {return cc.key(s[0].creator[..],key);}
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)
@@ -3447,6 +3467,7 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
+  if kind==HOST_PAGE && cc.experimental_page(t) {s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }
