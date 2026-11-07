@@ -491,6 +491,34 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
   return p;
 }
 
+/** `p` lit as Character Create's glade (docs/verse/character-glade-lighting.md, the owner,
+ *  November 7: "rebuild everglade itself to use that lighting and foliage from character create").
+ *  Ocarina's smooth light in place of hard cel bands; Ore's noon sun, 4500 K under a 6500 K white
+ *  balance (aethyr/render/light.coax verse_style_balanced: 1, .856, .750); thin clear air near the
+ *  town with a warm forward glow far off; olive, not blue, shadows; the glade's soft-knee bloom and
+ *  saturation. Night, dawn and dusk keep their own keys. */
+verse_style_glade_light :: (p: StylePreset) -> StylePreset {
+  q := p;
+  q.band_soft = 0.30; q.char_soft = 0.22; q.shadow_cool = 0.6;
+  q.bloom_threshold = 0.62; q.bloom_knee = 0.30; q.saturation = 1.16;
+  k := q.keys[2];
+  k.key_r = 1.0; k.key_g = 0.856; k.key_b = 0.750; k.key_strength = 1.20;
+  k.tint_r = 0.62; k.tint_g = 0.68; k.tint_b = 0.78;
+  k.ground_r = 0.42; k.ground_g = 0.40; k.ground_b = 0.24;
+  k.haze_start = 70; k.haze_density = 0.007; k.haze_cap = 0.45;
+  k.haze_r = 0.60; k.haze_g = 0.75; k.haze_b = 0.88;
+  k.hkey_r = 1.00; k.hkey_g = 0.80; k.hkey_b = 0.50;
+  q.keys[2] = k;
+  return q;
+}
+#test "the glade light warms and softens only noon, and keeps the other keys" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  q := verse_style_glade_light(p);
+  #assert q.band_soft > p.band_soft && q.keys[2].key_b < q.keys[2].key_g && q.keys[2].key_g < q.keys[2].key_r;
+  #assert q.keys[2].haze_cap < p.keys[2].haze_cap && q.keys[2].haze_start > p.keys[2].haze_start;
+  #assert q.keys[0].key_strength == p.keys[0].key_strength && q.keys[1].haze_cap == p.keys[1].haze_cap && q.keys[3].exposure == p.keys[3].exposure;
+}
+
 /** `p` with no toon outlines: no outline pass (outline_max 0) and no rim line along silhouettes,
  *  on the world and on characters, at every key and on both tiers. Everglade draws so (the owner,
  *  October 29: "remove the toon outlines from everglade"); the other painterly realms keep theirs. */

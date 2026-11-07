@@ -6,6 +6,7 @@
 #load "../../aethyr/render/noise.coax";
 #load "../gpu/wgsl.coax";
 #load "../style.coax";
+#load "../../aethyr/render/filmic.coax";
 
 // Everglade's three passes: the sky, the scene (with the river's water in
 // two blended halves after it) and the HUD. Every number
@@ -1075,6 +1076,19 @@ eg_noise :: (p:V2)->f32 {
   s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
   return mix(mix(eg_hash(i),eg_hash(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(eg_hash(wg_add_f2f2(i,v2(0.0f32,1.0f32))),eg_hash(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
 }
+// Soft cloud shadows drift over the town and meadow by day, as on Character Create's glade
+// (gpu/character-glade.coax cg_cloud): two octaves of value noise that scale the key down to .4
+// over broad patches. drift: metres the wind has carried them.
+eg_cloud :: (p:V2,drift:V2)->f32 {
+  q:V2=wg_add_f2f2(p,drift);
+  c:f32=(eg_noise(v2(q.x*0.045f32+12.9f32,q.y*0.045f32-1.7f32))*0.7f32)+(eg_noise(v2(q.x*0.13f32,q.y*0.13f32))*0.3f32);
+  return 1.0f32-(0.6f32*smoothstep(0.44f32,0.60f32,c));
+}
+#test "Everglade cloud shadows stay between .4 and full sun and vary over the town" {
+  lo:f32=1;hi:f32=0;
+  for i:0..<400 {v:=eg_cloud(v2(cast(f32)(i%20)*6.0f32,cast(f32)(i/20)*6.0f32),v2(0,0));lo=fmin(lo,v);hi=fmax(hi,v);#assert v>=0.3999f32 && v<=1;}
+  #assert lo<0.6f32 && hi==1;
+}
 // The spells' marks on the ground (everglade-marks.coax): frost, ice, scorch, dust, moonlight, creepers,
 // ooze, thorns, wet, each painted into the ground's colour and the blades over it, an edge broken by
 // broad noise and feathered (the owner, October 30: never a flat slab with the grass poking through).
@@ -1477,6 +1491,15 @@ eg_scene_fs :: (s:EgS,front:bool,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
     fill:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(0.10f32,0.13f32,0.26f32),night),near),face),ifx figure then 1.7f32 else 0.5f32);
     res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f3(base,fill)),res.light.w);
   }
+  if ((s.look==EG_LOOK_CANOPY)&&(eg_st(1,u).w<0.5f32)) {
+    // leaves pass the sun behind them, as the glade's crowns (character-glade.coax): warm, most where
+    // the eye looks toward the key through the crown and least on faces turned square to it
+    l:V3=wg_sw_xyz_f4(eg_st(1,u));
+    v:V3=wg_normalize3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
+    back:f32=pow(clampf(wg_dot3(v,l),0.0f32,1.0f32),2.0f32);
+    scatter:f32=((0.12f32+(0.55f32*back))*(1.0f32-(abs(wg_dot3(n,l))*0.6f32)))*lit*eg_st(0,u).w;
+    res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(wg_mul_f3f3(base,v3(1.35f32,1.16f32,0.62f32)),scatter)),res.light.w);
+  }
   if (s.look==EG_LOOK_WINDOW) {
     // a lit room's light on its window's frame and sill
     spill:f32=s.dye.x*u[1341];
@@ -1598,7 +1621,9 @@ eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,height
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   v:V3=wg_normalize3(wg_sub_f3f3(world,v3(u[24],u[25],u[26])));
   base:V3=eg_weather_wet_base(dry,n,character,u); // rain darkens what it wets (W9)
-  w:f32=verse_style_wrap(wg_dot3(n,l))*lit;
+  // by day the key also passes the drifting cloud shadows (none under the moon)
+  shade:f32=ifx eg_st(1,u).w>0.5f32 then lit else lit*eg_cloud(v2(world.x,world.z),v2(u[2]*0.8f32,u[2]*0.5f32));
+  w:f32=verse_style_wrap(wg_dot3(n,l))*shade;
   band0:f32=ifx character then verse_style_bands2(w,eg_st(8,u).x,eg_st(8,u).y) else verse_style_bands(w,eg_st(7,u).x,eg_st(7,u).y,eg_st(7,u).z,eg_st(7,u).w);
   // past the near ground the bands draw together (spec 15, fine detail): a crown, a roof, a wall at
   // forty metres reads as one mass in its light, not a lace of lit and shadowed pieces
@@ -3399,9 +3424,14 @@ eg_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
   c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32))),0.070f32));
   return v4(c.x,c.y,c.z,1.0f32);
 }
+// The glade's film curve (aethyr/render/filmic.coax film_rec709, as Character Create's cg_film) in
+// place of the per-channel exponential: highlights roll off with their hue kept, midtones keep
+// contrast; then the preset's saturation and black lift.
+EG_FILM :: 0.9f32;
 eg_tone :: (c:V3,u:[]f32)->V3 {
-  e:f32=eg_st(18,u).x;
-  t:V3=v3(verse_style_tone(c.x,e),verse_style_tone(c.y,e),verse_style_tone(c.z,e));
+  e:f32=eg_st(18,u).x*EG_FILM;
+  f:=film_rec709(film_rgb(fmax(c.x,0.0f32)*e,fmax(c.y,0.0f32)*e,fmax(c.z,0.0f32)*e));
+  t:V3=v3(f.r,f.g,f.b);
   y:f32=verse_style_luma(t.x,t.y,t.z);
   t=v3(verse_style_saturation(t.x,y,eg_st(18,u).y),verse_style_saturation(t.y,y,eg_st(18,u).y),verse_style_saturation(t.z,y,eg_st(18,u).y));
   return v3(verse_style_lift(t.x,eg_st(18,u).z),verse_style_lift(t.y,eg_st(18,u).z),verse_style_lift(t.z,eg_st(18,u).z));
@@ -3490,7 +3520,7 @@ eg_shafts :: (p:V2,uv:V2,u:[]f32,post_aux:Tex2D,post_lin:Sampler)->f32 {
 // is the meadow's under it, the root in the blades' shade and the tip lighter and warmer; its normal
 // the ground's up, tilted toward the light as the wind bends it. None on the streets, the squares,
 // the river, the buildings' and props' footprints; the movers (their blob shadows) part it.
-EG_ROOT :: 0.78f32;
+EG_ROOT :: 0.58f32; // the glade's blades: deep at the root, lit at the tip (character-glade.coax)
 eg_ground_y :: (q:V2,u:[]f32,heights:[]f32)->f32 {
   g:V2=wg_div_f2f(wg_sub_f2f2(q,v2(u[34],u[35])),u[33]);
   i:I2=wg_cvt_i2f2(wg_floor_f2(g));
@@ -3500,8 +3530,9 @@ eg_ground_y :: (q:V2,u:[]f32,heights:[]f32)->f32 {
 // The meadow's green, sRGB (comparison round 1 against the references: the grass read acid lime, 0.55 to
 // 0.62 saturation at 0.6 value on screen, where theirs is 0.25 to 0.4 at 0.35 to 0.55): broad patches
 // from a cool deep green to a warm olive, the same under the blades as in them.
-EG_MEADOW_COOL :: ()->V3 {return v3(0.25f32,0.38f32,0.22f32);}
-EG_MEADOW_WARM :: ()->V3 {return v3(0.41f32,0.49f32,0.25f32);}
+// (November 7: toward Character Create's glade, a richer sunlit green with a warmer olive, not lime)
+EG_MEADOW_COOL :: ()->V3 {return v3(0.24f32,0.42f32,0.17f32);}
+EG_MEADOW_WARM :: ()->V3 {return v3(0.48f32,0.58f32,0.20f32);}
 eg_meadow_srgb :: (t:f32)->V3 {
   return wg_mix_f3f3f(EG_MEADOW_COOL(),EG_MEADOW_WARM(),t);
 }
@@ -3642,8 +3673,16 @@ eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
 }
 eg_grass_fs :: (g:EgG,u:[]f32,heights:[]f32,water_nodes:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
   paint_leaf_far:bool;
-  res:EgLit=eg_paint(g.albedo,wg_normalize3(g.n),g.world,eg_map_lit(g.world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp,paint_leaf_far),false,false,u,heights,water_nodes,paint_leaf_far);
-  res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(g.glow,0.18f32)),res.light.w);
+  lit:f32=eg_map_lit(g.world,v3(0.0f32,1.0f32,0.0f32),u,shadow_map,shadow_cmp,paint_leaf_far);
+  res:EgLit=eg_paint(g.albedo,wg_normalize3(g.n),g.world,lit,false,false,u,heights,water_nodes,paint_leaf_far);
+  // thin blades pass the sun behind them, as the glade's (character-glade.coax): warm, strongest
+  // looking toward the key, by day only and only where the key reaches
+  l:V3=wg_sw_xyz_f4(eg_st(1,u));
+  v:V3=wg_normalize3(wg_sub_f3f3(g.world,v3(u[24],u[25],u[26])));
+  back:f32=pow(clampf(wg_dot3(v,l),0.0f32,1.0f32),2.0f32);
+  day:f32=ifx eg_st(1,u).w>0.5f32 then 0.0f32 else 1.0f32;
+  through:V3=wg_mul_f3f(wg_mul_f3f3(g.albedo,v3(1.35f32,1.16f32,0.62f32)),(0.12f32+(0.55f32*back))*day*eg_st(0,u).w*lit);
+  res.light=wg_make_f4_f3f(wg_add_f3f3(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(g.glow,0.18f32)),through),res.light.w);
   return res;
 }
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.

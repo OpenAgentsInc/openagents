@@ -1156,10 +1156,14 @@ fn coax_p_verse_style_haze_glow(p_vdl: f32) -> f32 {
   var l_a: f32;
   var l_a2: f32;
   var l_a4: f32;
+  var l_p0: f32;
+  var l_mie: f32;
   l_a = coax_p_st_sat(l_vdl);
   l_a2 = (l_a * l_a);
   l_a4 = (l_a2 * l_a2);
-  return ((l_a4 * l_a4) * 0x1.ccccccp-2f);
+  l_p0 = coax_p_verse_style_haze_phase(0.0f, 0x1.666666p-1f);
+  l_mie = coax_p_st_sat(((coax_p_verse_style_haze_phase(l_a, 0x1.666666p-1f) - l_p0) / (coax_p_verse_style_haze_phase(0x1.000000p0f, 0x1.666666p-1f) - l_p0)));
+  return (coax_p_st_max((l_a4 * l_a4), l_mie) * 0x1.ccccccp-2f);
 }
 fn coax_p_verse_style_luma(p_r: f32, p_g: f32, p_b: f32) -> f32 {
   var l_r: f32 = p_r;
@@ -1448,6 +1452,15 @@ fn coax_p_verse_style_soft_step(p_e: f32, p_s: f32, p_x: f32) -> f32 {
 fn coax_p_st_sat(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
   return coax_p_st_min(0x1.000000p0f, coax_p_st_max(0.0f, l_x));
+}
+fn coax_p_verse_style_haze_phase(p_vdl: f32, p_g: f32) -> f32 {
+  var l_vdl: f32 = p_vdl;
+  var l_g: f32 = p_g;
+  var l_g2: f32;
+  var l_d: f32;
+  l_g2 = (l_g * l_g);
+  l_d = coax_p_st_max(((0x1.000000p0f + l_g2) - ((0x1.000000p1f * l_g) * coax_p_st_max((-0x1.000000p0f), coax_p_st_min(0x1.000000p0f, l_vdl)))), 0x1.a36e2ep-14f);
+  return ((0x1.000000p0f - l_g2) / (l_d * sqrt(l_d)));
 }
 fn coax_p_cv_area_a2(p_a: f32, p_size: f32, p_vh: f32) -> f32 {
   var l_a: f32 = p_a;

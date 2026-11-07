@@ -4300,7 +4300,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   else if s[0].day.mode != STYLE_CLOCK_FIXED { s[0].clock = 0.5; }
   fork_frame(s, ifx still then 0.0f32 else dt);   // a fork's rules: night holds the clock (everglade-fork.coax)
   // no toon outlines here (the owner, October 29): no rim line along any silhouette, people, props, buildings or trees
-  _ := verse_style_at(verse_style_no_outlines(verse_style_preset(STYLE_PAINTERLY, ifx phone(s) then STYLE_PHONE else STYLE_DESKTOP)), s[0].clock, u[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
+  _ := verse_style_at(verse_style_glade_light(verse_style_no_outlines(verse_style_preset(STYLE_PAINTERLY, ifx phone(s) then STYLE_PHONE else STYLE_DESKTOP))), s[0].clock, u[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
   sun := unit_or(v3(u[STYLE_AT + SU_KEY_DIR], u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 2]), v3(0, 1, 0));
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z;
   spells_light(s, u);

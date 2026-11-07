@@ -48,7 +48,10 @@ verse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,fallof
 // How much of the key light's colour the haze takes looking toward it (V.L).
 verse_style_haze_glow :: (vdl:f32)->f32 #export_c #effects(all) {
  a:=st_sat(vdl);a2:=a*a;a4:=a2*a2;
- return a4*a4*0.45f32;
+ // Ore's open-field noon fog is a broad forward-Mie lobe, not only a tight disc: the larger of
+ // the old cos^8 and a g .70 lobe rescaled to 0 at right angles and 1 at the key (4b's phase).
+ p0:=verse_style_haze_phase(0.0f32,0.70f32);mie:=st_sat((verse_style_haze_phase(a,0.70f32)-p0)/(verse_style_haze_phase(1.0f32,0.70f32)-p0));
+ return st_max(a4*a4,mie)*0.45f32;
 }
 // One channel of a surface through the haze: toward haze_c (the haze's colour
 // with the key's glow mixed in) by the haze's share f.
@@ -331,6 +334,8 @@ light_local_at :: (s: LocalLights, x: f32, y: f32, z: f32) -> MatRgb {
  #assert verse_style_haze_glow(-1.0f32)==0.0f32;
  #assert verse_style_haze_glow(0.0f32)==0.0f32;
  #assert abs(verse_style_haze_glow(1.0f32)-0.45f32)<0.0001f32;
+ // broader than cos^8 off the key, never weaker
+ #assert verse_style_haze_glow(0.5f32)>0.01f32 && verse_style_haze_glow(0.7f32)>0.45f32*0.0576f32 && verse_style_haze_glow(0.9f32)>=0.45f32*0.43f32;
  #assert abs(verse_style_fog(0.2f32,0.8f32,0.5f32)-0.5f32)<0.0001f32;
 }
 #test "haze is teal in the middle distance and the preset's blue far off" {

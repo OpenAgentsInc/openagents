@@ -952,6 +952,26 @@ the woods. Each frame draws the nearest 280 (140 on a phone), so a field
 stays cheap. Every placed thing's instance is 16 floats held in the page's
 state, so the pieces' caps (EDIT_CAPS, 1,432 in all) are kept lean.
 
+## The light (November 7: Character Create's glade light)
+
+Everglade is lit as Character Create's glade (docs/verse/character-glade-lighting.md), at the
+owner's request to rebuild it with that lighting and foliage:
+
+- `verse_style_glade_light` (verse/style-preset.coax), applied after `verse_style_no_outlines`:
+  smooth light (band softness .30) in place of hard cel bands, as Ocarina shades; at noon a
+  4500 K sun under a 6500 K white balance at 1.2; olive, not blue, shadows (shadow cool .6); clear
+  air to 70 m, thinner haze (density .007, cap .45) with a gold glow toward the sun; the glade's
+  soft-knee bloom (.62, .30) and saturation 1.16. Night, dawn and dusk keep their keys.
+- `eg_tone` uses the film curve (`film_rec709`) at the preset's exposure times .9.
+- `eg_cloud`: by day, drifting cloud shadows scale the key to .4 over broad patches.
+- Grass roots are darker (`EG_ROOT` .58), the meadow is a richer green, and grass blades and
+  tree crowns pass the sun behind them.
+- The engine's haze glow (`verse_style_haze_glow`) takes the larger of its old cos^8 disc and a
+  g .70 forward-Mie lobe, so the warm glow toward the sun is broader in every scene.
+
+`?weather=clear&clock=0.45` pins clear noon for comparisons. Captures:
+`docs/verification/everglade-glade-light-2026-11-07/` (`before.jpg`, `after-clear-noon.jpg`).
+
 ## Parity with the previous Everglade (October 30)
 
 From `verse/everglade/previous/`, the things the old Everglade had that this
