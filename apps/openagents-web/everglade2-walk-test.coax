@@ -57,3 +57,38 @@ e2t_segment_distance :: (px: f32, pz: f32, ax: f32, az: f32, bx: f32, bz: f32) -
   #assert -r.z > 4.25 * 4 - 0.6 && -r.z < 4.25 * 4 + 0.01;
   #assert -w.z > 1.5 * 4 - 0.3 && -w.z < 1.5 * 4 + 0.01;
 }
+// Walks the path from the glade to the clearing, `off` metres to the side of its middle, among every
+// collider the page builds (planted trees and rocks, the glade's own) and inside where you may stand.
+// The longest you were held up (seconds), and whether you reached the clearing.
+e2t_path_walk :: (s: [] E2, off: f32) -> f32 {
+  p := walk.walk_place(e2_road_x(-2) + off, 0, -2, 0);
+  dt := 1.0f32 / 20; held := 0.0f32; worst := 0.0f32;
+  for k: 0..<3000 {
+    x := p.pos.x; z := p.pos.z;
+    if z < E2_CLEAR_Z { return worst; }
+    tz := z - 3; tx := e2_road_x(tz) + off;
+    i := EgMoveIn.{key_y = 1, run = false, theta = e2_walk_theta(walk.atan2(tx - x, tz - z))};
+    i.run = walk.walk_runs(i.run, false, 0, 0);
+    w := e2_move_world(s, x, z); w.pace = e2_pace(i.run);
+    none: [1] f32;
+    p = step.eg_step_begin(p, i, w, dt); p = step.eg_step_advance(p, w, s[0].move_bodies[0..<w.bodies * 7], none[0..<0], none[0..<0], dt);
+    kept := e2_keep(s, p.pos.x, p.pos.z);
+    if kept.x != p.pos.x || kept.z != p.pos.z { return 1000; }   // an edge you can't see, on the path
+    s[0].you_x = p.pos.x; s[0].you_z = p.pos.z;
+    if z - p.pos.z < f32(E2_RUN_SPEED) * dt * 0.5 { held += dt; if held > worst { worst = held; } } else { held = 0; }
+  }
+  return 1000;
+}
+// A moment's slowing where the path bends is fine; being held up is not.
+#test "you run the whole path, glade to clearing, down its middle, and nothing stops you" #steps 6000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  #assert e2t_path_walk(s[..], 0) < 0.3;
+}
+#test "you run the whole path a metre left of its middle, and nothing stops you" #steps 6000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  #assert e2t_path_walk(s[..], -1) < 0.3;
+}
+#test "you run the whole path a metre right of its middle, and nothing stops you" #steps 6000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  #assert e2t_path_walk(s[..], 1) < 0.3;
+}

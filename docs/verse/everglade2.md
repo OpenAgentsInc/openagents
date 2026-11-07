@@ -81,11 +81,17 @@ coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
 `apps/openagents-web/everglade2.coax` and `everglade2-face.c` run the page:
 
 - The face steps Everglade's controller (`everglade-step.coax`). The page lifts your feet onto
-  the land, and keeps you in the glade, on the path's corridor, or in the clearing.
+  the land, and keeps you in the glade's 26 m circle, on the path's corridor, or in the
+  clearing. Thick woods stand wherever you may not go, so no edge of the world shows open ground.
 - Every tree trunk and rock stops you. A trunk is a capsule sized to its tree kind's trunk. A
   rock is a capsule along its long axis, fitted to its model's footprint. Both are scaled and
   turned with the placed piece, the glade's own trees and rocks included. Pebbles don't stop
-  you. `everglade2-walk-test.coax` walks into a boulder and a trunk through the real controller.
+  you. `everglade2-walk-test.coax` walks into a boulder and a trunk through the real controller,
+  and runs the whole path from the glade to the clearing down its middle and a metre to each
+  side without being held up.
+- Every collider comes from the same item list and transform as the drawn piece. The glade's
+  pieces that stand on the path out (`e2_glade_kept`) are left out of both the pack and the
+  colliders, so nothing unseen stands in your way.
 - The run and the walk are Everglade II's own: the page sets the step's pace, so v1's speeds
   (7.5 and 3.5 m/s) stay as they are. The gait plays by the distance you cover (a 3.4 m running
   stride and a 1.3 m walking one), so the feet keep pace.
@@ -93,25 +99,34 @@ coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
   level of detail, and draws each run as one instanced draw. About 75 draws make a frame.
 - Trees are whole to 36 m and lighter to 70 m. Past 70 m, one tree in three stands for its
   neighbours, a third larger, and past 160 m one in six, half again larger.
-- The glade's own grass draws only while the glade is near and in view.
+- Character Create's glade grass isn't drawn. At about 35 million vertices a frame it cost
+  about 10 ms of GPU time; the blade grass covers the glade instead.
 - Blade grass covers all of the ground except the bare path (`verse/everglade2/field.coax`). The
-  GPU places a tuft in each cell of a grid fixed to the land, in four tiers round the eye: 0.5 m
-  cells to 14 m, then 1 m to 30 m, 2 m to 64 m, and 4 m to 140 m, with tufts twice as wide each
-  tier. Each tier fades out as the next fades in over the same band, tuft by tuft, so no ring or
-  edge shows. The grass thins in at the path's edges and grows thinner, shorter, and darker under
-  the trees. The page draws the blocks of 16 by 16 cells in view, about 60 draws.
+  GPU places one tuft in each cell of a grid fixed to the land, seeded by the cell, in four
+  nested tiers round the eye: 0.5 m cells to 28 m, 1 m to 40 m, 2 m to 52 m, and 4 m to 140 m.
+  Each coarse tuft stands exactly where one of the four finer tufts under it stood. Past 16 m,
+  the other three shrink away one by one, and the one that stays grows wider, so the grass only
+  thins with distance and never swaps one tuft for another. The grass thins in at the path's
+  edges and grows thinner, shorter, and darker under the trees. The page draws the blocks of 16
+  by 16 cells in view.
 - A jump plays its takeoff over 0.2 s, its loop while you are in the air, and its landing over
   0.35 s. It blends over the run or the idle pose at 0.45: it eases in over 0.12 s after takeoff
   and out over 0.18 s after landing, so the legs keep their stride. These came from Everglade
   Experimental (`charactercreator.coax`).
-- The follow camera keeps above the ground and in front of the trunks between it and you. When
-  you look up, the eye slides up to 2.5 m over your right shoulder. The orbit then shortens so the
-  eye stays 0.2 m over the land. The shared orbit stops at 0.55 radians above the horizon;
-  Everglade II keeps its own range.
+- The follow camera looks straight down your back at every tilt, with no shoulder offset, and
+  keeps in front of the trunks between it and you. When you tilt up far enough that the eye
+  would go under the land, the eye stays where it meets the land, 0.2 m above it, and the view
+  keeps tilting up. As it does, the aim rises up to 2 m over your head, so you stand in the lower
+  middle of the view and the sky fills the rest. The eye moves smoothly onto and off the land.
+  Everglade II tilts from 1.2 radians below the horizon to 1.2 above.
+- A frame-rate counter in the bottom-right corner shows frames a second, averaged over 0.5 s.
+- The graphics governor (`aethyr/quality.coax`) sets how many pixels the page draws. It lowers
+  the resolution when frames run slow and raises it again when there's room.
 - The key light's shadow map follows you, 68 m across, in 2 m steps.
 
-At 1920 by 1080 on an Apple silicon Mac, a frame takes about 9 ms of GPU time at the glade and
-about 7 ms on the path, so the page holds 60 frames a second.
+Read the counter in your own browser for the frame rate. Headless measurements on a busy Mac
+put GPU time at 2400 by 1400 at about 16 ms at the glade (31 ms before the glade grass was
+dropped) and 17 ms at the clearing.
 
 `gpu/everglade2.coax` holds the passes. It uses Character Create's glade light, sky, fog, and
 materials, adds the kit pieces' vertex stage and the grass tufts' shading, and gives the woods'

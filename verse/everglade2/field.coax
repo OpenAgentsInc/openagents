@@ -1,8 +1,15 @@
 // Everglade II's grass field (docs/verse/everglade2.md): blade grass on all of the open ground and the
-// woods' floor, placed on the GPU (apps/openagents-web/gpu/everglade2.coax e2_field_vs) from a grid
-// fixed to the land, so it never swims as you walk. The grid comes in tiers round the eye, each with
-// cells twice the last's and tufts twice as wide. Each tier fades out over a band as the next fades
-// in over the same band, by a per-tuft dither, so no ring or edge shows. The page
+// woods' floor, placed on the GPU (apps/openagents-web/gpu/everglade2.coax e2_field_vs). Every tuft
+// belongs to one fine cell (0.5 m) of a grid fixed to the land, and its place, turn, height and
+// mesh come from that cell's hash alone, never from where you stand.
+//
+// The tiers nest. Each farther tier's cell holds four of the last tier's, and its one tuft is one of
+// those four (the cell's own hash picks which), at the same spot with the same look. So a farther
+// tier draws only tufts the nearer one drew too. Out to E2_FIELD_NEAR every tuft stands. Past it,
+// tufts drop out one by one by their own rank (each shrinking away over a short stretch), a quarter
+// left every E2_FIELD_STEP metres, and the ones left widen by as much to cover the ground. Where a
+// tier hands over to the next, the tufts left are exactly the next tier's, at the same width, so
+// nothing appears, swaps or grows near you as you walk. The page
 // (apps/openagents-web/everglade2.coax e2_field) draws the blocks of 16 by 16 cells in view.
 #load "forest.coax";
 
@@ -10,20 +17,99 @@ E2_FIELD_BASE :: 4194304;      // a base instance at or past this draws field tu
 E2_FIELD_CELLS :: 16;          // cells along a block's side: 256 tufts a draw
 E2_FIELD_TIERS :: 4;
 E2_FIELD_ROW :: 128;           // blocks a row in a tier's code (the zone is 90 tier-0 blocks deep)
-// Per tier (written as choices, not tables, so the shader can read them too): metres a cell, the
-// tier's outer edge (the next one's inner), and the fade band inside that edge.
+E2_FIELD_NEAR :: 16.0;         // metres from the eye that every tuft stands to
+E2_FIELD_STEP :: 12.0;         // past that, a quarter of the tufts left every this many metres
+E2_FIELD_FAR :: 140.0;         // and the last few fade out by here
+E2_FIELD_SHRINK :: 0.06;       // how much of a tier's share a tuft takes to shrink away
+E2_FIELD_MESH :: 1.31172;      // Grass_Common_Short's height
+// Per tier (written as choices, not tables, so the shader can read them too): metres a cell, and
+// the distances from the eye it draws over.
 e2_field_cell :: (t:int)->f32 {return ifx t==0 then 0.5 else ifx t==1 then 1.0 else ifx t==2 then 2.0 else 4.0;}
-e2_field_out :: (t:int)->f32 {return ifx t==0 then 14.0 else ifx t==1 then 30.0 else ifx t==2 then 64.0 else 140.0;}
-e2_field_band :: (t:int)->f32 {return ifx t==0 then 4.0 else ifx t==1 then 7.0 else ifx t==2 then 14.0 else 34.0;}
-// The meshes' heights: Grass_Wide_Short, Grass_Wispy_Short, Grass_Common_Short.
-e2_field_source :: (m:int)->f32 {return ifx m==0 then 1.20004 else ifx m==1 then 0.98610 else 1.31172;}
+e2_field_start :: (t:int)->f32 {return ifx t==0 then 0.0f32 else f32(E2_FIELD_NEAR)+f32(t)*f32(E2_FIELD_STEP);}
+e2_field_out :: (t:int)->f32 {return ifx t==3 then f32(E2_FIELD_FAR) else f32(E2_FIELD_NEAR)+f32(t+1)*f32(E2_FIELD_STEP);}
+// How much of tier t's own tufts stand at d: all at its start, down to a quarter at its end (the
+// next tier's); the last tier's fade from all to none.
+e2_field_rel :: (t:int,d:f32)->f32 {
+ if t==3 {v:=1-(d-e2_field_start(3))/(f32(E2_FIELD_FAR)-e2_field_start(3));return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
+ v:=pow(0.25f32,(d-f32(E2_FIELD_NEAR)-f32(t)*f32(E2_FIELD_STEP))/f32(E2_FIELD_STEP));return ifx v>1 then 1.0f32 else v;
+}
+// How wide the tufts left stand, against a near tuft: as much wider as they are fewer.
+e2_field_wide :: (t:int,d:f32)->f32 {
+ if t==3 {return 8;}
+ return pow(2.0f32,f32(t))/sqrt(e2_field_rel(t,d));
+}
+// How thick the grass grows at (x, z): none on the bare path (thinning in at its edges), thinner
+// under the trees, and full in the glade (the field is its only grass).
+e2_field_cover :: (x:f32,z:f32)->f32 {
+ if x<E2_WEST || x>E2_EAST || z<E2_FAR || z>E2_BACK {return 0;}
+ bare:=e2_smooth(0.10,0.42,e2_path(x,z));
+ return (1-bare)*(1-0.55*e2_forest(x,z));
+}
+// The hashes: a cell's (x, z) at level k (0 the fine cells), and a unit share of one.
+e2_ihash :: (v:u32)->u32 {
+ x:=v^(v>>16);x=mul_wrap(x,cast(u32)2146121005);x=x^(x>>15);x=mul_wrap(x,cast(u32)1663597195);return x^(x>>16);
+}
+e2_unit :: (h:u32)->f32 {return cast(f32)(h>>8)/16777216.0f32;}
+e2_field_hash :: (x:u32,z:u32,k:u32)->u32 {return e2_ihash(mul_wrap(x,cast(u32)73856093)^mul_wrap(z,cast(u32)19349663)^mul_wrap(k+cast(u32)1,cast(u32)83492791));}
+// Which of its four children a level-k cell's tuft is: bit 0 the x half, bit 1 the z half.
+e2_field_pick :: (x:u32,z:u32,k:u32)->u32 {return e2_field_hash(x,z,k+cast(u32)10)&cast(u32)3;}
+// A tier-t cell's fine cell: down through the picks to level 0.
+e2_field_fine_x :: (t:int,x:u32,z:u32)->u32 {
+ fx:=x;fz:=z;
+ if t>=3 {p:=e2_field_pick(fx,fz,3);fx=fx*2+(p&1);fz=fz*2+(p>>1);}
+ if t>=2 {p:=e2_field_pick(fx,fz,2);fx=fx*2+(p&1);fz=fz*2+(p>>1);}
+ if t>=1 {p:=e2_field_pick(fx,fz,1);fx=fx*2+(p&1);fz=fz*2+(p>>1);}
+ return fx;
+}
+e2_field_fine_z :: (t:int,x:u32,z:u32)->u32 {
+ fx:=x;fz:=z;
+ if t>=3 {p:=e2_field_pick(fx,fz,3);fx=fx*2+(p&1);fz=fz*2+(p>>1);}
+ if t>=2 {p:=e2_field_pick(fx,fz,2);fx=fx*2+(p&1);fz=fz*2+(p>>1);}
+ if t>=1 {p:=e2_field_pick(fx,fz,1);fx=fx*2+(p&1);fz=fz*2+(p>>1);}
+ return fz;
+}
+// A tier-t tuft's rank: 0 when the next tier keeps it too (it stays through this tier), else the
+// share of this tier's tufts at which it drops out (its own fine cell's hash).
+e2_field_rank :: (t:int,x:u32,z:u32,fx:u32,fz:u32)->f32 {
+ u:=e2_unit(e2_field_hash(fx,fz,cast(u32)5));
+ if t==3 {return 0.001f32+0.999f32*u;}
+ p:=e2_field_pick(x>>1,z>>1,cast(u32)(t+1));
+ if (x&1)==(p&1) && (z&1)==(p>>1) {return 0;}
+ return 0.25f32+0.75f32*u;
+}
+// How tall a tuft stands against its full height: whole while its rank is under the tier's share,
+// shrinking to nothing over E2_FIELD_SHRINK as the share falls to it.
+e2_field_grow :: (rel:f32,rank:f32)->f32 {v:=(rel-rank)/f32(E2_FIELD_SHRINK);return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
 
-#test "the tiers cross-fade to a whole, with no gap or edge" {
- for i:0..<300 {d:=f32(i)*0.5;sum:f32=0;for t:0..<E2_FIELD_TIERS {sum+=e2_field_weight(t,d);}
-  if d<e2_field_out(3)-e2_field_band(3) {#assert abs(sum-1)<0.001;}}
- #assert e2_field_weight(3,e2_field_out(3)+0.01)==0;
- // every weight changes smoothly: no step bigger than a small share in half a metre
- for t:0..<E2_FIELD_TIERS {for i:0..<300 {d:=f32(i)*0.5;#assert abs(e2_field_weight(t,d+0.5)-e2_field_weight(t,d))<0.2;}}
+#test "a tier's tuft is one of the nearer tier's, in the same spot" {
+ for t:0..<3 {for i:0..<200 {
+  x:=cast(u32)(i*37%61);z:=cast(u32)(i*53%59);
+  // the next tier's cell over this one, and the child of it that tier keeps
+  px:=x>>1;pz:=z>>1;p:=e2_field_pick(px,pz,cast(u32)(t+1));cx:=px*2+(p&1);cz:=pz*2+(p>>1);
+  #assert e2_field_fine_x(t+1,px,pz)==e2_field_fine_x(t,cx,cz) && e2_field_fine_z(t+1,px,pz)==e2_field_fine_z(t,cx,cz);
+  #assert e2_field_rank(t,cx,cz,0,0)==0;
+  // one in four of a tier's cells goes on into the next
+ }}
+ kept:=0;for i:0..<4000 {x:=cast(u32)(i%64);z:=cast(u32)(i/64);if e2_field_rank(0,x,z,x,z)==0 {kept+=1;}}#assert kept==1000;
+}
+#test "the grass thins smoothly past the near ground, and tiers hand over with nothing changing" {
+ // every tuft stands near you
+ for i:0..<32 {#assert e2_field_rel(0,f32(i)*0.5)==1 && e2_field_wide(0,f32(i)*0.5)==1;}
+ for t:0..<3 {
+  e:=e2_field_out(t);#assert e2_field_start(t+1)==e;
+  // the share left at a tier's end is the next tier's whole, and the tufts left are as wide
+  #assert abs(e2_field_rel(t,e)-0.25)<0.0001 && e2_field_rel(t+1,e)==1;
+  #assert abs(e2_field_wide(t,e)-e2_field_wide(t+1,e))<0.001;
+ }
+ // no step in the share or the width anywhere along the way
+ for t:0..<4 {a:=e2_field_start(t);b:=e2_field_out(t);for i:0..<100 {d:=a+(b-a)*f32(i)/100;q:=d+(b-a)/100;
+  #assert abs(e2_field_rel(t,q)-e2_field_rel(t,d))<0.05;#assert abs(e2_field_wide(t,q)-e2_field_wide(t,d))<0.3;}}
+ #assert e2_field_rel(3,f32(E2_FIELD_FAR))==0;
+}
+#test "a cell's hash spreads over the unit and differs cell to cell" {
+ lo:f32=1;hi:f32=0;same:=0;last:f32= -1;
+ for i:0..<500 {f:=e2_unit(e2_ihash(cast(u32)i*cast(u32)7919));if f<lo {lo=f;}if f>hi {hi=f;}if f==last {same+=1;}last=f;}
+ #assert lo<0.02 && hi>0.98 && same==0;
 }
 #test "the grass covers the land, leaves the path bare and thins in the woods" {
  #assert e2_field_cover(e2_road_x(-200),-200)==0;
@@ -32,22 +118,8 @@ e2_field_source :: (m:int)->f32 {return ifx m==0 then 1.20004 else ifx m==1 then
  #assert e2_field_cover(x+3.2,-250)>0.5;
  #assert e2_field_cover(6,-6)>0.4;
 }
-// How much of tier t stands at distance d from the eye: fading in over the last tier's band, out over its own.
-e2_field_weight :: (t:int,d:f32)->f32 {
- out:=e2_field_out(t);fo:=1-e2_smooth(out-e2_field_band(t),out,d);
- if t==0 {return fo;}
- inner:=e2_field_out(t-1);return e2_smooth(inner-e2_field_band(t-1),inner,d)*fo;
-}
-// How thick the grass grows at (x, z): none on the bare path (thinning in at its edges), thinner
-// under the trees, a little thinner in the glade's middle (its own grass grows there too).
-e2_field_cover :: (x:f32,z:f32)->f32 {
- if x<E2_WEST || x>E2_EAST || z<E2_FAR || z>E2_BACK {return 0;}
- bare:=e2_smooth(0.10,0.42,e2_path(x,z));
- woods:=e2_forest(x,z);glade:=1-e2_woods_share(x,z);
- return (1-bare)*(1-0.55*woods)*(1-0.35*glade);
-}
-// The block code a draw's base instance carries: tier, block column and row, and which mesh (0 Grass_Wide,
-// 1 Grass_Wispy, each keeping half the tufts; 2 Grass_Common, keeping all).
+// The block code a draw's base instance carries: tier, block column and row (the mesh slot is kept
+// for the code's layout; every tier draws Grass_Common_Short).
 e2_field_code :: (tier:int,bx:int,bz:int,mesh:int)->int {return ((((tier*E2_FIELD_ROW+bz)*E2_FIELD_ROW+bx)*4+mesh)*256)+E2_FIELD_BASE;}
 // A tier's block size, and where block (bx, bz) starts (its west x and north z).
 e2_field_block :: (tier:int)->f32 {return e2_field_cell(tier)*f32(E2_FIELD_CELLS);}

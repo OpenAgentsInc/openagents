@@ -11,7 +11,17 @@ E2_CLEAR_R :: 34.0;    // its radius: open meadow inside, the woods' edge round 
 E2_FAR :: -640.0;      // where the land stops (behind the wooded rise past the clearing)
 E2_BACK :: 80.0;       // and behind the glade
 E2_WEST :: -200.0; E2_EAST :: 220.0;
-E2_WALK :: 11.0;       // metres either side of the path you may wander
+E2_WALK :: 11.0;       // metres either side of the path you may wander (7 m into thick woods)
+E2_GLADE_WALK :: 26.0; // metres round the glade's middle you may wander (2 m into thick woods)
+// Which of the glade's own trees and rocks (verse/character-glade.coax cg_item) Everglade II keeps:
+// none on the path out (a small rock sat on its middle at z -13, hidden behind you as you met it),
+// and none in the road's way to the north. The pack and the colliders both ask this.
+e2_glade_kept :: (item:CgItem)->bool {
+ if !cg_visible(item) {return false;}
+ rd:=e2_road_dist(item.x,item.z);
+ if item.z< -1 && rd<1.0 {return false;}
+ return !(item.z< -26 && rd<4);
+}
 
 #test "the land is the glade's inside the glade and the path leaves it to the north" {
  for i:0..<20 {x:=f32(i)*2-20;z:=f32(i)*-1.5+2;#assert abs(e2_height(x,z)-cg_height(x,z))<0.001 || abs(x)>14 || z< -14;}
@@ -19,6 +29,10 @@ E2_WALK :: 11.0;       // metres either side of the path you may wander
  #assert e2_path(e2_road_x(-300),-300)>0.95 && e2_path(e2_road_x(-300)+8,-300)<0.01;
  #assert e2_clearing(e2_clear_x(),E2_CLEAR_Z)>0.99 && e2_forest(e2_clear_x(),E2_CLEAR_Z)==0 && e2_forest(e2_road_x(-250)+9,-250)>0.3;
  #assert e2_height(0,0)==0;
+}
+#test "nothing of the glade's stands on the path out" {
+ kept:=0;for i:0..<CG_ITEMS {gi:=cg_item(i);if e2_glade_kept(gi) {kept+=1;#assert gi.z> -1 || e2_road_dist(gi.x,gi.z)>=1.0;}}
+ #assert kept==CG_ITEMS-1;   // the one small rock on the path at z -13
 }
 #test "the woods close round the glade and leave its open ground alone" {
  for i:0..<16 {a:=f32(i)*0.3927;#assert e2_forest(cos(a)*16,sin(a)*16)==0;}
@@ -116,7 +130,9 @@ e2_gold :: (x:f32,z:f32)->f32 {
 e2_forest :: (x:f32,z:f32)->f32 {
  rd:=e2_road_dist(x,z);
  clump:=0.82+0.18*e2_smooth(0.25,0.6,e2_noise(x/30-4.2,z/30+6.6));
- return clump*cg_ramp(2.5,4.0,rd)*e2_wooded(x,z)*(1-e2_clearing(x,z));
+ // kept off the road only where its path is drawn (it fades out behind the glade, 6 to 12 m back)
+ road:=cg_ramp(2.5,4.0,rd);road=road+(1-road)*cg_ramp(6,12,z);
+ return clump*road*e2_wooded(x,z)*(1-e2_clearing(x,z));
 }
 // Where the woods may stand at all: not in the glade's own open ground (17 m round its middle),
 // thick from 24 m out, so the woods close round the glade on every side.

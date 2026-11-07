@@ -35,11 +35,18 @@ EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_defa
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_e2_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_e2_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_e2_uniform_floats(); }
-EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) { return 6400000u; }
+// The pixels the host draws at most (host.js drawn): the graphics governor's (everglade2.coax e2_pixel_budget).
+static uint32_t quality_state;
+EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
+  if (!quality_state) return 6400000u;
+  int64_t px = e2_pixel_budget(at(quality_state), width, height, dpr);
+  return px > 0 ? (uint32_t)px : 6400000u;
+}
 
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   width = w; height = h; dpr = scale; now += dt;
+  quality_state = state; e2_quality_frame(at(state), dt, w, h, scale);
   if (e2_start(at(state))) player = verse_player_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
   float frame = dt;
   float step = verse_player_counts(player, frame);
