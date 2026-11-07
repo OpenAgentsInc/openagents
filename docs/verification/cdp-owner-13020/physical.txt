@@ -1,0 +1,3 @@
+observed shot owner 85484 killed; Chrome 85489 and profile still alive
+PASS next CDP launch removed dead shot's Chrome group and profile; live owner's browser still answers
+cdp: reaped dead owner's browser group 85489

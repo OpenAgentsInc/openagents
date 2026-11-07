@@ -1,0 +1,74 @@
+// CDP's bounded launch-time process/profile recovery. OS effects remain in
+// process-native.c; the signal/admission decisions are Coax.
+#load "../sys/proc.coax";
+#load "../sys/fs.coax";
+#load "ws.coax";
+#load "cdp-owner-policy.coax";
+
+cxproc_self_pid :: ()->int #foreign #effects(all);
+cxproc_pid_alive :: (pid:int)->int #foreign #effects(all);
+cxproc_group_alive :: (pid:int)->int #foreign #effects(all);
+cxproc_group_signal :: (pid:int,sig:int)->int #foreign #effects(all);
+cxproc_pid_signal :: (pid:int,sig:int)->int #foreign #effects(all);
+
+cdp_owned_prefix :: (tag:string,out:[]u8)->string {
+  n:=ws_put(out,0,"coax-cdp-");n=ws_digits(out,n,cxproc_self_pid());n=ws_put(out,n,"-");n=ws_put(out,n,tag);
+  return ifx n<0 then "" else cast(string)out[0..<n];
+}
+cdp_owner_reap :: (root:string)->int {
+  names:[1]FsList;n:=fs_list(root,names[..]);if n<0 {return 0;}
+  rows:[1048576]u8;size:=cdp_owner_ps(0,rows[..]);if size<0 {return 0;}
+  removed:=0;until:=proc_now_ms()+3000;
+  for i:0..<n {
+    if proc_now_ms()>=until {break;}
+    name:=fs_entry(names[..],i);owner:=co_owner(name);
+    if owner<2 || cxproc_pid_alive(owner)==1 {continue;}
+    path:[1024]u8;profile:=fs_join(root,name,path[..]);if profile=="" || fs_kind(profile)!=FS_DIR {continue;}
+    file:[1100]u8;program:[4096]u8;
+    count:=fs_read(fs_join(profile,"cdp-executable",file[..]),program[..]);
+    if count>0 {
+      from:=0;
+      while from<size {
+        to:=from;while to<size && rows[to]!='\n' {to+=1;}
+        pid:=co_target(cast(string)rows[from..<to],cast(string)program[0..<count],profile);from=to+1;
+        if !co_reap(owner,cxproc_pid_alive(owner)==1,pid) {continue;}
+        // Re-observe immediately before signalling; a stale PID file or ps
+        // snapshot cannot authorise killing a different process.
+        fresh:[8192]u8;k:=cdp_owner_ps(pid,fresh[..]);
+        if k<0 || co_target(cast(string)fresh[0..<k],cast(string)program[0..<count],profile)!=pid {continue;}
+        if !co_reap(owner,cxproc_pid_alive(owner)==1,pid) {continue;}
+        if cxproc_group_signal(pid,PROC_SIGKILL)==0 {
+          tool_err("cdp: reaped dead owner's browser group ");num:[32]u8;z:=ws_digits(num[..],0,pid);tool_errln(cast(string)num[0..<z]);
+          wait:=proc_now_ms()+1000;while cxproc_group_alive(pid)==1 && proc_now_ms()<wait {proc_sleep(10);}
+        }
+      }
+    }
+    // Unknown/headed processes using the profile keep it. Remove only after
+    // a complete fresh process inventory shows no remaining profile user.
+    fresh:[1048576]u8;k:=cdp_owner_ps(0,fresh[..]);
+    if k<0 || co_profile_in(cast(string)fresh[0..<k],profile) || cxproc_pid_alive(owner)==1 {continue;}
+    for attempt:0..<10 {
+      if fs_remove(profile) && !fs_exists(profile) {removed+=1;break;}
+      proc_sleep(10);
+    }
+  }
+  return removed;
+}
+cdp_owner_ps :: (pid:int,out:[]u8)->int {
+  err:[4096]u8;number:[32]u8;n:=ws_digits(number[..],0,pid);
+  all:=[4]string.["/bin/ps","-axww","-o","pid=,pgid=,command="];
+  one:=[6]string.["/bin/ps","-ww","-p",cast(string)number[0..<n],"-o","pid=,pgid=,command="];
+  r:=ifx pid==0 then proc_run(all[..],1000,out,err[..]) else proc_run(one[..],1000,out,err[..]);
+  return ifx r.started==0 && r.status==0 && !r.timed_out && !r.cut then r.out_n else -1;
+}
+cdp_owner_pid :: (profile:string,program:string)->int {
+  rows:[1048576]u8;n:=cdp_owner_ps(0,rows[..]);if n<0 {return -1;}
+  i:=0;while i<n {j:=i;while j<n && rows[j]!='\n' {j+=1;}
+    pid:=co_target(cast(string)rows[i..<j],program,profile);if pid>1 {return pid;}i=j+1;
+  }return -1;
+}
+cdp_owner_sweep :: () {
+  // Derive the same temp root used by fs_temp, including TMPDIR overrides.
+  scratch:[1024]u8;path:=fs_temp("coax-cdp-scan-",scratch[..]);
+  if path=="" {return;}removed:=fs_remove(path);count:=cdp_owner_reap(fs_dir(path));
+}

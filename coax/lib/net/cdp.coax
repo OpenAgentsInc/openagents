@@ -34,6 +34,7 @@
 #load "../sys/tool.coax";
 #load "../sys/fs.coax";
 #load "../sys/proc.coax";
+#load "cdp-owner.coax";
 
 #load "socket_foreign.coax";
 #load "../crypto/rand_foreign.coax";
@@ -152,7 +153,7 @@ cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: i
 // The original browser observer profile used by render-host/goldens: the
 // three explicit background flags and no Chrome --window-size override.
 // Viewport dimensions remain the caller's Emulation.setDeviceMetricsOverride.
-// Existing cdp_flags/cdp_launch keep their byte-identical default arguments.
+// cdp_flags keeps the default flags; launch profiles carry an owner label.
 cdp_background_flags :: (a:[]Args,os:int,chrome:string,profile:string,w:int,h:int)->bool {
   base:[1]Args;if !cdp_flags(base[..],os,chrome,profile,w,h) {return false;}
   for k:0..<args_count(base[..]) {arg:=args_at(base[..],k);if arg.count>=14 && arg[0..<14]=="--window-size=" {continue;}if arg=="--remote-debugging-port=0" {for flag:[3]string.["--disable-background-timer-throttling","--disable-renderer-backgrounding","--disable-backgrounding-occluded-windows"] {if !args_add(a,flag) {return false;}}}if !args_add(a,arg) {return false;}}return true;
@@ -414,7 +415,7 @@ cdp_next_wait :: (attempt: int, waited_ms: int, limit_ms: int) -> int {
 }
 
 // Starts headless Chrome at w x h on a new profile (a temporary directory
-// named prefix...) and connects to its first page. False with cdp_error
+// labelled with the owner PID and caller prefix) and connects to its first page. False with cdp_error
 // set; whatever was started is closed again. A launch that fails (no
 // DevTools port, no page target, no connection) is tried once more.
 cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {return cdp_launch_profile(c,w,h,prefix,false);}
@@ -432,9 +433,16 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
   bin: [4096] u8;
   chrome := cdp_chrome(bin[..]);
   if chrome.count == 0 { return cdp_fail(c, "no headless Chromium on this machine; set CHROME", ""); }
-  profile := fs_temp(prefix, c[0].profile[..]);
+  cdp_owner_sweep();
+  owned:[512]u8;label:=cdp_owned_prefix(prefix,owned[..]);
+  profile := ifx label.count>0 then fs_temp(label, c[0].profile[..]) else "";
   c[0].profile_n = profile.count;
   if profile.count == 0 { return cdp_fail(c, "could not make a temporary profile", ""); }
+  if co_owner(fs_base(profile))<2 {cdp_close(c);return cdp_fail(c,"invalid browser profile label","");}
+  // Record the executable before spawning: even a SIGKILL immediately after
+  // spawn leaves enough identity for the next launch to find the whole group.
+  owner_file:[1100]u8;
+  if !fs_write(fs_join(profile,"cdp-executable",owner_file[..]),chrome) {cdp_close(c);return cdp_fail(c,"could not record browser ownership","");}
   a: [1] Args;
   wg: [32] u8; os := cdp_os(proc_getenv("CDP_WEBGPU", wg[..]), cxtool_os());
   fitted:=ifx background then cdp_background_flags(a[..],os,chrome,profile,w,h) else cdp_flags(a[..],os,chrome,profile,w,h);

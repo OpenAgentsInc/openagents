@@ -110,3 +110,23 @@ bound to its URL, so its caller passes 0 redirects.
 
     coax/bin/coax test coax/lib/net/http.coax --library
     apps/openagents-cli/build/openagents http GET https://openagents.com/api/playtest/access
+
+# Headless CDP ownership
+
+`cdp.coax` starts muted headless Chrome in a fresh temporary profile named
+`coax-cdp-OWNER_PID-CALLER_TAG…`. It records the selected executable before
+spawning. Every launch sweeps that temporary root for profiles whose owners
+are dead. `cdp-owner-policy.coax` admits only an exact executable, headless
+argument prefix, profile path and process-group leader; the process is
+re-observed immediately before its group is killed. A live owner, including
+a reused owner PID, is preserved. Unknown/headed profile users prevent profile
+deletion. The ordinary `cdp_close` still handles normal completion.
+
+Recovery uses bounded complete `ps` observations and a short sweep budget.
+Failed/truncated observations do not authorize signals or deletion. Legacy
+profiles without the owner label are not claimed by this recovery. The Mac's
+fd-guard remains a separate fallback, not a dependency of CDP cleanup.
+
+The [#13020 verification](../../../docs/verification/cdp-owner-13020/README.md)
+kills an actual screenshot tool and observes its browser/profile being removed
+by the next launch while another live owner's browser remains usable.

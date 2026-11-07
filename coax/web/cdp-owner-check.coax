@@ -1,0 +1,62 @@
+// Physical SIGKILL regression for #13020, using a real shot tool and Chrome.
+// coax/web/tool.sh cdp-owner-check PATH_TO_COMPILED_SHOT
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+oc_profile :: (owner:int,out:[]u8)->string {
+  root:[1024]u8;tmp:=proc_getenv("TMPDIR",root[..]);names:[1]FsList;n:=fs_list(tmp,names[..]);
+  for i:0..<n {name:=fs_entry(names[..],i);if co_owner(name)==owner {return fs_join(tmp,name,out);}}
+  return "";
+}
+oc_case :: (shot:string,keep:[]Cdp,next:[]Cdp,h:int)->bool {
+  if !cdp_launch(keep,320,180,"live-") {tool_errln(cdp_error(keep));return false;}
+  out:[1024]u8;tmp:[1024]u8;root:=proc_getenv("TMPDIR",tmp[..]);target:=fs_join(root,"shot.png",out[..]);
+  args:=[5]string.[shot,"data:text/html,ownership-test",target,"320x180","30000"];
+  ok:=true;for x:args {ok=ok && proc_arg(h,x);}ok=ok && proc_quiet(h) && proc_start(h)==0;
+  if !ok {return false;}
+  path:[1024]u8;profile:string;portfile:[1100]u8;until:=proc_now_ms()+5000;
+  while proc_now_ms()<until {
+    profile=oc_profile(proc_pid(h),path[..]);
+    if profile.count>0 && fs_kind(fs_join(profile,"DevToolsActivePort",portfile[..]))==FS_FILE {break;}
+    proc_sleep(20);
+  }
+  if profile.count==0 || proc_wait(h,0)!=PROC_RUNNING {tool_errln("FAIL screenshot tool did not stay running");return false;}
+  executable:[4096]u8;meta:[1100]u8;m:=fs_read(fs_join(profile,"cdp-executable",meta[..]),executable[..]);
+  if m<1 {return false;}browser:=cdp_owner_pid(profile,cast(string)executable[0..<m]);
+  if browser<2 || cxproc_pid_alive(browser)!=1 {tool_errln("FAIL no actual Chrome before SIGKILL");return false;}
+  killed:=cxproc_pid_signal(proc_pid(h),PROC_SIGKILL);status:=proc_wait(h,1000);
+  if killed!=0 || status!=137 || cxproc_pid_alive(browser)!=1 || !fs_exists(profile) {tool_errln("FAIL orphan was not alive before replacement launch");return false;}
+  print("observed shot owner % killed; Chrome % and profile still alive\n",proc_pid(h),browser);
+  if !cdp_launch(next,320,180,"replacement-") {tool_errln(cdp_error(next));return false;}
+  if cxproc_group_alive(browser)==1 || fs_exists(profile) {
+    tool_errln("FAIL replacement launch left orphan/profile");
+    // Failure cleanup is restricted to the exact group this case created.
+    stopped:=cxproc_group_signal(browser,PROC_SIGKILL);return false;
+  }
+  v:=cdp_evaluate(keep,"6*7");d:=cdp_doc(keep);
+  if v<0 || jv_int(d,v,-1)!=42 || !fs_exists(cast(string)keep[0].profile[0..<keep[0].profile_n]) {tool_errln("FAIL live owner's browser was disturbed");return false;}
+  print("PASS next CDP launch removed dead shot's Chrome group and profile; live owner's browser still answers\n");return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  if args_at(args[..],0)=="--case" {
+    // An unchanged guard log proves the LaunchAgent did not reap our orphan.
+    home:[1024]u8;g:[1100]u8;guard:=fs_join(proc_getenv("HOME",home[..]),".openagents/logs/fd-guard/guard.log",g[..]);before:=fs_mtime_ns(guard);
+    keep:[1]Cdp;next:[1]Cdp;h:=proc_new();ok:=oc_case(args_at(args[..],1),keep[..],next[..],h);
+    cdp_close(next[..]);cdp_close(keep[..]);released:=proc_release(h);
+    if fs_mtime_ns(guard)!=before {tool_errln("FAIL fd-guard log changed during check; result cannot exclude guard interference");ok=false;}
+    root:[1024]u8;reaped:=cdp_owner_reap(proc_getenv("TMPDIR",root[..]));return ifx ok then 0 else 1;
+  }
+  if args_count(args[..])!=1 {tool_errln("usage: cdp-owner-check PATH_TO_COMPILED_SHOT");return 2;}
+  // Run the physical case in a private TMPDIR, never sweeping others' profiles.
+  root:[1024]u8;dir:=fs_temp("coax-owner-check-",root[..]);if dir=="" {return 1;}
+  self:[4096]u8;n:=cxargs_len(0);if n<1 || n>self.count {return 1;}
+  for i:0..<n {self[i]=cast,trunc(u8)cxargs_byte(0,i);}
+  h:=proc_new();env:[1100]u8;value:=cdp_cat2("TMPDIR=",dir,env[..]);
+  argv:=[3]string.[cast(string)self[0..<n],"--case",args_at(args[..],0)];ok:=proc_env(h,value);for x:argv {ok=ok && proc_arg(h,x);}
+  if !ok || proc_start(h)!=0 {released:=proc_release(h);return 1;}
+  line:[8192]u8;until:=proc_now_ms()+30000;
+  while proc_now_ms()<until {k:=proc_line(h,100,line[..]);if k>=0 {print("%\n",cast(string)line[0..<k]);}else if k==PROC_EOF {break;}}
+  status:=proc_wait(h,1000);err:[4096]u8;print("%",proc_stderr(h,err[..]));released:=proc_release(h);
+  reaped:=cdp_owner_reap(dir);removed:=fs_remove(dir);return ifx status==0 then 0 else 1;
+}

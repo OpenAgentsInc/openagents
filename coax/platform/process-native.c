@@ -626,6 +626,11 @@ int64_t cxproc_group_alive(int64_t pgid) {
   return kill(-(pid_t)pgid, 0) == 0 || errno == EPERM;
 }
 
+int64_t cxproc_group_signal(int64_t pgid, int64_t sig) {
+  if (pgid <= 0) return -1;
+  return kill(-(pid_t)pgid, (int)sig) == 0 ? 0 : -1;
+}
+
 /* One process by id, not a child of ours: whether it is there (kill 0) and a signal to it. For the
    pid files a tool left behind for another run of itself. */
 int64_t cxproc_pid_alive(int64_t pid) {

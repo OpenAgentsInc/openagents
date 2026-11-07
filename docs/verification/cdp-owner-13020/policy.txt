@@ -1,0 +1,5 @@
+ok   #test CDP profile owners are canonical bounded PIDs in dedicated names (1 case, 5870 steps, 0 ms)
+ok   #test only the exact headless profile process group leader matches (1 case, 11051 steps, 0 ms)
+ok   #test a dead owner and distinct observed process are required to reap (1 case, 168 steps, 0 ms)
+ok   #test PID and bounded substring parser edges (1 case, 1637 steps, 0 ms)
+4 checks, 4 passed, 0 failed

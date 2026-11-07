@@ -1,0 +1,91 @@
+// Which owner-labelled profiles and observed process rows CDP may reap.
+#authority;
+
+#test "CDP profile owners are canonical bounded PIDs in dedicated names" {
+  #assert co_owner("coax-cdp-42-shot-ABC123")==42;
+  #assert co_owner("coax-cdp-2147483647-ABC123")==2147483647;
+  bad:=[12]string.["shot-ABC123","otherxxx-42-ABC123","coax-cdp-0-ABC123","coax-cdp-1-ABC123","coax-cdp-02-ABC123","coax-cdp--2-ABC123","coax-cdp-2147483648-ABC123","coax-cdp-x-ABC123","coax-cdp-42-ABC12","coax-cdp-42-../xxx","coax-cdp-42-ABC\n23","coax-cdp-42-ABC\r23"];
+  for name:bad {#assert co_owner(name)== -1;}
+  #assert co_owner("coax-cdp-2-ABC123")==2;
+  #assert co_owner("coax-cdp-42-tag. ABC123")==42;
+  #assert co_owner("coax-cdp-42ABC123")== -1;
+  zero:[23]u8;valid:="coax-cdp-42-shot-ABC123";for ch,i:valid {zero[i]=ch;}zero[zero.count-1]=0;
+  #assert co_owner(cast(string)zero[..])== -1;
+}
+#test "only the exact headless profile process group leader matches" {
+  p:="/tmp/coax-cdp-42-shot-ABC123";
+  row:="  57  57 /Applications/Google Chrome --headless=new --mute-audio --user-data-dir=/tmp/coax-cdp-42-shot-ABC123 --no-first-run --other";
+  #assert co_target(row,"/Applications/Google Chrome",p)==57;
+  #assert co_target("2 2 /c --headless=new --mute-audio --user-data-dir=/p --no-first-run","/c","/p")==2;
+  bad:=[10]string.["1 1 /c --headless=new --mute-audio --user-data-dir=/p --no-first-run","57 58 /c --headless=new --mute-audio --user-data-dir=/p --no-first-run","57 57 /other --headless=new --mute-audio --user-data-dir=/p --no-first-run","57 57 /c --headless --mute-audio --user-data-dir=/p --no-first-run","57 57 /c --headless=new --user-data-dir=/p --no-first-run","57 57 /c --headless=new --mute-audio --user-data-dir=/prefix --no-first-run","57 57 /c --headless=new --mute-audio --user-data-dir=/p2 --no-first-run","57 57 /c --headless=new --mute-audio --user-data-dir=/p --no-first-runner","57 x /c --headless=new --mute-audio --user-data-dir=/p --no-first-run","57"];
+  for text:bad {#assert co_target(text,"/c","/p")== -1;}
+  #assert co_target(row,"",p)== -1 && co_target(row,"/Applications/Google Chrome","")== -1;
+  #assert co_profile_in(row,p) && !co_profile_in(row,"/tmp/coax-cdp-42-shot-ABC12");
+  #assert !co_profile_in(row,"");
+  #assert co_target("2 2 c --headless=new --mute-audio --user-data-dir=p --no-first-run","c","p")==2;
+  #assert co_target("2 2 /c --headless=new --mute-audio --user-data-dir= --no-first-run","/c","")== -1;
+  #assert co_target(" 2 2 /c --headless=new --mute-audio --user-data-dir=/p --no-first-run","/c","/p")==2;
+  for text:[3]string.[""," ","2 2 "] {#assert co_target(text,"/c","/p")== -1;}
+  #assert co_profile_in("--user-data-dir=p","p") && !co_profile_in("x--user-data-dir=p","p");
+  #assert !co_profile_in("--user-data-dir=","");
+}
+#test "a dead owner and distinct observed process are required to reap" {
+  #assert co_reap(42,false,57) && co_reap(2,false,3) && co_reap(3,false,2);
+  #assert !co_reap(42,true,57) && !co_reap(42,false,42);
+  #assert !co_reap(-1,false,57) && !co_reap(1,false,57) && !co_reap(42,false,-1) && !co_reap(42,false,1);
+}
+
+#test "PID and bounded substring parser edges" {
+  #assert co_pid("1")==1 && co_pid("9")==9 && co_pid("10")==10 && co_pid("19")==19;
+  #assert co_pid("2147483647")==2147483647;
+  for text:[7]string.["","0","01","1/","1:","2147483648","11111111111"] {#assert co_pid(text)== -1;}
+  #assert co_dash("-x")==0 && co_dash("x-y")==1 && co_dash("xy")== -1 && co_dash("")== -1;
+  #assert co_at("ab",0,"a")==1 && co_at("ab",2,"")==2;
+  #assert co_at("ab",-1,"a")== -1 && co_at("ab",3,"")== -1 && co_at("ab",1,"ab")== -1 && co_at("ab",0,"z")== -1;
+}
+
+co_pid :: (s:string)->int #effects(all) {
+  if s.count<1 || s[0]=='0' {return -1;}
+  n:int;
+  for ch:s {
+    if ch<'0' || ch>'9' {return -1;}
+    d:=cast(int)(ch-'0');if n>(2147483647-d)/10 {return -1;}n=n*10+d;
+  }
+  return n;
+}
+co_owner :: (name:string)->int #effects(all) {
+  start:=co_at(name,0,"coax-cdp-");if start== -1 {return -1;}
+  tail:=name[start..<name.count];i:=co_dash(tail);if i== -1 {return -1;}
+  owner:=co_pid(tail[0..<i]);
+  if owner<2 || tail.count-i-1<6 {return -1;}
+  for ch:name {if ch=='/' || ch=='\n' || ch=='\r' || ch==0 {return -1;}}
+  return owner;
+}
+co_dash :: (s:string)->int #effects(all) {for ch,i:s {if ch=='-' {return i;}}return -1;}
+co_at :: (s:string,at:int,part:string)->int #effects(all) {
+  if at<0 || part.count>s.count-at {return -1;}
+  return ifx s[at..<at+part.count]==part then at+part.count else -1;
+}
+co_target :: (row:string,program:string,profile:string)->int #effects(all) {
+  if profile.count==0 {return -1;}
+  i:=0;while i<row.count && row[i]==' ' {i+=1;}j:=i;
+  while j<row.count && row[j]!=' ' {j+=1;}pid:=co_pid(row[i..<j]);
+  i=j;while i<row.count && row[i]==' ' {i+=1;}j=i;
+  while j<row.count && row[j]!=' ' {j+=1;}group:=co_pid(row[i..<j]);
+  if pid<2 || pid!=group {return -1;}
+  i=j;while i<row.count && row[i]==' ' {i+=1;}
+  i=co_at(row,i,program);i=co_at(row,i," --headless=new --mute-audio --user-data-dir=");
+  i=co_at(row,i,profile);i=co_at(row,i," --no-first-run");
+  if i== -1 || (i<row.count && row[i]!=' ') {return -1;}
+  return pid;
+}
+co_profile_in :: (row:string,profile:string)->bool #effects(all) {
+  if profile.count==0 {return false;}
+  for i:0..<row.count {
+    if i>0 && row[i-1]!=' ' {continue;}
+    at:=co_at(row,i,"--user-data-dir=");at=co_at(row,at,profile);
+    if at!= -1 && (at==row.count || row[at]==' ') {return true;}
+  }
+  return false;
+}
+co_reap :: (owner:int,alive:bool,pid:int)->bool #effects(all) {return owner>1 && !alive && pid>1 && pid!=owner;}
