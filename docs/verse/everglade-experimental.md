@@ -23,9 +23,10 @@ texture atlas; the original Character Create pack retains its 32 MiB budget.
 The experimental pack's showcase profile raises its budget to 128 MiB and
 adds one static specimen of each of the 103 Ultimate Food, 106 Ultimate RPG,
 48 Modular Dungeon and 12 Ultimate Animated Animals models. Food and RPG
-models stand in rows south of spawn, animals stand to their west, and dungeon
-pieces are displayed in the southeast meadow. The animals are static and the
-showcase pieces do not yet supply collision shapes.
+models stand in rows south of spawn, animals run in place to their west, and dungeon
+pieces are displayed in the southeast meadow. The animals use ten baked
+poses of the original Gallop clips, including bone-parented antlers. The showcase
+pieces do not yet supply collision shapes.
 
 The follow camera checks the village's nearby building collision boxes along
 the full boom, including the shoulder offset. It pulls in immediately when a
@@ -49,6 +50,10 @@ food_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-f
 rpg_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-rpg "$HOME/.openagents/assets")"
 dungeon_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source dungeon "$HOME/.openagents/assets")"
 animal_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-animals-static "$HOME/.openagents/assets")"
+animal_original="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-animals-source "$HOME/.openagents/assets")"
+animal_frames="$HOME/.openagents/assets/cache/ultimate-animals-run"
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
+  --python-exit-code 1 --python verse/tools/assets/animal_bake.py -- "$animal_original" "$animal_frames"
 unzip -p "$village_root/Engine Projects/Godot.zip" \
   'Godot/addons/quaternius/medievalvillagemegakit/L_SampleScene_1.tscn' > /tmp/everglade-village-source.tscn
 coax/web/tool.sh verse/tools/assets/village_layout.coax /tmp/everglade-village-source.tscn \
@@ -58,10 +63,10 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack --experimental \
   "$village_root" assets/registry/scenes/everglade-experimental-village.layout "$props_root" \
   assets/registry/scenes/everglade-experimental-showcase.layout "$HOME/.openagents/assets/objects" \
-  "$food_root" "$rpg_root" "$dungeon_root" "$animal_root"
+  "$food_root" "$rpg_root" "$dungeon_root" "$animal_root" "$animal_frames"
 coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
   assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
 python3 verse/tools/assets/character_glade_oracle.py \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
-  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase --animal-run
 ```

@@ -9,6 +9,7 @@ experimental = '--experimental' in sys.argv[3:]
 village = '--village' in sys.argv[3:]
 props = '--props' in sys.argv[3:]
 showcase = '--showcase' in sys.argv[3:]
+animal_run = '--animal-run' in sys.argv[3:]
 assert not props or village
 assert not village or experimental
 source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' else Path.home()/'.openagents/assets/originals'/revision/'source'
@@ -42,7 +43,7 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -54,6 +55,7 @@ for i in range(verts):
         elif 111<=marker<=114: prop_vertices.append(i)
         elif marker==115: clock_vertices.append(i)
         elif marker==115.25: showcase_vertices.append(i)
+        elif marker==115.375: animal_vertices.append(i)
         else: rock_vertices+=1
     if kind==1:
         ao=struct.unpack_from('<f',vb,at+28)[0]; assert .49<=ao<=1.01
@@ -184,7 +186,7 @@ if village:
             assert showcase_vertices==list(range(vi,showcase_vertices[-1]+1))
             rows=(repo/'assets/registry/scenes/everglade-experimental-showcase.layout').read_text().splitlines()
             assert len(rows)==269
-            for row in rows:
+            for row in rows[:257] if animal_run else rows:
                 package,name,sha=row.split('|');blob=(Path.home()/'.openagents/assets/objects'/sha).read_bytes()
                 assert hashlib.sha256(blob).hexdigest()==sha
                 size=struct.unpack_from('<I',blob,12)[0]; doc=json.loads(blob[20:20+size]); payload=blob[28+size:]
@@ -206,6 +208,19 @@ names=['Grass_Common_Short','Grass_Wide_Short','Grass_Wispy_Short']
 grows=[l.split() for l in cat.splitlines() if l.startswith('C glade/grass')]
 assert len(grows)==3
 next_index=first+count; heights=[]; instances=[]; template_vertices=0
+if animal_run:
+    draws=[l.split() for l in cat.splitlines() if l.startswith('C glade/animal')]
+    assert len(draws)==10 and animal_vertices
+    frame_positions=[]
+    for frame,draw in enumerate(draws):
+        assert draw[1]==f'glade/animal{frame}'
+        af,ac,al,aw,an,aj=map(int,draw[2:]);assert af==next_index and ac>0 and al==253 and aw==word and aj==0
+        indices=struct.unpack_from('<'+str(ac)+'I',ib,af*4);start=indices[0]
+        assert indices==tuple(range(start,start+ac)) and animal_vertices[0]<=start<start+ac<=animal_vertices[-1]+1
+        frame_positions.append([pos[start+i] for i in (0,ac//3,ac//2,ac-1)])
+        next_index+=ac
+    assert any(frame_positions[0]!=x for x in frame_positions[1:]), 'animal frames are static'
+else: assert not animal_vertices
 for group,(grow,name) in enumerate(zip(grows,names)):
     assert grow[1]==f'glade/grass{group}'
     gf,gc,gl,gw,gn,gj=map(int,grow[2:]); assert gf==next_index and gl==license and gj==0 and 1<=gn<=65535

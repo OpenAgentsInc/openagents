@@ -1653,7 +1653,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "cda90bb979eede2316d66417d3eab7b71e82bcb0be15ab3970806aba8ef9af26",
+    "sha256": "51b4f4f4350d4beb61c7c1d0619267ca887f9498680a6cb91cc305f6d4154e4a",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -1662,7 +1662,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "cbef14beb2afe1860969726fbbabe9f9d59c3bbb65f9b886e561357286684ab4",
+    "sha256": "75c00d8e1dfe6ed6298c2efd135c1520515ace70b8d323caaeda08f8cbab9233",
     "budget_bytes": 134217728
   },
   "terrain": {
@@ -1862,7 +1862,15 @@
       "sha256": "5ff3f7c083c9f936cd31658e433194c4bd7e492f409ab0ea64b0a450fd2e1f82"
     },
     "specimens": 269,
-    "animals": "static",
-    "collision": "visual only"
+    "animals": "Gallop clips baked to ten looping poses, in place",
+    "collision": "visual only",
+    "animal_source": {
+      "package": "ultimate-animals-source",
+      "revision": "8dbd5d8c483ea0b6528bfde8c1bbbbf30980b0fcdabf3bd7d1692db3e7e52a16"
+    },
+    "animal_baker": {
+      "path": "verse/tools/assets/animal_bake.py",
+      "sha256": "12828a934597739f5cb6ddd1e81b23d709364377695290c8ab21708155ea1b2f"
+    }
   }
 }
