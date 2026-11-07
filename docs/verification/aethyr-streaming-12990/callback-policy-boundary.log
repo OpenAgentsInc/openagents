@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/stream-callback-conformance.coax:26:172: mutant survived: '<' became '<='
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] < q[4] || q[6] < q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                                                                                                                                                             ^
+101 mutants, 100 killed, 1 survived

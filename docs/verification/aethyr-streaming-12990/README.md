@@ -1,12 +1,16 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [integrated native SDK record](walk-native-sdk-failures.md)
+Issue #12990 remains open. The [actual callback record](walk-callback-retirement.md)
+qualifies unwanted held image/buffer responses, retention through real effect
+join, retirement before newer generations, old-key/wrong-epoch refusals and
+unchanged current storage/pixels. Both browser tiers replay every accepted
+paid step through CPU codecs. Complete physical/transport/transient planning
+and the final adoption/teaching audit remain open.
+The [integrated native SDK record](walk-native-sdk-failures.md)
 adds 136 actual scoped staging/destination/submission/poll error histories,
 including upload deadline stops, full private retirement and exact CPU replay
 on two tiers and both hardware/software backends. Inputs are explicitly
-injected over real effects; physical OOM/reset is not qualified. Actual
-stale/superseded callbacks, complete physical/transport/transient planning
-and the final adoption/teaching audit remain open.
+injected over real effects; physical OOM/reset is not qualified.
 The [owned native upload record](walk-native-transfers.md)
 adds checked buffer/image transfers, retained pending views, early-release
 guards and actual held-observation probes on both tiers/backends. Exact
@@ -17,8 +21,8 @@ two-tier consumer adoption. The integrated SDK record extends these boundaries
 through actual failed-load cleanup and stopped-frame/drain observations.
 The [native load-failure record](walk-native-load-failures.md)
 now qualifies partial allocation, source-read and decoder-refusal cleanup,
-retirement/retry and exact CPU replay on both native tiers. Actual
-stale/superseded callbacks remain open.
+retirement/retry and exact CPU replay on both native tiers. The callback
+record extends the separate browser path through supersession and redelivery.
 The [actual category-pressure record](walk-category-pressure.md)
 now qualifies texture-line refusal against the native host's live budget,
 with staging/aggregate room, unchanged pixels/owners, continued movement,
@@ -61,8 +65,7 @@ GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
 real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
 historical failing gates and artifacts. Physical backend and transport/transient
-budget planning, remaining failed/superseded
-load ownership paths and the final adoption/teaching audit still prevent issue
+budget planning and the final adoption/teaching audit still prevent issue
 completion.
 
 Work starts from `df06d21dee90a9f54778143ffd6b8fe1c400e392`, in the reused
@@ -167,13 +170,6 @@ copies are published, including a failure after three reservations.
 
 ## Work still required before closing #12990
 
-- Actual stale/superseded callback ownership histories. Scoped native SDK
-  factory/upload errors and upload deadline stops now have v6 receipts;
-  streamed factories unwind partial creation and owned transfers retain
-  pending resources through terminal observation. Native allocation/source/decode errors use
-  normal completion and retirement. Browser corrupt/oversized/
-  cancelled/reordered receive and GPU validation failures already have
-  separate current receipts.
 - Complete transport/transient and physical backend allocation planning.
   Current traces reconcile logical resource costs; the native Vulkan
   backing extents and the browser's engine-owned transport arenas require

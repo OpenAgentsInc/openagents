@@ -42,8 +42,12 @@ held-observation histories preserve every paid-step digest. The separate
 now qualify scoped staging/destination/submission errors and upload-poll
 stops, with retained sources/owners and exact CPU replay on both tiers.
 Physical OOM/reset and physical Vulkan allocation admission are unqualified;
-actual stale/superseded callbacks and complete transport/transient planning
-remain open.
+complete transport/transient planning remains open. The [actual browser
+callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
+now holds responses across unwanted-state cancellation, joins and retires
+the old effect before a newer generation, and refuses old callbacks without
+touching current storage or pixels. Its accepted histories replay every
+paid step through CPU codecs on both tiers.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

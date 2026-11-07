@@ -4,7 +4,7 @@ The [native category-pressure qualifier](../../docs/verification/aethyr-streamin
 now requests a real source-derived texture companion against the live
 corridor's budget/inbox/renderer. Its refusal preserves the existing image
 and owners, and CPU replay records the counted admission boundary. Physical
-Vulkan planning and remaining failed/superseded load paths stay open. Native
+Vulkan and complete transport/transient planning stay open. Native
 [allocation/source/decode failures](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
 now complete and retire through the shared owner before retry. Its
 [checked Vulkan resource factories](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
@@ -17,6 +17,11 @@ adds 136 scoped staging/destination/submission/poll error histories, including
 upload deadline stops and exact CPU replay. Pending owners and sources stay
 retained until terminal observation; stopped attempts publish no ready data.
 These inputs do not qualify physical OOM or a driver reset.
+The [actual callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
+holds image/buffer responses across unwanted-state cancellation, observes
+physical join/retirement before a newer generation, then redelivers the old
+callback. Current storage, canonical state and pixels survive all eight raw
+old-key/wrong-epoch refusals. Both tiers replay every accepted paid step.
 
 `cells.coax` is the historical #12847 controller: 64 m cells, separate
 resident/simulate/draw states, hysteresis, persistent sleeping bodies,

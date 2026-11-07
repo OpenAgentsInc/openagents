@@ -1,0 +1,26 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/stream-callback-conformance.coax:24:39: mutant survived: '<=' became '<'
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] != q[4] || q[6] != q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                        ^
+aethyr/host/stream-callback-conformance.coax:24:36: mutant survived: 1 became 2
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] != q[4] || q[6] != q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                     ^
+aethyr/host/stream-callback-conformance.coax:24:75: mutant survived: 4 became 5
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] != q[4] || q[6] != q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                                                            ^
+aethyr/host/stream-callback-conformance.coax:24:90: mutant survived: 5 became 6
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] != q[4] || q[6] != q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                                                                           ^
+aethyr/host/stream-callback-conformance.coax:24:98: mutant survived: 4 became 5
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] != q[4] || q[6] != q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                                                                                   ^
+aethyr/host/stream-callback-conformance.coax:24:114: mutant survived: 5 became 6
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] != q[4] || q[6] != q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                                                                                                   ^
+aethyr/host/stream-callback-conformance.coax:24:162: mutant survived: 1 became 2
+    if (q[0] != 4 && q[0] != 8) || q[1] <= 0 || q[2] != 1 || q[3] <= 0 || q[4] < q[3] || q[5] != q[4] || q[6] != q[5] || q[7] <= q[6] || q[8] <= q[7] || q[9] <= q[1] || q[10] < q[8] {return false;}
+                                                                                                                                                                   ^
+aethyr/host/stream-callback-conformance.coax:25:45: mutant survived: 1 became 2
+    if q[11] != 1 || q[12] != 0 || q[13] != q[1] || q[14] != (ifx q[0] == 4 then 15 else 5) {return false;}
+                                              ^
+101 mutants, 93 killed, 8 survived

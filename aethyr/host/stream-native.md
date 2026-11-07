@@ -224,5 +224,8 @@ source hashes and timing. CPU replay reproduces allocation/codec prefixes
 and every paid step without executing GPU effects or wall time. All 136
 two-tier hardware/software histories and healthy-route regressions pass;
 the [record](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
-pins exact results and limitations. Actual stale/superseded callbacks and
-complete physical/transport/transient planning remain open.
+pins exact results and limitations. The separate [browser callback record](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
+qualifies held unwanted responses and old callback redelivery against newer
+generations, plus exact accepted-history CPU replay. The native local-file
+profile remains synchronous. Complete physical/transport/transient planning
+remains open.

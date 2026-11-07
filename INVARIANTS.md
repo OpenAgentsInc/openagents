@@ -2010,6 +2010,16 @@ Physical OOM/reset, surface/pipeline/readback adapters and native persistent
 rescue remain unqualified. See
 `docs/verification/aethyr-streaming-12990/walk-native-loss.md`.
 
+An unwanted unfinished load in the bounded browser stream carrier retains
+its generation, physical source/codec storage and tickets until its actual
+platform effect joins and retires. The owner cannot allocate a newer
+generation into that storage meanwhile. A captured old completion redelivered
+after a newer generation becomes ready cannot finish, decode, allocate or
+destroy that current owner; wrong epochs have the same fence. Actual held
+response/callback histories preserve the current source, counters, canonical
+state and full image, then replay every accepted paid step through CPU codecs.
+See `docs/verification/aethyr-streaming-12990/walk-callback-retirement.md`.
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,

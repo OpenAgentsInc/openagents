@@ -1,0 +1,66 @@
+{
+  "base_commit": "61944087f9",
+  "cases": [
+    {
+      "attempts": 25,
+      "cpu_changed_histories_rejected": 18,
+      "cpu_oracle_sha256": "91eace7940d1392f19096a110ba7e02746557102689d35e8b59fb754488ba280",
+      "cpu_report_sha256": "5f08269d33fc12aba0218c26ec4c9660da343c78d9da036dda167d60f2994865",
+      "gpu_changed_receipts_rejected": 54,
+      "gpu_oracle_sha256": "af3a8c7bdcee27d3915a0df5a78132b98de3921d7063dd9d54b37c5743fbe5c6",
+      "guard_refusals": 8,
+      "image_channels_equal": 230400,
+      "name": "callback-image-tier0-v2",
+      "paid_steps": 1807,
+      "receipt_sha256": "fbcfc90f63f8862b4f27e021f9eeeec4fe8586e0620f5a226647b55aa81fd02b"
+    },
+    {
+      "attempts": 25,
+      "cpu_changed_histories_rejected": 18,
+      "cpu_oracle_sha256": "59c8b7953a1891a7dc4a7d3180d181fb132608113c9ad1169a1e3a6859764a78",
+      "cpu_report_sha256": "74f965ec4486e05d014399fb79c1d9e8ed3aef0466bf2af1efebf674f5081ef1",
+      "gpu_changed_receipts_rejected": 54,
+      "gpu_oracle_sha256": "c4a7e4db4aaa798e3937317b01b0b86ae0e1292c343e654c10fb1d47036f6ff2",
+      "guard_refusals": 8,
+      "image_channels_equal": 230400,
+      "name": "callback-image-tier1-v2",
+      "paid_steps": 1807,
+      "receipt_sha256": "0a012ee74be0c15de4043df9b08049e89fe7cace3007397b8ef280ec0a39aea4"
+    },
+    {
+      "attempts": 33,
+      "cpu_changed_histories_rejected": 18,
+      "cpu_oracle_sha256": "105df937245ebcf0dcec041aaea0ee3ad5fb4597e774b6ce910df8e24bad6af9",
+      "cpu_report_sha256": "7413ad50be53773bc0c3ffd22c1f44208b7c8444c44ed4cce3b18889c0b16d87",
+      "gpu_changed_receipts_rejected": 54,
+      "gpu_oracle_sha256": "0e2147c2bf2f68ae3fb2b39d17a0198ec11397fd396017f6da54e73432d71efe",
+      "guard_refusals": 8,
+      "image_channels_equal": 230400,
+      "name": "callback-buffer-tier0-v4",
+      "paid_steps": 2087,
+      "receipt_sha256": "9d40f19e0f04065c71b9140a77f6a63d0c121cb08083a5fa85387f4930aee3f7"
+    },
+    {
+      "attempts": 33,
+      "cpu_changed_histories_rejected": 18,
+      "cpu_oracle_sha256": "9d74309d920de4f6d9a76540b5f8d89718125c0a4d9bf7aa1cbffbceb38cdd5b",
+      "cpu_report_sha256": "36ee54b9c8725830b6e0f36475fc9b731b56bd05b8f6a8f39d155f90f10415ce",
+      "gpu_changed_receipts_rejected": 54,
+      "gpu_oracle_sha256": "521a4995caef815b0e9486e7705eb9032ea9acbd747762ada43daf510474657f",
+      "guard_refusals": 8,
+      "image_channels_equal": 230400,
+      "name": "callback-buffer-tier1-v2",
+      "paid_steps": 2087,
+      "receipt_sha256": "0efea69f2d94f8fb4f457eec58462291e21ebd2c4712eaf02b48786b01f7ad3a"
+    }
+  ],
+  "schema": "aethyr.stream-callback-evidence.v1",
+  "totals": {
+    "attempts": 116,
+    "cpu_changed_histories_rejected": 72,
+    "gpu_changed_receipts_rejected": 216,
+    "guard_refusals": 32,
+    "image_channels_equal": 921600,
+    "paid_steps": 7788
+  }
+}
