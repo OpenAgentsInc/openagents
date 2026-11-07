@@ -631,7 +631,6 @@ fn coax_p_cg_environment_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_shadow
   var l_steep: f32;
   var l_cut: f32;
   var l_age: f32;
-  var l_palette: vec3f;
   var l_town: f32;
   var l_base: vec3f;
   var l_grey: f32;
@@ -688,8 +687,7 @@ fn coax_p_cg_environment_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_shadow
     if ((l_s.f5.x > (l_s.f5.y * 0x1.333334p0f)))
     {
       l_age = coax_p_cg_noise(coax_p_v2(((l_s.y.x * 0x1.666666p0f) + (l_s.y.y * 0x1.666666p-1f)), (l_s.y.z * 0x1.666666p0f)));
-      l_palette = coax_p_mix3(l_s.f5, coax_p_v3(0x1.000000p0f, 0x1.28f5c2p-1f, 0x1.99999ap-4f), (coax_p_smoothstep(0x1.333334p-2f, 0x1.800000p-1f, l_age) * 0x1.666666p-1f));
-      l_albedo = coax_p_cg_decode(l_palette);
+      l_albedo = coax_p_cg_decode(coax_p_cg_leaf_palette(l_s.f5, l_age));
     }
     l_albedo = coax_p_scale3(l_albedo, (0x1.666666p-1f + (0x1.ccccccp-2f * sqrt(coax_p_saturate(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z))))));
   }
@@ -1507,6 +1505,15 @@ fn coax_p_cg_autumn(p_x: f32, p_z: f32) -> f32 {
   l_b = (select(select(l_rear, 0x1.000000p0f, (l_rear > 0x1.000000p0f)), 0.0f, (l_rear < 0.0f)) * select(select(l_wood, 0x1.000000p0f, (l_wood > 0x1.000000p0f)), 0.0f, (l_wood < 0.0f)));
   l_v = select(l_b, l_a, (l_a > l_b));
   return select(l_v, 0x1.000000p0f, (l_v > 0x1.000000p0f));
+}
+fn coax_p_cg_leaf_palette(p_tint: vec3f, p_age: f32) -> vec3f {
+  var l_tint: vec3f = p_tint;
+  var l_age: f32 = p_age;
+  var l_red: f32;
+  var l_deep: vec3f;
+  l_red = coax_p_saturate(((0x1.000000p-1f - l_tint.y) * 0x1.800000p1f));
+  l_deep = coax_p_mix3(l_tint, coax_p_v3(0x1.51eb86p-1f, 0x1.99999ap-5f, 0x1.47ae14p-6f), (((0x1.000000p0f - coax_p_smoothstep(0x1.99999ap-3f, 0x1.19999ap-1f, l_age)) * 0x1.b33334p-1f) * l_red));
+  return coax_p_mix3(l_deep, coax_p_v3(0x1.000000p0f, 0x1.28f5c2p-1f, 0x1.99999ap-4f), (coax_p_smoothstep(0x1.99999ap-2f, 0x1.b33334p-1f, l_age) * 0x1.19999ap-1f));
 }
 fn coax_p_verse_style_luma(p_r: f32, p_g: f32, p_b: f32) -> f32 {
   var l_r: f32 = p_r;

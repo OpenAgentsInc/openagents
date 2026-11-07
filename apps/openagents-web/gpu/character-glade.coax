@@ -141,6 +141,18 @@ cg_town_albedo :: (m:f32,t:V3,p:V3,n:V3)->V3 {
  a:=cg_town_albedo(0,v3(0.6f32,0.58f32,0.5f32),v3(0.4f32,0.21f32,0),v3(0,0,1));b:=cg_town_albedo(0,v3(0.6f32,0.58f32,0.5f32),v3(0.4f32,0.0f32,0),v3(0,0,1));
  #assert b.x<a.x; // the mortar line is darker than the block
 }
+// An autumn crown's leaf colour by age (a world-anchored noise): old leaves turn orange, young
+// leaves on a red tree deepen to the reference's crimson, so one crown holds both (Preview_1.jpg).
+#test "red crowns keep crimson lobes and still show orange ones" {
+ young:=cg_leaf_palette(v3(1,0.22f32,0.025f32),0.1f32);old:=cg_leaf_palette(v3(1,0.22f32,0.025f32),0.95f32);
+ #assert young.y<0.12 && old.y>0.38 && young.x>0.65;
+ gold:=cg_leaf_palette(v3(1,0.72f32,0.18f32),0.1f32);#assert gold.y>0.65;
+}
+cg_leaf_palette :: (tint:V3,age:f32)->V3 {
+ red:=saturate((0.5f32-tint.y)*3.0f32);
+ deep:=mix3(tint,v3(0.66f32,0.05f32,0.02f32),(1.0f32-smoothstep(0.20f32,0.55f32,age))*0.85f32*red);
+ return mix3(deep,v3(1,0.58f32,0.10f32),smoothstep(0.40f32,0.85f32,age)*0.55f32);
+}
 cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
  kind:=s.local.x;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
@@ -159,7 +171,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   // The reference trail is packed olive earth, darker than sand.
   albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);}
  if (leaves) {
-  if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));palette:=mix3(s.tint,v3(1,0.58f32,0.10f32),smoothstep(0.30f32,0.75f32,age)*0.70f32);albedo=cg_decode(palette);}
+  if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));albedo=cg_decode(cg_leaf_palette(s.tint,age));}
   albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
  }
  if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}

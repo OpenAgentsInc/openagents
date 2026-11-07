@@ -116,11 +116,11 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "df0e9027d5611712100f62f8b77e25ed35fdaa7ad9db820eaff7fe3e59d6fac1"
+    "sha256": "29351bcfb87e8b54d7ab27354a955d316cc1c5c5cf10b000d0654e8e99b06108"
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "d478dce92d2343c3f175a9df8459550e2e3a753eedcc9ed81ec2c2c9461c5c44",
+    "sha256": "075097f03a083cae0d7a4a5c1ed74d4801ba00482b0fc847a4c9348f75bfe984",
     "bytes": 33525296,
     "profile": "character-create-legacy-static-v4"
   },

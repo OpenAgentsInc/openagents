@@ -144,3 +144,12 @@ BRDFs and GI/probes are still absent.
 
 See `docs/verification/character-player-light-2026-11-07/` for the same-camera
 comparison, controls journey, directional/shadow check and desktop/phone GPU graphs.
+
+## Crimson crowns (November 7)
+
+The reference's autumn crowns hold crimson lobes beside orange ones. Our leaf palette used to blend
+every red tree up to 70% toward orange, so the crimson never showed. `cg_leaf_palette` now takes
+young leaves on a red tree toward a dark crimson and turns only old leaves orange. The crimson is
+darker than the orange, because a bright red clips its red channel and reads as orange again. The
+foreground plants beside the near rock use deeper red-orange tints. Comparison:
+`docs/verification/character-glade-reference-light-2026-11-07/crimson-crowns.png`.
