@@ -39,6 +39,7 @@ E2 :: struct {
   shadow: [E2_DRAWS * 4] u32; shadow_n: int;
   frame: [16] f32;
   move_bodies: [E2_NEAR_BODIES * 7] f32;
+  bake: [figs.BD_BAKE_FLOATS] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
   held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
   you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32; autowalk: bool;
@@ -66,7 +67,8 @@ e2_catalog :: (s: [] E2, text: string) #export_c #effects(all) {
   }
   s[0].kits = any;
 }
-e2_bake :: (d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out); }
+// The clips, baked once into the state's own store, sized by the bodies module so it never falls behind.
+e2_bake :: (s: [] E2, d: [] figs.People) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, s[0].bake[..], false); }
 e2_layers_side :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].width >= 840 * s[0].k then 1024 else 512; }
 // Your saved character (message 16, the browser's own copy) or a kept appearance (4); the page's
 // facts (600): ?at=METRES starts you that far down the path (a shot's or a test's way in).

@@ -3,7 +3,8 @@
 // The controller steps your body as fivelab-face.c's Player mode does: everglade-step.coax
 // (aethyr/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
 // (aethyr/sticks.coax). The scene is three stores: the records (the glade, its grass, your
-// character's parts), the clips baked once, and the kit pieces in view this frame.
+// character's parts), the clips baked once (into the state, sized by fivelab-bodies.coax), and the
+// kit pieces in view this frame.
 #include "everglade2.h"
 #include "Everglade-step.h"
 #include "Sticks.h"
@@ -15,7 +16,6 @@
 static uint8_t inbox[4096];
 static uint8_t catalog[65536];
 static coax_t_People rig;
-static float bake[783120];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;
 static uint32_t frames;
 static int64_t draw_n;
@@ -62,7 +62,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t n = e2_frame(at(state), out, u, w, h, scale, dt, still != 0);
   draw_n = 0;
   if (e2_at(state)->bodies.e[0].ready) {
-    if (!baked) { e2_bake((coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
+    if (!baked) { e2_bake(at(state), (coax_v_t_People){&rig, 1}); baked = 1; }
     draw_n = e2_scene(at(state));
   }
   frames += 1;
@@ -87,14 +87,14 @@ EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { retur
 EXPORT("coaxial_frame_store") uint32_t coaxial_frame_store(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->frame.e; }
 EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(uint32_t state) { (void)state; return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
-  return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof bake : (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
+  return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
 }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)(uintptr_t)e2_at(state)->records.e : k == 1 ? (uint32_t)(uintptr_t)bake : (uint32_t)(uintptr_t)e2_at(state)->inst.e;
+  return k == 0 ? (uint32_t)(uintptr_t)e2_at(state)->records.e : k == 1 ? (uint32_t)(uintptr_t)e2_at(state)->bake.e : (uint32_t)(uintptr_t)e2_at(state)->inst.e;
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
   if (k == 0) return (uint32_t)e2_record_bytes(at(state));
-  if (k == 1) return (uint32_t)sizeof bake;
+  if (k == 1) return (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e);
   uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 32u;
 }
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { (void)state; return k == 1 ? baked : frames; }
