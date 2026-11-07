@@ -92,6 +92,31 @@ realm, a feature being shown off, or a moment a player really had.
   coax/web/tool.sh shot "http://127.0.0.1:8800/worlds/everglade?raid=preview&stage=darian" ~/Desktop/darian.png 1440x900 3000
   ```
 
+## Native film frames
+
+A realm that runs natively renders a clip without Chrome: `vk-realm`
+(`verse/gpu/vk-realm.c`) steps it headless, and writes every frame in a
+range as it was drawn, at a film rate (#13003, phase F0 of
+[film mode](../research/vork/2026-11-07-desktop-film-renderer.md)):
+
+```sh
+./vk-realm DRAWDIR GIVEN... --size 1920x1080 --headless 300 --fps 24 \
+  --frames-dir OUT --film-start 48 --film-end 287 [--facts STAGE.facts] [--replay ROOM.log] [--keys F:KEY:DOWN,...]
+coax/web/tool.sh aethyr/tools/film-frames.coax OUT --out OUT/film.mp4 [--audio MIX.wav]
+```
+
+`--fps N` advances each frame 1/N s through the realm's own fixed step and
+interpolation, so the world is the one the game would show at that time;
+the default stays 60, and a golden run is unchanged to the bit.
+`OUT/frame-NNNNNN.rgba16f` is the raw half-float output of the realm's final
+targets; `film.txt` names the size, targets, rate, range and device, and
+`timing.txt` the device open and each frame's step, GPU and read-back time.
+`film-frames.coax` writes `meta.json` (`film.frames.v1`: each frame's SHA-256
+of its raw bytes and its timings in microseconds), review PNGs of the
+screen target in `OUT/review/`, and with `--out` an H.264 encode. Two runs of
+the same input give the same hashes; hashes are not promised across GPU
+vendors.
+
 ## Next
 
 - Inputs on a timeline in `clip.coax` (key and pointer events at frame

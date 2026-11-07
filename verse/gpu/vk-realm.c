@@ -9,10 +9,17 @@
 //            [--net DIR] [--origin HOST[:PORT]] [--name NAME] [--leave-to VT]
 //   vk-realm DIR PACK ... --window [--fullscreen] [--size WxH] ...          in a window on the Wayland desktop (vkw.h)
 //   vk-realm DIR PACK ... --headless FRAMES [--out OUT.f32]                 offscreen
+//            [--fps N] [--frames-dir DIR [--film-start A] [--film-end B]]  film frames (#13003)
 // DIR holds spec.txt and its files. --size is what the passes draw at (default: the screen's,
 // or the spec's offscreen); on the screen it is scaled to the mode's size. --headless runs
 // FRAMES frames at 1/60 s each (as realm-run and wasm-run do), drawing every one but the first, and writes the last frame's targets as
-// float RGBA (vk-passes' OUT). Escape held a second, the --seconds limit, SIGINT or SIGTERM end it on the
+// float RGBA (vk-passes' OUT). --fps N steps each frame 1/N s instead (the realm's own fixed
+// step and interpolation decide the world at that time; the simulation is never stepped
+// differently). --frames-dir writes frames A..B (frame indices, default all) to DIR as
+// frame-NNNNNN.rgba16f (the --raw-out layout: half RGBA of each last target in turn), with
+// DIR/film.txt (size, targets, fps, range) and DIR/timing.txt (open, then each written
+// frame's step, GPU and read-back seconds); aethyr/tools/film-frames.coax makes them
+// review PNGs, hashes, meta.json and the encode. Escape held a second, the --seconds limit, SIGINT or SIGTERM end it on the
 // screen; display.sh-style launchers (verse/gpu/realm.sh) switch to a free VT first.
 // --net DIR gives the realm its network and what it keeps (realm-host.h, rh_net_open): its
 // requests go to HOST (default openagents.com, port 443) through DIR/../net or ./net (the
@@ -489,6 +496,7 @@ int main(int argc, char **argv) {
   const char *replay_path=NULL,*benchmark_path=NULL,*host_recovery=NULL,*host_window=NULL;
   int page = 0;
   int sample_capacity = MAX_FRAMES;
+  const char *frames_dir = NULL; double fps = 60; int film_start = 0, film_end = -1;
   for (int i = 3; i < argc; i++) {
     const char *a = argv[i], *val = i + 1 < argc ? argv[i + 1] : NULL;
     if (!strcmp(a, "--golden")) golden = 1;
@@ -514,6 +522,10 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--stats-frames")) sample_capacity = (int)verse_panel_sample_capacity(atoi(val)), i++;
     else if (!strcmp(a, "--out")) out = val, i++;
     else if (!strcmp(a, "--raw-out")) raw_out = val, i++;
+    else if (!strcmp(a, "--fps")) fps = atof(val), i++;
+    else if (!strcmp(a, "--frames-dir")) frames_dir = val, i++;
+    else if (!strcmp(a, "--film-start")) film_start = atoi(val), i++;
+    else if (!strcmp(a, "--film-end")) film_end = atoi(val), i++;
     else if (!strcmp(a, "--page")) page = atoi(val), i++;
     else if (!strcmp(a, "--leave-to")) leave_to = atoi(val), i++;
     else if (!strcmp(a, "--activity")) activity = val, touched = 1, i++;   // the person present: this file's time
@@ -532,6 +544,10 @@ int main(int argc, char **argv) {
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
   }
   signal(SIGINT, on_signal);
+  if (!(fps >= 1 && fps <= 240)) { fprintf(stderr, "vk-realm: --fps must be 1..240\n"); return 2; }
+  if (frames_dir && (!headless || film_start < 0 || (film_end >= 0 && (film_end < film_start || film_end >= headless)) || film_start >= headless)) {
+    fprintf(stderr, "vk-realm: --frames-dir needs --headless FRAMES and 0 <= --film-start <= --film-end < FRAMES\n"); return 2;
+  }
   if (!sample_capacity) { fprintf(stderr, "vk-realm: --stats-frames must be 64..100000\n"); return 2; }
   signal(SIGTERM, on_signal);
 
@@ -662,6 +678,21 @@ int main(int argc, char **argv) {
   if (headless) {
     // every frame drawn and waited for: the realm's step, then the GPU's
     // the frame before the spec was opened is the first of them
+    FILE *film_timing = NULL; uint16_t *film_raw = NULL;
+    if (frames_dir) {
+      char path[4096];
+      snprintf(path, sizeof path, "%s/film.txt", frames_dir);
+      FILE *f = fopen(path, "w");
+      if (!f) { fprintf(stderr, "vk-realm: cannot write %s\n", path); return 1; }
+      fprintf(f, "film-frames-v1\nsize %u %u\ntargets %d\nfps %.9g\nrange %d %d\ndevice %s\n", w, h, nlast, fps, film_start,
+              film_end < 0 ? headless - 1 : film_end, v.props.deviceName);
+      if (fclose(f)) return 1;
+      snprintf(path, sizeof path, "%s/timing.txt", frames_dir);
+      film_timing = fopen(path, "w");
+      film_raw = malloc((size_t)w * h * 8);
+      if (!film_timing || !film_raw) { fprintf(stderr, "vk-realm: cannot write %s\n", path); return 1; }
+      fprintf(film_timing, "open %.6f\n", now_s() - benchmark_begin);
+    }
     for (frames = rh_host_version()==1?0:1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
       double t0 = now_s();
       if (net_dir) rh_net_poll(&H);
@@ -669,7 +700,7 @@ int main(int argc, char **argv) {
 #ifdef AETHYR_RENDER_TYPED
       if(!rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
 #endif
-      hud_vertices = produce_frame((float)w,(float)h,scale,1.0f/60);
+      hud_vertices = produce_frame((float)w,(float)h,scale,(float)(1.0/fps));
 #ifdef AETHYR_RENDER_TYPED
       if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);frame_image(s);rhgr_deliver_media(s);
 #else
@@ -683,7 +714,23 @@ int main(int argc, char **argv) {
 #endif
       stepped[frames] = t1 - t0;
       took[frames] = now_s() - t1;
+      if (frames_dir && frames >= film_start && (film_end < 0 || frames <= film_end)) {
+        double t2 = now_s();
+        char path[4096];
+        snprintf(path, sizeof path, "%s/frame-%06d.rgba16f", frames_dir, frames);
+        FILE *f = fopen(path, "wb");
+        if (!f) { fprintf(stderr, "vk-realm: cannot write %s\n", path); return 1; }
+        for (int i = 0; i < nlast; i++) {
+          if (!last[i]) { fprintf(stderr, "vk-realm: no completed frame\n"); return 1; }
+          vks_read(&v, last[i], film_raw, (size_t)w * h * 8);
+          if (fwrite(film_raw, 8, (size_t)w * h, f) != (size_t)w * h) return 1;
+        }
+        if (fclose(f)) return 1;
+        fprintf(film_timing, "frame %d %.6f %.6f %.6f\n", frames, stepped[frames], took[frames], now_s() - t2);
+      }
     }
+    if (film_timing && fclose(film_timing)) return 1;
+    free(film_raw);
     if (!travelled) why = "it drew its frames";
 #ifdef AETHYR_RENDER_TYPED
     if(host_recovery){if(!world_replacement(s,&v,w,h,scale,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: replacement failed: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);}
