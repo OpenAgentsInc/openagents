@@ -453,6 +453,10 @@ lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { figs.bd_catal
 lab_bake :: (d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out); }
 // Existing optional layer-size hook: Character Create owns its quality choice.
 lab_layers_side :: (s:[]Lab)->int #export_c #effects(all) {return cc.texture_side(s[0].creator[0]);}
+// Character Create's shadow tiles for the host (coaxial_shadow_*_v1; charactercreator.coax shadow_frame): none on the lab's own pages.
+lab_shadow_atlas :: (s:[]Lab,coarse:int,which:int)->int #export_c #effects(all) {return cc.shadow_atlas(s[0].creator[0],coarse!=0,which);}
+lab_shadow_field :: (s:[]Lab,field:int)->int #export_c #effects(all) {return cc.shadow_field(s[0].creator[0],field);}
+lab_shadow_event :: (s:[]Lab,kind:int,arg:int) #export_c #effects(all) {if s[0].creator[0].on {cc.shadow_event(s[0].creator[..],kind,arg);}}
 // The figures' instances for the frame (the objects store) and their draws; the count of draws.
 lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
   if s[0].creator[0].on { return cc.scene(s[0].creator[0],s[0].bodies[..],out); }

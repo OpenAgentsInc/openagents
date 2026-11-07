@@ -272,6 +272,8 @@ const probeAt = probe ? Number(new URLSearchParams(location.search).get("at")) |
 const still = (probe && !probeAt) || matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Golden mode (goldens.ts sets coaxialGolden; ?golden by hand): an app that exports coaxial_golden holds its effects still.
 const golden = globalThis.coaxialGolden === true || new URLSearchParams(location.search).has("golden");
+// ?shadowmap: the one key-light map even where the realm lays out shadow tiles (A/B timing, #13016)
+const shadowMapOnly = new URLSearchParams(location.search).has("shadowmap");
 let frames = 0;
 // Development tests only: ?probe&do=STEPS runs input before the probed frame,
 // steps split by ";": "kTEXT" types keys, "K-2" a named key, "c40,120" clicks at CSS pixels, "m16:TEXT" a
@@ -1888,15 +1890,39 @@ function emptyLayout() {
 }
 function shadowLayout() {
   if (gpu.shadowLayout) return gpu.shadowLayout;
-  const { device } = gpu, size = matchMedia("(pointer: coarse)").matches ? 1024 : 2048;
-  gpu.shadowLayout = device.createBindGroupLayout({ entries: [
+  gpu.shadowLayout = gpu.device.createBindGroupLayout({ entries: [
     { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "depth" } },
     { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "comparison" } }] });
-  gpu.shadowMap = device.createTexture({ size: [size, size], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
-  gpu.shadowGroup = device.createBindGroup({ layout: gpu.shadowLayout, entries: [
-    { binding: 0, resource: gpu.shadowMap.createView() },
-    { binding: 1, resource: device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" }) }] });
+  shadowTexture();
   return gpu.shadowLayout;
+}
+// The map itself: 2048 square (1024 on a phone), or, when the realm's Coax lays out shadow tiles
+// (coaxial_shadow_atlas_v1: aethyr/render/cascades.coax, #13016), the atlas it asks for. Made again
+// when the engine wants another size; a new one is empty (shadowFresh: the tiles are opened again).
+function shadowTexture() {
+  const { device } = gpu, coarse = matchMedia("(pointer: coarse)").matches ? 1 : 0, x = engine?.exports;
+  const st = arena?.state;
+  const atlas = st && x?.coaxial_shadow_atlas_v1 && x.coaxial_shadow_v1 && x.coaxial_shadow_event_v1 ? [x.coaxial_shadow_atlas_v1(st, coarse, 0), x.coaxial_shadow_atlas_v1(st, coarse, 1)] : null;
+  const tiles = !shadowMapOnly && !!atlas && atlas[0] > 0 && atlas[1] > 0 && atlas[0] <= 8192 && atlas[1] <= 8192;
+  const [w, h] = tiles ? atlas : [coarse ? 1024 : 2048, coarse ? 1024 : 2048];
+  if (gpu.shadowMap && gpu.shadowMap.width === w && gpu.shadowMap.height === h && gpu.shadowTiles === tiles && gpu.shadowOwner === x) return;
+  gpu.shadowMap?.destroy();
+  gpu.shadowMap = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+  gpu.shadowView = gpu.shadowMap.createView();
+  gpu.shadowGroup = device.createBindGroup({ layout: gpu.shadowLayout, entries: [
+    { binding: 0, resource: gpu.shadowView },
+    { binding: 1, resource: device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" }) }] });
+  gpu.shadowTiles = tiles; gpu.shadowOwner = x; gpu.shadowCoarse = coarse; gpu.shadowFresh = tiles;
+}
+// A tile's clear: one triangle over the viewport (the tile) at depth 1, depth always written. Browser
+// glue only, as MEDIA_WGSL is: a render pass clears its whole attachment, and the other tiles keep theirs.
+const SHADOW_CLEAR_WGSL = "@vertex fn v(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f { return vec4f(f32(i & 1u) * 4.0 - 1.0, f32(i >> 1u) * 4.0 - 1.0, 1.0, 1.0); }";
+function shadowClear() {
+  if (gpu.shadowClear) return gpu.shadowClear;
+  const module = gpu.device.createShaderModule({ code: SHADOW_CLEAR_WGSL });
+  gpu.shadowClear = gpu.device.createRenderPipeline({ layout: "auto", vertex: { module, entryPoint: "v" },
+    primitive: { topology: "triangle-list" }, depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "always" } });
+  return gpu.shadowClear;
 }
 // The post pass, when the WGSL has post_fs: bg_fs and scene_fs draw light (rgba16float, its alpha
 // the share of it that blooms) and a second target, aux (rgba16float), instead of the screen;
@@ -1954,6 +1980,8 @@ function postTargets(w, h) {
 // Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
 function bindScene() {
   if (gpu?.renderer) return;
+  // an asset or pack installed: the shadow tiles are drawn again (rate-limited in Coax: aethyr/render/cascades.coax)
+  if (engine?.exports.coaxial_shadow_event_v1 && arena?.state) engine.exports.coaxial_shadow_event_v1(arena.state, 1, 0);
   const gpuAssets = assets.filter((a) => ["storage", "index", "layers"].includes(a.kind));
   if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => (!a.done || a.failed) && !engine.exports.coaxial_asset_optional_v1?.(a.i))) return;
   const x = engine.exports, { device } = gpu, resources = [];
@@ -2522,7 +2550,7 @@ function passTimerRead(timer) {
 }
 let traceRow = null, traceLast = 0;
 let clipNow = 0;
-let worldPaused = false, frameRequest = 0, worldFrames = 0, worldSubmissions = 0;
+let worldPaused = false, frameRequest = 0, worldFrames = 0, worldSubmissions = 0, shadowTilesDrawn = 0;
 function setWorldPaused(paused) {
   worldPaused = !!paused;
   hostLifeEvent(worldPaused?4:5);
@@ -2754,7 +2782,32 @@ function draw(now) {
   const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
   // the character pass (character-host.js): a detailed character the world places, in its passes
   const hero = draws && gpu.shadow ? characters.want(x, arena.state, memory, now) : false;
-  if (((draws || shadowDraws) && gpu.shadow) || gpu.caster) {
+  if (gpu.shadow && gpu.shadowLayout) shadowTexture();
+  if (gpu.shadow && gpu.shadowTiles) {
+    // The shadow tiles (aethyr/render/cascades.coax): open them once the atlas is new or the engine
+    // has none yet; then this frame draws at most the one tile the engine names, cleared, into its rect.
+    const st = arena.state;
+    if (gpu.shadowFresh || x.coaxial_shadow_v1(st, 6) <= 0) { x.coaxial_shadow_event_v1(st, 0, gpu.shadowCoarse); gpu.shadowFresh = false; }
+    const tile = x.coaxial_shadow_v1(st, 0);
+    if (tile >= 0 && !shadowDraws) x.coaxial_shadow_event_v1(st, 2, 0);   // nothing to draw it with: empty again
+    else if (tile >= 0) {
+      const [rx, ry, rw, rh] = [1, 2, 3, 4].map((f) => x.coaxial_shadow_v1(st, f));
+      const shade = timedPass(encoder, passTimer, { colorAttachments: [],
+        depthStencilAttachment: { view: gpu.shadowView, depthLoadOp: "load", depthStoreOp: "store" } });
+      const clears = x.coaxial_shadow_v1(st, 7), count = x.coaxial_shadow_v1(st, 6);
+      shade.setPipeline(shadowClear());
+      for (let k = 0; k < count; k++) if (clears & (1 << k)) {
+        const f = 16 + 4 * k;
+        shade.setViewport(x.coaxial_shadow_v1(st, f), x.coaxial_shadow_v1(st, f + 1), x.coaxial_shadow_v1(st, f + 2), x.coaxial_shadow_v1(st, f + 3), 0, 1); shade.draw(3);
+      }
+      shade.setViewport(0, 0, gpu.shadowMap.width, gpu.shadowMap.height, 0, 1); shade.setScissorRect(rx, ry, rw, rh);
+      shade.setBindGroup(0, gpu.bindGroup); shade.setPipeline(gpu.shadow);
+      drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet, true);
+      if (hero && x.coaxial_shadow_v1(st, 5) === 1) characters.cast(shade);
+      shade.end();
+      shadowTilesDrawn++;
+    }
+  } else if (((draws || shadowDraws) && gpu.shadow) || gpu.caster) {
     // cleared every frame even with nothing to cast, so a traced scene never reads a stale map
     const shade = timedPass(encoder, passTimer, { colorAttachments: [],
       depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
@@ -3051,7 +3104,7 @@ function send(kind, text = "") {
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
-  setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
+  setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [], takePassTimes: () => passTimes?.splice(0) ?? [],
   frameQueue: () => ({pending:gpu?.device.__coaxialFrames||0,bounded:typeof engine?.exports.coaxial_frame_admit==="function"}),
   quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,

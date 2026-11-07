@@ -19,6 +19,80 @@ Creator :: struct {
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
+  shadow:[1]CcShadow;   // the key light's two shadow tiles (shadow_frame)
+}
+// ---- the key light's shadow tiles (#13016, as Everglade's: aethyr/render/cascades.coax)
+// The glade holds still and the sun is fixed, so its shadow map is drawn once, into the atlas's left
+// tile, and again only when a pack installs (at most once every CC_SHADOW_STALE frames). Only the
+// player moves: she is drawn every frame into the right tile, through the same projection
+// (gpu/character-glade.coax cg_shadow_clip), and a surface takes the darker of the two. Until the
+// host opens the atlas (shadow_event 0) the one map is drawn every frame, as before.
+CC_SHADOW_STALE :: 30;
+CcShadow :: struct { on:bool; coarse:bool; glade:bool; now:bool; frame:int; pending:bool; last:int = -30; }
+// The size of a tile: the one map's, 2048 (1024 on a phone).
+cc_shadow_tile :: (coarse:bool)->int {return ifx coarse then 1024 else 2048;}
+shadow_atlas :: (s:Creator,coarse:bool,which:int)->int {
+  if !s.on {return 0;}
+  return cc_shadow_tile(coarse)*(ifx which==0 then 2 else 1);
+}
+// The frame: whether the glade's tile is drawn too (u[10] 3) or only hers (4); 2 without tiles.
+shadow_frame :: (s:[]Creator)->f32 {
+  h:=s[0].shadow[..];
+  if !h[0].on {return 2;}
+  h[0].frame+=1;
+  if h[0].pending && h[0].frame-h[0].last>=CC_SHADOW_STALE {h[0].glade=true;h[0].pending=false;h[0].last=h[0].frame;}
+  h[0].now=h[0].glade;h[0].glade=false;
+  return ifx h[0].now then 3.0f32 else 4.0f32;
+}
+// The host's fields (Everglade's: everglade.coax everglade_shadow_field): 0 the tile drawn (1 hers,
+// 0 when the glade's is drawn too), 1 to 4 the rect drawn in, 5 her character pass (none here), 6
+// the tiles, 7 those cleared first, 16 + 4 k tile k's rect.
+shadow_field :: (s:Creator,field:int)->int {
+  h:=s.shadow[0];
+  if !s.on || !h.on {return -1;}
+  t:=cc_shadow_tile(h.coarse);
+  if field==6 {return 2;}
+  if field>=16 && field<24 {j:=(field-16)%4;k:=(field-16)/4;return ifx j==0 then k*t else ifx j==1 then 0 else t;}
+  if field==0 {return ifx h.now then 0 else 1;}
+  if field==1 {return ifx h.now then 0 else t;}
+  if field==2 {return 0;}
+  if field==3 {return ifx h.now then 2*t else t;}
+  if field==4 {return t;}
+  if field==5 {return 0;}
+  if field==7 {return ifx h.now then 3 else 2;}
+  return -1;
+}
+// kind 0 the host made the atlas (arg 1 a phone's): the glade is drawn next frame; 1 geometry
+// installed; 2 it could not draw this frame: the glade again if it was due.
+shadow_event :: (s:[]Creator,kind:int,arg:int) {
+  h:=s[0].shadow[..];
+  if kind==0 {h[0]=CcShadow.{on=true,coarse=arg!=0,glade=true};}
+  else if kind==1 {h[0].pending=true;}
+  else if kind==2 {if h[0].now {h[0].glade=true;} h[0].now=false;}
+}
+#test "Character Create's shadow tiles: the glade once and on installs, rate-limited; her tile every frame" {
+  c:[1]Creator;
+  #assert shadow_frame(c[..])==2 && shadow_field(c[0],0)==-1 && shadow_atlas(c[0],false,0)==0;
+  c[0].on=true;
+  #assert shadow_atlas(c[0],false,0)==4096 && shadow_atlas(c[0],false,1)==2048 && shadow_atlas(c[0],true,0)==2048 && shadow_atlas(c[0],true,1)==1024;
+  shadow_event(c[..],0,0);
+  #assert shadow_frame(c[..])==3 && shadow_field(c[0],0)==0 && shadow_field(c[0],7)==3 && shadow_field(c[0],3)==4096 && shadow_field(c[0],1)==0;
+  for f:0..<200 {#assert shadow_frame(c[..])==4 && shadow_field(c[0],0)==1 && shadow_field(c[0],7)==2 && shadow_field(c[0],1)==2048 && shadow_field(c[0],3)==2048;}
+  #assert shadow_field(c[0],6)==2 && shadow_field(c[0],16)==0 && shadow_field(c[0],20)==2048 && shadow_field(c[0],23)==2048 && shadow_field(c[0],21)==0 && shadow_field(c[0],5)==0 && shadow_field(c[0],24)==-1;
+  // a pack a frame: the glade at most once in CC_SHADOW_STALE frames
+  glade:=0;
+  for f:0..<CC_SHADOW_STALE*4 {shadow_event(c[..],1,0);if shadow_frame(c[..])==3 {glade+=1;}}
+  #assert glade>=3 && glade<=4;
+  // a dropped glade frame draws it again next
+  c[0].shadow[0].pending=false;c[0].shadow[0].glade=true;
+  #assert shadow_frame(c[..])==3;
+  shadow_event(c[..],2,0);
+  #assert shadow_frame(c[..])==3 && shadow_frame(c[..])==4;
+  shadow_event(c[..],2,0);   // her frame dropped: nothing owed
+  #assert shadow_frame(c[..])==4;
+  // a phone's tiles
+  shadow_event(c[..],0,1);_:=shadow_frame(c[..]);
+  #assert shadow_field(c[0],3)==2048 && shadow_field(c[0],4)==1024;
 }
 DYES :: appearance.CA_DYES;
 SKINS :: appearance.CA_SKINS;
@@ -229,7 +303,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   for i:16..<18 {b:=s[0].boxes[i];label:=ifx i==17 then "USE IN EVERGLADE" else ifx s[0].profile_pending then "SAVING..." else ifx s[0].profile_failed then "RETRY SAVE" else ifx s[0].profile_ok && s[0].profile_revision==s[0].revision then "PLAYER SAVED" else "SAVE PLAYER";n=text(out,n,label,b.x0+8*k,b.y0+23*k,9*k,gold);}
   if !s[0].mobile {n=text(out,n,"LEFT DRAG: ROTATE / RIGHT DRAG: PAN / SCROLL: ZOOM",w*0.5-230*k,h-77*k,9*k,ink(k,0.20,0.23,0.15));}
   for i:0..<u.count { u[i]=0; }
-  u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=ifx s[0].scene_only then 1 else 0;
+  u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=shadow_frame(s);u[11]=ifx s[0].scene_only then 1 else 0;
   camera(s[0],u,w,h,k);
   if s[0].scene_only {return 0;}
   return n;

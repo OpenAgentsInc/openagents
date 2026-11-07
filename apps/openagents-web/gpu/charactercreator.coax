@@ -49,8 +49,8 @@ charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj
  }
  if (tex.w<0.35f32) {gpu_demote_helper();}
  c:V4;
- if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,shadow_map,shadow_cmp));}
- else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,shadow_map,shadow_cmp));}
+ if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
+ else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
  n:=normalize3(s.normal);z:=dot3(sub3(s.world,wg_at3(u,16)),wg_at3(u,20));
  sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;
  indirect:=c.w;packed:=cg_normal_pack(n);

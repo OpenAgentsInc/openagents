@@ -465,6 +465,11 @@ static bool has_line(uint32_t length, const char *prefix) {
 }
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->draws.e; }
+/* The key light's shadow tiles (aethyr/render/cascades.coax, everglade.coax everglade_shadows; coax/web/host.js
+   shadowLayout): the atlas the host makes, what this frame draws into it, and what happened to it. */
+EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(uint32_t state, int32_t coarse, int32_t which) { return (uint32_t)everglade_shadow_atlas(at(state), coarse, which); }
+EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(uint32_t state, int32_t field) { return city(state)->started ? (int32_t)everglade_shadow_field(at(state), field) : -1; }
+EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(uint32_t state, int32_t kind, int32_t arg) { everglade_shadow_event(at(state), kind, arg); }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return city(state)->started ? (uint32_t)everglade_draws(at(state)) : 0u; }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)(k == 3 ? everglade_river_node_bytes() : everglade_store_cap(k)); }

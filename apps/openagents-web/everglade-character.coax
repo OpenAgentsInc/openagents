@@ -108,6 +108,17 @@ everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
   // a little over half that covers the same disc
   b[SCL_SHADOW_INFO] = ifx on then 1.0f32 else 0.0f32;
   b[SCL_SHADOW_INFO + 1] = u[st + SU_SHADOW + 2] * 1.6 * 0.6 / hi(size, 1);
+  // with the shadow tiles open (everglade_shadows) she casts into and reads the nearest, its rows
+  // into the atlas's own -1 to 1; until it holds a picture, none
+  c := s[0].casc[0];
+  if on && c.on {
+    tile: [12] f32;
+    cascade_atlas_rows(c, 0, u[st + SU_SHADOW + 2], 2 * reach / hi(size, 1), reach, tile[..]);
+    for k: 0..<12 { b[SCL_SHADOW + k] = tile[k]; }
+    o := U_CASCADE + CASCADE_HEADER;
+    b[SCL_SHADOW_INFO] = ifx u[o + 21] > 0.5 then 1.0f32 else 0.0f32;
+    b[SCL_SHADOW_INFO + 1] = u[o + 16] * 0.6;
+  }
   b[SCL_SHADOW_INFO + 2] = f32(EG_CHARACTER_BIAS); b[SCL_SHADOW_INFO + 3] = f32(EG_CHARACTER_NORMAL_OFFSET);
   // the rain on her (eg_weather_wet_share: a character takes 0.8 of the wet)
   b[SCL_LOOK] = u[U_WEATHER + 4] * 0.8; b[SCL_LOOK + 1] = u[U_WEATHER];
@@ -176,6 +187,15 @@ EG_AUX_DISTANCE_CPU :: 256.0;
   #assert abs(q) < 0.05 && abs(qz - (0.5 - b[SCL_AT + 1] / 240)) < 0.0001;
   // the one lamp, at the dusk's glow
   #assert b[SCL_OUT] == 1 && b[SCL_LIGHTS + 7] == 1;
+  // with the shadow tiles open she maps into the nearest, the atlas's top left quarter, once it is drawn
+  everglade_shadow_event(s[..], 0, 0);
+  everglade_shadows(s[..], u[..]);
+  everglade_character(s[..], u[..], 1280, 720);
+  q = b[SCL_SHADOW] * b[SCL_AT] + b[SCL_SHADOW + 1] * b[SCL_AT + 1] + b[SCL_SHADOW + 2] * b[SCL_AT + 2] + b[SCL_SHADOW + 3];
+  qy := b[SCL_SHADOW + 4] * b[SCL_AT] + b[SCL_SHADOW + 5] * b[SCL_AT + 1] + b[SCL_SHADOW + 6] * b[SCL_AT + 2] + b[SCL_SHADOW + 7];
+  qz = b[SCL_SHADOW + 8] * b[SCL_AT] + b[SCL_SHADOW + 9] * b[SCL_AT + 1] + b[SCL_SHADOW + 10] * b[SCL_AT + 2] + b[SCL_SHADOW + 11];
+  #assert s[0].casc[0].draw == 0 && b[SCL_SHADOW_INFO] == 1 && q > -0.65 && q < -0.35 && qy > 0.35 && qy < 0.65 && abs(qz - (0.5 - b[SCL_AT + 1] / 240)) < 0.0001;
+  #assert abs(b[SCL_SHADOW_INFO + 1] - u[U_CASCADE + CASCADE_HEADER + 16] * 0.6) < 0.000001;
 }
 
 #test "Echo is a body once the host draws her: one capsule among yours, and the follow camera stops short of her" {

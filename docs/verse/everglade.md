@@ -972,6 +972,42 @@ owner's request to rebuild it with that lighting and foliage:
 `?weather=clear&clock=0.45` pins clear noon for comparisons. Captures:
 `docs/verification/everglade-glade-light-2026-11-07/` (`before.jpg`, `after-clear-noon.jpg`).
 
+## Shadow tiles (#13016)
+
+The sun's shadow map is an atlas of tiles round the eye (`aethyr/render/cascades.coax`), and a
+tile is drawn only when its view changes:
+
+- A desktop has four tiles of 1024 texels in a 2048 atlas, reaching 24, 60, 150 and 360 m. A
+  phone has two tiles of 768 texels in a 1536 by 768 atlas, reaching 20 and 75 m. The one map
+  this replaces reached 60 m at 2048 texels (5.9 cm a texel); the near tile's texel is 4.7 cm,
+  and the far tile reaches six times as far.
+- Each tile's middle snaps to a whole number of its texels along the light's axes. A tile is
+  drawn again when the eye moves more than 0.625 of its step from the middle, when the light
+  turns more than half a texel's shift under a 10 m caster, or when geometry is installed (at
+  most once every 30 frames). A still camera under a still sun draws nothing; a check proves it
+  for 48 places on both tiers.
+- At most one tile is drawn a frame. A tile waits out its period between draws: 1, 3, 6 and 12
+  frames on a desktop, 1 and 6 on a phone. Everglade has movers (people, the Ranger), so its
+  nearest tile is drawn every frame, with a quarter of the old map's texels.
+- The shader (`verse/everglade/gpu.coax` `eg_casc_lit`) reads the finest drawn tile that holds
+  the point with its filter. The filter keeps the old map's penumbra in metres, and the bias and
+  normal offset grow with a tile's texel. The ink-and-band look is unchanged.
+- Character Create (`apps/openagents-web/gpu/character-glade.coax`) uses two tiles of one fixed
+  projection: the glade, drawn once and again only when geometry changes, and the player, drawn
+  every frame. Shadow visibility is the lesser of the two.
+- The host (`coax/web/host.js`) keeps the one texture binding: it clears a tile with a full-tile
+  triangle at depth 1, then draws into the tile's rect with a scissor. `?shadowmap` keeps the old
+  one map, for comparisons.
+
+Measured with the flyover (November 7, M-series Mac shared with other agents' builds and
+browsers, so whole-frame GPU times swing between runs). Each pair ran back to back, `?shadowmap`
+then the tiles: the shadow pass p50 0.83 to 0.57 ms and 0.97 to 0.73 ms, p95 6.2 to 4.8 ms and
+9.5 to 7.2 ms. The whole frame's GPU p50 rose 1.9 and 2.7 ms in the same pairs, outside the
+shadow pass. Frames held p50 and p95 at 16.7 ms in all four runs; frames over 33 ms were 6 and 9,
+then 6 and 35, under the machine's load. The cause is not found yet: turning the far
+tiles off in the shader did not remove it. Summaries and captures:
+`docs/verification/shadow-cascades-2026-11-07/`.
+
 ## The flyover benchmark (#13017)
 
 The flyover flies Everglade's camera along a fixed path in headless Chrome. It records the time

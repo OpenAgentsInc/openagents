@@ -911,6 +911,67 @@ eg_light_space :: (u:[]f32)->EgLight {
   c:V3=v3(u[24],0.0f32,u[26]);
   return EgLight.{ax=ax,ay=ay,l=l,mx=verse_style_shadow_snap(wg_dot3(c,ax),reach,size),my=verse_style_shadow_snap(wg_dot3(c,ay),reach,size),reach=reach};
 }
+// ---- the shadow tiles (aethyr/render/cascades.coax cascade_rows; everglade.coax U_CASCADE, #13016):
+// once the host opens the atlas, the key light's map is up to four tiles of one depth texture, each
+// a ring further out and each drawn again only when its snapped view changes. The header says how
+// many and which is drawn this frame; each tile has its rect in the atlas, its rows across, up and in
+// depth, its filter and its edge. Zero, the one map above draws as before.
+EG_U_CASCADE :: 2432;
+eg_casc_on :: (u:[]f32)->bool {return u[EG_U_CASCADE]>0.5f32;}
+eg_casc :: (u:[]f32,k:int,row:int)->V4 {return wg_at4(u,EG_U_CASCADE+4+k*24+row*4);}
+// A point's place in tile k: across and up -1 to 1, its depth 0 toward the light to 1.
+eg_casc_place :: (w:V3,u:[]f32,k:int)->V3 {
+  p:V4=v4(w.x,w.y,w.z,1.0f32);
+  return v3(wg_dot4(eg_casc(u,k,1),p),wg_dot4(eg_casc(u,k,2),p),wg_dot4(eg_casc(u,k,3),p));
+}
+// Tile k's -1 to 1 into the atlas's (y up), where its caster draws.
+eg_casc_clip :: (q:V3,u:[]f32,k:int)->V4 {
+  r:V4=eg_casc(u,k,0);
+  return v4(q.x*r.z+2.0f32*r.x+r.z-1.0f32,q.y*r.w+1.0f32-2.0f32*r.y-r.w,q.z,1.0f32);
+}
+// How much of the key reaches p through the tiles: the finest drawn tile that holds p with its
+// filter, the one map's taps over the same metres of penumbra; outside them all, lit.
+// Tile k's share of the key at p, -1 when it holds no picture or p is outside it. Called with a
+// literal k (eg_casc_lit), so every row it reads is a fixed place in the uniforms, not one
+// computed per fragment.
+eg_casc_try :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,taps:f32,phone:f32,k:int)->f32 {
+  x:V4=eg_casc(u,k,5);
+  if x.y<0.5f32 {return -1.0f32;}
+  f:V4=eg_casc(u,k,4);
+  q:V3=eg_casc_place(wg_add_f3f3(p,wg_mul_f3f(n,f.w)),u,k);
+  edge:f32=1.0f32-x.x;
+  if !((abs(q.x)<edge)&&(abs(q.y)<edge)&&(q.z>0.0f32)&&(q.z<1.0f32)) {return -1.0f32;}
+  r:V4=eg_casc(u,k,0);
+  uv:V2=v2(r.x+(0.5f32+0.5f32*q.x)*r.z,r.y+(0.5f32-0.5f32*q.y)*r.w);
+  lit:f32=0.0f32;
+  {
+    t:f32=0.0f32;
+    while t<9.0f32 {
+      if (t>=taps) {break;}
+      o:V2=v2(verse_style_shadow_tap(t,phone,0.0f32)*f.x,verse_style_shadow_tap(t,phone,1.0f32)*f.y);
+      lit=lit+gpu_compare(shadow_map,shadow_cmp,wg_add_f2f2(uv,o),q.z-f.z);
+      t=t+1.0f32;
+    }
+  }
+  return smoothstep(0.1f32,0.75f32,lit/fmax(taps,1.0f32));
+}
+// How much of the key reaches p through the tiles: the finest drawn tile that holds p with its
+// filter, the one map's taps over the same metres of penumbra; outside them all, lit.
+eg_casc_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool)->f32 {
+  count:f32=u[EG_U_CASCADE];
+  phone:f32=eg_st(31,u).z;
+  taps:f32=ifx paint_leaf_far then 1.0f32 else eg_st(21,u).y;
+  a:f32=eg_casc_try(p,n,u,shadow_map,shadow_cmp,taps,phone,0);
+  if a>=0.0f32 {return a;}
+  b:f32=eg_casc_try(p,n,u,shadow_map,shadow_cmp,taps,phone,1);
+  if b>=0.0f32 {return b;}
+  if count<2.5f32 {return 1.0f32;}
+  c:f32=eg_casc_try(p,n,u,shadow_map,shadow_cmp,taps,phone,2);
+  if c>=0.0f32 {return c;}
+  d:f32=eg_casc_try(p,n,u,shadow_map,shadow_cmp,taps,phone,3);
+  if d>=0.0f32 {return d;}
+  return 1.0f32;
+}
 eg_shadow_place :: (w:V3,k:EgLight)->V3 {
   return v3(verse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),verse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),verse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
 }
@@ -935,8 +996,17 @@ eg_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,object
     o.pos=v4(0.0f32,0.0f32,-1.0f32,1.0f32);
     return o;
   } // fire, lightning and the water orb cast no shadow
-  q:V3=eg_shadow_place(v.world,eg_light_space(u));
-  o.pos=wg_make_f4_f2ff(v2(q.x,q.y),q.z,1.0f32);
+  if eg_casc_on(u) {
+    d:int=cast(int)u[EG_U_CASCADE+1];
+    if (d<0) {
+      o.pos=v4(0.0f32,0.0f32,-1.0f32,1.0f32);
+      return o;
+    }
+    o.pos=eg_casc_clip(eg_casc_place(v.world,u,d),u,d);
+  } else {
+    q:V3=eg_shadow_place(v.world,eg_light_space(u));
+    o.pos=wg_make_f4_f2ff(v2(q.x,q.y),q.z,1.0f32);
+  }
   o.uv=v.uv;o.uv1=v.uv1;
   o.slice=v.slice;
   o.local=v.local;
@@ -1039,6 +1109,7 @@ eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,p
   if (eg_st(21,u).x<1.0f32) {
     return 1.0f32;
   }
+  if eg_casc_on(u) {return eg_casc_lit(p,n,u,shadow_map,shadow_cmp,paint_leaf_far);}
   q:V3=eg_shadow_place(wg_add_f3f3(p,wg_mul_f3f(n,0.08f32)),eg_light_space(u));
   uv:V2=v2(0.5f32+(0.5f32*q.x),0.5f32-(0.5f32*q.y));
   // Outside the map the result is unconditionally lit; avoid all nine unused compares.

@@ -237,24 +237,41 @@ cg_shadow_clip :: (p:V3)->V4 {
  sun:=cg_sun_dir();right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
  return v4(dot3(r,right)/26.0f32,dot3(r,up)/26.0f32,0.5f32-dot3(r,sun)/70.0f32,1);
 }
-CgShadow :: struct {pos:V4;uv:V2;slice:u32;}
+// The shadow tiles (charactercreator.coax shadow_frame, #13016): u[10] 3 or 4 puts the glade's casters
+// in the atlas's left half, drawn only when u[10] is 3, and the player's in the right half, every
+// frame, both through cg_shadow_clip; `edge` keeps each inside its own half.
+CgShadow :: struct {pos:V4;uv:V2;slice:u32;edge:V2;}
+cg_shadow_tiles :: (u:[]f32)->bool {return u[10]>2.5f32;}
 charactercreator_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->CgShadow {
  o:CgShadow;
  if (u[10]<1.5f32 || instance>=65536) {o.pos=v4(0,0,-2,1);return o;}
- s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}o.pos=cg_shadow_clip(s.world);o.uv=s.uv;o.slice=s.slice;return o;
+ s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}
+ c:=cg_shadow_clip(s.world);o.pos=c;o.edge=v2(c.x,c.y);o.uv=s.uv;o.slice=s.slice;
+ if cg_shadow_tiles(u) {
+  glade:=s.dye.w>11.5f32;
+  if (glade && u[10]>3.5f32) {o.pos=v4(0,0,-2,1);return o;}
+  o.pos=v4(c.x*0.5f32+(ifx glade then -0.5f32 else 0.5f32),c.y,c.z,1);
+ }
+ return o;
 }
 charactercreator_shadow_fs :: (s:CgShadow,sheets:Tex2DArray,sheet:Sampler) {
+ if (abs(s.edge.x)>1.0f32 || abs(s.edge.y)>1.0f32) {gpu_demote_helper();}
  t:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,0);
  if (t.w<0.35f32) {gpu_demote_helper();}
 }
-cg_shadow_visibility :: (p:V3,n:V3,map:TexDepth,cmp:SamplerCompare)->f32 {
- c:=cg_shadow_clip(add3(p,scale3(normalize3(n),0.025f32)));uv:=v2(c.x*0.5f32+0.5f32,0.5f32-c.y*0.5f32);
- if (uv.x<0 || uv.x>1 || uv.y<0 || uv.y>1 || c.z<0 || c.z>1) {return 1;}
- texel:=1.0f32/cast(f32)wg_dims_depth(map).x;sum:f32=0;
+// The map's taps at uv: x scaled by `half` (1 the one map, 0.5 a tile) and offset by `at`.
+cg_shadow_taps :: (uv:V2,z:f32,half:f32,at:f32,map:TexDepth,cmp:SamplerCompare)->f32 {
+ texel:=1.0f32/(cast(f32)wg_dims_depth(map).x*half);sum:f32=0;
  for i:0..<12 {a:=cast(f32)i*2.399963f32;r:=sqrt((cast(f32)i+0.5f32)/12.0f32)*4.0f32*texel;
-  sum=sum+gpu_compare(map,cmp,v2(uv.x+cos(a)*r,uv.y+sin(a)*r),c.z-0.0012f32);
+  sum=sum+gpu_compare(map,cmp,v2(at+clampf(uv.x+cos(a)*r,0.0f32,1.0f32)*half,uv.y+sin(a)*r),z-0.0012f32);
  }
  return sum/12.0f32;
+}
+cg_shadow_visibility :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare)->f32 {
+ c:=cg_shadow_clip(add3(p,scale3(normalize3(n),0.025f32)));uv:=v2(c.x*0.5f32+0.5f32,0.5f32-c.y*0.5f32);
+ if (uv.x<0 || uv.x>1 || uv.y<0 || uv.y>1 || c.z<0 || c.z>1) {return 1;}
+ if !cg_shadow_tiles(u) {return cg_shadow_taps(uv,c.z,1.0f32,0.0f32,map,cmp);}
+ return fmin(cg_shadow_taps(uv,c.z,0.5f32,0.0f32,map,cmp),cg_shadow_taps(uv,c.z,0.5f32,0.5f32,map,cmp));
 }
 
 cg_rgb :: (c:V4)->V3 {return v3(c.x,c.y,c.z);}

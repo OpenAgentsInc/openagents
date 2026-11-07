@@ -95,6 +95,7 @@
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
 #load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
 #load "everglade-character.coax";   // a detailed character through the host's character pass (?stage=echo)
+#load "../../aethyr/render/cascades.coax";   // the key light's shadow cascades (#13016)
 #load "../../aethyr/render/grass-root.coax" as gr_root;
 #load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
 #load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
@@ -153,7 +154,10 @@ U_MARKS :: U_TIDE + TD_U_FLOATS;
 // grass, which grows only near it, reads that block alone (everglade.wgsl eg_path_near).
 PATHS2 :: 32;
 U_PATH2 :: U_MARKS + MK_FLOATS;
-UNIFORM_FLOATS :: U_PATH2 + 4 + PATHS2 * 4;
+// Then the key light's shadow cascades (aethyr/render/cascades.coax cascade_rows; #13016): a header
+// and each tile's rows, zero until the host opens the atlas (the one map's rows on the GPU then).
+U_CASCADE :: U_PATH2 + 4 + PATHS2 * 4;
+UNIFORM_FLOATS :: U_CASCADE + CASCADE_BLOCK;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -500,6 +504,7 @@ Everglade :: struct {
   part_used: [PEOPLE_PARTS] int; shown_n: int; shown: [PEOPLE_SHOWN] int;
   answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
+  casc: [1] CascadeState; casc_rev: int;   // the key light's shadow tiles, and the world's revision they were drawn at (everglade_shadows)
   room: [1] RoomState;                     // the others in the realm's room and its chat (everglade-room.coax)
   net: [] EgNet;                           // the room server's world, when the face attaches it (everglade-net.coax)
   rangers: [1] Rangers;                    // the others' bodies (everglade-rangers.coax)
@@ -4152,6 +4157,78 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   return n;
 }
 
+// ---- the key light's shadow tiles (aethyr/render/cascades.coax, #13016)
+// The host opens the atlas (everglade_shadow_event 0); from then each frame draws at most one tile:
+// the nearest while people, the hero or debris move in it (always, in town), a far one only when
+// its snapped view changes: the eye left its step, the sun turned past its limit, or the world was
+// rebuilt (the ground, the pack). Its rows go to U_CASCADE for the shaders and her pass.
+everglade_shadows :: (s: [] Everglade, u: [] f32) {
+  c := s[0].casc[..];
+  for i: 0..<CASCADE_BLOCK { u[U_CASCADE + i] = 0; }
+  if !c[0].on { return; }
+  rev := s[0].ground_gen * 2 + (ifx s[0].pack_ready then 1 else 0);
+  if rev != s[0].casc_rev { s[0].casc_rev = rev; cascade_stale(c); }
+  size := u[STYLE_AT + SU_SHADOW];
+  if size < 1 { c[0].draw = -1; return; }
+  l := unit_or(v3(u[STYLE_AT + SU_KEY_DIR], u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 2]), v3(0, 1, 0));
+  _ := cascade_frame(c, u[U_EYE], u[U_EYE + 2], l.x, l.y, l.z, true);
+  reach := verse_style_shadow_reach(ifx c[0].phone then 1.0f32 else 0.0f32);
+  cascade_rows(c[0], u[U_CASCADE..<U_CASCADE + CASCADE_BLOCK], u[STYLE_AT + SU_SHADOW + 2], 2 * reach / size, reach);
+}
+// The host's side (the faces' coaxial_shadow_*_v1, coax/web/host.js): the atlas it makes, in texels
+// (`which` 0 across, 1 down; a phone's when `coarse`); what this frame draws (field 0 the tile, -1
+// none; 1 to 4 the rect it draws in, in texels, x, y, w, h; 5 1 when her pass casts into it; 6 the
+// tiles; 7 the tiles it clears first, a bit each; 16 + 4 k to 19 + 4 k tile k's rect); and what
+// happened to it (kind 0 it made the atlas, arg 1 a phone's; 1 geometry installed; 2 it could not
+// draw this frame's tile).
+everglade_shadow_atlas :: (s: [] Everglade, coarse: int, which: int) -> int #export_c #effects(all) { return cascade_atlas(coarse != 0, which); }
+everglade_shadow_field :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
+  c := s[0].casc[0];
+  if !c.on { return -1; }
+  if field == 6 { return c.tier.count; }
+  if field >= 16 && field < 16 + 4 * c.tier.count {
+    j := (field - 16) % 4;
+    return cascade_rect_px(c.tier, (field - 16) / 4, ifx j <= 1 then j else 2);
+  }
+  d := c.draw;
+  if field == 0 { return d; }
+  if d < 0 { return -1; }
+  if field >= 1 && field <= 4 { return cascade_rect_px(c.tier, d, ifx field <= 2 then field - 1 else 2); }
+  if field == 5 { return ifx d == 0 then 1 else 0; }
+  if field == 7 { return 1 << cast(u64) d; }
+  return -1;
+}
+everglade_shadow_event :: (s: [] Everglade, kind: int, arg: int) #export_c #effects(all) {
+  c := s[0].casc[..];
+  if kind == 0 { cascade_open(c, arg != 0); s[0].casc_rev = -1; }
+  else if kind == 1 { cascade_stale(c); }
+  else if kind == 2 { cascade_dropped(c); }
+}
+#test "Everglade's shadow tiles: closed the block is zero; opened one tile a frame, its rect for the host" #steps 600000000 {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  for i: 0..<CASCADE_BLOCK { #assert u[U_CASCADE + i] == 0; }
+  #assert everglade_shadow_field(g[..], 0) == -1 && everglade_shadow_atlas(g[..], 0, 0) == 2048 && everglade_shadow_atlas(g[..], 1, 1) == 768;
+  everglade_shadow_event(g[..], 0, 0);
+  seen: [CASCADE_MAX] int;
+  for f: 0..<6 {
+    _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    d := everglade_shadow_field(g[..], 0);
+    #assert d >= 0 && d < 4 && u[U_CASCADE] == 4 && u[U_CASCADE + 1] == cast(f32) d;
+    #assert everglade_shadow_field(g[..], 1) == (d % 2) * 1024 && everglade_shadow_field(g[..], 2) == (d / 2) * 1024 && everglade_shadow_field(g[..], 3) == 1024;
+    #assert everglade_shadow_field(g[..], 5) == (ifx d == 0 then 1 else 0) && everglade_shadow_field(g[..], 6) == 4 && everglade_shadow_field(g[..], 7) == 1 << cast(u64) d;
+    #assert everglade_shadow_field(g[..], 16 + 4 * d) == everglade_shadow_field(g[..], 1) && everglade_shadow_field(g[..], 17 + 4 * d) == everglade_shadow_field(g[..], 2) && everglade_shadow_field(g[..], 19 + 4 * d) == 1024;
+    seen[d] += 1;
+  }
+  for k: 0..<4 { #assert seen[k] > 0; }
+  // a dropped draw empties its tile
+  d := everglade_shadow_field(g[..], 0);
+  everglade_shadow_event(g[..], 2, 0);
+  #assert !g[0].casc[0].slot[d].drawn && everglade_shadow_field(g[..], 0) == -1 && everglade_shadow_field(g[..], 7) == -1 && everglade_shadow_field(g[..], 32) == -1;
+}
+
 // ---- the frame
 
 everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
@@ -4340,6 +4417,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   spells_lamps(s, u, ifx phone(s) then LIGHTS_PHONE else LIGHTS);   // the blasts' light, after the lamps
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u, shot.eye);
+  everglade_shadows(s, u);   // the shadow tiles this frame: after the style, before her rows
   everglade_character(s, u, width, height);   // after the lamps, the weather and the style
 
   s[0].near = ifx s[0].above || s[0].talk >= 0 || s[0].board then -1 else nearest(s, feet);
@@ -4403,7 +4481,7 @@ everglade_store_used :: (s: [] Everglade, k: int) -> int #export_c #effects(all)
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" #steps 530000000 {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && U_TIDE == 1500 + 149 * 4 && U_MARKS == U_TIDE + 8 && UNIFORM_FLOATS == U_PATH2 + 4 + PATHS2 * 4;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && U_TIDE == 1500 + 149 * 4 && U_MARKS == U_TIDE + 8 && UNIFORM_FLOATS == U_PATH2 + 4 + PATHS2 * 4 + CASCADE_BLOCK;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
@@ -4413,7 +4491,7 @@ everglade_store_used :: (s: [] Everglade, k: int) -> int #export_c #effects(all)
   everglade_start(g[..]);
   #assert g[0].group_at[KIT_GROUPS - 1] + g[0].group_cap[KIT_GROUPS - 1] == OBJECTS;
   for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
-  #assert EG_LINKS <= PATHS + PATHS2 && EG_SQUARES <= SQUARES && U_PATH2 == 2300 && UNIFORM_FLOATS == 2432;
+  #assert EG_LINKS <= PATHS + PATHS2 && EG_SQUARES <= SQUARES && U_PATH2 == 2300 && U_CASCADE == 2432 && UNIFORM_FLOATS == 2532;
 }
 
 #test "a frame draws the whole city within its slots, and you in front of the camera" #steps 550000000 {
