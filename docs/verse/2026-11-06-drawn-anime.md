@@ -1,6 +1,58 @@
 # Drawn Anime: from toon-shaded 3D to a hand-drawn production
 
-Written 2026-11-06. Status: plan. Nothing here is implemented yet.
+Written 2026-11-06. Status, 2026-11-07: the MVP below is implemented (one
+drawn shot rendered headless on the CPU). The rest of the plan is pending.
+
+## MVP: "Wind on the hill"
+
+The first drawn shot, built to show that the look changes when frames come
+from drawings. It covers a slice of D1 to D4 on the CPU, before any GPU
+pass, document format or station:
+
+- **Ink and paint**, `aethyr/anim/ink.coax`: Catmull-Rom curves through
+  control points with pen pressure; antialiased even-odd fills with exact
+  span coverage; strokes that taper at both ends and are heavier on the side
+  away from the light; paint through a region's mask, so a shadow is a
+  designed shape kept inside its region.
+- **The exposure sheet**, `aethyr/anim/xsheet.coax`: exposure on ones, twos
+  or threes, key cycles with offsets, a slow-in/slow-out chart, and
+  in-betweens of matched drawings on arcs.
+- **Painted plates**, `aethyr/anim/brush.coax`: seeded noise, watercolour
+  sky washes, paper grain, gouache dabs, cumulus painted as one merged body
+  with lumpy edges (a crisp lit top, a soft shaded base), ridges that step
+  back in value, and grass laid in as tapered blades.
+- **Photography**, `aethyr/anim/photo.coax`: a restrained diffusion pass, a
+  gentle falloff and grain; the palette measures; binary PPM frames and a
+  frame digest.
+- **The shot**, `verse/animlab/drawn/wind-hill.coax`: Wren, an original
+  character, seen from behind on a hill, turned toward a cumulus. Her hair,
+  scarf and skirt run three-key wind cycles exposed on twos, with generated
+  in-betweens. The grass ripples on the same sheet, the clouds drift, and the
+  camera trucks across five levels (sky, far ridges, the hill, Wren, the
+  foreground grass). Her colour model is normal, shadow and line paint per
+  region; each shadow is a drawn shape.
+- **The renderer**, `verse/tools/drawn-anime.coax`: renders the 96 frames
+  (4 s at 24 fps, 1280 × 720) to PPM, printing each frame's digest and
+  palette:
+
+  ```sh
+  coax/web/tool.sh verse/tools/drawn-anime.coax OUT_DIR [--from F] [--frames N]
+  ffmpeg -framerate 24 -i OUT_DIR/frame-%03d.ppm -c:v libx264 -pix_fmt yuv420p wind-hill.mp4
+  ```
+
+Checks: `coax test --library` on each of the five files. They cover fill
+area and coverage, curve interpolation, taper, light-side weight, masked
+paint, exposure on twos, cycle keys and offsets, in-between endpoints and
+arcs, noise and paint bounds, cloud lighting, wind direction, region
+closure, a muted palette on a small frame, and the same digest from two
+renders. The record is in
+[docs/verification/drawn-anime-mvp-2026-11-07/](../verification/drawn-anime-mvp-2026-11-07/README.md).
+
+Not in the MVP: the document formats (D0), the GPU passes, the drawing and
+painting stations, layouts from 3D previz, tracing, the director, and
+model-drawn keys. Wren's drawing is hand-authored control points, and her
+wind keys are her model drawing bent by a wind function. A person drawing
+the keys (owner decision 1) is still what decides how good this can get.
 
 Owner, 2026-11-06:
 

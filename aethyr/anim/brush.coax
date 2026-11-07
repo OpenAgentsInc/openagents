@@ -1,0 +1,216 @@
+// Painted backgrounds for drawn animation (docs/verse/2026-11-06-drawn-anime.md):
+// a plate painted the way a background artist paints one, in Coax, on the
+// CPU, seeded so the same plate paints the same pixels. Watercolour washes
+// that bloom unevenly, gouache dabs with ragged edges, cumulus painted puff
+// by puff (a crisp lit top, a soft shaded base), ridges that step back in
+// value, grass laid in as tapered brush blades, and the paper under it all.
+// Every position is in plate coordinates: the camera's pan moves the plate,
+// and the paper and brushwork move with it.
+//   coax/bin/coax test aethyr/anim/brush.coax --library
+#load "ink.coax";
+
+// A colour (display values 0..1).
+Rgb :: struct { r: f32 = 0; g: f32 = 0; b: f32 = 0; }
+rgb :: (r: f32, g: f32, b: f32) -> Rgb { return Rgb.{r = r, g = g, b = b}; }
+br_mix :: (a: Rgb, b: Rgb, t: f32) -> Rgb { return Rgb.{r = a.r + (b.r - a.r) * t, g = a.g + (b.g - a.g) * t, b = a.b + (b.b - a.b) * t}; }
+br_scale :: (a: Rgb, s: f32) -> Rgb { return Rgb.{r = a.r * s, g = a.g * s, b = a.b * s}; }
+
+// An integer hash of a lattice point and a seed, 0 <= h < 1, the same on every machine.
+br_hash :: (x: int, y: int, seed: int) -> f32 {
+  h := cast,trunc(u32) (x * 374761393 + y * 668265263 + seed * 1442695041);
+  h = mul_wrap(h ^ (h >> 13), cast(u32) 1274126177);
+  h = h ^ (h >> 16);
+  return cast(f32) cast(int) (h & cast(u32) 16777215) / 16777216.0;
+}
+// Smooth value noise, 0..1.
+br_noise :: (x: f32, y: f32, seed: int) -> f32 {
+  ix := ink_floor(x); iy := ink_floor(y); fx := x - f32(ix); fy := y - f32(iy);
+  sx := fx * fx * (3 - 2 * fx); sy := fy * fy * (3 - 2 * fy);
+  a := br_hash(ix, iy, seed); b := br_hash(ix + 1, iy, seed); c := br_hash(ix, iy + 1, seed); d := br_hash(ix + 1, iy + 1, seed);
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+}
+// Octaves of noise, each twice as fine and half as strong, 0..1.
+br_fbm :: (x: f32, y: f32, octaves: int, seed: int) -> f32 {
+  s := 0.0f32; amp := 0.5f32; f := 1.0f32; total := 0.0f32;
+  for o: 0..<octaves { s += amp * br_noise(x * f, y * f, seed + o * 31); total += amp; amp = amp * 0.5; f = f * 2.03; }
+  return ifx total > 0 then s / total else 0.0f32;
+}
+br_put :: (px: [] f32, i: int, c: Rgb, a: f32) {
+  if a <= 0 { return; }
+  px[i * 3] += (c.r - px[i * 3]) * a; px[i * 3 + 1] += (c.g - px[i * 3 + 1]) * a; px[i * 3 + 2] += (c.b - px[i * 3 + 2]) * a;
+}
+
+/** A sky wash over the whole canvas: from `top` at plate row y0 to `low` at y1, the boundary wandering as
+    watercolour does (a low-frequency warp of the gradient) with blotches of a little more or less pigment. */
+br_wash :: (px: [] f32, w: int, h: int, ox: f32, oy: f32, y0: f32, y1: f32, top: Rgb, low: Rgb, blotch: f32, seed: int) {
+  for y: 0..<h { for x: 0..<w {
+    qx := f32(x) + ox; qy := f32(y) + oy;
+    warp := (br_fbm(qx * 0.004, qy * 0.006, 3, seed) - 0.5) * 120;
+    t := ink_smooth((qy + warp - y0) / (y1 - y0));
+    t = t * 0.85 + ink_clamp((qy - y0) / (y1 - y0), 0, 1) * 0.15;
+    c := br_mix(top, low, t);
+    pig := 1 + (br_fbm(qx * 0.012, qy * 0.012, 4, seed + 7) - 0.5) * blotch;
+    i := y * w + x;
+    px[i * 3] = c.r * pig; px[i * 3 + 1] = c.g * pig; px[i * 3 + 2] = c.b * (pig * 0.5 + 0.5);
+  } }
+}
+
+/** Paper grain over the canvas: the tooth of the sheet, fine and a little uneven, moving with the plate. */
+br_paper :: (px: [] f32, w: int, h: int, ox: f32, oy: f32, strength: f32, seed: int) {
+  for y: 0..<h { for x: 0..<w {
+    qx := f32(x) + ox; qy := f32(y) + oy;
+    g := br_fbm(qx * 0.45, qy * 0.45, 2, seed) * 0.65 + br_fbm(qx * 0.06, qy * 0.09, 2, seed + 3) * 0.35;
+    k := 1 - strength * (g - 0.5);
+    i := y * w + x;
+    px[i * 3] = px[i * 3] * k; px[i * 3 + 1] = px[i * 3 + 1] * k; px[i * 3 + 2] = px[i * 3 + 2] * k;
+  } }
+}
+
+/** One gouache dab at plate (cx, cy): an ellipse rx × ry turned by `angle`, its edge ragged by `rough`
+    (a share of its radius), a little more pigment pooled at the edge (`pool`), at `alpha`. */
+br_dab :: (px: [] f32, w: int, h: int, ox: f32, oy: f32, cx: f32, cy: f32, rx: f32, ry: f32, angle: f32, c: Rgb, alpha: f32, rough: f32, pool: f32, seed: int) {
+  r := ink_max(rx, ry) * (1 + rough) + 2;
+  sx := cx - ox; sy := cy - oy;
+  box := ink_clip(InkBox.{x0 = ink_floor(sx - r), y0 = ink_floor(sy - r), x1 = ink_floor(sx + r), y1 = ink_floor(sy + r)}, w, h);
+  if ink_empty(box) { return; }
+  ca := cos(angle); sa := sin(angle);
+  edge := br_scale(c, 1 - pool);
+  for y: box.y0..<box.y1 + 1 { for x: box.x0..<box.x1 + 1 {
+    dx := f32(x) + 0.5 - sx; dy := f32(y) + 0.5 - sy;
+    u := (dx * ca + dy * sa) / rx; v := (dy * ca - dx * sa) / ry;
+    d := sqrt(u * u + v * v);
+    ragged := 1 + rough * (br_fbm((f32(x) + ox) * 0.15, (f32(y) + oy) * 0.15, 2, seed) - 0.5) * 2;
+    e := ragged - d;
+    if e <= 0 { continue; }
+    a := ink_clamp(e * ink_max(rx, ry) * 0.7, 0, 1) * alpha;
+    br_put(px, y * w + x, br_mix(c, edge, ink_clamp(1 - e * 4, 0, 1)), a);
+  } }
+}
+
+// A cumulus is puffs: (cx, cy, r) each, in plate coordinates.
+BrCloud :: struct { lit: Rgb; shade: Rgb; core: Rgb; lx: f32 = -0.55; ly: f32 = -0.8; base: f32 = 0; seed: int = 1; }
+
+/** A cumulus painted from n puffs: each puff's surface lit toward (lx, ly) and turned away below; the lit
+    tops are crisp and bright, the shadowed sides a cool grey-blue laid in two soft steps, the flat base
+    (plate row `base`) dissolving into the sky. Puffs in front (later) overlap those behind. */
+br_cloud :: (px: [] f32, w: int, h: int, ox: f32, oy: f32, puffs: [] f32, n: int, cl: BrCloud) {
+  if n < 1 { return; }
+  xmin := puffs[0]; xmax := puffs[0]; ymin := puffs[1];
+  for i: 0..<n { xmin = ink_min(xmin, puffs[i * 3] - puffs[i * 3 + 2]); xmax = ink_max(xmax, puffs[i * 3] + puffs[i * 3 + 2]); ymin = ink_min(ymin, puffs[i * 3 + 1] - puffs[i * 3 + 2]); }
+  box := ink_clip(InkBox.{x0 = ink_floor(xmin - ox) - 8, y0 = ink_floor(ymin - oy) - 8, x1 = ink_floor(xmax - ox) + 8, y1 = ink_floor(cl.base - oy) + 40}, w, h);
+  if ink_empty(box) { return; }
+  top := ymin;
+  k := 9.0f32;   // how softly neighbouring puffs merge, in pixels
+  for y: box.y0..<box.y1 + 1 { for x: box.x0..<box.x1 + 1 {
+    qx := f32(x) + 0.5 + ox; qy := f32(y) + 0.5 + oy;
+    // the puffs merge into one body (a smooth union of their insides, in pixels), its edge broken into
+    // cauliflower lumps by two scales of noise
+    sum := 0.0f32; nx := 0.0f32; ny := 0.0f32;
+    for i: 0..<n {
+      cx := puffs[i * 3]; cy := puffs[i * 3 + 1]; r := puffs[i * 3 + 2];
+      dx := (qx - cx) / r; dy := (qy - cy) / r;
+      g := (1 - sqrt(dx * dx + dy * dy)) * r;
+      if g < -60 { continue; }
+      e := exp(ink_min(g, 200) / k);
+      sum += e; nx += dx * e; ny += dy * e;
+    }
+    if sum <= 0 { continue; }
+    body := k * log(sum);
+    lump := (br_fbm(qx * 0.045, qy * 0.045, 3, cl.seed) - 0.5) * 14 + (br_fbm(qx * 0.16, qy * 0.16, 2, cl.seed + 9) - 0.5) * 4;
+    edge := body + lump;
+    if edge < -1 { continue; }
+    nx = nx / sum; ny = ny / sum;
+    // light: the merged surface turned toward (lx, ly), brighter high in the cloud and shaded toward its base
+    hgt := ink_clamp((qy - top) / ink_max(cl.base - top, 1), 0, 1);
+    lit := (nx * cl.lx + ny * cl.ly) * 0.8 + (0.55 - hgt) * 1.1 + lump * 0.025 + ink_clamp(edge / 30, 0, 1) * 0.1;
+    // the base: the cloud thins out under its flat bottom; the edge is crisp where lit, softer in shade
+    below := ink_clamp((qy - cl.base) / 24, 0, 1);
+    soft := ifx lit > 0 then 1.2f32 else 3.5f32;
+    alpha := ink_clamp(edge / soft + 0.5, 0, 1) * (1 - ink_smooth(below + ink_max(lump, 0) * 0.03 * below));
+    if alpha <= 0 { continue; }
+    t1 := ink_smooth((lit + 0.04) / 0.2);            // shade to lit: one crisp turn
+    t0 := ink_smooth((lit + 0.6) / 0.45);            // core to shade: soft
+    c := br_mix(br_mix(cl.core, cl.shade, t0), cl.lit, t1);
+    br_put(px, y * w + x, c, alpha);
+  } }
+}
+
+/** A ridge across the plate: filled below the line y = base - amp × (noise along x), its colour from `top`
+    at the ridge line to `low` farther down, the edge softened by `soft` pixels (far ridges are softer). */
+br_ridge :: (px: [] f32, w: int, h: int, ox: f32, oy: f32, base: f32, amp: f32, freq: f32, top: Rgb, low: Rgb, depth: f32, soft: f32, seed: int) {
+  for x: 0..<w {
+    qx := f32(x) + 0.5 + ox;
+    line := base - amp * (br_fbm(qx * freq, 0.5, 4, seed) * 1.4 - 0.2);
+    y0 := ink_imax(ink_floor(line - oy - soft - 1), 0);
+    for y: y0..<h {
+      qy := f32(y) + 0.5 + oy;
+      a := ink_clamp((qy - line) / ink_max(soft, 0.7) + 0.5, 0, 1);
+      if a <= 0 { continue; }
+      t := ink_clamp((qy - line) / depth, 0, 1);
+      mott := 1 + (br_fbm(qx * 0.02, qy * 0.05, 3, seed + 5) - 0.5) * 0.12;
+      br_put(px, y * w + x, br_scale(br_mix(top, low, t), mott), a);
+    }
+  }
+}
+
+// One blade of grass: a tapered brush stroke from its root, bent by the wind.
+BrBlade :: struct { x: f32; y: f32; len: f32; lean: f32; width: f32; c: Rgb; }
+
+/** A blade into the canvas (plate coordinates), drawn through the ink's stroke so it tapers to its tip. */
+br_blade :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, oy: f32, b: BrBlade) {
+  pts: [5 * 3] f32;
+  for k: 0..<5 {
+    s := f32(k) / 4;
+    pts[k * 3] = b.x - ox + b.lean * b.len * s * s;
+    pts[k * 3 + 1] = b.y - oy - b.len * s * (1 - 0.25 * abs(b.lean) * s);
+    pts[k * 3 + 2] = 1 - s * 0.85;
+  }
+  none: [1] f32;
+  box := ink_stroke(cov, w, h, pts[..], 5, false, InkPen.{radius = b.width, taper = b.len * 0.3, least = 0.5});
+  ink_paint(px, cov, none[0..<0], w, box, b.c.r, b.c.g, b.c.b, 1);
+}
+
+br_sum :: (px: [] f32) -> f32 { s := 0.0f32; for v: px { s += v; } return s; }
+
+#test "noise is seeded, repeatable and inside 0..1" {
+  lo := 1.0f32; hi := 0.0f32;
+  for i: 0..<200 {
+    v := br_fbm(f32(i) * 0.37, f32(i) * 0.11, 3, 9);
+    #assert v == br_fbm(f32(i) * 0.37, f32(i) * 0.11, 3, 9);
+    lo = ink_min(lo, v); hi = ink_max(hi, v);
+  }
+  #assert lo >= 0 && hi < 1 && hi - lo > 0.3;
+  #assert br_hash(3, 4, 1) != br_hash(3, 4, 2) && br_hash(3, 4, 1) == br_hash(3, 4, 1);
+}
+
+#test "a wash runs from its top colour to its low colour; paper only varies it a little" {
+  px: [16 * 40 * 3] f32;
+  br_wash(px[..], 16, 40, 0, 0, 0, 40, rgb(0.2, 0.4, 0.8), rgb(0.8, 0.9, 0.95), 0.1, 3);
+  #assert px[2] > px[0] && px[(39 * 16) * 3] > px[0];
+  before := br_sum(px[..]);
+  br_paper(px[..], 16, 40, 0, 0, 0.06, 4);
+  after := br_sum(px[..]);
+  #assert after < before * 1.03 && after > before * 0.97;
+}
+
+#test "a cloud is lit on top and shaded underneath, and leaves the sky outside it alone" {
+  px: [60 * 60 * 3] f32;
+  for i: 0..<60 * 60 * 3 { px[i] = 0.5; }
+  puffs := [3] f32.[30, 30, 18];
+  br_cloud(px[..], 60, 60, 0, 0, puffs[..], 1, BrCloud.{lit = rgb(1, 1, 1), shade = rgb(0.6, 0.65, 0.75), core = rgb(0.5, 0.55, 0.65), base = 46, lx = 0, ly = -1});
+  top := px[(16 * 60 + 30) * 3]; low := px[(42 * 60 + 30) * 3];
+  #assert top > 0.9 && low < top - 0.15;
+  #assert px[(2 * 60 + 2) * 3] == 0.5;
+}
+
+#test "a ridge fills below its line, and a blade and a dab paint only near themselves" {
+  px: [40 * 40 * 3] f32; cov: [40 * 40] f32;
+  br_ridge(px[..], 40, 40, 0, 0, 20, 4, 0.05, rgb(0.4, 0.6, 0.3), rgb(0.2, 0.3, 0.2), 20, 1, 2);
+  #assert px[(38 * 40 + 20) * 3 + 1] > 0.15 && px[(2 * 40 + 20) * 3 + 1] == 0;
+  q: [40 * 40 * 3] f32;
+  br_blade(q[..], cov[..], 40, 40, 0, 0, BrBlade.{x = 20, y = 35, len = 20, lean = 0.3, width = 1.5, c = rgb(1, 1, 1)});
+  #assert q[(30 * 40 + 20) * 3] > 0.5 && q[(30 * 40 + 5) * 3] == 0 && ink_area(cov[..], 40, 40) == 0;
+  d: [40 * 40 * 3] f32;
+  br_dab(d[..], 40, 40, 0, 0, 20, 20, 8, 5, 0.3, rgb(1, 0.5, 0), 1, 0.2, 0.2, 5);
+  #assert d[(20 * 40 + 20) * 3] > 0.9 && d[(2 * 40 + 2) * 3] == 0;
+}

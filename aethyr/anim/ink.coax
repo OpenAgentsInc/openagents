@@ -1,0 +1,269 @@
+// Ink and paint for drawn animation (docs/verse/2026-11-06-drawn-anime.md):
+// the cel's two crafts on the CPU, in Coax. A drawing is curves through
+// control points (x, y, pressure); a region is a closed curve filled with
+// paint, a shadow is a designed shape painted inside a region's mask (never
+// computed from light), and a line is a stroke whose width follows its pen
+// pressure, tapers at both ends and is heavier on the side away from the
+// light, the way an animator inks.
+//
+// Buffers are the caller's: colour rgb (3 floats a pixel, display values
+// 0..1, row after row) and coverage (1 float a pixel). Every procedure works
+// inside the box it touches, so a frame costs what its drawings cover.
+//   coax/bin/coax test aethyr/anim/ink.coax --library
+#import "Basic";
+
+INK_MAX_POINTS :: 4096;    // samples in one curve
+INK_MAX_ROW :: 4096;       // widest canvas
+INK_MAX_CROSS :: 1024;     // edge crossings on one sub-row
+INK_SUB :: 4;              // sub-rows a pixel row (fills)
+
+// The pixels a procedure touched: x0..x1, y0..y1 inclusive, empty when x1 < x0.
+InkBox :: struct { x0: int = 0; y0: int = 0; x1: int = -1; y1: int = -1; }
+
+ink_min :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+ink_max :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+ink_clamp :: (v: f32, lo: f32, hi: f32) -> f32 { return ink_min(ink_max(v, lo), hi); }
+ink_imin :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+ink_imax :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+ink_smooth :: (t: f32) -> f32 { s := ink_clamp(t, 0, 1); return s * s * (3 - 2 * s); }
+ink_floor :: (v: f32) -> int { return cast(int) floor(v); }
+ink_empty :: (b: InkBox) -> bool { return b.x1 < b.x0 || b.y1 < b.y0; }
+ink_union :: (a: InkBox, b: InkBox) -> InkBox {
+  if ink_empty(a) { return b; }
+  if ink_empty(b) { return a; }
+  return InkBox.{x0 = ink_imin(a.x0, b.x0), y0 = ink_imin(a.y0, b.y0), x1 = ink_imax(a.x1, b.x1), y1 = ink_imax(a.y1, b.y1)};
+}
+// A box clipped to a w × h canvas.
+ink_clip :: (b: InkBox, w: int, h: int) -> InkBox {
+  return InkBox.{x0 = ink_imax(b.x0, 0), y0 = ink_imax(b.y0, 0), x1 = ink_imin(b.x1, w - 1), y1 = ink_imin(b.y1, h - 1)};
+}
+
+// One coordinate of a uniform Catmull-Rom segment from b to c at t.
+ink_cr :: (a: f32, b: f32, c: f32, d: f32, t: f32) -> f32 {
+  t2 := t * t; t3 := t2 * t;
+  return 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (3 * b - a - 3 * c + d) * t3);
+}
+
+/** The smooth curve through n control points (x, y, pressure, 3 floats each) into out, `per` samples a
+    segment; closed joins the last point to the first. Returns the samples written (3 floats each), 0 when
+    they would not fit. The curve passes through every control point. */
+ink_curve :: (ctrl: [] f32, n: int, closed: bool, per: int, out: [] f32) -> int {
+  if n < 2 || per < 1 || ctrl.count < n * 3 { return 0; }
+  segs := ifx closed then n else n - 1;
+  total := segs * per + (ifx closed then 0 else 1);
+  if total > INK_MAX_POINTS || out.count < total * 3 { return 0; }
+  m := 0;
+  for s: 0..<segs {
+    i0 := s - 1; i1 := s; i2 := s + 1; i3 := s + 2;
+    if closed { i0 = (i0 + n) % n; i2 = i2 % n; i3 = i3 % n; }
+    else { i0 = ink_imax(i0, 0); i2 = ink_imin(i2, n - 1); i3 = ink_imin(i3, n - 1); }
+    for k: 0..<per {
+      t := f32(k) / f32(per);
+      for c: 0..<3 { out[m * 3 + c] = ink_cr(ctrl[i0 * 3 + c], ctrl[i1 * 3 + c], ctrl[i2 * 3 + c], ctrl[i3 * 3 + c], t); }
+      m += 1;
+    }
+  }
+  if !closed { for c: 0..<3 { out[m * 3 + c] = ctrl[(n - 1) * 3 + c]; } m += 1; }
+  return m;
+}
+
+/** Coverage of the closed polygon through n points (stride 3) into cov (w × h), even-odd, antialiased:
+    INK_SUB sub-rows a pixel with exact horizontal span coverage. Coverage joins what is there by max, so
+    several shapes make one mask. Returns the box written. */
+ink_cover :: (cov: [] f32, w: int, h: int, poly: [] f32, n: int) -> InkBox {
+  box: InkBox;
+  if n < 3 || w > INK_MAX_ROW || cov.count < w * h { return box; }
+  ymin := poly[1]; ymax := poly[1]; xmin := poly[0]; xmax := poly[0];
+  for i: 1..<n { ymin = ink_min(ymin, poly[i * 3 + 1]); ymax = ink_max(ymax, poly[i * 3 + 1]); xmin = ink_min(xmin, poly[i * 3]); xmax = ink_max(xmax, poly[i * 3]); }
+  box = ink_clip(InkBox.{x0 = ink_floor(xmin), y0 = ink_floor(ymin), x1 = ink_floor(xmax), y1 = ink_floor(ymax)}, w, h);
+  if ink_empty(box) { return box; }
+  acc: [INK_MAX_ROW] f32; xs: [INK_MAX_CROSS] f32;
+  share := 1.0f32 / f32(INK_SUB);
+  for y: box.y0..<box.y1 + 1 {
+    for x: box.x0..<box.x1 + 1 { acc[x] = 0; }
+    for sub: 0..<INK_SUB {
+      sy := f32(y) + (f32(sub) + 0.5) * share;
+      k := 0;
+      for e: 0..<n {
+        f := (e + 1) % n;
+        ya := poly[e * 3 + 1]; yb := poly[f * 3 + 1];
+        if (ya <= sy && yb > sy) || (yb <= sy && ya > sy) {
+          if k < INK_MAX_CROSS { xs[k] = poly[e * 3] + (sy - ya) * (poly[f * 3] - poly[e * 3]) / (yb - ya); k += 1; }
+        }
+      }
+      // insertion sort: crossings on one row are few
+      for i: 1..<k { v := xs[i]; j := i - 1; while j >= 0 && xs[j] > v { xs[j + 1] = xs[j]; j -= 1; } xs[j + 1] = v; }
+      p := 0;
+      while p + 1 < k {
+        xa := ink_clamp(xs[p], f32(box.x0), f32(box.x1 + 1)); xb := ink_clamp(xs[p + 1], f32(box.x0), f32(box.x1 + 1));
+        ia := ink_floor(xa); ib := ink_floor(xb);
+        if ia == ib { if ia <= box.x1 { acc[ia] += (xb - xa) * share; } }
+        else {
+          acc[ia] += (f32(ia + 1) - xa) * share;
+          for ix: ia + 1..<ib { acc[ix] += share; }
+          if ib <= box.x1 { acc[ib] += (xb - f32(ib)) * share; }
+        }
+        p += 2;
+      }
+    }
+    for x: box.x0..<box.x1 + 1 { i := y * w + x; c := ink_min(acc[x], 1); if c > cov[i] { cov[i] = c; } }
+  }
+  return box;
+}
+
+// How an outline's width answers the light: `heavy` more on the side facing (lx, ly) (the side away from
+// the light, in screen space), from a closed shape's outward normal. 0 for an even line.
+InkPen :: struct { radius: f32 = 1.5; taper: f32 = 12; heavy: f32 = 0; lx: f32 = 0.6; ly: f32 = 0.8; least: f32 = 0.12; }
+
+/** Coverage of a stroke along n samples (stride 3, the third its pressure) into cov: each segment a capsule
+    whose radius runs from one sample's to the next. A sample's radius is the pen's times its pressure,
+    times a taper that thins both ends over the pen's taper length (never under `least` of it, so an end
+    still shows), times the light weight when the stroke is closed. Joins by max. Returns the box. */
+ink_stroke :: (cov: [] f32, w: int, h: int, pts: [] f32, n: int, closed: bool, pen: InkPen) -> InkBox {
+  box: InkBox;
+  if n < 2 || n > INK_MAX_POINTS || cov.count < w * h { return box; }
+  rad: [INK_MAX_POINTS] f32; arc: [INK_MAX_POINTS] f32;
+  arc[0] = 0;
+  for i: 1..<n { dx := pts[i * 3] - pts[(i - 1) * 3]; dy := pts[i * 3 + 1] - pts[(i - 1) * 3 + 1]; arc[i] = arc[i - 1] + sqrt(dx * dx + dy * dy); }
+  total := arc[n - 1];
+  cx := 0.0f32; cy := 0.0f32;
+  for i: 0..<n { cx += pts[i * 3]; cy += pts[i * 3 + 1]; }
+  cx = cx / f32(n); cy = cy / f32(n);
+  for i: 0..<n {
+    t := 1.0f32;
+    if !closed && pen.taper > 0 { t = ink_max(ink_smooth(ink_min(arc[i], total - arc[i]) / pen.taper), pen.least); }
+    wgt := 1.0f32;
+    if closed && pen.heavy != 0 {
+      a := ink_imax(i - 1, 0); b := ink_imin(i + 1, n - 1);
+      tx := pts[b * 3] - pts[a * 3]; ty := pts[b * 3 + 1] - pts[a * 3 + 1];
+      l := sqrt(tx * tx + ty * ty);
+      if l > 0.0001 {
+        nx := ty / l; ny := -tx / l;
+        if nx * (pts[i * 3] - cx) + ny * (pts[i * 3 + 1] - cy) < 0 { nx = -nx; ny = -ny; }
+        wgt = ink_clamp(1 + pen.heavy * (nx * pen.lx + ny * pen.ly), 0.35, 2.2);
+      }
+    }
+    rad[i] = pen.radius * ink_max(pts[i * 3 + 2], 0) * t * wgt;
+  }
+  segs := ifx closed then n else n - 1;
+  for s: 0..<segs {
+    e := (s + 1) % n;
+    ax := pts[s * 3]; ay := pts[s * 3 + 1]; bx := pts[e * 3]; by := pts[e * 3 + 1];
+    ra := rad[s]; rb := rad[e]; r := ink_max(ra, rb) + 1;
+    sb := ink_clip(InkBox.{x0 = ink_floor(ink_min(ax, bx) - r), y0 = ink_floor(ink_min(ay, by) - r), x1 = ink_floor(ink_max(ax, bx) + r), y1 = ink_floor(ink_max(ay, by) + r)}, w, h);
+    if ink_empty(sb) { continue; }
+    box = ink_union(box, sb);
+    vx := bx - ax; vy := by - ay; l2 := vx * vx + vy * vy;
+    for y: sb.y0..<sb.y1 + 1 { for x: sb.x0..<sb.x1 + 1 {
+      px := f32(x) + 0.5 - ax; py := f32(y) + 0.5 - ay;
+      t := ifx l2 > 0.000001 then ink_clamp((px * vx + py * vy) / l2, 0, 1) else 0.0f32;
+      dx := px - vx * t; dy := py - vy * t;
+      c := ink_clamp(ra + (rb - ra) * t - sqrt(dx * dx + dy * dy) + 0.5, 0, 1);
+      i := y * w + x;
+      if c > cov[i] { cov[i] = c; }
+    } }
+  }
+  return box;
+}
+
+/** Paints (r, g, b) at `alpha` through coverage cov over box into the rgb canvas px; with a mask (w × h,
+    or an empty view for none) the paint stays inside it. Then clears cov over box, ready for the next. */
+ink_paint :: (px: [] f32, cov: [] f32, mask: [] f32, w: int, box: InkBox, r: f32, g: f32, b: f32, alpha: f32) {
+  if ink_empty(box) { return; }
+  masked := mask.count >= cov.count;
+  for y: box.y0..<box.y1 + 1 { for x: box.x0..<box.x1 + 1 {
+    i := y * w + x;
+    a := cov[i] * alpha;
+    if masked { a = a * mask[i]; }
+    cov[i] = 0;
+    if a <= 0 { continue; }
+    px[i * 3] += (r - px[i * 3]) * a; px[i * 3 + 1] += (g - px[i * 3 + 1]) * a; px[i * 3 + 2] += (b - px[i * 3 + 2]) * a;
+  } }
+}
+// Clears a coverage or mask buffer over box.
+ink_clear :: (cov: [] f32, w: int, box: InkBox) {
+  if ink_empty(box) { return; }
+  for y: box.y0..<box.y1 + 1 { for x: box.x0..<box.x1 + 1 { cov[y * w + x] = 0; } }
+}
+
+/** n control points (stride 3) placed by scale s about the drawing's origin, then moved to (tx, ty), into
+    out; pressure is kept. A drawing is authored once in its own units and staged by this. */
+ink_place :: (src: [] f32, n: int, s: f32, tx: f32, ty: f32, out: [] f32) {
+  for i: 0..<n { out[i * 3] = src[i * 3] * s + tx; out[i * 3 + 1] = src[i * 3 + 1] * s + ty; out[i * 3 + 2] = src[i * 3 + 2]; }
+}
+
+// The sum of coverage over a canvas: the area painted, in pixels.
+ink_area :: (cov: [] f32, w: int, h: int) -> f32 { s := 0.0f32; for i: 0..<w * h { s += cov[i]; } return s; }
+
+#test "a fill covers a square's exact area at a fractional position, and nothing outside it" {
+  cov: [32 * 32] f32;
+  sq := [12] f32.[4.25, 5.5, 1, 14.25, 5.5, 1, 14.25, 15.5, 1, 4.25, 15.5, 1];
+  b := ink_cover(cov[..], 32, 32, sq[..], 4);
+  a := ink_area(cov[..], 32, 32);
+  #assert a > 99.9 && a < 100.1;
+  #assert b.x0 == 4 && b.x1 == 14 && b.y0 == 5 && b.y1 == 15;
+  #assert cov[0] == 0 && cov[20 * 32 + 20] == 0 && cov[10 * 32 + 10] == 1;
+  // the left column is a quarter covered, the right a quarter: exact span ends
+  #assert cov[10 * 32 + 4] > 0.74 && cov[10 * 32 + 4] < 0.76 && cov[10 * 32 + 14] > 0.24 && cov[10 * 32 + 14] < 0.26;
+}
+
+#test "a closed curve passes through its control points and fills a disc's area" {
+  ctrl: [8 * 3] f32;
+  for i: 0..<8 { a := f32(i) * 0.785398; ctrl[i * 3] = 20 + 10 * cos(a); ctrl[i * 3 + 1] = 20 + 10 * sin(a); ctrl[i * 3 + 2] = 1; }
+  out: [8 * 8 * 3] f32;
+  m := ink_curve(ctrl[..], 8, true, 8, out[..]);
+  #assert m == 64;
+  for i: 0..<8 { #assert out[i * 8 * 3] == ctrl[i * 3] && out[i * 8 * 3 + 1] == ctrl[i * 3 + 1]; }
+  cov: [40 * 40] f32;
+  b := ink_cover(cov[..], 40, 40, out[..], m);
+  a := ink_area(cov[..], 40, 40);
+  #assert a > 300 && a < 325;   // pi r^2 = 314
+  open: [8 * 4 * 3 + 3] f32;
+  #assert ink_curve(ctrl[..], 8, false, 4, open[..]) == 29 && open[28 * 3] == ctrl[7 * 3];
+  #assert ink_curve(ctrl[..], 1, false, 4, open[..]) == 0 && ink_curve(ctrl[..], 8, true, 8, open[..]) == 0;
+}
+
+#test "a stroke tapers to thin ends and is full in the middle; pressure thins it" {
+  pts: [41 * 3] f32;
+  for i: 0..<41 { pts[i * 3] = 4 + f32(i); pts[i * 3 + 1] = 10; pts[i * 3 + 2] = 1; }
+  cov: [50 * 20] f32;
+  pen := InkPen.{radius = 3, taper = 12};
+  b := ink_stroke(cov[..], 50, 20, pts[..], 41, false, pen);
+  // middle column: 6 px tall, fully covered at the centre line
+  mid := 0.0f32; for y: 0..<20 { mid += cov[y * 50 + 24]; }
+  endc := 0.0f32; for y: 0..<20 { endc += cov[y * 50 + 4]; }
+  #assert mid > 5.5 && mid < 6.6 && cov[10 * 50 + 24] == 1;
+  #assert endc < mid * 0.4;
+  ink_clear(cov[..], 50, b);
+  #assert ink_area(cov[..], 50, 20) == 0;
+  for i: 0..<41 { pts[i * 3 + 2] = 0.5; }
+  b = ink_stroke(cov[..], 50, 20, pts[..], 41, false, pen);
+  half := 0.0f32; for y: 0..<20 { half += cov[y * 50 + 24]; }
+  #assert half > 2.6 && half < 3.6;
+}
+
+#test "a closed outline is heavier on the side away from the light" {
+  ctrl: [8 * 3] f32;
+  for i: 0..<8 { a := f32(i) * 0.785398; ctrl[i * 3] = 30 + 18 * cos(a); ctrl[i * 3 + 1] = 30 + 18 * sin(a); ctrl[i * 3 + 2] = 1; }
+  out: [8 * 6 * 3] f32;
+  m := ink_curve(ctrl[..], 8, true, 6, out[..]);
+  cov: [60 * 60] f32;
+  b := ink_stroke(cov[..], 60, 60, out[..], m, true, InkPen.{radius = 2, heavy = 0.8, lx = 0, ly = 1});
+  top := 0.0f32; bottom := 0.0f32;
+  for y: 0..<30 { top += cov[y * 60 + 30]; }
+  for y: 30..<60 { bottom += cov[y * 60 + 30]; }
+  #assert bottom > top * 2;
+}
+
+#test "paint mixes by coverage, stays inside a mask, and clears its coverage" {
+  px: [8 * 8 * 3] f32; cov: [8 * 8] f32; mask: [8 * 8] f32;
+  for i: 0..<64 { cov[i] = 1; mask[i] = ifx i % 8 < 4 then 1.0f32 else 0.0f32; }
+  none: [1] f32;
+  ink_paint(px[..], cov[..], none[0..<0], 8, InkBox.{x0 = 0, y0 = 0, x1 = 7, y1 = 0}, 1, 0.5, 0.25, 0.5);
+  #assert px[0] == 0.5 && px[1] == 0.25 && px[2] == 0.125 && cov[0] == 0 && cov[8] == 1;
+  ink_paint(px[..], cov[..], mask[..], 8, InkBox.{x0 = 0, y0 = 1, x1 = 7, y1 = 7}, 1, 1, 1, 1);
+  #assert px[(8 + 2) * 3] == 1 && px[(8 + 6) * 3] == 0 && ink_area(cov[..], 8, 8) == 0;
+  placed: [6] f32; src := [6] f32.[1, 2, 0.5, -1, 0, 1];
+  ink_place(src[..], 2, 2, 10, 20, placed[..]);
+  #assert placed[0] == 12 && placed[1] == 24 && placed[2] == 0.5 && placed[3] == 8 && placed[4] == 20;
+}

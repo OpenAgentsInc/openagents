@@ -1,0 +1,37 @@
+// Renders the drawn shot "Wind on the hill" (verse/animlab/drawn/wind-hill.coax, docs/verse/2026-11-06-drawn-anime.md)
+// headless on the CPU: one binary PPM a frame into OUT_DIR, and a line a frame on stdout with its digest
+// and palette (mean saturation, share of vivid pixels, mean luma), so two runs can be compared.
+//   coax/web/tool.sh verse/tools/drawn-anime.coax OUT_DIR [--from F] [--frames N]
+//   ffmpeg -framerate 24 -i OUT_DIR/frame-%03d.ppm -c:v libx264 -pix_fmt yuv420p wind-hill.mp4
+// tool.sh: release
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../animlab/drawn/wind-hill.coax";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: drawn-anime OUT_DIR [--from F] [--frames N]"); return 2; }
+  dir := args_at(a[..], 0);
+  from := args_whole(args_value(a[..], "--from", "0"));
+  count := args_whole(args_value(a[..], "--frames", "96"));
+  if from < 0 || count < 1 || from + count > WH_FRAMES { tool_errln("drawn-anime: frames must lie within 0..96"); return 2; }
+  if !fs_mkdir(dir) { tool_errln("drawn-anime: cannot make the output directory"); return 1; }
+  px: [WH_PX] f32; cov: [WH_COV] f32; mask: [WH_COV] f32;
+  work: [(WH_W / 4 + 1) * (WH_H / 4 + 1) * 6] f32;
+  out: [WH_PX + 32] u8; name: [32] u8; path: [4200] u8;
+  for f: from..<from + count {
+    wh_frame(px[..], cov[..], mask[..], work[..], WH_W, WH_H, f);
+    n := ph_ppm(px[..], WH_W, WH_H, out[..]);
+    k := 0;
+    for c: "frame-" { name[k] = c; k += 1; }
+    if f < 100 { name[k] = 48; k += 1; }
+    if f < 10 { name[k] = 48; k += 1; }
+    k = ph_digits(name[..], k, f);
+    for c: ".ppm" { name[k] = c; k += 1; }
+    p := fs_join(dir, cast(string) name[0..<k], path[..]);
+    if !fs_write(p, cast(string) out[0..<n]) { tool_errln("drawn-anime: cannot write a frame"); return 1; }
+    st := ph_stats(px[..], WH_W, WH_H, 0.75);
+    print("% % saturation % vivid % luma %\n", f, ph_digest(out[0..<n]), st.saturation, st.vivid, st.luma);
+  }
+  return 0;
+}

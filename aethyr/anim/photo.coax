@@ -1,0 +1,145 @@
+// Photography for drawn animation (docs/verse/2026-11-06-drawn-anime.md):
+// the compositing pass over a finished frame. Restrained by default: a soft
+// diffusion on the brightest areas (light through air, not bloom on
+// everything), a gentle falloff toward the corners, and film grain. Also the
+// palette measures the checks read (saturation and value), and the frame as
+// a binary PPM for a headless render.
+//   coax/bin/coax test aethyr/anim/photo.coax --library
+#load "brush.coax";
+
+PH_MAX_W :: 4096;
+
+ph_luma :: (r: f32, g: f32, b: f32) -> f32 { return 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+ph_sat :: (r: f32, g: f32, b: f32) -> f32 {
+  hi := ink_max(r, ink_max(g, b)); lo := ink_min(r, ink_min(g, b));
+  return ifx hi > 0.0001 then (hi - lo) / hi else 0.0f32;
+}
+
+/** Diffusion: what is brighter than `threshold` (luma), blurred over about `radius` pixels at quarter
+    size, added back at `strength`. `work` holds at least (w/4+1) × (h/4+1) × 6 floats. */
+ph_diffusion :: (px: [] f32, w: int, h: int, threshold: f32, radius: int, strength: f32, work: [] f32) -> bool {
+  qw := w / 4 + 1; qh := h / 4 + 1;
+  if work.count < qw * qh * 6 || strength <= 0 { return false; }
+  a := work[0..<qw * qh * 3]; b := work[qw * qh * 3..<qw * qh * 6];
+  for i: 0..<qw * qh * 3 { a[i] = 0; }
+  for y: 0..<h { for x: 0..<w {
+    i := y * w + x; l := ph_luma(px[i * 3], px[i * 3 + 1], px[i * 3 + 2]);
+    k := ink_max(l - threshold, 0) / ink_max(1 - threshold, 0.001);
+    if k <= 0 { continue; }
+    q := (y / 4) * qw + x / 4;
+    for c: 0..<3 { a[q * 3 + c] += px[i * 3 + c] * k / 16; }
+  } }
+  r := ink_imax(radius / 4, 1);
+  for pass: 0..<3 {
+    for y: 0..<qh { for x: 0..<qw { for c: 0..<3 {
+      s := 0.0f32; n := 0;
+      for d: -r..<r + 1 { xq := x + d; if xq >= 0 && xq < qw { s += a[(y * qw + xq) * 3 + c]; n += 1; } }
+      b[(y * qw + x) * 3 + c] = s / f32(n);
+    } } }
+    for y: 0..<qh { for x: 0..<qw { for c: 0..<3 {
+      s := 0.0f32; n := 0;
+      for d: -r..<r + 1 { yq := y + d; if yq >= 0 && yq < qh { s += b[(yq * qw + x) * 3 + c]; n += 1; } }
+      a[(y * qw + x) * 3 + c] = s / f32(n);
+    } } }
+  }
+  for y: 0..<h { for x: 0..<w {
+    // bilinear from the quarter-size glow
+    fx := (f32(x) + 0.5) / 4 - 0.5; fy := (f32(y) + 0.5) / 4 - 0.5;
+    x0 := ink_imax(ink_imin(ink_floor(fx), qw - 2), 0); y0 := ink_imax(ink_imin(ink_floor(fy), qh - 2), 0);
+    tx := ink_clamp(fx - f32(x0), 0, 1); ty := ink_clamp(fy - f32(y0), 0, 1);
+    i := y * w + x;
+    for c: 0..<3 {
+      g0 := a[(y0 * qw + x0) * 3 + c] * (1 - tx) + a[(y0 * qw + x0 + 1) * 3 + c] * tx;
+      g1 := a[((y0 + 1) * qw + x0) * 3 + c] * (1 - tx) + a[((y0 + 1) * qw + x0 + 1) * 3 + c] * tx;
+      g := (g0 * (1 - ty) + g1 * ty) * strength;
+      v := px[i * 3 + c];
+      px[i * 3 + c] = v + g * (1 - v);   // screen: light added never past white
+    }
+  } }
+  return true;
+}
+
+/** The last touch: a soft falloff toward the corners (`vignette`, 0 for none) and film grain (`grain`,
+    seeded by the frame so it moves), then everything kept inside 0..1. */
+ph_finish :: (px: [] f32, w: int, h: int, vignette: f32, grain: f32, frame: int) {
+  for y: 0..<h { for x: 0..<w {
+    u := (f32(x) + 0.5) / f32(w) * 2 - 1; v := (f32(y) + 0.5) / f32(h) * 2 - 1;
+    k := 1 - vignette * ink_smooth((u * u * 0.8 + v * v) * 0.6 - 0.1);
+    n := (br_hash(x, y, frame * 7919 + 13) - 0.5) * grain;
+    i := y * w + x;
+    for c: 0..<3 { px[i * 3 + c] = ink_clamp(px[i * 3 + c] * k + n, 0, 1); }
+  } }
+}
+
+// What the palette check reads from a frame.
+PhStats :: struct { saturation: f32; vivid: f32; luma: f32; }
+/** The frame's mean saturation, the share of pixels more saturated than `vivid_above`, and its mean luma. */
+ph_stats :: (px: [] f32, w: int, h: int, vivid_above: f32) -> PhStats {
+  st: PhStats; n := w * h;
+  if n <= 0 { return st; }
+  vivid := 0;
+  for i: 0..<n {
+    s := ph_sat(px[i * 3], px[i * 3 + 1], px[i * 3 + 2]);
+    st.saturation += s; st.luma += ph_luma(px[i * 3], px[i * 3 + 1], px[i * 3 + 2]);
+    if s > vivid_above { vivid += 1; }
+  }
+  st.saturation = st.saturation / f32(n); st.luma = st.luma / f32(n); st.vivid = f32(vivid) / f32(n);
+  return st;
+}
+
+ph_digits :: (out: [] u8, at: int, v: int) -> int {
+  d: [20] u8; k := 0; x := v;
+  if x == 0 { d[0] = 48; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) (48 + x % 10); x = x / 10; k += 1; }
+  n := at;
+  while k > 0 { k -= 1; out[n] = d[k]; n += 1; }
+  return n;
+}
+/** The frame as a binary PPM (P6, 8 bits) into out; the bytes written, or -1 when out is short. */
+ph_ppm :: (px: [] f32, w: int, h: int, out: [] u8) -> int {
+  if out.count < w * h * 3 + 32 { return -1; }
+  n := 0;
+  out[0] = 80; out[1] = 54; out[2] = 10; n = 3;
+  n = ph_digits(out, n, w); out[n] = 32; n += 1; n = ph_digits(out, n, h); out[n] = 10; n += 1;
+  out[n] = 50; out[n + 1] = 53; out[n + 2] = 53; out[n + 3] = 10; n += 4;
+  for i: 0..<w * h * 3 { out[n] = cast,trunc(u8) cast(int) floor(ink_clamp(px[i], 0, 1) * 255 + 0.5); n += 1; }
+  return n;
+}
+// A frame's digest: FNV-1a over its bytes, for the determinism check.
+ph_digest :: (b: [] u8) -> u64 {
+  h := cast(u64) 1469598103934665603;
+  for c: b { h = mul_wrap(h ^ cast(u64) c, cast(u64) 1099511628211); }
+  return h;
+}
+
+#test "diffusion brightens around a bright spot, never past white, and leaves dark frames dark" {
+  px: [32 * 32 * 3] f32; work: [9 * 9 * 6] f32;
+  for i: 0..<32 * 32 * 3 { px[i] = 0.2; }
+  for y: 14..<18 { for x: 14..<18 { for c: 0..<3 { px[(y * 32 + x) * 3 + c] = 1; } } }
+  #assert ph_diffusion(px[..], 32, 32, 0.7, 8, 0.6, work[..]);
+  #assert px[(16 * 32 + 21) * 3] > 0.2 && px[(16 * 32 + 16) * 3] == 1 && px[0] < 0.21;
+  dark: [32 * 32 * 3] f32;
+  #assert ph_diffusion(dark[..], 32, 32, 0.7, 8, 0.6, work[..]) && dark[16 * 32 * 3] == 0;
+  short: [8] f32;
+  #assert !ph_diffusion(px[..], 32, 32, 0.7, 8, 0.6, short[..]);
+}
+
+#test "palette stats tell a muted frame from a vivid one" {
+  muted: [4 * 3] f32; vivid: [4 * 3] f32;
+  for i: 0..<4 { muted[i * 3] = 0.5; muted[i * 3 + 1] = 0.55; muted[i * 3 + 2] = 0.45; vivid[i * 3] = 1; vivid[i * 3 + 1] = 0; vivid[i * 3 + 2] = 0.8; }
+  m := ph_stats(muted[..], 2, 2, 0.7); v := ph_stats(vivid[..], 2, 2, 0.7);
+  #assert m.saturation < 0.2 && m.vivid == 0 && v.saturation == 1 && v.vivid == 1 && m.luma > 0.5;
+}
+
+#test "a PPM has its header and bytes; the digest tells two frames apart; finish stays inside 0..1" {
+  px: [2 * 1 * 3] f32; px[0] = 1; px[4] = 0.5;
+  out: [64] u8;
+  n := ph_ppm(px[..], 2, 1, out[..]);
+  #assert n == 17 && out[0] == 80 && out[1] == 54 && out[3] == 50 && out[5] == 49 && out[11] == 255 && out[15] == 128;
+  a := ph_digest(out[0..<n]); out[16] = 1;
+  #assert a != ph_digest(out[0..<n]);
+  small: [8] u8;
+  #assert ph_ppm(px[..], 2, 1, small[..]) == -1;
+  ph_finish(px[..], 2, 1, 0.3, 0.05, 1);
+  for v: px { #assert v >= 0 && v <= 1; }
+}

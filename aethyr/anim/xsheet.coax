@@ -1,0 +1,93 @@
+// The exposure sheet for drawn animation (docs/verse/2026-11-06-drawn-anime.md):
+// which drawing shows on which frame. Drawings are exposed on ones, twos or
+// threes (a new drawing every 1, 2 or 3 frames at 24 a second); between two
+// keys the in-betweens follow a chart, slow out of one key and slow into the
+// next; a cycle (hair in wind, a walk) runs its keys round. An in-between is
+// the two keys' matched strokes, point for point, at the chart's spacing.
+//   coax/bin/coax test aethyr/anim/xsheet.coax --library
+#load "ink.coax";
+
+XS_ONES :: 1; XS_TWOS :: 2; XS_THREES :: 3;
+
+// A cycle: `keys` key drawings, `span` frames from one key to the next, exposed every `step` frames,
+// starting `offset` frames in (so two levels need not move together).
+XsCycle :: struct { keys: int = 1; span: int = 8; step: int = XS_TWOS; offset: int = 0; }
+// What a frame shows: between key a and key b at chart position t (0 at a, 1 at b), and the drawing's number
+// on the sheet (the same for every frame a drawing is held).
+XsAt :: struct { a: int; b: int; t: f32; drawing: int; }
+
+// The frame a drawing exposed on `step`s was made for: the first frame of its hold.
+xs_exposed :: (frame: int, step: int) -> int {
+  if step <= 1 { return frame; }
+  return frame - ((frame % step) + step) % step;
+}
+// The chart's spacing: slow out of the first key and slow into the second (in-betweens bunched at both
+// keys, spread in the middle), as an animator's chart halves toward each key.
+xs_ease :: (t: f32) -> f32 {
+  s := ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
+  return s * s * (3 - 2 * s);
+}
+/** Where `frame` falls on the cycle. */
+xs_at :: (c: XsCycle, frame: int) -> XsAt {
+  at: XsAt;
+  if c.keys < 1 || c.span < 1 { return at; }
+  length := c.keys * c.span;
+  f := xs_exposed(frame + c.offset, c.step);
+  f = ((f % length) + length) % length;
+  at.a = f / c.span; at.b = (at.a + 1) % c.keys;
+  at.t = xs_ease(f32(f % c.span) / f32(c.span));
+  at.drawing = xs_exposed(frame + c.offset, c.step) / ifx c.step < 1 then 1 else c.step;
+  return at;
+}
+/** The in-between of two matched drawings (n points, 3 floats each) at chart position t into out, with an
+    arc: each point bows sideways by `arc` times its travel, as limbs and hair swing on arcs, not lines.
+    False when the drawings do not match (different point counts) or out is short. */
+xs_inbetween :: (a: [] f32, b: [] f32, n: int, t: f32, arc: f32, out: [] f32) -> bool {
+  if a.count < n * 3 || b.count < n * 3 || out.count < n * 3 { return false; }
+  bow := arc * 4 * t * (1 - t);
+  for i: 0..<n {
+    dx := b[i * 3] - a[i * 3]; dy := b[i * 3 + 1] - a[i * 3 + 1];
+    out[i * 3] = a[i * 3] + dx * t - dy * bow;
+    out[i * 3 + 1] = a[i * 3 + 1] + dy * t + dx * bow;
+    out[i * 3 + 2] = a[i * 3 + 2] + (b[i * 3 + 2] - a[i * 3 + 2]) * t;
+  }
+  return true;
+}
+// How many distinct drawings a level shows over `frames` frames: the sheet's count, the timing check's input.
+xs_drawings :: (c: XsCycle, frames: int) -> int {
+  n := 0; last := -1;
+  for f: 0..<frames { d := xs_at(c, f).drawing; if d != last { n += 1; last = d; } }
+  return n;
+}
+
+#test "on twos a drawing holds for two frames; on ones every frame is new" {
+  c := XsCycle.{keys = 3, span = 8, step = XS_TWOS};
+  for f: 0..<48 {
+    if f % 2 == 1 { a := xs_at(c, f); p := xs_at(c, f - 1); #assert a.drawing == p.drawing && a.t == p.t && a.a == p.a; }
+  }
+  #assert xs_drawings(c, 48) == 24;
+  #assert xs_drawings(XsCycle.{keys = 3, span = 8, step = XS_ONES}, 48) == 48;
+  #assert xs_drawings(XsCycle.{keys = 3, span = 9, step = XS_THREES}, 27) == 9;
+  #assert xs_exposed(7, 3) == 6 && xs_exposed(-1, 2) == -2 && xs_exposed(5, 1) == 5;
+}
+
+#test "a cycle lands on each key exactly, runs round, and the offset shifts it" {
+  c := XsCycle.{keys = 3, span = 8, step = XS_TWOS};
+  for k: 0..<3 { a := xs_at(c, k * 8); #assert a.a == k && a.t == 0 && a.b == (k + 1) % 3; }
+  #assert xs_at(c, 24).a == 0 && xs_at(c, 25).t == 0;
+  #assert xs_at(XsCycle.{keys = 3, span = 8, step = XS_TWOS, offset = 8}, 0).a == 1;
+  // the chart: slow at both keys, fastest between
+  #assert xs_ease(0.25) < 0.25 && xs_ease(0.75) > 0.75 && xs_ease(0.5) == 0.5 && xs_ease(-1) == 0 && xs_ease(2) == 1;
+  #assert xs_at(XsCycle.{keys = 0}, 3).drawing == 0;
+}
+
+#test "an in-between starts on one key, ends on the next, and bows on an arc" {
+  a := [6] f32.[0, 0, 1, 10, 0, 1]; b := [6] f32.[0, 10, 0, 10, 10, 0];
+  out: [6] f32;
+  #assert xs_inbetween(a[..], b[..], 2, 0, 0.2, out[..]) && out[1] == 0 && out[2] == 1;
+  #assert xs_inbetween(a[..], b[..], 2, 1, 0.2, out[..]) && out[1] == 10 && out[2] == 0;
+  #assert xs_inbetween(a[..], b[..], 2, 0.5, 0.2, out[..]) && out[1] == 5 && out[0] < -1.9 && out[0] > -2.1;
+  #assert xs_inbetween(a[..], b[..], 2, 0.5, 0, out[..]) && out[0] == 0 && out[2] == 0.5;
+  short: [3] f32;
+  #assert !xs_inbetween(a[..], b[..], 2, 0.5, 0, short[..]) && !xs_inbetween(a[0..<3], b[..], 2, 0.5, 0, out[..]);
+}

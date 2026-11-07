@@ -1,0 +1,365 @@
+// "Wind on the hill": the first drawn shot (docs/verse/2026-11-06-drawn-anime.md, the MVP).
+// An original character, Wren, stands on a grass hill with her back to us,
+// turned toward a towering summer cumulus. The wind comes from the left: her
+// hair, scarf and skirt run a three-key wind cycle exposed on twos, the
+// in-betweens generated from the keys along their chart and arcs; the grass
+// ripples in waves timed to the same sheet. The camera trucks slowly across
+// multiplane levels: sky, far ridges, the hill, Wren, the foreground grass.
+//
+// Everything on screen is drawn, not rendered: Wren is closed ink outlines
+// filled from her colour model, with designed shadow shapes painted inside
+// each region's mask; the plates are painted with aethyr/anim/brush.coax.
+//   coax/bin/coax test verse/animlab/drawn/wind-hill.coax --library
+//   COAX=... coax/web/tool.sh verse/tools/drawn-anime.coax OUT_DIR   (verse/tools/drawn-anime.coax)
+#load "../../../aethyr/anim/photo.coax";
+#load "../../../aethyr/anim/xsheet.coax";
+
+WH_W :: 1280; WH_H :: 720;
+WH_FPS :: 24; WH_FRAMES :: 96;   // four seconds
+WH_PER :: 8;                     // curve samples a control segment
+WH_MAX :: 64;                    // control points in one shape
+
+// ---- the colour model (anim.colormodel.v1, day): each region's normal and shadow paint, and its line ----
+WhPaint :: struct { fill: Rgb; shade: Rgb; line: Rgb; }
+wh_paint :: (part: int) -> WhPaint {
+  ink := rgb(0.21, 0.14, 0.13);
+  if part == WH_SKIN { return WhPaint.{fill = rgb(0.98, 0.87, 0.77), shade = rgb(0.86, 0.67, 0.61), line = rgb(0.45, 0.25, 0.20)}; }
+  if part == WH_HAIR { return WhPaint.{fill = rgb(0.24, 0.17, 0.15), shade = rgb(0.14, 0.10, 0.11), line = rgb(0.10, 0.07, 0.07)}; }
+  if part == WH_BLOUSE { return WhPaint.{fill = rgb(0.96, 0.94, 0.87), shade = rgb(0.75, 0.76, 0.81), line = ink}; }
+  if part == WH_SKIRT { return WhPaint.{fill = rgb(0.25, 0.39, 0.45), shade = rgb(0.16, 0.25, 0.33), line = rgb(0.09, 0.12, 0.16)}; }
+  if part == WH_SCARF { return WhPaint.{fill = rgb(0.80, 0.24, 0.19), shade = rgb(0.56, 0.14, 0.16), line = rgb(0.30, 0.07, 0.07)}; }
+  return WhPaint.{fill = rgb(0.30, 0.22, 0.19), shade = rgb(0.19, 0.14, 0.13), line = rgb(0.10, 0.07, 0.07)};   // stockings, shoes
+}
+WH_SKIN :: 0; WH_HAIR :: 1; WH_BLOUSE :: 2; WH_SKIRT :: 3; WH_SCARF :: 4; WH_LEGS :: 5;
+
+// ---- Wren's model drawing: control points (x, y, pressure) in her own units, feet at the origin, up is -y,
+//      about 300 tall. Shadows are their own shapes, designed for this pose with the sun high on the left. ----
+WH_HAIR_N :: 18;
+WH_HAIR_PTS :: [WH_HAIR_N * 3] f32.[0, -301, 1, 15, -298, 1, 26, -289, 1, 32, -273, 1, 34, -257, 1, 37, -243, 0.8, 31, -238, 0.7, 24, -241, 0.8,
+  15, -236, 0.7, 5, -239, 0.8, -5, -236, 0.7, -15, -239, 0.8, -24, -241, 0.8, -29, -249, 1, -31, -263, 1, -29, -280, 1, -22, -292, 1, -11, -299, 1];
+WH_HAIR_SH_N :: 12;
+WH_HAIR_SH :: [WH_HAIR_SH_N * 3] f32.[20, -294, 1, 30, -280, 1, 34, -257, 1, 37, -243, 1, 31, -238, 1, 24, -241, 1, 15, -236, 1, 5, -239, 1,
+  -5, -236, 1, -14, -246, 1, 6, -251, 1, 22, -270, 1];
+WH_CHEEK_N :: 5;
+WH_CHEEK :: [WH_CHEEK_N * 3] f32.[-29, -266, 1, -35, -257, 1, -34, -247, 1, -28, -243, 1, -26, -254, 1];
+WH_NECK_N :: 4;
+WH_NECK :: [WH_NECK_N * 3] f32.[-7, -242, 1, 7, -242, 1, 6, -226, 1, -6, -226, 1];
+WH_BLOUSE_N :: 14;
+WH_BLOUSE_PTS :: [WH_BLOUSE_N * 3] f32.[-9, -233, 1, 9, -233, 1, 30, -227, 1, 39, -217, 1, 37, -199, 1, 28, -195, 1, 26, -176, 1, 23, -160, 1,
+  -23, -160, 1, -26, -176, 1, -28, -195, 1, -37, -199, 1, -39, -217, 1, -30, -227, 1];
+WH_BLOUSE_SH_N :: 10;
+WH_BLOUSE_SH :: [WH_BLOUSE_SH_N * 3] f32.[10, -226, 1, 30, -227, 1, 39, -217, 1, 37, -199, 1, 28, -195, 1, 26, -176, 1, 23, -160, 1, 4, -160, 1, 11, -188, 1, 9, -212, 1];
+WH_COLLAR_SH_N :: 6;
+WH_COLLAR_SH :: [WH_COLLAR_SH_N * 3] f32.[-31, -228, 1, 31, -228, 1, 27, -219, 1, 9, -216, 1, -10, -216, 1, -26, -220, 1];
+WH_ARM_N :: 7;
+WH_ARM_L :: [WH_ARM_N * 3] f32.[-35, -201, 1, -28, -198, 1, -30, -162, 1, -33, -130, 1, -38, -122, 1, -43, -129, 1, -41, -162, 1];
+WH_ARM_R :: [WH_ARM_N * 3] f32.[35, -201, 1, 28, -198, 1, 29, -162, 1, 31, -130, 1, 36, -121, 1, 41, -128, 1, 40, -162, 1];
+WH_ARM_R_SH_N :: 5;
+WH_ARM_R_SH :: [WH_ARM_R_SH_N * 3] f32.[34, -200, 1, 40, -162, 1, 41, -128, 1, 36, -121, 1, 35, -160, 1];
+WH_SKIRT_N :: 12;
+WH_SKIRT_PTS :: [WH_SKIRT_N * 3] f32.[-24, -166, 1, 24, -166, 1, 34, -130, 1, 47, -96, 1, 61, -67, 1, 46, -62, 1, 30, -65, 1, 12, -61, 1,
+  -6, -64, 1, -22, -61, 1, -40, -64, 1, -36, -122, 1];
+WH_SKIRT_SH_N :: 9;
+WH_SKIRT_SH :: [WH_SKIRT_SH_N * 3] f32.[24, -166, 1, 34, -130, 1, 47, -96, 1, 61, -67, 1, 46, -62, 1, 30, -65, 1, 20, -104, 1, 11, -140, 1, 5, -166, 1];
+WH_FOLD_N :: 4;
+WH_FOLD_SH :: [WH_FOLD_N * 3] f32.[-13, -126, 1, -9, -122, 1, -15, -63, 1, -23, -62, 1];
+WH_FOLD_LINE_N :: 3;
+WH_FOLD_LINE :: [WH_FOLD_LINE_N * 3] f32.[-8, -150, 0.2, -12, -110, 0.9, -16, -66, 0.5];
+WH_LEG_N :: 6;
+WH_LEG_L :: [WH_LEG_N * 3] f32.[-15, -64, 1, -5, -64, 1, -5, -34, 1, -7, -8, 1, -15, -8, 1, -17, -36, 1];
+WH_LEG_R :: [WH_LEG_N * 3] f32.[5, -64, 1, 15, -64, 1, 17, -36, 1, 15, -8, 1, 7, -8, 1, 5, -34, 1];
+WH_SHOE_N :: 5;
+WH_SHOE_L :: [WH_SHOE_N * 3] f32.[-17, -10, 1, -5, -10, 1, -4, -1, 1, -11, 1, 1, -19, -1, 1];
+WH_SHOE_R :: [WH_SHOE_N * 3] f32.[5, -10, 1, 17, -10, 1, 19, -1, 1, 11, 1, 1, 4, -1, 1];
+WH_SCARF_N :: 4;
+WH_SCARF_WRAP_SH :: [WH_SCARF_N * 3] f32.[2, -238, 1, 13, -238, 1, 16, -228, 1, 4, -228, 1];
+WH_SCARF_WRAP :: [WH_SCARF_N * 3] f32.[-13, -238, 1, 13, -238, 1, 16, -228, 1, -16, -228, 1];
+WH_TAIL_N :: 12;
+WH_TAIL :: [WH_TAIL_N * 3] f32.[10, -236, 1, 34, -242, 1, 58, -248, 1, 82, -247, 1, 104, -254, 0.8, 122, -252, 0.6,
+  124, -246, 0.6, 106, -244, 0.8, 84, -236, 1, 60, -238, 1, 36, -230, 1, 12, -227, 1];
+WH_TAIL_SH_N :: 7;
+WH_TAIL_SH :: [WH_TAIL_SH_N * 3] f32.[12, -229, 1, 36, -233, 1, 60, -241, 1, 84, -239, 1, 106, -246, 1, 84, -236, 1, 36, -230, 1];
+
+// ---- the wind: each part's three keys are its model drawing bent by the wind, strongest where the wind
+//      catches it (hair ends, the hem, the scarf's tail). The sheet in-betweens them. ----
+WH_HAIR_KEYS :: [3] f32.[0.35, 1.0, 0.6];
+WH_SKIRT_KEYS :: [3] f32.[0.45, 1.0, 0.7];
+WH_TAIL_PHASE :: [3] f32.[0.0, 2.1, 4.2];
+
+/** Point (x, y) of `part` in wind key k, into out (x, y). */
+wh_wind :: (part: int, k: int, x: f32, y: f32, out: [] f32) {
+  out[0] = x; out[1] = y;
+  if part == WH_HAIR {
+    keys := WH_HAIR_KEYS; a := keys[k % 3];
+    wgt := ink_clamp((y + 290) / 55, 0, 1) * ink_clamp(0.4 + x / 40, 0, 1.3);
+    out[0] = x + a * wgt * 7; out[1] = y - a * wgt * wgt * 5;
+  } else if part == WH_SKIRT {
+    keys := WH_SKIRT_KEYS; a := keys[k % 3];
+    wgt := ink_clamp((y + 166) / 105, 0, 1); wgt = wgt * wgt;
+    out[0] = x + a * wgt * 10; out[1] = y - a * wgt * ink_clamp(x / 60, 0, 1) * 7;
+  } else if part == WH_SCARF {
+    ph := WH_TAIL_PHASE; p := ph[k % 3];
+    s := ink_clamp((x - 10) / 112, 0, 1);
+    out[0] = x - s * s * 6 * (1 + sin(p));
+    out[1] = y + sin(p + s * 5.2) * s * 11 - s * 4;
+  }
+}
+/** A shape of `part` (n control points) at `frame` into out: the two keys the sheet says, then the
+    in-between at its chart position on its arc. */
+wh_posed :: (part: int, src: [] f32, n: int, frame: int, out: [] f32) {
+  cyc := XsCycle.{keys = 3, span = 8, step = XS_TWOS, offset = ifx part == WH_SKIRT then 4 else ifx part == WH_SCARF then 2 else 0};
+  at := xs_at(cyc, frame);
+  ka: [WH_MAX * 3] f32; kb: [WH_MAX * 3] f32; q: [2] f32;
+  for i: 0..<n {
+    wh_wind(part, at.a, src[i * 3], src[i * 3 + 1], q[..]); ka[i * 3] = q[0]; ka[i * 3 + 1] = q[1]; ka[i * 3 + 2] = src[i * 3 + 2];
+    wh_wind(part, at.b, src[i * 3], src[i * 3 + 1], q[..]); kb[i * 3] = q[0]; kb[i * 3 + 1] = q[1]; kb[i * 3 + 2] = src[i * 3 + 2];
+  }
+  ok := xs_inbetween(ka[..], kb[..], n, at.t, 0.08, out);
+}
+
+// The buffers one frame is drawn in.
+WH_PX :: WH_W * WH_H * 3;
+WH_COV :: WH_W * WH_H;
+
+/** One painted region: the closed outline through n control points (staged at s, (tx, ty)) filled with
+    its paint; each shadow shape (sn points) painted inside the region's mask; then its line, heavier on
+    the shadow side. A region without a line (line = false) is a shadow-only touch. */
+wh_region :: (px: [] f32, cov: [] f32, mask: [] f32, w: int, h: int, ctrl: [] f32, n: int, shadow: [] f32, sn: int, shadow2: [] f32, sn2: int, paint: WhPaint, s: f32, tx: f32, ty: f32, line: bool) {
+  placed: [WH_MAX * 3] f32; pts: [WH_MAX * WH_PER * 3] f32;
+  ink_place(ctrl, n, s, tx, ty, placed[..]);
+  m := ink_curve(placed[..], n, true, WH_PER, pts[..]);
+  none: [1] f32;
+  mb := ink_cover(mask, w, h, pts[..], m);
+  fb := ink_cover(cov, w, h, pts[..], m);
+  ink_paint(px, cov, none[0..<0], w, fb, paint.fill.r, paint.fill.g, paint.fill.b, 1);
+  if sn >= 3 {
+    sp: [WH_MAX * 3] f32; spts: [WH_MAX * WH_PER * 3] f32;
+    ink_place(shadow, sn, s, tx, ty, sp[..]);
+    sm := ink_curve(sp[..], sn, true, WH_PER, spts[..]);
+    sb := ink_cover(cov, w, h, spts[..], sm);
+    ink_paint(px, cov, mask, w, sb, paint.shade.r, paint.shade.g, paint.shade.b, 1);
+  }
+  if sn2 >= 3 {
+    sp: [WH_MAX * 3] f32; spts: [WH_MAX * WH_PER * 3] f32;
+    ink_place(shadow2, sn2, s, tx, ty, sp[..]);
+    sm := ink_curve(sp[..], sn2, true, WH_PER, spts[..]);
+    sb := ink_cover(cov, w, h, spts[..], sm);
+    ink_paint(px, cov, mask, w, sb, paint.shade.r, paint.shade.g, paint.shade.b, 1);
+  }
+  if line {
+    lb := ink_stroke(cov, w, h, pts[..], m, true, InkPen.{radius = 1.05 * s, heavy = 0.55, lx = 0.55, ly = 0.83});
+    ink_paint(px, cov, none[0..<0], w, lb, paint.line.r, paint.line.g, paint.line.b, 1);
+  }
+  ink_clear(mask, w, mb);
+}
+// An open line (a fold, a crease) through n control points, its pressure shaping it.
+wh_line :: (px: [] f32, cov: [] f32, w: int, h: int, ctrl: [] f32, n: int, c: Rgb, s: f32, tx: f32, ty: f32) {
+  placed: [WH_MAX * 3] f32; pts: [WH_MAX * WH_PER * 3] f32; none: [1] f32;
+  ink_place(ctrl, n, s, tx, ty, placed[..]);
+  m := ink_curve(placed[..], n, false, WH_PER, pts[..]);
+  b := ink_stroke(cov, w, h, pts[..], m, false, InkPen.{radius = 1.0 * s, taper = 14 * s});
+  ink_paint(px, cov, none[0..<0], w, b, c.r, c.g, c.b, 1);
+}
+
+/** Wren at `frame`, her feet at (tx, ty), drawn back to front. */
+wh_wren :: (px: [] f32, cov: [] f32, mask: [] f32, w: int, h: int, frame: int, s: f32, tx: f32, ty: f32) {
+  a: [WH_MAX * 3] f32; b: [WH_MAX * 3] f32;
+  legs := wh_paint(WH_LEGS); skin := wh_paint(WH_SKIN); hair := wh_paint(WH_HAIR);
+  blouse := wh_paint(WH_BLOUSE); skirt := wh_paint(WH_SKIRT); scarf := wh_paint(WH_SCARF);
+  none: [1] f32; no := none[0..<0];
+  ll := WH_LEG_L; lr := WH_LEG_R; sl := WH_SHOE_L; sr := WH_SHOE_R;
+  wh_region(px, cov, mask, w, h, ll[..], WH_LEG_N, no, 0, no, 0, legs, s, tx, ty, true);
+  wh_region(px, cov, mask, w, h, lr[..], WH_LEG_N, no, 0, no, 0, legs, s, tx, ty, true);
+  shoes := WhPaint.{fill = rgb(0.36, 0.20, 0.15), shade = rgb(0.22, 0.12, 0.10), line = legs.line};
+  wh_region(px, cov, mask, w, h, sl[..], WH_SHOE_N, no, 0, no, 0, shoes, s, tx, ty, true);
+  wh_region(px, cov, mask, w, h, sr[..], WH_SHOE_N, no, 0, no, 0, shoes, s, tx, ty, true);
+  sk := WH_SKIRT_PTS; ss := WH_SKIRT_SH; fs := WH_FOLD_SH; c: [WH_MAX * 3] f32;
+  wh_posed(WH_SKIRT, sk[..], WH_SKIRT_N, frame, a[..]); wh_posed(WH_SKIRT, ss[..], WH_SKIRT_SH_N, frame, b[..]); wh_posed(WH_SKIRT, fs[..], WH_FOLD_N, frame, c[..]);
+  wh_region(px, cov, mask, w, h, a[..], WH_SKIRT_N, b[..], WH_SKIRT_SH_N, c[..], WH_FOLD_N, skirt, s, tx, ty, true);
+  fl := WH_FOLD_LINE; wh_posed(WH_SKIRT, fl[..], WH_FOLD_LINE_N, frame, b[..]);
+  wh_line(px, cov, w, h, b[..], WH_FOLD_LINE_N, skirt.line, s, tx, ty);
+  al := WH_ARM_L; ar := WH_ARM_R; ars := WH_ARM_R_SH;
+  wh_region(px, cov, mask, w, h, al[..], WH_ARM_N, no, 0, no, 0, skin, s, tx, ty, true);
+  wh_region(px, cov, mask, w, h, ar[..], WH_ARM_N, ars[..], WH_ARM_R_SH_N, no, 0, skin, s, tx, ty, true);
+  bl := WH_BLOUSE_PTS; bs := WH_BLOUSE_SH; cs := WH_COLLAR_SH;
+  wh_region(px, cov, mask, w, h, bl[..], WH_BLOUSE_N, bs[..], WH_BLOUSE_SH_N, cs[..], WH_COLLAR_SH_N, blouse, s, tx, ty, true);
+  nk := WH_NECK; ck := WH_CHEEK;
+  wh_region(px, cov, mask, w, h, nk[..], WH_NECK_N, nk[..], WH_NECK_N, no, 0, skin, s, tx, ty, true);
+  wh_region(px, cov, mask, w, h, ck[..], WH_CHEEK_N, no, 0, no, 0, skin, s, tx, ty, true);
+  hp := WH_HAIR_PTS; hs := WH_HAIR_SH;
+  wh_posed(WH_HAIR, hp[..], WH_HAIR_N, frame, a[..]); wh_posed(WH_HAIR, hs[..], WH_HAIR_SH_N, frame, b[..]);
+  wh_region(px, cov, mask, w, h, a[..], WH_HAIR_N, b[..], WH_HAIR_SH_N, no, 0, hair, s, tx, ty, true);
+  tl := WH_TAIL; ts := WH_TAIL_SH;
+  wh_posed(WH_SCARF, tl[..], WH_TAIL_N, frame, a[..]); wh_posed(WH_SCARF, ts[..], WH_TAIL_SH_N, frame, b[..]);
+  wh_region(px, cov, mask, w, h, a[..], WH_TAIL_N, b[..], WH_TAIL_SH_N, no, 0, scarf, s, tx, ty, true);
+  sw := WH_SCARF_WRAP; sws := WH_SCARF_WRAP_SH;
+  wh_region(px, cov, mask, w, h, sw[..], WH_SCARF_N, sws[..], WH_SCARF_N, no, 0, scarf, s, tx, ty, true);
+}
+
+// ---- the plates (anim.background.v1): painted once a frame at the camera's offset for each level ----
+WH_CLOUD_N :: 30;
+WH_CLOUD :: [WH_CLOUD_N * 3] f32.[300, 410, 62, 372, 398, 84, 466, 404, 76, 552, 412, 60, 626, 424, 42, 232, 424, 44, 178, 432, 26, 668, 432, 26,
+  350, 318, 70, 446, 296, 84, 532, 326, 64, 300, 356, 44, 590, 366, 40, 392, 248, 56, 470, 226, 62, 520, 262, 40,
+  416, 178, 54, 486, 160, 50, 440, 118, 44, 498, 108, 34, 356, 206, 30, 538, 202, 28, 466, 78, 26, 404, 140, 28, 562, 286, 26, 262, 386, 30, 384, 150, 40, 546, 150, 36, 424, 92, 30, 524, 76, 26];
+WH_CLOUD2_N :: 5;
+WH_CLOUD2 :: [WH_CLOUD2_N * 3] f32.[905, 442, 40, 962, 430, 56, 1032, 441, 45, 1092, 450, 35, 1150, 456, 28];
+WH_CLOUD3_N :: 3;
+WH_CLOUD3 :: [WH_CLOUD3_N * 3] f32.[1010, 190, 22, 1046, 180, 31, 1086, 193, 20];
+
+// The hill's crest in its plate: high on the right where Wren stands, falling away to the left.
+wh_crest :: (qx: f32) -> f32 { d := (qx - 960) / 700; return 506 + d * d * 95 + (br_fbm(qx * 0.012, 3.5, 3, 41) - 0.5) * 6; }
+// Where a cloud's shadow falls on the hill (0 none, 1 full), drifting with the wind.
+wh_cloud_shadow :: (qx: f32, qy: f32, t: f32) -> f32 { return ink_smooth((br_fbm(qx * 0.0022 - t * 0.05, qy * 0.004, 3, 77) - 0.56) * 9); }
+
+WH_LIT :: Rgb.{r = 0.60, g = 0.72, b = 0.36};
+wh_grass :: (k: f32) -> Rgb {
+  if k < 0.22 { return rgb(0.28, 0.44, 0.24); }
+  if k < 0.62 { return rgb(0.43, 0.60, 0.30); }
+  if k < 0.86 { return rgb(0.55, 0.69, 0.35); }
+  return rgb(0.68, 0.77, 0.42);
+}
+/** The hill's grass from plate row y0 up to (not including) y1, rooted below the crest: blades in rows,
+    back to front, longer and wider as they come nearer, swaying in waves that run with the wind on twos. */
+wh_blades :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, y0: f32, y1: f32, frame: int) {
+  tw := f32(xs_exposed(frame, XS_TWOS)) / f32(WH_FPS);
+  row := 0;
+  y := y0;
+  while y < y1 {
+    depth := ink_max(y - 470, 0);
+    step := 5.0f32 + depth * 0.02;
+    x := -20.0f32;
+    while x < f32(w) + 20 {
+      qx0 := x + ox;
+      cell := ink_floor(qx0 / step);
+      j := br_hash(cell, row, 5);
+      qx := f32(cell) * step + j * step;
+      qy := y + br_hash(cell, row, 6) * 4;
+      if qy > wh_crest(qx) + 1 {
+        sway := 0.35 + 0.32 * sin(qx * 0.011 - tw * 3.4 + qy * 0.006) + (br_hash(cell, row, 8) - 0.5) * 0.3;
+        c := wh_grass(br_hash(cell, row, 7));
+        sh := wh_cloud_shadow(qx, qy, tw);
+        c = br_mix(c, br_mix(rgb(c.r * 0.62, c.g * 0.70, c.b * 0.80), rgb(0.22, 0.33, 0.30), 0.25), sh);
+        blade_len := (5 + depth * 0.1) * (0.7 + br_hash(cell, row, 9) * 0.6);
+        br_blade(px, cov, w, h, ox, 0, BrBlade.{x = qx, y = qy, len = blade_len, lean = sway, width = 0.55 + depth * 0.006, c = c});
+      }
+      x += step;
+    }
+    y += 3 + depth * 0.012;
+    row += 1;
+  }
+}
+/** The near hill: the field painted under its blades, lit toward the crest, mottled, under drifting cloud
+    shadow. */
+wh_hill :: (px: [] f32, w: int, h: int, ox: f32, frame: int) {
+  tw := f32(xs_exposed(frame, XS_TWOS)) / f32(WH_FPS);
+  low := rgb(0.33, 0.50, 0.26);
+  for x: 0..<w {
+    qx := f32(x) + 0.5 + ox;
+    crest := wh_crest(qx);
+    for y: ink_imax(ink_floor(crest) - 1, 0)..<h {
+      qy := f32(y) + 0.5;
+      a := ink_clamp(qy - crest + 0.5, 0, 1);
+      if a <= 0 { continue; }
+      t := ink_clamp((qy - crest) / 190, 0, 1);
+      c := br_mix(WH_LIT, low, ink_smooth(t));
+      m := 1 + (br_fbm(qx * 0.018, qy * 0.04, 3, 52) - 0.5) * 0.18;
+      c = br_scale(c, m);
+      sh := wh_cloud_shadow(qx, qy, tw);
+      c = br_mix(c, rgb(c.r * 0.62, c.g * 0.70, c.b * 0.82), sh);
+      br_put(px, y * w + x, c, a);
+    }
+  }
+}
+
+/** Frame `frame` of the shot into px (w × h × 3). cov and mask are w × h scratch, all zero on entry and on
+    return; work holds the diffusion's quarter-size buffers. */
+wh_frame :: (px: [] f32, cov: [] f32, mask: [] f32, work: [] f32, w: int, h: int, frame: int) {
+  sc := f32(h) / 720;
+  cam := f32(frame) * 0.75;            // the camera trucks right across the field
+  t := f32(frame) / f32(WH_FPS);
+  sky_ox := cam * 0.15; far_ox := cam * 0.45; hill_ox := cam;
+  // the sky: one wash, then the clouds puff by puff, painted on paper
+  br_wash(px, w, h, sky_ox, 0, 0, 560 * sc, rgb(0.31, 0.54, 0.82), rgb(0.80, 0.88, 0.92), 0.07, 11);
+  drift := t * 2.0;   // clouds creep with the wind, on the sky's own plate
+  c1 := WH_CLOUD; c2 := WH_CLOUD2; c3 := WH_CLOUD3;
+  cl := BrCloud.{lit = rgb(0.99, 0.98, 0.95), shade = rgb(0.71, 0.75, 0.85), core = rgb(0.62, 0.68, 0.79), lx = -0.5, ly = -0.85};
+  cl.base = 446 * sc; cl.seed = 21;
+  br_cloud(px, w, h, sky_ox - drift, 0, c1[..], WH_CLOUD_N, cl);
+  cl.base = 472 * sc; cl.seed = 22;
+  br_cloud(px, w, h, sky_ox - drift * 0.8, 0, c2[..], WH_CLOUD2_N, cl);
+  cl.base = 205 * sc; cl.seed = 23;
+  br_cloud(px, w, h, sky_ox - drift * 1.2, 0, c3[..], WH_CLOUD3_N, cl);
+  // the far mountains and the forest ridge in front of them, stepping back in value and softness
+  br_ridge(px, w, h, far_ox * 0.6, 0, 530 * sc, 70 * sc, 0.0035, rgb(0.55, 0.65, 0.76), rgb(0.66, 0.74, 0.82), 120, 1.4, 31);
+  br_ridge(px, w, h, far_ox, 0, 566 * sc, 30 * sc, 0.006, rgb(0.33, 0.47, 0.44), rgb(0.40, 0.53, 0.47), 80, 0.9, 32);
+  // the hill and its grass behind Wren's feet
+  wh_hill(px, w, h, hill_ox, frame);
+  feet_qx := 905.0f32; feet_y := wh_crest(feet_qx) + 4;
+  wh_blades(px, cov, w, h, hill_ox, 470, feet_y - 1, frame);
+  // her shadow on the grass, then Wren
+  br_dab(px, w, h, hill_ox, 0, feet_qx + 14, feet_y, 30, 5, 0.04, rgb(0.27, 0.40, 0.22), 0.55, 0.1, 0, 61);
+  wh_wren(px, cov, mask, w, h, frame, sc, feet_qx - hill_ox, feet_y);
+  // the grass in front of her feet and down the slope
+  wh_blades(px, cov, w, h, hill_ox, feet_y - 1, f32(h) + 10, frame);
+  // the foreground tufts, nearest of all, moving fastest
+  fg_ox := cam * 1.35;
+  tw := f32(xs_exposed(frame, XS_TWOS)) / f32(WH_FPS);
+  for k: 0..<26 {
+    qx := f32(k) * 58 + br_hash(k, 1, 90) * 40 - 40;
+    for b: 0..<5 {
+      blade_len := (55 + br_hash(k, b, 91) * 70) * sc;
+      sway := 0.4 + 0.25 * sin(qx * 0.01 - tw * 3.4) + (br_hash(k, b, 92) - 0.5) * 0.5;
+      c := br_mix(rgb(0.20, 0.33, 0.21), rgb(0.30, 0.45, 0.26), br_hash(k, b, 93));
+      br_blade(px, cov, w, h, fg_ox, 0, BrBlade.{x = qx + f32(b) * 6 - 12, y = f32(h) + 6, len = blade_len, lean = sway, width = 2.2 * sc, c = c});
+    }
+  }
+  // photography: the paper, the light through the air, the falloff, the grain
+  br_paper(px, w, h, 0, 0, 0.045, 3);
+  ok := ph_diffusion(px, w, h, 0.84, 28, 0.32, work);
+  ph_finish(px, w, h, 0.10, 0.018, frame);
+}
+
+#test "the wind cycle holds each drawing for two frames and returns to its first key" {
+  hp := WH_HAIR_PTS;
+  a: [WH_MAX * 3] f32; b: [WH_MAX * 3] f32;
+  for f: 0..<48 {
+    wh_posed(WH_HAIR, hp[..], WH_HAIR_N, f, a[..]);
+    if f % 2 == 1 { wh_posed(WH_HAIR, hp[..], WH_HAIR_N, f - 1, b[..]); for i: 0..<WH_HAIR_N * 3 { #assert a[i] == b[i]; } }
+  }
+  wh_posed(WH_HAIR, hp[..], WH_HAIR_N, 0, a[..]); wh_posed(WH_HAIR, hp[..], WH_HAIR_N, 24, b[..]);
+  for i: 0..<WH_HAIR_N * 3 { #assert a[i] == b[i]; }
+  // the wind blows left to right: every hair point is at or right of the model drawing
+  wh_posed(WH_HAIR, hp[..], WH_HAIR_N, 8, a[..]);
+  moved := 0;
+  for i: 0..<WH_HAIR_N { #assert a[i * 3] >= hp[i * 3] - 0.001; if a[i * 3] > hp[i * 3] + 1 { moved += 1; } }
+  #assert moved >= 4;
+}
+
+#test "every shape of Wren closes into a paintable region with an area" {
+  cov: [200 * 200] f32;
+  hp := WH_HAIR_PTS; bl := WH_BLOUSE_PTS; sk := WH_SKIRT_PTS; tl := WH_TAIL;
+  pts: [WH_MAX * WH_PER * 3] f32; placed: [WH_MAX * 3] f32;
+  ink_place(hp[..], WH_HAIR_N, 0.5, 60, 190, placed[..]);
+  m := ink_curve(placed[..], WH_HAIR_N, true, WH_PER, pts[..]);
+  b := ink_cover(cov[..], 200, 200, pts[..], m);
+  #assert ink_area(cov[..], 200, 200) > 300;
+  ink_clear(cov[..], 200, b);
+  ink_place(sk[..], WH_SKIRT_N, 0.5, 60, 190, placed[..]);
+  m = ink_curve(placed[..], WH_SKIRT_N, true, WH_PER, pts[..]);
+  b = ink_cover(cov[..], 200, 200, pts[..], m);
+  #assert ink_area(cov[..], 200, 200) > 600 && ink_area(cov[..], 200, 200) < 3000;
+}
+
+#test "a small frame is painted in a muted palette and draws the same pixels twice" #steps 2000000000 {
+  w := 128; h := 72;
+  px: [128 * 72 * 3] f32; cov: [128 * 72] f32; mask: [128 * 72] f32; work: [33 * 19 * 6] f32;
+  wh_frame(px[..], cov[..], mask[..], work[..], w, h, 10);
+  st := ph_stats(px[..], w, h, 0.75);
+  #assert st.saturation < 0.5 && st.vivid < 0.05 && st.luma > 0.35;
+  out: [128 * 72 * 3 + 32] u8;
+  n := ph_ppm(px[..], w, h, out[..]); d := ph_digest(out[0..<n]);
+  #assert ink_area(cov[..], w, h) == 0 && ink_area(mask[..], w, h) == 0;
+  wh_frame(px[..], cov[..], mask[..], work[..], w, h, 10);
+  n = ph_ppm(px[..], w, h, out[..]);
+  #assert ph_digest(out[0..<n]) == d;
+}
