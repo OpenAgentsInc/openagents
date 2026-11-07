@@ -45,6 +45,8 @@ E2 :: struct {
   held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
   you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32; autowalk: bool;
   anim: [1] figs.BdAnim;
+  airborne: bool; air_at: f32; land_at: f32 = -100;   // the jump's takeoff and landing (e2_jump_figure)
+  side_x: f32; side_z: f32;                          // the over-the-shoulder shift looking up (e2_follow)
   clock: f32; width: f32; height: f32; k: f32 = 1;
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
   shade: [3] f32;
@@ -252,6 +254,64 @@ e2_move_bodies :: (s: [] E2) -> [] f32 #export_c #effects(all) { return s[0].mov
 // Where the step left you: the controller walks a level plane, the land lifts you onto the ground.
 e2_you :: (s: [] E2, x: f32, y: f32, z: f32, face: f32) #export_c #effects(all) {
   s[0].you_x = x; s[0].jump = y; s[0].you_z = z; s[0].you_face = face; s[0].you_y = e2_height(x, z) + y;
+  e2_air(s, y > f32(E2_AIRBORNE));
+}
+// ---- the jump (ported from Everglade Experimental, charactercreator.coax experimental_*): the
+// takeoff plays over E2_TAKEOFF seconds, the loop while you are up, the landing over E2_LANDING, all
+// blended at E2_JUMP_BLEND over the gait, so the legs keep their stride and the arms never fully change.
+E2_AIRBORNE :: 0.03;   // metres over the ground that count as off it
+E2_TAKEOFF :: 0.2; E2_LANDING :: 0.35;
+E2_JUMP_BLEND :: 0.45; E2_JUMP_IN :: 0.12; E2_JUMP_OUT :: 0.18;
+e2_air :: (s: [] E2, air: bool) {
+  if air && !s[0].airborne { s[0].air_at = s[0].clock; }
+  if !air && s[0].airborne { s[0].land_at = s[0].clock; }
+  s[0].airborne = air;
+}
+// The jump clip at `clock`, or -1 once you have landed.
+e2_jump_clip :: (air: bool, clock: f32, air_at: f32, land_at: f32) -> int {
+  if air { return ifx clock - air_at < f32(E2_TAKEOFF) then figs.BD_JUMP_START else figs.BD_JUMP_LOOP; }
+  if clock - land_at < f32(E2_LANDING) { return figs.BD_JUMP_LAND; }
+  return -1;
+}
+e2_sat :: (v: f32) -> f32 { return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v; }
+e2_jump_weight :: (air: bool, clock: f32, air_at: f32, land_at: f32) -> f32 {
+  if air { return f32(E2_JUMP_BLEND) * e2_sat((clock - air_at) / f32(E2_JUMP_IN)); }
+  return f32(E2_JUMP_BLEND) * (1 - e2_sat((clock - land_at) / f32(E2_JUMP_OUT)));
+}
+// The figure to draw: the gait bd_step chose, under the jump while you are up or just down. It is a
+// copy, so bd_step's own clip and stride carry on beneath it.
+e2_jump_figure :: (a0: figs.BdAnim, air: bool, clock: f32, air_at: f32, land_at: f32) -> figs.BdAnim {
+  j := e2_jump_clip(air, clock, air_at, land_at);
+  if j < 0 || a0.clip < 0 { return a0; }
+  a := a0;
+  a.prev = a0.clip; a.pt0 = a0.t0; a.pphase = a0.phase;
+  a.clip = j;
+  a.t0 = ifx j == figs.BD_JUMP_START then clock - (clock - air_at) * figs.bd_seconds(j) / f32(E2_TAKEOFF)
+    else ifx j == figs.BD_JUMP_LAND then clock - (clock - land_at) * figs.bd_seconds(j) / f32(E2_LANDING) else 0.0f32;
+  a.phase = clock / figs.bd_seconds(j);
+  a.fade_at = clock - f32(figs.BD_FADE) * e2_jump_weight(air, clock, air_at, land_at);
+  return a;
+}
+#test "a jump picks takeoff, the air and landing, then gives the gait back" {
+  #assert e2_jump_clip(true, 1, 1, -100) == figs.BD_JUMP_START;
+  #assert e2_jump_clip(true, 1.3, 1, -100) == figs.BD_JUMP_LOOP;
+  #assert e2_jump_clip(false, 1.4, 1, 1.4) == figs.BD_JUMP_LAND;
+  #assert e2_jump_clip(false, 2, 1, 1.4) == -1;
+}
+#test "a jump eases in over the gait and back out after landing" {
+  #assert e2_jump_weight(true, 1, 1, -100) == 0;
+  w := e2_jump_weight(true, 1.06, 1, -100); #assert w > 0 && w < 0.45;
+  #assert abs(e2_jump_weight(true, 1.3, 1, -100) - 0.45) < 0.001;
+  w = e2_jump_weight(false, 1.39, 1, 1.3); #assert w > 0 && w < 0.45;
+  #assert e2_jump_weight(false, 1.49, 1, 1.3) == 0;
+  g: figs.BdAnim; g.clip = figs.BD_RUN; g.t0 = 0.5; g.phase = 2.25;
+  a := e2_jump_figure(g, true, 1.3, 1, -100);
+  #assert a.clip == figs.BD_JUMP_LOOP && a.prev == figs.BD_RUN && a.pphase == 2.25;
+  out: [24] f32; figs.bd_record(a, figs.BdLook.{}, 0, false, 1.3, out[..], 0); #assert out[6] > 0.55 && out[6] < 0.60;
+  // landed and settled: the gait as it was
+  b := e2_jump_figure(g, false, 2, 1, 1.3); #assert b.clip == figs.BD_RUN && b.fade_at == g.fade_at;
+  s: [1] E2; s[0].clock = 1; e2_you(s[..], 0, 0.5, 0, 0); #assert s[0].airborne && s[0].air_at == 1;
+  s[0].clock = 1.8; e2_you(s[..], 0, 0, 0, 0); #assert !s[0].airborne && s[0].land_at == 1.8;
 }
 e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
   if s[0].placed { return false; }
@@ -297,6 +357,40 @@ e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all)
 }
 
 // ---- the frame: the follow camera, the uniforms
+// ---- the look up (ported from Everglade Experimental, charactercreator.coax camera): the pitch goes
+// E2_PITCH_UP above the horizon (the shared orbit stops at 0.55), the eye slides over your shoulder
+// as it drops, and the orbit shortens to stay E2_GROUND_CLEAR over the land.
+E2_PITCH_UP :: 1.2; E2_PITCH_DOWN :: 1.2;   // radians: positive looks down
+E2_GROUND_CLEAR :: 0.2;
+e2_pitch :: (o: figs.Orbit, p: f32) -> f32 {
+  f := figs.verse_orbit_first(o);
+  lo := -(f32(E2_PITCH_UP) + (f32(figs.FREE_FIRST_PITCH) - f32(E2_PITCH_UP)) * f);
+  hi := f32(E2_PITCH_DOWN) + (f32(figs.FREE_FIRST_PITCH) - f32(E2_PITCH_DOWN)) * f;
+  return ifx p < lo then lo else ifx p > hi then hi else p;
+}
+e2_shoulder :: (pitch: f32) -> f32 { v := -sin(pitch) * 3; return ifx v < 0 then 0.0f32 else ifx v > 2.5 then 2.5f32 else v; }
+e2_ground_room :: (fx: f32, fy: f32, fz: f32, dx: f32, dy: f32, dz: f32, far: f32) -> f32 {
+  lo := 0.0f32; hi := far;
+  for i: 0..<12 { mid := (lo + hi) * 0.5; if fy + dy * mid >= e2_height(fx + dx * mid, fz + dz * mid) + f32(E2_GROUND_CLEAR) { lo = mid; } else { hi = mid; } }
+  return lo;
+}
+#test "a drag looks up past the horizon, over your shoulder, and the eye stays over the land" {
+  s: [1] E2; s[0].k = 1; s[0].plant_done = true;
+  e2_you(s[..], 0, 0, 0, 3.14159265); s[0].orbit = figs.verse_orbit_start(figs.v3(0, s[0].you_y, 0), 3.14159265);
+  s[0].orbit.want = 4; s[0].orbit.zoom = 4;
+  _ := e2_pointer(s[..], 700, 400, 0, 0, 1); _ = e2_pointer(s[..], 700, 0, 1, 0, 1); _ = e2_pointer(s[..], 700, 0, 2, 0, 1);
+  for i: 0..<30 { e2_follow(s[..], 1.0f32 / 30); }
+  #assert s[0].orbit.pitch < -1.0 && s[0].orbit.pitch >= -1.2;
+  #assert s[0].side_x * s[0].side_x + s[0].side_z * s[0].side_z > 4;
+  shot := figs.verse_orbit_shot(s[0].orbit);
+  ex := shot.eye.x + s[0].side_x; ez := shot.eye.z + s[0].side_z;
+  #assert shot.eye.y >= e2_height(ex, ez) + 0.19;
+  #assert shot.at.y - shot.eye.y > 0.8 * sqrt((shot.at.x - shot.eye.x) * (shot.at.x - shot.eye.x) + (shot.at.y - shot.eye.y) * (shot.at.y - shot.eye.y) + (shot.at.z - shot.eye.z) * (shot.at.z - shot.eye.z));
+  // dragged back down, it stops at E2_PITCH_DOWN, and the shoulder shift is gone
+  _ = e2_pointer(s[..], 700, 0, 0, 0, 1); _ = e2_pointer(s[..], 700, 900, 1, 0, 1);
+  e2_follow(s[..], 1.0f32 / 30);
+  #assert abs(s[0].orbit.pitch - 1.2) < 0.001 && s[0].side_x == 0 && s[0].side_z == 0;
+}
 e2_follow :: (s: [] E2, dt: f32) {
   if s[0].autowalk {
     // the camera eases round behind the walk
@@ -304,21 +398,37 @@ e2_follow :: (s: [] E2, dt: f32) {
     turn := figs.wrap_angle(want - s[0].orbit.yaw);
     s[0].orbit.yaw = figs.wrap_angle(s[0].orbit.yaw + turn * (ifx dt * 1.5 < 1 then dt * 1.5 else 1.0f32));
   }
-  o := figs.verse_orbit_look(s[0].orbit, s[0].look_yaw, s[0].look_pitch);
-  s[0].look_yaw = 0; s[0].look_pitch = 0;
+  // the turn is the shared orbit's; the tilt is Everglade II's own, up to E2_PITCH_UP above the horizon
+  o := figs.verse_orbit_look(s[0].orbit, s[0].look_yaw, 0);
   h := s[0].held;
-  o = figs.verse_orbit_keys(o, axis(h, HOLD_LEFT, HOLD_RIGHT), axis(h, HOLD_UP, HOLD_DOWN), dt);
+  o = figs.verse_orbit_keys(o, axis(h, HOLD_LEFT, HOLD_RIGHT), 0, dt);
+  tilt := s[0].look_pitch + axis(h, HOLD_UP, HOLD_DOWN) * f32(figs.FREE_KEY_TURN) * 0.6 * (ifx dt < 0.25 then dt else 0.25f32);
+  s[0].look_yaw = 0; s[0].look_pitch = 0;
+  if tilt != 0 { o.pitch = e2_pitch(o, o.pitch - tilt); o.idle = 0; }
   if axis(h, HOLD_OUT, HOLD_IN) != 0 { o = figs.verse_orbit_zoom(o, axis(h, HOLD_OUT, HOLD_IN) * 6 * (ifx dt < 0.1 then dt else 0.1f32)); }
   feet := figs.v3(s[0].you_x, s[0].you_y, s[0].you_z);
   sp := s[0].anim[0].speed;
+  p0 := o.pitch;
   o = figs.verse_orbit_follow(o, feet, s[0].you_face, sp > 0.6, dt);
-  ray := figs.verse_orbit_ray(o);
-  // kept above the ground: the ray's samples each clear the land under them
+  // the shared follow eases a look past its own range back into it; here a look up holds until the
+  // walk's own recentring, a while after the last look
+  if p0 < f32(figs.FREE_PITCH_MIN) && !(sp > 0.6 && o.idle >= f32(figs.FREE_RECENTRE_AFTER)) { o.pitch = e2_pitch(o, p0); }
+  // looking up, the eye slides over your shoulder so you don't fill the view (Everglade Experimental)
+  side := e2_shoulder(o.pitch) * (1 - figs.verse_orbit_first(o)); rt := figs.verse_orbit_right(o);
+  s[0].side_x = rt.x * side; s[0].side_z = rt.z * side;
+  o2 := o; o2.pivot.x += s[0].side_x; o2.pivot.z += s[0].side_z;
+  ray := figs.verse_orbit_ray(o2);
   room := ray.far;
-  for i: 1..<9 {
-    t := room * f32(i) / 8;
-    px := ray.from.x + ray.dir.x * t; py := ray.from.y + ray.dir.y * t; pz := ray.from.z + ray.dir.z * t;
-    if py < e2_height(px, pz) + 0.35 { room = t * 0.9; break; }
+  if ray.dir.y < -0.05 {
+    // under the pivot, looking up: the furthest the eye goes while E2_GROUND_CLEAR over the land
+    room = e2_ground_room(ray.from.x, ray.from.y, ray.from.z, ray.dir.x, ray.dir.y, ray.dir.z, ray.far);
+  } else {
+    // kept above the ground: the ray's samples each clear the land under them
+    for i: 1..<9 {
+      t := room * f32(i) / 8;
+      px := ray.from.x + ray.dir.x * t; py := ray.from.y + ray.dir.y * t; pz := ray.from.z + ray.dir.z * t;
+      if py < e2_height(px, pz) + 0.35 { room = t * 0.9; break; }
+    }
   }
   // and in front of the trunks between the eye and you: three spheres up each trunk near the ray
   spheres: [E2_CAM_TRUNKS * 3 * 4] f32; sn := 0; pv := o.pivot;
@@ -339,7 +449,7 @@ e2_follow :: (s: [] E2, dt: f32) {
     }
   }}
   none: [4] f32;
-  if sn > 0 { trunks := figs.verse_orbit_room(o, spheres[0..<sn * 12], none[0..<0]); if trunks < room { room = trunks; } }
+  if sn > 0 { trunks := figs.verse_orbit_room(o2, spheres[0..<sn * 12], none[0..<0]); if trunks < room { room = trunks; } }
   s[0].orbit = figs.verse_orbit_limit(o, room, dt);
 }
 e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
@@ -351,6 +461,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].clock += step;
   e2_follow(s, step);
   shot := figs.verse_orbit_shot(s[0].orbit);
+  shot.eye.x += s[0].side_x; shot.eye.z += s[0].side_z; shot.at.x += s[0].side_x; shot.at.z += s[0].side_z;
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
@@ -492,10 +603,11 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   figs.bd_step(a, s[0].clock, ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32);
   b[0].now = s[0].clock;
   l := cc.look(c); l.variant = 0;
+  fig := e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at);
   out := s[0].records[..];
   for i: 0..<40 { if c.worn[i] && cc.available(c, i) && c.source_count[i + (ifx c.female then 0 else 40)] > 0 && rec < E2_RECORDS {
     p := i + ifx c.female then 0 else 40;
-    figs.bd_record(a[0], l, c.source_word[p], false, s[0].clock, out, rec); out[rec * 24 + 11] = f32(c.variant);
+    figs.bd_record(fig, l, c.source_word[p], false, s[0].clock, out, rec); out[rec * 24 + 11] = f32(c.variant);
     n = e2_draw(s[0].draws[..], n, c.source_first[p], c.source_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, c.source_first[p], c.source_count[p], rec, 1); rec += 1;
   } }
   parts: [3] int; pn := 0;
@@ -503,7 +615,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   if l.hair >= 0 && !c.worn[7] && !c.worn[26] { parts[pn] = l.hair; pn += 1; }
   if l.extra == figs.BP_BEARD && !c.worn[7] { parts[pn] = l.extra; pn += 1; }
   for i: 0..<pn { if rec < E2_RECORDS {
-    p := parts[i]; figs.bd_record(a[0], l, b[0].part_word[p], false, s[0].clock, out, rec);
+    p := parts[i]; figs.bd_record(fig, l, b[0].part_word[p], false, s[0].clock, out, rec);
     n = e2_draw(s[0].draws[..], n, b[0].part_first[p], b[0].part_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, b[0].part_first[p], b[0].part_count[p], rec, 1); rec += 1;
   } }
   for i: 1 + c.grass_groups..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
@@ -529,6 +641,10 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 6 { return cast(int)(s[0].orbit.shown * 100); }
   if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
   if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
+  // 11 the look's pitch (mrad, positive down), 12 the eye over the land under it (cm), 13 the jump clip (-1 none)
+  if field == 11 { return cast(int)(s[0].orbit.pitch * 1000); }
+  if field == 12 { return cast(int)((s[0].eye[1] - e2_height(s[0].eye[0], s[0].eye[2])) * 100); }
+  if field == 13 { return e2_jump_clip(s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at); }
   // 9 trees planted within 12 m of you, 10 of them drawn this frame (debug)
   if field == 9 || field == 10 {
     src := ifx field == 9 then s[0].planted else s[0].inst_n; t := 0;

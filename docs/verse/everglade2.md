@@ -12,7 +12,8 @@ character you saved in Character Create, on Everglade's controller and follow ca
 
 - Open `/worlds/everglade2`.
 - W, A, S, and D run at a jog (4.25 m/s). Hold Shift to walk (1.5 m/s). Space jumps.
-- Drag to look. Scroll to zoom. The arrow keys turn the camera.
+- Drag to look. You can look 1.2 radians above or below the horizon. Scroll to zoom. The arrow
+  keys turn and tilt the camera.
 - On a touch screen, the left thumb walks and the right thumb looks.
 - `?at=METRES` starts you that far down the path, for example `/worlds/everglade2?at=300`. The
   clearing starts at about 440 m.
@@ -99,7 +100,14 @@ coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
   tier. Each tier fades out as the next fades in over the same band, tuft by tuft, so no ring or
   edge shows. The grass thins in at the path's edges and grows thinner, shorter, and darker under
   the trees. The page draws the blocks of 16 by 16 cells in view, about 60 draws.
-- The follow camera keeps above the ground and in front of the trunks between it and you.
+- A jump plays its takeoff over 0.2 s, its loop while you are in the air, and its landing over
+  0.35 s. It blends over the run or the idle pose at 0.45: it eases in over 0.12 s after takeoff
+  and out over 0.18 s after landing, so the legs keep their stride. These came from Everglade
+  Experimental (`charactercreator.coax`).
+- The follow camera keeps above the ground and in front of the trunks between it and you. When
+  you look up, the eye slides up to 2.5 m over your right shoulder. The orbit then shortens so the
+  eye stays 0.2 m over the land. The shared orbit stops at 0.55 radians above the horizon;
+  Everglade II keeps its own range.
 - The key light's shadow map follows you, 68 m across, in 2 m steps.
 
 At 1920 by 1080 on an Apple silicon Mac, a frame takes about 9 ms of GPU time at the glade and
