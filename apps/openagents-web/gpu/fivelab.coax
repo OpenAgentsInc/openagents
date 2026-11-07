@@ -738,7 +738,12 @@ fivelab_fx_vs :: (_vid2:u32,_iid3:u32,in_:fivelab_fx_vs_in,u:[]f32)->FivelabV {
   return o;
 }
 // A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach.
-fivelab_fx_fs :: (v:FivelabV,u:[]f32)->V4 {
+fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if (v.tint.w>3.5f32) {
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    alpha:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return wg_make_f4_f3f(scale3(v3(v.tint.x,v.tint.y,v.tint.z),alpha*fmin(v.shape.z*1.15f32,1.0f32)*u[3]),1.0f32);
+  }
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
   d:f32=wg_length2(v2(along,v.place.y));
   core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);

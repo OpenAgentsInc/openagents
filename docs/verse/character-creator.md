@@ -157,3 +157,28 @@ all original wardrobe data and appends the static environment. Camera pitch,
 zoom and pan apply to the environment; clothing and saved appearance retain
 their existing behavior. The shared asset IDs and provenance are pinned in
 `assets/registry/scenes/character-glade.json`.
+
+## Main font: AR Kai C
+
+Character Create uses the installed WoW Forever `arkai_c.ttf` (AR ZhongkaiGBK
+Medium), identified by ore's `docs/wow-forever/fonts.md`. The original decoded
+SHA-256 is `c1cabeae2ef13f2984221d37307639b47571e22edaa91ba5d938fc4871581396`.
+The asset receipt retains the FileDataID, current archive extent and original
+identity. The source has an invalid `vhea` version (0x00010001); the Coax tool
+`verse/tools/humans/character_font.coax` changes it to 0x00010000 and recomputes
+table/global checksums. Outlines, advances, cmap and names remain byte-identical.
+Run it with `coax/web/tool.sh FILE.coax ORIGINAL.ttf WEB.ttf`.
+
+The page manifest supplies its FontFace source and family. The browser loads it
+before GPU setup and rasterizes the five existing atlas mip sizes. Character
+Create lays every heading and control out in Coax using the source's exact
+ASCII advances (`charactercreator-font.coax`), with the existing textured-glyph
+vertex format. The tracked legacy fivelab shader now samples those glyphs beside
+its frame-storage binding; battle text remains Filament. The shared canonical
+renderer and font profile are unchanged. This is not a new native/shared font
+qualification. Device recreation reuses the loaded FontFace and rebuilds its
+atlas. Failure to load the requested font refuses startup instead of silently
+substituting a different face.
+
+Headless browser checks require the loaded family and exact measured advances
+for A/i, then exercise input, save/reload and desktop/phone previews.

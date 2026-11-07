@@ -66,7 +66,7 @@ export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
 // page: the module's data-page (coaxial_page), when one module draws several pages: the Grid is the homepage's (newland, page 1).
-export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -273,6 +273,7 @@ export function page(r: Realm, isListed = true): string {
   const alt = esc(r.card === DEFAULT_IMAGE ? "OpenAgents" : r.card ? r.alt : `${r.title}: a still of the world, with its name`)
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.page ? ` data-page="${r.page}"` : "")
+    + (r.ui_font_src ? ` data-ui-font-src="${esc(r.ui_font_src)}" data-ui-font-family="${esc(r.ui_font_family ?? "RealmUIFont")}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
     + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
     + (hasMaker(r.slug) ? ` data-maker="1"` : "")

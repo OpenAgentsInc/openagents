@@ -1,0 +1,34 @@
+{
+  "font": "arkai_c.ttf",
+  "family": "AR Kai C",
+  "source": {
+    "archive": "Data/data/data.026",
+    "archive_header_checksums_verified": false,
+    "blte_bytes": 9201063,
+    "blte_offset": 869265434,
+    "blte_sha256": "56573e58fb6a6adf7833fc28c7b90320ef5ec130d496a322a75f93ca2c7fdd12",
+    "ckey": "c2ca1233414044b813000d5c14bd0a0e",
+    "ckey_verified": true,
+    "decoded_bytes": 14945880,
+    "decoded_sha256": "c1cabeae2ef13f2984221d37307639b47571e22edaa91ba5d938fc4871581396",
+    "ekey": "b06a317eaf8bd5166331ca2796015b73",
+    "ekey_verified": true,
+    "file": "fonts/arkai_c.ttf",
+    "file_data_id": 615970,
+    "frame_hashes_verified": true,
+    "offset": 869265404,
+    "path": "fonts/arkai_c.ttf",
+    "span_bytes": 9201093
+  },
+  "units_per_em": 1024,
+  "scope": "Character Create GPU text atlas only",
+  "web_sha256": "44ab4da39da719ee266e0a502243f42dd9b35ad35e4e7c3d91de5ff14f3eb0cb",
+  "web_bytes": 14945880,
+  "normalization": {
+    "tool": "verse/tools/humans/character_font.coax",
+    "vhea_version_before": "0x00010001",
+    "vhea_version_after": "0x00010000",
+    "all_other_tables_byte_identical_except_head_checksum": true,
+    "whole_font_checksum_valid": true
+  }
+}

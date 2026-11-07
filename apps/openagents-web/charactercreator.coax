@@ -2,6 +2,7 @@
 // no cloned geometry or per-outfit skeleton. Used by fivelab's character-creator route.
 #module "openagents.charactercreator";
 #load "font.coax";
+#load "charactercreator-font.coax";
 #load "charactercreator-parts.coax";
 VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
@@ -145,7 +146,16 @@ value :: (s:Creator,f:int)->string {
   return [4]string.["IDLE","WALK","RUN","CAST"][s.pose];
 }
 ink :: (k:f32,r:f32,g:f32,b:f32)->Ink { return Ink.{core=0.55*k,light=1,glow=0.5*k,red=r,green=g,blue=b,scale=k,sans=false}; }
-text :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,k:Ink)->int { return draw_text(out,n,t,x,y,cap,0.5,1.2,k,false,false); }
+// Every Character Create label uses AR Kai C; other realms retain their own font.
+text :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,k:Ink)->int {
+  pen:=x;v:=n;i:=0;em:=sans_em(cap);
+  while i<t.count {d:=decode(t,i);end:=i+d.len;code:=d.code;
+    v=draw_sans(out,v,t[i..<end],pen,y,cap,k);
+    advance:=ifx code>=32 && code<=126 then int(CC_FONT_WIDTH[int(code)-32]) else int(CC_FONT_WIDTH[31]);
+    pen+=f32(advance)/f32(CC_FONT_UPM)*em;i=end;
+  }
+  return v;
+}
 line :: (out:[]f32,n:int,x:f32,y:f32,bx:f32,by:f32,k:f32,r:f32,g:f32,b:f32)->int {
   if lit(out,n,x,y,bx,by,0.6*k,1,0,r,g,b,0) { return n+6; } return n;
 }
@@ -435,4 +445,10 @@ mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
 scene_capture :: (facts:string)->bool {
  if facts.count<8 {return false;}
  for i:0..<facts.count-7 {if facts[i..<i+8]=="?scene=1" || facts[i..<i+8]=="&scene=1" {e:=i+8;if e==facts.count || facts[e]=='\n' || facts[e]=='&' || facts[e]=='#' {return true;}}}return false;
+}
+
+#test "creator main font uses textured glyphs at heading and control sizes" {
+  out:[4096]f32;k:=ink(1,1,1,1);
+  for cap:0..<2 {n:=text(out[..],0,"Character Create",0,50,ifx cap==0 then 8 else 22,k);#assert n==90;
+    for i:0..<n {#assert out[i*16+11]==MODE_SANS;}}
 }

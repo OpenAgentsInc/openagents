@@ -66,5 +66,18 @@
       "save/reload and male/female/phone previews"
     ],
     "touch_mode_preserved": true
+  },
+  "font_revision": {
+    "font": "AR Kai C / AR ZhongkaiGBK Medium",
+    "ore_commit": "f4958de",
+    "source_sha256": "c1cabeae2ef13f2984221d37307639b47571e22edaa91ba5d938fc4871581396",
+    "web_sha256": "44ab4da39da719ee266e0a502243f42dd9b35ad35e4e7c3d91de5ff14f3eb0cb",
+    "glyph_data_unchanged": true,
+    "normalizer_unit_checks": 3,
+    "creator_checks": 17,
+    "realm_generator_tests": 25,
+    "browser_font_loaded_and_exact_A_i_advances": true,
+    "browser_desktop_phone_input_save_reload_zoom_pan": true,
+    "release_wasm_bytes": 611582
   }
 }

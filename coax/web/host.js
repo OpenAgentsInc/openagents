@@ -1067,10 +1067,14 @@ function useFrame() {
   }
   gpu.layout = device.createBindGroupLayout({ entries: [
     { binding: 0, visibility: both, buffer: {} },
-    { binding: 1, visibility: both, buffer: { type: "read-only-storage" } }] });
+    { binding: 1, visibility: both, buffer: { type: "read-only-storage" } },
+    ...(gpu.sans ? [{ binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+      { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: {} }] : [])] });
   gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [
     { binding: 0, resource: { buffer: gpu.uniformBuffer } },
-    { binding: 1, resource: { buffer: gpu.frameBuffer } }] });
+    { binding: 1, resource: { buffer: gpu.frameBuffer } },
+    ...(gpu.sans ? [{ binding: 2, resource: gpu.sans.createView() },
+      { binding: 3, resource: device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" }) }] : [])] });
 }
 function frameUpload(x) {
   if (!gpu.frameOn || !gpu.frameBuffer || !x.coaxial_frame_store) return;
@@ -1088,6 +1092,15 @@ function frameUpload(x) {
 // and the font must match it.
 const SANS_EXTRA = [183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
 const SANS_FONT = 'Helvetica, Arial, "Liberation Sans", "Nimbus Sans", sans-serif';
+let pageFontFamily = null;
+async function loadPageFont() {
+  const source = script?.dataset.uiFontSrc, family = script?.dataset.uiFontFamily;
+  if (!source || !family) return;
+  const response = await fetch(new URL(source, location.href));
+  if (!response.ok) throw Error(`UI font HTTP ${response.status}`);
+  const font = new FontFace(family, await response.arrayBuffer());
+  await font.load();document.fonts.add(font);pageFontFamily = JSON.stringify(family);
+}
 function sansAtlas(device) {
   const codes = [...Array.from({ length: 95 }, (_, i) => 32 + i), ...SANS_EXTRA];
   const cols = 16, rows = Math.ceil(codes.length / cols), cell = 96, levels = 5;
@@ -1097,7 +1110,7 @@ function sansAtlas(device) {
     const c = cell >> level, w = cols * c, h = rows * c;
     const canvas = new OffscreenCanvas(w, h), g = canvas.getContext("2d");
     g.fillStyle = "#fff"; g.textBaseline = "alphabetic";
-    g.font = `${64 / (1 << level)}px ${SANS_FONT}`;
+    g.font = `${64 / (1 << level)}px ${pageFontFamily || SANS_FONT}`;
     codes.forEach((code, i) => g.fillText(String.fromCodePoint(code), (i % cols) * c + 16 / (1 << level), Math.floor(i / cols) * c + 72 / (1 << level)));
     device.queue.copyExternalImageToTexture({ source: canvas }, { texture, mipLevel: level, premultipliedAlpha: true }, [w, h]);
   }
@@ -3367,6 +3380,7 @@ function live() {
 async function main() {
   try {
     await fetchEngine(beginEngine());
+    await loadPageFont();
     // No usable WebGPU after all: show the page's text, as written (a realm's loader says so).
     loading.step("gpu");
     const started = await startGpu();

@@ -1,0 +1,40 @@
+// Normalize AR Kai C's invalid vertical-header version for browser OpenType sanitizers.
+// Glyph outlines, names, advances, kerning and character maps remain byte-identical.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+read32 :: (b:[]u8,p:int)->u32 {return (u32(b[p])<<24)|(u32(b[p+1])<<16)|(u32(b[p+2])<<8)|u32(b[p+3]);}
+write32 :: (b:[]u8,p:int,v:u32) {b[p]=cast,trunc(u8)(v>>24);b[p+1]=cast,trunc(u8)(v>>16);b[p+2]=cast,trunc(u8)(v>>8);b[p+3]=cast,trunc(u8)v;}
+sum32 :: (b:[]u8)->u32 {sum:u32=0;for p:0..<(b.count+3)/4 {v:u32=0;for k:0..<4 {v=v<<8;if p*4+k<b.count {v=v|u32(b[p*4+k]);}}sum=add_wrap(sum,v);}return sum;}
+#test "font checksums pad the last word and wrap" {b:=[5]u8.[255,255,255,255,1];#assert sum32(b[..])==16777215;write32(b[..],0,65536);#assert read32(b[..],0)==65536;}
+normalize :: (b:[]u8)->bool {
+ if b.count<12 || read32(b,0)!=65536 {return false;}
+ count:=int(b[4])*256+int(b[5]);if count<1 || count>128 || 12+count*16>b.count {return false;}
+ head:=-1;vertical:=-1;
+ for i:0..<count {r:=12+i*16;off:=u64(read32(b,r+8));n:=u64(read32(b,r+12));if off+n>u64(b.count) {return false;}
+  if read32(b,r)==0x68656164 {if n<54 {return false;}head=int(off);}
+  if read32(b,r)==0x76686561 {if n<36 {return false;}vertical=int(off);}
+ }
+ if head<0 || vertical<0 || read32(b,vertical)!=65537 {return false;}
+ write32(b,vertical,65536);write32(b,head+8,0);
+ for i:0..<count {r:=12+i*16;off:=int(read32(b,r+8));n:=int(read32(b,r+12));write32(b,r+4,sum32(b[off..<off+n]));}
+ write32(b,head+8,sub_wrap(cast(u32)0xb1b0afba,sum32(b)));return true;
+}
+#test "font normalization refuses a truncated header" {b:[12]u8;#assert !normalize(b[..]);}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}source:=args_at(a[..],0);dest:=args_at(a[..],1);
+ if source.count==0 || dest.count==0 || source==dest {tool_errln("usage: character_font.coax ORIGINAL.ttf WEB.ttf");return 2;}
+ buf:[16777216]u8;n:=fs_read(source,buf[..]);if n<=0 || !normalize(buf[0..<n]) {tool_errln("font is not the expected AR Kai C source profile");return 1;}
+ if !fs_write(dest,cast(string)buf[0..<n]) {return 1;}print("Normalized vertical header and checksums; preserved glyph data: % bytes\n",n);return 0;
+}
+
+#test "font normalization repairs table and whole-file checksums without touching outlines" {
+ b:[160]u8;write32(b[..],0,65536);b[5]=3;
+ write32(b[..],12,0x68656164);write32(b[..],20,60);write32(b[..],24,54);
+ write32(b[..],28,0x76686561);write32(b[..],36,114);write32(b[..],40,36);
+ write32(b[..],44,0x676c7966);write32(b[..],52,150);write32(b[..],56,10);
+ write32(b[..],114,65537);for i:150..<160 {b[i]=cast(u8)i;}
+ #assert normalize(b[..]) && read32(b[..],114)==65536 && sum32(b[..])==cast(u32)0xb1b0afba;
+ for i:150..<160 {#assert b[i]==cast(u8)i;}#assert read32(b[..],48)==sum32(b[150..<160]);
+ #assert !normalize(b[..]);
+}
