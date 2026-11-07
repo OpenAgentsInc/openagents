@@ -49,7 +49,10 @@ the local room reported `e hit 2024 1000 6 3` (the player's 6 cold damage), the
 contribution flag became 1, and a retained frame at 54 seconds showed
 `YOU HELPED DEFEND EVERGLADE` and 50 XP. The run includes ordinary combat damage,
 falling and the room's automatic return to standing; the recorder grants no damage,
-health or XP. The player bot returns toward the village after confirmation.
+health or XP. The verified take continues combat after confirmation. The current
+recorder additionally attempts a return toward the village; that later take did
+not pass its contribution check and is not the delivered video. Dice and room
+initialization vary between runs; a failed run must not be labeled verified.
 
 The simulation starts with the local Ranger picker and uses a configured local
 raid. It is evidence for that supported slice, not for the standalone CC2 Studio
