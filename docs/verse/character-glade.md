@@ -122,3 +122,13 @@ The scene registry pins the reference, all actual source files, generated sky,
 cliff transform, composition, shaders, packer and final runtime bytes.
 Updated evidence lives in
 `docs/verification/character-glade-source-parity-2026-11-06/`.
+
+## Linear daylight and height atmosphere
+
+The current private shader keeps linear HDR through surface shading and bloom,
+then applies its shoulder and output transfer once. Warm direct illumination,
+hemisphere fill, leaf transmission and height-dependent atmospheric scattering
+have separate terms. Contact shading uses an indirect-light weight stored beside
+an octahedral normal in the auxiliary target. The v4 static pack is unchanged.
+See [the Ore lighting implementation notes](character-glade-lighting.md) for
+the research, precise color contract, approximations and GPU readback evidence.

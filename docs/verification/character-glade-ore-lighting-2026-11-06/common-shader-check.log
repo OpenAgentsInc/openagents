@@ -1,0 +1,2 @@
+coax/web/tool.sh coax/web/wgsl-module.coax apps/openagents-web/gpu/fivelab.coax apps/openagents-web/fivelab.wgsl apps/openagents-web/gpu/fivelab.module --check
+Exit 0; generated common shader matches committed artifact.

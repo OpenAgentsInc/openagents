@@ -189,8 +189,10 @@ fn coax_p_fx_vs(p_id: u32, p_instance: u32, p_in_: coax_t16) -> coax_t18 {
 fn coax_p_bg_fs(p_pos: vec4f) -> coax_t20 {
   var l_pos: vec4f = p_pos;
   var l_b: coax_t19;
+  var l_linear: vec3f;
   l_b = coax_p_fivelab_bg_fs(l_pos);
-  return coax_t20(l_b.x, vec4f(), l_b.y);
+  l_linear = coax_p_cg_decode(coax_p_v3(l_b.x.x, l_b.x.y, l_b.x.z));
+  return coax_t20(coax_p_v4(l_linear.x, l_linear.y, l_linear.z, l_b.x.w), vec4f(), l_b.y);
 }
 fn coax_p_shadow_fs(p_s: coax_t13) {
   var l_s: coax_t13 = p_s;
@@ -206,11 +208,15 @@ fn coax_p_scene_fs(p_s: coax_t15, p_front: bool) -> coax_t25 {
   var l_front: bool = p_front;
   var l_tex: vec4f;
   var l_c: vec4f;
+  var l_legacy: vec4f;
+  var l_linear: vec3f;
   var l_n: vec3f;
   var l_z: f32;
   var l_sky: bool;
   var l_trail: bool;
   var l_foliage: bool;
+  var l_indirect: f32;
+  var l_packed: vec2f;
   l_tex = coax_p_render_sample_layer8_bias(l_s.w, i32(l_s.f4), 0x1.000000p0f);
   if ((l_tex.w < 0x1.666666p-2f))
   {
@@ -223,15 +229,19 @@ fn coax_p_scene_fs(p_s: coax_t15, p_front: bool) -> coax_t25 {
   }
   else
   {
-    l_c = coax_p_fivelab_scene_colour(l_s, l_tex, l_front);
+    l_legacy = coax_p_fivelab_scene_colour(l_s, l_tex, l_front);
+    l_linear = coax_p_cg_decode(coax_p_v3(l_legacy.x, l_legacy.y, l_legacy.z));
+    l_c = coax_p_v4(l_linear.x, l_linear.y, l_linear.z, 0x1.99999ap-2f);
   }
   l_n = coax_p_normalize3(l_s.z);
   l_z = dot(coax_p_sub3(l_s.y, coax_p_wg_at3(16i)), coax_p_wg_at3(20i));
   l_sky = ((l_s.f6.w > 0x1.700000p3f) && (l_s.f7.x < 0x1.000000p-1f));
   l_trail = ((l_s.f6.w > 0x1.700000p3f) && (l_s.f7.y > 0x1.800000p0f));
   l_foliage = (((l_s.f6.w > 0x1.700000p3f) && (l_s.f7.x > 0x1.000000p-1f)) && (l_s.f7.x < 0x1.400000p1f));
+  l_indirect = l_c.w;
+  l_packed = coax_p_cg_normal_pack(l_n);
   l_c.w = select(select(select(0x1.eb851ep-4f, 0x1.99999ap-2f, l_foliage), 0x1.666666p-1f, l_trail), 0.0f, l_sky);
-  return coax_t25(l_c, coax_p_v4(l_n.x, l_n.y, l_n.z, select(select(l_z, (-l_z), l_foliage), 0.0f, (l_sky || l_trail))));
+  return coax_t25(l_c, coax_p_v4(l_packed.x, l_packed.y, l_indirect, select(select(l_z, (-l_z), l_foliage), 0.0f, (l_sky || l_trail))));
 }
 fn coax_p_bloom_fs(p_pos: vec4f) -> vec4f {
   var l_pos: vec4f = p_pos;
@@ -271,24 +281,27 @@ fn coax_p_post_fs(p_pos: vec4f) -> vec4f {
   var l_pixel: vec2f;
   var l_uv: vec2f;
   var l_raw: vec4f;
+  var l_encoded: vec3f;
+  var l_a: vec4f;
   var l_c: vec3f;
   var l_glow: vec3f;
-  var l_a: vec4f;
   var l_soft: vec3f;
   var l_i: i32;
   var l_angle: f32;
   var l_at: vec2f;
+  var l_result: vec3f;
   l_pixel = coax_p_v2(l_pos.x, l_pos.y);
   l_uv = coax_p_v2((l_pos.x / coax_at_u(i32(0i))), (l_pos.y / coax_at_u(i32(1i))));
   l_raw = textureSampleLevel(post_light, post_lin, l_uv, 0.0f);
   if (((coax_at_u(i32(10i)) < 0x1.800000p0f) || ((coax_at_u(i32(11i)) < 0x1.000000p-1f) && coax_p_cg_ui_cover(l_pixel, coax_at_u(i32(0i)), coax_at_u(i32(1i)), coax_at_u(i32(4i))))))
   {
-    return coax_p_v4(l_raw.x, l_raw.y, l_raw.z, 0x1.000000p0f);
+    l_encoded = coax_p_cg_encode(coax_p_v3(l_raw.x, l_raw.y, l_raw.z));
+    return coax_p_v4(l_encoded.x, l_encoded.y, l_encoded.z, 0x1.000000p0f);
   }
-  l_c = coax_p_cg_fxaa(l_uv, coax_p_v2((0x1.000000p0f / coax_at_u(i32(0i))), (0x1.000000p0f / coax_at_u(i32(1i)))));
-  l_c = coax_p_scale3(l_c, coax_p_cg_contact_ao(l_pixel));
-  l_glow = coax_p_add3(coax_p_scale3(coax_p_cg_post_sample(l_uv), 0x1.eb851ep-4f), coax_p_scale3(coax_p_cg_post_sample_1(l_uv), 0x1.99999ap-4f));
   l_a = coax_p_wg_load_2d(coax_p_cg_post_pixel(l_pixel, coax_p_wg_dims_2d_1()), 0i);
+  l_c = coax_p_cg_fxaa(l_uv, coax_p_v2((0x1.000000p0f / coax_at_u(i32(0i))), (0x1.000000p0f / coax_at_u(i32(1i)))));
+  l_c = coax_p_scale3(l_c, (0x1.000000p0f - ((0x1.000000p0f - coax_p_cg_contact_ao(l_pixel)) * coax_p_saturate(l_a.z))));
+  l_glow = coax_p_add3(coax_p_scale3(coax_p_cg_post_sample(l_uv), 0x1.eb851ep-4f), coax_p_scale3(coax_p_cg_post_sample_1(l_uv), 0x1.99999ap-4f));
   if ((l_a.w < 0.0f))
   {
     l_soft = coax_p_v3(0.0f, 0.0f, 0.0f);
@@ -305,11 +318,18 @@ fn coax_p_post_fs(p_pos: vec4f) -> vec4f {
     l_c = coax_p_mix3(l_c, coax_p_scale3(l_soft, 0x1.000000p-2f), 0x1.19999ap-1f);
   }
   l_c = coax_p_add3(l_c, l_glow);
-  return coax_p_v4(l_c.x, l_c.y, l_c.z, 0x1.000000p0f);
+  l_result = select(coax_p_cg_output(l_c), coax_p_cg_encode(l_c), (abs(l_a.w) < 0x1.0624dep-10f));
+  return coax_p_v4(l_result.x, l_result.y, l_result.z, 0x1.000000p0f);
 }
 fn coax_p_fx_fs(p_s: coax_t18) -> vec4f {
   var l_s: coax_t18 = p_s;
-  return coax_p_fivelab_fx_fs(l_s);
+  var l_legacy: vec4f;
+  var l_strength: f32;
+  var l_linear: vec3f;
+  l_legacy = coax_p_fivelab_fx_fs(l_s);
+  l_strength = (coax_p_fmax(l_legacy.x, coax_p_fmax(l_legacy.y, l_legacy.z)) / coax_p_fmax(coax_p_fmax(l_s.w.x, coax_p_fmax(l_s.w.y, l_s.w.z)), 0x1.4f8b58p-17f));
+  l_linear = coax_p_scale3(coax_p_cg_decode(coax_p_v3(l_s.w.x, l_s.w.y, l_s.w.z)), l_strength);
+  return coax_p_v4(l_linear.x, l_linear.y, l_linear.z, l_legacy.w);
 }
 fn coax_p_fivelab_bg_vs(p_i: u32, p__iid1: u32) -> vec4f {
   var l_i: u32 = p_i;
@@ -485,6 +505,16 @@ fn coax_p_fivelab_bg_fs(p_pos: vec4f) -> coax_t19 {
   l_c_12 = coax_p_fivelab_glass(coax_p_fivelab_flat(l_p), l_p);
   return coax_t19(coax_p_v4(l_c_12.x, l_c_12.y, l_c_12.z, 0x1.000000p0f), 0x1.000000p0f);
 }
+fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
+  var l_x: f32 = p_x;
+  var l_y: f32 = p_y;
+  var l_z: f32 = p_z;
+  return vec3f(l_x, l_y, l_z);
+}
+fn coax_p_cg_decode(p_c: vec3f) -> vec3f {
+  var l_c: vec3f = p_c;
+  return coax_p_v3(coax_p_cg_linear(l_c.x), coax_p_cg_linear(l_c.y), coax_p_cg_linear(l_c.z));
+}
 fn coax_p_render_sample_layer8_bias(p_uv: vec2f, p_layer: i32, p_bias: f32) -> vec4f {
   var l_uv: vec2f = p_uv;
   var l_layer: i32 = p_layer;
@@ -530,128 +560,118 @@ fn coax_p_cg_environment_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_visibi
   var l_tex: vec4f = p_tex;
   var l_front: bool = p_front;
   var l_visibility: f32 = p_visibility;
+  var l_c: vec3f;
   var l_kind: f32;
   var l_n: vec3f;
   var l_foliage: bool;
-  var l_sun: vec3f;
-  var l_ground: bool;
   var l_grass: bool;
   var l_leaves: bool;
-  var l_albedo: vec3f;
-  var l_detail: f32;
-  var l_shadow: f32;
-  var l_ambient: vec3f;
-  var l_key: vec3f;
-  var l_direct: f32;
-  var l_warm: bool;
-  var l_colour: vec3f;
+  var l_ground: bool;
+  var l_sun: vec3f;
+  var l_eye: vec3f;
   var l_view: vec3f;
-  var l_rim: f32;
-  var l_variation: f32;
-  var l_contact: f32;
+  var l_albedo: vec3f;
+  var l_age: f32;
+  var l_palette: vec3f;
+  var l_ndl: f32;
+  var l_direct: f32;
+  var l_ao: f32;
+  var l_indirect: vec3f;
+  var l_colour: vec3f;
+  var l_back: f32;
+  var l_scatter: f32;
   var l_mottle: f32;
   var l_meadow: f32;
   var l_grain: f32;
-  var l_distance: f32;
-  var l_haze: f32;
+  var l_surface: f32;
+  var l_share: f32;
   if ((l_s.f7.y > 0x1.800000p0f))
   {
-    return coax_p_v4(0x1.b851ecp-1f, 0x1.f5c290p-1f, 0x1.e147aep-1f, 0x1.000000p0f);
+    l_c = coax_p_cg_decode(coax_p_v3(0x1.b851ecp-1f, 0x1.f5c290p-1f, 0x1.e147aep-1f));
+    return coax_p_v4(l_c.x, l_c.y, l_c.z, 0x1.000000p0f);
   }
   if ((l_s.f7.x < 0x1.000000p-1f))
   {
-    return coax_p_v4(coax_pow_bg_vs(l_tex.x, 0x1.d16872p-2f), coax_pow_bg_vs(l_tex.y, 0x1.d16872p-2f), coax_pow_bg_vs(l_tex.z, 0x1.d16872p-2f), 0x1.000000p0f);
+    return coax_p_v4(l_tex.x, l_tex.y, l_tex.z, 0x1.000000p0f);
   }
   l_kind = l_s.f7.x;
   l_n = coax_p_normalize3(coax_p_add3(l_s.z, coax_p_v3(0.0f, 0x1.a36e2ep-14f, 0.0f)));
   l_foliage = ((l_kind > 0x1.000000p-1f) && (l_kind < 0x1.400000p1f));
+  l_grass = ((l_kind > 0x1.800000p0f) && (l_kind < 0x1.400000p1f));
+  l_leaves = ((l_kind > 0x1.000000p-1f) && (l_kind < 0x1.800000p0f));
+  l_ground = ((l_kind > 0x1.200000p2f) && (l_kind < 0x1.600000p2f));
   if (((!l_front) && (!l_foliage)))
   {
     l_n = coax_p_scale3(l_n, (-0x1.000000p0f));
   }
   l_sun = coax_p_normalize3(coax_p_v3((-0x1.ccccccp-2f), 0x1.8f5c28p-1f, (-0x1.ae147ap-2f)));
-  l_ground = ((l_kind > 0x1.200000p2f) && (l_kind < 0x1.600000p2f));
-  l_grass = ((l_kind > 0x1.800000p0f) && (l_kind < 0x1.400000p1f));
-  l_leaves = ((l_kind > 0x1.000000p-1f) && (l_kind < 0x1.800000p0f));
-  l_albedo = coax_p_mul3(coax_p_v3(coax_pow_bg_vs(l_tex.x, 0x1.d16872p-2f), coax_pow_bg_vs(l_tex.y, 0x1.d16872p-2f), coax_pow_bg_vs(l_tex.z, 0x1.d16872p-2f)), l_s.f5);
+  l_eye = coax_p_wg_at3(16i);
+  l_view = coax_p_normalize3(coax_p_sub3(l_eye, l_s.y));
+  l_albedo = coax_p_mul3(coax_p_v3(l_tex.x, l_tex.y, l_tex.z), coax_p_cg_decode(l_s.f5));
   if ((l_foliage || l_ground))
   {
-    l_albedo = l_s.f5;
+    l_albedo = coax_p_cg_decode(l_s.f5);
   }
   if (l_leaves)
   {
-    l_detail = (0x1.19999ap-1f + (0x1.4cccccp-1f * sqrt(coax_p_saturate(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z)))));
-    l_albedo = coax_p_scale3(l_albedo, l_detail);
+    if ((l_s.f5.x > (l_s.f5.y * 0x1.333334p0f)))
+    {
+      l_age = coax_p_cg_noise(coax_p_v2(((l_s.y.x * 0x1.19999ap-1f) + (l_s.y.y * 0x1.000000p-2f)), (l_s.y.z * 0x1.19999ap-1f)));
+      l_palette = coax_p_mix3(l_s.f5, coax_p_v3(0x1.000000p0f, 0x1.28f5c2p-1f, 0x1.47ae14p-4f), (coax_p_smoothstep(0x1.333334p-2f, 0x1.800000p-1f, l_age) * 0x1.19999ap-1f));
+      l_albedo = coax_p_cg_decode(l_palette);
+    }
+    l_albedo = coax_p_scale3(l_albedo, (0x1.666666p-1f + (0x1.ccccccp-2f * sqrt(coax_p_saturate(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z))))));
   }
   if ((((l_kind > 0x1.400000p1f) && (l_kind < 0x1.c00000p1f)) && (l_s.f5.y < 0x1.fae148p-1f)))
   {
-    l_albedo = coax_p_scale3(coax_p_v3(0x1.000000p0f, 0x1.ae147ap-2f, 0x1.47ae14p-2f), (0x1.666666p-1f + (0x1.333334p-2f * sqrt(coax_p_saturate(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z))))));
+    l_albedo = coax_p_scale3(coax_p_cg_decode(coax_p_v3(0x1.000000p0f, 0x1.ae147ap-2f, 0x1.47ae14p-2f)), (0x1.666666p-1f + (0x1.333334p-2f * sqrt(coax_p_saturate(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z))))));
   }
   if ((l_kind > 0x1.a00000p2f))
   {
-    l_albedo = coax_p_scale3(select(coax_p_v3(0x1.b851ecp-1f, 0x1.8f5c28p-1f, 0x1.333334p-1f), coax_p_v3(0x1.000000p0f, 0x1.333334p-1f, 0x1.eb851ep-4f), (l_n.y > 0x1.333334p-3f)), (0x1.70a3d8p-1f + (0x1.1eb852p-2f * coax_pow_bg_vs(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z), 0x1.d16872p-2f))));
+    l_albedo = coax_p_scale3(coax_p_cg_decode(select(coax_p_v3(0x1.b851ecp-1f, 0x1.8f5c28p-1f, 0x1.333334p-1f), coax_p_v3(0x1.000000p0f, 0x1.333334p-1f, 0x1.eb851ep-4f), (l_n.y > 0x1.333334p-3f))), (0x1.70a3d8p-1f + (0x1.1eb852p-2f * sqrt(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z)))));
   }
   if (((l_kind > 0x1.c00000p1f) && (l_kind < 0x1.200000p2f)))
   {
-    l_albedo = coax_p_scale3(coax_p_v3(0x1.6147aep-1f, 0x1.75c290p-1f, 0x1.333334p-1f), (select(0x1.000000p0f, 0x1.99999ap-1f, (l_s.y.x > 0.0f)) * (0x1.bd70a4p-1f + (0x1.99999ap-3f * coax_pow_bg_vs(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z), 0x1.d16872p-2f)))));
+    l_albedo = coax_p_scale3(coax_p_cg_decode(coax_p_v3(0x1.6147aep-1f, 0x1.75c290p-1f, 0x1.333334p-1f)), (0x1.bd70a4p-1f + (0x1.99999ap-3f * sqrt(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z)))));
   }
-  l_shadow = (0x1.99999ap-3f + (0x1.99999ap-1f * l_visibility));
-  l_ambient = coax_p_v3(0x1.28f5c2p-1f, 0x1.4cccccp-1f, 0x1.eb851ep-2f);
-  l_key = coax_p_v3(0x1.3d70a4p-1f, 0x1.1eb852p-1f, 0x1.ae147ap-2f);
-  l_direct = coax_p_smoothstep((-0x1.4cccccp-1f), 0x1.ccccccp-1f, dot(l_n, l_sun));
-  if (l_grass)
-  {
-    l_direct = 0x1.851eb8p-1f;
-    l_ambient = coax_p_v3(0x1.28f5c2p-1f, 0x1.4cccccp-1f, 0x1.99999ap-2f);
-    l_albedo = coax_p_scale3(l_albedo, (0x1.8f5c28p-1f + (0x1.c28f5cp-3f * l_s.f7.y)));
-  }
-  if ((l_kind > 0x1.a00000p2f))
-  {
-    l_ambient = coax_p_v3(0x1.ccccccp-1f, 0x1.b33334p-1f, 0x1.666666p-1f);
-    l_key = coax_p_v3(0x1.000000p-2f, 0x1.000000p-2f, 0x1.99999ap-3f);
-  }
-  if (((l_kind > 0x1.600000p2f) && (l_kind < 0x1.a00000p2f)))
-  {
-    l_ambient = coax_p_v3(0x1.ccccccp-1f, 0x1.ccccccp-1f, 0x1.800000p-1f);
-    l_key = coax_p_v3(0x1.333334p-2f, 0x1.147ae2p-2f, 0x1.70a3d8p-3f);
-  }
+  l_ndl = dot(l_n, l_sun);
+  l_direct = coax_p_saturate(l_ndl);
+  l_ao = 0x1.000000p0f;
   if (l_leaves)
   {
-    l_direct = coax_p_smoothstep((-0x1.4cccccp-1f), 0x1.b33334p-1f, dot(l_n, l_sun));
-    l_warm = (l_s.f5.x > (l_s.f5.y * 0x1.333334p0f));
-    l_ambient = coax_p_scale3(select(coax_p_v3(0x1.333334p-1f, 0x1.800000p-1f, 0x1.666666p-2f), coax_p_v3(0x1.4cccccp-1f, 0x1.19999ap-1f, 0x1.99999ap-2f), l_warm), coax_p_clampf(l_s.f7.y, 0x1.000000p-1f, 0x1.000000p0f));
-    l_key = coax_p_v3(0x1.666666p-1f, 0x1.4cccccp-1f, 0x1.99999ap-2f);
+    l_direct = coax_p_saturate(((l_ndl + 0x1.666666p-2f) / 0x1.59999ap0f));
+    l_ao = coax_p_clampf(l_s.f7.y, 0x1.000000p-1f, 0x1.000000p0f);
+  }
+  if (l_grass)
+  {
+    l_albedo = coax_p_scale3(l_albedo, 0x1.b851ecp-1f);
+    l_direct = (0x1.19999ap-1f + (0x1.000000p-2f * abs(l_ndl)));
+    l_ao = (0x1.4cccccp-1f + (0x1.666666p-2f * l_s.f7.y));
   }
   if (((l_kind > 0x1.400000p1f) && (l_kind < 0x1.c00000p1f)))
   {
-    l_ambient = coax_p_v3(0x1.47ae14p-1f, 0x1.51eb86p-1f, 0x1.666666p-1f);
-    l_key = coax_p_v3(0x1.19999ap-1f, 0x1.19999ap-1f, 0x1.000000p-1f);
-    l_direct = (0x1.ccccccp-2f + (0x1.99999ap-2f * abs(dot(l_n, l_sun))));
+    l_direct = (0x1.666666p-2f + (0x1.ccccccp-2f * abs(l_ndl)));
   }
-  l_colour = coax_p_mul3(l_albedo, coax_p_add3(l_ambient, coax_p_scale3(l_key, (l_direct * l_shadow))));
-  if (l_leaves)
+  l_indirect = coax_p_mul3(l_albedo, coax_p_scale3(coax_p_cg_hemisphere(l_n), l_ao));
+  l_colour = coax_p_mul3(l_albedo, coax_p_cg_irradiance(l_n, l_direct, l_ao, l_visibility));
+  if (l_foliage)
   {
-    l_view = coax_p_normalize3(coax_p_sub3(coax_p_wg_at3(16i), l_s.y));
-    l_rim = coax_pow_bg_vs((0x1.000000p0f - abs(dot(l_n, l_view))), 0x1.800000p1f);
-    l_colour = coax_p_add3(l_colour, coax_p_mul3(l_albedo, coax_p_scale3(coax_p_v3(0x1.000000p0f, 0x1.d1eb86p-1f, 0x1.e147aep-2f), (l_rim * 0x1.333334p-3f))));
-    if ((l_s.f5.x > (l_s.f5.y * 0x1.333334p0f)))
-    {
-      l_variation = coax_p_cg_noise(coax_p_v2(((l_s.y.x * 0x1.99999ap-2f) + (l_s.y.y * 0x1.99999ap-3f)), (l_s.y.z * 0x1.99999ap-2f)));
-      l_colour = coax_p_mix3(l_colour, coax_p_v3(0x1.000000p0f, 0x1.5c28f6p-1f, 0x1.99999ap-3f), ((l_rim * 0x1.70a3d8p-3f) + (l_variation * 0x1.70a3d8p-3f)));
-    }
+    l_back = (coax_p_saturate(dot(coax_p_scale3(l_sun, (-0x1.000000p0f)), l_view)) * coax_p_saturate(dot(coax_p_scale3(l_sun, (-0x1.000000p0f)), l_view)));
+    l_scatter = (((0x1.333334p-3f + (0x1.333334p-1f * l_back)) * (0x1.000000p0f - (abs(l_ndl) * 0x1.4cccccp-1f))) * l_visibility);
+    l_colour = coax_p_add3(l_colour, coax_p_mul3(l_albedo, coax_p_scale3(coax_p_v3(0x1.59999ap0f, 0x1.28f5c2p0f, 0x1.3d70a4p-1f), l_scatter)));
   }
   if (l_ground)
   {
-    l_contact = (exp(((-((l_s.y.x * l_s.y.x) + (l_s.y.z * l_s.y.z))) * 0x1.400000p1f)) * 0x1.333334p-2f);
     l_mottle = coax_p_cg_noise(coax_p_v2((l_s.y.x * 0x1.000000p1f), (l_s.y.z * 0x1.000000p1f)));
     l_meadow = (0x1.000000p0f - coax_p_cg_path(l_s.y.x, l_s.y.z));
     l_grain = coax_p_cg_noise(coax_p_v2((l_s.y.x * 0x1.c00000p3f), (l_s.y.z * 0x1.c00000p3f)));
-    l_colour = coax_p_scale3(l_colour, ((((0x1.000000p0f - l_contact) * (0x1.eb851ep-1f + (0x1.99999ap-4f * l_mottle))) * (0x1.000000p0f + ((l_meadow * (l_grain - 0x1.000000p-1f)) * 0x1.c28f5cp-3f))) * coax_p_mix(coax_p_cg_soil(coax_p_v2(l_s.y.x, l_s.y.z)), 0x1.000000p0f, l_meadow)));
+    l_surface = (((0x1.ccccccp-1f + (0x1.47ae14p-3f * l_mottle)) * (0x1.000000p0f + ((l_meadow * (l_grain - 0x1.000000p-1f)) * 0x1.70a3d8p-3f))) * coax_p_mix(coax_p_cg_soil(coax_p_v2(l_s.y.x, l_s.y.z)), 0x1.000000p0f, l_meadow));
+    l_colour = coax_p_scale3(l_colour, l_surface);
+    l_indirect = coax_p_scale3(l_indirect, l_surface);
   }
-  l_distance = coax_p_wg_length3(coax_p_sub3(l_s.y, coax_p_wg_at3(16i)));
-  l_haze = (0x1.000000p0f - exp(((-l_distance) * 0x1.eb851ep-7f)));
-  l_colour = coax_p_mix3(l_colour, coax_p_v3(0x1.fae148p-1f, 0x1.e147aep-1f, 0x1.800000p-1f), (l_haze * 0x1.800000p-1f));
-  return coax_p_v4(l_colour.x, l_colour.y, l_colour.z, 0x1.000000p0f);
+  l_colour = coax_p_cg_atmosphere(l_colour, l_eye, l_s.y);
+  l_share = coax_p_saturate(((coax_p_verse_style_luma(l_indirect.x, l_indirect.y, l_indirect.z) * exp((-coax_p_cg_air_depth(l_eye, l_s.y)))) / coax_p_fmax(coax_p_verse_style_luma(l_colour.x, l_colour.y, l_colour.z), 0x1.4f8b58p-17f)));
+  return coax_p_v4(l_colour.x, l_colour.y, l_colour.z, l_share);
 }
 fn coax_p_fivelab_scene_colour(p_s: coax_t15, p_tex: vec4f, p_front: bool) -> vec4f {
   var l_s: coax_t15 = p_s;
@@ -836,6 +856,18 @@ fn coax_p_sub3(p_a: vec3f, p_b: vec3f) -> vec3f {
   var l_b: vec3f = p_b;
   return vec3f((l_a.x - l_b.x), (l_a.y - l_b.y), (l_a.z - l_b.z));
 }
+fn coax_p_cg_normal_pack(p_n: vec3f) -> vec2f {
+  var l_n: vec3f = p_n;
+  var l_v: vec3f;
+  var l_p: vec2f;
+  l_v = coax_p_scale3(l_n, (0x1.000000p0f / ((abs(l_n.x) + abs(l_n.y)) + abs(l_n.z))));
+  l_p = coax_p_v2(l_v.x, l_v.y);
+  if ((l_v.z < 0.0f))
+  {
+    l_p = coax_p_v2(((0x1.000000p0f - abs(l_v.y)) * coax_p_cg_sign(l_v.x)), ((0x1.000000p0f - abs(l_v.x)) * coax_p_cg_sign(l_v.y)));
+  }
+  return l_p;
+}
 fn coax_p_wg_dims_2d() -> coax_t31 {
   return coax_p_u2(textureDimensions(bloom_src).x, textureDimensions(bloom_src).y);
 }
@@ -843,12 +875,6 @@ fn coax_p_v2(p_x: f32, p_y: f32) -> vec2f {
   var l_x: f32 = p_x;
   var l_y: f32 = p_y;
   return vec2f(l_x, l_y);
-}
-fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
-  var l_x: f32 = p_x;
-  var l_y: f32 = p_y;
-  var l_z: f32 = p_z;
-  return vec3f(l_x, l_y, l_z);
 }
 fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   var l_a: f32 = p_a;
@@ -891,6 +917,23 @@ fn coax_p_cg_ui_cover(p_p: vec2f, p_w: f32, p_h: f32, p_k: f32) -> bool {
     return true;
   }
   return (((l_p.x < (0x1.1e0000p8f * l_k)) || (l_p.x > (l_w - (0x1.1e0000p8f * l_k)))) && (l_p.y > (0x1.180000p7f * l_k)));
+}
+fn coax_p_cg_encode(p_c: vec3f) -> vec3f {
+  var l_c: vec3f = p_c;
+  return coax_p_v3(coax_p_cg_srgb(l_c.x), coax_p_cg_srgb(l_c.y), coax_p_cg_srgb(l_c.z));
+}
+fn coax_p_wg_dims_2d_1() -> coax_t31 {
+  return coax_p_u2(textureDimensions(post_aux).x, textureDimensions(post_aux).y);
+}
+fn coax_p_cg_post_pixel(p_p: vec2f, p_size: coax_t31) -> coax_t32 {
+  var l_p: vec2f = p_p;
+  var l_size: coax_t31 = p_size;
+  return coax_p_i2(coax_p_wg_clamp_i(i32(l_p.x), 0i, (i32(l_size.x) - 1i)), coax_p_wg_clamp_i(i32(l_p.y), 0i, (i32(l_size.y) - 1i)));
+}
+fn coax_p_wg_load_2d(p_c: coax_t32, p_level: i32) -> vec4f {
+  var l_c: coax_t32 = p_c;
+  var l_level: i32 = p_level;
+  return textureLoad(post_aux, vec2i(l_c.x, l_c.y), l_level);
 }
 fn coax_p_cg_fxaa(p_uv: vec2f, p_step: vec2f) -> vec3f {
   var l_uv: vec2f = p_uv;
@@ -951,7 +994,7 @@ fn coax_p_cg_contact_ao(p_pixel: vec2f) -> f32 {
   {
     return 0x1.000000p0f;
   }
-  l_n = coax_p_normalize3(coax_p_v3(l_a.x, l_a.y, l_a.z));
+  l_n = coax_p_cg_normal_unpack(coax_p_v2(l_a.x, l_a.y));
   l_center = coax_p_cg_viewpoint(l_pixel, l_a.w);
   l_sum = 0.0f;
   l_radius = coax_p_clampf((coax_at_u(i32(1i)) * 0x1.89374cp-7f), 0x1.000000p2f, 0x1.200000p4f);
@@ -982,19 +1025,6 @@ fn coax_p_cg_post_sample_1(p_uv: vec2f) -> vec3f {
   var l_uv: vec2f = p_uv;
   return coax_p_cg_rgb(textureSampleLevel(post_eighth, post_lin, l_uv, 0.0f));
 }
-fn coax_p_wg_dims_2d_1() -> coax_t31 {
-  return coax_p_u2(textureDimensions(post_aux).x, textureDimensions(post_aux).y);
-}
-fn coax_p_cg_post_pixel(p_p: vec2f, p_size: coax_t31) -> coax_t32 {
-  var l_p: vec2f = p_p;
-  var l_size: coax_t31 = p_size;
-  return coax_p_i2(coax_p_wg_clamp_i(i32(l_p.x), 0i, (i32(l_size.x) - 1i)), coax_p_wg_clamp_i(i32(l_p.y), 0i, (i32(l_size.y) - 1i)));
-}
-fn coax_p_wg_load_2d(p_c: coax_t32, p_level: i32) -> vec4f {
-  var l_c: coax_t32 = p_c;
-  var l_level: i32 = p_level;
-  return textureLoad(post_aux, vec2i(l_c.x, l_c.y), l_level);
-}
 fn coax_p_cg_post_sample_2(p_uv: vec2f) -> vec3f {
   var l_uv: vec2f = p_uv;
   return coax_p_cg_rgb(textureSampleLevel(post_light, post_lin, l_uv, 0.0f));
@@ -1004,6 +1034,14 @@ fn coax_p_mix3(p_a: vec3f, p_b: vec3f, p_t: f32) -> vec3f {
   var l_b: vec3f = p_b;
   var l_t: f32 = p_t;
   return vec3f(coax_p_mix(l_a.x, l_b.x, l_t), coax_p_mix(l_a.y, l_b.y, l_t), coax_p_mix(l_a.z, l_b.z, l_t));
+}
+fn coax_p_cg_output(p_c: vec3f) -> vec3f {
+  var l_c: vec3f = p_c;
+  var l_peak: f32;
+  var l_mapped: vec3f;
+  l_peak = coax_p_fmax(l_c.x, coax_p_fmax(l_c.y, l_c.z));
+  l_mapped = coax_p_scale3(l_c, select(0x1.000000p0f, (coax_p_cg_shoulder(l_peak) / l_peak), (l_peak > 0x1.4f8b58p-17f)));
+  return coax_p_cg_encode(l_mapped);
 }
 fn coax_p_fivelab_fx_fs(p_v: coax_t18) -> vec4f {
   var l_v: coax_t18 = p_v;
@@ -1648,6 +1686,10 @@ fn coax_p_fivelab_glass(p_c: vec3f, p_p: vec2f) -> vec3f {
   }
   return l_c;
 }
+fn coax_p_cg_linear(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return select(coax_pow_bg_vs(((l_x + 0x1.c28f5cp-5f) / 0x1.0e147ap0f), 0x1.333334p1f), (coax_p_fmax(l_x, 0.0f) / 0x1.9d70a4p3f), (l_x <= 0x1.4b5dccp-5f));
+}
 fn coax_p_render_sample_layer8_grad(p_uv: vec2f, p_layer: i32, p_dx: vec2f, p_dy: vec2f, p_bias: f32) -> vec4f {
   var l_uv: vec2f = p_uv;
   var l_layer: i32 = p_layer;
@@ -1670,12 +1712,6 @@ fn coax_p_mul3(p_a: vec3f, p_b: vec3f) -> vec3f {
   var l_b: vec3f = p_b;
   return vec3f((l_a.x * l_b.x), (l_a.y * l_b.y), (l_a.z * l_b.z));
 }
-fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
-  var l_x: f32 = p_x;
-  var l_low: f32 = p_low;
-  var l_high: f32 = p_high;
-  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
-}
 fn coax_p_cg_noise(p_p: vec2f) -> f32 {
   var l_p: vec2f = p_p;
   var l_i: vec2f;
@@ -1692,6 +1728,23 @@ fn coax_p_cg_noise(p_p: vec2f) -> f32 {
   l_c = coax_p_verse_style_hash(l_i.x, (l_i.y + 0x1.000000p0f));
   l_d = coax_p_verse_style_hash((l_i.x + 0x1.000000p0f), (l_i.y + 0x1.000000p0f));
   return coax_p_mix(coax_p_mix(l_a, l_b, l_f.x), coax_p_mix(l_c, l_d, l_f.x), l_f.y);
+}
+fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_low: f32 = p_low;
+  var l_high: f32 = p_high;
+  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
+}
+fn coax_p_cg_hemisphere(p_n: vec3f) -> vec3f {
+  var l_n: vec3f = p_n;
+  return coax_p_mix3(coax_p_v3(0x1.eb851ep-3f, 0x1.333334p-2f, 0x1.c28f5cp-4f), coax_p_v3(0x1.851eb8p-2f, 0x1.e147aep-2f, 0x1.3d70a4p-1f), coax_p_saturate(((l_n.y * 0x1.000000p-1f) + 0x1.000000p-1f)));
+}
+fn coax_p_cg_irradiance(p_n: vec3f, p_direct: f32, p_occlusion: f32, p_visibility: f32) -> vec3f {
+  var l_n: vec3f = p_n;
+  var l_direct: f32 = p_direct;
+  var l_occlusion: f32 = p_occlusion;
+  var l_visibility: f32 = p_visibility;
+  return coax_p_add3(coax_p_scale3(coax_p_cg_hemisphere(l_n), l_occlusion), coax_p_scale3(coax_p_v3(0x1.d9999ap0f, 0x1.9eb852p0f, 0x1.3851ecp0f), (l_direct * l_visibility)));
 }
 fn coax_p_cg_path(p_x: f32, p_z: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -1766,9 +1819,43 @@ fn coax_p_mix(p_a: f32, p_b: f32, p_t: f32) -> f32 {
   var l_t: f32 = p_t;
   return (l_a + ((l_b - l_a) * l_t));
 }
-fn coax_p_wg_length3(p_a: vec3f) -> f32 {
-  var l_a: vec3f = p_a;
-  return sqrt(dot(l_a, l_a));
+fn coax_p_cg_atmosphere(p_colour: vec3f, p_eye: vec3f, p_p: vec3f) -> vec3f {
+  var l_colour: vec3f = p_colour;
+  var l_eye: vec3f = p_eye;
+  var l_p: vec3f = p_p;
+  var l_ray: vec3f;
+  var l_sun: vec3f;
+  var l_forward: f32;
+  var l_air: vec3f;
+  var l_trans: f32;
+  l_ray = coax_p_normalize3(coax_p_add3(coax_p_sub3(l_p, l_eye), coax_p_v3(0.0f, 0x1.4f8b58p-17f, 0.0f)));
+  l_sun = coax_p_normalize3(coax_p_v3((-0x1.ccccccp-2f), 0x1.8f5c28p-1f, (-0x1.ae147ap-2f)));
+  l_forward = coax_pow_bg_vs(coax_p_saturate(dot(l_ray, l_sun)), 0x1.000000p2f);
+  l_air = coax_p_mix3(coax_p_v3(0x1.3d70a4p-1f, 0x1.8a3d70p-1f, 0x1.bd70a4p-1f), coax_p_v3(0x1.266666p0f, 0x1.051eb8p0f, 0x1.70a3d8p-1f), (0x1.666666p-2f + (l_forward * 0x1.4cccccp-1f)));
+  l_trans = exp((-coax_p_cg_air_depth(l_eye, l_p)));
+  return coax_p_add3(coax_p_scale3(l_colour, l_trans), coax_p_scale3(l_air, (0x1.000000p0f - l_trans)));
+}
+fn coax_p_cg_air_depth(p_eye: vec3f, p_p: vec3f) -> f32 {
+  var l_eye: vec3f = p_eye;
+  var l_p: vec3f = p_p;
+  var l_ray: vec3f;
+  var l_distance: f32;
+  var l_density: f32;
+  var l_i: i32;
+  var l_height: f32;
+  l_ray = coax_p_sub3(l_p, l_eye);
+  l_distance = coax_p_wg_length3(l_ray);
+  l_density = 0.0f;
+  {
+    let coax_from: i32 = 0i;
+    let coax_to: i32 = 4i;
+    for (l_i = coax_from; l_i < coax_to; l_i = l_i + 1i)
+    {
+      l_height = (l_eye.y + ((l_ray.y * (f32(l_i) + 0x1.000000p-1f)) * 0x1.000000p-2f));
+      l_density = (l_density + exp(((-coax_p_fmax(l_height, 0.0f)) / 0x1.000000p3f)));
+    }
+  }
+  return (((l_distance * 0x1.0624dep-7f) * l_density) * 0x1.000000p-2f);
 }
 fn coax_p_fivelab_dye(p_t: vec3f, p_dye: vec4f) -> vec3f {
   var l_t: vec3f = p_t;
@@ -1939,6 +2026,10 @@ fn coax_p_verse_style_shade(p_albedo: f32, p_shadow_light: f32, p_lit_light: f32
   var l_band: f32 = p_band;
   return (l_albedo * (l_shadow_light + ((l_lit_light - l_shadow_light) * coax_p_st_sat(l_band))));
 }
+fn coax_p_wg_length3(p_a: vec3f) -> f32 {
+  var l_a: vec3f = p_a;
+  return sqrt(dot(l_a, l_a));
+}
 fn coax_p_verse_style_halo(p_cos_t: f32, p_k: f32) -> f32 {
   var l_cos_t: f32 = p_cos_t;
   var l_k: f32 = p_k;
@@ -1948,10 +2039,29 @@ fn coax_p_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
   return sqrt(dot(l_a, l_a));
 }
+fn coax_p_cg_sign(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return select(0x1.000000p0f, (-0x1.000000p0f), (l_x < 0.0f));
+}
 fn coax_p_u2(p_x: u32, p_y: u32) -> coax_t31 {
   var l_x: u32 = p_x;
   var l_y: u32 = p_y;
   return coax_t31(l_x, l_y);
+}
+fn coax_p_cg_srgb(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return select(((0x1.0e147ap0f * coax_pow_bg_vs(l_x, (0x1.000000p0f / 0x1.333334p1f))) - 0x1.c28f5cp-5f), (coax_p_fmax(l_x, 0.0f) * 0x1.9d70a4p3f), (l_x <= 0x1.9a5c38p-9f));
+}
+fn coax_p_wg_clamp_i(p_x: i32, p_low: i32, p_high: i32) -> i32 {
+  var l_x: i32 = p_x;
+  var l_low: i32 = p_low;
+  var l_high: i32 = p_high;
+  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_low), l_high);
+}
+fn coax_p_i2(p_x: i32, p_y: i32) -> coax_t32 {
+  var l_x: i32 = p_x;
+  var l_y: i32 = p_y;
+  return coax_t32(l_x, l_y);
 }
 fn coax_p_cg_luma(p_c: vec3f) -> f32 {
   var l_c: vec3f = p_c;
@@ -1966,21 +2076,24 @@ fn coax_p_fmin(p_a: f32, p_b: f32) -> f32 {
   }
   return l_a;
 }
+fn coax_p_cg_normal_unpack(p_p: vec2f) -> vec3f {
+  var l_p: vec2f = p_p;
+  var l_n: vec3f;
+  var l_t: f32;
+  l_n = coax_p_v3(l_p.x, l_p.y, ((0x1.000000p0f - abs(l_p.x)) - abs(l_p.y)));
+  l_t = coax_p_saturate((-l_n.z));
+  l_n.x = (l_n.x - (coax_p_cg_sign(l_n.x) * l_t));
+  l_n.y = (l_n.y - (coax_p_cg_sign(l_n.y) * l_t));
+  return coax_p_normalize3(l_n);
+}
 fn coax_p_cg_viewpoint(p_pixel: vec2f, p_z: f32) -> vec3f {
   var l_pixel: vec2f = p_pixel;
   var l_z: f32 = p_z;
   return coax_p_add3(coax_p_wg_at3(16i), coax_p_scale3(coax_p_add3(coax_p_wg_at3(20i), coax_p_add3(coax_p_scale3(coax_p_wg_at3(24i), ((l_pixel.x - coax_at_u(i32(23i))) / coax_at_u(i32(19i)))), coax_p_scale3(coax_p_wg_at3(28i), ((coax_at_u(i32(27i)) - l_pixel.y) / coax_at_u(i32(19i)))))), l_z));
 }
-fn coax_p_wg_clamp_i(p_x: i32, p_low: i32, p_high: i32) -> i32 {
-  var l_x: i32 = p_x;
-  var l_low: i32 = p_low;
-  var l_high: i32 = p_high;
-  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_low), l_high);
-}
-fn coax_p_i2(p_x: i32, p_y: i32) -> coax_t32 {
-  var l_x: i32 = p_x;
-  var l_y: i32 = p_y;
-  return coax_t32(l_x, l_y);
+fn coax_p_cg_shoulder(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return select((0x1.4cccccp-1f + (0x1.666666p-2f * (0x1.000000p0f - exp(((-(l_x - 0x1.4cccccp-1f)) / 0x1.666666p-2f))))), coax_p_fmax(l_x, 0.0f), (l_x <= 0x1.4cccccp-1f));
 }
 fn coax_p_wg_log2(p_x: f32) -> f32 {
   var l_x: f32 = p_x;

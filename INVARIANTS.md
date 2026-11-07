@@ -6060,8 +6060,12 @@ coordinates. Desktop texture layers use 1024, phone 512 through the existing
 optional host hook. Only the admitted Character Create page selects the
 private `charactercreator.wgsl` graph (geometry PCF shadows, MRT contact
 shading, bloom and reconstruction). Common fivelab keeps its single target.
-Uniform texture sampling precedes material selection. Headless real WebGPU
-checks cover both graphs and desktop/phone allocation. The image-derived sky
+Uniform texture sampling precedes material selection. The private graph keeps
+linear HDR through lighting and bloom, decodes palette sRGB once, and encodes
+output once. Its auxiliary target holds octahedral normal XY, indirect luminance
+share and signed depth; contact attenuation is weighted by that indirect share.
+Headless real WebGPU checks cover both graphs, desktop/phone allocation and
+numeric color/lighting readback. The image-derived sky
 and remixed cliff retain explicit provenance; no original scene recovery,
 pixel equality or shared/native renderer qualification is inferred.
 See `docs/verse/character-glade.md` and

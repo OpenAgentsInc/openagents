@@ -1,0 +1,208 @@
+{
+  "base_commit": "267ffbdc2b",
+  "research": {
+    "repo": "ore",
+    "path": "/Users/christopherdavid/work/ore",
+    "commit": "f4958def81d544132cf0fa77e7eb5cbb35bb1e4b",
+    "sources": [
+      {
+        "path": "docs/ocarina-of-time/lighting-reconstruction.md",
+        "sha256": "8ef30a34f2bd67dee3b9b3e7b33d961cd53be0b2769904137ad042de5f441131"
+      },
+      {
+        "path": "docs/ocarina-of-time/rendering-materials-vfx.md",
+        "sha256": "b75ccb542b4113aefae89146145cdb25d33fc43cd2ee9992f39f521851f81a1a"
+      },
+      {
+        "path": "docs/ocarina-of-time/foliage-system.md",
+        "sha256": "e0a5896a1744d2366aaca248465a19214897731a965e43114821150c59ccc24e"
+      },
+      {
+        "path": "docs/ocarina-of-time/terrain-and-streaming.md",
+        "sha256": "41535785c9de2ddf3c7a1d6ba8b49ff9b117dced322b4517ae16e31cf85ed31c"
+      },
+      {
+        "path": "docs/ocarina-of-time/engine-architecture.md",
+        "sha256": "5cdc0a8bbeda6f37abee533f47d13c261cc29e4e5d696798eaa812bc9d6db490"
+      },
+      {
+        "path": "docs/ocarina-of-time/asset-design.md",
+        "sha256": "80c05adac04f4303b39e072b7d2e50ac3048e24585d9960240b9f503b65b3670"
+      },
+      {
+        "path": "docs/ocarina-of-time/aethyr-six-systems-pass.md",
+        "sha256": "0e14eff2ca6b5f6c51b35040def9f7bb26ec2de825e35c625f311d2d733cdb1e"
+      },
+      {
+        "path": "docs/wow-forever/original-creature-workflow.md",
+        "sha256": "7961a61d37b648ccd5a6f0b899ba0ae73a3cab9631100a8df3c46ac053e0a222"
+      }
+    ],
+    "principal": "Lighting reconstruction sections 5\u20139, 11\u201312; related materials/foliage/bakes/implementation sections. Not a claim to have read the million-entry catalog."
+  },
+  "shader": {
+    "path": "apps/openagents-web/charactercreator.wgsl",
+    "sha256": "a2c3e90d73f7658a021b1bf849daa663be9cec2041a127ab621c4061f0d3e8c5"
+  },
+  "runtime_pack": {
+    "pack": "/realms/character-creator/assets/glade.pack",
+    "sha256": "dc038126015eb33b2543c0f0d29ba6f18ffa6e0d6014e356a833ba463c9a4de2",
+    "bytes": 33304768,
+    "profile": "character-create-legacy-static-v4"
+  },
+  "checks": {
+    "coax": "23 of 127 checks selected by glade passed; six new lighting/encoding checks",
+    "hardware_readback": {
+      "ok": true,
+      "checks": {
+        "srgbGrey": true,
+        "midtones": true,
+        "hdrShoulder": true,
+        "rawHdr": true,
+        "heightFog": true,
+        "independentAoAndSun": true
+      },
+      "values": [
+        0.21404112875461578,
+        0.5,
+        0.18000000715255737,
+        0.8712421655654907,
+        0.9999755620956421,
+        0.2329791784286499,
+        0.021670440211892128,
+        2.2300000190734863,
+        2.0399999618530273,
+        0.3799999952316284,
+        0.1899999976158142
+      ],
+      "errors": [],
+      "adapter": "metal-3"
+    },
+    "desktop": {
+      "ok": true,
+      "mode": "desktop",
+      "ready": true,
+      "layer": {
+        "format": "rgba8unorm-srgb",
+        "width": 1024,
+        "height": 1024,
+        "layers": 64,
+        "mips": 11
+      },
+      "shadow": true,
+      "post": true,
+      "hdrTargets": 2,
+      "sceneColourTargets": 2,
+      "frameP50Ms": 16.664999999999964,
+      "frameP90Ms": 16.670000000000073,
+      "errors": []
+    },
+    "phone": {
+      "ok": true,
+      "mode": "phone",
+      "ready": true,
+      "layer": {
+        "format": "rgba8unorm-srgb",
+        "width": 512,
+        "height": 512,
+        "layers": 64,
+        "mips": 10
+      },
+      "shadow": true,
+      "post": true,
+      "hdrTargets": 2,
+      "sceneColourTargets": 2,
+      "frameP50Ms": 16.665000000000077,
+      "frameP90Ms": 16.66999999999996,
+      "errors": []
+    },
+    "controls": "Character Studio: 3D Nature glade present; Noble selected on Female; eye color and cast changed through pointer input; appearance survived reload; physical zoom/pan passed.",
+    "common_shader": "Targeted generated artifact comparison passed; no common fivelab artifact change",
+    "staging": {
+      "index.html": {
+        "url": "/build/fivelab.849142d35b8f.wgsl",
+        "sha256": "849142d35b8f071c4980cf34ca839b181e983a88da40c44d9af8293183ba5822",
+        "bytes": 84538,
+        "shader_attributes": 1
+      },
+      "realms/character-creator/index.html": {
+        "url": "/build/charactercreator.a2c3e90d73f7.wgsl",
+        "sha256": "a2c3e90d73f7658a021b1bf849daa663be9cec2041a127ab621c4061f0d3e8c5",
+        "bytes": 115592,
+        "shader_attributes": 1
+      }
+    }
+  },
+  "unchanged_checks": "The pack oracle and 615015-byte Wasm build at 267ffbdc2b remain applicable; no pack, CPU or host code changed. No repeat of those passing checks.",
+  "limits": "Scene-authored approximation informed by Ore. No source native rendering equations or palette units are claimed. Contact AO uses a scalar indirect share; legacy actor share is fixed at 0.4. Four-sample height atmosphere is not a full shadowed volume or GI/probe system. RAF intervals are not GPU timings.",
+  "sky_output_probes": [
+    {
+      "pixel": [
+        960,
+        50
+      ],
+      "before": [
+        202,
+        231,
+        247
+      ],
+      "after": [
+        203,
+        231,
+        248
+      ],
+      "max_channel_delta": 1
+    },
+    {
+      "pixel": [
+        500,
+        100
+      ],
+      "before": [
+        141,
+        227,
+        251
+      ],
+      "after": [
+        142,
+        228,
+        251
+      ],
+      "max_channel_delta": 1
+    },
+    {
+      "pixel": [
+        1000,
+        100
+      ],
+      "before": [
+        154,
+        229,
+        250
+      ],
+      "after": [
+        156,
+        229,
+        250
+      ],
+      "max_channel_delta": 2
+    },
+    {
+      "pixel": [
+        1100,
+        200
+      ],
+      "before": [
+        233,
+        244,
+        245
+      ],
+      "after": [
+        234,
+        245,
+        245
+      ],
+      "max_channel_delta": 1
+    }
+  ]
+}

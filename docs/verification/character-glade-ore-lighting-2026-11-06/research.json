@@ -1,0 +1,40 @@
+{
+  "repo": "ore",
+  "path": "/Users/christopherdavid/work/ore",
+  "commit": "f4958def81d544132cf0fa77e7eb5cbb35bb1e4b",
+  "sources": [
+    {
+      "path": "docs/ocarina-of-time/lighting-reconstruction.md",
+      "sha256": "8ef30a34f2bd67dee3b9b3e7b33d961cd53be0b2769904137ad042de5f441131"
+    },
+    {
+      "path": "docs/ocarina-of-time/rendering-materials-vfx.md",
+      "sha256": "b75ccb542b4113aefae89146145cdb25d33fc43cd2ee9992f39f521851f81a1a"
+    },
+    {
+      "path": "docs/ocarina-of-time/foliage-system.md",
+      "sha256": "e0a5896a1744d2366aaca248465a19214897731a965e43114821150c59ccc24e"
+    },
+    {
+      "path": "docs/ocarina-of-time/terrain-and-streaming.md",
+      "sha256": "41535785c9de2ddf3c7a1d6ba8b49ff9b117dced322b4517ae16e31cf85ed31c"
+    },
+    {
+      "path": "docs/ocarina-of-time/engine-architecture.md",
+      "sha256": "5cdc0a8bbeda6f37abee533f47d13c261cc29e4e5d696798eaa812bc9d6db490"
+    },
+    {
+      "path": "docs/ocarina-of-time/asset-design.md",
+      "sha256": "80c05adac04f4303b39e072b7d2e50ac3048e24585d9960240b9f503b65b3670"
+    },
+    {
+      "path": "docs/ocarina-of-time/aethyr-six-systems-pass.md",
+      "sha256": "0e14eff2ca6b5f6c51b35040def9f7bb26ec2de825e35c625f311d2d733cdb1e"
+    },
+    {
+      "path": "docs/wow-forever/original-creature-workflow.md",
+      "sha256": "7961a61d37b648ccd5a6f0b899ba0ae73a3cab9631100a8df3c46ac053e0a222"
+    }
+  ],
+  "principal": "Lighting reconstruction sections 5\u20139, 11\u201312; related materials/foliage/bakes/implementation sections. Not a claim to have read the million-entry catalog."
+}

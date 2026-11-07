@@ -111,7 +111,7 @@
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "985b34ea24fb809b28f2a774748577e4bccd259fff92b3554c96769c9ea723d7"
+    "sha256": "41723238007136cf53fbf5fb47b549754983645a204daae16cc23291db37a942"
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
@@ -131,7 +131,17 @@
     ],
     "source": "Reference-directed rear-left warm sunlight, broad sky fill and wrapped outdoor diffuse; Unreal overview settings remain separate evidence",
     "shadows": "Alpha-tested geometry shadow map with 12-tap PCF; normal/depth contact occlusion; foliage reconstruction, bloom and FXAA",
-    "canopy": "rounded volume normals, ambient mask and warm leaf transmission"
+    "canopy": "rounded volume normals, ambient mask and warm leaf transmission",
+    "profile": "character-create-linear-daylight-v1",
+    "colour_contract": "GPU sRGB sampling to linear radiance; palette decode once; rgba16float shading/bloom; hue-preserving peak shoulder; one final sRGB encode",
+    "indirect": "Normal-dependent sky/ground hemisphere; canopy ambient mask; indirect-luminance-weighted contact attenuation",
+    "atmosphere": "Four midpoint samples of exponential height density; Beer\u2013Lambert surface transmittance plus angle-dependent air source",
+    "research": {
+      "repo": "ore",
+      "commit": "f4958def81d544132cf0fa77e7eb5cbb35bb1e4b",
+      "path": "docs/ocarina-of-time/lighting-reconstruction.md",
+      "sha256": "8ef30a34f2bd67dee3b9b3e7b33d961cd53be0b2769904137ad042de5f441131"
+    }
   },
   "scope": "Reference-directed 3D recreation; original scene composition not recovered. Not pixel-identical Unreal rendering.",
   "source_files": [
@@ -429,11 +439,11 @@
   },
   "shader_entry": {
     "path": "apps/openagents-web/gpu/charactercreator.coax",
-    "sha256": "8bd251fc86dcb8ad7f87be17794daf17e24def60a4707860b0e7943bbb9ea610"
+    "sha256": "b008eebda88536e540b2c260bb7f6ff63e3cbffaeaadef97414e50f813c1ab30"
   },
   "shader_artifact": {
     "path": "apps/openagents-web/charactercreator.wgsl",
-    "sha256": "cf80975af28786e7349aed095b92ea9714e5f7fdff7d05bc9b0290eb6d66496e"
+    "sha256": "a2c3e90d73f7658a021b1bf849daa663be9cec2041a127ab621c4061f0d3e8c5"
   },
   "camera": {
     "desktop_horizon_fraction": 0.595,
@@ -487,6 +497,10 @@
     {
       "path": "apps/openagents-web/gpu/charactercreator.module",
       "sha256": "fa2a4345770853fd967eba130073637b5c7a6d881b83acfa19ed2f09c7f93a8f"
+    },
+    {
+      "path": "apps/openagents-web/gpu/character-glade-light.coax",
+      "sha256": "68114568c56f6ca30e3c10f0b799650c5d3354a49dd4f7d17dd77849af5cfcc7"
     }
   ]
 }
