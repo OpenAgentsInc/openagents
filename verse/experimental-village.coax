@@ -21,6 +21,9 @@ EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floo
   ev_camera_near(a[..],s.x+f32(dx-1)*4,s.z+f32(dz-1)*4);#assert !a[0].overflow && a[0].wall_n>0;
  }}}
 }
+#test "new neighborhood walls leave a walkable doorway" {
+ a:[1]EvNear;ev_near(a[..],47,46);#assert !a[0].overflow && a[0].wall_n>=6;
+}
 #test "stairs are sloped floors, not solid blocks" {
  a:[1]EvNear;ev_near(a[..],-50,22);#assert a[0].floor_n>0 && !a[0].overflow;
  found:=false;for i:0..<a[0].floor_n {if abs(a[0].floors[i*10+8])+abs(a[0].floors[i*10+9])>2 {found=true;}}#assert found;
@@ -35,11 +38,20 @@ ev_point :: (m:[13]int,x:f32,y:f32,z:f32)->[3]f32 {
  f32(m[11])*0.001+f32(m[4])*0.001*x+f32(m[5])*0.001*y+f32(m[6])*0.001*z,
  f32(m[12])*0.001+f32(m[7])*0.001*x+f32(m[8])*0.001*y+f32(m[9])*0.001*z];
 }
+ev_house_box :: (out:[]EvNear,site:terrain.ExpSite,dy:f32,box:[6]f32) {
+ if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;
+ out[0].walls[o]=site.x+box[0];out[0].walls[o+1]=dy+box[1];out[0].walls[o+2]=site.z+box[2];out[0].walls[o+3]=site.x+box[3];out[0].walls[o+4]=dy+box[4];out[0].walls[o+5]=site.z+box[5];out[0].wall_n+=1;
+}
 ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4);}
 ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9);}
 ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32) {
  out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);
  for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
+  if si>=9 {
+   // 4 m square house: front opening is centered in the left front module.
+   for box:[6][6]f32.[[6]f32.[-2.2,0,1.8,-1.78,3.1,2.2],[6]f32.[-0.22,0,1.8,2.2,3.1,2.2],[6]f32.[-2.2,0,-2.2,2.2,3.1,-1.8],[6]f32.[-2.2,0,-2.2,-1.8,3.1,2.2],[6]f32.[1.8,0,-2.2,2.2,3.1,2.2],[6]f32.[-2.2,3.05,-2.2,2.2,3.25,2.2]] {ev_house_box(out,site,dy,box);}
+   continue;
+  }
   for b:VC_BOXES {if b[0]!=kind {continue;}x0:=site.x+f32(b[1])*0.001;z0:=site.z+f32(b[3])*0.001;x1:=site.x+f32(b[4])*0.001;z1:=site.z+f32(b[6])*0.001;
    if x<x0-reach || x>x1+reach || z<z0-reach || z>z1+reach {continue;}
    if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;out[0].walls[o]=x0;out[0].walls[o+1]=dy+f32(b[2])*0.001;out[0].walls[o+2]=z0;out[0].walls[o+3]=x1;out[0].walls[o+4]=dy+f32(b[5])*0.001;out[0].walls[o+5]=z1;out[0].wall_n+=1;

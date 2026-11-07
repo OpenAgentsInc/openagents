@@ -1897,6 +1897,130 @@
     {
       "id": "quaternius/nature/grass-wispy-tall",
       "revision": "fcd153c8a3bad56e40488aac9599273c7216ece4c710fa6ce738ce55d76a5402"
+    },
+    {
+      "id": "quaternius/village/doorframe-flat-wooddark",
+      "revision": "26efd98452f0e3f5d1aad36026e6294631e2008d9c6b7f8808319f3956c651b3"
+    },
+    {
+      "id": "quaternius/village/doorframe-flat-woodlight",
+      "revision": "fe7be269d494026ff0bcf1e9401676ac1d252ab14293f2904929c043e7fa3081"
+    },
+    {
+      "id": "quaternius/village/door-1-flat",
+      "revision": "8b58967d7e8b6ef55564b6f7deec5cbeefd9df11ee70364ffa81a28e87582950"
+    },
+    {
+      "id": "quaternius/village/door-2-flat",
+      "revision": "703e2356b4a5d0b59912a87a46c0ceda58fdb89df8bdd8a4c8fc28dbb041566d"
+    },
+    {
+      "id": "quaternius/village/door-3-flat",
+      "revision": "e19336ca0db88c69a4d824f9c37a8d828de0392b503a7c7f8545bc0ee12e963d"
+    },
+    {
+      "id": "quaternius/village/door-4-flat",
+      "revision": "79cbfbe72a9d0721e7b244ad4c145fbf486415d8fb7cb6e9234d9fafc6f71807"
+    },
+    {
+      "id": "quaternius/village/door-5-flat",
+      "revision": "9623a9dbf6e85f8654f7ac64789dd8f969a8b21f347a17619ec64e638b53f1da"
+    },
+    {
+      "id": "quaternius/village/door-6-flat",
+      "revision": "306c9ee801bee61d12327234a337eee8b38ad35fc69093d809a7aeb05ba0a4ae"
+    },
+    {
+      "id": "quaternius/village/door-7-flat",
+      "revision": "4cbaf444da68f57318b762ea7bcc60f95afdacb961c9a4436e6aab03ec1fea07"
+    },
+    {
+      "id": "quaternius/village/door-8-flat",
+      "revision": "8ae9b4f8d5ac53a7b623cf9960e868002dbf0883ece033dce4031729a945c404"
+    },
+    {
+      "id": "quaternius/village/floor-brick",
+      "revision": "a472ef0f5afe70f101a138e057e23329bf227f2a18b6aadd79bfe1ee684ac789"
+    },
+    {
+      "id": "quaternius/village/floor-unevenbrick",
+      "revision": "e895092ccbdf271c0ef86313237dce1c4ee55fa17e65daa71fcaafa5db0624e6"
+    },
+    {
+      "id": "quaternius/village/floor-woodlight",
+      "revision": "dae5a2136f6502c61990ee7cd1411c304fefe117e13369f6d6c61b63b28a8e79"
+    },
+    {
+      "id": "quaternius/village/roof-flattiles-4x4",
+      "revision": "16cfcfe0d40a69ad4be9acf863e20db5fdee0563174eaedf3f0c45d4121e5c2d"
+    },
+    {
+      "id": "quaternius/village/roof-flattiles-4x6",
+      "revision": "935cb945e04838a62681e94e9e7ee48f35d670000ef2441610098aaebdb247e4"
+    },
+    {
+      "id": "quaternius/village/roof-flattiles-6x6",
+      "revision": "c3210656f6887a5ace1ac4e82b450097f373e33e31ac807527a8f51731560d06"
+    },
+    {
+      "id": "quaternius/village/roof-roundtiles-4x4",
+      "revision": "e302981df72e4884588c6c2d2b718f97b236de847962a946ef9a360e7dee7f8c"
+    },
+    {
+      "id": "quaternius/village/roof-roundtiles-4x6",
+      "revision": "32106909da6b345fe1f0588a2016b832dfb14b202cc2d986ccd0455539fd3019"
+    },
+    {
+      "id": "quaternius/village/roof-roundtiles-6x6",
+      "revision": "f3e681cc491bd5edb4ebda780796f1a5370e736debd0123b81ab495b94ed6f17"
+    },
+    {
+      "id": "quaternius/village/roof-tower-flattiles",
+      "revision": "bb02dd62d5929491fda178d92a1d6e8b418a8eb7204ec28e946b952b9ecd238e"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-door-flat",
+      "revision": "38f5d40c6e225fea6e8ffa897f479c6c6fbdeb260ed83fc3be3c8ed496b0c86f"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-window-wide-flat",
+      "revision": "792e2bef5bd284be8263096fd6fc82c00f682c1ffdceedd6c4d2f457125aa3fd"
+    },
+    {
+      "id": "quaternius/village/wall-unevenbrick-door-flat",
+      "revision": "0df7f551fae8caa98353e33886930adf81fe78cf328563e66a95b0649c8a4023"
+    },
+    {
+      "id": "quaternius/village/wall-unevenbrick-window-wide-flat",
+      "revision": "9b62d0115f1f2617cf4ab889e8ccfd102ff5f13d1e3fdd4d7f8d3346aad5cfb0"
+    },
+    {
+      "id": "quaternius/village/wall-woodbrick-window-wide-flat",
+      "revision": "01000d5fada0f17ed0bbbec0ffb3c62255fd9d8f9e453862332ae3d8061d8b71"
+    },
+    {
+      "id": "quaternius/village/wall-woodwear-door-flat",
+      "revision": "450bff55e2bd8d96143107b3d587a3e6273065fb41c101ff1cb6ead59c0784ce"
+    },
+    {
+      "id": "quaternius/village/wall-woodwear-window-wide-flat",
+      "revision": "a73704a5d46516a93326d14c7ab2896b9f78870e2444d94455f887448aa0c635"
+    },
+    {
+      "id": "quaternius/village/window-wide-flat1",
+      "revision": "75beb89c273c0cb0cdbc3927841fa2ab101f3fe39eea03081f823024a7c92572"
+    },
+    {
+      "id": "quaternius/village/window-wide-flat2",
+      "revision": "ea314a81ae2f2c67dbae1bc2c05cbfcbe2d48f7d528bbc087928ee7e24d30b98"
+    },
+    {
+      "id": "quaternius/village/window-wide-flat3",
+      "revision": "5a05c995fe8a0356ab5514ee97a95d2636430bd0f6697f8c9dd432ffbee4ab9f"
+    },
+    {
+      "id": "quaternius/village/window-wide-flat-rocks",
+      "revision": "2e5e8237954970688654c7ecdc814ab2dc92f04ba63e28053f4358143c75bf99"
     }
   ],
   "parent_scene": {
@@ -1913,7 +2037,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "61e348914952ad7344df0d0ff7a331895f2cb3dbcbcc9c3fb5f0db7153eaf30c",
+    "sha256": "eec1f9f0a370f1c55da451552cb712c1058ae993b52123aa83df6d9640049f65",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -1922,7 +2046,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "ad7b3b56a3f0f81706cb3238ac3e3369083161a137ab0b04df564140aab0ed91",
+    "sha256": "a655f10a36066463ed73549aac7fc443e07b8ccc6dbf9761133fdaee594f54c0",
     "budget_bytes": 134217728
   },
   "terrain": {
@@ -1942,7 +2066,7 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "690d13b3670ebafe5078a57bfa6a93bb4647c907904db02f4f276c482b6c61bf"
+      "sha256": "caab4eb48a2d73d7e33eca3e2c3063b9a1e1d8250c9e13051f2557cf5b53018e"
     }
   },
   "scope": "Nature meadow, source-authored Medieval Village layouts, and a furnished multi-level watchmaker workshop; Character Create wardrobe remains unchanged.",
@@ -2079,7 +2203,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "63bec4df66809dfccca115b51e195068ac4a46662766f03fdbdc3707a95c1d95"
+        "sha256": "35dbd0e243ba815fd00b4fdcbb45270f16f5ceffb89525b9ea831d4ed0fb11c4"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2156,5 +2280,10 @@
         "Puglin"
       ]
     }
+  },
+  "new_neighborhood": {
+    "buildings": 9,
+    "source": "verse/tools/assets/character_glade_pack.coax",
+    "collision": "walkable doorway and solid walls for each building"
   }
 }

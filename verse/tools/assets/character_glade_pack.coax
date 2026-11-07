@@ -249,7 +249,7 @@ gp_bestiary :: (w:[]Gp,iw:[]ImgWork,root:string,frames:string) {
   for k:0..<ni/3 {a:=gl_u32(b[..],8+nv*32+k*12);c:=gl_u32(b[..],8+nv*32+k*12+4);d:=gl_u32(b[..],8+nv*32+k*12+8);if a>=nv || c>=nv || d>=nv {ph_die("invalid bestiary triangle");}gp_tri(w,first+a,first+c,first+d);}
  }
 }
-gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int,site_id:int) {
+gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int,site_id:int,mark:f32) {
  path:=txt_cat3(w[0].txt[..],root,"/glTF/",txt_cat(w[0].txt[..],part.name,".gltf"));gl_load(g,path);site:=meadow.exp_site(site_id);base:=meadow.exp_height(site.x,site.z);t:=part.m;
  for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {
   pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;idx:[262144]f64;
@@ -260,15 +260,42 @@ gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int,site_
    if abs(uu)>4 || abs(vv)>4 {ph_die("village source UV exceeds admitted range");}
    p:=[3]f32.[site.x+t[9]+t[0]*x+t[3]*y+t[6]*z,base+t[10]+t[1]*x+t[4]*y+t[7]*z,site.z+t[11]+t[2]*x+t[5]*y+t[8]*z];
    normal:=gp_village_normal(t,[3]f32.[nx,ny,nz]);
-   id:=gp_v(w,p,normal,[2]f32.[(uu+4)/8,(vv+4)/8],tint,atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.0+f32(tile)));
+   id:=gp_v(w,p,normal,[2]f32.[(uu+4)/8,(vv+4)/8],tint,atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.0+f32(tile)+mark));
   }
   for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
  }}
 }
 gp_village :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,layout:string,props_root:string) {
  buf:[262144]u8;n:=fs_read(layout,buf[..]);if n<0 {ph_die("missing village layout");}atlas:=gp_village_atlas(w,iw,root,props_root);at:=0;counts:[4]int;
- while at<n {e:=at;while e<n && buf[e]!='\n' {e+=1;}if e>at {part:=gp_village_part(cast(string)buf[at..<e]);if !part.ok {ph_die("invalid village layout");}counts[part.group]+=1;for site:0..<meadow.EXP_SITES {if meadow.exp_site_group(site)==part.group {gp_village_mesh(w,g,root,part,atlas,site);}}}at=e+1;}
+ while at<n {e:=at;while e<n && buf[e]!='\n' {e+=1;}if e>at {part:=gp_village_part(cast(string)buf[at..<e]);if !part.ok {ph_die("invalid village layout");}counts[part.group]+=1;for site:0..<meadow.EXP_SITES {if meadow.exp_site_group(site)==part.group {gp_village_mesh(w,g,root,part,atlas,site,0);}}}at=e+1;}
  if counts[0]!=167 || counts[1]!=77 || counts[2]!=308 || counts[3]!=151 {ph_die("incomplete village layout");}
+}
+// Each neighborhood house has the same accessible footprint but a different kit combination.
+gp_house_part :: (w:[]Gp,g:[]Gltf,root:string,atlas:int,site:int,name:string,x:f32,y:f32,z:f32,turn:bool) {
+ p:VillagePart;p.ok=true;p.name=name;
+ p.m=ifx turn then [12]f32.[0,0,-1,0,1,0,1,0,0,x,y,z] else [12]f32.[1,0,0,0,1,0,0,0,1,x,y,z];
+ gp_village_mesh(w,g,root,p,atlas,site,0.25);
+}
+gp_new_houses :: (w:[]Gp,g:[]Gltf,root:string) {
+ doors:=[4]string.["Wall_Plaster_Door_Flat","Wall_UnevenBrick_Door_Flat","Wall_WoodBrick_Door_Flat","Wall_WoodWear_Door_Flat"];
+ windows:=[4]string.["Wall_Plaster_Window_Wide_Flat","Wall_UnevenBrick_Window_Wide_Flat","Wall_WoodBrick_Window_Wide_Flat","Wall_WoodWear_Window_Wide_Flat"];
+ walls:=[4]string.["Wall_Plaster_Straight","Wall_UnevenBrick_Straight","Wall_WoodBrick_Straight","Wall_WoodWear_Straight"];
+ floors:=[6]string.["Floor_Brick","Floor_Brick","Floor_RoundRocks","Floor_UnevenBrick","Floor_WoodDark","Floor_WoodLight"];
+ roofs:=[12]string.["Roof_FlatTiles_4x4","Roof_RoundTiles_4x4","Roof_FlatTiles_4x6","Roof_RoundTiles_4x6","Roof_FlatTiles_6x6","Roof_RoundTiles_6x6","Roof_Tower_FlatTiles","Roof_Tower_RoundTiles","Roof_FlatTiles_4x4","Roof_RoundTiles_4x4","Roof_FlatTiles_4x6","Roof_RoundTiles_4x6"];
+ frames:=[3]string.["DoorFrame_Flat_Brick","DoorFrame_Flat_WoodDark","DoorFrame_Flat_WoodLight"];
+ panes:=[4]string.["Window_Wide_Flat1","Window_Wide_Flat2","Window_Wide_Flat3","Window_Wide_Flat_Rocks"];
+ leaves:=[8]string.["Door_1_Flat","Door_2_Flat","Door_3_Flat","Door_4_Flat","Door_5_Flat","Door_6_Flat","Door_7_Flat","Door_8_Flat"];
+ for i:0..<9 {site:=i+9;family:=i%4;
+  for a:0..<2 {for b:0..<2 {gp_house_part(w,g,root,w[0].village_layer,site,floors[i%6],f32(a*2-1),0.02,f32(b*2-1),false);}}
+  gp_house_part(w,g,root,w[0].village_layer,site,doors[family],-1,0,2,false);
+  gp_house_part(w,g,root,w[0].village_layer,site,frames[i%3],-1,0,2,false);
+  gp_house_part(w,g,root,w[0].village_layer,site,leaves[i%8],-1.78,0,2,true);
+  gp_house_part(w,g,root,w[0].village_layer,site,windows[family],1,0,2,false);
+  gp_house_part(w,g,root,w[0].village_layer,site,panes[i%4],1,0,2,false);
+  for side:0..<2 {x:=f32(side*2-1);gp_house_part(w,g,root,w[0].village_layer,site,walls[(family+1)%4],x,0,-2,false);
+   gp_house_part(w,g,root,w[0].village_layer,site,walls[family],-2,0,x,true);gp_house_part(w,g,root,w[0].village_layer,site,walls[(family+1)%4],2,0,x,true);}
+  gp_house_part(w,g,root,w[0].village_layer,site,roofs[i],0,3.1,0,false);
+ }
 }
 gp_prop_tile :: (name:string)->int {
  if name=="MI_Trim_Furniture" {return 11;}if name=="MI_Trim_Metal" || name=="MI_Trim_Metal_Vertex" {return 12;}
@@ -318,7 +345,7 @@ gp_workshop_clock :: (w:[]Gp) {
  gp_clock_bar(w,x,y,z+0.03,0.0,0.58,0.035,ink);gp_clock_bar(w,x,y,z+0.035,0.38,0.22,0.045,ink);
 }
 gp_props :: (w:[]Gp,g:[]Gltf,root:string) {
- for site_id:0..<meadow.EXP_SITES {site:=meadow.exp_site(site_id);group:=meadow.exp_site_group(site_id);
+ for site_id:0..<9 {site:=meadow.exp_site(site_id);group:=meadow.exp_site_group(site_id);
   for i:0..<props.exp_prop_count(site_id) {p:=props.exp_prop_at(site_id,i);path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],p.name,".gltf"));gl_load(g,path);sc:[16]f64;has_scale:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=ifx has_scale==3 then f32(sc[0]) else 1.0f32;sy:=ifx has_scale==3 then f32(sc[1]) else 1.0f32;sz:=ifx has_scale==3 then f32(sc[2]) else 1.0f32;
    x:=site.x+p.x;z:=site.z+p.z;y:=meadow.exp_height(x,z)+p.y;cs:=cos(p.yaw);sn:=sin(p.yaw);
    for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;colors:[262144]f64;idx:[262144]f64;
@@ -516,6 +543,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=17 {gp_extra_props(w[..],g[..],args_at(args[..],6),args_at(args[..],16));}
  if args_count(args[..])>=16 {gp_bestiary(w[..],iw[..],args_at(args[..],14),args_at(args[..],15));}
  if args_count(args[..])==18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
+ if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));}
  w[0].envni=w[0].ni;if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));}
  for group:0..<3 {
   w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";

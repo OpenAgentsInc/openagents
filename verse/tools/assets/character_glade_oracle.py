@@ -46,7 +46,7 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]; new_house_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -54,7 +54,8 @@ for i in range(verts):
     kind=vb[at+15]&7
     if kind==4:
         marker=struct.unpack_from('<f',vb,at+28)[0]
-        if marker in (100.125,101.125): bestiary_vertices.append(i)
+        if 100<=marker<=110.25 and abs(marker-math.floor(marker)-.25)<.001: new_house_vertices.append(i)
+        elif marker in (100.125,101.125): bestiary_vertices.append(i)
         elif marker in (111.125,112.125,113.125,114.125,115.125): extra_prop_vertices.append(i)
         elif 100<=marker<=110: village_vertices.append(i)
         elif 111<=marker<=114: prop_vertices.append(i)
@@ -250,6 +251,11 @@ if village:
                         assert ids[ii:ii+len(triangles)]==tuple(vi+x for x in triangles),name
                         vi+=nv;ii+=len(triangles)
     else: assert not prop_vertices and not clock_vertices
+    if new_house_vertices:
+        assert new_house_vertices==list(range(vi,new_house_vertices[-1]+1))
+        assert all(new_house_vertices[0]<=x<=new_house_vertices[-1] for x in ids[ii:])
+        assert len({round((pos[i][0]-48)/10) for i in new_house_vertices})>=3
+        ii=len(ids)
     assert ii==len(ids)
 
 # Verify each instanced template against the pinned glTF, independently of the packer.

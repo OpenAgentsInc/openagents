@@ -28,3 +28,7 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  p:=walk.walk_place(17,0,0,0);for i:0..<75 {p=village_walk(p,1);}#assert p.pos.z< -2.5;
  p=walk.walk_place(15,0, -8.6,0);for i:0..<100 {p=village_walk(p,-1);}#assert p.pos.z> -6 && p.pos.y>1;
 }
+#test "new village house doorway and walls work with the walker" #steps 200000000 {
+ p:=walk.walk_place(47,0,46.5,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z<44.3 && p.pos.z>41;
+ p=walk.walk_place(49,0,46.5,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z>45;
+}
