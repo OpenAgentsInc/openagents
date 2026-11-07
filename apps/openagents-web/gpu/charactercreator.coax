@@ -16,7 +16,7 @@ charactercreator_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects
  #assert cc_player_light(v3(0,0,0),sun,view,0).x==0;
 }
 cc_player_light :: (albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
- sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));
+ sun:=cg_sun_dir();
  // Same daylight as the meadow. Broad camera-side bounce keeps the face readable.
  direct:=saturate(dot3(n,sun));fill:=saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0)))));
  irradiance:=add3(cg_irradiance(n,direct,1,visibility),scale3(v3(0.85f32,0.72f32,0.52f32),fill));
@@ -31,11 +31,11 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
  }
  n:=normalize3(add3(s.normal,v3(0,0.00001f32,0)));if (!front) {n=scale3(n,-1);}
- eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));
+ eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));sun:=cg_sun_dir();
  colour:=cc_player_light(albedo,n,view,visibility);
  // Broad, restrained dielectric highlight gives curved skin and fabric volume.
  half_vector:=normalize3(add3(sun,view));spec:=pow(saturate(dot3(n,half_vector)),24.0f32)*saturate(dot3(n,sun))*visibility*0.12f32;
- colour=add3(colour,scale3(v3(1.75f32,1.45f32,1.02f32),spec));
+ colour=add3(colour,scale3(cg_sun_colour(),spec));
  indirect:=mul3(albedo,add3(cg_hemisphere(n),scale3(v3(0.85f32,0.72f32,0.52f32),saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0))))))));
  share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
  colour=cg_atmosphere(colour,eye,s.world);return v4(colour.x,colour.y,colour.z,share);

@@ -1,6 +1,7 @@
 // The Nature reference's bright cyan sky, wind and warm/cool outdoor light.
 // Loaded after verse/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
 #load "../../../verse/character-glade.coax";
+#load "../../../aethyr/render/filmic.coax";
 #load "character-glade-light.coax";
 #test "glade sky retains cyan daylight and warm sunlight without nonfinite horizons" {
  a:=cg_sky(v3(0,0.2,-1),v3(-0.4,0.8,0.6),0);
@@ -94,21 +95,31 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,visibility:f32)->V4 {
  kind:=s.local.x;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
  foliage:=kind>0.5f32 && kind<2.5f32;grass:=kind>1.5f32 && kind<2.5f32;leaves:=kind>0.5f32 && kind<1.5f32;ground:=kind>4.5f32 && kind<5.5f32;
  if (!front && !foliage) {n=scale3(n,-1);}
- sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
+ sun:=cg_sun_dir();eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
  if (foliage || ground) {albedo=cg_decode(s.tint);}
+ if (ground) {trail:=cg_path(s.world.x,s.world.z);albedo=mix3(albedo,cg_decode(v3(0.78f32,0.60f32,0.20f32)),cg_autumn(s.world.x,s.world.z)*0.80f32*(1.0f32-trail));
+  // The reference trail is packed olive earth, darker than sand.
+  albedo=mix3(albedo,cg_decode(v3(0.62f32,0.56f32,0.30f32)),trail*0.65f32);}
  if (leaves) {
   if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));palette:=mix3(s.tint,v3(1,0.58f32,0.10f32),smoothstep(0.30f32,0.75f32,age)*0.70f32);albedo=cg_decode(palette);}
   albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
  }
  if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
  if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
- if (kind>3.5f32 && kind<4.5f32) {albedo=scale3(cg_decode(s.tint),0.87f32+0.20f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+ if (kind>3.5f32 && kind<4.5f32) {
+  // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
+  // faces that look up, as the reference's cliff tops.
+  base:=cg_decode(s.tint);grey:=verse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.55f32);
+  moss:=smoothstep(0.55f32,0.92f32,n.y)*(0.55f32+0.45f32*cg_noise(v2(s.world.x*1.7f32,s.world.z*1.7f32)));
+  base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
+  albedo=scale3(base,0.70f32+0.60f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));
+ }
  ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
  if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
- if (grass) {albedo=mul3(albedo,v3(0.90f32,0.82f32,0.08f32));direct=(0.30f32+0.48f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.50f32+0.50f32*s.local.y;}
+ if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.90f32,0.82f32,0.08f32),v3(0.70f32,0.86f32,0.09f32),green));direct=(0.30f32+0.48f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.50f32+0.50f32*s.local.y;}
  if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
- fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else 1.0f32;
+ fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 then 0.78f32 else 1.0f32;
  indirect:=mul3(albedo,scale3(cg_hemisphere(n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
  colour:=add3(indirect,mul3(albedo,cg_irradiance(n,direct,0,visibility)));
@@ -121,24 +132,37 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,visibility:f32)->V4 {
  colour=cg_atmosphere(colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
 
-#test "glade controls use a single left glass panel at 75 percent opacity" {
+#test "glade controls use one light frosted left panel that also holds the title" {
  #assert cg_ui_cover(v2(30,120),1440,900,1) && !cg_ui_cover(v2(1400,250),1440,900,1);
  #assert cg_ui_cover(v2(100,700),1440,900,1) && !cg_ui_cover(v2(720,700),1440,900,1);
- #assert cg_panel_opacity(v2(100,250),1440,900,1)==0.75 && cg_panel_opacity(v2(720,250),1440,900,1)==0;
- #assert cg_ui_cover(v2(20,360),390,844,1) && !cg_ui_cover(v2(195,200),390,844,1);
+ #assert cg_ui_cover(v2(40,50),1440,900,1) && !cg_ui_cover(v2(40,12),1440,900,1);
+ #assert cg_panel_opacity(v2(100,250),1440,900,1)==0.58 && cg_panel_opacity(v2(720,250),1440,900,1)==0;
+ #assert cg_ui_cover(v2(20,360),390,844,1) && !cg_ui_cover(v2(195,200),390,844,1) && cg_ui_cover(v2(40,50),390,844,1);
+ #assert cg_panel_edge(v2(16.5,300),1440,900,1)>0.5 && cg_panel_edge(v2(180,300),1440,900,1)==0;
 }
 cg_ui_cover :: (p:V2,w:f32,h:f32,k:f32)->bool {
- if (w<840.0f32*k || h<760.0f32*k) {return p.y>h-504.0f32*k || ((p.y>82.0f32*k)&&(p.y<124.0f32*k)&&(p.x>12.0f32*k)&&(p.x<w-12.0f32*k));}
- return p.x>=16.0f32*k && p.x<=350.0f32*k && p.y>=84.0f32*k && p.y<=730.0f32*k;
+ if (w<840.0f32*k || h<760.0f32*k) {return p.y>h-504.0f32*k || ((p.y>26.0f32*k)&&(p.y<124.0f32*k)&&(p.x>12.0f32*k)&&(p.x<w-12.0f32*k));}
+ return p.x>=16.0f32*k && p.x<=350.0f32*k && p.y>=20.0f32*k && p.y<=730.0f32*k;
 }
-cg_panel_opacity :: (p:V2,w:f32,h:f32,k:f32)->f32 {return ifx cg_ui_cover(p,w,h,k) then 0.75f32 else 0.0f32;}
+cg_panel_opacity :: (p:V2,w:f32,h:f32,k:f32)->f32 {return ifx cg_ui_cover(p,w,h,k) then 0.58f32 else 0.0f32;}
+// A one-pixel light rim round the desktop glass panel, so the lighter panel still reads as a shape.
+cg_panel_edge :: (p:V2,w:f32,h:f32,k:f32)->f32 {
+ if (w<840.0f32*k || h<760.0f32*k || !cg_ui_cover(p,w,h,k)) {return 0;}
+ d:=fmin(fmin(p.x-16.0f32*k,350.0f32*k-p.x),fmin(p.y-20.0f32*k,730.0f32*k-p.y));return 1.0f32-smoothstep(0.0f32,1.25f32*k,d);
+}
+// Frosted glass: the scene behind the panel blurred over a 14 px disc, then tinted.
+cg_glass :: (uv:V2,u:[]f32,image:Tex2D,lin:Sampler)->V3 {
+ sum:V3=v3(0,0,0);r:=14.0f32*u[4];
+ for i:0..<16 {a:=cast(f32)i*2.399963f32;d:=sqrt((cast(f32)i+0.5f32)/16.0f32)*r;sum=add3(sum,cg_post_sample(image,lin,v2(uv.x+cos(a)*d/u[0],uv.y+sin(a)*d/u[1])));}
+ return scale3(sum,1.0f32/16.0f32);
+}
 
 #test "glade shadow projection contains the clearing and separates light depth" {
  a:=cg_shadow_clip(v3(0,0,0));b:=cg_shadow_clip(v3(0,1,0));
  #assert abs(a.x)<1 && abs(a.y)<1 && a.z>0 && a.z<1 && b.z<a.z;
 }
 cg_shadow_clip :: (p:V3)->V4 {
- sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
+ sun:=cg_sun_dir();right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
  return v4(dot3(r,right)/26.0f32,dot3(r,up)/26.0f32,0.5f32-dot3(r,sun)/70.0f32,1);
 }
 CgShadow :: struct {pos:V4;uv:V2;slice:u32;}
@@ -172,7 +196,7 @@ charactercreator_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_ste
       while k<4 {
         o:V2=v2(((cast(f32)(k&1)*2.0f32)-1.0f32)*texel.x,((cast(f32)(k>>1)*2.0f32)-1.0f32)*texel.y);
         t:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+o.x,uv.y+o.y),0.0f32);
-        c=add3(c,scale3(v3(t.x,t.y,t.z),saturate((fmax(t.x,fmax(t.y,t.z))-0.72f32)*1.8f32)*t.w));
+        c=add3(c,scale3(v3(t.x,t.y,t.z),verse_style_bloom_share(fmax(t.x,fmax(t.y,t.z)),0.62f32,0.30f32)*t.w));
         k+=1;
       }
     }
@@ -216,7 +240,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
  if (u[10]<1.5f32) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
  a:=wg_load_2d(post_aux,cg_post_pixel(pixel,wg_dims_2d(post_aux)),0);
  c:=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);c=scale3(c,1.0f32-(1.0f32-cg_contact_ao(pixel,u,post_aux))*saturate(a.z));
- glow:=add3(scale3(cg_post_sample(post_quarter,post_lin,uv),0.12f32),scale3(cg_post_sample(post_eighth,post_lin,uv),0.10f32));
+ glow:=add3(scale3(cg_post_sample(post_quarter,post_lin,uv),0.20f32),scale3(cg_post_sample(post_eighth,post_lin,uv),0.20f32));
  // A small foliage-only reconstruction filter integrates subpixel leaves and blades.
  // Depth/normal class keeps the character, painted petals and hard rocks sharp.
  if (a.w<0) {
@@ -224,7 +248,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(c);if (u[11]<0.5f32) {result=mix3(result,v3(0.07f32,0.095f32,0.085f32),cg_panel_opacity(pixel,u[0],u[1],u[4])*(1.0f32-u[40]));}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(c);if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;

@@ -2,9 +2,18 @@
 // UE5.8 default profile: slope .88, toe .55, shoulder .26, black clip 0, white clip .04.
 // Input/output are linear Rec709. Display encoding belongs to the caller.
 #module "aethyr.render.filmic";
-#load "../../verse/gpu/wgsl.coax";
+// Self-contained (no shader-library load), so any realm can use it beside aethyr.render.noise.
 FilmRGB :: struct {r:f32;g:f32;b:f32;}
 #test "Source film profile preserves middle grey and black before display encoding" {c:=film_rec709(film_rgb(0.18,0.18,0.18));#assert abs(c.r-0.18)<0.00001 && abs(c.g-0.18)<0.00001 && abs(c.b-0.18)<0.00001;c=film_rec709(film_rgb(0,0,0));#assert c.r<0.000001 && c.g<0.000001 && c.b<0.000001;}
+#test "film atan2 matches the quadrant angles" {#assert abs(film_atan2(1,1)-0.7853982)<0.000001 && abs(film_atan2(1,-1)-2.3561945)<0.000001 && abs(film_atan2(-1,-1)+2.3561945)<0.000001 && film_atan2(0,0)==0;}
+// atan2 by Abramowitz and Stegun 4.4.49 on [0, 1], the same polynomial as verse/gpu/wgsl.coax.
+film_atan2 :: (y:f32,x:f32)->f32 {
+ ax:=abs(x);ay:=abs(y);high:=film_max(ax,ay);if high==0 {return 0.0f32;}
+ t:=film_min(ax,ay)/high;z:=t*t;p:=-0.0040540580f32;
+ p=p*z+0.0218612288f32;p=p*z-0.0559098861f32;p=p*z+0.0964200441f32;p=p*z-0.1390853351f32;
+ p=p*z+0.1994653599f32;p=p*z-0.3332985605f32;p=p*z+0.9999993329f32;r:=t*p;
+ if ay>ax {r=1.57079632679f32-r;} if x<0 {r=3.14159265359f32-r;} if y<0 {r=-r;} return r;
+}
 film_rgb :: (r:f32,g:f32,b:f32)->FilmRGB {return FilmRGB.{r=r,g=g,b=b};}
 film_min :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
 film_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
@@ -27,6 +36,6 @@ film_rec709 :: (linear:FilmRGB)->FilmRGB {
  chroma:=sqrt(film_max(0,c.b*(c.b-c.g)+c.g*(c.g-c.r)+c.r*(c.r-c.b)));brightness:=(c.r+c.g+c.b+1.75*chroma)/3;
  shape:=(saturation-0.4)/0.2;triangle:=film_max(1-abs(shape*0.5),0);sign:=ifx shape>0 then 1.0f32 else ifx shape<0 then -1.0f32 else 0.0f32;gain:=0.05*0.5*(1+sign*(1-triangle*triangle));
  glow:=ifx brightness<=0.08*2/3 then gain else ifx brightness>=0.16 then 0.0f32 else gain*(0.08/brightness-0.5);c=film_scale(c,1+glow);
- hue:=wg_atan2(sqrt(3.0f32)*(c.g-c.b),2*c.r-c.g-c.b)*180/3.14159265359;red:=film_sat(1-abs(2*hue/135));red=red*red*(3-2*red);c.r+=red*red*saturation*(0.03-c.r)*0.18;
+ hue:=film_atan2(sqrt(3.0f32)*(c.g-c.b),2*c.r-c.g-c.b)*180/3.14159265359;red:=film_sat(1-abs(2*hue/135));red=red*red*(3-2*red);c.r+=red*red*saturation*(0.03-c.r)*0.18;
  c=film_ap1(c);c=film_rgb(film_max(c.r,0),film_max(c.g,0),film_max(c.b,0));c=film_mix_grey(c,0.96);c=film_rgb(film_curve(c.r),film_curve(c.g),film_curve(c.b));c=film_mix_grey(c,0.93);c=film_out(c);return film_rgb(film_max(c.r,0),film_max(c.g,0),film_max(c.b,0));
 }

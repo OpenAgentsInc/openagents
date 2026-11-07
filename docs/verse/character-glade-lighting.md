@@ -41,7 +41,7 @@ blend further flattened the materials.
   without applying the surface shoulder a second time.
 - The shared host draws HUD strokes on the final display canvas after the post
   pass. The private HUD wrapper therefore preserves their display colors. The
-  75%-opaque sidebar is composited over the world by postprocessing before the
+  frosted 58% sidebar glass (see the reference pass below) is composited over the world by postprocessing before the
   HUD; no opaque background depth mask blocks the world behind it.
 
 The auxiliary target now holds octahedral normal XY, indirect luminance share,
@@ -69,6 +69,41 @@ See `docs/verification/character-glade-ore-lighting-2026-11-06/`. Visual capture
 show more directional surface shading, brighter transmitted foliage and better
 separation of roots, crowns and distant hills. This is an improvement informed
 by Ore, with no claim of matching either game's native renderer exactly.
+
+## Reference pass (2026-11-07)
+
+The target was the Quaternius Stylized Nature MegaKit `Preview_1.jpg`: a warm golden sun, a
+golden hazy hill, grey mossy rocks, saturated foliage, soft bloom and an olive dirt path. The
+pass also used `docs/research/lighting/research.md` and the Aethyr book.
+
+Engine changes (`aethyr/render/`, so every scene can use them):
+
+- `light.coax` 4b adds `verse_style_haze_phase`, a Henyey-Greenstein forward-Mie lobe
+  normalised so isotropic haze is 1, and `verse_style_haze_window`, Ore's near/far fade window.
+- `light.coax` 4c adds `verse_style_kelvin`, Tanner Helland's black-body fit, and
+  `verse_style_balanced`, a light seen through a white balance. Ore's noon sun is 4500 K
+  under 6500 K.
+- `filmic.coax` is self-contained (its own `film_atan2`) so a named scene module can load
+  it next to the noise module.
+
+Character Create changes:
+
+- One sun direction and colour, `cg_sun_dir()` and `cg_sun_colour()`: 4500 K balanced at
+  6500 K, ×1.85. Every former sun copy in the glade, shadow and creator shaders uses them.
+- Atmosphere scatters forward with g = .62, thickening between 12 m and 50 m: haze toward
+  the sun is gold and haze away from it stays blue.
+- Output goes through the film curve (`film_rec709`) at exposure 1.18, plus a 1.16 saturation
+  lift, in place of the peak shoulder.
+- Bloom uses the engine soft knee (threshold .62, knee .30) and a stronger glow mix.
+- Rocks are neutral grey with moss on faces that point up. The far hill turns gold, the path
+  is olive and grass is greener.
+- The left panel is frosted glass: a 16-tap blur of the lit scene under a 58% tint and a light
+  rim. The "Character Create" title sits inside it above a gold divider, and the labels are
+  brighter. The walk to Everglade fades the glass with `u[40]`.
+
+Captures are in `docs/verification/character-glade-reference-light-2026-11-07/`: `base.jpg`
+before, `p3.jpg` after the scene passes, and `p5.jpg` and `p5ui.jpg` on current main with
+the walk merged.
 
 ## Player integration (2026-11-07)
 

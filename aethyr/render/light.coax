@@ -65,6 +65,49 @@ verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c #effects(all
 }
 
 
+// ---- 4b. Atmosphere: forward scattering and the near/far window (Ore, Ocarina noon fog)
+// The Mie phase of air with anisotropy g (Henyey-Greenstein), scaled so still air (g = 0) is 1:
+// with g near .62-.70, as Ocarina's open-field fog, haze looking toward the sun glows warm and
+// looking away stays sky blue. vdl is the view ray's cosine to the key light.
+verse_style_haze_phase :: (vdl:f32,g:f32)->f32 #export_c #effects(all) {
+ g2:=g*g;d:=st_max(1.0f32+g2-2.0f32*g*st_max(-1.0f32,st_min(1.0f32,vdl)),0.0001f32);
+ return (1.0f32-g2)/(d*sqrt(d));
+}
+// The haze thickens only past `near` and fully by `far` (Ore's FarFade window), by `gain` more:
+// near ground stays clear while far ridges sit in lit air.
+verse_style_haze_window :: (d:f32,near:f32,far:f32,gain:f32)->f32 #export_c #effects(all) {
+ return 1.0f32+gain*verse_style_soft_step((near+far)*0.5f32,st_max(far-near,0.0001f32)*0.5f32,d);
+}
+// ---- 4c. Colour temperature (Ore: noon sun 4500 K under a 6500 K white balance)
+// One display channel (0 red, 1 green, 2 blue) of a black body at `kelvin`, 0 to 1, by Tanner
+// Helland's fit to the CIE tables (1000-40000 K).
+verse_style_kelvin :: (kelvin:f32,ch:f32)->f32 #export_c #effects(all) {
+ t:=st_max(10.0f32,st_min(400.0f32,kelvin/100.0f32));v:f32=1;
+ if ch<0.5f32 {if t>66.0f32 {v=329.698727446f32*pow(t-60.0f32,-0.1332047592f32)/255.0f32;}}
+ else if ch<1.5f32 {v=ifx t<=66.0f32 then (99.4708025861f32*log(t)-161.1195681661f32)/255.0f32 else 288.1221695283f32*pow(t-60.0f32,-0.0755148492f32)/255.0f32;}
+ else {if t<66.0f32 {v=ifx t<=19.0f32 then 0.0f32 else (138.5177312231f32*log(t-10.0f32)-305.0447927307f32)/255.0f32;}}
+ return st_sat(v);
+}
+// A light at `kelvin` seen through a camera balanced for `white`: the channel's ratio, so a
+// 4500 K sun under 6500 K balance is golden and white light at the balance stays neutral.
+verse_style_balanced :: (kelvin:f32,white:f32,ch:f32)->f32 #export_c #effects(all) {
+ return verse_style_kelvin(kelvin,ch)/st_max(verse_style_kelvin(white,ch),0.001f32);
+}
+#test "forward haze glows toward the sun, windows near ground and balanced sunlight is warm" {
+ #assert abs(verse_style_haze_phase(0.3,0)-1)<0.00001;
+ #assert verse_style_haze_phase(1,0.62)>verse_style_haze_phase(0.5,0.62) && verse_style_haze_phase(0.5,0.62)>verse_style_haze_phase(-1,0.62);
+ #assert abs(verse_style_haze_phase(1,0.6)-(1-0.36)/(0.4*0.4*0.4))<0.001;
+ #assert verse_style_haze_window(5,10,45,1.6)==1 && abs(verse_style_haze_window(60,10,45,1.6)-2.6)<0.0001;
+ #assert verse_style_haze_window(27.5,10,45,1.6)>1.7 && verse_style_haze_window(27.5,10,45,1.6)<1.9;
+ #assert verse_style_kelvin(6500,0)==1 && verse_style_kelvin(4500,0)==1 && verse_style_kelvin(4500,2)<0.80 && verse_style_kelvin(1500,2)==0;
+ #assert verse_style_kelvin(10000,2)==1 && verse_style_kelvin(10000,0)<0.85 && verse_style_kelvin(10000,1)<0.92;
+ #assert abs(verse_style_balanced(6500,6500,1)-1)<0.00001 && verse_style_balanced(4500,6500,2)<verse_style_balanced(4500,6500,1);
+ #assert verse_style_balanced(4500,6500,1)<1 && verse_style_balanced(4500,6500,0)==1;
+ // The fit's own values (the 66 and 19 seams meet or clip, so the comparisons there are exact either way).
+ #assert abs(verse_style_kelvin(10000,0)-0.7910)<0.0005 && abs(verse_style_kelvin(10000,1)-0.8552)<0.0005;
+ #assert abs(verse_style_kelvin(4500,1)-0.8531)<0.0005 && abs(verse_style_kelvin(4500,2)-0.7350)<0.0005;
+}
+
 // ---- the key light from the clock (CPU)
 // book:begin key
 // The key light at `clock` (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk; it wraps). The sun's
