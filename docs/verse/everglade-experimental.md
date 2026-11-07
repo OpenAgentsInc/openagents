@@ -14,7 +14,9 @@ their original transforms, meshes and base-color textures. Buildings supply
 nearby collision shapes to the Everglade walker: the source
 collision meshes become individual axis-aligned boxes, and the interior stairs
 become sloped walkable surfaces. Non-box hulls are approximated by their bounds;
-interactive doors have not yet been authored. The terrain is levelled under the
+interactive doors have not yet been authored. The homes and their surroundings
+are furnished with 96 placements of 11 Fantasy Props Standard models; these props
+are visual and do not yet have separate collision shapes. The terrain is levelled under the
 sites and blends back into the meadow. The extra geometry uses a single padded
 texture atlas and a 64 MiB pack budget; the original Character Create pack
 retains its 32 MiB budget.
@@ -27,6 +29,7 @@ shared library (the archived scene is read as data; its scripts are never run):
 ```sh
 nature_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source nature "$HOME/.openagents/assets")"
 village_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source village "$HOME/.openagents/assets")"
+props_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy-props "$HOME/.openagents/assets")"
 unzip -p "$village_root/Engine Projects/Godot.zip" \
   'Godot/addons/quaternius/medievalvillagemegakit/L_SampleScene_1.tscn' > /tmp/everglade-village-source.tscn
 coax/web/tool.sh verse/tools/assets/village_layout.coax /tmp/everglade-village-source.tscn \
@@ -34,10 +37,10 @@ coax/web/tool.sh verse/tools/assets/village_layout.coax /tmp/everglade-village-s
 coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack --experimental \
-  "$village_root" assets/registry/scenes/everglade-experimental-village.layout
+  "$village_root" assets/registry/scenes/everglade-experimental-village.layout "$props_root"
 coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
   assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
 python3 verse/tools/assets/character_glade_oracle.py \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
-  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props
 ```

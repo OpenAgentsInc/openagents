@@ -1,0 +1,29 @@
+// Fantasy Props Standard placements relative to the eight experimental village sites.
+#module "verse.experimentalprops";
+#load "experimental-terrain.coax" as terrain;
+ExpProp :: struct {name:string;x:f32;y:f32;z:f32;yaw:f32;}
+EXP_PROPS :: 12;
+#test "village furnishings include indoor furniture and outdoor supplies" {
+ #assert exp_prop(0,0).name=="Table_Large" && exp_prop(0,1).name=="Chair_1";
+ #assert exp_prop(0,7).name=="Barrel_Apples" && exp_prop(0,10).name=="Stall_Empty";
+ #assert exp_prop(2,0).x!=exp_prop(0,0).x;
+ s:=terrain.exp_site(2);stall:=exp_prop(2,10);#assert exp_prop_clear(s.x+stall.x,s.z+stall.z) && !exp_prop_clear(0,0);
+}
+exp_prop_clear :: (x:f32,z:f32)->bool {for site_id:0..<terrain.EXP_SITES {site:=terrain.exp_site(site_id);if abs(x-site.x)>16 || abs(z-site.z)>16 {continue;}for i:7..<EXP_PROPS {p:=exp_prop(terrain.exp_site_group(site_id),i);radius:=ifx i==10 || i==11 then 1.7f32 else 0.9f32;dx:=x-site.x-p.x;dz:=z-site.z-p.z;if dx*dx+dz*dz<radius*radius {return true;}}}return false;}
+exp_prop :: (group:int,i:int)->ExpProp {
+ // House C has its rooms to the left; A and D share the same ground floor.
+ shift:=ifx group==0 then -4.0f32 else 0.0f32;
+ if group==1 {shift= -1.0;}
+ if i==0 {return ExpProp.{name="Table_Large",x=shift+1.8,z=0.2,yaw=0};}
+ if i==1 {return ExpProp.{name="Chair_1",x=shift+1.0,z=1.15,yaw=3.1415927};}
+ if i==2 {return ExpProp.{name="Chair_1",x=shift+2.6,z=1.15,yaw=3.1415927};}
+ if i==3 {return ExpProp.{name="Mug",x=shift+1.8,y=0.82,z=0.2};}
+ if i==4 {return ExpProp.{name="Book_Stack_1",x=shift+1.1,y=0.82,z=0.2,yaw=0.3};}
+ if i==5 {return ExpProp.{name="Bed_Twin1",x=shift+4.6,z= -2.2,yaw=1.5707963};}
+ if i==6 {return ExpProp.{name="Workbench",x=shift+4.7,z=1.2,yaw=0};}
+ if i==7 {return ExpProp.{name="Barrel_Apples",x=shift+5,z=5.8};}
+ if i==8 {return ExpProp.{name="Crate_Wooden",x=shift+4,z=5.8,yaw=0.3};}
+ if i==9 {return ExpProp.{name="Bucket_Wooden_1",x=shift+3.3,z=5.6};}
+ if i==10 {return ExpProp.{name="Stall_Empty",x=shift-2,z=7.8,yaw=3.1415927};}
+ return ExpProp.{name="Bench",x=shift+1.2,z=7.5,yaw=0};
+}

@@ -79,7 +79,7 @@ ar_glb_json_size :: (b:[]u8)->int {
 ar_import :: (source:string,pkg:string,store:string)->bool {
   if !ar_id(pkg) {return false;}
   rb:[4096]u8;root:=fs_realpath(source,rb[..]);if root=="" {return false;}
-  licensep:[4096]u8;licensepath:=fs_join(root,"License_Source.txt",licensep[..]);licenseb:[16384]u8;licensen:=fs_read(licensepath,licenseb[..]);evidence:="License_Source.txt";if licensen<0 {evidence="License.txt";licensepath=fs_join(root,evidence,licensep[..]);licensen=fs_read(licensepath,licenseb[..]);}if licensen<0 || !ar_cc0(cast(string)licenseb[0..<licensen]) {return false;}
+  licensep:[4096]u8;licensepath:=fs_join(root,"License_Source.txt",licensep[..]);licenseb:[16384]u8;licensen:=fs_read(licensepath,licenseb[..]);evidence:="License_Source.txt";if licensen<0 {evidence="License_Standard.txt";licensepath=fs_join(root,evidence,licensep[..]);licensen=fs_read(licensepath,licenseb[..]);}if licensen<0 {evidence="License.txt";licensepath=fs_join(root,evidence,licensep[..]);licensen=fs_read(licensepath,licenseb[..]);}if licensen<0 || !ar_cc0(cast(string)licenseb[0..<licensen]) {return false;}
   sb:[4096]u8;originals:=fs_join(store,"originals",sb[..]);if !fs_mkdir(originals) {return false;}
   lb:[4096]u8;lock:=fs_join(store,"import.lock",lb[..]);if !fs_try_lock(lock) {return false;}
   tb:[4096]u8;stage:=fs_join(originals,".staging",tb[..]);if fs_exists(stage) {tool_errln("Interrupted import: inspect originals/.staging before retrying");return false;}
@@ -126,6 +126,27 @@ ar_animations :: (pkg:string,relative:string,store:string)->bool {
  jo_end(col[..]);jo_key(col[..],"previews");jo_arr(col[..]);jo_end(col[..]);jo_end(col[..]);if col[0].bad {return false;}
  cn:[256]u8;collectionname:=ar_cat(pkg,".lock.json",cn[..]);cp:[4096]u8;collection:=fs_join("assets/registry/collections",collectionname,cp[..]);
  if !ar_file(collection,jo_text(col[..])) || !fs_rename(tmp,dest) {return false;}print("Indexed % animations for %\n",count,pkg);return true;
+}
+// Index a Standard kit's standalone glTFs, preserving every external dependency.
+#test "registry glTF assets reject unsafe dependency paths" {
+ #assert ar_gltf_uri("Table.bin") && ar_gltf_uri("T_Wood.png");
+ #assert !ar_gltf_uri("../outside") && !ar_gltf_uri("a/b.png") && !ar_gltf_uri("data:embedded");
+}
+ar_gltf_uri :: (s:string)->bool {if !ar_relative(s) {return false;}for c:s {if c=='/' || c==':' || c=='%' {return false;}}return true;}
+ar_gltfs :: (pkg:string,relative:string,store:string)->bool {
+ if !ar_id(pkg) || !ar_relative(relative) {return false;}
+ nb:[256]u8;name:=ar_cat(pkg,".json",nb[..]);lp:[4096]u8;lock:=fs_join("assets/registry/packages",name,lp[..]);lb:[8192]u8;ln:=fs_read(lock,lb[..]);if ln<0 {return false;}ld:[1]Jv;ls:[64]JvNode;if !jv_parse(ld[..],cast(string)lb[0..<ln],ls[..]) {return false;}revb:[64]u8;rev:=ar_string(ld[0],0,"revision",revb[..]);if rev.count!=64 {return false;}
+ op:[4096]u8;orig:=fs_join(store,"originals",op[..]);sp:[4096]u8;snap:=fs_join(orig,rev,sp[..]);if !ar_verify(snap) {return false;}srcb:[4096]u8;src:=fs_join(snap,"source",srcb[..]);dirb:[4096]u8;dir:=fs_join(src,relative,dirb[..]);list:[1]FsList;total:=fs_list(dir,list[..]);if total<0 || list[0].full {return false;}
+ ob:[4096]u8;objects:=fs_join(store,"objects",ob[..]);if !fs_mkdir(objects) {return false;}fn:[256]u8;filename:=ar_cat(pkg,".jsonl",fn[..]);destb:[4096]u8;dest:=fs_join("assets/registry/assets",filename,destb[..]);tmpb:[4096]u8;tmp:=ar_cat(dest,".tmp",tmpb[..]);if !fs_write(tmp,"") {return false;}
+ cb:[1048576]u8;col:[1]Jo;jo_start(col[..],cb[..]);jo_obj(col[..]);ar_kstr(col[..],"schema","oa-collection-lock-v1");ar_kstr(col[..],"id",pkg);jo_key(col[..],"assets");jo_arr(col[..]);count:=0;
+ for i:0..<total {file:=fs_entry(list[..],i);if file.count<6 || file[file.count-5..<file.count]!=".gltf" {continue;}base:=file[0..<file.count-5];slugb:[512]u8;slug:=ar_slug(base,slugb[..]);nsb:[1024]u8;ns:=fs_join("quaternius",pkg,nsb[..]);idb:[2048]u8;id:=fs_join(ns,slug,idb[..]);if !ar_id(id) {return false;}
+  pb:[4096]u8;path:=fs_join(dir,file,pb[..]);text:[1048576]u8;sz:=fs_read(path,text[..]);if sz<0 {return false;}d:[1]Jv;nodes:[65536]JvNode;if !jv_parse(d[..],cast(string)text[0..<sz],nodes[..]) {return false;}
+  db:[32768]u8;o:[1]Jo;jo_start(o[..],db[..]);jo_obj(o[..]);ar_kstr(o[..],"schema","oa-asset-definition-v1");ar_kstr(o[..],"id",id);ar_kstr(o[..],"name",base);ar_kstr(o[..],"kind","static-mesh");ar_kstr(o[..],"package",pkg);ar_kstr(o[..],"package_revision",rev);ar_kstr(o[..],"license","CC0-1.0");jo_key(o[..],"source");jo_obj(o[..]);relb:[4096]u8;rel:=fs_join(relative,file,relb[..]);ar_kstr(o[..],"path",rel);ar_kstr(o[..],"format","gltf");jo_end(o[..]);jo_key(o[..],"artifacts");jo_arr(o[..]);
+  for kind:0..<3 {arr:=ifx kind==0 then -1 else jv_get(d[0],0,ifx kind==1 then "buffers" else "images");n:=ifx kind==0 then 1 else jv_len(d[0],arr);for k:0..<n {ub:[2048]u8;uri:=ifx kind==0 then file else ar_string(d[0],jv_at(d[0],arr,k),"uri",ub[..]);if !ar_gltf_uri(uri) {return false;}fb:[4096]u8;dep:=fs_join(dir,uri,fb[..]);hb:[64]u8;sha:=ar_sha(dep,hb[..]);tb:[4096]u8;target:=fs_join(objects,sha,tb[..]);if sha.count!=64 || !ar_object_copy(dep,target,sha) {return false;}jo_obj(o[..]);ar_kstr(o[..],"format",ifx kind==0 then "gltf" else ifx kind==1 then "bin" else "image");ar_kstr(o[..],"sha256",sha);jo_key(o[..],"bytes");jo_int(o[..],fs_size(dep));ar_kstr(o[..],"source_name",uri);jo_end(o[..]);}}
+  jo_end(o[..]);ar_kstr(o[..],"runtime_profile","unqualified");jo_end(o[..]);if o[0].bad {return false;}rh:[64]u8;revision:=ar_digest(jo_text(o[..]),rh[..]);ap:[4096]u8;asset:=fs_join(objects,revision,ap[..]);if !ar_object_text(asset,jo_text(o[..])) {return false;}rb:[65536]u8;row:[1]Jo;jo_start(row[..],rb[..]);jo_obj(row[..]);ar_kstr(row[..],"id",id);ar_kstr(row[..],"revision",revision);jo_key(row[..],"definition");jo_raw(row[..],jo_text(o[..]));jo_end(row[..]);if row[0].bad || !fs_append(tmp,jo_text(row[..])) || !fs_append(tmp,"\n") {return false;}
+  jo_obj(col[..]);ar_kstr(col[..],"id",id);ar_kstr(col[..],"revision",revision);jo_end(col[..]);count+=1;
+ }
+ jo_end(col[..]);jo_key(col[..],"previews");jo_arr(col[..]);jo_end(col[..]);jo_end(col[..]);if count==0 || col[0].bad {return false;}cn:[256]u8;collectionname:=ar_cat(pkg,".lock.json",cn[..]);cp:[4096]u8;collection:=fs_join("assets/registry/collections",collectionname,cp[..]);if !ar_file(collection,jo_text(col[..])) || !fs_rename(tmp,dest) {return false;}print("Indexed % glTF assets for %\n",count,pkg);return true;
 }
 ar_verify :: (snapshot:string)->bool {
   pb:[4096]u8;path:=fs_join(snapshot,"inventory.json",pb[..]);b:[8388608]u8;n:=fs_read(path,b[..]);if n<0 {return false;}
@@ -383,6 +404,7 @@ tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) {return 2;}n:=args_count(a[..]);cmd:=args_at(a[..],0);
  if !fs_exists("assets/registry") && cmd!="selfcheck" {return ar_local(a[..]);}
  if cmd=="import" && n==4 {return ifx ar_import(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3)) then 0 else 1;}
+ if cmd=="gltfs" && n==4 {return ifx ar_gltfs(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3)) then 0 else 1;}
  if cmd=="animations" && n==4 {return ifx ar_animations(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3)) then 0 else 1;}
  if cmd=="catalog" && n==5 {return ifx ar_catalog(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),args_at(a[..],4)) then 0 else 1;}
  if cmd=="observe" && n==3 {return ifx ar_observe(args_at(a[..],1),args_at(a[..],2)) then 0 else 1;}
@@ -398,5 +420,5 @@ tool_main :: ()->int #export_c #effects(all) {
  if cmd=="selfcheck" && n==1 {return ifx ar_selfcheck() then 0 else 1;}
  if cmd=="install" && n==3 {return ifx ar_install(args_at(a[..],1),args_at(a[..],2)) then 0 else 1;}
  if cmd=="verify" && n==2 {return ifx ar_verify(args_at(a[..],1)) then 0 else 1;}
- tool_errln("registry: import SOURCE PACKAGE STORE | observe PACKAGE STORE | index PACKAGE STORE | check STORE | verify SNAPSHOT | wardrobe [--check] | fork ID NEW_ID STORE | publish ID STORE");return 2;
+ tool_errln("registry: import SOURCE PACKAGE STORE | gltfs PACKAGE DIR STORE | animations PACKAGE FILE STORE | observe PACKAGE STORE | index PACKAGE STORE | check STORE | verify SNAPSHOT | wardrobe [--check] | fork ID NEW_ID STORE | publish ID STORE");return 2;
 }

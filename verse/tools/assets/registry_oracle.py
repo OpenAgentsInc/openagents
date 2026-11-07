@@ -57,6 +57,19 @@ for p in sorted((registry/'assets').glob('*.jsonl')):
         lock, snapshot, files = packages[definition['package']]
         assert definition['package_revision']==lock['revision']
         obs=definition['source']
+        if obs.get('format')=='gltf':
+            assert obs['path'] in files
+            model=snapshot/'source'/obs['path']; data=json.loads(model.read_text())
+            dependencies=[model.name]+[x['uri'] for key in ('buffers','images') for x in data.get(key,[])]
+            assert [x['source_name'] for x in definition['artifacts']]==dependencies
+            for artifact, name in zip(definition['artifacts'],dependencies):
+                actual=model.parent/name
+                assert actual.resolve().is_relative_to((snapshot/'source').resolve())
+                assert digest(actual)==artifact['sha256'] and actual.stat().st_size==artifact['bytes']
+                obj=store/'objects'/artifact['sha256']
+                assert digest(obj)==artifact['sha256'] and obj.stat().st_size==artifact['bytes']
+            records[aid]=row
+            continue
         if definition['kind']=='animation':
             assert obs['path'] in files and obs['motion']=='in-place'
             library=snapshot/'source'/obs['path']

@@ -1,7 +1,8 @@
 # Shared Aethyr authoring registry
 
 This is the portable, reviewable catalog for the complete Quaternius Fantasy
-Outfits, Medieval Village and Stylized Nature Source kits. Every original file
+Outfits, Medieval Village and Stylized Nature Source kits, plus the Fantasy
+Props Standard kit. Every original file
 is inventoried. Blender artwork, license evidence and alternate exports remain
 available; a world's runtime pack includes only its chosen collection.
 
@@ -60,8 +61,9 @@ coax/web/tool.sh verse/tools/assets/registry.coax index fantasy "$HOME/.openagen
 coax/web/tool.sh verse/tools/assets/registry.coax representations fantasy
 ```
 
-Use `village` and `nature` for the other two packages and their checked-in
-recipes. `observe` snapshots the SDK bridge into its build directory, runs
+Use `village` and `nature` for the other two source packages and their checked-in
+recipes. For a Standard glTF kit, `registry.coax gltfs PACKAGE Exports/glTF STORE`
+indexes each model and its external dependencies without running package code. `observe` snapshots the SDK bridge into its build directory, runs
 Blender in background/factory-startup mode with autoexec disabled and Python
 errors fatal, then registers the observations and self-contained GLBs. The
 revision pins the exact bridge bytes; the observation records Blender's version.
@@ -74,6 +76,10 @@ whole artifacts deduplicate by hash; image-level runtime packing remains the
 realm compiler's responsibility. Original textures, normal/ORM maps and Blender
 material graphs are preserved in their source snapshots, independent of a
 world's lighting profile.
+
+Fantasy Props Standard registers all 94 supplied glTF models with their pinned
+external buffers and texture dependencies. It contains no Blender source; the
+registry preserves every supplied FBX, OBJ, glTF, texture and license file.
 
 Nature's per-model Blender files define 116 multi-part assets; its combined
 scene is retained as another source representation. Fantasy selects the 76

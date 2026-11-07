@@ -7,6 +7,8 @@ repo = Path(__file__).resolve().parents[3]
 revision = json.loads((repo/'assets/registry/scenes/character-glade.json').read_text())['reference']['revision']
 experimental = '--experimental' in sys.argv[3:]
 village = '--village' in sys.argv[3:]
+props = '--props' in sys.argv[3:]
+assert not props or village
 assert not village or experimental
 source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' else Path.home()/'.openagents/assets/originals'/revision/'source'
 
@@ -32,14 +34,14 @@ new=parts(raw); orig=parts(old)
 cat=next(v[1].decode() for v in new.values() if v[0]==1)
 assert int(next(l.split()[1] for l in cat.splitlines() if l.startswith('bytes ')))==len(raw)
 row=next(l.split() for l in cat.splitlines() if l.startswith('C glade/environment '))
-first,count,license,word,verts,joints=map(int,row[2:]); src=sum(1 for l in cat.splitlines() if l.startswith('L ')); assert joints==0 and license==src-1
+first,count,license,word,verts,joints=map(int,row[2:]); src=sum(1 for l in cat.splitlines() if l.startswith('L ')); assert joints==0 and license==(250 if experimental else src-1)
 vb=next(v[1] for v in new.values() if v[0]==2); ib=next(v[1] for v in new.values() if v[0]==3)
 oldvb=next(v[1] for v in orig.values() if v[0]==2); oldib=next(v[1] for v in orig.values() if v[0]==3)
 assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -48,6 +50,7 @@ for i in range(verts):
     if kind==4:
         marker=struct.unpack_from('<f',vb,at+28)[0]
         if 100<=marker<=110: village_vertices.append(i)
+        elif 111<=marker<=114: prop_vertices.append(i)
         else: rock_vertices+=1
     if kind==1:
         ao=struct.unpack_from('<f',vb,at+28)[0]; assert .49<=ao<=1.01
@@ -134,7 +137,39 @@ if village:
                 assert all(abs(uv[d]/65535*8-4-uvs[k][d])<.00015 for d in range(2)), (group,name,k,uv,uvs[k])
             assert ids[ii:ii+len(triangles)]==tuple(vi+i for i in triangles), (group,name)
             vi+=len(vertices);ii+=len(triangles)
-    assert vi==village_vertices[-1]+1 and ii==len(ids)
+    assert vi==village_vertices[-1]+1
+    if props:
+        assert prop_vertices==list(range(vi,prop_vertices[-1]+1))
+        props_lock=json.loads((repo/'assets/registry/packages/fantasy-props.json').read_text())
+        props_root=Path.home()/'.openagents/assets/originals'/props_lock['revision']/'source/Exports/glTF'
+        assert 'L 252 Quaternius Fantasy Props MegaKit Standard|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
+        specs=[('Table_Large',1.8,0,.2,0),('Chair_1',1,0,1.15,math.pi),('Chair_1',2.6,0,1.15,math.pi),('Mug',1.8,.82,.2,0),('Book_Stack_1',1.1,.82,.2,.3),('Bed_Twin1',4.6,0,-2.2,math.pi/2),('Workbench',4.7,0,1.2,0),('Barrel_Apples',5,0,5.8,0),('Crate_Wooden',4,0,5.8,.3),('Bucket_Wooden_1',3.3,0,5.6,0),('Stall_Empty',-2,0,7.8,math.pi),('Bench',1.2,0,7.5,0)]
+        prop_tiles={'MI_Trim_Furniture':11,'MI_Trim_Metal':12,'MI_Trim_Metal_Vertex':12,'MI_Trim_Props':13,'MI_Trim_Props_Vertex':13,'MI_Trim_Cloth':14,'MI_Banner':14}
+        prop_cache={}
+        for site,(sx,sz) in enumerate(starts):
+            kind=site_groups[site];shift=-4 if kind==0 else -1 if kind==1 else 0
+            for name,px,py,pz,yaw in specs:
+                if name not in prop_cache:
+                    d=json.loads((props_root/f'{name}.gltf').read_text());blob=(props_root/d['buffers'][0]['uri']).read_bytes();scale=d['nodes'][0].get('scale',[1,1,1]);parts=[]
+                    for mesh in d['meshes']:
+                        for p in mesh['primitives']:
+                            parts.append((accessor(d,blob,p['attributes']['POSITION']),accessor(d,blob,p['attributes']['TEXCOORD_0']),[x[0] for x in accessor(d,blob,p['indices'])],prop_tiles[d['materials'][p['material']]['name']]))
+                    prop_cache[name]=(scale,parts)
+                scale,parts=prop_cache[name];cs=math.cos(yaw);sn=math.sin(yaw);base_y=None
+                for vertices,uvs,triangles,tile in parts:
+                    if base_y is None: base_y=pos[vi][1]-vertices[0][1]*scale[1]
+                    for k in {0,len(vertices)//2,len(vertices)-1}:
+                        a,b,c=[vertices[k][j]*scale[j] for j in range(3)]
+                        want=[sx+shift+px+a*cs+c*sn,base_y+b,sz+pz-a*sn+c*cs]
+                        assert all(abs(pos[vi+k][j]-want[j])<.003 for j in range(3)),(site,name,k,pos[vi+k],want)
+                        off=word*4+(vi+k)*32;assert struct.unpack_from('<f',vb,off+28)[0]==100+tile
+                        uv=struct.unpack_from('<2H',vb,off+16)
+                        assert all(abs(uv[j]/65535*8-4-uvs[k][j])<.00015 for j in range(2))
+                    assert ids[ii:ii+len(triangles)]==tuple(vi+x for x in triangles)
+                    vi+=len(vertices);ii+=len(triangles)
+        assert vi==prop_vertices[-1]+1
+    else: assert not prop_vertices
+    assert ii==len(ids)
 
 # Verify each instanced template against the pinned glTF, independently of the packer.
 names=['Grass_Common_Short','Grass_Wide_Short','Grass_Wispy_Short']
@@ -177,4 +212,4 @@ print(json.dumps({'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'env
  'environment_triangles':count//3,'texture_layers':layers,'wind_ribbons':wind_ribbons,'source_grass_templates':instances,
  'source_grass_instances':sum(v['instances'] for v in instances),'source_grass_topology':'exact source indices and positions',
  'grass_height_range':[min(heights),max(heights)],'bark_repeating_v_range':[min(bark_v),max(bark_v)],
- 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':f'all {ground_indices//3} faces upward', 'rock_vertices':rock_vertices, 'village_vertices':len(village_vertices)},indent=2))
+ 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':f'all {ground_indices//3} faces upward', 'rock_vertices':rock_vertices, 'village_vertices':len(village_vertices), 'prop_vertices':len(prop_vertices)},indent=2))

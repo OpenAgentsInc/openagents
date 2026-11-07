@@ -481,6 +481,50 @@
     {
       "id": "quaternius/village/windowshutters-wide-flat-closed",
       "revision": "000a3ebb0fe51f0f21e4d8c7267f3363142711a170a1d32da6f8797c5d95ada0"
+    },
+    {
+      "id": "quaternius/fantasy-props/table-large",
+      "revision": "81bbf2a206d956f86085dab8f270e03de19f37620f99d486e0de0b00472046b9"
+    },
+    {
+      "id": "quaternius/fantasy-props/chair-1",
+      "revision": "536cfde9aa96aa977f57ac4dbe98cef03962bb87694ddd4f3e396a63eb58b63d"
+    },
+    {
+      "id": "quaternius/fantasy-props/mug",
+      "revision": "963826fe54157cd7fbcc2dcbd78ca9ebf5a8b61e342499bd8054497da5475c59"
+    },
+    {
+      "id": "quaternius/fantasy-props/book-stack-1",
+      "revision": "98e692b2b400802eff9bc4def0eb98b309f262e832c82770560d3f7d86dda043"
+    },
+    {
+      "id": "quaternius/fantasy-props/bed-twin1",
+      "revision": "b47a90637c048f5941c647bf49f119c679d821b1bee2666ca90a7a8ed90d91bc"
+    },
+    {
+      "id": "quaternius/fantasy-props/workbench",
+      "revision": "cb91f922e399d03d38cefb2fa978a646d4b32f7ec961ce5140aaee55f09798d1"
+    },
+    {
+      "id": "quaternius/fantasy-props/barrel-apples",
+      "revision": "2d18ce480946301d9d350d70d902dd8d0bce574999832c5c55f41d62a5de7258"
+    },
+    {
+      "id": "quaternius/fantasy-props/crate-wooden",
+      "revision": "7b3a0340c09253f5cad302b46a53316affd387844335cc4dbc447120a0d5506b"
+    },
+    {
+      "id": "quaternius/fantasy-props/bucket-wooden-1",
+      "revision": "21c69c2a69c51d2cb447c5e485cdd08d1a6e7a83573c13603f81d341b41fbd4a"
+    },
+    {
+      "id": "quaternius/fantasy-props/stall-empty",
+      "revision": "e0cd0bcf142876276e726350eb6f1f6c80326ddf8832cabe0d5e68eaa24a0c8f"
+    },
+    {
+      "id": "quaternius/fantasy-props/bench",
+      "revision": "4ffde991ff06bfbbdc9b9fce39e67cfdf2787c5c6b0fa89ea33ea70e0e5bed33"
     }
   ],
   "parent_scene": {
@@ -497,7 +541,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "b1132a1e38ad323398f4c0f87df70e9c6635743c3269fef47956199da84c49a6",
+    "sha256": "2e7f0d90ff933c85572533f303aae24db31c77a9ab9174df6faed3c93ef368f0",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -506,7 +550,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "b047d050331d7683db77d00a844982d2cee93c71de736fa6c30ef905169c2e5c",
+    "sha256": "ede3ae09832552c2bc9ffffd4805168beb681a82428834c6a45a9f40d0132666",
     "budget_bytes": 67108864
   },
   "terrain": {
@@ -529,7 +573,7 @@
       "sha256": "30ef6cb05a3a1aa6c0facb1df10de6d7c2bfcc5f992332b82cda305eb149e240"
     }
   },
-  "scope": "Nature meadow and eight placements of four source-authored Medieval Village sample-scene layouts, grouped into larger settlements; original Character Create scene and wardrobe remain unchanged.",
+  "scope": "Nature meadow, source-authored Medieval Village layouts, and Fantasy Props Standard furnishings; Character Create wardrobe remains unchanged.",
   "village": {
     "package": "village",
     "revision": "b7e482187ae8533fea743014248b3c6b029f49f7bb6d3494f2fe217e62a66447",
@@ -583,7 +627,7 @@
       }
     ],
     "duplicate": "House C2 has identical local parts and is omitted",
-    "textures": "One padded 1024-square atlas from the source base-color textures",
+    "textures": "One padded 1024-square atlas from the village and fantasy props source base-color textures",
     "runtime_qualification": "Visual geometry with Aethyr walker collision boxes derived from the source collision meshes and sloped stair floors; boxes approximate non-box hulls, and doors are not interactive.",
     "placements": [
       {
@@ -666,5 +710,16 @@
     "sha256": "545ff1359ddb5af699351288f414b4eedc878fcd1d0fc72e84d77a7d230cb246",
     "artifact": "apps/openagents-web/charactercreator.wgsl",
     "artifact_sha256": "4f3280303b30fe284f0af9ad885651da0c0d9b166af82e27bbbf2e223cec310d"
+  },
+  "props": {
+    "package": "fantasy-props",
+    "revision": "ee6b5dc58c5161780d96d6db390d9951ef0d78c1414e83e596a69180fc2b8d15",
+    "placement_source": {
+      "path": "verse/experimental-props.coax",
+      "sha256": "5401e9692e02ed95cb38ece96cd29693cae2f8127ce37af7d4e496767f4d5169"
+    },
+    "placements": 96,
+    "unique_models": 11,
+    "collision": "visual only; existing building collision is unchanged"
   }
 }
