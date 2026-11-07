@@ -75,3 +75,6 @@ apps/openagents-web/projects/baked.coax
 /apps/openagents-web/assets/valley/scans/
 # Lab-only reference engines, their build products and raw large captures.
 aethyr/lab/.cache/
+
+# The experimental pack is rebuilt locally; its compressed transport is tracked.
+/apps/openagents-web/realms/everglade-experimental/assets/glade.pack

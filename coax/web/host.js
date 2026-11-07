@@ -1573,7 +1573,7 @@ async function loadPack(pack) {
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(value); loaded += value.length;
-        if (!session && loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
+        if (!session && !pack.url.endsWith(".pack.gz") && loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
         loading.bytes(pack.url, loaded, total);
         if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); }
       }
@@ -1581,6 +1581,7 @@ async function loadPack(pack) {
       let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
       chunks.length = 0;
       if (session) bytes = await privatePack(session, bytes);
+      else if (pack.url.endsWith(".pack.gz")) bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
       send(PACK_KIND, `${loaded} ${loaded}`);
     }
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;

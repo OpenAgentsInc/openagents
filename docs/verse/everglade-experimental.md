@@ -20,7 +20,7 @@ are visual and do not yet have separate collision shapes. The terrain is levelle
 sites and blends back into the meadow. The extra geometry uses a single padded
 texture atlas; the original Character Create pack retains its 32 MiB budget.
 
-The experimental pack's showcase profile raises its budget to 128 MiB and
+The experimental pack's showcase profile raises its budget and
 adds fantasy-appropriate Ultimate Food models, 106 Ultimate RPG models,
 48 Modular Dungeon pieces and 12 Ultimate Animated Animals. Food and RPG
 models stand in rows south of spawn, animals run in place to their west, and dungeon
@@ -32,12 +32,15 @@ assets remain in the shared registry. Their reserved layout slots are left
 empty so the other specimens keep their positions.
 
 The remaining 74 Fantasy Props Standard models have a display area in the
-western meadow. The Imp and Puglin from the Bestiary Dungeon Monsters Standard
-pack stand near spawn in an idle pose; the source pack contains no animations,
-so their poses use the compatible Universal Animation Library 1. Their original
+western meadow. The Imp and Gremlin (the Puglin model) from the Bestiary Dungeon Monsters Standard
+pack stand near spawn. Their source pack contains no animations, so they cycle
+through six compatible Universal Animation Library 1 motions every three seconds. Three additional imps and three gremlins pursue the player and make timed melee attacks using the SRD combat rules. Their original
 Quaternius Asset License v1.0 is retained in the registry and scene catalog.
 Thirty-six additional flower, plant, fern, clover, mushroom, bush and grass variants grow in
-the eastern meadow. The original selection of rocks remains excluded.
+the eastern meadow. The remaining sixty nature models, including trees, rocks and paths,
+stand in display rows in the northwestern meadow. The experimental pack budget is 512 MiB
+and accommodates up to 128 texture layers. Its deterministic gzip transport is
+tracked in Git, and the browser decompresses it before reading the pack.
 
 The follow camera checks the village's nearby building collision boxes along
 the full boom, including the shoulder offset. It pulls in immediately when a
@@ -83,6 +86,8 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   "$food_root" "$rpg_root" "$dungeon_root" "$animal_root" "$animal_frames" \
   "$monster_root" "$monster_frames" assets/registry/scenes/everglade-experimental-extra-props.layout \
   assets/registry/scenes/everglade-experimental-extra-nature.layout
+gzip -n -6 -c apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
+  > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
   assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
 python3 verse/tools/assets/character_glade_oracle.py \

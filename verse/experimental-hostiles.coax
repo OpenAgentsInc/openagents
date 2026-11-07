@@ -1,0 +1,39 @@
+// Experimental village hostiles: Everglade watch-style pursuit and SRD melee.
+#module "verse.experimentalhostiles";
+#load "experimental-village.coax" as village;
+#load "experimental-terrain.coax" as terrain;
+#load "rules/srd5-combat.coax";
+
+Enemy :: struct {x:f32;z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;}
+Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;dice:[1]SrdDice;}
+#test "six enemies pursue and inflict real melee damage" #steps 200000000 {
+ s:[1]Hostiles;hostile_start(s[..]);#assert s[0].ready && s[0].hp==44;
+ before:=abs(s[0].enemies[0].x)+abs(s[0].enemies[0].z);
+ for i:0..<1200 {hostile_tick(s[..],0,0,0,0.016);}
+ #assert abs(s[0].enemies[0].x)+abs(s[0].enemies[0].z)<before && s[0].hits>0 && s[0].hp<44;
+}
+#test "enemies cannot pass through village walls" #steps 200000000 {
+ s:[1]Hostiles;hostile_start(s[..]);s[0].enemies[0].x=49;s[0].enemies[0].z=46;
+ for i:0..<120 {hostile_tick(s[..],49,0,43,0.016);}
+ #assert s[0].enemies[0].z>45;
+}
+hostile_start :: (s:[]Hostiles) {
+ if s[0].ready {return;}s[0].ready=true;s[0].hp=44;s[0].dice[0]=srd_dice(27);
+ for i:0..<6 {s[0].enemies[i]=Enemy.{x=ifx i%2==0 then -10.0f32 else 10.0f32,z= -15+f32(i/2)*12,swing= -1,cool=f32(i)*0.15};}
+}
+hostile_blocked :: (x:f32,z:f32)->bool {
+ near:[1]village.EvNear;village.ev_near(near[..],x,z);
+ for i:0..<near[0].wall_n {o:=i*6;if near[0].walls[o+1]>1.5 || near[0].walls[o+4]<0.2 {continue;}if x>near[0].walls[o]-0.3 && x<near[0].walls[o+3]+0.3 && z>near[0].walls[o+2]-0.3 && z<near[0].walls[o+5]+0.3 {return true;}}
+ return false;
+}
+hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
+ hostile_start(s);if dt<=0 || dt>0.25 || s[0].hp<=0 {return;}
+ for i:0..<6 {e:=s[0].enemies[i..<i+1];dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;e[0].cool-=dt;
+  if gap>0.001 {e[0].face_x=dx/gap;e[0].face_z=dz/gap;}
+  if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<1.8 && abs(py)<2 {hit:=srd_attack(s[0].dice[..],SRD_GUARD,15);if hit.hit {s[0].hp-=hit.damage;s[0].hits+=1;if s[0].hp<0 {s[0].hp=0;}}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
+  if gap<1.45 {if e[0].cool<=0 {e[0].swing=0;e[0].struck=false;}continue;}
+  ox:=[6]f32.[0,1.1,1.1,0,-1.1,-1.1];oz:=[6]f32.[-1.2,-0.6,0.6,1.2,0.6,-0.6];gx:=px+ox[i]-e[0].x;gz:=pz+oz[i]-e[0].z;distance:=sqrt(gx*gx+gz*gz);if distance<0.01 {continue;}
+  step:=ifx distance<dt*2.4 then distance else dt*2.4;nx:=e[0].x+gx/distance*step;nz:=e[0].z+gz/distance*step;
+  if !hostile_blocked(nx,e[0].z) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked(e[0].x,nz) {e[0].z=nz;e[0].moving=true;}
+ }
+}

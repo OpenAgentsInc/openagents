@@ -19,7 +19,7 @@ source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' 
 
 def parts(b):
     magic, n, total, budget, table, *_ = struct.unpack_from('<4s7I', b)
-    assert (magic==b'VPK1' or (magic==b'VPK2' and n>48)) and len(b)==total<=budget<=(128 if showcase else 64 if village else 32)*1024*1024
+    assert (magic==b'VPK1' or (magic==b'VPK2' and n>48)) and len(b)==total<=budget<=(512 if showcase else 64 if village else 32)*1024*1024
     out = {}
     for i in range(n):
         kind, license, _, offset, size, _, name = struct.unpack_from('<BBHIII32s', b, table+i*48)
@@ -45,7 +45,7 @@ oldvb=next(v[1] for v in orig.values() if v[0]==2); oldib=next(v[1] for v in ori
 assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
-layers=sum(v[0]==4 for v in new.values()); assert layers<=64
+layers=sum(v[0]==4 for v in new.values()); assert layers<=(128 if experimental else 64)
 pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]; new_house_vertices=[]
 for i in range(verts):
     at=word*4+i*32
@@ -86,7 +86,7 @@ if experimental:
     ground=pos[:151*151]
     assert abs(min(p[0] for p in ground)+90)<.001 and abs(max(p[0] for p in ground)-90)<.001
     assert abs(min(p[2] for p in ground)+90)<.001 and abs(max(p[2] for p in ground)-90)<.001
-    assert rock_vertices==0, f"experimental glade retains {rock_vertices} rock vertices"
+    assert rock_vertices>0 if extra_nature else rock_vertices==0
     if village: assert village_vertices and village_vertices==list(range(village_vertices[0],village_vertices[-1]+1))
     else: assert not village_vertices
 
@@ -223,25 +223,9 @@ if village:
                         vi+=nv;ii+=len(triangles)
             assert vi==extra_prop_vertices[-1]+1
         else: assert not extra_prop_vertices
-        if bestiary:
-            assert bestiary_vertices==list(range(vi,bestiary_vertices[-1]+1))
-            bestiary_src=Path.home()/'.openagents/assets/cache/bestiary-dungeon-scene'
-            for model,name in enumerate(('Imp','Puglin')):
-                baked=(bestiary_src/(name+'.bin')).read_bytes();nv,ni=struct.unpack_from('<II',baked)
-                indices=struct.unpack_from('<'+str(ni)+'I',baked,8+nv*32)
-                assert ids[ii:ii+ni]==tuple(vi+x for x in indices),name
-                vertices=[struct.unpack_from('<3f',baked,8+j*32) for j in range(nv)]
-                anchor=((min(p[0] for p in vertices)+max(p[0] for p in vertices))/2,min(p[1] for p in vertices),(min(p[2] for p in vertices)+max(p[2] for p in vertices))/2)
-                base=pos[vi][1]-vertices[0][1]+anchor[1]
-                for j in (0,nv//2,nv-1):
-                    want=(6+3*model+vertices[j][0]-anchor[0],base+vertices[j][1]-anchor[1],-7+vertices[j][2]-anchor[2])
-                    assert all(abs(pos[vi+j][k]-want[k])<.0001 for k in range(3)),(name,j)
-                vi+=nv;ii+=ni
-            assert vi==bestiary_vertices[-1]+1
-        else: assert not bestiary_vertices
         if extra_nature:
             records={r['definition']['name']:r for r in (json.loads(x) for x in (repo/'assets/registry/assets/nature.jsonl').read_text().splitlines())}
-            layout=(repo/'assets/registry/scenes/everglade-experimental-extra-nature.layout').read_text().splitlines();assert len(layout)==36
+            layout=(repo/'assets/registry/scenes/everglade-experimental-extra-nature.layout').read_text().splitlines();assert len(layout)==96
             for line in layout:
                 name,revision=line.split('|');assert records[name]['revision']==revision
                 doc=json.loads((source/'glTF'/(name+'.gltf')).read_text());blob=(source/'glTF'/doc['buffers'][0]['uri']).read_bytes()
@@ -263,6 +247,24 @@ names=['Grass_Common_Short','Grass_Wide_Short','Grass_Wispy_Short']
 grows=[l.split() for l in cat.splitlines() if l.startswith('C glade/grass')]
 assert len(grows)==3
 next_index=first+count; heights=[]; instances=[]; template_vertices=0
+if bestiary:
+    draws=[l.split() for l in cat.splitlines() if l.startswith('C glade/monster')]
+    assert len(draws)==48 and bestiary_vertices
+    root=Path.home()/'.openagents/assets/cache/bestiary-dungeon-scene'
+    for frame,draw in enumerate(draws):
+        assert draw[1]==f'glade/monster{frame}'
+        af,ac,al,aw,an,aj=map(int,draw[2:]);assert af==next_index and ac>0 and al==254 and aw==word and aj==0
+        actual=struct.unpack_from('<'+str(ac)+'I',ib,af*4);cursor=0
+        for name in ('Imp','Puglin'):
+            data=(root/(name+f'-{frame}.bin')).read_bytes();nv,ni=struct.unpack_from('<II',data)
+            source_indices=struct.unpack_from('<'+str(ni)+'I',data,8+nv*32)
+            first_vertex=actual[cursor]-source_indices[0]
+            assert actual[cursor:cursor+ni]==tuple(first_vertex+x for x in source_indices)
+            assert bestiary_vertices[0]<=first_vertex and first_vertex+nv-1<=bestiary_vertices[-1]
+            cursor+=ni
+        assert cursor==ac
+        next_index+=ac
+else: assert not bestiary_vertices
 if animal_run:
     draws=[l.split() for l in cat.splitlines() if l.startswith('C glade/animal')]
     assert len(draws)==10 and animal_vertices
