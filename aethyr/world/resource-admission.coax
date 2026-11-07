@@ -38,6 +38,19 @@ ResourceAdmission :: struct {
   settled: bool;
 }
 
+#test "packed mesh model reserves a vertex ledger handle and its real native upload span" {
+  caps := [7] int.[10000, 10000, 10000, 10000, 10000, 10000, 10000];
+  b := [1] ResourceBudget.[resource_budget_open(caps, 100000, 8, 8)];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 1, words = 12}) == gpu.RrStatus.ok;
+  source: [48] u8; p := resource_plan(source[..], ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48, backend = ResourceBackend.vulkan});
+  lease := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert lease[0].status == ResourceAdmissionStatus.ok && r[0].live == 1 && r[0].words == 12 && r[0].table[lease[0].gpu_handle.slot].kind == gpu.RR_VERTEX;
+  #assert b[0].used[0] == 264 && b[0].used[6] == 48 && b[0].total == 312 && q[0].count == 3 && q[0].bytes == 264;
+  #assert resource_budget_settle(b[..], q[..], lease[..]) && resource_budget_release(b[..], q[..], r[..], lease[..]);
+  #assert b[0].total == 0 && r[0].words == 0 && q[0].bytes == 0;
+}
+
 #test "a texture category refusal is atomic while existing resident content stays usable" {
   caps := [7] int.[10000, 300, 10000, 10000, 10000, 10000, 10000];
   b := [1] ResourceBudget.[resource_budget_open(caps, 100000, 64, 8)];
@@ -210,8 +223,8 @@ resource_budget_admit :: (b: [] ResourceBudget, q: [] HostInboxQueue, r: [] gpu.
     if grant.status != HostInboxStatus.ok { return resource_budget_refuse(b, ResourceAdmissionStatus.inbox); }
     out.leases[i] = grant.lease;
   } }
-  if p.spec.format == ResourceFormat.positions4 || p.spec.format == ResourceFormat.indices || p.spec.format == ResourceFormat.image_mips {
-    kind := ifx p.spec.format == ResourceFormat.positions4 then gpu.RR_VERTEX else ifx p.spec.format == ResourceFormat.indices then gpu.RR_INDEX else gpu.RR_TEXTURE;
+  if p.spec.format == ResourceFormat.positions4 || p.spec.format == ResourceFormat.indices || p.spec.format == ResourceFormat.image_mips || p.spec.format == ResourceFormat.packed_vertices48 {
+    kind := ifx p.spec.format == ResourceFormat.indices then gpu.RR_INDEX else ifx p.spec.format == ResourceFormat.image_mips then gpu.RR_TEXTURE else gpu.RR_VERTEX;
     grant := gpu.rr_acquire(registry[..], kind, c.gpu / 4);
     if grant.status != gpu.RrStatus.ok { return resource_budget_refuse(b, ResourceAdmissionStatus.device); }
     out.gpu_handle = grant.handle;

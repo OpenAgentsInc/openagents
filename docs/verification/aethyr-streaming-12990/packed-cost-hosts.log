@@ -1,0 +1,45 @@
+building native resource costs and real codecs
+building Wasm resource costs and real codecs
+Wasm sha256 e19a586685e7506a59873f581ae74abb335099c3207301215ad3ca82685057cb
+browser Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36
+word 0 1
+word 1 168
+word 2 69
+word 3 20
+word 4 20
+word 5 16
+word 6 24495
+word 7 16
+word 8 8311930880
+word 9 4294967297
+word 10 4608308318706860032
+word 11 12345
+word 12 211603053
+word 13 2380752117
+word 14 2319598376
+word 15 1681810824
+word 16 796909584
+word 17 1035745531
+word 18 391196791
+word 19 2165288449
+word 20 1
+word 21 1
+word 22 1
+word 23 1
+word 24 1
+word 25 1
+word 26 261
+word 27 245
+word 28 1
+word 29 72
+word 30 1
+word 31 1
+word 32 96
+word 33 96
+word 34 96
+word 35 2
+word 36 2
+word 37 1366057875
+word 38 3151706111
+word 39 1
+PASS native/Wasm resource costs and admission: 40 exact words, wasm 67580 bytes

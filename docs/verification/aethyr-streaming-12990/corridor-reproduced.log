@@ -1,0 +1,5 @@
+manifest backend=0 tier=0 resources=64 whole-retained=62106 scratch-sum=366
+manifest backend=0 tier=1 resources=64 whole-retained=62522 scratch-sum=366
+manifest backend=1 tier=0 resources=64 whole-retained=62106 scratch-sum=5770
+manifest backend=1 tier=1 resources=64 whole-retained=62522 scratch-sum=5978
+scene sha256=61163431b0125715413087af2897dca8bd39b5361911c904c1f534612d8ec133 cells=12 resources=64

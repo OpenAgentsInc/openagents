@@ -15,6 +15,7 @@ The #12990 components currently provide:
 | `resource-admission.coax` | Seven named budget lines around the existing inbox leases and renderer ledger; atomic multi-ticket admission, explicit completion settlement, final retirement and first-peak owner records |
 | `resource-stream.coax` | Concrete dependency owners, typed claim/borrow references, completion generations, wanted closure and atomic fixed-tick readiness publication |
 | `stream-profile.coax` | Named small-world interest, update cadence, independent media collection and neighbor-placement hints; declarations await actual host qualification |
+| `../forge/vertices.coax` | Shared 48-byte static VPK vertex admission: eight finite floats followed by opaque packed color/layer/spare bytes |
 
 These files are source parts so a composed host has one owner of the
 existing unmoduled image decoder. The companion does not change VPK1/VPK2
@@ -32,6 +33,14 @@ manifest validates its encoding and closure; readiness additionally needs
 `resource_matches`, successful real decoding, completion of platform
 effects and the stream's tick/epoch/wanted gate. A successful image plan
 alone does not authenticate later compressed image data.
+
+Existing version-1 model bytes and identities remain unchanged. Packed VPK
+vertices use format 8 and cost-model version 2, with a separate pinned model
+digest. Their encoded/GPU bytes include the complete 48-byte records; no
+retained CPU expansion is declared. Packed color/layer/spare fields are not
+floating-point attributes. Manifest reading requires the canonical model
+digest for its actual formats, so an old model header cannot admit this new
+layout. `ResourcePlan` remains 168 bytes.
 
 Admission charges encoded bytes, retained decoded bytes, one physical
 168-byte `ResourcePlan` and logical GPU bytes to the resource's category.
@@ -96,6 +105,17 @@ persistent player and two voices; animation, sensors, effects and dynamic
 lights are zero in this initial profile. Player/camera/HUD are the three
 persistent services. Actual allocations and use of these declarations remain
 part of consumer integration.
+
+`coax/web/tool.sh aethyr/tools/streaming-assets.coax NEW_OUTPUT_DIR` builds
+the original CC0 corridor fixture: 12 cells, 13 admitted VPK1 packs, raw
+collision/body records, and 64 source resources. Four RCM1 companions cover
+both backend transfer models and both image tiers while preserving all source
+identities. `scene.json` records full content/container hashes and admitted
+source spans. Existing output directories refuse. The independent
+`python3 aethyr/tests/streaming_assets_oracle.py OUTPUT_DIR --fault-checks`
+recomputes the geometry, PNG pixels/CRCs, PCM, dependency digests and all
+declared cost lanes, including rehashed deliberately broken fixtures.
+This qualifies asset preparation, not active residency or physical memory.
 
 The actual multi-cell consumer, platform asynchronous-effect integration,
 profile adoption, route/replay integration and native/browser GPU

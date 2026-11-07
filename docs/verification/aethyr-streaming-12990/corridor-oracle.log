@@ -1,0 +1,4 @@
+{"manifests": [{"backend": 0, "retained": 62106, "scratch_sum": 366, "tier": 0}, {"backend": 0, "retained": 62522, "scratch_sum": 366, "tier": 1}, {"backend": 1, "retained": 62106, "scratch_sum": 5770, "tier": 0}, {"backend": 1, "retained": 62522, "scratch_sum": 5978, "tier": 1}], "packs": 13, "resources": 64, "scene_sha256": "61163431b0125715413087af2897dca8bd39b5361911c904c1f534612d8ec133"}
+refused independently rehashed gpu-cost
+refused independently rehashed body-placement
+refused independently rehashed audio-sample

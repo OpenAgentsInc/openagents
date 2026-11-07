@@ -14,6 +14,7 @@ RESOURCE_MANIFEST_MAX_BYTES :: RESOURCE_MANIFEST_HEADER + RESOURCE_MANIFEST_ROW 
 // These are format/model revisions, not approximate author cost estimates.
 // Any change to a represented layout or loader cost requires a new revision.
 RESOURCE_MODEL_REVISION :: "RCM1/positions4-1/indices-1/query-box-1/query-capsule-1/htx-1/apw-1/cell-body-1";
+RESOURCE_MODEL_PACKED_REVISION :: "RCM1/positions4-1/indices-1/query-box-1/query-capsule-1/htx-1/apw-1/cell-body-1/vpk-static48-2";
 ResourceManifestStatus :: enum u8 { ok; unsupported; malformed; identity; source; capacity; }
 ResourceDependencies :: struct { count: int; owners: [RESOURCE_DEPENDENCIES] int; }
 ResourceEntry :: struct { plan: ResourcePlan; dependencies: ResourceDependencies; }
@@ -24,6 +25,24 @@ ResourceManifest :: struct {
   entries: [RESOURCE_MANIFEST_MAX] ResourceEntry;
 }
 #load "tests/resource-manifest-fixture.coax";
+
+#test "packed model manifests preserve the old model identity and require their new revision" {
+  source: [48] u8; inputs := [1] [] u8.[source[..]];
+  specs := [1] ResourceSpec.[ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48}]; deps: [1] ResourceDependencies;
+  bytes: [488] u8;
+  #assert resource_manifest_build(inputs[..], specs[..], deps[..], bytes[..]) == ResourceManifestStatus.ok;
+  #assert assets.asset_same(resource_get_digest(bytes[..], 16), assets.asset_id(RESOURCE_MODEL_PACKED_REVISION));
+  m: [1] ResourceManifest; root := assets.asset_id(cast(string) bytes[..]);
+  #assert resource_manifest_read(bytes[..], root, m[..]) == ResourceManifestStatus.ok && m[0].entries[0].plan.spec.version == 2;
+  #assert resource_matches(m[0].entries[0].plan, source[..]);
+  resource_put_digest(bytes[..], 16, assets.asset_id(RESOURCE_MODEL_REVISION));
+  #assert resource_manifest_read(bytes[..], assets.asset_id(cast(string) bytes[..]), m[..]) == ResourceManifestStatus.unsupported;
+  specs[0] = ResourceSpec.{format = ResourceFormat.indices};
+  #assert resource_manifest_build(inputs[..], specs[..], deps[..], bytes[..]) == ResourceManifestStatus.ok;
+  #assert assets.asset_same(resource_get_digest(bytes[..], 16), assets.asset_id(RESOURCE_MODEL_REVISION));
+  resource_put_digest(bytes[..], 16, assets.asset_id(RESOURCE_MODEL_PACKED_REVISION));
+  #assert resource_manifest_read(bytes[..], assets.asset_id(cast(string) bytes[..]), m[..]) == ResourceManifestStatus.unsupported;
+}
 
 #test "manifest bytes pin decoder revision content layout costs and ordered dependency digests" {
   bytes: [RESOURCE_MANIFEST_MAX_BYTES] u8;
@@ -176,7 +195,7 @@ ResourceManifest :: struct {
     if field == 3 { resource_put32(bytes[..], 8, 0); }
     if field == 4 { resource_put32(bytes[..], 8, 65); }
     if field == 5 { bytes[52] = 0; }
-    if field == 6 { bytes[52] = 8; }
+    if field == 6 { bytes[52] = 9; }
     if field == 7 { bytes[53] = 7; }
     if field == 8 { bytes[54] = 2; }
     if field == 9 { bytes[55] = 1; }
@@ -211,7 +230,7 @@ resource_manifest_shape :: (m: ResourceManifest) -> bool #effects(all) {
   if m.count < 1 || m.count > RESOURCE_MANIFEST_MAX { return false; }
   for i: 0..<m.count {
     e := m.entries[i];
-    if e.plan.status != ResourceCostStatus.ok || e.plan.spec.version != RESOURCE_COST_VERSION || e.plan.spec.format == ResourceFormat.invalid { return false; }
+    if e.plan.status != ResourceCostStatus.ok || !resource_spec_supported(e.plan.spec) { return false; }
     if e.dependencies.count < 0 || e.dependencies.count > RESOURCE_DEPENDENCIES { return false; }
     for d: 0..<e.dependencies.count {
       previous := e.dependencies.owners[d];
@@ -252,13 +271,17 @@ resource_cost_from_words :: (c: [13] int) -> ResourceCost #effects(all) {
   return ResourceCost.{encoded = c[0], decoded = c[1], gpu = c[2], objects = c[3], decode_scratch = c[4], upload_scratch = c[5], alignment = c[6],
     actors = c[7], voices = c[8], width = c[9], height = c[10], levels = c[11], elements = c[12]};
 }
+resource_manifest_model :: (m: ResourceManifest) -> assets.AssetId #effects(all) {
+  for i: 0..<m.count { if m.entries[i].plan.spec.format == ResourceFormat.packed_vertices48 { return assets.asset_id(RESOURCE_MODEL_PACKED_REVISION); } }
+  return assets.asset_id(RESOURCE_MODEL_REVISION);
+}
 resource_manifest_write :: (m: ResourceManifest, out: [] u8) -> ResourceManifestStatus #effects(all) {
   if !resource_manifest_shape(m) { return ResourceManifestStatus.malformed; }
   n := RESOURCE_MANIFEST_HEADER + m.count * RESOURCE_MANIFEST_ROW;
   if out.count < n { return ResourceManifestStatus.capacity; }
   for i: 0..<4 { out[i] = "RCM1"[i]; }
   resource_put32(out, 4, RESOURCE_MANIFEST_VERSION); resource_put32(out, 8, cast(u32) m.count); resource_put32(out, 12, RESOURCE_MANIFEST_ROW);
-  resource_put_digest(out, 16, assets.asset_id(RESOURCE_MODEL_REVISION));
+  resource_put_digest(out, 16, resource_manifest_model(m));
   for i: 0..<m.count {
     at := RESOURCE_MANIFEST_HEADER + i * RESOURCE_MANIFEST_ROW; e := m.entries[i]; s := e.plan.spec;
     resource_put32(out, at, cast(u32) s.version); out[at + 4] = cast(u8) s.format; out[at + 5] = cast(u8) s.category; out[at + 6] = cast(u8) s.backend;
@@ -295,11 +318,12 @@ resource_manifest_read :: (source: [] u8, expected: assets.AssetId, out: [] Reso
   if count < 1 || count > RESOURCE_MANIFEST_MAX || source.count != RESOURCE_MANIFEST_HEADER + count * RESOURCE_MANIFEST_ROW { return ResourceManifestStatus.malformed; }
   actual := assets.asset_id(cast(string) source);
   if !assets.asset_same(actual, expected) { return ResourceManifestStatus.identity; }
-  if !assets.asset_same(resource_get_digest(source, 16), assets.asset_id(RESOURCE_MODEL_REVISION)) { return ResourceManifestStatus.unsupported; }
+  model := resource_get_digest(source, 16);
+  if !assets.asset_same(model, assets.asset_id(RESOURCE_MODEL_REVISION)) && !assets.asset_same(model, assets.asset_id(RESOURCE_MODEL_PACKED_REVISION)) { return ResourceManifestStatus.unsupported; }
   m := ResourceManifest.{valid = true, count = count, identity = actual};
   for i: 0..<count {
     at := RESOURCE_MANIFEST_HEADER + i * RESOURCE_MANIFEST_ROW;
-    if source[at + 4] < 1 || source[at + 4] > cast(u8) ResourceFormat.cell_bodies || source[at + 5] > cast(u8) ResourceCategory.staging ||
+    if source[at + 4] < 1 || source[at + 4] > cast(u8) ResourceFormat.packed_vertices48 || source[at + 5] > cast(u8) ResourceCategory.staging ||
       source[at + 6] > cast(u8) ResourceBackend.vulkan || source[at + 7] != 0 { return ResourceManifestStatus.malformed; }
     s := ResourceSpec.{version = cast(int) resource_u32(source, at), format = cast(ResourceFormat) source[at + 4], category = cast(ResourceCategory) source[at + 5],
       backend = cast(ResourceBackend) source[at + 6], side = cast(int) resource_u32(source, at + 8)};
@@ -316,6 +340,7 @@ resource_manifest_read :: (source: [] u8, expected: assets.AssetId, out: [] Reso
     m.entries[i] = e;
   }
   if !resource_manifest_shape(m) { return ResourceManifestStatus.malformed; }
+  if !assets.asset_same(model, resource_manifest_model(m)) { return ResourceManifestStatus.unsupported; }
   // Only validated earlier indices may address the dependency closure.
   for i: 1..<count { for d: 0..<m.entries[i].dependencies.count {
     dep := RESOURCE_MANIFEST_HEADER + i * RESOURCE_MANIFEST_ROW + 152 + d * 36;

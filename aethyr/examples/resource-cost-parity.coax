@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../world/resource-admission.coax";
 
-RESOURCE_TRANSCRIPT_WORDS :: 32;
+RESOURCE_TRANSCRIPT_WORDS :: 40;
 resource_cost_transcript :: () -> [RESOURCE_TRANSCRIPT_WORDS] int #effects(all) {
   out: [RESOURCE_TRANSCRIPT_WORDS] int;
   image := PNG_ONE; body: [64] u8;
@@ -64,6 +64,29 @@ resource_cost_transcript :: () -> [RESOURCE_TRANSCRIPT_WORDS] int #effects(all) 
   if !resource_budget_settle(budgets[..], queue[..], c[..]) || !resource_budget_release(budgets[..], queue[..], registry[..], c[..]) { return out; }
   if !resource_budget_settle(budgets[..], queue[..], a[..]) || !resource_budget_release(budgets[..], queue[..], registry[..], a[..]) { return out; }
   out[31] = ifx budgets[0].total == 0 && queue[0].bytes == 0 && registry[0].words == 0 then 1 else 0;
+  // The following eight words extend the fixture; every original v1 word,
+  // including its full manifest identity, remains unchanged.
+  packed_bytes: [96] u8;
+  for row: 0..<2 { for i: 32..<48 { packed_bytes[row * 48 + i] = 255; } }
+  packed_spec := ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48, backend = ResourceBackend.vulkan};
+  pp := resource_plan(packed_bytes[..], packed_spec);
+  packed_inputs := [1] [] u8.[packed_bytes[..]]; packed_specs := [1] ResourceSpec.[packed_spec]; packed_deps: [1] ResourceDependencies;
+  packed_manifest: [488] u8;
+  if resource_manifest_build(packed_inputs[..], packed_specs[..], packed_deps[..], packed_manifest[..]) != ResourceManifestStatus.ok { return out; }
+  packed_root := assets.asset_id(cast(string) packed_manifest[..]);
+  if resource_manifest_read(packed_manifest[..], packed_root, m[..]) != ResourceManifestStatus.ok { return out; }
+  out[32] = pp.cost.encoded; out[33] = pp.cost.gpu; out[34] = pp.cost.upload_scratch; out[35] = pp.cost.elements; out[36] = pp.spec.version;
+  out[37] = cast(int) packed_root.words[0]; out[38] = cast(int) resource_get_digest(packed_manifest[..], 16).words[0];
+  caps[6] = 96; budgets[0] = resource_budget_open(caps, 100000, 64, 8);
+  grant := [1] ResourceAdmission.[resource_budget_admit(budgets[..], queue[..], registry[..], pp)];
+  if grant[0].status != ResourceAdmissionStatus.ok || registry[0].table[grant[0].gpu_handle.slot].kind != gpu.RR_VERTEX { return out; }
+  if !resource_budget_settle(budgets[..], queue[..], grant[..]) || !resource_budget_release(budgets[..], queue[..], registry[..], grant[..]) { return out; }
+  for bits: [3] u32.[2139095040, 2143289345, 4286578688] { for lane: 0..<8 {
+    resource_put32(packed_bytes[..], 48 + lane * 4, bits);
+    if resource_plan(packed_bytes[..], packed_spec).status != ResourceCostStatus.invalid { return out; }
+    resource_put32(packed_bytes[..], 48 + lane * 4, 0);
+  } }
+  out[39] = ifx budgets[0].total == 0 && queue[0].bytes == 0 && registry[0].words == 0 then 1 else 0;
   return out;
 }
 #test "the bounded resource transcript includes real decodes and complete refusal gates" {
@@ -73,6 +96,7 @@ resource_cost_transcript :: () -> [RESOURCE_TRANSCRIPT_WORDS] int #effects(all) 
   #assert words[20] == 1 && words[21] == 1 && words[22] == 1 && words[23] == 1;
   #assert words[24] == 1 && words[25] == 1 && words[26] == 261 && words[27] == 245;
   #assert words[28] == 1 && words[29] == 72 && words[30] == 1 && words[31] == 1;
+  #assert words[32] == 96 && words[33] == 96 && words[34] == 96 && words[35] == 2 && words[36] == 2 && words[39] == 1;
 }
 resource_cost_word :: (index: int) -> int #export_c #effects(all) {
   if index < 0 || index >= RESOURCE_TRANSCRIPT_WORDS { return -1; }

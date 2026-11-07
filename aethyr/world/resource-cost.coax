@@ -9,11 +9,13 @@
 #load "../query.coax" as queries;
 #load "../space.coax" as points;
 #load "cells.coax" as cells;
+#load "../forge/vertices.coax" as packed;
 
 RESOURCE_COST_VERSION :: 1;
+RESOURCE_PACKED_VERSION :: 2;
 RESOURCE_SOURCE_MAX :: 67108864;
 ResourceCategory :: enum u8 { geometry; textures; collision; lighting; audio; actors; staging; }
-ResourceFormat :: enum u8 { invalid; positions4; indices; boxes; capsules; image_mips; wav_pcm16; cell_bodies; }
+ResourceFormat :: enum u8 { invalid; positions4; indices; boxes; capsules; image_mips; wav_pcm16; cell_bodies; packed_vertices48; }
 ResourceBackend :: enum u8 { browser; vulkan; }
 ResourceCostStatus :: enum u8 { ok; unsupported; invalid; capacity; mismatch; decode; }
 ResourceSpec :: struct {
@@ -45,6 +47,22 @@ ResourcePlan :: struct {
   cost: ResourceCost;
 }
 #load "tests/resource-cost-fixture.coax";
+
+#test "packed VPK vertices use a separate model revision and exact shared loader costs" {
+  source: [96] u8;
+  for i: 32..<48 { source[i] = 255; source[i + 48] = 255; }
+  spec := ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48};
+  p := resource_plan(source[..], spec);
+  #assert p.status == ResourceCostStatus.ok && p.cost.encoded == 96 && p.cost.gpu == 96 && p.cost.decoded == 0 && p.cost.alignment == 4 && p.cost.elements == 2;
+  #assert resource_matches(p, source[..]);
+  spec.backend = ResourceBackend.vulkan; #assert resource_plan(source[..], spec).cost.upload_scratch == 96;
+  spec.version = 1; #assert resource_plan(source[..], spec).status == ResourceCostStatus.unsupported;
+  spec.version = 3; #assert resource_plan(source[..], spec).status == ResourceCostStatus.unsupported;
+  spec = p.spec; spec.category = ResourceCategory.textures; #assert resource_plan(source[..], spec).status == ResourceCostStatus.unsupported;
+  #assert resource_plan(source[0..<95], p.spec).status == ResourceCostStatus.invalid;
+  resource_fixture_f32(source[..], 48, 1000000); #assert resource_plan(source[..], p.spec).status == ResourceCostStatus.invalid;
+  #assert !resource_spec_supported(ResourceSpec.{format = ResourceFormat.invalid});
+}
 
 #test "image costs come from the canonical full mip decoder and the shared GPU ledger" {
   image := PNG_ONE;
@@ -233,8 +251,13 @@ resource_source_status :: (bytes: int) -> ResourceCostStatus #effects(all) {
   if bytes > RESOURCE_SOURCE_MAX { return ResourceCostStatus.capacity; }
   return ResourceCostStatus.ok;
 }
+resource_spec_supported :: (spec: ResourceSpec) -> bool #effects(all) {
+  if spec.format == ResourceFormat.invalid { return false; }
+  version := ifx spec.format == ResourceFormat.packed_vertices48 then RESOURCE_PACKED_VERSION else RESOURCE_COST_VERSION;
+  return spec.version == version;
+}
 resource_plan :: (source: [] u8, spec: ResourceSpec) -> ResourcePlan #effects(all) {
-  if spec.version != RESOURCE_COST_VERSION || spec.format == ResourceFormat.invalid { return ResourcePlan.{status = ResourceCostStatus.unsupported}; }
+  if !resource_spec_supported(spec) { return ResourcePlan.{status = ResourceCostStatus.unsupported}; }
   extent := resource_source_status(source.count);
   if extent != ResourceCostStatus.ok { return ResourcePlan.{status = extent}; }
   c := ResourceCost.{encoded = source.count, objects = size_of(ResourcePlan), alignment = 4};
@@ -246,7 +269,12 @@ resource_plan :: (source: [] u8, spec: ResourceSpec) -> ResourcePlan #effects(al
     c.gpu = gpu.rr_texture_words(c.width, c.height, 1, c.levels, 4) * 4; c.elements = c.decoded / 4;
   } else {
     if spec.side != 0 { return ResourcePlan.{}; }
-    if spec.format == ResourceFormat.wav_pcm16 {
+    if spec.format == ResourceFormat.packed_vertices48 {
+      if spec.category != ResourceCategory.geometry { return ResourcePlan.{status = ResourceCostStatus.unsupported}; }
+      vertices := packed.pack_vertices_plan(source);
+      if vertices.status != packed.PackVertexStatus.ok { return ResourcePlan.{}; }
+      c.elements = vertices.vertices; c.gpu = gpu.rr_buffer_words(vertices.bytes) * 4;
+    } else if spec.format == ResourceFormat.wav_pcm16 {
       if spec.category != ResourceCategory.audio { return ResourcePlan.{status = ResourceCostStatus.unsupported}; }
       audio := wav.apw_plan(source); if !audio.valid { return ResourcePlan.{}; }
       c.decoded = audio.samples * 4; c.elements = audio.output_frames; c.voices = 1;

@@ -1,7 +1,8 @@
 # Resource-cost and streaming work — #12990
 
 Issue #12990 remains open. This record currently qualifies component
-contracts and a small native/browser codec fixture. It does not establish
+contracts, original corridor asset preparation and a small native/browser
+codec fixture. It does not establish
 the required walkable streamed host, allocation reconciliation, route
 performance, tier comparison or GPU recovery.
 
@@ -215,6 +216,104 @@ not a general VPK vertex model. A new supported cost-model revision must
 preserve the existing companion/model identities rather than treating all
 packed fields as floats or guessing the retained size. PNG asset generation
 can reuse the existing Coax encoder in `coax/lib/image/pillow.coax`.
+
+## Packed vertices and prepared corridor assets
+
+The following stage starts at local commit `0597a6abd0`, following the
+profile qualification above. `packed-source-sha256.txt` pins the exact
+changed component, example, tool and independent-oracle sources. These are
+local #12990 changes, not a completion or a production deployment.
+
+`forge/vertices.coax` admits the published 48-byte VPK static record. It
+preflights all eight floating-point lanes by IEEE exponent before conversion,
+then applies the existing spatial finite/bounds predicate. Position, normal
+and UV failures report the row/lane. Packed color, layer and spare words
+remain opaque bytes, including all-one bit patterns. The appended resource
+format 8 uses model version 2. All old ordinals, the 168-byte plan layout
+and the old `RESOURCE_MODEL_REVISION` remain unchanged. RCM1 selects the
+separate exact `RESOURCE_MODEL_PACKED_REVISION` only when a packed resource
+is present; a mismatched old/new header refuses even with a correct root.
+
+| Changed boundary | Root mutation result |
+| --- | --- |
+| Static packed-vertex admission | 27 killed, zero survivors |
+| Decoder cost planning | 291 killed, zero survivors |
+| Canonical manifest/model admission | 374 killed, zero survivors |
+| Original ticket/ledger admission | 232 killed, zero survivors |
+
+The cost run first exposed a redundant assignment of alignment 4, already
+set by the common plan initialization. It was removed and that changed gate
+was rerun. No equivalent exemption was added. The earlier passing manifest
+and admission root results are retained; their source roots did not change.
+
+The codec fixture now has 40 words. Its first 32 exactly preserve the
+preceding fixture, including every v1 manifest SHA-256 word. The appended
+eight cover 96 encoded/GPU/native-upload bytes, two vertices, version 2,
+the new manifest/model digest words and exact cleanup. Every attribute lane
+refuses NaN and both infinity signs. Native, release, ASan/UBSan/LSan and
+actual browser Wasm agree on all 40 fixture words. Release and sanitizer
+stderr are empty. The executed 67,580-byte Wasm SHA-256 is
+`e19a586685e7506a59873f581ae74abb335099c3207301215ad3ca82685057cb`.
+Generated C, release/sanitized executables and this same Wasm are retained
+as `packed-costs*` in the shared artifact directory named above.
+
+`tools/streaming-assets.coax` creates original CC0 fixture data in a **new**
+output directory. Its 12 adjacent 64 m cells cover 768 m. Floor vertices,
+ground collision and cell coordinates share exact edges. It produces:
+
+- 13 whole VPK1 packs admitted through the shared writer/reader: one common
+  texture/cube/index pack and twelve floor/lighting/PCM packs.
+- 24 raw collision/body sources with stable body IDs 1–12.
+- 64 resource rows, including shared dependency references, exact source
+  hashes and admitted container spans in `corridor-scene.json`.
+- Four manifests with the same source identities: browser/Vulkan transfer
+  models at image sides 1 and 2. Logical whole-world retention is 62,106
+  bytes at side 1 and 62,522 at side 2. Summed scratch is 366 bytes for the
+  browser model and 5,770/5,978 for the native model. These scratch sums are
+  **not** a claim that every decode/upload runs concurrently.
+- A real 8-by-8 PNG probe whose declared texture retention exceeds a
+  512-byte category cap. Actual category-refusal host exercise is pending.
+
+The retained prepared directory is
+`~/.openagents/aethyrforge/streaming-12990/2026-11-06/corridor-v1-aligned/`.
+A second generation in `corridor-v1-reproduced/` compares byte-for-byte
+equal (`diff -r`, exit 0), including the complete index and all manifests.
+Both scene roots are
+`61163431b0125715413087af2897dca8bd39b5361911c904c1f534612d8ec133`.
+An attempt to reuse the first directory exits 2 before writing. The earlier
+`corridor-v1/` directory is a diagnostic precursor with an incorrect X span;
+it is not this scene's qualified source. It remains retained rather than
+being overwritten or substituted.
+
+The independent Python oracle uses only standard-library SHA-256, struct,
+wave, CRC and zlib operations. It verifies source/container identity, VPK
+layout/catalog/ranges, exact floor/body placement, every PCM sample and
+decoded PNG pixel, all 13 cost lanes and dependency/model digests in all
+four manifests. It also rejects three deliberately broken fixtures after
+their outer identities are repaired: a forged GPU cost, changed body
+placement and changed audio sample. It does not import or call the Coax
+implementation. Its successful record is `corridor-oracle.log`.
+
+Commands:
+
+```sh
+coax/web/tool.sh aethyr/tools/streaming-assets.coax NEW_OUTPUT_DIR
+python3 aethyr/tests/streaming_assets_oracle.py OUTPUT_DIR --fault-checks
+coax/web/tool.sh aethyr/tools/resource-cost-hosts.coax
+```
+
+This completes preparation of real source assets for the next host stage.
+It does **not** adopt the profiles, measure actual allocations or establish
+the 32 KiB resident cap: 32 KiB is the intended consumer budget against
+which the 62 KiB world must stream. Actual walking, asynchronous failures,
+same-history replay, native/browser GPU recovery, route churn and timing
+tails remain required. No issue closure is justified by these receipts.
+
+All six book registries pass with unchanged status counts
+(`packed-book-registries.log`). The tracked tools gate passes: 1,850 files,
+zero new files without a firm reason (`packed-tools-check.log`). Chapter 16
+describes the appended exact fixture; no chapter is promoted. The previously
+recorded unrelated chapter-87 listing drift is unchanged and was not rerun.
 
 The historical #12847 cell/edge/save work is retained and was inspected.
 Its closure did not qualify an activated large-world realm. The legacy

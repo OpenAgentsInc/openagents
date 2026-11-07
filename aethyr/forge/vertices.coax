@@ -1,0 +1,58 @@
+// VPK's published static vertex payload: 48 bytes, eight floats followed
+// by packed colour/layer and twelve spare bytes. Packed words are not f32.
+#module "aethyr.forge.vertices";
+#authority;
+#load "pack.coax" as packs;
+#load "../query.coax" as queries;
+
+PACK_VERTEX_BYTES :: 48;
+PACK_VERTEX_FLOATS :: 8;
+PackVertexStatus :: enum u8 { ok; layout; position; attribute; }
+PackVertexPlan :: struct { status: PackVertexStatus = PackVertexStatus.layout; bytes: int; vertices: int; alignment: int; row: int = -1; lane: int = -1; }
+
+#test "packed static vertices count full records and never interpret colour or spare words as floats" {
+  source: [96] u8;
+  for i: 0..<source.count { source[i] = 255; }
+  for row: 0..<2 { for lane: 0..<8 { packs.pack_put32(source[..], row * 48 + lane * 4, cast(int) f32_bits(f32(row * 8 + lane))); } }
+  p := pack_vertices_plan(source[..]);
+  #assert p.status == PackVertexStatus.ok && p.bytes == 96 && p.vertices == 2 && p.alignment == 4 && p.row == -1 && p.lane == -1;
+  #assert pack_vertices_plan(source[0..<48]).status == PackVertexStatus.ok;
+  #assert pack_vertices_plan(source[0..<0]).status == PackVertexStatus.layout;
+  #assert pack_vertices_plan(source[0..<47]).status == PackVertexStatus.layout;
+  #assert pack_vertices_plan(source[0..<49]).status == PackVertexStatus.layout;
+  for row: 0..<2 { for lane: 0..<8 {
+    before := packs.pack_u32(cast(string) source[..], row * 48 + lane * 4);
+    packs.pack_put32(source[..], row * 48 + lane * 4, 2143289344);
+    bad := pack_vertices_plan(source[..]);
+    #assert bad.status == (ifx lane < 3 then PackVertexStatus.position else PackVertexStatus.attribute) && bad.row == row && bad.lane == lane && bad.vertices == 0;
+    packs.pack_put32(source[..], row * 48 + lane * 4, before);
+  } }
+}
+#forall "packed vertex exponent preflight refuses infinities and NaNs before conversion" exponent: 0..<256 {
+  for sign: [2] u32.[0, 2147483648] { for fraction: [3] u32.[0, 1, 8388607] {
+    bits := sign | (cast(u32) exponent << 23) | fraction;
+    #assert pack_vertex_finite(bits) == (exponent != 255);
+  } }
+}
+#test "packed vertex numeric bounds use the shared spatial predicate on position normal and UV" {
+  source: [48] u8;
+  for lane: 0..<8 {
+    packs.pack_put32(source[..], lane * 4, cast(int) f32_bits(999999.0f32)); #assert pack_vertices_plan(source[..]).status == PackVertexStatus.ok;
+    packs.pack_put32(source[..], lane * 4, cast(int) f32_bits(1000000.0f32));
+    #assert pack_vertices_plan(source[..]).status == (ifx lane < 3 then PackVertexStatus.position else PackVertexStatus.attribute);
+    packs.pack_put32(source[..], lane * 4, cast(int) f32_bits(-1000000.0f32)); #assert pack_vertices_plan(source[..]).status != PackVertexStatus.ok;
+    packs.pack_put32(source[..], lane * 4, 0);
+  }
+}
+pack_vertex_finite :: (bits: u32) -> bool #effects(all) { return (bits & 2139095040) != 2139095040; }
+pack_vertices_plan :: (source: [] u8) -> PackVertexPlan #effects(all) {
+  if source.count < PACK_VERTEX_BYTES || source.count % PACK_VERTEX_BYTES != 0 { return PackVertexPlan.{}; }
+  count := source.count / PACK_VERTEX_BYTES;
+  for row: 0..<count { for lane: 0..<PACK_VERTEX_FLOATS {
+    bits := cast(u32) packs.pack_u32(cast(string) source, row * PACK_VERTEX_BYTES + lane * 4);
+    if !pack_vertex_finite(bits) || !queries.query_finite(f32_from_bits(bits)) {
+      return PackVertexPlan.{status = ifx lane < 3 then PackVertexStatus.position else PackVertexStatus.attribute, row = row, lane = lane};
+    }
+  } }
+  return PackVertexPlan.{status = PackVertexStatus.ok, bytes = source.count, vertices = count, alignment = 4};
+}

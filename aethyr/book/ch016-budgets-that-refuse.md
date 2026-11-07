@@ -435,11 +435,22 @@ mip bytes, upload model bytes, decoder work bytes, a weighted pixel sum,
 decoded PCM bytes, PCM F32-bit sum, persistent body ID, body-x F64 bits and
 its first saved word. The next eight words are the manifest SHA-256. Four
 more prove cut-manifest refusal, late compressed-image decode refusal,
-forged-cost refusal and model version 1. The final eight exercise category
+forged-cost refusal and model version 1. The following eight exercise category
 refusal, retained/peak bytes, concurrent scratch and exact ticket cleanup.
 Native and Wasm agree on every word. The deliberately corrupt image passes
 metadata planning but fails the
 actual decoder; no successful plan alone permits publication.
+
+Eight appended words qualify the separate packed-static-vertex model:
+encoded bytes, GPU bytes, native transfer bytes, vertex count, version 2,
+the new manifest's first SHA-256 word, its model digest's first word and a
+combined refusal/cleanup verdict. Two complete 48-byte vertices take 96
+encoded and 96 logical GPU bytes. The eight floating-point attributes are
+checked before use; the final sixteen packed bytes are not floats. Native
+and Wasm refuse NaN and both infinity signs in every attribute lane. The
+original 32 transcript words, including the version-1 manifest identity,
+remain unchanged. This introduces a new model digest without changing the
+168-byte plan layout or a published VPK ABI.
 
 The [owner journey](../examples/resource-stream-parity.coax) has a separate
 [64-word transcript](../fixtures/resource-stream-parity.out). Two concrete

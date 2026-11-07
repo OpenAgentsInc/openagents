@@ -1,0 +1,254 @@
+// Authored CC0 corridor assets for the actual #12990 streaming consumer.
+// All payloads are built in Coax, read by the shared VPK/format loaders and
+// addressed by their complete SHA-256. No external source assets are used.
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../world/resource-manifest.coax";
+#load "../../coax/lib/image/pillow.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../forge/pack.coax" as packs;
+ceil :: (x: f64) -> f64 #foreign #effects(all);
+
+SSA_CELLS :: 12;
+SSA_RESOURCES :: 64;
+SSA_PACK_BUDGET :: 16384;
+SSA_REVISION :: "aethyr.corridor-assets.v1/static48-2/pcm16-48000/png-rgba";
+SsaSources :: struct { bytes: [SSA_RESOURCES] [4096] u8; sizes: [SSA_RESOURCES] int; }
+SsaLocations :: struct { pack: [SSA_RESOURCES] assets.AssetId; at: [SSA_RESOURCES] int; bytes: [SSA_RESOURCES] int; }
+
+#test "corridor floors and colliders share exact world cell edges and packed layout" {
+  vertices: [288] u8; collision: [24] u8; body: [64] u8;
+  for cell: 0..<SSA_CELLS {
+    ssa_floor(cell, vertices[..]); ssa_collision(cell, collision[..]); ssa_body(cell, body[..]);
+    p := resource_plan(vertices[..], ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48});
+    #assert p.status == ResourceCostStatus.ok && p.cost.elements == 6 && p.cost.gpu == 288;
+    q := resource_plan(collision[..], ResourceSpec.{format = ResourceFormat.boxes, category = ResourceCategory.collision});
+    #assert q.status == ResourceCostStatus.ok;
+    values: [6] f32; #assert resource_decode_collision(q, collision[..], values[..]) == ResourceCostStatus.ok;
+    #assert values[0] == 0 && values[1] == -1 && values[2] == f32(cell * 64) && values[3] == 64 && values[4] == 0 && values[5] == f32((cell + 1) * 64);
+    for vertex: 0..<6 {
+      at := vertex * 48; x := f32_from_bits(resource_u32(vertices[..], at)); z := f32_from_bits(resource_u32(vertices[..], at + 8));
+      #assert (x == 0 || x == 64) && (z == values[2] || z == values[5]);
+      #assert resource_u32(vertices[..], at + 4) == 0 && resource_u32(vertices[..], at + 16) == f32_bits(1.0f32);
+      #assert vertices[at + 32] == 255 && vertices[at + 35] == 0;
+    }
+    b := resource_plan(body[..], ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors});
+    out: [1] cells.CellBody; #assert resource_decode_bodies(b, body[..], out[..]) == ResourceCostStatus.ok;
+    #assert out[0].id == cell + 1 && out[0].x == 8 && out[0].y == 0 && out[0].z == f64(cell * 64 + 32);
+  }
+}
+#test "corridor indices address complete triangle lists and the cube has all six faces" {
+  indices: [144] u8; vertices: [1728] u8;
+  ssa_indices(indices[..], 36); ssa_cube(vertices[..]);
+  #assert resource_plan(vertices[..], ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48}).status == ResourceCostStatus.ok;
+  for i: 0..<36 { #assert resource_u32(indices[..], i * 4) == cast(u32) i; }
+  for face: 0..<6 { for vertex: 0..<6 {
+    at := (face * 6 + vertex) * 48; sum := 0.0f32;
+    for lane: 0..<3 { n := f32_from_bits(resource_u32(vertices[..], at + 12 + lane * 4)); sum += n * n; }
+    #assert sum == 1;
+  } }
+  for triangle: 0..<12 {
+    a := points.world_point(f32_from_bits(resource_u32(vertices[..], triangle * 144)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 4)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 8)));
+    b := points.world_point(f32_from_bits(resource_u32(vertices[..], triangle * 144 + 48)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 52)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 56)));
+    c := points.world_point(f32_from_bits(resource_u32(vertices[..], triangle * 144 + 96)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 100)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 104)));
+    n := points.world_point(f32_from_bits(resource_u32(vertices[..], triangle * 144 + 12)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 16)), f32_from_bits(resource_u32(vertices[..], triangle * 144 + 20)));
+    ab := points.world_sub(b, a); ac := points.world_sub(c, a);
+    cross := points.world_cross(ab, ac);
+    #assert cross.x * n.x + cross.y * n.y + cross.z * n.z > 0;
+  }
+}
+#test "authored loop WAV has exact PCM16 duration and finite decoder output" {
+  source: [1068] u8; samples: [512] f32; filter: [1] wav.AudioWavFilter; work: [1] f64;
+  ssa_audio(0, source[..]); p := resource_plan(source[..], ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio});
+  #assert p.status == ResourceCostStatus.ok && p.cost.elements == 512 && p.cost.decoded == 2048 && p.cost.decode_scratch == 0;
+  #assert resource_decode_audio(p, source[..], filter[0..<0], work[0..<0], samples[..]) == ResourceCostStatus.ok;
+  for i: 0..<512 { #assert samples[i] >= -0.03125 && samples[i] <= 0.03125; if i < 384 { #assert samples[i] == samples[i + 128]; } }
+  #assert samples[0] == -0.03125 && samples[32] == 0 && samples[64] == 0.03125;
+  id := p.content; ssa_audio(1, source[..]); #assert !assets.asset_same(id, assets.asset_id(cast(string) source[..]));
+}
+
+ssa_f32 :: (out: [] u8, at: int, value: f32) { packs.pack_put32(out, at, cast(int) f32_bits(value)); }
+ssa_vertex :: (out: [] u8, at: int, x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) {
+  for i: 0..<48 { out[at + i] = 0; }
+  ssa_f32(out, at, x); ssa_f32(out, at + 4, y); ssa_f32(out, at + 8, z);
+  ssa_f32(out, at + 12, nx); ssa_f32(out, at + 16, ny); ssa_f32(out, at + 20, nz);
+  ssa_f32(out, at + 24, u); ssa_f32(out, at + 28, v);
+  for i: 0..<3 { out[at + 32 + i] = 255; }
+}
+ssa_floor :: (cell: int, out: [] u8) {
+  #assert cell >= 0 && cell < SSA_CELLS && out.count == 288;
+  corners := [6] int.[0, 2, 1, 1, 2, 3];
+  for i: 0..<6 {
+    c := corners[i]; u := f32(c % 2); v := f32(c / 2);
+    ssa_vertex(out, i * 48, u * 64, 0, f32(cell * 64) + v * 64, 0, 1, 0, u, v);
+  }
+}
+ssa_indices :: (out: [] u8, count: int) {
+  #assert count > 0 && out.count == count * 4;
+  for i: 0..<count { packs.pack_put32(out, i * 4, i); }
+}
+ssa_cube :: (out: [] u8) {
+  #assert out.count == 1728;
+  for face: 0..<6 { for i: 0..<6 {
+    corners := ifx face % 2 == 0 then [6] int.[0, 2, 1, 1, 2, 3] else [6] int.[0, 1, 2, 2, 1, 3];
+    axis := face / 2; sign := ifx face % 2 == 0 then -1.0f32 else 1.0f32;
+    u := f32(corners[i] % 2); v := f32(corners[i] / 2); p: [3] f32; n: [3] f32;
+    p[axis] = sign * 0.3; p[(axis + 1) % 3] = (u - 0.5) * 0.6; p[(axis + 2) % 3] = (v - 0.5) * 0.6; n[axis] = sign;
+    ssa_vertex(out, (face * 6 + i) * 48, p[0], p[1] + 0.3, p[2], n[0], n[1], n[2], u, v);
+  } }
+}
+ssa_collision :: (cell: int, out: [] u8) {
+  #assert cell >= 0 && cell < SSA_CELLS && out.count == 24;
+  values := [6] f32.[0, -1, f32(cell * 64), 64, 0, f32((cell + 1) * 64)];
+  for i: 0..<6 { ssa_f32(out, i * 4, values[i]); }
+}
+ssa_body :: (cell: int, out: [] u8) {
+  #assert cell >= 0 && cell < SSA_CELLS && out.count == 64;
+  for i: 0..<64 { out[i] = 0; }
+  resource_put64(out, 0, cell + 1); resource_put64(out, 8, cast,trunc(int) f64_bits(8)); resource_put64(out, 24, cast,trunc(int) f64_bits(f64(cell * 64 + 32)));
+}
+ssa_audio :: (cell: int, out: [] u8) {
+  #assert cell >= 0 && cell < SSA_CELLS && out.count == 1068;
+  for i: 0..<1068 { out[i] = 0; }
+  for c, i: "RIFF" { out[i] = c; } packs.pack_put32(out, 4, 1060);
+  for c, i: "WAVEfmt " { out[8 + i] = c; } packs.pack_put32(out, 16, 16);
+  out[20] = 1; out[22] = 1; packs.pack_put32(out, 24, 48000); packs.pack_put32(out, 28, 96000); out[32] = 2; out[34] = 16;
+  for c, i: "data" { out[36 + i] = c; } packs.pack_put32(out, 40, 1024);
+  for i: 0..<512 {
+    phase := i % 128; wave := ifx phase <= 64 then phase - 32 else 96 - phase;
+    sample := wave * (32 + cell); at := 44 + i * 2;
+    out[at] = cast,trunc(u8) sample; out[at + 1] = cast,trunc(u8) (sample >> 8);
+  }
+}
+ssa_num :: (out: [] u8, value: int) -> string { j: [1] Jo; jo_start(j[..], out); jo_int(j[..], value); #assert !j[0].bad; return jo_text(j[..]); }
+ssa_cat :: (out: [] u8, pieces: [] string) -> string {
+  at := 0; for p: pieces { #assert p.count <= out.count - at; for c: p { out[at] = c; at += 1; } }
+  return cast(string) out[0..<at];
+}
+ssa_catalog :: (bytes: int, sound: bool, count: int, out: [] u8) -> string {
+  number: [32] u8; indices: [32] u8;
+  pieces := [7] string.["budget 16384\nbytes ", ssa_num(number[..], bytes), "\nL 0 Aethyr corridor|CC0-1.0|https://creativecommons.org/publicdomain/zero/1.0/\nM Mesh 0 ", ssa_num(indices[..], count), ifx sound then " 0 0 -1 0 64 1 768\nT 0 light.png 0\n" else " 0 -1 -1 -1 1 1 1\nT 0 light.png 0\n", ifx sound then "S tone 0\n" else "", ""];
+  return ssa_cat(out, pieces[..]);
+}
+ssa_store :: (s: [] SsaSources, row: int, data: [] u8) {
+  #assert row >= 0 && row < SSA_RESOURCES && data.count > 0 && data.count <= 4096;
+  for i: 0..<data.count { s[0].bytes[row][i] = data[i]; } s[0].sizes[row] = data.count;
+}
+ssa_png :: (cell: int, side: int, z: [] PiZ, out: [] u8) -> int {
+  pixels: [256] u8; filtered: [264] u8;
+  for i: 0..<side * side {
+    pixels[i * 4] = cast(u8) (96 + cell * 7); pixels[i * 4 + 1] = cast(u8) (136 + cell * 3);
+    pixels[i * 4 + 2] = cast(u8) (176 - cell * 4); pixels[i * 4 + 3] = 255;
+  }
+  return pi_png(pi_img(pixels[..], side, side, 4), z, filtered[..], out);
+}
+ssa_hex :: (j: [] Jo, key: string, id: assets.AssetId) {
+  hex: [64] u8; #assert assets.asset_hex(id, hex[..]); jo_key(j, key); jo_str(j, cast(string) hex[..]);
+}
+ssa_file :: (dir: string, bytes: [] u8, suffix: string) -> assets.AssetId {
+  id := assets.asset_id(cast(string) bytes); hex: [64] u8; #assert assets.asset_hex(id, hex[..]);
+  name: [128] u8; parts := [2] string.[cast(string) hex[..], suffix]; path: [4096] u8;
+  target := fs_join(dir, ssa_cat(name[..], parts[..]), path[..]);
+  if fs_exists(target) { check: [65536] u8; n := fs_read(target, check[..]); #assert n == bytes.count && cast(string) check[0..<n] == cast(string) bytes; }
+  else { #assert fs_write(target, cast(string) bytes); }
+  return id;
+}
+// Copies back through the *admitted* whole-pack reader, not writer offsets.
+ssa_pack :: (dir: string, vertices: [] u8, indices: [] u8, image: [] u8, sound: [] u8,
+    rows: [] int, locations: [] SsaLocations) -> assets.AssetId {
+  source: [5] packs.PackSource; catalog: [1024] u8; output: [SSA_PACK_BUDGET] u8;
+  count := ifx sound.count > 0 then 5 else 4;
+  source[1] = packs.PackSource.{kind = packs.PACK_VERTICES, licence = 255, name = "vertices", data = cast(string) vertices};
+  source[2] = packs.PackSource.{kind = packs.PACK_INDICES, licence = 255, name = "indices", data = cast(string) indices};
+  source[3] = packs.PackSource.{kind = packs.PACK_LAYER, name = "light.png", data = cast(string) image};
+  source[4] = packs.PackSource.{kind = packs.PACK_SOUND, name = "tone", data = cast(string) sound};
+  size := 0;
+  for attempt: 0..<8 {
+    source[0] = packs.PackSource.{kind = packs.PACK_CATALOG, licence = 255, name = "catalog", data = ssa_catalog(size, sound.count > 0, indices.count / 4, catalog[..])};
+    next := packs.pack_size(source[0..<count]); if next == size { break; } size = next;
+  }
+  n := packs.pack_write(source[0..<count], SSA_PACK_BUDGET, output[..]); #assert n == size;
+  read: [1] packs.PackRead; #assert packs.pack_read(cast(string) output[0..<n], read[..]);
+  for entry: 1..<count {
+    original := source[entry].data; admitted := packs.pack_bytes(cast(string) output[0..<n], read[..], entry);
+    #assert original == admitted;
+  }
+  id := ssa_file(dir, output[0..<n], ".vpk");
+  for entry: 1..<count {
+    row := rows[entry - 1]; if row < 0 { continue; }
+    locations[0].pack[row] = id; locations[0].at[row] = read[0].entries[entry].at; locations[0].bytes[row] = read[0].entries[entry].n;
+  }
+  return id;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 { tool_errln("usage: streaming-assets NEW_OUTPUT_DIR"); return 2; }
+  dir := args_at(args[..], 0);
+  if fs_exists(dir) { tool_errln("output already exists; immutable scene generation needs a new directory"); return 2; }
+  #assert fs_mkdir(dir);
+  sources: [1] SsaSources; locations: [1] SsaLocations; z: [1] PiZ;
+  vertices: [1728] u8; indices: [144] u8; png: [4096] u8; audio: [1068] u8; body: [64] u8; collision: [24] u8;
+  ssa_cube(vertices[..]); ssa_indices(indices[..], 36); pn := ssa_png(0, 1, z[..], png[..]); #assert pn > 0;
+  ssa_store(sources[..], 0, png[0..<pn]); ssa_store(sources[..], 1, indices[0..<24]); ssa_store(sources[..], 2, indices[..]); ssa_store(sources[..], 3, vertices[..]);
+  common_rows := [3] int.[3, 2, 0]; common := ssa_pack(dir, vertices[..], indices[..], png[0..<pn], audio[0..<0], common_rows[..], locations[..]);
+  // The shared floor index span lives inside the complete common index entry.
+  locations[0].pack[1] = common; locations[0].at[1] = locations[0].at[2]; locations[0].bytes[1] = 24;
+  for cell: 0..<SSA_CELLS {
+    base := 4 + cell * 5; pn = ssa_png(cell + 1, 1, z[..], png[..]); #assert pn > 0;
+    ssa_floor(cell, vertices[0..<288]); ssa_audio(cell, audio[..]); ssa_collision(cell, collision[..]); ssa_body(cell, body[..]);
+    ssa_store(sources[..], base, png[0..<pn]); ssa_store(sources[..], base + 1, collision[..]); ssa_store(sources[..], base + 2, body[..]);
+    ssa_store(sources[..], base + 3, audio[..]); ssa_store(sources[..], base + 4, vertices[0..<288]);
+    rows := [4] int.[base + 4, -1, base, base + 3]; pack := ssa_pack(dir, vertices[0..<288], indices[0..<24], png[0..<pn], audio[..], rows[..], locations[..]);
+    #assert !assets.asset_same(pack, common);
+    for row: base + 1..<base + 3 { raw := sources[0].bytes[row][0..<sources[0].sizes[row]]; locations[0].pack[row] = ssa_file(dir, raw, ".raw"); locations[0].bytes[row] = raw.count; }
+  }
+  metadata: [65536] u8; j: [1] Jo; jo_start(j[..], metadata[..]); jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "aethyr.streaming-scene.v1"); jo_key(j[..], "converter"); jo_str(j[..], SSA_REVISION);
+  jo_key(j[..], "license"); jo_str(j[..], "CC0-1.0; original authored fixture"); jo_key(j[..], "cells"); jo_int(j[..], SSA_CELLS);
+  jo_key(j[..], "cell_metres"); jo_int(j[..], 64); jo_key(j[..], "resources"); jo_arr(j[..]);
+  for row: 0..<SSA_RESOURCES {
+    jo_obj(j[..]); jo_key(j[..], "row"); jo_int(j[..], row); ssa_hex(j[..], "sha256", assets.asset_id(cast(string) sources[0].bytes[row][0..<sources[0].sizes[row]]));
+    ssa_hex(j[..], "container_sha256", locations[0].pack[row]); jo_key(j[..], "offset"); jo_int(j[..], locations[0].at[row]);
+    jo_key(j[..], "bytes"); jo_int(j[..], locations[0].bytes[row]); jo_key(j[..], "raw"); jo_bool(j[..], row >= 4 && (row - 4) % 5 >= 1 && (row - 4) % 5 <= 2); jo_end(j[..]);
+  }
+  jo_end(j[..]); jo_key(j[..], "manifests"); jo_arr(j[..]);
+  input: [SSA_RESOURCES] [] u8; specs: [SSA_RESOURCES] ResourceSpec; deps: [SSA_RESOURCES] ResourceDependencies;
+  for row: 0..<SSA_RESOURCES { input[row] = sources[0].bytes[row][0..<sources[0].sizes[row]]; }
+  specs[0] = ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures};
+  specs[1] = ResourceSpec.{format = ResourceFormat.indices}; specs[2] = specs[1]; specs[3] = ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48};
+  deps[3].count = 2; deps[3].owners[0] = 0; deps[3].owners[1] = 2;
+  for cell: 0..<SSA_CELLS {
+    base := 4 + cell * 5;
+    specs[base] = ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.lighting};
+    specs[base + 1] = ResourceSpec.{format = ResourceFormat.boxes, category = ResourceCategory.collision};
+    specs[base + 2] = ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors};
+    specs[base + 3] = ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio}; specs[base + 4] = specs[3];
+    deps[base + 4].count = 3; deps[base + 4].owners[0] = 0; deps[base + 4].owners[1] = 1; deps[base + 4].owners[2] = base;
+  }
+  encoded: [RESOURCE_MANIFEST_MAX_BYTES] u8; parsed: [1] ResourceManifest;
+  for backend: 0..<2 { for tier: 0..<2 {
+    for row: 0..<SSA_RESOURCES { specs[row].backend = cast(ResourceBackend) backend; if specs[row].format == ResourceFormat.image_mips { specs[row].side = tier + 1; } }
+    #assert resource_manifest_build(input[..], specs[..], deps[..], encoded[..]) == ResourceManifestStatus.ok;
+    id := ssa_file(dir, encoded[..], ".rcm"); #assert resource_manifest_read(encoded[..], id, parsed[..]) == ResourceManifestStatus.ok;
+    retained := 0; scratch := 0;
+    for row: 0..<SSA_RESOURCES {
+      plan := parsed[0].entries[row].plan; #assert resource_matches(plan, input[row]);
+      retained += plan.cost.encoded + plan.cost.decoded + plan.cost.objects + plan.cost.gpu;
+      scratch += plan.cost.decode_scratch + plan.cost.upload_scratch;
+    }
+    #assert retained > 32768;
+    jo_obj(j[..]); jo_key(j[..], "backend"); jo_int(j[..], backend); jo_key(j[..], "tier"); jo_int(j[..], tier); ssa_hex(j[..], "sha256", id);
+    jo_key(j[..], "whole_world_retained_bytes"); jo_int(j[..], retained); jo_key(j[..], "sum_scratch_bytes"); jo_int(j[..], scratch); jo_end(j[..]);
+    print("manifest backend=% tier=% resources=% whole-retained=% scratch-sum=%\n", backend, tier, SSA_RESOURCES, retained, scratch);
+  } }
+  jo_end(j[..]);
+  pn = ssa_png(12, 8, z[..], png[..]); #assert pn > 0; probe := ssa_file(dir, png[0..<pn], ".raw");
+  jo_key(j[..], "overcap_probe"); jo_obj(j[..]); ssa_hex(j[..], "sha256", probe); jo_key(j[..], "bytes"); jo_int(j[..], pn); jo_end(j[..]);
+  jo_end(j[..]); #assert !j[0].bad;
+  path: [4096] u8; #assert fs_write(fs_join(dir, "scene.json", path[..]), jo_text(j[..]));
+  scene := ssa_file(dir, metadata[0..<j[0].n], ".json"); hex: [64] u8; #assert assets.asset_hex(scene, hex[..]);
+  print("scene sha256=% cells=% resources=%\n", cast(string) hex[..], SSA_CELLS, SSA_RESOURCES); return 0;
+}
