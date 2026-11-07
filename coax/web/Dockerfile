@@ -4,7 +4,7 @@
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY server/ /src/
-RUN gcc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -o /serve /src/serve.c /src/ws.c
+RUN gcc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -o /serve /src/serve.c /src/http-range.c /src/ws.c -lm
 
 FROM debian:bookworm-slim
 COPY --from=build /serve /usr/local/bin/serve

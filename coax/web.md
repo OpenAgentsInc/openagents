@@ -28,6 +28,35 @@ native kernel, is separate work.
 
 ## Built so far
 
+For cold-load measurements, run `coax/web/serve.sh apps/openagents-web --static
+--listen 127.0.0.1:9364 --throttle-mbps 50 --latency-ms 30`, then
+`coax/web/tool.sh first-image http://127.0.0.1:9364/worlds/everglade` from the
+repository root. Each invocation uses a fresh, muted, headless Chrome profile,
+disables the HTTP cache and bypasses service workers. The JSON reports the first
+completed admitted world frame, encoded transfer bytes and body bytes received
+before it (including in-flight downloads), and network quiet after 500 ms with
+no outstanding HTTP asset requests. API traffic, beacons, event streams and
+local blob/data workers do not hold asset quiet open; their observed HTTP bytes
+still contribute to transfer totals. A timeout or trace-capacity overflow fails.
+
+The server accepts a single `Range: bytes=a-b`, `bytes=a-` or `bytes=-n` on
+static GETs. It streams bounded buffers, emits `206`, `Content-Range` and
+`Accept-Ranges: bytes`, and emits `416` with `bytes */SIZE` for unsatisfiable
+ranges. Malformed/multiple ranges, repeated Range fields and If-Range fall back
+to the full `200` response; this server does not emit validators.
+`http-range.coax` owns the checked selection and overflow rules.
+
+`--throttle-mbps` is decimal Mbit/s **per HTTP connection**, including response
+headers; it does not simulate a shared last-mile link. `0` disables rate limiting;
+positive rates start at 0.001 Mbit/s. `--latency-ms` delays the first response byte
+after the complete request arrives, rather than simulating packet RTT or jitter.
+Writes use at most 4 KiB bursts. Shaped HTTP responses run in child processes so
+downloads and API forwarding proceed concurrently. Upgraded WebSockets are not
+shaped. Omit both options for ordinary development.
+
+The initial three-realm baseline and independent HTTP/GPU-frame receipts are in
+[`docs/verification/network-first-image-13000.md`](../docs/verification/network-first-image-13000.md).
+
 | Piece | Where | State |
 | --- | --- | --- |
 | The splash | `apps/openagents-web/splash.coax` (layout, stroke font, write-on animation, nebula clock; 5 checks), `face.c` (its Wasm exports), `splash.wgsl` (temporary hand-written WGSL; the nebula is the old page's), `index.html`, `index.md` | Runs in Chrome; a frame read back shows the strokes over the nebula |

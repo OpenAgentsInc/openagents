@@ -1,4 +1,5 @@
-// coax serve: Coaxial's development server. One process, one thread.
+// coax serve: Coaxial's development server. One event loop; shaped file
+// connections use children so a slow download cannot stall the other clients.
 //
 // It serves an app directory over HTTP, watches the app's files and the
 // browser host, rebuilds what changed, and tells every open tab over a
@@ -10,6 +11,10 @@
 // running the last good engine.
 //
 //   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static] [--cache SECONDS] [--api PORT]
+//     [--throttle-mbps N] [--latency-ms M]
+// Shaping covers HTTP responses, including API forwarding and headers: N is decimal
+// Mbit/s per connection (0 disables; minimum 0.001), M delays the first byte.
+// Upgraded WebSockets (including hot reload) are not shaped.
 // Defaults: 127.0.0.1:8800, build command APP_DIR/build.sh, the host files
 // next to this binary's directory (coax/web/).
 //
@@ -27,6 +32,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <math.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
@@ -44,6 +50,7 @@
 #include <unistd.h>
 
 #include "../../verse/voice-host/ws.h"
+#include "http-range.h"
 
 #define MAX_CLIENTS 64
 #define MAX_WATCH 256
@@ -61,6 +68,10 @@ static char app_dir[PATH_MAX], host_dir[PATH_MAX], build_cmd[PATH_MAX + 64];
 static bool static_mode;
 static char cache_control[64] = "public, max-age=300";
 static int api_port;   // --api: /api/ requests go to 127.0.0.1:api_port
+static double throttle_bytes, latency_ms, next_send_ms;
+static bool shaping_send;
+static int shaping_fd = -1;
+static int listen_fd = -1;
 
 #ifdef __APPLE__
 #define MTIME(st) ((st).st_mtimespec)
@@ -71,6 +82,18 @@ static int api_port;   // --api: /api/ requests go to 127.0.0.1:api_port
 static double now_ms(void) {
   struct timeval tv; gettimeofday(&tv, NULL);
   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+}
+static double monotonic_ms(void) {
+  struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+  return t.tv_sec * 1000.0 + t.tv_nsec / 1000000.0;
+}
+static void sleep_until(double deadline) {
+  for (;;) {
+    double ms = deadline - monotonic_ms();
+    if (ms <= 0) return;
+    struct timespec t = {.tv_sec = (time_t)(ms / 1000), .tv_nsec = (long)(fmod(ms, 1000) * 1000000)};
+    if (!nanosleep(&t, NULL) || errno != EINTR) return;
+  }
 }
 
 static void logf_(const char *fmt, ...) {
@@ -100,13 +123,19 @@ static const char *content_type(const char *path) {
   return "text/plain; charset=utf-8";
 }
 
-static void send_all(int fd, const void *data, size_t n) {
+static bool send_all(int fd, const void *data, size_t n) {
   const char *p = data;
   while (n) {
-    ssize_t k = send(fd, p, n, 0);
-    if (k < 0) { if (errno == EINTR) continue; return; }
+    bool paced = shaping_send && fd == shaping_fd && throttle_bytes > 0;
+    if (paced) sleep_until(next_send_ms);
+    size_t part = paced && n > 4096 ? 4096 : n;
+    ssize_t k = send(fd, p, part, 0);
+    if (k < 0) { if (errno == EINTR) continue; return false; }
+    if (!k) return false;
+    if (paced) next_send_ms = monotonic_ms() + (double)k * 1000.0 / throttle_bytes;
     p += k; n -= (size_t)k;
   }
+  return true;
 }
 
 static void respond(int fd, int status, const char *reason, const char *type, const void *body, size_t n) {
@@ -116,7 +145,7 @@ static void respond(int fd, int status, const char *reason, const char *type, co
                    "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n"
                    "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
                    status, reason, type, n, static_mode && status == 200 ? cache_control : "no-store");
-  send_all(fd, head, (size_t)h);
+  if (!send_all(fd, head, (size_t)h)) return;
   if (n) send_all(fd, body, n);
 }
 
@@ -163,7 +192,25 @@ static void not_found(int fd) {
   else respond(fd, 404, "Not Found", "text/plain", "not found\n", 10);
 }
 
-static void serve_file(int fd, const char *url) {
+// Header transport only; the Coax policy selects the range. Duplicate Range
+// fields and If-Range (we do not emit validators) fall back to the full body.
+static void range_header(const char *request, char *out, size_t cap) {
+  out[0] = 0; bool seen = false;
+  const char *p = strstr(request, "\r\n");
+  while (p && p[2] && p[2] != '\r') {
+    p += 2; const char *end = strstr(p, "\r\n"); if (!end) return;
+    if (!strncasecmp(p, "If-Range:", 9)) { out[0] = 0; return; }
+    if (!strncasecmp(p, "Range:", 6)) {
+      if (seen) { out[0] = 0; return; } seen = true;
+      const char *v = p + 6; while (v < end && (*v == ' ' || *v == '\t')) v++;
+      const char *e = end; while (e > v && (e[-1] == ' ' || e[-1] == '\t')) e--;
+      size_t n = (size_t)(e - v); if (n >= cap) return;
+      memcpy(out, v, n); out[n] = 0;
+    }
+    p = end;
+  }
+}
+static void serve_file(int fd, const char *url, const char *request) {
   char path[PATH_MAX + 1024];
   if (!resolve(url, path, sizeof path)) { not_found(fd); return; }
   FILE *f = fopen(path, "rb");
@@ -173,11 +220,28 @@ static void serve_file(int fd, const char *url) {
     not_found(fd);
     return;
   }
-  char *body = malloc((size_t)st.st_size + 1);
-  size_t n = body ? fread(body, 1, (size_t)st.st_size, f) : 0;
+  char value[HTTP_REQUEST_MAX]; range_header(request, value, sizeof value);
+  coax_t_HttpRange r = http_range((coax_string){value, (int64_t)strlen(value)}, st.st_size);
+  char extra[160] = "";
+  if (r.status == 206) snprintf(extra, sizeof extra, "Content-Range: bytes %lld-%lld/%lld\r\n", (long long)r.first, (long long)(r.first + r.length - 1), (long long)st.st_size);
+  if (r.status == 416) snprintf(extra, sizeof extra, "Content-Range: bytes */%lld\r\n", (long long)st.st_size);
+  char head[1024];
+  int h = snprintf(head, sizeof head,
+    "HTTP/1.1 %lld %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\n%s"
+    "Cache-Control: %s\r\nCross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n"
+    "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
+    (long long)r.status, r.status == 206 ? "Partial Content" : r.status == 416 ? "Range Not Satisfiable" : "OK",
+    content_type(path), (long long)r.length, extra, static_mode && r.status != 416 ? cache_control : "no-store");
+  if (fseeko(f, (off_t)r.first, SEEK_SET)) { fclose(f); respond(fd,500,"Read Failed","text/plain","",0); return; }
+  if (!send_all(fd, head, (size_t)h)) {fclose(f);return;}
+  char body[16384]; int64_t left = r.length;
+  while (left > 0) {
+    size_t want = left < (int64_t)sizeof body ? (size_t)left : sizeof body;
+    size_t n = fread(body, 1, want, f); if (!n) break;
+    if (!send_all(fd, body, n)) break;
+    left -= (int64_t)n;
+  }
   fclose(f);
-  respond(fd, 200, "OK", content_type(path), body, n);
-  free(body);
 }
 
 static void drop(client *c) { close(c->fd); c->fd = -1; c->ws = false; c->n = 0; }
@@ -256,6 +320,19 @@ static bool body_in(const client *c) {
 
 // A request is complete: a WebSocket upgrade to /coaxial/live, an /api/ request (--api), or a file.
 static void handle_request(client *c) {
+  if (!shaping_send && (throttle_bytes > 0 || latency_ms > 0) && !is_upgrade(c)) {
+    pid_t pid = fork();
+    if (pid < 0) {respond(c->fd,503,"Busy","text/plain","",0);drop(c);return;}
+    if (pid == 0) {
+      close(listen_fd);
+      for (int i=0;i<MAX_CLIENTS;i++) if (clients[i].fd>=0 && clients[i].fd!=c->fd) close(clients[i].fd);
+      sleep_until(monotonic_ms()+latency_ms);
+      shaping_send = true; shaping_fd = c->fd;
+      next_send_ms = monotonic_ms();
+      handle_request(c);_exit(0);
+    }
+    drop(c);return;
+  }
   char method[8] = {0}, url[1024] = {0};
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
   if (sscanf(c->buf, "%7s %1023s", method, url) != 2 || strcmp(method, "GET")) {
@@ -269,7 +346,7 @@ static void handle_request(client *c) {
     c->ws = true; c->n = 0;
     return;
   }
-  serve_file(c->fd, url);
+  serve_file(c->fd, url, c->buf);
   drop(c);
 }
 
@@ -396,6 +473,13 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_spec = argv[++i];
     else if (!strcmp(argv[i], "--host-dir") && i + 1 < argc) hosts = argv[++i];
     else if (!strcmp(argv[i], "--static")) static_mode = true;
+    else if ((!strcmp(argv[i], "--throttle-mbps") || !strcmp(argv[i], "--latency-ms")) && i+1<argc) {
+      bool rate = !strcmp(argv[i], "--throttle-mbps"); char *end;
+      errno = 0;
+      double v = strtod(argv[++i], &end);
+      if (!argv[i][0] || *end || errno == ERANGE || !isfinite(v) || v<0 || v>1000000 || (rate && v>0 && v<0.001)) {fprintf(stderr,"serve: invalid network shaping value\n");return 2;}
+      if (rate) throttle_bytes = v * 1000000.0 / 8.0; else latency_ms = v;
+    }
     else if (!strcmp(argv[i], "--cache") && i + 1 < argc) {
       int seconds = atoi(argv[++i]);
       if (seconds > 0) snprintf(cache_control, sizeof cache_control, "public, max-age=%d", seconds);
@@ -403,7 +487,7 @@ int main(int argc, char **argv) {
     }
     else if (!strcmp(argv[i], "--build") && i + 1 < argc) cmd = argv[++i];
     else if (!strcmp(argv[i], "--api") && i + 1 < argc) api_port = atoi(argv[++i]);
-    else if (!app) app = argv[i];
+    else if (!app && argv[i][0]!='-') app = argv[i];
     else { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }
   }
   if (!app || !realpath(app, app_dir)) { fprintf(stderr, "usage: serve APP_DIR [--listen HOST:PORT] [--build CMD]\n"); return 2; }
@@ -426,6 +510,7 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   signal(SIGCHLD, SIG_IGN);   // the WebSocket tunnels' children (tunnel) reap themselves
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
+  listen_fd = lfd;
   int one = 1; setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   struct sockaddr_in a = {.sin_family = AF_INET, .sin_port = htons((uint16_t)port)};
   if (inet_pton(AF_INET, host, &a.sin_addr) != 1 || bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 64)) {

@@ -1,0 +1,63 @@
+// Static HTTP single-range selection. Malformed or unsupported ranges are
+// ignored (200); a syntactically valid range with no bytes is 416.
+#authority;
+
+HttpRange :: struct { status:int; first:int; length:int; }
+
+#test "HTTP full closed open and suffix ranges" {
+  r:=http_range("",10);#assert r.status==200 && r.first==0 && r.length==10;
+  r=http_range("bytes=2-5",10);#assert r.status==206 && r.first==2 && r.length==4;
+  r=http_range("bytes=2-99",10);#assert r.status==206 && r.first==2 && r.length==8;
+  r=http_range("bytes=2-",10);#assert r.status==206 && r.first==2 && r.length==8;
+  r=http_range("bytes=-3",10);#assert r.status==206 && r.first==7 && r.length==3;
+  r=http_range("bytes=-20",10);#assert r.status==206 && r.first==0 && r.length==10;
+  r=http_range("bytes=0-0",1);#assert r.status==206 && r.first==0 && r.length==1;
+  r=http_range("bytes=-1",1);#assert r.status==206 && r.length==1;
+  r=http_range("ByTeS=0-1",10);#assert r.status==206 && r.length==2;
+}
+#test "HTTP unsatisfiable empty and malformed ranges" {
+  #assert http_range("bytes=10-",10).status==416;
+  #assert http_range("bytes=0-0",0).status==416;
+  #assert http_range("bytes=-0",10).status==416;
+  bad:=[12]string.["bytes=5-2","bytes=","bytes=-","bytes=1-2,4-5","items=0-1","bytes=+1-2","bytes=1 -2","bytes=1-2x","bytes=9223372036854775808-","bytes=1--2","bytes=:0-","bytes=00"];
+  for s:bad {r:=http_range(s,10);#assert r.status==200 && r.first==0 && r.length==10;}
+  r:=http_range("bytes=9223372036854775807-",10);#assert r.status==416;
+  r=http_range("bytes=-9223372036854775807",10);#assert r.status==206 && r.length==10;
+  r=http_range("bytes=0-9223372036854775807",10);#assert r.status==206 && r.length==10;
+  #assert http_range("aytes=0-1",10).status==200;
+}
+
+http_range_number :: (s:string)->int #effects(all) {
+  if s.count==0 {return -1;}
+  n:int;
+  for ch:s {
+    if ch<'0' || ch>'9' {return -1;}
+    d:=cast(int)(ch-'0');
+    if n>(9223372036854775807-d)/10 {return -1;}
+    n=n*10+d;
+  }
+  return n;
+}
+// Exact integer min for nonnegative lengths, without overflowing a+b.
+http_range_min :: (a:int,b:int)->int #effects(all) {d:=a-b;return b+(d&(d>>63));}
+http_range :: (value:string,size:int)->HttpRange #export_c #effects(all) {
+  full:=HttpRange.{status=200,first=0,length=size};
+  prefix:="bytes=";upper:="BYTES=";
+  for i:0..<prefix.count {if i>=value.count || (value[i]!=prefix[i] && value[i]!=upper[i]) {return full;}}
+  dash:=-1;
+  for i:6..<value.count {if value[i]=='-' {if dash!= -1 {return full;}dash=i;}}
+  if dash== -1 {return full;}
+  left:=value[6..<dash];right:=value[dash+1..<value.count];
+  a:=http_range_number(left);b:=http_range_number(right);
+  if left.count==0 {
+    if b<0 {return full;}
+    if b==0 || size==0 {return HttpRange.{status=416};}
+    take:=http_range_min(b,size);
+    return HttpRange.{status=206,first=size-take,length=take};
+  }
+  if a<0 || (right.count>0 && (b<0 || b<a)) {return full;}
+  if a>=size {return HttpRange.{status=416};}
+  last:=size-1;
+  if right.count!=0 {last=http_range_min(b,last);}
+  return HttpRange.{status=206,first=a,length=last-a+1};
+}

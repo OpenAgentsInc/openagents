@@ -1,0 +1,138 @@
+// Cold-profile network and first completed world frame measurement.
+//   coax/web/tool.sh first-image URL [TIMEOUT_MS]
+// Start serve separately with --throttle-mbps 50 --latency-ms 30.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+FiChunk :: struct { at:f64; encoded:int; body:int; }
+FiRequest :: struct { id:[128]u8; n:int; active:bool; blocking:bool; encoded:int; url:[2048]u8; url_n:int; }
+
+#test "first image includes in-flight bytes but excludes later transfers" {
+  rows:=[4]FiChunk.[FiChunk.{at=1,encoded=4,body=3},FiChunk.{at=2,encoded=5,body=4},FiChunk.{at=3,encoded=6,body=5},FiChunk.{at=2,encoded=0,body=7}];
+  b:=fi_bytes(rows[..],2);#assert b[0]==9 && b[1]==14;
+  b=fi_bytes(rows[..],0);#assert b[0]==0 && b[1]==0;
+  b=fi_bytes(rows[..],3);#assert b[0]==15 && b[1]==19;
+}
+#test "network quiet waits for HTTP assets but excludes local workers and beacons" {
+  #assert fi_blocking("http://localhost/a.bin","Fetch") && fi_blocking("https://example.org/","Document");
+  #assert !fi_blocking("blob:http://localhost/123","Other") && !fi_blocking("data:text/plain,hi","Other");
+  #assert !fi_blocking("https://example.org/api/events","Ping") && !fi_blocking("https://example.org/events","EventSource");
+  #assert !fi_blocking("http://localhost/api/analytics/events","Fetch");
+  #assert fi_blocking("http://localhost/asset?x=/api/y","Fetch");
+}
+fi_blocking :: (url:string,kind:string)->bool {
+  http:=(url.count>=7 && url[0..<7]=="http://") || (url.count>=8 && url[0..<8]=="https://");
+  if http {
+    begin:=ifx url[4]=='s' then 8 else 7;
+    for i:begin..<url.count {if url[i]=='/' {if url.count>=i+5 && url[i..<i+5]=="/api/" {return false;}break;}}
+  }
+  return http && kind!="Ping" && kind!="EventSource";
+}
+fi_bytes :: (rows:[]FiChunk,through:f64)->[2]int {
+  out:[2]int;for r:rows {if r.at<=through {out[0]+=r.encoded;out[1]+=r.body;}}return out;
+}
+fi_number :: (doc:Jv,path:string)->f64 {
+  n:=args_number(jv_raw(doc,jv_path(doc,0,path)));return ifx n.ok then n.value else -1.0;
+}
+fi_slot :: (requests:[]FiRequest,id:string)->int {
+  for i:0..<requests.count {if requests[i].n==id.count && cast(string)requests[i].id[0..<requests[i].n]==id {return i;}}
+  for i:0..<requests.count {if requests[i].n==0 {for k:0..<id.count {requests[i].id[k]=id[k];}requests[i].n=id.count;return i;}}
+  return -1;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>2 {print("usage: first-image URL [TIMEOUT_MS]\n");return 2;}
+  timeout:=180000;
+  if args_count(a[..])==2 {v:=args_number(args_at(a[..],1));if !v.ok || v.value<1000 || v.value>600000 {return 2;}timeout=cast(int)v.value;}
+  c:[1]Cdp;if !cdp_launch_background(c[..],1280,720,"first-image-") {tool_errln(cdp_error(c[..]));return 1;}
+  j:[1]Jo;b:[32768]u8;script:[16384]u8;
+  sn:=fs_read("coax/web/first-image.js",script[..]);if sn<=0 {cdp_close(c[..]);return 1;}
+  ok:=cdp_call(c[..],"Page.enable","",30000)>=0;
+  ok=ok && cdp_call(c[..],"Runtime.enable","",30000)>=0;
+  ok=ok && cdp_call(c[..],"Network.enable","{\"maxTotalBufferSize\":0}",30000)>=0;
+  ok=ok && cdp_call(c[..],"Network.setCacheDisabled","{\"cacheDisabled\":true}",30000)>=0;
+  ok=ok && cdp_call(c[..],"Network.setBypassServiceWorker","{\"bypass\":true}",30000)>=0;
+  ok=ok && cdp_call(c[..],"Runtime.addBinding","{\"name\":\"coaxFirstImage\"}",30000)>=0;
+  ok=ok && cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":720,\"deviceScaleFactor\":1,\"mobile\":false}",30000)>=0;
+  jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],cast(string)script[0..<sn]);jo_end(j[..]);
+  ok=ok && cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),30000)>=0;
+  if !ok {tool_errln(cdp_error(c[..]));cdp_close(c[..]);return 1;}
+  jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],args_at(a[..],0));jo_end(j[..]);
+  // Send without waiting: cdp_call deliberately skips events, including the
+  // navigation's first request. Consume every event from here to quiet.
+  nav:=cdp_send(c[..],"Page.navigate",jo_text(j[..]));if nav<0 {cdp_close(c[..]);return 1;}
+  requests:[4096]FiRequest;chunks:[65536]FiChunk;count:=0;active:=0;failed:=0;http_errors:=0;
+  offset:f64;have_offset:=false;first:f64;first_ms:f64;start:f64;last:f64;
+  begin:=proc_now_ms();last_wall:=begin;quiet:=false;overflow:=false;
+  next_probe:=begin+5000;probe_id:=-1;
+  while proc_now_ms()-begin<timeout {
+    polled:=cdp_poll(c[..],100);
+    if polled==CDP_FAIL || polled==CDP_CLOSED {break;}
+    if polled==CDP_GOT {
+      doc:=c[0].doc[0];method:=cdp_event_method(doc);
+      if cdp_reply_id(doc)==probe_id && probe_id>=0 {
+        result:=jv_path(doc,0,"result.result.value");
+        if jv_kind(doc,result)==JV_STRING {text:[1024]u8;tn:=jv_str(doc,result,text[..]);if tn>0 {tool_errln(cast(string)text[0..<tn]);break;}}
+      }
+      if method=="Runtime.bindingCalled" {
+        payload:[1024]u8;n:=jv_str(doc,jv_path(doc,0,"params.payload"),payload[..]);
+        pd:[1]Jv;pn:[32]JvNode;
+        if n>0 && jv_parse(pd[..],cast(string)payload[0..<n],pn[..]) {first=fi_number(pd[0],"epoch")/1000;first_ms=fi_number(pd[0],"ms");}
+      }
+      if method=="Network.requestWillBeSent" || method=="Network.dataReceived" || method=="Network.loadingFinished" || method=="Network.loadingFailed" || method=="Network.responseReceived" {
+        idbuf:[128]u8;n:=jv_str(doc,jv_path(doc,0,"params.requestId"),idbuf[..]);
+        if n<=0 {overflow=true;break;}
+        slot:=fi_slot(requests[..],cast(string)idbuf[0..<n]);if slot<0 {overflow=true;break;}
+        at:=fi_number(doc,"params.timestamp");if at>last {last=at;}
+        if method=="Network.requestWillBeSent" {
+          requests[slot].url_n=jv_str(doc,jv_path(doc,0,"params.request.url"),requests[slot].url[..]);
+          if requests[slot].url_n<=0 {overflow=true;break;}
+          if !have_offset {offset=fi_number(doc,"params.wallTime")-at;start=at;have_offset=true;}
+          if requests[slot].active && requests[slot].blocking {active-=1;}
+          requests[slot].blocking=requests[slot].url_n>0 && fi_blocking(cast(string)requests[slot].url[0..<requests[slot].url_n],jv_raw(doc,jv_path(doc,0,"params.type")));
+          requests[slot].active=true;if requests[slot].blocking {active+=1;}
+        }
+        if requests[slot].blocking {last_wall=proc_now_ms();}
+        if method=="Network.responseReceived" && fi_number(doc,"params.response.status")>=400 {http_errors+=1;}
+        if method=="Network.dataReceived" {
+          if count==chunks.count {overflow=true;break;}
+          encoded:=cast(int)fi_number(doc,"params.encodedDataLength");body:=cast(int)fi_number(doc,"params.dataLength");
+          chunks[count]=FiChunk.{at=at,encoded=encoded,body=body};count+=1;requests[slot].encoded+=encoded;
+        }
+        if method=="Network.loadingFinished" || method=="Network.loadingFailed" {
+          if requests[slot].active {requests[slot].active=false;if requests[slot].blocking {active-=1;}}
+          if method=="Network.loadingFailed" {failed+=1;}
+          if method=="Network.loadingFinished" {
+            residual:=cast(int)fi_number(doc,"params.encodedDataLength")-requests[slot].encoded;
+            if residual>0 {if count==chunks.count {overflow=true;break;}chunks[count]=FiChunk.{at=at,encoded=residual};count+=1;}
+          }
+        }
+      }
+    }
+    if proc_now_ms()>=next_probe {
+      probe_id=cdp_send(c[..],"Runtime.evaluate","{\"expression\":\"document.getElementById('coaxial-load')?.dataset.state==='fail' ? document.getElementById('coaxial-load').textContent.trim() : null\",\"returnByValue\":true}");
+      next_probe=proc_now_ms()+5000;
+    }
+    if first>0 && active==0 && proc_now_ms()-last_wall>=500 {quiet=true;break;}
+  }
+  before:=fi_bytes(chunks[0..<count],first-offset);total:=fi_bytes(chunks[0..<count],last);
+  adapter_buf:[256]u8;adapter:=cdp_adapter(c[..],adapter_buf[..]);
+  diagnostic:=cdp_evaluate(c[..],"({sceneReady:!!globalThis.coaxial?.sceneReady,loader:document.getElementById('coaxial-load')?.textContent?.trim().slice(0,300)||'',adapter:globalThis.coaxial?.adapter||null})");
+  jo_start(j[..],b[..]);jo_obj(j[..]);
+  jo_key(j[..],"url");jo_str(j[..],args_at(a[..],0));
+  jo_key(j[..],"adapter");jo_str(j[..],adapter);
+  jo_key(j[..],"firstFrameMs");if first>0 {jo_int(j[..],cast(int)first_ms);}else {jo_null(j[..]);}
+  jo_key(j[..],"encodedBytesBeforeFrame");jo_int(j[..],before[0]);jo_key(j[..],"bodyBytesBeforeFrame");jo_int(j[..],before[1]);
+  jo_key(j[..],"encodedBytesTotal");jo_int(j[..],total[0]);
+  jo_key(j[..],"networkQuietMs");if quiet {jo_int(j[..],cast(int)((last-start)*1000));}else {jo_null(j[..]);}
+  jo_key(j[..],"quietWindowMs");jo_int(j[..],500);jo_key(j[..],"activeRequests");jo_int(j[..],active);
+  jo_key(j[..],"failedRequests");jo_int(j[..],failed);jo_key(j[..],"httpErrors");jo_int(j[..],http_errors);
+  ignored:=0;for i:0..<requests.count {if requests[i].active && !requests[i].blocking {ignored+=1;}}
+  jo_key(j[..],"pendingBackgroundRequests");jo_int(j[..],ignored);
+  jo_key(j[..],"pendingAssetUrls");jo_arr(j[..]);shown:=0;
+  for i:0..<requests.count {if requests[i].active && requests[i].blocking && shown<8 {jo_str(j[..],cast(string)requests[i].url[0..<requests[i].url_n]);shown+=1;}}jo_end(j[..]);
+  jo_key(j[..],"overflow");jo_bool(j[..],overflow);jo_end(j[..]);
+  if j[0].bad {tool_errln("first-image: output exceeds its bound");cdp_close(c[..]);return 1;}
+  print("%\n",jo_text(j[..]));
+  if diagnostic>=0 {tool_errln(jv_raw(c[0].doc[0],diagnostic));}
+  cdp_close(c[..]);return ifx first>0 && quiet && !overflow then 0 else 1;
+}
