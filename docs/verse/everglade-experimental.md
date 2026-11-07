@@ -18,8 +18,14 @@ interactive doors have not yet been authored. The homes and their surroundings
 are furnished with 112 placements of 20 Fantasy Props Standard models; these props
 are visual and do not yet have separate collision shapes. The terrain is levelled under the
 sites and blends back into the meadow. The extra geometry uses a single padded
-texture atlas and a 64 MiB pack budget; the original Character Create pack
-retains its 32 MiB budget.
+texture atlas; the original Character Create pack retains its 32 MiB budget.
+
+The experimental pack's showcase profile raises its budget to 128 MiB and
+adds one static specimen of each of the 103 Ultimate Food, 106 Ultimate RPG,
+48 Modular Dungeon and 12 Ultimate Animated Animals models. Food and RPG
+models stand in rows south of spawn, animals stand to their west, and dungeon
+pieces are displayed in the southeast meadow. The animals are static and the
+showcase pieces do not yet supply collision shapes.
 
 A watchmaker’s workshop stands east of spawn at (15, -5). Its multi-storey
 building has a clock on the front gable, workbenches and storage on two floors,
@@ -35,6 +41,10 @@ shared library (the archived scene is read as data; its scripts are never run):
 nature_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source nature "$HOME/.openagents/assets")"
 village_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source village "$HOME/.openagents/assets")"
 props_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy-props "$HOME/.openagents/assets")"
+food_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-food "$HOME/.openagents/assets")"
+rpg_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-rpg "$HOME/.openagents/assets")"
+dungeon_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source dungeon "$HOME/.openagents/assets")"
+animal_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-animals-static "$HOME/.openagents/assets")"
 unzip -p "$village_root/Engine Projects/Godot.zip" \
   'Godot/addons/quaternius/medievalvillagemegakit/L_SampleScene_1.tscn' > /tmp/everglade-village-source.tscn
 coax/web/tool.sh verse/tools/assets/village_layout.coax /tmp/everglade-village-source.tscn \
@@ -42,10 +52,12 @@ coax/web/tool.sh verse/tools/assets/village_layout.coax /tmp/everglade-village-s
 coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack --experimental \
-  "$village_root" assets/registry/scenes/everglade-experimental-village.layout "$props_root"
+  "$village_root" assets/registry/scenes/everglade-experimental-village.layout "$props_root" \
+  assets/registry/scenes/everglade-experimental-showcase.layout "$HOME/.openagents/assets/objects" \
+  "$food_root" "$rpg_root" "$dungeon_root" "$animal_root"
 coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
   assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
 python3 verse/tools/assets/character_glade_oracle.py \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
-  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase
 ```

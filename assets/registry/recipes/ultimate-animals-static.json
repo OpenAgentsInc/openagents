@@ -1,0 +1,22 @@
+{
+  "schema": "oa-blender-recipe-v1",
+  "package": "ultimate-animals-static",
+  "mode": "file",
+  "garments": false,
+  "blends": [
+    "Blends/Alpaca.blend",
+    "Blends/Bull.blend",
+    "Blends/Cow.blend",
+    "Blends/Deer.blend",
+    "Blends/Donkey.blend",
+    "Blends/Fox.blend",
+    "Blends/Horse.blend",
+    "Blends/Horse_White.blend",
+    "Blends/Husky.blend",
+    "Blends/ShibaInu.blend",
+    "Blends/Stag.blend",
+    "Blends/Wolf.blend"
+  ],
+  "preview_exclude_prefix": "",
+  "origin_mode": "scene"
+}

@@ -8,13 +8,14 @@ revision = json.loads((repo/'assets/registry/scenes/character-glade.json').read_
 experimental = '--experimental' in sys.argv[3:]
 village = '--village' in sys.argv[3:]
 props = '--props' in sys.argv[3:]
+showcase = '--showcase' in sys.argv[3:]
 assert not props or village
 assert not village or experimental
 source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' else Path.home()/'.openagents/assets/originals'/revision/'source'
 
 def parts(b):
     magic, n, total, budget, table, *_ = struct.unpack_from('<4s7I', b)
-    assert (magic==b'VPK1' or (magic==b'VPK2' and n>48)) and len(b)==total<=budget<=(64 if village else 32)*1024*1024
+    assert (magic==b'VPK1' or (magic==b'VPK2' and n>48)) and len(b)==total<=budget<=(128 if showcase else 64 if village else 32)*1024*1024
     out = {}
     for i in range(n):
         kind, license, _, offset, size, _, name = struct.unpack_from('<BBHIII32s', b, table+i*48)
@@ -41,7 +42,7 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -52,6 +53,7 @@ for i in range(verts):
         if 100<=marker<=110: village_vertices.append(i)
         elif 111<=marker<=114: prop_vertices.append(i)
         elif marker==115: clock_vertices.append(i)
+        elif marker==115.25: showcase_vertices.append(i)
         else: rock_vertices+=1
     if kind==1:
         ao=struct.unpack_from('<f',vb,at+28)[0]; assert .49<=ao<=1.01
@@ -174,10 +176,28 @@ if village:
                     assert ids[ii:ii+len(triangles)]==tuple(vi+x for x in triangles)
                     vi+=len(vertices);ii+=len(triangles)
         assert vi==prop_vertices[-1]+1
-        assert clock_vertices==list(range(vi,vi+280)) and len(ids)-ii==372
+        assert clock_vertices==list(range(vi,vi+280))
         for i in clock_vertices:
             assert 15.8<=pos[i][0]<=18.2 and abs(pos[i][2]+.55)<.08
-        assert all(vi<=v<vi+280 for v in ids[ii:]);ii=len(ids)
+        assert all(vi<=v<vi+280 for v in ids[ii:ii+372]);ii+=372;vi+=280
+        if showcase:
+            assert showcase_vertices==list(range(vi,showcase_vertices[-1]+1))
+            rows=(repo/'assets/registry/scenes/everglade-experimental-showcase.layout').read_text().splitlines()
+            assert len(rows)==269
+            for row in rows:
+                package,name,sha=row.split('|');blob=(Path.home()/'.openagents/assets/objects'/sha).read_bytes()
+                assert hashlib.sha256(blob).hexdigest()==sha
+                size=struct.unpack_from('<I',blob,12)[0]; doc=json.loads(blob[20:20+size]); payload=blob[28+size:]
+                for node in doc['nodes']:
+                    if 'mesh' not in node: continue
+                    for primitive in doc['meshes'][node['mesh']]['primitives']:
+                        nv=doc['accessors'][primitive['attributes']['POSITION']]['count']
+                        triangles=[x[0] for x in accessor(doc,payload,primitive['indices'])]
+                        assert ids[ii:ii+len(triangles)]==tuple(vi+x for x in triangles),(package,name)
+                        assert showcase_vertices[0]<=vi<=vi+nv-1<=showcase_vertices[-1]
+                        vi+=nv;ii+=len(triangles)
+            assert vi==showcase_vertices[-1]+1
+        else: assert not showcase_vertices
     else: assert not prop_vertices and not clock_vertices
     assert ii==len(ids)
 
