@@ -11,7 +11,7 @@ character you saved in Character Create, on Everglade's controller and follow ca
 ## Walk it
 
 - Open `/worlds/everglade2`.
-- W, A, S, and D walk. Shift walks instead of running. Space jumps.
+- W, A, S, and D walk. Hold Shift to run. Space jumps.
 - Drag to look. Scroll to zoom. The arrow keys turn the camera.
 - On a touch screen, the left thumb walks and the right thumb looks.
 - `?at=METRES` starts you that far down the path, for example `/worlds/everglade2?at=300`. The
@@ -30,7 +30,8 @@ share:
   (`e2_road_x`). Its grade never climbs steeper than one in five.
 - The valley walls rise into wooded ridges away from the path.
 - `e2_forest` is how thick the woods stand: thick on both sides of the path and crowding it, none
-  in the glade or the clearing.
+  in the glade or the clearing. The woods close round the glade on every side, from 17 m out of
+  its middle (`e2_wooded`), so the only open ground is the glade and the clearing.
 - The clearing is a wide bowl, about 68 m across, at the path's end (`e2_clearing`).
 - `e2_autumn` colours the tree crowns. `e2_gold` colours the ground and grass: the glade's own
   gold inside it, and a gentle share outside it, so the woods' floor and the clearing stay
@@ -41,14 +42,16 @@ share:
 `verse/everglade2/plant.coax` places every kit piece as a pure function of the land, cell by
 16 m cell. The page plants all of them at load, in a fraction of a second:
 
-- Trees stand on a jittered 3.1 m grid where the woods are thick, never on the path or in the
-  clearing. There are oaks, birches, and pines, with autumn crowns in the autumn patches.
-- The understory has ferns, bushes, flowers, mushrooms, clover, and rocks, with more of them on
-  the verges.
+- Trees stand on a jittered 2.6 m grid where the woods are thick, never on the path or in the
+  clearing. The first trunks stand 2.6 m from the path's middle, and trees grow larger away
+  from the path, so their crowns make a continuous canopy behind the near trunks. There are
+  oaks, birches, and pines, with autumn crowns in the autumn patches.
+- The understory has ferns, bushes, flowers, mushrooms, clover, and rocks. It is thickest on the
+  verges and between the trunks within 35 m of the path.
 - Grass tufts (the glade's three grass meshes) grow on the verges and thickly in the clearing.
 - Now and then a boulder stands in the woods.
 
-That comes to about 88,000 pieces. Tests check that none stand on the path, that no tree stands
+That comes to about 100,000 pieces. Tests check that none stand on the path, that no tree stands
 in the clearing, and that trees crowd the path.
 
 ## The pack
@@ -60,8 +63,9 @@ in the clearing, and that trees crowd the path.
 - The glade's own composition, placed on Everglade II's land.
 - The ground: the glade's grid, a 1 m ribbon along the path that widens round the clearing,
   and coarse 4 m ground out to the valley's edges.
-- The 36 kit pieces, each at the origin. Each tree has three levels of detail: whole, two crown
-  cards in three, and one crown card in three.
+- The 36 kit pieces, each at the origin. Each tree has three levels of detail: whole; two crown
+  cards in three with bark on the lower half; and one crown card in three with bark on the
+  trunk only.
 
 Build it from the repository root:
 
@@ -81,7 +85,14 @@ coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
   round tree trunks and boulders.
 - Each frame, the page picks the pieces in view, sorts them into one run for each kit piece and
   level of detail, and draws each run as one instanced draw. About 75 draws make a frame.
+- Trees are whole to 36 m and lighter to 70 m. Past 70 m, one tree in three stands for its
+  neighbours, a third larger, and past 160 m one in six, half again larger.
+- The glade's own grass draws only while the glade is near and in view.
+- The follow camera keeps above the ground and in front of the trunks between it and you.
 - The key light's shadow map follows you, 68 m across, in 2 m steps.
+
+At 1920 by 1080 on an Apple silicon Mac, a frame takes about 9 ms of GPU time at the glade and
+about 7 ms on the path, so the page holds 60 frames a second.
 
 `gpu/everglade2.coax` holds the passes. It uses Character Create's glade light, sky, fog, and
 materials, adds the kit pieces' vertex stage and the grass tufts' shading, and gives the woods'

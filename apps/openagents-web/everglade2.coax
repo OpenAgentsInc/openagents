@@ -20,6 +20,7 @@ E2_DRAWS :: 256;              // draws a pass at most
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
 E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
 E2_BUCKETS :: E2_KITS * E2_LODS;
+E2_CAM_TRUNKS :: 64;          // trunks the follow camera keeps in front of
 E2_SHADOW_REACH :: 40.0;      // metres from the shadow map's centre a piece still casts
 E2_NEAR_BODIES :: 24;         // trunks the controller walks round
 E2_LOOK_DRAG :: 0.0055; E2_WHEEL_ZOOM :: 0.006;
@@ -85,6 +86,8 @@ e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   for i: 0..<40 { z := -40 - f32(i) * 10; x := e2_road_x(z); hd := e2_auto_heading(x, z);
     nz := z + cos(hd) * 2; nx := x + sin(hd) * 2; #assert nz < z && e2_may_stand(nx, nz); }
   hd := e2_auto_heading(e2_clear_x(), E2_CLEAR_Z + 5); #assert cos(hd) < 0;
+  // the controller then goes that way, not back up the path
+  for i: 0..<8 { h := f32(i) * 0.785 - 3.1; t := e2_walk_theta(h); #assert abs(-sin(t) - sin(h)) < 0.001 && abs(-cos(t) - cos(h)) < 0.001; }
 }
 // ?walk: your character walks the path by itself, at a walk, and the camera eases in behind (the
 // film's way to walk it; any key takes over).
@@ -140,12 +143,14 @@ e2_auto_heading :: (x: f32, z: f32) -> f32 {
   if z < E2_CLEAR_Z + 10 { cx := e2_clear_x(); return atan2(cx - x, E2_CLEAR_Z - 12 - z); }
   tz := z - 5; return atan2(e2_road_x(tz) - x, tz - z);
 }
+// The controller's theta is the camera's (walk.coax: forward goes along -(sin theta, cos theta));
+// a heading is the way you face, along (sin, cos).
+e2_walk_theta :: (heading: f32) -> f32 { return figs.wrap_angle(heading + 3.14159265); }
 e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
   if s[0].autowalk && h == 0 {
     if s[0].you_z < E2_CLEAR_Z - 6 { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
-    heading := e2_auto_heading(s[0].you_x, s[0].you_z);
-    return EgMoveIn.{key_y = 1, run = true, theta = heading};
+    return EgMoveIn.{key_y = 1, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
   }
   if h != 0 { s[0].autowalk = false; }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
@@ -225,7 +230,7 @@ e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all)
 e2_follow :: (s: [] E2, dt: f32) {
   if s[0].autowalk {
     // the camera eases round behind the walk
-    want := figs.wrap_angle(e2_auto_heading(s[0].you_x, s[0].you_z) - 3.14159265);
+    want := e2_auto_heading(s[0].you_x, s[0].you_z);
     turn := figs.wrap_angle(want - s[0].orbit.yaw);
     s[0].orbit.yaw = figs.wrap_angle(s[0].orbit.yaw + turn * (ifx dt * 1.5 < 1 then dt * 1.5 else 1.0f32));
   }
@@ -245,6 +250,24 @@ e2_follow :: (s: [] E2, dt: f32) {
     px := ray.from.x + ray.dir.x * t; py := ray.from.y + ray.dir.y * t; pz := ray.from.z + ray.dir.z * t;
     if py < e2_height(px, pz) + 0.35 { room = t * 0.9; break; }
   }
+  // and in front of the trunks between the eye and you: three spheres up each trunk near the ray
+  spheres: [E2_CAM_TRUNKS * 3 * 4] f32; sn := 0; pv := o.pivot;
+  ci := cast(int) floor((pv.x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - pv.z) / f32(E2_CELL));
+  for dj: -1..<2 { for di: -1..<2 {
+    i := ci + di; j := cj + dj;
+    if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z || !s[0].plant_done { continue; }
+    c := j * E2_CELLS_X + i;
+    for q: s[0].first[c]..<s[0].first[c + 1] {
+      if cast(int) s[0].kinds[q] >= E2_TREES || sn >= E2_CAM_TRUNKS { continue; }
+      qo := q * E2_ITEM_FLOATS; px := s[0].items[qo]; pz := s[0].items[qo + 2];
+      if (px - pv.x) * (px - pv.x) + (pz - pv.z) * (pz - pv.z) > 100 { continue; }
+      r := 0.30 * s[0].items[qo + 5] + 0.35;
+      for k: 0..<3 { m := (sn * 3 + k) * 4; spheres[m] = px; spheres[m + 1] = pv.y - 0.5 + f32(k) * 1.6; spheres[m + 2] = pz; spheres[m + 3] = r; }
+      sn += 1;
+    }
+  }}
+  none: [4] f32;
+  if sn > 0 { trunks := figs.verse_orbit_room(o, spheres[0..<sn * 12], none[0..<0]); if trunks < room { room = trunks; } }
   s[0].orbit = figs.verse_orbit_limit(o, room, dt);
 }
 e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
@@ -324,10 +347,13 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
           reach := ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 2.5f32;
           if !e2_in_view(s, px, py + reach * 0.5, pz, reach) { continue; }
           if kit < E2_TREES { lod = ifx dd < f32(E2_LOD1) then 0 else ifx dd < f32(E2_LOD2) then 1 else 2; }
+          // far off, one tree in three stands for its neighbours, a third larger; further, one in six
+          if lod == 2 && (q % 3 != 0 || (dd > f32(E2_FAR_THIN) && q % 6 != 0)) { continue; }
         }
         b := kit * E2_LODS + lod;
         if s[0].kit_count[b] <= 0 { continue; }
-        if pass == 1 { at := (start[b] + counts[b]) * E2_ITEM_FLOATS; for k: 0..<E2_ITEM_FLOATS { s[0].inst[at + k] = s[0].items[o + k]; } }
+        if pass == 1 { at := (start[b] + counts[b]) * E2_ITEM_FLOATS; for k: 0..<E2_ITEM_FLOATS { s[0].inst[at + k] = s[0].items[o + k]; }
+          if lod == 2 { grow := ifx dd > f32(E2_FAR_THIN) then 1.5f32 else 1.3f32; s[0].inst[at + 4] *= grow; s[0].inst[at + 5] *= grow; } }
         counts[b] += 1;
       }
     }
@@ -347,10 +373,13 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   near_glade := s[0].shade[2] > -75;
   if near_glade { sn = e2_draw(s[0].shadow[..], sn, c.glade_first, c.glade_count, 0, 1); }
   rec := 1;
+  // the glade's grass only while the glade is near and in view: it is most of the glade's cost
+  glade_near := s[0].eye[2] > -110 && e2_in_view(s, 0, 2, -20, 40);
   for gi: 0..<c.grass_groups {
     g := c.grass[gi]; e2_rec_clear(s, rec);
     s[0].records[rec * 24] = f32(g.word); s[0].records[rec * 24 + 7] = f32(c.glade_word); s[0].records[rec * 24 + 15] = 17;
-    n = e2_draw(s[0].draws[..], n, g.first, g.count, (rec + 1) << 16, g.n); rec += 1;
+    if glade_near { n = e2_draw(s[0].draws[..], n, g.first, g.count, (rec + 1) << 16, g.n); }
+    rec += 1;
   }
   // your character: the look Character Create saved, walking as the controller moves you
   a := s[0].anim[..];
@@ -394,5 +423,13 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 6 { return cast(int)(s[0].orbit.shown * 100); }
   if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
   if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
+  // 9 trees planted within 12 m of you, 10 of them drawn this frame (debug)
+  if field == 9 || field == 10 {
+    src := ifx field == 9 then s[0].planted else s[0].inst_n; t := 0;
+    for q: 0..<src { o := q * E2_ITEM_FLOATS; x := ifx field == 9 then s[0].items[o] else s[0].inst[o]; z := ifx field == 9 then s[0].items[o + 2] else s[0].inst[o + 2];
+      if field == 9 && cast(int) s[0].kinds[q] >= E2_TREES { continue; }
+      if (x - s[0].you_x) * (x - s[0].you_x) + (z - s[0].you_z) * (z - s[0].you_z) < 144 { t += 1; } }
+    return t;
+  }
   return -1;
 }

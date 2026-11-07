@@ -127,13 +127,17 @@ gp_grass_seeds :: (w:[]Gp,white:int,group:int,proposals:int,source_height:f32) {
 }
 // One kit piece at the origin; a tree's thinner crowns re-use its vertices (level 1 two cards in
 // three, level 2 one in three).
+gp_vy :: (w:[]Gp,v:int)->f32 {return f32_from_bits(cast(u32)gl_u32(w[0].v[..],v*32+4));}
 gp_kit :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,k:int) {
  v0:=w[0].nv;t0:=w[0].ni;gp_mesh_scaled(w,g,iw,root,E2_KIT_NAME[k],0,0,1,1,0,[3]f32.[1,1,1],0);t1:=w[0].ni;
  w[0].kfirst[k*E2_LODS]=t0;w[0].kcount[k*E2_LODS]=t1-t0;if k>=E2_TREES {return;}
+ top:f32=0;for v:v0..<w[0].nv {y:=gp_vy(w,v);if y>top {top=y;}}
  for lod:1..<E2_LODS {w[0].kfirst[k*E2_LODS+lod]=w[0].ni;
   for t:t0/3..<t1/3 {a:=gl_u32(w[0].i[..],t*12);b:=gl_u32(w[0].i[..],t*12+4);c:=gl_u32(w[0].i[..],t*12+8);
    leaf:=(gl_u32(w[0].v[..],a*32+12)>>24)==1;card:=((ifx a<b then a else b)-v0)/4;
-   keep:=!leaf || (ifx lod==1 then card%3!=2 else card%3==0);if keep {gp_tri(w,a,b,c);}}
+   // further off, the branches inside the crown go: only the trunk and the lower boughs keep bark
+   cut:=ifx lod==1 then top*0.5 else top*0.3;low:=gp_vy(w,a)<cut || gp_vy(w,b)<cut || gp_vy(w,c)<cut;
+   keep:=ifx leaf then (ifx lod==1 then card%3!=2 else card%3==0) else low;if keep {gp_tri(w,a,b,c);}}
   w[0].kcount[k*E2_LODS+lod]=w[0].ni-w[0].kfirst[k*E2_LODS+lod];}
 }
 gp_entry :: (out:[]u8,row:int,kind:int,license:int,name:string,offset:int,size:int) {

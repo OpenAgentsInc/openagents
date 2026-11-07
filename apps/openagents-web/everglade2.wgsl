@@ -1187,7 +1187,7 @@ fn coax_p_e2_gold(p_x: f32, p_z: f32) -> f32 {
   var l_z: f32 = p_z;
   var l_o: f32;
   var l_patch: f32;
-  l_o = coax_p_e2_outside(l_x, l_z);
+  l_o = coax_p_e2_woods_share(l_x, l_z);
   l_patch = coax_p_e2_smooth(0x1.99999ap-2f, 0x1.3d70a4p-1f, coax_p_e2_noise(((l_x / 0x1.e00000p5f) + 0x1.8cccccp1f), ((l_z / 0x1.e00000p5f) - 0x1.b33334p0f)));
   return ((coax_p_cg_autumn(l_x, l_z) * (0x1.000000p0f - l_o)) + ((l_patch * l_o) * 0x1.333334p-2f));
 }
@@ -1619,13 +1619,11 @@ fn coax_p_cg_ramp(p_a: f32, p_b: f32, p_x: f32) -> f32 {
 fn coax_p_e2_forest(p_x: f32, p_z: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_z: f32 = p_z;
-  var l_o: f32;
   var l_rd: f32;
   var l_clump: f32;
-  l_o = coax_p_e2_outside(l_x, l_z);
   l_rd = coax_p_e2_road_dist(l_x, l_z);
-  l_clump = (0x1.666666p-1f + (0x1.333334p-2f * coax_p_e2_smooth(0x1.000000p-2f, 0x1.333334p-1f, coax_p_e2_noise(((l_x / 0x1.e00000p4f) - 0x1.0cccccp2f), ((l_z / 0x1.e00000p4f) + 0x1.a66666p2f)))));
-  return (((l_clump * coax_p_cg_ramp(0x1.400000p1f, 0x1.200000p2f, l_rd)) * coax_p_cg_ramp(0x1.99999ap-5f, 0x1.000000p-1f, l_o)) * (0x1.000000p0f - coax_p_e2_clearing(l_x, l_z)));
+  l_clump = (0x1.a3d70ap-1f + (0x1.70a3d8p-3f * coax_p_e2_smooth(0x1.000000p-2f, 0x1.333334p-1f, coax_p_e2_noise(((l_x / 0x1.e00000p4f) - 0x1.0cccccp2f), ((l_z / 0x1.e00000p4f) + 0x1.a66666p2f)))));
+  return (((l_clump * coax_p_cg_ramp(0x1.400000p1f, 0x1.000000p2f, l_rd)) * coax_p_e2_wooded(l_x, l_z)) * (0x1.000000p0f - coax_p_e2_clearing(l_x, l_z)));
 }
 fn coax_p_cg_leaf_palette(p_tint: vec3f, p_age: f32) -> vec3f {
   var l_tint: vec3f = p_tint;
@@ -1916,30 +1914,14 @@ fn coax_p_wg_snorm8(p_b: u32) -> f32 {
   }
   return coax_p_fmax((l_s / 0x1.fc0000p6f), (-0x1.000000p0f));
 }
-fn coax_p_e2_outside(p_x: f32, p_z: f32) -> f32 {
+fn coax_p_e2_woods_share(p_x: f32, p_z: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_z: f32 = p_z;
-  var l_dx: f32;
-  var l_dz: f32;
-  l_dx = (l_x - 0x1.c00000p4f);
-  if ((((-0x1.e00000p4f) - l_x) > l_dx))
-  {
-    l_dx = ((-0x1.e00000p4f) - l_x);
-  }
-  if ((l_dx < 0.0f))
-  {
-    l_dx = 0.0f;
-  }
-  l_dz = (l_z - 0x1.000000p3f);
-  if ((((-0x1.500000p5f) - l_z) > l_dz))
-  {
-    l_dz = ((-0x1.500000p5f) - l_z);
-  }
-  if ((l_dz < 0.0f))
-  {
-    l_dz = 0.0f;
-  }
-  return coax_p_cg_ramp(0.0f, 0x1.c00000p4f, sqrt(((l_dx * l_dx) + (l_dz * l_dz))));
+  var l_a: f32;
+  var l_b: f32;
+  l_a = coax_p_e2_outside(l_x, l_z);
+  l_b = coax_p_e2_wooded(l_x, l_z);
+  return select(l_b, l_a, (l_a > l_b));
 }
 fn coax_p_e2_noise(p_x: f32, p_z: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -2070,6 +2052,11 @@ fn coax_p_cg_road_x(p_z: f32) -> f32 {
   l_b = coax_p_cg_ramp((-0x1.a00000p3f), (-0x1.300000p4f), l_z);
   return ((coax_p_cg_path_x(l_z) * (0x1.000000p0f - l_b)) + ((0x1.a66666p1f + (0x1.333334p-2f * sin(((l_z + 0x1.500000p4f) * 0x1.000000p-2f)))) * l_b));
 }
+fn coax_p_e2_wooded(p_x: f32, p_z: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  return coax_p_cg_ramp(0x1.100000p4f, (0x1.100000p4f + 0x1.c00000p2f), sqrt(((l_x * l_x) + (l_z * l_z))));
+}
 fn coax_p_e2_clearing(p_x: f32, p_z: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_z: f32 = p_z;
@@ -2162,6 +2149,31 @@ fn coax_p_film_rec709(p_linear: vec3f) -> vec3f {
   l_c = coax_p_film_mix_grey(l_c, 0x1.dc28f6p-1f);
   l_c = coax_p_film_out(l_c);
   return coax_p_film_rgb(coax_p_film_max(l_c.x, 0.0f), coax_p_film_max(l_c.y, 0.0f), coax_p_film_max(l_c.z, 0.0f));
+}
+fn coax_p_e2_outside(p_x: f32, p_z: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_dx: f32;
+  var l_dz: f32;
+  l_dx = (l_x - 0x1.c00000p4f);
+  if ((((-0x1.e00000p4f) - l_x) > l_dx))
+  {
+    l_dx = ((-0x1.e00000p4f) - l_x);
+  }
+  if ((l_dx < 0.0f))
+  {
+    l_dx = 0.0f;
+  }
+  l_dz = (l_z - 0x1.000000p3f);
+  if ((((-0x1.500000p5f) - l_z) > l_dz))
+  {
+    l_dz = ((-0x1.500000p5f) - l_z);
+  }
+  if ((l_dz < 0.0f))
+  {
+    l_dz = 0.0f;
+  }
+  return coax_p_cg_ramp(0.0f, 0x1.c00000p4f, sqrt(((l_dx * l_dx) + (l_dz * l_dz))));
 }
 fn coax_p_cg_hash(p_a: f32, p_b: f32) -> f32 {
   var l_a: f32 = p_a;

@@ -20,11 +20,11 @@ E2_LODS :: 3;
 // How far each kit is drawn (metres), and a tree's levels of detail start.
 E2_KIT_FAR :: [36] f32.[300,300,300,300,300,300,300,300,300,300,300,300,300,300,300,
  95,95,95,80,80, 110,110,110,240,240, 45,45,45,26,45,55,40,26, 42,42,42];
-E2_LOD1 :: 42.0; E2_LOD2 :: 125.0;
+E2_LOD1 :: 36.0; E2_LOD2 :: 70.0; E2_FAR_THIN :: 160.0;
 E2_CELL :: 16.0;         // metres a planting cell
 E2_CELLS_X :: 27; E2_CELLS_Z :: 46;
 E2_CELL_X0 :: -200.0; E2_CELL_Z0 :: 80.0;   // the first cell's west and north... south edge: cells run to -z
-E2_ITEMS :: 110000;      // the most kit pieces planted
+E2_ITEMS :: 170000;      // the most kit pieces planted
 E2_ITEM_FLOATS :: 8;     // x y z yaw, vertical scale, horizontal scale, red*65280+green*255 (bytes), blue (+2: grass)
 
 #test "the woods are planted, dense beside the path, none on it or in the clearing" #steps 4000000000 {
@@ -49,7 +49,7 @@ e2_plant :: (out:[]f32,kinds:[]u8,first:[]int)->int {
  for j:0..<E2_CELLS_Z {for i:0..<E2_CELLS_X {c:=j*E2_CELLS_X+i;first[c]=n;n=e2_plant_cell(out,kinds,n,i,j);}}
  first[E2_CELLS_X*E2_CELLS_Z]=n;return n;
 }
-E2_TREE_STEP :: 3.1;
+E2_TREE_STEP :: 2.6;
 e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
  n:=n0;x0:=e2_cell_x(i);z0:=e2_cell_z(j);cs:=f32(E2_CELL);seed:=f32(i*131+j*977);
  // trees on a jittered grid
@@ -58,9 +58,9 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
   h:=seed+f32(a*7+b*13);
   x:=x0+(f32(a)+0.15+0.7*cg_hash(h,1))*f32(E2_TREE_STEP);z:=z0-(f32(b)+0.15+0.7*cg_hash(h,2))*f32(E2_TREE_STEP);
   if x<E2_WEST+4 || x>E2_EAST-4 || z<E2_FAR+4 || z>E2_BACK-4 {continue;}
-  f:=e2_forest(x,z);if cg_hash(h,3)>f*0.92 {continue;}
+  f:=e2_forest(x,z);if cg_hash(h,3)>f*0.97 {continue;}
   rd:=e2_road_dist(x,z);if rd<2.6 || e2_path(x,z)>0.05 || e2_clearing(x,z)>0.3 {continue;}
-  au:=e2_autumn(x,z);r:=cg_hash(h,4);v:=int(cg_hash(h,5)*4.999);big:=ifx rd>25 then 1.15f32 else 1.0f32;
+  au:=e2_autumn(x,z);r:=cg_hash(h,4);v:=int(cg_hash(h,5)*4.999);big:=1.0f32+0.35f32*cg_ramp(10,30,rd);
   sz:=cg_hash(h,6);yaw:=cg_hash(h,7)*6.283;stretch:=1+cg_hash(h,8)*0.3;
   kit:=0;c:=[3]f32.[0.50,0.80,0.10];s:f32=1;
   greens:=[4][3]f32.[[3]f32.[0.50,0.80,0.10],[3]f32.[0.42,0.72,0.12],[3]f32.[0.58,0.82,0.14],[3]f32.[0.36,0.66,0.10]];
@@ -80,14 +80,14 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
   n=e2_put(out,kinds,n,kit,x,e2_height(x,z)-0.08,z,yaw,s*stretch,s,c);
  }}
  // the understory: flowers, ferns, bushes, rocks, mushrooms and plants
- for q:0..<72 {
+ for q:0..<120 {
   h:=seed*1.37+f32(q)*3.1+0.5;
   x:=x0+cg_hash(h,11)*cs;z:=z0-cg_hash(h,12)*cs;
   if x<E2_WEST+2 || x>E2_EAST-2 || z<E2_FAR+2 || z>E2_BACK-2 {continue;}
-  o:=e2_outside(x,z);if o<0.2 || e2_path(x,z)>0.3 {continue;}
+  o:=e2_wooded(x,z);if o<0.2 || e2_path(x,z)>0.3 {continue;}
   rd:=e2_road_dist(x,z);f:=e2_forest(x,z);cl:=e2_clearing(x,z);au:=e2_autumn(x,z);
   verge:=rd>1.6 && rd<6 && cl<0.5;
-  p:=ifx verge then 0.95f32 else ifx cl>0.5 then 0.75f32 else ifx f>0.2 then 0.45f32 else 0.2f32;
+  p:=ifx verge then 0.95f32 else ifx cl>0.5 then 0.45f32 else ifx f>0.2 then (ifx rd<35 then 0.8f32 else 0.15f32) else 0.12f32;
   if cg_hash(h,13)>p {continue;}
   r:=cg_hash(h,14);sz:=cg_hash(h,15);yaw:=cg_hash(h,16)*6.283;y:=e2_height(x,z);
   green:=[3]f32.[0.36,0.80,0.08];fern:=ifx cg_hash(h,17)<0.5 then [3]f32.[0.32,0.65,0.045] else [3]f32.[0.23,0.53,0.035];

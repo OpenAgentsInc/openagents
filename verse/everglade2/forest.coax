@@ -20,6 +20,10 @@ E2_WALK :: 11.0;       // metres either side of the path you may wander
  #assert e2_clearing(e2_clear_x(),E2_CLEAR_Z)>0.99 && e2_forest(e2_clear_x(),E2_CLEAR_Z)==0 && e2_forest(e2_road_x(-250)+9,-250)>0.3;
  #assert e2_height(0,0)==0;
 }
+#test "the woods close round the glade and leave its open ground alone" {
+ for i:0..<16 {a:=f32(i)*0.3927;#assert e2_forest(cos(a)*16,sin(a)*16)==0;}
+ for i:0..<16 {a:=f32(i)*0.3927;x:=cos(a)*30;z:=sin(a)*30;#assert e2_forest(x,z)>0.75 || e2_road_dist(x,z)<4;}
+}
 #test "the path winds and never climbs steeper than one in five" {
  lo:f32=1000;hi:f32= -1000;
  for i:0..<880 {z:= -10-f32(i)*0.5;x:=e2_road_x(z);if x<lo {lo=x;}if x>hi {hi=x;}
@@ -27,7 +31,7 @@ E2_WALK :: 11.0;       // metres either side of the path you may wander
  #assert hi-lo>25;
 }
 #test "the ground keeps the glade's gold and stays mostly green outside it" {
- #assert e2_gold(-14,-28)==cg_autumn(-14,-28) && e2_gold(10,0)==cg_autumn(10,0);
+ #assert e2_gold(-6,-12)==cg_autumn(-6,-12) && e2_gold(10,0)==cg_autumn(10,0);
  for i:0..<20 {z:= -100-f32(i)*20;#assert e2_gold(e2_road_x(z)+30,z)<=0.31;}
 }
 #test "the valley rises away from the path into wooded ridges" {
@@ -93,24 +97,31 @@ e2_height :: (x:f32,z:f32)->f32 {
  corridor:=(1-cg_ramp(2.0,5.0,e2_road_dist(x,z)))*cg_ramp(-14,-18,z)*(1-cg_ramp(E2_CLEAR_Z+E2_CLEAR_R*1.6,E2_CLEAR_Z+E2_CLEAR_R*0.6,z));
  return g+(e2_level(z)-g)*corridor;
 }
+// How much the woods' colours stand in for the glade's: none in its open ground, all in the woods
+// that close round it (its back hills included) and past it.
+e2_woods_share :: (x:f32,z:f32)->f32 {a:=e2_outside(x,z);b:=e2_wooded(x,z);return ifx a>b then a else b;}
 // How golden the land is: the glade's own, then broad stands of autumn among the green.
 e2_autumn :: (x:f32,z:f32)->f32 {
- o:=e2_outside(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
+ o:=e2_woods_share(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
  return cg_autumn(x,z)*(1-o)+patch*o;
 }
 // The ground's and the grass's gold: the glade's own inside it; outside, a gentle share of the
 // crowns' autumn, so the woods' floor and the clearing stay green with gold patches.
 e2_gold :: (x:f32,z:f32)->f32 {
- o:=e2_outside(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
+ o:=e2_woods_share(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
  return cg_autumn(x,z)*(1-o)+patch*o*0.3;
 }
 // How thick the woods stand: dense on both sides of the path, crowding it, thinning only in
 // small dells; none in the glade or the clearing.
 e2_forest :: (x:f32,z:f32)->f32 {
- o:=e2_outside(x,z);rd:=e2_road_dist(x,z);
- clump:=0.70+0.30*e2_smooth(0.25,0.6,e2_noise(x/30-4.2,z/30+6.6));
- return clump*cg_ramp(2.5,4.5,rd)*cg_ramp(0.05,0.5,o)*(1-e2_clearing(x,z));
+ rd:=e2_road_dist(x,z);
+ clump:=0.82+0.18*e2_smooth(0.25,0.6,e2_noise(x/30-4.2,z/30+6.6));
+ return clump*cg_ramp(2.5,4.0,rd)*e2_wooded(x,z)*(1-e2_clearing(x,z));
 }
+// Where the woods may stand at all: not in the glade's own open ground (17 m round its middle),
+// thick from 24 m out, so the woods close round the glade on every side.
+E2_GLADE_OPEN :: 17.0;
+e2_wooded :: (x:f32,z:f32)->f32 {return cg_ramp(f32(E2_GLADE_OPEN),f32(E2_GLADE_OPEN)+7,sqrt(x*x+z*z));}
 // The clearing's middle (on the path) and how far into it (x, z) is: 1 inside, 0 in the woods,
 // its edge ragged.
 e2_clear_x :: ()->f32 {return e2_road_x(E2_CLEAR_Z);}
