@@ -8,6 +8,8 @@
 //     The same journey in real time, screenshot after screenshot, written at 30 fps by the clock
 //     (each shot repeats for the frames its time spans) and encoded at 1920x1080. Every shot is
 //     checked for a loading screen as it is taken.
+//     Then a held W must walk the seated player (the keyboard follows the hand-off).
+//   Add --motion reduce to run with prefers-reduced-motion (the hand-off shows without a fade).
 //   coax/web/tool.sh coax/web/tests/character-walk.coax URL --cold
 //     The comparison: Everglade from a new browser (URL is Everglade).
 // URL is the creator, e.g. http://127.0.0.1:8817/worlds/character-creator.
@@ -39,6 +41,11 @@ CW_SHOWN :: "(()=>{const f=document.querySelector('iframe[data-zone]');const on=
 CW_HANDED :: "document.querySelector('iframe[data-zone]')?.style.zIndex==='3'";
 // Everglade's world loop held still while it waits out of sight.
 CW_HELD :: "!!document.querySelector('iframe[data-zone]')?.contentWindow.coaxial?.worldLoop?.().paused";
+// After the seat, a held W (real input, to whatever has focus) must walk Everglade's player: the
+// hand-off gives the zone frame the keyboard (coax/web/zone-host.js).
+CW_MARK :: "(()=>{const c=(document.querySelector('iframe[data-zone]')?.contentWindow??window).coaxial;globalThis.__cw=[c.fieldProbe(0),c.fieldProbe(2)];return true})()";
+CW_MOVED :: "(()=>{const c=(document.querySelector('iframe[data-zone]')?.contentWindow??window).coaxial;return Math.round(Math.abs(c.fieldProbe(0)-__cw[0])+Math.abs(c.fieldProbe(2)-__cw[1]))})()";
+cw_key :: (c:[]Cdp,down:bool)->bool {return cdp_call(c,"Input.dispatchKeyEvent",ifx down then "{\"type\":\"keyDown\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87}" else "{\"type\":\"keyUp\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87}",CDP_CALL_MS)>=0;}
 // The creator's USE IN EVERGLADE (desktop sidebar, boxes[17]) and SURPRISE ME (boxes[14]).
 CW_USE_X :: 260; CW_USE_Y :: 696; CW_SURPRISE_X :: 260; CW_SURPRISE_Y :: 652;
 
@@ -48,11 +55,14 @@ tool_main :: ()->int #export_c #effects(all) {
   // connection), so the open's overlap with the walk shows; without it localhost is near instant.
   mb:=args_value(a[..],"--mbps","0");mbps:=0;for j:0..<mb.count {if mb[j]>=48 && mb[j]<=57 {mbps=mbps*10+cast(int)(mb[j]-48);}}
   n:=ifx mbps>0 then args_count(a[..])-2 else args_count(a[..]);
+  // --motion reduce runs the page with prefers-reduced-motion set: the hand-off skips its fade.
+  still:=args_value(a[..],"--motion","full")=="reduce";if still {n-=2;}
   url:=args_at(a[..],0);film:=n==4 && args_at(a[..],1)=="--film";cold:=n==2 && args_at(a[..],1)=="--cold";
   if n!=1 && !film && !cold {tool_errln("character-walk: URL [--cold | --film OUT.mp4 FRAMES_DIR] [--mbps N]");return 2;}
 
   c:[1]Cdp;if !cdp_launch(c[..],1920,1080,"character-walk-") {tool_errln(cdp_error(c[..]));return 1;}
-  status:=0;if cold {status=cw_cold(c[..],url,mbps);} else {status=cw_journey(c[..],url,mbps,film,ifx film then args_at(a[..],2) else "",ifx film then args_at(a[..],3) else "");}
+  if still && cdp_call(c[..],"Emulation.setEmulatedMedia","{\"features\":[{\"name\":\"prefers-reduced-motion\",\"value\":\"reduce\"}]}",CDP_CALL_MS)<0 {tool_errln(cdp_error(c[..]));cdp_close(c[..]);return 1;}
+  status:=0;if cold {status=cw_cold(c[..],url,mbps);} else {status=cw_journey(c[..],url,mbps,still,film,ifx film then args_at(a[..],2) else "",ifx film then args_at(a[..],3) else "");}
   cdp_close(c[..]);return status;
 }
 
@@ -69,7 +79,7 @@ cw_open :: (c:[]Cdp,url:string,cw_mbps:int)->bool {
 
 // ---- the journey, in real time (the film takes a screenshot at each step as well)
 CW_FPS :: 30;
-cw_journey :: (c:[]Cdp,url:string,mbps:int,film:bool,out:string,frames:string)->int {
+cw_journey :: (c:[]Cdp,url:string,mbps:int,still:bool,film:bool,out:string,frames:string)->int {
   if film {ok:=fs_mkdir(frames);}
   if !cw_open(c,url,mbps) {tool_errln(cdp_error(c));return 1;}
   ready:=false;for i:0..<600 {proc_sleep(100);if cw_eval(c,"!!globalThis.coaxial?.sceneReady&&!document.getElementById('coaxial-load')&&coaxial.fieldProbe(14)>0") {ready=true;break;}}
@@ -122,8 +132,14 @@ cw_journey :: (c:[]Cdp,url:string,mbps:int,film:bool,out:string,frames:string)->
   if handed<0 || moved<0 {tool_errln("the walk never handed Everglade over in place");return 1;}
   if picker {tool_errln("Everglade opened a character dialog after the walk");return 1;}
   if seated<0 {tool_errln("Everglade never seated the walker");return 1;}
-  if fade_walk<28000 || fade_walk>40000 {tool_errln("the walk did not take about 30 seconds");return 1;}
+  // Reduced motion skips the walk: Everglade comes up in place within a few seconds instead.
+  if still && handed>5000 {tool_errln("with reduced motion, Everglade did not come up within 5 s");return 1;}
+  if !still && (fade_walk<28000 || fade_walk>40000) {tool_errln("the walk did not take about 30 seconds");return 1;}
   if !cw_same(before,landed) {tool_errln("Everglade's player is not the saved character");return 1;}
+  walked:=-1;if cw_eval(c,CW_MARK) && cw_key(c,true) {proc_sleep(1500);walked=cw_int(c,CW_MOVED);if !cw_key(c,false) {walked=-1;}}
+  print("{\"keys_walked\":%}\n",walked);
+  if walked<=100 {tool_errln("a held W after the hand-off did not move Everglade's player");return 1;}
+  if still {print("Character walk (reduced motion): save, Everglade in place within 5 s, same character, seat, keys walk, no dialog, no loading screen.\n");return 0;}
   print("Character walk: save, 30 s walk with Everglade opening out of sight, hand-off in place, same character, seat, no dialog, no loading screen.\n");return 0;
 }
 // The comparison: Everglade opened straight from a new browser (URL is Everglade).

@@ -290,8 +290,11 @@ the walk.
 
 ```sh
 # Real time: the save, the 30 s walk, the hand-off in place, the same character, the seat, no dialog,
-# and no loading screen on any captured frame.
+# and no loading screen on any captured frame. Then a held W must walk the seated player, because
+# the hand-off moves keyboard focus into Everglade.
 coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --mbps 50
+# The same with prefers-reduced-motion: Everglade comes up in place within 5 s.
+coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --motion reduce
 # Everglade from a new browser, for comparison.
 coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/everglade --cold --mbps 50
 # The film: real-time 1920x1080 screenshots of the whole journey, encoded at 30 fps.
