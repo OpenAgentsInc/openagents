@@ -1,0 +1,3 @@
+ok   #test local arrival holds the socket until character acceptance preserves the selected look (1 case, 1039278 steps, 122 ms)
+1 of 934 checks (--only 'local arrival holds'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

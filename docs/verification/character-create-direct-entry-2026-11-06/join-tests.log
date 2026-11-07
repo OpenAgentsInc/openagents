@@ -1,0 +1,12 @@
+ok   #test join: Character Create completion skips the legacy arrival picker in either load order (1 case, 2012473 steps, 173 ms)
+ok   #test join: invalid appearance cannot dismiss arrival and profile reload leaves a manual picker alone (1 case, 1007804 steps, 68 ms)
+ok   #test join: no named instance asks the room server's list, and joins what it answers (1 case, 2165676 steps, 115 ms)
+ok   #test join: ?room= is joined as named, a test's room as it was, a local room server's list asked as production's; a golden page asks nothing (1 case, 3139525 steps, 179 ms)
+ok   #test join: a full named instance gives way to the lowest with room, after a second refusal (1 case, 1056993 steps, 67 ms)
+ok   #test join: a first visit opens CHARACTER before the socket opens; ENTER sends the look and opens it (1 case, 833734376 steps, 4320 ms)
+ok   #test join: INVITE and CHARACTER sit left of an admin's EDIT, never on it (1 case, 1144595 steps, 50 ms)
+ok   #test join: INVITE copies the link to your instance (1 case, 1059870 steps, 50 ms)
+ok   #test join: INVITE holds a seat for the friend, whose ticket names you; a full room is said with whose it was (#12795) (1 case, 2142778 steps, 100 ms)
+ok   #test join: local arrival also skips the legacy picker for a completed Character Create profile (1 case, 2084288 steps, 98 ms)
+10 of 934 checks (--only 'join:'), 10 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -236,3 +236,15 @@ python3 verse/tools/assets/wardrobe_pack_oracle.py \
 coax/web/tool.sh coax/web/tests/player-appearance.coax \
   http://127.0.0.1:8817/worlds/character-creator
 ```
+
+## Entering Everglade after creation
+
+A valid saved Character Create profile is already a completed appearance choice.
+Everglade must join directly without automatically opening its legacy Ranger
+name/class/skin/cloak/trim picker. The server still owns the name and room seat.
+This works whether the profile loads before or after the room ticket; a late
+valid profile releases only the automatic picker hold. Invalid records do not
+release it, and an explicitly opened in-world picker remains manual.
+
+The browser handoff test waits for an actual room seat without pressing Enter
+to dismiss a dialog, and rejects any automatic picker on reload.

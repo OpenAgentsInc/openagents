@@ -1,5 +1,9 @@
 # Owner actions
 
+## Character Create → Everglade direct entry (2026-11-06)
+
+- Reload the existing Everglade tab at `http://127.0.0.1:8817/worlds/everglade` once to replace its old running module. The local preview has the tested client and room-worker build. Your saved Character Create profile now enters directly; no second character picker or Enter confirmation is required.
+
 ## Valley Lab source world (2026-11-06)
 
 - The requested local preview is open at [Valley World](http://127.0.0.1:8895/worlds/valley-world?pack=valley-world). Its retained local runtime lives under `~/.openagents/verse/private-build/valley-preview/`, so closing the implementation worktree does not remove the preview.

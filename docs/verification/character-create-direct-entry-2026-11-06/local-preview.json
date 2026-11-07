@@ -1,0 +1,19 @@
+{
+  "url": "http://127.0.0.1:8817/worlds/everglade",
+  "generated_artifacts_only": true,
+  "source_checkout_unchanged": "382b1409b3",
+  "artifacts": {
+    "everglade5e.wasm": {
+      "before": "c43172a40417b0a0932c4f7e242a6bfed29ea37bb0456193bb509ba4e9619d7a",
+      "after": "b739ef80b7f913c7fd7955d30bdf4cd3e27e260b83e0341570d1b5415dd3ce68",
+      "bytes": 2037469,
+      "http_verified": true
+    },
+    "everglade-room.wasm": {
+      "before": "53851353e8d467dd1cb80bb2cf575a9d7d051863a9a94949b9bae90e605e12a3",
+      "after": "113124abdca5f0b78ff7bd91f357cffa39112331175dfa2b9e8978b9acf81286",
+      "bytes": 1068379,
+      "http_verified": true
+    }
+  }
+}

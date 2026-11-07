@@ -5181,7 +5181,7 @@ everglade_link_layer_side :: (s:[]Everglade)->int #export_c #effects(all) {retur
 
 // The same versioned wardrobe record as Character Create; its actor uses Everglade's controller.
 everglade_avatar_profile :: (s:[]Everglade,t:string)->bool #export_c #effects(all) {
- if !cc.ca_restore(s[0].avatar[..],t) {return false;}s[0].avatar_skin[0]=Skin.{};return true;
+ if !cc.ca_restore(s[0].avatar[..],t) {return false;}s[0].avatar_skin[0]=Skin.{};jn_character_created(s);return true;
 }
 avatar_ready :: (s:[]Everglade)->bool {
  if !s[0].avatar[0].configured || !cc.ca_catalog_ready(s[0].avatar[0]) {return false;}

@@ -1,0 +1,3 @@
+ok   #test Everglade player appearance keeps invalid records out and preserves selected colors (1 case, 965518 steps, 101 ms)
+1 of 934 checks (--only 'Everglade player appearance'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

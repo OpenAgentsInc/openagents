@@ -6035,7 +6035,12 @@ producer as an explicitly tracked legacy consumer. Its Quaternius wardrobe uses
 the existing people palette and draw format; this adds no shared/native renderer
 qualification. Unknown slug/producer pairs continue to refuse. The appearance
 save contains only versioned choices, never pack addresses or renderer state.
-See `docs/verse/character-creator.md`.
+See `docs/verse/character-creator.md`. A validated shared Character Create profile
+completes the appearance choice: Everglade must not automatically open its old
+Ranger picker or hold the room socket for another Enter press. Profile/ticket
+load order and the local arrival route obey this; invalid records do not bypass
+the fallback, and manual in-world editing is separate. Server room seating and
+name authority are unchanged.
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
 lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative

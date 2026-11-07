@@ -303,7 +303,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
     n[0].asking = n[0].want;
     net_dest_swap(n); net_local_host(n); n[0].local_host = true;
   }
-  if net_query(url,"arrival")=="1" && !n[0].join[0].picked {n[0].join[0].pick_open=true;n[0].join[0].hold=true;}
+  if net_query(url,"arrival")=="1" && !s[0].avatar[0].configured && !n[0].join[0].picked {n[0].join[0].pick_open=true;n[0].join[0].hold=true;}
   pid := fact(facts, "player");
   if pid.count > 0 { n[0].pid_n = net_copy(n[0].pid[..], pid); }
   n[0].account = fact(facts, "account").count > 0;

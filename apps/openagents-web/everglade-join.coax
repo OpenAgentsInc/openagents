@@ -16,7 +16,8 @@
 // presence show too): an account's, else a guest's own (POST /api/playtest/player/name), else two words
 // the server makes from the player id, the same every time (coax/web/api/migrations/0116). The look is the CHARACTER picker's: a skin tone and the
 // Ranger's cloak and trim dyes ("ranger.SKIN.DYE.TRIM", everglade-rangers.coax look_parse). On a first
-// visit (no look comes back with the ticket, #12715) the picker opens before you join and the socket
+// visit without a completed Character Create profile (no legacy look in the ticket, #12715),
+// the picker opens before you join and the socket
 // waits for ENTER; after that CHARACTER opens it again. The class is the druid or the Warlock
 // (everglade-warlock.coax): the room hears it with the hello. Offline, with levels off or as the demo
 // character the Warlock is level 17; in a room whose levels decide it, the room's level (ege_wl_level).
@@ -186,6 +187,25 @@ jn_refused :: (s: [] Everglade, n: [] EgNet) {
 }
 jn_seated :: (n: [] EgNet) { n[0].join[0].refused = 0; }
 
+#test "join: Character Create completion skips the legacy arrival picker in either load order" {
+ for order:0..<2 {
+  s:[1]Everglade;n:[1]EgNet;everglade_attach_net(s[..],n[..]);jn_code(n[..],"everglade-1");
+  a:[1]cc.CharacterAppearance;cc.ca_preset(a[..],2);a[0].female=true;a[0].eye_color=3;b:[64]u8;size:=cc.ca_save(a[0],b[..]);
+  if order==0 {#assert everglade_avatar_profile(s[..],cast(string)b[0..<size]);}
+  jn_ticketed(s[..],n[..],"{\"name\":\"Misty Finch\"}",false);
+  if order==1 {#assert n[0].join[0].pick_open && n[0].join[0].hold;#assert everglade_avatar_profile(s[..],cast(string)b[0..<size]);}
+  #assert !n[0].join[0].pick_open && !n[0].join[0].hold && jn_ready(n[..]);
+  #assert s[0].avatar[0].female && s[0].avatar[0].eye_color==3;
+ }
+}
+#test "join: invalid appearance cannot dismiss arrival and profile reload leaves a manual picker alone" {
+ s:[1]Everglade;n:[1]EgNet;everglade_attach_net(s[..],n[..]);jn_code(n[..],"everglade-1");
+ jn_ticketed(s[..],n[..],"{}",false);#assert !everglade_avatar_profile(s[..],"CC2invalid");#assert n[0].join[0].hold && n[0].join[0].pick_open;
+ a:[1]cc.CharacterAppearance;cc.ca_preset(a[..],2);b:[64]u8;size:=cc.ca_save(a[0],b[..]);#assert everglade_avatar_profile(s[..],cast(string)b[0..<size]);
+ n[0].join[0].pick_open=true;#assert !n[0].join[0].hold;
+ #assert everglade_avatar_profile(s[..],cast(string)b[0..<size]) && n[0].join[0].pick_open && jn_ready(n[..]);
+}
+
 // ---- who you are
 
 // The ticket's ask: its body. The server names you (no name is asked for).
@@ -197,7 +217,14 @@ jn_ticketed :: (s: [] Everglade, n: [] EgNet, answer: string, had_look: bool) {
   if name.count > 0 { j[0].name_n = net_copy_name(j[0].name[..], name); }
   l := look_parse(cast(string) n[0].look[0..<n[0].look_n]);
   if !j[0].pick_open { j[0].skin = l.skin; j[0].dye = l.dye; j[0].trim = l.trim; }
-  if !had_look && !j[0].picked && !j[0].test && !j[0].pick_open { j[0].pick_open = true; j[0].hold = true; }
+  if !had_look && !s[0].avatar[0].configured && !j[0].picked && !j[0].test && !j[0].pick_open { j[0].pick_open = true; j[0].hold = true; }
+}
+// A completed Character Create record owns appearance. Release only the automatic
+// arrival hold; an explicitly opened in-world picker is not an arrival prompt.
+jn_character_created :: (s:[]Everglade) {
+ if !net_on(s) {return;}j:=net_of(s)[0].join[..];
+ if j[0].hold {j[0].pick_open=false;j[0].hold=false;j[0].press= -1;j[0].finger= -1;}
+ j[0].picked=true;
 }
 // A name as given (spaces kept, control bytes not).
 net_copy_name :: (out: [] u8, t: string) -> int {
@@ -624,4 +651,15 @@ join_key :: (s: [] Everglade, key: int) -> bool {
  n[0].join[0].skin=3;n[0].join[0].dye=5;n[0].join[0].trim=11;
  #assert join_key(g[..],KEY_ENTER) && !join_picking(g[..]) && jn_ready(n);
  #assert cast(string)n[0].look[0..<n[0].look_n]=="ranger.3.5.11";
+}
+
+#test "join: local arrival also skips the legacy picker for a completed Character Create profile" {
+ for order:0..<2 {
+  s:[1]Everglade;n:[1]EgNet;a:[1]cc.CharacterAppearance;cc.ca_preset(a[..],2);b:[64]u8;size:=cc.ca_save(a[0],b[..]);
+  // The profile may arrive even before network storage is attached.
+  if order==0 {#assert everglade_avatar_profile(s[..],cast(string)b[0..<size]);}
+  everglade_attach_net(s[..],n[..]);net_facts(s[..],"url=http://127.0.0.1:18777/worlds/everglade?arrival=1&raid=preview\n","everglade",false);
+  if order==1 {#assert n[0].join[0].hold;#assert everglade_avatar_profile(s[..],cast(string)b[0..<size]);}
+  #assert !join_picking(s[..]) && !n[0].join[0].hold;
+ }
 }
