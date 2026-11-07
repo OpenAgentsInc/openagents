@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-06",
+  "source_meshes": 76,
+  "body_a_meshes": 39,
+  "body_b_meshes": 37,
+  "outfit_families": 5,
+  "source_color_textures": 15,
+  "source_colorways_per_family": 3,
+  "pack_bytes": 20914708,
+  "pack_sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
+  "source_vertices": 167883,
+  "source_triangles": 206565,
+  "checks": {
+    "all_catalog_extents": true,
+    "all_triangle_indices": true,
+    "all_joints_below_65": true,
+    "all_weight_sums_255": true,
+    "source_piece_inventory_complete": true,
+    "source_normals_present": true,
+    "creator_dependency_tests_passed": 88,
+    "renderer_adoption_tests_passed": 47,
+    "renderer_adoption_root_mutants_killed": 62,
+    "renderer_adoption_mutants_survived": 0,
+    "host_restore_order_test_passed": true,
+    "browser_pointer_and_reload_passed": true,
+    "desktop_and_phone_headless_metal": true
+  },
+  "release_wasm_bytes": 590959
+}

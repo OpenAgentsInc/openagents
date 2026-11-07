@@ -6014,3 +6014,12 @@ anatomical validation. Licensed study payloads and captures remain private.
 A5's five authority gates kill 701 mutants with zero survivors. Admission,
 station checks, two complete film hash lists and rendering cost are recorded
 in `docs/verification/animation-lab-a5-2026-11-06/README.md`.
+
+## Character Studio renderer identity
+
+Character Studio binds only the exact `character-creator` slug and `fivelab`
+producer as an explicitly tracked legacy consumer. Its Quaternius wardrobe uses
+the existing people palette and draw format; this adds no shared/native renderer
+qualification. Unknown slug/producer pairs continue to refuse. The appearance
+save contains only versioned choices, never pack addresses or renderer state.
+See `docs/verse/character-creator.md`.

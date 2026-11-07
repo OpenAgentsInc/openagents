@@ -184,7 +184,7 @@ Bodies :: struct {
   top: int;                 // 1 + the highest slot put since the last fresh start: the loops stop there
   corpse: [BD_CORPSES] BdAnim; corpse_at: int;
   now: f32;
-  draws: [68] u32; draw_n: int;  // a draw a part worn, and one of the blocks
+  draws: [176] u32; draw_n: int;  // a draw a part worn, and one of the blocks
   shown: int;               // figures drawn this frame
   blocks: int;              // of them, drawn as blocks
 }

@@ -22,7 +22,7 @@ static uint8_t inbox[4096];
 static bool golden;
 // The pack's catalog; the rig the clips are baked from, and the bake. The frame's instances (5 MB at
 // the most figures) are the Lab's records, in its state: the module's own memory stays under host.js's 8 MiB start.
-static uint8_t catalog[16384];
+static uint8_t catalog[65536];
 static coax_t_People rig;
 static float bake[544440];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
@@ -146,3 +146,6 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)lab_at(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { lab_action_done(at(state)); }
+
+// Read-only observations for headless wardrobe checks.
+EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state,int32_t field) {return (int32_t)lab_creator_probe(at(state),field);}
