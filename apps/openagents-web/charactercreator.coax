@@ -13,7 +13,7 @@ Creator :: struct {
   on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
-  clock:f32; pose_at:f32; revision:int; saved:int; focused:int;
+  clock:f32; surprise_seed:int; pose_at:f32; revision:int; saved:int; focused:int;
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
 }
@@ -49,6 +49,32 @@ FIELD_NAMES :: [13]string.["BODY", "CLOTHES", "HOOD", "COLORWAY", "CLOTH DYE", "
   b:=s[0].boxes[1]; x:=(b.x0+b.x1)/2; y:=(b.y0+b.y1)/2;
   handled:=pointer(s[..],x,y,0,7); handled=pointer(s[..],x,y,3,7); #assert s[0].outfit==2;
   handled=pointer(s[..],x,y,0,7); handled=pointer(s[..],x,y,2,7); #assert s[0].outfit==3;
+}
+
+#test "creator Surprise Me independently varies hood body outfits and eye colors" {
+ s:[1]Creator;ensure(s[..]);layout(s[..],1440,900,1);
+ h:[2]bool;bodies:[2]bool;outfits:[4]bool;eyes:[6]bool;repeated_hood:=false;last:=false;
+ for i:0..<96 {b:=s[0].boxes[14];used:=pointer(s[..],b.x0+20,b.y0+18,0,1);used=pointer(s[..],b.x0+20,b.y0+18,2,1);
+  h[ifx s[0].hood then 1 else 0]=true;bodies[ifx s[0].female then 1 else 0]=true;outfits[s[0].outfit]=true;eyes[s[0].eye_color]=true;
+  #assert s[0].worn[26]==s[0].hood && s[0].hair<(ifx s[0].female then 4 else 3);
+  if i>0 && s[0].hood==last {repeated_hood=true;}last=s[0].hood;
+ }
+ #assert h[0] && h[1] && bodies[0] && bodies[1] && repeated_hood;
+ for seen:outfits {#assert seen;}for seen:eyes {#assert seen;}
+}
+
+// Separate draws choose values directly; preset selection must precede the hood draw.
+// The UI clock seeds a persistent Park-Miller sequence; edits do not reset it.
+surprise_pick :: (s:[]Creator,n:int)->int {
+ if s[0].surprise_seed<=0 {s[0].surprise_seed=cc_wrap(int(s[0].clock*1000)+s[0].revision+1,2147483646)+1;}
+ s[0].surprise_seed=(s[0].surprise_seed*48271)%2147483647;return s[0].surprise_seed%n;
+}
+surprise :: (s:[]Creator) {
+ s[0].female=surprise_pick(s,2)==1;s[0].outfit=surprise_pick(s,4);preset(s,s[0].outfit);
+ s[0].hood=surprise_pick(s,2)==1;s[0].worn[26]=s[0].hood;
+ s[0].variant=surprise_pick(s,3);s[0].dye=surprise_pick(s,9);s[0].skin=surprise_pick(s,6);
+ s[0].hair=surprise_pick(s,ifx s[0].female then 4 else 3);s[0].hair_color=surprise_pick(s,6);s[0].beard=surprise_pick(s,2)==1;s[0].eye_color=surprise_pick(s,6);
+ if !available(s[0],s[0].piece) {s[0].piece=18;}s[0].revision+=1;
 }
 
 cc_wrap :: (v:int,n:int)->int { return (v%n+n)%n; }
@@ -225,7 +251,7 @@ pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
       else if i==13 { reset(s); }
       else if i==16 || i==17 {request_player(s,i==17);}
       else if i==15 {s[0].pan_mode=!s[0].pan_mode;}
-      else { seed:=s[0].revision+7;for f:0..<9 { change(s,f,seed+f*3); } }
+      else { surprise(s); }
     }
   }
   return true;
