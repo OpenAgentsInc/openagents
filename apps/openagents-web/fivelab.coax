@@ -450,7 +450,7 @@ has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
 // The pack's catalog arrived (fivelab-face.c): the figures' parts.
 lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); }
 // The clips baked into the bake store, once (fivelab-face.c).
-lab_bake :: (d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out); }
+lab_bake :: (s: [] Lab, d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out, s[0].creator[0].dev_animations); }
 // Existing optional layer-size hook: Character Create owns its quality choice.
 lab_layers_side :: (s:[]Lab)->int #export_c #effects(all) {return cc.texture_side(s[0].creator[0]);}
 // Character Create's shadow tiles for the host (coaxial_shadow_*_v1; charactercreator.coax shadow_frame): none on the lab's own pages.
@@ -3207,7 +3207,7 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
   s:[1]Lab;
   lab_message(s[..],600,"url=http://localhost/worlds/everglade-experimental\n");
   #assert s[0].creator[0].experimental && s[0].creator[0].on;
-  u:[64]f32; out:[1]f32; _:=cc.frame(s[0].creator[..],out[..],u[..],1280,720,1,0,false); #assert u[11]==1;
+  u:[64]f32; out:[1]f32; _:=cc.frame(s[0].creator[..],out[..],u[..],1280,720,1,0,false); #assert u[11]==2;
   w:=lab_walk(s[..]); #assert w.on && w.put;
   #assert lab_key(s[..],'w',0); input:=lab_move_in(s[..]); #assert input.key_y==1 && input.theta==0;
   edge:=lab_keep(s[..],50,50); #assert edge.x==25 && edge.z==2;
@@ -3467,7 +3467,7 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
-  if kind==HOST_PAGE && cc.experimental_page(t) {s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
+  if kind==HOST_PAGE && cc.experimental_page(t) {s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }

@@ -5,11 +5,11 @@
 #authority;
 RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1; }
 
-// The document inspector retains its immutable source bundle and GPU upload
-// image together. Ordinary pages keep the existing 64 MiB Wasm ceiling.
-render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" then 4096 else 1024;}
+// Source inspectors and the fivelab animation palette need the larger
+// bounded Wasm ceiling. Other producers retain the 64 MiB ceiling.
+render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" then 4096 else 1024;}
 #test "the source inspectors request the bounded larger Wasm memory" {
-  #assert render_memory_pages("animationlab")==4096 && render_memory_pages("ocarinalab")==4096;
+  #assert render_memory_pages("animationlab")==4096 && render_memory_pages("ocarinalab")==4096 && render_memory_pages("fivelab")==4096;
   for app:[4]string.["", "animationla", "animelab", "valleycanyon"] {#assert render_memory_pages(app)==1024;}
 }
 

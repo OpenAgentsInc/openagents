@@ -24,7 +24,7 @@ static bool golden;
 // the most figures) are the Lab's records, in its state: the module's own memory stays under host.js's 8 MiB start.
 static uint8_t catalog[65536];
 static coax_t_People rig;
-static float bake[783120];        // fivelab-bodies.coax BD_BAKE_FLOATS
+static float bake[5996640];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
@@ -82,7 +82,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t n = lab_frame(at(state), out, u, w, h, scale, dt, still != 0);
   draw_n = 0;
   if (lab_at(state)->bodies.e[0].ready) {
-    if (!baked) { lab_bake((coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
+    if (!baked) { lab_bake(at(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
     draw_n = lab_scene(at(state), (coax_v_f32){lab_at(state)->records.e, sizeof lab_at(state)->records.e / sizeof(float)});
   }
   frames += 1;

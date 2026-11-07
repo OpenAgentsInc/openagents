@@ -4,6 +4,12 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "adoption.coax";
 RENDER_WEB_SHARED :: false;
+#test "local animation workbench requests enough memory for its library" {
+ #assert render_page_memory("everglade-experimental","fivelab")==4096;
+ #assert render_page_memory("character-creator","fivelab")==4096;
+ #assert render_page_memory("everglade-experimental","other")==1024;
+}
+render_page_memory :: (slug:string,app:string)->int {return render_memory_pages(app);}
 #test "Character Create names its private shader only for its established producer" {
  #assert render_page_shader("character-creator","fivelab")=="/charactercreator.wgsl";
  #assert render_page_shader("everglade-experimental","fivelab")=="/charactercreator.wgsl";
@@ -27,7 +33,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   if route.shared || route.tracked_legacy {
     shader_path:=render_page_shader(args_at(args[..],0),args_at(args[..],1));if shader_path!="" {print(" data-wgsl=\"%\"",shader_path);}
-    pages:=render_memory_pages(args_at(args[..],1));
+    pages:=render_page_memory(args_at(args[..],0),args_at(args[..],1));
     if pages!=1024 {print(" data-memory-pages=\"%\"",pages);}
     return 0;
   }

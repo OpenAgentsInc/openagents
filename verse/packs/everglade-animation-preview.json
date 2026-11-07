@@ -1,0 +1,449 @@
+{
+  "pack": "everglade-animation-preview",
+  "libraries": {
+    "ual1": "~/.openagents/assets/originals/e2adadc59702bc88770e299949d1f4c6790db1852133fd1ce374d2a0815537cd/source/Unreal-Godot/UAL1_Standard.glb",
+    "ual2": "~/.openagents/assets/originals/9871d41237032c6a69b1458652be2a45ff4cffc8f4b594bf4c72ef4ebae39381/source/Unreal-Godot/UAL2_Standard.glb"
+  },
+  "clips": [
+    {
+      "name": "ual1_a_tpose",
+      "library": "ual1",
+      "clip": "A_TPose"
+    },
+    {
+      "name": "ual1_crouch_fwd_loop",
+      "library": "ual1",
+      "clip": "Crouch_Fwd_Loop"
+    },
+    {
+      "name": "ual1_crouch_idle_loop",
+      "library": "ual1",
+      "clip": "Crouch_Idle_Loop"
+    },
+    {
+      "name": "ual1_dance_loop",
+      "library": "ual1",
+      "clip": "Dance_Loop"
+    },
+    {
+      "name": "ual1_death01",
+      "library": "ual1",
+      "clip": "Death01"
+    },
+    {
+      "name": "ual1_driving_loop",
+      "library": "ual1",
+      "clip": "Driving_Loop"
+    },
+    {
+      "name": "ual1_fixing_kneeling",
+      "library": "ual1",
+      "clip": "Fixing_Kneeling"
+    },
+    {
+      "name": "ual1_hit_chest",
+      "library": "ual1",
+      "clip": "Hit_Chest"
+    },
+    {
+      "name": "ual1_hit_head",
+      "library": "ual1",
+      "clip": "Hit_Head"
+    },
+    {
+      "name": "ual1_idle_loop",
+      "library": "ual1",
+      "clip": "Idle_Loop"
+    },
+    {
+      "name": "ual1_idle_talking_loop",
+      "library": "ual1",
+      "clip": "Idle_Talking_Loop"
+    },
+    {
+      "name": "ual1_idle_torch_loop",
+      "library": "ual1",
+      "clip": "Idle_Torch_Loop"
+    },
+    {
+      "name": "ual1_interact",
+      "library": "ual1",
+      "clip": "Interact"
+    },
+    {
+      "name": "ual1_jog_fwd_loop",
+      "library": "ual1",
+      "clip": "Jog_Fwd_Loop"
+    },
+    {
+      "name": "ual1_jump_land",
+      "library": "ual1",
+      "clip": "Jump_Land"
+    },
+    {
+      "name": "ual1_jump_loop",
+      "library": "ual1",
+      "clip": "Jump_Loop"
+    },
+    {
+      "name": "ual1_jump_start",
+      "library": "ual1",
+      "clip": "Jump_Start"
+    },
+    {
+      "name": "ual1_pickup_table",
+      "library": "ual1",
+      "clip": "PickUp_Table"
+    },
+    {
+      "name": "ual1_pistol_aim_down",
+      "library": "ual1",
+      "clip": "Pistol_Aim_Down"
+    },
+    {
+      "name": "ual1_pistol_aim_neutral",
+      "library": "ual1",
+      "clip": "Pistol_Aim_Neutral"
+    },
+    {
+      "name": "ual1_pistol_aim_up",
+      "library": "ual1",
+      "clip": "Pistol_Aim_Up"
+    },
+    {
+      "name": "ual1_pistol_idle_loop",
+      "library": "ual1",
+      "clip": "Pistol_Idle_Loop"
+    },
+    {
+      "name": "ual1_pistol_reload",
+      "library": "ual1",
+      "clip": "Pistol_Reload"
+    },
+    {
+      "name": "ual1_pistol_shoot",
+      "library": "ual1",
+      "clip": "Pistol_Shoot"
+    },
+    {
+      "name": "ual1_punch_cross",
+      "library": "ual1",
+      "clip": "Punch_Cross"
+    },
+    {
+      "name": "ual1_punch_jab",
+      "library": "ual1",
+      "clip": "Punch_Jab"
+    },
+    {
+      "name": "ual1_push_loop",
+      "library": "ual1",
+      "clip": "Push_Loop"
+    },
+    {
+      "name": "ual1_roll",
+      "library": "ual1",
+      "clip": "Roll"
+    },
+    {
+      "name": "ual1_sitting_enter",
+      "library": "ual1",
+      "clip": "Sitting_Enter"
+    },
+    {
+      "name": "ual1_sitting_exit",
+      "library": "ual1",
+      "clip": "Sitting_Exit"
+    },
+    {
+      "name": "ual1_sitting_idle_loop",
+      "library": "ual1",
+      "clip": "Sitting_Idle_Loop"
+    },
+    {
+      "name": "ual1_sitting_talking_loop",
+      "library": "ual1",
+      "clip": "Sitting_Talking_Loop"
+    },
+    {
+      "name": "ual1_spell_simple_enter",
+      "library": "ual1",
+      "clip": "Spell_Simple_Enter"
+    },
+    {
+      "name": "ual1_spell_simple_exit",
+      "library": "ual1",
+      "clip": "Spell_Simple_Exit"
+    },
+    {
+      "name": "ual1_spell_simple_idle_loop",
+      "library": "ual1",
+      "clip": "Spell_Simple_Idle_Loop"
+    },
+    {
+      "name": "ual1_spell_simple_shoot",
+      "library": "ual1",
+      "clip": "Spell_Simple_Shoot"
+    },
+    {
+      "name": "ual1_sprint_loop",
+      "library": "ual1",
+      "clip": "Sprint_Loop"
+    },
+    {
+      "name": "ual1_swim_fwd_loop",
+      "library": "ual1",
+      "clip": "Swim_Fwd_Loop"
+    },
+    {
+      "name": "ual1_swim_idle_loop",
+      "library": "ual1",
+      "clip": "Swim_Idle_Loop"
+    },
+    {
+      "name": "ual1_sword_attack",
+      "library": "ual1",
+      "clip": "Sword_Attack"
+    },
+    {
+      "name": "ual1_sword_idle",
+      "library": "ual1",
+      "clip": "Sword_Idle"
+    },
+    {
+      "name": "ual1_walk_formal_loop",
+      "library": "ual1",
+      "clip": "Walk_Formal_Loop"
+    },
+    {
+      "name": "ual1_walk_loop",
+      "library": "ual1",
+      "clip": "Walk_Loop"
+    },
+    {
+      "name": "ual2_a_tpose",
+      "library": "ual2",
+      "clip": "A_TPose"
+    },
+    {
+      "name": "ual2_chest_open",
+      "library": "ual2",
+      "clip": "Chest_Open"
+    },
+    {
+      "name": "ual2_climbup_1m",
+      "library": "ual2",
+      "clip": "ClimbUp_1m"
+    },
+    {
+      "name": "ual2_consume",
+      "library": "ual2",
+      "clip": "Consume"
+    },
+    {
+      "name": "ual2_farm_harvest",
+      "library": "ual2",
+      "clip": "Farm_Harvest"
+    },
+    {
+      "name": "ual2_farm_plantseed",
+      "library": "ual2",
+      "clip": "Farm_PlantSeed"
+    },
+    {
+      "name": "ual2_farm_watering",
+      "library": "ual2",
+      "clip": "Farm_Watering"
+    },
+    {
+      "name": "ual2_hit_knockback",
+      "library": "ual2",
+      "clip": "Hit_Knockback"
+    },
+    {
+      "name": "ual2_idle_foldarms_loop",
+      "library": "ual2",
+      "clip": "Idle_FoldArms_Loop"
+    },
+    {
+      "name": "ual2_idle_lantern_loop",
+      "library": "ual2",
+      "clip": "Idle_Lantern_Loop"
+    },
+    {
+      "name": "ual2_idle_no_loop",
+      "library": "ual2",
+      "clip": "Idle_No_Loop"
+    },
+    {
+      "name": "ual2_idle_rail_call",
+      "library": "ual2",
+      "clip": "Idle_Rail_Call"
+    },
+    {
+      "name": "ual2_idle_rail_loop",
+      "library": "ual2",
+      "clip": "Idle_Rail_Loop"
+    },
+    {
+      "name": "ual2_idle_shield_break",
+      "library": "ual2",
+      "clip": "Idle_Shield_Break"
+    },
+    {
+      "name": "ual2_idle_shield_loop",
+      "library": "ual2",
+      "clip": "Idle_Shield_Loop"
+    },
+    {
+      "name": "ual2_idle_talkingphone_loop",
+      "library": "ual2",
+      "clip": "Idle_TalkingPhone_Loop"
+    },
+    {
+      "name": "ual2_laytoidle",
+      "library": "ual2",
+      "clip": "LayToIdle"
+    },
+    {
+      "name": "ual2_melee_hook",
+      "library": "ual2",
+      "clip": "Melee_Hook"
+    },
+    {
+      "name": "ual2_melee_hook_rec",
+      "library": "ual2",
+      "clip": "Melee_Hook_Rec"
+    },
+    {
+      "name": "ual2_ninjajump_idle_loop",
+      "library": "ual2",
+      "clip": "NinjaJump_Idle_Loop"
+    },
+    {
+      "name": "ual2_ninjajump_land",
+      "library": "ual2",
+      "clip": "NinjaJump_Land"
+    },
+    {
+      "name": "ual2_ninjajump_start",
+      "library": "ual2",
+      "clip": "NinjaJump_Start"
+    },
+    {
+      "name": "ual2_overhandthrow",
+      "library": "ual2",
+      "clip": "OverhandThrow"
+    },
+    {
+      "name": "ual2_shield_dash",
+      "library": "ual2",
+      "clip": "Shield_Dash"
+    },
+    {
+      "name": "ual2_shield_oneshot",
+      "library": "ual2",
+      "clip": "Shield_OneShot"
+    },
+    {
+      "name": "ual2_slide_exit",
+      "library": "ual2",
+      "clip": "Slide_Exit"
+    },
+    {
+      "name": "ual2_slide_loop",
+      "library": "ual2",
+      "clip": "Slide_Loop"
+    },
+    {
+      "name": "ual2_slide_start",
+      "library": "ual2",
+      "clip": "Slide_Start"
+    },
+    {
+      "name": "ual2_sword_block",
+      "library": "ual2",
+      "clip": "Sword_Block"
+    },
+    {
+      "name": "ual2_sword_dash",
+      "library": "ual2",
+      "clip": "Sword_Dash"
+    },
+    {
+      "name": "ual2_sword_heavy_combo",
+      "library": "ual2",
+      "clip": "Sword_Heavy_Combo"
+    },
+    {
+      "name": "ual2_sword_regular_a",
+      "library": "ual2",
+      "clip": "Sword_Regular_A"
+    },
+    {
+      "name": "ual2_sword_regular_a_rec",
+      "library": "ual2",
+      "clip": "Sword_Regular_A_Rec"
+    },
+    {
+      "name": "ual2_sword_regular_b",
+      "library": "ual2",
+      "clip": "Sword_Regular_B"
+    },
+    {
+      "name": "ual2_sword_regular_b_rec",
+      "library": "ual2",
+      "clip": "Sword_Regular_B_Rec"
+    },
+    {
+      "name": "ual2_sword_regular_c",
+      "library": "ual2",
+      "clip": "Sword_Regular_C"
+    },
+    {
+      "name": "ual2_sword_regular_combo",
+      "library": "ual2",
+      "clip": "Sword_Regular_Combo"
+    },
+    {
+      "name": "ual2_treechopping_loop",
+      "library": "ual2",
+      "clip": "TreeChopping_Loop"
+    },
+    {
+      "name": "ual2_walk_carry_loop",
+      "library": "ual2",
+      "clip": "Walk_Carry_Loop"
+    },
+    {
+      "name": "ual2_yes",
+      "library": "ual2",
+      "clip": "Yes"
+    },
+    {
+      "name": "ual2_zombie_idle_loop",
+      "library": "ual2",
+      "clip": "Zombie_Idle_Loop"
+    },
+    {
+      "name": "ual2_zombie_scratch",
+      "library": "ual2",
+      "clip": "Zombie_Scratch"
+    },
+    {
+      "name": "ual2_zombie_walk_fwd_loop",
+      "library": "ual2",
+      "clip": "Zombie_Walk_Fwd_Loop"
+    }
+  ],
+  "skeletons": {
+    "male": "~/.openagents/assets/originals/9415c92b26b8b7b760ab72d333a0eee8e1f2f24bac62fb0a857f95203b91fed5/source/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+    "female": "~/.openagents/assets/originals/9415c92b26b8b7b760ab72d333a0eee8e1f2f24bac62fb0a857f95203b91fed5/source/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf"
+  },
+  "sampling": {
+    "rate_hz": 24,
+    "min_frames": 2,
+    "max_frames": 256,
+    "interchange": "in-place"
+  }
+}

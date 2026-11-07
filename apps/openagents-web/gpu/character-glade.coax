@@ -335,6 +335,11 @@ cg_sun_veil :: (uv:V2)->V3 {
  a:=cg_sun_veil(v2(0.62f32,0.2f32));b:=cg_sun_veil(v2(0.05f32,0.2f32));c:=cg_sun_veil(v2(0.62f32,0.9f32));
  #assert a.x>b.x && b.x>0 && c.x==0 && a.z<a.x;
 }
+#test "the animation browser darkens only its local left column" {
+ #assert cg_dev_panel(v2(20,30),720,1) && cg_dev_panel(v2(360,690),720,1);
+ #assert !cg_dev_panel(v2(371,30),720,1) && !cg_dev_panel(v2(20,10),720,1);
+}
+cg_dev_panel :: (p:V2,h:f32,k:f32)->bool {return p.x>=12*k && p.x<=370*k && p.y>=20*k && p.y<=h-20*k;}
 charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
  pixel:=v2(pos.x,pos.y);uv:=v2(pos.x/u[0],pos.y/u[1]);raw:=gpu_sample_level(post_light,post_lin,uv,0);
  if (u[10]<1.5f32) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
@@ -348,7 +353,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}if (u[11]>1.5f32 && cg_dev_panel(pixel,u[1],u[4])) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;
