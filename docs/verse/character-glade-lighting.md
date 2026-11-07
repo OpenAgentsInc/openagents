@@ -116,7 +116,7 @@ material, so it drew as blank grey and white. `cg_town_material` recognises thos
 the ridge (z < -32.5), and `cg_town_albedo` paints them: coursed stone with thin mortar and a value
 per block, timber-framed plaster darker at its foot, roof tiles in rows and straight-grained timber.
 Steep banks keep more of their olive under the hill's gold, and broad patches vary its value
-(`gate-walk.jpg`).
+Inside the ridge cut the gold eases further (`gate-walk.jpg`). `reference-compare.jpg` stacks the reference, the main shot and the walk.
 
 Captures are in `docs/verification/character-glade-reference-light-2026-11-07/`: `base.jpg`
 before, `p3.jpg` after the scene passes, `p5.jpg` and `p5ui.jpg` on current main with

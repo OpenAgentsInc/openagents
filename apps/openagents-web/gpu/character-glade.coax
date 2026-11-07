@@ -151,6 +151,9 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (foliage || ground) {albedo=cg_decode(s.tint);}
  if (ground) {trail:=cg_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
   steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
+  // inside the ridge cut on the walk to Everglade (past the main shot's view) the banks stay a grassy olive
+  cut:=(1.0f32-cg_ramp(3.0f32,10.0f32,abs(s.world.x-cg_road_x(s.world.z))))*cg_ramp(-17.0f32,-22.0f32,s.world.z);
+  steep=steep*(1.0f32-0.65f32*cut);
   albedo=mix3(albedo,cg_decode(v3(0.82f32,0.58f32,0.16f32)),cg_autumn(s.world.x,s.world.z)*0.80f32*steep*(1.0f32-trail));
   albedo=scale3(albedo,0.84f32+0.32f32*cg_noise(v2(s.world.x*0.35f32+4.0f32,s.world.z*0.35f32)));
   // The reference trail is packed olive earth, darker than sand.
