@@ -187,7 +187,7 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   if watch_you(w[..])[0].respawn {
     everglade_guard_invalidate(s);
     watch_you(w[..])[0].respawn = false;
-    s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z)); s[0].spawn_face = 0;
+    s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z)); s[0].spawn_face = f32(PI);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     s[0].sp.armed = -1; s[0].sp.casting = -1;
     watch_end_effects(s);

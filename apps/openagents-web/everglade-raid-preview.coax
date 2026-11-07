@@ -74,6 +74,7 @@ RaidPreview :: struct {
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
 rp_facts :: (s: [] Everglade, url: string) {
+  if eg_query_is(url,"from","grid") {s[0].orbit=verse_orbit_start(s[0].feet,f32(PI));}
   // a staged shot of Darian and his staff (docs/verse/clips.md), in the preview or a room
   if eg_query_is(url, "stage", "darian") { s[0].rp.stage = 4; }
   if eg_query_is(url, "stage", "darian-15") { s[0].rp.stage = 15; }
@@ -746,4 +747,10 @@ rp_test_bunched :: (g: [] Everglade, first: int, n: int, clip: int, gap: [] f32)
   for k: 0..<5 { everglade_raider(g[..], 1 + k, kinds[k], f32(k) * 2, -24, 0, 0, 1, 0, -1); }
   rp_draw(g[..], 1.0f32 / 60);
   #assert g[0].rp.who[5].npc == RP_PRIEST;
+}
+
+#test "first arrival faces the South Gate from the commons" #steps 900000000 {
+  g:[1]Everglade; everglade_start(g[..]);
+  #assert g[0].spawn.x == 0 && g[0].spawn.z == -16;
+  #assert abs(g[0].spawn_face - f32(PI)) < 0.001;
 }

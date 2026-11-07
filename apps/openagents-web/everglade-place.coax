@@ -55,7 +55,7 @@ everglade_place_fix :: (s: [] Everglade, p: Place) -> Place #export_c #effects(a
 everglade_place_here :: (s: [] Everglade, here: Place) -> Place #export_c #effects(all) {
   if !here.ok || !s[0].wv.started || !s[0].wt[0].on || !(watch_you(s[0].wt[..])[0].wanted || watch_you(s[0].wt[..])[0].dead) { return here; }
   p := here;
-  p.x = f32(EG_SPAWN_X); p.y = 0; p.z = f32(EG_SPAWN_Z); p.face = 0; p.yaw = 0; p.room = -1;
+  p.x = f32(EG_SPAWN_X); p.y = 0; p.z = f32(EG_SPAWN_Z); p.face = f32(PI); p.yaw = f32(PI); p.room = -1;
   return p;
 }
 

@@ -77,7 +77,7 @@ E5RD_HOME :: 2.0;                            // m: a raider that fled this near 
 // the stages of its march
 E5RD_IN :: 0; E5RD_FLEE :: 2;
 // the players' spawn (verse/everglade/plan.coax EG_SPAWN_X, EG_SPAWN_Z): kept clear (RT_SPAWN_R)
-E5RD_SPAWN_X :: 0.0; E5RD_SPAWN_Z :: -84.0;
+E5RD_SPAWN_X :: 0.0; E5RD_SPAWN_Z :: -16.0;
 // what a page plays for a cast (everglade-warlock.coax WL_*, everglade-raid-spells.coax RT_K_*)
 E5RD_K_BLAST :: RT_K_BLAST; E5RD_K_FIREBALL :: RT_K_FIREBALL; E5RD_K_BLIGHT :: RT_K_BLIGHT; E5RD_K_CIRCLE :: RT_K_CIRCLE;
 E5RD_K_FINGER :: RT_K_FINGER; E5RD_K_DOOR :: RT_K_DOOR;
@@ -1020,6 +1020,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     mm := sqrt(mx * mx + mz * mz);
     if mm > step { mx = mx / mm * step; mz = mz / mm * step; mm = step; }
     rt_slide(sl[0].g, bt[0].x, bt[0].z, mx, mz, o[..]);
+    if sl[0].stage != E5RD_FLEE {rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);}
     mx = o[0] - bt[0].x; mz = o[1] - bt[0].z; mm = sqrt(mx * mx + mz * mz);
     bt[0].x = o[0]; bt[0].z = o[1];
     bt[0].moving = mm > step * 0.3;   // walking, not a nudge off a neighbour (#12771)
@@ -1396,7 +1397,7 @@ e5rd_test_room :: (r: [] E5rRoom) {
 #test "room raid: the horde acts apart: at any moment some move and some hold to cast, its casts spread over the beat (#12771)" #steps 30000000000 {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
-  e5rr_join(r[..], 0, 0, -14);
+  e5rr_join(r[..], 0, 0, -34);
   r[0].b[0].c[E5RR_SEAT].hp_max = 100000; r[0].b[0].c[E5RR_SEAT].hp = 100000;   // a player who stands the raid out
   south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
   for k: 0..<24 {

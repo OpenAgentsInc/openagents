@@ -15,6 +15,7 @@ EgGuide :: struct {
   offered:int;button:Box;finger:int=-1;drawn:int;now_ms:int;
   hud_move:bool;ox:f32;oy:f32;pad_x:f32;pad_y:f32;you:Point;still:bool;
   first_done:int;first_shown:int;first_mark:[40]u8;   // the first goal (eg_first_*): what is done, the step drawn
+  raid_helped:bool; raid_help_at:f64; raid_target_x:f32; raid_target_y:f32;
   quiet:bool;   // a realm with no quests and no guidance (Everglade 5E sets it): no tracker, first goal, board, guide's button or lines
 }
 
@@ -242,9 +243,17 @@ eg_raid_arrival_line :: (preview:bool, phase:int, z:f32)->int {
   return 3;
 }
 eg_raid_arrival_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point)->int {
+  s[0].guide.raid_target_x= -1;s[0].guide.raid_target_y= -1;
+  best:f32=10000;
+  if net_on(s) {nn:=net_of(s);for i:0..<NET_ENTS {en:=nn[0].ents[i];
+    if !en.live || en.kind!=WK_BEAST || !eg_raid_help(0,1000,en.p1,1) || en.hp<=0 {continue;}
+    pp:=v3(en.shown.x,en.shown.y+0.05,en.shown.z);if !cr_sight(s,you,pp) {continue;}sc:=on_screen(u,pp,s[0].width,s[0].height);dist:=flat_gap(pp,you);
+    if sc.ok && dist<best && dist<17 && sc.x>0 && sc.x<s[0].width && sc.y>0 && sc.y<s[0].height {best=dist;s[0].guide.raid_target_x=sc.x;s[0].guide.raid_target_y=sc.y;}
+  }}
   line:=eg_raid_arrival_line(s[0].rp.on,ege_of(s)[0].phase,you.z);
   if line==0 {return at;}
-  title:=ifx line==1 then "THE WATCH IS PREPARING" else "CULTISTS AT THE SOUTH GATE";
+  helped:=s[0].guide.raid_helped && s[0].time-s[0].guide.raid_help_at<6;
+  title:=ifx helped then "YOU HELPED DEFEND EVERGLADE" else ifx line==1 then "THE WATCH IS PREPARING" else "CULTISTS AT THE SOUTH GATE";
   how:=ifx line==1 then "FOLLOW THE ROAD TO THE SOUTH GATE" else ifx line==2 then "FOLLOW THE GUARDS TO THE SOUTH GATE" else "HELP THE WATCH PUSH THE CULTISTS BACK";
   k:=hi(s[0].dpr,0.5);g:=16*k;tc:=8*k;dc:=6.5*k;room:=s[0].width-2*g-28*k;
   tw:=text_width(title,tc);dw:=text_width(how,dc);
@@ -253,4 +262,16 @@ eg_raid_arrival_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point
   plate(s,u,Box.{x0=g,y0=top,x1=g+pw,y1=top+tc+dc+34*k},0.82,0);
   n:=draw_text(out,at,title,g+14*k,top+12*k+tc,tc,GAP,SPACE,ink(k,0.95,GOLD_R,GOLD_G,GOLD_B),false,false);
   return draw_text(out,n,how,g+14*k,top+22*k+tc+dc,dc,GAP,SPACE,ink(k,0.85,PARCH_R,PARCH_G,PARCH_B),false,false);
+}
+
+#test "raid contribution requires your positive hit on an enemy" {
+  #assert eg_raid_help(0, 1000, 27, 1);
+  #assert eg_raid_help(2, 1002, 29, 9);
+  #assert !eg_raid_help(0, 1001, 27, 1);
+  #assert !eg_raid_help(0, 1000, 27, 0);
+  #assert !eg_raid_help(0, 1000, 21, 1);
+  #assert !eg_raid_help(0, 1000, 30, 1);
+}
+eg_raid_help :: (seat:int, by:int, form:int, amount:int)->bool {
+  return seat>=0 && by==1000+seat && amount>0 && (form==27 || form==28 || form==29 || form==31);
 }

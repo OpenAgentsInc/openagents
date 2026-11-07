@@ -198,8 +198,8 @@ EG_SPOT_CAT :: [28] bool.[
   false, false, false, false, false, false
 ];
 
-// You arrive on the road in, south of the gate, facing it.
-EG_SPAWN_X :: 0.0; EG_SPAWN_Z :: -84.0;
+// You arrive on the commons, inside the South Gate, facing toward it.
+EG_SPAWN_X :: 0.0; EG_SPAWN_Z :: -16.0;
 
 // ---- the ground
 

@@ -1,0 +1,57 @@
+// Player-perspective local arrival, trusted CDP input and a confirmed raid hit.
+// Usage: tool.sh everglade-arrival-session URL OUTPUT.mp4 FRAMES_DIR
+#import "Basic";
+#load "../lib/media/media.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],1280,720,"arrival-session-") {return 1;}
+ defer {cdp_close(c[..]);}
+ root:=args_at(a[..],2);if !fs_mkdir(root) {return 1;}
+ err:=media_record_room(c[..],args_at(a[..],0),ArgsSize.{ok=true,w=1280,h=720},0,12,"12",0,"",root,"(()=>{const post=Worker.prototype.postMessage;Worker.prototype.postMessage=function(m,...rest){if(m?.t==='boot'){m={...m,control:'event 1 0 1 4 10 0 0 1 1 1 0 1 100 5 0 0'+String.fromCharCode(10),start:'event 1 0 1 4 10 0 0 1 1 1 0 1 100 5 1 0'+String.fromCharCode(10)}}return post.call(this,m,...rest)};return true})()","",true);
+ if err.count>0 {print("%\n",err);return 1;}
+ bytes:[MEDIA_PNG]u8;path:[4200]u8;name:[16]u8;
+ departure:= -1;
+ for f:0..<1440 {
+   if f>=480 && f%12==0 && departure<0 {done:=cdp_evaluate(c[..],"coaxial.netProbe(922)===1");if done>=0 && jv_raw(cdp_doc(c[..]),done)=="true" {departure=f;if !arrival_key(c[..],"s","keyDown") {return 1;}}}
+   if departure>=0 && f-departure==96 {if !arrival_key(c[..],"s","keyUp") {return 1;}}
+   if f==12 {if !arrival_click(c[..],"615","312") {return 1;}}
+   if f==24 {if !arrival_click(c[..],"670","358") {return 1;}}
+   if f==36 {if !arrival_click(c[..],"830","404") {return 1;}}
+   if f==60 {if !arrival_key(c[..],"Enter","keyDown") || !arrival_key(c[..],"Enter","keyUp") {return 1;}}
+   if f==132 {if !arrival_key(c[..],"w","keyDown") {return 1;}}
+   if f==214 {if !arrival_key(c[..],"w","keyUp") {return 1;}}
+   if f>=438 && f%48==6 {if !arrival_key(c[..],"w","keyUp") {return 1;}}
+   if departure<0 && f>=432 && f%48==0 {
+     near:=cdp_evaluate(c[..],"coaxial.netProbe(920)>=0");
+     if near>=0 && jv_raw(cdp_doc(c[..]),near)!="true" {if !arrival_key(c[..],"w","keyDown") {return 1;}}
+     armed:=cdp_evaluate(c[..],"coaxial.hotbarProbe(43,5)===43");
+     used:=true;
+     if armed<0 || jv_raw(cdp_doc(c[..]),armed)!="true" {used=arrival_probe_click(c[..],"Math.round((coaxial.hotbarProbe(43,1)+coaxial.hotbarProbe(43,3))/2*document.querySelector('canvas').clientWidth/document.querySelector('canvas').width)","Math.round((coaxial.hotbarProbe(43,2)+coaxial.hotbarProbe(43,4))/2*document.querySelector('canvas').clientHeight/document.querySelector('canvas').height)");}
+     x:=cdp_evaluate(c[..],"Math.round(coaxial.netProbe(920)*document.querySelector('canvas').clientWidth/document.querySelector('canvas').width)");sx:=ifx x>=0 then jv_raw(cdp_doc(c[..]),x) else "-1";
+     xb:[32]u8;xn:=jn_copy(xb[..],sx);target_x:=cast(string)xb[0..<xn];
+     y:=cdp_evaluate(c[..],"Math.round(coaxial.netProbe(921)*document.querySelector('canvas').clientHeight/document.querySelector('canvas').height)");yb:[32]u8;yn:=jn_copy(yb[..],ifx y>=0 then jv_raw(cdp_doc(c[..]),y) else "-1");target_y:=cast(string)yb[0..<yn];
+     if args_number(target_x).value>=0 && args_number(target_y).value>=0 {used = arrival_click(c[..],target_x,target_y);}
+   }
+   n:=cdp_evaluate(c[..],"coaxialClipStep(1,12)");if n<0 {print("%\n",cdp_error(c[..]));return 1;}
+   size:=cdp_screenshot(c[..],bytes[..]);if size<0 || !fs_write(fs_join(root,clip_frame_name(f,name[..]),path[..]),cast(string)bytes[0..<size]) {return 1;}
+   if f%120==0 {print("recorded % seconds\n",f/12);}
+ }
+ n:=cdp_evaluate(c[..],"JSON.stringify({helped:coaxial.netProbe(922),feet:[0,1,2].map(k=>coaxial.fieldProbe(k))})");if n>=0 {print("%\n",jv_raw(cdp_doc(c[..]),n));}
+ se:[65536]u8;bad:=media_encode_sound("ffmpeg",root,"12","",args_at(a[..],1),se[..]);if bad.count>0 {print("%\n",bad);return 1;}
+ n=cdp_evaluate(c[..],"coaxial.netProbe(922)===1");return ifx n>=0 && jv_raw(cdp_doc(c[..]),n)=="true" then 0 else 1;
+}
+jn_copy :: (b:[]u8,t:string)->int {n:=0;for ch:t {if n>=b.count {break;}b[n]=ch;n+=1;}return n;}
+arrival_key :: (c:[]Cdp,key:string,kind:string)->bool {
+ b:[512]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"type");jo_str(j[..],kind);jo_key(j[..],"key");jo_str(j[..],key);jo_key(j[..],"code");jo_str(j[..],ifx key=="w" then "KeyW" else ifx key=="s" then "KeyS" else ifx key=="Enter" then "Enter" else "Digit7");jo_key(j[..],"windowsVirtualKeyCode");jo_int(j[..],ifx key=="w" then 87 else ifx key=="s" then 83 else ifx key=="Enter" then 13 else 55);jo_end(j[..]);return cdp_call(c,"Input.dispatchKeyEvent",jo_text(j[..]),30000)>=0;
+}
+arrival_click :: (c:[]Cdp,x:string,y:string)->bool {
+ for kind:[2]string.["mousePressed","mouseReleased"] {b:[512]u8;n:=ws_put(b[..],0,"{\"type\":\"");n=ws_put(b[..],n,kind);n=ws_put(b[..],n,"\",\"x\":");n=ws_put(b[..],n,x);n=ws_put(b[..],n,",\"y\":");n=ws_put(b[..],n,y);n=ws_put(b[..],n,",\"button\":\"left\",\"clickCount\":1}");if cdp_call(c,"Input.dispatchMouseEvent",cast(string)b[0..<n],30000)<0 {return false;}}
+ return true;
+}
+
+arrival_probe_click :: (c:[]Cdp,xexpr:string,yexpr:string)->bool {
+ xb:[32]u8;yb:[32]u8;
+ x:=cdp_evaluate(c,xexpr);if x<0 {return false;}xn:=jn_copy(xb[..],jv_raw(cdp_doc(c),x));
+ y:=cdp_evaluate(c,yexpr);if y<0 {return false;}yn:=jn_copy(yb[..],jv_raw(cdp_doc(c),y));
+ return arrival_click(c,cast(string)xb[0..<xn],cast(string)yb[0..<yn]);
+}

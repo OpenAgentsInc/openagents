@@ -683,7 +683,7 @@ everglade_start :: (s: [] Everglade) {
   water_grid_build(s);
   s[0].breath = 1;
   s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z));
-  s[0].spawn_face = 0;
+  s[0].spawn_face = f32(PI);
   s[0].feet = v3(s[0].spawn.x, ground_at(s, s[0].spawn.x, s[0].spawn.z), s[0].spawn.z);
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
   s[0].map_finger = -1;

@@ -590,8 +590,8 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   everglade_start(g[..]);
   everglade_catalog(g[..], CATALOG);
   everglade_attach_net(g[..], nn[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  you := v3(0, 0, -84);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -16, f32(PI), 0, 0, 0, false, 0, 0, 0, 0);
+  you := v3(0, 0, -16);
   clear := labels(g[..], out[..], u[..], 0, you);
   #assert clear > 0;   // the South Gate and the rest, ahead
   ege_of(g[..])[0].banner_box = Box.{x0 = 0, y0 = 0, x1 = 1280, y1 = 800};

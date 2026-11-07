@@ -303,6 +303,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
     n[0].asking = n[0].want;
     net_dest_swap(n); net_local_host(n); n[0].local_host = true;
   }
+  if net_query(url,"arrival")=="1" && !n[0].join[0].picked {n[0].join[0].pick_open=true;n[0].join[0].hold=true;}
   pid := fact(facts, "player");
   if pid.count > 0 { n[0].pid_n = net_copy(n[0].pid[..], pid); }
   n[0].account = fact(facts, "account").count > 0;
@@ -938,6 +939,8 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     by := net_where(s, n, net_who(h.by));
     if by.ok { egs_swung(s, v3(by.x, by.y + 1.2, by.z), h.kind); }   // a weapon's swing (everglade-sound.coax); the blow is watch_pop's
     if ege_hit(s, n, h.who) { return; }   // WARDED (everglade-events.coax)
+    target := net_ent(n, net_who(h.who), false);
+    if s[0].rp.on && !s[0].guide.raid_helped && target>=0 && n[0].ents[target].kind==WK_BEAST && eg_raid_help(n[0].seat,h.by,n[0].ents[target].p1,h.amt) {s[0].guide.raid_helped=true;s[0].guide.raid_help_at=s[0].time;}
     at := net_where(s, n, net_who(h.who));
     if at.ok { watch_pop(s, v3(at.x, at.y + 2.1, at.z), h.amt, h.amt >= 25); }
     return;
@@ -2211,6 +2214,8 @@ net_forest_probe :: (s: [] Everglade, field: int) -> int {
 // summoned creature, else 3 m ahead of you (an ability you don't point with: 2 m ahead, as its press
 // does): 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
+  if field==920 {return int(s[0].guide.raid_target_x);}if field==921 {return int(s[0].guide.raid_target_y);}
+  if field==922 {return ifx s[0].guide.raid_helped then 1 else 0;}
   if !net_on(s) { return -1; }
   n := net_of(s);
   if field >= 9000 && field <= 9004 { return net_forest_probe(s, field); }
@@ -3618,4 +3623,16 @@ net_test_walk :: (jitter: int, lose: int, jump: bool, resend: int) -> NetTestWal
   everglade_attach_net(g[..], gn[..]);
   g[0].face = 0.5;
   #assert net_probe(g[..], 63) == 500 && net_probe(g[..], 84) == 0 && net_probe(g[..], 85) == 0;
+}
+
+#test "raid arrival acknowledges only your confirmed enemy hit" {
+  g:[1]Everglade; nn:[1]EgNet; everglade_attach_net(g[..],nn[..]);
+  n:=net_of(g[..]); n[0].seat=0; n[0].state=NET_OPEN;
+  g[0].started=true;g[0].rp.on=true;g[0].time=10;
+  q:=net_ent(n,NET_MADE_ID+9,true);n[0].ents[q].kind=WK_BEAST;n[0].ents[q].p1=27;
+  d:WireD;
+  net_entry(g[..],n,"e hit 2009 1001 5 1",d); #assert !g[0].guide.raid_helped;
+  net_entry(g[..],n,"e hit 2009 1000 0 1",d); #assert !g[0].guide.raid_helped;
+  net_entry(g[..],n,"e hit 2009 1000 5 1",d); #assert g[0].guide.raid_helped && g[0].guide.raid_help_at==10;
+  g[0].time=12;net_entry(g[..],n,"e hit 2009 1000 5 1",d);#assert g[0].guide.raid_help_at==10;
 }

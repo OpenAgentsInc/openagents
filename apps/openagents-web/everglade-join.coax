@@ -616,3 +616,12 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   net_ticket(h[..], "200\n{\"ticket\":\"v3.x\",\"room\":\"everglade-3\",\"shard\":1,\"full\":true,\"asked\":\"everglade-2\",\"by\":\"Alice\"}");
   #assert jn_has(cast(string) h[0].sp.news[0..<h[0].sp.news_n], "ALICE'S ROOM IS FULL · JOINING EVERGLADE-3");
 }
+
+#test "local arrival holds the socket until character acceptance preserves the selected look" {
+ g:[1]Everglade;nn:[1]EgNet;everglade_attach_net(g[..],nn[..]);
+ net_facts(g[..],"url=http://127.0.0.1:18777/worlds/everglade?arrival=1&raid=preview\n","everglade",false);
+ n:=net_of(g[..]);#assert join_picking(g[..]) && !jn_ready(n);
+ n[0].join[0].skin=3;n[0].join[0].dye=5;n[0].join[0].trim=11;
+ #assert join_key(g[..],KEY_ENTER) && !join_picking(g[..]) && jn_ready(n);
+ #assert cast(string)n[0].look[0..<n[0].look_n]=="ranger.3.5.11";
+}
