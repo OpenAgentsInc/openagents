@@ -11,6 +11,7 @@ static coax_t_HostPackChunk chunk;
 static coax_t_HostPackAllocation allocation;
 static coax_t_HostPrivatePack private_plan;
 static coax_t_PackRead pack;
+static coax_t_HptGrant transport_plan;
 static uint8_t prefix[12],metadata[4096];
 static coax_v_t_HostInboxQueue storage_view(void){return(coax_v_t_HostInboxQueue){&storage,1};}
 static coax_v_t_HostPackStream stream_view(void){return(coax_v_t_HostPackStream){&stream,1};}
@@ -19,6 +20,19 @@ PACK_EXPORT("pack_storage_reserve") uint32_t pack_storage_reserve(int64_t bytes)
 PACK_EXPORT("pack_storage_ticket") int64_t pack_storage_ticket(int32_t field){switch(field){case 0:return ticket.lease.slot;case 1:return ticket.lease.serial;case 2:return ticket.lease.epoch;default:return -1;}}
 PACK_EXPORT("pack_storage_release") uint32_t pack_storage_release(int64_t slot,int64_t serial,int64_t epoch){return hiq_release(storage_view(),(coax_t_HostInboxLease){.slot=slot,.serial=serial,.epoch=epoch});}
 PACK_EXPORT("pack_storage_info") int64_t pack_storage_info(int32_t field){coax_t_HostPackStorageOffer p=hpk_storage_offer(storage_view());switch(field){case 0:return p.count;case 1:return p.bytes;case 2:return p.capacity;case 3:return p.per_allocation;default:return -1;}}
+PACK_EXPORT("pack_storage_plan") uint32_t pack_storage_plan(int64_t bytes,uint32_t raw){
+  if(raw>1)return COAX_HostInboxStatus_invalid;
+  coax_t_HptSource source={.status=COAX_HptStatus_ok,.raw=raw!=0,.container_bytes=bytes,.bytes=bytes};
+  transport_plan=hpt_reserve(storage_view(),source,(int64_t)(uintptr_t)&__heap_base,8388608);
+  return transport_plan.status;
+}
+PACK_EXPORT("pack_plan_ticket") int64_t pack_plan_ticket(int32_t index,int32_t field){
+  if(index<0||index>=transport_plan.count)return -1;coax_t_HostInboxLease lease=transport_plan.leases.e[index];
+  switch(field){case 0:return lease.slot;case 1:return lease.serial;case 2:return lease.epoch;default:return -1;}
+}
+PACK_EXPORT("pack_plan_info") int64_t pack_plan_info(int32_t field){
+  switch(field){case 0:return transport_plan.count;case 1:return transport_plan.cost.reactor;case 2:return transport_plan.cost.external;case 3:return transport_plan.cost.reserved;case 4:return transport_plan.cost.grow;default:return -1;}
+}
 PACK_EXPORT("pack_stream_open") uint32_t pack_stream_open(int64_t expected,uint32_t encoded){stream=hpk_stream_open(expected,encoded!=0);return stream.valid;}
 PACK_EXPORT("pack_prefix_ptr") uint32_t pack_prefix_ptr(void){return(uint32_t)(uintptr_t)prefix;}
 PACK_EXPORT("pack_prefix_capacity") uint32_t pack_prefix_capacity(void){return sizeof prefix;}

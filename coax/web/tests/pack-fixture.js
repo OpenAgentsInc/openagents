@@ -3,6 +3,30 @@ import {openPackHost} from '../pack-host.js';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function wait(test,label){const end=performance.now()+5000;while(!test()){if(performance.now()>end)throw Error(`pack fixture:${label}`);await sleep(5);}}
 const hex=b=>Array.from(new Uint8Array(b),v=>v.toString(16).padStart(2,'0')).join('');
+export async function plannedPackFixture(){
+ const host=await openPackHost(),pack=new Uint8Array(await(await fetch('/fixture.pack')).arrayBuffer()),original=globalThis.fetch,Instance=WebAssembly.Instance,out=[],releases=[];let rawBorrow;
+ const totals=()=>{const i=host.info();return [i.owners,i.storage[0],i.storage[1]];};let requests=0,constructs=0,constructed=[],mode='pack',readerReady=0,cancelCount=0;
+ globalThis.fetch=async(url,options)=>{
+  if(!String(url).includes('/planned-'))return original(url,options);requests++;
+  if(mode==='pack')return new Response(pack);
+  if(mode==='raw')return new Response(Uint8Array.of(1,2,3,4));
+  return new Response(new ReadableStream({start(c){readerReady++;},cancel(){cancelCount++;return new Promise(r=>releases.push(r));}}));
+ };
+ WebAssembly.Instance=new Proxy(Instance,{construct(target,args){constructs++;constructed.push(totals());if(mode==='instance-failure')throw Error('explicit constructor failure input');return Reflect.construct(target,args);}});
+ try{
+  const p=await host.load({url:'/planned-pack',bytes:512},{owner:'planned-pack'});out.push(p.bytes,p.entries.length,...constructed.at(-1));await host.retire('planned-pack');out.push(...totals());
+  mode='raw';const raw=await host.loadBytes('/planned-raw',4,{owner:'planned-raw'});out.push(raw.bytes.length,...constructed.at(-1));const retained=raw.bytes;
+  let releaseRaw,rawClosed=false;const rawHeld=new Promise(r=>{releaseRaw=r;});releases.push(releaseRaw);const usingRaw=raw.use(async()=>{await rawHeld;}).then(()=>0,()=>1);const retireRaw=host.retire('planned-raw').then(()=>{rawClosed=true;});await sleep(5);rawBorrow=[Number(!rawClosed),...totals().slice(1)];releaseRaw();releases.splice(releases.indexOf(releaseRaw),1);rawBorrow.push(await usingRaw);await retireRaw;out.push(Number(retained.every(b=>b===0)),...totals());
+  mode='hold';const held1=host.loadBytes('/planned-held1',4,{owner:'held1'}).catch(()=>null),held2=host.loadBytes('/planned-held2',4,{owner:'held2'}).catch(()=>null);await wait(()=>readerReady===2,'two prepaid raw readers');out.push(...totals());
+  let finished=false;const closing=host.retire('held1').then(()=>{finished=true;});await wait(()=>cancelCount===1,'held raw cancellation');await sleep(5);out.push(Number(!finished),...totals());releases.shift()();await closing;await held1;out.push(...totals());
+  const closing2=host.retire('held2');await wait(()=>cancelCount===2,'second raw cancellation');releases.shift()();await closing2;await held2;out.push(...totals());
+  mode='instance-failure';let failed=0;try{await host.loadBytes('/planned-instance',4,{owner:'instance'});}catch{failed=1;}out.push(failed,...totals());
+  mode='pack';for(let i=0;i<30;i++)await host.load({url:'/planned-full',bytes:512},{owner:'full'});const before=totals(),r=requests,c=constructs;mode='raw';failed=0;try{await host.loadBytes('/planned-overflow',4,{owner:'overflow'});}catch{failed=1;}
+  out.push(...before,failed,requests-r,constructs-c,...totals());await host.retire('full');out.push(...totals());
+  for(const size of [0,-1,67108865]){const r=requests,c=constructs;failed=0;try{await host.loadBytes('/planned-invalid',size,{owner:'invalid'});}catch{failed=1;}out.push(failed,requests-r,constructs-c);}
+  out.push(...rawBorrow);return out;
+ }finally{for(const release of releases)release();globalThis.fetch=original;WebAssembly.Instance=Instance;for(const owner of ['planned-pack','planned-raw','held1','held2','instance','full','overflow','invalid'])await host.retire(owner);}
+}
 export async function physicalPackFixture(){
  const host=await openPackHost(),progress=[],url=path=>`http://127.0.0.1:9187/${path}`;
  const result=await host.load({url:url('split')},{owner:'physical',progress:(loaded,total)=>progress.push([loaded,total])});

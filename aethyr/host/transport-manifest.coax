@@ -1,0 +1,103 @@
+// HTP1 is an additive whole-container companion. RCM1/VPK bytes stay frozen.
+#authority;
+#load "transport-cost.coax";
+HPT_HEADER :: 112;
+HPT_ROW :: 96;
+HPT_BYTES :: HPT_HEADER+RESOURCE_MANIFEST_MAX*HPT_ROW;
+HptManifestStatus :: enum u8 {ok;invalid;identity;unsupported;shape;capacity;}
+HptManifest :: struct {valid:bool;count:int;scene:assets.AssetId;manifest:assets.AssetId;identity:assets.AssetId;entries:[RESOURCE_MANIFEST_MAX]HptSource;}
+
+#test "HTP1 round trips literal codec metadata with every source container and span" #steps 200000000 {
+  for count:[2]int.[1,64] {
+    m:=resource_manifest_fixture(count);m.valid=true;m.identity=assets.asset_id("hpt-manifest-codec");
+    p:=HptManifest.{valid=true,count=count,scene=assets.asset_id("hpt-scene-codec"),manifest=m.identity};
+    for i:0..<count {p.entries[i]=HptSource.{status=HptStatus.ok,raw=true,container=m.entries[i].plan.content,content=m.entries[i].plan.content,container_bytes=4,bytes=4};}
+    bytes:[HPT_BYTES+1]u8;for i:0..<bytes.count {bytes[i]=193;}
+    n:=HPT_HEADER+count*HPT_ROW;
+    #assert hpt_write(p,m,bytes[0..<n-1])==HptManifestStatus.capacity && bytes[0]==193;
+    #assert hpt_write(p,m,bytes[0..<n])==HptManifestStatus.ok && bytes[n]==193;
+    #assert cast(string) bytes[0..<4]=="HTP1" && resource_u32(bytes[..],4)==1 && cast(int) resource_u32(bytes[..],8)==count && resource_u32(bytes[..],12)==96;
+    #assert assets.asset_same(resource_get_digest(bytes[..],16),p.scene) && assets.asset_same(resource_get_digest(bytes[..],48),m.identity) && assets.asset_same(resource_get_digest(bytes[..],80),assets.asset_id(HPT_MODEL));
+    root:=assets.asset_id(cast(string) bytes[0..<n]);parsed:[1]HptManifest;
+    #assert hpt_read(bytes[0..<n],root,p.scene,m,parsed[..])==HptManifestStatus.ok && parsed[0].valid && parsed[0].count==count && assets.asset_same(parsed[0].identity,root);
+    #assert assets.asset_same(parsed[0].scene,p.scene) && assets.asset_same(parsed[0].manifest,m.identity);
+    for i:0..<count {a:=parsed[0].entries[i];b:=p.entries[i];#assert a.status==HptStatus.ok && a.raw && assets.asset_same(a.container,b.container) && assets.asset_same(a.content,b.content) && a.container_bytes==4 && a.offset==0 && a.bytes==4;}
+    again:[HPT_BYTES]u8;#assert hpt_write(parsed[0],m,again[0..<n])==HptManifestStatus.ok;for i:0..<n {#assert again[i]==bytes[i];}
+    bytes[0]^=1;#assert hpt_read(bytes[0..<n],root,p.scene,m,parsed[..])==HptManifestStatus.identity && parsed[0].valid && parsed[0].count==count;
+  }
+}
+#test "transport metadata refuses unsupported and inconsistent complete bytes atomically" #steps 200000000 {
+  m:=resource_manifest_fixture(1);m.valid=true;m.identity=assets.asset_id("transport-codec-manifest");
+  scene:=assets.asset_id("transport-codec-scene");p:=HptManifest.{valid=true,count=1,scene=scene,manifest=m.identity};
+  p.entries[0]=HptSource.{status=HptStatus.ok,container=assets.asset_id("whole-container"),content=m.entries[0].plan.content,container_bytes=512,offset=32,bytes=4};
+  bytes:[208]u8;#assert hpt_write(p,m,bytes[..])==HptManifestStatus.ok;
+  parsed:[1]HptManifest;
+  #assert hpt_read(bytes[..],assets.asset_id(cast(string) bytes[..]),scene,m,parsed[..])==HptManifestStatus.ok && !parsed[0].entries[0].raw && parsed[0].entries[0].offset==32;
+  for field:[8]int.[0,4,8,12,16,48,80,112] {
+    bad:=bytes;bad[field]+=1;status:=hpt_read(bad[..],assets.asset_id(cast(string) bad[..]),scene,m,parsed[..]);
+    #assert status!=HptManifestStatus.ok && parsed[0].count==1 && parsed[0].entries[0].offset==32;
+  }
+  for offset:[3]int.[116,152,200] {bad:=bytes;bad[offset]+=1;#assert hpt_read(bad[..],assets.asset_id(cast(string) bad[..]),scene,m,parsed[..])!=HptManifestStatus.ok;}
+  for offset:[3]int.[184,192,200] {bad:=bytes;resource_put64(bad[..],offset, -1);#assert hpt_read(bad[..],assets.asset_id(cast(string) bad[..]),scene,m,parsed[..])==HptManifestStatus.shape;}
+  short:=bytes[0..<111];#assert hpt_read(short,assets.asset_id(cast(string) short),scene,m,parsed[..])==HptManifestStatus.shape;
+  trailing:[209]u8;for i:0..<208 {trailing[i]=bytes[i];}#assert hpt_read(trailing[..],assets.asset_id(cast(string) trailing[..]),scene,m,parsed[..])==HptManifestStatus.shape;
+  oversized:[HPT_BYTES+HPT_ROW]u8;for i:0..<208 {oversized[i]=bytes[i];}resource_put32(oversized[..],8,65);#assert hpt_read(oversized[..],assets.asset_id(cast(string) oversized[..]),scene,m,parsed[..])==HptManifestStatus.shape;
+  bad:=bytes;resource_put32(bad[..],8,65);#assert hpt_read(bad[..],assets.asset_id(cast(string) bad[..]),scene,m,parsed[..])==HptManifestStatus.shape;
+  resource_put32(bad[..],8,0);#assert hpt_read(bad[..],assets.asset_id(cast(string) bad[..]),scene,m,parsed[..])==HptManifestStatus.shape;
+  bad=bytes;resource_put32(bad[..],112,2);#assert hpt_read(bad[..],assets.asset_id(cast(string) bad[..]),scene,m,parsed[..])==HptManifestStatus.shape;
+  #assert hpt_read(bytes[..],assets.asset_id(cast(string) bytes[..]),assets.asset_id("other"),m,parsed[..])==HptManifestStatus.identity;
+  m.identity=scene;#assert hpt_read(bytes[..],assets.asset_id(cast(string) bytes[..]),scene,m,parsed[..])==HptManifestStatus.identity;
+}
+#test "transport count and wire extents narrow before indexing and signed projection" {
+  for count:[2]int.[1,64] {#assert hpt_count(count);}
+  for count:[4]int.[-1,0,65,9223372036854775807] {#assert !hpt_count(count);}
+  for bytes:[3]u64.[0,1,67108864] {#assert hpt_narrow(bytes)==cast(int) bytes;}
+  for bytes:[3]u64.[67108865,9223372036854775807,18446744073709551615] {#assert hpt_narrow(bytes)== -1;}
+}
+#test "transport metadata shape is bounded by the original manifest and raw source identity" {
+  m:=resource_manifest_fixture(1);m.valid=true;p:=HptManifest.{valid=true,count=1};p.entries[0]=HptSource.{status=HptStatus.ok,raw=true,container=m.entries[0].plan.content,content=m.entries[0].plan.content,container_bytes=4,bytes=4};
+  #assert hpt_shape(p,m);
+  for field:0..<10 {bad:=p;
+    if field==0 {bad.valid=false;}if field==1 {bad.count=0;}if field==2 {bad.count=65;}if field==3 {bad.manifest.words[0]+=1;}if field==4 {bad.entries[0].status=HptStatus.source;}
+    if field==5 {bad.entries[0].container_bytes=0;}if field==6 {bad.entries[0].bytes=5;}if field==7 {bad.entries[0].content.words[0]+=1;}if field==8 {bad.entries[0].container.words[0]+=1;}if field==9 {bad.entries[0].offset= -1;}
+    #assert !hpt_shape(bad,m);
+  }
+  bad:=p;bad.entries[0].container_bytes=5;#assert !hpt_shape(bad,m);
+  bad=p;bad.entries[0].container_bytes=67108865;#assert !hpt_shape(bad,m);
+  bad=p;bad.entries[0].raw=false;bad.entries[0].offset=1;#assert !hpt_shape(bad,m);
+  bad=p;bad.entries[0].raw=false;#assert !hpt_shape(bad,m);
+  bad=p;bad.entries[0].raw=false;bad.entries[0].container_bytes=512;bad.entries[0].offset=509;#assert !hpt_shape(bad,m);
+  bad_m:=m;bad_m.valid=false;#assert !hpt_shape(p,bad_m);bad_m=m;bad_m.entries[0].plan.status=ResourceCostStatus.invalid;#assert !hpt_shape(p,bad_m);
+  bytes:[208]u8;bytes[0]=73;bad=p;bad.valid=false;#assert hpt_write(bad,m,bytes[..])==HptManifestStatus.invalid && bytes[0]==73;
+}
+
+hpt_count :: (count:int)->bool #effects(all) {return count>=1 && count<=RESOURCE_MANIFEST_MAX;}
+hpt_narrow :: (bytes:u64)->int #effects(all) {return ifx bytes>cast(u64) HOST_PACK_BYTES then -1 else cast(int) bytes;}
+hpt_shape :: (p:HptManifest,m:ResourceManifest)->bool #effects(all) {
+  if !p.valid || !m.valid || p.count!=m.count || !assets.asset_same(p.manifest,m.identity) || !resource_manifest_shape(m) {return false;}
+  for i:0..<p.count {
+    e:=p.entries[i];if e.status!=HptStatus.ok || !hpk_stream_open(e.container_bytes,e.raw).valid || e.offset<0 || e.bytes!=m.entries[i].plan.cost.encoded || e.offset>e.container_bytes-e.bytes || !assets.asset_same(e.content,m.entries[i].plan.content) {return false;}
+    if e.raw && (e.offset!=0 || e.bytes!=e.container_bytes || !assets.asset_same(e.container,e.content)) {return false;}
+  }
+  return true;
+}
+hpt_write :: (p:HptManifest,m:ResourceManifest,out:[]u8)->HptManifestStatus #export_c #effects(all) {
+  if !hpt_shape(p,m) {return HptManifestStatus.invalid;}n:=HPT_HEADER+p.count*HPT_ROW;if out.count<n {return HptManifestStatus.capacity;}
+  for c,i:"HTP1" {out[i]=c;}
+  resource_put32(out,4,1);resource_put32(out,8,cast(u32) p.count);resource_put32(out,12,HPT_ROW);
+  resource_put_digest(out,16,p.scene);resource_put_digest(out,48,p.manifest);resource_put_digest(out,80,assets.asset_id(HPT_MODEL));
+  for i:0..<p.count {e:=p.entries[i];at:=HPT_HEADER+i*HPT_ROW;resource_put32(out,at,ifx e.raw then 1 else 0);resource_put32(out,at+4,0);resource_put_digest(out,at+8,e.container);resource_put_digest(out,at+40,e.content);resource_put64(out,at+72,e.container_bytes);resource_put64(out,at+80,e.offset);resource_put64(out,at+88,e.bytes);}
+  return HptManifestStatus.ok;
+}
+hpt_read :: (bytes:[]u8,root:assets.AssetId,scene:assets.AssetId,m:ResourceManifest,out:[]HptManifest)->HptManifestStatus #export_c #effects(all) {
+  if !assets.asset_same(assets.asset_id(cast(string) bytes),root) {return HptManifestStatus.identity;}
+  if bytes.count<HPT_HEADER+HPT_ROW {return HptManifestStatus.shape;}
+  if cast(string) bytes[0..<4]!="HTP1" || resource_u32(bytes,4)!=1 || resource_u32(bytes,12)!=HPT_ROW || !assets.asset_same(resource_get_digest(bytes,80),assets.asset_id(HPT_MODEL)) {return HptManifestStatus.unsupported;}
+  count:=cast(int) resource_u32(bytes,8);if !hpt_count(count) || bytes.count!=HPT_HEADER+count*HPT_ROW {return HptManifestStatus.shape;}
+  if !assets.asset_same(resource_get_digest(bytes,16),scene) || !assets.asset_same(resource_get_digest(bytes,48),m.identity) {return HptManifestStatus.identity;}
+  p:=HptManifest.{valid=true,count=count,scene=scene,manifest=m.identity,identity=root};
+  for i:0..<count {at:=HPT_HEADER+i*HPT_ROW;raw:=resource_u32(bytes,at);if raw>1 || resource_u32(bytes,at+4)!=0 {return HptManifestStatus.shape;}
+    p.entries[i]=HptSource.{status=HptStatus.ok,raw=raw==1,container=resource_get_digest(bytes,at+8),content=resource_get_digest(bytes,at+40),container_bytes=hpt_narrow(resource_u64(bytes,at+72)),offset=hpt_narrow(resource_u64(bytes,at+80)),bytes=hpt_narrow(resource_u64(bytes,at+88))};
+  }
+  if !hpt_shape(p,m) {return HptManifestStatus.shape;}out[0]=p;return HptManifestStatus.ok;
+}

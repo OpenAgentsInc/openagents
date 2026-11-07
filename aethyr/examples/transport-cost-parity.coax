@@ -1,0 +1,27 @@
+// Small public vectors: no large allocation is needed to plan a large raw input.
+#import "Basic";
+#load "../host/transport-manifest.coax";
+transport_cost_words :: ()->[64]int #export_c #effects(all) {
+  words:[64]int;pack_bytes:[512]u8;wire:=pack_test(600,pack_bytes[..]);parsed_pack:[1]PackRead;
+  #assert pack_read(wire,parsed_pack[..]);entry:=parsed_pack[0].entries[2];
+  plan:=resource_plan(pack_bytes[entry.at..<entry.at+entry.n],ResourceSpec.{format=ResourceFormat.indices});
+  source:=hpt_source(pack_bytes[..],plan,entry.at,false);words[0]=cast(int) cast(u8) source.status;words[1]=source.container_bytes;words[2]=source.offset;words[3]=source.bytes;
+  for base,i:[2]int.[16,8388608] {cost:=hpt_cost(source,base,HPT_INITIAL);#assert cost.valid;words[4+i*4]=cost.reactor;words[5+i*4]=cost.external;words[6+i*4]=cost.reserved;words[7+i*4]=ifx cost.grow then 1 else 0;}
+  raw:=[4]u8.[1,0,0,0];rp:=resource_plan(raw[..],plan.spec);s:=hpt_source(raw[..],rp,0,true);cost:=hpt_cost(s,16,HPT_INITIAL);
+  words[12]=cost.reactor;words[13]=cost.external;words[14]=cost.reserved;words[15]=ifx cost.grow then 1 else 0;
+  s.container_bytes=67108864;s.bytes=s.container_bytes;cost=hpt_cost(s,16,HPT_INITIAL);#assert cost.valid;
+  words[16]=cost.reactor;words[17]=cost.external;words[18]=cost.reserved;words[19]=ifx cost.grow then 1 else 0;
+  m:=resource_manifest_fixture(1);m.valid=true;m.identity=assets.asset_id("transport-parity-rcm");m.entries[0].plan=rp;
+  p:=HptManifest.{valid=true,count=1,scene=assets.asset_id("transport-parity-scene"),manifest=m.identity};p.entries[0]=hpt_source(raw[..],rp,0,true);
+  words[20]=ifx hpt_shape(p,m) then 1 else 0;bytes:[208]u8;words[21]=cast(int) cast(u8) hpt_write(p,m,bytes[..]);root:=assets.asset_id(cast(string) bytes[..]);out:[1]HptManifest;
+  words[22]=cast(int) cast(u8) hpt_read(bytes[..],root,p.scene,m,out[..]);wrong:=root;wrong.words[0]^=1;words[23]=cast(int) cast(u8) hpt_read(bytes[..],wrong,p.scene,m,out[..]);
+  words[24]=cast(int) cast(u8) hpt_source(raw[..],rp, -1,true).status;bad:=raw;bad[0]^=1;words[25]=cast(int) cast(u8) hpt_source(bad[..],rp,0,true).status;
+  model:=assets.asset_id(HPT_MODEL);for i:0..<8 {words[26+i]=cast(int) root.words[i];words[34+i]=cast(int) model.words[i];}
+  words[42]=bytes.count;words[43]=size_of(HptSource);words[44]=size_of(HptCost);words[45]=HPT_HEADER;words[46]=HPT_ROW;words[47]=HPT_BYTES;
+  q:=[1]HostInboxQueue.[hpk_storage_open()];grant:=hpt_reserve(q[..],p.entries[0],16,HPT_INITIAL);
+  words[48]=cast(int) cast(u8) grant.status;words[49]=grant.count;words[50]=q[0].bytes;words[51]=q[0].count;
+  for lease,i:grant.leases {words[52+i*3]=lease.slot;words[53+i*3]=lease.serial;words[54+i*3]=lease.epoch;}
+  words[58]=grant.cost.reserved;words[59]=ifx hiq_release(q[..],grant.leases[0]) then 1 else 0;words[60]=q[0].bytes;
+  words[61]=ifx hiq_release(q[..],grant.leases[1]) then 1 else 0;words[62]=q[0].count;words[63]=q[0].bytes;return words;
+}
+main :: () {for word:transport_cost_words() {print("%\n",word);}}

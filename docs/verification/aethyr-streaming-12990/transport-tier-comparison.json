@@ -1,0 +1,20 @@
+{
+  "final_decoded_image_bytes": [
+    12,
+    60
+  ],
+  "final_dynamic_gpu_bytes": [
+    2484,
+    2532
+  ],
+  "matching_final_actor_cells": 12,
+  "matching_gameplay_frames": 3206,
+  "requested_cpu_peaks": [
+    14132,
+    14212
+  ],
+  "retained_peaks": [
+    18171,
+    18299
+  ]
+}

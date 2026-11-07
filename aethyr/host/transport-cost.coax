@@ -1,0 +1,134 @@
+// Whole-container transport costs supplement the immutable RCM1 payload model.
+// SDK/network/GC internals remain separate; explicit source storage is planned.
+#authority;
+#load "pack-stream.coax";
+#load "../world/resource-manifest.coax";
+HPT_MODEL :: "HTP1/whole-vpk1-vpk2-1/raw-exact-1/hpk-initial8m-page64k-1";
+HPT_INITIAL :: 8388608;
+HptStatus :: enum u8 {ok;invalid;unsupported;capacity;span;container;source;}
+HptSource :: struct {status:HptStatus=HptStatus.invalid;raw:bool;container:assets.AssetId;content:assets.AssetId;container_bytes:int;offset:int;bytes:int;}
+HptCost :: struct {valid:bool;grow:bool;reactor:int;external:int;reserved:int;}
+HptGrant :: struct {status:HostInboxStatus=HostInboxStatus.invalid;cost:HptCost;count:int;leases:[2]HostInboxLease;}
+
+#test "whole pack transport derives immutable container identity and admitted entry slices" {
+  storage:[512]u8;wire:=pack_test(600,storage[..]);
+  // pack_test's actual indices are selected through the same whole reader.
+  read:[1]PackRead;#assert pack_read(wire,read[..]);entry:=read[0].entries[2];source:=storage[entry.at..<entry.at+entry.n];
+  plan:=resource_plan(source,ResourceSpec.{format=ResourceFormat.indices});#assert plan.status==ResourceCostStatus.ok;
+  p:=hpt_source(storage[..],plan,entry.at,false);
+  #assert p.status==HptStatus.ok && !p.raw && p.container_bytes==512 && p.offset==entry.at && p.bytes==entry.n;
+  #assert assets.asset_same(p.container,assets.asset_id(wire)) && assets.asset_same(p.content,plan.content);
+  prefix:=source[0..<4];short:=resource_plan(prefix,plan.spec);sub:=hpt_source(storage[..],short,entry.at,false);
+  #assert sub.status==HptStatus.ok && sub.bytes==4 && sub.container_bytes==512;
+  #assert hpt_source(storage[..],short,0,false).status==HptStatus.span;
+  #assert hpt_source(storage[..],plan,entry.at,true).status==HptStatus.span;
+  #assert hpt_source(storage[..],plan, -1,false).status==HptStatus.span;
+  #assert hpt_source(storage[..],plan,513,false).status==HptStatus.span;
+  bad:=storage;bad[0]='X';#assert hpt_source(bad[..],plan,entry.at,false).status==HptStatus.unsupported;
+  bad=storage;bad[12]=0;bad[13]=0;bad[14]=0;bad[15]=0;#assert hpt_source(bad[..],plan,entry.at,false).status==HptStatus.container;
+  bad=storage;bad[entry.at]^=1;#assert hpt_source(bad[..],plan,entry.at,false).status==HptStatus.source;
+  catalog:=read[0].entries[0];cp:=resource_plan(storage[catalog.at..<catalog.at+4],plan.spec);#assert hpt_source(storage[..],cp,catalog.at,false).status==HptStatus.ok;
+}
+#test "raw transfers require the exact complete source and preserve typed refusals" {
+  raw:=[4]u8.[1,0,0,0];plan:=resource_plan(raw[..],ResourceSpec.{format=ResourceFormat.indices});
+  p:=hpt_source(raw[..],plan,0,true);#assert p.status==HptStatus.ok && p.raw && p.container_bytes==4 && p.offset==0 && p.bytes==4;
+  #assert assets.asset_same(p.container,p.content) && assets.asset_same(p.content,plan.content);
+  #assert hpt_source(raw[0..<0],plan,0,true).status==HptStatus.capacity;
+  #assert hpt_source(raw[..],plan,1,true).status==HptStatus.span;
+  #assert hpt_source(raw[..],plan, -1,true).status==HptStatus.span;
+  extra:[5]u8;#assert hpt_source(extra[..],plan,0,true).status==HptStatus.span;
+  bad:=plan;bad.status=ResourceCostStatus.decode;#assert hpt_source(raw[..],bad,0,true).status==HptStatus.invalid;
+  bad=plan;bad.spec.version=99;#assert hpt_source(raw[..],bad,0,true).status==HptStatus.unsupported;
+  bad=plan;bad.content.words[0]+=1;#assert hpt_source(raw[..],bad,0,true).status==HptStatus.source;
+  bad=plan;bad.cost.encoded=0;#assert hpt_source(raw[..],bad,0,true).status==HptStatus.span;
+  bad.cost.encoded=5;#assert hpt_source(raw[..],bad,0,true).status==HptStatus.span;
+  bad.cost.encoded=1;#assert hpt_source(raw[0..<1],bad,0,true).status==HptStatus.source;
+  magic:=[4]u8.['V','P','K','1'];#assert hpt_source(magic[..],bad,0,false).status==HptStatus.container;
+  #assert hpt_source(magic[0..<3],bad,0,false).status==HptStatus.unsupported;
+}
+#test "transport extent bounds are exact without inventing large source allocations" {
+  for n:[2]int.[1,67108864] {#assert hpt_extent(n);}
+  for n:[4]int.[-1,0,67108865,9223372036854775807] {#assert !hpt_extent(n);}
+}
+#test "transport costs use actual manual arena and separately retained encoded pages" {
+  p:=HptSource.{status=HptStatus.ok,container_bytes=4,bytes=4};
+  c:=hpt_cost(p,16,HPT_INITIAL);#assert c.valid && !c.grow && c.reactor==8388608 && c.external==0 && c.reserved==8388608;
+  c=hpt_cost(p,8388608,HPT_INITIAL);#assert c.valid && c.grow && c.reactor==8454144 && c.external==0 && c.reserved==8454144;
+  c=hpt_cost(p,8388608-16,HPT_INITIAL);#assert c.valid && !c.grow && c.reactor==8388608;
+  p.raw=true;c=hpt_cost(p,8388608,HPT_INITIAL);#assert c.valid && c.reactor==8388608 && c.external==4 && c.reserved==8454144;
+  for bytes,i:[4]int.[1,65535,65536,65537] {
+    p.container_bytes=bytes;p.bytes=bytes;c=hpt_cost(p,0,HPT_INITIAL);
+    #assert c.valid && c.external==bytes && c.reactor==8388608 && c.reserved==[4]int.[8454144,8454144,8454144,8519680][i];
+  }
+  p.container_bytes=67108864;p.bytes=p.container_bytes;c=hpt_cost(p,0,HPT_INITIAL);#assert c.valid && c.external==67108864 && c.reserved==75497472;
+  p.raw=false;c=hpt_cost(p,0,HPT_INITIAL);#assert c.valid && c.reactor==67108864 && c.external==0 && c.reserved==67108864;
+  #assert !hpt_cost(p,1,HPT_INITIAL).valid;
+  for base:[3]int.[-1,8388609,9223372036854775807] {#assert !hpt_cost(p,base,HPT_INITIAL).valid;}
+  for initial:[4]int.[0,8388607,8388609,9223372036854775807] {#assert !hpt_cost(p,0,initial).valid;}
+  for field:0..<5 {bad:=p;if field==0 {bad.status=HptStatus.source;}if field==1 {bad.container_bytes=0;}if field==2 {bad.container_bytes=67108865;}if field==3 {bad.offset= -1;}if field==4 {bad.bytes=0;}#assert !hpt_cost(bad,0,HPT_INITIAL).valid;}
+  p.container_bytes=4;p.bytes=5;#assert !hpt_cost(p,0,HPT_INITIAL).valid;
+  p.bytes=4;p.offset=1;#assert !hpt_cost(p,0,HPT_INITIAL).valid;
+  p.bytes=3;p.raw=true;#assert !hpt_cost(p,0,HPT_INITIAL).valid;
+}
+#test "whole transport peaks reserve original page leases atomically before any effect" {
+  p:=HptSource.{status=HptStatus.ok,raw=true,container_bytes=4,bytes=4};q:=[1]HostInboxQueue.[hpk_storage_open()];
+  g:=hpt_reserve(q[..],p,16,HPT_INITIAL);#assert g.status==HostInboxStatus.ok && g.count==2 && g.cost.valid && g.cost.reactor==8388608 && g.cost.external==4 && g.cost.reserved==8454144;
+  #assert g.leases[0].slot==0 && g.leases[0].serial==1 && g.leases[0].epoch==1 && g.leases[1].slot==1 && g.leases[1].serial==2 && g.leases[1].epoch==1;
+  #assert q[0].count==2 && q[0].bytes==129 && q[0].entries[0].bytes==128 && q[0].entries[1].bytes==1;
+  #assert hiq_release(q[..],g.leases[0]) && !hiq_release(q[..],g.leases[0]) && q[0].bytes==1 && hiq_release(q[..],g.leases[1]);
+  p.raw=false;#assert hpt_reserve(q[..],p,0,HPT_INITIAL).status==HostInboxStatus.invalid;
+  p.container_bytes=512;g=hpt_reserve(q[..],p,8388608,HPT_INITIAL);#assert g.status==HostInboxStatus.ok && g.count==1 && g.cost.grow && g.cost.reactor==8454144 && g.leases[1].slot== -1 && q[0].bytes==129 && hiq_release(q[..],g.leases[0]);
+  p.raw=true;p.container_bytes=4;q[0].limit=128;g=hpt_reserve(q[..],p,16,HPT_INITIAL);#assert g.status==HostInboxStatus.full && g.count==0 && q[0].count==0 && q[0].bytes==0 && q[0].serial==3;
+  q[0].limit=127;#assert hpt_reserve(q[..],p,16,HPT_INITIAL).status==HostInboxStatus.full && q[0].count==0 && q[0].serial==3;
+  p.status=HptStatus.source;#assert hpt_reserve(q[..],p,16,HPT_INITIAL).status==HostInboxStatus.invalid;
+  empty:[1]HostInboxQueue;p.status=HptStatus.ok;#assert hpt_reserve(empty[..],p,16,HPT_INITIAL).status==HostInboxStatus.invalid;
+  tiny:=[1]HostInboxQueue.[hpk_storage_open()];p.container_bytes=1;p.bytes=1;g=hpt_reserve(tiny[..],p,0,HPT_INITIAL);#assert g.status==HostInboxStatus.ok && g.count==2 && g.cost.external==1 && tiny[0].bytes==129 && hiq_release(tiny[..],g.leases[0]) && hiq_release(tiny[..],g.leases[1]);
+}
+#test "partial transport reservation cannot hide terminal generation exhaustion" {
+  p:=HptSource.{status=HptStatus.ok,raw=true,container_bytes=4,bytes=4};q:=[1]HostInboxQueue.[hpk_storage_open()];
+  q[0].serial=9223372036854775806;g:=hpt_reserve(q[..],p,0,HPT_INITIAL);
+  #assert g.status==HostInboxStatus.retired && q[0].retired && q[0].count==0 && q[0].bytes==0 && q[0].serial==9223372036854775806;
+  #assert hpt_reserve(q[..],p,0,HPT_INITIAL).status==HostInboxStatus.retired;
+  #assert hiq_reset(q[..]) && !q[0].retired && q[0].epoch==2;
+  q[0].serial=9223372036854775807;#assert hpt_reserve(q[..],p,0,HPT_INITIAL).status==HostInboxStatus.retired && q[0].retired && q[0].count==0;
+}
+
+hpt_extent :: (bytes:int)->bool #effects(all) {return bytes>=1 && bytes<=HOST_PACK_BYTES;}
+hpt_source :: (container:[]u8,plan:ResourcePlan,offset:int,raw:bool)->HptSource #export_c #effects(all) {
+  if plan.status!=ResourceCostStatus.ok {return HptSource.{};}
+  if !resource_spec_supported(plan.spec) {return HptSource.{status=HptStatus.unsupported};}
+  if !hpt_extent(container.count) {return HptSource.{status=HptStatus.capacity};}
+  bytes:=plan.cost.encoded;if offset<0 || bytes<1 || offset>container.count-bytes {return HptSource.{status=HptStatus.span};}
+  if raw {if bytes!=container.count {return HptSource.{status=HptStatus.span};}}
+  else {
+    if container.count<4 || !pack_magic_ok(cast(string) container[0..<4]) {return HptSource.{status=HptStatus.unsupported};}
+    pack:[1]PackRead;if !pack_read(cast(string) container,pack[..]) {return HptSource.{status=HptStatus.container};}
+    found:=false;for i:0..<pack[0].count {entry:=pack[0].entries[i];if entry.at==offset && bytes<=entry.n {found=true;}}
+    if !found {return HptSource.{status=HptStatus.span};}
+  }
+  if !resource_matches(plan,container[offset..<offset+bytes]) {return HptSource.{status=HptStatus.source};}
+  return HptSource.{status=HptStatus.ok,raw=raw,container=assets.asset_id(cast(string) container),content=plan.content,container_bytes=container.count,offset=offset,bytes=bytes};
+}
+hpt_cost :: (p:HptSource,heap_base:int,initial:int)->HptCost #export_c #effects(all) {
+  if p.status!=HptStatus.ok || initial!=HPT_INITIAL || heap_base<0 || heap_base>initial {return HptCost.{};}
+  if !hpt_extent(p.container_bytes) || p.offset<0 || p.bytes<1 || p.offset>p.container_bytes-p.bytes {return HptCost.{};}
+  if p.raw {
+    if p.bytes!=p.container_bytes {return HptCost.{};}
+    pages:=(p.container_bytes+HOST_PACK_PAGE-1)/HOST_PACK_PAGE;
+    return HptCost.{valid=true,reactor=initial,external=p.container_bytes,reserved=initial+pages*HOST_PACK_PAGE};
+  }
+  a:=hpk_allocation(heap_base,p.container_bytes);if !a.valid {return HptCost.{};}
+  grow:=a.memory_bytes>initial;reactor:=ifx grow then a.memory_bytes else initial;
+  return HptCost.{valid=true,grow=grow,reactor=reactor,reserved=reactor};
+}
+hpt_reserve :: (q:[]HostInboxQueue,p:HptSource,heap_base:int,initial:int)->HptGrant #export_c #effects(all) {
+  cost:=hpt_cost(p,heap_base,initial);if !cost.valid || !hpk_stream_open(p.container_bytes,p.raw).valid {return HptGrant.{};}
+  next:=[1]HostInboxQueue.[q[0]];first:=hpk_storage_reserve(next[..],cost.reactor);
+  if first.status!=HostInboxStatus.ok {q[0].retired=next[0].retired;return HptGrant.{status=first.status};}
+  g:=HptGrant.{status=HostInboxStatus.ok,cost=cost,count=1};g.leases[0]=first.lease;
+  if cost.external>0 {
+    second:=hpk_storage_reserve(next[..],cost.external);if second.status!=HostInboxStatus.ok {q[0].retired=next[0].retired;return HptGrant.{status=second.status};}
+    g.leases[1]=second.lease;g.count=2;
+  }
+  q[0]=next[0];return g;
+}

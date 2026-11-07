@@ -85,17 +85,19 @@ order.
   placement hints, adopted by that bounded consumer. Prefetch readiness
   grants no spawn/simulation authority. A separate [native
   carrier](../host/stream-native.md) now exercises both tiers through actual
-  Vulkan loads, retirement and controlled device replacement. Physical
-  backend budget planning, native persistent rescue and the chapter's
-  complete teaching proof remain open. The [native draw-result profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
+  Vulkan loads, retirement and controlled device replacement. The native
+  [backing record](../../docs/verification/aethyr-streaming-12990/walk-native-backing.md)
+  qualifies device-bound allocation plans and leases. Browser transport and
+  transient planning and the chapter's complete teaching proof remain open.
+  Native persistent rescue is a separate unqualified profile. The [native draw-result profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
   adds automatic reported-loss recovery and pending-effect retirement;
   SDK-result injection is explicitly distinct from physical device faults.
 - The native [category-pressure observation](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
   requests one additional texture companion through the actual shared budget.
   It refuses before publication while the existing scene remains usable;
   replay includes the admission refusal before the next paid step. This
-  qualifies the measured category boundary, with physical backend planning
-  still separate.
+  qualifies the measured category boundary; the later backing record qualifies
+  its physical allocation boundary separately.
 - The [persistent corridor HUD](../world/stream-hud.coax) stays live before
   any area resources, after the first cell unloads and across controlled
   physical device replacement. Its display adapter changes no canonical

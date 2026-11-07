@@ -47,6 +47,11 @@ and SDK uploads. Its allocation and per-paid-step replay receipts use an
 original CC0 corridor fixture with both visual tiers. This is a separate
 resource-cost/ownership profile; it does not complete this chapter's source
 import, rescale or generalized cast/drop teaching work.
+The additive [HTP1 companion](../host/transport-manifest.md) now derives the
+whole container and exact source span needed for each RCM1 payload. Known
+raw/public reader operations reserve their reactor/byte-array peak before
+effects. The corridor's packed adapter still needs HTP1 binding; this does
+not complete the broader import work below.
 
 A pack is a header, a table of entries (kind, licence, offset, bytes, name)
 and their data on 4-byte boundaries. There is one catalog, one vertex buffer

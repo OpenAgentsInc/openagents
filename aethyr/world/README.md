@@ -3,8 +3,9 @@
 The [native category-pressure qualifier](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
 now requests a real source-derived texture companion against the live
 corridor's budget/inbox/renderer. Its refusal preserves the existing image
-and owners, and CPU replay records the counted admission boundary. Physical
-Vulkan and complete transport/transient planning stay open. Native
+and owners, and CPU replay records the counted admission boundary. The later
+native backing qualification covers physical allocation admission; browser
+transport/transient planning stays open. Native
 [allocation/source/decode failures](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
 now complete and retire through the shared owner before retry. Its
 [checked Vulkan resource factories](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
@@ -23,6 +24,11 @@ The actual corridor now adopts these entry points for streamed, staging,
 fixed-renderer, replacement and readback allocations, with device-bound
 [plans and allocation histories](../host/native-backing.md). Browser transport,
 container and transient planning remains separate required work.
+The [transport companion](../host/transport-manifest.md) now derives whole
+container/source spans and reader/raw page peaks. The shared loader prepays
+raw transfers and public packs with known lengths, with atomic admission
+before reactor/fetch effects. HTP1 binding in the corridor's packed adapter
+and complete transient/per-owner reporting remain open.
 The [actual callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
 holds image/buffer responses across unwanted-state cancellation, observes
 physical join/retirement before a newer generation, then redelivers the old
@@ -92,7 +98,7 @@ alignment field describes the resource payload.
 Browser queue writes borrow the retained source span. The measured native
 carrier maps its granted transfer span through submission completion; its
 actual Vulkan backing requirements are reported separately from logical
-RCM1 GPU bytes and remain a physical-planning qualification exit. Opaque SDK,
+RCM1 GPU bytes and admitted through device-bound backing leases. Opaque SDK,
 driver, Wasm arena and allocator overhead are separate observations.
 
 Physical allocations and GPU creation follow a successful grant. The
@@ -168,10 +174,11 @@ cover muted headless browser WebGPU over HTTP, a 768 m out-and-back route
 under a 32 KiB dynamic resource cap, two image tiers, physical allocation
 traces, native CPU/codec replay and explicit GPU replacement from retained
 sources. The separate native carrier now records both tiers through actual
-Vulkan loads, draws, retirement and controlled device replacement. Physical
-native budget planning, the wider native automatic-loss surface,
-the remaining host failure histories and complete world-shader reference keep
-#12990 open. Browser and native GPU qualification are distinct claims.
+Vulkan loads, draws, retirement and controlled device replacement. Its backing
+admission and SDK-prefix/stop histories have separate qualified records.
+Remaining browser transport/transient planning and the final adoption and
+teaching audit keep #12990 open. Browser and native GPU qualification are
+distinct claims.
 The [HUD record](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md)
 qualifies both image tiers at browser rasters 320×180 and 640×360, plus
 native 320×180 hardware and sanitizer routes. The display profile is

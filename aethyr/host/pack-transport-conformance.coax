@@ -1,0 +1,13 @@
+// Actual browser facts for prepaid pack/raw operations, not simulated effects.
+#authority;
+HPT_PACK_FACTS :: [58]int.[512,5,0,2,16777216,0,1,8388608,4,0,3,16842752,1,0,1,8388608,
+  2,5,25296896,1,2,5,25296896,1,3,16842752,0,1,8388608,1,0,1,8388608,
+  30,31,260046848,1,0,0,30,31,260046848,0,1,8388608,1,0,0,1,0,0,1,0,0,1,3,16842752,1];
+#test "prepaid browser observations bind every actual operation and lifetime fact" {
+  good:=HPT_PACK_FACTS;#assert hpt_pack_accept(good[..]);
+  for i:0..<58 {bad:=HPT_PACK_FACTS;bad[i]+=1;#assert !hpt_pack_accept(bad[..]);}
+  #assert !hpt_pack_accept(good[0..<57]);extra:[59]int;#assert !hpt_pack_accept(extra[..]);
+}
+hpt_pack_accept :: (facts:[]int)->bool #effects(all) {
+  if facts.count!=58 {return false;}for i:0..<58 {if facts[i]!=HPT_PACK_FACTS[i] {return false;}}return true;
+}

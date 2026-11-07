@@ -50,6 +50,17 @@ equivalents. The page's 8 MiB master remains retained; SDK/OS/GC memory is
 separate. No producer/shader/default admission is inferred. Exact scope is
 `docs/verification/host-contract-2026-11-05/browser-pack-loading.md`.
 
+Known public/raw browser transfers additionally prepay their full reader
+reactor and separately retained raw-array pages through existing pack-storage
+leases. Admission happens before Wasm construction and fetch; a second-ticket
+refusal publishes neither reservation and preserves terminal serial retirement.
+Cancellation, uncertain SDK completion and immutable borrowers retain those
+leases until zeroing/disposal. HTP1 derives complete container/source spans
+from admitted bytes, binds the original scene/RCM1/model identities, and keeps
+logical payload costs unchanged. The corridor's packed adapter still needs
+HTP1 binding and complete transient/per-owner reporting. See
+`docs/verification/aethyr-streaming-12990/walk-transport-planning.md`.
+
 `aethyr/host/transport.coax` owns the four socket and eight response-bearing
 HTTP slots for host contract v1. A callback carries its reserved slot,
 generation and engine epoch; a reused slot cannot inherit an older callback.

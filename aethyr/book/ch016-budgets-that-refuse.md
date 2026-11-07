@@ -26,8 +26,9 @@ also retains submitted effects through a stop. The [actual native category
 probe](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
 refuses an admitted 8×8 texture plan against the live texture line while
 aggregate and staging room remain. Existing pixels and owners survive, and
-the counted refusal replays at its original boundary. Physical backend
-planning and remaining failure/memory profiles are still open.
+the counted refusal replays at its original boundary. The later native backing
+record qualifies physical allocation planning; browser transport/transient
+profiles and the final audit remain open.
 
 The native consumer also [retires failed load attempts](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
 through the shared owner. Five allocation failure points, a missing source
@@ -41,8 +42,9 @@ held-observation histories preserve every paid-step digest. The separate
 [integrated SDK histories](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
 now qualify scoped staging/destination/submission errors and upload-poll
 stops, with retained sources/owners and exact CPU replay on both tiers.
-Physical OOM/reset and physical Vulkan allocation admission are unqualified;
-complete transport/transient planning remains open. The [actual browser
+The native backing record also qualifies physical Vulkan allocation admission.
+Physical OOM/reset remain unqualified, and complete transport/transient
+planning remains open. The [actual browser
 callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
 now holds responses across unwanted-state cancellation, joins and retires
 the old effect before a newer generation, and refuses old callbacks without
@@ -58,6 +60,15 @@ qualifies the policy and SDK ordering. The corridor now adopts
 staging, renderer targets and readback, with reservation/allocation histories
 checked separately and replayed on the CPU. Browser transport/container and
 transient planning, plus the final consumer/teaching audit, remain open.
+
+The [transport companion](../host/transport-manifest.md) now derives complete
+container costs around the payload. The shared loader prepays known raw/public
+operations before constructing a reader or fetching; two tickets reserve
+atomically and survive pending cancellation and borrowers. Its
+[small executable example](../examples/transport-cost-parity.coax) compares
+64 native/Wasm words, including original page leases and final release.
+Binding HTP1 in the corridor's packed adapter and the remaining transient
+profile are separate qualification exits.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

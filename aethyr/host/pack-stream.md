@@ -30,6 +30,13 @@ retained source, SDK crypto output and actual Wasm allocation before retaining
 it. Retirement cancels effects first and keeps uncertain in-flight ownership
 until actual completion; releasing a ticket does not claim an OS/GC RSS drop.
 
+The shared browser now prepays known public/raw transfers through
+[transport costs and original page leases](transport-manifest.md), before
+constructing an operation reactor or fetching. Reactor and raw-array leases
+reserve atomically and remain held through actual cancellation and borrowers.
+Unknown-size public and private crypto/gzip paths retain the existing bounded
+observed-extents behavior and their separate qualification.
+
 The 64 MiB per-pack extent matches the current native physical pack reader.
 Current authored Everglade and fixture packs are 9,463,680 and 1,267,160 bytes.
 The aggregate bound is explicit v1 application storage, independent of GPU

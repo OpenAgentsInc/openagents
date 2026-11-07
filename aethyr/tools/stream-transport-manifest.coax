@@ -1,0 +1,48 @@
+// Derive HTP1 from the original scene's actual immutable containers and RCM1.
+// The fixture tool supports complete containers up to its explicit 64KiB span.
+#import "Basic";
+#load "../host/transport-manifest.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+htpt_name :: (hex:string,suffix:string,out:[]u8)->string {
+  #assert hex.count==64 && out.count>=80;for c,i:hex {out[i]=c;}for c,i:suffix {out[64+i]=c;}return cast(string) out[0..<64+suffix.count];
+}
+htpt_hex :: (j:[]Jo,key:string,id:assets.AssetId) {
+  hex:[64]u8;#assert assets.asset_hex(id,hex[..]);jo_key(j,key);jo_str(j,cast(string) hex[..]);
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("usage: stream-transport-manifest SCENE_DIR NEW_OUTPUT_DIR");return 2;}
+  input:=args_at(a[..],0);output:=args_at(a[..],1);if fs_exists(output) || !fs_mkdir(output) {return 2;}
+  path:[4096]u8;scene_bytes:[65536]u8;scene:[1]Jv;nodes:[4096]JvNode;
+  n:=fs_read(fs_join(input,"scene.json",path[..]),scene_bytes[..]);if n<1 || !jv_parse(scene[..],cast(string) scene_bytes[0..<n],nodes[..]) {return 1;}
+  label:[64]u8;ln:=jv_str(scene[0],jv_get(scene[0],0,"schema"),label[..]);
+  if ln<0 || cast(string) label[0..<ln]!="aethyr.streaming-scene.v1" || jv_len(scene[0],jv_get(scene[0],0,"resources"))!=64 || jv_len(scene[0],jv_get(scene[0],0,"manifests"))!=4 {return 1;}
+  scene_id:=assets.asset_id(cast(string) scene_bytes[0..<n]);index:[8192]u8;j:[1]Jo;jo_start(j[..],index[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"aethyr.stream-transport-index.v1");htpt_hex(j[..],"sceneSHA256",scene_id);
+  htpt_hex(j[..],"modelSHA256",assets.asset_id(HPT_MODEL));jo_key(j[..],"containerLimit");jo_int(j[..],65536);jo_key(j[..],"companions");jo_arr(j[..]);
+  for k:0..<4 {
+    descriptor:=jv_at(scene[0],jv_get(scene[0],0,"manifests"),k);hex:[64]u8;ids:[1]assets.AssetId;
+    if jv_str(scene[0],jv_get(scene[0],descriptor,"sha256"),hex[..])!=64 || !assets.asset_parse(cast(string) hex[..],ids[..]) {return 1;}
+    name:[128]u8;raw:[RESOURCE_MANIFEST_MAX_BYTES]u8;
+    count:=fs_read(fs_join(input,htpt_name(cast(string) hex[..],".rcm",name[..]),path[..]),raw[..]);m:[1]ResourceManifest;
+    if count<1 || resource_manifest_read(raw[0..<count],ids[0],m[..])!=ResourceManifestStatus.ok || m[0].count!=64 {return 1;}
+    p:=HptManifest.{valid=true,count=64,scene=scene_id,manifest=m[0].identity};
+    for row:0..<64 {
+      item:=jv_at(scene[0],jv_get(scene[0],0,"resources"),row);container:[65536]u8;
+      if jv_int(scene[0],jv_get(scene[0],item,"row"),-1)!=row || jv_str(scene[0],jv_get(scene[0],item,"container_sha256"),hex[..])!=64 || !assets.asset_parse(cast(string) hex[..],ids[..]) {return 1;}
+      is_raw:=jv_bool(scene[0],jv_get(scene[0],item,"raw"));length:=fs_read(fs_join(input,htpt_name(cast(string) hex[..],ifx is_raw then ".raw" else ".vpk",name[..]),path[..]),container[..]);
+      if length<1 || !assets.asset_same(ids[0],assets.asset_id(cast(string) container[0..<length])) {return 1;}
+      offset:=jv_int(scene[0],jv_get(scene[0],item,"offset"),-1);span:=jv_int(scene[0],jv_get(scene[0],item,"bytes"),-1);
+      p.entries[row]=hpt_source(container[0..<length],m[0].entries[row].plan,offset,is_raw);
+      if p.entries[row].status!=HptStatus.ok || p.entries[row].bytes!=span {return 1;}
+      if jv_str(scene[0],jv_get(scene[0],item,"sha256"),hex[..])!=64 || !assets.asset_parse(cast(string) hex[..],ids[..]) || !assets.asset_same(ids[0],p.entries[row].content) {return 1;}
+    }
+    encoded:[HPT_BYTES]u8;if hpt_write(p,m[0],encoded[..])!=HptManifestStatus.ok {return 1;}
+    id:=assets.asset_id(cast(string) encoded[..]);#assert assets.asset_hex(id,hex[..]);
+    if !fs_write(fs_join(output,htpt_name(cast(string) hex[..],".htp",name[..]),path[..]),cast(string) encoded[..]) {return 1;}
+    admitted:[1]HptManifest;if hpt_read(encoded[..],id,scene_id,m[0],admitted[..])!=HptManifestStatus.ok {return 1;}
+    jo_obj(j[..]);htpt_hex(j[..],"sha256",id);htpt_hex(j[..],"manifestSHA256",m[0].identity);jo_key(j[..],"backend");jo_int(j[..],jv_int(scene[0],jv_get(scene[0],descriptor,"backend"),-1));jo_key(j[..],"tier");jo_int(j[..],jv_int(scene[0],jv_get(scene[0],descriptor,"tier"),-1));jo_key(j[..],"bytes");jo_int(j[..],HPT_BYTES);jo_end(j[..]);
+  }
+  jo_end(j[..]);jo_end(j[..]);if j[0].bad || !fs_write(fs_join(output,"transport.json",path[..]),jo_text(j[..])) {return 1;}
+  hex:[64]u8;#assert assets.asset_hex(assets.asset_id(jo_text(j[..])),hex[..]);print("HTP1 index sha256 %; 4 companions, 64 original source spans each\n",cast(string) hex[..]);return 0;
+}

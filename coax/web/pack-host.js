@@ -16,10 +16,15 @@ export async function openPackHost(){
   function release(ticket){if(!master.x.pack_storage_release(...ticket))throw Error('Coax refused pack storage release');}
   const masterTicket=reserve(master.memory.buffer.byteLength);
   const info=()=>({storage:[0,1,2,3].map(f=>Number(master.x.pack_storage_info(f))),owners:ops.size,loading:[...ops].filter(o=>o.loading).length,published:[...ops].filter(o=>o.published).length,readers:[...ops].reduce((n,o)=>n+o.readers.size,0),sdkPending:[...ops].reduce((n,o)=>n+o.sdkPending,0),copied:[...ops].reduce((n,o)=>n+o.copied,0)});
-  function operation(owner,current,progress){
-   const initial=reserve(master.memory.buffer.byteLength);let context;
-   try{context=instance(module);}catch(error){release(initial);throw error;}
-   const op={owner,context,current,progress,tickets:[initial],buffers:[],readers:new Map(),controller:new AbortController(),loading:true,published:false,retired:false,borrowers:0,sdkPending:0,copied:0};
+  function operation(owner,current,progress,expected,raw=false){
+   const tickets=[];let plan=null,context;
+   if(expected!==undefined){
+    if(!Number.isSafeInteger(expected)||master.x.pack_storage_plan(BigInt(expected),Number(raw))!==0)throw Error('Coax refused complete transport plan');
+    plan=Object.freeze({reactor:Number(master.x.pack_plan_info(1)),external:Number(master.x.pack_plan_info(2)),reserved:Number(master.x.pack_plan_info(3))});
+    for(let i=0;i<master.x.pack_plan_info(0);i++)tickets.push([0,1,2].map(f=>master.x.pack_plan_ticket(i,f)));
+   }else tickets.push(reserve(master.memory.buffer.byteLength));
+   try{context=instance(module);}catch(error){for(const ticket of tickets)release(ticket);throw error;}
+   const op={owner,context,current,progress,plan,tickets,buffers:[],readers:new Map(),controller:new AbortController(),loading:true,published:false,retired:false,borrowers:0,sdkPending:0,copied:0};
    op.closed=new Promise(resolve=>{op.closedResolve=resolve;});ops.add(op);
    op.check=()=>{if(op.retired||!op.current()){op.abort();throw new DOMException('pack owner retired','AbortError');}};
    op.cancel=reader=>{let pending=op.readers.get(reader);if(!pending){pending=Promise.resolve().then(()=>reader.cancel()).catch(()=>{});op.readers.set(reader,pending);}return pending;};
@@ -34,7 +39,7 @@ export async function openPackHost(){
    try{for(;;){const value=await reader.read();op.check();if(value.done){finished=true;break;}chunk(value.value);}}
    finally{if(!finished)await op.cancel(reader);else if(op.readers.get(reader))await op.readers.get(reader);reader.releaseLock();op.readers.delete(reader);}
   }
-  function arena(op,bytes){const {x,memory}=op.context;if(!x.pack_arena(BigInt(bytes)))throw Error('Coax refused the complete pack arena');const required=Number(x.pack_arena_info(2));if(required>memory.buffer.byteLength){const delta=required-memory.buffer.byteLength,ticket=op.reserve(delta);try{memory.grow(delta/65536);}catch(error){op.free(ticket);throw error;}}return Number(x.pack_arena_info(0));}
+  function arena(op,bytes){const {x,memory}=op.context;if(!x.pack_arena(BigInt(bytes)))throw Error('Coax refused the complete pack arena');const required=Number(x.pack_arena_info(2));if(op.plan&&required>op.plan.reactor)throw Error('pack arena exceeds admitted transport plan');if(required>memory.buffer.byteLength){const delta=required-memory.buffer.byteLength,ticket=op.plan?null:op.reserve(delta);try{memory.grow(delta/65536);}catch(error){if(ticket)op.free(ticket);throw error;}}return Number(x.pack_arena_info(0));}
   async function metadata(op,response){
    const {x,memory}=op.context;let loaded=0;await consume(op,response.body,value=>{if(!x.pack_metadata_offer(BigInt(loaded),BigInt(value.byteLength)))throw Error('Coax refused broker metadata extent');new Uint8Array(memory.buffer,x.pack_metadata_ptr()+loaded,value.byteLength).set(value);loaded+=value.byteLength;});
    if(!x.pack_private_parse(loaded))throw Error('Coax refused broker metadata');return {source:Number(x.pack_private_info(0)),plain:Number(x.pack_private_info(1)),url:new TextDecoder().decode(new Uint8Array(memory.buffer,Number(x.pack_private_info(3)),Number(x.pack_private_info(2))))};
@@ -44,14 +49,15 @@ export async function openPackHost(){
    await consume(op,body,value=>{
     const prefix=value.subarray(0,x.pack_prefix_capacity());new Uint8Array(memory.buffer,x.pack_prefix_ptr(),prefix.byteLength).set(prefix);
     if(!x.pack_stream_offer(BigInt(value.byteLength),prefix.byteLength))throw Error('Coax refused pack stream chunk');const at=Number(x.pack_stream_chunk(0)),total=Number(x.pack_stream_chunk(2));
-    if(total&&!target){if(encoded){ticket=op.reserve(total);try{target=new Uint8Array(total);op.buffers.push(target);}catch(error){op.free(ticket);throw error;}}
+    if(total&&!target){if(encoded){if(op.plan&&total!==op.plan.external)throw Error('encoded source differs from admitted transport plan');ticket=op.plan?null:op.reserve(total);try{target=new Uint8Array(total);op.buffers.push(target);}catch(error){if(ticket)op.free(ticket);throw error;}}
      else{address=arena(op,total);target=new Uint8Array(memory.buffer,address,total);if(at)target.set(new Uint8Array(memory.buffer,x.pack_stream_head_ptr(),at));}}
     if(target)target.set(value,at);op.copied+=value.byteLength;if(report)op.progress?.(at+value.byteLength,total);
    });
    if(!x.pack_stream_finish())throw Error('Coax refused incomplete pack stream');return {target,address,ticket};
   }
   function load(pack,{owner,current=()=>true,progress}={}){
-   const op=operation(owner,current,progress);
+   if(pack.broker&&pack.bytes!==undefined)throw Error('private transport needs its separately admitted crypto plan');
+   const op=operation(owner,current,progress,pack.bytes);
    op.finished=(async()=>{try{
     let response=null,session=null;
     for(const url of pack.urls||[pack.url]){
@@ -65,7 +71,7 @@ export async function openPackHost(){
      cipher.target.fill(0);op.buffers.splice(op.buffers.indexOf(cipher.target),1);op.free(cipher.ticket);
      if(!x.pack_stream_open(BigInt(session.source),1)||!x.pack_stream_offer(BigInt(gzip.byteLength),0)||!x.pack_stream_finish())throw Error('Coax refused SDK decrypt output extent');
      const source=new ReadableStream({start(c){c.enqueue(gzip);c.close();}});plain=await read(op,source.pipeThrough(new DecompressionStream('gzip')),session.plain,false,false);gzip.fill(0);op.buffers.splice(op.buffers.indexOf(gzip),1);op.free(gzTicket);
-    }else plain=await read(op,response.body,0,false);
+    }else plain=await read(op,response.body,pack.bytes??0,false);
     op.check();const {x,memory}=op.context;if(!x.pack_admit(Number(!!session)))throw Error('Coax refused complete pack identity, layout or catalog');
     const entries=[];for(let i=0;i<x.pack_entry_count();i++){const fields=[0,1,2,3,4,5].map(f=>Number(x.pack_entry(i,f)));entries.push(Object.freeze({kind:fields[0],licence:fields[1],name:new TextDecoder().decode(new Uint8Array(memory.buffer,fields[4],fields[5])),bytes:plain.target.subarray(fields[2],fields[2]+fields[3])}));}
     op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source:plain.target,bytes:plain.target.byteLength,owner,close:()=>op.abort(),async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;
@@ -74,7 +80,7 @@ export async function openPackHost(){
   // A byte transfer is not an admitted asset. The consumer must authenticate
   // and decode the complete result through its Coax content authority.
   function loadBytes(url,expected,{owner,current=()=>true}={}){
-   const op=operation(owner,current);
+   const op=operation(owner,current,undefined,expected,true);
    op.finished=(async()=>{let response;try{
     if(!Number.isSafeInteger(expected)||!op.context.x.pack_stream_open(BigInt(expected),1))throw Error('Coax refused exact byte transfer extent');
     response=await fetch(url,{cache:'no-store',signal:op.controller.signal});op.check();
