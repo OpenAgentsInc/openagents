@@ -85,29 +85,33 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
     # native route. Every observer must notice a changed expectation/history.
     with tempfile.TemporaryDirectory(prefix="aethyr-stream-replay-oracle-") as temp:
         temp = Path(temp)
+        changed_frame = min(100, len(receipt["frames"]) - 1)
+        completed_frame, completed_record = next((i, k) for i, frame in enumerate(receipt["frames"])
+                                                for k, record in enumerate(frame[13]) if int(record[1]) == 0)
         faults = ("position", "generation", "missing_completion")
         if full_state:
             faults += ("intermediate_state", "missing_step", "reordered_steps")
         for fault in faults:
             changed = copy.deepcopy(receipt)
             if fault == "position":
-                changed["frames"][100][5] += 1
+                changed["frames"][changed_frame][5] += 1
             elif fault == "generation":
-                changed["frames"][1][13][0][3] = str(int(changed["frames"][1][13][0][3]) + 1)
+                r = changed["frames"][completed_frame][13][completed_record]
+                r[3] = str(int(r[3]) + 1)
             elif fault == "missing_completion":
-                changed["frames"][1][13].pop(0)
+                changed["frames"][completed_frame][13].pop(completed_record)
             else:
                 # Change only intermediate observations; the input, accepted
                 # history, frame endpoint and final actor state stay exact.
-                marks = changed["frames"][100][14]
+                marks = changed["frames"][changed_frame][14]
                 assert len(marks) == 256
                 if fault == "intermediate_state":
-                    changed["frames"][100][14] = marks[:64] + ("0" if marks[64] != "0" else "1") + marks[65:]
+                    changed["frames"][changed_frame][14] = marks[:64] + ("0" if marks[64] != "0" else "1") + marks[65:]
                 elif fault == "missing_step":
-                    changed["frames"][100][14] = marks[64:]
+                    changed["frames"][changed_frame][14] = marks[64:]
                 else:
                     assert marks[:64] != marks[64:128]
-                    changed["frames"][100][14] = marks[64:128] + marks[:64] + marks[128:]
+                    changed["frames"][changed_frame][14] = marks[64:128] + marks[:64] + marks[128:]
             source, output = temp / (fault + ".json"), temp / (fault + ".result.json")
             source.write_text(json.dumps(changed))
             # A mismatched expectation deliberately stops the observer with
@@ -118,7 +122,7 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
                                     capture_output=True, timeout=30, env=env)
             assert result.returncode == 1 and not output.exists() and not result.stderr, (fault, result.stdout, result.stderr)
             if fault == "intermediate_state":
-                expected_tick = changed["frames"][100][2] - 2
+                expected_tick = changed["frames"][changed_frame][2] - 2
                 assert ("canonical state differs at paid tick %d" % expected_tick).encode() in result.stdout
     return {"observation_sha256": report["observation_sha256"], "cpu_peak": report["cpu_peak"],
             "negative_histories_rejected": len(faults), "canonical_paid_steps": previous_tick if full_state else 0}
@@ -337,6 +341,9 @@ def inspect(scene_dir, receipt_path, native_report=None):
 if __name__ == "__main__":
     if sys.argv[1] == "--state-wire-vectors":
         print(json.dumps([state_wire_vector(False), state_wire_vector(True)], sort_keys=True))
+    elif sys.argv[1] == "--native-only":
+        receipt = Path(sys.argv[3])
+        print(json.dumps(inspect_native(Path(sys.argv[2]), receipt, json.loads(receipt.read_bytes()), Path(sys.argv[4])), sort_keys=True))
     elif sys.argv[1] == "--compare-tiers":
         compare_tiers(Path(sys.argv[2]), Path(sys.argv[3]))
     elif sys.argv[1] == "--upload-failure":

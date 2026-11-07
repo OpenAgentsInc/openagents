@@ -3,7 +3,10 @@
 Issue #12990 remains open. The latest [canonical paid-step replay
 record](walk-state-replay.md) adds a versioned state profile, independent
 byte vectors and actual native/browser comparison at every paid tick for
-both successful route histories. The preceding [coordinator and controlled
+both successful route histories. A separate [actual upload-failure
+record](walk-upload-failure-replay.md) now qualifies every paid step through
+GPU refusal, physical retirement and retry for that one failure history.
+The preceding [coordinator and controlled
 GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
 real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
