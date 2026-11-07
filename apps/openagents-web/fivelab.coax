@@ -29,6 +29,7 @@
 
 #load "font.coax";
 #load "charactercreator.coax" as cc;
+#load "../../verse/experimental-village.coax" as village;
 #load "../../aethyr/loop.coax";
 #load "../../aethyr/rules/srd/battle.coax";
 #load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
@@ -201,6 +202,7 @@ Lab :: struct {
   put_on: bool; put_x: f32; put_z: f32; put_face: f32;   // the face puts your body here first
   my_sx: int; my_sy: int;           // your token's square as your last turn (or the put) left it
   move_bodies: [LAB_NEAR_BODIES * 7] f32;   // the figures round you, capsules for the controller
+  village_near: [1] village.EvNear;
   touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (aethyr/sticks.coax)
 }
 
@@ -1954,12 +1956,12 @@ lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
                    jump = h & HOLD_JUMP != 0, theta = ifx s[0].creator[0].experimental then s[0].creator[0].yaw else you_theta(s)};
 }
 // The world where you stand, for Everglade's step: the figures round you (lab_move_bodies), your
-// Speed as the walk's pace (30 feet Everglade's own), still while you can't move. The glade has no
-// walls or floors; `deck` keeps eg_step_advance's Everglade fountain out of the first figure.
+// Speed as the walk's pace (30 feet Everglade's own), still while you can't move. `deck` keeps
+// eg_step_advance's Everglade fountain out of the first figure.
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental {return w;}
+  if s[0].creator[0].experimental {village.ev_near(s[0].village_near[..],x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }
@@ -1984,6 +1986,8 @@ lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(
   return w;
 }
 lab_move_bodies :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return s[0].move_bodies[..]; }
+lab_move_walls :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return s[0].village_near[0].walls[..]; }
+lab_move_floors :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return s[0].village_near[0].floors[..]; }
 // Where your body may be: within one turn's Speed of your token (a box, as the grid counts
 // diagonals: 5 feet each), and on the grid.
 you_box :: (s: [] Lab) -> Rect {

@@ -1,0 +1,42 @@
+// Experimental village colliders, derived from the pinned Quaternius Godot
+// collision meshes and supplied to the same walker as Everglade's buildings.
+#module "verse.experimentalvillage";
+#load "experimental-terrain.coax" as terrain;
+#load "experimental-village-data.coax";
+#load "../aethyr/stand.coax" as stand;
+
+EV_WALLS :: 1024;
+EV_FLOORS :: 16;
+EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floor_n:int;overflow:bool;}
+#test "village collision supplies nearby walls and ignores the empty spawn" {
+ a:[1]EvNear;ev_near(a[..],0,0);#assert a[0].wall_n==0 && a[0].floor_n==0 && !a[0].overflow;
+ ev_near(a[..],-18,-23);#assert a[0].wall_n>0 && !a[0].overflow;
+}
+#test "stairs are sloped floors, not solid blocks" {
+ a:[1]EvNear;ev_near(a[..],-50,22);#assert a[0].floor_n>0 && !a[0].overflow;
+ found:=false;for i:0..<a[0].floor_n {if abs(a[0].floors[i*10+8])+abs(a[0].floors[i*10+9])>2 {found=true;}}#assert found;
+}
+#test "village collider gathering fits around every building" #steps 100000000 {
+ a:[1]EvNear;for si:0..<terrain.EXP_SITES {s:=terrain.exp_site(si);
+  for ix:0..<5 {for iz:0..<5 {x:=s.x-s.left+(s.left+s.right)*f32(ix)/4;z:=s.z-s.back+(s.back+s.front)*f32(iz)/4;
+   ev_near(a[..],x,z);#assert !a[0].overflow && a[0].wall_n>0;}}}
+}
+ev_point :: (m:[13]int,x:f32,y:f32,z:f32)->[3]f32 {
+ return [3]f32.[f32(m[10])*0.001+f32(m[1])*0.001*x+f32(m[2])*0.001*y+f32(m[3])*0.001*z,
+ f32(m[11])*0.001+f32(m[4])*0.001*x+f32(m[5])*0.001*y+f32(m[6])*0.001*z,
+ f32(m[12])*0.001+f32(m[7])*0.001*x+f32(m[8])*0.001*y+f32(m[9])*0.001*z];
+}
+ev_near :: (out:[]EvNear,x:f32,z:f32) {
+ out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);
+ for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>5 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
+  for b:VC_BOXES {if b[0]!=kind {continue;}x0:=site.x+f32(b[1])*0.001;z0:=site.z+f32(b[3])*0.001;x1:=site.x+f32(b[4])*0.001;z1:=site.z+f32(b[6])*0.001;
+   if x<x0-4 || x>x1+4 || z<z0-4 || z>z1+4 {continue;}
+   if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;out[0].walls[o]=x0;out[0].walls[o+1]=dy+f32(b[2])*0.001;out[0].walls[o+2]=z0;out[0].walls[o+3]=x1;out[0].walls[o+4]=dy+f32(b[5])*0.001;out[0].walls[o+5]=z1;out[0].wall_n+=1;
+  }
+  for m:VC_STAIRS {if m[0]!=kind {continue;}a:=ev_point(m,-0.823,0,0.251);b:=ev_point(m,0.823,0,0.251);c:=ev_point(m,-0.823,3.024,-4.018);
+   minx:=ifx a[0]<b[0] then a[0] else b[0];if c[0]<minx {minx=c[0];}maxx:=ifx a[0]>b[0] then a[0] else b[0];if c[0]>maxx {maxx=c[0];}minz:=ifx a[2]<b[2] then a[2] else b[2];if c[2]<minz {minz=c[2];}maxz:=ifx a[2]>b[2] then a[2] else b[2];if c[2]>maxz {maxz=c[2];}
+   if x<site.x+minx-5 || x>site.x+maxx+5 || z<site.z+minz-5 || z>site.z+maxz+5 {continue;}
+   if out[0].floor_n>=EV_FLOORS {out[0].overflow=true;return;}stand.stand_put_quad(out[0].floors[..],out[0].floor_n,site.x+a[0],site.z+a[2],b[0]-a[0],b[2]-a[2],c[0]-a[0],c[2]-a[2],dy+a[1],b[1]-a[1],c[1]-a[1]);out[0].floor_n+=1;
+  }
+ }
+}

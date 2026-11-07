@@ -584,7 +584,7 @@
     ],
     "duplicate": "House C2 has identical local parts and is omitted",
     "textures": "One padded 1024-square atlas from the source base-color textures",
-    "runtime_qualification": "static visual geometry; building collision is not yet authored",
+    "runtime_qualification": "Visual geometry with Aethyr walker collision boxes derived from the source collision meshes and sloped stair floors; boxes approximate non-box hulls, and doors are not interactive.",
     "placements": [
       {
         "source": "House C",
@@ -642,7 +642,24 @@
           -23
         ]
       }
-    ]
+    ],
+    "collision": {
+      "source": "glTF (Godot) collision-only mesh nodes in the pinned village package",
+      "generator": {
+        "path": "verse/tools/assets/village_collision.coax",
+        "sha256": "52af5430fb361e4acf15c871002316a7126cf00e559f469353345dc8b68f212c"
+      },
+      "data": {
+        "path": "verse/experimental-village-data.coax",
+        "sha256": "eaaed5d3f3412602f11e1a6b9585d303883ec4bd4937c145a6e6ccb9e435be5f"
+      },
+      "runtime": {
+        "path": "verse/experimental-village.coax",
+        "sha256": "7c4a385208405f88301e1e74432102f134b78cf25da39d3b98a16f8b1d132653"
+      },
+      "source_boxes": 1567,
+      "source_stairs": 3
+    }
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",

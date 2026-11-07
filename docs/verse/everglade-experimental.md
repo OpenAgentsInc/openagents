@@ -8,13 +8,16 @@ edge.
 
 The world contains the four distinct layouts from Quaternius's Medieval Village
 Godot sample scene: House C, Tower, Houses A, and Houses D. House C2 is an exact
-local-layout duplicate of House C and is not duplicated. Eight placements combine these layouts into larger settlements, using 1,249
-source-authored pieces with their original transforms, meshes and base-color
-textures. They are
-static visual buildings; building collisions and interactive doors have not yet
-been authored. The terrain is levelled under the sites and blends back into the
-meadow. The extra geometry uses a single padded texture atlas and a 64 MiB pack
-budget; the original Character Create pack retains its 32 MiB budget.
+local-layout duplicate of House C and is not duplicated. Eight placements combine
+these layouts into larger settlements, using 1,249 source-authored pieces with
+their original transforms, meshes and base-color textures. Buildings supply
+nearby collision shapes to the Everglade walker: the source
+collision meshes become individual axis-aligned boxes, and the interior stairs
+become sloped walkable surfaces. Non-box hulls are approximated by their bounds;
+interactive doors have not yet been authored. The terrain is levelled under the
+sites and blends back into the meadow. The extra geometry uses a single padded
+texture atlas and a 64 MiB pack budget; the original Character Create pack
+retains its 32 MiB budget.
 
 The [scene declaration](../../assets/registry/scenes/everglade-experimental.json)
 pins the Nature and Village asset revisions, the archived source scene, extracted
@@ -32,6 +35,8 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack --experimental \
   "$village_root" assets/registry/scenes/everglade-experimental-village.layout
+coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
+  assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
 python3 verse/tools/assets/character_glade_oracle.py \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village

@@ -1,0 +1,26 @@
+// Integration checks for the same Aethyr walker used by Everglade Experimental.
+#load "../../aethyr/walk.coax" as walk;
+#load "../experimental-village.coax" as village;
+
+village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
+ p:=walk.walk_input(p0,0,forward,0,0,false,false,0,0);p.theta=0;
+ near:[1]village.EvNear;village.ev_near(near[..],p.pos.x,p.pos.z);
+ none:[1]f32;return walk.walk_advance_in_realm(p,1.0f32/60,none[0..<0],near[0].walls[0..<near[0].wall_n*6],near[0].floors[0..<near[0].floor_n*10],"everglade");
+}
+#test "village walker is stopped by a real house wall" #steps 200000000 {
+ p:=walk.walk_place(-18,0,-21,0);for i:0..<90 {p=village_walk(p,1);}
+ #assert p.pos.z> -23 && p.pos.z< -21.5;
+}
+#test "village walker climbs the authored interior stairs" #steps 200000000 {
+ p:=walk.walk_place(-50,0,21.4,0);for i:0..<100 {p=village_walk(p,-1);}
+ #assert p.pos.z>24 && p.pos.y>1;
+}
+#test "village walker can pass through a ground-floor doorway" #steps 200000000 {
+ p:=walk.walk_place(-48,0,30.0,0);for i:0..<75 {p=village_walk(p,1);}
+ #assert p.pos.z<27.5;
+}
+#test "village walker lands on an upper floor" #steps 200000000 {
+ p:=walk.walk_place(-46,4.5,25,0);p.on_ground=false;
+ for i:0..<120 {p=village_walk(p,0);}
+ #assert p.on_ground && p.pos.y>2.8 && p.pos.y<3.3;
+}

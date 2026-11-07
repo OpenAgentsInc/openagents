@@ -1,0 +1,44 @@
+// Derive Aethyr's bounded collision boxes from the pinned Godot collision meshes.
+// The source package is read as data; its project scripts are never executed.
+// tool.sh: release
+// tool.sh: stack-gib 8
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../humans/ph_gltf.coax";
+#load "../humans/ph_num.coax";
+
+VC_MAX :: 30000;
+VcPart :: struct {group:int;name:string;m:[12]f32;ok:bool;}
+VcBox :: struct {group:int;v:[6]int;}
+#test "collision layout keeps Godot's row-major transform and rejects bad rows" {
+ p:=vc_part("2|Floor_WoodDark|0,0,-1,0,1,0,1,0,0,2,3,4");
+ #assert p.ok && p.group==2 && p.m[2]== -1 && p.m[6]==1 && p.m[9]==2;
+ #assert !vc_part("5|Bad|1,2").ok && !vc_part("0|../Bad|1,2").ok;
+}
+vc_part :: (s:string)->VcPart {
+ p:VcPart;if s.count<5 || s[0]<'0' || s[0]>'3' || s[1]!='|' {return p;}p.group=int(s[0]-'0');b:=2;while b<s.count && s[b]!='|' {b+=1;}if b==2 || b>=s.count {return p;}p.name=s[2..<b];for c:p.name {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_') {return p;}}
+ start:=b+1;n:=0;for i:start..<s.count+1 {if i==s.count || s[i]==',' {if n>=12 {return p;}a:=start;z:=i;while a<z && s[a]==' ' {a+=1;}while z>a && s[z-1]==' ' {z-=1;}v:=pn_parse(s[a..<z]);if !v.ok || v.v!=v.v || abs(v.v)>10000 {return p;}p.m[n]=f32(v.v);n+=1;start=i+1;}}p.ok=n==12;return p;
+}
+vc_mm :: (v:f32)->int {return int(floor(f64(v)*1000+0.5));}
+vc_point :: (p:VcPart,x:f32,y:f32,z:f32)->[3]f32 {t:=p.m;return [3]f32.[t[9]+t[0]*x+t[1]*y+t[2]*z,t[10]+t[3]*x+t[4]*y+t[5]*z,t[11]+t[6]*x+t[7]*y+t[8]*z];}
+#test "collision point applies Godot's saved rotation, scale and offset" {
+ p:=vc_part("0|Wall|0,0,-1,0,2,0,1,0,0,2,3,4");v:=vc_point(p,1,2,3);
+ #assert v[0]== -1 && v[1]==7 && v[2]==5;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: village_collision SOURCE_ROOT LAYOUT");return 2;}
+ source:=args_at(args[..],0);layout:=args_at(args[..],1);raw:[262144]u8;size:=fs_read(layout,raw[..]);if size<0 {return 1;}
+ boxes:[VC_MAX]VcBox;n:=0;stairs:[64]VcPart;ns:=0;g:[1]Gltf;t:[1]Txt;at:=0;
+ while at<size {end:=at;while end<size && raw[end]!='\n' {end+=1;}if end==at {at=end+1;continue;}p:=vc_part(cast(string)raw[at..<end]);if !p.ok {return 1;}at=end+1;
+  if starts(p.name,"Stair_") {if ns>=64 {return 1;}stairs[ns]=p;ns+=1;continue;}
+  path:=txt_cat3(t[..],source,"/glTF (Godot)/",txt_cat(t[..],p.name,".gltf"));gl_load(g[..],path);
+  for ni:0..<g[0].nx[GA_NODE] {node:=gl_at(g[..],GA_NODE,ni);name:=gl_str(g[..],node,"name");if !ends(name,"-convcolonly") {continue;}mesh:=gl_at(g[..],GA_MESH,gl_int(g[..],node,"mesh",-1));prims:=gl_get(g[..],mesh,"primitives");lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];
+   for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attrs:=gl_get(g[..],pr,"attributes");pos:[196608]f64;count:=gl_acc(g[..],gl_int(g[..],attrs,"POSITION",0),pos[..]).count;
+    for k:0..<count {v:=vc_point(p,f32(pos[k*3]),f32(pos[k*3+1]),f32(pos[k*3+2]));for j:0..<3 {if v[j]<lo[j] {lo[j]=v[j];}if v[j]>hi[j] {hi[j]=v[j];}}}}
+   if n>=VC_MAX {tool_errln("too many village collision shapes");return 1;}boxes[n].group=p.group;for j:0..<3 {boxes[n].v[j]=vc_mm(lo[j]);boxes[n].v[j+3]=vc_mm(hi[j]);}n+=1;
+  }
+ }
+ print("// Generated from the pinned Quaternius Godot collision meshes; see village_collision.coax.\n");
+ print("VC_BOXES :: [%][7]int.[\n",n);for i:0..<n {b:=boxes[i];print("[%]int.[%,%,%,%,%,%,%],\n",7,b.group,b.v[0],b.v[1],b.v[2],b.v[3],b.v[4],b.v[5]);}print("];\n");
+ print("VC_STAIRS :: [%][13]int.[\n",ns);for i:0..<ns {p:=stairs[i];print("[%]int.[%",13,p.group);for j:0..<12 {print(",%",vc_mm(p.m[j]));}print("],\n");}print("];\n");return 0;
+}
