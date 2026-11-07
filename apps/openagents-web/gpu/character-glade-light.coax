@@ -49,16 +49,16 @@ cg_air_depth :: (eye:V3,p:V3)->f32 {
 cg_phase :: (cos_t:f32,g:f32)->f32 {return verse_style_haze_phase(cos_t,g);}
 cg_haze_window :: (distance:f32)->f32 {return verse_style_haze_window(distance,12.0f32,50.0f32,0.6f32);}
 // The one key light every glade material reads (Aethyr book ch. 13: one lighting record).
-cg_sun_dir :: ()->V3 {return normalize3(v3(-0.45f32,0.78f32,-0.42f32));}
+cg_sun_dir :: ()->V3 {return normalize3(v3(-0.40f32,0.58f32,-0.62f32));}
 // Ore's Ocarina noon: a 4500 K sun under 6500 K white balance (aethyr/render/light.coax 4c).
 cg_sun_colour :: ()->V3 {
- return scale3(cg_decode(v3(verse_style_balanced(4500,6500,0),verse_style_balanced(4500,6500,1),verse_style_balanced(4500,6500,2))),1.85f32);
+ return scale3(cg_decode(v3(verse_style_balanced(4500,6500,0),verse_style_balanced(4500,6500,1),verse_style_balanced(4500,6500,2))),2.15f32);
 }
 cg_atmosphere :: (colour:V3,eye:V3,p:V3)->V3 {
  d:=sub3(p,eye);ray:=normalize3(add3(d,v3(0,0.00001f32,0)));sun:=cg_sun_dir();
  mie:=fmin(cg_phase(dot3(ray,sun),0.62f32),6.0f32);
  // Blue sky in-scatter everywhere plus warm sun in-scatter weighted by the forward lobe.
- air:=add3(v3(0.50f32,0.70f32,0.88f32),scale3(v3(0.78f32,0.58f32,0.22f32),mie*0.55f32));
+ air:=add3(v3(0.50f32,0.70f32,0.88f32),scale3(v3(0.78f32,0.58f32,0.22f32),mie*0.40f32));
  trans:=exp(-cg_air_depth(eye,p)*cg_haze_window(wg_length3(d)));return add3(scale3(colour,trans),scale3(air,1.0f32-trans));
 }
 #test "glade haze scatters forward toward the sun and stays clear near the eye" {

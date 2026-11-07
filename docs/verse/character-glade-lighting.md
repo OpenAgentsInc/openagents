@@ -101,9 +101,19 @@ Character Create changes:
   rim. The "Character Create" title sits inside it above a gold divider, and the labels are
   brighter. The walk to Everglade fades the glass with `u[40]`.
 
+A second pass made the light come from behind, as in the reference:
+
+- The sun is lower (about 36 degrees) and behind the scene, at 2.15 times the balanced colour.
+  Shadows now run long toward the camera, and rocks have dark sides.
+- `cg_cloud` adds soft cloud shadows: two octaves of value noise scale direct sunlight down
+  to .45, so the near meadow and lower path lie in broad shade with a sunlit band beyond.
+- The path is darker olive, grass roots are darker (direct .22, ambient .36 at the root), grass
+  is greener, near rocks are less white, and forward haze is lighter (gain .40) so the cliff
+  reads.
+
 Captures are in `docs/verification/character-glade-reference-light-2026-11-07/`: `base.jpg`
-before, `p3.jpg` after the scene passes, and `p5.jpg` and `p5ui.jpg` on current main with
-the walk merged.
+before, `p3.jpg` after the scene passes, `p5.jpg` and `p5ui.jpg` on current main with
+the walk merged, and `p9.jpg` and `p9ui.jpg` after the backlit pass.
 
 ## Player integration (2026-11-07)
 
