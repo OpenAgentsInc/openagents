@@ -120,7 +120,9 @@ of VPK1 fits our model better than theirs. The manifest would carry each
 page's SHA-256 `AssetId`, so every range is checked on arrival under the
 existing `assets.coax` admission. That is stronger than an ETag. The steps:
 
-- Add Range and a bandwidth/latency throttle to `coax serve`.
+- Add Range and a bandwidth/latency throttle to `coax serve`. Done in `bc066a9a` (#13000):
+  `coax/web/http-range.coax`, per-connection shaping, and first-image baselines in
+  `docs/verification/network-first-image-13000.md`.
 - Teach `coax/web/host.js` to fetch ranges, falling back to the whole file.
 - Make *time to first image at 50 Mbit/s and 30 ms* a number every realm
   reports beside the 60 FPS rule.
@@ -245,7 +247,7 @@ before/after table for each change, and states what was *not* measured.
 
 1. **Watertight residency** in `pages.coax`: N slots, dependency invariant,
    `#forall` over random request sequences, zero mutants.
-2. **Range and throttle in `coax serve`,** with time to first image measured
+2. **Range and throttle in `coax serve`** (landed, #13000), with time to first image measured
    for Everglade before anything else changes.
 3. **Range-addressable packs** with a SHA-256 per page, Range fetches in
    `host.js` and the whole-file fallback.

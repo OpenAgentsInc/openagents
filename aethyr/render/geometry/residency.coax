@@ -1,0 +1,425 @@
+// Watertight page residency (GitHub #12999, learned from Solstice, docs/verse/2026-11-07-solstice-comparison.md).
+// Decides which geometry pages are on the GPU; it never touches the GPU, so all of it is checked here.
+//
+// A page lists the pages holding its clusters' parents, always at lower ids (a set's parents come
+// from a later build round, baked first). The rule that keeps a partly loaded scene watertight:
+// a page installs only after every page it depends on, and leaves only after every page that
+// depends on it. A parent is then always there to draw until its children are, and the draw rule
+//   draw C = parent_too_coarse(C) and (fine_enough(C) or children_not_installed(C))
+// never leaves a hole. The first `pinned` pages (the roots) never leave.
+//
+// Requests come one per page each frame: 0 unseen, RES_KEEP seen but occluded (keep, don't load),
+// more for more visible error. pages.coax keeps owning bytes, identity and tickets; this owns order.
+//   coax/bin/coax test aethyr/render/geometry/residency.coax
+//   coax/bin/coax mutate aethyr/render/geometry/residency.coax
+#authority;
+
+RES_PAGES :: 64;   // pages a residency tracks at most
+RES_SLOTS :: 32;   // pool slots at most
+RES_DEPS :: 4;     // dependencies a page lists at most
+RES_KEEP :: 1;     // a request that only says "seen, but occluded"
+RES_LOAD :: 2;     // the lowest request that asks to load
+
+PageState :: enum u8 { absent; fetching; arrived; installed; }
+// One install: `page` went into `slot`, and `evicted` (or -1) had to leave it. page -1: nothing.
+ResInstall :: struct { page: int = -1; slot: int = -1; evicted: int = -1; }
+PageResidency :: struct {
+  pages: int; slots: int; pinned: int;
+  protect: int;      // frames a wanted page stays safe from eviction
+  patience: int;     // frames an arrived page may wait unwanted before it is dropped
+  max_fetching: int; // pages being fetched at once, at most
+  deps: [RES_PAGES] int; dep: [RES_PAGES * RES_DEPS] int;
+  state: [RES_PAGES] PageState;
+  slot_of: [RES_PAGES] int;       // slot + 1 while installed, else 0
+  holder: [RES_SLOTS] int;        // page + 1 in each slot, else 0
+  dependants: [RES_PAGES] int;    // installed pages that depend on this one
+  wanted: [RES_PAGES] int;        // the last frame this page was wanted
+  fetching: int; arrived: int; installed: int;
+  starved: int;   // pages that wanted loading at the last plan but found no room
+  installs: int; evictions: int; dropped: int; refused: int;
+}
+
+// A residency for `pages` pages and `slots` slots. `links` is pairs (page, dependency), each
+// dependency at a lower id; the first `pinned` pages never leave and must fit. Refused whole.
+res_open :: (out: [] PageResidency, pages: int, slots: int, pinned: int, protect: int, patience: int, max_fetching: int, links: [] int) -> bool #effects(all) {
+  if pages < 1 || pages > RES_PAGES || slots < 1 || slots > RES_SLOTS || pinned < 0 || pinned > pages || pinned > slots { return false; }
+  if protect < 0 || patience < 0 || max_fetching < 1 || links.count % 2 != 0 { return false; }
+  r := PageResidency.{pages = pages, slots = slots, pinned = pinned, protect = protect, patience = patience, max_fetching = max_fetching};
+  for k: 0..<links.count / 2 {
+    page := links[k * 2]; d := links[k * 2 + 1];
+    // d >= 0 and d < page also keep page above 0
+    if page >= pages || d < 0 || d >= page || r.deps[page] == RES_DEPS { return false; }
+    for j: 0..<r.deps[page] { if r.dep[page * RES_DEPS + j] == d { return false; } }
+    r.dep[page * RES_DEPS + r.deps[page]] = d; r.deps[page] += 1;
+  }
+  out[0] = r; return true;
+}
+
+res_ready :: (r: PageResidency, page: int) -> bool #effects(all) {
+  for j: 0..<r.deps[page] { if r.state[r.dep[page * RES_DEPS + j]] != PageState.installed { return false; } }
+  return true;
+}
+res_evictable :: (r: PageResidency, page: int, frame: int) -> bool #effects(all) {
+  return r.state[page] == PageState.installed && page >= r.pinned && r.dependants[page] == 0 && frame - r.wanted[page] > r.protect;
+}
+// The least recently wanted evictable page; on a tie the finer (higher) one. -1: none.
+res_victim :: (r: PageResidency, frame: int) -> int #effects(all) {
+  v := -1;
+  for p: 0..<r.pages { if res_evictable(r, p, frame) && (v == -1 || r.wanted[p] <= r.wanted[v]) { v = p; } }
+  return v;
+}
+res_reclaimable :: (r: PageResidency, frame: int) -> int #effects(all) {
+  n := r.slots - r.installed;
+  for p: 0..<r.pages { if res_evictable(r, p, frame) { n += 1; } }
+  return n;
+}
+
+// Whether page q goes before page b: pinned pages first, then the higher request; on a tie the
+// one met first (the coarser, as callers go up the ids).
+res_before :: (q: int, b: int, requests: [] int, pinned: int) -> bool #effects(all) {
+  if (q < pinned) != (b < pinned) { return q < pinned; }
+  return requests[q] > requests[b];
+}
+
+// Takes one frame's requests (one per page) and writes the pages to start fetching into `out`.
+// A page that was seen keeps itself and its parents wanted (safe from eviction); pinned pages are
+// always wanted and load first. Then, most wanted request first, each page asking to load is
+// fetched after the parents it lacks, coarsest first, so parents always arrive no later than their
+// children. It fetches only what the pool could make room for, and never more than max_fetching
+// at once; what it can't is counted in `starved`. Returns how many, or -1 (refused, nothing changed).
+res_plan :: (c: [] PageResidency, frame: int, requests: [] int, out: [] int) -> int #effects(all) {
+  r := c[0];
+  if requests.count != r.pages || out.count < r.max_fetching { c[0].refused += 1; return -1; }
+  for p: 0..<r.pages { if requests[p] < 0 { c[0].refused += 1; return -1; } }
+  seen: [RES_PAGES] bool; load: [RES_PAGES] bool;   // a loading page's parents come with it (need, below)
+  for k: 0..<r.pages {
+    p := r.pages - 1 - k;   // children before parents: ids only point down
+    if requests[p] > 0 || p < r.pinned { seen[p] = true; }
+    if requests[p] >= RES_LOAD || p < r.pinned { load[p] = true; }
+    if seen[p] {
+      r.wanted[p] = frame;
+      for j: 0..<r.deps[p] { seen[r.dep[p * RES_DEPS + j]] = true; }
+    }
+  }
+  // arrived pages nobody wants any more give their place back
+  for q: 0..<r.pages {
+    if r.state[q] == PageState.arrived && frame - r.wanted[q] > r.patience { r.state[q] = PageState.absent; r.arrived -= 1; r.dropped += 1; }
+  }
+  room := res_reclaimable(r, frame) - r.fetching - r.arrived;
+  n := 0; r.starved = 0;
+  done: [RES_PAGES] bool;
+  while true {
+    best := -1;
+    for q: 0..<r.pages { if load[q] && !done[q] && (best == -1 || res_before(q, best, requests, r.pinned)) { best = q; } }
+    if best == -1 { break; }
+    need: [RES_PAGES] bool; need[best] = true;
+    for k: 0..<best + 1 { p := best - k; if need[p] { for j: 0..<r.deps[p] { need[r.dep[p * RES_DEPS + j]] = true; } } }
+    for q: 0..<best + 1 {
+      if !need[q] || done[q] { continue; }
+      done[q] = true;
+      if r.state[q] != PageState.absent { continue; }
+      if r.fetching < r.max_fetching && room > 0 { out[n] = q; n += 1; r.state[q] = PageState.fetching; r.fetching += 1; room -= 1; }
+      else { r.starved += 1; }
+    }
+  }
+  c[0] = r; return n;
+}
+
+// A fetched page's bytes are in (pages.coax admitted them). Refused unless it was being fetched.
+res_arrived :: (c: [] PageResidency, page: int) -> bool #effects(all) {
+  if page < 0 || page >= c[0].pages || c[0].state[page] != PageState.fetching { c[0].refused += 1; return false; }
+  c[0].state[page] = PageState.arrived; c[0].fetching -= 1; c[0].arrived += 1; return true;
+}
+// A fetch failed; the page may be planned again.
+res_failed :: (c: [] PageResidency, page: int) -> bool #effects(all) {
+  if page < 0 || page >= c[0].pages || c[0].state[page] != PageState.fetching { c[0].refused += 1; return false; }
+  c[0].state[page] = PageState.absent; c[0].fetching -= 1; return true;
+}
+
+// Installs the coarsest arrived page whose dependencies are all installed, into a free slot or
+// the victim's. Nothing qualifies, or no room: page -1, and nothing changes.
+res_install :: (c: [] PageResidency, frame: int) -> ResInstall #effects(all) {
+  r := c[0];
+  page := -1;
+  for p: 0..<r.pages { if page == -1 && r.state[p] == PageState.arrived && res_ready(r, p) { page = p; } }
+  if page == -1 { return ResInstall.{}; }
+  slot := -1; evicted := -1;
+  for s: 0..<r.slots { if slot == -1 && r.holder[s] == 0 { slot = s; } }
+  if slot == -1 {
+    evicted = res_victim(r, frame);
+    if evicted == -1 { return ResInstall.{}; }
+    slot = r.slot_of[evicted] - 1;
+    for j: 0..<r.deps[evicted] { d := r.dep[evicted * RES_DEPS + j]; r.dependants[d] -= 1; }
+    r.state[evicted] = PageState.absent; r.slot_of[evicted] = 0; r.installed -= 1; r.evictions += 1;
+  }
+  for j: 0..<r.deps[page] { d := r.dep[page * RES_DEPS + j]; r.dependants[d] += 1; }
+  r.state[page] = PageState.installed; r.slot_of[page] = slot + 1; r.holder[slot] = page + 1;
+  r.arrived -= 1; r.installed += 1; r.installs += 1;
+  c[0] = r; return ResInstall.{page = page, slot = slot, evicted = evicted};
+}
+
+// The rules, recomputed from scratch: every installed page's dependencies are installed, slots
+// and pages agree, pinned pages that are in stay counted, and the counters match the states.
+res_valid :: (r: PageResidency) -> bool #effects(all) {
+  fetching := 0; arrived := 0; installed := 0;
+  for p: 0..<r.pages {
+    s := r.state[p];
+    if s == PageState.fetching { fetching += 1; }
+    if s == PageState.arrived { arrived += 1; }
+    if s == PageState.installed {
+      installed += 1;
+      if !res_ready(r, p) || r.slot_of[p] < 1 || r.slot_of[p] > r.slots || r.holder[r.slot_of[p] - 1] != p + 1 { return false; }
+    } else if r.slot_of[p] != 0 { return false; }
+    n := 0;
+    for q: p + 1..<r.pages {
+      if r.state[q] == PageState.installed { for j: 0..<r.deps[q] { if r.dep[q * RES_DEPS + j] == p { n += 1; } } }
+    }
+    if n != r.dependants[p] { return false; }
+  }
+  for s: 0..<r.slots { h := r.holder[s]; if h != 0 && (r.state[h - 1] != PageState.installed || r.slot_of[h - 1] != s + 1) { return false; } }
+  return fetching == r.fetching && arrived == r.arrived && installed == r.installed && installed <= r.slots && fetching <= r.max_fetching;
+}
+
+// --- checks -------------------------------------------------------------------------------------
+
+// A small DAG: 0 is the pinned root; 1 and 2 depend on it; 3 on 1; 4 on 1 and 2; 5 on 3.
+res_dag :: (c: [] PageResidency, slots: int) -> bool #effects(all) {
+  links := [12] int.[1, 0, 2, 0, 3, 1, 4, 1, 4, 2, 5, 3];
+  return res_open(c, 6, slots, 1, 30, 120, 4, links[..]);
+}
+res_want :: (pages: int, a: int, pa: int, b: int, pb: int) -> [RES_PAGES] int #effects(all) {
+  w: [RES_PAGES] int; if a >= 0 { w[a] = pa; } if b >= 0 { w[b] = pb; } return w;
+}
+// Delivers every page being fetched, then installs all it can.
+res_settle :: (c: [] PageResidency, frame: int) -> int #effects(all) {
+  for p: 0..<c[0].pages { if c[0].state[p] == PageState.fetching { #assert res_arrived(c, p); } }
+  n := 0;
+  while res_install(c, frame).page != -1 { n += 1; }
+  return n;
+}
+
+#test "open refuses bad shapes, wrong-way and duplicate links, and too many dependencies" {
+  c: [1] PageResidency; ok := [2] int.[1, 0];
+  #assert res_open(c[..], 2, 2, 1, 0, 0, 1, ok[..]) && c[0].deps[1] == 1 && c[0].dep[RES_DEPS] == 0 && res_valid(c[0]);
+  before := c[0];
+  #assert !res_open(c[..], 0, 2, 0, 0, 0, 1, ok[..]) && !res_open(c[..], RES_PAGES + 1, 2, 0, 0, 0, 1, ok[..]);
+  #assert !res_open(c[..], 2, 0, 0, 0, 0, 1, ok[..]) && !res_open(c[..], 2, RES_SLOTS + 1, 0, 0, 0, 1, ok[..]);
+  #assert !res_open(c[..], 2, 2, -1, 0, 0, 1, ok[..]) && !res_open(c[..], 2, 2, 3, 0, 0, 1, ok[..]) && !res_open(c[..], 3, 2, 3, 0, 0, 1, ok[..]);
+  #assert !res_open(c[..], 2, 2, 0, -1, 0, 1, ok[..]) && !res_open(c[..], 2, 2, 0, 0, -1, 1, ok[..]) && !res_open(c[..], 2, 2, 0, 0, 0, 0, ok[..]);
+  odd := [3] int.[1, 0, 1]; #assert !res_open(c[..], 2, 2, 0, 0, 0, 1, odd[..]);
+  up := [2] int.[0, 1]; same := [2] int.[1, 1]; out := [2] int.[2, 0]; neg := [2] int.[1, -1]; below := [2] int.[-1, 0];
+  for l: [5] [2] int.[up, same, out, neg, below] { m := l; #assert !res_open(c[..], 2, 2, 0, 0, 0, 1, m[..]); }
+  dup := [4] int.[1, 0, 1, 0]; #assert !res_open(c[..], 2, 2, 0, 0, 0, 1, dup[..]);
+  many := [10] int.[5, 0, 5, 1, 5, 2, 5, 3, 5, 4]; #assert !res_open(c[..], 6, 2, 0, 0, 0, 1, many[..]);
+  four := [8] int.[5, 0, 5, 1, 5, 2, 5, 3]; #assert c[0].pages == before.pages && res_open(c[..], 6, 2, 0, 0, 0, 1, four[..]) && c[0].deps[5] == 4;
+  #assert res_open(c[..], RES_PAGES, RES_SLOTS, RES_SLOTS, 0, 0, 1, ok[..]) && c[0].pinned == RES_SLOTS;
+  #assert res_open(c[..], 1, 1, 1, 0, 0, 1, ok[0..<0]) && c[0].pages == 1 && c[0].slots == 1 && c[0].pinned == 1;
+  #assert res_open(c[..], 3, 5, 2, 7, 9, 3, ok[..]) && c[0].protect == 7 && c[0].patience == 9 && c[0].max_fetching == 3 && c[0].slots == 5;
+}
+
+#test "the request helper and readiness look at every dependency" {
+  w := res_want(4, 0, 3, 1, 5); #assert w[0] == 3 && w[1] == 5 && w[2] == 0;
+  w = res_want(4, 2, 3, 0, 5); #assert w[0] == 5 && w[2] == 3;
+  w = res_want(4, -1, 3, -1, 5); for k: 0..<4 { #assert w[k] == 0; }
+  c: [1] PageResidency; #assert res_dag(c[..], 6) && c[0].protect == 30 && c[0].patience == 120 && c[0].max_fetching == 4;
+  c[0].state[0] = PageState.installed; c[0].state[1] = PageState.installed;
+  #assert res_ready(c[0], 3) && !res_ready(c[0], 4) && res_ready(c[0], 0);   // 4 still lacks 2
+  c[0].state[1] = PageState.absent; c[0].state[2] = PageState.installed; #assert !res_ready(c[0], 4);
+  c[0].state[1] = PageState.installed; #assert res_ready(c[0], 4);
+}
+
+#test "plans parents of what is wanted, most wanted first, coarser first on a tie" {
+  c: [1] PageResidency; #assert res_dag(c[..], 6);
+  out: [8] int; w := res_want(6, 5, 9, 2, 4);
+  n := res_plan(c[..], 1, w[0..<6], out[..]);
+  // 0 is pinned (always first), then 1 and 3 carry 5's priority; 5 itself waits for the cap of 4
+  #assert n == 4 && out[0] == 0 && out[1] == 1 && out[2] == 3 && out[3] == 5 && c[0].fetching == 4;
+  #assert c[0].wanted[0] == 1 && c[0].wanted[1] == 1 && c[0].wanted[3] == 1 && c[0].wanted[5] == 1 && c[0].wanted[2] == 1 && c[0].wanted[4] == 0;
+  #assert res_valid(c[0]) && c[0].starved == 1;
+  // equal priorities: the coarser page first
+  #assert res_dag(c[..], 6); w = res_want(6, 2, 5, 1, 5);
+  #assert res_plan(c[..], 1, w[0..<6], out[..]) == 3 && out[1] == 1 && out[2] == 2;
+}
+
+#test "a chain loads parents first with nothing pinned, and pinned pages beat any request" {
+  c: [1] PageResidency; chain := [4] int.[1, 0, 2, 1]; out: [8] int;
+  #assert res_open(c[..], 3, 3, 0, 0, 10, 3, chain[..]);
+  w := res_want(3, 2, 5, -1, 0);
+  #assert res_plan(c[..], 1, w[0..<3], out[..]) == 3 && out[0] == 0 && out[1] == 1 && out[2] == 2;
+  #assert c[0].wanted[0] == 1 && c[0].wanted[1] == 1 && c[0].wanted[2] == 1;
+  // pinned 0 first though it asks nothing; then 2 (9) before 1 (5)
+  #assert res_open(c[..], 3, 3, 1, 0, 10, 3, chain[0..<0]);
+  w = res_want(3, 1, 5, 2, 9);
+  #assert res_plan(c[..], 1, w[0..<3], out[..]) == 3 && out[0] == 0 && out[1] == 2 && out[2] == 1;
+}
+
+#test "nothing is fetched twice or past the cap, and refused plans change nothing" {
+  c: [1] PageResidency; #assert res_dag(c[..], 6);
+  out: [8] int; w := res_want(6, 4, 7, 5, 6);
+  #assert res_plan(c[..], 1, w[0..<6], out[..]) == 4 && c[0].fetching == 4;
+  #assert res_plan(c[..], 2, w[0..<6], out[..]) == 0 && c[0].fetching == 4 && c[0].starved == 2;
+  #assert res_arrived(c[..], out[0]) && c[0].fetching == 3 && c[0].arrived == 1;
+  #assert res_plan(c[..], 3, w[0..<6], out[..]) == 1 && c[0].fetching == 4;
+  exact: [4] int; #assert res_plan(c[..], 3, w[0..<6], exact[..]) == 0;
+  before := c[0]; short: [3] int;
+  #assert res_plan(c[..], 4, w[0..<5], out[..]) == -1 && res_plan(c[..], 4, w[0..<6], short[..]) == -1;
+  bad := w; bad[0] = -1; #assert res_plan(c[..], 4, bad[0..<6], out[..]) == -1;
+  #assert c[0].refused == 3 && c[0].fetching == before.fetching && c[0].wanted[4] == before.wanted[4] && res_valid(c[0]);
+}
+
+#test "occluded pages are kept but not loaded, and keep carries to parents" {
+  c: [1] PageResidency; #assert res_dag(c[..], 6);
+  out: [8] int; w := res_want(6, 5, RES_KEEP, -1, 0);
+  #assert res_plan(c[..], 7, w[0..<6], out[..]) == 1 && out[0] == 0 && c[0].wanted[5] == 7 && c[0].wanted[3] == 7 && c[0].wanted[1] == 7;
+  #assert c[0].state[5] == PageState.absent && c[0].state[3] == PageState.absent && c[0].starved == 0;
+  w = res_want(6, 5, RES_KEEP + 1, -1, 0);
+  #assert res_plan(c[..], 8, w[0..<6], out[..]) == 3 && out[0] == 1 && out[1] == 3 && out[2] == 5;
+}
+
+#test "installs wait for their dependencies, coarsest first" {
+  c: [1] PageResidency; #assert res_dag(c[..], 6);
+  out: [8] int; w := res_want(6, 4, 9, -1, 0);
+  #assert res_plan(c[..], 1, w[0..<6], out[..]) == 4 && out[0] == 0 && out[1] == 1 && out[2] == 2 && out[3] == 4;
+  #assert res_arrived(c[..], 4) && res_arrived(c[..], 2);
+  #assert res_install(c[..], 1).page == -1 && c[0].installed == 0;
+  #assert res_arrived(c[..], 0);
+  i := res_install(c[..], 1); #assert i.page == 0 && i.slot == 0 && i.evicted == -1;
+  i = res_install(c[..], 1); #assert i.page == 2 && i.slot == 1;
+  #assert res_install(c[..], 1).page == -1 && c[0].state[4] == PageState.arrived;
+  #assert res_arrived(c[..], 1) && res_install(c[..], 1).page == 1 && res_install(c[..], 1).page == 4;
+  #assert c[0].dependants[0] == 2 && c[0].dependants[1] == 1 && c[0].dependants[2] == 1 && c[0].installs == 4 && res_valid(c[0]);
+  #assert !res_arrived(c[..], 4) && !res_arrived(c[..], 3) && !res_arrived(c[..], -1) && !res_arrived(c[..], 6) && c[0].refused == 4;
+}
+
+#test "eviction takes only old pages with no installed dependants, least recently wanted, finer on a tie" {
+  c: [1] PageResidency; links := [12] int.[1, 0, 2, 0, 3, 1, 4, 1, 4, 2, 5, 3];
+  #assert res_open(c[..], 6, 4, 1, 2, 120, 4, links[..]);
+  out: [8] int; w := res_want(6, 4, 9, -1, 0);
+  #assert res_plan(c[..], 1, w[0..<6], out[..]) == 4 && res_settle(c[..], 1) == 4;   // 0 1 2 4: full
+  w = res_want(6, 3, 9, -1, 0);
+  #assert res_plan(c[..], 2, w[0..<6], out[..]) == 0 && c[0].starved == 1;   // 4 is protected
+  // after the protection, 4 (no dependants) is the only victim; 1 and 2 hold it up
+  #assert res_plan(c[..], 4, w[0..<6], out[..]) == 1 && out[0] == 3 && res_arrived(c[..], 3);
+  i := res_install(c[..], 4); #assert i.page == 3 && i.evicted == 4 && i.slot == 3 && c[0].evictions == 1;
+  #assert c[0].dependants[1] == 1 && c[0].dependants[2] == 0 && c[0].state[4] == PageState.absent && res_valid(c[0]);
+  // two candidates wanted at the same frame: the finer goes
+  c[0].wanted[2] = 0; c[0].wanted[3] = 0; #assert res_victim(c[0], 10) == 3;
+  c[0].wanted[3] = 1; #assert res_victim(c[0], 10) == 2;
+  #assert res_victim(c[0], 2) == -1 && res_victim(c[0], 3) == 2;
+  // with nothing pinned, page 0 can go too
+  one := [2] int.[1, 0]; #assert res_open(c[..], 2, 1, 0, 0, 120, 2, one[..]);
+  w = res_want(2, 0, 5, -1, 0); #assert res_plan(c[..], 1, w[0..<2], out[..]) == 1 && out[0] == 0 && res_settle(c[..], 1) == 1;
+  #assert res_victim(c[0], 1) == -1 && res_victim(c[0], 2) == 0;
+}
+
+#test "pinned pages and parents of installed pages never leave, and the load waits" {
+  c: [1] PageResidency; links := [4] int.[1, 0, 2, 1];
+  #assert res_open(c[..], 4, 3, 1, 0, 120, 4, links[..]);
+  out: [8] int; w := res_want(4, 2, 5, -1, 0);
+  #assert res_plan(c[..], 1, w[0..<4], out[..]) == 3 && res_settle(c[..], 1) == 3;
+  #assert res_victim(c[0], 1) == -1;
+  for f: 2..<50 { #assert res_victim(c[0], f) == 2; }   // 0 is pinned, 1 holds 2 up
+  w = res_want(4, 3, 5, -1, 0);
+  #assert res_plan(c[..], 50, w[0..<4], out[..]) == 1 && res_arrived(c[..], 3);
+  i := res_install(c[..], 50); #assert i.evicted == 2 && i.page == 3 && c[0].dependants[1] == 0;
+  #assert res_victim(c[0], 50) == 1 && res_victim(c[0], 51) == 1;   // 3 was wanted at 50; 0 never
+  c[0].wanted[1] = 51; #assert res_victim(c[0], 51) == 3 && res_victim(c[0], 52) == 3;
+  b := c[0]; b.dependants[3] = 1; b.dependants[1] = 1; #assert res_victim(b, 60) == -1 && !res_valid(b);
+  // with every slot pinned-full, a waiting page stays arrived
+  #assert res_open(c[..], 4, 2, 2, 0, 120, 4, links[..]);
+  w = res_want(4, 3, 5, -1, 0);
+  #assert res_plan(c[..], 1, w[0..<4], out[..]) == 2 && res_settle(c[..], 1) == 2 && c[0].starved == 1;
+  c[0].state[3] = PageState.fetching; c[0].fetching = 1; #assert res_arrived(c[..], 3);
+  #assert res_install(c[..], 9).page == -1 && c[0].state[3] == PageState.arrived && c[0].installs == 2 && res_valid(c[0]);
+}
+
+#test "a failed fetch can be tried again, and arrived pages nobody wants are dropped" {
+  c: [1] PageResidency; links := [2] int.[1, 0];
+  #assert res_open(c[..], 3, 3, 0, 0, 5, 4, links[..]);
+  out: [8] int; w := res_want(3, 2, 4, -1, 0);
+  #assert res_plan(c[..], 1, w[0..<3], out[..]) == 1 && out[0] == 2 && res_failed(c[..], 2) && c[0].fetching == 0;
+  #assert !res_failed(c[..], 2) && !res_failed(c[..], 3) && !res_failed(c[..], -1) && c[0].refused == 3;
+  #assert res_plan(c[..], 2, w[0..<3], out[..]) == 1 && out[0] == 2 && res_arrived(c[..], 2);
+  none := res_want(3, -1, 0, -1, 0);
+  #assert res_plan(c[..], 7, none[0..<3], out[..]) == 0 && c[0].state[2] == PageState.arrived && c[0].dropped == 0;
+  #assert res_plan(c[..], 8, none[0..<3], out[..]) == 0 && c[0].state[2] == PageState.absent && c[0].dropped == 1 && c[0].arrived == 0 && res_valid(c[0]);
+  w = res_want(3, 0, 4, -1, 0);
+  #assert res_plan(c[..], 9, w[0..<3], out[..]) == 1 && out[0] == 0 && res_arrived(c[..], 0);
+  #assert res_plan(c[..], 20, none[0..<3], out[..]) == 0 && c[0].state[0] == PageState.absent && c[0].dropped == 2;
+}
+
+#test "a residency of RES_PAGES pages plans, refuses and checks its last page" {
+  c: [1] PageResidency; l := [2] int.[RES_PAGES - 1, RES_PAGES - 2];
+  #assert res_open(c[..], RES_PAGES, 4, 0, 0, 10, 4, l[..]);
+  w: [RES_PAGES] int; w[RES_PAGES - 1] = 6; out: [8] int;
+  #assert res_plan(c[..], 1, w[..], out[..]) == 2 && out[0] == RES_PAGES - 2 && out[1] == RES_PAGES - 1;
+  #assert c[0].wanted[RES_PAGES - 2] == 1 && c[0].wanted[RES_PAGES - 3] == 0;
+  #assert !res_arrived(c[..], RES_PAGES) && !res_failed(c[..], RES_PAGES) && c[0].refused == 2;
+  #assert res_arrived(c[..], RES_PAGES - 2) && res_failed(c[..], RES_PAGES - 1) && res_install(c[..], 1).page == RES_PAGES - 2 && res_valid(c[0]);
+}
+
+#test "room counts free, reclaimable, in-flight and waiting slots" {
+  c: [1] PageResidency; l := [2] int.[1, 0]; #assert res_open(c[..], 6, 2, 0, 0, 120, 6, l[0..<0]);
+  out: [8] int; w: [RES_PAGES] int; for p: 0..<6 { w[p] = 10 - p; }
+  #assert res_plan(c[..], 1, w[0..<6], out[..]) == 2 && out[0] == 0 && out[1] == 1 && c[0].starved == 4;
+  #assert res_arrived(c[..], 0) && res_plan(c[..], 1, w[0..<6], out[..]) == 0;
+  #assert res_install(c[..], 1).page == 0 && res_reclaimable(c[0], 1) == 1 && res_reclaimable(c[0], 2) == 2;
+  #assert res_plan(c[..], 2, w[0..<6], out[..]) == 0;   // 0 wanted again at 2: not reclaimable
+  w[0] = 0; #assert res_plan(c[..], 4, w[0..<6], out[..]) == 1 && out[0] == 2;
+}
+
+#test "the checker sees each broken rule" {
+  c: [1] PageResidency; #assert res_dag(c[..], 6);
+  out: [8] int; w := res_want(6, 4, 9, -1, 0);
+  #assert res_plan(c[..], 1, w[0..<6], out[..]) == 4 && res_settle(c[..], 1) == 4 && res_valid(c[0]);
+  r := c[0]; b := r; b.state[1] = PageState.absent; b.slot_of[1] = 0; #assert !res_valid(b);   // 4 without its parent
+  b = r; b.fetching = 1; #assert !res_valid(b);
+  b = r; b.arrived = 1; #assert !res_valid(b);
+  b = r; b.installed = 3; #assert !res_valid(b);
+  b = r; b.slot_of[4] = 0; #assert !res_valid(b);
+  b = r; b.slot_of[4] = 7; #assert !res_valid(b);
+  b = r; b.holder[0] = 3; #assert !res_valid(b);
+  b = r; b.holder[5] = 6; #assert !res_valid(b);
+  b = r; b.holder[5] = 3; #assert !res_valid(b);   // an installed page, claimed by a second slot
+  m := r; m.holder[r.slot_of[0] - 1] = 0; m.holder[5] = 1; m.slot_of[0] = 6; #assert res_valid(m) && m.holder[0] == 0;
+  b = m; b.holder[0] = 3; #assert !res_valid(b);   // slot 0, free, claims page 2
+  b = r; b.slot_of[5] = 1; #assert !res_valid(b);
+  b = r; b.dependants[2] = 0; #assert !res_valid(b);
+  b = r; b.holder[r.slot_of[2] - 1] = 0; #assert !res_valid(b);
+  b = r; b.state[5] = PageState.fetching; #assert !res_valid(b);
+  b = r; b.state[5] = PageState.arrived; #assert !res_valid(b);
+  b = r; b.slots = 3; #assert !res_valid(b);
+  b = r; b.max_fetching = 0; b.state[5] = PageState.fetching; b.fetching = 1; #assert !res_valid(b);
+}
+
+// Random requests, arrivals, failures and installs from seeded streams: after every step the
+// rules hold, nothing exceeds its cap, and each page's dependencies are in before it is.
+#forall "random requests never break the rules" seed: 0..<12 #steps 200000000 {
+  c: [1] PageResidency; links: [200] int; n := 0; held: [RES_PAGES] bool;
+  pages := 24 + seed; x := seed * 7919 + 17;
+  for p: 1..<pages {
+    for j: 0..<1 + p % 3 {
+      x = (x * 1103515245 + 12345) % 2147483648; d := x % p;
+      dup := false; for k: 0..<n / 2 { if links[k * 2] == p && links[k * 2 + 1] == d { dup = true; } }
+      if !dup && n + 2 <= links.count { links[n] = p; links[n + 1] = d; n += 2; }
+    }
+  }
+  #assert res_open(c[..], pages, 6 + seed % 5, 2, 3, 10, 3, links[0..<n]);
+  out: [8] int; installs := 0;
+  for frame: 1..<90 {
+    w: [RES_PAGES] int;
+    for p: 0..<pages { x = (x * 1103515245 + 12345) % 2147483648; w[p] = ifx x % 5 == 0 then x % 9 else 0; }
+    k := res_plan(c[..], frame, w[0..<pages], out[..]);
+    #assert k >= 0 && k <= c[0].max_fetching && res_valid(c[0]);
+    for p: 0..<pages {
+      if c[0].state[p] == PageState.fetching {
+        x = (x * 1103515245 + 12345) % 2147483648;
+        if x % 7 == 0 { #assert res_failed(c[..], p); } else if x % 3 != 0 { #assert res_arrived(c[..], p); }
+      }
+    }
+    for i: 0..<2 { got := res_install(c[..], frame); if got.page != -1 { installs += 1; #assert res_ready(c[0], got.page) && got.page != got.evicted; } }
+    #assert res_valid(c[0]) && c[0].installed <= c[0].slots;
+    for p: 0..<c[0].pinned { #assert !held[p] || c[0].state[p] == PageState.installed; held[p] = c[0].state[p] == PageState.installed; }
+  }
+  #assert installs > 0 && c[0].state[0] == PageState.installed && c[0].state[1] == PageState.installed;
+}
