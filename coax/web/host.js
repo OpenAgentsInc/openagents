@@ -1587,7 +1587,10 @@ async function loadPack(pack) {
     catalog.bytes = of(PACK_CATALOG)[0].bytes; catalog.size = catalog.bytes.length;
     for (const [a, e] of [[vertices, of(PACK_VERTICES)[0]], [indices, of(PACK_INDICES)[0]]]) {
       if (gpu.renderer) { a.bytes = e.bytes;a.size = e.bytes.length;gpu.renderer.acceptAsset(a);continue; }
-      const whole = new Uint8Array(align(Math.max(e.bytes.length, 4), 4)); whole.set(e.bytes);
+      // Immutable aligned entry views already own the upload span. Only tail
+      // padding needs staging; do not duplicate a full groom on device recovery.
+      const whole = e.bytes.length > 0 && e.bytes.length % 4 === 0 ? e.bytes : new Uint8Array(align(Math.max(e.bytes.length, 4), 4));
+      if (whole !== e.bytes) whole.set(e.bytes);
       a.buffer = device.createBuffer({ size: whole.length, usage: (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
       device.queue.writeBuffer(a.buffer, 0, whole); a.size = e.bytes.length;
     }
@@ -1814,8 +1817,8 @@ async function layerBitmap(bytes, options) {
 }
 async function layerTexture(images) {   // the loading screen counts each layer as it goes up
   if (gpu.renderer) { const renderer=gpu.renderer,texture = await renderer.makeLayers(images);loading.textures(images.length*(renderer.canonicalLayers?2:1), 0);return texture; }
-  // Decode/upload/release one original image at a time. Large source atlases must not
-  // retain every full decoded bitmap plus every resized mip concurrently.
+  // Pipeline two original atlases at most, overlapping decode with upload/mips.
+  // Never retain the complete decoded array or all resized mipmaps.
   const encoded = images[0] instanceof Uint8Array;
   const first = encoded ? await layerBitmap(images[0]) : images[0];
   if (encoded) loading.textures(1, 0);
@@ -1825,23 +1828,30 @@ async function layerTexture(images) {   // the loading screen counts each layer 
   const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
   try {
-    for (let layer = 0; layer < images.length; layer++) {
-      let image;
-      try { image = layer === 0 ? first : encoded ? await layerBitmap(images[layer], { resizeWidth: w, resizeHeight: h, resizeQuality: "high" }) : images[layer]; }
-      catch (error) { throw new Error(`texture layer ${layer}: ${error.message}`); }
-      if (encoded && layer !== 0) loading.textures(1, 0);
-      try {
-        for (let level = 0; level < levels; level++) {
-          const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
-          const source = level === 0 && image.width === w && image.height === h ? image
-            : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
-          try { device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]); }
-          finally { if (source !== image) source.close(); }
-        }
-        await device.queue.onSubmittedWorkDone();
-      } finally { image.close(); }
-      loading.textures(1, 0);
+    let nextLayer = 0, failure = null;
+    async function uploadLayers() {
+      while (nextLayer < images.length && !failure) {
+        const layer = nextLayer++;
+        let image;
+        try { image = layer === 0 ? first : encoded ? await layerBitmap(images[layer], { resizeWidth: w, resizeHeight: h, resizeQuality: "high" }) : images[layer]; }
+        catch (error) { failure ||= new Error(`texture layer ${layer}: ${error.message}`);return; }
+        if (encoded && layer !== 0) loading.textures(1, 0);
+        try {
+          for (let level = 0; level < levels && !failure; level++) {
+            const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
+            const source = level === 0 && image.width === w && image.height === h ? image
+              : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
+            try { device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]); }
+            finally { if (source !== image) source.close(); }
+          }
+          await device.queue.onSubmittedWorkDone();
+        } catch (error) { failure ||= error; } finally { image.close(); }
+        loading.textures(1, 0);
+      }
     }
+    // Join both workers even on refusal, before destroying their shared texture.
+    await Promise.all([uploadLayers(), uploadLayers()]);
+    if (failure) throw failure;
   } catch (error) { first.close();texture.destroy();throw error; }
   return texture;
 }

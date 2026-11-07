@@ -124,14 +124,16 @@ are TF0130[4..22], TF0145[3..21], TF0250[19..40], every8s with.15s fades.
   source unavailable after its first request and verifies no second request.
   Both retain exact producer state and measured GPU pixels. These observations
   replace the recovery limitation only; the cinematic differences below remain.
-- **The full Slay groom puts default recovery back over the deadline.** The
+- **Historical full-groom deadline failure (superseded 2026-11-07).** The
   combined pack (full groom plus the TF0290 camera template, 1,023,634,576
   bytes, sha256 `5807c40f…dc0c`) fails the default 10 s face and shot
   recovery checks. The labeled 60 s diagnostic recovers in 11,811–14,190 ms
   with identical state at load averages of 6–8. Frames, the legacy host and
   both world viewports pass. Tracked in
   [#12975](https://github.com/OpenAgentsInc/openagents/issues/12975); the
-  realm deadline stays at 10 s.
+  realm deadline stays at 10 s. The [bounded upload follow-up](../slay-gpu-recovery-12975-2026-11-07/README.md)
+  now qualifies the current full-groom pack at 6,124 ms for source-shot and
+  7,264 ms for face recovery, with matching state/pixels and no deadline override.
 
 The source project disables bloom. The source orb mesh and its original texture layers now use Coax panning,
 normal distortion, source Fresnel/tint/HDR/desaturation arithmetic and an

@@ -10,7 +10,7 @@ const start = source.indexOf('async function loadPack(pack) {');
 const end = source.indexOf('// The Coax companion admits complete bytes', start);
 assert(start >= 0 && end > start, 'locate the actual legacy loader');
 const loader = source.slice(start, end);
-async function fixture({ broker = false, weak = true } = {}) {
+async function fixture({ broker = false, weak = true, unaligned = false, empty = false } = {}) {
   const bytes = Uint8Array.from({ length: 64 }, (_, i) => i);
   new DataView(bytes.buffer).setUint32(8, 64, true);
   const expected = Buffer.from(await webcrypto.subtle.digest('SHA-256', bytes)).toString('hex');
@@ -32,7 +32,7 @@ async function fixture({ broker = false, weak = true } = {}) {
   };
   const device = id => ({
     createBuffer: desc => ({ device: id, bytes: desc.size }),
-    queue: { writeBuffer: (buffer, at, data) => events.uploads.push({ device: buffer.device, at, size: data.length }) },
+    queue: { writeBuffer: (buffer, at, data) => events.uploads.push({ device: buffer.device, at, size: data.length, source: data.buffer, payload: Array.from(data) }) },
   });
   const context = vm.createContext({
     Uint8Array, DataView, Number, Promise, Object, Array, Math, Boolean, WeakRef: weak ? WeakRef : undefined,
@@ -47,8 +47,8 @@ async function fixture({ broker = false, weak = true } = {}) {
     currentAsset: () => true, align: (n, a) => Math.ceil(n / a) * a,
     unpack: payload => [
       { kind: 1, bytes: payload.subarray(0, 8) },
-      { kind: 2, bytes: payload.subarray(16, 24) },
-      { kind: 3, bytes: payload.subarray(24, 32) },
+      { kind: 2, bytes: payload.subarray(16, empty ? 16 : unaligned ? 21 : 24) },
+      { kind: 3, bytes: payload.subarray(24, empty ? 24 : unaligned ? 27 : 32) },
       { kind: 4, bytes: payload.subarray(32) },
     ],
     layerTexture: async () => ({ device: context.gpu.device.createBuffer({ size: 0 }).device }),
@@ -87,6 +87,16 @@ async function fixture({ broker = false, weak = true } = {}) {
   assert.deepEqual(same.events.uploads.map(event => event.device), [1, 1, 2, 2], 'new device gets new buffers and uploads');
   assert.equal(same.assets[3].texture.device, 2);
   console.log('PASS same-session recovery: no second download, SHA re-admission, fresh device resources');
+  assert(same.events.uploads.every(event => event.source === same.assets[0].bytes.buffer),
+    'aligned entry uploads borrow retained encoded storage instead of staging another full copy');
+  const padded = await fixture({ unaligned: true }); await padded.load();
+  assert.deepEqual(padded.events.uploads.map(event => event.size), [8, 4]);
+  assert.deepEqual(padded.events.uploads[0].payload, [16, 17, 18, 19, 20, 0, 0, 0]);
+  assert.deepEqual(padded.events.uploads[1].payload, [24, 25, 26, 0]);
+  const vacant = await fixture({ empty: true }); await vacant.load();
+  assert.deepEqual(vacant.events.uploads.map(event => event.payload), [[0, 0, 0, 0], [0, 0, 0, 0]]);
+  console.log('PASS upload spans: aligned entries borrow retained bytes; unaligned/empty entries have zero padding');
+
 
   const replaced = await fixture(); await replaced.load(); replaced.replace(true); await replaced.load();
   assert.equal(replaced.events.fetches, 2, 'another engine generation must fetch its own source');

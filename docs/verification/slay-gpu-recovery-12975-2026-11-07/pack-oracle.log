@@ -1,0 +1,10 @@
+PASS same-session recovery: no second download, SHA re-admission, fresh device resources
+PASS upload spans: aligned entries borrow retained bytes; unaligned/empty entries have zero padding
+PASS replacement engine: no reuse across session ownership
+PASS engine and generation identities each independently fence reuse
+PASS corruption: SHA refusal precedes replacement uploads
+PASS broker packs: retained-source optimization cannot skip authorization
+PASS incomplete installation: retry fetches a fresh source
+PASS unavailable private assets: existing refusal precedes reuse
+PASS missing WeakRef: ordinary load and recovery remain available
+PASS v1 transport: delegates before any legacy cache effect

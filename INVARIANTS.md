@@ -1916,7 +1916,13 @@ Legacy recovery clears the initial pack's asset rows as well as ordinary
 asset rows before binding the replacement device. A completed old-device
 pack buffer/texture is never a ready resource for that replacement. Check:
 `coax/web/valley-canyon-check.coax` restores the original source pair's exact
-state and pixels with no cross-device buffer bind error.
+state and pixels with no cross-device buffer bind error. Aligned immutable pack
+entries upload directly from their retained byte views; only unaligned or empty
+entries allocate zero-padded staging. Legacy layer upload overlaps at most two
+atlas decode/upload workers, closes each source and temporary mip, and joins
+both workers before destroying a refused texture. The 10-second recovery fence
+is unchanged. See `docs/verification/slay-gpu-recovery-12975-2026-11-07/`.
+
 
 ## The Grid steps only on its session's record
 

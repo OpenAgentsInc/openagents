@@ -1,0 +1,8 @@
+{
+  "coax/web/host.js": "5b552510c59f15319033e1bd24dd181d8df64eb21ccf161d47ce38c09a240073",
+  "coax/web/valley-face-check.coax": "3e8ca616c782fac6084dc7a76b7b079e81222a14b830c99fd7cf0da997c2eb7f",
+  "coax/web/valley-slay-shot-check.coax": "0cab09920433e41b1759ad3ec984dc3769db5fcc58b7679930d8ce4f93fef15c",
+  "coax/web/tests/legacy-layer-upload.cjs": "0346191b4b939e88b956a9ea455d15ef9c07ef4550748eb229673ccfa62aa724",
+  "coax/web/tests/legacy-pack-recovery.cjs": "5648bf52b2974eaad997a11087b036b9b0d90b876121ff08d89713cc1e9fc60f",
+  "apps/openagents-web/build/valleycanyon.wasm": "6d93209bc51ffa4765b9494c24e2300fa2eeeace15fa333378e7808e2f9aa9fb"
+}
