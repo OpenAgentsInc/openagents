@@ -1993,7 +1993,7 @@ you_box :: (s: [] Lab) -> Rect {
   return Rect.{x0 = hi(cx - r, -hx), y0 = hi(cz - r, -hz), x1 = lo(cx + r, hx), y1 = lo(cz + r, hz)};
 }
 lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
-  if s[0].creator[0].experimental {return P3.{x=lo(25,hi(-25,x)),z=lo(2,hi(-45,z))};}
+  if s[0].creator[0].experimental {return P3.{x=lo(82,hi(-82,x)),z=lo(82,hi(-82,z))};}
   if s[0].me < 0 { return P3.{x = x, z = z}; }
   r := you_box(s);
   return P3.{x = lo(r.x1, hi(r.x0, x)), z = lo(r.y1, hi(r.y0, z))};
@@ -3210,7 +3210,9 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
   u:[64]f32; out:[1]f32; _:=cc.frame(s[0].creator[..],out[..],u[..],1280,720,1,0,false); #assert u[11]==2;
   w:=lab_walk(s[..]); #assert w.on && w.put;
   #assert lab_key(s[..],'w',0); input:=lab_move_in(s[..]); #assert input.key_y==1 && input.theta==0;
-  edge:=lab_keep(s[..],50,50); #assert edge.x==25 && edge.z==2;
+  edge:=lab_keep(s[..],150,150); #assert edge.x==82 && edge.z==82;
+  edge=lab_keep(s[..], -150, -150);#assert edge.x== -82 && edge.z== -82;
+  edge=lab_keep(s[..],45,45);#assert edge.x==45 && edge.z==45;
   #assert !lab_move_world(s[..],0,0).still;
   lab_you(s[..],2,0,3,1,false,false,false,0,0,0,0);
   #assert s[0].creator[0].player_x==2 && s[0].creator[0].player_z==3;

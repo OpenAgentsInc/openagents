@@ -5,7 +5,8 @@ from pathlib import Path
 p = Path(sys.argv[1]); base = Path(sys.argv[2]); raw = p.read_bytes(); old = base.read_bytes()
 repo = Path(__file__).resolve().parents[3]
 revision = json.loads((repo/'assets/registry/scenes/character-glade.json').read_text())['reference']['revision']
-source = Path(sys.argv[3]) if len(sys.argv)>3 else Path.home()/'.openagents/assets/originals'/revision/'source'
+experimental = '--experimental' in sys.argv[3:]
+source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' else Path.home()/'.openagents/assets/originals'/revision/'source'
 
 def parts(b):
     magic, n, total, budget, table, *_ = struct.unpack_from('<4s7I', b)
@@ -36,12 +37,13 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
     assert struct.unpack_from('<I',vb,at+24)[0]<layers
     kind=vb[at+15]&7
+    if kind==4: rock_vertices+=1
     if kind==1:
         ao=struct.unpack_from('<f',vb,at+28)[0]; assert .49<=ao<=1.01
         n=struct.unpack_from('<3b',vb,at+12); assert .96<sum((v/127)**2 for v in n)<1.04
@@ -49,14 +51,20 @@ for i in range(verts):
     if kind==6:
         u,v=struct.unpack_from('<2H',vb,at+16); bark_v.append(v/65535*64-32)
     pos.append(xyz)
-for i in range(0,60000,3):
+ground_indices=135000 if experimental else 60000
+for i in range(0,ground_indices,3):
     a,b,c=[pos[k] for k in ids[i:i+3]]
     ux,uz=b[0]-a[0],b[2]-a[2]; vx,vz=c[0]-a[0],c[2]-a[2]
     assert uz*vx-ux*vz>0, 'Terrain winding points below hillside'
 # The far sky has four directional coordinates; no photographed terrain enters its texture.
-sky_ids=ids[60000:60006]; assert len(set(sky_ids))==4
+sky_ids=ids[ground_indices:ground_indices+6]; assert len(set(sky_ids))==4
 for i in set(sky_ids): assert vb[word*4+i*32+15]==0
 assert leaves and min(leaves)<.9 and bark_v and min(bark_v)<-20
+if experimental:
+    ground=pos[:151*151]
+    assert abs(min(p[0] for p in ground)+90)<.001 and abs(max(p[0] for p in ground)-90)<.001
+    assert abs(min(p[2] for p in ground)+90)<.001 and abs(max(p[2] for p in ground)-90)<.001
+    assert rock_vertices==0, f"experimental glade retains {rock_vertices} rock vertices"
 
 # Verify each instanced template against the pinned glTF, independently of the packer.
 names=['Grass_Common_Short','Grass_Wide_Short','Grass_Wispy_Short']
@@ -99,4 +107,4 @@ print(json.dumps({'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'env
  'environment_triangles':count//3,'texture_layers':layers,'wind_ribbons':wind_ribbons,'source_grass_templates':instances,
  'source_grass_instances':sum(v['instances'] for v in instances),'source_grass_topology':'exact source indices and positions',
  'grass_height_range':[min(heights),max(heights)],'bark_repeating_v_range':[min(bark_v),max(bark_v)],
- 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':'all 20000 faces upward'},indent=2))
+ 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':f'all {ground_indices//3} faces upward', 'rock_vertices':rock_vertices},indent=2))

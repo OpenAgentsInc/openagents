@@ -1,0 +1,129 @@
+{
+  "schema": "oa-scene-v1",
+  "id": "openagents/scenes/everglade-experimental",
+  "assets": [
+    {
+      "id": "quaternius/nature/birch-1",
+      "revision": "642c0476444b6f170630a1da6aa327f3bbfb9655ea93a70dec8ae9681fadb031"
+    },
+    {
+      "id": "quaternius/nature/birch-2",
+      "revision": "698f546d1b99dece31ce573fc51595936a680e58722a69f140e3f4b6d654e22b"
+    },
+    {
+      "id": "quaternius/nature/birch-3",
+      "revision": "bdb62c9ef3704d7d91bbd06047fcefd16e063aa62a19fd5a97f8e974d57200e9"
+    },
+    {
+      "id": "quaternius/nature/birch-4",
+      "revision": "990fa47911d6127b349c29c893a6b63e9efb52181f41364e785c54fa712fa135"
+    },
+    {
+      "id": "quaternius/nature/birch-5",
+      "revision": "a67973947dfee7982c7de4909d77b93f69722ee1d6ba22204cfa4987e8691597"
+    },
+    {
+      "id": "quaternius/nature/bush-common-flowers",
+      "revision": "1accb32f5e9e7d129bb6c2ea20d90d44464c49e27f7485919dcabf4fa4acf1e8"
+    },
+    {
+      "id": "quaternius/nature/commontree-1",
+      "revision": "99970fcb5207e5d8d3e89da16f722f42bad2d819c536359610ff1b2a7a0e83c2"
+    },
+    {
+      "id": "quaternius/nature/commontree-2",
+      "revision": "e0daf5db9e1e28d54e17fbf8ea0fd81005124e7dd7959f61b1b5415ba6a62d39"
+    },
+    {
+      "id": "quaternius/nature/commontree-3",
+      "revision": "1366eea41dfe08d9fecd49737a0855c35acae5ae52e89f016fcc0b25385e5b00"
+    },
+    {
+      "id": "quaternius/nature/commontree-4",
+      "revision": "defb0039fb1ba0a6eff067ab19bcd654cb5179da0264c61795243b92dc9eba6b"
+    },
+    {
+      "id": "quaternius/nature/commontree-5",
+      "revision": "ed6cf08e0ac701033ae466aace173b27e3df44a0fc8ee2ab43d1662cba61b6f8"
+    },
+    {
+      "id": "quaternius/nature/fern-1",
+      "revision": "3adb4cbb7a22f13b9d12d65223de331deb61b0a9feb260189560ef79558e3762"
+    },
+    {
+      "id": "quaternius/nature/flower-2-group",
+      "revision": "c50861c2639b94bc6151bb60aa0f54f3600022ed9a50783d805ee4a359d561d2"
+    },
+    {
+      "id": "quaternius/nature/flower-3-group",
+      "revision": "a1ff44bf1e43e7740a48fe2b5e5aada44045f6bad106b4cc06c1f51483975749"
+    },
+    {
+      "id": "quaternius/nature/grass-common-short",
+      "revision": "88b51ef9383e7f61ce719ff7766468de2299cd6868283989a74928f8fe56977d"
+    },
+    {
+      "id": "quaternius/nature/grass-wide-short",
+      "revision": "ee6b920a13f301f98ae19e4061cc82cc4a434df39bbf361848dd421799259a39"
+    },
+    {
+      "id": "quaternius/nature/grass-wispy-short",
+      "revision": "ad535b316f6604e8f05b726636e8dd150b4494a34e1993a31d1a57a87b7e7d8c"
+    },
+    {
+      "id": "quaternius/nature/mushroom-common",
+      "revision": "848b9580a785e24ac5b6a7a116bfeb70d77deb4a6e7cd2e91a1d9894eaf2809d"
+    },
+    {
+      "id": "quaternius/nature/plant-1",
+      "revision": "94c78e70e180812ea65995d241c3874e46a402a6d30ebe20fe6bd1af24cd09f1"
+    },
+    {
+      "id": "quaternius/nature/plant-3",
+      "revision": "0c52a3079a34443be1cf68511f2b7d4b8ab81f1549363c316e5e574ff9e50110"
+    }
+  ],
+  "parent_scene": {
+    "path": "assets/registry/scenes/character-glade.json",
+    "sha256": "7c53711ca06726dc01ffc4afdaa6ddcb29d1d80f5e9b621a067bd8b25af14f2e"
+  },
+  "source_package": {
+    "package": "nature",
+    "revision": "0e05d58ed4beda3f9bae85f924ff3d578cb724fd82d427a59bc72a9570760b0a"
+  },
+  "composition": {
+    "path": "verse/character-glade.coax",
+    "sha256": "4f18ecd0e5f7d5393cffb98f468a3afa30591ca5cde87521f99b43b3b5069afb"
+  },
+  "packer": {
+    "path": "verse/tools/assets/character_glade_pack.coax",
+    "sha256": "ebe717f4f7a53052d0c998211374a1a0401994ba399e50650499b0e72ac9b54e",
+    "profile": "--experimental"
+  },
+  "wardrobe_base": {
+    "path": "apps/openagents-web/realms/character-creator/assets/fantasy.pack",
+    "sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14"
+  },
+  "runtime": {
+    "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
+    "sha256": "72b4d5c695c0492bd40263b486cf53157eaf502af7fb0f399386543e6e4347f0",
+    "budget_bytes": 33554432
+  },
+  "terrain": {
+    "bounds_metres": [
+      -90,
+      90,
+      -90,
+      90
+    ],
+    "walkable_bounds_metres": [
+      -82,
+      82,
+      -82,
+      82
+    ],
+    "spacing_metres": 1.2,
+    "rock_vertices": 0
+  },
+  "scope": "Derived from the Character Create glade using pinned Nature source assets; original scene and wardrobe remain unchanged."
+}
