@@ -1,11 +1,14 @@
 # 38. Stream a large world
 
-> **Status: unimplemented — design draft.** Today a realm loads its whole
-> asset pack on entry and keeps every object resident; Everglade chooses its
-> near props by distance with hysteresis, and the space camera keeps a
-> floating origin in f64. This chapter plans Aethyr's streaming: a world in
-> cells, loaded and simulated by interest, within declared budgets. Nothing
-> here runs yet.
+> **Status: unimplemented — design draft.** This chapter's complete teaching
+> and actual large-world host qualification remain unfinished. Historical
+> #12847 already implemented [cells](../world/cells.coax): residency rings,
+> hysteresis, fixed-tick completion admission, sleeping bodies, stable IDs,
+> edge checks, persistence and floating origin. It did not qualify an
+> activated large-world realm. #12990 adds resource-cost manifests and actual
+> shared-loader adoption; current component evidence is linked from
+> [world ownership](../world/README.md). Existing code is not absent merely
+> because this chapter remains a draft.
 
 A realm the size of a town fits in memory; a realm the size of a continent,
 or a solar system, does not. Streaming decides which parts of the world are
@@ -67,6 +70,11 @@ order.
 - [coax/web/host.js](../../coax/web/host.js): one streamed pack per page with
   progress messages (605), and later assets (sounds, particles, fonts)
   fetched after the first frame.
+- [aethyr/world/cells.coax](../world/cells.coax): the existing streamed-cell
+  policy, stable sleeping stores and edge/save checks from #12847.
+- [Resource-cost components](../world/README.md): source-derived RCM1 plans,
+  dependency closure and named admission; actual multi-cell host ownership
+  and measured route adoption are still being integrated.
 
 ## The design in Aethyr
 
@@ -88,8 +96,9 @@ cells, with batched worlds (chapter 31) unaffected.
 
 ## Acceptance checks and oracles
 
-- Determinism: the same session replayed (chapter 5) with different load
-  timings (fast, slow, out of order) gives bit-identical simulation states.
+- Determinism: replaying the same accepted completion history (chapter 5)
+  gives bit-identical simulation states. Different live completion schedules
+  may wake cells at different ticks; each accepted history is recorded.
 - No pops: walking a ring's edge back and forth within `h` changes no cell
   state.
 - Precision: an object 10⁹ m from the origin draws within one pixel of its

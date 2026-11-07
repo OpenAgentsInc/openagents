@@ -1,0 +1,109 @@
+// Small real-codec/native-Wasm qualification. This is not the streamed host.
+#module "aethyr.examples.resourcecost";
+#import "Basic";
+#load "../world/resource-admission.coax";
+
+RESOURCE_TRANSCRIPT_WORDS :: 32;
+resource_cost_transcript :: () -> [RESOURCE_TRANSCRIPT_WORDS] int #effects(all) {
+  out: [RESOURCE_TRANSCRIPT_WORDS] int;
+  image := PNG_ONE; body: [64] u8;
+  resource_fixture_u64(body[..], 0, 4294967297); resource_fixture_u64(body[..], 8, f64_bits(1.25));
+  resource_fixture_u64(body[..], 32, 12345);
+  pcm := [4] int.[100, -200, 300, -400]; wav_bytes: [52] u8;
+  sound := wav.apw_test_wav(2, 48000, pcm[..], wav_bytes[..]);
+  sources := [4] [] u8.[image[..], image[..], sound, body[..]];
+  specs := [4] ResourceSpec.[
+    ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1},
+    ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.lighting, backend = ResourceBackend.vulkan, side = 2},
+    ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio},
+    ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors}];
+  dependencies: [4] ResourceDependencies;
+  dependencies[1].count = 1; dependencies[1].owners[0] = 0;
+  dependencies[3].count = 2; dependencies[3].owners[0] = 0; dependencies[3].owners[1] = 2;
+  manifest: [1808] u8; m: [1] ResourceManifest;
+  if resource_manifest_build(sources[..], specs[..], dependencies[..], manifest[..]) != ResourceManifestStatus.ok { return out; }
+  root := assets.asset_id(cast(string) manifest[..]);
+  if resource_manifest_read(manifest[..], root, m[..]) != ResourceManifestStatus.ok { return out; }
+  p := m[0].entries[1].plan; work: [256] u8; pixels: [20] u8;
+  if resource_decode_image(p, image[..], work[0..<p.cost.decode_scratch], pixels[..]) != ResourceCostStatus.ok { return out; }
+  filter: [1] wav.AudioWavFilter; audio_work: [1] f64; samples: [4] f32;
+  if resource_decode_audio(m[0].entries[2].plan, sound, filter[0..<0], audio_work[0..<0], samples[..]) != ResourceCostStatus.ok { return out; }
+  bodies: [1] cells.CellBody;
+  if resource_decode_bodies(m[0].entries[3].plan, body[..], bodies[..]) != ResourceCostStatus.ok { return out; }
+  out[0] = 1; out[1] = size_of(ResourcePlan); out[2] = p.cost.encoded; out[3] = p.cost.decoded; out[4] = p.cost.upload_scratch;
+  out[5] = p.cost.decode_scratch;
+  for i: 0..<pixels.count { out[6] += (i + 1) * cast(int) pixels[i]; }
+  out[7] = m[0].entries[2].plan.cost.decoded;
+  for i: 0..<4 { out[8] += cast(int) f32_bits(samples[i]); }
+  out[9] = bodies[0].id; out[10] = cast,trunc(int) f64_bits(bodies[0].x); out[11] = bodies[0].words[0];
+  for i: 0..<8 { out[12 + i] = cast(int) root.words[i]; }
+  out[20] = ifx resource_manifest_read(manifest[0..<1807], root, m[..]) == ResourceManifestStatus.malformed then 1 else 0;
+  late := PNG_BAD_FILTER5; late_plan := resource_plan(late[..], specs[1]);
+  out[21] = ifx late_plan.status == ResourceCostStatus.ok && resource_decode_image(late_plan, late[..], work[..], pixels[..]) == ResourceCostStatus.decode then 1 else 0;
+  p.cost.gpu += 4; out[22] = ifx !resource_matches(p, image[..]) then 1 else 0; out[23] = RESOURCE_COST_VERSION;
+  caps := [7] int.[10000, 300, 10000, 10000, 10000, 10000, 10000];
+  budgets := [1] ResourceBudget.[resource_budget_open(caps, 100000, 64, 8)];
+  queue := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; registry: [1] gpu.RenderRegistry;
+  if gpu.rr_open(registry[..], gpu.RrLimits.{slots = 8, words = 10000}) != gpu.RrStatus.ok { return out; }
+  first := [1] ResourceAdmission.[resource_budget_admit(budgets[..], queue[..], registry[..], m[0].entries[0].plan)];
+  out[24] = ifx first[0].status == ResourceAdmissionStatus.ok then 1 else 0;
+  out[25] = ifx resource_budget_admit(budgets[..], queue[..], registry[..], m[0].entries[0].plan).status == ResourceAdmissionStatus.category then 1 else 0;
+  out[26] = budgets[0].peak;
+  stale := first;
+  if !resource_budget_settle(budgets[..], queue[..], first[..]) { return out; }
+  out[27] = budgets[0].total;
+  out[30] = ifx !resource_budget_settle(budgets[..], queue[..], stale[..]) then 1 else 0;
+  if !resource_budget_release(budgets[..], queue[..], registry[..], first[..]) { return out; }
+  out[28] = ifx budgets[0].total == 0 && queue[0].bytes == 0 && registry[0].live == 0 then 1 else 0;
+  caps[6] = 72; caps[1] = 10000; budgets[0] = resource_budget_open(caps, 100000, 64, 8);
+  a := [1] ResourceAdmission.[resource_budget_admit(budgets[..], queue[..], registry[..], m[0].entries[1].plan)];
+  second_plan := m[0].entries[1].plan; second_plan.spec.category = ResourceCategory.textures;
+  c := [1] ResourceAdmission.[resource_budget_admit(budgets[..], queue[..], registry[..], second_plan)];
+  if a[0].status != ResourceAdmissionStatus.ok || c[0].status != ResourceAdmissionStatus.ok { return out; }
+  out[29] = budgets[0].used[6];
+  if !resource_budget_settle(budgets[..], queue[..], c[..]) || !resource_budget_release(budgets[..], queue[..], registry[..], c[..]) { return out; }
+  if !resource_budget_settle(budgets[..], queue[..], a[..]) || !resource_budget_release(budgets[..], queue[..], registry[..], a[..]) { return out; }
+  out[31] = ifx budgets[0].total == 0 && queue[0].bytes == 0 && registry[0].words == 0 then 1 else 0;
+  return out;
+}
+#test "the bounded resource transcript includes real decodes and complete refusal gates" {
+  words := resource_cost_transcript();
+  #assert words[0] == 1 && words[3] == 20 && words[4] == 20 && words[7] == 16;
+  #assert words[9] == 4294967297 && words[11] == 12345;
+  #assert words[20] == 1 && words[21] == 1 && words[22] == 1 && words[23] == 1;
+  #assert words[24] == 1 && words[25] == 1 && words[26] == 261 && words[27] == 245;
+  #assert words[28] == 1 && words[29] == 72 && words[30] == 1 && words[31] == 1;
+}
+resource_cost_word :: (index: int) -> int #export_c #effects(all) {
+  if index < 0 || index >= RESOURCE_TRANSCRIPT_WORDS { return -1; }
+  words := resource_cost_transcript();
+  if index == 31 && !resource_cost_hostile_floats() { return 0; }
+  return words[index];
+}
+// The evaluator intentionally refuses nonfinite compile-time bit casts.
+// Run these raw IEEE input bytes in actual native/Wasm code instead of
+// hiding that evaluator restriction behind an equivalent finite fixture.
+resource_cost_hostile_floats :: () -> bool #effects(all) {
+  body: [64] u8; body[0] = 1;
+  for bits: [3] u64.[9218868437227405312, 9221120237041090561, 18442240474082181120] {
+    for lane: 0..<3 {
+      resource_fixture_u64(body[..], 8 + lane * 8, bits);
+      if resource_plan(body[..], ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors}).status != ResourceCostStatus.invalid { return false; }
+      resource_fixture_u64(body[..], 8 + lane * 8, 0);
+    }
+  }
+  vertex: [16] u8; resource_fixture_f32(vertex[..], 12, 1);
+  for bits: [3] u32.[2139095040, 2143289345, 4286578688] {
+    for lane: 0..<3 {
+      resource_put32(vertex[..], lane * 4, bits);
+      if resource_plan(vertex[..], ResourceSpec.{format = ResourceFormat.positions4}).status != ResourceCostStatus.invalid { return false; }
+      resource_put32(vertex[..], lane * 4, 0);
+    }
+  }
+  return true;
+}
+main :: () {
+  words := resource_cost_transcript();
+  if !resource_cost_hostile_floats() { words[31] = 0; }
+  for word: words { print("%\n", word); }
+}

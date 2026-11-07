@@ -1,0 +1,248 @@
+// Named cost admission around the existing inbox tickets and GPU ledger.
+// This module neither allocates memory nor creates GPU objects. A grant
+// precedes those effects; settle follows actual decode/upload completion;
+// release follows final borrower retirement and physical object destruction.
+// The stream owner, not cancellation, decides when effects have completed.
+#authority;
+#load "resource-manifest.coax";
+#load "../host/inbox-queue.coax";
+#load "../render/frame.coax" as frames;
+
+RESOURCE_BUDGET_LINES :: 7;
+RESOURCE_BUDGET_TOTAL_MAX :: 1107296256; // existing 32 MiB inbox + 1 GiB GPU ceilings
+ResourceAdmissionStatus :: enum u8 { ok; invalid; category; aggregate; pools; inbox; device; released; }
+ResourceBudget :: struct {
+  valid: bool;
+  caps: [RESOURCE_BUDGET_LINES] int;
+  used: [RESOURCE_BUDGET_LINES] int;
+  peaks: [RESOURCE_BUDGET_LINES] int;
+  peak_owners: [RESOURCE_BUDGET_LINES] HostInboxLease;
+  total_cap: int; total: int; peak: int;
+  peak_owner: HostInboxLease;
+  actor_cap: int; actors: int; actor_peak: int;
+  actor_peak_owner: HostInboxLease;
+  voice_cap: int; voices: int; voice_peak: int;
+  voice_peak_owner: HostInboxLease;
+  refused: int;
+}
+ResourceAdmission :: struct {
+  status: ResourceAdmissionStatus = ResourceAdmissionStatus.invalid;
+  category: int;
+  retained: int;
+  scratch: int;
+  actors: int;
+  voices: int;
+  // encoded, decoded, the retained ResourcePlan, decoder work, GPU transfer.
+  leases: [5] HostInboxLease;
+  gpu_handle: frames.RfHandle;
+  settled: bool;
+}
+
+#test "a texture category refusal is atomic while existing resident content stays usable" {
+  caps := [7] int.[10000, 300, 10000, 10000, 10000, 10000, 10000];
+  b := [1] ResourceBudget.[resource_budget_open(caps, 100000, 64, 8)];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 8, words = 10000}) == gpu.RrStatus.ok;
+  source := PNG_ONE; p := resource_plan(source[..], ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1});
+  first := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert first[0].status == ResourceAdmissionStatus.ok && q[0].count == 4 && r[0].live == 1 && r[0].words == 1;
+  #assert b[0].total == 261 && b[0].peak == 261 && b[0].used[1] == 245 && b[0].peaks[1] == 245;
+  #assert b[0].peak_owner.serial == first[0].leases[2].serial && b[0].peak_owners[1].serial == first[0].leases[2].serial;
+  #assert b[0].actor_peak_owner.slot == -1 && b[0].voice_peak_owner.slot == -1;
+  for i: 0..<6 { if i != 1 { #assert b[0].peaks[i] == 0 && b[0].peak_owners[i].slot == -1; } }
+  used := b[0].total; serial := q[0].serial; generation := r[0].table[1].generation;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.category;
+  #assert b[0].total == used && b[0].refused == 1 && q[0].serial == serial && r[0].live == 1 && r[0].table[1].generation == generation;
+  #assert gpu.rr_live(r[..], first[0].gpu_handle);
+  #assert !resource_budget_release(b[..], q[..], r[..], first[..]);
+  unsettled_copy := first;
+  #assert resource_budget_settle(b[..], q[..], first[..]) && !resource_budget_settle(b[..], q[..], first[..]);
+  #assert !resource_budget_settle(b[..], q[..], unsettled_copy[..]);
+  #assert q[0].count == 3 && b[0].used[6] == 0 && b[0].total == used - p.cost.decode_scratch;
+  duplicate := first;
+  #assert resource_budget_release(b[..], q[..], r[..], first[..]) && !resource_budget_release(b[..], q[..], r[..], first[..]);
+  #assert !resource_budget_release(b[..], q[..], r[..], duplicate[..]);
+  #assert b[0].total == 0 && b[0].used[1] == 0 && q[0].count == 0 && q[0].bytes == 0 && r[0].live == 0 && r[0].words == 0;
+  #assert first[0].status == ResourceAdmissionStatus.released;
+  next := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert next[0].status == ResourceAdmissionStatus.ok && b[0].peak_owner.serial == duplicate[0].leases[2].serial;
+  #assert b[0].peak_owners[1].serial == duplicate[0].leases[2].serial;
+}
+#test "budget declaration has exact limits including empty profiles and each named line" {
+  caps: [7] int; b := resource_budget_open(caps, 0, 0, 0);
+  #assert b.valid && b.total_cap == 0 && b.actor_cap == 0 && b.voice_cap == 0;
+  for field: 0..<10 {
+    for high: 0..<2 {
+      changed := caps; total := 0; actors := 0; voices := 0;
+      if field < 7 { changed[field] = ifx high == 1 then 1107296256 else 0; }
+      if field == 7 { total = ifx high == 1 then 1107296256 else 0; }
+      if field == 8 { actors = ifx high == 1 then 2048 else 0; }
+      if field == 9 { voices = ifx high == 1 then 64 else 0; }
+      #assert resource_budget_open(changed, total, actors, voices).valid;
+      if field < 7 { changed[field] += ifx high == 1 then 1 else -1; }
+      if field == 7 { total += ifx high == 1 then 1 else -1; }
+      if field == 8 { actors += ifx high == 1 then 1 else -1; }
+      if field == 9 { voices += ifx high == 1 then 1 else -1; }
+      #assert !resource_budget_open(changed, total, actors, voices).valid;
+    }
+  }
+}
+#test "exact actor and voice pools retain peaks and a lost device cannot release a replacement object" {
+  caps := [7] int.[10000, 10000, 10000, 10000, 10000, 10000, 10000];
+  b := [1] ResourceBudget.[resource_budget_open(caps, 100000, 1, 1)];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 8, words = 10000}) == gpu.RrStatus.ok;
+  body: [64] u8; body[0] = 1; p := resource_plan(body[..], ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors});
+  a := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert a[0].status == ResourceAdmissionStatus.ok && b[0].actors == 1 && b[0].actor_peak == 1 && b[0].actor_peak_owner.serial == a[0].leases[2].serial;
+  #assert q[0].count == 3 && q[0].bytes == 296 && a[0].retained == 296 && r[0].live == 0;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.pools;
+  #assert resource_budget_settle(b[..], q[..], a[..]) && resource_budget_release(b[..], q[..], r[..], a[..]);
+  #assert b[0].actors == 0 && b[0].used[5] == 0 && b[0].actor_peak == 1;
+  pcm := [1] int.[1]; wav_bytes: [46] u8; sound := wav.apw_test_wav(1, 48000, pcm[..], wav_bytes[..]);
+  p = resource_plan(sound, ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio});
+  voice := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert voice[0].status == ResourceAdmissionStatus.ok && b[0].voices == 1 && b[0].voice_peak == 1 && b[0].voice_peak_owner.serial == voice[0].leases[2].serial;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.pools;
+  #assert resource_budget_settle(b[..], q[..], voice[..]) && resource_budget_release(b[..], q[..], r[..], voice[..]) && b[0].voices == 0 && b[0].used[4] == 0;
+  again := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert again[0].status == ResourceAdmissionStatus.ok && b[0].voice_peak_owner.serial == voice[0].leases[2].serial;
+  #assert resource_budget_settle(b[..], q[..], again[..]) && resource_budget_release(b[..], q[..], r[..], again[..]);
+  actor_again := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], resource_plan(body[..], ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors}))];
+  #assert actor_again[0].status == ResourceAdmissionStatus.ok && b[0].actor_peak_owner.serial == a[0].leases[2].serial;
+  #assert resource_budget_settle(b[..], q[..], actor_again[..]) && resource_budget_release(b[..], q[..], r[..], actor_again[..]);
+  index: [4] u8; p = resource_plan(index[..], ResourceSpec.{format = ResourceFormat.indices});
+  old := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert old[0].status == ResourceAdmissionStatus.ok && r[0].table[old[0].gpu_handle.slot].kind == gpu.RR_INDEX && r[0].words == 1;
+  gpu.rr_lose(r[..]); replacement := gpu.rr_acquire(r[..], gpu.RR_VERTEX, 2);
+  #assert replacement.status == gpu.RrStatus.ok && resource_budget_settle(b[..], q[..], old[..]) && resource_budget_release(b[..], q[..], r[..], old[..]);
+  #assert gpu.rr_live(r[..], replacement.handle) && r[0].live == 1 && r[0].words == 2 && b[0].used[0] == 0;
+  vertices: [16] u8; resource_fixture_f32(vertices[..], 12, 1); p = resource_plan(vertices[..], ResourceSpec.{format = ResourceFormat.positions4});
+  vertex := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert vertex[0].status == ResourceAdmissionStatus.ok && r[0].table[vertex[0].gpu_handle.slot].kind == gpu.RR_VERTEX && r[0].words == 6;
+  #assert b[0].peaks[0] == 200 && b[0].peak_owners[0].serial == vertex[0].leases[2].serial;
+}
+#test "exact category and aggregate fits differ from one byte excess and partial ticket refusal rolls back" {
+  caps := [7] int.[10000, 245, 10000, 10000, 10000, 10000, 16];
+  b := [1] ResourceBudget.[resource_budget_open(caps, 261, 1, 1)];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 8, words = 10000}) == gpu.RrStatus.ok;
+  source := PNG_ONE; p := resource_plan(source[..], ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1});
+  lease := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert lease[0].status == ResourceAdmissionStatus.ok && b[0].total == 261;
+  b[0].caps[1] = 10000; b[0].caps[6] = 10000;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.aggregate;
+  #assert resource_budget_settle(b[..], q[..], lease[..]) && resource_budget_release(b[..], q[..], r[..], lease[..]);
+  b[0].total_cap = 260;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.aggregate;
+  b[0].total_cap = 10000;
+  for i: 0..<61 { g := hiq_reserve(q[..], 0); #assert g.status == HostInboxStatus.ok; }
+  serial := q[0].serial;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.inbox && q[0].count == 61 && q[0].serial == serial && b[0].total == 0;
+  bad := p; bad.status = ResourceCostStatus.invalid;
+  #assert resource_budget_admit(b[..], q[..], r[..], bad).status == ResourceAdmissionStatus.invalid;
+  bad = p; bad.spec.category = ResourceCategory.staging;
+  #assert resource_budget_admit(b[..], q[..], r[..], bad).status == ResourceAdmissionStatus.invalid;
+  b[0].valid = false;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.invalid;
+  empty: [1] ResourceAdmission;
+  #assert !resource_budget_settle(b[..], q[..], empty[..]) && !resource_budget_release(b[..], q[..], r[..], empty[..]);
+}
+#test "concurrent native uploads reserve all scratch until each actual completion" {
+  caps := [7] int.[10000, 10000, 10000, 10000, 10000, 10000, 72];
+  b := [1] ResourceBudget.[resource_budget_open(caps, 100000, 64, 8)];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 8, words = 10000}) == gpu.RrStatus.ok;
+  source := PNG_ONE; p := resource_plan(source[..], ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, backend = ResourceBackend.vulkan, side = 2});
+  a := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  c := [1] ResourceAdmission.[resource_budget_admit(b[..], q[..], r[..], p)];
+  #assert a[0].status == ResourceAdmissionStatus.ok && c[0].status == ResourceAdmissionStatus.ok && b[0].used[6] == 72 && b[0].peaks[6] == 72;
+  #assert resource_budget_admit(b[..], q[..], r[..], p).status == ResourceAdmissionStatus.category;
+  #assert !resource_budget_release(b[..], q[..], r[..], a[..]) && b[0].used[6] == 72;
+  #assert resource_budget_settle(b[..], q[..], c[..]) && b[0].used[6] == 36 && resource_budget_release(b[..], q[..], r[..], c[..]);
+  #assert resource_budget_settle(b[..], q[..], a[..]) && resource_budget_release(b[..], q[..], r[..], a[..]);
+  #assert b[0].total == 0 && q[0].bytes == 0 && r[0].words == 0 && b[0].peaks[6] == 72;
+}
+#test "aggregate actor voice inbox and GPU ceilings refuse without spending another owner" {
+  caps := [7] int.[10000, 10000, 10000, 10000, 10000, 10000, 10000];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 8, words = 10000}) == gpu.RrStatus.ok;
+  source := PNG_ONE; image := resource_plan(source[..], ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1});
+  b := [1] ResourceBudget.[resource_budget_open(caps, 1, 0, 0)];
+  #assert resource_budget_admit(b[..], q[..], r[..], image).status == ResourceAdmissionStatus.aggregate && q[0].count == 0 && r[0].live == 0;
+  body: [64] u8; body[0] = 1; actor := resource_plan(body[..], ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors});
+  b[0] = resource_budget_open(caps, 100000, 0, 0);
+  #assert resource_budget_admit(b[..], q[..], r[..], actor).status == ResourceAdmissionStatus.pools;
+  pcm := [1] int.[1]; wav_bytes: [46] u8; sound := wav.apw_test_wav(1, 48000, pcm[..], wav_bytes[..]);
+  audio := resource_plan(sound, ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio});
+  #assert resource_budget_admit(b[..], q[..], r[..], audio).status == ResourceAdmissionStatus.pools;
+  q[0] = hiq_open(1);
+  #assert resource_budget_admit(b[..], q[..], r[..], image).status == ResourceAdmissionStatus.inbox && q[0].serial == 0 && b[0].total == 0;
+  q[0] = hiq_open(HOST_INBOX_CAPACITY); r[0].limit.words = 0;
+  #assert resource_budget_admit(b[..], q[..], r[..], image).status == ResourceAdmissionStatus.device && q[0].serial == 0 && b[0].total == 0;
+}
+
+resource_budget_open :: (caps: [RESOURCE_BUDGET_LINES] int, total: int, actors: int, voices: int) -> ResourceBudget #effects(all) {
+  if total < 0 || total > RESOURCE_BUDGET_TOTAL_MAX || actors < 0 || actors > 2048 || voices < 0 || voices > 64 { return ResourceBudget.{}; }
+  for cap: caps { if cap < 0 || cap > RESOURCE_BUDGET_TOTAL_MAX { return ResourceBudget.{}; } }
+  return ResourceBudget.{valid = true, caps = caps, total_cap = total, actor_cap = actors, voice_cap = voices};
+}
+resource_budget_refuse :: (b: [] ResourceBudget, status: ResourceAdmissionStatus) -> ResourceAdmission #effects(all) {
+  b[0].refused += 1; return ResourceAdmission.{status = status};
+}
+// Plans must be entries of the retained, expected-identity manifest. The
+// stream rechecks actual bytes with resource_matches before decoder effects.
+resource_budget_admit :: (b: [] ResourceBudget, q: [] HostInboxQueue, r: [] gpu.RenderRegistry, p: ResourcePlan) -> ResourceAdmission #effects(all) {
+  m := ResourceManifest.{count = 1}; m.entries[0].plan = p;
+  if !b[0].valid || !resource_manifest_shape(m) || p.spec.category == ResourceCategory.staging { return resource_budget_refuse(b, ResourceAdmissionStatus.invalid); }
+  c := p.cost; category := cast(int) p.spec.category; staging := cast(int) ResourceCategory.staging;
+  retained := c.encoded + c.decoded + c.objects + c.gpu; scratch := c.decode_scratch + c.upload_scratch;
+  if retained > b[0].caps[category] - b[0].used[category] || scratch > b[0].caps[staging] - b[0].used[staging] { return resource_budget_refuse(b, ResourceAdmissionStatus.category); }
+  if retained + scratch > b[0].total_cap - b[0].total { return resource_budget_refuse(b, ResourceAdmissionStatus.aggregate); }
+  if c.actors > b[0].actor_cap - b[0].actors || c.voices > b[0].voice_cap - b[0].voices { return resource_budget_refuse(b, ResourceAdmissionStatus.pools); }
+  // These are the original ticket/ledger types. Speculative value copies
+  // provide an atomic admission; no physical effect has happened yet.
+  queue := [1] HostInboxQueue.[q[0]]; registry := [1] gpu.RenderRegistry.[r[0]];
+  out := ResourceAdmission.{status = ResourceAdmissionStatus.ok, category = category, retained = retained, scratch = scratch, actors = c.actors, voices = c.voices};
+  bytes := [5] int.[c.encoded, c.decoded, c.objects, c.decode_scratch, c.upload_scratch];
+  for i: 0..<5 { if bytes[i] != 0 {
+    grant := hiq_reserve(queue[..], bytes[i]);
+    if grant.status != HostInboxStatus.ok { return resource_budget_refuse(b, ResourceAdmissionStatus.inbox); }
+    out.leases[i] = grant.lease;
+  } }
+  if p.spec.format == ResourceFormat.positions4 || p.spec.format == ResourceFormat.indices || p.spec.format == ResourceFormat.image_mips {
+    kind := ifx p.spec.format == ResourceFormat.positions4 then gpu.RR_VERTEX else ifx p.spec.format == ResourceFormat.indices then gpu.RR_INDEX else gpu.RR_TEXTURE;
+    grant := gpu.rr_acquire(registry[..], kind, c.gpu / 4);
+    if grant.status != gpu.RrStatus.ok { return resource_budget_refuse(b, ResourceAdmissionStatus.device); }
+    out.gpu_handle = grant.handle;
+  }
+  q[0] = queue[0]; r[0] = registry[0];
+  b[0].used[category] += retained; b[0].used[staging] += scratch; b[0].total += retained + scratch;
+  b[0].actors += c.actors; b[0].voices += c.voices;
+  for i: 0..<RESOURCE_BUDGET_LINES { if b[0].used[i] > b[0].peaks[i] { b[0].peaks[i] = b[0].used[i]; b[0].peak_owners[i] = out.leases[2]; } }
+  if b[0].total > b[0].peak { b[0].peak = b[0].total; b[0].peak_owner = out.leases[2]; }
+  if b[0].actors > b[0].actor_peak { b[0].actor_peak = b[0].actors; b[0].actor_peak_owner = out.leases[2]; }
+  if b[0].voices > b[0].voice_peak { b[0].voice_peak = b[0].voices; b[0].voice_peak_owner = out.leases[2]; }
+  return out;
+}
+// Call after the real operation has stopped borrowing both scratch spans.
+// Cancellation merely marks the stream owner unwanted; it cannot call this.
+resource_budget_settle :: (b: [] ResourceBudget, q: [] HostInboxQueue, lease: [] ResourceAdmission) -> bool #effects(all) {
+  if lease[0].status != ResourceAdmissionStatus.ok || lease[0].settled { return false; }
+  queue := [1] HostInboxQueue.[q[0]];
+  for i: 3..<5 { if lease[0].leases[i].slot != -1 { if !hiq_release(queue[..], lease[0].leases[i]) { return false; } } }
+  q[0] = queue[0]; b[0].used[cast(int) ResourceCategory.staging] -= lease[0].scratch; b[0].total -= lease[0].scratch;
+  lease[0].settled = true; return true;
+}
+// The host has destroyed all physical retained objects and ended borrowers.
+// An already-lost device may have invalidated its handle; it never releases
+// a replacement handle. CPU metadata's exact lease fences duplicate copies.
+resource_budget_release :: (b: [] ResourceBudget, q: [] HostInboxQueue, r: [] gpu.RenderRegistry, lease: [] ResourceAdmission) -> bool #effects(all) {
+  if lease[0].status != ResourceAdmissionStatus.ok || !lease[0].settled { return false; }
+  queue := [1] HostInboxQueue.[q[0]];
+  for i: 0..<3 { if lease[0].leases[i].slot >= 0 { if !hiq_release(queue[..], lease[0].leases[i]) { return false; } } }
+  if gpu.rr_live(r, lease[0].gpu_handle) { ignored := gpu.rr_release(r, lease[0].gpu_handle); }
+  q[0] = queue[0]; b[0].used[lease[0].category] -= lease[0].retained; b[0].total -= lease[0].retained;
+  b[0].actors -= lease[0].actors; b[0].voices -= lease[0].voices;
+  lease[0].status = ResourceAdmissionStatus.released; return true;
+}

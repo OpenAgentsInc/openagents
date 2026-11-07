@@ -1,0 +1,326 @@
+// RCM1 is a new versioned resource-cost companion, not a replacement VPK ABI.
+// A trusted root names the SHA-256 of these complete canonical bytes. Costs
+// are produced from source bytes; arrivals must still pass resource_matches
+// and their real decoder before an owner may publish them.
+#authority;
+#load "resource-cost.coax";
+
+RESOURCE_MANIFEST_VERSION :: 1;
+RESOURCE_MANIFEST_MAX :: 64;
+RESOURCE_DEPENDENCIES :: 8;
+RESOURCE_MANIFEST_HEADER :: 48;
+RESOURCE_MANIFEST_ROW :: 440;
+RESOURCE_MANIFEST_MAX_BYTES :: RESOURCE_MANIFEST_HEADER + RESOURCE_MANIFEST_ROW * RESOURCE_MANIFEST_MAX;
+// These are format/model revisions, not approximate author cost estimates.
+// Any change to a represented layout or loader cost requires a new revision.
+RESOURCE_MODEL_REVISION :: "RCM1/positions4-1/indices-1/query-box-1/query-capsule-1/htx-1/apw-1/cell-body-1";
+ResourceManifestStatus :: enum u8 { ok; unsupported; malformed; identity; source; capacity; }
+ResourceDependencies :: struct { count: int; owners: [RESOURCE_DEPENDENCIES] int; }
+ResourceEntry :: struct { plan: ResourcePlan; dependencies: ResourceDependencies; }
+ResourceManifest :: struct {
+  valid: bool;
+  count: int;
+  identity: assets.AssetId;
+  entries: [RESOURCE_MANIFEST_MAX] ResourceEntry;
+}
+#load "tests/resource-manifest-fixture.coax";
+
+#test "manifest bytes pin decoder revision content layout costs and ordered dependency digests" {
+  bytes: [RESOURCE_MANIFEST_MAX_BYTES] u8;
+  source := PNG_ONE;
+  sources := [2] [] u8.[source[..], source[..]];
+  specs := [2] ResourceSpec.[ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1},
+    ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.lighting, side = 2}];
+  dependencies: [2] ResourceDependencies; dependencies[1].count = 1; dependencies[1].owners[0] = 0;
+  n := RESOURCE_MANIFEST_HEADER + 2 * RESOURCE_MANIFEST_ROW;
+  #assert resource_manifest_build(sources[..], specs[..], dependencies[..], bytes[..]) == ResourceManifestStatus.ok;
+  #assert cast(string) bytes[0..<4] == "RCM1" && resource_u32(bytes[..], 4) == 1 && resource_u32(bytes[..], 8) == 2;
+  root := assets.asset_id(cast(string) bytes[0..<n]);
+  m: [1] ResourceManifest;
+  #assert resource_manifest_read(bytes[0..<n], root, m[..]) == ResourceManifestStatus.ok;
+  #assert m[0].valid && m[0].count == 2 && assets.asset_same(m[0].identity, root);
+  #assert m[0].entries[0].plan.cost.decoded == 4 && m[0].entries[1].plan.cost.decoded == 20;
+  #assert m[0].entries[1].dependencies.count == 1 && m[0].entries[1].dependencies.owners[0] == 0;
+  #assert assets.asset_same(m[0].entries[0].plan.content, m[0].entries[1].plan.content);
+  #assert resource_matches(m[0].entries[1].plan, source[..]);
+  copy: [RESOURCE_MANIFEST_MAX_BYTES] u8;
+  #assert resource_manifest_write(m[0], copy[..]) == ResourceManifestStatus.ok;
+  for i: 0..<n { #assert copy[i] == bytes[i]; }
+  // A refused reader leaves the caller's prior valid manifest intact.
+  bytes[n - 1] = 1;
+  #assert resource_manifest_read(bytes[0..<n], root, m[..]) == ResourceManifestStatus.identity && m[0].valid && m[0].count == 2;
+  #assert resource_manifest_read(bytes[0..<n], assets.asset_id(cast(string) bytes[0..<n]), m[..]) == ResourceManifestStatus.malformed;
+  bytes[n - 1] = 0; bytes[16] ^= 1;
+  #assert resource_manifest_read(bytes[0..<n], assets.asset_id(cast(string) bytes[0..<n]), m[..]) == ResourceManifestStatus.unsupported;
+}
+#test "manifest construction refuses missing cyclic duplicate or oversized dependencies before writing" {
+  source := PNG_ONE; sources := [2] [] u8.[source[..], source[..]];
+  spec := ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1};
+  specs := [2] ResourceSpec.[spec, spec]; deps: [2] ResourceDependencies;
+  out: [RESOURCE_MANIFEST_MAX_BYTES] u8; out[0] = 99;
+  #assert resource_manifest_build(sources[..], specs[..], deps[..], out[..]) == ResourceManifestStatus.malformed && out[0] == 99;
+  specs[1].side = 2; deps[0].count = 1; deps[0].owners[0] = 1;
+  #assert resource_manifest_build(sources[..], specs[..], deps[..], out[..]) == ResourceManifestStatus.malformed && out[0] == 99;
+  deps[0].count = 0; deps[1].count = 2; deps[1].owners[0] = 0; deps[1].owners[1] = 0;
+  #assert resource_manifest_build(sources[..], specs[..], deps[..], out[..]) == ResourceManifestStatus.malformed;
+  deps[1].count = 1; deps[1].owners[0] = -1;
+  #assert resource_manifest_build(sources[..], specs[..], deps[..], out[..]) == ResourceManifestStatus.malformed;
+  deps[1].count = 9; #assert resource_manifest_build(sources[..], specs[..], deps[..], out[..]) == ResourceManifestStatus.malformed;
+  deps[1].count = 0;
+  #assert resource_manifest_build(sources[..], specs[..], deps[..], out[0..<10]) == ResourceManifestStatus.capacity && out[0] == 99;
+  #assert resource_manifest_build(sources[..], specs[0..<1], deps[..], out[..]) == ResourceManifestStatus.malformed;
+  specs[1].version = 2;
+  #assert resource_manifest_build(sources[..], specs[..], deps[..], out[..]) == ResourceManifestStatus.source && out[0] == 99;
+}
+#test "manifest cost lane codec preserves independent fields and all 64 bit bytes" {
+  values := [13] int.[13, 17, 19, size_of(ResourcePlan), 23, 29, 8, 2, 1, 3, 5, 7, 11];
+  c := ResourceCost.{encoded = 13, decoded = 17, gpu = 19, objects = size_of(ResourcePlan), decode_scratch = 23, upload_scratch = 29,
+    alignment = 8, actors = 2, voices = 1, width = 3, height = 5, levels = 7, elements = 11};
+  lanes := resource_cost_words(c); for i: 0..<13 { #assert lanes[i] == values[i]; }
+  #assert resource_cost_equal(resource_cost_from_words(values), c);
+  bytes: [10] u8; resource_put64(bytes[..], 1, 72623859790382856);
+  for i: 0..<8 { #assert cast(int) bytes[i + 1] == 8 - i; }
+  #assert bytes[0] == 0 && bytes[9] == 0 && resource_u64(bytes[..], 1) == 72623859790382856;
+  spec := ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 2};
+  #assert resource_spec_equal(spec, spec);
+  for field: 0..<5 {
+    other := spec;
+    if field == 0 { other.version = 2; } if field == 1 { other.format = ResourceFormat.indices; } if field == 2 { other.category = ResourceCategory.lighting; }
+    if field == 3 { other.backend = ResourceBackend.vulkan; } if field == 4 { other.side = 1; }
+    #assert !resource_spec_equal(spec, other);
+  }
+}
+#test "manifest arithmetic bounds precede indexing and every declared cost boundary is exact" {
+  m := resource_manifest_fixture(1); #assert resource_manifest_shape(m);
+  for count: [4] int.[-1, 0, 65, 9223372036854775807] { bad := m; bad.count = count; #assert !resource_manifest_shape(bad); }
+  for reason: 0..<4 {
+    bad := m;
+    if reason == 0 { bad.entries[0].plan.status = ResourceCostStatus.invalid; } if reason == 1 { bad.entries[0].plan.spec.version = 2; }
+    if reason == 2 { bad.entries[0].plan.spec.format = ResourceFormat.invalid; } if reason == 3 { bad.entries[0].dependencies.count = -1; }
+    #assert !resource_manifest_shape(bad);
+  }
+  lo := [13] int.[1, 0, 0, size_of(ResourcePlan), 0, 0, 4, 0, 0, 0, 0, 0, 1];
+  hi := [13] int.[67108864, 67108864, 67108864, size_of(ResourcePlan), 67108864, 67108864, 16, 32, 1, 1024, 1024, 11, 67108864];
+  for field: 0..<13 {
+    for high: 0..<2 {
+      values := lo; values[field] = ifx high == 1 then hi[field] else lo[field];
+      m.entries[0].plan.cost = resource_cost_from_words(values); #assert resource_manifest_shape(m);
+      values[field] += ifx high == 1 then 1 else -1;
+      m.entries[0].plan.cost = resource_cost_from_words(values); #assert !resource_manifest_shape(m);
+    }
+  }
+  values := lo; values[6] = 8; m.entries[0].plan.cost = resource_cost_from_words(values); #assert resource_manifest_shape(m);
+  many := resource_manifest_fixture(9);
+  many.entries[8].dependencies.count = 8; for i: 0..<8 { many.entries[8].dependencies.owners[i] = i; }
+  #assert resource_manifest_shape(many);
+  many.entries[8].dependencies.owners[0] = 8; #assert !resource_manifest_shape(many);
+  many.entries[8].dependencies.owners[0] = 0; many.entries[8].dependencies.owners[3] = 1; #assert !resource_manifest_shape(many);
+  self := resource_manifest_fixture(1); self.entries[0].dependencies.count = 1;
+  #assert !resource_manifest_shape(self);
+  full := resource_manifest_fixture(64); full.count = 65; #assert !resource_manifest_shape(full);
+  depfull := resource_manifest_fixture(10); depfull.entries[9].dependencies.count = 9;
+  for i: 0..<8 { depfull.entries[9].dependencies.owners[i] = i; }
+  #assert !resource_manifest_shape(depfull);
+}
+#test "exact size buffers all formats and complete dependency closures have one canonical encoding" #steps 200000000 {
+  for count: [3] int.[1, 9, 64] {
+    m := resource_manifest_fixture(count); m.entries[0].plan.spec.backend = ResourceBackend.vulkan;
+    if count > 8 { m.entries[8].dependencies.count = 8; for i: 0..<8 { m.entries[8].dependencies.owners[i] = i; } }
+    for i: 1..<count { m.entries[i].dependencies.count = 1; m.entries[i].dependencies.owners[0] = i - 1; }
+    if count > 8 { m.entries[8].dependencies.count = 8; for i: 0..<8 { m.entries[8].dependencies.owners[i] = i; } }
+    bytes: [RESOURCE_MANIFEST_MAX_BYTES + 1] u8; for i: 0..<bytes.count { bytes[i] = 197; }
+    n := RESOURCE_MANIFEST_HEADER + count * RESOURCE_MANIFEST_ROW;
+    #assert resource_manifest_write(m, bytes[0..<n - 1]) == ResourceManifestStatus.capacity && bytes[0] == 197;
+    #assert resource_manifest_write(m, bytes[0..<n]) == ResourceManifestStatus.ok && bytes[n] == 197;
+    parsed: [1] ResourceManifest;
+    #assert resource_manifest_read(bytes[0..<n], assets.asset_id(cast(string) bytes[0..<n]), parsed[..]) == ResourceManifestStatus.ok;
+    #assert parsed[0].count == count && parsed[0].entries[0].plan.spec.backend == ResourceBackend.vulkan;
+    for i: 0..<count {
+      #assert resource_spec_equal(parsed[0].entries[i].plan.spec, m.entries[i].plan.spec);
+      #assert resource_cost_equal(parsed[0].entries[i].plan.cost, m.entries[i].plan.cost);
+      #assert assets.asset_same(parsed[0].entries[i].plan.content, m.entries[i].plan.content);
+      #assert parsed[0].entries[i].dependencies.count == m.entries[i].dependencies.count;
+      for d: 0..<m.entries[i].dependencies.count { #assert parsed[0].entries[i].dependencies.owners[d] == m.entries[i].dependencies.owners[d]; }
+    }
+  }
+  source := PNG_ONE; sources: [65] [] u8; specs: [65] ResourceSpec; dependencies: [65] ResourceDependencies;
+  for i: 0..<65 {
+    sources[i] = source[..]; specs[i] = ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1};
+  }
+  out: [RESOURCE_MANIFEST_MAX_BYTES] u8;
+  #assert resource_manifest_build(sources[0..<0], specs[0..<0], dependencies[0..<0], out[..]) == ResourceManifestStatus.malformed;
+  #assert resource_manifest_build(sources[..], specs[..], dependencies[..], out[..]) == ResourceManifestStatus.malformed;
+  #assert resource_manifest_build(sources[0..<1], specs[0..<1], dependencies[0..<1], out[..]) == ResourceManifestStatus.ok;
+  #assert resource_manifest_build(sources[0..<1], specs[0..<1], dependencies[0..<0], out[..]) == ResourceManifestStatus.malformed;
+  // Distinct source hashes, not invented byte estimates, exercise the builder's full table.
+  raw: [64] [4] u8;
+  for i: 0..<64 { raw[i][0] = cast(u8) i; sources[i] = raw[i][..]; specs[i] = ResourceSpec.{format = ResourceFormat.indices}; }
+  #assert resource_manifest_build(sources[0..<64], specs[0..<64], dependencies[0..<64], out[..]) == ResourceManifestStatus.ok;
+  // A hostile 65th complete row must be refused before indexing a 64-row
+  // table, even when the entire byte extent and digest are otherwise exact.
+  hostile: [28648] u8;
+  for i: 0..<RESOURCE_MANIFEST_MAX_BYTES { hostile[i] = out[i]; }
+  for i: 0..<RESOURCE_MANIFEST_ROW { hostile[RESOURCE_MANIFEST_MAX_BYTES + i] = out[RESOURCE_MANIFEST_HEADER + i]; }
+  resource_put32(hostile[..], 8, 65); parsed: [1] ResourceManifest;
+  #assert resource_manifest_read(hostile[..], assets.asset_id(cast(string) hostile[..]), parsed[..]) == ResourceManifestStatus.malformed;
+}
+#test "untrusted manifest fields refuse whole without dereferencing unvalidated dependencies" #steps 100000000 {
+  m := resource_manifest_fixture(2); m.entries[1].dependencies.count = 1;
+  original: [928] u8; #assert resource_manifest_write(m, original[..]) == ResourceManifestStatus.ok;
+  parsed: [1] ResourceManifest;
+  for field: 0..<15 {
+    bytes := original; want := ResourceManifestStatus.malformed;
+    if field == 0 { bytes[0] = 0; }
+    if field == 1 { bytes[4] = 2; want = ResourceManifestStatus.unsupported; }
+    if field == 2 { bytes[12] = 0; want = ResourceManifestStatus.unsupported; }
+    if field == 3 { resource_put32(bytes[..], 8, 0); }
+    if field == 4 { resource_put32(bytes[..], 8, 65); }
+    if field == 5 { bytes[52] = 0; }
+    if field == 6 { bytes[52] = 8; }
+    if field == 7 { bytes[53] = 7; }
+    if field == 8 { bytes[54] = 2; }
+    if field == 9 { bytes[55] = 1; }
+    if field == 10 { resource_put32(bytes[..], 48 + 148, 9); }
+    if field == 11 { resource_put32(bytes[..], 488 + 152, 1); }
+    if field == 12 { bytes[488 + 156] ^= 1; }
+    if field == 13 { bytes[48 + 152] = 1; }
+    if field == 14 { resource_put64(bytes[..], 48 + 44, -1); }
+    parsed[0].count = 37;
+    #assert resource_manifest_read(bytes[..], assets.asset_id(cast(string) bytes[..]), parsed[..]) == want && parsed[0].count == 37;
+  }
+  #assert resource_manifest_read(original[..], assets.asset_id(cast(string) original[..]), parsed[0..<0]) == ResourceManifestStatus.capacity;
+  #assert resource_manifest_read(original[0..<47], assets.asset_id(""), parsed[..]) == ResourceManifestStatus.malformed;
+  #assert resource_manifest_read(original[0..<927], assets.asset_id(""), parsed[..]) == ResourceManifestStatus.malformed;
+  header := original; header[4] = 2;
+  #assert resource_manifest_read(header[0..<48], assets.asset_id(""), parsed[..]) == ResourceManifestStatus.unsupported;
+  // The outer codec recognizes all enum tags. Source/category compatibility
+  // and actual byte-derived costs are rechecked before decode/publication.
+  for format: 1..<8 {
+    known := resource_manifest_fixture(1); known.entries[0].plan.spec.format = cast(ResourceFormat) format;
+    known.entries[0].plan.spec.category = ResourceCategory.staging;
+    bytes: [488] u8; #assert resource_manifest_write(known, bytes[..]) == ResourceManifestStatus.ok;
+    #assert resource_manifest_read(bytes[..], assets.asset_id(cast(string) bytes[..]), parsed[..]) == ResourceManifestStatus.ok;
+    #assert parsed[0].entries[0].plan.spec.format == cast(ResourceFormat) format && parsed[0].entries[0].plan.spec.category == ResourceCategory.staging;
+  }
+}
+
+resource_spec_equal :: (a: ResourceSpec, b: ResourceSpec) -> bool #effects(all) {
+  return a.version == b.version && a.format == b.format && a.category == b.category && a.backend == b.backend && a.side == b.side;
+}
+resource_manifest_shape :: (m: ResourceManifest) -> bool #effects(all) {
+  if m.count < 1 || m.count > RESOURCE_MANIFEST_MAX { return false; }
+  for i: 0..<m.count {
+    e := m.entries[i];
+    if e.plan.status != ResourceCostStatus.ok || e.plan.spec.version != RESOURCE_COST_VERSION || e.plan.spec.format == ResourceFormat.invalid { return false; }
+    if e.dependencies.count < 0 || e.dependencies.count > RESOURCE_DEPENDENCIES { return false; }
+    for d: 0..<e.dependencies.count {
+      previous := e.dependencies.owners[d];
+      // Strictly increasing earlier owners make the closure canonical/acyclic.
+      if previous < 0 || previous >= i { return false; }
+      if d > 0 && previous <= e.dependencies.owners[d - 1] { return false; }
+    }
+    for j: 0..<i {
+      if assets.asset_same(e.plan.content, m.entries[j].plan.content) && resource_spec_equal(e.plan.spec, m.entries[j].plan.spec) { return false; }
+    }
+    c := e.plan.cost;
+    if c.encoded < 1 || c.encoded > RESOURCE_SOURCE_MAX || c.decoded < 0 || c.decoded > RESOURCE_SOURCE_MAX || c.gpu < 0 || c.gpu > RESOURCE_SOURCE_MAX ||
+      c.objects != size_of(ResourcePlan) || c.decode_scratch < 0 || c.decode_scratch > RESOURCE_SOURCE_MAX || c.upload_scratch < 0 || c.upload_scratch > RESOURCE_SOURCE_MAX ||
+      (c.alignment != 4 && c.alignment != 8 && c.alignment != 16) || c.actors < 0 || c.actors > cells.CELL_ENTITIES || c.voices < 0 || c.voices > 1 ||
+      c.width < 0 || c.width > HOST_LAYER_SIDE || c.height < 0 || c.height > HOST_LAYER_SIDE || c.levels < 0 || c.levels > 11 || c.elements < 1 || c.elements > RESOURCE_SOURCE_MAX { return false; }
+  }
+  return true;
+}
+resource_put32 :: (b: [] u8, at: int, value: u32) #effects(all) {
+  for lane: 0..<4 { b[at + lane] = cast,trunc(u8) (value >> cast(u32) (lane * 8)); }
+}
+resource_put64 :: (b: [] u8, at: int, value: int) #effects(all) {
+  bits := cast,trunc(u64) value;
+  resource_put32(b, at, cast,trunc(u32) bits); resource_put32(b, at + 4, cast,trunc(u32) (bits >> 32));
+}
+resource_put_digest :: (b: [] u8, at: int, value: assets.AssetId) #effects(all) {
+  for lane: 0..<8 { resource_put32(b, at + lane * 4, value.words[lane]); }
+}
+resource_get_digest :: (b: [] u8, at: int) -> assets.AssetId #effects(all) {
+  out: assets.AssetId;
+  for lane: 0..<8 { out.words[lane] = resource_u32(b, at + lane * 4); }
+  return out;
+}
+resource_cost_words :: (c: ResourceCost) -> [13] int #effects(all) {
+  return [13] int.[c.encoded, c.decoded, c.gpu, c.objects, c.decode_scratch, c.upload_scratch, c.alignment, c.actors, c.voices, c.width, c.height, c.levels, c.elements];
+}
+resource_cost_from_words :: (c: [13] int) -> ResourceCost #effects(all) {
+  return ResourceCost.{encoded = c[0], decoded = c[1], gpu = c[2], objects = c[3], decode_scratch = c[4], upload_scratch = c[5], alignment = c[6],
+    actors = c[7], voices = c[8], width = c[9], height = c[10], levels = c[11], elements = c[12]};
+}
+resource_manifest_write :: (m: ResourceManifest, out: [] u8) -> ResourceManifestStatus #effects(all) {
+  if !resource_manifest_shape(m) { return ResourceManifestStatus.malformed; }
+  n := RESOURCE_MANIFEST_HEADER + m.count * RESOURCE_MANIFEST_ROW;
+  if out.count < n { return ResourceManifestStatus.capacity; }
+  for i: 0..<4 { out[i] = "RCM1"[i]; }
+  resource_put32(out, 4, RESOURCE_MANIFEST_VERSION); resource_put32(out, 8, cast(u32) m.count); resource_put32(out, 12, RESOURCE_MANIFEST_ROW);
+  resource_put_digest(out, 16, assets.asset_id(RESOURCE_MODEL_REVISION));
+  for i: 0..<m.count {
+    at := RESOURCE_MANIFEST_HEADER + i * RESOURCE_MANIFEST_ROW; e := m.entries[i]; s := e.plan.spec;
+    resource_put32(out, at, cast(u32) s.version); out[at + 4] = cast(u8) s.format; out[at + 5] = cast(u8) s.category; out[at + 6] = cast(u8) s.backend;
+    out[at + 7] = 0;
+    resource_put32(out, at + 8, cast(u32) s.side); resource_put_digest(out, at + 12, e.plan.content);
+    costs := resource_cost_words(e.plan.cost);
+    for k: 0..<13 { resource_put64(out, at + 44 + k * 8, costs[k]); }
+    resource_put32(out, at + 148, cast(u32) e.dependencies.count);
+    for d: 0..<RESOURCE_DEPENDENCIES {
+      dep := at + 152 + d * 36;
+      if d < e.dependencies.count {
+        previous := e.dependencies.owners[d];
+        resource_put32(out, dep, cast(u32) previous); resource_put_digest(out, dep + 4, m.entries[previous].plan.content);
+      } else { for k: 0..<36 { out[dep + k] = 0; } }
+    }
+  }
+  return ResourceManifestStatus.ok;
+}
+resource_manifest_build :: (sources: [] [] u8, specs: [] ResourceSpec, dependencies: [] ResourceDependencies, out: [] u8) -> ResourceManifestStatus #effects(all) {
+  if sources.count < 1 || sources.count > RESOURCE_MANIFEST_MAX || specs.count != sources.count || dependencies.count != sources.count { return ResourceManifestStatus.malformed; }
+  m := ResourceManifest.{count = sources.count};
+  for i: 0..<m.count {
+    p := resource_plan(sources[i], specs[i]);
+    if p.status != ResourceCostStatus.ok { return ResourceManifestStatus.source; }
+    m.entries[i] = ResourceEntry.{plan = p, dependencies = dependencies[i]};
+  }
+  return resource_manifest_write(m, out);
+}
+resource_manifest_read :: (source: [] u8, expected: assets.AssetId, out: [] ResourceManifest) -> ResourceManifestStatus #effects(all) {
+  if out.count < 1 { return ResourceManifestStatus.capacity; }
+  if source.count < RESOURCE_MANIFEST_HEADER || cast(string) source[0..<4] != "RCM1" { return ResourceManifestStatus.malformed; }
+  if resource_u32(source, 4) != RESOURCE_MANIFEST_VERSION || resource_u32(source, 12) != RESOURCE_MANIFEST_ROW { return ResourceManifestStatus.unsupported; }
+  count := cast(int) resource_u32(source, 8);
+  if count < 1 || count > RESOURCE_MANIFEST_MAX || source.count != RESOURCE_MANIFEST_HEADER + count * RESOURCE_MANIFEST_ROW { return ResourceManifestStatus.malformed; }
+  actual := assets.asset_id(cast(string) source);
+  if !assets.asset_same(actual, expected) { return ResourceManifestStatus.identity; }
+  if !assets.asset_same(resource_get_digest(source, 16), assets.asset_id(RESOURCE_MODEL_REVISION)) { return ResourceManifestStatus.unsupported; }
+  m := ResourceManifest.{valid = true, count = count, identity = actual};
+  for i: 0..<count {
+    at := RESOURCE_MANIFEST_HEADER + i * RESOURCE_MANIFEST_ROW;
+    if source[at + 4] < 1 || source[at + 4] > cast(u8) ResourceFormat.cell_bodies || source[at + 5] > cast(u8) ResourceCategory.staging ||
+      source[at + 6] > cast(u8) ResourceBackend.vulkan || source[at + 7] != 0 { return ResourceManifestStatus.malformed; }
+    s := ResourceSpec.{version = cast(int) resource_u32(source, at), format = cast(ResourceFormat) source[at + 4], category = cast(ResourceCategory) source[at + 5],
+      backend = cast(ResourceBackend) source[at + 6], side = cast(int) resource_u32(source, at + 8)};
+    words: [13] int; for k: 0..<13 { words[k] = cast,trunc(int) resource_u64(source, at + 44 + k * 8); }
+    e := ResourceEntry.{plan = ResourcePlan.{status = ResourceCostStatus.ok, spec = s, content = resource_get_digest(source, at + 12), cost = resource_cost_from_words(words)}};
+    e.dependencies.count = cast(int) resource_u32(source, at + 148);
+    for d: 0..<RESOURCE_DEPENDENCIES {
+      dep := at + 152 + d * 36;
+      if d < e.dependencies.count {
+        previous := cast(int) resource_u32(source, dep);
+        e.dependencies.owners[d] = previous;
+      } else { for k: 0..<36 { if source[dep + k] != 0 { return ResourceManifestStatus.malformed; } } }
+    }
+    m.entries[i] = e;
+  }
+  if !resource_manifest_shape(m) { return ResourceManifestStatus.malformed; }
+  // Only validated earlier indices may address the dependency closure.
+  for i: 1..<count { for d: 0..<m.entries[i].dependencies.count {
+    dep := RESOURCE_MANIFEST_HEADER + i * RESOURCE_MANIFEST_ROW + 152 + d * 36;
+    previous := m.entries[i].dependencies.owners[d];
+    if !assets.asset_same(resource_get_digest(source, dep + 4), m.entries[previous].plan.content) { return ResourceManifestStatus.malformed; }
+  } }
+  out[0] = m; return ResourceManifestStatus.ok;
+}

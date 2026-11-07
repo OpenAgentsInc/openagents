@@ -35,6 +35,12 @@ tetrahedral meshes) are [chapter 35](ch035-bring-in-robots-and-meshes.md)'s.
 
 ## The format
 
+The shared reader supports VPK1's published 48-entry ceiling and the
+separately versioned VPK2 128-entry ceiling. `pack_write` preserves VPK1;
+`pack_write_v2` explicitly selects VPK2. The listings below follow the
+current source. The new [RCM1 cost companion](../world/README.md) does not
+change either pack's bytes or asset identity.
+
 A pack is a header, a table of entries (kind, licence, offset, bytes, name)
 and their data on 4-byte boundaries. There is one catalog, one vertex buffer
 and one index buffer, then the texture layers, then the sounds. The catalog
@@ -49,6 +55,7 @@ without parsing geometry.
 PACK_MAGIC :: "VPK1";
 PACK_HEADER :: 32;
 PACK_ENTRY :: 48;
+PACK_READ_MAX :: 128; // VPK2; VPK1 retains its published 48-entry ceiling.
 PACK_MAX :: 48;        // entries a pack has at most (verse/tools/pack-files.coax's limit too)
 PACK_NAME :: 32;       // a name's field; a name is 1 to 31 bytes
 PACK_SOURCES :: 32;    // licensed sources (L lines) a catalog declares at most
@@ -65,7 +72,7 @@ PackRead :: struct {
   ok: bool;
   why: string; entry: int = -1;      // the refusal, and the entry it names (-1: the pack as a whole)
   count: int; bytes: int; budget: int;
-  entries: [PACK_MAX] PackEntry;
+  entries: [PACK_READ_MAX] PackEntry;
   sources: int;                      // licensed sources the catalog declares
 }
 // An entry to write: kind, licence, name and bytes.
@@ -90,10 +97,10 @@ catalog. Nothing is kept until all of it holds:
 // Read a pack whole: its header, its table in the format's order and layout, and its catalog's
 // account of every licence. False, with why and the entry, at the first thing that doesn't hold.
 pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
-  if p.count < PACK_HEADER || p[0..<4] != PACK_MAGIC { return pack_why(r, "not a VPK1 pack", -1); }
+  if p.count < PACK_HEADER || !pack_magic_ok(p[0..<4]) { return pack_why(r, "not a VPK1 pack", -1); }
   pk_count := pack_u32(p, 4);
   if pack_u32(p, 8) != p.count { return pack_why(r, "its stated size isn't its size", -1); }
-  if pk_count < 3 || pk_count > PACK_MAX || pack_u32(p, 16) != PACK_HEADER || pack_u32(p, 20) != PACK_HEADER + PACK_ENTRY * pk_count
+  if pk_count < 3 || pk_count > (ifx p[3]=='2' then PACK_READ_MAX else PACK_MAX) || pack_u32(p, 16) != PACK_HEADER || pack_u32(p, 20) != PACK_HEADER + PACK_ENTRY * pk_count
       || pack_u32(p, 24) != 0 || pack_u32(p, 28) != 0 || p.count < PACK_HEADER + PACK_ENTRY * pk_count {
     return pack_why(r, "a malformed header", -1);
   }
@@ -202,12 +209,16 @@ pack_put32 :: (out: [] u8, at: int, v: int) #effects(all) {
 // Write a pack as pack_realm.py does: the bytes written, or -1 when out can't hold them, there are
 // more than PACK_MAX entries, or a name isn't 1 to 31 bytes. Nothing is checked beyond the layout:
 // pack_read is the check, so what this writes is read back before it is kept.
-pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {
+pack_write :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {return pack_write_version(s,budget,out,false);}
+pack_write_v2 :: (s: [] PackSource, budget: int, out: [] u8) -> int #effects(all) {return pack_write_version(s,budget,out,true);}
+pack_magic_ok :: (magic:string)->bool #effects(all) {return magic=="VPK1" || magic=="VPK2";}
+pack_write_version :: (s: [] PackSource, budget: int, out: [] u8,wide:bool) -> int #effects(all) {
   pk_total := pack_size(s);
-  if s.count > PACK_MAX || pk_total > out.count { return -1; }
+  if s.count > (ifx wide then PACK_READ_MAX else PACK_MAX) || pk_total > out.count { return -1; }
   for pk_e: s { if pk_e.name.count == 0 || pk_e.name.count >= PACK_NAME { return -1; } }
   // Every byte is written once: the header, each entry of the table, each entry's bytes and padding.
   for pk_c, pk_k: PACK_MAGIC { out[pk_k] = pk_c; }
+  if wide {out[3]='2';}
   pack_put32(out, 4, s.count); pack_put32(out, 8, pk_total); pack_put32(out, 12, budget);
   pack_put32(out, 16, PACK_HEADER); pack_put32(out, 20, PACK_HEADER + PACK_ENTRY * s.count);
   pack_put32(out, 24, 0); pack_put32(out, 28, 0);
@@ -237,7 +248,7 @@ twice:
 // (chapter 16): taken whole, or refused whole and nothing held changes.
 pack_admit :: (reg: [] AssetRegistry, p: string, r: [] PackRead) -> int #effects(all) {
   if !r[0].ok { return asset_refuse(reg, ASSET_MALFORMED, ASSET_NONE, 0, reg[0].held); }
-  pk_content: [PACK_MAX] string; pk_table: [PACK_MAX] AssetId;
+  pk_content: [PACK_READ_MAX] string; pk_table: [PACK_READ_MAX] AssetId;
   for pk_k: 0..<r[0].count { pk_content[pk_k] = pack_bytes(p, r, pk_k); pk_table[pk_k] = asset_id(pk_content[pk_k]); }
   return asset_admit(reg, pk_content[0..<r[0].count], pk_table[0..<r[0].count]);
 }

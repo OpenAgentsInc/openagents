@@ -5,7 +5,17 @@
 > frame budget beside its state and has a check that draws its frames at
 > three screen sizes and fails when any frame passes the budget.
 > Content-hashed asset identity is [aethyr/assets.coax](../assets.coax);
-> realm packs don't load through it yet.
+> the shared [pack reader](../forge/pack.coax) uses its admission gate.
+> Whole-realm resource-cost streaming is still being integrated.
+
+The resource-cost companion work for #12990 adds
+[source-derived plans](../world/resource-cost.coax),
+[RCM1 manifests](../world/resource-manifest.coax) and
+[named admission](../world/resource-admission.coax) around existing host
+tickets. The small [codec example](../examples/resource-cost-parity.coax)
+runs natively and in browser Wasm. Actual large-world streaming adoption
+and allocation reconciliation are still being built; see the
+[component record](../../docs/verification/aethyr-streaming-12990/README.md).
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can
@@ -391,18 +401,68 @@ the swarm's peak at 39,318.
 files' changes are checks and declarations, and Hold the Stair's buffer,
 which its check pins.
 
+## Plan retained storage and concurrent scratch
+
+Compressed bytes do not describe the memory a decoded resource retains.
+Take the codec example's 69-byte one-pixel RGBA PNG. At side 1 its retained
+CPU pixels occupy 4 bytes; its logical GPU texels occupy 4 bytes. The
+qualified native/Wasm `ResourcePlan` object occupies 168 bytes. Keeping the
+encoded source for recovery gives:
+
+```text
+texture line = 69 encoded + 4 decoded + 168 plan + 4 GPU = 245 bytes
+staging line = 16 decoder work                           =  16 bytes
+load peak                                                = 261 bytes
+```
+
+At side 2, the canonical decoder doubles the source and produces both
+mips: `2 × 2 × 4 + 1 × 1 × 4 = 20` bytes. Under the explicit Vulkan
+transfer model, decoded CPU pixels and logical GPU texels each take 20
+bytes, and upload storage takes another 20 until completion. The retained
+line becomes `69 + 20 + 168 + 20 = 277`; scratch becomes `16 + 20 = 36`;
+the declared peak is 313 bytes. Two concurrent uploads reserve 72 scratch
+bytes. A 72-byte staging cap admits both and refuses a third.
+
+These are byte-derived component costs. They exclude the retained manifest,
+fixed host/controller storage and opaque SDK/driver allocations. The future
+actual consumer must reconcile every physical allocation with the model;
+the codec fixture does not allocate a Vulkan image or transfer buffer.
+
+The [example](../examples/resource-cost-parity.coax) emits the
+[exact native/browser transcript](../fixtures/resource-cost-parity.out).
+Its first twelve words are success, plan size, encoded PNG bytes, decoded
+mip bytes, upload model bytes, decoder work bytes, a weighted pixel sum,
+decoded PCM bytes, PCM F32-bit sum, persistent body ID, body-x F64 bits and
+its first saved word. The next eight words are the manifest SHA-256. Four
+more prove cut-manifest refusal, late compressed-image decode refusal,
+forged-cost refusal and model version 1. The final eight exercise category
+refusal, retained/peak bytes, concurrent scratch and exact ticket cleanup.
+Native and Wasm agree on every word. The deliberately corrupt image passes
+metadata planning but fails the
+actual decoder; no successful plan alone permits publication.
+
+Seven named lines distinguish geometry, textures, collision/navigation,
+baked lighting, audio, actor state and staging. The existing inbox leases
+and GPU ledger still enforce their own aggregate ceilings. Named admission
+uses speculative value copies of those original records, publishing all
+reservations together only after every cap and ticket succeeds. The unit
+trace plants a 300-byte texture cap and a 100,000-byte aggregate cap: the
+first 245-byte texture remains live when the second texture refuses. A
+stale completion cannot spend another owner through a copied lease.
+
 ## Still to do
 
-- **Asset packs through the registry.** An asset's identity is its content
+- **Whole-realm resource-cost adoption.** An asset's identity is its content
   hash, so two realms that use one mesh share it and a changed texture is a
   new asset. [aethyr/assets.coax](../assets.coax) is the registry: it admits
   a pack whole or refuses it (an entry that doesn't hash to its table's id,
   new bytes past the limit, no free slot) and frees bytes with their last use
-  (mutation 162 of 162). The realms' `VPK1` packs still load without it;
-  their byte budgets are in `verse/packs/`, checked by
-  `verse/tools/pack_realm.py` ([realm-host.md](../../docs/verse/realm-host.md)),
-  and moving them onto it is [chapter 53](ch053-bring-in-assets.md)'s import
-  path.
+  (mutation 162 of 162). The shared VPK reader uses it, and current browser
+  transport also owns bounded retained pack tickets. Resource-cost
+  companions and named admission now have component evidence. Dependency
+  owners, real asynchronous streaming, allocation reconciliation and route
+  qualification are still #12990 work. Source converters remain
+  [chapter 53](ch053-bring-in-assets.md)'s import path.
 - **Refusal at the writer.** The realms' quad writers still stop silently
   at a full buffer. The check catches a clipped frame because the vertex
   limit is below the buffer. The renderer's writers

@@ -1,0 +1,16 @@
+// Test-only byte construction, independent of the cost derivation.
+resource_fixture_f32 :: (out: [] u8, at: int, value: f32) #effects(all) {
+  bits := f32_bits(value);
+  for lane: 0..<4 { out[at + lane] = cast,trunc(u8) (bits >> cast(u32) (lane * 8)); }
+}
+resource_fixture_u64 :: (out: [] u8, at: int, value: u64) #effects(all) {
+  for lane: 0..<8 { out[at + lane] = cast,trunc(u8) (value >> cast(u64) (lane * 8)); }
+}
+resource_fixture_changed_cost :: (c: ResourceCost, field: int) -> ResourceCost #effects(all) {
+  out := c;
+  if field == 0 { out.encoded += 1; } if field == 1 { out.decoded += 1; } if field == 2 { out.gpu += 1; }
+  if field == 3 { out.objects += 1; } if field == 4 { out.decode_scratch += 1; } if field == 5 { out.upload_scratch += 1; }
+  if field == 6 { out.alignment += 1; } if field == 7 { out.actors += 1; } if field == 8 { out.voices += 1; }
+  if field == 9 { out.width += 1; } if field == 10 { out.height += 1; } if field == 11 { out.levels += 1; } if field == 12 { out.elements += 1; }
+  return out;
+}

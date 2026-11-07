@@ -522,6 +522,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/resource-cost-parity.coax",
+      "chapter": "aethyr/book/ch016-budgets-that-refuse.md",
+      "stdout": "aethyr/fixtures/resource-cost-parity.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/query-world.coax",
       "chapter": "aethyr/book/ch007-ask-the-world-where-things-are.md",
       "stdout": "aethyr/fixtures/query-world.out",

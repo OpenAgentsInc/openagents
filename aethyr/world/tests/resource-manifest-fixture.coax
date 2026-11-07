@@ -1,0 +1,11 @@
+// Codec fixtures deliberately carry literal identifiers. They test the
+// untrusted metadata codec; only resource_manifest_build derives real plans.
+resource_manifest_fixture :: (count: int) -> ResourceManifest #effects(all) {
+  out := ResourceManifest.{count = count};
+  for i: 0..<count {
+    out.entries[i].plan = ResourcePlan.{status = ResourceCostStatus.ok, spec = ResourceSpec.{format = ResourceFormat.indices},
+      cost = ResourceCost.{encoded = 4, gpu = 4, objects = size_of(ResourcePlan), alignment = 4, elements = 1}};
+    for lane: 0..<8 { out.entries[i].plan.content.words[lane] = cast(u32) (i * 8 + lane + 1); }
+  }
+  return out;
+}
