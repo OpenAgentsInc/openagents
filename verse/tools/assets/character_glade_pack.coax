@@ -217,6 +217,13 @@ tool_main :: ()->int #export_c #effects(all) {
  gp_mesh(w[..],g[..],iw[..],root,"Fern_1",-5,-5.5,1.1,1.1,[3]f32.[0.32,0.65,0.045]);
  gp_mesh_scaled(w[..],g[..],iw[..],root,"Rock_Medium_4",-0.18,-2.4,0.16,0.05,1.1,[3]f32.[0.55,0.60,0.40],0);
  gp_mesh(w[..],g[..],iw[..],root,"Plant_3",1.05,1.0,0.35,0.8,[3]f32.[1,0.56,0.06]);
+ // The reference's right foreground (November 7 pass): orange and red-orange leafy plants at the
+ // bottom right and small stones on the near path, off the walk line. Plant_1 costs about 5 KB an
+ // instance, Plant_3 about 29 KB and a bush 135 KB, so this fits the pack's 32 MiB.
+ for i:0..<7 {fi:=f32(i);pos:=[7][2]f32.[[2]f32.[1.45,1.55],[2]f32.[0.85,1.9],[2]f32.[1.7,0.35],[2]f32.[2.2,1.2],[2]f32.[1.25,-0.6],[2]f32.[2.4,-1.6],[2]f32.[3.0,-2.8]];
+  gp_mesh(w[..],g[..],iw[..],root,ifx i==0 then "Plant_3" else "Plant_1",pos[i][0],pos[i][1],(ifx i<2 then 0.24f32 else 0.40f32)+cg_hash(fi,71)*0.12,fi*1.3,ifx i%3==0 then [3]f32.[1,0.42,0.04] else ifx i%3==1 then [3]f32.[1,0.26,0.03] else [3]f32.[1,0.58,0.08]);}
+ for i:0..<6 {fi:=f32(i);z:= -1.5-fi*1.0;x:=cg_path_x(z)+(cg_hash(fi,73)-0.5)*1.8;if abs(x-cg_walk_x(z))<0.45 {x=x+ifx x>cg_walk_x(z) then 0.5f32 else -0.5f32;}
+  gp_mesh(w[..],g[..],iw[..],root,ifx i%3==0 then "Pebble_Square_2" else "Pebble_Round_2",x,z,0.34+cg_hash(fi,74)*0.2,fi*0.9,[3]f32.[0.62,0.62,0.55]);}
  // The reference's loose stones and lower left woodland break up the path edges.
  for i:0..<12 {fi:=f32(i);z:=-2-fi*1.7;x:=cg_road_x(z)+(ifx i%2==0 then -1.0f32 else 1.2f32);gp_mesh(w[..],g[..],iw[..],root,"Pebble_Round_1",x,z,0.3+cg_hash(fi,42)*0.2,fi,[3]f32.[0.7,0.7,0.5]);}
  for i:0..<12 {x:=-5.2+f32(i%4)*0.45;z:=-9.0-f32(i/4)*0.5;gp_mesh(w[..],g[..],iw[..],root,"Flower_2_Group",x,z,0.16+cg_hash(f32(i),61)*0.05,f32(i),[3]f32.[0.4,0.75,0.05]);}

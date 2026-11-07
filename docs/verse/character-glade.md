@@ -168,6 +168,9 @@ two gate towers with a timber lintel, round towers with cones, a keep with a
 slate roof, and ten houses with red tile gables. The gate is at `CG_GATE_Z`
 (-34.5), and the walk ends three metres before it. The town and far ground are
 built in `gp_road_to_everglade` from the existing rock texture, so the pack
-adds no texture layers. The pack is now 33,419,808 bytes (269,452 vertices).
+adds no texture layers. The right foreground has seven orange and red-orange
+Plant_1 and Plant_3 instances beside the near rock, and six pebbles along the
+path, kept clear of the walk line, as in the reference. The pack is now
+33,525,296 bytes (272,039 vertices).
 That is still under the 32 MiB budget, and the wardrobe bytes are unchanged.
 
