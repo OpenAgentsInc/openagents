@@ -194,3 +194,59 @@ Rebuild the clip index from a verified snapshot with:
 coax/web/tool.sh verse/tools/assets/registry.coax animations ual1 Unreal-Godot/UAL1_Standard.glb "$HOME/.openagents/assets"
 coax/web/tool.sh verse/tools/assets/registry.coax animations ual2 Unreal-Godot/UAL2_Standard.glb "$HOME/.openagents/assets"
 ```
+
+## External asset discovery
+
+The [CodePawl asset index](https://huggingface.co/datasets/codepawl/asset-index)
+is a separate, searchable discovery catalog. Its pinned source revision,
+metadata SHA-256, expected byte count and row count are recorded in
+[`external/codepawl-asset-index.json`](external/codepawl-asset-index.json).
+The full upstream metadata is kept locally under
+`~/.openagents/assets/discovery/codepawl/`, not committed or copied into the
+registry's asset-definition or runtime-object namespaces. The dataset author
+states that the index is theirs, but this snapshot does not include an explicit
+reuse license for the index itself. Each result retains its original license,
+credit, acquisition, NoAI, size and source fields as unverified upstream claims.
+The snapshot has 37,668 rows from six sources: 22,696 Megascans, 4,434 Kenney,
+3,451 Smithsonian, 2,917 ambientCG, 2,387 Poly Haven and 1,783 Quaternius.
+24,185 rows have a non-null `scale_m`; the source of each measurement is also
+retained. An index row is not an imported asset, a qualified GLB, or evidence
+that the user has obtained a license to an asset.
+
+```sh
+# Fetch the exact pinned revision, validate its size, SHA-256 and every row,
+# and atomically publish it for discovery. No upstream code is run.
+~/.openagents/bin/asset-registry discover-sync
+# Or use an already-downloaded metadata.jsonl (the same checks apply):
+~/.openagents/bin/asset-registry discover-sync /path/to/metadata.jsonl
+
+# JSON Lines: local registry matches followed by external matches.
+~/.openagents/bin/asset-registry search 'wooden crate'
+# Limit to a source; get the next page by skipping 20 matches.
+~/.openagents/bin/asset-registry search 'rock' megascans 20
+# Limit to records with an indexed scale between 0.5 and 1 metre, inclusive.
+~/.openagents/bin/asset-registry search 'rock' megascans 0 0.5 1
+```
+
+Search is case-insensitive ASCII substring matching of all query words, against
+local ID/name or the external metadata row. It emits at most 10 local and 20
+external results per page, in catalog order. `local`, `megascans`, `kenney`,
+`smithsonian`, `ambientcg`, `polyhaven` and `quaternius` are source filters;
+an empty source (`''`) searches both. The offset applies independently to local
+and external matches. A size range excludes rows with unknown `scale_m` and
+local entries without comparable measurements. Every line identifies its
+`origin`, and external rows with a known matching Quaternius source pack include
+`related_local_collection`; this is a pack-level hint, not a claim that the
+listed and local editions or mesh bytes are identical.
+
+To update the snapshot, review the upstream dataset's new commit and metadata
+file, update the lock's revision, immutable URL, SHA-256, byte count and row
+count together, then run `discover-sync`. A failed validation leaves the current
+snapshot intact. Ordinary registry `sync` publishes the lock and metadata about
+the adapter, while leaving discovery data in its separate local directory.
+Acquiring or converting a candidate remains a separate import workflow: obtain
+it from its original provider, verify the actual terms and provenance, then
+register the locally held source and derived artifacts with immutable identities.
+For example, the index says Megascans are claimed through Fab, and does not
+contain those assets. The upstream optimizer is untrusted downloaded code; it is
+not run or installed by this adapter, and its output is not qualified for Aethyr.

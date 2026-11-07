@@ -1,0 +1,14 @@
+{
+  "schema": "oa-external-index-lock-v1",
+  "id": "codepawl/asset-index",
+  "source": "https://huggingface.co/datasets/codepawl/asset-index",
+  "revision": "8edde5f44208e0079b13bf76d7237868f6fa082e",
+  "file": "metadata.jsonl",
+  "url": "https://huggingface.co/datasets/codepawl/asset-index/resolve/8edde5f44208e0079b13bf76d7237868f6fa082e/metadata.jsonl",
+  "sha256": "61f52f0aaa6d49cdfd407e632851fb69b94e4236c8a2996c298a6e73f0a55312",
+  "bytes": 67549907,
+  "rows": 37668,
+  "catalog_rights": "CodePawl states the index is theirs; no explicit reuse license was found. The full dataset is fetched locally and not redistributed in this repository.",
+  "asset_rights": "External asset license, redistribution, attribution and NoAI fields are claims from the index; verify with the original provider before use.",
+  "scope": "discovery metadata only; no asset is imported, licensed, or qualified by this index"
+}

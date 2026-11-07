@@ -6,6 +6,7 @@
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/json/json.coax";
 #load "../../../coax/lib/crypto/sha256-kernel.coax";
+#load "../humans/ph_num.coax";
 
 #test "registry IDs are stable names, not paths or runtime content IDs" {
   b:[256]u8;
@@ -370,6 +371,67 @@ ar_object_text :: (target:string,body:string)->bool {
  t[0].b[t[0].n-4]='c';#assert !ar_record(cast(string)t[0].b[0..<t[0].n]);
 }
 
+// Discovery is deliberately separate from installed registry assets: external
+// listings are claims with provider licenses, not content-addressed artifacts.
+#test "discovery matches every query word without case dependence" {
+ #assert ar_search_match("wooden CRATE","Wooden small crate") && !ar_search_match("wooden chair","wooden crate");
+ #assert !ar_search_match("  ","anything") && ar_search_match("megascans:abc","Megascans:ABC");
+}
+#test "external pack links identify collections, not equal asset revisions" {
+ #assert ar_discovery_collection("quaternius:fantasypropsmegakit")=="fantasy-props";
+ #assert ar_discovery_collection("quaternius:medievalvillagemegakit")=="village";
+ #assert ar_discovery_collection("quaternius:medievalvillage")=="" && ar_discovery_collection("megascans:abc")=="";
+}
+#test "discovery pagination accepts bounded nonnegative offsets" {
+ #assert ar_search_offset("0")==0 && ar_search_offset("123")==123;
+ #assert ar_search_offset("")== -1 && ar_search_offset("-1")== -1 && ar_search_offset("1000001")== -1 && ar_search_offset("4x")== -1;
+}
+#test "discovery content paths accept only lowercase SHA-256 hex" {
+ #assert ar_discovery_sha("61f52f0aaa6d49cdfd407e632851fb69b94e4236c8a2996c298a6e73f0a55312");
+ #assert !ar_discovery_sha("../x") && !ar_discovery_sha("61f52f0aaa6d49cdfd407e632851fb69b94e4236c8a2996c298a6e73f0a5531/");
+}
+ar_discovery_sha :: (s:string)->bool {if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+ar_search_offset :: (s:string)->int {if s.count==0 || s.count>7 {return -1;}v:=0;for c:s {if c<'0' || c>'9' {return -1;}v=v*10+int(c-'0');}return ifx v<=1000000 then v else -1;}
+ar_lower :: (c:u8)->u8 {return ifx c>='A' && c<='Z' then c+32 else c;}
+ar_search_word :: (word:string,hay:string)->bool {
+ if word.count==0 || word.count>hay.count {return false;}for i:0..<hay.count-word.count+1 {same:=true;for j:0..<word.count {if ar_lower(word[j])!=ar_lower(hay[i+j]) {same=false;break;}}if same {return true;}}return false;
+}
+ar_search_match :: (query:string,hay:string)->bool {
+ at:=0;count:=0;while at<query.count {while at<query.count && query[at]<=32 {at+=1;}start:=at;while at<query.count && query[at]>32 {at+=1;}if at>start {count+=1;if !ar_search_word(query[start..<at],hay) {return false;}}}return count>0;
+}
+ar_discovery_collection :: (id:string)->string {
+ if id=="quaternius:fantasypropsmegakit" {return "fantasy-props";}if id=="quaternius:medievalvillagemegakit" {return "village";}if id=="quaternius:stylizednaturemegakit" {return "nature";}
+ if id=="quaternius:modularcharacteroutfitsfantasy" {return "fantasy";}if id=="quaternius:universalanimationlibrary" {return "ual1";}if id=="quaternius:universalanimationlibrary2" {return "ual2";}return "";
+}
+AR_DISCOVERY_MAX :: 100000000;
+// The lock is the reviewable boundary; the data stays in the shared asset store.
+ar_discovery_lock :: (out:[]u8)->int {return fs_read("assets/registry/external/codepawl-asset-index.json",out);}
+ar_discovery_sync :: (input:string,store:string)->bool {
+ lock:[8192]u8;ln:=ar_discovery_lock(lock[..]);if ln<0 {tool_errln("discovery: missing lock");return false;}d:[1]Jv;nodes:[256]JvNode;if !jv_parse(d[..],cast(string)lock[0..<ln],nodes[..]) {return false;}
+ shab:[64]u8;sha:=ar_string(d[0],0,"sha256",shab[..]);urlb:[4096]u8;url:=ar_string(d[0],0,"url",urlb[..]);expected:=jv_int(d[0],jv_get(d[0],0,"bytes"),-1);rows:=jv_int(d[0],jv_get(d[0],0,"rows"),-1);
+ prefix:="https://huggingface.co/datasets/codepawl/asset-index/resolve/";if !ar_discovery_sha(sha) || expected<=0 || expected>AR_DISCOVERY_MAX || rows<=0 || url.count<=prefix.count || url[0..<prefix.count]!=prefix {return false;}
+ tempb:[4096]u8;temp:=fs_temp("oa-discovery-",tempb[..]);if temp=="" {return false;}tb:[4096]u8;download:=fs_join(temp,"metadata.jsonl",tb[..]);file:=input;
+ if input=="download" {a:=[9]string.["/usr/bin/curl","-fsSL","--max-time","240","--proto","=https","-o",download,url];if !ar_run(a[..]) {removed:=fs_remove(temp);return false;}file=download;}
+ hb:[64]u8;if fs_size(file)!=expected || ar_sha(file,hb[..])!=sha {tool_errln("discovery: snapshot length or SHA-256 differs from lock");removed:=fs_remove(temp);return false;}
+ bytes:[AR_DISCOVERY_MAX]u8;n:=fs_read(file,bytes[..]);if n!=expected {removed:=fs_remove(temp);return false;}at:=0;count:=0;
+ while at<n {e:=at;while e<n && bytes[e]!='\n' {e+=1;}if e==at || e==n {tool_errln("discovery: empty or truncated row");removed:=fs_remove(temp);return false;}line:=cast(string)bytes[at..<e];at=e+1;v:[1]Jv;ns:[4096]JvNode;if !jv_parse(v[..],line,ns[..]) {tool_errln("discovery: invalid JSON row");removed:=fs_remove(temp);return false;}ib:[1024]u8;sb:[256]u8;if ar_string(v[0],0,"asset_id",ib[..])=="" || ar_string(v[0],0,"source",sb[..])=="" {removed:=fs_remove(temp);return false;}count+=1;}
+ if count!=rows {tool_errln("discovery: row count differs from lock");removed:=fs_remove(temp);return false;}
+ db:[4096]u8;dir:=fs_join(store,"discovery/codepawl",db[..]);if !fs_mkdir(dir) {removed:=fs_remove(temp);return false;}lb:[4096]u8;lockpath:=fs_join(dir,"sync.lock",lb[..]);if !fs_try_lock(lockpath) {removed:=fs_remove(temp);return false;}
+ nb:[128]u8;name:=ar_cat(sha,".jsonl",nb[..]);pb:[4096]u8;path:=fs_join(dir,name,pb[..]);ok:=ar_object_copy(file,path,sha);currentb:[4096]u8;current:=fs_join(dir,"current.json",currentb[..]);if ok {ok=ar_file(current,cast(string)lock[0..<ln]);}unlocked:=fs_unlock();removed:=fs_remove(temp);if ok && removed && unlocked {print("Synced % external listings @ %\n",count,sha);}return ok && removed && unlocked;
+}
+// JSONL results retain the upstream row verbatim, including source licensing,
+// acquisition information and nullable sizes. No remote program is executed.
+ar_discovery_search :: (query:string,source:string,offset:int,min_m:f64,max_m:f64,store:string)->bool {
+ if query=="" || query.count>512 {return false;}outn:=0;
+ if min_m<0 && (source=="" || source=="local") {skipped_local:=0;list:[1]FsList;n:=fs_list("assets/registry/assets",list[..]);if n<0 || list[0].full {return false;}for f:0..<n {pb:[4096]u8;path:=fs_join("assets/registry/assets",fs_entry(list[..],f),pb[..]);bytes:[8388608]u8;sz:=fs_read(path,bytes[..]);if sz<0 {return false;}at:=0;while at<sz && outn<10 {e:=at;while e<sz && bytes[e]!='\n' {e+=1;}line:=cast(string)bytes[at..<e];at=e+1;if !ar_search_match(query,line) {continue;}d:[1]Jv;nodes:[32768]JvNode;if !jv_parse(d[..],line,nodes[..]) {return false;}ib:[2048]u8;nb:[2048]u8;id:=ar_string(d[0],0,"id",ib[..]);name:=ar_string(d[0],jv_get(d[0],0,"definition"),"name",nb[..]);mix:[4096]u8;m:=ar_cat(id,name,mix[..]);if !ar_search_match(query,m) {continue;}if skipped_local<offset {skipped_local+=1;continue;}print("{\"origin\":\"registry\",\"entry\":%}\n",line);outn+=1;}}}
+ if source=="local" {return true;}
+ db:[4096]u8;dir:=fs_join(store,"discovery/codepawl",db[..]);cb:[4096]u8;current:=fs_join(dir,"current.json",cb[..]);lock:[8192]u8;ln:=fs_read(current,lock[..]);if ln<0 {tool_errln("discovery: no index; run asset-registry discover-sync download");return false;}d:[1]Jv;ns:[256]JvNode;if !jv_parse(d[..],cast(string)lock[0..<ln],ns[..]) {return false;}shab:[64]u8;sha:=ar_string(d[0],0,"sha256",shab[..]);if !ar_discovery_sha(sha) {return false;}nb:[128]u8;name:=ar_cat(sha,".jsonl",nb[..]);pb:[4096]u8;path:=fs_join(dir,name,pb[..]);hb:[64]u8;if ar_sha(path,hb[..])!=sha {tool_errln("discovery: snapshot is missing or corrupt; sync it again");return false;}
+ bytes:[AR_DISCOVERY_MAX]u8;n:=fs_read(path,bytes[..]);if n<0 {return false;}at:=0;found:=0;skipped:=0;
+ while at<n && found<20 {e:=at;while e<n && bytes[e]!='\n' {e+=1;}line:=cast(string)bytes[at..<e];at=e+1;if !ar_search_match(query,line) {continue;}v:[1]Jv;nodes:[4096]JvNode;if !jv_parse(v[..],line,nodes[..]) {return false;}sb:[256]u8;src:=ar_string(v[0],0,"source",sb[..]);if source!="" && src!=source {continue;}if min_m>=0 {field:=jv_get(v[0],0,"scale_m");if jv_kind(v[0],field)!=JV_NUMBER {continue;}size:=pn_parse(jv_raw(v[0],field));if !size.ok || size.v<min_m || size.v>max_m {continue;}}if skipped<offset {skipped+=1;continue;}ib:[1024]u8;id:=ar_string(v[0],0,"asset_id",ib[..]);match:=ar_discovery_collection(id);
+  if match=="" {print("{\"origin\":\"codepawl-index\",\"entry\":%}\n",line);}else {collectionb:[4096]u8;collection:=fs_join("assets/registry/collections",match,collectionb[..]);pinb:[4096]u8;pin:=ar_cat(collection,".lock.json",pinb[..]);if fs_exists(pin) {print("{\"origin\":\"codepawl-index\",\"related_local_collection\":\"%\",\"relationship\":\"same source pack; edition and asset equivalence unverified\",\"entry\":%}\n",match,line);}else {print("{\"origin\":\"codepawl-index\",\"entry\":%}\n",line);}}found+=1;
+ }
+ return true;
+}
 ar_selfcheck :: ()->bool {
  db:[4096]u8;dir:=fs_temp("oa-registry-check-",db[..]);if dir=="" {return false;}
  sb:[4096]u8;source:=fs_join(dir,"source",sb[..]);tb:[4096]u8;target:=fs_join(dir,"object",tb[..]);hb:[64]u8;sha:=ar_digest("abc",hb[..]);
@@ -417,8 +479,10 @@ tool_main :: ()->int #export_c #effects(all) {
  if cmd=="sync" && n==2 {return ifx ar_sync(args_at(a[..],1)) then 0 else 1;}
  if cmd=="source" && n==3 {return ifx ar_source(args_at(a[..],1),args_at(a[..],2)) then 0 else 1;}
  if cmd=="show" && n==2 {b:[8388608]u8;row:=ar_lookup(args_at(a[..],1),b[..]);if row=="" {return 1;}print("%\n",row);return 0;}
+ if cmd=="discover-sync" && (n==1 || n==2) {homeb:[4096]u8;home:=proc_getenv("HOME",homeb[..]);storeb:[4096]u8;store:=fs_join(home,".openagents/assets",storeb[..]);return ifx ar_discovery_sync(ifx n==2 then args_at(a[..],1) else "download",store) then 0 else 1;}
+ if cmd=="search" && (n==2 || n==3 || n==4 || n==6) {homeb:[4096]u8;home:=proc_getenv("HOME",homeb[..]);storeb:[4096]u8;store:=fs_join(home,".openagents/assets",storeb[..]);offset:=ifx n>=4 then ar_search_offset(args_at(a[..],3)) else 0;if offset<0 {return 2;}min_m:f64= -1;max_m:f64= -1;if n==6 {a0:=pn_parse(args_at(a[..],4));b0:=pn_parse(args_at(a[..],5));if !a0.ok || !b0.ok || a0.v<0 || b0.v<a0.v || b0.v>100000 {return 2;}min_m=a0.v;max_m=b0.v;}return ifx ar_discovery_search(args_at(a[..],1),ifx n>=3 then args_at(a[..],2) else "",offset,min_m,max_m,store) then 0 else 1;}
  if cmd=="selfcheck" && n==1 {return ifx ar_selfcheck() then 0 else 1;}
  if cmd=="install" && n==3 {return ifx ar_install(args_at(a[..],1),args_at(a[..],2)) then 0 else 1;}
  if cmd=="verify" && n==2 {return ifx ar_verify(args_at(a[..],1)) then 0 else 1;}
- tool_errln("registry: import SOURCE PACKAGE STORE | gltfs PACKAGE DIR STORE | animations PACKAGE FILE STORE | observe PACKAGE STORE | index PACKAGE STORE | check STORE | verify SNAPSHOT | wardrobe [--check] | fork ID NEW_ID STORE | publish ID STORE");return 2;
+ tool_errln("registry: search QUERY [SOURCE [OFFSET [MIN_M MAX_M]]] | discover-sync [FILE] | import SOURCE PACKAGE STORE | gltfs PACKAGE DIR STORE | animations PACKAGE FILE STORE | observe PACKAGE STORE | index PACKAGE STORE | check STORE | verify SNAPSHOT | wardrobe [--check] | fork ID NEW_ID STORE | publish ID STORE");return 2;
 }
