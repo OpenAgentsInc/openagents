@@ -35,7 +35,7 @@ mislabeling the overview map as the preview scene.
 `verse/character-glade.coax` owns terrain, the path, deterministic planting,
 placements and foliage palettes. `verse/tools/assets/character_glade_pack.coax`
 reads the pinned source glTF files through the existing Coax reader and adds
-one static environment draw plus nine texture layers to the original wardrobe
+one static environment draw plus ten texture layers to the original wardrobe
 pack. It preserves the original character payloads byte for byte.
 
 ```sh
@@ -47,7 +47,7 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax \
 
 The combined pack stays within the existing 32 MiB budget. Its environment
 uses 32-byte static vertices (position F32×3, packed normal/kind, UV, color,
-texture layer, canopy ambient mask in v2), separate from the unchanged 24-byte character
+texture layer, canopy ambient mask in v2/v3), separate from the unchanged 24-byte character
 vertices. Its `C glade/environment` catalog row has zero joints. A scene
 record with flag 16 selects the static vertex path; appearance markers remain
 on character records only. Static vertices never read the animation palette.
@@ -98,3 +98,34 @@ The sky uses soft white cloud banks and angled cirrus. The title's darkening
 is confined to its own area instead of tinting the whole sky. Two fully hidden
 trees behind the left cliff are omitted to keep the denser curved grass within
 the existing pack budget. See `character-glade-soft-2026-11-06` in verification.
+
+
+## Reference composition pass (v3)
+
+The camera now puts the horizon near 60% of the image height, preserving
+close face inspection. `?scene=1` is a transient comparison view that hides
+the character and UI; it never enters an appearance save. The 1920×1080 scene
+capture uses the same camera and geometry as the normal desktop view.
+
+The rear ridge now turns golden independently of the green foreground. The
+path bends across it, with loose pebbles, terraced rocks, smaller foreground
+flowers, a fern and an orange plant. Warm crowns retain brighter ambient fill
+and yellow transmission. Cloud banks are smaller, with restrained thin cirrus.
+
+Grass now stores one seed per tuft and generates its five curved corners in
+the vertex shader. Bit 31 marks a procedural index, bits 27–29 select a corner,
+and the lower 27 bits select a 32-byte seed. Its UV word stores height/width;
+word 7 stores angle. The pack contains 26,911 tufts with patch-dependent
+heights of 2.9–35.7 cm, within the original 32 MiB limit. Shader coverage blends
+edges toward the meadow color, reducing hard ribbons in distant planting.
+
+The source Godot `M_Leaves.gdshader` also contains camera-oriented card
+expansion. Raw glTF exports already retain expanded leaf geometry, so v3
+applies a restrained version only to tree crowns. Leaf kind occupies the low
+three tag bits; the other five encode expansion scale in tenths of a meter.
+Small plants keep their authored geometry and atlas UVs.
+
+This pass improves the composition but does not establish exact image parity.
+The original scene placement was not recovered; analytic shadows and procedural
+clouds still differ from the supplied rendering. Evidence is retained under
+`docs/verification/character-glade-parity-2026-11-06/`.

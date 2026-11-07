@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-06",
+  "base_commit": "b639a25854",
+  "status": "closer reference composition; exact image parity not established",
+  "pack": {
+    "bytes": 33338552,
+    "sha256": "93d1058c200f7f52e072df246789a1c95f7cb638a8a84ae0bdcc27cf6c1f7d51",
+    "environment_vertices": 257911,
+    "environment_triangles": 272724,
+    "texture_layers": 63,
+    "curved_grass_tufts": 26911,
+    "grass_height_range": [
+      0.028763256275272753,
+      0.3565270466163119
+    ],
+    "rounded_canopy_vertices": 97954,
+    "original_character_payloads": "byte-identical",
+    "terrain_winding": "all 20000 faces upward"
+  },
+  "checks": {
+    "packer": "ok   #test glade static vertices retain positions beyond the people quantization box (1 case, 1026 steps, 0 ms)\nok   #test glade procedural tuft corners preserve seed identity and remain bounded (1 case, 189 steps, 0 ms)\nok   #test glade foliage stores source billboard scale without changing material or ambient word (1 case, 42 steps, 0 ms)\nok   #test glade preserves a level character clearing and winds the path through the hills (1 case, 336 steps, 0 ms)\nok   #test glade composition puts green woods left and autumn birches right (1 case, 698 steps, 0 ms)\nok   #test glade rear ridge is golden while foreground woods remain green (1 case, 133 steps, 0 ms)\nok   #test glade grass has a short curved profile and foliage stays rounded (1 case, 544 steps, 0 ms)\nok   #test glade canopy normals remain unit length even near their center (1 case, 100 steps, 0 ms)\n8 of 98 checks (--only 'glade'), 8 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+    "shader": "ok   #test glade sky retains cyan daylight and warm sunlight without nonfinite horizons (1 case, 43574 steps, 0 ms)\nok   #test glade sunlight casts soft bounded shadows and leaves retain volume (1 case, 5283 steps, 0 ms)\nok   #test glade soil seams stay subtle and deterministic (1 case, 6495 steps, 0 ms)\nok   #test glade mobile panels cover the first appearance row while leaving the figure visible (1 case, 135 steps, 0 ms)\nok   #test glade preserves a level character clearing and winds the path through the hills (1 case, 336 steps, 0 ms)\nok   #test glade composition puts green woods left and autumn birches right (1 case, 698 steps, 0 ms)\nok   #test glade rear ridge is golden while foreground woods remain green (1 case, 133 steps, 0 ms)\nok   #test glade grass has a short curved profile and foliage stays rounded (1 case, 544 steps, 0 ms)\nok   #test glade canopy normals remain unit length even near their center (1 case, 100 steps, 0 ms)\n9 of 113 checks (--only 'glade'), 9 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+    "creator": "ok   #test creator body changes preserve choices and bind only matching parts (1 case, 1474 steps, 0 ms)\nok   #test creator every outfit detail and color stays valid through wraparound (1 case, 122304 steps, 1 ms)\nok   #test creator hit testing cancellation and narrow layout keep controls usable (1 case, 3447 steps, 0 ms)\nok   #test creator available garments are selectable on both sexes and presets cover four outfits (1 case, 10255 steps, 0 ms)\nok   #test creator page identity accepts absolute host URLs and rejects other routes (1 case, 4509 steps, 0 ms)\nok   #test creator catalog resolves 76 source meshes and every worn part reaches a bounded GPU draw (1 case, 308105 steps, 28 ms)\nok   #test creator appearance save round trips and malformed saves preserve the live choices (1 case, 33163 steps, 0 ms)\nok   #test creator hood keeps beard in actual draw list and crown cannot be worn (1 case, 32458 steps, 16 ms)\nok   #test creator zoom reaches face distance and stays bounded (1 case, 384 steps, 0 ms)\nok   #test creator pan moves camera without turning and reset centers it (1 case, 2578 steps, 0 ms)\nok   #test creator removed outfit saves migrate and removed part stays unavailable (1 case, 5175 steps, 0 ms)\nok   #test creator mouse buttons select rotate or pan per drag without a toggle (1 case, 2443 steps, 0 ms)\nok   #test creator registry identities preserve CC2 wardrobe keys and require complete referenced meshes (1 case, 302056 steps, 2 ms)\nok   #test creator glade catalog keeps scenery separate from wardrobe and saved appearance (1 case, 37208 steps, 10 ms)\nok   #test creator reference camera places the horizon near three fifths and keeps face inspection (1 case, 2337123 steps, 22 ms)\nok   #test creator scene capture is a transient exact query flag (1 case, 2764 steps, 0 ms)\n16 of 97 checks (--only 'creator'), 16 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+    "hardware_shader": "Glade shader: headless WebGPU compilation passed\n",
+    "browser": "Character Studio: 3D Nature glade present; Noble selected on Female; eye color and cast changed through pointer input; appearance survived reload; physical zoom/pan passed.\n",
+    "tools_check": "tools-check: 1848 tracked tool files (35 of them vendored upstream vectors), 0 new without a reason\n"
+  },
+  "scope": "Character Create private static v3 profile; original wardrobe bytes unchanged; no host ABI or shared renderer qualification.",
+  "wasm": {
+    "bytes": 611084,
+    "sha256": "8a0273418db0c855a167dc5d541b856d57e0ce7acc82c6f40fab1c9d19f6dde2",
+    "budget": 625000
+  },
+  "screenshot_adapter": "hardware apple metal-3",
+  "source_shader": {
+    "archive": "Engine Projects/Stylized Nature MegaKit[Godot].zip",
+    "path": "Stylized Nature MegaKit[Godot]/Materials/M_Leaves.gdshader",
+    "sha256": "88d85e4a550ec538dfd1daf61fbfc1412f15f2d61dff5fc94befea33a92b43d7",
+    "adaptation": "restrained camera-oriented expansion for raw tree glTF geometry; not the Godot renderer"
+  },
+  "reproduction": "Final pack rebuilt from final Coax packer and compared byte-identical with the installed runtime pack.",
+  "integration_base": "96f8af0271; only concurrent change was the independent Everglade Echo timing tool"
+}

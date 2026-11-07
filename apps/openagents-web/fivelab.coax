@@ -3437,7 +3437,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
 lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
 HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
 lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
-  if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
+  if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }
   lab_start(s);

@@ -21,7 +21,7 @@ oldvb=next(v[1] for v in orig.values() if v[0]==2);oldib=next(v[1] for v in orig
 assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib)
 assert word*4+verts*32==len(vb) and (first+count)*4==len(ib)
-ids=struct.unpack_from('<'+str(count)+'I',ib,first*4);assert min(ids)>=0 and max(ids)<verts
+ids=struct.unpack_from('<'+str(count)+'I',ib,first*4);assert min(ids)>=0 and max(i&0x07ffffff for i in ids)<verts
 layers=sum(v[0]==4 for v in new.values())
 pos=[]
 grass=[]
@@ -30,9 +30,10 @@ for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at);assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
     layer=struct.unpack_from('<I',vb,at+24)[0];assert layer<layers
-    kind=vb[at+15]
+    kind=vb[at+15]&7
     if kind==2:grass.append(xyz)
     if kind==1:
+        assert 0<=vb[at+15]>>3<=31
         ao=struct.unpack_from('<f',vb,at+28)[0];assert .49<=ao<=1.01
         normal=struct.unpack_from('<3b',vb,at+12);assert .96<sum((v/127)**2 for v in normal)<1.04
         leaves.append(ao)
@@ -42,14 +43,19 @@ for i in range(0,60000,3):
     a,b,c=[pos[k] for k in ids[i:i+3]]
     ux,uz=b[0]-a[0],b[2]-a[2];vx,vz=c[0]-a[0],c[2]-a[2]
     assert uz*vx-ux*vz>0, 'Terrain winding points below the hillside'
-# Curved grass has five shared vertices per tuft, not three straight spikes.
-assert grass and len(grass)%5==0
+# Procedural grass indices identify a bounded seed and one of five curved corners.
+seeds={i&0x07ffffff for i in ids if i&0x80000000}
+assert len(seeds)==len(grass) and len(seeds)>25000
 heights=[]
-for i in range(0,len(grass),5):
-    a,b,c,d,e=grass[i:i+5];h=e[1]-a[1];heights.append(h)
-    assert .05999<=h<=.16001
-    assert abs(c[1]-(a[1]+h*.6))<.00001 and abs(d[1]-c[1])<.00001
-    assert math.hypot(e[0]-(a[0]+b[0])*.5,e[2]-(a[2]+b[2])*.5)>.02
+for i in seeds:
+    at=word*4+i*32
+    assert vb[at+15]==2
+    h,w=struct.unpack_from('<2H',vb,at+16);h/=65535;w/=65535
+    angle=struct.unpack_from('<f',vb,at+28)[0]
+    assert .0279<=h<=.3601 and .0899<=w<=.1801 and math.isfinite(angle)
+    heights.append(h)
+for i in ids:
+    if i&0x80000000:assert ((i>>27)&7)<5
 assert leaves and min(leaves)<.9
 # Verify every original character mesh declaration and every existing image remains unchanged.
 oldcat=next(v[1].decode() for v in orig.values() if v[0]==1)
@@ -59,4 +65,4 @@ for name,(kind,data) in orig.items():
     if kind==4:assert new[name][1]==data
 print(json.dumps({'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'environment_vertices':verts,
                   'environment_triangles':count//3,'texture_layers':layers,
-                  'curved_grass_tufts':len(grass)//5,'grass_height_range':[min(heights),max(heights)],'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':'all 20000 faces upward'},indent=2))
+                  'curved_grass_tufts':len(grass),'grass_height_range':[min(heights),max(heights)],'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':'all 20000 faces upward'},indent=2))

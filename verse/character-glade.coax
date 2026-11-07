@@ -14,37 +14,46 @@
 }
 CgItem :: struct {kind:int;variant:int;x:f32;z:f32;scale:f32; yaw:f32;tint:[3]f32;}
 CG_ITEMS :: 24;
-cg_path_x :: (z:f32)->f32 {return 1.5*sin(z*0.20);}
+cg_path_x :: (z:f32)->f32 {return 2.1*sin(z*0.27)+0.9;}
 cg_path :: (x:f32,z:f32)->f32 {d:=abs(x-cg_path_x(z));return exp(-d*d/(0.85+abs(z)*0.12));}
 cg_height :: (x:f32,z:f32)->f32 {
   away:=sqrt(x*x+z*z);if away<2 {return 0;}
-  h:=5.0*exp(-((x+11)*(x+11)/110+(z+22)*(z+22)/220))+3.4*exp(-((x-17)*(x-17)/160+(z+33)*(z+33)/180));
+  h:=4.0*exp(-((x+11)*(x+11)/110+(z+22)*(z+22)/140))+5.8*exp(-((x-17)*(x-17)/160+(z+33)*(z+33)/180));
+  h+=4.6*exp(-((x+8)*(x+8)/120+(z+34)*(z+34)/70));
   fade:=ifx away<5 then (away-2)/3 else 1;
   return h*fade;
+}
+#test "glade rear ridge is golden while foreground woods remain green" {
+ #assert cg_autumn(-4,-30)>0.8 && cg_autumn(-6,-5)==0;
+}
+cg_autumn :: (x:f32,z:f32)->f32 {
+ side:=(x+z*0.1-1)/16;rear:=(-z-16)/13;wood:=(x+10)/6;
+ a:=ifx side>0 then side else 0;b:=(ifx rear<0 then 0 else ifx rear>1 then 1 else rear)*(ifx wood<0 then 0 else ifx wood>1 then 1 else wood);
+ v:=ifx a>b then a else b;return ifx v>1 then 1 else v;
 }
 cg_hash :: (a:f32,b:f32)->f32 {v:=sin(a*127.1+b*311.7)*43758.5453;return v-floor(v);}
 cg_item :: (i:int)->CgItem {
   // x, z, scale, yaw, source variant. The rocks form the stepped left cliff.
   p:=[24][5]f32.[
-    [5]f32.[-5,-7,0.52,0.2,0],[5]f32.[-8,-12,0.60,1.5,1],[5]f32.[-12,-18,0.65,2.4,2],[5]f32.[-4,-18,0.36,0.4,3],[5]f32.[-15,-27,0.65,1.0,4],[5]f32.[-18,-12,0.8,2,0],[5]f32.[-7,-30,0.45,0.3,1],
-    [5]f32.[6,-9,0.68,0.1,0],[5]f32.[11,-16,0.65,1.3,1],[5]f32.[5,-24,0.55,0.8,2],[5]f32.[15,-26,0.8,2.1,3],[5]f32.[1,-30,0.48,1,4],[5]f32.[9,-35,0.7,1.7,0],[5]f32.[20,-18,0.8,2,2],[5]f32.[22,-35,0.8,0.5,3],[5]f32.[-3,-36,0.45,1.4,1],
-    [5]f32.[-10,-15,1.4,0.3,0],[5]f32.[-12,-21,2.3,1.2,1],[5]f32.[-7,-18,1.3,2.4,0],[5]f32.[-9,-10,0.9,1.8,1],[5]f32.[4,-7,0.55,0.4,1],[5]f32.[-3.6,-4,0.32,2.1,0],[5]f32.[8,-4,0.65,1.3,1],[5]f32.[1.8,-13,0.26,0.1,0]];
+    [5]f32.[-10,-9,0.55,0.2,2],[5]f32.[-6,-13,0.48,1.5,1],[5]f32.[-15,-18,0.55,2.4,2],[5]f32.[-4,-18,0.36,0.4,3],[5]f32.[-15,-27,0.65,1.0,4],[5]f32.[-18,-12,0.8,2,0],[5]f32.[-7,-30,0.45,0.3,1],
+    [5]f32.[9,-11,0.74,0.1,0],[5]f32.[11,-16,0.65,1.3,1],[5]f32.[5,-24,0.55,0.8,2],[5]f32.[15,-26,0.8,2.1,3],[5]f32.[1,-30,0.48,1,4],[5]f32.[9,-35,0.7,1.7,0],[5]f32.[20,-18,0.8,2,2],[5]f32.[22,-35,0.8,0.5,3],[5]f32.[-3,-36,0.45,1.4,1],
+    [5]f32.[-9,-18,1.25,0.1,1],[5]f32.[-12,-23,2.0,3.24,1],[5]f32.[-7,-20,1.4,2.4,1],[5]f32.[-9,-13,0.65,1.8,1],[5]f32.[2.8,-5.5,0.50,1.0,0],[5]f32.[-3.6,-4,0.32,2.1,0],[5]f32.[7,-4,0.45,1.3,1],[5]f32.[1.8,-13,0.26,0.1,0]];
   r:CgItem;r.kind=ifx i<7 then 0 else ifx i<16 then 1 else 2;r.variant=int(p[i][4]);r.x=p[i][0];r.z=p[i][1];r.scale=p[i][2];r.yaw=p[i][3];
-  r.tint=ifx r.kind==1 then (ifx i%3==0 then [3]f32.[1.0,0.32,0.035] else ifx i%3==1 then [3]f32.[1.0,0.55,0.09] else [3]f32.[1.0,0.72,0.18]) else ifx r.kind==0 then [3]f32.[0.42,0.78,0.055] else [3]f32.[0.52,0.55,0.33];return r;
+  r.tint=ifx r.kind==1 then (ifx i==7 || i%3==0 then [3]f32.[1.0,0.32,0.035] else ifx i%3==1 then [3]f32.[1.0,0.55,0.09] else [3]f32.[1.0,0.72,0.18]) else ifx r.kind==0 then [3]f32.[0.42,0.78,0.055] else [3]f32.[0.52,0.55,0.33];return r;
 }
 
 #test "glade grass has a short curved profile and foliage stays rounded" {
- #assert cg_blade_height(0)==0.06 && cg_blade_height(1)<=0.16;
- #assert cg_blade_width(1)<0.07 && cg_blade_bend(0)==0;
+ #assert cg_blade_height(0)==0.14 && cg_blade_height(1)<=0.36;
+ #assert cg_blade_width(1)<0.19 && cg_blade_bend(0)==0;
  #assert cg_blade_bend(0.6)<cg_blade_bend(1);
  #assert !cg_visible(cg_item(5)) && cg_visible(cg_item(0));
 }
-cg_blade_height :: (variation:f32)->f32 {return 0.06+variation*0.10;}
-cg_blade_width :: (variation:f32)->f32 {return 0.035+variation*0.025;}
+cg_blade_height :: (variation:f32)->f32 {return 0.14+variation*0.22;}
+cg_blade_width :: (variation:f32)->f32 {return 0.09+variation*0.09;}
 cg_blade_bend :: (height:f32)->f32 {return height*height*0.55;}
 // These two trees sit entirely beyond the left cliff; omit their hidden meshes
 // to spend the same pack budget on curved foreground grass.
-cg_visible :: (item:CgItem)->bool {return item.kind!=0 || item.x>= -14;}
+cg_visible :: (item:CgItem)->bool {return item.kind!=0 || item.x>= -14 || item.z== -18;}
 #test "glade canopy normals remain unit length even near their center" {
  a:=cg_canopy_normal(0.001,0,0);b:=cg_canopy_normal(0,0,0);
  #assert a[0]==1 && a[1]==0 && a[2]==0;

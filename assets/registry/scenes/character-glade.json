@@ -27,10 +27,6 @@
       "revision": "1accb32f5e9e7d129bb6c2ea20d90d44464c49e27f7485919dcabf4fa4acf1e8"
     },
     {
-      "id": "quaternius/nature/commontree-1",
-      "revision": "99970fcb5207e5d8d3e89da16f722f42bad2d819c536359610ff1b2a7a0e83c2"
-    },
-    {
       "id": "quaternius/nature/commontree-2",
       "revision": "e0daf5db9e1e28d54e17fbf8ea0fd81005124e7dd7959f61b1b5415ba6a62d39"
     },
@@ -59,6 +55,14 @@
       "revision": "848b9580a785e24ac5b6a7a116bfeb70d77deb4a6e7cd2e91a1d9894eaf2809d"
     },
     {
+      "id": "quaternius/nature/pebble-round-1",
+      "revision": "3488c0ee4cc9533fe5d93cc493b21a1a28870d2d64d3b74fbade765357910808"
+    },
+    {
+      "id": "quaternius/nature/plant-3",
+      "revision": "0c52a3079a34443be1cf68511f2b7d4b8ab81f1549363c316e5e574ff9e50110"
+    },
+    {
       "id": "quaternius/nature/rock-big-1",
       "revision": "968b9d1cb9947c0c6d206bcb7d721e6e3d23706109e3ec9ccdb4fda6f7e68b5a"
     },
@@ -75,21 +79,21 @@
   },
   "composition": {
     "path": "verse/character-glade.coax",
-    "sha256": "3a52f361e1543441fac3722d9096786ed033b2380dd30f430f53704b3cac08df"
+    "sha256": "b422d71ba4a01e82d4648874ca3f95600803c3032eb7302b87a090dffef7da9c"
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "e5c6dd27c920cf049d2830769f1c8ec060592cf1c5fc1e845c31038ea507b5ed"
+    "sha256": "8dc55365286a8a1f01aac8d5b160c637b2beb6253a60e6e5b1781be183c669eb"
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "dc73ec227e0b4babe51870ac8fb403e464fe375b4616f9e7f97ff9004db58d91"
+    "sha256": "3152ecb5238f2b44e0846362064853688fc0cba5beed22c8afc43ebf109d48ae"
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "faf89c1d61c340e25628f953ff00e7efd34c507ec62f62d5968d54e72f9be918",
-    "bytes": 33456884,
-    "profile": "character-create-legacy-static-v2"
+    "sha256": "93d1058c200f7f52e072df246789a1c95f7cb638a8a84ae0bdcc27cf6c1f7d51",
+    "bytes": 33338552,
+    "profile": "character-create-legacy-static-v3"
   },
   "lighting": {
     "toward_sun": [
@@ -160,14 +164,6 @@
       "sha256": "08768c680e3abeafd25858c9d3f369bcb7eed014661d3b6825a397f2a6a3deea"
     },
     {
-      "path": "glTF/CommonTree_1.bin",
-      "sha256": "9dd689e84e1aa2f5b08db8def591254d582783c73737af54ba0d89b3e549c3ae"
-    },
-    {
-      "path": "glTF/CommonTree_1.gltf",
-      "sha256": "b51cdea6545edb51d102dd6c27caafe62aa75e3c328ac8f9039f4e7bfd690bfa"
-    },
-    {
       "path": "glTF/CommonTree_2.bin",
       "sha256": "a273d69de31a675a9d7e3eb3c43f804aef2d1b031692111b9e76eb3b0b686d0c"
     },
@@ -236,6 +232,22 @@
       "sha256": "e29eed2db831e44a29634fe25c62e9e31edf201e978a52912b9e5221ffd4a1f3"
     },
     {
+      "path": "glTF/Pebble_Round_1.bin",
+      "sha256": "f3dacef3243ccaaad7df2beb5c72574a38fb3eae45357e1b5e2b40200d51c375"
+    },
+    {
+      "path": "glTF/Pebble_Round_1.gltf",
+      "sha256": "9f6261c81134915e73cf35eb4e37076238fd1e79434515ac686d15cbd1f779ab"
+    },
+    {
+      "path": "glTF/Plant_3.bin",
+      "sha256": "434a3d42aab57011b5b13f98950439d19d0576d040403f623e9b6645b2c56863"
+    },
+    {
+      "path": "glTF/Plant_3.gltf",
+      "sha256": "2b4f42d00cc95b0d5703b11c401ec74a52a1d28f89a7e820f819d6f36b921a9a"
+    },
+    {
       "path": "glTF/Rock_Big_1.bin",
       "sha256": "6f35edd96f527680503132966d0d0f4c430fb923cd5d1e1f9fa282cfb90f1227"
     },
@@ -257,7 +269,7 @@
     }
   ],
   "foliage": {
-    "grass": "five-vertex curved ribbons with three fine shader strands per tuft, 0.06\u20130.16 m tall",
+    "grass": "26911 procedural five-corner curved tufts, one 32-byte seed each, patch-dependent heights 0.029\u20130.357 m",
     "ambient_word": {
       "offset_bytes": 28,
       "type": "f32",
@@ -270,14 +282,38 @@
     "omitted_hidden_meshes": [
       "CommonTree_5 at (-15,-27)",
       "CommonTree_1 at (-18,-12)"
-    ]
+    ],
+    "procedural_indices": {
+      "flag_bit": 31,
+      "corner_bits": [
+        27,
+        29
+      ],
+      "seed_bits": [
+        0,
+        26
+      ],
+      "corners": 5
+    },
+    "leaf_tag": "low 3 bits material; upper 5 bits camera-card expansion scale in tenths of a meter; trees only"
   },
   "shader_entry": {
     "path": "apps/openagents-web/gpu/fivelab.coax",
-    "sha256": "3c2aad8944c0809aedea160360c91c3ef844edaa7fa564d8c3c54738eb4fde30"
+    "sha256": "5659bf44aa2e3051cef0255d6f685c21254c198c9e5e99c9586fa110e03ce0d2"
   },
   "shader_artifact": {
     "path": "apps/openagents-web/fivelab.wgsl",
-    "sha256": "b3fb082715815d1b695dc2c07ce73c6c354d2347ae957329f1eed2caa524af8b"
+    "sha256": "5d666a755e7547849a13c6cac5c1393917d767db42cf87181fe325964ac4e753"
+  },
+  "camera": {
+    "desktop_horizon_fraction": 0.595,
+    "scene_comparison_query": "scene=1",
+    "persisted": false
+  },
+  "source_material": {
+    "archive": "Engine Projects/Stylized Nature MegaKit[Godot].zip",
+    "path": "Stylized Nature MegaKit[Godot]/Materials/M_Leaves.gdshader",
+    "sha256": "88d85e4a550ec538dfd1daf61fbfc1412f15f2d61dff5fc94befea33a92b43d7",
+    "adaptation": "restrained camera-oriented expansion for raw tree glTF geometry; not the Godot renderer"
   }
 }

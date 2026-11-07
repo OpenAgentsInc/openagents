@@ -426,8 +426,8 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
     c:V3=cg_sky(rd,wg_at3(u,32),u[2]);
     dep:f32=1.0f32;
     k:f32=u[4];
-    c=scale3(c,1.0f32-0.50f32*(1.0f32-smoothstep(450.0f32*k,520.0f32*k,p.x))*(1.0f32-smoothstep(45.0f32*k,105.0f32*k,p.y)));
-    if (cg_ui_cover(p,u[0],u[1],k)) {c=v3(0.025f32,0.036f32,0.046f32);dep=0.0f32;}
+    if (u[11]<0.5f32) {c=scale3(c,1.0f32-0.50f32*(1.0f32-smoothstep(450.0f32*k,520.0f32*k,p.x))*(1.0f32-smoothstep(45.0f32*k,105.0f32*k,p.y)));}
+    if ((u[11]<0.5f32)&&cg_ui_cover(p,u[0],u[1],k)) {c=v3(0.025f32,0.036f32,0.046f32);dep=0.0f32;}
     return FivelabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=dep};
   }
   if (u[10]>0.5f32) {

@@ -8,7 +8,7 @@ VERTEX_FLOATS :: 16;
 
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 Creator :: struct {
-  on:bool; configured:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
+  on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
   clock:f32; pose_at:f32; revision:int; saved:int; focused:int;
@@ -106,6 +106,7 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
     b[0].draws[n*4]=cast(u32)b[0].part_first[p];b[0].draws[n*4+1]=cast(u32)b[0].part_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
   for i:0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s.eye_color][k];}out[i*24+23]=2;}
+  if s.scene_only {n=0;}
   if s.glade_count>0 && n<43 {
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
@@ -171,17 +172,18 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   if s[0].mobile {b:=s[0].boxes[15];n=text(out,n,ifx s[0].pan_mode then "DRAG: PAN" else "DRAG: ROTATE",b.x0+10*k,b.y0+23*k,10*k,gold);}
   if !s[0].mobile {n=text(out,n,"LEFT DRAG: ROTATE / RIGHT DRAG: PAN / SCROLL: ZOOM",w*0.5-230*k,h-77*k,9*k,ink(k,0.20,0.23,0.15));}
   for i:0..<u.count { u[i]=0; }
-  u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=0;
+  u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=ifx s[0].scene_only then 1 else 0;
   // A steady studio camera; dragging turns the figure, the wheel changes distance.
-  dist:=s[0].dist; target:=1.0+0.58*cc_clamp((2.2-dist)/1.55,0,1);
-  ey:=target+0.1+sin(s[0].pitch)*dist; ez:=cos(s[0].pitch)*dist;
+  dist:=s[0].dist; close:=cc_clamp((2.2-dist)/1.55,0,1);target:=1.2+0.58*close;
+  ey:=target-0.4+0.50*close+sin(s[0].pitch-0.1)*dist;ez:=cos(s[0].pitch-0.1)*dist;
   fy:=target-ey; fz:=-ez; length:=sqrt(fy*fy+fz*fz); fy/=length; fz/=length;
   focal:=ifx s[0].mobile then (h-624*k)*1.3 else h*0.89;
   u[16]=s[0].pan_x;u[17]=ey+s[0].pan_y*(-fz);u[18]=ez+s[0].pan_y*fy;u[19]=focal;
   u[20]=0;u[21]=fy;u[22]=fz;u[23]=w*0.5;
-  u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s[0].mobile then (h-384*k)*0.5 else h*0.52;
+  u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s[0].mobile then (h-384*k)*0.5 else h*0.48;
   u[28]=0;u[29]=-fz;u[30]=fy;
   u[32]=-0.45;u[33]=0.78;u[34]=0.42;
+  if s[0].scene_only {return 0;}
   return n;
 }
 pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
@@ -417,4 +419,20 @@ mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
   saved:[64]u8;size:=save(s[0],saved[..]);t:[1]Creator;
   #assert restore(t[..],cast(string)saved[0..<size]) && t[0].glade_count==0;
   catalog(s[..],"C other 0 3 1 0 3 65\n");#assert s[0].glade_count==0;
+}
+
+#test "creator reference camera places the horizon near three fifths and keeps face inspection" {
+ s:[1]Creator;u:[104]f32;out:[64000]f32;
+ n:=frame(s[..],out[..],u[..],1920,1080,1,0,true);
+ horizon:=u[27]+u[21]*u[19]/u[29];#assert horizon>1080*0.56 && horizon<1080*0.64;
+ s[0].dist=0.65;n=frame(s[..],out[..],u[..],1920,1080,1,0,true);#assert u[21]<0;
+}
+#test "creator scene capture is a transient exact query flag" {
+ #assert scene_capture("url=http://127.0.0.1/worlds/character-creator?scene=1\n");
+ #assert !scene_capture("url=http://127.0.0.1/worlds/character-creator?scene=10\n");
+ #assert !scene_capture("url=http://127.0.0.1/worlds/character-creator?scene=0\n");
+}
+scene_capture :: (facts:string)->bool {
+ if facts.count<8 {return false;}
+ for i:0..<facts.count-7 {if facts[i..<i+8]=="?scene=1" || facts[i..<i+8]=="&scene=1" {e:=i+8;if e==facts.count || facts[e]=='\n' || facts[e]=='&' || facts[e]=='#' {return true;}}}return false;
 }

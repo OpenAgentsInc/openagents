@@ -15,6 +15,15 @@
  #assert gl_u32(b[..],0)==int(f32_bits(-18)) && gl_u32(b[..],8)==int(f32_bits(-24));
  #assert gl_u32(b[..],24)==3 && (gl_u32(b[..],12)>>24)==4;
 }
+#test "glade procedural tuft corners preserve seed identity and remain bounded" {
+ for corner:0..<5 {encoded:=gp_grass_id(1234,corner);#assert (encoded&0x07ffffff)==1234;#assert ((encoded>>27)&7)==cast(u32)corner;#assert (encoded&0x80000000)!=0;}
+}
+gp_grass_id :: (seed:int,corner:int)->u32 {return 0x80000000|(cast(u32)corner<<27)|cast(u32)seed;}
+gp_grass_tri :: (w:[]Gp,seed:int,a:int,b:int,c:int) {if (w[0].ni+3)*4>w[0].i.count {ph_die("glade grass indices overflow");}for corner:[3]int.[a,b,c] {gp_word(w[0].i[..],w[0].ni*4,gp_grass_id(seed,corner));w[0].ni+=1;}}
+#test "glade foliage stores source billboard scale without changing material or ambient word" {
+ tag:=gp_leaf_tag(0.68);#assert (tag&7)==1 && (tag>>3)==7;
+}
+gp_leaf_tag :: (scale:f32)->int {return 1+(int(gp_clamp(scale*10+0.5,1,31))<<3);}
 GP_VERTS :: 360000;
 Gp :: struct {v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;layers:int;nt:int;tex:[64]string;encoded:[64]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[67108864]u8;}
 gp_word :: (b:[]u8,at:int,v:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(v>>cast(u32)(k*8));}}
@@ -58,7 +67,7 @@ gp_mesh :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:f32,sca
     rounded:=cg_canopy_normal(rx,ry,rz);nx=rounded[0];ny=rounded[1];nz=rounded[2];
    }
    colour:=ifx kind==1 then tint else ifx kind==4 then [3]f32.[0.70,0.75,0.55] else ifx kind==3 then [3]f32.[1,0.36,0.40] else ifx kind==7 then (ifx f32(pos[v*3+1])>0.23 then [3]f32.[1,0.62,0.12] else [3]f32.[0.90,0.86,0.70]) else [3]f32.[1,1,1];
-   id:=gp_v(w,[3]f32.[x+a*cs+c*sn,y+b,z-a*sn+c*cs],[3]f32.[nx*cs+nz*sn,ny,-nx*sn+nz*cs],[2]f32.[f32(uv[v*2]),f32(uv[v*2+1])],colour,layer,kind);gp_word(w[0].v[..],id*32+28,f32_bits(ambient));
+   id:=gp_v(w,[3]f32.[x+a*cs+c*sn,y+b,z-a*sn+c*cs],[3]f32.[nx*cs+nz*sn,ny,-nx*sn+nz*cs],[2]f32.[f32(uv[v*2]),f32(uv[v*2+1])],colour,layer,ifx kind==1 && (starts(name,"CommonTree_") || starts(name,"Birch_")) then gp_leaf_tag(scale*0.25) else kind);gp_word(w[0].v[..],id*32+28,f32_bits(ambient));
   }
   for t:0..<ni/3 {gp_tri(w,first+int(idx[t*3]),first+int(idx[t*3+1]),first+int(idx[t*3+2]));}
  }}
@@ -67,21 +76,16 @@ gp_ground :: (w:[]Gp,white:int) {
  // A continuous hillside with a bare, winding ochre path and a level foreground clearing.
  side:=101;for iz:0..<side {z:=5-f32(iz)*0.65;for ix:0..<side {x:=(f32(ix)-50)*0.65;y:=cg_height(x,z)-0.035;
   dx:=(cg_height(x+0.1,z)-cg_height(x-0.1,z))/0.2;dz:=(cg_height(x,z+0.1)-cg_height(x,z-0.1))/0.2;normal_length:=sqrt(dx*dx+1+dz*dz);
-  path:=cg_path(x,z);noise:=cg_hash(x,z);autumn:=gp_clamp((x+z*0.1-1)/18,0,1);c:=[3]f32.[0.30+autumn*0.18,0.50-autumn*0.02,0.08];
-  dirt:=[3]f32.[0.66+noise*0.015,0.59+noise*0.015,0.32];for k:0..<3 {c[k]=c[k]*(1-path)+dirt[k]*path;}
+  path:=cg_path(x,z);noise:=cg_hash(x,z);autumn:=cg_autumn(x,z);c:=[3]f32.[0.32+autumn*0.24,0.53-autumn*0.03,0.055];
+  dirt:=[3]f32.[0.71+noise*0.015,0.64+noise*0.015,0.38];for k:0..<3 {c[k]=c[k]*(1-path)+dirt[k]*path;}
   id:=gp_v(w,[3]f32.[x,y,z],[3]f32.[-dx/normal_length,1/normal_length,-dz/normal_length],[2]f32.[0.5,0.5],c,white,5);
  }}for iz:0..<side-1 {for ix:0..<side-1 {a:=iz*side+ix;gp_tri(w,a,a+1,a+side);gp_tri(w,a+1,a+side+1,a+side);}}
  // Thousands of actual blades leave the path open. Stable hashes make captures reproducible.
- for i:0..<13500 {fi:=f32(i);x:=(cg_hash(fi,2)-0.5)*(ifx i<10500 then 20.0f32 else 54.0f32);z:=3-cg_hash(fi,5)*(ifx i<10500 then 22.0f32 else 55.0f32);
-  if cg_path(x,z)>0.40 || (x*x+z*z)<1.25 {continue;}y:=cg_height(x,z);h:=cg_blade_height(cg_hash(fi,8));wide:=cg_blade_width(cg_hash(fi,7));angle:=cg_hash(fi,9)*6.283;dx:=cos(angle)*wide;dz:=sin(angle)*wide;autumn:=gp_clamp((x+z*0.1-1)/16,0,1);top:=[3]f32.[0.46+0.33*autumn,0.73-0.15*autumn,0.10];base:=[3]f32.[0.24+0.20*autumn,0.43,0.055];
-  bend:=h*cg_blade_bend(1);mx:=cos(angle+0.7)*bend;mz:=sin(angle+0.7)*bend;
-  middle:=[3]f32.[(top[0]+base[0])*0.5,(top[1]+base[1])*0.5,(top[2]+base[2])*0.5];
-  a:=gp_v(w,[3]f32.[x-dx,y,z-dz],[3]f32.[0,1,0],[2]f32.[0,0],base,white,2);
-  b:=gp_v(w,[3]f32.[x+dx,y,z+dz],[3]f32.[0,1,0],[2]f32.[1,0],base,white,2);
-  c:=gp_v(w,[3]f32.[x+mx*0.36-dx*0.55,y+h*0.6,z+mz*0.36-dz*0.55],[3]f32.[0,1,0],[2]f32.[0.225,0.6],middle,white,2);
-  d:=gp_v(w,[3]f32.[x+mx*0.36+dx*0.55,y+h*0.6,z+mz*0.36+dz*0.55],[3]f32.[0,1,0],[2]f32.[0.775,0.6],middle,white,2);
-  e:=gp_v(w,[3]f32.[x+mx,y+h,z+mz],[3]f32.[0,1,0],[2]f32.[0.5,1],top,white,2);
-  gp_tri(w,a,b,c);gp_tri(w,b,d,c);gp_tri(w,c,d,e);
+ for i:0..<30000 {fi:=f32(i);x:=(cg_hash(fi,2)-0.5)*(ifx i<23000 then 26.0f32 else 54.0f32);z:=3-cg_hash(fi,5)*(ifx i<23000 then 30.0f32 else 55.0f32);
+  if cg_path(x,z)>0.40 || (x*x+z*z)<1.25 {continue;}y:=cg_height(x,z);patch:=0.60+0.40*sin(x*1.1)*sin(z*1.3);h:=cg_blade_height(cg_hash(fi,8))*patch;wide:=cg_blade_width(cg_hash(fi,7));angle:=cg_hash(fi,9)*6.283;autumn:=cg_autumn(x,z);base:=[3]f32.[0.35+0.26*autumn,0.59,0.06];
+  a:=gp_v(w,[3]f32.[x,y,z],[3]f32.[0,1,0],[2]f32.[h,wide],base,white,2);
+  gp_word(w[0].v[..],a*32+28,f32_bits(angle));
+  gp_grass_tri(w,a,0,1,2);gp_grass_tri(w,a,1,3,2);gp_grass_tri(w,a,2,3,4);
  }
 }
 gp_entry :: (out:[]u8,row:int,kind:int,license:int,name:string,offset:int,size:int) {
@@ -96,8 +100,12 @@ tool_main :: ()->int #export_c #effects(all) {
  whitebuf:=[1]u8.[255];img:=pi_img(whitebuf[..],1,1,1);encoded:[65536]u8;work:[65536]u8;zwork:[1]PiZ;n:=pi_png(img,zwork[..],work[..],encoded[..]);if n<0 {return 1;}w[0].tex[0]="glade-white";w[0].encoded[0]=txt_keep(w[0].txt[..],cast(string)encoded[0..<n]);w[0].nt=1;
  gp_ground(w[..],w[0].layers);
  for i:0..<CG_ITEMS {item:=cg_item(i);if !cg_visible(item) {continue;}stem:=ifx item.kind==0 then "CommonTree_" else ifx item.kind==1 then "Birch_" else "Rock_Big_";nb:[64]u8;s:[1]Sb;s[0]=sb(nb[..]);sb_put(s[..],stem);sb_int(s[..],ifx item.kind==2 then item.variant+1 else item.variant+1);gp_mesh(w[..],g[..],iw[..],root,sb_text(s[..]),item.x,item.z,item.scale,item.yaw,item.tint);}
- for i:0..<70 {fi:=f32(i);x:=(cg_hash(fi,24)-0.5)*24;z:=-1-cg_hash(fi,25)*24;if cg_path(x,z)>0.55 {continue;}stem:=ifx i%4==0 then "Bush_Common_Flowers" else ifx i%4==1 then "Fern_1" else ifx i%4==2 then "Mushroom_Common" else "Flower_1_Group";gp_mesh(w[..],g[..],iw[..],root,stem,x,z,0.35+cg_hash(fi,30)*0.45,fi,[3]f32.[0.35,0.78,0.055]);}
- for i:0..<8 {pos:=[8][2]f32.[[2]f32.[-2.6,-3],[2]f32.[-2.4,-5],[2]f32.[1.4,-2],[2]f32.[1.65,-2.2],[2]f32.[1.9,-2],[2]f32.[2.1,-3],[2]f32.[-1.5,-1],[2]f32.[-2.0,-1.5]];stem:=ifx i==0 then "Fern_1" else ifx i==1 then "Bush_Common_Flowers" else ifx i<6 then "Mushroom_Common" else "Flower_1_Group";size:f32=ifx i==0 then 0.22 else ifx i==1 then 0.70 else ifx i<6 then 0.75 else 0.45;gp_mesh(w[..],g[..],iw[..],root,stem,pos[i][0],pos[i][1],size,f32(i),[3]f32.[0.36,0.80,0.08]);}
+ for i:0..<70 {fi:=f32(i);x:=(cg_hash(fi,24)-0.5)*24;z:=-1-cg_hash(fi,25)*24;if cg_path(x,z)>0.55 {continue;}stem:=ifx i%4==0 then "Bush_Common_Flowers" else ifx i%4==1 then "Fern_1" else ifx i%4==2 then "Mushroom_Common" else "Flower_1_Group";gp_mesh(w[..],g[..],iw[..],root,stem,x,z,0.25+cg_hash(fi,30)*0.35,fi,[3]f32.[0.35,0.78,0.055]);}
+ for i:0..<8 {pos:=[8][2]f32.[[2]f32.[-2.6,-3],[2]f32.[-2.4,-5],[2]f32.[1.4,-2],[2]f32.[1.65,-2.2],[2]f32.[1.9,-2],[2]f32.[2.1,-3],[2]f32.[-1.1,1],[2]f32.[-1.7,0.5]];stem:=ifx i==0 then "Fern_1" else ifx i==1 then "Bush_Common_Flowers" else ifx i<6 then "Mushroom_Common" else "Flower_1_Group";size:f32=ifx i==0 then 0.22 else ifx i==1 then 0.70 else ifx i<6 then 0.75 else 0.40;gp_mesh(w[..],g[..],iw[..],root,stem,pos[i][0],pos[i][1],size,f32(i),[3]f32.[0.36,0.80,0.08]);}
+ gp_mesh(w[..],g[..],iw[..],root,"Fern_1",-4.4,-7,0.32,1.1,[3]f32.[0.32,0.65,0.045]);
+ gp_mesh(w[..],g[..],iw[..],root,"Plant_3",2.4,-1.5,0.45,0.8,[3]f32.[1,0.56,0.06]);
+ // The reference's loose stones and lower left woodland break up the path edges.
+ for i:0..<12 {fi:=f32(i);z:=-2-fi*1.7;x:=cg_path_x(z)+(ifx i%2==0 then -1.0f32 else 1.2f32);gp_mesh(w[..],g[..],iw[..],root,"Pebble_Round_1",x,z,0.3+cg_hash(fi,42)*0.2,fi,[3]f32.[0.7,0.7,0.5]);}
  cb:[262144]u8;c:[1]Sb;c[0]=sb(cb[..]);lines_at:=0;while lines_at<cat.count {e:=lines_at;while e<cat.count && cat[e]!='\n' {e+=1;}line:=cat[lines_at..<e];lines_at=e+1;if starts(line,"bytes ") {sb_put(c[..],"bytes 0000000000\n");}else {sb_put(c[..],line);sb_byte(c[..],'\n');}}sb_put(c[..],"\nL 250 Quaternius Stylized Nature MegaKit Source|CC0 1.0 Universal|https://quaternius.com/\nC glade/environment ");sb_int(c[..],in/4);sb_byte(c[..],' ');sb_int(c[..],w[0].ni);sb_put(c[..]," 250 ");sb_int(c[..],vn/4);sb_byte(c[..],' ');sb_int(c[..],w[0].nv);sb_put(c[..]," 0\n");
  for i:0..<w[0].nt {sb_put(c[..],"T ");sb_int(c[..],w[0].layers+i);sb_put(c[..]," glade/");sb_int(c[..],i);sb_put(c[..]," 250\n");}
  count:=ne+w[0].nt;at:=32+count*48;gp_word(w[0].out[..],0,0x314b5056);put_u32(w[0].out[..],4,count);put_u32(w[0].out[..],12,33554432);put_u32(w[0].out[..],16,32);put_u32(w[0].out[..],20,at);
