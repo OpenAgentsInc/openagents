@@ -1,0 +1,193 @@
+qualification process priority (nice): 0
+everglade-drift: room 127.0.0.1:9350, page 127.0.0.1:9351, results in /tmp/issue12980-chord
+profile local: round trip 0 ms
+  native room ready after 1 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -750,-56280 mm, Bram -150,-7050 cm, Tilda 180,-4500 cm
+  gravity placement: you -830,-56160 mm, Bram -150,-7050 cm, Tilda 180,-4500 cm
+  step wos
+  step ww
+  step held
+  scripted Hold Person target: room 40, offline 40
+  step folk
+  step end
+  transmitted inputs: origins 159/154, end steps 1790/1790, identical true
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker workload: 1929 ticks in completed cost batches, p50 311 us, p95 505 us, p99 600 us)
+  worker mean tick parts (us): move=32 abilities=51 town=15 spells=6 people=4 rules=12 write=29 send=0 core=355 flush=15 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 505 us, p99 600 us, budget 11000 us at p95: within)
+ok    local scripted Hold Person selects the same person
+ok    local background players stayed at least 32 m away
+ok    local gravity safely reaches and drops a townsperson
+ok    local worker tick p95
+ok    local movement inputs took effect (mm)
+ok    local jump inputs took effect (cm)
+ok    local position (in your heading, since the step)
+ok    local camera heading
+ok    local lift height
+ok    local Reverse Gravity shown
+ok    local Reverse Gravity particles
+ok    local Wind Wall shown
+ok    local Wind Wall particles
+ok    local Wall of Stone shown
+ok    local Wall of Stone panels
+ok    local spell and condition particles
+ok    local hotbar slots
+ok    local condition on you
+ok    local condition on others
+DRIFT local conditions on the town's people: at 41038 ms (step ww): person 35 has condition bits 18432 versus 0
+ok    local your engine conditions
+ok    local stables down
+ok    local plate text
+ok    local status lines
+ok    local camera jump, offline
+ok    local camera jump, room
+ok    local camera turn with no look, offline
+ok    local camera turn with no look, room
+ok    local corrections
+ok    local a townsperson held
+ok    local NPC speed against clip
+profile 100: round trip 100 ms, jitter 30 ms, 2% lost
+  native room ready after 1 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -530,-56560 mm, Bram -450,-5950 cm, Tilda 180,-4885 cm
+  gravity placement: you -530,-56510 mm, Bram -450,-5950 cm, Tilda 180,-4887 cm
+  step wos
+  step ww
+  step held
+  scripted Hold Person target: room 38, offline 38
+  step folk
+  step end
+  transmitted inputs: origins 157/154, end steps 1793/1793, identical true
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker workload: 1927 ticks in completed cost batches, p50 310 us, p95 486 us, p99 606 us)
+  worker mean tick parts (us): move=30 abilities=51 town=16 spells=6 people=4 rules=12 write=29 send=0 core=348 flush=13 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 486 us, p99 606 us, budget 11000 us at p95: within)
+ok    100 scripted Hold Person selects the same person
+ok    100 background players stayed at least 32 m away
+ok    100 gravity safely reaches and drops a townsperson
+ok    100 worker tick p95
+ok    100 movement inputs took effect (mm)
+ok    100 jump inputs took effect (cm)
+ok    100 position (in your heading, since the step)
+ok    100 camera heading
+ok    100 lift height
+ok    100 Reverse Gravity shown
+ok    100 Reverse Gravity particles
+ok    100 Wind Wall shown
+ok    100 Wind Wall particles
+ok    100 Wall of Stone shown
+ok    100 Wall of Stone panels
+ok    100 spell and condition particles
+ok    100 hotbar slots
+ok    100 condition on you
+ok    100 condition on others
+DRIFT 100 conditions on the town's people: at 27295 ms (step rg): person 28 has condition bits 18432 versus 0
+ok    100 your engine conditions
+ok    100 stables down
+ok    100 plate text
+ok    100 status lines
+ok    100 camera jump, offline
+ok    100 camera jump, room
+ok    100 camera turn with no look, offline
+ok    100 camera turn with no look, room
+ok    100 corrections
+ok    100 a townsperson held
+ok    100 NPC speed against clip
+profile 250: round trip 250 ms, jitter 30 ms, 2% lost
+  native room ready after 0 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -530,-56280 mm, Bram -165,-6800 cm, Tilda 450,-5950 cm
+  gravity placement: you -440,-56280 mm, Bram -166,-6785 cm, Tilda 450,-5950 cm
+  step wos
+  step ww
+  step held
+  scripted Hold Person target: room 35, offline 35
+  step folk
+  step end
+  transmitted inputs: origins 156/150, end steps 1791/1791, identical true
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker workload: 1922 ticks in completed cost batches, p50 305 us, p95 520 us, p99 600 us)
+  worker mean tick parts (us): move=26 abilities=53 town=16 spells=6 people=4 rules=12 write=30 send=0 core=350 flush=11 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 520 us, p99 600 us, budget 11000 us at p95: within)
+ok    250 scripted Hold Person selects the same person
+ok    250 background players stayed at least 32 m away
+ok    250 gravity safely reaches and drops a townsperson
+ok    250 worker tick p95
+ok    250 movement inputs took effect (mm)
+ok    250 jump inputs took effect (cm)
+ok    250 position (in your heading, since the step)
+ok    250 camera heading
+ok    250 lift height
+ok    250 Reverse Gravity shown
+ok    250 Reverse Gravity particles
+ok    250 Wind Wall shown
+ok    250 Wind Wall particles
+ok    250 Wall of Stone shown
+ok    250 Wall of Stone panels
+ok    250 spell and condition particles
+ok    250 hotbar slots
+ok    250 condition on you
+ok    250 condition on others
+ok    250 conditions on the town's people
+ok    250 your engine conditions
+ok    250 stables down
+ok    250 plate text
+ok    250 status lines
+ok    250 camera jump, offline
+ok    250 camera jump, room
+ok    250 camera turn with no look, offline
+ok    250 camera turn with no look, room
+ok    250 corrections
+ok    250 a townsperson held
+ok    250 NPC speed against clip
+
+| probe | local | 100 | 250 |
+|---|---|---|---|
+| scripted Hold Person selects the same person | ok | ok | ok |
+| background players stayed at least 32 m away | ok | ok | ok |
+| gravity safely reaches and drops a townsperson | ok | ok | ok |
+| worker tick p95 | ok | ok | ok |
+| movement inputs took effect (mm) | ok | ok | ok |
+| jump inputs took effect (cm) | ok | ok | ok |
+| position (in your heading, since the step) | ok | ok | ok |
+| camera heading | ok | ok | ok |
+| lift height | ok | ok | ok |
+| Reverse Gravity shown | ok | ok | ok |
+| Reverse Gravity particles | ok | ok | ok |
+| Wind Wall shown | ok | ok | ok |
+| Wind Wall particles | ok | ok | ok |
+| Wall of Stone shown | ok | ok | ok |
+| Wall of Stone panels | ok | ok | ok |
+| spell and condition particles | ok | ok | ok |
+| hotbar slots | ok | ok | ok |
+| condition on you | ok | ok | ok |
+| condition on others | ok | ok | ok |
+| conditions on the town's people | DRIFT | DRIFT | ok |
+| your engine conditions | ok | ok | ok |
+| stables down | ok | ok | ok |
+| plate text | ok | ok | ok |
+| status lines | ok | ok | ok |
+| camera jump, offline | ok | ok | ok |
+| camera jump, room | ok | ok | ok |
+| camera turn with no look, offline | ok | ok | ok |
+| camera turn with no look, room | ok | ok | ok |
+| corrections | ok | ok | ok |
+| a townsperson held | ok | ok | ok |
+| NPC speed against clip | ok | ok | ok |
+fails

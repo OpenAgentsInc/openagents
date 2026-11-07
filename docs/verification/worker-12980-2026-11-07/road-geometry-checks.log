@@ -1,0 +1,3 @@
+ok   #test gravity rehearsal clears the lintel and contains both loose stable props with margin (1 case, 900 steps, 0 ms)
+1 of 179 checks (--only 'gravity rehearsal clears'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

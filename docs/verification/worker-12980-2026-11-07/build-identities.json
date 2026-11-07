@@ -1,0 +1,78 @@
+{
+  "source_base": "fed5b35f95b6546ab5234d1d1c22c74ed3c605f1",
+  "build_host": "coderos-4080 (Linux)",
+  "runtime_host": "Apple M5 Max, macOS headless muted Chrome 157, hardware WebGPU/Metal, nice 0",
+  "compiler": {
+    "version": "0.52.0",
+    "linux_sha256": "efaeeae664be88349d3aea9106867fcb2a8d33dc06d2679bac89b2809aeb55b3",
+    "mac_sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e"
+  },
+  "toolchain": {
+    "clang": "21.1.8",
+    "clang_sha256": "6f22bae8638b45f985f6aed4c9aa861642782a43b0dab6a55f755593c2be9374",
+    "binaryen": "129",
+    "wasm_opt_sha256": "155a1baba28895b2ef8d4ab655f6759b7e5ee641446c43eb2e7c49d474dfc69c"
+  },
+  "c_flags": {
+    "river": [
+      "-O3",
+      "-fno-unroll-loops",
+      "-flto"
+    ],
+    "other_units": "unchanged -Os; Coax units retain LTO",
+    "math": [
+      "-ffp-contract=off",
+      "-fno-fast-math",
+      "-fno-builtin-sin",
+      "-fno-builtin-sinf",
+      "-fno-builtin-cos",
+      "-fno-builtin-cosf",
+      "-fno-builtin-tan",
+      "-fno-builtin-tanf",
+      "-fno-builtin-exp",
+      "-fno-builtin-expf",
+      "-fno-builtin-log",
+      "-fno-builtin-logf",
+      "-fno-builtin-pow",
+      "-fno-builtin-powf"
+    ]
+  },
+  "binaryen_flags": [
+    "-O3"
+  ],
+  "strict_historical_byte_limit": 1060000,
+  "product_budget_unchanged": 1122000,
+  "candidate_bytes": 1052572,
+  "candidate_sha256": "b11eeba4157d922a57536942627477b9fb693e578b486e240b7492a5e34d6a57",
+  "private_retention": "~/.openagents/aethyrforge/worker-12980/2026-11-07/",
+  "local_sources": {
+    "coax/web/room/worker.coax": "74b35dab0f497c69214c1a3ced6b3cef798058a5aba612bbc185439b4dd5f064",
+    "coax/web/room/worker-profile.coax": "c253720c51cdbe3ee73cc62e5df7a8a1511ac68b361c3d522a1ee3826af7f0b4",
+    "coax/web/everglade-drift.coax": "6090136246299a40e50cfb11bc093e8b5142d56b3a8c921b86c0ee11e4aa8e38",
+    "coax/web/everglade-drift.js": "0859c5b7b67fea0812c0b15884b168e4347979741dc1ce54f2874da4a58b82b9",
+    "coax/web/drift-placement.coax": "0afa5b5ea16a38f7bf6c036a85d1db39d296b5bfeca3d71738305d4d97849287"
+  },
+  "metrics": [
+    {
+      "profile": "local",
+      "ticks": 1955,
+      "p50_us": 321,
+      "p95_us": 525,
+      "p99_us": 640
+    },
+    {
+      "profile": "100",
+      "ticks": 1951,
+      "p50_us": 330,
+      "p95_us": 505,
+      "p99_us": 635
+    },
+    {
+      "profile": "250",
+      "ticks": 1961,
+      "p50_us": 336,
+      "p95_us": 566,
+      "p99_us": 656
+    }
+  ]
+}

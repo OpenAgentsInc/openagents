@@ -1,0 +1,5 @@
+1062884 oversized-original.wasm
+1064349 oversized-current.wasm
+1056994 rejected-river-o2.wasm
+1052572 source/apps/openagents-web/build/everglade-room.wasm
+4236799 total

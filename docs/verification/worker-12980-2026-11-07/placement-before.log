@@ -1,0 +1,6 @@
+FAIL #test the gravity rehearsal admits the closed open-road rectangle only (0 ms)
+coax/web/drift-placement.coax:5:3: error[E0406]: assertion failed
+    #assert drp_road(500,-58000) && drp_road(2500,-58000);
+    ^
+  note: in #test the gravity rehearsal admits the closed open-road rectangle only
+1 check, 0 passed, 1 failed

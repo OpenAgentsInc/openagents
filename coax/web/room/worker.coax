@@ -14,6 +14,7 @@
 #load "../../lib/sys/args.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/crypto/sha256_workspace.coax";
+#load "worker-profile.coax";
 
 cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 
@@ -345,6 +346,7 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
     // Optimize river buoyancy for speed; the remaining units retain size
     // optimization under the same strict arithmetic and final size gate.
     argv[c] = ifx dev then "-O1" else ifx jb==5 then "-O3" else "-Os"; c += 1;
+    if wk_bound_unroll(tool_os()==TOOL_LINUX,dev,jb) {argv[c]="-fno-unroll-loops";c+=1;}
     if proc_has_env("COAX_ROOM_PROFILE") {argv[c]="-DCOAX_ROOM_PROFILE=1";c+=1;}
     if !dev && jb != 0 { argv[c] = "-flto"; c += 1; }
     for x: [3] string.["-ffp-contract=off", "-fno-fast-math", "-w"] { argv[c] = x; c += 1; }

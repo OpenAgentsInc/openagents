@@ -1,0 +1,14 @@
+// The paired gravity cast stands beyond the gate lintel, with both loose
+// stable props safely inside its field, rather than grazing their centers.
+#authority;
+#test "the gravity rehearsal admits the closed open-road rectangle only" {
+  #assert drp_road(500,-58000) && drp_road(2500,-58000);
+  #assert drp_road(500,-59500) && drp_road(2500,-59500);
+  #assert drp_road(1500,-58800);
+  #assert !drp_road(499,-58800) && !drp_road(2501,-58800);
+  #assert !drp_road(1500,-57999) && !drp_road(1500,-59501);
+  #assert !drp_road(-30,-56400) && !drp_road(290,-56280);
+}
+drp_road :: (x:int,z:int)->bool #effects() {
+  return x>=500 && x<=2500 && z<= -58000 && z>= -59500;
+}

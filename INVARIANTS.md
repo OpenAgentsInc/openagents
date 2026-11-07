@@ -1694,6 +1694,16 @@ still refuses clearance. `drift-snapshot.coax` is authority (10 mutants killed,
 zero survivors). Neither the 32 m clearance nor the 600 µs supplemental worker
 gate changes. Current target evidence: `docs/verification/worker-12981-2026-11-07/`.
 
+The Linux release worker retains river's C `-O3` with loop unrolling disabled;
+Mac and development profiles and all strict arithmetic flags are unchanged.
+`worker-profile.coax` admits that flag only for the Linux release river unit
+(4 mutants killed, zero survivors). Paired replay hosts receive the same complete
+control answer. Shifted taps wait through a processed input step. The gravity
+rehearsal uses ordinary movement to clear the gate lintel and place both loose
+stable props safely inside its field; it still contains both complete NPC
+patrols. `drift-placement.coax` bounds that open-road rectangle (11 mutants killed,
+zero survivors). See `docs/verification/worker-12980-2026-11-07/`.
+
 
 Aethyrforge binds `local:` room sockets to its existing native room process,
 using the same text frames. Browsers retain the Wasm Worker. Native ticketless

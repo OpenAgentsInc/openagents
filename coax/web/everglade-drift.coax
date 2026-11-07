@@ -54,6 +54,7 @@
 #load "../../aethyr/session/lifecycle.coax";   // each host's room tick budget (#12856)
 #load "../../aethyr/net/record.coax";
 #load "drift-hold.coax";
+#load "drift-placement.coax";
 #load "../../aethyr/render/tests/qualification-files.coax";
 getpriority :: (which:s32,who:u32)->s32 #foreign #effects(all);
 
@@ -376,7 +377,10 @@ dr_both :: (p: DrPair, down: bool, key: string, code: string, vk: int, shift: bo
 }
 dr_both_key :: (p: DrPair, down: bool, key: string, code: string, vk: int) { dr_both(p, down, key, code, vk, false); }
 dr_tap :: (p: DrPair, key: string, code: string, vk: int) {
-  dr_both_key(p, true, key, code, vk);
+  dr_tap_shift(p,key,code,vk,false);
+}
+dr_tap_shift :: (p:DrPair,key:string,code:string,vk:int,shift:bool) {
+  dr_both(p, true, key, code, vk,shift);
   // A slow rendered frame can drain both queued edges before any input step
   // sees the key. Observe the press through a step on both pages first.
   if p.at.count>0 {
@@ -387,7 +391,7 @@ dr_tap :: (p: DrPair, key: string, code: string, vk: int) {
     }
     #assert seen;
   }
-  proc_sleep(80);dr_both_key(p, false, key, code, vk);
+  proc_sleep(80);dr_both(p, false, key, code, vk,shift);
 }
 dr_mark :: (p: DrPair, name: string) {
   if p.shots.count > 0 && name != "start" && name != "raid" { dr_shots(p, name); }
@@ -485,6 +489,14 @@ dr_rg_patrols :: (x: int, z: int) -> bool {
   for i: 0..<7 { if !dr_rg_margin(x, z, points[i * 2], points[i * 2 + 1]) { return false; } }
   return true;
 }
+#test "gravity rehearsal clears the lintel and contains both loose stable props with margin" {
+  #assert drp_road(1500,-58800) && dr_rg_patrols(1500,-58800);
+  // A convex circle contains the whole admitted rectangle when all four
+  // corners fit. Raw observed stable props: meshes 31/32 at these cm.
+  for x:[2]int.[500,2500] {for z:[2]int.[-58000,-59500] {
+    #assert dr_rg_margin(x,z,1240,-6480) && dr_rg_margin(x,z,782,-6900);
+  }}
+}
 #test "gravity placement contains both complete patrols, not only Bram's current point" {
   #assert !dr_rg_patrols(-6300, -60450);   // Tilda's Inn Street endpoint leaves the cylinder
   #assert !dr_rg_patrols(-15530, -56700);  // Bram's road endpoint leaves it
@@ -497,7 +509,7 @@ dr_rg_ready :: (c: [] Cdp) -> bool {
   nx := dr_int(c, "__dr.probe(600)", 999999); nz := dr_int(c, "__dr.probe(601)", 999999);
   tx := dr_int(c, "__dr.probe(603)", 999999); tz := dr_int(c, "__dr.probe(604)", 999999);
   print("  gravity placement: you %,% mm, Bram %,% cm, Tilda %,% cm\n", x, z, nx, nz, tx, tz);
-  return dr_rg_patrols(x, z) && dr_rg_margin(x, z, nx, nz) && dr_rg_margin(x, z, tx, tz) && dr_int(c, "__dr.probe(700)===1 && __dr.probe(701)===1 ? 1:0", 0) == 1;
+  return drp_road(x,z) && dr_rg_patrols(x, z) && dr_rg_margin(x, z, nx, nz) && dr_rg_margin(x, z, tx, tz) && dr_int(c, "__dr.probe(700)===1 && __dr.probe(701)===1 ? 1:0", 0) == 1;
 }
 #test "the rehearsal explicitly faces north from either initial camera heading" {
  #assert dr_north_drag(0)== -571 && dr_north_drag(3142)==0 && dr_north_drag(-3142)==0;
@@ -541,13 +553,16 @@ dr_script :: (p: DrPair, dir: string) -> bool {
   dr_both_key(p,true,"s","KeyS",83);proc_sleep(300);dr_both_key(p,false,"s","KeyS",83);
   dr_both_key(p,true,"d","KeyD",68);proc_sleep(2000);dr_both_key(p,false,"d","KeyD",68);
   dr_both_key(p,true,"w","KeyW",87);proc_sleep(500);dr_both_key(p,false,"w","KeyW",87);proc_sleep(500);
+  // Clear the lintel before rising, and keep the stable props well inside
+  // the field instead of clipping their centers at its 15.24 m boundary.
+  dr_both_key(p,true,"w","KeyW",87);proc_sleep(300);dr_both_key(p,false,"w","KeyW",87);
+  dr_both_key(p,true,"d","KeyD",68);proc_sleep(200);dr_both_key(p,false,"d","KeyD",68);proc_sleep(500);
   dr_mark(p, "rg");
   rg_ready := dr_rg_ready(p.a); rg_ready_b := dr_rg_ready(p.b);
   // a round (6 s) between casts: the rules' one action a round
   dr_tap(p, "5", "Digit5", 53); proc_sleep(6000); dr_tap(p, "5", "Digit5", 53); proc_sleep(6500);
   dr_mark(p, "wos");
-  dr_both(p, true, "!", "Digit1", 49, true); proc_sleep(80);
-  dr_both(p, false, "!", "Digit1", 49, true); proc_sleep(6500);
+  dr_tap_shift(p,"!","Digit1",49,true);proc_sleep(6500);
   // a step aside first, so the Wind Wall (4 m ahead) isn't laid into the Wall of Stone
   dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(1500); dr_both_key(p, false, "a", "KeyA", 65); proc_sleep(500);
   dr_mark(p, "ww");
@@ -1015,6 +1030,18 @@ DR_DEV_KEY :: "local-development-room-ticket-key-not-a-secret";   // room-dev.co
 // the same spells harmed different people, so the WANTED level, the watch's blows and the
 // conditions on the town came out differently in the two.
 DR_CONTROL_PAIR :: "pvp 1\nedit 1\nlevels 0 2\nevent 0 0 3 12 6 1 3 3 31 1 2 1 100 15 0 0\ndice fixed\n";
+#test "paired worker controls preserve the complete native control answer" {
+  q:[1]Buf;dr_pair_control_js(q[..]);
+  #assert btext(q[..])=="coaxial.roomHost && coaxial.roomHost.control ? coaxial.roomHost.control(\"pvp 1\\nedit 1\\nlevels 0 2\\nevent 0 0 3 12 6 1 3 3 31 1 2 1 100 15 0 0\\ndice fixed\\n\") : 0";
+}
+dr_pair_control_js :: (q:[]Buf) {
+  data:[4096]u8;j:[1]Jo;jo_start(j[..],data[..]);jo_str(j[..],DR_CONTROL_PAIR);
+  bput(q,"coaxial.roomHost && coaxial.roomHost.control ? coaxial.roomHost.control(");bput(q,jo_text(j[..]));bput(q,") : 0");
+}
+dr_pair_controls :: (c:[]Cdp,worker:bool)->bool {
+  if !worker {return true;}
+  q:[1]Buf;dr_pair_control_js(q[..]);return dr_int(c,btext(q[..]),0)==1;
+}
 // The offline page's room on the local host (--offline worker) takes the dice line as the room page's
 // room takes it from its control file (coax/web/room-worker.js roomHost.control).
 dr_dice :: (c: [] Cdp, worker: bool) {
@@ -1067,8 +1094,7 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
   if cdp_launch_background(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch_background(cb[..], 1280, 800, "coax-drift-b-") {
       script:[1]Buf;
-      if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) && dr_native_ready(run,ca[..]) {
-        dr_dice(ca[..], run.worker && !run.native);
+      if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) && dr_native_ready(run,ca[..]) && dr_pair_controls(ca[..],run.worker && !run.native) {
         proc_sleep(2500);
         deadline := proc_now_ms() + 12000;
         while !fs_exists(btext(ready_path[..])) && proc_now_ms() < deadline { proc_sleep(100); }
@@ -1146,6 +1172,8 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
           _ := fs_write(btext(cn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "__dr.conds.join('\\n') + '\\n'", ct[..]));
           cn[0].n = 0; bput(cn[..], run.dir); bput(cn[..], "/facts-"); bput(cn[..], profile); bput(cn[..], ifx side == 0 then "-offline.json" else "-room.json");
           _ = fs_write(btext(cn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "JSON.stringify(__dr.facts)", ct[..]));
+          cn[0].n = 0; bput(cn[..], run.dir); bput(cn[..], "/commands-"); bput(cn[..], profile); bput(cn[..], ifx side == 0 then "-offline.json" else "-room.json");
+          _ = fs_write(btext(cn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "JSON.stringify({commands:__dr.commands,messages:__dr.messages,texts:__dr.texts,marks:__dr.marks})", ct[..]));
         }
         // when each key reached each page (wall ms CODE down|up): keys-PROFILE-offline.txt, -room.txt
         for side: 0..<2 {
@@ -1446,7 +1474,7 @@ tool_main :: () -> int #export_c #effects(all) {
   dir := args_value(a[..], "--out", btext(db[..]));
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
   inputs:[1]RtqInputs;
-  for file:[11]string.["coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
+  for file:[14]string.["coax/web/drift-placement.coax","coax/web/room/worker.coax","coax/web/room/worker-profile.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
     if !rtq_input_add(inputs[..],file) {tool_errln("Cannot fence the actual drift inputs.");return 1;}
   }
   self:[4096]u8;self_n:=cxproc_self_path(self[..]);

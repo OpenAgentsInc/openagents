@@ -11,11 +11,18 @@
   // Observe all published cost batches. Bounds and percentile decisions live
   // in the Coax driver; overflow or malformed samples refuse qualification.
   D.tickSamples = []; D.tickParts = []; D.tickOverflow = false;
+  D.messages = [];
+  const refusal = text => { if (typeof text === "string" && text.startsWith("r ") && D.messages.length < 256) D.messages.push([Math.round(now()),text]); };
+  const NativeSocket = globalThis.WebSocket;
+  globalThis.WebSocket = class extends NativeSocket {
+    constructor(...args) { super(...args); this.addEventListener("message", e => refusal(e.data)); }
+  };
   const NativeWorker = globalThis.Worker;
   globalThis.Worker = class extends NativeWorker {
     constructor(...args) {
       super(...args);
       this.addEventListener("message", ({data:m}) => {
+        if (m?.t === "frame") refusal(m.text);
         if (m?.t !== "cost" || !Array.isArray(m.tickSamplesUs)) return;
         if (D.tickSamples.length + m.tickSamplesUs.length > 8192) { D.tickOverflow = true; return; }
         D.tickSamples.push(...m.tickSamplesUs.map(v => Math.ceil(v)));
@@ -45,6 +52,7 @@
   // other: the two players stood 17 cm apart, and the two towns played out differently round them.
   D.origin = null; D.pend = [];
   D.inputs = []; D.inputOverflow = false;
+  D.commands = [];
   D.correctionTrace = []; D.largeCorrections = []; D.lastReruns = -1;
   D.sstep = () => (D.origin == null || !D.x || !D.state ? -1 : D.probe(15) - D.origin);
   D.at = (step, press) => { D.pend.push([D.origin + step, press]); return 1; };
@@ -67,7 +75,7 @@
           const raw = new TextDecoder().decode(new Uint8Array(mem.buffer, ptr, len));
           if (raw.startsWith("I ")) {
             if (D.inputs.length < 8192) D.inputs.push(raw); else D.inputOverflow = true;
-          }
+          } else if (D.commands.length < 256) D.commands.push([Math.round(now()), raw]);
         }
         return send(id, ptr, len);
       };
