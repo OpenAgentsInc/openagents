@@ -264,6 +264,9 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   if !net_on(s) { return; }
   n := net_of(s);
   url := fact(facts, "url");
+  // ?stage=echo is a staged shot: you stand where the stage puts you (everglade-raid-preview.coax
+  // rp_facts), so it opens no socket and no local host, whose seat would put you at the room's spawn
+  alone := golden || net_query(url, "stage") == "echo";
   n[0].local_relay = false;
   sl := 0; k := 0;
   while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
@@ -286,11 +289,11 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   m = wire_put(n[0].url[..], m, NET_GAME);
   m = wire_put(n[0].url[..], m, "/");
   n[0].url_n = m;
-  jn_facts(s, n, url, room, golden);   // the instance: named, listed or a local server's (everglade-join.coax)
-  n[0].want = !golden && start < k && (n[0].code_n > 0 || n[0].join[0].list_due);
+  jn_facts(s, n, url, room, alone);   // the instance: named, listed or a local server's (everglade-join.coax)
+  n[0].want = !alone && start < k && (n[0].code_n > 0 || n[0].join[0].list_due);
   // ?offline=worker: the local host only, the rooms never asked (the drift check's side)
-  only := !golden && net_query(url, "offline") == "worker" && !n[0].local_relay && n[0].join[0].list_due;
-  n[0].local_ok = !golden && !n[0].local_relay && !n[0].join[0].test && room == "everglade";
+  only := !alone && net_query(url, "offline") == "worker" && !n[0].local_relay && n[0].join[0].list_due;
+  n[0].local_ok = !alone && !n[0].local_relay && !n[0].join[0].test && room == "everglade";
   n[0].local_host = false; n[0].asking = false; n[0].ask_at = 0; n[0].ask_tries = 0; n[0].room_sock = -1; n[0].room_wait = false;
   if only { net_local_host(n); n[0].local_host = true; }
   else if n[0].local_ok {
@@ -3138,6 +3141,9 @@ net_test_rooms :: (s: [] Everglade) {
   // ?offline=worker: the local host only, the room never asked
   net_facts(o[..], "url=https://openagents.com/worlds/everglade?offline=worker\n", "everglade", false);
   #assert no[0].local_host && !no[0].asking;
+  // ?stage=echo: a staged shot sits in no room, not even the local host's
+  net_facts(o[..], "url=https://openagents.com/worlds/everglade?stage=echo&clock=0.95\n", "everglade", false);
+  #assert !no[0].want && !no[0].local_host && !no[0].local_ok && !no[0].asking;
   // a page with no socket attached is no room's
   t: [1] Everglade;
   #assert !net_live(t[..]) && net_room(t[..], "everglade") == "everglade" && net_probe(t[..], 0) == -1;

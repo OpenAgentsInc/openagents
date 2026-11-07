@@ -768,6 +768,7 @@ static bool has_line(uint32_t length, const char *prefix) {
 EXPORT("coaxial_character_v1") cx_face_addr coaxial_character_v1(cx_face_addr state) { return city(state)->started && everglade_character_on(at(state)) ? (cx_face_addr)(uintptr_t)city(state)->character.e : 0; }
 EXPORT("coaxial_character_pack_v1") cx_face_addr coaxial_character_pack_v1(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)everglade_character_pack().data; }
 EXPORT("coaxial_character_pack_len_v1") uint32_t coaxial_character_pack_len_v1(cx_face_addr state) { (void)state; return (uint32_t)everglade_character_pack().count; }
+EXPORT("coaxial_character_ready_v1") void coaxial_character_ready_v1(cx_face_addr state, int32_t ready) { if (city(state)->started) everglade_character_ready(at(state), ready != 0); }
 EXPORT("coaxial_character_storage_v1") uint32_t coaxial_character_storage_v1(void) { return (uint32_t)everglade_character_storage(); }
 EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { return city(state)->started ? (uint32_t)everglade_draws(at(state)) : 0u; }

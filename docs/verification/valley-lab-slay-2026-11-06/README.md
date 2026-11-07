@@ -500,20 +500,24 @@ depth buffer, so the strands stay sharp at her focus.
 
 ### Echo in Everglade (N, ?stage=echo)
 
-Echo stands a metre to the player's right at the Cultist Raid spawn on the
-commons, and the camera orbits her: close on her face, then back, once
-round (her back mid-turn), and wide on the two of them. The two pages
-render apart on one shared path, `verse/valley/echo-orbit.coax`, and the
-frames are laid over each other.
+Everglade draws Echo itself, through the host's character pass
+(`docs/verse/2026-11-06-native-hero-characters.md`, R1 and R3). Valley Lab
+no longer renders a plate for her, so its N (her orbit through Everglade's
+lens) and K (her coverage matte) are gone, and so is Everglade's J (a plate
+without the player).
 
-- **Everglade** (`/worlds/everglade?stage=echo&clock=0.95&weather=rain`):
-  N starts the orbit, J hides the player for a second plate, and the HUD is
-  off. The clock and weather pins make the two plates match.
-- **Valley Lab** (N): Echo on the same path through Everglade's lens
-  (`fy = clamp(aspect * 1.25, 0.95, 1.9)`), relit for rainy night (a dim
-  warm key, a cool fill, no orb light), with the skin blur at f/16 and no
-  HUD. K swaps the frame for her coverage matte (the aux target's `z`).
-- **Composite:** Echo over the plate through her matte, a contact shadow
-  projected through the same camera, and the player's matte (the
-  difference between the two plates) on top of her where he is nearer the
-  camera.
+- **Where she stands:** `/worlds/everglade?stage=echo` puts the player at
+  the Cultist Raid spawn on the commons, facing the South Gate, and Echo a
+  metre to his right, facing it too. She loops her rig's idle clip, plays
+  her idle face segments, and blinks, glances and breathes over them.
+- **A body:** once her pass draws her, she is one capsule
+  (`aethyr/query.coax`) among the bodies the player walks into, and the
+  follow camera stops short of her.
+- **The orbit:** N runs `verse/valley/echo-orbit.coax` as a staged camera:
+  close on her face, then back, once round (her back mid-turn), and wide on
+  the two of them. It holds its last frame until the player moves. The HUD
+  is off.
+- **Recording:** `coax/web/everglade-echo-frames.coax URL OUTDIR clip`
+  writes the orbit's 217 frames at 1920x1080, one each 1/24 s, for
+  `ffmpeg -framerate 24`. Pin `clock=0.95&weather=rain` for the rainy
+  night.

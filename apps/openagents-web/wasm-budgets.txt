@@ -95,7 +95,8 @@ valleylab 160000
 # The depth-of-field lens uniforms and the spell orbit camera (M): 101,258 bytes.
 valleycanyon 104000
 # The character pass's runtime beside a world (Echo's idle body and face, pack admission, the SceneLights block): 41,715 bytes.
-character-host 45000
+# Her idle life (aethyr/character/idle.coax: blinks, glances, breath) and her placement from the world's stage (#12987): 47,788 bytes.
+character-host 52000
 # Valley's bounded source-page admission, source LOD selection and index-bank ABI add ~4 KiB.
 # Keep the shared canyon code's Slay replay control and face-view hero lighting.
 # Spatial source companions, bounded tree admission and independent exact-range cuts add ~4.3 KiB.

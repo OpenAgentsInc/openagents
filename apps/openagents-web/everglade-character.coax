@@ -1,12 +1,15 @@
 // A detailed character in Everglade through the host's character pass (coax/web/host.js, the
-// "character pass" section; docs/verse/2026-11-06-native-hero-characters.md, R1): ?stage=echo
-// places Echo a metre to your right on the commons (everglade-raid-preview.coax rp_echo_shot), and
+// "character pass" section; docs/verse/2026-11-06-native-hero-characters.md, R1 and R3): ?stage=echo
+// places Echo a metre to your right on the commons (everglade-raid-preview.coax rp_facts), and
 // each frame this fills her SceneLights block (aethyr/render/scene-lights.coax) from the town's own
 // camera, key light, sky, haze, lamps, weather and shadow map, as the town's shaders read them
 // (verse/everglade/gpu.coax eg_paint, eg_lamp_light, eg_haze_colour, eg_light_space). The host
-// asks for her pack by name only when the block is on, so no other page loads anything.
+// asks for her pack by name only when the block is on, so no other page loads anything. Once the
+// host draws her (coaxial_character_ready_v1), she is a body: one capsule (aethyr/query.coax) in the
+// bodies you walk among (everglade_bodies_near) and in the follow camera's way (camera_frame).
 //   coax/bin/coax test apps/openagents-web/everglade.coax
 #load "../../aethyr/render/scene-lights.coax";
+#load "../../aethyr/query.coax";
 
 EG_CHARACTER_PACK :: "valley-slay";
 // Echo's vertex words (verse/valley/slay-gpu-policy.coax slay_gpu_storage): the storage binding the
@@ -16,11 +19,46 @@ EG_CHARACTER_STORAGE :: 187564308;
 EG_CHARACTER_NORMAL_OFFSET :: 0.08;
 EG_CHARACTER_BIAS :: 0.0006;
 
+// Her body: a capsule from her shins to her crown, about her shoulders' half width.
+EG_CHARACTER_BODIES :: 1;
+EG_CHARACTER_LOW :: 0.3;
+EG_CHARACTER_HIGH :: 1.45;
+EG_CHARACTER_RADIUS :: 0.24;
+// The follow camera keeps this clear of her (everglade.coax CAM_TRUNK_CLEAR, a trunk's).
+EG_CHARACTER_CAMERA_CLEAR :: 0.25;
+
 // Whether a character is placed this frame (the block is filled only then), and her pack's name and
 // vertex binding (the host's coaxial_character_v1, coaxial_character_pack_v1, coaxial_character_storage_v1).
 everglade_character_on :: (s: [] Everglade) -> bool #export_c #effects(all) { return s[0].rp.stage == -3 && s[0].pack_ready; }
 everglade_character_pack :: () -> string #export_c #effects(all) { return EG_CHARACTER_PACK; }
 everglade_character_storage :: () -> int #export_c #effects(all) { return EG_CHARACTER_STORAGE; }
+// The host says whether it draws her (her pack admitted and her pass built): only then is she a body,
+// so a page that never gets her pack has nothing unseen in its way.
+everglade_character_ready :: (s: [] Everglade, ready: bool) #export_c #effects(all) { s[0].character_shown = ready; }
+everglade_character_solid :: (s: [] Everglade) -> bool { return everglade_character_on(s) && s[0].character_shown; }
+
+// Her capsule as one body (BODY numbers: one end, the other, the radius) at out[n * 7..], if she is
+// solid; how many bodies that adds.
+everglade_character_bodies :: (s: [] Everglade, out: [] f32, n: int) -> int {
+  if !everglade_character_solid(s) || (n + 1) * 7 > out.count { return 0; }
+  a := s[0].rp.echo_at; k := n * 7;
+  out[k] = a.x; out[k + 1] = a.y + f32(EG_CHARACTER_LOW); out[k + 2] = a.z;
+  out[k + 3] = a.x; out[k + 4] = a.y + f32(EG_CHARACTER_HIGH); out[k + 5] = a.z;
+  out[k + 6] = f32(EG_CHARACTER_RADIUS);
+  return 1;
+}
+// How far the follow camera may back out along r before her capsule (grown by the clearance), by
+// aethyr/query.coax's ray; r.far when she is not solid or not in the way.
+everglade_character_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
+  if !everglade_character_solid(s) { return r.far; }
+  a := s[0].rp.echo_at;
+  cap := [7] f32.[a.x, a.y + f32(EG_CHARACTER_LOW), a.z, a.x, a.y + f32(EG_CHARACTER_HIGH), a.z, f32(EG_CHARACTER_RADIUS) + f32(EG_CHARACTER_CAMERA_CLEAR)];
+  c := Colliders.{ground = -100000, capsules = cap[..]};
+  hit := query_ray(c, world_point(r.from.x, r.from.y, r.from.z), world_point(r.dir.x, r.dir.y, r.dir.z), r.far);
+  // a ray that starts inside her clearance (you pressed against her) keeps its room
+  if !hit.hit || hit.t <= 0 { return r.far; }
+  return hit.t;
+}
 
 // Her block for this frame, from u as everglade_frame left it (camera, style, lamps, weather).
 everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
@@ -28,8 +66,8 @@ everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
   if !everglade_character_on(s) { return; }
   // the camera: the town's own clip rows (view), so her depth and the town's agree
   scl_camera(b, u[U_VIEW..<U_VIEW + 16], SclPoint.{x = u[U_EYE], y = u[U_EYE + 1], z = u[U_EYE + 2]}, width, height);
-  x := RP_YOU[0] + f32(RP_ECHO_SIDE); z := RP_YOU[1];
-  scl_place(b, x, ground_at(s, x, z), z, 3.14159265);   // her front -z, toward the gate, as you face
+  her := s[0].rp.echo_at;
+  scl_place(b, her.x, her.y, her.z, s[0].rp.echo_heading);   // where the stage put her (rp_facts)
   st := STYLE_AT;
   // the key light (eg_paint: the key's colour times its strength) and where it is
   l := v3(u[st + SU_KEY_DIR], u[st + SU_KEY_DIR + 1], u[st + SU_KEY_DIR + 2]);
@@ -90,6 +128,7 @@ EG_AUX_DISTANCE_CPU :: 256.0;
   everglade_character(s[..], u[..], 1280, 720);
   #assert !everglade_character_on(s[..]) && s[0].character[SCL_SIZE] == 0;
   s[0].rp.stage = -3; s[0].pack_ready = true;
+  s[0].rp.echo_at = v3(RP_YOU[0] + 1, 0, RP_YOU[1]); s[0].rp.echo_heading = f32(RP_ECHO_HEADING);
   shot := Shot.{eye = v3(RP_YOU[0] + 1, 2, RP_YOU[1] - 3), at = v3(RP_YOU[0] + 1, 1, RP_YOU[1])};
   view(shot, 1280, 720, u[..], U_VIEW);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
@@ -109,4 +148,25 @@ EG_AUX_DISTANCE_CPU :: 256.0;
   #assert abs(q) < 0.05 && abs(qz - (0.5 - b[SCL_AT + 1] / 240)) < 0.0001;
   // the one lamp, at the dusk's glow
   #assert b[SCL_OUT] == 1 && b[SCL_LIGHTS + 7] == 1;
+}
+
+#test "Echo is a body once the host draws her: one capsule among yours, and the follow camera stops short of her" {
+  s: [1] Everglade;
+  s[0].rp.stage = -3; s[0].pack_ready = true;
+  s[0].rp.echo_at = v3(10, 2, -90); s[0].rp.echo_heading = f32(RP_ECHO_HEADING);
+  out: [21] f32;
+  // not yet drawn: nothing in your way
+  r := OrbitRay.{from = v3(10, 3, -94), dir = v3(0, 0, 1), far = 8};
+  #assert everglade_character_bodies(s[..], out[..], 1) == 0 && everglade_character_room(s[..], r) == 8;
+  everglade_character_ready(s[..], true);
+  #assert everglade_character_bodies(s[..], out[..], 1) == 1 && out[7] == 10 && out[8] == 2.3f32 && out[11] == 3.45f32 && out[13] == f32(EG_CHARACTER_RADIUS);
+  #assert everglade_character_bodies(s[..], out[..], 3) == 0;   // no room left
+  // the camera's ray toward her stops its clearance short of her capsule; one beside her or above her doesn't
+  room := everglade_character_room(s[..], r);
+  #assert abs(room - (4 - f32(EG_CHARACTER_RADIUS) - f32(EG_CHARACTER_CAMERA_CLEAR))) < 0.001;
+  #assert everglade_character_room(s[..], OrbitRay.{from = v3(11, 3, -94), dir = v3(0, 0, 1), far = 8}) == 8;
+  #assert everglade_character_room(s[..], OrbitRay.{from = v3(10, 5, -94), dir = v3(0, 0, 1), far = 8}) == 8;
+  // off the stage she is no body at all
+  s[0].rp.stage = 0;
+  #assert everglade_character_bodies(s[..], out[..], 0) == 0;
 }

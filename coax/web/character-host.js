@@ -215,20 +215,22 @@ export function characterPass(deps) {
       load(current);
     }
     const c = current;
-    if (c.status !== "ready") return false;
+    // the world learns whether she draws: only then is she a body there (coaxial_character_ready_v1)
+    const shown = (on) => { x.coaxial_character_ready_v1?.(state, on ? 1 : 0); return on; };
+    if (c.status !== "ready") return shown(false);
     const { x: r, memory: m, state: s } = c.runtime;
     const into = r.character_block(s);
     new Float32Array(m.buffer, into, c.blockFloats).set(new Float32Array(memory.buffer, block, c.blockFloats));
     const dt = Math.min(Math.max((now - c.last) / 1000, 0), 0.25); c.last = now;
     const t0 = performance.now();
     c.draws = r.character_step(s, dt);
-    if (!c.draws) return false;
+    if (!c.draws) return shown(false);
     g.device.queue.writeBuffer(c.uniform, 0, m.buffer, into, c.blockFloats * 4);
     const version = r.character_palette_version(s);
     if (version !== c.version) { g.device.queue.writeBuffer(c.bones, 0, m.buffer, r.character_palette(s), c.paletteBytes & ~3); c.version = version; }
     c.list = new Uint32Array(m.buffer, r.character_draws(s), c.draws * 4).slice();
     info.frames++; info.draws = c.draws; info.stepMs = performance.now() - t0;
-    return true;
+    return shown(true);
   }
   const drawEach = (pass, c, pick) => {
     pass.setBindGroup(0, c.blockGroup); pass.setBindGroup(1, c.ownGroup); pass.setIndexBuffer(c.index, "uint32");
@@ -248,5 +250,5 @@ export function characterPass(deps) {
     drawEach(pass, c, (blend) => blend === 0 ? c.body : null);
     drawEach(pass, c, (blend) => blend === 2 ? c.hair : null);
   }
-  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
+  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5, 6, 7].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
 }

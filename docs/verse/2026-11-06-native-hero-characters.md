@@ -262,6 +262,45 @@ her capsule, the production render path (the render packages draw through
 `render.js`, not this pass), a close shadow map for the face, and the Valley
 page on the pass (H2).
 
+### R3: Echo spawned natively, and the orbit recorded (done, #12987)
+
+`/worlds/everglade?stage=echo` stages Echo in the town and records her
+orbit with no second page:
+
+- **Placement.** The stage places her: `rp_facts`
+  (`everglade-raid-preview.coax`) puts the player at `RP_YOU`, facing the
+  South Gate, and Echo a metre to his right, facing it too
+  (`rp.echo_at`, `rp.echo_heading`). The block carries her feet and heading,
+  and the runtime places her with `character_place` each frame.
+- **Idle life.** Her body loops her rig's idle clip (`CHARACTER_IDLE`,
+  clip 0), her face plays its idle segments, and
+  `aethyr/character/idle.coax` adds blinks, glances and breath on the
+  joints and targets `ECHO_IDLE_RIG` names (all five found in her pack).
+  The morphs switch on while a blink shows.
+- **A body.** Once the host draws her (`coaxial_character_ready_v1`), she
+  is one capsule: among the bodies you walk into (`everglade_bodies_near`,
+  which `aethyr/walk.coax` resolves through `aethyr/query.coax`), and in the
+  follow camera's way (`camera_frame`, by `query_ray`). A page that never
+  gets her pack has nothing unseen in its way.
+- **The orbit.** N runs `verse/valley/echo-orbit.coax` as a staged camera
+  in her own frame. It holds its last frame until you move, then your own
+  camera comes back.
+- **No room.** A staged page opens no room socket and no local host
+  (`net_facts`): the local host's seat put the player at the room's spawn,
+  outside the town, instead of beside her.
+- **Retired.** Valley Lab's N (her orbit through Everglade's lens) and K
+  (her matte, `u[131]`), and Everglade's J (a plate without the player),
+  existed only for the composite and are gone.
+
+`coax/web/everglade-echo-frames.coax URL OUTDIR clip` records the clip at
+1920x1080, 24 fps, from `coaxialClipStep`. The player, signposts, grass and
+rain pass in front of and behind her in it. `character-host.wasm` is 47,788
+bytes (budget 52,000), and `everglade5e.wasm` 2,007,737.
+
+Left for R4 and later: the groom's levels and a frame-rate check in a wide
+raid shot, a close shadow map for her face, her locomotion when a stage
+moves her, the production render path and the Valley page on the pass (H2).
+
 ## Risks
 
 - **Frame time.** Strand hair is the costliest part: the Valley page runs the

@@ -1,9 +1,8 @@
-// Echo's orbit, the one camera path two pages share: Everglade (?stage=echo, Echo standing at the
-// player's right on the commons) films the town, and the Valley page (N) films Echo on the same path,
-// so the two frames lay over each other. The path is in Echo's own frame: `side` along her right,
+// Echo's orbit: Everglade's staged camera for ?stage=echo (N), Echo standing at the player's right on
+// the commons (everglade-raid-preview.coax rp_echo_shot). The path is in Echo's own frame: `side` along her right,
 // `up` from her feet, `front` along the way she faces. It starts close on her face, pulls back, then
 // turns once round her (her back mid-turn), and settles wide on her and the player.
-//   coax/bin/coax test verse/valley/echo-orbit.coax
+//   coax/bin/coax test verse/valley/echo-orbit.coax --library
 
 ECHO_ORBIT_SECONDS :: 9.0;
 ECHO_ORBIT_NEAR :: 0.72;     // m from her face at the start
@@ -28,8 +27,6 @@ echo_orbit_path :: (t: f32, out: [] f32) {
   out[4] = ECHO_ORBIT_HEAD + (ECHO_ORBIT_CHEST - ECHO_ORBIT_HEAD) * look;
   out[5] = 0;
 }
-// Everglade's lens (everglade.coax view): the vertical scale for a frame width over height.
-echo_orbit_lens_y :: (aspect: f32) -> f32 { f := aspect * 1.25; return ifx f < 0.95 then 0.95f32 else ifx f > 1.9 then 1.9f32 else f; }
 
 #test "Echo's orbit starts on her face from the front, turns once and ends wide in front" {
   o: [6] f32;
@@ -39,5 +36,4 @@ echo_orbit_lens_y :: (aspect: f32) -> f32 { f := aspect * 1.25; return ifx f < 0
   #assert o[2] < -1;
   echo_orbit_path(ECHO_ORBIT_SECONDS, o[..]);
   #assert abs(o[0]) < 0.001 && abs(o[2] - ECHO_ORBIT_FAR) < 0.001 && abs(o[4] - ECHO_ORBIT_CHEST) < 0.0001;
-  #assert echo_orbit_lens_y(16.0 / 9.0) == 1.9 && abs(echo_orbit_lens_y(1.0) - 1.25) < 0.0001;
 }

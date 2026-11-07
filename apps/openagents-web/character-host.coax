@@ -4,15 +4,18 @@
 // the pack only then, so a world's own wasm and memory carry none of it (Everglade's wasm has about
 // 150 KB of its budget left, and Echo's rig, face and catalog take about 46 MB of memory). Each
 // frame the host copies the world's SceneLights block (aethyr/render/scene-lights.coax) in here;
-// this steps her idle body and idle face on a 1/64 s clock, fills the block's character slots (the
-// hair's share, the morph switch, the head profile) and her palette, and names her draws. Her body
-// and face run on Aethyr's character runtime (aethyr/character/), with Echo's declarations
-// (verse/valley/echo.coax): standing on the locomotion graph, her idle face segments on their cycle.
+// this places her where the world's stage put her (the block's feet and heading), steps her on a
+// 1/64 s clock, fills the block's character slots (the hair's share, the morph switch, the head
+// profile) and her palette, and names her draws. Her body and face run on Aethyr's character
+// runtime (aethyr/character/), with Echo's declarations (verse/valley/echo.coax): her rig's idle
+// clip looped (clip 0), her idle face segments on their cycle, and her idle life over them (blinks,
+// glances and breath, aethyr/character/idle.coax) on the joints and targets ECHO_IDLE_RIG names.
 //   coax/bin/coax test apps/openagents-web/character-host.coax
 #load "../../verse/valley/echo.coax";
 #load "../../verse/valley/canyon-pack-policy.coax";
 #load "../../verse/valley/slay-gpu-policy.coax";
 #load "../../aethyr/render/scene-lights.coax";
+#load "../../aethyr/character/idle.coax";
 
 // The valley-slay pack's parts and Echo's two draws in its index buffer (Valley Lab's canyon_frame):
 // her body, then her strands (drawn blended).
@@ -28,9 +31,13 @@ CHARACTER_HEAD :: 1.6f32;
 // pixel stay about the same below 300 pixels, never under 2%, at most half.
 CHARACTER_HAIR_FULL :: 300.0f32;
 CHARACTER_HAIR_MAX :: 0.5f32;
+// Echo's idle life: her ARKit blink targets, her face rig's eye joints and her mid spine for the breath.
+// Each eye turns about its local y (yaw) and x (pitch); the spine rocks about its local z.
+ECHO_IDLE_RIG :: CharacterIdleRig.{blink_left = "eyeblinkleft", blink_right = "eyeblinkright", eye_left = "facial_l_eye", eye_right = "facial_r_eye",
+  breath = "spine_03", eye_yaw = Point.{y = 1}, eye_pitch = Point.{x = 1}, breath_axis = Point.{z = 1}, seed = 2987};
 
 CharacterHost :: struct {
-  echo: [1] Character; pack: [1] CharacterPack;
+  echo: [1] Character; pack: [1] CharacterPack; idle: [1] CharacterIdle; idle_parts: int;
   block: [SCL_FLOATS] f32; draws: [CHARACTER_DRAWS * 4] u32;
   digest: [32] u8; verified: bool; failed: bool; assets: [4] int;
   clock: f32; share: f32; frames: int;
@@ -46,6 +53,7 @@ character_pack_gate :: (s: [] CharacterHost, bytes: int) -> bool #export_c #effe
 character_catalog :: (s: [] CharacterHost, b: [] u8) -> bool #export_c #effects(all) {
   s[0].assets[0] = b.count;
   if !s[0].verified || !echo_catalog_admit(s[0].pack[..], 0, b) || !echo_spawn(s[0].echo[..], s[0].pack[..], 0) { s[0].failed = true; return false; }
+  character_idle_start(s);
   return true;
 }
 // The pack's other parts, by their sizes: the vertex words, the indices, the texture layers.
@@ -69,23 +77,33 @@ character_head_pixels :: (b: [] f32) -> f32 {
   if z <= 0.05 { return 100000; }
   return 0.25 * b[SCL_FOCAL_Y] / z * b[SCL_SIZE + 1] * 0.5;
 }
-// One frame: her clock on by dt in whole 1/64 s steps (standing, her idle face cycle), then the block's
-// character slots and the draws. Returns how many draws (0 until she is ready).
+// Her body on its idle clip, and her idle life bound to her pack's names (how many of the five it found).
+character_idle_start :: (s: [] CharacterHost) {
+  e := s[0].echo[..];
+  e[0].mode = CHARACTER_IDLE; e[0].idle_clip = 0;
+  s[0].idle_parts = character_idle_bind(s[0].idle[..], e, s[0].pack[..], ECHO_IDLE_RIG);
+}
+// One frame: her place from the block, her clock on by dt in whole 1/64 s steps (her idle clip, her
+// idle face cycle, her idle life), then the block's character slots and the draws. Returns how many
+// draws (0 until she is ready).
 character_frame :: (s: [] CharacterHost, dt: f32) -> int #export_c #effects(all) {
   if !character_ready(s) { return 0; }
   e := s[0].echo[..];
   step := ifx dt > 0 && dt < 0.25 then dt else 0.0f32;
   s[0].clock += step;
   p := s[0].pack[..];
+  b := s[0].block[..];
+  character_place(e, v3(b[SCL_AT], b[SCL_AT + 1], b[SCL_AT + 2]), atan2(b[SCL_HEADING + 1], b[SCL_HEADING]));
   while s[0].clock >= CHARACTER_STEP {
     s[0].clock -= CHARACTER_STEP;
     character_step(e, p, CHARACTER_STEP);
+    character_idle_step(s[0].idle[..], e, p, CHARACTER_STEP);
   }
   s[0].frames += 1;
-  b := s[0].block[..];
   s[0].share = character_hair_share(character_head_pixels(b));
   b[SCL_HAIR] = s[0].share;
-  b[SCL_MORPH] = ifx e[0].face[0].enabled && e[0].face[0].fade > 0 then 1.0f32 else 0.0f32;
+  // the morphs run while a face clip or a blink shows
+  b[SCL_MORPH] = ifx (e[0].face[0].enabled && e[0].face[0].fade > 0) || s[0].idle[0].weight > 0 then 1.0f32 else 0.0f32;
   b[SCL_RIG] = 0; b[SCL_PROFILE] = 1;
   for k: 0..<4 { s[0].draws[k] = CHARACTER_BODY[k]; s[0].draws[4 + k] = CHARACTER_GROOM[k]; }
   return CHARACTER_DRAWS;
@@ -99,6 +117,8 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   if field == 3 { return ifx s[0].echo[0].face[0].enabled then 1 else 0; }
   if field == 4 { return s[0].frames; }
   if field == 5 { return ifx s[0].failed then 1 else 0; }
+  if field == 6 { return s[0].idle_parts; }
+  if field == 7 { return s[0].idle[0].draws; }
   if field >= 10 && field < 14 { return s[0].assets[field - 10]; }
   return -1;
 }
@@ -111,6 +131,7 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   n := echo_rig_fixture(s[0].pack[0].data[..], 1);
   s[0].verified = true;
   #assert character_pack_rig(s[0].pack[..], 0, n) && echo_spawn(s[0].echo[..], s[0].pack[..], 0);
+  character_idle_start(s[..]);
   character_asset(s[..], 1, slay_gpu_storage()); character_asset(s[..], 2, CHARACTER_INDEX_BYTES);
   #assert !character_ready(s[..]);
   character_asset(s[..], 3, CHARACTER_LAYERS);
@@ -125,6 +146,12 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   #assert b[SCL_HAIR] == 0.02f32;
   #assert character_hair_share(10) == 0.02f32 && character_hair_share(600) == CHARACTER_HAIR_MAX && abs(character_hair_share(150) - 0.25) < 0.00001;
   #assert character_draw_blend(0) == 0 && character_draw_blend(1) == 2;
+  // the world's stage places her (the block's feet and heading), and her body loops its idle clip
+  scl_place(b, 2, 0.5, -96, 3.14159265);
+  _ = character_frame(s[..], 0);
+  e := s[0].echo[..];
+  #assert e[0].at.x == 2 && e[0].at.y == 0.5 && e[0].at.z == -96 && abs(abs(e[0].heading) - 3.14159265) < 0.001;
+  #assert e[0].mode == CHARACTER_IDLE && e[0].clip == 0 && s[0].idle_parts == 0;
   character_asset(s[..], 2, 4);
   #assert !character_ready(s[..]) && s[0].failed;
 }
