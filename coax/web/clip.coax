@@ -2,12 +2,13 @@
 // step of game time (host.js clip mode), captured one by one, then encoded with ffmpeg.
 // Nothing opens on screen and no sound plays.
 //   coax/web/tool.sh clip URL OUT.mp4 [--size 1280x720] [--seconds 3] [--fps 30]
-//       [--skip SECONDS] [--eval JS] [--frames DIR] [--audio] [--require JS]
+//       [--skip SECONDS] [--eval JS] [--frames DIR] [--audio] [--room] [--require JS]
 // --skip runs that much game time first without capturing (the lead-up to the moment);
 // --eval runs a script once the page has started, before the skip (a staged moment's inputs).
 // --frames keeps the PNG frames (f00000.png, ...) in DIR.
 // --require runs a script once the page has started (awaited, so it may wait) and records
 // only when it answers true (the speak tool's portrait refuses the capsule fallback this way).
+// --room advances a local room on the same fixed clock as the page.
 // --audio records the page's own sound in step with the frames (host.js renders the
 // lines its frames sent, offline) and muxes it in as AAC; with --frames, DIR keeps it as audio.wav.
 // A page stages its own moments from its URL (?stage=NAME): see docs/verse/clips.md.
@@ -46,7 +47,7 @@ tool_main :: () -> int #export_c #effects(all) {
   c: [1] Cdp;
   failed := "";
   if !cdp_launch(c[..], wh.w, wh.h, "coax-clip-") { failed = cdp_error(c[..]); }
-  else { failed = media_record_with(c[..], url, wh, seconds.value, fps.value, fps_text, skip.value, script, frames, guard, wav); }
+  else { failed = media_record_room(c[..], url, wh, seconds.value, fps.value, fps_text, skip.value, script, frames, guard, wav, args_has(a[..], "--room")); }
   // the error text lives in c, which closing keeps
   if failed.count > 0 { tool_err("clip: "); tool_errln(failed); cdp_close(c[..]); return 1; }
   cdp_close(c[..]);

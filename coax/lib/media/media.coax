@@ -173,6 +173,9 @@ media_record_sound :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: 
   return media_record_with(c, url, wh, seconds, fps, fr, skip, script, frames, "", wav);
 }
 media_record_with :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string, guard: string, wav: string) -> string {
+  return media_record_room(c,url,wh,seconds,fps,fr,skip,script,frames,guard,wav,false);
+}
+media_record_room :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string, guard: string, wav: string, room: bool) -> string {
   params: [65536] u8; o: [1] Jo;
   if !media_size(c, wh) { return cdp_error(c); }
   if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return cdp_error(c); }
@@ -180,6 +183,7 @@ media_record_with :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f
   // Page.enable comes before the scripts: without it they do not run on the next document.
   if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return cdp_error(c); }
   if cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialClip = true\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
+  if room && cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialClipRoom = true\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
   if wav.count > 0 && cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialClipAudio = true\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
   // a clip never counts as a visit
   if cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
