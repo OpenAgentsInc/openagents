@@ -1,16 +1,18 @@
 # Firm reason: 2 (independent binary-layout/source-geometry oracle for the Coax glade compiler).
-import hashlib, json, math, struct, sys
+import hashlib, json, math, struct, sys, re, zipfile
 from pathlib import Path
 
 p = Path(sys.argv[1]); base = Path(sys.argv[2]); raw = p.read_bytes(); old = base.read_bytes()
 repo = Path(__file__).resolve().parents[3]
 revision = json.loads((repo/'assets/registry/scenes/character-glade.json').read_text())['reference']['revision']
 experimental = '--experimental' in sys.argv[3:]
+village = '--village' in sys.argv[3:]
+assert not village or experimental
 source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' else Path.home()/'.openagents/assets/originals'/revision/'source'
 
 def parts(b):
     magic, n, total, budget, table, *_ = struct.unpack_from('<4s7I', b)
-    assert magic==b'VPK1' and len(b)==total<=budget<=32*1024*1024
+    assert magic==b'VPK1' and len(b)==total<=budget<=(64 if village else 32)*1024*1024
     out = {}
     for i in range(n):
         kind, license, _, offset, size, _, name = struct.unpack_from('<BBHIII32s', b, table+i*48)
@@ -37,13 +39,16 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
     assert struct.unpack_from('<I',vb,at+24)[0]<layers
     kind=vb[at+15]&7
-    if kind==4: rock_vertices+=1
+    if kind==4:
+        marker=struct.unpack_from('<f',vb,at+28)[0]
+        if 100<=marker<=110: village_vertices.append(i)
+        else: rock_vertices+=1
     if kind==1:
         ao=struct.unpack_from('<f',vb,at+28)[0]; assert .49<=ao<=1.01
         n=struct.unpack_from('<3b',vb,at+12); assert .96<sum((v/127)**2 for v in n)<1.04
@@ -65,6 +70,65 @@ if experimental:
     assert abs(min(p[0] for p in ground)+90)<.001 and abs(max(p[0] for p in ground)-90)<.001
     assert abs(min(p[2] for p in ground)+90)<.001 and abs(max(p[2] for p in ground)-90)<.001
     assert rock_vertices==0, f"experimental glade retains {rock_vertices} rock vertices"
+    if village: assert village_vertices and village_vertices==list(range(village_vertices[0],village_vertices[-1]+1))
+    else: assert not village_vertices
+
+# Compare all source layout records and source mesh indices to the published
+# scene. The Godot project is read only as archived text; nothing is executed.
+if village:
+    village_lock=json.loads((repo/'assets/registry/packages/village.json').read_text())
+    village_root=Path.home()/'.openagents/assets/originals'/village_lock['revision']/'source'
+    with zipfile.ZipFile(village_root/'Engine Projects/Godot.zip') as archive:
+        source_scene=archive.read('Godot/addons/quaternius/medievalvillagemegakit/L_SampleScene_1.tscn').decode()
+    resources={key:Path(path).stem for path,key in re.findall(r'\[ext_resource[^\]]*path="([^\"]+\.gltf)" id="([^\"]+)"\]',source_scene)}
+    groups={'House C':0,'Tower':1,'Houses A':2,'Houses D':3}
+    def source_children(name):
+        return re.findall(r'\[node name="[^\"]+" parent="'+re.escape(name)+r'" instance=ExtResource\("([^\"]+)"\)\]\n(.*?)(?=\n\[|\Z)',source_scene,re.S)
+    assert source_children('House C')==source_children('House C2'), 'sample scene duplicate differs'
+    expected=[]
+    for m in re.finditer(r'\[node name="[^\"]+" parent="([^\"]+)" instance=ExtResource\("([^\"]+)"\)\]\n(.*?)(?=\n\[|\Z)',source_scene,re.S):
+        parent,key,block=m.groups()
+        if parent not in groups: continue
+        transform=re.search(r'transform = Transform3D\(([^)]*)\)',block)
+        values=tuple(map(float,transform.group(1).split(','))) if transform else (1,0,0,0,1,0,0,0,1,0,0,0)
+        expected.append((groups[parent],resources[key],values))
+    layout=repo/'assets/registry/scenes/everglade-experimental-village.layout'
+    actual=[]
+    for line in layout.read_text().splitlines():
+        group,name,matrix=line.split('|');actual.append((int(group),name,tuple(map(float,matrix.split(',')))))
+    assert actual==expected and [sum(r[0]==i for r in actual) for i in range(4)]==[167,77,308,151]
+    assert 'L 251 Quaternius Medieval Village MegaKit Source|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
+    assert sum(1 for kind,license,_,offset,size,_,name in (struct.unpack_from('<BBHIII32s',raw,32+i*48) for i in range(struct.unpack_from('<I',raw,4)[0])) if kind==4 and license==251)==1
+    starts=[(-18,-23),(18,-20),(-50,25),(35,30)]
+    tiles={'MI_Brick':0,'MI_FlatTiles':1,'MI_MetalOrnaments':2,'MI_Plaster':3,'MI_RockTrim':4,
+           'MI_RoundRocks':5,'MI_RoundTiles':6,'MI_UnevenBrick':7,'MI_Vine':8,'MI_WoodTrim':9,
+           'MI_WoodTrim_Wear':9,'MI_WindowGlass':10}
+    cache={};vstart=village_vertices[0];vi=vstart;ii=next(k for k,x in enumerate(ids) if x>=vstart)
+    for group,name,t in actual:
+        if name not in cache:
+            gltf=json.loads((village_root/'glTF'/f'{name}.gltf').read_text())
+            blob=(village_root/'glTF'/gltf['buffers'][0]['uri']).read_bytes()
+            cache[name]=[(accessor(gltf,blob,p['attributes']['POSITION']),accessor(gltf,blob,p['attributes']['NORMAL']),accessor(gltf,blob,p['attributes']['TEXCOORD_0']),[x[0] for x in accessor(gltf,blob,p['indices'])],tiles[gltf['materials'][p['material']]['name']]) for mesh in gltf['meshes'] for p in mesh['primitives']]
+        sx,sz=starts[group];gx=round((sx+90)/1.2);gz=round((90-sz)/1.2);base=pos[gz*151+gx][1]+.035
+        cross=lambda a,b:(a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0])
+        # Godot's text writer serializes the basis rows, not its axis columns.
+        ca,cb,cc=t[0:9:3],t[1:9:3],t[2:9:3]; na,nb,nc=cross(cb,cc),cross(cc,ca),cross(ca,cb)
+        assert sum(ca[d]*na[d] for d in range(3))>0
+        for vertices,normals,uvs,triangles,tile in cache[name]:
+            for k in {0,len(vertices)//2,len(vertices)-1}:
+                v=vertices[k];want=[sx+t[9]+sum(t[d]*v[d] for d in range(3)),base+t[10]+sum(t[3+d]*v[d] for d in range(3)),sz+t[11]+sum(t[6+d]*v[d] for d in range(3))]
+                assert all(abs(pos[vi+k][d]-want[d])<.003 for d in range(3)), (group,name,k,pos[vi+k],want)
+                off=word*4+(vi+k)*32
+                normal=[na[d]*normals[k][0]+nb[d]*normals[k][1]+nc[d]*normals[k][2] for d in range(3)]
+                mag=math.sqrt(sum(v*v for v in normal)); assert mag>0
+                packed=struct.unpack_from('<3b',vb,off+12)
+                assert all(abs(packed[d]/127-normal[d]/mag)<.009 for d in range(3)), (group,name,k,packed,normal)
+                assert struct.unpack_from('<f',vb,off+28)[0]==100+tile
+                uv=struct.unpack_from('<2H',vb,off+16)
+                assert all(abs(uv[d]/65535*8-4-uvs[k][d])<.00015 for d in range(2)), (group,name,k,uv,uvs[k])
+            assert ids[ii:ii+len(triangles)]==tuple(vi+i for i in triangles), (group,name)
+            vi+=len(vertices);ii+=len(triangles)
+    assert vi==village_vertices[-1]+1 and ii==len(ids)
 
 # Verify each instanced template against the pinned glTF, independently of the packer.
 names=['Grass_Common_Short','Grass_Wide_Short','Grass_Wispy_Short']
@@ -107,4 +171,4 @@ print(json.dumps({'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'env
  'environment_triangles':count//3,'texture_layers':layers,'wind_ribbons':wind_ribbons,'source_grass_templates':instances,
  'source_grass_instances':sum(v['instances'] for v in instances),'source_grass_topology':'exact source indices and positions',
  'grass_height_range':[min(heights),max(heights)],'bark_repeating_v_range':[min(bark_v),max(bark_v)],
- 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':f'all {ground_indices//3} faces upward', 'rock_vertices':rock_vertices},indent=2))
+ 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':f'all {ground_indices//3} faces upward', 'rock_vertices':rock_vertices, 'village_vertices':len(village_vertices)},indent=2))

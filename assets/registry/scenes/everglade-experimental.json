@@ -81,6 +81,406 @@
     {
       "id": "quaternius/nature/plant-3",
       "revision": "0c52a3079a34443be1cf68511f2b7d4b8ab81f1549363c316e5e574ff9e50110"
+    },
+    {
+      "id": "quaternius/village/balcony-cross-corner",
+      "revision": "edbb2ea1ffe34c4dd44de5ae4d62d5cd5fbe466a72cdee04c7fabdded07ba667"
+    },
+    {
+      "id": "quaternius/village/balcony-cross-straight",
+      "revision": "f89bf228824e80eefadf260d1d12e16830086abb70f4ee7d49d209b72496ffb1"
+    },
+    {
+      "id": "quaternius/village/balcony-simple-corner",
+      "revision": "193faf3fbb839a0fad5de85cb367bc369b705b68b0d3389f659b277e172ed690"
+    },
+    {
+      "id": "quaternius/village/balcony-simple-straight",
+      "revision": "df60c16b54f4b947cf064fd49ef26bba58153f7d7328ac9a091b07771026a7be"
+    },
+    {
+      "id": "quaternius/village/corner-exterior-brick",
+      "revision": "d1305bc54f5b30290d463ea4b78a250fc59f10302dbc4bce6848560809ddc9d3"
+    },
+    {
+      "id": "quaternius/village/corner-exterior-wood",
+      "revision": "c31481e92daded935db131a48d233d2a522def6c25b95e5a603ee3d3fb452fdb"
+    },
+    {
+      "id": "quaternius/village/corner-exteriorwide-brick",
+      "revision": "0fa1e8e78fdec7f85cce8e6174131778e8bc756faaf789b3606aa4682b43099a"
+    },
+    {
+      "id": "quaternius/village/corner-exteriorwide-wood",
+      "revision": "ba26d34eb85fc98e6c7bd5430c4a36a0336ee6efe04414a3f84617bf2dbbfdc4"
+    },
+    {
+      "id": "quaternius/village/corner-interior-big",
+      "revision": "a0b9e376b6d847c2e1ccc680a0e158b7649fcabfc609ceba28c92d575de1a8b7"
+    },
+    {
+      "id": "quaternius/village/corner-interior-small",
+      "revision": "5f8fd0c7b9bdd001173018b37fe26731f059161065dc274c9103f6a527a4f197"
+    },
+    {
+      "id": "quaternius/village/doorframe-flat-brick",
+      "revision": "9ca13b375d67621746681f38564922d78b80b393c963afe077d2b4c878fe37ec"
+    },
+    {
+      "id": "quaternius/village/doorframe-round-wooddark",
+      "revision": "e32cb63437e7048f86e68cd2d24f5685d1f8242eecd6fef25a5f4b9176da1c95"
+    },
+    {
+      "id": "quaternius/village/doorframe-round-woodlight",
+      "revision": "cfaadba261f2685413967b96deb975714c8694c4d2bbe5418606e16a802a788e"
+    },
+    {
+      "id": "quaternius/village/floor-roundrocks",
+      "revision": "ea82c973da8319eb170097c54a43b28cf6e4e8a46877fdb352e8f7cf8bc289a7"
+    },
+    {
+      "id": "quaternius/village/floor-wooddark",
+      "revision": "f3638d0e09af0199114d9371b26d80c18ce7af0da1610d32bca39bc30e3dce72"
+    },
+    {
+      "id": "quaternius/village/floor-wooddark-half2",
+      "revision": "fd2bfe074ed87193f449e75d501fc54f19024099744bf95794e66612212da5cb"
+    },
+    {
+      "id": "quaternius/village/floor-wooddark-half3",
+      "revision": "a94682ccbe21a60901a9f30ce15d8d4c92bd67a2f3e2bcbf9914f5dc6e42209f"
+    },
+    {
+      "id": "quaternius/village/holecover-90angle",
+      "revision": "0b8cc70c8bdb41fc63a0131d641b575de365ef4701f44fc037433d9f71c46aea"
+    },
+    {
+      "id": "quaternius/village/holecover-straight",
+      "revision": "800ccd9bb5b1251e8b73ab4ac0d6b90634e9a5d7f37153bee4e68ab28bc62234"
+    },
+    {
+      "id": "quaternius/village/overhang-plaster-long",
+      "revision": "7ffdd009f1adc0adac685d2f3002974f24f8bb4fa1159ae054edba7771dfe3e6"
+    },
+    {
+      "id": "quaternius/village/overhang-roof-plaster",
+      "revision": "97f76ae6e0fcd9033b9a418a7243f55f1650f8e5f972cc73d1064daad2f4cd58"
+    },
+    {
+      "id": "quaternius/village/overhang-roof-unevenbricks",
+      "revision": "8b1ed7bcd278aa838fa294428e30925420748c5ad2e502dbb56b4e3c526fcaf9"
+    },
+    {
+      "id": "quaternius/village/overhang-roof-wood",
+      "revision": "714263252b40e4984ebaa0cca0d923f47dbffbb91c861628b3319be37df597dd"
+    },
+    {
+      "id": "quaternius/village/overhang-roofincline-wood",
+      "revision": "c90567c953bccbf679ac92f6aa5d4539572d31492202bbd7ba3d389445e4481b"
+    },
+    {
+      "id": "quaternius/village/overhang-side-plaster-long-l",
+      "revision": "4a4085537e62c4c5e369f5dc1d287bd4437dd14a54a1a3c6c19bde484e6f300c"
+    },
+    {
+      "id": "quaternius/village/overhang-side-plaster-long-r",
+      "revision": "d06f4aed025d39d0c57bf8f8b4b8f24824f7287c00e2fdf4f48306837e3d408d"
+    },
+    {
+      "id": "quaternius/village/overhang-side-plaster-short-l",
+      "revision": "a7ce0b1e0a75da2191ea5f57835d3d7a3b1a23b896cae64b4d74ede8b121f128"
+    },
+    {
+      "id": "quaternius/village/overhang-side-plaster-short-r",
+      "revision": "c8f888be9d4ff8e942d61e7e25694bc377b56ede52528429725acb2417fc73d1"
+    },
+    {
+      "id": "quaternius/village/overhang-side-unevenbrick-short-l",
+      "revision": "33853a388245b305fc7f8af9f4938108b6fe0f32357d619778b8302fc45ee516"
+    },
+    {
+      "id": "quaternius/village/overhang-side-unevenbrick-short-r",
+      "revision": "1572fdf1e27620d3635296d6bd34f2346bbc09f56e737bd42639d3380b2ea8e4"
+    },
+    {
+      "id": "quaternius/village/overhang-side-woodwear-long-l",
+      "revision": "48035513e34446bfdb53cd05d954c2b7162a27a1248656c19075e398823cb0eb"
+    },
+    {
+      "id": "quaternius/village/overhang-side-woodwear-long-r",
+      "revision": "92f997759b68795f773923b6892102b9226acdcc791e7701d889410adbcd26c7"
+    },
+    {
+      "id": "quaternius/village/overhang-side-woodwear-short-l",
+      "revision": "432daa631f4416424e12fb9ca44ed79fdc39d3b4c14dd937843d32c2527faa56"
+    },
+    {
+      "id": "quaternius/village/overhang-side-woodwear-short-r",
+      "revision": "5beb2b1757153d1d398d5adfe504270ffb24f473b885f23cafcbfd881ece7ece"
+    },
+    {
+      "id": "quaternius/village/overhang-unevenbrick-corner",
+      "revision": "54e6a40458ae62fb520390f094a39a7edc379fc695c89333f215442129505c17"
+    },
+    {
+      "id": "quaternius/village/overhang-unevenbrick-corner-front",
+      "revision": "7cd472c1fc6ab2039cffb731b3419030e733f21c3f53687a22d89a83da098410"
+    },
+    {
+      "id": "quaternius/village/overhang-unevenbrick-long",
+      "revision": "558fd0f798c48fe2e6b80474a888866226083243412b6f29969881e52d2d18ef"
+    },
+    {
+      "id": "quaternius/village/overhang-unevenbrick-short",
+      "revision": "7f43893213f2668c632727ebab497b269ccf39bb3f4b45ff9fc6bda4d7b4c46a"
+    },
+    {
+      "id": "quaternius/village/overhang-woodbrick-short",
+      "revision": "62172c820d89a62aab58cce373d56510e260b5ed70c7bd415583ccc698b8a05a"
+    },
+    {
+      "id": "quaternius/village/overhang-woodwear-long",
+      "revision": "61aa658b5c577772c22b4400ca9f326c7267ad32234d9c0398c1e9fd5d663694"
+    },
+    {
+      "id": "quaternius/village/overhang-woodwear-short",
+      "revision": "9720be6d335fe731517da445055b5f272ddc694f0907105fc9cd9014182a18ef"
+    },
+    {
+      "id": "quaternius/village/prop-chimney2",
+      "revision": "120d10b1dcc97f10c0ad9a03347d74b55468e584745e2758fd3c13dbd78fb4f7"
+    },
+    {
+      "id": "quaternius/village/prop-exteriorborder-corner",
+      "revision": "20d4cd169a80920088878801f8c5c81b773afc561832e5df7d1368d8dacdd53d"
+    },
+    {
+      "id": "quaternius/village/prop-exteriorborder-straight1",
+      "revision": "763456242ceb3924f9e740a66d50393aa253d14a1bc0e48f470c5341fb6ab81b"
+    },
+    {
+      "id": "quaternius/village/prop-support",
+      "revision": "684157fcca2a183791fff833cbf244c96967320d56720eda021b118f8935b21d"
+    },
+    {
+      "id": "quaternius/village/prop-vine1",
+      "revision": "838e384a1dd297c6181b2f23c42efdb833dabad609e32e5da63d87cb1b4147fa"
+    },
+    {
+      "id": "quaternius/village/prop-vine2",
+      "revision": "ed1f9d92211a162008a782648a87e0d1df1bdafb8decef45b6f44ccdce4837ba"
+    },
+    {
+      "id": "quaternius/village/prop-vine3",
+      "revision": "63e18132e6213607635fde78ead41b9dd48d39458d4e2106f40e6b9256024a4f"
+    },
+    {
+      "id": "quaternius/village/prop-vine4",
+      "revision": "b1b6a674276694ed5c7ff04c20dd29503dc3b7cefb803e38445c008306986930"
+    },
+    {
+      "id": "quaternius/village/prop-vine6",
+      "revision": "400f29045f3c86b160734474f68ef9d1f29ecba1c55108ff35e43ed89e2d4ea3"
+    },
+    {
+      "id": "quaternius/village/prop-vine7",
+      "revision": "594cc6e02095de345377848e683adb64520e193a2faa6c40e085cfe095281432"
+    },
+    {
+      "id": "quaternius/village/prop-vine8",
+      "revision": "1a73001f9c9c29e20f09662c0bf36665687340a95d2aa782faea5ede8d7f4235"
+    },
+    {
+      "id": "quaternius/village/prop-vine9",
+      "revision": "040a1c771824189eff85171a7286aded4ba8469c5149a706f5f7f98cce83d122"
+    },
+    {
+      "id": "quaternius/village/prop-woodenfence-extension1",
+      "revision": "fa781bc5b85074f9f26c5c900337d9a9ad9dbf8233874bd33d411ed8420db09f"
+    },
+    {
+      "id": "quaternius/village/prop-woodenfence-extension2",
+      "revision": "9368b785e999e1327c7c76b86b2e2001d4bb776190ec56a19cc83fa222e5eb33"
+    },
+    {
+      "id": "quaternius/village/roof-2x4-roundtile",
+      "revision": "1276c85766edc86f2676c1e8c96814236dac5973d64c34830d3666b1d4879f4c"
+    },
+    {
+      "id": "quaternius/village/roof-dormer-flattile",
+      "revision": "5ce68b651cef922dfe36168845c0e0d66ac6f14d3c3aa1bcdd2805a29e45675e"
+    },
+    {
+      "id": "quaternius/village/roof-flattiles-6x10",
+      "revision": "5f6b4a4d3ef52d42a376eedaa42c284b50cd21d153547307cb99497b7e5a1e8e"
+    },
+    {
+      "id": "quaternius/village/roof-front-brick4-half-l",
+      "revision": "1e76f1757d0d1d90a6fbbf97df223b4c429dc1317bec8328e8adee7a16a5cf16"
+    },
+    {
+      "id": "quaternius/village/roof-front-brick4-half-r",
+      "revision": "87b9f67454a9faf6c68886f00984a4c1b7f5abfe682000e1e25d79d5c297376e"
+    },
+    {
+      "id": "quaternius/village/roof-front-brick6",
+      "revision": "903dd6f41672974bd7d5db6210c8acbc6ec0a66f760690945304fcc1fb485063"
+    },
+    {
+      "id": "quaternius/village/roof-front-wood2",
+      "revision": "648c84b6daca3e6322c15974ef6c23958edb78f0bdebcd53db25b47bc788dbcd"
+    },
+    {
+      "id": "quaternius/village/roof-front-wood6",
+      "revision": "c7b3ef1fb3ae71572a1633d04b5b656a3d73828a48b4c6aa94a827bf627b55fb"
+    },
+    {
+      "id": "quaternius/village/roof-modular-flattiles-4-l-half",
+      "revision": "4e7f1d2eb9f3aa919d480390e7c7cdb834011c91d189c2183c41996debb7d4ec"
+    },
+    {
+      "id": "quaternius/village/roof-modular-flattiles-4-mid-half",
+      "revision": "575757b1baad8195fb00cddac343c80a54d7526dab4e086f069da11f174a066d"
+    },
+    {
+      "id": "quaternius/village/roof-modular-flattiles-4-r-half",
+      "revision": "f70054ea7f6d7055cae9284b6fa1eb0a5a4f257f942b1239f39a5fc0cd99b6df"
+    },
+    {
+      "id": "quaternius/village/roof-roundtiles-6x10",
+      "revision": "e7170311890a6118f8dd2a6f32c72c6db943f5f196f11e21d56d85fadfc82355"
+    },
+    {
+      "id": "quaternius/village/roof-roundtiles-6x8",
+      "revision": "ab01899178ec1d2df7ac0cac4a309079991d38ff8b19955ca0d836e15a779577"
+    },
+    {
+      "id": "quaternius/village/roof-spikes10",
+      "revision": "81b8b980a094ff1b6c36d4f40d186f085568c8961346b071326e1ce4854b941a"
+    },
+    {
+      "id": "quaternius/village/roof-tower-roundtiles",
+      "revision": "43901a262151e9ae7b4f8a9ad538bf9a1cbb2ce707870217dcac836c45352345"
+    },
+    {
+      "id": "quaternius/village/roof-wooden-2x1-center",
+      "revision": "f282a17dfbaf2bbc7fbb2548939893fd149ed435c2c444abad83310e686847d5"
+    },
+    {
+      "id": "quaternius/village/roof-wooden-2x1-l",
+      "revision": "1d6dd33938a803e46c14b98ebfb41d27ec439ebd4ec1fb321193bb15c07a9d79"
+    },
+    {
+      "id": "quaternius/village/roof-wooden-2x1-middle",
+      "revision": "cbffeede870bc330c1fe4a2940ac066f8e6c7b49ac798de251242392662fe266"
+    },
+    {
+      "id": "quaternius/village/roof-wooden-2x1-r",
+      "revision": "7b24683842af3cf3008bb75e116ba76eaa725e34c59dec2f5ec9024b8ac45215"
+    },
+    {
+      "id": "quaternius/village/stair-interior-simple",
+      "revision": "1d36ecefe9bf273e97817ebc2754c6d5b317da759f59c7ccb3765779c9b2a17d"
+    },
+    {
+      "id": "quaternius/village/wall-bottomcover",
+      "revision": "c065a7fdb8b5ab630f89440c6a5130c355e49438673b8c809bb332e92da56b2e"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-door-round",
+      "revision": "dfadce5593f7e8d047ad728d1848e3c21cb93d9cf5c6140e4800c847a690c584"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-door-roundinset",
+      "revision": "b5ee63c7e23d9618003d34ec6c26bd0ddc87cb82de2aa1cec5ff98e001134c94"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-straight",
+      "revision": "486314eb2736cc199757cf54d97c3cd13a1fc31112f876e17a167f8944a9cfff"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-straight-base",
+      "revision": "080d151ae83db0597faa684272759a00bede7e848d694919c92940b65323b475"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-straight-l",
+      "revision": "57b4a2e643186013e35f2f463c99774c9b137cc5be25cf03917037365dfb3aaa"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-straight-r",
+      "revision": "7f21685505be5ba876fa355b8077a33f2fed51e82b5331a308288a95d554b430"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-window-wide-round",
+      "revision": "d97345aab5a30d816d0336575f8f5d7feedfac5bed3211c2bba83b7d962bce50"
+    },
+    {
+      "id": "quaternius/village/wall-plaster-woodgrid",
+      "revision": "461bb94b2b9c73e3c773ffcef3114144971ffa58e6850adff1e21c87d88297b8"
+    },
+    {
+      "id": "quaternius/village/wall-unevenbrick-door-round",
+      "revision": "f9d5646ce02094fb5ae944c1dfe8cc11857edc9fef8f788c121d2b7850a29bde"
+    },
+    {
+      "id": "quaternius/village/wall-unevenbrick-straight",
+      "revision": "2d3efb301e658898b07285d68dc1b2f29eb52e221093b54cdf63ee09fc912037"
+    },
+    {
+      "id": "quaternius/village/wall-unevenbrick-window-wide-round",
+      "revision": "413d536fd97f22e1bce93428cd15612702aba73f239f666dbd3bbf438b56f2b1"
+    },
+    {
+      "id": "quaternius/village/wall-woodbrick-door-flat",
+      "revision": "b5ed887f24cefc7f323c884a43cb5a8f6a86178eb9ac5119eac2f9276d69625a"
+    },
+    {
+      "id": "quaternius/village/wall-woodbrick-straight",
+      "revision": "b6ba6b62b64fda9273672c623254659f0bfb3a7df9ed76b8478e596b87fe0e3f"
+    },
+    {
+      "id": "quaternius/village/wall-woodbrick-window-thin-round",
+      "revision": "6a43b229204714727170c54f01023aa7099f675eb8717b3c9742e6d8fe5cdf49"
+    },
+    {
+      "id": "quaternius/village/wall-woodwear-door-round",
+      "revision": "e617a85ecbc2e4685aaffa20b4f3f52dc06a4bd32f8d8cb5b9f03eeacc8f82dc"
+    },
+    {
+      "id": "quaternius/village/wall-woodwear-straight",
+      "revision": "fbd720739fddb28d15dc534158710bdbc1339f08b49a6a42d3e2e4faa44eb1c7"
+    },
+    {
+      "id": "quaternius/village/wall-woodwear-window-thin-round",
+      "revision": "7a7aa1fb742ed656925c53d9a71ca4de82c68cce3f06d6521dfbe1eccd8459b9"
+    },
+    {
+      "id": "quaternius/village/window-roof-thin",
+      "revision": "5e308a85d920eb3dda5e7aeb191a4caf710626cd92c91aacceb958691ee46c7c"
+    },
+    {
+      "id": "quaternius/village/window-thin-flat2",
+      "revision": "7d32360dc2a5ff32d6f40299cd3b3a89aa48ad9bf8e7aa8be1186dc7d2e66bc5"
+    },
+    {
+      "id": "quaternius/village/window-thin-round-rocks",
+      "revision": "d865b57f9dee0e24d01c03b209a85a540a9afdbe0984d9b6776ba5b1bac3d8cb"
+    },
+    {
+      "id": "quaternius/village/window-thin-round1",
+      "revision": "d313cc25b33eabadb12979782aadb9c21abf367f67563e62e8677c779aed9d30"
+    },
+    {
+      "id": "quaternius/village/window-wide-round1",
+      "revision": "ccc007155ac947d8ef71fdb2c24065566423ef6c9b611092e69f211a128a7042"
+    },
+    {
+      "id": "quaternius/village/window-wide-round2",
+      "revision": "8758f8c6fa1f9e11a442572875400b8c9a1f7de19d1439a124acdac58b95f30a"
+    },
+    {
+      "id": "quaternius/village/windowshutters-wide-flat-closed",
+      "revision": "000a3ebb0fe51f0f21e4d8c7267f3363142711a170a1d32da6f8797c5d95ada0"
     }
   ],
   "parent_scene": {
@@ -97,7 +497,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "ebe717f4f7a53052d0c998211374a1a0401994ba399e50650499b0e72ac9b54e",
+    "sha256": "ffbbb0b0864c65e5cb95f3f647c4b1a18b3b3d62248eab2d23767a6a82eba9ef",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -106,8 +506,8 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "72b4d5c695c0492bd40263b486cf53157eaf502af7fb0f399386543e6e4347f0",
-    "budget_bytes": 33554432
+    "sha256": "00fa3f0449e25c68156023497c12f620629ef59c39ffdd6eec803b73767e6c76",
+    "budget_bytes": 67108864
   },
   "terrain": {
     "bounds_metres": [
@@ -123,7 +523,73 @@
       82
     ],
     "spacing_metres": 1.2,
-    "rock_vertices": 0
+    "rock_vertices": 0,
+    "source": {
+      "path": "verse/experimental-terrain.coax",
+      "sha256": "b8e58b48a1729b80980a9280e2a32152e091af803cfb638d18518af314e489a4"
+    }
   },
-  "scope": "Derived from the Character Create glade using pinned Nature source assets; original scene and wardrobe remain unchanged."
+  "scope": "Nature meadow and four unique, source-authored Medieval Village sample-scene layouts; original Character Create scene and wardrobe remain unchanged.",
+  "village": {
+    "package": "village",
+    "revision": "b7e482187ae8533fea743014248b3c6b029f49f7bb6d3494f2fe217e62a66447",
+    "archive": {
+      "path": "Engine Projects/Godot.zip",
+      "sha256": "bc83c5e096806ad4e289a37f4e03438a2096c4a7276a3250faa5df28cefef749",
+      "bytes": 113818250
+    },
+    "scene": "Godot/addons/quaternius/medievalvillagemegakit/L_SampleScene_1.tscn",
+    "scene_sha256": "995e3684b2c5014e1c6d8583a1816a3dbc411c977a39cfdd9b2dbcfba1b31818",
+    "layout": {
+      "path": "assets/registry/scenes/everglade-experimental-village.layout",
+      "sha256": "b1a312f2023a60b8332b0006015f31a8a89de1a9bece04e3e0c94b51163fedf8"
+    },
+    "extractor": {
+      "path": "verse/tools/assets/village_layout.coax",
+      "sha256": "751c2aa8ac70f2d7d730aad5568f0ee9d2d9fd7de5f10c7803d9b7f468335ac6"
+    },
+    "groups": [
+      {
+        "source": "House C",
+        "parts": 167,
+        "origin": [
+          -18,
+          -23
+        ]
+      },
+      {
+        "source": "Tower",
+        "parts": 77,
+        "origin": [
+          18,
+          -20
+        ]
+      },
+      {
+        "source": "Houses A",
+        "parts": 308,
+        "origin": [
+          -50,
+          25
+        ]
+      },
+      {
+        "source": "Houses D",
+        "parts": 151,
+        "origin": [
+          35,
+          30
+        ]
+      }
+    ],
+    "duplicate": "House C2 has identical local parts and is omitted",
+    "textures": "One padded 1024-square atlas from the source base-color textures",
+    "runtime_qualification": "static visual geometry; building collision is not yet authored"
+  },
+  "shader": {
+    "path": "apps/openagents-web/gpu/character-glade.coax",
+    "sha256": "e608c593fc12fbd453829ea807afd7e08fb4681995ed2ceb1e274413f9553bc0",
+    "artifact": "apps/openagents-web/charactercreator.wgsl",
+    "artifact_sha256": "9f23f48dac197d67bda982e75110a365296362d697345c85ef28198480de0cdc"
+  }
 }

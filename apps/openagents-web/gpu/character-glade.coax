@@ -73,6 +73,7 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
  if (kind==0) {p=add3(wg_at3(u,16),scale3(cg_sky_ray(p.x,p.y),180.0f32));}
  if (kind==6) {uv=v2(seed_uv.x*64.0f32-32.0f32,seed_uv.y*64.0f32-32.0f32);}
+ if (kind==4 && f32_from_bits(vertices[cast(int)add_wrap(b,7)])>=100.0f32) {uv=v2(seed_uv.x*8.0f32-4.0f32,seed_uv.y*8.0f32-4.0f32);}
  tint:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
  wind:f32=sin(p.x*1.8f32+p.z*0.7f32+u[2]*1.6f32)+sin(p.z*2.7f32+u[2]*0.9f32)*0.35f32;
  if ((kind==1)||(kind==2)) {p.x=p.x+wind*(ifx kind==2 then 0.025f32 else 0.035f32)*(ifx kind==2 then wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]).y else saturate(p.y*0.7f32));}
@@ -81,6 +82,14 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
 #test "glade source mesh instances retain source shape and independent scale" {
  p:=cg_instance_point(v3(1,2,0),v3(4,0,-5),0.5,0.25,0);
  #assert p.x==4.25 && p.y==1 && p.z== -5;
+}
+#test "village atlas wraps source UV inside its padded tile" {
+ p:=cg_village_uv(v2(-0.5,1.25),109);#assert abs(p.x-0.375)<0.001 && p.y>0.56 && p.y<0.57;
+ q:=cg_village_uv(v2(2.5,-0.75),109);#assert abs(p.x-q.x)<0.0001 && abs(p.y-q.y)<0.0001;
+}
+cg_village_uv :: (uv:V2,marker:f32)->V2 {
+ tile:=floor(marker-100.0f32+0.5f32);x:=tile-floor(tile/4.0f32)*4.0f32;y:=floor(tile/4.0f32);
+ return v2((x*256.0f32+2.0f32+fract(uv.x)*252.0f32)/1024.0f32,(y*256.0f32+2.0f32+fract(uv.y)*252.0f32)/1024.0f32);
 }
 cg_instance_point :: (p:V3,center:V3,vertical:f32,horizontal:f32,angle:f32)->V3 {
  cs:f32=cos(angle);sn:f32=sin(angle);
@@ -155,7 +164,7 @@ cg_leaf_palette :: (tint:V3,age:f32)->V3 {
 }
 cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
- kind:=s.local.x;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
+ kind:=s.local.x;village:=kind>3.5f32 && kind<4.5f32 && s.local.y>=100.0f32;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
  foliage:=kind>0.5f32 && kind<2.5f32;grass:=kind>1.5f32 && kind<2.5f32;leaves:=kind>0.5f32 && kind<1.5f32;ground:=kind>4.5f32 && kind<5.5f32;
  if (!front && !foliage) {n=scale3(n,-1);}
  sun:=cg_sun_dir();eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
@@ -176,9 +185,9 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  }
  if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
  if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
- town:=ifx kind>3.5f32 && kind<4.5f32 && s.world.z< -32.5f32 then cg_town_material(s.tint) else -1.0f32;
+ town:=ifx !village && kind>3.5f32 && kind<4.5f32 && s.world.z< -32.5f32 then cg_town_material(s.tint) else -1.0f32;
  if (town>=0) {albedo=cg_decode(cg_town_albedo(town,s.tint,s.world,n));}
- if (kind>3.5f32 && kind<4.5f32 && town<0) {
+ if (kind>3.5f32 && kind<4.5f32 && town<0 && !village) {
   // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
   // faces that look up, as the reference's cliff tops.
   base:=cg_decode(s.tint);grey:=verse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
@@ -191,7 +200,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
  if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
  if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
- fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 && town<0 then 0.78f32 else 1.0f32;
+ fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 && town<0 && !village then 0.78f32 else 1.0f32;
  indirect:=mul3(albedo,scale3(cg_hemisphere(n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
  colour:=add3(indirect,mul3(albedo,cg_irradiance(n,direct,0,visibility)));
@@ -246,7 +255,7 @@ charactercreator_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,object
  o:CgShadow;
  if (u[10]<1.5f32 || instance>=65536) {o.pos=v4(0,0,-2,1);return o;}
  s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}
- c:=cg_shadow_clip(s.world);o.pos=c;o.edge=v2(c.x,c.y);o.uv=s.uv;o.slice=s.slice;
+ c:=cg_shadow_clip(s.world);o.pos=c;o.edge=v2(c.x,c.y);o.uv=ifx s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32 then cg_village_uv(s.uv,s.local.y) else s.uv;o.slice=s.slice;
  if cg_shadow_tiles(u) {
   glade:=s.dye.w>11.5f32;
   if (glade && u[10]>3.5f32) {o.pos=v4(0,0,-2,1);return o;}

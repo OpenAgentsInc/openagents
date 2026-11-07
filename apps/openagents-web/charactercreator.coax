@@ -3,6 +3,7 @@
 #module "openagents.charactercreator";
 #load "font.coax";
 #load "../../verse/character-glade.coax" as glade;
+#load "../../verse/experimental-terrain.coax" as meadow;
 #load "charactercreator-font.coax";
 #load "charactercreator-walk.coax";
 #load "../../aethyr/character-appearance.coax" as appearance;
@@ -234,7 +235,7 @@ experimental_jump_weight :: (s:Creator)->f32 {
  return 0.45*(1-cc_clamp((s.clock-s.land_at)/0.18,0,1));
 }
 experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
- a:=a0;a.x=s.player_x;a.z=s.player_z;a.y=glade.cg_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;
+ a:=a0;a.x=s.player_x;a.z=s.player_z;a.y=meadow.exp_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;
  a.clip=ifx s.dev_animations && s.preview_clip>=0 then figs.BD_CLIPS+s.preview_clip else experimental_clip(s);
  a.t0=ifx a.clip==figs.BD_JUMP_START then s.clock-(s.clock-s.air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s.clock-(s.clock-s.land_at)*figs.bd_seconds(a.clip)/0.35 else 0;
  a.phase=(s.clock-(ifx s.dev_animations && s.preview_clip>=0 then s.preview_at else 0))/figs.bd_seconds(a.clip);
@@ -411,7 +412,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
 }
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.experimental {
-    target:=glade.cg_height(s.player_x,s.player_z)+s.player_y+1.2;
+    target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw); cz:=cos(s.yaw);
     u[16]=s.player_x+sx*cy*s.dist;u[17]=target+sy*s.dist;u[18]=s.player_z+cz*cy*s.dist;u[19]=h*0.89;
     u[20]= -sx*cy;u[21]= -sy;u[22]= -cz*cy;u[23]=w*0.5;

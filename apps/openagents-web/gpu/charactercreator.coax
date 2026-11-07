@@ -43,6 +43,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
 charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
  uv:=s.uv;ray:=add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(s.pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-s.pos.y)/u[19])));plate:=cg_sky_uv(ray);
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
+ if (s.dye.w>11.5f32 && s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32) {uv=cg_village_uv(uv,s.local.y);}
  tex:=render_sample_layer8_bias(sheets,sheet,uv,cast(s32)s.slice,1);
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
   sky:=mix3(cg_decode(cg_sky(normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
