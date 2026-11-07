@@ -250,5 +250,5 @@ export function characterPass(deps) {
     drawEach(pass, c, (blend) => blend === 0 ? c.body : null);
     drawEach(pass, c, (blend) => blend === 2 ? c.hair : null);
   }
-  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5, 6, 7].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
+  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24, 25, 26, 27].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
 }

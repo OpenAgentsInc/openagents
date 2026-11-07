@@ -10,12 +10,19 @@
 // runtime (aethyr/character/), with Echo's declarations (verse/valley/echo.coax): her rig's idle
 // clip looped (clip 0), her idle face segments on their cycle, and her idle life over them (blinks,
 // glances and breath, aethyr/character/idle.coax) on the joints and targets ECHO_IDLE_RIG names.
+// When the world moves her (the block's motion slots, #12996: the Cultist Raid's room runs her) her
+// body runs her own locomotion graph at the world's pace; a cast plays her TF0290 wind-up (the
+// shot's source frames ECHO_WINDUP_FIRST..ECHO_WINDUP_LAST) to its bar's end; and the fix layers
+// (aethyr/character/fix.coax) plant her feet on the world's ground, turn her head to the spell's
+// point and reach her orb hand toward it.
 //   coax/bin/coax test apps/openagents-web/character-host.coax
 #load "../../verse/valley/echo.coax";
 #load "../../verse/valley/canyon-pack-policy.coax";
 #load "../../verse/valley/slay-gpu-policy.coax";
 #load "../../aethyr/render/scene-lights.coax";
 #load "../../aethyr/character/idle.coax";
+#load "../../aethyr/character/fix.coax";
+#load "../../verse/valley/slay-shot-play.coax";
 
 // The valley-slay pack's parts and Echo's two draws in its index buffer (Valley Lab's canyon_frame):
 // her body, then her strands (drawn blended).
@@ -36,11 +43,24 @@ CHARACTER_HAIR_MAX :: 0.5f32;
 ECHO_IDLE_RIG :: CharacterIdleRig.{blink_left = "eyeblinkleft", blink_right = "eyeblinkright", eye_left = "facial_l_eye", eye_right = "facial_r_eye",
   breath = "spine_03", eye_yaw = Point.{y = 1}, eye_pitch = Point.{x = 1}, breath_axis = Point.{z = 1}, seed = 2987};
 
+// Her fixes' joints (Echo's skin names): the orb hand is her left.
+ECHO_FIX_RIG :: CharacterFixRig.{pelvis = "pelvis", neck = "neck_01", head = "head", legs = [6]string.["thigh_l", "calf_l", "foot_l", "thigh_r", "calf_r", "foot_r"],
+  arm = [3]string.["upperarm_l", "lowerarm_l", "hand_l"]};
+// Her cast's wind-up: TF0290's source frames 1126 to 1152 (the shot's 24 fps), ending as the bar ends.
+ECHO_WINDUP_FIRST :: 1126;
+ECHO_WINDUP_LAST :: 1152;
+CHARACTER_CAST_IN :: 0.25f32;     // s the wind-up takes to blend in from her body
+CHARACTER_CAST_HOLD :: 0.6f32;    // s past the bar she holds the release
+CHARACTER_CAST_OUT :: 0.5f32;     // s it then takes to blend back
+CHARACTER_REACH_IN :: 0.4f32;     // s before the bar's end the orb hand starts toward the point
+CHARACTER_PACE :: 0.15f32;        // s: the world's pace smoothed over this, so a frame's jitter doesn't change her gait
 CharacterHost :: struct {
   echo: [1] Character; pack: [1] CharacterPack; idle: [1] CharacterIdle; idle_parts: int;
   block: [SCL_FLOATS] f32; draws: [CHARACTER_DRAWS * 4] u32;
   digest: [32] u8; verified: bool; failed: bool; assets: [4] int;
   clock: f32; share: f32; frames: int;
+  shot: [1] SlayShot; fix: [1] CharacterFix; fix_parts: int; pace: f32;
+  cast_w: f32; worst: f32;   // the wind-up's share last frame; the farthest a planted foot strayed (m)
 }
 
 // The catalog's landing place (the face's one static scratch), named so the face's header has its type.
@@ -53,6 +73,11 @@ character_pack_gate :: (s: [] CharacterHost, bytes: int) -> bool #export_c #effe
 character_catalog :: (s: [] CharacterHost, b: [] u8) -> bool #export_c #effects(all) {
   s[0].assets[0] = b.count;
   if !s[0].verified || !echo_catalog_admit(s[0].pack[..], 0, b) || !echo_spawn(s[0].echo[..], s[0].pack[..], 0) { s[0].failed = true; return false; }
+  // ECP3 carries TF0290's shot after the rig and the face (Valley Lab's canyon_catalog): her wind-up
+  if scan_u32(b, 0) == 0x33504345 {
+    at := 20 + cast(int) scan_u32(b, 4) + cast(int) scan_u32(b, 8);
+    _ := shot_admit(s[0].shot[..], b[at..<b.count], character_face_bytes(s[0].echo[..], s[0].pack[..]));
+  }
   character_idle_start(s);
   return true;
 }
@@ -82,6 +107,66 @@ character_idle_start :: (s: [] CharacterHost) {
   e := s[0].echo[..];
   e[0].mode = CHARACTER_IDLE; e[0].idle_clip = 0;
   s[0].idle_parts = character_idle_bind(s[0].idle[..], e, s[0].pack[..], ECHO_IDLE_RIG);
+  s[0].fix_parts = character_fix_bind(s[0].fix[..], e, s[0].pack[..], ECHO_FIX_RIG);
+}
+// Whether her shot holds the wind-up's frames.
+character_windup_ok :: (s: [] CharacterHost) -> bool {
+  if !s[0].shot[0].ready { return false; }
+  f := shot_info(s[0].shot[0].data[0..<s[0].shot[0].bytes]);
+  return f.source_first <= ECHO_WINDUP_FIRST && ECHO_WINDUP_LAST < f.source_first + f.frames;
+}
+// The wind-up's share of her body `t` s into a cast whose bar is `bar` s.
+character_cast_share :: (t: f32, bar: f32) -> f32 {
+  if t < 0 { return 0; }
+  return pose_fade(t, CHARACTER_CAST_IN) * (1 - pose_fade(t - bar - CHARACTER_CAST_HOLD, CHARACTER_CAST_OUT));
+}
+// The wind-up's source frame `t` s into a cast: its first frame held, then its frames run to end as the bar does.
+character_cast_frame :: (t: f32, bar: f32) -> f32 {
+  length := f32(ECHO_WINDUP_LAST - ECHO_WINDUP_FIRST) / 24.0f32;
+  start := hi(0, bar - length);
+  u := clamp01((t - start) / hi(bar - start, 0.05f32));
+  return f32(ECHO_WINDUP_FIRST) + u * f32(ECHO_WINDUP_LAST - ECHO_WINDUP_FIRST);
+}
+// Her pose with the world's motion on it: the wind-up over her body (its rotations; her root and
+// hips keep her own place), then the fixes, then the palette.
+character_motion :: (s: [] CharacterHost, dt: f32) {
+  e := s[0].echo[..];
+  b := s[0].block[..];
+  s[0].cast_w = 0;
+  t := b[SCL_CAST_T]; bar := b[SCL_CAST_BAR];
+  casting := b[SCL_MOVED] > 0.5 && b[SCL_CAST] >= 0;
+  if casting && character_windup_ok(s) {
+    w := character_cast_share(t, bar);
+    sh := s[0].shot[..];
+    d := sh[0].data[0..<sh[0].bytes];
+    f := shot_info(d);
+    sh[0].frame = character_cast_frame(t, bar) - f32(f.source_first);
+    frame := slay_shot_frame(sh);
+    a := cast(int) floor(frame); c := ifx a + 1 < f.frames then a + 1 else a;
+    first := e[0].joints;
+    hips := s[0].fix[0].pelvis;
+    for k: 0..<f.bones {
+      j := cast(int) face_word(d, f.names + k * 68 + 64);
+      if j <= 0 || j >= e[0].joints { continue; }
+      l := pose_blend(face_local(d, f.data + a * f.stride + k * 28), face_local(d, f.data + c * f.stride + k * 28), frame - f32(a));
+      if j == hips { l.t = e[0].pose[j].t; }
+      e[0].pose[j] = pose_blend(e[0].pose[j], l, w);
+      if j < first { first = j; }
+    }
+    character_rechain(e, first);
+    s[0].cast_w = w;
+  }
+  ground := CharacterGround.{y = b[SCL_AT + 1], rise_x = b[SCL_SLOPE], rise_z = b[SCL_SLOPE + 1]};
+  character_fix_feet(e, s[0].fix[..], ground, dt);
+  s[0].worst = hi(s[0].worst, s[0].fix[0].error);
+  if casting {
+    aim := v3(b[SCL_AIM], b[SCL_AIM + 1], b[SCL_AIM + 2]);
+    look := pose_fade(t, 0.3) * (1 - pose_fade(t - bar - CHARACTER_CAST_HOLD, CHARACTER_CAST_OUT));
+    character_fix_look(e, s[0].fix[..], add(aim, v3(0, 1, 0)), look);
+    reach := pose_fade(t - bar + CHARACTER_REACH_IN, CHARACTER_REACH_IN) * (1 - pose_fade(t - bar - CHARACTER_CAST_HOLD, CHARACTER_CAST_OUT));
+    _ := character_fix_reach(e, s[0].fix[..], add(aim, v3(0, 1, 0)), reach);
+  }
+  character_fix_present(e);
 }
 // One frame: her place from the block, her clock on by dt in whole 1/64 s steps (her idle clip, her
 // idle face cycle, her idle life), then the block's character slots and the draws. Returns how many
@@ -94,11 +179,18 @@ character_frame :: (s: [] CharacterHost, dt: f32) -> int #export_c #effects(all)
   p := s[0].pack[..];
   b := s[0].block[..];
   character_place(e, v3(b[SCL_AT], b[SCL_AT + 1], b[SCL_AT + 2]), atan2(b[SCL_HEADING + 1], b[SCL_HEADING]));
+  // the world's motion (#12996): her locomotion graph at its pace, else her idle clip
+  moved := b[SCL_MOVED] > 0.5;
+  e[0].mode = ifx moved then CHARACTER_LOCOMOTION else CHARACTER_IDLE;
+  s[0].pace += (hi(b[SCL_SPEED], 0) - s[0].pace) * clamp01(step / CHARACTER_PACE);
+  e[0].speed = ifx moved then s[0].pace else 0.0f32; e[0].turn = 0;
+  stepped := s[0].clock >= CHARACTER_STEP;
   while s[0].clock >= CHARACTER_STEP {
     s[0].clock -= CHARACTER_STEP;
     character_step(e, p, CHARACTER_STEP);
     character_idle_step(s[0].idle[..], e, p, CHARACTER_STEP);
   }
+  if stepped && moved { character_motion(s, step); }
   s[0].frames += 1;
   s[0].share = character_hair_share(character_head_pixels(b));
   b[SCL_HAIR] = s[0].share;
@@ -108,6 +200,7 @@ character_frame :: (s: [] CharacterHost, dt: f32) -> int #export_c #effects(all)
   for k: 0..<4 { s[0].draws[k] = CHARACTER_BODY[k]; s[0].draws[4 + k] = CHARACTER_GROOM[k]; }
   return CHARACTER_DRAWS;
 }
+e_clip :: (s: [] CharacterHost) -> int { return s[0].echo[0].clip; }
 // 0 opaque, 2 blended over what is behind (host.js's scene blend profiles).
 character_draw_blend :: (index: int) -> int #export_c #effects(all) { return ifx index == 1 then 2 else 0; }
 character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(all) {
@@ -120,6 +213,16 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   if field == 6 { return s[0].idle_parts; }
   if field == 7 { return s[0].idle[0].draws; }
   if field >= 10 && field < 14 { return s[0].assets[field - 10]; }
+  // the motion (#12996): the fixes' joints, the wind-up ready, its share now (thousandths), the
+  // farthest a planted foot strayed and the most one travelled (tenths of a millimetre), the plants, her pace (mm/s)
+  if field == 20 { return s[0].fix_parts; }
+  if field == 21 { return ifx character_windup_ok(s) then 1 else 0; }
+  if field == 22 { return cast(int) (s[0].cast_w * 1000); }
+  if field == 23 { return cast(int) (s[0].worst * 10000); }
+  if field == 24 { return cast(int) (hi(s[0].fix[0].legs[0].most, s[0].fix[0].legs[1].most) * 10000); }
+  if field == 25 { return s[0].fix[0].legs[0].plants + s[0].fix[0].legs[1].plants; }
+  if field == 26 { return cast(int) (s[0].pace * 1000); }
+  if field == 27 { return e_clip(s); }
   return -1;
 }
 

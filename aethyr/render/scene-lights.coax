@@ -14,6 +14,11 @@
 //   104..106 the character's feet; 108, 109 the cosine and sine of its heading; 111 1 when the face's
 //            morphs play (the character runtime fills it); 112 0 (Valley Lab's TF0290 rig is off);
 //            114 the head's material profile (0 and up: the Slay profile)
+//   116..125 how the world moves the character (0 in 116: she stands where she is placed and her
+//            runtime idles her): 116 1 when the world moves her, 117 her speed over the ground (m/s),
+//            118 the spell she casts (the world's own number, -1 none), 119 the seconds since its cast
+//            began, 120..122 where it is aimed (the world's frame), 123 its cast bar (s), 124 and 125 the
+//            ground's rise at her feet along x and along z (m per m)
 //   136..151 the world's clip rows: clip = rows * (x, y, z, 1), the matrix the world's own geometry
 //            uses, so the depth tests agree both ways
 //   152..163 the shadow map's rows: (x, y, z) = rows * (x, y, z, 1), x and y -1 to 1 across the map,
@@ -52,6 +57,8 @@ SCL_HEADING :: 108;
 SCL_MORPH :: 111;
 SCL_RIG :: 112;
 SCL_PROFILE :: 114;
+SCL_MOTION :: 116;
+SCL_MOVED :: 116; SCL_SPEED :: 117; SCL_CAST :: 118; SCL_CAST_T :: 119; SCL_AIM :: 120; SCL_CAST_BAR :: 123; SCL_SLOPE :: 124;
 SCL_CLIP :: 136;
 SCL_SHADOW :: 152;
 SCL_SHADOW_INFO :: 164;
