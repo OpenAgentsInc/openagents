@@ -42,7 +42,12 @@ loss while rendering or building, late device completion and stopped
 cleanup have [separate receipts](../../docs/verification/aethyr-streaming-12990/walk-automatic-loss.md).
 The Coax face refuses paid frames during rebuilding and, after a stop,
 admits only the session's real closing phase. This fixture is separate
-from host-v1 adoption, native automatic-loss handling and persistent rescue.
+from host-v1 adoption and native automatic-loss handling. The additive
+[whole-reactor browser rescue profile](../../docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md)
+retains allocator-backed sources and queued facts, restores one exact-build
+save and suppresses another save before 300 frame starts. Actual trap,
+failed-adapter and pending-load reloads qualify a two-MiB desktop profile;
+they do not establish native or larger-memory rescue.
 
 ```shell
 coax/bin/coax test aethyr/session/lifecycle.coax --library

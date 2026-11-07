@@ -1,0 +1,54 @@
+// Exact-build Wasm32 rescue admission. SDK hashing/storage are effects;
+// compatibility, bounded memory and crash-loop admission are checked here.
+#module "aethyr.host.rescue";
+#authority;
+#load "../assets.coax" as assets;
+RP_OK :: 1; RP_INVALID :: 2; RP_LAYOUT :: 3; RP_SIZE :: 4; RP_TIER :: 5; RP_IDENTITY :: 6;
+RP_MIN :: 2097152; RP_MAX :: 8388608; RP_LAYOUT_V1 :: 1; RP_SETTLE :: 300;
+#test "exact build content manifest and snapshot identities admit both bounded tiers" {
+  ids: [512] u8; for i: 0..<512 { ids[i] = '0'; }
+  for i, k: [8] int.[1, 2, 3, 1, 2, 3, 4, 4] { ids[k * 64] = cast(u8) ('0' + i); }
+  for size: [3] int.[RP_MIN, RP_MIN + 65536, RP_MAX] {
+    for tier: 0..<2 { #assert rp_admit(ids[..], 1, 1, size, size, tier, tier) == RP_OK; }
+  }
+  // All eight words of every identity must participate.
+  for pair: 0..<4 { for word: 0..<8 {
+    changed := ids; changed[(ifx pair < 3 then 192 + pair * 64 else 448) + word * 8] = 'f';
+    #assert rp_admit(changed[..], 1, 1, RP_MIN, RP_MIN, 0, 0) == RP_IDENTITY;
+  } }
+}
+#test "malformed metadata layout extent and tier refuse before memory publication" {
+  ids: [513] u8; for i: 0..<513 { ids[i] = '0'; }
+  #assert rp_admit(ids[0..<511], 1, 1, RP_MIN, RP_MIN, 0, 0) == RP_INVALID;
+  #assert rp_admit(ids[..], 1, 1, RP_MIN, RP_MIN, 0, 0) == RP_INVALID;
+  for i: 0..<8 { bad := ids; bad[i * 64 + 63] = 'g'; #assert rp_admit(bad[0..<512], 1, 1, RP_MIN, RP_MIN, 0, 0) == RP_INVALID; }
+  for layout: [3] int.[0, 2, -1] {
+    #assert rp_admit(ids[0..<512], layout, layout, RP_MIN, RP_MIN, 0, 0) == RP_LAYOUT;
+    #assert rp_admit(ids[0..<512], 1, layout, RP_MIN, RP_MIN, 0, 0) == RP_LAYOUT;
+  }
+  for size: [5] int.[-1, 0, RP_MIN - 65536, RP_MAX + 65536, RP_MIN + 1] {
+    #assert rp_admit(ids[0..<512], 1, 1, size, size, 0, 0) == RP_SIZE;
+  }
+  #assert rp_admit(ids[0..<512], 1, 1, RP_MIN, RP_MAX, 0, 0) == RP_SIZE;
+  for tier: [3] int.[-1, 2, 3] { #assert rp_admit(ids[0..<512], 1, 1, RP_MIN, RP_MIN, tier, tier) == RP_TIER; }
+  #assert rp_admit(ids[0..<512], 1, 1, RP_MIN, RP_MIN, 0, 1) == RP_TIER;
+}
+#test "a restored session must survive exactly three hundred frame starts before another rescue" {
+  #assert rp_save_allowed(-1) && !rp_save_allowed(-2);
+  for frames: 0..<300 { #assert !rp_save_allowed(frames); }
+  #assert rp_save_allowed(300) && rp_save_allowed(301) && rp_save_allowed(9223372036854775807);
+}
+rp_save_allowed :: (restored_frames: int) -> bool #export_c #effects(all) { return restored_frames == -1 || restored_frames >= RP_SETTLE; }
+// Eight canonical hex digests: current engine/scene/manifest, saved equivalents,
+// saved snapshot and the SDK's freshly computed snapshot digest.
+rp_admit :: (identities: [] u8, layout: int, saved_layout: int, bytes: int, claimed: int, tier: int, saved_tier: int) -> int #export_c #effects(all) {
+  if identities.count != 512 { return RP_INVALID; }
+  parsed: [8] assets.AssetId;
+  for i: 0..<8 { if !assets.asset_parse(cast(string) identities[i * 64..<(i + 1) * 64], parsed[i..<i + 1]) { return RP_INVALID; } }
+  if layout != RP_LAYOUT_V1 || saved_layout != layout { return RP_LAYOUT; }
+  if bytes % 65536 != 0 || bytes / 65536 < 32 || bytes / 65536 > 128 || claimed != bytes { return RP_SIZE; }
+  if tier < 0 || tier > 1 || saved_tier != tier { return RP_TIER; }
+  for i: 0..<3 { if !assets.asset_same(parsed[i], parsed[i + 3]) { return RP_IDENTITY; } }
+  if !assets.asset_same(parsed[6], parsed[7]) { return RP_IDENTITY; }
+  return RP_OK;
+}

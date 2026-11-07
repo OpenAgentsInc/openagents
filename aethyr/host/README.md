@@ -577,6 +577,12 @@ are in [`browser-clip-audio.md`](../../docs/verification/host-contract-2026-11-0
 
 ## Conformance and the desktop default
 
+The separate bounded streamed browser fixture has an additive exact-build
+[whole-reactor rescue profile](../../docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md).
+`rescue-policy.coax` owns compatibility and crash-loop admission; IndexedDB,
+WebCrypto and WebGPU remain SDK effects. This fixture does not change host-v1
+or qualify its native adapters.
+
 The standalone `render_host_presentation` selector and its small shared
 `hrm_presentation` mode admit only version 1/profile 2. An eligible invalid
 display/extent returns an enabled but refused typed plan, never a legacy

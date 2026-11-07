@@ -1976,9 +1976,17 @@ The bounded streamed WebGPU carrier additionally uses
 and fourth-loss stop. Its checked face refuses paid frames during
 replacement and permits stopped cleanup only from the actual closing
 state. The live RAF driver resets its timestamp on the recovery serial,
-so rebuilding wall time is not charged to simulation. Persistent rescue
-and native automatic-loss adoption remain unqualified for this carrier;
-see `docs/verification/aethyr-streaming-12990/walk-automatic-loss.md`.
+so rebuilding wall time is not charged to simulation. Its separate
+`stream-walk-rescue.coax` carrier checkpoints the complete Wasm32 reactor,
+including C statics, allocated source bytes and pending immutable facts.
+Coax admits only the exact engine/scene/manifest, layout, tier, memory extent
+and snapshot checksum. IndexedDB takes a save once in one read/delete
+transaction. Restore preserves allocator addresses and CPU owners, rebinds
+GPU handles and resumes unfinished effects. A second stop before 300 frame
+starts suppresses another save. Actual two-MiB desktop trap, pending-load
+and failed-adapter reloads have their own scoped evidence; native rescue,
+mobile hardware and larger-memory rescue are unqualified. See
+`docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md`.
 
 ## The Grid steps only on its session's record
 

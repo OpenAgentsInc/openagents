@@ -2,8 +2,11 @@
 
 Issue #12990 remains open. The [automatic browser-loss record](walk-automatic-loss.md)
 adds unsolicited callbacks, repeated/rebuilding loss, a real ten-second
-deadline, late-device destruction and checked frame admission. Persistent
-rescue and native automatic-loss adoption remain separate exits. The
+deadline, late-device destruction and checked frame admission. The additive
+[persistent browser rescue](walk-persistent-rescue.md) now covers exact-build
+whole-reactor save/reload, unfinished source effects, single use and crash
+loops. Native automatic loss/rescue and broader memory/failure profiles remain
+separate exits. The
 [native-history CPU replay](walk-native-cpu-replay.md)
 now checks every paid step in the actual Vulkan histories against the CPU
 consumer, including twelve altered-history refusals per tier. The original
@@ -151,10 +154,12 @@ copies are published, including a failure after three reservations.
   explicit treatment alongside the existing aggregate owners.
 - An actual host category-pressure refusal with prior resident content
   still usable; the current category test remains a component result.
-- Persistent failed-replacement rescue and native automatic-loss adoption.
-  Automatic browser loss, repeated/rebuilding loss, deadline and late-device
-  fencing now have actual receipts; native controlled replacement remains
-  a separate qualified observation profile.
+- Native automatic-loss/rescue adoption and wider browser rescue failure,
+  storage and memory qualification. The additive two-MiB browser rescue
+  carrier now has actual trap, unfinished-load and failed-adapter reloads;
+  automatic loss, repeated/rebuilding loss, deadline and late-device fencing
+  retain their earlier receipts. Native controlled replacement remains a
+  separate qualified observation profile.
 - Additional native failure-history replay as those histories are recorded.
   Current successful native GPU histories already replay every paid step
   through CPU allocation/codecs in their original backend/cost profile.

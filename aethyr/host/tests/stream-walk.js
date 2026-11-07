@@ -1,7 +1,8 @@
 // Firm reason: 1 (browser SDK: actual pack fetches, Wasm malloc spans and WebGPU effects; Coax owns all residency, movement, decoding and draw selection).
 import {openPackHost} from '../../../coax/web/pack-host.js';
+import {openRescueStore,rescueHash,showRescueStop} from './stream-walk-rescue.js';
 
-export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,tier,wasmURL,shaderURL,hudShaderURL='/build/stream-hud.wgsl',presentShaderURL='/build/stream-present.wgsl',onRecord}){
+export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,tier,wasmURL,shaderURL,hudShaderURL='/build/stream-hud.wgsl',presentShaderURL='/build/stream-present.wgsl',onRecord,rescueSlot='stream-walk'}){
   const packs=await openPackHost(),arena=packs.retainBytes(8388608),startup=[];let memory;
   startup.push(()=>{if(memory)new Uint8Array(memory.buffer).fill(0);memory=null;arena.release();});
   try{
@@ -11,9 +12,10 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   const runtimeMessages=[];
   const wasi={proc_exit(code){throw Error(`stream reactor exited ${code}`);},fd_close:()=>8,fd_seek:()=>8,fd_fdstat_get:()=>8,
     fd_write(fd,iov,count,written){const d=new DataView(memory.buffer);let bytes=0,text='';for(let i=0;i<count;i++){const at=d.getUint32(iov+i*8,true),n=d.getUint32(iov+i*8+4,true);bytes+=n;text+=new TextDecoder().decode(new Uint8Array(memory.buffer,at,n));}if(text){runtimeMessages.push(text);if(runtimeMessages.length>32)runtimeMessages.shift();console.error(text);}d.setUint32(written,bytes,true);return 0;}};
-  const module=await WebAssembly.compile(await(await fetch(wasmURL)).arrayBuffer());
+  const engineBytes=await(await fetch(wasmURL)).arrayBuffer(),module=await WebAssembly.compile(engineBytes);
   const instance=await WebAssembly.instantiate(module,{env:{memory},wasi_snapshot_preview1:wasi});
   let x=instance.exports;x._initialize?.();
+  const rescuable=!!x.sw_rescue_check,engineSHA=rescuable?await rescueHash(engineBytes):null;
   const automatic=!!x.sw_loss_open;if(automatic&&!x.sw_loss_open())throw Error('device policy initialization refused');
   const info=f=>Number(x.sw_host_info(f)),row=(i,f)=>Number(x.sw_host_row(i,f));
   const authenticate=(bytes,hex)=>{if(bytes.byteLength>32768)throw Error('fixture metadata exceeds retained config span');new Uint8Array(memory.buffer,x.sw_config_ptr(),bytes.byteLength).set(bytes);new Uint8Array(memory.buffer,x.sw_root_ptr(),64).set(new TextEncoder().encode(hex));if(!x.sw_host_auth(bytes.byteLength))throw Error('Coax refused complete content identity');};
@@ -33,6 +35,50 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   let closed=false,framing=false,loadFailures=0,drawnCommands=0,fallbackDraws=0,finalSnapshot,observedLive=0;
   let gpuTail=Promise.resolve(),recovery=null,replacementWork=null,initialized=false,earlyLoss=false;
   let lastRecovery=null,recoveryError=null,surfaceLive=false;
+  let held=null,heldOwner=null,heldEvery=0,restoredFrames=-1,trapArmed=false,rescueSaving=null,rescuePanel=null;
+  const rescueState={supported:rescuable,restored:false,saved:null,suppressed:false,refusal:null,slot:rescueSlot};
+  const rescueStore=rescuable?await openRescueStore(`aethyr.stream-walk.${rescueSlot}`):null;
+  startup.push(()=>{heldOwner?.release();rescueStore?.close();rescuePanel?.();});
+  const saved=rescueStore?await rescueStore.take():null;
+  if(saved){
+    // Validate the byte extent before hashing or constructing a memory view.
+    // The Coax gate still decides the full supported layout/profile/identity.
+    const size=saved.bytes instanceof ArrayBuffer?saved.bytes.byteLength:0;
+    let retained;
+    try{
+      if(size<2097152||size>8388608){rescueState.refusal=4;}else{
+      retained=packs.retainBytes(size);
+      const identities=[engineSHA,sceneSHA,manifestSHA,saved.engine,saved.scene,saved.manifest,saved.snapshot,await rescueHash(saved.bytes)];
+      if(identities.some(v=>typeof v!=='string'||v.length!==64)||![saved.layout,saved.size,saved.tier].every(Number.isSafeInteger)){rescueState.refusal=2;}else{
+      new Uint8Array(memory.buffer,x.sw_config_ptr(),512).set(new TextEncoder().encode(identities.join('')));
+      const admitted=Number(x.sw_rescue_check(BigInt(saved.layout??0),BigInt(size),BigInt(saved.size??0),BigInt(tier),BigInt(saved.tier??-1)));
+      if(admitted!==1){rescueState.refusal=admitted;}else{
+        memory.grow((size-memory.buffer.byteLength)/65536);new Uint8Array(memory.buffer).set(new Uint8Array(saved.bytes));
+        // The page has no old device or live JS callbacks. Replace only GPU
+        // handles; malloc/static pointers retain their exact saved addresses.
+        if(!x.sw_loss_open()||!x.sw_host_recover())throw Error('restored GPU owner rebinding refused');
+        observedLive=info(14);for(let i=0;i<x.sw_host_trace_count();i++)observedLive+=Number(x.sw_host_trace(i,0))?Number(x.sw_host_trace(i,5)):-Number(x.sw_host_trace(i,5));
+        restoredFrames=0;rescueState.restored=true;rescueState.restoredDigest=rescueDigest();rescueState.restoredTick=info(0);
+      }
+      }}
+    }catch(error){throw Error(`rescue restore failed: ${error}`);}finally{retained?.release();}
+  }
+  function holdFrame(){
+    if(!rescuable)return;
+    if(restoredFrames>=0)restoredFrames++;
+    const size=memory.buffer.byteLength;if(size>2097152&&heldEvery++%30)return;
+    if(!held||held.bytes.byteLength!==size){heldOwner?.release();heldOwner=packs.retainBytes(size);held={bytes:new ArrayBuffer(size)};}
+    const digest=rescueDigest();new Uint8Array(held.bytes).set(new Uint8Array(memory.buffer));
+    held.digest=digest;held.tick=info(0);held.size=size;
+  }
+  function saveStopped(){
+    if(!rescuable||rescueSaving)return;
+    rescueState.suppressed=!x.sw_rescue_save_allowed(BigInt(restoredFrames));
+    const record=!rescueState.suppressed&&held?{...held,layout:1,tier,engine:engineSHA,scene:sceneSHA,manifest:manifestSHA}:null;
+    rescueState.heldDigest=record?.digest??null;rescueState.heldTick=record?.tick??null;
+    rescueSaving=(async()=>{if(!record){await rescueStore.write(null);return false;}record.snapshot=await rescueHash(record.bytes);return rescueStore.write(record);})().then(saved=>{rescueState.saved=saved;return saved;},error=>{rescueState.saved=false;rescueState.error=String(error);return false;});
+    rescuePanel=showRescueStop(rescueSaving);
+  }
   const lossInfo=f=>automatic?Number(x.sw_loss_info(f)):0,wallNow=()=>BigInt(Math.floor(performance.now()));
   async function makeSurface(check=()=>{}){
     const created=[],tokens=[];let candidate;
@@ -89,9 +135,9 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     }finally{validation=await device.popErrorScope();}
     if(validation)throw Error(validation.message);
   }
-  async function load(k){
+  async function load(k,resuming=false){
     const started=performance.now(),stage={owner:k.owner,generation:String(k.generation),epoch:String(k.epoch),source:scene.resources[k.owner].sha256};
-    const owner={...k},allocation=x.sw_host_allocate(k.owner,k.generation,k.epoch);let status=1;
+    const owner={...k},allocation=resuming?x.sw_rescue_allocated(k.owner):x.sw_host_allocate(k.owner,k.generation,k.epoch);let status=1;
     transfers.set(k.owner,{key:k,owner});
     stage.allocationMs=performance.now()-started;
     try{
@@ -119,7 +165,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     finally{await packs.retire(owner);transfers.delete(k.owner);if(!x.sw_host_finish(k.owner,k.generation,k.epoch,status))throw Error('completion queue pressure requires retained retry');stage.status=status;stage.totalMs=performance.now()-started;stages.push(stage);}
   }
   const command=(retiring,index)=>({owner:Number(x.sw_host_command(retiring,index,0)),generation:x.sw_host_command(retiring,index,1),epoch:x.sw_host_command(retiring,index,2)});
-  function launch(k){let task;task=load(k).finally(()=>pending.delete(task));pending.add(task);}
+  function launch(k,resuming=false){let task;task=load(k,resuming).finally(()=>pending.delete(task));pending.add(task);}
   async function retire(k){const resource=gpu.get(k.owner);if(resource){if(resource.generation!==k.generation)throw Error('retirement would destroy another generation');resource.object.destroy();gpu.delete(k.owner);}if(!x.sw_host_destroy(k.owner,k.generation,k.epoch))throw Error('destruction queue pressure requires retained retry');}
   function render(){return gpuTask(renderNow);}
   async function renderNow(){
@@ -149,6 +195,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     if(automatic&&!closing){if(recovery)await recovery;if(lossInfo(1))throw Error('GPU recovery stopped; retained CPU owners await close');}
     if(closed||framing)throw Error('frame is closed or already running');framing=true;const start=performance.now();
     try{
+      if(!closing){holdFrame();if(trapArmed){trapArmed=false;x.sw_rescue_trap();}}
       if(!x.sw_host_frame(BigInt(ns),direction))throw Error('paid frame refused');
       const stepDigests=Array.from({length:x.sw_host_step_count()},(_,step)=>Array.from({length:8},(_,word)=>Number(x.sw_host_step_word(step,word)).toString(16).padStart(8,'0')).join(''));
       const loads=Array.from({length:info(1)},(_,i)=>command(0,i)),retiring=Array.from({length:info(2)},(_,i)=>command(1,i));
@@ -165,10 +212,10 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       const cpu=info(14),gpuBytes=[...gpu.values()].reduce((n,r)=>n+r.bytes,0);
       if(observedLive!==cpu||cpu>info(10)||cpu+gpuBytes>info(8))throw Error('physical allocations disagree with original tickets/declared peak');
       return {frameNs:ns,direction,tick:info(0),position:Array.from({length:3},(_,i)=>x.sw_host_player(i)),active:info(4),drawn:info(5),updated:info(6),declared:info(8),cpu,gpuBytes,allocations,stages:stages.splice(0),records,stepDigests,frameMs:performance.now()-start,presentationInterrupted};
-    }finally{framing=false;}
+    }catch(error){if(rescuable&&!closing&&!lossInfo(0)&&!lossInfo(1)){x.sw_rescue_stop(wallNow());stopRecovery(error);}throw error;}finally{framing=false;}
   }
   async function close(){
-    if(recovery)await recovery;if(replacementWork)await replacementWork.catch(()=>{});
+    if(recovery)await recovery;if(replacementWork)await replacementWork.catch(()=>{});if(rescueSaving)await rescueSaving;
     if(closed||framing||!x.sw_host_close())throw Error('close refused');
     for(const transfer of transfers.values())packs.abortReads(transfer.owner);
     await Promise.all([...pending]);
@@ -176,7 +223,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     if(!info(24)||info(14)||info(10)||info(22)||info(23))throw Error('physical resources did not drain');
     if(surfaceLive)await device.queue.onSubmittedWorkDone();destroySurface();for(const i of [0,1,2,6,7,8])if(fixedLive(i)&&!x.sw_host_fixed_release(i))throw Error('fixed ledger cleanup refused');
     const result={info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,recovery:deviceStatus(),hud:{draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))},wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
-    if(info(12)||info(13))throw Error('GPU ledger did not drain');closed=true;context.unconfigure();device.destroy();new Uint8Array(memory.buffer).fill(0);x=null;memory=null;arena.release();result.transport=packs.info();finalSnapshot=result;return result;
+    if(info(12)||info(13))throw Error('GPU ledger did not drain');closed=true;context.unconfigure();device.destroy();heldOwner?.release();heldOwner=null;held=null;rescueStore?.close();rescuePanel?.();new Uint8Array(memory.buffer).fill(0);x=null;memory=null;arena.release();result.transport=packs.info();finalSnapshot=result;return result;
   }
   async function capture(){
     if(closed||framing)throw Error('capture needs a completed frame');framing=true;
@@ -202,12 +249,13 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   }
   let stopWake=null;
   function stopRecovery(error){
-    recoveryError=String(error);destroySurface();stopWake?.();
+    recoveryError=String(error);destroySurface();stopWake?.();saveStopped();
   }
   function deviceStatus(){
     if(closed)return finalSnapshot.recovery;
     return {state:lossInfo(1)?'stopped':lossInfo(0)?'recovering':lastRecovery?'recovered':'ready',serial:lossInfo(2),generation:automatic?String(x.sw_loss_info(2)):'0',losses:lossInfo(3),began:lossInfo(4),reason:lossInfo(5),last:lossInfo(6),lastRecovery,error:recoveryError,retainedCPU:info(14)};
   }
+  function rescueDigest(){const at=x.sw_host_rescue_digest?.();if(!at)throw Error('checkpoint observer unavailable');return new TextDecoder().decode(new Uint8Array(memory.buffer,at,64));}
   function stateDigest(){const at=x.sw_host_device_digest?.();if(!at)throw Error('canonical device observer unavailable');return new TextDecoder().decode(new Uint8Array(memory.buffer,at,64));}
   function deviceLost(lost,reason){
     if(closed||retiredDevices.has(lost)||lost!==device)return;
@@ -265,6 +313,11 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       return {before,after:Array.from({length:28},(_,f)=>info(f)),epoch:Number(x.sw_host_recover_info(2)),granted:Number(x.sw_host_recover_info(1)),uploaded,lossReason:loss.reason,adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description},ms:performance.now()-started};
     }finally{framing=false;}
   }
-  return Object.freeze({step,settle:()=>Promise.all([...pending]),close,capture,recover,loseDevice:()=>device.destroy(),deviceStatus,stateDigest,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
+  if(rescueState.restored){
+    for(let owner=0;owner<64;owner++)if(x.sw_host_uploadable(owner))await upload({owner,generation:x.sw_host_row(owner,10)},true);
+    await render();
+    for(let owner=0;owner<64;owner++)if(x.sw_rescue_object(owner,0)&&!x.sw_rescue_object(owner,1))launch({owner,generation:x.sw_rescue_object(owner,2),epoch:x.sw_rescue_object(owner,3)},true);
+  }
+  return Object.freeze({rescueDigest,rescueStatus:()=>({...rescueState,restoredFrames,heldBytes:held?.size??0}),rescueSaved:()=>rescueSaving??Promise.resolve(false),trapNextFrame:()=>{if(!rescuable)throw Error('rescue unsupported');trapArmed=true;},step,settle:()=>Promise.all([...pending]),close,capture,recover,loseDevice:()=>device.destroy(),deviceStatus,stateDigest,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
   }catch(error){for(const dispose of startup.reverse())await dispose();throw error;}
 }

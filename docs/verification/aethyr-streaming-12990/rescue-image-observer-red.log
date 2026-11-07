@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_rescue_oracle.py", line 122, in <module>
+    result = inspect(data, mode, wasm.read_bytes())
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_rescue_oracle.py", line 50, in inspect
+    assert pixels(data['before-image']) == pixels(data['restored-image'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

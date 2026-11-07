@@ -19,8 +19,10 @@ compares canonical state after every paid step in native CPU replay. Its
 [verification record](../../docs/verification/aethyr-streaming-12990/README.md)
 limits qualification to the measured profile. Native controlled GPU
 replacement and automatic browser loss/deadline handling now have separate
-receipts; physical backend planning, persistent rescue and remaining
-failure histories are still open.
+receipts. The additive [browser rescue carrier](../../docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md)
+retains its whole two-MiB reactor and pending source effects across an
+exact-build reload. Physical backend planning, native automatic loss/rescue
+and remaining failure/memory profiles are still open.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

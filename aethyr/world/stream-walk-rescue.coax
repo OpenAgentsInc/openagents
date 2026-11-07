@@ -1,0 +1,25 @@
+// Whole-reactor rescue is a separate exact-build profile: it includes this
+// carrier's C statics, malloc arena and borrowed spans. No portable ABI claim.
+#authority;
+#load "stream-walk-device.coax";
+#load "../host/rescue-policy.coax";
+#test "checkpoint observation retains pending immutable facts without applying them" #steps 100000000 {
+  s: [1] SwWalk; out: [64] u8;
+  #assert !sw_rescue_digest(s[..], out[..]); s[0].valid = true;
+  #assert !sw_rescue_digest(s[0..<0], out[..]); two: [2] SwWalk; #assert !sw_rescue_digest(two[..], out[..]);
+  #assert !sw_rescue_digest(s[..], out[0..<63]);
+  #assert sw_device_digest(s[..], out[..]); expected := out;
+  for count: [3] int.[1, 37, SW_FACTS] {
+    s[0].fact_n = count; s[0].facts[count - 1].key.generation = 57;
+    #assert sw_rescue_digest(s[..], out[..]) && cast(string) out[..] == cast(string) expected[..];
+    #assert s[0].fact_n == count && s[0].facts[count - 1].key.generation == 57 && s[0].tick == 0;
+  }
+}
+// The accepted simulation digest keeps v1's existing distinction: callbacks
+// are pending inputs, not accepted events. Whole-reactor rescue retains those
+// facts and their source spans too; this observer never consumes them.
+sw_rescue_digest :: (s: [] SwWalk, out: [] u8) -> bool #export_c #effects(all) {
+  if s.count != 1 || !s[0].valid || out.count < 64 { return false; }
+  count := s[0].fact_n; s[0].fact_n = 0;
+  ok := sw_device_digest(s, out); s[0].fact_n = count; return ok;
+}

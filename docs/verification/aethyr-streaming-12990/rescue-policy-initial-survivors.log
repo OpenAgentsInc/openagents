@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/rescue-policy.coax:48:32: mutant survived: 8388608 became 8388609
+    if bytes < RP_MIN || bytes > RP_MAX || bytes % 65536 != 0 || claimed != bytes { return RP_SIZE; }
+                                 ^
+aethyr/host/rescue-policy.coax:50:14: mutant survived: 3 became 4
+    for i: 0..<3 { if !assets.asset_same(parsed[i], parsed[i + 3]) { return RP_IDENTITY; } }
+               ^
+61 mutants, 59 killed, 2 survived

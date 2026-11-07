@@ -1,5 +1,9 @@
 # Automatic streamed WebGPU loss — November 7, 2026
 
+**Later follow-up:** [whole-reactor browser rescue](walk-persistent-rescue.md)
+adds a separate exact-build carrier; the measurements below retain their
+original no-rescue binary and scope.
+
 **#12990 remains open.** Starting from local checkpoint `ad3a303a05`,
 the actual streamed browser consumer now handles unsolicited device loss
 through checked Coax policy. It preserves the ordinary host's existing
