@@ -25,6 +25,7 @@ before relying on them.
 | `aethyr/anim/brush.coax` | 4 | 9 passed |
 | `aethyr/anim/photo.coax` | 3 | 12 passed |
 | `verse/animlab/drawn/wind-hill.coax` | 3 | 18 passed |
+| `verse/animlab/drawn/run-everglade.coax` | 4 | 22 passed |
 
 None of these files decides money, admission or policy, so none is
 `#authority` and no mutation run was required. No `coax mutate` was run.
@@ -34,7 +35,9 @@ is not fetched). Every new file is Coax, so none needs a firm-reason header.
 
 ## Render
 
-`verse/tools/drawn-anime.coax` (release C, checked arithmetic off), 1280 × 720:
+`verse/tools/drawn-anime.coax` (release C, checked arithmetic off), 1280 × 720.
+
+"Wind on the hill" (`--shot wind`):
 
 | Measure | Result |
 | --- | --- |
@@ -43,6 +46,15 @@ is not fetched). Every new file is Coax, so none needs a firm-reason header.
 | Distinct frames | 96 digests, all different (the camera trucks every frame; grain is seeded by frame) |
 | Palette | Mean saturation 0.373 (max over frames 0.374); 0.09 % of pixels above 0.75 saturation |
 | Timing | Wren's hair, scarf and skirt change drawing every second frame (on twos), checked in `wind-hill.coax` |
+
+"Running to Everglade" (`--shot run`):
+
+| Measure | Result |
+| --- | --- |
+| Frames | 96 (4 s at 24 fps), 41.0 s wall |
+| Determinism | Two complete renders: 96 of 96 frame digests equal |
+| Palette | Mean saturation 0.313 (max over frames 0.314); 0.02 % of pixels above 0.75 saturation |
+| Timing | Eight run drawings, each held two frames (`rn_drawing`, checked); the meadow, grass and smoke on the same sheet |
 
 The frames and the encoded video stay out of git. Re-create them with the
 two commands in the spec.

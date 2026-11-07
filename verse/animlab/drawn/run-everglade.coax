@@ -1,0 +1,529 @@
+// "Running to Everglade": the second drawn shot (docs/verse/2026-11-06-drawn-anime.md, the MVP).
+// Wren runs in profile along a meadow road; the camera tracks with her, so
+// she stays in frame while the plates pan behind her at their own rates:
+// the evening sky, far hills, Everglade on its rise (the timber palisade,
+// the South Gate's two towers under round red roofs, the roofs of the town
+// and the mages' tower, the forest ringing it, docs/verse/everglade.md),
+// big oaks in the middle distance, the meadow and its road, and grass
+// whipping past in the foreground.
+//
+// Her run is a cycle of eight drawings exposed on twos (two steps in 16
+// frames): contact, down, passing and up for each leg. Each drawing is a key
+// pose (joint angles); the figure is drawn fresh from it: every limb a
+// tapered closed outline around its bones, inked, with a designed shadow on
+// the side away from the light. The far arm and leg are painted in her
+// shadow colours, as cel animation separates near from far.
+//   coax/bin/coax test verse/animlab/drawn/run-everglade.coax --library
+//   coax/web/tool.sh verse/tools/drawn-anime.coax OUT_DIR --shot run
+#load "wind-hill.coax";
+
+RN_FRAMES :: 96;
+RN_SPEED :: 18.0f32;     // pixels a frame the road pans under her
+RN_GROUND :: 604.0f32;   // the road's line, at 720 rows
+RN_X :: 470.0f32;        // where her hips stay on screen
+// bone lengths, in her units (about 300 tall standing)
+RN_THIGH :: 64.0f32; RN_SHIN :: 62.0f32; RN_UPPER :: 50.0f32; RN_FORE :: 45.0f32; RN_ANKLE :: 8.0f32;
+
+// ---- the key poses (anim.pose.v1 in words): angles from hanging straight down, forward (+x) positive ----
+// near thigh, near knee bend, far thigh, far knee bend, near shoulder, near elbow, far shoulder, far elbow,
+// lift (a flight above the lowest foot's reach), lean
+RN_KEYS :: [4 * 10] f32.[
+   0.55, 0.15, -0.45, 0.95,  -0.75, 1.25,  0.80, 1.35,   0, 0.20,   // contact: the near heel strikes
+   0.30, 1.10, -0.15, 1.75,  -0.40, 1.30,  0.50, 1.40,   0, 0.24,   // down: the body sinks onto it
+  -0.18, 0.50,  0.50, 1.95,   0.05, 1.40,  0.00, 1.40,   0, 0.22,   // passing: the far leg swings through, folded
+  -0.62, 0.22,  0.85, 1.05,   0.75, 1.35, -0.70, 1.20,  34, 0.18];  // up: pushed off, both feet off the ground
+RnPose :: struct { nt: f32; nk: f32; ft: f32; fk: f32; ns: f32; ne: f32; fs: f32; fe: f32; lift: f32; lean: f32; }
+/** Drawing d of the cycle (0..7): keys 0..3 for the near leg's step, then the same with near and far swapped. */
+rn_pose :: (d: int) -> RnPose {
+  k := RN_KEYS; i := ((d % 4) + 4) % 4 * 10;
+  p := RnPose.{nt = k[i], nk = k[i + 1], ft = k[i + 2], fk = k[i + 3], ns = k[i + 4], ne = k[i + 5], fs = k[i + 6], fe = k[i + 7], lift = k[i + 8], lean = k[i + 9]};
+  if ((d % 8) + 8) % 8 >= 4 {
+    q := p;
+    q.nt = p.ft; q.nk = p.fk; q.ft = p.nt; q.fk = p.nk; q.ns = p.fs; q.ne = p.fe; q.fs = p.ns; q.fe = p.ne;
+    return q;
+  }
+  return p;
+}
+// The drawing a frame shows: eight drawings, one every two frames.
+RN_CYCLE :: XsCycle.{keys = 8, span = 2, step = XS_TWOS};
+rn_drawing :: (frame: int) -> int { return xs_at(RN_CYCLE, frame).a; }
+
+// ---- the skeleton a pose makes, in her units, the ground at y = 0 ----
+J_HIP :: 0; J_KNEE_N :: 1; J_ANKLE_N :: 2; J_KNEE_F :: 3; J_ANKLE_F :: 4; J_SHOULDER :: 5; J_ELBOW_N :: 6;
+J_WRIST_N :: 7; J_ELBOW_F :: 8; J_WRIST_F :: 9; J_NECK :: 10; J_HEAD :: 11; J_FOOT_N :: 12; J_FOOT_F :: 13;
+RN_J :: 14;
+RnBody :: struct { p: [RN_J * 2] f32; lean: f32; calf_n: f32; calf_f: f32; }
+rn_dir :: (a: f32, out: [] f32) { out[0] = sin(a); out[1] = cos(a); }
+/** The joints of pose p: the hips set so the lower foot's ankle stands on the ground, plus the pose's lift. */
+rn_body :: (p: RnPose) -> RnBody {
+  b: RnBody; b.lean = p.lean;
+  drop_n := cos(p.nt) * RN_THIGH + cos(p.nt - p.nk) * RN_SHIN;
+  drop_f := cos(p.ft) * RN_THIGH + cos(p.ft - p.fk) * RN_SHIN;
+  hy := -RN_ANKLE - ink_max(drop_n, drop_f) - p.lift;
+  b.p[J_HIP * 2] = 0; b.p[J_HIP * 2 + 1] = hy;
+  b.calf_n = p.nt - p.nk; b.calf_f = p.ft - p.fk;
+  b.p[J_KNEE_N * 2] = sin(p.nt) * RN_THIGH; b.p[J_KNEE_N * 2 + 1] = hy + cos(p.nt) * RN_THIGH;
+  b.p[J_ANKLE_N * 2] = b.p[J_KNEE_N * 2] + sin(b.calf_n) * RN_SHIN; b.p[J_ANKLE_N * 2 + 1] = b.p[J_KNEE_N * 2 + 1] + cos(b.calf_n) * RN_SHIN;
+  b.p[J_KNEE_F * 2] = sin(p.ft) * RN_THIGH; b.p[J_KNEE_F * 2 + 1] = hy + cos(p.ft) * RN_THIGH;
+  b.p[J_ANKLE_F * 2] = b.p[J_KNEE_F * 2] + sin(b.calf_f) * RN_SHIN; b.p[J_ANKLE_F * 2 + 1] = b.p[J_KNEE_F * 2 + 1] + cos(b.calf_f) * RN_SHIN;
+  // the foot points forward of the shin
+  b.p[J_FOOT_N * 2] = b.p[J_ANKLE_N * 2] + cos(b.calf_n) * 20; b.p[J_FOOT_N * 2 + 1] = b.p[J_ANKLE_N * 2 + 1] - sin(b.calf_n) * 20;
+  b.p[J_FOOT_F * 2] = b.p[J_ANKLE_F * 2] + cos(b.calf_f) * 20; b.p[J_FOOT_F * 2 + 1] = b.p[J_ANKLE_F * 2 + 1] - sin(b.calf_f) * 20;
+  ux := sin(p.lean); uy := -cos(p.lean);
+  b.p[J_SHOULDER * 2] = ux * 98; b.p[J_SHOULDER * 2 + 1] = hy + uy * 98;
+  b.p[J_NECK * 2] = ux * 112; b.p[J_NECK * 2 + 1] = hy + uy * 112;
+  b.p[J_HEAD * 2] = ux * 143 + 5; b.p[J_HEAD * 2 + 1] = hy + uy * 143;
+  sx := b.p[J_SHOULDER * 2]; sy := b.p[J_SHOULDER * 2 + 1];
+  b.p[J_ELBOW_N * 2] = sx + sin(p.ns) * RN_UPPER; b.p[J_ELBOW_N * 2 + 1] = sy + cos(p.ns) * RN_UPPER;
+  b.p[J_WRIST_N * 2] = b.p[J_ELBOW_N * 2] + sin(p.ns + p.ne) * RN_FORE; b.p[J_WRIST_N * 2 + 1] = b.p[J_ELBOW_N * 2 + 1] + cos(p.ns + p.ne) * RN_FORE;
+  b.p[J_ELBOW_F * 2] = sx + sin(p.fs) * RN_UPPER; b.p[J_ELBOW_F * 2 + 1] = sy + cos(p.fs) * RN_UPPER;
+  b.p[J_WRIST_F * 2] = b.p[J_ELBOW_F * 2] + sin(p.fs + p.fe) * RN_FORE; b.p[J_WRIST_F * 2 + 1] = b.p[J_ELBOW_F * 2 + 1] + cos(p.fs + p.fe) * RN_FORE;
+  return b;
+}
+rn_x :: (b: RnBody, j: int) -> f32 { return b.p[j * 2]; }
+rn_y :: (b: RnBody, j: int) -> f32 { return b.p[j * 2 + 1]; }
+
+// ---- drawing from the skeleton: each shape's control points (x, y, pressure) in her units ----
+rn_put :: (out: [] f32, i: int, x: f32, y: f32) -> int { out[i * 3] = x; out[i * 3 + 1] = y; out[i * 3 + 2] = 1; return i + 1; }
+rn_norm :: (x: f32, y: f32, out: [] f32) { l := sqrt(x * x + y * y); if l < 0.0001 { out[0] = 0; out[1] = 1; return; } out[0] = x / l; out[1] = y / l; }
+/** A limb around bones a-b-c, wa/wb/wc wide (half widths) at the three joints: a closed outline of 8
+    control points into out; with `shade` set, only the half on the side facing (lx, ly), the light's far
+    side, as its shadow shape. */
+rn_limb :: (ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, wa: f32, wb: f32, wc: f32, shade: bool, out: [] f32) -> int {
+  d1: [2] f32; d2: [2] f32; nb: [2] f32;
+  rn_norm(bx - ax, by - ay, d1[..]); rn_norm(cx - bx, cy - by, d2[..]);
+  n1x := -d1[1]; n1y := d1[0]; n2x := -d2[1]; n2y := d2[0];
+  rn_norm(n1x + n2x, n1y + n2y, nb[..]);
+  if !shade {
+    i := 0;
+    i = rn_put(out, i, ax + n1x * wa, ay + n1y * wa); i = rn_put(out, i, bx + nb[0] * wb, by + nb[1] * wb);
+    i = rn_put(out, i, cx + n2x * wc, cy + n2y * wc); i = rn_put(out, i, cx + d2[0] * wc * 0.9, cy + d2[1] * wc * 0.9);
+    i = rn_put(out, i, cx - n2x * wc, cy - n2y * wc); i = rn_put(out, i, bx - nb[0] * wb, by - nb[1] * wb);
+    i = rn_put(out, i, ax - n1x * wa, ay - n1y * wa); i = rn_put(out, i, ax - d1[0] * wa * 0.7, ay - d1[1] * wa * 0.7);
+    return i;
+  }
+  sg := ifx nb[0] * 0.55 + nb[1] * 0.83 > 0 then 1.0f32 else -1.0f32;
+  i := 0;
+  i = rn_put(out, i, ax + sg * n1x * wa * 1.3, ay + sg * n1y * wa * 1.3); i = rn_put(out, i, bx + sg * nb[0] * wb * 1.3, by + sg * nb[1] * wb * 1.3);
+  i = rn_put(out, i, cx + sg * n2x * wc * 1.3, cy + sg * n2y * wc * 1.3); i = rn_put(out, i, cx + d2[0] * wc, cy + d2[1] * wc);
+  i = rn_put(out, i, cx + sg * n2x * wc * 0.15, cy + sg * n2y * wc * 0.15); i = rn_put(out, i, bx + sg * nb[0] * wb * 0.1, by + sg * nb[1] * wb * 0.1);
+  i = rn_put(out, i, ax + sg * n1x * wa * 0.2, ay + sg * n1y * wa * 0.2);
+  return i;
+}
+/** A shoe at ankle (x, y) whose shin runs at angle `calf`. */
+rn_shoe :: (x: f32, y: f32, calf: f32, out: [] f32) -> int {
+  fx := cos(calf); fy := -sin(calf); ux := fy; uy := -fx;
+  i := 0;
+  i = rn_put(out, i, x - fx * 6 + ux * 5, y - fy * 6 + uy * 5); i = rn_put(out, i, x + fx * 9 + ux * 5, y + fy * 9 + uy * 5);
+  i = rn_put(out, i, x + fx * 21 + ux * 1, y + fy * 21 + uy * 1); i = rn_put(out, i, x + fx * 22 - ux * 5, y + fy * 22 - uy * 5);
+  i = rn_put(out, i, x + fx * 4 - ux * 7, y + fy * 4 - uy * 7); i = rn_put(out, i, x - fx * 7 - ux * 5, y - fy * 7 - uy * 5);
+  return i;
+}
+rn_disc :: (x: f32, y: f32, rx: f32, ry: f32, out: [] f32) -> int {
+  for k: 0..<6 { a := f32(k) * 1.0472; out[k * 3] = x + cos(a) * rx; out[k * 3 + 1] = y + sin(a) * ry; out[k * 3 + 2] = 1; }
+  return 6;
+}
+// A point in the torso's frame (f forward, u up from the hips) and in the head's (x forward, y down from its middle).
+rn_tor :: (b: RnBody, f: f32, u: f32, out: [] f32, i: int) -> int {
+  fx := cos(b.lean); fy := sin(b.lean); ux := sin(b.lean); uy := -cos(b.lean);
+  uu := u * 1.14;   // the torso was drawn 98 tall; she is 112 to the neck
+  return rn_put(out, i, rn_x(b, J_HIP) + fx * f * 1.08 + ux * uu, rn_y(b, J_HIP) + fy * f * 1.08 + uy * uu);
+}
+rn_hd :: (b: RnBody, x: f32, y: f32, out: [] f32, i: int) -> int {
+  t := b.lean * 0.4; c := cos(t); s := sin(t); k := 1.3f32;   // the head drawn 52 tall, staged 68
+  return rn_put(out, i, rn_x(b, J_HEAD) + (x * c - y * s) * k, rn_y(b, J_HEAD) + (x * s + y * c) * k);
+}
+RN_HAIR :: [13 * 2] f32.[17, -9, 15, -19, 4, -26, -12, -25, -23, -15, -27, 0, -27, 14, -34, 19, -22, 20, -12, 17, -7, 10, -3, -1, 7, -8];
+RN_FACE :: [11 * 2] f32.[14, -10, 19, -4, 20, 0, 24, 4, 21, 6, 21, 10, 18, 16, 8, 20, -4, 12, -2, -8, 8, -14];
+RN_HAIR_SH :: [7 * 2] f32.[-27, 0, -27, 14, -34, 19, -22, 20, -12, 17, -7, 10, -16, 4];
+
+// Paint for her far side: the shadow colour as its fill, a deeper one as its shadow.
+rn_far :: (p: WhPaint) -> WhPaint { return WhPaint.{fill = p.shade, shade = br_scale(p.shade, 0.82), line = p.line}; }
+
+/** Wren running, drawing d, her hips at screen (tx, ty) above the ground line, at scale s. */
+rn_wren :: (px: [] f32, cov: [] f32, mask: [] f32, w: int, h: int, d: int, s: f32, tx: f32, ty: f32) {
+  p := rn_pose(d); b := rn_body(p);
+  a: [WH_MAX * 3] f32; sh: [WH_MAX * 3] f32; none: [1] f32; no := none[0..<0];
+  legs := wh_paint(WH_LEGS); skin := wh_paint(WH_SKIN); hair := wh_paint(WH_HAIR);
+  blouse := wh_paint(WH_BLOUSE); skirt := wh_paint(WH_SKIRT); scarf := wh_paint(WH_SCARF);
+  shoes := WhPaint.{fill = rgb(0.36, 0.20, 0.15), shade = rgb(0.22, 0.12, 0.10), line = legs.line};
+  // the far arm and leg, in shadow
+  n := rn_limb(rn_x(b, J_SHOULDER), rn_y(b, J_SHOULDER), rn_x(b, J_ELBOW_F), rn_y(b, J_ELBOW_F), rn_x(b, J_WRIST_F), rn_y(b, J_WRIST_F), 7, 5.5, 4, false, a[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, no, 0, no, 0, rn_far(skin), s, tx, ty, true);
+  n = rn_limb(rn_x(b, J_HIP), rn_y(b, J_HIP), rn_x(b, J_KNEE_F), rn_y(b, J_KNEE_F), rn_x(b, J_ANKLE_F), rn_y(b, J_ANKLE_F), 14, 9.5, 5.5, false, a[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, no, 0, no, 0, rn_far(legs), s, tx, ty, true);
+  n = rn_shoe(rn_x(b, J_ANKLE_F), rn_y(b, J_ANKLE_F), b.calf_f, a[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, no, 0, no, 0, rn_far(shoes), s, tx, ty, true);
+  // the scarf streams back from her neck, its wave travelling down it drawing by drawing
+  ph := f32(d) * 0.785;
+  nx := rn_x(b, J_NECK) - 4; ny := rn_y(b, J_NECK) + 4;
+  i := 0;
+  for k: 0..<6 { t := f32(k) / 5; i = rn_put(a[..], i, nx - t * 112, ny - 2 + sin(ph + t * 5) * 7 * t - t * 10); }
+  for k: 0..<6 { t := 1 - f32(k) / 5; i = rn_put(a[..], i, nx - t * 112 + 2, ny + 9 - t * 4 + sin(ph + t * 5) * 7 * t - t * 10); }
+  j := 0;
+  for k: 0..<6 { t := f32(k) / 5; j = rn_put(sh[..], j, nx - t * 112, ny + 5 - t * 2 + sin(ph + t * 5) * 7 * t - t * 10); }
+  for k: 0..<6 { t := 1 - f32(k) / 5; j = rn_put(sh[..], j, nx - t * 112 + 2, ny + 9 - t * 4 + sin(ph + t * 5) * 7 * t - t * 10); }
+  wh_region(px, cov, mask, w, h, a[..], i, sh[..], j, no, 0, scarf, s, tx, ty, true);
+  // the near leg, with its shadow
+  n = rn_limb(rn_x(b, J_HIP), rn_y(b, J_HIP), rn_x(b, J_KNEE_N), rn_y(b, J_KNEE_N), rn_x(b, J_ANKLE_N), rn_y(b, J_ANKLE_N), 14, 9.5, 5.5, false, a[..]);
+  m := rn_limb(rn_x(b, J_HIP), rn_y(b, J_HIP), rn_x(b, J_KNEE_N), rn_y(b, J_KNEE_N), rn_x(b, J_ANKLE_N), rn_y(b, J_ANKLE_N), 14, 9.5, 5.5, true, sh[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, sh[..], m, no, 0, legs, s, tx, ty, true);
+  n = rn_shoe(rn_x(b, J_ANKLE_N), rn_y(b, J_ANKLE_N), b.calf_n, a[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, no, 0, no, 0, shoes, s, tx, ty, true);
+  // the skirt, pushed forward by the forward thigh and streaming back behind her
+  fwd := ifx rn_x(b, J_KNEE_N) > rn_x(b, J_KNEE_F) then J_KNEE_N else J_KNEE_F;
+  bak := ifx fwd == J_KNEE_N then J_KNEE_F else J_KNEE_N;
+  hx := rn_x(b, J_HIP); hy := rn_y(b, J_HIP);
+  pfx := hx + (rn_x(b, fwd) - hx) * 0.62 + 9; pfy := hy + (rn_y(b, fwd) - hy) * 0.62 + 4;
+  pbx := hx + (rn_x(b, bak) - hx) * 0.55 - 12; pby := hy + (rn_y(b, bak) - hy) * 0.55;
+  fl := sin(ph * 2) * 4;
+  i = 0;
+  i = rn_tor(b, 16, 12, a[..], i);
+  i = rn_put(a[..], i, (pfx + hx + 18) * 0.5 + 3, (pfy + hy) * 0.5);
+  i = rn_put(a[..], i, pfx, pfy);
+  i = rn_put(a[..], i, (pfx + pbx) * 0.5, ink_max(pfy, pby) + 10 + fl);
+  i = rn_put(a[..], i, pbx - 16, pby - 6 - fl);
+  i = rn_put(a[..], i, pbx - 22, (pby + hy) * 0.5 - 2);
+  i = rn_tor(b, -17, 12, a[..], i);
+  j = 0;
+  j = rn_put(sh[..], j, (pfx + hx + 18) * 0.5 + 3, (pfy + hy) * 0.5);
+  j = rn_put(sh[..], j, pfx, pfy);
+  j = rn_put(sh[..], j, (pfx + pbx) * 0.5, ink_max(pfy, pby) + 10 + fl);
+  j = rn_put(sh[..], j, pbx - 10, pby - 2 - fl);
+  j = rn_put(sh[..], j, (pfx + pbx) * 0.5 - 4, (pfy + hy) * 0.5 + 10);
+  wh_region(px, cov, mask, w, h, a[..], i, sh[..], j, no, 0, skirt, s, tx, ty, true);
+  // the blouse, its front in shadow under the chest
+  i = 0;
+  i = rn_tor(b, -16, 6, a[..], i); i = rn_tor(b, -19, 45, a[..], i); i = rn_tor(b, -15, 84, a[..], i); i = rn_tor(b, -6, 98, a[..], i);
+  i = rn_tor(b, 6, 96, a[..], i); i = rn_tor(b, 13, 82, a[..], i); i = rn_tor(b, 18, 62, a[..], i); i = rn_tor(b, 15, 6, a[..], i);
+  j = 0;
+  j = rn_tor(b, 18, 62, sh[..], j); j = rn_tor(b, 15, 6, sh[..], j); j = rn_tor(b, -16, 6, sh[..], j); j = rn_tor(b, -10, 22, sh[..], j); j = rn_tor(b, 8, 40, sh[..], j);
+  wh_region(px, cov, mask, w, h, a[..], i, sh[..], j, no, 0, blouse, s, tx, ty, true);
+  // the neck, the face in profile, the hair streaming back, the eye
+  i = 0;
+  i = rn_tor(b, -5, 92, a[..], i); i = rn_tor(b, 6, 92, a[..], i); i = rn_hd(b, 8, 18, a[..], i); i = rn_hd(b, -4, 14, a[..], i);
+  wh_region(px, cov, mask, w, h, a[..], i, a[..], i, no, 0, skin, s, tx, ty, true);
+  fc := RN_FACE; i = 0;
+  for k: 0..<11 { i = rn_hd(b, fc[k * 2], fc[k * 2 + 1], a[..], i); }
+  j = 0;
+  j = rn_hd(b, 8, 20, sh[..], j); j = rn_hd(b, 18, 16, sh[..], j); j = rn_hd(b, 14, 13, sh[..], j); j = rn_hd(b, 2, 12, sh[..], j);
+  wh_region(px, cov, mask, w, h, a[..], i, sh[..], j, no, 0, skin, s, tx, ty, true);
+  hr := RN_HAIR; hs := RN_HAIR_SH; bob := sin(ph * 2) * 2.5;
+  i = 0;
+  for k: 0..<13 { flick := ifx k >= 6 && k <= 8 then bob - f32(8 - ink_imax(k - 7, 7 - k) * 4) * 0.2 else 0.0f32; i = rn_hd(b, hr[k * 2] + flick, hr[k * 2 + 1] - flick * 0.5, a[..], i); }
+  j = 0;
+  for k: 0..<7 { flick := ifx k >= 1 && k <= 3 then bob else 0.0f32; j = rn_hd(b, hs[k * 2] + flick, hs[k * 2 + 1] - flick * 0.5, sh[..], j); }
+  wh_region(px, cov, mask, w, h, a[..], i, sh[..], j, no, 0, hair, s, tx, ty, true);
+  eye := WhPaint.{fill = rgb(0.17, 0.11, 0.12), shade = rgb(0.17, 0.11, 0.12), line = rgb(0.12, 0.07, 0.08)};
+  i = 0; e: [2] f32;
+  for k: 0..<6 { an := f32(k) * 1.0472; i = rn_hd(b, 12.5 + cos(an) * 2.2, -1 + sin(an) * 3.8, a[..], i); }
+  wh_region(px, cov, mask, w, h, a[..], i, no, 0, no, 0, eye, s, tx, ty, false);
+  i = 0; i = rn_hd(b, 9, -8, a[..], i); a[2] = 0.4; i = rn_hd(b, 13, -9.5, a[..], i); i = rn_hd(b, 17, -8, a[..], i); a[8] = 0.5;
+  wh_line(px, cov, w, h, a[..], i, hair.line, s, tx, ty);
+  // the scarf's knot at the neck
+  i = 0;
+  i = rn_tor(b, -9, 90, a[..], i); i = rn_tor(b, 9, 90, a[..], i); i = rn_tor(b, 10, 99, a[..], i); i = rn_tor(b, -8, 101, a[..], i);
+  wh_region(px, cov, mask, w, h, a[..], i, no, 0, no, 0, scarf, s, tx, ty, true);
+  // the near arm, its shadow, its hand, then the sleeve over its top
+  n = rn_limb(rn_x(b, J_SHOULDER), rn_y(b, J_SHOULDER), rn_x(b, J_ELBOW_N), rn_y(b, J_ELBOW_N), rn_x(b, J_WRIST_N), rn_y(b, J_WRIST_N), 7, 5.5, 4, false, a[..]);
+  m = rn_limb(rn_x(b, J_SHOULDER), rn_y(b, J_SHOULDER), rn_x(b, J_ELBOW_N), rn_y(b, J_ELBOW_N), rn_x(b, J_WRIST_N), rn_y(b, J_WRIST_N), 7, 5.5, 4, true, sh[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, sh[..], m, no, 0, skin, s, tx, ty, true);
+  ex := rn_x(b, J_WRIST_N) - rn_x(b, J_ELBOW_N); ey := rn_y(b, J_WRIST_N) - rn_y(b, J_ELBOW_N); el := sqrt(ex * ex + ey * ey);
+  n = rn_disc(rn_x(b, J_WRIST_N) + ex / el * 5, rn_y(b, J_WRIST_N) + ey / el * 5, 6, 6, a[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, no, 0, no, 0, skin, s, tx, ty, true);
+  ux := rn_x(b, J_ELBOW_N) - rn_x(b, J_SHOULDER); uy := rn_y(b, J_ELBOW_N) - rn_y(b, J_SHOULDER); ul := sqrt(ux * ux + uy * uy);
+  n = rn_limb(rn_x(b, J_SHOULDER) - ux / ul * 6, rn_y(b, J_SHOULDER) - uy / ul * 6, rn_x(b, J_SHOULDER) + ux / ul * 10, rn_y(b, J_SHOULDER) + uy / ul * 10,
+              rn_x(b, J_SHOULDER) + ux / ul * 20, rn_y(b, J_SHOULDER) + uy / ul * 20, 10, 11, 9, false, a[..]);
+  m = rn_limb(rn_x(b, J_SHOULDER) - ux / ul * 6, rn_y(b, J_SHOULDER) - uy / ul * 6, rn_x(b, J_SHOULDER) + ux / ul * 10, rn_y(b, J_SHOULDER) + uy / ul * 10,
+              rn_x(b, J_SHOULDER) + ux / ul * 20, rn_y(b, J_SHOULDER) + uy / ul * 20, 10, 11, 9, true, sh[..]);
+  wh_region(px, cov, mask, w, h, a[..], n, sh[..], m, no, 0, blouse, s, tx, ty, true);
+}
+
+// ---- the plates ----
+/** A flat polygon (x, y pairs, plate coordinates) painted at `alpha`: background shapes have no ink. */
+rn_poly :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, xy: [] f32, n: int, c: Rgb, alpha: f32) {
+  pts: [64 * 3] f32; none: [1] f32;
+  if n > 64 { return; }
+  for i: 0..<n { pts[i * 3] = xy[i * 2] - ox; pts[i * 3 + 1] = xy[i * 2 + 1]; pts[i * 3 + 2] = 1; }
+  b := ink_cover(cov, w, h, pts[..], n);
+  ink_paint(px, cov, none[0..<0], w, b, c.r, c.g, c.b, alpha);
+}
+rn_quad :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, x0: f32, y0: f32, x1: f32, y1: f32, c: Rgb) {
+  q := [8] f32.[x0, y0, x1, y0, x1, y1, x0, y1];
+  rn_poly(px, cov, w, h, ox, q[..], 4, c, 1);
+}
+rn_tri :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, x0: f32, y0: f32, x1: f32, y1: f32, x2: f32, y2: f32, c: Rgb) {
+  q := [6] f32.[x0, y0, x1, y1, x2, y2];
+  rn_poly(px, cov, w, h, ox, q[..], 3, c, 1);
+}
+RN_HAZE :: Rgb.{r = 0.93, g = 0.86, b = 0.76};
+// A colour seen at Everglade's distance: drawn toward the evening haze.
+rn_far_c :: (c: Rgb, k: f32) -> Rgb { return br_mix(c, RN_HAZE, k); }
+
+/** A tree's crown painted in dabs round (x, top..y): lit on its upper left, its shadow side cool. */
+rn_crown :: (px: [] f32, w: int, h: int, ox: f32, x: f32, y: f32, rx: f32, ry: f32, lit: Rgb, shade: Rgb, dabs: int, seed: int) {
+  for k: 0..<dabs {
+    u := br_hash(k, 1, seed) * 2 - 1; v := br_hash(k, 2, seed) * 2 - 1;
+    if u * u + v * v > 1 { continue; }
+    dx := x + u * rx; dy := y + v * ry;
+    t := ink_clamp(0.55 - u * 0.35 - v * 0.55 + (br_hash(k, 3, seed) - 0.5) * 0.4, 0, 1);
+    c := br_mix(shade, lit, ink_smooth(t));
+    r := (0.18 + br_hash(k, 4, seed) * 0.16) * ink_min(rx, ry);
+    br_dab(px, w, h, ox, 0, dx, dy, r * 1.25, r, br_hash(k, 5, seed) * 3, c, 1, 0.35, 0.08, seed + k);
+  }
+}
+// Everglade is drawn in its own units round the South Gate's foot, staged at (RN_TX, RN_TY) at RN_TS.
+RN_TX :: 1010.0f32; RN_TY :: 446.0f32; RN_TS :: 1.8f32;
+rn_ex :: (x: f32) -> f32 { return RN_TX + x * RN_TS; }
+rn_ey :: (y: f32) -> f32 { return RN_TY + y * RN_TS; }
+rn_tq :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, x0: f32, y0: f32, x1: f32, y1: f32, c: Rgb) { rn_quad(px, cov, w, h, ox, rn_ex(x0), rn_ey(y0), rn_ex(x1), rn_ey(y1), c); }
+rn_tt :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, x0: f32, y0: f32, x1: f32, y1: f32, x2: f32, y2: f32, c: Rgb) { rn_tri(px, cov, w, h, ox, rn_ex(x0), rn_ey(y0), rn_ex(x1), rn_ey(y1), rn_ex(x2), rn_ey(y2), c); }
+
+/** Everglade on its rise, in the town's plate: the forest ring behind, roofs over the palisade, the mages'
+    tower and the observatory dome, the South Gate's towers under round red roofs, smoke from the chimneys. */
+rn_everglade :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32, t: f32) {
+  hz := 0.36f32;
+  // the rise the town stands on
+  for x: 0..<w {
+    qx := f32(x) + ox;
+    d := (qx - RN_TX) / 700;
+    top := RN_TY + 30 - 36 * ink_max(1 - d * d, 0) + (br_fbm(qx * 0.01, 1.5, 2, 81) - 0.5) * 4;
+    for y: ink_imax(ink_floor(top), 0)..<ink_imin(486, h) {
+      a := ink_clamp(f32(y) + 0.5 - top, 0, 1);
+      br_put(px, y * w + x, rn_far_c(rgb(0.44, 0.56, 0.31), hz + 0.05), a);
+    }
+  }
+  // the forest ring behind the town, dense, its crowns overlapping
+  for k: 0..<70 {
+    lx := -250 + f32(k) * 7.4 + br_hash(k, 7, 82) * 6;
+    q := lx / 270; base := -6 - 14 * ink_max(1 - q * q, 0) - br_hash(k, 8, 82) * 8;
+    rn_crown(px, w, h, ox, rn_ex(lx), rn_ey(base), 11 * RN_TS, 10 * RN_TS, rn_far_c(rgb(0.38, 0.52, 0.27), hz), rn_far_c(rgb(0.15, 0.26, 0.22), hz), 12, 300 + k);
+  }
+  plaster := rn_far_c(rgb(0.92, 0.86, 0.74), hz); plaster_sh := rn_far_c(rgb(0.70, 0.66, 0.66), hz);
+  slate := rn_far_c(rgb(0.30, 0.34, 0.50), hz); slate_sh := rn_far_c(rgb(0.22, 0.25, 0.38), hz);
+  tile := rn_far_c(rgb(0.72, 0.30, 0.22), hz); tile_sh := rn_far_c(rgb(0.48, 0.20, 0.17), hz);
+  lamp := rn_far_c(rgb(0.98, 0.80, 0.45), hz * 0.4);
+  // the mages' tower and the observatory dome over everything
+  rn_tq(px, cov, w, h, ox, 70, -126, 84, -8, plaster); rn_tq(px, cov, w, h, ox, 79, -126, 84, -8, plaster_sh);
+  rn_tt(px, cov, w, h, ox, 66, -124, 77, -168, 88, -124, slate); rn_tt(px, cov, w, h, ox, 77, -168, 88, -124, 78, -124, slate_sh);
+  rn_tq(px, cov, w, h, ox, 75, -104, 78, -98, lamp); rn_tq(px, cov, w, h, ox, 75, -74, 78, -68, lamp);
+  dome: [16] f32;
+  dl := [16] f32.[-72, -32, -69, -44, -60, -51, -50, -53, -40, -51, -31, -44, -28, -32, -72, -32];
+  for i: 0..<8 { dome[i * 2] = rn_ex(dl[i * 2]); dome[i * 2 + 1] = rn_ey(dl[i * 2 + 1]); }
+  rn_poly(px, cov, w, h, ox, dome[..], 8, rn_far_c(rgb(0.55, 0.62, 0.66), hz), 1);
+  rn_tq(px, cov, w, h, ox, -70, -34, -30, -10, plaster);
+  // roofs over the palisade: gables in tile, slate and brown, with their walls' upper storeys
+  for k: 0..<10 {
+    lx := -150 + f32(k) * 30 + br_hash(k, 1, 83) * 8;
+    if lx > -80 && lx < -25 { continue; }   // the dome stands there
+    wd := 20 + br_hash(k, 2, 83) * 10; top := -50 + br_hash(k, 3, 83) * 14;
+    rn_tq(px, cov, w, h, ox, lx, top + 8, lx + wd, -6, plaster);
+    rn_tq(px, cov, w, h, ox, lx + wd * 0.62, top + 8, lx + wd, -6, plaster_sh);
+    rn_tq(px, cov, w, h, ox, lx + wd * 0.25, top + 14, lx + wd * 0.25 + 3, top + 18, lamp);
+    roof := ifx k % 3 == 0 then tile else ifx k % 3 == 1 then slate else rn_far_c(rgb(0.52, 0.36, 0.24), hz);
+    rsh := ifx k % 3 == 0 then tile_sh else ifx k % 3 == 1 then slate_sh else rn_far_c(rgb(0.36, 0.25, 0.18), hz);
+    rn_tt(px, cov, w, h, ox, lx - 3, top + 10, lx + wd * 0.5, top - 5, lx + wd + 3, top + 10, roof);
+    rn_tt(px, cov, w, h, ox, lx + wd * 0.5, top - 5, lx + wd + 3, top + 10, lx + wd * 0.5, top + 10, rsh);
+    if k % 2 == 0 {
+      cx := lx + wd * 0.72;
+      rn_tq(px, cov, w, h, ox, cx, top - 4, cx + 3, top + 5, rn_far_c(rgb(0.45, 0.32, 0.26), hz));
+      for p: 0..<7 {
+        sp := f32(p) * 6 + (t * 7 - floor(t * 7 / 6) * 6);
+        br_dab(px, w, h, ox, 0, rn_ex(cx + 1.5 + sp * 1.3), rn_ey(top - 7 - sp * 1.8), (2 + sp * 0.35) * RN_TS, (1.7 + sp * 0.25) * RN_TS, 0.3,
+               rn_far_c(rgb(0.88, 0.87, 0.88), 0.2), 0.32 * (1 - f32(p) / 7), 0.3, 0, 400 + k * 10 + p);
+      }
+    }
+  }
+  // the palisade: log posts with pointed tops, lit on the left, shaded on the right
+  for k: 0..<58 {
+    lx := -160 + f32(k) * 5.6; top := -26 + br_hash(k, 1, 84) * 3;
+    c := rn_far_c(ifx k % 2 == 0 then rgb(0.52, 0.38, 0.27) else rgb(0.46, 0.33, 0.24), hz);
+    post := [10] f32.[rn_ex(lx), rn_ey(top + 3), rn_ex(lx + 2.8), rn_ey(top), rn_ex(lx + 5.6), rn_ey(top + 3), rn_ex(lx + 5.6), rn_ey(1), rn_ex(lx), rn_ey(1)];
+    rn_poly(px, cov, w, h, ox, post[..], 5, c, 1);
+    rn_tq(px, cov, w, h, ox, lx + 4, top + 3, lx + 5.6, 1, rn_far_c(rgb(0.30, 0.22, 0.18), hz));
+  }
+  rn_tq(px, cov, w, h, ox, -160, -12, 165, -10, rn_far_c(rgb(0.36, 0.27, 0.21), hz));   // the rail
+  // the South Gate between its towers
+  rn_tq(px, cov, w, h, ox, -11, -22, 11, 1, rn_far_c(rgb(0.20, 0.15, 0.13), hz));
+  for side: 0..<2 {
+    lx := ifx side == 0 then -28.0f32 else 11.0f32;
+    rn_tq(px, cov, w, h, ox, lx, -50, lx + 17, 2, rn_far_c(rgb(0.58, 0.44, 0.31), hz));
+    rn_tq(px, cov, w, h, ox, lx + 11, -50, lx + 17, 2, rn_far_c(rgb(0.38, 0.28, 0.22), hz));
+    rn_tt(px, cov, w, h, ox, lx - 4, -48, lx + 8.5, -80, lx + 21, -48, tile);
+    rn_tt(px, cov, w, h, ox, lx + 8.5, -80, lx + 21, -48, lx + 9.5, -48, tile_sh);
+    rn_tq(px, cov, w, h, ox, lx + 6, -38, lx + 9, -32, lamp);
+  }
+}
+
+// How fast a plate row pans: the meadow recedes from the road (1) to the horizon.
+rn_rate :: (y: f32) -> f32 {
+  if y >= RN_GROUND { return 1 + (y - RN_GROUND) / 116 * 0.5; }
+  return 0.18 + 0.82 * ink_clamp((y - 452) / (RN_GROUND - 452), 0, 1) * ink_clamp((y - 452) / (RN_GROUND - 452), 0, 1);
+}
+/** The meadow from Everglade's rise to the bottom of the frame, with the road she runs along, painted
+    row by row at each row's own pan. */
+rn_meadow :: (px: [] f32, w: int, h: int, cam: f32) {
+  for y: 452..<h {
+    fy := f32(y) + 0.5; ox := cam * rn_rate(fy);
+    t := ink_clamp((fy - 452) / 268, 0, 1);
+    for x: 0..<w {
+      qx := f32(x) + ox;
+      c := br_mix(rn_far_c(rgb(0.56, 0.66, 0.34), 0.35), rgb(0.40, 0.56, 0.27), ink_smooth(t * 1.4));
+      c = br_scale(c, 1 + (br_fbm(qx * 0.01, fy * 0.05, 3, 91) - 0.5) * 0.16);
+      // the road: a band of packed earth under her feet, worn ruts, soft grass edges
+      road := ink_clamp((fy - (RN_GROUND - 18)) / 2, 0, 1) * ink_clamp(((RN_GROUND + 22) - fy) / 2, 0, 1);
+      if road > 0 {
+        dirt := br_scale(rgb(0.72, 0.60, 0.44), 1 + (br_fbm(qx * 0.03, fy * 0.2, 3, 92) - 0.5) * 0.2);
+        rut := ink_smooth(1 - abs(fy - (RN_GROUND - 4)) / 3) * 0.12 + ink_smooth(1 - abs(fy - (RN_GROUND + 12)) / 3) * 0.12;
+        c = br_mix(c, br_scale(dirt, 1 - rut), road);
+      }
+      br_put(px, y * w + x, c, 1);
+    }
+  }
+}
+/** Grass blades in rows between plate rows y0 and y1, each row at its own pan; none on the road. */
+rn_grass :: (px: [] f32, cov: [] f32, w: int, h: int, cam: f32, y0: f32, y1: f32, frame: int) {
+  tw := f32(xs_exposed(frame, XS_TWOS)) / f32(WH_FPS);
+  row := 0; y := y0;
+  while y < y1 {
+    ox := cam * rn_rate(y);
+    depth := ink_clamp((y - 452) / 268, 0, 1);
+    step := 4 + depth * 9;
+    x := -24.0f32;
+    while x < f32(w) + 24 {
+      cell := ink_floor((x + ox) / step);
+      qx := f32(cell) * step + br_hash(cell, row, 15) * step;
+      qy := y + br_hash(cell, row, 16) * 3;
+      onroad := qy > RN_GROUND - 15 && qy < RN_GROUND + 19;
+      if !onroad {
+        c := wh_grass(br_hash(cell, row, 17));
+        c = br_mix(c, rn_far_c(c, 0.35), 1 - depth);
+        sway := 0.3 + 0.25 * sin(qx * 0.012 - tw * 3.8 + qy * 0.01) + (br_hash(cell, row, 18) - 0.5) * 0.3;
+        blen := (3 + depth * 26) * (0.7 + br_hash(cell, row, 19) * 0.6);
+        br_blade(px, cov, w, h, ox, 0, BrBlade.{x = qx, y = qy, len = blen, lean = sway, width = 0.4 + depth * 1.3, c = c});
+        // a few white and yellow flowers in the near meadow
+        if depth > 0.45 && br_hash(cell, row, 20) > 0.965 {
+          fc := ifx br_hash(cell, row, 21) > 0.5 then rgb(0.97, 0.95, 0.88) else rgb(0.96, 0.82, 0.38);
+          br_dab(px, w, h, ox, 0, qx + sway * blen * 0.8, qy - blen * 0.9, 2.2 * depth + 0.8, 1.6 * depth + 0.6, 0, fc, 1, 0.2, 0.1, cell + row);
+        }
+      }
+      x += step;
+    }
+    y += 2 + depth * 5;
+    row += 1;
+  }
+}
+// The mid-distance oaks: trunks and crowns, one plate.
+RN_OAKS :: 6;
+rn_oaks :: (px: [] f32, cov: [] f32, w: int, h: int, ox: f32) {
+  first := ink_floor(ox / 420) - 1;
+  for k: first..<first + 6 {
+    x := f32(k) * 420 + br_hash(k, 1, 95) * 200; base := 520.0f32 + br_hash(k, 2, 95) * 12;
+    hgt := 140 + br_hash(k, 3, 95) * 70;
+    trunk := rn_far_c(rgb(0.33, 0.25, 0.20), 0.2);
+    tq := [10] f32.[x - 5, base, x - 3, base - hgt * 0.55, x + 4, base - hgt * 0.55, x + 7, base, x - 5, base];
+    rn_poly(px, cov, w, h, ox, tq[..], 5, trunk, 1);
+    rn_crown(px, w, h, ox, x, base - hgt * 0.68, hgt * 0.42, hgt * 0.34, rn_far_c(rgb(0.48, 0.62, 0.30), 0.18), rn_far_c(rgb(0.16, 0.29, 0.21), 0.18), 70, 500 + k * 3);
+    br_dab(px, w, h, ox, 0, x + 18, base + 2, hgt * 0.3, 4, 0, rgb(0.30, 0.42, 0.24), 0.5, 0.2, 0, 600 + k);
+  }
+}
+
+RN_SKY_CLOUD_N :: 9;
+RN_SKY_CLOUD :: [RN_SKY_CLOUD_N * 3] f32.[180, 250, 34, 236, 236, 46, 300, 244, 40, 352, 256, 28, 640, 168, 26, 690, 158, 34, 744, 166, 26, 1250, 300, 30, 1300, 290, 40];
+
+/** Frame `frame` of "Running to Everglade" into px. Scratch as wh_frame. */
+rn_frame :: (px: [] f32, cov: [] f32, mask: [] f32, work: [] f32, w: int, h: int, frame: int) {
+  cam := f32(frame) * RN_SPEED;
+  t := f32(frame) / f32(WH_FPS);
+  // the evening sky and its clouds, warm low down
+  br_wash(px, w, h, cam * 0.03, 0, 0, 470, rgb(0.40, 0.58, 0.80), rgb(0.97, 0.88, 0.74), 0.06, 12);
+  cl := BrCloud.{lit = rgb(1.0, 0.95, 0.86), shade = rgb(0.76, 0.72, 0.82), core = rgb(0.66, 0.64, 0.78), lx = -0.6, ly = -0.75, base = 268, seed = 31};
+  sc := RN_SKY_CLOUD;
+  br_cloud(px, w, h, cam * 0.03 - t * 3, 0, sc[0..<12], 4, cl);
+  cl.base = 182; cl.seed = 32;
+  br_cloud(px, w, h, cam * 0.03 - t * 3, 0, sc[12..<21], 3, cl);
+  cl.base = 316; cl.seed = 33;
+  br_cloud(px, w, h, cam * 0.03 - t * 3, 0, sc[21..<27], 2, cl);
+  // far hills, then Everglade on its rise
+  br_ridge(px, w, h, cam * 0.08, 0, 448, 40, 0.004, rgb(0.62, 0.66, 0.74), rgb(0.74, 0.74, 0.78), 60, 1.4, 34);
+  rn_everglade(px, cov, w, h, cam * 0.18, t);
+  // the meadow and the far grass, the oaks, the grass behind the road
+  rn_meadow(px, w, h, cam);
+  rn_grass(px, cov, w, h, cam, 456, 520, frame);
+  rn_oaks(px, cov, w, h, cam * 0.45);
+  rn_grass(px, cov, w, h, cam, 520, RN_GROUND - 15, frame);
+  // Wren: her shadow on the road, then the drawing for this frame
+  d := rn_drawing(frame);
+  br_dab(px, w, h, 0, 0, RN_X + 6, RN_GROUND + 2, 34, 4.5, 0, rgb(0.52, 0.42, 0.32), 0.55, 0.15, 0, 700);
+  rn_wren(px, cov, mask, w, h, d, f32(h) / 720, RN_X, RN_GROUND);
+  // the near grass and the foreground grass whipping past
+  rn_grass(px, cov, w, h, cam, RN_GROUND + 19, f32(h) + 6, frame);
+  fg := cam * 1.9;
+  tw := f32(xs_exposed(frame, XS_TWOS)) / f32(WH_FPS);
+  first := ink_floor(fg / 90) - 1;
+  for k: first..<first + 17 {
+    qx := f32(k) * 90 + br_hash(k, 1, 96) * 50;
+    for b: 0..<4 {
+      blen := 60 + br_hash(k, b, 97) * 80;
+      sway := 0.45 + 0.2 * sin(qx * 0.01 - tw * 3.8) + (br_hash(k, b, 98) - 0.5) * 0.5;
+      c := br_mix(rgb(0.18, 0.30, 0.19), rgb(0.28, 0.42, 0.24), br_hash(k, b, 99));
+      br_blade(px, cov, w, h, fg, 0, BrBlade.{x = qx + f32(b) * 7 - 10, y = f32(h) + 8, len = blen, lean = sway, width = 2.6, c = c});
+    }
+  }
+  br_paper(px, w, h, 0, 0, 0.04, 4);
+  ok := ph_diffusion(px, w, h, 0.82, 32, 0.36, work);
+  ph_finish(px, w, h, 0.12, 0.018, frame);
+}
+
+#test "the run is eight drawings on twos, two steps in 16 frames, near and far legs alternating" {
+  for f: 0..<32 { #assert rn_drawing(f) == (f / 2) % 8; }
+  #assert xs_drawings(RN_CYCLE, 16) == 8;
+  a := rn_pose(0); b := rn_pose(4);
+  #assert a.nt == b.ft && a.ft == b.nt && a.ns == b.fs && a.lean == b.lean;
+}
+
+#test "every drawing keeps her bone lengths, stands on the ground except in flight, and leans forward" {
+  for d: 0..<8 {
+    b := rn_body(rn_pose(d));
+    dx := rn_x(b, J_KNEE_N) - rn_x(b, J_HIP); dy := rn_y(b, J_KNEE_N) - rn_y(b, J_HIP);
+    #assert abs(sqrt(dx * dx + dy * dy) - RN_THIGH) < 0.01;
+    dx = rn_x(b, J_ANKLE_F) - rn_x(b, J_KNEE_F); dy = rn_y(b, J_ANKLE_F) - rn_y(b, J_KNEE_F);
+    #assert abs(sqrt(dx * dx + dy * dy) - RN_SHIN) < 0.01;
+    dx = rn_x(b, J_WRIST_N) - rn_x(b, J_ELBOW_N); dy = rn_y(b, J_WRIST_N) - rn_y(b, J_ELBOW_N);
+    #assert abs(sqrt(dx * dx + dy * dy) - RN_FORE) < 0.01;
+    low := ink_max(rn_y(b, J_ANKLE_N), rn_y(b, J_ANKLE_F));
+    lift := rn_pose(d).lift;
+    #assert abs(low + RN_ANKLE + lift) < 0.01;
+    #assert rn_x(b, J_HEAD) > rn_x(b, J_HIP);
+  }
+  // the down drawing is the lowest, the up drawing the highest
+  #assert rn_y(rn_body(rn_pose(1)), J_HIP) > rn_y(rn_body(rn_pose(0)), J_HIP) && rn_y(rn_body(rn_pose(3)), J_HIP) < rn_y(rn_body(rn_pose(2)), J_HIP);
+}
+
+#test "a limb outline closes round its bones and its shadow is the light's far half" {
+  cov: [80 * 160] f32; out: [8 * 3] f32; shd: [8 * 3] f32;
+  n := rn_limb(40, 10, 40, 80, 40, 150, 10, 8, 6, false, out[..]);
+  m := rn_limb(40, 10, 40, 80, 40, 150, 10, 8, 6, true, shd[..]);
+  pts: [8 * 8 * 3] f32;
+  k := ink_curve(out[..], n, true, 8, pts[..]);
+  b := ink_cover(cov[..], 80, 160, pts[..], k);
+  area := ink_area(cov[..], 80, 160);
+  #assert n == 8 && m == 7 && area > 1500 && area < 2900;
+  // a vertical limb: the light comes from the upper left, so the shadow half lies on the right
+  sx := 0.0f32; for i: 0..<m { sx += shd[i * 3]; }
+  #assert sx / f32(m) > 40;
+}
+
+#test "a small frame of the run is muted and draws the same pixels twice" #steps 2000000000 {
+  w := 128; h := 72;
+  px: [128 * 72 * 3] f32; cov: [128 * 72] f32; mask: [128 * 72] f32; work: [33 * 19 * 6] f32;
+  rn_frame(px[..], cov[..], mask[..], work[..], w, h, 5);
+  st := ph_stats(px[..], w, h, 0.75);
+  #assert st.saturation < 0.5 && st.vivid < 0.05 && st.luma > 0.35;
+  out: [128 * 72 * 3 + 32] u8;
+  n := ph_ppm(px[..], w, h, out[..]); dg := ph_digest(out[0..<n]);
+  #assert ink_area(cov[..], w, h) == 0 && ink_area(mask[..], w, h) == 0;
+  rn_frame(px[..], cov[..], mask[..], work[..], w, h, 5);
+  n = ph_ppm(px[..], w, h, out[..]);
+  #assert ph_digest(out[0..<n]) == dg;
+}

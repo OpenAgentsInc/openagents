@@ -31,27 +31,43 @@ pass, document format or station:
   camera trucks across five levels (sky, far ridges, the hill, Wren, the
   foreground grass). Her colour model is normal, shadow and line paint per
   region; each shadow is a drawn shape.
-- **The renderer**, `verse/tools/drawn-anime.coax`: renders the 96 frames
+- **The second shot**, `verse/animlab/drawn/run-everglade.coax`, "Running
+  to Everglade": Wren runs in profile along a meadow road while the camera
+  tracks her. The plates pan behind her: an evening sky, far hills,
+  Everglade on its rise ([everglade.md](everglade.md): the timber
+  palisade, the South Gate's two towers under round red roofs, roofs behind
+  the wall, the mages' tower and the observatory dome, chimney smoke, the
+  forest ring), oaks in the middle distance, the meadow (each row panning at
+  its own depth), and grass whipping past in front. Her run is eight drawings
+  on twos (contact, down, passing, up for each leg; two steps in 16 frames).
+  Each drawing is a key pose of joint angles drawn fresh as tapered, inked
+  limb outlines, with a designed shadow on the side away from the light. Her
+  far arm and leg are painted in her shadow colours.
+- **The renderer**, `verse/tools/drawn-anime.coax` (`--shot wind|run`): renders the 96 frames
   (4 s at 24 fps, 1280 × 720) to PPM, printing each frame's digest and
   palette:
 
   ```sh
-  coax/web/tool.sh verse/tools/drawn-anime.coax OUT_DIR [--from F] [--frames N]
+  coax/web/tool.sh verse/tools/drawn-anime.coax OUT_DIR [--shot wind|run] [--from F] [--frames N]
   ffmpeg -framerate 24 -i OUT_DIR/frame-%03d.ppm -c:v libx264 -pix_fmt yuv420p wind-hill.mp4
   ```
 
-Checks: `coax test --library` on each of the five files. They cover fill
+Checks: `coax test --library` on each of the six files. They cover fill
 area and coverage, curve interpolation, taper, light-side weight, masked
 paint, exposure on twos, cycle keys and offsets, in-between endpoints and
 arcs, noise and paint bounds, cloud lighting, wind direction, region
-closure, a muted palette on a small frame, and the same digest from two
-renders. The record is in
+closure, the run's eight drawings on twos with near and far swapping,
+constant bone lengths with a foot on the ground outside the flight drawing, the
+limb outline and its shadow half, a muted palette on a small frame of each shot,
+and the same digest from two renders. The record is in
 [docs/verification/drawn-anime-mvp-2026-11-07/](../verification/drawn-anime-mvp-2026-11-07/README.md).
 
 Not in the MVP: the document formats (D0), the GPU passes, the drawing and
 painting stations, layouts from 3D previz, tracing, the director, and
-model-drawn keys. Wren's drawing is hand-authored control points, and her
-wind keys are her model drawing bent by a wind function. A person drawing
+model-drawn keys. Wren's standing drawing is hand-authored control points,
+and her wind keys are her model drawing bent by a wind function. Her run's key
+poses are authored angles, and the figure is generated from them, so it still
+looks constructed rather than drawn. A person drawing
 the keys (owner decision 1) is still what decides how good this can get.
 
 Owner, 2026-11-06:
