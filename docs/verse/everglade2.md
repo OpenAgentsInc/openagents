@@ -10,6 +10,10 @@ character you saved in Character Create, on Everglade's controller and follow ca
 
 ## Walk it
 
+Character Create (`/worlds/character-creator`) is a place in this world: its studio stands in the
+glade, and USE IN EVERGLADE runs you out of the glade and down the path, then hands you the keys
+(`apps/openagents-web/everglade2-create.coax`, `docs/verse/character-creator.md`).
+
 - Open `/worlds/everglade2`.
 - W, A, S, and D run at a jog (4.25 m/s). Hold Shift to walk (1.5 m/s). Space jumps.
 - Drag to look. You can look 1.2 radians above or below the horizon. Scroll to zoom. The arrow

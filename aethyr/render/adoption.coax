@@ -133,8 +133,9 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("valley-canyons","valleycanyon").tracked_legacy;
 }
 #test "Valley world's source slice binds only its isolated initial renderer" {r:=render_adoption("valley-world","valleyworld");#assert r.tracked_legacy && !r.shared && r.profile== -1;#assert !render_adoption("valley-world","valleycanyon").tracked_legacy && !render_adoption("valley-worlds","valleyworld").tracked_legacy && !render_adoption("valley-canyon","valleyworld").tracked_legacy;}
-#test "Character Studio is Everglade's page, drawn by Everglade's renderer (#13018)" {
-  r:=render_adoption("character-creator","everglade5e");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+#test "Character Studio is Everglade II's page, drawn by Everglade II's renderer (#13023)" {
+  r:=render_adoption("character-creator","everglade2");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("character-creator","everglade5e").tracked_legacy;
   #assert !render_adoption("character-creator","fivelab").tracked_legacy;
   #assert !render_adoption("character-creators","everglade5e").tracked_legacy;
   #assert !render_adoption("character-creator","metahumanlab").tracked_legacy;
@@ -157,7 +158,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
     if p.app == app { return RenderAdoption.{shared = true, profile = index}; }
   }
   if slug == "anime-lab" && app == "animelab" { return RenderAdoption.{tracked_legacy = true}; }
-  if slug == "character-creator" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }   // a place in Everglade (#13018)
+  if slug == "character-creator" && app == "everglade2" { return RenderAdoption.{tracked_legacy = true}; }   // a place in Everglade II (#13023; was Everglade's, #13018)
   if slug == "everglade2" && app == "everglade2" {return RenderAdoption.{tracked_legacy=true};}
   if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }

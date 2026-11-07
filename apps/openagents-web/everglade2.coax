@@ -13,6 +13,7 @@
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../aethyr/quality.coax";
+#load "everglade2-create.coax";   // Character Create, in this world: /worlds/character-creator
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 16384;     // strokes: the frame rate in the bottom right corner
@@ -53,6 +54,9 @@ E2 :: struct {
   clock: f32; width: f32; height: f32; k: f32 = 1;
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
   shade: [3] f32;
+  cz: [1] E2Create;                      // Character Create's studio and its run (everglade2-create.coax)
+  outbox: [64] u8; out_n: int; action: int;   // the host action this frame (16 keep the record, 19 the address)
+  reseat: bool;                          // the controller to take you as the studio drew you (everglade2-face.c)
 }
 
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
@@ -82,7 +86,8 @@ E2_HOST_PAGE :: 600;
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   if kind == 16 { cc.load_player(s[0].creator[..], t); return; }
   if kind == 4 { ok := cc.restore(s[0].creator[..], t); return; }
-  if kind == E2_HOST_PAGE { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
+  if kind == E2C_KEPT { e2c_reply(s, t); return; }
+  if kind == E2_HOST_PAGE { e2c_facts(s, t); if s[0].cz[0].on { return; } at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
 }
 #test "a page's ?at= says how far down the path you start" {
   #assert e2_query_at("url=http://127.0.0.1:8863/worlds/everglade2?at=120\n") == 120;
@@ -171,6 +176,9 @@ e2_auto_heading :: (x: f32, z: f32) -> f32 {
 e2_walk_theta :: (heading: f32) -> f32 { return figs.wrap_angle(heading + 3.14159265); }
 e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
+  // Character Create: still in the studio; on the run, on down the path on its own, at a jog
+  if e2c_creating(s) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
+  if e2c_running(s) { return EgMoveIn.{key_y = 1, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))}; }
   if s[0].autowalk && h == 0 {
     if s[0].you_z < E2_CLEAR_Z - 6 { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
     // run is the keys' Shift: the keys run by default (aethyr/input.coax), so this walks
@@ -343,6 +351,7 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
 
 // ---- input
 e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
+  if e2c_key(s, key) { return true; }
   if key == ' ' { s[0].held |= HOLD_JUMP; return true; }
   if key == KEY_SHIFT { s[0].shift = true; return true; }
   h := hold_bit(key); if h != 0 { s[0].held |= h; return true; }
@@ -356,6 +365,7 @@ e2_key_up :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
 e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = false; s[0].dragging = false; }
 // A mouse drag looks round (a finger is the face's: aethyr/sticks.coax).
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  if e2c_pointer(s, x, y, phase, id) { return true; }
   if kind != 0 { return false; }
   if phase == 0 { s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
   if phase == 1 && s[0].dragging {
@@ -366,6 +376,7 @@ e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
   return false;
 }
 e2_wheel :: (s: [] E2, dy: f32) -> bool #export_c #effects(all) {
+  if e2c_wheel(s, dy) { return true; }
   d := ifx dy > 400 then 400.0f32 else ifx dy < -400 then -400.0f32 else dy;
   s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, d * f32(E2_WHEEL_ZOOM)); return true;
 }
@@ -492,8 +503,8 @@ e2_off_axis :: (s: figs.Shot, x: f32, z: f32) -> f32 {
   #assert hy / hl < vy / vl;
 }
 e2_follow :: (s: [] E2, dt: f32) {
-  if s[0].autowalk {
-    // the camera eases round behind the walk
+  if s[0].autowalk || e2c_running(s) {
+    // the camera eases round behind the walk (and Character Create's run)
     want := e2_auto_heading(s[0].you_x, s[0].you_z);
     turn := figs.wrap_angle(want - s[0].orbit.yaw);
     s[0].orbit.yaw = figs.wrap_angle(s[0].orbit.yaw + turn * (ifx dt * 1.5 < 1 then dt * 1.5 else 1.0f32));
@@ -558,8 +569,8 @@ e2_pixel_budget :: (s: [] E2, w: f32, h: f32, dpr: f32) -> int #export_c #effect
 }
 // ---- the frame rate, bottom right, always shown: frames over the last half second or so
 e2_fps_count :: (s: [] E2, dt: f32) {cc.fps_count(s[0].fps_counter[..],dt);}
-e2_fps :: (s: [] E2, out: [] f32, dt: f32) -> int {
- e2_fps_count(s,dt);return cc.fps_draw(s[0].fps_counter[0],out,0,s[0].width,s[0].height,s[0].k);
+e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
+ e2_fps_count(s,dt);return cc.fps_draw(s[0].fps_counter[0],out,at,s[0].width,s[0].height,s[0].k);
 }
 #test "the frame rate is the frames over the last half second" {
   s: [1] E2;
@@ -572,18 +583,20 @@ e2_fps :: (s: [] E2, out: [] f32, dt: f32) -> int {
 e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if u.count < E2_UNIFORM_FLOATS || w < 1 || h < 1 { return 0; }
   s[0].width = w; s[0].height = h; s[0].k = ifx dpr < 0.5 then 0.5f32 else dpr;
-  cc.ensure(s[0].creator[..]);
+  cc.ensure(s[0].creator[..]); s[0].creator[0].clock = s[0].clock;
+  e2c_action(s);
   if !s[0].plant_done { s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true; }
   step := ifx still || dt <= 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].clock += step;
   e2_follow(s, step);
-  shot := e2_shot(s[0].orbit, s[0].eye_pitch, s[0].press);
+  shot := e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_shot(s[0].orbit, s[0].eye_pitch, s[0].press), step);
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
   up := [3]f32.[r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
   fy := (w / h) * 1.25; fy = ifx fy < 0.95 then 0.95f32 else ifx fy > 1.9 then 1.9f32 else fy;
-  s[0].focal = fy * h / 2;
+  lens := e2c_lens(s, fy * h / 2, h * 0.5);
+  s[0].focal = lens[0];
   s[0].eye = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z]; s[0].fwd = f; s[0].right = r; s[0].up = up;
   // the key light's map follows you, in 2 m steps so it holds still under a slow walk
   cx := floor(s[0].you_x / 2 + 0.5) * 2; cz := floor(s[0].you_z / 2 + 0.5) * 2;
@@ -591,10 +604,11 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   for i: 0..<u.count { u[i] = 0; }
   u[0] = w; u[1] = h; u[2] = s[0].clock; u[3] = 1; u[4] = s[0].k; u[10] = 2; u[11] = 1;
   for q: 0..<3 { u[16 + q] = s[0].eye[q]; u[20 + q] = f[q]; u[24 + q] = r[q]; u[28 + q] = up[q]; u[44 + q] = s[0].shade[q]; }
-  u[19] = s[0].focal; u[23] = w * 0.5; u[27] = h * 0.5;
+  u[19] = s[0].focal; u[23] = w * 0.5; u[27] = lens[1];
   u[32] = -0.45; u[33] = 0.78; u[34] = -0.42;
   u[48] = f32(s[0].creator[0].glade_word);
-  return e2_fps(s, out, dt);
+  e2c_uniforms(s, u);
+  return e2_fps(s, out, e2c_hud(s, out), dt);
 }
 
 // ---- the scene: the glade's records and draws, your character, the kit pieces in view
@@ -719,7 +733,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   figs.bd_step(a, s[0].clock, ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32);
   b[0].now = s[0].clock;
   l := cc.look(c); l.variant = 0;
-  fig := e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at);
+  fig := ifx e2c_creating(s) then e2c_figure(s) else e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at);
   out := s[0].records[..];
   for i: 0..<40 { if c.worn[i] && cc.available(c, i) && c.source_count[i + (ifx c.female then 0 else 40)] > 0 && rec < E2_RECORDS {
     p := i + ifx c.female then 0 else 40;
@@ -743,6 +757,11 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
 }
 e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) { return E2_RECORDS * 24 * 4; }
 e2_inst_bytes :: (s: [] E2) -> int #export_c #effects(all) { return s[0].inst_n * E2_ITEM_FLOATS * 4; }
+// The host action this frame (everglade2-face.c coaxial_action): its code, its bytes; done clears it.
+e2_action :: (s: [] E2) -> int #export_c #effects(all) { return s[0].action; }
+e2_action_done :: (s: [] E2) #export_c #effects(all) { s[0].action = 0; s[0].out_n = 0; }
+// Whether the controller should take you where and as you stand now (once, after the studio).
+e2_reseat :: (s: [] E2) -> bool #export_c #effects(all) { r := s[0].reseat; s[0].reseat = false; return r; }
 coaxial_e2_max_vertices :: () -> int #export_c #effects(all) { return E2_MAX_VERTICES; }
 coaxial_e2_vertex_floats :: () -> int #export_c #effects(all) { return E2_VERTEX_FLOATS; }
 coaxial_e2_uniform_floats :: () -> int #export_c #effects(all) { return E2_UNIFORM_FLOATS; }
@@ -757,5 +776,6 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 6 { return cast(int)(s[0].orbit.shown * 100); }
   if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
   if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
+  if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
   return -1;
 }

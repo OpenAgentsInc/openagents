@@ -1,0 +1,432 @@
+// Character Create, in Everglade II's own world (#13023). /worlds/character-creator opens Everglade II
+// at its glade, where the path begins, in this mode: a studio camera on your character, the wardrobe
+// and the CLASS row down the left (on a phone, at the bottom), and your keys and pointer on the
+// wardrobe. What you pick is your character in the world as you pick it (s[0].creator, the record
+// aethyr/character-appearance.coax reads), drawn by Everglade II's renderer in its own light.
+// USE IN EVERGLADE keeps the record (action 16, the browser's shared copy, message 17 says it was
+// kept), puts /worlds/everglade2 in the address bar (action 19) and plays the run: the controls fade,
+// the camera swings round behind you, you run out of the glade and down the path on your own while
+// the camera keeps its own track, and it eases into the follow camera, where the keys are yours. Any
+// key or a click skips to that hand-off. One page, one world, one renderer: nothing loads.
+// Loaded into everglade2.coax, so it shares its E2, its glade, its path and figs.
+
+E2C_FIELDS :: 13;        // the wardrobe's fields (charactercreator.coax change and value, 0 to 12)
+E2C_BOXES :: 19;
+E2C_CLASS :: 13;         // the CLASS row's field number
+E2C_CLASS_BOX :: 18;     // and its box (0 to 12 the fields, 13 RESET, 14 SURPRISE ME, 15 a phone's drag mode, 16 SAVE, 17 USE)
+E2C_SWING :: 3.0;        // s: the controls fade and the camera swings round behind you
+E2C_RUN :: 20.0;         // s: the run out of the glade and down the path, on its own
+E2C_EASE :: 1.5;         // s: the camera eases into the follow camera, then the keys are yours
+E2C_FADE :: 0.8;         // s: the controls fade out
+E2C_RECORD :: 57;        // the longest record (CC3)
+E2C_SAVE :: 16;          // host.js: keep the outbox as the shared character record; message 17 says it was kept
+E2C_KEPT :: 17;
+E2C_ADDRESS :: 19;       // host.js: this same-origin path in the address bar (history.replaceState), nothing loaded
+E2C_DRUID :: 3;          // the CLASS row starts at the druid, as Everglade's did
+E2C_CLASSES :: 12;       // the SRD 5.2.1's, in fivebar.coax's order (aethyr/character-appearance.coax CA_CLASSES)
+E2C_CLASS_NAMES :: [12] string.["BARBARIAN", "BARD", "CLERIC", "DRUID", "FIGHTER", "MONK", "PALADIN", "RANGER", "ROGUE", "SORCERER", "WARLOCK", "WIZARD"];
+E2C_PANEL_BOTTOM :: 730.0;   // the glass panel's foot on a desktop (gpu/character-glade.coax cg_ui_cover)
+
+E2Create :: struct {
+  on: bool;        // this page opened at Character Create
+  walking: bool;   // USE IN EVERGLADE taken: the run plays, the wardrobe gone
+  run_t: f32;      // seconds since the record was kept
+  handed: bool;    // the run is over: the follow camera and the keys are yours
+  toward: bool;    // the orbit turned to the run's camera, for the ease
+  address: bool;   // the address bar still to say /worlds/everglade2
+  boxes: [E2C_BOXES] cc.Box; mobile: bool;
+  down: int = -1; dragging: bool; drag_pan: bool; drag_id: int; dx: f32; dy: f32;
+  pending: bool; request: bool; ok: bool; failed: bool; want_go: bool; saved_rev: int = -1; at_rev: int;
+  bytes: [E2C_RECORD] u8; n: int;
+  studio: figs.Shot;   // the studio camera's last shot, where the swing starts
+}
+
+e2c_creating :: (s: [] E2) -> bool { return s[0].cz[0].on && !s[0].cz[0].walking; }
+e2c_running :: (s: [] E2) -> bool { c := s[0].cz[0]; return c.on && c.walking && !c.handed; }
+e2c_wrap :: (v: int, n: int) -> int { return (v % n + n) % n; }
+e2c_clamp :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b { return b; } return v; }
+e2c_ease :: (v: f32) -> f32 { t := e2c_clamp(v, 0, 1); return t * t * (3 - 2 * t); }
+e2c_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+
+// The page's facts: at Character Create you start in the glade, the wardrobe yours.
+e2c_facts :: (s: [] E2, t: string) {
+  if !cc.page(t) || s[0].cz[0].walking { return; }
+  c := s[0].cz[..]; cr := s[0].creator[..];
+  c[0].on = true; s[0].start_z = 0; s[0].autowalk = false;
+  cc.ensure(cr);
+  if cr[0].klass < 0 || cr[0].klass >= E2C_CLASSES { cr[0].klass = E2C_DRUID; }
+  if cr[0].profile_ok { c[0].ok = true; c[0].saved_rev = cr[0].profile_revision; }
+}
+
+// ---- the wardrobe: Character Create's fields and values, and the CLASS row
+e2c_change :: (s: [] E2, f: int, delta: int) {
+  cr := s[0].creator[..];
+  if f == E2C_CLASS { cr[0].klass = e2c_wrap((ifx cr[0].klass < 0 then 0 else cr[0].klass) + delta, E2C_CLASSES); cr[0].focused = E2C_CLASS; cr[0].revision += 1; return; }
+  cc.change(cr, f, delta);
+}
+e2c_value :: (s: [] E2, f: int) -> string {
+  if f == E2C_CLASS { k := s[0].creator[0].klass; return E2C_CLASS_NAMES[ifx k < 0 then 0 else ifx k >= E2C_CLASSES then E2C_CLASSES - 1 else k]; }
+  return cc.value(s[0].creator[0], f);
+}
+
+// The shared character record: SAVE PLAYER keeps it; USE IN EVERGLADE keeps it, then runs.
+e2c_request :: (s: [] E2, go: bool) {
+  c := s[0].cz[..]; cr := s[0].creator[..];
+  if c[0].pending { return; }
+  cc.ensure(cr);
+  n := cc.save(cr[0], c[0].bytes[..]);
+  if n < 56 || n > E2C_RECORD { return; }
+  c[0].n = n; c[0].at_rev = cr[0].revision; c[0].pending = true; c[0].request = true; c[0].want_go = go; c[0].failed = false;
+}
+e2c_reply :: (s: [] E2, t: string) {
+  c := s[0].cz[..];
+  if !c[0].pending { return; }
+  c[0].pending = false; c[0].request = false;
+  same := t.count == c[0].n;
+  if same { for i: 0..<c[0].n { if t[i] != c[0].bytes[i] { same = false; } } }
+  c[0].failed = !same; c[0].ok = same;
+  if same { c[0].saved_rev = c[0].at_rev; }
+  if same && c[0].want_go { e2c_walk(s); }
+}
+// Out of the studio: you turn from facing the camera to the path as the run starts.
+e2c_walk :: (s: [] E2) {
+  c := s[0].cz[..];
+  if c[0].walking { return; }
+  c[0].walking = true; c[0].run_t = 0; c[0].handed = false; c[0].toward = false; c[0].address = true;
+  c[0].dragging = false; c[0].down = -1;
+  s[0].you_face = s[0].creator[0].yaw; s[0].reseat = true;   // the controller takes you as the studio drew you
+  heading := e2_auto_heading(s[0].you_x, s[0].you_z);
+  s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), heading);
+}
+// Any key or click while it plays: on to the ease into the follow camera.
+e2c_skip :: (s: [] E2) { c := s[0].cz[..]; if e2c_running(s) && c[0].run_t < f32(E2C_SWING + E2C_RUN) { c[0].run_t = f32(E2C_SWING + E2C_RUN); } }
+// This frame's action, when the slot is free: the record to keep, then the address.
+e2c_action :: (s: [] E2) {
+  c := s[0].cz[..];
+  if !c[0].on || s[0].action != 0 { return; }
+  if c[0].request {
+    for i: 0..<c[0].n { s[0].outbox[i] = c[0].bytes[i]; }
+    s[0].out_n = c[0].n; s[0].action = E2C_SAVE; c[0].request = false; return;
+  }
+  if c[0].address {
+    path := "/worlds/everglade2";
+    for i: 0..<path.count { s[0].outbox[i] = path[i]; }
+    s[0].out_n = path.count; s[0].action = E2C_ADDRESS; c[0].address = false;
+  }
+}
+#test "create: USE IN EVERGLADE keeps the record with its class, then runs and says Everglade II's address" #steps 2000000000 {
+  s: [1] E2;
+  e2_message(s[..], E2_HOST_PAGE, "url=http://127.0.0.1/worlds/character-creator\nnow=1000");
+  #assert e2c_creating(s[..]) && s[0].creator[0].configured && s[0].creator[0].klass == E2C_DRUID && e2c_value(s[..], E2C_CLASS) == "DRUID";
+  e2c_change(s[..], 0, 1); e2c_change(s[..], 12, 3); e2c_change(s[..], E2C_CLASS, -1);
+  #assert s[0].creator[0].female && s[0].creator[0].eye_color == 3 && e2c_value(s[..], E2C_CLASS) == "CLERIC";
+  // the studio holds you still: no keys reach the walk
+  #assert e2_key(s[..], 'w', 0) && s[0].held == 0;
+  e2c_request(s[..], true); e2c_action(s[..]);
+  #assert s[0].action == E2C_SAVE && s[0].out_n == E2C_RECORD && s[0].outbox[2] == '3';
+  b: [E2C_RECORD] u8; for i: 0..<E2C_RECORD { b[i] = s[0].outbox[i]; }
+  s[0].action = 0;
+  e2_message(s[..], E2C_KEPT, cast(string) b[0..<E2C_RECORD]);
+  #assert !e2c_creating(s[..]) && e2c_running(s[..]) && s[0].reseat;
+  e2c_action(s[..]);
+  #assert s[0].action == E2C_ADDRESS && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/everglade2";
+}
+#test "create: the record kept is the one Everglade II restores on its own page, class and all" #steps 1000000000 {
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
+  e2c_change(s[..], 0, 1); e2c_change(s[..], 12, 3); e2c_change(s[..], E2C_CLASS, -1);
+  b: [E2C_RECORD] u8; n := cc.save(s[0].creator[0], b[..]); #assert n == E2C_RECORD;
+  t: [1] E2; e2_message(t[..], 16, cast(string) b[0..<n]);
+  #assert t[0].creator[0].female && t[0].creator[0].eye_color == 3 && t[0].creator[0].klass == 2;
+}
+#test "create: a refused keep stays in the studio, and Everglade II's own page is not the studio" #steps 1000000000 {
+  u: [1] E2; e2_message(u[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
+  e2c_request(u[..], true); e2_message(u[..], E2C_KEPT, "");
+  #assert e2c_creating(u[..]) && u[0].cz[0].failed;
+  // Everglade II's own page is not the studio
+  v: [1] E2; e2_message(v[..], E2_HOST_PAGE, "url=/worlds/everglade2\n");
+  #assert !v[0].cz[0].on && !e2c_creating(v[..]);
+}
+
+// ---- the layout and the panel
+e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
+  c := s[0].cz[..];
+  c[0].mobile = w < 840 * k || h < 760 * k;   // as the glass panel's (gpu/character-glade.coax cg_ui_cover)
+  if c[0].mobile {
+    bw := (w - 36 * k) / 2;
+    for i: 0..<E2C_FIELDS + 1 {
+      col := i % 2; row := i / 2; x := 12 * k + f32(col) * (bw + 12 * k); y := h - 484 * k + f32(row) * 60 * k;
+      c[0].boxes[ifx i == E2C_FIELDS then E2C_CLASS_BOX else i] = cc.Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + 42 * k};
+    }
+    by := h - 56 * k;
+    c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = by, x1 = 172 * k, y1 = by + 36 * k};
+    c[0].boxes[14] = cc.Box.{x0 = w - 174 * k, y0 = by, x1 = w - 24 * k, y1 = by + 36 * k};
+    c[0].boxes[15] = cc.Box.{x0 = w / 2 + 6 * k, y0 = 34 * k, x1 = w - 12 * k, y1 = 72 * k};
+    c[0].boxes[16] = cc.Box.{x0 = 12 * k, y0 = 82 * k, x1 = w / 2 - 6 * k, y1 = 124 * k};
+    c[0].boxes[17] = cc.Box.{x0 = w / 2 + 6 * k, y0 = 82 * k, x1 = w - 12 * k, y1 = 124 * k};
+    return;
+  }
+  // a desktop: CLASS first in the sidebar, then the wardrobe's fields, then the buttons, all on the glass
+  c[0].boxes[E2C_CLASS_BOX] = cc.Box.{x0 = 28 * k, y0 = 90 * k, x1 = 332 * k, y1 = 124 * k};
+  for i: 0..<E2C_FIELDS { y := (128 + f32(i) * 38) * k; c[0].boxes[i] = cc.Box.{x0 = 28 * k, y0 = y, x1 = 332 * k, y1 = y + 34 * k}; }
+  c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = 628 * k, x1 = 172 * k, y1 = 662 * k};
+  c[0].boxes[14] = cc.Box.{x0 = 188 * k, y0 = 628 * k, x1 = 332 * k, y1 = 662 * k};
+  c[0].boxes[15] = cc.Box.{};
+  c[0].boxes[16] = cc.Box.{x0 = 28 * k, y0 = 672 * k, x1 = 172 * k, y1 = 706 * k};
+  c[0].boxes[17] = cc.Box.{x0 = 188 * k, y0 = 672 * k, x1 = 332 * k, y1 = 706 * k};
+}
+#test "create: the wardrobe fits a phone and a desktop, on the glass" {
+  s: [1] E2;
+  e2c_layout(s[..], 390, 844, 1);
+  for i: 0..<E2C_BOXES { b := s[0].cz[0].boxes[i]; #assert b.x0 >= 0 && b.x1 <= 390 && b.y1 <= 844 && b.y1 - b.y0 >= 34;
+    // each control sits on one of the phone's two glass bands (top 26 to 124, bottom from h - 504)
+    #assert (b.y0 >= 26 && b.y1 <= 124) || b.y0 >= 844 - 504; }
+  e2c_layout(s[..], 1440, 900, 1);
+  for i: 0..<E2C_BOXES { if i == 15 { continue; } b := s[0].cz[0].boxes[i]; #assert b.x0 >= 16 && b.x1 <= 350 && b.y0 >= 82 && b.y1 <= f32(E2C_PANEL_BOTTOM); }
+  #assert s[0].cz[0].boxes[E2C_CLASS_BOX].y1 + 4 <= s[0].cz[0].boxes[0].y0;
+  for i: 1..<E2C_FIELDS { #assert s[0].cz[0].boxes[i].y0 >= s[0].cz[0].boxes[i - 1].y1 + 4; }
+  #assert s[0].cz[0].boxes[12].y1 + 4 <= s[0].cz[0].boxes[13].y0 && s[0].cz[0].boxes[13].y1 + 4 <= s[0].cz[0].boxes[16].y0;
+}
+e2c_ink :: (k: f32, r: f32, g: f32, b: f32, f: f32) -> cc.Ink { i := cc.ink(k, r, g, b); i.sans = true; i.light = i.light * f; i.glow = i.glow * f; return i; }
+// The controls' share shown: whole in the studio, fading over the run's first E2C_FADE s.
+e2c_shown :: (s: [] E2) -> f32 {
+  c := s[0].cz[0];
+  if !c.on || c.handed { return 0; }
+  if !c.walking { return 1; }
+  return 1 - e2c_ease(c.run_t / f32(E2C_FADE));
+}
+e2c_hud :: (s: [] E2, out: [] f32) -> int {
+  w := s[0].width; h := s[0].height; k := s[0].k;
+  e2c_layout(s, w, h, k);
+  f := e2c_shown(s);
+  if f <= 0.003 { return 0; }
+  c := s[0].cz[0]; cr := s[0].creator[0];
+  white := e2c_ink(k, 0.91, 0.92, 0.9, f); dim := e2c_ink(k, 0.70, 0.76, 0.74, f); gold := e2c_ink(k, 0.83, 0.69, 0.43, f); label := e2c_ink(k, 0.93, 0.88, 0.72, f);
+  n := cc.text(out, 0, "Character Create", (ifx c.mobile then 24.0f32 else 30.0f32) * k, (ifx c.mobile then 58.0f32 else 60.0f32) * k, (ifx c.mobile then 18.0f32 else 22.0f32) * k, white);
+  if !c.mobile { n = cc.line(out, n, 30 * k, 78 * k, 334 * k, 78 * k, k, gold.red * f, gold.green * f, gold.blue * f); }
+  for row: 0..<E2C_FIELDS + 1 {
+    i := ifx row == 0 then E2C_CLASS else row - 1;
+    b := c.boxes[ifx row == 0 then E2C_CLASS_BOX else i]; cap := 10.0f32;
+    name := ifx row == 0 then "CLASS" else cc.FIELD_NAMES[i];
+    if c.mobile { n = cc.text(out, n, name, b.x0, b.y0 - 7 * k, 8 * k, dim); }
+    else { n = cc.text(out, n, ifx i == 11 then "WEAR PART" else name, b.x0, b.y0 + 21 * k, 7.4 * k, label); }
+    col := ifx cr.focused == i then gold else dim;
+    n = cc.line(out, n, b.x0, b.y1, b.x1, b.y1, k, col.red * f, col.green * f, col.blue * f);
+    n = cc.text(out, n, "<", b.x0 + (ifx c.mobile then 4.0f32 else 116.0f32) * k, b.y0 + cap * k + 9 * k, cap * k, col);
+    value_cap := ifx i == 10 then (ifx c.mobile then 6.5f32 else 8.5f32) else cap;
+    n = cc.text(out, n, e2c_value(s, i), b.x0 + (ifx c.mobile then 25.0f32 else 138.0f32) * k, b.y0 + cap * k + 9 * k, value_cap * k, white);
+    n = cc.text(out, n, ">", b.x1 - 14 * k, b.y0 + cap * k + 9 * k, cap * k, col);
+    if i == 4 || i == 5 || i == 7 || i == 12 {
+      rgb := ifx i == 4 then cc.DYES[cr.dye] else ifx i == 5 then cc.SKINS[cr.skin] else ifx i == 12 then cc.EYES[cr.eye_color] else cc.HAIRS[cr.hair_color];
+      if cc.lit(out, n, b.x0 + (ifx c.mobile then 26.0f32 else 138.0f32) * k, b.y1 - 5 * k, b.x1 - 26 * k, b.y1 - 5 * k, 2 * k, f, 0, rgb[0], rgb[1], rgb[2], 0) { n += 6; }
+    }
+  }
+  for i: 13..<15 { b := c.boxes[i]; n = cc.text(out, n, ifx i == 13 then "RESET" else "SURPRISE ME", b.x0 + 10 * k, b.y0 + 22 * k, 10 * k, gold); }
+  if c.mobile { b := c.boxes[15]; n = cc.text(out, n, ifx cr.pan_mode then "DRAG: PAN" else "DRAG: ROTATE", b.x0 + 10 * k, b.y0 + 24 * k, 10 * k, gold); }
+  for i: 16..<18 {
+    b := c.boxes[i];
+    t := ifx i == 17 then "USE IN EVERGLADE" else ifx c.pending then "SAVING..." else ifx c.failed then "RETRY SAVE" else ifx c.ok && c.saved_rev == cr.revision then "PLAYER SAVED" else "SAVE PLAYER";
+    n = cc.text(out, n, t, b.x0 + 8 * k, b.y0 + 22 * k, 9 * k, gold);
+  }
+  if !c.mobile { n = cc.text(out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5 - 170 * k, h - 77 * k, 9 * k, label); }
+  return n;
+}
+// The glass panel under the controls (gpu/everglade2.coax's post pass, Character Create's
+// cg_panel_opacity): on while they show, fading with them.
+e2c_uniforms :: (s: [] E2, u: [] f32) {
+  f := e2c_shown(s);
+  if f <= 0 { return; }
+  u[11] = 0; u[40] = 1 - f;
+}
+
+// ---- input: in the studio the keys and the pointer are the wardrobe's
+e2c_inside :: (b: cc.Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
+  if e2c_running(s) { if phase == 0 { e2c_skip(s); } return true; }   // a click skips the run
+  if !e2c_creating(s) { return false; }
+  c := s[0].cz[..]; cr := s[0].creator[..]; k := s[0].k;
+  if phase == 0 {
+    for i: 0..<E2C_BOXES { if e2c_inside(c[0].boxes[i], x, y) { c[0].down = i; c[0].drag_id = id; return true; } }
+    c[0].drag_pan = cr[0].pan_mode; c[0].dragging = true; c[0].drag_id = id; c[0].dx = x; c[0].dy = y;
+    return true;
+  }
+  if id != c[0].drag_id { return true; }
+  if phase == 1 && c[0].dragging {
+    if c[0].drag_pan {
+      units := cr[0].dist / (ifx s[0].focal > 1 then s[0].focal else 1.0f32);
+      cr[0].pan_x = e2c_clamp(cr[0].pan_x - (x - c[0].dx) * units, -2, 2);
+      cr[0].pan_y = e2c_clamp(cr[0].pan_y + (y - c[0].dy) * units, -2, 2);
+    } else {
+      cr[0].yaw += (x - c[0].dx) * 0.008 / k;
+      cr[0].pitch = e2c_clamp(cr[0].pitch + (y - c[0].dy) * 0.003 / k, -0.2, 0.6);
+    }
+    c[0].dx = x; c[0].dy = y;
+    return true;
+  }
+  if phase == 2 || phase == 3 {
+    i := c[0].down; c[0].down = -1; c[0].dragging = false;
+    if phase == 2 && i >= 0 && e2c_inside(c[0].boxes[i], x, y) {
+      left := x < c[0].boxes[i].x0 + (ifx c[0].mobile then 22.0f32 else 136.0f32) * k;
+      if i < E2C_FIELDS { e2c_change(s, i, ifx left then -1 else 1); }
+      else if i == E2C_CLASS_BOX { e2c_change(s, E2C_CLASS, ifx left then -1 else 1); }
+      else if i == 13 { cc.reset(cr); }
+      else if i == 14 { cc.surprise(cr); }
+      else if i == 15 { cr[0].pan_mode = !cr[0].pan_mode; }
+      else { e2c_request(s, i == 17); }
+    }
+  }
+  return true;
+}
+// While the studio or the run is on, every key is its own: the walk's keys wait for the hand-off.
+e2c_key :: (s: [] E2, key: int) -> bool {
+  if e2c_running(s) { e2c_skip(s); return true; }   // any key skips the run, and is spent on it
+  if !e2c_creating(s) { return false; }
+  cr := s[0].creator[..];
+  if key == 'p' || key == 'P' { cr[0].pan_mode = !cr[0].pan_mode; return true; }
+  // Tab: the CLASS row, then the wardrobe's fields in turn
+  if key == -15 { f := cr[0].focused; cr[0].focused = ifx f == E2C_CLASS then 0 else ifx f + 1 >= E2C_FIELDS then E2C_CLASS else f + 1; return true; }
+  if key == KEY_LEFT || key == KEY_RIGHT { e2c_change(s, cr[0].focused, ifx key == KEY_LEFT then -1 else 1); return true; }
+  if key == ' ' { e2c_change(s, 9, 1); return true; }
+  return true;
+}
+e2c_wheel :: (s: [] E2, dy: f32) -> bool {
+  if e2c_running(s) { return true; }
+  if !e2c_creating(s) { return false; }
+  d := e2c_clamp(dy, -400, 400);
+  s[0].creator[0].dist = e2c_clamp(s[0].creator[0].dist + d * 0.003, 0.65, 6);
+  return true;
+}
+#test "create: the studio's pointer turns, zooms and changes the character, and the class row steps" #steps 1000000000 {
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
+  s[0].width = 1440; s[0].height = 900; s[0].k = 1; e2c_layout(s[..], 1440, 900, 1);
+  yaw := s[0].creator[0].yaw;
+  #assert e2_pointer(s[..], 900, 400, 0, 0, 3) && e2_pointer(s[..], 980, 400, 1, 0, 3) && e2_pointer(s[..], 980, 400, 2, 0, 3);
+  #assert s[0].creator[0].yaw > yaw && !s[0].dragging;
+  b := s[0].cz[0].boxes[1]; outfit := s[0].creator[0].outfit;
+  #assert e2_pointer(s[..], b.x1 - 10, b.y0 + 10, 0, 0, 4) && e2_pointer(s[..], b.x1 - 10, b.y0 + 10, 2, 0, 4);
+  #assert s[0].creator[0].outfit == (outfit + 1) % 4;
+  c := s[0].cz[0].boxes[E2C_CLASS_BOX];
+  #assert e2_pointer(s[..], c.x1 - 10, c.y0 + 10, 0, 0, 5) && e2_pointer(s[..], c.x1 - 10, c.y0 + 10, 2, 0, 5) && s[0].creator[0].klass == E2C_DRUID + 1;
+  for i: 0..<8 { _ := e2_wheel(s[..], -400); }
+  #assert s[0].creator[0].dist == 0.65;
+}
+
+// ---- the camera, your pose
+// The studio camera: Character Create's own (charactercreator.coax camera), from your feet: south of
+// you, looking north, where you stand facing it.
+e2c_studio :: (s: [] E2, feet: figs.Point) -> figs.Shot {
+  c := s[0].creator[0];
+  dist := c.dist; close := e2c_clamp((2.2 - dist) / 1.55, 0, 1); target := 1.2 + 0.58 * close;
+  ey := target - 0.4 + 0.50 * close + sin(c.pitch - 0.1) * dist; ez := cos(c.pitch - 0.1) * dist;
+  fy := target - ey; fz := -ez; fl := sqrt(fy * fy + fz * fz); fy /= fl; fz /= fl;
+  eye := figs.v3(feet.x + c.pan_x, feet.y + ey + c.pan_y * (-fz), feet.z + ez + c.pan_y * fy);
+  floor_y := e2_height(eye.x, eye.z) + 0.28; if eye.y < floor_y { eye.y = floor_y; }
+  return figs.Shot.{eye = eye, at = figs.v3(eye.x, eye.y + fy * 10, eye.z + fz * 10)};
+}
+// The run's camera at share u of the run, relative to you and your heading: turned `turn` rad off
+// straight behind you, `dist` m back, `rise` m up (Everglade's cz_frame): a three-quarter view that
+// sweeps across behind you and back, pulling out and craning up midway, and comes in to straight behind.
+E2cFrame :: struct { turn: f32; dist: f32; rise: f32; }
+e2c_frame :: (u: f32) -> E2cFrame {
+  a := (1 - u) * 0.6 * cos(3 * 3.14159265 * u); arc := sin(3.14159265 * u);
+  return E2cFrame.{turn = a, dist = e2c_mix(4.2, f32(figs.FREE_DIST), u) + 2.5 * arc, rise = e2c_mix(1.7, f32(figs.FREE_HEIGHT) + 0.9, u) + 2.2 * arc};
+}
+e2c_frame_shot :: (feet: figs.Point, yaw: f32, f: E2cFrame, look: figs.Point) -> figs.Shot {
+  h := yaw + f.turn;
+  eye := figs.v3(feet.x - sin(h) * f.dist, feet.y + f.rise, feet.z - cos(h) * f.dist);
+  floor_y := e2_height(eye.x, eye.z) + 0.5; if eye.y < floor_y { eye.y = floor_y; }
+  return figs.Shot.{eye = eye, at = look};
+}
+// The track's look: 1.3 m up, 3.5 m on the way you run.
+e2c_look :: (feet: figs.Point, yaw: f32) -> figs.Point { return figs.v3(feet.x + sin(yaw) * 3.5, feet.y + 1.3, feet.z + cos(yaw) * 3.5); }
+// The camera shown: the studio's, then after USE IN EVERGLADE the run's (from the studio's it swings
+// round behind you over E2C_SWING s, keeps its own track through the run, then eases into the follow
+// camera `chase` over E2C_EASE s, the orbit turned first to look the way it looks, so the hand-off
+// has no jump), then the follow camera alone.
+e2c_shot :: (s: [] E2, feet: figs.Point, chase: figs.Shot, dt: f32) -> figs.Shot {
+  c := s[0].cz[..];
+  if !c[0].on || c[0].handed { return chase; }
+  if !c[0].walking { c[0].studio = e2c_studio(s, feet); return c[0].studio; }
+  if dt > 0 && dt < 1 { c[0].run_t += dt; }
+  t := c[0].run_t; yaw := s[0].orbit.yaw;
+  if t < f32(E2C_SWING) {
+    // the studio's framing in the track's terms, eased into the track's start
+    st := c[0].studio; vx := st.eye.x - feet.x; vz := st.eye.z - feet.z;
+    from := E2cFrame.{turn = figs.wrap_angle(figs.atan2(-vx, -vz) - yaw), dist = sqrt(vx * vx + vz * vz), rise = st.eye.y - feet.y};
+    if from.dist < 1 { from.dist = 1; }
+    to := e2c_frame(0); e := e2c_ease(t / f32(E2C_SWING));
+    look_to := e2c_look(feet, yaw);
+    look := figs.v3(e2c_mix(st.at.x, look_to.x, e), e2c_mix(st.at.y, look_to.y, e), e2c_mix(st.at.z, look_to.z, e));
+    return e2c_frame_shot(feet, yaw, E2cFrame.{turn = from.turn + figs.wrap_angle(to.turn - from.turn) * e, dist = e2c_mix(from.dist, to.dist, e), rise = e2c_mix(from.rise, to.rise, e)}, look);
+  }
+  track := e2c_frame_shot(feet, yaw, e2c_frame(e2c_clamp((t - f32(E2C_SWING)) / f32(E2C_RUN), 0, 1)), e2c_look(feet, yaw));
+  if t < f32(E2C_SWING + E2C_RUN) { return track; }
+  if !c[0].toward { c[0].toward = true; s[0].orbit = figs.verse_orbit_toward(s[0].orbit, track); return track; }
+  if t < f32(E2C_SWING + E2C_RUN + E2C_EASE) { return figs.verse_shot_mix(track, chase, (t - f32(E2C_SWING + E2C_RUN)) / f32(E2C_EASE)); }
+  c[0].handed = true;   // the follow camera and the keys are yours
+  return chase;
+}
+// The studio's lens: on a phone you stand in the gap over the wardrobe (Character Create's own
+// focal and centre), easing to the follow camera's as the camera swings behind you.
+e2c_lens :: (s: [] E2, focal: f32, cy: f32) -> [2] f32 {
+  c := s[0].cz[0];
+  if !c.on || c.handed || !c.mobile { return [2] f32.[focal, cy]; }
+  h := s[0].height; k := s[0].k;
+  f0 := (h - 624 * k) * 1.3; y0 := (h - 384 * k) * 0.5;
+  if f0 < focal * 0.5 { f0 = focal * 0.5; }
+  e := ifx c.walking then e2c_ease(c.run_t / f32(E2C_SWING)) else 0.0f32;
+  return [2] f32.[e2c_mix(f0, focal, e), e2c_mix(y0, cy, e)];
+}
+// Your figure in the studio: the ANIMATION field's clip, turned by the drag (0 faces the camera).
+e2c_figure :: (s: [] E2) -> figs.BdAnim {
+  c := s[0].creator[0];
+  a: figs.BdAnim; a.on = true; a.own = true; a.x = s[0].you_x; a.y = s[0].you_y; a.z = s[0].you_z; a.yaw = c.yaw;
+  a.clip = [4] int.[figs.BD_IDLE, figs.BD_WALK, figs.BD_RUN, figs.BD_SPELL][c.pose];
+  a.t0 = c.pose_at; a.fade_at = -100; a.phase = (s[0].clock - c.pose_at) / figs.bd_seconds(a.clip);
+  if c.pose == 3 { dur := figs.bd_seconds(figs.BD_SPELL); a.t0 = c.pose_at + floor((s[0].clock - c.pose_at) / dur) * dur; }
+  return a;
+}
+#test "create: the studio camera looks at you from the south; after USE the run plays down the path, then hands over" #steps 2000000000 {
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
+  _ := e2_start(s[..]);
+  feet := figs.v3(s[0].you_x, s[0].you_y, s[0].you_z);
+  sh := e2c_shot(s[..], feet, figs.Shot.{}, 0.016);
+  #assert sh.eye.z > feet.z + 2 && sh.at.z < sh.eye.z && sh.eye.y > feet.y;
+  // the run drives no keys in the studio
+  inp := e2_move_in(s[..]); #assert inp.key_y == 0 && inp.key_x == 0;
+  studio := s[0].cz[0].studio;
+  chase := figs.Shot.{eye = figs.v3(feet.x, feet.y + 2, feet.z + 4), at = figs.v3(feet.x, feet.y + 1, feet.z - 4)};
+  e2c_walk(s[..]);
+  // the first frame is the studio's shot: no cut
+  first := e2c_shot(s[..], feet, chase, 0.0001);
+  #assert abs(first.eye.x - studio.eye.x) + abs(first.eye.y - studio.eye.y) + abs(first.eye.z - studio.eye.z) < 0.1;
+  // the run goes on its own, forward, toward the path (north, -z)
+  inp = e2_move_in(s[..]); #assert inp.key_y == 1 && !inp.run && -cos(inp.theta) < -0.5;
+  #assert e2_key(s[..], 'w', 0) && s[0].held == 0 && s[0].cz[0].run_t >= f32(E2C_SWING + E2C_RUN) - 0.001;
+  // the ease ends on the follow camera, each step a small one
+  last := e2c_shot(s[..], feet, chase, 0.016);
+  for i: 0..<int(f32(E2C_EASE) / 0.016) + 2 {
+    st := e2c_shot(s[..], feet, chase, 0.016);
+    #assert abs(st.eye.x - last.eye.x) + abs(st.eye.y - last.eye.y) + abs(st.eye.z - last.eye.z) < 0.9;
+    last = st;
+  }
+  #assert s[0].cz[0].handed && !e2c_running(s[..]) && last.eye.z == chase.eye.z && e2c_shown(s[..]) == 0;
+  inp = e2_move_in(s[..]); #assert inp.key_y == 0;   // the keys are yours
+}
+
+// For headless checks (e2_probe 20 to 29): 20 in the studio, 21 walking, 22 the run playing, 23 handed
+// over, 24 the wardrobe's revision, 25 the record kept, 26 the outfit, 27 the body (1 female), 28 the
+// class, 29 the run's ms.
+e2c_probe :: (s: [] E2, f: int) -> int {
+  c := s[0].cz[0]; cr := s[0].creator[0];
+  if f == 20 { return ifx e2c_creating(s) then 1 else 0; }
+  if f == 21 { return ifx c.walking then 1 else 0; }
+  if f == 22 { return ifx e2c_running(s) then 1 else 0; }
+  if f == 23 { return ifx c.handed then 1 else 0; }
+  if f == 24 { return cr.revision; }
+  if f == 25 { return ifx c.ok then 1 else 0; }
+  if f == 26 { return cr.outfit; }
+  if f == 27 { return ifx cr.female then 1 else 0; }
+  if f == 28 { return cr.klass; }
+  if f == 29 { return cast(int)(c.run_t * 1000); }
+  return -1;
+}

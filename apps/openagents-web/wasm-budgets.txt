@@ -37,8 +37,9 @@ fairy 695000
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
 fivelab 650000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
-# bring it to 300,328 bytes; about 5% headroom.
-everglade2 315000
+# brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
+# #13023) to 319,706; about 6% headroom.
+everglade2 340000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 fivemmo 1630000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 182,826 before, 194,755 after; about 5% room

@@ -1,20 +1,24 @@
 # Character Studio
 
 `/worlds/character-creator` is a live Aethyr wardrobe for the Quaternius humans,
-and it is a place in Everglade: Character Create and Everglade are one zone (#13018).
-The page boots Everglade itself (`everglade5e`, Everglade's slot, room and pack)
-at the glade's clearing south of the South Gate, in Character Create's mode: a
-studio camera on your character, the wardrobe down the left, and your keys and
-pointer on the wardrobe. You pick one of the twelve SRD 5.2.1 classes on the
-CLASS row. USE IN EVERGLADE plays a short run up the road, then hands you the
-walk with your class's ability on the bar. There is one page,
-one Wasm world, one renderer and one clock the whole way: nothing loads, nothing
-fades, and no frame or iframe opens. The address bar changes to
-`/worlds/everglade` in place (`history.replaceState`).
+and it is a place in Everglade II: Character Create's glade is where Everglade II
+begins (#13023). The page boots Everglade II itself (`everglade2`, its slot and
+pack) in the glade, in Character Create's mode: a studio camera on your
+character, the wardrobe down the left, and your keys and pointer on the wardrobe.
+You pick one of the twelve SRD 5.2.1 classes on the CLASS row. USE IN EVERGLADE
+saves the character, plays a short run out of the glade and down the path, then
+hands you the walk. There is one page, one Wasm world, one renderer and one clock
+the whole way: nothing loads, nothing fades, and no frame or iframe opens. The
+address bar changes to `/worlds/everglade2` in place (`history.replaceState`).
 
-The wardrobe is Coax in `apps/openagents-web/everglade-create.coax`. The glade's
-place in the world is `verse/everglade/glade-zone.coax`; its drawing is
-`apps/openagents-web/everglade-glade.coax` and `verse/everglade/gpu-glade.coax`.
+The studio and the run are Coax in `apps/openagents-web/everglade2-create.coax`,
+loaded into `everglade2.coax`. The wardrobe's choices and record are
+`charactercreator.coax`'s (`Creator`, `change`, `value`, `save`), with the class
+added to the record (`CC3`). The glade is Everglade II's own
+(`docs/verse/everglade2.md`).
+
+Everglade at `/worlds/everglade` no longer has a Character Create entrance. It
+still reads the saved record, class included, when you open it.
 
 ## The complete Fantasy Source wardrobe
 
@@ -79,125 +83,19 @@ The source license is CC0 1.0 Universal (`License_Source.txt`).
 ## Build and check
 
 ```sh
-coax/bin/coax test apps/openagents-web/everglade5e.coax --only "create:"
-coax/bin/coax test apps/openagents-web/everglade5e.coax --only "glade:"
-coax/bin/coax test --library verse/everglade/glade-zone.coax
-coax/bin/coax test aethyr/render/adoption.coax
-coax/web/tool.sh coax/web/wgsl-module.coax --site --check
-cd apps/openagents-web && ../../coax/web/wasm.sh everglade5e.coax everglade5e-face.c \
-  build/everglade5e.wasm everglade-step.coax ../../verse/grid.coax \
-  ../../verse/everglade/river.coax ../../verse/everglade/guard-guide-policy.coax everglade5e-rules.coax
-coax/web/tool.sh coax/web/room/worker.coax apps/openagents-web/build/everglade-room.wasm
+coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "create:"
+coax/bin/coax test --library aethyr/render/adoption.coax
+cd apps/openagents-web && ../../coax/web/wasm.sh everglade2.coax everglade2-face.c \
+  build/everglade2.wasm everglade-step.coax ../../aethyr/sticks.coax
 bun coax/web/realms.ts
 coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:8873
 ```
 
-Rendering adoption binds the `character-creator`/`everglade5e` pair as a tracked
-legacy consumer, as Everglade's own page is. The realm table's `place_of` says
-the page is a place in Everglade: it takes Everglade's module, slot, room and
-`data-realm`, and only its address and first place differ (`coax/web/realms.ts`).
-
-## Selector appearance controls
-
-Heavy armor and Crown are excluded from browsing and drawing; their original
-Source payloads remain for provenance. Legacy saves migrate with those pieces
-disabled. Six eye colors retain the texture's pupils, whites and highlights.
-Male/Female and Color labels are used throughout the UI. The 40th garment slot
-is reserved and unavailable; the CC2 appearance format remains compatible.
-
-## Face inspection and headwear
-
-The page header is “Character Create”. Crown is excluded from browsing, drawing
-and restored appearances. A hood suppresses hair while retaining a selected
-Male beard as a separate draw.
-Zoom now reaches 0.65 m (formerly 2.2 m); below 2.2 m, the camera target rises
-toward the face. The upper distance stays 6 m. The headless Metal capture
-`docs/verification/character-creator-2026-11-06/hood-beard-close.png` shows the
-actual hood, beard and closest camera together. Eleven targeted creator/studio
-checks pass; the release producer is 592,520 bytes.
-
-## Camera panning
-
-Left mouse drag rotates; right mouse drag pans, with no mode toggle. On touch
-screens, tap DRAG: ROTATE / DRAG: PAN or press P to toggle the drag behavior. Pan mode
-translates the camera in its screen plane without changing character yaw or
-view pitch. Translation uses camera distance and focal length, so panning stays
-proportional to pointer travel when zoomed in. Both axes are bounded to two
-metres. RESET centers the camera and returns to Rotate mode; pan is temporary
-view state and is not part of the saved appearance. The touch mode control sits next to Eye Color on phones. Mouse gestures ignore
-the touch mode. The optional `coaxial_pointer_buttons_v1` browser input hook
-carries the DOM button number; the original pointer ABI remains unchanged.
-The right button never changes appearance controls, and the initial button is
-latched until its release or cancellation.
-
-Only Peasant, Ranger, Wizard and Noble remain. The removed custom outfit's
-geometry, palette textures and exporter are gone. Existing CC2 saves selecting
-that removed slot migrate to Wizard while retaining body and eye color.
-
-## Shared asset registry
-
-The complete source packs now have a shared authoring catalog in
-`assets/registry/README.md`, backed by `~/.openagents/assets/` source snapshots,
-immutable artifacts and editable Blender forks. The wardrobe's stable IDs,
-labels, availability and preset membership live in
-`assets/registry/collections/character-create.json`. Regenerate the runtime
-Coax tables and pinned revision lock with:
-
-```sh
-coax/web/tool.sh verse/tools/assets/registry.coax wardrobe
-coax/web/tool.sh verse/tools/assets/registry.coax wardrobe --check
-```
-
-CC2's legacy slots remain frozen compatibility keys. Source discovery order
-cannot change saved garments. Runtime readiness now requires each referenced
-mesh, rather than an exact manually maintained count. The existing compiled
-people pack, appearance codec and renderer ABI are unchanged.
-
-## Nature glade background
-
-The character stands in the Nature glade described in
-[character-glade.md](character-glade.md), now a region of Everglade's world. The
-glade's local frame is turned half round and set south of the map's edge, so its
-clearing lies about 150 m down the road from the South Gate and its road through
-the back ridge is Everglade's road out (`verse/everglade/glade-zone.coax`). The
-realm's pack, `everglade-zone.pack`, is `everglade-avatar.pack` with the glade's
-static mesh and three grass kinds appended (`character_glade_pack.coax` in zone
-mode). Everglade's renderer draws them with Everglade's sun, clock and haze; the
-glade keeps its own textures, foliage back-scatter and grass. Everglade's ground
-blends into the glade's from 150 m south of the fountain, the forest wall leaves a
-gap for the road, and the walk takes the glade's ground past the seam.
-
-The studio holds its light at late morning (`fixed:0.58`) while you are in it, so
-it is day on arrival. The town streams with the rest of the world while you
-choose: you can see Everglade's palisade up the road from the clearing. Phones
-draw a share of the grass (`GLADE_GRASS_PHONE`) and Everglade's phone tier for the
-rest. The shared asset IDs and provenance are pinned in
-`assets/registry/scenes/character-glade.json`.
-
-## Main font: AR Kai C
-
-Character Create uses the installed WoW Forever `arkai_c.ttf` (AR ZhongkaiGBK
-Medium), identified by ore's `docs/wow-forever/fonts.md`. The original decoded
-SHA-256 is `c1cabeae2ef13f2984221d37307639b47571e22edaa91ba5d938fc4871581396`.
-The asset receipt retains the FileDataID, current archive extent and original
-identity. The source has an invalid `vhea` version (0x00010001); the Coax tool
-`verse/tools/humans/character_font.coax` changes it to 0x00010000 and recomputes
-table/global checksums. Outlines, advances, cmap and names remain byte-identical.
-Run it with `coax/web/tool.sh FILE.coax ORIGINAL.ttf WEB.ttf`.
-
-The page manifest supplies its FontFace source and family. The browser loads it
-before GPU setup and rasterizes the five existing atlas mip sizes. Character
-Create lays every heading and control out in Coax using the source's exact
-ASCII advances (`charactercreator-font.coax`), with the existing textured-glyph
-vertex format. Everglade's HUD shader samples those glyphs (`eg_fx_fs`, the
-`sans_atlas` binding); Everglade's own HUD text remains Filament. The shared canonical
-renderer and font profile are unchanged. This is not a new native/shared font
-qualification. Device recreation reuses the loaded FontFace and rebuilds its
-atlas. Failure to load the requested font refuses startup instead of silently
-substituting a different face.
-
-Headless browser checks require the loaded family and exact measured advances
-for A/i, then exercise input, save/reload and desktop/phone previews.
+Rendering adoption binds the `character-creator`/`everglade2` pair as a tracked
+legacy consumer, as Everglade II's own page is. The realm table's `place_of` says
+the page is a place in Everglade II: it takes Everglade II's module, slot, pack
+and `data-realm`, and only its address, its font and its first mode differ
+(`coax/web/realms.ts`).
 
 ## Save Player and use it in Everglade
 
@@ -256,12 +154,10 @@ coax/web/tool.sh coax/web/tests/player-appearance.coax \
 
 ## Entering Everglade after creation
 
-A valid saved Character Create profile is already a completed appearance choice.
-Everglade joins directly without opening its legacy Ranger picker. The server
-still owns the name and room seat. A page at Character Create says so in its
-hello (`FLAGS` bit 128, `EZ_GLADE_FLAG`), and the room seats it at the glade's
-clearing (`coax/web/room/room-tick.c` `everglade_place`, `room-world.c`
-`world_place_glade`), so your seat and your page agree on where you stand.
+A valid saved Character Create record is already a completed appearance choice.
+Everglade II restores it on its own page (message 16) and draws you in it, so a
+reload of `/worlds/everglade2` keeps your look and class. There is no room or
+seat in Everglade II.
 
 ## Classes
 
@@ -313,24 +209,25 @@ class (`CC2`) keeps Everglade's own druid.
 USE IN EVERGLADE saves first. Nothing moves until the save is confirmed
 (message 17). Then the run plays, in the same world, with no cut:
 
-1. The controls fade out over 0.8 seconds, and the camera swings round behind
-   you over 3 seconds.
-2. You run the road north on your own for 30 seconds. The run uses Everglade's
-   own input path (forward and running, steered toward the road 7 m ahead), so
-   the room moves you as it does for held keys. The camera keeps its own track:
-   a three-quarter view that sweeps across behind you, pulls out and cranes up
-   midway, and comes in to straight behind you.
+1. The controls and their glass panel fade out over 0.8 seconds, and the camera
+   swings round behind you over 3 seconds.
+2. You run out of the glade and down Everglade II's path on your own for 20
+   seconds. The run uses Everglade II's own controller (forward at a jog,
+   steered 5 m ahead along the path), as held keys would. The camera keeps its
+   own track: a three-quarter view that sweeps across behind you, pulls out and
+   cranes up midway, and comes in to straight behind you.
 3. The orbit turns to look where the run's camera looks
    (`verse_orbit_toward`), and the camera eases into the follow camera over
    1.5 seconds, so there is no jump.
-4. The bar appears with your class's slot 1, and the keys are yours.
+4. The keys are yours, about 90 m down the path.
 
 Any key or a click during the run skips to step 3. The key is used for the skip
-and does nothing else. The address bar says `/worlds/everglade` from the start
-of the run (action 19, `history.replaceState`). The road climbs out of the
-clearing through the ridge cut, meets the town's road where the two grounds
-join, and runs north to the South Gate and the Commons. The run is in
-`everglade-create.coax` (`cz_drive`, `cz_shot`, `cz_frame`).
+and does nothing else. The address bar says `/worlds/everglade2` from the start
+of the run (action 19, `history.replaceState`). The run is in
+`everglade2-create.coax` (`e2c_walk`, `e2c_shot`, `e2c_frame`). Everglade II
+doesn't show the class bar yet.
+
+The old checks below drove the run into Everglade and no longer apply.
 
 ```sh
 # Real input: SURPRISE ME, USE IN EVERGLADE, the run with no keys, slot 1 at the hand-off (key 1,

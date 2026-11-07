@@ -48,6 +48,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   width = w; height = h; dpr = scale; now += dt;
   quality_state = state; e2_quality_frame(at(state), dt, w, h, scale);
   if (e2_start(at(state))) player = verse_player_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
+  /* Character Create's run starts from you as the studio drew you (everglade2-create.coax e2c_walk) */
+  if (e2_reseat(at(state))) player = verse_player_place(player.pos.x, 0, player.pos.z, e2_at(state)->you_face);
   float frame = dt;
   float step = verse_player_counts(player, frame);
   e2_look(at(state), sticks.dyaw, sticks.dpitch, sticks.zoom);
@@ -125,10 +127,11 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) return;
   e2_message(at(state), kind, (coax_string){(const char *)inbox, length});
 }
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { (void)state; return 0; }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { (void)state; return 0u; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { (void)state; }
+// Character Create's actions (everglade2-create.coax): 16 keeps the record, 19 says the address.
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)e2_action(at(state)); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)e2_at(state)->out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { e2_action_done(at(state)); }
 
 // Your saved character arrives as message 16 (the browser's own copy, from Character Create).
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }
