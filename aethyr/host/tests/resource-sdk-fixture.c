@@ -99,3 +99,22 @@ int64_t vrf_info(int32_t field){
       {VksMemoryInfo before;memset(&before,0x55,sizeof before);VkcBuffer empty_b={0};VksImage empty_t={0};return !memcmp(&before,&info,sizeof before)&&!memcmp(&buffer,&empty_b,sizeof buffer)&&!memcmp(&image,&empty_t,sizeof image);}
     case 6:return stage;default:return -1;}
 }
+
+static int admission_calls,admission_code;
+static VkResult admission(void *owner,const VksMemoryInfo *observed){
+  admission_calls++;
+  if(owner!=&device||stage!=1||objects!=1||memories||extras||observed->requirements.size!=(kind?2048u:1024u)||
+     observed->requirements.alignment!=256||observed->requirements.memoryTypeBits!=4||observed->memory_type!=2)violations++;
+  return (VkResult)admission_code;
+}
+int32_t vrf_admission(int32_t resource_kind,int32_t at,int32_t code,int32_t gate_code){
+  vrf_reset(resource_kind,at,code);admission_calls=0;admission_code=gate_code;
+  VkResult result=kind?vks_image_try_admitted(&device,&image,4,4,1,0,VK_FORMAT_R8G8B8A8_UNORM,VKS_TEXTURE,3,admission,&device,&info):vks_buffer_try_admitted(&device,&buffer,64,admission,&device,&info);
+  VkResult expected=at==1?(VkResult)code:at==5?VK_ERROR_FEATURE_NOT_PRESENT:gate_code?(VkResult)gate_code:at?(VkResult)code:VK_SUCCESS;
+  int expected_stage=(at==1||at==5||gate_code)?1:at?at:4;
+  int ok=result==expected&&admission_calls==((at==1||at==5)?0:1)&&stage==expected_stage;
+  published=kind?image.image!=VK_NULL_HANDLE:buffer.buf!=VK_NULL_HANDLE;
+  ok=ok&&vrf_info(5)==1;
+  if(result==VK_SUCCESS)vrf_destroy();
+  return ok&&!objects&&!memories&&!extras&&!violations;
+}

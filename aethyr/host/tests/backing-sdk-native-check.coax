@@ -1,0 +1,38 @@
+// Coax decides the physical byte grant; C executes and independently observes
+// the Vulkan prefix. Every reservation outlives its actual allocation.
+#import "Basic";
+#load "../backing-budget.coax";
+#load "../../../coax/lib/sys/tool.coax";
+vbg_case :: (caps:[]int,total:int,allocation:int,kind:s32,mode:s32,stage:s32,code:s32)->s32 #foreign #effects(all);
+vbg_info :: (field:s32)->int #foreign #effects(all);
+vbg_null :: (kind:s32)->s32 #foreign #effects(all);
+vrn_open :: ()->s32 #foreign #effects(all);
+vrn_case :: (kind:s32,stage:s32,code:s32)->s32 #foreign #effects(all);
+vrn_close :: ()->s32 #foreign #effects(all);
+vrn_info :: (field:s32)->int #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
+  #assert vrn_open()==1;
+  for kind:0..<2 {
+    #assert vbg_null(cast(s32) kind)==1;
+    for mode:0..<4 {
+      caps:=[8]int.[8388608,8388608,8388608,8388608,8388608,8388608,8388608,8388608];
+      if mode==0 {caps[kind]=0;}
+      total:=ifx mode==1 then 0 else 16777216;
+      if mode<3 {#assert vbg_case(caps[..],total,8388608,cast(s32) kind,cast(s32) mode,0,0)==1;}
+      else {for code:[3]s32.[1,2,-13] {#assert vbg_case(caps[..],total,8388608,cast(s32) kind,3,0,code)==1;}}
+      #assert vbg_info(2)==0 && vbg_info(3)==0;
+      if mode<2 {#assert vbg_info(4)==1 && vbg_info(5)==0;}
+      if mode==2 {#assert vbg_info(5)>0 && vbg_info(5)==vbg_info(1);}
+    }
+    for stage:1..<5 {for code:[2]s32.[-1,-2] {
+      caps:=[8]int.[8388608,8388608,8388608,8388608,8388608,8388608,8388608,8388608];
+      #assert vbg_case(caps[..],16777216,8388608,cast(s32) kind,2,cast(s32) stage,code)==1 && vbg_info(2)==0 && vbg_info(3)==0;
+      #assert vbg_info(5)==(ifx stage==1 then 0 else vbg_info(1));
+    }}
+    for at:1..<5 {for code:[2]s32.[-1,-2] {#assert vrn_case(cast(s32) kind,cast(s32) at,code)==1;}}
+    #assert vrn_case(cast(s32) kind,0,0)==1;
+  }
+  #assert vrn_case(0,4,-5)==1 && vrn_info(0)==19 && vbg_info(0)==30;
+  #assert vrn_close()==1 && vrn_info(1)==0 && vrn_info(2)==0;
+  print("PASS backing SDK admission: % gated cases and % unchanged-facade cases; validation errors %, warnings %\n",vbg_info(0),vrn_info(0),vrn_info(1),vrn_info(2));return 0;
+}

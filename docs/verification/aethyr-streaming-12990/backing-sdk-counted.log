@@ -1,0 +1,1 @@
+PASS counted Vulkan resource factories: 24 existing poisoned failures, two unsupported profiles, 38 gated cases, atomic publication and invalid-call preservation

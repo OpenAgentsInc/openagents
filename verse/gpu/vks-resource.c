@@ -2,23 +2,26 @@
 #include "vks-resource.h"
 #include <string.h>
 
-static VkResult allocate(Vkc *v,VkMemoryRequirements req,VkMemoryPropertyFlags wanted,
-                         VkBuffer buffer,VkImage image,VkDeviceMemory *out,uint32_t *type){
+static VkResult allocate(Vkc *v,VksMemoryInfo *observed,VkMemoryPropertyFlags wanted,
+                         VkBuffer buffer,VkImage image,VkDeviceMemory *out,VksMemoryGate gate,void *owner){
+  VkMemoryRequirements req=observed->requirements;
   VkPhysicalDeviceMemoryProperties properties;
   vkGetPhysicalDeviceMemoryProperties(v->gpu,&properties);
   for(uint32_t i=0;i<properties.memoryTypeCount;i++){
     if(!(req.memoryTypeBits&(1u<<i))||(properties.memoryTypes[i].propertyFlags&wanted)!=wanted)continue;
+    observed->memory_type=i;
+    if(gate){VkResult admitted=gate(owner,observed);if(admitted!=VK_SUCCESS)return admitted;}
     // Each factory owns a whole allocation, including formats which require a
     // dedicated allocation. The native device already requires Vulkan 1.1.
     VkMemoryDedicatedAllocateInfo dedicated={.sType=VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,.buffer=buffer,.image=image};
     VkMemoryAllocateInfo info={.sType=VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,.pNext=&dedicated,.allocationSize=req.size,.memoryTypeIndex=i};
     VkDeviceMemory created;VkResult result=vkAllocateMemory(v->dev,&info,NULL,&created);
-    if(result==VK_SUCCESS){*out=created;*type=i;}return result;
+    if(result==VK_SUCCESS)*out=created;return result;
   }
   return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
-VkResult vks_buffer_try(Vkc *v,VkcBuffer *out,VkDeviceSize size,VksMemoryInfo *info){
+static VkResult buffer_try(Vkc *v,VkcBuffer *out,VkDeviceSize size,VksMemoryGate gate,void *owner,VksMemoryInfo *info){
   if(!v||!v->dev||!out||out->buf||out->mem||out->map||out->size||!size||size>SIZE_MAX)return VK_ERROR_INITIALIZATION_FAILED;
   VkcBuffer b={.size=size};VksMemoryInfo observed={0};VkResult result;
   VkBufferCreateInfo create={.sType=VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,.size=size,
@@ -26,7 +29,7 @@ VkResult vks_buffer_try(Vkc *v,VkcBuffer *out,VkDeviceSize size,VksMemoryInfo *i
   VkBuffer created;
   if((result=vkCreateBuffer(v->dev,&create,NULL,&created))!=VK_SUCCESS)return result;
   b.buf=created;vkGetBufferMemoryRequirements(v->dev,b.buf,&observed.requirements);
-  result=allocate(v,observed.requirements,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,b.buf,VK_NULL_HANDLE,&b.mem,&observed.memory_type);
+  result=allocate(v,&observed,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,b.buf,VK_NULL_HANDLE,&b.mem,gate,owner);
   if(result!=VK_SUCCESS)goto failed;
   if((result=vkBindBufferMemory(v->dev,b.buf,b.mem,0))!=VK_SUCCESS)goto failed;
   void *mapped;
@@ -38,8 +41,8 @@ failed:
   return result;
 }
 
-VkResult vks_image_try(Vkc *v,VksImage *out,uint32_t w,uint32_t h,uint32_t layers,
-                       int array,VkFormat format,int use,uint32_t levels,VksMemoryInfo *info){
+static VkResult image_try(Vkc *v,VksImage *out,uint32_t w,uint32_t h,uint32_t layers,
+                          int array,VkFormat format,int use,uint32_t levels,VksMemoryGate gate,void *owner,VksMemoryInfo *info){
   if(!v||!v->dev||!out||out->image||out->mem||out->view||out->w||out->h||out->layers||out->levels||out->format||out->depth||!w||!h||!layers||!levels||format==VK_FORMAT_UNDEFINED||!use||(use&~(VKS_TEXTURE|VKS_TARGET)))return VK_ERROR_INITIALIZATION_FAILED;
   uint32_t max_levels=1;for(uint32_t side=w>h?w:h;side>1;side>>=1)max_levels++;
   if(levels>max_levels)return VK_ERROR_INITIALIZATION_FAILED;
@@ -52,7 +55,7 @@ VkResult vks_image_try(Vkc *v,VksImage *out,uint32_t w,uint32_t h,uint32_t layer
   VkImage created;
   if((result=vkCreateImage(v->dev,&create,NULL,&created))!=VK_SUCCESS)return result;
   t.image=created;vkGetImageMemoryRequirements(v->dev,t.image,&observed.requirements);
-  result=allocate(v,observed.requirements,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,VK_NULL_HANDLE,t.image,&t.mem,&observed.memory_type);
+  result=allocate(v,&observed,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,VK_NULL_HANDLE,t.image,&t.mem,gate,owner);
   if(result!=VK_SUCCESS)goto failed;
   if((result=vkBindImageMemory(v->dev,t.image,t.mem,0))!=VK_SUCCESS)goto failed;
   VkImageViewCreateInfo view={.sType=VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,.image=t.image,
@@ -65,4 +68,15 @@ failed:
   if(t.image)vkDestroyImage(v->dev,t.image,NULL);
   if(t.mem)vkFreeMemory(v->dev,t.mem,NULL);
   return result;
+}
+
+VkResult vks_buffer_try(Vkc *v,VkcBuffer *out,VkDeviceSize size,VksMemoryInfo *info){return buffer_try(v,out,size,NULL,NULL,info);}
+VkResult vks_image_try(Vkc *v,VksImage *out,uint32_t w,uint32_t h,uint32_t layers,int array,VkFormat format,int use,uint32_t levels,VksMemoryInfo *info){return image_try(v,out,w,h,layers,array,format,use,levels,NULL,NULL,info);}
+VkResult vks_buffer_try_admitted(Vkc *v,VkcBuffer *out,VkDeviceSize size,VksMemoryGate gate,void *owner,VksMemoryInfo *info){
+  if(!gate)return VK_ERROR_INITIALIZATION_FAILED;
+  return buffer_try(v,out,size,gate,owner,info);
+}
+VkResult vks_image_try_admitted(Vkc *v,VksImage *out,uint32_t w,uint32_t h,uint32_t layers,int array,VkFormat format,int use,uint32_t levels,VksMemoryGate gate,void *owner,VksMemoryInfo *info){
+  if(!gate)return VK_ERROR_INITIALIZATION_FAILED;
+  return image_try(v,out,w,h,layers,array,format,use,levels,gate,owner,info);
 }

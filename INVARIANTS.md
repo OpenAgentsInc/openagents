@@ -1999,6 +1999,13 @@ physical GPU-reset claim. Streamed buffer/image factories now publish only
 after successful creation and unwind private partial effects. Their
 [factory record](docs/verification/aethyr-streaming-12990/walk-native-factories.md)
 qualifies SDK error prefixes and successful consumer adoption. Streamed
+factories also offer a separate pre-allocation admission callback. It sees
+the real requirement size/alignment/type mask and selected memory type before
+`vkAllocateMemory`; only success permits that effect. A caller's exact
+backing-budget lease survives any subsequent SDK failure until private cleanup
+has returned, or successful final use and physical destruction. The component
+[backing-gate record](docs/verification/aethyr-streaming-12990/walk-native-backing-gate.md)
+qualifies this boundary; corridor adoption remains separate. Streamed
 buffer/image uploads now use owned `VksTransfer` submissions; finish, destroy,
 paid frames and replacement refuse while a transfer is owned. The
 [upload record](docs/verification/aethyr-streaming-12990/walk-native-transfers.md)

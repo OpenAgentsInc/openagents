@@ -8,6 +8,7 @@ vrf_destroy :: () #foreign #effects(all);
 vrf_invalid :: (which: s32) -> s32 #foreign #effects(all);
 vrf_nonempty :: (which: s32) -> s32 #foreign #effects(all);
 vrf_info :: (field: s32) -> int #foreign #effects(all);
+vrf_admission :: (kind:s32,stage:s32,code:s32,gate_code:s32)->s32 #foreign #effects(all);
 resource_failures :: () #effects(all) {
   for kind: 0..<2 { for at: 1..<5 { for code: [3] s32.[-1,-2,-4] {
     vrf_reset(cast(s32) kind,cast(s32) at,code);
@@ -34,5 +35,10 @@ resource_success :: () #effects(all) {
 }
 tool_main :: () -> int #export_c #effects(all) {
   resource_failures(); resource_success();
-  print("PASS counted Vulkan resource factories: 24 poisoned SDK failures, two unsupported memory profiles, exact requirements, atomic publication and invalid-call preservation\n"); return 0;
+  for kind:0..<2 {
+    for at:1..<5 {for code:[3]s32.[-1,-2,-4] {#assert vrf_admission(cast(s32) kind,cast(s32) at,code,0)==1;}}
+    for result:[6]s32.[0,-1,-2,-4,1,2] {#assert vrf_admission(cast(s32) kind,0,0,result)==1;}
+    #assert vrf_admission(cast(s32) kind,5,0,0)==1;
+  }
+  print("PASS counted Vulkan resource factories: 24 existing poisoned failures, two unsupported profiles, 38 gated cases, atomic publication and invalid-call preservation\n"); return 0;
 }

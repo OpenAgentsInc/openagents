@@ -1,6 +1,11 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [actual callback record](walk-callback-retirement.md)
+Issue #12990 remains open. The [native backing-gate record](walk-native-backing-gate.md)
+adds a Coax authority over existing inbox leases and checked SDK callbacks
+before actual memory allocation. Its component/model/hardware/software gates
+pass. The corridor still needs to adopt them; physical/transport/transient
+planning and the final adoption/teaching audit remain open.
+The [actual callback record](walk-callback-retirement.md)
 qualifies unwanted held image/buffer responses, retention through real effect
 join, retirement before newer generations, old-key/wrong-epoch refusals and
 unchanged current storage/pixels. Both browser tiers replay every accepted

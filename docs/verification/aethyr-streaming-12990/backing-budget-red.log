@@ -1,0 +1,20 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/backing-budget.coax:67:79: mutant survived: 8388608 became 8388609
+    if n.bytes<1 || n.bytes>HOST_INBOX_CAPACITY || n.alignment<1 || n.alignment>HOST_INBOX_CAPACITY || (n.alignment & (n.alignment-1))!=0 || n.types<1 || n.types>4294967295 || n.memory_type<0 || n.memory_type>31 {return false;}
+                                                                                ^
+aethyr/host/backing-budget.coax:67:161: mutant survived: 4294967295 became 4294967296
+    if n.bytes<1 || n.bytes>HOST_INBOX_CAPACITY || n.alignment<1 || n.alignment>HOST_INBOX_CAPACITY || (n.alignment & (n.alignment-1))!=0 || n.types<1 || n.types>4294967295 || n.memory_type<0 || n.memory_type>31 {return false;}
+                                                                                                                                                                  ^
+aethyr/host/backing-budget.coax:67:208: mutant survived: 31 became 32
+    if n.bytes<1 || n.bytes>HOST_INBOX_CAPACITY || n.alignment<1 || n.alignment>HOST_INBOX_CAPACITY || (n.alignment & (n.alignment-1))!=0 || n.types<1 || n.types>4294967295 || n.memory_type<0 || n.memory_type>31 {return false;}
+                                                                                                                                                                                                                 ^
+aethyr/host/backing-budget.coax:76:89: mutant survived: '>' became '>='
+    if !b[0].valid || category<0 || category>=BACKING_LINES || !backing_need(n) || n.bytes>b[0].queue[0].capacity {return BackingGrant.{};}
+                                                                                          ^
+aethyr/host/backing-budget.coax:81:25: mutant survived: '>' became '>='
+    if b[0].used[category]>b[0].peaks[category] {b[0].peaks[category]=b[0].used[category];}
+                          ^
+aethyr/host/backing-budget.coax:82:25: mutant survived: '>' became '>='
+    if b[0].queue[0].bytes>b[0].peak {b[0].peak=b[0].queue[0].bytes;}
+                          ^
+133 mutants, 127 killed, 6 survived

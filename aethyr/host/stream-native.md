@@ -41,6 +41,11 @@ adds buffer/image pending views and held-observation early-release guards.
 The [integrated SDK record](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
 qualifies scoped staging/destination/submission errors and upload-poll stops,
 including the unchanged ten-second deadline, on both tiers/backends.
+The SDK's new admitted-factory entry points can call the shared
+[backing budget](backing-budget.md) with actual requirements before allocation.
+Their component checks pass; this carrier still needs to adopt that boundary
+for streamed, staging, fixed-renderer, replacement and readback allocations.
+Its current logical caps therefore remain distinct from physical admission.
 
 Persistent uniforms and the 320×180 color/depth attachments have separate
 existing renderer grants. Readback and replacement transfer buffers each

@@ -1,0 +1,128 @@
+// Explicit backend allocations use the existing inbox lease authority. Logical
+// resource costs and opaque SDK storage remain separate from these byte caps.
+#authority;
+#load "inbox-queue.coax";
+BACKING_LINES :: 8; // resource categories 0..6, persistent renderer 7
+BACKING_MAX :: HOST_INBOX_CAPACITY * 4;
+BackingStatus :: enum u8 {ok;invalid;category;aggregate;inbox;}
+BackingNeedStatus :: enum u8 {ok;bytes;alignment;power;types;index;unsupported;}
+BackingNeed :: struct {bytes:int;alignment:int;types:int;memory_type:int;}
+BackingGrant :: struct {status:BackingStatus=BackingStatus.invalid;lease:HostInboxLease;}
+BackingBudget :: struct {
+  valid:bool;caps:[BACKING_LINES]int;used:[BACKING_LINES]int;peaks:[BACKING_LINES]int;
+  categories:[HOST_INBOX_EVENTS]int;queue:[1]HostInboxQueue;total_cap:int;peak:int;refused:int;
+  peak_owner:HostInboxLease;peak_owners:[BACKING_LINES]HostInboxLease;
+}
+
+#test "backing requirements admit exact bounded Vulkan sizes alignments and type masks" {
+  n := BackingNeed.{bytes=1,alignment=1,types=1};#assert backing_need(n);
+  for bytes: [2]int.[1,8388608] {for alignment: [2]int.[1,8388608] {for memory_type: [2]int.[0,31] {
+    n=BackingNeed.{bytes=bytes,alignment=alignment,types=4294967295,memory_type=memory_type};#assert backing_need(n);
+  }}}
+  n=BackingNeed.{bytes=17,alignment=256,types=4,memory_type=2};#assert backing_need(n);
+  for field:0..<4 {for bad:[3]int.[-1,0,9223372036854775807] {
+    changed:=n;if field==0 {changed.bytes=bad;}if field==1 {changed.alignment=bad;}if field==2 {changed.types=bad;}if field==3 {changed.memory_type=bad;}
+    #assert !backing_need(changed);
+  }}
+  n.alignment=3;#assert !backing_need(n);n.alignment=256;n.memory_type=1;#assert !backing_need(n);
+  n.memory_type=32;#assert !backing_need(n);n.memory_type=2;n.types=4294967296;#assert !backing_need(n);
+  n.types=4;n.bytes=8388609;#assert !backing_need(n);n.bytes=17;n.alignment=8388609;#assert !backing_need(n);
+  #assert backing_need_status(n)==BackingNeedStatus.alignment;
+  n.alignment=3;#assert backing_need_status(n)==BackingNeedStatus.power;
+  n.alignment=256;n.bytes=8388609;#assert backing_need_status(n)==BackingNeedStatus.bytes;
+  n.bytes=17;n.types=4294967296;#assert backing_need_status(n)==BackingNeedStatus.types;
+  n.types=4;n.memory_type=32;#assert backing_need_status(n)==BackingNeedStatus.index;
+  n.memory_type=1;#assert backing_need_status(n)==BackingNeedStatus.unsupported;
+  n.memory_type=2;#assert backing_need_status(n)==BackingNeedStatus.ok;
+}
+#test "physical backing declarations retain exact category aggregate and original inbox limits" {
+  caps:[8]int;b:=backing_open(caps,0,0);#assert b.valid && b.queue[0].valid && b.queue[0].capacity==0 && b.total_cap==0;
+  for i:0..<64 {#assert b.categories[i]== -1;}
+  for i:0..<8 {caps[i]=33554432;}
+  b=backing_open(caps,33554432,8388608);#assert b.valid && b.total_cap==33554432 && b.queue[0].capacity==8388608 && b.queue[0].limit==33554432;
+  for i:0..<8 {for bad:[2]int.[-1,33554433] {changed:=caps;changed[i]=bad;#assert !backing_open(changed,1,1).valid;}}
+  for bad:[3]int.[-1,8388609,9223372036854775807] {#assert !backing_open(caps,0,bad).valid;}
+  for bad:[3]int.[-1,33554433,9223372036854775807] {#assert !backing_open(caps,bad,8388608).valid;}
+  #assert !backing_open(caps,5,1).valid && backing_open(caps,4,1).valid;
+}
+#test "named backing refusal precedes allocation and preserves existing concrete leases" {
+  caps:=[8]int.[17,33554432,33554432,33554432,33554432,33554432,33554432,33554432];
+  b:=[1]BackingBudget.[backing_open(caps,100,100)];n:=BackingNeed.{bytes=17,alignment=256,types=4,memory_type=2};
+  g:=backing_hold(b[..],0,n);#assert g.status==BackingStatus.ok && g.lease.slot==0 && g.lease.serial==1 && g.lease.epoch==1;
+  #assert b[0].queue[0].bytes==17 && b[0].queue[0].count==1 && b[0].used[0]==17 && b[0].peaks[0]==17 && b[0].peak==17 && b[0].categories[0]==0;
+  #assert backing_hold(b[..],0,n).status==BackingStatus.category && b[0].refused==1 && b[0].queue[0].serial==1 && b[0].queue[0].bytes==17 && b[0].used[0]==17;
+  n.bytes=84;#assert backing_hold(b[..],1,n).status==BackingStatus.aggregate && b[0].refused==2 && b[0].queue[0].serial==1;
+  n.bytes=83;other:=backing_hold(b[..],1,n);#assert other.status==BackingStatus.ok && b[0].peak==100 && b[0].queue[0].bytes==100 && b[0].used[1]==83;
+  #assert b[0].peak_owner.serial==other.lease.serial && b[0].peak_owners[0].serial==g.lease.serial && b[0].peak_owners[1].serial==other.lease.serial;
+  #assert backing_release(b[..],g.lease) && !backing_release(b[..],g.lease) && b[0].used[0]==0 && b[0].used[1]==83 && b[0].queue[0].bytes==83 && b[0].categories[0]== -1;
+  #assert backing_release(b[..],other.lease) && b[0].queue[0].count==0 && b[0].queue[0].bytes==0 && b[0].peak==100;
+  n.bytes=17;equal:=backing_hold(b[..],0,n);#assert equal.status==BackingStatus.ok && b[0].peak_owners[0].serial==g.lease.serial && backing_release(b[..],equal.lease);
+  n.bytes=100;exact:=backing_hold(b[..],7,n);#assert exact.status==BackingStatus.ok && b[0].peak_owner.serial==other.lease.serial && backing_release(b[..],exact.lease);
+  for category:0..<8 {n.bytes=1;next:=backing_hold(b[..],category,n);#assert next.status==BackingStatus.ok && b[0].used[category]==1;#assert !backing_release(b[..],g.lease) && backing_release(b[..],next.lease) && b[0].used[category]==0;}
+}
+#test "backing allocation pressure and hostile releases cannot spend another allocation" {
+  caps:=[8]int.[128,128,128,128,128,128,128,128];b:=[1]BackingBudget.[backing_open(caps,128,64)];
+  n:=BackingNeed.{bytes=1,alignment=1,types=1};leases:[64]HostInboxLease;
+  for i:0..<64 {g:=backing_hold(b[..],i%8,n);#assert g.status==BackingStatus.ok && g.lease.slot==i;leases[i]=g.lease;}
+  #assert backing_hold(b[..],0,n).status==BackingStatus.inbox && b[0].queue[0].count==64 && b[0].queue[0].bytes==64 && b[0].refused==1;
+  for which:0..<5 {bad:=leases[0];if which==0 {bad.slot= -1;}if which==1 {bad.slot=64;}if which==2 {bad.serial+=1;}if which==3 {bad.epoch+=1;}if which==4 {bad.slot=1;}
+    #assert !backing_release(b[..],bad) && b[0].queue[0].count==64 && b[0].queue[0].bytes==64 && b[0].used[0]==8;
+  }
+  for lease:leases {#assert backing_release(b[..],lease);}#assert b[0].queue[0].count==0 && b[0].queue[0].bytes==0;
+  for i:0..<8 {#assert b[0].used[i]==0 && b[0].peaks[i]==8;}
+  for category:[2]int.[-1,8] {#assert backing_hold(b[..],category,n).status==BackingStatus.invalid && b[0].queue[0].count==0;}
+  n.bytes=65;#assert backing_hold(b[..],0,n).status==BackingStatus.invalid && b[0].queue[0].serial==64;
+  empty:[1]BackingBudget;#assert backing_hold(empty[..],0,n).status==BackingStatus.invalid && !backing_release(empty[..],leases[0]);
+}
+#test "device epochs advance only after every actual backing lease has retired" {
+  caps:=[8]int.[64,64,64,64,64,64,64,64];b:=[1]BackingBudget.[backing_open(caps,64,64)];n:=BackingNeed.{bytes=17,alignment=1,types=1};
+  old:=backing_hold(b[..],0,n);#assert old.status==BackingStatus.ok && !backing_reset(b[..]) && b[0].queue[0].epoch==1 && b[0].queue[0].bytes==17;
+  #assert backing_release(b[..],old.lease) && backing_reset(b[..]) && b[0].queue[0].epoch==2;
+  next:=backing_hold(b[..],1,n);#assert next.status==BackingStatus.ok && next.lease.slot==old.lease.slot && next.lease.serial==old.lease.serial && next.lease.epoch==2;
+  #assert !backing_release(b[..],old.lease) && b[0].used[1]==17 && backing_release(b[..],next.lease);
+  b[0].queue[0].epoch=9223372036854775807;#assert !backing_reset(b[..]) && b[0].queue[0].retired && backing_hold(b[..],0,n).status==BackingStatus.inbox;
+  empty:[1]BackingBudget;#assert !backing_reset(empty[..]);
+}
+#test "a spent backing serial preserves live allocations and its terminal queue state" {
+  caps:=[8]int.[64,64,64,64,64,64,64,64];b:=[1]BackingBudget.[backing_open(caps,64,64)];n:=BackingNeed.{bytes=1,alignment=1,types=1};
+  b[0].queue[0].serial=9223372036854775806;g:=backing_hold(b[..],0,n);#assert g.status==BackingStatus.ok && g.lease.serial==9223372036854775807;
+  #assert backing_hold(b[..],0,n).status==BackingStatus.inbox && b[0].queue[0].retired && b[0].queue[0].count==1 && b[0].queue[0].bytes==1 && b[0].used[0]==1;
+  #assert backing_release(b[..],g.lease) && backing_reset(b[..]) && !b[0].queue[0].retired && b[0].queue[0].serial==0 && b[0].queue[0].epoch==2;
+  next:=backing_hold(b[..],0,n);#assert next.status==BackingStatus.ok && next.lease.serial==1 && !backing_release(b[..],g.lease) && backing_release(b[..],next.lease);
+}
+
+backing_need :: (n:BackingNeed)->bool #export_c #effects(all) {
+  return backing_need_status(n)==BackingNeedStatus.ok;
+}
+backing_need_status :: (n:BackingNeed)->BackingNeedStatus #export_c #effects(all) {
+  if n.bytes<1 || n.bytes>HOST_INBOX_CAPACITY {return BackingNeedStatus.bytes;}
+  if n.alignment<1 || n.alignment>HOST_INBOX_CAPACITY {return BackingNeedStatus.alignment;}
+  if (n.alignment & (n.alignment-1))!=0 {return BackingNeedStatus.power;}
+  if n.types<1 || n.types>4294967295 {return BackingNeedStatus.types;}
+  if n.memory_type<0 || n.memory_type>31 {return BackingNeedStatus.index;}
+  return ifx (n.types & (cast(int) 1 << cast(u32) n.memory_type))!=0 then BackingNeedStatus.ok else BackingNeedStatus.unsupported;
+}
+backing_open :: (caps:[BACKING_LINES]int,total:int,allocation:int)->BackingBudget #export_c #effects(all) {
+  q:=hiq_open(allocation);if !q.valid || total<0 || total>q.limit {return BackingBudget.{};}
+  for cap:caps {if cap<0 || cap>BACKING_MAX {return BackingBudget.{};}}
+  b:=BackingBudget.{valid=true,caps=caps,total_cap=total,queue=[1]HostInboxQueue.[q]};for i:0..<HOST_INBOX_EVENTS {b.categories[i]= -1;}return b;
+}
+backing_hold :: (b:[]BackingBudget,category:int,n:BackingNeed)->BackingGrant #export_c #effects(all) {
+  if !b[0].valid || category<0 || category>=BACKING_LINES || !backing_need(n) || n.bytes>b[0].queue[0].capacity {return BackingGrant.{};}
+  if n.bytes>b[0].caps[category]-b[0].used[category] {b[0].refused+=1;return BackingGrant.{status=BackingStatus.category};}
+  if n.bytes>b[0].total_cap-b[0].queue[0].bytes {b[0].refused+=1;return BackingGrant.{status=BackingStatus.aggregate};}
+  next:=b[0].queue;g:=hiq_reserve(next[..],n.bytes);b[0].queue=next;if g.status!=HostInboxStatus.ok {b[0].refused+=1;return BackingGrant.{status=BackingStatus.inbox};}
+  b[0].categories[g.lease.slot]=category;b[0].used[category]+=n.bytes;
+  if b[0].used[category]>b[0].peaks[category] {b[0].peaks[category]=b[0].used[category];b[0].peak_owners[category]=g.lease;}
+  if b[0].queue[0].bytes>b[0].peak {b[0].peak=b[0].queue[0].bytes;b[0].peak_owner=g.lease;}
+  return BackingGrant.{status=BackingStatus.ok,lease=g.lease};
+}
+backing_release :: (b:[]BackingBudget,lease:HostInboxLease)->bool #export_c #effects(all) {
+  if !b[0].valid {return false;}next:=b[0].queue;if !hiq_release(next[..],lease) {return false;}
+  bytes:=b[0].queue[0].entries[lease.slot].bytes;category:=b[0].categories[lease.slot];
+  b[0].queue=next;b[0].categories[lease.slot]= -1;b[0].used[category]-=bytes;return true;
+}
+backing_reset :: (b:[]BackingBudget)->bool #export_c #effects(all) {
+  if !b[0].valid || b[0].queue[0].count!=0 {return false;}
+  next:=b[0].queue;ok:=hiq_reset(next[..]);b[0].queue=next;return ok;
+}
