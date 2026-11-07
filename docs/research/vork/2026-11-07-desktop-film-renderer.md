@@ -181,7 +181,7 @@ Each phase has an exit check that runs headless on our own machines, as
 | **F1. Accumulation** | Pixel jitter, shutter sub-steps and aperture samples are averaged in f32. The film profile lifts LOD, quality and budgets. | Motion blur against an analytic moving quad. Depth of field against the thin-lens circle of confusion. Variance falls as 1/N on a fixed scene. The film profile changes no simulation digest. |
 | **F2. Film-only passes** | Sorted or weighted-blended transparency instead of screen-door. Cascaded shadows. Higher-sample water reflections and light shafts. AOVs: depth, normal, object id, motion. `camera.json`. | Each new pass has a CPU reference case in `aethyr/render/reference-*`. Every channel round-trips through the EXR writer, which is written in Coax. |
 | **F3. Hardware ray queries** | `coax spirv` learns `SPV_KHR_ray_query`. The C host builds bottom- and top-level acceleration structures (`VK_KHR_acceleration_structure`), which is a platform effect like any other buffer; Metal uses `MTLAccelerationStructure`. Use them for area-light and sun shadows, AO, water and window reflections, and optionally one diffuse bounce, all feeding the existing shading terms. | Ray visibility equals a CPU ray cast over the same triangles (`aethyr/query.coax`, `ground-query.coax`) on fixtures. A furnace-style energy check on a closed box. Validation layers report 0/0. |
-| **F4. Denoising** (optional) | Only needed when traced samples are few. Options: a denoiser network run by Psionic in Coax (OIDN's weights are Apache-2.0), or linking OIDN under an owner exception. | Measured against a high-sample reference on fixed scenes, with the error reported, not asserted. |
+| **F4. Denoising** (optional) | Only needed when traced samples are few. Our own denoiser in Coax, run by Psionic (owner, 2026-11-07). OIDN and others serve only as comparison references in opt-in harnesses. | Measured against a high-sample reference on fixed scenes, with the error reported, not asserted, and compared with OIDN on the same inputs. |
 | **F5. GPU simulation for crowds** (separate) | Seedable, seekable compute for flocks, crowds and particles at film scale, in Coax compute. | A seek to frame k equals stepping from S0 (the existing replay digest rule). |
 
 F0 to F2 need no new GPU features and should already make Everglade films
@@ -230,10 +230,15 @@ the scale of G1 or G2. F4 and F5 should wait until a film needs them.
   GPU textures. That is fine for film and is a reason to keep film and
   live budgets separate.
 
-## Decisions for the owner
+## Decisions
 
-1. Approve the `film` profile on the native hosts (F0 to F2), with
-   `coderos-4080` as the render box.
-2. F3: approve ray-query support in `coax spirv` and acceleration
-   structures in the C host.
-3. F4, if it is ever needed: a Psionic denoiser or an OIDN exception.
+- **2026-11-07, owner: film mode is approved.** Build the `film` profile on
+  the native hosts, starting with F0 to F2, with `coderos-4080` as the
+  render box.
+- **2026-11-07, owner: we write our own denoiser when one is needed.** F4 is
+  a denoiser in Coax, run by Psionic. Intel OIDN and other denoisers are
+  allowed only as comparison references in opt-in benchmark and parity
+  harnesses, the way cuBLAS is used for Psionic. They are never linked into
+  anything shipped. No OIDN exception is requested.
+- **Open:** F3, ray-query support in `coax spirv` and acceleration
+  structures in the C host, is decided when F0 to F2 are done.

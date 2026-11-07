@@ -18,6 +18,10 @@ rendered on one NVIDIA L4.
 
 ## The short answer
 
+Owner decision, 2026-11-07: film mode is approved (see the film note's
+*Decisions* section).
+
+
 - **Build a desktop film renderer, but as a profile of Aethyr, not a second
   engine.** All 16 realms already run natively on Vulkan (G0–G6,
   `docs/verse/native-gpu.md`), the Mac Metal host runs Everglade at 120 Hz,
@@ -49,6 +53,6 @@ rendered on one NVIDIA L4.
   including for commercial work. No redistributing modified copies, no
   hosted rendering service, and this version only.
 - `integrations/blender/` in vork is GPL-3.0-or-later and separate.
-- The bundled OIDN denoiser is Apache-2.0 (Intel). Linking it into our
-  native host would need an owner exception, like the TLS one in
-  `AGENTS.md`.
+- The bundled OIDN denoiser is Apache-2.0 (Intel). Owner decision,
+  2026-11-07: we write our own denoiser, and OIDN is used only as a
+  comparison reference in opt-in harnesses.
