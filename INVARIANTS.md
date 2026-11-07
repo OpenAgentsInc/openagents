@@ -6046,23 +6046,26 @@ scene is ready. Full-resolution interchange GLBs and contact sheets confer no
 new runtime-renderer, collision-hull or shader qualification. See
 `assets/registry/README.md` and `docs/verification/asset-library-2026-11-06/`.
 
-Character Create's Nature glade adds one static environment record (flag 16,
-32-byte vertices, zero joints) to the existing indexed people draw path. It
-never reads the animation palette or receives appearance/eye markers. Original
-wardrobe vertex, index and image payloads remain byte-identical; the combined
-pack remains below 32 MiB. The glade sky/light/wind path is selected only by
-Character Create's existing view marker. Camera and appearance saves retain
-their separate state. The v2 static leaf payload uses word 7 for a finite 0.5–1 ambient mask;
-canopy normals remain normalized. The v3 private static profile stores one
-32-byte grass seed per tuft: index bit 31 selects procedural grass, bits
-27–29 select one of five corners, and bits 0–26 address its seed. Other
-static indices remain ordinary vertex addresses. Leaf material tags retain
-kind in their low three bits and a bounded camera-card expansion scale
-in their upper five bits; word 7 remains the ambient mask. Edge derivatives are evaluated at the uniform fragment entry,
-before material selection; real WebGPU compilation checks that boundary.
-No host ABI or shared/native renderer qualification is
-inferred. See `docs/verse/character-glade.md` and
-`docs/verification/character-glade-2026-11-06/`.
+Character Create's Nature glade uses one static environment record (flag 16,
+32-byte vertices, zero joints) and three source-geometry grass instance groups
+(flag 17). Neither reads the animation palette nor receives appearance/eye
+markers. Original wardrobe vertex, index and image payloads stay byte-identical;
+the combined pack stays below 32 MiB with 64 texture layers. Camera and
+appearance saves retain separate state. The v4 private static profile uses
+ordinary vertex indices; indirect firstInstance's high 16 bits encode object
+slot + 1, low 16 bits the seed ID, with each grass group bounded to 65,535.
+Leaf word 7 contains a finite 0.5–1 ambient mask and normalized crown normals;
+source cards receive no second expansion. Bark UVs preserve repeating negative
+coordinates. Desktop texture layers use 1024, phone 512 through the existing
+optional host hook. Only the admitted Character Create page selects the
+private `charactercreator.wgsl` graph (geometry PCF shadows, MRT contact
+shading, bloom and reconstruction). Common fivelab keeps its single target.
+Uniform texture sampling precedes material selection. Headless real WebGPU
+checks cover both graphs and desktop/phone allocation. The image-derived sky
+and remixed cliff retain explicit provenance; no original scene recovery,
+pixel equality or shared/native renderer qualification is inferred.
+See `docs/verse/character-glade.md` and
+`docs/verification/character-glade-source-parity-2026-11-06/`.
 
 ## Everglade's private Link experiment is reversible and keeps room authority
 

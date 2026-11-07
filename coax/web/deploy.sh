@@ -75,8 +75,12 @@ for f in pages:
     def tag(m):
         name = re.search(r'data-app="([^"]+)"', m.group(0)).group(1)
         wasm = put(os.path.join(app, "build", name + ".wasm"), f"build/{name}.wasm")
-        wgsl = put(os.path.join(app, name + ".wgsl"), f"build/{name}.wgsl")
-        rest = m.group(1)
+        # Coax selects the repository page's declared shader; this wrapper copies its bytes.
+        declared_shader = re.search(r'\bdata-wgsl="([^"]+)"', m.group(0))
+        shader_source = subprocess.check_output([os.path.join(tools, "tool.sh"), "shader-path", name,
+            declared_shader.group(1) if declared_shader else ""], text=True).strip().lstrip("/")
+        wgsl = put(os.path.join(app, shader_source), "build/" + shader_source)
+        rest = re.sub(r'\sdata-wgsl="[^"]+"', "", m.group(1))
         rest = re.sub(r'data-render="([^"]+)"', lambda r: 'data-render="' + stage_package(Path(app), r.group(1), Path(stage)) + '"', rest)
         # A scene's assets (data-assets): each URL named by its content too,
         # under /build/ (the page's directory's assets/ in development). A local: asset stays as it

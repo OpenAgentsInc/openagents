@@ -5,13 +5,12 @@ Quaternius `Stylized Nature MegaKit[Source]/Preview_1.jpg`: a winding meadow
 path between pale stepped rocks, green Common Trees and orange/gold birches,
 with grass, ferns, flowering bushes, coral flowers and yellow mushrooms.
 
-The reference is a composition target, not a background image. Geometry writes
-real depth behind the character and responds to camera pitch, zoom and pan.
-Coax shaders animate foliage and grass with wind and render the cyan sky,
-layered white clouds, cirrus streaks, warm key light, leaf transmission,
-distance haze and a ground contact shadow. The mesh lighting and cloud model
-are an Aethyr interpretation; this does not claim pixel-identical reproduction
-of the original Unreal rendering.
+The terrain, plants and stones are 3D geometry with depth behind the character.
+The sky is a directional far shell using a clean sky texture derived from the
+supplied reference with ImageGen; it is not the original Unreal sky capture.
+Camera movement, wind, warm sunlight, geometry shadows and contact shading
+remain live. The original scene placement was not recovered. Visual matching
+is authored against the reference and is not a claim of pixel equality.
 
 ## Source inspection
 
@@ -35,7 +34,7 @@ mislabeling the overview map as the preview scene.
 `verse/character-glade.coax` owns terrain, the path, deterministic planting,
 placements and foliage palettes. `verse/tools/assets/character_glade_pack.coax`
 reads the pinned source glTF files through the existing Coax reader and adds
-one static environment draw plus ten texture layers to the original wardrobe
+one static environment draw, three source grass instance groups and eleven texture layers to the original wardrobe
 pack. It preserves the original character payloads byte for byte.
 
 ```sh
@@ -80,52 +79,46 @@ The detailed source investigation, screenshots and measured receipts are in
 `docs/verification/character-glade-2026-11-06/`. These are legacy Character
 Create observations, not a new shared/native renderer qualification.
 
-## Softer foliage and reference lighting
+## Current private profile (v4)
 
-The v2 scene uses short, curved five-vertex ribbons with three fine strands
-shaped in the fragment shader. Blades range from 6 to 16 cm high. Screen-space
-edge smoothing removes the hard triangular silhouettes. All derivative work
-happens at the uniform fragment entry before material selection; the hardware
-shader check verifies this separately from scalar Coax tests.
+`character-create-legacy-static-v4` supersedes the procedural v2/v3 grass and
+analytic shadow experiments retained in earlier verification folders.
+The current pack retains all five Common Trees and all five birches. Pink
+flowers use `Flower_3_Group`; `Flower_2_Group` supplies the purple patch.
+The foreground fern is scaled by its visible alpha silhouette rather than its
+mostly transparent export bounds. The hero cliff remixes `Rock_Medium_4` with
+the checked `cg_cliff_cap_y` transform; the source remains immutable.
 
-Leaf normals follow each crown's volume, with a per-vertex ambient mask and
-warm transmission at its edges. Two-sided foliage retains that volume normal
-rather than alternating between bright and dark polygon faces. Crown/rock
-proxies cast soft analytic shadows onto the ground and small plants. These
-are authored approximations, not a general shadow-map renderer.
+The three grass templates preserve the source positions, UVs and topology of
+`Grass_Common_Short`, `Grass_Wide_Short` and `Grass_Wispy_Short`. One 32-byte
+seed holds each placement, height, width, tint and rotation. Static indices
+are ordinary vertex indices. A flag-17 draw's indirect first instance stores
+(object slot + 1) in its high 16 bits and the seed ID in its low 16 bits.
+Each group is bounded to 65,535 instances. Flag 16 remains the static scene;
+neither path reads the wardrobe's skinning palette.
 
-The sky uses soft white cloud banks and angled cirrus. The title's darkening
-is confined to its own area instead of tinting the whole sky. Two fully hidden
-trees behind the left cliff are omitted to keep the denser curved grass within
-the existing pack budget. See `character-glade-soft-2026-11-06` in verification.
+Leaf geometry keeps its authored card size, volume normals and a finite
+0.5–1 ambient mask in word 7. The extra camera expansion has been removed:
+the source glTF already contains expanded geometry. Birch bark encodes source
+UVs over [-32,32], preserving negative repeating coordinates. Material kinds
+are sky 0, leaves 1, source grass 2, flowers 3, rock 4, ground 5, bark 6 and
+mushrooms 7. Three reference wind traces use ordinary 3D ribbons; kind 3 with
+word 7 equal to 2 identifies their unlit material.
 
+Only Character Create loads `charactercreator.wgsl`. Its private graph uses
+alpha-tested geometry shadows with PCF, normal/depth MRT, contact occlusion,
+foliage reconstruction, bloom and FXAA. The common `fivelab.wgsl` retains its
+single-target graph. Page assembly and content-hashed staging preserve the
+explicit shader path. This grants no shared/native renderer qualification.
 
-## Reference composition pass (v3)
+The pack stays below 32 MiB and preserves the original wardrobe payloads byte
+for byte, with 64 total texture layers. Desktop uses 1024-square layers and
+phone uses 512 through the existing optional layer-side host hook. Sky and
+leaf atlas payloads retain 1024 resolution; other added images use 512.
+The desktop texture array plus mips is approximately 341 MiB; phone is 85 MiB.
+No new host JavaScript is needed.
 
-The camera now puts the horizon near 60% of the image height, preserving
-close face inspection. `?scene=1` is a transient comparison view that hides
-the character and UI; it never enters an appearance save. The 1920×1080 scene
-capture uses the same camera and geometry as the normal desktop view.
-
-The rear ridge now turns golden independently of the green foreground. The
-path bends across it, with loose pebbles, terraced rocks, smaller foreground
-flowers, a fern and an orange plant. Warm crowns retain brighter ambient fill
-and yellow transmission. Cloud banks are smaller, with restrained thin cirrus.
-
-Grass now stores one seed per tuft and generates its five curved corners in
-the vertex shader. Bit 31 marks a procedural index, bits 27–29 select a corner,
-and the lower 27 bits select a 32-byte seed. Its UV word stores height/width;
-word 7 stores angle. The pack contains 26,929 tufts with patch-dependent
-heights of 2.9–35.7 cm, within the original 32 MiB limit. Shader coverage blends
-edges toward the meadow color, reducing hard ribbons in distant planting.
-
-The source Godot `M_Leaves.gdshader` also contains camera-oriented card
-expansion. Raw glTF exports already retain expanded leaf geometry, so v3
-applies a restrained version only to tree crowns. Leaf kind occupies the low
-three tag bits; the other five encode expansion scale in tenths of a meter.
-Small plants keep their authored geometry and atlas UVs.
-
-This pass improves the composition but does not establish exact image parity.
-The original scene placement was not recovered; analytic shadows and procedural
-clouds still differ from the supplied rendering. Evidence is retained under
-`docs/verification/character-glade-parity-2026-11-06/`.
+The scene registry pins the reference, all actual source files, generated sky,
+cliff transform, composition, shaders, packer and final runtime bytes.
+Updated evidence lives in
+`docs/verification/character-glade-source-parity-2026-11-06/`.

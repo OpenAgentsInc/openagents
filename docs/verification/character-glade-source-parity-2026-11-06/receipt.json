@@ -1,0 +1,43 @@
+{
+  "profile": "character-create-legacy-static-v4",
+  "runtime": {
+    "pack": "/realms/character-creator/assets/glade.pack",
+    "sha256": "dc038126015eb33b2543c0f0d29ba6f18ffa6e0d6014e356a833ba463c9a4de2",
+    "bytes": 33304768,
+    "profile": "character-create-legacy-static-v4"
+  },
+  "sky": {
+    "path": "assets/registry/scenes/character-glade-sky.png",
+    "sha256": "177fc6e1b5d2c535a0417d4c3689b96f51165fa2bfebbd1be1c25df15a2962c5",
+    "parent": {
+      "package": "nature",
+      "revision": "0e05d58ed4beda3f9bae85f924ff3d578cb724fd82d427a59bc72a9570760b0a",
+      "path": "Preview_1.jpg",
+      "sha256": "e9bbf4408c8bc8fc39ed43988cbf2a369a4cccc5a827141d55d37f24613fe13d"
+    },
+    "method": "ImageGen edit: remove terrain, vegetation and rocks; extend the reference cyan sky, white cloud banks and wispy cirrus across the frame. Generated clean plate; not the original recovered sky.",
+    "mapping": "Directional far shell; reference camera projection; no camera translation parallax",
+    "parent_license": "CC0-1.0"
+  },
+  "wasm": {
+    "bytes": 615015,
+    "sha256": "823d98d6026f6319a952d955f6423b61ae28340906e5cfd5f09c054b9cb08b41"
+  },
+  "checks": [
+    "desktop-gpu.json",
+    "phone-gpu.json",
+    "battle-gpu.json",
+    "shader-staging.json",
+    "controls.log",
+    "shader-tests.log",
+    "composition-tests.log",
+    "creator-tests.log",
+    "page-shader-tests.log",
+    "shader-path-tests.log",
+    "wasm-build.log"
+  ],
+  "observations": "Source meshes, alpha silhouettes, camera landmarks, texture repeat and private lighting graph checked. Screenshot matching remains visual; original Unreal placement and renderer were not recovered. This receipt does not establish pixel equality.",
+  "preexisting_check_failure": "Earlier full realm check reported stale animation-lab HTML; only Character Create regenerated. Current Character Create page generated after rebase.",
+  "rebased_on": "aacee8f2af",
+  "integration": "Retains new AR Kai C font and shared player appearance save; rebuilt both shaders and wasm; 22 creator checks, 17 glade checks, desktop/phone/battle graph and browser controls passed."
+}

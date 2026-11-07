@@ -1,0 +1,23 @@
+// Character Create's isolated legacy lighting passes and source-asset instancing.
+#load "fivelab.coax";
+CharacterCreatorBg :: struct {c:V4;aux:V4;depth:f32 #depth;}
+CharacterCreatorLit :: struct {c:V4;aux:V4;}
+charactercreator_bg_vs :: (id:u32,instance:u32)->V4 {return fivelab_bg_vs(id,instance);}
+charactercreator_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->CharacterCreatorBg {
+ b:=fivelab_bg_fs(pos,u,frame);return CharacterCreatorBg.{c=b.c,depth=b.depth};
+}
+charactercreator_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {return fivelab_scene_vs(id,instance,u,vertices,objects,bake);}
+charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
+ tex:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,1);
+ if (tex.w<0.35f32) {gpu_demote_helper();}
+ c:V4;
+ if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,shadow_map,shadow_cmp));}
+ else {c=fivelab_scene_colour(s,tex,front,u,objects);}
+ n:=normalize3(s.normal);z:=dot3(sub3(s.world,wg_at3(u,16)),wg_at3(u,20));
+ sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;trail:=s.dye.w>11.5f32 && s.local.y>1.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;
+ c.w=ifx sky then 0.0f32 else ifx trail then 0.7f32 else ifx foliage then 0.4f32 else 0.12f32;
+ return CharacterCreatorLit.{c=c,aux=v4(n.x,n.y,n.z,ifx sky || trail then 0.0f32 else ifx foliage then -z else z)};
+}
+charactercreator_fx_vs_in :: struct {a:V4;b:V4;c:V4;d:V4;}
+charactercreator_fx_vs :: (id:u32,instance:u32,in_:charactercreator_fx_vs_in,u:[]f32)->FivelabV {return fivelab_fx_vs(id,instance,fivelab_fx_vs_in.{a=in_.a,b=in_.b,c=in_.c,d=in_.d},u);}
+charactercreator_fx_fs :: (s:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {return fivelab_fx_fs(s,u,sans_atlas,sans_sampler);}

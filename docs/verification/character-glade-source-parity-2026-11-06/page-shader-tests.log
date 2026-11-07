@@ -1,0 +1,3 @@
+ok   #test Character Create names its private shader only for its established producer (1 case, 63 steps, 0 ms)
+1 of 53 checks (--only 'Character Create'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

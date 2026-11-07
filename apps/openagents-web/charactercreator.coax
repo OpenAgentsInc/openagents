@@ -8,8 +8,9 @@ VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
 
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
+GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
-  on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
+  on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
   clock:f32; pose_at:f32; revision:int; saved:int; focused:int;
@@ -112,6 +113,12 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s.glade_first;b[0].draws[n*4+1]=cast(u32)s.glade_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+  }
+  for gi:0..<s.grass_groups {if n>=44 {break;}g:=s.grass[gi];
+    for k:0..<24 {out[n*24+k]=0;}
+    out[n*24]=f32(g.word);out[n*24+7]=f32(s.glade_word);out[n*24+15]=17;
+    b[0].draws[n*4]=cast(u32)g.first;b[0].draws[n*4+1]=cast(u32)g.count;
+    b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)g.n;n+=1;
   }
   b[0].draw_n=n;return n;
 }
@@ -273,7 +280,7 @@ preset :: (s:[]Creator,family:int) {
 ensure :: (s:[]Creator) {if !s[0].configured {preset(s,s[0].outfit);}}
 reset :: (s:[]Creator) { s[0].pan_x=0;s[0].pan_y=0;s[0].pan_mode=false;s[0].piece=18;s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].eye_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
 catalog :: (s:[]Creator,t:string) {
-  s[0].source_n=0;s[0].glade_count=0;
+  s[0].source_n=0;s[0].glade_count=0;s[0].grass_groups=0;
   for i:0..<80 {s[0].source_count[i]=0;}
   at:=0;
   while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;} row:=t[at..<e];at=e+1;
@@ -281,6 +288,10 @@ catalog :: (s:[]Creator,t:string) {
     ne:=figs.bd_word_end(row,2);name:=row[2..<ne];
     if name=="glade/environment" {
       p:=ne;s[0].glade_first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].glade_count=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);s[0].glade_word=figs.bd_whole_at(row,p);
+    }
+    if name.count>=11 && name[0..<11]=="glade/grass" && s[0].grass_groups<3 {
+      g:GrassDraw;p:=ne;g.first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);g.count=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);g.word=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);g.n=figs.bd_whole_at(row,p);
+      if g.n>=1 && g.n<=65535 && g.count>=3 {s[0].grass[s[0].grass_groups]=g;s[0].grass_groups+=1;}
     }
     for i:0..<80 {if name==appearance.PART_NAMES[i] {
       p:=ne;s[0].source_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);
@@ -464,3 +475,18 @@ load_player :: (s:[]Creator,t:string) {
  s:[1]Creator;load_player(s[..],cast(string)b[0..<n]);#assert s[0].female && s[0].profile_ok && s[0].profile_revision==s[0].revision;
  change(s[..],4,1);load_player(s[..],cast(string)b[0..<n]);#assert s[0].dye==0 && s[0].profile_revision<0;
 }
+#test "creator source grass instances use a separate bounded static draw" {
+ s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
+ catalog(s[..],"C glade/environment 9 12 250 100 8 0\nC glade/grass 21 465 250 164 20000 0\n");
+ for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}b[0].ready=true;
+ n:=scene(s[0],b[..],out[..]);#assert out[(n-1)*24+15]==17 && out[(n-1)*24]==164;
+ #assert b[0].draws[(n-1)*4+2]==cast(u32)(n<<16) && b[0].draws[(n-1)*4+3]==20000;
+ s[0].scene_only=true;n=scene(s[0],b[..],out[..]);#assert n==2;
+ catalog(s[..],"C glade/grass 0 465 250 100 65536 0\n");#assert s[0].grass_groups==0;
+}
+
+#test "creator texture detail is bounded independently for desktop and phone layouts" {
+ s:Creator;s.on=true;s.width=1440;#assert texture_side(s)==1024;
+ s.width=390;#assert texture_side(s)==512;s.on=false;#assert texture_side(s)==0;
+}
+texture_side :: (s:Creator)->int {if !s.on {return 0;}return ifx s.width>=840*s.scale then 1024 else 512;}

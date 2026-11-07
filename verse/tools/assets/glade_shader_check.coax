@@ -1,11 +1,24 @@
-// Validate the generated glade shader on real headless WebGPU, including GPU
-// derivative/uniformity diagnostics that scalar Coax checks cannot observe.
+// Compile and exercise Character Create's actual private WebGPU graph headlessly.
+// Observe texture allocations, MRT/shadow/post pipelines and uncaptured GPU errors.
 #import "Basic";
 #load "../../../coax/lib/net/cdp.coax";
+
 tool_main :: ()->int #export_c #effects(all) {
- c:[1]Cdp;if !cdp_launch(c[..],800,600,"glade-shader-") {return 1;}
- r:=cdp_call(c[..],"Page.navigate","{\"url\":\"http://127.0.0.1:8854/worlds/character-creator\"}",CDP_CALL_MS);
- proc_sleep(1000);
- v:=cdp_evaluate(c[..],"(async()=>{const a=await navigator.gpu.requestAdapter();const d=await a.requestDevice();const s=d.createShaderModule({code:await(await fetch('/fivelab.wgsl')).text()});const i=await s.getCompilationInfo();return i.messages.filter(m=>m.type==='error').map(m=>m.lineNum+':'+m.linePos+' '+m.message).join('\\n');})()");
- b:[65536]u8;n:=jv_str(cdp_doc(c[..]),v,b[..]);if n<0 {print("%\n",jv_raw(cdp_doc(c[..]),0));}if n>0 {print("%\n",cast(string)b[0..<n]);}cdp_close(c[..]);if n==0 {print("Glade shader: headless WebGPU compilation passed\n");}return ifx n==0 then 0 else 1;
+ args:[1]Args;if !args_load(args[..]) {return 2;}phone:=false;battle:=false;
+ for i:0..<args_count(args[..]) {if args_at(args[..],i)=="--phone" {phone=true;}if args_at(args[..],i)=="--battle" {battle=true;}}
+ c:[1]Cdp;if !cdp_launch(c[..],ifx phone then 390 else 1440,ifx phone then 844 else 900,"glade-graph-") {return 1;}defer {cdp_close(c[..]);}
+ reply:=cdp_call(c[..],"Page.enable","",30000);
+ setup:="globalThis.cgGPU={textures:[],pipelines:[],errors:[]};const seen=new WeakSet;const tex=GPUDevice.prototype.createTexture;GPUDevice.prototype.createTexture=function(d){if(!seen.has(this)){seen.add(this);this.addEventListener('uncapturederror',e=>cgGPU.errors.push(e.error.message));this.lost.then(i=>{if(i.reason!=='destroyed')cgGPU.errors.push(i.message)})}const s=d.size;cgGPU.textures.push({format:d.format,width:s.width??s[0],height:s.height??s[1],layers:s.depthOrArrayLayers??s[2]??1,mips:d.mipLevelCount??1});return tex.call(this,d)};const pipe=GPUDevice.prototype.createRenderPipelineAsync;GPUDevice.prototype.createRenderPipelineAsync=function(d){return pipe.call(this,d).then(p=>{cgGPU.pipelines.push({v:d.vertex.entryPoint,f:d.fragment?.entryPoint,targets:d.fragment?.targets?.length??0});return p},e=>{cgGPU.errors.push(e.message);throw e})};";
+ b:[16384]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],setup);jo_end(o[..]);reply=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),30000);
+ url:=ifx battle then "http://127.0.0.1:8854/worlds/5e-lab" else "http://127.0.0.1:8854/worlds/character-creator";
+ jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);reply=cdp_call(c[..],"Page.navigate",jo_text(o[..]),30000);
+ deadline:=proc_now_ms()+30000;ready:=false;
+ while proc_now_ms()<deadline {
+  n:=cdp_evaluate(c[..],ifx battle then "!!globalThis.cgGPU?.pipelines.some(p=>p.f==='scene_fs')" else "!!globalThis.coaxial?.sceneReady&&!!globalThis.cgGPU?.pipelines.some(p=>p.f==='post_fs')");
+  if n>=0 && jv_raw(cdp_doc(c[..]),n)=="true" {ready=true;break;}proc_sleep(100);
+ }
+ if !ready {r:=cdp_evaluate(c[..],"({gpu:globalThis.cgGPU??null,ready:globalThis.coaxial?.sceneReady,url:location.href,body:document.body.innerText.slice(-800)})");if r>=0 {print("%\n",jv_raw(cdp_doc(c[..]),r));}print("FAIL glade graph readiness\n");return 1;}
+ expression:="(async()=>{const mode=location.pathname.includes('5e-lab')?'battle':innerWidth<840?'phone':'desktop';const r=cgGPU;const t=r.textures.find(t=>t.format==='rgba8unorm-srgb'&&t.layers>1);const colour=r.pipelines.find(p=>p.f==='scene_fs');const shadow=r.pipelines.some(p=>p.v==='shadow_vs');const post=r.pipelines.some(p=>p.f==='post_fs');const file=mode==='battle'?'/fivelab.wgsl':'/charactercreator.wgsl';const a=await navigator.gpu.requestAdapter();const d=await a.requestDevice();const m=d.createShaderModule({code:await(await fetch(file)).text()});const info=await m.getCompilationInfo();r.errors.push(...info.messages.filter(m=>m.type==='error').map(m=>m.message));d.destroy();const frames=[];let last=0;for(let i=0;i<24;i++){const now=await new Promise(requestAnimationFrame);if(last)frames.push(now-last);last=now}frames.sort((a,b)=>a-b);const expected=mode==='phone'?512:1024;const ok=r.errors.length===0&&colour&&(mode==='battle'?(!shadow&&!post&&colour.targets===1):(shadow&&post&&colour.targets===2&&t?.width===expected&&t?.layers===64));return {ok,mode,ready:coaxial.sceneReady,layer:t,shadow,post,sceneColourTargets:colour?.targets,frameP50Ms:frames[Math.floor(frames.length*.5)],frameP90Ms:frames[Math.floor(frames.length*.9)],errors:r.errors}})()";
+ v:=cdp_evaluate(c[..],expression);if v<0 {print("FAIL glade graph observation\n");return 1;}
+ print("%\n",jv_raw(cdp_doc(c[..]),v));ok:=jv_get(cdp_doc(c[..]),v,"ok");return ifx ok>=0 && jv_raw(cdp_doc(c[..]),ok)=="true" then 0 else 1;
 }

@@ -7,33 +7,6 @@
  #assert a.y>0.6 && a.z>0.5 && b.x>0.3 && b.z<=1.1;
  cyan:=false;for i:0..<8 {c:=cg_sky(v3(f32(i)*0.2-0.8,0.4,-1),v3(-0.4,0.8,0.6),0);if c.y>c.x && c.z>c.x {cyan=true;}}#assert cyan;
 }
-#test "glade sunlight casts soft bounded shadows and leaves retain volume" {
- #assert cg_sun_shadow(v3(40,0,0))>0.99;
- #assert cg_sun_shadow(v3(3.5,0,-4.5))<0.7;
- #assert cg_grass_edge(v2(0.5,0.5),0.02)>0.99;
- #assert cg_grass_edge(v2(0.99,0.5),0.02)<0.01;
-}
-cg_grass_edge :: (uv:V2,pixel:f32)->f32 {
- // Three fine tapered leaves per curved ribbon make soft tufts without
- // increasing the static pack's vertex count.
- t:f32=uv.y;
- middle:f32=0.075f32*(1.0f32-t)-abs(uv.x-0.5f32);
- left:f32=fmin(0.8f32-t,0.085f32*(1.0f32-t/0.8f32)-abs(uv.x-(0.20f32+0.13f32*t*t)));
- right:f32=fmin(0.85f32-t,0.085f32*(1.0f32-t/0.85f32)-abs(uv.x-(0.80f32-0.13f32*t*t)));
- return smoothstep(-pixel,pixel,fmax(middle,fmax(left,right)));
-}
-cg_sun_shadow :: (p:V3)->f32 {
- sun:V3=normalize3(v3(-0.45f32,0.78f32,-0.42f32));
- // Soft crown/rock proxies follow the authored Nature composition. They only
- // shadow ground and small plants; crowns use their own volume occlusion.
- casters:[9]V4=[9]V4.[v4(-10,6.7,-15,2.7),v4(-12,cg_height(-12,-23)+2.2f32,-23,4.0),v4(-7,6.3,-18,2.6),v4(-9,4.7,-10,2),v4(2.8,cg_height(2.8,-5.5)+0.9f32,-5.5,1.1),v4(-10,cg_height(-10,-9)+3.0f32,-9,1.1),v4(-8,6.4,-12,1.4),v4(9,cg_height(9,-11)+6.0f32,-11,1.5),v4(5,6.5,-24,1.5)];
- visibility:f32=1.0f32;
- for i:0..<9 {c:V4=casters[i];oc:V3=sub3(v3(c.x,c.y,c.z),p);along:f32=dot3(oc,sun);
-  if (along>0.0f32) {off:V3=sub3(oc,scale3(sun,along));distance:f32=wg_length3(off);edge:f32=0.25f32+along*0.025f32;cover:f32=1.0f32-smoothstep(c.w-edge,c.w+edge,distance);visibility=fmin(visibility,1.0f32-cover*0.68f32);}
- }
- return visibility;
-}
-
 #test "glade soil seams stay subtle and deterministic" {
  a:=cg_soil(v2(0.1,0.2));#assert a>=0.78 && a<=1.05 && a==cg_soil(v2(0.1,0.2));
 }
@@ -53,82 +26,99 @@ cg_noise :: (p:V2)->f32 {
  a:f32=verse_style_hash(i.x,i.y);b:f32=verse_style_hash(i.x+1.0f32,i.y);c:f32=verse_style_hash(i.x,i.y+1.0f32);d:f32=verse_style_hash(i.x+1.0f32,i.y+1.0f32);
  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
 }
+cg_cloud_fbm :: (p:V2)->f32 {
+ return cg_noise(p)*0.5333f32+cg_noise(v2(p.x*2.03f32+7.0f32,p.y*2.03f32-3.0f32))*0.2667f32+cg_noise(v2(p.x*4.11f32-5.0f32,p.y*4.11f32+11.0f32))*0.1333f32+cg_noise(v2(p.x*8.31f32+13.0f32,p.y*8.31f32))*0.0667f32;
+}
 cg_sky :: (rd:V3,sun:V3,time:f32)->V3 {
- up:f32=saturate(rd.y);
- col:V3=mix3(v3(0.84f32,0.95f32,0.92f32),v3(0.57f32,0.86f32,0.92f32),sqrt(saturate(up*1.5f32+0.08f32)));
- q:V2=v2(rd.x/fmax(rd.y+0.55f32,0.25f32),rd.z/fmax(rd.y+0.55f32,0.25f32));
- // Thin cloud banks and angled cirrus, rather than radial white shafts.
- p:V2=v2(q.x*16.0f32+time*0.004f32,q.y*34.0f32);
- cloud:f32=cg_noise(p)*0.55f32+cg_noise(v2(p.x*2.1f32,p.y*2.1f32))*0.28f32+cg_noise(v2(p.x*5.0f32,p.y*5.0f32))*0.17f32;
- mask:f32=smoothstep(0.55f32,0.72f32,cloud)*(0.25f32+0.75f32*smoothstep(-0.3f32,0.8f32,rd.x))*smoothstep(-0.10f32,0.13f32,rd.y);
- across:f32=q.x*0.82f32+q.y*0.57f32;along:f32=-q.x*0.57f32+q.y*0.82f32;
- fine:f32=cg_noise(v2(along*180.0f32+cg_noise(v2(across*2.0f32,along))*2.0f32,across*5.0f32));
- streak:f32=pow(saturate((fine-0.28f32)*1.5f32),4.0f32)*0.62f32*smoothstep(0.0f32,0.5f32,rd.y);
- col=mix3(col,v3(1.0f32,0.99f32,0.95f32),saturate(mask*0.88f32+streak*0.10f32));
- halo:f32=pow(saturate(dot3(normalize3(rd),normalize3(sun))),8.0f32);
- return mix3(col,v3(1.0f32,0.97f32,0.81f32),halo*0.25f32);
+ up:=saturate(rd.y);col:=mix3(v3(0.84f32,0.95f32,0.96f32),v3(0.52f32,0.86f32,0.94f32),sqrt(saturate(up*1.5f32+0.08f32)));
+ q:=v2(rd.x/fmax(rd.y+0.15f32,0.08f32),rd.z/fmax(rd.y+0.15f32,0.08f32));
+ p:=v2(q.x*10.0f32+time*0.001f32,q.y*14.0f32);warp:=v2(cg_noise(v2(p.x*0.45f32,p.y*0.45f32)),cg_noise(v2(p.x*0.45f32+7.0f32,p.y*0.45f32-3.0f32)));
+ density:=cg_cloud_fbm(v2(p.x+warp.x*0.8f32,p.y+warp.y*0.8f32));threshold:=0.62f32-0.10f32*smoothstep(-0.5f32,0.8f32,rd.x);
+ cloud:=smoothstep(threshold,threshold+0.09f32,density)*smoothstep(0.0f32,0.12f32,rd.y)*(0.15f32+0.85f32*smoothstep(-0.15f32,0.70f32,rd.x));
+ thickness:=saturate((density-threshold)*6.0f32);cloud_colour:=mix3(v3(0.76f32,0.85f32,0.90f32),v3(1.0f32,0.995f32,0.98f32),saturate(thickness*0.70f32+0.15f32));
+ col=mix3(col,cloud_colour,cloud*0.95f32);
+ across:=q.x*0.78f32+q.y*0.63f32;along:=-q.x*0.63f32+q.y*0.78f32;
+ fine:=cg_cloud_fbm(v2(along*0.75f32+cg_noise(v2(across*0.3f32,along*0.3f32))*0.4f32,across*30.0f32));
+ wisps:=pow(saturate((fine-0.35f32)*1.6f32),3.0f32)*smoothstep(0.10f32,0.55f32,rd.y)*0.85f32*smoothstep(0.35f32,0.70f32,cg_noise(v2(q.x*0.7f32,q.y*0.7f32)));
+ col=mix3(col,v3(0.98f32,0.99f32,0.99f32),wisps);
+ halo:=pow(saturate(dot3(normalize3(rd),normalize3(sun))),8.0f32);return mix3(col,v3(1,0.97f32,0.81f32),halo*0.16f32);
+}
+#test "glade sky texture rays preserve reference image alignment" {
+ r:=cg_sky_ray(-1,1);fy:=0.4f32/sqrt(9.77f32);fz:= -3.1f32/sqrt(9.77f32);z:=r.y*fy+r.z*fz;up:=r.y*(-fz)+r.z*fy;
+ #assert abs(960.0f32+961.2f32*r.x/z)<0.01 && abs(518.4f32-961.2f32*up/z)<0.01;
+}
+cg_sky_ray :: (x:f32,y:f32)->V3 {
+ fy:=0.4f32/sqrt(9.77f32);fz:= -3.1f32/sqrt(9.77f32);qx:=x*1920.0f32/(1080.0f32*1.78f32);qy:=(y*0.5f32-0.02f32)/0.89f32;
+ return v3(qx,fy-qy*fz,fz+qy*fy);
 }
 cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
- b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id&0x07ffffff,8));
+ b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,8));
  p:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
  seed_uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);
- corner:u32=(id>>27)&7;
  uv:V2=seed_uv;
- if ((id&0x80000000)!=0) {
-  angle:f32=f32_from_bits(vertices[cast(int)add_wrap(b,7)]);h:f32=seed_uv.x;wide:f32=seed_uv.y;
-  side:f32=ifx corner==0 || corner==2 then -1.0f32 else 1.0f32;
-  t:f32=ifx corner<2 then 0.0f32 else ifx corner<4 then 0.6f32 else 1.0f32;
-  width:f32=ifx corner<2 then 1.0f32 else ifx corner<4 then 0.55f32 else 0.0f32;
-  bend:f32=h*t*t*0.55f32;
-  p=add3(p,v3(cos(angle)*wide*width*side+cos(angle+0.7f32)*bend,h*t,sin(angle)*wide*width*side+sin(angle+0.7f32)*bend));
-  uv=v2(0.5f32+width*side*0.5f32,t);
- }
  normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
- // Source M_Leaves.gdshader expands each alpha card in the camera frame.
- if (kind==1) {
-  size:f32=cast(f32)(normal>>27)*0.1f32;
-  p=add3(p,scale3(add3(scale3(wg_at3(u,24),uv.x*2.0f32-1.0f32),add3(scale3(wg_at3(u,28),1.0f32-uv.y*2.0f32),wg_at3(u,20))),size));
- }
+ if (kind==0) {p=add3(wg_at3(u,16),scale3(cg_sky_ray(p.x,p.y),180.0f32));}
+ if (kind==6) {uv=v2(seed_uv.x*64.0f32-32.0f32,seed_uv.y*64.0f32-32.0f32);}
  tint:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
  wind:f32=sin(p.x*1.8f32+p.z*0.7f32+u[2]*1.6f32)+sin(p.z*2.7f32+u[2]*0.9f32)*0.35f32;
  if ((kind==1)||(kind==2)) {p.x=p.x+wind*(ifx kind==2 then 0.025f32 else 0.035f32)*(ifx kind==2 then wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]).y else saturate(p.y*0.7f32));}
- nw:V4=wg_unpack4x8snorm(normal);o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=v3(nw.x,nw.y,nw.z);o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32);if (kind==2) {autumn:f32=cg_autumn(p.x,p.z);o.tint=mix3(o.tint,v3(0.56f32+0.33f32*autumn,0.79f32-0.15f32*autumn,0.08f32),uv.y);}
- o.who=instance;return o;
+ nw:V4=wg_unpack4x8snorm(normal);o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=v3(nw.x,nw.y,nw.z);o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;return o;
 }
-cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,edge_width:f32)->V4 {
+#test "glade source mesh instances retain source shape and independent scale" {
+ p:=cg_instance_point(v3(1,2,0),v3(4,0,-5),0.5,0.25,0);
+ #assert p.x==4.25 && p.y==1 && p.z== -5;
+}
+cg_instance_point :: (p:V3,center:V3,vertical:f32,horizontal:f32,angle:f32)->V3 {
+ cs:f32=cos(angle);sn:f32=sin(angle);
+ return add3(center,v3((p.x*cs+p.z*sn)*horizontal,p.y*vertical,(-p.x*sn+p.z*cs)*horizontal));
+}
+cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
+ b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,8));seed:u32=add_wrap(wg_u32_f(m.a.x),mul_wrap(instance&65535,8));
+ source:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
+ center:V3=v3(f32_from_bits(vertices[cast(int)seed]),f32_from_bits(vertices[cast(int)add_wrap(seed,1)]),f32_from_bits(vertices[cast(int)add_wrap(seed,2)]));
+ sizes:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(seed,4)]);angle:f32=f32_from_bits(vertices[cast(int)add_wrap(seed,7)]);
+ p:V3=cg_instance_point(source,center,sizes.x,sizes.y,angle);height:f32=saturate(source.y);
+ p.x=p.x+(sin(center.x*1.8f32+center.z*0.7f32+u[2]*1.6f32)+sin(center.z*2.7f32+u[2]*0.9f32)*0.35f32)*0.045f32*height*height;
+ packed:u32=vertices[cast(int)add_wrap(b,3)];nw:V4=wg_unpack4x8snorm(packed);
+ n:V3=normalize3(v3((nw.x*cos(angle)+nw.z*sin(angle))/sizes.y,nw.y/sizes.x,(-nw.x*sin(angle)+nw.z*cos(angle))/sizes.y));
+ base:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(seed,5)]);autumn:f32=cg_autumn(center.x,center.z);
+ o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=n;o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);o.slice=vertices[cast(int)add_wrap(b,6)];
+ rust:=saturate((center.x-0.5f32)/3.0f32)*smoothstep(0.50f32,0.72f32,cg_noise(v2(center.x*0.8f32,center.z*0.8f32)))*(1.0f32-autumn);
+ bottom:=mix3(v3(base.x,base.y,base.z),v3(0.56f32,0.17f32,0.025f32),rust);top:=mix3(v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),v3(0.95f32,0.41f32,0.035f32),rust);o.tint=mix3(bottom,top,height);
+ o.dye=v4(0,0,0,12);o.local=v3(2,height,1);o.who=(instance>>16)-1;return o;
+}
+cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,visibility:f32)->V4 {
+ if (s.local.y>1.5f32) {return v4(0.86f32,0.98f32,0.94f32,1);}
+ if (s.local.x<0.5f32) {return v4(pow(tex.x,0.4545f32),pow(tex.y,0.4545f32),pow(tex.z,0.4545f32),1);}
  kind:f32=s.local.x;n:V3=normalize3(add3(s.normal,v3(0.0f32,0.0001f32,0.0f32)));
  foliage:bool=kind>0.5f32 && kind<2.5f32;
  if (!front && !foliage) {n=scale3(n,-1.0f32);}
- sun:V3=normalize3(v3(-0.45f32,0.78f32,-0.42f32));light:f32=saturate(dot3(n,sun));
+ sun:V3=normalize3(v3(-0.45f32,0.78f32,-0.42f32));
  ground:bool=kind>4.5f32 && kind<5.5f32;
  grass:bool=kind>1.5f32 && kind<2.5f32;
  leaves:bool=kind>0.5f32 && kind<1.5f32;
  albedo:V3=mul3(v3(pow(tex.x,0.4545f32),pow(tex.y,0.4545f32),pow(tex.z,0.4545f32)),s.tint);
- if (foliage || ground || kind>6.5f32) {albedo=s.tint;}
+ if (foliage || ground) {albedo=s.tint;}
  if (leaves) {detail:f32=0.55f32+0.65f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z)));albedo=scale3(albedo,detail);}
- if (kind>2.5f32 && kind<3.5f32) {albedo=scale3(s.tint,0.65f32+0.35f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
- if (kind>6.5f32 && s.tint.y>0.8f32) {albedo=scale3(albedo,0.75f32);}
+
+
+ if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(v3(1,0.42f32,0.32f32),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
+ if (kind>6.5f32) {albedo=scale3(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32),0.72f32+0.28f32*pow(verse_style_luma(tex.x,tex.y,tex.z),0.4545f32));}
  if (kind>3.5f32 && kind<4.5f32) {albedo=scale3(v3(0.69f32,0.73f32,0.60f32),(ifx s.world.x>0.0f32 then 0.80f32 else 1.0f32)*(0.87f32+0.20f32*pow(verse_style_luma(tex.x,tex.y,tex.z),0.4545f32)));}
- shadow:f32=1.0f32;
- if (ground || grass || kind>6.5f32 || (kind>2.5f32 && kind<3.5f32)) {shadow=cg_sun_shadow(add3(s.world,v3(0.0f32,0.08f32,0.0f32)));}
+ shadow:f32=0.20f32+0.80f32*visibility;
  ambient:V3=v3(0.58f32,0.65f32,0.48f32);
  key:V3=v3(0.62f32,0.56f32,0.42f32);
  direct:f32=smoothstep(-0.65f32,0.90f32,dot3(n,sun));
- if (grass) {direct=0.76f32;ambient=v3(0.43f32,0.53f32,0.37f32);albedo=scale3(albedo,0.78f32+0.22f32*s.uv.y);}
- if (leaves) {direct=smoothstep(-0.65f32,0.85f32,dot3(n,sun));warm:bool=s.tint.x>s.tint.y*1.2f32;ambient=scale3(ifx warm then v3(1.05f32,0.90f32,0.65f32) else v3(0.70f32,0.86f32,0.45f32),clampf(s.local.y,0.90f32,1.0f32));key=v3(0.46f32,0.40f32,0.25f32);}
+ if (grass) {direct=0.76f32;ambient=v3(0.58f32,0.65f32,0.40f32);albedo=scale3(albedo,0.78f32+0.22f32*s.local.y);}
+ if (kind>6.5f32) {ambient=v3(0.90f32,0.85f32,0.70f32);key=v3(0.25f32,0.25f32,0.20f32);}
+ if (kind>5.5f32 && kind<6.5f32) {ambient=v3(0.90f32,0.90f32,0.75f32);key=v3(0.30f32,0.27f32,0.18f32);}
+ if (leaves) {direct=smoothstep(-0.65f32,0.85f32,dot3(n,sun));warm:bool=s.tint.x>s.tint.y*1.2f32;ambient=scale3(ifx warm then v3(0.65f32,0.55f32,0.40f32) else v3(0.60f32,0.75f32,0.35f32),clampf(s.local.y,0.50f32,1.0f32));key=v3(0.70f32,0.65f32,0.40f32);}
  if (kind>2.5f32 && kind<3.5f32) {ambient=v3(0.64f32,0.66f32,0.70f32);key=v3(0.55f32,0.55f32,0.50f32);direct=0.45f32+0.40f32*abs(dot3(n,sun));}
  colour:V3=mul3(albedo,add3(ambient,scale3(key,direct*shadow)));
  if (leaves) {view:V3=normalize3(sub3(wg_at3(u,16),s.world));rim:f32=pow(1.0f32-abs(dot3(n,view)),3.0f32);colour=add3(colour,mul3(albedo,scale3(v3(1.0f32,0.91f32,0.47f32),rim*0.15f32)));if (s.tint.x>s.tint.y*1.2f32) {variation:f32=cg_noise(v2(s.world.x*0.4f32+s.world.y*0.2f32,s.world.z*0.4f32));colour=mix3(colour,v3(1.0f32,0.68f32,0.20f32),rim*0.18f32+variation*0.18f32);}}
  if (ground) {contact:f32=exp(-(s.world.x*s.world.x+s.world.z*s.world.z)*2.5f32)*0.30f32;mottle:f32=cg_noise(v2(s.world.x*2.0f32,s.world.z*2.0f32));meadow:f32=1.0f32-cg_path(s.world.x,s.world.z);grain:f32=cg_noise(v2(s.world.x*14.0f32,s.world.z*14.0f32));colour=scale3(colour,(1.0f32-contact)*(0.96f32+0.10f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.22f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1.0f32,meadow));}
- if (grass) {
-  aa:f32=clampf(edge_width,0.008f32,0.16f32);coverage:f32=cg_grass_edge(s.uv,aa);
-  if (coverage<0.03f32) {gpu_demote_helper();}
-  autumn:f32=cg_autumn(s.world.x,s.world.z);
-  beneath:V3=mul3(v3(0.32f32+autumn*0.24f32,0.53f32-autumn*0.03f32,0.055f32),add3(v3(0.43f32,0.52f32,0.48f32),scale3(key,0.9f32*shadow)));
-  colour=mix3(beneath,colour,coverage);
- }
- distance:f32=wg_length3(sub3(s.world,wg_at3(u,16)));haze:f32=1.0f32-exp(-distance*0.008f32);
- colour=mix3(colour,v3(0.84f32,0.91f32,0.77f32),haze*0.65f32);
+ distance:f32=wg_length3(sub3(s.world,wg_at3(u,16)));haze:f32=1.0f32-exp(-distance*0.015f32);
+ colour=mix3(colour,v3(0.99f32,0.94f32,0.75f32),haze*0.75f32);
  return v4(colour.x,colour.y,colour.z,1.0f32);
 }
 
@@ -144,4 +134,103 @@ cg_ui_cover :: (p:V2,w:f32,h:f32,k:f32)->bool {
  if (w<840.0f32*k) {return p.y>h-504.0f32*k || ((p.y>82.0f32*k)&&(p.y<124.0f32*k)&&(p.x>12.0f32*k)&&(p.x<w-12.0f32*k));}
  if ((p.y>h-56.0f32*k)&&(p.y<h-20.0f32*k)&&(p.x>w*0.5f32-164.0f32*k)&&(p.x<w*0.5f32+174.0f32*k)) {return true;}
  return ((p.x<286.0f32*k)||(p.x>w-286.0f32*k))&&(p.y>140.0f32*k);
+}
+
+
+#test "glade shadow projection contains the clearing and separates light depth" {
+ a:=cg_shadow_clip(v3(0,0,0));b:=cg_shadow_clip(v3(0,1,0));
+ #assert abs(a.x)<1 && abs(a.y)<1 && a.z>0 && a.z<1 && b.z<a.z;
+}
+cg_shadow_clip :: (p:V3)->V4 {
+ sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
+ return v4(dot3(r,right)/26.0f32,dot3(r,up)/26.0f32,0.5f32-dot3(r,sun)/70.0f32,1);
+}
+CgShadow :: struct {pos:V4;uv:V2;slice:u32;}
+charactercreator_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->CgShadow {
+ o:CgShadow;
+ if (u[10]<1.5f32 || instance>=65536) {o.pos=v4(0,0,-2,1);return o;}
+ s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && (s.local.x<0.5f32 || s.local.y>1.5f32)) {o.pos=v4(0,0,-2,1);return o;}o.pos=cg_shadow_clip(s.world);o.uv=s.uv;o.slice=s.slice;return o;
+}
+charactercreator_shadow_fs :: (s:CgShadow,sheets:Tex2DArray,sheet:Sampler) {
+ t:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,0);
+ if (t.w<0.35f32) {gpu_demote_helper();}
+}
+cg_shadow_visibility :: (p:V3,n:V3,map:TexDepth,cmp:SamplerCompare)->f32 {
+ c:=cg_shadow_clip(add3(p,scale3(normalize3(n),0.025f32)));uv:=v2(c.x*0.5f32+0.5f32,0.5f32-c.y*0.5f32);
+ if (uv.x<0 || uv.x>1 || uv.y<0 || uv.y>1 || c.z<0 || c.z>1) {return 1;}
+ texel:=1.0f32/cast(f32)wg_dims_depth(map).x;sum:f32=0;
+ for i:0..<12 {a:=cast(f32)i*2.399963f32;r:=sqrt((cast(f32)i+0.5f32)/12.0f32)*4.0f32*texel;
+  sum=sum+gpu_compare(map,cmp,v2(uv.x+cos(a)*r,uv.y+sin(a)*r),c.z-0.0012f32);
+ }
+ return sum/12.0f32;
+}
+
+cg_rgb :: (c:V4)->V3 {return v3(c.x,c.y,c.z);}
+charactercreator_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  texel:V2=v2(1.0f32/cast(f32)(wg_dims_2d(bloom_src).x),1.0f32/cast(f32)(wg_dims_2d(bloom_src).y));
+  uv:V2=v2(pos.x*bloom_step[3]*texel.x,pos.y*bloom_step[3]*texel.y);
+  if (bloom_step[2]<0.5f32) {
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    {
+      k:s32=0;
+      while k<4 {
+        o:V2=v2(((cast(f32)(k&1)*2.0f32)-1.0f32)*texel.x,((cast(f32)(k>>1)*2.0f32)-1.0f32)*texel.y);
+        t:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+o.x,uv.y+o.y),0.0f32);
+        c=add3(c,scale3(v3(t.x,t.y,t.z),saturate((fmax(t.x,fmax(t.y,t.z))-0.72f32)*1.8f32)*t.w));
+        k+=1;
+      }
+    }
+    return v4(c.x*0.25f32,c.y*0.25f32,c.z*0.25f32,1.0f32);
+  }
+  d:V2=v2(bloom_step[0]*texel.x,bloom_step[1]*texel.y);
+  c:V3=scale3(cg_rgb(gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32)),0.227f32);
+  c=add3(c,scale3(add3(cg_rgb(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+(d.x*1.385f32),uv.y+(d.y*1.385f32)),0.0f32)),cg_rgb(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-(d.x*1.385f32),uv.y-(d.y*1.385f32)),0.0f32))),0.316f32));
+  c=add3(c,scale3(add3(cg_rgb(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+(d.x*3.231f32),uv.y+(d.y*3.231f32)),0.0f32)),cg_rgb(gpu_sample_level(bloom_src,bloom_lin,v2(uv.x-(d.x*3.231f32),uv.y-(d.y*3.231f32)),0.0f32))),0.070f32));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+
+cg_post_sample :: (image:Tex2D,lin:Sampler,uv:V2)->V3 {return cg_rgb(gpu_sample_level(image,lin,uv,0));}
+cg_luma :: (c:V3)->f32 {return verse_style_luma(c.x,c.y,c.z);}
+cg_fxaa :: (uv:V2,step:V2,image:Tex2D,lin:Sampler)->V3 {
+ center:=cg_post_sample(image,lin,uv);
+ nw:=cg_luma(cg_post_sample(image,lin,v2(uv.x-step.x,uv.y-step.y)));ne:=cg_luma(cg_post_sample(image,lin,v2(uv.x+step.x,uv.y-step.y)));
+ sw:=cg_luma(cg_post_sample(image,lin,v2(uv.x-step.x,uv.y+step.y)));se:=cg_luma(cg_post_sample(image,lin,v2(uv.x+step.x,uv.y+step.y)));mid:=cg_luma(center);
+ low:=fmin(mid,fmin(fmin(nw,ne),fmin(sw,se)));high:=fmax(mid,fmax(fmax(nw,ne),fmax(sw,se)));
+ if (high-low<fmax(0.0312f32,high*0.125f32)) {return center;}
+ dir:=v2(-(nw+ne-sw-se),nw+sw-ne-se);reduce:=fmax((nw+ne+sw+se)*0.03125f32,0.0078125f32);rcp:=1.0f32/(fmin(abs(dir.x),abs(dir.y))+reduce);
+ dir=v2(clampf(dir.x*rcp,-8.0f32,8.0f32)*step.x,clampf(dir.y*rcp,-8.0f32,8.0f32)*step.y);
+ a:=scale3(add3(cg_post_sample(image,lin,v2(uv.x-dir.x/6.0f32,uv.y-dir.y/6.0f32)),cg_post_sample(image,lin,v2(uv.x+dir.x/6.0f32,uv.y+dir.y/6.0f32))),0.5f32);
+ b:=add3(scale3(a,0.5f32),scale3(add3(cg_post_sample(image,lin,v2(uv.x-dir.x*0.5f32,uv.y-dir.y*0.5f32)),cg_post_sample(image,lin,v2(uv.x+dir.x*0.5f32,uv.y+dir.y*0.5f32))),0.25f32));
+ lum:=cg_luma(b);return ifx lum<low || lum>high then a else b;
+}
+cg_viewpoint :: (pixel:V2,z:f32,u:[]f32)->V3 {
+ return add3(wg_at3(u,16),scale3(add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(pixel.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-pixel.y)/u[19]))),z));
+}
+cg_post_pixel :: (p:V2,size:U2)->I2 {return i2(wg_clamp_i(cast(s32)p.x,0,cast(s32)size.x-1),wg_clamp_i(cast(s32)p.y,0,cast(s32)size.y-1));}
+cg_contact_ao :: (pixel:V2,u:[]f32,aux:Tex2D)->f32 {
+ size:=wg_dims_2d(aux);a:=wg_load_2d(aux,cg_post_pixel(pixel,size),0);if (a.w<=0) {return 1;}
+ n:=normalize3(v3(a.x,a.y,a.z));center:=cg_viewpoint(pixel,a.w,u);sum:f32=0;radius:=clampf(u[1]*0.012f32,4.0f32,18.0f32);
+ for i:0..<8 {angle:=cast(f32)i*0.785398f32;r:=radius*(ifx i%2==0 then 0.5f32 else 1.0f32);at:=v2(pixel.x+cos(angle)*r,pixel.y+sin(angle)*r);b:=wg_load_2d(aux,cg_post_pixel(at,size),0);
+  if (abs(b.w)>0.001f32) {delta:=sub3(cg_viewpoint(at,abs(b.w),u),center);distance:=wg_length3(delta);sum=sum+saturate((dot3(n,delta)-0.015f32)/fmax(distance,0.0001f32))*(1.0f32-smoothstep(0.1f32,0.6f32,distance));}
+ }
+ return 1.0f32-sum*0.65f32/8.0f32;
+}
+charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
+ pixel:=v2(pos.x,pos.y);uv:=v2(pos.x/u[0],pos.y/u[1]);raw:=gpu_sample_level(post_light,post_lin,uv,0);
+ if (u[10]<1.5f32 || ((u[11]<0.5f32)&&cg_ui_cover(pixel,u[0],u[1],u[4]))) {return v4(raw.x,raw.y,raw.z,1);}
+ c:=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);c=scale3(c,cg_contact_ao(pixel,u,post_aux));
+ glow:=add3(scale3(cg_post_sample(post_quarter,post_lin,uv),0.12f32),scale3(cg_post_sample(post_eighth,post_lin,uv),0.10f32));
+ // A small foliage-only reconstruction filter integrates subpixel leaves and blades.
+ // Depth/normal class keeps the character, painted petals and hard rocks sharp.
+ a:=wg_load_2d(post_aux,cg_post_pixel(pixel,wg_dims_2d(post_aux)),0);
+ if (a.w<0) {
+  soft:V3=v3(0,0,0);
+  for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
+  c=mix3(c,scale3(soft,0.25f32),0.55f32);
+ }
+ c=add3(c,glow);return v4(c.x,c.y,c.z,1);
+}
+#test "glade contact reconstruction preserves camera-forward depth" {
+ u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;
+ p:=cg_viewpoint(v2(50,40),4,u[..]);#assert p.x==2 && p.y==1 && p.z== -1;
 }

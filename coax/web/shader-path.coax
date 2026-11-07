@@ -1,0 +1,18 @@
+// Resolve repository-authored data-wgsl before the deploy wrapper content-names it.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#test "an explicit realm shader retains its own filename during staging" {
+ out:[128]u8;
+ #assert staged_shader_path("fivelab","/charactercreator.wgsl",out[..])=="/charactercreator.wgsl";
+ #assert staged_shader_path("fivelab","",out[..])=="/fivelab.wgsl";
+ #assert staged_shader_path("myrealm","/build/myrealm.0123456789ab.wgsl",out[..])=="/build/myrealm.0123456789ab.wgsl";
+ #assert staged_shader_path("fivelab","",out[0..<2])=="";
+}
+staged_shader_path :: (app:string,declared:string,out:[]u8)->string {
+ if declared!="" {return declared;}
+ n:=app.count+6;if n>out.count {return "";}out[0]='/';for i:0..<app.count {out[i+1]=app[i];}suffix:=".wgsl";for i:0..<suffix.count {out[1+app.count+i]=suffix[i];}return cast(string)out[0..<n];
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}
+ out:[4096]u8;path:=staged_shader_path(args_at(args[..],0),args_at(args[..],1),out[..]);if path=="" {return 1;}print("%\n",path);return 0;
+}

@@ -4,6 +4,12 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "adoption.coax";
 RENDER_WEB_SHARED :: false;
+#test "Character Create names its private shader only for its established producer" {
+ #assert render_page_shader("character-creator","fivelab")=="/charactercreator.wgsl";
+ #assert render_page_shader("5e-lab","fivelab")=="" && render_page_shader("character-creator","other")=="";
+ #assert render_page_shader("character-creators","fivelab")=="";
+}
+render_page_shader :: (slug:string,app:string)->string {return ifx slug=="character-creator" && app=="fivelab" then "/charactercreator.wgsl" else "";}
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) != 2 { return 2; }
@@ -19,6 +25,7 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
   if route.shared || route.tracked_legacy {
+    shader_path:=render_page_shader(args_at(args[..],0),args_at(args[..],1));if shader_path!="" {print(" data-wgsl=\"%\"",shader_path);}
     pages:=render_memory_pages(args_at(args[..],1));
     if pages!=1024 {print(" data-memory-pages=\"%\"",pages);}
     return 0;

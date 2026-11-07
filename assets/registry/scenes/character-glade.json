@@ -27,6 +27,10 @@
       "revision": "1accb32f5e9e7d129bb6c2ea20d90d44464c49e27f7485919dcabf4fa4acf1e8"
     },
     {
+      "id": "quaternius/nature/commontree-1",
+      "revision": "99970fcb5207e5d8d3e89da16f722f42bad2d819c536359610ff1b2a7a0e83c2"
+    },
+    {
       "id": "quaternius/nature/commontree-2",
       "revision": "e0daf5db9e1e28d54e17fbf8ea0fd81005124e7dd7959f61b1b5415ba6a62d39"
     },
@@ -47,8 +51,24 @@
       "revision": "3adb4cbb7a22f13b9d12d65223de331deb61b0a9feb260189560ef79558e3762"
     },
     {
-      "id": "quaternius/nature/flower-1-group",
-      "revision": "6693bb10e68954cf3bf75fa480bd37dbd6f6d1724c3e5ad96c8d3ca968fbe116"
+      "id": "quaternius/nature/flower-2-group",
+      "revision": "c50861c2639b94bc6151bb60aa0f54f3600022ed9a50783d805ee4a359d561d2"
+    },
+    {
+      "id": "quaternius/nature/flower-3-group",
+      "revision": "a1ff44bf1e43e7740a48fe2b5e5aada44045f6bad106b4cc06c1f51483975749"
+    },
+    {
+      "id": "quaternius/nature/grass-common-short",
+      "revision": "88b51ef9383e7f61ce719ff7766468de2299cd6868283989a74928f8fe56977d"
+    },
+    {
+      "id": "quaternius/nature/grass-wide-short",
+      "revision": "ee6b920a13f301f98ae19e4061cc82cc4a434df39bbf361848dd421799259a39"
+    },
+    {
+      "id": "quaternius/nature/grass-wispy-short",
+      "revision": "ad535b316f6604e8f05b726636e8dd150b4494a34e1993a31d1a57a87b7e7d8c"
     },
     {
       "id": "quaternius/nature/mushroom-common",
@@ -73,6 +93,10 @@
     {
       "id": "quaternius/nature/rock-medium-3",
       "revision": "a9b92886de44fe4abcc0ca9bd5e8d277df4440d71783cd95b4471796f0407afd"
+    },
+    {
+      "id": "quaternius/nature/rock-medium-4",
+      "revision": "182dd8cb65e21e09915845496a64b359f4fb5c63586f4294eb7846da45c79895"
     }
   ],
   "reference": {
@@ -83,21 +107,21 @@
   },
   "composition": {
     "path": "verse/character-glade.coax",
-    "sha256": "6ecdbeafebe5b6cda87796d8687f77f456d276efe8745b0b7d36c52ea060d3db"
+    "sha256": "8d638e8d50a962c36d14e899fd29ef666837d6b9c313c3a83d6e1785ffea0658"
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "8f317a0a195223527deeaff7e3c332cf92c457b77a96d9b1a059df5c6b7a6b47"
+    "sha256": "985b34ea24fb809b28f2a774748577e4bccd259fff92b3554c96769c9ea723d7"
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "8d1dfe5f0b744e1194330d200bdcb2f519efa9d5300f68cd7d9f339ad71fd7b0"
+    "sha256": "c4ad54d5febf503ae87852cf1881adcce3c904aca478fa9e7c837dbdd50e4e61"
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "4f3362c9529880ce5c32b666698e52dab6a9a3b16722fcdd7434803ffdbcaa35",
-    "bytes": 33363032,
-    "profile": "character-create-legacy-static-v3"
+    "sha256": "dc038126015eb33b2543c0f0d29ba6f18ffa6e0d6014e356a833ba463c9a4de2",
+    "bytes": 33304768,
+    "profile": "character-create-legacy-static-v4"
   },
   "lighting": {
     "toward_sun": [
@@ -106,7 +130,7 @@
       -0.42
     ],
     "source": "Reference-directed rear-left warm sunlight, broad sky fill and wrapped outdoor diffuse; Unreal overview settings remain separate evidence",
-    "shadows": "soft analytic crown and rock proxies for ground and small plants",
+    "shadows": "Alpha-tested geometry shadow map with 12-tap PCF; normal/depth contact occlusion; foliage reconstruction, bloom and FXAA",
     "canopy": "rounded volume normals, ambient mask and warm leaf transmission"
   },
   "scope": "Reference-directed 3D recreation; original scene composition not recovered. Not pixel-identical Unreal rendering.",
@@ -116,8 +140,16 @@
       "sha256": "7b9b222019803a5cffeb13f0b99c1c5fa591a5cd87e4c4b04f1215311295a19b"
     },
     {
+      "path": "glTF/Bark_BirchTree_Normal.png",
+      "sha256": "d452137c934b243d33e4855281d3e750b5035f20e86b8a45c4693cc8130ca256"
+    },
+    {
       "path": "glTF/Bark_NormalTree.png",
       "sha256": "f36e94fdd73255347325b998e02a0b2575fdf714b0315bfe5e8ff34bc8e13603"
+    },
+    {
+      "path": "glTF/Bark_NormalTree_Normal.png",
+      "sha256": "852f6155404b8c39e100e41e26970e02a6a5c81b482d3726618dab28e3ad03a2"
     },
     {
       "path": "glTF/Birch_1.bin",
@@ -168,6 +200,14 @@
       "sha256": "08768c680e3abeafd25858c9d3f369bcb7eed014661d3b6825a397f2a6a3deea"
     },
     {
+      "path": "glTF/CommonTree_1.bin",
+      "sha256": "9dd689e84e1aa2f5b08db8def591254d582783c73737af54ba0d89b3e549c3ae"
+    },
+    {
+      "path": "glTF/CommonTree_1.gltf",
+      "sha256": "b51cdea6545edb51d102dd6c27caafe62aa75e3c328ac8f9039f4e7bfd690bfa"
+    },
+    {
       "path": "glTF/CommonTree_2.bin",
       "sha256": "a273d69de31a675a9d7e3eb3c43f804aef2d1b031692111b9e76eb3b0b686d0c"
     },
@@ -192,6 +232,14 @@
       "sha256": "ddf0e8837705702871d3f03de8cf7aeed61ad4bf8ee92052b6f95bdd771297b6"
     },
     {
+      "path": "glTF/CommonTree_5.bin",
+      "sha256": "0e617612d50e6bb2ca3c64338383f8938ce9e04d55b548ff11cec7a7b7d8f072"
+    },
+    {
+      "path": "glTF/CommonTree_5.gltf",
+      "sha256": "fb7061f2bf9fe850870b056431f8f66cd8fdeb443c90695c5efbcf1fe6876d53"
+    },
+    {
       "path": "glTF/Fern_1.bin",
       "sha256": "5e92b87a27f81a69fe15347a533df3c77d567b48298dceeef43168ccb7c22853"
     },
@@ -200,16 +248,52 @@
       "sha256": "d41915cffe9dbbde1ae88be381eb9c60f7caa2274511436cc78fe4de627468ab"
     },
     {
-      "path": "glTF/Flower_1_Group.bin",
-      "sha256": "cf330ea793c63273f209cf1450f1e56751141c669f05e9e384bed2e6b0c5bf87"
+      "path": "glTF/Flower_2_Group.bin",
+      "sha256": "71a359df880121f16a574d7405ea95225a228dd1ae71b72fb86b321d4f412dfb"
     },
     {
-      "path": "glTF/Flower_1_Group.gltf",
-      "sha256": "231d5e661554a22181948ef4a62528c5f1114318a42e737df11195aac8af9e97"
+      "path": "glTF/Flower_2_Group.gltf",
+      "sha256": "c59fb7677641bd7cdefad9c7efe0c4520fadd0c64930c4ffb36610c7a76b7c16"
+    },
+    {
+      "path": "glTF/Flower_3_Group.bin",
+      "sha256": "5ab387dd3d6fe181df3af4eeac4df85533e4c27e77545ae39a61e0c2aaaab248"
+    },
+    {
+      "path": "glTF/Flower_3_Group.gltf",
+      "sha256": "4df1612371982c543f930d6b213967372e0d459622d7eff7fc2ed1ddbfaa3b6c"
     },
     {
       "path": "glTF/Flowers.png",
       "sha256": "5c531f2329c241c625aafd6cb769de29f33b480ef2a16491c2489f3c68e62a6a"
+    },
+    {
+      "path": "glTF/Grass.png",
+      "sha256": "5d69048193b246a73c996b892607fb36c75d0c60afcb2dab8aa12de3c0b2d9bd"
+    },
+    {
+      "path": "glTF/Grass_Common_Short.bin",
+      "sha256": "7a0f0f7a9ac39cfa4b303bac03a6594f43e48d873b73553fa06a79e4df1271e9"
+    },
+    {
+      "path": "glTF/Grass_Common_Short.gltf",
+      "sha256": "6957b50622c9e26e7296c1b47ea8653bc0d957e0a547de444e2ed96f0075a21a"
+    },
+    {
+      "path": "glTF/Grass_Wide_Short.bin",
+      "sha256": "6192c7dadfcde91ee78595f38a13ef7ce513c15bd5d8c077003eaa42c36bafc6"
+    },
+    {
+      "path": "glTF/Grass_Wide_Short.gltf",
+      "sha256": "29489e2322b9e0358e2c6c9ba4fedadb3e1d3ae8d5d5836fafedd673cbb9a269"
+    },
+    {
+      "path": "glTF/Grass_Wispy_Short.bin",
+      "sha256": "c38f46e5a66ed3917fd45104effb914228d43d3724f4659416e1533dcd71776d"
+    },
+    {
+      "path": "glTF/Grass_Wispy_Short.gltf",
+      "sha256": "3c1d3bdd332420e070abde72d73611d1f13acfbe027e26b2fb943f9bcbd6b1c5"
     },
     {
       "path": "glTF/Leaves.png",
@@ -234,6 +318,10 @@
     {
       "path": "glTF/Mushrooms.png",
       "sha256": "e29eed2db831e44a29634fe25c62e9e31edf201e978a52912b9e5221ffd4a1f3"
+    },
+    {
+      "path": "glTF/PathRocks_Diffuse.png",
+      "sha256": "85a04abb2c136fee53b376daf3b7d7f96fdf3966de0258dff6fe2b24da792b23"
     },
     {
       "path": "glTF/Pebble_Round_1.bin",
@@ -276,12 +364,25 @@
       "sha256": "9a575b911372cf91693aa3a56aea8137ec2251c2b99fb34a31272ee64503047f"
     },
     {
+      "path": "glTF/Rock_Medium_4.bin",
+      "sha256": "8e450ed4246aeff4c5b830153846e7bcec51134df9dcdc387b9242ac53353d14"
+    },
+    {
+      "path": "glTF/Rock_Medium_4.gltf",
+      "sha256": "b4236cd112482ea7252391d8fe0a4bb302f98325fe5360a24095b1ddd220d076"
+    },
+    {
       "path": "glTF/Rocks_Diffuse.png",
       "sha256": "b813696df6081f469a127092eb0ce45cc39d56f3ccc0699152bfcd3804810b48"
     }
   ],
   "foliage": {
-    "grass": "26929 procedural five-corner curved tufts, one 32-byte seed each, patch-dependent heights 0.029\u20130.357 m",
+    "grass": "Three exact source mesh templates, 32-byte placement seeds; ordinary indices; per-group count <=65535",
+    "source_templates": [
+      "Grass_Common_Short",
+      "Grass_Wide_Short",
+      "Grass_Wispy_Short"
+    ],
     "ambient_word": {
       "offset_bytes": 28,
       "type": "f32",
@@ -291,31 +392,48 @@
       ],
       "applies_to": "leaf vertices"
     },
-    "omitted_hidden_meshes": [
-      "CommonTree_5 at (-15,-27)",
-      "CommonTree_1 at (-18,-12)"
+    "leaf_tag": "material kind only; no extra card expansion",
+    "instance_encoding": "high 16 bits object slot + 1; low 16 bits seed ID",
+    "bark_uv_encoding": "UNORM16 maps [-32,32]; preserves negative repeats",
+    "source_grass_templates": [
+      {
+        "source": "Grass_Common_Short",
+        "vertices": 153,
+        "triangles": 155,
+        "instances": 4429
+      },
+      {
+        "source": "Grass_Wide_Short",
+        "vertices": 305,
+        "triangles": 370,
+        "instances": 1341
+      },
+      {
+        "source": "Grass_Wispy_Short",
+        "vertices": 559,
+        "triangles": 494,
+        "instances": 21442
+      }
     ],
-    "procedural_indices": {
-      "flag_bit": 31,
-      "corner_bits": [
-        27,
-        29
-      ],
-      "seed_bits": [
-        0,
-        26
-      ],
-      "corners": 5
-    },
-    "leaf_tag": "low 3 bits material; upper 5 bits camera-card expansion scale in tenths of a meter; trees only"
+    "source_grass_instances": 27212,
+    "source_grass_topology": "exact source indices and positions",
+    "grass_height_range": [
+      0.011751607542699358,
+      0.29691993807949607
+    ],
+    "bark_repeating_v_range": [
+      -26.467689021133744,
+      0.9995269703211989
+    ],
+    "rounded_canopy_vertices": 99334
   },
   "shader_entry": {
-    "path": "apps/openagents-web/gpu/fivelab.coax",
-    "sha256": "5659bf44aa2e3051cef0255d6f685c21254c198c9e5e99c9586fa110e03ce0d2"
+    "path": "apps/openagents-web/gpu/charactercreator.coax",
+    "sha256": "8bd251fc86dcb8ad7f87be17794daf17e24def60a4707860b0e7943bbb9ea610"
   },
   "shader_artifact": {
-    "path": "apps/openagents-web/fivelab.wgsl",
-    "sha256": "8bb0b91ffaedb0d0055e8801bde4c72dc06b02ad766c44bc120cc4d2be31a3b5"
+    "path": "apps/openagents-web/charactercreator.wgsl",
+    "sha256": "cf80975af28786e7349aed095b92ea9714e5f7fdff7d05bc9b0290eb6d66496e"
   },
   "camera": {
     "desktop_horizon_fraction": 0.595,
@@ -326,6 +444,49 @@
     "archive": "Engine Projects/Stylized Nature MegaKit[Godot].zip",
     "path": "Stylized Nature MegaKit[Godot]/Materials/M_Leaves.gdshader",
     "sha256": "88d85e4a550ec538dfd1daf61fbfc1412f15f2d61dff5fc94befea33a92b43d7",
-    "adaptation": "restrained camera-oriented expansion for raw tree glTF geometry; not the Godot renderer"
-  }
+    "adaptation": "Volume canopy normals and transmission; glTF already expanded, so additional card expansion is removed"
+  },
+  "sky": {
+    "path": "assets/registry/scenes/character-glade-sky.png",
+    "sha256": "177fc6e1b5d2c535a0417d4c3689b96f51165fa2bfebbd1be1c25df15a2962c5",
+    "parent": {
+      "package": "nature",
+      "revision": "0e05d58ed4beda3f9bae85f924ff3d578cb724fd82d427a59bc72a9570760b0a",
+      "path": "Preview_1.jpg",
+      "sha256": "e9bbf4408c8bc8fc39ed43988cbf2a369a4cccc5a827141d55d37f24613fe13d"
+    },
+    "method": "ImageGen edit: remove terrain, vegetation and rocks; extend the reference cyan sky, white cloud banks and wispy cirrus across the frame. Generated clean plate; not the original recovered sky.",
+    "mapping": "Directional far shell; reference camera projection; no camera translation parallax",
+    "parent_license": "CC0-1.0"
+  },
+  "remixes": [
+    {
+      "parent": "quaternius/nature/rock-medium-4",
+      "parent_revision": "182dd8cb65e21e09915845496a64b359f4fb5c63586f4294eb7846da45c79895",
+      "transform": "cg_cliff_cap_y: y<=1.2 ? y*1.5 : 1.8+(y-1.2)*0.05; inverse Jacobian normals; hero placement only",
+      "source": "verse/character-glade.coax"
+    }
+  ],
+  "texture_quality": {
+    "total_layers": 64,
+    "added_layers": 11,
+    "desktop_side": 1024,
+    "phone_side": 512,
+    "desktop_array_with_mips_mib": 341.33,
+    "phone_array_with_mips_mib": 85.33
+  },
+  "shader_dependencies": [
+    {
+      "path": "apps/openagents-web/gpu/fivelab.coax",
+      "sha256": "3f6651768804410ffd4044f30c240ebf24569cba7db7277c2467967a8d72dbbd"
+    },
+    {
+      "path": "apps/openagents-web/gpu/charactercreator.bindings",
+      "sha256": "1896675364cfe6bdc60552133fa804be4f670bf8d5682d6f2b63f3b114f79eff"
+    },
+    {
+      "path": "apps/openagents-web/gpu/charactercreator.module",
+      "sha256": "fa2a4345770853fd967eba130073637b5c7a6d881b83acfa19ed2f09c7f93a8f"
+    }
+  ]
 }

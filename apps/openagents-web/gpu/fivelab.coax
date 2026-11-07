@@ -428,7 +428,7 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
     k:f32=u[4];
     if (u[11]<0.5f32) {c=scale3(c,1.0f32-0.50f32*(1.0f32-smoothstep(450.0f32*k,520.0f32*k,p.x))*(1.0f32-smoothstep(45.0f32*k,105.0f32*k,p.y)));}
     if ((u[11]<0.5f32)&&cg_ui_cover(p,u[0],u[1],k)) {c=v3(0.025f32,0.036f32,0.046f32);dep=0.0f32;}
-    return FivelabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=dep};
+    return FivelabBg.{c=v4(c.x,c.y,c.z,saturate((verse_style_luma(c.x,c.y,c.z)-0.88f32)*8.0f32)),depth=dep};
   }
   if (u[10]>0.5f32) {
     g:V4=fivelab_glade(p,u,frame);
@@ -569,6 +569,7 @@ fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->Fivela
   return o;
 }
 fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
+  if (u[10]>1.5f32 && instance>=65536) {return cg_instanced_vs(id,instance,objects[cast(int)((instance>>16)-1)],u,vertices);}
   m:FivelabObj=objects[cast(int)instance];
   if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,u,vertices);}
   if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,u,bake); }
@@ -634,12 +635,9 @@ fivelab_dye :: (t:V3,dye:V4)->V3 {
   return mix3(t,dyed,mask*share);
 }
 FIVELAB_EYE_LAYER :: cast(u32)32; // the pack's layer of the people's eyes (T_Eye_Brown)
-fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler)->V4 {
-  tex:V4=render_sample_layer8_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),1.0f32);
-  grass_edge_width:f32=gpu_fwidth(s.uv.x)+gpu_fwidth(s.uv.y)*0.5f32;
+fivelab_scene_colour :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj)->V4 {
   m:FivelabObj=objects[cast(int)s.who];
   if (tex.w<0.35f32) { gpu_demote_helper(); }
-  if (s.dye.w>11.5f32) {return cg_environment_fs(s,tex,front,u,grass_edge_width);}
   t:f32=u[2];
   albedo:V3=mul3(fivelab_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
   glow:V3=v3(0.0f32,0.0f32,0.0f32);
@@ -754,3 +752,8 @@ fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 
 
 // ---- the vector helpers this file calls
 wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+
+fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler)->V4 {
+ tex:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,1);
+ return fivelab_scene_colour(s,tex,front,u,objects);
+}

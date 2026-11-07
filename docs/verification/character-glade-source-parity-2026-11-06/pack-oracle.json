@@ -1,0 +1,40 @@
+{
+  "bytes": 33304768,
+  "sha256": "dc038126015eb33b2543c0f0d29ba6f18ffa6e0d6014e356a833ba463c9a4de2",
+  "environment_vertices": 264939,
+  "environment_triangles": 191168,
+  "texture_layers": 64,
+  "source_grass_templates": [
+    {
+      "source": "Grass_Common_Short",
+      "vertices": 153,
+      "triangles": 155,
+      "instances": 4429
+    },
+    {
+      "source": "Grass_Wide_Short",
+      "vertices": 305,
+      "triangles": 370,
+      "instances": 1341
+    },
+    {
+      "source": "Grass_Wispy_Short",
+      "vertices": 559,
+      "triangles": 494,
+      "instances": 21442
+    }
+  ],
+  "source_grass_instances": 27212,
+  "source_grass_topology": "exact source indices and positions",
+  "grass_height_range": [
+    0.011751607542699358,
+    0.29691993807949607
+  ],
+  "bark_repeating_v_range": [
+    -26.467689021133744,
+    0.9995269703211989
+  ],
+  "rounded_canopy_vertices": 99334,
+  "original_character_payloads": "byte-identical",
+  "terrain_winding": "all 20000 faces upward"
+}

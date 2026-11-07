@@ -1,0 +1,3 @@
+--vertices charactercreator_bg_vs,charactercreator_shadow_vs,charactercreator_scene_vs,charactercreator_fx_vs
+--fragments charactercreator_bg_fs,charactercreator_shadow_fs,charactercreator_scene_fs,charactercreator_bloom_fs,charactercreator_post_fs,charactercreator_fx_fs
+--bindings apps/openagents-web/gpu/charactercreator.bindings --strip charactercreator_

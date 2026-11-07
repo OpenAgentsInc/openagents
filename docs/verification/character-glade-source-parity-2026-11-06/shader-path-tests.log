@@ -1,0 +1,7 @@
+ok   #test an explicit realm shader retains its own filename during staging (1 case, 369 steps, 0 ms)
+ok   #test arguments copy in, read by index, flag and value (1 case, 264971 steps, 7 ms)
+ok   #test arguments past the limits are dropped and flagged (1 case, 2902532 steps, 23 ms)
+ok   #test numbers: what Number() gives for plain decimals (1 case, 5489 steps, 0 ms)
+ok   #test sizes: WIDTHxHEIGHT (1 case, 1316 steps, 0 ms)
+ok   #test whole numbers (1 case, 409 steps, 0 ms)
+6 checks, 6 passed, 0 failed
