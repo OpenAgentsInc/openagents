@@ -144,3 +144,8 @@ Native version file effects live in `tools/anim-direction-store.coax`; browser
 session/effect bindings remain in `verse/animlab/`. The former realm project,
 scene and check paths are compatibility loaders. See the
 [directing profile](../docs/verse/anim-directing-v1.md).
+
+The component readers' shared closed-key lists live in `anim/field-catalog.coax`.
+Those exact lists also generate CLI authoring help; regenerate with
+`coax/web/tool.sh aethyr/tools/agent-help-build.coax` after changing a reader
+catalogue. The CLI build checks the generated file for drift.

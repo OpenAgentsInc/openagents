@@ -8,6 +8,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../aethyr/anim/cut-lines.coax";
+#load "../../aethyr/capture-profile.coax";
 
 EXIT_MISSING :: 8;   // a program Labs needs is missing (Chrome, ffmpeg, the transcribe backend)
 

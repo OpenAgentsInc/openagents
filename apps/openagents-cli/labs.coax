@@ -359,19 +359,21 @@ labs_clip :: (a: [] Args, r: [] Rep, profile: string) -> int {
     url = lb_with_stage(url, stage, sb[..]);
     if url == "" { return fail(r, EXIT_USAGE, "the URL is too long"); }
   }
-  size := lb_size(args_value(a, "--size", ""), args_has(a, "--phone"), args_has(a, "--square"), args_has(a, "--vertical"), ArgsSize.{ok = true, w = 1280, h = 720});
+  defaults:CaptureProfile;
+  size := lb_size(args_value(a, "--size", ""), args_has(a, "--phone"), args_has(a, "--square"), args_has(a, "--vertical"), ArgsSize.{ok = true, w = defaults.width, h = defaults.height});
   if !size.ok { return fail(r, EXIT_USAGE, "--size is WxH from 16 to 7680 each, and at most one of --size, --phone, --square, --vertical"); }
-  if size.w % 2 != 0 || size.h % 2 != 0 { return fail(r, EXIT_USAGE, "a clip's width and height are even numbers (H.264)"); }
-  seconds := lb_flag_ms(a, "--seconds", "3"); skip := lb_flag_ms(a, "--skip", "0");
-  fps := args_whole(args_value(a, "--fps", "30"));
-  if seconds <= 0 || seconds > 600000 { return fail(r, EXIT_USAGE, "--seconds is above 0 and at most 600"); }
-  if skip < 0 || skip > 3600000 { return fail(r, EXIT_USAGE, "--skip is seconds from 0 to 3600"); }
-  if fps < 1 || fps > 120 { return fail(r, EXIT_USAGE, "--fps is a whole number from 1 to 120"); }
+  seconds_text:[32]u8;skip_text:[32]u8;fps_text:[32]u8;
+  seconds := lb_flag_ms(a, CAPTURE_FIELDS[3].flag, lb_secs_text(defaults.seconds_ms,seconds_text[..])); skip := lb_flag_ms(a, CAPTURE_FIELDS[4].flag, lb_secs_text(defaults.skip_ms,skip_text[..]));
+  fps := args_whole(args_value(a, CAPTURE_FIELDS[2].flag, int_text(defaults.fps,fps_text[..])));
+  capture:=CaptureProfile.{width=size.w,height=size.h,fps=fps,seconds_ms=seconds,skip_ms=skip};
+  capture_fault:=capture_error(capture);
+  if capture_fault>=0 {message:[256]u8;at:=copy("film.capture.",message[..]);at+=copy(field_info(CaptureProfile,capture_fault).name,message[at..<message.count]);at+=copy(": outside the supported range or dimension parity (openagents help film)",message[at..<message.count]);return fail(r,EXIT_USAGE,cast(string)message[0..<at]);}
   if !lb_ends(out, ".mp4") { return fail(r, EXIT_USAGE, "OUT is an .mp4 file"); }
   code := lb_need_chrome(r); if code != EXIT_OK { return code; }
   code = lb_need_ffmpeg(r); if code != EXIT_OK { return code; }
   why: [2048] u8;
-  res := lb_clip_one(url, out, size, seconds, fps, skip, args_value(a, "--eval", ""), args_value(a, "--frames", ""), args_has(a, "--fresh"), ifx args_has(a, "--stage") then "staged" else "simulated", why[..]);
+  source:=CaptureSource.{url=url,out=out,stage=stage,script=args_value(a,CAPTURE_SOURCE_FIELDS[3].flag,""),frames=args_value(a,CAPTURE_SOURCE_FIELDS[4].flag,""),fresh=args_has(a,CAPTURE_SOURCE_FIELDS[5].flag)};
+  res := lb_clip_one(source.url, source.out, size, capture.seconds_ms, capture.fps, capture.skip_ms, source.script, source.frames, source.fresh, ifx args_has(a, "--stage") then "staged" else "simulated", why[..]);
   if res.code != EXIT_OK { return fail(r, res.code, lb_cstr(why[..])); }
   lp: [4200] u8; sz: [32] u8; st: [32] u8;
   rep_str(r, "out", out); rep_str(r, "url", url); rep_str(r, "size", lb_size_text(size, sz[..]));

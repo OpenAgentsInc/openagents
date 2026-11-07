@@ -38,6 +38,7 @@
 #load "transcribe.coax";
 #load "dictate-launch.coax";
 #load "labs.coax";
+#load "help.coax";
 #load "coder.coax";
 #load "mcp.coax";
 #load "skill.coax";
@@ -80,6 +81,8 @@ usage :: () {
   mcp_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
+  for topic:AGENT_HELP_TOPICS {print("  help % [--all]\n",topic);}
+  print("%\n", "  help field PATH");
   print("%\n", "");
   print("%\n", "Every command takes --json. Keys are kept in ~/.openagents/cli/keys/PROFILE, mode 0600.");
   print("%\n", "OPENAGENTS_KEYCHAIN=1 uses the macOS Keychain instead (it asks for your password after each rebuild).");
@@ -95,6 +98,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !args_load(a[..]) { tool_errln("openagents: arguments too long"); return EXIT_USAGE; }
   domain := positional(a[..], 0);
   verb := positional(a[..], 1);
+  if domain=="help" && verb!="" {return agent_help_main(a[..],r[..]);}
   realm_command := domain == "realm" && rc_find(verb) >= 0;
   anime_command := domain == "labs" && verb == "anime";
   anim_command := domain == "labs" && verb == "anim";

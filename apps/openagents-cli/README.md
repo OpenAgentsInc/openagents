@@ -24,6 +24,37 @@ none and on NixOS ([coax/platform/tls-env.sh](../../coax/platform/tls-env.sh);
 linked with Nix's OpenSSL carries Nix's glibc and does not start on an ordinary
 distribution.
 
+## Generated authoring help
+
+`openagents help anim`, `help film`, `help realm-edit` and `help appearance`
+print short, local pages with complete examples. Add `--all` for the catalogue,
+or ask for one exact field:
+
+```sh
+openagents help film
+openagents help anim --all
+openagents help field 'anim.scene.cameras[].fov'
+openagents help field appearance.eye_color
+```
+
+No identity or connection is required. Film help describes the current offline
+WebGPU capture profile; the advanced film renderer is separate work.
+
+The reader key lists in `aethyr/anim/field-catalog.coax`, reflected capture/edit/
+appearance records, and frozen wardrobe tables generate `help-generated.coax`.
+Do not edit that output. After a catalogue change, regenerate and check:
+
+```sh
+coax/web/tool.sh aethyr/tools/agent-help-build.coax
+coax/web/tool.sh aethyr/tools/agent-help-build.coax --check
+coax/web/tool.sh aethyr/tools/agent-help-count.coax
+```
+
+The CLI build refuses stale generated help. The generator admits its examples
+through the real readers. The count check uses the pinned ordinary-text Harmony
+tokenizer and enforces 2,500 tokens per first page. See the
+[verification record](../../docs/verification/agent-help-13013/README.md).
+
 ## Identity
 
 ```sh

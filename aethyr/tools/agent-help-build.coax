@@ -1,0 +1,108 @@
+// Generate CLI help from reader key catalogues, reflected records and asset tables.
+// coax/web/tool.sh aethyr/tools/agent-help-build.coax [--check]
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/net/ws.coax";
+#load "../anim/cut-document.coax";
+#load "../capture-profile.coax";
+#load "../character-appearance.coax" as appearance;
+#load "../../verse/everglade/edits.coax";
+
+HelpText :: struct {data:[131072]u8;n:int;bad:bool;}
+HelpBuild :: struct {first:[4]HelpText;rows:[1]HelpText;count:int;}
+hb_put :: (b:[]HelpText,text:string) {if b[0].bad {return;}n:=ws_put(b[0].data[..],b[0].n,text);if n<0 {b[0].bad=true;}else {b[0].n=n;}}
+hb_num :: (b:[]HelpText,value:int) {if b[0].bad {return;}n:=ws_digits(b[0].data[..],b[0].n,value);if n<0 {b[0].bad=true;}else {b[0].n=n;}}
+hb_text :: (b:[]HelpText)->string {return cast(string)b[0].data[0..<b[0].n];}
+hb_quote :: (b:[]HelpText,text:string) {bytes:[131072]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_str(o[..],text);if o[0].bad {b[0].bad=true;}else {hb_put(b,jo_text(o[..]));}}
+hb_field :: (b:[]HelpBuild,path:string,detail:string) {
+ hb_put(b[0].rows[0..<1]," AgentHelpField.{path=");hb_quote(b[0].rows[0..<1],path);hb_put(b[0].rows[0..<1],",text=");hb_quote(b[0].rows[0..<1],detail);hb_put(b[0].rows[0..<1],"},\n");b[0].count+=1;
+}
+HB_SCENE :: "{\"schema\":\"anim.scene.v1\",\"name\":\"help-scene\",\"length\":1,\"style\":\"cel\",\"stage\":{\"realm\":\"animation-lab\",\"place\":\"studio\",\"time\":0.8,\"weather\":\"clear\"},\"cast\":[],\"props\":[],\"effects\":[],\"lights\":[],\"cameras\":[{\"name\":\"wide\",\"fov\":0.8,\"focus\":3,\"keys\":[{\"at\":0,\"eye\":[0,2,4],\"look\":[0,1,0],\"cut\":true,\"ease\":0},{\"at\":1,\"eye\":[1,2,4],\"look\":[0,1,0],\"cut\":false,\"ease\":1}]}],\"sounds\":[]}";
+
+// Resolve canonical object paths into an admitted scene fixture for examples.
+hb_scene_node :: (d:Jv,path:string)->int {
+ prefix:="anim.scene";if !ws_starts(path,prefix) {return -1;}node:=0;i:=prefix.count;
+ while i<path.count {
+  if path[i]!='.' {return -1;}i+=1;j:=i;while j<path.count && path[j]!='.' && path[j]!='[' {j+=1;}
+  node=jv_get(d,node,path[i..<j]);i=j;
+  if i+1<path.count && path[i..<i+2]=="[]" {node=jv_at(d,node,0);i+=2;}
+  if node<0 {return -1;}
+ }return node;
+}
+hb_anim :: (b:[]HelpBuild)->bool {
+ packs:[1]AnimPack;rigs:[1]AnimRig;performances:[1]AnimPerformance;scene:[1]AnimScene;
+ if anim_scene_load(HB_SCENE,packs[0..<0],rigs[0..<0],performances[0..<0],scene[..])!=ANIM_OK {return false;}
+ first:=b[0].first[0..<1];hb_put(first,"Animation documents\nUse openagents labs anim check PROJECT.alp1 before play or edit.\nThe ALP1 project retains its ALB1 libraries, performances, scene and cut; JSON components alone are not an ALP1 file.\n\nComplete asset-independent scene component (admitted by anim_scene_load):\n");hb_put(first,HB_SCENE);
+ hb_put(first,"\n\nLengths and key times are seconds; camera fov is radians, focus and positions are metres. Keys strictly increase. Camera focus and stage weather/time remain metadata in the inspection renderer. An edit uses labs anim edit PROJECT.alp1 --say WORDS through the schema-constrained Decisions API, then labs anim check and play. Licensed library bytes remain private and unchanged.\n\nObject topics (use --all for every key, or help field anim.scene.cameras[].fov):\n");
+ d:[1]Jv;nodes:[8192]JvNode;if !jv_parse(d[..],AS_TEST,nodes[..]) {return false;}
+ for group:ANIM_FIELD_GROUPS {
+  if anim_field_keys(group.path)!=group.keys {return false;}
+  hb_put(first,group.path);hb_put(first,"\n");i:=0;
+  while i<group.keys.count {
+   j:=i;while j<group.keys.count && group.keys[j]!='|' {j+=1;}key:=group.keys[i..<j];path:[512]u8;at:=ws_put(path[..],0,group.path);at=ws_put(path[..],at,".");at=ws_put(path[..],at,key);if at<0 {return false;}
+   detail:[1]HelpText;hb_put(detail[..],"Accepted key in ");hb_put(detail[..],group.path);hb_put(detail[..],". Object keys are closed; unknown keys are refused. Values and cross-references still pass the versioned reader.\n");
+   node:=hb_scene_node(d[0],group.path);value:=jv_get(d[0],node,key);
+   if value>=0 {hb_put(detail[..],"Reader-tested example value: ");hb_put(detail[..],jv_raw(d[0],value));hb_put(detail[..],"\n");}
+   hb_field(b,cast(string)path[0..<at],hb_text(detail[..]));i=j+1;
+  }
+ }return true;
+}
+hb_film :: (b:[]HelpBuild) {
+ first:=b[0].first[1..<2];hb_put(first,"Film capture with today's tools\nThe current capture record drives openagents labs clip: fixed-step WebGPU frames, retained PNGs and H.264 MP4. This is the existing live rendering profile captured offline. F1 accumulation/physical optics, traced film and native three-world qualification remain separate open work; no unsupported quality switch is implied.\n\nComplete working shot, with the local built site served at 127.0.0.1:9377:\nopenagents labs clip http://127.0.0.1:9377/worlds/everglade2 /tmp/help-film.mp4 --size 640x360 --seconds 1 --fps 24 --frames /tmp/help-film-frames --fresh\n\nFrom a repository checkout, serve the built site using:\ncoax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:9377\nRun that server separately and keep it running during capture. A source checkout must build the selected realm's Wasm/host components first; help does not install assets or build a realm.\n\nInspect one option with help field film.capture.fps; --all lists all current fields. Numeric profile fields:\n");
+ for f,i:CAPTURE_FIELDS {
+  meta:=field_info(CaptureProfile,i);path:[256]u8;at:=ws_put(path[..],0,"film.capture.");at=ws_put(path[..],at,meta.name);
+  text:[1]HelpText;hb_put(text[..],f.flag);hb_put(text[..],"; ");hb_put(text[..],f.unit);hb_put(text[..],"; inclusive range ");hb_num(text[..],f.minimum);hb_put(text[..],"..");hb_num(text[..],f.maximum);hb_put(text[..],"; default ");hb_num(text[..],f.initial);hb_put(text[..],".\n");
+  hb_field(b,cast(string)path[0..<at],hb_text(text[..]));hb_put(first,meta.name);hb_put(first,": ");hb_put(first,hb_text(text[..]));
+ }
+ for f,i:CAPTURE_SOURCE_FIELDS {
+  meta:=field_info(CaptureSource,i);path:[256]u8;at:=ws_put(path[..],0,"film.source.");at=ws_put(path[..],at,meta.name);
+  text:[1]HelpText;hb_put(text[..],f.flag);hb_put(text[..],": ");hb_put(text[..],f.detail);hb_put(text[..],".\n");hb_field(b,cast(string)path[0..<at],hb_text(text[..]));
+ }
+ hb_put(first,"\nAlternative sizes: --phone, --square or --vertical, mutually exclusive with --size. --stage NAME appends the named stage to the URL. --eval runs setup once. No capture plays audio on the owner's computer. An OUT.mp4.json sidecar records source/capture identity. Errors use film.capture.FIELD.\nNative F0 frames already written by vk-realm can be reviewed/encoded with coax/web/tool.sh aethyr/tools/film-frames.coax DIR --out OUT.mp4 [--audio WAV]; this does not claim completion of F0's remaining parity/Metal gates.\n");
+}
+hb_realm :: (b:[]HelpBuild)->bool {
+ first:=b[0].first[2..<3];hb_put(first,"Everglade realm edits\nThis is the eg-edit 1 overlay, not a replacement for the designed city or an authority grant. Publishing still requires the server's admin/owner checks and world revision rules. This help performs no publication.\n\nComplete codec example (metres internally; text x/z/lift in centimetres, yaw in degrees, size in percent):\n");
+ e:EgEdits;e.n=1;e.things[0]=EgThing.{kind=0,x=6,z= -12,yaw=0,size=1};bytes:[65536]u8;n:=eg_edits_text(e,bytes[..]);back:[1]EgEdits;
+ if n<1 || !eg_edits_read(cast(string)bytes[0..<n],back[..]) || back[0].n!=1 {return false;}
+ hb_put(first,cast(string)bytes[0..<n]);hb_put(first,"\nThe t row places an item; p SPOT hides a planned person and b BUILDING hides a planned building. Group/lift/tint are optional trailing fields. Decoding is not placement permission: collision/world-boundary checks still apply. --all lists the live item catalogue and fields; help field realm-edit.thing.kind returns one field.\n\nItem catalogue:\n");
+ if type_info(EgThing).field_count!=8 {return false;}
+ for i:0..<type_info(EgThing).field_count {
+  meta:=field_info(EgThing,i);path:[256]u8;at:=ws_put(path[..],0,"realm-edit.thing.");at=ws_put(path[..],at,meta.name);
+  text:[1]HelpText;hb_put(text[..],"EgThing field ");hb_put(text[..],meta.name);hb_put(text[..]," (");hb_put(text[..],meta.type_name);hb_put(text[..],"). Text column ");hb_num(text[..],i+1);hb_put(text[..]," after t.\n");
+  if meta.name=="kind" {hb_put(text[..],"Integer item ID in the generated catalogue, 0..");hb_num(text[..],EG_EDIT_ITEMS-1);hb_put(text[..],".\n");}
+  hb_field(b,cast(string)path[0..<at],hb_text(text[..]));
+ }
+ for name,k:EG_EDIT_NAME {text:[1]HelpText;hb_num(text[..],k);hb_put(text[..],": ");hb_put(text[..],name);hb_put(text[..],"\n");hb_put(first,hb_text(text[..]));path:[256]u8;at:=ws_put(path[..],0,"realm-edit.catalog[");at=ws_digits(path[..],at,k);at=ws_put(path[..],at,"]");hb_field(b,cast(string)path[0..<at],hb_text(text[..]));}
+ return true;
+}
+hb_appearance :: (b:[]HelpBuild)->bool {
+ first:=b[0].first[3..<4];hb_put(first,"Character appearance\nCC2 is the existing frozen 56-byte appearance record. It owns choices, not geometry addresses, authority or renderer state. Character Create's SAVE PLAYER publishes the draft; RESET does not overwrite the saved player.\n\nComplete working record for the default Wizard outfit:\n");
+ a:[1]appearance.CharacterAppearance;appearance.ca_preset(a[..],2);bytes:[64]u8;n:=appearance.ca_save(a[0],bytes[..]);back:[1]appearance.CharacterAppearance;
+ if n!=56 || !appearance.ca_restore(back[..],cast(string)bytes[0..<n]) {return false;}
+ hb_put(first,cast(string)bytes[0..<n]);hb_put(first,"\n\nUse /worlds/character-creator to edit and SAVE PLAYER to apply through the existing profile path. This codec example is data, not a new CLI write command. Legacy CC1 is read and migrated; source arrays are runtime-only. Do not reorder or reuse CC2 wardrobe slots. Use help field appearance.eye_color or --all for every saved choice and part.\n\nSaved fields:\n");
+ for i:0..<type_info(appearance.CharacterAppearance).field_count {
+  meta:=field_info(appearance.CharacterAppearance,i);
+  if meta.name=="configured" || ws_starts(meta.name,"source_") {continue;}
+  path:[256]u8;at:=ws_put(path[..],0,"appearance.");at=ws_put(path[..],at,meta.name);
+  text:[1]HelpText;hb_put(text[..],"Saved CharacterAppearance field ");hb_put(text[..],meta.name);hb_put(text[..]," (");hb_put(text[..],meta.type_name);hb_put(text[..],"). CC2's existing decoder validates the choice, hides hair under hoods and filters unselectable parts.\n");
+  if meta.name=="eye_color" {hb_put(text[..],"0 Brown, 1 Blue, 2 Green, 3 Amber, 4 Gray, 5 Violet.\n");}
+  hb_field(b,cast(string)path[0..<at],hb_text(text[..]));hb_put(first,meta.name);hb_put(first,"\n");
+ }
+ for k:0..<40 {
+  path:[256]u8;at:=ws_put(path[..],0,"appearance.worn[");at=ws_digits(path[..],at,k);at=ws_put(path[..],at,"]");text:[1]HelpText;
+  hb_put(text[..],"Frozen CC2 slot ");hb_num(text[..],k);hb_put(text[..],". Female source: ");hb_put(text[..],appearance.PART_NAMES[k]);hb_put(text[..],"; male source: ");hb_put(text[..],appearance.PART_NAMES[k+40]);hb_put(text[..],". ");
+  hb_put(text[..],ifx appearance.PART_SELECTABLE[k] then "Selectable subject to body/hood compatibility.\n" else "Not selectable; true is filtered by the decoder.\n");hb_field(b,cast(string)path[0..<at],hb_text(text[..]));
+ }return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) {return 2;}b:[1]HelpBuild;
+ if !hb_anim(b[..]) || !hb_realm(b[..]) || !hb_appearance(b[..]) {tool_errln("agent help example/reader admission failed");return 1;}hb_film(b[..]);
+ out:[1]HelpText;hb_put(out[..],"// Generated by aethyr/tools/agent-help-build.coax. Regenerate; do not edit.\n#load \"help-rules.coax\";\nAGENT_HELP_FIRST :: [4]string.[\n");
+ for i:0..<4 {if b[0].first[i].bad {return 1;}hb_quote(out[..],hb_text(b[0].first[i..<i+1]));hb_put(out[..],",\n");}hb_put(out[..],"];\nAGENT_HELP_FIELDS :: [");hb_num(out[..],b[0].count);hb_put(out[..],"]AgentHelpField.[\n");hb_put(out[..],hb_text(b[0].rows[0..<1]));hb_put(out[..],"];\n");
+ if out[0].bad || b[0].rows[0].bad {tool_errln("agent help output exceeds capacity");return 1;}
+ path:="apps/openagents-cli/help-generated.coax";
+ if args_has(args[..],"--check") {check_path:=ifx args_count(args[..])==2 then args_at(args[..],1) else path;old:[131072]u8;n:=fs_read(check_path,old[..]);if n!=out[0].n || cast(string)old[0..<n]!=hb_text(out[..]) {tool_errln("generated agent help is stale");return 1;}}
+ else {if !fs_write("apps/openagents-cli/help-generated.coax.tmp",hb_text(out[..])) || !fs_rename("apps/openagents-cli/help-generated.coax.tmp",path) {return 1;}}
+ print("agent help: % fields, % bytes; examples admitted\n",b[0].count,out[0].n);return 0;
+}

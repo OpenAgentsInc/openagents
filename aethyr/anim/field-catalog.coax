@@ -1,0 +1,48 @@
+// The accepted object fields of the versioned animation document readers.
+// Readers and generated agent help use this one catalogue.
+#authority;
+AnimFieldGroup :: struct {path:string;keys:string;}
+ANIM_FIELD_GROUPS :: [36]AnimFieldGroup.[
+  AnimFieldGroup.{path="anim.buffer",keys="pack|offset|count|stride|width"},
+  AnimFieldGroup.{path="anim.rig",keys="schema|name|joints|rest|bind|sections|materials|shapes|controls|face_bones|face_map|dna|morphs"},
+  AnimFieldGroup.{path="anim.rig.joints[]",keys="name|parent|mannequin|offset"},
+  AnimFieldGroup.{path="anim.rig.face_map[]",keys="input|outputs"},
+  AnimFieldGroup.{path="anim.rig.face_map[].outputs[]",keys="kind|name|weight"},
+  AnimFieldGroup.{path="anim.rig.sections[]",keys="format|vertices|indices|material"},
+  AnimFieldGroup.{path="anim.rig.morphs[]",keys="shape|section|data"},
+  AnimFieldGroup.{path="anim.clip",keys="schema|name|rig|frames|rate|length|loop|joints|body|root|curves|face|face_bones|face_pose|events|source"},
+  AnimFieldGroup.{path="anim.clip.events[]",keys="at|kind|joint"},
+  AnimFieldGroup.{path="anim.clip.source",keys="pack|role|receipt"},
+  AnimFieldGroup.{path="anim.performance",keys="schema|name|rig|length|layers"},
+  AnimFieldGroup.{path="anim.performance.layers[]",keys="kind|clip|start|end|speed|blend_in|blend_out|weight|mask|solver|joint|target"},
+  AnimFieldGroup.{path="anim.scene.cast[].path[]",keys="at|position|yaw"},
+  AnimFieldGroup.{path="anim.scene.cameras[]",keys="name|fov|focus|keys"},
+  AnimFieldGroup.{path="anim.scene.cameras[].keys[]",keys="at|eye|look|cut|ease"},
+  AnimFieldGroup.{path="anim.scene",keys="schema|name|length|style|stage|cast|props|effects|lights|cameras|sounds"},
+  AnimFieldGroup.{path="anim.scene.stage",keys="realm|place|time|weather"},
+  AnimFieldGroup.{path="anim.scene.cast[]",keys="name|rig|look|performance|path"},
+  AnimFieldGroup.{path="anim.scene.props[]",keys="name|rig|position|rotation|scale"},
+  AnimFieldGroup.{path="anim.scene.effects[]",keys="name|kind|start|end|position|size|seed"},
+  AnimFieldGroup.{path="anim.scene.lights[]",keys="name|keys"},
+  AnimFieldGroup.{path="anim.scene.lights[].keys[]",keys="at|position|colour|intensity"},
+  AnimFieldGroup.{path="anim.scene.sounds[]",keys="name|kind|start|end|gain|cast|voice|words|source"},
+  AnimFieldGroup.{path="anim.cut",keys="schema|name|scene|fps|shots"},
+  AnimFieldGroup.{path="anim.cut.shots[]",keys="name|camera|from|to|transition|blend"},
+  AnimFieldGroup.{path="anim.legacy-cut",keys="schema|name|fps|size|music|voice|fade_in|fade_out|shots"},
+  AnimFieldGroup.{path="anim.pose",keys="schema|name|rig|joints|face"},
+  AnimFieldGroup.{path="anim.pose.joints[]",keys="name|rotation"},
+  AnimFieldGroup.{path="anim.pose.face[]",keys="name|value"},
+  AnimFieldGroup.{path="anim.direction",keys="schema|kind|actor|row|option|at|end|value|point|confidence"},
+  AnimFieldGroup.{path="anim.direction.confidence",keys="kind|actor|row|option|at|end|value|point"},
+  AnimFieldGroup.{path="anim.direct.reply",keys="schema|base|direction"},
+  AnimFieldGroup.{path="anim.direct.request",keys="schema|base|words|stock"},
+  AnimFieldGroup.{path="anim.unreal.meshes[]",keys="asset|name"},
+  AnimFieldGroup.{path="anim.unreal.animations[]",keys="asset|name|face_only"},
+  AnimFieldGroup.{path="anim.unreal.source",keys="schema|project|profile|meshes|animations"},
+];
+#test "animation field catalogue lookup is complete and refuses unknown paths" {
+  #assert anim_field_keys("anim.scene.cameras[]")=="name|fov|focus|keys";
+  #assert anim_field_keys("")=="" && anim_field_keys("anim.unknown")=="";
+  for group:ANIM_FIELD_GROUPS {#assert group.keys.count>0 && anim_field_keys(group.path)==group.keys;}
+}
+anim_field_keys :: (path:string)->string #effects(all) {for group:ANIM_FIELD_GROUPS {if group.path==path {return group.keys;}}return "";}

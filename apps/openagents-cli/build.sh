@@ -20,6 +20,7 @@ if [[ "$(uname -s)" == Darwin ]]; then
   dlibs=(-framework AVFoundation -framework AudioToolbox -framework CoreAudio -framework Metal -framework Foundation); dmac=("$here/dictate-mac.m" -fobjc-arc)
 else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); dlibs=(-ldl); dmac=(); fi
 . "$p/tls-env.sh"
+(cd "$repo" && COAX="$coax" "$repo/coax/web/tool.sh" aethyr/tools/agent-help-build.coax --check) > /dev/null
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
 "$coax" c "$here/main.coax" --library > "$work/openagents.c"   # main.coax declares its #run_steps

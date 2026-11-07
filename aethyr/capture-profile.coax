@@ -1,0 +1,45 @@
+// The current offline capture profile used by labs clip and generated help.
+// This is the existing WebGPU clip profile, not film F1 accumulation/optics.
+#authority;
+CaptureProfile :: struct {width:int=1280;height:int=720;fps:int=30;seconds_ms:int=3000;skip_ms:int;}
+CaptureSource :: struct {url:string;out:string;stage:string;script:string;frames:string;fresh:bool;}
+CaptureSourceField :: struct {flag:string;detail:string;}
+CAPTURE_SOURCE_FIELDS :: [6]CaptureSourceField.[
+ CaptureSourceField.{flag="URL",detail="http(s), file URL or root-relative realm path"},
+ CaptureSourceField.{flag="OUT.mp4",detail="output H.264 MP4 path"},
+ CaptureSourceField.{flag="--stage",detail="named stage: 1..32 lowercase letters, digits, hyphen or underscore"},
+ CaptureSourceField.{flag="--eval",detail="optional one-time browser setup JavaScript"},
+ CaptureSourceField.{flag="--frames",detail="optional retained PNG frame directory"},
+ CaptureSourceField.{flag="--fresh",detail="bypass the cached capture and record again"}
+];
+CaptureField :: struct {flag:string;unit:string;minimum:int;maximum:int;initial:int;}
+CAPTURE_FIELDS :: [5]CaptureField.[
+ CaptureField.{flag="--size",unit="even pixels, WIDTHxHEIGHT",minimum=16,maximum=7680,initial=1280},
+ CaptureField.{flag="--size",unit="even pixels, WIDTHxHEIGHT",minimum=16,maximum=7680,initial=720},
+ CaptureField.{flag="--fps",unit="frames per second",minimum=1,maximum=120,initial=30},
+ CaptureField.{flag="--seconds",unit="milliseconds internally; CLI takes seconds",minimum=1,maximum=600000,initial=3000},
+ CaptureField.{flag="--skip",unit="milliseconds internally; CLI takes seconds",minimum=0,maximum=3600000,initial=0}
+];
+#test "capture metadata covers the actual profile and default record" {
+ #assert type_info(CaptureProfile).field_count==CAPTURE_FIELDS.count;
+ #assert type_info(CaptureSource).field_count==CAPTURE_SOURCE_FIELDS.count;
+ p:CaptureProfile;#assert capture_valid(p);
+ values:=[5]int.[p.width,p.height,p.fps,p.seconds_ms,p.skip_ms];
+ for f,i:CAPTURE_FIELDS {#assert values[i]==f.initial && field_info(CaptureProfile,i).name.count>0;}
+}
+#test "capture field limits and even dimensions match the supported profile" {
+ p:CaptureProfile;
+ p.width=17;#assert capture_error(p)==0;p=CaptureProfile.{};p.height=17;#assert capture_error(p)==1;
+ p=CaptureProfile.{};
+ for width:[6]int.[0,15,16,17,7680,7682] {p.width=width;#assert capture_valid(p)==(width==16 || width==7680);}
+ p=CaptureProfile.{};for height:[6]int.[0,15,16,17,7680,7682] {p.height=height;#assert capture_valid(p)==(height==16 || height==7680);}
+ p=CaptureProfile.{};for fps:[5]int.[0,1,30,120,121] {p.fps=fps;#assert capture_valid(p)==(fps>=1 && fps<=120);}
+ p=CaptureProfile.{};for ms:[5]int.[0,1,3000,600000,600001] {p.seconds_ms=ms;#assert capture_valid(p)==(ms>=1 && ms<=600000);}
+ p=CaptureProfile.{};for skip:[4]int.[-1,0,3600000,3600001] {p.skip_ms=skip;#assert capture_valid(p)==(skip>=0 && skip<=3600000);}
+}
+capture_error :: (p:CaptureProfile)->int #effects(all) {
+ values:=[5]int.[p.width,p.height,p.fps,p.seconds_ms,p.skip_ms];
+ for f,i:CAPTURE_FIELDS {if values[i]<f.minimum || values[i]>f.maximum {return i;}}
+ if p.width%2!=0 {return 0;}if p.height%2!=0 {return 1;}return -1;
+}
+capture_valid :: (p:CaptureProfile)->bool #effects(all) {return capture_error(p)== -1;}

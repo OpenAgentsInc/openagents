@@ -1,0 +1,12 @@
+PASS help anim and --all
+PASS help film and --all
+PASS help realm-edit and --all
+PASS help appearance and --all
+PASS all 302 exact field lookups
+PASS unknown topic, unknown field, extra argument: exit 2
+PASS invalid fps: field diagnostic, exit 2
+PASS invalid seconds_ms: field diagnostic, exit 2
+PASS invalid width: field diagnostic, exit 2
+PASS invalid height: field diagnostic, exit 2
+PASS invalid skip_ms: field diagnostic, exit 2
+PASS generic help discovers new topics

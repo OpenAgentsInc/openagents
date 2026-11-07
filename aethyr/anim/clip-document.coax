@@ -18,7 +18,7 @@ anim_track_names :: (d:Jv,node:int,names:[]AnimName,out:[]int)->int #effects(all
  for k:0..<count {id:=anim_find(names,anim_name(d,jv_at(d,node,k)));if id<0 {return -1;}for j:0..<k {if out[j]==id {return -1;}}out[k]=id;}return count;
 }
 anim_clip_read :: (d:Jv,packs:[]AnimPack,rigs:[]AnimRig,out:[]AnimClip)->int #effects(all) {
- if !anim_schema(d,"anim.clip.v1") || !anim_keys(d,0,"schema|name|rig|frames|rate|length|loop|joints|body|root|curves|face|face_bones|face_pose|events|source") {return ANIM_SCHEMA;}
+ if !anim_schema(d,"anim.clip.v1") || !anim_keys(d,0,anim_field_keys("anim.clip")) {return ANIM_SCHEMA;}
  c:AnimClip;c.name=anim_name(d,jv_get(d,0,"name"));c.rig=anim_name(d,jv_get(d,0,"rig"));if c.name.n==0 || c.rig.n==0 {return ANIM_NAME;}
  ri:= -1;for r,k:rigs {if r.ready && anim_equal(r.name,c.rig) {ri=k;break;}}if ri<0 {return ANIM_REFERENCE;}r:=rigs[ri];
  c.frames=anim_integer(d,jv_get(d,0,"frames"),2,2000);rate:=anim_number(d,jv_get(d,0,"rate"),0.001,240);length:=anim_number(d,jv_get(d,0,"length"),0.001,600);
@@ -32,10 +32,10 @@ anim_clip_read :: (d:Jv,packs:[]AnimPack,rigs:[]AnimRig,out:[]AnimClip)->int #ef
  face:=jv_get(d,0,"face");if c.curve_count>0 {c.face=anim_part(d,face,packs);p:=c.face;if p.pack<0 || p.count!=c.frames*c.curve_count || p.width!=4 {return ANIM_RANGE;}for k:0..<p.count {if !anim_floats(packs[p.pack].bytes,p.offset+k*p.stride,1) {return ANIM_NUMBER;}}}else if face!= -1 {return ANIM_RANGE;}
  root:=jv_get(d,0,"root");if root!= -1 {c.root=anim_part(d,root,packs);p:=c.root;if p.pack<0 || p.count!=c.frames || p.width!=12 {return ANIM_RANGE;}for k:0..<p.count {if !anim_floats(packs[p.pack].bytes,p.offset+k*p.stride,3) {return ANIM_NUMBER;}}}
  events:=jv_get(d,0,"events");c.event_count=jv_len(d,events);if jv_kind(d,events)!=JV_ARRAY || c.event_count>256 {return ANIM_LIMIT;}previous:f64=0;
- for k:0..<c.event_count {row:=jv_at(d,events,k);if !anim_keys(d,row,"at|kind|joint") {return ANIM_SCHEMA;}at:=anim_number(d,jv_get(d,row,"at"),previous,length.value);words:=[4]string.["foot-down","foot-up","contact","cast"];tag:=anim_choice(d,jv_get(d,row,"kind"),words[..]);if !at.ok || tag<0 {return ANIM_NUMBER;}
+ for k:0..<c.event_count {row:=jv_at(d,events,k);if !anim_keys(d,row,anim_field_keys("anim.clip.events[]")) {return ANIM_SCHEMA;}at:=anim_number(d,jv_get(d,row,"at"),previous,length.value);words:=[4]string.["foot-down","foot-up","contact","cast"];tag:=anim_choice(d,jv_get(d,row,"kind"),words[..]);if !at.ok || tag<0 {return ANIM_NUMBER;}
   joint:=anim_find(r.names[0..<r.joints],anim_name(d,jv_get(d,row,"joint")));if joint<0 {return ANIM_REFERENCE;}c.events[k]=AnimEvent.{at=cast(f32)at.value,kind=tag,joint=joint};previous=at.value;
  }
- source:=jv_get(d,0,"source");if !anim_keys(d,source,"pack|role|receipt") {return ANIM_SCHEMA;}ids:[2]AssetId;if !anim_hash(d,jv_get(d,source,"pack"),ids[..]) || !anim_hash(d,jv_get(d,source,"receipt"),ids[1..<2]) {return ANIM_REFERENCE;}c.source=ids[0];c.receipt=ids[1];c.role=anim_name(d,jv_get(d,source,"role"));if c.role.n==0 {return ANIM_NAME;}
+ source:=jv_get(d,0,"source");if !anim_keys(d,source,anim_field_keys("anim.clip.source")) {return ANIM_SCHEMA;}ids:[2]AssetId;if !anim_hash(d,jv_get(d,source,"pack"),ids[..]) || !anim_hash(d,jv_get(d,source,"receipt"),ids[1..<2]) {return ANIM_REFERENCE;}c.source=ids[0];c.receipt=ids[1];c.role=anim_name(d,jv_get(d,source,"role"));if c.role.n==0 {return ANIM_NAME;}
  c.ready=true;out[0]=c;return ANIM_OK;
 }
 anim_clip_load :: (text:string,packs:[]AnimPack,rigs:[]AnimRig,out:[]AnimClip)->int #effects(all) {if out.count<1 {return ANIM_CAPACITY;}nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}return anim_clip_read(d[0],packs,rigs,out);}

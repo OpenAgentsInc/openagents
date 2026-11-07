@@ -1,0 +1,16 @@
+// Count the four generated first pages with the pinned gpt-oss ordinary-text
+// tokenizer, based on the exact o200k_base ranks. No model weights required.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../psionic/lib/harmony/tokenizer.coax";
+#load "../../apps/openagents-cli/help-generated.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ table:[16777216]u8;n:=fs_read("psionic/fixtures/harmony/gptoss.hst",table[..]);if n<1 {return 1;}
+ tokens:[16384]int;stage:[65536]int;symbols:[65536]int;
+ for text,i:AGENT_HELP_FIRST {
+  r:=hs_encode_checked(table[0..<n],text,tokens[..],stage[..],symbols[..],false);
+  if r.status!=PtStatus.ok || !ah_tokens(r.written) {print("FAIL %: % tokens, status %\n",AGENT_HELP_TOPICS[i],r.written,cast(int)r.status);return 1;}
+  print("% % tokens (% bytes)\n",AGENT_HELP_TOPICS[i],r.written,text.count);
+ }return 0;
+}

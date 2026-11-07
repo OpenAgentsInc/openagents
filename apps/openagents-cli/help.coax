@@ -1,0 +1,14 @@
+#load "help-generated.coax";
+
+agent_help_main :: (a:[]Args,r:[]Rep)->int {
+ q:=ah_parse(a);
+ if !q.ok {return fail(r,EXIT_USAGE,"help anim|film|realm-edit|appearance [--all], or help field PATH");}
+ if q.field!="" {
+  at:=ah_find(AGENT_HELP_FIELDS[..],q.field);
+  if at<0 {message:[512]u8;n:=copy("unknown help field: ",message[..]);n+=copy(q.field,message[n..<message.count]);return fail(r,EXIT_USAGE,cast(string)message[0..<n]);}
+  print("%\n%",AGENT_HELP_FIELDS[at].path,AGENT_HELP_FIELDS[at].text);return EXIT_OK;
+ }
+ print("%",AGENT_HELP_FIRST[q.topic]);
+ if q.all {for field:AGENT_HELP_FIELDS {prefix:[64]u8;n:=copy(AGENT_HELP_TOPICS[q.topic],prefix[..]);if field.path.count>n && field.path[0..<n]==cast(string)prefix[0..<n] && field.path[n]=='.' {print("\n%\n%",field.path,field.text);}}}
+ return EXIT_OK;
+}

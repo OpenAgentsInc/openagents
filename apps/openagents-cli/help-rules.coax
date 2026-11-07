@@ -1,0 +1,51 @@
+// Generated help dispatch is local, deterministic and needs no account.
+#load "../../coax/lib/sys/args.coax";
+#authority;
+AGENT_HELP_TOPICS :: [4]string.["anim","film","realm-edit","appearance"];
+AgentHelpField :: struct {path:string;text:string;}
+HelpRequest :: struct {ok:bool;topic:int= -1;all:bool;field:string;}
+#test "help topics and argument shapes refuse unknown or ambiguous requests" {
+ for topic,k:AGENT_HELP_TOPICS {#assert ah_topic(topic)==k;}
+ #assert ah_topic("")== -1 && ah_topic("other")== -1;
+ a:[1]Args;#assert args_add(a[..],"help") && args_add(a[..],"anim");
+ q:=ah_parse(a[..]);#assert q.ok && q.topic==0 && !q.all && q.field=="";
+ #assert args_add(a[..],"--all");q=ah_parse(a[..]);#assert q.ok && q.all;
+ #assert args_add(a[..],"extra") && !ah_parse(a[..]).ok;
+ b:[1]Args;#assert args_add(b[..],"help") && args_add(b[..],"field") && args_add(b[..],"anim.scene.cameras[].fov");
+ q=ah_parse(b[..]);#assert q.ok && q.topic== -1 && q.field=="anim.scene.cameras[].fov";
+ b[0].n=2;#assert !ah_parse(b[..]).ok;
+ b[0].n=3;b[0].v[2]="--all";#assert !ah_parse(b[..]).ok;
+ a[0].n=2;a[0].v[1]="unknown";#assert !ah_parse(a[..]).ok;
+ a[0].n=1;#assert !ah_parse(a[..]).ok;a[0].n=0;#assert !ah_parse(a[..]).ok;
+ a[0].n=2;a[0].v[0]="other";a[0].v[1]="anim";#assert !ah_parse(a[..]).ok;
+ a[0].v[0]="help";a[0].n=3;a[0].v[2]="unknown";#assert !ah_parse(a[..]).ok;
+}
+#test "help field syntax and token budget have sharp boundaries" {
+ #assert ah_path("film.capture.fps") && ah_path("appearance.worn[0]") && ah_path("anim.scene.cameras[].fov");
+ #assert !ah_path("") && !ah_path("x\ny") && !ah_path("--all") && !ah_path("a b");
+ #assert ah_path(".") && !ah_path("a. ");
+ #assert ah_tokens(1) && ah_tokens(2500) && !ah_tokens(0) && !ah_tokens(2501);
+ b:[257]u8;for i:0..<b.count {b[i]='a';}b[1]='.';#assert ah_path(cast(string)b[0..<256]) && !ah_path(cast(string)b[..]);
+ c:=[3]u8.['a','.',33];#assert ah_path(cast(string)c[..]);c[2]=126;#assert ah_path(cast(string)c[..]);c[2]=127;#assert !ah_path(cast(string)c[..]);
+}
+#test "field help selects one exact catalogue path and refuses missing entries" {
+ fields:=[2]AgentHelpField.[AgentHelpField.{path="a.x",text="one"},AgentHelpField.{path="a.y",text="two"}];
+ #assert ah_find(fields[..],"a.x")==0 && ah_find(fields[..],"a.y")==1;
+ #assert ah_find(fields[..],"a")== -1 && ah_find(fields[0..<0],"a.x")== -1;
+}
+ah_find :: (fields:[]const AgentHelpField,path:string)->int #effects(all) {for field,k:fields {if field.path==path {return k;}}return -1;}
+ah_topic :: (name:string)->int #effects(all) {for topic,k:AGENT_HELP_TOPICS {if name==topic {return k;}}return -1;}
+ah_path :: (path:string)->bool #effects(all) {
+ if path.count<1 || path.count>256 {return false;}dot:=false;
+ for ch:path {if ch<=32 || ch>=127 {return false;}if ch=='.' {dot=true;}}
+ return dot;
+}
+ah_tokens :: (count:int)->bool #effects(all) {return count>0 && count<=2500;}
+ah_parse :: (a:[]Args)->HelpRequest #effects(all) {
+ q:HelpRequest;n:=args_count(a);if n<2 || n>3 || args_at(a,0)!="help" {return q;}
+ name:=args_at(a,1);
+ if name=="field" {if n==3 && ah_path(args_at(a,2)) {q.ok=true;q.field=args_at(a,2);}return q;}
+ q.topic=ah_topic(name);if q.topic<0 {return q;}
+ if n==3 {if args_at(a,2)!="--all" {return q;}q.all=true;}
+ q.ok=true;return q;
+}

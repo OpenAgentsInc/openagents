@@ -8,13 +8,13 @@ AnimLayer :: struct {kind:int;clip:int= -1;start:f32;end:f32;speed:f32;blend_in:
 AnimPerformance :: struct {ready:bool;name:AnimName;rig:AnimName;length:f32;count:int;layers:[ANIM_LAYERS]AnimLayer;}
 anim_mask :: (word:string)->int #effects(all) {for name,k:ANIM_MASKS {if word==name {return k;}}return -1;}
 anim_performance_read :: (d:Jv,rigs:[]AnimRig,clips:[]AnimClip,out:[]AnimPerformance)->int #effects(all) {
- if !anim_schema(d,"anim.performance.v1") || !anim_keys(d,0,"schema|name|rig|length|layers") {return ANIM_SCHEMA;}
+ if !anim_schema(d,"anim.performance.v1") || !anim_keys(d,0,anim_field_keys("anim.performance")) {return ANIM_SCHEMA;}
  p:AnimPerformance;p.name=anim_name(d,jv_get(d,0,"name"));p.rig=anim_name(d,jv_get(d,0,"rig"));if p.name.n==0 || p.rig.n==0 {return ANIM_NAME;}
  ri:= -1;for rig,k:rigs {if rig.ready && anim_equal(p.rig,rig.name) {ri=k;break;}}if ri<0 {return ANIM_REFERENCE;}rig:=rigs[ri];
  length:=anim_number(d,jv_get(d,0,"length"),0.001,600);if !length.ok {return ANIM_NUMBER;}p.length=cast(f32)length.value;
  layers:=jv_get(d,0,"layers");p.count=jv_len(d,layers);if jv_kind(d,layers)!=JV_ARRAY || p.count<1 || p.count>ANIM_LAYERS {return ANIM_LIMIT;}
  base:=0;fixups:=false;
- for k:0..<p.count {row:=jv_at(d,layers,k);if !anim_keys(d,row,"kind|clip|start|end|speed|blend_in|blend_out|weight|mask|solver|joint|target") {return ANIM_SCHEMA;}layer:AnimLayer;
+ for k:0..<p.count {row:=jv_at(d,layers,k);if !anim_keys(d,row,anim_field_keys("anim.performance.layers[]")) {return ANIM_SCHEMA;}layer:AnimLayer;
   kinds:=ANIM_LAYER_KINDS;masks:=ANIM_MASKS;layer.kind=anim_choice(d,jv_get(d,row,"kind"),kinds[..]);layer.mask=anim_choice(d,jv_get(d,row,"mask"),masks[..]);if layer.kind<0 || layer.mask<0 {return ANIM_NAME;}
   start:=anim_number(d,jv_get(d,row,"start"),0,length.value);end:=anim_number(d,jv_get(d,row,"end"),0,length.value);speed:=anim_number(d,jv_get(d,row,"speed"),0.01,16);weight:=anim_number(d,jv_get(d,row,"weight"),0,1);
   if !start.ok || !end.ok || cast(f32)end.value<=cast(f32)start.value || !speed.ok || !weight.ok {return ANIM_NUMBER;}

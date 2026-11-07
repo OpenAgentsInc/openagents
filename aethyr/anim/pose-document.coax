@@ -3,16 +3,16 @@
 #authority;
 AnimPose :: struct {ready:bool;name:AnimName;rig:AnimName;joints:int;joint:[65]int;rotation:[65]Quat;face_count:int;shapes:[ANIM_SHAPES]int;face:[ANIM_SHAPES]f32;}
 anim_pose_read :: (d:Jv,rigs:[]AnimRig,out:[]AnimPose)->int #effects(all) {
- if !anim_schema(d,"anim.pose.v1") || !anim_keys(d,0,"schema|name|rig|joints|face") {return ANIM_SCHEMA;}
+ if !anim_schema(d,"anim.pose.v1") || !anim_keys(d,0,anim_field_keys("anim.pose")) {return ANIM_SCHEMA;}
  p:AnimPose;p.name=anim_name(d,jv_get(d,0,"name"));p.rig=anim_name(d,jv_get(d,0,"rig"));if p.name.n==0 || p.rig.n==0 {return ANIM_NAME;}
  ri:= -1;for r,k:rigs {if r.ready && anim_equal(r.name,p.rig) {ri=k;break;}}if ri<0 {return ANIM_REFERENCE;}r:=rigs[ri];
  joints:=jv_get(d,0,"joints");p.joints=jv_len(d,joints);face:=jv_get(d,0,"face");p.face_count=jv_len(d,face);
  if jv_kind(d,joints)!=JV_ARRAY || jv_kind(d,face)!=JV_ARRAY || p.joints>65 || p.face_count>ANIM_SHAPES || p.joints+p.face_count==0 {return ANIM_LIMIT;}
  seen:[65]bool;shapes:[ANIM_SHAPES]bool;
- for k:0..<p.joints {row:=jv_at(d,joints,k);if !anim_keys(d,row,"name|rotation") {return ANIM_SCHEMA;}name:=[1]AnimName.[anim_name(d,jv_get(d,row,"name"))];j:=mannequin_find(anim_text(name[..],0));if j<0 || seen[j] {return ANIM_NAME;}seen[j]=true;
+ for k:0..<p.joints {row:=jv_at(d,joints,k);if !anim_keys(d,row,anim_field_keys("anim.pose.joints[]")) {return ANIM_SCHEMA;}name:=[1]AnimName.[anim_name(d,jv_get(d,row,"name"))];j:=mannequin_find(anim_text(name[..],0));if j<0 || seen[j] {return ANIM_NAME;}seen[j]=true;
   q:=jv_get(d,row,"rotation");if !anim_vector(d,q,4,1) {return ANIM_NUMBER;}v:=anim_quat(d,q);if !anim_unit(v) {return ANIM_NUMBER;}p.joint[k]=j;p.rotation[k]=v;
  }
- for k:0..<p.face_count {row:=jv_at(d,face,k);if !anim_keys(d,row,"name|value") {return ANIM_SCHEMA;}j:=anim_find(r.shapes[0..<r.shape_count],anim_name(d,jv_get(d,row,"name")));if j<0 || shapes[j] {return ANIM_NAME;}shapes[j]=true;
+ for k:0..<p.face_count {row:=jv_at(d,face,k);if !anim_keys(d,row,anim_field_keys("anim.pose.face[]")) {return ANIM_SCHEMA;}j:=anim_find(r.shapes[0..<r.shape_count],anim_name(d,jv_get(d,row,"name")));if j<0 || shapes[j] {return ANIM_NAME;}shapes[j]=true;
   v:=anim_number(d,jv_get(d,row,"value"),0,1);if !v.ok {return ANIM_NUMBER;}p.shapes[k]=j;p.face[k]=cast(f32)v.value;
  }p.ready=true;out[0]=p;return ANIM_OK;
 }

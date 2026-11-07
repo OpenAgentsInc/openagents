@@ -12,11 +12,11 @@ anim_cut_ranges :: (c:AnimCut,scene:AnimScene)->int #effects(all) {
  }return ANIM_OK;
 }
 anim_cut_read :: (d:Jv,scenes:[]AnimScene,out:[]AnimCut)->int #effects(all) {
- if !anim_schema(d,"anim.cut.v1") || !anim_keys(d,0,"schema|name|scene|fps|shots") {return ANIM_SCHEMA;}
+ if !anim_schema(d,"anim.cut.v1") || !anim_keys(d,0,anim_field_keys("anim.cut")) {return ANIM_SCHEMA;}
  c:AnimCut;c.name=anim_name(d,jv_get(d,0,"name"));c.scene=anim_name(d,jv_get(d,0,"scene"));if c.name.n==0 || c.scene.n==0 {return ANIM_NAME;}si:= -1;for scene,k:scenes {if scene.ready && anim_equal(scene.name,c.scene) {si=k;break;}}if si<0 {return ANIM_REFERENCE;}scene:=scenes[si];
  c.fps=anim_integer(d,jv_get(d,0,"fps"),1,120);if c.fps== -1 {return ANIM_NUMBER;}shots:=jv_get(d,0,"shots");c.shots=anim_array(d,shots,128);if c.shots<1 {return ANIM_LIMIT;}names:[128]AnimName;
  transitions:=[3]string.["cut","fade","crossfade"];
- for k:0..<c.shots {row:=jv_at(d,shots,k);if !anim_keys(d,row,"name|camera|from|to|transition|blend") {return ANIM_SCHEMA;}shot:AnimCutShot;shot.name=anim_name(d,jv_get(d,row,"name"));if shot.name.n==0 || anim_find(names[0..<k],shot.name)>=0 {return ANIM_NAME;}names[k]=shot.name;shot.camera=anim_camera_index(scene,anim_name(d,jv_get(d,row,"camera")));if shot.camera<0 {return ANIM_REFERENCE;}
+ for k:0..<c.shots {row:=jv_at(d,shots,k);if !anim_keys(d,row,anim_field_keys("anim.cut.shots[]")) {return ANIM_SCHEMA;}shot:AnimCutShot;shot.name=anim_name(d,jv_get(d,row,"name"));if shot.name.n==0 || anim_find(names[0..<k],shot.name)>=0 {return ANIM_NAME;}names[k]=shot.name;shot.camera=anim_camera_index(scene,anim_name(d,jv_get(d,row,"camera")));if shot.camera<0 {return ANIM_REFERENCE;}
   from:=anim_number(d,jv_get(d,row,"from"),0,cast(f64)scene.length);to:=anim_number(d,jv_get(d,row,"to"),0,cast(f64)scene.length);blend:=anim_number(d,jv_get(d,row,"blend"),0,600);shot.transition=anim_choice(d,jv_get(d,row,"transition"),transitions[..]);if !from.ok || !to.ok || !blend.ok || shot.transition<0 {return ANIM_NUMBER;}
   if (shot.transition==0 && blend.value!=0) || (shot.transition!=0 && blend.value==0) {return ANIM_RANGE;}shot.from=cast(f32)from.value;shot.to=cast(f32)to.value;shot.blend=cast(f32)blend.value;c.shot[k]=shot;c.length+=shot.to-shot.from;
  }e:=anim_cut_ranges(c,scene);if e!=0 {return e;}if c.length>ANIM_SECONDS {return ANIM_LIMIT;}c.ready=true;out[0]=c;return ANIM_OK;
@@ -32,7 +32,7 @@ anim_cut_lines :: (text:string,scene:AnimScene,out:[]AnimCut)->int #effects(all)
 // Its sources must name scene cameras rather than arbitrary files or URLs.
 anim_cut_json :: (text:string,scene:AnimScene,out:[]AnimCut)->int #effects(all) {
  if out.count<1 {return ANIM_CAPACITY;}if !scene.ready {return ANIM_REFERENCE;}
- nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}if !anim_schema(d[0],"cut.v1") || !anim_keys(d[0],0,"schema|name|fps|size|music|voice|fade_in|fade_out|shots") {return ANIM_SCHEMA;}
+ nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}if !anim_schema(d[0],"cut.v1") || !anim_keys(d[0],0,anim_field_keys("anim.legacy-cut")) {return ANIM_SCHEMA;}
  c:AnimCut;media_cut.lb_cut_json(c.composition[..],text,"",nodes[..]);name:=jv_get(d[0],0,"name");if name!= -1 {label:=[1]AnimName.[anim_name(d[0],name)];if label[0].n==0 {return ANIM_NAME;}c.composition[0].name=media_cut.lb_add(c.composition[0].pool[..],anim_text(label[..],0));}return anim_cut_composition(c,scene,out);
 }
 anim_cut_composition :: (input:AnimCut,scene:AnimScene,out:[]AnimCut)->int #effects(all) {

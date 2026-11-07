@@ -4,6 +4,7 @@
 #load "../../coax/lib/nostr/json.coax";
 #load "../assets.coax";
 #load "pose.coax";
+#load "field-catalog.coax";
 #load "document-checks.coax";
 #authority;
 #load "json.coax";
@@ -13,7 +14,7 @@ anim_window :: (total:int,offset:int,count:int,stride:int,width:int)->bool #effe
 anim_pack_size :: (bytes:int)->bool #effects(all) {return bytes>0 && bytes<=1073741824;}
 anim_pack_valid :: (pack:AnimPack)->bool #effects(all) {return anim_pack_size(pack.bytes.count) && asset_same(asset_id(cast(string)pack.bytes),pack.id);}
 anim_part :: (d:Jv,node:int,packs:[]AnimPack)->AnimPart #effects(all) {
- if !anim_keys(d,node,"pack|offset|count|stride|width") {return AnimPart.{};}
+ if !anim_keys(d,node,anim_field_keys("anim.buffer")) {return AnimPart.{};}
  text:[64]u8;id:[1]AssetId;n:=jv_str(d,jv_get(d,node,"pack"),text[..]);if n!=64 || !asset_parse(cast(string)text[..],id[..]) {return AnimPart.{};}
  p:=-1;for pack,k:packs {if asset_same(pack.id,id[0]) {p=k;break;}}if p<0 {return AnimPart.{};}
  offset:=jv_int(d,jv_get(d,node,"offset"),-1);count:=jv_int(d,jv_get(d,node,"count"),0);stride:=jv_int(d,jv_get(d,node,"stride"),0);width:=jv_int(d,jv_get(d,node,"width"),0);
