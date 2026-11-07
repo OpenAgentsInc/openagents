@@ -615,52 +615,12 @@
       "revision": "96ccb3209d84a9f112c9b0794ac252fcffb2ecf4feb41f010caf3f2ccd7d598b"
     },
     {
-      "id": "quaternius/ultimate-food/burger",
-      "revision": "c92a57fd0173225d4f2c5f2e0bea136e6869e24bc97a5a12630e3d348c63a72e"
-    },
-    {
-      "id": "quaternius/ultimate-food/burgerlarge",
-      "revision": "298b01a2b17ae32344123aece6ac287870ead12fc3b55f5610a4955f8080301d"
-    },
-    {
-      "id": "quaternius/ultimate-food/burgerpatty-burned",
-      "revision": "5ceb01eb55528052e03347ddb44ee7e14ff8e1af1e7d9edc06acf385e8410959"
-    },
-    {
-      "id": "quaternius/ultimate-food/burgerpatty-cooked",
-      "revision": "7ef4b9d684326fb3706d84eed09fd04603ebd885ddb4ba3bac0a09854e243ff8"
-    },
-    {
-      "id": "quaternius/ultimate-food/burgerpatty-raw",
-      "revision": "114d163b244a075a833b27134d4fb186e65d396a86550b329b4bb51223886514"
-    },
-    {
-      "id": "quaternius/ultimate-food/burger-bread",
-      "revision": "8142b64782f5486c43f900fa52472d3b34255075480ec418b326a8303f87b90c"
-    },
-    {
       "id": "quaternius/ultimate-food/carrot",
       "revision": "599e5eca67b0f09e6f900e0a36e4641869b7524f8a6695978e7880d0fa0d40d5"
     },
     {
-      "id": "quaternius/ultimate-food/cheese-singles",
-      "revision": "d8d0d0371adf26117e3f9060c27612c3fdc68fde8d3c07cef18aaddc06de896f"
-    },
-    {
-      "id": "quaternius/ultimate-food/cheeseburger",
-      "revision": "872d79927eb0afe0d91d121fbff95271bbe4075b549a8d1f7a5dab3e581a8fec"
-    },
-    {
       "id": "quaternius/ultimate-food/chickenleg",
       "revision": "93b2572f3a9be9a345b2d358f85c625ded4171876445ed7b610230d63b395b23"
-    },
-    {
-      "id": "quaternius/ultimate-food/chocolatebar",
-      "revision": "e0291a5f960d0d0fce18f5b9a71dc463f2517404c384f969a91d304557a4d3d3"
-    },
-    {
-      "id": "quaternius/ultimate-food/chopsticks",
-      "revision": "4905e9ae132b91c7aa420a65ee4e1b0eba0d75c4bb66f80d50102a7e6db4a22e"
     },
     {
       "id": "quaternius/ultimate-food/coconut",
@@ -687,36 +647,8 @@
       "revision": "e4378ec82ee92bc1548a2a8cde5c3dbc23245aebcd3099760b3de1973deb503d"
     },
     {
-      "id": "quaternius/ultimate-food/corndog",
-      "revision": "de68395bd37b0e0dee78b6e10c0356ef5ca321dda5cd824ae82a701663da1f4d"
-    },
-    {
       "id": "quaternius/ultimate-food/croissant",
       "revision": "8a31becf2131b585fce49aa9f9906b35e7adb8479d9f5925c1be9a84698f4428"
-    },
-    {
-      "id": "quaternius/ultimate-food/cupcake",
-      "revision": "5434500c35822211bcb9a8bce063e37f15e2283a1344aff01fba7992b8c1d722"
-    },
-    {
-      "id": "quaternius/ultimate-food/donut1",
-      "revision": "8eaf92e167aa8f102a661e13f9c9032820aa547c471cdcf7e73b3ae2533b6a30"
-    },
-    {
-      "id": "quaternius/ultimate-food/donut2",
-      "revision": "782a4e8341c159f89701351d093fa53d89e78cd186601b4e3ca41b1c17b48e34"
-    },
-    {
-      "id": "quaternius/ultimate-food/donut3",
-      "revision": "232aa1af1a23f3d6cdd90ab67b7620363d124b6898cf8d35cc0f97b5cdf41f98"
-    },
-    {
-      "id": "quaternius/ultimate-food/donut4",
-      "revision": "191982d5b6b1b07fb41cc16bafce295da25c6e8f17ef99e68e94e8f4ae1c6bd7"
-    },
-    {
-      "id": "quaternius/ultimate-food/doublecheeseburger",
-      "revision": "5c7c7dd743913358e899de2e746072f9c3490e63dd93ccab147fd9c9cfedc4d8"
     },
     {
       "id": "quaternius/ultimate-food/egg-burned",
@@ -751,56 +683,12 @@
       "revision": "b794367b07fadbf9aabccba87d7c676912b9adeec9d3180d1998a1b01cd4c7f9"
     },
     {
-      "id": "quaternius/ultimate-food/fries",
-      "revision": "30f46d276e1808e9f445eee6523a3b936d3c2a7b2dc2be0dab59b959ffdf2f44"
-    },
-    {
       "id": "quaternius/ultimate-food/fryingpan",
       "revision": "0ba40426ee679e16a5b3b82f1b9454c5ef2c6fcd0ead033bc555790dc0636977"
     },
     {
-      "id": "quaternius/ultimate-food/hotdog",
-      "revision": "4fb03e9b7176f87132605bb1da78defdbbafecddf0d505cf0370c0d713716a2b"
-    },
-    {
-      "id": "quaternius/ultimate-food/hotdog-bun",
-      "revision": "4ee0c6f1969d0fa45d5fe297fb06054160abc0bd38ff809e0de2411052af2638"
-    },
-    {
-      "id": "quaternius/ultimate-food/icecream-1",
-      "revision": "9b59ac07039bf12bd0a4c4c646fc264c193618839fec5f86ec03d6c2335100ba"
-    },
-    {
-      "id": "quaternius/ultimate-food/icecream-2",
-      "revision": "941018375cffb43bb099809c7c7facaa4f1cf51b857d3d23f57768519edf50db"
-    },
-    {
-      "id": "quaternius/ultimate-food/icecream-3",
-      "revision": "b096d1e6e7bb66fd0ad70c9e4b475e17c7271d3fdaf08b81c10d94cdf397585a"
-    },
-    {
-      "id": "quaternius/ultimate-food/icecream-4",
-      "revision": "89eba85aca5dc70680b96d7494cc1991ceb90fa73f681e185776d28cd201cf2a"
-    },
-    {
-      "id": "quaternius/ultimate-food/icecream-cone",
-      "revision": "f15305f399fb129428e86ca7d0d703d50cdfa6f199377f00a6bdbab81693a1ab"
-    },
-    {
-      "id": "quaternius/ultimate-food/icecream-cone2",
-      "revision": "f37e53ba3820ce64c9906d9202b1d4de68d5332eed2eeeec10a35a86661cb04a"
-    },
-    {
       "id": "quaternius/ultimate-food/jar-large",
       "revision": "6bcb45bdd828fa0cb010bddc8d42f71ec0e25366ac22e1db694c67ae69cfbcc7"
-    },
-    {
-      "id": "quaternius/ultimate-food/ketchupbottle",
-      "revision": "3d506aa935e7d4836a5381b34318ab131bed9ade747fd4aa350d48ce861e28ec"
-    },
-    {
-      "id": "quaternius/ultimate-food/ketchupmustard",
-      "revision": "65549de1bfc11fbd77568b7d7189fb7cf8aeceb62a1ec32c647580bb7080c01b"
     },
     {
       "id": "quaternius/ultimate-food/knife",
@@ -815,20 +703,12 @@
       "revision": "2ed4605d8145df32868cc5f76c5e1e6c281d452a8d521bc95157e966a634efb2"
     },
     {
-      "id": "quaternius/ultimate-food/mayobottle",
-      "revision": "0c4eff835cd55a6d0243ab295fd6d3da8af73f00627837caa40ff0208e87b008"
-    },
-    {
       "id": "quaternius/ultimate-food/mushroom",
       "revision": "c6e145bb7b0786095477e0825eaa35875ac19e19467c1b3b11c9bbf6e67b4f93"
     },
     {
       "id": "quaternius/ultimate-food/mushroom-sliced",
       "revision": "bf892b8c96d5df9e8d2e6a92b28fed41defe6520962569a5cb77a7ed0af26912"
-    },
-    {
-      "id": "quaternius/ultimate-food/mustardbottle",
-      "revision": "d67e2fff64e12fcb498bad7bc76da8a50e1d8a6955d5230b2445762e7dc1dbe4"
     },
     {
       "id": "quaternius/ultimate-food/orange",
@@ -843,32 +723,12 @@
       "revision": "c1093cfb5b67fa2bf3912370d9f5956609b8a2568c995f4e2ff3e83d8b8b624f"
     },
     {
-      "id": "quaternius/ultimate-food/peanutbutter",
-      "revision": "a748d88d955155c7dea1bc94f438b95739386ae1ec2ece41fbba148210062d3e"
-    },
-    {
-      "id": "quaternius/ultimate-food/peanutbutter-2",
-      "revision": "09f9ff288ff2a49d4ef8f3099abc772430310a974c7ecd7ba0285feab6182e20"
-    },
-    {
       "id": "quaternius/ultimate-food/pepper-green",
       "revision": "fe4feccfdcb772c75f6d2b43d02c5282a4cce97e5610d0e720c74207b2ebfdd3"
     },
     {
       "id": "quaternius/ultimate-food/pepper-red",
       "revision": "a5d9787dcc9cb057733525e29732523210055b209414a8c1b5e82bc62a745d8e"
-    },
-    {
-      "id": "quaternius/ultimate-food/pizza",
-      "revision": "8c89139a6af49539c404f7d5aeb2579becc63b88c57e041a82f1f270f1154dcb"
-    },
-    {
-      "id": "quaternius/ultimate-food/pizza-burned",
-      "revision": "f6a53a61b8ee5a31bb755f4ae355f8d0ed38e262589726ff6553c80528cf5fe5"
-    },
-    {
-      "id": "quaternius/ultimate-food/pizza-slice",
-      "revision": "5e9988a1b5dfc9eabcaa8c77b0aa7bf8466ab4f0a3be584776018786119d455d"
     },
     {
       "id": "quaternius/ultimate-food/plate",
@@ -883,28 +743,8 @@
       "revision": "9d161ca383e31aefa1e11ce8aec7f81ff0ea44988a144ff98f5c1ff9e211515a"
     },
     {
-      "id": "quaternius/ultimate-food/popsicle-chocolate",
-      "revision": "87e24430aa5e4ec670ea70603c4c07fa9824158cb83cc036070a304fe4c95b6b"
-    },
-    {
-      "id": "quaternius/ultimate-food/popsicle-multiple",
-      "revision": "6dd2573a9af42fc2a72d24dc0d0ce2b00d61865acb82cd3d084b65cb7aab7219"
-    },
-    {
-      "id": "quaternius/ultimate-food/popsicle-strawberry",
-      "revision": "c4176b9ac1823bf92be0259328098a6629d89496b5ae23ce6ba79b58c8def7c6"
-    },
-    {
       "id": "quaternius/ultimate-food/pumpkin",
       "revision": "16d689a9ed8a8a3468fc67803aa75148df0295a7a03895f61659d08cad9d3fb0"
-    },
-    {
-      "id": "quaternius/ultimate-food/sashimi-salmon",
-      "revision": "c01fcf83ce527edeaa07956b744db99dca6c354808772d92a7be890bf1f55015"
-    },
-    {
-      "id": "quaternius/ultimate-food/sashimi-salmon2",
-      "revision": "93c4153fc870289135a3e0eff2210192c1ef66df241af066637f774c71da486c"
     },
     {
       "id": "quaternius/ultimate-food/sausage-cooked",
@@ -913,14 +753,6 @@
     {
       "id": "quaternius/ultimate-food/sausage-raw",
       "revision": "8df32bbb3749f5359810c924063a8a86f540b70be9ca5ae93c493330f636bd3b"
-    },
-    {
-      "id": "quaternius/ultimate-food/soda",
-      "revision": "1c50900d16b1e383ecc36b7d7ad2e3fdb88071c3e638e085e1d31325b6e551f7"
-    },
-    {
-      "id": "quaternius/ultimate-food/soysauce",
-      "revision": "ed31a9756facf74196c802083e60ebeb3e5a3941175e0c3b12ce1d2b866fa40e"
     },
     {
       "id": "quaternius/ultimate-food/spoon",
@@ -933,26 +765,6 @@
     {
       "id": "quaternius/ultimate-food/steak-burned",
       "revision": "ccbe5b7d10bac0da2b2b87fbeec320491ce05ea281b6e7bcd9759c9c8b9c6770"
-    },
-    {
-      "id": "quaternius/ultimate-food/sushi-nigiri1",
-      "revision": "3f4f4674059828b7f541b880680c3ecd228e555544de398b8ab2d40d403dfa51"
-    },
-    {
-      "id": "quaternius/ultimate-food/sushi-nigiri2",
-      "revision": "35e99631247325c31fe6762bae2cc6f6fc1d0db290abec82d4e556c5e8aef840"
-    },
-    {
-      "id": "quaternius/ultimate-food/sushi-nigirioctopus",
-      "revision": "17760127405c0645e9af2ed4113c37dee60b2462893f611aed612b0c184549d1"
-    },
-    {
-      "id": "quaternius/ultimate-food/sushi-roll1",
-      "revision": "8b72646a39883f00c39826b110e210eefb77162e96da509a9903df04c2e028a9"
-    },
-    {
-      "id": "quaternius/ultimate-food/sushi-roll2",
-      "revision": "2d068619c3a1da663df8496f90eeb6b44bf57d2d919b305a0355020ffa28891f"
     },
     {
       "id": "quaternius/ultimate-food/tentacle",
@@ -1653,7 +1465,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "51b4f4f4350d4beb61c7c1d0619267ca887f9498680a6cb91cc305f6d4154e4a",
+    "sha256": "4c90a29f90342346674ce25327a8054aa1892661aa74e0fddd09a54038dc770b",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -1662,7 +1474,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "75c00d8e1dfe6ed6298c2efd135c1520515ace70b8d323caaeda08f8cbab9233",
+    "sha256": "f221d6b898d560871c452acda224919cf0630d7c7c6ee5f2cddc91dfb060e4ab",
     "budget_bytes": 134217728
   },
   "terrain": {
@@ -1861,7 +1673,7 @@
       "path": "assets/registry/scenes/everglade-experimental-showcase.layout",
       "sha256": "5ff3f7c083c9f936cd31658e433194c4bd7e492f409ab0ea64b0a450fd2e1f82"
     },
-    "specimens": 269,
+    "specimens": 222,
     "animals": "Gallop clips baked to ten looping poses, in place",
     "collision": "visual only",
     "animal_source": {
@@ -1871,6 +1683,7 @@
     "animal_baker": {
       "path": "verse/tools/assets/animal_bake.py",
       "sha256": "12828a934597739f5cb6ddd1e81b23d709364377695290c8ab21708155ea1b2f"
-    }
+    },
+    "selection": "Fantasy-appropriate food; modern packaged and fast foods omitted, with reserved layout positions."
   }
 }

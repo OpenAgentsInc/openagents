@@ -21,12 +21,15 @@ sites and blends back into the meadow. The extra geometry uses a single padded
 texture atlas; the original Character Create pack retains its 32 MiB budget.
 
 The experimental pack's showcase profile raises its budget to 128 MiB and
-adds one static specimen of each of the 103 Ultimate Food, 106 Ultimate RPG,
-48 Modular Dungeon and 12 Ultimate Animated Animals models. Food and RPG
+adds fantasy-appropriate Ultimate Food models, 106 Ultimate RPG models,
+48 Modular Dungeon pieces and 12 Ultimate Animated Animals. Food and RPG
 models stand in rows south of spawn, animals run in place to their west, and dungeon
 pieces are displayed in the southeast meadow. The animals use ten baked
 poses of the original Gallop clips, including bone-parented antlers. The showcase
 pieces do not yet supply collision shapes.
+Modern packaged foods and fast food are omitted from the world; their source
+assets remain in the shared registry. Their reserved layout slots are left
+empty so the other specimens keep their positions.
 
 The follow camera checks the village's nearby building collision boxes along
 the full boom, including the shoulder offset. It pulls in immediately when a

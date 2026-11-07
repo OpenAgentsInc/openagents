@@ -189,6 +189,8 @@ if village:
             for row in rows[:257] if animal_run else rows:
                 package,name,sha=row.split('|');blob=(Path.home()/'.openagents/assets/objects'/sha).read_bytes()
                 assert hashlib.sha256(blob).hexdigest()==sha
+                modern=('Burger','Cheeseburger','DoubleCheeseburger','Cheese_Singles','ChocolateBar','Chopsticks','Corndog','Cupcake','Donut','Fries','Hotdog','IceCream','Ketchup','MayoBottle','MustardBottle','PeanutButter','Pizza','Popsicle','Sashimi','Soda','SoySauce','Sushi')
+                if package=='ultimate-food' and name.startswith(modern): continue
                 size=struct.unpack_from('<I',blob,12)[0]; doc=json.loads(blob[20:20+size]); payload=blob[28+size:]
                 for node in doc['nodes']:
                     if 'mesh' not in node: continue
