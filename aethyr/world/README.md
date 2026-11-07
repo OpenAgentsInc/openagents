@@ -4,7 +4,10 @@ The [native category-pressure qualifier](../../docs/verification/aethyr-streamin
 now requests a real source-derived texture companion against the live
 corridor's budget/inbox/renderer. Its refusal preserves the existing image
 and owners, and CPU replay records the counted admission boundary. Physical
-Vulkan planning and remaining failed/superseded load paths stay open.
+Vulkan planning and remaining failed/superseded load paths stay open. Native
+[allocation/source/decode failures](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
+now complete and retire through the shared owner before retry; its Vulkan
+factory/upload failure surface is still unqualified.
 
 `cells.coax` is the historical #12847 controller: 64 m cells, separate
 resident/simulate/draw states, hysteresis, persistent sleeping bodies,

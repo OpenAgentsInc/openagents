@@ -165,3 +165,26 @@ same source-derived request between warmup and movement, and matches every
 paid-step digest including the counted refusal. Earlier observation schemas
 remain readable. The [record](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
 names the exact measured tiers and limits.
+
+## Failed allocation, source and decode effects
+
+Normal load effects now report a typed completion even when allocation,
+source read/copy or decoding fails. Partial physical allocations retain their
+attempt identity and image/audio reservations until shared retirement. The
+owner cannot retry until destruction is accepted. Later allocation phases
+are skipped after the first failure. Temporary transfer grants release only
+after the completed synchronous effect and its scratch cleanup.
+
+`native-load-policy.coax` preserves the first failed phase. The additive
+native `sw_host_finish_code` carries existing `ResourceCostStatus` values;
+the earlier boolean SDK-failure facade keeps its original meaning. The
+qualifier modes `--load-alloc-0` through `--load-alloc-4`, `--load-source` and
+`--load-decode` exercise explicit allocator/source/scratch inputs, successful
+retirement/retry, rendering and controlled recovery. Native observation v5
+requires their bound effect record. CPU replay reproduces the same partial
+allocation prefix, source outcome or decoder refusal before accepting the
+typed completion. See the [record](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md).
+
+The legacy Vulkan resource factories and upload helpers can still exit on
+SDK errors. They require checked ownership and separate failure receipts;
+these allocator/source/decode observations do not qualify that surface.

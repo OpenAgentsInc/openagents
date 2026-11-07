@@ -2,19 +2,19 @@
 // histories retain the existing browser profile and receipt identities.
 #authority;
 #test "native replay accepts only named native observation schemas and backend" {
-  for schema: [4] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2", "aethyr.stream-walk-native-gpu.v3", "aethyr.stream-walk-native-gpu.v4"] {
+  for schema: [5] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2", "aethyr.stream-walk-native-gpu.v3", "aethyr.stream-walk-native-gpu.v4", "aethyr.stream-walk-native-gpu.v5"] {
     #assert srp_native(schema, 1);
     for backend: [3] int.[-1, 0, 2] { #assert !srp_native(schema, backend); }
   }
-  for schema: [5] string.["", "aethyr.stream-walk-native-gpu", "aethyr.stream-walk-native-gpu.v0", "aethyr.stream-walk-native-gpu.v5", "aethyr.stream-walk-hud.v1"] {
+  for schema: [5] string.["", "aethyr.stream-walk-native-gpu", "aethyr.stream-walk-native-gpu.v0", "aethyr.stream-walk-native-gpu.v6", "aethyr.stream-walk-hud.v1"] {
     #assert !srp_native(schema, 1);
   }
 }
 srp_native :: (schema: string, backend: int) -> bool #effects(all) {
-  return backend == 1 && (schema == "aethyr.stream-walk-native-gpu.v1" || schema == "aethyr.stream-walk-native-gpu.v2" || schema == "aethyr.stream-walk-native-gpu.v3" || schema == "aethyr.stream-walk-native-gpu.v4");
+  return backend == 1 && (schema == "aethyr.stream-walk-native-gpu.v1" || schema == "aethyr.stream-walk-native-gpu.v2" || schema == "aethyr.stream-walk-native-gpu.v3" || schema == "aethyr.stream-walk-native-gpu.v4" || schema == "aethyr.stream-walk-native-gpu.v5");
 }
 #test "pressure metadata is mandatory only in native observation v4" {
-  for schema: [3] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2", "aethyr.stream-walk-native-gpu.v3"] {
+  for schema: [4] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2", "aethyr.stream-walk-native-gpu.v3", "aethyr.stream-walk-native-gpu.v5"] {
     #assert srp_pressure(schema, false) && !srp_pressure(schema, true);
   }
   #assert srp_pressure("aethyr.stream-walk-native-gpu.v4", true) && !srp_pressure("aethyr.stream-walk-native-gpu.v4", false);
@@ -22,4 +22,11 @@ srp_native :: (schema: string, backend: int) -> bool #effects(all) {
 // Called only after srp_native accepts the version/backend pair.
 srp_pressure :: (schema: string, has_pressure: bool) -> bool #effects(all) {
   return (schema == "aethyr.stream-walk-native-gpu.v4") == has_pressure;
+}
+#test "native load-failure metadata is mandatory only in observation v5" {
+  for schema: [4] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2", "aethyr.stream-walk-native-gpu.v3", "aethyr.stream-walk-native-gpu.v4"] { #assert srp_failure(schema,false) && !srp_failure(schema,true); }
+  #assert srp_failure("aethyr.stream-walk-native-gpu.v5",true) && !srp_failure("aethyr.stream-walk-native-gpu.v5",false);
+}
+srp_failure :: (schema: string, has_failure: bool) -> bool #effects(all) {
+  return (schema == "aethyr.stream-walk-native-gpu.v5") == has_failure;
 }

@@ -29,6 +29,12 @@ aggregate and staging room remain. Existing pixels and owners survive, and
 the counted refusal replays at its original boundary. Physical backend
 planning and remaining failure/memory profiles are still open.
 
+The native consumer also [retires failed load attempts](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
+through the shared owner. Five allocation failure points, a missing source
+and a decoder scratch refusal retain partial owners until destruction, then
+retry under a new generation. Their actual histories replay every paid step.
+Checked Vulkan factory/upload failures remain separate work.
+
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can
 overrun a buffer. Aethyr takes a third: each realm declares what one frame

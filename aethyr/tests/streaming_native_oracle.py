@@ -66,8 +66,9 @@ def inspect(scene_dir, output, program):
     scene_bytes = (scene_dir / 'scene.json').read_bytes()
     scene = json.loads(scene_bytes)
     report = json.loads((output / 'receipt.json').read_bytes())
-    assert report['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v4')
+    assert report['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v4', 'aethyr.stream-walk-native-gpu.v5')
     pressure = report['schema'].endswith('.v4')
+    failure = report['schema'].endswith('.v5')
     hud = report['schema'] != 'aethyr.stream-walk-native-gpu.v1'
     assert report['backend'] == 1 and report['tier'] in (0, 1)
     assert report['shaderSHA256'] == hashlib.sha256(program.read_bytes()).hexdigest()
@@ -94,10 +95,22 @@ def inspect(scene_dir, output, program):
         assert hashlib.sha256(data).hexdigest() == source['sha256']
         sources.append(data)
         assert costs[row][0] == len(data) and costs[row][5] == costs[row][2]
-    assert len(report['warmup']) == 32 and (len(report['route']) == 8 if pressure else len(report['route']) in (0, 3200))
+    failed_key = None; failure_case = -1; failure_status = 0
+    if failure:
+        fault = report['loadFailure']; assert fault['schema'] == 'aethyr.stream-native-load-failure.v1'
+        assert fault['qualification'] == 'explicit allocator/source/scratch effect input; no physical OS exhaustion'
+        failure_case = fault['case']; q = fault['effect']; assert 0 <= failure_case <= 6 and len(q) == 10
+        assert q[:5] == [1 if failure_case < 5 else failure_case - 3, failure_case if failure_case < 5 else -1, 0, 1, 0]
+        assert q[5] > 0 and q[6] == 1
+        failure_status = 2 if failure_case == 5 else 3
+        expected_bytes = (costs[0][0],costs[0][1],costs[0][3],costs[0][4],costs[0][5])[failure_case] if failure_case < 5 else 0 if failure_case == 5 else costs[0][4] - 1
+        assert q[7:] == [expected_bytes,12 if failure_case < 5 else -1 if failure_case == 5 else 3,failure_status]
+        failed_key = (q[4],q[5],q[6])
+    assert len(report['warmup']) == 32 and (len(report['route']) == 8 if pressure or failure else len(report['route']) in (0, 3200))
     frames = report['warmup'] + report['route'] + report['cleanup']
     allocations, attempts, generation, ready = {}, set(), {}, {}
     outcomes = defaultdict(set)
+    staged = set(); allocated_fields = defaultdict(set); gpu_owners = {}; completed_at = {}; destroyed_at = {}; retry_generation = None
     cpu = peak = events = 0
     owner_live, owner_peak, category_live, category_peak = Counter(), Counter(), Counter(), Counter()
     category_resource_peak = Counter()
@@ -105,6 +118,11 @@ def inspect(scene_dir, output, program):
     z, velocity, tick = f32(56), f32(0), 0
     elapsed, stage_elapsed, retained_at_recovery = [], [], None
     for index, frame in enumerate(frames):
+        if failure:
+            for row,gen,epoch,*_ in frame['stages']:
+                key = row,gen,epoch
+                assert 0 <= row < 64 and gen > 0 and epoch == 1 and key not in staged
+                staged.add(key); attempts.add(key)
         ns, direction = frame['frameNs'], frame['direction']
         assert ns in (15625000, 62500000) and direction in (-1, 0, 1)
         steps = ns // 15625000
@@ -128,18 +146,25 @@ def inspect(scene_dir, output, program):
         for record in frame['records']:
             applied, kind, row, gen, epoch, decoded, status = record[:7]
             key = row, gen, epoch
-            assert key in attempts and 1 <= applied <= tick and decoded == 0 and status == 0
+            assert key in attempts and 1 <= applied <= tick
+            is_failure = key == failed_key and kind == 0
+            assert decoded == (failure_status if is_failure else 0) and status == (6 if is_failure else 0)
             assert kind in (0, 1, 2) and kind not in outcomes[key]
             assert record[7:15] == list(struct.unpack('>8I', bytes.fromhex(scene['resources'][row]['sha256'])))
-            expected = hashlib.sha256(sources[row] if kind == 0 else b'').digest()
+            actual_source = sources[row] if kind == 0 else b''
+            if is_failure and failure_case <= 5: actual_source = b'' if failure_case == 0 else bytes(len(sources[row]))
+            expected = hashlib.sha256(actual_source).digest()
             assert record[15:23] == list(struct.unpack('>8I', expected))
             if kind == 2:
+                assert key != failed_key
                 assert 0 in outcomes[key] and all(d in ready for d in dependencies[row])
                 ready[row] = gen
             elif kind == 1:
                 assert 0 in outcomes[key]
                 if ready.get(row) == gen:
                     del ready[row]
+                destroyed_at[key] = applied
+            elif kind == 0: completed_at[key] = applied
             outcomes[key].add(kind)
         for freed, row, gen, epoch, field, n in frame['allocations']:
             assert freed in (0, 1) and 0 <= row < 64 and gen > 0 and epoch == 1 and 0 <= field < 5
@@ -151,11 +176,14 @@ def inspect(scene_dir, output, program):
                 allocations[key] = n
                 generation[row] = gen
                 attempts.add((row, gen, epoch))
+                allocated_fields[row,gen,epoch].add(field)
+                if (row,gen,epoch) == failed_key and failure_case < 5: assert field < failure_case
             else:
                 assert key in allocations
                 assert allocations.pop(key) == n
                 if not any(k[0] == row for k in allocations):
                     del generation[row]
+                if failure and field == 0 and gpu_owners.get(row) == gen: del gpu_owners[row]
             sign = -1 if freed else 1
             cpu += sign * n
             owner_live[row] += sign * n
@@ -169,11 +197,16 @@ def inspect(scene_dir, output, program):
             assert (row, gen, epoch) in attempts and len(times) == 5
             assert all(t >= 0 for t in times) and sum(times[:4]) <= times[4]
             stage_elapsed.append(times)
+            if failure:
+                if (row,gen,epoch) != failed_key and costs[row][2]: gpu_owners[row] = gen
+                if row == 0 and (row,gen,epoch) != failed_key:
+                    assert failed_key in destroyed_at and tick >= destroyed_at[failed_key] and gen > failed_key[1]
+                    retry_generation = gen
         info, gpu = frame['info'], frame['gpu']
         assert len(info) == 28 and len(gpu) == (20 if hud else 19)
         if hud:
             assert gpu[19] == 0
-        live_gpu = {row for row in generation if costs[row][2]}
+        live_gpu = set(gpu_owners) if failure else {row for row in generation if costs[row][2]}
         assert info[14] == cpu <= info[10]
         assert gpu[0] == len(live_gpu) and gpu[1] == sum(costs[row][2] for row in live_gpu)
         assert cpu + gpu[1] <= info[8] <= 32768
@@ -208,7 +241,14 @@ def inspect(scene_dir, output, program):
         assert 600 < len(vertices) // 48 < 2048
     assert len(set(struct.iter_unpack('4B', before))) > 1
     assert not allocations and not generation and not ready and cpu == 0
-    assert set(outcomes) == attempts and all(kinds == {0, 1, 2} for kinds in outcomes.values())
+    assert set(outcomes) == attempts and all(kinds == ({0,1} if key == failed_key else {0,1,2}) for key,kinds in outcomes.items())
+    if failure:
+        assert len(attempts) == 19 and not gpu_owners and retry_generation is not None
+        for key in attempts:
+            expected = {i for i,n in enumerate((costs[key[0]][0],costs[key[0]][1],costs[key[0]][3],costs[key[0]][4],costs[key[0]][5])) if n > 0}
+            if key == failed_key and failure_case < 5: expected = {i for i in expected if i < failure_case}
+            assert allocated_fields[key] == expected
+        assert completed_at[failed_key] < destroyed_at[failed_key]
     assert len(stage_elapsed) == len(attempts)
     final, sdk = report['finalInfo'], report['finalGPU']
     assert len(final) == 28 and len(sdk) == (20 if hud else 19)
@@ -240,7 +280,10 @@ def inspect(scene_dir, output, program):
                                                        for i, name in enumerate(('allocation', 'source', 'decode', 'upload', 'total'))},
             'recovery_ms': recovery['elapsedNs'] / 1e6, 'recovery_image_sha256': hashlib.sha256(before).hexdigest(),
             'source_sha256': retained_at_recovery, 'final_zero_owners': True,
-            **({'category_pressure': pressure_stats} if pressure else {})}
+            **({'category_pressure': pressure_stats} if pressure else {}),
+            **({'load_failure': {'case':failure_case,'failed_key':failed_key,'allocated_fields':sorted(allocated_fields[failed_key]),
+                 'completed_tick':completed_at[failed_key],'destroyed_tick':destroyed_at[failed_key],'retry_generation':retry_generation,
+                 'continued_paid_steps':8,'physical_os_exhaustion_qualified':False}} if failure else {})}
 
 
 def fault_checks(scene_dir, output, program):
@@ -252,6 +295,9 @@ def fault_checks(scene_dir, output, program):
               'final_count', 'schema', 'negative_time')
     hud = report['schema'] != 'aethyr.stream-walk-native-gpu.v1'
     pressure = report['schema'].endswith('.v4')
+    failure = report['schema'].endswith('.v5')
+    if failure:
+        faults += tuple('load_effect_' + str(i) for i in range(10)) + ('load_case','load_provenance','load_status','load_ready','load_source','load_missing_stage','load_missing_retirement')
     if pressure: faults += tuple('pressure_word_' + str(i) for i in range(13)) + ('pressure_source','pressure_state','pressure_owner','pressure_image','pressure_tick','pressure_no_continue') + tuple('pressure_cost_' + str(i) for i in range(13))
     if hud:
         faults += ('hud_shader_identity', 'present_shader_identity', 'hud_draw_count', 'hud_early_release',
@@ -325,6 +371,20 @@ def fault_checks(scene_dir, output, program):
                 (target / 'after-hud.f32').write_bytes(bytes([vertices[0] ^ 1]) + vertices[1:])
             elif fault == 'display_schema':
                 changed['presentationSchema'] += '.unknown'
+            elif fault.startswith('load_effect_'): changed['loadFailure']['effect'][int(fault.rsplit('_',1)[1])] += 1
+            elif fault == 'load_case': changed['loadFailure']['case'] += 1
+            elif fault == 'load_provenance': changed['loadFailure']['qualification'] = 'physical OS exhaustion'
+            elif fault.startswith('load_'):
+                key = tuple(report['loadFailure']['effect'][4:7])
+                records = [r for f in changed['warmup'] for r in f['records'] if tuple(r[2:5]) == key]
+                completion = next(r for r in records if r[1] == 0)
+                if fault == 'load_status': completion[5] = 0
+                elif fault == 'load_ready': completion[1] = 2
+                elif fault == 'load_source': completion[15] ^= 1
+                elif fault == 'load_missing_stage':
+                    for f in changed['warmup']: f['stages'] = [s for s in f['stages'] if tuple(s[:3]) != key]
+                elif fault == 'load_missing_retirement':
+                    for f in changed['warmup']: f['records'] = [r for r in f['records'] if not (r[1] == 1 and tuple(r[2:5]) == key)]
             elif fault.startswith('pressure_word_'):
                 changed['categoryPressure']['words'][int(fault.rsplit('_',1)[1])] += 1
             elif fault == 'pressure_source': changed['categoryPressure']['sourceSHA256'] = 'f' * 64
@@ -389,7 +449,7 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
     source_bytes = (output / 'receipt.json').read_bytes()
     source = json.loads(source_bytes)
     report = json.loads(replay_path.read_bytes())
-    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v3', 'aethyr.stream-walk-native-gpu.v4')
+    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v3', 'aethyr.stream-walk-native-gpu.v4', 'aethyr.stream-walk-native-gpu.v5')
     assert report['schema'] == 'aethyr.stream-walk-native-replay.v3'
     assert report['backend'] == source['backend'] == 1 and report['tier'] == source['tier']
     assert report['input_sha256'] == hashlib.sha256(source_bytes).hexdigest()
@@ -444,6 +504,8 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
         faults += ('pressure_missing','pressure_schema','pressure_clock','pressure_serial')
         faults += tuple('pressure_word_' + str(i) for i in range(13))
         faults += tuple('pressure_digest_' + key for key in ('manifestSHA256','sourceSHA256','stateBefore','stateAfter','stateNormalized'))
+    if source['schema'].endswith('.v5'):
+        faults += ('load_missing','load_schema','load_case','load_provenance','load_status') + tuple('load_effect_' + str(i) for i in range(10))
     with tempfile.TemporaryDirectory(prefix='aethyr-native-cpu-replay-') as temporary:
         target = Path(temporary)
         for fault in faults:
@@ -470,6 +532,12 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
                 changed['sceneSHA256'] = 'f' * 64
             elif fault == 'actor_state':
                 changed['routeCells'][1][0][2] += 1
+            elif fault == 'load_missing': del changed['loadFailure']
+            elif fault == 'load_schema': changed['schema'] = 'aethyr.stream-walk-native-gpu.v3'
+            elif fault == 'load_case': changed['loadFailure']['case'] += 1
+            elif fault == 'load_provenance': changed['loadFailure']['qualification'] = 'physical OS exhaustion'
+            elif fault == 'load_status': next(r for f in changed['warmup'] for r in f['records'] if r[6] == 6)[5] = 0
+            elif fault.startswith('load_effect_'): changed['loadFailure']['effect'][int(fault.rsplit('_',1)[1])] += 1
             elif fault == 'pressure_missing': del changed['categoryPressure']
             elif fault == 'pressure_schema': changed['schema'] = 'aethyr.stream-walk-native-gpu.v3'
             elif fault in ('pressure_clock','pressure_serial'):

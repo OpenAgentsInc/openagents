@@ -7,6 +7,7 @@
 #load "../recorded-source.coax";
 #load "../stream-replay-profile.coax";
 #load "stream-pressure.coax";
+#load "../native-load-policy.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/json/json.coax";
@@ -14,6 +15,10 @@
 sw_sdk_start :: (source: [] u8, root: [] u8, tier: int, backend: int) -> bool #foreign #effects(all);
 sw_sdk_copy :: (row: int, generation: int, epoch: int, source: [] u8) -> bool #foreign #effects(all);
 sw_sdk_pressure :: (source: [] u8, words: [] int, manifest: [] u8, hashes: [] u8) -> bool #foreign #effects(all);
+sw_fault_open :: (kind: s32, field: s32) -> s32 #foreign #effects(all);
+sw_fault_take :: (kind: s32, row: s32, generation: int, epoch: int, field: s32) -> s32 #foreign #effects(all);
+sw_fault_source_result :: (result: int) #foreign #effects(all);
+sw_fault_info :: (field: s32) -> int #foreign #effects(all);
 sw_host_frame :: (ns: int, direction: f32) -> s32 #foreign #effects(all);
 sw_host_step_count :: () -> s32 #foreign #effects(all);
 sw_host_step_word :: (step: s32, word: s32) -> int #foreign #effects(all);
@@ -26,12 +31,13 @@ sw_host_record :: (index: s32, field: s32) -> int #foreign #effects(all);
 sw_host_allocate :: (row: s32, generation: int, epoch: int) -> s32 #foreign #effects(all);
 sw_host_decode :: (row: s32, generation: int, epoch: int) -> s32 #foreign #effects(all);
 sw_host_finish :: (row: s32, generation: int, epoch: int, status: s32) -> s32 #foreign #effects(all);
+sw_host_finish_code :: (row: s32, generation: int, epoch: int, status: s32) -> s32 #foreign #effects(all);
 sw_host_destroy :: (row: s32, generation: int, epoch: int) -> s32 #foreign #effects(all);
 sw_host_cell :: (cell: s32, field: s32) -> int #foreign #effects(all);
 sw_host_trace_ack :: () #foreign #effects(all);
 
 SwReplaySources :: struct { data: [64] [4096] u8; count: [64] int; }
-SwReplayAttempts :: struct { generation: [64] int; epoch: [64] int; retiring: [64] bool; }
+SwReplayAttempts :: struct { generation: [64] int; epoch: [64] int; retiring: [64] bool; failed: [64] int; }
 SwReplaySnapshots :: struct {used: [RECORDED_SOURCE_EVENTS] bool;}
 #test "replay numbers preserve unsigned SHA words and source decimal binary32 values" {
   d: [1] Jv; nodes: [32] JvNode;
@@ -70,11 +76,19 @@ swr_sources :: (scene: Jv, dir: string, out: [] SwReplaySources) -> bool {
   }
   return true;
 }
-swr_effects :: (source: [] SwReplaySources, attempts: [] SwReplayAttempts) -> bool {
+swr_effects :: (source: [] SwReplaySources, attempts: [] SwReplayAttempts, failure: bool) -> bool {
   for i: 0..<sw_host_info(1) {
     row := sw_host_command(0, cast(s32) i, 0); gen := sw_host_command(0, cast(s32) i, 1); epoch := sw_host_command(0, cast(s32) i, 2);
     if row < 0 || row >= 64 || attempts[0].generation[row] != 0 { return false; }
-    if sw_host_allocate(cast(s32) row, gen, epoch) != 1 || !sw_sdk_copy(row, gen, epoch, source[0].data[row][0..<source[0].count[row]]) || sw_host_decode(cast(s32) row, gen, epoch) != 0 { return false; }
+    allocated := sw_host_allocate(cast(s32) row, gen, epoch) == 1; copied := false; decoded := -1;
+    if allocated {
+      if failure && sw_fault_take(2,cast(s32) row,gen,epoch,-1) == 1 { sw_fault_source_result(-1); }
+      else { copied = sw_sdk_copy(row,gen,epoch,source[0].data[row][0..<source[0].count[row]]); }
+    }
+    if copied { decoded = cast(int) sw_host_decode(cast(s32) row,gen,epoch); }
+    status := nlf_status(allocated,copied,decoded,true);
+    if status != 0 && (!failure || sw_fault_info(3) != 1 || sw_fault_info(4) != row || sw_fault_info(5) != gen || sw_fault_info(6) != epoch) { return false; }
+    attempts[0].failed[row] = status;
     attempts[0].generation[row] = gen; attempts[0].epoch[row] = epoch;
   }
   for i: 0..<sw_host_info(2) {
@@ -107,7 +121,7 @@ swr_snapshot :: (trace: Jv, record: int, source: [] SwReplaySources, snapshots: 
   if decoded != 0 && swr_word(trace, jv_at(trace, record, 5)) == 0 { return false; }
   snapshots[0].used[found] = true; return true;
 }
-swr_frame :: (trace: Jv, frame: int, closing: bool, native: bool, source: [] SwReplaySources, attempts: [] SwReplayAttempts, snapshots: [] SwReplaySnapshots, observed: [] u8, used: [] int) -> bool {
+swr_frame :: (trace: Jv, frame: int, closing: bool, native: bool, failure: bool, source: [] SwReplaySources, attempts: [] SwReplayAttempts, snapshots: [] SwReplaySnapshots, observed: [] u8, used: [] int) -> bool {
   object := closing || native;
   records := ifx object then jv_get(trace, frame, "records") else jv_at(trace, frame, 13);
   for i: 0..<jv_len(trace, records) {
@@ -117,10 +131,13 @@ swr_frame :: (trace: Jv, frame: int, closing: bool, native: bool, source: [] SwR
     if row < 0 || row >= 64 || attempts[0].generation[row] != gen || attempts[0].epoch[row] != epoch { return false; }
     if kind == 0 {
       if !swr_snapshot(trace, record, source, snapshots) { return false; }
-      if sw_host_finish(cast(s32) row, gen, epoch, cast(s32) swr_word(trace, jv_at(trace, record, 5))) != 1 { return false; }
+      status := cast(s32) swr_word(trace,jv_at(trace,record,5));
+      if failure {
+        if cast(int) status != attempts[0].failed[row] || sw_host_finish_code(cast(s32) row,gen,epoch,status) != 1 { return false; }
+      } else if sw_host_finish(cast(s32) row,gen,epoch,status) != 1 { return false; }
     } else if kind == 1 {
       if !attempts[0].retiring[row] || sw_host_destroy(cast(s32) row, gen, epoch) != 1 { return false; }
-      attempts[0].generation[row] = 0; attempts[0].retiring[row] = false;
+      attempts[0].generation[row] = 0; attempts[0].retiring[row] = false; attempts[0].failed[row] = 0;
     } else { return false; }
   }
   ns := swr_word(trace, ifx object then jv_get(trace, frame, "frameNs") else jv_at(trace, frame, 0));
@@ -160,7 +177,7 @@ swr_frame :: (trace: Jv, frame: int, closing: bool, native: bool, source: [] SwR
     }
   }
   if sw_host_info(14) > sw_host_info(10) { return false; }
-  return swr_effects(source, attempts);
+  return swr_effects(source, attempts, failure);
 }
 swr_pressure :: (scene: Jv, dir: string, trace: Jv) -> bool {
   item := jv_get(trace, 0, "categoryPressure"); name: [64] u8;
@@ -200,12 +217,14 @@ tool_main :: () -> int #export_c #effects(all) {
     if size < 0 || jv_kind(d[0], captured) != JV_ARRAY || !recorded_source_profile(cast(string) name[0..<size], jv_len(d[0], captured)) { return 1; }
   }
   native := jv_get(d[0], 0, "backend") >= 0;
-  pressure := false;
+  pressure := false; failure := false;
   if native {
     schema: [64] u8; size := jv_str(d[0], jv_get(d[0], 0, "schema"), schema[..]);
     if size < 0 || !srp_native(cast(string) schema[0..<size], jv_int(d[0], jv_get(d[0], 0, "backend"), -1)) { return 1; }
     pressure = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v4";
     if !srp_pressure(cast(string) schema[0..<size], jv_get(d[0], 0, "categoryPressure") >= 0) { return 1; }
+    failure = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v5";
+    if !srp_failure(cast(string) schema[0..<size],jv_get(d[0],0,"loadFailure") >= 0) { return 1; }
   }
   profile := ifx native then 0 else jv_get(d[0], 0, "profile"); tier := ifx profile < 0 then 0 else jv_int(d[0], jv_get(d[0], profile, "tier"), -1);
   schema: [64] u8; schema_n := jv_str(d[0], jv_get(d[0], profile, "stateSchema"), schema[..]);
@@ -219,6 +238,17 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   n = fs_read(fs_join(args_at(a[..], 0), swr_name(cast(string) root[..], ".rcm", name[..]), path[..]), manifest_bytes[..]);
   if n < 1 || !sw_sdk_start(manifest_bytes[0..<n], root[..], tier, ifx native then 1 else 0) { return 1; }
+  failure_words: [10] int;
+  if failure {
+    entry := jv_get(d[0],0,"loadFailure"); words := jv_get(d[0],entry,"effect"); label: [128] u8;
+    size := jv_str(d[0],jv_get(d[0],entry,"schema"),label[..]);
+    if size < 0 || cast(string) label[0..<size] != "aethyr.stream-native-load-failure.v1" || jv_len(d[0],words) != 10 { return 1; }
+    size = jv_str(d[0],jv_get(d[0],entry,"qualification"),label[..]);
+    if size < 0 || cast(string) label[0..<size] != "explicit allocator/source/scratch effect input; no physical OS exhaustion" { return 1; }
+    for i: 0..<10 { failure_words[i] = swr_word(d[0],jv_at(d[0],words,i)); }
+    which := jv_int(d[0],jv_get(d[0],entry,"case"),-1);
+    if !nlf_effect(which,failure_words[..]) || sw_fault_open(cast(s32) failure_words[0],cast(s32) failure_words[1]) != 1 { return 1; }
+  }
   attempts: [1] SwReplayAttempts; snapshots: [1] SwReplaySnapshots; observed: [1048576] u8; used: [1] int;
   frames := jv_get(d[0], 0, ifx native then "warmup" else "frames"); route := ifx native then jv_get(d[0], 0, "route") else -1;
   count := jv_len(d[0], frames) + jv_len(d[0], route);
@@ -226,7 +256,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if jv_len(d[0], jv_get(d[0], 0, "sourceSnapshots")) > RECORDED_SOURCE_EVENTS { return 1; }
   for list, phase: [2] int.[frames, route] {
     if phase == 1 && pressure && !swr_pressure(scene[0], args_at(a[..], 0), d[0]) { tool_errln("category-pressure replay differs"); return 1; }
-    for i: 0..<jv_len(d[0], list) { if !swr_frame(d[0], jv_at(d[0], list, i), false, native, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("replay failed at frame %\n", i); return 1; } }
+    for i: 0..<jv_len(d[0], list) { if !swr_frame(d[0], jv_at(d[0], list, i), false, native, failure, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("replay failed at frame %\n", i); return 1; } }
   }
   // Native observer has made no GPU SDK objects. Existing ledger handles
   // are exercised by the shared owner; no GPU presentation is claimed.
@@ -236,7 +266,8 @@ tool_main :: () -> int #export_c #effects(all) {
   for cell: 0..<12 { for field: 0..<5 { if sw_host_cell(cast(s32) cell, cast(s32) field) != swr_word(d[0], jv_at(d[0], jv_at(d[0], expected_cells, cell), field)) { return 1; } } }
   if sw_host_close() != 1 { return 1; }
   closing := ifx native then jv_get(d[0], 0, "cleanup") else jv_path(d[0], 0, "cleanup.closingFrames");
-  for i: 0..<jv_len(d[0], closing) { if !swr_frame(d[0], jv_at(d[0], closing, i), true, native, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("closing replay failed at frame %\n", i); return 1; } }
+  for i: 0..<jv_len(d[0], closing) { if !swr_frame(d[0], jv_at(d[0], closing, i), true, native, failure, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("closing replay failed at frame %\n", i); return 1; } }
+  if failure { for word,i: failure_words { if word != sw_fault_info(cast(s32) i) { return 1; } } }
   for i: 0..<jv_len(d[0], jv_get(d[0], 0, "sourceSnapshots")) { if !snapshots[0].used[i] { return 1; } }
   for field: [7] s32.[8, 10, 11, 12, 14, 22, 23] { if sw_host_info(field) != 0 { print("cleanup field % remains %\n", field, sw_host_info(field)); return 1; } }
   if sw_host_info(24) != 1 || sw_host_info(20) != sw_host_info(21) { return 1; }

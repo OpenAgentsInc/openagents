@@ -1,0 +1,512 @@
+{
+  "base_commit": "6cf7b2b5af",
+  "browser": {
+    "bytes": 143576,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-browser-rescue.wasm",
+    "sha256": "2bf4397d355718ded0b79f38afa7ffb377afd0f7b16cc9b123d6ae5ad7e8c73a"
+  },
+  "c_compiler": "GCC 15.2.0",
+  "cases": [
+    {
+      "case": "alloc-0",
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.179077,
+        "p95": 4.745718,
+        "p99": 5.107394
+      },
+      "oracle": "load-alloc-0-tier0-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-0-tier0-v1/receipt.json",
+      "receipt_sha256": "adab0fbd049fd013de06633a9192577248dca7e3244b89018fa4b4d8bb95a345",
+      "sanitized": false,
+      "tier": 0,
+      "vulkan_peak": 1648592
+    },
+    {
+      "case": "alloc-1",
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.189609,
+        "p95": 4.150476,
+        "p99": 4.855242
+      },
+      "oracle": "load-alloc-1-tier0-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-1-tier0-v1/receipt.json",
+      "receipt_sha256": "1aba59fb31d8a750fd77aed6301d8bd14c90420769271c461ae10daead8b583d",
+      "sanitized": false,
+      "tier": 0,
+      "vulkan_peak": 1648592
+    },
+    {
+      "case": "alloc-2",
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.173731,
+        "p95": 4.262344,
+        "p99": 5.873523
+      },
+      "oracle": "load-alloc-2-tier0-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-2-tier0-v1/receipt.json",
+      "receipt_sha256": "9b6284a9e52698292b5752a567fc5c377b95d8c6085263fe3fc969d1e746882b",
+      "sanitized": false,
+      "tier": 0,
+      "vulkan_peak": 1648592
+    },
+    {
+      "case": "alloc-3",
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.214145,
+        "p95": 4.176518,
+        "p99": 5.936342
+      },
+      "oracle": "load-alloc-3-tier0-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-3-tier0-v1/receipt.json",
+      "receipt_sha256": "3aa8194351e04bd2f51e9f63a9af26372fbd6bf361f77b0e366dd57a879f07e2",
+      "sanitized": false,
+      "tier": 0,
+      "vulkan_peak": 1648592
+    },
+    {
+      "case": "alloc-4",
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.168939,
+        "p95": 3.893606,
+        "p99": 4.798223
+      },
+      "oracle": "load-alloc-4-tier0-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-4-tier0-v1/receipt.json",
+      "receipt_sha256": "656a53b4effef5e14b4420e4cd677fccb8e34e935f0fd74fe2f65ead45d64a5e",
+      "sanitized": false,
+      "tier": 0,
+      "vulkan_peak": 1648592
+    },
+    {
+      "case": "source",
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.16549,
+        "p95": 4.211895,
+        "p99": 4.952323
+      },
+      "oracle": "load-source-tier0-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-source-tier0-v1/receipt.json",
+      "receipt_sha256": "43dabcf0bf653c6fba04965bb42d3301e34a0aac76c41b6594ce20a964f1bd3c",
+      "sanitized": false,
+      "tier": 0,
+      "vulkan_peak": 1648592
+    },
+    {
+      "case": "decode",
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.297204,
+        "p95": 4.109685,
+        "p99": 5.86378
+      },
+      "oracle": "load-decode-tier0-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-decode-tier0-v1/receipt.json",
+      "receipt_sha256": "b87fc1d326ad4de946d71d73697b22df5f706e308b2307bd85c4bc75d43bcbe4",
+      "sanitized": false,
+      "tier": 0,
+      "vulkan_peak": 1648592
+    },
+    {
+      "case": "alloc-0",
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.161412,
+        "p95": 3.975846,
+        "p99": 4.685728
+      },
+      "oracle": "load-alloc-0-tier1-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-0-tier1-v1/receipt.json",
+      "receipt_sha256": "0b6769461b15ac02bd8d31c21fd7371982a80e828907deea59c471dbb6dbb075",
+      "sanitized": false,
+      "tier": 1,
+      "vulkan_peak": 1650640
+    },
+    {
+      "case": "alloc-1",
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.167354,
+        "p95": 3.962164,
+        "p99": 4.68249
+      },
+      "oracle": "load-alloc-1-tier1-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-1-tier1-v1/receipt.json",
+      "receipt_sha256": "cf6ed1c52727c9f369c0359bf063621330f3afe2d31bd36ce3b848d66f474ee7",
+      "sanitized": false,
+      "tier": 1,
+      "vulkan_peak": 1650640
+    },
+    {
+      "case": "alloc-2",
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.167222,
+        "p95": 4.19852,
+        "p99": 5.008207
+      },
+      "oracle": "load-alloc-2-tier1-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-2-tier1-v1/receipt.json",
+      "receipt_sha256": "1b84629f328c9cbd8dd71225daefd8a0afd4e400f4ac360d2e5c784d04f9ce0e",
+      "sanitized": false,
+      "tier": 1,
+      "vulkan_peak": 1650640
+    },
+    {
+      "case": "alloc-3",
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.172663,
+        "p95": 4.225786,
+        "p99": 4.895521
+      },
+      "oracle": "load-alloc-3-tier1-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-3-tier1-v1/receipt.json",
+      "receipt_sha256": "d22d7d56feec2dd316c07dbb48091ea8f6d8891b17e34f9f0417caa548ba5cdc",
+      "sanitized": false,
+      "tier": 1,
+      "vulkan_peak": 1650640
+    },
+    {
+      "case": "alloc-4",
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.167262,
+        "p95": 4.060874,
+        "p99": 4.664495
+      },
+      "oracle": "load-alloc-4-tier1-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-4-tier1-v1/receipt.json",
+      "receipt_sha256": "651bcecde42dd7332401ca62241db8759bfd2696f13f6536a2dea93a32d5ccf0",
+      "sanitized": false,
+      "tier": 1,
+      "vulkan_peak": 1650640
+    },
+    {
+      "case": "source",
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.188808,
+        "p95": 4.117483,
+        "p99": 4.859116
+      },
+      "oracle": "load-source-tier1-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-source-tier1-v1/receipt.json",
+      "receipt_sha256": "58c7e8b3aec2ec888edb73774e9cb94f8676f5aa3a03c445d0f374392690e206",
+      "sanitized": false,
+      "tier": 1,
+      "vulkan_peak": 1650640
+    },
+    {
+      "case": "decode",
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.160427,
+        "p95": 4.149604,
+        "p99": 4.71914
+      },
+      "oracle": "load-decode-tier1-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-decode-tier1-v1/receipt.json",
+      "receipt_sha256": "037fba53c81da4db50ddafd5bb9c37aeb8d127a69f6f1f09fd3c6245246d7cf9",
+      "sanitized": false,
+      "tier": 1,
+      "vulkan_peak": 1650640
+    },
+    {
+      "case": "alloc-0",
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.21607,
+        "p95": 19.145759,
+        "p99": 24.497586
+      },
+      "oracle": "load-alloc-0-tier0-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-0-tier0-san-v1/receipt.json",
+      "receipt_sha256": "06cc5a27b0047ebd119804d462133a19ab3491bebc1c94410ec43856ec846b45",
+      "sanitized": true,
+      "tier": 0,
+      "vulkan_peak": 1258440
+    },
+    {
+      "case": "alloc-1",
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.261555,
+        "p95": 18.366179,
+        "p99": 25.600193
+      },
+      "oracle": "load-alloc-1-tier0-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-1-tier0-san-v1/receipt.json",
+      "receipt_sha256": "f6fdb05dae02e86f63d63eb40f820627f3bde5d1b696ce202c2cd253ab56d6ff",
+      "sanitized": true,
+      "tier": 0,
+      "vulkan_peak": 1258440
+    },
+    {
+      "case": "alloc-2",
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.285668,
+        "p95": 19.321322,
+        "p99": 25.547017
+      },
+      "oracle": "load-alloc-2-tier0-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-2-tier0-san-v1/receipt.json",
+      "receipt_sha256": "176fdbf7d12b281b875081089e950cc209ca075ae3a37bc46b42e9a442cb3f36",
+      "sanitized": true,
+      "tier": 0,
+      "vulkan_peak": 1258440
+    },
+    {
+      "case": "alloc-3",
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.22346,
+        "p95": 17.94819,
+        "p99": 25.754616
+      },
+      "oracle": "load-alloc-3-tier0-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-3-tier0-san-v1/receipt.json",
+      "receipt_sha256": "e2c160609a0cee0085dbb981db5dedca91d735aff250372635d1e2c36c5def20",
+      "sanitized": true,
+      "tier": 0,
+      "vulkan_peak": 1258440
+    },
+    {
+      "case": "alloc-4",
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.213621,
+        "p95": 19.471152,
+        "p99": 24.331827
+      },
+      "oracle": "load-alloc-4-tier0-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-4-tier0-san-v1/receipt.json",
+      "receipt_sha256": "66f7136de07ded7d66001ef34cfe1eb87db12a6d6d034c68dd87ab415093fca5",
+      "sanitized": true,
+      "tier": 0,
+      "vulkan_peak": 1258440
+    },
+    {
+      "case": "source",
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.216435,
+        "p95": 20.417941,
+        "p99": 25.691897
+      },
+      "oracle": "load-source-tier0-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-source-tier0-san-v1/receipt.json",
+      "receipt_sha256": "0831d00d53c679180d4b4b2c3e8eb88923d083f63df0e9498d7fa5d9b9932e7f",
+      "sanitized": true,
+      "tier": 0,
+      "vulkan_peak": 1258440
+    },
+    {
+      "case": "decode",
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.196283,
+        "p95": 19.094598,
+        "p99": 24.749238
+      },
+      "oracle": "load-decode-tier0-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-decode-tier0-san-v1/receipt.json",
+      "receipt_sha256": "d4ca4ca58a49f2c61b8c50ea1b4291f2d2839ed06ca3164544073bca90d5de59",
+      "sanitized": true,
+      "tier": 0,
+      "vulkan_peak": 1258440
+    },
+    {
+      "case": "alloc-0",
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.199258,
+        "p95": 19.131008,
+        "p99": 25.370127
+      },
+      "oracle": "load-alloc-0-tier1-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-0-tier1-san-v1/receipt.json",
+      "receipt_sha256": "82ab8d6250fdfa856566804678ea9176ee553fe901bd44e3b3c4debf58ab55ff",
+      "sanitized": true,
+      "tier": 1,
+      "vulkan_peak": 1259464
+    },
+    {
+      "case": "alloc-1",
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.38143,
+        "p95": 18.981261,
+        "p99": 24.664221
+      },
+      "oracle": "load-alloc-1-tier1-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-1-tier1-san-v1/receipt.json",
+      "receipt_sha256": "16dd60931257705ea77505b26fc98d36298dee880cdee35d58e1c7d035950660",
+      "sanitized": true,
+      "tier": 1,
+      "vulkan_peak": 1259464
+    },
+    {
+      "case": "alloc-2",
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.311552,
+        "p95": 19.666031,
+        "p99": 24.683836
+      },
+      "oracle": "load-alloc-2-tier1-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-2-tier1-san-v1/receipt.json",
+      "receipt_sha256": "293daa4d3a519fac19374f558d44bdd831ecd3ccb471ff2211670eea605aa366",
+      "sanitized": true,
+      "tier": 1,
+      "vulkan_peak": 1259464
+    },
+    {
+      "case": "alloc-3",
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.313702,
+        "p95": 19.222562,
+        "p99": 25.873736
+      },
+      "oracle": "load-alloc-3-tier1-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-3-tier1-san-v1/receipt.json",
+      "receipt_sha256": "84e78f90f968e9e560eadc782f03b40a01d42bc52e4d8b5ef6bfdbb7524ea50c",
+      "sanitized": true,
+      "tier": 1,
+      "vulkan_peak": 1259464
+    },
+    {
+      "case": "alloc-4",
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.26484,
+        "p95": 19.246588,
+        "p99": 24.533779
+      },
+      "oracle": "load-alloc-4-tier1-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-alloc-4-tier1-san-v1/receipt.json",
+      "receipt_sha256": "b3574ca86a6adac6443d69e5763ce4e41bcded0bc98ec158ecbc9c1cc8c0a31f",
+      "sanitized": true,
+      "tier": 1,
+      "vulkan_peak": 1259464
+    },
+    {
+      "case": "source",
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.351543,
+        "p95": 19.253659,
+        "p99": 25.760261
+      },
+      "oracle": "load-source-tier1-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-source-tier1-san-v1/receipt.json",
+      "receipt_sha256": "e1e21cecb3be83fb0f3d015f8137fbd04552b921684268e8929360307f136231",
+      "sanitized": true,
+      "tier": 1,
+      "vulkan_peak": 1259464
+    },
+    {
+      "case": "decode",
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.348074,
+        "p95": 19.384089,
+        "p99": 26.112634
+      },
+      "oracle": "load-decode-tier1-san-oracle.json",
+      "receipt": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-decode-tier1-san-v1/receipt.json",
+      "receipt_sha256": "2461b65b338cb209cd29df80726d6365f7bec39b9e412f7dfb11214436be811b",
+      "sanitized": true,
+      "tier": 1,
+      "vulkan_peak": 1259464
+    }
+  ],
+  "compiler": "coax0 0.52.0",
+  "cpu": {
+    "bytes": 4619544,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-cpu-v1-san/replay",
+    "sha256": "adf40a5514a5fe17ef9cc15a0c80cfdba670f8dad9001c7dc0866be2d4eaa99e"
+  },
+  "cpu_negative_histories": 378,
+  "cpu_paid_steps": 1946,
+  "gpu_negative_receipts": 1316,
+  "issue_closed": false,
+  "native": {
+    "bytes": 401288,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-native-v2/stream-native",
+    "sha256": "3c8b0eb0fd2f1b12429ad0a883d7dd6da36019b1d3098c2543dd45301cbc580d"
+  },
+  "physical_os_exhaustion_qualified": false,
+  "root_mutants": 111,
+  "sanitized": {
+    "bytes": 5876968,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/load-native-san-v2/stream-native",
+    "sha256": "2e9ea2078034dd449d5b4fc541fe323dbe7e5dfd778f34faec5bc9e03c56b17f"
+  },
+  "schema": "aethyr.stream-native-load-runtime.v1",
+  "survivors": 0,
+  "vulkan_factory_upload_failures_qualified": false
+}

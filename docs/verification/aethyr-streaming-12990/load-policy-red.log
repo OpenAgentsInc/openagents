@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/native-load-policy.coax:48:16: mutant survived: '||' became '&&'
+    if which < 0 || which > 6 || q.count != 10 { return false; }
+                 ^
+aethyr/host/native-load-policy.coax:48:27: mutant survived: 6 became 7
+    if which < 0 || which > 6 || q.count != 10 { return false; }
+                            ^
+102 mutants, 100 killed, 2 survived

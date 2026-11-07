@@ -41,6 +41,21 @@ static int32_t trace_n;
 static bool trace_overflow;
 static size_t failed_bytes;
 static int allocation_errno;
+#ifndef __wasm__
+// Explicit test-carrier effect inputs, separate from genuine OS failures.
+// kind, field, remaining, hits, row, generation, epoch, bytes, result, finish.
+static int64_t load_fault[10];
+int32_t sw_fault_open(int32_t kind,int32_t field){
+  if(load_fault[0]||state.tick||kind<1||kind>3||(kind==1?(field<0||field>4):field!=-1))return 0;
+  load_fault[0]=kind;load_fault[1]=field;load_fault[2]=1;load_fault[4]=-1;return 1;
+}
+int32_t sw_fault_take(int32_t kind,int32_t row,int64_t generation,int64_t epoch,int32_t field){
+  if(load_fault[0]!=kind||load_fault[1]!=field||load_fault[2]!=1||row!=0)return 0;
+  load_fault[2]=0;load_fault[3]++;load_fault[4]=row;load_fault[5]=generation;load_fault[6]=epoch;return 1;
+}
+void sw_fault_source_result(int64_t result){if(load_fault[0]==2&&load_fault[3]==1)load_fault[8]=result;}
+int64_t sw_fault_info(int32_t field){return field>=0&&field<10?load_fault[field]:-1;}
+#endif
 #ifdef SW_LOSS_POLICY
 static coax_t_GlLoss loss_policy;
 static uint8_t device_digest[64];
@@ -76,6 +91,11 @@ static coax_v_t_HostAudioMemory av(void){return(coax_v_t_HostAudioMemory){&audio
 static coax_v_t_HostImageMemory iv(void){return(coax_v_t_HostImageMemory){&image_memory,1};}
 static void observe(int32_t row,int32_t field,int32_t freed,size_t n){if(trace_n==1024){trace_overflow=true;return;}int64_t *event=physical_trace[trace_n++];event[0]=freed;event[1]=row;event[2]=objects[row].key.generation;event[3]=objects[row].key.epoch;event[4]=field;event[5]=(int64_t)n;}
 static void *allocation(int32_t row,int32_t field,size_t n){if(!n)return NULL;void *p;
+#ifndef __wasm__
+  if(sw_fault_take(1,row,objects[row].key.generation,objects[row].key.epoch,field)){
+    errno=ENOMEM;failed_bytes=n;allocation_errno=errno;load_fault[7]=(int64_t)n;load_fault[8]=errno;return NULL;
+  }
+#endif
 #ifdef SW_VULKAN
   p=field==4?sw_vk_stage_allocate(row,n):calloc(1,n);
 #else
@@ -122,6 +142,9 @@ SW_API("sw_host_info") int64_t sw_host_info(int32_t field){switch(field){
   case 24:return state.stream.e[0].closing&&state.stream.e[0].destroyed==state.stream.e[0].requests;
   case 25:return state.peak_active;case 26:return state.player.clock.frames;
   case 27:return sizeof state+sizeof manifest+sizeof audio_memory+sizeof image_memory+sizeof objects+sizeof configuration+sizeof root_hex+sizeof borrows+sizeof borrowed+sizeof uniforms+sizeof fixed+sizeof fixed_live+sizeof drawing+sizeof physical_bytes+sizeof physical_peak+sizeof physical_trace+sizeof trace_n+sizeof trace_overflow
+#ifndef __wasm__
+    +sizeof load_fault
+#endif
 #ifdef SW_PRESENTATION
     +sizeof hud_vertices+sizeof hud_count+sizeof hud_frames
 #endif
@@ -156,17 +179,26 @@ SW_API("sw_host_allocate") int32_t sw_host_allocate(int32_t row,int64_t generati
     p->pcm_ticket=ham_reserve(av(),plan.cost.decoded/4);if(p->pcm_ticket<0)return 0;
   }
   if(plan.spec.format==COAX_ResourceFormat_image_mips){p->image_ticket=hic_reserve(iv(),row,plan.cost.decoded);if(!p->image_ticket)return 0;}
-  p->source=allocation(row,0,(size_t)plan.cost.encoded);p->decoded=allocation(row,1,(size_t)plan.cost.decoded);p->plan=allocation(row,2,sizeof plan);
-  p->work=allocation(row,3,(size_t)plan.cost.decode_scratch);p->upload=allocation(row,4,(size_t)plan.cost.upload_scratch);
-  if(!p->source||!p->plan||(plan.cost.decoded&&!p->decoded)||(plan.cost.decode_scratch&&!p->work)||(plan.cost.upload_scratch&&!p->upload))return 0;
-  *p->plan=plan;return 1;
+  p->source=allocation(row,0,(size_t)plan.cost.encoded);if(!p->source)return 0;
+  if(plan.cost.decoded){p->decoded=allocation(row,1,(size_t)plan.cost.decoded);if(!p->decoded)return 0;}
+  p->plan=allocation(row,2,sizeof plan);if(!p->plan)return 0;*p->plan=plan;
+  if(plan.cost.decode_scratch){p->work=allocation(row,3,(size_t)plan.cost.decode_scratch);if(!p->work)return 0;}
+  if(plan.cost.upload_scratch){p->upload=allocation(row,4,(size_t)plan.cost.upload_scratch);if(!p->upload)return 0;}
+  return 1;
 }
 SW_API("sw_host_pointer") uintptr_t sw_host_pointer(int32_t row,int32_t field){if(row<0||row>=64)return 0;SwPhysical *p=&objects[row];switch(field){case 0:return(uintptr_t)p->source;case 1:return(uintptr_t)p->decoded;case 2:return(uintptr_t)p->work;case 3:return(uintptr_t)p->upload;case 4:return(uintptr_t)p->plan;default:return 0;}}
 SW_API("sw_host_decode") int32_t sw_host_decode(int32_t row,int64_t generation,int64_t epoch){
   if(row<0||row>=64)return COAX_ResourceCostStatus_invalid;
   SwPhysical *p=&objects[row];if(!same(p,row,generation,epoch)||!p->plan||!p->source)return COAX_ResourceCostStatus_capacity;
   coax_t_ResourceCost c=p->plan->cost;
-  p->status=sw_codec(*p->plan,(coax_v_u8){p->source,c.encoded},(coax_v_u8){p->work,c.decode_scratch},(coax_v_u8){p->decoded,c.decoded},(coax_v_f32){(float*)p->decoded,c.decoded/4},(coax_v_t_CellBody){(coax_t_CellBody*)p->decoded,c.decoded/sizeof(coax_t_CellBody)});
+  int64_t work=c.decode_scratch;
+#ifndef __wasm__
+  bool short_work=sw_fault_take(3,row,generation,epoch,-1);if(short_work){if(work>0)work--;load_fault[7]=work;}
+#endif
+  p->status=sw_codec(*p->plan,(coax_v_u8){p->source,c.encoded},(coax_v_u8){p->work,work},(coax_v_u8){p->decoded,c.decoded},(coax_v_f32){(float*)p->decoded,c.decoded/4},(coax_v_t_CellBody){(coax_t_CellBody*)p->decoded,c.decoded/sizeof(coax_t_CellBody)});
+#ifndef __wasm__
+  if(short_work)load_fault[8]=p->status;
+#endif
   return p->status;
 }
 SW_API("sw_host_finish") int32_t sw_host_finish(int32_t row,int64_t generation,int64_t epoch,int32_t status){
@@ -178,6 +210,17 @@ SW_API("sw_host_finish") int32_t sw_host_finish(int32_t row,int64_t generation,i
   f.source=(coax_v_u8){p->source,p->source?(uint64_t)c.encoded:0};f.values=(coax_v_f32){(float*)p->decoded,p->decoded?(uint64_t)c.decoded/4:0};f.bodies=(coax_v_t_CellBody){(coax_t_CellBody*)p->decoded,p->decoded?(uint64_t)c.decoded/sizeof(coax_t_CellBody):0};
   p->finished=sw_offer(sv(),f);return p->finished;
 }
+#ifndef __wasm__
+// Additive typed outcome. The original boolean SDK-failure facade above
+// keeps its published meaning for browser and earlier replay callers.
+int32_t sw_host_finish_code(int32_t row,int64_t generation,int64_t epoch,int32_t status){
+  if(row<0||row>=64||status<0||status>5)return 0;SwPhysical *p=&objects[row];
+  if(!same(p,row,generation,epoch)||p->finished)return 0;
+  if(status)p->status=(coax_t_ResourceCostStatus)status;
+  if(load_fault[3]==1&&load_fault[4]==row&&load_fault[5]==generation&&load_fault[6]==epoch)load_fault[9]=p->status;
+  return sw_host_finish(row,generation,epoch,0);
+}
+#endif
 SW_API("sw_host_destroy") int32_t sw_host_destroy(int32_t row,int64_t generation,int64_t epoch){
   if(row<0||row>=64)return 0;SwPhysical *p=&objects[row];if(!same(p,row,generation,epoch))return 0;
   coax_t_ResourceCost c=manifest.entries.e[row].plan.cost;

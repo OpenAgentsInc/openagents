@@ -1,0 +1,56 @@
+// Native effect outcomes enter the existing ResourceCostStatus domain.
+// Allocation/source failure wins over phases that were never attempted.
+#authority;
+#test "native load outcomes preserve the first failed phase and reject unknown decoder results" {
+  for allocated: 0..<2 { for source: 0..<2 { for uploaded: 0..<2 {
+    expected := ifx allocated == 0 then 3 else ifx source == 0 then 2 else ifx uploaded == 0 then 5 else 0;
+    #assert nlf_status(allocated == 1, source == 1, 0, uploaded == 1) == expected;
+  } } }
+  for result: 1..<6 {
+    #assert nlf_status(true, true, result, false) == result && nlf_status(true, true, result, true) == result;
+    #assert nlf_status(false, true, result, true) == 3 && nlf_status(true, false, result, true) == 2;
+  }
+  for result: [4] int.[-1,6,-9223372036854775808,9223372036854775807] {
+    #assert nlf_status(true, true, result, true) == 2;
+  }
+}
+#test "native load qualifier modes are exact and unrelated arguments have no fault" {
+  names := [7] string.["--load-alloc-0","--load-alloc-1","--load-alloc-2","--load-alloc-3","--load-alloc-4","--load-source","--load-decode"];
+  for name, i: names { #assert nlf_case(name) == i; }
+  for name: [6] string.["","--load-alloc--1","--load-alloc-5","--load-alloc-00","--load-source-more","--auto-loss"] { #assert nlf_case(name) == -1; }
+}
+nlf_status :: (allocated: bool, source: bool, decoded: int, uploaded: bool) -> int #effects(all) {
+  if !allocated { return 3; }
+  if !source { return 2; }
+  if decoded < 0 || decoded > 5 { return 2; }
+  if decoded != 0 { return decoded; }
+  return ifx uploaded then 0 else 5;
+}
+nlf_case :: (mode: string) -> int #effects(all) {
+  names := [7] string.["--load-alloc-0","--load-alloc-1","--load-alloc-2","--load-alloc-3","--load-alloc-4","--load-source","--load-decode"];
+  for name, i: names { if mode == name { return i; } } return -1;
+}
+#test "load failure evidence binds one effect to the old attempt and its typed completion" {
+  q := [10] int.[1,0,0,1,0,1,1,80,12,3];
+  for which: 0..<5 { q[1] = which; #assert nlf_effect(which, q[..]); }
+  q = [10] int.[2,-1,0,1,0,1,1,0,-1,2]; #assert nlf_effect(5,q[..]);
+  q = [10] int.[3,-1,0,1,0,1,1,15,3,3]; #assert nlf_effect(6,q[..]);
+  #assert !nlf_effect(-1,q[..]) && !nlf_effect(7,q[..]) && !nlf_effect(6,q[0..<9]); more: [11] int; #assert !nlf_effect(6,more[..]);
+  negative := [10] int.[1,-1,0,1,0,1,1,80,12,3]; #assert !nlf_effect(-1,negative[..]);
+  unknown := [10] int.[4,-1,0,1,0,1,1,15,3,3]; #assert !nlf_effect(7,unknown[..]);
+  for field: [7] int.[0,1,2,3,4,6,8] { bad := q; bad[field] += 1; #assert !nlf_effect(6,bad[..]); }
+  bad := q; bad[5] = 0; #assert !nlf_effect(6,bad[..]); bad[5] = 1; #assert nlf_effect(6,bad[..]);
+  bad = q; bad[7] = -1; #assert !nlf_effect(6,bad[..]); bad[7] = 0; #assert nlf_effect(6,bad[..]);
+  bad = q; bad[9] = 2; #assert !nlf_effect(6,bad[..]);
+  q = [10] int.[1,0,0,1,0,1,1,1,12,3]; #assert nlf_effect(0,q[..]);
+  bad = q; bad[7] = 0; #assert !nlf_effect(0,bad[..]); bad = q; bad[8] = 11; #assert !nlf_effect(0,bad[..]);
+  q = [10] int.[2,-1,0,1,0,1,1,0,-1,2]; bad = q; bad[7] = 1; #assert !nlf_effect(5,bad[..]); bad = q; bad[8] = 0; #assert !nlf_effect(5,bad[..]); bad = q; bad[9] = 3; #assert !nlf_effect(5,bad[..]);
+}
+nlf_effect :: (which: int, q: [] int) -> bool #effects(all) {
+  if which < 0 || which > 6 || q.count != 10 { return false; }
+  kind := ifx which < 5 then 1 else which - 3; field := ifx which < 5 then which else -1;
+  if q[0] != kind || q[1] != field || q[2] != 0 || q[3] != 1 || q[4] != 0 || q[5] <= 0 || q[6] != 1 { return false; }
+  if which < 5 { return q[7] > 0 && q[8] == 12 && q[9] == 3; }
+  if which == 5 { return q[7] == 0 && q[8] == -1 && q[9] == 2; }
+  return q[7] >= 0 && q[8] == 3 && q[9] == 3;
+}

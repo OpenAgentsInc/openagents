@@ -1,6 +1,10 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [actual category-pressure record](walk-category-pressure.md)
+Issue #12990 remains open. The [native load-failure record](walk-native-load-failures.md)
+now qualifies partial allocation, source-read and decoder-refusal cleanup,
+retirement/retry and exact CPU replay on both native tiers. Checked Vulkan
+factory/upload failures and actual stale/superseded callbacks remain open.
+The [actual category-pressure record](walk-category-pressure.md)
 now qualifies texture-line refusal against the native host's live budget,
 with staging/aggregate room, unchanged pixels/owners, continued movement,
 device replacement and exact refusal-boundary CPU replay. The [native draw-result record](walk-native-loss.md)
@@ -148,9 +152,10 @@ copies are published, including a failure after three reservations.
 
 ## Work still required before closing #12990
 
-- Actual stale/superseded callback and failed-load ownership histories,
-  including the native allocation/decode/upload paths that currently return
-  without completing normal resource retirement. Browser corrupt/oversized/
+- Actual stale/superseded callback and remaining failed-load ownership
+  histories, including the legacy native Vulkan factory/upload helpers that
+  still exit on SDK errors. Native allocation/source/decode errors now use
+  normal completion and retirement. Browser corrupt/oversized/
   cancelled/reordered receive and GPU validation failures already have
   separate current receipts.
 - Complete transport/transient and physical backend allocation planning.
