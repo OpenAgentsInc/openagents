@@ -49,6 +49,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
   input.jump = input.jump || sticks.jump;
   coax_t_EgMoveWorld mw = e2_move_world(at(state), player.pos.x, player.pos.z);
+  mw.pace = e2_pace(input.run);
   player = eg_step_begin(player, input, mw, step);
   coax_v_f32 near = e2_move_bodies(at(state));
   player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, frame);

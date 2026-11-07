@@ -1,0 +1,55 @@
+// Everglade II's grass field (docs/verse/everglade2.md): blade grass on all of the open ground and the
+// woods' floor, placed on the GPU (apps/openagents-web/gpu/everglade2.coax e2_field_vs) from a grid
+// fixed to the land, so it never swims as you walk. The grid comes in tiers round the eye, each with
+// cells twice the last's and tufts twice as wide. Each tier fades out over a band as the next fades
+// in over the same band, by a per-tuft dither, so no ring or edge shows. The page
+// (apps/openagents-web/everglade2.coax e2_field) draws the blocks of 16 by 16 cells in view.
+#load "forest.coax";
+
+E2_FIELD_BASE :: 4194304;      // a base instance at or past this draws field tufts
+E2_FIELD_CELLS :: 16;          // cells along a block's side: 256 tufts a draw
+E2_FIELD_TIERS :: 4;
+E2_FIELD_ROW :: 128;           // blocks a row in a tier's code (the zone is 90 tier-0 blocks deep)
+// Per tier (written as choices, not tables, so the shader can read them too): metres a cell, the
+// tier's outer edge (the next one's inner), and the fade band inside that edge.
+e2_field_cell :: (t:int)->f32 {return ifx t==0 then 0.5 else ifx t==1 then 1.0 else ifx t==2 then 2.0 else 4.0;}
+e2_field_out :: (t:int)->f32 {return ifx t==0 then 14.0 else ifx t==1 then 30.0 else ifx t==2 then 64.0 else 140.0;}
+e2_field_band :: (t:int)->f32 {return ifx t==0 then 4.0 else ifx t==1 then 7.0 else ifx t==2 then 14.0 else 34.0;}
+// The meshes' heights: Grass_Wide_Short, Grass_Wispy_Short, Grass_Common_Short.
+e2_field_source :: (m:int)->f32 {return ifx m==0 then 1.20004 else ifx m==1 then 0.98610 else 1.31172;}
+
+#test "the tiers cross-fade to a whole, with no gap or edge" {
+ for i:0..<300 {d:=f32(i)*0.5;sum:f32=0;for t:0..<E2_FIELD_TIERS {sum+=e2_field_weight(t,d);}
+  if d<e2_field_out(3)-e2_field_band(3) {#assert abs(sum-1)<0.001;}}
+ #assert e2_field_weight(3,e2_field_out(3)+0.01)==0;
+ // every weight changes smoothly: no step bigger than a small share in half a metre
+ for t:0..<E2_FIELD_TIERS {for i:0..<300 {d:=f32(i)*0.5;#assert abs(e2_field_weight(t,d+0.5)-e2_field_weight(t,d))<0.2;}}
+}
+#test "the grass covers the land, leaves the path bare and thins in the woods" {
+ #assert e2_field_cover(e2_road_x(-200),-200)==0;
+ #assert e2_field_cover(e2_clear_x()+10,E2_CLEAR_Z+10)>0.9;
+ x:=e2_road_x(-250);#assert e2_field_cover(x+14,-250)>0.3 && e2_field_cover(x+14,-250)<0.8;
+ #assert e2_field_cover(x+3.2,-250)>0.5;
+ #assert e2_field_cover(6,-6)>0.4;
+}
+// How much of tier t stands at distance d from the eye: fading in over the last tier's band, out over its own.
+e2_field_weight :: (t:int,d:f32)->f32 {
+ out:=e2_field_out(t);fo:=1-e2_smooth(out-e2_field_band(t),out,d);
+ if t==0 {return fo;}
+ inner:=e2_field_out(t-1);return e2_smooth(inner-e2_field_band(t-1),inner,d)*fo;
+}
+// How thick the grass grows at (x, z): none on the bare path (thinning in at its edges), thinner
+// under the trees, a little thinner in the glade's middle (its own grass grows there too).
+e2_field_cover :: (x:f32,z:f32)->f32 {
+ if x<E2_WEST || x>E2_EAST || z<E2_FAR || z>E2_BACK {return 0;}
+ bare:=e2_smooth(0.10,0.42,e2_path(x,z));
+ woods:=e2_forest(x,z);glade:=1-e2_woods_share(x,z);
+ return (1-bare)*(1-0.55*woods)*(1-0.35*glade);
+}
+// The block code a draw's base instance carries: tier, block column and row, and which mesh (0 Grass_Wide,
+// 1 Grass_Wispy, each keeping half the tufts; 2 Grass_Common, keeping all).
+e2_field_code :: (tier:int,bx:int,bz:int,mesh:int)->int {return ((((tier*E2_FIELD_ROW+bz)*E2_FIELD_ROW+bx)*4+mesh)*256)+E2_FIELD_BASE;}
+// A tier's block size, and where block (bx, bz) starts (its west x and north z).
+e2_field_block :: (tier:int)->f32 {return e2_field_cell(tier)*f32(E2_FIELD_CELLS);}
+e2_field_block_x :: (tier:int,bx:int)->f32 {return E2_WEST+f32(bx)*e2_field_block(tier);}
+e2_field_block_z :: (tier:int,bz:int)->f32 {return E2_BACK-f32(bz)*e2_field_block(tier);}

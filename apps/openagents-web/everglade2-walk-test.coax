@@ -1,0 +1,59 @@
+// Everglade II's colliders through the real controller step (everglade-step.coax): you walk straight
+// at a boulder and at a trunk and stop at their surface, at Everglade II's own pace.
+//   coax/bin/coax test --library apps/openagents-web/everglade2-walk-test.coax
+#load "everglade2.coax";
+#load "everglade-step.coax" as step;
+#load "../../aethyr/walk.coax" as walk;
+
+// Walks you from (x, z) toward (tx, tz) for `seconds` among `bodies`, running or walking; where you end.
+e2t_walk :: (x: f32, z: f32, tx: f32, tz: f32, bodies: [] f32, running: bool, seconds: f32) -> walk.Vec3 {
+  p := walk.walk_place(x, 0, z, 0);
+  // theta is the camera's: forward goes along -(sin theta, cos theta)
+  theta := e2_walk_theta(walk.atan2(tx - x, tz - z));
+  // running: no Shift (the keys run by default); walking: Shift held
+  i := EgMoveIn.{key_y = 1, run = !running, theta = theta};
+  i.run = walk.walk_runs(i.run, false, 0, 0);
+  w: EgMoveWorld; w.deck = true; w.bodies = bodies.count / 7; w.pace = e2_pace(i.run);
+  none: [1] f32;
+  steps := cast(int) (seconds * 64);
+  for k: 0..<steps { p = step.eg_step_begin(p, i, w, 1.0f32 / 64); p = step.eg_step_advance(p, w, bodies, none[0..<0], none[0..<0], 1.0f32 / 64); }
+  return p.pos;
+}
+e2t_segment_distance :: (px: f32, pz: f32, ax: f32, az: f32, bx: f32, bz: f32) -> f32 {
+  dx := bx - ax; dz := bz - az; l := dx * dx + dz * dz;
+  t := ifx l > 0 then ((px - ax) * dx + (pz - az) * dz) / l else 0.0f32; t = ifx t < 0 then 0 else ifx t > 1 then 1 else t;
+  qx := ax + dx * t - px; qz := az + dz * t - pz; return sqrt(qx * qx + qz * qz);
+}
+
+#test "walking straight into a boulder stops you at its surface" {
+  k := e2_rock_capsule(5, 0, -50, 0.4, 1.0);   // a Rock_Big_2
+  b := [7] f32.[k[0], 0.9, k[1], k[2], 0.9, k[3], k[4]];
+  mx := (k[0] + k[2]) / 2; mz := (k[1] + k[3]) / 2;
+  for side: 0..<4 {
+    a := f32(side) * 1.5708; sx := mx + cos(a) * 10; sz := mz + sin(a) * 10;
+    e := e2t_walk(sx, sz, mx, mz, b[..], true, 4);
+    d := e2t_segment_distance(e.x, e.z, k[0], k[1], k[2], k[3]);
+    // you went most of the way, and stopped at the rock's surface (its radius and yours)
+    #assert sqrt((e.x - sx) * (e.x - sx) + (e.z - sz) * (e.z - sz)) > 4;
+    #assert d >= k[4] + 0.3 - 0.05;
+    #assert d < k[4] + 0.3 + 0.5;
+  }
+}
+#test "walking straight into a trunk stops you, and you pass close beside it" {
+  t := e2_trunk(2, 3, -80, 1.1, 0.8);   // a CommonTree_3
+  b := [7] f32.[t[0], 0.3, t[1], t[0], 1.6, t[1], t[2]];
+  e := e2t_walk(t[0] + 8, t[1], t[0], t[1], b[..], true, 4);
+  d := sqrt((e.x - t[0]) * (e.x - t[0]) + (e.z - t[1]) * (e.z - t[1]));
+  #assert d >= t[2] + 0.3 - 0.05 && d < t[2] + 0.3 + 0.25;
+  // aimed to pass 0.9 m from its middle, you go by without a nudge
+  f := e2t_walk(t[0] + 8, t[1] + 0.9, t[0] - 8, t[1] + 0.9, b[..], true, 3);
+  #assert f.x < t[0] - 3 && abs(f.z - (t[1] + 0.9)) < 0.05;
+}
+#test "you jog at about 4.25 m/s and stroll at about 1.5 m/s" {
+  none: [1] f32;
+  r := e2t_walk(0, 0, 0, -100, none[0..<0], true, 4);
+  w := e2t_walk(0, 0, 0, -100, none[0..<0], false, 4);
+  // four seconds, less the moment's start
+  #assert -r.z > 4.25 * 4 - 0.6 && -r.z < 4.25 * 4 + 0.01;
+  #assert -w.z > 1.5 * 4 - 0.3 && -w.z < 1.5 * 4 + 0.01;
+}

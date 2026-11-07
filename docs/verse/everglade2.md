@@ -11,7 +11,7 @@ character you saved in Character Create, on Everglade's controller and follow ca
 ## Walk it
 
 - Open `/worlds/everglade2`.
-- W, A, S, and D run. Hold Shift to walk. Space jumps.
+- W, A, S, and D run at a jog (4.25 m/s). Hold Shift to walk (1.5 m/s). Space jumps.
 - Drag to look. Scroll to zoom. The arrow keys turn the camera.
 - On a touch screen, the left thumb walks and the right thumb looks.
 - `?at=METRES` starts you that far down the path, for example `/worlds/everglade2?at=300`. The
@@ -48,7 +48,6 @@ share:
   oaks, birches, and pines, with autumn crowns in the autumn patches.
 - The understory has ferns, bushes, flowers, mushrooms, clover, and rocks. It is thickest on the
   verges and between the trunks within 35 m of the path.
-- Grass tufts (the glade's three grass meshes) grow on the verges and thickly in the clearing.
 - Now and then a boulder stands in the woods.
 
 That comes to about 100,000 pieces. Tests check that none stand on the path, that no tree stands
@@ -81,13 +80,25 @@ coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
 `apps/openagents-web/everglade2.coax` and `everglade2-face.c` run the page:
 
 - The face steps Everglade's controller (`everglade-step.coax`). The page lifts your feet onto
-  the land, keeps you in the glade, on the path's corridor, or in the clearing, and walks you
-  round tree trunks and boulders.
+  the land, and keeps you in the glade, on the path's corridor, or in the clearing.
+- Every tree trunk and rock stops you. A trunk is a capsule sized to its tree kind's trunk. A
+  rock is a capsule along its long axis, fitted to its model's footprint. Both are scaled and
+  turned with the placed piece, the glade's own trees and rocks included. Pebbles don't stop
+  you. `everglade2-walk-test.coax` walks into a boulder and a trunk through the real controller.
+- The run and the walk are Everglade II's own: the page sets the step's pace, so v1's speeds
+  (7.5 and 3.5 m/s) stay as they are. The gait plays by the distance you cover (a 3.4 m running
+  stride and a 1.3 m walking one), so the feet keep pace.
 - Each frame, the page picks the pieces in view, sorts them into one run for each kit piece and
   level of detail, and draws each run as one instanced draw. About 75 draws make a frame.
 - Trees are whole to 36 m and lighter to 70 m. Past 70 m, one tree in three stands for its
   neighbours, a third larger, and past 160 m one in six, half again larger.
 - The glade's own grass draws only while the glade is near and in view.
+- Blade grass covers all of the ground except the bare path (`verse/everglade2/field.coax`). The
+  GPU places a tuft in each cell of a grid fixed to the land, in four tiers round the eye: 0.5 m
+  cells to 14 m, then 1 m to 30 m, 2 m to 64 m, and 4 m to 140 m, with tufts twice as wide each
+  tier. Each tier fades out as the next fades in over the same band, tuft by tuft, so no ring or
+  edge shows. The grass thins in at the path's edges and grows thinner, shorter, and darker under
+  the trees. The page draws the blocks of 16 by 16 cells in view, about 60 draws.
 - The follow camera keeps above the ground and in front of the trunks between it and you.
 - The key light's shadow map follows you, 68 m across, in 2 m steps.
 

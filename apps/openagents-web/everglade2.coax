@@ -11,18 +11,19 @@
 #load "fivelab-bodies.coax" as figs;
 #load "everglade-move-types.coax";
 #load "../../verse/everglade2/plant.coax";
+#load "../../verse/everglade2/field.coax";
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 4096;      // strokes: none are drawn yet
 E2_UNIFORM_FLOATS :: 104;     // 26 vec4s (gpu/everglade2.bindings)
 E2_RECORDS :: 32;             // the objects store: the glade, its grass, your character's parts
-E2_DRAWS :: 256;              // draws a pass at most
+E2_DRAWS :: 384;              // draws a pass at most (the woods' runs and the grass field's blocks)
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
 E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
 E2_BUCKETS :: E2_KITS * E2_LODS;
 E2_CAM_TRUNKS :: 64;          // trunks the follow camera keeps in front of
 E2_SHADOW_REACH :: 40.0;      // metres from the shadow map's centre a piece still casts
-E2_NEAR_BODIES :: 24;         // trunks the controller walks round
+E2_NEAR_BODIES :: 48;         // trunks and rocks the controller walks round
 E2_LOOK_DRAG :: 0.0055; E2_WHEEL_ZOOM :: 0.006;
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 HOLD_JUMP :: 1024; HOLD_ALL :: 2047;
@@ -142,8 +143,8 @@ hold_bit :: (key: int) -> int {
 axis :: (held: int, plus: int, minus: int) -> f32 { a: f32 = 0; if held & plus != 0 { a += 1; } if held & minus != 0 { a -= 1; } return a; }
 // The point the walk steers for: 5 m on along the path, or the clearing's middle once there.
 e2_auto_heading :: (x: f32, z: f32) -> f32 {
-  if z < E2_CLEAR_Z + 10 { cx := e2_clear_x(); return atan2(cx - x, E2_CLEAR_Z - 12 - z); }
-  tz := z - 5; return atan2(e2_road_x(tz) - x, tz - z);
+  if z < E2_CLEAR_Z + 10 { cx := e2_clear_x(); return figs.atan2(cx - x, E2_CLEAR_Z - 12 - z); }
+  tz := z - 5; return figs.atan2(e2_road_x(tz) - x, tz - z);
 }
 // The controller's theta is the camera's (walk.coax: forward goes along -(sin theta, cos theta));
 // a heading is the way you face, along (sin, cos).
@@ -159,7 +160,56 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
                    theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
 }
-// The trunks and boulders round you, as capsules on the controller's level ground.
+// The trunks and rocks round you, as capsules on the controller's level ground. A rock's capsule
+// lies along its long axis at waist height, fitted to its model's footprint (E2_ROCK_FIT: the
+// footprint's middle x and z, the long axis's angle, half its length and half its width, from the
+// Stylized Nature models), and is scaled and turned with the placed rock. Pebbles stay walk-through.
+E2_ROCK_FIT :: [6][5] f32.[
+  [5] f32.[-0.167, 0.252, 0.784, 1.578, 1.484],   // Rock_Medium_1
+  [5] f32.[-0.110, 0.075, -0.133, 1.537, 1.253],  // Rock_Medium_2
+  [5] f32.[-0.071, 0.611, 0.619, 1.669, 1.350],   // Rock_Medium_3
+  [5] f32.[0.492, -0.173, -0.335, 1.795, 1.774],  // Rock_Medium_4
+  [5] f32.[0.070, 0.259, -0.604, 2.707, 1.977],   // Rock_Big_1
+  [5] f32.[-0.023, -0.146, -0.713, 3.389, 2.799]];// Rock_Big_2
+E2_ROCK_SNUG :: 0.85;         // the capsule's radius against the footprint's half width (rocks are rounded)
+// A rock's capsule (fit row, placed at x z, turned by yaw, sh across): the two ends and the radius.
+e2_rock_capsule :: (fit: int, x: f32, z: f32, yaw: f32, sh: f32) -> [5] f32 {
+  f := E2_ROCK_FIT[fit]; c := cos(yaw); sn := sin(yaw);
+  r := f[4] * f32(E2_ROCK_SNUG); half := f[3] - r; if half < 0 { half = 0; }
+  ax := cos(f[2]); az := sin(f[2]);
+  p0x := f[0] - ax * half; p0z := f[1] - az * half; p1x := f[0] + ax * half; p1z := f[1] + az * half;
+  return [5] f32.[x + sh * (p0x * c + p0z * sn), z + sh * (-p0x * sn + p0z * c), x + sh * (p1x * c + p1z * sn), z + sh * (-p1x * sn + p1z * c), r * sh];
+}
+#test "a rock's capsule fits its footprint, scaled and turned with it" {
+  a := e2_rock_capsule(4, 10, -20, 0, 1); mx := (a[0] + a[2]) / 2; mz := (a[1] + a[3]) / 2;
+  #assert abs(mx - 10.070) < 0.01 && abs(mz + 19.741) < 0.01 && abs(a[4] - 1.977 * 0.85) < 0.001;
+  l := sqrt((a[2] - a[0]) * (a[2] - a[0]) + (a[3] - a[1]) * (a[3] - a[1])); #assert abs(l / 2 + a[4] - 2.707) < 0.01;
+  b := e2_rock_capsule(4, 10, -20, 1.2, 2); lb := sqrt((b[2] - b[0]) * (b[2] - b[0]) + (b[3] - b[1]) * (b[3] - b[1]));
+  #assert abs(lb - 2 * l) < 0.01 && abs(b[4] - 2 * a[4]) < 0.001;
+}
+// Each tree kind's trunk at waist height (kits 0 to 14: CommonTree, Birch and Pine 1 to 5): its middle's
+// x and z and its radius, from the Stylized Nature models. You brush past a trunk but not through it.
+E2_TRUNK_FIT :: [15][3] f32.[
+  [3] f32.[0.001, 0.084, 0.46], [3] f32.[0.009, 0.070, 0.48], [3] f32.[0.025, 0.077, 0.48], [3] f32.[-0.077, 0.054, 0.49], [3] f32.[0.052, 0.105, 0.45],
+  [3] f32.[0.057, -0.080, 0.18], [3] f32.[0.036, -0.069, 0.27], [3] f32.[0.041, -0.072, 0.18], [3] f32.[0.054, -0.081, 0.18], [3] f32.[0.041, -0.064, 0.20],
+  [3] f32.[-0.005, -0.448, 0.50], [3] f32.[-0.005, -0.448, 0.50], [3] f32.[0.121, -0.596, 0.50], [3] f32.[0.0, -0.30, 0.45], [3] f32.[0.010, -0.137, 0.35]];
+// A tree's trunk (kind 0 to 14, placed at x z, turned by yaw, sh across): its middle and radius.
+e2_trunk :: (kind: int, x: f32, z: f32, yaw: f32, sh: f32) -> [3] f32 {
+  f := E2_TRUNK_FIT[kind]; c := cos(yaw); sn := sin(yaw);
+  return [3] f32.[x + sh * (f[0] * c + f[1] * sn), z + sh * (-f[0] * sn + f[1] * c), f[2] * sh];
+}
+#test "every tree kind has a trunk sized to it" {
+  for k: 0..<15 { t := e2_trunk(k, 5, -9, 0.7, 0.8); #assert t[2] > 0.1 && t[2] < 0.5 && abs(t[0] - 5) < 0.6 && abs(t[1] + 9) < 0.6; }
+}
+// The kit piece's rock fit row, or -1 when it isn't a rock that stops you.
+e2_kit_rock :: (kit: int) -> int { return ifx kit >= 20 && kit <= 22 then kit - 20 else ifx kit == 23 || kit == 24 then kit - 19 else -1; }
+e2_body :: (s: [] E2, n: int, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32, r: f32) -> int {
+  if n >= E2_NEAR_BODIES { return n; }
+  m := n * 7;
+  s[0].move_bodies[m] = x0; s[0].move_bodies[m + 1] = y0; s[0].move_bodies[m + 2] = z0;
+  s[0].move_bodies[m + 3] = x1; s[0].move_bodies[m + 4] = y1; s[0].move_bodies[m + 5] = z1; s[0].move_bodies[m + 6] = r;
+  return n + 1;
+}
 e2_move_world :: (s: [] E2, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld; w.deck = true; n := 0;
   ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
@@ -168,18 +218,35 @@ e2_move_world :: (s: [] E2, x: f32, z: f32) -> EgMoveWorld #export_c #effects(al
     if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z || !s[0].plant_done { continue; }
     c := j * E2_CELLS_X + i;
     for q: s[0].first[c]..<s[0].first[c + 1] {
-      kit := cast(int) s[0].kinds[q];
-      if kit >= E2_TREES && kit != 23 && kit != 24 { continue; }
-      o := q * E2_ITEM_FLOATS; px := s[0].items[o]; pz := s[0].items[o + 2];
-      if abs(px - x) > 5 || abs(pz - z) > 5 || n >= E2_NEAR_BODIES { continue; }
-      r := ifx kit < E2_TREES then 0.30 * s[0].items[o + 5] + 0.12 else 1.1 * s[0].items[o + 5];
-      m := n * 7;
-      s[0].move_bodies[m] = px; s[0].move_bodies[m + 1] = 0.3; s[0].move_bodies[m + 2] = pz;
-      s[0].move_bodies[m + 3] = px; s[0].move_bodies[m + 4] = 1.6; s[0].move_bodies[m + 5] = pz; s[0].move_bodies[m + 6] = r;
-      n += 1;
+      kit := cast(int) s[0].kinds[q]; rock := e2_kit_rock(kit);
+      if kit >= E2_TREES && rock < 0 { continue; }
+      o := q * E2_ITEM_FLOATS; px := s[0].items[o]; pz := s[0].items[o + 2]; sh := s[0].items[o + 5];
+      reach := ifx rock >= 0 then 5 + 4 * sh else 5.0f32;
+      if abs(px - x) > reach || abs(pz - z) > reach { continue; }
+      if rock >= 0 { k := e2_rock_capsule(rock, px, pz, s[0].items[o + 3], sh); n = e2_body(s, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]); }
+      else { t := e2_trunk(kit, px, pz, s[0].items[o + 3], sh); n = e2_body(s, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); }
     }
   }}
+  // the glade's own trees and rocks (its pack's composition, verse/character-glade.coax cg_item)
+  for i: 0..<CG_ITEMS {
+    gt := cg_item(i); if !cg_visible(gt) || (gt.z < -26 && e2_road_dist(gt.x, gt.z) < 4) { continue; }
+    if abs(gt.x - x) > 5 + 4 * gt.scale || abs(gt.z - z) > 5 + 4 * gt.scale { continue; }
+    if gt.kind <= 1 { tv := ifx gt.variant < 0 then 0 else ifx gt.variant > 4 then 4 else gt.variant; t := e2_trunk(tv + 5 * gt.kind, gt.x, gt.z, gt.yaw, gt.scale); n = e2_body(s, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); continue; }
+    fit := ifx gt.kind == 3 then gt.variant else 4 + gt.variant;
+    if fit < 0 || fit > 5 { continue; }
+    k := e2_rock_capsule(fit, gt.x, gt.z, gt.yaw, gt.scale); n = e2_body(s, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]);
+  }
   w.bodies = n; return w;
+}
+// Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/locomotion.coax:
+// run 7.5, walk 3.5 m/s, Everglade's) are scaled by the step's pace, so v1 keeps its own.
+E2_RUN_SPEED :: 4.25; E2_WALK_SPEED :: 1.5;   // m/s
+E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // aethyr/locomotion.coax LocomotionProfile's defaults
+e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running then f32(E2_RUN_SPEED) / f32(E2_BASE_RUN) else f32(E2_WALK_SPEED) / f32(E2_BASE_WALK); }
+#test "the run is a jog and the walk a stroll" {
+  #assert abs(e2_pace(true) * f32(E2_BASE_RUN) - 4.25) < 0.001 && abs(e2_pace(false) * f32(E2_BASE_WALK) - 1.5) < 0.001;
+  // the body's gait reads them as a run and a walk (fivelab-bodies.coax BD_RUN_FROM)
+  #assert f32(E2_RUN_SPEED) > f32(figs.BD_RUN_FROM) + 0.5 && f32(E2_WALK_SPEED) < f32(figs.BD_RUN_FROM) && f32(E2_WALK_SPEED) > f32(figs.BD_WALK_FROM);
 }
 e2_move_bodies :: (s: [] E2) -> [] f32 #export_c #effects(all) { return s[0].move_bodies[..]; }
 // Where the step left you: the controller walks a level plane, the land lifts you onto the ground.
@@ -190,7 +257,7 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
   if s[0].placed { return false; }
   // the glade's spot, or ?at='s point on the path, facing on along it
   z := s[0].start_z; x := ifx z < 0 then e2_road_x(z) else 0.0f32;
-  face := ifx z < 0 then atan2(e2_road_x(z - 2) - x, -2.0f32) else 3.14159265f32;
+  face := ifx z < 0 then figs.atan2(e2_road_x(z - 2) - x, -2.0f32) else 3.14159265f32;
   s[0].placed = true; s[0].you_x = x; s[0].you_z = z; s[0].you_face = face; s[0].you_y = e2_height(x, z);
   s[0].orbit = figs.verse_orbit_start(figs.v3(x, s[0].you_y, z), face);
   return true;
@@ -319,6 +386,39 @@ e2_in_view :: (s: [] E2, x: f32, y: f32, z: f32, r: f32) -> bool {
   reach := (d + r) / s[0].focal;
   return sx <= reach * s[0].width * 0.5 + r * 1.2 && sy <= reach * s[0].height * 0.5 + r * 1.2;
 }
+// The grass field's blocks in view (verse/everglade2/field.coax): for each tier, the blocks whose
+// ground lies in its ring round the eye and in view, one draw of 256 tufts each (two near, one
+// mesh each keeping half; one further). The GPU places every tuft.
+e2_field :: (s: [] E2, d: [] u32, n0: int) -> int {
+  n := n0; if !s[0].kits { return n; }
+  ex := s[0].eye[0]; ez := s[0].eye[2];
+  for t: 0..<E2_FIELD_TIERS {
+    bs := e2_field_block(t); out := e2_field_out(t);
+    inner := ifx t == 0 then -1.0f32 else e2_field_out(t - 1) - e2_field_band(t - 1);
+    x0 := cast(int) floor((ex - out - E2_WEST) / bs); x1 := cast(int) floor((ex + out - E2_WEST) / bs);
+    z0 := cast(int) floor((E2_BACK - ez - out) / bs); z1 := cast(int) floor((E2_BACK - ez + out) / bs);
+    for bz: z0..<z1 + 1 { for bx: x0..<x1 + 1 {
+      if bx < 0 || bz < 0 || bx >= E2_FIELD_ROW || bz >= E2_FIELD_ROW { continue; }
+      wx := e2_field_block_x(t, bx); nz := e2_field_block_z(t, bz);
+      if wx > E2_EAST || nz - bs < E2_FAR { continue; }
+      // the block's nearest and farthest ground from the eye
+      qx := ifx ex < wx then wx else ifx ex > wx + bs then wx + bs else ex; qz := ifx ez > nz then nz else ifx ez < nz - bs then nz - bs else ez;
+      near := sqrt((qx - ex) * (qx - ex) + (qz - ez) * (qz - ez));
+      fx := ifx ex - wx > wx + bs - ex then ex - wx else wx + bs - ex; fz := ifx nz - ez > ez - (nz - bs) then nz - ez else ez - (nz - bs);
+      far := sqrt(fx * fx + fz * fz);
+      if near > out || far < inner { continue; }
+      cx := wx + bs * 0.5; cz := nz - bs * 0.5;
+      if !e2_in_view(s, cx, e2_height(cx, cz) + 1, cz, bs * 0.75) { continue; }
+      for m: 0..<3 {
+        if (t <= 1 && m == 2) || (t > 1 && m < 2) { continue; }
+        b := (E2_GRASS + ifx m == 0 then 1 else ifx m == 1 then 2 else 0) * E2_LODS;
+        if s[0].kit_count[b] <= 0 || n >= E2_DRAWS { continue; }
+        n = e2_draw(d, n, s[0].kit_first[b], s[0].kit_count[b], e2_field_code(t, bx, bz, m), E2_FIELD_CELLS * E2_FIELD_CELLS);
+      }
+    }}
+  }
+  return n;
+}
 // Each visible piece into its (kit, level) bucket's run of the instance store; one draw a bucket.
 // `cast` lists the pieces round the shadow map's centre instead, at level 1.
 e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
@@ -408,6 +508,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   } }
   for i: 1 + c.grass_groups..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
   n = e2_pieces(s, s[0].draws[..], n, false);
+  n = e2_field(s, s[0].draws[..], n);
   sn = e2_pieces(s, s[0].shadow[..], sn, true);
   s[0].draw_n = n; s[0].shadow_n = sn;
   return n;

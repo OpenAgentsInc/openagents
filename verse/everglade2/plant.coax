@@ -119,21 +119,7 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
   else if r<0.90 {s:=0.3+sz*0.3;n=e2_put(out,kinds,n,31,x,y,z,yaw,s,s,green);}
   else {s:=0.3+sz*0.25;n=e2_put(out,kinds,n,29+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,ifx au>0.4 then orange else green);}
  }
- // grass tufts on the verges, in the clearing and in the woods' lighter places, outside the glade
- // (its own grass is the glade pack's): the glade's three grass meshes, wider and fewer
- tufts:=ifx e2_clearing(x0+cs*0.5,z0-cs*0.5)>0.05 then 520 else 150;
- for q:0..<tufts {
-  h:=seed*2.13+f32(q)*1.7+0.25;
-  x:=x0+cg_hash(h,31)*cs;z:=z0-cg_hash(h,32)*cs;
-  if x<E2_WEST+2 || x>E2_EAST-2 || z<E2_FAR+2 || z>E2_BACK-2 {continue;}
-  o:=e2_outside(x,z);if o<0.35 || e2_path(x,z)>0.35 {continue;}
-  rd:=e2_road_dist(x,z);cl:=e2_clearing(x,z);
-  p:=ifx cl>0.3 then 0.9f32 else ifx rd<10 then 0.85f32 else ifx rd<22 then 0.35f32 else 0.08f32;
-  if cg_hash(h,33)>p {continue;}
-  au:=e2_gold(x,z);g:=int(cg_hash(h,34)*2.999);hgt:=(0.22+cg_hash(h,35)*0.26)*(ifx rd<3.2 then 0.7f32 else 1.0f32);
-  src:=[3]f32.[1.31172,1.20004,0.98610][g];
-  n=e2_put(out,kinds,n,E2_GRASS+g,x,e2_height(x,z),z,cg_hash(h,36)*6.283,hgt/src,0.55+cg_hash(h,37)*0.35,[3]f32.[0.30+0.26*au,0.48,0.055]);
- }
+ // (the grass is the field's: verse/everglade2/field.coax, placed on the GPU)
  // now and then a boulder in the woods
  bh:=seed*0.71+0.3;
  if cg_hash(bh,21)<0.3 {x:=x0+cg_hash(bh,22)*cs;z:=z0-cg_hash(bh,23)*cs;

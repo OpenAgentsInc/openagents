@@ -3,7 +3,7 @@
 // page's visible-piece store (apps/openagents-web/everglade2.coax), and a key-light shadow map that
 // follows the player.
 #load "fivelab.coax";
-#load "../../../verse/everglade2/forest.coax";
+#load "../../../verse/everglade2/field.coax";
 Everglade2Bg :: struct {c:V4;aux:V4;depth:f32 #depth;}
 Everglade2Lit :: struct {c:V4;aux:V4;}
 E2_KIT_BASE :: 1048576;   // a base instance at or past this draws kit pieces: inst[2 (instance - base)]
@@ -22,7 +22,10 @@ e2_unpack_tint :: (c:V4)->V3 {hi:=floor(c.z/256.0f32);return v3(hi/255.0f32,(c.z
 // One vertex of a kit piece: the pack's template at the origin (u[48] its first vertex word), placed
 // by its instance (x y z yaw, vertical and horizontal scale, tint).
 e2_kit_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,inst:[]V4)->FivelabS {
- k:=cast(int)(instance-cast(u32)E2_KIT_BASE);a:=inst[k*2];c:=inst[k*2+1];
+ k:=cast(int)(instance-cast(u32)E2_KIT_BASE);return e2_kit_place(id,inst[k*2],inst[k*2+1],u,vertices);
+}
+// One vertex of a kit piece placed at a (x y z yaw) with c (vertical and horizontal scale, tint).
+e2_kit_place :: (id:u32,a:V4,c:V4,u:[]f32,vertices:[]u32)->FivelabS {
  b:u32=add_wrap(wg_u32_f(u[48]),mul_wrap(id,8));
  source:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
  normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
@@ -42,7 +45,43 @@ e2_kit_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,inst:[]V4)->FivelabS {
  }
  return o;
 }
+// ---- the grass field (verse/everglade2/field.coax): a tuft a cell, placed here from the draw's block
+// code and the cell's own hash, so the CPU only picks the blocks in view.
+e2_ihash :: (v:u32)->u32 {
+ x:=v^(v>>16);x=mul_wrap(x,cast(u32)2146121005);x=x^(x>>15);x=mul_wrap(x,cast(u32)1663597195);return x^(x>>16);
+}
+e2_unit :: (h:u32)->f32 {return cast(f32)(h>>8)/16777216.0f32;}
+#test "a cell's hash spreads over the unit and differs cell to cell" {
+ lo:f32=1;hi:f32=0;same:=0;last:f32= -1;
+ for i:0..<500 {f:=e2_unit(e2_ihash(cast(u32)i*cast(u32)7919));if f<lo {lo=f;}if f>hi {hi=f;}if f==last {same+=1;}last=f;}
+ #assert lo<0.02 && hi>0.98 && same==0;
+}
+e2_field_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->FivelabS {
+ o:FivelabS;o.pos=v4(0,0,-2,1);
+ local:=instance-cast(u32)E2_FIELD_BASE;cell:=local&255;rest:=local>>8;mesh:=rest&3;blk:=rest>>2;
+ row:=cast(u32)E2_FIELD_ROW;tier:=blk/(row*row);bb:=blk-tier*row*row;bz:=bb/row;bx:=bb-bz*row;
+ gx:=bx*16+(cell&15);gz:=bz*16+(cell>>4);
+ h:=e2_ihash(mul_wrap(gx,cast(u32)73856093)^mul_wrap(gz,cast(u32)19349663)^mul_wrap(tier,cast(u32)83492791));
+ h2:=e2_ihash(h);h3:=e2_ihash(h2);h4:=e2_ihash(h3);h5:=e2_ihash(h4);h6:=e2_ihash(h5);
+ // the two short meshes share a cell's tufts half and half
+ if (mesh<2 && (h6&1)!=mesh) {return o;}
+ t:=cast(int)tier;cs:=e2_field_cell(t);
+ x:=E2_WEST+(cast(f32)gx+e2_unit(h))*cs;z:=E2_BACK-(cast(f32)gz+e2_unit(h2))*cs;
+ dx:=x-u[16];dz:=z-u[18];d:=sqrt(dx*dx+dz*dz);
+ w:=e2_field_weight(t,d)*e2_field_cover(x,z);r:=e2_unit(h3);
+ if (r>=w) {return o;}
+ // a tuft grows in as its weight passes its dither, rather than popping
+ grow:=saturate((w-r)/0.25f32);
+ woods:=e2_forest(x,z);edge:=e2_smooth(0.03,0.30,e2_path(x,z));
+ hgt:=(0.22f32+0.26f32*e2_unit(h4))*(1.0f32-0.40f32*edge)*(1.0f32-0.25f32*woods)*(1.0f32+0.15f32*cast(f32)t)*(0.35f32+0.65f32*grow);
+ sv:=hgt/e2_field_source(cast(int)mesh);sh:=(0.55f32+0.35f32*e2_unit(h5))*pow(2.0f32,cast(f32)t)*0.85f32*(0.5f32+0.5f32*grow);
+ au:=e2_gold(x,z);dark:=1.0f32-0.38f32*woods;
+ tr:=(0.30f32+0.26f32*au)*dark;tg:=0.48f32*dark;tb:=0.055f32*dark;
+ c:=v4(sv,sh,floor(tr*255.0f32+0.5f32)*256.0f32+floor(tg*255.0f32+0.5f32),tb+2.0f32);
+ return e2_kit_place(id,v4(x,e2_height(x,z),z,e2_unit(h6)*6.2831853f32),c,u,vertices);
+}
 everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->FivelabS {
+ if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst);}
  return fivelab_scene_vs(id,instance,u,vertices,objects,bake);
 }
