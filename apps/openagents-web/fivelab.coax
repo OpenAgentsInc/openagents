@@ -1928,7 +1928,7 @@ LabWalk :: struct { on: bool; put: bool; x: f32; z: f32; face: f32; }
 // token moved by what the rules did (a shove, a new battle).
 lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
   w: LabWalk;
-  if s[0].creator[0].experimental {w.on=true;if !s[0].you_on {w.put=true;s[0].you_on=true;}return w;}
+  if s[0].creator[0].experimental {if s[0].creator[0].hostiles[0].ready && s[0].creator[0].hostiles[0].hp<=0 {return w;}w.on=true;if !s[0].you_on {w.put=true;s[0].you_on=true;}return w;}
   if !s[0].started || !s[0].player || s[0].me < 0 || s[0].golden { s[0].you_on = false; return w; }
   b := bt(s);
   me := s[0].me;
@@ -3207,6 +3207,10 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
   return false;
 }
 
+#test "experimental death stops the player controller" {
+ s:[1]Lab;s[0].creator[0].experimental=true;s[0].creator[0].hostiles[0].ready=true;s[0].creator[0].hostiles[0].hp=0;
+ #assert !lab_walk(s[..]).on;
+}
 #test "experimental glade starts with a free Everglade walker and accepts held keys" {
   s:[1]Lab;
   lab_message(s[..],600,"url=http://localhost/worlds/everglade-experimental\n");

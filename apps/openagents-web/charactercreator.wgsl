@@ -363,6 +363,10 @@ fn coax_p_post_fs(p_pos: vec4f) -> vec4f {
   {
     l_result = coax_p_mix3(l_result, coax_p_v3(0x1.99999ap-6f, 0x1.47ae14p-5f, 0x1.1eb852p-5f), 0x1.a8f5c2p-1f);
   }
+  if (((coax_at_u(i32(42i)) > 0x1.000000p-1f) && coax_p_cg_health_panel(l_pixel, coax_at_u(i32(0i)), coax_at_u(i32(4i)))))
+  {
+    l_result = coax_p_mix3(l_result, coax_p_v3(0x1.99999ap-6f, 0x1.1eb852p-5f, 0x1.eb851ep-6f), 0x1.c28f5cp-1f);
+  }
   l_result = coax_p_cg_walk_veil(l_result);
   return coax_p_v4(l_result.x, l_result.y, l_result.z, 0x1.000000p0f);
 }
@@ -1060,6 +1064,12 @@ fn coax_p_cg_dev_panel(p_p: vec2f, p_h: f32, p_k: f32, p_collapsed: bool) -> boo
   var l_k: f32 = p_k;
   var l_collapsed: bool = p_collapsed;
   return ((((l_p.x >= (0x1.800000p3f * l_k)) && (l_p.x <= (0x1.720000p8f * l_k))) && (l_p.y >= (0x1.400000p4f * l_k))) && (l_p.y <= select((l_h - (0x1.400000p4f * l_k)), (0x1.a00000p5f * l_k), l_collapsed)));
+}
+fn coax_p_cg_health_panel(p_p: vec2f, p_w: f32, p_k: f32) -> bool {
+  var l_p: vec2f = p_p;
+  var l_w: f32 = p_w;
+  var l_k: f32 = p_k;
+  return ((((l_p.x >= (l_w - (0x1.ac0000p7f * l_k))) && (l_p.x <= (l_w - (0x1.c00000p4f * l_k)))) && (l_p.y >= (0x1.400000p4f * l_k))) && (l_p.y <= (0x1.d00000p5f * l_k)));
 }
 fn coax_p_cg_walk_veil(p_c: vec3f) -> vec3f {
   var l_c: vec3f = p_c;

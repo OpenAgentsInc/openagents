@@ -2466,9 +2466,9 @@
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "b5b2af7caf7405f50ac0377856f18ed4cc3f7846f676007f99a44acc53819f37",
+    "sha256": "5ca3cea9bf0fd5b66d1ab81f377a016abebee49ca5ea6e2d8b72fce118d71b29",
     "artifact": "apps/openagents-web/charactercreator.wgsl",
-    "artifact_sha256": "4f3280303b30fe284f0af9ad885651da0c0d9b166af82e27bbbf2e223cec310d"
+    "artifact_sha256": "b86812dce24643f190f77c167fc0ce97fa7767a05be211253269d4253b4bc27d"
   },
   "props": {
     "package": "fantasy-props",
@@ -2552,7 +2552,7 @@
     "behavior": "Pursue the player and make timed SRD melee attacks",
     "source": {
       "path": "verse/experimental-hostiles.coax",
-      "sha256": "06d955e3a17a05ca0157b89c179ab9eea7dcef8fc5de6085dd6d323945a69e0a"
+      "sha256": "5a156147bf2a486ea2a4d90b893806badca389aa2ed6c7541848494749283c70"
     }
   }
 }
