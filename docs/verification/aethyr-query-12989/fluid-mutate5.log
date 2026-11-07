@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time steps: 15404047 of 20000000 used (77%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    2179149 steps  aethyr/entity.coax:102:1  in 'entity_alive' (75225 times)
+    1599052 steps  coax/lib/handle.coax:19:1  in 'handle_slot' (228436 times)
+    1583883 steps  coax/lib/handle.coax:20:1  in 'handle_generation' (226269 times)
+    1443870 steps  aethyr/tests/entity-oracle.coax:49:1  in 'oracle_agrees' (1440 times)
+    1434918 steps  aethyr/entity.coax:89:1  in 'entity_canonical' (75522 times)
+  fix: do less work in 'entity_alive', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+155 mutants, 155 killed, 0 survived

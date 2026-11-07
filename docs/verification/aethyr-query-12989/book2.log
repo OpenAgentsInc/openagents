@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/christopherdavid/oa-open-issues/psionic/tests/book.py", line 420, in <module>
+    main()
+    ~~~~^^
+  File "/home/christopherdavid/oa-open-issues/psionic/tests/book.py", line 414, in main
+    examples = check(args.book)
+  File "/home/christopherdavid/oa-open-issues/psionic/tests/book.py", line 173, in check
+    assert listing == expected, f"listing drift: {doc.name} -> {source} {tag}"
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError: listing drift: ch053-bring-in-assets.md -> aethyr/forge/pack.coax format

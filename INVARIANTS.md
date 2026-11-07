@@ -1717,6 +1717,19 @@ and walking off a ledge is the same in every realm").
 
 ## Terrain and capsule publication carry checked receipts
 
+The semantic query boundary (`query-filter.coax`, `query-scene.coax`,
+`query-fluid.coax`) admits complete collider/surface/response catalogs before
+selection. Category masks are separate from collision-pair policy and visual
+materials. Selected shapes keep source tie order and durable collider/entity
+generations. An old epoch or despawned selected entity refuses; overlap and
+volume output publish whole or leave caller storage unchanged. Filtering all
+terrain creates no fallback plane. Snapshot arrays stay retained immutable;
+scratch belongs to one selection until its last use. Response policy zero is
+the default; every nonzero reference must resolve before publication. The
+engine-owned native/Wasm journey and explicit legacy-adapter inventory are in
+`docs/verification/aethyr-query-12989/README.md`; whole-realm migration and
+chapter 70's full wave/force/render implementation are separate scopes.
+
 `aethyr/ground.coax` samples the actual rounded f32 mesh vertices, split on
 the south-west/north-east diagonal. Exact stored vertices retain their bits.
 Its metre-quantity boundary refuses invalid dimensions, spacing, coordinates,

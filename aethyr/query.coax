@@ -53,8 +53,30 @@ Colliders :: struct {
   floors: [] f32;      // STAND_FLOATS numbers each (aethyr/stand.coax)
   heightfields: [] QueryHeightfield;
   heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
+  // Semantic selections can contain no base surface. The compatibility
+  // default still supplies the realm's flat ground when it has no mesh.
+  ground_enabled: bool = true;
 }
 // book:end rules
+
+#test "an explicitly absent base has no phantom ground in any query" {
+  c := Colliders.{ground = 4, ground_enabled = false};
+  p := world_point(0, 2, 0); d := world_point(0, -1, 0);
+  #assert !query_ray(c, p, d, 20).hit && query_clear(c, p, d, 20).clear;
+  #assert !query_sweep(c, p, 0.2, d).hit;
+  ids: [1] QueryId;
+  #assert query_overlap_checked(c, p, 0.2, ids[..]).count == 0;
+  g := query_ground_checked(c, 0, 0, 5, 0.3);
+  #assert g.status == QueryStatus.ok && g.shape == QueryShape.none;
+  c.ground_enabled = true;
+  #assert query_ray(c, p, d, 20).hit && !query_clear(c, p, d, 20).clear;
+  #assert query_sweep(c, p, 0.2, d).hit;
+  #assert query_overlap_checked(c, p, 0.2, ids[..]).count == 1;
+  #assert query_ground_checked(c, 0, 0, 5, 0.3).y == 4;
+  c.ground_enabled = false;
+  boxes := [6] f32.[-1, 0, -1, 1, 0.5, 1]; c.boxes = boxes[..];
+  #assert query_ground_checked(c, 0, 0, 1, 0.3).shape == QueryShape.box;
+}
 
 query_finite :: (a: f32) -> bool #effects(all) { return a == a && a < QUERY_TOO_BIG && a > -QUERY_TOO_BIG; }
 query_point_finite :: (p: WorldPoint) -> bool #effects(all) { return query_finite(p.x) && query_finite(p.y) && query_finite(p.z); }
@@ -109,6 +131,7 @@ QueryGround :: struct { y: f32; gx: f32; gz: f32; steep: bool; shape: QueryShape
 // mesh continues its nearest edge outside its rectangle. A clamped axis has zero slope.
 query_base_ground :: (c: Colliders, x: f32, z: f32) -> QueryGround #effects(all) {
   out := QueryGround.{y = c.ground};
+  if !c.ground_enabled { out = QueryGround.{y = -QUERY_TOO_BIG, shape = QueryShape.none}; }
   found := false;
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
@@ -150,7 +173,7 @@ query_ground_checked :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -
     return QueryGround.{status = QueryStatus.invalid};
   }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryGround.{status = QueryStatus.capacity}; }
-  if c.heightfields.count == 0 && !query_finite(c.ground) { return QueryGround.{status = QueryStatus.invalid}; }
+  if c.heightfields.count == 0 && c.ground_enabled && !query_finite(c.ground) { return QueryGround.{status = QueryStatus.invalid}; }
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
     sample := terrain.ground_sample(field.ground, field.heights, quantities.Quantity.{value = x}, quantities.Quantity.{value = z});
@@ -266,7 +289,7 @@ query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit 
   if !query_point_finite(o) || !query_point_finite(d) || !query_finite(far) || !(world_dot(d, d) > 0) { return QueryHit.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
   reach := stand_hi(far, 0);
-  if c.heightfields.count == 0 { best = query_select_entry(best, query_enter_ground(c.ground, o, d, reach), QueryShape.ground, 0); }
+  if c.heightfields.count == 0 && c.ground_enabled { best = query_select_entry(best, query_enter_ground(c.ground, o, d, reach), QueryShape.ground, 0); }
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
     h := height_rays.ground_ray(field.ground, field.heights, o, d, f64(reach), c.heightfield_budget);
@@ -296,7 +319,7 @@ query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit 
 // refuses what query_ray refuses, and a refused query is not clear.
 QueryClear :: struct { clear: bool; status: QueryStatus; }
 query_clear :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryClear #effects(all) {
-  rest := Colliders.{ground = c.ground, capsules = c.capsules, heightfields = c.heightfields, heightfield_budget = c.heightfield_budget};
+  rest := Colliders.{ground = c.ground, ground_enabled = c.ground_enabled, capsules = c.capsules, heightfields = c.heightfields, heightfield_budget = c.heightfield_budget};
   h := query_ray(rest, o, d, far);
   if h.status != QueryStatus.ok || h.hit { return QueryClear.{status = h.status}; }
   reach := stand_hi(far, 0);
@@ -345,7 +368,7 @@ query_overlap_checked :: (c: Colliders, centre: WorldPoint, r: f32, out: [] Quer
     if status != QueryStatus.ok { return QueryOverlapResult.{status = status}; }
     touching[i] = h.hit;
   }
-  if c.heightfields.count == 0 && centre.y - r < c.ground { n = query_put(out, n, QueryShape.ground, 0); }
+  if c.heightfields.count == 0 && c.ground_enabled && centre.y - r < c.ground { n = query_put(out, n, QueryShape.ground, 0); }
   for i: 0..<c.heightfields.count { if touching[i] { n = query_put(out, n, QueryShape.heightfield, i); } }
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
@@ -419,7 +442,7 @@ query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> Query
     if q.count == 0 { return best.hit; }
     return QueryHit.{hit = true, point = from, normal = world_point(0, 1, 0), shape = hits[0].shape, index = hits[0].index};
   }
-  if c.heightfields.count == 0 { best = query_select_entry(best, query_enter_ground(c.ground + r, from, by, 1), QueryShape.ground, 0); }
+  if c.heightfields.count == 0 && c.ground_enabled { best = query_select_entry(best, query_enter_ground(c.ground + r, from, by, 1), QueryShape.ground, 0); }
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
     h := height_contacts.ground_sweep(field.ground, field.heights, from, r, by, c.heightfield_budget);

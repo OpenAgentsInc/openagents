@@ -6,7 +6,9 @@
 > [`verse/water.coax`](../../verse/water.coax) and its sibling modules, and
 > Everglade and the water lab (`/realms/waterlab`) use them. No other realm
 > can load water through Aethyr. This chapter plans water as an Aethyr
-> module with the same formulas and checks. Nothing in `aethyr/` runs yet.
+> module with the same formulas and checks. Aethyr now has the bounded
+> gameplay volume/surface queries described below; the full wave, force,
+> rendering and realm-adoption chapter remains a design draft.
 
 Water touches most of the engine at once: physics pushes bodies, the
 renderer draws a surface and what is under it, the camera can go below the
@@ -70,6 +72,16 @@ module that any realm declares, instead of code that belongs to Everglade.
    and spray as effects from [chapter 72](ch072-effects-made-of-particles.md).
 
 ## What exists today
+
+- [`aethyr/query-fluid.coax`](../query-fluid.coax): checked box/capsule
+  trigger containment and gameplay fluid boxes with no surface, a flat
+  surface or an existing heightfield sampler. Explicit rectangular holes
+  remove fluid occupancy. Samples carry body identity, surface/depth, flow,
+  kind, density, buoyancy and drag. Resistance is independent of buoyancy:
+  `flow + (velocity - flow) / (1 + drag * dt)` slows a body without adding
+  lift. Results publish whole or refuse. This is the bounded query profile
+  from [chapter 7](ch007-ask-the-world-where-things-are.md), not completion
+  of the waves, force ledger or rendering requirements in this chapter.
 
 - [docs/verse/water.md](../../docs/verse/water.md): phases W1–W11, each with
   its port notes and differences from the previous Rust engine.

@@ -1,0 +1,20 @@
+building native semantic journey
+building Wasm semantic journey
+Wasm sha256 3bc12a9488db4d6e8e19699701635139214366679b2b7e184742454fce825061
+running muted headless Wasm semantic journey
+browser Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36
+word 0 1
+word 1 1074580684
+word 2 1083598438
+word 3 1072064102
+word 4 0
+word 5 2
+word 6 4
+word 7 9
+word 8 1065353216
+word 9 1073741824
+word 10 0
+word 11 1
+word 12 1
+word 13 12
+PASS native/Wasm semantic query journey: 14 exact words, wasm 60595 bytes

@@ -161,22 +161,35 @@ def original_body(source, row):
                     expected = '{\n  for ' + bindings + ' ' + source[first:end] + '}\n'
                     if source[outer:outer + len(expected)] != expected:
                         raise RuntimeError('finite scenario wrapper changed: ' + row['original_name'])
-                return
+                return source[first:end]
         at += 1
     raise RuntimeError('unbalanced original body')
 
 
 def qualify(args, work):
-    manifest = json.loads(MANIFEST.read_text())
+    manifest_path = Path(args.manifest).resolve() if args.manifest else (
+        ROOT / 'aethyr/tests/native-gameplay-checks-v2.json' if args.realm == 'deadgears' else MANIFEST)
+    manifest = json.loads(manifest_path.read_text())
+    adapted = manifest.get('schema') == 'aethyr.native-gameplay-programs.v2'
     records = [row for row in manifest['records'] if row['realm'] == args.realm]
     entries = {row['entry'] for row in records}
     if len(entries) != 1:
         raise RuntimeError('expected one independent realm entry')
     entry = entries.pop()
+    parent_files = []
     for row in records:
-        original_body((ROOT / entry).read_text(), row)
+        body = original_body((ROOT / entry).read_text(), row)
+        if adapted:
+            parent_path = ROOT / manifest['parent_manifest']
+            parent = json.loads(parent_path.read_text())
+            original = next(item for item in parent['records'] if item['procedure'] == row['procedure'])
+            original_path = ROOT / original['entry']
+            frozen = original_body(original_path.read_text(), original)
+            if row['parent_body_sha256'] != original['body_sha256'] or body != frozen.replace('[1] Store;', '[1] DgStore;'):
+                raise RuntimeError('versioned native body changed beyond its declared type substitution')
+            parent_files.extend([parent_path, original_path])
     coax_sources = snapshot([ROOT / entry])
-    sources = snapshot([ROOT / entry, MANIFEST, DRIVER, Path(__file__)])
+    sources = snapshot([ROOT / entry, manifest_path, DRIVER, Path(__file__), *parent_files])
     compiler = Path(args.coax).resolve()
     compiler_hash = digest(compiler.read_bytes())
     cc = os.environ.get('CC', 'cc')
@@ -194,6 +207,10 @@ def qualify(args, work):
                'native_compiler': cc_path, 'native_compiler_version': native_version,
                'platform': platform.platform(), 'native_stack_bytes': 128 * 1024 * 1024,
                'scope': 'Ordinary Coax integration procedures with original bodies/#assert statements. Normal authority checks remain enabled. No native-check ABI, evaluator-parity, Wasm-execution or raster claim.'}
+    if adapted:
+        receipt['schema'] = 'aethyr.native-gameplay-programs-execution.v2'
+        receipt['scope'] = 'Versioned Store-to-DgStore backing-type substitution, independently compared to frozen v1 body bytes. Every original assertion and other body byte retained. Normal authority checks remain enabled; no native-check ABI, evaluator-parity, Wasm-execution or raster claim.'
+        receipt['parent_manifest'] = manifest['parent_manifest']
 
     def save(status):
         expected = {name: (ROOT / name, value) for name, value in sources.items()}
@@ -287,6 +304,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--coax', default=str(ROOT / 'coax/bin/coax'))
     parser.add_argument('--realm', choices=['everglade', 'deadgears'], required=True)
+    parser.add_argument('--manifest', help='Explicit versioned program manifest (default: Dead Gears v2, otherwise v1)')
     parser.add_argument('--mode', choices=['debug', 'release', 'sanitized'], default='debug')
     parser.add_argument('--reuse-emission', help='Reuse an identical qualified emission.json, e.g. debug C for sanitizers')
     parser.add_argument('--receipt')

@@ -1,0 +1,14 @@
+{
+  "base_commit": "96f8af027103bec45115b3b9b7f1146dddfc8a17",
+  "sources": {
+    "aethyr/query.coax": "fa33f2454794b5cc347b69d852595624eb70546f034eafda4d6f2f6f877c4b49",
+    "aethyr/query-filter.coax": "9cbfc4b393eaa07451391522ce092ef93d92525d3460ced88f8c0c1a0b612847",
+    "aethyr/query-scene.coax": "ce607bcb79012f7bdbaba4e8048bd2556fcb96f109a10f84703dcb65b2cc080c",
+    "aethyr/query-fluid.coax": "b3676f191dd62dae14e28bdedc329ea7001372136a54c3576f300c5f4b7b7eee",
+    "aethyr/examples/query-world.coax": "c5a5260653c0c99ff75efa1d68f3f41426d008dadfab98ba612ba71b66ea25e1",
+    "aethyr/tools/query-world-hosts.coax": "86b5b3f1374969ba9d47143cc32ac7a572cba95b5f0c6699c5be00453e8439ac",
+    "aethyr/tests/query-semantic-fixture.coax": "f315babe926c99c695668c3e3c37134ef65c187b96a34944c2e4f4eba78975ba",
+    "aethyr/tests/query-world-face.c": "8d34caf390e70cb79251dc119dd1f658e21601154b9b2e0aeaded4d1bb381498"
+  },
+  "compiler_sha256": "efaeeae664be88349d3aea9106867fcb2a8d33dc06d2679bac89b2809aeb55b3"
+}

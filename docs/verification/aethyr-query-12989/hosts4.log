@@ -1,0 +1,16 @@
+building native semantic journey
+building Wasm semantic journey
+running muted headless Wasm semantic journey
+word 0 1
+word 1 1074580684
+word 2 1083598438
+word 3 1072064102
+word 4 0
+word 5 2
+word 6 4
+word 7 9
+word 8 1065353216
+word 9 1073741824
+word 10 0
+word 11 1
+PASS native/Wasm semantic query journey: 12 exact words, wasm 59163 bytes

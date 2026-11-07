@@ -1,0 +1,49 @@
+// Authored fixture data, kept separate from the semantic admission policy.
+// Metadata follows geometry; durable IDs do not depend on compacted slots.
+QueryFixture :: struct {
+  boxes: [12] f32;
+  metadata: [3] QueryCollider;
+  surfaces: [2] PhysicalSurface;
+  epoch: [1] int;
+}
+query_fixture :: (b: [] QueryFixture) -> QueryWorld #effects(all) {
+  b[0].boxes = [12] f32.[-1, 0, 2, 1, 3, 2.25, -1, 0, 5, 1, 3, 5.25];
+  b[0].metadata = [3] QueryCollider.[
+    QueryCollider.{ref = ColliderRef.{id = 100, generation = 1}, shape = QueryShape.ground, surface = 10},
+    QueryCollider.{ref = ColliderRef.{id = 200, generation = 1}, shape = QueryShape.box, surface = 20, categories = 2},
+    QueryCollider.{ref = ColliderRef.{id = 300, generation = 1}, shape = QueryShape.box, index = 1, surface = 10}];
+  b[0].surfaces = [2] PhysicalSurface.[PhysicalSurface.{id = 10, footstep = 4}, PhysicalSurface.{id = 20, footstep = 8}];
+  b[0].epoch[0] = 1;
+  return QueryWorld.{geometry = Colliders.{boxes = b[0].boxes[..]}, metadata = b[0].metadata[..],
+    surfaces = b[0].surfaces[..], current_epoch = b[0].epoch[..], epoch = 1};
+}
+
+QueryMixedFixture :: struct {
+  low: [4] f32;
+  high: [4] f32;
+  fields: [2] QueryHeightfield;
+  boxes: [12] f32;
+  capsules: [14] f32;
+  floors: [2 * STAND_FLOATS] f32;
+  metadata: [8] QueryCollider;
+  surfaces: [1] PhysicalSurface;
+  epoch: [1] int;
+}
+query_mixed_fixture :: (b: [] QueryMixedFixture) -> QueryWorld #effects(all) {
+  b[0].low = [4] f32.[-10, -10, -10, -10];
+  b[0].high = [4] f32.[-9, -9, -9, -9];
+  g := terrain.Ground.{n = 1, cell = 20, west = -1, south = -1};
+  b[0].fields = [2] QueryHeightfield.[QueryHeightfield.{ground = g, heights = b[0].low[..]}, QueryHeightfield.{ground = g, heights = b[0].high[..]}];
+  b[0].boxes = [12] f32.[-1, 0, 2, 1, 3, 3, 3, 0, 2, 5, 2, 3];
+  b[0].capsules = [14] f32.[8, 0, 2, 8, 2, 2, 0.25, 12, 0, 2, 12, 2, 2, 0.5];
+  stand_put_box(b[0].floors[..], 0, 15, -1, 17, 1, 2);
+  stand_put_box(b[0].floors[..], 1, 19, -1, 21, 1, 4);
+  for i: 0..<8 {
+    shape := ifx i < 2 then QueryShape.heightfield else ifx i < 4 then QueryShape.box else ifx i < 6 then QueryShape.capsule else QueryShape.floor;
+    b[0].metadata[i] = QueryCollider.{ref = ColliderRef.{id = (i / 2 + 1) * 100 + i % 2 + 1, generation = 1},
+      shape = shape, index = i % 2, surface = 10, categories = ifx i < 2 then cast(u32) (1 << i) else cast(u32) (4 << (i % 2))};
+  }
+  b[0].surfaces[0] = PhysicalSurface.{id = 10}; b[0].epoch[0] = 1;
+  return QueryWorld.{geometry = Colliders.{boxes = b[0].boxes[..], capsules = b[0].capsules[..], floors = b[0].floors[..], heightfields = b[0].fields[..]},
+    metadata = b[0].metadata[..], surfaces = b[0].surfaces[..], epoch = 1, current_epoch = b[0].epoch[..]};
+}

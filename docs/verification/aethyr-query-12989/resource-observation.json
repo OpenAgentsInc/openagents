@@ -1,0 +1,9 @@
+{
+  "profile": "14-word semantic query journey with fixed-tick replacement",
+  "elapsed_ms": 1.1561209103092551,
+  "child_peak_rss_kib": 17992,
+  "binary_sha256": "cf23033dde663858c5d62f4b7f51ac20c135478cb556e953134c2ac245dd2f95",
+  "c_sha256": "3d12fef2b3d83524c82adffa2a4af66488777b4e04971eac8c59b2c2e22ed204",
+  "stdout_sha256": "2722da47f1fe4bc16a293680c16daf7fce194b9e6ba0ce522e3f5bee6bc92331",
+  "scope": "single-process observation; launcher/loader RSS included, not an engine allocation trace or statistical frame-time qualification"
+}

@@ -1,0 +1,315 @@
+// Bounded gameplay fluid/trigger sampling; appearance and solidity are
+// independent metadata. No wave model or renderer material IDs enter here.
+#module "aethyr.query.fluid";
+#authority;
+#load "query-scene.coax";
+#load "ground.coax" as terrain;
+#load "../coax/lib/quantity.coax" as quantities;
+
+FluidSurfaceKind :: enum u8 { none; flat; heightfield; }
+FluidVolume :: struct {
+  body: ColliderRef;
+  kind: FluidSurfaceKind;
+  level: f32;
+  heightfield: QueryHeightfield;
+  flow: WorldPoint;
+}
+FluidHole :: struct { body: ColliderRef; west: f32; south: f32; east: f32; north: f32; }
+FluidSample :: struct {
+  body: ColliderRef;
+  surface: int;
+  fluid_kind: int;
+  has_surface: bool;
+  height: f32;
+  depth: f32;
+  flow: WorldPoint;
+  density: f32;
+  buoyancy: f32;
+  drag: f32;
+}
+FluidSamples :: struct { status: QueryStatus; count: int; }
+FluidMotion :: struct { status: QueryStatus; velocity: WorldPoint; }
+
+#test "trigger point queries return stable bodies and refuse unsupported volume shapes atomically" {
+  b: [1] QueryFixture; w := query_fixture(b[..]); b[0].metadata[1].role = QueryRole.trigger;
+  output: [2] QueryCollider; output[0].surface = 999;
+  q := query_volume_samples(w, QueryFilter.{}, world_point(0, 1, 2), output[0..<0]);
+  #assert q.status == QueryStatus.capacity && q.count == 0 && output[0].surface == 999;
+  q = query_volume_samples(w, QueryFilter.{}, world_point(0, 1, 2), output[0..<1]);
+  #assert q.status == QueryStatus.ok && q.count == 1 && output[0].ref.id == 200;
+  #assert query_volume_samples(w, QueryFilter.{sensors = false}, world_point(0, 1, 2), output[..]).count == 0;
+  b[0].metadata[0].role = QueryRole.trigger;
+  #assert query_volume_samples(w, QueryFilter.{}, world_point(0, 1, 2), output[..]).status == QueryStatus.invalid;
+  b[0].epoch[0] = 2;
+  #assert query_volume_samples(w, QueryFilter.{}, world_point(0, 1, 2), output[..]).status == QueryStatus.invalid;
+  mixed: [1] QueryMixedFixture; mw := query_mixed_fixture(mixed[..]); mixed[0].metadata[4].role = QueryRole.sensor;
+  q = query_volume_samples(mw, QueryFilter.{}, world_point(8.25, 1, 2), output[..]);
+  #assert q.status == QueryStatus.ok && q.count == 1 && output[0].ref.id == 301;
+  #assert query_volume_samples(mw, QueryFilter.{}, world_point(8.251, 1, 2), output[..]).count == 0;
+  #assert query_volume_samples(mw, QueryFilter.{include = 65536}, world_point(8, 1, 2), output[..]).status == QueryStatus.invalid;
+  #assert query_volume_samples(mw, QueryFilter.{}, world_point(1000000, 1, 2), output[..]).status == QueryStatus.invalid;
+}
+
+#forall "fluid box and hole boundaries agree with an independent coordinate-grid oracle" ix: 0..<7, iz: 0..<7, iy: 0..<5 {
+  b: [1] QueryFixture; w := query_fixture(b[..]);
+  b[0].metadata[1].role = QueryRole.fluid;
+  b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 1, density = 1000};
+  v := [1] FluidVolume.[FluidVolume.{body = b[0].metadata[1].ref, kind = FluidSurfaceKind.flat, level = 3}];
+  h := [1] FluidHole.[FluidHole.{body = v[0].body, west = -0.5, east = 0.5, south = 2.05, north = 2.2}];
+  xs := [7] f32.[-1.1, -1, -0.5, 0, 0.5, 1, 1.1];
+  zs := [7] f32.[1.9, 2, 2.05, 2.1, 2.2, 2.25, 2.3];
+  ys := [5] f32.[-0.1, 0, 1, 3, 3.1];
+  output: [1] FluidSample;
+  q := query_fluid_samples(w, QueryFilter.{}, v[..], h[..], world_point(xs[ix], ys[iy], zs[iz]), output[..]);
+  expected := ix >= 1 && ix <= 5 && iz >= 1 && iz <= 5 && iy >= 1 && iy <= 3 && !(ix >= 2 && ix <= 4 && iz >= 2 && iz <= 4);
+  #assert q.status == QueryStatus.ok && q.count == (ifx expected then 1 else 0);
+  if expected { #assert output[0].depth == 3 - ys[iy]; }
+  b[0].metadata[1].role = QueryRole.trigger;
+  bodies: [1] QueryCollider;
+  contained := query_volume_samples(w, QueryFilter.{}, world_point(xs[ix], ys[iy], zs[iz]), bodies[..]);
+  box_expected := ix >= 1 && ix <= 5 && iz >= 1 && iz <= 5 && iy >= 1 && iy <= 3;
+  #assert contained.status == QueryStatus.ok && contained.count == (ifx box_expected then 1 else 0);
+}
+#test "fluid admission handles a first collider volume and exact surface limits" {
+  b: [1] QueryFixture; w := query_fixture(b[..]); w.geometry.ground_enabled = false; w.metadata = b[0].metadata[1..<3];
+  b[0].metadata[1].role = QueryRole.fluid;
+  b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 1, density = 1000};
+  v := [1] FluidVolume.[FluidVolume.{body = w.metadata[0].ref, kind = FluidSurfaceKind.flat}];
+  holes := [1] FluidHole.[FluidHole.{body = v[0].body, west = 4, east = 5, south = 4, north = 5}];
+  samples: [1] FluidSample; p := world_point(0, 0, 2.2);
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[..]).count == 1;
+  v[0].level = -1; #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[..]).status == QueryStatus.invalid;
+  v[0].level = 0.0 / 0.0; #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[..]).status == QueryStatus.invalid;
+  v[0].level = 3; #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[..]).count == 1;
+  v[0].flow.x = 1000000; #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[..]).status == QueryStatus.invalid;
+}
+#test "fluid table capacities reject overflow before inspecting or publishing a prefix" #steps 20000000 {
+  b: [1] QueryFixture; w := query_fixture(b[..]);
+  boxes: [256 * QUERY_BOX] f32; metadata: [256] QueryCollider;
+  volumes: [257] FluidVolume; holes: [257] FluidHole; output: [256] FluidSample;
+  b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 1, density = 1000};
+  for i: 0..<256 {
+    boxes[i * QUERY_BOX + 3] = 1; boxes[i * QUERY_BOX + 4] = 1; boxes[i * QUERY_BOX + 5] = 1;
+    metadata[i] = QueryCollider.{ref = ColliderRef.{id = i + 1, generation = 1}, shape = QueryShape.box,
+      index = i, surface = 20, role = QueryRole.fluid};
+    volumes[i].body = metadata[i].ref;
+  }
+  for i: 0..<257 { holes[i] = FluidHole.{body = metadata[0].ref, west = 2, east = 3, south = 2, north = 3}; }
+  w.geometry = Colliders.{ground_enabled = false, boxes = boxes[..]}; w.metadata = metadata[..];
+  #assert query_fluid_samples(w, QueryFilter.{}, volumes[0..<256], holes[0..<256], world_point(0.5, 0.5, 0.5), output[..]).count == 256;
+  #assert query_fluid_samples(w, QueryFilter.{}, volumes[..], holes[0..<0], world_point(0, 0, 0), output[..]).status == QueryStatus.capacity;
+  #assert query_fluid_samples(w, QueryFilter.{}, volumes[0..<1], holes[..], world_point(0, 0, 0), output[..]).status == QueryStatus.capacity;
+}
+#test "fluid height admission checks every source height and its exact capacity" #steps 4000000 {
+  b: [1] QueryFixture; w := query_fixture(b[..]);
+  b[0].metadata[1].role = QueryRole.fluid; b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 1, density = 1000};
+  heights: [65536] f32;
+  v := [1] FluidVolume.[FluidVolume.{body = b[0].metadata[1].ref, kind = FluidSurfaceKind.heightfield,
+    heightfield = QueryHeightfield.{ground = terrain.Ground.{n = 4, rows = 13106, cell = 1, west = 0, south = 0}, heights = heights[..]}}];
+  holes: [1] FluidHole; samples: [1] FluidSample;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 0, 2.2), samples[..]).status == QueryStatus.ok;
+  v[0].heightfield.ground.n = 255; v[0].heightfield.ground.rows = 255;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 0, 2.2), samples[..]).status == QueryStatus.capacity;
+  v[0].heightfield.ground.n = 0;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 0, 2.2), samples[..]).status == QueryStatus.terrain;
+  v[0].heightfield.ground = terrain.Ground.{n = 1, cell = 1, west = 0, south = 0};
+  heights[0] = -1; #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 0, 2.2), samples[..]).status == QueryStatus.terrain;
+  heights[0] = 4; #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 0, 2.2), samples[..]).status == QueryStatus.terrain;
+  heights[0] = 0.0 / 0.0; #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 0, 2.2), samples[..]).status == QueryStatus.terrain;
+}
+#forall "fluid holes refuse each malformed coordinate and identity before output" field: 0..<10 {
+  b: [1] QueryFixture; w := query_fixture(b[..]);
+  b[0].metadata[1].role = QueryRole.fluid;
+  b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 1, density = 1000};
+  v := [1] FluidVolume.[FluidVolume.{body = b[0].metadata[1].ref}];
+  h := [1] FluidHole.[FluidHole.{body = v[0].body, west = -0.5, east = 0.5, south = 2.05, north = 2.2}];
+  nan := 0.0f32; nan = nan / nan;
+  if field == 0 { h[0].body.id = 999; }
+  if field == 1 { h[0].west = nan; }
+  if field == 2 { h[0].east = nan; }
+  if field == 3 { h[0].south = nan; }
+  if field == 4 { h[0].north = nan; }
+  if field == 5 { h[0].east = h[0].west; }
+  if field == 6 { h[0].north = h[0].south; }
+  if field == 7 { h[0].east = -1; }
+  if field == 8 { h[0].north = 2; }
+  if field == 9 { h[0].body.generation = 2; }
+  output: [1] FluidSample; output[0].surface = 999;
+  q := query_fluid_samples(w, QueryFilter.{}, v[..], h[..], world_point(0, 1, 2.2), output[..]);
+  #assert q.status == QueryStatus.invalid && q.count == 0 && output[0].surface == 999;
+}
+#test "fluid inputs, role, duplicate bodies and motion reject independently invalid data" {
+  b: [1] QueryFixture; w := query_fixture(b[..]);
+  b[0].metadata[1].role = QueryRole.fluid; b[0].metadata[2].role = QueryRole.fluid;
+  b[0].metadata[2].surface = 20;
+  b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 1, density = 1000};
+  v := [2] FluidVolume.[FluidVolume.{body = b[0].metadata[1].ref}, FluidVolume.{body = b[0].metadata[2].ref}];
+  holes: [1] FluidHole; output: [2] FluidSample; p := world_point(0, 1, 2.2);
+  #assert query_body_index(w, w.metadata[0].ref) == 0 && query_body_index(w, ColliderRef.{id = 999, generation = 1}) == -1;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], p, output[..]).status == QueryStatus.ok;
+  v[1].body = v[0].body;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], p, output[..]).status == QueryStatus.invalid;
+  v[0].body = w.metadata[0].ref;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[0..<1], holes[0..<0], p, output[..]).status == QueryStatus.invalid;
+  b[0].metadata[0].role = QueryRole.fluid;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[0..<1], holes[0..<0], p, output[..]).status == QueryStatus.invalid;
+  v[0].body = w.metadata[1].ref; b[0].metadata[1].role = QueryRole.solid;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[0..<1], holes[0..<0], p, output[..]).status == QueryStatus.invalid;
+  b[0].metadata[1].role = QueryRole.fluid; b[0].metadata[1].surface = 10;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[0..<1], holes[0..<0], p, output[..]).status == QueryStatus.invalid;
+  b[0].metadata[1].surface = 20;
+  #assert query_fluid_samples(w, QueryFilter.{include = 65536}, v[0..<1], holes[0..<0], p, output[..]).status == QueryStatus.invalid;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[0..<1], holes[0..<0], world_point(1000000, 1, 2.2), output[..]).status == QueryStatus.invalid;
+  f := FluidSample.{};
+  #assert query_fluid_motion(f, world_point(1, 2, 3), 0).velocity.y == 2;
+  #assert query_fluid_motion(f, world_point(1000000, 0, 0), 1).status == QueryStatus.invalid;
+  f.flow.x = 1000000; #assert query_fluid_motion(f, world_point(0, 0, 0), 1).status == QueryStatus.invalid;
+  f.flow.x = 0; #assert query_fluid_motion(f, world_point(0, 0, 0), 1000000).status == QueryStatus.invalid;
+  f.drag = -1; #assert query_fluid_motion(f, world_point(0, 0, 0), 1).status == QueryStatus.invalid;
+  f.drag = 1000000; #assert query_fluid_motion(f, world_point(0, 0, 0), 1).status == QueryStatus.invalid;
+}
+
+#test "water entry, explicit holes, no-surface volumes and non-buoyant resistance" {
+  b: [1] QueryFixture; w := query_fixture(b[..]);
+  b[0].metadata[1].role = QueryRole.fluid;
+  b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 2, density = 1200, drag = 64};
+  v := [1] FluidVolume.[FluidVolume.{body = b[0].metadata[1].ref, kind = FluidSurfaceKind.flat, level = 2, flow = world_point(1, 0, 0)}];
+  holes: [1] FluidHole; samples: [2] FluidSample;
+  holes[0] = FluidHole.{body = v[0].body, west = -0.5, east = 0.5, south = 2, north = 2.1};
+  p := world_point(0, 1, 2.2);
+  q := query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[..]);
+  #assert q.status == QueryStatus.ok && q.count == 1;
+  #assert samples[0].body.id == 200 && samples[0].surface == 20 && samples[0].fluid_kind == 2;
+  #assert samples[0].has_surface && samples[0].height == 2 && samples[0].depth == 1;
+  #assert samples[0].density == 1200 && samples[0].buoyancy == 0 && samples[0].drag == 64;
+  motion := query_fluid_motion(samples[0], world_point(5, 0, 0), 0.015625);
+  #assert motion.status == QueryStatus.ok && motion.velocity.x == 3 && motion.velocity.y == 0;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], world_point(0, 1, 2.05), samples[..]).count == 0;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], world_point(0, 2.01, 2.2), samples[..]).count == 0;
+  #assert query_fluid_samples(w, QueryFilter.{sensors = false}, v[..], holes[..], p, samples[..]).count == 0;
+  samples[0].surface = 999;
+  q = query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[0..<0]);
+  #assert q.status == QueryStatus.capacity && q.count == 0 && samples[0].surface == 999;
+  v[0].kind = FluidSurfaceKind.none;
+  q = query_fluid_samples(w, QueryFilter.{}, v[..], holes[..], p, samples[..]);
+  #assert q.count == 1 && !samples[0].has_surface && samples[0].depth == 0 && samples[0].height == 0;
+  #assert query_fluid_motion(samples[0], world_point(5, 0, 0), -1).status == QueryStatus.invalid;
+}
+#test "fluid heightfields reuse actual ground triangles and refuse malformed or stale sources" {
+  b: [1] QueryFixture; w := query_fixture(b[..]);
+  b[0].metadata[1].role = QueryRole.fluid;
+  b[0].surfaces[1] = PhysicalSurface.{id = 20, fluid_kind = 1, density = 1000, buoyancy = 1};
+  heights := [4] f32.[1, 2, 2, 3];
+  v := [1] FluidVolume.[FluidVolume.{body = b[0].metadata[1].ref, kind = FluidSurfaceKind.heightfield,
+    heightfield = QueryHeightfield.{ground = terrain.Ground.{n = 1, cell = 2, west = -1, south = 2}, heights = heights[..]}}];
+  holes: [1] FluidHole; samples: [1] FluidSample;
+  q := query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 1, 2.2), samples[..]);
+  #assert q.status == QueryStatus.ok && q.count == 1 && abs(samples[0].height - 1.6) < 0.000001;
+  v[0].heightfield.heights = heights[0..<3];
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 1, 2.2), samples[..]).status == QueryStatus.terrain;
+  v[0].kind = FluidSurfaceKind.flat; v[0].level = 4;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 1, 2.2), samples[..]).status == QueryStatus.invalid;
+  v[0].level = 2; v[0].body.generation = 2;
+  #assert query_fluid_samples(w, QueryFilter.{}, v[..], holes[0..<0], world_point(0, 1, 2.2), samples[..]).status == QueryStatus.invalid;
+}
+
+query_body_index :: (w: QueryWorld, body: ColliderRef) -> int #effects(all) {
+  for i: 0..<w.metadata.count { if collider_ref_equal(w.metadata[i].ref, body) { return i; } }
+  return -1;
+}
+// Closed point containment for explicit box/capsule sensors and triggers.
+// This samples a volume's bounds. Fluid occupancy (surface and holes) uses
+// query_fluid_samples instead. Floors and unbounded ground are not volumes.
+query_volume_samples :: (w: QueryWorld, filter: QueryFilter, p: WorldPoint, output: [] QueryCollider) -> QueryOverlapResult #effects(all) {
+  status := query_world_status(w);
+  if status != QueryStatus.ok { return QueryOverlapResult.{status = status}; }
+  if !query_filter_ok(filter) || !query_point_finite(p) { return QueryOverlapResult.{status = QueryStatus.invalid}; }
+  staged: [QUERY_METADATA_MAX] QueryCollider; count := 0;
+  for i: 0..<w.metadata.count {
+    m := w.metadata[i];
+    if m.role == QueryRole.solid || !query_filter_accepts(filter, m) { continue; }
+    inside: bool;
+    if m.shape == QueryShape.box {
+      b := query_box(w.geometry, m.index);
+      inside = p.x >= b.low.x && p.x <= b.high.x && p.y >= b.low.y && p.y <= b.high.y && p.z >= b.low.z && p.z <= b.high.z;
+    } else if m.shape == QueryShape.capsule {
+      c := query_capsule(w.geometry, m.index); delta := world_sub(p, query_nearest(c.a, c.b, p));
+      inside = world_dot(delta, delta) <= c.r * c.r;
+    } else { return QueryOverlapResult.{status = QueryStatus.invalid}; }
+    if inside { staged[count] = m; count += 1; }
+  }
+  if count > output.count { return QueryOverlapResult.{status = QueryStatus.capacity}; }
+  for i: 0..<count { output[i] = staged[i]; }
+  return QueryOverlapResult.{count = count};
+}
+query_fluid_samples :: (w: QueryWorld, filter: QueryFilter, volumes: [] FluidVolume, holes: [] FluidHole,
+    p: WorldPoint, output: [] FluidSample) -> FluidSamples #effects(all) {
+  status := query_world_status(w);
+  if status != QueryStatus.ok { return FluidSamples.{status = status}; }
+  if !query_filter_ok(filter) || !query_point_finite(p) { return FluidSamples.{status = QueryStatus.invalid}; }
+  if volumes.count > QUERY_METADATA_MAX || holes.count > QUERY_METADATA_MAX { return FluidSamples.{status = QueryStatus.capacity}; }
+  // Stage the complete result. Neither a late malformed body nor an output
+  // overflow can publish a successful prefix to caller memory.
+  staged: [QUERY_METADATA_MAX] FluidSample; count := 0;
+  for i: 0..<holes.count {
+    h := holes[i];
+    if query_body_index(w, h.body) < 0 || !query_finite(h.west) || !query_finite(h.east) ||
+        !query_finite(h.south) || !query_finite(h.north) || !(h.west < h.east && h.south < h.north) {
+      return FluidSamples.{status = QueryStatus.invalid};
+    }
+  }
+  for i: 0..<volumes.count {
+    v := volumes[i]; at := query_body_index(w, v.body);
+    if at < 0 || !query_point_finite(v.flow) { return FluidSamples.{status = QueryStatus.invalid}; }
+    for j: 0..<i { if volumes[j].body.id == v.body.id { return FluidSamples.{status = QueryStatus.invalid}; } }
+    m := w.metadata[at];
+    if m.shape != QueryShape.box || m.role != QueryRole.fluid { return FluidSamples.{status = QueryStatus.invalid}; }
+    surface := w.surfaces[query_surface_index(w.surfaces, m.surface)];
+    if surface.fluid_kind == 0 { return FluidSamples.{status = QueryStatus.invalid}; }
+    box := query_box(w.geometry, m.index);
+    height := 0.0f32;
+    if v.kind == FluidSurfaceKind.flat {
+      if !query_finite(v.level) || v.level < box.low.y || v.level > box.high.y { return FluidSamples.{status = QueryStatus.invalid}; }
+      height = v.level;
+    }
+    if v.kind == FluidSurfaceKind.heightfield {
+      n := terrain.ground_points(v.heightfield.ground);
+      if n > QUERY_HEIGHT_WORDS_MAX { return FluidSamples.{status = QueryStatus.capacity}; }
+      if v.heightfield.heights.count < n { return FluidSamples.{status = QueryStatus.terrain}; }
+      for j: 0..<n {
+        y := v.heightfield.heights[j];
+        if !query_finite(y) || y < box.low.y || y > box.high.y { return FluidSamples.{status = QueryStatus.terrain}; }
+      }
+      sample := terrain.ground_sample(v.heightfield.ground, v.heightfield.heights,
+        quantities.Quantity.{value = p.x}, quantities.Quantity.{value = p.z});
+      if !sample.ok { return FluidSamples.{status = QueryStatus.terrain}; }
+      height = sample.height.value;
+    }
+    if !query_filter_accepts(filter, m) || p.x < box.low.x || p.x > box.high.x || p.z < box.low.z || p.z > box.high.z ||
+        p.y < box.low.y || p.y > box.high.y || (v.kind != FluidSurfaceKind.none && p.y > height) { continue; }
+    hole := false;
+    for j: 0..<holes.count {
+      h := holes[j];
+      if collider_ref_equal(h.body, v.body) && p.x >= h.west && p.x <= h.east && p.z >= h.south && p.z <= h.north { hole = true; }
+    }
+    if hole { continue; }
+    staged[count] = FluidSample.{body = v.body, surface = surface.id, fluid_kind = surface.fluid_kind,
+      has_surface = v.kind != FluidSurfaceKind.none, height = height,
+      depth = ifx v.kind == FluidSurfaceKind.none then 0.0f32 else height - p.y,
+      flow = v.flow, density = surface.density, buoyancy = surface.buoyancy, drag = surface.drag};
+    count += 1;
+  }
+  if count > output.count { return FluidSamples.{status = QueryStatus.capacity}; }
+  for i: 0..<count { output[i] = staged[i]; }
+  return FluidSamples.{count = count};
+}
+// Backward-Euler linear resistance relative to flow. Buoyancy stays an
+// explicit independent force input; a zero-buoyancy fluid never adds lift.
+query_fluid_motion :: (sample: FluidSample, velocity: WorldPoint, dt: f32) -> FluidMotion #effects(all) {
+  if !query_point_finite(velocity) || !query_point_finite(sample.flow) || !query_finite(dt) || dt < 0 ||
+      !query_finite(sample.drag) || sample.drag < 0 { return FluidMotion.{status = QueryStatus.invalid}; }
+  divisor := 1 + sample.drag * dt;
+  v := world_add(sample.flow, world_scale(world_sub(velocity, sample.flow), 1 / divisor));
+  if !query_point_finite(v) { return FluidMotion.{status = QueryStatus.invalid}; }
+  return FluidMotion.{velocity = v};
+}

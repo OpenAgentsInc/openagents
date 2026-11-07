@@ -26,6 +26,7 @@ headless captures. Reference engines stay in its ignored lab cache.
 | `space.coax` | Typed spaces (world, local, view, screen, grid) and units (metres, grid units), converted only by name |
 | `entity.coax` | Entities: handles (slot and generation) inside a step, `EntityId`s for saves, the network and edits, and spawns and despawns that apply at the step's flush (a despawn before then cancels a spawn). Dead Gears runs on it |
 | `query.coax` | One set of colliders a realm (flat/heightfield ground, boxes, capsules, floors) and four queries over it: ground, ray, overlap and sweep; the step height, steep slope and floor pad defined once |
+| `query-filter.coax`, `query-scene.coax`, `query-fluid.coax` | Semantic queries: stable collider IDs/generations, checked entity references, category and role selection, separate physical surfaces, atomic overlap/volume results and bounded flat/heightfield fluids with holes. [The shared journey](examples/query-world.coax) uses the existing capsule, camera and AI kernels; [qualification and remaining adapters](../docs/verification/aethyr-query-12989/README.md) |
 | `ground.coax` | Checked sampling of actual rounded mesh triangles, metre inputs and exact stored vertices; shared with legacy terrain |
 | `ground-query.coax` | Bounded exact cell traversal for terrain rays, with explicit exhausted-work refusal |
 | `ground-contact.coax` | Sphere overlap and continuous sphere contact against triangle faces, edges, vertices and constant edge continuation |
@@ -107,9 +108,11 @@ The book's runnable programs are in `examples/`, with their exact output in
 `fixtures/`.
 
 The ground/collision consumer gate also includes the preserved native gameplay
-programs in `tests/everglade-spells-integration.coax` and
-`tests/deadgears-integration.coax`. They keep their original assertions and
-finite cases while avoiding the interpreter's resource limits. Run
+programs in `tests/everglade-spells-integration.coax` and the versioned
+`tests/deadgears-integration-v2.coax`. The frozen Dead Gears v1 program and
+manifest remain intact; v2 substitutes only the renamed `DgStore` backing
+type, independently checked against every original body byte. Both retain
+their original assertions and finite cases. Run
 `python3 aethyr/tests/check_native_gameplay.py --realm REALM --mode MODE`
 separately for each realm (`everglade`, `deadgears`) and mode (`debug`,
 `release`, `sanitized`). The [chapter 8 commands](book/ch008-ground-and-collision.md#check-the-implementation)

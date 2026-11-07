@@ -58,6 +58,56 @@ The queries follow these rules:
 
 ## The rules
 
+The optional semantic boundary is implemented in
+[`query-filter.coax`](../query-filter.coax),
+[`query-scene.coax`](../query-scene.coax) and
+[`query-fluid.coax`](../query-fluid.coax). It validates complete geometry,
+metadata and physical surfaces before selecting a consumer's world. The
+unfiltered APIs below retain their original permissive shape contract.
+
+A collider has a durable ID and generation, an optional live entity handle,
+category bits, a physical surface ID and a solid/sensor/trigger/fluid role.
+Physical surfaces name friction/restitution policies, footstep and reaction
+classes, traversability tags and independent fluid density, buoyancy and
+resistance. A render material slot does not identify a physical surface.
+
+`QueryFilter` selects included categories, excludes categories, ignores one
+exact collider generation and/or one exact entity handle, and chooses solid
+and sensor participation. These are query masks, separate from physical
+collision-pair permissions. The compatibility filter selects everything.
+Selection compacts shapes in source order into caller-owned `QueryScratch`;
+it keeps source metadata for mapping the result back to its durable identity.
+Filtering out a nearer collider therefore exposes an eligible farther one.
+No traversal order or equal-distance tie rule changes.
+
+The first profile admits 256 collider records, 64 physical surfaces, 16
+heightfields and 65,535 height words per field. It reuses the existing exact
+heightfield cell traversal. Scratch is borrowed by a selection and must not
+be overwritten while that selection is in use. Snapshot geometry, height
+views and surface tables remain retained and immutable until the owner's
+next publication. `query_world_publish` validates an inactive candidate and
+advances its epoch only at a later fixed tick. Failure retains the old world.
+Every semantic query refuses an old epoch or a stale selected entity handle.
+
+`semantic_ground`, `semantic_ray`, `semantic_clear`, `semantic_sweep` and
+`semantic_overlap` use the selected geometry and return source identity.
+Overlap stages the complete answer before writing caller output; capacity
+or exhausted terrain work is a refusal with no successful prefix. A world
+without selected ground has `QueryShape.none`; it gains no fallback plane.
+Floors retain their existing ground-only query profile.
+
+Run the [shared example](../examples/query-world.coax) to see one admitted
+world drive movement, follow-camera body clearance, camera sight, NPC sight,
+material footsteps and fluid resistance. Its stable IDs 100–500 are reserved
+for the subsequent lifecycle/streaming integration. The
+[verification record](../../docs/verification/aethyr-query-12989/README.md)
+names the original realm adapters that still use unfiltered queries.
+
+```shell
+coax/bin/coax run aethyr/examples/query-world.coax
+coax/web/tool.sh aethyr/tools/query-world-hosts.coax
+```
+
 The step height, the steepest slope you can stand on, and the floor pad are
 defined once, here. The walker reads them from this module.
 
@@ -85,6 +135,9 @@ Colliders :: struct {
   floors: [] f32;      // STAND_FLOATS numbers each (aethyr/stand.coax)
   heightfields: [] QueryHeightfield;
   heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
+  // Semantic selections can contain no base surface. The compatibility
+  // default still supplies the realm's flat ground when it has no mesh.
+  ground_enabled: bool = true;
 }
 ```
 
@@ -113,6 +166,7 @@ QueryGround :: struct { y: f32; gx: f32; gz: f32; steep: bool; shape: QueryShape
 // mesh continues its nearest edge outside its rectangle. A clamped axis has zero slope.
 query_base_ground :: (c: Colliders, x: f32, z: f32) -> QueryGround #effects(all) {
   out := QueryGround.{y = c.ground};
+  if !c.ground_enabled { out = QueryGround.{y = -QUERY_TOO_BIG, shape = QueryShape.none}; }
   found := false;
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
@@ -154,7 +208,7 @@ query_ground_checked :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -
     return QueryGround.{status = QueryStatus.invalid};
   }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryGround.{status = QueryStatus.capacity}; }
-  if c.heightfields.count == 0 && !query_finite(c.ground) { return QueryGround.{status = QueryStatus.invalid}; }
+  if c.heightfields.count == 0 && c.ground_enabled && !query_finite(c.ground) { return QueryGround.{status = QueryStatus.invalid}; }
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
     sample := terrain.ground_sample(field.ground, field.heights, quantities.Quantity.{value = x}, quantities.Quantity.{value = z});
@@ -295,7 +349,7 @@ query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit 
   if !query_point_finite(o) || !query_point_finite(d) || !query_finite(far) || !(world_dot(d, d) > 0) { return QueryHit.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
   reach := stand_hi(far, 0);
-  if c.heightfields.count == 0 { best = query_select_entry(best, query_enter_ground(c.ground, o, d, reach), QueryShape.ground, 0); }
+  if c.heightfields.count == 0 && c.ground_enabled { best = query_select_entry(best, query_enter_ground(c.ground, o, d, reach), QueryShape.ground, 0); }
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
     h := height_rays.ground_ray(field.ground, field.heights, o, d, f64(reach), c.heightfield_budget);
@@ -346,7 +400,7 @@ query_overlap_checked :: (c: Colliders, centre: WorldPoint, r: f32, out: [] Quer
     if status != QueryStatus.ok { return QueryOverlapResult.{status = status}; }
     touching[i] = h.hit;
   }
-  if c.heightfields.count == 0 && centre.y - r < c.ground { n = query_put(out, n, QueryShape.ground, 0); }
+  if c.heightfields.count == 0 && c.ground_enabled && centre.y - r < c.ground { n = query_put(out, n, QueryShape.ground, 0); }
   for i: 0..<c.heightfields.count { if touching[i] { n = query_put(out, n, QueryShape.heightfield, i); } }
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
@@ -433,7 +487,7 @@ query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> Query
     if q.count == 0 { return best.hit; }
     return QueryHit.{hit = true, point = from, normal = world_point(0, 1, 0), shape = hits[0].shape, index = hits[0].index};
   }
-  if c.heightfields.count == 0 { best = query_select_entry(best, query_enter_ground(c.ground + r, from, by, 1), QueryShape.ground, 0); }
+  if c.heightfields.count == 0 && c.ground_enabled { best = query_select_entry(best, query_enter_ground(c.ground + r, from, by, 1), QueryShape.ground, 0); }
   for i: 0..<c.heightfields.count {
     field := c.heightfields[i];
     h := height_contacts.ground_sweep(field.ground, field.heights, from, r, by, c.heightfield_budget);
