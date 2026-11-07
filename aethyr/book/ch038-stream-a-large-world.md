@@ -75,6 +75,10 @@ order.
 - [Resource-cost components](../world/README.md): source-derived RCM1 plans,
   dependency closure and named admission; actual multi-cell host ownership
   and measured route adoption are still being integrated.
+- [Named stream profiles](../world/stream-profile.coax): checked cell rings,
+  independent media collection, paid-tick update cadence and neighbor
+  placement hints. These declarations do not yet qualify the actual host
+  route or grant spawn/simulation authority from prefetch readiness.
 
 ## The design in Aethyr
 

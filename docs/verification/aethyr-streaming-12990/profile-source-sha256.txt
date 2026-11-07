@@ -1,0 +1,4 @@
+d2f1c966a781591362c363c527af164c860a1e7ac4cff2850dfadb0d18e13ad0  aethyr/world/cells.coax
+1c9b10d11cf5df2b2c114c687554c23340d93cf7c8d4316a97747ad354ce60ce  aethyr/world/stream-profile.coax
+f922459a722be4dc8a30f9874289a5406c9071a25c54506781ec0fe8f9f553ff  aethyr/tests/cells-oracle.coax
+efaeeae664be88349d3aea9106867fcb2a8d33dc06d2679bac89b2809aeb55b3  coax/bin/coax

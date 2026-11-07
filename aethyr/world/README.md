@@ -14,6 +14,7 @@ The #12990 components currently provide:
 | `resource-manifest.coax` | Versioned RCM1 companion bytes, a pinned cost-model revision, complete expected identity, canonical dependency digests and bounded earlier-owner references |
 | `resource-admission.coax` | Seven named budget lines around the existing inbox leases and renderer ledger; atomic multi-ticket admission, explicit completion settlement, final retirement and first-peak owner records |
 | `resource-stream.coax` | Concrete dependency owners, typed claim/borrow references, completion generations, wanted closure and atomic fixed-tick readiness publication |
+| `stream-profile.coax` | Named small-world interest, update cadence, independent media collection and neighbor-placement hints; declarations await actual host qualification |
 
 These files are source parts so a composed host has one owner of the
 existing unmoduled image decoder. The companion does not change VPK1/VPK2
@@ -77,8 +78,27 @@ until the stream finishes; queue/registry arguments remain the concrete
 owners supplied to admission. These are caller obligations to be qualified
 by actual host adoption.
 
+`CellRings` and `cell_step_profile` add a checked profile entry without
+changing `CellWorld`, `CellStep` or the legacy entry points' default rings.
+Bad profiles, manifests, positions and an incompatible cap reduction refuse
+atomically. Prior work must drain before switching to smaller caps. The
+shared ask loop refuses a spent request counter instead of wrapping it.
+
+Profile 1 declares four resident cells and one new cell request per paid
+step, with 32/64/96 m draw/simulate/resident rings and 8 m hysteresis. Near
+actors update every paid tick and farther simulated actors every fourth
+tick. Texture, baked-lighting and audio collection use independent 96/80/64 m
+radii with hysteresis. An 8 m neighbor-edge trigger returns a placement hint
+under a declared 4 KiB/one-root prefetch quota; the caller still has to admit
+and charge that quota. The hint never writes cell state, answers a load or
+permits simulation. The intended active pools are four streamed actors, one
+persistent player and two voices; animation, sensors, effects and dynamic
+lights are zero in this initial profile. Player/camera/HUD are the three
+persistent services. Actual allocations and use of these declarations remain
+part of consumer integration.
+
 The actual multi-cell consumer, platform asynchronous-effect integration,
-streaming profiles, route/replay integration and native/browser GPU
+profile adoption, route/replay integration and native/browser GPU
 allocation/recovery measurements remain #12990 work. The current
 [verification record](../../docs/verification/aethyr-streaming-12990/README.md)
 qualifies these components and a small native/Wasm codec fixture.

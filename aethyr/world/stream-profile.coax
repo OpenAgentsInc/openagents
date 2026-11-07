@@ -1,0 +1,120 @@
+// Named initial walking profile. It describes interest and capacity, not
+// ready/spawn authority. Only the cell/owner completion gates admit content.
+#module "aethyr.world.streamprofile";
+#authority;
+#load "cells.coax" as cells;
+
+WorldProfileStatus :: enum u8 { unknown; ok; tier; }
+WorldCollection :: enum u8 { textures; lighting; audio; }
+WorldPools :: struct { streamed_actors: int; persistent_actors: int; animation: int; sensors: int; effects: int; lights: int; voices: int; }
+WorldStreamProfile :: struct {
+  status: WorldProfileStatus;
+  id: int;
+  tier: int;
+  layer_side: int;
+  rings: cells.CellRings = cells.CellRings.{draw = 0, simulate = 0, load = 0, hysteresis = 0, resident = 0, loads = 0};
+  texture_radius: f64;
+  lighting_radius: f64;
+  audio_radius: f64;
+  near_ticks: int;
+  far_ticks: int;
+  prefetch_edge: f64;
+  prefetch_bytes: int;
+  prefetch_roots: int;
+  persistent_services: int;
+  pools: WorldPools;
+}
+
+#test "named walk profile changes only visual layout between tiers and declares every used pool" {
+  low := world_stream_profile(1, 0); high := world_stream_profile(1, 1);
+  #assert low.status == WorldProfileStatus.ok && high.status == WorldProfileStatus.ok && low.id == 1 && low.tier == 0 && high.tier == 1;
+  #assert low.layer_side == 1 && high.layer_side == 2 && cells.cell_rings_ok(low.rings);
+  #assert low.rings.draw == 32 && low.rings.simulate == 64 && low.rings.load == 96 && low.rings.hysteresis == 8 && low.rings.resident == 4 && low.rings.loads == 1;
+  #assert high.rings.draw == low.rings.draw && high.rings.simulate == low.rings.simulate && high.rings.load == low.rings.load && high.rings.hysteresis == low.rings.hysteresis;
+  #assert high.rings.resident == low.rings.resident && high.rings.loads == low.rings.loads;
+  #assert low.texture_radius == 96 && low.lighting_radius == 80 && low.audio_radius == 64 && low.near_ticks == 1 && low.far_ticks == 4;
+  #assert low.prefetch_edge == 8 && low.prefetch_bytes == 4096 && low.prefetch_roots == 1 && low.persistent_services == 3;
+  #assert low.pools.streamed_actors == 4 && low.pools.persistent_actors == 1 && low.pools.animation == 0 && low.pools.sensors == 0 && low.pools.effects == 0 && low.pools.lights == 0 && low.pools.voices == 2;
+  for id: [3] int.[-1, 0, 2] { refused := world_stream_profile(id, 0); #assert refused.status == WorldProfileStatus.unknown && !cells.cell_rings_ok(refused.rings); }
+  for tier: [2] int.[-1, 2] { refused := world_stream_profile(1, tier); #assert refused.status == WorldProfileStatus.tier && !cells.cell_rings_ok(refused.rings); }
+}
+#forall "paid tick update work is independent of rendering tier and absent or merely prefetched cells do not update" tick: -1..<17, level: 0..<6 {
+  low := world_stream_profile(1, 0); high := world_stream_profile(1, 1);
+  expected := tick >= 0 && ((level == cells.CELL_DRAW_LEVEL) || (level == cells.CELL_SIMULATE_LEVEL && tick % 4 == 0));
+  #assert world_stream_updates(low, level, tick) == expected && world_stream_updates(high, level, tick) == expected;
+  #assert !world_stream_updates(world_stream_profile(0, 0), level, tick);
+}
+#test "textures lighting and audio collect under their own ring with shared named hysteresis" {
+  p := world_stream_profile(1, 0);
+  for kind: [3] WorldCollection.[WorldCollection.textures, WorldCollection.lighting, WorldCollection.audio] {
+    radius := ifx kind == WorldCollection.textures then 96.0 else ifx kind == WorldCollection.lighting then 80.0 else 64.0;
+    #assert world_stream_collect(p, kind, false, 0) && world_stream_collect(p, kind, false, radius);
+    #assert !world_stream_collect(p, kind, false, radius + 0.1) && world_stream_collect(p, kind, true, radius + 8);
+    #assert !world_stream_collect(p, kind, true, radius + 8.1) && !world_stream_collect(p, kind, true, -0.1);
+    #assert !world_stream_collect(world_stream_profile(0, 0), kind, false, 0);
+  }
+}
+#test "neighbor placement prefetch is a direction-sensitive bounded hint that never changes cell authority" {
+  w: [1] cells.CellWorld; w[0].n = 4;
+  for z: 0..<2 { for x: 0..<2 { i := z * 2 + x; w[0].manifest[i] = cells.CellEntry.{cx = x, cz = z, digest = i + 1}; } }
+  p := world_stream_profile(1, 0); before := cells.cell_digest(w[..]);
+  #assert world_stream_prefetch(p, w[..], 55.9, 32, 1, 0) == -1 && world_stream_prefetch(p, w[..], 56, 32, 1, 0) == 1;
+  #assert world_stream_prefetch(p, w[..], 56, 32, -1, 0) == -1 && world_stream_prefetch(p, w[..], 64, 32, -1, 0) == 0;
+  #assert world_stream_prefetch(p, w[..], 32, 56, 0, 1) == 2 && world_stream_prefetch(p, w[..], 32, 64, 0, -1) == 0;
+  #assert world_stream_prefetch(p, w[..], 60, 62, 1, 1) == 2 && world_stream_prefetch(p, w[..], 62, 62, 1, 1) == 1;
+  #assert world_stream_prefetch(p, w[..], 68, 60, -1, 1) == 0;
+  #assert world_stream_prefetch(p, w[..], 56, 32, 0.5, 0) == 1 && world_stream_prefetch(p, w[..], 68, 32, -0.5, 0) == 0;
+  #assert world_stream_prefetch(p, w[..], 62, 62, 0, 0) == -1 && world_stream_prefetch(p, w[..], 62, 62, 1.1, 0) == -1;
+  #assert world_stream_prefetch(p, w[..], 62, 62, 0, -1.1) == -1 && world_stream_prefetch(p, w[..], 62, 62, -1.1, 0) == -1;
+  #assert world_stream_prefetch(p, w[..], 62, 62, 0, 1.1) == -1 && world_stream_prefetch(p, w[..], 128, 32, 1, 0) == -1;
+  #assert world_stream_prefetch(p, w[..], 120, 32, 1, 0) == -1 && world_stream_prefetch(p, w[..], 62, 62, 0, -1) == -1;
+  #assert world_stream_prefetch(p, w[..], 32, 120, 0, 1) == -1;
+  #assert world_stream_prefetch(p, w[..], -1000000000001, 32, 1, 0) == -1 && world_stream_prefetch(p, w[..], 32, 1000000000001, 0, 1) == -1;
+  #assert world_stream_prefetch(world_stream_profile(0, 0), w[..], 56, 32, 1, 0) == -1 && cells.cell_digest(w[..]) == before;
+  w[0].cells[1].level = cells.CELL_LOADING;
+  #assert world_stream_prefetch(p, w[..], 56, 32, 1, 0) == -1 && !cells.cell_simulates(w[..], 1);
+  #assert !cells.cell_may_enter(w[..], 65, 32);
+  for axis: 0..<2 {
+    far: [1] cells.CellWorld; far[0].n = 2;
+    far[0].manifest[0] = cells.CellEntry.{cx = ifx axis == 0 then 15624999999 else 0, cz = ifx axis == 1 then 15624999999 else 0, digest = 1};
+    far[0].manifest[1] = cells.CellEntry.{cx = ifx axis == 0 then 15625000000 else 0, cz = ifx axis == 1 then 15625000000 else 0, digest = 2};
+    #assert world_stream_prefetch(p, far[..], ifx axis == 0 then 1000000000000 else 32, ifx axis == 1 then 1000000000000 else 32, ifx axis == 0 then -1 else 0, ifx axis == 1 then -1 else 0) == 0;
+    #assert world_stream_prefetch(p, far[..], ifx axis == 0 then 1000000000001 else 32, ifx axis == 1 then 1000000000001 else 32, ifx axis == 0 then -1 else 0, ifx axis == 1 then -1 else 0) == -1;
+  }
+}
+
+// Profile 1: small local walking world, four resident geometry cells and a
+// single new cell request per paid step. Tiers share simulation and identity.
+world_stream_profile :: (id: int, tier: int) -> WorldStreamProfile #effects(all) {
+  if id != 1 { return WorldStreamProfile.{}; }
+  if tier < 0 || tier > 1 { return WorldStreamProfile.{status = WorldProfileStatus.tier}; }
+  return WorldStreamProfile.{status = WorldProfileStatus.ok, id = id, tier = tier, layer_side = ifx tier == 0 then 1 else 2,
+    rings = cells.CellRings.{draw = 32, simulate = 64, load = 96, hysteresis = 8, resident = 4, loads = 1},
+    texture_radius = 96, lighting_radius = 80, audio_radius = 64, near_ticks = 1, far_ticks = 4,
+    prefetch_edge = 8, prefetch_bytes = 4096, prefetch_roots = 1, persistent_services = 3,
+    pools = WorldPools.{streamed_actors = 4, persistent_actors = 1, animation = 0, sensors = 0, effects = 0, lights = 0, voices = 2}};
+}
+world_stream_updates :: (p: WorldStreamProfile, level: int, tick: int) -> bool #effects(all) {
+  if p.status != WorldProfileStatus.ok || tick < 0 || level < cells.CELL_SIMULATE_LEVEL || level > cells.CELL_DRAW_LEVEL { return false; }
+  period := ifx level == cells.CELL_DRAW_LEVEL then p.near_ticks else p.far_ticks;
+  return tick % period == 0;
+}
+world_stream_collect :: (p: WorldStreamProfile, kind: WorldCollection, held: bool, distance: f64) -> bool #effects(all) {
+  if p.status != WorldProfileStatus.ok || !(distance >= 0) { return false; }
+  radius := ifx kind == WorldCollection.textures then p.texture_radius else ifx kind == WorldCollection.lighting then p.lighting_radius else p.audio_radius;
+  return distance <= radius || (held && distance <= radius + p.rings.hysteresis);
+}
+world_stream_prefetch :: (p: WorldStreamProfile, w: [] cells.CellWorld, x: f64, z: f64, dx: f64, dz: f64) -> int #effects(all) {
+  if p.status != WorldProfileStatus.ok || !(abs(x) <= 1000000000000 && abs(z) <= 1000000000000 && abs(dx) <= 1 && abs(dz) <= 1) { return -1; }
+  i := cells.cell_of(w, x, z); if i < 0 { return -1; }
+  cx := w[0].manifest[i].cx; cz := w[0].manifest[i].cz; best := -1; best_gap := 0.0;
+  for axis: 0..<2 {
+    direction := ifx axis == 0 then dx else dz; if direction == 0 { continue; }
+    step := cast(int) (direction / abs(direction));
+    at := ifx axis == 0 then x else z; lo := f64(ifx axis == 0 then cx else cz) * cells.CELL_SIZE;
+    gap := ifx step == 1 then lo + cells.CELL_SIZE - at else at - lo;
+    next := cells.cell_find(w, cx + (ifx axis == 0 then step else 0), cz + (ifx axis == 1 then step else 0));
+    if gap <= p.prefetch_edge && next >= 0 && w[0].cells[next].level == cells.CELL_ABSENT && (best < 0 || gap < best_gap) { best = next; best_gap = gap; }
+  }
+  return best;
+}

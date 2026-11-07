@@ -26,6 +26,9 @@ as muted headless Chrome 152 in `resource-cost-hosts.log`.
 | `resource-stream.coax --root-only` mutation | 440 killed, zero survivors |
 | Native/browser owner fixture | All 64 words equal across two actual codec/owner journeys |
 | Owner release and ASan/UBSan fixtures | Same 64 words; zero sanitizer output |
+| Changed `cells.coax --root-only` mutation | 601 killed, zero survivors |
+| `stream-profile.coax --root-only` mutation | 115 killed, zero survivors |
+| Cell module compatibility | Compatible with the preceding committed module; new profile surface is additive |
 
 All mutation gates execute their complete loaded baseline checks. Earlier
 survivors were addressed with exact capacity, lane, cost-forgery, closure,
@@ -106,8 +109,8 @@ copies are published, including a failure after three reservations.
 
 - Real asynchronous host adoption of the checked shared/dependency owners,
   including failure/cancel/stale/superseded completion receipts.
-- Named interest/update/draw/audio/prefetch profiles bound to the existing
-  cells, independent texture/lighting lifetimes and persistent services.
+- Actual adoption of the declared interest/update/draw/audio/prefetch
+  profiles, independent texture/lighting lifetimes and persistent services.
 - Actual shared-loader adoption in a walkable world larger than residency,
   semantic collision, navigation and stable IDs at its edges.
 - Allocation traces for every supported format, concurrent scratch and
@@ -172,6 +175,46 @@ success and destruction outcome in its replay history. The full consumer
 and recorded-history replay requirement remains open; running these two
 live schedules is not a claim that different live timings produce identical
 simulation or a substitute for replaying a retained host record.
+
+## Named cell and interest profiles
+
+The additive `CellRings`/`cell_step_profile` API uses the historical cell
+controller rather than introducing a second simulator. The default wrapper
+keeps its 96/160/256 m rings, 8 m hysteresis, 48 resident and four in-flight
+limits. `CellWorld` and `CellStep` layouts are unchanged. Checked profile
+admission rejects invalid rings, malformed manifests, out-of-range positions
+and a cap reduction below already retained/in-flight work without mutating
+the caller. The shared request loop now admits its last signed-64 generation
+and refuses future asks without wrapping. The new unit gates cover exact
+caps, refused transitions, legacy-default digest equality and the original
+39 cell/replay/store/edge checks. `profile-source-sha256.txt` pins the changed
+source. These profile changes follow the earlier owner fixture; its recorded
+source hash intentionally identifies the preceding cell source version.
+`cell-profile-compat.log` retains the compiler's direct old/new module
+compatibility result. The temporary old source was read from the preceding
+commit for this comparison and then removed.
+
+Profile 1 declares 32/64/96 m draw/simulate/resident rings, 8 m hysteresis,
+four resident cells and one new cell request per paid step. Texture,
+baked-lighting and audio collection have separate 96/80/64 m radii. Update
+cadence is one or four paid ticks according to the admitted cell level and
+does not depend on visual tier. Both tiers preserve that policy and differ
+only in declared image layout. Placement hints trigger within 8 m of a
+neighbor edge and declare a 4 KiB/one-root quota. Direction, exact bounds,
+missing/loaded neighbors and deterministic axis ties are checked; hints leave
+cell state and entry permission unchanged. Pool declarations are four
+streamed actors, one persistent actor, two voices and zero animation/sensor/
+effect/dynamic-light slots, with three persistent player/camera/HUD services.
+They are declarations pending actual host allocation/route measurements.
+
+The next consumer must derive its real pack geometry cost from the shared
+loader's actual layout. `verse/tools/pack_realm.py` writes packed 48-byte
+vertices: the first 32 bytes contain position/normal/UV floats, followed by
+packed color/layer/spare bytes. The existing `positions4` fixture model is
+not a general VPK vertex model. A new supported cost-model revision must
+preserve the existing companion/model identities rather than treating all
+packed fields as floats or guessing the retained size. PNG asset generation
+can reuse the existing Coax encoder in `coax/lib/image/pillow.coax`.
 
 The historical #12847 cell/edge/save work is retained and was inspected.
 Its closure did not qualify an activated large-world realm. The legacy

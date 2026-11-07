@@ -80,6 +80,24 @@ CellWorld :: struct {
 }
 // book:end cells-profile
 
+// Additive named-profile boundary. Existing callers retain CellWorld,
+// CellStep, cell_target and cell_step with their historical defaults.
+CellRings :: struct {
+  draw: f64 = CELL_DRAW;
+  simulate: f64 = CELL_SIMULATE;
+  load: f64 = CELL_LOAD;
+  hysteresis: f64 = CELL_HYSTERESIS;
+  resident: int = CELL_RESIDENT;
+  loads: int = CELL_LOADS;
+}
+CellAdvanceStatus :: enum u8 { ok; profile; manifest; position; capacity; }
+CellAdvance :: struct { status: CellAdvanceStatus = CellAdvanceStatus.profile; step: CellStep; }
+
+cell_rings_ok :: (p: CellRings) -> bool #effects(all) {
+  return p.draw >= 0 && p.draw <= p.simulate && p.simulate <= p.load && p.load <= 4096 && p.hysteresis >= 0 && p.hysteresis <= CELL_SIZE &&
+    p.resident >= 1 && p.resident <= CELL_RESIDENT && p.loads >= 1 && p.loads <= CELL_LOADS;
+}
+
 cell_key :: (x: f64) -> int #effects(all) { return cast(int) floor(x / CELL_SIZE); }
 // The part of d above 0 (0 when d is negative).
 cell_above :: (d: f64) -> f64 #effects(all) { return (d + abs(d)) / 2; }
@@ -118,11 +136,15 @@ cell_neighbours :: (w: [] CellWorld, i: int, out: [] int) -> int #effects(all) {
 // The level a ring gives cell i at distance d, from level `now`: up at the ring, down only past
 // it by CELL_HYSTERESIS. LOADING counts as resident for the rings.
 cell_target :: (now: int, d: f64) -> int #effects(all) {
+  return cell_target_rings(now, d, CellRings.{});
+}
+// The default wrapper and checked profile step supply admitted rings.
+cell_target_rings :: (now: int, d: f64, p: CellRings) -> int #effects(all) {
   have := ifx now == CELL_LOADING then CELL_RESIDENT_LEVEL else now;
   t := CELL_ABSENT;
-  if d <= CELL_LOAD || (have >= CELL_RESIDENT_LEVEL && d <= CELL_LOAD + CELL_HYSTERESIS) { t = CELL_RESIDENT_LEVEL; }
-  if d <= CELL_SIMULATE || (have >= CELL_SIMULATE_LEVEL && d <= CELL_SIMULATE + CELL_HYSTERESIS) { t = CELL_SIMULATE_LEVEL; }
-  if d <= CELL_DRAW || (have >= CELL_DRAW_LEVEL && d <= CELL_DRAW + CELL_HYSTERESIS) { t = CELL_DRAW_LEVEL; }
+  if d <= p.load || (have >= CELL_RESIDENT_LEVEL && d <= p.load + p.hysteresis) { t = CELL_RESIDENT_LEVEL; }
+  if d <= p.simulate || (have >= CELL_SIMULATE_LEVEL && d <= p.simulate + p.hysteresis) { t = CELL_SIMULATE_LEVEL; }
+  if d <= p.draw || (have >= CELL_DRAW_LEVEL && d <= p.draw + p.hysteresis) { t = CELL_DRAW_LEVEL; }
   return t;
 }
 // book:end cells-target
@@ -144,12 +166,15 @@ cell_crossed :: (a: int, b: int) -> int #effects(all) { return ifx a < CELL_SIMU
 // and the cells that wake or sleep this step are counted (the realm calls cell_wake and cell_sleep
 // for them). Returns the loads asked.
 cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep #effects(all) {
+  return cell_step_rings(w, x, z, CellRings.{});
+}
+cell_step_rings :: (w: [] CellWorld, x: f64, z: f64, p: CellRings) -> CellStep #effects(all) {
   out: CellStep;
   // levels first, so a budget freed this step is free for the asks below
   for i: 0..<w[0].n {
     c := w[0].cells[i].level;
     if c == CELL_ABSENT { continue; }   // asked below
-    t := cell_target(c, cell_distance(w, i, x, z));
+    t := cell_target_rings(c, cell_distance(w, i, x, z), p);
     if c == CELL_LOADING { t = ifx t == CELL_ABSENT then CELL_ABSENT else CELL_LOADING; }
     out.woke += cell_crossed(c, t); out.slept += cell_crossed(t, c);
     w[0].cells[i].level = t;
@@ -161,12 +186,12 @@ cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep #effects(all) {
     for i: 0..<w[0].n {
       if w[0].cells[i].level != CELL_ABSENT { continue; }
       d := cell_distance(w, i, x, z);
-      if cell_target(CELL_ABSENT, d) == CELL_ABSENT { continue; }
+      if cell_target_rings(CELL_ABSENT, d, p) == CELL_ABSENT { continue; }
       wanted += 1;
       if best < 0 || d < bd { best = i; bd = d; }
     }
     if best < 0 { break; }
-    if cell_loading_count(w) >= CELL_LOADS || cell_resident_count(w) >= CELL_RESIDENT {
+    if cell_loading_count(w) >= p.loads || cell_resident_count(w) >= p.resident || w[0].requests == 9223372036854775807 {
       w[0].counts[CELL_REFUSED] += wanted;   // the rest wait: each refused cell counts once a step
       break;
     }
@@ -177,6 +202,17 @@ cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep #effects(all) {
   return out;
 }
 // book:end cells-step
+
+// Switching to smaller caps requires the prior owner to drain first. Refusal
+// preserves every cell and sleeping body instead of silently overfilling a
+// new profile or discarding another controller's accepted work.
+cell_step_profile :: (w: [] CellWorld, x: f64, z: f64, p: CellRings) -> CellAdvance #effects(all) {
+  if !cell_rings_ok(p) { return CellAdvance.{}; }
+  if !cell_manifest_ok(w) || w[0].requests < 0 { return CellAdvance.{status = CellAdvanceStatus.manifest}; }
+  if !(abs(x) <= 1000000000000 && abs(z) <= 1000000000000) { return CellAdvance.{status = CellAdvanceStatus.position}; }
+  if cell_resident_count(w) > p.resident || cell_loading_count(w) > p.loads { return CellAdvance.{status = CellAdvanceStatus.capacity}; }
+  return CellAdvance.{status = CellAdvanceStatus.ok, step = cell_step_rings(w, x, z, p)};
+}
 
 // book:begin cells-complete
 // The loader's answer as an event: which cell, which request, the digest it loaded, and whether it
@@ -341,6 +377,74 @@ cell_digest :: (w: [] CellWorld) -> int #effects(all) {
 
 // ---- checks
 #load "../tests/cells-oracle.coax";
+
+#test "cell profile default preserves the historical policy and exact admitted declaration bounds" {
+  p := CellRings.{};
+  #assert cell_rings_ok(p) && p.draw == 96 && p.simulate == 160 && p.load == 256 && p.hysteresis == 8 && p.resident == 48 && p.loads == 4;
+  #assert cell_rings_ok(CellRings.{draw = 0, simulate = 0, load = 0, hysteresis = 0, resident = 1, loads = 1});
+  #assert cell_rings_ok(CellRings.{draw = 4096, simulate = 4096, load = 4096, hysteresis = 64, resident = 48, loads = 4});
+  for field: 0..<10 {
+    bad := p;
+    if field == 0 { bad.draw = -1; } if field == 1 { bad.simulate = 95; } if field == 2 { bad.load = 159; } if field == 3 { bad.load = 4097; }
+    if field == 4 { bad.hysteresis = -1; } if field == 5 { bad.hysteresis = 65; } if field == 6 { bad.resident = 0; }
+    if field == 7 { bad.resident = 49; } if field == 8 { bad.loads = 0; } if field == 9 { bad.loads = 5; }
+    #assert !cell_rings_ok(bad);
+  }
+  old: [1] CellWorld; cw_grid(old[..], 0, 3, 0, 0); checked := old;
+  for x: [4] f64.[32, 100, 1000, -64] {
+    legacy := cell_step(old[..], x, 32); next := cell_step_profile(checked[..], x, 32, p);
+    #assert next.status == CellAdvanceStatus.ok && next.step.asked_n == legacy.asked_n && next.step.woke == legacy.woke && next.step.slept == legacy.slept;
+    for i: 0..<legacy.asked_n { #assert legacy.asked[i] == next.step.asked[i]; }
+    #assert cell_digest(old[..]) == cell_digest(checked[..]);
+    cw_load_all(old[..], legacy); cw_load_all(checked[..], next.step);
+  }
+}
+#test "a bounded walk profile stays within four resident cells and holds its hysteresis before retiring an edge" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 15, 0, 0);
+  p := CellRings.{draw = 32, simulate = 64, load = 96, hysteresis = 8, resident = 4, loads = 1};
+  for i: 0..<5 {
+    step := cell_step_profile(w[..], 224, 32, p);
+    #assert step.status == CellAdvanceStatus.ok && step.step.asked_n <= 1 && cell_resident_count(w[..]) <= 4 && cell_loading_count(w[..]) <= 1;
+    cw_load_all(w[..], step.step);
+  }
+  #assert cell_resident_count(w[..]) == 4 && w[0].cells[1].level == CELL_RESIDENT_LEVEL && w[0].cells[5].level == CELL_ABSENT;
+  held := cell_step_profile(w[..], 232, 32, p); #assert held.status == CellAdvanceStatus.ok && held.step.asked_n == 0 && w[0].cells[1].level == CELL_RESIDENT_LEVEL;
+  move := cell_step_profile(w[..], 233, 32, p);
+  #assert move.status == CellAdvanceStatus.ok && move.step.asked_n == 1 && move.step.asked[0] == 5 && w[0].cells[1].level == CELL_ABSENT;
+  #assert w[0].cells[5].level == CELL_LOADING && !cell_simulates(w[..], 5);
+  pending := cell_step_profile(w[..], 233, 32, p);
+  #assert pending.status == CellAdvanceStatus.ok && pending.step.asked_n == 0 && cell_loading_count(w[..]) == 1;
+  for before: [3] int.[CELL_DRAW_LEVEL, CELL_SIMULATE_LEVEL, CELL_RESIDENT_LEVEL] {
+    radius := ifx before == CELL_DRAW_LEVEL then p.draw else ifx before == CELL_SIMULATE_LEVEL then p.simulate else p.load;
+    #assert cell_target_rings(before, radius + 8, p) == before;
+    #assert cell_target_rings(before, radius + 8.1, p) < before;
+  }
+}
+#test "invalid profile world position or cap reduction preserves all cell state" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 7, 0, 0); before := cell_digest(w[..]);
+  bad := CellRings.{}; bad.loads = 0;
+  #assert cell_step_profile(w[..], 32, 32, bad).status == CellAdvanceStatus.profile && cell_digest(w[..]) == before;
+  for axis: 0..<2 {
+    #assert cell_step_profile(w[..], ifx axis == 0 then 1000000000001 else 32, ifx axis == 1 then -1000000000001 else 32, CellRings.{}).status == CellAdvanceStatus.position && cell_digest(w[..]) == before;
+  }
+  #assert cell_step_profile(w[..], 1000000000000, -1000000000000, CellRings.{}).status == CellAdvanceStatus.ok;
+  w[0].manifest[0].digest = 0; #assert cell_step_profile(w[..], 32, 32, CellRings.{}).status == CellAdvanceStatus.manifest;
+  w[0].manifest[0].digest = 1; w[0].requests = -1; #assert cell_step_profile(w[..], 32, 32, CellRings.{}).status == CellAdvanceStatus.manifest;
+  w[0].requests = 0; step := cell_step(w[..], 32, 32); before = cell_digest(w[..]);
+  p := CellRings.{}; p.resident = 1;
+  #assert cell_step_profile(w[..], 32, 32, p).status == CellAdvanceStatus.capacity && cell_digest(w[..]) == before;
+  p = CellRings.{}; p.loads = 1;
+  #assert cell_step_profile(w[..], 32, 32, p).status == CellAdvanceStatus.capacity && cell_digest(w[..]) == before;
+}
+#test "cell request exhaustion admits the final generation and never wraps for either entry point" {
+  for checked: 0..<2 {
+    w: [1] CellWorld; cw_grid(w[..], 0, 1, 0, 0); w[0].requests = 9223372036854775806;
+    result: CellStep;
+    if checked == 0 { result = cell_step(w[..], 32, 32); } else { result = cell_step_profile(w[..], 32, 32, CellRings.{}).step; }
+    #assert result.asked_n == 1 && w[0].requests == 9223372036854775807 && w[0].cells[0].request == 9223372036854775807 && w[0].cells[1].level == CELL_ABSENT;
+    again := cell_step(w[..], 32, 32); #assert again.asked_n == 0 && w[0].requests == 9223372036854775807 && w[0].counts[CELL_REFUSED] == 2;
+  }
+}
 
 #test "cells: keys, manifest and neighbours" {
   #assert cell_key(0) == 0 && cell_key(63.9) == 0 && cell_key(64) == 1 && cell_key(-0.1) == -1 && cell_key(-64) == -1 && cell_key(-64.1) == -2;
