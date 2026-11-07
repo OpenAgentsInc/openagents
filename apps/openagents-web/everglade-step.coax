@@ -14,6 +14,9 @@
 #load "../../aethyr/player.coax";
 #load "../../aethyr/walk.coax" as walk;
 #load "everglade-move-types.coax";
+#load "../../aethyr/math.coax" as link_math;
+#load "../../aethyr/collision-profiles.coax" as link_collision;
+#load "../../verse/ocarina/locomotion.coax" as link_motion;
 
 eg_step_body :: (p: walk.Player) -> EgBody #export_c #effects(reads, writes, traps) {
   return EgBody.{x = p.pos.x, y = p.pos.y, z = p.pos.z, px = p.prev_pos.x, py = p.prev_pos.y, pz = p.prev_pos.z,
@@ -26,6 +29,11 @@ eg_step_put :: (p0: walk.Player, b: EgBody) -> walk.Player #export_c #effects(re
   p.vel = walk.Vec3.{x = b.vx, y = b.vy, z = b.vz}; p.on_ground = b.ground;
   if b.air { p.act = walk.Act.airborne; }
   return p;
+}
+// The complete profile travels with each input and its replay, not an unreplicated local impulse.
+eg_step_world :: (w0:EgMoveWorld,input:EgMoveIn)->EgMoveWorld #export_c #effects(all) {
+ w:=w0;w.link_flags=input.link_flags;w.link_yaw=input.theta;
+ if w.busy || w.still {w.link_flags&=288;}if w.aboard {w.link_flags=0;}return w;
 }
 // book:begin shared-step
 // Before the advance: a blast's throw into your velocity; held or busy, no input of yours; your input;
@@ -40,6 +48,12 @@ eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> 
   else { p = walk.walk_input(p, input.key_x, input.key_y, input.pad_x, input.pad_y, input.run, input.jump && w.jump_ok, 0, 0); }
   p.pace = w.pace; p.grip = w.grip;
   p.theta = input.theta;
+  if (w.link_flags&32)!=0 {p.pace*=link_motion.ocl_input_pace(p.key_x,p.key_y,p.pad_x,p.pad_y);}
+  if (w.link_flags&128)!=0 {
+    p.face=input.theta;
+    if p.on_ground && p.jumps.waiting>0 {p.vel.x= -link_math.math_sin(input.theta)*link_motion.OCL_FLIP_SPEED;p.vel.z= -link_math.math_cos(input.theta)*link_motion.OCL_FLIP_SPEED;p.vel.y=link_motion.ocl_launch(link_motion.OCL_FLIP_HEIGHT,16*link_motion.OCL_FLIP_GRAVITY);p.on_ground=false;p.jumps.waiting=0;}
+    else if p.on_ground {p.key_x=0;p.key_y=0;}
+  }
   if !p.on_ground { p.vel.y += w.low_grav * dt; }
   return p;
 }
@@ -56,6 +70,14 @@ eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f
     return p;
   }
   if !w.deck && bodies.count >= 7 && p.pos.y > 0.6 { bodies[4] = 1.9; bodies[6] = 0.62; }
+  if (w.link_flags&32)!=0 {
+    profile:=link_collision.collision_profile_lookup("ocarina-lab");
+    world:=walk.World.{bodies=bodies,walls=walls,floors=floors,collision=profile.profile,locomotion=link_motion.ocl_locomotion(link_motion.OCL_WALK_SPEED,link_motion.OCL_RUN_SPEED,(w.link_flags&128)!=0,(w.link_flags&256)!=0,(w.link_flags&64)!=0)};
+    p=walk.advance_in(world,p,frame);
+    if (w.link_flags&128)!=0 {p.face=w.link_yaw;if p.on_ground {p.vel.x=0;p.vel.z=0;}}
+    if (w.link_flags&64)!=0 {p.face=w.link_yaw-walk.PI;}
+    return p;
+  }
   return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, "everglade");
 }
 // The wire's CARRY (seconds, a tenth of a millisecond: the server's leftover cut down to its tenth) as
@@ -223,4 +245,19 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
   same := eg_step_set(p, p.pos.x, p.pos.y, p.pos.z, p.face, p.vel.x, p.vel.y, p.vel.z, p.on_ground, f32(p.clock.carry_ns / 100000) / 10000.0, false);
   after := eg_step_feet(same);
   #assert abs(after.x - before.x) + abs(after.z - before.z) < 0.002;
+}
+
+#test "step: Link uses Lab launch and source speeds on both prediction and room replay" {
+ p:=walk.walk_place(0,0,0,0);none:[1]f32;w:=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=32,key_y=1,theta=0});
+ for k:0..<64 {p=eg_step_begin(p,EgMoveIn.{link_flags=32,key_y=1,theta=0},w,1.0f32/64);p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);}
+ #assert p.pos.z< -0.58 && p.pos.z> -0.7;
+ p=walk.walk_place(0,0,0,0);peak:f32=0;w=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=288,jump=true});
+ for k:0..<100 {p=eg_step_begin(p,EgMoveIn.{link_flags=288,jump=k==0},w,1.0f32/64);p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);peak=walk.hi(peak,p.pos.y);}
+ #assert peak>0.66 && peak<0.71 && p.on_ground;
+}
+
+#test "step: Link backflip launches at source speed and keeps captured facing across camera input" {
+ p:=walk.walk_place(0,0,0,0);i:=EgMoveIn.{key_y=1,jump=true,link_flags=160,theta=0.7};w:=eg_step_world(EgMoveWorld.{},i);p=eg_step_begin(p,i,w,1.0f32/64);
+ #assert !p.on_ground && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)>6.79999 && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)<6.80001 && p.vel.y>2.9 && p.face==0.7;
+ none:[1]f32;for k:0..<32 {p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);}#assert p.on_ground && p.face==0.7 && p.vel.x==0 && p.vel.z==0;
 }

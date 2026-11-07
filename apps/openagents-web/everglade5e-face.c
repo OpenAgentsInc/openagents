@@ -383,6 +383,7 @@ static void move_once(cx_face_addr state, coax_t_Everglade *g, coax_t_EgMoveIn i
                       float *show_vx, float *show_vz) {
   coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.pos.x, player.pos.y, player.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
                                                river.aboard >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){hull_bodies, hulls * 7});
+  mw = eg_step_world(mw, input);
   player = eg_step_begin(player, input, mw, dt);
   coax_t_EgBody before = eg_step_body(player);
   coax_v_f32 near = everglade_move_bodies(at(state));
@@ -441,6 +442,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     // held or busy (the map, a talk, a board, down) nothing of yours moves you here: none is sent,
     // so the server, which doesn't know you are busy, doesn't walk you on while the page stands
     if (busy) { input.key_x = 0; input.key_y = 0; input.pad_x = 0; input.pad_y = 0; input.jump = false; }
+    input = everglade_link_input(at(state), input);
     input = net_as_sent(at(state), input);
     step_jump = step_jump || input.jump;
     if (net_fix_due(at(state))) {
@@ -1095,3 +1097,5 @@ __attribute__((constructor)) static void coaxial_face_defaults(void) {
   coax_default_t_E5r(&e5_rules);
   coax_default_t_DemoWorld(&demo_world);
 }
+
+EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)everglade_link_layer_side(at(state)); }

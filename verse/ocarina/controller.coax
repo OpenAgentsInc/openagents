@@ -1,6 +1,5 @@
 // Original PlayerGameParam values; source equations/absolute gravity remain unrecovered.
 // Source decoded Player_Child.pack SHA256 627fd46ee4edb62e6b9eb2132ff38eb4d0d8a4c3024b40bb6e601ee9c505fef3.
-#load "../valley/scan.coax";
 #test "Child source jump and backflip tuning preserves exact authored binary32 values" {
  #assert f32_bits(OCL_JUMP_HEIGHT)==0x3f333333 && f32_bits(OCL_JUMP_GRAVITY)==0x3f0ccccd;
  #assert f32_bits(OCL_FLIP_HEIGHT)==0x3eb33333 && f32_bits(OCL_FLIP_SPEED)==0x40d9999a && f32_bits(OCL_FLIP_GRAVITY)==0x3f4ccccd;

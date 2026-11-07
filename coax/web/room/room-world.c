@@ -187,6 +187,8 @@ bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE])
     seat_aboard(k, s); sw = seat_swim[k][s];
   }
   coax_t_EgMoveWorld mw = everglade_move_world(at(k), p.pos.x, p.pos.y, p.pos.z, sw.medium, sw.pace, sw.flow_x, sw.flow_z, boat >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){NULL, 0});
+  input.link_flags = (int64_t)in[6] & 480;
+  mw = eg_step_world(mw, input);
   p = eg_step_begin(p, input, mw, dt);
   coax_t_EgBody before = eg_step_body(p);
   coax_v_f32 near = everglade_move_bodies(at(k));

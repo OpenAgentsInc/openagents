@@ -1,0 +1,11 @@
+// Independent room-side integration check for the versioned private Link input.
+#load "room.coax";
+#test "J1 room admission retains source controller bits without broadening original I" #steps 2000000000 {
+ v:[1]RmServer;rm_init(v[..]);rm_control(v[..],"levels 0 2\n");rm_clock(v[..],0,1762190000000);
+ #assert rm_join(v[..],0,"GET /api/room/relay/everglade/link-profile-test HTTP/1.1\r\n\r\n")==0;
+ k:=eg_room_at(v[..],v[0].conns[0].relay);rm_heard(v[..],0,"H 5 ranger.0.0.0 druid 0 -");
+ rm_heard(v[..],0,"J1 1 0 100 0 0 0 32 0");#assert v[0].eg[k].seat[0].q_n==1 && v[0].eg[k].seat[0].q[0].b==32;
+ rm_heard(v[..],0,"I 2 0 100 0 0 0 511 0");#assert v[0].eg[k].seat[0].q_n==2 && v[0].eg[k].seat[0].q[1].b==31;
+ rm_heard(v[..],0,"J1 3 0 100 0 0 0 511 0");#assert v[0].eg[k].seat[0].q_n==2;
+ rm_heard(v[..],0,"J1 3 0 100 0 0 0 162 0");#assert v[0].eg[k].seat[0].q_n==3 && v[0].eg[k].seat[0].q[2].b==162;
+}

@@ -1,0 +1,17 @@
+// Shared Ocarina Lab physical tuning. Absolute native launch equations remain unrecovered.
+#module "ocarina.locomotion";
+#load "controller.coax";
+#load "../../aethyr/locomotion.coax" as tuning;
+// Carrier endpoints in the admitted original 30-fps Move_Walk and Move_Run clips.
+OCL_WALK_SPEED :: 0.64f32; OCL_RUN_SPEED :: 2.2500002f32; OCL_ROLL_SPEED :: 5.625f32;
+#test "Link profile preserves Lab gravity acceleration jump height and captured flip speed" {
+ p:=ocl_locomotion(OCL_WALK_SPEED,OCL_RUN_SPEED,false,false,false);#assert p.gravity==16 && p.acceleration==12 && p.ride_height==0.35 && p.turn_rate==10;
+ j:=ocl_locomotion(OCL_WALK_SPEED,OCL_RUN_SPEED,false,true,false);#assert j.gravity==8.8f32 && j.jump_speed==ocl_launch(0.7f32,8.8f32);
+ f:=ocl_locomotion(OCL_WALK_SPEED,OCL_RUN_SPEED,true,false,false);#assert f.gravity==12.8f32 && f.walk_speed==6.8f32 && f.run_speed==6.8f32 && f.jump_speed==ocl_launch(0.35f32,12.8f32);
+ r:=ocl_locomotion(OCL_WALK_SPEED,OCL_RUN_SPEED,false,false,true);#assert r.walk_speed==5.625f32 && r.run_speed==5.625f32;
+}
+ocl_locomotion :: (walk_speed:f32,run_speed:f32,flip:bool,jumping:bool,rolling:bool)->tuning.LocomotionProfile {
+ g:=ifx flip then 16*OCL_FLIP_GRAVITY else ifx jumping then 16*OCL_JUMP_GRAVITY else 16.0f32;
+ action_speed:=ifx flip then OCL_FLIP_SPEED else OCL_ROLL_SPEED;
+ return tuning.LocomotionProfile.{walk_speed=(ifx flip || rolling then action_speed else walk_speed),run_speed=(ifx flip || rolling then action_speed else run_speed),gravity=g,jump_speed=ocl_launch(ifx flip then OCL_FLIP_HEIGHT else OCL_JUMP_HEIGHT,ifx flip then 16*OCL_FLIP_GRAVITY else 16*OCL_JUMP_GRAVITY),acceleration=12,turn_rate=10,ride_height=0.35};
+}

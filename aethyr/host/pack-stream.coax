@@ -73,7 +73,7 @@ hpk_stream_offer :: (s:[]HostPackStream,prefix:string,bytes:int)->HostPackChunk 
   for i:0..<bytes{if next.head_bytes==12{break;}if i>=prefix.count{s[0].failed=true;return r;}next.head[next.head_bytes]=prefix[i];next.head_bytes+=1;}
   if next.head_bytes==12{
    head:=cast(string)next.head[..];stated:=pack_u32(head,8);
-   if head[0..<4]!=PACK_MAGIC||stated<PACK_HEADER||stated>HOST_PACK_BYTES||(next.expected!=0&&next.expected!=stated){s[0].failed=true;return r;}next.expected=stated;next.headed=true;
+   if !pack_magic_ok(head[0..<4])||stated<PACK_HEADER||stated>HOST_PACK_BYTES||(next.expected!=0&&next.expected!=stated){s[0].failed=true;return r;}next.expected=stated;next.headed=true;
   }
  }
  if next.expected>0&&bytes>next.expected-next.loaded{s[0].failed=true;return r;}
@@ -85,4 +85,9 @@ hpk_allocation :: (base:int,bytes:int)->HostPackAllocation #export_c #effects(al
  address:=u64(base)+u64((16-base%16)%16);if !render_span_fits(address,u64(bytes),0,u64(HOST_PACK_BYTES)){return HostPackAllocation.{};}
  end:=int(address)+bytes;pages:=(end+HOST_PACK_PAGE-1)/HOST_PACK_PAGE;
  return HostPackAllocation.{valid=true,address=int(address),pages=pages,memory_bytes=pages*HOST_PACK_PAGE};
+}
+
+#test "VPK2 source packs use the same bounded complete stream admission" {
+ p:[512]u8;wire:=pack_test(512,p[..]);p[3]='2';s:=[1]HostPackStream.[hpk_stream_open(512,false)];#assert hpk_stream_offer(s[..],cast(string)p[0..<12],12).accepted && s[0].headed;
+ p[3]='3';s[0]=hpk_stream_open(512,false);#assert !hpk_stream_offer(s[..],cast(string)p[0..<12],12).accepted && s[0].failed;
 }

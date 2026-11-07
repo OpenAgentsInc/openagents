@@ -1,0 +1,17 @@
+// J1 is an opt-in Link input extension; the published I record and its five B bits are unchanged.
+#load "everglade-wire.coax";
+#authority;
+WBL_LINK :: 32; WBL_ROLL :: 64; WBL_FLIP :: 128; WBL_JUMP :: 256;
+#forall "J1 admits only Link input bits and rejects conflicting actions" b:-1..<1025 {
+ good:=b>=32 && b<=511 && (b&32)!=0 && !((b&64)!=0 && (b&128)!=0);
+ #assert wire_link_input_ok(b)==good;
+}
+#test "J1 roundtrips separately from the original I input" {
+ out:[256]u8;i:=WireIn.{seq=9,kx=20,ky=100,px=0,py=0,theta=1,b=WB_JUMP|WBL_LINK|WBL_FLIP,heard=30};
+ n:=wire_put_link_in(out[..],0,i);t:=cast(string)out[0..<n];#assert t[0..<3]=="J1 ";r:=[1]WireRd.[wire_rd(t,2)];back:=wire_read_in(t,r[..]);#assert r[0].ok && back.seq==9 && back.b==i.b && back.theta==1 && back.heard==30;
+ n=wire_put_in(out[..],0,WireIn.{seq=1,b=WB_RUN});#assert (cast(string)out[0..<n])[0..<2]=="I ";
+}
+wire_link_input_ok :: (bits:int)->bool #effects(all) {return (bits&511)==bits && (bits&WBL_LINK)!=0 && !((bits&WBL_ROLL)!=0 && (bits&WBL_FLIP)!=0);}
+wire_put_link_in :: (out:[]u8,at:int,i:WireIn)->int #effects(all) {
+ n:=wire_put(out,at,"J1");n=wire_int(out,n,i.seq);n=wire_int(out,n,i.kx);n=wire_int(out,n,i.ky);n=wire_int(out,n,i.px);n=wire_int(out,n,i.py);n=wire_int(out,n,wire_fine(i.theta));n=wire_int(out,n,i.b);return wire_int(out,n,i.heard);
+}

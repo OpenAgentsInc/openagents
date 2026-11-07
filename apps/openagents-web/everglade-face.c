@@ -241,6 +241,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t hulls = boat_hulls(g);
   coax_t_EgMoveWorld mw = everglade_move_world(at(state), player.pos.x, player.pos.y, player.pos.z, swim.medium, swim.pace, swim.flow_x, swim.flow_z,
                                                river.aboard >= 0, seat.x, seat.z, seat.yaw, (coax_v_f32){hull_bodies, hulls * 7});
+  mw = eg_step_world(mw, input);
   player = eg_step_begin(player, input, mw, dt);
   coax_t_EgBody before = eg_step_body(player);
   coax_v_f32 near = everglade_move_bodies(at(state));
@@ -721,3 +722,5 @@ __attribute__((constructor)) static void coaxial_face_defaults(void) {
   coax_default_t_River(&river);
   coax_default_t_DemoWorld(&demo_world);
 }
+
+EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)everglade_link_layer_side(at(state)); }

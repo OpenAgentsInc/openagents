@@ -4,7 +4,7 @@
 #load "../../coax/lib/text/base64.coax";
 EgLink :: struct {
  data:[]u8;bytes:int;ready:bool;failed:bool;parents:[309]int;bind:[309*12]f32;rest:[309]SkinLocal;pose:[309]SkinLocal;from:[309]SkinLocal;scales:[309]Point;from_scales:[309]Point;basis:[309*12]f32;world:[309*12]f32;palette:[309*12]f32;revision:int;
- clip:int;time:f32;age:f32;forced:bool;grounded:bool=true;source_speeds:[8]f32;inspect:int;
+ clip:int;time:f32;age:f32;forced:bool;grounded:bool=true;source_speeds:[8]f32;inspect:int;physical_air:bool;
 }
 el_pose_at :: (b:[]u8,p:int)->SkinLocal {return SkinLocal.{t=scan_point(b,p),q=Quat.{x=scan_float(b,p+12),y=scan_float(b,p+16),z=scan_float(b,p+20),w=scan_float(b,p+24)}};}
 el_admit :: (s:[]EgLink,b:[]u8)->bool #export_c #effects(all) {
@@ -16,7 +16,7 @@ el_select :: (s:[]EgLink,clip:int) {if clip==s[0].clip {return;}for k:0..<OCL_JO
 el_duration :: (s:[]EgLink)->f32 {return ifx s[0].ready then scan_float(s[0].data[..],32+s[0].clip*32+8) else 1.0f32;}
 el_present :: (s:[]EgLink) {
  if !s[0].ready {return;}b:=s[0].data[0..<s[0].bytes];desc:=ocr_clip(b,32+s[0].clip*32);duration:=el_duration(s);looping:=s[0].clip<=3;time:=ifx looping then s[0].time-duration*floor(s[0].time/duration) else lo(s[0].time,duration);f:=lo(time*30,cast(f32)(desc.frames-1));a:=cast(int)floor(f);next:=ifx a+1<desc.frames then a+1 else a;share:=f-cast(f32)a;fade:=pose_fade(s[0].age,0.12);
- for k:0..<OCL_JOINTS {pa:=el_pose_at(b,desc.start+(a*OCL_JOINTS+k)*28);pb:=el_pose_at(b,desc.start+(next*OCL_JOINTS+k)*28);target:=pose_blend(pa,pb,share);s[0].pose[k]=pose_blend(s[0].from[k],target,fade);if k==0 && s[0].inspect==0 {s[0].pose[k].t.x=s[0].rest[0].t.x;s[0].pose[k].t.z=s[0].rest[0].t.z;}scale:=mix(scan_point(b,desc.scale+(a*OCL_JOINTS+k)*12),scan_point(b,desc.scale+(next*OCL_JOINTS+k)*12),share);s[0].scales[k]=mix(s[0].from_scales[k],scale,fade);}
+ for k:0..<OCL_JOINTS {pa:=el_pose_at(b,desc.start+(a*OCL_JOINTS+k)*28);pb:=el_pose_at(b,desc.start+(next*OCL_JOINTS+k)*28);target:=pose_blend(pa,pb,share);s[0].pose[k]=pose_blend(s[0].from[k],target,fade);if k==0 && s[0].inspect==0 {s[0].pose[k].t.x=s[0].rest[0].t.x;s[0].pose[k].t.z=s[0].rest[0].t.z;if s[0].physical_air {s[0].pose[k].t.y=s[0].rest[0].t.y;}}scale:=mix(scan_point(b,desc.scale+(a*OCL_JOINTS+k)*12),scan_point(b,desc.scale+(next*OCL_JOINTS+k)*12),share);s[0].scales[k]=mix(s[0].from_scales[k],scale,fade);}
  for k:0..<OCL_JOINTS {flags:=scan_u32(b,desc.flags+k*4);pose_affine_chain(s[0].world[..],s[0].basis[..],s[0].scales[..],s[0].parents[k],k,s[0].pose[k],(flags&0x800000)!=0);pose_affine_palette(s[0].world[..],s[0].bind[..],k,s[0].palette[..]);}s[0].revision+=1;
 }
 el_tick :: (s:[]EgLink,speed:f32,grounded:bool) {

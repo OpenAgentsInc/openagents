@@ -1,0 +1,37 @@
+{
+  "identity": "everglade-link-input-v1",
+  "command": "J1",
+  "base_session": "everglade-session-v5",
+  "scope": "opt-in local Link experiment; matching room required",
+  "fields": [
+    "SEQ",
+    "KX",
+    "KY",
+    "PX",
+    "PY",
+    "THETA",
+    "B",
+    "HEARD"
+  ],
+  "units": "same as I; THETA uses wire_fine units of 0.1 milliradians (10000 per radian)",
+  "bits": {
+    "1": "run",
+    "2": "jump",
+    "4": "dive",
+    "8": "rise",
+    "16": "sink",
+    "32": "Link profile (required)",
+    "64": "roll",
+    "128": "backflip",
+    "256": "active source jump gravity"
+  },
+  "admission": {
+    "allowed_mask": 511,
+    "required_mask": 32,
+    "conflicting_masks": [
+      64,
+      128
+    ]
+  },
+  "unchanged": "I retains its original five bits and session version 5 identity"
+}

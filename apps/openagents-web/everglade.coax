@@ -476,7 +476,7 @@ Everglade :: struct {
   flock: bool;                             // the bird flock is yours (the river quest handed in)
   birds: [1] Flock;                        // and where its birds are (aethyr/flock.coax)
   // you, the Ranger: its rig, its playback and its joints' skinning matrices (store 2)
-  link:[1]EgLink;link_on:bool;link_ready:bool;link_first:int;link_count:int;link_word:int;link_carry:f32;link_action:int;link_air:bool;link_seconds:f32;
+  link:[1]EgLink;link_on:bool;link_ready:bool;link_first:int;link_count:int;link_word:int;link_carry:f32;link_action:int;link_air:bool;link_seconds:f32;link_face:f32;link_yaw:f32;link_flags:int;link_jump:bool;link_jump_held:bool;link_materials:bool;
   rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
   // the city's people: how each lives, their poses, their rig, the pack's parts and who is shown
   folk: [EG_SPOTS] Folk; people_rig: [1] People;
@@ -1043,8 +1043,9 @@ everglade_catalog :: (s: [] Everglade, input: string) #export_c #effects(all) {
     line := text[i..<e];
     i = e + 1;
     if line.count < 4 || line[1] != ' ' { continue; }
+    if line=="Y link-materials-v1 1536 25 60" {s[0].link_materials=true;continue;}
     if line[0]=='Z' && !s[0].link_ready {n:=b64_decode(line[2..<line.count],s[0].link[0].data);if n>0 {s[0].link_ready=el_admit(s[0].link[..],s[0].link[0].data[0..<n]);}continue;}
-    if line[0]=='X' && s[0].link_ready {at:=word_end(line,2);s[0].link_first=whole_at(line,at);at=word_end(line,at+1);s[0].link_count=whole_at(line,at);at=word_end(line,at+1);s[0].link_word=whole_at(line,at);s[0].link_on=s[0].link_count==218334 && s[0].link_first>=0 && s[0].link_word>=0;continue;}
+    if line[0]=='X' && s[0].link_ready {at:=word_end(line,2);if line[2..<at]!="link-v2" || !s[0].link_materials {s[0].link_on=false;continue;}s[0].link_first=whole_at(line,at);at=word_end(line,at+1);s[0].link_count=whole_at(line,at);at=word_end(line,at+1);s[0].link_word=whole_at(line,at);s[0].link_on=s[0].link_count==218334 && s[0].link_first>=0 && s[0].link_word>=0;continue;}
     if line[0] == 'T' { rangers_catalog_line(s[0].rangers[..], line); continue; }   // the Ranger's layers (everglade-rangers.coax)
     if line[0] == 'I' {
       first := whole_at(line, 2); after := word_end(line, 2);
@@ -1119,6 +1120,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effec
     weather_facts(s, text);
     forge_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-forge.coax)
     eg_stage(s, fact(text, "url"));   // ?stage=roof (everglade-stand.coax)
+    if eg_query_is(fact(text,"url"),"pack","everglade-link") {s[0].link_materials=true;}
     rp_facts(s, fact(text, "url"));   // ?raid=preview (everglade-raid-preview.coax)
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
@@ -1423,7 +1425,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c #effec
   if s[0].chat.typing { return chat_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
   if s[0].link_ready && mods==1 && (key==76 || key==108) {s[0].link_on=!s[0].link_on;s[0].link_action=0;s[0].link_seconds=0;s[0].link[0].forced=false;return true;}
-  if s[0].link_ready && s[0].link_on && mods==1 && (key==82 || key==114 || key==66 || key==98) && !s[0].link_air && !s[0].link[0].forced && !everglade_busy(s) && !everglade_held(s) {s[0].link_action=ifx key==82 || key==114 then 7 else 6;el_select(s[0].link[..],s[0].link_action);s[0].link[0].time=0;s[0].link[0].forced=true;s[0].link_seconds=el_duration(s[0].link[..]);return true;}
+  if s[0].link_ready && s[0].link_on && mods==1 && (key==82 || key==114 || key==66 || key==98) && !s[0].link_air && !s[0].link[0].forced && !everglade_busy(s) && !everglade_held(s) {s[0].link_action=ifx key==82 || key==114 then 7 else 6;el_select(s[0].link[..],s[0].link_action);s[0].link[0].time=0;s[0].link[0].forced=true;s[0].link_seconds=el_duration(s[0].link[..]);s[0].link_yaw=s[0].link_face;return true;}
   play := eg_key_play(s, key);   // through the settings record: a rebound key does its action's
   if play == 0 { return false; }
   return eg_play_key(s, play, mods);
@@ -1444,6 +1446,7 @@ eg_play_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if key == 'm' || key == 'M' { everglade_guard_invalidate(s); s[0].above = !s[0].above; return true; }
   if key == KEY_ESCAPE && s[0].above { s[0].above = false; return true; }
   if key == KEY_ENTER && !s[0].above && !s[0].ev.editing { chat_open(s); return true; }   // the room's chat (everglade-room.coax)
+  if key==' ' && s[0].link_ready && s[0].link_on && !s[0].link_air {s[0].link_jump=true;s[0].link_jump_held=true;}
   b := hold_bit(key);
   if b == 0 { return false; }
   s[0].held = s[0].held | b;
@@ -1536,13 +1539,15 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
   s[0].run = h & HOLD_RUN != 0;
   s[0].jump = h & HOLD_JUMP != 0;
   s[0].dive = h & HOLD_DIVE != 0;
-  // Use ordinary serialized movement inputs: the room applies its normal collisions,
-  // spell slows and jump rules too. These are input macros, not native Link physics.
+  // These flags select the same shared Ocarina profile on both prediction and room replay.
+  // Retain a press until the next frame; the room's fixed-step queue retains it after that.
+  if s[0].link_ready && s[0].link_on && s[0].link_jump_held {s[0].jump=true;s[0].link_jump_held=false;}
+  if s[0].jump && !s[0].link_air {s[0].link_jump=true;}
+  s[0].link_flags=ifx s[0].link_ready && s[0].link_on then 32|(ifx s[0].link_jump then 256 else 0) else 0;
   if s[0].link_seconds>0 {
     if !s[0].link_on || everglade_busy(s) || everglade_held(s) {s[0].link_seconds=0;s[0].link[0].forced=false;}
-    else {s[0].key_x=0;s[0].key_y=ifx s[0].link_action==6 then -1.0f32 else 1.0f32;s[0].run=true;s[0].jump=s[0].link_action==6 && s[0].link_seconds>el_duration(s[0].link[..])-0.08;s[0].link_seconds=hi(0,s[0].link_seconds-clamp(dt,0,0.25));}
+    else {s[0].link_flags|=ifx s[0].link_action==6 then 128 else 64;s[0].key_x=0;s[0].key_y=1;s[0].run=true;s[0].jump=s[0].link_action==6 && s[0].link_seconds>el_duration(s[0].link[..])-0.08;s[0].link_seconds=hi(0,s[0].link_seconds-clamp(dt,0,0.25));}
   }
-
   o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
   o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
@@ -3278,6 +3283,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
 // On a still page (a golden, reduced motion), once it has settled into standing idle, it holds the
 // idle's first pose, so every shot of it is the same to the pixel however long the page ran first.
 figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airborne: bool, dt: f32, still: bool) {
+  s[0].link_face=face;
   rig := eg_ranger_rig(s);
   dead := s[0].wv.started && watch_you(s[0].wt[..])[0].dead;
   // down: unconscious at 0 Hit Points (death saves) or knocked prone, as the rules have you (the room's
@@ -3321,7 +3327,7 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
     }
   }
   if everglade_link_body(s) {
-    s[0].link_air=airborne;s[0].link_carry+=clamp(dt,0,0.25);while s[0].link_carry>=1.0f32/64 {el_tick(s[0].link[..],speed,!airborne);s[0].link_carry-=1.0f32/64;}
+    if !airborne && s[0].link_air {s[0].link_jump=false;}s[0].link_air=airborne;s[0].link[0].physical_air=(s[0].link_flags&384)!=0;s[0].link_carry+=clamp(dt,0,0.25);while s[0].link_carry>=1.0f32/64 {el_tick(s[0].link[..],speed,!airborne);s[0].link_carry-=1.0f32/64;}
     for k:0..<309*12 {s[0].palette[LINK_PAL_AT+k]=s[0].link[0].palette[k];}
     for k:0..<12 {s[0].objects[o+k]=rows[k];}s[0].objects[o+12]=cast(f32)s[0].link_word;s[0].objects[o+13]=cast(f32)(LINK_PAL_AT/4);s[0].objects[o+14]=9;s[0].objects[o+15]=24;shadow(s,u,feet.x,feet.z,floor_under(s,feet.x,feet.z,feet.y),0.45,0.6);return;
   }
@@ -5128,7 +5134,7 @@ everglade_link_probe :: (s:[]Everglade,field:int)->int #export_c #effects(all) {
 #test "Link raid actions use serialized movement and cancel on toggle" #steps 650000000 {
  s:[1]Everglade;everglade_start(s[..]);s[0].link_ready=true;s[0].link_on=true;s[0].link_action=7;s[0].link_seconds=1;
  everglade_controls(s[..],0.02,0,0);#assert s[0].key_y==1 && s[0].run && !s[0].jump && s[0].link_seconds<1;
- s[0].link_action=6;s[0].link_seconds=1;everglade_controls(s[..],0.02,0,0);#assert s[0].key_y== -1 && s[0].jump;
+ s[0].link_action=6;s[0].link_seconds=1;everglade_controls(s[..],0.02,0,0);#assert s[0].key_y==1 && s[0].jump && (s[0].link_flags&128)!=0;
  #assert everglade_key(s[..],76,1);everglade_controls(s[..],0.02,0,0);#assert !s[0].link_on && s[0].link_seconds==0 && s[0].key_y==0 && !s[0].jump;
 }
 
@@ -5139,3 +5145,13 @@ everglade_link_body :: (s:[]Everglade)->bool {
  dead:=s[0].wv.started && watch_you(s[0].wt[..])[0].dead;
  return s[0].link_ready && s[0].link_on && !dead && !st_down(s,ST_YOU) && (st_cond(s,ST_YOU)&(WC_UNCONSCIOUS|WC_PRONE))==0;
 }
+
+// All profile/action choices are retained in the versioned J1 input and replay history.
+everglade_link_input :: (s:[]Everglade,given:EgMoveIn)->EgMoveIn #export_c #effects(all) {
+ input:=given;input.link_flags=s[0].link_flags;if input.link_flags!=0 && input.jump && !s[0].link_air {s[0].link_jump=true;input.link_flags|=256;}
+ if (input.link_flags&192)!=0 {input.key_x=0;input.key_y=1;input.pad_x=0;input.pad_y=0;input.theta=s[0].link_yaw+(ifx (input.link_flags&64)!=0 then f32(PI) else 0.0f32);}
+ return input;
+}
+
+// Optional scalar layer-extent ABI: the host allocates, Coax declares the source dimensions.
+everglade_link_layer_side :: (s:[]Everglade)->int #export_c #effects(all) {return ifx s[0].link_materials then 1536 else 0;}

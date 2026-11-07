@@ -4,9 +4,10 @@
 
 // Your input for one step: the keys and a thumb's stick as the controller takes them (-1 to 1, along
 // the camera: x right, y ahead), run, jump, and the camera's yaw that turns them.
-EgMoveIn :: struct { key_x: f32; key_y: f32; pad_x: f32; pad_y: f32; run: bool; jump: bool; theta: f32; }
+EgMoveIn :: struct { key_x: f32; key_y: f32; pad_x: f32; pad_y: f32; run: bool; jump: bool; theta: f32; link_flags:int; }
 // What the world says before the step, where you stand (everglade_move_world).
 EgMoveWorld :: struct {
+  link_flags:int; link_yaw:f32;
   kx: f32; ky: f32; kz: f32;             // a blast's throw on you, once
   busy: bool;                            // held, talking, the map up, a board open, down: nothing of yours moves you
   still: bool;                           // prone, or caught in the ice

@@ -4,6 +4,7 @@
 #load "scene-water-policy.coax";
 #load "motion.coax";
 #load "controller.coax";
+#load "locomotion.coax" as link_motion;
 #load "../../aethyr/math.coax" as action_math;
 #load "../../aethyr/loop.coax" as clock;
 #load "../../aethyr/anim/scaled-pose.coax";
@@ -175,7 +176,7 @@ ocl_catalog_admit :: (s:[]OcarinaLab,b:[]u8)->bool #export_c #effects(all) {
  s[0].world_source=b[catalog.world..<catalog.world+catalog.world_bytes];s[0].catalog_bytes=b.count;s[0].expected_vertex_bytes=catalog.vertex_bytes;s[0].expected_indices=catalog.indices;s[0].expected_layers=catalog.layers;s[0].expected_materials=catalog.materials;s[0].water_indices=render.water;s[0].spawn=catalog.spawn;s[0].catalog_ready=true;s[0].started=false;ocl_start(s);return true;
 }
 ocl_walk_world :: (s:[]OcarinaLab)->pc.World {
- declaration:=collision.collision_profile_lookup("ocarina-lab");return pc.World.{ground=s[0].spawn.y,room=1000,collision=declaration.profile,locomotion=locomotion.LocomotionProfile.{walk_speed=(ifx s[0].ready then s[0].source_speeds[1] else 0.64f32),run_speed=(ifx s[0].ready then s[0].source_speeds[2] else 2.25f32),gravity=(ifx s[0].backflip then 16*OCL_FLIP_GRAVITY else ifx s[0].jump_active then 16*OCL_JUMP_GRAVITY else 16.0f32),jump_speed=ocl_launch(OCL_JUMP_HEIGHT,16*OCL_JUMP_GRAVITY),acceleration=12,turn_rate=10,ride_height=0.35}};
+ declaration:=collision.collision_profile_lookup("ocarina-lab");return pc.World.{ground=s[0].spawn.y,room=1000,collision=declaration.profile,locomotion=link_motion.ocl_locomotion((ifx s[0].ready then s[0].source_speeds[1] else 0.64f32),(ifx s[0].ready then s[0].source_speeds[2] else 2.25f32),s[0].backflip,s[0].jump_active,false)};
 }
 ocl_begin_backflip :: (s:[]OcarinaLab) {
  if !s[0].ready || !s[0].you.on_ground || s[0].backflip {return;}

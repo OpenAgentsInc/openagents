@@ -1,0 +1,33 @@
+// Shared Ocarina Lab material evaluation: original FMAT maps, UV1 masks, eye layers and GGX.
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/render/sampling.coax";
+OgSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;uv1:V2;tangent:V4;colour:V4;material:f32;character:f32;}
+OgFoot :: struct {dx:V2;dy:V2;}
+og_grad :: (uv:V2)->OgFoot {return OgFoot.{dx=v2(gpu_dpdx_fine(uv.x),gpu_dpdx_fine(uv.y)),dy=v2(gpu_dpdy_fine(uv.x),gpu_dpdy_fine(uv.y))};}
+og_foot_scale :: (g:OgFoot,f:f32)->OgFoot {return OgFoot.{dx=v2(g.dx.x*f,g.dx.y*f),dy=v2(g.dy.x*f,g.dy.y*f)};}
+og_word :: (v:[]u32,i:int)->f32 {return f32_from_bits(v[i]);}
+og_point :: (v:[]u32,i:int)->V3 {return v3(og_word(v,i),og_word(v,i+1),og_word(v,i+2));}
+og_unit :: (p:V3,fallback:V3)->V3 {l:=dot3(p,p);if l<0.00000001 {return fallback;}return scale3(p,1/sqrt(l));}
+og_sample :: (layer:u32,uv:V2,sheets:Tex2DArray,sheet:Sampler,g:OgFoot)->V4 {if layer==0 {return v4(1,1,1,1);}grid:=cast(int)(layer>>24);if grid>0 {tile:=cast(int)((layer>>16)&255)-1;cell:=1536/grid;scale:=cast(f32)(cell-16)/1536.0;origin:=v2(cast(f32)(tile%grid*cell+8)/1536.0,cast(f32)(tile/grid*cell+8)/1536.0);at:=v2(origin.x+fract(uv.x)*scale,origin.y+fract(uv.y)*scale);return render_sample_layer8_grad(sheets,sheet,at,cast(s32)((layer&65535)-1),v2(g.dx.x*scale,g.dx.y*scale),v2(g.dy.x*scale,g.dy.y*scale),0);}return render_sample_layer8_grad(sheets,sheet,uv,cast(s32)(layer-1),g.dx,g.dy,0);}
+og_raw :: (x:f32)->f32 {return ifx x<=0.0031308 then x*12.92 else 1.055*pow(x,1.0f32/2.4f32)-0.055;}
+og_linear :: (x:f32)->f32 {return ifx x<=0.04045 then x/12.92 else pow((x+0.055)/1.055,2.4f32);}
+og_material_coverage :: (uv:V2,uv1:V2,word:int,v:[]u32,sheets:Tex2DArray,sheet:Sampler,g0:OgFoot,g1:OgFoot)->f32 {g:=g0;m:=word;kind:=v[m+16];a:=og_sample(v[m],uv,sheets,sheet,g);if kind==1 {mask:=og_sample(v[m+5],uv1,sheets,sheet,g1);return a.w*og_raw(mask.x);}if kind==5 {return og_raw(a.x);}if kind==9 || kind==11 || kind==12 {return 1;}return a.w;}
+OgMaterial :: struct {colour:V3;normal:V3;rough:f32;ao:f32;alpha:f32;kind:u32;}
+og_material_surface :: (s:OgSurface,word:int,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler,g0:OgFoot,g1:OgFoot)->OgMaterial {
+ n:=og_unit(s.normal,v3(0,1,0));colour:=v3(s.colour.x,s.colour.y,s.colour.z);rough:f32=0.85;ao:f32=1;alpha:f32=1;kind:u32=0;
+ {m:=word;kind=vertices[m+16];if kind==4 || kind==6 {gpu_discard();}uv:=s.uv;g:=g0;if kind==7 {g=og_foot_scale(g1,og_word(vertices,m+33));uv=v2(s.uv1.x*og_word(vertices,m+33),s.uv1.y*og_word(vertices,m+34));}a:=og_sample(vertices[m],uv,sheets,sheet,g);colour=v3(a.x,a.y,a.z);if kind==14 {colour=v3(colour.x*0.82,colour.y*0.86,colour.z*0.92);}alpha=og_material_coverage(s.uv,s.uv1,word,vertices,sheets,sheet,g0,g1);if alpha<og_word(vertices,m+18) {gpu_discard();}
+  if kind==5 {colour=og_point(vertices,m+24);}if kind==3 {eye_scale:=og_word(vertices,m+47);euv:=v2((s.uv.x-0.5)*eye_scale+0.5,(s.uv.y-0.5)*eye_scale+0.5);iris:=og_sample(vertices[m],euv,sheets,sheet,og_foot_scale(g0,eye_scale));white:=og_sample(vertices[m+7],s.uv,sheets,sheet,g0);mask:=og_sample(vertices[m+5],euv,sheets,sheet,og_foot_scale(g0,eye_scale));f:=og_raw(mask.x);if euv.x<0 || euv.x>1 || euv.y<0 || euv.y>1 {f=0;}colour=v3(mix(white.x,iris.x,f),mix(white.y,iris.y,f),mix(white.z,iris.z,f));rough=0.18;}
+  if kind!=3 {if vertices[m+1]>0 {normal_uv:=uv;normal_g:=g;layer:=vertices[m+1];if kind==7 && vertices[m+4]>0 {layer=vertices[m+4];normal_uv=s.uv;normal_g=g0;}aN:=og_sample(layer,normal_uv,sheets,sheet,normal_g);x:=og_raw(aN.x)*2.0078740157-1.0078740157;y:=og_raw(aN.y)*2.0078740157-1.0078740157;z:=sqrt(fmax(0.0f32,1-x*x-y*y));t0:=v3(s.tangent.x,s.tangent.y,s.tangent.z);fallback:=og_unit(cross3(n,v3(0,0,1)),v3(1,0,0));t:=og_unit(sub3(t0,scale3(n,dot3(n,t0))),fallback);b:=scale3(cross3(n,t),s.tangent.w);n=normalize3(add3(add3(scale3(t,x),scale3(b,y)),scale3(n,z)));}rough=og_word(vertices,m+19);if vertices[m+2]>0 {rough=og_raw(og_sample(vertices[m+2],uv,sheets,sheet,g).x);}if vertices[m+3]>0 {ao=og_raw(og_sample(vertices[m+3],s.uv,sheets,sheet,g0).x);}}
+ }
+ if kind==12 {colour=v3(0.012,0.016,0.012);rough=1;} return OgMaterial.{colour=colour,normal=n,rough=rough,ao=ao,alpha=alpha,kind=kind};
+}
+og_material_light :: (m:OgMaterial,world:V3,eye:V3,sun:V3,shadow:f32)->V3 {
+ n:=m.normal;colour:=m.colour;rough:=m.rough;ao:=m.ao;kind:=m.kind;view:=normalize3(sub3(eye,world));
+ ndl:=fmax(0.0f32,dot3(n,sun));if kind==2 {ndl=fmax(ndl,(dot3(n,sun)+0.4)/1.4);}if kind==14 {ndl=0.25+abs(dot3(n,sun))*0.55;}ambient:=0.22+0.16*(n.y*0.5+0.5);lighting:=ambient*(0.35+0.65*ao)+ndl*shadow*1.55;colour=v3(colour.x*lighting*1.07,colour.y*lighting*1.02,colour.z*lighting*0.88);
+ h:=normalize3(add3(view,sun));spec:=og_material_specular(ndl,fmax(0.0f32,dot3(n,view)),fmax(0.0f32,dot3(n,h)),fmax(0.0f32,dot3(view,h)),rough)*shadow*1.55;colour=add3(colour,v3(spec,spec,spec));if kind==3 {highlight:=pow(fmax(0.0f32,dot3(n,h)),100)*0.8;colour=add3(colour,v3(highlight,highlight,highlight));}
+return colour;
+}
+
+og_material_specular :: (nl:f32,nv:f32,nh:f32,vh:f32,rough:f32)->f32 {
+ if nl<=0 || nv<=0 {return 0;}r:=clampf(rough,0.08,1);a:=r*r;a2:=a*a;d:=nh*nh*(a2-1)+1;distribution:=a2/(3.14159265*d*d);k:=(r+1)*(r+1)/8;geometry:=nl/(nl*(1-k)+k)*nv/(nv*(1-k)+k);f:=0.04+0.96*pow(1-clampf(vh,0,1),5);return distribution*geometry*f/(4*fmax(nv,0.001f32));
+}

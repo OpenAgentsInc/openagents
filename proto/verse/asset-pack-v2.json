@@ -1,0 +1,13 @@
+{
+  "identity": "asset-pack-v2",
+  "magic": "VPK2",
+  "byte_order": "little endian",
+  "header_bytes": 32,
+  "entry_bytes": 48,
+  "max_entries": 128,
+  "layout": "same header, entries, kind ordering, licensing and 4-byte alignment as VPK1",
+  "vpk1_max_entries": 48,
+  "stream_max_bytes": 67108864,
+  "registry_max_assets": 64,
+  "registry_oversize_behavior": "atomic refusal; no partial admission"
+}

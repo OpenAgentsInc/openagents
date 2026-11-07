@@ -6051,9 +6051,13 @@ Rolling_Short in slot seven; it cannot silently relabel the OCL1 facial clip.
 The face owns bounded rig storage outside gameplay snapshots. Source skinning
 preserves all eight 16-bit joint indices, source scales and SSC. The extra draw
 replaces only the local standing avatar; water remains the final blended draw.
-Shift+L restores the ordinary avatar and cancels its movement macro. Spell
-controls and remote characters retain their existing paths. Roll/backflip use
-ordinary serialized movement inputs and do not bypass room collision or combat
-rules. They are not a claim of recovered original controller physics. See
-`docs/verse/2026-11-06-everglade-link-experiment.md` for source, rendering limits,
-controls and rollback.
+Shift+L restores the ordinary avatar and cancels the action. Spell controls and
+remote characters retain their existing paths. The raid and Ocarina Lab share
+`verse/ocarina/locomotion.coax` and the character FMAT evaluator. Versioned J1
+inputs retain profile/action/heading through client prediction and room replay;
+ordinary I input retains its published meaning. Room collision and combat rules
+still apply. This is Lab-port parity, not a claim of fully recovered native
+controller physics. VPK2 carries the 60 original texture maps without vertex
+colour baking; VPK1's 48-entry bound and the registry's 64-slot bound remain.
+See `docs/verse/2026-11-06-everglade-link-experiment.md` and
+`docs/protocol/everglade-link-input-v1.md` for fidelity, controls and rollback.

@@ -1,3 +1,4 @@
+#load "../../../apps/openagents-web/everglade-link-wire.coax";
 #load "../../../aethyr/ids.coax";
 // The room server's Everglade rooms: the server is the authority (spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
@@ -469,13 +470,13 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
 // A seat's frame (past the relay's rate limits and pings).
 eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || text[1] != ' ' { return; }
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(text[0..<2]=="J1" && text[2]==' ')) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
-  if c == 'I' { eg_heard_input(v, k, seat_id, text); return; }
+  if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
   if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
   if c == 'P' {   // the page's build, for its hello's admission (#12839)
     rp: [1] WireRd; rp[0] = wire_rd(text, 1);
@@ -629,9 +630,10 @@ eg_waits :: (v: [] RmServer, k: int, s_id: SeatId, seq: int) -> bool { s := s_id
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
 eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat_id, text); return; }   // (room-oldwire.coax)
-  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  r: [1] WireRd; link:=wire_is(text,"J1");
+  r[0] = wire_rd(text,ifx link then 2 else 1);
   w := wire_read_in(text, r[..]);
-  if !r[0].ok || eg_fields(text) != 9 { return; }
+  if !r[0].ok || eg_fields(text) != 9 || (link && !wire_link_input_ok(w.b)) { return; }
   eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   st := v[0].eg[k].seat[seat..<seat + 1];
@@ -644,7 +646,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   }
   st[0].q[n] = EgIn.{seq = seq, kx = eg_clamp(w.kx, -100, 100), ky = eg_clamp(w.ky, -100, 100),
                      px = eg_clamp(w.px, -100, 100), py = eg_clamp(w.py, -100, 100),
-                     theta = eg_clamp(eg_round(w.theta * f32(WIRE_FINE)), -40000, 40000), b = eg_clamp(w.b, 0, 31), at = v[0].mono_ms};
+                     theta = eg_clamp(eg_round(w.theta * f32(WIRE_FINE)), -40000, 40000), b = eg_clamp(w.b, 0, ifx link then 511 else 31), at = v[0].mono_ms};
   st[0].q_n = n + 1;
 }
 // book:end intent-queue

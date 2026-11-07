@@ -1805,7 +1805,8 @@ async function layerTexture(images) {   // the loading screen counts each layer 
   const encoded = images[0] instanceof Uint8Array;
   const first = encoded ? await layerBitmap(images[0]) : images[0];
   if (encoded) loading.textures(1, 0);
-  const { device } = gpu, [w, h] = [first.width, first.height];
+  const { device } = gpu, declaredSide = engine?.exports.coaxial_layers_side_v1?.(arena.state) || 0,
+    [w, h] = declaredSide ? [declaredSide, declaredSide] : [first.width, first.height];
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
   const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });

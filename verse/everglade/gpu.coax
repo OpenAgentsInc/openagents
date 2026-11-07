@@ -1,3 +1,4 @@
+#load "../../apps/openagents-web/gpu/ocarina-material.coax";
 // Everglade's shaders, the source of everglade.wgsl (G6): build.sh writes that module from this
 // with coax/web/wgsl-module.coax (gpu.module, gpu.bindings), and coax spirv lowers it for the
 // GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
@@ -361,7 +362,8 @@ EgObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; } // the Ranger's joints, then 
 eg_word :: (i:u32,vertices:[]u32)->f32 {
   return f32_from_bits(vertices[cast(int)i]);
 }
-EgS :: struct {pos:V4; world:V3; normal:V3; tint:V3; look:u32 #flat; uv:V2; slice:u32 #flat; dye:V4 #flat; local:V3; shard:u32 #flat; }
+EG_LOOK_LINK :: cast(u32)26;
+EgS :: struct {pos:V4;uv1:V2;tangent:V4; world:V3; normal:V3; tint:V3; look:u32 #flat; uv:V2; slice:u32 #flat; dye:V4 #flat; local:V3; shard:u32 #flat; }
 // a person's cloth dye: rgb, then its rule and share (person_dye)
 // where it is in its mesh's own space (a chunk's cut is there)
 // a chunk of a broken piece: its object + 1 (LOOK_SHARD), else 0
@@ -672,9 +674,13 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
   {
     _sw3:u32=kind;
     if _sw3==0 && m.colour.z==9.0f32 {
-      b:u32=wg_u32_f(m.colour.x)+id*32;pb:u32=wg_u32_f(m.colour.y);p0:V4=v4(eg_word(b,vertices),eg_word(b+1,vertices),eg_word(b+2,vertices),1.0f32);n0:V3=v3(eg_word(b+3,vertices),eg_word(b+4,vertices),eg_word(b+5,vertices));sp:V3=v3(0.0f32,0.0f32,0.0f32);sn:V3=sp;
-      for k:0..<8 {joint:u32=(vertices[cast(int)(b+9+cast(u32)(k/2))]>>cast(u32)((k%2)*16))&65535;weight:f32=cast(f32)((vertices[cast(int)(b+13+cast(u32)(k/4))]>>cast(u32)((k%4)*8))&255)/255.0f32;r:u32=pb+joint*3;a:V4=pose[cast(int)r];c:V4=pose[cast(int)(r+1)];e:V4=pose[cast(int)(r+2)];sp=wg_add_f3f3(sp,wg_mul_ff3(weight,v3(wg_dot4(a,p0),wg_dot4(c,p0),wg_dot4(e,p0))));sn=wg_add_f3f3(sn,wg_mul_ff3(weight,v3(wg_dot3(v3(a.x,a.y,a.z),n0),wg_dot3(v3(c.x,c.y,c.z),n0),wg_dot3(v3(e.x,e.y,e.z),n0))));}
-      v=EgVert.{p=sp,n=sn};rgba:V4=wg_unpack4x8unorm(vertices[cast(int)(b+19)]);tint=v3(rgba.x,rgba.y,rgba.z);
+      header:u32=wg_u32_f(m.colour.x);b:u32=vertices[cast(int)header]+id*32;pb:u32=wg_u32_f(m.colour.y);p0:V4=v4(eg_word(b,vertices),eg_word(b+1,vertices),eg_word(b+2,vertices),1.0f32);n0:V3=v3(eg_word(b+3,vertices),eg_word(b+4,vertices),eg_word(b+5,vertices));sp:V3=v3(0.0f32,0.0f32,0.0f32);sn:V3=sp;skinSum:f32=0;
+      for k:0..<8 {joint:u32=(vertices[cast(int)(b+9+cast(u32)(k/2))]>>cast(u32)((k%2)*16))&65535;weight:f32=cast(f32)((vertices[cast(int)(b+13+cast(u32)(k/4))]>>cast(u32)((k%4)*8))&255);skinSum+=weight;r:u32=pb+joint*3;a:V4=pose[cast(int)r];c:V4=pose[cast(int)(r+1)];e:V4=pose[cast(int)(r+2)];sp=wg_add_f3f3(sp,wg_mul_ff3(weight,v3(wg_dot4(a,p0),wg_dot4(c,p0),wg_dot4(e,p0))));sn=wg_add_f3f3(sn,wg_mul_ff3(weight,v3(wg_dot3(v3(a.x,a.y,a.z),n0),wg_dot3(v3(c.x,c.y,c.z),n0),wg_dot3(v3(e.x,e.y,e.z),n0))));}
+      sp=wg_mul_f3f(sp,1/fmax(skinSum,1.0f32));sn=wg_mul_f3f(sn,1/fmax(skinSum,1.0f32));
+      v=EgVert.{p=sp,n=sn};o.uv=v2(eg_word(b+6,vertices),eg_word(b+7,vertices));o.uv1=v2(eg_word(b+20,vertices),eg_word(b+21,vertices));o.slice=vertices[cast(int)(header+1)]+vertices[cast(int)(b+8)]*64;
+      t0:V4=v4(eg_word(b+15,vertices),eg_word(b+16,vertices),eg_word(b+17,vertices),0.0f32);st:V3=v3(0,0,0);weightSum:f32=0;
+      for k:0..<8 {joint:u32=(vertices[cast(int)(b+9+cast(u32)(k/2))]>>cast(u32)((k%2)*16))&65535;weight:f32=cast(f32)((vertices[cast(int)(b+13+cast(u32)(k/4))]>>cast(u32)((k%4)*8))&255);if weight>0 {r:u32=pb+joint*3;st=wg_add_f3f3(st,wg_mul_ff3(weight,v3(wg_dot4(pose[cast(int)r],t0),wg_dot4(pose[cast(int)(r+1)],t0),wg_dot4(pose[cast(int)(r+2)],t0))));weightSum+=weight;}}
+      st=wg_mul_f3f(st,1/fmax(weightSum,1.0f32));wt:V3=v3(wg_dot3(v3(m.r0.x,m.r0.y,m.r0.z),st),wg_dot3(v3(m.r1.x,m.r1.y,m.r1.z),st),wg_dot3(v3(m.r2.x,m.r2.y,m.r2.z),st));o.tangent=v4(wt.x,wt.y,wt.z,eg_word(b+18,vertices));tint=v3(1,1,1);
     } else if _sw3==1 {
 
       v=eg_box_vertex(id);
@@ -863,6 +869,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
     at:V3=v3(m.r0.w,m.r1.w,m.r2.w);
     o.dye=v4(fmin(fract(m.colour.w)/0.98f32,1.0f32),render_noise3(at.x,at.y,at.z),0.0f32,0.0f32);
   }
+  if kind==0 && m.colour.z==9.0f32 {o.look=EG_LOOK_LINK;}
   return o;
 }
 // ---- the key light's shadow map (spec 3; host.js shadow_vs): every draw but the ground drawn from the
@@ -882,7 +889,7 @@ eg_light_space :: (u:[]f32)->EgLight {
 eg_shadow_place :: (w:V3,k:EgLight)->V3 {
   return v3(verse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),verse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),verse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
 }
-EgShade :: struct {pos:V4; uv:V2; slice:u32 #flat; cut:u32 #flat; local:V3; shard:u32 #flat; bare:f32 #flat; }
+EgShade :: struct {pos:V4;uv1:V2; uv:V2; slice:u32 #flat; cut:u32 #flat; local:V3; shard:u32 #flat; bare:f32 #flat; }
 // A burning tree's leaves (dye.z of a canopy: the share gone) gone in clumps from its crown, the same
 // in its shadow, in its mesh's own space so they hold as it falls.
 eg_leaf_gone :: (local:V3,bare:f32)->bool {
@@ -905,15 +912,18 @@ eg_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,object
   } // fire, lightning and the water orb cast no shadow
   q:V3=eg_shadow_place(v.world,eg_light_space(u));
   o.pos=wg_make_f4_f2ff(v2(q.x,q.y),q.z,1.0f32);
-  o.uv=v.uv;
+  o.uv=v.uv;o.uv1=v.uv1;
   o.slice=v.slice;
   o.local=v.local;
   o.shard=v.shard;
   o.cut=ifx ((((v.look==5)||(v.look==EG_LOOK_CANOPY))||(v.look==EG_LOOK_CHARACTER))||(v.look==EG_LOOK_ROCK))||(v.look==EG_LOOK_WINDOW) then 1 else 0;
+  if v.look==EG_LOOK_LINK {o.cut=2;}
   o.bare=ifx v.look==EG_LOOK_CANOPY then v.dye.z else 0.0f32;
   return o;
 }
-eg_shadow_fs :: (v:EgShade,objects:[]EgObj,sheets:Tex2DArray,sheet:Sampler) {
+eg_shadow_fs :: (v:EgShade,vertices:[]u32,objects:[]EgObj,sheets:Tex2DArray,sheet:Sampler) {
+  g0:=og_grad(v.uv);g1:=og_grad(v.uv1);
+  if v.cut==2 {word:=cast(int)v.slice;if og_material_coverage(v.uv,v.uv1,word,vertices,sheets,sheet,g0,g1)<og_word(vertices,word+18) {gpu_discard();}}
   if ((v.cut==1)&&(gpu_sample_layer_level(sheets,sheet,v.uv,cast,trunc(s32)(v.slice),0.0f32).w<0.35f32)) {
     gpu_demote_helper();
   }
@@ -1249,11 +1259,19 @@ eg_person_dye :: (t:V3,dye:V4)->V3 {
   dyed:V3=wg_mul_f3f(v3(dye.x,dye.y,dye.z),clampf(light/usual,0.0f32,1.6f32));
   return wg_max_f3f3(wg_mix_f3f3f(t,dyed,mask*share),v3(0.0f32,0.0f32,0.0f32));
 }
-eg_scene_fs :: (s:EgS,front:bool,u:[]f32,heights:[]f32,objects:[]EgObj,water_nodes:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
+eg_scene_fs :: (s:EgS,front:bool,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,water_nodes:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
+  g0:=og_grad(s.uv);g1:=og_grad(s.uv1);
+  tex:V4=render_sample_layer8_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),ifx s.look==EG_LOOK_CHARACTER then EG_CHARACTER_LOD_BIAS else 0.0f32);
+  if s.look==EG_LOOK_LINK {
+    surface:=OgSurface.{normal=s.normal,world=s.world,uv=s.uv,uv1=s.uv1,tangent=s.tangent,colour=v4(1,1,1,1),character=1};
+    material:=og_material_surface(surface,cast(int)s.slice,vertices,sheets,sheet,g0,g1);
+    shadow:=eg_map_lit(s.world,material.normal,u,shadow_map,shadow_cmp,false);
+    colour:=og_material_light(material,s.world,v3(u[24],u[25],u[26]),wg_sw_xyz_f4(eg_st(1,u)),shadow);
+    return EgLit.{light=v4(colour.x,colour.y,colour.z,1.0f32),aux=v4(0,0,0,0)};
+  }
   paint_leaf_far:bool;
   // a character's skin and cloth flat (spec 11): sampled two mip levels coarser, so stitching, pores
   // and the fabric's grain go and two or three colour masses stay
-  tex:V4=render_sample_layer8_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),ifx s.look==EG_LOOK_CHARACTER then EG_CHARACTER_LOD_BIAS else 0.0f32);
   if (s.look==EG_LOOK_GLOW) {
     // fire, a fireball, lightning: white-hot where it faces you, its colour, then deep red at its rim;
     // up to three times as bright as its colour says, and it all blooms

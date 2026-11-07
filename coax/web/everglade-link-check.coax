@@ -11,18 +11,22 @@ tool_main :: ()->int #export_c #effects(all) {
  #assert cdp_call(c[..],"Page.enable","",CDP_CALL_MS)>=0;#assert cdp_call(c[..],"Emulation.setFocusEmulationEnabled","{\"enabled\":true}",CDP_CALL_MS)>=0;
  hook:[65536]u8;hn:=fs_read("coax/web/everglade-pair.js",hook[..]);#assert hn>0;
  params:[131072]u8;j:[1]Jo;jo_start(j[..],params[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],cast(string)hook[0..<hn]);jo_end(j[..]);#assert !j[0].bad && cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),CDP_CALL_MS)>=0;
- o:MediaShotOptions;o.wait=1800;o.script="globalThis.L={initial:{link:coaxial.guardProbe(300),on:coaxial.guardProbe(301),draw:coaxial.guardProbe(304),room:__eg.probe(0),seat:__eg.probe(1)}};1";value:[65536]u8;build:[256]u8;
+ o:MediaShotOptions;o.wait=1800;o.script="globalThis.L={initial:{link:coaxial.guardProbe(300),on:coaxial.guardProbe(301),draw:coaxial.guardProbe(304),side:__eg.x.coaxial_layers_side_v1(__eg.state),room:__eg.probe(0),seat:__eg.probe(1)}};1";value:[65536]u8;build:[256]u8;
  shot:=media_shot(c[..],args_at(a[..],0),args_at(a[..],1),ArgsSize.{ok=true,w=1440,h=900},o,value[..],build[..]);if shot.status!=0 {cdp_close(c[..]);return 4;}
  lk_tap(c[..],"R","KeyR",82,8);proc_sleep(180);lk_eval(c[..],"L.roll={clip:coaxial.guardProbe(302),input:coaxial.fieldProbe(11)};1");proc_sleep(1800);
  lk_tap(c[..],"B","KeyB",66,8);proc_sleep(200);lk_eval(c[..],"L.flip={clip:coaxial.guardProbe(302),act:coaxial.fieldProbe(3),input:coaxial.fieldProbe(11)};1");proc_sleep(1800);
  lk_tap(c[..],"L","KeyL",76,8);proc_sleep(80);lk_eval(c[..],"L.off={on:coaxial.guardProbe(301),draw:coaxial.guardProbe(304)};1");lk_tap(c[..],"L","KeyL",76,8);proc_sleep(80);
- lk_eval(c[..],"L.before=[coaxial.fieldProbe(0),coaxial.fieldProbe(2)];1");lk_key(c[..],"w","KeyW",87,0,true);proc_sleep(700);lk_key(c[..],"w","KeyW",87,0,false);lk_eval(c[..],"L.after=[coaxial.fieldProbe(0),coaxial.fieldProbe(2)];L.restored=coaxial.guardProbe(301);L.meteorPlace=Number(__eg.x.coaxial_hotbar_probe(__eg.state,0,0));1");
+ lk_eval(c[..],"L.before=[coaxial.fieldProbe(0),coaxial.fieldProbe(2)];1");lk_key(c[..],"w","KeyW",87,0,true);proc_sleep(700);lk_key(c[..],"w","KeyW",87,0,false);lk_eval(c[..],"L.runSpeed=coaxial.fieldProbe(5);L.after=[coaxial.fieldProbe(0),coaxial.fieldProbe(2)];L.restored=coaxial.guardProbe(301);L.meteorPlace=Number(__eg.x.coaxial_hotbar_probe(__eg.state,0,0));1");
+ proc_sleep(300);lk_key(c[..],"Shift","ShiftLeft",16,8,true);lk_key(c[..],"w","KeyW",87,8,true);proc_sleep(700);lk_eval(c[..],"L.walkSpeed=coaxial.fieldProbe(5);1");lk_key(c[..],"w","KeyW",87,8,false);lk_key(c[..],"Shift","ShiftLeft",16,0,false);proc_sleep(400);
+ lk_eval(c[..],"L.jumpBase=coaxial.fieldProbe(1);L.jumpPeak=L.jumpBase;L.fixMax=0;1");lk_tap(c[..]," ","Space",32,0);
+ for k:0..<40 {proc_sleep(30);lk_eval(c[..],"L.jumpPeak=Math.max(L.jumpPeak,coaxial.fieldProbe(1));L.fixMax=Math.max(L.fixMax,coaxial.fieldProbe(7));1");}
+ lk_eval(c[..],"L.jumpHeight=L.jumpPeak-L.jumpBase;L.replays=coaxial.fieldProbe(6);L.landed=coaxial.fieldProbe(3)!==3;1");
  // Slot zero is Meteor Swarm; its actual bar rectangle, including player arrangement.
  lk_eval(c[..],"(()=>{let x=__eg.x,s=__eg.state;L.box=[1,2,3,4].map(f=>Number(x.coaxial_hotbar_probe(s,0,f)));return 1})()");
  // The owner-local full-bar default has Meteor in column one.
  lk_tap(c[..],"1","Digit1",49,0);proc_sleep(100);lk_eval(c[..],"L.armed=Number(__eg.x.coaxial_hotbar_probe(__eg.state,0,5));L.playedBefore=__eg.probe(10);1");
  #assert cdp_call(c[..],"Input.dispatchMouseEvent","{\"type\":\"mousePressed\",\"x\":720,\"y\":550,\"button\":\"left\",\"clickCount\":1}",CDP_CALL_MS)>=0;
  #assert cdp_call(c[..],"Input.dispatchMouseEvent","{\"type\":\"mouseReleased\",\"x\":720,\"y\":550,\"button\":\"left\",\"clickCount\":1}",CDP_CALL_MS)>=0;proc_sleep(4500);
- vn:=media_value(c[..],"L.playedAfter=__eg.probe(10);L.ok=L.initial.link===1&&L.initial.draw===1&&L.initial.room===2&&L.roll.clip===7&&L.roll.input===1000&&L.flip.clip===6&&L.flip.input===-1000&&L.off.on===0&&L.off.draw===0&&L.restored===1&&Math.hypot(L.after[0]-L.before[0],L.after[1]-L.before[1])>100&&L.armed===0&&L.playedAfter>L.playedBefore;JSON.stringify(L)",value[..]);png:[8388608]u8;pn:=cdp_screenshot(c[..],png[..]);if pn>0 {saved:=fs_write(args_at(a[..],1),cast(string)png[0..<pn]);}
+ vn:=media_value(c[..],"L.playedAfter=__eg.probe(10);L.ok=L.initial.link===1&&L.initial.draw===1&&L.initial.room===2&&L.initial.side===1536&&L.roll.clip===7&&L.roll.input===1000&&L.flip.clip===6&&L.flip.input===1000&&L.off.on===0&&L.off.draw===0&&L.restored===1&&Math.hypot(L.after[0]-L.before[0],L.after[1]-L.before[1])>100&&L.runSpeed>=490&&L.runSpeed<=520&&L.walkSpeed>=35&&L.walkSpeed<=45&&L.jumpHeight>=640&&L.jumpHeight<=730&&L.landed&&L.replays>0&&L.fixMax<10000&&L.armed===0&&L.playedAfter>L.playedBefore;JSON.stringify(L)",value[..]);png:[8388608]u8;pn:=cdp_screenshot(c[..],png[..]);if pn>0 {saved:=fs_write(args_at(a[..],1),cast(string)png[0..<pn]);}
  cdp_close(c[..]);if vn<0 {return 5;}result:=cast(string)value[0..<vn];print("%\n",result);for k:0..<result.count-8 {if result[k..<k+9]=="\"ok\":true" {return 0;}}return 6;
 }

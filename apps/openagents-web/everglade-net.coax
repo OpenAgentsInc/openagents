@@ -1,3 +1,4 @@
+#load "everglade-link-wire.coax";
 // Everglade's network client (docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.6 to
 // 3.10 and 6; GitHub #12706 and #12708), loaded by everglade.coax. The room server owns the shared
 // world (owner, 2026-11-03): every player, creature, zone, spell's cast, hit and break is the
@@ -1258,9 +1259,9 @@ net_input :: (s: [] Everglade, input: EgMoveIn, dive: bool) -> int #export_c #ef
   a := ab_of(s);   // and your Levitate's rise and sink keys, for the server's (everglade_room_rise)
   b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0) | (ifx dive then WB_DIVE else 0) |
        (ifx a[0].lev_on && a[0].lev_up then WB_RISE else 0) | (ifx a[0].lev_on && a[0].lev_sink then WB_SINK else 0);
-  net_send(n, wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y),
-                                                   px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b,
-                                                   heard = n[0].mir[0].heard}));
+  b|=input.link_flags;
+  packet:=WireIn.{seq=n[0].seq,kx=wire_axis(input.key_x),ky=wire_axis(input.key_y),px=wire_axis(input.pad_x),py=wire_axis(input.pad_y),theta=input.theta,b=b,heard=n[0].mir[0].heard};
+  net_send(n,ifx input.link_flags!=0 then wire_put_link_in(n[0].out[..],0,packet) else wire_put_in(n[0].out[..],0,packet));
   return n[0].seq;
 }
 // The server's word on you is new: where it has you after input fix.ack (the face sets you there and
@@ -1292,7 +1293,7 @@ net_replay_input :: (s: [] Everglade, k: int) -> EgMoveIn #export_c #effects(all
 net_as_sent :: (s: [] Everglade, m: EgMoveIn) -> EgMoveIn #export_c #effects(all) {
   theta := f32(wire_fine(m.theta)) / f32(WIRE_FINE);
   return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
-                   pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta};
+                   pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta,link_flags=m.link_flags};
 }
 // book:begin ease-correction
 // The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn. Small, it is eased
