@@ -1988,6 +1988,17 @@ and failed-adapter reloads have their own scoped evidence; native rescue,
 mobile hardware and larger-memory rescue are unqualified. See
 `docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md`.
 
+The bounded native stream draw carrier uses an additive owned Vulkan
+submission (`verse/gpu/vks-submit.{h,c}`). Pending or unknown fence errors
+retain the command pool, fence and drawn-resource borrows. A timeout stops
+paid frames; cleanup waits for the actual completion observation before
+retiring those owners. Reported device loss uses the same checked recovery
+rate/deadline policy and preserves CPU/source state. The qualified input
+profile explicitly injects results after actual Vulkan work; it is not a
+physical GPU-reset claim. Native factories/transfers and persistent rescue
+remain unqualified. See
+`docs/verification/aethyr-streaming-12990/walk-native-loss.md`.
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,

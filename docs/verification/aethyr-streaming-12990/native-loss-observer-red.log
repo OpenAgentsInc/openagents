@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_native_loss_oracle.py", line 207, in <module>
+    if '--fault-checks' in sys.argv[4:]: result['altered_receipts_rejected'] = fault_checks(scene, output, program)
+                                                                               ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_native_loss_oracle.py", line 201, in fault_checks
+    raise AssertionError('altered native loss receipt accepted: ' + fault)
+AssertionError: altered native loss receipt accepted: paid_tick

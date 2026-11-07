@@ -1,5 +1,9 @@
 # Native Vulkan route and controlled replacement — November 7, 2026
 
+**Later follow-up:** [native draw-result recovery](walk-native-loss.md)
+adds a separate result-driven profile. The measurements below retain their
+original controlled-replacement scope.
+
 **#12990 remains open.** The same engine-owned corridor now runs actual
 native local-file loads, canonical decoders, Vulkan uploads/draws,
 retirement and controlled physical device replacement. This closes the

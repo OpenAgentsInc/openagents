@@ -87,7 +87,9 @@ order.
   carrier](../host/stream-native.md) now exercises both tiers through actual
   Vulkan loads, retirement and controlled device replacement. Physical
   backend budget planning, native automatic loss/rescue and the chapter's
-  complete teaching proof remain open.
+  complete teaching proof remain open. The [native draw-result profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
+  adds automatic reported-loss recovery and pending-effect retirement;
+  SDK-result injection is explicitly distinct from physical device faults.
 - The [persistent corridor HUD](../world/stream-hud.coax) stays live before
   any area resources, after the first cell unloads and across controlled
   physical device replacement. Its display adapter changes no canonical

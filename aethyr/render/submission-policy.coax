@@ -1,0 +1,35 @@
+// Translate observed Vulkan results and concrete in-flight ownership into
+// actions. Numeric values are the published VkResult values, not booleans.
+#module "aethyr.render.submission";
+#authority;
+NS_DONE :: 0; NS_WAIT :: 1; NS_REBUILD :: 2; NS_STOP :: 3; NS_INVALID :: 4;
+#test "completed lost pending and failed effects keep their distinct owner permissions" {
+  #assert ns_action(0, false) == NS_DONE && ns_action(-4, false) == NS_REBUILD;
+  #assert ns_action(1, true) == NS_WAIT && ns_action(2, true) == NS_WAIT;
+  #assert ns_action(0, true) == NS_INVALID && ns_action(-4, true) == NS_INVALID;
+  #assert ns_action(1, false) == NS_INVALID && ns_action(2, false) == NS_INVALID;
+  for result: [7] int.[-1, -2, -3, -5, -13, 3, 9223372036854775807] {
+    #assert ns_action(result, false) == NS_STOP && ns_action(result, true) == NS_STOP;
+  }
+}
+ns_action :: (result: int, in_flight: bool) -> int #export_c #effects(all) {
+  if in_flight {
+    if result == 0 || result == -4 { return NS_INVALID; }
+    return ifx result == 1 || result == 2 then NS_WAIT else NS_STOP;
+  }
+  if result == 0 { return NS_DONE; }
+  if result == -4 { return NS_REBUILD; }
+  if result == 1 || result == 2 { return NS_INVALID; }
+  return NS_STOP;
+}
+
+#test "a submitted effect stops at its exact ten-second deadline and invalid clocks fail closed" {
+  #assert !ns_timed_out(0, 0) && !ns_timed_out(0, 9999999999) && ns_timed_out(0, 10000000000);
+  #assert !ns_timed_out(5, 10000000004) && ns_timed_out(5, 10000000005);
+  #assert ns_timed_out(-1, 0) && ns_timed_out(10, 9);
+  #assert ns_timed_out(9223372026854775807, 9223372036854775807);
+  #assert !ns_timed_out(9223372026854775808, 9223372036854775807);
+}
+ns_timed_out :: (started: int, now: int) -> bool #export_c #effects(all) {
+  return started < 0 || now < started || now - started >= 10000000000;
+}

@@ -46,6 +46,7 @@ static coax_t_GlLoss loss_policy;
 static uint8_t device_digest[64];
 static coax_v_t_GlLoss lv(void){return(coax_v_t_GlLoss){&loss_policy,1};}
 SW_API("sw_loss_open") int32_t sw_loss_open(void){return gl_open(lv());}
+SW_API("sw_loss_abort") int64_t sw_loss_abort(int64_t reason){return gl_abort(lv(),reason);}
 SW_API("sw_loss_lost") int64_t sw_loss_lost(int64_t now){return gl_lost(lv(),now);}
 SW_API("sw_loss_poll") int64_t sw_loss_poll(int64_t now,int64_t serial){return gl_poll(lv(),now,serial);}
 SW_API("sw_loss_finish") int64_t sw_loss_finish(int64_t now,int64_t serial,int32_t success){return gl_finish(lv(),now,serial,success!=0);}
@@ -182,6 +183,7 @@ SW_API("sw_host_destroy") int32_t sw_host_destroy(int32_t row,int64_t generation
   if(!sw_offer(sv(),f))return 0;p->occupied=false;return 1;
 }
 SW_API("sw_host_borrow") int32_t sw_host_borrow(int32_t row){if(row<0||row>=64||borrowed[row])return 0;borrows[row]=sw_borrow(sv(),row);borrowed[row]=borrows[row].slot>=0;return borrowed[row];}
+SW_API("sw_host_borrowed") int32_t sw_host_borrowed(int32_t row){return row>=0&&row<64&&borrowed[row];}
 SW_API("sw_host_return") int32_t sw_host_return(int32_t row){if(row<0||row>=64||!borrowed[row])return 0;bool ok=sw_return(sv(),mv(),borrows[row]);if(ok)borrowed[row]=false;return ok;}
 SW_API("sw_host_cell") int64_t sw_host_cell(int32_t cell,int32_t field){if(cell<0||cell>=12)return -1;switch(field){case 0:return state.cells.e[0].cells.e[cell].level;case 1:return state.actor.e[cell].id;case 2:return state.actor.e[cell].words.e[0];case 3:return state.entity.e[0].ids.e[cell];case 4:return state.nav_walk.e[cell];default:return -1;}}
 SW_API("sw_host_uniforms") uintptr_t sw_host_uniforms(int32_t cell,float aspect){return sw_uniforms(sv(),cell,aspect,(coax_v_f32){uniforms,64})?(uintptr_t)uniforms:0;}

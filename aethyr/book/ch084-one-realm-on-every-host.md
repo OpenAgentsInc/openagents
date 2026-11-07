@@ -42,7 +42,12 @@ loss while rendering or building, late device completion and stopped
 cleanup have [separate receipts](../../docs/verification/aethyr-streaming-12990/walk-automatic-loss.md).
 The Coax face refuses paid frames during rebuilding and, after a stop,
 admits only the session's real closing phase. This fixture is separate
-from host-v1 adoption and native automatic-loss handling. The additive
+from host-v1 adoption. The [native draw-result profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
+now retains a submitted command pool/fence and resource borrows through a
+pending result, then uses the same checked loss policy for reported draw
+loss. Real Vulkan rendering with labelled SDK-result injection qualifies
+this boundary; the broader native factory/upload and rescue surface remains
+unqualified. The additive
 [whole-reactor browser rescue profile](../../docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md)
 retains allocator-backed sources and queued facts, restores one exact-build
 save and suppresses another save before 300 frame starts. Actual trap,

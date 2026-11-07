@@ -1,0 +1,1 @@
+PASS counted Vulkan SDK: twelve creation/submit failures, pending timeout/error ownership, wrong-device fencing, completion and device-loss retirement

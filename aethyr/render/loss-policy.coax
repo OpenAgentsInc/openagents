@@ -116,3 +116,20 @@ gl_finish :: (s: [] GlLoss, now: int, serial: int, success: bool) -> int #export
   if !success { return gl_stop(s, GL_REPLACEMENT); }
   s[0].active = false; return GL_RECOVERED;
 }
+
+#test "terminal SDK failures stop without inventing device-loss events and preserve an earlier stop" {
+  s: [1] GlLoss; two: [2] GlLoss;
+  #assert gl_abort(s[0..<0], GL_DEADLINE) == GL_INVALID && gl_abort(two[..], GL_REPLACEMENT) == GL_INVALID;
+  for reason: [3] int.[GL_NONE, GL_RATE, GL_SERIAL] { #assert gl_abort(s[..], reason) == GL_INVALID && !s[0].stopped; }
+  #assert gl_abort(s[..], GL_DEADLINE) == GL_STOP && s[0].stopped && !s[0].active && s[0].reason == GL_DEADLINE;
+  #assert s[0].count == 0 && s[0].serial == 0 && s[0].last == -1;
+  #assert gl_abort(s[..], GL_REPLACEMENT) == GL_STOP && s[0].reason == GL_DEADLINE;
+  #assert gl_open(s[..]) && gl_lost(s[..], 5) == GL_PENDING;
+  #assert gl_abort(s[..], GL_REPLACEMENT) == GL_STOP && !s[0].active && s[0].reason == GL_REPLACEMENT;
+  #assert s[0].serial == 1 && s[0].count == 1 && s[0].last == 5;
+}
+gl_abort :: (s: [] GlLoss, reason: int) -> int #export_c #effects(all) {
+  if s.count != 1 || (reason != GL_DEADLINE && reason != GL_REPLACEMENT) { return GL_INVALID; }
+  if s[0].stopped { return GL_STOP; }
+  return gl_stop(s, reason);
+}

@@ -2,14 +2,14 @@
 // histories retain the existing browser profile and receipt identities.
 #authority;
 #test "native replay accepts only named native observation schemas and backend" {
-  for schema: [2] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2"] {
+  for schema: [3] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2", "aethyr.stream-walk-native-gpu.v3"] {
     #assert srp_native(schema, 1);
     for backend: [3] int.[-1, 0, 2] { #assert !srp_native(schema, backend); }
   }
-  for schema: [5] string.["", "aethyr.stream-walk-native-gpu", "aethyr.stream-walk-native-gpu.v0", "aethyr.stream-walk-native-gpu.v3", "aethyr.stream-walk-hud.v1"] {
+  for schema: [5] string.["", "aethyr.stream-walk-native-gpu", "aethyr.stream-walk-native-gpu.v0", "aethyr.stream-walk-native-gpu.v4", "aethyr.stream-walk-hud.v1"] {
     #assert !srp_native(schema, 1);
   }
 }
 srp_native :: (schema: string, backend: int) -> bool #effects(all) {
-  return backend == 1 && (schema == "aethyr.stream-walk-native-gpu.v1" || schema == "aethyr.stream-walk-native-gpu.v2");
+  return backend == 1 && (schema == "aethyr.stream-walk-native-gpu.v1" || schema == "aethyr.stream-walk-native-gpu.v2" || schema == "aethyr.stream-walk-native-gpu.v3");
 }

@@ -1,12 +1,16 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [automatic browser-loss record](walk-automatic-loss.md)
+Issue #12990 remains open. The [native draw-result record](walk-native-loss.md)
+adds owned pending submissions, reported-loss recovery, rate/deadline/failure
+stops and zero-step interruption replay. It qualifies actual Vulkan effects
+with explicit SDK-result injection, not a physical GPU reset or the complete
+native factory/upload/rescue surface. The [automatic browser-loss record](walk-automatic-loss.md)
 adds unsolicited callbacks, repeated/rebuilding loss, a real ten-second
 deadline, late-device destruction and checked frame admission. The additive
 [persistent browser rescue](walk-persistent-rescue.md) now covers exact-build
 whole-reactor save/reload, unfinished source effects, single use and crash
-loops. Native automatic loss/rescue and broader memory/failure profiles remain
-separate exits. The
+loops. Native persistent rescue and broader memory/failure profiles remain
+unqualified. The
 [native-history CPU replay](walk-native-cpu-replay.md)
 now checks every paid step in the actual Vulkan histories against the CPU
 consumer, including twelve altered-history refusals per tier. The original
@@ -34,9 +38,9 @@ The preceding [coordinator and controlled
 GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
 real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
-historical failing gates and artifacts. Persistent failed-replacement rescue,
-native automatic-loss adoption, physical native budget planning, remaining failure histories,
-complete world-shader reference and remaining host fault cases still prevent issue
+historical failing gates and artifacts. Physical backend and transport/transient
+budget planning, actual category-pressure refusal, remaining failed/superseded
+load ownership paths and the final adoption/teaching audit still prevent issue
 completion.
 
 Work starts from `df06d21dee90a9f54778143ffd6b8fe1c400e392`, in the reused
@@ -141,31 +145,31 @@ copies are published, including a failure after three reservations.
 
 ## Work still required before closing #12990
 
-- Actual stale/superseded callback, allocator and remaining SDK failure
-  histories. Browser corrupt/oversized/cancelled/reordered receive and GPU
-  validation failures already have separate current receipts.
-- Independent world-shader GPU reference qualification. Persistent HUD
-  adoption, its all-pixel reference and shader/layout mutation gates are
-  qualified separately; player/camera and the collection/update policies
-  are adopted in the corridor.
+- Actual stale/superseded callback and failed-load ownership histories,
+  including the native allocation/decode/upload paths that currently return
+  without completing normal resource retirement. Browser corrupt/oversized/
+  cancelled/reordered receive and GPU validation failures already have
+  separate current receipts.
 - Complete transport/transient and physical backend allocation planning.
   Current traces reconcile logical resource costs; the native Vulkan
   backing extents and the browser's engine-owned transport arenas require
   explicit treatment alongside the existing aggregate owners.
 - An actual host category-pressure refusal with prior resident content
   still usable; the current category test remains a component result.
-- Native automatic-loss/rescue adoption and wider browser rescue failure,
-  storage and memory qualification. The additive two-MiB browser rescue
-  carrier now has actual trap, unfinished-load and failed-adapter reloads;
-  automatic loss, repeated/rebuilding loss, deadline and late-device fencing
-  retain their earlier receipts. Native controlled replacement remains a
-  separate qualified observation profile.
-- Additional native failure-history replay as those histories are recorded.
-  Current successful native GPU histories already replay every paid step
-  through CPU allocation/codecs in their original backend/cost profile.
+- Replay the additional load-failure histories as they are recorded. Current
+  successful and draw-fault native GPU histories already replay every paid
+  step through CPU allocation/codecs in their original backend/cost profile.
 - Final consumer/residual-adapter inventory, supported-platform limits and
   complete teaching/registry audit. Existing source and qualified profile
   evidence must be retained when reconciling chapter status.
+
+The native draw-result record qualifies labelled SDK observations over real
+Vulkan submissions, including repeated/rebuilding loss and deadline stops.
+The two-MiB browser rescue carrier has actual trap, unfinished-load and
+failed-adapter reloads. Neither result qualifies native persistent rescue,
+physical GPU resets, arbitrary browser rescue extents or an independent
+world-shader reference. Those remain explicit profile limitations; they are
+not additional prerequisites invented for this resource-streaming issue.
 
 ## Concrete dependency owners
 

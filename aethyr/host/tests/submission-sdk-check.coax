@@ -1,0 +1,30 @@
+// Drive the actual checked SDK against an independent counted Vulkan stub.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+vsf_reset :: (stage: s32, result: s32) #foreign #effects(all);
+vsf_begin :: () -> s32 #foreign #effects(all);
+vsf_poll :: (wait: s32, wrong_device: s32) -> s32 #foreign #effects(all);
+vsf_retire :: (wrong_device: s32) -> s32 #foreign #effects(all);
+vsf_signal :: (result: s32) #foreign #effects(all);
+vsf_info :: (field: s32) -> int #foreign #effects(all);
+tool_main :: () -> int #export_c #effects(all) {
+  for fail: 1..<7 { for code: [2] s32.[-1, -4] {
+    vsf_reset(cast(s32) fail, code); #assert vsf_begin() == code;
+    #assert vsf_info(0) == 0 && vsf_info(1) == 0 && vsf_info(2) == 0 && vsf_info(3) == 0;
+    #assert vsf_info(4) == (ifx fail >= 4 then 1 else 0);
+  } }
+  vsf_reset(0, 0); #assert vsf_begin() == 0 && vsf_info(0) == 1 && vsf_info(1) == 1 && vsf_info(2) == 1;
+  #assert vsf_begin() == -3 && vsf_retire(0) == 1 && vsf_info(0) == 1 && vsf_info(1) == 1;
+  #assert vsf_poll(0, 0) == 1 && vsf_poll(1, 0) == 2 && vsf_info(2) == 1;
+  #assert vsf_poll(0, 1) == -3 && vsf_retire(1) == -3 && vsf_info(2) == 1;
+  vsf_signal(-1); #assert vsf_poll(0, 0) == -1 && vsf_info(2) == 1 && vsf_retire(0) == 1;
+  vsf_signal(0); #assert vsf_poll(0, 0) == 0 && vsf_info(2) == 0;
+  queries := vsf_info(5); #assert vsf_poll(0, 0) == 0 && vsf_info(5) == queries;
+  #assert vsf_retire(0) == 0 && vsf_retire(0) == 0 && vsf_info(0) == 0 && vsf_info(1) == 0 && vsf_info(3) == 0;
+  for wait: 0..<2 {
+    vsf_reset(0, 0); #assert vsf_begin() == 0; vsf_signal(-4);
+    #assert vsf_poll(cast(s32) wait, 0) == -4 && vsf_info(2) == 0 && vsf_retire(0) == 0;
+    #assert vsf_info(0) == 0 && vsf_info(1) == 0 && vsf_info(3) == 0;
+  }
+  print("PASS counted Vulkan SDK: twelve creation/submit failures, pending timeout/error ownership, wrong-device fencing, completion and device-loss retirement\n"); return 0;
+}

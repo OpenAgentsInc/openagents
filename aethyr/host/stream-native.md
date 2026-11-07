@@ -66,8 +66,11 @@ The complete image must match byte-for-byte and contain more than one
 color. Every granted visual owner must upload again. A continued draw and
 the optional full 768 m out-and-back route then use the replacement device.
 Final cleanup requires all resource, inbox, decoded image/audio, renderer
-and concrete SDK owners to reach zero. Automatic loss, interrupted uploads,
-replacement failure and rescue are separate unfinished exits.
+and concrete SDK owners to reach zero. The additive
+[result-driven draw profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
+now handles reported draw loss automatically and preserves submitted owners
+through a timeout. Interrupted uploads, the wider device/resource factory
+failure surface and native rescue remain separate unqualified exits.
 
 `stream-native-conformance.coax` admits sixteen independently supplied
 observation words: version; nonempty initial GPU set; equal full image;
@@ -113,3 +116,34 @@ Current hardware/software scope and exact pins are in the
 The [persistent HUD record](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md)
 adds full-pixel reference comparison, two browser rasters, unchanged
 canonical histories and explicit display-storage ownership.
+
+## Owned submissions and reported draw loss
+
+The native carrier now uses the additive `verse/gpu/vks-submit.{h,c}` API
+for its draw submission. A successful begin means work was accepted, not
+that it finished. The command pool and fence survive pending or unknown
+errors. Retirement refuses while pending and rejects a different device.
+Coax maps result/in-flight observations through `render/submission-policy.coax`;
+`render/loss-policy.coax` owns rebuild counts, the absolute recovery deadline,
+explicit failure/timeout stops and paid-frame permission. Unknown failures
+do not invent a loss event or reset its rate window.
+
+The SDK still uses legacy fatal creation/transfer helpers outside this draw
+boundary; ordinary host-v1 adapters are not migrated. Physical device-fault
+qualification is distinct from the actual Vulkan rendering and SDK-result
+injection used here. See the [record](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
+for the exact supported surface and remaining limits.
+
+The runtime parser additionally accepts `--auto-loss`, `--auto-repeat`,
+`--auto-restart`, `--auto-timeout`, `--auto-late`, `--auto-fail`, `--auto-oom` and `--auto-route`
+in the optional final argument. The two route tiers keep the original scene,
+source and backend-1 manifest identities. These observations use schema
+`aethyr.stream-walk-native-gpu.v3`; historical controlled v1/v2 observations
+retain their own reader paths. CPU replay admits all three named native
+schemas, preserving its existing v3 output. Zero-step interruption frames
+remain inputs to replay and do not invent paid-step marks.
+
+`--auto-late` delivers a completed successful SDK observation after ten
+seconds. The caller checks the deadline after that return as well as while
+pending, so late completion cannot admit another paid frame. This bounds
+acceptance; it does not preempt a synchronous SDK call while it is blocked.

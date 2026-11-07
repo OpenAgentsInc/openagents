@@ -1,0 +1,796 @@
+{
+  "base_commit": "fcbb026f79",
+  "browser": {
+    "bytes": 143578,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/native-loss-browser-rescue.wasm",
+    "sha256": "2da263774ae49149c76457516776683a5667654b412dd9035ea823b8c7bb0345"
+  },
+  "c_compiler": "GCC 15.2.0",
+  "cases": [
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 18,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 230400,
+      "events": 1,
+      "explicit_vulkan_peak": 1648592,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.168229,
+        "p95": 4.688969,
+        "p99": 5.341975
+      },
+      "mode": "--auto-loss",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.000806,
+      "recoveries": 1,
+      "sdk_static_bytes": 22794,
+      "ticks": 139,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 18,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 691200,
+      "events": 4,
+      "explicit_vulkan_peak": 1648592,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.175413,
+        "p95": 112.80407,
+        "p99": 122.823844
+      },
+      "mode": "--auto-repeat",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.000758,
+      "recoveries": 3,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 18,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 230400,
+      "events": 2,
+      "explicit_vulkan_peak": 1648592,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.190389,
+        "p95": 4.787979,
+        "p99": 5.127047
+      },
+      "mode": "--auto-restart",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.000997,
+      "recoveries": 1,
+      "sdk_static_bytes": 22794,
+      "ticks": 139,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 19,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1648592,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.183293,
+        "p95": 4.99923,
+        "p99": 5.218051
+      },
+      "mode": "--auto-timeout",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 99.34718,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 17,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1648592,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.164766,
+        "p95": 4.938181,
+        "p99": 5.225639
+      },
+      "mode": "--auto-fail",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.001336,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 17,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1648592,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.166831,
+        "p95": 4.740848,
+        "p99": 5.001077
+      },
+      "mode": "--auto-oom",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.000709,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 776,
+      "altered_receipts_rejected": 18,
+      "attempts": 114,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 7272,
+        "1": 256,
+        "2": 1080,
+        "3": 1027,
+        "4": 6568,
+        "5": 1184,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 4224,
+        "1": 252,
+        "2": 1080,
+        "3": 1011,
+        "4": 6568,
+        "5": 1184,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 14139,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 691200,
+      "events": 3,
+      "explicit_vulkan_peak": 1649392,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.191216,
+        "p95": 2.639824,
+        "p99": 3.709453
+      },
+      "mode": "--auto-route",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.000729,
+      "recoveries": 3,
+      "sdk_static_bytes": 22794,
+      "ticks": 12931,
+      "tier": 0
+    },
+    {
+      "allocation_events": 776,
+      "altered_receipts_rejected": 18,
+      "attempts": 114,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 7272,
+        "1": 288,
+        "2": 1080,
+        "3": 1155,
+        "4": 6568,
+        "5": 1184,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 4224,
+        "1": 268,
+        "2": 1080,
+        "3": 1075,
+        "4": 6568,
+        "5": 1184,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 14232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 691200,
+      "events": 3,
+      "explicit_vulkan_peak": 1651952,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.180951,
+        "p95": 2.552013,
+        "p99": 3.677572
+      },
+      "mode": "--auto-route",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.000807,
+      "recoveries": 3,
+      "sdk_static_bytes": 22794,
+      "ticks": 12931,
+      "tier": 1
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 19,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1648592,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.177811,
+        "p95": 5.202555,
+        "p99": 5.323235
+      },
+      "mode": "--auto-late",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.001492,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 18,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 230400,
+      "events": 1,
+      "explicit_vulkan_peak": 1258440,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.656135,
+        "p95": 24.883623,
+        "p99": 26.351221
+      },
+      "mode": "--auto-loss",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.010366,
+      "recoveries": 1,
+      "sdk_static_bytes": 22794,
+      "ticks": 139,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 18,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 691200,
+      "events": 4,
+      "explicit_vulkan_peak": 1258440,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.704035,
+        "p95": 64.359612,
+        "p99": 72.212233
+      },
+      "mode": "--auto-repeat",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.01089,
+      "recoveries": 3,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 18,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 230400,
+      "events": 2,
+      "explicit_vulkan_peak": 1258440,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.749415,
+        "p95": 24.298022,
+        "p99": 26.266394
+      },
+      "mode": "--auto-restart",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.010205,
+      "recoveries": 1,
+      "sdk_static_bytes": 22794,
+      "ticks": 139,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 19,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1258440,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.849203,
+        "p95": 27.202151,
+        "p99": 27.293775
+      },
+      "mode": "--auto-timeout",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 93.743437,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 17,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1258440,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.818489,
+        "p95": 23.732875,
+        "p99": 25.889808
+      },
+      "mode": "--auto-fail",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.010372,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 17,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1258440,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.759461,
+        "p95": 23.406144,
+        "p99": 26.192464
+      },
+      "mode": "--auto-oom",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.010694,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    },
+    {
+      "allocation_events": 776,
+      "altered_receipts_rejected": 18,
+      "attempts": 114,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 7272,
+        "1": 256,
+        "2": 1080,
+        "3": 1027,
+        "4": 6568,
+        "5": 1184,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 4224,
+        "1": 252,
+        "2": 1080,
+        "3": 1011,
+        "4": 6568,
+        "5": 1184,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 14139,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 691200,
+      "events": 3,
+      "explicit_vulkan_peak": 1258984,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.826087,
+        "p95": 11.934776,
+        "p99": 20.341979
+      },
+      "mode": "--auto-route",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.009436,
+      "recoveries": 3,
+      "sdk_static_bytes": 22794,
+      "ticks": 12931,
+      "tier": 0
+    },
+    {
+      "allocation_events": 776,
+      "altered_receipts_rejected": 18,
+      "attempts": 114,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 7272,
+        "1": 288,
+        "2": 1080,
+        "3": 1155,
+        "4": 6568,
+        "5": 1184,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 4224,
+        "1": 268,
+        "2": 1080,
+        "3": 1075,
+        "4": 6568,
+        "5": 1184,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 14232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 691200,
+      "events": 3,
+      "explicit_vulkan_peak": 1260264,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.914003,
+        "p95": 12.202028,
+        "p99": 20.706442
+      },
+      "mode": "--auto-route",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.009747,
+      "recoveries": 3,
+      "sdk_static_bytes": 22794,
+      "ticks": 12931,
+      "tier": 1
+    },
+    {
+      "allocation_events": 124,
+      "altered_receipts_rejected": 19,
+      "attempts": 18,
+      "category_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "equal_image_channels": 0,
+      "events": 1,
+      "explicit_vulkan_peak": 1258440,
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 10.828209,
+        "p95": 24.899537,
+        "p99": 28.427468
+      },
+      "mode": "--auto-late",
+      "physical_device_fault_qualified": false,
+      "quiesce_ms": 0.01085,
+      "recoveries": 0,
+      "sdk_static_bytes": 22794,
+      "ticks": 131,
+      "tier": 0
+    }
+  ],
+  "compiler": "Coax 0.52.0",
+  "cpu_histories": 9,
+  "cpu_paid_steps": 26795,
+  "cpu_replay": {
+    "bytes": 4379752,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/native-loss-cpu-v1-san/replay",
+    "sha256": "f412bf4e82fc78d0e12fd4262fbf711bdd9d100680fcf49ac1646aa153cb3d63"
+  },
+  "environment": {
+    "LD_LIBRARY_PATH": "/nix/store/baw82sps59binavc16lfp7drj1g7nw9n-vulkan-loader-1.4.341.0/lib",
+    "VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation",
+    "VK_LAYER_PATH": "/nix/store/4ckyprdk36api9agjv3nh6bzil75wvkf-vulkan-validation-layers-1.4.341.0/share/vulkan/explicit_layer.d"
+  },
+  "issue_closed": false,
+  "native": {
+    "bytes": 388248,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/native-loss-v7/stream-native",
+    "sha256": "6898e4dd2b4b70a78e450f19eb1404deac67dbe8bb8b547cd1498832eae5ebf8"
+  },
+  "negative_cpu_histories": 108,
+  "negative_gpu_receipts": 324,
+  "qualification": "actual Vulkan rendering with labelled SDK result injection; no physical GPU reset",
+  "root_mutants": 193,
+  "sanitized": {
+    "bytes": 5663800,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/native-loss-san-v7/stream-native",
+    "sha256": "9692e9220ad118c106fdc8c8b74e260c6f665837f9620afe11d59e170ba036e5"
+  },
+  "schema": "aethyr.stream-native-loss-runtime.v1"
+}

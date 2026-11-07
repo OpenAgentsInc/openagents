@@ -326,7 +326,7 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
     source_bytes = (output / 'receipt.json').read_bytes()
     source = json.loads(source_bytes)
     report = json.loads(replay_path.read_bytes())
-    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2')
+    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v3')
     assert report['schema'] == 'aethyr.stream-walk-native-replay.v3'
     assert report['backend'] == source['backend'] == 1 and report['tier'] == source['tier']
     assert report['input_sha256'] == hashlib.sha256(source_bytes).hexdigest()
@@ -337,7 +337,9 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
     previous = 0
     for frame in frames:
         digests = frame['stepDigests']
-        assert frame['tick'] - previous == len(digests) and 1 <= len(digests) <= 8
+        assert frame['tick'] - previous == len(digests) and 0 <= len(digests) <= 8
+        if not digests:
+            assert source['schema'] == 'aethyr.stream-walk-native-gpu.v3' and frame['frameNs'] == 0
         previous = frame['tick']
         for digest in digests:
             assert len(digest) == 64

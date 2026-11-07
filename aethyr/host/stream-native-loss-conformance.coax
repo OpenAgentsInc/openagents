@@ -1,0 +1,16 @@
+// Independent physical, policy and accepted-state observations of the
+// adopted native draw boundary. An injected result is labelled separately.
+#authority;
+#test "native automatic loss requires state source lifetime recovery and stop evidence" {
+  q := [12] int.[1,1,1,1,1,1,1,1,1,1,1,1]; #assert snl_accept(q[..]);
+  #assert !snl_accept(q[0..<11]); more: [13] int; #assert !snl_accept(more[..]);
+  for i: 0..<12 { bad := q; bad[i] = 0; #assert !snl_accept(bad[..]); bad[i] = 2; #assert !snl_accept(bad[..]); }
+}
+// version; exact retained state; exact retained source; no paid tick/read;
+// every grant uploaded on recovery; canonical gate refuses stopped frames;
+// no pending submission at final teardown; all physical/ledger owners zero;
+// fixed grants retained through destruction; validation enabled/no messages;
+// explicit SDK-injection provenance; actual post-recovery pixels equal.
+snl_accept :: (q: [] int) -> bool #effects(all) {
+  if q.count != 12 { return false; } for value: q { if value != 1 { return false; } } return true;
+}

@@ -18,7 +18,7 @@ The #12990 components currently provide:
 | `stream-walk.coax` | Actual bounded corridor consumer: fixed-step facts, semantic collision/navigation, stable sleeping entity state and original resource owners |
 | `stream-walk-state.coax` | Versioned, fieldwise canonical simulation state and SHA-256 observations after individual paid steps |
 | `stream-walk-recovery.coax` | Atomic replacement of GPU owner handles after the SDK quiescence/destruction barrier |
-| `stream-walk-device.coax`, `../render/loss-policy.coax` | Checked browser automatic-loss/deadline admission and canonical observation; native automatic-loss adoption remains unfinished |
+| `stream-walk-device.coax`, `../render/loss-policy.coax` | Checked browser automatic-loss/deadline admission and canonical observation; the native draw-result carrier adopts the same policy under a separate qualification |
 | `stream-walk-rescue.coax`, `../host/rescue-policy.coax` | Exact-build whole-Wasm checkpoint compatibility, pending-fact observation and crash-loop admission; browser IndexedDB rescue has a separate scoped receipt |
 | `stream-walk-presentation.coax` | Additive, read-only pose-to-HUD adapter; no cell owner or simulation clock |
 | `stream-hud.coax`, `stream-hud-shader.coax`, `stream-present-shader.coax` | Bounded texture-free Filament HUD, premultiplied linear FP16 composition and one final UNORM display conversion |
@@ -138,7 +138,7 @@ under a 32 KiB dynamic resource cap, two image tiers, physical allocation
 traces, native CPU/codec replay and explicit GPU replacement from retained
 sources. The separate native carrier now records both tiers through actual
 Vulkan loads, draws, retirement and controlled device replacement. Physical
-native budget planning, native automatic-loss adoption,
+native budget planning, the wider native automatic-loss surface,
 the remaining host failure histories and complete world-shader reference keep
 #12990 open. Browser and native GPU qualification are distinct claims.
 The [HUD record](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md)
@@ -196,3 +196,11 @@ actor value is compared; this is offline CPU/codec replay, not recreated GPU
 effects. Replay's malloc scratch follows accepted completion boundaries,
 so its independently reconstructed physical peak differs from synchronous
 Vulkan effects. The existing browser input/output identities remain valid.
+
+The [native reported-loss record](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
+adds owned Vulkan submissions and result-driven draw recovery. A timeout
+retains the command pool, fence and all drawn resource borrows until actual
+completion is observed. Rebuilding reuses the existing CPU sources and
+GPU-generation replacement. Actual Vulkan rendering plus explicitly labelled
+SDK-result injections cover both tiers; no physical GPU reset, ordinary-host
+migration, factory/upload recovery or native persistent rescue is claimed.

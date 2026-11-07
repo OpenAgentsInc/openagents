@@ -2,9 +2,12 @@
 // resource selection, borrowing, fixed grants, clocks and recovery ordering.
 #define SW_VULKAN 1
 #define SW_PRESENTATION 1
+#define SW_LOSS_POLICY 1
 #define SW_HEADER "stream-native.h"
 #include "stream-walk-face.c"
 #include "vks.h"
+#include "vks-submit.h"
+#include <time.h>
 
 typedef struct { VkcBuffer buffer; VksImage image; bool live,texture; int64_t generation,bytes; } SwVkObject;
 typedef struct { VksPipe pipe; VksPass pass; VksBinding bindings[4]; uint32_t draws[4]; int64_t key[7]; bool live; } SwVkDraw;
@@ -30,6 +33,38 @@ static size_t vk_present_word_count;
 static bool vk_opened,vk_surface_live;
 static int64_t vk_opens,vk_closes,vk_frames,vk_commands,vk_memory_peak;
 static int64_t vk_close_violations;
+static VksSubmission vk_submission;
+static VkResult vk_submit_result,vk_real_result;
+static int64_t vk_injected_losses,vk_injected_failures,vk_refused_reopens,vk_injections;
+static int64_t vk_hold_next_ms,vk_hold_until_ns,vk_delay_next_ms;
+static int64_t sw_vk_now_ns(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return(int64_t)t.tv_sec*1000000000+t.tv_nsec;}
+// Test-carrier SDK result inputs, always recorded separately from actual
+// Vulkan results. No physical GPU reset or invalid device use is induced.
+int32_t sw_vk_fault(int32_t kind,int64_t count){
+  if(count<0||count>20000)return 0;
+  if(kind==1)vk_injected_losses=count;
+  else if(kind==2)vk_hold_next_ms=count;
+  else if(kind==3){vk_injected_losses=1;vk_refused_reopens=count;}
+  else if(kind==4)vk_injected_failures=count;
+  else if(kind==5)vk_delay_next_ms=count;
+  else return 0;return 1;
+}
+int32_t sw_vk_poll(void){
+  if(!vk_submission.device)return vk_submit_result==VK_SUCCESS;
+  if(vk_hold_until_ns&&sw_vk_now_ns()<vk_hold_until_ns){vk_submit_result=VK_TIMEOUT;return 0;}
+  VkResult result=vks_submission_poll(&vk,&vk_submission,0);vk_submit_result=vk_real_result=result;
+  if(result!=VK_SUCCESS&&result!=VK_ERROR_DEVICE_LOST)return 0;
+  if(vks_submission_retire(&vk,&vk_submission)!=VK_SUCCESS)return 0;
+  vk_hold_until_ns=0;
+  if(result==VK_SUCCESS){vk_frames++;if(vk_injected_losses){vk_injected_losses--;vk_injections++;vk_submit_result=VK_ERROR_DEVICE_LOST;}
+    else if(vk_injected_failures){vk_injected_failures--;vk_injections++;vk_submit_result=VK_ERROR_OUT_OF_HOST_MEMORY;}}
+  if(vk_delay_next_ms){int64_t delay=vk_delay_next_ms;vk_delay_next_ms=0;vk_injections++;
+    struct timespec held={.tv_sec=delay/1000,.tv_nsec=(delay%1000)*1000000};while(nanosleep(&held,&held)&&errno==EINTR){}
+  }
+  return vk_submit_result==VK_SUCCESS;
+}
+int64_t sw_vk_submission_info(int32_t field){switch(field){case 0:return vk_submission.pending;case 1:return vk_submit_result;case 2:return vk_submission.device!=VK_NULL_HANDLE;case 3:return vk_real_result;case 4:return vk_injections;case 5:return vk_refused_reopens;case 6:return vk_hold_until_ns;default:return -1;}}
+
 
 static int64_t sw_vk_memory(void) {
   if(!vk_opened)return 0;
@@ -53,6 +88,10 @@ int32_t sw_vk_open(coax_v_u8 shader,coax_v_u8 hud_shader,coax_v_u8 present_shade
   vk_hud_words=(const uint32_t*)hud_shader.data;vk_hud_word_count=(size_t)hud_shader.count/4;
   vk_present_words=(const uint32_t*)present_shader.data;vk_present_word_count=(size_t)present_shader.count/4;
   vkc_open(&vk);vk_opened=true;vk_opens++;return 1;
+}
+int32_t sw_vk_reopen(void){
+  if(vk_refused_reopens){vk_refused_reopens--;return 0;}
+  return sw_vk_open((coax_v_u8){(uint8_t*)vk_words,vk_word_count*4},(coax_v_u8){(uint8_t*)vk_hud_words,vk_hud_word_count*4},(coax_v_u8){(uint8_t*)vk_present_words,vk_present_word_count*4});
 }
 int32_t sw_vk_make_surface(void){
   if(!vk_opened||vk_surface_live||!fixed_live[0]||!fixed_live[1]||!fixed_live[2]||!fixed_live[6]||!fixed_live[7]||!fixed_live[8])return 0;
@@ -107,7 +146,8 @@ static void sw_vk_record_draw(VkCommandBuffer cmd,void *user){
   vks_pipe_bind(&vk_hud_pipe,cmd,&vk_hud_pass);vkCmdDraw(cmd,(uint32_t)hud_count,1,0,0);vks_surface_end(cmd);vks_pipe_record(&vk_present_pipe,cmd,&vk_present_pass);
 }
 int32_t sw_vk_render(void){
-  if(!vk_surface_live)return 0;int n=sw_host_draw_count();if(n<0||n>16)return 0;
+  vk_submit_result=VK_ERROR_INITIALIZATION_FAILED;
+  if(!vk_surface_live||vk_submission.device)return 0;int n=sw_host_draw_count();if(n<0||n>16)return 0;
   int32_t hn=sw_host_hud(320,180);if(hn<=0||hn>2048)return 0;memcpy(vk_hud_vertices.map,hud_vertices,(size_t)hn*48);
   for(int i=0;i<n;i++){
     SwVkDraw *d=&vk_draws[i];int64_t key[7];for(int f=0;f<7;f++)key[f]=sw_host_draw(i,f);
@@ -124,7 +164,11 @@ int32_t sw_vk_render(void){
       vks_pipe_open(&vk,&d->pipe,&d->pass);d->live=true;
     }
   }
-  vks_submit(&vk,sw_vk_record_draw,&n);vk_frames++;vk_commands+=n;return 1;
+  VkResult submitted=vks_submission_begin(&vk,&vk_submission,sw_vk_record_draw,&n);vk_submit_result=vk_real_result=submitted;
+  if(submitted!=VK_SUCCESS)return 0;
+  vk_commands+=n;
+  if(vk_hold_next_ms){vk_hold_until_ns=sw_vk_now_ns()+vk_hold_next_ms*1000000;vk_hold_next_ms=0;}
+  return sw_vk_poll();
 }
 int32_t sw_vk_capture(coax_v_u8 out){
   if(!vk_surface_live||out.count!=320*180*4||!fixed_live[3])return 0;
@@ -132,7 +176,7 @@ int32_t sw_vk_capture(coax_v_u8 out){
   memcpy(out.data,readback.map,(size_t)out.count);vkc_free(&vk,&readback);return 1;
 }
 int32_t sw_vk_close(void){
-  if(!vk_opened)return 0;for(int i=0;i<64;i++)if(stages[i].buf)return 0;
+  if(!vk_opened||vk_submission.device)return 0;for(int i=0;i<64;i++)if(stages[i].buf)return 0;
   if(vk_surface_live){const int needed[6]={0,1,2,6,7,8};for(int i=0;i<6;i++)if(!fixed_live[needed[i]])vk_close_violations++;}
   for(int i=0;i<64;i++)if(!sw_vk_drop(i,vk_objects[i].generation))return 0;
   sw_vk_pipes_close();
@@ -143,7 +187,7 @@ int64_t sw_vk_info(int32_t field){
   int64_t live=0,bytes=0,stage_n=0,stage_bytes=0;for(int i=0;i<64;i++){if(vk_objects[i].live){live++;bytes+=vk_objects[i].bytes;}if(stages[i].buf){stage_n++;stage_bytes+=(int64_t)stages[i].size;}}
   switch(field){case 0:return live;case 1:return bytes;case 2:return stage_n;case 3:return stage_bytes;case 4:return vk_opened;case 5:return vk_opens;case 6:return vk_closes;case 7:return vk_frames;case 8:return vk_commands;
     case 9:return vkc_validation_errors;case 10:return vkc_validation_warnings;case 11:return vk.validating;case 12:return vk.props.vendorID;case 13:return vk.props.deviceID;case 14:return vk.props.apiVersion;case 15:return vk.props.driverVersion;case 16:return sw_vk_memory();case 17:return vk_memory_peak;
-    case 18:return sizeof vk+sizeof stages+sizeof vk_uniforms+sizeof vk_color+sizeof vk_depth+sizeof vk_surface+sizeof vk_sampler+sizeof vk_objects+sizeof vk_draws+sizeof vk_words+sizeof vk_word_count+sizeof vk_opened+sizeof vk_surface_live+sizeof vk_opens+sizeof vk_closes+sizeof vk_frames+sizeof vk_commands+sizeof vk_memory_peak+sizeof vk_hud_vertices+sizeof vk_hud_uniforms+sizeof vk_hud_pipe+sizeof vk_hud_pass+sizeof vk_hud_binding+sizeof vk_hud_words+sizeof vk_hud_word_count+sizeof vk_hdr+sizeof vk_present_pipe+sizeof vk_present_pass+sizeof vk_present_bindings+sizeof vk_present_words+sizeof vk_present_word_count+sizeof vk_close_violations;
+    case 18:return sizeof vk+sizeof stages+sizeof vk_uniforms+sizeof vk_color+sizeof vk_depth+sizeof vk_surface+sizeof vk_sampler+sizeof vk_objects+sizeof vk_draws+sizeof vk_words+sizeof vk_word_count+sizeof vk_opened+sizeof vk_surface_live+sizeof vk_opens+sizeof vk_closes+sizeof vk_frames+sizeof vk_commands+sizeof vk_memory_peak+sizeof vk_hud_vertices+sizeof vk_hud_uniforms+sizeof vk_hud_pipe+sizeof vk_hud_pass+sizeof vk_hud_binding+sizeof vk_hud_words+sizeof vk_hud_word_count+sizeof vk_hdr+sizeof vk_present_pipe+sizeof vk_present_pass+sizeof vk_present_bindings+sizeof vk_present_words+sizeof vk_present_word_count+sizeof vk_close_violations+sizeof vk_submission+sizeof vk_submit_result+sizeof vk_real_result+sizeof vk_injected_losses+sizeof vk_injected_failures+sizeof vk_refused_reopens+sizeof vk_injections+sizeof vk_hold_next_ms+sizeof vk_hold_until_ns+sizeof vk_delay_next_ms;
     case 19:return vk_close_violations;default:return -1;}
 }
 int32_t sw_vk_name(coax_v_u8 out){size_t n=strlen(vk.props.deviceName);if(n>(size_t)out.count)return -1;memcpy(out.data,vk.props.deviceName,n);return(int32_t)n;}
