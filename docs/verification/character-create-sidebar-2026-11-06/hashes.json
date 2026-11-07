@@ -1,0 +1,8 @@
+{
+  "apps/openagents-web/charactercreator.coax": "010e98bce92136e43539fdb2afbd1139222d052a2ba017723c8f57268cc2ca4b",
+  "apps/openagents-web/gpu/character-glade.coax": "e9f22b83738577136adfcb0fd72109791fb27b19190218b5e59fd29fc69b6307",
+  "apps/openagents-web/gpu/charactercreator.coax": "c2e7976f6bc11c59df0313e1eefc86de879a634c586185a736a9b9a61aafcf2e",
+  "apps/openagents-web/charactercreator.wgsl": "5110deca60478d7e5fc725d464147193d5f04cd0553486c60176d22e283cbf28",
+  "apps/openagents-web/fivelab.wgsl": "62f04a0d8dd16034ecc4e540e899ac77fd0fc99d5dc8b35500a840e88f5c5772",
+  "apps/openagents-web/build/fivelab.wasm": "66f0e973177070db8a6f70199496d08ed110d0bfb76d56fe968685262d7e3416"
+}

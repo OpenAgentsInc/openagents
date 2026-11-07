@@ -120,20 +120,17 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,visibility:f32)->V4 {
  colour=cg_atmosphere(colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
 
-#test "glade mobile panels cover the first appearance row while leaving the figure visible" {
- #assert cg_ui_cover(v2(20,360),390,844,1) && !cg_ui_cover(v2(190,300),390,844,1);
- #assert cg_ui_cover(v2(100,250),1440,900,1) && !cg_ui_cover(v2(720,250),1440,900,1);
-}
-#test "glade save controls have solid backgrounds at both screen sizes" {
- #assert cg_ui_cover(v2(630,860),1440,900,1) && cg_ui_cover(v2(800,860),1440,900,1);
- #assert cg_ui_cover(v2(100,100),390,844,1) && !cg_ui_cover(v2(195,200),390,844,1);
+#test "glade controls use a single left glass panel at 75 percent opacity" {
+ #assert cg_ui_cover(v2(30,120),1440,900,1) && !cg_ui_cover(v2(1400,250),1440,900,1);
+ #assert cg_ui_cover(v2(100,700),1440,900,1) && !cg_ui_cover(v2(720,700),1440,900,1);
+ #assert cg_panel_opacity(v2(100,250),1440,900,1)==0.75 && cg_panel_opacity(v2(720,250),1440,900,1)==0;
+ #assert cg_ui_cover(v2(20,360),390,844,1) && !cg_ui_cover(v2(195,200),390,844,1);
 }
 cg_ui_cover :: (p:V2,w:f32,h:f32,k:f32)->bool {
- if (w<840.0f32*k) {return p.y>h-504.0f32*k || ((p.y>82.0f32*k)&&(p.y<124.0f32*k)&&(p.x>12.0f32*k)&&(p.x<w-12.0f32*k));}
- if ((p.y>h-56.0f32*k)&&(p.y<h-20.0f32*k)&&(p.x>w*0.5f32-164.0f32*k)&&(p.x<w*0.5f32+174.0f32*k)) {return true;}
- return ((p.x<286.0f32*k)||(p.x>w-286.0f32*k))&&(p.y>140.0f32*k);
+ if (w<840.0f32*k || h<760.0f32*k) {return p.y>h-504.0f32*k || ((p.y>82.0f32*k)&&(p.y<124.0f32*k)&&(p.x>12.0f32*k)&&(p.x<w-12.0f32*k));}
+ return p.x>=16.0f32*k && p.x<=350.0f32*k && p.y>=84.0f32*k && p.y<=730.0f32*k;
 }
-
+cg_panel_opacity :: (p:V2,w:f32,h:f32,k:f32)->f32 {return ifx cg_ui_cover(p,w,h,k) then 0.75f32 else 0.0f32;}
 
 #test "glade shadow projection contains the clearing and separates light depth" {
  a:=cg_shadow_clip(v3(0,0,0));b:=cg_shadow_clip(v3(0,1,0));
@@ -215,7 +212,7 @@ cg_contact_ao :: (pixel:V2,u:[]f32,aux:Tex2D)->f32 {
 }
 charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
  pixel:=v2(pos.x,pos.y);uv:=v2(pos.x/u[0],pos.y/u[1]);raw:=gpu_sample_level(post_light,post_lin,uv,0);
- if (u[10]<1.5f32 || ((u[11]<0.5f32)&&cg_ui_cover(pixel,u[0],u[1],u[4]))) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
+ if (u[10]<1.5f32) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
  a:=wg_load_2d(post_aux,cg_post_pixel(pixel,wg_dims_2d(post_aux)),0);
  c:=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);c=scale3(c,1.0f32-(1.0f32-cg_contact_ao(pixel,u,post_aux))*saturate(a.z));
  glow:=add3(scale3(cg_post_sample(post_quarter,post_lin,uv),0.12f32),scale3(cg_post_sample(post_eighth,post_lin,uv),0.10f32));
@@ -226,7 +223,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(c);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(c);if (u[11]<0.5f32) {result=mix3(result,v3(0.07f32,0.095f32,0.085f32),cg_panel_opacity(pixel,u[0],u[1],u[4]));}return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;

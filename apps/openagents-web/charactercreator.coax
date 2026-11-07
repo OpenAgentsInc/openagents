@@ -150,20 +150,25 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
 }
 
 inside :: (b:Box,x:f32,y:f32)->bool { return x>=b.x0 && x<=b.x1 && y>=b.y0 && y<=b.y1; }
+#test "creator desktop controls share one compact left sidebar without overlapping actions" {
+ s:[1]Creator;layout(s[..],1440,900,1);
+ for i:0..<13 {b:=s[0].boxes[i];#assert b.x0==28 && b.x1==332 && b.y1-b.y0==36;if i>0 {#assert b.y0>=s[0].boxes[i-1].y1+4;}}
+ for i:13..<18 {if i==15 {continue;}b:=s[0].boxes[i];#assert b.x0>=28 && b.x1<=332 && b.y1<=714;}
+ #assert s[0].boxes[13].y0>s[0].boxes[12].y1 && s[0].boxes[16].y0>s[0].boxes[13].y1;
+}
 layout :: (s:[]Creator,w:f32,h:f32,k:f32) {
-  s[0].width=w; s[0].height=h; s[0].scale=k; s[0].mobile=w<840*k;
-  for i:0..<13 {
-    col:=i/7; row:=i%7; x:=24*k+f32(col)*(w-286*k); y:=(164+f32(row)*76)*k;
-    bw:=238*k; bh:=53*k;
-    if s[0].mobile { col=i%2; row=i/2; bw=(w-36*k)/2; x=12*k+f32(col)*(bw+12*k); y=h-484*k+f32(row)*60*k; bh=42*k; }
-    s[0].boxes[i]=Box.{x0=x,y0=y,x1=x+bw,y1=y+bh};
-  }
-  by:=h-56*k;
-  s[0].boxes[13]=Box.{x0=24*k,y0=by,x1=150*k,y1=by+36*k};
-  s[0].boxes[14]=Box.{x0=w-174*k,y0=by,x1=w-24*k,y1=by+36*k};
-  s[0].boxes[16]=ifx s[0].mobile then Box.{x0=12*k,y0=82*k,x1=w/2-6*k,y1=124*k} else Box.{x0=w/2-164*k,y0=by,x1=w/2-10*k,y1=by+36*k};
-  s[0].boxes[17]=ifx s[0].mobile then Box.{x0=w/2+6*k,y0=82*k,x1=w-12*k,y1=124*k} else Box.{x0=w/2+6*k,y0=by,x1=w/2+174*k,y1=by+36*k};
-  s[0].boxes[15]=ifx s[0].mobile then Box.{x0=w/2+6*k,y0=h-124*k,x1=w-12*k,y1=h-82*k} else Box.{x0=w/2-110*k,y0=by,x1=w/2+110*k,y1=by+36*k};
+ s[0].width=w;s[0].height=h;s[0].scale=k;s[0].mobile=w<840*k || h<760*k;
+ for i:0..<13 {
+  x:=28*k;y:=(102+f32(i)*40)*k;bw:=304*k;bh:=36*k;
+  if s[0].mobile {col:=i%2;row:=i/2;bw=(w-36*k)/2;x=12*k+f32(col)*(bw+12*k);y=h-484*k+f32(row)*60*k;bh=42*k;}
+  s[0].boxes[i]=Box.{x0=x,y0=y,x1=x+bw,y1=y+bh};
+ }
+ by:=ifx s[0].mobile then h-56*k else 634*k;
+ s[0].boxes[13]=Box.{x0=28*k,y0=by,x1=172*k,y1=by+36*k};
+ s[0].boxes[14]=ifx s[0].mobile then Box.{x0=w-174*k,y0=by,x1=w-24*k,y1=by+36*k} else Box.{x0=188*k,y0=by,x1=332*k,y1=by+36*k};
+ s[0].boxes[16]=ifx s[0].mobile then Box.{x0=12*k,y0=82*k,x1=w/2-6*k,y1=124*k} else Box.{x0=28*k,y0=678*k,x1=172*k,y1=714*k};
+ s[0].boxes[17]=ifx s[0].mobile then Box.{x0=w/2+6*k,y0=82*k,x1=w-12*k,y1=124*k} else Box.{x0=188*k,y0=678*k,x1=332*k,y1=714*k};
+ s[0].boxes[15]=ifx s[0].mobile then Box.{x0=w/2+6*k,y0=h-124*k,x1=w-12*k,y1=h-82*k} else Box.{x0=28*k,y0=by,x1=172*k,y1=by+36*k};
 }
 value :: (s:Creator,f:int)->string {
   if f==0 { return ifx s.female then "FEMALE" else "MALE"; }
@@ -199,18 +204,18 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.48,0.56,0.59); gold:=ink(k,0.83,0.69,0.43);
   n=text(out,n,"Character Create",24*k,54*k,(ifx s[0].mobile then 18 else 22)*k,white);
   for i:0..<13 {
-    b:=s[0].boxes[i]; cap:=ifx s[0].mobile then 10.0f32 else 12.0f32;
-    n=text(out,n,FIELD_NAMES[i],b.x0,b.y0-7*k,8*k,dim);
+    b:=s[0].boxes[i]; cap:=10.0f32;
+    if s[0].mobile {n=text(out,n,FIELD_NAMES[i],b.x0,b.y0-7*k,8*k,dim);}else {n=text(out,n,(ifx i==11 then "WEAR PART" else FIELD_NAMES[i]),b.x0,b.y0+22*k,6.7*k,ink(k,0.64,0.69,0.65));}
     selected:=s[0].focused==i;
     c:=ifx selected then gold else dim;
     n=line(out,n,b.x0,b.y1,b.x1,b.y1,k,c.red,c.green,c.blue);
-    n=text(out,n,"<",b.x0+4*k,b.y0+cap*k+10*k,cap*k,c);
+    n=text(out,n,"<",b.x0+(ifx s[0].mobile then 4.0f32 else 116.0f32)*k,b.y0+cap*k+10*k,cap*k,c);
     value_cap:=ifx i==10 then (ifx s[0].mobile then 6.5f32 else 8.5f32) else cap;
-    n=text(out,n,value(s[0],i),b.x0+25*k,b.y0+cap*k+10*k,value_cap*k,white);
+    n=text(out,n,value(s[0],i),b.x0+(ifx s[0].mobile then 25.0f32 else 138.0f32)*k,b.y0+cap*k+10*k,value_cap*k,white);
     n=text(out,n,">",b.x1-14*k,b.y0+cap*k+10*k,cap*k,c);
     if i==4 || i==5 || i==7 || i==12 {
       rgb:=ifx i==4 then DYES[s[0].dye] else ifx i==5 then SKINS[s[0].skin] else ifx i==12 then EYES[s[0].eye_color] else HAIRS[s[0].hair_color];
-      if lit(out,n,b.x0+26*k,b.y1-7*k,b.x1-26*k,b.y1-7*k,2*k,1,0,rgb[0],rgb[1],rgb[2],0) { n+=6; }
+      if lit(out,n,b.x0+(ifx s[0].mobile then 26.0f32 else 138.0f32)*k,b.y1-5*k,b.x1-26*k,b.y1-5*k,2*k,1,0,rgb[0],rgb[1],rgb[2],0) { n+=6; }
     }
   }
   for i:13..<15 { b:=s[0].boxes[i]; n=text(out,n,ifx i==13 then "RESET" else "SURPRISE ME",b.x0+10*k,b.y0+23*k,10*k,gold); }
@@ -247,7 +252,7 @@ pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if phase==2 || phase==3 {
     i:=s[0].down;s[0].down=-1;s[0].dragging=false;
     if phase==2 && i>=0 && inside(s[0].boxes[i],x,y) {
-      if i<13 { change(s,i,ifx x<s[0].boxes[i].x0+22*s[0].scale then -1 else 1); }
+      if i<13 { change(s,i,ifx x<s[0].boxes[i].x0+(ifx s[0].mobile then 22.0f32 else 136.0f32)*s[0].scale then -1 else 1); }
       else if i==13 { reset(s); }
       else if i==16 || i==17 {request_player(s,i==17);}
       else if i==15 {s[0].pan_mode=!s[0].pan_mode;}

@@ -39,10 +39,10 @@ blend further flattened the materials.
   A peak-channel shoulder applies one RGB gain to preserve hue in highlights;
   the final pass performs the sRGB encode. The already-authored sky is encoded
   without applying the surface shoulder a second time.
-- The private HUD wrapper converts tint before multiplying by glyph coverage.
-  Solid UI regions bypass scene postprocessing. The existing character material
-  output crosses an explicit display-to-linear compatibility boundary; its
-  legacy BRDF is retained.
+- The shared host draws HUD strokes on the final display canvas after the post
+  pass. The private HUD wrapper therefore preserves their display colors. The
+  75%-opaque sidebar is composited over the world by postprocessing before the
+  HUD; no opaque background depth mask blocks the world behind it.
 
 The auxiliary target now holds octahedral normal XY, indirect luminance share,
 and signed camera depth. Contact shading weights its attenuation by that

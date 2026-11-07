@@ -1,5 +1,9 @@
 # Owner actions
 
+## Character Create compact sidebar (2026-11-06)
+
+- Reload Character Create on `http://127.0.0.1:8817/worlds/character-creator` to load the compact left sidebar with 75% background opacity. The preview keeps the same origin and saved appearance; it now serves the tested asset-library checkout.
+
 ## Character Create → Everglade direct entry (2026-11-06)
 
 - Reload the existing Everglade tab at `http://127.0.0.1:8817/worlds/everglade` once to replace its old running module. The local preview has the tested client and room-worker build. Your saved Character Create profile now enters directly; no second character picker or Enter confirmation is required.

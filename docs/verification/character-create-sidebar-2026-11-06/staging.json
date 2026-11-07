@@ -1,0 +1,14 @@
+{
+  "index.html": {
+    "url": "/build/fivelab.62f04a0d8dd1.wgsl",
+    "sha256": "62f04a0d8dd16034ecc4e540e899ac77fd0fc99d5dc8b35500a840e88f5c5772",
+    "bytes": 84361,
+    "shader_attributes": 1
+  },
+  "realms/character-creator/index.html": {
+    "url": "/build/charactercreator.5110deca6047.wgsl",
+    "sha256": "5110deca60478d7e5fc725d464147193d5f04cd0553486c60176d22e283cbf28",
+    "bytes": 93036,
+    "shader_attributes": 1
+  }
+}

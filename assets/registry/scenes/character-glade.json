@@ -112,7 +112,7 @@
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "ca5cab44bcf0c5679b70bdc2aa507d4d0c6b731a33139ebab2219c9774fd0bbb"
+    "sha256": "e9f22b83738577136adfcb0fd72109791fb27b19190218b5e59fd29fc69b6307"
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
@@ -449,11 +449,11 @@
   },
   "shader_entry": {
     "path": "apps/openagents-web/gpu/charactercreator.coax",
-    "sha256": "21a7e497c2a2c4e1bcf16448723dd034e626107efef961d2c0813f28c4cd65e1"
+    "sha256": "c2e7976f6bc11c59df0313e1eefc86de879a634c586185a736a9b9a61aafcf2e"
   },
   "shader_artifact": {
     "path": "apps/openagents-web/charactercreator.wgsl",
-    "sha256": "d2ef060c720606c54cf55118fdd552f36d45c12a7eb6676be9c1b0acec6710e8"
+    "sha256": "5110deca60478d7e5fc725d464147193d5f04cd0553486c60176d22e283cbf28"
   },
   "camera": {
     "desktop_horizon_fraction": 0.595,
@@ -519,5 +519,14 @@
       "path": "apps/openagents-web/gpu/character-glade-light.coax",
       "sha256": "0053f0f710be3c9c3250fa4a9a975ec27c2cad6ded5b28c9ff006660632d3fb9"
     }
-  ]
+  ],
+  "ui": {
+    "desktop_sidebar": "left",
+    "background_opacity": 0.75,
+    "row_pitch_px": 40,
+    "row_hit_height_px": 36,
+    "mobile_sidebar": "bottom",
+    "hud_colour_space": "final display canvas after postprocessing",
+    "scene_only_ui": false
+  }
 }

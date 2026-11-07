@@ -1,0 +1,68 @@
+[
+  {
+    "pixel": [
+      30,
+      90
+    ],
+    "scene_rgb": [
+      173,
+      234,
+      245
+    ],
+    "sidebar_rgb": [
+      57,
+      77,
+      78
+    ],
+    "expected_75_percent": [
+      57,
+      77,
+      78
+    ],
+    "max_delta": 0
+  },
+  {
+    "pixel": [
+      320,
+      90
+    ],
+    "scene_rgb": [
+      178,
+      235,
+      247
+    ],
+    "sidebar_rgb": [
+      58,
+      77,
+      78
+    ],
+    "expected_75_percent": [
+      58,
+      77,
+      78
+    ],
+    "max_delta": 0
+  },
+  {
+    "pixel": [
+      340,
+      95
+    ],
+    "scene_rgb": [
+      178,
+      236,
+      246
+    ],
+    "sidebar_rgb": [
+      58,
+      77,
+      78
+    ],
+    "expected_75_percent": [
+      58,
+      77,
+      78
+    ],
+    "max_delta": 0
+  }
+]

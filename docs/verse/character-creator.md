@@ -248,3 +248,16 @@ release it, and an explicitly opened in-world picker remains manual.
 
 The browser handoff test waits for an actual room seat without pressing Enter
 to dismiss a dialog, and rejects any automatic picker on reload.
+
+## Compact sidebar
+
+Desktop appearance choices, Reset/Surprise Me and Save/Use actions share one
+compact left sidebar. Rows are 40 display pixels apart with 36-pixel hit areas.
+Labels and values sit on one line; the right side remains unobstructed. Narrow
+or short layouts use the existing single bottom panel.
+
+The tinted panel is 75% opaque: the private post pass composites it over the
+fully rendered world, then the shared host draws crisp HUD strokes on the final
+canvas. It does not use an opaque depth mask. Scene-only comparison mode omits
+the panel and all controls. Appearance records and compatibility keys remain
+unchanged. See `docs/verification/character-create-sidebar-2026-11-06/`.
