@@ -1,0 +1,71 @@
+// Shared native qualifier/replay support. Requests the real existing budget,
+// inbox and renderer; it neither clones the budget nor creates GPU objects.
+#load "../../world/stream-walk.coax";
+#load "../stream-pressure-conformance.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/json/json.coax";
+ScpProbe :: struct {
+  valid: bool;
+  manifest: [488] u8;
+  manifest_id: assets.AssetId;
+  plan: ResourcePlan;
+  words: [13] int;
+  before: [9] int;
+  after: [9] int;
+  state_before: assets.AssetId;
+  state_after: assets.AssetId;
+  state_normalized: assets.AssetId;
+}
+scp_read :: (scene: Jv, dir: string, out: [] u8) -> int {
+  item := jv_get(scene, 0, "overcap_probe"); hex: [64] u8;
+  if jv_str(scene, jv_get(scene, item, "sha256"), hex[..]) != 64 { return -1; }
+  name: [68] u8; for c, i: hex { name[i] = c; } for c, i: ".raw" { name[64 + i] = c; }
+  path: [4096] u8; n := fs_read(fs_join(dir, cast(string) name[..], path[..]), out);
+  if n < 1 || n != jv_int(scene, jv_get(scene, item, "bytes"), -1) || !sw_auth(out[0..<n], cast(string) hex[..]) { return -1; }
+  return n;
+}
+scp_counters :: (s: [] SwWalk) -> [9] int {
+  return [9] int.[s[0].tick, s[0].queue[0].bytes, s[0].queue[0].count, s[0].queue[0].serial,
+    s[0].registry[0].epoch, s[0].registry[0].live, s[0].registry[0].words, s[0].stream[0].requests, s[0].stream[0].serial];
+}
+scp_apply :: (s: [] SwWalk, source: [] u8) -> ScpProbe #export_c #effects(all) {
+  out: ScpProbe;
+  if s.count != 1 || !s[0].valid || s[0].closing { return out; }
+  inputs := [1] [] u8.[source]; specs := [1] ResourceSpec.[ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, backend = ResourceBackend.vulkan, side = 8}];
+  deps: [1] ResourceDependencies; candidate: [1] ResourceManifest;
+  if resource_manifest_build(inputs[..], specs[..], deps[..], out.manifest[..]) != ResourceManifestStatus.ok { return out; }
+  out.manifest_id = assets.asset_id(cast(string) out.manifest[..]);
+  if resource_manifest_read(out.manifest[..], out.manifest_id, candidate[..]) != ResourceManifestStatus.ok || !resource_matches(candidate[0].entries[0].plan, source) { return out; }
+  out.plan = candidate[0].entries[0].plan; c := out.plan.cost; budget := s[0].stream[0].budget[0]; owners := 0;
+  for owner: s[0].stream[0].owners { if owner.phase != ResourceOwnerPhase.absent { owners += 1; } }
+  out.before = scp_counters(s); out.state_before = sw_state_digest(s, s[0].player.clock, 0);
+  lease := [1] ResourceAdmission.[resource_budget_admit(s[0].stream[0].budget[..], s[0].queue[..], s[0].registry[..], out.plan)];
+  status := lease[0].status;
+  // An unexpected grant is a failed qualification, but its speculative
+  // tickets still have one owner and must be retired before returning.
+  if status == ResourceAdmissionStatus.ok {
+    if !resource_budget_settle(s[0].stream[0].budget[..], s[0].queue[..], lease[..]) || !resource_budget_release(s[0].stream[0].budget[..], s[0].queue[..], s[0].registry[..], lease[..]) { return out; }
+  }
+  out.after = scp_counters(s); out.state_after = sw_state_digest(s, s[0].player.clock, 0);
+  normalized := [1] SwWalk.[s[0]]; normalized[0].stream[0].budget[0].refused = budget.refused;
+  out.state_normalized = sw_state_digest(normalized[..], normalized[0].player.clock, 0);
+  unchanged := assets.asset_same(out.state_before, out.state_normalized);
+  for word, i: out.before { unchanged = unchanged && word == out.after[i]; }
+  out.words = [13] int.[cast(int) status, c.encoded + c.decoded + c.gpu + c.objects, c.decode_scratch + c.upload_scratch,
+    budget.used[1], budget.caps[1], budget.used[6], budget.caps[6], budget.total, budget.total_cap, owners,
+    ifx unchanged then 1 else 0, 0, s[0].stream[0].budget[0].refused - budget.refused];
+  out.valid = true; return out;
+}
+// Scalar-view foreign ABI; all admission and report encoding remain Coax.
+scp_write :: (s: [] SwWalk, source: [] u8, words: [] int, manifest: [] u8, hashes: [] u8) -> bool #export_c #effects(all) {
+  if words.count != 31 || manifest.count != 488 || hashes.count != 320 { return false; }
+  probe := scp_apply(s, source); if !probe.valid { return false; }
+  for word, i: probe.words { words[i] = word; }
+  for word, i: probe.before { words[13 + i] = word; }
+  for word, i: probe.after { words[22 + i] = word; }
+  for byte, i: probe.manifest { manifest[i] = byte; }
+  for id, i: [5] assets.AssetId.[probe.manifest_id, probe.plan.content, probe.state_before, probe.state_after, probe.state_normalized] {
+    if !assets.asset_hex(id, hashes[i * 64..<i * 64 + 64]) { return false; }
+  }
+  return true;
+}

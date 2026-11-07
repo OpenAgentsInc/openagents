@@ -1,0 +1,431 @@
+{
+  "authorities": {
+    "pressure_mutants": 63,
+    "replay_profile_mutants": 7,
+    "survivors": 0
+  },
+  "base_commit": "505962f336",
+  "browser": {
+    "bytes": 143578,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/category-browser-rescue.wasm",
+    "sha256": "2da263774ae49149c76457516776683a5667654b412dd9035ea823b8c7bb0345"
+  },
+  "c_compiler": "GCC 15.2.0",
+  "cases": [
+    {
+      "attempts": 18,
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "category_pressure": {
+        "aggregate_cap": 32768,
+        "aggregate_used": 15656,
+        "continued_paid_steps": 8,
+        "manifest_sha256": "3a97fd81a997b1ef4459e85985db634ab749b9986cffeddff1f1b2027ffbc809",
+        "requested_retained": 939,
+        "requested_scratch": 638,
+        "texture_cap": 512,
+        "texture_used": 256,
+        "unchanged_image_channels": 230400
+      },
+      "category_settled_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.158945,
+        "p95": 4.262974,
+        "p99": 5.111701
+      },
+      "frames": 43,
+      "owner_cpu_peaks": {
+        "0": 284,
+        "1": 216,
+        "10": 216,
+        "11": 296,
+        "12": 3284,
+        "13": 744,
+        "14": 284,
+        "15": 216,
+        "16": 296,
+        "18": 744,
+        "2": 456,
+        "3": 3624,
+        "4": 284,
+        "5": 216,
+        "6": 296,
+        "7": 3284,
+        "8": 744,
+        "9": 284
+      },
+      "physical_events": 124,
+      "recovery_image_sha256": "80e658f14f95f2092605fc1262224825f1f2012f3f923dd6d9802794811c8082",
+      "recovery_ms": 121.435715,
+      "sdk_memory_peak": 1648592,
+      "sdk_static_bytes": 22794,
+      "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+      "stage_ms": {
+        "allocation": {
+          "p50": 0.071986,
+          "p95": 0.175267,
+          "p99": 0.175267
+        },
+        "decode": {
+          "p50": 0.001917,
+          "p95": 0.011624,
+          "p99": 0.011624
+        },
+        "source": {
+          "p50": 0.02036,
+          "p95": 0.02847,
+          "p99": 0.02847
+        },
+        "total": {
+          "p50": 0.769545,
+          "p95": 1.080561,
+          "p99": 1.080561
+        },
+        "upload": {
+          "p50": 0.475283,
+          "p95": 0.652273,
+          "p99": 0.652273
+        }
+      },
+      "tampered_histories_rejected": 62,
+      "ticks": 139,
+      "tier": 0
+    },
+    {
+      "attempts": 18,
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 268,
+        "2": 648,
+        "3": 804,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "category_pressure": {
+        "aggregate_cap": 32768,
+        "aggregate_used": 15784,
+        "continued_paid_steps": 8,
+        "manifest_sha256": "3a97fd81a997b1ef4459e85985db634ab749b9986cffeddff1f1b2027ffbc809",
+        "requested_retained": 939,
+        "requested_scratch": 638,
+        "texture_cap": 512,
+        "texture_used": 288,
+        "unchanged_image_channels": 230400
+      },
+      "category_settled_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 288,
+        "2": 648,
+        "3": 864,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13232,
+      "device": "NVIDIA GeForce RTX 4080",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 2.186139,
+        "p95": 4.426645,
+        "p99": 5.182772
+      },
+      "frames": 43,
+      "owner_cpu_peaks": {
+        "0": 316,
+        "1": 216,
+        "10": 216,
+        "11": 296,
+        "12": 3284,
+        "13": 744,
+        "14": 316,
+        "15": 216,
+        "16": 296,
+        "18": 744,
+        "2": 456,
+        "3": 3624,
+        "4": 316,
+        "5": 216,
+        "6": 296,
+        "7": 3284,
+        "8": 744,
+        "9": 316
+      },
+      "physical_events": 124,
+      "recovery_image_sha256": "80e658f14f95f2092605fc1262224825f1f2012f3f923dd6d9802794811c8082",
+      "recovery_ms": 136.769776,
+      "sdk_memory_peak": 1650640,
+      "sdk_static_bytes": 22794,
+      "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+      "stage_ms": {
+        "allocation": {
+          "p50": 0.07486,
+          "p95": 0.220659,
+          "p99": 0.220659
+        },
+        "decode": {
+          "p50": 0.001947,
+          "p95": 0.011583,
+          "p99": 0.011583
+        },
+        "source": {
+          "p50": 0.021129,
+          "p95": 0.030285,
+          "p99": 0.030285
+        },
+        "total": {
+          "p50": 0.798259,
+          "p95": 1.088885,
+          "p99": 1.088885
+        },
+        "upload": {
+          "p50": 0.495517,
+          "p95": 0.605434,
+          "p99": 0.605434
+        }
+      },
+      "tampered_histories_rejected": 62,
+      "ticks": 139,
+      "tier": 1
+    },
+    {
+      "attempts": 18,
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 252,
+        "2": 648,
+        "3": 756,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "category_pressure": {
+        "aggregate_cap": 32768,
+        "aggregate_used": 15656,
+        "continued_paid_steps": 8,
+        "manifest_sha256": "3a97fd81a997b1ef4459e85985db634ab749b9986cffeddff1f1b2027ffbc809",
+        "requested_retained": 939,
+        "requested_scratch": 638,
+        "texture_cap": 512,
+        "texture_used": 256,
+        "unchanged_image_channels": 230400
+      },
+      "category_settled_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 256,
+        "2": 648,
+        "3": 768,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13168,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.490794,
+        "p95": 18.660639,
+        "p99": 26.363823
+      },
+      "frames": 43,
+      "owner_cpu_peaks": {
+        "0": 284,
+        "1": 216,
+        "10": 216,
+        "11": 296,
+        "12": 3284,
+        "13": 744,
+        "14": 284,
+        "15": 216,
+        "16": 296,
+        "18": 744,
+        "2": 456,
+        "3": 3624,
+        "4": 284,
+        "5": 216,
+        "6": 296,
+        "7": 3284,
+        "8": 744,
+        "9": 284
+      },
+      "physical_events": 124,
+      "recovery_image_sha256": "ba60476a8a7c43a580d4b89b5c86e96c14b6f58ec6eeb0384d0c36c645cb05e8",
+      "recovery_ms": 73.646633,
+      "sdk_memory_peak": 1258440,
+      "sdk_static_bytes": 22794,
+      "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+      "stage_ms": {
+        "allocation": {
+          "p50": 0.015214,
+          "p95": 0.049423,
+          "p99": 0.049423
+        },
+        "decode": {
+          "p50": 0.024411,
+          "p95": 0.193139,
+          "p99": 0.193139
+        },
+        "source": {
+          "p50": 0.230978,
+          "p95": 0.410774,
+          "p99": 0.410774
+        },
+        "total": {
+          "p50": 0.521823,
+          "p95": 0.832494,
+          "p99": 0.832494
+        },
+        "upload": {
+          "p50": 0.096876,
+          "p95": 0.329808,
+          "p99": 0.329808
+        }
+      },
+      "tampered_histories_rejected": 62,
+      "ticks": 139,
+      "tier": 0
+    },
+    {
+      "attempts": 18,
+      "category_cpu_peaks": {
+        "0": 3768,
+        "1": 268,
+        "2": 648,
+        "3": 804,
+        "4": 6568,
+        "5": 888,
+        "6": 1728
+      },
+      "category_pressure": {
+        "aggregate_cap": 32768,
+        "aggregate_used": 15784,
+        "continued_paid_steps": 8,
+        "manifest_sha256": "3a97fd81a997b1ef4459e85985db634ab749b9986cffeddff1f1b2027ffbc809",
+        "requested_retained": 939,
+        "requested_scratch": 638,
+        "texture_cap": 512,
+        "texture_used": 288,
+        "unchanged_image_channels": 230400
+      },
+      "category_settled_cpu_logical_gpu_peaks": {
+        "0": 6528,
+        "1": 288,
+        "2": 648,
+        "3": 864,
+        "4": 6568,
+        "5": 888,
+        "6": 0
+      },
+      "core_static_bytes": 873929,
+      "cpu_peak": 13232,
+      "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+      "final_zero_owners": true,
+      "frame_ms": {
+        "p50": 11.324962,
+        "p95": 18.11825,
+        "p99": 27.096641
+      },
+      "frames": 43,
+      "owner_cpu_peaks": {
+        "0": 316,
+        "1": 216,
+        "10": 216,
+        "11": 296,
+        "12": 3284,
+        "13": 744,
+        "14": 316,
+        "15": 216,
+        "16": 296,
+        "18": 744,
+        "2": 456,
+        "3": 3624,
+        "4": 316,
+        "5": 216,
+        "6": 296,
+        "7": 3284,
+        "8": 744,
+        "9": 316
+      },
+      "physical_events": 124,
+      "recovery_image_sha256": "ba60476a8a7c43a580d4b89b5c86e96c14b6f58ec6eeb0384d0c36c645cb05e8",
+      "recovery_ms": 75.869541,
+      "sdk_memory_peak": 1259464,
+      "sdk_static_bytes": 22794,
+      "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+      "stage_ms": {
+        "allocation": {
+          "p50": 0.018591,
+          "p95": 0.065524,
+          "p99": 0.065524
+        },
+        "decode": {
+          "p50": 0.024536,
+          "p95": 0.166872,
+          "p99": 0.166872
+        },
+        "source": {
+          "p50": 0.236542,
+          "p95": 0.315611,
+          "p99": 0.315611
+        },
+        "total": {
+          "p50": 0.48968,
+          "p95": 0.734331,
+          "p99": 0.734331
+        },
+        "upload": {
+          "p50": 0.164817,
+          "p95": 0.358723,
+          "p99": 0.358723
+        }
+      },
+      "tampered_histories_rejected": 62,
+      "ticks": 139,
+      "tier": 1
+    }
+  ],
+  "compiler": "Coax 0.52.0",
+  "cpu": {
+    "bytes": 4564728,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/category-cpu-v3-san/replay",
+    "sha256": "40992fb6e167df06e3a797dd6858babf7c237fa439e8fb318e037a017a1c608f"
+  },
+  "cpu_altered_histories": 68,
+  "cpu_paid_steps": 278,
+  "gpu_altered_receipts": 248,
+  "issue_closed": false,
+  "legacy_cpu_altered_histories": 12,
+  "logical_native_category_only": true,
+  "native": {
+    "bytes": 397000,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/category-native-v3/stream-native",
+    "sha256": "80b861e0042acfee91b3b5f0bd0cb8cef44e483f02a519dbc03ce5dbade931e1"
+  },
+  "sanitized": {
+    "bytes": 5834240,
+    "path": "/home/christopherdavid/.openagents/aethyrforge/streaming-12990/2026-11-07/category-native-san-v1/stream-native",
+    "sha256": "6ea9e7e5f7c99f30f4de5fc0b0048b9244ebd21a5f55ed80ebee67a53735bc22"
+  },
+  "schema": "aethyr.stream-category-runtime.v1"
+}

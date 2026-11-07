@@ -1,5 +1,11 @@
 # World residency and resource ownership
 
+The [native category-pressure qualifier](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
+now requests a real source-derived texture companion against the live
+corridor's budget/inbox/renderer. Its refusal preserves the existing image
+and owners, and CPU replay records the counted admission boundary. Physical
+Vulkan planning and remaining failed/superseded load paths stay open.
+
 `cells.coax` is the historical #12847 controller: 64 m cells, separate
 resident/simulate/draw states, hysteresis, persistent sleeping bodies,
 edge admission, floating origin and recorded completion envelopes.

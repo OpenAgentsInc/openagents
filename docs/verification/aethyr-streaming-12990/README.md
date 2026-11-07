@@ -1,6 +1,9 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [native draw-result record](walk-native-loss.md)
+Issue #12990 remains open. The [actual category-pressure record](walk-category-pressure.md)
+now qualifies texture-line refusal against the native host's live budget,
+with staging/aggregate room, unchanged pixels/owners, continued movement,
+device replacement and exact refusal-boundary CPU replay. The [native draw-result record](walk-native-loss.md)
 adds owned pending submissions, reported-loss recovery, rate/deadline/failure
 stops and zero-step interruption replay. It qualifies actual Vulkan effects
 with explicit SDK-result injection, not a physical GPU reset or the complete
@@ -39,7 +42,7 @@ GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
 real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
 historical failing gates and artifacts. Physical backend and transport/transient
-budget planning, actual category-pressure refusal, remaining failed/superseded
+budget planning, remaining failed/superseded
 load ownership paths and the final adoption/teaching audit still prevent issue
 completion.
 
@@ -154,8 +157,6 @@ copies are published, including a failure after three reservations.
   Current traces reconcile logical resource costs; the native Vulkan
   backing extents and the browser's engine-owned transport arenas require
   explicit treatment alongside the existing aggregate owners.
-- An actual host category-pressure refusal with prior resident content
-  still usable; the current category test remains a component result.
 - Replay the additional load-failure histories as they are recorded. Current
   successful and draw-fault native GPU histories already replay every paid
   step through CPU allocation/codecs in their original backend/cost profile.

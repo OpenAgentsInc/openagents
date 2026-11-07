@@ -15,18 +15,60 @@ import struct
 import subprocess
 import sys
 import tempfile
+from streaming_assets_oracle import png as fixture_png
 
 
 def f32(x):
     return struct.unpack('<f', struct.pack('<f', x))[0]
 
 
+def inspect_category(scene_dir, output, report, costs):
+    """Reconstruct the refused candidate independently from its source PNG."""
+    scene = json.loads((scene_dir / 'scene.json').read_bytes())
+    p = report['categoryPressure']; assert p['schema'] == 'aethyr.stream-category-pressure.v1'
+    probe = scene['overcap_probe']; source = (scene_dir / (probe['sha256'] + '.raw')).read_bytes()
+    assert hashlib.sha256(source).hexdigest() == probe['sha256'] == p['sourceSHA256'] and len(source) == probe['bytes']
+    width, height, pixels, work = fixture_png(source)
+    assert (width, height) == (8, 8) and pixels == bytes((180,172,128,255)) * 64
+    mip_bytes = 4 * sum((8 >> level) ** 2 for level in range(4))
+    plan = (len(source), mip_bytes, mip_bytes, 168, work, mip_bytes, 4, 0, 0, 8, 8, 4, mip_bytes // 4)
+    digest_words = lambda data: struct.pack('<8I', *struct.unpack('>8I', hashlib.sha256(data).digest()))
+    revision = b'RCM1/positions4-1/indices-1/query-box-1/query-capsule-1/htx-1/apw-1/cell-body-1'
+    companion = (struct.pack('<4sIII', b'RCM1', 1, 1, 440) + digest_words(revision) +
+                 struct.pack('<IBBBBI', 1, 5, 1, 1, 0, 8) + digest_words(source) + struct.pack('<13q', *plan) + bytes(292))
+    assert len(companion) == 488 and (output / 'pressure.rcm').read_bytes() == companion
+    assert hashlib.sha256(companion).hexdigest() == p['manifestSHA256']
+    warm = report['warmup'][-1]; retained = sum(plan[:4]); scratch = plan[4] + plan[5]
+    live = {}; queue_serial = 0
+    for frame in report['warmup']:
+        for freed, row, gen, epoch, field, extent in frame['allocations']:
+            key = row, gen, epoch, field
+            if freed: del live[key]
+            else: live[key] = extent; queue_serial += 1
+    owners = len({key[0] for key in live})
+    assert p['words'] == [2,retained,scratch,sum(costs[0][:4]),512,0,2048,warm['info'][8],32768,owners,1,1,1]
+    q = p['words']; assert q[1] > q[4] - q[3] and q[2] <= q[6] - q[5] and q[1] + q[2] <= q[8] - q[7]
+    assert p['before'] == p['after'] and len(p['before']) == 9
+    assert p['before'][:7] == [warm['tick'],warm['info'][10],warm['info'][11],queue_serial,1,warm['gpu'][0] + 6,warm['gpu'][1] // 4 + 256064]
+    assert p['before'][7] == warm['info'][20] and p['before'][8] > 0
+    assert p['cpuBytes'] == warm['info'][14] and p['gpuBytes'] == warm['gpu'][1] and p['gpuOwners'] == warm['gpu'][0] and p['traceEvents'] == 0
+    assert p['stateBefore'] == p['stateNormalized'] != p['stateAfter']
+    assert all(len(bytes.fromhex(p[key])) == 32 for key in ('stateBefore','stateAfter','stateNormalized'))
+    image = (output / 'pressure-before.rgba').read_bytes()
+    assert image == (output / 'pressure-after.rgba').read_bytes() == (output / 'before.rgba').read_bytes() and len(image) == 230400
+    assert len(report['route']) == 8 and report['route'][0]['tick'] == 129 and report['route'][-1]['tick'] == 136
+    return {'requested_retained':retained,'requested_scratch':scratch,'texture_used':q[3],'texture_cap':q[4],
+            'aggregate_used':q[7],'aggregate_cap':q[8],'manifest_sha256':p['manifestSHA256'],
+            'unchanged_image_channels':len(image),'continued_paid_steps':8}
+
+
 def inspect(scene_dir, output, program):
     scene_bytes = (scene_dir / 'scene.json').read_bytes()
     scene = json.loads(scene_bytes)
     report = json.loads((output / 'receipt.json').read_bytes())
-    assert report['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2')
-    hud = report['schema'].endswith('.v2')
+    assert report['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v4')
+    pressure = report['schema'].endswith('.v4')
+    hud = report['schema'] != 'aethyr.stream-walk-native-gpu.v1'
     assert report['backend'] == 1 and report['tier'] in (0, 1)
     assert report['shaderSHA256'] == hashlib.sha256(program.read_bytes()).hexdigest()
     if hud:
@@ -52,7 +94,7 @@ def inspect(scene_dir, output, program):
         assert hashlib.sha256(data).hexdigest() == source['sha256']
         sources.append(data)
         assert costs[row][0] == len(data) and costs[row][5] == costs[row][2]
-    assert len(report['warmup']) == 32 and len(report['route']) in (0, 3200)
+    assert len(report['warmup']) == 32 and (len(report['route']) == 8 if pressure else len(report['route']) in (0, 3200))
     frames = report['warmup'] + report['route'] + report['cleanup']
     allocations, attempts, generation, ready = {}, set(), {}, {}
     outcomes = defaultdict(set)
@@ -177,7 +219,7 @@ def inspect(scene_dir, output, program):
         assert report['finalHUD'][1:] == [sdk[7], 98304, 0, 0]
         assert sdk[19] == 0 and report['fixedGrantsRetainedThroughDestruction']
     assert report['observations'] == [1] * 11 + [0] * 4 + [1] and report['passed']
-    if report['route']:
+    if len(report['route']) == 3200:
         assert set(k[0] for k in attempts) == set(range(64))
         def position(frame):
             return struct.unpack('<f', struct.pack('<I', frame['positionBits'][2]))[0]
@@ -186,6 +228,7 @@ def inspect(scene_dir, output, program):
         for leg in report['routeCells']:
             assert [c[3] for c in leg] == list(range(1, 13))
         assert report['routeCells'][1][0][2] > report['routeCells'][0][0][2] > 0
+    pressure_stats = inspect_category(scene_dir, output, report, costs) if pressure else None
     elapsed.sort()
     quantiles = lambda values: {name: sorted(values)[int((len(values) - 1) * p)] for name, p in [('p50', .5), ('p95', .95), ('p99', .99)]}
     return {'tier': report['tier'], 'device': report['device'], 'frames': len(frames), 'ticks': tick, 'attempts': len(attempts),
@@ -196,7 +239,8 @@ def inspect(scene_dir, output, program):
             'frame_ms': quantiles(elapsed), 'stage_ms': {name: quantiles([t[i] / 1e6 for t in stage_elapsed])
                                                        for i, name in enumerate(('allocation', 'source', 'decode', 'upload', 'total'))},
             'recovery_ms': recovery['elapsedNs'] / 1e6, 'recovery_image_sha256': hashlib.sha256(before).hexdigest(),
-            'source_sha256': retained_at_recovery, 'final_zero_owners': True}
+            'source_sha256': retained_at_recovery, 'final_zero_owners': True,
+            **({'category_pressure': pressure_stats} if pressure else {})}
 
 
 def fault_checks(scene_dir, output, program):
@@ -206,18 +250,23 @@ def fault_checks(scene_dir, output, program):
               'allocation_size', 'allocation_generation', 'missing_allocation', 'duplicate_free', 'missing_completion',
               'ready_key', 'scene_identity', 'shader_identity', 'missing_step', 'direction', 'position', 'tick',
               'final_count', 'schema', 'negative_time')
-    hud = report['schema'].endswith('.v2')
+    hud = report['schema'] != 'aethyr.stream-walk-native-gpu.v1'
+    pressure = report['schema'].endswith('.v4')
+    if pressure: faults += tuple('pressure_word_' + str(i) for i in range(13)) + ('pressure_source','pressure_state','pressure_owner','pressure_image','pressure_tick','pressure_no_continue') + tuple('pressure_cost_' + str(i) for i in range(13))
     if hud:
         faults += ('hud_shader_identity', 'present_shader_identity', 'hud_draw_count', 'hud_early_release',
                    'close_violation', 'close_claim', 'changed_hud', 'display_schema')
     with tempfile.TemporaryDirectory(prefix='aethyr-native-oracle-') as temporary:
         target = Path(temporary)
-        if report['schema'].endswith('.v2'):
+        if hud:
             for file in ('before-hud.f32', 'after-hud.f32'):
                 (target / file).write_bytes((output / file).read_bytes())
         for fault in faults:
             changed = copy.deepcopy(report)
             image = after
+            if pressure:
+                for file in ('pressure-before.rgba','pressure-after.rgba','pressure.rcm'):
+                    (target / file).write_bytes((output / file).read_bytes())
             if hud:
                 (target / 'after-hud.f32').write_bytes((output / 'after-hud.f32').read_bytes())
             if fault == 'image_bit':
@@ -276,6 +325,20 @@ def fault_checks(scene_dir, output, program):
                 (target / 'after-hud.f32').write_bytes(bytes([vertices[0] ^ 1]) + vertices[1:])
             elif fault == 'display_schema':
                 changed['presentationSchema'] += '.unknown'
+            elif fault.startswith('pressure_word_'):
+                changed['categoryPressure']['words'][int(fault.rsplit('_',1)[1])] += 1
+            elif fault == 'pressure_source': changed['categoryPressure']['sourceSHA256'] = 'f' * 64
+            elif fault == 'pressure_state': changed['categoryPressure']['stateNormalized'] = 'f' * 64
+            elif fault == 'pressure_owner': changed['categoryPressure']['gpuOwners'] += 1
+            elif fault == 'pressure_tick': changed['categoryPressure']['before'][0] += 1
+            elif fault == 'pressure_no_continue': changed['route'] = []
+            elif fault == 'pressure_image':
+                pixels = (output / 'pressure-after.rgba').read_bytes()
+                (target / 'pressure-after.rgba').write_bytes(bytes([pixels[0] ^ 1]) + pixels[1:])
+            elif fault.startswith('pressure_cost_'):
+                companion = bytearray((output / 'pressure.rcm').read_bytes()); companion[92 + int(fault.rsplit('_',1)[1]) * 8] ^= 1
+                (target / 'pressure.rcm').write_bytes(companion)
+                changed['categoryPressure']['manifestSHA256'] = hashlib.sha256(companion).hexdigest()
             (target / 'receipt.json').write_text(json.dumps(changed))
             (target / 'before.rgba').write_bytes(before)
             (target / 'after.rgba').write_bytes(image)
@@ -326,7 +389,7 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
     source_bytes = (output / 'receipt.json').read_bytes()
     source = json.loads(source_bytes)
     report = json.loads(replay_path.read_bytes())
-    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v3')
+    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v3', 'aethyr.stream-walk-native-gpu.v4')
     assert report['schema'] == 'aethyr.stream-walk-native-replay.v3'
     assert report['backend'] == source['backend'] == 1 and report['tier'] == source['tier']
     assert report['input_sha256'] == hashlib.sha256(source_bytes).hexdigest()
@@ -377,6 +440,10 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
     assert report['cpu_peak'] == peak <= 32768
     faults = ('first_step', 'interior_step', 'missing_step', 'tick', 'position', 'completion_generation',
               'completion_digest', 'missing_completion', 'backend', 'manifest', 'scene', 'actor_state')
+    if source['schema'].endswith('.v4'):
+        faults += ('pressure_missing','pressure_schema','pressure_clock','pressure_serial')
+        faults += tuple('pressure_word_' + str(i) for i in range(13))
+        faults += tuple('pressure_digest_' + key for key in ('manifestSHA256','sourceSHA256','stateBefore','stateAfter','stateNormalized'))
     with tempfile.TemporaryDirectory(prefix='aethyr-native-cpu-replay-') as temporary:
         target = Path(temporary)
         for fault in faults:
@@ -403,6 +470,13 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
                 changed['sceneSHA256'] = 'f' * 64
             elif fault == 'actor_state':
                 changed['routeCells'][1][0][2] += 1
+            elif fault == 'pressure_missing': del changed['categoryPressure']
+            elif fault == 'pressure_schema': changed['schema'] = 'aethyr.stream-walk-native-gpu.v3'
+            elif fault in ('pressure_clock','pressure_serial'):
+                field = 0 if fault == 'pressure_clock' else 3
+                for key in ('before','after'): changed['categoryPressure'][key][field] += 1
+            elif fault.startswith('pressure_word_'): changed['categoryPressure']['words'][int(fault.rsplit('_',1)[1])] += 1
+            elif fault.startswith('pressure_digest_'): changed['categoryPressure'][fault[len('pressure_digest_'):]] = 'f' * 64
             input_path, result_path = target / (fault + '.json'), target / (fault + '-result.json')
             input_path.write_text(json.dumps(changed))
             env = dict(os.environ, ASAN_OPTIONS='detect_leaks=1:abort_on_error=1', UBSAN_OPTIONS='halt_on_error=1')

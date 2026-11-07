@@ -147,3 +147,21 @@ remain inputs to replay and do not invent paid-step marks.
 seconds. The caller checks the deadline after that return as well as while
 pending, so late completion cannot admit another paid frame. This bounds
 acceptance; it does not preempt a synchronous SDK call while it is blocked.
+
+## Texture category pressure
+
+`--category-pressure` adds a decoder-derived 8×8 texture request after the
+normal warmup. The request calls the existing admission function with the
+live corridor's budget, inbox and renderer registry. Its separate one-entry
+RCM1 companion declares 939 retained bytes and 638 scratch bytes. Staging and
+aggregate room remain available; the 512-byte texture line refuses before
+any candidate resource allocation or publication.
+
+The qualifier compares the complete existing image and ownership before and
+after refusal, continues eight paid movement steps, then exercises controlled
+device replacement and full cleanup. Native observation v4 records this
+additional boundary. CPU replay requires its pressure metadata, reissues the
+same source-derived request between warmup and movement, and matches every
+paid-step digest including the counted refusal. Earlier observation schemas
+remain readable. The [record](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
+names the exact measured tiers and limits.

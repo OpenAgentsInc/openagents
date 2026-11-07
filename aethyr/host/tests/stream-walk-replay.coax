@@ -6,12 +6,14 @@
 #load "../../forge/pack.coax" as packs;
 #load "../recorded-source.coax";
 #load "../stream-replay-profile.coax";
+#load "stream-pressure.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/json/json.coax";
 
 sw_sdk_start :: (source: [] u8, root: [] u8, tier: int, backend: int) -> bool #foreign #effects(all);
 sw_sdk_copy :: (row: int, generation: int, epoch: int, source: [] u8) -> bool #foreign #effects(all);
+sw_sdk_pressure :: (source: [] u8, words: [] int, manifest: [] u8, hashes: [] u8) -> bool #foreign #effects(all);
 sw_host_frame :: (ns: int, direction: f32) -> s32 #foreign #effects(all);
 sw_host_step_count :: () -> s32 #foreign #effects(all);
 sw_host_step_word :: (step: s32, word: s32) -> int #foreign #effects(all);
@@ -160,6 +162,30 @@ swr_frame :: (trace: Jv, frame: int, closing: bool, native: bool, source: [] SwR
   if sw_host_info(14) > sw_host_info(10) { return false; }
   return swr_effects(source, attempts);
 }
+swr_pressure :: (scene: Jv, dir: string, trace: Jv) -> bool {
+  item := jv_get(trace, 0, "categoryPressure"); name: [64] u8;
+  n := jv_str(trace, jv_get(trace, item, "schema"), name[..]);
+  if n < 0 || cast(string) name[0..<n] != "aethyr.stream-category-pressure.v1" { return false; }
+  source: [4096] u8; count := scp_read(scene, dir, source[..]); if count < 1 { return false; }
+  words: [31] int; manifest: [488] u8; hashes: [320] u8;
+  if !sw_sdk_pressure(source[0..<count], words[..], manifest[..], hashes[..]) { return false; }
+  // CPU replay verifies the input's pixel verdict; only the actual GPU
+  // qualifier/readback oracle establishes those pixels.
+  expected := jv_get(trace, item, "words"); if jv_len(trace, expected) != 13 || swr_word(trace, jv_at(trace, expected, 11)) != 1 { return false; }
+  words[11] = 1; if !scp_accept(words[0..<13]) { return false; }
+  for word, i: words[0..<13] { if swr_word(trace, jv_at(trace, expected, i)) != word { return false; } }
+  before := jv_get(trace, item, "before"); after := jv_get(trace, item, "after");
+  if jv_len(trace, before) != 9 || jv_len(trace, after) != 9 { return false; }
+  for i: 0..<9 {
+    previous := swr_word(trace, jv_at(trace, before, i)); next := swr_word(trace, jv_at(trace, after, i)); if previous != next { return false; }
+    // Fixed display/HUD grants and their slot generations are GPU effects.
+    if i != 5 && i != 6 { if previous != words[13 + i] || next != words[22 + i] { return false; } }
+  }
+  for key, i: [5] string.["manifestSHA256", "sourceSHA256", "stateBefore", "stateAfter", "stateNormalized"] {
+    if jv_str(trace, jv_get(trace, item, key), name[..]) != 64 || cast(string) name[..] != cast(string) hashes[i * 64..<i * 64 + 64] { return false; }
+  }
+  return true;
+}
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 3 { tool_errln("usage: stream-walk-replay SCENE_DIR TRACE_JSON OUTPUT_JSON"); return 2; }
   path: [4096] u8; scene_bytes: [65536] u8; scene: [1] Jv; scene_nodes: [4096] JvNode;
@@ -174,9 +200,12 @@ tool_main :: () -> int #export_c #effects(all) {
     if size < 0 || jv_kind(d[0], captured) != JV_ARRAY || !recorded_source_profile(cast(string) name[0..<size], jv_len(d[0], captured)) { return 1; }
   }
   native := jv_get(d[0], 0, "backend") >= 0;
+  pressure := false;
   if native {
     schema: [64] u8; size := jv_str(d[0], jv_get(d[0], 0, "schema"), schema[..]);
     if size < 0 || !srp_native(cast(string) schema[0..<size], jv_int(d[0], jv_get(d[0], 0, "backend"), -1)) { return 1; }
+    pressure = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v4";
+    if !srp_pressure(cast(string) schema[0..<size], jv_get(d[0], 0, "categoryPressure") >= 0) { return 1; }
   }
   profile := ifx native then 0 else jv_get(d[0], 0, "profile"); tier := ifx profile < 0 then 0 else jv_int(d[0], jv_get(d[0], profile, "tier"), -1);
   schema: [64] u8; schema_n := jv_str(d[0], jv_get(d[0], profile, "stateSchema"), schema[..]);
@@ -195,7 +224,10 @@ tool_main :: () -> int #export_c #effects(all) {
   count := jv_len(d[0], frames) + jv_len(d[0], route);
   if count < 1 { return 1; }
   if jv_len(d[0], jv_get(d[0], 0, "sourceSnapshots")) > RECORDED_SOURCE_EVENTS { return 1; }
-  for list: [2] int.[frames, route] { for i: 0..<jv_len(d[0], list) { if !swr_frame(d[0], jv_at(d[0], list, i), false, native, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("replay failed at frame %\n", i); return 1; } } }
+  for list, phase: [2] int.[frames, route] {
+    if phase == 1 && pressure && !swr_pressure(scene[0], args_at(a[..], 0), d[0]) { tool_errln("category-pressure replay differs"); return 1; }
+    for i: 0..<jv_len(d[0], list) { if !swr_frame(d[0], jv_at(d[0], list, i), false, native, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("replay failed at frame %\n", i); return 1; } }
+  }
   // Native observer has made no GPU SDK objects. Existing ledger handles
   // are exercised by the shared owner; no GPU presentation is claimed.
   legs := jv_get(d[0], 0, "legs"); expected_cells := jv_get(d[0], jv_at(d[0], legs, jv_len(d[0], legs) - 1), "cells");

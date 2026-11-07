@@ -22,9 +22,12 @@ replacement and automatic browser loss/deadline handling now have separate
 receipts. The additive [browser rescue carrier](../../docs/verification/aethyr-streaming-12990/walk-persistent-rescue.md)
 retains its whole two-MiB reactor and pending source effects across an
 exact-build reload. The [native draw-result profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
-also retains submitted effects through a stop. Physical backend planning,
-controlled category pressure and remaining failure/memory profiles are still
-open.
+also retains submitted effects through a stop. The [actual native category
+probe](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
+refuses an admitted 8×8 texture plan against the live texture line while
+aggregate and staging room remain. Existing pixels and owners survive, and
+the counted refusal replays at its original boundary. Physical backend
+planning and remaining failure/memory profiles are still open.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

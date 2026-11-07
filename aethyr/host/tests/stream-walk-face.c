@@ -67,6 +67,10 @@ static void *sw_vk_stage_allocate(int32_t row,size_t bytes);
 static void sw_vk_stage_free(int32_t row);
 #endif
 static coax_v_t_SwWalk sv(void){return(coax_v_t_SwWalk){&state,1};}
+#ifdef COAX_coax_t_ScpProbe_DEFINED
+// Native Coax tools use the existing record; no snapshot or second budget.
+bool sw_sdk_pressure(coax_v_u8 source,coax_v_s64 words,coax_v_u8 manifest_bytes,coax_v_u8 hashes){return scp_write(sv(),source,words,manifest_bytes,hashes);}
+#endif
 static coax_v_t_ResourceManifest mv(void){return(coax_v_t_ResourceManifest){&manifest,1};}
 static coax_v_t_HostAudioMemory av(void){return(coax_v_t_HostAudioMemory){&audio_memory,1};}
 static coax_v_t_HostImageMemory iv(void){return(coax_v_t_HostImageMemory){&image_memory,1};}

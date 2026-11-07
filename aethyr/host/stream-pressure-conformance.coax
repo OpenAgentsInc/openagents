@@ -1,0 +1,38 @@
+// Admission evidence for a real host's speculative texture request. The
+// resource budget itself remains the existing shared admission authority.
+#authority;
+#test "category-pressure evidence needs aggregate and staging room and surviving content" {
+  q := [13] int.[2,939,638,256,512,0,2048,16000,32768,18,1,1,1];
+  #assert scp_accept(q[..]) && !scp_accept(q[0..<12]); more: [14] int; #assert !scp_accept(more[..]);
+  for field: [5] int.[0,9,10,11,12] { bad := q; bad[field] = 0; #assert !scp_accept(bad[..]); bad[field] = -1; #assert !scp_accept(bad[..]); }
+  for field: [4] int.[0,10,11,12] { bad := q; bad[field] += 1; #assert !scp_accept(bad[..]); }
+  for field: [8] int.[1,2,3,4,5,6,7,8] { bad := q; bad[field] = -1; #assert !scp_accept(bad[..]); }
+  bad := q; bad[1] = 0; #assert !scp_accept(bad[..]);
+  for field: [3] int.[4,6,8] { bad = q; bad[field] = 1107296257; #assert !scp_accept(bad[..]); }
+  bad = q; bad[3] = 513; #assert !scp_accept(bad[..]);
+  bad = q; bad[5] = 2049; #assert !scp_accept(bad[..]);
+  bad = q; bad[7] = 32769; #assert !scp_accept(bad[..]);
+  bad = q; bad[1] = 256; #assert !scp_accept(bad[..]);
+  bad[1] = 257; #assert scp_accept(bad[..]);
+  bad = q; bad[8] = 16939; #assert !scp_accept(bad[..]);
+  bad[8] = 17576; #assert !scp_accept(bad[..]);
+  bad[8] = 17577; #assert scp_accept(bad[..]);
+  bad = q; bad[6] = 637; #assert !scp_accept(bad[..]); bad[6] = 638; #assert scp_accept(bad[..]);
+  bad = q; bad[3] = 0; bad[4] = 938; bad[2] = 0; bad[5] = 0; bad[6] = 0; #assert scp_accept(bad[..]);
+  bad[4] = 939; #assert !scp_accept(bad[..]);
+  bad = q; bad[9] = 0; #assert !scp_accept(bad[..]);
+  edge := [13] int.[2,1,0,0,0,0,0,0,1,1,1,1,1]; #assert scp_accept(edge[..]);
+  bad = q; bad[3] = 1107296256; bad[4] = 1107296256; bad[6] = 1107296256; bad[7] = 0; bad[8] = 1107296256; #assert scp_accept(bad[..]);
+  bad = q; bad[5] = 17; bad[6] = 655; #assert scp_accept(bad[..]); bad[6] = 654; #assert !scp_accept(bad[..]);
+}
+// status, requested retained/scratch, texture used/cap, staging used/cap,
+// aggregate used/cap, retained owners, unchanged owners, equal pixels,
+// exactly one counted admission refusal. Subtraction avoids overflow.
+scp_accept :: (q: [] int) -> bool #effects(all) {
+  if q.count != 13 || q[0] != 2 || q[2] < 0 || q[9] <= 0 || q[10] != 1 || q[11] != 1 || q[12] != 1 { return false; }
+  for field: [3] int.[3,5,7] {
+    if q[field] < 0 || q[field + 1] < q[field] || q[field + 1] > 1107296256 { return false; }
+  }
+  return q[1] > q[4] - q[3] && q[2] <= q[6] - q[5] &&
+    q[2] <= q[8] - q[7] - q[1];
+}
