@@ -16,6 +16,8 @@ character you saved in Character Create, on Everglade's controller and follow ca
 - On a touch screen, the left thumb walks and the right thumb looks.
 - `?at=METRES` starts you that far down the path, for example `/worlds/everglade2?at=300`. The
   clearing starts at about 440 m.
+- `?walk` walks you down the path on your own, with the camera behind you, and stops in the
+  clearing. Any key takes over. Add it to `?at=`, for example `/worlds/everglade2?at=200&walk`.
 
 ## The land
 

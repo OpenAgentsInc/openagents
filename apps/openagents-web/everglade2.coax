@@ -40,7 +40,7 @@ E2 :: struct {
   move_bodies: [E2_NEAR_BODIES * 7] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
   held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
-  you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32;
+  you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32; autowalk: bool;
   anim: [1] figs.BdAnim;
   clock: f32; width: f32; height: f32; k: f32 = 1;
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
@@ -73,12 +73,24 @@ E2_HOST_PAGE :: 600;
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   if kind == 16 { cc.load_player(s[0].creator[..], t); return; }
   if kind == 4 { ok := cc.restore(s[0].creator[..], t); return; }
-  if kind == E2_HOST_PAGE { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } }
+  if kind == E2_HOST_PAGE { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
 }
 #test "a page's ?at= says how far down the path you start" {
   #assert e2_query_at("url=http://127.0.0.1:8863/worlds/everglade2?at=120\n") == 120;
   #assert e2_query_at("url=/worlds/everglade2?x=1&at=45.5&y=2\n") == 45;
   #assert e2_query_at("url=/worlds/everglade2\n") == 0 && e2_query_at("url=/worlds/everglade2?cat=9\n") == 0;
+  #assert e2_query_walk("url=/worlds/everglade2?at=10&walk\n") && e2_query_walk("url=/worlds/everglade2?walk=1\n") && !e2_query_walk("url=/worlds/everglade2?sidewalk\n");
+}
+#test "the walk steers along the path and into the clearing" {
+  for i: 0..<40 { z := -40 - f32(i) * 10; x := e2_road_x(z); hd := e2_auto_heading(x, z);
+    nz := z + cos(hd) * 2; nx := x + sin(hd) * 2; #assert nz < z && e2_may_stand(nx, nz); }
+  hd := e2_auto_heading(e2_clear_x(), E2_CLEAR_Z + 5); #assert cos(hd) < 0;
+}
+// ?walk: your character walks the path by itself, at a walk, and the camera eases in behind (the
+// film's way to walk it; any key takes over).
+e2_query_walk :: (t: string) -> bool {
+  for i: 0..<t.count - 4 { if (t[i] == '?' || t[i] == '&') && t[i + 1] == 'w' && t[i + 2] == 'a' && t[i + 3] == 'l' && t[i + 4] == 'k' { return true; } }
+  return false;
 }
 e2_query_at :: (t: string) -> int {
   for i: 0..<t.count - 3 {
@@ -123,8 +135,19 @@ hold_bit :: (key: int) -> int {
   return 0;
 }
 axis :: (held: int, plus: int, minus: int) -> f32 { a: f32 = 0; if held & plus != 0 { a += 1; } if held & minus != 0 { a -= 1; } return a; }
+// The point the walk steers for: 5 m on along the path, or the clearing's middle once there.
+e2_auto_heading :: (x: f32, z: f32) -> f32 {
+  if z < E2_CLEAR_Z + 10 { cx := e2_clear_x(); return atan2(cx - x, E2_CLEAR_Z - 12 - z); }
+  tz := z - 5; return atan2(e2_road_x(tz) - x, tz - z);
+}
 e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
+  if s[0].autowalk && h == 0 {
+    if s[0].you_z < E2_CLEAR_Z - 6 { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
+    heading := e2_auto_heading(s[0].you_x, s[0].you_z);
+    return EgMoveIn.{key_y = 1, run = true, theta = heading};
+  }
+  if h != 0 { s[0].autowalk = false; }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
                    theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
 }
@@ -200,6 +223,12 @@ e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all)
 
 // ---- the frame: the follow camera, the uniforms
 e2_follow :: (s: [] E2, dt: f32) {
+  if s[0].autowalk {
+    // the camera eases round behind the walk
+    want := figs.wrap_angle(e2_auto_heading(s[0].you_x, s[0].you_z) - 3.14159265);
+    turn := figs.wrap_angle(want - s[0].orbit.yaw);
+    s[0].orbit.yaw = figs.wrap_angle(s[0].orbit.yaw + turn * (ifx dt * 1.5 < 1 then dt * 1.5 else 1.0f32));
+  }
   o := figs.verse_orbit_look(s[0].orbit, s[0].look_yaw, s[0].look_pitch);
   s[0].look_yaw = 0; s[0].look_pitch = 0;
   h := s[0].held;
@@ -361,5 +390,9 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 3 { return s[0].planted; }
   if field == 4 { n := 0; for b: 0..<E2_BUCKETS { if s[0].kit_count[b] > 0 { n += 1; } } return n; }
   if field == 5 { return cast(int)(s[0].you_z * 100); }
+  // 6 the camera's room along its ray, 7 the eye's height over your feet, 8 your feet over the land (cm)
+  if field == 6 { return cast(int)(s[0].orbit.shown * 100); }
+  if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
+  if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
   return -1;
 }

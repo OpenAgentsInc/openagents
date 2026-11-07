@@ -15,7 +15,7 @@
 static uint8_t inbox[4096];
 static uint8_t catalog[65536];
 static coax_t_People rig;
-static float bake[544440];        // fivelab-bodies.coax BD_BAKE_FLOATS
+static float bake[783120];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;
 static uint32_t frames;
 static int64_t draw_n;
