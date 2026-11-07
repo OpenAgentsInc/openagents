@@ -1971,6 +1971,15 @@ both workers before destroying a refused texture. The 10-second recovery fence
 is unchanged. See `docs/verification/slay-gpu-recovery-12975-2026-11-07/`.
 
 
+The bounded streamed WebGPU carrier additionally uses
+`aethyr/render/loss-policy.coax` for the same absolute ten-second deadline
+and fourth-loss stop. Its checked face refuses paid frames during
+replacement and permits stopped cleanup only from the actual closing
+state. The live RAF driver resets its timestamp on the recovery serial,
+so rebuilding wall time is not charged to simulation. Persistent rescue
+and native automatic-loss adoption remain unqualified for this carrier;
+see `docs/verification/aethyr-streaming-12990/walk-automatic-loss.md`.
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,

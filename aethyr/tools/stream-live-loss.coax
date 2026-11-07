@@ -1,0 +1,27 @@
+// Actual RAF-driven player: GPU replacement time cannot become simulation dt.
+// tool.sh: stack-gib 1
+#load "../../coax/web/wasm-chrome.coax";
+#load "../assets.coax" as assets;
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 3 { tool_errln("usage: stream-live-loss BASE SCENE_JSON NEW_REPORT"); return 2; }
+  if fs_exists(args_at(a[..], 2)) { return 2; }
+  bytes: [65536] u8; nodes: [4096] JvNode; d: [1] Jv; n := fs_read(args_at(a[..], 1), bytes[..]);
+  if n < 1 || !jv_parse(d[..], cast(string) bytes[0..<n], nodes[..]) { return 1; }
+  root: [64] u8; scene: [64] u8; item := jv_at(d[0], jv_get(d[0], 0, "manifests"), 0);
+  if jv_str(d[0], jv_get(d[0], item, "sha256"), root[..]) != 64 || !assets.asset_hex(assets.asset_id(cast(string) bytes[0..<n]), scene[..]) { return 1; }
+  url: [4096] u8; number: [32] u8; parts := [8] string.[args_at(a[..], 0), "/aethyr/host/tests/stream-walk.html?root=", cast(string) root[..], "&scene_sha=", cast(string) scene[..], "&scene_bytes=", wc_dec(number[..], n), "&width=320&height=180&tier=0&play=1"];
+  c: [1] Cdp; if !cdp_launch(c[..], 320, 180, "aethyr-live-loss-") { return 1; } defer { cdp_close(c[..]); }
+  params: [8192] u8; o: [1] Jo; jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], wc_cat(url[..], parts[..])); jo_end(o[..]);
+  if cdp_call(c[..], "Page.navigate", jo_text(o[..]), CDP_CALL_MS) < 0 { return 1; }
+  ready := false; until := proc_now_ms() + 30000;
+  while proc_now_ms() < until { state := wc_eval(c[..], "window.streamError||window.streamReady||false"); if state == "true" { ready = true; break; } if state != "false" && state != "" { tool_errln(state); return 1; } proc_sleep(20); }
+  if !ready { return 1; }
+  script := "(async()=>{const app=streamWalk,request=GPUAdapter.prototype.requestDevice,raf=requestAnimationFrame;window.liveRecords=[];window.liveStop=false;window.liveActive=0;window.streamWalk={...app,step:async(ns,d)=>{liveActive++;const before=app.deviceStatus(),entered=performance.now();try{const result=await app.step(ns,d);liveRecords.push({ns,entered,ended:performance.now(),before:before.state,serial:before.serial,after:app.deviceStatus().serial,tick:result.tick});return result;}finally{liveActive--;}}};window.requestAnimationFrame=callback=>raf(time=>{if(!liveStop)callback(time);});await new Promise(r=>setTimeout(r,250));GPUAdapter.prototype.requestDevice=function(...args){return request.apply(this,args).then(device=>new Promise(resolve=>setTimeout(()=>resolve(device),1000)));};app.loseDevice();const until=performance.now()+12000;let index=-1;while(performance.now()<until){index=liveRecords.findIndex(r=>r.before==='recovering');if(index>=0&&liveRecords.length>=index+3&&app.deviceStatus().state==='recovered')break;if(app.deviceStatus().state==='stopped')throw Error(JSON.stringify(app.deviceStatus()));await new Promise(r=>setTimeout(r,5));}if(index<0||liveRecords.length<index+3)throw Error('live recovery observation missing');liveStop=true;while(liveActive)await new Promise(r=>setTimeout(r,1));const held=liveRecords[index],next=liveRecords[index+1],excess=next.ns/1e6-(next.entered-held.ended),status=app.deviceStatus();const cleanup=await app.close();return JSON.stringify({schema:'aethyr.stream-walk-live-loss.v1',held,next,excessMs:excess,status,cleanup,records:liveRecords});})()";
+  value := cdp_evaluate(c[..], script); if value < 0 { tool_errln(cdp_error(c[..])); return 1; }
+  out: [1048576] u8; size := jv_str(cdp_doc(c[..]), value, out[..]);
+  if size < 1 || !fs_write(args_at(a[..], 2), cast(string) out[0..<size]) { return 1; }
+  r: [1] Jv; rnodes: [16384] JvNode; if !jv_parse(r[..], cast(string) out[0..<size], rnodes[..]) { return 1; }
+  excess := args_number(jv_raw(r[0], jv_get(r[0], 0, "excessMs")));
+  if !excess.ok || excess.value > 100 { tool_errln("replacement wall time leaked into live simulation dt"); return 1; }
+  print("PASS live RAF replacement excludes held wall time from paid dt\n"); return 0;
+}

@@ -17,8 +17,10 @@ runs natively and in browser Wasm. A separate actual 768 m corridor
 consumer adopts the resource owners, records physical allocations and
 compares canonical state after every paid step in native CPU replay. Its
 [verification record](../../docs/verification/aethyr-streaming-12990/README.md)
-limits qualification to the measured profile; automatic loss handling,
-native GPU recovery and the remaining failure histories are still open.
+limits qualification to the measured profile. Native controlled GPU
+replacement and automatic browser loss/deadline handling now have separate
+receipts; physical backend planning, persistent rescue and remaining
+failure histories are still open.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

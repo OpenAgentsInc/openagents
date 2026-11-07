@@ -1,0 +1,2 @@
+
+{"id":16,"result":{"result":{"type":"object","value":{}},"exceptionDetails":{"exceptionId":1,"text":"Uncaught (in promise) Error: SDK allowed a stopped paid frame","lineNumber":0,"columnNumber":0,"exception":{"type":"object","subtype":"error","className":"Error","description":"Error: SDK allowed a stopped paid frame\n    at <anonymous>:1:452\n    at async <anonymous>:1:26","objectId":"3787414983268927366.2.1"}}}}

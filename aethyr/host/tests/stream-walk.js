@@ -14,6 +14,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   const module=await WebAssembly.compile(await(await fetch(wasmURL)).arrayBuffer());
   const instance=await WebAssembly.instantiate(module,{env:{memory},wasi_snapshot_preview1:wasi});
   let x=instance.exports;x._initialize?.();
+  const automatic=!!x.sw_loss_open;if(automatic&&!x.sw_loss_open())throw Error('device policy initialization refused');
   const info=f=>Number(x.sw_host_info(f)),row=(i,f)=>Number(x.sw_host_row(i,f));
   const authenticate=(bytes,hex)=>{if(bytes.byteLength>32768)throw Error('fixture metadata exceeds retained config span');new Uint8Array(memory.buffer,x.sw_config_ptr(),bytes.byteLength).set(bytes);new Uint8Array(memory.buffer,x.sw_root_ptr(),64).set(new TextEncoder().encode(hex));if(!x.sw_host_auth(bytes.byteLength))throw Error('Coax refused complete content identity');};
   const base=new URL('.',new URL(sceneURL,location.href));
@@ -28,10 +29,19 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   const errors=[],shaderSource=await(await fetch(shaderURL)).text(),hudShaderSource=await(await fetch(hudShaderURL)).text(),presentShaderSource=await(await fetch(presentShaderURL)).text(),format=navigator.gpu.getPreferredCanvasFormat(),context=canvas.getContext('webgpu');
   let device,uniforms,depth,color,hdr,pipeline,sampler,hudVertices,hudUniforms,hudPipeline,presentPipeline;
   let hudDraws=0,lastHudVertices=0;
-  async function makeSurface(){
-    const created=[],tokens=[];device=await adapter.requestDevice();device.addEventListener('uncapturederror',e=>errors.push(e.error.message));
+  const gpu=new Map(),pending=new Set(),transfers=new Map(),retiredDevices=new WeakSet();
+  let closed=false,framing=false,loadFailures=0,drawnCommands=0,fallbackDraws=0,finalSnapshot,observedLive=0;
+  let gpuTail=Promise.resolve(),recovery=null,replacementWork=null,initialized=false,earlyLoss=false;
+  let lastRecovery=null,recoveryError=null,surfaceLive=false;
+  const lossInfo=f=>automatic?Number(x.sw_loss_info(f)):0,wallNow=()=>BigInt(Math.floor(performance.now()));
+  async function makeSurface(check=()=>{}){
+    const created=[],tokens=[];let candidate;
     try{
+      candidate=await adapter.requestDevice();check();device=candidate;
+      candidate.addEventListener('uncapturederror',e=>errors.push(e.error.message));
+      if(automatic)candidate.lost.then(info=>deviceLost(candidate,info));
       const shader=device.createShaderModule({code:shaderSource}),hudShader=device.createShaderModule({code:hudShaderSource}),presentShader=device.createShaderModule({code:presentShaderSource}),diagnostics=await shader.getCompilationInfo(),hudDiagnostics=await hudShader.getCompilationInfo(),presentDiagnostics=await presentShader.getCompilationInfo();
+      check();
       if(diagnostics.messages.some(m=>m.type==='error'))throw Error(diagnostics.messages.map(m=>m.message).join('\n'));
       if(hudDiagnostics.messages.some(m=>m.type==='error'))throw Error(hudDiagnostics.messages.map(m=>m.message).join('\n'));
       if(presentDiagnostics.messages.some(m=>m.type==='error'))throw Error(presentDiagnostics.messages.map(m=>m.message).join('\n'));
@@ -42,25 +52,27 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       color=device.createTexture({size:[canvas.width,canvas.height],format,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC});created.push(color);
       hdr=device.createTexture({size:[canvas.width,canvas.height],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});created.push(hdr);
       pipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:shader,entryPoint:'sd_vs',buffers:[{arrayStride:48,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},{shaderLocation:2,offset:24,format:'float32x2'}]}]},fragment:{module:shader,entryPoint:'sd_fs',targets:[{format:'rgba16float'}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:true,depthCompare:'less'}});
+      check();
       sampler=device.createSampler({magFilter:'nearest',minFilter:'nearest',mipmapFilter:'nearest'});
       hudVertices=device.createBuffer({size:98304,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});created.push(hudVertices);
       hudUniforms=device.createBuffer({size:256,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});created.push(hudUniforms);
       device.queue.writeBuffer(hudUniforms,0,new Float32Array([canvas.width,canvas.height,0,0]));
       hudPipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:hudShader,entryPoint:'sh_vs',buffers:[{arrayStride:48,attributes:[{shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32x4'},{shaderLocation:2,offset:32,format:'float32x4'}]}]},fragment:{module:hudShader,entryPoint:'sh_fs',targets:[{format:'rgba16float',blend:{color:{operation:'add',srcFactor:'one',dstFactor:'one-minus-src-alpha'},alpha:{operation:'add',srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:false,depthCompare:'always'}});
+      check();
       presentPipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:presentShader,entryPoint:'sp_vs'},fragment:{module:presentShader,entryPoint:'sp_fs',targets:[{format}]},primitive:{topology:'triangle-list'}});
-    }catch(error){for(const object of created)object.destroy();for(const token of tokens)x.sw_host_fixed_release(token);context.unconfigure();device.destroy();throw error;}
+      check();surfaceLive=true;
+    }catch(error){for(const object of created)object.destroy();for(const token of tokens)x.sw_host_fixed_release(token);context.unconfigure();if(candidate){retiredDevices.add(candidate);candidate.destroy();}throw error;}
   }
-  await makeSurface();startup.push(()=>{uniforms.destroy();hudVertices.destroy();hudUniforms.destroy();depth.destroy();color.destroy();hdr.destroy();for(const i of [0,1,2,6,7,8])x.sw_host_fixed_release(i);context.unconfigure();device.destroy();});
-  const gpu=new Map(),pending=new Set(),transfers=new Map();
-  let closed=false,framing=false,loadFailures=0,drawnCommands=0,fallbackDraws=0,finalSnapshot,observedLive=0;
+  await makeSurface();startup.push(()=>{destroySurface();for(const i of [0,1,2,6,7,8])x.sw_host_fixed_release(i);});
+  if(earlyLoss)throw Error('GPU lost during startup');initialized=true;
   const stages=[],recentFailures=[];
   // WebGPU error scopes are a device-wide stack. Effects sharing that
   // stack must finish/pop before another owner pushes its scope.
-  let gpuTail=Promise.resolve();
   function gpuTask(effect){const task=gpuTail.then(effect);gpuTail=task.catch(()=>{});return task;}
   const current=k=>!closed&&x.sw_host_row(k.owner,10)===k.generation&&row(k.owner,8)===1&&row(k.owner,9)===1;
-  function upload(k){return gpuTask(()=>uploadNow(k));}
-  async function uploadNow(k){
+  function upload(k,replacing=false){return gpuTask(()=>uploadNow(k,replacing));}
+  async function uploadNow(k,replacing){
+    if(automatic&&!replacing&&(lossInfo(0)||lossInfo(1)))throw Error('load interrupted by device loss');
     const format=row(k.owner,0),bytes=row(k.owner,3);if(!bytes)return;
     if(!x.sw_host_gpu_live(k.owner))throw Error('GPU ledger grant is not live');
     device.pushErrorScope('validation');let object,validation;
@@ -133,7 +145,8 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       encoder.copyTextureToTexture({texture:color},{texture:context.getCurrentTexture()},[canvas.width,canvas.height]);device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();
     }finally{for(const owner of borrowed)if(!x.sw_host_return(owner))throw Error('final draw borrow return refused');const validation=await device.popErrorScope();if(validation)throw Error(validation.message);}
   }
-  async function step(ns,direction=0){
+  async function step(ns,direction=0,closing=false){
+    if(automatic&&!closing){if(recovery)await recovery;if(lossInfo(1))throw Error('GPU recovery stopped; retained CPU owners await close');}
     if(closed||framing)throw Error('frame is closed or already running');framing=true;const start=performance.now();
     try{
       if(!x.sw_host_frame(BigInt(ns),direction))throw Error('paid frame refused');
@@ -143,23 +156,26 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       onRecord?.(records);x.sw_host_ack();
       for(const transfer of transfers.values())if(!current(transfer.key))packs.abortReads(transfer.owner);
       for(const k of retiring)await retire(k);for(const k of loads)launch(k);
-      await render();if(errors.length)throw Error(errors.join('\n'));
+      let presentationInterrupted=false;
+      if(surfaceLive){try{await render();}catch(error){if(!automatic||(!lossInfo(0)&&!lossInfo(1)))throw error;presentationInterrupted=true;}}
+      if(errors.length)throw Error(errors.join('\n'));
       const traceCount=x.sw_host_trace_count();if(traceCount<0)throw Error('physical allocation trace overflow');
       const allocations=Array.from({length:traceCount},(_,i)=>Array.from({length:6},(_,f)=>Number(x.sw_host_trace(i,f))));x.sw_host_trace_ack();
       for(const [freed,owner,generation,epoch,field,bytes] of allocations)observedLive+=freed?-bytes:bytes;
       const cpu=info(14),gpuBytes=[...gpu.values()].reduce((n,r)=>n+r.bytes,0);
       if(observedLive!==cpu||cpu>info(10)||cpu+gpuBytes>info(8))throw Error('physical allocations disagree with original tickets/declared peak');
-      return {frameNs:ns,direction,tick:info(0),position:Array.from({length:3},(_,i)=>x.sw_host_player(i)),active:info(4),drawn:info(5),updated:info(6),declared:info(8),cpu,gpuBytes,allocations,stages:stages.splice(0),records,stepDigests,frameMs:performance.now()-start};
+      return {frameNs:ns,direction,tick:info(0),position:Array.from({length:3},(_,i)=>x.sw_host_player(i)),active:info(4),drawn:info(5),updated:info(6),declared:info(8),cpu,gpuBytes,allocations,stages:stages.splice(0),records,stepDigests,frameMs:performance.now()-start,presentationInterrupted};
     }finally{framing=false;}
   }
   async function close(){
+    if(recovery)await recovery;if(replacementWork)await replacementWork.catch(()=>{});
     if(closed||framing||!x.sw_host_close())throw Error('close refused');
     for(const transfer of transfers.values())packs.abortReads(transfer.owner);
     await Promise.all([...pending]);
-    const closingFrames=[];for(let i=0;i<128&&!info(24);i++)closingFrames.push(await step(15625000,0));
+    const closingFrames=[];for(let i=0;i<128&&!info(24);i++)closingFrames.push(await step(15625000,0,true));
     if(!info(24)||info(14)||info(10)||info(22)||info(23))throw Error('physical resources did not drain');
-    await device.queue.onSubmittedWorkDone();uniforms.destroy();hudVertices.destroy();hudUniforms.destroy();depth.destroy();color.destroy();hdr.destroy();for(const i of [0,1,2,6,7,8])if(!x.sw_host_fixed_release(i))throw Error('fixed ledger cleanup refused');
-    const result={info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,hud:{draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))},wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
+    if(surfaceLive)await device.queue.onSubmittedWorkDone();destroySurface();for(const i of [0,1,2,6,7,8])if(fixedLive(i)&&!x.sw_host_fixed_release(i))throw Error('fixed ledger cleanup refused');
+    const result={info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,recovery:deviceStatus(),hud:{draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))},wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
     if(info(12)||info(13))throw Error('GPU ledger did not drain');closed=true;context.unconfigure();device.destroy();new Uint8Array(memory.buffer).fill(0);x=null;memory=null;arena.release();result.transport=packs.info();finalSnapshot=result;return result;
   }
   async function capture(){
@@ -178,14 +194,68 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       return {width:canvas.width,height:canvas.height,rowBytes,format,data};
     }finally{buffer?.destroy();retained?.release();if(!x.sw_host_fixed_release(3))throw Error('readback cleanup refused');}
   }
-  // Explicit SDK replacement probe. Automatic unsolicited-loss scheduling
-  // and failed-replacement rescue retain their separate qualification exit.
+  function fixedLive(index){return !automatic||Number(x.sw_host_fixed_live(index))===1;}
+  function destroySurface(){
+    if(device){retiredDevices.add(device);device.destroy();}
+    for(const resource of gpu.values())resource.object.destroy();gpu.clear();
+    if(surfaceLive){uniforms.destroy();hudVertices.destroy();hudUniforms.destroy();depth.destroy();color.destroy();hdr.destroy();surfaceLive=false;context.unconfigure();}
+  }
+  let stopWake=null;
+  function stopRecovery(error){
+    recoveryError=String(error);destroySurface();stopWake?.();
+  }
+  function deviceStatus(){
+    if(closed)return finalSnapshot.recovery;
+    return {state:lossInfo(1)?'stopped':lossInfo(0)?'recovering':lastRecovery?'recovered':'ready',serial:lossInfo(2),generation:automatic?String(x.sw_loss_info(2)):'0',losses:lossInfo(3),began:lossInfo(4),reason:lossInfo(5),last:lossInfo(6),lastRecovery,error:recoveryError,retainedCPU:info(14)};
+  }
+  function stateDigest(){const at=x.sw_host_device_digest?.();if(!at)throw Error('canonical device observer unavailable');return new TextDecoder().decode(new Uint8Array(memory.buffer,at,64));}
+  function deviceLost(lost,reason){
+    if(closed||retiredDevices.has(lost)||lost!==device)return;
+    if(!initialized){earlyLoss=true;return;}
+    const status=Number(x.sw_loss_lost(wallNow()));
+    if(status!==1){stopRecovery(`device loss refused (${status}, reason ${lossInfo(5)})`);return;}
+    if(!recovery)recovery=replaceAutomatically(reason).finally(()=>{recovery=null;});
+  }
+  async function replaceAutomatically(reason){
+    let timer;
+    const stopped=new Promise(resolve=>{stopWake=resolve;const deadline=()=>{if(Number(x.sw_loss_poll(wallNow(),x.sw_loss_info(2)))===1){timer=setTimeout(deadline,1);return;}stopRecovery('GPU replacement deadline');};timer=setTimeout(deadline,Math.max(0,Math.ceil(lossInfo(4)+10000-performance.now())));});
+    const loop=(async()=>{
+      while(!lossInfo(1)){
+        const serial=x.sw_loss_info(2),started=performance.now();
+        const check=()=>{if(Number(x.sw_loss_poll(wallNow(),serial))!==1)throw Error('GPU replacement attempt is stale or stopped');};
+        try{
+          replacementWork=(async()=>{
+            while(framing){await new Promise(resolve=>setTimeout(resolve,0));check();}
+            for(const transfer of transfers.values())packs.abortReads(transfer.owner);
+            await Promise.all([...pending]);await gpuTail;check();
+            const before=Array.from({length:28},(_,f)=>info(f));destroySurface();
+            if(!x.sw_host_recover())throw Error(`Coax refused GPU replacement:${x.sw_host_recover_info(0)}`);
+            adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});check();
+            if(!adapter)throw Error('replacement WebGPU adapter unavailable');
+            await makeSurface(check);let uploaded=0;
+            for(let owner=0;owner<64;owner++)if(x.sw_host_uploadable(owner)){check();await upload({owner,generation:x.sw_host_row(owner,10)},true);uploaded++;}
+            check();await render();check();
+            return {before,after:Array.from({length:28},(_,f)=>info(f)),epoch:Number(x.sw_host_recover_info(2)),granted:Number(x.sw_host_recover_info(1)),uploaded,lossReason:reason.reason,adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description},ms:performance.now()-started};
+          })();
+          const result=await replacementWork;
+          if(Number(x.sw_loss_finish(wallNow(),serial,1))===2){lastRecovery=result;return;}
+        }catch(error){
+          if(x.sw_loss_info(2)!==serial&&!lossInfo(1))continue;
+          x.sw_loss_finish(wallNow(),serial,0);stopRecovery(error);return;
+        }
+      }
+    })();
+    try{await Promise.race([loop,stopped]);}finally{clearTimeout(timer);stopWake=null;}
+  }
+  // Explicit observation remains available; the automatic carrier routes
+  // it through the same real device-loss callback as unsolicited loss.
   async function recover(){
+    if(automatic){if(closed||framing||recovery||lossInfo(1))throw Error('replacement unavailable');device.destroy();await device.lost;if(recovery)await recovery;if(lossInfo(1))throw Error(recoveryError);return lastRecovery;}
     if(closed||framing||!x.sw_host_recover)throw Error('replacement unavailable or frame still active');framing=true;const started=performance.now();
     try{
       for(const transfer of transfers.values())packs.abortReads(transfer.owner);await Promise.all([...pending]);await device.queue.onSubmittedWorkDone();
       const before=Array.from({length:28},(_,f)=>info(f)),lostDevice=device;
-      lostDevice.destroy();const loss=await lostDevice.lost;
+      retiredDevices.add(lostDevice);lostDevice.destroy();const loss=await lostDevice.lost;
       for(const resource of gpu.values())resource.object.destroy();gpu.clear();uniforms.destroy();hudVertices.destroy();hudUniforms.destroy();depth.destroy();color.destroy();hdr.destroy();context.unconfigure();
       if(!x.sw_host_recover())throw Error(`Coax refused GPU replacement:${x.sw_host_recover_info(0)}`);
       adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw Error('replacement WebGPU adapter unavailable');
@@ -195,6 +265,6 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       return {before,after:Array.from({length:28},(_,f)=>info(f)),epoch:Number(x.sw_host_recover_info(2)),granted:Number(x.sw_host_recover_info(1)),uploaded,lossReason:loss.reason,adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description},ms:performance.now()-started};
     }finally{framing=false;}
   }
-  return Object.freeze({step,settle:()=>Promise.all([...pending]),close,capture,recover,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
+  return Object.freeze({step,settle:()=>Promise.all([...pending]),close,capture,recover,loseDevice:()=>device.destroy(),deviceStatus,stateDigest,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
   }catch(error){for(const dispose of startup.reverse())await dispose();throw error;}
 }

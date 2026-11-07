@@ -1,0 +1,118 @@
+// Wall-clock recovery admission, independent of the simulation clock.
+// The ordinary host's existing 10 s / three losses per minute contract.
+#module "aethyr.render.loss";
+#authority;
+GL_PENDING :: 1; GL_RECOVERED :: 2; GL_STALE :: 3; GL_STOP :: 4; GL_INVALID :: 5;
+GL_NONE :: 0; GL_RATE :: 1; GL_DEADLINE :: 2; GL_REPLACEMENT :: 3; GL_SERIAL :: 4;
+GlLoss :: struct {
+  last: int = -1; began: int; serial: int; count: int;
+  times: [3] int; active: bool; stopped: bool; reason: int;
+}
+#test "opening the policy constructs every compiler default and exact view" {
+  s: [1] GlLoss; s[0] = GlLoss.{last = 99, began = 77, serial = 4, count = 3, active = true, stopped = true, reason = GL_RATE, times = [3] int.[1, 2, 3]};
+  #assert gl_open(s[..]) && s[0].last == -1 && s[0].began == 0 && s[0].serial == 0 && s[0].count == 0 && !s[0].active && !s[0].stopped && s[0].reason == GL_NONE;
+  for stamp: s[0].times { #assert stamp == 0; }
+  two: [2] GlLoss; #assert !gl_open(s[0..<0]) && !gl_open(two[..]);
+}
+#test "loss recovery has an unchanged absolute deadline even when the replacement is lost" {
+  s: [1] GlLoss;
+  #assert gl_lost(s[..], 100) == GL_PENDING && s[0].serial == 1 && s[0].began == 100;
+  #assert gl_poll(s[..], 10099, 1) == GL_PENDING;
+  #assert gl_lost(s[..], 10099) == GL_PENDING && s[0].serial == 2 && s[0].began == 100;
+  #assert gl_poll(s[..], 10100, 2) == GL_STOP && s[0].reason == GL_DEADLINE && !s[0].active;
+  #assert gl_finish(s[..], 10100, 2, true) == GL_STOP;
+}
+#test "a new loss at the exact expired deadline stops and poll clocks never go backward" {
+  s: [1] GlLoss; #assert gl_lost(s[..], 100) == GL_PENDING;
+  #assert gl_poll(s[..], 101, 1) == GL_PENDING && s[0].last == 101;
+  #assert gl_poll(s[..], 100, 1) == GL_INVALID && s[0].last == 101 && s[0].active;
+  #assert gl_lost(s[..], 10100) == GL_STOP && s[0].reason == GL_DEADLINE && !s[0].active;
+}
+#test "three losses recover but the fourth strictly inside a minute stops" {
+  s: [1] GlLoss;
+  for i: 0..<3 {
+    #assert gl_lost(s[..], 100 + i * 10) == GL_PENDING && s[0].count == i + 1;
+    #assert gl_finish(s[..], 101 + i * 10, i + 1, true) == GL_RECOVERED && !s[0].active;
+  }
+  #assert gl_lost(s[..], 60099) == GL_STOP && s[0].reason == GL_RATE && s[0].count == 3;
+  #assert gl_lost(s[..], 60100) == GL_STOP;
+}
+#test "a loss exactly one minute old expires while younger losses retain order" {
+  s: [1] GlLoss;
+  for now, i: [3] int.[100, 200, 300] { #assert gl_lost(s[..], now) == GL_PENDING; #assert gl_finish(s[..], now, i + 1, true) == GL_RECOVERED; }
+  #assert gl_lost(s[..], 60100) == GL_PENDING && s[0].count == 3 && s[0].began == 60100;
+  #assert s[0].times[0] == 200 && s[0].times[1] == 300 && s[0].times[2] == 60100;
+  #assert gl_finish(s[..], 60101, 4, true) == GL_RECOVERED;
+  #assert gl_lost(s[..], 120101) == GL_PENDING && s[0].count == 1 && s[0].times[0] == 120101;
+}
+#test "stale callbacks cannot finish stop or extend another device attempt" {
+  s: [1] GlLoss; #assert gl_lost(s[..], 10) == GL_PENDING;
+  #assert gl_lost(s[..], 20) == GL_PENDING && s[0].serial == 2;
+  #assert gl_finish(s[..], 21, 1, false) == GL_STALE && s[0].last == 20;
+  #assert gl_poll(s[..], 1000000, 1) == GL_STALE && s[0].last == 20;
+  #assert gl_finish(s[..], 21, 2, true) == GL_RECOVERED;
+  #assert gl_poll(s[..], 1000000, 2) == GL_STALE;
+  #assert gl_lost(s[..], 22) == GL_PENDING && s[0].began == 22;
+  #assert gl_finish(s[..], 23, 2, true) == GL_STALE && s[0].active;
+  #assert gl_finish(s[..], 24, 3, false) == GL_STOP && s[0].reason == GL_REPLACEMENT;
+}
+#test "invalid clocks views and exhausted serials refuse before wrapping" {
+  s: [1] GlLoss; two: [2] GlLoss;
+  #assert gl_lost(s[0..<0], 0) == GL_INVALID && gl_poll(two[..], 0, 0) == GL_INVALID;
+  #assert gl_lost(s[..], -1) == GL_INVALID && s[0].last == -1 && s[0].serial == 0;
+  #assert gl_lost(s[..], 0) == GL_PENDING && s[0].serial == 1;
+  #assert gl_poll(s[..], -1, 1) == GL_INVALID && s[0].last == 0 && s[0].active;
+  #assert gl_poll(s[..], 0, 0) == GL_STALE;
+  #assert gl_finish(s[..], 0, 1, true) == GL_RECOVERED;
+  s[0].serial = 9223372036854775807;
+  #assert gl_lost(s[..], 1) == GL_STOP && s[0].reason == GL_SERIAL && s[0].serial == 9223372036854775807;
+}
+#test "the checked face admits cleanup only from actual closing state and never steps during replacement" {
+  s: [1] GlLoss;
+  #assert gl_frame_allowed(s[..], false) && gl_frame_allowed(s[..], true);
+  #assert gl_lost(s[..], 0) == GL_PENDING;
+  #assert !gl_frame_allowed(s[..], false) && !gl_frame_allowed(s[..], true);
+  #assert gl_finish(s[..], 1, 1, true) == GL_RECOVERED;
+  #assert gl_frame_allowed(s[..], false) && gl_frame_allowed(s[..], true);
+  #assert gl_lost(s[..], 2) == GL_PENDING && gl_finish(s[..], 3, 2, false) == GL_STOP;
+  #assert !gl_frame_allowed(s[..], false) && gl_frame_allowed(s[..], true);
+  #assert s[0].last == 3 && s[0].serial == 2 && s[0].reason == GL_REPLACEMENT;
+  two: [2] GlLoss; #assert !gl_frame_allowed(s[0..<0], true) && !gl_frame_allowed(two[..], false);
+}
+gl_frame_allowed :: (s: [] GlLoss, closing: bool) -> bool #export_c #effects(all) {
+  return s.count == 1 && !s[0].active && (!s[0].stopped || closing);
+}
+gl_open :: (s: [] GlLoss) -> bool #export_c #effects(all) {
+  if s.count != 1 { return false; } s[0] = GlLoss.{}; return true;
+}
+gl_stop :: (s: [] GlLoss, reason: int) -> int #effects(all) {
+  s[0].active = false; s[0].stopped = true; s[0].reason = reason; return GL_STOP;
+}
+gl_lost :: (s: [] GlLoss, now: int) -> int #export_c #effects(all) {
+  if s.count != 1 || now < 0 || now < s[0].last { return GL_INVALID; }
+  if s[0].stopped { return GL_STOP; }
+  if s[0].serial == 9223372036854775807 { return gl_stop(s, GL_SERIAL); }
+  s[0].last = now;
+  if s[0].active && now - s[0].began >= 10000 { return gl_stop(s, GL_DEADLINE); }
+  count := 0;
+  for i: 0..<s[0].count { if now - s[0].times[i] < 60000 { s[0].times[count] = s[0].times[i]; count += 1; } }
+  s[0].count = count;
+  if count == 3 { return gl_stop(s, GL_RATE); }
+  s[0].times[count] = now; s[0].count += 1; s[0].serial += 1;
+  if !s[0].active { s[0].began = now; }
+  s[0].active = true; return GL_PENDING;
+}
+gl_poll :: (s: [] GlLoss, now: int, serial: int) -> int #export_c #effects(all) {
+  if s.count != 1 { return GL_INVALID; }
+  if s[0].stopped { return GL_STOP; }
+  if serial != s[0].serial || !s[0].active { return GL_STALE; }
+  if now < 0 || now < s[0].last { return GL_INVALID; }
+  s[0].last = now;
+  if now - s[0].began >= 10000 { return gl_stop(s, GL_DEADLINE); }
+  return GL_PENDING;
+}
+gl_finish :: (s: [] GlLoss, now: int, serial: int, success: bool) -> int #export_c #effects(all) {
+  status := gl_poll(s, now, serial); if status != GL_PENDING { return status; }
+  if !success { return gl_stop(s, GL_REPLACEMENT); }
+  s[0].active = false; return GL_RECOVERED;
+}

@@ -1,0 +1,17 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/render/loss-policy.coax:75:38: mutant survived: '>=' became '>'
+    if s[0].active && now - s[0].began >= 10000 { return gl_stop(s, GL_DEADLINE); }
+                                       ^
+aethyr/render/loss-policy.coax:75:41: mutant survived: 10000 became 10001
+    if s[0].active && now - s[0].began >= 10000 { return gl_stop(s, GL_DEADLINE); }
+                                          ^
+aethyr/render/loss-policy.coax:75:67: mutant survived: 2 became 3
+    if s[0].active && now - s[0].began >= 10000 { return gl_stop(s, GL_DEADLINE); }
+                                                                    ^
+aethyr/render/loss-policy.coax:88:14: mutant survived: '||' became '&&'
+    if now < 0 || now < s[0].last { return GL_INVALID; }
+               ^
+aethyr/render/loss-policy.coax:89:13: mutant survived: the assignment was removed
+    s[0].last = now;
+              ^
+120 mutants, 115 killed, 5 survived

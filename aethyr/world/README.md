@@ -17,7 +17,8 @@ The #12990 components currently provide:
 | `stream-profile.coax` | Named small-world interest, update cadence, independent media collection and neighbor-placement hints |
 | `stream-walk.coax` | Actual bounded corridor consumer: fixed-step facts, semantic collision/navigation, stable sleeping entity state and original resource owners |
 | `stream-walk-state.coax` | Versioned, fieldwise canonical simulation state and SHA-256 observations after individual paid steps |
-| `stream-walk-recovery.coax` | Atomic replacement of GPU owner handles after the SDK quiescence/destruction barrier; automatic loss scheduling remains unfinished |
+| `stream-walk-recovery.coax` | Atomic replacement of GPU owner handles after the SDK quiescence/destruction barrier |
+| `stream-walk-device.coax`, `../render/loss-policy.coax` | Checked browser automatic-loss/deadline admission and canonical observation; persistent rescue and native automatic-loss adoption remain unfinished |
 | `stream-walk-presentation.coax` | Additive, read-only pose-to-HUD adapter; no cell owner or simulation clock |
 | `stream-hud.coax`, `stream-hud-shader.coax`, `stream-present-shader.coax` | Bounded texture-free Filament HUD, premultiplied linear FP16 composition and one final UNORM display conversion |
 | `../host/recorded-source.coax` | [Versioned retained-source observations](../host/recorded-source.md) for replaying corrupt, oversized and cancelled browser loads without substituting canonical fixture bytes |
@@ -136,7 +137,7 @@ under a 32 KiB dynamic resource cap, two image tiers, physical allocation
 traces, native CPU/codec replay and explicit GPU replacement from retained
 sources. The separate native carrier now records both tiers through actual
 Vulkan loads, draws, retirement and controlled device replacement. Physical
-native budget planning, automatic unsolicited-loss handling, rescue,
+native budget planning, persistent rescue, native automatic-loss adoption,
 the remaining host failure histories and complete world-shader reference keep
 #12990 open. Browser and native GPU qualification are distinct claims.
 The [HUD record](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md)
@@ -171,6 +172,14 @@ reactor arena; its eight retained digest slots are fixed controller storage.
 Replaying the same accepted history compares each paid step, including the
 steps between a frame's start and endpoint. Different live completion
 schedules still need not produce identical simulation.
+
+The [automatic browser-loss record](../../docs/verification/aethyr-streaming-12990/walk-automatic-loss.md)
+adds actual device-loss callbacks, three losses per minute, an absolute
+ten-second replacement deadline and stale-attempt fencing. Both rebuilding
+and stopped sessions refuse paid frames through the checked Coax face;
+cleanup requires the session's actual closing state. Failed replacement
+retains CPU/source owners until explicit close; it does not yet persist a
+rescue save. The ordinary host's existing recovery contract is unchanged.
 
 The [native-history replay record](../../docs/verification/aethyr-streaming-12990/walk-native-cpu-replay.md)
 extends the actual CPU receiver to the Vulkan carrier's v1/v2 histories.

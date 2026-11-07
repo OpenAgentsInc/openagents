@@ -15,6 +15,7 @@ Its development route is `/render-fixtures/galaxy/`.
 | --- | --- |
 | `frame.coax`, `geometry.coax` | Measured upload spans, the four-u32 draw ABI, actual vertex/index/instance domains and bounded admission work |
 | `registry.coax` | The GPU resource ledger: slot, generation and epoch for every object the browser renderer creates, its word budget, release, and device loss |
+| `loss-policy.coax` | Monotonic wall-clock admission for a ten-second replacement cycle, three losses per minute, stale callbacks and checked frame/cleanup permission; adopted by the bounded streamed WebGPU carrier |
 | `catalog.coax`, `bindings.coax`, `binding-sources.coax` | Profile identities, shader entry pairs, logical resources, physical reflection and resource origins |
 | `passes.coax`, `resources.coax` | Pass operations, attachment state, resource extents, sampler declarations and observed buffer initialization |
 | `runtime.coax` | Atomic composition of the canonical graph, effective work counts, geometry and frame admission |

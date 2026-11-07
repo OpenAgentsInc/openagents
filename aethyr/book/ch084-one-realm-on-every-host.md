@@ -35,6 +35,15 @@ the desktop default pending complete three-host service migration.
 
 ## Verify the boundary you use
 
+The bounded streaming WebGPU carrier adopts
+[render/loss-policy.coax](../render/loss-policy.coax) for the existing
+ten-second recovery deadline and three-losses-per-minute contract. Actual
+loss while rendering or building, late device completion and stopped
+cleanup have [separate receipts](../../docs/verification/aethyr-streaming-12990/walk-automatic-loss.md).
+The Coax face refuses paid frames during rebuilding and, after a stop,
+admits only the session's real closing phase. This fixture is separate
+from host-v1 adoption, native automatic-loss handling and persistent rescue.
+
 ```shell
 coax/bin/coax test aethyr/session/lifecycle.coax --library
 ```

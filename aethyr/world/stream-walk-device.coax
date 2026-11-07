@@ -1,0 +1,44 @@
+#authority; // Additive device carrier; wall-clock policy and diagnostic
+// counters are outside the canonical simulation state profile.
+#load "stream-walk-presentation.coax";
+#load "../render/loss-policy.coax";
+#test "device observation matches the independent v1 true-bit wire vector at current ordinal zero" #steps 100000000 {
+  // The b692... vector is independently specified by Python state_wire_vector,
+  // already qualified by stream-walk-state-checks; this exercises the SDK entry.
+  s: [1] SwWalk; zero_clock := clock.FrameClock.{step_ns = 0, max_frame_ns = 0, max_steps = 0};
+  s[0].valid = true; s[0].closing = true; s[0].prefetch_cell = 0;
+  s[0].player = walking.Player.{on_ground = true, theta = 0, phi = 0, dist = 0, max_dist = 0,
+    target = walking.Vec3.{}, prev_target = walking.Vec3.{}, prev_dist = 0, pace = 0, grip = 0, clock = zero_clock,
+    run = true, jump_held = true, wings = true, dive_held = true, diving = true, sliding = true, collision_floor_cut = true};
+  s[0].player.jumps.held = true;
+  s[0].cells[0].n = 1; s[0].cells[0].cells[0].body_n = 1;
+  boxes: [6] f32; bodies: [1] cells.CellBody; s[0].decoded_boxes[0] = boxes[..]; s[0].decoded_bodies[0] = bodies[..];
+  for i: 0..<SW_CELLS { s[0].entity[0].live[i] = true; s[0].entity[0].born[i] = true; s[0].entity[0].doomed[i] = true; s[0].born[i] = true; s[0].awake[i] = true; }
+  s[0].stream[0].valid = true; s[0].stream[0].closing = true; s[0].stream[0].last_tick = 0; s[0].stream[0].budget[0].valid = true;
+  zero_lease := HostInboxLease.{slot = 0};
+  for i: 0..<7 { s[0].stream[0].budget[0].peak_owners[i] = zero_lease; }
+  s[0].stream[0].budget[0].peak_owner = zero_lease; s[0].stream[0].budget[0].actor_peak_owner = zero_lease; s[0].stream[0].budget[0].voice_peak_owner = zero_lease;
+  for i: 0..<64 {
+    s[0].stream[0].owners[i].active = true; s[0].stream[0].wanted[i] = true; s[0].retire_sent[i] = true;
+    s[0].stream[0].owners[i].admission[0].status = ResourceAdmissionStatus.ok; s[0].stream[0].owners[i].admission[0].settled = true;
+    for k: 0..<5 { s[0].stream[0].owners[i].admission[0].leases[k] = zero_lease; }
+    s[0].claims[i].slot = 0; s[0].stream[0].claims[i].live = true; s[0].queue[0].entries[i].live = true;
+  }
+  s[0].prefetch.slot = 0; s[0].queue[0].valid = true; s[0].queue[0].epoch = 0; s[0].queue[0].retired = true;
+  s[0].load_n = 1; s[0].loads[0].owner = 0; s[0].retire_n = 1; s[0].retires[0].owner = 0; s[0].record_n = 1; s[0].records[0].key.owner = 0;
+  out: [64] u8; #assert sw_device_digest(s[..], out[..]);
+  #assert cast(string) out[..] == "b6924eb23d1c0967da2516f174709cd244fe0a821d911c5ff7dd3768cb820645";
+}
+#test "device observer reads complete canonical state and refuses invalid spans" #steps 100000000 {
+  s: [1] SwWalk; out: [64] u8; for i: 0..<64 { out[i] = 37; }
+  #assert !sw_device_digest(s[..], out[..]); s[0].valid = true;
+  #assert !sw_device_digest(s[0..<0], out[..]) && !sw_device_digest(s[..], out[0..<63]);
+  two: [2] SwWalk; #assert !sw_device_digest(two[..], out[..]);
+  for byte: out { #assert byte == 37; }
+  #assert sw_device_digest(s[..], out[..]); before := out;
+  s[0].player.pos.z = 56; #assert sw_device_digest(s[..], out[..]); #assert cast(string) before[..] != cast(string) out[..];
+}
+sw_device_digest :: (s: [] SwWalk, out: [] u8) -> bool #export_c #effects(all) {
+  if s.count != 1 || !s[0].valid { return false; }
+  return assets.asset_hex(sw_state_digest(s, s[0].player.clock, 0), out);
+}

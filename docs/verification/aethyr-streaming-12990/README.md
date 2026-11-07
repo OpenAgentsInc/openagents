@@ -1,6 +1,10 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [native-history CPU replay](walk-native-cpu-replay.md)
+Issue #12990 remains open. The [automatic browser-loss record](walk-automatic-loss.md)
+adds unsolicited callbacks, repeated/rebuilding loss, a real ten-second
+deadline, late-device destruction and checked frame admission. Persistent
+rescue and native automatic-loss adoption remain separate exits. The
+[native-history CPU replay](walk-native-cpu-replay.md)
 now checks every paid step in the actual Vulkan histories against the CPU
 consumer, including twelve altered-history refusals per tier. The original
 native manifest/backend is retained; GPU effects are not replayed. The
@@ -9,7 +13,7 @@ adds actual native/browser rendering before any area resources, through
 unload/reload and physical GPU replacement. Both native tiers preserve
 every pre-HUD canonical paid-step digest. All-pixel HUD references stay
 within one channel level under the fixed bound of two. This does not
-independently qualify world shading or complete automatic recovery.
+independently qualify world shading or persistent rescue.
 The earlier [native Vulkan
 record](walk-native-gpu.md) adds actual two-tier native loads, draws,
 retirement and controlled device replacement, with full readback equality
@@ -27,8 +31,8 @@ The preceding [coordinator and controlled
 GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
 real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
-historical failing gates and artifacts. Automatic loss handling,
-failed-replacement rescue, physical native budget planning, remaining failure histories,
+historical failing gates and artifacts. Persistent failed-replacement rescue,
+native automatic-loss adoption, physical native budget planning, remaining failure histories,
 complete world-shader reference and remaining host fault cases still prevent issue
 completion.
 
@@ -137,20 +141,23 @@ copies are published, including a failure after three reservations.
 - Actual stale/superseded callback, allocator and remaining SDK failure
   histories. Browser corrupt/oversized/cancelled/reordered receive and GPU
   validation failures already have separate current receipts.
-- Persistent HUD adoption and independent shader numerical/mutation
-  qualification. Player/camera, interest/update/draw/audio collection,
-  independent lighting and neighbor prefetch are adopted in the corridor.
+- Independent world-shader GPU reference qualification. Persistent HUD
+  adoption, its all-pixel reference and shader/layout mutation gates are
+  qualified separately; player/camera and the collection/update policies
+  are adopted in the corridor.
 - Complete transport/transient and physical backend allocation planning.
   Current traces reconcile logical resource costs; the native Vulkan
   backing extents and the browser's engine-owned transport arenas require
   explicit treatment alongside the existing aggregate owners.
 - An actual host category-pressure refusal with prior resident content
   still usable; the current category test remains a component result.
-- Automatic/repeated device loss, deadline and failed-replacement rescue.
-  Controlled browser and native GPU replacement now have actual receipts.
-- Replay of the new native GPU history within its backend/cost profile.
-  Earlier actual browser histories already replay every paid step through
-  native CPU allocation and codecs.
+- Persistent failed-replacement rescue and native automatic-loss adoption.
+  Automatic browser loss, repeated/rebuilding loss, deadline and late-device
+  fencing now have actual receipts; native controlled replacement remains
+  a separate qualified observation profile.
+- Additional native failure-history replay as those histories are recorded.
+  Current successful native GPU histories already replay every paid step
+  through CPU allocation/codecs in their original backend/cost profile.
 - Final consumer/residual-adapter inventory, supported-platform limits and
   complete teaching/registry audit. Existing source and qualified profile
   evidence must be retained when reconciling chapter status.

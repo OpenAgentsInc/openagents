@@ -41,6 +41,17 @@ static int32_t trace_n;
 static bool trace_overflow;
 static size_t failed_bytes;
 static int allocation_errno;
+#ifdef SW_LOSS_POLICY
+static coax_t_GlLoss loss_policy;
+static uint8_t device_digest[64];
+static coax_v_t_GlLoss lv(void){return(coax_v_t_GlLoss){&loss_policy,1};}
+SW_API("sw_loss_open") int32_t sw_loss_open(void){return gl_open(lv());}
+SW_API("sw_loss_lost") int64_t sw_loss_lost(int64_t now){return gl_lost(lv(),now);}
+SW_API("sw_loss_poll") int64_t sw_loss_poll(int64_t now,int64_t serial){return gl_poll(lv(),now,serial);}
+SW_API("sw_loss_finish") int64_t sw_loss_finish(int64_t now,int64_t serial,int32_t success){return gl_finish(lv(),now,serial,success!=0);}
+SW_API("sw_loss_info") int64_t sw_loss_info(int32_t field){switch(field){case 0:return loss_policy.active;case 1:return loss_policy.stopped;case 2:return loss_policy.serial;case 3:return loss_policy.count;case 4:return loss_policy.began;case 5:return loss_policy.reason;case 6:return loss_policy.last;default:return -1;}}
+SW_API("sw_host_device_digest") uintptr_t sw_host_device_digest(void){return sw_device_digest((coax_v_t_SwWalk){&state,1},(coax_v_u8){device_digest,64})?(uintptr_t)device_digest:0;}
+#endif
 #ifdef SW_PRESENTATION
 static float hud_vertices[24576];
 static int32_t hud_count;
@@ -83,7 +94,12 @@ SW_API("sw_host_start") int32_t sw_host_start(int32_t bytes,int32_t tier,int32_t
   bool ok=sw_load_manifest(sv(),mv(),(coax_v_u8){configuration,(uint64_t)bytes},(coax_string){(char*)root_hex,64},tier,(coax_t_ResourceBackend)backend);
   if(ok)state.observe_steps=true;return ok;
 }
-SW_API("sw_host_frame") int32_t sw_host_frame(int64_t ns,float direction){return sw_frame(sv(),mv(),ns,direction);}
+SW_API("sw_host_frame") int32_t sw_host_frame(int64_t ns,float direction){
+#ifdef SW_LOSS_POLICY
+  if(!gl_frame_allowed(lv(),state.closing))return 0;
+#endif
+  return sw_frame(sv(),mv(),ns,direction);
+}
 SW_API("sw_host_step_count") int32_t sw_host_step_count(void){return(int32_t)state.step_n;}
 SW_API("sw_host_step_word") int64_t sw_host_step_word(int32_t step,int32_t word){if(step<0||step>=state.step_n||word<0||word>=8)return -1;return state.step_digest.e[step].words.e[word];}
 SW_API("sw_host_ack") void sw_host_ack(void){sw_ack(sv());}
@@ -103,6 +119,9 @@ SW_API("sw_host_info") int64_t sw_host_info(int32_t field){switch(field){
   case 27:return sizeof state+sizeof manifest+sizeof audio_memory+sizeof image_memory+sizeof objects+sizeof configuration+sizeof root_hex+sizeof borrows+sizeof borrowed+sizeof uniforms+sizeof fixed+sizeof fixed_live+sizeof drawing+sizeof physical_bytes+sizeof physical_peak+sizeof physical_trace+sizeof trace_n+sizeof trace_overflow
 #ifdef SW_PRESENTATION
     +sizeof hud_vertices+sizeof hud_count+sizeof hud_frames
+#endif
+#ifdef SW_LOSS_POLICY
+    +sizeof loss_policy+sizeof device_digest
 #endif
     ;
   default:return -1;}}
@@ -168,6 +187,7 @@ SW_API("sw_host_cell") int64_t sw_host_cell(int32_t cell,int32_t field){if(cell<
 SW_API("sw_host_uniforms") uintptr_t sw_host_uniforms(int32_t cell,float aspect){return sw_uniforms(sv(),cell,aspect,(coax_v_f32){uniforms,64})?(uintptr_t)uniforms:0;}
 SW_API("sw_host_gpu_live") int32_t sw_host_gpu_live(int32_t row){return sw_gpu_live(sv(),row);}
 SW_API("sw_host_fixed") int32_t sw_host_fixed(int32_t index,int32_t kind,int64_t words){if(index<0||index>=16||fixed_live[index])return 0;coax_t_RrGrant g=sw_gpu_acquire(sv(),kind,words);if(g.status!=COAX_RrStatus_ok)return 0;fixed[index]=g.handle;fixed_live[index]=true;return 1;}
+SW_API("sw_host_fixed_live") int32_t sw_host_fixed_live(int32_t index){return index>=0&&index<16&&fixed_live[index];}
 SW_API("sw_host_fixed_release") int32_t sw_host_fixed_release(int32_t index){if(index<0||index>=16||!fixed_live[index])return 0;if(sw_gpu_release(sv(),fixed[index])!=COAX_RrStatus_ok)return 0;fixed_live[index]=false;return 1;}
 SW_API("sw_host_draw_count") int32_t sw_host_draw_count(void){drawing=sw_draws(sv(),mv());return drawing.count;}
 SW_API("sw_host_draw") int64_t sw_host_draw(int32_t index,int32_t field){if(index<0||index>=drawing.count)return -1;coax_t_SwDraw d=drawing.rows.e[index];switch(field){case 0:return d.geometry;case 1:return d.indices;case 2:return d.texture;case 3:return d.lighting;case 4:return d.cell;case 5:return d.count;case 6:return d.fallback;default:return -1;}}

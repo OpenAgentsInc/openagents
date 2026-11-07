@@ -86,7 +86,7 @@ order.
   grants no spawn/simulation authority. A separate [native
   carrier](../host/stream-native.md) now exercises both tiers through actual
   Vulkan loads, retirement and controlled device replacement. Physical
-  backend budget planning, automatic recovery and the chapter's complete
+  backend budget planning, persistent rescue and the chapter's complete
   teaching proof remain open.
 - The [persistent corridor HUD](../world/stream-hud.coax) stays live before
   any area resources, after the first cell unloads and across controlled
@@ -94,6 +94,11 @@ order.
   simulation step. Browser rasters 320×180/640×360 and native hardware/
   sanitizer routes have separate [full-pixel receipts](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md).
   This component evidence does not complete the chapter's teaching proof.
+- [Checked wall-clock loss admission](../render/loss-policy.coax) now drives
+  actual browser device-loss callbacks, an unchanged ten-second deadline
+  and a fourth-loss stop. Paid frames are gated in Coax even if a caller
+  supplies the SDK's cleanup argument. The [loss record](../../docs/verification/aethyr-streaming-12990/walk-automatic-loss.md)
+  distinguishes successful rebuilding from unfinished persistent rescue.
 
 ## The design in Aethyr
 

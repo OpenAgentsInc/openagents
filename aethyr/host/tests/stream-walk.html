@@ -6,6 +6,16 @@ import {openStreamWalk} from './stream-walk.js';
 const q=new URLSearchParams(location.search);
 const canvas=document.querySelector('canvas');if(q.has('width'))canvas.width=Number(q.get('width'));if(q.has('height'))canvas.height=Number(q.get('height'));
 try{window.streamWalk=await openStreamWalk({canvas:document.querySelector('canvas'),sceneURL:q.get('scene')||'/scene/scene.json',sceneSHA:q.get('scene_sha'),sceneBytes:Number(q.get('scene_bytes')),manifestSHA:q.get('root'),tier:Number(q.get('tier')||0),wasmURL:'/build/stream-walk.wasm',shaderURL:'/build/stream-draw.wgsl'});window.streamReady=true;
-if(q.get('play')==='1'){let direction=0,last=performance.now();addEventListener('keydown',e=>{if(e.key==='ArrowUp')direction=1;if(e.key==='ArrowDown')direction=-1;});addEventListener('keyup',e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown')direction=0;});const frame=async now=>{await window.streamWalk.step(Math.round((now-last)*1e6),direction);last=now;requestAnimationFrame(frame);};requestAnimationFrame(frame);}}
+if(q.get('play')==='1'){
+  let direction=0,last=performance.now(),generation=window.streamWalk.deviceStatus().generation;
+  addEventListener('keydown',e=>{if(e.key==='ArrowUp')direction=1;if(e.key==='ArrowDown')direction=-1;});
+  addEventListener('keyup',e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown')direction=0;});
+  const frame=async now=>{
+    const before=window.streamWalk.deviceStatus(),reset=before.state==='recovering'||before.generation!==generation;
+    await window.streamWalk.step(reset?0:Math.round((now-last)*1e6),direction);
+    const after=window.streamWalk.deviceStatus();last=reset||after.generation!==generation?performance.now():now;generation=after.generation;
+    requestAnimationFrame(frame);
+  };requestAnimationFrame(frame);
+}}
 catch(error){window.streamError=String(error.stack||error);console.error(error);}
 </script></body></html>

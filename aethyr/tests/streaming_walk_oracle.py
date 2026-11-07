@@ -104,6 +104,10 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
     with tempfile.TemporaryDirectory(prefix="aethyr-stream-replay-oracle-") as temp:
         temp = Path(temp)
         changed_frame = min(100, len(receipt["frames"]) - 1)
+        # A short successful recovery trace may end with one paid resume
+        # step. Plant interior-step faults in an actual four-step frame.
+        state_frame = min((i for i, frame in enumerate(receipt['frames']) if len(frame[14]) == 256),
+                          key=lambda i: abs(i - changed_frame)) if full_state else changed_frame
         completed_frame, completed_record = next((i, k) for i, frame in enumerate(receipt["frames"])
                                                 for k, record in enumerate(frame[13]) if int(record[1]) == 0)
         faults = ("position", "generation", "missing_completion")
@@ -154,15 +158,15 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
             else:
                 # Change only intermediate observations; the input, accepted
                 # history, frame endpoint and final actor state stay exact.
-                marks = changed["frames"][changed_frame][14]
+                marks = changed["frames"][state_frame][14]
                 assert len(marks) == 256
                 if fault == "intermediate_state":
-                    changed["frames"][changed_frame][14] = marks[:64] + ("0" if marks[64] != "0" else "1") + marks[65:]
+                    changed["frames"][state_frame][14] = marks[:64] + ("0" if marks[64] != "0" else "1") + marks[65:]
                 elif fault == "missing_step":
-                    changed["frames"][changed_frame][14] = marks[64:]
+                    changed["frames"][state_frame][14] = marks[64:]
                 else:
                     assert marks[:64] != marks[64:128]
-                    changed["frames"][changed_frame][14] = marks[64:128] + marks[:64] + marks[128:]
+                    changed["frames"][state_frame][14] = marks[64:128] + marks[:64] + marks[128:]
             source, output = temp / (fault + ".json"), temp / (fault + ".result.json")
             source.write_text(json.dumps(changed))
             # A mismatched expectation deliberately stops the observer with
@@ -173,7 +177,7 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
                                     capture_output=True, timeout=30, env=env)
             assert result.returncode == 1 and not output.exists() and not result.stderr, (fault, result.stdout, result.stderr)
             if fault == "intermediate_state":
-                expected_tick = changed["frames"][changed_frame][2] - 2
+                expected_tick = changed["frames"][state_frame][2] - 2
                 assert ("canonical state differs at paid tick %d" % expected_tick).encode() in result.stdout
     return {"observation_sha256": report["observation_sha256"], "cpu_peak": report["cpu_peak"],
             "negative_histories_rejected": len(faults), "canonical_paid_steps": previous_tick if full_state else 0}
