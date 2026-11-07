@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_hud_oracle.py", line 134, in <module>
+    result = inspect_native(Path(sys.argv[2]), Path(sys.argv[3])) if sys.argv[1] == '--native' else inspect_browser(Path(sys.argv[2]), Path(sys.argv[3]))
+             ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_hud_oracle.py", line 90, in inspect_native
+    result = compare(before, expected)
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_hud_oracle.py", line 77, in compare
+    assert max(differences, default=0) <= 2, (max(differences), sum(d > 2 for d in differences))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (3, 1)

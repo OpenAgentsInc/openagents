@@ -1,6 +1,7 @@
 // Engine-owned streaming scene shader. Coax owns projection and shading;
 // platform hosts bind actual admitted GPU objects.
 #module "aethyr.world.streamdraw";
+#authority;
 #load "../../verse/gpu/shader.coax";
 SwVertex :: struct {position: V3; normal: V3; uv: V2;}
 SwVarying :: struct {position: V4; uv: V2; normal: V3;}
@@ -12,21 +13,81 @@ SwVarying :: struct {position: V4; uv: V2; normal: V3;}
   #assert !sd_view(v3(0, 0, 0), v3(0, 0, 0), 2, v3(0, 0, 0), u[..]);
   #assert !sd_view(v3(0, 0, -10), v3(0, 0, 0), 0, v3(0, 0, 0), u[..]);
 }
-sd_view :: (eye: V3, at: V3, aspect: f32, offset: V3, out: [] f32) -> bool {
-  if out.count < 20 || !(aspect > 0 && aspect <= 8) || length3(sub3(at, eye)) < 0.000001 { return false; }
-  forward := normalize3(sub3(at, eye)); right := normalize3(cross3(v3(0, 1, 0), forward)); up := cross3(forward, right);
-  axes := [4] V3.[scale3(right, 1.7320508f32 / aspect), scale3(up, 1.7320508f32), scale3(forward, 768.0f32 / 767.9f32), forward];
-  for i: 0..<4 { a := axes[i]; out[i * 4] = a.x; out[i * 4 + 1] = a.y; out[i * 4 + 2] = a.z; out[i * 4 + 3] = -dot3(a, eye) + (ifx i == 2 then -0.1f32 * (768.0f32 / 767.9f32) else 0.0f32); }
-  out[16] = offset.x; out[17] = offset.y; out[18] = offset.z; out[19] = 1; return true;
+#test "streaming view has a finite vertical basis and refuses invalid input atomically" {
+  u: [64] f32; for i: 0..<64 { u[i] = 37; }
+  #assert sd_view(v3(0, 0, 0), v3(0, 10, 0), 2, v3(1, 2, 3), u[..]);
+  for i: 0..<20 { #assert u[i] - u[i] == 0; }
+  #assert abs(u[0] + 0.8660254) < 0.000001 && abs(u[6] - 1.7320508) < 0.000001;
+  for i: 20..<64 { #assert u[i] == 37; }
+  for bad: 0..<7 {
+    for i: 0..<64 { u[i] = 37; }
+    eye := v3(0, 0, -10); at := v3(0, 0, 0); offset := v3(0, 0, 0); aspect: f32 = 2;
+    if bad == 0 { eye.x = 0.0f32 / 0.0f32; }
+    if bad == 1 { at.y = 1.0f32 / 0.0f32; }
+    if bad == 2 { offset.z = -1.0f32 / 0.0f32; }
+    if bad == 3 { aspect = 1.0f32 / 0.0f32; }
+    if bad == 4 { aspect = 0; }
+    if bad == 5 { at = eye; }
+    #assert !sd_view(eye, at, aspect, offset, u[0..<(ifx bad == 6 then 19 else 64)]);
+    for value: u { #assert value == 37; }
+  }
 }
-sd_vs :: (vertex: u32, instance: u32, input: SwVertex, u: [] f32) -> SwVarying {
+#test "streaming vertex projection retains every coefficient offset and varying" {
+  u: [20] f32; for i: 0..<20 { u[i] = f32(i + 1) / 4; }
+  v := sd_vs(7, 3, SwVertex.{position = v3(2, 3, 5), normal = v3(0.2, 0.4, 0.8), uv = v2(0.3, 0.7)}, u[..]);
+  #assert v.position.x == 13.625 && v.position.y == 38.125 && v.position.z == 62.625 && v.position.w == 87.125;
+  #assert v.normal.x == 0.2 && v.normal.y == 0.4 && v.normal.z == 0.8 && v.uv.x == 0.3 && v.uv.y == 0.7;
+}
+#test "streaming fragment uses independent base and bake channels with declared normal response" {
+  base := [4] V4.[v4(0.2, 0.4, 0.8, 0.3), v4(0.8, 0.6, 0.4, 0.2), v4(0.1, 0.3, 0.9, 0.4), v4(0.9, 0.7, 0.5, 0.6)];
+  bake := [4] V4.[v4(0.5, 0.25, 0.125, 0.9), v4(0.125, 0.5, 0.75, 0.2), v4(0.8, 0.6, 0.4, 0.3), v4(0.4, 0.8, 0.2, 0.1)];
+  expected := [4] V3.[v3(0.1, 0.1, 0.1), v3(0.1, 0.3, 0.3), v3(0.08, 0.18, 0.36), v3(0.36, 0.56, 0.1)];
+  for i: 0..<4 {
+    for normal, k: [5] f32.[-1, 0, 0.5, 1, 2] {
+      value := sd_fs(SwVarying.{uv = v2(f32(i % 2) * 0.5 + 0.25, f32(i / 2) * 0.5 + 0.25), normal = v3(0.8, normal, 0.6)}, Tex2D.{width = 2, height = 2, texels = base[..]}, Tex2D.{width = 2, height = 2, texels = bake[..]}, Sampler.{});
+      scale := [5] f32.[0.25, 0.25, 0.625, 1, 1.75][k];
+      #assert abs(value.x - expected[i].x * scale) < 0.000001 && abs(value.y - expected[i].y * scale) < 0.000001 && abs(value.z - expected[i].z * scale) < 0.000001 && value.w == 1;
+    }
+  }
+}
+#test "streaming projection profile admits exact capacity aspect and basis boundaries" {
+  #assert sd_aspect(8) && sd_aspect(0.125) && !sd_aspect(0) && !sd_aspect(-1) && !sd_aspect(8.01);
+  #assert sd_up(0.999).y == 1 && sd_up(-0.999).y == 1 && sd_up(1).z == 1 && sd_up(-1).z == 1;
+  u: [20] f32;
+  #assert sd_view(v3(0, 0, 0), v3(0, 0, 0.000001), 8, v3(1, 2, 3), u[..]);
+  #assert u[16] == 1 && u[17] == 2 && u[18] == 3 && u[19] == 1;
+}
+#test "streaming camera writes the complete independently worked oblique matrix" {
+  u: [20] f32;
+  #assert sd_view(v3(1, 2, 3), v3(5, 7, 9), 2, v3(7, 8, 9), u[..]);
+  expected := [20] f32.[0.720576689, 0, -0.480384459, 0.720576689, -0.547448899, 1.423367138, -0.821173349, 0.164234670,
+    0.455901668, 0.569877085, 0.683852502, -3.747226367, 0.455842306, 0.569802882, 0.683763459, -3.646738447, 7, 8, 9, 1];
+  for value, i: expected { #assert abs(u[i] - value) < 0.00001; }
+}
+sd_aspect :: (aspect: f32) -> bool #effects(all) { return aspect > 0 && aspect <= 8; }
+sd_up :: (forward_y: f32) -> V3 #effects(all) { return ifx abs(forward_y) > 0.999f32 then v3(0, 0, 1) else v3(0, 1, 0); }
+sd_view :: (eye: V3, at: V3, aspect: f32, offset: V3, out: [] f32) -> bool #effects(all) {
+  delta := sub3(at, eye); squared := dot3(delta, delta);
+  if out.count < 20 || !sd_aspect(aspect) || squared - squared != 0 { return false; }
+  if sqrt(squared) < 0.000001 { return false; }
+  forward := normalize3(delta);
+  reference := sd_up(forward.y);
+  right := normalize3(cross3(reference, forward)); up := cross3(forward, right);
+  axes := [4] V3.[scale3(right, 1.7320508f32 / aspect), scale3(up, 1.7320508f32), scale3(forward, 768.0f32 / 767.9f32), forward];
+  staged: [20] f32;
+  for i: 0..<4 { a := axes[i]; staged[i * 4] = a.x; staged[i * 4 + 1] = a.y; staged[i * 4 + 2] = a.z; staged[i * 4 + 3] = -dot3(a, eye) + (ifx i == 2 then -0.1f32 * (768.0f32 / 767.9f32) else 0.0f32); }
+  staged[16] = offset.x; staged[17] = offset.y; staged[18] = offset.z; staged[19] = 1;
+  for value: staged { if value - value != 0 { return false; } }
+  for value, i: staged { out[i] = value; } return true;
+}
+sd_vs :: (vertex: u32, instance: u32, input: SwVertex, u: [] f32) -> SwVarying #effects(all) {
   p := add3(input.position, v3(u[16], u[17], u[18]));
   clip := v4(p.x * u[0] + p.y * u[1] + p.z * u[2] + u[3], p.x * u[4] + p.y * u[5] + p.z * u[6] + u[7],
     p.x * u[8] + p.y * u[9] + p.z * u[10] + u[11], p.x * u[12] + p.y * u[13] + p.z * u[14] + u[15]);
   return SwVarying.{position = clip, uv = input.uv, normal = input.normal};
 }
-sd_fs :: (input: SwVarying, texture: Tex2D, light: Tex2D, smp: Sampler) -> V4 {
+sd_fs :: (input: SwVarying, texture: Tex2D, light: Tex2D, smp: Sampler) -> V4 #effects(all) {
   base := gpu_sample_level(texture, smp, input.uv, 0); baked := gpu_sample_level(light, smp, input.uv, 0);
-  shade := 0.25f32 + 0.75f32 * (ifx input.normal.y > 0 then input.normal.y else 0.0f32);
+  shade := 0.25f32 + 0.75f32 * fmax(input.normal.y, 0);
   return v4(base.x * baked.x * shade, base.y * baked.y * shade, base.z * baked.z * shade, 1);
 }

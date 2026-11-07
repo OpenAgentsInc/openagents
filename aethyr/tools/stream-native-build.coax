@@ -12,12 +12,18 @@ swnb_run :: (argv: [] string, save: string) -> bool {
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--sanitize") { tool_errln("usage: stream-native-build NEW_DIR [--sanitize]"); return 2; }
   sanitize := args_count(a[..]) == 2; dir := args_at(a[..], 0); if fs_exists(dir) || !fs_mkdir(dir) { return 2; }
-  paths: [5] [4096] u8; dir = fs_realpath(dir, paths[0][..]);
+  paths: [7] [4096] u8; dir = fs_realpath(dir, paths[0][..]);
   source := fs_join(dir, "stream-native.c", paths[1][..]); header := fs_join(dir, "stream-native.h", paths[2][..]);
   exe := fs_join(dir, "stream-native", paths[3][..]); program := fs_join(dir, "stream-draw.spv", paths[4][..]);
   emit := [6] string.["coax/bin/coax", "c", "aethyr/host/tests/stream-walk-native-gpu.coax", "--library", "--header", header];
   spv := [9] string.["coax/bin/coax", "spirv", "aethyr/world/stream-draw.coax", "--vertex", "sd_vs", "--fragment", "sd_fs", "-o", program];
   if !swnb_run(emit[..], source) || !swnb_run(spv[..], "") { return 1; }
+  hud_program := fs_join(dir, "stream-hud.spv", paths[5][..]);
+  hud_spv := [9] string.["coax/bin/coax", "spirv", "aethyr/world/stream-hud-shader.coax", "--vertex", "sh_vs", "--fragment", "sh_fs", "-o", hud_program];
+  if !swnb_run(hud_spv[..], "") { return 1; }
+  present_program := fs_join(dir, "stream-present.spv", paths[6][..]);
+  present_spv := [9] string.["coax/bin/coax", "spirv", "aethyr/world/stream-present-shader.coax", "--vertex", "sp_vs", "--fragment", "sp_fs", "-o", present_program];
+  if !swnb_run(present_spv[..], "") { return 1; }
   out: [8192] u8; err: [8192] u8; pkg := [4] string.["pkg-config", "--cflags", "--libs", "vulkan"]; r := proc_run(pkg[..], 30000, out[..], err[..]);
   if r.status != 0 || r.cut || r.timed_out { tool_errln(cast(string) err[0..<r.err_n]); return 1; }
   base := [26] string.["gcc", "-std=gnu11", "-O2", "-ffp-contract=off", "-fno-fast-math", "-fno-builtin-pow", "-I", dir, "-I", "coax/platform", "-I", "verse/gpu", source,

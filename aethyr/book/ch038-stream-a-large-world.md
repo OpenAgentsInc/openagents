@@ -88,6 +88,12 @@ order.
   Vulkan loads, retirement and controlled device replacement. Physical
   backend budget planning, automatic recovery and the chapter's complete
   teaching proof remain open.
+- The [persistent corridor HUD](../world/stream-hud.coax) stays live before
+  any area resources, after the first cell unloads and across controlled
+  physical device replacement. Its display adapter changes no canonical
+  simulation step. Browser rasters 320×180/640×360 and native hardware/
+  sanitizer routes have separate [full-pixel receipts](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md).
+  This component evidence does not complete the chapter's teaching proof.
 
 ## The design in Aethyr
 

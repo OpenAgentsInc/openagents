@@ -365,6 +365,22 @@ coax/bin/coax test aethyr/ui/hud.coax --library
 - [aethyr/arrange.coax](../../aethyr/arrange.coax): a close-up view where
   point and click place or take out objects.
 
+## A HUD survives area retirement
+
+The bounded streaming corridor uses [stream-hud.coax](../world/stream-hud.coax)
+to draw Filament text, a panel and twelve progress segments into one
+2,048-vertex span. [stream-walk-presentation.coax](../world/stream-walk-presentation.coax)
+reads the player's distance without advancing the clock or borrowing a
+cell. Its host retains the CPU span and granted GPU buffers independently
+of the area. Closing a cell cannot remove the HUD, and physical GPU
+replacement rebuilds it from the same pose without fetching a font atlas.
+
+The [qualified record](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md)
+checks actual browser and Vulkan draws, complete recovery images, an
+independent raster reference and unchanged simulation digests. This is a
+display-only fixture; it does not implement the UI tree, platform mirror
+or accessible journey below. The chapter remains partly implemented.
+
 ## The host's accessibility tree (design)
 
 The UI is drawn on the GPU, so the host mirrors the tree to the platform's

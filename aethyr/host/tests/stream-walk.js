@@ -1,7 +1,7 @@
 // Firm reason: 1 (browser SDK: actual pack fetches, Wasm malloc spans and WebGPU effects; Coax owns all residency, movement, decoding and draw selection).
 import {openPackHost} from '../../../coax/web/pack-host.js';
 
-export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,tier,wasmURL,shaderURL,onRecord}){
+export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,tier,wasmURL,shaderURL,hudShaderURL='/build/stream-hud.wgsl',presentShaderURL='/build/stream-present.wgsl',onRecord}){
   const packs=await openPackHost(),arena=packs.retainBytes(8388608),startup=[];let memory;
   startup.push(()=>{if(memory)new Uint8Array(memory.buffer).fill(0);memory=null;arena.release();});
   try{
@@ -25,23 +25,32 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   const manifestOwner={kind:'manifest'},manifest=await packs.loadBytes(new URL(`${manifestSHA}.rcm`,base),28208,{owner:manifestOwner});
   try{await manifest.use(({bytes})=>{new Uint8Array(memory.buffer,x.sw_config_ptr(),bytes.byteLength).set(bytes);new Uint8Array(memory.buffer,x.sw_root_ptr(),64).set(new TextEncoder().encode(manifestSHA));if(!x.sw_host_start(bytes.byteLength,tier,0))throw Error('Coax refused scene manifest');});}finally{await packs.retire(manifestOwner);}
   let adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw Error('WebGPU adapter unavailable');
-  const errors=[],shaderSource=await(await fetch(shaderURL)).text(),format=navigator.gpu.getPreferredCanvasFormat(),context=canvas.getContext('webgpu');
-  let device,uniforms,depth,color,pipeline,sampler;
+  const errors=[],shaderSource=await(await fetch(shaderURL)).text(),hudShaderSource=await(await fetch(hudShaderURL)).text(),presentShaderSource=await(await fetch(presentShaderURL)).text(),format=navigator.gpu.getPreferredCanvasFormat(),context=canvas.getContext('webgpu');
+  let device,uniforms,depth,color,hdr,pipeline,sampler,hudVertices,hudUniforms,hudPipeline,presentPipeline;
+  let hudDraws=0,lastHudVertices=0;
   async function makeSurface(){
     const created=[],tokens=[];device=await adapter.requestDevice();device.addEventListener('uncapturederror',e=>errors.push(e.error.message));
     try{
-      const shader=device.createShaderModule({code:shaderSource}),diagnostics=await shader.getCompilationInfo();
+      const shader=device.createShaderModule({code:shaderSource}),hudShader=device.createShaderModule({code:hudShaderSource}),presentShader=device.createShaderModule({code:presentShaderSource}),diagnostics=await shader.getCompilationInfo(),hudDiagnostics=await hudShader.getCompilationInfo(),presentDiagnostics=await presentShader.getCompilationInfo();
       if(diagnostics.messages.some(m=>m.type==='error'))throw Error(diagnostics.messages.map(m=>m.message).join('\n'));
+      if(hudDiagnostics.messages.some(m=>m.type==='error'))throw Error(hudDiagnostics.messages.map(m=>m.message).join('\n'));
+      if(presentDiagnostics.messages.some(m=>m.type==='error'))throw Error(presentDiagnostics.messages.map(m=>m.message).join('\n'));
       context.configure({device,format,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_DST,alphaMode:'opaque'});
-      for(const [index,kind,words] of [[0,1,1024n],[1,3,BigInt(canvas.width*canvas.height)],[2,3,BigInt(canvas.width*canvas.height)]]){if(!x.sw_host_fixed(index,kind,words))throw Error('Coax refused persistent draw storage');tokens.push(index);}
+      for(const [index,kind,words] of [[0,1,1024n],[1,3,BigInt(canvas.width*canvas.height)],[2,3,BigInt(canvas.width*canvas.height)],[6,4,24576n],[7,1,64n],[8,3,BigInt(canvas.width*canvas.height*2)]]){if(!x.sw_host_fixed(index,kind,words))throw Error('Coax refused persistent draw storage');tokens.push(index);}
       uniforms=device.createBuffer({size:4096,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});created.push(uniforms);
       depth=device.createTexture({size:[canvas.width,canvas.height],format:'depth32float',usage:GPUTextureUsage.RENDER_ATTACHMENT});created.push(depth);
       color=device.createTexture({size:[canvas.width,canvas.height],format,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC});created.push(color);
-      pipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:shader,entryPoint:'sd_vs',buffers:[{arrayStride:48,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},{shaderLocation:2,offset:24,format:'float32x2'}]}]},fragment:{module:shader,entryPoint:'sd_fs',targets:[{format}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:true,depthCompare:'less'}});
+      hdr=device.createTexture({size:[canvas.width,canvas.height],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});created.push(hdr);
+      pipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:shader,entryPoint:'sd_vs',buffers:[{arrayStride:48,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},{shaderLocation:2,offset:24,format:'float32x2'}]}]},fragment:{module:shader,entryPoint:'sd_fs',targets:[{format:'rgba16float'}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:true,depthCompare:'less'}});
       sampler=device.createSampler({magFilter:'nearest',minFilter:'nearest',mipmapFilter:'nearest'});
+      hudVertices=device.createBuffer({size:98304,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});created.push(hudVertices);
+      hudUniforms=device.createBuffer({size:256,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});created.push(hudUniforms);
+      device.queue.writeBuffer(hudUniforms,0,new Float32Array([canvas.width,canvas.height,0,0]));
+      hudPipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:hudShader,entryPoint:'sh_vs',buffers:[{arrayStride:48,attributes:[{shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32x4'},{shaderLocation:2,offset:32,format:'float32x4'}]}]},fragment:{module:hudShader,entryPoint:'sh_fs',targets:[{format:'rgba16float',blend:{color:{operation:'add',srcFactor:'one',dstFactor:'one-minus-src-alpha'},alpha:{operation:'add',srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:false,depthCompare:'always'}});
+      presentPipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:presentShader,entryPoint:'sp_vs'},fragment:{module:presentShader,entryPoint:'sp_fs',targets:[{format}]},primitive:{topology:'triangle-list'}});
     }catch(error){for(const object of created)object.destroy();for(const token of tokens)x.sw_host_fixed_release(token);context.unconfigure();device.destroy();throw error;}
   }
-  await makeSurface();startup.push(()=>{uniforms.destroy();depth.destroy();color.destroy();for(let i=0;i<3;i++)x.sw_host_fixed_release(i);context.unconfigure();device.destroy();});
+  await makeSurface();startup.push(()=>{uniforms.destroy();hudVertices.destroy();hudUniforms.destroy();depth.destroy();color.destroy();hdr.destroy();for(const i of [0,1,2,6,7,8])x.sw_host_fixed_release(i);context.unconfigure();device.destroy();});
   const gpu=new Map(),pending=new Set(),transfers=new Map();
   let closed=false,framing=false,loadFailures=0,drawnCommands=0,fallbackDraws=0,finalSnapshot,observedLive=0;
   const stages=[],recentFailures=[];
@@ -110,14 +119,18 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       for(const owner of new Set(fields.slice(0,4))){if(!gpu.has(owner)||!x.sw_host_gpu_live(owner))throw Error('draw has no concrete live GPU owner');if(!borrowed.has(owner)){if(!x.sw_host_borrow(owner))throw Error('draw borrow refused');borrowed.add(owner);}}
       commands.push(fields);
     }
-      const encoder=device.createCommandEncoder(),pass=encoder.beginRenderPass({colorAttachments:[{view:color.createView(),clearValue:{r:.03,g:.05,b:.08,a:1},loadOp:'clear',storeOp:'store'}],depthStencilAttachment:{view:depth.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});pass.setPipeline(pipeline);
+      const encoder=device.createCommandEncoder(),pass=encoder.beginRenderPass({colorAttachments:[{view:hdr.createView(),clearValue:{r:.03,g:.05,b:.08,a:1},loadOp:'clear',storeOp:'store'}],depthStencilAttachment:{view:depth.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});pass.setPipeline(pipeline);
       for(let i=0;i<commands.length;i++){
         const [geometry,indices,texture,lighting,cell,n,fallback]=commands[i];const address=x.sw_host_uniforms(cell,canvas.width/canvas.height);if(!address)throw Error('camera/placement uniform refused');
         device.queue.writeBuffer(uniforms,i*256,new Uint8Array(memory.buffer,address,256));
         const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:uniforms,offset:i*256,size:256}},{binding:1,resource:gpu.get(texture).object.createView()},{binding:2,resource:gpu.get(lighting).object.createView()},{binding:3,resource:sampler}]});
         pass.setBindGroup(0,group);pass.setVertexBuffer(0,gpu.get(geometry).object);pass.setIndexBuffer(gpu.get(indices).object,'uint32');pass.drawIndexed(n);drawnCommands++;fallbackDraws+=fallback;
       }
-      pass.end();encoder.copyTextureToTexture({texture:color},{texture:context.getCurrentTexture()},[canvas.width,canvas.height]);device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();
+      const hudCount=x.sw_host_hud(canvas.width,canvas.height);if(hudCount<=0)throw Error('persistent Coax HUD refused');
+      device.queue.writeBuffer(hudVertices,0,new Uint8Array(memory.buffer,x.sw_host_hud_pointer(),hudCount*48));
+      pass.setPipeline(hudPipeline);pass.setBindGroup(0,device.createBindGroup({layout:hudPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:hudUniforms,offset:0,size:256}}]}));pass.setVertexBuffer(0,hudVertices);pass.draw(hudCount);hudDraws++;lastHudVertices=hudCount;
+      pass.end();const display=encoder.beginRenderPass({colorAttachments:[{view:color.createView(),loadOp:'clear',storeOp:'store'}]});display.setPipeline(presentPipeline);display.setBindGroup(0,device.createBindGroup({layout:presentPipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:hudUniforms,offset:0,size:256}},{binding:1,resource:hdr.createView()},{binding:2,resource:sampler}]}));display.draw(3);display.end();
+      encoder.copyTextureToTexture({texture:color},{texture:context.getCurrentTexture()},[canvas.width,canvas.height]);device.queue.submit([encoder.finish()]);await device.queue.onSubmittedWorkDone();
     }finally{for(const owner of borrowed)if(!x.sw_host_return(owner))throw Error('final draw borrow return refused');const validation=await device.popErrorScope();if(validation)throw Error(validation.message);}
   }
   async function step(ns,direction=0){
@@ -145,8 +158,8 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     await Promise.all([...pending]);
     const closingFrames=[];for(let i=0;i<128&&!info(24);i++)closingFrames.push(await step(15625000,0));
     if(!info(24)||info(14)||info(10)||info(22)||info(23))throw Error('physical resources did not drain');
-    await device.queue.onSubmittedWorkDone();uniforms.destroy();depth.destroy();color.destroy();for(let i=0;i<3;i++)if(!x.sw_host_fixed_release(i))throw Error('fixed ledger cleanup refused');
-    const result={info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
+    await device.queue.onSubmittedWorkDone();uniforms.destroy();hudVertices.destroy();hudUniforms.destroy();depth.destroy();color.destroy();hdr.destroy();for(const i of [0,1,2,6,7,8])if(!x.sw_host_fixed_release(i))throw Error('fixed ledger cleanup refused');
+    const result={info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,hud:{draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))},wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
     if(info(12)||info(13))throw Error('GPU ledger did not drain');closed=true;context.unconfigure();device.destroy();new Uint8Array(memory.buffer).fill(0);x=null;memory=null;arena.release();result.transport=packs.info();finalSnapshot=result;return result;
   }
   async function capture(){
@@ -173,7 +186,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       for(const transfer of transfers.values())packs.abortReads(transfer.owner);await Promise.all([...pending]);await device.queue.onSubmittedWorkDone();
       const before=Array.from({length:28},(_,f)=>info(f)),lostDevice=device;
       lostDevice.destroy();const loss=await lostDevice.lost;
-      for(const resource of gpu.values())resource.object.destroy();gpu.clear();uniforms.destroy();depth.destroy();color.destroy();context.unconfigure();
+      for(const resource of gpu.values())resource.object.destroy();gpu.clear();uniforms.destroy();hudVertices.destroy();hudUniforms.destroy();depth.destroy();color.destroy();hdr.destroy();context.unconfigure();
       if(!x.sw_host_recover())throw Error(`Coax refused GPU replacement:${x.sw_host_recover_info(0)}`);
       adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw Error('replacement WebGPU adapter unavailable');
       await makeSurface();let uploaded=0;
@@ -182,6 +195,6 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       return {before,after:Array.from({length:28},(_,f)=>info(f)),epoch:Number(x.sw_host_recover_info(2)),granted:Number(x.sw_host_recover_info(1)),uploaded,lossReason:loss.reason,adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description},ms:performance.now()-started};
     }finally{framing=false;}
   }
-  return Object.freeze({step,settle:()=>Promise.all([...pending]),close,capture,recover,profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
+  return Object.freeze({step,settle:()=>Promise.all([...pending]),close,capture,recover,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
   }catch(error){for(const dispose of startup.reverse())await dispose();throw error;}
 }

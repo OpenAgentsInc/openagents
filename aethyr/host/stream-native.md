@@ -34,6 +34,15 @@ receive a temporary grant before allocation. `vks_read_buffer` reads into
 the already owned mapped allocation. Source/decoded bytes remain retained
 under their original resource tickets.
 
+The additive presentation carrier also owns a 98,304-byte CPU HUD vertex
+span, the same-sized GPU buffer, a 256-byte uniform buffer and a linear
+FP16 color target. World and premultiplied HUD draw into FP16; a separate
+Coax fullscreen pass samples it once into the original UNORM display.
+The surface's six fixed grants (0, 1, 2, 6, 7, 8) remain live until physical
+teardown finishes. The SDK observes missing grants at close; final-zero
+counts alone cannot prove this ordering. Area retirement never destroys
+the HUD pipeline or buffers.
+
 The observer records dynamic allocation/free events and per-stage timing,
 logical GPU bytes, actual `VkMemoryRequirements.size` totals/peak, and
 fixed core/SDK metadata sizes. Explicit Vulkan backing is measured; it is
@@ -66,7 +75,13 @@ nonuniform raster; equal canonical state; retained CPU count/source identity
 and no new reads; no paid frame; old device closed; all grants reuploaded;
 epoch advanced; resumed draw; validation errors; validation warnings; final
 SDK objects; final ledger objects/words; complete drain with validation
-enabled. Its root mutation gate kills 23/23 without equivalents.
+enabled. An additional checked observation requires zero fixed-grant
+teardown violations. Its complete root mutation gate kills 25/25 without
+equivalents. HUD receipts use `aethyr.stream-walk-native-gpu.v2`, preserve
+the sixteen original verdict words, and append GPU observation word 19
+for these violations. They also bind all three SPIR-V identities and the
+explicit display profile. The oracle continues to accept historical v1
+receipts with their original nineteen-word GPU observations.
 
 ## Run and inspect
 
@@ -83,7 +98,9 @@ emitter. No external shader compiler or source-asset tool runs.
 
 The independent oracle reconstructs allocation lifetimes/costs, dependency
 publication, exact binary32 walking, source identity and every recovery
-readback byte. It rejects 22 altered histories. It retains paid-step
+readback byte. It rejects 22 altered v1 histories and 30 altered v2
+histories, including early HUD release, changed shader/profile identity,
+wrong draw counts, changed HUD bytes and false teardown claims. It retains paid-step
 canonical hashes but does not independently serialize or replay this new
 native GPU history; the earlier browser-to-native CPU replay qualification
 has its own input and backend profile. It does not infer shader numerical
@@ -91,3 +108,6 @@ reference qualification from a nonuniform image.
 
 Current hardware/software scope and exact pins are in the
 [native receipt record](../../docs/verification/aethyr-streaming-12990/walk-native-gpu.md).
+The [persistent HUD record](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md)
+adds full-pixel reference comparison, two browser rasters, unchanged
+canonical histories and explicit display-storage ownership.

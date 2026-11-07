@@ -1,0 +1,90 @@
+// Persistent, texture-free corridor HUD. Reuses Aethyr's existing Filament
+// text, frames and progress segmentation; it reads a pose, owns no clock or
+// cell reference, and writes one bounded display-only vertex span.
+#module "aethyr.world.streamhud";
+#authority;
+#load "../ui/draw.coax";
+SH_VERTICES :: 2048;
+SH_FLOATS :: SH_VERTICES * 12;
+
+#test "corridor distance caption has exact bounded decimal metres" {
+  out: [11] u8;
+  for metres: 0..<769 {
+    label := sh_label(metres, out[..]);
+    #assert label.count == 11 && label[3..<11] == " / 768 M";
+    #assert cast(int)(label[0] - '0') * 100 + cast(int)(label[1] - '0') * 10 + cast(int)(label[2] - '0') == metres;
+  }
+  for bad: [3] int.[-1, 769, 999] { #assert sh_label(bad, out[..]).count == 0; }
+  for i: 0..<11 { out[i] = 37; }
+  #assert sh_label(56, out[0..<10]).count == 0;
+  for byte: out { #assert byte == 37; }
+}
+#test "persistent HUD is bounded independent of cells and refuses whole on invalid view or output" {
+  out: [SH_FLOATS] f32;
+  for z, sample: [5] f32.[0, 56, 384, 720, 768] {
+    for i: 0..<72 { out[i] = 37; }
+    n := sh_draw(320, 180, z, out[..]); #assert n > 600 && n < SH_VERTICES && n % 6 == 0;
+    #assert out[0] == 12 && out[1] == 12 && out[6] == 0.86 && out[11] == 6;
+    #assert out[6 * 12 + 2] == -1.6 && out[6 * 12 + 3] == -1.6;
+    for i: 0..<6 {
+      #assert out[i * 12 + 8] == 0.02 && out[i * 12 + 9] == 0.04 && out[i * 12 + 10] == 0.06;
+      for lane: [5] int.[2, 3, 4, 5, 7] { #assert out[i * 12 + lane] == 0; }
+    }
+    bars := 0; title := 0; caption := 0; guide := 0;
+    for i: 0..<n {
+      #assert out[i * 12] >= 10 && out[i * 12] < 310 && out[i * 12 + 1] >= 10 && out[i * 12 + 1] < 78;
+      #assert out[i * 12 + 11] == 0 || out[i * 12 + 11] == 6;
+      #assert out[i * 12] * 16 == floor(out[i * 12] * 16) && out[i * 12 + 1] * 16 == floor(out[i * 12 + 1] * 16);
+      x := out[i * 12]; y := out[i * 12 + 1];
+      if y >= 39 && y <= 50 {
+        segment := bars / 24; lit := segment < [5] int.[0, 0, 6, 11, 12][sample];
+        #assert x >= 21.5 + f32(segment) * 23 && x <= 45.5 + f32(segment) * 23;
+        #assert out[i * 12 + 8] == (ifx lit then 0.216f32 else 0.42f32);
+        #assert out[i * 12 + 9] == (ifx lit then 0.851f32 else 0.42f32) && out[i * 12 + 10] == out[i * 12 + 9];
+        bars += 1;
+      }
+      if i >= 6 && y < 35 { #assert out[i * 12 + 8] == 0.94; if x < 190 { title += 1; } else { caption += 1; } }
+      if i >= 6 && y > 51 { #assert out[i * 12 + 8] == 0.6; guide += 1; }
+    }
+    #assert bars == 288 && title > 0 && caption > 0 && guide > 0;
+  }
+  #assert sh_draw(640, 360, 56, out[..]) > 600;
+  #assert sh_draw(8192, 8192, 56, out[..]) > 600;
+  for i: 0..<SH_FLOATS { out[i] = 37; }
+  #assert sh_draw(319, 180, 56, out[..]) == 0 && sh_draw(320, 179, 56, out[..]) == 0;
+  #assert sh_draw(320, 180, -1, out[..]) == 0 && sh_draw(320, 180, 769, out[..]) == 0;
+  #assert sh_draw(8193, 180, 56, out[..]) == 0 && sh_draw(320, 8193, 56, out[..]) == 0;
+  #assert sh_draw(320, 180, 56, out[0..<SH_FLOATS - 1]) == 0;
+  for value: out { #assert value == 37; }
+}
+#test "HUD geometry snaps once to a portable sixteenth-pixel grid" {
+  #assert sh_snap(12) == 12 && sh_snap(12.03) == 12 && sh_snap(12.03125) == 12.0625;
+  #assert sh_snap(12.06) == 12.0625 && sh_snap(12.09375) == 12.125;
+}
+sh_snap :: (value: f32) -> f32 #effects(all) { return floor(value * 16 + 0.5f32) / 16; }
+sh_label :: (metres: int, out: [] u8) -> string #effects(all) {
+  if metres < 0 || metres > 768 || out.count < 11 { return ""; }
+  label := "000 / 768 M"; for byte, i: label { out[i] = byte; }
+  out[0] = cast(u8) ('0' + metres / 100); out[1] = cast(u8) ('0' + (metres / 10) % 10); out[2] = cast(u8) ('0' + metres % 10);
+  return cast(string) out[0..<11];
+}
+sh_draw :: (width: f32, height: f32, metres: f32, out: [] f32) -> int #export_c #effects(all) {
+  if !(width >= 320 && width <= 8192 && height >= 180 && height <= 8192 && metres >= 0 && metres <= 768) || out.count < SH_FLOATS { return 0; }
+  // Background uses the same 12-word vertex carrier, mode 6: solid premultiplied overlay.
+  xs := [6] f32.[12, 308, 308, 12, 308, 12]; ys := [6] f32.[12, 12, 76, 12, 76, 76];
+  for i: 0..<6 { at := i * 12; for lane: [5] int.[2, 3, 4, 5, 7] { out[at + lane] = 0; } out[at] = xs[i]; out[at + 1] = ys[i]; out[at + 6] = 0.86; out[at + 8] = 0.02; out[at + 9] = 0.04; out[at + 10] = 0.06; out[at + 11] = 6; }
+  // Caps 9 and 10 select Filament under the existing font profile.
+  pen := HdPen.{d = 1, top = 0, bottom = height, cyan = true};
+  n := hd_text(out, 6, "CORRIDOR WALK", 24, 30, 10, pen, 0);
+  label: [11] u8; n = hd_text(out, n, sh_label(cast(int) metres, label[..]), 204, 30, 10, pen, 0);
+  completed := hud_segment(metres / 768, 12);
+  for i: 0..<12 {
+    box := HudBox.{x = 24 + f32(i) * 23, y = 42, width = 19, height = 5};
+    n = hd_rect(out, n, box, pen, ifx i < completed then 2 else 3, 1);
+  }
+  n = hd_text(out, n, "UP / DOWN TO WALK", 24, 65, 9, pen, 1);
+  // The profile's 1/16-pixel geometry grid is representable by both SDKs'
+  // raster subpixel grids; stroke-local coordinates retain their meaning.
+  for i: 6..<n { for lane: 0..<2 { out[i * 12 + lane] = sh_snap(out[i * 12 + lane]); } }
+  return n;
+}

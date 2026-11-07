@@ -18,6 +18,8 @@ The #12990 components currently provide:
 | `stream-walk.coax` | Actual bounded corridor consumer: fixed-step facts, semantic collision/navigation, stable sleeping entity state and original resource owners |
 | `stream-walk-state.coax` | Versioned, fieldwise canonical simulation state and SHA-256 observations after individual paid steps |
 | `stream-walk-recovery.coax` | Atomic replacement of GPU owner handles after the SDK quiescence/destruction barrier; automatic loss scheduling remains unfinished |
+| `stream-walk-presentation.coax` | Additive, read-only pose-to-HUD adapter; no cell owner or simulation clock |
+| `stream-hud.coax`, `stream-hud-shader.coax`, `stream-present-shader.coax` | Bounded texture-free Filament HUD, premultiplied linear FP16 composition and one final UNORM display conversion |
 | `../host/recorded-source.coax` | [Versioned retained-source observations](../host/recorded-source.md) for replaying corrupt, oversized and cancelled browser loads without substituting canonical fixture bytes |
 | `../host/tests/stream-walk-native-gpu.coax` | [Native observation carrier](../host/stream-native.md): actual local-file loads, headless Vulkan draws, retirement and controlled device replacement through these same owners |
 | `../forge/vertices.coax` | Shared 48-byte static VPK vertex admission: eight finite floats followed by opaque packed color/layer/spare bytes |
@@ -110,8 +112,12 @@ and charge that quota. The hint never writes cell state, answers a load or
 permits simulation. The intended active pools are four streamed actors, one
 persistent player and two voices; animation, sensors, effects and dynamic
 lights are zero in this initial profile. Player/camera/HUD are the three
-persistent services. The corridor adopts the player, camera and separate
-collection/update policies; persistent HUD adoption remains unfinished.
+persistent services. The corridor adopts the player, camera, texture-free
+HUD and separate collection/update policies. The HUD reads only player
+distance and remains drawable before any area resources and while cells
+retire. Its 98,304-byte CPU vertex span, matching GPU vertex buffer and
+256-byte GPU uniform buffer belong to persistent display storage. They do
+not borrow an area resource or charge its dynamic category.
 
 `coax/web/tool.sh aethyr/tools/streaming-assets.coax NEW_OUTPUT_DIR` builds
 the original CC0 corridor fixture: 12 cells, 13 admitted VPK1 packs, raw
@@ -131,8 +137,19 @@ traces, native CPU/codec replay and explicit GPU replacement from retained
 sources. The separate native carrier now records both tiers through actual
 Vulkan loads, draws, retirement and controlled device replacement. Physical
 native budget planning, automatic unsolicited-loss handling, rescue,
-the remaining host failure histories and persistent HUD adoption keep
+the remaining host failure histories and complete world-shader reference keep
 #12990 open. Browser and native GPU qualification are distinct claims.
+The [HUD record](../../docs/verification/aethyr-streaming-12990/walk-persistent-hud.md)
+qualifies both image tiers at browser rasters 320×180 and 640×360, plus
+native 320×180 hardware and sanitizer routes. The display profile is
+`aethyr.stream-walk-display.v1`: world and HUD compose in linear
+`rgba16float`; the final pass performs no tone/gamma transform. This is
+the corridor's declared linear-display fixture, not a general color-managed
+renderer. Its fixed HDR target costs eight logical bytes per pixel, in
+addition to the existing four-byte depth and display targets. Native SDK
+backing extents remain separate measured values. Complete HUD raster
+comparison uses a fixed two-level channel bound with no masks or shifts;
+the world-only base remains a frozen GPU observation.
 
 The optional paid-step observer uses canonical state profile
 `aethyr.stream-walk-state.v1`. It serializes explicit little-endian 64-bit

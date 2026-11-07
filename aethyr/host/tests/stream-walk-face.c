@@ -41,6 +41,14 @@ static int32_t trace_n;
 static bool trace_overflow;
 static size_t failed_bytes;
 static int allocation_errno;
+#ifdef SW_PRESENTATION
+static float hud_vertices[24576];
+static int32_t hud_count;
+static int64_t hud_frames;
+SW_API("sw_host_hud") int32_t sw_host_hud(float width,float height){hud_count=(int32_t)sw_hud((coax_v_t_SwWalk){&state,1},width,height,(coax_v_f32){hud_vertices,24576});hud_frames++;return hud_count;}
+SW_API("sw_host_hud_pointer") uintptr_t sw_host_hud_pointer(void){return(uintptr_t)hud_vertices;}
+SW_API("sw_host_hud_info") int64_t sw_host_hud_info(int32_t field){switch(field){case 0:return hud_count;case 1:return hud_frames;case 2:return sizeof hud_vertices;case 3:return fixed_live[6];case 4:return fixed_live[7];default:return -1;}}
+#endif
 #ifdef SW_VULKAN
 // Only the native GPU carrier supplies these platform allocation effects.
 static void *sw_vk_stage_allocate(int32_t row,size_t bytes);
@@ -92,7 +100,11 @@ SW_API("sw_host_info") int64_t sw_host_info(int32_t field){switch(field){
   case 22:return audio_memory.total*4;case 23:return image_memory.total;
   case 24:return state.stream.e[0].closing&&state.stream.e[0].destroyed==state.stream.e[0].requests;
   case 25:return state.peak_active;case 26:return state.player.clock.frames;
-  case 27:return sizeof state+sizeof manifest+sizeof audio_memory+sizeof image_memory+sizeof objects+sizeof configuration+sizeof root_hex+sizeof borrows+sizeof borrowed+sizeof uniforms+sizeof fixed+sizeof fixed_live+sizeof drawing+sizeof physical_bytes+sizeof physical_peak+sizeof physical_trace+sizeof trace_n+sizeof trace_overflow;
+  case 27:return sizeof state+sizeof manifest+sizeof audio_memory+sizeof image_memory+sizeof objects+sizeof configuration+sizeof root_hex+sizeof borrows+sizeof borrowed+sizeof uniforms+sizeof fixed+sizeof fixed_live+sizeof drawing+sizeof physical_bytes+sizeof physical_peak+sizeof physical_trace+sizeof trace_n+sizeof trace_overflow
+#ifdef SW_PRESENTATION
+    +sizeof hud_vertices+sizeof hud_count+sizeof hud_frames
+#endif
+    ;
   default:return -1;}}
 SW_API("sw_host_player") float sw_host_player(int32_t field){switch(field){case 0:return state.player.pos.x;case 1:return state.player.pos.y;case 2:return state.player.pos.z;case 3:return state.player.theta;case 4:return state.player.phi;case 5:return state.player.dist;case 6:return state.player.target.x;case 7:return state.player.target.y;case 8:return state.player.target.z;default:return 0;}}
 SW_API("sw_host_command") int64_t sw_host_command(int32_t retiring,int32_t index,int32_t field){

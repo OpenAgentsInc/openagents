@@ -16,3 +16,7 @@ swn_accept :: (q: [] int) -> bool #effects(all) {
   if q.count != want.count { return false; }
   for value, i: want { if q[i] != value { return false; } } return true;
 }
+#test "physical renderer teardown must precede releasing its fixed grants" {
+  #assert swn_close_accept(0) && !swn_close_accept(1) && !swn_close_accept(-1);
+}
+swn_close_accept :: (violations: int) -> bool #effects(all) { return violations == 0; }

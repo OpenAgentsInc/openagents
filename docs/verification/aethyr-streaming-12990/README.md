@@ -1,6 +1,12 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The latest [native Vulkan
+Issue #12990 remains open. The [persistent HUD record](walk-persistent-hud.md)
+adds actual native/browser rendering before any area resources, through
+unload/reload and physical GPU replacement. Both native tiers preserve
+every pre-HUD canonical paid-step digest. All-pixel HUD references stay
+within one channel level under the fixed bound of two. This does not
+independently qualify world shading or complete automatic recovery.
+The earlier [native Vulkan
 record](walk-native-gpu.md) adds actual two-tier native loads, draws,
 retirement and controlled device replacement, with full readback equality
 and sanitizer observations. Physical Vulkan cost planning remains separate
@@ -19,7 +25,7 @@ real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
 historical failing gates and artifacts. Automatic loss handling,
 failed-replacement rescue, physical native budget planning, remaining failure histories,
-persistent HUD adoption and remaining host fault cases still prevent issue
+complete world-shader reference and remaining host fault cases still prevent issue
 completion.
 
 Work starts from `df06d21dee90a9f54778143ffd6b8fe1c400e392`, in the reused

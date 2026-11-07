@@ -1,0 +1,35 @@
+// Texture-free HUD pass over the final corridor image, with premultiplied
+// alpha blending and depth disabled. Inputs are Aethyr's 12-word HUD vertices.
+#module "aethyr.world.streamhudshader";
+#load "../../verse/gpu/shader.coax";
+ShVertex :: struct {a: V4; b: V4; c: V4;}
+ShVarying :: struct {position: V4; place: V2; shape: V4; tint: V4;}
+#test "HUD projection uses actual viewport and retains every stroke field" {
+  u := [4] f32.[320, 180, 0, 0];
+  v := sh_vs(0, 0, ShVertex.{a = v4(80, 45, 3, 4), b = v4(5, 6, 0.5, 8), c = v4(0.2, 0.4, 0.8, 6)}, u[..]);
+  #assert v.position.x == -0.5 && v.position.y == 0.5 && v.position.z == 0 && v.position.w == 1;
+  #assert v.place.x == 3 && v.place.y == 4 && v.shape.x == 5 && v.shape.y == 6 && v.shape.z == 0.5 && v.shape.w == 8;
+  #assert v.tint.x == 0.2 && v.tint.y == 0.4 && v.tint.z == 0.8 && v.tint.w == 6;
+}
+#test "HUD solid and stroke outputs are premultiplied and capsule ends round" {
+  tint := v4(0.2, 0.4, 0.8, 6);
+  v := ShVarying.{shape = v4(10, 1, 0.5, 2), tint = tint};
+  c := sh_fs(v); #assert c.x == 0.1 && c.y == 0.2 && c.z == 0.4 && c.w == 0.5;
+  v.tint.w = 0; v.place = v2(5, 0); c = sh_fs(v); #assert c.x == 0.1 && c.w == 0.5;
+  v.place = v2(-1, 0); a := sh_fs(v); v.place = v2(11, 0); b := sh_fs(v); v.place = v2(5, 1); c = sh_fs(v);
+  #assert a.w > 0 && a.w < 0.5 && a.w == b.w && b.w == c.w;
+  v.place = v2(5, 2); #assert sh_fs(v).w == 0;
+  v.tint.w = 5.5; #assert sh_fs(v).w == 0.5;
+}
+sh_vs :: (vertex: u32, instance: u32, input: ShVertex, u: [] f32) -> ShVarying {
+  return ShVarying.{position = v4(input.a.x / u[0] * 2 - 1, 1 - input.a.y / u[1] * 2, 0, 1), place = v2(input.a.z, input.a.w), shape = input.b, tint = input.c};
+}
+sh_fs :: (v: ShVarying) -> V4 {
+  alpha := v.shape.z;
+  if v.tint.w < 5.5f32 {
+    along := fmax(fmax(-v.place.x, v.place.x - v.shape.x), 0);
+    distance := length2(v2(along, v.place.y));
+    alpha *= 1 - smoothstep(v.shape.y - 0.5f32, v.shape.y + 0.6f32, distance);
+  }
+  return v4(v.tint.x * alpha, v.tint.y * alpha, v.tint.z * alpha, alpha);
+}

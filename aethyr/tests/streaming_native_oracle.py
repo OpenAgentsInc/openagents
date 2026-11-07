@@ -23,9 +23,14 @@ def inspect(scene_dir, output, program):
     scene_bytes = (scene_dir / 'scene.json').read_bytes()
     scene = json.loads(scene_bytes)
     report = json.loads((output / 'receipt.json').read_bytes())
-    assert report['schema'] == 'aethyr.stream-walk-native-gpu.v1'
+    assert report['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2')
+    hud = report['schema'].endswith('.v2')
     assert report['backend'] == 1 and report['tier'] in (0, 1)
     assert report['shaderSHA256'] == hashlib.sha256(program.read_bytes()).hexdigest()
+    if hud:
+        assert report['presentationSchema'] == 'aethyr.stream-walk-display.v1'
+        assert report['hudShaderSHA256'] == hashlib.sha256((program.parent / 'stream-hud.spv').read_bytes()).hexdigest()
+        assert report['presentShaderSHA256'] == hashlib.sha256((program.parent / 'stream-present.spv').read_bytes()).hexdigest()
     assert report['sceneSHA256'] == hashlib.sha256(scene_bytes).hexdigest()
     descriptor = next(m for m in scene['manifests'] if m['backend'] == 1 and m['tier'] == report['tier'])
     assert report['manifestSHA256'] == descriptor['sha256']
@@ -121,7 +126,9 @@ def inspect(scene_dir, output, program):
             assert all(t >= 0 for t in times) and sum(times[:4]) <= times[4]
             stage_elapsed.append(times)
         info, gpu = frame['info'], frame['gpu']
-        assert len(info) == 28 and len(gpu) == 19
+        assert len(info) == 28 and len(gpu) == (20 if hud else 19)
+        if hud:
+            assert gpu[19] == 0
         live_gpu = {row for row in generation if costs[row][2]}
         assert info[14] == cpu <= info[10]
         assert gpu[0] == len(live_gpu) and gpu[1] == sum(costs[row][2] for row in live_gpu)
@@ -134,7 +141,10 @@ def inspect(scene_dir, output, program):
             category_resource_peak[category] = max(category_resource_peak[category], value)
         assert 0 <= info[6] <= info[4] <= 4 and 0 <= info[5] <= info[4] and info[7] <= 2
         assert gpu[2:4] == [0, 0] and gpu[9:12] == [0, 0, 1]
-        assert gpu[16] >= gpu[1] + 4096 + 320 * 180 * 8
+        assert gpu[16] >= gpu[1] + 4096 + 320 * 180 * 8 + (98304 + 256 + 320 * 180 * 8 if hud else 0)
+        if hud:
+            assert 600 < frame['hud'][0] < 2048 and frame['hud'][0] % 6 == 0
+            assert frame['hud'][1:] == [gpu[7], 98304, 1, 1]
         assert frame['elapsedNs'] >= 0
         elapsed.append(frame['elapsedNs'] / 1e6)
         if index == 31:
@@ -148,14 +158,22 @@ def inspect(scene_dir, output, program):
     assert recovery['stateSHA256'] == recovery['stateAfterSHA256'] and len(recovery['stateSHA256']) == 64
     before, after = (output / 'before.rgba').read_bytes(), (output / 'after.rgba').read_bytes()
     assert before == after and len(before) == 320 * 180 * 4
+    if hud:
+        vertices = (output / 'before-hud.f32').read_bytes()
+        assert vertices == (output / 'after-hud.f32').read_bytes() and len(vertices) % 48 == 0
+        assert 600 < len(vertices) // 48 < 2048
     assert len(set(struct.iter_unpack('4B', before))) > 1
     assert not allocations and not generation and not ready and cpu == 0
     assert set(outcomes) == attempts and all(kinds == {0, 1, 2} for kinds in outcomes.values())
     assert len(stage_elapsed) == len(attempts)
     final, sdk = report['finalInfo'], report['finalGPU']
+    assert len(final) == 28 and len(sdk) == (20 if hud else 19)
     assert final[20] == final[21] == len(attempts) and final[15] == peak
     assert all(final[i] == 0 for i in (4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 22, 23))
     assert final[24] == 1 and sdk[0:7] == [0, 0, 0, 0, 0, 2, 2] and sdk[9:12] == [0, 0, 1]
+    if hud:
+        assert report['finalHUD'][1:] == [sdk[7], 98304, 0, 0]
+        assert sdk[19] == 0 and report['fixedGrantsRetainedThroughDestruction']
     assert report['observations'] == [1] * 11 + [0] * 4 + [1] and report['passed']
     if report['route']:
         assert set(k[0] for k in attempts) == set(range(64))
@@ -186,11 +204,20 @@ def fault_checks(scene_dir, output, program):
               'allocation_size', 'allocation_generation', 'missing_allocation', 'duplicate_free', 'missing_completion',
               'ready_key', 'scene_identity', 'shader_identity', 'missing_step', 'direction', 'position', 'tick',
               'final_count', 'schema', 'negative_time')
+    hud = report['schema'].endswith('.v2')
+    if hud:
+        faults += ('hud_shader_identity', 'present_shader_identity', 'hud_draw_count', 'hud_early_release',
+                   'close_violation', 'close_claim', 'changed_hud', 'display_schema')
     with tempfile.TemporaryDirectory(prefix='aethyr-native-oracle-') as temporary:
         target = Path(temporary)
+        if report['schema'].endswith('.v2'):
+            for file in ('before-hud.f32', 'after-hud.f32'):
+                (target / file).write_bytes((output / file).read_bytes())
         for fault in faults:
             changed = copy.deepcopy(report)
             image = after
+            if hud:
+                (target / 'after-hud.f32').write_bytes((output / 'after-hud.f32').read_bytes())
             if fault == 'image_bit':
                 image = bytes([after[0] ^ 1]) + after[1:]
             elif fault == 'short_image':
@@ -232,6 +259,21 @@ def fault_checks(scene_dir, output, program):
                 changed['schema'] += '.unknown'
             elif fault == 'negative_time':
                 changed['warmup'][0]['elapsedNs'] = -1
+            elif fault in ('hud_shader_identity', 'present_shader_identity'):
+                changed['hudShaderSHA256' if fault == 'hud_shader_identity' else 'presentShaderSHA256'] = 'f' * 64
+            elif fault == 'hud_draw_count':
+                changed['warmup'][0]['hud'][1] += 1
+            elif fault == 'hud_early_release':
+                changed['warmup'][0]['hud'][3] = 0
+            elif fault == 'close_violation':
+                changed['finalGPU'][19] = 1
+            elif fault == 'close_claim':
+                changed['fixedGrantsRetainedThroughDestruction'] = False
+            elif fault == 'changed_hud':
+                vertices = (output / 'after-hud.f32').read_bytes()
+                (target / 'after-hud.f32').write_bytes(bytes([vertices[0] ^ 1]) + vertices[1:])
+            elif fault == 'display_schema':
+                changed['presentationSchema'] += '.unknown'
             (target / 'receipt.json').write_text(json.dumps(changed))
             (target / 'before.rgba').write_bytes(before)
             (target / 'after.rgba').write_bytes(image)
@@ -260,9 +302,24 @@ def compare_tiers(low, high):
             'canonical_state_hashes_shared_across_cost_profiles': False}
 
 
+def compare_presentation(old, new):
+    old, new = [json.loads((p / 'receipt.json').read_bytes()) for p in (old, new)]
+    assert old['schema'] == 'aethyr.stream-walk-native-gpu.v1' and new['schema'] == 'aethyr.stream-walk-native-gpu.v2'
+    assert old['manifestSHA256'] == new['manifestSHA256'] and old['routeCells'] == new['routeCells']
+    ticks = 0
+    for section in ('warmup', 'route', 'cleanup'):
+        assert len(old[section]) == len(new[section])
+        for a, b in zip(old[section], new[section]):
+            assert all(a[k] == b[k] for k in ('tick', 'positionBits', 'direction', 'frameNs', 'records', 'stepDigests', 'allocations'))
+            ticks += len(a['stepDigests'])
+    return {'canonical_paid_steps_unchanged_by_hud': ticks, 'exact_events_allocations_actor_identity': True}
+
+
 if __name__ == '__main__':
     if sys.argv[1] == '--compare-tiers':
         result = compare_tiers(Path(sys.argv[2]), Path(sys.argv[3]))
+    elif sys.argv[1] == '--compare-presentation':
+        result = compare_presentation(Path(sys.argv[2]), Path(sys.argv[3]))
     else:
         scene, output, program = map(Path, sys.argv[1:4])
         result = inspect(scene, output, program)
