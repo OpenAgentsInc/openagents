@@ -73,6 +73,8 @@ EV_STAND_BACK :: 8.0;           // m the line falls back from RF_STAND_Z that en
 EV_WORTH_AT :: 24;              // the watch's cap the players' worth is tuned at (raid_siege_caps(12))
 EV_RISE_S :: 10;                // s a fallen player lies before standing again, whole, where they fell          // on the square a player counts as this many of the town
 EV_GATES :: 5;                  // the dial's bits: plan.coax EG_GATE's four (South, North, East, West), then the river bridge
+EV_HERO_ECHO :: 1;              // the hero dial's Echo (#12996)
+EV_HERO_X :: 1.0; EV_HERO_Z :: -16.0;   // m: where she joins, on the commons a metre right of where ?raid=preview puts you
 EV_OUT_M :: 20.0;               // m outside its gate a raider comes from
 // the town's places (verse/everglade/plan.coax, which the room server doesn't load: keep them alike)
 EV_GATE :: [16] f32.[0, -56, 6, 0,   44, 60, 5, 0,   -64, 0, 5, 1,   64, 0, 5, 1];   // EG_GATE: South, North, East, West
@@ -84,6 +86,7 @@ EvDials :: struct {
   on: bool; every: int; waves: int = 3; size: int = 12; cult: int = 6; fan: int = 1; wl: int = 3; wlmax: int = 3;
   gates: int = 31; arch: bool = true; aggr: int = 2; harm: bool = true; reward: int = 100; minutes: int = 15;
   start: int; stop: int; levels: bool = true; cap: int = 2;   // levels on, cap 2, until the API says (spec 6)
+  hero: int;                   // a hero who joins the watch in the siege: 0 none, EV_HERO_ECHO Echo (#12996)
 }
 RmEvents :: struct {
   d: EvDials;
@@ -129,6 +132,12 @@ EvRoom :: struct {
 ev_clamp :: (v: int, a: int, b: int) -> int { return ifx v < a then a else (ifx v > b then b else v); }
 // One line of room-control's answer (room-control.coax rm_control hands each one here).
 ev_control_line :: (v: [] RmServer, line: string) {
+  // hero N: who joins the watch when a siege begins (#12996): 0 none, EV_HERO_ECHO Echo
+  if line.count > 5 && line[0..<5] == "hero " {
+    h := rc_num(rc_word(line, 5));
+    if h >= 0 && h <= EV_HERO_ECHO { v[0].evc.d.hero = h; }
+    return;
+  }
   if line.count > 7 && line[0..<7] == "levels " {
     on := rc_word(line, 7);
     v[0].evc.d.levels = on == "1";
@@ -550,6 +559,7 @@ ev_siege_begin :: (v: [] RmServer, k: int) {
   }
   ev_muster(v, k, RF_CULT, e[0].caps[RF_CULT]);
   ev_muster(v, k, RF_TOWN, e[0].caps[RF_TOWN]);
+  if d.hero == EV_HERO_ECHO { _ := e5rd_hero(r, f32(EV_HERO_X), f32(EV_HERO_Z), ev_way(0)); }   // Echo with them (#12996)
   e[0].front[0].due[RF_CULT] = f32(RF_EVERY_S); e[0].front[0].due[RF_TOWN] = f32(RF_EVERY_S);
   e[0].standing = e5rd_standing(r); e[0].town = e5rd_town_standing(r);
 }
@@ -718,7 +728,7 @@ ev_engine :: (v: [] RmServer, k: int, kind: int, by: int, who: int, amount: int)
   if who <= E5RR_TGT_BEAST { return; }
   q := ev_slot_of(v, k, who - E5RR_TGT_BEAST);
   f := ifx q >= 0 then v[0].eg[k].rules[0].beasts[q].form else 0;
-  if q < 0 || f < E5RR_FORM_RAID || (f > E5RR_FORM_RAID && f <= E5RR_FORM_RAID + RS_NPC_SCOUT) { return; }   // the cult's (one just fallen keeps its tag and form)
+  if q < 0 || f < E5RR_FORM_RAID || e5rd_town_form(f) { return; }   // the cult's (one just fallen keeps its tag and form)
   e[0].hurt[q] = e[0].hurt[q] | (1 << s);
   if siege { e[0].pts[s] += f32(rs_max(amount, 0)); }
 }
@@ -736,7 +746,7 @@ ev_fell :: (v: [] RmServer, k: int, dn: E5rdDown) {
   e := v[0].ev[k..<k + 1];
   bits := ifx dn.q >= 0 && dn.q < E5RR_BEASTS then e[0].hurt[dn.q] else 0;
   if dn.q >= 0 && dn.q < E5RR_BEASTS { e[0].hurt[dn.q] = 0; }
-  if dn.npc >= RS_NPC_GUARD && dn.npc <= RS_NPC_SCOUT { return; }   // one of the watch: no XP (#12860)
+  if e5rd_town_form(E5RR_FORM_RAID + dn.npc) { return; }   // one of the watch, or its hero: no XP (#12860, #12996)
   if dn.npc != 0 { e[0].slain += 1; }
   siege := e[0].phase == EV_SIEGE || e[0].phase == EV_STAND;
   for s: 0..<EG_SEATS { if siege && (bits & (1 << s)) != 0 { e[0].pts[s] += f32(ifx dn.npc == 0 then RAID_PTS_WARD else RAID_PTS_KILL); } }
@@ -799,13 +809,19 @@ ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) -> bool {
   bt := v[0].eg[k].rules[0].beasts[q];
   fx:=ifx c.q>=0 then c.fx else bt.x;fy:=ifx c.q>=0 then c.fy else bt.y+1.5;fz:=ifx c.q>=0 then c.fz else bt.z;
   harm:=ifx c.q>=0 then c.harm else v[0].evc.d.harm&&effect_physical(EG_WL_BLAST+c.k);
+  slot:=ifx c.slot>=0 then c.slot else EG_WL_BLAST+c.k;   // a hero's: one of Everglade's four (#12996)
   if harm&&v[0].eg[k].strike_n>=EG_WORLD_STRIKES-EG_PLAYER_STRIKES-E5RR_BEASTS-RT_HOUSE_BLASTS{return false;}
-  ay := fy-0.5;
+  ay := ifx c.ground then c.ay else fy-0.5;
   if c.to >= E5RR_SEAT && c.to < E5RR_SEAT + EG_SEATS && v[0].eg[k].seat[c.to - E5RR_SEAT].live {
     p := v[0].eg[k].seat[c.to - E5RR_SEAT].pose;
     ay = p.y + 1.0;
   }
   b: [96] u8;
+  if !c.cue {
+    // the town's alone: a hero's strike as her bar ends (#12996); the pages heard her cast as it began
+    if harm { v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1,source=EFFECT_SEATS+q, slot = slot, fx = fx, fy = fy, fz = fz, ax = c.ax, ay = ay, az = c.az, seed = c.seed}; v[0].eg[k].strike_n += 1; }
+    return true;
+  }
   n := wire_put(b[..], 0, "e rc");
   n = wire_int(b[..], n, c.id); n = wire_int(b[..], n, c.k);
   n = wire_m(b[..], n, c.ax); n = wire_m(b[..], n, ay); n = wire_m(b[..], n, c.az);
@@ -814,7 +830,7 @@ ev_raid_cast :: (v: [] RmServer, k: int, c: E5rdCast) -> bool {
   aimed := ifx c.to >= E5RR_SEAT && c.to < E5RR_SEAT + EG_SEATS then 1 << (c.to - E5RR_SEAT) else 0;
   eg_event_who(v, k, cast(string) b[0..<n], fx, fz, false, aimed);
   if harm {
-    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1,source=EFFECT_SEATS+q, slot = EG_WL_BLAST + c.k, fx = fx, fy = fy, fz = fz, ax = c.ax, ay = ay, az = c.az, seed = c.seed};
+    v[0].eg[k].strikes[v[0].eg[k].strike_n] = EgStrike.{by = -1,source=EFFECT_SEATS+q, slot = slot, fx = fx, fy = fy, fz = fz, ax = c.ax, ay = ay, az = c.az, seed = c.seed};
     v[0].eg[k].strike_n += 1;
   }
   return true;
@@ -1458,4 +1474,32 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   // a 1d10 against AC 12 at +5 hits about 70% of the time; 9 HP falls to one hit only on a 9 or 10
   #assert hits >= 4 && most <= 20;
   #assert kills >= 1 && kills <= 5 && one_hit * 2 <= kills;
+}
+
+#test "events: the hero dial brings Echo to the watch as the siege begins, once; she casts at the cult, and its strike is the town's as her bar ends (#12996)" #steps 40000000000 #traversal 268435456 {
+  v: [1] RmServer;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "hero 9\nevent 1 0 2 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  #assert v[0].evc.d.hero == 0;   // out of range: unchanged
+  rm_control(v[..], "hero 1\nevent 1 0 2 12 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  #assert v[0].evc.d.hero == EV_HERO_ECHO;
+  ev_test_skip(v[..], k);
+  #assert v[0].ev[k].phase == EV_SIEGE && ev_test_count(v[..], k, E5RR_FORM_HERO) == 1;
+  r := v[0].eg[k].rules[..];
+  q := r[0].raid[0].hero.q;
+  #assert q >= 0 && r[0].b[0].c[E5RR_BEAST0 + q].team == 1 && abs(r[0].beasts[q].x - f32(EV_HERO_X)) < 1 && abs(r[0].beasts[q].z - f32(EV_HERO_Z)) < 1;
+  // the cult's fall pays nothing for her, and she counts with the watch on the line
+  #assert v[0].ev[k].town >= 1;
+  // she goes out to the front and casts: its first the swarm, the town's strike at its bar's end
+  struck := false;
+  for t: 0..<60 * EG_HZ {
+    n0 := v[0].eg[k].strike_n;
+    eg_test_tick(v[..], k);
+    for s: n0..<v[0].eg[k].strike_n { if v[0].eg[k].strikes[s].source == EFFECT_SEATS + q && v[0].eg[k].strikes[s].slot == RT_HERO_METEOR { struck = true; } }
+    if r[0].raid[0].hero.rolled >= 1 && struck { break; }
+  }
+  #assert r[0].raid[0].hero.casts >= 1 && r[0].raid[0].hero.rolled >= 1 && struck;
+  // a new siege (the cult musters again) keeps her one
+  ev_siege_begin(v[..], k);
+  #assert ev_test_count(v[..], k, E5RR_FORM_HERO) == 1;
 }

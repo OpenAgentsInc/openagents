@@ -1116,3 +1116,62 @@ rt_test_walk :: (g: RtGate, x: f32, z: f32, tx: f32, tz: f32, n: int, cz: f32, p
   rt_free(g, 14, -70, o[..]); #assert o[0] == 14 && o[1] == -70;
   #assert rt_with_house(0, g).fallen == false && rt_blocked(rt_with_house(0, g), 14, -70, 0) == RT_HOUSE;
 }
+
+// ---- a hero of the watch (#12996): Echo, who casts Everglade's own four at the cult
+
+// Everglade's bar's four (fivebar.coax fb_everglade, slots 0 to 3): Meteor Swarm, Thunderbolt,
+// Mega Thunderbolt, Water Orb.
+RT_HERO_METEOR :: 0; RT_HERO_BOLT :: 1; RT_HERO_MEGA :: 2; RT_HERO_ORB :: 3;
+RT_HERO_SWARM_R :: 7.3;     // m: Meteor Swarm's reach about its point (house.coax: a 25-foot sphere)
+RT_HERO_MEGA_R :: 5.8;      // m: the Mega Thunderbolt's
+RT_HERO_CLOSE :: 12.0;      // m: a foe this near is pushed off with the Water Orb
+// Where a hero at (x, z) aims and which of the four she casts: the foes are xs, zs where `foe` is
+// true, those within `reach` m her choices. The swarm goes where it reaches most of them (the
+// middle of those it reaches, from each foe in turn as the sphere's middle; the nearer cluster
+// on a tie); her first cast is always Meteor Swarm; after it, Meteor Swarm on three or more, the
+// Mega Thunderbolt on two, the Water Orb at a foe within RT_HERO_CLOSE, else the Thunderbolt at the
+// nearest. o: the aim's x and z, the foe nearest the aim (its index), and how many the swarm's
+// sphere holds there. -1, and o untouched, with no foe in reach.
+rt_hero_aim :: (x: f32, z: f32, xs: [] f32, zs: [] f32, foe: [] bool, n: int, reach: f32, first: bool, o: [] f32) -> int {
+  best := -1; most := 0; bd: f32 = 0; near := -1; nd := reach * reach;
+  for a: 0..<n {
+    if !foe[a] { continue; }
+    dx := xs[a] - x; dz := zs[a] - z; d := dx * dx + dz * dz;
+    if d > reach * reach { continue; }
+    if d < nd || near < 0 { nd = d; near = a; }
+    m := 0;
+    for c: 0..<n { if foe[c] { ex := xs[c] - xs[a]; ez := zs[c] - zs[a]; if ex * ex + ez * ez <= f32(RT_HERO_SWARM_R) * f32(RT_HERO_SWARM_R) { m += 1; } } }
+    if m > most || (m == most && d < bd) { most = m; best = a; bd = d; }
+  }
+  if best < 0 { return -1; }
+  // the middle of those the sphere about `best` holds
+  mx: f32 = 0; mz: f32 = 0; k := 0;
+  for c: 0..<n { if foe[c] { ex := xs[c] - xs[best]; ez := zs[c] - zs[best]; if ex * ex + ez * ez <= f32(RT_HERO_SWARM_R) * f32(RT_HERO_SWARM_R) { mx += xs[c]; mz += zs[c]; k += 1; } } }
+  mx /= f32(k); mz /= f32(k);
+  slot := RT_HERO_BOLT; ax := xs[near]; az := zs[near]; at := near;
+  if first || most >= 3 { slot = RT_HERO_METEOR; ax = mx; az = mz; at = best; }
+  else if most >= 2 { slot = RT_HERO_MEGA; ax = mx; az = mz; at = best; }
+  else if nd <= f32(RT_HERO_CLOSE) * f32(RT_HERO_CLOSE) { slot = RT_HERO_ORB; }
+  o[0] = ax; o[1] = az; o[2] = f32(at); o[3] = f32(most);
+  return slot;
+}
+#test "raid tactics: a hero's first cast is Meteor Swarm where it reaches most of the cult, then the spell for how many stand together (#12996)" {
+  xs := [6] f32.[0, 2, -2, 1, 30, 9];
+  zs := [6] f32.[-70, -71, -69, -68, -60, -50];
+  foe := [6] bool.[true, true, true, true, true, false];   // the last is one of the watch
+  o: [4] f32;
+  // from the gate, 20 m off: the four together, not the one alone nearer, nor the watchman
+  #assert rt_hero_aim(0, -50, xs[..], zs[..], foe[..], 6, 36, true, o[..]) == RT_HERO_METEOR;
+  #assert abs(o[0] - 0.25) < 0.01 && abs(o[1] + 69.5) < 0.01 && o[3] == 4;
+  #assert rt_hero_aim(0, -50, xs[..], zs[..], foe[..], 6, 36, false, o[..]) == RT_HERO_METEOR;
+  // two together: the Mega Thunderbolt on their middle; one: the Thunderbolt, or the Water Orb at hand
+  foe[2] = false; foe[3] = false;
+  #assert rt_hero_aim(0, -50, xs[..], zs[..], foe[..], 6, 36, false, o[..]) == RT_HERO_MEGA && abs(o[0] - 1) < 0.01 && o[3] == 2;
+  foe[1] = false;
+  #assert rt_hero_aim(0, -50, xs[..], zs[..], foe[..], 6, 36, false, o[..]) == RT_HERO_BOLT && o[0] == 0 && o[1] == -70 && o[2] == 0;
+  #assert rt_hero_aim(0, -62, xs[..], zs[..], foe[..], 6, 36, false, o[..]) == RT_HERO_ORB;
+  // the first cast is the swarm even on one; none in reach: nothing, and o untouched
+  #assert rt_hero_aim(0, -50, xs[..], zs[..], foe[..], 6, 36, true, o[..]) == RT_HERO_METEOR;
+  o[0] = 99;
+  #assert rt_hero_aim(0, 40, xs[..], zs[..], foe[..], 6, 36, true, o[..]) == -1 && o[0] == 99;
+}

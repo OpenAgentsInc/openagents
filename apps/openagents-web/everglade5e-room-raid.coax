@@ -39,6 +39,14 @@
 //     side's nearest within reach and strike, shoot or cast at it, never far from the line; the cult
 //     sets on players but not on the town's people inside the walls. The camp's ward stones can't be
 //     broken, nor Darian hurt, until the line reaches the camp (E5rdRaid.stand);
+//   - a hero on the watch's side (#12996): Echo (e5rd_hero, form E5RR_FORM_HERO), Everglade's own
+//     caster (fivebar.coax fb_everglade_hero), joins when the room's hero dial asks for her
+//     (room-events.coax). She takes her post with the watch's ranged and casts Everglade's own four at
+//     the cult, a cast every E5RD_HERO_EVERY s, where the tactics aim them (rt_hero_aim: Meteor Swarm
+//     first): the pages hear her cast as it starts (its cast bar, CR_BAR), the town takes its strike as
+//     the bar ends and the rules roll it when it lands (its bar slot's delay, fivebar.coax), as a
+//     player's. The other players and the watch stand out of her roll, as a player's harm keeps them
+//     out (e5rr_use). She holds while she casts. She can be hurt but never drops (floor 1 Hit Point).
 // What the pages play (a raider's cast) and who fell (for the XP) wait in queues the room drains.
 // The raiders take the summoned creatures' places from the top, so a raid always leaves the players'
 // summons E5RR_BEASTS - E5RD_MAX places.
@@ -49,8 +57,13 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
+#load "everglade-cast-rules.coax";   // Everglade's four's cast bars, for a hero's (CR_BAR)
 // a raider's form is E5RR_FORM_RAID (everglade5e-beasts.coax) + its stat block (npcs.coax RS_NPC_*)
 E5RR_FORM_WARD :: 40;                        // a ward stone
+E5RD_HERO_NPC :: 15;                         // a hero's place past the stat blocks (npcs.coax RS_NPCS)
+E5RR_FORM_HERO :: E5RR_FORM_RAID + E5RD_HERO_NPC;   // a hero of the watch: Echo (#12996)
+E5RD_HERO_REACH :: 36.0;                     // m: how far Echo looks for the cult to cast at
+E5RD_HERO_EVERY :: 6.0;                      // s from the start of one of her casts to the next (a round)
 E5RD_TEAM :: 3;                              // the cult's team: not the players' (0), the town's (1) or a summons' (2)
 E5RD_MAX :: 64;                              // raid creatures at once, the leader and the stones with them
 // Main/bonus/support cues for every creature, plus the separately capped
@@ -89,7 +102,13 @@ E5rdSlot :: struct {
 }
 // A raider's cast for the pages: the creature (its beast id), the look k (RT_K_*), the creature
 // it aimed at (-1 the town), where, and the seed the pages play it from.
-E5rdCast :: struct { id: int; q: int = -1; k: int; to: int; ax: f32; az: f32; seed: int; fx: f32; fy: f32; fz: f32; harm: bool; }
+// slot: the town's strike's bar slot (one of Everglade's four for a hero's), -1 the Warlock's look k's;
+// cue: whether the pages hear it (a hero's strike at the end of her bar is the town's alone); ground:
+// ay is the ground's height at the aim (a hero's, from the foe there), else it is the caster's.
+E5rdCast :: struct { id: int; q: int = -1; k: int; to: int; ax: f32; az: f32; seed: int; fx: f32; fy: f32; fz: f32; harm: bool; slot: int = -1; cue: bool = true; ground: bool; ay: f32; }
+// Echo's cast (#12996): bar slot k (Everglade's four) at (x, z), its seed, when its bar ends (the
+// town's strike) and when it lands (the rules' roll), and when her next may start.
+E5rdHero :: struct { q: int = -1; on: bool; struck: bool; k: int; x: f32; y: f32; z: f32; seed: int; release: f32; due: f32; next: f32; casts: int; rolled: int; }
 // One that fell: its place among the beasts, its last id, stat block (0 a ward stone), level, where.
 E5rdDown :: struct { q: int; tag: int; npc: int; level: int; x: f32; z: f32; }
 E5rdRaid :: struct {
@@ -118,6 +137,7 @@ E5rdRaid :: struct {
   siege: bool;                               // the standing siege: those who join fight by the front (#12860)
   front_z: f32 = RF_MID_Z;                   // where the front is (room-events.coax steps it: rf_step)
   stand: bool;                               // the front is at the camp: its ward stones and Darian can be hurt
+  hero: E5rdHero;                            // Echo, while she fights for the watch (#12996)
 }
 // A piece of the room's town broke at (x, z) (room-everglade.coax rm_eg_piece): a palisade post in
 // a breach section opens it; one of the stables' takes from them.
@@ -151,7 +171,9 @@ E5RD_WATCH_LOOK :: 120;   // feet: how far the watch looks for a raider to shoot
 
 e5rd_is :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form >= E5RR_FORM_RAID && bt.forge_id==0; }
 // One of the watch in the standing siege (e5rd_defender): a raid creature of the town's side.
-e5rd_town :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form > E5RR_FORM_RAID && bt.form <= E5RR_FORM_RAID + RS_NPC_SCOUT && bt.forge_id==0; }
+e5rd_town :: (bt: E5rBeast) -> bool { return bt.id != 0 && e5rd_town_form(bt.form) && bt.forge_id==0; }
+// A form of the watch's side: a Guard to a Scout, or the hero (#12996).
+e5rd_town_form :: (form: int) -> bool { return (form > E5RR_FORM_RAID && form <= E5RR_FORM_RAID + RS_NPC_SCOUT) || form == E5RR_FORM_HERO; }
 // One of the cult's: a raider, a ward stone or Darian.
 e5rd_cult :: (bt: E5rBeast) -> bool { return e5rd_is(bt) && !e5rd_town(bt); }
 e5rd_npc :: (form: int) -> int { return ifx form == E5RR_FORM_WARD then 0 else form - E5RR_FORM_RAID; }
@@ -270,6 +292,93 @@ e5rd_defender :: (r: [] E5rRoom, npc: int, number: int, x: f32, z: f32, g: RtGat
   }
   return id;
 }
+// Echo joins the watch (#12996) at (x, z), out by way g: Everglade's own caster (fb_everglade_hero),
+// of the town's team, with the watch's ranged at the front. Once: her beast id, or her id already
+// (0 with no place).
+e5rd_hero :: (r: [] E5rRoom, x: f32, z: f32, g: RtGate) -> int {
+  w := r[0].raid[..];
+  q0 := w[0].hero.q;
+  if q0 >= 0 && q0 < E5RR_BEASTS && r[0].beasts[q0].form == E5RR_FORM_HERO && e5rd_is(r[0].beasts[q0]) { return r[0].beasts[q0].id; }
+  c: [1] RsCreature;
+  c[0] = fb_everglade_hero("Echo", 1);
+  c[0].floor = 1;   // she can be hurt but never drops
+  id := e5rd_join(r, c[0], E5RR_FORM_HERO, x, z, g, RT_SQUADS * 1000 + 3, 0, RT_CASTER, x, z);
+  if id <= 0 { return 0; }
+  for q: 0..<E5RR_BEASTS {
+    if r[0].beasts[q].id != id { continue; }
+    r[0].b[0].c[E5RR_BEAST0 + q].team = 1;
+    w[0].slot[q].town = true; w[0].slot[q].front = true;
+    w[0].hero = E5rdHero.{q = q, next = r[0].b[0].clock};
+  }
+  return id;
+}
+// Echo's turn (#12996): with her bar not running and her moment come, the tactics aim one of
+// Everglade's four at the cult within her reach (rt_hero_aim); the pages hear it start.
+e5rd_hero_turn :: (r: [] E5rRoom, q: int) {
+  w := r[0].raid[..];
+  b := r[0].b[..];
+  bt := r[0].beasts[q..<q + 1];
+  if w[0].hero.on || b[0].clock < w[0].hero.next { return; }
+  foe: [E5RR_BEASTS] bool;
+  for o: 0..<E5RR_BEASTS {
+    ob := r[0].beasts[o];
+    foe[o] = o != q && e5rd_cult(ob) && w[0].slot[o].stage != E5RD_FLEE && !b[0].c[E5RR_BEAST0 + o].dead && w[0].on[o];
+    if (ob.form == E5RR_FORM_WARD || ob.form == E5RR_FORM_RAID + RS_NPC_ARCH) && !w[0].stand { foe[o] = false; }
+  }
+  o: [4] f32;
+  k := rt_hero_aim(bt[0].x, bt[0].z, w[0].xs[..], w[0].zs[..], foe[..], E5RR_BEASTS, f32(E5RD_HERO_REACH), w[0].hero.casts == 0, o[..]);
+  bt[0].foe = ifx k >= 0 then E5RR_BEAST0 + cast(int) o[2] else -1;
+  if k < 0 || w[0].cast_n >= E5RD_CASTS - 4 - E5RD_REBUKES { return; }
+  bar: [FB_EG_SLOTS] FbAb;
+  _ := fb_everglade(bar[..]);
+  bt[0].yaw = e5rr_heading(o[0] - bt[0].x, o[1] - bt[0].z);
+  seed := rs_roll(b[0].dice[..], 999983);
+  y := r[0].beasts[cast(int) o[2]].y;   // the ground's at the aim: the foe's there
+  w[0].casts[w[0].cast_n] = E5rdCast.{id = bt[0].id, q = q, k = RT_K_HERO0 + k, to = -1, ax = o[0], az = o[1], seed = seed, fx = bt[0].x, fy = bt[0].y + 1.5, fz = bt[0].z, harm = false, ground = true, ay = y};
+  w[0].cast_n += 1;
+  t := b[0].clock;
+  w[0].hero = E5rdHero.{q = q, on = true, k = k, x = o[0], y = y, z = o[1], seed = seed, release = t + CR_BAR[k], due = t + bar[k].delay, next = t + f32(E5RD_HERO_EVERY), casts = w[0].hero.casts, rolled = w[0].hero.rolled};
+}
+// Each step, Echo's cast on: as its bar ends the town takes its strike (the damage dial on); as it
+// lands the rules roll it, the other players and the watch out of it as a player's harm keeps them.
+e5rd_hero_step :: (r: [] E5rRoom) {
+  w := r[0].raid[..];
+  b := r[0].b[..];
+  h := w[0].hero;
+  q := h.q;
+  if !h.on || q < 0 || q >= E5RR_BEASTS { return; }
+  i := E5RR_BEAST0 + q;
+  bt := r[0].beasts[q];
+  if bt.form != E5RR_FORM_HERO || !e5rd_is(bt) { w[0].hero.on = false; return; }
+  if !h.struck && b[0].clock >= h.release {
+    w[0].hero.struck = true;
+    if w[0].harm && w[0].cast_n < E5RD_CASTS {
+      w[0].casts[w[0].cast_n] = E5rdCast.{id = bt.id, q = q, k = RT_K_HERO0 + h.k, to = -1, ax = h.x, az = h.z, seed = h.seed, fx = bt.x, fy = bt.y + 1.5, fz = bt.z, harm = true, slot = h.k, cue = false, ground = true, ay = h.y};
+      w[0].cast_n += 1;
+    }
+  }
+  if b[0].clock < h.due { return; }
+  w[0].hero.on = false; w[0].hero.casts += 1;
+  if b[0].c[i].dead { return; }
+  bar: [FB_EG_SLOTS] FbAb;
+  _ := fb_everglade(bar[..]);
+  a := bar[h.k];
+  // the bar's spells never run out (e5rr_use): every slot back, a fresh turn of her own
+  for l: 0..<10 { b[0].c[i].slots[l] = b[0].c[i].slots_max[l]; }
+  kx: [E5RR_SEATS + E5RR_BEASTS] int; ky: [E5RR_SEATS + E5RR_BEASTS] int;
+  for s: 0..<E5RR_SEATS { c := E5RR_SEAT + s; kx[s] = b[0].c[c].x; ky[s] = b[0].c[c].y; b[0].c[c].x = E5R_AWAY; b[0].c[c].y = E5R_AWAY; }
+  for o: 0..<E5RR_BEASTS {
+    c := E5RR_BEAST0 + o; kx[E5RR_SEATS + o] = b[0].c[c].x; ky[E5RR_SEATS + o] = b[0].c[c].y;
+    if o != q && e5rd_town(r[0].beasts[o]) { b[0].c[c].x = E5R_AWAY; b[0].c[c].y = E5R_AWAY; }
+  }
+  who := b[0].who; kept := b[0].turn;
+  b[0].who = i; b[0].turn = RsTurn.{};
+  rolled := rs_cast(b, i, a.sp, rs_max(a.lvl, rs_spell(a.sp).level), e5r_sq(h.x), e5r_sq(h.z), -1);
+  if rolled { w[0].hero.rolled += 1; }
+  b[0].who = who; b[0].turn = kept;
+  for s: 0..<E5RR_SEATS { c := E5RR_SEAT + s; b[0].c[c].x = kx[s]; b[0].c[c].y = ky[s]; }
+  for o: 0..<E5RR_BEASTS { c := E5RR_BEAST0 + o; b[0].c[c].x = kx[E5RR_SEATS + o]; b[0].c[c].y = ky[E5RR_SEATS + o]; }
+}
 // The ward stones can't be broken while `hold` (the front short of the camp), else they can.
 e5rd_wards_hold :: (r: [] E5rRoom, hold: bool) {
   for q: 0..<E5RR_BEASTS {
@@ -339,7 +448,7 @@ e5rd_flee :: (r: [] E5rRoom) {
 }
 // Every raid creature gone at once (STOP, the aftermath's end, a new room).
 e5rd_clear :: (r: [] E5rRoom) {
-  r[0].raid[0].arch = -1;
+  r[0].raid[0].arch = -1; r[0].raid[0].hero = E5rdHero.{};
   for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) { r[0].b[0].c[E5RR_BEAST0 + q].floor = 0; e5b_gone(r[0].b[..], r[0].beasts[..], E5RR_BEAST0, q); } }
   // Released object impacts survive the disappearance of their caster.
   kept:=0;for n:0..<r[0].raid[0].cast_n{c:=r[0].raid[0].casts[n];if c.harm{r[0].raid[0].casts[kept]=c;kept+=1;}else{r[0].raid[0].cue_dropped+=1;}}
@@ -522,6 +631,7 @@ e5rd_turn :: (r: [] E5rRoom, q: int) {
   sl := r[0].raid[0].slot[q..<q + 1];
   w := r[0].raid[..];
   if bt[0].form == E5RR_FORM_WARD || sl[0].stage == E5RD_FLEE || !rs_can_act(b[0].c[i]) { return; }
+  if q == w[0].hero.q && bt[0].form == E5RR_FORM_HERO { e5rd_hero_turn(r, q); return; }   // Echo's (#12996)
   if sl[0].town { e5rd_town_turn(r, q); return; }
   npc := sl[0].npc;
   need:=ifx npc==RS_NPC_ARCH then 2 else 1;
@@ -803,6 +913,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
   w := r[0].raid[..];
   w[0].up = e5rd_standing(r) + (ifx w[0].arch >= 0 then 1 else 0);
   e5rd_rebukes(r);
+  e5rd_hero_step(r);   // Echo's cast on (#12996)
   // where everyone stands, and the middle of the lines
   lx: f32 = 0; lz: f32 = 0; ln := 0;
   for q: 0..<E5RR_BEASTS {
@@ -820,6 +931,8 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     i := E5RR_BEAST0 + q;
     bt[0].moving = false;
     if bt[0].form == E5RR_FORM_WARD || b[0].c[i].dead { continue; }
+    // Echo holds where she stands while her bar runs, facing her aim (#12996)
+    if w[0].hero.on && q == w[0].hero.q { bt[0].yaw = e5rr_heading(w[0].hero.x - bt[0].x, w[0].hero.z - bt[0].z); continue; }
     sl[0].g = rt_with_house(w[0].house, rt_with_holes(w[0].holes[..], sl[0].g));   // its wall and the stables as the town has them now
     foe := bt[0].foe;
     if foe >= 0 && !e5rd_up(r, foe) { foe = -1; bt[0].foe = -1; }
@@ -1378,4 +1491,51 @@ e5rd_test_room :: (r: [] E5rRoom) {
     r[0].raid[0].cast_n = 0;
   }
   #assert at_house == 0 && r[0].raid[0].house == before;
+}
+
+#test "room raid: Echo fights for the watch: Meteor Swarm first where the cult stands together, the town's strike as her bar ends, the roll as it lands, never on the watch; she never drops (#12996)" #steps 16000000000 {
+  r: [1] E5rRoom;
+  e5rd_test_room(r[..]);
+  r[0].raid[0].siege = true; r[0].raid[0].front_z = -64;
+  r[0].raid[0].mix = RtMix.{skirm = 1, casters = 0, support = 0, guard = 0};
+  at := [8] f32.[0, -70, 2, -71, -2, -69, 1, -68];
+  for n: 0..<4 { #assert e5rd_raider(r[..], RS_NPC_CULTIST, 1, n + 1, at[n * 2], at[n * 2 + 1], rt_open(at[n * 2], at[n * 2 + 1], 0, 1), 0, n, at[n * 2], at[n * 2 + 1]) > 0; }
+  for q0: 0..<E5RR_BEASTS { if e5rd_cult(r[0].beasts[q0]) { r[0].b[0].c[E5RR_BEAST0 + q0].speed = 0; } }   // they hold their line
+  guard := e5rd_defender(r[..], RS_NPC_GUARD, 1, 1.5, -70.5, rt_open(1.5, -70.5, 0, -1));
+  echo := e5rd_hero(r[..], 0, -40, rt_open(0, -40, 0, -1));
+  #assert guard > 0 && echo > 0 && e5rd_hero(r[..], 0, -40, rt_open(0, -40, 0, -1)) == echo;   // once
+  q := r[0].raid[0].hero.q;
+  #assert q >= 0 && r[0].beasts[q].form == E5RR_FORM_HERO && e5rd_town(r[0].beasts[q]) && r[0].b[0].c[E5RR_BEAST0 + q].team == 1;
+  ev: [256 * E5RR_EV_FLOATS] f32;
+  _ := e5rr_events(r[..], ev[..]);
+  t: f32 = 0; cue_t: f32 = -1; strike_t: f32 = -1; roll_t: f32 = -1; first_k := -1; cues := 0; saved_cult := 0; saved_watch := 0;
+  for f: 0..<240 {
+    t += 0.05; e5rr_step(r[..], t);
+    w := r[0].raid[..];
+    for c: 0..<w[0].cast_n {
+      cc := w[0].casts[c];
+      if cc.id != echo { continue; }
+      if cc.cue { cues += 1; if cue_t < 0 { cue_t = t; first_k = cc.k; #assert !cc.harm && cc.slot < 0; } }
+      else if strike_t < 0 { strike_t = t; #assert cc.harm && cc.slot == RT_HERO_METEOR && cc.k == RT_K_HERO0; }
+    }
+    w[0].cast_n = 0;   // the room drains them (room-events.coax ev_raid_flush)
+    n := e5rr_events(r[..], ev[..]);
+    for k: 0..<n {
+      o := k * E5RR_EV_FLOATS;
+      if ev[o] != f32(RS_EV_SAVE) || ev[o + 1] != f32(SP_EG_METEOR_SWARM) { continue; }
+      if roll_t < 0 { roll_t = t; }
+      if ev[o + 3] == f32(E5RR_TGT_BEAST + guard) { saved_watch += 1; } else { saved_cult += 1; }
+    }
+    #assert !r[0].b[0].c[E5RR_BEAST0 + q].dead && r[0].b[0].c[E5RR_BEAST0 + q].hp >= 1;
+  }
+  #assert first_k == RT_K_HERO0 + RT_HERO_METEOR && cue_t > 0 && cues >= 1;
+  #assert abs(strike_t - cue_t - CR_BAR[RT_HERO_METEOR]) < 0.11 && abs(roll_t - cue_t - 3.6) < 0.11;
+  #assert r[0].raid[0].hero.rolled >= 1;
+  #assert saved_watch == 0;
+  #assert saved_cult >= 3;
+  // a blow far past her Hit Points leaves her at one
+  e5rr_hurt(r[..], E5RR_TGT_BEAST + echo, 1000, -1);
+  #assert r[0].b[0].c[E5RR_BEAST0 + q].hp == 1 && !r[0].b[0].c[E5RR_BEAST0 + q].dead;
+  e5rd_clear(r[..]);
+  #assert r[0].raid[0].hero.q < 0 && !e5rd_is(r[0].beasts[q]);
 }

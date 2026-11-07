@@ -30,6 +30,7 @@ RT_K_FIRE_BOLT :: 9; RT_K_FROST :: 10; RT_K_BURNING :: 11; RT_K_LIGHTNING :: 12;
 RT_K_BLESS :: 15; RT_K_BANE :: 16; RT_K_FAITH :: 17; RT_K_FALSE_LIFE :: 18; RT_K_COMMAND :: 19; RT_K_ENFEEBLE :: 20;
 RT_K_SACRED :: 21;
 RT_K_LOOKS :: 22;           // everglade-warlock.coax WL_LOOKS; the raid's shots after (everglade5e-room-raid.coax)
+RT_K_HERO0 :: 32;           // a hero's casts (#12996): Everglade's own four, bar slot k as RT_K_HERO0 + k, past the Warlock's looks
 RT_LINE_M :: 30.5;          // Lightning Bolt's 100-foot Line, in metres
 
 // The look a page plays for spell sp (-1 none).
