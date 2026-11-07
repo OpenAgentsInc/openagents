@@ -3437,6 +3437,8 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
 lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
 HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
 lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
+  if kind==16 {cc.load_player(s[0].creator[..],t);return;}
+  if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }
@@ -3444,7 +3446,10 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind == HOST_PAGE { changed := url_sizes(s, t); }
 }
 lab_golden :: (s: [] Lab, on: bool) #export_c #effects(all) { lab_start(s); s[0].golden = on; }
-lab_action :: (s: [] Lab) -> int #export_c #effects(all) { if s[0].creator[0].on && s[0].creator[0].revision!=s[0].creator[0].saved {s[0].out_n=cc.save(s[0].creator[0],s[0].outbox[..]);s[0].creator[0].saved=s[0].creator[0].revision;return 4;} a := s[0].action; s[0].action = 0; return a; }
+lab_action :: (s: [] Lab) -> int #export_c #effects(all) {
+ if s[0].creator[0].on && s[0].creator[0].profile_request {for i:0..<56 {s[0].outbox[i]=s[0].creator[0].profile_bytes[i];}s[0].out_n=56;s[0].creator[0].profile_request=false;return 16;}
+ if s[0].creator[0].on && s[0].creator[0].profile_go {s[0].creator[0].profile_go=false;s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_NAVIGATE;}
+ if s[0].creator[0].on && s[0].creator[0].revision!=s[0].creator[0].saved {s[0].out_n=cc.save(s[0].creator[0],s[0].outbox[..]);s[0].creator[0].saved=s[0].creator[0].revision;return 4;} a := s[0].action; s[0].action = 0; return a; }
 lab_action_done :: (s: [] Lab) #export_c #effects(all) { s[0].out_n = 0; }
 
 coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }

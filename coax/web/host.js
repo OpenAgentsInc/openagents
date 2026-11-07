@@ -498,6 +498,7 @@ async function loadEngine(bytes, generation) {
   sendHash();
   // The page's scripts may talk to the app from now (action 0: ready).
   if (kept) send(4, kept);
+  if (x.coaxial_player_appearance_v1?.() === 1) {const appearance=local("aethyr.player.appearance.v1");if (appearance) send(16,appearance);}
   globalThis.coaxial.ready = true;
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
   if (makerName) send(MAKER_KIND, makerName);
@@ -2950,6 +2951,8 @@ function keep(text) {
   }
   try { localStorage.setItem(keptKey, text); } catch {}
 }
+// Faces opting into coaxial_player_appearance_v1 share browser-local CC2 appearance:
+// action16 writes it, message17 acknowledges it, message16 loads it before page facts.
 // The player's place in this realm (action 11 keeps it, message 11 gives it back): small, so
 // localStorage, whose write is done before a page being left goes.
 const PLACE_KIND = 11, placeKey = `coaxial.${slot}.place`;
@@ -3141,6 +3144,11 @@ function after(gesture, tap = false) {
     // The app's own place in the page (the hash), replaced so Back still leaves the page.
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
     else if (code === 4) keep(text);
+    // Versioned, origin-wide player appearance. The Coax consumer validates the record.
+    else if (code === 16 && x.coaxial_player_appearance_v1?.() === 1) {
+      try { localStorage.setItem("aethyr.player.appearance.v1", text);send(17,text); }
+      catch {send(17,"");}
+    }
     else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
     else if (code === BAR_KIND) { if (!golden) try { localStorage.setItem(barKey, text); } catch {} }
     else if (code === 6) setQuality(text);

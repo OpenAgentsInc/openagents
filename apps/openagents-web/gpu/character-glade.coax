@@ -136,7 +136,12 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,edge_width:f32)->V4 {
  #assert cg_ui_cover(v2(20,360),390,844,1) && !cg_ui_cover(v2(190,300),390,844,1);
  #assert cg_ui_cover(v2(100,250),1440,900,1) && !cg_ui_cover(v2(720,250),1440,900,1);
 }
+#test "glade save controls have solid backgrounds at both screen sizes" {
+ #assert cg_ui_cover(v2(630,860),1440,900,1) && cg_ui_cover(v2(800,860),1440,900,1);
+ #assert cg_ui_cover(v2(100,100),390,844,1) && !cg_ui_cover(v2(195,200),390,844,1);
+}
 cg_ui_cover :: (p:V2,w:f32,h:f32,k:f32)->bool {
- if (w<840.0f32*k) {return p.y>h-504.0f32*k;}
+ if (w<840.0f32*k) {return p.y>h-504.0f32*k || ((p.y>82.0f32*k)&&(p.y<124.0f32*k)&&(p.x>12.0f32*k)&&(p.x<w-12.0f32*k));}
+ if ((p.y>h-56.0f32*k)&&(p.y<h-20.0f32*k)&&(p.x>w*0.5f32-164.0f32*k)&&(p.x<w*0.5f32+174.0f32*k)) {return true;}
  return ((p.x<286.0f32*k)||(p.x>w-286.0f32*k))&&(p.y>140.0f32*k);
 }

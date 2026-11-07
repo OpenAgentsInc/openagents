@@ -1,0 +1,56 @@
+// Append the complete registered Fantasy wardrobe to an existing realm pack.
+// Existing catalog references, vertices, indices and texture layers keep their identities.
+// tool.sh: release
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../humans/ph_gltf.coax";
+
+#load "../../../apps/openagents-web/charactercreator-parts.coax";
+#load "../../../aethyr/forge/pack.coax" as admission;
+WpEntry :: struct {kind:int;license:int;name:string;body:string;}
+Wp :: struct {base:[33554432]u8;source:[33554432]u8;out:[33554432]u8;v:[8388608]u8;inds:[4194304]u8;vn:int;ni:int;entries:[256]WpEntry;ne:int;names:[16384]u8;nn:int;cat:[262144]u8;}
+wp_read :: (b:[]u8,e:[]WpEntry)->int {
+ if b.count<32 || gl_u32(b,0)!=0x314b5056 || gl_u32(b,8)!=b.count {return -1;}
+ n:=gl_u32(b,4);table:=gl_u32(b,16);if n<3 || n>128 || table<32 || table+n*48>b.count {return -1;}
+ for i:0..<n {p:=table+i*48;off:=gl_u32(b,p+4);size:=gl_u32(b,p+8);if off<0 || size<0 || off+size>b.count {return -1;}end:=p+16;while end<p+48 && b[end]!=0 {end+=1;}e[i]=WpEntry.{kind=int(b[p]),license=int(b[p+1]),name=cast(string)b[p+16..<end],body=cast(string)b[off..<off+size]};}
+ return n;
+}
+#test "wardrobe pack refuses malformed source extents" {b:[32]u8;e:[128]WpEntry;#assert wp_read(b[..],e[..])<0;}
+wp_name :: (w:[]Wp,prefix:string,n:int)->string {s:[1]Sb;s[0]=sb(w[0].names[w[0].nn..<w[0].names.count]);sb_put(s[..],prefix);sb_int(s[..],n);t:=sb_text(s[..]);w[0].nn+=t.count;return t;}
+wp_field :: (row:string,field:int)->int {at:=0;for i:0..<field {while at<row.count && row[at]!=' ' {at+=1;}while at<row.count && row[at]==' ' {at+=1;}}end:=at;while end<row.count && row[end]!=' ' {end+=1;}return pint(row[at..<end]);}
+#test "wardrobe sources stay sequential and wider tables use VPK2" {#assert wp_sources("L 0 A\nL 1 B\nM mesh 0 3 1\n")==2;#assert wp_magic(48)==0x314b5056 && wp_magic(49)==0x324b5056;}
+wp_sources :: (cat:string)->int {n:=0;for i:0..<cat.count-1 {if (i==0 || cat[i-1]=='\n') && cat[i..<i+2]=="L " {n+=1;}}return n;}
+wp_magic :: (entries:int)->int {return ifx entries>48 then 0x324b5056 else 0x314b5056;}
+wp_line :: (out:[]Sb,t:string) {sb_put(out,t);sb_byte(out,'\n');}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("wardrobe_pack BASE.pack FANTASY.pack OUTPUT.pack");return 2;}
+ w:[1]Wp;bn:=fs_read(args_at(a[..],0),w[0].base[..]);sn:=fs_read(args_at(a[..],1),w[0].source[..]);if bn<32 || sn<32 {return 1;}
+ source:[128]WpEntry;w[0].ne=wp_read(w[0].base[0..<bn],w[0].entries[..]);ns:=wp_read(w[0].source[0..<sn],source[..]);if w[0].ne<0 || ns<0 {return 1;}
+ cat:="";scat:="";bv:="";bi:="";sv:="";si:="";vl:=-1;il:=-1;cl:=-1;layers:=0;
+ for i:0..<w[0].ne {e:=w[0].entries[i];if e.kind==1 {cat=e.body;cl=i;}if e.kind==2 {bv=e.body;vl=i;}if e.kind==3 {bi=e.body;il=i;}if e.kind==4 {layers+=1;}}
+ for i:0..<ns {e:=source[i];if e.kind==1 {scat=e.body;}if e.kind==2 {sv=e.body;}if e.kind==3 {si=e.body;}}
+ if vl<0 || il<0 || cl<0 {return 1;}
+ text:[1]Sb;text[0]=sb(w[0].cat[..]);at:=0;
+ while at<cat.count {end:=at;while end<cat.count && cat[end]!='\n' {end+=1;}row:=cat[at..<end];at=end+1;if starts(row,"C fantasy/") {tool_errln("base already contains wardrobe");return 1;}wp_line(text[..],ifx starts(row,"bytes ") then "bytes 0000000000" else ifx starts(row,"budget ") then "budget 33554432" else row);}
+ license:=wp_sources(cat);if license>=32 {return 1;}sb_put(text[..],"L ");sb_int(text[..],license);wp_line(text[..]," Quaternius Fantasy Source wardrobe|CC0 1.0 Universal|https://quaternius.com/");
+ min_layer:=256;at=0;found:=0;
+ while at<scat.count {end:=at;while end<scat.count && scat[end]!='\n' {end+=1;}row:=scat[at..<end];at=end+1;if !starts(row,"C fantasy/") {continue;}word:=wp_field(row,5);if word<0 || word*4+24>sv.count {return 1;}l:=int(sv[word*4+6]);if l<min_layer {min_layer=l;}found+=1;}
+ if found!=76 {tool_errln("source must contain all 76 garments");return 1;}
+ for i:0..<ns {e:=source[i];if e.kind!=4 {continue;}l:=pint(e.name[5..<e.name.count]);if l<min_layer {continue;}target:=layers+l-min_layer;if target>=256 || w[0].ne>=256 {return 1;}e.name=wp_name(w[..],"layer",target);e.license=license;w[0].entries[w[0].ne]=e;w[0].ne+=1;sb_put(text[..],"T ");sb_int(text[..],target);sb_put(text[..]," wardrobe ");sb_int(text[..],license);sb_byte(text[..],'\n');}
+ at=0;while at<scat.count {end:=at;while end<scat.count && scat[end]!='\n' {end+=1;}row:=scat[at..<end];at=end+1;if !starts(row,"C fantasy/") {continue;}
+  first:=wp_field(row,2);count:=wp_field(row,3);word:=wp_field(row,5);verts:=wp_field(row,6);joints:=wp_field(row,7);if joints!=65 || first<0 || count<=0 || word<0 || verts<=0 || first*4+count*4>si.count || word*4+verts*24>sv.count || w[0].vn+verts*24>w[0].v.count || w[0].ni+count*4>w[0].inds.count {return 1;}
+  name_end:=2;while name_end<row.count && row[name_end]!=' ' {name_end+=1;}sb_put(text[..],row[0..<name_end]);sb_byte(text[..],' ');sb_int(text[..],(bi.count+w[0].ni)/4);sb_byte(text[..],' ');sb_int(text[..],count);sb_byte(text[..],' ');sb_int(text[..],license);sb_byte(text[..],' ');sb_int(text[..],(bv.count+w[0].vn)/4);sb_byte(text[..],' ');sb_int(text[..],verts);wp_line(text[..]," 65");
+  for k:0..<verts*24 {v:=sv[word*4+k];if k%24==6 {mapped:=int(v)+layers-min_layer;if mapped<layers || mapped>=256 {return 1;}v=cast(u8)mapped;}w[0].v[w[0].vn+k]=v;}w[0].vn+=verts*24;
+  for k:0..<count*4 {w[0].inds[w[0].ni+k]=si[first*4+k];}w[0].ni+=count*4;
+ }
+ out:=w[0].out[..];put_u32(out,0,wp_magic(w[0].ne));put_u32(out,4,w[0].ne);put_u32(out,12,33554432);put_u32(out,16,32);pos:=32+w[0].ne*48;put_u32(out,20,pos);
+ for i:0..<w[0].ne {e:=w[0].entries[i];body:=ifx i==cl then sb_text(text[..]) else e.body;extra:=ifx i==vl then w[0].vn else ifx i==il then w[0].ni else 0;if pos+body.count+extra>out.count {return 1;}r:=32+i*48;out[r]=cast(u8)e.kind;out[r+1]=cast(u8)e.license;put_u32(out,r+4,pos);put_u32(out,r+8,body.count+extra);for k:0..<e.name.count {out[r+16+k]=e.name[k];}
+  for ch:body {out[pos]=ch;pos+=1;}if i==vl {for k:0..<w[0].vn {out[pos]=w[0].v[k];pos+=1;}}if i==il {for k:0..<w[0].ni {out[pos]=w[0].inds[k];pos+=1;}}pos=(pos+3)/4*4;
+ }
+ put_u32(out,8,pos);body:=sb_text(text[..]);where:=-1;for k:0..<body.count-16 {if body[k..<k+6]=="bytes " {where=k+6;break;}}if where<0 {return 1;}number:=pos;cat_at:=gl_u32(out,32+cl*48+4);digits:=1;v:=number;while v>=10 {digits+=1;v/=10;}for k:0..<10 {out[cat_at+where+k]=' ';}for k:0..<digits {out[cat_at+where+digits-1-k]=cast(u8)(48+number%10);number/=10;}
+ checked:[1]admission.PackRead;if !admission.pack_read(cast(string)out[0..<pos],checked[..]) {tool_errln(checked[0].why);return 1;}
+ if !fs_write(args_at(a[..],2),cast(string)out[0..<pos]) {return 1;}print("Appended % garments, % vertex bytes, % index bytes; % bytes total\n",found,w[0].vn,w[0].ni,pos);return 0;
+}
+
+put_u32 :: (b:[]u8,at:int,v:int) {for k:0..<4 {b[at+k]=cast(u8)((v>>(k*8))&255);}}

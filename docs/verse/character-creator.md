@@ -182,3 +182,57 @@ substituting a different face.
 
 Headless browser checks require the loaded family and exact measured advances
 for A/i, then exercise input, save/reload and desktop/phone previews.
+
+## Save Player and use it in Everglade
+
+SAVE PLAYER explicitly commits the current character to this browser's active
+Aethyr player appearance. USE IN EVERGLADE saves the current choices and opens
+Everglade only after storage confirms the exact saved record. Automatic draft
+saving remains separate: trying another outfit or pressing RESET does not
+replace the active player until explicitly saved. PLAYER SAVED confirms the
+write; RETRY SAVE reports refused browser storage and never navigates away.
+
+The versioned origin-wide key is `aethyr.player.appearance.v1`. Its bounded
+payload is the existing CC2 record, parsed by `aethyr/character-appearance.coax`
+in both the creator and Everglade. Invalid records leave live choices intact.
+This is browser-local appearance, independent of login identity, quest saves,
+room permissions, movement, spell stats or inventory. It is not account/cloud
+sync; other clients retain the existing multiplayer LOOK contract.
+
+The optional `coaxial_player_appearance_v1` capability opts a face into loading
+message16 before page facts. Action16 writes the shared profile; message17
+acknowledges the exact bytes or an empty failure. The UI keeps a pending
+snapshot, so another edit cannot be mistaken for the acknowledged selection.
+
+Everglade's appended `everglade-avatar.pack` preserves its original catalog,
+vertices, indices and texture layers, then adds all76 source garments. It uses
+the existing 24-byte people vertices,65-joint male/female rigs, three colorways
+and cloth dye rules. The player uses Everglade's existing feet, facing, world
+collision and camera. Its body samples the people rig's idle/walk/run and spell
+clips; the normal Ranger and its gear are hidden for that local actor. When no
+valid complete appearance is available, the ordinary Ranger remains visible.
+Eye color uses the palette's previously unused hair-alpha word; NPC palette
+extents and all existing joint bounds stay unchanged.
+
+The pack writer runs the production `pack_read` before writing. It emits VPK2
+for the enlarged texture table and retains sequential CC0 source declarations.
+Build the normal local room worker with `coax/web/tool.sh coax/web/room/worker.coax
+apps/openagents-web/build/everglade-room.wasm`. Everglade requires an admitted
+room seat for movement, including its default one-seat browser worker. A native
+development room and API are available with `coax/web/tool.sh coax/web/room/local.coax
+--room 8847 --page 8817 --static`.
+
+Rebuild and independently validate the appended wardrobe:
+
+```sh
+coax/web/tool.sh verse/tools/assets/wardrobe_pack.coax \
+  apps/openagents-web/realms/everglade/assets/everglade.pack \
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack \
+  apps/openagents-web/realms/everglade/assets/everglade-avatar.pack
+python3 verse/tools/assets/wardrobe_pack_oracle.py \
+  apps/openagents-web/realms/everglade/assets/everglade.pack \
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack \
+  apps/openagents-web/realms/everglade/assets/everglade-avatar.pack
+coax/web/tool.sh coax/web/tests/player-appearance.coax \
+  http://127.0.0.1:8817/worlds/character-creator
+```

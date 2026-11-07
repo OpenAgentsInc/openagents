@@ -56,6 +56,7 @@
 //   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000
 
 #load "font.coax";
+#load "../../aethyr/character-appearance.coax" as cc;
 #load "everglade-link.coax";
 #load "analytics.coax";
 #load "../../aethyr/camera.coax";
@@ -217,7 +218,9 @@ LOD_AT :: CELL_AT + SHARD_OBJECTS * 2;
 // Then the Cultist Raid's people (everglade-raid-preview.coax): a run per part as the town's people's,
 // RAID_SHOWN long, uploaded only while a raid is on (everglade_store_used).
 RAID_SHOWN :: 64;
-RAID_AT :: LOD_AT + LOD_OBJECTS;
+AVATAR_AT :: LOD_AT + LOD_OBJECTS;
+AVATAR_PARTS :: 43;
+RAID_AT :: AVATAR_AT + AVATAR_PARTS;
 ALL_OBJECTS :: RAID_AT + PEOPLE_PARTS * RAID_SHOWN;
 // Store 2, the joints' skinning matrices (three rows of four a joint): yours,
 // then each person shown's, after theirs three rows of their colours: skin
@@ -227,6 +230,8 @@ PERSON_ROWS :: PEOPLE_JOINTS * 3 + 3;
 // A person is a skinned shape like you, told apart by colour.z (yours is 1).
 PERSON_MARK :: 2.0;
 // Then the others' Rangers' (everglade-rangers.coax REMOTE_PAL_AT).
+// The 65-joint custom player fits inside the existing 75-joint player block.
+AVATAR_PAL_AT :: 0;
 RAID_PAL_AT :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4 + REMOTE_PALETTE;
 // Then the raid's people's, last (everglade-raid-preview.coax).
 LINK_PAL_AT :: RAID_PAL_AT + RAID_SHOWN * PERSON_ROWS * 4;
@@ -283,7 +288,8 @@ SHARD_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
 RANGER_FAR_DRAW :: SHARD_DRAW + KIT_MESHES;   // the others' Rangers past REMOTE_LOD_FROM, the pack's far mesh
 RAID_DRAW :: RANGER_FAR_DRAW + 1;   // the raid's people, a part a draw (everglade-raid-preview.coax)
 LINK_DRAW :: RAID_DRAW + PEOPLE_PARTS;
-WATER_DRAW :: LINK_DRAW + 1;
+AVATAR_DRAW :: LINK_DRAW + 1;
+WATER_DRAW :: AVATAR_DRAW + AVATAR_PARTS;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad, 2 a rowboat).
@@ -364,6 +370,7 @@ GOLD_R :: 0.86; GOLD_G :: 0.72; GOLD_B :: 0.42;
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 
 Everglade :: struct {
+  avatar:[1]cc.CharacterAppearance;avatar_skin:[1]Skin;avatar_n:int;
   started: bool;
   ax: [1] EgAccess;   // the settings record, its pane, captions and the accessible layer (everglade-access.coax)
   guard_ai: EgGuardAi;
@@ -1036,6 +1043,7 @@ everglade_catalog :: (s: [] Everglade, input: string) #export_c #effects(all) {
   s[0].identity_first = -1;
   s[0].ranger_first = 0; s[0].ranger_count = 0; s[0].ranger_word = 0; s[0].rangers[0].layer = -1;
   s[0].rangers[0].far_first = 0; s[0].rangers[0].far_count = 0;
+  cc.ca_catalog(s[0].avatar[..],text);
   for k: 0..<PEOPLE_PARTS { s[0].part_first[k] = 0; s[0].part_count[k] = 0; s[0].part_word[k] = 0; }
   i := 0;
   while i < text.count {
@@ -1097,6 +1105,7 @@ everglade_catalog :: (s: [] Everglade, input: string) #export_c #effects(all) {
 }
 everglade_pack_failed :: (s: [] Everglade) #export_c #effects(all) { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effects(all) {
+  if kind==16 {ok:=everglade_avatar_profile(s,text);return;}
   everglade_guard_message(s, kind, text);
   if kind == 601 || kind == 603 { s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].guide.key_down=false; s[0].guide.finger= -1; }
   // hidden and shown, through the shared lifecycle profile (everglade-net.coax net_life, #12856); a blur
@@ -3331,13 +3340,14 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
     for k:0..<309*12 {s[0].palette[LINK_PAL_AT+k]=s[0].link[0].palette[k];}
     for k:0..<12 {s[0].objects[o+k]=rows[k];}s[0].objects[o+12]=cast(f32)s[0].link_word;s[0].objects[o+13]=cast(f32)(LINK_PAL_AT/4);s[0].objects[o+14]=9;s[0].objects[o+15]=24;shadow(s,u,feet.x,feet.z,floor_under(s,feet.x,feet.z,feet.y),0.45,0.6);return;
   }
+  avatar_figure(s,rows,motion,speed,ifx dead || down then 0.0f32 else dt,still);
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = f32(s[0].ranger_word); s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
   rangers_you_look(s, o);   // in the look you picked, as the others see you (everglade-rangers.coax)
   shadow(s, u, feet.x, feet.z, floor_under(s, feet.x, feet.z, feet.y), 0.45, 0.6);
   // your class's gear, as the others see on you (everglade-rangers.coax)
-  if ci_you_shown(s) && !you_inside(s) {
+  if ci_you_shown(s) && !you_inside(s) && !avatar_ready(s) {
     gear := ranger_gear(rig, s[0].skin[..], ifx wl_on(s) then CLASS_WARLOCK else CLASS_DRUID);
     gear.flare = gear_flare(s[0].rangers[0].you_swing);   // the staff's stone flares as you cast
     gear_draw(s, gear, rows);
@@ -4209,7 +4219,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // aethyr/camera.coax); then the others' (everglade-rangers.coax)
   link_visible:=everglade_link_body(s) && ci_you_shown(s) && !you_inside(s);
   s[0].draws[LINK_DRAW*4]=cast(u32)s[0].link_first;s[0].draws[LINK_DRAW*4+1]=cast(u32)s[0].link_count;s[0].draws[LINK_DRAW*4+2]=cast(u32)(EG_CELLS*EG_CELLS+RANGER_AT);s[0].draws[LINK_DRAW*4+3]=ifx link_visible then cast(u32)1 else cast(u32)0;
-  you_on := !link_visible && s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s);
+  you_on := !link_visible && !avatar_ready(s) && s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s);
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + (ifx you_on then RANGER_AT else REMOTE_AT));
   bodies := ifx s[0].ranger_count > 0 then (ifx you_on then 1 else 0) + s[0].rangers[0].n else 0;
   s[0].draws[d + 3] = cast(u32) bodies;
@@ -4226,6 +4236,10 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d + 1] = cast(u32) LATHE_VERTICES;
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + LATHE_AT);
   s[0].draws[d + 3] = cast(u32) s[0].lathe_n;
+  for i:0..<AVATAR_PARTS {d=(AVATAR_DRAW+i)*4;s[0].draws[d+3]=0;}
+  if avatar_ready(s) && ci_you_shown(s) && !you_inside(s) && !link_visible {
+    for i:0..<s[0].avatar_n {d=(AVATAR_DRAW+i)*4;s[0].draws[d+2]=cast(u32)(EG_CELLS*EG_CELLS+AVATAR_AT+i);s[0].draws[d+3]=1;}
+  }
   // the people: a part a draw, its instances the people shown wearing it
   for k: 0..<PEOPLE_PARTS {
     d = (PEOPLE_DRAW + k) * 4;
@@ -5156,3 +5170,52 @@ everglade_link_input :: (s:[]Everglade,given:EgMoveIn)->EgMoveIn #export_c #effe
 
 // Optional scalar layer-extent ABI: the host allocates, Coax declares the source dimensions.
 everglade_link_layer_side :: (s:[]Everglade)->int #export_c #effects(all) {return ifx s[0].link_materials then 1536 else 0;}
+
+#test "Everglade player appearance keeps invalid records out and preserves selected colors" {
+ s:[1]Everglade;draft:[1]cc.CharacterAppearance;draft[0].female=true;cc.ca_preset(draft[..],2);draft[0].dye=1;draft[0].eye_color=4;
+ b:[64]u8;n:=cc.ca_save(draft[0],b[..]);#assert everglade_avatar_profile(s[..],cast(string)b[0..<n]);
+ #assert s[0].avatar[0].female && s[0].avatar[0].dye==1 && s[0].avatar[0].eye_color==4;
+ #assert !everglade_avatar_profile(s[..],"CC2invalid") && s[0].avatar[0].female && s[0].avatar[0].eye_color==4;
+ #assert !avatar_ready(s[..]);
+}
+
+// The same versioned wardrobe record as Character Create; its actor uses Everglade's controller.
+everglade_avatar_profile :: (s:[]Everglade,t:string)->bool #export_c #effects(all) {
+ if !cc.ca_restore(s[0].avatar[..],t) {return false;}s[0].avatar_skin[0]=Skin.{};return true;
+}
+avatar_ready :: (s:[]Everglade)->bool {
+ if !s[0].avatar[0].configured || !cc.ca_catalog_ready(s[0].avatar[0]) {return false;}
+ l:=cc.ca_look(s[0].avatar[0]);return s[0].part_count[l.head]>0;
+}
+avatar_record :: (s:[]Everglade,rows:[12]f32,first:int,count:int,word:int) {
+ n:=s[0].avatar_n;if n>=AVATAR_PARTS || count<=0 {return;}o:=(AVATAR_AT+n)*OBJECT_FLOATS;
+ for k:0..<12 {s[0].objects[o+k]=rows[k];}s[0].objects[o+12]=f32(word);s[0].objects[o+13]=f32(AVATAR_PAL_AT/4);s[0].objects[o+14]=2.125;s[0].objects[o+15]=f32(SHAPE_SKINNED+8*LOOK_KIT);
+ d:=(AVATAR_DRAW+n)*4;s[0].draws[d]=cast(u32)first;s[0].draws[d+1]=cast(u32)count;s[0].avatar_n+=1;
+}
+avatar_figure :: (s:[]Everglade,rows:[12]f32,motion:int,speed:f32,dt:f32,still:bool) {
+ s[0].avatar_n=0;if !avatar_ready(s) {return;}a:=s[0].avatar[0];rig:=eg_people_rig(s,a.female);
+ clip:=ifx motion==SKIN_SWING then PEOPLE_SPELL else ifx motion==SKIN_RUN then PEOPLE_RUN else ifx motion==SKIN_WALK || motion==SKIN_BACKPEDAL || motion==SKIN_STRAFE_LEFT || motion==SKIN_STRAFE_RIGHT then PEOPLE_WALK else PEOPLE_IDLE;
+ skin_advance(rig,s[0].avatar_skin[..],clip,speed,ifx still then 0.0f32 else dt);skin_palette(rig,s[0].avatar_skin[..],s[0].palette[AVATAR_PAL_AT..<AVATAR_PAL_AT+PEOPLE_JOINTS*12]);
+ l:=cc.ca_look(a);h:=AVATAR_PAL_AT+PEOPLE_JOINTS*12;
+ for k:0..<3 {s[0].palette[h+k]=l.skin[k];s[0].palette[h+4+k]=l.hair_rgb[k];}s[0].palette[h+3]=f32(a.variant);eye:=0;for k:0..<3 {eye|=int(cc.CA_EYES[a.eye_color][k]*255+0.5)<<(k*8);}s[0].palette[h+7]=f32(eye);
+ for k:0..<4 {s[0].palette[h+8+k]=l.dye[k];}
+ for i:0..<40 {if a.worn[i] && cc.ca_available(a,i) {p:=i+(ifx a.female then 0 else 40);avatar_record(s,rows,a.source_first[p],a.source_count[p],a.source_word[p]);}}
+ parts:[3]int;n:=0;parts[n]=l.head;n+=1;if l.hair>=0 && !a.hood {parts[n]=l.hair;n+=1;}if a.beard && !a.female {parts[n]=10;n+=1;}
+ for i:0..<n {p:=parts[i];avatar_record(s,rows,s[0].part_first[p],s[0].part_count[p],s[0].part_word[p]);}
+}
+everglade_avatar_probe :: (s:[]Everglade,f:int)->int #export_c #effects(all) {
+ if f==20 {return ifx avatar_ready(s) then 1 else 0;}if f==21 {return s[0].avatar_n;}if f==22 {return ifx s[0].avatar[0].female then 1 else 0;}if f==23 {return s[0].avatar[0].dye;}if f==24 {return s[0].avatar[0].eye_color;}if f==25 {return s[0].avatar[0].variant;}if f==26 {return s[0].avatar[0].hair;}if f==27 {return s[0].avatar[0].outfit;}if f==28 {return s[0].avatar_skin[0].clip;}return -1;
+}
+
+#test "Everglade saved player emits bounded modular parts with its own animation and palette" #steps 50000000 {
+ s:[1]Everglade;s[0].avatar[0].female=true;cc.ca_preset(s[0].avatar[..],2);s[0].avatar[0].eye_color=4;
+ buf:[65536]u8;n:=0;
+ for i:0..<80 {name:=cc.PART_NAMES[i];if name=="" {continue;}for c:"C " {buf[n]=c;n+=1;}for c:name {buf[n]=c;n+=1;}for c:" 100 300 249 600 100 65\n" {buf[n]=c;n+=1;}}
+ cc.ca_catalog(s[0].avatar[..],cast(string)buf[0..<n]);for i:0..<PEOPLE_PARTS {s[0].part_count[i]=30;s[0].part_word[i]=700;}
+ rows:=[12]f32.[1,0,0,4,0,1,0,2,0,0,1,7];avatar_figure(s[..],rows,SKIN_RUN,5,0.1,false);
+ #assert AVATAR_PAL_AT==0 && PERSON_ROWS*4<=RANGER_JOINTS*12;
+ #assert avatar_ready(s[..]) && s[0].avatar_n==8 && s[0].avatar_skin[0].clip==PEOPLE_RUN;
+ for i:0..<s[0].avatar_n {o:=(AVATAR_AT+i)*16;#assert s[0].objects[o+3]==4 && s[0].objects[o+7]==2 && s[0].objects[o+11]==7 && s[0].objects[o+14]==2.125;}
+ h:=AVATAR_PAL_AT+PEOPLE_JOINTS*12;#assert s[0].palette[h+7]>0;
+ avatar_figure(s[..],rows,SKIN_SWING,0,0.1,false);#assert s[0].avatar_skin[0].clip==PEOPLE_SPELL;
+}

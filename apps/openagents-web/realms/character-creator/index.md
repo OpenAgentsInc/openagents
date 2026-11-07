@@ -16,3 +16,5 @@ green woodland, autumn birches, flowers and mushrooms beneath a cyan sky.
 Grass and leaves move in the wind. Zooming and panning explore the scene with
 the character. It is rebuilt from the Quaternius Nature Source assets against
 the pack's first preview image.
+
+- SAVE PLAYER commits your character for Everglade in this browser. USE IN EVERGLADE saves and opens Everglade with that player. Editing the draft or pressing RESET leaves your saved player alone until you explicitly save again.

@@ -1,0 +1,22 @@
+// Real UI save -> shared browser profile -> Everglade avatar -> movement and reload.
+#import "Basic";
+#load "../../lib/media/media.coax";
+pa_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_bool(c[0].doc[0],n);}
+pa_wait :: (c:[]Cdp,js:string,ms:int)->bool {until:=proc_now_ms()+ms;while proc_now_ms()<until {if pa_eval(c,js) {return true;}proc_sleep(100);}return false;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}url:=args_at(a[..],0);if url.count==0 {return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],1440,900,"player-profile-check-") {return 1;}
+ o:MediaShotOptions;o.wait=500;values:[4096]u8;build:[256]u8;
+ o.script="(async()=>{const c=document.querySelector('canvas');const click=(x,y)=>{for(const type of ['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:x,clientY:y,pointerId:31,pointerType:'mouse',button:0,bubbles:true}));};click(80,866);click(250,180);click(250,480);click(250,480);for(let i=0;i<3;i++)click(1400,560);for(let i=0;i<4;i++)click(1400,180);click(630,866);await new Promise(r=>setTimeout(r,300));const saved=localStorage.getItem('aethyr.player.appearance.v1');click(250,560);const kept=localStorage.getItem('aethyr.player.appearance.v1')===saved;click(28,560);return kept&&saved?.length===56&&coaxial.fieldProbe(18)===1&&coaxial.fieldProbe(2)===1&&coaxial.fieldProbe(4)===1&&coaxial.fieldProbe(10)===3;})()";
+ shot:=media_shot(c[..],url,"/tmp/player-profile-created.png",ArgsSize.{ok=true,w=1440,h=900},o,values[..],build[..]);
+ if shot.status!=0 || cast(string)values[0..<shot.value_n]!="true" {tool_errln("profile save or draft isolation failed");cdp_close(c[..]);return 1;}
+ if !pa_eval(c[..],"(setTimeout(()=>{const c=document.querySelector('canvas');for(const type of ['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:800,clientY:866,pointerId:31,pointerType:'mouse',button:0,bubbles:true}));},50),true)") {cdp_close(c[..]);return 1;}
+ if !pa_wait(c[..],"location.pathname==='/worlds/everglade'&&globalThis.coaxial?.sceneReady&&coaxial.fieldProbe(20)===1&&coaxial.fieldProbe(21)===8&&coaxial.fieldProbe(22)===1&&coaxial.fieldProbe(23)===1&&coaxial.fieldProbe(24)===3",90000) {tool_errln("Use in Everglade did not produce the saved modular player");cdp_close(c[..]);return 1;}
+ o.script="(async()=>{for(let i=0;i<300;i++){if(coaxial.fieldProbe(29)===1){document.querySelector('canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));document.querySelector('canvas').dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true}));}if(coaxial.netProbe(0)===2&&coaxial.netProbe(1)>=0)break;await new Promise(r=>setTimeout(r,100));}const x=coaxial.fieldProbe(0),z=coaxial.fieldProbe(2);document.querySelector('canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'w',code:'KeyW',bubbles:true}));let animated=false;const clips=[];for(let i=0;i<15;i++){await new Promise(r=>setTimeout(r,100));const gait=coaxial.fieldProbe(28);clips.push(gait);animated||=gait===1||gait===8;}const moved=Math.abs(coaxial.fieldProbe(0)-x)+Math.abs(coaxial.fieldProbe(2)-z)>100;const clip=coaxial.fieldProbe(28);document.querySelector('canvas').dispatchEvent(new KeyboardEvent('keyup',{key:'w',code:'KeyW',bubbles:true}));return moved&&animated&&coaxial.fieldProbe(21)===8?true:JSON.stringify({moved,animated,clips,clip,x,z,nowX:coaxial.fieldProbe(0),nowZ:coaxial.fieldProbe(2),parts:coaxial.fieldProbe(21),join:coaxial.fieldProbe(29),room:coaxial.netProbe(0),seat:coaxial.netProbe(1)});})()";
+ // Reloading the actual destination also verifies that the shared profile survives a new engine.
+ target:[4096]u8;t:[1]Jo;jo_start(t[..],target[..]);cut:=0;for i:0..<url.count-7 {if url[i..<i+8]=="/worlds/" {cut=i;break;}}if cut==0 {cdp_close(c[..]);return 2;}jo_put(t[..],url[0..<cut]);jo_put(t[..],"/worlds/everglade");
+ shot=media_shot(c[..],jo_text(t[..]),"/tmp/player-profile-everglade.png",ArgsSize.{ok=true,w=1440,h=900},o,values[..],build[..]);
+ ok:=shot.status==0 && cast(string)values[0..<shot.value_n]=="true";cdp_close(c[..]);
+ if !ok {tool_errln("saved Everglade player did not move and animate after reload");tool_errln(cast(string)values[0..<shot.value_n]);return 1;}
+ print("Player profile: explicit UI save, draft isolation, Use in Everglade, exact modular appearance, reload, movement and gait passed.\n");return 0;
+}

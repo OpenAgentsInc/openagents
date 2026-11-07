@@ -1,0 +1,11 @@
+{
+  "base_sha256": "1c3fcbd6af5bac6b05639cab360725b798c3eb2ff16df0f71512ea68cf7433bc",
+  "source_sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
+  "output_sha256": "65a9d471559f6b6189c72f5e033dab6e047da58720961b51aaa8a0efd8179ea1",
+  "output_bytes": 20914460,
+  "garments": 76,
+  "garment_triangles": 206565,
+  "original_catalog_vertices_indices_and_images_preserved": true,
+  "local_indices_joints_weights_and_extents_valid": true,
+  "wardrobe_texture_layers_verified": 15
+}

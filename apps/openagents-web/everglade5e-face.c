@@ -354,6 +354,8 @@ EXPORT("coaxial_probe") int32_t coaxial_probe(cx_face_addr state) {
 // 7 the last re-run's move, squared, in mm^2.
 static float probe_feet[3], probe_speed, probe_fix;
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, int32_t field) {
+  if (field==29) return net_state.join.e[0].pick_open ? 1 : 0;
+  if (field>=20 && field<=28) return (int32_t)everglade_avatar_probe(at(state),field);
   if (field >= 0 && field < 3) return (int32_t)(probe_feet[field] * 1000);
   if (field == 3) return (int32_t)verse_player_act(player);
   if (field == 4) return (int32_t)city(state)->skin.e[0].clip;
@@ -1099,3 +1101,5 @@ __attribute__((constructor)) static void coaxial_face_defaults(void) {
 }
 
 EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)everglade_link_layer_side(at(state)); }
+
+EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) {return 1u;}

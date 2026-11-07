@@ -155,3 +155,5 @@ EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { lab_act
 
 // Read-only observations for headless wardrobe checks.
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state,int32_t field) {return (int32_t)lab_creator_probe(at(state),field);}
+
+EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }

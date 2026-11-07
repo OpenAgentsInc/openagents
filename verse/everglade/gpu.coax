@@ -766,6 +766,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
           d:V4=pose[cast(int)add_wrap(colours,2)];
           o.dye=wg_make_f4_f3f(v3(d.x,d.y,d.z),((cast(f32)(sub_wrap(kind_2,2)))*2.0f32)+d.w);
         }
+        if (m.colour.z==2.125f32)&&(o.slice==32) {eye:u32=wg_u32_f(pose[cast(int)add_wrap(colours,1)].w);o.dye=v4((cast(f32)(eye&255))/255.0f32,(cast(f32)((eye>>8)&255))/255.0f32,(cast(f32)((eye>>16)&255))/255.0f32,12.0f32);}
         ranger=true;
       } else {
         // The Ranger: the pack's 32-byte character vertex, skinned by up to four joints of the pose.
@@ -1215,6 +1216,8 @@ eg_dye24 :: (c:u32)->V3 {
   return v3(r*r,g*g,b*b);
 }
 eg_person_dye :: (t:V3,dye:V4)->V3 {
+  if (dye.w==12.0f32) {iris:f32=clampf((t.x-fmax(t.y,t.z))*5.0f32,0.0f32,1.0f32);shade:f32=clampf(wg_dot3(t,v3(0.2126f32,0.7152f32,0.0722f32))*3.0f32,0.15f32,1.3f32);return wg_mix_f3f3f(t,wg_mul_f3f(v3(dye.x,dye.y,dye.z),shade),iris);}
+
   // dye.w: 2 + share on a pale cloth, 4 + share on a green one (case 6u's people), 0 for no dye
   if (dye.w<2.0f32) {
     return t;
