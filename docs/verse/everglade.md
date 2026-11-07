@@ -998,12 +998,19 @@ coax/web/tool.sh flyover http://127.0.0.1:8870 --out coax/web/build/flyover-afte
 - The tool flies twice. The first flight saves `shot-000.jpg` and one more JPEG each second, and
   it warms the city. The second flight is timed, with nothing else running. The report gives the
   average, p50, p95 and worst frame, the frames over 33 ms and over 20 ms, and the 60 FPS rule
-  from `aethyr/frame-report.coax`. It also gives each frame's CPU time and GPU time (from submit to
-  `onSubmittedWorkDone`) from host.js's frame trace.
-- Each run writes `frames.tsv`, `trace.tsv`, `summary.tsv` and `summary.txt` to its `--out`
-  folder. `--previous` takes an earlier `summary.tsv` and prints how each figure moved.
+  from `aethyr/frame-report.coax`. It also gives each frame's CPU time, from host.js's frame
+  trace, and its GPU time, from host.js's pass timer. The tool sets `coaxialPassTimer` before the
+  page loads, and host.js then puts GPU timestamps round every render pass. The GPU figure runs
+  from the first pass's start to the last pass's end. The shadow figure is the shadow map's pass
+  alone. On Apple's tiled GPUs passes overlap, so the passes' own times added up overstate the
+  frame; `gpu.tsv` keeps that sum, and the report leaves it out.
+- Each run writes `frames.tsv`, `trace.tsv`, `gpu.tsv`, `summary.tsv` and `summary.txt` to its
+  `--out` folder. `--previous` takes an earlier `summary.tsv` and prints how each figure moved.
   `--no-shots` skips the first flight. `--path`, `--world`, `--query`, `--size` and `--dpr`
   change what is flown.
+- A sample run on the M-series Mac (November 7): 3272 frames, average 16.7 ms (60.0 FPS), p95
+  16.7 ms, worst 33.3 ms, 1 frame over 33 ms; CPU p50 2.0 ms; GPU p50 16.5 ms, p95 24.0 ms; the
+  shadow pass p50 0.8 ms, p95 7.7 ms. The one dropped frame misses the 60 FPS rule.
 
 ## Parity with the previous Everglade (October 30)
 

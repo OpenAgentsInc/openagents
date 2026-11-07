@@ -934,7 +934,9 @@ async function openDevice(made = () => {}) {
   // binding, as far as the adapter has it; she stays off on one that has less
   const character = Math.min(engine?.exports.coaxial_character_storage_v1?.() ?? 0, adapter.limits.maxStorageBufferBindingSize);
   const storage = Math.max(engine?.exports.coaxial_storage_limit_v1?.() ?? 0, character);
-  const options = timing ? { requiredFeatures: ["timestamp-query"] } : {};
+  // a headless benchmark (coax/web/flyover.coax) asks for each pass's GPU time (globalThis.coaxialPassTimer)
+  const passTiming = globalThis.coaxialPassTimer === true && adapter.features.has("timestamp-query");
+  const options = timing || passTiming ? { requiredFeatures: ["timestamp-query"] } : {};
   if (storage) options.requiredLimits = { maxStorageBufferBindingSize: storage };
   const device = await adapter.requestDevice(options);
   device.lost.then((info) => deviceLost(device, info));
@@ -2480,6 +2482,44 @@ const clipRoom = clipping && globalThis.coaxialClipRoom === true, clipStart = pe
 // Optional platform timing observations for the desktop profiler. No work is
 // collected in an ordinary page; Coax tools summarize these raw milliseconds.
 const frameTrace = globalThis.coaxialFrameTrace === true ? [] : null;
+// Pass times (globalThis.coaxialPassTimer = true before the page loads; coax/web/flyover.coax): every
+// render pass of a frame gets its own pair of GPU timestamps, read back after the submit, and
+// coaxial.takePassTimes() gives [SPAN_US, SHADOW_US, PASSES, SUM_US] a frame: the first pass's start to
+// the last pass's end, the shadow map's pass (no colour targets), and every pass's own time added up. At most 600 frames are kept.
+const passTimes = globalThis.coaxialPassTimer === true ? [] : null;
+const PASS_SLOTS = 32;
+function passTimerFor(device) {
+  if (!passTimes || !device.features.has("timestamp-query")) return null;
+  if (!device.__coaxialPassTimer) device.__coaxialPassTimer = { set: device.createQuerySet({ type: "timestamp", count: PASS_SLOTS }),
+    resolve: device.createBuffer({ size: PASS_SLOTS * 8, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
+    reads: [0, 1, 2, 3].map(() => ({ buffer: device.createBuffer({ size: PASS_SLOTS * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }), busy: false })) };
+  const t = device.__coaxialPassTimer, read = t.reads.find((r) => !r.busy);
+  return read ? { t, read, n: 0, shadow: [] } : null;
+}
+// A pass described by d, timed when this frame's timer has room (and d isn't timed already).
+function timedPass(encoder, timer, d) {
+  if (!timer || d.timestampWrites || timer.n + 2 > PASS_SLOTS) return encoder.beginRenderPass(d);
+  if (!d.colorAttachments?.length) timer.shadow.push(timer.n);
+  const at = timer.n; timer.n += 2;
+  return encoder.beginRenderPass({ ...d, timestampWrites: { querySet: timer.t.set, beginningOfPassWriteIndex: at, endOfPassWriteIndex: at + 1 } });
+}
+function passTimerResolve(encoder, timer) {
+  if (!timer || !timer.n) return;
+  encoder.resolveQuerySet(timer.t.set, 0, timer.n, timer.t.resolve, 0);
+  encoder.copyBufferToBuffer(timer.t.resolve, 0, timer.read.buffer, 0, timer.n * 8);
+}
+function passTimerRead(timer) {
+  if (!timer || !timer.n) return;
+  const { read, n, shadow } = timer; read.busy = true;
+  read.buffer.mapAsync(GPUMapMode.READ, 0, n * 8).then(() => {
+    const t = new BigUint64Array(read.buffer.getMappedRange(0, n * 8).slice(0)); read.buffer.unmap(); read.busy = false;
+    let first = t[0], last = t[1], shade = 0n, sum = 0n;
+    for (let i = 0; i < n; i += 2) { if (t[i + 1] < t[i]) return; if (t[i] < first) first = t[i]; if (t[i + 1] > last) last = t[i + 1]; sum += t[i + 1] - t[i]; }
+    for (const i of shadow) shade += t[i + 1] - t[i];
+    passTimes.push([Math.round(Number(last - first) / 1000), Math.round(Number(shade) / 1000), n / 2, Math.round(Number(sum) / 1000)]);
+    if (passTimes.length > 600) passTimes.shift();
+  }, () => { read.busy = false; });
+}
 let traceRow = null, traceLast = 0;
 let clipNow = 0;
 let worldPaused = false, frameRequest = 0, worldFrames = 0, worldSubmissions = 0;
@@ -2681,6 +2721,7 @@ function draw(now) {
   }
   const post = gpu.post && gpu.postGroup;
   const encoder = device.createCommandEncoder();
+  const passTimer = passTimerFor(device);
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
   const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
@@ -2715,7 +2756,7 @@ function draw(now) {
   const hero = draws && gpu.shadow ? characters.want(x, arena.state, memory, now) : false;
   if (((draws || shadowDraws) && gpu.shadow) || gpu.caster) {
     // cleared every frame even with nothing to cast, so a traced scene never reads a stale map
-    const shade = encoder.beginRenderPass({ colorAttachments: [],
+    const shade = timedPass(encoder, passTimer, { colorAttachments: [],
       depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
     shade.setBindGroup(0, gpu.bindGroup);
     if (shadowDraws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet, true); }
@@ -2729,7 +2770,7 @@ function draw(now) {
   const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
   const texture = context.getCurrentTexture();
   const screen = () => target(texture.createView());
-  let pass = encoder.beginRenderPass({ colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
+  let pass = timedPass(encoder, passTimer, { colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
     ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}),
     ...(timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
@@ -2770,7 +2811,7 @@ function draw(now) {
       encoder.copyTextureToTexture({ texture: gpu.light }, { texture: gpu.waterLight }, [w, h]);
       encoder.copyTextureToTexture({ texture: gpu.depth }, { texture: gpu.waterDepth }, [w, h]);
       const keep = (view) => ({ view, loadOp: "load", storeOp: "store" });
-      pass = encoder.beginRenderPass({ colorAttachments: [keep(gpu.light.createView()), keep(gpu.aux.createView())],
+      pass = timedPass(encoder, passTimer, { colorAttachments: [keep(gpu.light.createView()), keep(gpu.aux.createView())],
         depthStencilAttachment: { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: "store" } });
       pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup);
       pass.setBindGroup(2, gpu.shadow ? gpu.shadowGroup : (emptyLayout(), gpu.emptyGroup));
@@ -2809,10 +2850,10 @@ function draw(now) {
   if (post) {
     pass.end();
     for (const [into, group] of gpu.blooms) {
-      const b = encoder.beginRenderPass({ colorAttachments: [target(into.createView())] });
+      const b = timedPass(encoder, passTimer, { colorAttachments: [target(into.createView())] });
       b.setBindGroup(0, gpu.bindGroup); b.setBindGroup(1, group); b.setPipeline(gpu.bloom); b.draw(3); b.end();
     }
-    pass = encoder.beginRenderPass({ colorAttachments: [screen()] });
+    pass = timedPass(encoder, passTimer, { colorAttachments: [screen()] });
     pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.postGroup); pass.setPipeline(gpu.post); pass.draw(3);
   }
   if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post);
@@ -2823,6 +2864,7 @@ function draw(now) {
     encoder.resolveQuerySet(gpu.timer.set, 0, 4, gpu.timer.resolve, 0);
     encoder.copyBufferToBuffer(gpu.timer.resolve, 0, gpu.timer.read, 0, 32);
   }
+  passTimerResolve(encoder, passTimer);
   const readback = captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
   roomTraceSubmitted(device.queue);
@@ -2837,6 +2879,7 @@ function draw(now) {
     traceRow[2]=performance.now()-legacyEncodeStart;traceRow[7]=1;traceRow[8]=device.__coaxialCompletionMs||0;traceRow[10]=device.__coaxialFrames||0;traceRow[11]=observedWorldDraws;traceRow[12]=hero?1:0;
   }
   if (timed) timingRead(gpu.timer);
+  passTimerRead(passTimer);
   if (gpu.snap) { const take = gpu.snap; gpu.snap = null; take(); }   // card.js: this frame, before it is shown
   if (shaderLoads === 0 && installedGeneration === wanted && !globalThis.coaxial.sceneReady && pendingSceneEpoch !== sceneEpoch) {
     // A stroke-only world declares readiness in Coax after writing its world
@@ -3009,7 +3052,7 @@ function send(kind, text = "") {
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
   setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
-  takeFrameTrace: () => frameTrace?.splice(0) ?? [],
+  takeFrameTrace: () => frameTrace?.splice(0) ?? [], takePassTimes: () => passTimes?.splice(0) ?? [],
   frameQueue: () => ({pending:gpu?.device.__coaxialFrames||0,bounded:typeof engine?.exports.coaxial_frame_admit==="function"}),
   quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
