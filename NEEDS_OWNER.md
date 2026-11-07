@@ -1121,3 +1121,10 @@ The Mac was not available to the agent:
       responses; live natural-language interpretation quality is unqualified.
       Use the private `anim_direct_oracle.py --live` flow documented in
       `docs/verification/animation-lab-a7-2026-11-07/README.md`.
+
+### Everglade Experimental: missing Quaternius originals
+
+- [ ] Place the complete Ultimate RPG and Ultimate Food source folders from
+      Quaternius under `~/Desktop/Quaternius/`. Their creator download links
+      returned Google Drive quota errors during import. The dungeon and animal
+      collections are in the registry; scene integration remains to be done.

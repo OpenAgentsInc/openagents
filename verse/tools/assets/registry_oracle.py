@@ -60,7 +60,8 @@ for p in sorted((registry/'assets').glob('*.jsonl')):
         if obs.get('format')=='gltf':
             assert obs['path'] in files
             model=snapshot/'source'/obs['path']; data=json.loads(model.read_text())
-            dependencies=[model.name]+[x['uri'] for key in ('buffers','images') for x in data.get(key,[])]
+            dependencies=[model.name]+[x['uri'] for key in ('buffers','images') for x in data.get(key,[]) if not x['uri'].startswith('data:application/octet-stream;base64,')]
+            if 'animations' in obs: assert obs['animations']==[x['name'] for x in data.get('animations',[])]
             assert [x['source_name'] for x in definition['artifacts']]==dependencies
             for artifact, name in zip(definition['artifacts'],dependencies):
                 actual=model.parent/name

@@ -6,6 +6,17 @@ Props Standard kit. Every original file
 is inventoried. Blender artwork, license evidence and alternate exports remain
 available; a world's runtime pack includes only its chosen collection.
 
+The `dungeon` collection inventories the complete 48-model Modular Dungeon
+archive published by Quaternius on [itch.io](https://quaternius.itch.io/lowpoly-modular-dungeon-pack).
+The source snapshot came from the [creator's OpenGameArt upload](https://opengameart.org/content/lowpoly-modular-dungeon-pack);
+the downloaded archive's SHA-256 is `bb9959ffd2c80b28bcd4ea574eaf4c9dd62a70fda4d61dbc5d6f5193a3f94630`.
+The `ultimate-animals` collection contains the 12 animated glTF models from
+the [Ultimate Animated Animals pack](https://quaternius.com/packs/ultimateanimatedanimals.html),
+mirrored from [FreeModels at db3df04](https://github.com/agentkaer/FreeModels/tree/db3df04d1e4714298a09510b26fb6de6645138a2).
+That snapshot contains glTF and license files, not the full original package's
+other authoring formats. Both collections are unqualified for runtime until a
+world explicitly packs and tests them.
+
 ## Identity and storage
 
 An authoring ID such as `quaternius/nature/birch-1` is a stable lookup key, not
