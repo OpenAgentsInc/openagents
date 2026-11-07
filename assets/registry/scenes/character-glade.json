@@ -75,29 +75,31 @@
   },
   "composition": {
     "path": "verse/character-glade.coax",
-    "sha256": "c5dc2b142ef48bb55f42993eb54fc2479e3f9acdd4307f1155003aa898cc5f11"
+    "sha256": "3a52f361e1543441fac3722d9096786ed033b2380dd30f430f53704b3cac08df"
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "1825eb6870675fd4eeed16bf488be55f7275093d534858789deac7275654ad6f"
+    "sha256": "e5c6dd27c920cf049d2830769f1c8ec060592cf1c5fc1e845c31038ea507b5ed"
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "268158f9372ddc9ba1a6ecac5674282ce15540734f76039e259fa12bd4ecebe6"
+    "sha256": "dc73ec227e0b4babe51870ac8fb403e464fe375b4616f9e7f97ff9004db58d91"
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "4dba248735a675b6a2a7a3e4837ad86857f1470f42d7ff52257ed99caa4d4e9e",
-    "bytes": 33368512,
-    "profile": "character-create-legacy-static-v1"
+    "sha256": "faf89c1d61c340e25628f953ff00e7efd34c507ec62f62d5968d54e72f9be918",
+    "bytes": 33456884,
+    "profile": "character-create-legacy-static-v2"
   },
   "lighting": {
     "toward_sun": [
-      -0.278,
-      0.913,
-      0.3
+      -0.45,
+      0.78,
+      0.42
     ],
-    "source": "Unreal L_Overview.umap directional light rotation; warm/cool shading adapted to Aethyr"
+    "source": "Reference-directed warm sunlight with cool ambient fill; Unreal overview lighting evidence retained separately",
+    "shadows": "soft analytic crown and rock proxies for ground and small plants",
+    "canopy": "rounded volume normals, ambient mask and warm leaf transmission"
   },
   "scope": "Reference-directed 3D recreation; original scene composition not recovered. Not pixel-identical Unreal rendering.",
   "source_files": [
@@ -190,14 +192,6 @@
       "sha256": "ddf0e8837705702871d3f03de8cf7aeed61ad4bf8ee92052b6f95bdd771297b6"
     },
     {
-      "path": "glTF/CommonTree_5.bin",
-      "sha256": "0e617612d50e6bb2ca3c64338383f8938ce9e04d55b548ff11cec7a7b7d8f072"
-    },
-    {
-      "path": "glTF/CommonTree_5.gltf",
-      "sha256": "fb7061f2bf9fe850870b056431f8f66cd8fdeb443c90695c5efbcf1fe6876d53"
-    },
-    {
       "path": "glTF/Fern_1.bin",
       "sha256": "5e92b87a27f81a69fe15347a533df3c77d567b48298dceeef43168ccb7c22853"
     },
@@ -261,5 +255,29 @@
       "path": "glTF/Rocks_Diffuse.png",
       "sha256": "b813696df6081f469a127092eb0ce45cc39d56f3ccc0699152bfcd3804810b48"
     }
-  ]
+  ],
+  "foliage": {
+    "grass": "five-vertex curved ribbons with three fine shader strands per tuft, 0.06\u20130.16 m tall",
+    "ambient_word": {
+      "offset_bytes": 28,
+      "type": "f32",
+      "range": [
+        0.5,
+        1.0
+      ],
+      "applies_to": "leaf vertices"
+    },
+    "omitted_hidden_meshes": [
+      "CommonTree_5 at (-15,-27)",
+      "CommonTree_1 at (-18,-12)"
+    ]
+  },
+  "shader_entry": {
+    "path": "apps/openagents-web/gpu/fivelab.coax",
+    "sha256": "3c2aad8944c0809aedea160360c91c3ef844edaa7fa564d8c3c54738eb4fde30"
+  },
+  "shader_artifact": {
+    "path": "apps/openagents-web/fivelab.wgsl",
+    "sha256": "b3fb082715815d1b695dc2c07ce73c6c354d2347ae957329f1eed2caa524af8b"
+  }
 }

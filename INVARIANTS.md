@@ -6039,7 +6039,11 @@ never reads the animation palette or receives appearance/eye markers. Original
 wardrobe vertex, index and image payloads remain byte-identical; the combined
 pack remains below 32 MiB. The glade sky/light/wind path is selected only by
 Character Create's existing view marker. Camera and appearance saves retain
-their separate state. No host ABI or shared/native renderer qualification is
+their separate state. The v2 static leaf payload uses word 7 for a finite 0.5–1 ambient mask;
+canopy normals remain normalized and grass uses five shared vertices per
+curved tuft. Edge derivatives are evaluated at the uniform fragment entry,
+before material selection; real WebGPU compilation checks that boundary.
+No host ABI or shared/native renderer qualification is
 inferred. See `docs/verse/character-glade.md` and
 `docs/verification/character-glade-2026-11-06/`.
 

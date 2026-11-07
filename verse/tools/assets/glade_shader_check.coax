@@ -1,0 +1,11 @@
+// Validate the generated glade shader on real headless WebGPU, including GPU
+// derivative/uniformity diagnostics that scalar Coax checks cannot observe.
+#import "Basic";
+#load "../../../coax/lib/net/cdp.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ c:[1]Cdp;if !cdp_launch(c[..],800,600,"glade-shader-") {return 1;}
+ r:=cdp_call(c[..],"Page.navigate","{\"url\":\"http://127.0.0.1:8854/worlds/character-creator\"}",CDP_CALL_MS);
+ proc_sleep(1000);
+ v:=cdp_evaluate(c[..],"(async()=>{const a=await navigator.gpu.requestAdapter();const d=await a.requestDevice();const s=d.createShaderModule({code:await(await fetch('/fivelab.wgsl')).text()});const i=await s.getCompilationInfo();return i.messages.filter(m=>m.type==='error').map(m=>m.lineNum+':'+m.linePos+' '+m.message).join('\\n');})()");
+ b:[65536]u8;n:=jv_str(cdp_doc(c[..]),v,b[..]);if n<0 {print("%\n",jv_raw(cdp_doc(c[..]),0));}if n>0 {print("%\n",cast(string)b[0..<n]);}cdp_close(c[..]);if n==0 {print("Glade shader: headless WebGPU compilation passed\n");}return ifx n==0 then 0 else 1;
+}

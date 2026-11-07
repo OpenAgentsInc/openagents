@@ -26,8 +26,8 @@ project scripts were not executed and Unreal was not launched.
 
 The retained evidence includes the Unreal map's SHA-256, table offsets,
 component properties and source mesh/material links. Its directional-light
-rotation gives the glade's approximate toward-sun vector
-`(-0.278, 0.913, 0.300)`. The composition is authored in Coax rather than
+properties are retained as source evidence. The reference-directed lighting
+uses a warm key toward `(-0.45, 0.78, 0.42)` with cool ambient fill. The composition is authored in Coax rather than
 mislabeling the overview map as the preview scene.
 
 ## Build
@@ -47,7 +47,7 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax \
 
 The combined pack stays within the existing 32 MiB budget. Its environment
 uses 32-byte static vertices (position F32×3, packed normal/kind, UV, color,
-texture layer, reserved word), separate from the unchanged 24-byte character
+texture layer, canopy ambient mask in v2), separate from the unchanged 24-byte character
 vertices. Its `C glade/environment` catalog row has zero joints. A scene
 record with flag 16 selects the static vertex path; appearance markers remain
 on character records only. Static vertices never read the animation palette.
@@ -79,3 +79,22 @@ pack. It can be reused or edited alongside the registered Blender assets.
 The detailed source investigation, screenshots and measured receipts are in
 `docs/verification/character-glade-2026-11-06/`. These are legacy Character
 Create observations, not a new shared/native renderer qualification.
+
+## Softer foliage and reference lighting
+
+The v2 scene uses short, curved five-vertex ribbons with three fine strands
+shaped in the fragment shader. Blades range from 6 to 16 cm high. Screen-space
+edge smoothing removes the hard triangular silhouettes. All derivative work
+happens at the uniform fragment entry before material selection; the hardware
+shader check verifies this separately from scalar Coax tests.
+
+Leaf normals follow each crown's volume, with a per-vertex ambient mask and
+warm transmission at its edges. Two-sided foliage retains that volume normal
+rather than alternating between bright and dark polygon faces. Crown/rock
+proxies cast soft analytic shadows onto the ground and small plants. These
+are authored approximations, not a general shadow-map renderer.
+
+The sky uses soft white cloud banks and angled cirrus. The title's darkening
+is confined to its own area instead of tinting the whole sky. Two fully hidden
+trees behind the left cliff are omitted to keep the denser curved grass within
+the existing pack budget. See `character-glade-soft-2026-11-06` in verification.

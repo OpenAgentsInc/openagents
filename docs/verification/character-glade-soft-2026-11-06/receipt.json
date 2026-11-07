@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-06",
+  "base_commit": "4ceba3978fcb5f49d1a60fcae9792279a5fa9251",
+  "compiler_sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e",
+  "pack": {
+    "bytes": 33456884,
+    "sha256": "faf89c1d61c340e25628f953ff00e7efd34c507ec62f62d5968d54e72f9be918",
+    "environment_vertices": 282396,
+    "environment_triangles": 221774,
+    "texture_layers": 62,
+    "curved_grass_tufts": 11863,
+    "grass_height_range": [
+      0.059999942779541016,
+      0.15995115786790848
+    ],
+    "rounded_canopy_vertices": 91922,
+    "original_character_payloads": "byte-identical",
+    "terrain_winding": "all 20000 faces upward"
+  },
+  "checks": {
+    "packer": "ok   #test glade static vertices retain positions beyond the people quantization box (1 case, 1026 steps, 0 ms)\nok   #test glade preserves a level character clearing and winds the path through the hills (1 case, 280 steps, 0 ms)\nok   #test glade composition puts green woods left and autumn birches right (1 case, 705 steps, 0 ms)\nok   #test glade grass has a short curved profile and foliage stays rounded (1 case, 538 steps, 0 ms)\nok   #test glade canopy normals remain unit length even near their center (1 case, 100 steps, 0 ms)\n5 of 95 checks (--only 'glade'), 5 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+    "shader": "ok   #test glade sky retains cyan daylight and warm sunlight without nonfinite horizons (1 case, 42970 steps, 0 ms)\nok   #test glade sunlight casts soft bounded shadows and leaves retain volume (1 case, 4476 steps, 0 ms)\nok   #test glade mobile panels cover the first appearance row while leaving the figure visible (1 case, 135 steps, 0 ms)\nok   #test glade preserves a level character clearing and winds the path through the hills (1 case, 280 steps, 0 ms)\nok   #test glade composition puts green woods left and autumn birches right (1 case, 705 steps, 0 ms)\nok   #test glade grass has a short curved profile and foliage stays rounded (1 case, 538 steps, 0 ms)\n6 of 110 checks (--only 'glade'), 6 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+    "creator": "ok   #test creator body changes preserve choices and bind only matching parts (1 case, 1474 steps, 0 ms)\nok   #test creator every outfit detail and color stays valid through wraparound (1 case, 122304 steps, 1 ms)\nok   #test creator hit testing cancellation and narrow layout keep controls usable (1 case, 3447 steps, 0 ms)\nok   #test creator available garments are selectable on both sexes and presets cover four outfits (1 case, 10255 steps, 0 ms)\nok   #test creator page identity accepts absolute host URLs and rejects other routes (1 case, 4509 steps, 0 ms)\nok   #test creator catalog resolves 76 source meshes and every worn part reaches a bounded GPU draw (1 case, 308099 steps, 26 ms)\nok   #test creator appearance save round trips and malformed saves preserve the live choices (1 case, 33163 steps, 0 ms)\nok   #test creator hood keeps beard in actual draw list and crown cannot be worn (1 case, 32455 steps, 13 ms)\nok   #test creator zoom reaches face distance and stays bounded (1 case, 384 steps, 0 ms)\nok   #test creator pan moves camera without turning and reset centers it (1 case, 2578 steps, 0 ms)\nok   #test creator removed outfit saves migrate and removed part stays unavailable (1 case, 5175 steps, 0 ms)\nok   #test creator mouse buttons select rotate or pan per drag without a toggle (1 case, 2443 steps, 0 ms)\nok   #test creator registry identities preserve CC2 wardrobe keys and require complete referenced meshes (1 case, 302056 steps, 2 ms)\nok   #test creator glade catalog keeps scenery separate from wardrobe and saved appearance (1 case, 37205 steps, 9 ms)\n14 of 95 checks (--only 'creator'), 14 passed, 0 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n",
+    "hardware_shader": "Glade shader: headless WebGPU compilation passed",
+    "browser": "Character Studio: 3D Nature glade present; Noble selected on Female; eye color and cast changed through pointer input; appearance survived reload; physical zoom/pan passed.",
+    "screenshot_probe": "shot: WebGPU adapter: hardware apple metal-3\n{\"ready\":true,\"indices\":665322}\n/tmp/character-glade-soft-final.png",
+    "tools_check": "tools-check: 1848 tracked tool files (35 of them vendored upstream vectors), 0 new without a reason"
+  },
+  "scope": "Legacy Character Create shader, scene pack, and camera sun vector; no host ABI or shared/native renderer change."
+}
