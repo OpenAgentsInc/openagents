@@ -1,0 +1,36 @@
+// Checked SDK transfers against counted, independently checked Vulkan calls.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+vtf_reset :: (kind: s32, phase: s32, code: s32) #foreign #effects(all);
+vtf_begin :: () -> s32 #foreign #effects(all);
+vtf_poll :: (wait: s32, wrong: s32) -> s32 #foreign #effects(all);
+vtf_retire :: (wrong: s32) -> s32 #foreign #effects(all);
+vtf_signal :: (code: s32) #foreign #effects(all);
+vtf_info :: (field: s32) -> int #foreign #effects(all);
+vtf_invalid :: (which: s32) -> s32 #foreign #effects(all);
+tool_main :: () -> int #export_c #effects(all) {
+  for kind: 0..<2 {
+    for phase: 1..<7 { for code: [3] s32.[-1,-2,-4] {
+      vtf_reset(cast(s32) kind,cast(s32) phase,code); #assert vtf_begin() == code;
+      for field: [5] s32.[0,1,2,3,6] { #assert vtf_info(field) == 0; }
+      #assert vtf_info(9) == 1;
+      #assert vtf_info(4) == (ifx phase >= 4 then 1 else 0);
+    } }
+    vtf_reset(cast(s32) kind,0,0);
+    for which: 0..<(ifx kind == 0 then 14 else 19) { #assert vtf_invalid(cast(s32) which) == -3 && vtf_info(8) == 0 && vtf_info(3) == 0; }
+    #assert vtf_begin() == 0 && vtf_info(0) == 1 && vtf_info(1) == 1 && vtf_info(2) == 1 && vtf_info(6) == kind + 1;
+    #assert vtf_info(7) == (ifx kind == 0 then 64 else 84) && vtf_info(4) == 1 && vtf_info(3) == 0;
+    #assert vtf_begin() == -3 && vtf_info(8) == 6 && vtf_retire(0) == 1 && vtf_info(9) == 1;
+    #assert vtf_poll(0,0) == 1 && vtf_poll(1,0) == 2 && vtf_retire(0) == 1;
+    #assert vtf_poll(0,1) == -3 && vtf_retire(1) == -3;
+    vtf_signal(-1); #assert vtf_poll(0,0) == -1 && vtf_info(2) == 1 && vtf_info(7) > 0 && vtf_retire(0) == 1 && vtf_info(9) == 1;
+    vtf_signal(0); #assert vtf_poll(0,0) == 0 && vtf_info(2) == 0;
+    queries := vtf_info(5); #assert vtf_poll(0,0) == 0 && vtf_info(5) == queries;
+    #assert vtf_retire(0) == 0 && vtf_retire(0) == 0;
+    for field: [6] s32.[0,1,2,3,6,7] { #assert vtf_info(field) == 0; }
+    #assert vtf_info(9) == 1;
+    vtf_reset(cast(s32) kind,0,0); #assert vtf_begin() == 0; vtf_signal(-4);
+    #assert vtf_poll(1,0) == -4 && vtf_retire(0) == 0 && vtf_info(6) == 0 && vtf_info(3) == 0;
+  }
+  print("PASS owned Vulkan transfers: 36 poisoned creation/submit failures, 33 invalid calls, exact copy/barriers and pending timeout/error retention through success/loss\n");return 0;
+}

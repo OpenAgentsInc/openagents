@@ -80,6 +80,8 @@ SW_API("sw_host_hud_info") int64_t sw_host_hud_info(int32_t field){switch(field)
 // Only the native GPU carrier supplies these platform allocation effects.
 static void *sw_vk_stage_allocate(int32_t row,size_t bytes);
 static void sw_vk_stage_free(int32_t row);
+static bool sw_vk_resource_idle(int32_t row);
+static bool sw_vk_transfer_idle(void);
 #endif
 static coax_v_t_SwWalk sv(void){return(coax_v_t_SwWalk){&state,1};}
 #ifdef COAX_coax_t_ScpProbe_DEFINED
@@ -120,6 +122,9 @@ SW_API("sw_host_start") int32_t sw_host_start(int32_t bytes,int32_t tier,int32_t
   if(ok)state.observe_steps=true;return ok;
 }
 SW_API("sw_host_frame") int32_t sw_host_frame(int64_t ns,float direction){
+#ifdef SW_VULKAN
+  if(!sw_vk_transfer_idle())return 0;
+#endif
 #ifdef SW_LOSS_POLICY
   if(!gl_frame_allowed(lv(),state.closing))return 0;
 #endif
@@ -202,6 +207,9 @@ SW_API("sw_host_decode") int32_t sw_host_decode(int32_t row,int64_t generation,i
   return p->status;
 }
 SW_API("sw_host_finish") int32_t sw_host_finish(int32_t row,int64_t generation,int64_t epoch,int32_t status){
+#ifdef SW_VULKAN
+  if(!sw_vk_resource_idle(row))return 0;
+#endif
   if(row<0||row>=64)return 0;SwPhysical *p=&objects[row];if(!same(p,row,generation,epoch)||p->finished)return 0;
   coax_t_ResourceCost c=manifest.entries.e[row].plan.cost;
   discard(row,3,(void**)&p->work,(size_t)c.decode_scratch);discard(row,4,(void**)&p->upload,(size_t)c.upload_scratch);
@@ -214,6 +222,9 @@ SW_API("sw_host_finish") int32_t sw_host_finish(int32_t row,int64_t generation,i
 // Additive typed outcome. The original boolean SDK-failure facade above
 // keeps its published meaning for browser and earlier replay callers.
 int32_t sw_host_finish_code(int32_t row,int64_t generation,int64_t epoch,int32_t status){
+#ifdef SW_VULKAN
+  if(!sw_vk_resource_idle(row))return 0;
+#endif
   if(row<0||row>=64||status<0||status>5)return 0;SwPhysical *p=&objects[row];
   if(!same(p,row,generation,epoch)||p->finished)return 0;
   if(status)p->status=(coax_t_ResourceCostStatus)status;
@@ -222,6 +233,9 @@ int32_t sw_host_finish_code(int32_t row,int64_t generation,int64_t epoch,int32_t
 }
 #endif
 SW_API("sw_host_destroy") int32_t sw_host_destroy(int32_t row,int64_t generation,int64_t epoch){
+#ifdef SW_VULKAN
+  if(!sw_vk_resource_idle(row))return 0;
+#endif
   if(row<0||row>=64)return 0;SwPhysical *p=&objects[row];if(!same(p,row,generation,epoch))return 0;
   coax_t_ResourceCost c=manifest.entries.e[row].plan.cost;
   discard(row,0,(void**)&p->source,(size_t)c.encoded);discard(row,1,(void**)&p->decoded,(size_t)c.decoded);discard(row,2,(void**)&p->plan,sizeof(coax_t_ResourcePlan));discard(row,3,(void**)&p->work,(size_t)c.decode_scratch);discard(row,4,(void**)&p->upload,(size_t)c.upload_scratch);
@@ -237,7 +251,11 @@ SW_API("sw_host_uniforms") uintptr_t sw_host_uniforms(int32_t cell,float aspect)
 SW_API("sw_host_gpu_live") int32_t sw_host_gpu_live(int32_t row){return sw_gpu_live(sv(),row);}
 SW_API("sw_host_fixed") int32_t sw_host_fixed(int32_t index,int32_t kind,int64_t words){if(index<0||index>=16||fixed_live[index])return 0;coax_t_RrGrant g=sw_gpu_acquire(sv(),kind,words);if(g.status!=COAX_RrStatus_ok)return 0;fixed[index]=g.handle;fixed_live[index]=true;return 1;}
 SW_API("sw_host_fixed_live") int32_t sw_host_fixed_live(int32_t index){return index>=0&&index<16&&fixed_live[index];}
-SW_API("sw_host_fixed_release") int32_t sw_host_fixed_release(int32_t index){if(index<0||index>=16||!fixed_live[index])return 0;if(sw_gpu_release(sv(),fixed[index])!=COAX_RrStatus_ok)return 0;fixed_live[index]=false;return 1;}
+SW_API("sw_host_fixed_release") int32_t sw_host_fixed_release(int32_t index){if(index<0||index>=16||!fixed_live[index])return 0;
+#ifdef SW_VULKAN
+  if((index==4||index==5)&&!sw_vk_transfer_idle())return 0;
+#endif
+  if(sw_gpu_release(sv(),fixed[index])!=COAX_RrStatus_ok)return 0;fixed_live[index]=false;return 1;}
 SW_API("sw_host_draw_count") int32_t sw_host_draw_count(void){drawing=sw_draws(sv(),mv());return drawing.count;}
 SW_API("sw_host_draw") int64_t sw_host_draw(int32_t index,int32_t field){if(index<0||index>=drawing.count)return -1;coax_t_SwDraw d=drawing.rows.e[index];switch(field){case 0:return d.geometry;case 1:return d.indices;case 2:return d.texture;case 3:return d.lighting;case 4:return d.cell;case 5:return d.count;case 6:return d.fallback;default:return -1;}}
 SW_API("sw_host_trace_count") int32_t sw_host_trace_count(void){return trace_overflow?-1:trace_n;}
@@ -266,6 +284,9 @@ bool sw_sdk_copy(int64_t row,int64_t generation,int64_t epoch,coax_v_u8 source){
 #ifdef COAX_coax_t_SwRecoveryReport_DEFINED
 static coax_t_SwRecoveryReport recovery_report;
 SW_API("sw_host_recover") int32_t sw_host_recover(void){
+#ifdef SW_VULKAN
+  if(!sw_vk_transfer_idle())return 0;
+#endif
   recovery_report=sw_recover_gpu(sv(),mv());
   if(recovery_report.status!=COAX_SwRecoveryStatus_ok)return 0;
   memset(fixed_live,0,sizeof fixed_live);return 1;

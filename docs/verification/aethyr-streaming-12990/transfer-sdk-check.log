@@ -1,0 +1,1 @@
+PASS owned Vulkan transfers: 36 poisoned creation/submit failures, 33 invalid calls, exact copy/barriers and pending timeout/error retention through success/loss

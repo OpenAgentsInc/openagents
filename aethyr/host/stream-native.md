@@ -23,19 +23,22 @@ returns it. Cached pipeline descriptors close before a bound resource.
 
 In this carrier only, `SW_VULKAN` makes the existing SDK allocation field 4
 a mapped `VkcBuffer`. Its resource staging lease and a concrete renderer
-buffer grant both precede creation. `vks_upload_buffer` consumes that same
-allocation, without another transfer copy. `sw_host_finish` releases it
-after the completed fence; the fixed buffer grant releases afterward.
+buffer grant both precede creation. The owned `VksTransfer` consumes that
+same allocation, without another transfer copy. Coax polls its submission;
+finish/destroy cannot release scratch while the transfer is owned. After
+retirement, `sw_host_finish` releases it and the fixed grant releases afterward.
 The ordinary malloc/free and browser carrier retain their prior path.
 
 Streamed buffer/image creation uses the additive checked
 `verse/gpu/vks-resource` factories. They return SDK errors, unwind partial
 creation and preserve the destination until success. Staging and retained
-resource factories are adopted; surface/pipeline/readback factories and the
-legacy upload submission path remain separate adapters. The
+resource factories are adopted; surface/pipeline/readback factories remain
+separate adapters. The
 [factory record](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
-qualifies SDK failure prefixes and actual successful corridor use. Pending
-upload/error ownership and integrated SDK-failure histories remain open.
+qualifies SDK failure prefixes and actual successful corridor use. The
+[owned upload record](../../docs/verification/aethyr-streaming-12990/walk-native-transfers.md)
+adds buffer/image pending views and held-observation early-release guards.
+Integrated SDK-error/deadline histories remain open.
 
 Persistent uniforms and the 320×180 color/depth attachments have separate
 existing renderer grants. Readback and replacement transfer buffers each
@@ -78,8 +81,8 @@ Final cleanup requires all resource, inbox, decoded image/audio, renderer
 and concrete SDK owners to reach zero. The additive
 [result-driven draw profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
 now handles reported draw loss automatically and preserves submitted owners
-through a timeout. Interrupted uploads, the wider device/resource factory
-failure surface and native rescue remain separate unqualified exits.
+through a timeout. Integrated upload-error/deadline histories, the wider
+device/factory failure surface and native rescue remain unqualified exits.
 
 `stream-native-conformance.coax` admits sixteen independently supplied
 observation words: version; nonempty initial GPU set; equal full image;
@@ -137,8 +140,8 @@ Coax maps result/in-flight observations through `render/submission-policy.coax`;
 explicit failure/timeout stops and paid-frame permission. Unknown failures
 do not invent a loss event or reset its rate window.
 
-The SDK still uses legacy fatal creation/transfer helpers outside this draw
-boundary; ordinary host-v1 adapters are not migrated. Physical device-fault
+Surface/pipeline/readback SDK helpers still have legacy fatal paths outside
+the checked draw/upload boundaries; ordinary host-v1 adapters are not migrated. Physical device-fault
 qualification is distinct from the actual Vulkan rendering and SDK-result
 injection used here. See the [record](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
 for the exact supported surface and remaining limits.
@@ -194,6 +197,7 @@ requires their bound effect record. CPU replay reproduces the same partial
 allocation prefix, source outcome or decoder refusal before accepting the
 typed completion. See the [record](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md).
 
-The legacy Vulkan resource factories and upload helpers can still exit on
-SDK errors. They require checked ownership and separate failure receipts;
-these allocator/source/decode observations do not qualify that surface.
+Streamed Vulkan resource factories and upload submissions now return SDK
+errors and retain pending owners. Separate integrated SDK-error/deadline
+receipts remain required; these allocator/source/decode observations do not
+qualify that error surface. Surface/pipeline/readback adapters remain legacy.

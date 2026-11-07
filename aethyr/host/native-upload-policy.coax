@@ -1,0 +1,47 @@
+// A failed unsubmitted load may retire normally. Unknown pending effects stop
+// paid work and drain without releasing their owners. Existing deadlines apply.
+#authority;
+#load "../render/submission-policy.coax";
+#load "../render/loss-policy.coax";
+#test "upload stop reasons distinguish terminal load refusal from unfinished SDK errors" {
+  for result: [11] int.[0,1,2,-1,-2,-3,-4,-5,-13,-9223372036854775808,9223372036854775807] {
+    for pending: 0..<2 {
+      expected := ifx pending == 1 then (ifx result == 1 || result == 2 then 0 else 3) else (ifx result == -4 || result == 1 || result == 2 then 3 else 0);
+      #assert nu_reason(result,pending == 1,false) == expected;
+      #assert nu_reason(result,pending == 1,true) == 2;
+    }
+  }
+}
+nu_reason :: (result: int, pending: bool, expired: bool) -> int #effects(all) {
+  if expired { return GL_DEADLINE; }
+  action := ns_action(result,pending);
+  if pending { if action != NS_WAIT { return GL_REPLACEMENT; } }
+  else if action == NS_REBUILD || action == NS_INVALID { return GL_REPLACEMENT; }
+  return GL_NONE;
+}
+#test "held upload facts bind unchanged owners and refused calls to one real attempt" {
+  facts := [20] int.[50,1,1,0,1,1,4,4,100,100,200,200,5,5,1,1,1,0,0,0]; guards: [8] int;
+  #assert nu_probe(facts[..],guards[..]);
+  #assert !nu_probe(facts[0..<19],guards[..]) && !nu_probe(facts[..],guards[0..<7]);
+  more: [21] int; wide: [9] int; #assert !nu_probe(more[..],guards[..]) && !nu_probe(facts[..],wide[..]);
+  for field: [12] int.[0,5,7,9,11,13,14,15,16,17,18,19] { bad := facts; bad[field] += 1; #assert !nu_probe(bad[..],guards[..]); }
+  for kind: 1..<3 { bad := facts;bad[2] = kind;bad[3] = 63;#assert nu_probe(bad[..],guards[..]); }
+  for kind: [2] int.[0,3] { bad := facts;bad[2] = kind;#assert !nu_probe(bad[..],guards[..]); }
+  for row: [2] int.[-1,64] { bad := facts;bad[3] = row;#assert !nu_probe(bad[..],guards[..]); }
+  for field: [5] int.[1,4,6,8,10] { bad := facts; bad[field] = 0; #assert !nu_probe(bad[..],guards[..]); bad[field] = -1; #assert !nu_probe(bad[..],guards[..]); }
+  for field: [3] int.[6,8,10] {
+    bad := facts;bad[field] = 0;bad[field + 1] = 0;#assert !nu_probe(bad[..],guards[..]);
+    bad[field] = 1;bad[field + 1] = 1;#assert nu_probe(bad[..],guards[..]);
+  }
+  bad := facts; bad[12] = -1; bad[13] = -1; #assert !nu_probe(bad[..],guards[..]);
+  bad = facts; bad[12] = 0; bad[13] = 0; #assert nu_probe(bad[..],guards[..]);
+  for field: 0..<8 { changed := guards; changed[field] = 1; #assert !nu_probe(facts[..],changed[..]); changed[field] = -1; #assert !nu_probe(facts[..],changed[..]); }
+}
+nu_probe :: (q: [] int, guards: [] int) -> bool #effects(all) {
+  if q.count != 20 || guards.count != 8 { return false; }
+  for result: guards { if result != 0 { return false; } }
+  return q[0] == 50 && q[1] > 0 && (q[2] == 1 || q[2] == 2) && q[3] >= 0 && q[3] < 64 && q[4] > 0 && q[5] == 1 &&
+    nu_same(q[6],q[7],1) && nu_same(q[8],q[9],1) && nu_same(q[10],q[11],1) &&
+    nu_same(q[12],q[13],0) && q[14] == 1 && q[15] == 1 && q[16] == 1 && q[17] == 0 && q[18] == 0 && q[19] == 0;
+}
+nu_same :: (before: int, after: int, minimum: int) -> bool #effects(all) { return before >= minimum && after == before; }

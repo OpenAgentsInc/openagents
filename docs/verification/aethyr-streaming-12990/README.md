@@ -1,10 +1,14 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [checked native factory record](walk-native-factories.md)
+Issue #12990 remains open. The [owned native upload record](walk-native-transfers.md)
+adds checked buffer/image transfers, retained pending views, early-release
+guards and actual held-observation probes on both tiers/backends. Exact
+route histories and CPU replay are retained; integrated SDK-error/deadline
+histories remain open. The [checked native factory record](walk-native-factories.md)
 adds atomic buffer/image creation and partial-effect cleanup, with poisoned
 SDK outputs, actual hardware/software factory prefixes and successful
-two-tier consumer adoption. Integrated SDK failure histories and checked
-upload completion remain open. The [native load-failure record](walk-native-load-failures.md)
+two-tier consumer adoption. Integrated SDK failure histories remain open.
+The [native load-failure record](walk-native-load-failures.md)
 now qualifies partial allocation, source-read and decoder-refusal cleanup,
 retirement/retry and exact CPU replay on both native tiers. Actual
 stale/superseded callbacks remain open.
@@ -157,9 +161,10 @@ copies are published, including a failure after three reservations.
 ## Work still required before closing #12990
 
 - Actual stale/superseded callback and remaining failed-load ownership
-  histories, including integrated SDK factory errors and legacy native
-  Vulkan upload helpers that still exit on SDK errors. Checked streamed
-  resource factories now unwind partial SDK creation. Native allocation/source/decode errors use
+  histories, including integrated SDK factory/upload errors and upload
+  deadline stops. Streamed factories now unwind partial SDK creation;
+  owned transfers retain pending resources through checked completion.
+  Native allocation/source/decode errors use
   normal completion and retirement. Browser corrupt/oversized/
   cancelled/reordered receive and GPU validation failures already have
   separate current receipts.

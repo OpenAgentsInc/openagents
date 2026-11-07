@@ -7,6 +7,7 @@
 #load "../stream-native-loss-conformance.coax";
 #load "stream-pressure.coax";
 #load "../native-load-policy.coax";
+#load "../native-upload-policy.coax";
 #load "../../forge/pack.coax" as packs;
 #load "../stream-native-conformance.coax";
 #load "../../../coax/lib/sys/tool.coax";
@@ -48,6 +49,9 @@ sw_loss_finish :: (now: int, serial: int, success: s32) -> int #foreign #effects
 sw_loss_info :: (field: s32) -> int #foreign #effects(all);
 sw_vk_submission_info :: (field: s32) -> int #foreign #effects(all);
 sw_vk_poll :: () -> s32 #foreign #effects(all);
+sw_vk_upload_poll :: () -> s32 #foreign #effects(all);
+sw_vk_transfer_info :: (field: s32) -> int #foreign #effects(all);
+sw_vk_transfer_hold :: (ms: int, kind: s32) -> s32 #foreign #effects(all);
 sw_vk_reopen :: () -> s32 #foreign #effects(all);
 sw_vk_fault :: (kind: s32, count: int) -> s32 #foreign #effects(all);
 sw_host_return :: (row: s32) -> s32 #foreign #effects(all);
@@ -110,6 +114,39 @@ SnLossEvent :: struct {
 SnNative :: struct {
   automatic: bool; event_n: int; events: [8] SnLossEvent; groups: int;
   state_ok: bool = true; source_ok: bool = true; tick_ok: bool = true; upload_ok: bool = true; pixels_ok: bool = true;
+  probe_enabled: bool; probe_done: bool; upload_probe: [20] int; upload_guards: [8] int;
+  upload_source_before: [64] u8; upload_source_after: [64] u8;
+}
+swn_upload_probe :: (row: s32, gen: int, epoch: int, ctx: [] SnNative) -> bool {
+  ctx[0].upload_probe = [20] int.[50,sw_vk_transfer_info(8),sw_vk_transfer_info(9),sw_vk_transfer_info(3),sw_vk_transfer_info(4),sw_vk_transfer_info(5),
+    sw_host_info(0),0,sw_host_info(14),0,sw_vk_info(1),0,cast(int) sw_host_trace_count(),0,sw_vk_transfer_info(0),sw_vk_transfer_info(1),0,0,0,0];
+  if !swn_sources(ctx[0].upload_source_before[..]) { return false; }
+  ctx[0].upload_guards = [8] int.[cast(int) sw_host_frame(15625000,1),cast(int) sw_host_finish(row,gen,epoch,0),cast(int) sw_host_finish_code(row,gen,epoch,0),
+    cast(int) sw_host_destroy(row,gen,epoch),cast(int) sw_host_fixed_release(5),cast(int) sw_vk_drop(row,gen),cast(int) sw_host_recover(),cast(int) sw_vk_close()];
+  if !swn_sources(ctx[0].upload_source_after[..]) { return false; }
+  ctx[0].upload_probe[7] = sw_host_info(0);ctx[0].upload_probe[9] = sw_host_info(14);ctx[0].upload_probe[11] = sw_vk_info(1);ctx[0].upload_probe[13] = cast(int) sw_host_trace_count();
+  ctx[0].upload_probe[16] = ifx cast(string) ctx[0].upload_source_before[..] == cast(string) ctx[0].upload_source_after[..] then 1 else 0;
+  ctx[0].probe_done = nu_probe(ctx[0].upload_probe[..],ctx[0].upload_guards[..]);return ctx[0].probe_done;
+}
+swn_upload :: (row: s32, gen: int, epoch: int, replacement: s32, ctx: [] SnNative) -> bool {
+  if sw_loss_info(1) == 1 { return false; }
+  started := cxproc_now_ns(); outcome := sw_vk_upload(row,gen,epoch,replacement); drain := -1;
+  if ctx[0].probe_enabled && !ctx[0].probe_done && outcome == 2 && sw_vk_transfer_info(7) > 0 && !swn_upload_probe(row,gen,epoch,ctx) { return false; }
+  while outcome == 2 {
+    now := cxproc_now_ns(); reason := nu_reason(sw_vk_transfer_info(2),true,ns_timed_out(started,now));
+    if reason != GL_NONE && sw_loss_info(1) != 1 { ignored := sw_loss_abort(reason); }
+    if sw_loss_info(1) == 1 { if drain < 0 { drain = now; } if ns_timed_out(drain,now) { return false; } }
+    proc_sleep(1);outcome = sw_vk_upload_poll();
+  }
+  reason := nu_reason(sw_vk_transfer_info(2),false,ns_timed_out(started,cxproc_now_ns()));
+  if reason != GL_NONE && sw_loss_info(1) != 1 { ignored := sw_loss_abort(reason); }
+  return outcome == 1 && sw_loss_info(1) != 1;
+}
+swn_reupload :: (row: s32, ctx: [] SnNative) -> bool {
+  bytes := sw_host_row(row,3);if sw_host_fixed(4,2,bytes / 4) != 1 { return false; }
+  uploaded := swn_upload(row,sw_host_row(row,10),1,1,ctx);
+  if sw_vk_transfer_info(1) != 0 { return false; }
+  released := sw_host_fixed_release(4) == 1;return uploaded && released;
 }
 swn_return_all :: () -> bool {
   ok := true; for row: 0..<64 { if sw_host_borrowed(cast(s32) row) == 1 { ok = (sw_host_return(cast(s32) row) == 1) && ok; } } return ok;
@@ -167,8 +204,7 @@ swn_render :: (ctx: [] SnNative) -> bool {
     if ok { ok = sw_loss_poll(cxproc_now_ns() / 1000000, serial) == GL_PENDING; }
     if ok { ctx[0].events[at].granted = sw_host_recover_info(1);
       for row: 0..<64 { if sw_host_uploadable(cast(s32) row) == 1 {
-        bytes := sw_host_row(cast(s32) row, 3);
-        if sw_host_fixed(4, 2, bytes / 4) != 1 || sw_vk_upload(cast(s32) row, sw_host_row(cast(s32) row, 10), 1, 1) != 1 || sw_host_fixed_release(4) != 1 { ok = false; break; }
+        if !swn_reupload(cast(s32) row,ctx) { ok = false; break; }
         ctx[0].events[at].uploaded += 1;
         if sw_loss_poll(cxproc_now_ns() / 1000000, serial) != GL_PENDING { ok = false; break; }
       } }
@@ -191,7 +227,7 @@ swn_quiesce :: () -> bool {
   while sw_vk_submission_info(0) == 1 { if ns_timed_out(quiescing, cxproc_now_ns()) { return false; } proc_sleep(1); sn_ignored_11 := sw_vk_poll(); }
   return sw_vk_submission_info(2) == 0 && swn_return_all();
 }
-swn_effects :: (scene: Jv, dir: string, stages: [] Jo) -> bool {
+swn_effects :: (scene: Jv, dir: string, stages: [] Jo, ctx: [] SnNative) -> bool {
   for i: 0..<sw_host_info(2) {
     row := cast(s32) sw_host_command(1, cast(s32) i, 0); gen := sw_host_command(1, cast(s32) i, 1); epoch := sw_host_command(1, cast(s32) i, 2);
     if sw_vk_drop(row, gen) != 1 || sw_host_destroy(row, gen, epoch) != 1 { return false; }
@@ -213,7 +249,7 @@ swn_effects :: (scene: Jv, dir: string, stages: [] Jo) -> bool {
     read := cxproc_now_ns(); decoded_result := -1;
     if source_ok { decoded_result = cast(int) sw_host_decode(row, gen, epoch); }
     decoded := cxproc_now_ns(); upload_ok := false;
-    if decoded_result == 0 { upload_ok = sw_host_row(row, 3) == 0 || sw_vk_upload(row, gen, epoch, 0) == 1; }
+    if decoded_result == 0 { upload_ok = sw_host_row(row, 3) == 0 || swn_upload(row, gen, epoch, 0,ctx); }
     uploaded := cxproc_now_ns(); result := nlf_status(allocation_ok, source_ok, decoded_result, upload_ok);
     if sw_host_finish_code(row, gen, epoch, cast(s32) result) != 1 { return false; }
     if fixed && sw_host_fixed_release(5) != 1 { return false; }
@@ -228,7 +264,7 @@ swn_frame :: (scene: Jv, dir: string, ns: int, direction: f32, frames: [] Jo, ct
   jo_key(frames, "stepDigests"); jo_arr(frames);
   for step: 0..<cast(int) sw_host_step_count() { id: assets.AssetId; hex: [64] u8; for word: 0..<8 { id.words[word] = cast(u32) sw_host_step_word(cast(s32) step, cast(s32) word); } #assert assets.asset_hex(id, hex[..]); jo_str(frames, cast(string) hex[..]); } jo_end(frames);
   jo_key(frames, "records"); jo_arr(frames); for i: 0..<sw_host_info(3) { jo_arr(frames); for f: 0..<23 { jo_int(frames, sw_host_record(cast(s32) i, cast(s32) f)); } jo_end(frames); } jo_end(frames);
-  jo_key(frames, "stages"); jo_arr(frames); ok := swn_effects(scene, dir, frames); jo_end(frames); if !ok { return false; }
+  jo_key(frames, "stages"); jo_arr(frames); ok := swn_effects(scene, dir, frames,ctx); jo_end(frames); if !ok { return false; }
   if !swn_render(ctx) && sw_loss_info(1) != 1 { return false; }
   jo_key(frames, "allocations"); jo_arr(frames); count := sw_host_trace_count(); if count < 0 { return false; }
   for i: 0..<cast(int) count { jo_arr(frames); for f: 0..<6 { jo_int(frames, sw_host_trace(cast(s32) i, cast(s32) f)); } jo_end(frames); } jo_end(frames); sw_host_trace_ack();
@@ -259,8 +295,7 @@ swn_recover :: (program: [] u8, hud_program: [] u8, present_program: [] u8, q: [
   if sw_host_recover() != 1 || sw_vk_open(program, hud_program, present_program) != 1 || !swn_surface() { return false; }
   uploaded := 0;
   for row: 0..<64 { if sw_host_uploadable(cast(s32) row) == 1 {
-    bytes := sw_host_row(cast(s32) row, 3);
-    if sw_host_fixed(4, 2, bytes / 4) != 1 || sw_vk_upload(cast(s32) row, sw_host_row(cast(s32) row, 10), 1, 1) != 1 || sw_host_fixed_release(4) != 1 { return false; } uploaded += 1;
+    if !swn_reupload(cast(s32) row,ctx) { return false; } uploaded += 1;
   } }
   if !swn_render(ctx) || !swn_capture(after[..]) || !sw_vk_state(state_after[..]) || !swn_sources(source_after[..]) { return false; }
   if sw_vk_hud_copy(hud_after[..]) != hn || cast(string) hud_before[0..<hn] != cast(string) hud_after[0..<hn] { return false; }
@@ -329,9 +364,10 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 5 || args_count(a[..]) > 6 { tool_errln("usage: stream-native SCENE_DIR SCENE_SHA256 SHADER.spv NEW_OUTPUT_DIR TIER [--route]"); return 2; }
   mode := ifx args_count(a[..]) == 6 then args_at(a[..], 5) else "";
   pressure := mode == "--category-pressure";
+  upload_probe := mode == "--upload-pending" || mode == "--upload-buffer-pending";
   failure_case := nlf_case(mode); failure := failure_case >= 0;
   automatic := mode == "--auto-loss" || mode == "--auto-repeat" || mode == "--auto-restart" || mode == "--auto-timeout" || mode == "--auto-fail" || mode == "--auto-oom" || mode == "--auto-route" || mode == "--auto-late";
-  route := mode == "--route" || mode == "--auto-route"; if mode != "" && !route && !automatic && !pressure && !failure { return 2; }
+  route := mode == "--route" || mode == "--auto-route"; if mode != "" && !route && !automatic && !pressure && !failure && !upload_probe { return 2; }
   tier := args_at(a[..], 4); if tier != "0" && tier != "1" { return 2; } quality := ifx tier == "0" then 0 else 1;
   dir := args_at(a[..], 0); output := args_at(a[..], 3); if fs_exists(output) || !fs_mkdir(output) { return 2; }
   path: [4096] u8; scene_bytes: [65536] u8; scene: [1] Jv; nodes: [4096] JvNode; n := fs_read(fs_join(dir, "scene.json", path[..]), scene_bytes[..]);
@@ -353,9 +389,10 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_key(j[..], "shaderSHA256"); program_hex: [64] u8; #assert assets.asset_hex(assets.asset_id(cast(string) program[0..<sn]), program_hex[..]); jo_str(j[..], cast(string) program_hex[..]);
   jo_key(j[..], "hudShaderSHA256"); #assert assets.asset_hex(assets.asset_id(cast(string) hud_program[0..<hsn]), program_hex[..]); jo_str(j[..], cast(string) program_hex[..]);
   jo_key(j[..], "presentShaderSHA256"); #assert assets.asset_hex(assets.asset_id(cast(string) present_program[0..<psn]), program_hex[..]); jo_str(j[..], cast(string) program_hex[..]);
-  ctx := [1] SnNative.[SnNative.{automatic = automatic}];
-  q: [16] int; jo_key(j[..], "warmup"); jo_arr(j[..]); for i: 0..<32 { if !swn_frame(scene[0], dir, 62500000, 0, j[..], ctx[..]) { tool_errln("native warmup failed"); return 1; } }
-  if automatic {
+  ctx := [1] SnNative.[SnNative.{automatic = automatic,probe_enabled = upload_probe}];
+  if upload_probe && sw_vk_transfer_hold(50,ifx mode == "--upload-buffer-pending" then 1 else 2) != 1 { return 1; }
+  q: [16] int; jo_key(j[..], "warmup"); jo_arr(j[..]); for i: 0..<32 { if sw_loss_info(1) == 1 { break; } if !swn_frame(scene[0], dir, 62500000, 0, j[..], ctx[..]) { tool_errln("native warmup failed"); return 1; } }
+  if automatic && sw_loss_info(1) != 1 {
     kind: s32 = ifx mode == "--auto-late" then 5 else ifx mode == "--auto-timeout" then 2 else ifx mode == "--auto-fail" then 3 else ifx mode == "--auto-oom" then 4 else 1;
     count := ifx mode == "--auto-late" then 10050 else ifx mode == "--auto-timeout" then 10100 else ifx mode == "--auto-restart" then 2 else 1;
     rounds := ifx mode == "--auto-repeat" then 4 else 1;
@@ -363,12 +400,15 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   jo_end(j[..]);
   if pressure { jo_key(j[..], "categoryPressure"); if !swn_pressure(scene[0], dir, output, j[..], ctx[..]) { tool_errln("native category pressure failed"); return 1; } }
-  jo_key(j[..], "recovery"); if !automatic {
+  checkpoints: [2] [12] [5] int;
+  for cell: 0..<12 { for field: 0..<5 { checkpoints[0][cell][field] = sw_host_cell(cast(s32) cell,cast(s32) field); } }
+  jo_key(j[..], "recovery"); if !automatic && sw_loss_info(1) != 1 {
     if !swn_recover(program[0..<sn], hud_program[0..<hsn], present_program[0..<psn], q[..], j[..], output, ctx[..]) { tool_errln("native recovery failed"); return 1; }
   } else { jo_obj(j[..]); jo_end(j[..]); }
-  checkpoints: [2] [12] [5] int;
+  for cell: 0..<12 { for field: 0..<5 { checkpoints[1][cell][field] = sw_host_cell(cast(s32) cell,cast(s32) field); } }
   jo_key(j[..], "route"); jo_arr(j[..]); if route { for leg: 0..<2 {
     for i: 0..<1600 {
+      if sw_loss_info(1) == 1 { break; }
       if !swn_frame(scene[0], dir, 62500000, ifx leg == 0 then 1.0f32 else -1.0f32, j[..], ctx[..]) { tool_errln("native route failed"); return 1; }
       if automatic && i == 800 { if !swn_fault_frame(scene[0], dir, output, 1, 1, j[..], ctx[..]) { return 1; } }
     }
@@ -379,7 +419,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if sw_loss_info(1) != 1 { for i: 0..<8 { if !swn_frame(scene[0], dir, 15625000, 1, j[..], ctx[..]) { return 1; } } }
     for cell: 0..<12 { for field: 0..<5 { checkpoints[1][cell][field] = sw_host_cell(cast(s32) cell, cast(s32) field); } }
   } jo_end(j[..]);
-  jo_key(j[..], "routeCells"); jo_arr(j[..]); if route || automatic || pressure || failure { for leg: checkpoints { jo_arr(j[..]); for cell: leg { jo_arr(j[..]); for field: cell { jo_int(j[..], field); } jo_end(j[..]); } jo_end(j[..]); } } jo_end(j[..]);
+  jo_key(j[..], "routeCells"); jo_arr(j[..]); for leg: checkpoints { jo_arr(j[..]); for cell: leg { jo_arr(j[..]); for field: cell { jo_int(j[..], field); } jo_end(j[..]); } jo_end(j[..]); } jo_end(j[..]);
   blocked := true; if sw_loss_info(1) == 1 { tick := sw_host_info(0); blocked = sw_host_frame(15625000, 1) == 0 && sw_host_info(0) == tick; }
   jo_key(j[..], "stopRetained"); jo_arr(j[..]); for value: [5] int.[sw_vk_submission_info(0), sw_vk_submission_info(2), sw_host_info(14), sw_vk_info(1), sw_host_info(12)] { jo_int(j[..], value); } jo_end(j[..]);
   quiesce_start := cxproc_now_ns(); if sw_host_close() != 1 || !swn_quiesce() { return 1; } quiesce_ns := cxproc_now_ns() - quiesce_start;
@@ -413,5 +453,17 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_key(j[..], "finalInfo"); jo_arr(j[..]); for f: 0..<28 { jo_int(j[..], sw_host_info(cast(s32) f)); } jo_end(j[..]); jo_key(j[..], "finalGPU"); jo_arr(j[..]); for f: 0..<20 { jo_int(j[..], sw_vk_info(cast(s32) f)); } jo_end(j[..]);
   jo_key(j[..], "finalHUD"); jo_arr(j[..]); for f: 0..<5 { jo_int(j[..], sw_host_hud_info(cast(s32) f)); } jo_end(j[..]); jo_end(j[..]);
   if j[0].bad || !fs_write(fs_join(output, "receipt.json", path[..]), jo_text(j[..])) { return 1; }
-  if !passed { tool_errln("native observations refused"); return 1; } print("PASS actual native streaming GPU replacement; % attempts, % ticks, zero final owners\n", sw_host_info(20), sw_host_info(0)); return 0;
+  if !passed { tool_errln("native observations refused"); return 1; }
+  if upload_probe {
+    ctx[0].upload_probe[1] = sw_vk_transfer_info(8);ctx[0].upload_probe[17] = sw_vk_transfer_info(0);ctx[0].upload_probe[18] = sw_vk_transfer_info(1);ctx[0].upload_probe[19] = sw_vk_transfer_info(2);
+    if !ctx[0].probe_done || !nu_probe(ctx[0].upload_probe[..],ctx[0].upload_guards[..]) { return 1; }
+    probe: [4096] u8; p: [1] Jo; jo_start(p[..],probe[..]);jo_obj(p[..]);jo_key(p[..],"schema");jo_str(p[..],"aethyr.stream-native-upload-pending.v1");
+    jo_key(p[..],"qualification");jo_str(p[..],"held fence observation after real Vulkan submission; no physical GPU delay");
+    jo_key(p[..],"receiptSHA256"); #assert assets.asset_hex(assets.asset_id(jo_text(j[..])),program_hex[..]);jo_str(p[..],cast(string) program_hex[..]);
+    jo_key(p[..],"words");jo_arr(p[..]);for word: ctx[0].upload_probe { jo_int(p[..],word); }jo_end(p[..]);
+    jo_key(p[..],"guards");jo_arr(p[..]);for result: ctx[0].upload_guards { jo_int(p[..],result); }jo_end(p[..]);
+    jo_key(p[..],"sourceBefore");jo_str(p[..],cast(string) ctx[0].upload_source_before[..]);jo_key(p[..],"sourceAfter");jo_str(p[..],cast(string) ctx[0].upload_source_after[..]);jo_end(p[..]);
+    if p[0].bad || !fs_write(fs_join(output,"upload-probe.json",path[..]),jo_text(p[..])) { return 1; }
+  }
+  print("PASS actual native streaming GPU replacement; % attempts, % ticks, zero final owners\n", sw_host_info(20), sw_host_info(0)); return 0;
 }
