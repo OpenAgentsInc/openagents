@@ -348,6 +348,7 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t11) -> coax_t
   var l_m: coax_t11 = p_m;
   var l_b: u32;
   var l_p: vec3f;
+  var l_sky_clip: vec4f;
   var l_seed_uv: vec2f;
   var l_uv: vec2f;
   var l_normal: u32;
@@ -358,6 +359,7 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t11) -> coax_t
   var l_o: coax_t16;
   l_b = (coax_p_wg_u32_f(l_m.y.w) + (l_id * 8u));
   l_p = coax_p_v3(bitcast<f32>(vertices[i32(l_b)]), bitcast<f32>(vertices[i32((l_b + 1u))]), bitcast<f32>(vertices[i32((l_b + 2u))]));
+  l_sky_clip = coax_p_v4(l_p.x, l_p.y, 0x1.ffffdep-1f, 0x1.000000p0f);
   l_seed_uv = coax_p_wg_unpack2x16unorm(vertices[i32((l_b + 4u))]);
   l_uv = l_seed_uv;
   l_normal = vertices[i32((l_b + 3u))];
@@ -378,7 +380,7 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t11) -> coax_t
   }
   l_nw = coax_p_wg_unpack4x8snorm(l_normal);
   l_o = coax_t16();
-  l_o.x = coax_p_fivelab_project(l_p);
+  l_o.x = select(coax_p_fivelab_project(l_p), l_sky_clip, (l_kind == 0u));
   l_o.y = l_p;
   l_o.z = coax_p_v3(l_nw.x, l_nw.y, l_nw.z);
   l_o.w = l_uv;

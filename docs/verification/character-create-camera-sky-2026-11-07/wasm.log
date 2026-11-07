@@ -1,0 +1,1 @@
+wasm.sh: fivelab.wasm: 7.2 s: Coax to C 4.2 s (2/3 cached), clang 1.4 s (3/4 cached), link 0.7 s, wasm-opt 0.6 s; 616258 bytes; report /Users/christopherdavid/.codex/worktrees/asset-library/openagents/apps/openagents-web/build/.c/fivelab.timings.json

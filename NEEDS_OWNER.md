@@ -1,5 +1,9 @@
 # Owner actions
 
+## Character Create camera and sky (2026-11-07)
+
+- Reload `http://127.0.0.1:8817/worlds/character-creator` to load the camera terrain limit and full-view sky fix. Existing running tabs retain their old module until reloaded.
+
 ## Character Create player lighting (2026-11-07)
 
 - Reload `http://127.0.0.1:8817/worlds/character-creator` to load the player lighting shader: glade sunlight and shadows, warm face fill and broad surface highlights.

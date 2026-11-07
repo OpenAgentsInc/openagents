@@ -2,6 +2,7 @@
 // no cloned geometry or per-outfit skeleton. Used by fivelab's character-creator route.
 #module "openagents.charactercreator";
 #load "font.coax";
+#load "../../verse/character-glade.coax" as glade;
 #load "charactercreator-font.coax";
 #load "../../aethyr/character-appearance.coax" as appearance;
 VERTEX_FLOATS :: 16;
@@ -224,18 +225,22 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   if !s[0].mobile {n=text(out,n,"LEFT DRAG: ROTATE / RIGHT DRAG: PAN / SCROLL: ZOOM",w*0.5-230*k,h-77*k,9*k,ink(k,0.20,0.23,0.15));}
   for i:0..<u.count { u[i]=0; }
   u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=ifx s[0].scene_only then 1 else 0;
-  // A steady studio camera; dragging turns the figure, the wheel changes distance.
-  dist:=s[0].dist; close:=cc_clamp((2.2-dist)/1.55,0,1);target:=1.2+0.58*close;
-  ey:=target-0.4+0.50*close+sin(s[0].pitch-0.1)*dist;ez:=cos(s[0].pitch-0.1)*dist;
-  fy:=target-ey; fz:=-ez; length:=sqrt(fy*fy+fz*fz); fy/=length; fz/=length;
-  focal:=ifx s[0].mobile then (h-624*k)*1.3 else h*0.89;
-  u[16]=s[0].pan_x;u[17]=ey+s[0].pan_y*(-fz);u[18]=ez+s[0].pan_y*fy;u[19]=focal;
-  u[20]=0;u[21]=fy;u[22]=fz;u[23]=w*0.5;
-  u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s[0].mobile then (h-384*k)*0.5 else h*0.48;
-  u[28]=0;u[29]=-fz;u[30]=fy;
-  u[32]=-0.45;u[33]=0.78;u[34]=-0.42;
+  camera(s[0],u,w,h,k);
   if s[0].scene_only {return 0;}
   return n;
+}
+camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
+  // A steady studio camera; dragging turns the figure, the wheel changes distance.
+  dist:=s.dist; close:=cc_clamp((2.2-dist)/1.55,0,1);target:=1.2+0.58*close;
+  ey:=target-0.4+0.50*close+sin(s.pitch-0.1)*dist;ez:=cos(s.pitch-0.1)*dist;
+  fy:=target-ey; fz:=-ez; length:=sqrt(fy*fy+fz*fz); fy/=length; fz/=length;
+  focal:=ifx s.mobile then (h-624*k)*1.3 else h*0.89;
+  u[16]=s.pan_x;u[17]=ey+s.pan_y*(-fz);u[18]=ez+s.pan_y*fy;u[19]=focal;
+  floor_y:=glade.cg_height(u[16],u[18])+0.28;if u[17]<floor_y {u[17]=floor_y;}
+  u[20]=0;u[21]=fy;u[22]=fz;u[23]=w*0.5;
+  u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s.mobile then (h-384*k)*0.5 else h*0.48;
+  u[28]=0;u[29]=-fz;u[30]=fy;
+  u[32]=-0.45;u[33]=0.78;u[34]=-0.42;
 }
 pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if phase==0 {
@@ -521,3 +526,12 @@ load_player :: (s:[]Creator,t:string) {
  s.width=390;#assert texture_side(s)==512;s.on=false;#assert texture_side(s)==0;
 }
 texture_side :: (s:Creator)->int {if !s.on {return 0;}return ifx s.width>=840*s.scale then 1024 else 512;}
+
+#test "creator camera stays above terrain at every zoom pitch and pan limit" {
+ s:[1]Creator;u:[104]f32;out:[64000]f32;
+ for i:0..<3 {for j:0..<3 {for py:0..<3 {for px:0..<3 {
+  s[0].dist=[3]f32.[0.65,3.1,6][i];s[0].pitch=[3]f32.[-0.2,0.1,0.6][j];s[0].pan_y=cast(f32)(py-1)*2;s[0].pan_x=cast(f32)(px-1)*2;
+  camera(s[0],u[..],1440,900,1);
+  #assert u[17]>=glade.cg_height(u[16],u[18])+0.2799 && u[22]<0;
+ }}}}
+}

@@ -263,3 +263,11 @@ fully rendered world, then the shared host draws crisp HUD strokes on the final
 canvas. It does not use an opaque depth mask. Scene-only comparison mode omits
 the panel and all controls. Appearance records and compatibility keys remain
 unchanged. See `docs/verification/character-create-sidebar-2026-11-06/`.
+
+## Camera ground and sky bounds
+
+Camera eye height stays at least 0.28 m above the authored glade terrain at its
+actual panned/dollied position. This covers rotation, right-drag pan and zoom
+combinations. The reference sky draws over the full viewport with ray-projected
+UVs; a smooth transition over its outer 16% continues into directional sky,
+rather than exposing the edge of a finite quad or repeating/mirroring clouds.

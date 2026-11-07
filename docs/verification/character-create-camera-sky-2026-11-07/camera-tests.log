@@ -1,0 +1,9 @@
+ok   #test creator pan moves camera without turning and reset centers it (1 case, 2639 steps, 0 ms)
+ok   #test creator reference camera places the horizon near three fifths and keeps face inspection (1 case, 689554 steps, 6 ms)
+ok   #test creator camera stays above terrain at every zoom pitch and pan limit (1 case, 102128 steps, 0 ms)
+ok   #test the dolly starts where the camera is and ends behind you (1 case, 3204 steps, 0 ms)
+ok   #test a touch hurries the rest from where the camera is (1 case, 3044 steps, 0 ms)
+ok   #test walking never turns the camera: whatever way you walk, only your look turns it (#12718) (1 case, 3872758 steps, 51 ms)
+ok   #forall another camera's shot hands back without a turn (66 cases, 181326 steps, 3 ms)
+7 of 115 checks (--only 'camera'), 7 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

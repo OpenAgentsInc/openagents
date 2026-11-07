@@ -6046,7 +6046,10 @@ world. HUD strokes draw on the final display canvas after postprocessing.
 Narrow layouts keep a single bottom panel, and scene-only mode excludes UI.
 The player uses the glade sun and geometry visibility in linear HDR, with
 normal-dependent sky/ground and soft front fill; do not reinstate the legacy
-Studio brightness override or decode an already-lit display colour.
+Studio brightness override or decode an already-lit display colour. Camera eye
+height remains at least 0.28 m above the glade terrain after pan and zoom. The
+reference sky covers the viewport and fades continuously into its extension;
+camera tilt must not expose a finite sky-card edge.
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
 lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative

@@ -55,6 +55,7 @@ cg_sky_ray :: (x:f32,y:f32)->V3 {
 cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
  b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,8));
  p:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
+ sky_clip:=v4(p.x,p.y,0.999999f32,1);
  seed_uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);
  uv:V2=seed_uv;
  normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
@@ -63,7 +64,7 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  tint:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
  wind:f32=sin(p.x*1.8f32+p.z*0.7f32+u[2]*1.6f32)+sin(p.z*2.7f32+u[2]*0.9f32)*0.35f32;
  if ((kind==1)||(kind==2)) {p.x=p.x+wind*(ifx kind==2 then 0.025f32 else 0.035f32)*(ifx kind==2 then wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]).y else saturate(p.y*0.7f32));}
- nw:V4=wg_unpack4x8snorm(normal);o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=v3(nw.x,nw.y,nw.z);o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;return o;
+ nw:V4=wg_unpack4x8snorm(normal);o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=v3(nw.x,nw.y,nw.z);o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;return o;
 }
 #test "glade source mesh instances retain source shape and independent scale" {
  p:=cg_instance_point(v3(1,2,0),v3(4,0,-5),0.5,0.25,0);
@@ -228,4 +229,16 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;
  p:=cg_viewpoint(v2(50,40),4,u[..]);#assert p.x==2 && p.y==1 && p.z== -1;
+}
+
+#test "glade sky extends continuously across both reference plate edges" {
+ for i:0..<2 {edge:=cast(f32)i;#assert cg_sky_plate_weight(v2(0.5,edge))==0;}
+ #assert cg_sky_plate_weight(v2(0.5,0.5))==1 && cg_sky_plate_weight(v2(0.5,-0.1))==0;
+ uv:=cg_sky_uv(cg_sky_ray(-1,1));#assert abs(uv.x)<0.0001 && abs(uv.y)<0.0001;
+ uv=cg_sky_uv(cg_sky_ray(1,-1));#assert abs(uv.x-1)<0.0001 && abs(uv.y-1)<0.0001;
+}
+cg_sky_plate_weight :: (uv:V2)->f32 {return smoothstep(0.0f32,0.16f32,uv.x)*smoothstep(0.0f32,0.16f32,1.0f32-uv.x)*smoothstep(0.0f32,0.16f32,uv.y)*smoothstep(0.0f32,0.16f32,1.0f32-uv.y);}
+cg_sky_uv :: (ray:V3)->V2 {
+ fy:=0.4f32/sqrt(9.77f32);fz:=-3.1f32/sqrt(9.77f32);depth:=fmax(ray.y*fy+ray.z*fz,0.001f32);
+ return v2(0.5f32+ray.x/depth*(1080.0f32*1.78f32)/(2.0f32*1920.0f32),0.48f32-0.89f32*(ray.y*(-fz)+ray.z*fy)/depth);
 }

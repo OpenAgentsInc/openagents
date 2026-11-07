@@ -1,0 +1,12 @@
+// Physical camera regression: observe submitted GPU camera uniforms after extreme input.
+#import "Basic";
+#load "../../lib/media/media.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) {return 2;}url:=args_at(args[..],0);if url.count==0 {return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],1440,900,"creator-camera-") {return 1;}defer {cdp_close(c[..]);}
+ values:[4096]u8;build:[256]u8;o:MediaShotOptions;o.wait=300;
+ o.script="(async()=>{const write=GPUQueue.prototype.writeBuffer;GPUQueue.prototype.writeBuffer=function(b,o,d,...r){if(d instanceof Float32Array&&d.length===104)globalThis.ccCamera=Array.from(d);return write.call(this,b,o,d,...r)};const c=document.querySelector('canvas'),wait=()=>new Promise(r=>setTimeout(r,100));const drag=(button,dx,dy)=>{for(const [type,x,y]of[['pointerdown',720,400],['pointermove',720+dx,400+dy],['pointerup',720+dx,400+dy]])c.dispatchEvent(new PointerEvent(type,{clientX:x,clientY:y,pointerType:'mouse',pointerId:31,button:type==='pointermove'?-1:button,buttons:type==='pointerup'?0:button===2?2:1,bubbles:true}));};const reset=()=>{for(const type of['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:90,clientY:652,pointerId:32,pointerType:'mouse',bubbles:true}));};let lowest=Infinity;for(const zoom of[-10000,0,10000])for(const tilt of[-10000,10000])for(const pan of[-10000,10000]){reset();c.dispatchEvent(new WheelEvent('wheel',{deltaY:zoom,bubbles:true}));drag(0,0,tilt);drag(2,pan,pan);await wait();if(!ccCamera)return {ok:false,reason:'missing GPU uniforms'};lowest=Math.min(lowest,ccCamera[17]);if(ccCamera[17]<.2799||ccCamera[22]>=0)return {ok:false,camera:ccCamera.slice(16,31)};}reset();drag(0,0,-10000);await wait();return {ok:true,lowestCameraY:lowest,camera:ccCamera.slice(16,31)};})()";
+ shot:=media_shot(c[..],url,"/tmp/creator-camera-low.png",ArgsSize.{ok=true,w=1440,h=900},o,values[..],build[..]);
+ result:=cast(string)values[0..<shot.value_n];print("%\n",result);
+ return ifx shot.status==0 && result.count>10 && result[0..<10]=="{\"ok\":true" then 0 else 1;
+}
