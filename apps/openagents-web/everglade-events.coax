@@ -48,6 +48,10 @@ EGE_ASK_READ :: 1; EGE_ASK_SET :: 2;
 // The room's raid creatures (coax/web/room/room-events.coax, everglade5e-room-raid.coax): summoned
 // creatures (WK_BEAST) whose P1 is 20 plus their stat block (npcs.coax RS_NPC_*), or a ward stone.
 EGE_FORM_RAID :: 20; EGE_FORM_ARCH :: 30; EGE_FORM_WARD :: 40;
+// Echo, a hero of the watch (#12996; everglade5e-room-raid.coax E5RR_FORM_HERO), drawn by the host's
+// character pass (everglade-character.coax); her casts' looks are Everglade's own four, bar slot k as
+// EGE_K_HERO0 + k (everglade-raid-spells.coax RT_K_HERO0).
+EGE_FORM_HERO :: 35; EGE_K_HERO0 :: 32;
 EGE_LIT_MS :: 800;             // a raider's cast glows this long
 EGE_WORDS :: 8; EGE_WORD_LIFE :: 1.3;
 EGE_W_WARDED :: 0; EGE_GAINED :: 1; EGE_DOOR :: 2;
@@ -190,6 +194,18 @@ ege_entry :: (s: [] Everglade, n: [] EgNet, t: string) -> bool {
     fx := wire_f(t, r[..]); fy := wire_f(t, r[..]); fz := wire_f(t, r[..]);
     if r[0].ok { from = v3(fx, fy, fz); }
     q := net_ent(n, NET_MADE_ID + id, false);
+    if k >= EGE_K_HERO0 && k < EGE_K_HERO0 + SP_SLOTS {
+      // a hero's (#12996): one of Everglade's own four, its strike once its cast bar is done, from where
+      // she is drawn then, as another player's (net_frame's casts); she winds up meanwhile
+      slot := k - EGE_K_HERO0;
+      if q >= 0 && n[0].ents[q].p1 == EGE_FORM_HERO { rp_echo_cast(s, slot, at); }
+      for f: 0..<NET_FX {
+        if n[0].fx[f].live { continue; }
+        n[0].fx[f] = NetFx.{live = true, slot = slot, caster = NET_MADE_ID + id, at = at, seed = seed, t = n[0].tick_t + cast(int) (srd_spell(SP_SPELL[slot]).bar * 1000)};
+        break;
+      }
+      return true;
+    }
     if q >= 0 {
       c := n[0].ents[q].shown;
       from = v3(c.x, c.y + 1.5, c.z);
@@ -242,6 +258,7 @@ ege_word :: (s: [] Everglade, at: Point, what: int, amount: int) {
 ege_raider_draw :: (s: [] Everglade, n: [] EgNet, en: NetEnt, age: f32) {
   p := en.shown;
   if en.p1 == EGE_FORM_WARD { ege_ward_draw(s, n, p.x, p.z, age); return; }
+  if en.p1 == EGE_FORM_HERO { rp_echo_room(s, p.x, p.z, p.yaw, p.vx, p.vz); return; }   // Echo: the character pass's (#12996)
   lit: f32 = 0;
   if en.cast_slot >= WL_SLOT0 { lit = clamp01(1 - (f32(s[0].time * 1000) - f32(en.cast_at)) / f32(EGE_LIT_MS)); }
   if (p.f & 4)!=0 {lit=1;}

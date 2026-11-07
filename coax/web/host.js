@@ -407,7 +407,7 @@ async function loadEngine(bytes, generation) {
   const fast = fastEditBoundary(message => say(message, true));
   const imports = Object.create(null);
   imports.env = Object.assign(Object.create(null), { memory, coaxial_measure_ms: () => performance.now(), coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)),
-    coaxial_now_ms: () => BigInt(Math.floor(performance.now())), coax_dev_dispatch: value => fast.dispatch(value), ...socketImports, ...httpImports, ...random.imports, ...storageImports, ...nip07Imports });
+    coaxial_now_ms: () => BigInt(Math.floor(clipRoom ? clipStart + clipNow : performance.now())), coax_dev_dispatch: value => fast.dispatch(value), ...socketImports, ...httpImports, ...random.imports, ...storageImports, ...nip07Imports });
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
@@ -2442,6 +2442,8 @@ const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.
 // coaxialClipStep says so, each frame one fixed step of game time, so a recording has
 // every frame at its exact moment however slowly the machine draws or captures.
 const clipping = globalThis.coaxialClip === true;
+// A clip that records a local room (room-worker.js) keeps the page's clock and the room's on the clip's.
+const clipRoom = clipping && globalThis.coaxialClipRoom === true, clipStart = performance.now();
 // Optional platform timing observations for the desktop profiler. No work is
 // collected in an ordinary page; Coax tools summarize these raw milliseconds.
 const frameTrace = globalThis.coaxialFrameTrace === true ? [] : null;
@@ -2464,7 +2466,12 @@ function setWorldPaused(paused) {
 if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   // a clip that records its sound starts the audio once the engine is up (no gesture needed: nothing plays)
   if (globalThis.coaxialClipAudio && engine) {if(hostTransport)soundBank();else if(!audio)startAudio();}
-  for (let k = 0; k < frames; k++) { clipNow += 1000 / fps; draw(clipNow); a11yMirror(clipNow); }
+  for (let k = 0; k < frames; k++) {
+    clipNow += 1000 / fps;
+    // the room to the same moment, and every frame it sent then in the app before it draws
+    if (clipRoom && globalThis.coaxial?.roomHost?.advance) { await globalThis.coaxial.roomHost.advance(clipNow); if (engine) drainSockets(1e9); }
+    draw(clipNow); a11yMirror(clipNow);
+  }
   if (gpu?.device) await gpu.device.queue.onSubmittedWorkDone();
   return engine && gpu?.bg ? 1 : 0;
 };

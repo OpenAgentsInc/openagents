@@ -67,7 +67,8 @@ everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
   // the camera: the town's own clip rows (view), so her depth and the town's agree
   scl_camera(b, u[U_VIEW..<U_VIEW + 16], SclPoint.{x = u[U_EYE], y = u[U_EYE + 1], z = u[U_EYE + 2]}, width, height);
   her := s[0].rp.echo_at;
-  scl_place(b, her.x, her.y, her.z, s[0].rp.echo_heading);   // where the stage put her (rp_facts)
+  scl_place(b, her.x, her.y, her.z, s[0].rp.echo_heading);   // where the stage put her (rp_facts), or the room (rp_echo_room)
+  everglade_character_motion(s, b);
   st := STYLE_AT;
   // the key light (eg_paint: the key's colour times its strength) and where it is
   l := v3(u[st + SU_KEY_DIR], u[st + SU_KEY_DIR + 1], u[st + SU_KEY_DIR + 2]);
@@ -118,6 +119,28 @@ everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
     scl_light(b, u[at], u[at + 1], u[at + 2], u[at + 3], u[at + 4], u[at + 5], u[at + 6], u[at + 7] * k);
   }
   b[SCL_OUT + 1] = f32(EG_AUX_DISTANCE_CPU);
+}
+// How the room moves her (?raid=preview&stage=echo, #12996): her pace, her cast and its aim, the
+// ground's slope under her; still on the plain stage.
+EG_CHARACTER_CAST_HOLD :: 1.5;   // s past its bar that a cast still shows: her follow-through
+everglade_character_motion :: (s: [] Everglade, b: [] f32) {
+  for k: 0..<10 { b[SCL_MOTION + k] = 0; }
+  b[SCL_CAST] = -1;
+  if !s[0].rp.echo_room { return; }
+  her := s[0].rp.echo_at;
+  b[SCL_MOVED] = 1; b[SCL_SPEED] = s[0].rp.echo_speed;
+  k := s[0].rp.echo_cast;
+  if k >= 0 && k < SP_SLOTS {
+    t := f32(s[0].time - s[0].rp.echo_cast_at);
+    bar := srd_spell(SP_SPELL[k]).bar;
+    if t >= 0 && t < bar + f32(EG_CHARACTER_CAST_HOLD) {
+      b[SCL_CAST] = f32(k); b[SCL_CAST_T] = t; b[SCL_CAST_BAR] = bar;
+      a := s[0].rp.echo_aim;
+      scl_put3(b, SCL_AIM, a.x, a.y, a.z);
+    }
+  }
+  b[SCL_SLOPE] = ground_at(s, her.x + 0.5, her.z) - ground_at(s, her.x - 0.5, her.z);
+  b[SCL_SLOPE + 1] = ground_at(s, her.x, her.z + 0.5) - ground_at(s, her.x, her.z - 0.5);
 }
 // aux.g's scale (verse/everglade/gpu.coax EG_AUX_DISTANCE)
 EG_AUX_DISTANCE_CPU :: 256.0;

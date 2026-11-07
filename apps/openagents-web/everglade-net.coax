@@ -265,8 +265,9 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   n := net_of(s);
   url := fact(facts, "url");
   // ?stage=echo is a staged shot: you stand where the stage puts you (everglade-raid-preview.coax
-  // rp_facts), so it opens no socket and no local host, whose seat would put you at the room's spawn
-  alone := golden || net_query(url, "stage") == "echo";
+  // rp_facts), so it opens no socket and no local host, whose seat would put you at the room's spawn;
+  // with ?raid=preview it is the raid's room, where Echo fights for the watch (#12996)
+  alone := golden || (net_query(url, "stage") == "echo" && net_query(url, "raid") != "preview");
   n[0].local_relay = false;
   sl := 0; k := 0;
   while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
@@ -1467,7 +1468,7 @@ net_cast :: (s: [] Everglade, b: int, at: Point, target: int) -> bool #export_c 
 NET_PICK :: 1.6;
 // Whether a creature's P1 is one of the town's watch in the siege (a Guard to a Scout: room-events.coax
 // e5rd_defender), on your side.
-net_watch_form :: (p1: int) -> bool { return p1 > EGE_FORM_RAID && p1 <= EGE_FORM_RAID + 4; }
+net_watch_form :: (p1: int) -> bool { return (p1 > EGE_FORM_RAID && p1 <= EGE_FORM_RAID + 4) || p1 == EGE_FORM_HERO; }
 net_creature_at :: (n: [] EgNet, at: Point, reach: f32) -> int {
   best := -1; bd := reach * reach;
   for e: 0..<NET_ENTS {
@@ -3144,6 +3145,9 @@ net_test_rooms :: (s: [] Everglade) {
   // ?stage=echo: a staged shot sits in no room, not even the local host's
   net_facts(o[..], "url=https://openagents.com/worlds/everglade?stage=echo&clock=0.95\n", "everglade", false);
   #assert !no[0].want && !no[0].local_host && !no[0].local_ok && !no[0].asking;
+  // with ?raid=preview it is the raid's room, the local host's, where Echo fights for the watch (#12996)
+  net_facts(o[..], "url=https://openagents.com/worlds/everglade?raid=preview&stage=echo\n", "everglade", false);
+  #assert no[0].want || no[0].local_host;
   // a page with no socket attached is no room's
   t: [1] Everglade;
   #assert !net_live(t[..]) && net_room(t[..], "everglade") == "everglade" && net_probe(t[..], 0) == -1;

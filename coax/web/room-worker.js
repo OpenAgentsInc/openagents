@@ -10,11 +10,17 @@
 // of its beat the stalls over 250 ms dropped, as room-host.c prints them), kept for the drift check
 // and the phone-throttle measurement as globalThis.coaxial.roomHost; roomHost.control(LINES) gives
 // the room control lines as the API's answer does (the drift check's held step).
+// A clip that records the room (globalThis.coaxialClipRoom, set with coaxialClip before the page
+// loads) runs it on the clip's clock: roomHost.advance(MS) ticks it to the clip's MS and resolves once
+// every frame it sent then is on its way, so each recorded frame sees the room at its exact moment.
 
 // The worker's body, run from its own source text (a Blob: no second script for a release to name).
 function roomWorkerMain() {
   const HZ = 30, STEP = 1000 / HZ, PARTS = 8;
   let x = null, mem = null, booting = null, next = 0, timer = 0, start = "";
+  // the clip's clock (ms past its start), else null for the real one
+  let clipMs = null, seed = 12996; const perf0 = performance.now(), date0 = Date.now();
+  const nowMs = () => clipMs === null ? performance.now() : perf0 + clipMs;
   const waiting = [], conns = new Set();
   const enc = new TextEncoder(), dec = new TextDecoder();
   let costTicks = 0, costUs = 0, costAt = performance.now(), partsWas = new Array(PARTS).fill(0), lost = 0, stalls = 0;
@@ -35,10 +41,14 @@ function roomWorkerMain() {
       return 0;
     },
     clock_time_get(id, precision, out) {
-      const ns = id === 0 ? BigInt(Date.now()) * 1000000n : BigInt(Math.round(performance.now() * 1e6));
+      const ns = id === 0 ? BigInt(clipMs === null ? Date.now() : Math.round(date0 + clipMs)) * 1000000n : BigInt(Math.round(nowMs() * 1e6));
       view().setBigUint64(out, ns, true); return 0;
     },
-    random_get(p, n) { crypto.getRandomValues(new Uint8Array(mem.buffer, p, n)); return 0; },
+    random_get(p, n) {
+      // a clip's room draws the same numbers every run (xorshift32 from a fixed seed), so its recording repeats
+      if (clipMs !== null) { const b = new Uint8Array(mem.buffer, p, n); for (let i = 0; i < n; i++) { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; b[i] = seed & 255; } return 0; }
+      crypto.getRandomValues(new Uint8Array(mem.buffer, p, n)); return 0;
+    },
     environ_sizes_get(a, b) { view().setUint32(a, 0, true); view().setUint32(b, 0, true); return 0; },
     args_sizes_get(a, b) { view().setUint32(a, 0, true); view().setUint32(b, 0, true); return 0; },
     proc_exit(code) { throw new Error("room-worker: the server exited " + code); },
@@ -48,7 +58,7 @@ function roomWorkerMain() {
     new Uint8Array(mem.buffer, p, b.length).set(b);
     return b.length;
   };
-  const clock = () => x.rw_clock(performance.now(), Date.now());
+  const clock = () => x.rw_clock(nowMs(), clipMs === null ? Date.now() : date0 + clipMs);
   // Every frame the server queued, to the sockets it names.
   function flush() {
     for (let n; (n = x.rw_next()) > 0;) {
@@ -61,8 +71,8 @@ function roomWorkerMain() {
   // server's clock, rm_eg_begin, so a late tick costs no one a step).
   function beat() {
     timer = 0;
-    const now = performance.now();
-    if (now - next > 250) { lost += now - next; stalls++; next = now; }
+    const now = nowMs();
+    if (clipMs === null && now - next > 250) { lost += now - next; stalls++; next = now; }
     while (now >= next) {
       const t0 = performance.now();
       clock(); x.rw_tick();
@@ -89,11 +99,11 @@ function roomWorkerMain() {
       coreUs = 0; flushUs = 0;
       costTicks = 0; costUs = 0; costAt = now;
     }
-    if (conns.size) timer = setTimeout(beat, Math.max(0, next - performance.now()));
+    if (conns.size && clipMs === null) timer = setTimeout(beat, Math.max(0, next - performance.now()));
   }
   async function boot(wasmUrl, worldUrl, control) {
     mem = new WebAssembly.Memory({ initial: 256, maximum: 4096 });
-    const env = { memory: mem, room_now_us: () => performance.now() * 1000 };
+    const env = { memory: mem, room_now_us: () => nowMs() * 1000 };
     const [module, world] = await Promise.all([
       WebAssembly.compileStreaming(fetch(wasmUrl)),
       worldUrl ? fetch(worldUrl, { credentials: "same-origin" }).then((r) => (r.ok ? r.text() : ""), () => "") : "",
@@ -112,6 +122,7 @@ function roomWorkerMain() {
     const m = e.data;
     if (m.t === "boot") {
       start = m.start || "";
+      if (m.clip) clipMs = 0;
       booting = boot(m.wasm, m.world, m.control).then(() => { for (const f of waiting.splice(0)) f(); },
         (err) => { postMessage({ t: "failed", why: String(err && err.message || err) }); });
       return;
@@ -126,10 +137,11 @@ function roomWorkerMain() {
         postMessage({ t: "open", id: m.id });
         if (start) { x.rw_control(put(start)); start = ""; }   // an event's START, once a seat is in the room
         flush();
-        if (!timer) { next = performance.now(); beat(); }
+        if (!timer) { next = nowMs(); beat(); }
       } else if (m.t === "frame") { if(conns.has(m.id)){x.rw_heard(m.id, put(m.text));flush();}if(m.ack!==undefined)postMessage({t:"sent",id:m.id,ack:m.ack}); }
       else if (m.t === "close" && conns.has(m.id)) { conns.delete(m.id); x.rw_left(m.id); flush(); }
       else if (m.t === "control") { x.rw_control(put(m.text)); flush(); }   // roomHost.control
+      else if (m.t === "advance") { if (clipMs !== null) { clipMs = Math.max(clipMs, m.ms); if (conns.size) beat(); } postMessage({ t: "advanced", ms: m.ms }); }
     };
     if (x) run(); else waiting.push(run);
   };
@@ -171,18 +183,24 @@ function roomWorker(wasmUrl) {
   // The room's control lines (room-control.coax), the API's word to a room, which the local host
   // stands in for as coax/web/room/dev/room-control.txt does for a local room: ?levels=off plays the
   // whole bar; ?raid=preview starts the Cultist Raid as a room event (room-events.coax: one wave of 8
-  // at the South Gate, Darian at the climax, harm on, reward 300%, 5 minutes) once you sit.
+  // at the South Gate, Darian at the climax, harm on, reward 300%, 5 minutes) once you sit, and with
+  // &stage=echo Echo fights on the watch's side.
   const raid = params.get("raid") === "preview" ? "event 1 0 1 8 3 1 3 1 1 1 3 1 300 5" : "";
-  const levels = params.get("levels") === "off" ? "levels 0 2\n" : "";
+  // &stage=echo with it: Echo joins the watch as the siege begins (room-events.coax "hero 1", #12996)
+  const levels = (params.get("levels") === "off" ? "levels 0 2\n" : "") + (raid && params.get("stage") === "echo" ? "hero 1\n" : "");
   const control = levels + (raid ? raid + " 0 0\n" : "");
-  worker.postMessage({ t: "boot", wasm: href(wasmUrl), world: href("/api/playtest/world/everglade"), control, start: raid ? levels + raid + " 1 0\n" : "" });
+  const clip = globalThis.coaxialClip === true && globalThis.coaxialClipRoom === true;
+  worker.postMessage({ t: "boot", wasm: href(wasmUrl), world: href("/api/playtest/world/everglade"), control, start: raid ? levels + raid + " 1 0\n" : "", clip });
   const host = (globalThis.coaxial ||= {}).roomHost = { native: false, transport: "wasm-worker", ticks: 0, us: 0, ms: 0, parts: [], failed: "" };
+  const advancing = [];
+  if (clip) host.advance = (ms) => new Promise((done) => { advancing.push(done); worker.postMessage({ t: "advance", ms }); });
   // Control lines for the room (room-control.coax), as the API's answer is to oa-room: the drift
   // check's scripted Hold Person ("hold CODE SEAT STAMP", #12886) reaches this room as it does its own.
   host.control = (text) => { worker.postMessage({ t: "control", text: String(text) }); return 1; };
   worker.onmessage = (e) => {
     const m = e.data, s = sockets.get(m.id);
     if (m.t === "cost") { Object.assign(host, m); host.tickUs = m.ticks ? m.us / m.ticks : 0; return; }
+    if (m.t === "advanced") { advancing.shift()?.(); return; }
     if (m.t === "failed") { host.failed = m.why; console.error(m.why); for (const k of sockets.values()) k.closed(); return; }
     if (!s) return;
     if (m.t === "open") { s.readyState = 1; s.onopen?.(); }

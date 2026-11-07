@@ -1503,6 +1503,8 @@ e5rd_test_room :: (r: [] E5rRoom) {
   for q0: 0..<E5RR_BEASTS { if e5rd_cult(r[0].beasts[q0]) { r[0].b[0].c[E5RR_BEAST0 + q0].speed = 0; } }   // they hold their line
   guard := e5rd_defender(r[..], RS_NPC_GUARD, 1, 1.5, -70.5, rt_open(1.5, -70.5, 0, -1));
   echo := e5rd_hero(r[..], 0, -40, rt_open(0, -40, 0, -1));
+  e5rr_join(r[..], 0, 0, -20);   // a player far behind her
+  hp0 := r[0].b[0].c[E5RR_SEAT].hp;
   #assert guard > 0 && echo > 0 && e5rd_hero(r[..], 0, -40, rt_open(0, -40, 0, -1)) == echo;   // once
   q := r[0].raid[0].hero.q;
   #assert q >= 0 && r[0].beasts[q].form == E5RR_FORM_HERO && e5rd_town(r[0].beasts[q]) && r[0].b[0].c[E5RR_BEAST0 + q].team == 1;
@@ -1532,6 +1534,7 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert abs(strike_t - cue_t - CR_BAR[RT_HERO_METEOR]) < 0.11 && abs(roll_t - cue_t - 3.6) < 0.11;
   #assert r[0].raid[0].hero.rolled >= 1;
   #assert saved_watch == 0;
+  #assert r[0].b[0].c[E5RR_SEAT].hp == hp0;
   #assert saved_cult >= 3;
   // a blow far past her Hit Points leaves her at one
   e5rr_hurt(r[..], E5RR_TGT_BEAST + echo, 1000, -1);

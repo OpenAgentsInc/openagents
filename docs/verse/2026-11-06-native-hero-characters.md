@@ -301,6 +301,73 @@ Left for R4 and later: the groom's levels and a frame-rate check in a wide
 raid shot, a close shadow map for her face, her locomotion when a stage
 moves her, the production render path and the Valley page on the pass (H2).
 
+### R5: Echo fights and casts in the Cultist Raid (done, #12996)
+
+`/worlds/everglade?raid=preview&stage=echo` puts Echo in the raid on the
+watch's side. Everything she does comes from the room, as every raid body's
+does:
+
+- **The room.** The local host sends `hero 1` with the raid's control lines
+  when the URL has `stage=echo` (`coax/web/room-worker.js`). As the siege
+  begins, `ev_siege_begin` (`coax/web/room/room-events.coax`) calls
+  `e5rd_hero` (`everglade5e-room-raid.coax`): Everglade's level 9 druid
+  (`fb_everglade_hero`) on the town's team, form `E5RR_FORM_HERO`, with the
+  watch's ranged at the front. She can be hurt but never drops, and the
+  cult's fall pays no XP for her.
+- **Her turns.** `rt_hero_aim` (`everglade-raid-tactics.coax`) picks her
+  spell and its point: Meteor Swarm first, centred where it reaches most of
+  the cult, then by how many stand together (Meteor Swarm for three or more,
+  Mega Thunderbolt for two, Water Orb for one close, Thunderbolt else).
+  The pages hear the cast begin (`e rc`, look `RT_K_HERO0 + k`). She stands
+  still while the spell's bar runs; the town takes its strike as the bar
+  ends; the rules roll it with `rs_cast` as it lands (Meteor Swarm 3.6 s
+  after it begins), with the players and the watch stepped out of it, as a
+  player's harm keeps them.
+- **The page.** `net_facts` opens the local host for `stage=echo` only with
+  `raid=preview`. The room's Echo is drawn by the character pass, not the
+  town rig: `rp_echo_room` places her from the creature, and
+  `everglade_character_motion` writes the block's motion slots (116 to 125
+  in `aethyr/render/scene-lights.coax`): her pace, her cast, its time, bar
+  and point, and the ground's rise under her.
+- **Her motion.** `character-host.coax` runs her own ECH1 locomotion graph
+  (idle, walk, jog, starts and stops) at the room's pace. The town rig's
+  clips aren't retargeted onto her: her own clips are better, and loading
+  the 65-joint town rig would not fit the runtime's budget. A cast plays
+  TF0290's source frames 1126 to 1152 from her pack's shot as the wind-up,
+  ending as the bar ends. Then `aethyr/character/fix.coax` (A3's solvers on
+  the character runtime) plants her feet on the town's ground while they
+  touch it, lowers her hips for a hold out of reach, turns her head toward
+  the spell's point and reaches her orb hand toward it.
+- **The shot.** The camera follows close behind her right shoulder as she
+  runs. Through a cast it goes over her shoulder on the line from her to the
+  spell's point, below the South Gate's beam, so she stands in the
+  foreground and the spell lands beyond her (`rp_echo_follow`).
+  `coax/web/everglade-echo-frames.coax URL OUTDIR raid` records it at
+  1920x1080, 24 fps. In clip mode the local room runs on the clip's clock
+  (`coaxialClipRoom`: `roomHost.advance`, and the page's `coaxial_now_ms`),
+  and its random numbers come from a fixed seed, so every frame sees the
+  room at its moment. `castfps` measures the frame rate in real time
+  through her first cast.
+
+`character-host.wasm` is 61,013 bytes (budget 64,000), and `everglade5e.wasm`
+2,011,505.
+
+Measured on this Mac (headless Chrome): the recording is 246 frames
+(10.25 s): she runs from beside the player to the South Gate, stops, winds
+up and casts Meteor Swarm on the cult's line, and it lands. Her planted feet
+held to under 0.1 mm of their locks (the farthest a planted foot strayed and
+the most one travelled, from her pass's probes 23 and 24) over 34 plants;
+the same in real time (27 plants). Through her first cast the page holds
+60 FPS (the display's rate) at 1280x720, and her runtime's step takes
+0.13 ms. After the cast she moves along the palisade and the camera behind
+her goes into the gate's tower, so the recording ends as the swarm lands.
+
+Left for later: a staged camera that keeps clear of the town's walls (the
+follow camera's scenery test, on a staged ray), her face's expression during
+a cast, the bystander player (the page's seat stands idle, and the raid can
+kill it later in the siege), replication to other players' pages (H6), and
+the production render path.
+
 ## Risks
 
 - **Frame time.** Strand hair is the costliest part: the Valley page runs the
