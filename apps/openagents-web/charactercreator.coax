@@ -227,6 +227,23 @@ experimental_clip :: (s:Creator)->int {
  if s.clock-s.land_at<0.35 {return figs.BD_JUMP_LAND;}
  return ifx s.moving then figs.BD_RUN else figs.BD_IDLE;
 }
+// Blend the authored jump over the locomotion pose, easing in during takeoff and
+// back out shortly after landing. The jump never fully replaces the arms.
+experimental_jump_weight :: (s:Creator)->f32 {
+ if s.airborne {return 0.45*cc_clamp((s.clock-s.air_at)/0.12,0,1);}
+ return 0.45*(1-cc_clamp((s.clock-s.land_at)/0.18,0,1));
+}
+experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
+ a:=a0;a.x=s.player_x;a.z=s.player_z;a.y=glade.cg_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;
+ a.clip=ifx s.dev_animations && s.preview_clip>=0 then figs.BD_CLIPS+s.preview_clip else experimental_clip(s);
+ a.t0=ifx a.clip==figs.BD_JUMP_START then s.clock-(s.clock-s.air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s.clock-(s.clock-s.land_at)*figs.bd_seconds(a.clip)/0.35 else 0;
+ a.phase=(s.clock-(ifx s.dev_animations && s.preview_clip>=0 then s.preview_at else 0))/figs.bd_seconds(a.clip);
+ if !(s.dev_animations && s.preview_clip>=0) && (s.airborne || s.clock-s.land_at<0.35) {
+  a.prev=ifx s.moving then figs.BD_RUN else figs.BD_IDLE;a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);
+  a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_jump_weight(s);
+ }
+ return a;
+}
 #test "animation browser is enabled only for local development origins" {
  #assert dev_local("url=http://127.0.0.1:8891/worlds/everglade-experimental\n");
  #assert dev_local("url=http://localhost/worlds/everglade-experimental\n");
@@ -247,6 +264,19 @@ experimental_clip :: (s:Creator)->int {
  olddist:=s[0].dist;_=pointer(s[..],500,300,1,1);wheel(s[..],100);#assert s[0].dist>olddist;
  dev_scroll(s[..], -10000);#assert s[0].preview_scroll==0;
 }
+#test "experimental jumps ease in and out over the moving or idle pose" {
+ s:[1]Creator;s[0].experimental=true;s[0].clock=1;experimental_air(s[..],true);
+ #assert experimental_jump_weight(s[0])==0;
+ s[0].clock=1.06;w:=experimental_jump_weight(s[0]);#assert w>0 && w<0.45;
+ s[0].clock=1.3;#assert abs(experimental_jump_weight(s[0])-0.45)<0.001;
+ a:=experimental_figure(s[0],figs.BdAnim.{});#assert a.clip==figs.BD_JUMP_LOOP && a.prev==figs.BD_IDLE;
+ out:[24]f32;figs.bd_record(a,figs.BdLook.{},0,false,s[0].clock,out[..],0);#assert out[6]>0.55 && out[6]<0.60;
+ s[0].moving=true;a=experimental_figure(s[0],figs.BdAnim.{});#assert a.prev==figs.BD_RUN;
+ s[0].dev_animations=true;s[0].preview_clip=0;a=experimental_figure(s[0],figs.BdAnim.{});#assert a.prev== -1;
+ s[0].preview_clip= -1;
+ experimental_air(s[..],false);s[0].clock=1.39;w=experimental_jump_weight(s[0]);#assert w>0 && w<0.45;
+ s[0].clock=1.49;#assert experimental_jump_weight(s[0])==0;
+}
 #test "experimental character selects jump takeoff air and landing" {
  s:[1]Creator;s[0].experimental=true;s[0].clock=1;experimental_air(s[..],true);
  #assert experimental_clip(s[0])==figs.BD_JUMP_START;
@@ -262,7 +292,7 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
   a.t0=s.pose_at; a.fade_at=-100; a.phase=(s.clock-s.pose_at)/figs.bd_seconds(a.clip); a.yaw=s.yaw;
   if s.pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s.pose_at+floor((s.clock-s.pose_at)/dur)*dur; }
   if s.walk.on {a=walk_figure(s,a);}
-  if s.experimental {a.x=s.player_x;a.z=s.player_z;a.y=glade.cg_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;a.clip=ifx s.dev_animations && s.preview_clip>=0 then figs.BD_CLIPS+s.preview_clip else experimental_clip(s);a.t0=ifx a.clip==figs.BD_JUMP_START then s.clock-(s.clock-s.air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s.clock-(s.clock-s.land_at)*figs.bd_seconds(a.clip)/0.35 else 0;a.phase=(s.clock-(ifx s.dev_animations && s.preview_clip>=0 then s.preview_at else 0))/figs.bd_seconds(a.clip);}
+  if s.experimental {a=experimental_figure(s,a);}
   n:=0;
   for i:0..<40 { if s.worn[i] && available(s,i) && s.source_count[i+(ifx s.female then 0 else 40)]>0 {
     p:=i+ifx s.female then 0 else 40;
