@@ -1,0 +1,1162 @@
+// Aethyr's terrain tiles and material tables (GitHub #12995, book chapters 8, 12 and 80): the
+// versioned, content-addressed records a realm's ground is admitted from, and the one sampler that
+// drawing and ground queries share.
+//
+// Profile `aethyr.terrain.tile.v1` (TERRAIN_TILE_VERSION 1):
+//   - A tile is `cells` square cells a side (1 to TERRAIN_TILE_MAX_CELLS), `spacing` metres each
+//     (TERRAIN_TILE_SPACING_MIN to _MAX). Its origin is the south-west sample in f64 world metres.
+//     Axes: +x east, +y up, +z north; samples run west to east within a row, rows south to north,
+//     so sample (i, j) is at origin + (i, j) * spacing and its index is j * (cells + 1) + i.
+//   - Heights are f32 metres (height_scale 1). The converter records any rescaling; a tile in
+//     other units refuses. A sample is finite and within TERRAIN_TILE_HEIGHT_LIMIT.
+//   - Edges: a tile owns both of its boundary rows and columns. Neighbours repeat the shared edge
+//     sample for sample, bit for bit (terrain_tile_edges_agree).
+//   - Triangles: each cell is split on its south-west/north-east diagonal, as aethyr/ground.coax
+//     draws and samples it. A point's triangle and barycentric weights are ground.coax's.
+//   - Holes: one byte a cell, 0 solid or 1 a hole. A hole cell is neither drawn nor queried:
+//     terrain_tile_sample reports `hole` and no height. Any other byte refuses.
+//   - Materials: four influences a sample, each an 8-bit material ID and an 8-bit weight. An
+//     unused influence is ID TERRAIN_TILE_NO_MATERIAL with weight 0. A used ID must be in the
+//     admitted table and may appear once in a sample. A sample's weights sum to more than 0; its
+//     normalized weight is weight / sum. Every drawn triangle's three corners name at most four
+//     distinct IDs, so a point's weights are the barycentric sum of its corners' normalized
+//     weights per ID, at most four of them, and add to one. Missing materials are refused, never
+//     substituted.
+//   - Floating origin: terrain_tile_ground converts the f64 origin to the f32 local frame once,
+//     (origin - frame origin), and drawing, queries, lighting and actors use that one Ground.
+//   - Identity: the SHA-256 of the canonical encoding (magic, version, every header word, the
+//     material table's revision, then every height, hole and influence), so a changed sample is a
+//     new tile.
+//
+// A material table (`aethyr.terrain.materials.v1`) holds up to TERRAIN_MATERIALS_MAX entries. Each
+// binds albedo, normal, roughness, AO and height through semantic slots (an asset id, a component
+// selector and an encoding) and carries the procedural albedo every slot-less consumer draws: two
+// display-encoded colours (decoded to linear with the 2.2 power once, before blending), a value
+// noise blend between them, a brightness noise, and a fluid-depth darkening the realm's fluid query
+// drives. Colour slots are sRGB and decode to linear before filtering; data slots read one stated
+// channel linearly; a normal slot reads two. A slot left empty falls back to the constant.
+//
+// Names (locals too) start with `terrain_tile_` or `tt_`: every declaration is visible to every
+// module a realm loads.
+//   coax/bin/coax test aethyr/terrain-tile.coax
+//   coax/bin/coax mutate aethyr/terrain-tile.coax --root-only
+
+#module "aethyr.terrain_tile";
+#authority;
+#load "ground.coax";
+#load "../coax/lib/quantity.coax" as tt_units;
+#load "../coax/lib/crypto/sha256-kernel.coax";
+#load "tests/terrain-tile-oracle.coax";
+
+// book:begin tile-types
+TERRAIN_TILE_VERSION :: 1;
+TERRAIN_TILE_MAX_CELLS :: 512;
+TERRAIN_TILE_SPACING_MIN :: 0.125;
+TERRAIN_TILE_SPACING_MAX :: 64.0;
+TERRAIN_TILE_HEIGHT_LIMIT :: 100000.0;
+TERRAIN_TILE_ORIGIN_LIMIT :: 1000000000.0;   // f64 world metres either way
+TERRAIN_TILE_FRAME_LIMIT :: 1000000.0;       // a converted local origin stays within ground.coax's range
+TERRAIN_TILE_INFLUENCES :: 4;
+TERRAIN_TILE_NO_MATERIAL :: 255;
+TERRAIN_MATERIALS_MAX :: 16;
+TERRAIN_MATERIAL_SLOTS :: 5;                 // albedo, normal, roughness, AO, height
+
+TERRAIN_SLOT_ALBEDO :: 0;
+TERRAIN_SLOT_NORMAL :: 1;
+TERRAIN_SLOT_ROUGHNESS :: 2;
+TERRAIN_SLOT_AO :: 3;
+TERRAIN_SLOT_HEIGHT :: 4;
+
+TERRAIN_ENCODING_NONE :: 0;     // no texture: the constant
+TERRAIN_ENCODING_SRGB :: 1;     // colour: decoded to linear before filtering; alpha linear
+TERRAIN_ENCODING_LINEAR :: 2;   // data: one channel read as stored
+TERRAIN_ENCODING_NORMAL :: 3;   // tangent-space normal: two channels, 0..1 to -1..1, z rebuilt
+
+TERRAIN_COMPONENT_RGB :: 4;     // the albedo's three channels
+TERRAIN_COMPONENT_XY :: 5;      // the normal's first two (component 0, 1) or ...
+TERRAIN_COMPONENT_ZW :: 6;      // ... its last two
+
+TERRAIN_WRAP_REPEAT :: 0;
+TERRAIN_WRAP_MIRROR :: 1;
+TERRAIN_WRAP_CLAMP :: 2;
+
+TERRAIN_TILE_OK :: 0;
+TERRAIN_TILE_BAD_VERSION :: 1;
+TERRAIN_TILE_BAD_DIMENSIONS :: 2;
+TERRAIN_TILE_BAD_SPACING :: 3;
+TERRAIN_TILE_BAD_ORIGIN :: 4;
+TERRAIN_TILE_BAD_STORAGE :: 5;     // a view shorter or longer than the tile declares
+TERRAIN_TILE_BAD_HEIGHT :: 6;
+TERRAIN_TILE_BAD_HOLE :: 7;
+TERRAIN_TILE_BAD_MATERIAL :: 8;    // an unknown, unused-with-weight or repeated ID
+TERRAIN_TILE_BAD_WEIGHT :: 9;      // a sample whose weights sum to 0
+TERRAIN_TILE_BAD_BLEND :: 10;      // a drawn triangle naming more than four materials
+TERRAIN_TILE_BAD_TABLE :: 11;      // the table is not the admitted one, or is malformed
+TERRAIN_TILE_BAD_UNITS :: 12;
+TERRAIN_TILE_BAD_FRAME :: 13;      // the floating-origin conversion leaves ground.coax's range
+TERRAIN_TILE_BAD_SLOT :: 14;       // a slot whose encoding or component does not fit its meaning
+TERRAIN_TILE_BAD_VALUE :: 15;      // a nonfinite or out-of-range material constant
+
+TerrainTile :: struct {
+  version: int = TERRAIN_TILE_VERSION;
+  cells: int;
+  spacing: f32;
+  origin_x: f64; origin_z: f64;
+  height_scale: f32 = 1;
+  table: [8] u32;                  // the material table's revision this tile names
+}
+
+TerrainSlot :: struct {
+  asset: [8] u32;                  // the texture's AssetId words (aethyr/assets.coax)
+  encoding: int = TERRAIN_ENCODING_NONE;
+  component: int;                  // 0..3 one channel, TERRAIN_COMPONENT_RGB/_XY/_ZW
+  wrap: int = TERRAIN_WRAP_REPEAT;
+}
+
+TerrainMaterial :: struct {
+  id: int;
+  albedo_a: [3] f32; albedo_b: [3] f32;   // display-encoded (2.2) colours the blend runs between
+  blend_scale: [2] f32;                   // the two noise frequencies (1/m)
+  blend_weight: [2] f32;                  // their shares of the blend
+  blend_offset: [2] f32;                  // added to both coordinates before each noise
+  gain: [2] f32;                          // brightness: gain[0] + gain[1] * noise
+  gain_scale: f32; gain_offset: f32;
+  depth_darken: f32; depth_from: f32; depth_to: f32;   // under fluid: 1 - darken * smoothstep(from, to, depth)
+  roughness: f32 = 1;
+  slots: [TERRAIN_MATERIAL_SLOTS] TerrainSlot;
+}
+
+TerrainAdmission :: struct { code: int = TERRAIN_TILE_OK; at: int = -1; revision: [8] u32; }
+
+// A point on the tile: whether it has ground, whether a hole hides it, its drawn height and slope.
+TerrainTileSample :: struct { ok: bool; hole: bool; height: f32; gx: f32; gz: f32; }
+
+// A point's materials: up to four IDs (TERRAIN_TILE_NO_MATERIAL past `count`) and their weights.
+TerrainBlend :: struct { ok: bool; count: int; ids: [4] int; weights: [4] f32; }
+// book:end tile-types
+
+// ---- checks, written before the implementation
+
+#test "a tile is admitted whole with its revision, and the revision moves with any sample" #steps 100000000 {
+  tt_m: [3] TerrainMaterial; tt_test_table(tt_m[..]);
+  tt_t := tt_test_tile(tt_m[..], 2);
+  h: [9] f32; holes: [4] u8; ids: [36] u8; w: [36] u8;
+  tt_test_fill(2, h[..], holes[..], ids[..], w[..]);
+  a := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert a.code == TERRAIN_TILE_OK && a.at == -1;
+  b := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert terrain_tile_same(a.revision, b.revision);
+  h[4] = f32_from_bits(f32_bits(h[4]) + 1);
+  c := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert c.code == TERRAIN_TILE_OK && !terrain_tile_same(a.revision, c.revision);
+  h[4] = f32_from_bits(f32_bits(h[4]) - 1);
+  holes[3] = 1;
+  d := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert d.code == TERRAIN_TILE_OK && !terrain_tile_same(a.revision, d.revision);
+  holes[3] = 0; w[8] = 2;
+  e := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert !terrain_tile_same(a.revision, e.revision);
+  w[8] = 3; ids[5] = 7;
+  f := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert f.code == TERRAIN_TILE_OK && !terrain_tile_same(a.revision, f.revision);
+  ids[5] = 4;
+  // each header word is in the identity
+  for tt_which: 0..<6 {
+    tt_u := tt_t;
+    if tt_which == 0 { tt_u.origin_x = -4.000000000001; }
+    if tt_which == 1 { tt_u.origin_z = 6.5; }
+    if tt_which == 2 { tt_u.spacing = 2.5; }
+    if tt_which == 3 { tt_m[0].roughness = 0.5; tt_u.table = terrain_materials_revision(tt_m[..]); }
+    if tt_which == 4 { tt_u.origin_x = 1.0e8; }
+    if tt_which == 5 { tt_u.origin_z = -1.0e8; }
+    g := terrain_tile_admit(tt_u, tt_m[..], h[..], holes[..], ids[..], w[..]);
+    #assert g.code == TERRAIN_TILE_OK && !terrain_tile_same(a.revision, g.revision);
+    tt_m[0].roughness = 1;
+  }
+}
+
+#forall "a malformed tile refuses whole, naming the first bad sample" which: 0..<37 #steps 400000000 {
+  tt_m: [5] TerrainMaterial; tt_test_table(tt_m[..]);
+  tt_t := tt_test_tile(tt_m[..], 2);
+  h: [9] f32; holes: [4] u8; ids: [36] u8; w: [36] u8;
+  tt_test_fill(2, h[..], holes[..], ids[..], w[..]);
+  nan := 0.0f32; nan = nan / nan;
+  hc := 9; oc := 4; ic := 36; wc := 36;
+  code := 0; at := -1;
+  if which == 0 { tt_t.version = 2; code = TERRAIN_TILE_BAD_VERSION; }
+  if which == 1 { tt_t.cells = 0; code = TERRAIN_TILE_BAD_DIMENSIONS; }
+  if which == 2 { tt_t.cells = TERRAIN_TILE_MAX_CELLS + 1; code = TERRAIN_TILE_BAD_DIMENSIONS; }
+  if which == 3 { tt_t.spacing = 0.12; code = TERRAIN_TILE_BAD_SPACING; }
+  if which == 4 { tt_t.spacing = 64.5; code = TERRAIN_TILE_BAD_SPACING; }
+  if which == 5 { tt_t.spacing = nan; code = TERRAIN_TILE_BAD_SPACING; }
+  if which == 6 { tt_t.origin_x = 1.0e10; code = TERRAIN_TILE_BAD_ORIGIN; }
+  if which == 7 { tt_t.origin_z = -1.0e10; code = TERRAIN_TILE_BAD_ORIGIN; }
+  if which == 8 { tt_t.origin_x = f64(nan); code = TERRAIN_TILE_BAD_ORIGIN; }
+  if which == 9 { tt_t.height_scale = 0.01; code = TERRAIN_TILE_BAD_UNITS; }
+  if which == 10 { hc = 8; code = TERRAIN_TILE_BAD_STORAGE; }
+  if which == 11 { oc = 3; code = TERRAIN_TILE_BAD_STORAGE; }
+  if which == 12 { ic = 35; code = TERRAIN_TILE_BAD_STORAGE; }
+  if which == 13 { wc = 32; code = TERRAIN_TILE_BAD_STORAGE; }
+  if which == 14 { h[5] = nan; code = TERRAIN_TILE_BAD_HEIGHT; at = 5; }
+  if which == 15 { h[8] = 100001; code = TERRAIN_TILE_BAD_HEIGHT; at = 8; }
+  if which == 16 { h[0] = -100001; code = TERRAIN_TILE_BAD_HEIGHT; at = 0; }
+  if which == 17 { holes[2] = 2; code = TERRAIN_TILE_BAD_HOLE; at = 2; }
+  if which == 18 { ids[13] = 9; code = TERRAIN_TILE_BAD_MATERIAL; at = 3; }      // not in the table
+  if which == 19 { ids[14] = 4; w[14] = 1; code = TERRAIN_TILE_BAD_MATERIAL; at = 3; }   // repeated
+  if which == 20 { w[19] = 1; code = TERRAIN_TILE_BAD_MATERIAL; at = 4; }       // weight on an unused slot
+  if which == 21 { w[24] = 0; w[25] = 0; code = TERRAIN_TILE_BAD_WEIGHT; at = 6; }
+  if which == 22 { tt_t.table[3] += 1; code = TERRAIN_TILE_BAD_TABLE; }
+  if which == 23 { tt_m[1].id = tt_m[0].id; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_TABLE; at = 1; }
+  if which == 24 { tt_m[2].id = 255; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_TABLE; at = 2; }
+  if which == 25 {
+    // the first cell's south-east triangle, samples 0, 1 and 4, names five materials
+    ids[0] = 1; ids[1] = 4; w[0] = 1; w[1] = 1;
+    ids[4] = 7; ids[5] = 255; w[4] = 1; w[5] = 0;
+    ids[16] = 10; ids[17] = 13; w[16] = 1; w[17] = 1;
+    code = TERRAIN_TILE_BAD_BLEND; at = 0;
+  }
+  if which == 26 { tt_m[0].albedo_a[1] = nan; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_VALUE; at = 0; }
+  if which == 27 { tt_m[0].slots[TERRAIN_SLOT_ALBEDO].encoding = TERRAIN_ENCODING_LINEAR; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_SLOT; at = 0; }
+  if which == 28 { tt_m[0].slots[TERRAIN_SLOT_NORMAL] = TerrainSlot.{encoding = TERRAIN_ENCODING_NORMAL, component = 2}; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_SLOT; at = 0; }
+  if which == 29 { tt_m[0].slots[TERRAIN_SLOT_AO] = TerrainSlot.{encoding = TERRAIN_ENCODING_SRGB, component = 0}; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_SLOT; at = 0; }
+  if which == 30 { tt_m[0].slots[TERRAIN_SLOT_HEIGHT] = TerrainSlot.{encoding = TERRAIN_ENCODING_LINEAR, component = 4}; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_SLOT; at = 0; }
+  if which == 31 { tt_m[0].slots[TERRAIN_SLOT_ROUGHNESS] = TerrainSlot.{encoding = TERRAIN_ENCODING_LINEAR, component = 1, wrap = 3}; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_SLOT; at = 0; }
+  if which == 32 { tt_m[0].roughness = 1.5; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_VALUE; at = 0; }
+  if which == 33 { tt_m[0].depth_from = 2; tt_m[0].depth_to = 1; tt_t.table = terrain_materials_revision(tt_m[..]); code = TERRAIN_TILE_BAD_VALUE; at = 0; }
+  if which == 34 { holes[0] = 2; code = TERRAIN_TILE_BAD_HOLE; at = 0; }
+  if which == 35 { ids[0] = 9; code = TERRAIN_TILE_BAD_MATERIAL; at = 0; }
+  if which == 36 { ids[1] = 1; code = TERRAIN_TILE_BAD_MATERIAL; at = 0; }   // slot 1 repeats slot 0
+  q := terrain_tile_admit(tt_t, tt_m[..], h[0..<hc], holes[0..<oc], ids[0..<ic], w[0..<wc]);
+  #assert q.code == code && q.at == at;
+  for k: 0..<8 { #assert q.revision[k] == 0; }
+}
+
+#test "the table checks each slot's meaning and accepts complete well-formed slots" {
+  tt_m: [1] TerrainMaterial; tt_test_table(tt_m[..]);
+  tt_m[0].slots[TERRAIN_SLOT_ALBEDO] = TerrainSlot.{encoding = TERRAIN_ENCODING_SRGB, component = TERRAIN_COMPONENT_RGB};
+  tt_m[0].slots[TERRAIN_SLOT_NORMAL] = TerrainSlot.{encoding = TERRAIN_ENCODING_NORMAL, component = TERRAIN_COMPONENT_ZW, wrap = TERRAIN_WRAP_MIRROR};
+  tt_m[0].slots[TERRAIN_SLOT_ROUGHNESS] = TerrainSlot.{encoding = TERRAIN_ENCODING_LINEAR, component = 3, wrap = TERRAIN_WRAP_CLAMP};
+  tt_m[0].slots[TERRAIN_SLOT_AO] = TerrainSlot.{encoding = TERRAIN_ENCODING_LINEAR, component = 0};
+  tt_m[0].slots[TERRAIN_SLOT_HEIGHT] = TerrainSlot.{encoding = TERRAIN_ENCODING_LINEAR, component = 2};
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_OK;
+  tt_m[0].slots[TERRAIN_SLOT_NORMAL].component = TERRAIN_COMPONENT_XY;
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_OK;
+  tt_m[0].slots[TERRAIN_SLOT_ALBEDO].component = 0;
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_BAD_SLOT;
+  tt_m[0].slots[TERRAIN_SLOT_ALBEDO].component = TERRAIN_COMPONENT_RGB;
+  tt_m[0].slots[TERRAIN_SLOT_AO].component = 4;
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_BAD_SLOT;
+  tt_m[0].slots[TERRAIN_SLOT_AO].component = -1;
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_BAD_SLOT;
+  tt_m[0].slots[TERRAIN_SLOT_AO] = TerrainSlot.{encoding = 4};
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_BAD_SLOT;
+  tt_m[0].slots[TERRAIN_SLOT_AO] = TerrainSlot.{wrap = -1};
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_BAD_SLOT;
+  tt_m[0].slots[TERRAIN_SLOT_AO] = TerrainSlot.{encoding = TERRAIN_ENCODING_NORMAL, component = TERRAIN_COMPONENT_XY};
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_BAD_SLOT;
+  tt_m[0].slots[TERRAIN_SLOT_AO] = TerrainSlot.{};
+  // an empty slot names no texture
+  tt_m[0].slots[TERRAIN_SLOT_AO].asset[2] = 9;
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_BAD_SLOT;
+  tt_m[0].slots[TERRAIN_SLOT_AO].asset[2] = 0;
+  #assert terrain_materials_check(tt_m[..]).code == TERRAIN_TILE_OK;
+  #assert terrain_materials_check(tt_m[0..<0]).code == TERRAIN_TILE_BAD_TABLE;
+  many: [17] TerrainMaterial; tt_test_table(many[..]);
+  #assert terrain_materials_check(many[..]).code == TERRAIN_TILE_BAD_TABLE && terrain_materials_check(many[0..<16]).code == TERRAIN_TILE_OK;
+  for which: 0..<9 {
+    tt_m[0] = TerrainMaterial.{id = 1, blend_weight = [2] f32.[1, 0], gain = [2] f32.[1, 0]};
+    if which == 0 { tt_m[0].albedo_b[2] = 1.5; }
+    if which == 1 { tt_m[0].albedo_a[0] = -0.1; }
+    if which == 2 { tt_m[0].blend_scale[1] = -1; }
+    if which == 3 { tt_m[0].blend_weight[0] = 0.75; }        // shares add to 1
+    if which == 4 { tt_m[0].gain[0] = -0.5; }
+    if which == 5 { tt_m[0].gain[1] = 2.5; }
+    if which == 6 { tt_m[0].depth_darken = 1.5; }
+    if which == 7 { tt_m[0].gain_offset = 1.0e7; }
+    if which == 8 { tt_m[0].id = -1; }
+    #assert terrain_materials_check(tt_m[0..<1]).code == ifx which == 8 then TERRAIN_TILE_BAD_TABLE else TERRAIN_TILE_BAD_VALUE;
+  }
+}
+
+#test "the material table's revision covers every field" #steps 100000000 {
+  base: [2] TerrainMaterial; tt_test_table(base[..]);
+  r0 := terrain_materials_revision(base[..]);
+  for which: 0..<20 {
+    m := base;
+    if which == 0 { m[1].id = 9; }
+    if which == 1 { m[0].albedo_a[2] = 0.11; }
+    if which == 2 { m[1].albedo_b[0] = 0.41; }
+    if which == 3 { m[0].blend_scale[1] = 0.2; }
+    if which == 4 { m[0].blend_weight[0] = 0.5; m[0].blend_weight[1] = 0.5; }
+    if which == 5 { m[1].blend_offset[1] = 3; }
+    if which == 6 { m[0].gain[1] = 0.1; }
+    if which == 7 { m[1].gain_scale = 0.2; }
+    if which == 8 { m[0].gain_offset = 7; }
+    if which == 9 { m[1].depth_darken = 0.4; }
+    if which == 10 { m[0].depth_from = 0.3; }
+    if which == 11 { m[1].depth_to = 2; }
+    if which == 12 { m[0].roughness = 0.25; }
+    if which == 13 { m[0].slots[TERRAIN_SLOT_ALBEDO].asset[7] = 1; }
+    if which == 14 { m[1].slots[TERRAIN_SLOT_HEIGHT].encoding = 2; }
+    if which == 15 { m[0].slots[TERRAIN_SLOT_AO].component = 1; }
+    if which == 16 { m[1].slots[TERRAIN_SLOT_NORMAL].wrap = 2; }
+    if which == 17 { m[0].albedo_a[0] = 0.21; }
+    if which == 18 { m[0].blend_offset[0] = 1; }
+    if which == 19 { m[1].gain[0] = 0.9; }
+    #assert !terrain_tile_same(r0, terrain_materials_revision(m[..]));
+    #assert !terrain_tile_same(terrain_materials_revision(m[0..<1]), terrain_materials_revision(m[..]));
+  }
+}
+
+#forall "the streamed digest equals the one-shot SHA-256 at every padding boundary" n: 0..<140 {
+  bytes: [140] u8;
+  for k: 0..<n { bytes[k] = cast,trunc(u8) (k * 37 + 11); }
+  d := [1] TerrainTileDigest.[terrain_tile_digest()];
+  terrain_tile_digest_bytes(d[..], bytes[0..<n]);
+  got := terrain_tile_digest_end(d[..]);
+  want := S_hash(cast(string) bytes[0..<n]);
+  for k: 0..<8 { #assert got[k] == want.words[k]; }
+}
+
+#test "the streamed digest takes words big-endian, as their bytes" {
+  d := [1] TerrainTileDigest.[terrain_tile_digest()];
+  terrain_tile_digest_u32(d[..], 0x61626364);
+  terrain_tile_digest_u64(d[..], 0x6566676869707172);
+  got := terrain_tile_digest_end(d[..]);
+  want := S_hash("abcdefghipqr");
+  for k: 0..<8 { #assert got[k] == want.words[k]; }
+}
+
+#test "revisions are the same only when every word is" {
+  a := [8] u32.[1, 2, 3, 4, 5, 6, 7, 8];
+  #assert terrain_tile_same(a, a);
+  for k: 0..<8 { b := a; b[k] += 1; #assert !terrain_tile_same(a, b) && !terrain_tile_same(b, a); }
+}
+
+#test "a tile's revision is the SHA-256 of its written canonical encoding" #steps 100000000 {
+  tt_m: [2] TerrainMaterial; tt_test_table(tt_m[..]);
+  tt_t := TerrainTile.{cells = 1, spacing = 1.5, origin_x = -12.25, origin_z = 1.0e8};
+  tt_t.table = terrain_materials_revision(tt_m[..]);
+  h := [4] f32.[0.5, -1, 2.25, 3];
+  holes := [1] u8.[1];
+  ids := [16] u8.[1, 4, 255, 255,  1, 255, 255, 255,  4, 255, 255, 255,  4, 1, 255, 255];
+  w := [16] u8.[2, 9, 0, 0,  1, 0, 0, 0,  7, 0, 0, 0,  3, 5, 0, 0];
+  a := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert a.code == TERRAIN_TILE_OK;
+  // the encoding, written out byte for byte: "ATT1", version, cells, spacing, origin x and z,
+  // height scale, the table's revision, then heights, holes, IDs and weights
+  bytes: [200] u8; at := 0;
+  at = tto_put32(bytes[..], at, 0x41545431);
+  at = tto_put64(bytes[..], at, 1); at = tto_put64(bytes[..], at, 1);
+  at = tto_put32(bytes[..], at, f32_bits(1.5));
+  at = tto_put64(bytes[..], at, f64_bits(-12.25)); at = tto_put64(bytes[..], at, f64_bits(1.0e8));
+  at = tto_put32(bytes[..], at, f32_bits(1));
+  for k: 0..<8 { at = tto_put32(bytes[..], at, tt_t.table[k]); }
+  for k: 0..<4 { at = tto_put32(bytes[..], at, f32_bits(h[k])); }
+  bytes[at] = 1; at += 1;
+  for k: 0..<16 { bytes[at] = ids[k]; at += 1; }
+  for k: 0..<16 { bytes[at] = w[k]; at += 1; }
+  want := S_hash(cast(string) bytes[0..<at]);
+  for k: 0..<8 { #assert a.revision[k] == want.words[k]; }
+  // and the table's: "ATM1", the count, then each entry's fields in order
+  one: [1] TerrainMaterial; one[0] = TerrainMaterial.{id = 3, albedo_a = [3] f32.[0.1, 0.2, 0.3], albedo_b = [3] f32.[0.4, 0.5, 0.6],
+    blend_scale = [2] f32.[1, 2], blend_weight = [2] f32.[0.25, 0.75], blend_offset = [2] f32.[5, 6], gain = [2] f32.[0.9, 0.1],
+    gain_scale = 7, gain_offset = 8, depth_darken = 0.5, depth_from = 1, depth_to = 2, roughness = 0.75};
+  one[0].slots[2] = TerrainSlot.{encoding = 2, component = 3, wrap = 1};
+  one[0].slots[2].asset[0] = 0xdeadbeef; one[0].slots[2].asset[7] = 42;
+  tb: [400] u8; tn := 0;
+  tn = tto_put32(tb[..], tn, 0x41544d31); tn = tto_put64(tb[..], tn, 1); tn = tto_put64(tb[..], tn, 3);
+  for c: 0..<3 { tn = tto_put32(tb[..], tn, f32_bits(one[0].albedo_a[c])); tn = tto_put32(tb[..], tn, f32_bits(one[0].albedo_b[c])); }
+  for c: 0..<2 {
+    tn = tto_put32(tb[..], tn, f32_bits(one[0].blend_scale[c])); tn = tto_put32(tb[..], tn, f32_bits(one[0].blend_weight[c]));
+    tn = tto_put32(tb[..], tn, f32_bits(one[0].blend_offset[c])); tn = tto_put32(tb[..], tn, f32_bits(one[0].gain[c]));
+  }
+  vals := [6] f32.[7, 8, 0.5, 1, 2, 0.75];
+  for c: 0..<6 { tn = tto_put32(tb[..], tn, f32_bits(vals[c])); }
+  for sl: 0..<5 {
+    for k: 0..<8 { tn = tto_put32(tb[..], tn, one[0].slots[sl].asset[k]); }
+    tn = tto_put64(tb[..], tn, cast(u64) one[0].slots[sl].encoding); tn = tto_put64(tb[..], tn, cast(u64) one[0].slots[sl].component);
+    tn = tto_put64(tb[..], tn, cast(u64) one[0].slots[sl].wrap);
+  }
+  tw := S_hash(cast(string) tb[0..<tn]);
+  tr := terrain_materials_revision(one[..]);
+  for k: 0..<8 { #assert tr[k] == tw.words[k]; }
+  // a conversion's identity is the scaled heights'
+  src := [4] f32.[50, -100, 225, 300]; out: [4] f32;
+  nosource: [8] u32;
+  r := terrain_tile_convert(tt_t, tt_m[..], nosource, TERRAIN_UNIT_CENTIMETRE, 1, src[..], out[..], holes[..], ids[..], w[..]);
+  #assert r.code == TERRAIN_TILE_OK && terrain_tile_same(r.output, a.revision);
+}
+
+#test "hand-worked: height, slope and holes on both triangles of one cell" {
+  tt_m: [3] TerrainMaterial; tt_test_table(tt_m[..]);
+  tt_t := TerrainTile.{cells = 1, spacing = 2, origin_x = 10, origin_z = 20};
+  tt_t.table = terrain_materials_revision(tt_m[..]);
+  h := [4] f32.[0, 2, 4, 8];   // (0,0) (1,0) (0,1) (1,1)
+  holes := [1] u8.[0];
+  g := terrain_tile_ground(tt_t, 0, 0);
+  // the south-east triangle (fx >= fz): 0 + 2 fx + 6 fz over x 10..12, z 20..22
+  a := terrain_tile_sample(g, h[..], holes[..], 11.5, 20.5);
+  #assert a.ok && !a.hole && a.height == 3 && a.gx == 1 && a.gz == 3;
+  // the north-west one: 0 + 4 fx + 4 fz
+  b := terrain_tile_sample(g, h[..], holes[..], 10.5, 21.5);
+  #assert b.ok && b.height == 4 && b.gx == 2 && b.gz == 2;
+  // a far frame origin moves the tile, not the answer
+  far := TerrainTile.{cells = 1, spacing = 2, origin_x = 10000010, origin_z = -9999980};
+  gf := terrain_tile_ground(far, 10000000, -10000000);
+  c := terrain_tile_sample(gf, h[..], holes[..], 11.5, 20.5);
+  #assert c.ok && c.height == 3 && gf.west == 10 && gf.south == 20;
+  holes[0] = 1;
+  d := terrain_tile_sample(g, h[..], holes[..], 11.5, 20.5);
+  #assert !d.ok && d.hole && d.height == 0 && d.gx == 0 && d.gz == 0;
+  e := terrain_tile_sample(g, h[0..<3], holes[..], 11.5, 20.5);
+  #assert !e.ok && !e.hole;
+  f := terrain_tile_sample(g, h[..], holes[0..<0], 11.5, 20.5);
+  #assert !f.ok && !f.hole;
+}
+
+#test "a hole is its own cell's: a shared vertex reads from the cell ground.coax selects" {
+  h := [9] f32.[0, 1, 2, 3, 4, 5, 6, 7, 8];
+  holes := [4] u8.[1, 0, 0, 0];   // the south-west cell
+  g := Ground.{n = 2, cell = 1, west = 0, south = 0};
+  #assert terrain_tile_sample(g, h[..], holes[..], 0.5, 0.5).hole;
+  // x = 1 belongs to the second column (ground.coax gives an interior vertex to the next cell)
+  q := terrain_tile_sample(g, h[..], holes[..], 1, 0.5);
+  #assert q.ok && !q.hole && q.height == 2.5;
+  // past the west edge the clamped sample is the hole's
+  #assert terrain_tile_sample(g, h[..], holes[..], -3, 0.25).hole;
+  #assert terrain_tile_sample(g, h[..], holes[..], 1.5, 1.5).ok;
+}
+
+#test "hand-worked: four-way blending inside one triangle, and the shared corner" {
+  // corners (0,0) A3:B1, (1,0) C1, (0,1) D1, (1,1) B1:C1 -- the south-east triangle names A, B, C;
+  // the north-west one A, B, C, D
+  ids := [16] u8.[1, 4, 255, 255,  7, 255, 255, 255,  10, 255, 255, 255,  4, 7, 255, 255];
+  w := [16] u8.[3, 1, 0, 0,  1, 0, 0, 0,  1, 0, 0, 0,  1, 1, 0, 0];
+  g := Ground.{n = 1, cell = 2, west = 0, south = 0};
+  // (1.5, 0.5): fx .75, fz .25 -> corners 00: .25, 10: .5, 11: .25
+  q := terrain_tile_blend(g, ids[..], w[..], 1.5, 0.5);
+  #assert q.ok && q.count == 3;
+  #assert q.ids[0] == 1 && q.ids[1] == 4 && q.ids[2] == 7 && q.ids[3] == TERRAIN_TILE_NO_MATERIAL;
+  #assert q.weights[0] == 0.1875 && q.weights[1] == 0.1875 && q.weights[2] == 0.625 && q.weights[3] == 0;
+  // (0.5, 1.5): fx .25, fz .75 -> corners 00: .25, 01: .5, 11: .25
+  r := terrain_tile_blend(g, ids[..], w[..], 0.5, 1.5);
+  #assert r.ok && r.count == 4 && r.ids[2] == 10 && r.weights[2] == 0.5 && r.ids[3] == 7 && r.weights[3] == 0.125 && r.weights[0] == 0.1875 && r.weights[1] == 0.1875;
+  // a vertex takes its own weights; its triangle's other corners list their IDs at weight 0
+  s := terrain_tile_blend(g, ids[..], w[..], 2, 2);
+  #assert s.ok && s.count == 3 && s.ids[0] == 1 && s.ids[1] == 4 && s.ids[2] == 7 && s.weights[0] == 0 && s.weights[1] == 0.5 && s.weights[2] == 0.5;
+  // on the diagonal the south-east triangle is the one: corner (0,1)'s material is not listed
+  d := terrain_tile_blend(g, ids[..], w[..], 1, 1);
+  #assert d.ok && d.count == 3 && d.ids[2] == 7 && d.weights[0] == 0.375 && d.weights[1] == 0.125 + 0.25 && d.weights[2] == 0.25;
+  #assert terrain_tile_blend(g, ids[0..<15], w[..], 1, 1).ok == false;
+  #assert terrain_tile_blend(g, ids[..], w[0..<15], 1, 1).ok == false;
+  #assert terrain_tile_blend(g, ids[..], w[..], 1, 1).ok && terrain_tile_blend(Ground.{n = 0}, ids[..], w[..], 1, 1).ok == false;
+  nan := 0.0f32; nan = nan / nan;
+  #assert !terrain_tile_blend(g, ids[..], w[..], nan, 1).ok && !terrain_tile_blend(g, ids[..], w[..], 1, nan).ok;
+  // one ID twice in a corner (never admitted) sums into one influence
+  twice := ids; twice[1] = 1;
+  q2 := terrain_tile_blend(g, twice[..], w[..], 1.5, 0.5);
+  #assert q2.ok && q2.count == 3 && q2.ids[0] == 1 && q2.ids[1] == 7 && q2.ids[2] == 4 && q2.weights[0] == 0.25 && q2.weights[2] == 0.125;
+  // a corner whose weights are all zero, and a triangle naming five materials, are not admitted tiles
+  zero := w; zero[0] = 0; zero[1] = 0;
+  #assert !terrain_tile_blend(g, ids[..], zero[..], 1.5, 0.5).ok;
+  five := ids; fw := w;
+  five[2] = 13; fw[2] = 1; five[13] = 10; five[14] = 16; fw[14] = 1; five[12] = 22;
+  #assert !terrain_tile_blend(g, five[..], fw[..], 1.5, 0.5).ok;
+  // one material: the rest are unused
+  solo := [16] u8.[3, 255, 255, 255,  3, 255, 255, 255,  3, 255, 255, 255,  3, 255, 255, 255];
+  sw := [16] u8.[9, 0, 0, 0,  9, 0, 0, 0,  9, 0, 0, 0,  9, 0, 0, 0];
+  o := terrain_tile_blend(g, solo[..], sw[..], 0.5, 1.5);
+  #assert o.ok && o.count == 1 && o.ids[0] == 3 && o.weights[0] == 1;
+  for k: 1..<4 { #assert o.ids[k] == TERRAIN_TILE_NO_MATERIAL && o.weights[k] == 0; }
+}
+
+#test "admission takes a triangle naming exactly four materials, and names the cell of one naming five" #steps 100000000 {
+  tt_m: [5] TerrainMaterial; tt_test_table(tt_m[..]);   // IDs 1, 4, 7, 10, 13
+  tt_t := tt_test_tile(tt_m[..], 3);
+  h: [16] f32; holes: [9] u8; ids: [64] u8; w: [64] u8;
+  tt_test_fill(3, h[..], holes[..], ids[..], w[..]);
+  // cell (1, 1): samples 5, 6, 9, 10. Its south-east triangle (5, 6, 10) names 1, 4, 7 and 10; the
+  // first ID repeats across corners
+  ids[24] = 1; ids[25] = 7; w[24] = 1; w[25] = 1;
+  ids[40] = 10; ids[41] = 1; w[40] = 2; w[41] = 2;
+  a := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert a.code == TERRAIN_TILE_OK;
+  // a weightless fifth influence doesn't count
+  ids[42] = 13; w[42] = 0;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]).code == TERRAIN_TILE_OK;
+  w[42] = 1;
+  b := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert b.code == TERRAIN_TILE_BAD_BLEND && b.at == 4;
+  // the same five in the north-west triangle (5, 9, 10) of cell (1, 1)
+  w[42] = 0; ids[24] = 1; ids[25] = 4; w[25] = 1;
+  ids[36] = 13; ids[37] = 255; w[36] = 1; w[37] = 0;
+  ids[40] = 10; ids[41] = 7; ids[42] = 255;
+  c := terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]);
+  #assert c.code == TERRAIN_TILE_BAD_BLEND && c.at == 4;
+}
+
+#test "admission checks each view against a three-cell tile and takes heights at their limits" #steps 100000000 {
+  tt_m: [3] TerrainMaterial; tt_test_table(tt_m[..]);
+  tt_t := tt_test_tile(tt_m[..], 3);
+  h: [16] f32; holes: [9] u8; ids: [64] u8; w: [64] u8;
+  tt_test_fill(3, h[..], holes[..], ids[..], w[..]);
+  h[3] = 100000; h[12] = -100000;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[..]).code == TERRAIN_TILE_OK;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[0..<15], holes[..], ids[..], w[..]).code == TERRAIN_TILE_BAD_STORAGE;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[..], holes[0..<6], ids[..], w[..]).code == TERRAIN_TILE_BAD_STORAGE;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[0..<63], w[..]).code == TERRAIN_TILE_BAD_STORAGE;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], w[0..<60]).code == TERRAIN_TILE_BAD_STORAGE;
+  long: [70] u8;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], long[..], w[..]).code == TERRAIN_TILE_BAD_STORAGE;
+  #assert terrain_tile_admit(tt_t, tt_m[..], h[..], holes[..], ids[..], long[..]).code == TERRAIN_TILE_BAD_STORAGE;
+  // a material table refused before the tile is looked at
+  tt_bad := tt_m; tt_bad[1].roughness = 2;
+  q := terrain_tile_admit(tt_t, tt_bad[..], h[..], holes[..], ids[..], w[..]);
+  #assert q.code == TERRAIN_TILE_BAD_VALUE && q.at == 1;
+}
+
+#test "the header admits each bound exactly and refuses one step past it" {
+  t := TerrainTile.{cells = 512, spacing = 0.125, origin_x = 1.0e9, origin_z = -1.0e9};
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_OK;
+  t.cells = 1; t.spacing = 64; t.origin_x = -1.0e9; t.origin_z = 1.0e9;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_OK;
+  t.cells = 513;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_DIMENSIONS;
+  t.cells = 0;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_DIMENSIONS;
+  t.cells = 1; t.spacing = f32_from_bits(f32_bits(0.125) - 1);
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_SPACING;
+  t.spacing = f32_from_bits(f32_bits(64) + 1);
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_SPACING;
+  t.spacing = 1; t.origin_x = 1000000000.0001;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_ORIGIN;
+  t.origin_x = -1000000000.0001;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_ORIGIN;
+  t.origin_x = 0; t.origin_z = 1000000000.0001;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_ORIGIN;
+  t.origin_z = -1000000000.0001;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_ORIGIN;
+  t.origin_z = 0; t.version = 0;
+  #assert terrain_tile_header_ok(t) == TERRAIN_TILE_BAD_VERSION;
+}
+
+#forall "each material constant is admitted at its bounds and refused one step past them" field: 0..<17, edge: 0..<4 #steps 100000000 {
+  // the field's low and high bounds; edge 0 and 1 admit them, 2 and 3 step past
+  lo := [17] f32.[0, 0, 0, 0, 0, 0, 0, 0, -1000000, -1000000, 0, 0, 0, -1000000, 0, 0, 0];
+  hi := [17] f32.[1, 1, 1, 1, 1, 1, 1000, 1000, 1000000, 1000000, 2, 2, 1000, 1000000, 1, 1000, 1];
+  m := TerrainMaterial.{id = 0, blend_weight = [2] f32.[1, 0], gain = [2] f32.[1, 0], depth_to = 1000};
+  v := ifx edge == 0 then lo[field] else ifx edge == 1 then hi[field] else ifx edge == 2 then f32_from_bits(f32_bits(lo[field]) + ifx lo[field] < 0 then 1 else 0) else hi[field] * 1.0001;
+  if edge == 2 { v = ifx lo[field] == 0 then -0.0001 else lo[field] * 1.0001; }
+  if field < 3 { m.albedo_a[field] = v; }
+  else if field < 6 { m.albedo_b[field - 3] = v; }
+  else if field < 8 { m.blend_scale[field - 6] = v; }
+  else if field < 10 { m.blend_offset[field - 8] = v; }
+  else if field < 12 { m.gain[field - 10] = v; }
+  else if field == 12 { m.gain_scale = v; }
+  else if field == 13 { m.gain_offset = v; }
+  else if field == 14 { m.depth_darken = v; }
+  else if field == 15 { m.depth_to = v; }
+  else { m.roughness = v; }
+  one := [1] TerrainMaterial.[m];
+  #assert (terrain_materials_check(one[..]).code == TERRAIN_TILE_OK) == (edge < 2);
+}
+
+#test "blend shares add to exactly one, and depths run in order from zero" {
+  m := TerrainMaterial.{id = 0, blend_weight = [2] f32.[0.25, 0.75], gain = [2] f32.[1, 0]};
+  one := [1] TerrainMaterial.[m];
+  #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_OK;
+  one[0].blend_weight = [2] f32.[1, -0.0001];
+  #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_BAD_VALUE;
+  one[0].blend_weight = [2] f32.[1.0001, 0];
+  #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_BAD_VALUE;
+  one[0].blend_weight = [2] f32.[0.5, 0.5]; one[0].depth_from = 3; one[0].depth_to = 3;
+  #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_OK;
+  one[0].depth_from = -0.0001; one[0].depth_to = 3;
+  #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_BAD_VALUE;
+  one[0].depth_from = 0; one[0].depth_to = 1000;
+  #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_OK;
+  one[0].id = 254;
+  #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_OK;
+  for k: 0..<8 {
+    one[0].slots[TERRAIN_SLOT_HEIGHT].asset[k] = 1;
+    #assert terrain_materials_check(one[..]).code == TERRAIN_TILE_BAD_SLOT;
+    one[0].slots[TERRAIN_SLOT_HEIGHT].asset[k] = 0;
+  }
+}
+
+#forall "sampling and blending equal the independent f64 raster oracle" k: 0..<64 #steps 100000000 {
+  terrain_tile_oracle_case(k);
+}
+
+#test "split tiles agree on their shared edges and sample as the whole" {
+  // one 4-cell field, cut into four 2-cell tiles that repeat their shared edges (tile t's samples
+  // at t * 9, its influences at t * 36)
+  n := 4;
+  whole: [25] f32; wids: [100] u8; ww: [100] u8;
+  for k: 0..<25 {
+    whole[k] = f32((k * 7) % 11) * 0.25 - 1;
+    wids[k * 4] = cast(u8) (1 + k % 2); wids[k * 4 + 1] = 255; wids[k * 4 + 2] = 255; wids[k * 4 + 3] = 255;
+    ww[k * 4] = 200; ww[k * 4 + 1] = 0; ww[k * 4 + 2] = 0; ww[k * 4 + 3] = 0;
+  }
+  ph: [36] f32; pid: [144] u8; pw: [144] u8;
+  tiles: [4] TerrainTile;
+  for t: 0..<4 {
+    ti := t % 2; tj := t / 2;
+    tiles[t] = TerrainTile.{cells = 2, spacing = 1.5, origin_x = -3 + f64(ti) * 3, origin_z = 4 + f64(tj) * 3};
+    for j: 0..<3 { for i: 0..<3 {
+      src := (tj * 2 + j) * (n + 1) + ti * 2 + i;
+      ph[t * 9 + j * 3 + i] = whole[src];
+      for c: 0..<4 { pid[t * 36 + (j * 3 + i) * 4 + c] = wids[src * 4 + c]; pw[t * 36 + (j * 3 + i) * 4 + c] = ww[src * 4 + c]; }
+    } }
+  }
+  #assert terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[1], ph[9..<18], pid[36..<72], pw[36..<72]);
+  #assert terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[2], ph[18..<27], pid[72..<108], pw[72..<108]);
+  #assert terrain_tile_edges_agree(tiles[2], ph[18..<27], pid[72..<108], pw[72..<108], tiles[3], ph[27..<36], pid[108..<144], pw[108..<144]);
+  #assert terrain_tile_edges_agree(tiles[1], ph[9..<18], pid[36..<72], pw[36..<72], tiles[3], ph[27..<36], pid[108..<144], pw[108..<144]);
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[3], ph[27..<36], pid[108..<144], pw[108..<144]);
+  #assert !terrain_tile_edges_agree(tiles[1], ph[9..<18], pid[36..<72], pw[36..<72], tiles[0], ph[0..<9], pid[0..<36], pw[0..<36]);
+  gw := Ground.{n = 4, cell = 1.5, west = -3, south = 4};
+  noholes: [16] u8;
+  for j: 0..<9 { for i: 0..<9 {
+    x := -3 + f32(i) * 0.75; z := 4 + f32(j) * 0.75;
+    t := (ifx i >= 4 then 1 else 0) + (ifx j >= 4 then 2 else 0);
+    gt := terrain_tile_ground(tiles[t], 0, 0);
+    a := terrain_tile_sample(gw, whole[..], noholes[..], x, z);
+    b := terrain_tile_sample(gt, ph[t * 9..<t * 9 + 9], noholes[0..<4], x, z);
+    #assert a.ok && b.ok && f32_bits(a.height) == f32_bits(b.height) && f32_bits(a.gx) == f32_bits(b.gx) && f32_bits(a.gz) == f32_bits(b.gz);
+    ba := terrain_tile_blend(gw, wids[..], ww[..], x, z); bb := terrain_tile_blend(gt, pid[t * 36..<t * 36 + 36], pw[t * 36..<t * 36 + 36], x, z);
+    #assert ba.ok && bb.ok && ba.count == bb.count;
+    for c: 0..<4 { #assert ba.ids[c] == bb.ids[c] && f32_bits(ba.weights[c]) == f32_bits(bb.weights[c]); }
+  } }
+  // a changed edge sample, an edge material, a second edge material, a spacing, a gap or a size breaks agreement
+  for which: 0..<7 {
+    t1 := tiles[1];
+    h1: [9] f32; i1: [36] u8; w1: [36] u8;
+    for k: 0..<9 { h1[k] = ph[9 + k]; }
+    for k: 0..<36 { i1[k] = pid[36 + k]; w1[k] = pw[36 + k]; }
+    if which == 0 { h1[3] += 0.5; }
+    if which == 1 { i1[0] = 9; }
+    if which == 2 { i1[25] = 3; w1[25] = 100; }
+    if which == 3 { t1.spacing = 1.25; }
+    if which == 4 { t1.origin_x += 0.5; }
+    if which == 5 { t1.cells = 3; }
+    if which == 6 { t1.origin_z += 0.5; }
+    #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], t1, h1[..], i1[..], w1[..]);
+  }
+  // a's extra material on the edge, and equal normalized weights whatever their raw scale
+  a2: [36] u8; aw2: [36] u8;
+  for k: 0..<36 { a2[k] = pid[k]; aw2[k] = pw[k]; }
+  a2[2 * 4 + 1] = 5; aw2[2 * 4 + 1] = 7;   // sample 2 is on tile 0's east edge
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], a2[..], aw2[..], tiles[1], ph[9..<18], pid[36..<72], pw[36..<72]);
+  w2: [36] u8;
+  for k: 0..<36 { w2[k] = pw[36 + k]; }
+  for k: 0..<9 { w2[k * 4] = 100; }
+  #assert terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[1], ph[9..<18], pid[36..<72], w2[..]);
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<8], pid[0..<36], pw[0..<36], tiles[1], ph[9..<18], pid[36..<72], pw[36..<72]);
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<35], pw[0..<36], tiles[1], ph[9..<18], pid[36..<72], pw[36..<72]);
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[1], ph[9..<18], pid[36..<72], pw[36..<71]);
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<35], tiles[1], ph[9..<18], pid[36..<72], pw[36..<72]);
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[1], ph[9..<17], pid[36..<72], pw[36..<72]);
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[1], ph[9..<18], pid[36..<71], pw[36..<72]);
+  // a matching ID at a different share, and a share matched by a different ID, both disagree
+  s1: [36] u8; sw1: [36] u8;
+  for k: 0..<36 { s1[k] = pid[36 + k]; sw1[k] = pw[36 + k]; }
+  s1[1] = 9; sw1[1] = 200;   // sample 0 of tile 1: two materials where tile 0 has one
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], tiles[1], ph[9..<18], s1[..], sw1[..]);
+  a3: [36] u8; aw3: [36] u8;
+  for k: 0..<36 { a3[k] = pid[k]; aw3[k] = pw[k]; }
+  a3[3 * 4 + 0] = 99;   // sample 3 is not on the east edge: no effect
+  #assert terrain_tile_edges_agree(tiles[0], ph[0..<9], a3[..], aw3[..], tiles[1], ph[9..<18], pid[36..<72], pw[36..<72]);
+  a3[8 * 4 + 0] = 99;   // sample 8 is: its ID differs
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], a3[..], aw3[..], tiles[1], ph[9..<18], pid[36..<72], pw[36..<72]);
+  a3[8 * 4 + 0] = pid[32]; a3[8 * 4 + 2] = 77; aw3[8 * 4 + 2] = 200; s1[6 * 4 + 1] = 77; sw1[6 * 4 + 1] = 200;
+  s1[1] = 255; sw1[1] = 0;
+  #assert terrain_tile_edges_agree(tiles[0], ph[0..<9], a3[..], aw3[..], tiles[1], ph[9..<18], s1[..], sw1[..]);
+  sw1[6 * 4 + 1] = 100;
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], a3[..], aw3[..], tiles[1], ph[9..<18], s1[..], sw1[..]);
+  // edge samples built by hand: tile 0's sample 8 against tile 1's sample 6 (7 follows it)
+  for which: 0..<4 {
+    xa: [36] u8; xw: [36] u8; ya: [36] u8; yw: [36] u8;
+    for k: 0..<36 { xa[k] = pid[k]; xw[k] = pw[k]; ya[k] = pid[36 + k]; yw[k] = pw[36 + k]; }
+    want := false;
+    if which == 0 {
+      // a's slot 0 unused and b's slot 0 an extra material
+      xa[32] = 255; xw[32] = 0; xa[33] = 40; xw[33] = 100;
+      ya[24] = 41; yw[24] = 100; ya[25] = 40; yw[25] = 100;
+    }
+    if which == 1 {
+      // the same shares, a different second material, all at weight 1
+      xa[32] = 40; xw[32] = 1; xa[34] = 77; xw[34] = 1;
+      ya[24] = 40; yw[24] = 1; ya[25] = 78; yw[25] = 1;
+    }
+    if which == 2 {
+      // a's material only in the sample after b's
+      xa[32] = 41; xw[32] = 200;
+      ya[24] = 40; yw[24] = 200; ya[28] = 41; yw[28] = 200;
+    }
+    if which == 3 {
+      xa[32] = 40; xw[32] = 1; xa[34] = 77; xw[34] = 1;
+      ya[24] = 77; yw[24] = 3; ya[25] = 40; yw[25] = 3;
+      want = true;
+    }
+    #assert terrain_tile_edges_agree(tiles[0], ph[0..<9], xa[..], xw[..], tiles[1], ph[9..<18], ya[..], yw[..]) == want;
+  }
+  // matching edges at a gap: north or east of a, but not touching
+  t2 := tiles[2]; t2.origin_z += 0.5;
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], t2, ph[18..<27], pid[72..<108], pw[72..<108]);
+  t1 := tiles[1]; t1.origin_x += 0.5;
+  #assert !terrain_tile_edges_agree(tiles[0], ph[0..<9], pid[0..<36], pw[0..<36], t1, ph[9..<18], pid[36..<72], pw[36..<72]);
+}
+
+#forall "a stitched LOD edge lies on its coarser neighbour's edge, with no crack" level: 1..<3, side: 0..<4 {
+  n := 8;
+  h: [81] f32;
+  for k: 0..<81 { h[k] = f32((k * 13) % 17) * 0.375 - 2; }
+  s := 1 << level;
+  for e: 0..<n + 1 {
+    // the vertex e along this side, its coarser neighbour's two vertices round it
+    v := terrain_tile_edge_index(n, side, e);
+    lo := (e / s) * s; hi := lo + ifx e % s == 0 then 0 else s;
+    a := h[terrain_tile_edge_index(n, side, lo)]; b := h[terrain_tile_edge_index(n, side, hi)];
+    want := f64(a) + (f64(b) - f64(a)) * f64(e - lo) / f64(s);
+    got := terrain_tile_stitched(h[..], n, side, level, e);
+    #assert abs(f64(got) - want) <= 0.000001;
+    if e % s == 0 { #assert f32_bits(got) == f32_bits(h[v]); }
+  }
+  // the unstitched surface would crack: an odd vertex off the coarse line
+  #assert terrain_tile_stitched(h[..], n, side, 0, 1) == h[terrain_tile_edge_index(n, side, 1)];
+  #assert terrain_tile_stitched(h[..], n, side, level, n + 1) == 0 && terrain_tile_stitched(h[..], n, side, level, -1) == 0;
+  #assert terrain_tile_stitched(h[..], 6, side, 3, 1) == 0;   // 6 cells don't divide into eights
+  #assert terrain_tile_stitched(h[..], n, side, 3, 1) == 0 && terrain_tile_stitched(h[..], n, side, -1, 1) == 0;
+  #assert terrain_tile_stitched(h[..], n, side, 4, 1) == 0;   // past the supported levels
+  #assert terrain_tile_stitched(h[0..<80], n, side, 1, 1) == 0;
+}
+
+#test "edge indices walk each side from its first corner" {
+  #assert terrain_tile_edge_index(2, 0, 0) == 0 && terrain_tile_edge_index(2, 0, 2) == 2;   // south, west to east
+  #assert terrain_tile_edge_index(2, 1, 0) == 2 && terrain_tile_edge_index(2, 1, 2) == 8;   // east, south to north
+  #assert terrain_tile_edge_index(2, 2, 0) == 6 && terrain_tile_edge_index(2, 2, 1) == 7;   // north, west to east
+  #assert terrain_tile_edge_index(2, 3, 1) == 3 && terrain_tile_edge_index(2, 3, 2) == 6;   // west, south to north
+  #assert terrain_tile_edge_index(2, 4, 0) == -1;
+}
+
+#test "the floating origin converts once, in f64, and refuses frames past ground.coax's range" {
+  t := TerrainTile.{cells = 4, spacing = 0.5, origin_x = 123456789.25, origin_z = -987654321.5};
+  g := terrain_tile_ground(t, 123456700, -987654300);
+  #assert g.n == 4 && g.rows == 0 && g.cell == 0.5 && g.west == 89.25 && g.south == -21.5;
+  #assert terrain_tile_frame_ok(t, 123456700, -987654300);
+  #assert !terrain_tile_frame_ok(t, 0, -987654300) && !terrain_tile_frame_ok(t, 123456700, 0);
+  nan := 0.0; nan = nan / nan;
+  #assert !terrain_tile_frame_ok(t, nan, 0) && !terrain_tile_frame_ok(t, 123456700, nan);
+  #assert terrain_tile_ground(t, 0, 0).n == 0;
+  #assert terrain_tile_frame_ok(TerrainTile.{cells = 1, spacing = 1, origin_x = 999998, origin_z = -999999}, 0, 0);
+  #assert !terrain_tile_frame_ok(TerrainTile.{cells = 1, spacing = 1, origin_x = 999999, origin_z = 0}, 0, 0);
+  #assert !terrain_tile_frame_ok(TerrainTile.{cells = 1, spacing = 1, origin_x = 0, origin_z = 999999}, 0, 0);
+  #assert !terrain_tile_frame_ok(TerrainTile.{cells = 1, spacing = 1, origin_x = -1000000, origin_z = 0}, 0, 0);
+  #assert !terrain_tile_frame_ok(TerrainTile.{cells = 1, spacing = 1, origin_x = 0, origin_z = -1000000}, 0, 0);
+}
+
+#test "a conversion records its source, units, rescale, converter, counts and output" {
+  tt_m: [3] TerrainMaterial; tt_test_table(tt_m[..]);
+  tt_t := tt_test_tile(tt_m[..], 2);
+  src: [9] f32; holes: [4] u8; ids: [36] u8; w: [36] u8; out: [9] f32;
+  tt_test_fill(2, src[..], holes[..], ids[..], w[..]);
+  for k: 0..<9 { src[k] = f32(k) * 100 + 50; }
+  holes[0] = 1; holes[3] = 1;
+  source := [8] u32.[1, 2, 3, 4, 5, 6, 7, 8];
+  r := terrain_tile_convert(tt_t, tt_m[..], source, TERRAIN_UNIT_CENTIMETRE, 3, src[..], out[..], holes[..], ids[..], w[..]);
+  #assert r.code == TERRAIN_TILE_OK && r.rescale == 0.01 && r.converter == 3 && r.units == TERRAIN_UNIT_CENTIMETRE;
+  #assert r.samples == 9 && r.cells == 4 && r.holes == 2 && r.materials == 3 && r.dependencies == 1;
+  for k: 0..<9 { #assert out[k] == f32(k) + 0.5; }
+  for k: 0..<8 { #assert r.source[k] == source[k] && r.table[k] == tt_t.table[k]; }
+  a := terrain_tile_admit(tt_t, tt_m[..], out[..], holes[..], ids[..], w[..]);
+  #assert terrain_tile_same(a.revision, r.output);
+  m := terrain_tile_convert(tt_t, tt_m[..], source, TERRAIN_UNIT_METRE, 1, src[..], out[..], holes[..], ids[..], w[..]);
+  #assert m.code == TERRAIN_TILE_OK && m.rescale == 1 && out[8] == 850;
+  // an unknown unit refuses and writes nothing
+  for k: 0..<9 { out[k] = -7; }
+  u := terrain_tile_convert(tt_t, tt_m[..], source, 3, 1, src[..], out[..], holes[..], ids[..], w[..]);
+  #assert u.code == TERRAIN_TILE_BAD_UNITS && out[4] == -7 && u.samples == 0;
+  // a converted tile that doesn't admit is refused, and its output is withdrawn
+  src[2] = 1.0e9;
+  v := terrain_tile_convert(tt_t, tt_m[..], source, TERRAIN_UNIT_CENTIMETRE, 1, src[..], out[..], holes[..], ids[..], w[..]);
+  #assert v.code == TERRAIN_TILE_BAD_HEIGHT && out[4] == -7 && v.output[0] == 0;
+  short := terrain_tile_convert(tt_t, tt_m[..], source, TERRAIN_UNIT_METRE, 1, src[0..<8], out[..], holes[..], ids[..], w[..]);
+  #assert short.code == TERRAIN_TILE_BAD_STORAGE && out[4] == -7;
+  nan := 0.0f32; nan = nan / nan;
+  src[2] = nan;
+  x := terrain_tile_convert(tt_t, tt_m[..], source, TERRAIN_UNIT_METRE, 1, src[..], out[..], holes[..], ids[..], w[..]);
+  #assert x.code == TERRAIN_TILE_BAD_HEIGHT && out[4] == -7;
+}
+
+// ---- implementation
+
+terrain_tile_same :: (a: [8] u32, b: [8] u32) -> bool #effects(all) {
+  for tt_k: 0..<8 { if a[tt_k] != b[tt_k] { return false; } }
+  return true;
+}
+
+// A streamed SHA-256 (FIPS 180-4) over the canonical encoding: whole 64-byte blocks go to
+// sha256-kernel's compression as they fill; the end pads the last.
+TerrainTileDigest :: struct { h: [8] u32; block: [64] u8; fill: int; total: int; }
+terrain_tile_digest :: () -> TerrainTileDigest #effects(all) {
+  return TerrainTileDigest.{h = [8] u32.[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]};
+}
+terrain_tile_digest_byte :: (d: [] TerrainTileDigest, b: u8) #effects(all) {
+  d[0].block[d[0].fill] = b; d[0].fill += 1; d[0].total += 1;
+  if d[0].fill == 64 {
+    S_compress(d[0].h[..], cast(string) d[0].block[..], 0, d[0].fill);
+    d[0].fill = 0;
+  }
+}
+terrain_tile_digest_bytes :: (d: [] TerrainTileDigest, bytes: [] u8) #effects(all) {
+  for tt_k: 0..<bytes.count { terrain_tile_digest_byte(d, bytes[tt_k]); }
+}
+terrain_tile_digest_u32 :: (d: [] TerrainTileDigest, v: u32) #effects(all) {
+  terrain_tile_digest_byte(d, cast,trunc(u8) (v >> 24)); terrain_tile_digest_byte(d, cast,trunc(u8) (v >> 16));
+  terrain_tile_digest_byte(d, cast,trunc(u8) (v >> 8)); terrain_tile_digest_byte(d, cast,trunc(u8) v);
+}
+terrain_tile_digest_u64 :: (d: [] TerrainTileDigest, v: u64) #effects(all) {
+  terrain_tile_digest_u32(d, cast,trunc(u32) (v >> 32)); terrain_tile_digest_u32(d, cast,trunc(u32) v);
+}
+terrain_tile_digest_int :: (d: [] TerrainTileDigest, v: int) #effects(all) { terrain_tile_digest_u64(d, cast(u64) v); }
+terrain_tile_digest_f32 :: (d: [] TerrainTileDigest, v: f32) #effects(all) { terrain_tile_digest_u32(d, f32_bits(v)); }
+terrain_tile_digest_f64 :: (d: [] TerrainTileDigest, v: f64) #effects(all) { terrain_tile_digest_u64(d, f64_bits(v)); }
+terrain_tile_digest_words :: (d: [] TerrainTileDigest, w: [8] u32) #effects(all) { for tt_k: 0..<8 { terrain_tile_digest_u32(d, w[tt_k]); } }
+terrain_tile_digest_end :: (d: [] TerrainTileDigest) -> [8] u32 #effects(all) {
+  tt_bits := cast(u64) d[0].total * 8;
+  terrain_tile_digest_byte(d, 128);
+  while d[0].fill != 56 { terrain_tile_digest_byte(d, 0); }
+  terrain_tile_digest_u64(d, tt_bits);
+  return d[0].h;
+}
+
+// v within [lo, hi]; NaN is in no range.
+tt_range :: (v: f32, lo: f32, hi: f32) -> bool #effects(all) { return v >= lo && v <= hi; }
+
+terrain_slot_ok :: (slot: int, s: TerrainSlot) -> bool #effects(all) {
+  if s.wrap < TERRAIN_WRAP_REPEAT || s.wrap > TERRAIN_WRAP_CLAMP { return false; }
+  if s.encoding == TERRAIN_ENCODING_NONE {
+    for tt_k: 0..<8 { if s.asset[tt_k] != 0 { return false; } }
+    return true;
+  }
+  if slot == TERRAIN_SLOT_ALBEDO { return s.encoding == TERRAIN_ENCODING_SRGB && s.component == TERRAIN_COMPONENT_RGB; }
+  if slot == TERRAIN_SLOT_NORMAL { return s.encoding == TERRAIN_ENCODING_NORMAL && (s.component == TERRAIN_COMPONENT_XY || s.component == TERRAIN_COMPONENT_ZW); }
+  return s.encoding == TERRAIN_ENCODING_LINEAR && s.component >= 0 && s.component <= 3;
+}
+
+// Every constant finite and in its declared range: colours 0..1, frequencies 0..1000 per metre,
+// offsets within a million metres, blend shares 0..1 adding to exactly 1, gains 0..2, darkening
+// 0..1 between depths 0..1000 m in order, and roughness 0..1.
+terrain_material_values_ok :: (m: TerrainMaterial) -> bool #effects(all) {
+  for tt_c: 0..<3 { if !tt_range(m.albedo_a[tt_c], 0, 1) || !tt_range(m.albedo_b[tt_c], 0, 1) { return false; } }
+  for tt_c: 0..<2 {
+    if !tt_range(m.blend_scale[tt_c], 0, 1000) || !tt_range(m.blend_weight[tt_c], 0, 1) { return false; }
+    if !tt_range(m.blend_offset[tt_c], -1000000, 1000000) || !tt_range(m.gain[tt_c], 0, 2) { return false; }
+  }
+  if m.blend_weight[0] + m.blend_weight[1] != 1 { return false; }
+  if !tt_range(m.gain_scale, 0, 1000) || !tt_range(m.gain_offset, -1000000, 1000000) { return false; }
+  if !tt_range(m.depth_darken, 0, 1) || !tt_range(m.depth_from, 0, m.depth_to) || !tt_range(m.depth_to, m.depth_from, 1000) { return false; }
+  return tt_range(m.roughness, 0, 1);
+}
+
+terrain_materials_check :: (table: [] TerrainMaterial) -> TerrainAdmission #effects(all) {
+  if table.count < 1 || table.count > TERRAIN_MATERIALS_MAX { return TerrainAdmission.{code = TERRAIN_TILE_BAD_TABLE}; }
+  for tt_k: 0..<table.count {
+    tt_m := table[tt_k];
+    if tt_m.id < 0 || tt_m.id >= TERRAIN_TILE_NO_MATERIAL { return TerrainAdmission.{code = TERRAIN_TILE_BAD_TABLE, at = tt_k}; }
+    for tt_j: 0..<tt_k { if table[tt_j].id == tt_m.id { return TerrainAdmission.{code = TERRAIN_TILE_BAD_TABLE, at = tt_k}; } }
+    if !terrain_material_values_ok(tt_m) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_VALUE, at = tt_k}; }
+    for tt_s: 0..<TERRAIN_MATERIAL_SLOTS { if !terrain_slot_ok(tt_s, tt_m.slots[tt_s]) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_SLOT, at = tt_k}; } }
+  }
+  return TerrainAdmission.{};
+}
+
+// The table's identity: every field of every entry, in order.
+terrain_materials_revision :: (table: [] TerrainMaterial) -> [8] u32 #effects(all) {
+  d := [1] TerrainTileDigest.[terrain_tile_digest()];
+  terrain_tile_digest_u32(d[..], 0x41544d31);   // "ATM1"
+  terrain_tile_digest_int(d[..], table.count);
+  for tt_k: 0..<table.count {
+    tt_m := table[tt_k];
+    terrain_tile_digest_int(d[..], tt_m.id);
+    for tt_c: 0..<3 { terrain_tile_digest_f32(d[..], tt_m.albedo_a[tt_c]); terrain_tile_digest_f32(d[..], tt_m.albedo_b[tt_c]); }
+    for tt_c: 0..<2 {
+      terrain_tile_digest_f32(d[..], tt_m.blend_scale[tt_c]); terrain_tile_digest_f32(d[..], tt_m.blend_weight[tt_c]);
+      terrain_tile_digest_f32(d[..], tt_m.blend_offset[tt_c]); terrain_tile_digest_f32(d[..], tt_m.gain[tt_c]);
+    }
+    terrain_tile_digest_f32(d[..], tt_m.gain_scale); terrain_tile_digest_f32(d[..], tt_m.gain_offset);
+    terrain_tile_digest_f32(d[..], tt_m.depth_darken); terrain_tile_digest_f32(d[..], tt_m.depth_from); terrain_tile_digest_f32(d[..], tt_m.depth_to);
+    terrain_tile_digest_f32(d[..], tt_m.roughness);
+    for tt_s: 0..<TERRAIN_MATERIAL_SLOTS {
+      terrain_tile_digest_words(d[..], tt_m.slots[tt_s].asset);
+      terrain_tile_digest_int(d[..], tt_m.slots[tt_s].encoding); terrain_tile_digest_int(d[..], tt_m.slots[tt_s].component);
+      terrain_tile_digest_int(d[..], tt_m.slots[tt_s].wrap);
+    }
+  }
+  return terrain_tile_digest_end(d[..]);
+}
+
+tt_known :: (table: [] TerrainMaterial, id: int) -> bool #effects(all) {
+  for tt_k: 0..<table.count { if table[tt_k].id == id { return true; } }
+  return false;
+}
+
+// The sample indices of cell (i, j)'s drawn triangle `tri` on an n-cell tile, in ground.coax's
+// order: the south-east one (south-west, south-east, north-east corners) or the north-west one
+// (south-west, north-west, north-east).
+tt_corners :: (n: int, i: int, j: int, south_east: bool) -> [3] int #effects(all) {
+  a := j * (n + 1) + i;
+  if south_east { return [3] int.[a, a + 1, a + n + 2]; }
+  return [3] int.[a, a + n + 1, a + n + 2];
+}
+
+// The distinct IDs a drawn triangle's corners name, counting only weighted influences.
+tt_triangle_ids :: (ids: [] u8, w: [] u8, corners: [3] int) -> int #effects(all) {
+  seen: [12] int; tt_n := 0;
+  for tt_v: 0..<3 { for tt_s: 0..<4 {
+    tt_q := corners[tt_v] * 4 + tt_s;
+    if w[tt_q] == 0 { continue; }
+    tt_id := cast(int) ids[tt_q];
+    tt_new := true;
+    for tt_k: 0..<tt_n { if seen[tt_k] == tt_id { tt_new = false; } }
+    if tt_new { seen[tt_n] = tt_id; tt_n += 1; }
+  } }
+  return tt_n;
+}
+
+terrain_tile_header_ok :: (t: TerrainTile) -> int #effects(all) {
+  if t.version != TERRAIN_TILE_VERSION { return TERRAIN_TILE_BAD_VERSION; }
+  if t.cells < 1 || t.cells > TERRAIN_TILE_MAX_CELLS { return TERRAIN_TILE_BAD_DIMENSIONS; }
+  if !(t.spacing >= TERRAIN_TILE_SPACING_MIN && t.spacing <= TERRAIN_TILE_SPACING_MAX) { return TERRAIN_TILE_BAD_SPACING; }
+  if !(t.origin_x >= -TERRAIN_TILE_ORIGIN_LIMIT && t.origin_x <= TERRAIN_TILE_ORIGIN_LIMIT) { return TERRAIN_TILE_BAD_ORIGIN; }
+  if !(t.origin_z >= -TERRAIN_TILE_ORIGIN_LIMIT && t.origin_z <= TERRAIN_TILE_ORIGIN_LIMIT) { return TERRAIN_TILE_BAD_ORIGIN; }
+  if t.height_scale != 1 { return TERRAIN_TILE_BAD_UNITS; }
+  return TERRAIN_TILE_OK;
+}
+
+// book:begin admit
+// Admits a tile against the material table it names: every header word, view length, height,
+// hole, influence and drawn triangle is checked before its identity is computed. A refusal
+// names the first bad sample (or cell) and carries no revision.
+terrain_tile_admit :: (t: TerrainTile, table: [] TerrainMaterial, heights: [] f32, holes: [] u8, ids: [] u8, weights: [] u8) -> TerrainAdmission #effects(all) {
+  return tt_admit_scaled(t, table, heights, 1, holes, ids, weights);
+}
+// The admission of heights[k] * scale (1 for a stored tile; a conversion's unit otherwise).
+tt_admit_scaled :: (t: TerrainTile, table: [] TerrainMaterial, heights: [] f32, scale: f32, holes: [] u8, ids: [] u8, weights: [] u8) -> TerrainAdmission #effects(all) {
+  tt_code := terrain_tile_header_ok(t);
+  if tt_code != TERRAIN_TILE_OK { return TerrainAdmission.{code = tt_code}; }
+  tt_table := terrain_materials_check(table);
+  if tt_table.code != TERRAIN_TILE_OK { return tt_table; }
+  if !terrain_tile_same(terrain_materials_revision(table), t.table) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_TABLE}; }
+  n := t.cells; p := (n + 1) * (n + 1);
+  if heights.count != p || holes.count != n * n || ids.count != p * 4 || weights.count != p * 4 { return TerrainAdmission.{code = TERRAIN_TILE_BAD_STORAGE}; }
+  for tt_k: 0..<p {
+    if !tt_range(heights[tt_k] * scale, -TERRAIN_TILE_HEIGHT_LIMIT, TERRAIN_TILE_HEIGHT_LIMIT) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_HEIGHT, at = tt_k}; }
+  }
+  for tt_k: 0..<n * n { if holes[tt_k] > 1 { return TerrainAdmission.{code = TERRAIN_TILE_BAD_HOLE, at = tt_k}; } }
+  for tt_k: 0..<p {
+    tt_sum := 0;
+    for tt_s: 0..<4 {
+      tt_id := cast(int) ids[tt_k * 4 + tt_s]; tt_w := cast(int) weights[tt_k * 4 + tt_s];
+      tt_sum += tt_w;
+      if tt_id == TERRAIN_TILE_NO_MATERIAL {
+        if tt_w != 0 { return TerrainAdmission.{code = TERRAIN_TILE_BAD_MATERIAL, at = tt_k}; }
+        continue;
+      }
+      if !tt_known(table, tt_id) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_MATERIAL, at = tt_k}; }
+      for tt_r: 0..<tt_s { if cast(int) ids[tt_k * 4 + tt_r] == tt_id { return TerrainAdmission.{code = TERRAIN_TILE_BAD_MATERIAL, at = tt_k}; } }
+    }
+    if tt_sum < 1 { return TerrainAdmission.{code = TERRAIN_TILE_BAD_WEIGHT, at = tt_k}; }
+  }
+  for tt_j: 0..<n { for tt_i: 0..<n {
+    if tt_triangle_ids(ids, weights, tt_corners(n, tt_i, tt_j, true)) > 4 || tt_triangle_ids(ids, weights, tt_corners(n, tt_i, tt_j, false)) > 4 {
+      return TerrainAdmission.{code = TERRAIN_TILE_BAD_BLEND, at = tt_j * n + tt_i};
+    }
+  } }
+  d := [1] TerrainTileDigest.[terrain_tile_digest()];
+  terrain_tile_digest_u32(d[..], 0x41545431);   // "ATT1"
+  terrain_tile_digest_int(d[..], t.version); terrain_tile_digest_int(d[..], n);
+  terrain_tile_digest_f32(d[..], t.spacing);
+  terrain_tile_digest_f64(d[..], t.origin_x); terrain_tile_digest_f64(d[..], t.origin_z);
+  terrain_tile_digest_f32(d[..], t.height_scale);
+  terrain_tile_digest_words(d[..], t.table);
+  for tt_k: 0..<p { terrain_tile_digest_f32(d[..], heights[tt_k] * scale); }
+  terrain_tile_digest_bytes(d[..], holes);
+  terrain_tile_digest_bytes(d[..], ids);
+  terrain_tile_digest_bytes(d[..], weights);
+  return TerrainAdmission.{revision = terrain_tile_digest_end(d[..])};
+}
+// book:end admit
+
+// Whether the frame origin keeps the tile's local origin and extent inside ground.coax's range.
+terrain_tile_frame_ok :: (t: TerrainTile, frame_x: f64, frame_z: f64) -> bool #effects(all) {
+  tt_x := t.origin_x - frame_x; tt_z := t.origin_z - frame_z;
+  tt_span := f64(t.cells) * f64(t.spacing);
+  return tt_x > -TERRAIN_TILE_FRAME_LIMIT && tt_x + tt_span < TERRAIN_TILE_FRAME_LIMIT && tt_z > -TERRAIN_TILE_FRAME_LIMIT && tt_z + tt_span < TERRAIN_TILE_FRAME_LIMIT;
+}
+
+// book:begin frame
+// The tile in the local frame whose origin is (frame_x, frame_z) world metres: the one f64
+// subtraction drawing, queries, lights and actors share. A frame too far away is an empty Ground.
+terrain_tile_ground :: (t: TerrainTile, frame_x: f64, frame_z: f64) -> Ground #effects(all) {
+  if !terrain_tile_frame_ok(t, frame_x, frame_z) { return Ground.{n = 0}; }
+  return Ground.{n = t.cells, cell = t.spacing, west = f32(t.origin_x - frame_x), south = f32(t.origin_z - frame_z)};
+}
+// book:end frame
+
+// book:begin sample
+// The drawn surface at local (x, z): ground.coax's triangle and slope, unless the cell it falls in
+// is a hole. Drawing skips hole cells; queries see no ground there.
+terrain_tile_sample :: (g: Ground, heights: [] f32, holes: [] u8, x: f32, z: f32) -> TerrainTileSample #effects(all) {
+  if holes.count != g.n * ground_rows(g) || !ground_finite(x) || !ground_finite(z) { return TerrainTileSample.{}; }
+  q := ground_sample(g, heights, tt_units.Quantity.{value = x}, tt_units.Quantity.{value = z});
+  if !q.ok { return TerrainTileSample.{}; }
+  tt_ax := ground_axis(g.west, g.cell, g.n, x);
+  tt_az := ground_axis(g.south, g.cell, ground_rows(g), z);
+  if holes[tt_az.i * g.n + tt_ax.i] != 0 { return TerrainTileSample.{hole = true}; }
+  return TerrainTileSample.{ok = true, height = q.height.value, gx = q.gx, gz = q.gz};
+}
+// book:end sample
+
+// book:begin blend
+// The materials at local (x, z): every influence of ground.coax's triangle's three corners, in
+// corner then slot order, each corner's normalized weights times its barycentric weight summed
+// per ID. A corner exactly on the point's edge contributes its IDs at weight 0.
+terrain_tile_blend :: (g: Ground, ids: [] u8, weights: [] u8, x: f32, z: f32) -> TerrainBlend #effects(all) {
+  if !ground_valid(g) || ids.count < ground_points(g) * 4 || weights.count < ground_points(g) * 4 || !ground_finite(x) || !ground_finite(z) { return TerrainBlend.{}; }
+  tt_ax := ground_axis(g.west, g.cell, g.n, x);
+  tt_az := ground_axis(g.south, g.cell, ground_rows(g), z);
+  fx := tt_ax.fraction; fz := tt_az.fraction;
+  tt_se := fx >= fz;
+  corners := tt_corners(g.n, tt_ax.i, tt_az.i, tt_se);
+  bary := ifx tt_se then [3] f64.[1 - fx, fx - fz, fz] else [3] f64.[1 - fz, fz - fx, fx];
+  out: TerrainBlend;
+  sums: [4] f64;
+  for tt_v: 0..<3 {
+    tt_c := corners[tt_v];
+    tt_total := 0;
+    for tt_s: 0..<4 { tt_total += cast(int) weights[tt_c * 4 + tt_s]; }
+    if tt_total < 1 { return TerrainBlend.{}; }
+    for tt_s: 0..<4 {
+      tt_w := cast(int) weights[tt_c * 4 + tt_s];
+      if tt_w == 0 { continue; }
+      tt_id := cast(int) ids[tt_c * 4 + tt_s];
+      tt_at := out.count;
+      for tt_q: 0..<out.count { if out.ids[tt_q] == tt_id { tt_at = tt_q; } }
+      if tt_at == 4 { return TerrainBlend.{}; }
+      if tt_at == out.count { out.ids[tt_at] = tt_id; out.count += 1; }
+      sums[tt_at] += bary[tt_v] * f64(tt_w) / f64(tt_total);
+    }
+  }
+  for tt_q: 0..<4 { out.weights[tt_q] = f32(sums[tt_q]); }
+  for tt_q: out.count..<4 { out.ids[tt_q] = TERRAIN_TILE_NO_MATERIAL; }
+  out.ok = true;
+  return out;
+}
+// book:end blend
+
+// The sample index of vertex e along a side (0 south and 2 north, west to east; 1 east and 3
+// west, south to north), or -1.
+terrain_tile_edge_index :: (n: int, side: int, e: int) -> int #effects(all) {
+  if side == 0 { return e; }
+  if side == 1 { return e * (n + 1) + n; }
+  if side == 2 { return n * (n + 1) + e; }
+  if side == 3 { return e * (n + 1); }
+  return -1;
+}
+
+// book:begin lod
+// LOD profile v1: level L draws every 2^L-th sample (L 0..2; cells divisible by 2^L). Where a
+// side meets a neighbour drawn at a coarser level, its vertices between the coarse ones are
+// moved onto the line between them, so the finer edge lies on the coarser one: no crack, and
+// the coarse vertices keep their stored bits. Returns the stitched height of vertex e along the
+// side (0 for any request outside the profile).
+terrain_tile_stitched :: (heights: [] f32, n: int, side: int, level: int, e: int) -> f32 #effects(all) {
+  if level < 0 || level > 2 || e < 0 || e > n || heights.count != (n + 1) * (n + 1) { return 0; }
+  s := 1 << level;
+  if n % s != 0 { return 0; }
+  lo := (e / s) * s;
+  a := heights[terrain_tile_edge_index(n, side, lo)];
+  if lo == e { return a; }
+  b := heights[terrain_tile_edge_index(n, side, lo + s)];
+  return f32(f64(a) + (f64(b) - f64(a)) * f64(e - lo) / f64(s));
+}
+// book:end lod
+
+// Whether two samples name the same materials at the same normalized weights (cross-multiplied,
+// so 2:2 equals 1:1): as many weighted influences each, and each of a's found in b.
+tt_same_influences :: (aid: [] u8, aw: [] u8, ka: int, bid: [] u8, bw: [] u8, kb: int) -> bool #effects(all) {
+  ta := 0; tb := 0; na := 0; nb := 0;
+  for tt_s: 0..<4 {
+    ta += cast(int) aw[ka * 4 + tt_s]; tb += cast(int) bw[kb * 4 + tt_s];
+    if aw[ka * 4 + tt_s] != 0 { na += 1; }
+    if bw[kb * 4 + tt_s] != 0 { nb += 1; }
+  }
+  if na != nb { return false; }
+  for tt_s: 0..<4 {
+    tt_wa := cast(int) aw[ka * 4 + tt_s];
+    if tt_wa == 0 { continue; }
+    tt_found := false;
+    for tt_r: 0..<4 {
+      if bid[kb * 4 + tt_r] == aid[ka * 4 + tt_s] && cast(int) bw[kb * 4 + tt_r] * ta == tt_wa * tb { tt_found = true; }
+    }
+    if !tt_found { return false; }
+  }
+  return true;
+}
+
+// Whether b sits directly east or north of a and repeats a's shared edge bit for bit: heights,
+// and each sample's normalized materials.
+terrain_tile_edges_agree :: (a: TerrainTile, ah: [] f32, aid: [] u8, aw: [] u8, b: TerrainTile, bh: [] f32, bid: [] u8, bw: [] u8) -> bool #effects(all) {
+  n := a.cells; p := (n + 1) * (n + 1);
+  if b.cells != n || b.spacing != a.spacing { return false; }
+  if ah.count != p || bh.count != p || aid.count != p * 4 || bid.count != p * 4 || aw.count != p * 4 || bw.count != p * 4 { return false; }
+  span := f64(n) * f64(a.spacing);
+  side := 0;
+  if b.origin_x == a.origin_x + span && b.origin_z == a.origin_z { side = 1; }
+  if b.origin_z == a.origin_z + span && b.origin_x == a.origin_x { side = 2; }
+  if side == 0 { return false; }
+  for tt_e: 0..<n + 1 {
+    ka := terrain_tile_edge_index(n, side, tt_e); kb := terrain_tile_edge_index(n, (side + 2) % 4, tt_e);
+    if f32_bits(ah[ka]) != f32_bits(bh[kb]) || !tt_same_influences(aid, aw, ka, bid, bw, kb) { return false; }
+  }
+  return true;
+}
+
+// ---- conversion: a source heightfield into an admitted tile, with its receipt
+
+TERRAIN_UNIT_METRE :: 1;
+TERRAIN_UNIT_CENTIMETRE :: 2;
+
+TerrainTileReceipt :: struct {
+  code: int = TERRAIN_TILE_OK;
+  source: [8] u32;               // the source's identity, as its caller names it
+  units: int; rescale: f32;      // the source's unit, and what each height was multiplied by
+  converter: int;                // the converter's revision
+  table: [8] u32;                // the one dependency: the material table
+  dependencies: int;
+  samples: int; cells: int; holes: int; materials: int;
+  output: [8] u32;               // the admitted tile's revision
+}
+
+// book:begin convert
+// Converts source heights in a declared unit into metres in `out`, then admits the tile. Unknown
+// units refuse rather than guess; a refused conversion leaves `out` as it was.
+terrain_tile_convert :: (t: TerrainTile, table: [] TerrainMaterial, source: [8] u32, unit: int, converter: int,
+    src: [] f32, out: [] f32, holes: [] u8, ids: [] u8, weights: [] u8) -> TerrainTileReceipt #effects(all) {
+  scale := 0.0f32;
+  if unit == TERRAIN_UNIT_METRE { scale = 1; }
+  if unit == TERRAIN_UNIT_CENTIMETRE { scale = 0.01; }
+  if scale == 0 { return TerrainTileReceipt.{code = TERRAIN_TILE_BAD_UNITS}; }
+  if src.count != out.count { return TerrainTileReceipt.{code = TERRAIN_TILE_BAD_STORAGE}; }
+  a := tt_admit_scaled(t, table, src, scale, holes, ids, weights);
+  if a.code != TERRAIN_TILE_OK { return TerrainTileReceipt.{code = a.code}; }
+  for tt_k: 0..<src.count { out[tt_k] = src[tt_k] * scale; }
+  tt_holes := 0;
+  for tt_k: 0..<holes.count { tt_holes += cast(int) holes[tt_k]; }
+  return TerrainTileReceipt.{source = source, units = unit, rescale = scale, converter = converter, table = t.table,
+    dependencies = 1, samples = src.count, cells = holes.count, holes = tt_holes, materials = table.count, output = a.revision};
+}
+// book:end convert
