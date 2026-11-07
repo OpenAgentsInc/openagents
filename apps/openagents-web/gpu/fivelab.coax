@@ -614,7 +614,6 @@ fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fivela
     o.slice=add_wrap(o.slice,wg_u32_f(m.c.w));
     o.dye=v4(m.e.x,m.e.y,m.e.z,((cast(f32)(sub_wrap(kind,2)))*2.0f32)+m.e.w);
   }
-  if (kind==5) {o.dye=v4(m.e.x,m.e.y,m.e.z,6.0f32+m.e.w);}
   // a skeleton's bones and its rags: dye.w 8 the bone, 9 the cloth
   if bones { o.dye=v4(0.0f32,0.0f32,0.0f32,ifx kind>=3 then 9.0f32 else 8.0f32); }
   return o;
@@ -622,7 +621,6 @@ fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fivela
 // A person's cloth dyed (Everglade's person_dye): dye.w 2 + share on a pale cloth, 4 + share on a
 // green one; under 2, the texture as it is.
 fivelab_dye :: (t:V3,dye:V4)->V3 {
-  if ((dye.w>=6.0f32)&&(dye.w<=7.0f32)) {return mix3(t,scale3(v3(dye.x,dye.y,dye.z),clampf(verse_style_luma(t.x,t.y,t.z)/0.09f32,0.0f32,1.6f32)),dye.w-6.0f32);}
   if ((dye.w<2.0f32)||(dye.w>=6.0f32)) { return t; }
   green:bool=dye.w>=4.0f32;
   share:f32=clampf(dye.w-(ifx green then 4.0f32 else 2.0f32),0.0f32,1.0f32);

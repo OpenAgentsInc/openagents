@@ -1,3 +1,4 @@
+// The final slot in each body is reserved and unavailable.
 // Every garment in All_Female.blend (37) and All_Male.blend (39), aligned by slot. Empty slots have no source counterpart.
 PART_NAMES :: [80]string.["fantasy/Female_Knight_Acc_Pauldrons_Round",
 "fantasy/Female_Knight_Acc_Pauldrons_Spike",
@@ -38,7 +39,7 @@ PART_NAMES :: [80]string.["fantasy/Female_Knight_Acc_Pauldrons_Round",
 "fantasy/Female_Ranger_Body_Belt_2",
 "fantasy/Female_Wizard_Body_Belt",
 "fantasy/Female_Wizard_Body_Belt_Ornament",
-"original/Female_Tideglass",
+"",
 "fantasy/Male_Knight_Acc_Pauldron_Round",
 "fantasy/Male_Knight_Acc_Pauldron_Spike",
 "fantasy/Male_Knight_Acc_Scarf",
@@ -78,7 +79,7 @@ PART_NAMES :: [80]string.["fantasy/Female_Knight_Acc_Pauldrons_Round",
 "fantasy/Male_Ranger_Body_Belt_2",
 "fantasy/Male_Wizard_Body_Belt",
 "fantasy/Male_Wizard_Body_BeltOrnament",
-"original/Male_Tideglass"];
+""];
 PART_LABELS :: [40]string.["ROUND PAULDRONS",
 "SPIKED PAULDRONS",
 "KNIGHT SCARF",
@@ -117,4 +118,4 @@ PART_LABELS :: [40]string.["ROUND PAULDRONS",
 "RANGER BELT I",
 "RANGER BELT II",
 "WIZARD BELT",
-"WIZARD ORNAMENT", "TIDEGLASS OUTFIT"];
+"WIZARD ORNAMENT", ""];

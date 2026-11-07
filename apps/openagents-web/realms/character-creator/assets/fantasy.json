@@ -5705,25 +5705,8 @@
       "layer": 52
     }
   ],
-  "pack_sha256": "60004eac1125e1a6cf0914cc5dd390adfbb59e3c07525a8be8588accfa1fe38a",
-  "pack_bytes": 24903412,
+  "pack_sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
+  "pack_bytes": 20914708,
   "parts_count": 76,
-  "texture_colorways": 3,
-  "original_outfit": {
-    "name": "Tideglass Wayfarer",
-    "design_sha256": "53a204be6ce08d2b1a723db964259ba7afb3d1fea385eae030df3e77c8b42d24",
-    "binding": "nearest source garment weights; rigid Head mask; male width fit 1.055",
-    "parts": [
-      {
-        "body": "Female",
-        "vertices": 48984,
-        "triangles": 67597
-      },
-      {
-        "body": "Male",
-        "vertices": 48974,
-        "triangles": 67597
-      }
-    ]
-  }
+  "texture_colorways": 3
 }

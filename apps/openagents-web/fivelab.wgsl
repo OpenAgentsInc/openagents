@@ -179,10 +179,6 @@ fn coax_p_scene_vs(p_id: u32, p_instance: u32) -> coax_t16 {
     l_o.f4 = (l_o.f4 + coax_p_wg_u32_f(l_m.z.w));
     l_o.f6 = coax_p_v4(l_m.f4.x, l_m.f4.y, l_m.f4.z, ((f32((l_kind - 2u)) * 0x1.000000p1f) + l_m.f4.w));
   }
-  if ((l_kind == 5u))
-  {
-    l_o.f6 = coax_p_v4(l_m.f4.x, l_m.f4.y, l_m.f4.z, (0x1.800000p2f + l_m.f4.w));
-  }
   if (l_bones)
   {
     l_o.f6 = coax_p_v4(0.0f, 0.0f, 0.0f, select(0x1.000000p3f, 0x1.200000p3f, (l_kind >= 3u)));
@@ -1009,10 +1005,6 @@ fn coax_p_fivelab_dye(p_t: vec3f, p_dye: vec4f) -> vec3f {
   var l_mask: f32;
   var l_usual: f32;
   var l_dyed: vec3f;
-  if (((l_dye.w >= 0x1.800000p2f) && (l_dye.w <= 0x1.c00000p2f)))
-  {
-    return coax_p_mix3(l_t, coax_p_scale3(coax_p_v3(l_dye.x, l_dye.y, l_dye.z), coax_p_clampf((coax_p_verse_style_luma(l_t.x, l_t.y, l_t.z) / 0x1.70a3d8p-4f), 0.0f, 0x1.99999ap0f)), (l_dye.w - 0x1.800000p2f));
-  }
   if (((l_dye.w < 0x1.000000p1f) || (l_dye.w >= 0x1.800000p2f)))
   {
     return l_t;

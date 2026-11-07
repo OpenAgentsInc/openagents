@@ -19,7 +19,7 @@ Rig widgets and the source fitting bodies are not clothing assets.
 `MODULAR PART` browses aligned garment slots; `WEAR SELECTED PART` toggles the
 piece. Female has no counterpart for the separate Noble arm guards and Noble
 belt. Those slots skip while browsing Female and remain hidden after a body
-switch. Peasant, Ranger, Wizard, Noble and original Tideglass presets choose complete outfits; individual pieces can then be
+switch. Peasant, Ranger, Wizard and Noble presets choose complete outfits; individual pieces can then be
 mixed freely. Alternative armor/cloth, shoulder and belt variants can overlap
 when enabled together, so disable the unwanted alternative. This is explicit
 modular assembly, not a cloth simulation or automatic garment fitting system.
@@ -90,44 +90,35 @@ The shared fivelab Wasm budget is 625,000 bytes after a measured 590,971-byte
 release build with the wardrobe UI and save codec (about 5% headroom). The
 asset pack is separately bounded to 32 MiB.
 
-## Tideglass and selector revision
+## Selector appearance controls
 
-Heavy armor (Knight armor, sleeves, boots, helmet, horns and legs, metal shoulder
-pieces, gorget and arm guards) is excluded from browsing and drawing. Source
-payloads remain in the pack for provenance. Legacy CC1 saves migrate with heavy
-pieces disabled; CC2 adds the original outfit slot and six eye colors. Eye color
-changes only the brown iris mask on the existing eye texture, retaining pupils,
-whites and highlights. The studio instance marker isolates these fields from
-battle status effects. Male/Female and Color labels are used throughout the UI.
-
-Tideglass is two skinned catalog entries with the existing 24-byte people vertex
-format and 65-joint animation palettes. Source sleeves are returned to rest pose;
-new cape, seams and map panels borrow nearest garment weights. The mask binds
-rigidly to Head. The Male fit widens the design by 5.5%; this is a stylized fit,
-not simulated cloth. The original hood/mask are bundled with the outfit.
-
-The authored Blender scene remains at
-`~/ore-wow-private/original-clothing/tideglass-wayfarer.blend`. After rebuilding
-the unmodified Fantasy pack, append it with:
-
-```sh
-'/Applications/Blender.app/Contents/MacOS/Blender' --background --disable-autoexec \
-  --python verse/tools/humans/pack_tideglass.py -- \
-  "$HOME/ore-wow-private/original-clothing/tideglass-wayfarer.blend" \
-  "$HOME/Downloads/Modular Character Outfits - Fantasy[Source]" \
-  apps/openagents-web/realms/character-creator/assets/fantasy.pack
-```
-
-The receipt includes the design SHA-256, per-fit geometry counts and final pack
-identity. No Blender runtime is used in the selector.
+Heavy armor and Crown are excluded from browsing and drawing; their original
+Source payloads remain for provenance. Legacy saves migrate with those pieces
+disabled. Six eye colors retain the texture's pupils, whites and highlights.
+Male/Female and Color labels are used throughout the UI. The 40th garment slot
+is reserved and unavailable; the CC2 appearance format remains compatible.
 
 ## Face inspection and headwear
 
 The page header is “Character Create”. Crown is excluded from browsing, drawing
 and restored appearances. A hood suppresses hair while retaining a selected
-Male beard as a separate draw. Tideglass's closed mask still hides facial parts.
+Male beard as a separate draw.
 Zoom now reaches 0.65 m (formerly 2.2 m); below 2.2 m, the camera target rises
 toward the face. The upper distance stays 6 m. The headless Metal capture
 `docs/verification/character-creator-2026-11-06/hood-beard-close.png` shows the
 actual hood, beard and closest camera together. Eleven targeted creator/studio
 checks pass; the release producer is 592,520 bytes.
+
+## Camera panning
+
+Click DRAG: ROTATE / DRAG: PAN or press P to toggle the drag behavior. Pan mode
+translates the camera in its screen plane without changing character yaw or
+view pitch. Translation uses camera distance and focal length, so panning stays
+proportional to pointer travel when zoomed in. Both axes are bounded to two
+metres. RESET centers the camera and returns to Rotate mode; pan is temporary
+view state and is not part of the saved appearance. The mode control sits in
+the bottom center on desktop and next to Eye Color on phones.
+
+Only Peasant, Ranger, Wizard and Noble remain. The removed custom outfit's
+geometry, palette textures and exporter are gone. Existing CC2 saves selecting
+that removed slot migrate to Wizard while retaining body and eye color.

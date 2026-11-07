@@ -3996,10 +3996,10 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {return cc.probe(s[0].creator[0],f);}
 
 #test "creator restores a kept appearance before the host identifies its page" #steps 20000000 {
-  s:[1]Lab;appearance:[1]cc.Creator;cc.ensure(appearance[..]);cc.change(appearance[..],1,2);
+  s:[1]Lab;appearance:[1]cc.Creator;cc.ensure(appearance[..]);cc.change(appearance[..],1,1);
   buf:[64]u8;n:=cc.save(appearance[0],buf[..]);
   lab_message(s[..],4,cast(string)buf[0..<n]);
-  #assert s[0].creator[0].configured && s[0].creator[0].outfit==4 && !s[0].started;
+  #assert s[0].creator[0].configured && s[0].creator[0].outfit==3 && !s[0].started;
   lab_message(s[..],600,"url=http://127.0.0.1:8817/worlds/character-creator\n");
-  #assert s[0].creator[0].on && s[0].started && s[0].creator[0].outfit==4;
+  #assert s[0].creator[0].on && s[0].started && s[0].creator[0].outfit==3;
 }

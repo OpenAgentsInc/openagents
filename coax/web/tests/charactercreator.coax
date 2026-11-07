@@ -8,22 +8,26 @@ tool_main :: ()->int #export_c #effects(all) {
   if !loaded || url.count==0 {return 2;}
   c:[1]Cdp;if !cdp_launch(c[..],1440,900,"aethyr-creator-check-") {return 1;}
   values:[4096]u8;build:[256]u8;o:MediaShotOptions;o.wait=500;
-  o.script="(async()=>{const canvas=document.querySelector('canvas');const click=(x,y)=>{for(const type of ['pointerdown','pointerup'])canvas.dispatchEvent(new PointerEvent(type,{clientX:x,clientY:y,pointerId:31,pointerType:'mouse',bubbles:true}));};click(80,866);click(250,250);click(250,250);click(250,180);click(1400,560);for(let i=0;i<3;i++)click(1400,330);await new Promise(r=>setTimeout(r,700));return coaxial.sceneReady && [0,1,2,3,4,5,6,10].map(i=>Number(coaxial.fieldProbe(i))).join(',')==='78,4,1,0,8,1,3,1';})()";
+  o.script="(async()=>{const canvas=document.querySelector('canvas');const click=(x,y)=>{for(const type of ['pointerdown','pointerup'])canvas.dispatchEvent(new PointerEvent(type,{clientX:x,clientY:y,pointerId:31,pointerType:'mouse',bubbles:true}));};click(80,866);click(250,250);click(250,180);click(1400,560);for(let i=0;i<3;i++)click(1400,330);await new Promise(r=>setTimeout(r,700));return coaxial.sceneReady && [0,1,2,3,4,5,6,10].map(i=>Number(coaxial.fieldProbe(i))).join(',')==='76,3,1,0,8,1,3,1';})()";
   shot:=media_shot(c[..],url,"/tmp/aethyr-creator-input.png",ArgsSize.{ok=true,w=1440,h=900},o,values[..],build[..]);
   ok:=shot.status==0 && cast(string)values[0..<shot.value_n]=="true";
   if !ok {tool_errln("creator input or preview failed");cdp_close(c[..]);return 1;}
-  o.script="coaxial.sceneReady && [0,1,2,3,4,5,6,10].map(i=>Number(coaxial.fieldProbe(i))).join(',')==='78,4,1,0,8,1,3,1'";
+  o.script="coaxial.sceneReady && [0,1,2,3,4,5,6,10].map(i=>Number(coaxial.fieldProbe(i))).join(',')==='76,3,1,0,8,1,3,1'";
   shot=media_shot(c[..],url,"/tmp/aethyr-creator-reloaded.png",ArgsSize.{ok=true,w=1440,h=900},o,values[..],build[..]);
   ok=shot.status==0 && cast(string)values[0..<shot.value_n]=="true";
   if !ok {cdp_close(c[..]);tool_errln("creator save/reload failed");return 1;}
-  o.script="(async()=>{const c=document.querySelector('canvas');for(const type of ['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:250,clientY:180,pointerId:31,bubbles:true}));await new Promise(r=>setTimeout(r,500));return coaxial.sceneReady && coaxial.fieldProbe(2)===0 && coaxial.fieldProbe(1)===4;})()";
+  o.script="(async()=>{const c=document.querySelector('canvas');c.dispatchEvent(new WheelEvent('wheel',{deltaY:-10000,bubbles:true}));for(const type of ['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:720,clientY:866,pointerId:31,bubbles:true}));for(const [type,x,y] of [['pointerdown',700,400],['pointermove',800,550],['pointerup',800,550]])c.dispatchEvent(new PointerEvent(type,{clientX:x,clientY:y,pointerId:31,bubbles:true}));await new Promise(r=>setTimeout(r,400));return coaxial.sceneReady && coaxial.fieldProbe(11)<0 && coaxial.fieldProbe(12)>0;})()";
+  shot=media_shot(c[..],url,"/tmp/aethyr-creator-pan.png",ArgsSize.{ok=true,w=1440,h=900},o,values[..],build[..]);
+  ok=shot.status==0 && cast(string)values[0..<shot.value_n]=="true";
+  if !ok {cdp_close(c[..]);tool_errln("creator physical camera pan failed");return 1;}
+  o.script="(async()=>{const c=document.querySelector('canvas');for(const type of ['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:250,clientY:180,pointerId:31,bubbles:true}));await new Promise(r=>setTimeout(r,500));return coaxial.sceneReady && coaxial.fieldProbe(2)===0 && coaxial.fieldProbe(1)===3;})()";
   shot=media_shot(c[..],url,"/tmp/aethyr-creator-male.png",ArgsSize.{ok=true,w=1440,h=900},o,values[..],build[..]);
   ok=shot.status==0 && cast(string)values[0..<shot.value_n]=="true";
-  if !ok {cdp_close(c[..]);tool_errln("creator male original fit failed");return 1;}
-  o.script="coaxial.sceneReady && coaxial.fieldProbe(1)===4";
+  if !ok {cdp_close(c[..]);tool_errln("creator male preview failed");return 1;}
+  o.script="coaxial.sceneReady && coaxial.fieldProbe(1)===3";
   shot=media_shot(c[..],url,"/tmp/aethyr-creator-phone.png",ArgsSize.{ok=true,w=390,h=844},o,values[..],build[..]);
   ok=shot.status==0 && cast(string)values[0..<shot.value_n]=="true";
   cdp_close(c[..]);
   if !ok {tool_errln("creator save/reload failed");return 1;}
-  print("Character Studio: Tideglass selected on Female; eye color and cast changed through pointer input; appearance survived reload.\n");return 0;
+  print("Character Studio: Noble selected on Female; eye color and cast changed through pointer input; appearance survived reload; physical zoom/pan passed.\n");return 0;
 }
