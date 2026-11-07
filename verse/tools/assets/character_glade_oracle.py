@@ -88,13 +88,15 @@ for group,(grow,name) in enumerate(zip(grows,names)):
         heights.append(sy*maximum)
     template_vertices+=len(src_pos); instances.append({'source':name,'vertices':len(src_pos),'triangles':gc//3,'instances':gn})
 assert next_index*4==len(ib) and seedfirst+gn==verts and sum(v['instances'] for v in instances)>15000
+wind_ribbons=sum(1 for i in range(verts) if vb[word*4+i*32+15]==3 and struct.unpack_from('<f',vb,word*4+i*32+28)[0]==2)
+assert wind_ribbons==0, 'Removed wind-ribbon geometry must not reappear'
 oldcat=next(v[1].decode() for v in orig.values() if v[0]==1)
 for line in oldcat.splitlines():
     if line.startswith(('C ','T ')): assert line in cat.splitlines()
 for name,(kind,data) in orig.items():
     if kind==4: assert new[name][1]==data
 print(json.dumps({'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'environment_vertices':verts,
- 'environment_triangles':count//3,'texture_layers':layers,'source_grass_templates':instances,
+ 'environment_triangles':count//3,'texture_layers':layers,'wind_ribbons':wind_ribbons,'source_grass_templates':instances,
  'source_grass_instances':sum(v['instances'] for v in instances),'source_grass_topology':'exact source indices and positions',
  'grass_height_range':[min(heights),max(heights)],'bark_repeating_v_range':[min(bark_v),max(bark_v)],
  'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':'all 20000 faces upward'},indent=2))

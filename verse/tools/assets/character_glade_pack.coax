@@ -54,6 +54,7 @@ gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:
   // Canopy normals follow its volume instead of each small polygon.
   lo:=[3]f32.[10000,10000,10000];hi:=[3]f32.[-10000,-10000,-10000];
   if kind==1 {for v:0..<nv {for k:0..<3 {q:=f32(pos[v*3+k]);if q<lo[k] {lo[k]=q;}if q>hi[k] {hi[k]=q;}}}}
+  lobes:[8][3]f32;tree:=kind==1 && (starts(name,"Birch_") || starts(name,"CommonTree_"));if tree {if nv%4!=0 {ph_die("tree leaf source is not complete four-corner cards");}lobes=cg_crown_centres(pos[..],nv);}
   first:=w[0].nv;
   for v:0..<nv {a:=f32(pos[v*3])*scale;b:=f32(pos[v*3+1])*vertical;c:=f32(pos[v*3+2])*scale;nx:=f32(nor[v*3]);ny:=f32(nor[v*3+1]);nz:=f32(nor[v*3+2]);
    if name=="Rock_Medium_4" && x< -10 {
@@ -65,11 +66,12 @@ gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:
     rx:=(f32(pos[v*3])-cx)/gp_clamp((hi[0]-lo[0])*0.5,0.1,100);
     ry:=(f32(pos[v*3+1])-cy)/gp_clamp((hi[1]-lo[1])*0.5,0.1,100);
     rz:=(f32(pos[v*3+2])-cz)/gp_clamp((hi[2]-lo[2])*0.5,0.1,100);
-    radius:=sqrt(rx*rx+ry*ry+rz*rz);ambient=gp_clamp(0.50+radius*0.45,0.5,1);
-    rounded:=cg_canopy_normal(rx,ry,rz);blended:=cg_canopy_normal(rounded[0]*0.6+nx*0.4,rounded[1]*0.6+ny*0.4,rounded[2]*0.6+nz*0.4);nx=blended[0];ny=blended[1];nz=blended[2];
+    radius:=sqrt(rx*rx+ry*ry+rz*rz);ambient=gp_clamp(0.70+radius*0.25,0.7,1);
+    rounded:=cg_canopy_normal(rx,ry,rz);
+    if tree {anchor:[3]f32;base:=(v/4)*4;for q:0..<4 {for k:0..<3 {anchor[k]+=f32(pos[(base+q)*3+k])*0.25;}}which:=cg_crown_near(anchor[0],anchor[1],anchor[2],lobes);rounded=cg_canopy_normal(f32(pos[v*3])-lobes[which][0],f32(pos[v*3+1])-lobes[which][1],f32(pos[v*3+2])-lobes[which][2]);}blended:=cg_canopy_normal(rounded[0]*0.90+nx*0.10,rounded[1]*0.90+ny*0.10,rounded[2]*0.90+nz*0.10);nx=blended[0];ny=blended[1];nz=blended[2];
    }
    if vertical!=scale {adjusted:=cg_canopy_normal(nx,ny*scale/vertical,nz);nx=adjusted[0];ny=adjusted[1];nz=adjusted[2];}
-   colour:=ifx kind==1 then (ifx starts(name,"Fern") then [3]f32.[0.23,0.53,0.035] else tint) else ifx kind==4 then [3]f32.[0.70,0.75,0.55] else ifx kind==3 then (ifx starts(name,"Bush") then [3]f32.[1,0.55,0.55] else [3]f32.[1,1,1]) else ifx kind==7 then [3]f32.[1,1,1] else [3]f32.[1,1,1];
+   colour:=ifx kind==1 then (ifx starts(name,"Fern") then [3]f32.[0.23,0.53,0.035] else tint) else ifx kind==4 then tint else ifx kind==3 then (ifx starts(name,"Bush") then [3]f32.[1,0.55,0.55] else [3]f32.[1,1,1]) else ifx kind==7 then [3]f32.[1,1,1] else [3]f32.[1,1,1];
    id:=gp_v(w,[3]f32.[x+a*cs+c*sn,y+b,z-a*sn+c*cs],[3]f32.[nx*cs+nz*sn,ny,-nx*sn+nz*cs],[2]f32.[f32(uv[v*2]),f32(uv[v*2+1])],colour,layer,kind);gp_word(w[0].v[..],id*32+28,f32_bits(ambient));
   }
   for t:0..<ni/3 {gp_tri(w,first+int(idx[t*3]),first+int(idx[t*3+1]),first+int(idx[t*3+2]));}
@@ -80,7 +82,7 @@ gp_ground :: (w:[]Gp,white:int) {
  side:=101;for iz:0..<side {z:=5-f32(iz)*0.65;for ix:0..<side {x:=(f32(ix)-50)*0.65;y:=cg_height(x,z)-0.035;
   dx:=(cg_height(x+0.1,z)-cg_height(x-0.1,z))/0.2;dz:=(cg_height(x,z+0.1)-cg_height(x,z-0.1))/0.2;normal_length:=sqrt(dx*dx+1+dz*dz);
   path:=cg_path(x,z);noise:=cg_hash(x,z);autumn:=cg_autumn(x,z);c:=[3]f32.[0.32+autumn*0.24,0.53-autumn*0.03,0.055];
-  dirt:=[3]f32.[0.71+noise*0.015,0.64+noise*0.015,0.38];for k:0..<3 {c[k]=c[k]*(1-path)+dirt[k]*path;}
+  dirt:=[3]f32.[0.67+noise*0.015,0.60+noise*0.015,0.35];for k:0..<3 {c[k]=c[k]*(1-path)+dirt[k]*path;}
   id:=gp_v(w,[3]f32.[x,y,z],[3]f32.[-dx/normal_length,1/normal_length,-dz/normal_length],[2]f32.[0.5,0.5],c,white,5);
  }}for iz:0..<side-1 {for ix:0..<side-1 {a:=iz*side+ix;gp_tri(w,a,a+1,a+side);gp_tri(w,a+1,a+side+1,a+side);}}
 
@@ -88,8 +90,8 @@ gp_ground :: (w:[]Gp,white:int) {
 gp_grass_seeds :: (w:[]Gp,white:int,group:int,proposals:int,source_height:f32) {
  w[0].seedfirst[group]=w[0].nv;hero:=cg_item(7);
  for i:0..<proposals {fi:=f32(i+group*100000);x:=(cg_hash(fi,2)-0.5)*(ifx i<proposals*4/5 then 26.0f32 else 54.0f32);z:=3-cg_hash(fi,5)*(ifx i<proposals*4/5 then 30.0f32 else 55.0f32);
-  if cg_path(x,z)>0.40 || (x*x+z*z)<1.25 {continue;}
-  patch:=0.65+0.35*sin(x*1.1)*sin(z*1.3);height:=(0.13+cg_hash(fi,8)*0.17)*patch;near:=sqrt((x-hero.x)*(x-hero.x)+(z-hero.z)*(z-hero.z));height*=0.2+0.8*gp_clamp((near-0.5)/0.7,0,1);
+  if cg_path(x,z)>0.40 || (x*x+z*z)<0.6 {continue;}
+  patch:=0.65+0.35*sin(x*1.1)*sin(z*1.3);height:=(0.17+cg_hash(fi,8)*0.22)*patch;near:=sqrt((x-hero.x)*(x-hero.x)+(z-hero.z)*(z-hero.z));height*=0.2+0.8*gp_clamp((near-0.5)/0.7,0,1);
   autumn:=cg_autumn(x,z);base:=[3]f32.[0.30+0.26*autumn,0.48,0.055];
   id:=gp_v(w,[3]f32.[x,cg_height(x,z),z],[3]f32.[0,1,0],[2]f32.[height/source_height,0.18+cg_hash(fi,7)*0.10],base,white,0);
   gp_word(w[0].v[..],id*32+28,f32_bits(cg_hash(fi,9)*6.283));w[0].seedn[group]+=1;
@@ -112,23 +114,17 @@ tool_main :: ()->int #export_c #effects(all) {
  sky_c:=gp_v(w[..],[3]f32.[-1,1,0],[3]f32.[0,0,1],[2]f32.[0,0],[3]f32.[1,1,1],sky,0);
  sky_d:=gp_v(w[..],[3]f32.[1,1,0],[3]f32.[0,0,1],[2]f32.[1,0],[3]f32.[1,1,1],sky,0);gp_tri(w[..],sky_a,sky_b,sky_c);gp_tri(w[..],sky_b,sky_d,sky_c);
  for i:0..<CG_ITEMS {item:=cg_item(i);if !cg_visible(item) {continue;}stem:=ifx item.kind==0 then "CommonTree_" else ifx item.kind==1 then "Birch_" else ifx item.kind==3 then "Rock_Medium_" else "Rock_Big_";nb:[64]u8;s:[1]Sb;s[0]=sb(nb[..]);sb_put(s[..],stem);sb_int(s[..],ifx item.kind==2 then item.variant+1 else item.variant+1);gp_mesh_scaled(w[..],g[..],iw[..],root,sb_text(s[..]),item.x,item.z,item.scale,item.scale*item.vertical,item.yaw,item.tint,item.lift);}
- for i:0..<60 {fi:=f32(i);x:=(cg_hash(fi,24)-0.5)*24;z:=-1-cg_hash(fi,25)*24;if cg_path(x,z)>0.55 {continue;}stem:=ifx i%4==0 then "Bush_Common_Flowers" else ifx i%4==1 then "Fern_1" else ifx i%4==2 then "Mushroom_Common" else "Flower_3_Group";gp_mesh(w[..],g[..],iw[..],root,stem,x,z,(0.25+cg_hash(fi,30)*0.35)*(ifx i%4==3 then 0.55f32 else 1.0f32),fi,[3]f32.[0.35,0.78,0.055]);}
+ for i:0..<32 {fi:=f32(i);x:=(cg_hash(fi,24)-0.5)*24;z:=-1-cg_hash(fi,25)*24;if cg_path(x,z)>0.55 {continue;}stem:=ifx i%4==0 then "Bush_Common_Flowers" else ifx i%4==1 then "Fern_1" else ifx i%4==2 then "Mushroom_Common" else "Flower_3_Group";gp_mesh(w[..],g[..],iw[..],root,stem,x,z,(0.25+cg_hash(fi,30)*0.35)*(ifx i%4==3 then 0.55f32 else 1.0f32),fi,[3]f32.[0.35,0.78,0.055]);}
  for i:0..<8 {pos:=[8][2]f32.[[2]f32.[-2.6,-3],[2]f32.[-2.0,-3.5],[2]f32.[1.05,-0.6],[2]f32.[-0.65,0.4],[2]f32.[1.3,-0.8],[2]f32.[0.5,-1.8],[2]f32.[-1.1,1],[2]f32.[-1.7,0.5]];stem:=ifx i==0 then "Fern_1" else ifx i==1 then "Bush_Common_Flowers" else ifx i<5 then "Mushroom_Common" else ifx i==5 then "Pebble_Round_1" else "Flower_3_Group";size:f32=ifx i==0 then 0.22 else ifx i==1 then 0.60 else ifx i==2 then 0.80 else ifx i==3 then 0.65 else ifx i==4 then 0.40 else ifx i==5 then 0.25 else 0.20;gp_mesh_scaled(w[..],g[..],iw[..],root,stem,pos[i][0],pos[i][1],size,size*(ifx i>=2 && i<=4 then 0.75f32 else 1.0f32),f32(i),[3]f32.[0.36,0.80,0.08],0);}
  gp_mesh(w[..],g[..],iw[..],root,"Flower_3_Group",-0.55,1.6,0.14,0.5,[3]f32.[1,1,1]);
  gp_mesh_lift(w[..],g[..],iw[..],root,"Rock_Medium_3",-14,-24,2.0,0.3,[3]f32.[0.7,0.7,0.5],0.0);
  gp_mesh(w[..],g[..],iw[..],root,"Fern_1",-5,-5.5,1.1,1.1,[3]f32.[0.32,0.65,0.045]);
+ gp_mesh_scaled(w[..],g[..],iw[..],root,"Rock_Medium_4",-0.18,-2.4,0.16,0.05,1.1,[3]f32.[0.55,0.60,0.40],0);
  gp_mesh(w[..],g[..],iw[..],root,"Plant_3",1.05,1.0,0.35,0.8,[3]f32.[1,0.56,0.06]);
  // The reference's loose stones and lower left woodland break up the path edges.
  for i:0..<12 {fi:=f32(i);z:=-2-fi*1.7;x:=cg_path_x(z)+(ifx i%2==0 then -1.0f32 else 1.2f32);gp_mesh(w[..],g[..],iw[..],root,"Pebble_Round_1",x,z,0.3+cg_hash(fi,42)*0.2,fi,[3]f32.[0.7,0.7,0.5]);}
  for i:0..<12 {x:=-5.2+f32(i%4)*0.45;z:=-9.0-f32(i/4)*0.5;gp_mesh(w[..],g[..],iw[..],root,"Flower_2_Group",x,z,0.16+cg_hash(f32(i),61)*0.05,f32(i),[3]f32.[0.4,0.75,0.05]);}
  for i:0..<12 {fi:=f32(i);x:=-3.0+cg_hash(fi,62)*6.0;z:=-9.0-cg_hash(fi,63)*8.0;gp_mesh(w[..],g[..],iw[..],root,"Flower_3_Group",x,z,0.10+cg_hash(fi,64)*0.08,fi,[3]f32.[0.4,0.75,0.05]);}
- // Thin 3D wind traces follow the reference's foreground and midground arcs.
- for trail:0..<3 {start:=w[0].nv;
-  for j:0..<49 {t:=f32(j)/48;screen:=cg_wind_screen(trail,t);center:=cg_reference_point(screen[0],screen[1],screen[2]);wide:=screen[2]/961.2*1.3*(0.05+0.95*sin(t*3.14159265));
-   for side:0..<2 {sign:=ifx side==0 then -1.0f32 else 1.0f32;id:=gp_v(w[..],[3]f32.[center[0],center[1]+wide*0.99178*sign,center[2]+wide*0.12797*sign],[3]f32.[0,0,1],[2]f32.[0.5,0.5],[3]f32.[1,1,1],0,3);gp_word(w[0].v[..],id*32+28,f32_bits(2));}
-  }
-  for j:0..<48 {a:=start+j*2;gp_tri(w[..],a,a+1,a+2);gp_tri(w[..],a+1,a+3,a+2);}
- }
  w[0].envni=w[0].ni;
  for group:0..<3 {
   w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";
@@ -147,5 +143,5 @@ tool_main :: ()->int #export_c #effects(all) {
  for i:0..<w[0].nt {start:=at;for ch:w[0].encoded[i] {w[0].out[at]=ch;at+=1;}nameb:[64]u8;s:[1]Sb;s[0]=sb(nameb[..]);sb_put(s[..],"layer");sb_int(s[..],w[0].layers+i);gp_entry(w[0].out[..],32+(ne+i)*48,4,250,sb_text(s[..]),start,at-start);at=((at+3)/4)*4;}
  // Patch the fixed-width catalog size without changing any payload offsets.
  cat_start:=gl_u32(w[0].out[..],36);cat_size:=gl_u32(w[0].out[..],40);for k:cat_start..<cat_start+cat_size-16 {if cast(string)w[0].out[k..<k+6]=="bytes " {value:=at;for j:0..<10 {w[0].out[k+15-j]=cast(u8)(48+value%10);value/=10;}break;}}
- put_u32(w[0].out[..],8,at);if at>33554432 {ph_die("glade pack exceeds 32 MiB");}if !fs_write(args_at(args[..],2),cast(string)w[0].out[0..<at]) {return 1;}print("Glade: % vertices, % triangles, % textures, % bytes\n",w[0].nv,w[0].ni/3,w[0].nt,at);return 0;
+ put_u32(w[0].out[..],8,at);if at>33554432 {print("Glade requires % bytes (% vertices, % triangles)\n",at,w[0].nv,w[0].ni/3);ph_die("glade pack exceeds 32 MiB");}if !fs_write(args_at(args[..],2),cast(string)w[0].out[0..<at]) {return 1;}print("Glade: % vertices, % triangles, % textures, % bytes\n",w[0].nv,w[0].ni/3,w[0].nt,at);return 0;
 }

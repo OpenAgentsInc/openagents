@@ -19,7 +19,7 @@ cg_soil :: (p:V2)->f32 {
   dy:f32=y+0.15f32+0.7f32*verse_style_hash(cell.x+x+17.0f32,cell.y+y+3.0f32)-local.y;
   d:f32=dx*dx+dy*dy;if (d<first) {second=first;first=d;} else if (d<second) {second=d;}
  }}
- return 0.93f32+0.07f32*smoothstep(0.0f32,0.045f32,second-first);
+ return (0.86f32+0.14f32*smoothstep(0.0f32,0.05f32,second-first))*(0.94f32+0.06f32*cg_noise(v2(p.x*2.0f32,p.y*2.0f32)));
 }
 cg_noise :: (p:V2)->f32 {
  i:V2=v2(floor(p.x),floor(p.y));f:V2=v2(fract(p.x),fract(p.y));
@@ -89,8 +89,7 @@ cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fi
  o.dye=v4(0,0,0,12);o.local=v3(2,height,1);o.who=(instance>>16)-1;return o;
 }
 cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,visibility:f32)->V4 {
- if (s.local.y>1.5f32) {c:=cg_decode(v3(0.86f32,0.98f32,0.94f32));return v4(c.x,c.y,c.z,1);}
- if (s.local.x<0.5f32) {return v4(tex.x,tex.y,tex.z,1);}
+ if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
  kind:=s.local.x;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
  foliage:=kind>0.5f32 && kind<2.5f32;grass:=kind>1.5f32 && kind<2.5f32;leaves:=kind>0.5f32 && kind<1.5f32;ground:=kind>4.5f32 && kind<5.5f32;
  if (!front && !foliage) {n=scale3(n,-1);}
@@ -98,22 +97,24 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,visibility:f32)->V4 {
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
  if (foliage || ground) {albedo=cg_decode(s.tint);}
  if (leaves) {
-  if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*0.55f32+s.world.y*0.25f32,s.world.z*0.55f32));palette:=mix3(s.tint,v3(1,0.58f32,0.08f32),smoothstep(0.30f32,0.75f32,age)*0.55f32);albedo=cg_decode(palette);}
+  if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));palette:=mix3(s.tint,v3(1,0.58f32,0.10f32),smoothstep(0.30f32,0.75f32,age)*0.70f32);albedo=cg_decode(palette);}
   albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
  }
  if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
  if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
- if (kind>3.5f32 && kind<4.5f32) {albedo=scale3(cg_decode(v3(0.69f32,0.73f32,0.60f32)),0.87f32+0.20f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+ if (kind>3.5f32 && kind<4.5f32) {albedo=scale3(cg_decode(s.tint),0.87f32+0.20f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
  ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
- if (leaves) {direct=saturate((ndl+0.35f32)/1.35f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
- if (grass) {albedo=scale3(albedo,0.86f32);direct=0.55f32+0.25f32*abs(ndl);ao=0.65f32+0.35f32*s.local.y;}
+ if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
+ if (grass) {albedo=mul3(albedo,v3(0.90f32,0.82f32,0.08f32));direct=(0.30f32+0.48f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.50f32+0.50f32*s.local.y;}
  if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
- indirect:=mul3(albedo,scale3(cg_hemisphere(n),ao));
- colour:=mul3(albedo,cg_irradiance(n,direct,ao,visibility));
+ fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else 1.0f32;
+ indirect:=mul3(albedo,scale3(cg_hemisphere(n),ao*fill));
+ if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
+ colour:=add3(indirect,mul3(albedo,cg_irradiance(n,direct,0,visibility)));
  if (foliage) {
   // Thin leaves transmit rear sunlight; volume normals and ambient mask stay separate.
   back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);scatter:=(0.15f32+0.60f32*back)*(1.0f32-abs(ndl)*0.65f32)*visibility;
-  colour=add3(colour,mul3(albedo,scale3(v3(1.35f32,1.16f32,0.62f32),scatter)));
+  colour=add3(colour,mul3(albedo,scale3(v3(1.35f32,1.16f32,0.62f32),scatter*(ifx grass then s.local.y else 1.0f32))));
  }
  if (ground) {mottle:=cg_noise(v2(s.world.x*2,s.world.z*2));meadow:=1.0f32-cg_path(s.world.x,s.world.z);grain:=cg_noise(v2(s.world.x*14,s.world.z*14));surface:=(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1,meadow);colour=scale3(colour,surface);indirect=scale3(indirect,surface);}
  colour=cg_atmosphere(colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
@@ -146,7 +147,7 @@ CgShadow :: struct {pos:V4;uv:V2;slice:u32;}
 charactercreator_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->CgShadow {
  o:CgShadow;
  if (u[10]<1.5f32 || instance>=65536) {o.pos=v4(0,0,-2,1);return o;}
- s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && (s.local.x<0.5f32 || s.local.y>1.5f32)) {o.pos=v4(0,0,-2,1);return o;}o.pos=cg_shadow_clip(s.world);o.uv=s.uv;o.slice=s.slice;return o;
+ s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}o.pos=cg_shadow_clip(s.world);o.uv=s.uv;o.slice=s.slice;return o;
 }
 charactercreator_shadow_fs :: (s:CgShadow,sheets:Tex2DArray,sheet:Sampler) {
  t:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,0);

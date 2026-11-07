@@ -1,0 +1,162 @@
+{
+  "base_commit": "14d7a9f947",
+  "reference": {
+    "package": "nature",
+    "revision": "0e05d58ed4beda3f9bae85f924ff3d578cb724fd82d427a59bc72a9570760b0a",
+    "path": "Preview_1.jpg",
+    "sha256": "e9bbf4408c8bc8fc39ed43988cbf2a369a4cccc5a827141d55d37f24613fe13d"
+  },
+  "runtime": {
+    "pack": "/realms/character-creator/assets/glade.pack",
+    "sha256": "1a5074593e311d54a45c59d723a3bb00ba1fcad6535cb5baf361e77fd5167064",
+    "bytes": 33363060,
+    "profile": "character-create-legacy-static-v4"
+  },
+  "shader": {
+    "path": "apps/openagents-web/charactercreator.wgsl",
+    "sha256": "d2ef060c720606c54cf55118fdd552f36d45c12a7eb6676be9c1b0acec6710e8"
+  },
+  "composition": {
+    "path": "verse/character-glade.coax",
+    "sha256": "28024ef22bcf4cec4c5e390c399c8cac718d4bfae72b5a80cdc3db44c7cf6b52",
+    "placements": 27
+  },
+  "packer": {
+    "path": "verse/tools/assets/character_glade_pack.coax",
+    "sha256": "f6fe79a35127a680978ee63a5df43991975e286cd26d8b90923703c3efbfc930"
+  },
+  "changes": [
+    "Removed wind-ribbon mesh generation and unlit ribbon material branch",
+    "Eight fitted crown lobes and one lobe assignment per source leaf card",
+    "Three added source tree placements, fuller grass, narrower path and flattened path stone",
+    "Clear six-metre foreground, warmer crown fill, per-placement rock tint and sky plate grade"
+  ],
+  "checks": {
+    "composition": "11 selected glade checks passed",
+    "shader": "23 selected glade checks passed",
+    "pack": {
+      "bytes": 33363060,
+      "sha256": "1a5074593e311d54a45c59d723a3bb00ba1fcad6535cb5baf361e77fd5167064",
+      "environment_vertices": 268060,
+      "environment_triangles": 187703,
+      "texture_layers": 64,
+      "wind_ribbons": 0,
+      "source_grass_templates": [
+        {
+          "source": "Grass_Common_Short",
+          "vertices": 153,
+          "triangles": 155,
+          "instances": 4492
+        },
+        {
+          "source": "Grass_Wide_Short",
+          "vertices": 305,
+          "triangles": 370,
+          "instances": 1361
+        },
+        {
+          "source": "Grass_Wispy_Short",
+          "vertices": 559,
+          "triangles": 494,
+          "instances": 21740
+        }
+      ],
+      "source_grass_instances": 27593,
+      "source_grass_topology": "exact source indices and positions",
+      "grass_height_range": [
+        0.015362856979636422,
+        0.3860124710632642
+      ],
+      "bark_repeating_v_range": [
+        -26.467689021133744,
+        0.9995269703211989
+      ],
+      "rounded_canopy_vertices": 94884,
+      "original_character_payloads": "byte-identical",
+      "terrain_winding": "all 20000 faces upward"
+    },
+    "desktop": {
+      "ok": true,
+      "mode": "desktop",
+      "ready": true,
+      "layer": {
+        "format": "rgba8unorm-srgb",
+        "width": 1024,
+        "height": 1024,
+        "layers": 64,
+        "mips": 11
+      },
+      "shadow": true,
+      "post": true,
+      "hdrTargets": 2,
+      "sceneColourTargets": 2,
+      "frameP50Ms": 16.664999999999964,
+      "frameP90Ms": 16.670000000000073,
+      "errors": []
+    },
+    "phone": {
+      "ok": true,
+      "mode": "phone",
+      "ready": true,
+      "layer": {
+        "format": "rgba8unorm-srgb",
+        "width": 512,
+        "height": 512,
+        "layers": 64,
+        "mips": 10
+      },
+      "shadow": true,
+      "post": true,
+      "hdrTargets": 2,
+      "sceneColourTargets": 2,
+      "frameP50Ms": 16.664999999999964,
+      "frameP90Ms": 16.670000000000073,
+      "errors": []
+    },
+    "light": {
+      "ok": true,
+      "checks": {
+        "srgbGrey": true,
+        "midtones": true,
+        "hdrShoulder": true,
+        "rawHdr": true,
+        "heightFog": true,
+        "independentAoAndSun": true
+      },
+      "values": [
+        0.21404112875461578,
+        0.5,
+        0.18000000715255737,
+        0.8712421655654907,
+        0.9999755620956421,
+        0.1906193345785141,
+        0.017730360850691795,
+        2.240000009536743,
+        1.9950000047683716,
+        0.49000000953674316,
+        0.24500000476837158
+      ],
+      "errors": [],
+      "adapter": "metal-3"
+    },
+    "controls": "Character Studio: 3D Nature glade present; Noble selected on Female; eye color and cast changed through pointer input; appearance survived reload; physical zoom/pan passed.",
+    "common_shader": "Targeted --check passed; base artifact unchanged",
+    "staging": {
+      "index.html": {
+        "url": "/build/fivelab.849142d35b8f.wgsl",
+        "sha256": "849142d35b8f071c4980cf34ca839b181e983a88da40c44d9af8293183ba5822",
+        "bytes": 84538,
+        "shader_attributes": 1
+      },
+      "realms/character-creator/index.html": {
+        "url": "/build/charactercreator.d2ef060c7206.wgsl",
+        "sha256": "d2ef060c720606c54cf55118fdd552f36d45c12a7eb6676be9c1b0acec6710e8",
+        "bytes": 115965,
+        "shader_attributes": 1
+      }
+    }
+  },
+  "timing": "Desktop and phone graph runs were isolated after concurrent captures showed competing GPU pacing. These are RAF intervals, not GPU timing.",
+  "unchanged_cpu": "Wasm and CPU/appearance code unchanged from 14d7a9f947; prior 615015-byte build and creator tests still apply.",
+  "limits": "Visual comparison, not exact image equality. Local crown normals are a scene-authored derivative, not original engine material recovery."
+}

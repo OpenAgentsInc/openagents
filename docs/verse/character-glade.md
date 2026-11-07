@@ -102,8 +102,9 @@ Leaf geometry keeps its authored card size, volume normals and a finite
 the source glTF already contains expanded geometry. Birch bark encodes source
 UVs over [-32,32], preserving negative repeating coordinates. Material kinds
 are sky 0, leaves 1, source grass 2, flowers 3, rock 4, ground 5, bark 6 and
-mushrooms 7. Three reference wind traces use ordinary 3D ribbons; kind 3 with
-word 7 equal to 2 identifies their unlit material.
+mushrooms 7. The former three wind-ribbon meshes and their unlit material
+branch were removed after they read as blue slash artifacts. The independent
+pack oracle now requires zero such markers.
 
 Only Character Create loads `charactercreator.wgsl`. Its private graph uses
 alpha-tested geometry shadows with PCF, normal/depth MRT, contact occlusion,
@@ -132,3 +133,27 @@ have separate terms. Contact shading uses an indirect-light weight stored beside
 an octahedral normal in the auxiliary target. The v4 static pack is unchanged.
 See [the Ore lighting implementation notes](character-glade-lighting.md) for
 the research, precise color contract, approximations and GPU readback evidence.
+
+## Crown and grass reference pass
+
+The current scene has 27 tree/rock placements. The missing orange birch behind
+the foreground tree and two left-edge green trees are restored, using existing
+pinned source assets. The central rock cluster has a darker authored tint and
+a wider silhouette; the path includes a flattened source stone. Diffuse rock
+color now uses each placement's tint rather than a shader constant.
+
+Tree leaf normals follow eight deterministic spatial lobes fitted to each
+source crown with farthest-point seeds and four refinement steps. All four
+corners of a source leaf card choose the same lobe, avoiding seams through a
+card. Geometry and atlas UVs stay authored; the pipeline validates complete
+four-corner source cards. Leaf ambient masks remain within the v4 bounds.
+
+Grass is taller and fuller with a lower-light root and transmitted-light tips.
+The winding path is narrower. Foreground atmosphere stays clear for six metres;
+the removed blue veil and a warmer grass palette better preserve the reference's
+yellow-green foreground. Warm crown fill and red/orange/gold variation are
+authored separately. The unlit sky plate has a scene-specific warm/cyan grade
+(linear R power .62, G power .75, B scale .965) before final output encoding.
+
+The source pack stays below 32 MiB with original wardrobe bytes preserved.
+Evidence: `docs/verification/character-glade-crowns-2026-11-06/`.

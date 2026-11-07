@@ -32,7 +32,8 @@ blend further flattened the materials.
   palette variation. The foliage's authored geometry remains unchanged.
 - Atmosphere uses four midpoint samples of an exponential height density,
   Beer–Lambert transmittance, and an angular warm-forward/cool-sky source.
-  It replaces uniform distance-only warm fog. These are authored Aethyr
+  Its near six metres are kept clear after comparison against the supplied
+  foreground. It replaces uniform distance-only warm fog. These are authored Aethyr
   approximations, not decoded native volumetric fog or a GI solver.
 - Scene radiance, reconstruction and bloom remain linear in rgba16float.
   A peak-channel shoulder applies one RGB gain to preserve hue in highlights;

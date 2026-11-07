@@ -15,7 +15,7 @@
  #assert cg_hemisphere(v3(0,1,0)).z>cg_hemisphere(v3(0,-1,0)).z;
 }
 #test "glade air has zero optical depth at the eye and thins above the meadow" {
- eye:=v3(0,1,3);#assert cg_air_depth(eye,eye)==0;
+ eye:=v3(0,1,3);#assert cg_air_depth(eye,eye)==0 && cg_air_depth(eye,v3(0,1,-2))==0;
  low:=cg_air_depth(eye,v3(0,1,-30));high:=cg_air_depth(v3(0,20,3),v3(0,20,-30));
  #assert low>high && low>0 && low<1;
 }
@@ -28,14 +28,14 @@ cg_output :: (c:V3)->V3 {
  // One peak-channel gain preserves RGB ratios instead of clipping each channel.
  peak:=fmax(c.x,fmax(c.y,c.z));mapped:=scale3(c,ifx peak>0.00001f32 then cg_shoulder(peak)/peak else 1.0f32);return cg_encode(mapped);
 }
-cg_hemisphere :: (n:V3)->V3 {return mix3(v3(0.24f32,0.30f32,0.11f32),v3(0.38f32,0.47f32,0.62f32),saturate(n.y*0.5f32+0.5f32));}
+cg_hemisphere :: (n:V3)->V3 {return mix3(v3(0.32f32,0.34f32,0.16f32),v3(0.49f32,0.55f32,0.62f32),saturate(n.y*0.5f32+0.5f32));}
 cg_irradiance :: (n:V3,direct:f32,occlusion:f32,visibility:f32)->V3 {
- return add3(scale3(cg_hemisphere(n),occlusion),scale3(v3(1.85f32,1.62f32,1.22f32),direct*visibility));
+ return add3(scale3(cg_hemisphere(n),occlusion),scale3(v3(1.75f32,1.45f32,1.02f32),direct*visibility));
 }
 cg_air_depth :: (eye:V3,p:V3)->f32 {
  ray:=sub3(p,eye);distance:=wg_length3(ray);density:f32=0;
  for i:0..<4 {height:=eye.y+ray.y*(cast(f32)i+0.5f32)*0.25f32;density=density+exp(-fmax(height,0)/8.0f32);}
- return distance*0.008f32*density*0.25f32;
+ return fmax(distance-6.0f32,0)*0.008f32*density*0.25f32;
 }
 cg_atmosphere :: (colour:V3,eye:V3,p:V3)->V3 {
  ray:=normalize3(add3(sub3(p,eye),v3(0,0.00001f32,0)));sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));

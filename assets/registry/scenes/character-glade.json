@@ -107,20 +107,21 @@
   },
   "composition": {
     "path": "verse/character-glade.coax",
-    "sha256": "8d638e8d50a962c36d14e899fd29ef666837d6b9c313c3a83d6e1785ffea0658"
+    "sha256": "28024ef22bcf4cec4c5e390c399c8cac718d4bfae72b5a80cdc3db44c7cf6b52",
+    "placements": 27
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "41723238007136cf53fbf5fb47b549754983645a204daae16cc23291db37a942"
+    "sha256": "ca5cab44bcf0c5679b70bdc2aa507d4d0c6b731a33139ebab2219c9774fd0bbb"
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "c4ad54d5febf503ae87852cf1881adcce3c904aca478fa9e7c837dbdd50e4e61"
+    "sha256": "f6fe79a35127a680978ee63a5df43991975e286cd26d8b90923703c3efbfc930"
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "dc038126015eb33b2543c0f0d29ba6f18ffa6e0d6014e356a833ba463c9a4de2",
-    "bytes": 33304768,
+    "sha256": "1a5074593e311d54a45c59d723a3bb00ba1fcad6535cb5baf361e77fd5167064",
+    "bytes": 33363060,
     "profile": "character-create-legacy-static-v4"
   },
   "lighting": {
@@ -132,7 +133,7 @@
     "source": "Reference-directed rear-left warm sunlight, broad sky fill and wrapped outdoor diffuse; Unreal overview settings remain separate evidence",
     "shadows": "Alpha-tested geometry shadow map with 12-tap PCF; normal/depth contact occlusion; foliage reconstruction, bloom and FXAA",
     "canopy": "rounded volume normals, ambient mask and warm leaf transmission",
-    "profile": "character-create-linear-daylight-v1",
+    "profile": "character-create-linear-daylight-v2",
     "colour_contract": "GPU sRGB sampling to linear radiance; palette decode once; rgba16float shading/bloom; hue-preserving peak shoulder; one final sRGB encode",
     "indirect": "Normal-dependent sky/ground hemisphere; canopy ambient mask; indirect-luminance-weighted contact attenuation",
     "atmosphere": "Four midpoint samples of exponential height density; Beer\u2013Lambert surface transmittance plus angle-dependent air source",
@@ -141,9 +142,16 @@
       "commit": "f4958def81d544132cf0fa77e7eb5cbb35bb1e4b",
       "path": "docs/ocarina-of-time/lighting-reconstruction.md",
       "sha256": "8ef30a34f2bd67dee3b9b3e7b33d961cd53be0b2769904137ad042de5f441131"
-    }
+    },
+    "foreground_clear_distance_m": 6,
+    "sky_plate_grade_linear": {
+      "red_power": 0.62,
+      "green_power": 0.75,
+      "blue_scale": 0.965
+    },
+    "surface_tints": "Authored per-placement rock tints; warm crown fill and red/orange/gold variation; root-to-tip grass direct/ambient response"
   },
-  "scope": "Reference-directed 3D recreation; original scene composition not recovered. Not pixel-identical Unreal rendering.",
+  "scope": "Reference-directed 3D reconstruction; original placement not recovered. Wind ribbons removed after user reported slash artifacts. No exact image parity claim.",
   "source_files": [
     {
       "path": "glTF/Bark_BirchTree.png",
@@ -410,40 +418,42 @@
         "source": "Grass_Common_Short",
         "vertices": 153,
         "triangles": 155,
-        "instances": 4429
+        "instances": 4492
       },
       {
         "source": "Grass_Wide_Short",
         "vertices": 305,
         "triangles": 370,
-        "instances": 1341
+        "instances": 1361
       },
       {
         "source": "Grass_Wispy_Short",
         "vertices": 559,
         "triangles": 494,
-        "instances": 21442
+        "instances": 21740
       }
     ],
-    "source_grass_instances": 27212,
+    "source_grass_instances": 27593,
     "source_grass_topology": "exact source indices and positions",
     "grass_height_range": [
-      0.011751607542699358,
-      0.29691993807949607
+      0.015362856979636422,
+      0.3860124710632642
     ],
     "bark_repeating_v_range": [
       -26.467689021133744,
       0.9995269703211989
     ],
-    "rounded_canopy_vertices": 99334
+    "rounded_canopy_vertices": 94884,
+    "wind_ribbons": 0,
+    "crown_normals": "8 deterministic spatial lobes; farthest-point initialization, 4 mean-refinement steps; each four-corner source card selects one lobe; 90% local volume / 10% source normal"
   },
   "shader_entry": {
     "path": "apps/openagents-web/gpu/charactercreator.coax",
-    "sha256": "b008eebda88536e540b2c260bb7f6ff63e3cbffaeaadef97414e50f813c1ab30"
+    "sha256": "21a7e497c2a2c4e1bcf16448723dd034e626107efef961d2c0813f28c4cd65e1"
   },
   "shader_artifact": {
     "path": "apps/openagents-web/charactercreator.wgsl",
-    "sha256": "a2c3e90d73f7658a021b1bf849daa663be9cec2041a127ab621c4061f0d3e8c5"
+    "sha256": "d2ef060c720606c54cf55118fdd552f36d45c12a7eb6676be9c1b0acec6710e8"
   },
   "camera": {
     "desktop_horizon_fraction": 0.595,
@@ -475,6 +485,13 @@
       "parent_revision": "182dd8cb65e21e09915845496a64b359f4fb5c63586f4294eb7846da45c79895",
       "transform": "cg_cliff_cap_y: y<=1.2 ? y*1.5 : 1.8+(y-1.2)*0.05; inverse Jacobian normals; hero placement only",
       "source": "verse/character-glade.coax"
+    },
+    {
+      "name": "path-stone",
+      "parent": "quaternius/nature/rock-medium-4",
+      "parent_revision": "182dd8cb65e21e09915845496a64b359f4fb5c63586f4294eb7846da45c79895",
+      "transform": "nonuniform scale (0.16,0.05,0.16), yaw 1.1; source shape flattened for path landmark",
+      "source": "verse/tools/assets/character_glade_pack.coax"
     }
   ],
   "texture_quality": {
@@ -500,7 +517,7 @@
     },
     {
       "path": "apps/openagents-web/gpu/character-glade-light.coax",
-      "sha256": "68114568c56f6ca30e3c10f0b799650c5d3354a49dd4f7d17dd77849af5cfcc7"
+      "sha256": "0053f0f710be3c9c3250fa4a9a975ec27c2cad6ded5b28c9ff006660632d3fb9"
     }
   ]
 }

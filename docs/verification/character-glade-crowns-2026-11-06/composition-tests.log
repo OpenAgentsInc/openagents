@@ -1,0 +1,13 @@
+ok   #test glade static vertices retain positions beyond the people quantization box (1 case, 1038 steps, 0 ms)
+ok   #test glade bark preserves negative repeating source UV coordinates (1 case, 956 steps, 0 ms)
+ok   #test glade preserves a level character clearing and winds the path through the hills (1 case, 460 steps, 0 ms)
+ok   #test glade composition puts green woods left and autumn birches right (1 case, 878 steps, 0 ms)
+ok   #test glade rear ridge is golden while foreground woods remain green (1 case, 133 steps, 0 ms)
+ok   #test glade composition retains every visible source tree (1 case, 8128 steps, 0 ms)
+ok   #test glade canopy normals remain unit length even near their center (1 case, 100 steps, 0 ms)
+ok   #test glade reference places the near birch and right rock in the foreground (1 case, 825 steps, 0 ms)
+ok   #test glade bare path forks toward the left foreground (1 case, 199 steps, 0 ms)
+ok   #test glade hero cliff cap has a broad level crown and a supported base (1 case, 92 steps, 0 ms)
+ok   #test glade crown lobes form deterministic bounded local volumes (1 case, 83308 steps, 0 ms)
+11 of 101 checks (--only 'glade'), 11 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

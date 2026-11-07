@@ -6055,8 +6055,10 @@ appearance saves retain separate state. The v4 private static profile uses
 ordinary vertex indices; indirect firstInstance's high 16 bits encode object
 slot + 1, low 16 bits the seed ID, with each grass group bounded to 65,535.
 Leaf word 7 contains a finite 0.5–1 ambient mask and normalized crown normals;
-source cards receive no second expansion. Bark UVs preserve repeating negative
-coordinates. Desktop texture layers use 1024, phone 512 through the existing
+source cards receive no second expansion. Tree normals use deterministic local
+crown lobes with one lobe choice per four-corner source card. Wind-ribbon
+geometry is absent; the pack oracle requires zero former ribbon markers.
+Bark UVs preserve repeating negative coordinates. Desktop texture layers use 1024, phone 512 through the existing
 optional host hook. Only the admitted Character Create page selects the
 private `charactercreator.wgsl` graph (geometry PCF shadows, MRT contact
 shading, bloom and reconstruction). Common fivelab keeps its single target.
