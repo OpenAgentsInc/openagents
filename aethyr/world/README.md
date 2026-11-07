@@ -19,6 +19,7 @@ The #12990 components currently provide:
 | `stream-walk-state.coax` | Versioned, fieldwise canonical simulation state and SHA-256 observations after individual paid steps |
 | `stream-walk-recovery.coax` | Atomic replacement of GPU owner handles after the SDK quiescence/destruction barrier; automatic loss scheduling remains unfinished |
 | `../host/recorded-source.coax` | [Versioned retained-source observations](../host/recorded-source.md) for replaying corrupt, oversized and cancelled browser loads without substituting canonical fixture bytes |
+| `../host/tests/stream-walk-native-gpu.coax` | [Native observation carrier](../host/stream-native.md): actual local-file loads, headless Vulkan draws, retirement and controlled device replacement through these same owners |
 | `../forge/vertices.coax` | Shared 48-byte static VPK vertex admission: eight finite floats followed by opaque packed color/layer/spare bytes |
 
 These files are source parts so a composed host has one owner of the
@@ -53,8 +54,10 @@ must retain a separate plan object if it uses this allocation profile;
 the manifest and fixed controller/host storage are additional owners.
 The retained plan object follows its generated ABI alignment; the cost's
 alignment field describes the resource payload.
-Browser queue writes borrow the retained source span. The proposed Vulkan
-profile owns a transfer span until submission completion. Opaque SDK,
+Browser queue writes borrow the retained source span. The measured native
+carrier maps its granted transfer span through submission completion; its
+actual Vulkan backing requirements are reported separately from logical
+RCM1 GPU bytes and remain a physical-planning qualification exit. Opaque SDK,
 driver, Wasm arena and allocator overhead are separate observations.
 
 Physical allocations and GPU creation follow a successful grant. The
@@ -125,7 +128,9 @@ The [actual consumer and verification record](../../docs/verification/aethyr-str
 cover muted headless browser WebGPU over HTTP, a 768 m out-and-back route
 under a 32 KiB dynamic resource cap, two image tiers, physical allocation
 traces, native CPU/codec replay and explicit GPU replacement from retained
-sources. Native GPU recovery, automatic unsolicited-loss handling, rescue,
+sources. The separate native carrier now records both tiers through actual
+Vulkan loads, draws, retirement and controlled device replacement. Physical
+native budget planning, automatic unsolicited-loss handling, rescue,
 the remaining host failure histories and persistent HUD adoption keep
 #12990 open. Browser and native GPU qualification are distinct claims.
 

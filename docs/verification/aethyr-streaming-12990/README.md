@@ -1,6 +1,10 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The latest [receive-fault replay
+Issue #12990 remains open. The latest [native Vulkan
+record](walk-native-gpu.md) adds actual two-tier native loads, draws,
+retirement and controlled device replacement, with full readback equality
+and sanitizer observations. Physical Vulkan cost planning remains separate
+from logical RCM1 budgets. The [receive-fault replay
 record](walk-receive-fault-replay.md) qualifies actual corrupt, oversized,
 cancelled, reordered and bad-container histories with retained source
 observations and exact native state at every paid step. The [canonical
@@ -14,7 +18,7 @@ GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
 real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
 historical failing gates and artifacts. Automatic loss handling,
-failed-replacement rescue, native GPU recovery, remaining failure histories,
+failed-replacement rescue, physical native budget planning, remaining failure histories,
 persistent HUD adoption and remaining host fault cases still prevent issue
 completion.
 
@@ -120,22 +124,26 @@ copies are published, including a failure after three reservations.
 
 ## Work still required before closing #12990
 
-- Real asynchronous host adoption of the checked shared/dependency owners,
-  including failure/cancel/stale/superseded completion receipts.
-- Actual adoption of the declared interest/update/draw/audio/prefetch
-  profiles, independent texture/lighting lifetimes and persistent services.
-- Actual shared-loader adoption in a walkable world larger than residency,
-  semantic collision, navigation and stable IDs at its edges.
-- Allocation traces for every supported format, concurrent scratch and
-  shared dependencies, with platform/SDK memory separated.
-- Actual host retention must also remain under the existing pack storage,
-  decoded-image and audio-memory owners. The standalone inbox/renderer
-  component receipt does not qualify those integrations or an extra pool
-  outside their aggregate limits.
-- Different visual tiers, actual native/browser load/unload/GPU recovery,
-  accepted-event replay, route churn/caps, stage timing and frame tails.
-- A final residual-adapter inventory and teaching/registry updates covering
-  the completed consumer rather than these component contracts alone.
+- Actual stale/superseded callback, allocator and remaining SDK failure
+  histories. Browser corrupt/oversized/cancelled/reordered receive and GPU
+  validation failures already have separate current receipts.
+- Persistent HUD adoption and independent shader numerical/mutation
+  qualification. Player/camera, interest/update/draw/audio collection,
+  independent lighting and neighbor prefetch are adopted in the corridor.
+- Complete transport/transient and physical backend allocation planning.
+  Current traces reconcile logical resource costs; the native Vulkan
+  backing extents and the browser's engine-owned transport arenas require
+  explicit treatment alongside the existing aggregate owners.
+- An actual host category-pressure refusal with prior resident content
+  still usable; the current category test remains a component result.
+- Automatic/repeated device loss, deadline and failed-replacement rescue.
+  Controlled browser and native GPU replacement now have actual receipts.
+- Replay of the new native GPU history within its backend/cost profile.
+  Earlier actual browser histories already replay every paid step through
+  native CPU allocation and codecs.
+- Final consumer/residual-adapter inventory, supported-platform limits and
+  complete teaching/registry audit. Existing source and qualified profile
+  evidence must be retained when reconciling chapter status.
 
 ## Concrete dependency owners
 

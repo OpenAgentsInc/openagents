@@ -41,13 +41,30 @@ static int32_t trace_n;
 static bool trace_overflow;
 static size_t failed_bytes;
 static int allocation_errno;
+#ifdef SW_VULKAN
+// Only the native GPU carrier supplies these platform allocation effects.
+static void *sw_vk_stage_allocate(int32_t row,size_t bytes);
+static void sw_vk_stage_free(int32_t row);
+#endif
 static coax_v_t_SwWalk sv(void){return(coax_v_t_SwWalk){&state,1};}
 static coax_v_t_ResourceManifest mv(void){return(coax_v_t_ResourceManifest){&manifest,1};}
 static coax_v_t_HostAudioMemory av(void){return(coax_v_t_HostAudioMemory){&audio_memory,1};}
 static coax_v_t_HostImageMemory iv(void){return(coax_v_t_HostImageMemory){&image_memory,1};}
 static void observe(int32_t row,int32_t field,int32_t freed,size_t n){if(trace_n==1024){trace_overflow=true;return;}int64_t *event=physical_trace[trace_n++];event[0]=freed;event[1]=row;event[2]=objects[row].key.generation;event[3]=objects[row].key.epoch;event[4]=field;event[5]=(int64_t)n;}
-static void *allocation(int32_t row,int32_t field,size_t n){if(!n)return NULL;void *p=calloc(1,n);if(p){physical_bytes+=n;if(physical_bytes>physical_peak)physical_peak=physical_bytes;observe(row,field,0,n);}else{failed_bytes=n;allocation_errno=errno;}return p;}
-static void discard(int32_t row,int32_t field,void **p,size_t n){if(*p){free(*p);*p=NULL;physical_bytes-=n;observe(row,field,1,n);}}
+static void *allocation(int32_t row,int32_t field,size_t n){if(!n)return NULL;void *p;
+#ifdef SW_VULKAN
+  p=field==4?sw_vk_stage_allocate(row,n):calloc(1,n);
+#else
+  p=calloc(1,n);
+#endif
+  if(p){physical_bytes+=n;if(physical_bytes>physical_peak)physical_peak=physical_bytes;observe(row,field,0,n);}else{failed_bytes=n;allocation_errno=errno;}return p;}
+static void discard(int32_t row,int32_t field,void **p,size_t n){if(*p){
+#ifdef SW_VULKAN
+  if(field==4)sw_vk_stage_free(row);else free(*p);
+#else
+  free(*p);
+#endif
+  *p=NULL;physical_bytes-=n;observe(row,field,1,n);}}
 static bool same(SwPhysical *p,int32_t row,int64_t generation,int64_t epoch){return row>=0&&row<64&&p->occupied&&p->key.generation==generation&&p->key.epoch==epoch;}
 SW_API("sw_config_ptr") uintptr_t sw_config_ptr(void){return(uintptr_t)configuration;}
 SW_API("sw_root_ptr") uintptr_t sw_root_ptr(void){return(uintptr_t)root_hex;}

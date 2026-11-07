@@ -1,0 +1,29 @@
+// Build the existing Coax consumer and shader against the headless Vulkan
+// SDK. pkg-config supplies installed headers/libraries; no window is opened.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+swnb_run :: (argv: [] string, save: string) -> bool {
+  out: [33554432] u8; err: [65536] u8; r := proc_run(argv, 180000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut || r.timed_out { tool_errln(cast(string) err[0..<r.err_n]); tool_errln(cast(string) out[0..<r.out_n]); return false; }
+  if save.count > 0 { return fs_write(save, cast(string) out[0..<r.out_n]); } return true;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--sanitize") { tool_errln("usage: stream-native-build NEW_DIR [--sanitize]"); return 2; }
+  sanitize := args_count(a[..]) == 2; dir := args_at(a[..], 0); if fs_exists(dir) || !fs_mkdir(dir) { return 2; }
+  paths: [5] [4096] u8; dir = fs_realpath(dir, paths[0][..]);
+  source := fs_join(dir, "stream-native.c", paths[1][..]); header := fs_join(dir, "stream-native.h", paths[2][..]);
+  exe := fs_join(dir, "stream-native", paths[3][..]); program := fs_join(dir, "stream-draw.spv", paths[4][..]);
+  emit := [6] string.["coax/bin/coax", "c", "aethyr/host/tests/stream-walk-native-gpu.coax", "--library", "--header", header];
+  spv := [9] string.["coax/bin/coax", "spirv", "aethyr/world/stream-draw.coax", "--vertex", "sd_vs", "--fragment", "sd_fs", "-o", program];
+  if !swnb_run(emit[..], source) || !swnb_run(spv[..], "") { return 1; }
+  out: [8192] u8; err: [8192] u8; pkg := [4] string.["pkg-config", "--cflags", "--libs", "vulkan"]; r := proc_run(pkg[..], 30000, out[..], err[..]);
+  if r.status != 0 || r.cut || r.timed_out { tool_errln(cast(string) err[0..<r.err_n]); return 1; }
+  base := [26] string.["gcc", "-std=gnu11", "-O2", "-ffp-contract=off", "-fno-fast-math", "-fno-builtin-pow", "-I", dir, "-I", "coax/platform", "-I", "verse/gpu", source,
+    "aethyr/host/tests/stream-walk-vulkan.c", "verse/gpu/vkc.c", "verse/gpu/vks.c", "coax/platform/tool-native.c", "coax/platform/process-native.c", "coax/platform/store-file-native.c", "coax/platform/read-file-native.c", "-lpthread", "-lm", "-o", exe, "-Wno-unused-function", "-Wno-unused-variable"];
+  cc: [64] string; for item, i: base { cc[i] = item; } count := 26; from := 0;
+  for i: 0..<r.out_n + 1 { if i == r.out_n || out[i] == ' ' || out[i] == '\n' || out[i] == '\t' { if i > from { if count == cc.count { return 1; } cc[count] = cast(string) out[from..<i]; count += 1; } from = i + 1; } }
+  if sanitize { cc[2] = "-O1"; for flag: [4] string.["-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-sanitize-recover=all"] { cc[count] = flag; count += 1; } }
+  if !swnb_run(cc[0..<count], "") { return 1; } print("Built actual Vulkan stream consumer: %\n", exe); return 0;
+}

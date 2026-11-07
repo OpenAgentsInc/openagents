@@ -1,0 +1,18 @@
+// Admission of measured native streaming replacement observations. Images
+// and canonical state are compared in full by the observing Coax driver.
+#authority;
+#test "native streaming recovery needs actual objects exact bytes and complete retirement" {
+  q := [16] int.[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1];
+  #assert swn_accept(q[..]);
+  #assert !swn_accept(q[0..<15]); long: [17] int; #assert !swn_accept(long[..]);
+  for i: 0..<q.count { bad := q; bad[i] += 1; #assert !swn_accept(bad[..]); bad = q; bad[i] -= 1; #assert !swn_accept(bad[..]); }
+}
+// version; nonempty GPU before; identical image; nonempty raster; canonical
+// state preserved; CPU/source owners preserved; no intervening paid frame;
+// physical old device closed; replacement grants all uploaded; epoch moves;
+// resumed draw; validation errors/warnings; final SDK objects/ledger; drained.
+swn_accept :: (q: [] int) -> bool #effects(all) {
+  want := [16] int.[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1];
+  if q.count != want.count { return false; }
+  for value, i: want { if q[i] != value { return false; } } return true;
+}

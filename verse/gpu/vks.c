@@ -109,21 +109,28 @@ static void record_copy(VkCommandBuffer cmd, void *user) {
 void vks_upload(Vkc *v, VksImage *t, const void *bytes, size_t size) {
   VkcBuffer staging = vkc_buffer(v, size);
   memcpy(staging.map, bytes, size);
+  vks_upload_buffer(v, t, &staging, size);
+  vkc_free(v, &staging);
+}
+
+void vks_upload_buffer(Vkc *v, VksImage *t, VkcBuffer *staging, size_t size) {
   // the bytes a texel takes, from what level 0's layers would take without mips
   uint64_t px = 0;
   for (uint32_t l = 0; l < t->levels; l++) { uint64_t lw = t->w >> l ? t->w >> l : 1, lh = t->h >> l ? t->h >> l : 1; px += lw * lh * t->layers; }
-  if (t->levels > 16 || size % px) { fprintf(stderr, "vks: %zu bytes are not whole texels of %u levels\n", size, t->levels); exit(1); }
-  Copy c = {t, &staging, 0, (uint32_t)(size / px)};
+  if (!px || t->levels > 16 || size % px || size > staging->size) { fprintf(stderr, "vks: %zu bytes are not whole texels of %u levels or exceed staging\n", size, t->levels); exit(1); }
+  Copy c = {t, staging, 0, (uint32_t)(size / px)};
   vks_submit(v, record_copy, &c);
-  vkc_free(v, &staging);
 }
 
 void vks_read(Vkc *v, VksImage *t, void *bytes, size_t size) {
   VkcBuffer staging = vkc_buffer(v, size);
-  Copy c = {t, &staging, 1, 0};
-  vks_submit(v, record_copy, &c);
+  vks_read_buffer(v, t, &staging);
   memcpy(bytes, staging.map, size);
   vkc_free(v, &staging);
+}
+void vks_read_buffer(Vkc *v, VksImage *t, VkcBuffer *staging) {
+  Copy c = {t, staging, 1, 0};
+  vks_submit(v, record_copy, &c);
 }
 
 VkSampler vks_sampler(Vkc *v, int filter, int repeat, int compare) {

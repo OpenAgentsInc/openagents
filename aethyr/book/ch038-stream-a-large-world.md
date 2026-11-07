@@ -83,8 +83,11 @@ order.
 - [Named stream profiles](../world/stream-profile.coax): checked cell rings,
   independent media collection, paid-tick update cadence and neighbor
   placement hints, adopted by that bounded consumer. Prefetch readiness
-  grants no spawn/simulation authority. Automatic recovery, native GPU
-  qualification and the chapter's complete teaching proof remain open.
+  grants no spawn/simulation authority. A separate [native
+  carrier](../host/stream-native.md) now exercises both tiers through actual
+  Vulkan loads, retirement and controlled device replacement. Physical
+  backend budget planning, automatic recovery and the chapter's complete
+  teaching proof remain open.
 
 ## The design in Aethyr
 

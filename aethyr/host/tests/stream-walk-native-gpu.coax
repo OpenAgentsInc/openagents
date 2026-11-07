@@ -1,0 +1,193 @@
+// Actual headless native consumer: local admitted sources, canonical codecs,
+// the shared walker/owners/draw list, Vulkan effects and retained replacement.
+// The local-file adapter is deliberately separate from HTTP transport.
+#import "Basic";
+#load "../../world/stream-walk-recovery.coax";
+#load "../../forge/pack.coax" as packs;
+#load "../stream-native-conformance.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/json/json.coax";
+
+sw_sdk_start :: (source: [] u8, root: [] u8, tier: int, backend: int) -> bool #foreign #effects(all);
+sw_sdk_copy :: (row: int, generation: int, epoch: int, source: [] u8) -> bool #foreign #effects(all);
+sw_host_frame :: (ns: int, direction: f32) -> s32 #foreign #effects(all);
+sw_host_step_count :: () -> s32 #foreign #effects(all);
+sw_host_step_word :: (step: s32, word: s32) -> int #foreign #effects(all);
+sw_host_ack :: () #foreign #effects(all);
+sw_host_close :: () -> s32 #foreign #effects(all);
+sw_host_info :: (field: s32) -> int #foreign #effects(all);
+sw_host_row :: (row: s32, field: s32) -> int #foreign #effects(all);
+sw_host_player :: (field: s32) -> f32 #foreign #effects(all);
+sw_host_cell :: (cell: s32, field: s32) -> int #foreign #effects(all);
+sw_host_command :: (retiring: s32, index: s32, field: s32) -> int #foreign #effects(all);
+sw_host_record :: (index: s32, field: s32) -> int #foreign #effects(all);
+sw_host_allocate :: (row: s32, generation: int, epoch: int) -> s32 #foreign #effects(all);
+sw_host_decode :: (row: s32, generation: int, epoch: int) -> s32 #foreign #effects(all);
+sw_host_finish :: (row: s32, generation: int, epoch: int, status: s32) -> s32 #foreign #effects(all);
+sw_host_destroy :: (row: s32, generation: int, epoch: int) -> s32 #foreign #effects(all);
+sw_host_borrow :: (row: s32) -> s32 #foreign #effects(all);
+sw_host_return :: (row: s32) -> s32 #foreign #effects(all);
+sw_host_fixed :: (index: s32, kind: s32, words: int) -> s32 #foreign #effects(all);
+sw_host_fixed_release :: (index: s32) -> s32 #foreign #effects(all);
+sw_host_draw_count :: () -> s32 #foreign #effects(all);
+sw_host_draw :: (index: s32, field: s32) -> int #foreign #effects(all);
+sw_host_trace_count :: () -> s32 #foreign #effects(all);
+sw_host_trace :: (index: s32, field: s32) -> int #foreign #effects(all);
+sw_host_trace_ack :: () #foreign #effects(all);
+sw_host_recover :: () -> s32 #foreign #effects(all);
+sw_host_recover_info :: (field: s32) -> int #foreign #effects(all);
+sw_host_uploadable :: (row: s32) -> s32 #foreign #effects(all);
+sw_vk_open :: (program: [] u8) -> s32 #foreign #effects(all);
+sw_vk_make_surface :: () -> s32 #foreign #effects(all);
+sw_vk_upload :: (row: s32, generation: int, epoch: int, replacement: s32) -> s32 #foreign #effects(all);
+sw_vk_drop :: (row: s32, generation: int) -> s32 #foreign #effects(all);
+sw_vk_render :: () -> s32 #foreign #effects(all);
+sw_vk_capture :: (out: [] u8) -> s32 #foreign #effects(all);
+sw_vk_close :: () -> s32 #foreign #effects(all);
+sw_vk_info :: (field: s32) -> int #foreign #effects(all);
+sw_vk_name :: (out: [] u8) -> s32 #foreign #effects(all);
+sw_vk_state :: (out: [] u8) -> bool #foreign #effects(all);
+sw_vk_source :: (row: int, out: [] u8) -> int #foreign #effects(all);
+
+swn_state :: (s: [] SwWalk, out: [] u8) -> bool #export_c #effects(all) {
+  return assets.asset_hex(sw_state_digest(s, s[0].player.clock, 0), out);
+}
+swn_name :: (id: string, suffix: string, out: [] u8) -> string {
+  #assert id.count == 64 && out.count >= 80;
+  for c, i: id { out[i] = c; } for c, i: suffix { out[64 + i] = c; } return cast(string) out[0..<64 + suffix.count];
+}
+swn_source :: (scene: Jv, dir: string, row: int, out: [] u8) -> int {
+  item := jv_at(scene, jv_get(scene, 0, "resources"), row); hex: [64] u8;
+  if jv_int(scene, jv_get(scene, item, "row"), -1) != row || jv_str(scene, jv_get(scene, item, "container_sha256"), hex[..]) != 64 { return -1; }
+  raw := jv_bool(scene, jv_get(scene, item, "raw")); name: [128] u8; path: [4096] u8; bytes: [65536] u8;
+  n := fs_read(fs_join(dir, swn_name(cast(string) hex[..], ifx raw then ".raw" else ".vpk", name[..]), path[..]), bytes[..]);
+  if n < 1 || !sw_auth(bytes[0..<n], cast(string) hex[..]) { return -1; }
+  offset := jv_int(scene, jv_get(scene, item, "offset"), -1); count := jv_int(scene, jv_get(scene, item, "bytes"), -1);
+  if offset < 0 || count < 1 || count > out.count || offset > n - count { return -1; }
+  if !raw { pack: [1] packs.PackRead; if !packs.pack_read(cast(string) bytes[0..<n], pack[..]) { return -1; } }
+  if jv_str(scene, jv_get(scene, item, "sha256"), hex[..]) != 64 || !sw_auth(bytes[offset..<offset + count], cast(string) hex[..]) { return -1; }
+  for i: 0..<count { out[i] = bytes[offset + i]; } return count;
+}
+swn_surface :: () -> bool {
+  for i: 0..<3 { if sw_host_fixed(cast(s32) i, ifx i == 0 then 1 else 3, ifx i == 0 then 1024 else 57600) != 1 { return false; } }
+  return sw_vk_make_surface() == 1;
+}
+swn_render :: () -> bool {
+  borrowed: [64] bool; count := sw_host_draw_count();
+  for i: 0..<cast(int) count { for field: 0..<4 {
+    row := sw_host_draw(cast(s32) i, cast(s32) field); if row < 0 || row >= 64 { return false; }
+    if !borrowed[row] { if sw_host_borrow(cast(s32) row) != 1 { return false; } borrowed[row] = true; }
+  } }
+  ok := sw_vk_render() == 1;
+  for held, row: borrowed { if held { ok = (sw_host_return(cast(s32) row) == 1) && ok; } } return ok;
+}
+swn_effects :: (scene: Jv, dir: string, stages: [] Jo) -> bool {
+  for i: 0..<sw_host_info(2) {
+    row := cast(s32) sw_host_command(1, cast(s32) i, 0); gen := sw_host_command(1, cast(s32) i, 1); epoch := sw_host_command(1, cast(s32) i, 2);
+    if sw_vk_drop(row, gen) != 1 || sw_host_destroy(row, gen, epoch) != 1 { return false; }
+  }
+  for i: 0..<sw_host_info(1) {
+    row := cast(s32) sw_host_command(0, cast(s32) i, 0); gen := sw_host_command(0, cast(s32) i, 1); epoch := sw_host_command(0, cast(s32) i, 2);
+    start := cxproc_now_ns(); transfer := sw_host_row(row, 14);
+    // The same mapped bytes also consume one concrete renderer buffer slot;
+    // the resource's existing staging lease remains live through its fence.
+    if transfer > 0 && sw_host_fixed(5, 2, transfer / 4) != 1 { return false; }
+    if sw_host_allocate(row, gen, epoch) != 1 { return false; } allocated := cxproc_now_ns();
+    bytes: [4096] u8; n := swn_source(scene, dir, cast(int) row, bytes[..]);
+    if n < 1 || !sw_sdk_copy(cast(int) row, gen, epoch, bytes[0..<n]) { return false; } read := cxproc_now_ns();
+    if sw_host_decode(row, gen, epoch) != 0 { return false; } decoded := cxproc_now_ns();
+    if sw_host_row(row, 3) > 0 && sw_vk_upload(row, gen, epoch, 0) != 1 { return false; } uploaded := cxproc_now_ns();
+    if sw_host_finish(row, gen, epoch, 0) != 1 { return false; }
+    if transfer > 0 && sw_host_fixed_release(5) != 1 { return false; }
+    jo_arr(stages); for word: [8] int.[cast(int) row, gen, epoch, allocated - start, read - allocated, decoded - read, uploaded - decoded, cxproc_now_ns() - start] { jo_int(stages, word); } jo_end(stages);
+  }
+  sw_host_ack(); return true;
+}
+swn_frame :: (scene: Jv, dir: string, ns: int, direction: f32, frames: [] Jo) -> bool {
+  start := cxproc_now_ns(); if sw_host_frame(ns, direction) != 1 { return false; }
+  jo_obj(frames); jo_key(frames, "tick"); jo_int(frames, sw_host_info(0)); jo_key(frames, "direction"); jo_int(frames, cast(int) direction);
+  jo_key(frames, "positionBits"); jo_arr(frames); for f: 0..<3 { jo_int(frames, cast(int) f32_bits(sw_host_player(cast(s32) f))); } jo_end(frames);
+  jo_key(frames, "stepDigests"); jo_arr(frames);
+  for step: 0..<cast(int) sw_host_step_count() { id: assets.AssetId; hex: [64] u8; for word: 0..<8 { id.words[word] = cast(u32) sw_host_step_word(cast(s32) step, cast(s32) word); } #assert assets.asset_hex(id, hex[..]); jo_str(frames, cast(string) hex[..]); } jo_end(frames);
+  jo_key(frames, "records"); jo_arr(frames); for i: 0..<sw_host_info(3) { jo_arr(frames); for f: 0..<23 { jo_int(frames, sw_host_record(cast(s32) i, cast(s32) f)); } jo_end(frames); } jo_end(frames);
+  jo_key(frames, "stages"); jo_arr(frames); ok := swn_effects(scene, dir, frames); jo_end(frames); if !ok || !swn_render() { return false; }
+  jo_key(frames, "allocations"); jo_arr(frames); count := sw_host_trace_count(); if count < 0 { return false; }
+  for i: 0..<cast(int) count { jo_arr(frames); for f: 0..<6 { jo_int(frames, sw_host_trace(cast(s32) i, cast(s32) f)); } jo_end(frames); } jo_end(frames); sw_host_trace_ack();
+  if sw_host_info(14) > sw_host_info(10) || sw_host_info(14) + sw_vk_info(1) > sw_host_info(8) { return false; }
+  jo_key(frames, "info"); jo_arr(frames); for f: 0..<28 { jo_int(frames, sw_host_info(cast(s32) f)); } jo_end(frames);
+  jo_key(frames, "gpu"); jo_arr(frames); for f: 0..<19 { jo_int(frames, sw_vk_info(cast(s32) f)); } jo_end(frames);
+  jo_key(frames, "frameNs"); jo_int(frames, ns); jo_key(frames, "elapsedNs"); jo_int(frames, cxproc_now_ns() - start); jo_end(frames); return !frames[0].bad;
+}
+swn_capture :: (out: [] u8) -> bool {
+  if sw_host_fixed(3, 2, out.count / 4) != 1 { return false; }
+  ok := sw_vk_capture(out) == 1; return (sw_host_fixed_release(3) == 1) && ok;
+}
+swn_sources :: (out: [] u8) -> bool {
+  bytes: [263168] u8; n := 0;
+  for row: 0..<64 { source: [4096] u8; count := sw_vk_source(row, source[..]); if count < 0 || count > 4096 { return false; }
+    resource_put64(bytes[..], n, row); resource_put64(bytes[..], n + 8, count); n += 16;
+    for i: 0..<count { bytes[n] = source[i]; n += 1; }
+  }
+  return assets.asset_hex(assets.asset_id(cast(string) bytes[0..<n]), out);
+}
+swn_recover :: (program: [] u8, q: [] int, report: [] Jo, outdir: string) -> bool {
+  before: [230400] u8; after: [230400] u8; state_before: [64] u8; state_after: [64] u8; source_before: [64] u8; source_after: [64] u8;
+  if !swn_capture(before[..]) || !sw_vk_state(state_before[..]) || !swn_sources(source_before[..]) { return false; }
+  live := sw_vk_info(0); tick := sw_host_info(0); cpu := sw_host_info(14); reads := sw_host_info(20); frames := sw_vk_info(7);
+  started := cxproc_now_ns(); if sw_vk_close() != 1 { return false; } old_closed := sw_vk_info(4) == 0 && sw_vk_info(0) == 0;
+  if sw_host_recover() != 1 || sw_vk_open(program) != 1 || !swn_surface() { return false; }
+  uploaded := 0;
+  for row: 0..<64 { if sw_host_uploadable(cast(s32) row) == 1 {
+    bytes := sw_host_row(cast(s32) row, 3);
+    if sw_host_fixed(4, 2, bytes / 4) != 1 || sw_vk_upload(cast(s32) row, sw_host_row(cast(s32) row, 10), 1, 1) != 1 || sw_host_fixed_release(4) != 1 { return false; } uploaded += 1;
+  } }
+  if !swn_render() || !swn_capture(after[..]) || !sw_vk_state(state_after[..]) || !swn_sources(source_after[..]) { return false; }
+  q[0] = 1; q[1] = ifx live > 0 then 1 else 0; q[2] = ifx cast(string) before[..] == cast(string) after[..] then 1 else 0;
+  distinct := false; for i: 1..<57600 { for lane: 0..<4 { if before[i * 4 + lane] != before[lane] { distinct = true; } } } q[3] = ifx distinct then 1 else 0;
+  q[4] = ifx cast(string) state_before[..] == cast(string) state_after[..] then 1 else 0;
+  q[5] = ifx cpu == sw_host_info(14) && reads == sw_host_info(20) && cast(string) source_before[..] == cast(string) source_after[..] then 1 else 0;
+  q[6] = ifx tick == sw_host_info(0) then 1 else 0; q[7] = ifx old_closed && sw_vk_info(5) == 2 && sw_vk_info(6) == 1 then 1 else 0;
+  q[8] = ifx uploaded == sw_host_recover_info(1) && uploaded == live && sw_vk_info(0) == live then 1 else 0;
+  q[9] = ifx sw_host_recover_info(2) == 2 then 1 else 0; q[10] = ifx sw_vk_info(7) > frames then 1 else 0;
+  path: [4096] u8; if !fs_write(fs_join(outdir, "before.rgba", path[..]), cast(string) before[..]) || !fs_write(fs_join(outdir, "after.rgba", path[..]), cast(string) after[..]) { return false; }
+  jo_obj(report); jo_key(report, "tick"); jo_int(report, tick); jo_key(report, "cpuBytes"); jo_int(report, cpu); jo_key(report, "attempts"); jo_int(report, reads); jo_key(report, "uploaded"); jo_int(report, uploaded);
+  jo_key(report, "elapsedNs"); jo_int(report, cxproc_now_ns() - started); jo_key(report, "stateSHA256"); jo_str(report, cast(string) state_before[..]); jo_key(report, "stateAfterSHA256"); jo_str(report, cast(string) state_after[..]);
+  jo_key(report, "sourceSHA256"); jo_str(report, cast(string) source_before[..]); jo_key(report, "sourceAfterSHA256"); jo_str(report, cast(string) source_after[..]); jo_end(report); return true;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 5 || args_count(a[..]) > 6 { tool_errln("usage: stream-native SCENE_DIR SCENE_SHA256 SHADER.spv NEW_OUTPUT_DIR TIER [--route]"); return 2; }
+  route := args_count(a[..]) == 6; if route && args_at(a[..], 5) != "--route" { return 2; }
+  tier := args_at(a[..], 4); if tier != "0" && tier != "1" { return 2; } quality := ifx tier == "0" then 0 else 1;
+  dir := args_at(a[..], 0); output := args_at(a[..], 3); if fs_exists(output) || !fs_mkdir(output) { return 2; }
+  path: [4096] u8; scene_bytes: [65536] u8; scene: [1] Jv; nodes: [4096] JvNode; n := fs_read(fs_join(dir, "scene.json", path[..]), scene_bytes[..]);
+  if n < 1 || !sw_auth(scene_bytes[0..<n], args_at(a[..], 1)) || !jv_parse(scene[..], cast(string) scene_bytes[0..<n], nodes[..]) { return 1; }
+  root: [64] u8; item := jv_at(scene[0], jv_get(scene[0], 0, "manifests"), 2 + quality);
+  if jv_int(scene[0], jv_get(scene[0], item, "backend"), -1) != 1 || jv_int(scene[0], jv_get(scene[0], item, "tier"), -1) != quality || jv_str(scene[0], jv_get(scene[0], item, "sha256"), root[..]) != 64 { return 1; }
+  name: [128] u8; manifest_bytes: [32768] u8; mn := fs_read(fs_join(dir, swn_name(cast(string) root[..], ".rcm", name[..]), path[..]), manifest_bytes[..]);
+  if mn < 1 || !sw_sdk_start(manifest_bytes[0..<mn], root[..], quality, 1) { return 1; }
+  program: [65536] u8; sn := fs_read(args_at(a[..], 2), program[..]); if sn < 1 || sw_vk_open(program[0..<sn]) != 1 || !swn_surface() { return 1; }
+  device: [256] u8; dn := sw_vk_name(device[..]); if dn < 0 { return 1; }
+  report: [8388608] u8; j: [1] Jo; jo_start(j[..], report[..]); jo_obj(j[..]); jo_key(j[..], "schema"); jo_str(j[..], "aethyr.stream-walk-native-gpu.v1");
+  jo_key(j[..], "device"); jo_str(j[..], cast(string) device[0..<cast(int) dn]); jo_key(j[..], "backend"); jo_int(j[..], 1); jo_key(j[..], "tier"); jo_int(j[..], quality);
+  jo_key(j[..], "sceneSHA256"); jo_str(j[..], args_at(a[..], 1)); jo_key(j[..], "manifestSHA256"); jo_str(j[..], cast(string) root[..]);
+  jo_key(j[..], "shaderSHA256"); program_hex: [64] u8; #assert assets.asset_hex(assets.asset_id(cast(string) program[0..<sn]), program_hex[..]); jo_str(j[..], cast(string) program_hex[..]);
+  q: [16] int; jo_key(j[..], "warmup"); jo_arr(j[..]); for i: 0..<32 { if !swn_frame(scene[0], dir, 62500000, 0, j[..]) { tool_errln("native warmup failed"); return 1; } } jo_end(j[..]);
+  jo_key(j[..], "recovery"); if !swn_recover(program[0..<sn], q[..], j[..], output) { tool_errln("native recovery failed"); return 1; }
+  checkpoints: [2] [12] [5] int;
+  jo_key(j[..], "route"); jo_arr(j[..]); if route { for leg: 0..<2 {
+    for i: 0..<1600 { if !swn_frame(scene[0], dir, 62500000, ifx leg == 0 then 1.0f32 else -1.0f32, j[..]) { tool_errln("native route failed"); return 1; } }
+    for cell: 0..<12 { for field: 0..<5 { checkpoints[leg][cell][field] = sw_host_cell(cast(s32) cell, cast(s32) field); } }
+  } } jo_end(j[..]);
+  jo_key(j[..], "routeCells"); jo_arr(j[..]); if route { for leg: checkpoints { jo_arr(j[..]); for cell: leg { jo_arr(j[..]); for field: cell { jo_int(j[..], field); } jo_end(j[..]); } jo_end(j[..]); } } jo_end(j[..]);
+  if sw_host_close() != 1 { return 1; } jo_key(j[..], "cleanup"); jo_arr(j[..]); for i: 0..<128 { if sw_host_info(24) == 1 { break; } if !swn_frame(scene[0], dir, 15625000, 0, j[..]) { return 1; } } jo_end(j[..]);
+  for i: 0..<3 { if sw_host_fixed_release(cast(s32) i) != 1 { return 1; } } if sw_vk_close() != 1 { return 1; }
+  q[11] = sw_vk_info(9); q[12] = sw_vk_info(10); q[13] = sw_vk_info(0) + sw_vk_info(2) + sw_vk_info(4); q[14] = sw_host_info(12) + sw_host_info(13);
+  drained := sw_host_info(24) == 1 && sw_host_info(20) == sw_host_info(21) && sw_vk_info(11) == 1;
+  for field: [7] s32.[8, 10, 11, 12, 14, 22, 23] { drained = drained && sw_host_info(field) == 0; } q[15] = ifx drained then 1 else 0;
+  jo_key(j[..], "observations"); jo_arr(j[..]); for word: q { jo_int(j[..], word); } jo_end(j[..]); jo_key(j[..], "passed"); jo_bool(j[..], swn_accept(q[..]));
+  jo_key(j[..], "finalInfo"); jo_arr(j[..]); for f: 0..<28 { jo_int(j[..], sw_host_info(cast(s32) f)); } jo_end(j[..]); jo_key(j[..], "finalGPU"); jo_arr(j[..]); for f: 0..<19 { jo_int(j[..], sw_vk_info(cast(s32) f)); } jo_end(j[..]); jo_end(j[..]);
+  if j[0].bad || !fs_write(fs_join(output, "receipt.json", path[..]), jo_text(j[..])) { return 1; }
+  if !swn_accept(q[..]) { tool_errln("native observations refused"); return 1; } print("PASS actual native streaming GPU replacement; % attempts, % ticks, zero final owners\n", sw_host_info(20), sw_host_info(0)); return 0;
+}

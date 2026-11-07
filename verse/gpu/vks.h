@@ -26,8 +26,14 @@ VksImage vks_image_levels(Vkc *v, uint32_t w, uint32_t h, uint32_t layers, int a
 // All of a texture's levels and layers from bytes (tightly packed: level
 // after level, each layer after layer); it is left ready to sample.
 void vks_upload(Vkc *v, VksImage *t, const void *bytes, size_t size);
+// Upload from a caller-owned mapped transfer buffer. The caller retains it
+// through this function's completed submission; no second staging is made.
+void vks_upload_buffer(Vkc *v, VksImage *t, VkcBuffer *staging, size_t size);
 // Layer 0 of an image that is ready to sample, into bytes (tightly packed).
 void vks_read(Vkc *v, VksImage *t, void *bytes, size_t size);
+// Read into an already owned mapped transfer buffer, with the same completed
+// submission as vks_read and no hidden second transfer allocation.
+void vks_read_buffer(Vkc *v, VksImage *t, VkcBuffer *staging);
 void vks_image_free(Vkc *v, VksImage *t);
 
 enum { VKS_NEAREST = 0, VKS_LINEAR = 1 };

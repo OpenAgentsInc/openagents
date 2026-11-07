@@ -1,0 +1,9 @@
+a9c265bf470781c593673aa001a4be70d69c27b6fe5d5780d4f6d34a0bc937e6  /nix/store/4ckyprdk36api9agjv3nh6bzil75wvkf-vulkan-validation-layers-1.4.341.0/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+ffdd49b0d1f0f8325e84a9ea37c6c1979fdbf0bf0847687b42a3863a94685054  /nix/store/4ckyprdk36api9agjv3nh6bzil75wvkf-vulkan-validation-layers-1.4.341.0/lib/libVkLayer_khronos_validation.so
+55bb692f5987a6f0f1058b35c2cb82f0af9109741cce0b421708a6f5990eac25  /nix/store/baw82sps59binavc16lfp7drj1g7nw9n-vulkan-loader-1.4.341.0/lib/libvulkan.so.1
+03964df1e28a162285726ec7cf9098e5e0271cb1df21933e7bfef9f6fa08937f  /nix/store/6aj8fkq68zzczmbk6krdjnjl4jhvr8bm-vulkan-headers-1.4.341.0/include/vulkan/vulkan_core.h
+9da466349d444d870111c4240a290d8b5b6f18ae48f982a6a34206792aecffcc  /nix/store/vzkr4vhj77fif6g5j5c5cprmfwfzg50k-spirv-tools-1.4.341.0/bin/spirv-val
+9cf4e2b69b577d7e9612b0dab26be1533c6a8336c2da78cadf5359e40aa11d4c  /run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json
+c0df4028c1dc86ed988cd3ff625b98eacbb5138524d77bdf7496043713694fad  /run/opengl-driver/share/vulkan/icd.d/lvp_icd.x86_64.json
+2c24947969e0bd2a04af20c501b09ca7f964dcfc7a09d6978b4d5c99c4794ee2  /nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libGLX_nvidia.so.0
+45620cae85385b888574ba61e2c619fd71bff503a07c96c0732e91ab05e2aa05  /nix/store/d8wvsjgnk6giw73jhyv5rbl99jl4j5nb-mesa-26.1.8/lib/libvulkan_lvp.so
