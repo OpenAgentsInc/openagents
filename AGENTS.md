@@ -24,6 +24,15 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `docs/verification/`, `docs/lightning/`, `docs/verse/`, `docs/voice/` | Verification plan, the Breez Spark wallet plan, Verse and the Verse engine, the Coax-native voice proposal |
 | `nostr/` | Nostr: `nips/` (official, external and OpenAgents NIPs, pinned) and `book/`, *Nostr From Scratch*, which builds every primitive, the client, the relay and every NIP in Coax (implemented chapters cite the existing `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/` code; check with `python3 psionic/tests/book.py --book nostr`; epic #12612) |
 
+## Shared asset library
+
+Read [the asset registry usage guide](assets/registry/README.md) before importing,
+using or remixing Quaternius assets. The portable catalog is `assets/registry/`;
+originals, immutable revisions and editable Blender forks live under
+`~/.openagents/assets/`. The shared command is `~/.openagents/bin/asset-registry`.
+Use stable asset IDs and pinned collections; preserve source provenance and
+Character Create's frozen save keys. Do not add new app-private source copies.
+
 ## Rules
 
 - **Tools are Coax too** (owner, 2026-10-30; [coax/tools-in-coax.md](coax/tools-in-coax.md)).
