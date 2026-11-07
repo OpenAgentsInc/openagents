@@ -1995,8 +1995,12 @@ paid frames; cleanup waits for the actual completion observation before
 retiring those owners. Reported device loss uses the same checked recovery
 rate/deadline policy and preserves CPU/source state. The qualified input
 profile explicitly injects results after actual Vulkan work; it is not a
-physical GPU-reset claim. Native factories/transfers and persistent rescue
-remain unqualified. See
+physical GPU-reset claim. Streamed buffer/image factories now publish only
+after successful creation and unwind private partial effects. Their
+[factory record](docs/verification/aethyr-streaming-12990/walk-native-factories.md)
+qualifies SDK error prefixes and successful consumer adoption; integrated
+factory-failure histories, legacy transfers, surface/pipeline factories and
+native persistent rescue remain unqualified. See
 `docs/verification/aethyr-streaming-12990/walk-native-loss.md`.
 
 ## The Grid steps only on its session's record

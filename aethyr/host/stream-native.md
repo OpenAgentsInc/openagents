@@ -28,6 +28,15 @@ allocation, without another transfer copy. `sw_host_finish` releases it
 after the completed fence; the fixed buffer grant releases afterward.
 The ordinary malloc/free and browser carrier retain their prior path.
 
+Streamed buffer/image creation uses the additive checked
+`verse/gpu/vks-resource` factories. They return SDK errors, unwind partial
+creation and preserve the destination until success. Staging and retained
+resource factories are adopted; surface/pipeline/readback factories and the
+legacy upload submission path remain separate adapters. The
+[factory record](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
+qualifies SDK failure prefixes and actual successful corridor use. Pending
+upload/error ownership and integrated SDK-failure histories remain open.
+
 Persistent uniforms and the 320×180 color/depth attachments have separate
 existing renderer grants. Readback and replacement transfer buffers each
 receive a temporary grant before allocation. `vks_read_buffer` reads into

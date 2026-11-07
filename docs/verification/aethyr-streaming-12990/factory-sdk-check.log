@@ -1,0 +1,1 @@
+PASS counted Vulkan resource factories: 24 poisoned SDK failures, two unsupported memory profiles, exact requirements, atomic publication and invalid-call preservation

@@ -33,7 +33,10 @@ The native consumer also [retires failed load attempts](../../docs/verification/
 through the shared owner. Five allocation failure points, a missing source
 and a decoder scratch refusal retain partial owners until destruction, then
 retry under a new generation. Their actual histories replay every paid step.
-Checked Vulkan factory/upload failures remain separate work.
+The [checked Vulkan factories](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
+now unwind partial buffer/image creation and are used by streamed resource
+loads. Integrated SDK-error histories and owned upload completion remain
+separate work; logical budgets are not physical Vulkan allocation admission.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

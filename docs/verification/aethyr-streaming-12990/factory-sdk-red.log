@@ -1,0 +1,1 @@
+vkc: vkCreateBuffer(v->dev, &bci, NULL, &b.buf) failed: -1

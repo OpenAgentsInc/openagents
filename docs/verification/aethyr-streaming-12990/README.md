@@ -1,9 +1,13 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [native load-failure record](walk-native-load-failures.md)
+Issue #12990 remains open. The [checked native factory record](walk-native-factories.md)
+adds atomic buffer/image creation and partial-effect cleanup, with poisoned
+SDK outputs, actual hardware/software factory prefixes and successful
+two-tier consumer adoption. Integrated SDK failure histories and checked
+upload completion remain open. The [native load-failure record](walk-native-load-failures.md)
 now qualifies partial allocation, source-read and decoder-refusal cleanup,
-retirement/retry and exact CPU replay on both native tiers. Checked Vulkan
-factory/upload failures and actual stale/superseded callbacks remain open.
+retirement/retry and exact CPU replay on both native tiers. Actual
+stale/superseded callbacks remain open.
 The [actual category-pressure record](walk-category-pressure.md)
 now qualifies texture-line refusal against the native host's live budget,
 with staging/aggregate room, unchanged pixels/owners, continued movement,
@@ -153,8 +157,9 @@ copies are published, including a failure after three reservations.
 ## Work still required before closing #12990
 
 - Actual stale/superseded callback and remaining failed-load ownership
-  histories, including the legacy native Vulkan factory/upload helpers that
-  still exit on SDK errors. Native allocation/source/decode errors now use
+  histories, including integrated SDK factory errors and legacy native
+  Vulkan upload helpers that still exit on SDK errors. Checked streamed
+  resource factories now unwind partial SDK creation. Native allocation/source/decode errors use
   normal completion and retirement. Browser corrupt/oversized/
   cancelled/reordered receive and GPU validation failures already have
   separate current receipts.

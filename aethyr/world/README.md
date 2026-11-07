@@ -6,8 +6,10 @@ corridor's budget/inbox/renderer. Its refusal preserves the existing image
 and owners, and CPU replay records the counted admission boundary. Physical
 Vulkan planning and remaining failed/superseded load paths stay open. Native
 [allocation/source/decode failures](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
-now complete and retire through the shared owner before retry; its Vulkan
-factory/upload failure surface is still unqualified.
+now complete and retire through the shared owner before retry. Its
+[checked Vulkan resource factories](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
+unwind partial creation, with actual successful carrier adoption. Integrated
+SDK-error histories and upload completion ownership remain unqualified.
 
 `cells.coax` is the historical #12847 controller: 64 m cells, separate
 resident/simulate/draw states, hysteresis, persistent sleeping bodies,

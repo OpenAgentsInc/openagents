@@ -1,0 +1,38 @@
+// Checks are written before the checked factories. The counted C model is an
+// independent Vulkan implementation; this driver invokes the actual SDK face.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+vrf_reset :: (kind: s32, stage: s32, code: s32) #foreign #effects(all);
+vrf_create :: () -> s32 #foreign #effects(all);
+vrf_destroy :: () #foreign #effects(all);
+vrf_invalid :: (which: s32) -> s32 #foreign #effects(all);
+vrf_nonempty :: (which: s32) -> s32 #foreign #effects(all);
+vrf_info :: (field: s32) -> int #foreign #effects(all);
+resource_failures :: () #effects(all) {
+  for kind: 0..<2 { for at: 1..<5 { for code: [3] s32.[-1,-2,-4] {
+    vrf_reset(cast(s32) kind,cast(s32) at,code);
+    #assert vrf_create() == code;
+    #assert vrf_info(0) == 0 && vrf_info(1) == 0 && vrf_info(2) == 0 && vrf_info(3) == 0;
+    #assert vrf_info(4) == 0 && vrf_info(5) == 1;
+  } } }
+  for kind: 0..<2 {
+    vrf_reset(cast(s32) kind,5,0); #assert vrf_create() == -8;
+    #assert vrf_info(0) == 0 && vrf_info(1) == 0 && vrf_info(2) == 0 && vrf_info(3) == 0 && vrf_info(5) == 1;
+  }
+}
+resource_success :: () #effects(all) {
+  for kind: 0..<2 {
+    vrf_reset(cast(s32) kind,0,0); #assert vrf_create() == 0;
+    #assert vrf_info(0) == 1 && vrf_info(1) == 1 && vrf_info(2) == 1 && vrf_info(3) == 0;
+    #assert vrf_info(4) == 1 && vrf_info(5) == 1;
+    calls := vrf_info(6); #assert vrf_create() == -3 && vrf_info(6) == calls;
+    vrf_destroy(); #assert vrf_info(0) == 0 && vrf_info(1) == 0 && vrf_info(2) == 0 && vrf_info(3) == 0;
+    for which: 0..<(ifx kind == 0 then 5 else 11) { #assert vrf_invalid(cast(s32) which) == -3 && vrf_info(6) == calls; }
+    for which: 0..<(ifx kind == 0 then 4 else 9) { #assert vrf_nonempty(cast(s32) which) == -3 && vrf_info(6) == calls; }
+    #assert vrf_info(3) == 0;
+  }
+}
+tool_main :: () -> int #export_c #effects(all) {
+  resource_failures(); resource_success();
+  print("PASS counted Vulkan resource factories: 24 poisoned SDK failures, two unsupported memory profiles, exact requirements, atomic publication and invalid-call preservation\n"); return 0;
+}

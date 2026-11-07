@@ -1,0 +1,17 @@
+// Real-device SDK effects, with one explicit error input before an SDK phase.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+vrn_open :: () -> s32 #foreign #effects(all);
+vrn_case :: (kind: s32, stage: s32, code: s32) -> s32 #foreign #effects(all);
+vrn_close :: () -> s32 #foreign #effects(all);
+vrn_info :: (field: s32) -> int #foreign #effects(all);
+tool_main :: () -> int #export_c #effects(all) {
+  #assert vrn_open() == 1;
+  for kind: 0..<2 {
+    for at: 1..<5 { for code: [2] s32.[-1,-2] { #assert vrn_case(cast(s32) kind,cast(s32) at,code) == 1; } }
+    #assert vrn_case(cast(s32) kind,0,0) == 1;
+  }
+  #assert vrn_case(0,4,-5) == 1;
+  #assert vrn_close() == 1 && vrn_info(0) == 19 && vrn_info(1) == 0 && vrn_info(2) == 0;
+  print("PASS native Vulkan resource factories: % cases; validation errors %, warnings %; vendor %, device %\n",vrn_info(0),vrn_info(1),vrn_info(2),vrn_info(3),vrn_info(4));return 0;
+}

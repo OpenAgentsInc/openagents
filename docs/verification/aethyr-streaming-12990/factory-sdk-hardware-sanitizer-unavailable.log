@@ -1,0 +1,4 @@
+[Vulkan Loader] ERROR:          loader_scanned_icd_add: Could not get 'vkCreateInstance' via 'vk_icdGetInstanceProcAddr' for ICD /nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libGLX_nvidia.so.0
+[Vulkan Loader] WARNING | DRIVER: Shouldn't reach this. A valid version of requested ICD /nix/store/jvw27qs9lrnmm2yxnvld8kdfg031jfx5-nvidia-x11-595.71.05/lib/libGLX_nvidia.so.0 was loaded but something bad happened afterwards.
+[Vulkan Loader] ERROR | DRIVER: vkCreateInstance: Found no drivers!
+vkc: vkCreateInstance(&ici, NULL, &v->inst) failed: -9

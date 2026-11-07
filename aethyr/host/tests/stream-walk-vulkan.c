@@ -7,6 +7,7 @@
 #include "stream-walk-face.c"
 #include "vks.h"
 #include "vks-submit.h"
+#include "vks-resource.h"
 #include <time.h>
 
 typedef struct { VkcBuffer buffer; VksImage image; bool live,texture; int64_t generation,bytes; } SwVkObject;
@@ -79,7 +80,7 @@ static int64_t sw_vk_memory(void) {
   if(total>vk_memory_peak)vk_memory_peak=total;return total;
 }
 static void sw_vk_temporary(const VkcBuffer *buffer){VkMemoryRequirements req;vkGetBufferMemoryRequirements(vk.dev,buffer->buf,&req);int64_t bytes=sw_vk_memory()+(int64_t)req.size;if(bytes>vk_memory_peak)vk_memory_peak=bytes;}
-static void *sw_vk_stage_allocate(int32_t row,size_t bytes){if(!vk_opened||!fixed_live[5]||stages[row].buf)return NULL;stages[row]=vkc_buffer(&vk,bytes);sw_vk_memory();return stages[row].map;}
+static void *sw_vk_stage_allocate(int32_t row,size_t bytes){if(!vk_opened||!fixed_live[5]||stages[row].buf)return NULL;if(vks_buffer_try(&vk,&stages[row],bytes,NULL)!=VK_SUCCESS)return NULL;sw_vk_memory();return stages[row].map;}
 static void sw_vk_stage_free(int32_t row){vkc_free(&vk,&stages[row]);memset(&stages[row],0,sizeof stages[row]);}
 static void sw_vk_pipes_close(void){for(int i=0;i<16;i++)if(vk_draws[i].live){vks_pipe_close(&vk,&vk_draws[i].pipe);vk_draws[i].live=false;}}
 int32_t sw_vk_open(coax_v_u8 shader,coax_v_u8 hud_shader,coax_v_u8 present_shader){
@@ -126,19 +127,25 @@ int32_t sw_vk_upload(int32_t row,int64_t generation,int64_t epoch,int32_t replac
   if(!same(p,row,generation,epoch)||!p->plan||o->live||!sw_host_gpu_live(row))return 0;
   size_t bytes=(size_t)p->plan->cost.gpu;if(!bytes)return 1;
   VkcBuffer temp={0},*stage=&stages[row];
-  if(replacement){if(!fixed_live[4])return 0;temp=vkc_buffer(&vk,bytes);stage=&temp;sw_vk_temporary(&temp);}
-  if(!stage->buf||stage->size!=bytes)return 0;
   bool image=p->plan->spec.format==COAX_ResourceFormat_image_mips;
+  if(image?!p->decoded:(!p->source||bytes!=(size_t)p->plan->cost.encoded))return 0;
+  if(replacement){if(!fixed_live[4]||vks_buffer_try(&vk,&temp,bytes,NULL)!=VK_SUCCESS)return 0;stage=&temp;sw_vk_temporary(&temp);}
+  if(!stage->buf||stage->size!=bytes)return 0;
+  VkResult created;
   if(image){
-    if(!p->decoded)return 0;memcpy(stage->map,p->decoded,bytes);
-    o->image=vks_image_levels(&vk,(uint32_t)p->plan->cost.width,(uint32_t)p->plan->cost.height,1,0,VK_FORMAT_R8G8B8A8_UNORM,VKS_TEXTURE,(uint32_t)p->plan->cost.levels);
+    memcpy(stage->map,p->decoded,bytes);
+    created=vks_image_try(&vk,&o->image,(uint32_t)p->plan->cost.width,(uint32_t)p->plan->cost.height,1,0,VK_FORMAT_R8G8B8A8_UNORM,VKS_TEXTURE,(uint32_t)p->plan->cost.levels,NULL);
+    if(created!=VK_SUCCESS)goto refused;
     vks_upload_buffer(&vk,&o->image,stage,bytes);
   }else{
-    if(!p->source||bytes!=(size_t)p->plan->cost.encoded)return 0;memcpy(stage->map,p->source,bytes);
-    o->buffer=vkc_buffer(&vk,bytes);SwVkCopy copy={stage,&o->buffer,bytes};vks_submit(&vk,sw_vk_record_copy,&copy);
+    memcpy(stage->map,p->source,bytes);
+    created=vks_buffer_try(&vk,&o->buffer,bytes,NULL);if(created!=VK_SUCCESS)goto refused;
+    SwVkCopy copy={stage,&o->buffer,bytes};vks_submit(&vk,sw_vk_record_copy,&copy);
   }
   o->live=true;o->texture=image;o->generation=generation;o->bytes=(int64_t)bytes;sw_vk_memory();if(replacement)sw_vk_temporary(&temp);
   if(replacement)vkc_free(&vk,&temp);return 1;
+refused:
+  if(replacement)vkc_free(&vk,&temp);return 0;
 }
 static void sw_vk_record_draw(VkCommandBuffer cmd,void *user){
   int n=*(int*)user;const float clear[4]={.03f,.05f,.08f,1};vks_surface_begin(&vk_surface,cmd,clear,1);
