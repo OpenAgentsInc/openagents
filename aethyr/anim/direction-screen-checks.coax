@@ -1,0 +1,16 @@
+AD_SCREEN_TEST :: "{\"schema\":\"anim.scene.check.v1\",\"continuity_pass\":true,\"determinism\":{\"pass\":true},\"face_ranges\":{\"source_violations\":0,\"composite_violations\":0},\"joint_limits\":{\"violations\":0},\"capsule_intersections\":{\"pair_samples\":0},\"hero_head_framing\":[{\"visible_samples\":1,\"total_samples\":1}],\"foot_sliding\":[{\"contacts\":1,\"max_travel_cm\":0.1,\"pass\":true}]}";
+#test "edit screening names failed scene checks and never treats a missing report as a pass" {
+ #assert ad_screen(AD_SCREEN_TEST)=="" && ad_screen("{}")=="scene report";
+ from:=[7]string.["\"continuity_pass\":true","\"pass\":true","\"source_violations\":0","\"composite_violations\":0","\"violations\":0","\"pair_samples\":0","\"max_travel_cm\":0.1"];
+ to:=[7]string.["\"continuity_pass\":false","\"pass\":false","\"source_violations\":1","\"composite_violations\":1","\"violations\":1","\"pair_samples\":1","\"max_travel_cm\":1.01"];
+ expected:=[7]string.["continuity","determinism","face_ranges","face_ranges","joint_limits","capsule_intersections","foot_sliding"];b:[4096]u8;for k:0..<7 {n:=anim_test_replace(AD_SCREEN_TEST,from[k],to[k],b[..]);#assert ad_screen(cast(string)b[0..<n])==expected[k];}
+}
+#test "direction screening refuses a camera that loses the hero at any sampled frame" {
+ b:[4096]u8;n:=anim_test_set(AD_SCREEN_TEST,"hero_head_framing","[{\"visible_samples\":0,\"total_samples\":1}]",b[..]);#assert ad_screen(cast(string)b[0..<n])=="hero_head_framing";
+}
+
+#test "scene screening retains zero-contact rows and exact sample count limits" {
+ out:[4096]u8;
+ for row,k:[4]string.["[{\"contacts\":0,\"max_travel_cm\":0,\"pass\":false}]","[{\"contacts\":1,\"max_travel_cm\":0,\"pass\":false}]","[{\"contacts\":1000000,\"max_travel_cm\":0,\"pass\":true}]","[{\"contacts\":1000001,\"max_travel_cm\":0,\"pass\":true}]"] {n:=anim_test_set(AD_SCREEN_TEST,"foot_sliding",row,out[..]);#assert ad_screen(cast(string)out[0..<n])==(ifx k==0 || k==2 then "" else "foot_sliding");}
+ for row,k:[3]string.["[{\"visible_samples\":1000000,\"total_samples\":1000000}]","[{\"visible_samples\":1000001,\"total_samples\":1000001}]","[{\"visible_samples\":0,\"total_samples\":0}]"] {n:=anim_test_set(AD_SCREEN_TEST,"hero_head_framing",row,out[..]);#assert ad_screen(cast(string)out[0..<n])==(ifx k==0 then "" else "hero_head_framing");}
+}

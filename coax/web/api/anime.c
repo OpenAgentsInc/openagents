@@ -82,7 +82,7 @@ static void finish(const char *id, int status) {
   if (db) PQfinish(db);
 }
 
-static void answer(const request *q, const char *prepared, const char *id, long timeout_ms) {
+static void answer(const request *q, const char *prepared, const char *id, long timeout_ms, bool animation) {
   const char *model = configured("OA_ANIME_MODEL", configured("OA_NPC_MODEL", "gemini-3.8-flash"));
   char *got = NULL; size_t got_n = 0;
   long http = npc_ask_model_twice_n("OA_ANIME_URL", model, prepared, timeout_ms, &got, &got_n);
@@ -91,7 +91,8 @@ static void answer(const request *q, const char *prepared, const char *id, long 
   if (!out) { free(got); finish(id, 503); refuse(q->fd, 503); return; }
   int64_t n = 0;
   if (status == 200) {
-    n = aap_finish(bytes(q->body, q->body_len), bytes(got, got_n), bytes(out, ANIME_BYTES));
+    n = animation ? ads_finish(bytes(q->body, q->body_len), bytes(got, got_n), bytes(out, ANIME_BYTES))
+                  : aap_finish(bytes(q->body, q->body_len), bytes(got, got_n), bytes(out, ANIME_BYTES));
     if (n < 0) { status = (int)aap_status(n); n = aap_error(n, bytes(out, ANIME_BYTES)); }
   } else n = aar_error(status, bytes(out, ANIME_BYTES));
   finish(id, status);
@@ -100,7 +101,8 @@ static void answer(const request *q, const char *prepared, const char *id, long 
 }
 
 bool anime_route(const request *q) {
-  if (strcmp(q->path, "/api/playtest/labs/anime/direct")) return false;
+  bool animation = !strcmp(q->path, "/api/playtest/labs/anim/direct");
+  if (!animation && strcmp(q->path, "/api/playtest/labs/anime/direct")) return false;
   char content[128] = ""; api_header(q, "Content-Type", content, sizeof content);
   int status = (int)aar_http(text(q->method), text(content), (int64_t)q->body_len);
   if (status != 200) { refuse(q->fd, status); return true; }
@@ -117,7 +119,8 @@ bool anime_route(const request *q) {
   if (status != 200) { refuse(q->fd, status); return true; }
   char *prepared = malloc(ANIME_BYTES + 1);
   if (!prepared) { refuse(q->fd, 503); return true; }
-  int64_t n = aap_prepare(bytes(q->body, q->body_len), bytes(prepared, ANIME_BYTES));
+  int64_t n = animation ? ads_prepare(bytes(q->body, q->body_len), bytes(prepared, ANIME_BYTES))
+                        : aap_prepare(bytes(q->body, q->body_len), bytes(prepared, ANIME_BYTES));
   if (n < 0) { free(prepared); policy_error(q->fd, n); return true; }
   if (n == 0 || n > ANIME_BYTES) { free(prepared); refuse(q->fd, 503); return true; }
   prepared[n] = 0;
@@ -127,7 +130,7 @@ bool anime_route(const request *q) {
   if (status != 200) { free(prepared); refuse(q->fd, status); return true; }
   signal(SIGCHLD, SIG_IGN);
   pid_t pid = fork();
-  if (pid == 0) { answer(q, prepared, id, timeout_ms); free(prepared); _exit(0); }
+  if (pid == 0) { answer(q, prepared, id, timeout_ms, animation); free(prepared); _exit(0); }
   if (pid < 0) { finish(id, 503); refuse(q->fd, 503); }
   free(prepared);
   return true;

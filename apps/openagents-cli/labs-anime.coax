@@ -34,10 +34,13 @@ la_origin :: (p:AnimeArgs,profile:string,out:[]u8)->string {
 // Require the identity before network work; never fall back to an anonymous
 // POST. Signing/HTTP are the existing account primitives, without retries.
 la_request :: (profile:string,origin:string,body:string,out:[]u8)->ApiAnswer {
+ return la_request_at(profile,origin,"/api/playtest/labs/anime/direct",body,out);
+}
+la_request_at :: (profile:string,origin:string,route:string,body:string,out:[]u8)->ApiAnswer {
   res:ApiAnswer;k:[1]Key;res.origin_n=copy(origin,res.origin[..]);
   if !load_key(profile,k[..]) {res.status=401;return res;}
   res.keyed=true;url:[2400]u8;
-  n:=copy(origin,url[..]);m:=copy("/api/playtest/labs/anime/direct",url[n..<url.count]);
+  n:=copy(origin,url[..]);m:=copy(route,url[n..<url.count]);
   if n<0 || m<0 {wipe(k[0].secret[..]);res.error=HTTP_E_URL;return res;}
   auth:[12000]u8;an:=api_auth(k[0].secret[..],cast(string)url[0..<n+m],"POST",body,auth[..]);
   wipe(k[0].secret[..]);

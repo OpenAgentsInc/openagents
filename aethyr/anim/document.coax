@@ -6,55 +6,9 @@
 #load "pose.coax";
 #load "document-checks.coax";
 #authority;
-ANIM_OK :: 0; ANIM_JSON :: 1; ANIM_SCHEMA :: 2; ANIM_LIMIT :: 3;
-ANIM_NAME :: 4; ANIM_NUMBER :: 5; ANIM_RANGE :: 6; ANIM_SKELETON :: 7;
-ANIM_REFERENCE :: 8; ANIM_CAPACITY :: 9; ANIM_FORMAT :: 10;
-ANIM_DOCUMENT_BYTES :: 262144; ANIM_DOCUMENT_NODES :: 32768;
-ANIM_JOINTS :: 512; ANIM_SHAPES :: 256; ANIM_LAYERS :: 32;
-ANIM_SECONDS :: 600.0f32;
-AnimName :: struct {bytes:[64]u8;n:int;}
-AnimNumber :: struct {ok:bool;value:f64;}
-// A pack must have passed anim_pack_valid and remain immutable for every
-// admitted document/playback that borrows it. A hash is identity, not rights.
+#load "json.coax";
 AnimPack :: struct {id:AssetId;bytes:[]u8;}
 AnimPart :: struct {pack:int= -1;offset:int;count:int;stride:int;width:int;}
-anim_name_ok :: (name:string)->bool #effects(all) {
- if name.count<1 || name.count>64 {return false;}
- for c:name {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_' || c=='-' || c=='.') {return false;}}
- return name!="." && name!="..";
-}
-anim_name :: (d:Jv,node:int)->AnimName #effects(all) {
- out:AnimName;n:=jv_str(d,node,out.bytes[..]);if n==-1 {return out;}if !anim_name_ok(cast(string)out.bytes[0..<n]) {return out;}out.n=n;return out;
-}
-anim_text :: (names:[]AnimName,index:int)->string #effects(all) {return cast(string)names[index].bytes[0..<names[index].n];}
-anim_equal :: (a:AnimName,b:AnimName)->bool #effects(all) {if a.n!=b.n {return false;}for k:0..<a.n {if a.bytes[k]!=b.bytes[k] {return false;}}return true;}
-anim_named :: (text:string)->AnimName #effects(all) {out:AnimName;if !anim_name_ok(text) {return out;}out.n=text.count;for c,k:text {out.bytes[k]=c;}return out;}
-anim_find :: (names:[]AnimName,name:AnimName)->int #effects(all) {for item,k:names {if anim_equal(item,name) {return k;}}return -1;}
-anim_in :: (raw:string,allowed:string)->bool #effects(all) {first:=0;for k:0..<allowed.count+1 {if k==allowed.count || allowed[k]=='|' {if jv_raw_eq(raw,allowed[first..<k]) {return true;}first=k+1;}}return false;}
-anim_keys :: (d:Jv,node:int,allowed:string)->bool #effects(all) {if jv_kind(d,node)!=JV_OBJECT {return false;}k:=d.nodes[node].first;while k!=-1 {if !anim_in(jv_key(d,k),allowed) {return false;}k=d.nodes[k].next;}return true;}
-// v1's finite decimal profile: <=40 source bytes, exponent in [-38,38].
-// Accumulate at most 38 significant decimal places; domain gates follow.
-anim_decimal :: (s:string)->AnimNumber #effects(all) {
- if s.count<1 || s.count>40 || jv_scalar_end(s,0)!=s.count || s=="true" || s=="false" || s=="null" {return AnimNumber.{};}
- i:=0;neg:=s[0]=='-';if neg {i=1;}v:f64=0;fraction:f64=1;dotted:=false;
- while i<s.count && s[i]!='e' && s[i]!='E' {if s[i]=='.' {dotted=true;}else if dotted {fraction/=10;v+=cast(f64)(s[i]-'0')*fraction;}else {v=v*10+cast(f64)(s[i]-'0');}i+=1;}
- exponent:=0;if i<s.count {i+=1;minus:=s[i]=='-';if s[i]=='-' || s[i]=='+' {i+=1;}while i<s.count {exponent=exponent*10+cast(int)(s[i]-'0');if exponent>38 {return AnimNumber.{};}i+=1;}for k:0..<exponent {if minus {v/=10;}else {v*=10;}}}
- return AnimNumber.{ok=true,value=ifx neg then -v else v};
-}
-anim_number :: (d:Jv,node:int,low:f64,high:f64)->AnimNumber #effects(all) {if jv_kind(d,node)!=JV_NUMBER {return AnimNumber.{};}v:=anim_decimal(jv_raw(d,node));if !v.ok || !(v.value>=low && v.value<=high) {return AnimNumber.{};}return v;}
-anim_integer :: (d:Jv,node:int,low:int,high:int)->int #effects(all) {v:=anim_number(d,node,cast(f64)low,cast(f64)high);if !v.ok || floor(v.value)!=v.value {return -1;}return cast(int)v.value;}
-anim_vector :: (d:Jv,node:int,count:int,bound:f64)->bool #effects(all) {if jv_kind(d,node)!=JV_ARRAY {return false;}if jv_len(d,node)!=count {return false;}for k:0..<count {if !anim_number(d,jv_at(d,node,k),-bound,bound).ok {return false;}}return true;}
-anim_json :: (text:string,d:[]Jv,nodes:[]JvNode)->int #effects(all) {
- if text.count>ANIM_DOCUMENT_BYTES {return ANIM_LIMIT;}
- if !jv_parse(d,text,nodes) || jv_kind(d[0],0)!=JV_OBJECT {return ANIM_JSON;}
- scratch:[4096]u8;
- for k:0..<d[0].count {kind:=d[0].nodes[k].kind;
-  if kind==JV_NUMBER && !anim_decimal(jv_raw(d[0],k)).ok {return ANIM_NUMBER;}
-  if kind==JV_STRING {n:=jv_str(d[0],k,scratch[..]);if n<0 {return ANIM_LIMIT;}raw:=cast(string)scratch[0..<n];i:=0;while i<raw.count {if raw[i]<32 {return ANIM_JSON;}width:=json_utf8(raw,i);if width<1 {return ANIM_JSON;}i+=width;}}
-  if kind!=JV_OBJECT {continue;}a:=d[0].nodes[k].first;while a!=-1 {n:=jv_unescape(jv_key(d[0],a),scratch[0..<64]);if n<1 {return ANIM_NAME;}b:=d[0].nodes[a].next;while b!=-1 {if jv_raw_eq(jv_key(d[0],b),cast(string)scratch[0..<n]) {return ANIM_JSON;}b=d[0].nodes[b].next;}a=d[0].nodes[a].next;}
- }return ANIM_OK;
-}
-anim_schema :: (d:Jv,schema:string)->bool #effects(all) {n:=jv_get(d,0,"schema");return jv_kind(d,n)==JV_STRING && jv_raw_eq(jv_raw(d,n),schema);}
 anim_window :: (total:int,offset:int,count:int,stride:int,width:int)->bool #effects(all) {return width>=1 && width<=total && offset>=0 && offset<=total-width && stride>=width && count>=1 && count-1<=(total-width-offset)/stride;}
 anim_pack_size :: (bytes:int)->bool #effects(all) {return bytes>0 && bytes<=1073741824;}
 anim_pack_valid :: (pack:AnimPack)->bool #effects(all) {return anim_pack_size(pack.bytes.count) && asset_same(asset_id(cast(string)pack.bytes),pack.id);}
@@ -68,5 +22,3 @@ anim_part :: (d:Jv,node:int,packs:[]AnimPack)->AnimPart #effects(all) {
 anim_word :: (bytes:[]u8,at:int)->u32 #effects(all) {return cast(u32)bytes[at]|(cast(u32)bytes[at+1]<<8)|(cast(u32)bytes[at+2]<<16)|(cast(u32)bytes[at+3]<<24);}
 anim_float :: (bytes:[]u8,at:int)->f32 #effects(all) {return f32_from_bits(anim_word(bytes,at));}
 anim_floats :: (bytes:[]u8,at:int,count:int)->bool #effects(all) {for k:0..<count {if (anim_word(bytes,at+k*4)&0x7f800000)==0x7f800000 {return false;}}return true;}
-
-anim_choice :: (d:Jv,node:int,words:[]const string)->int #effects(all) {if jv_kind(d,node)!=JV_STRING {return -1;}for word,k:words {if jv_raw_eq(jv_raw(d,node),word) {return k;}}return -1;}

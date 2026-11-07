@@ -18,3 +18,8 @@
  rigs:[1]AnimRig;clips:[1]AnimClip;anim_test_performance_context(rigs[..],clips[..]);p:[1]AnimPerformance;#assert anim_performance_load(AP_TEST,rigs[..],clips[..],p[..])==0;
  text:[8192]u8;n:=aw_performance(text[..],p[0],rigs[0],clips[..]);#assert n>0;next:[1]AnimPerformance;#assert anim_performance_load(cast(string)text[0..<n],rigs[..],clips[..],next[..])==0 && next[0].count==2 && next[0].layers[1].target.z==3 && next[0].layers[1].weight==0.7 && next[0].layers[0].blend_out==0.4;
 }
+
+#test "performance minimum speed survives canonical JSON writing" {
+ rigs:[1]AnimRig;clips:[1]AnimClip;anim_test_performance_context(rigs[..],clips[..]);p:[1]AnimPerformance;#assert anim_performance_load(AP_TEST,rigs[..],clips[..],p[..])==0;p[0].layers[0].speed=0.01;
+ text:[8192]u8;n:=aw_performance(text[..],p[0],rigs[0],clips[..]);next:[1]AnimPerformance;#assert n>0 && anim_performance_load(cast(string)text[0..<n],rigs[..],clips[..],next[..])==0 && next[0].layers[0].speed==cast(f32)0.01;
+}

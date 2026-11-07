@@ -3,7 +3,7 @@
 Written 2026-11-06. Status: A0 documents, A1 rig/clip stations, A2 retargeting and A3 layers/fix-ups are implemented.
 A4 imports are implemented within the [v1 profile](anim-imports-v1.md); the exact
 Echo/Slay re-import qualification remains open in [#12983](https://github.com/OpenAgentsInc/openagents/issues/12983). A5 scenes/cuts and the private Guardian study are implemented within the
-[scene profile](anim-scenes-v1.md). A6–A8 are pending.
+[scene profile](anim-scenes-v1.md). A7 is implemented in the [directing profile](anim-directing-v1.md); A6 and A8 are pending.
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
@@ -238,6 +238,8 @@ openagents labs anim import SOURCE --rig NAME          # writes a rig, clips and
 openagents labs anim rig NAME                          # counts, joints, shapes, maps
 openagents labs anim retarget CLIP --to RIG            # a new clip on another rig
 openagents labs anim edit FILE "direction or op"       # one checked change, a new version
+openagents labs anim undo FILE                         # publish the previous version
+openagents labs anim diff FILE                         # full changed-document JSON
 openagents labs anim check FILE                        # all checks, JSON
 openagents labs anim play FILE out.mp4                 # render a performance, scene or cut
 openagents labs anim compare FILE --source FRAMES      # parity against source frames
@@ -305,7 +307,7 @@ Each ends on a check run on our own machines.
 | A4 | Imports | glTF, BVH and ARKit face CSV imports, each with a receipt; one of each plays in `#clip` |
 | A5 | Scenes and cuts | The Draconia scene file plays S1–S6 in the realm and renders to video with `labs anim play`; two renders give the same frame hashes |
 | A6 | Two styles | The same scene file renders realistic and cel; the cut and timing match |
-| A7 | Directing | Ten typed directions (speed, look-at, hold, cut-on-event and others) change the Draconia scene through the director, each as one version with confidence |
+| A7 | Directing (implemented; #12972) | Ten typed directions (speed, look-at, hold, cut-on-event and others) change the Draconia scene through the director, each as one version with confidence |
 | A8 | Published version | The scene uses only our own motion, faces and voice, and is ready to show |
 
 ## Issues

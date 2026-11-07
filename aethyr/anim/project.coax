@@ -1,0 +1,41 @@
+// Staged project admission. The caller owns two Project banks and only
+// switches the active bank after every component and reference is admitted.
+#load "project-policy.coax";
+#load "bundle.coax";
+#load "cut-document.coax";
+#load "../speak.coax";
+#load "voice-source.coax";
+#load "project-checks.coax";
+#authority;
+SceneProject :: struct {
+ ready:bool;error:int;bytes:[]u8;libraries:int;performances:int;voices:int;
+ library:[2]AnimLibrary;performance:[16]AnimPerformance;scene:[1]AnimScene;cut:[1]AnimCut;voice:[32]SpkTrack;wave_at:[32]int;wave_n:[32]int;
+}
+project_begin :: (b:[]u8,out:[]SceneProject)->bool #effects(all) {
+ if out.count<1 {return false;}out[0].ready=false;out[0].error=ANIM_RANGE;if !project_valid(b) {return false;}out[0].bytes=b;out[0].libraries=cast(int)anim_word(b,8);out[0].performances=cast(int)anim_word(b,12);out[0].voices=cast(int)anim_word(b,16);out[0].error=0;return true;
+}
+project_library :: (out:[]SceneProject,index:int)->bool #effects(all) {
+ if out[0].error!=0 {return false;}out[0].error=anim_bundle_load(project_part(out[0].bytes,index),out[0].library[index..<index+1]);if out[0].error!=0 {return false;}for k:0..<index {if anim_equal(out[0].library[k].rig[0].name,out[0].library[index].rig[0].name) {out[0].error=ANIM_NAME;return false;}}return true;
+}
+project_find_library :: (out:[]SceneProject,name:AnimName)->int #effects(all) {for k:0..<out[0].libraries {if anim_equal(out[0].library[k].rig[0].name,name) {return k;}}return -1;}
+project_performance :: (out:[]SceneProject,index:int)->bool #effects(all) {
+ if out[0].error!=0 {return false;}text:=cast(string)project_part(out[0].bytes,out[0].libraries+index);nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {out[0].error=e;return false;}name:=anim_name(d[0],jv_get(d[0],0,"rig"));library:=project_find_library(out,name);if library<0 {out[0].error=ANIM_REFERENCE;return false;}
+ e=anim_performance_read(d[0],out[0].library[library].rig[..],out[0].library[library].clips[0..<out[0].library[library].count],out[0].performance[index..<index+1]);if e!=0 {out[0].error=e;return false;}for k:0..<index {if anim_equal(out[0].performance[k].name,out[0].performance[index].name) {out[0].error=ANIM_NAME;return false;}}return true;
+}
+project_scene :: (out:[]SceneProject)->bool #effects(all) {
+ if out[0].error!=0 {return false;}rigs:[2]AnimRig;packs:[2]AnimPack;for k:0..<out[0].libraries {rigs[k]=out[0].library[k].rig[0];packs[k]=out[0].library[k].packs[0];}part:=project_part(out[0].bytes,out[0].libraries+out[0].performances);out[0].error=anim_scene_load(cast(string)part,packs[0..<out[0].libraries],rigs[0..<out[0].libraries],out[0].performance[0..<out[0].performances],out[0].scene[..]);return out[0].error==0;
+}
+project_cut :: (out:[]SceneProject)->bool #effects(all) {
+ if out[0].error!=0 {return false;}part:=project_part(out[0].bytes,out[0].libraries+out[0].performances+1);out[0].error=anim_cut_load(cast(string)part,out[0].scene[..],out[0].cut[..]);return out[0].error==0;
+}
+project_voice :: (out:[]SceneProject,index:int)->bool #effects(all) {
+ if out[0].error!=0 {return false;}part:=project_part(out[0].bytes,out[0].libraries+out[0].performances+2+index);source:=voice_source(part);if !source.valid {out[0].error=ANIM_FORMAT;return false;}if !spk_track_parse(source.track,out[0].voice[index..<index+1]) {out[0].error=ANIM_FORMAT;return false;}if !voice_track_valid(out[0].voice[index..<index+1]) {out[0].error=ANIM_FORMAT;return false;}out[0].wave_at[index]=cast(int)anim_word(out[0].bytes,20+(out[0].libraries+out[0].performances+2+index)*8)+source.wave_at;out[0].wave_n[index]=source.wave.count;return true;
+}
+project_draw_count :: (out:[]SceneProject)->int #effects(all) {count:=2;for k:0..<out[0].scene[0].cast_count {count+=out[0].library[out[0].scene[0].actors[k].rig].rig[0].sections;}for k:0..<out[0].scene[0].props {count+=out[0].library[out[0].scene[0].prop[k].rig].rig[0].sections;}return count;}
+project_sound_audio :: (out:[]SceneProject)->bool #effects(all) {for k:0..<out[0].scene[0].sounds {cue:=out[0].scene[0].sound[k];if cue.kind!=0 {part:=cue.source;b:=out[0].library[part.pack].packs[0].bytes;if !apw_plan(b[part.offset..<part.offset+part.width]).valid {return false;}}}return true;}
+project_finish :: (out:[]SceneProject)->bool #effects(all) {
+ if out[0].error!=0 {return false;}if !project_sound_audio(out) {out[0].error=ANIM_FORMAT;return false;}if out[0].scene[0].place==2 {out[0].error=ANIM_FORMAT;return false;}for k:0..<out[0].cut[0].shots {if out[0].cut[0].shot[k].transition==2 {out[0].error=ANIM_FORMAT;return false;}}voices:=0;for k:0..<out[0].scene[0].sounds {if out[0].scene[0].sound[k].kind==0 {voices+=1;}}if project_draw_count(out)>64 {out[0].error=ANIM_LIMIT;return false;}if voices!=out[0].voices {out[0].error=ANIM_REFERENCE;return false;}out[0].ready=true;return true;
+}
+project_load :: (b:[]u8,out:[]SceneProject)->bool #effects(all) {
+ if !project_begin(b,out) {return false;}for k:0..<out[0].libraries {if !project_library(out,k) {return false;}}for k:0..<out[0].performances {if !project_performance(out,k) {return false;}}if !project_scene(out) || !project_cut(out) {return false;}for k:0..<out[0].voices {if !project_voice(out,k) {return false;}}return project_finish(out);
+}

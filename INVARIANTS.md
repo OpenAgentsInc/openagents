@@ -6062,6 +6062,26 @@ A5's five authority gates kill 701 mutants with zero survivors. Admission,
 station checks, two complete film hash lists and rendering cost are recorded
 in `docs/verification/animation-lab-a5-2026-11-06/README.md`.
 
+## Animation directions publish only one checked version
+
+Animation Lab directions use the schema-constrained Decisions API, never a
+keyword parser. A reply binds to the exact current bundle hash and names
+existing stock. Every field's model-reported confidence must exceed 850/1000.
+Unmatched, ambiguous, stale, invalid and no-op proposals publish nothing.
+The shared Coax editor re-admits the whole project and screens the numerical
+scene report, including hero framing, before publishing an inactive bank.
+Licensed library and speech bytes remain identical.
+
+CLI versions live only in canonical private storage. Receipt hashes identify
+immutable versions and bind content, parent, words and proposal. Atomic head
+replacement occurs under a directory lock after comparing the current resolved bundle again.
+Corrupt heads, receipts or snapshots refuse without silently using old source.
+Undo validates its parent and restores that exact bundle. Browser history is
+bounded to 16 session edits of one JSON component, 32 KiB on each side.
+Explicit voice activation, final-transcript deduplication, cancellation and
+HTTP response ownership prevent repeated or late replies from creating edits.
+See `docs/verse/anim-directing-v1.md` and its A7 verification record.
+
 ## Character Studio renderer identity
 
 Character Studio binds only the exact `character-creator` slug and `fivelab`

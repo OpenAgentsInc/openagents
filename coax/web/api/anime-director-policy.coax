@@ -10,6 +10,7 @@
 #load "anime-director-checks.coax";
 #load "anime-director-render-checks.coax";
 #load "anime-director-wire-checks.coax";
+#load "../../../aethyr/anim/direction-select.coax";
 #authority;
 
 AAP_INVALID :: -1; AAP_LIMIT :: -2; AAP_MODEL :: -3; AAP_CAPACITY :: -4;

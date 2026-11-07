@@ -50,3 +50,15 @@ an_test_error :: (tokens:[]string,expected:string) {
  for flag:[4]string.["--rig","--rate","--to","--source-rig"] {a[0]=Args.{};for token:[6]string.["labs","anim","check","scene.json",flag,"30"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err!="";}
  a[0]=Args.{};for token:[4]string.["labs","anim","play","scene.json"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err!="";
 }
+
+#test "animation directing grammar preserves words and supports undo diff and a literal API origin" {
+ a:[1]Args;for token:[7]string.["labs","anim","edit","scene.json","slow down -- literally","--origin","http://127.0.0.1:1234"] {#assert args_add(a[..],token);}r:=an_parse(a[..]);#assert r.err=="" && r.verb=="edit" && r.words=="slow down -- literally" && r.origin=="http://127.0.0.1:1234";
+ for verb:[2]string.["undo","diff"] {a[0]=Args.{};for token:[4]string.["labs","anim",verb,"scene.json"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err=="" && an_parse(a[..]).verb==verb;#assert args_add(a[..],"unexpected");#assert an_parse(a[..]).err!="";}
+ a[0]=Args.{};for token:[4]string.["labs","anim","edit","scene.json"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err!="";
+}
+
+#test "directing grammar admits exact word capacities and rejects origin on other verbs" {
+ words:[2049]u8;for k:0..<words.count {words[k]='w';}a:[1]Args;
+ for size:[3]int.[1,2048,2049] {a[0]=Args.{};for token:[5]string.["labs","anim","edit","scene.alp",cast(string)words[0..<size]] {#assert args_add(a[..],token);}#assert (an_parse(a[..]).err=="")== (size<=2048);}
+ a[0]=Args.{};for token:[6]string.["labs","anim","check","scene.alp","--origin","http://localhost"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err=="--origin requires labs anim edit";
+}

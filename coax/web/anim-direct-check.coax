@@ -1,0 +1,16 @@
+// Actual Wasm/C/host request, checked publication, diff and undo in muted headless Chrome.
+// The model reply is controlled here; the independent CLI oracle covers the real API.
+#load "valley-capture.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {print("usage: anim-direct-check URL PRIVATE_DIR\n");return 2;}
+ c:[1]Cdp;if !cdp_launch_background(c[..],1280,800,"anim-direct-check-") {return 1;}defer {cdp_close(c[..]);}
+ _:=cdp_call(c[..],"Page.enable","",30000);
+ setup:="globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.faceErrors=[];globalThis.faceHashes=[];globalThis.adCalls=0;const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)};const af=fetch;globalThis.fetch=async(...a)=>{const u=new URL(typeof a[0]==='string'?a[0]:a[0].url,location.href);if(u.pathname==='/api/playtest/labs/anim/direct'){adCalls++;const b=JSON.parse(typeof a[1].body==='string'?a[1].body:new TextDecoder().decode(a[1].body));return new Response(JSON.stringify({schema:'anim.direct.reply.v1',base:b.base,direction:{schema:'anim.direction.v1',kind:'speed',actor:0,row:0,option:0,at:0,end:0,value:.999,point:[0,0,0],confidence:Object.fromEntries(['kind','actor','row','option','at','end','value','point'].map(k=>[k,950]))}}),{status:200})}return af(...a)}";
+ bytes:[8192]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],setup);jo_end(o[..]);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),30000);
+ jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);_=cdp_call(c[..],"Page.navigate",jo_text(o[..]),30000);
+ if !fc_eval(c[..],"scene and director ready","(async()=>{for(let i=0;i<200;i++){if(globalThis.coaxial?.ready){await coaxialClipStep(1,60);if(coaxial.guardProbe(30)===1)return coaxial.guardProbe(80)===0&&coaxial.guardProbe(85)===1000;}await new Promise(r=>setTimeout(r,100));}return false})()") {return 1;}
+ if !fc_eval(c[..],"host response creates exactly one checked version","(async()=>{coaxial.send(701,'Set layer 0 speed to .999');for(let i=0;i<150;i++){await coaxialClipStep(1,60);if(coaxial.guardProbe(80)===1)return adCalls===1&&coaxial.guardProbe(81)===0&&coaxial.guardProbe(83)===950&&coaxial.guardProbe(85)===999;await new Promise(r=>setTimeout(r,30));}return false})()") {return 1;}
+ if !fc_key(c[..],"d") || !fc_key(c[..],"u") || !fc_eval(c[..],"undo restores original speed and parent","(async()=>{await coaxialClipStep(2,60);return coaxial.guardProbe(80)===1&&coaxial.guardProbe(81)===-1&&coaxial.guardProbe(85)===1000&&faceErrors.length===0})()") {return 1;}
+ if !fc_hash(c[..]) || !fc_shot(c[..],args_at(a[..],1),"director.png") {return 1;}
+ print("PASS browser typed direction, one version, confidence, diff, exact undo and visible GPU frame\n");return 0;
+}

@@ -1,0 +1,102 @@
+// Typed proposals only. Words are interpreted by the Decisions model, never
+// searched here. An edit is bound to immutable source bytes before publication.
+#load "project.coax";
+#load "write.coax";
+#load "direction-checks.coax";
+#load "direction-select.coax";
+#authority;
+AdChange :: struct {code:int=ANIM_REFERENCE;part:int;n:int;}
+ad_domains :: (e:AnimDirection)->bool #effects(all) {
+ if e.kind<0 || e.kind>=AED_KINDS.count || e.actor<0 || e.actor>15 || e.row<0 || e.row>127 || e.option<0 || e.option>511 {return false;}
+ if !(e.at>=0 && e.at<=600 && e.end>=0 && e.end<=600) {return false;}
+ for v:[4]f32.[e.value,e.point.x,e.point.y,e.point.z] {if !(v>= -1000000 && v<=1000000) {return false;}}
+ for value:e.confidence {if value<0 || value>1000 {return false;}}return true;
+}
+ad_shot_name :: (count:int,tail:bool)->AnimName #effects(all) {b:[64]u8;o:[1]PnOut;o[0].buf=b[..];pn_put(o[..],"direction-");pn_putint(o[..],count);if tail {pn_put(o[..],"-tail");}return anim_named(pn_text(o[..]));}
+ad_point :: (o:[]Jo,p:Point) #effects(all) {jo_arr(o);for v:[3]f32.[p.x,p.y,p.z] {aw_number(o,v);}jo_end(o);}
+ad_position :: (path:AnimPath,time:f32)->Point #effects(all) {
+ if path.count==0 {return v3(0,0,0);}if time<=path.time[0] {return path.point[0];}for k:1..<path.count {if time<=path.time[k] {return mix(path.point[k-1],path.point[k],(time-path.time[k-1])/(path.time[k]-path.time[k-1]));}}return path.point[path.count-1];
+}
+ad_yaw :: (path:AnimPath,time:f32)->f32 #effects(all) {
+ if path.count==0 {return 0;}if time<=path.time[0] {return path.yaw[0];}for k:1..<path.count {if time<=path.time[k] {return lerp(path.yaw[k-1],path.yaw[k],(time-path.time[k-1])/(path.time[k]-path.time[k-1]));}}return path.yaw[path.count-1];
+}
+ad_local :: (path:AnimPath,time:f32,world:Point)->Point #effects(all) {yaw:=ad_yaw(path,time);return quat_rotate(Quat.{y= -sin(yaw/2),w=cos(yaw/2)},sub(world,ad_position(path,time)));}
+ad_splice :: (text:string,from:int,to:int,value:string,out:[]u8)->int #effects(all) {
+ n:=from+value.count+text.count-to;if from<0 || to<from || to>text.count || n>out.count {return -1;}for k:0..<from {out[k]=text[k];}for c,k:value {out[from+k]=c;}for k:to..<text.count {out[from+value.count+k-to]=text[k];}return n;
+}
+ad_cut_write :: (c:AnimCut,s:AnimScene,out:[]u8)->int #effects(all) {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.cut.v1");jo_key(o[..],"name");aw_name(o[..],c.name);jo_key(o[..],"scene");aw_name(o[..],c.scene);jo_key(o[..],"fps");jo_int(o[..],c.fps);jo_key(o[..],"shots");jo_arr(o[..]);
+ for k:0..<c.shots {row:=c.shot[k];jo_obj(o[..]);jo_key(o[..],"name");aw_name(o[..],row.name);jo_key(o[..],"camera");aw_name(o[..],s.camera[row.camera].name);jo_key(o[..],"from");aw_number(o[..],row.from);jo_key(o[..],"to");aw_number(o[..],row.to);jo_key(o[..],"transition");jo_str(o[..],[3]string.["cut","fade","crossfade"][row.transition]);jo_key(o[..],"blend");aw_number(o[..],row.blend);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+ad_pose :: (clip:AnimClip,packs:[]AnimPack)->bool #effects(all) {
+ if clip.frames!=2 || !anim_equal(clip.role,anim_named("pose")) || clip.event_count!=0 || clip.root.pack>=0 {return false;}
+ parts:=[3]AnimPart.[clip.body,clip.face,clip.face_pose];counts:=[3]int.[clip.joint_count,clip.curve_count,clip.face_joint_count];
+ for part,k:parts {if counts[k]==0 {continue;}bytes:=packs[part.pack].bytes;for row:0..<counts[k] {for b:0..<part.width {if bytes[part.offset+row*part.stride+b]!=bytes[part.offset+(row+counts[k])*part.stride+b] {return false;}}}}return true;
+}
+ad_shot_insert :: (c:AnimCut,row:int,camera:int,from:f32,to:f32)->AnimCut #effects(all) {
+ old:=c.shot[row];prefix:=from>old.from;suffix:=to<old.to;before:=ifx prefix then 1 else 0;extra:=before+(ifx suffix then 1 else 0);next:=c;shots:[128]AnimCutShot;
+ for k:0..<c.shots+extra {if k<row {shots[k]=c.shot[k];}else if prefix && k==row {shots[k]=old;shots[k].to=from;}else if k==row+before {shots[k]=AnimCutShot.{name=ad_shot_name(c.shots,false),camera=camera,from=from,to=to};}else if suffix && k==row+before+1 {shots[k]=old;shots[k].from=to;shots[k].name=ad_shot_name(c.shots,true);}else {shots[k]=c.shot[k-extra];}}
+ next.shot=shots;next.shots=c.shots+extra;return next;
+}
+ad_component :: (p:[]SceneProject,e:AnimDirection,out:[]u8)->AdChange #effects(all) {
+ result:AdChange;if p.count<1 || !p[0].ready || !ad_domains(e) || e.kind==0 || ad_confidence(e)<=850 {return result;}s:=p[0].scene[0];if !((e.kind>=8 && e.kind<=10) || e.kind==12) && e.actor>=s.cast_count {return result;}
+ if e.kind==2 {
+  if e.row>=s.actors[e.actor].path.count {return result;}old:=s.actors[e.actor].path.point[e.row];if old.x==e.point.x && old.y==e.point.y && old.z==e.point.z {result.code=ANIM_RANGE;return result;}part:=p[0].libraries+p[0].performances;text:=cast(string)project_part(p[0].bytes,part);nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;#assert anim_json(text,d[..],nodes[..])==0;
+  actor:=jv_at(d[0],jv_get(d[0],0,"cast"),e.actor);key:=jv_at(d[0],jv_get(d[0],actor,"path"),e.row);node:=jv_get(d[0],key,"position");value:[512]u8;o:[1]Jo;jo_start(o[..],value[..]);ad_point(o[..],e.point);n:=ad_splice(text,d[0].nodes[node].from,d[0].nodes[node].to,jo_text(o[..]),out);if n== -1 {result.code=ANIM_CAPACITY;return result;}
+  rigs:[2]AnimRig;packs:[1]AnimPack;for k:0..<p[0].libraries {rigs[k]=p[0].library[k].rig[0];}scene:[1]AnimScene;result.code=anim_scene_load(cast(string)out[0..<n],packs[..],rigs[0..<p[0].libraries],p[0].performance[0..<p[0].performances],scene[..]);result.part=part;result.n=n;return result;
+ }
+ if (e.kind>=8 && e.kind<=10) || e.kind==12 {
+  c:=p[0].cut[0];if c.legacy || e.option>=s.cameras || e.row>=c.shots {return result;}
+  if e.kind==12 {if c.shots==1 {result.code=ANIM_RANGE;return result;}shots:[128]AnimCutShot;for k:0..<c.shots-1 {shots[k]=c.shot[k+(ifx k>=e.row then 1 else 0)];}c.shot=shots;c.shots-=1;}else if e.kind==8 {old:=c.shot[e.row];if old.transition!=0 || e.at<old.from || e.end>old.to {result.code=ANIM_RANGE;return result;}prefix:=e.at>old.from;suffix:=e.end<old.to;extra:=(ifx prefix then 1 else 0)+(ifx suffix then 1 else 0);if c.shots+extra>128 {result.code=ANIM_LIMIT;return result;}
+   c=ad_shot_insert(c,e.row,e.option,e.at,e.end);
+  }else if e.kind==9 {if c.shot[e.row].from==e.at && c.shot[e.row].to==e.end {result.code=ANIM_RANGE;return result;}c.shot[e.row].from=e.at;c.shot[e.row].to=e.end;if e.row>0 {c.shot[e.row-1].to=e.at;}for k:e.row+1..<c.shots {c.shot[k].from=e.end;break;}}
+  else {
+   if c.shots>=128 {result.code=ANIM_LIMIT;return result;}if e.actor>=s.effects {return result;}at:=s.effect[e.actor].start;old:=c.shot[e.row];if at<=old.from || old.transition!=0 {result.code=ANIM_RANGE;return result;}
+   c=ad_shot_insert(c,e.row,e.option,at,old.to);
+  }
+  n:=ad_cut_write(c,s,out);if n== -1 {result.code=ANIM_CAPACITY;return result;}check:[1]AnimCut;result.code=anim_cut_load(cast(string)out[0..<n],p[0].scene[..],check[..]);result.part=p[0].libraries+p[0].performances+1;result.n=n;return result;
+ }
+ actor:=s.actors[e.actor];performance:=p[0].performance[actor.performance];lib:=p[0].library[actor.rig];rig:=lib.rig[0];
+ if e.kind==3 || e.kind==4 || e.kind==7 {
+  if performance.count>=ANIM_LAYERS {result.code=ANIM_LIMIT;return result;}layer:=AnimLayer.{kind=4,start=e.at,end=e.end,speed=1,weight=1,blend_in=0.15,blend_out=0.15,mask=2};
+  if e.kind==7 {
+   if e.option>=lib.count || e.row>=ANIM_MASKS.count || !ad_pose(lib.clips[e.option],lib.packs[..]) {return result;}layer.kind=1;layer.clip=e.option;layer.mask=e.row;
+   insert:=performance.count;for k:1..<performance.count {if performance.layers[k].kind==4 {insert=k;break;}}layers:[ANIM_LAYERS]AnimLayer;for k:0..<performance.count+1 {layers[k]=ifx k<insert then performance.layers[k] else ifx k==insert then layer else performance.layers[k-1];}performance.layers=layers;
+  }else {
+   if e.row>=rig.joints {return result;}layer.joint=e.row;layer.solver=ifx e.kind==3 then 1 else 2;
+   if e.kind==3 {if e.option>=s.cast_count+s.props || e.option==e.actor {return result;}world:=ifx e.option<s.cast_count then ad_position(s.actors[e.option].path,e.at) else s.prop[e.option-s.cast_count].position;layer.target=ad_local(actor.path,e.at,world);}
+   else {if e.option>=s.props {return result;}layer.target=ad_local(actor.path,e.at,s.prop[e.option].position);}
+   performance.layers[performance.count]=layer;
+  }performance.count+=1;
+ }else {
+  if e.row>=performance.count {return result;}
+  if e.kind==1 {if performance.layers[e.row].kind==4 {return result;}if performance.layers[e.row].speed==e.value {result.code=ANIM_RANGE;return result;}performance.layers[e.row].speed=e.value;}
+  else if e.kind==5 {if performance.layers[e.row].end==e.end {result.code=ANIM_RANGE;return result;}performance.layers[e.row].end=e.end;}
+  else if e.kind==6 {if e.option>=lib.count || performance.layers[e.row].kind==4 {return result;}if performance.layers[e.row].clip==e.option {result.code=ANIM_RANGE;return result;}performance.layers[e.row].clip=e.option;}
+  else {#assert e.kind==11;if performance.layers[e.row].start==e.at && performance.layers[e.row].end==e.end {result.code=ANIM_RANGE;return result;}performance.layers[e.row].start=e.at;performance.layers[e.row].end=e.end;}
+ }
+ n:=aw_performance(out,performance,rig,lib.clips[0..<lib.count]);if n== -1 {result.code=ANIM_CAPACITY;return result;}check:[1]AnimPerformance;result.code=anim_performance_load(cast(string)out[0..<n],lib.rig[..],lib.clips[0..<lib.count],check[..]);result.part=p[0].libraries+actor.performance;result.n=n;return result;
+}
+ad_repack :: (source:[]u8,part:int,replacement:[]u8,out:[]u8)->int #effects(all) {
+ if !project_valid(source) || part<0 || part>=project_parts(source) || replacement.count<1 {return -1;}count:=project_parts(source);cursor:=20+count*8;
+ total:=source.count-project_part(source,part).count+replacement.count;if total>out.count || !anim_bundle_size(total) {return -1;}
+ for word,k:[5]u32.[0x31504c41,cast(u32)total,anim_word(source,8),anim_word(source,12),anim_word(source,16)] {anim_bundle_put(out,k*4,word);}
+ for k:0..<count {data:=ifx k==part then replacement else project_part(source,k);anim_bundle_put(out,20+k*8,cast(u32)cursor);anim_bundle_put(out,24+k*8,cast(u32)data.count);for c,j:data {out[cursor+j]=c;}cursor+=data.count;}return cursor;
+}
+ad_build :: (p:[]SceneProject,e:AnimDirection,out:[]u8)->AdChange #effects(all) {
+ text:[ANIM_DOCUMENT_BYTES]u8;r:=ad_component(p,e,text[..]);if r.code!=0 {return r;}n:=ad_repack(p[0].bytes,r.part,text[0..<r.n],out);if n== -1 {r.code=ANIM_CAPACITY;return r;}r.n=n;return r;
+}
+// Only inventory and authored values enter the model context, never mesh,
+// audio or animation sample bytes. Long inventories refuse at the wire cap.
+ad_request :: (p:[]SceneProject,words:string,out:[]u8)->int #effects(all) {
+ if p.count<1 || !p[0].ready {return -3;}if words.count<1 || words.count>2048 {return -2;}o:[1]Jo;jo_start(o[..],out);s:=p[0].scene[0];hash:[64]u8;#assert asset_hex(asset_id(cast(string)p[0].bytes),hash[..]);
+ jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.direct.request.v1");jo_key(o[..],"base");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"words");jo_str(o[..],words);jo_key(o[..],"stock");jo_obj(o[..]);jo_key(o[..],"length");aw_number(o[..],s.length);
+ jo_key(o[..],"actors");jo_arr(o[..]);for actor,k:s.actors[0..<s.cast_count] {jo_obj(o[..]);jo_key(o[..],"id");jo_int(o[..],k);jo_key(o[..],"name");aw_name(o[..],actor.name);jo_key(o[..],"path");jo_arr(o[..]);for j:0..<actor.path.count {jo_obj(o[..]);jo_key(o[..],"id");jo_int(o[..],j);jo_key(o[..],"at");aw_number(o[..],actor.path.time[j]);jo_key(o[..],"point");ad_point(o[..],actor.path.point[j]);jo_end(o[..]);}jo_end(o[..]);
+  lib:=p[0].library[actor.rig];jo_key(o[..],"joints");jo_arr(o[..]);for name,j:lib.rig[0].names[0..<lib.rig[0].joints] {if lib.rig[0].mapped[j]>=0 {jo_obj(o[..]);jo_key(o[..],"id");jo_int(o[..],j);jo_key(o[..],"name");aw_name(o[..],name);jo_end(o[..]);}}jo_end(o[..]);jo_key(o[..],"clips");jo_arr(o[..]);for j:0..<lib.count {jo_obj(o[..]);jo_key(o[..],"id");jo_int(o[..],j);jo_key(o[..],"name");aw_name(o[..],lib.clips[j].name);jo_key(o[..],"pose");jo_bool(o[..],ad_pose(lib.clips[j],lib.packs[..]));jo_end(o[..]);}jo_end(o[..]);jo_key(o[..],"performance");text:[ANIM_DOCUMENT_BYTES]u8;n:=aw_performance(text[..],p[0].performance[actor.performance],lib.rig[0],lib.clips[0..<lib.count]);jo_raw(o[..],cast(string)text[0..<n]);jo_end(o[..]);}jo_end(o[..]);
+ for field,kind:[3]string.["props","cameras","events"] {jo_key(o[..],field);jo_arr(o[..]);count:=ifx kind==0 then s.props else ifx kind==1 then s.cameras else s.effects;for k:0..<count {jo_obj(o[..]);jo_key(o[..],"id");jo_int(o[..],k);jo_key(o[..],"name");aw_name(o[..],ifx kind==0 then s.prop[k].name else ifx kind==1 then s.camera[k].name else s.effect[k].name);if kind==0 {jo_key(o[..],"point");ad_point(o[..],s.prop[k].position);}if kind==2 {jo_key(o[..],"at");aw_number(o[..],s.effect[k].start);}jo_end(o[..]);}jo_end(o[..]);}
+ jo_key(o[..],"cut");text:[ANIM_DOCUMENT_BYTES]u8;n:=ad_cut_write(p[0].cut[0],s,text[..]);jo_raw(o[..],cast(string)text[0..<n]);jo_end(o[..]);jo_end(o[..]);return ifx ads_input(jo_text(o[..])) then o[0].n else -1;
+}
+
+ads_reply :: (source:[]u8,text:string,out:[]AnimDirection)->int #effects(all) {
+ nodes:[1024]JvNode;d:[1]Jv;if anim_json(text,d[..],nodes[..])!=0 || !anim_schema(d[0],"anim.direct.reply.v1") || !anim_keys(d[0],0,"schema|base|direction") {return ANIM_SCHEMA;}id:[1]AssetId;if !anim_hash(d[0],jv_get(d[0],0,"base"),id[..]) || !asset_same(id[0],asset_id(cast(string)source)) {return ANIM_REFERENCE;}return ad_read(jv_raw(d[0],jv_get(d[0],0,"direction")),out);
+}

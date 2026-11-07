@@ -29,9 +29,6 @@ anim_test_rig :: (text:[]u8,bytes:[]u8)->int {
  for k:0..<from.count {nn:=anim_test_replace(cast(string)text[0..<n],from[k],to[k],changed[..]);#assert nn>0 && anim_rig_load(cast(string)changed[0..<nn],p[..],r[..])!=0 && r[0].joints==2;}
  anim_test_put(bytes[..],0,0x7fc00000);#assert anim_rig_load(cast(string)text[0..<n],p[..],r[..])==ANIM_NUMBER;
 }
-anim_test_replace :: (text:string,from:string,to:string,out:[]u8)->int {
- start:= -1;for k:0..<text.count-from.count+1 {if text[k..<k+from.count]==from {start=k;break;}}if start<0 {return -1;}n:=0;for c:text[0..<start] {out[n]=c;n+=1;}for c:to {out[n]=c;n+=1;}for c:text[start+from.count..<text.count] {out[n]=c;n+=1;}return n;
-}
 #test "animation rig primitive boundaries precede storage access" {
  #assert !anim_rig_count(0) && anim_rig_count(1) && anim_rig_count(512) && !anim_rig_count(513);
  #assert !anim_unit_length(0.99) && anim_unit_length(0.9901) && anim_unit_length(1.0099) && !anim_unit_length(1.01);
@@ -74,11 +71,6 @@ anim_test_label :: (k:int)->AnimName {
  out:AnimName;out.bytes[0]='j';out.n=1;digits:[12]u8;n:=0;v:=k;
  while true {digits[n]=cast(u8)('0'+v%10);n+=1;v/=10;if v==0 {break;}}
  for i:0..<n {out.bytes[out.n]=digits[n-1-i];out.n+=1;}return out;
-}
-anim_test_set :: (text:string,key:string,value:string,out:[]u8)->int {
- nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],text,nodes[..]);o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);k:=d[0].nodes[0].first;found:=false;
- while k!=-1 {name:[64]u8;n:=jv_unescape(jv_key(d[0],k),name[..]);#assert n>0;word:=cast(string)name[0..<n];if word==key {found=true;if value.count>0 {jo_key(o[..],word);jo_raw(o[..],value);}}else {jo_key(o[..],word);jv_write(d[0],k,o[..]);}k=d[0].nodes[k].next;}
- if !found && value.count>0 {jo_key(o[..],key);jo_raw(o[..],value);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }
 anim_test_part_text :: (out:[]u8,pack:AnimPack,offset:int,count:int,stride:int,width:int)->int {
  hash:[64]u8;#assert asset_hex(pack.id,hash[..]);o:[1]Jo;jo_start(o[..],out);anim_test_part(o[..],cast(string)hash[..],offset,count,stride,width);return o[0].n;

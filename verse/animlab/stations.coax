@@ -9,7 +9,9 @@
 #load "../../aethyr/ui/draw.coax";
 #load "../../apps/openagents-web/font.coax";
 #load "../../verse/tools/humans/ph_num.coax";
+#load "direct.coax";
 AlState :: struct {
+ director:AlDirector;
  sound_bank:[4096]u8;sound_bank_n:int;sound:[4096]u8;sound_n:int;sound_time:f32;
  projects:[2]SceneProject;project_active:int;project_staging:int;project_loading:bool;movie:[1]SceneDraw;movie_card:bool;movie_shot:int;movie_camera:int;movie_error:int;
  libraries:[2]AnimLibrary;made:[262144]u8;live:[1]AnimSample;ghost:[1]AnimSample;gpu:[12800]f32;retarget:[1]AnimSample;plan:RtPlan;target_rig:int;target_origin:Point;wanted_target:AnimName;draw_count:int;
@@ -20,7 +22,7 @@ AlState :: struct {
  eye:Point;right:Point;up:Point;forward:Point;origin:Point;zoom:f32;width:f32;height:f32;dpr:f32=1;
  drag:bool;last_x:f32;last_y:f32;seek:bool;slider:bool;
  wanted_rig:AnimName;wanted_clip:AnimName;error:int;private_loaded:bool;mesh_dirty:bool=true;mesh_words:int;mesh_version:int;revision:int;draws:[256]u32;
- action:int;outbox:[256]u8;out_n:int;
+ action:int;outbox:[73728]u8;out_n:int;
 }
 
 #test "animation stations retain selected document frame and independent orbit controls" #steps 300000000 {
@@ -67,6 +69,7 @@ al_loaded :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {al_init(s);acce
 al_seek :: (s:[]AlState,frame:int) {if s[0].station>=4 && s[0].projects[s[0].project_active].ready {p:=s[0].projects[s[0].project_active..<s[0].project_active+1];duration:=ifx s[0].station==5 then p[0].cut[0].length else p[0].scene[0].length;s[0].time=clampf(cast(f32)frame/cast(f32)p[0].cut[0].fps,0,duration);s[0].playing=false;return;}s[0].layer_before=0;s[0].layer_after=0;c:=al_clip(s);s[0].playing=false;s[0].time=cast(f32)(ifx frame<0 then 0 else ifx frame>=c.frames then c.frames-1 else frame)/c.rate;}
 al_key :: (s:[]AlState,key:int)->bool #export_c #effects(all) {
  al_init(s);lib:=al_library(s);r:=lib[0].rig[0];
+ if al_direct_key(s,key) {return true;}
  if s[0].station==3 && (key==45 || key==61 || key== -2) {return al_layer_select(s,key);}
  if s[0].station==3 && key>=49 && key<=53 {return al_layer_toggle(s,key-49);}
  if key== -1 {s[0].action=1;url:="/worlds";s[0].out_n=url.count;for c,k:url {s[0].outbox[k]=c;}return true;}
@@ -117,6 +120,7 @@ al_skeleton :: (s:[]AlState,out:[]f32,n:int,sample:[]AnimSample,fade:f32)->int {
  at:=n;lib:=al_library(s);for j:0..<lib[0].rig[0].joints {parent:=lib[0].rig[0].parents[j];if parent<0 {continue;}a:=al_project(s,sample[0].position[parent]);b:=al_project(s,sample[0].position[j]);if a.z>0.01 && b.z>0.01 {colour:=ifx j==s[0].joint then v3(0.95,0.35,0.6) else v3(0.1*fade,0.75*fade,fade);at=al_line(out,at,a,b,colour);}}return at;
 }
 al_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
+ al_direct_tick(s);
  al_tick(s,dt,still);if s[0].station>=4 {return al_movie_draw(s,out,u,geometry,width/d,height/d);}if s[0].station==3 && s[0].playing && s[0].performances[s[0].rig].ready {length:=s[0].performances[s[0].rig].length;s[0].time-=length*floor(s[0].time/length);}w:=width/d;h:=height/d;s[0].width=w;s[0].height=h;s[0].dpr=d;lib:=al_library(s);r:=lib[0].rig[0];c:=al_clip(s);
  if s[0].mesh_dirty {
   s[0].mesh_words=anim_inspect_mesh(r,lib[0].packs[..],geometry,s[0].draws[..]);s[0].draw_count=ifx s[0].mesh_words>0 then r.sections else 0;
@@ -164,9 +168,9 @@ clampf :: (x:f32,low:f32,high:f32)->f32 {return lo(hi(x,low),high);}
 
 al_wheel :: (s:[]AlState,delta:f32) #export_c #effects(all) {s[0].distance=clampf(s[0].distance+delta*0.001,0.25,4);}
 al_probe :: (s:[]AlState,field:int)->int #export_c #effects(all) {
- if field==30 {return ifx s[0].projects[s[0].project_active].ready then 1 else 0;}if field==31 {return s[0].movie_shot;}if field==32 {return s[0].movie_camera;}if field==33 {return s[0].projects[s[0].project_active].cut[0].shots;}if field==34 {return s[0].projects[s[0].project_active].scene[0].cast_count;}if field==35 {return s[0].movie_error;}if field==0 {return ifx s[0].ready then 1 else 0;}if field==1 {return s[0].rig;}if field==2 {return s[0].clip;}if field==3 {return al_frame_index(s);}if field==4 {return al_library(s)[0].count;}if field==5 {return s[0].shape;}if field==6 {return s[0].joint;}if field==7 {return s[0].station;}if field==8 {return s[0].error;}if field==9 {return ifx s[0].private_loaded then 1 else 0;}if field==10 {return s[0].ghost_step;}if field==11 {return s[0].mesh_words;}if field==12 {return s[0].clock.ticks;}if field==14 {return al_library(s)[0].rig[0].joints;}if field==15 {return al_clip(s).face_joint_count;}if field==16 {return al_clip(s).curve_count;}if field==17 {return s[0].plan.paired;}if field==18 {return s[0].target_rig;}if field==19 {return s[0].draw_count;}if field==20 {return ifx s[0].station==2 then al_frame_index(s) else -1;}if field==21 {return ifx s[0].performances[s[0].rig].ready then 1 else 0;}if field==22 {return s[0].performances[s[0].rig].count;}if field==23 {return cast(int)s[0].layer_disabled;}if field==24 {return cast(int)(s[0].layer_before*1000);}if field==25 {return cast(int)(s[0].layer_after*1000);}if field==26 {return s[0].layer_report.feet;}if field==27 {return al_clip(s).frames;}return -1;
+ if field==80 {return s[0].director.history[0].n;}if field==81 {return s[0].director.history[0].head;}if field==82 {return s[0].director.mode;}if field==83 {return s[0].director.score;}if field==84 {return ifx s[0].director.pending then 1 else 0;}if field==85 {return cast(int)(al_movie_project(s)[0].performance[0].layers[0].speed*1000);}if field==30 {return ifx s[0].projects[s[0].project_active].ready then 1 else 0;}if field==31 {return s[0].movie_shot;}if field==32 {return s[0].movie_camera;}if field==33 {return s[0].projects[s[0].project_active].cut[0].shots;}if field==34 {return s[0].projects[s[0].project_active].scene[0].cast_count;}if field==35 {return s[0].movie_error;}if field==0 {return ifx s[0].ready then 1 else 0;}if field==1 {return s[0].rig;}if field==2 {return s[0].clip;}if field==3 {return al_frame_index(s);}if field==4 {return al_library(s)[0].count;}if field==5 {return s[0].shape;}if field==6 {return s[0].joint;}if field==7 {return s[0].station;}if field==8 {return s[0].error;}if field==9 {return ifx s[0].private_loaded then 1 else 0;}if field==10 {return s[0].ghost_step;}if field==11 {return s[0].mesh_words;}if field==12 {return s[0].clock.ticks;}if field==14 {return al_library(s)[0].rig[0].joints;}if field==15 {return al_clip(s).face_joint_count;}if field==16 {return al_clip(s).curve_count;}if field==17 {return s[0].plan.paired;}if field==18 {return s[0].target_rig;}if field==19 {return s[0].draw_count;}if field==20 {return ifx s[0].station==2 then al_frame_index(s) else -1;}if field==21 {return ifx s[0].performances[s[0].rig].ready then 1 else 0;}if field==22 {return s[0].performances[s[0].rig].count;}if field==23 {return cast(int)s[0].layer_disabled;}if field==24 {return cast(int)(s[0].layer_before*1000);}if field==25 {return cast(int)(s[0].layer_after*1000);}if field==26 {return s[0].layer_report.feet;}if field==27 {return al_clip(s).frames;}return -1;
 }
-al_message :: (s:[]AlState,kind:int,text:string) #export_c #effects(all) {if kind==700 {n:=anim_decimal(text);if n.ok && n.value>=0 && n.value<144001 {al_seek(s,cast(int)n.value);}}}
+al_message :: (s:[]AlState,kind:int,text:string) #export_c #effects(all) {al_direct_message(s,kind,text);if kind==700 {n:=anim_decimal(text);if n.ok && n.value>=0 && n.value<144001 {al_seek(s,cast(int)n.value);}}}
 
 #test "retarget station uses one source clock and independent mapped target pose" #steps 300000000 {
  s:[1]AlState;al_hash(s[..],"retarget?rig=mannequin&clip=studio-wave&to=mannequin");
@@ -239,13 +243,14 @@ al_layers_controls :: (s:[]AlState,out:[]f32,n:int)->int {
 // The browser zeroes the arena, then initializes its small scalar defaults.
 // Avoid returning the multi-megabyte state aggregate on the Wasm stack.
 al_state_defaults :: (s:[]AlState) #export_c #effects(all) {
+ s[0].director.http= -1;s[0].director.cancel= -1;s[0].director.history[0].head= -1;
  s[0].station=1;s[0].skeleton=true;s[0].ghost_step=8;s[0].yaw=0.3;s[0].pitch=0.08;s[0].distance=1;s[0].radius=1;s[0].dpr=1;s[0].mesh_dirty=true;
  s[0].plot_rig= -1;s[0].plot_clip= -1;s[0].plot_joint= -1;s[0].plot_shape= -1;s[0].plot_station= -1;s[0].clock=clock.FrameClock.{};
 }
 
 al_movie_project :: (s:[]AlState)->[]SceneProject {return s[0].projects[s[0].project_active..<s[0].project_active+1];}
 al_asset_kind :: (b:[]u8)->int #export_c #effects(all) {if b.count>=4 && anim_word(b,0)==0x31504c41 {return 2;}return 1;}
-al_project_begin :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {al_init(s);s[0].project_staging=1-s[0].project_active;s[0].project_loading=project_begin(b,s[0].projects[s[0].project_staging..<s[0].project_staging+1]);return s[0].project_loading;}
+al_project_begin :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {al_init(s);if s[0].director.mode==0 {al_direct_reset(s);}s[0].project_staging=1-s[0].project_active;s[0].project_loading=project_begin(b,s[0].projects[s[0].project_staging..<s[0].project_staging+1]);return s[0].project_loading;}
 al_project_count :: (s:[]AlState,kind:int)->int #export_c #effects(all) {p:=s[0].projects[s[0].project_staging..<s[0].project_staging+1];return ifx kind==0 then p[0].libraries else ifx kind==1 then p[0].performances else p[0].voices;}
 al_project_stage :: (s:[]AlState,kind:int,index:int)->bool #export_c #effects(all) {
  p:=s[0].projects[s[0].project_staging..<s[0].project_staging+1];ok:=false;if kind==0 {ok=project_library(p,index);}if kind==1 {ok=project_performance(p,index);}if kind==2 {ok=project_scene(p);}if kind==3 {ok=project_cut(p);}if kind==4 {ok=project_voice(p,index);}if kind==5 {ok=project_finish(p);}if !ok {s[0].movie_error=p[0].error;s[0].project_loading=false;return false;}if kind==5 {s[0].project_active=s[0].project_staging;s[0].project_loading=false;s[0].movie[0].built=false;s[0].movie_error=0;s[0].time=0;s[0].playing=false;s[0].private_loaded=false;s[0].libraries[1].rig[0].ready=false;s[0].rig=0;}return true;
@@ -254,10 +259,10 @@ al_movie_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:
  s[0].width=width;s[0].height=height;p:=al_movie_project(s);if !p[0].ready {s[0].ready=false;return al_text(out,0,"LOAD AN ANIMATION SCENE PROJECT",16,40,10);}duration:=ifx s[0].station==5 then p[0].cut[0].length else p[0].scene[0].length;if s[0].time>=duration {s[0].time=duration;s[0].playing=false;}
  if !s[0].movie[0].built {if !scene_draw_prepare(p,s[0].movie[..],geometry) {s[0].movie_error=ANIM_CAPACITY;s[0].ready=false;return al_text(out,0,"SCENE EXCEEDS GEOMETRY BUDGET",16,40,10);}s[0].mesh_version+=1;}
  moment:=cut_play(p[0].cut[..],s[0].time);if s[0].station==4 {moment=CutMoment.{ready=true,camera=0,time=s[0].time};}s[0].movie_shot=moment.shot;s[0].movie_camera=moment.camera;al_audio_cues(s,moment);scene_draw_sample(p,s[0].movie[..],moment.time,moment.camera,u,width,height,moment.opacity);s[0].revision+=1;s[0].ready=true;
- if s[0].movie_card {return 0;}n:=al_text(out,0,"SCENE [N]       CUT [X]",16,28,10);name:=[1]AnimName.[ifx s[0].station==5 then p[0].cut[0].shot[moment.shot].name else p[0].scene[0].name];n=al_text(out,n,anim_text(name[..],0),16,52,10);y:=height-54;n=al_line(out,n,v3(16,y,0),v3(width-16,y,0),v3(0.2,0.4,0.5));x:=16+(width-32)*s[0].time/duration;n=al_line(out,n,v3(x,y-12,0),v3(x,y+12,0),v3(0.8,0.4,0.9));n=al_text(out,n,ifx s[0].playing then "PAUSE" else "PLAY",16,height-18,10);return n;
+ if s[0].movie_card {return 0;}n:=al_text(out,0,"SCENE [N]       CUT [X]",16,28,10);name:=[1]AnimName.[ifx s[0].station==5 then p[0].cut[0].shot[moment.shot].name else p[0].scene[0].name];n=al_text(out,n,anim_text(name[..],0),16,52,10);n=al_direct_controls(s,out,n);y:=height-54;n=al_line(out,n,v3(16,y,0),v3(width-16,y,0),v3(0.2,0.4,0.5));x:=16+(width-32)*s[0].time/duration;n=al_line(out,n,v3(x,y-12,0),v3(x,y+12,0),v3(0.8,0.4,0.9));n=al_text(out,n,ifx s[0].playing then "PAUSE" else "PLAY",16,height-18,10);return n;
 }
 al_movie_pointer :: (s:[]AlState,x:f32,y:f32,phase:int)->bool {
- if phase==2 {s[0].seek=false;return true;}if phase==0 && y<60 {return al_key(s,ifx x<s[0].width/2 then 78 else 88);}if phase==0 && y>s[0].height-35 {return al_key(s,32);}if phase==0 && y>s[0].height-80 {s[0].seek=true;}p:=al_movie_project(s);if s[0].seek && p[0].ready {duration:=ifx s[0].station==5 then p[0].cut[0].length else p[0].scene[0].length;al_seek(s,cast(int)floor(clamp01((x-16)/(s[0].width-32))*duration*cast(f32)p[0].cut[0].fps));}return true;
+ if phase==2 {s[0].seek=false;return true;}if phase==0 && y>=60 && y<108 {if s[0].width<=0 {return false;}column:=cast(int)floor(x*4/s[0].width);return al_direct_key(s,[4]int.[86,85,68,27][ifx column<0 then 0 else ifx column>3 then 3 else column]);}if phase==0 && y<60 {return al_key(s,ifx x<s[0].width/2 then 78 else 88);}if phase==0 && y>s[0].height-35 {return al_key(s,32);}if phase==0 && y>s[0].height-80 {s[0].seek=true;}p:=al_movie_project(s);if s[0].seek && p[0].ready {duration:=ifx s[0].station==5 then p[0].cut[0].length else p[0].scene[0].length;al_seek(s,cast(int)floor(clamp01((x-16)/(s[0].width-32))*duration*cast(f32)p[0].cut[0].fps));}return true;
 }
 
 // Canonical WAVs are retained in the active immutable project bank. All cue

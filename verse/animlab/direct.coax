@@ -1,0 +1,42 @@
+// Text and voice share the same typed Decisions request and checked edit path.
+#load "../../aethyr/anim/direction-select.coax";
+#load "../../aethyr/anim/direction-history.coax";
+#load "../../aethyr/anim/direction-screen.coax";
+#load "direct-checks.coax";
+AlDirector :: struct {history:[1]AdHistory;request:[16384]u8;request_n:int;http:int= -1;cancel:int= -1;pending:bool;proposal:AnimDirection;mode:int;part:int;old:int;score:int;voice:bool;voice_next:bool;voice_heard:bool;status:[256]u8;status_n:int;}
+al_direct_status :: (s:[]AlState,text:string) {n:=ifx text.count<256 then text.count else 256;s[0].director.status_n=n;for k:0..<n {s[0].director.status[k]=text[k];}}
+al_direct_tick :: (s:[]AlState) {if s[0].director.voice_next && s[0].action==0 {s[0].director.voice_next=false;s[0].director.voice=true;s[0].director.voice_heard=false;s[0].action=7;s[0].out_n=2;for c,k:"on" {s[0].outbox[k]=c;}}}
+al_direct_reset :: (s:[]AlState) {s[0].director.cancel=s[0].director.http;s[0].director.http= -1;s[0].director.pending=false;s[0].director.request_n=0;s[0].director.history[0].n=0;s[0].director.history[0].head= -1;}
+al_direct_words :: (s:[]AlState,words:string) {
+ if s[0].director.pending || s[0].director.mode!=0 {al_direct_status(s,"A direction is already being checked");return;}p:=al_movie_project(s);n:=ad_request(p,words,s[0].director.request[..]);if n<1 {al_direct_status(s,"Load a scene; direction or inventory exceeds capacity");return;}s[0].director.request_n=n;s[0].director.pending=true;al_direct_status(s,"Interpreting direction...");
+}
+al_direct_sent :: (s:[]AlState,id:int) #export_c #effects(all) {s[0].director.request_n=0;s[0].director.http=id;if id<0 {s[0].director.pending=false;al_direct_status(s,"Decisions request unavailable");}}
+al_direct_message :: (s:[]AlState,kind:int,text:string) {
+ if kind==701 {al_direct_words(s,text);return;}
+ if kind==50 && s[0].director.voice {if text.count>=8 && text[0..<8]=="hearing|" {s[0].director.voice_heard=false;}if text.count>=6 && text[0..<6]=="heard|" && !s[0].director.voice_heard {s[0].director.voice_heard=true;al_direct_words(s,text[6..<text.count]);}return;}
+ if !s[0].director.pending || s[0].director.http<0 || kind!=512+s[0].director.http {return;}s[0].director.pending=false;s[0].director.http= -1;
+ if text.count<4 || text[0..<4]!="200\n" {al_direct_status(s,"Decisions request failed; scene unchanged");return;}e:[1]AnimDirection;p:=al_movie_project(s);code:=ads_reply(p[0].bytes,text[4..<text.count],e[..]);if code!=0 {al_direct_status(s,"Invalid or stale direction; scene unchanged");return;}s[0].director.score=ad_confidence(e[0]);if e[0].kind==0 {al_direct_status(s,"Not in stock; scene unchanged");return;}if s[0].director.score<=850 {al_direct_status(s,"Ambiguous direction; scene unchanged");return;}s[0].director.proposal=e[0];s[0].director.mode=1;
+}
+al_direct_key :: (s:[]AlState,key:int)->bool {
+ if s[0].station<4 {return false;}code:=ifx key>=97 && key<=122 then key-32 else key;
+ if code==86 {if s[0].director.voice || s[0].director.voice_next {s[0].director.voice=false;s[0].director.voice_next=false;s[0].action=7;s[0].out_n=3;for c,k:"off" {s[0].outbox[k]=c;}}else {s[0].action=8;s[0].out_n=18;for c,k:"animation-director" {s[0].outbox[k]=c;}s[0].director.voice_next=true;}return true;}
+ if code==85 {if !s[0].director.pending && s[0].director.mode==0 {s[0].director.mode=2;}return true;}
+ if code==68 {n:=ad_history_diff(s[0].director.history[..],s[0].outbox[..]);if n<1 {al_direct_status(s,"No session edit to compare");}else {s[0].out_n=n;s[0].action=2;al_direct_status(s,"Copied the edit diff");}return true;}
+ if code==27 || code== -1 {s[0].director.cancel=s[0].director.http;s[0].director.http= -1;s[0].director.pending=false;s[0].director.mode=0;s[0].director.voice=false;s[0].director.voice_next=false;s[0].action=7;s[0].out_n=3;for c,k:"off" {s[0].outbox[k]=c;}al_direct_status(s,"Direction cancelled");return true;}return false;
+}
+al_direct_work :: (s:[]AlState,out:[]u8)->int #export_c #effects(all) {
+ mode:=s[0].director.mode;if mode==0 {return 0;}p:=al_movie_project(s);if !p[0].ready {s[0].director.mode=0;return 0;}s[0].director.old=s[0].project_active;
+ if mode==2 {n:=ad_history_undo(s[0].director.history[..],p[0].bytes,out);if n<1 {s[0].director.mode=0;al_direct_status(s,"No session version to undo");return 0;}return n;}
+ r:=ad_build(p,s[0].director.proposal,out);if r.code!=0 {s[0].director.mode=0;al_direct_status(s,anim_error_name(r.code));return 0;}if !ad_history_room(s[0].director.history[..],p[0].bytes,out[0..<r.n],r.part) {s[0].director.mode=0;al_direct_status(s,"Unchanged edit or session history capacity reached");return 0;}s[0].director.part=r.part;return r.n;
+}
+al_direct_screen :: (s:[]AlState)->bool #export_c #effects(all) {
+ if s[0].director.mode==2 {return true;}p:=s[0].projects[s[0].project_staging..<s[0].project_staging+1];report:[262144]u8;n:=scene_check(p,report[..]);if n<1 {al_direct_status(s,"Scene report capacity");return false;}failed:=ad_screen(cast(string)report[0..<n]);if failed!="" {al_direct_status(s,failed);return false;}return true;
+}
+al_direct_finish :: (s:[]AlState,ok:bool) #export_c #effects(all) {
+ if !ok && s[0].movie_error!=0 {al_direct_status(s,anim_error_name(s[0].movie_error));}
+ if ok {if s[0].director.mode==2 {head:=s[0].director.history[0].head;s[0].director.history[0].head=s[0].director.history[0].entry[head].parent;al_direct_status(s,"Undone");}else {old:=s[0].director.old;added:=ad_history_add(s[0].director.history[..],s[0].projects[old].bytes,al_movie_project(s)[0].bytes,s[0].director.part);#assert added;label:[256]u8;o:[1]PnOut;o[0].buf=label[..];pn_put(o[..],"Changed ");pn_put(o[..],AED_KINDS[s[0].director.proposal.kind]);pn_put(o[..]," / confidence ");pn_fixed(o[..],cast(f64)s[0].director.score/1000,3);al_direct_status(s,pn_text(o[..]));}}
+ s[0].director.mode=0;
+}
+al_direct_controls :: (s:[]AlState,out:[]f32,n:int)->int {
+ at:=n;for label,k:[4]string.["VOICE [V]","UNDO [U]","DIFF [D]","CANCEL [ESC]"] {at=al_text(out,at,label,8+s[0].width*cast(f32)k/4,78,7);}if s[0].director.status_n>0 {at=al_text(out,at,cast(string)s[0].director.status[0..<s[0].director.status_n],16,96,7);}return at;
+}

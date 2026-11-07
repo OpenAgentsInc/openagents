@@ -1,0 +1,30 @@
+AD_TEST :: "{\"schema\":\"anim.direction.v1\",\"kind\":\"speed\",\"actor\":0,\"row\":0,\"option\":0,\"at\":0,\"end\":0,\"value\":0.5,\"point\":[0,0,0],\"confidence\":{\"kind\":950,\"actor\":940,\"row\":930,\"option\":920,\"at\":910,\"end\":900,\"value\":890,\"point\":880}}";
+#test "directions retain every typed field and confidence, never infer an operation from words" {
+ e:[1]AnimDirection;#assert ad_read(AD_TEST,e[..])==0;
+ #assert e[0].kind==1 && e[0].actor==0 && e[0].row==0 && e[0].option==0 && e[0].at==0 && e[0].end==0 && e[0].value==0.5 && e[0].point.x==0 && e[0].point.y==0 && e[0].point.z==0;
+ for k:0..<8 {#assert e[0].confidence[k]==950-k*10;}
+ #assert ad_confidence(e[0])==880;
+ e[0].confidence[3]=850;#assert ad_confidence(e[0])==850;
+ e[0].kind=0;#assert ad_confidence(e[0])==0;
+}
+#test "malformed direction fields refuse before replacing the prior proposal" {
+ e:[1]AnimDirection;e[0].value=123;
+ from:=[10]string.["\"schema\":\"anim.direction.v1\"","\"kind\":\"speed\"","\"actor\":0","\"row\":0","\"option\":0","\"at\":0","\"end\":0","\"value\":0.5","\"point\":[0,0,0]","\"kind\":950"];
+ to:=[10]string.["\"schema\":\"anim.direction.v2\"","\"kind\":\"invented\"","\"actor\":-1","\"row\":128","\"option\":512","\"at\":-0.1","\"end\":601","\"value\":1e39","\"point\":[0,0]","\"kind\":1001"];
+ errors:=[10]int.[ANIM_SCHEMA,ANIM_NAME,ANIM_NUMBER,ANIM_NUMBER,ANIM_NUMBER,ANIM_NUMBER,ANIM_NUMBER,ANIM_NUMBER,ANIM_NUMBER,ANIM_NUMBER];changed:[4096]u8;for k:0..<10 {n:=anim_test_replace(AD_TEST,from[k],to[k],changed[..]);#assert ad_read(cast(string)changed[0..<n],e[..])==errors[k] && e[0].value==123;}
+ #assert ad_read(AD_TEST,e[0..<0])==ANIM_CAPACITY;
+}
+#test "direction wire preserves nonzero indices times all point axes and every confidence endpoint" {
+ first:[4096]u8;second:[4096]u8;for c,k:AD_TEST {first[k]=c;}n:=AD_TEST.count;
+ fields:=[7]string.["actor","row","option","at","end","value","point"];values:=[7]string.["15","127","511","12.25","33.5","1.25","[7,8,9]"];
+ for k:0..<7 {m:=anim_test_set(cast(string)first[0..<n],fields[k],values[k],second[..]);for c,j:second[0..<m] {first[j]=c;}n=m;}
+ e:[1]AnimDirection;#assert ad_read(cast(string)first[0..<n],e[..])==0 && e[0].actor==15 && e[0].row==127 && e[0].option==511 && e[0].at==12.25 && e[0].end==33.5 && e[0].value==1.25 && e[0].point.x==7 && e[0].point.y==8 && e[0].point.z==9;
+ n=anim_test_set(AD_TEST,"actor","16",first[..]);#assert ad_read(cast(string)first[0..<n],e[..])==ANIM_NUMBER;
+ for value:[2]string.["[]","{\"extra\":1}"] {n=anim_test_set(AD_TEST,"confidence",value,first[..]);#assert ad_read(cast(string)first[0..<n],e[..])==ANIM_SCHEMA;}
+ #assert ad_read("[]",e[..])==ANIM_JSON;n=anim_test_set(AD_TEST,"kind","\"unmatched\"",first[..]);#assert ad_read(cast(string)first[0..<n],e[..])==0 && e[0].kind==0 && ad_confidence(e[0])==0;
+ for value:[4]int.[0,1,999,1000] {scores:[1024]u8;o:[1]Jo;jo_start(o[..],scores[..]);jo_obj(o[..]);for field:AD_FIELDS {jo_key(o[..],field);jo_int(o[..],value);}jo_end(o[..]);n=anim_test_set(AD_TEST,"confidence",jo_text(o[..]),first[..]);#assert ad_read(cast(string)first[0..<n],e[..])==0 && ad_confidence(e[0])==value;}
+}
+
+#test "direction confidence keeps the weakest field regardless of its position" {
+ for field:0..<8 {e:AnimDirection;e.kind=1;for k:0..<8 {e.confidence[k]=1000;}e.confidence[field]=123;#assert ad_confidence(e)==123;}
+}

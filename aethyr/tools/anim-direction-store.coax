@@ -1,0 +1,25 @@
+// File effects around content-addressed project versions. The source is never
+// overwritten. Cooperating writers hold one lock through compare and publish.
+#load "anim-scene-io.coax";
+#load "../anim/direction-select.coax";
+#load "../anim/direction.coax";
+#load "../anim/direction-screen.coax";
+#load "../anim/export-policy.coax";
+ad_store_private :: (path:string)->bool {owner:[4096]u8;root:[4096]u8;canonical:[4096]u8;real:[4096]u8;private:=fs_realpath(fs_join(proc_getenv("HOME",owner[..]),".openagents",root[..]),canonical[..]);resolved:=fs_realpath(path,real[..]);return anim_export_path(resolved,private,"head");}
+ad_store_dir :: (file:string,out:[]u8)->string {n:=file.count+13;if n>out.count {return "";}for c,k:file {out[k]=c;}for c,k:".anim-history" {out[file.count+k]=c;}return cast(string)out[0..<n];}
+ad_store_name :: (root:string,id:string,suffix:string,out:[]u8)->string {leaf:[128]u8;n:=0;for c:id {leaf[n]=c;n+=1;}for c:suffix {leaf[n]=c;n+=1;}return fs_join(root,cast(string)leaf[0..<n],out);}
+ad_store_head :: (root:string,out:[]u8)->string {path:[4096]u8;n:=fs_read(fs_join(root,"head",path[..]),out);id:[1]AssetId;if n!=64 || !asset_parse(cast(string)out[0..<n],id[..]) {return "";}return cast(string)out[0..<n];}
+ad_store_receipt :: (bytes:[]u8,parent:string,heard:string,direction:string,out:[]u8)->int {
+ hash:[64]u8;#assert asset_hex(asset_id(cast(string)bytes),hash[..]);o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.version.v1");jo_key(o[..],"content");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"parent");jo_str(o[..],parent);jo_key(o[..],"heard");jo_str(o[..],heard);jo_key(o[..],"direction");if direction=="" {jo_null(o[..]);}else {jo_raw(o[..],direction);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+ad_store_blob :: (root:string,bytes:[]u8,parent:string,heard:string,direction:string,out:[]u8)->bool {
+ receipt:[8192]u8;n:=ad_store_receipt(bytes,parent,heard,direction,receipt[..]);if n<1 {return false;}hash:[64]u8;#assert asset_hex(asset_id(cast(string)receipt[0..<n]),hash[..]);path:[4096]u8;file:=ad_store_name(root,cast(string)hash[..],".alp",path[..]);if fs_kind(file)!=FS_NONE {old:[67108864]u8;count:=fs_read(file,old[..]);if count!=bytes.count || cast(string)old[0..<count]!=cast(string)bytes {return false;}}else if !fs_write(file,cast(string)bytes) {return false;}
+ file=ad_store_name(root,cast(string)hash[..],".json",path[..]);if fs_kind(file)!=FS_NONE {previous:[8192]u8;count:=fs_read(file,previous[..]);if count!=n || cast(string)previous[0..<count]!=cast(string)receipt[0..<n] {return false;}}else if !fs_write(file,cast(string)receipt[0..<n]) {return false;}for c,k:hash {out[k]=c;}return true;
+}
+ad_store_publish :: (file:string,expected:[]u8,next:[]u8,heard:string,direction:string)->bool {
+ canonical:[4096]u8;real:=fs_realpath(file,canonical[..]);if real=="" || !ad_store_private(fs_dir(real)) {return false;}
+ root_buf:[4096]u8;root:=ad_store_dir(real,root_buf[..]);if root=="" {return false;}lock:[4096]u8;if !fs_try_lock(fs_join(fs_dir(real),".anim-direct.lock",lock[..])) {return false;}defer {released:=fs_unlock();}
+ current:[67108864]u8;n:=ap_file(real,current[..]);if n!=expected.count || cast(string)current[0..<n]!=cast(string)expected {return false;}if fs_kind(root)==FS_NONE && !fs_mkdir(root) {return false;}if fs_kind(root)!=FS_DIR || !ad_store_private(root) {return false;}
+ parent:[64]u8;old:=ad_store_head(root,parent[..]);if old=="" {if !ad_store_blob(root,expected,"","","",parent[..]) {return false;}old=cast(string)parent[..];}
+ id:[64]u8;if !ad_store_blob(root,next,old,heard,direction,id[..]) {return false;}temp:[4096]u8;head:[4096]u8;if !fs_write(fs_join(root,"pending-head",temp[..]),cast(string)id[..]) {return false;}return fs_rename(fs_join(root,"pending-head",temp[..]),fs_join(root,"head",head[..]));
+}

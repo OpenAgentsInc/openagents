@@ -8,6 +8,11 @@
 static uint8_t bundle[2][67108864],inbox[262144],documents[2][262144];
 static uint32_t active_bundle; /* Publish the incoming bank only after Coax admits it. */
 static uint32_t geometry[16777216];
+__attribute__((import_module("env"),import_name("coaxial_http_bounded")))
+int32_t coaxial_http_bounded(uint32_t,uint32_t,uint32_t,uint32_t,int32_t,int64_t);
+__attribute__((import_module("env"),import_name("coaxial_http_cancel")))
+int32_t coaxial_http_cancel(int32_t);
+static void director_drain(uint32_t p);
 static coax_t_AlState *state(uint32_t p){return (coax_t_AlState *)(uintptr_t)p;}
 static coax_v_t_AlState view(uint32_t p){return (coax_v_t_AlState){state(p),1};}
 EXPORT("coaxial_layout") uint32_t layout(void){return sizeof(coax_t_AlState)*1000003u+0x414c4231u;}
@@ -16,8 +21,8 @@ EXPORT("coaxial_state_init") void init(uint32_t p){memset(state(p),0,sizeof(coax
 EXPORT("coaxial_max_vertices") uint32_t vertices(void){return 65536;}
 EXPORT("coaxial_vertex_floats") uint32_t stride(void){return 12;}
 EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 48;}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){return (uint32_t)al_draw(view(p),(coax_v_f32){(float *)(uintptr_t)v,65536*12},(coax_v_f32){(float *)(uintptr_t)u,48},(coax_v_u32){geometry,16777216},w,h,d,dt,still!=0);}
-EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){(void)mods;return al_key(view(p),k);}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){uint32_t n=(uint32_t)al_draw(view(p),(coax_v_f32){(float *)(uintptr_t)v,65536*12},(coax_v_f32){(float *)(uintptr_t)u,48},(coax_v_u32){geometry,16777216},w,h,d,dt,still!=0);director_drain(p);return n;}
+EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){(void)mods;bool ok=al_key(view(p),k);director_drain(p);return ok;}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){(void)kind;(void)id;return al_pointer(view(p),x,y,phase);}
 EXPORT("coaxial_wheel") void wheel(uint32_t p,float delta){al_wheel(view(p),delta);}
 EXPORT("coaxial_blur") void blur(uint32_t p){state(p)->drag=false;state(p)->seek=false;state(p)->slider=false;}
@@ -54,7 +59,26 @@ EXPORT("coaxial_outbox_len") uint32_t out_len(uint32_t p){return (uint32_t)state
 EXPORT("coaxial_action_done") void done(uint32_t p){state(p)->action=0;state(p)->out_n=0;}
 EXPORT("coaxial_guard_probe") int32_t probe(uint32_t p,int32_t f){return (int32_t)al_probe(view(p),f);}
 
-EXPORT("coaxial_message") void message(uint32_t p,int32_t kind,uint32_t n){if(n<=sizeof inbox)al_message(view(p),kind,(coax_string){(const char *)inbox,n});}
+EXPORT("coaxial_message") void message(uint32_t p,int32_t kind,uint32_t n){if(n<=sizeof inbox){al_message(view(p),kind,(coax_string){(const char *)inbox,n});director_drain(p);}}
+
+/* Coax supplies complete requests, edits, checks and publication decisions. */
+static int64_t (*volatile direct_work)(coax_v_t_AlState,coax_v_u8)=al_direct_work;
+static bool (*volatile direct_screen)(coax_v_t_AlState)=al_direct_screen;
+static void director_drain(uint32_t p){
+ coax_t_AlState *s=state(p);
+ if(s->director.cancel>=0){coaxial_http_cancel((int32_t)s->director.cancel);s->director.cancel=-1;}
+ if(s->director.request_n>0){static const char url[]="/api/playtest/labs/anim/direct";
+  int id=coaxial_http_bounded((uint32_t)(uintptr_t)url,sizeof url-1,(uint32_t)(uintptr_t)s->director.request.e,(uint32_t)s->director.request_n,5,45000);
+  al_direct_sent(view(p),id);
+ }
+ if(s->director.mode){int64_t n=direct_work(view(p),(coax_v_u8){bundle[active_bundle^1u],sizeof bundle[0]});if(n<=0)return;
+  bool ok=project_start(view(p),(coax_v_u8){bundle[active_bundle^1u],n});
+  for(int kind=0;ok&&kind<5;kind++){int count=(kind==0||kind==1||kind==4)?(int)al_project_count(view(p),kind==4?2:kind):1;for(int row=0;ok&&row<count;row++)ok=project_stage(view(p),kind,row);}
+  if(ok)ok=direct_screen(view(p));if(ok)ok=project_stage(view(p),5,0);
+  if(ok){active_bundle^=1u;al_audio_bank(view(p),(int64_t)(uintptr_t)bundle[active_bundle]);}
+  al_direct_finish(view(p),ok);
+ }
+}
 
 EXPORT("coaxial_sound_bank") uint32_t sound_bank(uint32_t p){return (uint32_t)(uintptr_t)state(p)->sound_bank.e;}
 EXPORT("coaxial_sound_bank_len") uint32_t sound_bank_len(uint32_t p){return (uint32_t)state(p)->sound_bank_n;}

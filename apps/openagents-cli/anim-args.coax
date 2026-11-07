@@ -2,16 +2,19 @@
 #load "anime-args.coax";
 #load "anim-args-checks.coax";
 #authority;
-AnimArgs :: struct {verb:string;rig:string;rate:f32;clip:string;target:string;source:string;out:string;profile:string;json:bool;help:bool;err:string;}
-AN_FLAGS :: [8]string.["--profile","--json","--help","--to","--out","--source-rig","--rig","--rate"];
+AnimArgs :: struct {verb:string;rig:string;rate:f32;clip:string;target:string;source:string;out:string;profile:string;origin:string;words:string;json:bool;help:bool;err:string;}
+AN_FLAGS :: [9]string.["--profile","--json","--help","--to","--out","--source-rig","--rig","--rate","--origin"];
 an_flag :: (text:string)->int #effects(all) {for name,k:AN_FLAGS {if name==text {return k;}}return -1;}
 an_parse :: (a:[]Args)->AnimArgs #effects(all) {
- r:AnimArgs;if a.count<1 {r.err="missing arguments";return r;}if a[0].full {r.err="argument capacity";return r;}seen:[8]bool;pos:=0;i:=0;
+ r:AnimArgs;if a.count<1 {r.err="missing arguments";return r;}if a[0].full {r.err="argument capacity";return r;}seen:[9]bool;pos:=0;i:=0;
  while i<args_count(a) {text:=args_at(a,i);i+=1;
   if text.count>1 && text[0]=='-' && text[1]=='-' {flag:=an_flag(text);if flag<0 {r.err="unknown animation flag";return r;}if seen[flag] {r.err="repeated animation flag";return r;}seen[flag]=true;value:="";
    if flag==0 || flag>=3 {if i>=args_count(a) {r.err="animation flag needs a value";return r;}value=args_at(a,i);i+=1;if !aa_file_ok(value) {r.err="invalid animation flag value";return r;}}
-   if flag==0 {r.profile=value;}if flag==1 {r.json=true;}if flag==2 {r.help=true;}if flag==3 {r.target=value;}if flag==4 {r.out=value;}if flag==5 {r.source=value;}if flag==6 {r.rig=value;}if flag==7 {if value=="30" {r.rate=30;}else if value=="60" {r.rate=60;}else {r.err="animation rate must be 30 or 60";return r;}}
-  }else {if pos==0 && text!="labs" {r.err="expected labs";return r;}if pos==1 && text!="anim" {r.err="expected labs anim";return r;}if pos==2 {if text!="retarget" && text!="import" && text!="play" && text!="check" {r.err="unknown animation verb";return r;}r.verb=text;}if pos==3 {r.clip=text;}if pos==4 && r.verb=="play" && r.out=="" {r.out=text;}else if pos>3 {r.err="extra animation operand";return r;}pos+=1;}
+   if flag==0 {r.profile=value;}if flag==1 {r.json=true;}if flag==2 {r.help=true;}if flag==3 {r.target=value;}if flag==4 {r.out=value;}if flag==5 {r.source=value;}if flag==6 {r.rig=value;}if flag==8 {r.origin=value;}if flag==7 {if value=="30" {r.rate=30;}else if value=="60" {r.rate=60;}else {r.err="animation rate must be 30 or 60";return r;}}
+  }else {if pos==0 && text!="labs" {r.err="expected labs";return r;}if pos==1 && text!="anim" {r.err="expected labs anim";return r;}if pos==2 {if text!="retarget" && text!="import" && text!="play" && text!="check" && text!="edit" && text!="undo" && text!="diff" {r.err="unknown animation verb";return r;}r.verb=text;}if pos==3 {r.clip=text;}if pos==4 && r.verb=="play" && r.out=="" {r.out=text;}else if pos==4 && r.verb=="edit" {r.words=text;}else if pos>3 {r.err="extra animation operand";return r;}pos+=1;}
  }
- if pos<2 {r.err="expected labs anim";return r;}if pos==2 {r.help=true;return r;}if r.help {return r;}if r.verb=="play" || r.verb=="check" {if !aa_file_ok(r.clip) || (r.verb=="play" && !aa_file_ok(r.out)) || (r.verb=="check" && r.out!="") || r.rig!="" || r.rate!=0 || r.target!="" || r.source!="" {r.err="labs anim play FILE OUT.mp4 | check FILE";}return r;}if r.verb=="import" {if !aa_file_ok(r.clip) || !aa_file_ok(r.rig) || r.target!="" || r.source!="" {r.err="labs anim import SOURCE --rig NAME [--out PRIVATE_DIR] [--rate 30|60]";}return r;}if r.rig!="" || r.rate!=0 {r.err="import options require labs anim import";return r;}if !aa_file_ok(r.clip) || r.target=="" {r.err="labs anim retarget CLIP --to RIG [--out PRIVATE_DIR]";}return r;
+ if pos<2 {r.err="expected labs anim";return r;}if pos==2 {r.help=true;return r;}if r.help {return r;}
+ if r.verb=="edit" || r.verb=="undo" || r.verb=="diff" {if !aa_file_ok(r.clip) || (r.verb=="edit" && (r.words.count<1 || r.words.count>2048)) || r.out!="" || r.rig!="" || r.rate!=0 || r.target!="" || r.source!="" || (r.verb!="edit" && r.origin!="") {r.err="labs anim edit FILE WORDS [--origin URL] | undo FILE | diff FILE";}return r;}
+ if r.origin!="" {r.err="--origin requires labs anim edit";return r;}
+ if r.verb=="play" || r.verb=="check" {if !aa_file_ok(r.clip) || (r.verb=="play" && !aa_file_ok(r.out)) || (r.verb=="check" && r.out!="") || r.rig!="" || r.rate!=0 || r.target!="" || r.source!="" {r.err="labs anim play FILE OUT.mp4 | check FILE";}return r;}if r.verb=="import" {if !aa_file_ok(r.clip) || !aa_file_ok(r.rig) || r.target!="" || r.source!="" {r.err="labs anim import SOURCE --rig NAME [--out PRIVATE_DIR] [--rate 30|60]";}return r;}if r.rig!="" || r.rate!=0 {r.err="import options require labs anim import";return r;}if !aa_file_ok(r.clip) || r.target=="" {r.err="labs anim retarget CLIP --to RIG [--out PRIVATE_DIR]";}return r;
 }

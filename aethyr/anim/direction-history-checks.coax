@@ -1,0 +1,47 @@
+#test "version history binds inverse edits to the exact base and retains forks after undo" #steps 400000000 {
+ bytes:[32768]u8;n:=project_test_bytes(bytes[..]);p:[1]SceneProject;#assert project_load(bytes[0..<n],p[..]);after:[65536]u8;r:=ad_build(p[..],ad_test_edit(1),after[..]);h:[1]AdHistory;#assert ad_history_add(h[..],bytes[0..<n],after[0..<r.n],1) && h[0].n==1 && h[0].head==0;
+ first_diff:[73728]u8;#assert ad_history_diff(h[..],first_diff[..])>0;
+ back:[65536]u8;bn:=ad_history_undo(h[..],after[0..<r.n],back[..]);#assert bn==n && cast(string)back[0..<bn]==cast(string)bytes[0..<n];h[0].head=h[0].entry[0].parent;#assert h[0].head== -1;
+ #assert ad_history_add(h[..],bytes[0..<n],after[0..<r.n],1) && h[0].n==2 && h[0].entry[1].parent== -1;
+ diff:[73728]u8;#assert ad_history_diff(h[..],diff[..])>0 && ad_history_diff(h[..],diff[0..<1])<0;
+ #assert ad_history_undo(h[..],bytes[0..<n],back[..])<0 && ad_history_undo(h[..],after[0..<r.n],back[0..<1])<0;
+ h[0].n=16;#assert !ad_history_room(h[..],bytes[0..<n],after[0..<r.n],1);h[0].n=2;#assert !ad_history_add(h[..],bytes[0..<n],bytes[0..<n],1);
+ h[0].head= -1;#assert ad_history_undo(h[..],after[0..<r.n],back[..])<0 && ad_history_diff(h[..],diff[..])<0;
+}
+#test "session history keeps actual parents full JSON diffs and refuses stale future slots" #steps 100000000 {
+ source:[32768]u8;n:=project_test_bytes(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);a:[65536]u8;b:[65536]u8;first:=ad_build(p[..],ad_test_edit(1),a[..]);h:[1]AdHistory;#assert ad_history_add(h[..],source[0..<n],a[0..<first.n],1);
+ #assert project_load(a[0..<first.n],p[..]);e:=ad_test_edit(1);e.value=0.25;second:=ad_build(p[..],e,b[..]);#assert ad_history_add(h[..],a[0..<first.n],b[0..<second.n],1) && h[0].entry[1].parent==0;
+ diff:[73728]u8;dn:=ad_history_diff(h[..],diff[..]);nodes:[4096]JvNode;d:[1]Jv;#assert dn>0 && jv_parse(d[..],cast(string)diff[0..<dn],nodes[..]) && anim_schema(d[0],"anim.diff.v1") && jv_int(d[0],jv_get(d[0],0,"part"),-1)==1;
+ #assert jv_raw(d[0],jv_get(d[0],0,"before"))==cast(string)project_part(a[0..<first.n],1) && jv_raw(d[0],jv_get(d[0],0,"after"))==cast(string)project_part(b[0..<second.n],1);
+ #assert ad_history_diff(h[..],diff[0..<dn])==dn && ad_history_diff(h[..],diff[0..<dn-1])== -1;
+ back:[65536]u8;bn:=ad_history_undo(h[..],b[0..<second.n],back[..]);#assert bn==first.n && cast(string)back[0..<bn]==cast(string)a[0..<first.n];h[0].entry[2]=h[0].entry[1];h[0].head=2;#assert ad_history_undo(h[..],b[0..<second.n],back[..])== -1 && ad_history_diff(h[..],diff[..])== -1;
+ #assert ad_history_undo(h[0..<0],b[0..<second.n],back[..])== -1 && ad_history_diff(h[0..<0],diff[..])== -1;
+}
+#test "history admits exact JSON capacities and refuses binary parts multiple changes or changed headers" #steps 100000000 {
+ source:[32768]u8;n:=project_test_bytes(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);changed:[65536]u8;r:=ad_build(p[..],ad_test_edit(1),changed[..]);h:[1]AdHistory;
+ #assert ad_history_room(h[..],source[0..<n],changed[0..<r.n],1) && !ad_history_room(h[0..<0],source[0..<n],changed[0..<r.n],1);
+ h[0].n=15;#assert ad_history_room(h[..],source[0..<n],changed[0..<r.n],1);h[0].n=16;#assert !ad_history_room(h[..],source[0..<n],changed[0..<r.n],1);h[0].n= -1;#assert !ad_history_room(h[..],source[0..<n],changed[0..<r.n],1);h[0].n=0;
+ for part:[4]int.[-1,0,4,5] {#assert !ad_history_room(h[..],source[0..<n],changed[0..<r.n],part);}
+ extra:[65536]u8;nn:=project_test_repeat(extra[..],true);#assert !ad_history_room(h[..],source[0..<n],extra[0..<nn],1);
+ source[0]=0;#assert !ad_history_room(h[..],source[0..<n],changed[0..<r.n],1);source[0]='A';changed[0]=0;#assert !ad_history_room(h[..],source[0..<n],changed[0..<r.n],1);changed[0]='A';
+ other:=project_part(changed[0..<r.n],0);other[0]^=1;#assert !ad_history_room(h[..],source[0..<n],changed[0..<r.n],1);other[0]^=1;
+ payload:[32769]u8;original:=project_part(source[0..<n],1);for c,k:original {payload[k]=c;}for k:original.count..<payload.count {payload[k]=' ';}
+ before:[65536]u8;after:[65536]u8;bn:=ad_repack(source[0..<n],1,payload[0..<32768],before[..]);payload[32767]='\n';an:=ad_repack(source[0..<n],1,payload[0..<32768],after[..]);#assert ad_history_room(h[..],before[0..<bn],after[0..<an],1);
+ over:=ad_repack(source[0..<n],1,payload[..],extra[..]);#assert !ad_history_room(h[..],extra[0..<over],after[0..<an],1) && !ad_history_room(h[..],before[0..<bn],extra[0..<over],1);
+}
+
+#test "history accepts scene and cut documents at both editable boundaries" #steps 100000000 {
+ source:[32768]u8;n:=project_test_bytes(source[..]);h:[1]AdHistory;payload:[32768]u8;out:[65536]u8;
+ for part:[2]int.[2,3] {a:=project_part(source[0..<n],part);for c,k:a {payload[k]=c;}payload[a.count]=' ';nn:=ad_repack(source[0..<n],part,payload[0..<a.count+1],out[..]);#assert nn>0 && ad_history_room(h[..],source[0..<n],out[0..<nn],part);}
+}
+
+#test "history rejects independently changed header counts even when old parts agree" #steps 100000000 {
+ source:[32768]u8;n:=project_test_bytes(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);changed:[65536]u8;r:=ad_build(p[..],ad_test_edit(1),changed[..]);h:[1]AdHistory;extra:[65536]u8;
+ for field:0..<3 {cursor:=68;for k:0..<6 {part:=project_part(changed[0..<r.n],ifx k==5 then 4 else k);anim_bundle_put(extra[..],20+k*8,cast(u32)cursor);anim_bundle_put(extra[..],24+k*8,cast(u32)part.count);for c,j:part {extra[cursor+j]=c;}cursor+=part.count;}
+ for word,k:[5]u32.[0x31504c41,cast(u32)cursor,1,1,1] {anim_bundle_put(extra[..],k*4,word);}anim_bundle_put(extra[..],8+field*4,2);#assert project_valid(extra[0..<cursor]) && !ad_history_room(h[..],source[0..<n],extra[0..<cursor],1);}
+}
+
+#test "history refuses changes to library and audio at the adjacent bounds" #steps 100000000 {
+ source:[32768]u8;n:=project_test_bytes(source[..]);h:[1]AdHistory;payload:[32768]u8;out:[65536]u8;
+ for part:[2]int.[0,4] {a:=project_part(source[0..<n],part);for c,k:a {payload[k]=c;}payload[a.count]=' ';nn:=ad_repack(source[0..<n],part,payload[0..<a.count+1],out[..]);#assert nn>0 && !ad_history_room(h[..],source[0..<n],out[0..<nn],part);}
+}

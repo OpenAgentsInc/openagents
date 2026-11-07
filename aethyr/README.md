@@ -126,3 +126,11 @@ feeds real partials from recorded audio and admits one final through the same
 voice replay gate. Partials never enter the realm record; cancellation revokes
 late answers. The default voice host remains final-only.
 [Qualification](../docs/verification/incremental-asr-2026-11-03/README.md).
+
+Animation Lab's reusable document readers, project admission, scene sampling,
+scene checks and typed directing engine live in `anim/`. CLI and realm editors
+share the same catalogue, schema admission and one-component edit writer.
+Native version file effects live in `tools/anim-direction-store.coax`; browser
+session/effect bindings remain in `verse/animlab/`. The former realm project,
+scene and check paths are compatibility loaders. See the
+[directing profile](../docs/verse/anim-directing-v1.md).

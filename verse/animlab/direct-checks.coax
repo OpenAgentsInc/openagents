@@ -1,0 +1,33 @@
+al_direct_test_stage :: (s:[]AlState,b:[]u8)->bool {
+ if !al_project_begin(s,b) {return false;}for kind:0..<5 {count:=ifx kind==0 || kind==1 || kind==4 then al_project_count(s,ifx kind==4 then 2 else kind) else 1;for row:0..<count {if !al_project_stage(s,kind,row) {return false;}}}return al_direct_screen(s) && al_project_stage(s,5,0);
+}
+#test "realm director shares typed HTTP admission and exact session undo without replaying a response" #steps 2000000000 {
+ original:[32768]u8;on:=project_test_bytes(original[..]);scene_text:[8192]u8;sn:=anim_test_replace(cast(string)project_part(original[0..<on],2),"\"fov\":0.8","\"fov\":2.5",scene_text[..]);b:[32768]u8;n:=ad_repack(original[0..<on],2,scene_text[0..<sn],b[..]);s:[1]AlState;s[0].initialized=true;s[0].station=4;#assert project_load(b[0..<n],s[0].projects[0..<1]);
+ al_direct_message(s[..],701,"Walk more slowly");#assert s[0].director.pending && s[0].director.request_n>0;request_n:=s[0].director.request_n;
+ al_direct_message(s[..],701,"second words");#assert s[0].director.request_n==request_n;al_direct_sent(s[..],3);
+ model:[8192]u8;mn:=ads_test_model(AD_TEST,model[..]);reply:[8192]u8;rn:=ads_finish(s[0].director.request[0..<request_n],model[0..<mn],reply[..]);wire:[16384]u8;for c,k:"200\n" {wire[k]=c;}for c,k:reply[0..<rn] {wire[4+k]=c;}
+ al_direct_message(s[..],514,cast(string)wire[0..<rn+4]);#assert s[0].director.pending;
+ al_direct_message(s[..],515,cast(string)wire[0..<rn+4]);#assert !s[0].director.pending && s[0].director.mode==1 && s[0].director.score==880;
+ next:[65536]u8;nn:=al_direct_work(s[..],next[..]);#assert nn>0 && al_direct_test_stage(s[..],next[0..<nn]);al_direct_finish(s[..],true);
+ #assert s[0].director.history[0].n==1 && s[0].director.history[0].head==0 && al_movie_project(s[..])[0].performance[0].layers[0].speed==0.5;
+ al_direct_message(s[..],515,cast(string)wire[0..<rn+4]);#assert s[0].director.mode==0 && s[0].director.history[0].n==1;
+ #assert al_direct_key(s[..],68) && s[0].action==2 && s[0].out_n>0;
+ #assert al_direct_key(s[..],85);back:[65536]u8;bn:=al_direct_work(s[..],back[..]);#assert bn==n && cast(string)back[0..<bn]==cast(string)b[0..<n] && al_direct_test_stage(s[..],back[0..<bn]);al_direct_finish(s[..],true);#assert s[0].director.history[0].head== -1 && al_movie_project(s[..])[0].performance[0].layers[0].speed==1;
+}
+#test "realm voice requires explicit activation and consumes a final transcript once before cancellation" #steps 400000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);s:[1]AlState;s[0].station=4;#assert project_load(b[0..<n],s[0].projects[0..<1]);
+ al_direct_message(s[..],50,"heard|slow down");#assert !s[0].director.pending;
+ #assert al_direct_key(s[..],86) && s[0].action==8 && !s[0].director.voice;s[0].action=0;al_direct_tick(s[..]);#assert s[0].director.voice && s[0].action==7 && s[0].out_n==2;
+ al_direct_message(s[..],50,"heard|slow down");#assert s[0].director.pending && s[0].director.voice_heard;request_n:=s[0].director.request_n;al_direct_sent(s[..],2);
+ al_direct_message(s[..],50,"heard|slow down");#assert s[0].director.request_n==0 && s[0].director.http==2;
+ #assert al_direct_key(s[..],27) && !s[0].director.pending && !s[0].director.voice && s[0].director.cancel==2;
+ al_direct_message(s[..],514,"200\n{}");#assert s[0].director.mode==0;
+}
+
+#test "director keyboard accepts ordinary lowercase keys and host Escape code" {
+ s:[1]AlState;s[0].station=4;#assert al_direct_key(s[..],118) && s[0].director.voice_next;#assert al_direct_key(s[..],-1) && !s[0].director.voice_next && s[0].action==7;#assert al_direct_key(s[..],117) && s[0].director.mode==2;
+}
+
+#test "director publication refusal displays the admission error" {
+ s:[1]AlState;s[0].director.mode=1;s[0].movie_error=ANIM_CAPACITY;al_direct_finish(s[..],false);#assert s[0].director.mode==0 && cast(string)s[0].director.status[0..<s[0].director.status_n]=="capacity";
+}

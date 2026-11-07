@@ -29,6 +29,7 @@ labs_usage :: () {
   print("%\n", "  labs board FILE.board OUTDIR [--fresh]                every page at each size and theme");
   print("%\n", "  labs anime catalogue | direct WORDS --take FILE | play FILE OUT.png|OUT.mp4 [--at T]");
   print("%\n", "  labs anim play FILE OUT.mp4 | check FILE");
+  print("%\n", "  labs anim edit FILE WORDS [--origin URL] | undo FILE | diff FILE");
   print("%\n", "  labs anim import SOURCE --rig NAME [--out PRIVATE_DIR] [--rate 30|60]");
   print("%\n", "  labs anim retarget CLIP --to RIG [--out PRIVATE_DIR] [--source-rig FILE]");
   print("%\n", "  labs playtest icecream [--set NAME=VALUE ...] [--seeds N] [--from SEED] [--against FILE.json] | --tunables");
@@ -37,7 +38,7 @@ labs_usage :: () {
 }
 
 labs_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
-  if verb == "anim" { return labs_anim(a,r); }
+  if verb == "anim" { return labs_anim(a,r,profile); }
   if verb == "anime" { return labs_anime(a,r,profile); }
   if verb == "shot" { return labs_shot(a, r, profile); }
   if verb == "clip" { return labs_clip(a, r, profile); }

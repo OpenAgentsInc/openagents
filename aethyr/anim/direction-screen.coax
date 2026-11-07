@@ -1,0 +1,13 @@
+// The same numerical scene report gates native and browser edits.
+#load "scene-check.coax";
+#load "direction-screen-checks.coax";
+#authority;
+ad_screen :: (text:string)->string #effects(all) {
+ nodes:[8192]JvNode;d:[1]Jv;if anim_json(text,d[..],nodes[..])!=0 || !anim_schema(d[0],"anim.scene.check.v1") {return "scene report";}
+ if jv_kind(d[0],jv_get(d[0],0,"continuity_pass"))!=JV_TRUE {return "continuity";}
+ if jv_kind(d[0],jv_get(d[0],jv_get(d[0],0,"determinism"),"pass"))!=JV_TRUE {return "determinism";}
+ for field,k:[3]string.["face_ranges","joint_limits","capsule_intersections"] {node:=jv_get(d[0],0,field);a:=anim_number(d[0],jv_get(d[0],node,ifx k==0 then "source_violations" else ifx k==1 then "violations" else "pair_samples"),0,0);if !a.ok {return field;}if k==0 && !anim_number(d[0],jv_get(d[0],node,"composite_violations"),0,0).ok {return field;}}
+ feet:=jv_get(d[0],0,"foot_sliding");if jv_kind(d[0],feet)!=JV_ARRAY {return "foot_sliding";}for k:0..<jv_len(d[0],feet) {row:=jv_at(d[0],feet,k);marks:=anim_integer(d[0],jv_get(d[0],row,"contacts"),0,1000000);travel:=anim_number(d[0],jv_get(d[0],row,"max_travel_cm"),0,1);if marks<0 || !travel.ok || (marks>0 && jv_kind(d[0],jv_get(d[0],row,"pass"))!=JV_TRUE) {return "foot_sliding";}}
+ framing:=jv_get(d[0],0,"hero_head_framing");if jv_kind(d[0],framing)!=JV_ARRAY {return "hero_head_framing";}for k:0..<jv_len(d[0],framing) {row:=jv_at(d[0],framing,k);total:=anim_integer(d[0],jv_get(d[0],row,"total_samples"),1,1000000);visible:=anim_integer(d[0],jv_get(d[0],row,"visible_samples"),total,total);if visible<1 {return "hero_head_framing";}}
+ return "";
+}

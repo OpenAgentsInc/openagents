@@ -7,7 +7,6 @@ ANIM_SOLVERS :: [4]string.["foot-lock","look-at","hand-to-prop","reach"];
 AnimLayer :: struct {kind:int;clip:int= -1;start:f32;end:f32;speed:f32;blend_in:f32;blend_out:f32;weight:f32;mask:int;solver:int= -1;joint:int= -1;target:Point;}
 AnimPerformance :: struct {ready:bool;name:AnimName;rig:AnimName;length:f32;count:int;layers:[ANIM_LAYERS]AnimLayer;}
 anim_mask :: (word:string)->int #effects(all) {for name,k:ANIM_MASKS {if word==name {return k;}}return -1;}
-anim_point :: (d:Jv,node:int)->Point #effects(all) {return v3(cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,0))).value,cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,1))).value,cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,2))).value);}
 anim_performance_read :: (d:Jv,rigs:[]AnimRig,clips:[]AnimClip,out:[]AnimPerformance)->int #effects(all) {
  if !anim_schema(d,"anim.performance.v1") || !anim_keys(d,0,"schema|name|rig|length|layers") {return ANIM_SCHEMA;}
  p:AnimPerformance;p.name=anim_name(d,jv_get(d,0,"name"));p.rig=anim_name(d,jv_get(d,0,"rig"));if p.name.n==0 || p.rig.n==0 {return ANIM_NAME;}

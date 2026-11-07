@@ -1,0 +1,171 @@
+ad_test_edit :: (kind:int)->AnimDirection {e:=AnimDirection.{kind=kind,at=1,end=3,value=0.5,point=v3(2,3,4)};for k:0..<8 {e.confidence[k]=1000;}return e;}
+// A completely original, admitted three-clip fixture: moving, alternate and
+// a two-frame static pose, all sharing one tiny triangle rig and binary.
+ad_test_project :: (out:[]u8)->int {
+ base:[32768]u8;bn:=project_test_bytes(base[..]);source:=project_part(base[0..<bn],0);lib:[1]AnimLibrary;#assert anim_bundle_load(source,lib[..])==0;
+ pack:[2048]u8;old:=lib[0].packs[0].bytes;for c,k:old {pack[k]=c;}at:=old.count;
+ clips:[3]AnimClip;clips[0]=lib[0].clips[0];clips[1]=clips[0];clips[1].name=anim_named("alternate");size:=clips[1].body.count*28;for k:0..<size {pack[at+k]=old[clips[1].body.offset+k];}clips[1].body.offset=at;aw_put(pack[..],at+56,f32_bits(-2.0f32));at+=size;
+ clips[2]=clips[0];clips[2].name=anim_named("static-key");clips[2].role=anim_named("pose");clips[2].root=AnimPart.{};clips[2].event_count=0;clips[2].curve_count=0;clips[2].face_joint_count=0;clips[2].body=AnimPart.{pack=0,offset=at,count=4,stride=28,width=28};
+ for frame:0..<2 {for j:0..<2 {pose:=lib[0].rig[0].rest[j];for value,k:[7]f32.[pose.t.x,pose.t.y,pose.t.z,pose.q.x,pose.q.y,pose.q.z,pose.q.w] {aw_put(pack[..],at+(frame*2+j)*28+k*4,f32_bits(value));}}}at+=112;
+ nodes:[4096]JvNode;d:[1]Jv;#assert anim_json(cast(string)anim_bundle_part(source,1),d[..],nodes[..])==0;layout:=AwRigParts.{rest=anim_part(d[0],jv_get(d[0],0,"rest"),lib[0].packs[..]),bind=anim_part(d[0],jv_get(d[0],0,"bind"),lib[0].packs[..]),bytes=at};hash:[64]u8;#assert asset_hex(asset_id(cast(string)pack[0..<at]),hash[..]);text:[8192]u8;bundle:[16384]u8;cursor:=52;
+ for part:0..<5 {size_part:=0;if part==0 {size_part=at;for c,k:pack[0..<at] {bundle[cursor+k]=c;}}else {size_part=ifx part==1 then aw_rig(text[..],lib[0].rig[0],layout,cast(string)hash[..]) else aw_clip(text[..],clips[part-2],lib[0].rig[0],cast(string)hash[..]);#assert size_part>0;for c,k:text[0..<size_part] {bundle[cursor+k]=c;}}anim_bundle_put(bundle[..],12+8*part,cast(u32)cursor);anim_bundle_put(bundle[..],16+8*part,cast(u32)size_part);cursor+=size_part;}
+ for value,k:[3]u32.[0x31424c41,cast(u32)cursor,3] {anim_bundle_put(bundle[..],k*4,value);}#assert anim_bundle_load(bundle[0..<cursor],lib[..])==0;return ad_repack(base[0..<bn],0,bundle[0..<cursor],out);
+}
+ad_test_layer_equal :: (a:AnimLayer,b:AnimLayer)->bool {
+ return a.kind==b.kind && a.clip==b.clip && a.start==b.start && a.end==b.end && a.speed==b.speed && a.weight==b.weight && a.blend_in==b.blend_in && a.blend_out==b.blend_out && a.mask==b.mask && a.solver==b.solver && a.joint==b.joint && a.target.x==b.target.x && a.target.y==b.target.y && a.target.z==b.target.z;
+}
+#test "all eleven direction classes publish exactly one admitted component and preserve the other immutable parts" #steps 100000000 {
+ b:[65536]u8;n:=ad_test_project(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);out:[65536]u8;q:[1]SceneProject;
+ expected_part:=[11]int.[1,2,1,1,1,1,1,3,3,3,1];
+ for kind:1..<12 {e:=ad_test_edit(kind);if kind==2 {e.row=1;}if kind==3 {e.row=1;e.option=1;}if kind==4 {e.row=1;}if kind==5 {e.row=1;e.end=4;}if kind==6 {e.option=1;}if kind==7 {e.row=3;e.option=2;}
+  r:=ad_build(p[..],e,out[..]);#assert r.code==0 && r.part==expected_part[kind-1] && project_load(out[0..<r.n],q[..]);
+  for part:0..<5 {if part!=r.part {#assert cast(string)project_part(b[0..<n],part)==cast(string)project_part(out[0..<r.n],part);}}
+  if r.part==1 {before:=p[0].performance[0];after:=q[0].performance[0];#assert anim_equal(before.name,after.name) && anim_equal(before.rig,after.rig) && before.length==after.length;
+   for row:0..<before.count {old:=before.layers[row];index:=ifx kind==7 && row>=1 then row+1 else row;if (kind==1 || kind==5 || kind==6 || kind==11) && row==e.row {if kind==1 {old.speed=0.5;}if kind==5 {old.end=4;}if kind==6 {old.clip=1;}if kind==11 {old.start=1;old.end=3;}}#assert ad_test_layer_equal(old,after.layers[index]);}
+   if kind==3 || kind==4 || kind==7 {#assert after.count==before.count+1;layer:=after.layers[ifx kind==7 then 1 else before.count];#assert layer.start==1 && layer.end==3 && layer.speed==1 && layer.weight==1 && layer.blend_in==0.15f32 && layer.blend_out==0.15f32;if kind==7 {#assert layer.kind==1 && layer.clip==2 && layer.mask==3 && layer.solver== -1 && layer.joint== -1;}else {#assert layer.kind==4 && layer.joint==1 && layer.mask==2 && layer.solver==(ifx kind==3 then 1 else 2) && abs(layer.target.x+0.19601332)<0.000001 && layer.target.y==1 && abs(layer.target.z+0.03973387)<0.000001;}}
+   else {#assert after.count==before.count;}
+  }
+ }
+}
+#test "direction helpers keep exact names source bytes pose channels and authored signed-zero endpoints" {
+ #assert anim_equal(ad_shot_name(7,false),anim_named("direction-7")) && anim_equal(ad_shot_name(7,true),anim_named("direction-7-tail"));
+ out:[32]u8;n:=ad_splice("abc",1,2,"XYZ",out[..]);#assert n==5 && cast(string)out[0..<n]=="aXYZc";
+ #assert ad_splice("abc",0,3,"",out[..])==0 && ad_splice("abc",0,3,"z",out[..])==1 && out[0]=='z';
+ #assert ad_splice("abc",-1,2,"z",out[..])== -1 && ad_splice("abc",2,1,"z",out[..])== -1 && ad_splice("abc",0,4,"z",out[..])== -1 && ad_splice("abc",1,2,"XYZ",out[0..<4])== -1 && ad_splice("abc",1,2,"XYZ",out[0..<5])==5;
+ path:AnimPath;path.count=2;path.time[0]=1;path.time[1]=3;path.point[0]=v3(f32_from_bits(0x80000000),2,3);path.point[1]=v3(1,4,5);path.yaw[0]=f32_from_bits(0x80000000);path.yaw[1]=1;
+ #assert f32_bits(ad_position(path,1).x)==0x80000000 && f32_bits(ad_yaw(path,1))==0x80000000;
+ path.point[0].x=1;path.point[1].x=f32_from_bits(0x80000000);path.yaw[0]=1;path.yaw[1]=f32_from_bits(0x80000000);#assert f32_bits(ad_position(path,3).x)==0 && f32_bits(ad_yaw(path,3))==0;
+ raw:[120]u8;packs:=[1]AnimPack.[AnimPack.{bytes=raw[..]}];clip:=AnimClip.{frames=2,role=anim_named("pose"),joint_count=1,curve_count=1,face_joint_count=1,body=AnimPart.{pack=0,offset=0,count=2,stride=28,width=28},face=AnimPart.{pack=0,offset=56,count=2,stride=4,width=4},face_pose=AnimPart.{pack=0,offset=64,count=2,stride=28,width=28}};
+ #assert ad_pose(clip,packs[..]);for byte:[3]int.[28,60,92] {raw[byte]=1;#assert !ad_pose(clip,packs[..]);raw[byte]=0;}clip.root=AnimPart.{pack=0};#assert !ad_pose(clip,packs[..]);clip.root=AnimPart.{};clip.event_count=1;#assert !ad_pose(clip,packs[..]);clip.event_count=0;clip.frames=3;#assert !ad_pose(clip,packs[..]);
+}
+#test "direction refusal codes distinguish absent stock no-ops invalid envelopes and output capacity" #steps 100000000 {
+ b:[65536]u8;n:=ad_test_project(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);out:[262144]u8;e:=ad_test_edit(1);
+ #assert ad_component(p[0..<0],e,out[..]).code==ANIM_REFERENCE;p[0].ready=false;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;p[0].ready=true;
+ for kind:1..<12 {e=ad_test_edit(kind);if kind==2 {e.row=1;}if kind==3 {e.row=1;e.option=1;}if kind==4 {e.row=1;}if kind==5 {e.row=1;e.end=4;}if kind==6 {e.option=1;}if kind==7 {e.row=3;e.option=2;}#assert ad_component(p[..],e,out[0..<1]).code==ANIM_CAPACITY;}
+ e=ad_test_edit(1);e.actor=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;e=ad_test_edit(1);e.row=2;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;e.row=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ e=ad_test_edit(1);e.value=1;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;e=ad_test_edit(5);e.row=1;e.end=3;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;e=ad_test_edit(6);#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;e=ad_test_edit(11);e.at=0;e.end=4;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;
+ e=ad_test_edit(2);e.row=0;e.point=v3(0,0,0);#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;e.row=2;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ for kind:[4]int.[3,4,6,7] {e=ad_test_edit(kind);e.option=511;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;}
+ e=ad_test_edit(3);e.row=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;e.option=1;e.row=2;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ e=ad_test_edit(7);e.option=2;e.row=8;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;e.row=3;e.option=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ e=ad_test_edit(9);e.at=0;e.end=5;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;for kind:[3]int.[8,9,10] {e=ad_test_edit(kind);e.option=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;e.option=0;e.row=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;}
+ e=ad_test_edit(10);e.actor=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;p[0].cut[0].legacy=true;e=ad_test_edit(8);#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+}
+#test "model inventory contains exact admitted IDs paths joints clips performances props cameras and event times" #steps 100000000 {
+ b:[65536]u8;n:=ad_test_project(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);request:[16384]u8;rn:=ad_request(p[..],"one choice",request[..]);#assert rn>0;
+ nodes:[8192]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)request[0..<rn],nodes[..]) && anim_schema(d[0],"anim.direct.request.v1");hash:[64]u8;#assert asset_hex(asset_id(cast(string)b[0..<n]),hash[..]);#assert jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"base")),cast(string)hash[..]) && jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"words")),"one choice");
+ stock:=jv_get(d[0],0,"stock");#assert anim_number(d[0],jv_get(d[0],stock,"length"),5,5).ok;actors:=jv_get(d[0],stock,"actors");#assert jv_len(d[0],actors)==1;actor:=jv_at(d[0],actors,0);#assert jv_int(d[0],jv_get(d[0],actor,"id"),-1)==0 && jv_raw_eq(jv_raw(d[0],jv_get(d[0],actor,"name")),"actor");
+ path:=jv_get(d[0],actor,"path");#assert jv_len(d[0],path)==2;for k:0..<2 {row:=jv_at(d[0],path,k);#assert jv_int(d[0],jv_get(d[0],row,"id"),-1)==k && anim_number(d[0],jv_get(d[0],row,"at"),cast(f64)(k*5),cast(f64)(k*5)).ok;point:=jv_get(d[0],row,"point");#assert jv_len(d[0],point)==3;value:=anim_point(d[0],point);#assert value.x==cast(f32)k && value.y==0 && value.z==0;}
+ joints:=jv_get(d[0],actor,"joints");#assert jv_len(d[0],joints)==2;for name,k:[2]string.["root","Head"] {row:=jv_at(d[0],joints,k);#assert jv_int(d[0],jv_get(d[0],row,"id"),-1)==k && jv_raw_eq(jv_raw(d[0],jv_get(d[0],row,"name")),name);}
+ clips:=jv_get(d[0],actor,"clips");#assert jv_len(d[0],clips)==3;for name,k:[3]string.["made-wave","alternate","static-key"] {row:=jv_at(d[0],clips,k);#assert jv_int(d[0],jv_get(d[0],row,"id"),-1)==k && jv_raw_eq(jv_raw(d[0],jv_get(d[0],row,"name")),name) && jv_kind(d[0],jv_get(d[0],row,"pose"))==(ifx k==2 then JV_TRUE else JV_FALSE);}
+ perf:[1]AnimPerformance;#assert anim_performance_load(jv_raw(d[0],jv_get(d[0],actor,"performance")),p[0].library[0].rig[..],p[0].library[0].clips[0..<3],perf[..])==0;#assert perf[0].count==2;for k:0..<2 {#assert ad_test_layer_equal(perf[0].layers[k],p[0].performance[0].layers[k]);}
+ for field,category:[3]string.["props","cameras","events"] {list:=jv_get(d[0],stock,field);#assert jv_len(d[0],list)==1;row:=jv_at(d[0],list,0);#assert jv_int(d[0],jv_get(d[0],row,"id"),-1)==0 && jv_raw_eq(jv_raw(d[0],jv_get(d[0],row,"name")),[3]string.["wand","wide","summon"][category]);if category==0 {point:=anim_point(d[0],jv_get(d[0],row,"point"));#assert point.x==0 && point.y==1 && point.z==0;}if category==2 {#assert anim_number(d[0],jv_get(d[0],row,"at"),1,1).ok;}}
+ cut:[1]AnimCut;#assert anim_cut_load(jv_raw(d[0],jv_get(d[0],stock,"cut")),p[0].scene[..],cut[..])==0 && cut[0].shots==1 && cut[0].fps==30 && anim_equal(cut[0].name,anim_named("made-cut")) && cut[0].shot[0].from==0 && cut[0].shot[0].to==5;
+ #assert ad_request(p[..],"one choice",request[0..<rn])==rn && ad_request(p[..],"one choice",request[0..<rn-1])== -1;
+ words:[2049]u8;for k:0..<words.count {words[k]='w';}#assert ad_request(p[..],cast(string)words[0..<2048],request[..])>0 && ad_request(p[..],cast(string)words[..],request[..])== -2 && ad_request(p[..],"",request[..])== -2 && ad_request(p[..],"bad\nwords",request[..])== -1;
+ #assert ad_request(p[0..<0],"words",request[..])== -3;p[0].ready=false;#assert ad_request(p[..],"words",request[..])== -3;
+}
+#test "shot edits preserve neighboring footage at every insertion edge and capacity boundary" #steps 100000000 {
+ source:[65536]u8;n:=ad_test_project(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);out:[262144]u8;
+ c:=p[0].cut[0];c.shots=3;c.shot[0]=AnimCutShot.{name=anim_named("first"),from=0,to=1};c.shot[1]=AnimCutShot.{name=anim_named("middle"),from=1,to=3};c.shot[2]=AnimCutShot.{name=anim_named("last"),from=3,to=5};p[0].cut[0]=c;
+ for bounds:[4][2]f32.[[2]f32.[1,3],[2]f32.[1,2],[2]f32.[2,3],[2]f32.[1.5,2.5]] {e:=ad_test_edit(8);e.row=1;e.at=bounds[0];e.end=bounds[1];r:=ad_component(p[..],e,out[..]);check:[1]AnimCut;#assert r.code==0 && anim_cut_load(cast(string)out[0..<r.n],p[0].scene[..],check[..])==0;prefix:=e.at>1;suffix:=e.end<3;#assert check[0].shots==3+(ifx prefix then 1 else 0)+(ifx suffix then 1 else 0) && check[0].length==5 && check[0].shot[0].from==0 && check[0].shot[0].to==1 && anim_equal(check[0].shot[check[0].shots-1].name,anim_named("last")) && check[0].shot[check[0].shots-1].from==3 && check[0].shot[check[0].shots-1].to==5;
+  index:=ifx prefix then 2 else 1;#assert check[0].shot[index].from==e.at && check[0].shot[index].to==e.end && check[0].shot[index].camera==0 && anim_equal(check[0].shot[index].name,anim_named("direction-3"));if prefix {#assert check[0].shot[1].from==1 && check[0].shot[1].to==e.at;}if suffix {#assert check[0].shot[index+1].from==e.end && check[0].shot[index+1].to==3;}
+ }
+ e:=ad_test_edit(9);e.row=1;e.at=1.25;e.end=3.25;r:=ad_component(p[..],e,out[..]);cut:[1]AnimCut;#assert r.code==0 && anim_cut_load(cast(string)out[0..<r.n],p[0].scene[..],cut[..])==0 && cut[0].length==5 && cut[0].shot[0].to==1.25 && cut[0].shot[1].from==1.25 && cut[0].shot[1].to==3.25 && cut[0].shot[2].from==3.25;
+ p[0].scene[0].effect[0].start=2;e=ad_test_edit(10);e.row=1;r=ad_component(p[..],e,out[..]);#assert r.code==0 && anim_cut_load(cast(string)out[0..<r.n],p[0].scene[..],cut[..])==0 && cut[0].shots==4 && cut[0].length==5 && cut[0].shot[1].to==2 && cut[0].shot[2].from==2 && cut[0].shot[2].to==3 && anim_equal(cut[0].shot[3].name,anim_named("last"));
+ for at:[2]f32.[1,3] {p[0].scene[0].effect[0].start=at;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;}
+ p[0].cut[0].shot[1].transition=1;p[0].cut[0].shot[1].blend=0.1;p[0].scene[0].effect[0].start=2;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;e=ad_test_edit(8);e.row=1;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;
+ for count:[3]int.[126,127,128] {p[0].cut[0].shots=count;for k:0..<count {p[0].cut[0].shot[k]=AnimCutShot.{name=ad_shot_name(500+k,false),from=0,to=2};}p[0].scene[0].effect[0].start=1;e=ad_test_edit(8);e.at=0.5;e.end=1.5;#assert ad_component(p[..],e,out[..]).code==(ifx count==126 then ANIM_OK else ANIM_LIMIT);e=ad_test_edit(10);#assert ad_component(p[..],e,out[..]).code==(ifx count<128 then ANIM_OK else ANIM_LIMIT);}
+}
+#test "performance edit bounds retain hostile inputs as refusals and admit exact layer limits" #steps 100000000 {
+ source:[65536]u8;n:=ad_test_project(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);out:[262144]u8;
+ for speed:[7]f32.[-1,0,0.009,0.01,1,16,16.001] {e:=ad_test_edit(1);e.value=speed;#assert ad_component(p[..],e,out[..]).code==(ifx speed==1 then ANIM_RANGE else ifx speed>=0.01 && speed<=16 then ANIM_OK else ANIM_NUMBER);}
+ for mask:0..<8 {e:=ad_test_edit(7);e.row=mask;e.option=2;#assert ad_component(p[..],e,out[..]).code==ANIM_OK;}
+ for count:[2]int.[31,32] {p[0].performance[0].count=count;for row:1..<count {p[0].performance[0].layers[row]=p[0].performance[0].layers[1];}e:=ad_test_edit(3);e.row=1;e.option=1;#assert ad_component(p[..],e,out[..]).code==(ifx count==31 then ANIM_OK else ANIM_LIMIT);}
+}
+#test "editor replies bind the complete checked response to the current immutable project" #steps 400000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);request:[16384]u8;rn:=ad_request(p[..],"slower",request[..]);model:[8192]u8;mn:=ads_test_model(AD_TEST,model[..]);reply:[8192]u8;nn:=ads_finish(request[0..<rn],model[0..<mn],reply[..]);e:[1]AnimDirection;
+ #assert ads_reply(b[0..<n],cast(string)reply[0..<nn],e[..])==0 && e[0].value==0.5;b[0]=0;#assert ads_reply(b[0..<n],cast(string)reply[0..<nn],e[..])==ANIM_REFERENCE;
+ #assert ads_reply(b[0..<n],"{}",e[..])==ANIM_SCHEMA;
+}
+#test "direction builds preserve immutable payloads and reject short or invalid replacements" #steps 400000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);out:[65536]u8;r:=ad_build(p[..],ad_test_edit(1),out[..]);q:[1]SceneProject;#assert r.code==0 && project_load(out[0..<r.n],q[..]) && q[0].performance[0].layers[0].speed==0.5;
+ for k:[4]int.[0,2,3,4] {#assert cast(string)project_part(b[0..<n],k)==cast(string)project_part(out[0..<r.n],k);}
+ #assert ad_repack(b[0..<n],-1,b[0..<1],out[..])<0 && ad_repack(b[0..<n],5,b[0..<1],out[..])<0 && ad_repack(b[0..<n],0,b[0..<0],out[..])<0 && ad_repack(b[0..<n],0,b[0..<1],out[0..<1])<0;
+ b[0]=0;#assert ad_repack(b[0..<n],0,b[0..<1],out[..])<0;
+ request:[16384]u8;rn:=ad_request(p[..],"Let her walk more slowly",request[..]);#assert rn>0;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)request[0..<rn],nodes[..]) && anim_schema(d[0],"anim.direct.request.v1");#assert ad_request(p[..],"",request[..])<0 && ad_request(p[..],"words",request[0..<1])<0;
+}
+#test "look and hand proposals use held world targets transformed into the actor's local path space" #steps 400000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);text:[262144]u8;
+ for kind:[2]int.[3,4] {e:=ad_test_edit(kind);e.row=1;e.option=ifx kind==3 then 1 else 0;r:=ad_component(p[..],e,text[..]);#assert r.code==0;perf:[1]AnimPerformance;#assert anim_performance_load(cast(string)text[0..<r.n],p[0].library[0].rig[..],p[0].library[0].clips[0..<1],perf[..])==0;layer:=perf[0].layers[2];expected:=ad_local(p[0].scene[0].actors[0].path,1,v3(0,1,0));#assert layer.kind==4 && layer.solver==(ifx kind==3 then 1 else 2) && layer.joint==1 && layer.start==1 && layer.end==3 && layer.target.x==expected.x && layer.target.y==expected.y && layer.target.z==expected.z;}
+ path:AnimPath;#assert ad_position(path,2).x==0 && ad_yaw(path,2)==0;path.count=2;path.time[0]=1;path.time[1]=3;path.point[0]=v3(1,2,3);path.point[1]=v3(3,4,5);path.yaw[0]=0.5;path.yaw[1]=1.5;
+ #assert ad_position(path,0).x==1 && ad_position(path,1).y==2 && ad_position(path,2).z==4 && ad_position(path,3).x==3 && ad_position(path,4).y==4;
+ #assert ad_yaw(path,0)==0.5 && ad_yaw(path,1)==0.5 && ad_yaw(path,2)==1 && ad_yaw(path,3)==1.5 && ad_yaw(path,4)==1.5;
+ clip:=p[0].library[0].clips[0];#assert !ad_pose(clip,p[0].library[0].packs[..]);clip.role=anim_named("pose");clip.event_count=0;clip.root=AnimPart.{};clip.curve_count=0;clip.face_joint_count=0;raw:[112]u8;clip.body=AnimPart.{pack=0,count=4,stride=28,width=28};packs:=[1]AnimPack.[AnimPack.{bytes=raw[..]}];#assert ad_pose(clip,packs[..]);raw[56]=1;#assert !ad_pose(clip,packs[..]);raw[56]=0;
+ p[0].library[0].clips[0]=clip;p[0].library[0].packs[0]=packs[0];e:=ad_test_edit(7);e.row=3;r:=ad_component(p[..],e,text[..]);#assert r.code==0;
+}
+#test "checked directions edit speeds paths holds swaps shots and event cuts without touching source" #steps 400000000 {
+ bytes:[32768]u8;n:=project_test_bytes(bytes[..]);p:[1]SceneProject;#assert project_load(bytes[0..<n],p[..]);p[0].library[0].clips[1]=p[0].library[0].clips[0];p[0].library[0].clips[1].name=anim_named("next-wave");p[0].library[0].count=2;text:[262144]u8;
+ for kind:[8]int.[1,2,5,6,8,9,10,11] {
+  e:=ad_test_edit(kind);if kind==2 {e.row=1;}if kind==6 {e.option=1;}if kind==5 {e.row=1;e.end=4;}
+  result:=ad_component(p[..],e,text[..]);#assert result.code==0 && result.n>0;
+  if kind==1 || kind==5 || kind==6 || kind==11 {r:[1]AnimPerformance;#assert anim_performance_load(cast(string)text[0..<result.n],p[0].library[0].rig[..],p[0].library[0].clips[0..<p[0].library[0].count],r[..])==0;if kind==1 {#assert r[0].layers[0].speed==0.5;}if kind==5 {#assert r[0].layers[1].end==4;}if kind==6 {#assert r[0].layers[0].clip==1;}if kind==11 {#assert r[0].layers[0].start==1 && r[0].layers[0].end==3;}}
+  if kind==2 {#assert result.part==2;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)text[0..<result.n],nodes[..]);path:=jv_get(d[0],jv_at(d[0],jv_get(d[0],0,"cast"),0),"path");point:=anim_point(d[0],jv_get(d[0],jv_at(d[0],path,1),"position"));#assert point.x==2 && point.y==3 && point.z==4;}
+  if kind>=8 && kind<=10 {c:[1]AnimCut;#assert anim_cut_load(cast(string)text[0..<result.n],p[0].scene[..],c[..])==0;if kind==8 {#assert c[0].shots==3 && c[0].shot[1].from==1 && c[0].shot[1].to==3 && c[0].length==5;}if kind==9 {#assert c[0].shot[0].from==1 && c[0].shot[0].to==3;}if kind==10 {#assert c[0].shots==2 && c[0].shot[0].to==1 && c[0].shot[1].from==1 && c[0].length==5;}}
+ }
+ #assert p[0].performance[0].layers[0].speed==1 && p[0].scene[0].actors[0].path.point[1].x==1 && p[0].cut[0].shots==1;
+ e:=ad_test_edit(0);#assert ad_component(p[..],e,text[..]).code!=0;e=ad_test_edit(1);e.actor=1;#assert ad_component(p[..],e,text[..]).code==ANIM_REFERENCE;
+}
+
+#test "typed proposal domains include exact endpoints and refuse out-of-range fields before writers" {
+ e:=ad_test_edit(1);#assert ad_domains(e);for value:[4]f32.[-1000000,1000000,-0.0,0.0] {e.value=value;e.point=v3(value,value,value);#assert ad_domains(e);}
+ for value:[2]f32.[-1000001,1000001] {for field:0..<4 {e=ad_test_edit(1);if field==0 {e.value=value;}if field==1 {e.point.x=value;}if field==2 {e.point.y=value;}if field==3 {e.point.z=value;}#assert !ad_domains(e);}}
+ for field:0..<4 {limit:=ifx field==0 then 13 else ifx field==1 then 16 else ifx field==2 then 128 else 512;for value:[4]int.[-1,0,limit-1,limit] {e=ad_test_edit(1);if field==0 {e.kind=value;}if field==1 {e.actor=value;}if field==2 {e.row=value;}if field==3 {e.option=value;}#assert ad_domains(e)==(value>=0 && value<(ifx field==0 then 13 else ifx field==1 then 16 else ifx field==2 then 128 else 512));}}
+ for k:0..<8 {for value:[4]int.[-1,0,1000,1001] {e=ad_test_edit(1);e.confidence[k]=value;#assert ad_domains(e)==(value>=0 && value<=1000);}}
+ for value:[4]f32.[-0.1,0,600,600.1] {e=ad_test_edit(1);e.at=value;#assert ad_domains(e)==(value>=0 && value<=600);e=ad_test_edit(1);e.end=value;#assert ad_domains(e)==(value>=0 && value<=600);}
+}
+
+#test "direction boundary refusals preserve exact confidence counts coordinates and publication errors" #steps 200000000 {
+ source:[65536]u8;n:=ad_test_project(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);out:[262144]u8;e:=ad_test_edit(1);
+ for score:[2]int.[850,851] {for k:0..<8 {e.confidence[k]=score;}#assert ad_component(p[..],e,out[..]).code==(ifx score==850 then ANIM_REFERENCE else ANIM_OK);}
+ for point:[3]Point.[v3(1,0,0),v3(0,1,0),v3(0,0,1)] {e=ad_test_edit(2);e.point=point;#assert ad_component(p[..],e,out[..]).code==0;}
+ #assert ad_splice("abc",0,1,"z",out[..])==3 && cast(string)out[0..<3]=="zbc";
+ e=ad_test_edit(1);#assert ad_build(p[..],e,out[0..<1]).code==ANIM_CAPACITY;
+ one:=[1]u8.['x'];rn:=ad_repack(source[0..<n],1,one[..],out[..]);#assert rn>0;exact:[65536]u8;#assert ad_repack(source[0..<n],1,one[..],exact[0..<rn])==rn && project_part(exact[0..<rn],1).count==1;
+ request:[16384]u8;#assert ad_request(p[..],"w",request[..])>0;
+ e=ad_test_edit(9);e.at=0;e.end=4;#assert ad_component(p[..],e,out[..]).code==0;e.at=1;e.end=5;#assert ad_component(p[..],e,out[..]).code==0;
+ e=ad_test_edit(11);e.at=0;e.end=3;#assert ad_component(p[..],e,out[..]).code==0;e.at=1;e.end=4;#assert ad_component(p[..],e,out[..]).code==0;
+ e=ad_test_edit(6);e.row=1;e.option=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ e=ad_test_edit(3);e.row=2;e.option=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ e=ad_test_edit(3);e.row=1;e.option=2;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ e=ad_test_edit(4);e.row=1;e.option=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ // Unused slots can retain previous admitted data. They are still absent stock.
+ p[0].library[0].clips[3]=p[0].library[0].clips[2];e=ad_test_edit(7);e.option=3;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;e=ad_test_edit(6);e.option=3;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+}
+#test "inventory distinguishes category counts and a second actor performance part" #steps 200000000 {
+ source:[65536]u8;n:=ad_test_project(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);s:=p[0].scene[0];s.props=2;s.prop[1]=s.prop[0];s.cameras=3;s.camera[1]=s.camera[0];s.camera[2]=s.camera[0];s.effects=4;for k:1..<4 {s.effect[k]=s.effect[0];}p[0].scene[0]=s;
+ out:[262144]u8;rn:=ad_request(p[..],"w",out[..]);nodes:[8192]JvNode;d:[1]Jv;#assert rn>0 && anim_json(cast(string)out[0..<rn],d[..],nodes[..])==0;stock:=jv_get(d[0],0,"stock");for field,k:[3]string.["props","cameras","events"] {#assert jv_len(d[0],jv_get(d[0],stock,field))==k+2;}
+ p[0].scene[0].actors[0].performance=1;p[0].performance[1]=p[0].performance[0];e:=ad_test_edit(1);#assert ad_component(p[..],e,out[..]).part==2;
+}
+#test "retiming the last of 128 shots touches no unused neighbor" #steps 100000000 {
+ source:[65536]u8;n:=ad_test_project(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);p[0].cut[0].shots=128;for k:0..<128 {p[0].cut[0].shot[k]=AnimCutShot.{name=ad_shot_name(k,false),from=0,to=1};}e:=ad_test_edit(9);e.row=127;e.at=0.5;e.end=1;out:[262144]u8;#assert ad_component(p[..],e,out[..]).code==0;
+}
+
+#test "insertion boundaries use exact stock indices even when unused storage holds old values" #steps 200000000 {
+ source:[65536]u8;n:=ad_test_project(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);out:[262144]u8;
+ #assert ad_splice("abc",1,1,"z",out[..])==4 && cast(string)out[0..<4]=="azbc";
+ for kind:[2]int.[8,9] {e:=ad_test_edit(kind);e.actor=15;#assert ad_component(p[..],e,out[..]).code==0;}
+ e:=ad_test_edit(11);e.actor=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ p[0].scene[0].effects=2;p[0].scene[0].effect[1]=p[0].scene[0].effect[0];e=ad_test_edit(10);e.actor=1;#assert ad_component(p[..],e,out[..]).code==0;
+ p[0].library[0].rig[0].names[2]=p[0].library[0].rig[0].names[1];e=ad_test_edit(3);e.row=2;e.option=1;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;
+ p[0].cut[0].shots=128;for k:0..<128 {p[0].cut[0].shot[k]=AnimCutShot.{name=ad_shot_name(k,false),from=0,to=1};}e=ad_test_edit(8);e.at=0;e.end=1;#assert ad_component(p[..],e,out[..]).code==0;
+ p[0].performance[0].count=31;for k:2..<31 {p[0].performance[0].layers[k]=p[0].performance[0].layers[1];}e=ad_test_edit(7);e.option=2;e.row=3;#assert ad_component(p[..],e,out[..]).code==0;
+}
+
+#test "shot removal retains surrounding authored footage and refuses removing the only shot" #steps 100000000 {
+ source:[65536]u8;n:=ad_test_project(source[..]);p:[1]SceneProject;#assert project_load(source[0..<n],p[..]);out:[262144]u8;e:=ad_test_edit(12);e.actor=15;#assert ad_component(p[..],e,out[..]).code==ANIM_RANGE;
+ p[0].cut[0].shots=3;for k:0..<3 {p[0].cut[0].shot[k]=AnimCutShot.{name=ad_shot_name(k,false),from=cast(f32)k,to=cast(f32)(k+1)};}
+ for row:0..<3 {e.row=row;r:=ad_component(p[..],e,out[..]);cut:[1]AnimCut;#assert r.code==0 && r.part==3 && anim_cut_load(cast(string)out[0..<r.n],p[0].scene[..],cut[..])==0 && cut[0].shots==2 && cut[0].length==2;for k:0..<2 {old:=k+(ifx k>=row then 1 else 0);#assert anim_equal(cut[0].shot[k].name,ad_shot_name(old,false)) && cut[0].shot[k].from==cast(f32)old && cut[0].shot[k].to==cast(f32)(old+1);}}
+ e.row=3;#assert ad_component(p[..],e,out[..]).code==ANIM_REFERENCE;e.row=1;#assert ad_component(p[..],e,out[0..<1]).code==ANIM_CAPACITY;
+ p[0].cut[0].shots=128;for k:0..<128 {p[0].cut[0].shot[k]=AnimCutShot.{name=ad_shot_name(k,false),from=0,to=1};}e.row=0;#assert ad_component(p[..],e,out[..]).code==0;
+}

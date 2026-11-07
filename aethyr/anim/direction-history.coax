@@ -1,0 +1,22 @@
+// Session versions retain only the one changed document, not copies of meshes.
+#load "direction.coax";
+#load "direction-history-checks.coax";
+#authority;
+AD_HISTORY_BYTES :: 32768;
+AdVersion :: struct {parent:int= -1;part:int;base:AssetId;id:AssetId;before_n:int;after_n:int;before:[AD_HISTORY_BYTES]u8;after:[AD_HISTORY_BYTES]u8;}
+AdHistory :: struct {n:int;head:int= -1;entry:[16]AdVersion;}
+ad_history_room :: (h:[]AdHistory,before:[]u8,after:[]u8,part:int)->bool #effects(all) {
+ if h.count<1 || h[0].n<0 || h[0].n>=16 || !project_valid(before) || !project_valid(after) {return false;}
+ if anim_word(before,8)!=anim_word(after,8) || anim_word(before,12)!=anim_word(after,12) || anim_word(before,16)!=anim_word(after,16) {return false;}first:=cast(int)anim_word(before,8);last:=first+cast(int)anim_word(before,12)+2;if part<first || part>=last {return false;}
+ for k:0..<project_parts(before) {if k!=part && cast(string)project_part(before,k)!=cast(string)project_part(after,k) {return false;}}
+ a:=project_part(before,part);b:=project_part(after,part);return a.count<=AD_HISTORY_BYTES && b.count<=AD_HISTORY_BYTES && cast(string)a!=cast(string)b;
+}
+ad_history_add :: (h:[]AdHistory,before:[]u8,after:[]u8,part:int)->bool #effects(all) {
+ if !ad_history_room(h,before,after,part) {return false;}i:=h[0].n;v:AdVersion;v.parent=h[0].head;v.part=part;v.base=asset_id(cast(string)before);v.id=asset_id(cast(string)after);a:=project_part(before,part);b:=project_part(after,part);v.before_n=a.count;v.after_n=b.count;for c,k:a {v.before[k]=c;}for c,k:b {v.after[k]=c;}h[0].entry[i]=v;h[0].head=i;h[0].n+=1;return true;
+}
+ad_history_undo :: (h:[]AdHistory,current:[]u8,out:[]u8)->int #effects(all) {
+ if h.count<1 || h[0].head<0 || h[0].head>=h[0].n {return -1;}v:=h[0].entry[h[0].head];if !asset_same(v.id,asset_id(cast(string)current)) {return -1;}n:=ad_repack(current,v.part,v.before[0..<v.before_n],out);if n== -1 || !asset_same(v.base,asset_id(cast(string)out[0..<n])) {return -1;}return n;
+}
+ad_history_diff :: (h:[]AdHistory,out:[]u8)->int #effects(all) {
+ if h.count<1 || h[0].head<0 || h[0].head>=h[0].n {return -1;}v:=h[0].entry[h[0].head];o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.diff.v1");jo_key(o[..],"part");jo_int(o[..],v.part);jo_key(o[..],"before");jo_raw(o[..],cast(string)v.before[0..<v.before_n]);jo_key(o[..],"after");jo_raw(o[..],cast(string)v.after[0..<v.after_n]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}

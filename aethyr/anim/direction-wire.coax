@@ -1,0 +1,20 @@
+// Schema shared by Decisions and the editor, independent of asset hashing.
+#load "json.coax";
+#load "direction-wire-checks.coax";
+#authority;
+AED_KINDS :: [13]string.["unmatched","speed","path","look-at","hand-to","hold","clip-swap","key","shot-add","shot-retime","cut-on-event","timing","shot-remove"];
+AD_FIELDS :: [8]string.["kind","actor","row","option","at","end","value","point"];
+AnimDirection :: struct {kind:int;actor:int;row:int;option:int;at:f32;end:f32;value:f32;point:Point;confidence:[8]int;}
+ad_confidence :: (e:AnimDirection)->int #effects(all) {if e.kind==0 {return 0;}score:=e.confidence[0];for k:1..<8 {value:=e.confidence[k];score=(score+value-cast(int)abs(cast(f64)(score-value)))/2;}return score;}
+ad_read :: (text:string,out:[]AnimDirection)->int #effects(all) {
+ if out.count<1 {return ANIM_CAPACITY;}nodes:[512]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}
+ if !anim_schema(d[0],"anim.direction.v1") || !anim_keys(d[0],0,"schema|kind|actor|row|option|at|end|value|point|confidence") {return ANIM_SCHEMA;}
+ r:AnimDirection;kinds:=AED_KINDS;r.kind=anim_choice(d[0],jv_get(d[0],0,"kind"),kinds[..]);if r.kind<0 {return ANIM_NAME;}
+ r.actor=anim_integer(d[0],jv_get(d[0],0,"actor"),0,15);r.row=anim_integer(d[0],jv_get(d[0],0,"row"),0,127);r.option=anim_integer(d[0],jv_get(d[0],0,"option"),0,511);
+ at:=anim_number(d[0],jv_get(d[0],0,"at"),0,600);end:=anim_number(d[0],jv_get(d[0],0,"end"),0,600);value:=anim_number(d[0],jv_get(d[0],0,"value"),-1000000,1000000);point:=jv_get(d[0],0,"point");
+ if r.actor<0 || r.row<0 || r.option<0 || !at.ok || !end.ok || !value.ok || !anim_vector(d[0],point,3,1000000) {return ANIM_NUMBER;}
+ r.at=cast(f32)at.value;r.end=cast(f32)end.value;r.value=cast(f32)value.value;r.point=anim_point(d[0],point);
+ scores:=jv_get(d[0],0,"confidence");if !anim_keys(d[0],scores,"kind|actor|row|option|at|end|value|point") {return ANIM_SCHEMA;}
+ for field,k:AD_FIELDS {r.confidence[k]=anim_integer(d[0],jv_get(d[0],scores,field),0,1000);if r.confidence[k]<0 {return ANIM_NUMBER;}}
+ out[0]=r;return ANIM_OK;
+}

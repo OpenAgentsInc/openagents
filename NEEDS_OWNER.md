@@ -1102,3 +1102,12 @@ The Mac was not available to the agent:
       proof passes its mutation checks, but #12984 remains open until the
       unchanged 60 FPS acceptance gate passes. Evidence:
       `docs/verification/everglade-echo-12984-2026-11-07/README.md`.
+
+### Animation Lab directing: live-provider qualification (#12972, November 7)
+
+- [ ] Supply a valid Google provider credential for an optional live-model
+      interpretation run. Local `gcloud auth print-access-token` currently
+      fails. The real API/CLI and browser flows pass with controlled typed
+      responses; live natural-language interpretation quality is unqualified.
+      Use the private `anim_direct_oracle.py --live` flow documented in
+      `docs/verification/animation-lab-a7-2026-11-07/README.md`.
