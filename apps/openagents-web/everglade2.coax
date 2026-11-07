@@ -49,7 +49,7 @@ E2 :: struct {
   airborne: bool; air_at: f32; land_at: f32 = -100;   // the jump's takeoff and landing (e2_jump_figure)
   press: f32; eye_pitch: f32;                        // the eye's pitch, held on the land, and how far the look has gone past it (e2_follow)
   q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/quality.coax): the pixels drawn
-  fps: f32; fps_frames: int; fps_time: f32;          // the frame rate shown, and the frames since it was last worked out
+  fps_counter:[1]cc.FpsCounter;          // the frame rate shown, and the frames since it was last worked out
   clock: f32; width: f32; height: f32; k: f32 = 1;
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
   shade: [3] f32;
@@ -557,32 +557,17 @@ e2_pixel_budget :: (s: [] E2, w: f32, h: f32, dpr: f32) -> int #export_c #effect
   return quality_pixels(s[0].q[..], w / k, h / k);
 }
 // ---- the frame rate, bottom right, always shown: frames over the last half second or so
-E2_FPS_EVERY :: 0.5;
-e2_fps_count :: (s: [] E2, dt: f32) {
-  if !(dt > 0) || dt > 1 { return; }
-  s[0].fps_frames += 1; s[0].fps_time += dt;
-  if s[0].fps_time >= f32(E2_FPS_EVERY) { s[0].fps = f32(s[0].fps_frames) / s[0].fps_time; s[0].fps_frames = 0; s[0].fps_time = 0; }
-}
+e2_fps_count :: (s: [] E2, dt: f32) {cc.fps_count(s[0].fps_counter[..],dt);}
 e2_fps :: (s: [] E2, out: [] f32, dt: f32) -> int {
-  e2_fps_count(s, dt);
-  k := s[0].k; buf: [16] u8; n := 0;
-  v := cast(int) (s[0].fps + 0.5); if v > 999 { v = 999; }
-  if v >= 100 { buf[n] = cast(u8) (48 + v / 100); n += 1; }
-  if v >= 10 { buf[n] = cast(u8) (48 + v / 10 % 10); n += 1; }
-  buf[n] = cast(u8) (48 + v % 10); n += 1;
-  buf[n] = 32; buf[n + 1] = 70; buf[n + 2] = 80; buf[n + 3] = 83; n += 4;   // " FPS"
-  label := cast(string) buf[0..<n];
-  cap := 13 * k; em := cc.sans_em(cap); wide := 0.0f32;
-  for i: 0..<n { wide += f32(cc.CC_FONT_WIDTH[cast(int) buf[i] - 32]) / f32(cc.CC_FONT_UPM) * em; }
-  return cc.text(out, 0, label, s[0].width - 16 * k - wide, s[0].height - 16 * k, cap, cc.ink(k, 0.95, 0.93, 0.82));
+ e2_fps_count(s,dt);return cc.fps_draw(s[0].fps_counter[0],out,0,s[0].width,s[0].height,s[0].k);
 }
 #test "the frame rate is the frames over the last half second" {
   s: [1] E2;
   for i: 0..<40 { e2_fps_count(s[..], 1.0f32 / 60); }
-  #assert abs(s[0].fps - 60) < 0.5;
+  #assert abs(s[0].fps_counter[0].fps - 60) < 0.5;
   // slowed to 30: within a second it says so
   for i: 0..<30 { e2_fps_count(s[..], 1.0f32 / 30); }
-  #assert abs(s[0].fps - 30) < 0.5;
+  #assert abs(s[0].fps_counter[0].fps - 30) < 0.5;
 }
 e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if u.count < E2_UNIFORM_FLOATS || w < 1 || h < 1 { return 0; }
