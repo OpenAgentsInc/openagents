@@ -1,0 +1,3 @@
+ok   #test room raid: a squad lays siege by the shared tactics: volleys at a tower and a breach, then in, spread, clear of the spawn; Darian stays back and doors away (1 case, 299606998 steps, 2297 ms)
+1 of 220 checks (--only 'a squad lays siege'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

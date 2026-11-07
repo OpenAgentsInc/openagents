@@ -1,0 +1,1 @@
+close 1920x1080 (render 1920x1080): 71 frames, 59.2 fps; frame p50 16.665 ms, p95 16.67 ms, max 33.33 ms; 1 held back; cpu p50 1.17 ms, p95 1.355 ms; gpu p50 12.705 ms, p95 21.445 ms; hair share 412/1000, 953278 strand segments drawn; misses 60 FPS

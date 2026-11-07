@@ -1,0 +1,4 @@
+ok   #test room raid: the friendly staged hero leaves the commons spawn by walking, not a spawn-ring teleport (1 case, 236319 steps, 12 ms)
+ok   #test room raid: the commons spawn hero reaches her first Meteor Swarm without a forced cast (1 case, 9624679 steps, 78 ms)
+2 of 220 checks (--only 'commons spawn'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

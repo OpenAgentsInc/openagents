@@ -1,0 +1,6 @@
+FAIL #test only hostile raid movement retains the admitted spawn exclusion radius (0 ms)
+apps/openagents-web/everglade-raid-spawn-policy.coax:7:5: error[E0406]: assertion failed
+      #assert egr_spawn_radius(true,radius)==0;
+      ^
+  note: in #test only hostile raid movement retains the admitted spawn exclusion radius
+1 check, 0 passed, 1 failed

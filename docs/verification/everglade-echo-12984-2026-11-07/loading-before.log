@@ -1,0 +1,7 @@
+FAIL #test a requested hero waits for its own readiness and a baseline still waits for the world (0 ms)
+coax/web/everglade-echo-proof.coax:9:3: error[E0406]: assertion failed
+    #assert !ep_wait_ready(true,true,false);
+    ^
+  note: in #test a requested hero waits for its own readiness and a baseline still waits for the world
+ok   #test hero qualification needs a visible ready character and the entire requested raster (1 case, 1211 steps, 0 ms)
+2 checks, 1 passed, 1 failed

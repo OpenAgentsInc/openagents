@@ -1,0 +1,43 @@
+// A fast empty/downscaled scene is not a native hero frame qualification.
+#authority;
+EpHeroProof :: struct {
+  holds:bool;clean:bool;hidden:bool;ready:bool;
+  share:int;segments:int;width:int;height:int;wanted_width:int;wanted_height:int;
+}
+#test "a requested hero waits for its own readiness and a baseline still waits for the world" {
+  #assert ep_wait_ready(true,true,true) && ep_wait_ready(true,false,true) && ep_wait_ready(true,false,false);
+  #assert !ep_wait_ready(true,true,false);
+  #assert !ep_wait_ready(false,true,true) && !ep_wait_ready(false,true,false);
+  #assert !ep_wait_ready(false,false,true) && !ep_wait_ready(false,false,false);
+}
+ep_wait_ready :: (world:bool,wanted:bool,loaded:bool)->bool #effects() {return world && (!wanted || loaded);}
+#test "hero qualification needs a visible ready character and the entire requested raster" {
+  p:=EpHeroProof.{holds=true,clean=true,ready=true,share=4,segments=18486,width=1920,height=1080,wanted_width=1920,wanted_height=1080};
+  #assert ep_hero_ok(p);
+  q:=p;q.holds=false;#assert !ep_hero_ok(q);
+  q=p;q.clean=false;#assert !ep_hero_ok(q);
+  q=p;q.hidden=true;#assert !ep_hero_ok(q);
+  q=p;q.ready=false;#assert !ep_hero_ok(q);
+  q=p;q.share=0;#assert !ep_hero_ok(q);
+  q=p;q.share=1001;#assert !ep_hero_ok(q);
+  q=p;q.segments=0;#assert !ep_hero_ok(q);
+  q=p;q.share=1;q.segments=1;#assert ep_hero_ok(q);
+  q=p;q.share=1000;#assert ep_hero_ok(q);
+  q=p;q.width=1280;q.height=720;#assert !ep_hero_ok(q);
+  q.wanted_width=1280;q.wanted_height=720;#assert ep_hero_ok(q);
+  for delta:[2]int.[-1,1] {
+    q=p;q.width+=delta;#assert !ep_hero_ok(q);
+    q=p;q.height+=delta;#assert !ep_hero_ok(q);
+    q=p;q.wanted_width+=delta;#assert !ep_hero_ok(q);
+    q=p;q.wanted_height+=delta;#assert !ep_hero_ok(q);
+  }
+  q=p;q.width=0;q.wanted_width=0;#assert !ep_hero_ok(q);
+  q=p;q.height=0;q.wanted_height=0;#assert !ep_hero_ok(q);
+  q=p;q.width=1;q.wanted_width=1;q.height=1;q.wanted_height=1;#assert ep_hero_ok(q);
+}
+ep_hero_ok :: (p:EpHeroProof)->bool #effects() {
+  return p.holds && p.clean && !p.hidden && p.ready &&
+    p.share>0 && p.share<=1000 && p.segments>0 &&
+    p.wanted_width>0 && p.wanted_height>0 &&
+    p.width==p.wanted_width && p.height==p.wanted_height;
+}

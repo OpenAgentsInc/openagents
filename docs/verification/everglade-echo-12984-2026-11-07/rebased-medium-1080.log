@@ -1,0 +1,2 @@
+adapter: hardware apple metal-3
+medium 1920x1080 (render 1920x1080): 300 frames, 60.0 fps; frame p50 16.665 ms, p95 16.67 ms, max 16.67 ms; 0 held back; cpu p50 0.99 ms, p95 1.085 ms; gpu p50 10.005 ms, p95 14.2 ms; hair share 14/1000, 36764 strand segments drawn; holds 60 FPS

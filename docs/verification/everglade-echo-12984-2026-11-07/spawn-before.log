@@ -1,0 +1,7 @@
+FAIL #test room raid: the friendly staged hero leaves the commons spawn by walking, not a spawn-ring teleport (11 ms)
+apps/openagents-web/everglade5e-room-raid.coax:1503:3: error[E0406]: assertion failed
+    #assert x*x+z*z<=0.25 && z<0;
+    ^
+  note: in #test room raid: the friendly staged hero leaves the commons spawn by walking, not a spawn-ring teleport
+1 of 218 checks (--only 'commons spawn by walking'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

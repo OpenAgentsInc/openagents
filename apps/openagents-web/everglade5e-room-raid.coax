@@ -58,6 +58,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "everglade-cast-rules.coax";   // Everglade's four's cast bars, for a hero's (CR_BAR)
+#load "everglade-raid-spawn-policy.coax";
 // a raider's form is E5RR_FORM_RAID (everglade5e-beasts.coax) + its stat block (npcs.coax RS_NPC_*)
 E5RR_FORM_WARD :: 40;                        // a ward stone
 E5RD_HERO_NPC :: 15;                         // a hero's place past the stat blocks (npcs.coax RS_NPCS)
@@ -815,7 +816,7 @@ e5rd_door :: (r: [] E5rRoom, q: int) -> bool {
   sl := r[0].raid[0].slot[q];
   o: [2] f32;
   rt_door(bt[0].x, bt[0].z, e5rd_mx(r, foe), e5rd_mz(r, foe), sl.hx, sl.hz, o[..]);
-  rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);
+  rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), egr_spawn_radius(sl.town,f32(RT_SPAWN_R)), o[..]);
   rt_free(sl.g, o[0], o[1], o[..]);   // onto open ground, not into a wall or a building
   b[0].c[i].slots[5] -= 1; b[0].turn.action = true;
   l: [1] RsLine;
@@ -1002,13 +1003,14 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
       if sl[0].town { tz = rt_hi(tz, w[0].front_z - f32(E5RD_LEASH)); }
       else { tz = rt_lo(rt_lo(tz, w[0].front_z + f32(E5RD_LEASH)), f32(RF_HOLD_Z) + 2); }
     }
-    // round the spawn (one fleeing goes home by the way it came)
-    if sl[0].stage != E5RD_FLEE { rt_around(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]); tx = o[0]; tz = o[1]; }
+    // The cult goes round the protected spawn; the watch walks beside it.
+    spawn_r:=egr_spawn_radius(sl[0].town,f32(RT_SPAWN_R));
+    if sl[0].stage != E5RD_FLEE { rt_around(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), spawn_r, o[..]); tx = o[0]; tz = o[1]; }
     // round the town's walls and buildings, in by a gate or a breach (rt_way): it stops `stop`
     // short of its goal, not of a corner on the way
     dx := tx - bt[0].x; dz := tz - bt[0].z;
     d := sqrt(dx * dx + dz * dz);
-    rt_way(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);
+    rt_way(sl[0].g, bt[0].x, bt[0].z, tx, tz, f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), spawn_r, o[..]);
     wx := o[0] - bt[0].x; wz := o[1] - bt[0].z;
     wd := sqrt(wx * wx + wz * wz);
     step := f32(E5RR_RUN) * dt * f32(b[0].c[i].speed) / 40.0 * rt_pace(bt[0].id);   // its own pace
@@ -1020,7 +1022,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     mm := sqrt(mx * mx + mz * mz);
     if mm > step { mx = mx / mm * step; mz = mz / mm * step; mm = step; }
     rt_slide(sl[0].g, bt[0].x, bt[0].z, mx, mz, o[..]);
-    if sl[0].stage != E5RD_FLEE {rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), f32(RT_SPAWN_R), o[..]);}
+    if sl[0].stage != E5RD_FLEE {rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), spawn_r, o[..]);}
     mx = o[0] - bt[0].x; mz = o[1] - bt[0].z; mm = sqrt(mx * mx + mz * mz);
     bt[0].x = o[0]; bt[0].z = o[1];
     bt[0].moving = mm > step * 0.3;   // walking, not a nudge off a neighbour (#12771)
@@ -1492,6 +1494,35 @@ e5rd_test_room :: (r: [] E5rRoom) {
     r[0].raid[0].cast_n = 0;
   }
   #assert at_house == 0 && r[0].raid[0].house == before;
+}
+
+#test "room raid: the friendly staged hero leaves the commons spawn by walking, not a spawn-ring teleport" #steps 100000000 {
+  r:[1]E5rRoom;e5rd_test_room(r[..]);r[0].raid[0].siege=true;r[0].raid[0].front_z= -64;
+  #assert e5rd_hero(r[..],1,-16,rt_open(1,-16,0,-1))>0;
+  q:=r[0].raid[0].hero.q;
+  e5rd_step(r[..],1.0f32/30);
+  x:=r[0].beasts[q].x-1;z:=r[0].beasts[q].z+16;
+  #assert x*x+z*z<=0.25 && z<0;
+}
+#test "room raid: the commons spawn hero reaches her first Meteor Swarm without a forced cast" #steps 2000000000 {
+  r:[1]E5rRoom;e5rd_test_room(r[..]);r[0].raid[0].siege=true;r[0].raid[0].front_z= -64;
+  for n:0..<4 {
+    x:=f32(n)-1.5;
+    #assert e5rd_raider(r[..],RS_NPC_CULTIST,1,n+1,x,-70,rt_open(x,-70,0,1),0,n,x,-70)>0;
+  }
+  for q:0..<E5RR_BEASTS {if e5rd_cult(r[0].beasts[q]) {r[0].b[0].c[E5RR_BEAST0+q].speed=0;}}
+  echo:=e5rd_hero(r[..],1,-16,rt_open(1,-16,0,-1));#assert echo>0;
+  t: f32=0;cued:=false;events:[256*E5RR_EV_FLOATS]f32;
+  for tick:0..<600 {
+    t+=0.05;e5rr_step(r[..],t);
+    for c:0..<r[0].raid[0].cast_n {
+      cue:=r[0].raid[0].casts[c];
+      if cue.id==echo && cue.cue {#assert cue.k==RT_K_HERO0+RT_HERO_METEOR;cued=true;}
+    }
+    r[0].raid[0].cast_n=0;_:=e5rr_events(r[..],events[..]);
+    if cued {break;}
+  }
+  #assert cued;
 }
 
 #test "room raid: Echo fights for the watch: Meteor Swarm first where the cult stands together, the town's strike as her bar ends, the roll as it lands, never on the watch; she never drops (#12996)" #steps 16000000000 {

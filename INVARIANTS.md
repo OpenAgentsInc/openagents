@@ -1183,6 +1183,14 @@ The room settles deaths before reinforcements, drains once and releases each
 reservation; deliberate event clear settles pending results first. Checks:
 outcome-slot's mutation gate and room-events' full-capacity death/reuse/XP case.
 
+The raid's protected player-spawn radius excludes hostile cult actors only
+(`everglade-raid-spawn-policy.coax`). Friendly watch actors may walk through
+the commons spawn without an artificial radius correction; ordinary world
+collision still applies. Routing, final placement and Dimension Door use the
+same faction policy. Checks cover Echo's bounded first step from (1, −16),
+her natural first Meteor Swarm, hostile siege and watch combat; the policy's
+mutation gate has zero survivors.
+
 Accepted town impacts keep physical reservations independent of visual pools
 (`aethyr/session/effect-reservation.coax`, #12841): four per admitted player,
 two per physical raid slot and eight for the house. Admission subtracts already
@@ -6147,5 +6155,10 @@ noise and lighting. Rain colours match the frozen reference oracle; the graphics
 quality ladder, pixel floor, spell state and frame-admission policy are unchanged.
 The frame timer reports actual raster dimensions, counts held callbacks in the
 next drawn frame, requires hardware WebGPU and labels draw-suppressed runs as
-non-qualifying diagnostics. R4's timing and complete head-frame review are in
+non-qualifying diagnostics. Hero qualification additionally requires a ready,
+visible character pass, nonzero groom share/geometry and the exact requested
+raster (`coax/web/everglade-echo-proof.coax`, zero mutation survivors). A missing
+character or smaller raster cannot qualify a fast empty scene. Requested hero
+loads are awaited; terminal load failure refuses promptly. R4's historical
+timing and complete head-frame review are in
 `docs/verse/2026-11-06-native-hero-characters.md`.

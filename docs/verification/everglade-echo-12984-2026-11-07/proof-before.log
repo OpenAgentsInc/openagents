@@ -1,0 +1,6 @@
+FAIL #test hero qualification needs a visible ready character and the entire requested raster (0 ms)
+coax/web/everglade-echo-proof.coax:13:21: error[E0406]: assertion failed
+    q=p;q.ready=false;#assert !ep_hero_ok(q);
+                      ^
+  note: in #test hero qualification needs a visible ready character and the entire requested raster
+1 check, 0 passed, 1 failed

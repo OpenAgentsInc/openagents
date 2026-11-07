@@ -1,0 +1,13 @@
+// The protected spawn excludes the cult. Friendly watch members, including
+// the staged hero beside the player, retain ordinary collision and walking.
+#authority;
+#test "only hostile raid movement retains the admitted spawn exclusion radius" {
+  for radius:[4]f32.[0,0.5,12,48] {
+    #assert egr_spawn_radius(false,radius)==radius;
+    #assert egr_spawn_radius(true,radius)==0;
+  }
+}
+egr_spawn_radius :: (town:bool,radius:f32)->f32 #effects() {
+  if town {return 0.0f32;}
+  return radius;
+}

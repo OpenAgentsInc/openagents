@@ -1,0 +1,87 @@
+{
+  "audit_source_base": "4522812690f98e6eedadd52f7646579af2c1a0d8",
+  "r4_reference": "e1af503e1de3cdf0d403dd017bd17636d2eb4c20",
+  "unchanged_character_and_render_sources_sha256": {
+    "aethyr/character/character.coax": "9c3998ba5406db5501d7fb5da0d4c88ae362346d29ff408121ac65d71e377c68",
+    "aethyr/character/checks.coax": "2d1d4230d3c6b690784a50048523f6abe32d399a02ef9cbce15a8bd05f7afae2",
+    "aethyr/character/detail.coax": "35a095d9bffffb70feb173bc042b643682098d99cfe72baa4d6427483d470f58",
+    "aethyr/character/face.coax": "fe9ca66cb12cd06336422ad6f89739dbead78a7595e4bf1034d6ad5201913e49",
+    "aethyr/character/fix.coax": "154014961ac2ba9878e0630cd7f2067a2b2ca255cf98b8c8d1c05c0d13ea9586",
+    "aethyr/character/idle.coax": "4fedc2e1f9c9f003d669bda8432adec3c346a0b72601ddaabcbd6ec8912e5a03",
+    "aethyr/character/palette.coax": "e84155eee3fe384b63915f278712eb3cec302606349447233165287cdda7a592",
+    "aethyr/character/pose.coax": "deb840884dc95e93347d7291d816bcc49f3a34c955b8ced166adbbd1a3bd4ac5",
+    "aethyr/character/rig.coax": "26073617b0ee0e469797b8d5aa642e6f3115e36b4e02e198a45fb69b54345f03",
+    "aethyr/frame-report.coax": "5c33e5c2d382bd07f4bf53e03fbf16ef97531dd71302fd736862dfb077995016",
+    "aethyr/render/character.coax": "e32aa989ac7251a360b833b38cd1e34f9fdf447eb62a65934820e32b8eb2cc3b",
+    "aethyr/render/scene-lights.coax": "33fdb21b6b792a8b8112c6d2e60d76a21c37a3ae8fb7ce579cb4051f17429fc2",
+    "coax/web/character-host.js": "9c472f499324a3fcfc324e536f65ed38a3b143b01eb2254413a1254b3c6c2bb1",
+    "apps/openagents-web/character-host.coax": "f9292f01afdb8bfa5095da01e5a94cfdccd06d142905d0738df8f52e8ccbf0a0",
+    "apps/openagents-web/character-host-face.c": "8fb928167b26a544ab88cd1d7ff98a1fd088667d21849794b54773ad8e4813f4",
+    "apps/openagents-web/character.wgsl": "c2e1092512ae60241266d996d9fdc9f96c9e25dd0e7eaa048d369fb20ce324a2",
+    "apps/openagents-web/everglade-character.coax": "48c90e9ef66439eaefabf4b0ca7cb59f472aef20cd76bcdb6c586d25fa7b30e4",
+    "verse/valley/echo-orbit.coax": "4865b98c3e8afcbeae4fdf0a57f28869e9d9929eb8946fe53bbfc9a1889c019e",
+    "coax/web/everglade-echo-frames.coax": "b3b37745be203925566a1484c56cd4b15f7ae3afb8a057b89a6028ddc8f3f21e",
+    "coax/web/character-detail-check.coax": "8de3817537418c26bc934c2df72b2850fee3f77b6106e469aeb5ba4560d8d46f",
+    "verse/everglade/gpu.coax": "5b974affa23251b0090620ca668c0549caa999b419200aa27659aad7b356b955",
+    "verse/everglade/gpu-fx.coax": "3a2b1362c040aa41c95258640f299a1a0393f9f76be7a490db6010f89bab2ef8",
+    "apps/openagents-web/everglade5e.wgsl": "58008d6dd7f77fe70f009183a410296ac662faca5819de5b118d74220a512a64",
+    "apps/openagents-web/everglade-fx.wgsl": "e19141f1e90f5553903f0ada5bfdf6fb46a649b09453390874a1ca1b798f055e"
+  },
+  "reviewed_surrounding_changes": {
+    "apps/openagents-web/everglade-guide.coax": {
+      "r4_sha256": "f8fb7ce77346807a319926a9de70d8e7de614cbb3e9a5b2736e534db2c99c5c1",
+      "audit_sha256": "654d60f007ba130416c699a273dd3473cb6688f3b6b260800a0eca978103e96a"
+    },
+    "apps/openagents-web/everglade-join.coax": {
+      "r4_sha256": "32a132a328f151e9e06824ff42f3cdd712b61fd0f00c764027926447bff728d2",
+      "audit_sha256": "735f5baca5a54b9af07ff6d5f893c520a1ccd40f385708dbb91cc273e16a213f"
+    },
+    "apps/openagents-web/everglade-net.coax": {
+      "r4_sha256": "4038a7665f586d1c171e9a985215392206bc09ff7011ac70e663aa8165cb2464",
+      "audit_sha256": "f7f4ea8adfc16ac40e6ba428889a3920c18c9094526535964e64a054b7c4bfd1"
+    },
+    "apps/openagents-web/everglade-place.coax": {
+      "r4_sha256": "fe5a1f536dc41a3ea0289b104e8cb34103b8c746be63a5bd1674ed579155f9d1",
+      "audit_sha256": "ea75854a7ea0d6fd34d919dd8ffe4e9628d51f2adb38c60c8eef050e0a14afc2"
+    },
+    "apps/openagents-web/everglade-raid-preview.coax": {
+      "r4_sha256": "324786ef3707e5fba6125d9f39ade296a909eaed12af5dcbb20df7f55fc5018c",
+      "audit_sha256": "6c2062cea384aa3512b259f372bd7aa2146f2899326541e04c9ddaf0336dbdc9"
+    },
+    "apps/openagents-web/everglade-watch.coax": {
+      "r4_sha256": "b9f773f70c66c2f6fddf1cbd7e71ffa6a48a2e54d7fe0cfedeace0d73ad4ed30",
+      "audit_sha256": "a1c47667c5fd36983413af4c2222d19ff61f35304371bbb1f558344f062d943b"
+    },
+    "apps/openagents-web/everglade.coax": {
+      "r4_sha256": "cff77e94254f3c678058afc6a7677d41726502cfb07fb573f1296534e4535474",
+      "audit_sha256": "8e85b6cdd2652def06eba6b46818523764b5996a91a064436e5e7e24b9bab39a"
+    },
+    "apps/openagents-web/everglade5e-room-raid.coax": {
+      "r4_sha256": "56355fa4066f467cc59a16e6ae29a03c0ea2421db8f04359e78eaf8ab22e855a",
+      "audit_sha256": "347751e7f4650736014377716994346823a4873f32bf31c2774dc393effc296e"
+    },
+    "apps/openagents-web/everglade5e.coax": {
+      "r4_sha256": "b83b8528c01591b66350c430debea01b6795732cf1f655d59b30098aee4cadcf",
+      "audit_sha256": "96c20192deb583ac50bfd172eb08f2cd9f011ca364937ed43c92dcfbee210872"
+    },
+    "coax/web/host.js": {
+      "r4_sha256": "0e7bb32dc37769780b3460f8b757046197c7aa56f62bdb6ecf02e9dc2d925b68",
+      "audit_sha256": "5b552510c59f15319033e1bd24dd181d8df64eb21ccf161d47ce38c09a240073"
+    },
+    "verse/everglade/plan.coax": {
+      "r4_sha256": "df38b158e6c87c3e8864e8e8e83d98738ed6183f69bc3c3aaa574ac410ae94f2",
+      "audit_sha256": "0589b58d3ac5d0efc92fcaa016223e59e6b86edaf236caf5579c45c07009b934"
+    }
+  },
+  "unchanged_shadow_and_character_draw_section_sha256": "2cdf2db496fc8c0dd2436d2857188f3b292247a41bcce286810c79cb081da313",
+  "new_verification_source_sha256": {
+    "coax/web/everglade-echo-proof.coax": "b046ca77812c58acaf01d2108eef71247d29e6e8cd6f50d1bedf514e824a0cf3",
+    "coax/web/everglade-echo-perf.coax": "f64411bd92ca5d6c5edb19d400f2960f07c9587a06baf343e965d159daae42cf",
+    "apps/openagents-web/everglade-raid-spawn-policy.coax": "b817f437b4fa2d531c272b60b39470ca86f3f773469e5bd3d00810410bd3f5c1"
+  },
+  "runtime_artifacts_sha256": {
+    "apps/openagents-web/build/character-host.wasm": "571ee3eb009c10540e7c6a470187297fd91bce41d579efd560f369061b60b2fa",
+    "apps/openagents-web/build/everglade5e.wasm": "b739ef80b7f913c7fd7955d30bdf4cd3e27e260b83e0341570d1b5415dd3ce68",
+    "apps/openagents-web/build/everglade-room.wasm": "8582ed6774ff07a857d840f166f35325f33cc0261f2a7b64776ec1ce8d05709a"
+  }
+}

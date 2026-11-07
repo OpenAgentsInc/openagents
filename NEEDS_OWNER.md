@@ -1091,3 +1091,14 @@ The Mac was not available to the agent:
       Wasm removes the repeated backward chop and synchronizes gait with resolved
       travel. Automated real-source and browser loop checks passed; no new asset
       download is needed.
+
+### Echo native recording: controlled GPU timing (#12984, November 7)
+
+- [ ] Pause other active 3D previews for the final full-raster Echo timing check.
+      Fresh 1080p medium measurements are about 52 FPS on both current code and
+      a controlled R4 baseline, with hardware Metal and Echo visible. Other
+      owner applications were left running; competing GPU load has not been
+      ruled out. The commons-spawn regression is fixed and the stricter hero
+      proof passes its mutation checks, but #12984 remains open until the
+      unchanged 60 FPS acceptance gate passes. Evidence:
+      `docs/verification/everglade-echo-12984-2026-11-07/README.md`.

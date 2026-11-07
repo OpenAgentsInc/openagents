@@ -1,0 +1,34 @@
+coax: note[E0400]: compile-time steps: 833734376 of 900000000 used (92%), above three quarters of the limit; more than 900000000 fails with E0400
+  top users of compile-time steps:
+    462346508 steps  verse/everglade/plan.coax:606:1  in 'everglade_in_woods' (186824 times)
+    245921792 steps  aethyr/terrain.coax:114:1  in 'shaped' (62658 times)
+    32609782 steps  apps/openagents-web/everglade-sky.coax:34:1  in 'sky_bake' (2 times)
+    17599794 steps  apps/openagents-web/everglade.coax:602:1  in 'water_grid_build' (2 times)
+    11047036 steps  apps/openagents-web/everglade-sky.coax:26:1  in 'sky_ball' (424886 times)
+  fix: do less work in 'everglade_in_woods', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 117615478 of 134217728 used (87%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    40147254 visits  aethyr/rigid.coax:50:1  in 'd3' (6691209 times)
+    8323332 visits  verse/demolish.coax:1831:1  in 'demo_apart' (570578 times)
+    5909515 visits  verse/demolish.coax:1595:1  in 'demo_pair' (31491 times)
+    4554664 visits  aethyr/rigid.coax:125:9  copying arguments into 'd3_dot' (569333 calls)
+    4554664 visits  aethyr/rigid.coax:126:65  copying arguments into 'd3_dot' (569333 calls)
+  fix: copy fewer whole arrays and structs in 'd3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time steps: 159366107 of 200000000 used (79%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    24133040 steps  aethyr/rigid.coax:61:1  in 'd3_dot' (1270160 times)
+    21062652 steps  aethyr/rigid.coax:50:1  in 'd3' (3510442 times)
+    20487078 steps  aethyr/rigid.coax:55:1  in 'd3_add' (1138171 times)
+    18211200 steps  aethyr/rigid.coax:57:1  in 'd3_scale' (1214080 times)
+    14929308 steps  aethyr/rigid.coax:62:1  in 'd3_cross' (414703 times)
+  fix: do less work in 'd3_dot', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 131579183 of 134217728 used (98%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    35870058 visits  apps/openagents-web/everglade5e-room-raid.coax:193:1  in 'e5rd_up' (122007 times)
+    7959271 visits  apps/openagents-web/everglade-raid-tactics.coax:571:10  copying arguments into 'rt_blocked_in' (418909 calls)
+    6599440 visits  apps/openagents-web/everglade5e-room-raid.coax:912:1  in 'e5rd_step' (2600 times)
+    5530962 visits  apps/openagents-web/everglade5e-room-raid.coax:1245:1  #test 'room raid: squads at every gate and the bridge go round the walls, towers, buildings and trees, through the wall only by a gate or where the town's wall is broken, and home again (#12747)' itself
+    5277888 visits  apps/openagents-web/everglade5e-room-raid.coax:179:46  copying arguments into 'e5rd_is' (251328 calls)
+  fix: copy fewer whole arrays and structs in 'e5rd_up' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time value slots: 30132200 of 33554432 used (89%), above three quarters of the limit; more than 33554432 fails with E0400
+built /Users/christopherdavid/.codex/worktrees/asset-library/openagents/apps/openagents-web/build/everglade-room.wasm (1068308 bytes)

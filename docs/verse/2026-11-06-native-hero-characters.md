@@ -1,11 +1,17 @@
 # Native hero characters in Aethyr worlds
 
-This plan puts Echo, and any detailed character like her, into Everglade and
-every other Aethyr world as a real part of the scene. Today the only way to
-show Echo in Everglade is a composite: each page renders on its own along one
-shared camera path, and a script lays her frames over the town's
-([Echo in Everglade](../verification/valley-lab-slay-2026-11-06/README.md#echo-in-everglade-n-stageecho)).
-This plan replaces that with one renderer, one frame and one depth buffer.
+Echo now renders natively in Everglade through the shared character pass:
+one renderer, one frame and the world's depth buffer. The local recording
+milestone (#12984, R1–R4 below) has retained 1920×1080 recordings and historical
+60 FPS qualification. A fresh November 7 audit fixed a commons-spawn regression,
+but current full-raster timing misses the 60 FPS gate on both the current build
+and a controlled R4 baseline. The issue remains open. The
+[audit record](../verification/everglade-echo-12984-2026-11-07/README.md)
+separates historical evidence from the fresh results.
+
+The earlier [composite](../verification/valley-lab-slay-2026-11-06/README.md#echo-in-everglade-n-stageecho)
+is historical. The broader H-series plan below covers the remaining engine,
+production delivery and native-host work beyond this local recording milestone.
 
 ## What native means
 
@@ -24,7 +30,10 @@ with no second render and no compositing:
 - The camera move is an ordinary staged camera in the world.
 - The same code works in a second world without changes to the character.
 
-## Where things are today
+## Original design baseline and foundations
+
+This table records the design's starting constraints. The R1–R5 sections below
+describe the delivered implementation and its measured limits.
 
 | Piece | Where it lives | State |
 | --- | --- | --- |
@@ -37,9 +46,9 @@ with no second render and no compositing:
 | Everglade's characters | `verse/everglade/gpu.coax` (3,597 lines), `aethyr/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
 | Everglade's budgets | `apps/openagents-web/wasm-budgets.txt` | 2,000,446 of 2,150,000 wasm bytes used; 60 FPS rule from `aethyr/frame-report.coax` |
 
-Three facts set the shape of the plan:
+Three constraints shaped the original plan:
 
-1. **The host gives a page one scene shader.** `host.js` builds one
+1. **The host originally gave a page one scene shader.** `host.js` built one
    `scene_vs`/`scene_fs` pipeline per page (plus blend variants). The Valley
    page shades Echo by branching inside its own `scene_fs`. Copying those
    branches into Everglade's shader would make a second copy to maintain,
@@ -50,8 +59,9 @@ Three facts set the shape of the plan:
 3. **Echo's source is licensed Epic sample content.** Slay assets stay in
    owner-local packs ([private assets](private-assets.md)). The owner has
    settled that MetaHumans may be shown on openagents.com through the
-   broker ([MetaHuman support](metahuman-support.md)). Slay sample content
-   is a separate question that is not settled yet.
+   broker ([MetaHuman support](metahuman-support.md)), and separately approved
+   showing Slay content on 2026-11-06 (owner decisions below). Production
+   delivery remains a separate H7 milestone.
 
 ## Design
 

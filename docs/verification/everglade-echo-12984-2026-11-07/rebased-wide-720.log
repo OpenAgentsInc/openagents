@@ -1,0 +1,2 @@
+adapter: hardware apple metal-3
+wide 1280x720 (render 1280x720): 300 frames, 60.0 fps; frame p50 16.665 ms, p95 16.67 ms, max 16.67 ms; 0 held back; cpu p50 1.695 ms, p95 1.905 ms; gpu p50 10.385 ms, p95 13.78 ms; hair share 4/1000, 18486 strand segments drawn; holds 60 FPS

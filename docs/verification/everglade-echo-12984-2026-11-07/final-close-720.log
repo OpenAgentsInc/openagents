@@ -1,0 +1,1 @@
+close 1280x720 (render 1280x720): 72 frames, 60.0 fps; frame p50 16.665 ms, p95 16.67 ms, max 16.67 ms; 0 held back; cpu p50 1.16 ms, p95 1.245 ms; gpu p50 11.77 ms, p95 22.005 ms; hair share 183/1000, 422598 strand segments drawn; holds 60 FPS

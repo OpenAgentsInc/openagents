@@ -15,8 +15,11 @@
 // time's median, 95th percentile and longest, the frames held back, the CPU's and the GPU's (the
 // host's latest submit-to-done time, coaxial_frame_admit's measure) medians and 95th percentiles, the hair's share, her strand segments drawn and whether the shot holds 60 FPS. Exit 0 when it holds, 1 when it
 // doesn't, 2 on bad usage.
+// A hero qualification also requires ready character draws and the exact
+// requested raster. Empty, suppressed or downscaled scenes remain diagnostics.
 #load "valley-capture.coax";
 #load "../../aethyr/frame-report.coax";
+#load "everglade-echo-proof.coax";
 
 EP_FRAMES :: 1200;
 
@@ -77,8 +80,16 @@ tool_main :: () -> int #export_c #effects(all) {
   // the town drawn and her pass ready (a 1 GB pack)
   ready := false; until := proc_now_ms() + 240000;
   while proc_now_ms() < until {
-    n := cdp_evaluate(c[..], "!!globalThis.coaxial?.ready&&coaxial.sceneReady&&['ready','off'].includes(coaxial.character?.().status??'off')");
-    if n >= 0 && jv_raw(c[0].doc[0], n) == "true" { ready = true; break; }
+    n := cdp_evaluate(c[..], "!!globalThis.coaxial?.ready&&coaxial.sceneReady");
+    world:=n>=0 && jv_raw(c[0].doc[0],n)=="true";
+    wanted:=false;loaded:=false;
+    if world {
+      n=cdp_evaluate(c[..],"new URL(location.href).searchParams.get('stage')==='echo'");wanted=n>=0 && jv_raw(c[0].doc[0],n)=="true";
+      n=cdp_evaluate(c[..],"globalThis.coaxial?.character?.().status==='ready'");loaded=n>=0 && jv_raw(c[0].doc[0],n)=="true";
+    }
+    if ep_wait_ready(world,wanted,loaded) { ready = true; break; }
+    failed:=cdp_evaluate(c[..],"globalThis.coaxial?.character?.().status==='failed'");
+    if failed>=0 && jv_raw(c[0].doc[0],failed)=="true" {print("FAIL character pass failed to load\n");cdp_close(c[..]);return 1;}
     proc_sleep(100);
   }
   if !ready { print("FAIL the page (and her pass) never came ready\n"); cdp_close(c[..]); return 1; }
@@ -124,11 +135,16 @@ tool_main :: () -> int #export_c #effects(all) {
   e := cdp_evaluate(c[..], "faceErrors.length===0");
   clean := e >= 0 && jv_raw(c[0].doc[0], e) == "true";
   holds := frame_holds(f);
+  live:=cdp_evaluate(c[..],"globalThis.coaxial?.character?.().status==='ready' && (coaxial.character().draws??0)>0");
+  present:=echo && live>=0 && jv_raw(c[0].doc[0],live)=="true";
+  qualified:=ep_hero_ok(EpHeroProof.{holds=holds,clean=clean,hidden=hide,ready=present,share=share,segments=drawn,width=meta[2],height=meta[3],wanted_width=width,wanted_height=height});
+  if !present {print("DIAGNOSTIC: no ready Echo draw; not a hero FPS qualification\n");}
+  if meta[2]!=width || meta[3]!=height {print("FAIL actual raster differs from the requested raster\n");}
   print("% %x% (render %x%): % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; gpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
         shot, width, height, meta[2],meta[3],f.n, cast(f64) frame_fps10(f) / 10.0, ep_ms(f.p50), ep_ms(f.p95), ep_ms(f.max), held[0], ep_ms(p.p50), ep_ms(p.p95), ep_ms(g.p50), ep_ms(g.p95), share, drawn,
         ifx holds then "holds 60 FPS" else "misses 60 FPS", ifx clean then "" else " (console errors)");
   cdp_close(c[..]);
-  return ifx holds && clean && !hide then 0 else 1;
+  return ifx qualified then 0 else 1;
 }
 lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 

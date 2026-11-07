@@ -1,0 +1,1 @@
+wasm.sh: character-host.wasm: 1.4 s: Coax to C 0.9 s (1/1 cached), clang 0.1 s (1/2 cached), link 0.1 s, wasm-opt 0.1 s; 62513 bytes; report /Users/christopherdavid/.codex/worktrees/asset-library/openagents/apps/openagents-web/build/.c/character-host.timings.json
