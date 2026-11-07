@@ -41,7 +41,7 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -51,6 +51,7 @@ for i in range(verts):
         marker=struct.unpack_from('<f',vb,at+28)[0]
         if 100<=marker<=110: village_vertices.append(i)
         elif 111<=marker<=114: prop_vertices.append(i)
+        elif marker==115: clock_vertices.append(i)
         else: rock_vertices+=1
     if kind==1:
         ao=struct.unpack_from('<f',vb,at+28)[0]; assert .49<=ao<=1.01
@@ -105,14 +106,14 @@ if village:
     assert actual==expected and [sum(r[0]==i for r in actual) for i in range(4)]==[167,77,308,151]
     assert 'L 251 Quaternius Medieval Village MegaKit Source|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
     assert sum(1 for kind,license,_,offset,size,_,name in (struct.unpack_from('<BBHIII32s',raw,32+i*48) for i in range(struct.unpack_from('<I',raw,4)[0])) if kind==4 and license==251)==1
-    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23)]
-    site_groups=[0,1,2,3,3,0,1,3]
+    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23),(15,-5)]
+    site_groups=[0,1,2,3,3,0,1,3,3]
     tiles={'MI_Brick':0,'MI_FlatTiles':1,'MI_MetalOrnaments':2,'MI_Plaster':3,'MI_RockTrim':4,
            'MI_RoundRocks':5,'MI_RoundTiles':6,'MI_UnevenBrick':7,'MI_Vine':8,'MI_WoodTrim':9,
            'MI_WoodTrim_Wear':9,'MI_WindowGlass':10}
     cache={};vstart=village_vertices[0];vi=vstart;ii=next(k for k,x in enumerate(ids) if x>=vstart)
     placements=[(site,name,t) for group,name,t in actual for site,kind in enumerate(site_groups) if kind==group]
-    assert len(placements)==2*167+2*77+308+3*151
+    assert len(placements)==2*167+2*77+308+4*151
     for group,name,t in placements:
         if name not in cache:
             gltf=json.loads((village_root/'glTF'/f'{name}.gltf').read_text())
@@ -144,11 +145,12 @@ if village:
         props_root=Path.home()/'.openagents/assets/originals'/props_lock['revision']/'source/Exports/glTF'
         assert 'L 252 Quaternius Fantasy Props MegaKit Standard|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
         specs=[('Table_Large',1.8,0,.2,0),('Chair_1',1,0,1.15,math.pi),('Chair_1',2.6,0,1.15,math.pi),('Mug',1.8,.82,.2,0),('Book_Stack_1',1.1,.82,.2,.3),('Bed_Twin1',4.6,0,-2.2,math.pi/2),('Workbench',4.7,0,1.2,0),('Barrel_Apples',5,0,5.8,0),('Crate_Wooden',4,0,5.8,.3),('Bucket_Wooden_1',3.3,0,5.6,0),('Stall_Empty',-2,0,7.8,math.pi),('Bench',1.2,0,7.5,0)]
+        workshop=[('Workbench_Drawers',3.7,0,-3.8,0),('Stool',3.6,0,-2.8,0),('CandleStick',3.2,.9,-3.8,0),('Key_Metal',3.8,.9,-3.8,0),('Coin_Pile',4.3,.9,-3.8,0),('Bookcase_2',4.3,0,-.6,math.pi/2),('SmallBottles_1',3.3,.9,-3.8,0),('Crate_Wooden',4.4,0,1.8,0),('Workbench',3.8,3,-3.7,0),('Stool',3.5,3,-2.7,0),('Bookcase_2',4.5,3,0,math.pi/2),('BookStand',2,3,1.7,math.pi),('Book_Stack_1',3.3,3.89,-3.7,0),('CandleStick',4.2,3.89,-3.7,0),('Whetstone',2.8,3,1.7,0),('Bench',1.5,0,6,0)]
         prop_tiles={'MI_Trim_Furniture':11,'MI_Trim_Metal':12,'MI_Trim_Metal_Vertex':12,'MI_Trim_Props':13,'MI_Trim_Props_Vertex':13,'MI_Trim_Cloth':14,'MI_Banner':14}
         prop_cache={}
         for site,(sx,sz) in enumerate(starts):
             kind=site_groups[site];shift=-4 if kind==0 else -1 if kind==1 else 0
-            for name,px,py,pz,yaw in specs:
+            for name,px,py,pz,yaw in (workshop if site==8 else specs):
                 if name not in prop_cache:
                     d=json.loads((props_root/f'{name}.gltf').read_text());blob=(props_root/d['buffers'][0]['uri']).read_bytes();scale=d['nodes'][0].get('scale',[1,1,1]);parts=[]
                     for mesh in d['meshes']:
@@ -168,7 +170,11 @@ if village:
                     assert ids[ii:ii+len(triangles)]==tuple(vi+x for x in triangles)
                     vi+=len(vertices);ii+=len(triangles)
         assert vi==prop_vertices[-1]+1
-    else: assert not prop_vertices
+        assert clock_vertices==list(range(vi,vi+280)) and len(ids)-ii==372
+        for i in clock_vertices:
+            assert 15.8<=pos[i][0]<=18.2 and abs(pos[i][2]+.55)<.08
+        assert all(vi<=v<vi+280 for v in ids[ii:]);ii=len(ids)
+    else: assert not prop_vertices and not clock_vertices
     assert ii==len(ids)
 
 # Verify each instanced template against the pinned glTF, independently of the packer.
@@ -212,4 +218,4 @@ print(json.dumps({'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'env
  'environment_triangles':count//3,'texture_layers':layers,'wind_ribbons':wind_ribbons,'source_grass_templates':instances,
  'source_grass_instances':sum(v['instances'] for v in instances),'source_grass_topology':'exact source indices and positions',
  'grass_height_range':[min(heights),max(heights)],'bark_repeating_v_range':[min(bark_v),max(bark_v)],
- 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':f'all {ground_indices//3} faces upward', 'rock_vertices':rock_vertices, 'village_vertices':len(village_vertices), 'prop_vertices':len(prop_vertices)},indent=2))
+ 'rounded_canopy_vertices':len(leaves),'original_character_payloads':'byte-identical','terrain_winding':f'all {ground_indices//3} faces upward', 'rock_vertices':rock_vertices, 'village_vertices':len(village_vertices), 'prop_vertices':len(prop_vertices), 'clock_vertices':len(clock_vertices)},indent=2))

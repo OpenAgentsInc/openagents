@@ -525,6 +525,42 @@
     {
       "id": "quaternius/fantasy-props/bench",
       "revision": "4ffde991ff06bfbbdc9b9fce39e67cfdf2787c5c6b0fa89ea33ea70e0e5bed33"
+    },
+    {
+      "id": "quaternius/fantasy-props/workbench-drawers",
+      "revision": "1b6098695d6d03a0b4cbe88876a153565a43ca86ef3b443a82cb8b9cbef769c5"
+    },
+    {
+      "id": "quaternius/fantasy-props/stool",
+      "revision": "1d41c8d920a8ca04aa35175e90e8384196f0302d6998b28f03aa25c64205e20d"
+    },
+    {
+      "id": "quaternius/fantasy-props/candlestick",
+      "revision": "7c64e6b421fad22e4db55ff0f0c0e57441e6b21c9e97cd62e3fed78352e23d6d"
+    },
+    {
+      "id": "quaternius/fantasy-props/key-metal",
+      "revision": "84ec907f6e1e68629dd93ff525c8e32ba4d03e2978602e9a08b123b61fc0b987"
+    },
+    {
+      "id": "quaternius/fantasy-props/coin-pile",
+      "revision": "307d6dbd52ed97cc631bb21143cf92b75edc0ed8c374b66e5b62b469e49e942e"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookcase-2",
+      "revision": "e73798ec1adef76a31ea654c1bac66ff7a22aebc99f4b6fa5840a8e545854bf7"
+    },
+    {
+      "id": "quaternius/fantasy-props/smallbottles-1",
+      "revision": "3f29abab08c70c50fc48c930d38ba6141137dddefa47e73ea296b64275de167f"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookstand",
+      "revision": "c5b98ab74c9b98265e543f09fb5c64d9bb5d038ca02a35d8ceb23714f20fded0"
+    },
+    {
+      "id": "quaternius/fantasy-props/whetstone",
+      "revision": "da35b0710bd79112734daf758a1e154a3ddeac7f46f77e79693e010a858c0938"
     }
   ],
   "parent_scene": {
@@ -541,7 +577,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "2e7f0d90ff933c85572533f303aae24db31c77a9ab9174df6faed3c93ef368f0",
+    "sha256": "176878c04449e06ccd3060727246b7b9ff018b1476520d4f728d94941bd2254d",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -550,7 +586,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "ede3ae09832552c2bc9ffffd4805168beb681a82428834c6a45a9f40d0132666",
+    "sha256": "fbc05c93d0d86cab54de297fe90c661975fe1c000ef2b41fe6c7d302e9f1bb54",
     "budget_bytes": 67108864
   },
   "terrain": {
@@ -570,10 +606,10 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "30ef6cb05a3a1aa6c0facb1df10de6d7c2bfcc5f992332b82cda305eb149e240"
+      "sha256": "690d13b3670ebafe5078a57bfa6a93bb4647c907904db02f4f276c482b6c61bf"
     }
   },
-  "scope": "Nature meadow, source-authored Medieval Village layouts, and Fantasy Props Standard furnishings; Character Create wardrobe remains unchanged.",
+  "scope": "Nature meadow, source-authored Medieval Village layouts, and a furnished multi-level watchmaker workshop; Character Create wardrobe remains unchanged.",
   "village": {
     "package": "village",
     "revision": "b7e482187ae8533fea743014248b3c6b029f49f7bb6d3494f2fe217e62a66447",
@@ -685,6 +721,14 @@
           -5,
           -23
         ]
+      },
+      {
+        "source": "Houses D",
+        "origin": [
+          15,
+          -5
+        ],
+        "purpose": "watchmaker workshop"
       }
     ],
     "collision": {
@@ -716,10 +760,24 @@
     "revision": "ee6b5dc58c5161780d96d6db390d9951ef0d78c1414e83e596a69180fc2b8d15",
     "placement_source": {
       "path": "verse/experimental-props.coax",
-      "sha256": "5401e9692e02ed95cb38ece96cd29693cae2f8127ce37af7d4e496767f4d5169"
+      "sha256": "d60039b1107e3e4ff69152d6cb86d667f3f5e165dee97f1224753a34dd5fbd07"
     },
-    "placements": 96,
-    "unique_models": 11,
+    "placements": 112,
+    "unique_models": 20,
     "collision": "visual only; existing building collision is unchanged"
+  },
+  "watchmaker_workshop": {
+    "origin": [
+      15,
+      -5
+    ],
+    "building_layout": "Houses D",
+    "floors_furnished": [
+      0,
+      3
+    ],
+    "source": "verse/experimental-props.coax",
+    "facade": "Handmade static clock on the front gable; clock hands are decorative",
+    "stairs": "Aethyr walkable ramp derived from the village sample collision"
   }
 }

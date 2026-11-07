@@ -123,7 +123,7 @@ gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:
 // renderer's 64-layer ceiling. Two-pixel edge padding keeps samples in tile.
 gp_village_atlas :: (w:[]Gp,iw:[]ImgWork,root:string,props_root:string)->int {
  images:=[4]string.["T_Trim_Furniture_BaseColor.png","T_Trim_Metal_BaseColor.png","T_Trim_Props_BaseColor.png","T_Trim_Cloth_BaseColor.png"];
- for tile:0..<(ifx props_root=="" then 11 else 15) {if tile<10 || tile>10 {
+ for tile:0..<(ifx props_root=="" then 11 else 16) {if tile<10 || (tile>10 && tile<15) {
    path:=ifx tile<10 then txt_cat3(w[0].txt[..],root,"/glTF/",VILLAGE_IMAGES[tile]) else txt_cat3(w[0].txt[..],props_root,"/Exports/glTF/",images[tile-11]);im:=img_resize(img_load(path,iw),252,252,PI_LANCZOS,iw);
    for y:0..<256 {sy:=ifx y<2 then 0 else ifx y>253 then 251 else y-2;
     for x:0..<256 {sx:=ifx x<2 then 0 else ifx x>253 then 251 else x-2;dst:=((tile/4*256+y)*1024+(tile%4*256+x))*4;src:=(sy*252+sx)*im.c;
@@ -186,9 +186,28 @@ gp_prop_tile :: (name:string)->int {
 #test "fantasy props retain their source material tiles" {
  #assert gp_prop_tile("MI_Trim_Furniture")==11 && gp_prop_tile("MI_Trim_Metal_Vertex")==12 && gp_prop_tile("MI_Trim_Props_Vertex")==13 && gp_prop_tile("MI_Banner")==14 && gp_prop_tile("bad")== -1;
 }
+// A fixed clock on the workshop's front gable. White atlas tile 15 lets the
+// ink, brass and ivory use the same bounded texture array as the village.
+gp_clock_vertex :: (w:[]Gp,x:f32,y:f32,z:f32,color:[3]f32)->int {
+ id:=gp_v(w,[3]f32.[x,y,z],[3]f32.[0,0,1],[2]f32.[0.5,0.5],color,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(115));return id;
+}
+gp_clock_bar :: (w:[]Gp,x:f32,y:f32,z:f32,dx:f32,dy:f32,width:f32,color:[3]f32) {
+ length:=sqrt(dx*dx+dy*dy);if length<0.0001 {return;}px:= -dy/length*width;py:=dx/length*width;
+ a:=gp_clock_vertex(w,x+px,y+py,z,color);b:=gp_clock_vertex(w,x-px,y-py,z,color);c:=gp_clock_vertex(w,x+dx+px,y+dy+py,z,color);d:=gp_clock_vertex(w,x+dx-px,y+dy-py,z,color);gp_tri(w,a,b,c);gp_tri(w,b,d,c);
+}
+gp_workshop_clock :: (w:[]Gp) {
+ site:=meadow.exp_site(8);x:=site.x+2;y:=meadow.exp_height(site.x,site.z)+10.15;z:=site.z+4.45;
+ brass:=[3]f32.[0.72,0.43,0.12];ivory:=[3]f32.[0.91,0.84,0.64];ink:=[3]f32.[0.12,0.10,0.08];
+ for i:0..<32 {a:=f32(i)*6.2831853/32;b:=f32(i+1)*6.2831853/32;
+  center:=gp_clock_vertex(w,x,y,z,ivory);p:=gp_clock_vertex(w,x+cos(a),y+sin(a),z,ivory);q:=gp_clock_vertex(w,x+cos(b),y+sin(b),z,ivory);gp_tri(w,center,p,q);
+  r:=gp_clock_vertex(w,x+cos(a)*1.14,y+sin(a)*1.14,z+0.01,brass);s:=gp_clock_vertex(w,x+cos(b)*1.14,y+sin(b)*1.14,z+0.01,brass);u:=gp_clock_vertex(w,x+cos(a),y+sin(a),z+0.01,brass);v:=gp_clock_vertex(w,x+cos(b),y+sin(b),z+0.01,brass);gp_tri(w,u,r,v);gp_tri(w,r,s,v);
+ }
+ for i:0..<12 {angle:=f32(i)*6.2831853/12;dx:=cos(angle);dy:=sin(angle);gp_clock_bar(w,x+dx*0.76,y+dy*0.76,z+0.02,dx*0.12,dy*0.12,0.025,ink);}
+ gp_clock_bar(w,x,y,z+0.03,0.0,0.58,0.035,ink);gp_clock_bar(w,x,y,z+0.035,0.38,0.22,0.045,ink);
+}
 gp_props :: (w:[]Gp,g:[]Gltf,root:string) {
  for site_id:0..<meadow.EXP_SITES {site:=meadow.exp_site(site_id);group:=meadow.exp_site_group(site_id);
-  for i:0..<props.EXP_PROPS {p:=props.exp_prop(group,i);path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],p.name,".gltf"));gl_load(g,path);sc:[16]f64;has_scale:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=ifx has_scale==3 then f32(sc[0]) else 1.0f32;sy:=ifx has_scale==3 then f32(sc[1]) else 1.0f32;sz:=ifx has_scale==3 then f32(sc[2]) else 1.0f32;
+  for i:0..<props.exp_prop_count(site_id) {p:=props.exp_prop_at(site_id,i);path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],p.name,".gltf"));gl_load(g,path);sc:[16]f64;has_scale:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=ifx has_scale==3 then f32(sc[0]) else 1.0f32;sy:=ifx has_scale==3 then f32(sc[1]) else 1.0f32;sz:=ifx has_scale==3 then f32(sc[2]) else 1.0f32;
    x:=site.x+p.x;z:=site.z+p.z;y:=meadow.exp_height(x,z)+p.y;cs:=cos(p.yaw);sn:=sin(p.yaw);
    for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;colors:[262144]f64;idx:[262144]f64;
     nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;r:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);r=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;ci:=gl_int(g,attr,"COLOR_0",-1);channels:=0;if ci>=0 {col:=gl_acc(g,ci,colors[..]);channels=col.comps;if col.count!=nv || (channels!=3 && channels!=4) {ph_die("invalid prop vertex colors");}}
@@ -381,7 +400,7 @@ tool_main :: ()->int #export_c #effects(all) {
  for i:0..<12 {x:=-5.2+f32(i%4)*0.45;z:=-9.0-f32(i/4)*0.5;gp_mesh(w[..],g[..],iw[..],root,"Flower_2_Group",x,z,0.16+cg_hash(f32(i),61)*0.05,f32(i),[3]f32.[0.4,0.75,0.05]);}
  for i:0..<12 {fi:=f32(i);x:=-3.0+cg_hash(fi,62)*6.0;z:=-9.0-cg_hash(fi,63)*8.0;gp_mesh(w[..],g[..],iw[..],root,"Flower_3_Group",x,z,0.10+cg_hash(fi,64)*0.08,fi,[3]f32.[0.4,0.75,0.05]);}
  if !experimental && !zone {town:[1]GpTown;gp_road_to_everglade(town[..],gp_texture(w[..],txt_cat3(w[0].txt[..],root,"/glTF/","Rocks_Diffuse.png"),iw[..]));gp_append_town(w[..],town[..]);}
- if buildings {props_root:=ifx args_count(args[..])==7 then args_at(args[..],6) else "";gp_village(w[..],g[..],iw[..],args_at(args[..],4),args_at(args[..],5),props_root);if props_root!="" {gp_props(w[..],g[..],props_root);}}
+ if buildings {props_root:=ifx args_count(args[..])==7 then args_at(args[..],6) else "";gp_village(w[..],g[..],iw[..],args_at(args[..],4),args_at(args[..],5),props_root);if props_root!="" {gp_props(w[..],g[..],props_root);gp_workshop_clock(w[..]);}}
  w[0].envni=w[0].ni;
  for group:0..<3 {
   w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";

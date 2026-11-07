@@ -1,4 +1,4 @@
-// Fantasy Props Standard placements relative to the eight experimental village sites.
+// Fantasy Props Standard placements relative to the experimental village sites.
 #module "verse.experimentalprops";
 #load "experimental-terrain.coax" as terrain;
 ExpProp :: struct {name:string;x:f32;y:f32;z:f32;yaw:f32;}
@@ -9,7 +9,31 @@ EXP_PROPS :: 12;
  #assert exp_prop(2,0).x!=exp_prop(0,0).x;
  s:=terrain.exp_site(2);stall:=exp_prop(2,10);#assert exp_prop_clear(s.x+stall.x,s.z+stall.z) && !exp_prop_clear(0,0);
 }
-exp_prop_clear :: (x:f32,z:f32)->bool {for site_id:0..<terrain.EXP_SITES {site:=terrain.exp_site(site_id);if abs(x-site.x)>16 || abs(z-site.z)>16 {continue;}for i:7..<EXP_PROPS {p:=exp_prop(terrain.exp_site_group(site_id),i);radius:=ifx i==10 || i==11 then 1.7f32 else 0.9f32;dx:=x-site.x-p.x;dz:=z-site.z-p.z;if dx*dx+dz*dz<radius*radius {return true;}}}return false;}
+#test "watchmaker shop has two furnished floors and a clear staircase" {
+ #assert exp_prop_count(8)==16 && exp_prop_at(8,0).name=="Workbench_Drawers";
+ #assert exp_prop_at(8,8).y==3 && exp_prop_at(8,12).y>3;
+ for i:0..<exp_prop_count(8) {p:=exp_prop_at(8,i);#assert p.x>0.9 || p.z>2 || p.z< -3.5;}
+}
+exp_prop_clear :: (x:f32,z:f32)->bool {for site_id:0..<terrain.EXP_SITES {site:=terrain.exp_site(site_id);if abs(x-site.x)>16 || abs(z-site.z)>16 {continue;}if site_id==8 {continue;}for i:7..<EXP_PROPS {p:=exp_prop(terrain.exp_site_group(site_id),i);radius:=ifx i==10 || i==11 then 1.7f32 else 0.9f32;dx:=x-site.x-p.x;dz:=z-site.z-p.z;if dx*dx+dz*dz<radius*radius {return true;}}}return false;}
+exp_prop_count :: (site:int)->int {return ifx site==8 then 16 else EXP_PROPS;}
+exp_prop_at :: (site:int,i:int)->ExpProp {if site!=8 {return exp_prop(terrain.exp_site_group(site),i);}
+ if i==0 {return ExpProp.{name="Workbench_Drawers",x=3.7,z= -3.8};}
+ if i==1 {return ExpProp.{name="Stool",x=3.6,z= -2.8};}
+ if i==2 {return ExpProp.{name="CandleStick",x=3.2,y=0.9,z= -3.8};}
+ if i==3 {return ExpProp.{name="Key_Metal",x=3.8,y=0.9,z= -3.8};}
+ if i==4 {return ExpProp.{name="Coin_Pile",x=4.3,y=0.9,z= -3.8};}
+ if i==5 {return ExpProp.{name="Bookcase_2",x=4.3,z= -0.6,yaw=1.5707963};}
+ if i==6 {return ExpProp.{name="SmallBottles_1",x=3.3,y=0.9,z= -3.8};}
+ if i==7 {return ExpProp.{name="Crate_Wooden",x=4.4,z=1.8};}
+ if i==8 {return ExpProp.{name="Workbench",x=3.8,y=3,z= -3.7};}
+ if i==9 {return ExpProp.{name="Stool",x=3.5,y=3,z= -2.7};}
+ if i==10 {return ExpProp.{name="Bookcase_2",x=4.5,y=3,z=0,yaw=1.5707963};}
+ if i==11 {return ExpProp.{name="BookStand",x=2,y=3,z=1.7,yaw=3.1415927};}
+ if i==12 {return ExpProp.{name="Book_Stack_1",x=3.3,y=3.89,z= -3.7};}
+ if i==13 {return ExpProp.{name="CandleStick",x=4.2,y=3.89,z= -3.7};}
+ if i==14 {return ExpProp.{name="Whetstone",x=2.8,y=3,z=1.7};}
+ return ExpProp.{name="Bench",x=1.5,z=6.0};
+}
 exp_prop :: (group:int,i:int)->ExpProp {
  // House C has its rooms to the left; A and D share the same ground floor.
  shift:=ifx group==0 then -4.0f32 else 0.0f32;

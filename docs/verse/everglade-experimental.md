@@ -8,18 +8,23 @@ edge.
 
 The world contains the four distinct layouts from Quaternius's Medieval Village
 Godot sample scene: House C, Tower, Houses A, and Houses D. House C2 is an exact
-local-layout duplicate of House C and is not duplicated. Eight placements combine
-these layouts into larger settlements, using 1,249 source-authored pieces with
+local-layout duplicate of House C and is not duplicated. Nine placements combine
+these layouts into larger settlements, using 1,400 source-authored pieces with
 their original transforms, meshes and base-color textures. Buildings supply
 nearby collision shapes to the Everglade walker: the source
 collision meshes become individual axis-aligned boxes, and the interior stairs
 become sloped walkable surfaces. Non-box hulls are approximated by their bounds;
 interactive doors have not yet been authored. The homes and their surroundings
-are furnished with 96 placements of 11 Fantasy Props Standard models; these props
+are furnished with 112 placements of 20 Fantasy Props Standard models; these props
 are visual and do not yet have separate collision shapes. The terrain is levelled under the
 sites and blends back into the meadow. The extra geometry uses a single padded
 texture atlas and a 64 MiB pack budget; the original Character Create pack
 retains its 32 MiB budget.
+
+A watchmaker’s workshop stands east of spawn at (15, -5). Its multi-storey
+building has a clock on the front gable, workbenches and storage on two floors,
+and a walkable stair between them. The clock is decorative and does not tell
+time.
 
 The [scene declaration](../../assets/registry/scenes/everglade-experimental.json)
 pins the Nature and Village asset revisions, the archived source scene, extracted
