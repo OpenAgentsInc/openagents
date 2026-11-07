@@ -410,11 +410,21 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   if s[0].scene_only {return 0;}
   return n;
 }
+#test "experimental mouse and touch look up while the camera stays above ground" {
+ s:[1]Creator;s[0].experimental=true;s[0].dist=4;s[0].pitch=0.35;
+ used:=mouse_pointer(s[..],700,400,0,1,0);used=mouse_pointer(s[..],700,0,1,1,-1);
+ #assert s[0].pitch< -1.0;
+ u:[40]f32;camera(s[0],u[..],1280,720,1);#assert u[21]>0.8 && u[17]>=meadow.exp_height(u[16],u[18])+0.19;
+ s[0].dragging=false;s[0].pitch=0.35;used=pointer(s[..],700,400,0,2);used=pointer(s[..],700,0,1,2);#assert s[0].pitch< -1.0;
+}
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.experimental {
     target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw); cz:=cos(s.yaw);
-    u[16]=s.player_x+sx*cy*s.dist;u[17]=target+sy*s.dist;u[18]=s.player_z+cz*cy*s.dist;u[19]=h*0.89;
+    dist:=s.dist;shoulder:=cc_clamp(-sy*3.0,0,2.5);ox:=cz*shoulder;oz:= -sx*shoulder;
+    // Shorten the orbit as it approaches the ground, preserving the look angle.
+    if sy<0 {lo:=0.0f32;hi:=dist;for i:0..<12 {mid:=(lo+hi)*0.5;x:=s.player_x+ox+sx*cy*mid;z:=s.player_z+oz+cz*cy*mid;if target+sy*mid>=meadow.exp_height(x,z)+0.2 {lo=mid;}else {hi=mid;}}dist=lo;}
+    u[16]=s.player_x+ox+sx*cy*dist;u[17]=target+sy*dist;u[18]=s.player_z+oz+cz*cy*dist;u[19]=h*0.89;
     u[20]= -sx*cy;u[21]= -sy;u[22]= -cz*cy;u[23]=w*0.5;
     u[24]=cz;u[25]=0;u[26]= -sx;u[27]=h*0.48;
     u[28]= -sx*sy;u[29]=cy;u[30]= -cz*sy;
@@ -437,7 +447,7 @@ pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if s[0].experimental {
     if dev_pointer(s,x,y,phase) {return true;}
     if phase==0 {s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
-    else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,0.1,1.2);s[0].dx=x;s[0].dy=y;}
+    else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,-1.2,1.2);s[0].dx=x;s[0].dy=y;}
     else if phase==2 || phase==3 {s[0].dragging=false;}return true;
   }
   if phase==0 {
@@ -640,7 +650,7 @@ mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
   if s[0].experimental {
     if dev_pointer(s,x,y,phase) {return true;}
     if phase==0 {s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
-    else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,0.1,1.2);s[0].dx=x;s[0].dy=y;}
+    else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,-1.2,1.2);s[0].dx=x;s[0].dy=y;}
     else if phase==2 || phase==3 {s[0].dragging=false;}return true;
   }
   if phase==0 {
