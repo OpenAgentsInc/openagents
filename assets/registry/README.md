@@ -14,8 +14,13 @@ The `ultimate-animals` collection contains the 12 animated glTF models from
 the [Ultimate Animated Animals pack](https://quaternius.com/packs/ultimateanimatedanimals.html),
 mirrored from [FreeModels at db3df04](https://github.com/agentkaer/FreeModels/tree/db3df04d1e4714298a09510b26fb6de6645138a2).
 That snapshot contains glTF and license files, not the full original package's
-other authoring formats. Both collections are unqualified for runtime until a
-world explicitly packs and tests them.
+other authoring formats. The owner's dungeon download matches the existing
+complete `dungeon` snapshot file for file. The full original animal package is
+also preserved as `ultimate-animals-source`, indexing its twelve animated glTF
+models. `ultimate-rpg` and
+`ultimate-food` inventory and index all 106 and 103 original Blender models,
+respectively, alongside the alternative formats. These collections are
+unqualified for runtime until a world explicitly packs and tests them.
 
 ## Identity and storage
 

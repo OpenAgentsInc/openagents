@@ -31,6 +31,9 @@ def observation(objects, source, selector):
 
 def open_source(path):
     bpy.ops.wm.open_mainfile(filepath=str(path), load_ui=False, use_scripts=False)
+    # Some vendor files were saved in edit mode; selection/export needs object mode.
+    if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
     for a in bpy.data.armatures:
         a.pose_position = 'REST'
     def enable(layer):
