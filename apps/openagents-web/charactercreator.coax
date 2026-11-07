@@ -4,6 +4,10 @@
 #load "font.coax";
 #load "../../verse/character-glade.coax" as glade;
 #load "../../verse/experimental-terrain.coax" as meadow;
+#load "../../verse/experimental-village.coax" as village;
+#load "../../aethyr/follow.coax" as follow;
+#load "../../aethyr/query.coax" as query;
+#load "../../aethyr/space.coax" as world;
 #load "charactercreator-font.coax";
 #load "charactercreator-walk.coax";
 #load "../../aethyr/character-appearance.coax" as appearance;
@@ -16,7 +20,7 @@ Creator :: struct {
   experimental:bool; dev_animations:bool; preview_collapsed:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
   on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
-  yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
+  yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1; camera_room:f32 = -1;
   clock:f32; surprise_seed:int; pose_at:f32; revision:int; saved:int; focused:int;
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
@@ -389,7 +393,8 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   if s[0].experimental {
     ensure(s);layout(s,w,h,k);if !still && dt>0 && dt<1 {s[0].clock+=dt;}
     for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;
-    camera(s[0],u,w,h,k);return ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;
+    if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
+    camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);return ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;
   }
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.70,0.76,0.74); gold:=ink(k,0.83,0.69,0.43);
@@ -427,6 +432,34 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
  u:[40]f32;camera(s[0],u[..],1280,720,1);#assert u[21]>0.8 && u[17]>=meadow.exp_height(u[16],u[18])+0.19;
  s[0].dragging=false;s[0].pitch=0.35;used=pointer(s[..],700,400,0,2);used=pointer(s[..],700,0,1,2);#assert s[0].pitch< -1.0;
 }
+#test "experimental camera pulls in before a wall and keeps the shoulder clear" {
+ wall:=[6]f32.[-2,0,1,2,3,1.2];
+ blocked:=cc_camera_boom(wall[..],0,1.2,0,[3]f32.[0,0,4]);
+ #assert blocked>0.7 && blocked<0.81;
+ clear:=cc_camera_boom(wall[..],0,1.2,0,[3]f32.[0,0,-4]);#assert clear==4;
+ side:=[6]f32.[0.8,0,-2,1.0,3,2];
+ shoulder:=cc_camera_boom(side[..],0,1.2,0,[3]f32.[2,0,0]);#assert shoulder>0.5 && shoulder<0.61;
+}
+#test "experimental camera follows the real village collision geometry" {
+ s:[1]Creator;s[0].experimental=true;s[0].player_x= -23;s[0].player_z= -25;s[0].yaw=0;s[0].pitch=0.1;s[0].dist=6;
+ near:[1]village.EvNear;village.ev_camera_near(near[..],s[0].player_x,s[0].player_z);
+ #assert !near[0].overflow && near[0].wall_n>0;
+ u:[40]f32;camera(s[0],u[..],1280,720,1);
+ dx:=u[16]-s[0].player_x;dy:=u[17]-meadow.exp_height(s[0].player_x,s[0].player_z)-1.2;dz:=u[18]-s[0].player_z;
+ length:=sqrt(dx*dx+dy*dy+dz*dz);#assert length<5.9;
+ clear:=cc_camera_boom(near[0].walls[0..<near[0].wall_n*6],s[0].player_x,1.2,s[0].player_z,[3]f32.[dx,dy,dz]);#assert clear+0.001>=length;
+}
+#test "experimental camera stays close as it eases back into open space" {
+ s:[1]Creator;s[0].experimental=true;s[0].camera_room=0.8;s[0].dist=4;s[0].yaw=0;s[0].pitch=0.1;
+ u:[40]f32;camera(s[0],u[..],1280,720,1);
+ dx:=u[16]-s[0].player_x;dy:=u[17]-meadow.exp_height(s[0].player_x,s[0].player_z)-1.2;dz:=u[18]-s[0].player_z;
+ #assert abs(sqrt(dx*dx+dy*dy+dz*dz)-0.8)<0.001;
+}
+cc_camera_boom :: (walls:[]f32,x:f32,y:f32,z:f32,boom:[3]f32)->f32 {
+ length:=sqrt(boom[0]*boom[0]+boom[1]*boom[1]+boom[2]*boom[2]);if length<0.00001 {return 0;}
+ target:=world.world_point(x,y,z);direction:=world.world_point(boom[0]/length,boom[1]/length,boom[2]/length);
+ return follow.follow_room(query.Colliders.{boxes=walls,ground_enabled=false},length,target,direction,length);
+}
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.experimental {
     target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
@@ -434,7 +467,8 @@ camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
     dist:=s.dist;shoulder:=cc_clamp(-sy*3.0,0,2.5);ox:=cz*shoulder;oz:= -sx*shoulder;
     // Shorten the orbit as it approaches the ground, preserving the look angle.
     if sy<0 {lo:=0.0f32;hi:=dist;for i:0..<12 {mid:=(lo+hi)*0.5;x:=s.player_x+ox+sx*cy*mid;z:=s.player_z+oz+cz*cy*mid;if target+sy*mid>=meadow.exp_height(x,z)+0.2 {lo=mid;}else {hi=mid;}}dist=lo;}
-    u[16]=s.player_x+ox+sx*cy*dist;u[17]=target+sy*dist;u[18]=s.player_z+oz+cz*cy*dist;u[19]=h*0.89;
+    boom:=[3]f32.[ox+sx*cy*dist,sy*dist,oz+cz*cy*dist];length:=sqrt(boom[0]*boom[0]+boom[1]*boom[1]+boom[2]*boom[2]);near:[1]village.EvNear;village.ev_camera_near(near[..],s.player_x,s.player_z);room:=cc_camera_boom(near[0].walls[0..<near[0].wall_n*6],s.player_x,s.player_y+1.2,s.player_z,boom);if s.camera_room>=0 && s.camera_room<room {room=s.camera_room;}share:=ifx length>0 then cc_clamp(room/length,0,1) else 0;
+    u[16]=s.player_x+boom[0]*share;u[17]=target+boom[1]*share;u[18]=s.player_z+boom[2]*share;u[19]=h*0.89;
     u[20]= -sx*cy;u[21]= -sy;u[22]= -cz*cy;u[23]=w*0.5;
     u[24]=cz;u[25]=0;u[26]= -sx;u[27]=h*0.48;
     u[28]= -sx*sy;u[29]=cy;u[30]= -cz*sy;

@@ -27,6 +27,10 @@ models stand in rows south of spawn, animals stand to their west, and dungeon
 pieces are displayed in the southeast meadow. The animals are static and the
 showcase pieces do not yet supply collision shapes.
 
+The follow camera checks the village's nearby building collision boxes along
+the full boom, including the shoulder offset. It pulls in immediately when a
+wall blocks the view and eases back out after the obstruction clears.
+
 A watchmaker’s workshop stands east of spawn at (15, -5). Its multi-storey
 building has a clock on the front gable, workbenches and storage on two floors,
 and a walkable stair between them. The clock is decorative and does not tell

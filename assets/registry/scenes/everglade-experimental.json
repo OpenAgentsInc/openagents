@@ -1819,7 +1819,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "7c4a385208405f88301e1e74432102f134b78cf25da39d3b98a16f8b1d132653"
+        "sha256": "63bec4df66809dfccca115b51e195068ac4a46662766f03fdbdc3707a95c1d95"
       },
       "source_boxes": 1567,
       "source_stairs": 3
