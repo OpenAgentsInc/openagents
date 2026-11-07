@@ -111,6 +111,13 @@ A second pass made the light come from behind, as in the reference:
   is greener, near rocks are less white, and forward haze is lighter (gain .40) so the cliff
   reads.
 
+The town at the end of the walk to Everglade is packed on the rock layer with one flat tint a
+material, so it drew as blank grey and white. `cg_town_material` recognises those six tints beyond
+the ridge (z < -32.5), and `cg_town_albedo` paints them: coursed stone with thin mortar and a value
+per block, timber-framed plaster darker at its foot, roof tiles in rows and straight-grained timber.
+Steep banks keep more of their olive under the hill's gold, and broad patches vary its value
+(`gate-walk.jpg`).
+
 Captures are in `docs/verification/character-glade-reference-light-2026-11-07/`: `base.jpg`
 before, `p3.jpg` after the scene passes, `p5.jpg` and `p5ui.jpg` on current main with
 the walk merged, and `p9.jpg` and `p9ui.jpg` after the backlit pass.

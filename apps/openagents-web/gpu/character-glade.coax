@@ -101,6 +101,46 @@ cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fi
  bottom:=mix3(v3(base.x,base.y,base.z),v3(0.56f32,0.17f32,0.025f32),rust);top:=mix3(v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),v3(0.95f32,0.41f32,0.035f32),rust);o.tint=mix3(bottom,top,height);
  o.dye=v4(0,0,0,12);o.local=v3(2,height,1);o.who=(instance>>16)-1;return o;
 }
+// The town at the end of the road (verse/character-glade.coax cg_city, packed on the rock layer
+// with one flat tint a material, character_glade_pack.coax gp_town_block): which material a tint is,
+// 0 stone, 1 tower stone, 2 plaster, 3 tile, 4 slate, 5 timber, or -1 for a real rock.
+cg_town_material :: (t:V3)->f32 {
+ pal:=[6]V3.[v3(0.60f32,0.58f32,0.50f32),v3(0.55f32,0.53f32,0.47f32),v3(0.88f32,0.82f32,0.68f32),v3(0.68f32,0.28f32,0.16f32),v3(0.32f32,0.35f32,0.40f32),v3(0.36f32,0.25f32,0.15f32)];
+ for k:0..<6 {d:=sub3(t,pal[k]);if (abs(d.x)<0.012f32 && abs(d.y)<0.012f32 && abs(d.z)<0.012f32) {return cast(f32)k;}}
+ return -1;
+}
+// A town face painted as Everglade's own gate is built (display colour): coursed stone with mortar
+// and a value per block, timber-framed plaster darker at its foot, roof tiles in rows, grained wood.
+cg_town_albedo :: (m:f32,t:V3,p:V3,n:V3)->V3 {
+ along:=ifx abs(n.x)>abs(n.z) then p.z else p.x;
+ if (m<1.5f32) {
+  row:=floor(p.y/0.42f32);off:=ifx fract(row*0.5f32)>0.25f32 then 0.4f32 else 0.0f32;col:=floor((along+off)/0.8f32);
+  gy:=fract(p.y/0.42f32);gx:=fract((along+off)/0.8f32);
+  mortar:=fmax(1.0f32-smoothstep(0.0f32,0.045f32,fmin(gy,1.0f32-gy)),1.0f32-smoothstep(0.0f32,0.03f32,fmin(gx,1.0f32-gx)));
+  if (n.y>0.7f32) {mortar=0;}
+  k:=0.86f32+0.24f32*verse_style_hash(col+row*17.0f32,m*3.0f32);
+  moss:=smoothstep(0.6f32,1.0f32,verse_style_hash(col*1.3f32,row+5.0f32))*0.25f32;
+  g:=(t.x+t.y+t.z)/3.0f32;c:=scale3(mix3(t,v3(g*1.04f32,g,g*0.94f32),0.5f32),k);c=mix3(c,v3(0.45f32,0.52f32,0.30f32),moss);return mix3(c,scale3(c,0.68f32),mortar);
+ }
+ if (m<2.5f32) {
+  frame:=1.0f32-smoothstep(0.0f32,0.09f32,abs(fract(along/1.6f32+0.5f32)-0.5f32)*1.6f32);
+  foot:=1.0f32-smoothstep(1.9f32,2.7f32,p.y); // the plateau stands at 1.8 m (CG_PLATEAU)
+  c:=scale3(t,0.94f32+0.08f32*verse_style_hash(floor(along*3.0f32),floor(p.y*3.0f32)));
+  c=mix3(c,scale3(c,0.78f32),saturate(foot));return mix3(c,v3(0.36f32,0.25f32,0.15f32),frame*0.9f32);
+ }
+ if (m<4.5f32) {
+  gy:=fract(p.y/0.22f32);row:=floor(p.y/0.22f32);col:=floor((along+ifx fract(row*0.5f32)>0.25f32 then 0.15f32 else 0.0f32)/0.3f32);
+  c:=scale3(t,0.85f32+0.25f32*verse_style_hash(col,row));return scale3(c,0.62f32+0.38f32*smoothstep(0.0f32,0.25f32,gy));
+ }
+ grain:=0.86f32+0.14f32*sin(p.y*31.0f32+sin(along*1.3f32)*0.8f32);
+ return scale3(t,grain);
+}
+#test "town tints map to their materials and real rock tints do not" {
+ #assert cg_town_material(v3(0.88f32,0.82f32,0.68f32))==2 && cg_town_material(v3(0.36f32,0.25f32,0.15f32))==5 && cg_town_material(v3(0.60f32,0.58f32,0.50f32))==0;
+ #assert cg_town_material(v3(0.50f32,0.52f32,0.40f32))== -1;
+ a:=cg_town_albedo(0,v3(0.6f32,0.58f32,0.5f32),v3(0.4f32,0.21f32,0),v3(0,0,1));b:=cg_town_albedo(0,v3(0.6f32,0.58f32,0.5f32),v3(0.4f32,0.0f32,0),v3(0,0,1));
+ #assert b.x<a.x; // the mortar line is darker than the block
+}
 cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
  kind:=s.local.x;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
@@ -109,7 +149,10 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  sun:=cg_sun_dir();eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
  if (foliage || ground) {albedo=cg_decode(s.tint);}
- if (ground) {trail:=cg_path(s.world.x,s.world.z);albedo=mix3(albedo,cg_decode(v3(0.82f32,0.58f32,0.16f32)),cg_autumn(s.world.x,s.world.z)*0.80f32*(1.0f32-trail));
+ if (ground) {trail:=cg_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
+  steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
+  albedo=mix3(albedo,cg_decode(v3(0.82f32,0.58f32,0.16f32)),cg_autumn(s.world.x,s.world.z)*0.80f32*steep*(1.0f32-trail));
+  albedo=scale3(albedo,0.84f32+0.32f32*cg_noise(v2(s.world.x*0.35f32+4.0f32,s.world.z*0.35f32)));
   // The reference trail is packed olive earth, darker than sand.
   albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);}
  if (leaves) {
@@ -118,7 +161,9 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  }
  if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
  if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
- if (kind>3.5f32 && kind<4.5f32) {
+ town:=ifx kind>3.5f32 && kind<4.5f32 && s.world.z< -32.5f32 then cg_town_material(s.tint) else -1.0f32;
+ if (town>=0) {albedo=cg_decode(cg_town_albedo(town,s.tint,s.world,n));}
+ if (kind>3.5f32 && kind<4.5f32 && town<0) {
   // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
   // faces that look up, as the reference's cliff tops.
   base:=cg_decode(s.tint);grey:=verse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.55f32);
@@ -131,7 +176,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
  if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
  if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
- fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 then 0.78f32 else 1.0f32;
+ fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 && town<0 then 0.78f32 else 1.0f32;
  indirect:=mul3(albedo,scale3(cg_hemisphere(n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
  colour:=add3(indirect,mul3(albedo,cg_irradiance(n,direct,0,visibility)));
