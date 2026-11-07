@@ -13,7 +13,7 @@ VERTEX_FLOATS :: 16;
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
-  experimental:bool; dev_animations:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
+  experimental:bool; dev_animations:bool; preview_collapsed:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
   on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
@@ -199,18 +199,22 @@ dev_scroll :: (s:[]Creator,dy:f32) {
 }
 dev_pointer :: (s:[]Creator,x:f32,y:f32,phase:int)->bool {
  if !s[0].dev_animations {return false;}k:=s[0].scale;
- s[0].preview_hover=x>=12*k && x<=370*k && y>=20*k && y<=s[0].height-20*k;
- if phase==0 {s[0].preview_down= -1;if x<12*k || x>370*k || y<20*k || y>s[0].height-20*k {return false;}
+ bottom:=ifx s[0].preview_collapsed then 52*k else s[0].height-20*k;inside_panel:=x>=12*k && x<=370*k && y>=20*k && y<=bottom;
+ s[0].preview_hover=inside_panel && !s[0].preview_collapsed;
+ if phase==0 {s[0].preview_down= -1;if !inside_panel {return false;}
+  if y<52*k {s[0].preview_down= -3;return true;}
   if y>=58*k && y<86*k {s[0].preview_down= -2;return true;}
   row:=cast(int)((y/k-92)/24);if y>=92*k && row>=0 && row<dev_visible(s[0]) {s[0].preview_down=s[0].preview_scroll+row;}return true;}
- if s[0].preview_down== -1 {return x>=12*k && x<=370*k && y>=20*k && y<=s[0].height-20*k;}
- if phase==2 {p:=s[0].preview_down;if p== -2 && y>=58*k && y<86*k {s[0].preview_clip= -1;}
+ if s[0].preview_down== -1 {return inside_panel;}
+ if phase==2 {p:=s[0].preview_down;if p== -3 && x>=12*k && x<=370*k && y>=20*k && y<52*k {s[0].preview_collapsed=!s[0].preview_collapsed;s[0].preview_hover=false;}
+  else if p== -2 && y>=58*k && y<86*k {s[0].preview_clip= -1;}
   else if p>=0 && x>=12*k && x<=370*k && y>=92*k && cast(int)((y/k-92)/24)+s[0].preview_scroll==p {s[0].preview_clip=p;s[0].preview_at=s[0].clock;}}
  if phase==2 || phase==3 {s[0].preview_down= -1;}return true;
 }
 dev_hud :: (s:Creator,out:[]f32,w:f32,h:f32,k:f32)->int {
  n:=0;
- n=text(out,n,"ANIMATIONS",32*k,45*k,15*k,ink(k,0.95,0.9,0.7));
+ n=text(out,n,ifx s.preview_collapsed then "> ANIMATIONS" else "- ANIMATIONS",32*k,45*k,15*k,ink(k,0.95,0.9,0.7));
+ if s.preview_collapsed {return n;}
  n=text(out,n,ifx s.preview_clip<0 then "> AUTO (MOVEMENT)" else "  AUTO (MOVEMENT)",32*k,77*k,10*k,ink(k,0.94,0.8,0.48));
  for row:0..<dev_visible(s) {i:=s.preview_scroll+row;if i>=figs.PREVIEW_BAKED {break;}
   y:=(109+f32(row)*24)*k;n=text(out,n,ifx i==s.preview_clip then ">" else " ",24*k,y,10*k,ink(k,0.95,0.8,0.4));
@@ -264,6 +268,12 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
  _=pointer(s[..],40,70,0,1);_=pointer(s[..],40,70,2,1);#assert s[0].preview_clip== -1;
  olddist:=s[0].dist;_=pointer(s[..],500,300,1,1);wheel(s[..],100);#assert s[0].dist>olddist;
  dev_scroll(s[..], -10000);#assert s[0].preview_scroll==0;
+}
+#test "animation browser collapses and reopens without capturing the world" {
+ s:[1]Creator;s[0].experimental=true;s[0].dev_animations=true;s[0].width=1280;s[0].height=720;s[0].scale=1;s[0].preview_clip=4;s[0].preview_scroll=7;
+ _:=pointer(s[..],40,35,0,1);_=pointer(s[..],40,35,2,1);#assert s[0].preview_collapsed && s[0].preview_clip==4 && s[0].preview_scroll==7;
+ _=pointer(s[..],40,105,0,1);#assert s[0].dragging && !s[0].preview_hover;_=pointer(s[..],40,105,2,1);
+ _=pointer(s[..],40,35,0,1);_=pointer(s[..],40,35,2,1);#assert !s[0].preview_collapsed && s[0].preview_clip==4 && s[0].preview_scroll==7;
 }
 #test "experimental jumps ease in and out over the moving or idle pose" {
  s:[1]Creator;s[0].experimental=true;s[0].clock=1;experimental_air(s[..],true);
@@ -378,7 +388,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   if s[0].walk.on || s[0].profile_go {ensure(s);layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
   if s[0].experimental {
     ensure(s);layout(s,w,h,k);if !still && dt>0 && dt<1 {s[0].clock+=dt;}
-    for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=shadow_frame(s);u[11]=ifx s[0].dev_animations then 2 else 1;
+    for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;
     camera(s[0],u,w,h,k);return ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;
   }
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }

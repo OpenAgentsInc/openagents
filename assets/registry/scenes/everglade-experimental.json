@@ -663,8 +663,8 @@
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "e608c593fc12fbd453829ea807afd7e08fb4681995ed2ceb1e274413f9553bc0",
+    "sha256": "545ff1359ddb5af699351288f414b4eedc878fcd1d0fc72e84d77a7d230cb246",
     "artifact": "apps/openagents-web/charactercreator.wgsl",
-    "artifact_sha256": "9f23f48dac197d67bda982e75110a365296362d697345c85ef28198480de0cdc"
+    "artifact_sha256": "4f3280303b30fe284f0af9ad885651da0c0d9b166af82e27bbbf2e223cec310d"
   }
 }
