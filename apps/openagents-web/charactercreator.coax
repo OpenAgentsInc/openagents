@@ -182,7 +182,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   u[20]=0;u[21]=fy;u[22]=fz;u[23]=w*0.5;
   u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s[0].mobile then (h-384*k)*0.5 else h*0.48;
   u[28]=0;u[29]=-fz;u[30]=fy;
-  u[32]=-0.45;u[33]=0.78;u[34]=0.42;
+  u[32]=-0.45;u[33]=0.78;u[34]=-0.42;
   if s[0].scene_only {return 0;}
   return n;
 }

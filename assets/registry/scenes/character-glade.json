@@ -69,6 +69,10 @@
     {
       "id": "quaternius/nature/rock-big-2",
       "revision": "ae2ba6409e118b1989b6e691a0577d0b17f0e2bc51d10c5c1daed0c24495817c"
+    },
+    {
+      "id": "quaternius/nature/rock-medium-3",
+      "revision": "a9b92886de44fe4abcc0ca9bd5e8d277df4440d71783cd95b4471796f0407afd"
     }
   ],
   "reference": {
@@ -79,29 +83,29 @@
   },
   "composition": {
     "path": "verse/character-glade.coax",
-    "sha256": "b422d71ba4a01e82d4648874ca3f95600803c3032eb7302b87a090dffef7da9c"
+    "sha256": "6ecdbeafebe5b6cda87796d8687f77f456d276efe8745b0b7d36c52ea060d3db"
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "8dc55365286a8a1f01aac8d5b160c637b2beb6253a60e6e5b1781be183c669eb"
+    "sha256": "8f317a0a195223527deeaff7e3c332cf92c457b77a96d9b1a059df5c6b7a6b47"
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "3152ecb5238f2b44e0846362064853688fc0cba5beed22c8afc43ebf109d48ae"
+    "sha256": "8d1dfe5f0b744e1194330d200bdcb2f519efa9d5300f68cd7d9f339ad71fd7b0"
   },
   "runtime": {
     "pack": "/realms/character-creator/assets/glade.pack",
-    "sha256": "93d1058c200f7f52e072df246789a1c95f7cb638a8a84ae0bdcc27cf6c1f7d51",
-    "bytes": 33338552,
+    "sha256": "4f3362c9529880ce5c32b666698e52dab6a9a3b16722fcdd7434803ffdbcaa35",
+    "bytes": 33363032,
     "profile": "character-create-legacy-static-v3"
   },
   "lighting": {
     "toward_sun": [
       -0.45,
       0.78,
-      0.42
+      -0.42
     ],
-    "source": "Reference-directed warm sunlight with cool ambient fill; Unreal overview lighting evidence retained separately",
+    "source": "Reference-directed rear-left warm sunlight, broad sky fill and wrapped outdoor diffuse; Unreal overview settings remain separate evidence",
     "shadows": "soft analytic crown and rock proxies for ground and small plants",
     "canopy": "rounded volume normals, ambient mask and warm leaf transmission"
   },
@@ -264,12 +268,20 @@
       "sha256": "207ceea44451ea6e8e553db9daf10943c6e350fbb458d3775d74772284f16501"
     },
     {
+      "path": "glTF/Rock_Medium_3.bin",
+      "sha256": "63f94bce2d3fb3fe25b2d6c843a828b1bec76855dbaac93fcf5d43582309caad"
+    },
+    {
+      "path": "glTF/Rock_Medium_3.gltf",
+      "sha256": "9a575b911372cf91693aa3a56aea8137ec2251c2b99fb34a31272ee64503047f"
+    },
+    {
       "path": "glTF/Rocks_Diffuse.png",
       "sha256": "b813696df6081f469a127092eb0ce45cc39d56f3ccc0699152bfcd3804810b48"
     }
   ],
   "foliage": {
-    "grass": "26911 procedural five-corner curved tufts, one 32-byte seed each, patch-dependent heights 0.029\u20130.357 m",
+    "grass": "26929 procedural five-corner curved tufts, one 32-byte seed each, patch-dependent heights 0.029\u20130.357 m",
     "ambient_word": {
       "offset_bytes": 28,
       "type": "f32",
@@ -303,7 +315,7 @@
   },
   "shader_artifact": {
     "path": "apps/openagents-web/fivelab.wgsl",
-    "sha256": "5d666a755e7547849a13c6cac5c1393917d767db42cf87181fe325964ac4e753"
+    "sha256": "8bb0b91ffaedb0d0055e8801bde4c72dc06b02ad766c44bc120cc4d2be31a3b5"
   },
   "camera": {
     "desktop_horizon_fraction": 0.595,

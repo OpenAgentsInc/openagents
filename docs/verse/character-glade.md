@@ -27,7 +27,7 @@ project scripts were not executed and Unreal was not launched.
 The retained evidence includes the Unreal map's SHA-256, table offsets,
 component properties and source mesh/material links. Its directional-light
 properties are retained as source evidence. The reference-directed lighting
-uses a warm key toward `(-0.45, 0.78, 0.42)` with cool ambient fill. The composition is authored in Coax rather than
+uses a warm key toward `(-0.45, 0.78, -0.42)` with cool ambient fill. The composition is authored in Coax rather than
 mislabeling the overview map as the preview scene.
 
 ## Build
@@ -115,7 +115,7 @@ and yellow transmission. Cloud banks are smaller, with restrained thin cirrus.
 Grass now stores one seed per tuft and generates its five curved corners in
 the vertex shader. Bit 31 marks a procedural index, bits 27–29 select a corner,
 and the lower 27 bits select a 32-byte seed. Its UV word stores height/width;
-word 7 stores angle. The pack contains 26,911 tufts with patch-dependent
+word 7 stores angle. The pack contains 26,929 tufts with patch-dependent
 heights of 2.9–35.7 cm, within the original 32 MiB limit. Shader coverage blends
 edges toward the meadow color, reducing hard ribbons in distant planting.
 

@@ -14,7 +14,7 @@
 }
 CgItem :: struct {kind:int;variant:int;x:f32;z:f32;scale:f32; yaw:f32;tint:[3]f32;}
 CG_ITEMS :: 24;
-cg_path_x :: (z:f32)->f32 {return 2.1*sin(z*0.27)+0.9;}
+cg_path_x :: (z:f32)->f32 {return 2.1*sin(z*0.27)+0.9-(ifx z>0 then z*0.55 else 0.0);}
 cg_path :: (x:f32,z:f32)->f32 {d:=abs(x-cg_path_x(z));return exp(-d*d/(0.85+abs(z)*0.12));}
 cg_height :: (x:f32,z:f32)->f32 {
   away:=sqrt(x*x+z*z);if away<2 {return 0;}
