@@ -152,7 +152,8 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
   if s[0].autowalk && h == 0 {
     if s[0].you_z < E2_CLEAR_Z - 6 { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
-    return EgMoveIn.{key_y = 1, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
+    // run is the keys' Shift: the keys run by default (aethyr/input.coax), so this walks
+    return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
   }
   if h != 0 { s[0].autowalk = false; }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
@@ -260,10 +261,12 @@ e2_follow :: (s: [] E2, dt: f32) {
     if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z || !s[0].plant_done { continue; }
     c := j * E2_CELLS_X + i;
     for q: s[0].first[c]..<s[0].first[c + 1] {
-      if cast(int) s[0].kinds[q] >= E2_TREES || sn >= E2_CAM_TRUNKS { continue; }
+      kit := cast(int) s[0].kinds[q];
+      if kit >= E2_TREES || sn >= E2_CAM_TRUNKS { continue; }
       qo := q * E2_ITEM_FLOATS; px := s[0].items[qo]; pz := s[0].items[qo + 2];
       if (px - pv.x) * (px - pv.x) + (pz - pv.z) * (pz - pv.z) > 100 { continue; }
-      r := 0.30 * s[0].items[qo + 5] + 0.35;
+      // a pine's boughs reach out at the eye's height; the others' crowns start above it
+      r := ifx kit >= 10 then 2.2 * s[0].items[qo + 5] else 0.30 * s[0].items[qo + 5] + 0.35;
       for k: 0..<3 { m := (sn * 3 + k) * 4; spheres[m] = px; spheres[m + 1] = pv.y - 0.5 + f32(k) * 1.6; spheres[m + 2] = pz; spheres[m + 3] = r; }
       sn += 1;
     }

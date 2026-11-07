@@ -11,7 +11,7 @@ character you saved in Character Create, on Everglade's controller and follow ca
 ## Walk it
 
 - Open `/worlds/everglade2`.
-- W, A, S, and D walk. Hold Shift to run. Space jumps.
+- W, A, S, and D run. Hold Shift to walk. Space jumps.
 - Drag to look. Scroll to zoom. The arrow keys turn the camera.
 - On a touch screen, the left thumb walks and the right thumb looks.
 - `?at=METRES` starts you that far down the path, for example `/worlds/everglade2?at=300`. The
