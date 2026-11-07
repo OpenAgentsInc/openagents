@@ -1,9 +1,10 @@
 # Echo rendering follow-up — November 7
 
 The rendering changes, deterministic orbit comparison and compatibility checks
-pass. **#12984 remains open:** fresh live timing has not yet reproduced the
-60 FPS gate under controlled GPU conditions. No closure or production deployment
-is claimed by this record.
+pass. The afternoon follow-up below attributes the live 60 FPS miss to another
+app's GPU work, measures the scene's own GPU cost per frame, re-records the
+orbit on current `main`, and closes #12984. No production deployment is claimed
+by this record.
 
 The source base is `7d153a7c146e2a7658f562dc434082a185b41d4b`.
 [performance-source.json](performance-source.json) identifies each changed code
@@ -126,6 +127,73 @@ They measure 37.5 FPS wide (p95 33.335 ms, max 50.005 ms) and 45.6 FPS medium
 (p95/max 33.335 ms), both failing. These receipts include the final host and
 qualification boundary; they are not fast empty-scene measurements. A matching
 controlled window is still needed; it is recorded in `NEEDS_OWNER.md`.
+
+## Afternoon follow-up: who uses the GPU, and the scene's own cost
+
+Source: `main` at `a141f28617`, with the Everglade glade lighting (`361baffd85`)
+and the flyover pass timer (`a141f28617`). The Everglade Wasm is 2,044,871 bytes.
+
+**Who uses the GPU.** IORegistry keeps each Metal client's accumulated GPU time
+(`AGXDeviceUserClient`, `AppUsage.accumulatedGPUTime`, in nanoseconds). Two
+snapshots 5 s apart give each process's share of the GPU. With no qualifier
+running, the owner's visible Chrome (two tabs of the 8861 dev server:
+`/worlds/everglade` and `/worlds/character-creator`, both drawing 3D every
+frame) used **84–92%** of the GPU and WindowServer 6–9%. That is the competing
+load the earlier runs saw. Agents do not close the owner's tabs, so a fully
+quiet window is not available from an agent session.
+
+**The scene's own cost.** During each qualifier run the snapshots attribute the
+new GPU load to the run; the owner's Chrome drops to its time slice. The run's
+share of the GPU divided by the frames it drew gives its GPU time a frame. On a
+time-sliced GPU, a GPU-bound client draws as many frames as its share pays for,
+so this measures the work, not the slice. Cache contention can only inflate it.
+The raw lines are in `gpu-share-*.log`. In three of them IORegistry lists the
+run's Metal client under a process id that `ps` later shows as
+`VTDecoderXPCService`; that client appears only while the run is open, and its
+share is the run's share in the table.
+
+| Shot, 1920×1080 | Run's GPU share | Frames / FPS (shared GPU) | GPU time a frame | Owner's Chrome share |
+| --- | ---: | --- | ---: | ---: |
+| Medium (morning source, `848cef5166`) | 32.0% | 258 / 51.6 | 6.2 ms | 58.4% |
+| Medium (current `main`) | 32.6% | 230 / 46.0 | 7.1 ms | 57.4% |
+| Wide raid, first cast (`848cef5166`) | 31.8% | 203 / 40.7 | 7.8 ms | 63.8% |
+| Wide raid, first cast (`848cef5166`) | 31.4% | 189 / 37.9 | 8.3 ms | 58.9% |
+| Wide raid, first cast (current `main`) | 18.9% | 119 / 23.9 | 7.9 ms | 36.6% (and 35% from a third client) |
+
+The wide shot's cost stays at 7.8–8.3 ms a frame while its share of the GPU
+falls from 32% to 19% and its frame rate from 41 to 24 FPS: the cost is the
+scene's, and the frame rate follows the share other apps leave it.
+Every run confirms a ready Echo with hero draws in every frame, at least 81
+(medium) or 91 (wide) world draws a frame, the full 1920×1080 raster, hardware
+Metal and no console errors. The CPU stays at 1.9–3.3 ms p50 a frame.
+
+The heaviest shot needs at most about 8.3 ms of GPU a frame, half of the
+16.7 ms a 60 FPS frame allows. This agrees with the historical R4 strict pass
+(wide and medium at 60.0 FPS with zero held frames in 12 windows; wide 1080
+submit-to-done p50 13.7 ms) taken with competing 3D tabs closed.
+The wall-clock misses (24–52 FPS) follow from other apps taking 57–72%
+of the GPU while the qualifier runs, not from the scene.
+
+**Pass timer.** `everglade-echo-perf.coax` now also turns on the host's pass
+timer (`coaxialPassTimer`, from #13017) and prints a second line: the first
+pass's start to the last pass's end, and the passes' own times added up. The
+line is a report; it does not change the 60 FPS judgment. On a shared GPU the
+span includes the other app's slices (medium: p50 19.0 ms, p95 28.9 ms), and on
+Apple's tiled GPU the summed pass times overlap, so neither is the scene's cost
+when another app draws. On a quiet GPU the span is the GPU frame time.
+
+**The recording on current `main`.** A fresh 217-frame orbit records straight
+from `/worlds/everglade?stage=echo&clock=0.95&weather=rain` with the glade
+lighting: every frame passes with no console errors, the pack loads in 20.3 s,
+and the groom draws 36,764 strand segments. `orbit.mp4` is H.264, 1920×1080,
+24 fps, 217 frames (9.04 s), under
+`~/.openagents/verse/private-build/echo-12984-final/` (private; no licensed
+pixels are committed). Frames show Echo in the rainy town square at night, lit
+by the fountain brazier and the windows, with the player passing in front of
+her and the grass and houses in front of and behind them both.
+
+A strict wall-clock rerun with the owner's 3D tabs closed is listed in
+`NEEDS_OWNER.md` as an optional check; the issue does not wait on it.
 
 ## Reproduction
 

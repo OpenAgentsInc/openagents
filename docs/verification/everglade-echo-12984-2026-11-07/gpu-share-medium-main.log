@@ -1,0 +1,10 @@
+adapter: hardware apple metal-3
+confirmed frame provenance: minimum 81 world draws; hero submitted 1
+medium 1920x1080 (render 1920x1080): 230 frames, 46.0 fps; frame p50 16.67 ms, p95 33.335 ms, max 33.335 ms; 70 held back; cpu p50 2.395 ms, p95 2.915 ms; gpu p50 32.48 ms, p95 45.12 ms; hair share 14/1000, 36764 strand segments drawn; misses 60 FPS 
+gpu pass timer: 231 frames; first pass's start to last pass's end p50 18.998 ms, p95 28.931 ms, max 34.217 ms; passes' own times p50 118.089 ms, p95 188.821 ms
+gpu busy  57.4%  pid 49972 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+gpu busy  32.6%  pid 22736 /System/Library/Frameworks/VideoToolbox.framework/Versions/A/XPCServices/VTDecoderXPCServi
+gpu busy   9.0%  pid 403 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer -daemon
+gpu busy   0.9%  pid 57786 /usr/libexec/MTLAssetUpgraderD
+other apps (not this run, not WindowServer): 90.9% of the GPU in the measured window
+this run: 0.0 GPU ms per second over 5.4 s; 0.00 GPU ms per drawn frame at 46.0 fps

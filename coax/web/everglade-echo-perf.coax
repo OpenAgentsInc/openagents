@@ -14,7 +14,10 @@
 // counts in the next drawn one's time. Prints one line: the drawn frames, frames a second, the frame
 // time's median, 95th percentile and longest, the frames held back, the CPU's and the GPU's (the
 // host's latest submit-to-done time, coaxial_frame_admit's measure) medians and 95th percentiles, the hair's share, her strand segments drawn and whether the shot holds 60 FPS. Exit 0 when it holds, 1 when it
-// doesn't, 2 on bad usage.
+// doesn't, 2 on bad usage. A second line gives the GPU's own time a frame from the host's pass timer
+// (coaxialPassTimer: timestamps round every render pass; the first pass's start to the last one's end,
+// and the passes' own times added up). Submit-to-done counts queue waits, so on a GPU shared with
+// other apps the pass times show the scene's own cost. The pass times are reported, not judged.
 // A hero qualification also requires ready character draws and the exact
 // requested raster. Empty, suppressed or downscaled scenes remain diagnostics.
 #load "valley-capture.coax";
@@ -50,6 +53,28 @@ ep_parse :: (t: string, gap: [] int, cpu: [] int, gpu: [] int, held: [] int) -> 
   return n;
 }
 ep_ms :: (us: int) -> f64 { return cast(f64) us / 1000.0; }
+// The pass timer's frames, "span:sum,span:sum,..." in whole microseconds, into `span` and `sum`.
+// Returns how many.
+ep_pass_parse :: (t: string, span: [] int, sum: [] int) -> int {
+  n := 0; v := 0; field := 0; digits := false;
+  for ch: t {
+    if ch >= '0' && ch <= '9' { v = v * 10 + cast(int) (ch - '0'); digits = true; continue; }
+    if ch == ':' { if n < span.count { span[n] = v; } v = 0; field = 1; digits = false; continue; }
+    if ch == ',' {
+      if field == 1 && digits && n < sum.count { sum[n] = v; n += 1; }
+      v = 0; field = 0; digits = false;
+    }
+  }
+  if field == 1 && digits && n < sum.count { sum[n] = v; n += 1; }
+  return n;
+}
+#test "pass timer frames parse into span and summed pass times" {
+  span: [4] int; sum: [4] int;
+  #assert ep_pass_parse("6100:5800,7200:6900", span[..], sum[..]) == 2 && span[0] == 6100 && sum[0] == 5800 && span[1] == 7200 && sum[1] == 6900;
+  #assert ep_pass_parse("", span[..], sum[..]) == 0;
+  #assert ep_pass_parse("6100:", span[..], sum[..]) == 0;
+  #assert ep_pass_parse("1:2,3:4,5:6,7:8,9:10", span[..], sum[..]) == 4;
+}
 #test "Echo performance suffix separates groom counts from actual raster dimensions" {
  p:=ep_probe("1:2:3:1,|4/9274/1920/1080");#assert p[0]==4 && p[1]==9274 && p[2]==1920 && p[3]==1080;
  p=ep_probe("1:2:3:1,|4/9274/1920/1080/12/1");#assert p[4]==12 && p[5]==1;
@@ -71,7 +96,7 @@ tool_main :: () -> int #export_c #effects(all) {
   _ = cdp_call(c[..], "Emulation.setDeviceMetricsOverride", ifx big then "{\"width\":1920,\"height\":1080,\"deviceScaleFactor\":1,\"mobile\":false}" else "{\"width\":1280,\"height\":720,\"deviceScaleFactor\":1,\"mobile\":false}", 30000);
   b: [4096] u8; j: [1] Jo;
   jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "source");
-  jo_str(j[..], "globalThis.coaxialFrameTrace=true;globalThis.faceErrors=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");
+  jo_str(j[..], "globalThis.coaxialFrameTrace=true;globalThis.coaxialPassTimer=true;globalThis.faceErrors=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");
   jo_end(j[..]); _ = cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(j[..]), 30000);
   if hide {
     print("DIAGNOSTIC: Echo draw calls suppressed; room, spells, lights and resident resources unchanged (not a hero FPS qualification)\n");
@@ -118,7 +143,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   // the measuring script, with its length in milliseconds
   script: [1024] u8; k := 0;
-  head := "(async()=>{coaxial.takeFrameTrace();const t0=performance.now();await new Promise(r=>{const f=()=>{if(performance.now()-t0<";
+  head := "(async()=>{coaxial.takeFrameTrace();coaxial.takePassTimes?.();const t0=performance.now();await new Promise(r=>{const f=()=>{if(performance.now()-t0<";
   tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+Math.round(r[8]*1000)+':'+r[7]).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)+'/'+(t.at(-1)?.[5]??0)+'/'+(t.at(-1)?.[6]??0)+'/'+Math.min(...t.filter(r=>r[7]===1).map(r=>r[11]??0))+'/'+Math.min(...t.filter(r=>r[7]===1).map(r=>r[12]??0))})()";
   for ch: head { script[k] = ch; k += 1; }
   digits: [8] u8; d := 0; v := ms;
@@ -135,6 +160,9 @@ tool_main :: () -> int #export_c #effects(all) {
   g := frame_stats(gpu[..], count);
   // after the bar: the hair's share (thousandths) / the strands' segments drawn (groom levels, #12988)
   meta:=ep_probe(text);share:=meta[0];drawn:=meta[1];
+  pt := cdp_evaluate(c[..], "(coaxial.takePassTimes?.()??[]).map(g=>g[0]+':'+g[3]).join(',')");
+  span: [EP_FRAMES] int; summed: [EP_FRAMES] int;
+  pn := ifx pt >= 0 then ep_pass_parse(jv_raw(c[0].doc[0], pt), span[..], summed[..]) else 0;
   e := cdp_evaluate(c[..], "faceErrors.length===0");
   clean := e >= 0 && jv_raw(c[0].doc[0], e) == "true";
   holds := frame_holds(f);
@@ -147,6 +175,11 @@ tool_main :: () -> int #export_c #effects(all) {
   print("% %x% (render %x%): % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; gpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
         shot, width, height, meta[2],meta[3],f.n, cast(f64) frame_fps10(f) / 10.0, ep_ms(f.p50), ep_ms(f.p95), ep_ms(f.max), held[0], ep_ms(p.p50), ep_ms(p.p95), ep_ms(g.p50), ep_ms(g.p95), share, drawn,
         ifx holds then "holds 60 FPS" else "misses 60 FPS", ifx clean then "" else " (console errors)");
+  if pn > 0 {
+    sp := frame_stats(span[..], pn); su := frame_stats(summed[..], pn);
+    print("gpu pass timer: % frames; first pass's start to last pass's end p50 % ms, p95 % ms, max % ms; passes' own times p50 % ms, p95 % ms\n",
+          pn, ep_ms(sp.p50), ep_ms(sp.p95), ep_ms(sp.max), ep_ms(su.p50), ep_ms(su.p95));
+  } else { print("gpu pass timer: no timestamps (the adapter has no timestamp-query)\n"); }
   cdp_close(c[..]);
   return ifx qualified then 0 else 1;
 }

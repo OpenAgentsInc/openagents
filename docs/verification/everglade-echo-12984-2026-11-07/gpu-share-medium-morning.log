@@ -1,0 +1,8 @@
+adapter: hardware apple metal-3
+confirmed frame provenance: minimum 81 world draws; hero submitted 1
+medium 1920x1080 (render 1920x1080): 258 frames, 51.6 fps; frame p50 16.665 ms, p95 33.335 ms, max 33.335 ms; 42 held back; cpu p50 1.875 ms, p95 2.23 ms; gpu p50 27.345 ms, p95 39.68 ms; hair share 14/1000, 36764 strand segments drawn; misses 60 FPS 
+gpu busy  58.4%  pid 49972
+gpu busy  32.0%  pid 23123 (this run)
+gpu busy   8.7%  pid 403
+gpu busy   0.8%  pid 57786
+this run: 320.3 GPU ms per second over 5.7 s; 6.21 GPU ms per drawn frame at 51.6 fps

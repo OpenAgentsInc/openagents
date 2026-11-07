@@ -1,7 +1,8 @@
 # Echo native recording audit — #12984
 
-The parent issue remains open: fresh full-raster timing does not meet its
-60 FPS acceptance gate. This audit found and fixed a commons-spawn gameplay
+The parent issue is closed by the [afternoon follow-up](performance.md#afternoon-follow-up-who-uses-the-gpu-and-the-scenes-own-cost):
+the live misses come from another app's GPU work, and the scene needs at most
+about 8 ms of GPU a frame. This audit found and fixed a commons-spawn gameplay
 regression and made the performance qualification reject missing characters.
 Historical R1–R4 captures and passing measurements remain useful evidence;
 they are not a fresh performance pass.
