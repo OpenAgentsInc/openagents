@@ -44,5 +44,15 @@
       "Frozen Brown/Blue iris-only pixel difference",
       "Tideglass Wine dye visibly recolors coat, hood and cape"
     ]
+  },
+  "headwear_revision": {
+    "targeted_checks": 11,
+    "red_before_fix": [
+      "hood retains beard draw",
+      "zoom reaches 0.65m"
+    ],
+    "headless_metal_hood_beard_closeup": true,
+    "crown_filtered_in_browsing_drawing_and_restore": true,
+    "release_wasm_bytes": 592520
   }
 }

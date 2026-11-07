@@ -120,3 +120,14 @@ the unmodified Fantasy pack, append it with:
 
 The receipt includes the design SHA-256, per-fit geometry counts and final pack
 identity. No Blender runtime is used in the selector.
+
+## Face inspection and headwear
+
+The page header is “Character Create”. Crown is excluded from browsing, drawing
+and restored appearances. A hood suppresses hair while retaining a selected
+Male beard as a separate draw. Tideglass's closed mask still hides facial parts.
+Zoom now reaches 0.65 m (formerly 2.2 m); below 2.2 m, the camera target rises
+toward the face. The upper distance stays 6 m. The headless Metal capture
+`docs/verification/character-creator-2026-11-06/hood-beard-close.png` shows the
+actual hood, beard and closest camera together. Eleven targeted creator/studio
+checks pass; the release producer is 592,520 bytes.

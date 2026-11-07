@@ -24,7 +24,7 @@ FIELD_NAMES :: [13]string.["BODY", "CLOTHES", "HOOD", "COLORWAY", "CLOTH DYE", "
 #test "creator body changes preserve choices and bind only matching parts" {
   s:[1]Creator;
   s[0].hood=true; s[0].beard=true; s[0].hair=2;
-  a:=look(s[0]); #assert a.head==figs.BP_MALE_HEAD && a.extra==figs.BP_MALE_HOOD && a.hair<0;
+  a:=look(s[0]); #assert a.head==figs.BP_MALE_HEAD && a.extra==figs.BP_BEARD && a.hair<0;
   change(s[..],0,1); b:=look(s[0]);
   #assert b.female && b.outfit==figs.BP_FEMALE_PEASANT && b.robe==figs.BP_FEMALE_ROBE && b.extra==figs.BP_FEMALE_HOOD;
   change(s[..],2,1); b=look(s[0]); #assert b.extra<0 && b.hair==figs.BP_HAIR_BUZZED_FEMALE;
@@ -78,7 +78,7 @@ look :: (s:Creator)->figs.BdLook {
     l.hair=ifx s.female then [3]int.[figs.BP_HAIR_LONG,figs.BP_HAIR_BUNS,figs.BP_HAIR_BUZZED_FEMALE][s.hair] else [3]int.[figs.BP_HAIR_PARTED,figs.BP_HAIR_BUZZED,figs.BP_HAIR_PARTED][s.hair];
   }
   if s.beard && !s.female { l.extra=figs.BP_BEARD; }
-  if s.hood { l.hair=-1; l.extra=ifx s.female then figs.BP_FEMALE_HOOD else figs.BP_MALE_HOOD; }
+  if s.hood { l.hair=-1; if s.female || !s.beard {l.extra=ifx s.female then figs.BP_FEMALE_HOOD else figs.BP_MALE_HOOD;} }
   l.variant=s.variant; l.skin=SKINS[s.skin]; l.hair_rgb=HAIRS[s.hair_color];
   l.dye=[4]f32.[DYES[s.dye][0],DYES[s.dye][1],DYES[s.dye][2],ifx s.dye==8 then 0 else 1];
   return l;
@@ -100,7 +100,7 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
   parts:[3]int;pn:=0;
   if !s.worn[7] && !s.worn[39] { parts[pn]=l.head;pn+=1; }
   if l.hair>=0 && !s.worn[7] && !s.worn[26] {parts[pn]=l.hair;pn+=1;}
-  if l.extra==figs.BP_BEARD && !s.worn[7] {parts[pn]=l.extra;pn+=1;}
+  if l.extra==figs.BP_BEARD && !s.worn[7] && !s.worn[39] {parts[pn]=l.extra;pn+=1;}
   for i:0..<pn {
     p:=parts[i];figs.bd_record(a,l,b[0].part_word[p],false,s.clock,out,n);
     b[0].draws[n*4]=cast(u32)b[0].part_first[p];b[0].draws[n*4+1]=cast(u32)b[0].part_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
@@ -146,9 +146,7 @@ line :: (out:[]f32,n:int,x:f32,y:f32,bx:f32,by:f32,k:f32,r:f32,g:f32,b:f32)->int
 frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->int {
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.48,0.56,0.59); gold:=ink(k,0.83,0.69,0.43);
-  n=text(out,n,"AETHYR / CHARACTER STUDIO",24*k,34*k,10*k,gold);
-  n=text(out,n,ifx s[0].mobile then "Your character." else "Make someone yours.",24*k,82*k,(ifx s[0].mobile then 22 else 26)*k,white);
-  if !s[0].mobile { n=text(out,n,"Clothes, color and character. Every choice is live.",24*k,114*k,11*k,dim); }
+  n=text(out,n,"Character Create",24*k,54*k,(ifx s[0].mobile then 18 else 22)*k,white);
   for i:0..<13 {
     b:=s[0].boxes[i]; cap:=ifx s[0].mobile then 10.0f32 else 12.0f32;
     n=text(out,n,FIELD_NAMES[i],b.x0,b.y0-7*k,8*k,dim);
@@ -169,8 +167,9 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   for i:0..<u.count { u[i]=0; }
   u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=0;
   // A steady studio camera; dragging turns the figure, the wheel changes distance.
-  dist:=s[0].dist; ey:=1.1+sin(s[0].pitch)*dist; ez:=cos(s[0].pitch)*dist;
-  fy:=1.0-ey; fz:=-ez; length:=sqrt(fy*fy+fz*fz); fy/=length; fz/=length;
+  dist:=s[0].dist; target:=1.0+0.58*cc_clamp((2.2-dist)/1.55,0,1);
+  ey:=target+0.1+sin(s[0].pitch)*dist; ez:=cos(s[0].pitch)*dist;
+  fy:=target-ey; fz:=-ez; length:=sqrt(fy*fy+fz*fz); fy/=length; fz/=length;
   focal:=ifx s[0].mobile then (h-624*k)*1.3 else h*0.89;
   u[16]=0;u[17]=ey;u[18]=ez;u[19]=focal;
   u[20]=0;u[21]=fy;u[22]=fz;u[23]=w*0.5;
@@ -202,7 +201,7 @@ key :: (s:[]Creator,k:int)->bool {
   if k==' ' { change(s,9,1);return true; }
   return false;
 }
-wheel :: (s:[]Creator,dy:f32) { s[0].dist=cc_clamp(s[0].dist+dy*0.003,2.2,6); }
+wheel :: (s:[]Creator,dy:f32) { s[0].dist=cc_clamp(s[0].dist+dy*0.003,0.65,6); }
 // Page identity is a bounded host fact, not a search over arbitrary message content.
 page :: (facts:string)->bool {
   at:=0;
@@ -281,7 +280,7 @@ append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}re
   catalog(s[..],cast(string)buf[0..<at]);#assert s[0].source_n==78;
   for i:0..<80 {if PART_NAMES[i].count>0 {#assert s[0].source_first[i]==100 && s[0].source_count[i]==300 && s[0].source_word[i]==600;}}
   b[0].ready=true;for i:0..<39 {s[0].worn[i]=true;}out:[44*24]f32;
-  for body:0..<2 {s[0].female=body==1;n:=scene(s[0],b[..],out[..]);#assert n==27-body*1 && b[0].draw_n==n;
+  for body:0..<2 {s[0].female=body==1;n:=scene(s[0],b[..],out[..]);#assert n==26-body*1 && b[0].draw_n==n;
     for i:0..<n {#assert b[0].draws[i*4+2]==cast(u32)i && b[0].draws[i*4+3]==1;}
   }
 }
@@ -329,7 +328,7 @@ restore :: (s:[]Creator,t:string)->bool {
   change(s[..],12,-1);#assert s[0].eye_color==5;change(s[..],12,1);#assert s[0].eye_color==0;
 }
 
-available :: (s:Creator,p:int)->bool {if p<0 || p>=40 {return false;}if p==0 || p==1 || p==3 || p==4 || p==6 || p==7 || p==8 || p==9 || p==10 || p==11 || p==12 || p==32 {return false;}return !s.female || PART_NAMES[p].count>0;}
+available :: (s:Creator,p:int)->bool {if p<0 || p>=40 {return false;}if p==0 || p==1 || p==3 || p==4 || p==6 || p==7 || p==8 || p==9 || p==10 || p==11 || p==12 || p==16 || p==32 {return false;}return !s.female || PART_NAMES[p].count>0;}
 
 #test "studio original outfit and eye color survive save and old heavy armor is removed" {
   a:[1]Creator;a[0].female=true;a[0].outfit=4;preset(a[..],4);a[0].eye_color=5;
@@ -338,4 +337,20 @@ available :: (s:Creator,p:int)->bool {if p<0 || p>=40 {return false;}if p==0 || 
   // Encode a real old-shaped record, then insert the former knight armor slot.
   a[0].outfit=3;a[0].hood=false;a[0].worn[39]=false;a[0].worn[4]=true;n=save(a[0],bytes[..]);bytes[2]='1';
   #assert restore(b[..],cast(string)bytes[0..<54]) && !b[0].worn[4] && b[0].outfit==0;
+}
+
+#test "creator hood keeps beard in actual draw list and crown cannot be worn" {
+  s:[1]Creator;ensure(s[..]);change(s[..],8,1);change(s[..],2,1);
+  #assert s[0].beard && s[0].hood && look(s[0]).extra==figs.BP_BEARD;
+  b:[1]figs.Bodies;b[0].ready=true;s[0].source_n=78;b[0].part_word[figs.BP_BEARD]=12345;
+  out:[44*24]f32;n:=scene(s[0],b[..],out[..]);found:=false;
+  for i:0..<n {if out[i*24+7]==12345 {found=true;}}#assert found;
+  s[0].piece=15;change(s[..],10,1);#assert s[0].piece==17;
+  s[0].piece=16;change(s[..],11,1);#assert !s[0].worn[16] && !available(s[0],16);
+  bytes:[64]u8;s[0].worn[16]=true;size:=save(s[0],bytes[..]);t:[1]Creator;
+  #assert restore(t[..],cast(string)bytes[0..<size]) && !t[0].worn[16] && t[0].beard && t[0].hood;
+}
+#test "creator zoom reaches face distance and stays bounded" {
+  s:[1]Creator;wheel(s[..],-10000);#assert s[0].dist>=0.6 && s[0].dist<=0.7;
+  wheel(s[..],10000);#assert s[0].dist==6;
 }
