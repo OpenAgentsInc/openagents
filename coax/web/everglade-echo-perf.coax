@@ -1,0 +1,130 @@
+// Everglade's frame time with Echo on screen (docs/verse/2026-11-06-native-hero-characters.md, R4;
+// GitHub #12988): the page in real time in headless Chrome, its frames timed by the host's frame
+// trace (coax/web/host.js coaxialFrameTrace: each frame's start, whether it was drawn or held back
+// because the GPU had frames in flight, the CPU's part of it), judged by the 60 FPS rule (aethyr/frame-report.coax: more than 30 frames, the
+// 95th percentile at most 17.5 ms, none over 33 ms).
+//   coax/web/tool.sh coax/web/everglade-echo-perf.coax URL SHOT SIZE
+//     SHOT close   URL ?stage=echo: N starts her orbit; its first 1.2 s, the camera within about
+//                  1.3 m of her face
+//     SHOT medium  URL ?stage=echo: the orbit's held last frame, 3.6 m out on her and the player, 5 s
+//     SHOT wide    URL ?raid=preview&stage=echo (#12996): the raid's own camera from her first cast, 5 s;
+//                  URL ?raid=preview alone: the raid with no Echo, 20 s in, to compare
+//     SIZE 1080 (1920x1080) or 720 (1280x720), at dpr 1
+// A frame's time is from one drawn frame to the next, so a frame the host held back (frame admission)
+// counts in the next drawn one's time. Prints one line: the drawn frames, frames a second, the frame
+// time's median, 95th percentile and longest, the frames held back, the CPU's median and 95th
+// percentile, the hair's share, her strand segments drawn and whether the shot holds 60 FPS. Exit 0 when it holds, 1 when it
+// doesn't, 2 on bad usage.
+#load "valley-capture.coax";
+#load "../../aethyr/frame-report.coax";
+
+EP_FRAMES :: 1200;
+
+// The trace's rows, "gap:cpu:drawn,...|probe" (the gap since the last frame and the CPU's part in
+// whole microseconds, drawn 1 or 0), as drawn frames: each one's time since the drawn frame before it
+// (the first drawn frame starts the count and has none) and its CPU part. Returns how many; the rows
+// held back are added to `held`.
+ep_parse :: (t: string, gap: [] int, cpu: [] int, held: [] int) -> int {
+  n := 0; field := 0; v := 0; since := 0; started := false; row_gap := 0; row_cpu := 0;
+  for ch: t {
+    if ch == '|' { break; }
+    if ch >= '0' && ch <= '9' { v = v * 10 + cast(int) (ch - '0'); continue; }
+    if ch == ':' || ch == ',' {
+      if field == 0 { row_gap = v; } else if field == 1 { row_cpu = v; }
+      else {
+        since += row_gap;
+        if v == 1 {
+          if started && n < gap.count { gap[n] = since; cpu[n] = row_cpu; n += 1; }
+          started = true; since = 0;
+        } else if started { held[0] += 1; }
+      }
+      v = 0;
+      if ch == ':' { field += 1; } else { field = 0; }
+    }
+  }
+  return n;
+}
+ep_ms :: (us: int) -> f64 { return cast(f64) us / 1000.0; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 3 { print("usage: everglade-echo-perf URL close|medium|wide 1080|720\n"); return 2; }
+  shot := args_at(a[..], 1); big := args_at(a[..], 2) == "1080";
+  if shot != "close" && shot != "medium" && shot != "wide" { print("everglade-echo-perf: SHOT is close, medium or wide\n"); return 2; }
+  width := ifx big then 1920 else 1280; height := ifx big then 1080 else 720;
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], width, height, "echo-perf-") { return 1; }
+  _ := cdp_call(c[..], "Page.enable", "", 30000);
+  _ = cdp_call(c[..], "Emulation.setDeviceMetricsOverride", ifx big then "{\"width\":1920,\"height\":1080,\"deviceScaleFactor\":1,\"mobile\":false}" else "{\"width\":1280,\"height\":720,\"deviceScaleFactor\":1,\"mobile\":false}", 30000);
+  b: [4096] u8; j: [1] Jo;
+  jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "source");
+  jo_str(j[..], "globalThis.coaxialFrameTrace=true;globalThis.faceErrors=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");
+  jo_end(j[..]); _ = cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(j[..]), 30000);
+  jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], args_at(a[..], 0)); jo_end(j[..]);
+  _ = cdp_call(c[..], "Page.navigate", jo_text(j[..]), 30000);
+  // the town drawn and her pass ready (a 1 GB pack)
+  ready := false; until := proc_now_ms() + 240000;
+  while proc_now_ms() < until {
+    n := cdp_evaluate(c[..], "!!globalThis.coaxial?.ready&&coaxial.sceneReady&&['ready','off'].includes(coaxial.character?.().status??'off')");
+    if n >= 0 && jv_raw(c[0].doc[0], n) == "true" { ready = true; break; }
+    proc_sleep(100);
+  }
+  if !ready { print("FAIL the page (and her pass) never came ready\n"); cdp_close(c[..]); return 1; }
+  proc_sleep(2000);   // settle: her first uploads, the pipelines' first use
+  ms := 5000;
+  if shot == "close" { pressed := fc_key(c[..], "n"); ms = ifx pressed then 1200 else 0; }
+  if shot == "medium" { pressed := fc_key(c[..], "n"); proc_sleep(ifx pressed then 10000 else 0); }
+  on := cdp_evaluate(c[..], "coaxial.character?.().status==='ready'");
+  echo := on >= 0 && jv_raw(c[0].doc[0], on) == "true";
+  // a raid with no Echo (no stage=echo): the raid's own camera 20 s in, for comparison
+  if shot == "wide" && !echo { proc_sleep(20000); }
+  if shot == "wide" && echo {
+    // her first cast (her pass's wind-up share, probe 10, over 0), three minutes at most
+    casting := false; until = proc_now_ms() + 180000;
+    while !casting && proc_now_ms() < until {
+      n := cdp_evaluate(c[..], "(coaxial.character().probe?.[10]??0)>0");
+      casting = n >= 0 && jv_raw(c[0].doc[0], n) == "true";
+      if !casting { proc_sleep(20); }
+    }
+    if !casting { print("FAIL she never cast\n"); cdp_close(c[..]); return 1; }
+  }
+  // the measuring script, with its length in milliseconds
+  script: [1024] u8; k := 0;
+  head := "(async()=>{coaxial.takeFrameTrace();const t0=performance.now();await new Promise(r=>{const f=()=>{if(performance.now()-t0<";
+  tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+(r[7]===0?0:1)).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)})()";
+  for ch: head { script[k] = ch; k += 1; }
+  digits: [8] u8; d := 0; v := ms;
+  while v > 0 { digits[d] = cast(u8) (48 + v % 10); v /= 10; d += 1; }
+  while d > 0 { d -= 1; script[k] = digits[d]; k += 1; }
+  for ch: tail { script[k] = ch; k += 1; }
+  n := cdp_evaluate(c[..], cast(string) script[0..<k]);
+  if n < 0 { print("FAIL %\n", cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  text := jv_raw(c[0].doc[0], n);
+  gap: [EP_FRAMES] int; cpu: [EP_FRAMES] int; held: [1] int;
+  count := ep_parse(text, gap[..], cpu[..], held[..]);
+  f := frame_stats(gap[..], count);
+  p := frame_stats(cpu[..], count);
+  // after the bar: the hair's share (thousandths) / the strands' segments drawn (groom levels, #12988)
+  share := 0; drawn := 0; at := 0; second := false;
+  while at < text.count && text[at] != '|' { at += 1; }
+  for ch: text[lo_int(at + 1, text.count)..<text.count] {
+    if ch == '/' { second = true; }
+    if ch >= '0' && ch <= '9' { if second { drawn = drawn * 10 + cast(int) (ch - '0'); } else { share = share * 10 + cast(int) (ch - '0'); } }
+  }
+  e := cdp_evaluate(c[..], "faceErrors.length===0");
+  clean := e >= 0 && jv_raw(c[0].doc[0], e) == "true";
+  holds := frame_holds(f);
+  print("% %x%: % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
+        shot, width, height, f.n, cast(f64) frame_fps10(f) / 10.0, ep_ms(f.p50), ep_ms(f.p95), ep_ms(f.max), held[0], ep_ms(p.p50), ep_ms(p.p95), share, drawn,
+        ifx holds then "holds 60 FPS" else "misses 60 FPS", ifx clean then "" else " (console errors)");
+  cdp_close(c[..]);
+  return ifx holds && clean then 0 else 1;
+}
+lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+
+#test "A frame held back counts in the next drawn frame's time" {
+  gap: [4] int; cpu: [4] int; held: [1] int;
+  n := ep_parse("0:900:1,16667:1200:1,16700:300:0,16600:1100:1,|250", gap[..], cpu[..], held[..]);
+  #assert n == 2 && gap[0] == 16667 && cpu[0] == 1200 && gap[1] == 33300 && cpu[1] == 1100 && held[0] == 1;
+  #assert ep_parse("", gap[..], cpu[..], held[..]) == 0;
+}

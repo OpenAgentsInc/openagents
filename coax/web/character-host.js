@@ -150,6 +150,7 @@ export function characterPass(deps) {
       if (!x.character_catalog_admit(state, catalog.bytes.length)) throw Error("character pack: catalog refused by Coax");
       x.character_asset_size(state, 1, vertices.bytes.length); x.character_asset_size(state, 2, indices.bytes.length); x.character_asset_size(state, 3, layers.length);
       if (x.character_probe(state, 0) !== 1) throw Error("character pack: parts refused by Coax");
+      groomOrder(x, state, memory, vertices.bytes, indices.bytes);
       // the GPU: her vertex words, indices, layers, palette and block
       const buffer = (data, usage) => { const b = device.createBuffer({ size: Math.ceil(Math.max(data.length, 4) / 4) * 4, usage: usage | GPUBufferUsage.COPY_DST, mappedAtCreation: true }); new Uint8Array(b.getMappedRange()).set(data); b.unmap(); return b; };
       c.vertices = buffer(vertices.bytes, GPUBufferUsage.STORAGE);
@@ -168,6 +169,29 @@ export function characterPass(deps) {
       c.status = "failed"; info.status = "failed"; info.error = error.message;
       if (deps.dev) console.error(`character pass: ${error.message}`);
     }
+  }
+
+  // Groom levels (#12988): her strands' index range ordered group by group in the runtime's order, so
+  // a level draws a prefix. The runtime admits the groups' counts; refused, every strand draws.
+  function groomOrder(x, state, memory, vertexBytes, indexBytes) {
+    const groups = x.character_groom_layout(0), seedWord = x.character_groom_layout(1), stride = x.character_groom_layout(2);
+    const first = x.character_groom_layout(3), count = x.character_groom_layout(4), segments = count / 6;
+    const words = (b) => b.byteOffset % 4 === 0 ? new Uint32Array(b.buffer, b.byteOffset, b.length >> 2) : new Uint32Array(b.slice().buffer);
+    const vw = words(vertexBytes), seeds = new Float32Array(vw.buffer, vw.byteOffset, vw.length), index = words(indexBytes);
+    const group = new Uint16Array(segments), sizes = new Uint32Array(groups);
+    for (let k = 0; k < segments; k++) {
+      if (index[first + k * 6] !== 1000000 + k * 6) return;   // not in segment order: left whole
+      const g = ((Math.round(seeds[seedWord + k * stride] * groups) % groups) + groups) % groups;
+      group[k] = g; sizes[g]++;
+    }
+    const start = new Uint32Array(groups);
+    for (let r = 0, at = 0; r < groups; r++) { const g = x.character_groom_group(r); start[g] = at; at += sizes[g]; }
+    const out = new Uint32Array(count);
+    for (let k = 0; k < segments; k++) { const at = start[group[k]]++ * 6; for (let v = 0; v < 6; v++) out[at + v] = 1000000 + k * 6 + v; }
+    index.set(out, first);
+    if (index.buffer !== indexBytes.buffer) indexBytes.set(new Uint8Array(index.buffer));
+    new Uint32Array(memory.buffer, x.character_groom_groups(state), groups).set(sizes);
+    x.character_groom_admit(state);
   }
 
   async function pipelines(c, code) {
@@ -242,7 +266,7 @@ export function characterPass(deps) {
     }
   };
   // In the world's shadow pass, after its casters (the caller sets its own groups again after).
-  function cast(pass) { const c = current; if (c?.status === "ready") drawEach(pass, c, () => c.caster); }
+  function cast(pass) { const c = current; if (c?.status === "ready") drawEach(pass, c, (blend) => blend === 2 ? null : c.caster); }
   // In the world's main pass, after its opaque geometry: her body, then her strands over it.
   function draw(pass) {
     const c = current; if (c?.status !== "ready") return;
@@ -250,5 +274,5 @@ export function characterPass(deps) {
     drawEach(pass, c, (blend) => blend === 0 ? c.body : null);
     drawEach(pass, c, (blend) => blend === 2 ? c.hair : null);
   }
-  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24, 25, 26, 27].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
+  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
 }

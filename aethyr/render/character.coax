@@ -288,7 +288,6 @@ ch_clip :: (u:[]f32,p:V3)->V4 {return ch_rows(u,SCL_CLIP,p);}
 ch_shadow_place :: (u:[]f32,p:V3)->V3 {q:=v4(p.x,p.y,p.z,1);at:=SCL_SHADOW;return v3(wg_dot4(wg_at4(u,at),q),wg_dot4(wg_at4(u,at+4),q),wg_dot4(wg_at4(u,at+8),q));}
 // Her skinned, morphed place, normal and tangent (Valley Lab's instance 2), or a strand ribbon's.
 ChSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;tangent:V4;material:f32;paint:V4;extra:V4;extra2:V4;}
-ch_hidden :: ()->ChSurface {return ChSurface.{pos=v4(0,0,-2,1),world=v3(0,0,0),normal=v3(0,1,0),uv=v2(0,0),tangent=v4(0,0,0,1),material=26,paint=v4(0,0,1,1),extra=v4(0,0,0,0),extra2=v4(0,0,0,0)};}
 // A point light's share at p: the world's pool, (1 - (d/reach)^2)^2 (Everglade's lamps).
 ch_pool :: (d:f32,reach:f32)->f32 {k:=clampf(1-d*d/fmax(reach*reach,0.0001f32),0.0f32,1.0f32);return k*k;}
 #test "A point light's pool is full at the light and gone at its reach" {#assert ch_pool(0,4)==1 && ch_pool(4,4)==0 && ch_pool(5,4)==0 && abs(ch_pool(2,4)-0.5625)<0.00001;}
@@ -312,7 +311,8 @@ ch_hair_light :: (u:[]f32,albedo:V3,rough:f32,seed:f32,t:V3,world:V3)->ChHairLig
 }
 ch_place :: (id:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChSurface {
  if id>=1000000 {
-  if !cv_groom_kept(id,vertices,u,false) {return ch_hidden();}
+  // groom levels (#12988): the pass draws only the strands its level keeps (a prefix of her strands,
+  // ordered by group at load), so every strand drawn shows, widened by the share kept (|u[2]|)
   g:=cv_groom(id,vertices,u,bones,false);rough:=mix(0.32f32,0.45f32,g.uv.y)*(1+0.1*g.uv.x);
   lit:=ch_hair_light(u,cv_hair_colour(u,g.uv.x,g.uv.y),rough,g.uv.y,wg_normalize3(g.tangent),g.world);
   return ChSurface.{pos=ch_clip(u,g.world),world=g.world,normal=g.normal,uv=g.uv,tangent=v4(g.tangent.x,g.tangent.y,g.tangent.z,1),material=g.material,paint=v4(g.coverage,g.edge,1,1),extra=v4(lit.key.x,lit.key.y,lit.key.z,1),extra2=v4(lit.rest.x,lit.rest.y,lit.rest.z,0)};
@@ -409,10 +409,11 @@ ch_character_fs :: (s:ChSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
  return ch_out(u,ch_haze(u,colour,s.world,cv_scale(v,-1)),0,s.world);
 }
 // Her shadow caster: the world's shadow pass draws it into the world's map, a quarter of the strands
-// at most (cv_groom_share), the strands' coverage and her masks cut as Valley Lab's caster cuts them.
+// at most (the pass's shadow draw, a prefix of her strands; cv_groom_share widens them), the strands'
+// coverage and her masks cut as Valley Lab's caster cuts them.
 ChCaster :: struct {pos:V4;uv:V2;material:f32;coverage:f32;edge:f32;}
 ch_caster_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChCaster {
- if u[SCL_SHADOW_INFO]<0.5 || (id>=1000000 && !cv_groom_kept(id,vertices,u,true)) {return ChCaster.{pos=v4(0,0,-2,1),uv=v2(0,0),material=26,coverage=0,edge=0};}
+ if u[SCL_SHADOW_INFO]<0.5 {return ChCaster.{pos=v4(0,0,-2,1),uv=v2(0,0),material=26,coverage=0,edge=0};}
  world:=v3(0,0,0);uv:=v2(0,0);material:f32=0;coverage:f32=1;edge:f32=0;
  if id>=1000000 {g:=cv_groom(id,vertices,u,bones,true);world=g.world;uv=g.uv;material=g.material;coverage=g.coverage;edge=g.edge;}
  else {at:=cv_vertex_at(id,vertices);m:=cv_morph(id,vertices,bones,u);world=cv_add(cv_at(u,SCL_AT),cv_echo_direction(cv_skin(id,v4(m.position.x,m.position.y,m.position.z,1),vertices,bones),u));uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));material=cast(f32)vertices[at+8];}

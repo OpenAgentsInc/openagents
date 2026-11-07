@@ -24,11 +24,11 @@
 #load "../../aethyr/character/fix.coax";
 #load "../../verse/valley/slay-shot-play.coax";
 
-// The valley-slay pack's parts and Echo's two draws in its index buffer (Valley Lab's canyon_frame):
-// her body, then her strands (drawn blended).
+// The valley-slay pack's parts and Echo's draws in its index buffer (Valley Lab's canyon_frame): her
+// body, her strands (drawn blended) and her strands again for the world's shadow map.
 CHARACTER_INDEX_BYTES :: 73674948;
 CHARACTER_LAYERS :: 35;
-CHARACTER_DRAWS :: 2;
+CHARACTER_DRAWS :: 3;
 CHARACTER_BODY :: [4]u32.[2999985, 522009, 0, 1];
 CHARACTER_GROOM :: [4]u32.[4470303, 13811136, 0, 1];
 CHARACTER_STEP :: 1.0f32 / 64.0f32;
@@ -38,6 +38,18 @@ CHARACTER_HEAD :: 1.6f32;
 // pixel stay about the same below 300 pixels, never under 2%, at most half.
 CHARACTER_HAIR_FULL :: 300.0f32;
 CHARACTER_HAIR_MAX :: 0.5f32;
+// Groom levels (#12988). Her strands come in 251 groups (a strand's group is its curve number mod
+// 251, its seed); the host orders the strands' index range group by group (character_groom_group)
+// at load, so the strands a share keeps are a prefix of the range and the draw runs only those (the
+// whole range ran before, the vertex shader dropping the rest). A share is rounded up to whole groups
+// (0.4% of the strands each) and the kept strands widen by the share actually kept, so her hair's
+// coverage stays the same at every level and a change of share is never more than one group.
+// The shadow map takes at most CHARACTER_GROOM_SHADOW of them, a prefix of the same order.
+CHARACTER_GROOM_GROUPS :: 251;
+CHARACTER_GROOM_STRIDE :: 97;      // the order's step through the groups (251 is prime: every group once)
+CHARACTER_GROOM_SEED :: 13573820 + 8 + 10;   // a segment's seed word (aethyr/render/character.coax's ECHO_GROOM_WORD + 8, then 10)
+CHARACTER_GROOM_SEGMENT_WORDS :: 12;          // words a segment
+CHARACTER_GROOM_SHADOW :: 0.25f32;            // the shadow map's share at most (character.coax's CV_SHADOW_HAIR_SHARE)
 // Echo's idle life: her ARKit blink targets, her face rig's eye joints and her mid spine for the breath.
 // Each eye turns about its local y (yaw) and x (pitch); the spine rocks about its local z.
 ECHO_IDLE_RIG :: CharacterIdleRig.{blink_left = "eyeblinkleft", blink_right = "eyeblinkright", eye_left = "facial_l_eye", eye_right = "facial_r_eye",
@@ -57,6 +69,7 @@ CHARACTER_PACE :: 0.15f32;        // s: the world's pace smoothed over this, so 
 CharacterHost :: struct {
   echo: [1] Character; pack: [1] CharacterPack; idle: [1] CharacterIdle; idle_parts: int;
   block: [SCL_FLOATS] f32; draws: [CHARACTER_DRAWS * 4] u32;
+  groups: [CHARACTER_GROOM_GROUPS] u32; grouped: bool; kept: int; shadow_kept: int;   // the strands' segments per group
   digest: [32] u8; verified: bool; failed: bool; assets: [4] int;
   clock: f32; share: f32; frames: int;
   shot: [1] SlayShot; fix: [1] CharacterFix; fix_parts: int; pace: f32;
@@ -193,16 +206,58 @@ character_frame :: (s: [] CharacterHost, dt: f32) -> int #export_c #effects(all)
   if stepped && moved { character_motion(s, step); }
   s[0].frames += 1;
   s[0].share = character_hair_share(character_head_pixels(b));
-  b[SCL_HAIR] = s[0].share;
+  b[SCL_HAIR] = character_groom_level(s, s[0].share);
   // the morphs run while a face clip or a blink shows
   b[SCL_MORPH] = ifx (e[0].face[0].enabled && e[0].face[0].fade > 0) || s[0].idle[0].weight > 0 then 1.0f32 else 0.0f32;
   b[SCL_RIG] = 0; b[SCL_PROFILE] = 1;
-  for k: 0..<4 { s[0].draws[k] = CHARACTER_BODY[k]; s[0].draws[4 + k] = CHARACTER_GROOM[k]; }
+  for k: 0..<4 { s[0].draws[k] = CHARACTER_BODY[k]; s[0].draws[4 + k] = CHARACTER_GROOM[k]; s[0].draws[8 + k] = CHARACTER_GROOM[k]; }
+  s[0].draws[5] = cast(u32) (s[0].kept * 6); s[0].draws[9] = cast(u32) (s[0].shadow_kept * 6);
   return CHARACTER_DRAWS;
 }
+// The group drawn at place `rank` in the order.
+character_groom_group :: (rank: int) -> int #export_c #effects(all) { return (rank * CHARACTER_GROOM_STRIDE) % CHARACTER_GROOM_GROUPS; }
+// The host's layout for ordering: 0 the groups, 1 the first segment's seed word, 2 words a segment,
+// 3 her strands' first index, 4 their indices.
+character_groom_layout :: (field: int) -> int #export_c #effects(all) {
+  if field == 0 { return CHARACTER_GROOM_GROUPS; }
+  if field == 1 { return CHARACTER_GROOM_SEED; }
+  if field == 2 { return CHARACTER_GROOM_SEGMENT_WORDS; }
+  return cast(int) CHARACTER_GROOM[ifx field == 3 then 0 else 1];
+}
+// A segment's group from its seed ((curve mod 251) / 251).
+character_groom_group_of :: (seed: f32) -> int {
+  g := cast(int) (seed * cast(f32) CHARACTER_GROOM_GROUPS + 0.5);
+  return ((g % CHARACTER_GROOM_GROUPS) + CHARACTER_GROOM_GROUPS) % CHARACTER_GROOM_GROUPS;
+}
+// The host's count of each group's segments, once ordered: they must add up to her strands' range.
+character_groom_admit :: (s: [] CharacterHost) -> bool #export_c #effects(all) {
+  total := 0;
+  for g: 0..<CHARACTER_GROOM_GROUPS { total += cast(int) s[0].groups[g]; }
+  s[0].grouped = total * 6 == cast(int) CHARACTER_GROOM[1];
+  return s[0].grouped;
+}
+// The segments in the first groups of the order that hold at least `share` of them.
+character_groom_prefix :: (s: [] CharacterHost, share: f32) -> int {
+  total := cast(f32) CHARACTER_GROOM[1] / 6; want := share * total; kept := 0;
+  for rank: 0..<CHARACTER_GROOM_GROUPS {
+    if cast(f32) kept >= want { break; }
+    kept += cast(int) s[0].groups[character_groom_group(rank)];
+  }
+  return kept;
+}
+// This frame's level: the strands kept for her and for the shadow map; returns the share actually
+// kept (the block's hair slot: the strands widen by its inverse). Ungrouped, every strand draws.
+character_groom_level :: (s: [] CharacterHost, share: f32) -> f32 {
+  total := cast(int) CHARACTER_GROOM[1] / 6;
+  if !s[0].grouped { s[0].kept = total; s[0].shadow_kept = total; return 1; }
+  s[0].kept = character_groom_prefix(s, share);
+  kept := cast(f32) s[0].kept / cast(f32) total;
+  s[0].shadow_kept = character_groom_prefix(s, ifx kept < CHARACTER_GROOM_SHADOW then kept else CHARACTER_GROOM_SHADOW);
+  return kept;
+}
 e_clip :: (s: [] CharacterHost) -> int { return s[0].echo[0].clip; }
-// 0 opaque, 2 blended over what is behind (host.js's scene blend profiles).
-character_draw_blend :: (index: int) -> int #export_c #effects(all) { return ifx index == 1 then 2 else 0; }
+// 0 opaque, 2 blended over what is behind (host.js's scene blend profiles), 3 the shadow map only.
+character_draw_blend :: (index: int) -> int #export_c #effects(all) { return ifx index == 1 then 2 else ifx index == 2 then 3 else 0; }
 character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(all) {
   if field == 0 { return ifx character_ready(s) then 1 else 0; }
   if field == 1 { return s[0].echo[0].clip; }
@@ -223,6 +278,10 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   if field == 25 { return s[0].fix[0].legs[0].plants + s[0].fix[0].legs[1].plants; }
   if field == 26 { return cast(int) (s[0].pace * 1000); }
   if field == 27 { return e_clip(s); }
+  // groom levels (#12988): her strands grouped, the segments drawn and in the shadow map
+  if field == 28 { return ifx s[0].grouped then 1 else 0; }
+  if field == 29 { return s[0].kept; }
+  if field == 30 { return s[0].shadow_kept; }
   return -1;
 }
 
@@ -241,14 +300,15 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   #assert character_ready(s[..]);
   b := s[0].block[..];
   b[SCL_SIZE + 1] = 720; b[SCL_FOCAL_Y] = 1.25; b[SCL_FORWARD + 2] = 1; b[SCL_AT + 2] = 0.3;   // close
-  #assert character_frame(s[..], 0.02) == CHARACTER_DRAWS && s[0].draws[1] == 522009 && s[0].draws[5] == 13811136;
+  // ungrouped: every strand, unwidened
+  #assert character_frame(s[..], 0.02) == CHARACTER_DRAWS && s[0].draws[1] == 522009 && s[0].draws[5] == 13811136 && s[0].draws[9] == 13811136;
   #assert abs(s[0].clock - (0.02 - CHARACTER_STEP)) < 0.00001;
-  #assert b[SCL_HAIR] == CHARACTER_HAIR_MAX && b[SCL_PROFILE] == 1 && b[SCL_RIG] == 0;
+  #assert b[SCL_HAIR] == 1 && b[SCL_PROFILE] == 1 && b[SCL_RIG] == 0 && s[0].share == CHARACTER_HAIR_MAX;
   b[SCL_AT + 2] = 30;
   _ := character_frame(s[..], 0);
-  #assert b[SCL_HAIR] == 0.02f32;
+  #assert s[0].share == 0.02f32;
   #assert character_hair_share(10) == 0.02f32 && character_hair_share(600) == CHARACTER_HAIR_MAX && abs(character_hair_share(150) - 0.25) < 0.00001;
-  #assert character_draw_blend(0) == 0 && character_draw_blend(1) == 2;
+  #assert character_draw_blend(0) == 0 && character_draw_blend(1) == 2 && character_draw_blend(2) == 3;
   // the world's stage places her (the block's feet and heading), and her body loops its idle clip
   scl_place(b, 2, 0.5, -96, 3.14159265);
   _ = character_frame(s[..], 0);
@@ -257,4 +317,27 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   #assert e[0].mode == CHARACTER_IDLE && e[0].clip == 0 && s[0].idle_parts == 0;
   character_asset(s[..], 2, 4);
   #assert !character_ready(s[..]) && s[0].failed;
+}
+#test "Groom levels draw a prefix of whole groups, at least the share, and widen by the share kept" #steps 100000000 {
+  s: [1] CharacterHost;
+  // the order visits every group once
+  seen: [CHARACTER_GROOM_GROUPS] bool;
+  for r: 0..<CHARACTER_GROOM_GROUPS { seen[character_groom_group(r)] = true; }
+  for g: 0..<CHARACTER_GROOM_GROUPS { #assert seen[g]; }
+  #assert character_groom_group_of(0) == 0 && character_groom_group_of(250.0 / 251.0) == 250 && character_groom_group_of(37.0 / 251.0) == 37;
+  // her strands' segments spread over the groups as her pack spreads them
+  total := cast(int) CHARACTER_GROOM[1] / 6; left := total;
+  for g: 0..<CHARACTER_GROOM_GROUPS { n := ifx g == CHARACTER_GROOM_GROUPS - 1 then left else total / CHARACTER_GROOM_GROUPS; s[0].groups[g] = cast(u32) n; left -= n; }
+  #assert character_groom_admit(s[..]);
+  for share: [3]f32.[0.02, 0.183, 0.5] {
+    kept := character_groom_level(s[..], share);
+    #assert kept >= share && kept < share + 0.005 && s[0].kept == cast(int) (kept * cast(f32) total + 0.5);
+    #assert cast(f32) s[0].shadow_kept / cast(f32) total >= (ifx kept < 0.25 then kept else 0.25) - 0.00001 && s[0].shadow_kept <= s[0].kept;
+  }
+  // a small change of share moves the draw by at most one group
+  a := character_groom_level(s[..], 0.1); ka := s[0].kept;
+  b := character_groom_level(s[..], 0.101); #assert s[0].kept - ka <= total / CHARACTER_GROOM_GROUPS + 1 && b >= a;
+  // a count that doesn't add up to her range is refused, and every strand draws
+  s[0].groups[0] += 1;
+  #assert !character_groom_admit(s[..]) && character_groom_level(s[..], 0.1) == 1 && s[0].kept == total;
 }
