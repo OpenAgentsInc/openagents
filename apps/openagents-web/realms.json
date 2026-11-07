@@ -373,6 +373,15 @@
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/character-creator/assets/glade.pack", "particles:/fivelab-fx.wgsl"]
       } },
+    { "id": "everglade2", "name": "EVERGLADE II", "kind": "open", "listed": false, "orbit": { "r": 0.44, "a": 2.2, "size": 0.02 },
+      "realm": {
+        "slug": "everglade2", "style": "painterly", "clock": "fixed:0.5",
+        "title": "Everglade II", "description": "Walk out of Character Create's glade along one winding path through dense autumn woods to a clearing at its end.",
+        "share": "One path through the woods, from the glade to the clearing.", "alt": "A character on a dirt path through dense green and autumn woods under a cyan sky",
+        "module": "everglade2", "slot": "everglade2",
+        "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
+        "assets": ["pack:/realms/everglade2/assets/everglade2.pack"]
+      } },
     { "id": "fivelab", "name": "5E LAB", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 2.1, "size": 0.02 },
       "realm": {
         "slug": "5e-lab",

@@ -36,6 +36,7 @@ fairy 695000
 # Character Studio adds the full Source wardrobe UI and appearance codec to the existing people producer: 590,971 bytes measured; about 5% headroom.
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
 fivelab 650000
+everglade2 300000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 fivemmo 1630000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 182,826 before, 194,755 after; about 5% room

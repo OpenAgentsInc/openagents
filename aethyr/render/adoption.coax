@@ -138,6 +138,10 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("character-creators","fivelab").tracked_legacy;
   #assert !render_adoption("character-creator","metahumanlab").tracked_legacy;
 }
+#test "Everglade v2 binds its own isolated renderer" {
+  r:=render_adoption("everglade2","everglade2");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("everglade2","fivelab").tracked_legacy && !render_adoption("everglade","everglade2").tracked_legacy;
+}
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
   if slug == "ocarina-lab" && app == "ocarinalab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "animation-lab" && app == "animationlab" { return RenderAdoption.{tracked_legacy = true}; }
@@ -153,6 +157,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   }
   if slug == "anime-lab" && app == "animelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "character-creator" && app == "fivelab" {return RenderAdoption.{tracked_legacy=true};}
+  if slug == "everglade2" && app == "everglade2" {return RenderAdoption.{tracked_legacy=true};}
   if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-experimental" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }

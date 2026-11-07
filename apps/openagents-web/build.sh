@@ -181,6 +181,10 @@ watchtower=$!
 "$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
   "$here/everglade-step.coax" "$a/sticks.coax" &
 fivelab=$!
+# /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/verse/everglade2.md).
+"$here/../../coax/web/wasm.sh" "$here/everglade2.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
+  "$here/everglade-step.coax" "$a/sticks.coax" &
+everglade2=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
 "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &
 metahumanlab=$!
@@ -320,6 +324,7 @@ wait "$deadgears"
 wait "$stair"
 wait "$watchtower"
 wait "$fivelab"
+wait "$everglade2"
 wait "$metahumanlab"
 wait "$splatlab"
 wait "$oneshot"

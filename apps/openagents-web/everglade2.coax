@@ -1,0 +1,365 @@
+// Everglade v2, openagents.com/worlds/everglade2 (docs/verse/everglade2.md): Character Create's glade,
+// one winding path out of it through dense woods, and a clearing at the path's end. You walk your own
+// character (the one Character Create saved) on Everglade's controller and follow camera. Nothing
+// else: no town, gate, people or HUD.
+//
+// The land is verse/everglade2/forest.coax, the planting verse/everglade2/plant.coax, the pack
+// verse/tools/assets/everglade2_pack.coax, and the passes gpu/everglade2.coax. everglade2-face.c steps
+// the controller (everglade-step.coax) as fivelab-face.c does; this unit says what is round you,
+// where you may stand, and what is drawn.
+#load "charactercreator.coax" as cc;
+#load "fivelab-bodies.coax" as figs;
+#load "everglade-move-types.coax";
+#load "../../verse/everglade2/plant.coax";
+
+E2_VERTEX_FLOATS :: 16;
+E2_MAX_VERTICES :: 4096;      // strokes: none are drawn yet
+E2_UNIFORM_FLOATS :: 104;     // 26 vec4s (gpu/everglade2.bindings)
+E2_RECORDS :: 32;             // the objects store: the glade, its grass, your character's parts
+E2_DRAWS :: 256;              // draws a pass at most
+E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
+E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
+E2_BUCKETS :: E2_KITS * E2_LODS;
+E2_SHADOW_REACH :: 40.0;      // metres from the shadow map's centre a piece still casts
+E2_NEAR_BODIES :: 24;         // trunks the controller walks round
+E2_LOOK_DRAG :: 0.0055; E2_WHEEL_ZOOM :: 0.006;
+HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
+HOLD_JUMP :: 1024; HOLD_ALL :: 2047;
+KEY_SHIFT :: -13; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
+
+E2 :: struct {
+  creator: [1] cc.Creator;
+  bodies: [1] figs.Bodies;
+  items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
+  kit_first: [E2_BUCKETS] int; kit_count: [E2_BUCKETS] int; kits: bool;
+  records: [E2_RECORDS * 24] f32;
+  inst: [E2_VISIBLE * E2_ITEM_FLOATS] f32; inst_n: int;
+  draws: [E2_DRAWS * 4] u32; draw_n: int;
+  shadow: [E2_DRAWS * 4] u32; shadow_n: int;
+  frame: [16] f32;
+  move_bodies: [E2_NEAR_BODIES * 7] f32;
+  orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
+  held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
+  you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32;
+  anim: [1] figs.BdAnim;
+  clock: f32; width: f32; height: f32; k: f32 = 1;
+  eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
+  shade: [3] f32;
+}
+
+// ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
+e2_catalog :: (s: [] E2, text: string) #export_c #effects(all) {
+  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text);
+  for b: 0..<E2_BUCKETS { s[0].kit_first[b] = 0; s[0].kit_count[b] = 0; }
+  at := 0; any := false;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    row := text[at..<e]; at = e + 1;
+    if row.count < 10 || row[0..<6] != "C e2/k" { continue; }
+    p := 6; kit := 0; while p < row.count && row[p] >= '0' && row[p] <= '9' { kit = kit * 10 + cast(int)(row[p] - '0'); p += 1; }
+    if p >= row.count || row[p] != '/' { continue; }
+    lod := cast(int)(row[p + 1] - '0'); ne := figs.bd_word_end(row, p);
+    if kit < 0 || kit >= E2_KITS || lod < 0 || lod >= E2_LODS { continue; }
+    first := figs.bd_whole_at(row, ne); q := figs.bd_word_end(row, ne + 1); count := figs.bd_whole_at(row, q);
+    if first >= 0 && count > 0 { s[0].kit_first[kit * E2_LODS + lod] = first; s[0].kit_count[kit * E2_LODS + lod] = count; any = true; }
+  }
+  s[0].kits = any;
+}
+e2_bake :: (d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out); }
+e2_layers_side :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].width >= 840 * s[0].k then 1024 else 512; }
+// Your saved character (message 16, the browser's own copy) or a kept appearance (4); the page's
+// facts (600): ?at=METRES starts you that far down the path (a shot's or a test's way in).
+E2_HOST_PAGE :: 600;
+e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
+  if kind == 16 { cc.load_player(s[0].creator[..], t); return; }
+  if kind == 4 { ok := cc.restore(s[0].creator[..], t); return; }
+  if kind == E2_HOST_PAGE { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } }
+}
+#test "a page's ?at= says how far down the path you start" {
+  #assert e2_query_at("url=http://127.0.0.1:8863/worlds/everglade2?at=120\n") == 120;
+  #assert e2_query_at("url=/worlds/everglade2?x=1&at=45.5&y=2\n") == 45;
+  #assert e2_query_at("url=/worlds/everglade2\n") == 0 && e2_query_at("url=/worlds/everglade2?cat=9\n") == 0;
+}
+e2_query_at :: (t: string) -> int {
+  for i: 0..<t.count - 3 {
+    if t[i + 1] == 'a' && t[i + 2] == 't' && t[i + 3] == '=' && (t[i] == '?' || t[i] == '&') {
+      v := 0; j := i + 4; while j < t.count && t[j] >= '0' && t[j] <= '9' { v = v * 10 + cast(int)(t[j] - '0'); j += 1; }
+      return ifx v > 520 then 520 else v;
+    }
+  }
+  return 0;
+}
+
+// ---- where you may stand: the glade, the path's corridor, the clearing
+#test "the catalog's kit rows fill their (kit, level) buckets" {
+  s: [1] E2;
+  e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\nC e2/k0/0 100 30 250 100 8 0\nC e2/k0/2 130 12 250 100 8 0\nC e2/k32/0 200 6 250 100 8 0\nC e2/k33/0 1 3 250 100 8 0\n");
+  #assert s[0].kits && s[0].kit_first[0] == 100 && s[0].kit_count[0] == 30 && s[0].kit_count[2] == 12 && s[0].kit_count[1] == 0;
+  #assert s[0].kit_first[32 * E2_LODS] == 200 && s[0].kit_count[32 * E2_LODS] == 6;
+}
+#test "you may stand in the glade, along the path and in the clearing, not deep in the woods" {
+  #assert e2_may_stand(0, 0) && e2_may_stand(-10, -20) && e2_may_stand(e2_road_x(-200), -200) && e2_may_stand(e2_clear_x(), E2_CLEAR_Z);
+  #assert !e2_may_stand(e2_road_x(-200) + 40, -200) && !e2_may_stand(0, 40) && !e2_may_stand(150, -300);
+}
+e2_may_stand :: (x: f32, z: f32) -> bool {
+  if x > -28 && x < 26 && z < 6 && z > -40 { return true; }
+  if z <= -20 && z > E2_CLEAR_Z - E2_CLEAR_R && e2_road_dist(x, z) < f32(E2_WALK) { return true; }
+  return e2_clearing(x, z) > 0.15;
+}
+e2_keep :: (s: [] E2, x: f32, z: f32) -> figs.Point #export_c #effects(all) {
+  if e2_may_stand(x, z) { return figs.v3(x, 0, z); }
+  if e2_may_stand(x, s[0].you_z) { return figs.v3(x, 0, s[0].you_z); }
+  if e2_may_stand(s[0].you_x, z) { return figs.v3(s[0].you_x, 0, z); }
+  return figs.v3(s[0].you_x, 0, s[0].you_z);
+}
+
+// ---- the controller's half of a step (everglade2-face.c)
+hold_bit :: (key: int) -> int {
+  if key == 'w' || key == 'W' { return HOLD_W; } if key == 'a' || key == 'A' { return HOLD_A; }
+  if key == 's' || key == 'S' { return HOLD_S; } if key == 'd' || key == 'D' { return HOLD_D; }
+  if key == KEY_LEFT { return HOLD_LEFT; } if key == KEY_RIGHT { return HOLD_RIGHT; }
+  if key == KEY_UP { return HOLD_UP; } if key == KEY_DOWN { return HOLD_DOWN; }
+  if key == '=' || key == '+' { return HOLD_IN; } if key == '-' || key == '_' { return HOLD_OUT; }
+  return 0;
+}
+axis :: (held: int, plus: int, minus: int) -> f32 { a: f32 = 0; if held & plus != 0 { a += 1; } if held & minus != 0 { a -= 1; } return a; }
+e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
+  h := s[0].held;
+  return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
+                   theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
+}
+// The trunks and boulders round you, as capsules on the controller's level ground.
+e2_move_world :: (s: [] E2, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
+  w: EgMoveWorld; w.deck = true; n := 0;
+  ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
+  for dj: -1..<2 { for di: -1..<2 {
+    i := ci + di; j := cj + dj;
+    if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z || !s[0].plant_done { continue; }
+    c := j * E2_CELLS_X + i;
+    for q: s[0].first[c]..<s[0].first[c + 1] {
+      kit := cast(int) s[0].kinds[q];
+      if kit >= E2_TREES && kit != 23 && kit != 24 { continue; }
+      o := q * E2_ITEM_FLOATS; px := s[0].items[o]; pz := s[0].items[o + 2];
+      if abs(px - x) > 5 || abs(pz - z) > 5 || n >= E2_NEAR_BODIES { continue; }
+      r := ifx kit < E2_TREES then 0.30 * s[0].items[o + 5] + 0.12 else 1.1 * s[0].items[o + 5];
+      m := n * 7;
+      s[0].move_bodies[m] = px; s[0].move_bodies[m + 1] = 0.3; s[0].move_bodies[m + 2] = pz;
+      s[0].move_bodies[m + 3] = px; s[0].move_bodies[m + 4] = 1.6; s[0].move_bodies[m + 5] = pz; s[0].move_bodies[m + 6] = r;
+      n += 1;
+    }
+  }}
+  w.bodies = n; return w;
+}
+e2_move_bodies :: (s: [] E2) -> [] f32 #export_c #effects(all) { return s[0].move_bodies[..]; }
+// Where the step left you: the controller walks a level plane, the land lifts you onto the ground.
+e2_you :: (s: [] E2, x: f32, y: f32, z: f32, face: f32) #export_c #effects(all) {
+  s[0].you_x = x; s[0].jump = y; s[0].you_z = z; s[0].you_face = face; s[0].you_y = e2_height(x, z) + y;
+}
+e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
+  if s[0].placed { return false; }
+  // the glade's spot, or ?at='s point on the path, facing on along it
+  z := s[0].start_z; x := ifx z < 0 then e2_road_x(z) else 0.0f32;
+  face := ifx z < 0 then atan2(e2_road_x(z - 2) - x, -2.0f32) else 3.14159265f32;
+  s[0].placed = true; s[0].you_x = x; s[0].you_z = z; s[0].you_face = face; s[0].you_y = e2_height(x, z);
+  s[0].orbit = figs.verse_orbit_start(figs.v3(x, s[0].you_y, z), face);
+  return true;
+}
+
+// ---- input
+e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
+  if key == ' ' { s[0].held |= HOLD_JUMP; return true; }
+  if key == KEY_SHIFT { s[0].shift = true; return true; }
+  h := hold_bit(key); if h != 0 { s[0].held |= h; return true; }
+  return false;
+}
+e2_key_up :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
+  if key == KEY_SHIFT { s[0].shift = false; }
+  h := ifx key == ' ' then HOLD_JUMP else hold_bit(key);
+  s[0].held = s[0].held & (HOLD_ALL - h); return h != 0;
+}
+e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = false; s[0].dragging = false; }
+// A mouse drag looks round (a finger is the face's: aethyr/sticks.coax).
+e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  if kind != 0 { return false; }
+  if phase == 0 { s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
+  if phase == 1 && s[0].dragging {
+    s[0].look_yaw -= (x - s[0].drag_x) / s[0].k * f32(E2_LOOK_DRAG); s[0].look_pitch -= (y - s[0].drag_y) / s[0].k * f32(E2_LOOK_DRAG);
+    s[0].drag_x = x; s[0].drag_y = y; return true;
+  }
+  if phase == 2 { s[0].dragging = false; return true; }
+  return false;
+}
+e2_wheel :: (s: [] E2, dy: f32) -> bool #export_c #effects(all) {
+  d := ifx dy > 400 then 400.0f32 else ifx dy < -400 then -400.0f32 else dy;
+  s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, d * f32(E2_WHEEL_ZOOM)); return true;
+}
+e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
+  s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
+  if zoom != 0 { s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, zoom * f32(E2_WHEEL_ZOOM)); }
+}
+
+// ---- the frame: the follow camera, the uniforms
+e2_follow :: (s: [] E2, dt: f32) {
+  o := figs.verse_orbit_look(s[0].orbit, s[0].look_yaw, s[0].look_pitch);
+  s[0].look_yaw = 0; s[0].look_pitch = 0;
+  h := s[0].held;
+  o = figs.verse_orbit_keys(o, axis(h, HOLD_LEFT, HOLD_RIGHT), axis(h, HOLD_UP, HOLD_DOWN), dt);
+  if axis(h, HOLD_OUT, HOLD_IN) != 0 { o = figs.verse_orbit_zoom(o, axis(h, HOLD_OUT, HOLD_IN) * 6 * (ifx dt < 0.1 then dt else 0.1f32)); }
+  feet := figs.v3(s[0].you_x, s[0].you_y, s[0].you_z);
+  sp := s[0].anim[0].speed;
+  o = figs.verse_orbit_follow(o, feet, s[0].you_face, sp > 0.6, dt);
+  ray := figs.verse_orbit_ray(o);
+  // kept above the ground: the ray's samples each clear the land under them
+  room := ray.far;
+  for i: 1..<9 {
+    t := room * f32(i) / 8;
+    px := ray.from.x + ray.dir.x * t; py := ray.from.y + ray.dir.y * t; pz := ray.from.z + ray.dir.z * t;
+    if py < e2_height(px, pz) + 0.35 { room = t * 0.9; break; }
+  }
+  s[0].orbit = figs.verse_orbit_limit(o, room, dt);
+}
+e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if u.count < E2_UNIFORM_FLOATS || w < 1 || h < 1 { return 0; }
+  s[0].width = w; s[0].height = h; s[0].k = ifx dpr < 0.5 then 0.5f32 else dpr;
+  cc.ensure(s[0].creator[..]);
+  if !s[0].plant_done { s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true; }
+  step := ifx still || dt <= 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].clock += step;
+  e2_follow(s, step);
+  shot := figs.verse_orbit_shot(s[0].orbit);
+  f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
+  l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
+  r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
+  up := [3]f32.[r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+  fy := (w / h) * 1.25; fy = ifx fy < 0.95 then 0.95f32 else ifx fy > 1.9 then 1.9f32 else fy;
+  s[0].focal = fy * h / 2;
+  s[0].eye = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z]; s[0].fwd = f; s[0].right = r; s[0].up = up;
+  // the key light's map follows you, in 2 m steps so it holds still under a slow walk
+  cx := floor(s[0].you_x / 2 + 0.5) * 2; cz := floor(s[0].you_z / 2 + 0.5) * 2;
+  s[0].shade = [3]f32.[cx, e2_height(cx, cz) + 2, cz];
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = w; u[1] = h; u[2] = s[0].clock; u[3] = 1; u[4] = s[0].k; u[10] = 2; u[11] = 1;
+  for q: 0..<3 { u[16 + q] = s[0].eye[q]; u[20 + q] = f[q]; u[24 + q] = r[q]; u[28 + q] = up[q]; u[44 + q] = s[0].shade[q]; }
+  u[19] = s[0].focal; u[23] = w * 0.5; u[27] = h * 0.5;
+  u[32] = -0.45; u[33] = 0.78; u[34] = -0.42;
+  u[48] = f32(s[0].creator[0].glade_word);
+  return 0;
+}
+
+// ---- the scene: the glade's records and draws, your character, the kit pieces in view
+e2_rec_clear :: (s: [] E2, n: int) { for k: 0..<24 { s[0].records[n * 24 + k] = 0; } }
+e2_draw :: (d: [] u32, n: int, first: int, count: int, base: int, instances: int) -> int {
+  if n >= E2_DRAWS || count <= 0 || instances <= 0 { return n; }
+  d[n * 4] = cast(u32) first; d[n * 4 + 1] = cast(u32) count; d[n * 4 + 2] = cast(u32) base; d[n * 4 + 3] = cast(u32) instances; return n + 1;
+}
+// Whether a piece at p (its reach r) is in front of the eye and inside the frame.
+e2_in_view :: (s: [] E2, x: f32, y: f32, z: f32, r: f32) -> bool {
+  vx := x - s[0].eye[0]; vy := y - s[0].eye[1]; vz := z - s[0].eye[2];
+  d := vx * s[0].fwd[0] + vy * s[0].fwd[1] + vz * s[0].fwd[2];
+  if d < -r { return false; }
+  sx := abs(vx * s[0].right[0] + vy * s[0].right[1] + vz * s[0].right[2]);
+  sy := abs(vx * s[0].up[0] + vy * s[0].up[1] + vz * s[0].up[2]);
+  reach := (d + r) / s[0].focal;
+  return sx <= reach * s[0].width * 0.5 + r * 1.2 && sy <= reach * s[0].height * 0.5 + r * 1.2;
+}
+// Each visible piece into its (kit, level) bucket's run of the instance store; one draw a bucket.
+// `cast` lists the pieces round the shadow map's centre instead, at level 1.
+e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
+  n := n0;
+  if !s[0].plant_done || !s[0].kits { return n; }
+  counts: [E2_BUCKETS] int; start: [E2_BUCKETS] int;
+  ex := ifx casting then s[0].shade[0] else s[0].eye[0]; ez := ifx casting then s[0].shade[2] else s[0].eye[2];
+  for pass: 0..<2 {
+    if pass == 1 {
+      at := s[0].inst_n;
+      for b: 0..<E2_BUCKETS { start[b] = at; at += counts[b]; counts[b] = 0; }
+      if at > E2_VISIBLE { return n; }
+    }
+    for c: 0..<E2_CELLS_X * E2_CELLS_Z {
+      i := c % E2_CELLS_X; j := c / E2_CELLS_X;
+      mx := e2_cell_x(i) + f32(E2_CELL) * 0.5; mz := e2_cell_z(j) - f32(E2_CELL) * 0.5;
+      far := ifx casting then f32(E2_SHADOW_REACH) else 300.0f32;
+      dx := mx - ex; dz := mz - ez;
+      if dx * dx + dz * dz > (far + 12) * (far + 12) { continue; }
+      if !casting && !e2_in_view(s, mx, e2_height(mx, mz) + 6, mz, 20) { continue; }
+      for q: s[0].first[c]..<s[0].first[c + 1] {
+        kit := cast(int) s[0].kinds[q]; o := q * E2_ITEM_FLOATS;
+        px := s[0].items[o]; py := s[0].items[o + 1]; pz := s[0].items[o + 2];
+        qx := px - ex; qz := pz - ez; dd := sqrt(qx * qx + qz * qz);
+        lod := 0;
+        if casting {
+          if kit >= 25 || dd > f32(E2_SHADOW_REACH) { continue; }
+          lod = ifx kit < E2_TREES then 1 else 0;
+        } else {
+          if dd > E2_KIT_FAR[kit] { continue; }
+          reach := ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 2.5f32;
+          if !e2_in_view(s, px, py + reach * 0.5, pz, reach) { continue; }
+          if kit < E2_TREES { lod = ifx dd < f32(E2_LOD1) then 0 else ifx dd < f32(E2_LOD2) then 1 else 2; }
+        }
+        b := kit * E2_LODS + lod;
+        if s[0].kit_count[b] <= 0 { continue; }
+        if pass == 1 { at := (start[b] + counts[b]) * E2_ITEM_FLOATS; for k: 0..<E2_ITEM_FLOATS { s[0].inst[at + k] = s[0].items[o + k]; } }
+        counts[b] += 1;
+      }
+    }
+  }
+  for b: 0..<E2_BUCKETS { if counts[b] > 0 { n = e2_draw(d, n, s[0].kit_first[b], s[0].kit_count[b], E2_KIT_BASE + start[b], counts[b]); } }
+  s[0].inst_n = start[E2_BUCKETS - 1] + counts[E2_BUCKETS - 1];
+  return n;
+}
+e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
+  c := s[0].creator[0]; b := s[0].bodies[..];
+  s[0].draw_n = 0; s[0].shadow_n = 0; s[0].inst_n = 0;
+  if !b[0].ready || !cc.catalog_ready(c) || c.glade_count <= 0 { return 0; }
+  n := 0; sn := 0;
+  // record 0 the glade, 1 to 3 its grass (their base instance (record + 1) << 16: cg_instanced_vs)
+  e2_rec_clear(s, 0); s[0].records[7] = f32(c.glade_word); s[0].records[15] = 16;
+  n = e2_draw(s[0].draws[..], n, c.glade_first, c.glade_count, 0, 1);
+  near_glade := s[0].shade[2] > -75;
+  if near_glade { sn = e2_draw(s[0].shadow[..], sn, c.glade_first, c.glade_count, 0, 1); }
+  rec := 1;
+  for gi: 0..<c.grass_groups {
+    g := c.grass[gi]; e2_rec_clear(s, rec);
+    s[0].records[rec * 24] = f32(g.word); s[0].records[rec * 24 + 7] = f32(c.glade_word); s[0].records[rec * 24 + 15] = 17;
+    n = e2_draw(s[0].draws[..], n, g.first, g.count, (rec + 1) << 16, g.n); rec += 1;
+  }
+  // your character: the look Character Create saved, walking as the controller moves you
+  a := s[0].anim[..];
+  a[0].on = true; a[0].x = s[0].you_x; a[0].z = s[0].you_z; a[0].y = s[0].you_y; a[0].yaw = s[0].you_face; a[0].own = true;
+  figs.bd_step(a, s[0].clock, ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32);
+  b[0].now = s[0].clock;
+  l := cc.look(c); l.variant = 0;
+  out := s[0].records[..];
+  for i: 0..<40 { if c.worn[i] && cc.available(c, i) && c.source_count[i + (ifx c.female then 0 else 40)] > 0 && rec < E2_RECORDS {
+    p := i + ifx c.female then 0 else 40;
+    figs.bd_record(a[0], l, c.source_word[p], false, s[0].clock, out, rec); out[rec * 24 + 11] = f32(c.variant);
+    n = e2_draw(s[0].draws[..], n, c.source_first[p], c.source_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, c.source_first[p], c.source_count[p], rec, 1); rec += 1;
+  } }
+  parts: [3] int; pn := 0;
+  if !c.worn[7] { parts[pn] = l.head; pn += 1; }
+  if l.hair >= 0 && !c.worn[7] && !c.worn[26] { parts[pn] = l.hair; pn += 1; }
+  if l.extra == figs.BP_BEARD && !c.worn[7] { parts[pn] = l.extra; pn += 1; }
+  for i: 0..<pn { if rec < E2_RECORDS {
+    p := parts[i]; figs.bd_record(a[0], l, b[0].part_word[p], false, s[0].clock, out, rec);
+    n = e2_draw(s[0].draws[..], n, b[0].part_first[p], b[0].part_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, b[0].part_first[p], b[0].part_count[p], rec, 1); rec += 1;
+  } }
+  for i: 1 + c.grass_groups..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
+  n = e2_pieces(s, s[0].draws[..], n, false);
+  sn = e2_pieces(s, s[0].shadow[..], sn, true);
+  s[0].draw_n = n; s[0].shadow_n = sn;
+  return n;
+}
+e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) { return E2_RECORDS * 24 * 4; }
+e2_inst_bytes :: (s: [] E2) -> int #export_c #effects(all) { return s[0].inst_n * E2_ITEM_FLOATS * 4; }
+coaxial_e2_max_vertices :: () -> int #export_c #effects(all) { return E2_MAX_VERTICES; }
+coaxial_e2_vertex_floats :: () -> int #export_c #effects(all) { return E2_VERTEX_FLOATS; }
+coaxial_e2_uniform_floats :: () -> int #export_c #effects(all) { return E2_UNIFORM_FLOATS; }
+// Read-only observations for headless checks (coaxial_field_probe): 0 draws, 1 shadow draws, 2 kit
+// pieces stored, 3 pieces planted, 4 kit rows read, 5 your z in centimetres.
+e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
+  if field == 0 { return s[0].draw_n; } if field == 1 { return s[0].shadow_n; } if field == 2 { return s[0].inst_n; }
+  if field == 3 { return s[0].planted; }
+  if field == 4 { n := 0; for b: 0..<E2_BUCKETS { if s[0].kit_count[b] > 0 { n += 1; } } return n; }
+  if field == 5 { return cast(int)(s[0].you_z * 100); }
+  return -1;
+}

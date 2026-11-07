@@ -1,0 +1,143 @@
+// Everglade v2's planting (docs/verse/everglade2.md): which Stylized Nature kit pieces stand where
+// in the woods round the path and the clearing, as a pure function of the land
+// (verse/everglade2/forest.coax). The pack tool (verse/tools/assets/everglade2_pack.coax) packs
+// the pieces named here; the page (apps/openagents-web/everglade2.coax) plants them at load and
+// draws the ones in view. The glade's own composition stays in the glade's pack mesh.
+#load "forest.coax";
+
+// The kit: the pack's templates, in this order. Trees have three levels of detail (0 whole, 1 the
+// crown and a plain trunk, 2 a third of the crown's cards, larger); the rest one.
+E2_KITS :: 36;
+E2_KIT_NAME :: [36] string.["CommonTree_1","CommonTree_2","CommonTree_3","CommonTree_4","CommonTree_5",
+ "Birch_1","Birch_2","Birch_3","Birch_4","Birch_5","Pine_1","Pine_2","Pine_3","Pine_4","Pine_5",
+ "Bush_Common","Bush_Common_Flowers","Bush_Long_1","Fern_1","Fern_2",
+ "Rock_Medium_1","Rock_Medium_2","Rock_Medium_3","Rock_Big_1","Rock_Big_2",
+ "Flower_3_Group","Flower_2_Group","Flower_4_Group","Mushroom_Common","Plant_1","Plant_3","Clover_1","Pebble_Round_1",
+ "Grass_Common_Short","Grass_Wide_Short","Grass_Wispy_Short"];
+E2_TREES :: 15;          // kits 0 to 14 are trees
+E2_GRASS :: 33;          // kits 33 to 35 are the glade's grass, as tufts
+E2_LODS :: 3;
+// How far each kit is drawn (metres), and a tree's levels of detail start.
+E2_KIT_FAR :: [36] f32.[300,300,300,300,300,300,300,300,300,300,300,300,300,300,300,
+ 95,95,95,80,80, 110,110,110,240,240, 45,45,45,26,45,55,40,26, 42,42,42];
+E2_LOD1 :: 42.0; E2_LOD2 :: 125.0;
+E2_CELL :: 16.0;         // metres a planting cell
+E2_CELLS_X :: 27; E2_CELLS_Z :: 46;
+E2_CELL_X0 :: -200.0; E2_CELL_Z0 :: 80.0;   // the first cell's west and north... south edge: cells run to -z
+E2_ITEMS :: 110000;      // the most kit pieces planted
+E2_ITEM_FLOATS :: 8;     // x y z yaw, vertical scale, horizontal scale, red*65280+green*255 (bytes), blue (+2: grass)
+
+#test "the woods are planted, dense beside the path, none on it or in the clearing" #steps 4000000000 {
+ f:[E2_ITEMS*E2_ITEM_FLOATS]f32;k:[E2_ITEMS]u8;first:[E2_CELLS_X*E2_CELLS_Z+1]int;
+ n:=e2_plant(f[..],k[..],first[..]);#assert n>20000 && n<E2_ITEMS && first[E2_CELLS_X*E2_CELLS_Z]==n;
+ trees:=0;near:=0;
+ for i:0..<n {x:=f[i*8];z:=f[i*8+2];#assert e2_path(x,z)<=0.35;
+  if int(k[i])<E2_TREES {trees+=1;#assert e2_road_dist(x,z)>2.5 && e2_clearing(x,z)<0.5;if e2_road_dist(x,z)<9 && z< -60 && z>E2_CLEAR_Z+E2_CLEAR_R {near+=1;}}}
+ #assert trees>8000;#assert near>200;
+}
+e2_tint :: (out:[]f32,o:int,r:f32,g:f32,b:f32) {out[o+6]=floor(r*255+0.5)*256+floor(g*255+0.5);out[o+7]=b;}
+e2_put :: (out:[]f32,kinds:[]u8,n:int,kit:int,x:f32,y:f32,z:f32,yaw:f32,sv:f32,sh:f32,c:[3]f32)->int {
+ if n>=E2_ITEMS {return n;}
+ o:=n*E2_ITEM_FLOATS;out[o]=x;out[o+1]=y;out[o+2]=z;out[o+3]=yaw;out[o+4]=sv;out[o+5]=sh;e2_tint(out,o,c[0],c[1],c[2]);kinds[n]=cast(u8)kit;return n+1;
+}
+// A cell's west x and north z.
+e2_cell_x :: (i:int)->f32 {return f32(E2_CELL_X0)+f32(i)*f32(E2_CELL);}
+e2_cell_z :: (j:int)->f32 {return f32(E2_CELL_Z0)-f32(j)*f32(E2_CELL);}
+// Every cell's pieces, cell by cell (first[c] the first of cell c = j * E2_CELLS_X + i); the count.
+e2_plant :: (out:[]f32,kinds:[]u8,first:[]int)->int {
+ n:=0;
+ for j:0..<E2_CELLS_Z {for i:0..<E2_CELLS_X {c:=j*E2_CELLS_X+i;first[c]=n;n=e2_plant_cell(out,kinds,n,i,j);}}
+ first[E2_CELLS_X*E2_CELLS_Z]=n;return n;
+}
+E2_TREE_STEP :: 3.1;
+e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
+ n:=n0;x0:=e2_cell_x(i);z0:=e2_cell_z(j);cs:=f32(E2_CELL);seed:=f32(i*131+j*977);
+ // trees on a jittered grid
+ steps:=int(cs/f32(E2_TREE_STEP));
+ for a:0..<steps {for b:0..<steps {
+  h:=seed+f32(a*7+b*13);
+  x:=x0+(f32(a)+0.15+0.7*cg_hash(h,1))*f32(E2_TREE_STEP);z:=z0-(f32(b)+0.15+0.7*cg_hash(h,2))*f32(E2_TREE_STEP);
+  if x<E2_WEST+4 || x>E2_EAST-4 || z<E2_FAR+4 || z>E2_BACK-4 {continue;}
+  f:=e2_forest(x,z);if cg_hash(h,3)>f*0.92 {continue;}
+  rd:=e2_road_dist(x,z);if rd<2.6 || e2_path(x,z)>0.05 || e2_clearing(x,z)>0.3 {continue;}
+  au:=e2_autumn(x,z);r:=cg_hash(h,4);v:=int(cg_hash(h,5)*4.999);big:=ifx rd>25 then 1.15f32 else 1.0f32;
+  sz:=cg_hash(h,6);yaw:=cg_hash(h,7)*6.283;stretch:=1+cg_hash(h,8)*0.3;
+  kit:=0;c:=[3]f32.[0.50,0.80,0.10];s:f32=1;
+  greens:=[4][3]f32.[[3]f32.[0.50,0.80,0.10],[3]f32.[0.42,0.72,0.12],[3]f32.[0.58,0.82,0.14],[3]f32.[0.36,0.66,0.10]];
+  golds:=[5][3]f32.[[3]f32.[1.0,0.22,0.025],[3]f32.[1.0,0.55,0.09],[3]f32.[1.0,0.72,0.18],[3]f32.[1.0,0.65,0.12],[3]f32.[1.0,0.30,0.035]];
+  pines:=[3][3]f32.[[3]f32.[0.20,0.45,0.12],[3]f32.[0.26,0.52,0.14],[3]f32.[0.16,0.40,0.11]];
+  pick:=int(cg_hash(h,9)*3.999);
+  if au>0.5 {
+   if r<0.5 {kit=5+v;c=golds[int(cg_hash(h,9)*4.999)];s=0.38+sz*0.24;}
+   else if r<0.85 {kit=v;c=golds[1+int(cg_hash(h,9)*2.999)];s=0.55+sz*0.35;}
+   else {kit=10+v;c=pines[pick%3];s=0.6+sz*0.45;}
+  } else {
+   if r<0.5 {kit=v;c=greens[pick];s=0.55+sz*0.35;}
+   else if r<0.8 {kit=10+v;c=pines[pick%3];s=0.6+sz*0.45;}
+   else {kit=5+v;c=ifx cg_hash(h,10)<0.35 then golds[2] else [3]f32.[0.62,0.82,0.18];s=0.38+sz*0.24;}
+  }
+  s=s*big;
+  n=e2_put(out,kinds,n,kit,x,e2_height(x,z)-0.08,z,yaw,s*stretch,s,c);
+ }}
+ // the understory: flowers, ferns, bushes, rocks, mushrooms and plants
+ for q:0..<72 {
+  h:=seed*1.37+f32(q)*3.1+0.5;
+  x:=x0+cg_hash(h,11)*cs;z:=z0-cg_hash(h,12)*cs;
+  if x<E2_WEST+2 || x>E2_EAST-2 || z<E2_FAR+2 || z>E2_BACK-2 {continue;}
+  o:=e2_outside(x,z);if o<0.2 || e2_path(x,z)>0.3 {continue;}
+  rd:=e2_road_dist(x,z);f:=e2_forest(x,z);cl:=e2_clearing(x,z);au:=e2_autumn(x,z);
+  verge:=rd>1.6 && rd<6 && cl<0.5;
+  p:=ifx verge then 0.95f32 else ifx cl>0.5 then 0.75f32 else ifx f>0.2 then 0.45f32 else 0.2f32;
+  if cg_hash(h,13)>p {continue;}
+  r:=cg_hash(h,14);sz:=cg_hash(h,15);yaw:=cg_hash(h,16)*6.283;y:=e2_height(x,z);
+  green:=[3]f32.[0.36,0.80,0.08];fern:=ifx cg_hash(h,17)<0.5 then [3]f32.[0.32,0.65,0.045] else [3]f32.[0.23,0.53,0.035];
+  orange:=ifx cg_hash(h,17)<0.5 then [3]f32.[1,0.30,0.03] else [3]f32.[1,0.44,0.05];
+  rock:=[3]f32.[0.60+0.08*cg_hash(h,18),0.62+0.06*cg_hash(h,18),0.50];
+  bush:=ifx au>0.6 && cg_hash(h,19)<0.5 then [3]f32.[0.70,0.62,0.10] else [3]f32.[0.35,0.78,0.055];
+  if cl>0.5 {
+   if r<0.55 {k:=25+int(cg_hash(h,20)*2.999);s:=0.12+sz*0.13;n=e2_put(out,kinds,n,k,x,y,z,yaw,s,s,[3]f32.[0.4,0.75,0.05]);}
+   else if r<0.72 {s:=0.3+sz*0.3;n=e2_put(out,kinds,n,31,x,y,z,yaw,s,s,green);}
+   else if r<0.82 {s:=0.25+sz*0.4;n=e2_put(out,kinds,n,20+int(cg_hash(h,20)*2.999),x,y-0.1*s,z,yaw,s,s,rock);}
+   else if r<0.92 {s:=0.3+sz*0.25;n=e2_put(out,kinds,n,29+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,ifx au>0.4 then orange else green);}
+   else {s:=0.5+sz*0.3;n=e2_put(out,kinds,n,28,x,y,z,yaw,s*0.75,s,[3]f32.[1,1,1]);}
+   continue;
+  }
+  if verge {
+   if r<0.28 {k:=25+int(cg_hash(h,20)*2.999);s:=0.12+sz*0.13;n=e2_put(out,kinds,n,k,x,y,z,yaw,s,s,[3]f32.[0.4,0.75,0.05]);}
+   else if r<0.42 {s:=0.22+sz*0.2;n=e2_put(out,kinds,n,18+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,fern);}
+   else if r<0.55 {s:=0.5+sz*0.4;n=e2_put(out,kinds,n,15+int(cg_hash(h,20)*2.999),x,y,z,yaw,s,s,bush);}
+   else if r<0.66 {s:=0.3+sz*0.25;n=e2_put(out,kinds,n,29+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,ifx au>0.4 then orange else green);}
+   else if r<0.76 {s:=0.2+sz*0.3;n=e2_put(out,kinds,n,ifx cg_hash(h,20)<0.5 then 32 else 20,x,y-0.08*s,z,yaw,s,s,rock);}
+   else if r<0.87 {s:=0.5+sz*0.35;n=e2_put(out,kinds,n,28,x,y,z,yaw,s*0.75,s,[3]f32.[1,1,1]);}
+   else {s:=0.3+sz*0.3;n=e2_put(out,kinds,n,31,x,y,z,yaw,s,s,green);}
+   continue;
+  }
+  if r<0.36 {s:=0.25+sz*0.25;n=e2_put(out,kinds,n,18+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,fern);}
+  else if r<0.58 {s:=0.55+sz*0.5;n=e2_put(out,kinds,n,15+int(cg_hash(h,20)*2.999),x,y,z,yaw,s,s,bush);}
+  else if r<0.72 {s:=0.3+sz*0.5;n=e2_put(out,kinds,n,20+int(cg_hash(h,20)*2.999),x,y-0.1*s,z,yaw,s,s,rock);}
+  else if r<0.80 {s:=0.5+sz*0.35;n=e2_put(out,kinds,n,28,x,y,z,yaw,s*0.75,s,[3]f32.[1,1,1]);}
+  else if r<0.90 {s:=0.3+sz*0.3;n=e2_put(out,kinds,n,31,x,y,z,yaw,s,s,green);}
+  else {s:=0.3+sz*0.25;n=e2_put(out,kinds,n,29+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,ifx au>0.4 then orange else green);}
+ }
+ // grass tufts on the verges, in the clearing and in the woods' lighter places, outside the glade
+ // (its own grass is the glade pack's): the glade's three grass meshes, wider and fewer
+ tufts:=ifx e2_clearing(x0+cs*0.5,z0-cs*0.5)>0.05 then 520 else 150;
+ for q:0..<tufts {
+  h:=seed*2.13+f32(q)*1.7+0.25;
+  x:=x0+cg_hash(h,31)*cs;z:=z0-cg_hash(h,32)*cs;
+  if x<E2_WEST+2 || x>E2_EAST-2 || z<E2_FAR+2 || z>E2_BACK-2 {continue;}
+  o:=e2_outside(x,z);if o<0.35 || e2_path(x,z)>0.35 {continue;}
+  rd:=e2_road_dist(x,z);cl:=e2_clearing(x,z);
+  p:=ifx cl>0.3 then 0.9f32 else ifx rd<10 then 0.85f32 else ifx rd<22 then 0.35f32 else 0.08f32;
+  if cg_hash(h,33)>p {continue;}
+  au:=e2_gold(x,z);g:=int(cg_hash(h,34)*2.999);hgt:=(0.22+cg_hash(h,35)*0.26)*(ifx rd<3.2 then 0.7f32 else 1.0f32);
+  src:=[3]f32.[1.31172,1.20004,0.98610][g];
+  n=e2_put(out,kinds,n,E2_GRASS+g,x,e2_height(x,z),z,cg_hash(h,36)*6.283,hgt/src,0.55+cg_hash(h,37)*0.35,[3]f32.[0.30+0.26*au,0.48,0.055]);
+ }
+ // now and then a boulder in the woods
+ bh:=seed*0.71+0.3;
+ if cg_hash(bh,21)<0.3 {x:=x0+cg_hash(bh,22)*cs;z:=z0-cg_hash(bh,23)*cs;
+  if e2_forest(x,z)>0.3 && e2_road_dist(x,z)>6 && e2_path(x,z)<0.05 && x>E2_WEST+4 && x<E2_EAST-4 && z>E2_FAR+4 && z<E2_BACK-4 {s:=0.5+cg_hash(bh,24)*0.7;
+   n=e2_put(out,kinds,n,23+int(cg_hash(bh,25)*1.999),x,e2_height(x,z)-0.2*s,z,cg_hash(bh,26)*6.283,s,s,[3]f32.[0.58,0.60,0.48]);}}
+ return n;
+}

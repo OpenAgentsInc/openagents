@@ -1,0 +1,121 @@
+// Everglade v2, piece 1 (GitHub #13023, docs/verse/everglade2.md): the land round Character
+// Create's glade and the long path out of it. Every function here is a pure function of position,
+// so the pack's ground (verse/tools/assets/everglade2_pack.coax), the planting
+// (verse/everglade2/plant.coax), the walk (apps/openagents-web/everglade2.coax) and the shader
+// (apps/openagents-web/gpu/everglade2.coax) all read the same land. Inside the glade it is the
+// glade's own (verse/character-glade.coax): the same hills, path and autumn.
+#load "../character-glade.coax";
+
+E2_CLEAR_Z :: -470.0;  // the clearing at the path's end: its middle's z (x on the path)
+E2_CLEAR_R :: 34.0;    // its radius: open meadow inside, the woods' edge round it
+E2_FAR :: -640.0;      // where the land stops (behind the wooded rise past the clearing)
+E2_BACK :: 80.0;       // and behind the glade
+E2_WEST :: -200.0; E2_EAST :: 220.0;
+E2_WALK :: 11.0;       // metres either side of the path you may wander
+
+#test "the land is the glade's inside the glade and the path leaves it to the north" {
+ for i:0..<20 {x:=f32(i)*2-20;z:=f32(i)*-1.5+2;#assert abs(e2_height(x,z)-cg_height(x,z))<0.001 || abs(x)>14 || z< -14;}
+ for i:0..<14 {z:=2-f32(i);#assert e2_road_x(z)==cg_road_x(z);}
+ #assert e2_path(e2_road_x(-300),-300)>0.95 && e2_path(e2_road_x(-300)+8,-300)<0.01;
+ #assert e2_clearing(e2_clear_x(),E2_CLEAR_Z)>0.99 && e2_forest(e2_clear_x(),E2_CLEAR_Z)==0 && e2_forest(e2_road_x(-250)+9,-250)>0.3;
+ #assert e2_height(0,0)==0;
+}
+#test "the path winds and never climbs steeper than one in five" {
+ lo:f32=1000;hi:f32= -1000;
+ for i:0..<880 {z:= -10-f32(i)*0.5;x:=e2_road_x(z);if x<lo {lo=x;}if x>hi {hi=x;}
+  a:=e2_height(x,z);b:=e2_height(e2_road_x(z-0.5),z-0.5);#assert abs(a-b)<0.1;}
+ #assert hi-lo>25;
+}
+#test "the ground keeps the glade's gold and stays mostly green outside it" {
+ #assert e2_gold(-14,-28)==cg_autumn(-14,-28) && e2_gold(10,0)==cg_autumn(10,0);
+ for i:0..<20 {z:= -100-f32(i)*20;#assert e2_gold(e2_road_x(z)+30,z)<=0.31;}
+}
+#test "the valley rises away from the path into wooded ridges" {
+ for i:0..<4 {z:= -100-f32(i)*80;x:=e2_road_x(z);#assert e2_height(x+90,z)>e2_level(z)+5 && e2_height(x-90,z)>e2_level(z)+5;}
+}
+e2_smooth :: (a:f32,b:f32,x:f32)->f32 {t:=(x-a)/(b-a);t=ifx t<0 then 0 else ifx t>1 then 1 else t;return t*t*(3-2*t);}
+// Value noise over whole-number cells (small arguments, so the GPU's sine agrees with the page's).
+e2_noise :: (x:f32,z:f32)->f32 {
+ i:=floor(x);j:=floor(z);fx:=x-i;fz:=z-j;fx=fx*fx*(3-2*fx);fz=fz*fz*(3-2*fz);
+ a:=cg_hash(i,j);b:=cg_hash(i+1,j);c:=cg_hash(i,j+1);d:=cg_hash(i+1,j+1);
+ return (a*(1-fx)+b*fx)*(1-fz)+(c*(1-fx)+d*fx)*fz;
+}
+// The path's middle at z: the glade's road to z -30, then a long winding way north.
+e2_road_x :: (z:f32)->f32 {
+ if z> -30 {return cg_road_x(z);}
+ b:=cg_ramp(-30,-75,z);t:=z+30;
+ wind:=15*sin(t*0.022)+6*sin(t*0.051+1.3)-6*sin(1.3f32)+2*sin(t*0.12);
+ return cg_road_x(z)*(1-b)+(3.3+wind)*b;
+}
+// Metres from the path's middle, across it (the path runs at a slant where it turns).
+e2_road_dist :: (x:f32,z:f32)->f32 {
+ slope:=e2_road_x(z+0.5)-e2_road_x(z-0.5);return abs(x-e2_road_x(z))/sqrt(1+slope*slope);
+}
+// How much of the bare path is at (x, z): the glade's, carried on along the road. Behind the
+// clearing it fades into the meadow.
+e2_path :: (x:f32,z:f32)->f32 {
+ d:=e2_road_dist(x,z);spread:=0.50+abs(z)*0.08;if spread>1.9 {spread=1.9;}
+ main:=exp(-d*d/spread)*(1-cg_ramp(6,12,z))*(1-cg_ramp(E2_CLEAR_Z+E2_CLEAR_R*0.55,E2_CLEAR_Z+E2_CLEAR_R*0.1,z));
+ branch_d:=z+10+1.4*(x+2);branch_fade:=(-x-0.5)/1.5;branch:=exp(-branch_d*branch_d/4.0)*(ifx branch_fade<0 then 0 else ifx branch_fade>1 then 1 else branch_fade);
+ return ifx main>branch then main else branch;
+}
+// The path's height at z: the glade's grade over the back ridge, then gently up and down.
+e2_level :: (z:f32)->f32 {
+ t:=z+40;return 0.83+(CG_PLATEAU-0.83)*cg_ramp(-16,-33,z)+cg_ramp(-40,-90,z)*(4.5*sin(t*0.013)+2.0*sin(t*0.034));
+}
+// 0 in the glade, 1 well past it.
+e2_outside :: (x:f32,z:f32)->f32 {
+ dx:=x-28;if -30-x>dx {dx= -30-x;}if dx<0 {dx=0;}
+ dz:=z-8;if -42-z>dz {dz= -42-z;}if dz<0 {dz=0;}
+ return cg_ramp(0,28,sqrt(dx*dx+dz*dz));
+}
+// The wild land: a valley along the path, its walls broken into wooded ridges, rising at both ends.
+e2_wild :: (x:f32,z:f32)->f32 {
+ rd:=e2_road_dist(x,z);
+ valley:=15*(1-exp(-rd*rd/7000));
+ hills:=(e2_noise(x/48+5.3,z/48-2.1)-0.5)*10+(e2_noise(x/19+7.7,z/19-3.3)-0.5)*3;
+ ends:=cg_ramp(E2_CLEAR_Z-50,E2_FAR+30,z)*22+cg_ramp(30,75,z)*16;
+ // the clearing: a level meadow in a bowl of wooded slopes
+ ring:=sqrt((x-e2_clear_x())*(x-e2_clear_x())+(z-E2_CLEAR_Z)*(z-E2_CLEAR_Z));
+ bowl:=cg_ramp(E2_CLEAR_R*0.8,E2_CLEAR_R*2.2,ring)*9;
+ wild:=e2_level(z)+valley+hills*cg_ramp(5,30,rd)+ends;
+ near:=1-cg_ramp(E2_CLEAR_R*1.2,E2_CLEAR_R*2.6,ring);
+ floor_y:=e2_level(E2_CLEAR_Z)+0.6*(e2_noise(x/14,z/14)-0.5);
+ return wild*(1-near)+(floor_y+bowl+hills*0.15*cg_ramp(E2_CLEAR_R,E2_CLEAR_R*2,ring))*near;
+}
+e2_height :: (x:f32,z:f32)->f32 {
+ away:=sqrt(x*x+z*z);if away<2 {return 0;}
+ h:=4.0*exp(-((x+11)*(x+11)/110+(z+22)*(z+22)/95))+5.8*exp(-((x-17)*(x-17)/160+(z+33)*(z+33)/180));
+ h+=11.2*exp(-((x+8)*(x+8)/120+(z+34)*(z+34)/70));
+ fade:=ifx away<5 then (away-2)/3 else 1;
+ o:=e2_outside(x,z);
+ g:=h*fade*(1-o)+e2_wild(x,z)*o;
+ corridor:=(1-cg_ramp(2.0,5.0,e2_road_dist(x,z)))*cg_ramp(-14,-18,z)*(1-cg_ramp(E2_CLEAR_Z+E2_CLEAR_R*1.6,E2_CLEAR_Z+E2_CLEAR_R*0.6,z));
+ return g+(e2_level(z)-g)*corridor;
+}
+// How golden the land is: the glade's own, then broad stands of autumn among the green.
+e2_autumn :: (x:f32,z:f32)->f32 {
+ o:=e2_outside(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
+ return cg_autumn(x,z)*(1-o)+patch*o;
+}
+// The ground's and the grass's gold: the glade's own inside it; outside, a gentle share of the
+// crowns' autumn, so the woods' floor and the clearing stay green with gold patches.
+e2_gold :: (x:f32,z:f32)->f32 {
+ o:=e2_outside(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
+ return cg_autumn(x,z)*(1-o)+patch*o*0.3;
+}
+// How thick the woods stand: dense on both sides of the path, crowding it, thinning only in
+// small dells; none in the glade or the clearing.
+e2_forest :: (x:f32,z:f32)->f32 {
+ o:=e2_outside(x,z);rd:=e2_road_dist(x,z);
+ clump:=0.70+0.30*e2_smooth(0.25,0.6,e2_noise(x/30-4.2,z/30+6.6));
+ return clump*cg_ramp(2.5,4.5,rd)*cg_ramp(0.05,0.5,o)*(1-e2_clearing(x,z));
+}
+// The clearing's middle (on the path) and how far into it (x, z) is: 1 inside, 0 in the woods,
+// its edge ragged.
+e2_clear_x :: ()->f32 {return e2_road_x(E2_CLEAR_Z);}
+e2_clearing :: (x:f32,z:f32)->f32 {
+ dx:=x-e2_clear_x();dz:=z-E2_CLEAR_Z;r:=sqrt(dx*dx+dz*dz);
+ k:=1/(r+0.001);edge:=E2_CLEAR_R*(0.85+0.3*e2_noise(dx*k*2.5+9,dz*k*2.5+3));
+ return 1-cg_ramp(edge-6,edge+2,r);
+}
