@@ -22,6 +22,12 @@ models. `ultimate-rpg` and
 respectively, alongside the alternative formats. These collections are
 unqualified for runtime until a world explicitly packs and tests them.
 
+`bestiary-dungeon` inventories the owner's Standard download and indexes its
+two supplied monsters, Imp and Puglin. Its evidence is the Quaternius Asset
+License v1.0, not CC0. Original files and GLB objects stay in the local shared
+store; the portable registry contains hashes and metadata. The Source edition
+advertises seven monsters; those extra models are not in the Standard download.
+
 ## Identity and storage
 
 An authoring ID such as `quaternius/nature/birch-1` is a stable lookup key, not
@@ -85,6 +91,9 @@ errors fatal, then registers the observations and self-contained GLBs. The
 revision pins the exact bridge bytes; the observation records Blender's version.
 `index` retains that bridge in the content-addressed store. The checked Blender
 executable path is macOS-specific; the registry formats are platform independent.
+For Bestiary Standard, `registry.coax qal-glbs bestiary-dungeon
+'Exports/GLB (Godot-Unreal)' STORE` records the QAL GLBs. CC0-only indexers
+refuse this package rather than mislabel its contents.
 
 GLBs are full-resolution **interchange artifacts**. They are not newly qualified
 Aethyr runtime assets. They can repeat textures across different GLBs. Identical

@@ -31,6 +31,14 @@ Modern packaged foods and fast food are omitted from the world; their source
 assets remain in the shared registry. Their reserved layout slots are left
 empty so the other specimens keep their positions.
 
+The remaining 74 Fantasy Props Standard models have a display area in the
+western meadow. The Imp and Puglin from the Bestiary Dungeon Monsters Standard
+pack stand near spawn in an idle pose; the source pack contains no animations,
+so their poses use the compatible Universal Animation Library 1. Their original
+Quaternius Asset License v1.0 is retained in the registry and scene catalog.
+Thirty-six additional flower, plant, fern, clover, mushroom, bush and grass variants grow in
+the eastern meadow. The original selection of rocks remains excluded.
+
 The follow camera checks the village's nearby building collision boxes along
 the full boom, including the shoulder offset. It pulls in immediately when a
 wall blocks the view and eases back out after the obstruction clears.
@@ -55,8 +63,14 @@ dungeon_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source dungeon
 animal_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-animals-static "$HOME/.openagents/assets")"
 animal_original="$(coax/web/tool.sh verse/tools/assets/registry.coax source ultimate-animals-source "$HOME/.openagents/assets")"
 animal_frames="$HOME/.openagents/assets/cache/ultimate-animals-run"
+monster_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source bestiary-dungeon "$HOME/.openagents/assets")"
+ual_root="$(coax/web/tool.sh verse/tools/assets/registry.coax source ual1 "$HOME/.openagents/assets")"
+monster_frames="$HOME/.openagents/assets/cache/bestiary-dungeon-scene"
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
   --python-exit-code 1 --python verse/tools/assets/animal_bake.py -- "$animal_original" "$animal_frames"
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
+  --python-exit-code 1 --python verse/tools/assets/bestiary_bake.py -- "$monster_root" "$monster_frames" \
+  "$ual_root/Unreal-Godot/UAL1_Standard.glb"
 unzip -p "$village_root/Engine Projects/Godot.zip" \
   'Godot/addons/quaternius/medievalvillagemegakit/L_SampleScene_1.tscn' > /tmp/everglade-village-source.tscn
 coax/web/tool.sh verse/tools/assets/village_layout.coax /tmp/everglade-village-source.tscn \
@@ -66,10 +80,12 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack --experimental \
   "$village_root" assets/registry/scenes/everglade-experimental-village.layout "$props_root" \
   assets/registry/scenes/everglade-experimental-showcase.layout "$HOME/.openagents/assets/objects" \
-  "$food_root" "$rpg_root" "$dungeon_root" "$animal_root" "$animal_frames"
+  "$food_root" "$rpg_root" "$dungeon_root" "$animal_root" "$animal_frames" \
+  "$monster_root" "$monster_frames" assets/registry/scenes/everglade-experimental-extra-props.layout \
+  assets/registry/scenes/everglade-experimental-extra-nature.layout
 coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
   assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
 python3 verse/tools/assets/character_glade_oracle.py \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
-  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase --animal-run
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase --animal-run --bestiary --extra-props --extra-nature
 ```

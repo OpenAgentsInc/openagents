@@ -10,6 +10,9 @@ village = '--village' in sys.argv[3:]
 props = '--props' in sys.argv[3:]
 showcase = '--showcase' in sys.argv[3:]
 animal_run = '--animal-run' in sys.argv[3:]
+bestiary = '--bestiary' in sys.argv[3:]
+extra_props = '--extra-props' in sys.argv[3:]
+extra_nature = '--extra-nature' in sys.argv[3:]
 assert not props or village
 assert not village or experimental
 source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' else Path.home()/'.openagents/assets/originals'/revision/'source'
@@ -43,7 +46,7 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=64
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -51,7 +54,9 @@ for i in range(verts):
     kind=vb[at+15]&7
     if kind==4:
         marker=struct.unpack_from('<f',vb,at+28)[0]
-        if 100<=marker<=110: village_vertices.append(i)
+        if marker in (100.125,101.125): bestiary_vertices.append(i)
+        elif marker in (111.125,112.125,113.125,114.125,115.125): extra_prop_vertices.append(i)
+        elif 100<=marker<=110: village_vertices.append(i)
         elif 111<=marker<=114: prop_vertices.append(i)
         elif marker==115: clock_vertices.append(i)
         elif marker==115.25: showcase_vertices.append(i)
@@ -202,6 +207,48 @@ if village:
                         vi+=nv;ii+=len(triangles)
             assert vi==showcase_vertices[-1]+1
         else: assert not showcase_vertices
+        if extra_props:
+            assert extra_prop_vertices==list(range(vi,extra_prop_vertices[-1]+1))
+            records={r['definition']['name']:r for r in (json.loads(x) for x in (repo/'assets/registry/assets/fantasy-props.jsonl').read_text().splitlines())}
+            layout=(repo/'assets/registry/scenes/everglade-experimental-extra-props.layout').read_text().splitlines();assert len(layout)==74
+            props_lock=json.loads((repo/'assets/registry/packages/fantasy-props.json').read_text());props_root=Path.home()/'.openagents/assets/originals'/props_lock['revision']/'source/Exports/glTF'
+            for line in layout:
+                name,revision=line.split('|');assert records[name]['revision']==revision
+                doc=json.loads((props_root/(name+'.gltf')).read_text());blob=(props_root/doc['buffers'][0]['uri']).read_bytes()
+                for mesh in doc['meshes']:
+                    for primitive in mesh['primitives']:
+                        nv=doc['accessors'][primitive['attributes']['POSITION']]['count'];triangles=[x[0] for x in accessor(doc,blob,primitive['indices'])]
+                        assert ids[ii:ii+len(triangles)]==tuple(vi+x for x in triangles),name
+                        vi+=nv;ii+=len(triangles)
+            assert vi==extra_prop_vertices[-1]+1
+        else: assert not extra_prop_vertices
+        if bestiary:
+            assert bestiary_vertices==list(range(vi,bestiary_vertices[-1]+1))
+            bestiary_src=Path.home()/'.openagents/assets/cache/bestiary-dungeon-scene'
+            for model,name in enumerate(('Imp','Puglin')):
+                baked=(bestiary_src/(name+'.bin')).read_bytes();nv,ni=struct.unpack_from('<II',baked)
+                indices=struct.unpack_from('<'+str(ni)+'I',baked,8+nv*32)
+                assert ids[ii:ii+ni]==tuple(vi+x for x in indices),name
+                vertices=[struct.unpack_from('<3f',baked,8+j*32) for j in range(nv)]
+                anchor=((min(p[0] for p in vertices)+max(p[0] for p in vertices))/2,min(p[1] for p in vertices),(min(p[2] for p in vertices)+max(p[2] for p in vertices))/2)
+                base=pos[vi][1]-vertices[0][1]+anchor[1]
+                for j in (0,nv//2,nv-1):
+                    want=(6+3*model+vertices[j][0]-anchor[0],base+vertices[j][1]-anchor[1],-7+vertices[j][2]-anchor[2])
+                    assert all(abs(pos[vi+j][k]-want[k])<.0001 for k in range(3)),(name,j)
+                vi+=nv;ii+=ni
+            assert vi==bestiary_vertices[-1]+1
+        else: assert not bestiary_vertices
+        if extra_nature:
+            records={r['definition']['name']:r for r in (json.loads(x) for x in (repo/'assets/registry/assets/nature.jsonl').read_text().splitlines())}
+            layout=(repo/'assets/registry/scenes/everglade-experimental-extra-nature.layout').read_text().splitlines();assert len(layout)==36
+            for line in layout:
+                name,revision=line.split('|');assert records[name]['revision']==revision
+                doc=json.loads((source/'glTF'/(name+'.gltf')).read_text());blob=(source/'glTF'/doc['buffers'][0]['uri']).read_bytes()
+                for mesh in doc['meshes']:
+                    for primitive in mesh['primitives']:
+                        nv=doc['accessors'][primitive['attributes']['POSITION']]['count'];triangles=[x[0] for x in accessor(doc,blob,primitive['indices'])]
+                        assert ids[ii:ii+len(triangles)]==tuple(vi+x for x in triangles),name
+                        vi+=nv;ii+=len(triangles)
     else: assert not prop_vertices and not clock_vertices
     assert ii==len(ids)
 
@@ -213,13 +260,25 @@ next_index=first+count; heights=[]; instances=[]; template_vertices=0
 if animal_run:
     draws=[l.split() for l in cat.splitlines() if l.startswith('C glade/animal')]
     assert len(draws)==10 and animal_vertices
-    frame_positions=[]
+    frame_positions=[];animal_names=('Alpaca','Bull','Cow','Deer','Donkey','Fox','Horse','Horse_White','Husky','ShibaInu','Stag','Wolf')
+    animal_root=Path.home()/'.openagents/assets/cache/ultimate-animals-run';anchors={}
+    for name in animal_names:
+        data=(animal_root/(name+'-0.bin')).read_bytes();nv=struct.unpack_from('<I',data)[0];points=[struct.unpack_from('<3f',data,8+i*28) for i in range(nv)]
+        anchors[name]=((min(p[0] for p in points)+max(p[0] for p in points))/2,min(p[1] for p in points),(min(p[2] for p in points)+max(p[2] for p in points))/2)
     for frame,draw in enumerate(draws):
         assert draw[1]==f'glade/animal{frame}'
         af,ac,al,aw,an,aj=map(int,draw[2:]);assert af==next_index and ac>0 and al==253 and aw==word and aj==0
-        indices=struct.unpack_from('<'+str(ac)+'I',ib,af*4);start=indices[0]
-        assert indices==tuple(range(start,start+ac)) and animal_vertices[0]<=start<start+ac<=animal_vertices[-1]+1
-        frame_positions.append([pos[start+i] for i in (0,ac//3,ac//2,ac-1)])
+        indices=struct.unpack_from('<'+str(ac)+'I',ib,af*4);assert all(animal_vertices[0]<=x<=animal_vertices[-1] for x in indices)
+        cursor=0
+        for animal,name in enumerate(animal_names):
+            data=(animal_root/(name+f'-{frame}.bin')).read_bytes();nv=struct.unpack_from('<I',data)[0];ax,ay,az=anchors[name];place=(-26+(animal%6)*3,8+(animal//6)*4)
+            first_src=struct.unpack_from('<3f',data,8);first_dst=pos[indices[cursor]];base_y=first_dst[1]-.4*(first_src[1]-ay)
+            for j in (0,nv//3,nv//2,nv-1):
+                src=struct.unpack_from('<3f',data,8+j*28);actual=pos[indices[cursor+j]];want=(place[0]+.4*(src[0]-ax),base_y+.4*(src[1]-ay),place[1]+.4*(src[2]-az))
+                assert all(abs(actual[k]-want[k])<.0001 for k in range(3)),(name,frame,j,actual,want)
+            cursor+=nv
+        assert cursor==ac
+        frame_positions.append([pos[indices[i]] for i in (0,ac//3,ac//2,ac-1)])
         next_index+=ac
     assert any(frame_positions[0]!=x for x in frame_positions[1:]), 'animal frames are static'
 else: assert not animal_vertices

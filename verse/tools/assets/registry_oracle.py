@@ -41,7 +41,8 @@ for lockpath in sorted((registry/'packages').glob('*.json')):
         assert not path.is_symlink() and path.resolve().is_relative_to((snapshot/'source').resolve())
         assert path.stat().st_size==row['bytes'] and digest(path)==row['sha256'], name
     assert inventory['license_evidence'] in files
-    assert 'CC0 1.0' in (snapshot/'source'/inventory['license_evidence']).read_text()
+    evidence=(snapshot/'source'/inventory['license_evidence']).read_text()
+    assert (inventory['license']=='CC0-1.0' and 'CC0 1.0' in evidence) or (inventory['license']=='LicenseRef-Quaternius-QAL-1.0' and 'Quaternius Asset License (QAL) v1.0' in evidence)
     packages[lock['package']] = (lock, snapshot, files); source_files += len(files)
 
 records = {}
@@ -57,6 +58,13 @@ for p in sorted((registry/'assets').glob('*.jsonl')):
         lock, snapshot, files = packages[definition['package']]
         assert definition['package_revision']==lock['revision']
         obs=definition['source']
+        if obs.get('format')=='glb':
+            assert definition['license']=='LicenseRef-Quaternius-QAL-1.0' and obs['path'] in files
+            source=snapshot/'source'/obs['path'];artifact=definition['artifacts'][0]
+            assert digest(source)==artifact['sha256'] and source.stat().st_size==artifact['bytes']
+            obj=store/'objects'/artifact['sha256'];assert digest(obj)==artifact['sha256'];glb(obj)
+            records[aid]=row
+            continue
         if obs.get('format')=='gltf':
             assert obs['path'] in files
             model=snapshot/'source'/obs['path']; data=json.loads(model.read_text())

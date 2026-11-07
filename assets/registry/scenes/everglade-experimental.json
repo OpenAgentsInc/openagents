@@ -1449,6 +1449,454 @@
     {
       "id": "quaternius/ultimate-animals-static/wolf",
       "revision": "4adb99c9e2bc991bb4c59b4726976b5f909b33dc4e27dab88a1b317b88351c3b"
+    },
+    {
+      "id": "quaternius/fantasy-props/anvil",
+      "revision": "3e4e967a81727c130d63fd14ca39b6eeccd436f062626c1106e0bb96e8eeeefa"
+    },
+    {
+      "id": "quaternius/fantasy-props/anvil-log",
+      "revision": "ef011dce0903a70e5476810180fd0f1d001251c90946fc44d2ae6f1c1403cbe4"
+    },
+    {
+      "id": "quaternius/fantasy-props/axe-bronze",
+      "revision": "2bef7e34c118fd019879fcdebe82a2db39124f542b7ccb76644af37c27e36983"
+    },
+    {
+      "id": "quaternius/fantasy-props/bag",
+      "revision": "6d28fbebe706bbda68c0a9b15d6d343bdd01db3cbf029623e4e7504b9eff109f"
+    },
+    {
+      "id": "quaternius/fantasy-props/banner-1",
+      "revision": "777b796bfef47696332e024ffdeedd0c95dab1812fa1c87c7c79a86cacd37073"
+    },
+    {
+      "id": "quaternius/fantasy-props/banner-1-cloth",
+      "revision": "391befdc1a56a7dedfe4d8bdf0bcb3c57bbc61eca8930ccfb7950035770de83d"
+    },
+    {
+      "id": "quaternius/fantasy-props/banner-2",
+      "revision": "12feb7cd01d768f9d38fd2fa62a297eda009cb8019f36808d4f50229a55c6879"
+    },
+    {
+      "id": "quaternius/fantasy-props/banner-2-cloth",
+      "revision": "1fc81eb9eb41e7d328906261fc221f0c9b7accfc91942d73b33552c029d74df2"
+    },
+    {
+      "id": "quaternius/fantasy-props/barrel",
+      "revision": "3a3dee307e5f03267d0055b19951ddfb20c25f38f348fea04c6515827ba3c7ea"
+    },
+    {
+      "id": "quaternius/fantasy-props/barrel-holder",
+      "revision": "70367a36678a6ec2e0690a393d168095b2dfbaf77bfa68e4f6e60db9c32829c1"
+    },
+    {
+      "id": "quaternius/fantasy-props/bed-twin2",
+      "revision": "34f42672808e1f72c999a0fe48d52323fcfb1e11e6ce9a6771991ae1c35fd9ee"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookgroup-medium-1",
+      "revision": "272dcd8913c67d56e30a3d4d235468152b3aef1b75489fd4ce2ee4c5fd89d13b"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookgroup-medium-2",
+      "revision": "53bdd675f162ee69c9709e3a9aa9c01fd5337b4b1fe7403a9d518b17da59417f"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookgroup-medium-3",
+      "revision": "42eb1b8d24cbbeaad63374ff4ddeaf4bf1f305564ccd96ebe9204f3d0245c630"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookgroup-small-1",
+      "revision": "ed0d042c067548c967149821b1e68a67410b01c0bc391c3d0f0f80543e2d9b63"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookgroup-small-2",
+      "revision": "af1dead68625bc5ca9e78df22d87b5b93dbace0cb332d97a562d6c74bb53c450"
+    },
+    {
+      "id": "quaternius/fantasy-props/bookgroup-small-3",
+      "revision": "4903ae313e548e9387a928c165bbb8f80737083c416bd9a420e2be4b762b2864"
+    },
+    {
+      "id": "quaternius/fantasy-props/book-5",
+      "revision": "f231ecb7764010f7fb9fefd41bcce0ec45d80c18a19888b26722551086b08671"
+    },
+    {
+      "id": "quaternius/fantasy-props/book-7",
+      "revision": "1ae1f3f203115c0053723983110b45dcd7e0ff66c320af60bdcad193c6827bc8"
+    },
+    {
+      "id": "quaternius/fantasy-props/book-simplified-single",
+      "revision": "fffd9ef1cd21b1842add867659735a14697e16386ce063a577ea8d0af034ab71"
+    },
+    {
+      "id": "quaternius/fantasy-props/book-stack-2",
+      "revision": "bc0e1d702d6ff03cd1ed64f155ba0c3049c1d8578d794ca2416950f428927654"
+    },
+    {
+      "id": "quaternius/fantasy-props/bottle-1",
+      "revision": "e286857e633945fc2f4c1c42d89975fc9bb67de632e61e316170304bee95ae88"
+    },
+    {
+      "id": "quaternius/fantasy-props/bucket-metal",
+      "revision": "6aaf92f121fd2a0135ca91d1ed6d540e1b921766804f43a3dc29e74639d42b6a"
+    },
+    {
+      "id": "quaternius/fantasy-props/cabinet",
+      "revision": "fa5af677784d949fa37b66d443891cdb34434edc25a24fc82f3159bafd5442e5"
+    },
+    {
+      "id": "quaternius/fantasy-props/cage-small",
+      "revision": "955a48a15fcfe46a2bb83f6e1951f11196847c9a43f132bde9b23883ffc5f54b"
+    },
+    {
+      "id": "quaternius/fantasy-props/candlestick-stand",
+      "revision": "dee9797298a49baa2eb2f017d8100328bce8911bc355879ea20cc391be576330"
+    },
+    {
+      "id": "quaternius/fantasy-props/candlestick-triple",
+      "revision": "f6a7cffc6c06368a014ea77218ff4b62b3be07ed5e1dc261f69827d47e66582c"
+    },
+    {
+      "id": "quaternius/fantasy-props/candle-1",
+      "revision": "9e646f479c748081100362ea4ca4fda6bafe3148075bcef0b5987e250916a660"
+    },
+    {
+      "id": "quaternius/fantasy-props/candle-2",
+      "revision": "6a7215fcc4ea854637cc667f09d4d762f34d6edeef646bb82519199ef8a49c8e"
+    },
+    {
+      "id": "quaternius/fantasy-props/carrot",
+      "revision": "3876a07a00fe2ab195b1fe0e05335610fd155786f450382ee2ff9390bfa9ab06"
+    },
+    {
+      "id": "quaternius/fantasy-props/cauldron",
+      "revision": "c0ca6b3ca20118d8bf3357d09987bc59b63823258ddab58a764a09d187385fd2"
+    },
+    {
+      "id": "quaternius/fantasy-props/chain-coil",
+      "revision": "ebede856de811985f30febdc55b8787bffd87853ed5d607f1e6670b9ec8e7a1f"
+    },
+    {
+      "id": "quaternius/fantasy-props/chalice",
+      "revision": "5f849486423f3fc1d86aca4e50ae8d8cb01e49bf1cf46b95e83246babcc8c848"
+    },
+    {
+      "id": "quaternius/fantasy-props/chandelier",
+      "revision": "f48c895d568771f7bb890dd9b28237471292409f05691a79412cd06b000dd575"
+    },
+    {
+      "id": "quaternius/fantasy-props/chest-wood",
+      "revision": "30c8045496b1a4a05e0fcc967c9c6b5a1c80a381d4e0f6f48458cde852a60218"
+    },
+    {
+      "id": "quaternius/fantasy-props/coin",
+      "revision": "3625e1655266ef2bb35668dae04ffcab8b9207cd8236b70add125b60885b87d5"
+    },
+    {
+      "id": "quaternius/fantasy-props/coin-pile-2",
+      "revision": "b1eb4fe8d338dcf1d0106b4be73847b6dc572f3dc565fbaac11442ca17450d55"
+    },
+    {
+      "id": "quaternius/fantasy-props/crate-metal",
+      "revision": "3a2aeef953ff0da4ddc71281f4380318c15cefec2d7ae60d7718eb092954fd5a"
+    },
+    {
+      "id": "quaternius/fantasy-props/dummy",
+      "revision": "b3209b2887bcd43ae16d461dc4bf3e99a430713f5202be42997670568ba5e900"
+    },
+    {
+      "id": "quaternius/fantasy-props/farmcrate-apple",
+      "revision": "da76498016ebdef2a27e4277e3b5067178718f2b8a9ff3b408ebfb97c578606b"
+    },
+    {
+      "id": "quaternius/fantasy-props/farmcrate-carrot",
+      "revision": "45924a5e460530efe07fa2b15ca88df33c7d0302780035ada178d52343a723c6"
+    },
+    {
+      "id": "quaternius/fantasy-props/farmcrate-empty",
+      "revision": "42614bc0d97eb9d89c798424dad7356f3f4660b5773950e65196a2c273eb5a61"
+    },
+    {
+      "id": "quaternius/fantasy-props/key-gold",
+      "revision": "dfdce2641d457498ffa9416e2a1d35e4d913a49825969d6c6d3d65b7509625d4"
+    },
+    {
+      "id": "quaternius/fantasy-props/lantern-wall",
+      "revision": "37de8af5535423a2afbe83dbbbaf289b916b88cc870f67fe7f7a53432e40ce30"
+    },
+    {
+      "id": "quaternius/fantasy-props/nightstand-shelf",
+      "revision": "9565902e921ceea47bcfe1510ecd34bace14a18b8a655b4ebde3323409e56afd"
+    },
+    {
+      "id": "quaternius/fantasy-props/peg-rack",
+      "revision": "f58bf5c413d98f84b3177cff722db0a51011e9602e56e2fcd7131fcce3457eae"
+    },
+    {
+      "id": "quaternius/fantasy-props/pickaxe-bronze",
+      "revision": "6004c6e95c9d7160ef2778f27c6d114eb44a7ac2c2c148b3a654aa45f28b490e"
+    },
+    {
+      "id": "quaternius/fantasy-props/pot-1",
+      "revision": "944eec85e44a435a4a2f047ef34b0d2c32fb7be8ab2df5bcf066524042caa063"
+    },
+    {
+      "id": "quaternius/fantasy-props/pot-1-lid",
+      "revision": "2e34b13b39ec231d5a5ac5d94cb2daa03df2cb04b9333ddac06f7797d3ddfed5"
+    },
+    {
+      "id": "quaternius/fantasy-props/potion-1",
+      "revision": "68ba1ab0e3fd9df86bb0cd4e379a6736056f5e16608ffcff2160adc1eab79184"
+    },
+    {
+      "id": "quaternius/fantasy-props/potion-2",
+      "revision": "f601cfdf6f6273cd105b9fea7ce745e6d7df5b70aa8dbdb0c24f062446e16647"
+    },
+    {
+      "id": "quaternius/fantasy-props/potion-4",
+      "revision": "b24b9a2b0e97a37963e0e1654bda251d7a804e50f56700a76681caa1205ee229"
+    },
+    {
+      "id": "quaternius/fantasy-props/pouch-large",
+      "revision": "d07f80535129f23bf3132125beec02b747c32c530c638bf63d43ce6fbdd984aa"
+    },
+    {
+      "id": "quaternius/fantasy-props/rope-1",
+      "revision": "355cd928269b5ce8c4104d12f2fabb096e8b770235efd18dddad53dc2760ddbd"
+    },
+    {
+      "id": "quaternius/fantasy-props/rope-2",
+      "revision": "d7ff0e82ffe33353dafb1a99d264a8276768d4c3d566848330d5abf90281fa69"
+    },
+    {
+      "id": "quaternius/fantasy-props/rope-3",
+      "revision": "e44a899263126b221ef26a7388a23d37efef6ac0179b454ca139585bf0d6ea5d"
+    },
+    {
+      "id": "quaternius/fantasy-props/scroll-1",
+      "revision": "7c8f73f7956c1adaa50ffab1ab4cba36ee5d527650e140d4b878697adfa28285"
+    },
+    {
+      "id": "quaternius/fantasy-props/scroll-2",
+      "revision": "6983b5bc500b6cf03344f07c2358c519902b43452adfaa6f964aa20a5ffa5152"
+    },
+    {
+      "id": "quaternius/fantasy-props/shelf-arch",
+      "revision": "69665d78c44cdea5298d9246ff028a7627d428da6481b1b8b1afb24053cab990"
+    },
+    {
+      "id": "quaternius/fantasy-props/shelf-simple",
+      "revision": "56e0d2afbc72208b18e7c83b8b05d770d2f1acdcb30ba0225f0264c5e65554f9"
+    },
+    {
+      "id": "quaternius/fantasy-props/shelf-small-bottles",
+      "revision": "a0b3c4707b662c2d70e60e30dbabe164539c012686710900b690b491b8c57aad"
+    },
+    {
+      "id": "quaternius/fantasy-props/shield-wooden",
+      "revision": "4aa3daf40d8b39f7b1c1092bd75d93428ea9d338e848aa35edc43889f21f342c"
+    },
+    {
+      "id": "quaternius/fantasy-props/smallbottle",
+      "revision": "cf54d06049737143c459b9544d494148cdb3cde30dbd6cf8e65df2538c59355e"
+    },
+    {
+      "id": "quaternius/fantasy-props/stall-cart-empty",
+      "revision": "0960b020dca96e5a9c0a6061caf9c2262d3dea33f37da3251f855c10ce94bf32"
+    },
+    {
+      "id": "quaternius/fantasy-props/sword-bronze",
+      "revision": "bd336f101303aa6669737281ee0fbe5e194273795477f8c675fba8aa573d1581"
+    },
+    {
+      "id": "quaternius/fantasy-props/table-fork",
+      "revision": "caea77ff626d810058e08ddfd577fc3b3a19e29e3031ac2739161914ea0ac9b2"
+    },
+    {
+      "id": "quaternius/fantasy-props/table-knife",
+      "revision": "a93eb22dba9d6382d4cc9ede0927c547dce5d1ce381b552447c9ab017468556b"
+    },
+    {
+      "id": "quaternius/fantasy-props/table-plate",
+      "revision": "64af2e4bc510a075ea7400fb94a6705fadf0796ac9abca257261bd88f92b9e97"
+    },
+    {
+      "id": "quaternius/fantasy-props/table-spoon",
+      "revision": "523c4e576282624175bb5edd13f0cc7ec6f6a72ae4f466261daeff703d23b62b"
+    },
+    {
+      "id": "quaternius/fantasy-props/torch-metal",
+      "revision": "a25e3b1e5aaf94e7afad2e03537d68e6b7802df1ecb4dc52562c6af16ab83580"
+    },
+    {
+      "id": "quaternius/fantasy-props/vase-2",
+      "revision": "10356b989d25ca43c5390dcc5e5993b8c361fd3615624cac421a2efbaca30e84"
+    },
+    {
+      "id": "quaternius/fantasy-props/vase-4",
+      "revision": "64cb2cf27a07694f269457f54f1f1e5f14cd9008b6f2bd40b533cae79b67b1f3"
+    },
+    {
+      "id": "quaternius/fantasy-props/vase-rubble-medium",
+      "revision": "56525ff6b8afbe1e5df261947f9492891bf945376b33e1a27a31ef12ba43d56b"
+    },
+    {
+      "id": "quaternius/fantasy-props/weaponstand",
+      "revision": "9fb1e94d49f929567116882123c56649f7c0b3e5695e365d8f8bf3673e6e0ad5"
+    },
+    {
+      "id": "quaternius/nature/clover-1",
+      "revision": "48c144ea79c97461398cd8bc2b2999b796ad33970f77f185b75a61bc69dd6822"
+    },
+    {
+      "id": "quaternius/nature/clover-2",
+      "revision": "a6a7e7cfb444d553dd18ba991636490744da95a45127ebc088036ac74905e55b"
+    },
+    {
+      "id": "quaternius/nature/fern-2",
+      "revision": "7ebd5a91b82b47d5e88121f6da3e2ca53c67b738b4252dea48da5ceaf3babac8"
+    },
+    {
+      "id": "quaternius/nature/flower-1-group",
+      "revision": "6693bb10e68954cf3bf75fa480bd37dbd6f6d1724c3e5ad96c8d3ca968fbe116"
+    },
+    {
+      "id": "quaternius/nature/flower-1-single",
+      "revision": "3ed07a36d13f8418f314c95158c6c5525a79c559bc72f4ab6b7258e5473c0b9e"
+    },
+    {
+      "id": "quaternius/nature/flower-2-single",
+      "revision": "bc64985cec14c9d23aae68c338f4ed84dc81460e76b1494a7f6cdd7581514d73"
+    },
+    {
+      "id": "quaternius/nature/flower-3-single",
+      "revision": "16dba093d2488685c02d4f73fa524dbba7a396b349af32f18d0bc5b254dc5560"
+    },
+    {
+      "id": "quaternius/nature/flower-4-group",
+      "revision": "dd52edc596c4d85a9063ce56607e0a42537056fc2df14488d79604ab36ba9c2a"
+    },
+    {
+      "id": "quaternius/nature/flower-4-single",
+      "revision": "ed86a48e88f48dd5a500a8504a8a2ada3edb92176e6b2b010aa0caa785cb506a"
+    },
+    {
+      "id": "quaternius/nature/flower-6",
+      "revision": "c8560973b79672427e1ece13dccb4ca9c2c7444e3cd7c363e55a735ce3c00bb6"
+    },
+    {
+      "id": "quaternius/nature/flower-6-2",
+      "revision": "bdcf0eb932d4a3595b725a457a476d3ba6bb837c7bc89cf940cd9f97b382b5f4"
+    },
+    {
+      "id": "quaternius/nature/flower-7-group",
+      "revision": "518cd6a7a154d6c468fce0cc55cffa69c6b16fdedcc5da9587ab8222b6ed052a"
+    },
+    {
+      "id": "quaternius/nature/flower-7-single",
+      "revision": "78f8e23fd8ef3575bb4b3d15a55abfdea668e5b6e39da8c02038cce4ff74624d"
+    },
+    {
+      "id": "quaternius/nature/mushroom-laetiporus",
+      "revision": "b534e8531fc480d10a0f1af128316df36e1ae057eb7b9666a56a41e0de581513"
+    },
+    {
+      "id": "quaternius/nature/mushroom-oyster",
+      "revision": "d6390ed607431493fa504c699d34f7b3b4e7b0c6dec0a1cc52282e75d0688140"
+    },
+    {
+      "id": "quaternius/nature/mushroom-redcap",
+      "revision": "d2ff5ac862ebf61a7c8c6e53fa6cbac00ee7234dae8bf97179968fe8a495939b"
+    },
+    {
+      "id": "quaternius/nature/petal-1",
+      "revision": "258c6473aeef15e9f91be3118f4b558a4dd73d739671037d2cf945991939721a"
+    },
+    {
+      "id": "quaternius/nature/petal-2",
+      "revision": "1c31320e30eb5614625d08ec9c6a9472c21b796ab58c01a910e80e7182d062ac"
+    },
+    {
+      "id": "quaternius/nature/petal-3",
+      "revision": "a0583d1b6226cde2259bde027a98a4bc1431d89052b752df4e0fc9644d99dd36"
+    },
+    {
+      "id": "quaternius/nature/petal-4",
+      "revision": "ffcc2bcb4383c1e8527fb9b486525d278ff0fd589ac47a9d69e737b469564b08"
+    },
+    {
+      "id": "quaternius/nature/petal-5",
+      "revision": "68f9c38ca7dd730e7e6088bbfc47decd419d0b70cca8244cc65c9d2844e679e5"
+    },
+    {
+      "id": "quaternius/nature/petal-6",
+      "revision": "7b992f90b9b7749927b1efca9f1305250a92b85ebb15c1426b03641575755276"
+    },
+    {
+      "id": "quaternius/nature/plant-1-big",
+      "revision": "0aee478a292f20a54ad52ad31acdf1cc148551e9b5dfe12a688fb74f6fd9e382"
+    },
+    {
+      "id": "quaternius/nature/plant-2",
+      "revision": "7f2a1a8f8340ca4abf7b62fa0a987f61e2543713b7d0980d87073d0b2d9135ae"
+    },
+    {
+      "id": "quaternius/nature/plant-2-big",
+      "revision": "67226369333432db85b084a4b0173351e6e4877b73251f5634de5f93ef7d6aa5"
+    },
+    {
+      "id": "quaternius/nature/plant-4",
+      "revision": "795cf57fed5c1a4bb85b0b5f335f0ff08f2801b81dba23df856c0555ed74bc86"
+    },
+    {
+      "id": "quaternius/nature/plant-5",
+      "revision": "35eb9089c147a42f482ba8e89c9b73f6baffd0af034046141ae044831542c8c3"
+    },
+    {
+      "id": "quaternius/nature/plant-6",
+      "revision": "7e9851bc2ef41efa9bd395bf6b0ccac33aa90711a980ec2d8462691a4682b0fa"
+    },
+    {
+      "id": "quaternius/nature/plant-7",
+      "revision": "f9c70abdc874bdbfdb5a4f3167d9fe0f11389e02074efc662cd8fe73bd087450"
+    },
+    {
+      "id": "quaternius/nature/plant-7-big",
+      "revision": "61417307261080a5c25a1723ff96e5449e2401fcdb60a67d03af1ef544ead5cc"
+    },
+    {
+      "id": "quaternius/bestiary-dungeon/imp",
+      "revision": "1b2e691c3c5b9442ea218d266f6553e782c30f190dd128b497999e1abf440ca8"
+    },
+    {
+      "id": "quaternius/bestiary-dungeon/puglin",
+      "revision": "9c3a0fddd716a03b9a2ac62bf8671a4fde5f53a26f5d7c9a2e984fe2b1e626bf"
+    },
+    {
+      "id": "quaternius/nature/bush-long-1",
+      "revision": "1355f4e716faab8f2dcbb6bf7599d4adce005c3f525131c8a60c36e6fe1a6690"
+    },
+    {
+      "id": "quaternius/nature/bush-long-2",
+      "revision": "54459c1a44a90f24a7c262596cf5ea50caa65e723bf56a0b747e809cdd119529"
+    },
+    {
+      "id": "quaternius/nature/grass-common-tall",
+      "revision": "4fbad4281255027d1c68be33918a92b2aa660405a7129fe60a2ea99fdfc52a40"
+    },
+    {
+      "id": "quaternius/nature/grass-wheat",
+      "revision": "97109f16c808aadf988f205bad9d657bc8374b94dd68eed6476b88a2bc39fa47"
+    },
+    {
+      "id": "quaternius/nature/grass-wide-tall",
+      "revision": "cd442ca1a7b8d9e3d4d493971cfb803ed27b00dcc9b040483c3b1fa4c727822e"
+    },
+    {
+      "id": "quaternius/nature/grass-wispy-tall",
+      "revision": "fcd153c8a3bad56e40488aac9599273c7216ece4c710fa6ce738ce55d76a5402"
     }
   ],
   "parent_scene": {
@@ -1465,7 +1913,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "4c90a29f90342346674ce25327a8054aa1892661aa74e0fddd09a54038dc770b",
+    "sha256": "61e348914952ad7344df0d0ff7a331895f2cb3dbcbcc9c3fb5f0db7153eaf30c",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -1474,7 +1922,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "f221d6b898d560871c452acda224919cf0630d7c7c6ee5f2cddc91dfb060e4ab",
+    "sha256": "ad7b3b56a3f0f81706cb3238ac3e3369083161a137ab0b04df564140aab0ed91",
     "budget_bytes": 134217728
   },
   "terrain": {
@@ -1684,6 +2132,29 @@
       "path": "verse/tools/assets/animal_bake.py",
       "sha256": "12828a934597739f5cb6ddd1e81b23d709364377695290c8ab21708155ea1b2f"
     },
-    "selection": "Fantasy-appropriate food; modern packaged and fast foods omitted, with reserved layout positions."
+    "selection": "Fantasy-appropriate food; modern packaged and fast foods omitted, with reserved layout positions.",
+    "extra_props": {
+      "path": "assets/registry/scenes/everglade-experimental-extra-props.layout",
+      "sha256": "bf1dfe7ffd5992ff307bebe609d0fc60f99beae593995e4facd65dd1efff0168",
+      "count": 74
+    },
+    "extra_nature": {
+      "path": "assets/registry/scenes/everglade-experimental-extra-nature.layout",
+      "sha256": "8478ca18643549c79dff4d47bdfafd8456f884a8b312bc650a7c1a8e9fc945b6",
+      "count": 36
+    },
+    "bestiary": {
+      "package": "bestiary-dungeon",
+      "revision": "994381f0e9945cb038fe4b99ad459b24f1a44cd565bcfa26b11465a57f3f1190",
+      "license": "LicenseRef-Quaternius-QAL-1.0",
+      "baker": {
+        "path": "verse/tools/assets/bestiary_bake.py",
+        "sha256": "a8a4159e76120111e9ad7c5c1d814992f8b718c598ffaaadfd3772cac42e8f4f"
+      },
+      "models": [
+        "Imp",
+        "Puglin"
+      ]
+    }
   }
 }
