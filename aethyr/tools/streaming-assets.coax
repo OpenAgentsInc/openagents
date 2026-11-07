@@ -15,7 +15,7 @@ ceil :: (x: f64) -> f64 #foreign #effects(all);
 SSA_CELLS :: 12;
 SSA_RESOURCES :: 64;
 SSA_PACK_BUDGET :: 16384;
-SSA_REVISION :: "aethyr.corridor-assets.v1/static48-2/pcm16-48000/png-rgba";
+SSA_REVISION :: "aethyr.corridor-assets.v2/static48-2/pcm16-48000/png-rgba/independent-media";
 SsaSources :: struct { bytes: [SSA_RESOURCES] [4096] u8; sizes: [SSA_RESOURCES] int; }
 SsaLocations :: struct { pack: [SSA_RESOURCES] assets.AssetId; at: [SSA_RESOURCES] int; bytes: [SSA_RESOURCES] int; }
 
@@ -219,14 +219,15 @@ tool_main :: () -> int #export_c #effects(all) {
   for row: 0..<SSA_RESOURCES { input[row] = sources[0].bytes[row][0..<sources[0].sizes[row]]; }
   specs[0] = ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures};
   specs[1] = ResourceSpec.{format = ResourceFormat.indices}; specs[2] = specs[1]; specs[3] = ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48};
-  deps[3].count = 2; deps[3].owners[0] = 0; deps[3].owners[1] = 2;
+  deps[3].count = 1; deps[3].owners[0] = 2;
   for cell: 0..<SSA_CELLS {
     base := 4 + cell * 5;
     specs[base] = ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.lighting};
     specs[base + 1] = ResourceSpec.{format = ResourceFormat.boxes, category = ResourceCategory.collision};
     specs[base + 2] = ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors};
     specs[base + 3] = ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio}; specs[base + 4] = specs[3];
-    deps[base + 4].count = 3; deps[base + 4].owners[0] = 0; deps[base + 4].owners[1] = 1; deps[base + 4].owners[2] = base;
+    deps[base + 2].count = 1; deps[base + 2].owners[0] = base + 1;
+    deps[base + 4].count = 1; deps[base + 4].owners[0] = 1;
   }
   encoded: [RESOURCE_MANIFEST_MAX_BYTES] u8; parsed: [1] ResourceManifest;
   for backend: 0..<2 { for tier: 0..<2 {

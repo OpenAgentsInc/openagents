@@ -1,0 +1,311 @@
+// Tests are declared before the consumer implementation. This fixture builds
+// real collision/body bytes. Unloaded visual identities are fixture-only pins.
+#load "stream-walk-policy-checks.coax";
+sw_test_manifest :: () -> ResourceManifest #effects(all) {
+  m := ResourceManifest.{valid = true, count = 64};
+  image := PNG_ONE; geometry: [288] u8; index: [144] u8; body: [64] u8; box: [24] u8;
+  pcm := [1] int.[123]; sound: [46] u8;
+  wav_bytes := wav.apw_test_wav(1, 48000, pcm[..], sound[..]);
+  for row: 0..<64 {
+    spec: ResourceSpec; source := geometry[..];
+    if row == 0 || (row >= 4 && (row - 4) % 5 == 0) { source = image[..]; spec = ResourceSpec.{format = ResourceFormat.image_mips, category = ifx row == 0 then ResourceCategory.textures else ResourceCategory.lighting, side = 1}; }
+    else if row == 1 || row == 2 { source = index[0..<(ifx row == 1 then 24 else 144)]; spec.format = ResourceFormat.indices; }
+    else if row == 3 || (row >= 4 && (row - 4) % 5 == 4) { spec = ResourceSpec.{version = 2, format = ResourceFormat.packed_vertices48}; }
+    else if (row - 4) % 5 == 1 {
+      sw_test_box((row - 4) / 5, box[..]); source = box[..]; spec = ResourceSpec.{format = ResourceFormat.boxes, category = ResourceCategory.collision};
+    } else if (row - 4) % 5 == 2 {
+      sw_test_body((row - 4) / 5, body[..]); source = body[..]; spec = ResourceSpec.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors};
+    } else { source = wav_bytes; spec = ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio}; }
+    plan := resource_plan(source, spec); #assert plan.status == ResourceCostStatus.ok;
+    if row == 3 || (row >= 4 && ((row - 4) % 5 == 0 || (row - 4) % 5 >= 3)) { plan.content.words[0] = cast(u32) (100 + row); }
+    m.entries[row].plan = plan;
+    if row == 3 || (row >= 4 && ((row - 4) % 5 == 2 || (row - 4) % 5 == 4)) {
+      m.entries[row].dependencies.count = 1; m.entries[row].dependencies.owners[0] = ifx row == 3 then 2 else ifx (row - 4) % 5 == 2 then row - 1 else 1;
+    }
+  }
+  // Pure coordinator tests bind an immutable fixture identity. Full byte
+  // authentication is exercised separately below and by the actual host.
+  #assert resource_manifest_shape(m); m.identity = assets.asset_id("stream-walk-unit-fixture-v3"); return m;
+}
+sw_test_box :: (cell: int, out: [] u8) #effects(all) {
+  v := [6] f32.[-4, -1, f32(cell * 64), 64, 0, f32((cell + 1) * 64)];
+  for i: 0..<6 { resource_fixture_f32(out, i * 4, v[i]); }
+}
+sw_test_body :: (cell: int, out: [] u8) #effects(all) {
+  for i: 0..<64 { out[i] = 0; }
+  resource_put64(out, 0, cell + 1); resource_put64(out, 8, cast,trunc(int) f64_bits(8)); resource_put64(out, 24, cast,trunc(int) f64_bits(f64(cell * 64 + 32)));
+}
+sw_test_ack :: (s: [] SwWalk) #effects(all) { sw_ack(s); }
+
+#test "two active cells publish boxes before capsules in the shared semantic shape order" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  encoded: [2] [24] u8; boxes: [2] [6] f32;
+  for i: 0..<2 {
+    sw_test_box(i, encoded[i][..]); #assert resource_decode_collision(m[0].entries[5 + i * 5].plan, encoded[i][..], boxes[i][..]) == ResourceCostStatus.ok;
+    s[0].decoded_boxes[i] = boxes[i][..]; s[0].awake[i] = true; s[0].cells[0].cells[i].level = cells.CELL_DRAW_LEVEL;
+    s[0].actor[i] = cells.CellBody.{id = i + 1, x = 8, z = f64(i * 64 + 32)};
+  }
+  s[0].active = 2; sw_walk(s[..], 1);
+  #assert s[0].player.pos.z > 56 && s[0].nav_flow.settled == 2 && s[0].player.key_y == 1 && s[0].player.run && s[0].query_epoch[0] == 2;
+  for i: 0..<2 { #assert s[0].metadata[i].shape == queries.QueryShape.box && s[0].metadata[i].index == i;
+    #assert s[0].metadata[i].ref.id == 1000 + i && s[0].metadata[i].ref.generation == 1 && s[0].metadata[i].surface == 10;
+    #assert s[0].metadata[2 + i].shape == queries.QueryShape.capsule && s[0].metadata[2 + i].index == i;
+    #assert s[0].metadata[2 + i].ref.id == 500 + i && s[0].metadata[2 + i].ref.generation == 1 && s[0].metadata[2 + i].categories == 8 && s[0].metadata[2 + i].surface == 10;
+    #assert s[0].metadata[2 + i].entity == entities.entity_at(sw_entities(s[..]), i) && s[0].nav_walk[i];
+    for k: 0..<6 { #assert s[0].boxes[i * 6 + k] == boxes[i][k]; }
+    expected := [7] f32.[8, 0.3, f32(i * 64 + 32), 8, 1.5, f32(i * 64 + 32), 0.3];
+    for k: 0..<7 { #assert s[0].capsules[i * 7 + k] == expected[k]; }
+  }
+}
+#test "holding a missing cell edge stops horizontal transport and accepts the next reverse input" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  encoded: [24] u8; boxes: [6] f32; sw_test_box(0, encoded[..]);
+  #assert resource_decode_collision(m[0].entries[5].plan, encoded[..], boxes[..]) == ResourceCostStatus.ok;
+  s[0].decoded_boxes[0] = boxes[..]; s[0].awake[0] = true; s[0].active = 1; s[0].cells[0].cells[0].level = cells.CELL_DRAW_LEVEL;
+  s[0].actor[0] = cells.CellBody.{id = 1, x = 8, z = 32};
+  s[0].player.pos.z = 63.999; s[0].player.prev_pos.z = 63.8; s[0].player.vel.z = 7.5;
+  prior := s[0].player; sw_walk(s[..], 1);
+  #assert s[0].player.pos.z == prior.pos.z && s[0].player.pos.y == prior.pos.y && s[0].player.vel.y == prior.vel.y && s[0].player.on_ground;
+  #assert s[0].player.vel.x == 0 && s[0].player.vel.z == 0 && s[0].player.prev_pos.z == s[0].player.pos.z && s[0].player.key_y == 1;
+  sw_walk(s[..], -1); #assert s[0].player.pos.z < prior.pos.z && s[0].player.vel.z < 0 && s[0].player.key_y == -1;
+}
+
+#test "edge hold resets interpolation history but preserves vertical motion camera and pending input" {
+  s: [1] SwWalk;
+  s[0].player.pos = walking.Vec3.{x = 2, y = 3, z = 4}; s[0].player.prev_pos = walking.Vec3.{x = 20, y = 30, z = 40};
+  s[0].player.target = walking.Vec3.{x = 5, y = 6, z = 7}; s[0].player.prev_target = walking.Vec3.{x = 50, y = 60, z = 70};
+  s[0].player.vel = walking.Vec3.{x = 1, y = -2, z = 3}; s[0].player.face = 0.5; s[0].player.prev_face = -0.5;
+  s[0].player.dist = 4; s[0].player.prev_dist = 8; s[0].player.jumps.waiting = 1; s[0].blocked = 7;
+  sw_hold(s[..], -1);
+  #assert s[0].player.pos.x == 2 && s[0].player.pos.y == 3 && s[0].player.pos.z == 4;
+  #assert s[0].player.vel.x == 0 && s[0].player.vel.y == -2 && s[0].player.vel.z == 0 && s[0].player.key_y == -1;
+  #assert s[0].player.prev_pos.x == 2 && s[0].player.prev_pos.y == 3 && s[0].player.prev_pos.z == 4;
+  #assert s[0].player.target.x == 5 && s[0].player.target.y == 6 && s[0].player.target.z == 7;
+  #assert s[0].player.prev_target.x == 5 && s[0].player.prev_target.y == 6 && s[0].player.prev_target.z == 7;
+  #assert s[0].player.face == 0.5 && s[0].player.prev_face == 0.5 && s[0].player.dist == 4 && s[0].player.prev_dist == 4;
+  #assert s[0].player.jumps.waiting == 1 && s[0].blocked == 8;
+}
+
+#test "draw planning requires ready live GPU owners and preserves floor actor player order with declared lighting fallback" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  // These are snapshots of the planner's admitted-input boundary. Codec,
+  // publication and physical allocation are qualified by their own checks.
+  for row: [8] int.[0, 1, 2, 3, 4, 8, 59, 63] {
+    handle := sw_gpu_acquire(s[..], 1, 16); #assert handle.status == gpu.RrStatus.ok;
+    s[0].stream[0].owners[row].admission[0].gpu_handle = handle.handle;
+    s[0].stream[0].owners[row].phase = ResourceOwnerPhase.ready; s[0].stream[0].wanted[row] = true;
+  }
+  s[0].cells[0].cells[0].level = cells.CELL_DRAW_LEVEL; s[0].cells[0].cells[11].level = cells.CELL_DRAW_LEVEL;
+  p := sw_draws(s[..], m[..]); #assert p.count == 5;
+  s[0].closing = true; #assert sw_draws(s[..], m[..]).count == 0; s[0].closing = false;
+  s[0].valid = false; #assert sw_draws(s[..], m[..]).count == 0; s[0].valid = true;
+  geometry := [5] int.[8, 3, 63, 3, 3]; indices := [5] int.[1, 2, 1, 2, 2]; cell := [5] int.[-2, 0, -2, 11, -1]; lights := [5] int.[4, 4, 59, 59, 0];
+  for i: 0..<5 { #assert p.rows[i].geometry == geometry[i] && p.rows[i].indices == indices[i] && p.rows[i].cell == cell[i] && p.rows[i].lighting == lights[i];
+    #assert p.rows[i].texture == 0 && !p.rows[i].fallback && p.rows[i].count == (ifx indices[i] == 1 then 6 else 36); }
+  s[0].stream[0].owners[59].phase = ResourceOwnerPhase.loaded;
+  p = sw_draws(s[..], m[..]); #assert p.count == 5 && p.rows[2].fallback && p.rows[3].fallback && p.rows[2].lighting == 0 && p.rows[3].lighting == 0 && !p.rows[4].fallback;
+  s[0].stream[0].owners[59].phase = ResourceOwnerPhase.ready;
+  #assert sw_gpu_release(s[..], s[0].stream[0].owners[4].admission[0].gpu_handle) == gpu.RrStatus.ok;
+  p = sw_draws(s[..], m[..]); #assert p.count == 5 && p.rows[0].fallback && p.rows[1].fallback && !p.rows[2].fallback;
+  s[0].stream[0].owners[1].phase = ResourceOwnerPhase.loaded;
+  p = sw_draws(s[..], m[..]); #assert p.count == 3 && p.rows[0].cell == 0 && p.rows[1].cell == 11 && p.rows[2].cell == -1;
+  s[0].stream[0].owners[0].phase = ResourceOwnerPhase.loaded; #assert sw_draws(s[..], m[..]).count == 0;
+  s[0].stream[0].owners[0].phase = ResourceOwnerPhase.ready;
+  #assert sw_gpu_release(s[..], s[0].stream[0].owners[0].admission[0].gpu_handle) == gpu.RrStatus.ok && sw_draws(s[..], m[..]).count == 0;
+  #assert !sw_gpu_live(s[..], -1) && !sw_gpu_live(s[..], 64);
+  s[0].valid = false; #assert sw_draws(s[..], m[..]).count == 0; s[0].valid = true;
+  s[0].closing = true; #assert sw_draws(s[..], m[..]).count == 0;
+}
+
+#test "streamed consumer checks manifest layout and creates stable existence separately from active actors" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk;
+  #assert sw_manifest(m[..], 0, ResourceBackend.browser) && sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  #assert entities.entity_count(sw_entities(s[..])) == 12 && s[0].active == 0 && s[0].tick == 0 && s[0].player.pos.z == 56;
+  #assert s[0].stream[0].budget[0].total_cap == 32768 && s[0].stream[0].budget[0].actor_cap == 5;
+  #assert !sw_open(s[..], m[..], 0, ResourceBackend.browser) && !sw_manifest(m[..], 1, ResourceBackend.browser) && !sw_manifest(m[..], 0, ResourceBackend.vulkan);
+  #assert sw_frame(s[..], m[..], 0, 1) && s[0].tick == 0 && s[0].stream[0].requests == 0;
+  #assert sw_frame(s[..], m[..], 15625000, 1) && s[0].tick == 1 && s[0].player.clock.ticks == 1 && s[0].blocked == 1;
+  #assert s[0].load_n == 4 && s[0].loads[0].owner == 5 && s[0].loads[1].owner == 6 && s[0].loads[2].owner == 10 && s[0].loads[3].owner == 11;
+  #assert s[0].active == 0 && !cells.cell_may_enter(s[0].cells[..], 32, 64);
+  u: [64] f32; #assert sw_uniforms(s[..], -1, 1, u[..]) && u[16] == 32 && u[18] == 56;
+  #assert !sw_uniforms(s[..], -3, 1, u[..]) && !sw_gpu_live(s[..], 0);
+  #assert sw_draws(s[..], m[..]).count == 0;
+  grant := sw_gpu_acquire(s[..], 1, 16); #assert grant.status == gpu.RrStatus.ok && sw_gpu_release(s[..], grant.handle) == gpu.RrStatus.ok;
+  #assert !sw_frame(s[..], m[..], 15625000, 1) && s[0].tick == 1;
+}
+#test "SDK facts wait for a paid step and authoritative readiness ignores unfinished visuals" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk;
+  #assert sw_open(s[..], m[..], 0, ResourceBackend.browser) && sw_frame(s[..], m[..], 15625000, 1);
+  box: [24] u8; body: [64] u8; values: [6] f32; bodies: [1] cells.CellBody;
+  sw_test_box(0, box[..]); sw_test_body(0, body[..]);
+  work: [1] u8;
+  #assert sw_codec(m[0].entries[5].plan, box[..], work[0..<0], work[0..<0], values[..], bodies[0..<0]) == ResourceCostStatus.ok;
+  #assert sw_codec(m[0].entries[6].plan, body[..], work[0..<0], work[0..<0], values[0..<0], bodies[..]) == ResourceCostStatus.ok;
+  #assert sw_offer(s[..], SwFact.{key = s[0].loads[0], source = box[..], values = values[..]});
+  #assert sw_offer(s[..], SwFact.{key = s[0].loads[1], source = body[..], bodies = bodies[..]});
+  sw_test_ack(s[..]);
+  #assert sw_frame(s[..], m[..], 0, 1) && s[0].fact_n == 2 && s[0].record_n == 0 && s[0].active == 0;
+  #assert sw_frame(s[..], m[..], 15625000, 1) && s[0].fact_n == 0 && s[0].record_n == 4;
+  #assert s[0].records[0].tick == 2 && s[0].records[0].kind == SwRecordKind.completed && s[0].records[0].status == ResourceStreamStatus.ok;
+  #assert s[0].records[2].kind == SwRecordKind.ready && s[0].records[2].key.owner == 5;
+  #assert s[0].active == 1 && s[0].born[0] && s[0].actor[0].id == 1 && s[0].actor[0].words[0] == 1;
+  #assert s[0].player.pos.z > 56 && !resource_stream_ready(s[0].stream[..], 8) && s[0].nav_flow.status == navigation.NavFlowStatus.ok;
+  borrow := sw_borrow(s[..], 5); #assert borrow.slot >= 0 && sw_return(s[..], m[..], borrow) && !sw_return(s[..], m[..], borrow);
+  #assert sw_close(s[..], m[..]) && s[0].active == 0 && s[0].drawn == 0 && s[0].updated == 0 && s[0].voices == 0 && s[0].query_epoch[0] == 0;
+  #assert s[0].cells[0].cells[0].body_n == 1 && s[0].cells[0].cells[0].bodies[0].id == 1 && s[0].cells[0].cells[0].bodies[0].words[0] == 1 && !s[0].awake[0];
+  #assert s[0].cells[0].cells[0].level == cells.CELL_ABSENT && s[0].cells[0].cells[0].request == 0;
+}
+
+#test "source views follow only current successful or unwanted effects and clear after exact physical retirement" #steps 200000000 {
+  for cell: [3] int.[0, 1, 11] { for fault: 0..<6 {
+    m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+    box_row := 5 + cell * 5; body_row := box_row + 1; root := resource_stream_hold(s[0].stream[..], m[..], body_row);
+    a := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], box_row);
+    b := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], body_row);
+    #assert a.status == ResourceStreamStatus.ok && b.status == ResourceStreamStatus.ok;
+    box: [24] u8; body: [64] u8; values: [6] f32; bodies := [1] cells.CellBody.[cells.CellBody.{id = cell + 1}];
+    sw_test_box(cell, box[..]); sw_test_body(cell, body[..]);
+    if fault == 3 { bodies[0].id = 99; }
+    if fault == 5 { #assert resource_stream_drop(s[0].stream[..], m[..], root); }
+    #assert sw_offer(s[..], SwFact.{key = b.key, source = body[..], bodies = bodies[0..<(ifx fault == 2 then 0 else 1)]});
+    #assert sw_offer(s[..], SwFact.{key = a.key, source = box[..], values = values[0..<(ifx fault == 1 then 5 else 6)], decoded = ifx fault == 4 then ResourceCostStatus.decode else ResourceCostStatus.ok});
+    sw_facts(s[..], m[..]);
+    #assert s[0].fact_n == 0 && s[0].facts[0].key.owner == -1 && s[0].facts[1].key.owner == -1 && s[0].record_n == 2;
+    #assert s[0].records[0].kind == SwRecordKind.completed && s[0].records[1].key.owner == box_row;
+    #assert s[0].records[0].status == (ifx fault == 2 || fault == 3 then ResourceStreamStatus.failed else ifx fault == 5 then ResourceStreamStatus.unwanted else ResourceStreamStatus.ok);
+    #assert s[0].records[1].status == (ifx fault == 1 || fault == 4 then ResourceStreamStatus.failed else ifx fault == 5 then ResourceStreamStatus.unwanted else ResourceStreamStatus.ok);
+    #assert s[0].decoded_bodies[cell].count == (ifx fault == 2 || fault == 3 then 0 else 1) && s[0].decoded_boxes[cell].count == (ifx fault == 1 || fault == 4 then 0 else 6);
+    if fault != 5 { #assert resource_stream_drop(s[0].stream[..], m[..], root); }
+    sw_ack(s[..]); sw_retirements(s[..]);
+    failed_box := fault == 1 || fault == 4;
+    #assert s[0].retire_n == (ifx failed_box then 2 else 1) && s[0].retires[0].owner == body_row && s[0].retire_sent[body_row];
+    sw_ack(s[..]); sw_retirements(s[..]); #assert s[0].retire_n == 0;
+    #assert sw_offer(s[..], SwFact.{kind = SwFactKind.destroyed, key = b.key}); sw_facts(s[..], m[..]);
+    #assert s[0].decoded_bodies[cell].count == 0 && !s[0].retire_sent[body_row] && s[0].records[0].status == ResourceStreamStatus.ok;
+    #assert s[0].decoded_boxes[cell].count == (ifx failed_box then 0 else 6);
+    sw_ack(s[..]); sw_retirements(s[..]); #assert s[0].retire_n == (ifx failed_box then 0 else 1) && s[0].retire_sent[box_row];
+    if !failed_box { #assert s[0].retires[0].owner == box_row; }
+    #assert sw_offer(s[..], SwFact.{kind = SwFactKind.destroyed, key = a.key}); sw_ack(s[..]); sw_facts(s[..], m[..]);
+    #assert s[0].decoded_boxes[cell].count == 0 && !s[0].retire_sent[box_row] && s[0].records[0].status == ResourceStreamStatus.ok;
+    #assert s[0].stream[0].destroyed == 2 && s[0].queue[0].bytes == 0 && s[0].stream[0].budget[0].total == 0;
+    // A repeated callback cannot revoke a replacement view or its pending
+    // destruction notification, even if its row number is unchanged.
+    s[0].decoded_boxes[cell] = values[..]; s[0].retire_sent[box_row] = true; sw_ack(s[..]);
+    #assert sw_offer(s[..], SwFact.{kind = SwFactKind.destroyed, key = a.key}); sw_facts(s[..], m[..]);
+    #assert s[0].records[0].status == ResourceStreamStatus.stale && s[0].decoded_boxes[cell].count == 6 && s[0].retire_sent[box_row];
+  } }
+}
+
+#test "independent collection preserves only the nearest bounded audio roots and retires old visual claims" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  sw_claim(s[..], m[..], 0, true); ref := s[0].claims[0]; #assert ref.slot == 0;
+  sw_claim(s[..], m[..], 0, true); #assert s[0].claims[0].serial == ref.serial && s[0].stream[0].owners[0].refs == 1;
+  sw_claim(s[..], m[..], 0, false); #assert s[0].claims[0].slot == -1 && !s[0].stream[0].wanted[0];
+  sw_interest(s[..], m[..], 1);
+  #assert s[0].prefetch_cell == 1 && s[0].prefetch.slot == 0 && s[0].voices == 2 && s[0].audio_deferred == 0;
+  #assert s[0].claims[0].slot >= 0 && s[0].claims[3].slot >= 0 && s[0].claims[4].slot >= 0 && s[0].claims[9].slot >= 0 && s[0].claims[14].slot >= 0;
+  #assert s[0].claims[7].slot >= 0 && s[0].claims[12].slot >= 0 && s[0].claims[17].slot == -1;
+  #assert s[0].claims[6].slot == -1 && s[0].claims[8].slot == -1 && !s[0].stream[0].wanted[6];
+  s[0].player.pos.z = 64; s[0].profile.pools.voices = 1; sw_interest(s[..], m[..], -1);
+  #assert s[0].prefetch_cell == 0 && s[0].voices == 1 && s[0].audio_deferred == 2;
+  #assert s[0].claims[7].slot >= 0 && s[0].claims[12].slot == -1 && s[0].claims[17].slot == -1;
+  s[0].player.pos.x = 1000; sw_interest(s[..], m[..], 0);
+  #assert s[0].prefetch_cell == -1 && s[0].prefetch.slot == -1 && s[0].voices == 0 && s[0].audio_deferred == 0;
+  for row: 0..<64 { #assert s[0].stream[0].wanted[row] == (row == 2 || row == 3); }
+  #assert s[0].claims[0].slot == -1 && s[0].claims[3].slot >= 0 && s[0].active == 0;
+}
+#test "complete pinned manifest loading refuses malformed roots and cannot replace a live consumer" #steps 200000000 {
+  m := sw_test_manifest(); bytes: [RESOURCE_MANIFEST_MAX_BYTES] u8;
+  #assert resource_manifest_write(m, bytes[..]) == ResourceManifestStatus.ok;
+  m.identity = assets.asset_id(cast(string) bytes[..]);
+  hex: [64] u8; #assert assets.asset_hex(m.identity, hex[..]);
+  #assert sw_auth(bytes[..], cast(string) hex[..]) && !sw_auth(bytes[0..<10], cast(string) hex[..]) && !sw_auth(bytes[..], "bad");
+  s: [1] SwWalk; out: [1] ResourceManifest;
+  #assert !sw_load_manifest(s[..], out[..], bytes[..], "bad", 0, ResourceBackend.browser) && !s[0].valid;
+  #assert !sw_load_manifest(s[..], out[..], bytes[0..<bytes.count - 1], cast(string) hex[..], 0, ResourceBackend.browser);
+  #assert !sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 1, ResourceBackend.browser) && !s[0].valid && !out[0].valid;
+  #assert !sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 0, ResourceBackend.vulkan) && !s[0].valid && !out[0].valid;
+  #assert sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 0, ResourceBackend.browser);
+  #assert out[0].valid && out[0].count == 64 && assets.asset_same(out[0].identity, m.identity) && s[0].player.prev_target.x == 32 && s[0].player.prev_target.z == 56;
+  #assert !sw_load_manifest(s[..], out[..], bytes[..], cast(string) hex[..], 0, ResourceBackend.browser);
+}
+
+#test "scene admission refuses malformed manifests unknown tiers and each mismatched resource role" #steps 200000000 {
+  m := [1] ResourceManifest.[sw_test_manifest()];
+  for tier: [2] int.[-1, 2] { #assert !sw_manifest(m[..], tier, ResourceBackend.browser); }
+  bad := m; bad[0].valid = false; #assert !sw_manifest(bad[..], 0, ResourceBackend.browser);
+  bad = m; bad[0].count = 63; #assert !sw_manifest(bad[..], 0, ResourceBackend.browser);
+  bad = m; bad[0].count = 65; #assert !sw_manifest(bad[..], 0, ResourceBackend.browser);
+  bad = m; bad[0].entries[0].plan.cost.objects += 1; #assert !sw_manifest(bad[..], 0, ResourceBackend.browser);
+  for row: [10] int.[0, 1, 2, 3, 4, 5, 6, 7, 8, 63] { for field: 0..<4 {
+    bad = m;
+    if field == 0 { bad[0].entries[row].plan.spec.format = ResourceFormat.positions4; }
+    if field == 1 { bad[0].entries[row].plan.spec.category = ResourceCategory.staging; }
+    if field == 2 { bad[0].entries[row].plan.spec.backend = ResourceBackend.vulkan; }
+    if field == 3 { bad[0].entries[row].plan.spec.side += 1; }
+    #assert !sw_manifest(bad[..], 0, ResourceBackend.browser);
+  } }
+  for row: [3] int.[3, 6, 8] {
+    bad = m; bad[0].entries[row].dependencies.count = 0; #assert !sw_manifest(bad[..], 0, ResourceBackend.browser);
+    bad = m; bad[0].entries[row].dependencies.owners[0] = 0; #assert !sw_manifest(bad[..], 0, ResourceBackend.browser);
+  }
+  for row: [2] int.[5, 6] { bad = m; bad[0].entries[row].plan.cost.elements = 2; #assert !sw_manifest(bad[..], 0, ResourceBackend.browser); }
+  // These are layout checks. The actual v2 side-2/Vulkan manifests and
+  // source-derived costs are independently checked by the asset oracle.
+  for tier: 0..<2 { for backend: 0..<2 {
+    good := m;
+    for row: 0..<64 { good[0].entries[row].plan.spec.backend = cast(ResourceBackend) backend; if good[0].entries[row].plan.spec.format == ResourceFormat.image_mips { good[0].entries[row].plan.spec.side = tier + 1; } }
+    s: [1] SwWalk; #assert sw_manifest(good[..], tier, cast(ResourceBackend) backend) && sw_open(s[..], good[..], tier, cast(ResourceBackend) backend);
+    #assert s[0].profile.tier == tier && s[0].profile.layer_side == tier + 1;
+    for i: 0..<12 { #assert s[0].cells[0].manifest[i].cx == 0 && s[0].cells[0].manifest[i].cz == i && s[0].cells[0].manifest[i].digest == cast(int) good[0].entries[6 + i * 5].plan.content.words[0]; }
+    for i: 0..<7 { #assert s[0].stream[0].budget[0].caps[i] == [7] int.[8192, 512, 4096, 2048, 8192, 4096, 2048][i]; }
+    #assert s[0].stream[0].budget[0].voice_cap == 2 && s[0].stream[0].load_limit == 4 && s[0].stream[0].epoch == 1;
+    #assert s[0].queue[0].capacity == 8388608 && s[0].queue[0].limit == 33554432 && s[0].registry[0].limit.slots == 512 && s[0].registry[0].limit.words == 268435456;
+    #assert s[0].player.pos.x == 32 && s[0].player.pos.y == 0 && s[0].player.prev_pos.z == 56 && s[0].player.target.x == 32 && s[0].player.target.y == 1.5 && s[0].player.target.z == 56;
+    #assert s[0].query_epoch[0] == 1 && s[0].surfaces[0].id == 10 && s[0].surfaces[0].footstep == 4;
+  } }
+}
+
+#test "invalid frame inputs and stale facts preserve paid state and bound the callback queue exactly" #steps 100000000 {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk;
+  #assert !sw_frame(s[..], m[..], 15625000, 0) && !sw_offer(s[..], SwFact.{}) && !sw_close(s[..], m[..]) && sw_draws(s[..], m[..]).count == 0;
+  #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  for direction: [4] f32.[-1.01, 1.01, 0.0f32 / 0.0f32, 1.0f32 / 0.0f32] { #assert !sw_frame(s[..], m[..], 15625000, direction) && s[0].tick == 0 && s[0].player.clock.frames == 0; }
+  for i: 0..<64 { #assert sw_offer(s[..], SwFact.{}); }
+  #assert !sw_offer(s[..], SwFact.{}) && s[0].fact_n == 64 && s[0].offered_refused == 2;
+  #assert sw_frame(s[..], m[..], 0, 0) && s[0].fact_n == 64 && s[0].record_n == 0;
+  #assert sw_frame(s[..], m[..], 15625000, 0) && s[0].fact_n == 0 && s[0].record_n == 64;
+  for i: 0..<64 { #assert s[0].records[i].tick == 1 && s[0].records[i].status == ResourceStreamStatus.stale && s[0].records[i].key.owner == -1 && s[0].facts[i].key.owner == -1; }
+  #assert s[0].stream[0].loading == 4 && s[0].stream[0].refused == 0;
+  sw_test_ack(s[..]); s[0].tick = 9223372036854775807;
+  #assert !sw_frame(s[..], m[..], 15625000, 0) && s[0].player.clock.ticks == 1;
+  s[0].tick = 1; s[0].query_epoch[0] = 9223372036854775807;
+  #assert !sw_frame(s[..], m[..], 15625000, 0) && s[0].player.clock.ticks == 1;
+}
+
+#test "neighbor preparation counts its complete declared peak and never grants spawn authority" #steps 100000000 {
+  for exact: 0..<2 {
+    m := [1] ResourceManifest.[sw_test_manifest()];
+    m[0].entries[11].plan.cost.gpu = 3584 + exact;
+    s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+    sw_interest(s[..], m[..], 1);
+    if exact == 0 { #assert s[0].prefetch_cell == 1 && s[0].prefetch.slot >= 0 && s[0].stream[0].wanted[10] && s[0].stream[0].wanted[11]; }
+    else { #assert s[0].prefetch_cell == -1 && s[0].prefetch.slot == -1 && s[0].prefetch_refused == 1; }
+    #assert s[0].active == 0 && !s[0].born[1] && !cells.cell_may_enter(s[0].cells[..], 32, 64) && s[0].stream[0].requests == 0;
+  }
+}
+#test "closing retains pending effects and releases their original owners only after paid destruction receipts" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk;
+  #assert sw_open(s[..], m[..], 0, ResourceBackend.browser) && sw_frame(s[..], m[..], 15625000, 1);
+  retained := s[0].queue[0].bytes; #assert retained > 0;
+  #assert sw_close(s[..], m[..]) && !sw_close(s[..], m[..]) && !resource_stream_finished(s[0].stream[..]);
+  #assert s[0].queue[0].bytes == retained;
+  for i: 0..<s[0].load_n { #assert sw_offer(s[..], SwFact.{key = s[0].loads[i], decoded = ResourceCostStatus.decode}); }
+  sw_test_ack(s[..]);
+  #assert sw_frame(s[..], m[..], 15625000, 0) && s[0].retire_n == 4 && s[0].record_n == 4 && s[0].stream[0].loading == 0;
+  for i: 0..<4 { #assert s[0].records[i].kind == SwRecordKind.completed && s[0].records[i].status == ResourceStreamStatus.failed; }
+  for i: 0..<s[0].retire_n { #assert sw_offer(s[..], SwFact.{kind = SwFactKind.destroyed, key = s[0].retires[i]}); }
+  sw_test_ack(s[..]);
+  #assert sw_frame(s[..], m[..], 15625000, 0) && resource_stream_finished(s[0].stream[..]);
+  #assert s[0].stream[0].budget[0].total == 0 && s[0].queue[0].bytes == 0 && s[0].registry[0].words == 0 && s[0].record_n == 4;
+}

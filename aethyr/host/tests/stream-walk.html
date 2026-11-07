@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Aethyr Stream Walk</title>
+<style>html,body{margin:0;background:#101820;width:100%;height:100%;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head>
+<body><canvas width="640" height="360"></canvas><script type="module">
+import {openStreamWalk} from './stream-walk.js';
+const q=new URLSearchParams(location.search);
+try{window.streamWalk=await openStreamWalk({canvas:document.querySelector('canvas'),sceneURL:q.get('scene')||'/scene/scene.json',sceneSHA:q.get('scene_sha'),sceneBytes:Number(q.get('scene_bytes')),manifestSHA:q.get('root'),tier:Number(q.get('tier')||0),wasmURL:'/build/stream-walk.wasm',shaderURL:'/build/stream-draw.wgsl'});window.streamReady=true;
+if(q.get('play')==='1'){let direction=0,last=performance.now();addEventListener('keydown',e=>{if(e.key==='ArrowUp')direction=1;if(e.key==='ArrowDown')direction=-1;});addEventListener('keyup',e=>{if(e.key==='ArrowUp'||e.key==='ArrowDown')direction=0;});const frame=async now=>{await window.streamWalk.step(Math.round((now-last)*1e6),direction);last=now;requestAnimationFrame(frame);};requestAnimationFrame(frame);}}
+catch(error){window.streamError=String(error.stack||error);console.error(error);}
+</script></body></html>

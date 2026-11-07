@@ -1,0 +1,378 @@
+// Engine-owned corridor consumer of RCM1, the existing cell controller,
+// semantic queries, entity identities, navigation and paid walking clock.
+// SDK callbacks offer immutable facts; only paid steps apply them.
+#authority;
+#load "resource-stream.coax";
+#load "stream-profile.coax" as profiles;
+#load "../walk.coax" as walking;
+#load "../query-scene.coax" as semantics;
+#load "../query-filter.coax" as filters;
+#load "../entity.coax" as entities;
+#load "../nav/grid.coax" as navigation;
+#load "../loop.coax" as clock;
+#load "../host/audio-memory.coax";
+#load "../host/audio-encoded.coax";
+#load "../render/host-image-cache.coax";
+#load "stream-draw.coax" as draw;
+
+SW_CELLS :: 12;
+SW_FACTS :: 64;
+SW_RECORDS :: 256;
+SwFactKind :: enum u8 { completed; destroyed; }
+SwRecordKind :: enum u8 { completed; destroyed; ready; }
+SwFact :: struct {
+  kind: SwFactKind;
+  key: ResourceLoadKey;
+  source: [] u8; // immutable host allocation, retained through application
+  decoded: ResourceCostStatus;
+  values: [] f32;
+  bodies: [] cells.CellBody;
+}
+SwRecord :: struct { tick: int; kind: SwRecordKind; key: ResourceLoadKey; source: assets.AssetId; decoded: ResourceCostStatus; status: ResourceStreamStatus; }
+SwDraw :: struct {geometry: int; indices: int; texture: int; lighting: int; cell: int; count: int; fallback: bool;}
+SwDraws :: struct {count: int; rows: [16] SwDraw;}
+SwResourceRole :: struct {format: ResourceFormat; category: ResourceCategory; dependency: int = -1; elements: int;}
+SwEntities :: struct { gen: [SW_CELLS] int #counter; live: [SW_CELLS] bool; born: [SW_CELLS] bool; doomed: [SW_CELLS] bool; ids: [SW_CELLS] int; free: [SW_CELLS] int; spawns: [SW_CELLS] int; counts: [entities.ENTITY_COUNTERS] int; }
+SwWalk :: struct {
+  valid: bool;
+  closing: bool;
+  tick: int;
+  profile: profiles.WorldStreamProfile;
+  cells: [1] cells.CellWorld;
+  stream: [1] ResourceStream;
+  queue: [1] HostInboxQueue;
+  registry: [1] gpu.RenderRegistry;
+  player: walking.Player;
+  entity: [1] SwEntities;
+  actor: [SW_CELLS] cells.CellBody;
+  born: [SW_CELLS] bool;
+  awake: [SW_CELLS] bool;
+  claims: [RESOURCE_MANIFEST_MAX] ResourceReference;
+  prefetch: ResourceReference;
+  prefetch_cell: int = -1;
+  decoded_boxes: [SW_CELLS] [] f32;
+  decoded_bodies: [SW_CELLS] [] cells.CellBody;
+  facts: [SW_FACTS] SwFact;
+  fact_n: int;
+  records: [SW_RECORDS] SwRecord;
+  record_n: int;
+  loads: [RESOURCE_STREAM_LOADS] ResourceLoadKey;
+  load_n: int;
+  retires: [RESOURCE_MANIFEST_MAX] ResourceLoadKey;
+  retire_n: int;
+  retire_sent: [RESOURCE_MANIFEST_MAX] bool;
+  query_epoch: [1] int;
+  boxes: [SW_CELLS * 6] f32;
+  capsules: [SW_CELLS * 7] f32;
+  metadata: [SW_CELLS * 2] filters.QueryCollider;
+  surfaces: [1] filters.PhysicalSurface;
+  query_scratch: [1] semantics.QueryScratch;
+  nav_walk: [SW_CELLS] bool;
+  nav_cost: [SW_CELLS] f32;
+  nav_heap: [SW_CELLS] s32;
+  nav_slot: [SW_CELLS] s32;
+  nav_order: [SW_CELLS] s32;
+  nav_flow: navigation.NavFlow;
+  active: int;
+  drawn: int;
+  updated: int;
+  voices: int;
+  audio_deferred: int;
+  blocked: int;
+  offered_refused: int;
+  prefetch_refused: int;
+  peak_active: int;
+  peak_active_tick: int; // first paid step reaching the observed actor peak
+}
+#load "tests/stream-walk-checks.coax";
+
+sw_entities :: (s: [] SwWalk) -> entities.EntityStore #effects(all) {
+  return entities.EntityStore.{gen = s[0].entity[0].gen[..], live = s[0].entity[0].live[..], born = s[0].entity[0].born[..], doomed = s[0].entity[0].doomed[..],
+    ids = s[0].entity[0].ids[..], free = s[0].entity[0].free[..], spawns = s[0].entity[0].spawns[..], n = s[0].entity[0].counts[..]};
+}
+// This scene is deliberately bounded. Source authenticity and actual decoder
+// admission are still required after this manifest/profile layout check.
+sw_role :: (row: int) -> SwResourceRole #effects(all) {
+  if row < 4 { return [4] SwResourceRole.[
+    SwResourceRole.{format = ResourceFormat.image_mips, category = ResourceCategory.textures},
+    SwResourceRole.{format = ResourceFormat.indices}, SwResourceRole.{format = ResourceFormat.indices},
+    SwResourceRole.{format = ResourceFormat.packed_vertices48, dependency = 2}][row]; }
+  return [5] SwResourceRole.[
+    SwResourceRole.{format = ResourceFormat.image_mips, category = ResourceCategory.lighting},
+    SwResourceRole.{format = ResourceFormat.boxes, category = ResourceCategory.collision, elements = 1},
+    SwResourceRole.{format = ResourceFormat.cell_bodies, category = ResourceCategory.actors, dependency = row - 1, elements = 1},
+    SwResourceRole.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio},
+    SwResourceRole.{format = ResourceFormat.packed_vertices48, dependency = 1}][(row - 4) % 5];
+}
+sw_manifest :: (m: [] ResourceManifest, tier: int, backend: ResourceBackend) -> bool #effects(all) {
+  profile := profiles.world_stream_profile(1, tier);
+  if !m[0].valid || m[0].count != 64 || !resource_manifest_shape(m[0]) || profile.status != profiles.WorldProfileStatus.ok { return false; }
+  for row: 0..<64 {
+    spec := m[0].entries[row].plan.spec; role := sw_role(row);
+    if spec.format != role.format || spec.category != role.category || spec.backend != backend || spec.side != (ifx role.format == ResourceFormat.image_mips then profile.layer_side else 0) { return false; }
+    deps := m[0].entries[row].dependencies;
+    // Mesh storage needs indices. Images are independent collected owners;
+    // a prepared placement needs its matching collision, not GPU readiness.
+    n := ifx role.dependency == -1 then 0 else 1;
+    if deps.count != n || (n == 1 && deps.owners[0] != role.dependency) { return false; }
+    cost := m[0].entries[row].plan.cost;
+    if role.elements != 0 && cost.elements != role.elements { return false; }
+  }
+  return true;
+}
+sw_open :: (s: [] SwWalk, m: [] ResourceManifest, tier: int, backend: ResourceBackend) -> bool #export_c #effects(all) {
+  if s[0].valid || !sw_manifest(m, tier, backend) { return false; }
+  p := profiles.world_stream_profile(1, tier);
+  caps := [7] int.[8192, 512, 4096, 2048, 8192, 4096, 2048];
+  // Five retained placement sources allow four active actors and one
+  // prepared neighbor. Preparation grants no active actor or simulation.
+  b := resource_budget_open(caps, 32768, 5, 2);
+  stream := resource_stream_open(m, b, 1, 4);
+  #assert stream.valid;
+  s[0].profile = p; s[0].stream[0] = stream; s[0].queue[0] = hiq_open(HOST_INBOX_CAPACITY);
+  #assert gpu.rr_open(s[0].registry[..], gpu.RrLimits.{slots = gpu.RR_SLOTS, words = gpu.RR_WORDS}) == gpu.RrStatus.ok;
+  s[0].cells[0].n = SW_CELLS;
+  store := sw_entities(s); // sw_open requires a fresh, default-constructed record
+  for i: 0..<SW_CELLS {
+    s[0].cells[0].manifest[i] = cells.CellEntry.{cx = 0, cz = i, digest = cast(int) m[0].entries[6 + i * 5].plan.content.words[0]};
+    born := entities.entity_spawn(store); #assert born.id.value == i + 1;
+  }
+  entities.entity_flush(store);
+  s[0].player.pos = walking.Vec3.{x = 32, z = 56}; s[0].player.prev_pos = s[0].player.pos;
+  s[0].player.target = walking.Vec3.{x = 32, y = 1.5, z = 56}; s[0].player.prev_target = s[0].player.target;
+  s[0].query_epoch[0] = 1; s[0].surfaces[0] = filters.PhysicalSurface.{id = 10, footstep = 4};
+  s[0].valid = true; return true;
+}
+sw_offer :: (s: [] SwWalk, fact: SwFact) -> bool #export_c #effects(all) {
+  if !s[0].valid || s[0].fact_n >= SW_FACTS { s[0].offered_refused += 1; return false; }
+  s[0].facts[s[0].fact_n] = fact; s[0].fact_n += 1; return true;
+}
+sw_record :: (s: [] SwWalk, kind: SwRecordKind, fact: SwFact, status: ResourceStreamStatus) #effects(all) {
+  s[0].records[s[0].record_n] = SwRecord.{tick = s[0].tick, kind = kind, key = fact.key,
+    source = assets.asset_id(cast(string) fact.source), decoded = fact.decoded, status = status}; s[0].record_n += 1;
+}
+sw_facts :: (s: [] SwWalk, m: [] ResourceManifest) #effects(all) {
+  for i: 0..<s[0].fact_n {
+    f := s[0].facts[i]; row := f.key.owner;
+    if f.kind == SwFactKind.completed {
+      status := f.decoded;
+      current := resource_stream_current(s[0].stream[..], f.key);
+      format := ifx current then m[0].entries[row].plan.spec.format else ResourceFormat.positions4;
+      if format == ResourceFormat.boxes && f.values.count != 6 { status = ResourceCostStatus.capacity; }
+      if format == ResourceFormat.cell_bodies && (f.bodies.count != 1 || f.bodies[0].id != row / 5) { status = ResourceCostStatus.invalid; }
+      applied := resource_stream_complete(s[0].stream[..], m, s[0].queue[..], f.key, f.source, status);
+      if applied == ResourceStreamStatus.ok || applied == ResourceStreamStatus.unwanted {
+        if format == ResourceFormat.boxes { s[0].decoded_boxes[row / 5 - 1] = f.values; }
+        if format == ResourceFormat.cell_bodies { s[0].decoded_bodies[row / 5 - 1] = f.bodies; }
+      }
+      sw_record(s, SwRecordKind.completed, f, applied);
+    } else {
+      applied := resource_stream_destroyed(s[0].stream[..], m, s[0].queue[..], s[0].registry[..], f.key);
+      if applied {
+        s[0].retire_sent[row] = false;
+        format := m[0].entries[row].plan.spec.format;
+        if format == ResourceFormat.boxes { s[0].decoded_boxes[row / 5 - 1] = SwFact.{}.values; }
+        if format == ResourceFormat.cell_bodies { s[0].decoded_bodies[row / 5 - 1] = SwFact.{}.bodies; }
+      }
+      sw_record(s, SwRecordKind.destroyed, f, ifx applied then ResourceStreamStatus.ok else ResourceStreamStatus.stale);
+    }
+    s[0].facts[i] = SwFact.{};
+  }
+  s[0].fact_n = 0;
+}
+sw_claim :: (s: [] SwWalk, m: [] ResourceManifest, row: int, wanted: bool) #effects(all) {
+  ref := s[0].claims[row];
+  if wanted && ref.slot < 0 { s[0].claims[row] = resource_stream_hold(s[0].stream[..], m, row); }
+  if !wanted && ref.slot >= 0 { #assert resource_stream_drop(s[0].stream[..], m, ref); s[0].claims[row] = ResourceReference.{}; }
+}
+sw_interest :: (s: [] SwWalk, m: [] ResourceManifest, direction: f32) #effects(all) {
+  x := f64(s[0].player.pos.x); z := f64(s[0].player.pos.z); p := s[0].profile;
+  prefetch := profiles.world_stream_prefetch(p, s[0].cells[..], x, z, 0, f64(direction));
+  if s[0].prefetch_cell != prefetch {
+    if s[0].prefetch.slot >= 0 { #assert resource_stream_drop(s[0].stream[..], m, s[0].prefetch); }
+    s[0].prefetch = ResourceReference.{}; s[0].prefetch_cell = -1;
+    if prefetch >= 0 {
+      row := 6 + prefetch * 5; body := m[0].entries[row].plan.cost; collision := m[0].entries[row - 1].plan.cost;
+      bytes := body.encoded + body.decoded + body.objects + body.gpu + body.decode_scratch + body.upload_scratch + collision.encoded + collision.decoded + collision.objects + collision.gpu + collision.decode_scratch + collision.upload_scratch;
+      if bytes <= p.prefetch_bytes { s[0].prefetch = resource_stream_hold(s[0].stream[..], m, row); if s[0].prefetch.slot >= 0 { s[0].prefetch_cell = prefetch; } }
+      else { s[0].prefetch_refused += 1; }
+    }
+  }
+  selected: [SW_CELLS] bool; voices := 0;
+  for slot: 0..<p.pools.voices {
+    best := -1; distance := 0.0;
+    for i: 0..<SW_CELLS {
+      d := cells.cell_distance(s[0].cells[..], i, x, z);
+      if !selected[i] && profiles.world_stream_collect(p, profiles.WorldCollection.audio, s[0].claims[7 + i * 5].slot >= 0, d) && (best < 0 || d < distance) { best = i; distance = d; }
+    }
+    if best >= 0 { selected[best] = true; voices += 1; }
+  }
+  s[0].voices = voices; s[0].audio_deferred = 0; texture := false; wanted: [RESOURCE_MANIFEST_MAX] bool;
+  // Drop old claims first, so their physical retirement can free category
+  // capacity before replacements. No drop releases a pending SDK owner.
+  for i: 0..<SW_CELLS {
+    d := cells.cell_distance(s[0].cells[..], i, x, z); base := 4 + i * 5;
+    lighting := profiles.world_stream_collect(p, profiles.WorldCollection.lighting, s[0].claims[base].slot >= 0, d);
+    geometry := s[0].cells[0].cells[i].level >= cells.CELL_LOADING;
+    wanted[base] = lighting; wanted[base + 2] = geometry; wanted[base + 4] = geometry; wanted[base + 3] = selected[i];
+    if profiles.world_stream_collect(p, profiles.WorldCollection.textures, s[0].claims[0].slot >= 0, d) { texture = true; }
+    if !selected[i] && profiles.world_stream_collect(p, profiles.WorldCollection.audio, false, d) { s[0].audio_deferred += 1; }
+  }
+  wanted[0] = texture; wanted[3] = true; // persistent player uses the common cube
+  for row: 0..<RESOURCE_MANIFEST_MAX { if !wanted[row] { sw_claim(s, m, row, false); } }
+  for row: 0..<RESOURCE_MANIFEST_MAX { if wanted[row] { sw_claim(s, m, row, true); } }
+}
+sw_cells :: (s: [] SwWalk) #effects(all) {
+  // A ready placement already holds its complete ready collision dependency.
+  for i: 0..<s[0].cells[0].n { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) {
+    result := cells.cell_complete(s[0].cells[..], cells.cell_answer(s[0].cells[0].cells[i].request, s[0].stream[0].epoch, i, s[0].cells[0].manifest[i].digest, false)); #assert result == cells.CELL_OK;
+  } }
+  advanced := cells.cell_step_profile(s[0].cells[..], f64(s[0].player.pos.x), f64(s[0].player.pos.z), s[0].profile.rings);
+  #assert advanced.status == cells.CellAdvanceStatus.ok;
+  s[0].active = 0; s[0].drawn = 0; s[0].updated = 0;
+  for i: 0..<SW_CELLS {
+    awake := cells.cell_simulates(s[0].cells[..], i);
+    if s[0].awake[i] && !awake { #assert cells.cell_sleep(s[0].cells[..], i, s[0].actor[i]); }
+    if !s[0].awake[i] && awake {
+      if s[0].born[i] { body: [1] cells.CellBody; #assert cells.cell_wake(s[0].cells[..], i, body[..]) == 1; s[0].actor[i] = body[0]; }
+      else { #assert s[0].decoded_bodies[i].count == 1; s[0].actor[i] = s[0].decoded_bodies[i][0]; s[0].born[i] = true; }
+    }
+    s[0].awake[i] = awake;
+    if awake { s[0].active += 1; }
+    if cells.cell_draws(s[0].cells[..], i) { s[0].drawn += 1; }
+    if profiles.world_stream_updates(s[0].profile, s[0].cells[0].cells[i].level, s[0].tick) { s[0].actor[i].words[0] += 1; s[0].updated += 1; }
+  }
+  #assert s[0].active <= s[0].profile.pools.streamed_actors;
+  if s[0].active > s[0].peak_active { s[0].peak_active = s[0].active; s[0].peak_active_tick = s[0].tick; }
+}
+sw_hold :: (s: [] SwWalk, direction: f32) #effects(all) {
+  // A held edge stops planar transport. Keeping an outward velocity would
+  // prevent the first braking/reverse step from ever being committed.
+  p := s[0].player; p.vel.x = 0; p.vel.z = 0; p.key_y = direction;
+  p.prev_pos = p.pos; p.prev_target = p.target; p.prev_face = p.face; p.prev_dist = p.dist;
+  s[0].player = p; s[0].blocked += 1;
+}
+sw_walk :: (s: [] SwWalk, direction: f32) #effects(all) {
+  box_n := 0; capsule_n := 0; meta_n := 0;
+  store := sw_entities(s);
+  for i: 0..<SW_CELLS {
+    s[0].nav_walk[i] = s[0].awake[i];
+    if !s[0].awake[i] { continue; }
+    #assert s[0].decoded_boxes[i].count == 6;
+    for k: 0..<6 { s[0].boxes[box_n * 6 + k] = s[0].decoded_boxes[i][k]; }
+    s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 1000 + i, generation = 1}, shape = queries.QueryShape.box, index = box_n, surface = 10}; meta_n += 1; box_n += 1;
+  }
+  // Semantic snapshots use the kernel's shape ordinal: all boxes precede
+  // all capsules. Interleaving by actor would only work for a single cell.
+  for i: 0..<SW_CELLS {
+    if !s[0].awake[i] { continue; }
+    actor := s[0].actor[i]; at := capsule_n * 7;
+    s[0].capsules[at] = f32(actor.x); s[0].capsules[at + 1] = f32(actor.y) + 0.3; s[0].capsules[at + 2] = f32(actor.z);
+    s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+    s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 500 + i, generation = 1}, shape = queries.QueryShape.capsule, index = capsule_n,
+      entity = entities.entity_at(store, i), categories = 8, surface = 10}; meta_n += 1; capsule_n += 1;
+  }
+  s[0].query_epoch[0] += 1;
+  world := semantics.QueryWorld.{geometry = queries.Colliders.{ground_enabled = false, boxes = s[0].boxes[0..<box_n * 6], capsules = s[0].capsules[0..<capsule_n * 7]},
+    metadata = s[0].metadata[0..<meta_n], surfaces = s[0].surfaces[..], entity_store = store, current_epoch = s[0].query_epoch[..], epoch = s[0].query_epoch[0], tick = s[0].tick};
+  selected := semantics.query_select_world(world, filters.QueryFilter.{include = 9}, s[0].query_scratch[..]); #assert selected.status == queries.QueryStatus.ok;
+  p := s[0].player; p.key_y = direction; p.run = true;
+  ground := semantics.semantic_ground(selected, p.pos.x, p.pos.z, p.pos.y + 0.55, 0.3);
+  if !cells.cell_may_enter(s[0].cells[..], f64(p.pos.x), f64(p.pos.z)) || ground.geometry.shape == queries.QueryShape.none { sw_hold(s, direction); return; }
+  w := walking.World.{ground = -99999, walls = selected.geometry.boxes, bodies = selected.geometry.capsules};
+  next := walking.history_step(w, p);
+  if !cells.cell_may_enter(s[0].cells[..], f64(next.pos.x), f64(next.pos.z)) { sw_hold(s, direction); return; }
+  s[0].player = next;
+  grid := navigation.NavGrid.{nx = 1, nz = SW_CELLS, cell = 64}; goal := cells.cell_of(s[0].cells[..], f64(next.pos.x), f64(next.pos.z));
+  s[0].nav_flow = navigation.nav_grid_flow(grid, s[0].nav_walk[..], s[0].nav_cost[..], s[0].nav_heap[..], s[0].nav_slot[..], s[0].nav_order[..], goal, 768, s[0].cells[0].n);
+}
+sw_requests :: (s: [] SwWalk, m: [] ResourceManifest) #effects(all) {
+  // Gameplay dependencies before visual work; stable owner order within a
+  // class. The original controller still owns every byte/pool refusal.
+  for pass: 0..<2 { for row: 0..<64 {
+    format := m[0].entries[row].plan.spec.format; gameplay := format == ResourceFormat.boxes || format == ResourceFormat.cell_bodies;
+    if gameplay != (pass == 0) || !s[0].stream[0].wanted[row] || s[0].stream[0].owners[row].phase != ResourceOwnerPhase.absent || s[0].stream[0].loading >= 4 { continue; }
+    result := resource_stream_request(s[0].stream[..], m, s[0].queue[..], s[0].registry[..], row);
+    if result.status == ResourceStreamStatus.ok { s[0].loads[s[0].load_n] = result.key; s[0].load_n += 1; }
+  } }
+}
+sw_retirements :: (s: [] SwWalk) #effects(all) {
+  for back: 0..<64 {
+    row := 63 - back;
+    if s[0].stream[0].owners[row].phase == ResourceOwnerPhase.retiring && !s[0].retire_sent[row] {
+      s[0].retires[s[0].retire_n] = resource_stream_key(s[0].stream[..], row); s[0].retire_n += 1; s[0].retire_sent[row] = true;
+    }
+  }
+}
+// Outboxes must be consumed before another frame. Zero-step frames retain
+// queued external facts; callbacks do not advance a second clock.
+sw_frame :: (s: [] SwWalk, m: [] ResourceManifest, frame_ns: int, direction: f32) -> bool #export_c #effects(all) {
+  if !s[0].valid || !resource_stream_bound(s[0].stream[..], m) || s[0].load_n != 0 || s[0].retire_n != 0 || s[0].record_n != 0 || !(direction >= -1 && direction <= 1) { return false; }
+  schedule := clock.loop_accept_ns(s[0].player.clock, frame_ns);
+  if schedule.due > 9223372036854775807 - s[0].tick || schedule.due > 9223372036854775807 - s[0].query_epoch[0] { return false; }
+  for step: 0..<schedule.due {
+    s[0].tick += 1; sw_facts(s, m);
+    if s[0].closing { sw_retirements(s); continue; }
+    accepted: [64] ResourceAccepted; n := resource_stream_publish(s[0].stream[..], m, s[0].tick, accepted[..]); #assert n >= 0;
+    for i: 0..<n { sw_record(s, SwRecordKind.ready, SwFact.{key = accepted[i].key}, ResourceStreamStatus.ok); }
+    sw_cells(s); sw_interest(s, m, direction); sw_walk(s, direction); sw_requests(s, m); sw_retirements(s);
+  }
+  s[0].player.clock = clock.loop_ran(schedule); return true;
+}
+sw_close :: (s: [] SwWalk, m: [] ResourceManifest) -> bool #export_c #effects(all) {
+  if !s[0].valid || s[0].closing { return false; }
+  if !resource_stream_retire(s[0].stream[..], m) { return false; }
+  s[0].closing = true; s[0].query_epoch[0] = 0; // permanently revoke this query owner
+  for i: 0..<SW_CELLS {
+    if s[0].awake[i] { #assert cells.cell_sleep(s[0].cells[..], i, s[0].actor[i]); s[0].awake[i] = false; }
+    s[0].cells[0].cells[i].level = cells.CELL_ABSENT; s[0].cells[0].cells[i].request = 0;
+  }
+  s[0].active = 0; s[0].drawn = 0; s[0].updated = 0; s[0].voices = 0; return true;
+}
+sw_ack :: (s: [] SwWalk) #export_c #effects(all) { s[0].load_n = 0; s[0].retire_n = 0; s[0].record_n = 0; }
+sw_load_manifest :: (s: [] SwWalk, m: [] ResourceManifest, source: [] u8, expected: string, tier: int, backend: ResourceBackend) -> bool #export_c #effects(all) {
+  if s[0].valid { return false; }
+  identity: [1] assets.AssetId; candidate: [1] ResourceManifest;
+  if !assets.asset_parse(expected, identity[..]) || resource_manifest_read(source, identity[0], candidate[..]) != ResourceManifestStatus.ok { return false; }
+  if !sw_open(s, candidate[..], tier, backend) { return false; }
+  m[0] = candidate[0]; return true;
+}
+sw_codec :: (p: ResourcePlan, source: [] u8, work: [] u8, pixels: [] u8, values: [] f32, bodies: [] cells.CellBody) -> ResourceCostStatus #export_c #effects(all) {
+  if !resource_matches(p, source) { return ResourceCostStatus.mismatch; }
+  if p.spec.format == ResourceFormat.image_mips { return resource_decode_image(p, source, work, pixels); }
+  if p.spec.format == ResourceFormat.boxes { return resource_decode_collision(p, source, values); }
+  if p.spec.format == ResourceFormat.cell_bodies { return resource_decode_bodies(p, source, bodies); }
+  if p.spec.format == ResourceFormat.wav_pcm16 { filter: [] wav.AudioWavFilter; scratch: [] f64; return resource_decode_audio(p, source, filter, scratch, values); }
+  return ResourceCostStatus.ok;
+}
+sw_borrow :: (s: [] SwWalk, row: int) -> ResourceBorrowRef #export_c #effects(all) { return resource_stream_borrow(s[0].stream[..], row); }
+sw_return :: (s: [] SwWalk, m: [] ResourceManifest, ref: ResourceBorrowRef) -> bool #export_c #effects(all) { return resource_stream_return(s[0].stream[..], m, ref); }
+sw_auth :: (source: [] u8, expected: string) -> bool #export_c #effects(all) {
+  identity: [1] assets.AssetId; return assets.asset_parse(expected, identity[..]) && assets.asset_same(identity[0], assets.asset_id(cast(string) source));
+}
+sw_uniforms :: (s: [] SwWalk, cell: int, aspect: f32, out: [] f32) -> bool #export_c #effects(all) {
+  if !s[0].valid || cell < -2 || cell >= SW_CELLS { return false; }
+  eye := walking.walk_eye(s[0].player); at := walking.walk_at(s[0].player);
+  offset := ifx cell == -1 then draw.v3(s[0].player.pos.x, s[0].player.pos.y, s[0].player.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
+  return draw.sd_view(draw.v3(eye.x, eye.y, eye.z), draw.v3(at.x, at.y, at.z), aspect, offset, out);
+}
+sw_gpu_acquire :: (s: [] SwWalk, kind: int, words: int) -> gpu.RrGrant #export_c #effects(all) { return gpu.rr_acquire(s[0].registry[..], kind, words); }
+sw_gpu_release :: (s: [] SwWalk, handle: frames.RfHandle) -> gpu.RrStatus #export_c #effects(all) { return gpu.rr_release(s[0].registry[..], handle); }
+sw_gpu_live :: (s: [] SwWalk, row: int) -> bool #export_c #effects(all) {
+  return row >= 0 && row < s[0].stream[0].count && gpu.rr_live(s[0].registry[..], s[0].stream[0].owners[row].admission[0].gpu_handle);
+}
+sw_draw_add :: (s: [] SwWalk, m: [] ResourceManifest, plan: [] SwDraws, geometry: int, indices: int, lighting: int, cell: int) #effects(all) {
+  for row: [3] int.[geometry, indices, 0] { if !resource_stream_ready(s[0].stream[..], row) || !sw_gpu_live(s, row) { return; } }
+  fallback := !resource_stream_ready(s[0].stream[..], lighting) || !sw_gpu_live(s, lighting);
+  at := plan[0].count;
+  plan[0].rows[at] = SwDraw.{geometry = geometry, indices = indices, texture = 0, lighting = ifx fallback then 0 else lighting, cell = cell,
+    count = m[0].entries[indices].plan.cost.elements, fallback = fallback}; plan[0].count += 1;
+}
+sw_draws :: (s: [] SwWalk, m: [] ResourceManifest) -> SwDraws #export_c #effects(all) {
+  plan: [1] SwDraws;
+  if !s[0].valid || s[0].closing { return plan[0]; }
+  for i: 0..<s[0].cells[0].n {
+    if cells.cell_draws(s[0].cells[..], i) { sw_draw_add(s, m, plan[..], 8 + i * 5, 1, 4 + i * 5, -2); sw_draw_add(s, m, plan[..], 3, 2, 4 + i * 5, i); }
+  }
+  sw_draw_add(s, m, plan[..], 3, 2, 0, -1); return plan[0];
+}

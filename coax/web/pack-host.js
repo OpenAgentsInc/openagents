@@ -68,9 +68,22 @@ export async function openPackHost(){
     }else plain=await read(op,response.body,0,false);
     op.check();const {x,memory}=op.context;if(!x.pack_admit(Number(!!session)))throw Error('Coax refused complete pack identity, layout or catalog');
     const entries=[];for(let i=0;i<x.pack_entry_count();i++){const fields=[0,1,2,3,4,5].map(f=>Number(x.pack_entry(i,f)));entries.push(Object.freeze({kind:fields[0],licence:fields[1],name:new TextDecoder().decode(new Uint8Array(memory.buffer,fields[4],fields[5])),bytes:plain.target.subarray(fields[2],fields[2]+fields[3])}));}
-    op.published=true;const result=Object.freeze({entries:Object.freeze(entries),bytes:plain.target.byteLength,owner,close:()=>op.abort(),async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;
+    op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source:plain.target,bytes:plain.target.byteLength,owner,close:()=>op.abort(),async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;
    }catch(error){op.retired=true;op.controller.abort();throw error;}finally{op.loading=false;op.dispose();}})();return op.finished;
   }
-  return Object.freeze({load,info,abortReads(owner){for(const op of ops)if(op.owner===owner&&!op.published)op.abort();},async retire(owner){const selected=[...ops].filter(op=>op.owner===owner);for(const op of selected)op.abort();await Promise.allSettled(selected.map(op=>op.finished));await Promise.all(selected.map(op=>op.closed));},masterBytes:master.memory.buffer.byteLength});
+  // A byte transfer is not an admitted asset. The consumer must authenticate
+  // and decode the complete result through its Coax content authority.
+  function loadBytes(url,expected,{owner,current=()=>true}={}){
+   const op=operation(owner,current);
+   op.finished=(async()=>{let response;try{
+    if(!Number.isSafeInteger(expected)||!op.context.x.pack_stream_open(BigInt(expected),1))throw Error('Coax refused exact byte transfer extent');
+    response=await fetch(url,{cache:'no-store',signal:op.controller.signal});op.check();
+    if(!response.ok||!response.body){await response.body?.cancel();throw Error('byte source unavailable');}
+    const result=await read(op,response.body,expected,true,false);op.check();op.published=true;
+    const transfer=Object.freeze({bytes:result.target,owner,close:()=>op.abort(),async use(fn){op.check();op.borrowers++;try{const value=await fn(transfer);op.check();return value;}finally{op.borrowers--;op.dispose();}}});return transfer;
+   }catch(error){op.retired=true;op.controller.abort();await response?.body?.cancel().catch(()=>{});throw error;}finally{op.loading=false;op.dispose();}})();return op.finished;
+  }
+  function retainBytes(bytes){let ticket=reserve(bytes);return Object.freeze({bytes,release(){if(!ticket)throw Error('retained storage already released');release(ticket);ticket=null;}});}
+  return Object.freeze({load,loadBytes,retainBytes,info,abortReads(owner){for(const op of ops)if(op.owner===owner&&!op.published)op.abort();},async retire(owner){const selected=[...ops].filter(op=>op.owner===owner);for(const op of selected)op.abort();await Promise.allSettled(selected.map(op=>op.finished));await Promise.all(selected.map(op=>op.closed));},masterBytes:master.memory.buffer.byteLength});
  })().catch(error=>{opened=null;throw error;});return opened;
 }

@@ -1,0 +1,157 @@
+// Focused coordinator boundary cases. Decoder and allocation admission are
+// retained from the common checks; synthetic snapshots are labelled below.
+#test "four real admitted placements sleep and wake their durable state with bounded near and far update cadence" #steps 200000000 {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  encoded_boxes: [4] [24] u8; encoded_bodies: [4] [64] u8; boxes: [4] [6] f32; bodies: [4] [1] cells.CellBody;
+  empty: [1] u8;
+  for i: 0..<4 {
+    sw_test_box(i, encoded_boxes[i][..]); sw_test_body(i, encoded_bodies[i][..]);
+    #assert sw_codec(m[0].entries[5 + i * 5].plan, encoded_boxes[i][..], empty[0..<0], empty[0..<0], boxes[i][..], bodies[i][0..<0]) == ResourceCostStatus.ok;
+    #assert sw_codec(m[0].entries[6 + i * 5].plan, encoded_bodies[i][..], empty[0..<0], empty[0..<0], boxes[i][0..<0], bodies[i][..]) == ResourceCostStatus.ok;
+  }
+  s[0].player.pos.z = 128;
+  for tick: 1..<10 {
+    s[0].tick = tick; sw_cells(s[..]);
+    for i: 0..<4 { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && !resource_stream_ready(s[0].stream[..], 6 + i * 5) {
+      sw_claim(s[..], m[..], 6 + i * 5, true);
+      a := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], 5 + i * 5);
+      b := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], 6 + i * 5);
+      #assert a.status == ResourceStreamStatus.ok && b.status == ResourceStreamStatus.ok;
+      #assert sw_offer(s[..], SwFact.{key = a.key, source = encoded_boxes[i][..], values = boxes[i][..]});
+      #assert sw_offer(s[..], SwFact.{key = b.key, source = encoded_bodies[i][..], bodies = bodies[i][..]});
+    } }
+    sw_facts(s[..], m[..]); events: [64] ResourceAccepted; #assert resource_stream_publish(s[0].stream[..], m[..], tick, events[..]) >= 0;
+    sw_ack(s[..]);
+  }
+  #assert s[0].active == 4 && s[0].drawn == 2 && s[0].updated == 2 && s[0].peak_active == 4 && s[0].peak_active_tick == 5;
+  old: [4] int;
+  for i: 0..<4 { old[i] = s[0].actor[i].words[0]; #assert old[i] == [4] int.[2, 8, 7, 1][i] && s[0].actor[i].id == i + 1 && s[0].born[i] && s[0].awake[i]; }
+  s[0].player.pos.z = 640; s[0].tick = 10; sw_cells(s[..]);
+  #assert s[0].active == 0 && s[0].drawn == 0 && s[0].updated == 0 && s[0].peak_active == 4 && s[0].peak_active_tick == 5;
+  for i: 0..<4 { #assert !s[0].awake[i] && s[0].cells[0].cells[i].body_n == 1 && s[0].cells[0].cells[i].bodies[0].id == i + 1 && s[0].cells[0].cells[i].bodies[0].words[0] == old[i]; }
+  // A persistent edit while asleep changes canonical stored state. The
+  // stale active cache must not override it when this area wakes again.
+  s[0].cells[0].cells[0].bodies[0].words[0] = 40; s[0].cells[0].cells[0].bodies[0].x = 9;
+  s[0].player.pos.z = 128;
+  for tick: 11..<17 { s[0].tick = tick; sw_cells(s[..]); }
+  #assert s[0].active == 4 && s[0].drawn == 2 && s[0].updated == 4 && s[0].peak_active == 4 && s[0].peak_active_tick == 5;
+  for i: 0..<4 { #assert s[0].actor[i].words[0] == [4] int.[41, 13, 11, 2][i] && s[0].actor[i].id == i + 1 && entities.entity_id(sw_entities(s[..]), entities.entity_at(sw_entities(s[..]), i)).value == i + 1; }
+  #assert s[0].actor[0].x == 9;
+}
+
+#test "geometry cell interest owns each floor and its indices independently of lighting and actor readiness" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  s[0].cells[0].cells[0].level = cells.CELL_LOADING; s[0].cells[0].cells[11].level = cells.CELL_LOADING;
+  sw_interest(s[..], m[..], 0);
+  for row: [5] int.[1, 6, 8, 61, 63] { #assert s[0].stream[0].wanted[row]; }
+  #assert !resource_stream_ready(s[0].stream[..], 63) && s[0].active == 0;
+  s[0].cells[0].cells[0].level = cells.CELL_ABSENT; s[0].cells[0].cells[11].level = cells.CELL_ABSENT; sw_interest(s[..], m[..], 0);
+  for row: [5] int.[1, 6, 8, 61, 63] { #assert !s[0].stream[0].wanted[row]; }
+  #assert s[0].stream[0].wanted[0] && s[0].stream[0].wanted[2] && s[0].stream[0].wanted[3];
+}
+
+#test "a simulation cell with no ground beneath the player holds without consuming vertical motion" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  // A valid query snapshot can contain an overhead box without any floor.
+  box := [6] f32.[-4, 10, 0, 64, 11, 64];
+  s[0].decoded_boxes[0] = box[..]; s[0].awake[0] = true; s[0].cells[0].cells[0].level = cells.CELL_DRAW_LEVEL;
+  s[0].actor[0] = cells.CellBody.{id = 1, x = 8, z = 32};
+  sw_walk(s[..], 1);
+  #assert s[0].player.pos.y == 0 && s[0].player.pos.z == 56 && s[0].player.vel.y == 0 && s[0].player.on_ground && s[0].blocked == 1;
+}
+
+#test "failed completion emits a normal paid retirement outbox without closing the persistent world" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk;
+  #assert sw_open(s[..], m[..], 0, ResourceBackend.browser) && sw_frame(s[..], m[..], 15625000, 1) && s[0].load_n == 4;
+  old := s[0].loads;
+  for i: 0..<4 { #assert sw_offer(s[..], SwFact.{key = old[i], decoded = ResourceCostStatus.decode}); }
+  sw_ack(s[..]); #assert sw_frame(s[..], m[..], 15625000, 0) && !s[0].closing && s[0].retire_n == 4;
+  for i: 0..<4 { #assert s[0].retires[i].owner == old[3 - i].owner && s[0].retires[i].generation == old[3 - i].generation; }
+  #assert s[0].active == 0 && entities.entity_count(sw_entities(s[..])) == 12;
+}
+
+#test "neighbor quota charges every declared retained and scratch lane before any source can be published" #steps 100000000 {
+  for exact: 0..<2 {
+    m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+    // Conservative metadata can declare extra GPU/work peaks; actual byte
+    // decoding must still match before publication. No extra peak is free.
+    m[0].entries[11].plan.cost.gpu = 4; m[0].entries[11].plan.cost.decode_scratch = 8; m[0].entries[11].plan.cost.upload_scratch = 16;
+    m[0].entries[10].plan.cost.gpu = 32; m[0].entries[10].plan.cost.decode_scratch = 64; m[0].entries[10].plan.cost.upload_scratch = 128;
+    s[0].profile.prefetch_bytes = 764 - exact; sw_interest(s[..], m[..], 1);
+    #assert s[0].prefetch_cell == (ifx exact == 0 then 1 else -1) && s[0].prefetch_refused == exact;
+    #assert s[0].stream[0].requests == 0 && s[0].active == 0;
+  }
+}
+#test "media collection retains slot zero through hysteresis and ranks nearer voices before farther lower IDs" #steps 100000000 {
+  m := [1] ResourceManifest.[sw_test_manifest()];
+  for kind: 0..<3 {
+    s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+    row := [3] int.[7, 4, 0][kind]; sw_claim(s[..], m[..], row, true); old := s[0].claims[row]; #assert old.slot == 0;
+    s[0].player.pos.x = [3] f32.[136, 152, 168][kind]; s[0].player.pos.z = 32;
+    sw_interest(s[..], m[..], 0); #assert s[0].claims[row].slot == 0 && s[0].claims[row].serial == old.serial;
+    if kind == 0 { #assert s[0].voices == 1; }
+    s[0].player.pos.x += 0.125; sw_interest(s[..], m[..], 0); #assert s[0].claims[row].slot == -1;
+  }
+  s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  s[0].profile.pools.voices = 1; s[0].player.pos.z = 96; sw_interest(s[..], m[..], 0);
+  #assert s[0].voices == 1 && s[0].claims[12].slot >= 0 && s[0].claims[7].slot == -1 && s[0].claims[17].slot == -1 && s[0].audio_deferred == 2;
+}
+
+#test "request priority admits distant gameplay before nearer visuals and refuses one visual attempt once" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  for row: [4] int.[0, 3, 6, 61] { sw_claim(s[..], m[..], row, true); }
+  sw_requests(s[..], m[..]); #assert s[0].load_n == 4 && s[0].stream[0].loading == 4 && s[0].stream[0].refused == 0;
+  for i: 0..<4 { #assert s[0].loads[i].owner == [4] int.[5, 6, 60, 61][i]; }
+  sw_ack(s[..]); sw_requests(s[..], m[..]); #assert s[0].load_n == 0 && s[0].stream[0].refused == 0;
+  refused: [1] SwWalk; #assert sw_open(refused[..], m[..], 0, ResourceBackend.browser);
+  refused[0].stream[0].budget[0].caps[1] = 0; sw_claim(refused[..], m[..], 0, true); sw_requests(refused[..], m[..]);
+  #assert refused[0].load_n == 0 && refused[0].stream[0].refused == 1 && refused[0].queue[0].bytes == 0;
+  last: [1] SwWalk; #assert sw_open(last[..], m[..], 0, ResourceBackend.browser); sw_claim(last[..], m[..], 63, true);
+  load := resource_stream_request(last[0].stream[..], m[..], last[0].queue[..], last[0].registry[..], 63); #assert load.status == ResourceStreamStatus.ok;
+  empty: [1] u8; #assert resource_stream_complete(last[0].stream[..], m[..], last[0].queue[..], load.key, empty[0..<0], ResourceCostStatus.decode) == ResourceStreamStatus.failed;
+  sw_retirements(last[..]); #assert last[0].retire_n == 1 && last[0].retires[0].owner == 63 && last[0].retire_sent[63];
+}
+
+#test "all camera placement selectors keep the live shot and apply exactly one declared offset" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  s[0].player.pos.y = 3; s[0].actor[0] = cells.CellBody.{x = 1.25, y = 2.5, z = 3.75}; s[0].actor[11] = cells.CellBody.{x = -3, y = 4, z = 5};
+  selectors := [4] int.[-2, -1, 0, 11]; xs := [4] f32.[0, 32, 1.25, -3]; ys := [4] f32.[0, 3, 2.5, 4]; zs := [4] f32.[0, 56, 3.75, 5];
+  out: [64] f32;
+  for i: 0..<4 { #assert sw_uniforms(s[..], selectors[i], 1.25, out[..]); #assert out[16] == xs[i] && out[17] == ys[i] && out[18] == zs[i] && out[19] == 1; }
+  for cell: [3] int.[-3, 12, 13] { out[16] = 99; #assert !sw_uniforms(s[..], cell, 1, out[..]) && out[16] == 99; }
+  #assert !sw_uniforms(s[..], 0, 1, out[0..<19]);
+  s[0].valid = false; #assert !sw_uniforms(s[..], 0, 1, out[..]);
+}
+
+#test "frame counter exhaustion admits the last paid step and zero step frames at both exact limits" #steps 100000000 {
+  m := [1] ResourceManifest.[sw_test_manifest()];
+  for direction: [3] f32.[-1, 0, 1] { s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+    #assert sw_frame(s[..], m[..], 0, direction) && s[0].tick == 0 && s[0].player.clock.frames == 1; }
+  for counter: 0..<2 {
+    s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+    if counter == 0 { s[0].tick = 9223372036854775806; } else { s[0].query_epoch[0] = 9223372036854775806; }
+    #assert sw_frame(s[..], m[..], 15625000, 0) && s[0].player.clock.ticks == 1;
+    #assert (ifx counter == 0 then s[0].tick else s[0].query_epoch[0]) == 9223372036854775807;
+    sw_ack(s[..]); #assert sw_frame(s[..], m[..], 0, 0) && s[0].player.clock.frames == 2;
+    #assert !sw_frame(s[..], m[..], 15625000, 0) && s[0].player.clock.frames == 2;
+  }
+}
+
+#test "a revoked consumer or mismatched manifest cannot step close or revoke a different owner" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  s[0].valid = false; #assert !sw_frame(s[..], m[..], 0, 0) && !sw_close(s[..], m[..]) && !s[0].closing && !s[0].stream[0].closing;
+  s[0].valid = true; m[0].identity.words[0] ^= 1;
+  #assert !sw_frame(s[..], m[..], 0, 0) && !sw_close(s[..], m[..]) && !s[0].closing && !s[0].stream[0].closing && s[0].player.clock.frames == 0;
+}
+
+#test "each codec dispatch returns its concrete decoder result instead of accepting a matched but short output" {
+  image := PNG_ONE; empty: [1] u8; pixels: [4] u8; values: [6] f32; bodies: [1] cells.CellBody;
+  p := resource_plan(image[..], ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1});
+  work: [16] u8;
+  #assert sw_codec(p, image[..], work[..], pixels[..], values[..], bodies[..]) == ResourceCostStatus.ok;
+  #assert sw_codec(p, image[..], work[..], pixels[0..<3], values[..], bodies[..]) == ResourceCostStatus.capacity;
+  pcm := [1] int.[123]; sound: [46] u8; source := wav.apw_test_wav(1, 48000, pcm[..], sound[..]);
+  p = resource_plan(source, ResourceSpec.{format = ResourceFormat.wav_pcm16, category = ResourceCategory.audio});
+  #assert sw_codec(p, source, empty[0..<0], empty[0..<0], values[0..<1], bodies[0..<0]) == ResourceCostStatus.ok && values[0] > 0;
+  #assert sw_codec(p, source, empty[0..<0], empty[0..<0], values[0..<0], bodies[0..<0]) == ResourceCostStatus.capacity;
+}

@@ -1,0 +1,32 @@
+// Engine-owned streaming scene shader. Coax owns projection and shading;
+// platform hosts bind actual admitted GPU objects.
+#module "aethyr.world.streamdraw";
+#load "../../verse/gpu/shader.coax";
+SwVertex :: struct {position: V3; normal: V3; uv: V2;}
+SwVarying :: struct {position: V4; uv: V2; normal: V3;}
+#test "streaming projection applies object placement once and preserves forward depth" {
+  u: [64] f32;
+  #assert sd_view(v3(0, 0, -10), v3(0, 0, 0), 2, v3(2, 0, 0), u[..]);
+  v := sd_vs(0, 0, SwVertex.{normal = v3(0, 1, 0)}, u[..]);
+  #assert v.position.w == 10 && abs(v.position.x - 1.7320508) < 0.00001 && v.position.z > 0 && v.position.z < 10;
+  #assert !sd_view(v3(0, 0, 0), v3(0, 0, 0), 2, v3(0, 0, 0), u[..]);
+  #assert !sd_view(v3(0, 0, -10), v3(0, 0, 0), 0, v3(0, 0, 0), u[..]);
+}
+sd_view :: (eye: V3, at: V3, aspect: f32, offset: V3, out: [] f32) -> bool {
+  if out.count < 20 || !(aspect > 0 && aspect <= 8) || length3(sub3(at, eye)) < 0.000001 { return false; }
+  forward := normalize3(sub3(at, eye)); right := normalize3(cross3(v3(0, 1, 0), forward)); up := cross3(forward, right);
+  axes := [4] V3.[scale3(right, 1.7320508f32 / aspect), scale3(up, 1.7320508f32), scale3(forward, 768.0f32 / 767.9f32), forward];
+  for i: 0..<4 { a := axes[i]; out[i * 4] = a.x; out[i * 4 + 1] = a.y; out[i * 4 + 2] = a.z; out[i * 4 + 3] = -dot3(a, eye) + (ifx i == 2 then -0.1f32 * (768.0f32 / 767.9f32) else 0.0f32); }
+  out[16] = offset.x; out[17] = offset.y; out[18] = offset.z; out[19] = 1; return true;
+}
+sd_vs :: (vertex: u32, instance: u32, input: SwVertex, u: [] f32) -> SwVarying {
+  p := add3(input.position, v3(u[16], u[17], u[18]));
+  clip := v4(p.x * u[0] + p.y * u[1] + p.z * u[2] + u[3], p.x * u[4] + p.y * u[5] + p.z * u[6] + u[7],
+    p.x * u[8] + p.y * u[9] + p.z * u[10] + u[11], p.x * u[12] + p.y * u[13] + p.z * u[14] + u[15]);
+  return SwVarying.{position = clip, uv = input.uv, normal = input.normal};
+}
+sd_fs :: (input: SwVarying, texture: Tex2D, light: Tex2D, smp: Sampler) -> V4 {
+  base := gpu_sample_level(texture, smp, input.uv, 0); baked := gpu_sample_level(light, smp, input.uv, 0);
+  shade := 0.25f32 + 0.75f32 * (ifx input.normal.y > 0 then input.normal.y else 0.0f32);
+  return v4(base.x * baked.x * shade, base.y * baked.y * shade, base.z * baked.z * shade, 1);
+}

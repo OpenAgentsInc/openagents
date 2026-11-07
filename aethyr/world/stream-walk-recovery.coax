@@ -1,0 +1,94 @@
+// Additive GPU replacement boundary for the streamed consumer. The SDK must
+// stop frames, drain old-device effects/borrows and destroy old GPU objects
+// before calling. CPU grants, source identity and queued facts stay owned.
+#authority;
+#load "stream-walk.coax";
+SwRecoveryStatus :: enum u8 { invalid; ok; closed; borrowed; exhausted; capacity; }
+SwRecoveryReport :: struct {status: SwRecoveryStatus; restored: int; epoch: int;}
+
+#test "GPU replacement preserves original source owners and rebinds loading loaded and ready visual generations" #steps 100000000 {
+  for phase: 0..<3 {
+    m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+    sw_claim(s[..], m[..], 0, true); r := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], 0);
+    #assert r.status == ResourceStreamStatus.ok; source := PNG_ONE;
+    if phase > 0 { #assert resource_stream_complete(s[0].stream[..], m[..], s[0].queue[..], r.key, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.ok; }
+    if phase == 2 { accepted: [64] ResourceAccepted; #assert resource_stream_publish(s[0].stream[..], m[..], 1, accepted[..]) == 1; }
+    old := s[0].stream[0].owners[0].admission[0].gpu_handle; bytes := s[0].queue[0].bytes; total := s[0].stream[0].budget[0].total;
+    serial := s[0].stream[0].serial; loading := s[0].stream[0].loading; owner_phase := s[0].stream[0].owners[0].phase;
+    result := sw_recover_gpu(s[..], m[..]);
+    #assert result.status == SwRecoveryStatus.ok && result.restored == 1 && result.epoch == 2;
+    #assert s[0].registry[0].words == 1 && s[0].registry[0].live == 1 && !gpu.rr_live(s[0].registry[..], old) && sw_gpu_live(s[..], 0);
+    #assert gpu.rr_release(s[0].registry[..], old) == gpu.RrStatus.stale && sw_gpu_live(s[..], 0);
+    #assert s[0].stream[0].owners[0].admission[0].gpu_handle.generation > old.generation && s[0].stream[0].owners[0].phase == owner_phase;
+    #assert s[0].queue[0].bytes == bytes && s[0].stream[0].budget[0].total == total && s[0].stream[0].serial == serial && s[0].stream[0].loading == loading;
+    #assert resource_stream_current(s[0].stream[..], r.key) && s[0].tick == 0 && entities.entity_count(sw_entities(s[..])) == 12;
+  }
+}
+#test "replacement refuses live borrowers exhaustion and capacity without changing the retained logical owner" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  s[0].valid = false; #assert sw_recover_gpu(s[..], m[..]).status == SwRecoveryStatus.invalid; s[0].valid = true;
+  sw_claim(s[..], m[..], 0, true); r := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], 0); source := PNG_ONE;
+  #assert resource_stream_complete(s[0].stream[..], m[..], s[0].queue[..], r.key, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.ok;
+  accepted: [64] ResourceAccepted; #assert resource_stream_publish(s[0].stream[..], m[..], 1, accepted[..]) == 1;
+  borrowed := sw_borrow(s[..], 0); old := s[0].stream[0].owners[0].admission[0].gpu_handle;
+  #assert sw_recover_gpu(s[..], m[..]).status == SwRecoveryStatus.borrowed && s[0].registry[0].epoch == 1 && gpu.rr_live(s[0].registry[..], old);
+  #assert sw_return(s[..], m[..], borrowed);
+  s[0].registry[0].limit.words = 0;
+  #assert sw_recover_gpu(s[..], m[..]).status == SwRecoveryStatus.capacity && s[0].registry[0].epoch == 1 && gpu.rr_live(s[0].registry[..], old);
+  s[0].registry[0].limit.words = gpu.RR_WORDS; s[0].registry[0].epoch = gpu.RR_OPEN - 1;
+  #assert sw_recover_gpu(s[..], m[..]).status == SwRecoveryStatus.exhausted && s[0].registry[0].epoch == gpu.RR_OPEN - 1;
+  s[0].registry[0].epoch = 1; m[0].identity.words[0] ^= 1;
+  #assert sw_recover_gpu(s[..], m[..]).status == SwRecoveryStatus.invalid && s[0].registry[0].epoch == 1;
+  m[0].identity.words[0] ^= 1; #assert sw_close(s[..], m[..]);
+  #assert sw_recover_gpu(s[..], m[..]).status == SwRecoveryStatus.closed;
+}
+#test "replacement retains visual kinds and atomically refuses after partial staged grants" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  fixed := sw_gpu_acquire(s[..], 1, 16); #assert fixed.status == gpu.RrStatus.ok;
+  rows := [3] int.[0, 1, 3]; old: [3] frames.RfHandle;
+  for row, i: rows {
+    sw_claim(s[..], m[..], row, true); r := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], row);
+    #assert r.status == ResourceStreamStatus.ok; old[i] = s[0].stream[0].owners[row].admission[0].gpu_handle;
+  }
+  before := s[0].registry[0].words; bytes := s[0].queue[0].bytes;
+  s[0].registry[0].limit.words = 7;
+  #assert sw_recover_gpu(s[..], m[..]).status == SwRecoveryStatus.capacity && s[0].registry[0].words == before && s[0].queue[0].bytes == bytes;
+  for row, i: rows { handle := s[0].stream[0].owners[row].admission[0].gpu_handle;
+    #assert gpu.rr_live(s[0].registry[..], old[i]) && handle.slot == old[i].slot && handle.generation == old[i].generation; }
+  s[0].registry[0].limit.words = gpu.RR_WORDS;
+  result := sw_recover_gpu(s[..], m[..]); #assert result.status == SwRecoveryStatus.ok && result.restored == 3 && result.epoch == 2 && !gpu.rr_live(s[0].registry[..], fixed.handle);
+  #assert s[0].registry[0].words == 79 && s[0].registry[0].live == 3 && s[0].queue[0].bytes == bytes;
+  for row, i: rows { handle := s[0].stream[0].owners[row].admission[0].gpu_handle;
+    #assert gpu.rr_live(s[0].registry[..], handle) && !gpu.rr_live(s[0].registry[..], old[i]);
+    #assert s[0].registry[0].table[handle.slot].kind == [3] int.[6, 5, 4][i]; }
+}
+#test "retiring GPU resources and CPU only placements acquire no replacement presentation object" {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  sw_claim(s[..], m[..], 0, true); sw_claim(s[..], m[..], 6, true);
+  image := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], 0);
+  body := resource_stream_request(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], 6); #assert body.status == ResourceStreamStatus.ok;
+  empty: [1] u8; #assert resource_stream_complete(s[0].stream[..], m[..], s[0].queue[..], image.key, empty[0..<0], ResourceCostStatus.decode) == ResourceStreamStatus.failed;
+  result := sw_recover_gpu(s[..], m[..]); #assert result.status == SwRecoveryStatus.ok && result.restored == 0 && result.epoch == 2 && s[0].registry[0].live == 0;
+  #assert resource_stream_destroyed(s[0].stream[..], m[..], s[0].queue[..], s[0].registry[..], image.key) && resource_stream_current(s[0].stream[..], body.key);
+}
+
+sw_recover_gpu :: (s: [] SwWalk, m: [] ResourceManifest) -> SwRecoveryReport #export_c #effects(all) {
+  if !s[0].valid || !resource_stream_bound(s[0].stream[..], m) { return SwRecoveryReport.{}; }
+  if s[0].closing { return SwRecoveryReport.{status = SwRecoveryStatus.closed}; }
+  if s[0].registry[0].epoch >= gpu.RR_OPEN - 1 { return SwRecoveryReport.{status = SwRecoveryStatus.exhausted}; }
+  for row: 0..<s[0].stream[0].count { if s[0].stream[0].owners[row].borrowers != 0 { return SwRecoveryReport.{status = SwRecoveryStatus.borrowed}; } }
+  next := s[0].registry; handles: [RESOURCE_MANIFEST_MAX] frames.RfHandle; replace: [RESOURCE_MANIFEST_MAX] bool; count := 0;
+  gpu.rr_lose(next[..]);
+  for row: 0..<s[0].stream[0].count {
+    phase := s[0].stream[0].owners[row].phase;
+    if phase != ResourceOwnerPhase.loading && phase != ResourceOwnerPhase.loaded && phase != ResourceOwnerPhase.ready { continue; }
+    plan := m[0].entries[row].plan; if plan.cost.gpu == 0 { continue; }
+    kind := ifx plan.spec.format == ResourceFormat.image_mips then gpu.RR_TEXTURE else ifx plan.spec.format == ResourceFormat.indices then gpu.RR_INDEX else gpu.RR_VERTEX;
+    grant := gpu.rr_acquire(next[..], kind, plan.cost.gpu / 4);
+    if grant.status != gpu.RrStatus.ok { return SwRecoveryReport.{status = SwRecoveryStatus.capacity}; }
+    handles[row] = grant.handle; replace[row] = true; count += 1;
+  }
+  s[0].registry = next;
+  for row: 0..<s[0].stream[0].count { if replace[row] { s[0].stream[0].owners[row].admission[0].gpu_handle = handles[row]; } }
+  return SwRecoveryReport.{status = SwRecoveryStatus.ok, restored = count, epoch = next[0].epoch};
+}

@@ -183,7 +183,11 @@ def inspect(root, report=True):
                 upload_work = gpu
             expected = (len(source), decoded, gpu, 168, decode_work, upload_work, alignment, actors, voices, width, height, levels, elements)
             assert struct.unpack_from("<13q", data, at + 44) == expected, (i, expected)
-            deps = [0, 2] if i == 3 else ([0, 1, i - 4] if i >= 4 and slot == 4 else [])
+            if scene["converter"].startswith("aethyr.corridor-assets.v2/"):
+                deps = [2] if i == 3 else ([i - 1] if i >= 4 and slot == 2 else ([1] if i >= 4 and slot == 4 else []))
+            else:
+                assert scene["converter"].startswith("aethyr.corridor-assets.v1/")
+                deps = [0, 2] if i == 3 else ([0, 1, i - 4] if i >= 4 and slot == 4 else [])
             assert struct.unpack_from("<I", data, at + 148)[0] == len(deps)
             for k in range(8):
                 entry = data[at + 152 + k * 36:at + 188 + k * 36]

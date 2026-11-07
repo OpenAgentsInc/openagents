@@ -1,0 +1,437 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/world/stream-walk.coax:115:30: mutant survived: '<' became '<='
+      n := ifx role.dependency < 0 then 0 else 1;
+                               ^
+aethyr/world/stream-walk.coax:115:32: mutant survived: 0 became 1
+      n := ifx role.dependency < 0 then 0 else 1;
+                                 ^
+aethyr/world/stream-walk.coax:134:28: mutant survived: the call was removed
+    store := sw_entities(s); entities.entity_clear(store);
+                             ^
+aethyr/world/stream-walk.coax:141:88: mutant survived: the assignment was removed
+    s[0].player.target = walking.Vec3.{x = 32, y = 1.5, z = 56}; s[0].player.prev_target = s[0].player.target;
+                                                                                         ^
+aethyr/world/stream-walk.coax:161:99: mutant survived: 4 became 5
+        if format == ResourceFormat.cell_bodies && (f.bodies.count != 1 || f.bodies[0].id != (row - 4) / 5 + 1) { status = ResourceCostStatus.invalid; }
+                                                                                                    ^
+aethyr/world/stream-walk.coax:164:71: mutant survived: 4 became 5
+          if format == ResourceFormat.boxes { s[0].decoded_boxes[(row - 4) / 5] = f.values; }
+                                                                        ^
+aethyr/world/stream-walk.coax:165:78: mutant survived: 4 became 5
+          if format == ResourceFormat.cell_bodies { s[0].decoded_bodies[(row - 4) / 5] = f.bodies; }
+                                                                               ^
+aethyr/world/stream-walk.coax:173:19: mutant survived: the if condition was negated
+          if format == ResourceFormat.boxes { s[0].decoded_boxes[(row - 4) / 5] = SwFact.{}.values; }
+                    ^
+aethyr/world/stream-walk.coax:173:19: mutant survived: '==' became '!='
+          if format == ResourceFormat.boxes { s[0].decoded_boxes[(row - 4) / 5] = SwFact.{}.values; }
+                    ^
+aethyr/world/stream-walk.coax:173:71: mutant survived: 4 became 5
+          if format == ResourceFormat.boxes { s[0].decoded_boxes[(row - 4) / 5] = SwFact.{}.values; }
+                                                                        ^
+aethyr/world/stream-walk.coax:174:78: mutant survived: 4 became 5
+          if format == ResourceFormat.cell_bodies { s[0].decoded_bodies[(row - 4) / 5] = SwFact.{}.bodies; }
+                                                                               ^
+aethyr/world/stream-walk.coax:195:217: mutant survived: '+' became '-'
+        bytes := body.encoded + body.decoded + body.objects + body.gpu + body.decode_scratch + body.upload_scratch + collision.encoded + collision.decoded + collision.objects + collision.gpu + collision.decode_scratch + collision.upload_scratch;
+                                                                                                                                                                                                                          ^
+aethyr/world/stream-walk.coax:195:190: mutant survived: '+' became '-'
+        bytes := body.encoded + body.decoded + body.objects + body.gpu + body.decode_scratch + body.upload_scratch + collision.encoded + collision.decoded + collision.objects + collision.gpu + collision.decode_scratch + collision.upload_scratch;
+                                                                                                                                                                                               ^
+aethyr/world/stream-walk.coax:195:174: mutant survived: '+' became '-'
+        bytes := body.encoded + body.decoded + body.objects + body.gpu + body.decode_scratch + body.upload_scratch + collision.encoded + collision.decoded + collision.objects + collision.gpu + collision.decode_scratch + collision.upload_scratch;
+                                                                                                                                                                               ^
+aethyr/world/stream-walk.coax:195:92: mutant survived: '+' became '-'
+        bytes := body.encoded + body.decoded + body.objects + body.gpu + body.decode_scratch + body.upload_scratch + collision.encoded + collision.decoded + collision.objects + collision.gpu + collision.decode_scratch + collision.upload_scratch;
+                                                                                             ^
+aethyr/world/stream-walk.coax:195:70: mutant survived: '+' became '-'
+        bytes := body.encoded + body.decoded + body.objects + body.gpu + body.decode_scratch + body.upload_scratch + collision.encoded + collision.decoded + collision.objects + collision.gpu + collision.decode_scratch + collision.upload_scratch;
+                                                                       ^
+aethyr/world/stream-walk.coax:205:119: mutant survived: '>=' became '>'
+        if !selected[i] && profiles.world_stream_collect(p, profiles.WorldCollection.audio, s[0].claims[7 + i * 5].slot >= 0, d) && (best < 0 || d < distance) { best = i; distance = d; }
+                                                                                                                        ^
+aethyr/world/stream-walk.coax:205:103: mutant survived: 7 became 8
+        if !selected[i] && profiles.world_stream_collect(p, profiles.WorldCollection.audio, s[0].claims[7 + i * 5].slot >= 0, d) && (best < 0 || d < distance) { best = i; distance = d; }
+                                                                                                        ^
+aethyr/world/stream-walk.coax:205:109: mutant survived: '*' became '+'
+        if !selected[i] && profiles.world_stream_collect(p, profiles.WorldCollection.audio, s[0].claims[7 + i * 5].slot >= 0, d) && (best < 0 || d < distance) { best = i; distance = d; }
+                                                                                                              ^
+aethyr/world/stream-walk.coax:205:122: mutant survived: 0 became 1
+        if !selected[i] && profiles.world_stream_collect(p, profiles.WorldCollection.audio, s[0].claims[7 + i * 5].slot >= 0, d) && (best < 0 || d < distance) { best = i; distance = d; }
+                                                                                                                           ^
+aethyr/world/stream-walk.coax:205:179: mutant survived: the assignment was removed
+        if !selected[i] && profiles.world_stream_collect(p, profiles.WorldCollection.audio, s[0].claims[7 + i * 5].slot >= 0, d) && (best < 0 || d < distance) { best = i; distance = d; }
+                                                                                                                                                                                    ^
+aethyr/world/stream-walk.coax:212:20: mutant survived: 0 became 1
+    for wanted_pass: 0..<2 { for i: 0..<SW_CELLS {
+                     ^
+aethyr/world/stream-walk.coax:214:108: mutant survived: '>=' became '>'
+      lighting := profiles.world_stream_collect(p, profiles.WorldCollection.lighting, s[0].claims[base].slot >= 0, d);
+                                                                                                             ^
+aethyr/world/stream-walk.coax:214:111: mutant survived: 0 became 1
+      lighting := profiles.world_stream_collect(p, profiles.WorldCollection.lighting, s[0].claims[base].slot >= 0, d);
+                                                                                                                ^
+aethyr/world/stream-walk.coax:216:20: mutant survived: the if condition was negated
+      if wanted_pass == 0 {
+                     ^
+aethyr/world/stream-walk.coax:216:20: mutant survived: '==' became '!='
+      if wanted_pass == 0 {
+                     ^
+aethyr/world/stream-walk.coax:216:23: mutant survived: 0 became 1
+      if wanted_pass == 0 {
+                        ^
+aethyr/world/stream-walk.coax:217:10: mutant survived: the if condition was negated
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+           ^
+aethyr/world/stream-walk.coax:217:22: mutant survived: the call was removed
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                       ^
+aethyr/world/stream-walk.coax:217:43: mutant survived: false became true
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                            ^
+aethyr/world/stream-walk.coax:217:56: mutant survived: the if condition was negated
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                         ^
+aethyr/world/stream-walk.coax:217:68: mutant survived: the call was removed
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                                     ^
+aethyr/world/stream-walk.coax:217:88: mutant survived: '+' became '-'
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                                                         ^
+aethyr/world/stream-walk.coax:217:90: mutant survived: 2 became 3
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                                                           ^
+aethyr/world/stream-walk.coax:217:93: mutant survived: false became true
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                                                              ^
+aethyr/world/stream-walk.coax:217:101: mutant survived: the call was removed
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                                                                      ^
+aethyr/world/stream-walk.coax:217:121: mutant survived: '+' became '-'
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                                                                                          ^
+aethyr/world/stream-walk.coax:217:126: mutant survived: false became true
+        if !lighting { sw_claim(s, m, base, false); } if !geometry { sw_claim(s, m, base + 2, false); sw_claim(s, m, base + 4, false); }
+                                                                                                                               ^
+aethyr/world/stream-walk.coax:218:10: mutant survived: the if condition was negated
+        if !selected[i] { sw_claim(s, m, base + 3, false); }
+           ^
+aethyr/world/stream-walk.coax:218:25: mutant survived: the call was removed
+        if !selected[i] { sw_claim(s, m, base + 3, false); }
+                          ^
+aethyr/world/stream-walk.coax:218:45: mutant survived: '+' became '-'
+        if !selected[i] { sw_claim(s, m, base + 3, false); }
+                                              ^
+aethyr/world/stream-walk.coax:218:47: mutant survived: 3 became 4
+        if !selected[i] { sw_claim(s, m, base + 3, false); }
+                                                ^
+aethyr/world/stream-walk.coax:218:50: mutant survived: false became true
+        if !selected[i] { sw_claim(s, m, base + 3, false); }
+                                                   ^
+aethyr/world/stream-walk.coax:220:75: mutant survived: the call was removed
+        sw_claim(s, m, base, lighting); sw_claim(s, m, base + 2, geometry); sw_claim(s, m, base + 4, geometry); sw_claim(s, m, base + 3, selected[i]);
+                                                                            ^
+aethyr/world/stream-walk.coax:220:95: mutant survived: '+' became '-'
+        sw_claim(s, m, base, lighting); sw_claim(s, m, base + 2, geometry); sw_claim(s, m, base + 4, geometry); sw_claim(s, m, base + 3, selected[i]);
+                                                                                                ^
+aethyr/world/stream-walk.coax:221:98: mutant survived: '>=' became '>'
+        if profiles.world_stream_collect(p, profiles.WorldCollection.textures, s[0].claims[0].slot >= 0, d) { texture = true; }
+                                                                                                   ^
+aethyr/world/stream-walk.coax:221:90: mutant survived: 0 became 1
+        if profiles.world_stream_collect(p, profiles.WorldCollection.textures, s[0].claims[0].slot >= 0, d) { texture = true; }
+                                                                                           ^
+aethyr/world/stream-walk.coax:221:101: mutant survived: 0 became 1
+        if profiles.world_stream_collect(p, profiles.WorldCollection.textures, s[0].claims[0].slot >= 0, d) { texture = true; }
+                                                                                                      ^
+aethyr/world/stream-walk.coax:228:14: mutant survived: 12 became 13
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+               ^
+aethyr/world/stream-walk.coax:228:132: mutant survived: '&&' became '||'
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+                                                                                                                                     ^
+aethyr/world/stream-walk.coax:228:79: mutant survived: '&&' became '||'
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+                                                                                ^
+aethyr/world/stream-walk.coax:228:123: mutant survived: '+' became '-'
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+                                                                                                                            ^
+aethyr/world/stream-walk.coax:228:129: mutant survived: 5 became 6
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+                                                                                                                                  ^
+aethyr/world/stream-walk.coax:228:176: mutant survived: '+' became '-'
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+                                                                                                                                                                                 ^
+aethyr/world/stream-walk.coax:228:174: mutant survived: 5 became 6
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+                                                                                                                                                                               ^
+aethyr/world/stream-walk.coax:228:182: mutant survived: 5 became 6
+    for i: 0..<SW_CELLS { if s[0].cells[0].cells[i].level == cells.CELL_LOADING && resource_stream_ready(s[0].stream[..], 6 + i * 5) && resource_stream_ready(s[0].stream[..], 5 + i * 5) {
+                                                                                                                                                                                       ^
+aethyr/world/stream-walk.coax:229:101: mutant survived: 0 became 1
+      result := cells.cell_complete(s[0].cells[..], cells.cell_answer(s[0].cells[0].cells[i].request, 0, i, s[0].cells[0].manifest[i].digest, false)); #assert result == cells.CELL_OK;
+                                                                                                      ^
+aethyr/world/stream-walk.coax:233:15: mutant survived: the assignment was removed
+    s[0].active = 0; s[0].drawn = 0; s[0].updated = 0;
+                ^
+aethyr/world/stream-walk.coax:233:31: mutant survived: the assignment was removed
+    s[0].active = 0; s[0].drawn = 0; s[0].updated = 0;
+                                ^
+aethyr/world/stream-walk.coax:233:33: mutant survived: 0 became 1
+    s[0].active = 0; s[0].drawn = 0; s[0].updated = 0;
+                                  ^
+aethyr/world/stream-walk.coax:233:49: mutant survived: the assignment was removed
+    s[0].active = 0; s[0].drawn = 0; s[0].updated = 0;
+                                                  ^
+aethyr/world/stream-walk.coax:233:51: mutant survived: 0 became 1
+    s[0].active = 0; s[0].drawn = 0; s[0].updated = 0;
+                                                    ^
+aethyr/world/stream-walk.coax:236:61: mutant survived: 0 became 1
+      if s[0].awake[i] && !awake { #assert cells.cell_sleep(s[0].cells[..], i, s[0].actor[i]); }
+                                                              ^
+aethyr/world/stream-walk.coax:236:80: mutant survived: 0 became 1
+      if s[0].awake[i] && !awake { #assert cells.cell_sleep(s[0].cells[..], i, s[0].actor[i]); }
+                                                                                 ^
+aethyr/world/stream-walk.coax:238:104: mutant survived: '==' became '!='
+        if s[0].born[i] { body: [1] cells.CellBody; #assert cells.cell_wake(s[0].cells[..], i, body[..]) == 1; s[0].actor[i] = body[0]; }
+                                                                                                         ^
+aethyr/world/stream-walk.coax:238:77: mutant survived: 0 became 1
+        if s[0].born[i] { body: [1] cells.CellBody; #assert cells.cell_wake(s[0].cells[..], i, body[..]) == 1; s[0].actor[i] = body[0]; }
+                                                                              ^
+aethyr/world/stream-walk.coax:238:107: mutant survived: 1 became 2
+        if s[0].born[i] { body: [1] cells.CellBody; #assert cells.cell_wake(s[0].cells[..], i, body[..]) == 1; s[0].actor[i] = body[0]; }
+                                                                                                            ^
+aethyr/world/stream-walk.coax:238:124: mutant survived: the assignment was removed
+        if s[0].born[i] { body: [1] cells.CellBody; #assert cells.cell_wake(s[0].cells[..], i, body[..]) == 1; s[0].actor[i] = body[0]; }
+                                                                                                                             ^
+aethyr/world/stream-walk.coax:238:131: mutant survived: 0 became 1
+        if s[0].born[i] { body: [1] cells.CellBody; #assert cells.cell_wake(s[0].cells[..], i, body[..]) == 1; s[0].actor[i] = body[0]; }
+                                                                                                                                    ^
+aethyr/world/stream-walk.coax:238:112: mutant survived: 0 became 1
+        if s[0].born[i] { body: [1] cells.CellBody; #assert cells.cell_wake(s[0].cells[..], i, body[..]) == 1; s[0].actor[i] = body[0]; }
+                                                                                                                 ^
+aethyr/world/stream-walk.coax:243:8: mutant survived: the if condition was negated
+      if cells.cell_draws(s[0].cells[..], i) { s[0].drawn += 1; }
+         ^
+aethyr/world/stream-walk.coax:243:57: mutant survived: the assignment was removed
+      if cells.cell_draws(s[0].cells[..], i) { s[0].drawn += 1; }
+                                                          ^
+aethyr/world/stream-walk.coax:243:57: mutant survived: '+=' became '-='
+      if cells.cell_draws(s[0].cells[..], i) { s[0].drawn += 1; }
+                                                          ^
+aethyr/world/stream-walk.coax:243:60: mutant survived: 1 became 2
+      if cells.cell_draws(s[0].cells[..], i) { s[0].drawn += 1; }
+                                                             ^
+aethyr/world/stream-walk.coax:244:137: mutant survived: the assignment was removed
+      if profiles.world_stream_updates(s[0].profile, s[0].cells[0].cells[i].level, s[0].tick) { s[0].actor[i].words[0] += 1; s[0].updated += 1; }
+                                                                                                                                          ^
+aethyr/world/stream-walk.coax:244:137: mutant survived: '+=' became '-='
+      if profiles.world_stream_updates(s[0].profile, s[0].cells[0].cells[i].level, s[0].tick) { s[0].actor[i].words[0] += 1; s[0].updated += 1; }
+                                                                                                                                          ^
+aethyr/world/stream-walk.coax:244:140: mutant survived: 1 became 2
+      if profiles.world_stream_updates(s[0].profile, s[0].cells[0].cells[i].level, s[0].tick) { s[0].actor[i].words[0] += 1; s[0].updated += 1; }
+                                                                                                                                             ^
+aethyr/world/stream-walk.coax:246:23: mutant survived: '<=' became '<'
+    #assert s[0].active <= s[0].profile.pools.streamed_actors;
+                        ^
+aethyr/world/stream-walk.coax:247:18: mutant survived: the if condition was negated
+    if s[0].active > s[0].peak_active { s[0].peak_active = s[0].active; }
+                   ^
+aethyr/world/stream-walk.coax:247:18: mutant survived: '>' became '>='
+    if s[0].active > s[0].peak_active { s[0].peak_active = s[0].active; }
+                   ^
+aethyr/world/stream-walk.coax:247:56: mutant survived: the assignment was removed
+    if s[0].active > s[0].peak_active { s[0].peak_active = s[0].active; }
+                                                         ^
+aethyr/world/stream-walk.coax:263:12: mutant survived: 0 became 1
+      for k: 0..<6 { s[0].boxes[box_n * 6 + k] = s[0].decoded_boxes[i][k]; }
+             ^
+aethyr/world/stream-walk.coax:263:39: mutant survived: 6 became 7
+      for k: 0..<6 { s[0].boxes[box_n * 6 + k] = s[0].decoded_boxes[i][k]; }
+                                        ^
+aethyr/world/stream-walk.coax:264:89: mutant survived: '+' became '-'
+      s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 1000 + i, generation = 1}, shape = queries.QueryShape.box, index = box_n, surface = 10}; meta_n += 1; box_n += 1;
+                                                                                          ^
+aethyr/world/stream-walk.coax:264:84: mutant survived: 1000 became 1001
+      s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 1000 + i, generation = 1}, shape = queries.QueryShape.box, index = box_n, surface = 10}; meta_n += 1; box_n += 1;
+                                                                                     ^
+aethyr/world/stream-walk.coax:264:107: mutant survived: 1 became 2
+      s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 1000 + i, generation = 1}, shape = queries.QueryShape.box, index = box_n, surface = 10}; meta_n += 1; box_n += 1;
+                                                                                                            ^
+aethyr/world/stream-walk.coax:269:8: mutant survived: the if condition was negated
+      if !s[0].awake[i] { continue; }
+         ^
+aethyr/world/stream-walk.coax:270:47: mutant survived: 7 became 8
+      actor := s[0].actor[i]; at := capsule_n * 7;
+                                                ^
+aethyr/world/stream-walk.coax:271:23: mutant survived: the assignment was removed
+      s[0].capsules[at] = f32(actor.x); s[0].capsules[at + 1] = f32(actor.y) + 0.3; s[0].capsules[at + 2] = f32(actor.z);
+                        ^
+aethyr/world/stream-walk.coax:271:61: mutant survived: the assignment was removed
+      s[0].capsules[at] = f32(actor.x); s[0].capsules[at + 1] = f32(actor.y) + 0.3; s[0].capsules[at + 2] = f32(actor.z);
+                                                              ^
+aethyr/world/stream-walk.coax:271:76: mutant survived: '+' became '-'
+      s[0].capsules[at] = f32(actor.x); s[0].capsules[at + 1] = f32(actor.y) + 0.3; s[0].capsules[at + 2] = f32(actor.z);
+                                                                             ^
+aethyr/world/stream-walk.coax:271:58: mutant survived: 1 became 2
+      s[0].capsules[at] = f32(actor.x); s[0].capsules[at + 1] = f32(actor.y) + 0.3; s[0].capsules[at + 2] = f32(actor.z);
+                                                           ^
+aethyr/world/stream-walk.coax:271:105: mutant survived: the assignment was removed
+      s[0].capsules[at] = f32(actor.x); s[0].capsules[at + 1] = f32(actor.y) + 0.3; s[0].capsules[at + 2] = f32(actor.z);
+                                                                                                          ^
+aethyr/world/stream-walk.coax:271:102: mutant survived: 2 became 3
+      s[0].capsules[at] = f32(actor.x); s[0].capsules[at + 1] = f32(actor.y) + 0.3; s[0].capsules[at + 2] = f32(actor.z);
+                                                                                                       ^
+aethyr/world/stream-walk.coax:272:27: mutant survived: the assignment was removed
+      s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+                            ^
+aethyr/world/stream-walk.coax:272:24: mutant survived: 3 became 4
+      s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+                         ^
+aethyr/world/stream-walk.coax:272:65: mutant survived: the assignment was removed
+      s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+                                                                  ^
+aethyr/world/stream-walk.coax:272:80: mutant survived: '+' became '-'
+      s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+                                                                                 ^
+aethyr/world/stream-walk.coax:272:62: mutant survived: 4 became 5
+      s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+                                                               ^
+aethyr/world/stream-walk.coax:272:109: mutant survived: the assignment was removed
+      s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+                                                                                                              ^
+aethyr/world/stream-walk.coax:272:106: mutant survived: 5 became 6
+      s[0].capsules[at + 3] = f32(actor.x); s[0].capsules[at + 4] = f32(actor.y) + 1.5; s[0].capsules[at + 5] = f32(actor.z); s[0].capsules[at + 6] = 0.3;
+                                                                                                           ^
+aethyr/world/stream-walk.coax:273:88: mutant survived: '+' became '-'
+      s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 500 + i, generation = 1}, shape = queries.QueryShape.capsule, index = capsule_n,
+                                                                                         ^
+aethyr/world/stream-walk.coax:273:84: mutant survived: 500 became 501
+      s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 500 + i, generation = 1}, shape = queries.QueryShape.capsule, index = capsule_n,
+                                                                                     ^
+aethyr/world/stream-walk.coax:273:106: mutant survived: 1 became 2
+      s[0].metadata[meta_n] = filters.QueryCollider.{ref = filters.ColliderRef.{id = 500 + i, generation = 1}, shape = queries.QueryShape.capsule, index = capsule_n,
+                                                                                                           ^
+aethyr/world/stream-walk.coax:274:59: mutant survived: 8 became 9
+        entity = entities.entity_at(store, i), categories = 8, surface = 10}; meta_n += 1; capsule_n += 1;
+                                                            ^
+aethyr/world/stream-walk.coax:276:23: mutant survived: the assignment was removed
+    s[0].query_epoch[0] += 1;
+                        ^
+aethyr/world/stream-walk.coax:276:26: mutant survived: 1 became 2
+    s[0].query_epoch[0] += 1;
+                           ^
+aethyr/world/stream-walk.coax:280:48: mutant survived: the assignment was removed
+    p := s[0].player; p.key_y = direction; p.run = true;
+                                                 ^
+aethyr/world/stream-walk.coax:280:50: mutant survived: true became false
+    p := s[0].player; p.key_y = direction; p.run = true;
+                                                   ^
+aethyr/world/stream-walk.coax:282:72: mutant survived: '||' became '&&'
+    if !cells.cell_may_enter(s[0].cells[..], f64(p.pos.x), f64(p.pos.z)) || ground.geometry.shape == queries.QueryShape.none { sw_hold(s, direction); return; }
+                                                                         ^
+aethyr/world/stream-walk.coax:288:157: mutant survived: 12 became 13
+    s[0].nav_flow = navigation.nav_grid_flow(grid, s[0].nav_walk[..], s[0].nav_cost[..], s[0].nav_heap[..], s[0].nav_slot[..], s[0].nav_order[..], goal, 768, SW_CELLS);
+                                                                                                                                                              ^
+aethyr/world/stream-walk.coax:293:17: mutant survived: 2 became 3
+    for pass: 0..<2 { for row: 0..<64 {
+                  ^
+aethyr/world/stream-walk.coax:293:30: mutant survived: 0 became 1
+    for pass: 0..<2 { for row: 0..<64 {
+                               ^
+aethyr/world/stream-walk.coax:294:21: mutant survived: '>=' became '>'
+      gameplay := row >= 4 && ((row - 4) % 5 == 1 || (row - 4) % 5 == 2);
+                      ^
+aethyr/world/stream-walk.coax:294:24: mutant survived: 4 became 5
+      gameplay := row >= 4 && ((row - 4) % 5 == 1 || (row - 4) % 5 == 2);
+                         ^
+aethyr/world/stream-walk.coax:301:13: mutant survived: 0 became 1
+    for back: 0..<64 {
+              ^
+aethyr/world/stream-walk.coax:311:18: mutant survived: '||' became '&&'
+    if !s[0].valid || !resource_stream_bound(s[0].stream[..], m) || s[0].load_n != 0 || s[0].retire_n != 0 || s[0].record_n != 0 || !(direction >= -1 && direction <= 1) { return false; }
+                   ^
+aethyr/world/stream-walk.coax:311:143: mutant survived: '>=' became '>'
+    if !s[0].valid || !resource_stream_bound(s[0].stream[..], m) || s[0].load_n != 0 || s[0].retire_n != 0 || s[0].record_n != 0 || !(direction >= -1 && direction <= 1) { return false; }
+                                                                                                                                                ^
+aethyr/world/stream-walk.coax:313:19: mutant survived: '>' became '>='
+    if schedule.due > 9223372036854775807 - s[0].tick || schedule.due > 9223372036854775807 - s[0].query_epoch[0] { return false; }
+                    ^
+aethyr/world/stream-walk.coax:313:21: mutant survived: 9223372036854775807 became 9223372036854775806
+    if schedule.due > 9223372036854775807 - s[0].tick || schedule.due > 9223372036854775807 - s[0].query_epoch[0] { return false; }
+                      ^
+aethyr/world/stream-walk.coax:313:69: mutant survived: '>' became '>='
+    if schedule.due > 9223372036854775807 - s[0].tick || schedule.due > 9223372036854775807 - s[0].query_epoch[0] { return false; }
+                                                                      ^
+aethyr/world/stream-walk.coax:313:71: mutant survived: 9223372036854775807 became 9223372036854775806
+    if schedule.due > 9223372036854775807 - s[0].tick || schedule.due > 9223372036854775807 - s[0].query_epoch[0] { return false; }
+                                                                        ^
+aethyr/world/stream-walk.coax:319:90: mutant survived: the call was removed
+      sw_cells(s); sw_interest(s, m, direction); sw_walk(s, direction); sw_requests(s, m); sw_retirements(s);
+                                                                                           ^
+aethyr/world/stream-walk.coax:324:18: mutant survived: '||' became '&&'
+    if !s[0].valid || s[0].closing { return false; }
+                   ^
+aethyr/world/stream-walk.coax:325:59: mutant survived: false became true
+    if !resource_stream_retire(s[0].stream[..], m) { return false; }
+                                                            ^
+aethyr/world/stream-walk.coax:337:141: mutant survived: '||' became '&&'
+    if !assets.asset_parse(expected, identity[..]) || resource_manifest_read(source, identity[0], candidate[..]) != ResourceManifestStatus.ok || !sw_manifest(candidate[..], tier, backend) { return false; }
+                                                                                                                                              ^
+aethyr/world/stream-walk.coax:338:57: mutant survived: false became true
+    if !sw_open(s, candidate[..], tier, backend) { return false; }
+                                                          ^
+aethyr/world/stream-walk.coax:339:8: mutant survived: the assignment was removed
+    m[0] = candidate[0]; return true;
+         ^
+aethyr/world/stream-walk.coax:346:20: mutant survived: the if condition was negated
+    if p.spec.format == ResourceFormat.wav_pcm16 { filter: [1] wav.AudioWavFilter; scratch: [1] f64; return resource_decode_audio(p, source, filter[0..<0], scratch[0..<0], values); }
+                     ^
+aethyr/world/stream-walk.coax:346:20: mutant survived: '==' became '!='
+    if p.spec.format == ResourceFormat.wav_pcm16 { filter: [1] wav.AudioWavFilter; scratch: [1] f64; return resource_decode_audio(p, source, filter[0..<0], scratch[0..<0], values); }
+                     ^
+aethyr/world/stream-walk.coax:346:147: mutant survived: 0 became 1
+    if p.spec.format == ResourceFormat.wav_pcm16 { filter: [1] wav.AudioWavFilter; scratch: [1] f64; return resource_decode_audio(p, source, filter[0..<0], scratch[0..<0], values); }
+                                                                                                                                                    ^
+aethyr/world/stream-walk.coax:346:151: mutant survived: 0 became 1
+    if p.spec.format == ResourceFormat.wav_pcm16 { filter: [1] wav.AudioWavFilter; scratch: [1] f64; return resource_decode_audio(p, source, filter[0..<0], scratch[0..<0], values); }
+                                                                                                                                                        ^
+aethyr/world/stream-walk.coax:346:163: mutant survived: 0 became 1
+    if p.spec.format == ResourceFormat.wav_pcm16 { filter: [1] wav.AudioWavFilter; scratch: [1] f64; return resource_decode_audio(p, source, filter[0..<0], scratch[0..<0], values); }
+                                                                                                                                                                    ^
+aethyr/world/stream-walk.coax:346:167: mutant survived: 0 became 1
+    if p.spec.format == ResourceFormat.wav_pcm16 { filter: [1] wav.AudioWavFilter; scratch: [1] f64; return resource_decode_audio(p, source, filter[0..<0], scratch[0..<0], values); }
+                                                                                                                                                                        ^
+aethyr/world/stream-walk.coax:355:26: mutant survived: '<' became '<='
+    if !s[0].valid || cell < -2 || cell >= SW_CELLS { return false; }
+                           ^
+aethyr/world/stream-walk.coax:355:28: mutant survived: -2 became -1
+    if !s[0].valid || cell < -2 || cell >= SW_CELLS { return false; }
+                             ^
+aethyr/world/stream-walk.coax:355:39: mutant survived: '>=' became '>'
+    if !s[0].valid || cell < -2 || cell >= SW_CELLS { return false; }
+                                        ^
+aethyr/world/stream-walk.coax:355:42: mutant survived: 12 became 13
+    if !s[0].valid || cell < -2 || cell >= SW_CELLS { return false; }
+                                           ^
+aethyr/world/stream-walk.coax:357:112: mutant survived: '>=' became '>'
+    offset := ifx cell == -1 then draw.v3(s[0].player.pos.x, s[0].player.pos.y, s[0].player.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
+                                                                                                                 ^
+aethyr/world/stream-walk.coax:357:115: mutant survived: 0 became 1
+    offset := ifx cell == -1 then draw.v3(s[0].player.pos.x, s[0].player.pos.y, s[0].player.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
+                                                                                                                    ^
+aethyr/world/stream-walk.coax:357:136: mutant survived: 0 became 1
+    offset := ifx cell == -1 then draw.v3(s[0].player.pos.x, s[0].player.pos.y, s[0].player.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
+                                                                                                                                         ^
+aethyr/world/stream-walk.coax:357:161: mutant survived: 0 became 1
+    offset := ifx cell == -1 then draw.v3(s[0].player.pos.x, s[0].player.pos.y, s[0].player.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
+                                                                                                                                                                  ^
+aethyr/world/stream-walk.coax:357:186: mutant survived: 0 became 1
+    offset := ifx cell == -1 then draw.v3(s[0].player.pos.x, s[0].player.pos.y, s[0].player.pos.z) else ifx cell >= 0 then draw.v3(f32(s[0].actor[cell].x), f32(s[0].actor[cell].y), f32(s[0].actor[cell].z)) else draw.v3(0, 0, 0);
+                                                                                                                                                                                           ^
+aethyr/world/stream-walk.coax:374:18: mutant survived: '||' became '&&'
+    if !s[0].valid || s[0].closing { return plan[0]; }
+                   ^
+aethyr/world/stream-walk.coax:375:14: mutant survived: 12 became 13
+    for i: 0..<SW_CELLS {
+               ^
+978 mutants, 833 killed, 145 survived

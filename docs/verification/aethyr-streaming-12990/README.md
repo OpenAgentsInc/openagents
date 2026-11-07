@@ -1,10 +1,13 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. This record currently qualifies component
-contracts, original corridor asset preparation and a small native/browser
-codec fixture. It does not establish
-the required walkable streamed host, allocation reconciliation, route
-performance, tier comparison or GPU recovery.
+Issue #12990 remains open. The latest [coordinator, GPU ownership and actual
+device-replacement record](walk-coordinator-recovery.md) qualifies 945/945
+coordinator mutants and 63/63 replacement mutants, real browser routes,
+native CPU replay, controlled GPU replacement and an exact-owner upload
+failure. The [earlier browser/replay record](walk-browser-cpu-replay.md)
+retains its historical failing gates and artifacts. Automatic loss handling,
+failed-replacement rescue, native GPU recovery, per-step replay and remaining
+host failure cases still need qualification before issue completion.
 
 Work starts from `df06d21dee90a9f54778143ffd6b8fe1c400e392`, in the reused
 `/home/christopherdavid/oa-open-issues` worktree. Exact component source
