@@ -17,9 +17,9 @@ lose independent controls for some guards, belts, bracers and ornaments.
 Rig widgets and the source fitting bodies are not clothing assets.
 
 `MODULAR PART` browses aligned garment slots; `WEAR SELECTED PART` toggles the
-piece. Body B has no counterpart for the separate Noble arm guards and Noble
-belt. Those slots skip while browsing Body B and remain hidden after a body
-switch. Five presets choose complete outfits; individual pieces can then be
+piece. Female has no counterpart for the separate Noble arm guards and Noble
+belt. Those slots skip while browsing Female and remain hidden after a body
+switch. Peasant, Ranger, Wizard, Noble and original Tideglass presets choose complete outfits; individual pieces can then be
 mixed freely. Alternative armor/cloth, shoulder and belt variants can overlap
 when enabled together, so disable the unwanted alternative. This is explicit
 modular assembly, not a cloth simulation or automatic garment fitting system.
@@ -34,7 +34,7 @@ not uniformly repainted by that mask.
 Tab selects a control, arrows change it, and Space cycles animations. Drag
 turns the model and adjusts the viewing pitch; the wheel zooms. Controls form
 two side columns on desktop and a two-column panel below the preview on narrow
-screens. The 54-byte `CC1` appearance record saves through the host's existing
+screens. The 56-byte `CC2` appearance record saves through the host's existing
 action 4/IndexedDB save slot and restores on message 4. It contains no asset
 addresses or renderer state. Invalid records leave the current appearance intact.
 
@@ -89,3 +89,34 @@ profile. The change does not alter existing battle selection or its look rules.
 The shared fivelab Wasm budget is 625,000 bytes after a measured 590,971-byte
 release build with the wardrobe UI and save codec (about 5% headroom). The
 asset pack is separately bounded to 32 MiB.
+
+## Tideglass and selector revision
+
+Heavy armor (Knight armor, sleeves, boots, helmet, horns and legs, metal shoulder
+pieces, gorget and arm guards) is excluded from browsing and drawing. Source
+payloads remain in the pack for provenance. Legacy CC1 saves migrate with heavy
+pieces disabled; CC2 adds the original outfit slot and six eye colors. Eye color
+changes only the brown iris mask on the existing eye texture, retaining pupils,
+whites and highlights. The studio instance marker isolates these fields from
+battle status effects. Male/Female and Color labels are used throughout the UI.
+
+Tideglass is two skinned catalog entries with the existing 24-byte people vertex
+format and 65-joint animation palettes. Source sleeves are returned to rest pose;
+new cape, seams and map panels borrow nearest garment weights. The mask binds
+rigidly to Head. The Male fit widens the design by 5.5%; this is a stylized fit,
+not simulated cloth. The original hood/mask are bundled with the outfit.
+
+The authored Blender scene remains at
+`~/ore-wow-private/original-clothing/tideglass-wayfarer.blend`. After rebuilding
+the unmodified Fantasy pack, append it with:
+
+```sh
+'/Applications/Blender.app/Contents/MacOS/Blender' --background --disable-autoexec \
+  --python verse/tools/humans/pack_tideglass.py -- \
+  "$HOME/ore-wow-private/original-clothing/tideglass-wayfarer.blend" \
+  "$HOME/Downloads/Modular Character Outfits - Fantasy[Source]" \
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack
+```
+
+The receipt includes the design SHA-256, per-fit geometry counts and final pack
+identity. No Blender runtime is used in the selector.

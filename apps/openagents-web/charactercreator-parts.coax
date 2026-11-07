@@ -1,5 +1,5 @@
 // Every garment in All_Female.blend (37) and All_Male.blend (39), aligned by slot. Empty slots have no source counterpart.
-PART_NAMES :: [78]string.["fantasy/Female_Knight_Acc_Pauldrons_Round",
+PART_NAMES :: [80]string.["fantasy/Female_Knight_Acc_Pauldrons_Round",
 "fantasy/Female_Knight_Acc_Pauldrons_Spike",
 "fantasy/Female_Knight_Acc_Scarf",
 "fantasy/Female_Knight_Arms",
@@ -38,6 +38,7 @@ PART_NAMES :: [78]string.["fantasy/Female_Knight_Acc_Pauldrons_Round",
 "fantasy/Female_Ranger_Body_Belt_2",
 "fantasy/Female_Wizard_Body_Belt",
 "fantasy/Female_Wizard_Body_Belt_Ornament",
+"original/Female_Tideglass",
 "fantasy/Male_Knight_Acc_Pauldron_Round",
 "fantasy/Male_Knight_Acc_Pauldron_Spike",
 "fantasy/Male_Knight_Acc_Scarf",
@@ -76,8 +77,9 @@ PART_NAMES :: [78]string.["fantasy/Female_Knight_Acc_Pauldrons_Round",
 "fantasy/Male_Ranger_Body_Belt_1",
 "fantasy/Male_Ranger_Body_Belt_2",
 "fantasy/Male_Wizard_Body_Belt",
-"fantasy/Male_Wizard_Body_BeltOrnament"];
-PART_LABELS :: [39]string.["ROUND PAULDRONS",
+"fantasy/Male_Wizard_Body_BeltOrnament",
+"original/Male_Tideglass"];
+PART_LABELS :: [40]string.["ROUND PAULDRONS",
 "SPIKED PAULDRONS",
 "KNIGHT SCARF",
 "KNIGHT SLEEVES",
@@ -115,4 +117,4 @@ PART_LABELS :: [39]string.["ROUND PAULDRONS",
 "RANGER BELT I",
 "RANGER BELT II",
 "WIZARD BELT",
-"WIZARD ORNAMENT"];
+"WIZARD ORNAMENT", "TIDEGLASS OUTFIT"];

@@ -1,29 +1,48 @@
 {
-  "date": "2026-11-06",
-  "source_meshes": 76,
-  "body_a_meshes": 39,
-  "body_b_meshes": 37,
-  "outfit_families": 5,
-  "source_color_textures": 15,
-  "source_colorways_per_family": 3,
-  "pack_bytes": 20914708,
-  "pack_sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
-  "source_vertices": 167883,
-  "source_triangles": 206565,
-  "checks": {
-    "all_catalog_extents": true,
-    "all_triangle_indices": true,
-    "all_joints_below_65": true,
-    "all_weight_sums_255": true,
-    "source_piece_inventory_complete": true,
-    "source_normals_present": true,
-    "creator_dependency_tests_passed": 88,
-    "renderer_adoption_tests_passed": 47,
-    "renderer_adoption_root_mutants_killed": 62,
-    "renderer_adoption_mutants_survived": 0,
-    "host_restore_order_test_passed": true,
-    "browser_pointer_and_reload_passed": true,
-    "desktop_and_phone_headless_metal": true
+  "initial_wardrobe_receipt": {
+    "date": "2026-11-06",
+    "source_meshes": 76,
+    "body_a_meshes": 39,
+    "body_b_meshes": 37,
+    "outfit_families": 5,
+    "source_color_textures": 15,
+    "source_colorways_per_family": 3,
+    "pack_bytes": 20914708,
+    "pack_sha256": "887e0cb0bd75a00f1c76e99c610f7a1d28c48f79e72f54a337d6a57e457a7d14",
+    "source_vertices": 167883,
+    "source_triangles": 206565,
+    "checks": {
+      "all_catalog_extents": true,
+      "all_triangle_indices": true,
+      "all_joints_below_65": true,
+      "all_weight_sums_255": true,
+      "source_piece_inventory_complete": true,
+      "source_normals_present": true,
+      "creator_dependency_tests_passed": 88,
+      "renderer_adoption_tests_passed": 47,
+      "renderer_adoption_root_mutants_killed": 62,
+      "renderer_adoption_mutants_survived": 0,
+      "host_restore_order_test_passed": true,
+      "browser_pointer_and_reload_passed": true,
+      "desktop_and_phone_headless_metal": true
+    },
+    "release_wasm_bytes": 590959
   },
-  "release_wasm_bytes": 590959
+  "selector_revision": {
+    "date": "2026-11-06",
+    "pack_bytes": 24903412,
+    "pack_sha256": "60004eac1125e1a6cf0914cc5dd390adfbb59e3c07525a8be8588accfa1fe38a",
+    "source_and_original_parts": 78,
+    "extent_index_joint_and_weight_checks": true,
+    "targeted_creator_checks": 9,
+    "release_wasm_bytes": 592769,
+    "eye_pixel_comparison": "Brown versus Blue at frozen pose: changed face pixels confined to iris region, bounds (681,237)-(719,244)",
+    "heavy_armor_removed_from_selection_and_draws": true,
+    "legacy_save_migration": true,
+    "browser_checks": [
+      "Tideglass Female and Male, cast animation, eye-color choice, save/reload, 390x844 phone layout",
+      "Frozen Brown/Blue iris-only pixel difference",
+      "Tideglass Wine dye visibly recolors coat, hood and cape"
+    ]
+  }
 }

@@ -614,6 +614,7 @@ fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fivela
     o.slice=add_wrap(o.slice,wg_u32_f(m.c.w));
     o.dye=v4(m.e.x,m.e.y,m.e.z,((cast(f32)(sub_wrap(kind,2)))*2.0f32)+m.e.w);
   }
+  if (kind==5) {o.dye=v4(m.e.x,m.e.y,m.e.z,6.0f32+m.e.w);}
   // a skeleton's bones and its rags: dye.w 8 the bone, 9 the cloth
   if bones { o.dye=v4(0.0f32,0.0f32,0.0f32,ifx kind>=3 then 9.0f32 else 8.0f32); }
   return o;
@@ -621,6 +622,7 @@ fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fivela
 // A person's cloth dyed (Everglade's person_dye): dye.w 2 + share on a pale cloth, 4 + share on a
 // green one; under 2, the texture as it is.
 fivelab_dye :: (t:V3,dye:V4)->V3 {
+  if ((dye.w>=6.0f32)&&(dye.w<=7.0f32)) {return mix3(t,scale3(v3(dye.x,dye.y,dye.z),clampf(verse_style_luma(t.x,t.y,t.z)/0.09f32,0.0f32,1.6f32)),dye.w-6.0f32);}
   if ((dye.w<2.0f32)||(dye.w>=6.0f32)) { return t; }
   green:bool=dye.w>=4.0f32;
   share:f32=clampf(dye.w-(ifx green then 4.0f32 else 2.0f32),0.0f32,1.0f32);
@@ -645,6 +647,12 @@ fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:T
   t:f32=u[2];
   albedo:V3=mul3(fivelab_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
   glow:V3=v3(0.0f32,0.0f32,0.0f32);
+  // Studio-only record marker; retain the eye texture pupil, whites and highlights.
+  if ((m.f.w>1.5f32)&&(s.slice==FIVELAB_EYE_LAYER)) {
+    iris:f32=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);
+    shade:f32=clampf(verse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
+    albedo=mix3(albedo,scale3(v3(m.f.x,m.f.y,m.f.z),shade),iris);
+  }
   // a far figure's blocks: their own colour, no texture
   if (s.dye.w>9.5f32) { albedo=s.tint; }
   if ((s.dye.w>7.5f32)&&(s.dye.w<9.5f32)) {
@@ -665,7 +673,7 @@ fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:T
   if (!front) { n=scale3(n,-1.0f32); }
   eye:V3=wg_at3(u,16);
   rd:V3=normalize3(sub3(s.world,eye));
-  marks:f32=m.f.x;
+  marks:f32=ifx m.f.w>1.5f32 then 0.0f32 else m.f.x;
   // Restrained: vines up the legs; Poisoned: a sick green cast; Blinded: a blindfold; enfeebled: drained grey; Temporary
   // Hit Points: a red ward at the rim
   if (fivelab_mark(marks,0.0f32)&&(s.world.y-m.a.y<0.9f32)) {
@@ -687,8 +695,8 @@ fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:T
     glow=add3(glow,scale3(v3(0.55f32,0.15f32,0.8f32),pow(rim,4.0f32)*(0.7f32+(0.3f32*sin((t*9.0f32)+(s.world.y*6.0f32))))));
   }
   // dead: greyed; outlined by Faerie Fire: a violet glow
-  if (m.f.y>1.5f32) { albedo=scale3(v3(0.4f32,0.4f32,0.42f32),verse_style_luma(albedo.x,albedo.y,albedo.z)*2.2f32); }
-  if (m.f.z>0.5f32) { glow=add3(glow,scale3(v3(0.7f32,0.4f32,1.0f32),(0.35f32+(0.25f32*sin(t*5.0f32)))+(rim*rim*0.9f32))); }
+  if ((m.f.w<1.5f32)&&(m.f.y>1.5f32)) { albedo=scale3(v3(0.4f32,0.4f32,0.42f32),verse_style_luma(albedo.x,albedo.y,albedo.z)*2.2f32); }
+  if ((m.f.w<1.5f32)&&(m.f.z>0.5f32)) { glow=add3(glow,scale3(v3(0.7f32,0.4f32,1.0f32),(0.35f32+(0.25f32*sin(t*5.0f32)))+(rim*rim*0.9f32))); }
   // the sun in the glade's two bands, the trees' shadow traced, a cool fill and a rim
   sun:V3=normalize3(wg_at3(u,32));
   ndl:f32=dot3(n,sun);

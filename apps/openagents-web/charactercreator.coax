@@ -8,17 +8,18 @@ VERTEX_FLOATS :: 16;
 
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 Creator :: struct {
-  on:bool; configured:bool; female:bool; worn:[39]bool; piece:int; source_first:[78]int; source_count:[78]int; source_word:[78]int; source_n:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
-  dye:int = 8; skin:int = 1; hair_color:int; variant:int; pose:int;
+  on:bool; configured:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
+  dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
   clock:f32; pose_at:f32; revision:int; saved:int; focused:int;
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
-  boxes:[14]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
+  boxes:[15]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
 }
 DYES :: [9][3]f32.[[3]f32.[0.06,0.22,0.18],[3]f32.[0.38,0.04,0.065],[3]f32.[0.06,0.12,0.38],[3]f32.[0.72,0.65,0.48],[3]f32.[0.29,0.08,0.34],[3]f32.[0.055,0.055,0.07],[3]f32.[0.65,0.29,0.05],[3]f32.[0.22,0.36,0.46],[3]f32.[1,1,1]];
 SKINS :: [6][3]f32.[[3]f32.[1,0.94,0.87],[3]f32.[0.91,0.79,0.67],[3]f32.[0.76,0.6,0.46],[3]f32.[0.61,0.43,0.31],[3]f32.[0.43,0.28,0.2],[3]f32.[0.28,0.17,0.13]];
 HAIRS :: [6][3]f32.[[3]f32.[0.08,0.05,0.035],[3]f32.[0.29,0.13,0.055],[3]f32.[0.65,0.42,0.15],[3]f32.[0.48,0.085,0.035],[3]f32.[0.62,0.65,0.69],[3]f32.[0.23,0.075,0.3]];
-FIELD_NAMES :: [12]string.["BODY", "CLOTHES", "HOOD", "COLOURWAY", "CLOTH DYE", "SKIN TONE", "HAIR STYLE", "HAIR COLOUR", "BEARD", "ANIMATION", "MODULAR PART", "WEAR SELECTED PART"];
+EYES :: [6][3]f32.[[3]f32.[0.24,0.1,0.035],[3]f32.[0.08,0.35,0.75],[3]f32.[0.06,0.48,0.23],[3]f32.[0.8,0.48,0.06],[3]f32.[0.45,0.5,0.56],[3]f32.[0.45,0.12,0.65]];
+FIELD_NAMES :: [13]string.["BODY", "CLOTHES", "HOOD", "COLORWAY", "CLOTH DYE", "SKIN TONE", "HAIR STYLE", "HAIR COLOR", "BEARD", "ANIMATION", "MODULAR PART", "WEAR SELECTED PART", "EYE COLOR"];
 
 #test "creator body changes preserve choices and bind only matching parts" {
   s:[1]Creator;
@@ -29,7 +30,7 @@ FIELD_NAMES :: [12]string.["BODY", "CLOTHES", "HOOD", "COLOURWAY", "CLOTH DYE", 
   change(s[..],2,1); b=look(s[0]); #assert b.extra<0 && b.hair==figs.BP_HAIR_BUZZED_FEMALE;
   #assert s[0].beard && s[0].hair==2;
 }
-#test "creator every outfit detail and colour stays valid through wraparound" {
+#test "creator every outfit detail and color stays valid through wraparound" {
   s:[1]Creator;
   for field:0..<10 {
     for j:0..<17 { change(s[..],field,-1); l:=look(s[0]); p:[5]int; n:=figs.bd_parts(l,false,p[..]);
@@ -38,11 +39,11 @@ FIELD_NAMES :: [12]string.["BODY", "CLOTHES", "HOOD", "COLOURWAY", "CLOTH DYE", 
       for c:0..<3 { #assert l.skin[c]>0 && l.skin[c]<=1 && l.dye[c]>=0 && l.dye[c]<=1; }
     }
   }
-  before:=s[0].revision; change(s[..],-1,1); change(s[..],12,1); #assert s[0].revision==before;
+  before:=s[0].revision; change(s[..],-1,1); change(s[..],13,1); #assert s[0].revision==before;
 }
 #test "creator hit testing cancellation and narrow layout keep controls usable" {
   s:[1]Creator; layout(s[..],390,844,1);
-  for i:0..<14 { b:=s[0].boxes[i]; #assert b.x0>=0 && b.x1<=390 && b.y1<=844 && b.y1-b.y0>=36; }
+  for i:0..<15 { b:=s[0].boxes[i]; #assert b.x0>=0 && b.x1<=390 && b.y1<=844 && b.y1-b.y0>=36; }
   b:=s[0].boxes[1]; x:=(b.x0+b.x1)/2; y:=(b.y0+b.y1)/2;
   handled:=pointer(s[..],x,y,0,7); handled=pointer(s[..],x,y,3,7); #assert s[0].outfit==2;
   handled=pointer(s[..],x,y,0,7); handled=pointer(s[..],x,y,2,7); #assert s[0].outfit==3;
@@ -50,10 +51,10 @@ FIELD_NAMES :: [12]string.["BODY", "CLOTHES", "HOOD", "COLOURWAY", "CLOTH DYE", 
 
 cc_wrap :: (v:int,n:int)->int { return (v%n+n)%n; }
 change :: (s:[]Creator,f:int,delta:int) {
-  if f<0 || f>=12 { return; }
-  if f==0 { s[0].female=!s[0].female; if !s[0].female && s[0].hair>2 {s[0].hair=2;} }
+  if f<0 || f>=13 { return; }
+  if f==0 { s[0].female=!s[0].female; if !s[0].female && s[0].hair>2 {s[0].hair=2;} if !available(s[0],s[0].piece) {s[0].piece=18;} }
   if f==1 { s[0].outfit=cc_wrap(s[0].outfit+delta,5); preset(s,s[0].outfit); }
-  if f==2 { s[0].hood=!s[0].hood; s[0].worn[26]=s[0].hood; }
+  if f==2 { if !s[0].worn[39] {s[0].hood=!s[0].hood; s[0].worn[26]=s[0].hood;} }
   if f==3 { s[0].variant=cc_wrap(s[0].variant+delta,3); }
   if f==4 { s[0].dye=cc_wrap(s[0].dye+delta,9); }
   if f==5 { s[0].skin=cc_wrap(s[0].skin+delta,6); }
@@ -61,8 +62,9 @@ change :: (s:[]Creator,f:int,delta:int) {
   if f==7 { s[0].hair_color=cc_wrap(s[0].hair_color+delta,6); }
   if f==8 { s[0].beard=!s[0].beard; }
   if f==9 { s[0].pose=cc_wrap(s[0].pose+delta,4); s[0].pose_at=s[0].clock; }
-  if f==10 { s[0].piece=cc_wrap(s[0].piece+delta,39);if s[0].female && PART_NAMES[s[0].piece].count==0 {s[0].piece=cc_wrap(s[0].piece+(ifx delta<0 then -2 else 2),39);} }
-  if f==11 && (!s[0].female || PART_NAMES[s[0].piece].count>0) { s[0].worn[s[0].piece]=!s[0].worn[s[0].piece]; s[0].hood=s[0].worn[26]; }
+  if f==10 { for attempt:0..<40 {s[0].piece=cc_wrap(s[0].piece+(ifx delta<0 then -1 else 1),40);if available(s[0],s[0].piece) {break;}} }
+  if f==12 {s[0].eye_color=cc_wrap(s[0].eye_color+delta,6);}
+  if f==11 && available(s[0],s[0].piece) { s[0].worn[s[0].piece]=!s[0].worn[s[0].piece]; s[0].hood=s[0].worn[26] || s[0].worn[39]; }
   s[0].focused=f; s[0].revision+=1;
 }
 look :: (s:Creator)->figs.BdLook {
@@ -84,53 +86,56 @@ look :: (s:Creator)->figs.BdLook {
 // One preview, using the existing instance format and actual Quaternius skinned parts.
 scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
   b[0].draw_n=0;
-  if !b[0].ready || s.source_n!=76 { return 0; }
+  if !b[0].ready || s.source_n!=78 { return 0; }
   l:=look(s); l.variant=0;
   a:figs.BdAnim; a.on=true; a.clip=[4]int.[figs.BD_IDLE,figs.BD_WALK,figs.BD_RUN,figs.BD_SPELL][s.pose];
   a.t0=s.pose_at; a.fade_at=-100; a.phase=(s.clock-s.pose_at)/figs.bd_seconds(a.clip); a.yaw=s.yaw;
   if s.pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s.pose_at+floor((s.clock-s.pose_at)/dur)*dur; }
   n:=0;
-  for i:0..<39 { if s.worn[i] && s.source_count[i+(ifx s.female then 0 else 39)]>0 {
-    p:=i+ifx s.female then 0 else 39;
-    figs.bd_record(a,l,s.source_word[p],false,s.clock,out,n);out[n*24+11]=f32(s.variant);
+  for i:0..<40 { if s.worn[i] && available(s,i) && s.source_count[i+(ifx s.female then 0 else 40)]>0 {
+    p:=i+ifx s.female then 0 else 40;
+    figs.bd_record(a,l,s.source_word[p],false,s.clock,out,n);out[n*24+11]=ifx i==39 then 0 else f32(s.variant);
     b[0].draws[n*4]=cast(u32)s.source_first[p];b[0].draws[n*4+1]=cast(u32)s.source_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   } }
   parts:[3]int;pn:=0;
-  if !s.worn[7] { parts[pn]=l.head;pn+=1; }
+  if !s.worn[7] && !s.worn[39] { parts[pn]=l.head;pn+=1; }
   if l.hair>=0 && !s.worn[7] && !s.worn[26] {parts[pn]=l.hair;pn+=1;}
   if l.extra==figs.BP_BEARD && !s.worn[7] {parts[pn]=l.extra;pn+=1;}
   for i:0..<pn {
     p:=parts[i];figs.bd_record(a,l,b[0].part_word[p],false,s.clock,out,n);
     b[0].draws[n*4]=cast(u32)b[0].part_first[p];b[0].draws[n*4+1]=cast(u32)b[0].part_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
+  for i:0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s.eye_color][k];}out[i*24+23]=2;}
   b[0].draw_n=n;return n;
 }
 
 inside :: (b:Box,x:f32,y:f32)->bool { return x>=b.x0 && x<=b.x1 && y>=b.y0 && y<=b.y1; }
 layout :: (s:[]Creator,w:f32,h:f32,k:f32) {
   s[0].width=w; s[0].height=h; s[0].scale=k; s[0].mobile=w<840*k;
-  for i:0..<12 {
-    col:=i/6; row:=i%6; x:=24*k+f32(col)*(w-286*k); y:=(164+f32(row)*76)*k;
+  for i:0..<13 {
+    col:=i/7; row:=i%7; x:=24*k+f32(col)*(w-286*k); y:=(164+f32(row)*76)*k;
     bw:=238*k; bh:=53*k;
-    if s[0].mobile { col=i%2; row=i/2; bw=(w-36*k)/2; x=12*k+f32(col)*(bw+12*k); y=h-424*k+f32(row)*60*k; bh=42*k; }
+    if s[0].mobile { col=i%2; row=i/2; bw=(w-36*k)/2; x=12*k+f32(col)*(bw+12*k); y=h-484*k+f32(row)*60*k; bh=42*k; }
     s[0].boxes[i]=Box.{x0=x,y0=y,x1=x+bw,y1=y+bh};
   }
   by:=h-56*k;
-  s[0].boxes[12]=Box.{x0=24*k,y0=by,x1=150*k,y1=by+36*k};
-  s[0].boxes[13]=Box.{x0=w-174*k,y0=by,x1=w-24*k,y1=by+36*k};
+  s[0].boxes[13]=Box.{x0=24*k,y0=by,x1=150*k,y1=by+36*k};
+  s[0].boxes[14]=Box.{x0=w-174*k,y0=by,x1=w-24*k,y1=by+36*k};
 }
 value :: (s:Creator,f:int)->string {
-  if f==0 { return ifx s.female then "BODY B" else "BODY A"; }
-  if f==1 { return [5]string.["PEASANT","RANGER","WIZARD","KNIGHT","NOBLE"][s.outfit]; }
+  if f==0 { return ifx s.female then "FEMALE" else "MALE"; }
+  if f==1 { return [5]string.["PEASANT","RANGER","WIZARD","NOBLE","TIDEGLASS"][s.outfit]; }
+  if f==2 && s.worn[39] {return "BUILT-IN HOOD";}
   if f==2 { return ifx s.hood then "HOODED" else "UNCOVERED"; }
-  if f==3 { return [3]string.["ORIGINAL","COLOUR II","COLOUR III"][s.variant]; }
+  if f==3 { return [3]string.["ORIGINAL","COLOR II","COLOR III"][s.variant]; }
   if f==4 { return [9]string.["PINE","WINE","MIDNIGHT","IVORY","PLUM","INK","OCHRE","SLATE","NO DYE"][s.dye]; }
   if f==5 { return [6]string.["PORCELAIN","SAND","HONEY","COPPER","UMBER","EBONY"][s.skin]; }
   if f==6 { if s.hood { return "UNDER HOOD"; } return ifx s.female then [4]string.["LONG","BUNS","CROPPED","NONE"][s.hair] else [3]string.["PARTED","CROPPED","NONE"][s.hair]; }
   if f==7 { return [6]string.["DARK","CHESTNUT","GOLD","AUBURN","SILVER","VIOLET"][s.hair_color]; }
-  if f==8 { if s.female { return "BODY A ONLY"; } return ifx s.beard then "BEARDED" else "CLEAN SHAVEN"; }
+  if f==8 { if s.female { return "MALE ONLY"; } return ifx s.beard then "BEARDED" else "CLEAN SHAVEN"; }
+  if f==12 {return [6]string.["BROWN","BLUE","GREEN","AMBER","GRAY","VIOLET"][s.eye_color];}
   if f==10 { return PART_LABELS[s.piece]; }
-  if f==11 {if s.female && PART_NAMES[s.piece].count==0 {return "BODY A ONLY";}return ifx s.worn[s.piece] then "ON" else "OFF";}
+  if f==11 {if !available(s,s.piece) {return "MALE ONLY";}return ifx s.worn[s.piece] then "ON" else "OFF";}
   return [4]string.["IDLE","WALK","RUN","CAST"][s.pose];
 }
 ink :: (k:f32,r:f32,g:f32,b:f32)->Ink { return Ink.{core=0.55*k,light=1,glow=0.5*k,red=r,green=g,blue=b,scale=k,sans=false}; }
@@ -143,8 +148,8 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.48,0.56,0.59); gold:=ink(k,0.83,0.69,0.43);
   n=text(out,n,"AETHYR / CHARACTER STUDIO",24*k,34*k,10*k,gold);
   n=text(out,n,ifx s[0].mobile then "Your character." else "Make someone yours.",24*k,82*k,(ifx s[0].mobile then 22 else 26)*k,white);
-  if !s[0].mobile { n=text(out,n,"Clothes, colour and character. Every choice is live.",24*k,114*k,11*k,dim); }
-  for i:0..<12 {
+  if !s[0].mobile { n=text(out,n,"Clothes, color and character. Every choice is live.",24*k,114*k,11*k,dim); }
+  for i:0..<13 {
     b:=s[0].boxes[i]; cap:=ifx s[0].mobile then 10.0f32 else 12.0f32;
     n=text(out,n,FIELD_NAMES[i],b.x0,b.y0-7*k,8*k,dim);
     selected:=s[0].focused==i;
@@ -154,29 +159,29 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
     value_cap:=ifx i==10 then (ifx s[0].mobile then 6.5f32 else 8.5f32) else cap;
     n=text(out,n,value(s[0],i),b.x0+25*k,b.y0+cap*k+10*k,value_cap*k,white);
     n=text(out,n,">",b.x1-14*k,b.y0+cap*k+10*k,cap*k,c);
-    if i==4 || i==5 || i==7 {
-      rgb:=ifx i==4 then DYES[s[0].dye] else ifx i==5 then SKINS[s[0].skin] else HAIRS[s[0].hair_color];
+    if i==4 || i==5 || i==7 || i==12 {
+      rgb:=ifx i==4 then DYES[s[0].dye] else ifx i==5 then SKINS[s[0].skin] else ifx i==12 then EYES[s[0].eye_color] else HAIRS[s[0].hair_color];
       if lit(out,n,b.x0+26*k,b.y1-7*k,b.x1-26*k,b.y1-7*k,2*k,1,0,rgb[0],rgb[1],rgb[2],0) { n+=6; }
     }
   }
-  for i:12..<14 { b:=s[0].boxes[i]; n=text(out,n,ifx i==12 then "RESET" else "SURPRISE ME",b.x0+10*k,b.y0+23*k,10*k,gold); }
+  for i:13..<15 { b:=s[0].boxes[i]; n=text(out,n,ifx i==13 then "RESET" else "SURPRISE ME",b.x0+10*k,b.y0+23*k,10*k,gold); }
   if !s[0].mobile { n=text(out,n,"DRAG TO TURN / SCROLL TO ZOOM",w*0.5-135*k,h-77*k,9*k,dim); }
   for i:0..<u.count { u[i]=0; }
   u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=0;
   // A steady studio camera; dragging turns the figure, the wheel changes distance.
   dist:=s[0].dist; ey:=1.1+sin(s[0].pitch)*dist; ez:=cos(s[0].pitch)*dist;
   fy:=1.0-ey; fz:=-ez; length:=sqrt(fy*fy+fz*fz); fy/=length; fz/=length;
-  focal:=ifx s[0].mobile then (h-564*k)*1.3 else h*0.89;
+  focal:=ifx s[0].mobile then (h-624*k)*1.3 else h*0.89;
   u[16]=0;u[17]=ey;u[18]=ez;u[19]=focal;
   u[20]=0;u[21]=fy;u[22]=fz;u[23]=w*0.5;
-  u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s[0].mobile then (h-324*k)*0.5 else h*0.52;
+  u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s[0].mobile then (h-384*k)*0.5 else h*0.52;
   u[28]=0;u[29]=-fz;u[30]=fy;
   u[32]=-0.4;u[33]=0.8;u[34]=0.6;
   return n;
 }
 pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if phase==0 {
-    for i:0..<14 { if inside(s[0].boxes[i],x,y) { s[0].down=i; s[0].drag_id=id; return true; } }
+    for i:0..<15 { if inside(s[0].boxes[i],x,y) { s[0].down=i; s[0].drag_id=id; return true; } }
     s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;return true;
   }
   if id!=s[0].drag_id { return true; }
@@ -184,15 +189,15 @@ pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if phase==2 || phase==3 {
     i:=s[0].down;s[0].down=-1;s[0].dragging=false;
     if phase==2 && i>=0 && inside(s[0].boxes[i],x,y) {
-      if i<12 { change(s,i,ifx x<s[0].boxes[i].x0+22*s[0].scale then -1 else 1); }
-      else if i==12 { reset(s); }
+      if i<13 { change(s,i,ifx x<s[0].boxes[i].x0+22*s[0].scale then -1 else 1); }
+      else if i==13 { reset(s); }
       else { seed:=s[0].revision+7;for f:0..<9 { change(s,f,seed+f*3); } }
     }
   }
   return true;
 }
 key :: (s:[]Creator,k:int)->bool {
-  if k==-15 { s[0].focused=(s[0].focused+1)%12;return true; }
+  if k==-15 { s[0].focused=(s[0].focused+1)%13;return true; }
   if k==-4 || k==-5 { change(s,s[0].focused,ifx k==-4 then -1 else 1);return true; }
   if k==' ' { change(s,9,1);return true; }
   return false;
@@ -233,32 +238,32 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
 }
 
 preset :: (s:[]Creator,family:int) {
-  for i:0..<39 { s[0].worn[i]=false; }
-  slots:= [5][8]int.[[8]int.[18,19,20,21,-1,-1,-1,-1],[8]int.[22,23,24,25,27,34,35,-1],[8]int.[28,29,30,31,37,38,-1,-1],[8]int.[0,3,4,6,9,-1,-1,-1],[8]int.[11,13,14,15,17,32,33,-1]];
+  for i:0..<40 { s[0].worn[i]=false; }
+  slots:= [5][8]int.[[8]int.[18,19,20,21,-1,-1,-1,-1],[8]int.[22,23,24,25,27,34,35,-1],[8]int.[28,29,30,31,37,38,-1,-1],[8]int.[13,14,15,17,33,-1,-1,-1],[8]int.[39,-1,-1,-1,-1,-1,-1,-1]];
   for i:0..<8 { p:=slots[family][i];if p>=0 && (!s[0].female || PART_NAMES[p].count>0) {s[0].worn[p]=true;} }
-  s[0].hood=false;s[0].configured=true;
+  s[0].hood=family==4;s[0].configured=true;
 }
 ensure :: (s:[]Creator) {if !s[0].configured {preset(s,s[0].outfit);}}
-reset :: (s:[]Creator) { s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
+reset :: (s:[]Creator) { s[0].piece=18;s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].eye_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
 catalog :: (s:[]Creator,t:string) {
   s[0].source_n=0;
-  for i:0..<78 {s[0].source_count[i]=0;}
+  for i:0..<80 {s[0].source_count[i]=0;}
   at:=0;
   while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;} row:=t[at..<e];at=e+1;
     if row.count<9 || row[0..<2]!="C " {continue;}
     ne:=figs.bd_word_end(row,2);name:=row[2..<ne];
-    for i:0..<78 {if name==PART_NAMES[i] {
+    for i:0..<80 {if name==PART_NAMES[i] {
       p:=ne;s[0].source_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);
       s[0].source_count[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);
       s[0].source_word[i]=figs.bd_whole_at(row,p);
     }}
   }
-  for i:0..<78 {if s[0].source_count[i]>0 {s[0].source_n+=1;}}
+  for i:0..<80 {if s[0].source_count[i]>0 {s[0].source_n+=1;}}
 }
-#test "creator all source garments are selectable on both bodies and presets cover five families" {
+#test "creator available garments are selectable on both sexes and presets cover five outfits" {
   s:[1]Creator;ensure(s[..]);
-  for family:0..<5 {preset(s[..],family);n:=0;for i:0..<39 {if s[0].worn[i] {n+=1;}}#assert n>=4 && n<=8;}
-  for i:0..<39 {s[0].piece=i;s[0].worn[i]=false;change(s[..],11,1);#assert s[0].worn[i];#assert PART_NAMES[i+39].count>8;}
+  for family:0..<5 {preset(s[..],family);n:=0;for i:0..<40 {if s[0].worn[i] {n+=1;}}#assert n>=1 && n<=8;}
+  for i:0..<40 {if !available(s[0],i) {continue;}s[0].piece=i;s[0].worn[i]=false;change(s[..],11,1);#assert s[0].worn[i];#assert PART_NAMES[i+40].count>8;}
 }
 
 #test "creator page identity accepts absolute host URLs and rejects other routes" { #assert page("url=http://127.0.0.1:8812/worlds/character-creator?x=1\n");#assert page("url=/worlds/character-creator/\n");#assert !page("url=https://openagents.com/worlds/5e-lab?next=/worlds/character-creator\n"); }
@@ -266,46 +271,71 @@ catalog :: (s:[]Creator,t:string) {
 probe :: (s:Creator,f:int)->int {
   if f==0 {return s.source_n;} if f==1 {return s.outfit;}if f==2 {return ifx s.female then 1 else 0;}
   if f==3 {return s.variant;}if f==4 {return s.dye;}if f==5 {return s.skin;}if f==6 {return s.pose;}
-  if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}
+  if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}
   return -1;
 }
 append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}return at+t.count;}
-#test "creator catalog resolves all 76 source meshes and every worn part reaches a bounded GPU draw" {
+#test "creator catalog resolves 76 source meshes and two original fits and every worn part reaches a bounded GPU draw" {
   s:[1]Creator;b:[1]figs.Bodies;buf:[16384]u8;at:=0;
-  for i:0..<78 {if PART_NAMES[i].count>0 {at=append(buf[..],at,"C ");at=append(buf[..],at,PART_NAMES[i]);at=append(buf[..],at," 100 300 7 600 100 65\n");}}
-  catalog(s[..],cast(string)buf[0..<at]);#assert s[0].source_n==76;
-  for i:0..<78 {if PART_NAMES[i].count>0 {#assert s[0].source_first[i]==100 && s[0].source_count[i]==300 && s[0].source_word[i]==600;}}
+  for i:0..<80 {if PART_NAMES[i].count>0 {at=append(buf[..],at,"C ");at=append(buf[..],at,PART_NAMES[i]);at=append(buf[..],at," 100 300 7 600 100 65\n");}}
+  catalog(s[..],cast(string)buf[0..<at]);#assert s[0].source_n==78;
+  for i:0..<80 {if PART_NAMES[i].count>0 {#assert s[0].source_first[i]==100 && s[0].source_count[i]==300 && s[0].source_word[i]==600;}}
   b[0].ready=true;for i:0..<39 {s[0].worn[i]=true;}out:[44*24]f32;
-  for body:0..<2 {s[0].female=body==1;n:=scene(s[0],b[..],out[..]);#assert n==39-body*2 && b[0].draw_n==n;
+  for body:0..<2 {s[0].female=body==1;n:=scene(s[0],b[..],out[..]);#assert n==27-body*1 && b[0].draw_n==n;
     for i:0..<n {#assert b[0].draws[i*4+2]==cast(u32)i && b[0].draws[i*4+3]==1;}
   }
 }
 
 // Versioned appearance only: no asset offsets, clocks or borrowed renderer state are persisted.
 save :: (s:Creator,out:[]u8)->int {
-  if out.count<54 {return 0;}
-  out[0]='C';out[1]='C';out[2]='1';
+  if out.count<56 {return 0;}
+  out[0]='C';out[1]='C';out[2]='2';
   v:=[10]int.[ifx s.female then 1 else 0,s.outfit,ifx s.hood then 1 else 0,s.hair,ifx s.beard then 1 else 0,s.dye,s.skin,s.hair_color,s.variant,s.pose];
   for i:0..<10 {out[3+i]=cast(u8)('0'+v[i]);}
   out[13]=cast(u8)('0'+s.piece/10);out[14]=cast(u8)('0'+s.piece%10);
-  for i:0..<39 {out[15+i]=ifx s.worn[i] then '1' else '0';}
-  return 54;
+  for i:0..<40 {out[15+i]=ifx s.worn[i] then '1' else '0';}
+  out[55]=cast(u8)(48+s.eye_color);return 56;
 }
 restore :: (s:[]Creator,t:string)->bool {
-  if t.count!=54 || t[0..<3]!="CC1" {return false;}
+  legacy:=t.count==54 && t[0..<3]=="CC1";
+  if !legacy && (t.count!=56 || t[0..<3]!="CC2") {return false;}
+  if !legacy && (t[55]<'0' || t[55]>'5') {return false;}
   limits:=[12]int.[1,4,1,3,1,8,5,5,2,3,3,9];
   for i:0..<12 {if t[3+i]<'0' || int(t[3+i])>48+limits[i] {return false;}}
-  piece:=int(t[13]-'0')*10+int(t[14]-'0');if piece>=39 {return false;}
+  piece:=int(t[13]-'0')*10+int(t[14]-'0');if piece>=40 {return false;}
   if t[3]=='0' && t[6]>'2' {return false;}
-  for i:0..<39 {if t[15+i]!='0' && t[15+i]!='1' {return false;}}
-  if (t[5]=='1')!=(t[41]=='1') {return false;}
+  for i:0..<(ifx legacy then 39 else 40) {if t[15+i]!='0' && t[15+i]!='1' {return false;}}
+  if (t[5]=='1')!=((t[41]=='1') || (!legacy && t[54]=='1')) {return false;}
   next:=s[0];next.female=t[3]=='1';next.outfit=int(t[4]-'0');next.hood=t[5]=='1';next.hair=int(t[6]-'0');next.beard=t[7]=='1';next.dye=int(t[8]-'0');next.skin=int(t[9]-'0');next.hair_color=int(t[10]-'0');next.variant=int(t[11]-'0');next.pose=int(t[12]-'0');next.piece=piece;
-  for i:0..<39 {next.worn[i]=t[15+i]=='1';}
+  for i:0..<40 {next.worn[i]=i<(ifx legacy then 39 else 40) && t[15+i]=='1' && available(next,i);}
+  next.eye_color=ifx legacy then 0 else int(t[55]-'0');
+  if legacy {if next.outfit==3 {for i:0..<40 {next.worn[i]=i>=18 && i<=21;}next.hood=false;next.outfit=0;}else if next.outfit==4 {next.outfit=3;}}
+  if !available(next,next.piece) {next.piece=18;}
   next.configured=true;next.pose_at=next.clock;next.revision+=1;next.saved=next.revision;s[0]=next;return true;
 }
 #test "creator appearance save round trips and malformed saves preserve the live choices" {
   a:[1]Creator;ensure(a[..]);change(a[..],1,1);change(a[..],3,2);change(a[..],4,3);a[0].piece=38;change(a[..],11,1);
   out:[64]u8;n:=save(a[0],out[..]);b:[1]Creator;ok:=restore(b[..],cast(string)out[0..<n]);#assert ok && b[0].outfit==a[0].outfit && b[0].variant==2 && b[0].piece==38 && b[0].worn[38]==a[0].worn[38];
-  for i:0..<54 {old:=out[i];out[i]='x';before:=b[0].revision;#assert !restore(b[..],cast(string)out[0..<n]) && b[0].revision==before;out[i]=old;}
+  for i:0..<56 {old:=out[i];out[i]='x';before:=b[0].revision;#assert !restore(b[..],cast(string)out[0..<n]) && b[0].revision==before;out[i]=old;}
   #assert !restore(b[..],cast(string)out[0..<53]);
+}
+
+#test "studio offers original Tideglass on both sexes and skips heavy armor" {
+  s:[1]Creator;
+  for body:0..<2 {s[0].female=body==1;s[0].outfit=4;preset(s[..],4);#assert s[0].worn[39] && s[0].hood;#assert value(s[0],1)=="TIDEGLASS";
+    s[0].piece=0;for i:0..<80 {change(s[..],10,1);#assert available(s[0],s[0].piece);}
+  }
+  #assert value(s[0],0)=="FEMALE";change(s[..],0,1);#assert value(s[0],0)=="MALE";
+  change(s[..],12,-1);#assert s[0].eye_color==5;change(s[..],12,1);#assert s[0].eye_color==0;
+}
+
+available :: (s:Creator,p:int)->bool {if p<0 || p>=40 {return false;}if p==0 || p==1 || p==3 || p==4 || p==6 || p==7 || p==8 || p==9 || p==10 || p==11 || p==12 || p==32 {return false;}return !s.female || PART_NAMES[p].count>0;}
+
+#test "studio original outfit and eye color survive save and old heavy armor is removed" {
+  a:[1]Creator;a[0].female=true;a[0].outfit=4;preset(a[..],4);a[0].eye_color=5;
+  bytes:[64]u8;n:=save(a[0],bytes[..]);b:[1]Creator;#assert n==56 && restore(b[..],cast(string)bytes[0..<n]);
+  #assert b[0].worn[39] && b[0].eye_color==5 && b[0].hood;
+  // Encode a real old-shaped record, then insert the former knight armor slot.
+  a[0].outfit=3;a[0].hood=false;a[0].worn[39]=false;a[0].worn[4]=true;n=save(a[0],bytes[..]);bytes[2]='1';
+  #assert restore(b[..],cast(string)bytes[0..<54]) && !b[0].worn[4] && b[0].outfit==0;
 }

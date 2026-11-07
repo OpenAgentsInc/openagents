@@ -2,10 +2,11 @@
 
 Create a Quaternius human in Aethyr. Changes appear immediately on the animated figure.
 
-- Choose Body A or Body B and a Peasant, Ranger, Wizard, Knight or Noble outfit.
-- Switch between all three source colourways and choose a cloth dye, skin tone and hair colour.
-- Browse the 39 modular slots (37 available on Body B) with MODULAR PART, then turn the selected piece on or off. All 76 Source garments are included, including armor, cloth, hats, crowns, shoulder variants, scarf and gorget.
-- A hood hides hair. The closed helmet hides the head and hair. Optional parts can be mixed freely; overlapping alternatives may clip, so turn the unwanted one off.
+- Choose Male or Female and a Peasant, Ranger, Wizard, Noble or original Tideglass outfit.
+- Choose a colorway, cloth dye, skin tone, hair color and eye color (Brown, Blue, Green, Amber, Gray or Violet).
+- Browse modular clothing with MODULAR PART, then turn the selected piece on or off. Heavy armor is removed from the selector.
+- Tideglass Wayfarer adds a copper mask, asymmetric storm cape, map panels and compass details in the same skinned Aethyr pack format. Its hood is built in; eye color is visible on uncovered faces.
+- A hood hides hair. Optional pieces can overlap; turn unwanted pieces off.
 - Preview idle, walk, run and cast. Drag to turn and tilt; scroll to zoom. Tab selects a control, arrows change it, Space changes animation.
 - RESET restores the studio look. SURPRISE ME changes appearance. The browser keeps this studio's state in its own save slot.
 
