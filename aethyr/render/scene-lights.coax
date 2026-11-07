@@ -30,7 +30,9 @@
 //   180..183 the haze's hue (rgb) and its cap
 //   184..187 the haze: the eye's base height (m), where it starts (m), its density (1/m), its falloff (m)
 //   188..191 the key light seen through the haze (rgb), 1 when it is added (the moon) rather than mixed
-//   192..195 how wet surfaces are (0 to 1), rain, 0, 0
+//   192..195 how wet surfaces are (0 to 1), rain, the world's colour look: the share of her albedo's
+//            saturation her lit colour keeps (0: none kept, a photoreal world), and her albedo's
+//            saturation gain (0 or 1: as authored). A painterly world sets them as its own people's.
 //   196..199 how many point lights, the aux distance scale (m: aux.g is the distance over it), 0, 0
 // The pass writes linear light for the world's post pass to tone (Everglade's light and aux
 // targets), as the world's own geometry does.
@@ -69,6 +71,8 @@ SCL_HAZE_HUE :: 180;
 SCL_HAZE :: 184;
 SCL_GLOW :: 188;
 SCL_LOOK :: 192;
+SCL_CHROMA_KEEP :: 194;
+SCL_ALBEDO_SAT :: 195;
 SCL_OUT :: 196;
 SCL_LIGHTS :: 200;
 SCL_MAX_LIGHTS :: 8;

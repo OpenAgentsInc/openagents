@@ -347,6 +347,28 @@ ch_haze :: (u:[]f32,c:V3,world:V3,v:V3)->V3 {
 // light, its alpha the bloom's share (none: she is not a light) or a strand's coverage for the
 // blend; aux.g her distance over the aux scale, so the post pass's far softening leaves her sharp.
 ChLit :: struct {light:V4;aux:V4;}
+// The world's colour look (aethyr/render/scene-lights.coax 194..195). A painterly world's people keep
+// their albedo's saturation through its grey ambient (verse/everglade/gpu.coax: 0.7 of it); she keeps
+// the same share, and her photographed albedo takes the world's gain. Zeros leave her as authored.
+ch_saturation :: (c:V3)->f32 {hi:=fmax(c.x,fmax(c.y,c.z));return (hi-fmin(c.x,fmin(c.y,c.z)))/fmax(hi,0.0001f32);}
+ch_saturate :: (c:V3,gain:f32)->V3 {
+ if gain<=0 || gain==1 {return c;}y:=verse_style_luma(c.x,c.y,c.z);
+ return v3(fmax(0.0f32,y+(c.x-y)*gain),fmax(0.0f32,y+(c.y-y)*gain),fmax(0.0f32,y+(c.z-y)*gain));
+}
+ch_keep_chroma :: (c:V3,albedo:V3,keep:f32)->V3 {
+ have:=ch_saturation(c);if keep<=0 || have<0.0001f32 {return c;}
+ gain:=fmin(2.5f32,fmax(1.0f32,ch_saturation(albedo)*keep/have));return ch_saturate(c,gain);
+}
+#test "A photoreal world leaves her colour as authored and a painterly world keeps her albedo's saturation" {
+ c:=v3(0.5,0.4,0.35);a:=v3(0.6,0.3,0.1);
+ p:=ch_keep_chroma(c,a,0);q:=ch_saturate(a,0);r:=ch_saturate(a,1);
+ #assert p.x==c.x && p.y==c.y && p.z==c.z && q.x==a.x && q.z==a.z && r.x==a.x && r.y==a.y;
+ // a grey-lit 0.3 against a 0.83 albedo: chroma scaled about its luma toward 0.7 of the albedo's
+ k:=ch_keep_chroma(c,a,0.7);#assert ch_saturation(k)>0.5 && ch_saturation(k)<ch_saturation(a)*0.7;
+ #assert abs(verse_style_luma(k.x,k.y,k.z)-verse_style_luma(c.x,c.y,c.z))<0.0001;
+ #assert ch_saturation(ch_saturate(a,1.3))>ch_saturation(a);
+ g:=v3(0.5,0.5,0.5);h:=ch_keep_chroma(g,g,0.7);#assert h.x==0.5 && h.y==0.5 && h.z==0.5;
+}
 ch_out :: (u:[]f32,c:V3,alpha:f32,world:V3)->ChLit {
  d:=wg_length3(cv_sub(cv_at(u,SCL_EYE),world));
  return ChLit.{light=v4(c.x,c.y,c.z,alpha),aux=v4(0,d/fmax(u[SCL_OUT+1],0.001f32),0,alpha)};
@@ -364,7 +386,7 @@ ch_character_fs :: (s:ChSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
  }
  skin:=s.material==ECHO_HEAD_SLOT || s.material==ECHO_SKIN_SLOT;
  // rain darkens what it wets and sharpens its highlights
- albedo:=cv_scale(e.albedo,1-(ifx skin then 0.12f32 else 0.3f32)*wet);rough:=clampf(e.rough*(1-0.35*wet),0.045f32,1.0f32);metal:=e.metal;n:=e.normal;
+ albedo:=cv_scale(ch_saturate(e.albedo,u[SCL_ALBEDO_SAT]),1-(ifx skin then 0.12f32 else 0.3f32)*wet);rough:=clampf(e.rough*(1-0.35*wet),0.045f32,1.0f32);metal:=e.metal;n:=e.normal;
  nv:=fmax(0.0001f32,wg_dot3(n,v));f0:=v3(mix(e.f0,albedo.x,metal),mix(e.f0,albedo.y,metal),mix(e.f0,albedo.z,metal));
  // the eyes sit under her lids and brow, which the world's shadow map (centimetres a texel) can't
  // resolve: they take CH_EYE_SHADE of the light, as her own close shadow map gives them on Valley Lab
@@ -383,6 +405,7 @@ ch_character_fs :: (s:ChSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
  // reflections of the sky: the split-sum environment at the sky's ambient, faded in creases
  env:=pbr_environment(rough,nv);sky:=cv_at(u,SCL_SKY);reflect:=cv_scale(cv_add(cv_scale(f0,env.a),v3(env.b,env.b,env.b)),cv_specular_occlusion(nv,e.occlusion,rough)*inner*(1+wet));
  colour=cv_add(colour,cv_mul(reflect,sky));
+ colour=ch_keep_chroma(colour,albedo,u[SCL_CHROMA_KEEP]);
  return ch_out(u,ch_haze(u,colour,s.world,cv_scale(v,-1)),0,s.world);
 }
 // Her shadow caster: the world's shadow pass draws it into the world's map, a quarter of the strands

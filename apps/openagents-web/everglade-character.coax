@@ -18,6 +18,8 @@ EG_CHARACTER_STORAGE :: 187564308;
 // The normal offset and the depth bias the town's own surfaces read its shadow map with (eg_map_lit).
 EG_CHARACTER_NORMAL_OFFSET :: 0.08;
 EG_CHARACTER_BIAS :: 0.0006;
+EG_CHARACTER_CHROMA_KEEP :: 0.7;   // as the town's people (verse/everglade/gpu.coax eg_lit)
+EG_CHARACTER_ALBEDO_SAT :: 1.3;    // her photographed albedo toward the town's painted ones
 
 // Her body: a capsule from her shins to her crown, about her shoulders' half width.
 EG_CHARACTER_BODIES :: 1;
@@ -108,7 +110,10 @@ everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
   b[SCL_SHADOW_INFO + 1] = u[st + SU_SHADOW + 2] * 1.6 * 0.6 / hi(size, 1);
   b[SCL_SHADOW_INFO + 2] = f32(EG_CHARACTER_BIAS); b[SCL_SHADOW_INFO + 3] = f32(EG_CHARACTER_NORMAL_OFFSET);
   // the rain on her (eg_weather_wet_share: a character takes 0.8 of the wet)
-  b[SCL_LOOK] = u[U_WEATHER + 4] * 0.8; b[SCL_LOOK + 1] = u[U_WEATHER]; b[SCL_LOOK + 2] = 0; b[SCL_LOOK + 3] = 0;
+  b[SCL_LOOK] = u[U_WEATHER + 4] * 0.8; b[SCL_LOOK + 1] = u[U_WEATHER];
+  // the town's look on her: its people keep 0.7 of their albedo's saturation through the light
+  // (verse/everglade/gpu.coax), and her photographed albedo is lifted toward their painted one
+  b[SCL_CHROMA_KEEP] = EG_CHARACTER_CHROMA_KEEP; b[SCL_ALBEDO_SAT] = EG_CHARACTER_ALBEDO_SAT;
   // the lamps (eg_lamp_light): each at its strength, the spells' blasts by day too, the rest at the dusk's glow
   scl_lights_clear(b);
   n := cast(int) u[U_LIGHT_INFO]; glow := u[U_LIGHT_INFO + 1];
