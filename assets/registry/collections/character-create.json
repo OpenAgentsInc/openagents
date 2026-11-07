@@ -1,0 +1,359 @@
+{
+  "schema": "oa-wardrobe-v1",
+  "id": "character-create",
+  "compatibility": "CC2 slots are append-only, never reorder or reuse; retired slots remain reserved.",
+  "slots": [
+    {
+      "legacy_slot": 0,
+      "key": "round-pauldrons",
+      "label": "ROUND PAULDRONS",
+      "female": "quaternius/fantasy/female-knight-acc-pauldrons-round",
+      "male": "quaternius/fantasy/male-knight-acc-pauldron-round",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 1,
+      "key": "spiked-pauldrons",
+      "label": "SPIKED PAULDRONS",
+      "female": "quaternius/fantasy/female-knight-acc-pauldrons-spike",
+      "male": "quaternius/fantasy/male-knight-acc-pauldron-spike",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 2,
+      "key": "knight-scarf",
+      "label": "KNIGHT SCARF",
+      "female": "quaternius/fantasy/female-knight-acc-scarf",
+      "male": "quaternius/fantasy/male-knight-acc-scarf",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 3,
+      "key": "knight-sleeves",
+      "label": "KNIGHT SLEEVES",
+      "female": "quaternius/fantasy/female-knight-arms",
+      "male": "quaternius/fantasy/male-knight-arms",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 4,
+      "key": "knight-armor",
+      "label": "KNIGHT ARMOR",
+      "female": "quaternius/fantasy/female-knight-body-armor",
+      "male": "quaternius/fantasy/male-knight-body-armor",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 5,
+      "key": "knight-cloth",
+      "label": "KNIGHT CLOTH",
+      "female": "quaternius/fantasy/female-knight-body-cloth",
+      "male": "quaternius/fantasy/male-knight-body-cloth",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 6,
+      "key": "knight-boots",
+      "label": "KNIGHT BOOTS",
+      "female": "quaternius/fantasy/female-knight-feet-armor",
+      "male": "quaternius/fantasy/male-knight-feet-armor",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 7,
+      "key": "armet-helmet",
+      "label": "ARMET HELMET",
+      "female": "quaternius/fantasy/female-knight-head-armet",
+      "male": "quaternius/fantasy/male-knight-head-armet",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 8,
+      "key": "helmet-horns",
+      "label": "HELMET HORNS",
+      "female": "quaternius/fantasy/female-knight-head-horns",
+      "male": "quaternius/fantasy/male-knight-head-horns",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 9,
+      "key": "knight-legs",
+      "label": "KNIGHT LEGS",
+      "female": "quaternius/fantasy/female-knight-legs-armor",
+      "male": "quaternius/fantasy/male-knight-legs-armor",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 10,
+      "key": "noble-gorget",
+      "label": "NOBLE GORGET",
+      "female": "quaternius/fantasy/female-noble-acc-gorget",
+      "male": "quaternius/fantasy/male-noble-acc-gorget",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 11,
+      "key": "noble-pauldron",
+      "label": "NOBLE PAULDRON",
+      "female": "quaternius/fantasy/female-noble-acc-pauldron",
+      "male": "quaternius/fantasy/male-noble-acc-pauldron",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 12,
+      "key": "lion-pauldron",
+      "label": "LION PAULDRON",
+      "female": "quaternius/fantasy/female-noble-acc-pauldron-lion",
+      "male": "quaternius/fantasy/male-noble-acc-pauldron-lion",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 13,
+      "key": "noble-sleeves",
+      "label": "NOBLE SLEEVES",
+      "female": "quaternius/fantasy/female-noble-arms",
+      "male": "quaternius/fantasy/male-noble-arms",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 14,
+      "key": "noble-coat",
+      "label": "NOBLE COAT",
+      "female": "quaternius/fantasy/female-noble-body",
+      "male": "quaternius/fantasy/male-noble-body",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 15,
+      "key": "noble-shoes",
+      "label": "NOBLE SHOES",
+      "female": "quaternius/fantasy/female-noble-feet",
+      "male": "quaternius/fantasy/male-noble-feet",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 16,
+      "key": "crown",
+      "label": "CROWN",
+      "female": "quaternius/fantasy/female-noble-head-crown",
+      "male": "quaternius/fantasy/male-noble-head-crown",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 17,
+      "key": "noble-legs",
+      "label": "NOBLE LEGS",
+      "female": "quaternius/fantasy/female-noble-legs",
+      "male": "quaternius/fantasy/male-noble-legs",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 18,
+      "key": "peasant-sleeves",
+      "label": "PEASANT SLEEVES",
+      "female": "quaternius/fantasy/female-peasant-arms",
+      "male": "quaternius/fantasy/male-peasant-arms",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 19,
+      "key": "peasant-tunic",
+      "label": "PEASANT TUNIC",
+      "female": "quaternius/fantasy/female-peasant-body",
+      "male": "quaternius/fantasy/male-peasant-body",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 20,
+      "key": "peasant-shoes",
+      "label": "PEASANT SHOES",
+      "female": "quaternius/fantasy/female-peasant-feet",
+      "male": "quaternius/fantasy/male-peasant-feet",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 21,
+      "key": "peasant-legs",
+      "label": "PEASANT LEGS",
+      "female": "quaternius/fantasy/female-peasant-legs",
+      "male": "quaternius/fantasy/male-peasant-legs",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 22,
+      "key": "ranger-pauldron",
+      "label": "RANGER PAULDRON",
+      "female": "quaternius/fantasy/female-ranger-acc-pauldrons",
+      "male": "quaternius/fantasy/male-ranger-acc-pauldron",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 23,
+      "key": "ranger-sleeves",
+      "label": "RANGER SLEEVES",
+      "female": "quaternius/fantasy/female-ranger-arms",
+      "male": "quaternius/fantasy/male-ranger-arms",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 24,
+      "key": "ranger-tunic",
+      "label": "RANGER TUNIC",
+      "female": "quaternius/fantasy/female-ranger-body",
+      "male": "quaternius/fantasy/male-ranger-body",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 25,
+      "key": "ranger-boots",
+      "label": "RANGER BOOTS",
+      "female": "quaternius/fantasy/female-ranger-feet",
+      "male": "quaternius/fantasy/male-ranger-feet-boots",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 26,
+      "key": "ranger-hood",
+      "label": "RANGER HOOD",
+      "female": "quaternius/fantasy/female-ranger-head-hood",
+      "male": "quaternius/fantasy/male-ranger-head-hood",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 27,
+      "key": "ranger-legs",
+      "label": "RANGER LEGS",
+      "female": "quaternius/fantasy/female-ranger-legs",
+      "male": "quaternius/fantasy/male-ranger-legs",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 28,
+      "key": "wizard-sleeves",
+      "label": "WIZARD SLEEVES",
+      "female": "quaternius/fantasy/female-wizard-arms",
+      "male": "quaternius/fantasy/male-wizard-arms",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 29,
+      "key": "wizard-coat",
+      "label": "WIZARD COAT",
+      "female": "quaternius/fantasy/female-wizard-body",
+      "male": "quaternius/fantasy/male-wizard-body",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 30,
+      "key": "wizard-shoes",
+      "label": "WIZARD SHOES",
+      "female": "quaternius/fantasy/female-wizard-feet",
+      "male": "quaternius/fantasy/male-wizard-feet",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 31,
+      "key": "wizard-legs",
+      "label": "WIZARD LEGS",
+      "female": "quaternius/fantasy/female-wizard-legs",
+      "male": "quaternius/fantasy/male-wizard-legs",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 32,
+      "key": "noble-arm-guards",
+      "label": "NOBLE ARM GUARDS",
+      "female": "",
+      "male": "quaternius/fantasy/male-noble-arms-guards",
+      "selectable": false
+    },
+    {
+      "legacy_slot": 33,
+      "key": "noble-belt",
+      "label": "NOBLE BELT",
+      "female": "",
+      "male": "quaternius/fantasy/male-noble-body-belt",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 34,
+      "key": "ranger-bracers",
+      "label": "RANGER BRACERS",
+      "female": "quaternius/fantasy/female-ranger-arms-bracer",
+      "male": "quaternius/fantasy/male-ranger-arms-bracer",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 35,
+      "key": "ranger-belt-i",
+      "label": "RANGER BELT I",
+      "female": "quaternius/fantasy/female-ranger-body-belt-1",
+      "male": "quaternius/fantasy/male-ranger-body-belt-1",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 36,
+      "key": "ranger-belt-ii",
+      "label": "RANGER BELT II",
+      "female": "quaternius/fantasy/female-ranger-body-belt-2",
+      "male": "quaternius/fantasy/male-ranger-body-belt-2",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 37,
+      "key": "wizard-belt",
+      "label": "WIZARD BELT",
+      "female": "quaternius/fantasy/female-wizard-body-belt",
+      "male": "quaternius/fantasy/male-wizard-body-belt",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 38,
+      "key": "wizard-ornament",
+      "label": "WIZARD ORNAMENT",
+      "female": "quaternius/fantasy/female-wizard-body-belt-ornament",
+      "male": "quaternius/fantasy/male-wizard-body-beltornament",
+      "selectable": true
+    },
+    {
+      "legacy_slot": 39,
+      "key": "reserved-39",
+      "label": "",
+      "female": "",
+      "male": "",
+      "selectable": false
+    }
+  ],
+  "presets": [
+    [
+      "peasant-sleeves",
+      "peasant-tunic",
+      "peasant-shoes",
+      "peasant-legs"
+    ],
+    [
+      "ranger-pauldron",
+      "ranger-sleeves",
+      "ranger-tunic",
+      "ranger-boots",
+      "ranger-legs",
+      "ranger-bracers",
+      "ranger-belt-i"
+    ],
+    [
+      "wizard-sleeves",
+      "wizard-coat",
+      "wizard-shoes",
+      "wizard-legs",
+      "wizard-belt",
+      "wizard-ornament"
+    ],
+    [
+      "noble-sleeves",
+      "noble-coat",
+      "noble-shoes",
+      "noble-legs",
+      "noble-belt"
+    ]
+  ]
+}

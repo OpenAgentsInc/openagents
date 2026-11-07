@@ -1,0 +1,165 @@
+# Shared Aethyr authoring registry
+
+This is the portable, reviewable catalog for the complete Quaternius Fantasy
+Outfits, Medieval Village and Stylized Nature Source kits. Every original file
+is inventoried. Blender artwork, license evidence and alternate exports remain
+available; a world's runtime pack includes only its chosen collection.
+
+## Identity and storage
+
+An authoring ID such as `quaternius/nature/birch-1` is a stable lookup key, not
+Aethyr's `AssetId`. Runtime asset identity remains SHA-256 of actual bytes,
+with the existing bounded, whole-pack admission in `aethyr/assets.coax`.
+
+* `packages/NAME.json` pins the exact source snapshot.
+* `packages/NAME.files.json` inventories every source file by relative path,
+  byte size and SHA-256. The snapshot revision is the hash of this exact file.
+* `packages/NAME.representations.jsonl` links alternate exports by name. These
+  are candidates, explicitly **not** assertions of equivalent geometry.
+  Unmatched files stay inventoried and are listed rather than dropped.
+* `assets/NAME.jsonl` records logical assets and immutable revision definitions.
+  A revision is SHA-256 of the exact compact `definition` JSON bytes, without
+  the enclosing `id`/`revision` wrapper or a trailing newline.
+* `collections/*.lock.json` pins each asset's exact revision. A changed revision
+  requires regenerating and reviewing its consumer's lock.
+* `recipes/` selects the source Blender files, grouping and export origin.
+* `previews/` contains paged geometry contact sheets, not material/shader parity
+  evidence. Previews deliberately show shape with neutral studio lighting.
+
+The default local library is `~/.openagents/assets/`:
+
+```
+originals/<package revision>/inventory.json
+originals/<package revision>/source/       read-only vendor snapshot
+objects/<sha256>                         GLBs, revision JSON, exact SDK bridge
+work/<openagents ID>/                    writable, packed Blender forks
+cache/<package>/                         rebuildable observations and previews
+catalog/                                 published copy of this portable catalog
+catalog.previous/                        preceding published copy
+```
+
+Source snapshots retain alternate formats and engine-project archives. Their
+embedded scripts are never run. `.DS_Store` is omitted from identity. Imports
+reject symlinks and special files. Snapshot files are made read-only after
+publication; this is protection against accidental edits, not a security sandbox.
+Import is serialized by `import.lock`; an interrupted `.staging` directory is
+left for inspection rather than silently reused. Byte and path limits fail
+closed. Each external command has a deadline below 15 minutes.
+
+## Using and rebuilding the library
+
+Run the tool from an OpenAgents checkout. `STORE` below means an absolute path;
+the examples use the shared default. No Desktop/Downloads path is committed.
+
+```sh
+coax/web/tool.sh verse/tools/assets/registry.coax import \
+  "$HOME/Desktop/Quaternius/Modular Character Outfits - Fantasy[Source]" \
+  fantasy "$HOME/.openagents/assets"
+coax/web/tool.sh verse/tools/assets/registry.coax observe fantasy "$HOME/.openagents/assets"
+coax/web/tool.sh verse/tools/assets/registry.coax index fantasy "$HOME/.openagents/assets"
+coax/web/tool.sh verse/tools/assets/registry.coax representations fantasy
+```
+
+Use `village` and `nature` for the other two packages and their checked-in
+recipes. `observe` snapshots the SDK bridge into its build directory, runs
+Blender in background/factory-startup mode with autoexec disabled and Python
+errors fatal, then registers the observations and self-contained GLBs. The
+revision pins the exact bridge bytes; the observation records Blender's version.
+`index` retains that bridge in the content-addressed store. The checked Blender
+executable path is macOS-specific; the registry formats are platform independent.
+
+GLBs are full-resolution **interchange artifacts**. They are not newly qualified
+Aethyr runtime assets. They can repeat textures across different GLBs. Identical
+whole artifacts deduplicate by hash; image-level runtime packing remains the
+realm compiler's responsibility. Original textures, normal/ORM maps and Blender
+material graphs are preserved in their source snapshots, independent of a
+world's lighting profile.
+
+Nature's per-model Blender files define 116 multi-part assets; its combined
+scene is retained as another source representation. Fantasy selects the 76
+individual clothing meshes, excluding fitting bodies and rig widgets. Village
+registers all 304 visual meshes and 1,327 collision parts. Each `UCX_` part links
+to its owning visual asset. The village exports remove their display-scene grid
+offset using the visual object's origin; collision parts use the same origin.
+Original Blender coordinates and export origins remain in the observations.
+Collision hull validity, building snap sockets and foliage wind behavior remain
+unreviewed; the catalog does not invent physical or gameplay properties.
+
+## Editing and remixing
+
+```sh
+coax/web/tool.sh verse/tools/assets/registry.coax fork \
+  quaternius/nature/birch-1 openagents/examples/birch-study "$HOME/.openagents/assets"
+# Edit ~/.openagents/assets/work/openagents/examples/birch-study/birch-study.blend
+coax/web/tool.sh verse/tools/assets/registry.coax publish \
+  openagents/examples/birch-study "$HOME/.openagents/assets"
+coax/web/tool.sh verse/tools/assets/registry.coax index \
+  openagents-examples-birch-study "$HOME/.openagents/assets"
+```
+
+`fork` never overwrites an existing workspace. It keeps the selected meshes and
+required armature/parents, packs image dependencies and records the exact parent
+revision. `publish` snapshots the editable project, exports it and produces a
+new immutable revision under the OpenAgents ID. The included birch study is an
+unchanged fork used to verify this flow, not new artwork. Original revisions
+remain in `objects/` and package snapshots after a new revision is published.
+The v1 CLI forks one parent; definitions carry an array for future explicit
+multi-parent assemblies. Do not change parent history to point at "latest".
+
+## Character Create
+
+`collections/character-create.json` is the authored wardrobe definition: stable
+asset IDs, labels, availability and preset membership. `registry.coax wardrobe`
+resolves it against the imported catalog, writes the collection lock and
+regenerates `apps/openagents-web/charactercreator-parts.coax`.
+
+Its `legacy_slot` values are frozen CC2 compatibility keys, never source-array
+positions. Do not reorder or reuse them. Retired slots stay reserved; a future
+expanded save format needs a new version. Existing CC1/CC2 records and the
+current runtime pack remain compatible. Runtime catalog readiness checks every
+referenced mesh instead of a hardcoded asset count. Appearance choices remain
+Coax; the Blender bridge performs only SDK inspection/export/rendering.
+
+## Checks and local publication
+
+```sh
+coax/bin/coax test verse/tools/assets/registry.coax --only registry
+coax/bin/coax test apps/openagents-web/charactercreator.coax --only creator
+coax/web/tool.sh verse/tools/assets/registry.coax wardrobe --check
+coax/web/tool.sh verse/tools/assets/registry.coax check "$HOME/.openagents/assets"
+python3 verse/tools/assets/registry_oracle.py "$HOME/.openagents/assets"
+coax/web/tool.sh verse/tools/assets/registry.coax sync "$HOME/.openagents/assets"
+```
+
+`verify SNAPSHOT` independently rehashes a source snapshot through the Coax
+inventory reader. The Python oracle separately checks source/artifact hashes,
+source dependency closure, GLB structure, normalized village origins, collision
+owners, lineage and collection pins. `sync` publishes the portable local catalog;
+it retains the previous catalog and never modifies originals or editable work.
+No server, database, cloud account or runtime format change is required.
+
+## Installed command
+
+`~/.openagents/bin/asset-registry` is installed for this library. Outside an
+OpenAgents checkout it runs against `~/.openagents/assets/catalog/`, with the
+SDK bridge in `~/.openagents/assets/authoring/`. From a checkout it uses that
+checkout's reviewable catalog. `show ID` prints a registered revision;
+`source PACKAGE STORE` prints the pinned editable-source root. For example:
+
+```sh
+~/.openagents/bin/asset-registry show quaternius/nature/birch-1
+~/.openagents/bin/asset-registry source village "$HOME/.openagents/assets"
+```
+
+Local publications update the shared catalog when run outside a checkout.
+Bring reviewed catalog changes into a checkout before changing a shipped
+world. `wardrobe` outside a checkout writes a generated table into the local
+authoring directory, not into a shipped application. The self-contained
+command remains usable after its build worktree is removed.
+
+`selfcheck` exercises object publication with a temporary fixture: complete
+bytes, an idempotent existing object, a mismatched incoming hash, and refusal
+to silently repair a corrupted object. New objects are hashed in staging,
+made read-only, then renamed into the store. Current object bytes are never
+edited in place. GLB export files in `cache/` can be discarded after indexing;
+the immutable copies remain in `objects/`.

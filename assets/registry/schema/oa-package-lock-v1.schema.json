@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "oa-package-lock-v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "package",
+    "revision"
+  ],
+  "properties": {
+    "schema": {
+      "const": "oa-package-lock-v1"
+    },
+    "package": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-06",
+  "base_commit": "5a5a810601afbe923f1b09f81628bd60f031f59e",
+  "compiler_sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e",
+  "inventory_oracle": {
+    "source_packages": 4,
+    "source_files": 4363,
+    "assets": 1824,
+    "collision_parts": 1327,
+    "unique_glb_artifacts": 1823,
+    "checks": "source hashes, revisions, dependency closure, GLB extents, origin normalization, collision owners, parents and collection pins"
+  },
+  "checks": {
+    "registry_pure_checks": 6,
+    "creator_checks": 13,
+    "object_publication_selfcheck": "whole publication, idempotency, mismatched input hash and existing corruption refusal passed",
+    "coax_artifact_check": "Verified 1824 asset definitions and all artifact hashes",
+    "headless_browser": "Character Studio: Noble selected on Female; eye color and cast changed through pointer input; appearance survived reload; physical zoom/pan passed.",
+    "release_wasm_bytes": 595025,
+    "tools_check": "tools-check: 1847 tracked tool files (35 of them vendored upstream vectors), 0 new without a reason",
+    "installed_command_from_outside_checkout": "source village and show remix passed"
+  },
+  "source_packages": {
+    "nature": "0e05d58ed4beda3f9bae85f924ff3d578cb724fd82d427a59bc72a9570760b0a",
+    "fantasy": "9415c92b26b8b7b760ab72d333a0eee8e1f2f24bac62fb0a857f95203b91fed5",
+    "openagents-examples-birch-study": "e6bee102f877cc3ce3e3b0540574e6e4b932709a2b85ca306fc02a239e87e738",
+    "village": "b7e482187ae8533fea743014248b3c6b029f49f7bb6d3494f2fe217e62a66447"
+  },
+  "representations": {
+    "nature.representations.jsonl": {
+      "name_matched": 464,
+      "unmatched_preserved": 1
+    },
+    "village.representations.jsonl": {
+      "name_matched": 1816,
+      "unmatched_preserved": 302
+    },
+    "fantasy.representations.jsonl": {
+      "name_matched": 126,
+      "unmatched_preserved": 30
+    }
+  },
+  "scope": "Authoring catalog and interchange artifacts; existing runtime pack and ABI preserved. Gray geometry contact sheets do not qualify source shaders, collision hulls or new renderer profiles."
+}

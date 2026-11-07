@@ -1,0 +1,11 @@
+{
+  "schema": "oa-blender-recipe-v1",
+  "package": "village",
+  "mode": "object",
+  "garments": false,
+  "blends": [
+    "MedievalVillage_AllModels.blend"
+  ],
+  "preview_exclude_prefix": "UCX_",
+  "origin_mode": "object"
+}

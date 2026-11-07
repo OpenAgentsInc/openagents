@@ -1,0 +1,12 @@
+{
+  "schema": "oa-blender-recipe-v1",
+  "package": "fantasy",
+  "mode": "object",
+  "garments": true,
+  "blends": [
+    "All_Female.blend",
+    "All_Male.blend"
+  ],
+  "preview_exclude_prefix": "",
+  "origin_mode": "scene"
+}

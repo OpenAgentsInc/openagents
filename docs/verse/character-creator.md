@@ -8,7 +8,8 @@ page to the studio instead of starting a battle.
 
 ## The complete Fantasy Source wardrobe
 
-The input is `~/Downloads/Modular Character Outfits - Fantasy[Source]`.
+The input is the pinned Fantasy Source snapshot in `~/.openagents/assets/originals/`
+(see `assets/registry/packages/fantasy.json`).
 Its `All_Male.blend` contains 39 individual clothing meshes and its
 `All_Female.blend` contains 37. All 76 are included, with three base-color
 textures for each of Knight, Noble, Peasant, Ranger and Wizard (15 images).
@@ -50,9 +51,10 @@ shared within a piece. Normal and ORM files remain source authoring inputs;
 the existing Aethyr people shader uses base color and stylized lighting.
 
 ```sh
+SOURCE="$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy "$HOME/.openagents/assets")"
 '/Applications/Blender.app/Contents/MacOS/Blender' --background --disable-autoexec \
   --python verse/tools/humans/pack_fantasy_source.py -- \
-  "$HOME/Downloads/Modular Character Outfits - Fantasy[Source]" \
+  "$SOURCE" \
   apps/openagents-web/realms/everglade/assets/everglade.pack \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack
 ```
@@ -126,3 +128,22 @@ latched until its release or cancellation.
 Only Peasant, Ranger, Wizard and Noble remain. The removed custom outfit's
 geometry, palette textures and exporter are gone. Existing CC2 saves selecting
 that removed slot migrate to Wizard while retaining body and eye color.
+
+## Shared asset registry
+
+The complete source packs now have a shared authoring catalog in
+`assets/registry/README.md`, backed by `~/.openagents/assets/` source snapshots,
+immutable artifacts and editable Blender forks. The wardrobe's stable IDs,
+labels, availability and preset membership live in
+`assets/registry/collections/character-create.json`. Regenerate the runtime
+Coax tables and pinned revision lock with:
+
+```sh
+coax/web/tool.sh verse/tools/assets/registry.coax wardrobe
+coax/web/tool.sh verse/tools/assets/registry.coax wardrobe --check
+```
+
+CC2's legacy slots remain frozen compatibility keys. Source discovery order
+cannot change saved garments. Runtime readiness now requires each referenced
+mesh, rather than an exact manually maintained count. The existing compiled
+people pack, appearance codec and renderer ABI are unchanged.

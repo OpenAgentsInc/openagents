@@ -1,0 +1,11 @@
+{
+  "schema": "oa-blender-recipe-v1",
+  "package": "openagents-examples-birch-study",
+  "mode": "file",
+  "preview_exclude_prefix": "",
+  "garments": false,
+  "blends": [
+    "birch-study.blend"
+  ],
+  "origin_mode": "scene"
+}

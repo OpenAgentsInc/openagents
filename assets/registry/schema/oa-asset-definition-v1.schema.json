@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "oa-asset-definition-v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "name",
+    "kind",
+    "package",
+    "package_revision",
+    "license",
+    "recipe_sha256",
+    "parents",
+    "source",
+    "artifacts",
+    "runtime_profile"
+  ],
+  "properties": {
+    "schema": {
+      "const": "oa-asset-definition-v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+(/[a-z0-9-]+)+$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "static-mesh",
+        "skinned-mesh",
+        "collision"
+      ]
+    },
+    "collision_owner": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+(/[a-z0-9-]+)+$"
+    },
+    "package": {
+      "type": "string"
+    },
+    "package_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "license": {
+      "const": "CC0-1.0"
+    },
+    "recipe_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "parents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "revision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+(/[a-z0-9-]+)+$"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "source",
+        "selector",
+        "objects",
+        "materials",
+        "images",
+        "rigs",
+        "bounds_blender"
+      ]
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "format",
+          "sha256",
+          "bytes",
+          "role"
+        ],
+        "properties": {
+          "format": {
+            "const": "glb"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "role": {
+            "const": "interchange"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "runtime_profile": {
+      "const": "unqualified"
+    }
+  },
+  "additionalProperties": false
+}

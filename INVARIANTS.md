@@ -6023,6 +6023,16 @@ the existing people palette and draw format; this adds no shared/native renderer
 qualification. Unknown slug/producer pairs continue to refuse. The appearance
 save contains only versioned choices, never pack addresses or renderer state.
 See `docs/verse/character-creator.md`.
+The shared authoring catalog (`assets/registry/`) distinguishes stable logical
+lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
+Source snapshots retain their exact file inventories. Published derivative
+revisions retain exact parent revision pins. Generated Character Create tables
+resolve stable IDs; CC2 legacy slots are frozen compatibility keys and are never
+reordered or reused. Every referenced mesh must resolve before the wardrobe
+scene is ready. Full-resolution interchange GLBs and contact sheets confer no
+new runtime-renderer, collision-hull or shader qualification. See
+`assets/registry/README.md` and `docs/verification/asset-library-2026-11-06/`.
+
 ## Everglade's private Link experiment is reversible and keeps room authority
 
 The unlisted `experiments/link-raid` page admits an owner-local combined pack.

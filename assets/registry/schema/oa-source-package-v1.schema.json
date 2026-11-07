@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "oa-source-package-v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "package",
+    "license",
+    "license_evidence",
+    "files"
+  ],
+  "properties": {
+    "schema": {
+      "const": "oa-source-package-v1"
+    },
+    "package": {
+      "type": "string"
+    },
+    "license": {
+      "const": "CC0-1.0"
+    },
+    "license_evidence": {
+      "type": "string"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256",
+          "bytes"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
