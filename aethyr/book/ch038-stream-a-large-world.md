@@ -87,8 +87,11 @@ order.
   carrier](../host/stream-native.md) now exercises both tiers through actual
   Vulkan loads, retirement and controlled device replacement. The native
   [backing record](../../docs/verification/aethyr-streaming-12990/walk-native-backing.md)
-  qualifies device-bound allocation plans and leases. Browser transport and
-  transient planning and the chapter's complete teaching proof remain open.
+  qualifies device-bound allocation plans and leases. The [HTP1 browser
+  record](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
+  now binds complete packed/raw sources and reconstructs original transport
+  tickets, concurrent allocation peaks and joined release. Auxiliary transient
+  planning and the chapter's complete teaching proof remain open.
   Native persistent rescue is a separate unqualified profile. The [native draw-result profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
   adds automatic reported-loss recovery and pending-effect retirement;
   SDK-result injection is explicitly distinct from physical device faults.

@@ -57,9 +57,14 @@ refusal publishes neither reservation and preserves terminal serial retirement.
 Cancellation, uncertain SDK completion and immutable borrowers retain those
 leases until zeroing/disposal. HTP1 derives complete container/source spans
 from admitted bytes, binds the original scene/RCM1/model identities, and keeps
-logical payload costs unchanged. The corridor's packed adapter still needs
-HTP1 binding and complete transient/per-owner reporting. See
-`docs/verification/aethyr-streaming-12990/walk-transport-planning.md`.
+logical payload costs unchanged. The additive corridor carrier now binds
+original scene/manifest, whole source, exact location and live attempt keys
+before decoding. It refuses completion/destruction/rebinding until the SDK
+has joined the reader. Bounded per-owner histories reconstruct original
+leases and actual allocation peaks independently. Auxiliary transient planning
+and the final consumer audit remain open. See
+`docs/verification/aethyr-streaming-12990/walk-transport-binding.md` and the
+earlier `walk-transport-planning.md`.
 
 `aethyr/host/transport.coax` owns the four socket and eight response-bearing
 HTTP slots for host contract v1. A callback carries its reserved slot,

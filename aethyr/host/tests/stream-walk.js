@@ -2,7 +2,7 @@
 import {openPackHost} from '../../../coax/web/pack-host.js';
 import {openRescueStore,rescueHash,showRescueStop} from './stream-walk-rescue.js';
 
-export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,tier,wasmURL,shaderURL,hudShaderURL='/build/stream-hud.wgsl',presentShaderURL='/build/stream-present.wgsl',onRecord,rescueSlot='stream-walk'}){
+export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,transportSHA,transportURL,tier,wasmURL,shaderURL,hudShaderURL='/build/stream-hud.wgsl',presentShaderURL='/build/stream-present.wgsl',onRecord,rescueSlot='stream-walk'}){
   const packs=await openPackHost(),arena=packs.retainBytes(8388608),startup=[];let memory;
   startup.push(()=>{if(memory)new Uint8Array(memory.buffer).fill(0);memory=null;arena.release();});
   try{
@@ -15,18 +15,32 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   const engineBytes=await(await fetch(wasmURL)).arrayBuffer(),module=await WebAssembly.compile(engineBytes);
   const instance=await WebAssembly.instantiate(module,{env:{memory},wasi_snapshot_preview1:wasi});
   let x=instance.exports;x._initialize?.();
+  const bound=!!x.sw_transport_open;if(bound!==!!transportSHA)throw Error('HTP1 carrier needs its pinned transport companion');
+  let transportTrace,traceOwner,traceCount=0,finalBinding;
+  if(bound){traceOwner=packs.retainBytes(2048*24*8);startup.push(()=>traceOwner?.release());transportTrace=new BigInt64Array(2048*24);}
+  function transportEvent(kind,k,fields=[]){if(!bound)return;if(traceCount===2048)throw Error('transport observation capacity exhausted');const at=traceCount++*24;transportTrace.set([BigInt(kind),BigInt(k.owner),BigInt(k.generation),BigInt(k.epoch),...fields.map(BigInt)],at);}
+  function transportObserver(k){return bound?event=>{const fields=Array(20).fill(0);let kind;
+    if(event.kind==='plan'){kind=2;const p=event.plan;fields.splice(0,6,p.reactor,p.external,p.reserved,p.heapBase,p.initial,Number(p.grow));}
+    else if(event.kind==='allocate'){kind=3;fields[0]=event.reactor;fields[1]=event.external;}
+    else if(event.kind==='release'){kind=5;fields[0]=event.reactor;fields[1]=event.external;}
+    else if(event.kind==='constructor-refused'){kind=7;fields[0]=event.reactor;fields[1]=event.external;}else throw Error('unknown transport observation');
+    if(event.tickets){fields[6]=event.tickets.length;event.tickets.forEach((t,i)=>fields.splice(7+i*3,3,...t));}if(event.storage)fields.splice(13,4,...event.storage);
+    transportEvent(kind,k,fields);
+  }:undefined;}
+  function transportBinding(){return finalBinding??(bound?{schema:'aethyr.stream-transport-observation.v1',root:transportSHA,phase:Number(x.sw_transport_info(0)),staticBytes:Number(x.sw_transport_info(1)),traceBytes:traceOwner.bytes,capacity:2048,events:Array.from({length:traceCount},(_,i)=>Array.from(transportTrace.subarray(i*24,(i+1)*24),String))}:null);}
   const rescuable=!!x.sw_rescue_check,engineSHA=rescuable?await rescueHash(engineBytes):null;
   const automatic=!!x.sw_loss_open;if(automatic&&!x.sw_loss_open())throw Error('device policy initialization refused');
   const info=f=>Number(x.sw_host_info(f)),row=(i,f)=>Number(x.sw_host_row(i,f));
   const authenticate=(bytes,hex)=>{if(bytes.byteLength>32768)throw Error('fixture metadata exceeds retained config span');new Uint8Array(memory.buffer,x.sw_config_ptr(),bytes.byteLength).set(bytes);new Uint8Array(memory.buffer,x.sw_root_ptr(),64).set(new TextEncoder().encode(hex));if(!x.sw_host_auth(bytes.byteLength))throw Error('Coax refused complete content identity');};
   const base=new URL('.',new URL(sceneURL,location.href));
-  const metadataOwner={kind:'scene-index'},metadata=await packs.loadBytes(sceneURL,sceneBytes,{owner:metadataOwner});
+  const metadataOwner={kind:'scene-index'},metadata=await packs.loadBytes(sceneURL,sceneBytes,{owner:metadataOwner,observe:transportObserver({owner:-1,generation:0,epoch:0})});
   let scene;
-  try{await metadata.use(({bytes})=>{authenticate(bytes,sceneSHA);scene=JSON.parse(new TextDecoder().decode(bytes));});}finally{await packs.retire(metadataOwner);}
+  try{await metadata.use(({bytes})=>{authenticate(bytes,sceneSHA);if(bound&&!x.sw_transport_scene(bytes.byteLength))throw Error('transport scene binding refused');scene=JSON.parse(new TextDecoder().decode(bytes));});}finally{await packs.retire(metadataOwner);}
   const descriptor=scene.manifests.find(m=>m.backend===0&&m.tier===tier&&m.sha256===manifestSHA);
   if(!descriptor)throw Error('no pinned manifest for the requested browser tier');
-  const manifestOwner={kind:'manifest'},manifest=await packs.loadBytes(new URL(`${manifestSHA}.rcm`,base),28208,{owner:manifestOwner});
+  const manifestOwner={kind:'manifest'},manifest=await packs.loadBytes(new URL(`${manifestSHA}.rcm`,base),28208,{owner:manifestOwner,observe:transportObserver({owner:-2,generation:0,epoch:0})});
   try{await manifest.use(({bytes})=>{new Uint8Array(memory.buffer,x.sw_config_ptr(),bytes.byteLength).set(bytes);new Uint8Array(memory.buffer,x.sw_root_ptr(),64).set(new TextEncoder().encode(manifestSHA));if(!x.sw_host_start(bytes.byteLength,tier,0))throw Error('Coax refused scene manifest');});}finally{await packs.retire(manifestOwner);}
+  if(bound){const owner={kind:'transport-manifest'},transfer=await packs.loadBytes(transportURL||`/transport/${transportSHA}.htp`,6256,{owner,observe:transportObserver({owner:-3,generation:0,epoch:0})});try{await transfer.use(({bytes})=>{authenticate(bytes,transportSHA);if(!x.sw_transport_open(bytes.byteLength))throw Error('HTP1 manifest binding refused');});}finally{await packs.retire(owner);}}
   let adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw Error('WebGPU adapter unavailable');
   const errors=[],shaderSource=await(await fetch(shaderURL)).text(),hudShaderSource=await(await fetch(hudShaderURL)).text(),presentShaderSource=await(await fetch(presentShaderURL)).text(),format=navigator.gpu.getPreferredCanvasFormat(),context=canvas.getContext('webgpu');
   let device,uniforms,depth,color,hdr,pipeline,sampler,hudVertices,hudUniforms,hudPipeline,presentPipeline;
@@ -137,16 +151,20 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   }
   async function load(k,resuming=false){
     const started=performance.now(),stage={owner:k.owner,generation:String(k.generation),epoch:String(k.epoch),source:scene.resources[k.owner].sha256};
+    const location=scene.resources[k.owner];
+    if(bound){new Uint8Array(memory.buffer,x.sw_transport_input(),128).set(new TextEncoder().encode(location.container_sha256+location.sha256));if(!x.sw_transport_begin(k.owner,k.generation,k.epoch,BigInt(location.offset),BigInt(location.bytes),BigInt(Number(location.raw))))throw Error('transport attempt binding refused');transportEvent(1,k,[Number(x.sw_transport_row(k.owner,1)),location.offset,location.bytes,Number(location.raw)]);}
     const owner={...k},allocation=resuming?x.sw_rescue_allocated(k.owner):x.sw_host_allocate(k.owner,k.generation,k.epoch);let status=1;
     transfers.set(k.owner,{key:k,owner});
     stage.allocationMs=performance.now()-started;
     try{
       if(!allocation)throw Error('physical allocation refused');
-      const location=scene.resources[k.owner],url=new URL(`${location.container_sha256}${location.raw?'.raw':'.vpk'}`,base),ioStart=performance.now();
-      const transfer=location.raw?await packs.loadBytes(url,location.bytes,{owner,current:()=>current(k)}):await packs.load({url,quiet:true},{owner,current:()=>current(k)});
+      const url=new URL(`${location.container_sha256}${location.raw?'.raw':'.vpk'}`,base),ioStart=performance.now(),options={owner,current:()=>current(k),observe:transportObserver(k)};
+      const transfer=location.raw?await packs.loadBytes(url,location.bytes,options):await packs.load({url,quiet:true,...(bound?{bytes:Number(x.sw_transport_row(k.owner,1))}:{})},options);
       await transfer.use(source=>{
+        if(bound){const whole=location.raw?source.bytes:source.source;if(whole.byteLength>32768)throw Error('whole source exceeds carrier span');new Uint8Array(memory.buffer,x.sw_config_ptr(),whole.byteLength).set(whole);if(!x.sw_transport_source(k.owner,k.generation,k.epoch,whole.byteLength))throw Error('HTP1 complete source binding refused');transportEvent(4,k,[whole.byteLength]);}
         let bytes;
-        if(location.raw)bytes=source.bytes;
+        if(bound){const whole=location.raw?source.bytes:source.source,at=Number(x.sw_transport_row(k.owner,2)),count=Number(x.sw_transport_row(k.owner,3));bytes=whole.subarray(at,at+count);}
+        else if(location.raw)bytes=source.bytes;
         else{
           authenticate(source.source,location.container_sha256);
           const entry=source.entries.find(e=>e.bytes.byteOffset-source.source.byteOffset===location.offset&&e.bytes.byteLength>=location.bytes);
@@ -162,7 +180,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       stage.uploadMs=performance.now()-uploadStart;
       status=0;
     }catch(error){loadFailures++;stage.error=String(error);recentFailures.push({owner:k.owner,error:String(error),allocator:Array.from({length:5},(_,f)=>Number(x.sw_host_allocator(f)))});if(recentFailures.length>8)recentFailures.shift();console.warn('stream resource refused',k.owner,String(error));}
-    finally{await packs.retire(owner);transfers.delete(k.owner);if(!x.sw_host_finish(k.owner,k.generation,k.epoch,status))throw Error('completion queue pressure requires retained retry');stage.status=status;stage.totalMs=performance.now()-started;stages.push(stage);}
+    finally{await packs.retire(owner);if(bound){if(!x.sw_transport_end(k.owner,k.generation,k.epoch,1,Number(status===0)))throw Error('transport join refused');transportEvent(6,k,[status]);}transfers.delete(k.owner);if(!x.sw_host_finish(k.owner,k.generation,k.epoch,status))throw Error('completion queue pressure requires retained retry');stage.status=status;stage.totalMs=performance.now()-started;stages.push(stage);}
   }
   const command=(retiring,index)=>({owner:Number(x.sw_host_command(retiring,index,0)),generation:x.sw_host_command(retiring,index,1),epoch:x.sw_host_command(retiring,index,2)});
   function launch(k,resuming=false){let task;task=load(k,resuming).finally(()=>pending.delete(task));pending.add(task);}
@@ -221,6 +239,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     await Promise.all([...pending]);
     const closingFrames=[];for(let i=0;i<128&&!info(24);i++)closingFrames.push(await step(15625000,0,true));
     if(!info(24)||info(14)||info(10)||info(22)||info(23))throw Error('physical resources did not drain');
+    if(bound){if(!x.sw_transport_close())throw Error('transport did not join before close');finalBinding=transportBinding();transportTrace.fill(0n);transportTrace=null;traceOwner.release();traceOwner=null;}
     if(surfaceLive)await device.queue.onSubmittedWorkDone();destroySurface();for(const i of [0,1,2,6,7,8])if(fixedLive(i)&&!x.sw_host_fixed_release(i))throw Error('fixed ledger cleanup refused');
     const result={info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,recovery:deviceStatus(),hud:{draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))},wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
     if(info(12)||info(13))throw Error('GPU ledger did not drain');closed=true;context.unconfigure();device.destroy();heldOwner?.release();heldOwner=null;held=null;rescueStore?.close();rescuePanel?.();new Uint8Array(memory.buffer).fill(0);x=null;memory=null;arena.release();result.transport=packs.info();finalSnapshot=result;return result;
@@ -318,6 +337,6 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     await render();
     for(let owner=0;owner<64;owner++)if(x.sw_rescue_object(owner,0)&&!x.sw_rescue_object(owner,1))launch({owner,generation:x.sw_rescue_object(owner,2),epoch:x.sw_rescue_object(owner,3)},true);
   }
-  return Object.freeze({rescueDigest,rescueStatus:()=>({...rescueState,restoredFrames,heldBytes:held?.size??0}),rescueSaved:()=>rescueSaving??Promise.resolve(false),trapNextFrame:()=>{if(!rescuable)throw Error('rescue unsupported');trapArmed=true;},step,settle:()=>Promise.all([...pending]),close,capture,recover,loseDevice:()=>device.destroy(),deviceStatus,stateDigest,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
+  return Object.freeze({transportBinding,rescueDigest,rescueStatus:()=>({...rescueState,restoredFrames,heldBytes:held?.size??0}),rescueSaved:()=>rescueSaving??Promise.resolve(false),trapNextFrame:()=>{if(!rescuable)throw Error('rescue unsupported');trapArmed=true;},step,settle:()=>Promise.all([...pending]),close,capture,recover,loseDevice:()=>device.destroy(),deviceStatus,stateDigest,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
   }catch(error){for(const dispose of startup.reverse())await dispose();throw error;}
 }

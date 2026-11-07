@@ -6,6 +6,12 @@ rules, render plan, shaders, HUD and authored audio. A host transports
 bytes, reports platform events and executes admitted effects. It does not
 decide a second set of gameplay, layout, admission or recovery rules.
 
+The additive corridor [HTP1 carrier](transport-manifest.md) binds complete
+source/container plans to actual request generations and world epochs before
+reader construction/fetch. Its original-ticket and allocation histories have
+a separate [adoption receipt](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md).
+It preserves the v1 host ABI and the earlier unknown-size/private profiles.
+
 This document specifies observable behavior, including failure behavior.
 An implementation reference is useful evidence, but changing that
 implementation does not silently change this contract. Incompatible changes

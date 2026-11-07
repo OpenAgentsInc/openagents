@@ -27,8 +27,10 @@ container and transient planning remains separate required work.
 The [transport companion](../host/transport-manifest.md) now derives whole
 container/source spans and reader/raw page peaks. The shared loader prepays
 raw transfers and public packs with known lengths, with atomic admission
-before reactor/fetch effects. HTP1 binding in the corridor's packed adapter
-and complete transient/per-owner reporting remain open.
+before reactor/fetch effects. The [HTP1 carrier](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
+now binds the actual packed/raw corridor loads and records original tickets,
+allocation/source/join/release histories with independent reconstruction.
+Remaining auxiliary transient planning and the final consumer audit stay open.
 The [actual callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
 holds image/buffer responses across unwanted-state cancellation, observes
 physical join/retirement before a newer generation, then redelivers the old
@@ -58,6 +60,7 @@ The #12990 components currently provide:
 | `stream-walk-device.coax`, `../render/loss-policy.coax` | Checked browser automatic-loss/deadline admission and canonical observation; the native draw-result carrier adopts the same policy under a separate qualification |
 | `stream-walk-rescue.coax`, `../host/rescue-policy.coax` | Exact-build whole-Wasm checkpoint compatibility, pending-fact observation and crash-loop admission; browser IndexedDB rescue has a separate scoped receipt |
 | `stream-walk-presentation.coax` | Additive, read-only pose-to-HUD adapter; no cell owner or simulation clock |
+| `stream-walk-transport.coax`, `../host/stream-transport.coax` | Additive HTP1 carrier: scene/manifest/source binding, exact attempt keys and SDK join before completion/release |
 | `stream-hud.coax`, `stream-hud-shader.coax`, `stream-present-shader.coax` | Bounded texture-free Filament HUD, premultiplied linear FP16 composition and one final UNORM display conversion |
 | `../host/recorded-source.coax` | [Versioned retained-source observations](../host/recorded-source.md) for replaying corrupt, oversized and cancelled browser loads without substituting canonical fixture bytes |
 | `../host/tests/stream-walk-native-gpu.coax` | [Native observation carrier](../host/stream-native.md): actual local-file loads, headless Vulkan draws, retirement and controlled device replacement through these same owners |

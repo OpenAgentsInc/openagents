@@ -1,0 +1,4 @@
+// Additive HTP1-bound carrier. The canonical world and accepted-event ABI
+// remain unchanged; asynchronous transport ownership is an SDK companion.
+#load "stream-walk-device.coax";
+#load "../host/stream-transport.coax";

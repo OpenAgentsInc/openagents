@@ -8,14 +8,14 @@
 ceil :: (x: f64) -> f64 #foreign #effects(all);
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 3 || args_count(a[..]) > 4 { tool_errln("usage: stream-walk-browser BASE_URL SCENE_JSON OUTPUT_JSON [--route|--route-high|--cancel-stall|--recover|--recover-high|--upload-failure|--corrupt-source|--oversize-source|--cancel-replay|--out-of-order|--corrupt-pack]"); return 2; }
-  high := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--route-high" || args_at(a[..], 3) == "--recover-high");
-  route := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--route" || args_at(a[..], 3) == "--route-high");
-  cancel_stall := args_count(a[..]) == 4 && args_at(a[..], 3) == "--cancel-stall";
-  recover := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--recover" || args_at(a[..], 3) == "--recover-high");
-  upload_failure := args_count(a[..]) == 4 && args_at(a[..], 3) == "--upload-failure";
-  fault := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--corrupt-source" || args_at(a[..], 3) == "--oversize-source" || args_at(a[..], 3) == "--cancel-replay" || args_at(a[..], 3) == "--out-of-order" || args_at(a[..], 3) == "--corrupt-pack");
-  if args_count(a[..]) == 4 && !route && !cancel_stall && !recover && !upload_failure && !fault { return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 3 || args_count(a[..]) > 5 { tool_errln("usage: stream-walk-browser BASE_URL SCENE_JSON OUTPUT_JSON [--short|--route|--route-high|--cancel-stall|--recover|--recover-high|--upload-failure|--corrupt-source|--oversize-source|--cancel-replay|--out-of-order|--corrupt-pack|--constructor-failure] [TRANSPORT_SHA]"); return 2; }
+  high := args_count(a[..]) >= 4 && (args_at(a[..], 3) == "--route-high" || args_at(a[..], 3) == "--recover-high");
+  route := args_count(a[..]) >= 4 && (args_at(a[..], 3) == "--route" || args_at(a[..], 3) == "--route-high");
+  cancel_stall := args_count(a[..]) >= 4 && args_at(a[..], 3) == "--cancel-stall";
+  recover := args_count(a[..]) >= 4 && (args_at(a[..], 3) == "--recover" || args_at(a[..], 3) == "--recover-high");
+  upload_failure := args_count(a[..]) >= 4 && args_at(a[..], 3) == "--upload-failure";
+  fault := args_count(a[..]) >= 4 && (args_at(a[..], 3) == "--corrupt-source" || args_at(a[..], 3) == "--oversize-source" || args_at(a[..], 3) == "--cancel-replay" || args_at(a[..], 3) == "--out-of-order" || args_at(a[..], 3) == "--corrupt-pack" || args_at(a[..],3)=="--constructor-failure");
+  if args_count(a[..]) >= 4 && !route && !cancel_stall && !recover && !upload_failure && !fault && args_at(a[..],3)!="--short" { return 2; }
   data: [65536] u8; n := fs_read(args_at(a[..], 1), data[..]); if n < 1 { return 1; }
   d: [1] Jv; nodes: [4096] JvNode; if !jv_parse(d[..], cast(string) data[0..<n], nodes[..]) { return 1; }
   manifest := jv_at(d[0], jv_get(d[0], 0, "manifests"), ifx high then 1 else 0); root: [64] u8;
@@ -23,7 +23,7 @@ tool_main :: () -> int #export_c #effects(all) {
   hex: [64] u8; if !assets.asset_hex(assets.asset_id(cast(string) data[0..<n]), hex[..]) { return 1; }
   digits: [32] u8; url: [4096] u8;
   pieces := [8] string.[args_at(a[..], 0), "/aethyr/host/tests/stream-walk.html?root=", cast(string) root[..], "&scene_sha=", cast(string) hex[..], "&scene_bytes=", wc_dec(digits[..], n), ifx high then "&tier=1" else "&tier=0"];
-  target := wc_cat(url[..], pieces[..]); c: [1] Cdp;
+  prefix := wc_cat(url[..], pieces[..]); bound_url:[4096]u8; bound_parts:=[3]string.[prefix,"&transport_sha=",ifx args_count(a[..])==5 then args_at(a[..],4) else ""]; target:=ifx args_count(a[..])==5 then wc_cat(bound_url[..],bound_parts[..]) else prefix; c: [1] Cdp;
   if !cdp_launch(c[..], 640, 360, "aethyr-stream-walk-") { tool_errln(cdp_error(c[..])); return 1; }
   defer { cdp_close(c[..]); }
   if fault && !swf_install(c[..]) { return 1; }
@@ -52,6 +52,7 @@ tool_main :: () -> int #export_c #effects(all) {
     before := jv_get(doc, result, "before"); ok = ok && jv_int(doc, jv_get(doc, before, "loadFailures"), -1) == 1 && jv_len(doc, jv_get(doc, before, "gpuErrors")) == 0;
     cleanup := jv_get(doc, result, "cleanup"); info := jv_get(doc, cleanup, "info");
     for field: [8] int.[8, 10, 11, 12, 13, 14, 22, 23] { if jv_int(doc, jv_at(doc, info, field), -1) != 0 { ok = false; } }
+    if ok {ok=swf_transport(c[..],args_at(a[..],2));}
     print("Actual GPU validation failure retires its attempt before a new generation becomes ready: %\n", ok); return ifx ok then 0 else 1;
   }
   if recover {
@@ -68,6 +69,7 @@ tool_main :: () -> int #export_c #effects(all) {
     for field: [10] int.[0, 8, 10, 12, 13, 14, 20, 21, 22, 23] { if jv_int(doc, jv_at(doc, jv_get(doc, r, "before"), field), -1) != jv_int(doc, jv_at(doc, jv_get(doc, r, "after"), field), -2) { ok = false; } }
     cleanup := jv_get(doc, result, "cleanup"); info := jv_get(doc, cleanup, "info");
     for field: [8] int.[8, 10, 11, 12, 13, 14, 22, 23] { if jv_int(doc, jv_at(doc, info, field), -1) != 0 { ok = false; } }
+    if ok {ok=swf_transport(c[..],args_at(a[..],2));}
     print("Actual device replacement preserves pixels state and CPU owners without source requests: %\n", ok); return ifx ok then 0 else 1;
   }
   if cancel_stall {
@@ -116,14 +118,14 @@ tool_main :: () -> int #export_c #effects(all) {
   shot_n := pi_png(pi_img(pixels[..], width, height, 4), z[..], filtered[..], shot[..]);
   path: [4096] u8; suffix := [2] string.[args_at(a[..], 2), ".png"];
   if shot_n < 1 || !fs_write(wc_cat(path[..], suffix[..]), cast(string) shot[0..<shot_n]) { return 1; }
-  result = cdp_evaluate(c[..], "(async()=>{const cleanup=window.streamWalkCleanup=await streamWalk.close();return {profile:streamWalk.profile,adapter:streamWalk.adapter,cleanup,frames:streamWalkObserved.frames,before:streamWalkObserved.before,last:streamWalkObserved.last,legs:streamWalkObserved.legs,initial:streamWalkObserved.initial};})()");
+  result = cdp_evaluate(c[..], "(async()=>{try{const cleanup=window.streamWalkCleanup=await streamWalk.close();return {profile:streamWalk.profile,adapter:streamWalk.adapter,cleanup,frames:streamWalkObserved.frames,before:streamWalkObserved.before,last:streamWalkObserved.last,legs:streamWalkObserved.legs,initial:streamWalkObserved.initial};}catch(e){return {error:String(e),stack:e.stack};}})()");
   if result < 0 { tool_errln(cdp_error(c[..])); return 1; }
   large: [4194304] u8; jo_start(j[..], large[..]); jv_write(cdp_doc(c[..]), result, j[..]);
-  if j[0].bad || !fs_write(args_at(a[..], 2), jo_text(j[..])) { return 1; }
-  for part: 0..<2 {
-    expression = ifx part == 0 then "[...streamWalkPhysical,...streamWalkCleanup.closingFrames.filter(f=>f.allocations.length).map(f=>({observedAfterTick:f.tick,events:f.allocations}))]" else "[...streamWalkStages,...streamWalkCleanup.closingFrames.flatMap(f=>f.stages)]";
+  if j[0].bad || !fs_write(args_at(a[..], 2), jo_text(j[..])) || jv_get(cdp_doc(c[..]),result,"error")>=0 { return 1; }
+  for part: 0..<3 {
+    expression = ifx part == 0 then "[...streamWalkPhysical,...streamWalkCleanup.closingFrames.filter(f=>f.allocations.length).map(f=>({observedAfterTick:f.tick,events:f.allocations}))]" else ifx part == 1 then "[...streamWalkStages,...streamWalkCleanup.closingFrames.flatMap(f=>f.stages)]" else "streamWalk.transportBinding?.()??null";
     result = cdp_evaluate(c[..], expression); if result < 0 { return 1; }
-    jo_start(j[..], report[..]); jv_write(cdp_doc(c[..]), result, j[..]); suffix = [2] string.[args_at(a[..], 2), ifx part == 0 then ".allocations.json" else ".stages.json"];
+    jo_start(j[..], report[..]); jv_write(cdp_doc(c[..]), result, j[..]); suffix = [2] string.[args_at(a[..], 2), ifx part == 0 then ".allocations.json" else ifx part == 1 then ".stages.json" else ".transport.json"];
     if j[0].bad || !fs_write(wc_cat(path[..], suffix[..]), jo_text(j[..])) { return 1; }
   }
   print("PASS actual HTTP sources, shared cell/walker, WebGPU draw and physical cleanup\n"); return 0;

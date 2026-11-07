@@ -41,6 +41,12 @@ static int32_t trace_n;
 static bool trace_overflow;
 static size_t failed_bytes;
 static int allocation_errno;
+#ifdef SW_TRANSPORT
+static bool sw_transport_live_key(int32_t row,int64_t generation,int64_t epoch);
+static bool sw_transport_checked_key(int32_t row,int64_t generation,int64_t epoch);
+static bool sw_transport_idle_row(int32_t row);
+static bool sw_transport_drained(void);
+#endif
 #ifndef __wasm__
 // Explicit test-carrier effect inputs, separate from genuine OS failures.
 // kind, field, remaining, hits, row, generation, epoch, bytes, result, finish.
@@ -175,6 +181,9 @@ SW_API("sw_host_row") int64_t sw_host_row(int32_t row,int32_t field){
   switch(field){case 0:return p.spec.format;case 1:return p.cost.encoded;case 2:return p.cost.decoded;case 3:return p.cost.gpu;case 4:return p.cost.width;case 5:return p.cost.height;case 6:return p.cost.levels;case 7:return p.cost.elements;case 8:return o.phase;case 9:return state.stream.e[0].wanted.e[row];case 10:return o.generation;case 11:return o.admission.e[0].gpu_handle.slot;case 12:return o.admission.e[0].gpu_handle.generation;case 13:return p.cost.decode_scratch;case 14:return p.cost.upload_scratch;case 15:return p.spec.category;default:return -1;}
 }
 SW_API("sw_host_allocate") int32_t sw_host_allocate(int32_t row,int64_t generation,int64_t epoch){
+#ifdef SW_TRANSPORT
+  if(!sw_transport_live_key(row,generation,epoch))return 0;
+#endif
   if(row<0||row>=64||objects[row].occupied)return 0;
   coax_t_ResourceOwner owner=state.stream.e[0].owners.e[row];
   if(owner.phase!=COAX_ResourceOwnerPhase_loading||owner.generation!=generation||state.stream.e[0].epoch!=epoch)return 0;
@@ -194,6 +203,9 @@ SW_API("sw_host_allocate") int32_t sw_host_allocate(int32_t row,int64_t generati
 }
 SW_API("sw_host_pointer") uintptr_t sw_host_pointer(int32_t row,int32_t field){if(row<0||row>=64)return 0;SwPhysical *p=&objects[row];switch(field){case 0:return(uintptr_t)p->source;case 1:return(uintptr_t)p->decoded;case 2:return(uintptr_t)p->work;case 3:return(uintptr_t)p->upload;case 4:return(uintptr_t)p->plan;default:return 0;}}
 SW_API("sw_host_decode") int32_t sw_host_decode(int32_t row,int64_t generation,int64_t epoch){
+#ifdef SW_TRANSPORT
+  if(!sw_transport_checked_key(row,generation,epoch))return COAX_ResourceCostStatus_invalid;
+#endif
   if(row<0||row>=64)return COAX_ResourceCostStatus_invalid;
   SwPhysical *p=&objects[row];if(!same(p,row,generation,epoch)||!p->plan||!p->source)return COAX_ResourceCostStatus_capacity;
   coax_t_ResourceCost c=p->plan->cost;
@@ -208,6 +220,9 @@ SW_API("sw_host_decode") int32_t sw_host_decode(int32_t row,int64_t generation,i
   return p->status;
 }
 SW_API("sw_host_finish") int32_t sw_host_finish(int32_t row,int64_t generation,int64_t epoch,int32_t status){
+#ifdef SW_TRANSPORT
+  if(!sw_transport_idle_row(row))return 0;
+#endif
 #ifdef SW_VULKAN
   if(!sw_vk_resource_idle(row))return 0;
 #endif
@@ -234,6 +249,9 @@ int32_t sw_host_finish_code(int32_t row,int64_t generation,int64_t epoch,int32_t
 }
 #endif
 SW_API("sw_host_destroy") int32_t sw_host_destroy(int32_t row,int64_t generation,int64_t epoch){
+#ifdef SW_TRANSPORT
+  if(!sw_transport_idle_row(row))return 0;
+#endif
 #ifdef SW_VULKAN
   if(!sw_vk_resource_idle(row))return 0;
 #endif
@@ -285,6 +303,9 @@ bool sw_sdk_copy(int64_t row,int64_t generation,int64_t epoch,coax_v_u8 source){
 #ifdef COAX_coax_t_SwRecoveryReport_DEFINED
 static coax_t_SwRecoveryReport recovery_report;
 SW_API("sw_host_recover") int32_t sw_host_recover(void){
+#ifdef SW_TRANSPORT
+  if(!sw_transport_drained())return 0;
+#endif
 #ifdef SW_VULKAN
   if(!sw_vk_transfer_idle())return 0;
 #endif

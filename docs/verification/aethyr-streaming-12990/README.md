@@ -1,5 +1,13 @@
 # Resource-cost and streaming work — #12990
 
+Latest: the [HTP1 adoption record](walk-transport-binding.md) binds actual
+packed/raw corridor loads to whole-container plans and exact live keys,
+with prepaid transport and independently reconstructed original-ticket,
+allocation/source/join/release histories. The [native backing adoption](walk-native-backing.md)
+already qualified the native allocation boundary. Remaining auxiliary browser
+transients and the final consumer/residual/teaching audit keep #12990 open.
+The older component summaries below retain their original scope and exits.
+
 Issue #12990 remains open. The [native backing-gate record](walk-native-backing-gate.md)
 adds a Coax authority over existing inbox leases and checked SDK callbacks
 before actual memory allocation. Its component/model/hardware/software gates

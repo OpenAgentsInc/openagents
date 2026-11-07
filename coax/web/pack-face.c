@@ -31,7 +31,7 @@ PACK_EXPORT("pack_plan_ticket") int64_t pack_plan_ticket(int32_t index,int32_t f
   switch(field){case 0:return lease.slot;case 1:return lease.serial;case 2:return lease.epoch;default:return -1;}
 }
 PACK_EXPORT("pack_plan_info") int64_t pack_plan_info(int32_t field){
-  switch(field){case 0:return transport_plan.count;case 1:return transport_plan.cost.reactor;case 2:return transport_plan.cost.external;case 3:return transport_plan.cost.reserved;case 4:return transport_plan.cost.grow;default:return -1;}
+  switch(field){case 0:return transport_plan.count;case 1:return transport_plan.cost.reactor;case 2:return transport_plan.cost.external;case 3:return transport_plan.cost.reserved;case 4:return transport_plan.cost.grow;case 5:return(int64_t)(uintptr_t)&__heap_base;default:return -1;}
 }
 PACK_EXPORT("pack_stream_open") uint32_t pack_stream_open(int64_t expected,uint32_t encoded){stream=hpk_stream_open(expected,encoded!=0);return stream.valid;}
 PACK_EXPORT("pack_prefix_ptr") uint32_t pack_prefix_ptr(void){return(uint32_t)(uintptr_t)prefix;}

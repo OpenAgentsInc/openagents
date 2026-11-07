@@ -49,9 +49,60 @@ operation disposal. The global 64-ticket/256 MiB page pool is unchanged.
 An ordinary public pack without `bytes` keeps the existing bounded-header
 path. Private broker/crypto/gzip loads keep their separately qualified
 observed-extents path; a private load cannot silently use a public plan.
-The corridor benefits from prepaid raw metadata/collision/body transfers,
-but its packed-resource adapter has not yet bound the HTP1 index. Final
-per-owner transport traces, remaining browser transient planning and the
-whole-issue consumer/teaching audit remain open. The
-[qualification record](../../docs/verification/aethyr-streaming-12990/walk-transport-planning.md)
-separates these claims.
+The additive `world/stream-walk-transport.coax` carrier now binds HTP1 in
+the actual corridor. `stream-transport.coax` authenticates the original scene
+before opening its companion. Each attempt binds the real loading owner,
+generation, world epoch, wanted flag and every scene location field. Complete
+fetched bytes must reproduce the admitted container, source span and canonical
+resource before decoding. Finish/destruction and GPU rebinding refuse while
+transport effects remain live. The SDK ends an attempt only after awaiting
+the shared reader's retirement, cancellation and final borrowers. Successful
+completion additionally requires source validation. Old keys cannot end a
+replacement attempt. Final readiness remains the existing paid-step policy.
+
+This carrier's actual retained configuration span limits complete containers
+to 32 KiB, checked before effects; it does not change the shared 64 MiB model.
+The HTP1 adapter copies the Coax-projected source span, removing the duplicate
+JavaScript whole-hash/entry decision on this path. Earlier carriers retain
+their qualified adapter and ABI. The new carrier supports automatic device
+replacement; persistent whole-Wasm rescue remains the earlier separate profile.
+
+## Transport observation v1
+
+`pack-host.js` accepts an optional synchronous `observe` callback on known
+public/raw operations. It reports plans after original-ticket admission and
+before construction/fetch, actual reader growth/raw-array allocation, and
+zeroing plus final ownership release. Callback/constructor failures unwind
+the actual owners. It does not expose mutable source buffers. Unknown-size
+and private operations retain their earlier observed-extents boundary.
+
+The corridor keeps at most 2,048 records in a prepaid 393,216-byte
+`BigInt64Array`. `aethyr.stream-transport-observation.v1` exports 24 signed
+decimal words per event. Words 0–3 are kind, resource row, generation and
+world epoch. Rows −1/−2/−3 name original scene/RCM1/HTP1 bootstrap readers.
+
+| Kind | Words after the key |
+| --- | --- |
+| 1 begin | 4–7: complete container bytes, source offset, source bytes, raw flag |
+| 2 plan | 4–9: reactor, external raw bytes, reserved page bytes, observed heap base, initial memory, grow flag |
+| 3 allocation | 4–5: added reactor bytes, added external raw bytes |
+| 4 checked source | 4: complete received container bytes |
+| 5 ownership release | 4–5: zeroed reactor and external raw bytes |
+| 6 joined end | 4: SDK outcome (0 success, 1 failure) |
+| 7 constructor refusal | 4–5: zeroed partial reader bytes (if memory construction succeeded), external bytes; original tickets returned |
+
+For plan/release/refusal, word 10 counts tickets, 11–16 carry up to two
+original slot/serial/epoch triples, and 17–20 carry the shared storage queue's
+count/bytes/capacity/per-allocation limit. Remaining words are zero. Trace
+capacity exhaustion refuses; it never truncates a successful observation.
+The companion root and separately measured carrier static size accompany
+the trace. An independent oracle reconstructs source identities, page plans,
+all leases, overlapping allocations, source/end ordering and final cleanup.
+
+Ownership release means explicit engine references and reservations ended.
+It does not assert that browser GC or the OS physically returned backing
+pages. SDK/driver/GC internals and serialized diagnostic object graphs remain
+separate. Remaining browser transient planning and the final whole-issue
+consumer/teaching audit stay open. The [adoption record](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
+and earlier [planning record](../../docs/verification/aethyr-streaming-12990/walk-transport-planning.md)
+state their respective scopes.

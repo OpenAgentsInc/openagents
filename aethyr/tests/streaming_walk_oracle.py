@@ -397,7 +397,13 @@ def inspect_receive_fault(scene_dir, report_path):
     scene = json.loads((scene_dir / "scene.json").read_bytes())
     report = json.loads(report_path.read_bytes())
     mode = report["mode"]
-    assert mode in ("--corrupt-source", "--oversize-source", "--cancel-replay", "--out-of-order", "--corrupt-pack")
+    all_stages = report['stages'] + [s for f in report['cleanup']['closingFrames'] for s in f['stages']]
+    sidecar = Path(str(report_path)+'.transport.json')
+    binding = json.loads(sidecar.read_bytes()) if sidecar.exists() else None
+    if binding:
+        assert binding['schema'] == 'aethyr.stream-transport-observation.v1' and binding['phase'] == 3
+        assert len(binding['root']) == 64
+    assert mode in ("--corrupt-source", "--oversize-source", "--cancel-replay", "--out-of-order", "--corrupt-pack") or (binding and mode == '--constructor-failure')
     assert report["injected"] and report["sourceSnapshotError"] is None
     assert report["sourceSchema"] == "aethyr.recorded-source.v1"
     failed_owner = 0 if mode == "--corrupt-pack" else 5
@@ -469,16 +475,29 @@ def inspect_receive_fault(scene_dir, report_path):
         key = failures[0]
         assert 2 not in states[key] and states[key][1][0] > states[key][0][0]
         source = scene["resources"][failed_owner]
+        if binding:
+            # HTP1 checks the complete container before copying any payload.
+            # The separately reconstructed transport trace binds its source
+            # event to this exact generation/epoch; rejected bytes stay out.
+            assert not any(int(e[0]) == 4 and tuple(map(int, e[1:4])) == key for e in binding['events'])
+            assert snapshots[key] == bytes(source['bytes'])
+            failed_stages = [s for s in all_stages if s.get('status')]
+            assert len(failed_stages) == 1
+            if mode in ('--corrupt-pack', '--corrupt-source'):
+                assert 'HTP1 complete source binding refused' in failed_stages[0]['error']
+            if mode == '--constructor-failure':
+                assert report['constructorZero'] and 'explicit reader constructor failure' in failed_stages[0]['error']
+                assert any(int(e[0]) == 7 and tuple(map(int, e[1:4])) == key and int(e[4]) == 8388608 for e in binding['events'])
         if mode == "--corrupt-pack":
             assert snapshots[key] == bytes(source["bytes"])
-            failed_stages = [s for s in report["stages"] if s.get("status")]
-            assert len(failed_stages) == 1 and "Coax refused complete content identity" in failed_stages[0]["error"]
+            failed_stages = [s for s in all_stages if s.get("status")]
+            assert len(failed_stages) == 1 and (binding or "Coax refused complete content identity" in failed_stages[0]["error"])
             original = None
         else:
             original = (scene_dir / (source["container_sha256"] + ".raw")).read_bytes()
         if mode == "--corrupt-source":
             altered = bytes([original[0] ^ 1]) + original[1:]
-            assert snapshots[key] == altered
+            assert snapshots[key] == (bytes(len(original)) if binding else altered)
         elif mode != "--corrupt-pack":
             assert snapshots[key] == bytes(len(original))
         if mode == "--cancel-replay":

@@ -67,8 +67,12 @@ operations before constructing a reader or fetching; two tickets reserve
 atomically and survive pending cancellation and borrowers. Its
 [small executable example](../examples/transport-cost-parity.coax) compares
 64 native/Wasm words, including original page leases and final release.
-Binding HTP1 in the corridor's packed adapter and the remaining transient
-profile are separate qualification exits.
+The [HTP1 adoption record](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
+now qualifies complete packed/raw source binding and per-owner reader/array
+allocation histories in that actual corridor. Original tickets remain held
+until SDK join, and an independent oracle reconstructs the page peaks.
+Remaining auxiliary transient planning and the final adoption/teaching audit
+are separate qualification exits.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can
