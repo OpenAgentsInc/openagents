@@ -1,0 +1,92 @@
+ 1:  88925baf22 !  1:  4a3b43fe43 Add resource-cost manifests and named admission foundations (#12990)
+    @@ Commit message
+
+      ## aethyr/README.md ##
+     @@ aethyr/README.md: headless captures. Reference engines stay in its ignored lab cache.
+    - | `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
+    + | `flyover.coax` | A camera path as text (`?fly=T,EX,EY,EZ,AX,AY,AZ~...`), parsed whole or refused and flown through with `cinematic.coax`'s Catmull-Rom, for benchmarks that cross a realm's heaviest views (#13017) |
+      | `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
+      | `assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
+     +| `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives plus decoder-derived RCM1 manifests and named cost admission around existing tickets/epochs; actual large-world host adoption remains #12990 work |
+      | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
+    + | `render/geometry/residency.coax` | Watertight geometry-page residency (#12999): a page installs only after the pages holding its clusters' parents and leaves only after every page that depends on it, so a partly loaded cut never has holes; parents are fetched before their children, within N slots, a fetch cap and least-recently-wanted eviction, all without the GPU (`#authority`, zero mutants). `pages.coax` keeps bytes and identity |
+      | `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
+    - | `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
+
+      ## aethyr/book/README.md ##
+     @@ aethyr/book/README.md: capability of Genesis World 1.4.5 to a Part IV chapter.
+ 2:  e9ddaca8c7 =  2:  ede287dbc1 Retain shared resource owners through completion and final borrowers (#12990)
+ 3:  4d5b83d8dc =  3:  d2c292cf34 Add checked cell rings and named stream interest profiles (#12990)
+ 4:  4f16168fed =  4:  f00920eeeb Prepare decoder-priced corridor assets for Aethyr streaming
+ 5:  97e8224a97 =  5:  bfc85f4e63 Build checked stream walk consumer and retained GPU replacement (#12990)
+ 6:  fc2aa6ecca !  6:  f39597d82a Record canonical state after every streamed walk step (#12990)
+    @@ Commit message
+
+      ## aethyr/README.md ##
+     @@ aethyr/README.md: headless captures. Reference engines stay in its ignored lab cache.
+    - | `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
+    + | `flyover.coax` | A camera path as text (`?fly=T,EX,EY,EZ,AX,AY,AZ~...`), parsed whole or refused and flown through with `cinematic.coax`'s Catmull-Rom, for benchmarks that cross a realm's heaviest views (#13017) |
+      | `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
+      | `assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
+     -| `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives plus decoder-derived RCM1 manifests and named cost admission around existing tickets/epochs; actual large-world host adoption remains #12990 work |
+     +| `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives, decoder-derived RCM1 manifests and named cost admission; an actual bounded corridor uses shared owners, semantic queries, browser WebGPU and native CPU replay. Full streaming/recovery delivery remains #12990 work |
+      | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
+    + | `render/geometry/residency.coax` | Watertight geometry-page residency (#12999): a page installs only after the pages holding its clusters' parents and leaves only after every page that depends on it, so a partly loaded cut never has holes; parents are fetched before their children, within N slots, a fetch cap and least-recently-wanted eviction, all without the GPU (`#authority`, zero mutants). `pages.coax` keeps bytes and identity |
+      | `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
+    - | `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
+
+      ## aethyr/book/ch016-budgets-that-refuse.md ##
+     @@ aethyr/book/ch016-budgets-that-refuse.md: The resource-cost companion work for #12990 adds
+ 7:  d3d18af033 =  7:  a61bf8601f Replay actual stream upload failure through every paid step (#12990)
+ 8:  487260a112 =  8:  71c846bd95 Replay actual receive faults from retained source bytes (#12990)
+ 9:  83db823dd9 !  9:  97126f598c Exercise streamed native Vulkan routes and retained device replacement (#12990)
+    @@ Commit message
+
+      ## aethyr/README.md ##
+     @@ aethyr/README.md: headless captures. Reference engines stay in its ignored lab cache.
+    - | `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
+    + | `flyover.coax` | A camera path as text (`?fly=T,EX,EY,EZ,AX,AY,AZ~...`), parsed whole or refused and flown through with `cinematic.coax`'s Catmull-Rom, for benchmarks that cross a realm's heaviest views (#13017) |
+      | `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
+      | `assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
+     -| `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives, decoder-derived RCM1 manifests and named cost admission; an actual bounded corridor uses shared owners, semantic queries, browser WebGPU and native CPU replay. Full streaming/recovery delivery remains #12990 work |
+     +| `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives, decoder-derived RCM1 manifests and named cost admission; an actual bounded corridor uses shared owners, semantic queries, browser WebGPU and native CPU replay. A separate native carrier records Vulkan loading/drawing/retirement and controlled replacement. Full streaming/recovery delivery remains #12990 work |
+      | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
+    + | `render/geometry/residency.coax` | Watertight geometry-page residency (#12999): a page installs only after the pages holding its clusters' parents and leaves only after every page that depends on it, so a partly loaded cut never has holes; parents are fetched before their children, within N slots, a fetch cap and least-recently-wanted eviction, all without the GPU (`#authority`, zero mutants). `pages.coax` keeps bytes and identity |
+      | `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
+    - | `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
+
+      ## aethyr/book/ch038-stream-a-large-world.md ##
+     @@ aethyr/book/ch038-stream-a-large-world.md: order.
+10:  e31548810d ! 10:  bb09b6ed29 Keep the streamed corridor HUD alive across cell and GPU retirement (#12990)
+    @@ Commit message
+
+      ## aethyr/README.md ##
+     @@ aethyr/README.md: headless captures. Reference engines stay in its ignored lab cache.
+    - | `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
+    + | `flyover.coax` | A camera path as text (`?fly=T,EX,EY,EZ,AX,AY,AZ~...`), parsed whole or refused and flown through with `cinematic.coax`'s Catmull-Rom, for benchmarks that cross a realm's heaviest views (#13017) |
+      | `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
+      | `assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
+     -| `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives, decoder-derived RCM1 manifests and named cost admission; an actual bounded corridor uses shared owners, semantic queries, browser WebGPU and native CPU replay. A separate native carrier records Vulkan loading/drawing/retirement and controlled replacement. Full streaming/recovery delivery remains #12990 work |
+     +| `world/` | [Cell and resource contracts](world/README.md): historical residency/edge/save primitives, decoder-derived RCM1 manifests and named cost admission; an actual bounded corridor uses shared owners, semantic queries, a persistent Filament HUD, browser WebGPU and native CPU replay. A separate native carrier records Vulkan loading/drawing/retirement and controlled replacement. Full streaming/recovery delivery remains #12990 work |
+      | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
+    + | `render/geometry/residency.coax` | Watertight geometry-page residency (#12999): a page installs only after the pages holding its clusters' parents and leaves only after every page that depends on it, so a partly loaded cut never has holes; parents are fetched before their children, within N slots, a fetch cap and least-recently-wanted eviction, all without the GPU (`#authority`, zero mutants). `pages.coax` keeps bytes and identity |
+      | `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
+    - | `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
+
+      ## aethyr/book/ch015-ui-and-the-hud.md ##
+     @@ aethyr/book/ch015-ui-and-the-hud.md: coax/bin/coax test aethyr/ui/hud.coax --library
+11:  ad3a303a05 = 11:  b783a64d34 Replay native streaming GPU histories through the CPU consumer (#12990)
+12:  6d385aeb3a = 12:  9e20605853 Handle streamed browser device loss through checked Coax admission (#12990)
+13:  fcbb026f79 = 13:  1ffc15e5ca Persist streamed browser sessions across exact-build rescue (#12990)
+14:  505962f336 = 14:  942c00bdc4 Recover streamed native draws through owned Vulkan submissions (#12990)
+15:  6cf7b2b5af = 15:  9fd02ca5b4 Qualify live texture-category refusal and exact replay (#12990)
+16:  85095c5a7e = 16:  27deac1f8c Retire failed native load effects before retry (#12990)
+17:  439b611555 = 17:  b62aacef77 Unwind failed streamed Vulkan resource creation (#12990)
+18:  cd7852e390 = 18:  d382dbecdc Retain streamed Vulkan uploads through owned completion (#12990)
+19:  61944087f9 = 19:  e1fe9fe481 Qualify streamed Vulkan SDK failures and deadline stops (#12990)
+20:  ca4a3d3dff = 20:  ac57889424 Qualify unwanted streamed loads and stale callbacks (#12990)
+21:  eb093b67a0 = 21:  b7b092822d Gate Vulkan backing allocation through Coax leases (#12990)
+22:  a997216824 = 22:  b7a9cffb70 Adopt device-bound backing budgets in native streaming (#12990)
+23:  bc9136a319 = 23:  c05cb05c5a Plan whole-container transport and prepay shared reader effects (#12990)
+24:  ebc40a8e47 = 24:  0e3e9c627c Bind whole-container transport in the browser corridor (#12990)
+25:  1d5538d827 = 25:  3373eee106 Bound streaming diagnostics and prepay capture temporaries (#12990)

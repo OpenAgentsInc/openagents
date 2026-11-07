@@ -1,6 +1,8 @@
 # Resource-cost and streaming work — #12990
 
-Latest: the [delivery audit](delivery-audit.md) maps #12990's requirements to
+Latest: the [rebased integration](rebased-integration.md) qualifies both
+browser and native travel after current main's walking-controller change.
+The [delivery audit](delivery-audit.md) maps #12990's requirements to
 the actual bounded browser/native consumer and named remaining adapters.
 The [diagnostic/capture record](walk-diagnostic-capture.md) adds safe trace
 exhaustion, prepaid capture/encoding storage, compiler-input extents and the

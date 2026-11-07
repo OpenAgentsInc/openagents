@@ -16,6 +16,12 @@ Current source/artifact SHA inventories accompany the
 remain recorded. Passing unchanged boundaries are reused, not rerun merely
 to claim a fresher timestamp.
 
+The [rebased integration](rebased-integration.md) supersedes final build
+identity and route measurements after adopting current main's walking
+half-turn rule. Earlier policy/failure gates retain their original source
+identities; the rebase map and preserved source bundle connect those local
+checkpoint hashes to the published history.
+
 | Issue requirement | Delivered boundary and evidence |
 | --- | --- |
 | Versioned, content-addressed resource/dependency costs | `world/resource-cost.coax` uses real image/mip, WAV, collision, geometry and actor codecs. RCM1 binds model revision, complete source SHA, dependency digests, type/category/backend/tier/alignment, encoded/decoded/GPU/object/scratch costs. Unknown model/format and noncanonical or corrupt costs refuse with typed results. [Format, small native/Wasm oracle and mutation evidence](README.md#format-and-accounting). VPK1/VPK2 identities and published ABIs are preserved. |
