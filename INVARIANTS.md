@@ -61,10 +61,21 @@ logical payload costs unchanged. The additive corridor carrier now binds
 original scene/manifest, whole source, exact location and live attempt keys
 before decoding. It refuses completion/destruction/rebinding until the SDK
 has joined the reader. Bounded per-owner histories reconstruct original
-leases and actual allocation peaks independently. Auxiliary transient planning
-and the final consumer audit remain open. See
+leases and actual allocation peaks independently. See
 `docs/verification/aethyr-streaming-12990/walk-transport-binding.md` and the
 earlier `walk-transport-planning.md`.
+
+The additive corridor diagnostic v2 admits its array and page reservation in
+Coax. Exhaustion refuses observations, marks the history incomplete and
+counts drops; it cannot throw through a resource effect or skip its join and
+retirement. Only an explicit prefix check accepts incomplete observations.
+Capture prepays readback, raw copy and logical UTF-16 headroom before SDK
+allocation. Failed encoding zeroes its copy while original reservations stay
+held through GPU completion observation. Mutable compiler input bytes are
+zeroed and their extents reported separately from resource ownership; no
+physical SDK/GC/driver or RSS claim follows. See
+`docs/verification/aethyr-streaming-12990/walk-diagnostic-capture.md` and
+`aethyr/host/stream-adoption.md` for exact measured and remaining adapter scope.
 
 `aethyr/host/transport.coax` owns the four socket and eight response-bearing
 HTTP slots for host contract v1. A callback carries its reserved slot,

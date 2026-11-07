@@ -43,9 +43,10 @@ qualifies scoped staging/destination/submission errors and upload-poll stops,
 including the unchanged ten-second deadline, on both tiers/backends.
 The SDK's new admitted-factory entry points can call the shared
 [backing budget](backing-budget.md) with actual requirements before allocation.
-Their component checks pass; this carrier still needs to adopt that boundary
-for streamed, staging, fixed-renderer, replacement and readback allocations.
-Its current logical caps therefore remain distinct from physical admission.
+The current v7 carrier [adopts that boundary](native-backing.md) for streamed,
+staging, fixed-renderer, replacement and readback allocations. Original v2–v6
+observations retain their historical logical-only scope. New v7 receipts bind
+those observation contracts to a mandatory physical backing companion.
 
 Persistent uniforms and the 320×180 color/depth attachments have separate
 existing renderer grants. Readback and replacement transfer buffers each
@@ -67,9 +68,9 @@ logical GPU bytes, actual `VkMemoryRequirements.size` totals/peak, and
 fixed core/SDK metadata sizes. Explicit Vulkan backing is measured; it is
 not called opaque driver memory. Internal pipeline/driver allocations,
 allocator overhead, process RSS and the observer's fixed stack/report
-storage are separate. Current RCM1 category accounting uses logical GPU
-bytes: this carrier does **not** qualify those caps as physical Vulkan
-allocation budgets. Complete backend planning remains #12990 work.
+storage are separate. RCM1 categories still describe logical payload bytes;
+the additional v7 backing budget admits actual Vulkan extents under its own
+named/category/aggregate limits. The two byte domains are not interchangeable.
 
 ## Controlled replacement
 
@@ -232,5 +233,6 @@ the [record](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-fail
 pins exact results and limitations. The separate [browser callback record](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
 qualifies held unwanted responses and old callback redelivery against newer
 generations, plus exact accepted-history CPU replay. The native local-file
-profile remains synchronous. Complete physical/transport/transient planning
-remains open.
+profile remains synchronous. The [retained adapter inventory](stream-adoption.md)
+states its input-window, SDK and unsupported transport scopes alongside the
+later browser container/capture qualification.

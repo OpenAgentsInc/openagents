@@ -6,7 +6,7 @@
 > three screen sizes and fails when any frame passes the budget.
 > Content-hashed asset identity is [aethyr/assets.coax](../assets.coax);
 > the shared [pack reader](../forge/pack.coax) uses its admission gate.
-> Whole-realm resource-cost streaming is still being integrated.
+> A bounded resource-cost streaming consumer has separate qualification.
 
 The resource-cost companion work for #12990 adds
 [source-derived plans](../world/resource-cost.coax),
@@ -27,8 +27,8 @@ probe](../../docs/verification/aethyr-streaming-12990/walk-category-pressure.md)
 refuses an admitted 8×8 texture plan against the live texture line while
 aggregate and staging room remain. Existing pixels and owners survive, and
 the counted refusal replays at its original boundary. The later native backing
-record qualifies physical allocation planning; browser transport/transient
-profiles and the final audit remain open.
+record qualifies physical allocation planning; the browser transport and
+transient profile is summarized below.
 
 The native consumer also [retires failed load attempts](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
 through the shared owner. Five allocation failure points, a missing source
@@ -43,8 +43,7 @@ held-observation histories preserve every paid-step digest. The separate
 now qualify scoped staging/destination/submission errors and upload-poll
 stops, with retained sources/owners and exact CPU replay on both tiers.
 The native backing record also qualifies physical Vulkan allocation admission.
-Physical OOM/reset remain unqualified, and complete transport/transient
-planning remains open. The [actual browser
+Physical OOM/reset remain unqualified. The [actual browser
 callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
 now holds responses across unwanted-state cancellation, joins and retires
 the old effect before a newer generation, and refuses old callbacks without
@@ -58,8 +57,8 @@ leases through cleanup/destruction. The [component record](../../docs/verificati
 qualifies the policy and SDK ordering. The corridor now adopts
 [device-bound allocation plans](../host/native-backing.md) for resources,
 staging, renderer targets and readback, with reservation/allocation histories
-checked separately and replayed on the CPU. Browser transport/container and
-transient planning, plus the final consumer/teaching audit, remain open.
+checked separately and replayed on the CPU. Browser transport/container
+planning is qualified separately below; complete chapter teaching remains open.
 
 The [transport companion](../host/transport-manifest.md) now derives complete
 container costs around the payload. The shared loader prepays known raw/public
@@ -71,8 +70,11 @@ The [HTP1 adoption record](../../docs/verification/aethyr-streaming-12990/walk-t
 now qualifies complete packed/raw source binding and per-owner reader/array
 allocation histories in that actual corridor. Original tickets remain held
 until SDK join, and an independent oracle reconstructs the page peaks.
-Remaining auxiliary transient planning and the final adoption/teaching audit
-are separate qualification exits.
+The additive [diagnostic/capture record](../../docs/verification/aethyr-streaming-12990/walk-diagnostic-capture.md)
+qualifies safe trace exhaustion, prepaid capture temporaries and compiler-input
+extent reporting. The [adoption inventory](../host/stream-adoption.md) names
+remaining adapters and memory outside explicit engine ownership. This bounded
+profile does not promote the chapter's complete teaching status.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

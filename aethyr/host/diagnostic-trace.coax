@@ -1,0 +1,51 @@
+// Diagnostic capacity never owns product effects. A full trace reports an
+// incomplete observation while the caller continues joining/releasing them.
+#authority;
+DT_CAPACITY :: 2048;
+DT_WORDS :: 24;
+DiagnosticTracePlan :: struct {valid:bool;capacity:int;bytes:int;reserved:int;}
+DiagnosticTrace :: struct {valid:bool;closed:bool;exhausted:bool;capacity:int;count:int;dropped:int;}
+
+#test "trace plans bound the actual word backing and existing page reservation" {
+  for cap:1..<2049 {p:=dt_plan(cap);#assert p.valid && p.capacity==cap && p.bytes==cap*192 && p.reserved==((cap*192+65535)/65536)*65536;}
+  for cap:[5]int.[-1,0,2049,65536,9223372036854775807] {p:=dt_plan(cap);#assert !p.valid && p.bytes==0 && p.reserved==0 && p.capacity==0;}
+  #assert dt_plan(1).reserved==65536 && dt_plan(341).reserved==65536 && dt_plan(342).reserved==131072 && dt_plan(2048).reserved==393216;
+}
+#test "the exact trace limit records its last event then refuses observations without throwing" {
+  for cap:[4]int.[1,31,32,2048] {
+    s:[1]DiagnosticTrace;#assert !dt_complete(s[..]) && dt_offer(s[..])== -1 && !dt_close(s[..]);
+    #assert !dt_open(s[..],0) && !s[0].valid;
+    #assert dt_open(s[..],cap) && s[0].valid && !s[0].closed && !s[0].exhausted && s[0].capacity==cap && s[0].count==0 && s[0].dropped==0;
+    #assert !dt_open(s[..],cap) && !dt_complete(s[..]);
+    for i:0..<cap {#assert dt_offer(s[..])==i && s[0].count==i+1 && !s[0].exhausted && s[0].dropped==0;}
+    #assert dt_offer(s[..])== -1 && s[0].count==cap && s[0].exhausted && s[0].dropped==1;
+    #assert dt_offer(s[..])== -1 && s[0].count==cap && s[0].dropped==2;
+    #assert dt_close(s[..]) && s[0].closed && !dt_complete(s[..]);
+    #assert dt_offer(s[..])== -1 && s[0].count==cap && s[0].dropped==2 && !dt_close(s[..]) && !dt_open(s[..],cap);
+  }
+}
+#test "complete traces close once and exhaustion counters saturate without changing capacity" {
+  s:[1]DiagnosticTrace;#assert dt_open(s[..],1) && dt_offer(s[..])==0 && dt_close(s[..]) && dt_complete(s[..]);
+  #assert dt_offer(s[..])== -1 && dt_complete(s[..]) && !s[0].exhausted && s[0].dropped==0;
+  empty:[1]DiagnosticTrace;#assert dt_open(empty[..],2048) && dt_close(empty[..]) && dt_complete(empty[..]);
+  full:[1]DiagnosticTrace;#assert dt_open(full[..],1);full[0].count=1;full[0].dropped=9223372036854775806;
+  #assert dt_offer(full[..])== -1 && full[0].dropped==9223372036854775807 && full[0].exhausted;
+  #assert dt_offer(full[..])== -1 && full[0].dropped==9223372036854775807 && full[0].count==1;
+  over:[1]DiagnosticTrace;#assert dt_open(over[..],1);over[0].count=2;#assert dt_offer(over[..])== -1 && over[0].count==2 && over[0].dropped==1;
+}
+
+dt_plan :: (capacity:int)->DiagnosticTracePlan #export_c #effects(all) {
+  if capacity<1 || capacity>DT_CAPACITY {return DiagnosticTracePlan.{};}
+  bytes:=capacity*DT_WORDS*8;return DiagnosticTracePlan.{valid=true,capacity=capacity,bytes=bytes,reserved=((bytes+65535)>>16)<<16};
+}
+dt_open :: (s:[]DiagnosticTrace,capacity:int)->bool #export_c #effects(all) {
+  if s[0].valid {return false;}p:=dt_plan(capacity);if !p.valid {return false;}
+  s[0]=DiagnosticTrace.{valid=true,capacity=capacity};return true;
+}
+dt_offer :: (s:[]DiagnosticTrace)->int #export_c #effects(all) {
+  if !s[0].valid || s[0].closed {return -1;}
+  if s[0].count>=s[0].capacity {s[0].exhausted=true;if s[0].dropped<9223372036854775807 {s[0].dropped+=1;}return -1;}
+  index:=s[0].count;s[0].count+=1;return index;
+}
+dt_close :: (s:[]DiagnosticTrace)->bool #export_c #effects(all) {if !s[0].valid || s[0].closed {return false;}s[0].closed=true;return true;}
+dt_complete :: (s:[]DiagnosticTrace)->bool #export_c #effects(all) {return s[0].valid && s[0].closed && !s[0].exhausted;}

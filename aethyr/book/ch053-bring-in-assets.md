@@ -52,8 +52,10 @@ whole container and exact source span needed for each RCM1 payload. Known
 raw/public reader operations reserve their reactor/byte-array peak before
 effects. The [actual corridor now binds HTP1](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
 to each complete fetched source and exact live attempt, recording allocation
-and joined-release histories. This does not complete the broader import work
-below or the remaining auxiliary transient planning.
+and joined-release histories. Its additive [diagnostic/capture profile](../../docs/verification/aethyr-streaming-12990/walk-diagnostic-capture.md)
+prepays temporary copy/text storage and preserves cleanup after trace pressure.
+The [adapter inventory](../host/stream-adoption.md) bounds adoption. The broader
+import work below remains unfinished.
 
 A pack is a header, a table of entries (kind, licence, offset, bytes, name)
 and their data on 4-byte boundaries. There is one catalog, one vertex buffer

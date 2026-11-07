@@ -1,0 +1,35 @@
+// Diagnostic readback has a GPU span, an explicit raw copy and logical UTF-16
+// temporaries. SDK/GC representation and the caller's returned result differ.
+#authority;
+HostCapturePlan :: struct {valid:bool;row_bytes:int;rows:int;source:int;copy:int;encoded:int;utf16_peak:int;}
+#test "capture cost derives actual row padding copy and complete base64 length" {
+  for side:[4]int.[1,64,320,640] {
+    p:=capture_plan(side,360);row:=((side*4+255)/256)*256;bytes:=row*360;
+    #assert p.valid && p.row_bytes==row && p.rows==360 && p.source==bytes && p.copy==bytes && p.encoded==4*((bytes+2)/3);
+    #assert p.utf16_peak>=2*(2*bytes+32768) && p.utf16_peak>=2*(bytes+p.encoded);
+    #assert capture_observed(p,bytes,p.encoded,p.utf16_peak);
+    #assert !capture_observed(p,bytes-1,p.encoded,p.utf16_peak) && !capture_observed(p,bytes+1,p.encoded,p.utf16_peak);
+    #assert !capture_observed(p,bytes,p.encoded-1,p.utf16_peak) && !capture_observed(p,bytes,p.encoded+1,p.utf16_peak);
+    #assert !capture_observed(p,bytes,p.encoded,p.utf16_peak+1) && !capture_observed(p,bytes,p.encoded, -1);
+    bad:=p;bad.valid=false;#assert !capture_observed(bad,bytes,p.encoded,p.utf16_peak);
+  }
+  p:=capture_plan(1,1);#assert p.valid && p.row_bytes==256 && p.source==256 && p.copy==256 && p.encoded==344 && p.utf16_peak==66560;
+  #assert capture_plan(1,360).utf16_peak==434176 && capture_plan(320,360).utf16_peak==2150400 && capture_plan(640,360).utf16_peak==4300800 && capture_plan(64,384).utf16_peak==458752;
+  #assert capture_plan(1024,1024).valid && capture_plan(4096,256).valid && capture_plan(1,4096).valid;
+  for side:[5]int.[-1,0,4097,1048576,9223372036854775807] {#assert !capture_plan(side,1).valid && !capture_plan(1,side).valid;}
+  #assert !capture_plan(1024,1025).valid && !capture_plan(4096,257).valid && !capture_plan(1023,1025).valid && !capture_plan(257,3277).valid;
+  #assert capture_observed(p,256,344,1200) && !capture_observed(p,256,344,1199);
+}
+capture_plan :: (width:int,height:int)->HostCapturePlan #export_c #effects(all) {
+  if width<1 || width>4096 || height<1 || height>4096 {return HostCapturePlan.{};}
+  row:=((width*4+255)>>8)<<8;pages:=(row/256)*height;if pages>16384 {return HostCapturePlan.{};}
+  // Every operand is below 2^25, exactly representable in binary64. This
+  // arithmetic maximum therefore returns an exact integer budget.
+  bytes:=pages*256;encoded:=((bytes+2)/3)*4;
+  // Reserve the full 32 KiB executor chunk capacity even for a tiny image.
+  concatenation:=2*bytes+32768;output:=bytes+encoded;peak:=(concatenation+output+cast(int)abs(f64(concatenation-output)))/2;
+  return HostCapturePlan.{valid=true,row_bytes=row,rows=height,source=bytes,copy=bytes,encoded=encoded,utf16_peak=2*peak};
+}
+capture_observed :: (p:HostCapturePlan,source:int,encoded:int,utf16_peak:int)->bool #export_c #effects(all) {
+  return p.valid && source==p.source && encoded==p.encoded && utf16_peak>=2*(source+encoded) && utf16_peak<=p.utf16_peak;
+}

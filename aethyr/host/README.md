@@ -11,6 +11,10 @@ source/container plans to actual request generations and world epochs before
 reader construction/fetch. Its original-ticket and allocation histories have
 a separate [adoption receipt](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md).
 It preserves the v1 host ABI and the earlier unknown-size/private profiles.
+Its additive v2 diagnostic profile reports exhaustion without interrupting
+effect cleanup and prepays capture copy/text temporaries. The
+[adoption inventory](stream-adoption.md) names retained adapters and separate
+compiler/SDK/GC/driver memory domains.
 
 This document specifies observable behavior, including failure behavior.
 An implementation reference is useful evidence, but changing that

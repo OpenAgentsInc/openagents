@@ -67,7 +67,7 @@ def state_wire_vector(flag):
     return {"flag": v, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
 
 
-def inspect_native(scene_dir, receipt_path, receipt, report_path):
+def inspect_native(scene_dir, receipt_path, receipt, report_path, negative_faults=True):
     report = json.loads(report_path.read_bytes())
     version = report["schema"]
     assert version in ("aethyr.stream-walk-native-replay.v1", "aethyr.stream-walk-native-replay.v2")
@@ -99,6 +99,8 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
         for value in position:
             observed.extend(struct.pack("<q", struct.unpack("<I", struct.pack("<f", value))[0]))
     assert report["observation_sha256"] == hashlib.sha256(observed).hexdigest()
+    if not negative_faults:
+        return {"observation_sha256": report["observation_sha256"], "cpu_peak": report["cpu_peak"], "negative_histories_rejected": 0, "canonical_paid_steps": previous_tick if full_state else 0, "positive_only": True}
     # These are deliberately different inputs, not repetitions of the passing
     # native route. Every observer must notice a changed expectation/history.
     with tempfile.TemporaryDirectory(prefix="aethyr-stream-replay-oracle-") as temp:
@@ -401,7 +403,9 @@ def inspect_receive_fault(scene_dir, report_path):
     sidecar = Path(str(report_path)+'.transport.json')
     binding = json.loads(sidecar.read_bytes()) if sidecar.exists() else None
     if binding:
-        assert binding['schema'] == 'aethyr.stream-transport-observation.v1' and binding['phase'] == 3
+        assert binding['schema'] in ('aethyr.stream-transport-observation.v1', 'aethyr.stream-transport-observation.v2') and binding['phase'] == 3
+        if binding['schema'].endswith('.v2'):
+            assert binding['complete'] and not binding['exhausted'] and int(binding['dropped']) == 0
         assert len(binding['root']) == 64
     assert mode in ("--corrupt-source", "--oversize-source", "--cancel-replay", "--out-of-order", "--corrupt-pack") or (binding and mode == '--constructor-failure')
     assert report["injected"] and report["sourceSnapshotError"] is None
@@ -523,6 +527,9 @@ if __name__ == "__main__":
     elif sys.argv[1] == "--native-only":
         receipt = Path(sys.argv[3])
         print(json.dumps(inspect_native(Path(sys.argv[2]), receipt, json.loads(receipt.read_bytes()), Path(sys.argv[4])), sort_keys=True))
+    elif sys.argv[1] == "--native-positive":
+        receipt = Path(sys.argv[3])
+        print(json.dumps(inspect_native(Path(sys.argv[2]), receipt, json.loads(receipt.read_bytes()), Path(sys.argv[4]), False), sort_keys=True))
     elif sys.argv[1] == "--compare-tiers":
         compare_tiers(Path(sys.argv[2]), Path(sys.argv[3]))
     elif sys.argv[1] == "--upload-failure":

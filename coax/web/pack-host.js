@@ -1,7 +1,7 @@
 // Firm reason: 1 (browser SDK: measured stream copies, cancellation, WebCrypto and decompression; Coax owns admission).
 const wasmURL=new URL('../build/host-packs.wasm',import.meta.url);
-let compiled,opened;
-async function packModule(){compiled??=(async()=>{const r=await fetch(wasmURL,{cache:'no-store'});if(!r.ok)throw Error(`pack reactor:${r.status}`);return WebAssembly.compile(await r.arrayBuffer());})().catch(e=>{compiled=null;throw e;});return compiled;}
+let compiled,opened,moduleBytes=0,moduleSourceCleared=false;
+async function packModule(){compiled??=(async()=>{const r=await fetch(wasmURL,{cache:'no-store'});if(!r.ok)throw Error(`pack reactor:${r.status}`);const bytes=await r.arrayBuffer();moduleBytes=bytes.byteLength;try{return await WebAssembly.compile(bytes);}finally{new Uint8Array(bytes).fill(0);moduleSourceCleared=true;}})().catch(e=>{compiled=null;throw e;});return compiled;}
 function instance(module,onMemory){
  const memory=new WebAssembly.Memory({initial:128,maximum:1024});
  try{
@@ -18,7 +18,7 @@ export async function openPackHost(){
   function reserve(bytes){if(master.x.pack_storage_reserve(BigInt(bytes))!==0)throw Error('Coax refused retained pack storage');return [0,1,2].map(f=>master.x.pack_storage_ticket(f));}
   function release(ticket){if(!master.x.pack_storage_release(...ticket))throw Error('Coax refused pack storage release');}
   const masterTicket=reserve(master.memory.buffer.byteLength);
-  const info=()=>({storage:[0,1,2,3].map(f=>Number(master.x.pack_storage_info(f))),owners:ops.size,loading:[...ops].filter(o=>o.loading).length,published:[...ops].filter(o=>o.published).length,readers:[...ops].reduce((n,o)=>n+o.readers.size,0),sdkPending:[...ops].reduce((n,o)=>n+o.sdkPending,0),copied:[...ops].reduce((n,o)=>n+o.copied,0)});
+  const info=()=>({compiler:{schema:'aethyr.pack-compiler-input.v1',sourceBytes:moduleBytes,sourceCleared:moduleSourceCleared,compiledStorage:'opaque SDK program outside pack byte storage'},storage:[0,1,2,3].map(f=>Number(master.x.pack_storage_info(f))),owners:ops.size,loading:[...ops].filter(o=>o.loading).length,published:[...ops].filter(o=>o.published).length,readers:[...ops].reduce((n,o)=>n+o.readers.size,0),sdkPending:[...ops].reduce((n,o)=>n+o.sdkPending,0),copied:[...ops].reduce((n,o)=>n+o.copied,0)});
   function operation(owner,current,progress,expected,raw=false,observe){
    const tickets=[];let plan=null,context,constructingBytes=0;
    if(expected!==undefined){

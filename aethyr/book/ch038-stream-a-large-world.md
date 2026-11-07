@@ -1,7 +1,7 @@
 # 38. Stream a large world
 
 > **Status: unimplemented — design draft.** This chapter's complete teaching
-> and actual large-world host qualification remain unfinished. Historical
+> and broader large-world host qualification remain unfinished. Historical
 > #12847 already implemented [cells](../world/cells.coax): residency rings,
 > hysteresis, fixed-tick completion admission, sleeping bodies, stable IDs,
 > edge checks, persistence and floating origin. It did not qualify an
@@ -90,8 +90,12 @@ order.
   qualifies device-bound allocation plans and leases. The [HTP1 browser
   record](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
   now binds complete packed/raw sources and reconstructs original transport
-  tickets, concurrent allocation peaks and joined release. Auxiliary transient
-  planning and the chapter's complete teaching proof remain open.
+  tickets, concurrent allocation peaks and joined release. The additive
+  [diagnostic/capture record](../../docs/verification/aethyr-streaming-12990/walk-diagnostic-capture.md)
+  qualifies safe trace exhaustion and prepaid readback/encoding temporaries.
+  The [adapter inventory](../host/stream-adoption.md) separates remaining
+  consumers and opaque SDK memory. This chapter's complete teaching proof
+  remains open.
   Native persistent rescue is a separate unqualified profile. The [native draw-result profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
   adds automatic reported-loss recovery and pending-effect retirement;
   SDK-result injection is explicitly distinct from physical device faults.

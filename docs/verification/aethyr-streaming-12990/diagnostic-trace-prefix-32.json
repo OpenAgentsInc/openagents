@@ -1,0 +1,28 @@
+{
+  "schema": "aethyr.stream-transport-oracle.v2",
+  "complete_history": false,
+  "events": 32,
+  "attempts": 5,
+  "plans": 7,
+  "source_checks": 3,
+  "releases": 4,
+  "prefix_live_operations": 4,
+  "prefix_live_tickets": 4,
+  "dropped_events": 11,
+  "peak_operation_tickets": 6,
+  "peak_reserved_with_master_world_trace": 50528256,
+  "peak_transport_allocated": 33554520,
+  "peak_allocated_by_resource_owner": {
+    "-1": 8402914,
+    "-2": 8416816,
+    "-3": 8394864,
+    "5": 8388632,
+    "6": 8388672,
+    "0": 8388608,
+    "1": 8388608
+  },
+  "trace_bytes": 6144,
+  "carrier_static_bytes": 10552,
+  "opaque_sdk_gc_rss": "outside explicit engine ownership; not measured",
+  "complete_verifier_refused": true
+}

@@ -14,6 +14,12 @@ Each primitive is a module with its own checks and, where it decides
 behaviour, zero surviving mutants. One short section per primitive is in
 [docs/verse/engine-core.md](../docs/verse/engine-core.md).
 
+The bounded [resource-cost streaming consumer](world/README.md) uses shared
+owners on browser and native hosts. Its [adapter/memory inventory](host/stream-adoption.md)
+and [qualification index](../docs/verification/aethyr-streaming-12990/README.md)
+state the measured profile and remaining consumers; this is not automatic
+qualification of every realm or the complete streaming chapter.
+
 The [Physics Lab](lab/README.md) measures the existing rigid/contact/SAT
 kernels beside pinned Rapier and Jolt references. It runs six shared seeded
 scenes on coderos-4080, with JSON metrics, deterministic Aethyr repeats and

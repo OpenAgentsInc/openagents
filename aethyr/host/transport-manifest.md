@@ -69,6 +69,9 @@ replacement; persistent whole-Wasm rescue remains the earlier separate profile.
 
 ## Transport observation v1
 
+This complete-history format is retained. The additive v2 profile below
+separates an exhausted diagnostic recording from product effect lifetime.
+
 `pack-host.js` accepts an optional synchronous `observe` callback on known
 public/raw operations. It reports plans after original-ticket admission and
 before construction/fetch, actual reader growth/raw-array allocation, and
@@ -102,7 +105,32 @@ all leases, overlapping allocations, source/end ordering and final cleanup.
 Ownership release means explicit engine references and reservations ended.
 It does not assert that browser GC or the OS physically returned backing
 pages. SDK/driver/GC internals and serialized diagnostic object graphs remain
-separate. Remaining browser transient planning and the final whole-issue
-consumer/teaching audit stay open. The [adoption record](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
+separate. The [adoption record](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
 and earlier [planning record](../../docs/verification/aethyr-streaming-12990/walk-transport-planning.md)
 state their respective scopes.
+
+## Transport observation v2 and capture
+
+`diagnostic-trace.coax` admits 1–2,048 records, default 2,048, using the
+same 24-word events. Its plan gives the exact array bytes and existing
+64 KiB page reservation. `aethyr.stream-transport-observation.v2` adds
+`traceReservedBytes`, `complete`, `exhausted` and decimal `dropped` fields.
+A full trace returns no index and counts refused observations without
+throwing through a resource callback. Product work continues through join,
+completion, retirement and final cleanup. Closing an exhausted recorder
+succeeds, but never marks its history complete. Counters saturate rather
+than wrap. Historical v1 data remains accepted as a complete-history format.
+
+The oracle rejects incomplete v2 data by default. Its explicit `--incomplete`
+mode reconstructs only the recorded prefix and checks final SDK/engine
+cleanup separately; it does not invent unrecorded release history. Actual
+32- and 2,048-event SDK pressure probes hold old effects across the limit
+and observe their ownership until cancellation joins.
+
+`capture-cost.coax` separately admits padded readback, raw copy, base64 extent
+and logical UTF-16 temporary headroom. The existing renderer/storage owners
+reserve before GPU buffer creation. Actual copy/text extents pass the Coax
+gate; failed encoding zeroes the copy while original owners remain held
+through the GPU completion observation and final release. Captures report their output as
+caller-owned diagnostic text. The [adapter/memory inventory](stream-adoption.md)
+names static compiler input and SDK/GC/driver storage separately.

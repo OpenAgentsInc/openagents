@@ -11,13 +11,23 @@ INITIAL = 8388608
 MODEL = b'HTP1/whole-vpk1-vpk2-1/raw-exact-1/hpk-initial8m-page64k-1'
 
 
-def inspect(scene_dir, transport_dir, receipt, stages):
+def inspect(scene_dir, transport_dir, receipt, stages, incomplete=False):
     scene_bytes = (scene_dir / 'scene.json').read_bytes()
     scene = json.loads(scene_bytes)
     binding = receipt['transportBinding']
-    assert binding['schema'] == 'aethyr.stream-transport-observation.v1'
-    assert binding['phase'] == 3 and binding['capacity'] == 2048
-    assert binding['traceBytes'] == 2048 * 24 * 8
+    assert binding['schema'] in ('aethyr.stream-transport-observation.v1', 'aethyr.stream-transport-observation.v2')
+    assert binding['phase'] == 3 and 1 <= binding['capacity'] <= 2048
+    assert binding['traceBytes'] == binding['capacity'] * 24 * 8
+    trace_reserved = (binding['traceBytes']+PAGE-1)//PAGE*PAGE
+    if binding['schema'].endswith('.v2'):
+        assert binding['traceReservedBytes'] == trace_reserved
+        if incomplete:
+            assert not binding['complete'] and binding['exhausted'] and 0 < int(binding['dropped']) <= 2**63-1
+            assert len(binding['events']) == binding['capacity']
+        else:
+            assert binding['complete'] and not binding['exhausted'] and int(binding['dropped']) == 0
+    else:
+        assert not incomplete and binding['capacity'] == 2048
     assert 0 < binding['staticBytes'] < INITIAL
     index = json.loads((transport_dir / 'transport.json').read_bytes())
     companion = next(x for x in index['companions'] if x['sha256'] == binding['root'])
@@ -52,7 +62,8 @@ def inspect(scene_dir, transport_dir, receipt, stages):
     extents[-3] = (6256, 0, 6256, 1)
     active, tickets, ended, begins = {}, {}, {}, set()
     owner_peaks = {}
-    reserved = INITIAL*2 + binding['traceBytes']  # master, world arena, trace
+    baseline_reserved = INITIAL*2 + trace_reserved  # master, world arena, trace
+    reserved = baseline_reserved
     peak_reserved = reserved
     physical = 0
     peak_physical = peak_operations = 0
@@ -133,15 +144,21 @@ def inspect(scene_dir, transport_dir, receipt, stages):
             ended[key] = e[4];del active[key]
         else:
             raise AssertionError(('unexpected transport event', e))
-    assert not active and not tickets and physical == 0
-    assert plans == released and reserved == INITIAL*2+binding['traceBytes']
+    if not incomplete:
+        assert not active and not tickets and physical == 0
+        assert plans == released and reserved == baseline_reserved
     stage_outcomes = {(s['owner'], int(s['generation']), int(s['epoch'])): s['status'] for s in stages}
-    assert begins == stage_outcomes.keys()
-    assert all(ended[k] == status for k, status in stage_outcomes.items())
+    if incomplete:
+        assert begins <= stage_outcomes.keys()
+        assert all(stage_outcomes[k] == status for k, status in ended.items() if k[0] >= 0)
+    else:
+        assert begins == stage_outcomes.keys()
+        assert all(ended[k] == status for k, status in stage_outcomes.items())
     cleanup = receipt['cleanup']
     assert cleanup['transport']['storage'][:2] == [1, INITIAL]
     assert cleanup['transportBeforeDispose']['storage'][:2] == [2, INITIAL*2]
-    return {'schema': 'aethyr.stream-transport-oracle.v1', 'events': len(events), 'attempts': len(begins), 'plans': plans, 'source_checks': checked, 'releases': released, 'peak_operation_tickets': peak_operations, 'peak_reserved_with_master_world_trace': peak_reserved, 'peak_transport_allocated': peak_physical, 'peak_allocated_by_resource_owner': owner_peaks, 'trace_bytes': binding['traceBytes'], 'carrier_static_bytes': binding['staticBytes'], 'opaque_sdk_gc_rss': 'outside explicit engine ownership; not measured'}
+    assert all(cleanup['info'][i] == 0 for i in (8, 10, 11, 12, 13, 14, 22, 23))
+    return {'schema': 'aethyr.stream-transport-oracle.v2', 'complete_history': not incomplete, 'events': len(events), 'attempts': len(begins), 'plans': plans, 'source_checks': checked, 'releases': released, 'prefix_live_operations': len(active), 'prefix_live_tickets': len(tickets), 'dropped_events': int(binding.get('dropped', 0)), 'peak_operation_tickets': peak_operations, 'peak_reserved_with_master_world_trace': peak_reserved, 'peak_transport_allocated': peak_physical, 'peak_allocated_by_resource_owner': owner_peaks, 'trace_bytes': binding['traceBytes'], 'carrier_static_bytes': binding['staticBytes'], 'opaque_sdk_gc_rss': 'outside explicit engine ownership; not measured'}
 
 
 def negatives(scene, transport, receipt, stages):
@@ -164,15 +181,33 @@ def negatives(scene, transport, receipt, stages):
             count += 1
         else:
             raise AssertionError(('altered history accepted', kind, field))
+    if receipt['transportBinding']['schema'].endswith('.v2'):
+        for field, value in [('complete', False), ('exhausted', True), ('dropped', '1'), ('traceReservedBytes', 1)]:
+            bad = copy.deepcopy(receipt);bad['transportBinding'][field] = value
+            try:
+                inspect(scene, transport, bad, stages)
+            except AssertionError:
+                count += 1
+            else:
+                raise AssertionError(('altered trace status accepted', field))
     return count
 
 
 if __name__ == '__main__':
-    scene, transport, source = map(Path, sys.argv[1:])
+    incomplete = sys.argv[-1] == '--incomplete'
+    scene, transport, source = map(Path, sys.argv[1:-1] if incomplete else sys.argv[1:])
     receipt = json.loads(source.read_text())
     receipt['transportBinding'] = json.loads(Path(str(source)+'.transport.json').read_text())
     sidecar = Path(str(source)+'.stages.json')
     stages = json.loads(sidecar.read_text()) if sidecar.exists() else receipt['stages'] + [s for f in receipt['cleanup']['closingFrames'] for s in f['stages']]
-    result = inspect(scene, transport, receipt, stages)
-    result['negative_histories_rejected'] = negatives(scene, transport, receipt, stages)
+    result = inspect(scene, transport, receipt, stages, incomplete)
+    if not incomplete:
+        result['negative_histories_rejected'] = negatives(scene, transport, receipt, stages)
+    else:
+        try:
+            inspect(scene, transport, receipt, stages)
+        except AssertionError:
+            result['complete_verifier_refused'] = True
+        else:
+            raise AssertionError('incomplete history accepted as complete')
     print(json.dumps(result, indent=2))

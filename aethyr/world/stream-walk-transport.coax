@@ -2,3 +2,5 @@
 // remain unchanged; asynchronous transport ownership is an SDK companion.
 #load "stream-walk-device.coax";
 #load "../host/stream-transport.coax";
+#load "../host/diagnostic-trace.coax";
+#load "../host/capture-cost.coax";

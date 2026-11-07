@@ -1,12 +1,22 @@
 # Resource-cost and streaming work — #12990
 
-Latest: the [HTP1 adoption record](walk-transport-binding.md) binds actual
-packed/raw corridor loads to whole-container plans and exact live keys,
-with prepaid transport and independently reconstructed original-ticket,
-allocation/source/join/release histories. The [native backing adoption](walk-native-backing.md)
-already qualified the native allocation boundary. Remaining auxiliary browser
-transients and the final consumer/residual/teaching audit keep #12990 open.
-The older component summaries below retain their original scope and exits.
+Latest: the [delivery audit](delivery-audit.md) maps #12990's requirements to
+the actual bounded browser/native consumer and named remaining adapters.
+The [diagnostic/capture record](walk-diagnostic-capture.md) adds safe trace
+exhaustion, prepaid capture/encoding storage, compiler-input extents and the
+[adapter/memory inventory](../../../aethyr/host/stream-adoption.md). It extends
+the [HTP1 browser adoption](walk-transport-binding.md) and
+[native backing adoption](walk-native-backing.md), preserving their separate
+artifact identities and reuse of unchanged passing evidence. Qualification
+is limited to the declared two-tier corridor, not every realm or complete
+book teaching.
+
+## Earlier checkpoints
+
+The following is a chronological component record. Statements about
+remaining adoption/planning work describe those earlier checkpoints;
+the linked current audit supersedes their delivery status. Their measurements,
+failures and numerical/profile limits retain their original scope.
 
 Issue #12990 remains open. The [native backing-gate record](walk-native-backing-gate.md)
 adds a Coax authority over existing inbox leases and checked SDK callbacks

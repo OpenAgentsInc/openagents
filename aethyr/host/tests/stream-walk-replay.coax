@@ -278,7 +278,9 @@ tool_main :: () -> int #export_c #effects(all) {
     which := jv_int(d[0],jv_get(d[0],entry,"case"),-1);
     if !nlf_effect(which,failure_words[..]) || sw_fault_open(cast(s32) failure_words[0],cast(s32) failure_words[1]) != 1 { return 1; }
   }
-  attempts: [1] SwReplayAttempts; snapshots: [1] SwReplaySnapshots; observed: [1048576] u8; used: [1] int;
+  // The declared 4 MiB receipt profile also bounds the retained observation
+  // transcript. Long diagnostic-pressure routes exceed the former 1 MiB sink.
+  attempts: [1] SwReplayAttempts; snapshots: [1] SwReplaySnapshots; observed: [4194304] u8; used: [1] int;
   if sdk_fault {
     entry := jv_get(d[0],0,"sdkFault");label: [128] u8;
     size := jv_str(d[0],jv_get(d[0],entry,"schema"),label[..]);if size < 0 || cast(string) label[0..<size] != "aethyr.stream-native-sdk-fault.v1" { return 1; }

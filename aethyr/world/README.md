@@ -4,8 +4,7 @@ The [native category-pressure qualifier](../../docs/verification/aethyr-streamin
 now requests a real source-derived texture companion against the live
 corridor's budget/inbox/renderer. Its refusal preserves the existing image
 and owners, and CPU replay records the counted admission boundary. The later
-native backing qualification covers physical allocation admission; browser
-transport/transient planning stays open. Native
+native backing qualification covers physical allocation admission. Native
 [allocation/source/decode failures](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
 now complete and retire through the shared owner before retry. Its
 [checked Vulkan resource factories](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
@@ -23,14 +22,17 @@ factories now reserve measured allocation sizes before `vkAllocateMemory`.
 The actual corridor now adopts these entry points for streamed, staging,
 fixed-renderer, replacement and readback allocations, with device-bound
 [plans and allocation histories](../host/native-backing.md). Browser transport,
-container and transient planning remains separate required work.
+container and transient planning has its separate qualification below.
 The [transport companion](../host/transport-manifest.md) now derives whole
 container/source spans and reader/raw page peaks. The shared loader prepays
 raw transfers and public packs with known lengths, with atomic admission
 before reactor/fetch effects. The [HTP1 carrier](../../docs/verification/aethyr-streaming-12990/walk-transport-binding.md)
 now binds the actual packed/raw corridor loads and records original tickets,
 allocation/source/join/release histories with independent reconstruction.
-Remaining auxiliary transient planning and the final consumer audit stay open.
+The additive [diagnostic/capture profile](../../docs/verification/aethyr-streaming-12990/walk-diagnostic-capture.md)
+qualifies bounded trace exhaustion and prepaid capture temporaries. The
+[adoption inventory](../host/stream-adoption.md) names remaining adapters,
+compiler input extents and opaque SDK/driver storage.
 The [actual callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
 holds image/buffer responses across unwanted-state cancellation, observes
 physical join/retirement before a newer generation, then redelivers the old

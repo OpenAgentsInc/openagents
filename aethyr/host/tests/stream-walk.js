@@ -2,9 +2,9 @@
 import {openPackHost} from '../../../coax/web/pack-host.js';
 import {openRescueStore,rescueHash,showRescueStop} from './stream-walk-rescue.js';
 
-export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,transportSHA,transportURL,tier,wasmURL,shaderURL,hudShaderURL='/build/stream-hud.wgsl',presentShaderURL='/build/stream-present.wgsl',onRecord,rescueSlot='stream-walk'}){
-  const packs=await openPackHost(),arena=packs.retainBytes(8388608),startup=[];let memory;
-  startup.push(()=>{if(memory)new Uint8Array(memory.buffer).fill(0);memory=null;arena.release();});
+export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manifestSHA,transportSHA,transportURL,traceCapacity=2048,tier,wasmURL,shaderURL,hudShaderURL='/build/stream-hud.wgsl',presentShaderURL='/build/stream-present.wgsl',onRecord,rescueSlot='stream-walk'}){
+  const packs=await openPackHost(),arena=packs.retainBytes(8388608),startup=[];let memory,engineBytes;
+  startup.push(()=>{if(engineBytes)new Uint8Array(engineBytes).fill(0);engineBytes=null;if(memory)new Uint8Array(memory.buffer).fill(0);memory=null;arena.release();});
   try{
   // libc may need a new page after the linker's initial heap tail. Reserve
   // the existing 8 MiB ceiling, and let its 2 MiB initial extent grow within it.
@@ -12,13 +12,14 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   const runtimeMessages=[];
   const wasi={proc_exit(code){throw Error(`stream reactor exited ${code}`);},fd_close:()=>8,fd_seek:()=>8,fd_fdstat_get:()=>8,
     fd_write(fd,iov,count,written){const d=new DataView(memory.buffer);let bytes=0,text='';for(let i=0;i<count;i++){const at=d.getUint32(iov+i*8,true),n=d.getUint32(iov+i*8+4,true);bytes+=n;text+=new TextDecoder().decode(new Uint8Array(memory.buffer,at,n));}if(text){runtimeMessages.push(text);if(runtimeMessages.length>32)runtimeMessages.shift();console.error(text);}d.setUint32(written,bytes,true);return 0;}};
-  const engineBytes=await(await fetch(wasmURL)).arrayBuffer(),module=await WebAssembly.compile(engineBytes);
+  engineBytes=await(await fetch(wasmURL)).arrayBuffer();const engineInputBytes=engineBytes.byteLength;let module=await WebAssembly.compile(engineBytes);
   const instance=await WebAssembly.instantiate(module,{env:{memory},wasi_snapshot_preview1:wasi});
   let x=instance.exports;x._initialize?.();
   const bound=!!x.sw_transport_open;if(bound!==!!transportSHA)throw Error('HTP1 carrier needs its pinned transport companion');
+  const tracePolicy=bound&&!!x.sw_trace_open;
   let transportTrace,traceOwner,traceCount=0,finalBinding;
-  if(bound){traceOwner=packs.retainBytes(2048*24*8);startup.push(()=>traceOwner?.release());transportTrace=new BigInt64Array(2048*24);}
-  function transportEvent(kind,k,fields=[]){if(!bound)return;if(traceCount===2048)throw Error('transport observation capacity exhausted');const at=traceCount++*24;transportTrace.set([BigInt(kind),BigInt(k.owner),BigInt(k.generation),BigInt(k.epoch),...fields.map(BigInt)],at);}
+  if(bound){const bytes=tracePolicy?Number(x.sw_trace_open(BigInt(traceCapacity))):393216;if(!bytes||!tracePolicy&&traceCapacity!==2048)throw Error('Coax refused diagnostic trace capacity');traceOwner=packs.retainBytes(bytes);startup.push(()=>traceOwner?.release());transportTrace=new BigInt64Array(bytes/8);}
+  function transportEvent(kind,k,fields=[]){if(!bound)return;let index;if(tracePolicy){index=Number(x.sw_trace_offer());if(index<0)return;traceCount=index+1;}else{if(traceCount===2048)throw Error('transport observation capacity exhausted');index=traceCount++;}const at=index*24;transportTrace.set([BigInt(kind),BigInt(k.owner),BigInt(k.generation),BigInt(k.epoch),...fields.map(BigInt)],at);}
   function transportObserver(k){return bound?event=>{const fields=Array(20).fill(0);let kind;
     if(event.kind==='plan'){kind=2;const p=event.plan;fields.splice(0,6,p.reactor,p.external,p.reserved,p.heapBase,p.initial,Number(p.grow));}
     else if(event.kind==='allocate'){kind=3;fields[0]=event.reactor;fields[1]=event.external;}
@@ -27,8 +28,9 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     if(event.tickets){fields[6]=event.tickets.length;event.tickets.forEach((t,i)=>fields.splice(7+i*3,3,...t));}if(event.storage)fields.splice(13,4,...event.storage);
     transportEvent(kind,k,fields);
   }:undefined;}
-  function transportBinding(){return finalBinding??(bound?{schema:'aethyr.stream-transport-observation.v1',root:transportSHA,phase:Number(x.sw_transport_info(0)),staticBytes:Number(x.sw_transport_info(1)),traceBytes:traceOwner.bytes,capacity:2048,events:Array.from({length:traceCount},(_,i)=>Array.from(transportTrace.subarray(i*24,(i+1)*24),String))}:null);}
-  const rescuable=!!x.sw_rescue_check,engineSHA=rescuable?await rescueHash(engineBytes):null;
+  function transportBinding(){return finalBinding??(bound?{schema:tracePolicy?'aethyr.stream-transport-observation.v2':'aethyr.stream-transport-observation.v1',root:transportSHA,phase:Number(x.sw_transport_info(0)),staticBytes:Number(x.sw_transport_info(1)),traceBytes:traceOwner.bytes,capacity:tracePolicy?Number(x.sw_trace_info(0)):2048,...(tracePolicy?{traceReservedBytes:Number(x.sw_trace_info(5)),complete:!!x.sw_trace_info(4),exhausted:!!x.sw_trace_info(3),dropped:String(x.sw_trace_info(2))}:{}),events:Array.from({length:traceCount},(_,i)=>Array.from(transportTrace.subarray(i*24,(i+1)*24),String))}:null);}
+  const rescuable=!!x.sw_rescue_check,engineSHA=rescuable||bound?await rescueHash(engineBytes):null;
+  new Uint8Array(engineBytes).fill(0);engineBytes=null;module=null;
   const automatic=!!x.sw_loss_open;if(automatic&&!x.sw_loss_open())throw Error('device policy initialization refused');
   const info=f=>Number(x.sw_host_info(f)),row=(i,f)=>Number(x.sw_host_row(i,f));
   const authenticate=(bytes,hex)=>{if(bytes.byteLength>32768)throw Error('fixture metadata exceeds retained config span');new Uint8Array(memory.buffer,x.sw_config_ptr(),bytes.byteLength).set(bytes);new Uint8Array(memory.buffer,x.sw_root_ptr(),64).set(new TextEncoder().encode(hex));if(!x.sw_host_auth(bytes.byteLength))throw Error('Coax refused complete content identity');};
@@ -43,6 +45,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
   if(bound){const owner={kind:'transport-manifest'},transfer=await packs.loadBytes(transportURL||`/transport/${transportSHA}.htp`,6256,{owner,observe:transportObserver({owner:-3,generation:0,epoch:0})});try{await transfer.use(({bytes})=>{authenticate(bytes,transportSHA);if(!x.sw_transport_open(bytes.byteLength))throw Error('HTP1 manifest binding refused');});}finally{await packs.retire(owner);}}
   let adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw Error('WebGPU adapter unavailable');
   const errors=[],shaderSource=await(await fetch(shaderURL)).text(),hudShaderSource=await(await fetch(hudShaderURL)).text(),presentShaderSource=await(await fetch(presentShaderURL)).text(),format=navigator.gpu.getPreferredCanvasFormat(),context=canvas.getContext('webgpu');
+  const hostArtifacts=Object.freeze({schema:'aethyr.stream-host-artifacts.v1',engineInputBytes,engineSHA,engineInputZeroed:true,shaderCodeUnits:[shaderSource.length,hudShaderSource.length,presentShaderSource.length],shaderLogicalUTF16Bytes:2*(shaderSource.length+hudShaderSource.length+presentShaderSource.length),scope:'static host compiler inputs; compiled programs, JS/GC representation and driver storage are outside resource allocation traces'});
   let device,uniforms,depth,color,hdr,pipeline,sampler,hudVertices,hudUniforms,hudPipeline,presentPipeline;
   let hudDraws=0,lastHudVertices=0;
   const gpu=new Map(),pending=new Set(),transfers=new Map(),retiredDevices=new WeakSet();
@@ -239,9 +242,9 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     await Promise.all([...pending]);
     const closingFrames=[];for(let i=0;i<128&&!info(24);i++)closingFrames.push(await step(15625000,0,true));
     if(!info(24)||info(14)||info(10)||info(22)||info(23))throw Error('physical resources did not drain');
-    if(bound){if(!x.sw_transport_close())throw Error('transport did not join before close');finalBinding=transportBinding();transportTrace.fill(0n);transportTrace=null;traceOwner.release();traceOwner=null;}
+    if(bound){if(!x.sw_transport_close()||tracePolicy&&!x.sw_trace_close())throw Error('transport did not join before close');finalBinding=transportBinding();transportTrace.fill(0n);transportTrace=null;traceOwner.release();traceOwner=null;}
     if(surfaceLive)await device.queue.onSubmittedWorkDone();destroySurface();for(const i of [0,1,2,6,7,8])if(fixedLive(i)&&!x.sw_host_fixed_release(i))throw Error('fixed ledger cleanup refused');
-    const result={info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,recovery:deviceStatus(),hud:{draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))},wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
+    const result={hostArtifacts,info:Array.from({length:28},(_,f)=>info(f)),closingFrames,loadFailures,drawnCommands,fallbackDraws,recovery:deviceStatus(),hud:{draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))},wasmBytesBeforeDispose:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transportBeforeDispose:packs.info(),gpuErrors:errors.slice()};
     if(info(12)||info(13))throw Error('GPU ledger did not drain');closed=true;context.unconfigure();device.destroy();heldOwner?.release();heldOwner=null;held=null;rescueStore?.close();rescuePanel?.();new Uint8Array(memory.buffer).fill(0);x=null;memory=null;arena.release();result.transport=packs.info();finalSnapshot=result;return result;
   }
   async function capture(){
@@ -249,16 +252,19 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     try{return await gpuTask(captureNow);}finally{framing=false;}
   }
   async function captureNow(){
-    const rowBytes=Math.ceil(canvas.width*4/256)*256,bytes=rowBytes*canvas.height;
+    const planned=!!x.sw_capture_plan;if(planned&&!x.sw_capture_plan(BigInt(canvas.width),BigInt(canvas.height)))throw Error('Coax refused capture extent');
+    const rowBytes=planned?Number(x.sw_capture_info(0)):Math.ceil(canvas.width*4/256)*256,bytes=rowBytes*canvas.height,textBudget=planned?Number(x.sw_capture_info(4)):0;
     if(!x.sw_host_fixed(3,2,BigInt(bytes/4)))throw Error('readback ledger refused');
-    let buffer,retained;
+    let buffer,retained,textOwner,copy;
     try{
+      if(planned){retained=packs.retainBytes(Number(x.sw_capture_info(2)));textOwner=packs.retainBytes(textBudget);}
       buffer=device.createBuffer({size:bytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
       const encoder=device.createCommandEncoder();encoder.copyTextureToBuffer({texture:color},{buffer,bytesPerRow:rowBytes,rowsPerImage:canvas.height},[canvas.width,canvas.height]);device.queue.submit([encoder.finish()]);await buffer.mapAsync(GPUMapMode.READ);
-      retained=packs.retainBytes(bytes);const copy=new Uint8Array(buffer.getMappedRange()).slice();buffer.unmap();
-      let binary='';for(let at=0;at<copy.length;at+=32768)binary+=String.fromCharCode(...copy.subarray(at,at+32768));const data=btoa(binary);copy.fill(0);
-      return {width:canvas.width,height:canvas.height,rowBytes,format,data};
-    }finally{buffer?.destroy();retained?.release();if(!x.sw_host_fixed_release(3))throw Error('readback cleanup refused');}
+      if(!planned)retained=packs.retainBytes(bytes);copy=new Uint8Array(buffer.getMappedRange()).slice();buffer.unmap();
+      let binary='',textPeak=0;for(let at=0;at<copy.length;at+=32768){const chunk=String.fromCharCode(...copy.subarray(at,at+32768)),next=binary+chunk;textPeak=Math.max(textPeak,2*(binary.length+chunk.length+next.length));binary=next;}const data=btoa(binary);textPeak=Math.max(textPeak,2*(binary.length+data.length));
+      if(planned&&!x.sw_capture_observed(BigInt(copy.length),BigInt(data.length),BigInt(textPeak)))throw Error('capture extents exceed their admitted plan');
+      return {width:canvas.width,height:canvas.height,rowBytes,format,data,...(planned?{captureCosts:{schema:'aethyr.stream-capture-cost.v1',copyBytes:bytes,encodedUnits:data.length,textBudgetBytes:textBudget,observedLogicalUTF16Peak:textPeak,resultLogicalUTF16Bytes:2*data.length,resultOwner:'caller diagnostic output; SDK/GC physical backing is not measured'}}:{})};
+    }finally{copy?.fill(0);if(buffer)await device.queue.onSubmittedWorkDone().catch(()=>{});buffer?.destroy();retained?.release();textOwner?.release();if(!x.sw_host_fixed_release(3))throw Error('readback cleanup refused');}
   }
   function fixedLive(index){return !automatic||Number(x.sw_host_fixed_live(index))===1;}
   function destroySurface(){
@@ -337,6 +343,6 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     await render();
     for(let owner=0;owner<64;owner++)if(x.sw_rescue_object(owner,0)&&!x.sw_rescue_object(owner,1))launch({owner,generation:x.sw_rescue_object(owner,2),epoch:x.sw_rescue_object(owner,3)},true);
   }
-  return Object.freeze({transportBinding,rescueDigest,rescueStatus:()=>({...rescueState,restoredFrames,heldBytes:held?.size??0}),rescueSaved:()=>rescueSaving??Promise.resolve(false),trapNextFrame:()=>{if(!rescuable)throw Error('rescue unsupported');trapArmed=true;},step,settle:()=>Promise.all([...pending]),close,capture,recover,loseDevice:()=>device.destroy(),deviceStatus,stateDigest,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
+  return Object.freeze({transportBinding,rescueDigest,rescueStatus:()=>({...rescueState,restoredFrames,heldBytes:held?.size??0}),rescueSaved:()=>rescueSaving??Promise.resolve(false),trapNextFrame:()=>{if(!rescuable)throw Error('rescue unsupported');trapArmed=true;},step,settle:()=>Promise.all([...pending]),close,capture,recover,loseDevice:()=>device.destroy(),deviceStatus,stateDigest,hud:()=>({draws:hudDraws,vertices:lastHudVertices,info:Array.from({length:5},(_,f)=>Number(x.sw_host_hud_info(f)))}),profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1',presentationSchema:'aethyr.stream-walk-display.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({hostArtifacts,info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
   }catch(error){for(const dispose of startup.reverse())await dispose();throw error;}
 }

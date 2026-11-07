@@ -1,0 +1,12 @@
+{
+  "schema": "aethyr.capture-cost-oracle.v1",
+  "source_bytes": 230400,
+  "base64_units": 307200,
+  "copy_reserved": 262144,
+  "text_reserved": 1114112,
+  "logical_text_peak": 1075200,
+  "engine_input_bytes": 156237,
+  "shader_utf16_bytes": 15382,
+  "failures_clean": true,
+  "sdk_gc_driver_physical_bytes": "not measured; separate from explicit reservations"
+}
