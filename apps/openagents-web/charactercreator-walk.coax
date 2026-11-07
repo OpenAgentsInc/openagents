@@ -1,10 +1,13 @@
 // The walk from Character Create into Everglade (docs/verse/character-creator.md, "The road to
 // Everglade"). After USE IN EVERGLADE's save is confirmed, the controls fade, the camera swings
 // behind the saved character and it walks the glade path, through the notch in the back ridge, to
-// the town gate in about 30 seconds. Meanwhile the host warms Everglade's page, engine, shaders and
-// packs through its HTTP cache (action 18), so Everglade's own loader finds them there. At the
-// gate the screen fades to black and the page goes to Everglade; if Everglade isn't ready yet the
-// character waits at the gate. Everything here is a function of the walk's own clock and the road.
+// the town gate in about 30 seconds. Meanwhile the host opens Everglade itself out of sight under
+// this page (action 18, coax/web/zone-host.js): its engine, shaders, packs, textures and room seat,
+// up to its first drawn frame. As the walk reaches the gate the host cross-fades to that running
+// Everglade in place (action 1): no loading screen and no black. If Everglade isn't ready yet the
+// character waits at the gate. Only a warm-up that failed (or a host that never answered) fades to
+// black and goes to Everglade the ordinary way. Everything here is a function of the walk's own
+// clock and the road.
 // Loaded into charactercreator.coax, so it shares its Creator, glade and figs.
 
 CC_WALK_SECONDS :: 30.0;   // from the first step to the end of the road, inside the gate
@@ -13,7 +16,7 @@ CC_WALK_ACCEL :: 1.2;      // seconds to reach walking pace
 CC_WALK_STRIDE :: 1.3;     // metres a walk cycle covers (the engine's gait, fivelab-bodies.coax)
 CC_WALK_UI :: 0.5;         // seconds the controls take to fade
 CC_WALK_CAMERA :: 3.0;     // seconds the camera takes to swing behind the character
-CC_WALK_FADE :: 0.9;       // seconds of the fade to black before the page changes
+CC_WALK_FADE :: 0.9;       // seconds of the host's cross-fade into Everglade (or the fade to black before the page changes)
 CC_WALK_ACK :: 3.0;        // a host that never answers the warm-up (no action 18) is not waited on
 CC_WALK_HOLD :: 20.0;      // the longest wait at the gate: Everglade's own loader takes over after it
 CC_WALK_STUCK :: 4.0;      // still here this long after asking to leave: put the studio back
@@ -90,7 +93,7 @@ walk_atan2 :: (y:f32,x:f32)->f32 {
 walk_wrap :: (a:f32)->f32 {v:=a;while v>3.14159265 {v-=6.2831853;}while v< -3.14159265 {v+=6.2831853;}return v;}
 walk_ease :: (v:f32)->f32 {t:=cc_clamp(v,0,1);return t*t*(3-2*t);}
 
-#test "walk hands off only after the save, the warm-up and the fade, and never waits forever" {
+#test "walk hands off in place only after the save and once Everglade is up, and never waits forever" {
   s:[1]Creator;ensure(s[..]);request_player(s[..],true);bytes:[64]u8;for i:0..<56 {bytes[i]=s[0].profile_bytes[i];}
   player_reply(s[..],cast(string)bytes[0..<56]);#assert s[0].profile_go && !s[0].walk.on;
   walk_begin(s[..],false);#assert s[0].walk.on && !s[0].profile_go && s[0].walk.request && !walk_leave(s[..]);
@@ -99,11 +102,18 @@ walk_ease :: (v:f32)->f32 {t:=cc_clamp(v,0,1);return t*t*(3-2*t);}
   for i:0..<300 {walk_step(s[..],0.1);#assert !walk_leave(s[..]);}
   // At the gate: Everglade still loading, so the character waits there.
   for i:0..<20 {walk_step(s[..],0.1);}#assert s[0].walk.arrived_at>0 && s[0].walk.fade_at<0 && !walk_leave(s[..]);
-  walk_reply(s[..],"1 9000000 9000000");walk_step(s[..],0.1);#assert s[0].walk.fade_at>0;
-  for i:0..<8 {walk_step(s[..],0.1);#assert !walk_leave(s[..]);}
-  for i:0..<4 {walk_step(s[..],0.1);}#assert walk_leave(s[..]) && !walk_leave(s[..]);
-  // If the page never changes, the studio comes back rather than staying black.
-  for i:0..<50 {walk_step(s[..],0.1);}#assert !s[0].walk.on && s[0].walk.fade_at<0;
+  // Everglade is up: the host cross-fades to it in place at once, and this page never goes black.
+  walk_reply(s[..],"1 100 100");walk_step(s[..],0.1);#assert s[0].walk.fade_at>0 && walk_veil(s[0].walk)==0;
+  #assert walk_leave(s[..]) && !walk_leave(s[..]);
+  for i:0..<12 {walk_step(s[..],0.1);#assert walk_veil(s[0].walk)==0;}
+  // If the page never changes, the studio comes back.
+  for i:0..<40 {walk_step(s[..],0.1);}#assert !s[0].walk.on && s[0].walk.fade_at<0;
+}
+#test "walk fades to black and goes the ordinary way only when Everglade can't open in place" {
+  s:[1]Creator;ensure(s[..]);s[0].profile_go=true;walk_begin(s[..],false);used:=walk_ask(s[..]);walk_reply(s[..],"0 40 100");
+  for i:0..<300 {walk_step(s[..],0.1);}walk_reply(s[..],"2 40 100");walk_step(s[..],0.1);#assert s[0].walk.fade_at>0;
+  for i:0..<8 {walk_step(s[..],0.1);#assert !walk_leave(s[..]);}#assert walk_veil(s[0].walk)>0.5;
+  for i:0..<4 {walk_step(s[..],0.1);}#assert walk_leave(s[..]) && walk_veil(s[0].walk)==1;
 }
 #test "walk proceeds without a host that cannot warm up and after a stalled warm-up" {
   s:[1]Creator;ensure(s[..]);s[0].profile_go=true;walk_begin(s[..],false);used:=walk_ask(s[..]);
@@ -146,14 +156,17 @@ walk_step :: (s:[]Creator,dt:f32) {
   if w.went {if w.t-w.went_at>CC_WALK_STUCK {s[0].walk=CcWalk.{};return;}s[0].walk=w;return;}
   end:=ifx w.still then f32(CC_WALK_UI) else f32(CC_WALK_LEAD)+f32(CC_WALK_SECONDS);
   if w.arrived_at<0 && w.t>=end {w.arrived_at=w.t;}
-  // The fade starts just before the end of the road, so the page changes as the walk ends.
+  // The fade starts just before the end of the road, so the hand-off ends as the walk does. A
+  // warm Everglade is handed over at once: the host's cross-fade is the fade. Otherwise this page
+  // fades to black first and the host goes to Everglade the ordinary way.
   if w.fade_at<0 && walk_ready(w) && (w.still && w.t>=CC_WALK_UI || w.t>=end-f32(CC_WALK_FADE)) {w.fade_at=w.t;}
-  if w.fade_at>=0 && !w.go && w.t-w.fade_at>=CC_WALK_FADE {w.go=true;}
+  if w.fade_at>=0 && !w.go && (w.done || w.t-w.fade_at>=CC_WALK_FADE) {w.go=true;}
   s[0].walk=w;
 }
 // True once, when the screen is black: the page goes to Everglade.
 walk_leave :: (s:[]Creator)->bool {if !s[0].walk.on || !s[0].walk.go || s[0].walk.went {return false;}s[0].walk.went=true;s[0].walk.went_at=s[0].walk.t;return true;}
-walk_veil :: (w:CcWalk)->f32 {if w.fade_at<0 {return 0;}return walk_ease((w.t-w.fade_at)/f32(CC_WALK_FADE));}
+// The fade to black, only on the way out the ordinary way (a warm Everglade is cross-faded to in place).
+walk_veil :: (w:CcWalk)->f32 {if w.fade_at<0 || w.done {return 0;}return walk_ease((w.t-w.fade_at)/f32(CC_WALK_FADE));}
 walk_controls :: (w:CcWalk)->f32 {return 1-walk_ease(w.t/f32(CC_WALK_UI));}
 
 #test "walk figure turns to the road, walks it in step and waits at the gate" {

@@ -5376,13 +5376,19 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   world's first frame; on a failure it says what failed with one working
   action (no WebGPU: the realm's text page; anything else: try again). It is
   only on realm pages, written by `realms.ts` (a made realm's by the host),
-  and holds nothing else.
+  and holds nothing else;
+- the zone frame (`coax/web/zone-host.js`, action 18): another same-origin
+  Coaxial page, loaded by its own host and drawing everything in Coax
+  itself, opened in a full-window frame under the page's opaque canvas and
+  shown in place on action 1 to it (Character Create's walk into Everglade,
+  so no loading screen shows between them). It holds nothing but that page.
 
 Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
 upload; `release.sh` runs it as a report, since only what breaks staging
 against production stops a release) refuses visible elements, inline styling of UI, and DOM-built UI in
 the app's HTML, the host and `coax/web/unlock/`; the loading screen's block
-may hold only its own elements, and `loader.js` styles only marked lines.
+may hold only its own elements, and `loader.js` styles only marked lines, as
+`zone-host.js` builds and styles only its marked zone frame.
 
 
 ## Private projects answer non-members with nothing

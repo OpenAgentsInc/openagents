@@ -29,15 +29,17 @@ while IFS= read -r page; do
 done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_modules/*' | sort)
 # The host and the crypto glue build no UI: no styled or created elements
 # except the keyboard field, the dev note (host.js, localhost), the clipped
-# accessible layer (host.js a11yMirror) and the
-# loading screen (loader.js), each line marked.
-for f in "$here/host.js" "$here/render.js" "$here/loader.js" "$here/drop.js" "$here"/unlock/*.ts; do
+# accessible layer (host.js a11yMirror), the
+# loading screen (loader.js) and the zone frame (zone-host.js: another Coaxial
+# page opened in place, which draws everything in Coax itself), each line marked.
+for f in "$here/host.js" "$here/render.js" "$here/loader.js" "$here/zone-host.js" "$here/drop.js" "$here"/unlock/*.ts; do
   [[ -e "$f" ]] || continue
   case "$f" in *.test.ts) continue ;; esac
   marked='// (dev only|keyboard field|accessible layer)$'
   [[ "$(basename "$f")" == host.js ]] || marked='^$'
   [[ "$(basename "$f")" == loader.js ]] && marked='// loading screen$'
-  n="$(grep -E 'innerHTML|insertAdjacentHTML|\.style\.|createElement\("(div|span|button|a|img|form|section|pre|p|h[1-6]|style|svg|canvas)"\)|className *=' "$f" | grep -cvE "$marked" || true)"
+  [[ "$(basename "$f")" == zone-host.js ]] && marked='// zone frame$'
+  n="$(grep -E 'innerHTML|insertAdjacentHTML|\.style\.|createElement\("(div|span|button|a|img|form|section|pre|p|h[1-6]|style|svg|canvas|iframe)"\)|className *=' "$f" | grep -cvE "$marked" || true)"
   [[ "$n" -eq 0 ]] || bad "$(basename "$f"): builds or styles visible UI ($n place(s)); draw it in Coax"
 done
 exit $fail

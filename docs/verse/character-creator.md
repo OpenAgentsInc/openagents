@@ -263,35 +263,40 @@ takes exactly 30 seconds from the first step to the gate. The road, the pace and
 the camera are fixed functions of time, so every walk is the same
 (`apps/openagents-web/charactercreator-walk.coax`).
 
-While the character walks, the page asks the host to warm `/worlds/everglade`
-(action 18, `coax/web/prefetch-host.js`). The host reads that page's script tag
-and fetches the files `host.js` loads first: the engine, its shaders, the render
-package and the asset packs. It fetches them into the browser's HTTP cache, then
-Everglade's own loader reads them from there. Nothing is loaded a second way.
-The room seat is not taken early. Everglade asks for a new single-use ticket
-before each open, so the seat is still admitted on arrival.
+While the character walks, the page asks the host to open `/worlds/everglade`
+in place (action 18, `coax/web/zone-host.js`). The host loads Everglade for
+real, with its own `host.js`, in a full-window frame under Character Create's
+opaque canvas, where none of it shows. Everglade fetches and compiles its
+engine, builds its shader pipelines, reads its packs, uploads its textures,
+takes its room seat and draws its first frame there. Then its world loop is
+paused, so the walk keeps the GPU. Its progress comes back as message 18, in
+percent. Nothing is loaded twice.
 
-Near the gate, the screen fades to black, and Everglade opens with the saved
-character and no character dialog. If the warm-up is still running, the
-character waits at the gate and a small "ENTERING EVERGLADE NN%" line shows its
-progress. The character also waits there for up to 20 seconds if the host is
-slow. If the warm-up fails, or the host never answers, the page still goes and
-Everglade loads normally. Reduced motion skips the camera move. Input is ignored
-during the walk.
+As the walk reaches the gate, the page asks to go to Everglade (action 1). The
+host hands over in place: the running Everglade cross-fades in over the last
+0.9 seconds of the walk, takes the input, the address bar and the title, and
+Character Create's engine stops and lets go of its GPU device. There is no
+loading screen and no black between the two. Everglade opens with the saved
+character and no character dialog. Back returns to Character Create as a new
+load.
+
+If Everglade is still opening, the character waits at the gate and a small
+"ENTERING EVERGLADE NN%" line shows its progress. After 20 seconds at the gate
+the screen fades to black and the host shows Everglade as it is, its own loading
+screen included, rather than starting it over. Only when the in-place open fails, or the host never answers,
+does the screen fade to black and the page go to Everglade the ordinary way.
+Reduced motion skips the camera move and the cross-fade. Input is ignored during
+the walk.
 
 ```sh
-# Real time: the save, the 30 s walk, the hand-off, the same character, the seat, no dialog.
+# Real time: the save, the 30 s walk, the hand-off in place, the same character, the seat, no dialog,
+# and no loading screen on any captured frame.
 coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --mbps 50
-# Everglade from a new browser with nothing warmed, for comparison.
+# Everglade from a new browser, for comparison.
 coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/everglade --cold --mbps 50
-# The film: 1920x1080 at 30 fps in clip mode; the load between the pages is filmed at its real length.
+# The film: real-time 1920x1080 screenshots of the whole journey, encoded at 30 fps.
 coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --film walk.mp4 frames/ --mbps 50
 ```
-
-Serve the site with `--static` for these checks. Without it, the browser's HTTP
-cache does not keep the files. The development host also fetches wasm and WGSL
-with `no-store`, so locally only the packs come from the warm-up. In production,
-every file does.
 
 ## Compact sidebar
 

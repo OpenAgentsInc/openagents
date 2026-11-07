@@ -239,7 +239,7 @@ import { openClipTimeline } from "./audio-timeline.js";
 import { RenderHost } from "./render.js";
 import {mediaSource} from "./media-source.js";
 import {actionSource} from "./action-source.js";
-import {warmPage} from "./prefetch-host.js";
+import {warmPage, enterPage} from "./zone-host.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -3015,7 +3015,9 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0,
   // a page's read-only facts for headless checks, where its face exports them (project-face.c)
-  fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1 };
+  fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1,
+  // The room's state for a page opening this one in place (zone-host.js): -1 none, 0 off, 1 opening, 2 open, 3 down.
+  room: () => engine?.exports.coaxial_net_probe?.(arena.state, 0) ?? -1 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
   globalThis.coaxial.character=()=>characters.info();
@@ -3128,11 +3130,25 @@ globalThis.coaxial.voice = voice;
 // The location's hash, for an app that opens something by it (a link straight to it).
 // Action 1 to a same-page address that differs only after its # (/worlds/built#a to #b) reloads the
 // page: assigning such an address only changes the hash, and the app would go on showing the old one.
+// A page opened in place by another (zone-host.js, data-zone on its frame) goes on as the whole tab.
+const zoned = (() => { try { return window.top !== window && window.frameElement?.dataset.zone === "1"; } catch { return false; } })();
+const tabLocation = zoned ? window.top.location : location;
 function navigateTo(path) {
   const to = new URL(path, location.href);
   const samePage = to.origin === location.origin && to.pathname === location.pathname && to.search === location.search;
-  location.assign(to.href);
-  if (samePage && to.hash) location.reload();
+  // A page warmed with action 18 is handed over in place (zone-host.js) rather than loaded again.
+  if (!(samePage && to.hash) && to.origin === location.origin && enterPage(to.pathname + to.search + to.hash, zoneOut)) return;
+  tabLocation.assign(to.href);
+  if (samePage && to.hash) tabLocation.reload();
+}
+// This page has handed the tab to the page it opened in place: it stops as if it were unloaded.
+function zoneOut() {
+  leaving = true;send(LEAVE_KIND);httpRequests.reset();
+  setWorldPaused(true);
+  const device = gpu?.device;
+  stopEngine();
+  try { device?.destroy(); } catch {}
+  canvas.remove();a11y.root?.remove();a11y.status?.remove();field?.remove();
 }
 
 function sendHash() {
@@ -3165,7 +3181,7 @@ function after(gesture, tap = false) {
     if(!packet){call("coaxial_action_done");send(604,"Action output unavailable");return;}
     const text = new TextDecoder().decode(packet.view.slice());
     call("coaxial_action_done");
-    if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) location.assign(text); else if (text.startsWith("/")) navigateTo(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
+    if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) tabLocation.assign(text); else if (text.startsWith("/")) navigateTo(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
     // A copy or cut: the app chose the text (never a masked field's); this runs
     // inside the key event, so the browser lets it reach the clipboard.
     else if (code === 2) navigator.clipboard?.writeText(text).catch(() => {});
@@ -3177,7 +3193,7 @@ function after(gesture, tap = false) {
       try { localStorage.setItem("aethyr.player.appearance.v1", text);send(17,text); }
       catch {send(17,"");}
     }
-    // Warm another page (its engine, shaders and packs) into the HTTP cache; progress back as message 18.
+    // Open another page in place, out of sight until action 1 goes to it (zone-host.js); progress back as message 18.
     else if (code === 18 && text.startsWith("/")) warmPage(root && !text.startsWith(root + "/") ? root + text : text, (t) => send(18, t));
     else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
     else if (code === BAR_KIND) { if (!golden) try { localStorage.setItem(barKey, text); } catch {} }
