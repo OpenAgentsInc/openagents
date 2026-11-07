@@ -126,6 +126,12 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   if (kind != 0 && lab_at(state)->player) { touched = true; sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
+// Additive DOM input hook; the original pointer export remains available to native hosts.
+EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
+  if (lab_pointer_buttons(at(state), x, y, phase, kind, id, button)) return 1u;
+  if (kind != 0 && lab_at(state)->player) { touched = true; sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
+  return 0u;
+}
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return lab_wheel(at(state), dy) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)lab_cursor(at(state)); }
 

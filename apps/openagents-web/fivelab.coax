@@ -4003,3 +4003,9 @@ lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {return cc.pro
   lab_message(s[..],600,"url=http://127.0.0.1:8817/worlds/character-creator\n");
   #assert s[0].creator[0].on && s[0].started && s[0].creator[0].outfit==3;
 }
+
+// Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
+lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int)->bool #export_c #effects(all) {
+  if s[0].creator[0].on && kind==0 {return cc.mouse_pointer(s[0].creator[..],x,y,phase,id,button);}
+  return lab_pointer(s,x,y,phase,kind,id);
+}

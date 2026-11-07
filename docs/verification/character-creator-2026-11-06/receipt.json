@@ -55,5 +55,16 @@
     "release_wasm_bytes": 593163,
     "pan_controls": "Drag mode button or P; Reset recenters",
     "pan_capture": "pan-close.png"
+  },
+  "mouse_drag_revision": {
+    "targeted_creator_checks": 12,
+    "release_wasm_bytes": 595269,
+    "physical_browser_checks": [
+      "right drag changes pan without yaw",
+      "left drag changes yaw without pan",
+      "context menu suppressed",
+      "save/reload and male/female/phone previews"
+    ],
+    "touch_mode_preserved": true
   }
 }

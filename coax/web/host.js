@@ -23,6 +23,8 @@
 //   coaxial_blur(state)       the page lost the keyboard: nothing is held
 //   coaxial_pointer(state, x, y, phase, kind, id) device pixels; phase 0 down 1 move 2 up 3 cancel;
 //                             kind 0 a mouse, 1 a finger or pen; id tells fingers apart
+//   coaxial_pointer_buttons_v1(state, x, y, phase, kind, id, button) optional additive DOM button hook;
+//                             button 0 left, 2 right, -1 on ordinary pointer moves
 //   coaxial_wheel(state, dy)  the wheel, CSS pixels down (the page doesn't scroll)
 //   coaxial_tilt(state, dyaw, dpitch) the phone turned, radians (the OpenAgents app's gyro: coaxial.tilt)
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
@@ -3244,7 +3246,8 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
     const dpr = scale();
     if (ph !== 1) touched = touch;
     if (ph === 0) startAudio();
-    call("coaxial_pointer", x * dpr, y * dpr, ph, touch ? 1 : 0, e.pointerId);
+    if (engine.exports.coaxial_pointer_buttons_v1) call("coaxial_pointer_buttons_v1", x * dpr, y * dpr, ph, touch ? 1 : 0, e.pointerId, e.button);
+    else call("coaxial_pointer", x * dpr, y * dpr, ph, touch ? 1 : 0, e.pointerId);
     after(ph === 2, ph === 2);
   });
 

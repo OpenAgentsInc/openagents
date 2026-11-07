@@ -13,7 +13,7 @@ Creator :: struct {
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
   clock:f32; pose_at:f32; revision:int; saved:int; focused:int;
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
-  pan_mode:bool; pan_x:f32; pan_y:f32; boxes:[16]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
+  pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; boxes:[16]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
 }
 DYES :: [9][3]f32.[[3]f32.[0.06,0.22,0.18],[3]f32.[0.38,0.04,0.065],[3]f32.[0.06,0.12,0.38],[3]f32.[0.72,0.65,0.48],[3]f32.[0.29,0.08,0.34],[3]f32.[0.055,0.055,0.07],[3]f32.[0.65,0.29,0.05],[3]f32.[0.22,0.36,0.46],[3]f32.[1,1,1]];
 SKINS :: [6][3]f32.[[3]f32.[1,0.94,0.87],[3]f32.[0.91,0.79,0.67],[3]f32.[0.76,0.6,0.46],[3]f32.[0.61,0.43,0.31],[3]f32.[0.43,0.28,0.2],[3]f32.[0.28,0.17,0.13]];
@@ -163,8 +163,8 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
     }
   }
   for i:13..<15 { b:=s[0].boxes[i]; n=text(out,n,ifx i==13 then "RESET" else "SURPRISE ME",b.x0+10*k,b.y0+23*k,10*k,gold); }
-  b:=s[0].boxes[15];n=text(out,n,ifx s[0].pan_mode then "DRAG: PAN" else "DRAG: ROTATE",b.x0+10*k,b.y0+23*k,10*k,gold);
-  if !s[0].mobile {n=text(out,n,"P: PAN / ROTATE / SCROLL: ZOOM",w*0.5-135*k,h-77*k,9*k,dim);}
+  if s[0].mobile {b:=s[0].boxes[15];n=text(out,n,ifx s[0].pan_mode then "DRAG: PAN" else "DRAG: ROTATE",b.x0+10*k,b.y0+23*k,10*k,gold);}
+  if !s[0].mobile {n=text(out,n,"LEFT DRAG: ROTATE / RIGHT DRAG: PAN / SCROLL: ZOOM",w*0.5-230*k,h-77*k,9*k,dim);}
   for i:0..<u.count { u[i]=0; }
   u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=0;
   // A steady studio camera; dragging turns the figure, the wheel changes distance.
@@ -181,11 +181,11 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
 }
 pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if phase==0 {
-    for i:0..<16 { if inside(s[0].boxes[i],x,y) { s[0].down=i; s[0].drag_id=id; return true; } }
-    s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;return true;
+    for i:0..<(ifx s[0].mobile then 16 else 15) { if inside(s[0].boxes[i],x,y) { s[0].down=i; s[0].drag_id=id; return true; } }
+    s[0].drag_pan=s[0].pan_mode;s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;return true;
   }
   if id!=s[0].drag_id { return true; }
-  if phase==1 && s[0].dragging { if s[0].pan_mode {
+  if phase==1 && s[0].dragging { if s[0].drag_pan {
       focal:=ifx s[0].mobile then (s[0].height-624*s[0].scale)*1.3 else s[0].height*0.89;
       units:=s[0].dist/(ifx focal>1 then focal else 1);
       s[0].pan_x=cc_clamp(s[0].pan_x-(x-s[0].dx)*units,-2,2);
@@ -278,7 +278,7 @@ catalog :: (s:[]Creator,t:string) {
 probe :: (s:Creator,f:int)->int {
   if f==0 {return s.source_n;} if f==1 {return s.outfit;}if f==2 {return ifx s.female then 1 else 0;}
   if f==3 {return s.variant;}if f==4 {return s.dye;}if f==5 {return s.skin;}if f==6 {return s.pose;}
-  if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}
+  if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}if f==13 {return int(s.yaw*1000);}
   return -1;
 }
 append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}return at+t.count;}
@@ -359,4 +359,28 @@ available :: (s:Creator,p:int)->bool {if p<0 || p>=39 {return false;}if p==0 || 
   bytes:[64]u8;n:=save(s[0],bytes[..]);t:[1]Creator;
   #assert restore(t[..],cast(string)bytes[0..<n]) && t[0].outfit==2 && !t[0].worn[39] && t[0].eye_color==3;
   #assert !available(t[0],39);
+}
+
+#test "creator mouse buttons select rotate or pan per drag without a toggle" {
+  s:[1]Creator;layout(s[..],1440,900,1);s[0].pan_mode=true;
+  yaw:=s[0].yaw;ok:=mouse_pointer(s[..],700,400,0,31,0);ok=mouse_pointer(s[..],800,450,1,31,-1);ok=mouse_pointer(s[..],800,450,2,31,0);
+  #assert s[0].yaw>yaw && s[0].pan_x==0 && s[0].pan_y==0;
+  yaw=s[0].yaw;pitch:=s[0].pitch;
+  ok=mouse_pointer(s[..],700,400,0,31,2);ok=mouse_pointer(s[..],800,550,1,31,-1);
+  #assert s[0].pan_x<0 && s[0].pan_y>0 && s[0].yaw==yaw && s[0].pitch==pitch;
+  ok=mouse_pointer(s[..],800,550,2,31,0);#assert s[0].dragging;
+  ok=mouse_pointer(s[..],800,550,2,31,2);#assert !s[0].dragging;
+  before:=s[0].outfit;ok=mouse_pointer(s[..],250,250,0,31,2);ok=mouse_pointer(s[..],250,250,2,31,2);#assert s[0].outfit==before;
+}
+
+// DOM button numbers: left 0, right 2. Latch the gesture on down; moves may report -1.
+mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
+  if phase==0 {
+    if s[0].dragging || (button!=0 && button!=2) {return true;}
+    s[0].drag_button=button;
+    if button==2 {s[0].down=-1;s[0].dragging=true;s[0].drag_pan=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;return true;}
+    used:=pointer(s,x,y,phase,id);s[0].drag_pan=false;return used;
+  }
+  if phase==2 && button!=s[0].drag_button {return true;}
+  return pointer(s,x,y,phase,id);
 }

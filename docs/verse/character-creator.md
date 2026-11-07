@@ -111,13 +111,17 @@ checks pass; the release producer is 592,520 bytes.
 
 ## Camera panning
 
-Click DRAG: ROTATE / DRAG: PAN or press P to toggle the drag behavior. Pan mode
+Left mouse drag rotates; right mouse drag pans, with no mode toggle. On touch
+screens, tap DRAG: ROTATE / DRAG: PAN or press P to toggle the drag behavior. Pan mode
 translates the camera in its screen plane without changing character yaw or
 view pitch. Translation uses camera distance and focal length, so panning stays
 proportional to pointer travel when zoomed in. Both axes are bounded to two
 metres. RESET centers the camera and returns to Rotate mode; pan is temporary
-view state and is not part of the saved appearance. The mode control sits in
-the bottom center on desktop and next to Eye Color on phones.
+view state and is not part of the saved appearance. The touch mode control sits next to Eye Color on phones. Mouse gestures ignore
+the touch mode. The optional `coaxial_pointer_buttons_v1` browser input hook
+carries the DOM button number; the original pointer ABI remains unchanged.
+The right button never changes appearance controls, and the initial button is
+latched until its release or cancellation.
 
 Only Peasant, Ranger, Wizard and Noble remain. The removed custom outfit's
 geometry, palette textures and exporter are gone. Existing CC2 saves selecting
