@@ -42,4 +42,23 @@ build "$d"; rm "$d/parser.h"; refuse "$d" 'a missing file'
 build "$d"; echo x > "$d/extra"; refuse "$d" 'an extra file'
 build "$d"; printf '#!/bin/sh\nexit 1\n' > "$d/coax"; sed -i.bak "s/^file coax .*/file coax $(sha < "$d/coax")/" "$d/manifest"; rm -f "$d/manifest.bak"
 [[ "$(uname -s)" == Linux ]] && refuse "$d" 'a dynamically linked or failing compiler' || refuse "$d" 'a compiler that does not run'
-echo "published-build: ok (a good build passes; source, platform, hash, missing, extra and failing compiler refused)"
+# fetch: an unreachable bucket falls back to the GitHub mirror (a local stand-in
+# server); a build neither has is refused and the reason names both.
+mirror_note="mirror not checked: python3 unavailable"
+if command -v python3 > /dev/null && command -v curl > /dev/null; then
+  build "$d"; tag="coax-build-${source_fp:0:16}"; mkdir -p "$work/srv/$tag"
+  tar -C "$d" -czf "$work/srv/$tag/$platform.tar.gz" manifest "${files[@]}"
+  (cd "$work/srv/$tag" && printf '%s  %s\n' "$(sha < "$platform.tar.gz")" "$platform.tar.gz" > "$platform.tar.gz.sha256")
+  port=$((20000 + RANDOM % 20000))
+  (cd "$work/srv" && exec python3 -m http.server "$port" --bind 127.0.0.1 > /dev/null 2>&1) & server=$!
+  trap 'kill $server 2> /dev/null; rm -rf "$work"' EXIT
+  for _ in 1 2 3 4 5 6 7 8 9 10; do curl -s -o /dev/null "http://127.0.0.1:$port/" && break; sleep 0.2; done
+  COAX_PUBLISHED_URL=http://127.0.0.1:1/none COAX_PUBLISHED_MIRROR_URL="http://127.0.0.1:$port" "$p" fetch "$repo" "$work/got" > /dev/null 2>&1 \
+    || { echo "published-build: the GitHub mirror fallback did not install a good build" >&2; exit 1; }
+  why="$(COAX_PUBLISHED_URL="http://127.0.0.1:$port/x" COAX_PUBLISHED_MIRROR_URL="http://127.0.0.1:$port/y" "$p" fetch "$repo" "$work/none" 2>&1 || true)"
+  [[ "$why" == *"bucket: missing; GitHub mirror: missing"* ]] || { echo "published-build: a missing build was not reported as missing in both places: $why" >&2; exit 1; }
+  why="$(COAX_PUBLISHED_GITHUB=none COAX_PUBLISHED_URL=http://127.0.0.1:1/none "$p" fetch "$repo" "$work/off" 2>&1 || true)"
+  [[ "$why" == *"bucket: unreachable; GitHub mirror: off"* ]] || { echo "published-build: an unreachable bucket was not reported as unreachable: $why" >&2; exit 1; }
+  mirror_note="fetch falls back to the GitHub mirror and says which place was missing or unreachable"
+fi
+echo "published-build: ok (a good build passes; source, platform, hash, missing, extra and failing compiler refused; $mirror_note)"

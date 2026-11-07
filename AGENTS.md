@@ -115,6 +115,17 @@ coax/web/serve.sh apps/openagents-web       # the website with hot reload: http:
 coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
 ```
 
+**Getting the compiler.** Never wait on a bootstrap you don't need.
+`coax/build.sh` installs the published build of your tree's compiler in
+seconds: it reads the release bucket, then the GitHub mirror (release tags
+`coax-build-…`), which allowlisted cloud sessions can reach when the bucket is
+refused. If it says the build is "missing" in both places, `main`'s compiler
+changed after the last publish (the release hosts catch up within about an
+hour and a half); to only use the compiler meanwhile, run
+`COAX_MUTATION=0 coax/build.sh` in the background (no mutation gates, never
+published) and work on something else. Details: `coax/RELEASE.md`, Published
+builds.
+
 Keep iteration fast. Checks run while you work finish in minutes: test the
 units you touched, use small slices and fixtures, and run long gates in the
 background or in parallel rather than waiting on them. Never rerun a

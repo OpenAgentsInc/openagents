@@ -9,21 +9,32 @@
 #   coax/published.sh pack ROOT OUT.tar.gz     # coax/bin's checked build, with its manifest
 #   coax/published.sh check DIR ROOT           # an unpacked build: its manifest, names and hashes
 #   coax/published.sh fetch ROOT DIR           # download this tree's build into DIR and check it
-#   coax/published.sh upload ROOT OUT.tar.gz   # put a packed build in the bucket (never over one)
+#   coax/published.sh upload ROOT OUT.tar.gz   # put a packed build in the bucket and its GitHub mirror (never over one)
 #   coax/published.sh publish ROOT             # pack coax/bin and upload it, if not there yet
+#   coax/published.sh mirror ROOT              # copy this tree's bucket build to the GitHub mirror if it lacks it
 #
 # A build is named by its source fingerprint (provenance.sh source-fingerprint:
 # the compiler's sources and the platform, not the local toolchain) and its
 # platform. Linux builds are static (COAX_LDFLAGS=-static), so one runs on any
 # Linux of its architecture; macOS builds use the system's libraries.
 #
+# Every build is also mirrored as a GitHub release asset: release tag
+# coax-build-<first 16 of the source fingerprint>, assets <platform>.tar.gz and
+# <platform>.tar.gz.sha256. fetch reads the bucket first and the mirror second,
+# so a machine whose network can reach GitHub but not storage.googleapis.com
+# (cloud agent sessions with an allowlist) still installs in seconds.
+#
 #   COAX_PUBLISHED_URL     where builds are read (default the public release bucket)
 #   COAX_PUBLISHED_BUCKET  where builds are written (gs://..., release hosts only)
+#   COAX_PUBLISHED_GITHUB  the mirror's repository (default OpenAgentsInc/openagents; none turns it off)
+#   COAX_PUBLISHED_MIRROR_URL  where mirrored builds are read (default github.com/$COAX_PUBLISHED_GITHUB/releases/download)
 set -euo pipefail
 export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
 url_base="${COAX_PUBLISHED_URL:-https://storage.googleapis.com/openagentsgemini-cli-releases/coax/builds}"
 bucket="${COAX_PUBLISHED_BUCKET:-gs://openagentsgemini-cli-releases/coax/builds}"
+github="${COAX_PUBLISHED_GITHUB:-OpenAgentsInc/openagents}"
+mirror_url="${COAX_PUBLISHED_MIRROR_URL:-https://github.com/$github/releases/download}"
 fail() { echo "coax published: $*" >&2; exit 1; }
 sha() {
   if command -v shasum > /dev/null 2>&1; then shasum -a 256 | awk '{print $1}'
@@ -102,32 +113,99 @@ pack() {
   tar -C "$work" -czf "$out" manifest "${files[@]}"
   echo "coax published: packed $(name "$root") from $commit into $out"
 }
+# The GitHub mirror's release tag and asset names for a build name <source>/<platform>.
+mirror_tag() { printf 'coax-build-%s\n' "${1:0:16}"; }
+mirror_asset() { basename "$1"; }
+# Download URL and SHA-256 file into $2/build.tar.gz and $2/sum. Prints why it
+# failed: "missing" (the server answered and has no such build) or
+# "unreachable" (no answer: the network, a proxy or an allowlist refused it).
+get() {
+  local base="$1" tmp="$2" code
+  code="$(curl -sSL --retry 2 --max-time 120 -o "$tmp/sum" -w '%{http_code}' "$base.sha256" 2> /dev/null || true)"
+  case "$code" in 200) ;; 4??) echo missing; return 1 ;; *) echo unreachable; return 1 ;; esac
+  curl -fsSL --retry 2 --max-time 600 "$base" -o "$tmp/build.tar.gz" 2> /dev/null || { echo unreachable; return 1; }
+}
 fetch() {
-  local root="$1" dir="$2" path tmp want got
+  local root="$1" dir="$2" path tmp want got bucket_why mirror_why=off
   path="$(name "$root")"
   command -v curl > /dev/null 2>&1 || fail 'curl unavailable'
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/coax-fetch.XXXXXXXX")"
   trap 'rm -rf "$tmp"' RETURN
-  curl -fsSL --retry 2 --max-time 120 "$url_base/$path.tar.gz.sha256" -o "$tmp/sum" 2> /dev/null || fail "no published build $path"
-  curl -fsSL --retry 2 --max-time 600 "$url_base/$path.tar.gz" -o "$tmp/build.tar.gz" || fail "could not download $path"
+  if ! bucket_why="$(get "$url_base/$path.tar.gz" "$tmp")"; then
+    [[ "$github" == none ]] || mirror_why="$(get "$mirror_url/$(mirror_tag "$path")/$(mirror_asset "$path").tar.gz" "$tmp")" || true
+    [[ "$mirror_why" == "" ]] || fail "no published build $path (bucket: $bucket_why; GitHub mirror: $mirror_why)"
+  fi
   want="$(awk '{print $1; exit}' "$tmp/sum")"; got="$(sha < "$tmp/build.tar.gz")"
   [[ -n "$want" && "$want" == "$got" ]] || fail "$path: the download differs from its checksum"
   mkdir -p "$dir"
   tar -C "$dir" -xzf "$tmp/build.tar.gz"
   check "$dir" "$root"
 }
+# The GitHub mirror (gh, authenticated with write access to $github): the
+# release coax-build-<source> is made on first use, at the build's commit, as a
+# prerelease; an asset already there is never replaced.
+mirror_has() {
+  gh release view "$(mirror_tag "$1")" --repo "$github" --json assets --jq '.assets[].name' 2> /dev/null | grep -qx "$(mirror_asset "$1").tar.gz"
+}
+mirror_upload() {
+  local path="$1" file="$2" sum="$3" commit="$4" tag asset
+  [[ "$github" != none ]] || return 0
+  command -v gh > /dev/null 2>&1 || { echo "coax published: gh unavailable; $path not mirrored to GitHub" >&2; return 1; }
+  tag="$(mirror_tag "$path")"; asset="$(mirror_asset "$path")"
+  if ! gh release view "$tag" --repo "$github" > /dev/null 2>&1; then
+    gh release create "$tag" --repo "$github" --target "$commit" --prerelease --title "Coax compiler build ${path%%/*}" \
+      --notes "Published Coax compiler builds for source fingerprint ${path%%/*} (coax/published.sh, coax/RELEASE.md#published-builds). Installed by coax/build.sh; not a product release." > /dev/null \
+      || { echo "coax published: could not create the GitHub release $tag" >&2; return 1; }
+  fi
+  if mirror_has "$path"; then echo "coax published: $path is already mirrored"; return 0; fi
+  local stage; stage="$(mktemp -d "${TMPDIR:-/tmp}/coax-mirror.XXXXXXXX")"
+  cp "$file" "$stage/$asset.tar.gz"; printf '%s  %s.tar.gz\n' "$(awk '{print $1; exit}' "$sum")" "$asset" > "$stage/$asset.tar.gz.sha256"
+  gh release upload "$tag" --repo "$github" "$stage/$asset.tar.gz" "$stage/$asset.tar.gz.sha256" > /dev/null \
+    || { rm -rf "$stage"; echo "coax published: could not upload $path to the GitHub mirror" >&2; return 1; }
+  rm -rf "$stage"
+  echo "coax published: mirrored $path to github.com/$github/releases/tag/$tag"
+}
 upload() {
-  local root="$1" file="$2" path sum
+  local root="$1" file="$2" path sum commit
   path="$(name "$root")"
   command -v gcloud > /dev/null 2>&1 || fail 'gcloud unavailable'
-  # Immutable: a published name is never replaced.
-  if gcloud storage ls "$bucket/$path.tar.gz" > /dev/null 2>&1; then echo "coax published: $path is already published"; return 0; fi
   sum="$(mktemp "${TMPDIR:-/tmp}/coax-sum.XXXXXXXX")"
   printf '%s  %s\n' "$(sha < "$file")" "$(basename "$path").tar.gz" > "$sum"
-  gcloud storage cp "$file" "$bucket/$path.tar.gz" --quiet > /dev/null
-  gcloud storage cp "$sum" "$bucket/$path.tar.gz.sha256" --quiet > /dev/null
+  # Immutable: a published name is never replaced.
+  if gcloud storage ls "$bucket/$path.tar.gz" > /dev/null 2>&1; then echo "coax published: $path is already published"
+  else
+    gcloud storage cp "$file" "$bucket/$path.tar.gz" --quiet > /dev/null
+    gcloud storage cp "$sum" "$bucket/$path.tar.gz.sha256" --quiet > /dev/null
+    echo "coax published: uploaded $path"
+  fi
+  commit="$(tar -xzOf "$file" manifest | awk '$1 == "commit" { print $2; exit }')"
+  mirror_upload "$path" "$file" "$sum" "$commit" || echo "coax published: the bucket has $path; the GitHub mirror does not yet" >&2
   rm -f "$sum"
-  echo "coax published: uploaded $path"
+}
+# The bucket's builds of this tree (every platform: the source fingerprint does
+# not depend on the platform), copied to the GitHub mirror where it lacks them.
+# A release host runs it each round, which also backfills builds published
+# before the mirror existed.
+mirror() {
+  local root="$1" fp plat path tmp commit copied=0 failed=0
+  [[ "$github" != none ]] || return 0
+  command -v gh > /dev/null 2>&1 || fail 'gh unavailable'
+  fp="$("$here/provenance.sh" source-fingerprint "$root")"
+  for plat in linux-x86_64 linux-arm64 darwin-arm64 darwin-x86_64; do
+    path="$fp/$plat"
+    mirror_has "$path" && continue
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/coax-mirror-get.XXXXXXXX")"
+    if get "$url_base/$path.tar.gz" "$tmp" > /dev/null; then
+      if [[ "$(awk '{print $1; exit}' "$tmp/sum")" != "$(sha < "$tmp/build.tar.gz")" ]]; then echo "coax published: $path: the bucket's build differs from its checksum" >&2; failed=1
+      else
+        commit="$(tar -xzOf "$tmp/build.tar.gz" manifest | awk '$1 == "commit" { print $2; exit }')"
+        if mirror_upload "$path" "$tmp/build.tar.gz" "$tmp/sum" "$commit"; then copied=$((copied + 1)); else failed=1; fi
+      fi
+    fi
+    rm -rf "$tmp"
+  done
+  [[ "$failed" == 0 ]] || fail "could not mirror every build of ${fp:0:12}"
+  echo "coax published: ${fp:0:12}: $copied build(s) newly mirrored"
 }
 
 cmd="${1:-}"; shift || true
@@ -138,9 +216,10 @@ case "$cmd" in
   check) [[ $# == 2 ]] || fail 'usage: published.sh check DIR ROOT'; check "$1" "$2" ;;
   fetch) [[ $# == 2 ]] || fail 'usage: published.sh fetch ROOT DIR'; fetch "$1" "$2" ;;
   upload) [[ $# == 2 ]] || fail 'usage: published.sh upload ROOT OUT.tar.gz'; upload "$1" "$2" ;;
+  mirror) [[ $# == 1 ]] || fail 'usage: published.sh mirror ROOT'; mirror "$1" ;;
   publish)
     [[ $# == 1 ]] || fail 'usage: published.sh publish ROOT'
     out="$(mktemp "${TMPDIR:-/tmp}/coax-build.XXXXXXXX").tar.gz"
     pack "$1" "$out"; upload "$1" "$out"; rm -f "$out" ;;
-  *) fail 'usage: published.sh platform | name ROOT | pack ROOT OUT | check DIR ROOT | fetch ROOT DIR | upload ROOT OUT | publish ROOT' ;;
+  *) fail 'usage: published.sh platform | name ROOT | pack ROOT OUT | check DIR ROOT | fetch ROOT DIR | upload ROOT OUT | publish ROOT | mirror ROOT' ;;
 esac

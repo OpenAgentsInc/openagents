@@ -12,7 +12,9 @@
 #   Linux: GCC for musl from nixpkgs (pkgsStatic), COAX_LDFLAGS=-static, so the
 #          build runs on any Linux of its architecture.
 #   macOS: the system's clang with MACOSX_DEPLOYMENT_TARGET=13.0.
-# Uploads need write access to the bucket (CLOUDSDK_CONFIG on the release hosts).
+# Uploads need write access to the bucket (CLOUDSDK_CONFIG on the release hosts) and,
+# for the GitHub mirror (published.sh mirror_upload), gh authenticated with write
+# access to the repository's releases.
 # COAX_PUBLISH_LINUX_VM=ZONE/NAME (the Mac sets us-central1-a/coax-publish-linux)
 # starts the Linux release VM whenever this host sees a compiler change.
 # No GitHub Actions: release hosts are our own machines.
@@ -30,7 +32,11 @@ once() {
   local name url
   name="$("$clone/coax/published.sh" name "$clone")"
   url="${COAX_PUBLISHED_URL:-https://storage.googleapis.com/openagentsgemini-cli-releases/coax/builds}/$name.tar.gz.sha256"
-  if curl -fsS -o /dev/null "$url" 2> /dev/null; then log "${name:0:12} $(basename "$name") is published"; return 0; fi
+  if curl -fsS -o /dev/null "$url" 2> /dev/null; then
+    # Published: make sure the GitHub mirror has it too (a no-op once it does).
+    "$clone/coax/published.sh" mirror "$clone" > /dev/null || log "${name:0:12} $(basename "$name") is not mirrored to GitHub (gh missing or unauthenticated?)"
+    log "${name:0:12} $(basename "$name") is published"; return 0
+  fi
   log "building ${name:0:12} for $(basename "$name") from $(git -C "$clone" rev-parse --short HEAD)"
   # The compiler changed: wake the Linux release VM too (publish-vm-startup.sh
   # builds linux-x86_64 if it is missing, then powers off). ZONE/NAME, opt-in.

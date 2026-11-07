@@ -13,7 +13,9 @@ set up the release hosts again. Set up 2026-11-02.
 Builds land at
 `gs://openagentsgemini-cli-releases/coax/builds/<source>/<platform>.tar.gz`, public
 read at `https://storage.googleapis.com/openagentsgemini-cli-releases/coax/builds/...`,
-with `.sha256` beside each. A published name is never overwritten. Every machine's
+with `.sha256` beside each, and mirrored to GitHub releases (tag
+`coax-build-<first 16 of source>`, assets `<platform>.tar.gz` and `.sha256`) for machines
+that can reach GitHub but not the bucket. A published name is never overwritten. Every machine's
 `coax/build.sh` installs the matching build in seconds (a fresh worktree with an empty
 cache: 17 to 18 s). Bootstrapping instead takes about 90 minutes on CoderOS's 28 cores
 (84 of them in `stage0 mutate lib/compiler/checker.coax`), about 67 minutes on the Mac's
@@ -36,6 +38,12 @@ gcloud compute ssh coax-publish-linux --zone us-central1-a --project openagentsg
 A build for one platform with no build for the other means one host failed: read its log.
 If `published.sh pack` refuses with "surviving mutants", main has a survivor in the
 compiler. Don't publish around it; the next compiler commit that fixes it publishes.
+
+The Mac's round also runs `published.sh mirror`, which copies every platform's bucket build of
+`main` (the Linux VM's too) to the GitHub mirror. It needs `gh` on the Mac, authenticated with
+write access to OpenAgentsInc/openagents releases; without it the bucket is still published and
+the round logs "is not mirrored to GitHub". Check the mirror with
+`gh release list --repo OpenAgentsInc/openagents | grep coax-build`.
 
 ## Set it up again
 

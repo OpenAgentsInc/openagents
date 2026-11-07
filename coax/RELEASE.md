@@ -236,7 +236,7 @@ A machine with neither cache bootstraps: about 90 minutes on CoderOS's 28
 cores (2026-11-02: 84 of them in one gate, `stage0 mutate
 lib/compiler/checker.coax`, 5,064 s) and several hours on a 4-core container,
 every time the compiler's sources change. Published builds remove that wait
-for everyone but the release host; a published build installs in about 17 s. Published builds remove that wait. Each platform's release host
+for everyone but the release host; a published build installs in about 17 s. Each platform's release host
 bootstraps once per compiler change and publishes the result; every other
 machine downloads it.
 
@@ -247,6 +247,16 @@ machine downloads it.
   SDK or environment, so every machine of a platform names the same sources
   the same way. Platforms: `linux-x86_64`, `linux-arm64`, `darwin-arm64`,
   `darwin-x86_64`.
+- **The GitHub mirror.** Every build is also a release asset on GitHub:
+  `https://github.com/OpenAgentsInc/openagents/releases/download/coax-build-<first 16 of source>/<platform>.tar.gz`,
+  with `.sha256` beside it (prereleases tagged `coax-build-…`, not product
+  releases). It exists because some machines reach GitHub but not
+  `storage.googleapis.com`: cloud agent sessions behind a network allowlist
+  (2026-11-07: the proxy refuses the bucket, so every such session
+  bootstrapped). `published.sh upload` writes both; `published.sh mirror`
+  copies every platform's bucket build to the mirror where it lacks it, and
+  the release host runs it each round, so builds published before the mirror
+  existed are backfilled.
 - **What is in it.** The compiler, the provenance helper, the C artifacts
   native tests link, and a manifest: the source fingerprint, platform,
   commit, compiler version, toolchain, link flags and the SHA-256 of every
@@ -272,9 +282,20 @@ machine downloads it.
   this tree and machine, every file against its hash, that a Linux build links
   no shared library, and that the compiler runs; then writes this machine's own
   provenance record, validates the release documents with it, installs it and
-  keeps it in the cache. A missing or failing build falls back to the
-  bootstrap and says why. `COAX_BUILD_FRESH=1` or `COAX_NO_PUBLISHED=1`
-  bootstraps.
+  keeps it in the cache. It reads the bucket first and the GitHub mirror
+  second. A missing or failing build falls back to the bootstrap and says
+  why, naming each place as `missing` (it answered and has no such build) or
+  `unreachable` (no answer: the network, a proxy or an allowlist).
+  `COAX_BUILD_FRESH=1` or `COAX_NO_PUBLISHED=1` bootstraps.
+- **When neither has your tree's build.** "missing" in both places means the
+  compiler's sources changed on `main` after the last publish; the release
+  hosts publish within about an hour and a half of a compiler change (the
+  Linux VM's strict build). If you only need to *use* the compiler (not
+  change or publish it), `COAX_MUTATION=0 coax/build.sh` bootstraps without
+  the mutation gates, as `coax/web/release.sh` does: tens of minutes instead
+  of hours on a small machine. Such a build is never published.
+  "unreachable" for the bucket alone is normal in an allowlisted session; for
+  both, the machine has no route to either and has to bootstrap.
 - **Trust.** A published build is as trusted as the release hosts and the
   bucket's write access (the automation service account), the way the local
   caches are as trusted as their machine. The checksum guards the transfer,
