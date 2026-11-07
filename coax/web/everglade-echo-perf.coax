@@ -12,29 +12,29 @@
 //     SIZE 1080 (1920x1080) or 720 (1280x720), at dpr 1
 // A frame's time is from one drawn frame to the next, so a frame the host held back (frame admission)
 // counts in the next drawn one's time. Prints one line: the drawn frames, frames a second, the frame
-// time's median, 95th percentile and longest, the frames held back, the CPU's median and 95th
-// percentile, the hair's share, her strand segments drawn and whether the shot holds 60 FPS. Exit 0 when it holds, 1 when it
+// time's median, 95th percentile and longest, the frames held back, the CPU's and the GPU's (the
+// host's latest submit-to-done time, coaxial_frame_admit's measure) medians and 95th percentiles, the hair's share, her strand segments drawn and whether the shot holds 60 FPS. Exit 0 when it holds, 1 when it
 // doesn't, 2 on bad usage.
 #load "valley-capture.coax";
 #load "../../aethyr/frame-report.coax";
 
 EP_FRAMES :: 1200;
 
-// The trace's rows, "gap:cpu:drawn,...|probe" (the gap since the last frame and the CPU's part in
-// whole microseconds, drawn 1 or 0), as drawn frames: each one's time since the drawn frame before it
-// (the first drawn frame starts the count and has none) and its CPU part. Returns how many; the rows
-// held back are added to `held`.
-ep_parse :: (t: string, gap: [] int, cpu: [] int, held: [] int) -> int {
-  n := 0; field := 0; v := 0; since := 0; started := false; row_gap := 0; row_cpu := 0;
+// The trace's rows, "gap:cpu:gpu:drawn,...|probe" (the gap since the last frame, the CPU's part and
+// the GPU's latest completion time in whole microseconds, drawn 1 or 0), as drawn frames: each one's
+// time since the drawn frame before it (the first drawn frame starts the count and has none), its CPU
+// part and the GPU time. Returns how many; the rows held back are added to `held`.
+ep_parse :: (t: string, gap: [] int, cpu: [] int, gpu: [] int, held: [] int) -> int {
+  n := 0; field := 0; v := 0; since := 0; started := false; row_gap := 0; row_cpu := 0; row_gpu := 0;
   for ch: t {
     if ch == '|' { break; }
     if ch >= '0' && ch <= '9' { v = v * 10 + cast(int) (ch - '0'); continue; }
     if ch == ':' || ch == ',' {
-      if field == 0 { row_gap = v; } else if field == 1 { row_cpu = v; }
+      if field == 0 { row_gap = v; } else if field == 1 { row_cpu = v; } else if field == 2 { row_gpu = v; }
       else {
         since += row_gap;
         if v == 1 {
-          if started && n < gap.count { gap[n] = since; cpu[n] = row_cpu; n += 1; }
+          if started && n < gap.count { gap[n] = since; cpu[n] = row_cpu; gpu[n] = row_gpu; n += 1; }
           started = true; since = 0;
         } else if started { held[0] += 1; }
       }
@@ -91,7 +91,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // the measuring script, with its length in milliseconds
   script: [1024] u8; k := 0;
   head := "(async()=>{coaxial.takeFrameTrace();const t0=performance.now();await new Promise(r=>{const f=()=>{if(performance.now()-t0<";
-  tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+(r[7]===0?0:1)).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)})()";
+  tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+Math.round(r[8]*1000)+':'+(r[7]===0?0:1)).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)})()";
   for ch: head { script[k] = ch; k += 1; }
   digits: [8] u8; d := 0; v := ms;
   while v > 0 { digits[d] = cast(u8) (48 + v % 10); v /= 10; d += 1; }
@@ -100,10 +100,11 @@ tool_main :: () -> int #export_c #effects(all) {
   n := cdp_evaluate(c[..], cast(string) script[0..<k]);
   if n < 0 { print("FAIL %\n", cdp_error(c[..])); cdp_close(c[..]); return 1; }
   text := jv_raw(c[0].doc[0], n);
-  gap: [EP_FRAMES] int; cpu: [EP_FRAMES] int; held: [1] int;
-  count := ep_parse(text, gap[..], cpu[..], held[..]);
+  gap: [EP_FRAMES] int; cpu: [EP_FRAMES] int; gpu: [EP_FRAMES] int; held: [1] int;
+  count := ep_parse(text, gap[..], cpu[..], gpu[..], held[..]);
   f := frame_stats(gap[..], count);
   p := frame_stats(cpu[..], count);
+  g := frame_stats(gpu[..], count);
   // after the bar: the hair's share (thousandths) / the strands' segments drawn (groom levels, #12988)
   share := 0; drawn := 0; at := 0; second := false;
   while at < text.count && text[at] != '|' { at += 1; }
@@ -114,8 +115,8 @@ tool_main :: () -> int #export_c #effects(all) {
   e := cdp_evaluate(c[..], "faceErrors.length===0");
   clean := e >= 0 && jv_raw(c[0].doc[0], e) == "true";
   holds := frame_holds(f);
-  print("% %x%: % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
-        shot, width, height, f.n, cast(f64) frame_fps10(f) / 10.0, ep_ms(f.p50), ep_ms(f.p95), ep_ms(f.max), held[0], ep_ms(p.p50), ep_ms(p.p95), share, drawn,
+  print("% %x%: % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; gpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
+        shot, width, height, f.n, cast(f64) frame_fps10(f) / 10.0, ep_ms(f.p50), ep_ms(f.p95), ep_ms(f.max), held[0], ep_ms(p.p50), ep_ms(p.p95), ep_ms(g.p50), ep_ms(g.p95), share, drawn,
         ifx holds then "holds 60 FPS" else "misses 60 FPS", ifx clean then "" else " (console errors)");
   cdp_close(c[..]);
   return ifx holds && clean then 0 else 1;
@@ -123,8 +124,8 @@ tool_main :: () -> int #export_c #effects(all) {
 lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 
 #test "A frame held back counts in the next drawn frame's time" {
-  gap: [4] int; cpu: [4] int; held: [1] int;
-  n := ep_parse("0:900:1,16667:1200:1,16700:300:0,16600:1100:1,|250", gap[..], cpu[..], held[..]);
-  #assert n == 2 && gap[0] == 16667 && cpu[0] == 1200 && gap[1] == 33300 && cpu[1] == 1100 && held[0] == 1;
-  #assert ep_parse("", gap[..], cpu[..], held[..]) == 0;
+  gap: [4] int; cpu: [4] int; gpu: [4] int; held: [1] int;
+  n := ep_parse("0:900:7000:1,16667:1200:7100:1,16700:300:7100:0,16600:1100:7300:1,|250", gap[..], cpu[..], gpu[..], held[..]);
+  #assert n == 2 && gap[0] == 16667 && cpu[0] == 1200 && gpu[0] == 7100 && gap[1] == 33300 && cpu[1] == 1100 && gpu[1] == 7300 && held[0] == 1;
+  #assert ep_parse("", gap[..], cpu[..], gpu[..], held[..]) == 0;
 }
