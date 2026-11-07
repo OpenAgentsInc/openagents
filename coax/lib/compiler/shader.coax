@@ -66,9 +66,9 @@ SH_VOID :: 0; SH_BOOL :: 1; SH_F32 :: 2; SH_S32 :: 3; SH_U32 :: 4; SH_INT :: 5;
 SH_TYPES :: 512; SH_PROCS :: 512; SH_INSTS :: 1024; SH_BINDS :: 64; SH_CONSTS :: 4096;
 // Local arrays behind views (Private storage) a module holds: the bindings' table keeps the room above the bindings.
 SH_PRIVS :: 3;
-SH_FTYPES :: 512; SH_LOCALS :: 2048; SH_LOOPS :: 16; SH_EDGES :: 2048; SH_RES :: 11;
+SH_FTYPES :: 512; SH_LOCALS :: 2048; SH_LOOPS :: 16; SH_EDGES :: 4096; SH_RES :: 11;
 // Loops nest at most SH_LOOPS deep and a module makes at most SH_EDGES
-// calls (their tables keep room for 64 and 16384).
+// calls (their tables keep room for 64 loops and, two words a call, 16384 calls).
 // The work view: the report, then the tables, then three streams (decorations,
 // types and globals, code), which the module joins after its preamble. The
 // code takes the rest of the view.
@@ -2022,6 +2022,7 @@ sh_big :: (mode:int,n:int)->int #effects(all) {
   #assert sh_big(1,SH_LOOPS)>0 && sh_big(1,SH_LOOPS+1)==-3;
 }
 #test "a module fits its limit of calls" {
+  #assert SH_W_EDGE+2*SH_EDGES<=SH_W_ADJ; // the edge table holds every call
   #assert sh_big(2,SH_EDGES)>0 && sh_big(2,SH_EDGES+1)==-3;
   #assert sh_big(3,4096)>0 && sh_big(3,4097)==-1 && sh_big(4,4096)>0 && sh_big(4,4097)==-3;
 }

@@ -947,7 +947,7 @@ eg_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,object
 }
 eg_shadow_fs :: (v:EgShade,vertices:[]u32,objects:[]EgObj,sheets:Tex2DArray,sheet:Sampler) {
   g0:=og_grad(v.uv);g1:=og_grad(v.uv1);
-  if v.cut==2 {word:=cast(int)v.slice;if og_material_coverage(v.uv,v.uv1,word,vertices,sheets,sheet,g0,g1)<og_word(vertices,word+18) {gpu_discard();}}
+  if v.cut==2 {word:=cast(int)v.slice;if og_material_coverage(v.uv,v.uv1,word,vertices,sheets,sheet,g0,g1)<og_word(vertices,word+18) {gpu_demote_helper();}}
   if ((v.cut==1)&&(gpu_sample_layer_level(sheets,sheet,v.uv,cast,trunc(s32)(v.slice),0.0f32).w<0.35f32)) {
     gpu_demote_helper();
   }
