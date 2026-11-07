@@ -123,8 +123,11 @@ refused. If it says the build is "missing" in both places, `main`'s compiler
 changed after the last publish (the release hosts catch up within about an
 hour and a half); to only use the compiler meanwhile, run
 `COAX_MUTATION=0 coax/build.sh` in the background (no mutation gates, never
-published) and work on something else. Details: `coax/RELEASE.md`, Published
-builds.
+published) and work on something else. In a shallow clone, run
+`git fetch --depth=2000 origin main` first: installing (published or
+bootstrapped) checks the release documents, which name the changelog's commit,
+and a clone without that commit is refused only after the build. Details:
+`coax/RELEASE.md`, Published builds.
 
 Keep iteration fast. Checks run while you work finish in minutes: test the
 units you touched, use small slices and fixtures, and run long gates in the
