@@ -1,0 +1,79 @@
+// Bounded owner/codec journey. Physical host adoption is a separate receipt.
+#module "aethyr.examples.resourcestream";
+#import "Basic";
+#load "../world/resource-stream.coax";
+
+rs_parity_record :: (bytes: [] u8, at: int, event: ResourceAccepted) #effects(all) {
+  resource_put64(bytes, at, event.tick); resource_put64(bytes, at + 8, event.key.owner);
+  resource_put64(bytes, at + 16, event.key.generation); resource_put64(bytes, at + 24, event.key.epoch);
+  resource_put_digest(bytes, at + 32, event.key.content);
+}
+resource_stream_journey :: (mode: int) -> [32] int #effects(all) {
+  out: [32] int; m := [1] ResourceManifest.[rs_fixture_manifest()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  if gpu.rr_open(r[..], gpu.RrLimits.{slots = 16, words = 10000}) != gpu.RrStatus.ok { return out; }
+  a := resource_stream_hold(s[..], m[..], 1); again := resource_stream_hold(s[..], m[..], 1); b := resource_stream_hold(s[..], m[..], 2);
+  if a.slot < 0 || again.slot < 0 || b.slot < 0 { return out; }
+  out[1] = s[0].owners[0].refs; out[2] = s[0].owners[1].refs;
+  t := resource_stream_request(s[..], m[..], q[..], r[..], 0);
+  ra := resource_stream_request(s[..], m[..], q[..], r[..], 1); rb := resource_stream_request(s[..], m[..], q[..], r[..], 2);
+  if t.status != ResourceStreamStatus.ok || ra.status != ResourceStreamStatus.ok || rb.status != ResourceStreamStatus.ok { return out; }
+  out[3] = s[0].budget[0].peak; out[4] = q[0].count; out[5] = r[0].words;
+  source := PNG_ONE; events: [3] ResourceAccepted; history: [192] u8; total := 0;
+  if mode == 0 {
+    if rs_fixture_complete(s[..], m[..], q[..], ra.key, source[..]) != ResourceStreamStatus.ok { return out; }
+  } else { if rs_fixture_complete(s[..], m[..], q[..], t.key, source[..]) != ResourceStreamStatus.ok { return out; } }
+  first := resource_stream_publish(s[..], m[..], 0, events[..]); if first < 0 { return out; }
+  out[6] = first; for i: 0..<first { rs_parity_record(history[..], total * 64, events[i]); total += 1; }
+  // A renderer may borrow on an extra display frame. Its own serial domain
+  // cannot change this session's future load generation.
+  if mode == 1 {
+    extra := resource_stream_borrow(s[..], 0); if extra.slot < 0 || !resource_stream_return(s[..], m[..], extra) { return out; }
+  }
+  if rs_fixture_complete(s[..], m[..], q[..], rb.key, source[..]) != ResourceStreamStatus.ok { return out; }
+  if mode == 0 {
+    if rs_fixture_complete(s[..], m[..], q[..], t.key, source[..]) != ResourceStreamStatus.ok { return out; }
+  } else { if rs_fixture_complete(s[..], m[..], q[..], ra.key, source[..]) != ResourceStreamStatus.ok { return out; } }
+  second := resource_stream_publish(s[..], m[..], 1, events[..]); if second < 0 { return out; }
+  out[7] = second; for i: 0..<second { rs_parity_record(history[..], total * 64, events[i]); total += 1; }
+  if total != 3 { return out; }
+  digest := assets.asset_id(cast(string) history[..]); for i: 0..<8 { out[8 + i] = cast(int) digest.words[i]; }
+  borrow := resource_stream_borrow(s[..], 1); if borrow.slot < 0 { return out; }
+  out[16] = s[0].serial; out[17] = borrow.serial;
+  if !resource_stream_drop(s[..], m[..], a) || !resource_stream_drop(s[..], m[..], again) { return out; }
+  out[18] = ifx s[0].owners[1].phase == ResourceOwnerPhase.ready && !resource_stream_ready(s[..], 1) then 1 else 0;
+  if !resource_stream_return(s[..], m[..], borrow) || !resource_stream_destroyed(s[..], m[..], q[..], r[..], ra.key) { return out; }
+  out[19] = s[0].owners[0].refs; out[20] = ifx resource_stream_ready(s[..], 2) then 1 else 0;
+  if !resource_stream_drop(s[..], m[..], b) || !resource_stream_destroyed(s[..], m[..], q[..], r[..], rb.key) || !resource_stream_destroyed(s[..], m[..], q[..], r[..], t.key) { return out; }
+  if s[0].budget[0].total != 0 || q[0].bytes != 0 || r[0].live != 0 { return out; }
+  next_claim := resource_stream_hold(s[..], m[..], 0); next := resource_stream_request(s[..], m[..], q[..], r[..], 0);
+  if next_claim.slot < 0 || next.status != ResourceStreamStatus.ok { return out; }
+  out[30] = next.key.generation;
+  out[25] = ifx resource_stream_complete(s[..], m[..], q[..], t.key, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.stale then 1 else 0;
+  wrong := next.key; wrong.epoch += 1;
+  out[26] = ifx resource_stream_complete(s[..], m[..], q[..], wrong, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.stale then 1 else 0;
+  if !resource_stream_retire(s[..], m[..]) { return out; }
+  out[21] = s[0].budget[0].used[6]; out[23] = ifx !resource_stream_finished(s[..]) then 1 else 0;
+  out[22] = ifx rs_fixture_complete(s[..], m[..], q[..], next.key, source[..]) == ResourceStreamStatus.unwanted then 1 else 0;
+  if !resource_stream_destroyed(s[..], m[..], q[..], r[..], next.key) { return out; }
+  out[24] = ifx resource_stream_finished(s[..]) && q[0].bytes == 0 && q[0].count == 0 && r[0].words == 0 && s[0].budget[0].total == 0 then 1 else 0;
+  out[27] = s[0].destroyed; out[28] = s[0].requests; out[29] = s[0].accepted; out[31] = 1; out[0] = 1;
+  return out;
+}
+#test "owner history follows accepted timing while renderer borrowing cannot alter load generations" #steps 100000000 {
+  a := resource_stream_journey(0); b := resource_stream_journey(1);
+  #assert a[0] == 1 && b[0] == 1 && a[1] == 2 && a[2] == 2 && a[3] == 847 && a[4] == 12 && a[5] == 11;
+  #assert a[6] == 0 && a[7] == 3 && b[6] == 1 && b[7] == 2;
+  different := false; for i: 8..<16 { if a[i] != b[i] { different = true; } } #assert different;
+  #assert a[16] == 6 && b[16] == 6 && a[17] == 1 && b[17] == 2 && a[30] == 8 && b[30] == 8;
+  for words: [2] [32] int.[a, b] {
+    #assert words[18] == 1 && words[19] == 1 && words[20] == 1 && words[21] == 16;
+    for i: 22..<27 { #assert words[i] == 1; }
+    #assert words[27] == 4 && words[28] == 4 && words[29] == 3 && words[31] == 1;
+  }
+}
+resource_stream_word :: (index: int) -> int #export_c #effects(all) {
+  if index < 0 || index >= 64 { return -1; }
+  words := resource_stream_journey(index / 32); return words[index % 32];
+}
+main :: () { for mode: 0..<2 { words := resource_stream_journey(mode); for word: words { print("%\n", word); } } }

@@ -1,0 +1,38 @@
+// Native/browser owner journeys; browser runs only through muted headless CDP.
+#load "../../coax/web/wasm-chrome.coax";
+#load "../../coax/lib/sys/proc-raw.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+rsph_run :: (args: [] string, output: [] u8) -> int {
+  errors: [8192] u8; env: [1] string; result := proc_run_bytes(args, env[0..<0], 180000, output, errors[..]);
+  if result.started != 0 || result.status != 0 || result.cut {
+    print("process % started % status % cut %\n", args[0], result.started, result.status, result.cut);
+    tool_errln(cast(string) errors[0..<result.err_n]); return -1;
+  } return result.out_n;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  temp: [1024] u8; native_path: [1100] u8; wasm_path: [1100] u8; dir := fs_temp("aethyr-resource-stream-", temp[..]); if dir.count == 0 { return 1; }
+  defer { removed := fs_remove(dir); }
+  native := fs_join(dir, "owners", native_path[..]); wasm := fs_join(dir, "owners.wasm", wasm_path[..]); output: [1048576] u8;
+  print("building native owners and canonical codecs\n");
+  build := [7] string.["coax/bin/coax", "build", "aethyr/examples/resource-stream-parity.coax", "--opt", "2", "-o", native];
+  if rsph_run(build[..], output[..]) < 0 { return 1; }
+  print("building Wasm owners and canonical codecs\n");
+  wasm_build := [4] string.["coax/web/wasm.sh", "aethyr/examples/resource-stream-parity.coax", "aethyr/tests/resource-stream-face.c", wasm];
+  if rsph_run(wasm_build[..], output[..]) < 0 { return 1; }
+  invoke := [1] string.[native]; n := rsph_run(invoke[..], output[..]); if n < 0 { return 1; }
+  expected: [64] int; count := 0; begin := 0;
+  for i: 0..<n { if output[i] == '\n' { if count >= 64 { return 1; } expected[count] = wc_parse(cast(string) output[begin..<i]); count += 1; begin = i + 1; } }
+  if count != 64 || begin != n || expected[0] != 1 || expected[31] != 1 || expected[32] != 1 || expected[63] != 1 || expected[30] != 8 || expected[62] != 8 { return 1; }
+  bytes: [16777216] u8; size := fs_read(wasm, bytes[..]); if size <= 0 { return 1; }
+  digest: [64] u8; if !S_hex(S_hash(cast(string) bytes[0..<size]), digest[..]) { return 1; } print("Wasm sha256 %\n", cast(string) digest[..]);
+  c: [1] Cdp; defer { cdp_close(c[..]); }
+  if !wc_open(c[..]) || !wc_file(c[..], "resource_stream", cast(string) bytes[0..<size]) || wc_load(c[..], "resource_stream", 512, "{}", WC_ZERO) != "ok" { tool_errln(cdp_error(c[..])); return 1; }
+  print("browser %\n", wc_eval(c[..], "navigator.userAgent"));
+  for i: 0..<64 {
+    digits: [24] u8; args: [32] u8; parts := [2] string.[wc_dec(digits[..], i), "n"];
+    observed := wc_call(c[..], "resource_stream_word", wc_cat(args[..], parts[..]));
+    if observed.count == 0 || wc_parse(observed) != expected[i] { print("word % differs: native % browser %\n", i, expected[i], observed); return 1; }
+    print("word % %\n", i, expected[i]);
+  }
+  print("PASS native/Wasm resource owners: 64 exact words, wasm % bytes\n", size); return 0;
+}

@@ -441,6 +441,15 @@ Native and Wasm agree on every word. The deliberately corrupt image passes
 metadata planning but fails the
 actual decoder; no successful plan alone permits publication.
 
+The [owner journey](../examples/resource-stream-parity.coax) has a separate
+[64-word transcript](../fixtures/resource-stream-parity.out). Two concrete
+parents and two claims on one parent still allocate only one shared
+dependency. A cancelled parent keeps its edge until its final borrower and
+physical destruction finish. Its two schedules produce different accepted
+histories; an extra render borrow does not change a later load generation.
+This qualifies controller behavior, not the unfinished actual streamed
+host or its allocation trace.
+
 Seven named lines distinguish geometry, textures, collision/navigation,
 baked lighting, audio, actor state and staging. The existing inbox leases
 and GPU ledger still enforce their own aggregate ceilings. Named admission

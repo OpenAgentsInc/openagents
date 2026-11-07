@@ -1,0 +1,374 @@
+// Concrete dependency owners for RCM1. Platform adapters retain this record
+// and its immutable manifest until every old effect and borrower has ended.
+// No callback publishes: only publish at the caller's paid fixed-step tick.
+#authority;
+#load "resource-admission.coax";
+
+RESOURCE_STREAM_REFERENCES :: 64;
+RESOURCE_STREAM_LOADS :: 4;
+ResourceOwnerPhase :: enum u8 { absent; loading; loaded; ready; retiring; }
+ResourceStreamStatus :: enum u8 { ok; invalid; capacity; stale; budget; unwanted; failed; waiting; closed; }
+ResourceLoadKey :: struct { owner: int = -1; generation: int; epoch: int; content: assets.AssetId; }
+ResourceReference :: struct { slot: int = -1; serial: int; epoch: int; }
+ResourceBorrowRef :: struct { slot: int = -1; serial: int; epoch: int; }
+ResourceClaimEntry :: struct { live: bool; serial: int; root: int; }
+ResourceBorrowEntry :: struct { live: bool; serial: int; owner: int; }
+ResourceOwner :: struct {
+  active: bool;
+  refs: int; // live root claims plus one edge per retained concrete parent
+  borrowers: int;
+  generation: int;
+  content: assets.AssetId;
+  phase: ResourceOwnerPhase;
+  admission: [1] ResourceAdmission;
+}
+ResourceStream :: struct {
+  valid: bool;
+  closing: bool;
+  epoch: int;
+  manifest: assets.AssetId;
+  count: int;
+  serial: int;
+  borrow_serial: int; // renderer frequency never changes load generations
+  last_tick: int = -1;
+  load_limit: int;
+  loading: int;
+  requests: int;
+  accepted: int;
+  destroyed: int;
+  refused: int;
+  budget: [1] ResourceBudget;
+  owners: [RESOURCE_MANIFEST_MAX] ResourceOwner;
+  wanted: [RESOURCE_MANIFEST_MAX] bool;
+  claims: [RESOURCE_STREAM_REFERENCES] ResourceClaimEntry;
+  borrows: [RESOURCE_STREAM_REFERENCES] ResourceBorrowEntry;
+}
+ResourceLoad :: struct { status: ResourceStreamStatus = ResourceStreamStatus.invalid; reason: ResourceAdmissionStatus = ResourceAdmissionStatus.invalid; key: ResourceLoadKey; }
+ResourceAccepted :: struct { tick: int; key: ResourceLoadKey; }
+#load "tests/resource-stream-fixture.coax";
+
+#test "shared dependencies count once per concrete parent and publish only as a complete tick closure" {
+  m := [1] ResourceManifest.[rs_fixture_manifest()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 16, words = 10000}) == gpu.RrStatus.ok;
+  a := resource_stream_hold(s[..], m[..], 1); again := resource_stream_hold(s[..], m[..], 1); b := resource_stream_hold(s[..], m[..], 2);
+  #assert a.slot == 0 && again.slot == 1 && b.slot == 2 && s[0].owners[1].refs == 2 && s[0].owners[0].refs == 2;
+  #assert s[0].wanted[0] && s[0].wanted[1] && s[0].wanted[2];
+  #assert resource_stream_drop(s[..], m[..], a) && !resource_stream_drop(s[..], m[..], a) && s[0].owners[0].refs == 2;
+  t := resource_stream_request(s[..], m[..], q[..], r[..], 0);
+  ra := resource_stream_request(s[..], m[..], q[..], r[..], 1); rb := resource_stream_request(s[..], m[..], q[..], r[..], 2);
+  #assert t.status == ResourceStreamStatus.ok && ra.status == ResourceStreamStatus.ok && rb.status == ResourceStreamStatus.ok;
+  #assert assets.asset_same(t.key.content, m[0].entries[0].plan.content) && assets.asset_same(rb.key.content, m[0].entries[2].plan.content);
+  #assert s[0].loading == 3 && s[0].requests == 3 && r[0].live == 3 && r[0].words == 11 && s[0].budget[0].total == 847;
+  source := PNG_ONE; events: [3] ResourceAccepted;
+  #assert rs_fixture_complete(s[..], m[..], q[..], ra.key, source[..]) == ResourceStreamStatus.ok;
+  #assert resource_stream_publish(s[..], m[..], 10, events[..]) == 0 && !resource_stream_ready(s[..], 1);
+  #assert rs_fixture_complete(s[..], m[..], q[..], rb.key, source[..]) == ResourceStreamStatus.ok;
+  #assert resource_stream_publish(s[..], m[..], 11, events[..]) == 0;
+  #assert rs_fixture_complete(s[..], m[..], q[..], t.key, source[..]) == ResourceStreamStatus.ok && s[0].loading == 0;
+  events[0].tick = 99;
+  #assert resource_stream_publish(s[..], m[..], 12, events[0..<2]) == -1 && s[0].last_tick == 11 && events[0].tick == 99;
+  #assert resource_stream_publish(s[..], m[..], 12, events[..]) == 3 && s[0].accepted == 3;
+  for i: 0..<3 { #assert events[i].tick == 12 && events[i].key.owner == i && events[i].key.epoch == 7 && resource_stream_ready(s[..], i); }
+  invalid_owner := s; invalid_owner[0].valid = false;
+  #assert !resource_stream_ready(invalid_owner[..], 0) && !resource_stream_current(invalid_owner[..], t.key);
+  bad_key := t.key; bad_key.owner = -1; #assert !resource_stream_current(s[..], bad_key);
+  edge := s; edge[0].count = 64; bad_key.owner = 64;
+  #assert !resource_stream_current(edge[..], bad_key) && !resource_stream_ready(edge[..], 64);
+  #assert events[1].key.generation == ra.key.generation && assets.asset_same(events[2].key.content, rb.key.content);
+  #assert resource_stream_publish(s[..], m[..], 12, events[..]) == -1;
+  #assert resource_stream_complete(s[..], m[..], q[..], ra.key, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.stale;
+  borrow := resource_stream_borrow(s[..], 1); #assert borrow.slot == 0 && s[0].owners[1].borrowers == 1;
+  #assert resource_stream_drop(s[..], m[..], again) && !s[0].wanted[1] && s[0].owners[0].refs == 2 && s[0].owners[1].phase == ResourceOwnerPhase.ready;
+  #assert !resource_stream_ready(s[..], 1) && resource_stream_borrow(s[..], 1).slot == -1 && s[0].refused == 1;
+  #assert !resource_stream_destroyed(s[..], m[..], q[..], r[..], ra.key);
+  #assert resource_stream_return(s[..], m[..], borrow) && !resource_stream_return(s[..], m[..], borrow);
+  #assert s[0].owners[1].phase == ResourceOwnerPhase.retiring && s[0].owners[0].refs == 2;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], ra.key) && !resource_stream_destroyed(s[..], m[..], q[..], r[..], ra.key);
+  #assert s[0].owners[1].admission[0].status == ResourceAdmissionStatus.released;
+  #assert s[0].owners[0].refs == 1 && resource_stream_ready(s[..], 2) && r[0].live == 2;
+  #assert resource_stream_drop(s[..], m[..], b) && !s[0].wanted[0] && s[0].owners[0].refs == 1;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], rb.key) && s[0].owners[0].phase == ResourceOwnerPhase.retiring;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], t.key);
+  #assert s[0].budget[0].total == 0 && q[0].bytes == 0 && q[0].count == 0 && r[0].words == 0 && s[0].destroyed == 3;
+  #assert !resource_stream_finished(s[..]) && resource_stream_retire(s[..], m[..]) && resource_stream_finished(s[..]);
+}
+#test "cancelled effects retain tickets and dependencies without being wanted or publishing prefixes" {
+  m := [1] ResourceManifest.[rs_fixture_manifest()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 16, words = 10000}) == gpu.RrStatus.ok;
+  claim := resource_stream_hold(s[..], m[..], 1);
+  parent := resource_stream_request(s[..], m[..], q[..], r[..], 1); child := resource_stream_request(s[..], m[..], q[..], r[..], 0);
+  held := q[0].bytes; #assert held > 0 && s[0].loading == 2;
+  #assert resource_stream_drop(s[..], m[..], claim) && !s[0].wanted[0] && !s[0].wanted[1] && s[0].owners[0].refs == 1;
+  #assert q[0].bytes == held && s[0].budget[0].used[6] == 32 && !resource_stream_destroyed(s[..], m[..], q[..], r[..], parent.key);
+  source := PNG_ONE; events: [3] ResourceAccepted;
+  #assert rs_fixture_complete(s[..], m[..], q[..], child.key, source[..]) == ResourceStreamStatus.unwanted;
+  #assert s[0].owners[0].phase == ResourceOwnerPhase.loaded && resource_stream_publish(s[..], m[..], 0, events[..]) == 0;
+  #assert resource_stream_complete(s[..], m[..], q[..], parent.key, source[0..<68], ResourceCostStatus.ok) == ResourceStreamStatus.failed;
+  #assert s[0].budget[0].used[6] == 0 && s[0].owners[0].refs == 1 && s[0].owners[1].phase == ResourceOwnerPhase.retiring;
+  replacement_queue := q; #assert hiq_reset(replacement_queue[..]); retained := s[0].budget[0].total;
+  #assert !resource_stream_destroyed(s[..], m[..], replacement_queue[..], r[..], parent.key) && s[0].budget[0].total == retained;
+  changed := m; changed[0].identity.words[0] ^= 1;
+  #assert !resource_stream_destroyed(s[..], changed[..], q[..], r[..], parent.key) && s[0].budget[0].total == retained;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], parent.key) && s[0].owners[0].phase == ResourceOwnerPhase.retiring;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], child.key) && q[0].bytes == 0 && r[0].live == 0 && s[0].accepted == 0;
+}
+#test "failed and superseded generations clean up once while replacement and old epoch effects stay separate" {
+  m := [1] ResourceManifest.[rs_fixture_manifest()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 16, words = 10000}) == gpu.RrStatus.ok;
+  claim := resource_stream_hold(s[..], m[..], 0); old := resource_stream_request(s[..], m[..], q[..], r[..], 0); source := PNG_ONE;
+  #assert resource_stream_complete(s[..], m[..], q[..], old.key, source[..], ResourceCostStatus.decode) == ResourceStreamStatus.failed;
+  #assert resource_stream_request(s[..], m[..], q[..], r[..], 0).status == ResourceStreamStatus.waiting;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], old.key) && s[0].owners[0].active && s[0].owners[0].refs == 1;
+  next := resource_stream_request(s[..], m[..], q[..], r[..], 0); #assert next.status == ResourceStreamStatus.ok && next.key.generation > old.key.generation;
+  held := q[0].bytes;
+  #assert resource_stream_complete(s[..], m[..], q[..], old.key, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.stale && q[0].bytes == held;
+  bad := next.key; bad.epoch += 1;
+  #assert resource_stream_complete(s[..], m[..], q[..], bad, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.stale;
+  bad = next.key; bad.content.words[7] ^= 1;
+  #assert resource_stream_complete(s[..], m[..], q[..], bad, source[..], ResourceCostStatus.ok) == ResourceStreamStatus.stale && q[0].bytes == held;
+  #assert resource_stream_retire(s[..], m[..]) && !resource_stream_retire(s[..], m[..]) && !resource_stream_finished(s[..]);
+  #assert q[0].bytes == held && resource_stream_hold(s[..], m[..], 0).slot == -1 && resource_stream_borrow(s[..], 0).slot == -1;
+  #assert rs_fixture_complete(s[..], m[..], q[..], next.key, source[..]) == ResourceStreamStatus.unwanted;
+  events: [3] ResourceAccepted; #assert resource_stream_publish(s[..], m[..], 1, events[..]) == -1;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], next.key) && resource_stream_finished(s[..]);
+  #assert s[0].loading == 0 && q[0].count == 0 && r[0].words == 0;
+}
+#test "a diamond closure holds one edge per concrete owner and drops never-loaded parents in dependency order" {
+  m := [1] ResourceManifest.[rs_fixture_diamond()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];
+  a := resource_stream_hold(s[..], m[..], 2);
+  #assert s[0].wanted[0] && s[0].wanted[1] && s[0].wanted[2];
+  b := resource_stream_hold(s[..], m[..], 1); t := resource_stream_hold(s[..], m[..], 0);
+  #assert a.slot == 0 && b.slot == 1 && t.slot == 2 && s[0].owners[0].refs == 3 && s[0].owners[1].refs == 2;
+  #assert resource_stream_drop(s[..], m[..], a) && s[0].owners[0].refs == 2 && s[0].owners[1].refs == 1 && !s[0].owners[2].active;
+  #assert resource_stream_drop(s[..], m[..], b) && s[0].owners[0].refs == 1 && !s[0].owners[1].active;
+  #assert resource_stream_drop(s[..], m[..], t) && s[0].owners[0].refs == 0 && !s[0].owners[0].active && !s[0].wanted[0];
+}
+#test "world manifest budget epoch and exact load limits precede requests and typed pressure changes no tickets" {
+  m := [1] ResourceManifest.[rs_fixture_manifest()]; caps := [7] int.[2000, 2000, 2000, 2000, 2000, 2000, 2000];
+  budget := resource_budget_open(caps, 10000, 8, 8);
+  for bad_kind: 0..<7 {
+    changed := m; bad_budget := budget; epoch := 7; loads := 1;
+    if bad_kind == 0 { changed[0].valid = false; } if bad_kind == 1 { changed[0].count = 65; } if bad_kind == 2 { bad_budget.valid = false; }
+    if bad_kind == 3 { epoch = 0; } if bad_kind == 4 { loads = 0; } if bad_kind == 5 { loads = 5; } if bad_kind == 6 { bad_budget.total = 1; }
+    #assert !resource_stream_open(changed[..], bad_budget, epoch, loads).valid;
+  }
+  exact := resource_stream_open(m[..], budget, 1, 4);
+  #assert exact.valid && exact.epoch == 1 && exact.count == 3 && exact.load_limit == 4 && exact.serial == 0 && exact.last_tick == -1;
+  #assert assets.asset_same(exact.manifest, m[0].identity) && exact.budget[0].total_cap == 10000;
+  s := [1] ResourceStream.[resource_stream_open(m[..], budget, 7, 1)];
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 16, words = 10000}) == gpu.RrStatus.ok;
+  #assert resource_stream_request(s[..], m[..], q[..], r[..], -1).status == ResourceStreamStatus.invalid;
+  #assert resource_stream_request(s[..], m[..], q[..], r[..], 3).status == ResourceStreamStatus.invalid;
+  #assert resource_stream_request(s[..], m[..], q[..], r[..], 0).status == ResourceStreamStatus.unwanted;
+  claim := resource_stream_hold(s[..], m[..], 1); child := resource_stream_request(s[..], m[..], q[..], r[..], 0);
+  #assert child.status == ResourceStreamStatus.ok && child.reason == ResourceAdmissionStatus.ok;
+  serial := s[0].serial; ticket_serial := q[0].serial;
+  #assert resource_stream_request(s[..], m[..], q[..], r[..], 1).status == ResourceStreamStatus.capacity && s[0].serial == serial && q[0].serial == ticket_serial && s[0].refused == 1;
+  source := PNG_ONE; #assert rs_fixture_complete(s[..], m[..], q[..], child.key, source[..]) == ResourceStreamStatus.ok;
+  s[0].budget[0].caps[1] = 245;
+  blocked := resource_stream_request(s[..], m[..], q[..], r[..], 1);
+  #assert blocked.status == ResourceStreamStatus.budget && blocked.reason == ResourceAdmissionStatus.category && s[0].refused == 2;
+  #assert s[0].serial == serial && q[0].serial == ticket_serial && s[0].owners[1].phase == ResourceOwnerPhase.absent;
+  events: [3] ResourceAccepted;
+  #assert resource_stream_publish(s[..], m[..], -1, events[..]) == -1 && resource_stream_publish(s[..], m[..], 0, events[..]) == 1;
+  #assert resource_stream_ready(s[..], 0) && !resource_stream_ready(s[..], -1) && !resource_stream_ready(s[..], 3);
+  #assert resource_stream_retire(s[..], m[..]) && resource_stream_request(s[..], m[..], q[..], r[..], 0).status == ResourceStreamStatus.closed;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], child.key) && resource_stream_finished(s[..]);
+}
+#test "claim and borrow tables reuse slots under new serials and closing retains all live borrowers" {
+  m := [1] ResourceManifest.[rs_fixture_manifest()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];
+  claims: [64] ResourceReference;
+  for i: 0..<64 { claims[i] = resource_stream_hold(s[..], m[..], 0); #assert claims[i].slot == i && claims[i].serial == i + 1; }
+  #assert s[0].owners[0].refs == 64 && resource_stream_hold(s[..], m[..], 0).slot == -1 && s[0].refused == 1;
+  #assert resource_stream_drop(s[..], m[..], claims[0]); next := resource_stream_hold(s[..], m[..], 0);
+  #assert next.slot == 0 && next.serial == 65 && !resource_stream_drop(s[..], m[..], claims[0]) && s[0].owners[0].refs == 64;
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 16, words = 10000}) == gpu.RrStatus.ok;
+  request := resource_stream_request(s[..], m[..], q[..], r[..], 0); source := PNG_ONE;
+  #assert rs_fixture_complete(s[..], m[..], q[..], request.key, source[..]) == ResourceStreamStatus.ok;
+  events: [3] ResourceAccepted; #assert resource_stream_publish(s[..], m[..], 0, events[..]) == 1;
+  borrows: [64] ResourceBorrowRef;
+  for i: 0..<64 { borrows[i] = resource_stream_borrow(s[..], 0); #assert borrows[i].slot == i && borrows[i].serial == i + 1; }
+  #assert s[0].serial == 66 && s[0].borrow_serial == 64;
+  #assert s[0].owners[0].borrowers == 64 && resource_stream_borrow(s[..], 0).slot == -1 && s[0].refused == 2;
+  #assert !resource_stream_return(s[..], m[..], ResourceBorrowRef.{}) && !resource_stream_drop(s[..], m[..], ResourceReference.{slot = 0, serial = 1, epoch = 7});
+  #assert resource_stream_return(s[..], m[..], borrows[0]); fresh := resource_stream_borrow(s[..], 0);
+  #assert fresh.slot == 0 && fresh.serial > borrows[0].serial && !resource_stream_return(s[..], m[..], borrows[0]);
+  #assert resource_stream_retire(s[..], m[..]) && s[0].owners[0].refs == 0 && s[0].owners[0].borrowers == 64 && !resource_stream_finished(s[..]);
+  #assert !resource_stream_drop(s[..], m[..], next) && !resource_stream_ready(s[..], 0) && !resource_stream_destroyed(s[..], m[..], q[..], r[..], request.key);
+  for i: 1..<64 { #assert resource_stream_return(s[..], m[..], borrows[i]); }
+  #assert s[0].owners[0].phase == ResourceOwnerPhase.ready && s[0].owners[0].borrowers == 1;
+  #assert resource_stream_return(s[..], m[..], fresh) && s[0].owners[0].phase == ResourceOwnerPhase.retiring;
+  #assert resource_stream_destroyed(s[..], m[..], q[..], r[..], request.key) && resource_stream_finished(s[..]) && q[0].bytes == 0;
+}
+#test "old manifest references hostile slots and spent serials cannot touch a current concrete owner" {
+  m := [1] ResourceManifest.[rs_fixture_manifest()]; s := [1] ResourceStream.[rs_fixture_stream(m[..])];
+  #assert resource_stream_hold(s[..], m[..], -1).slot == -1 && resource_stream_hold(s[..], m[..], 3).slot == -1;
+  #assert s[0].refused == 2;
+  claim := resource_stream_hold(s[..], m[..], 0);
+  for field: 0..<4 {
+    bad := claim; if field == 0 { bad.slot = -1; } if field == 1 { bad.slot = 64; } if field == 2 { bad.epoch += 1; } if field == 3 { bad.serial += 1; }
+    #assert !resource_stream_drop(s[..], m[..], bad) && !resource_stream_return(s[..], m[..], ResourceBorrowRef.{slot = bad.slot, serial = bad.serial, epoch = bad.epoch});
+  }
+  changed := m; changed[0].identity.words[7] ^= 1;
+  #assert !resource_stream_bound(s[..], changed[..]) && resource_stream_hold(s[..], changed[..], 0).slot == -1 && !resource_stream_retire(s[..], changed[..]);
+  changed = m; changed[0].count = 2; #assert !resource_stream_bound(s[..], changed[..]);
+  changed = m; changed[0].valid = false; #assert !resource_stream_bound(s[..], changed[..]);
+  q := [1] HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)]; r: [1] gpu.RenderRegistry;
+  #assert gpu.rr_open(r[..], gpu.RrLimits.{slots = 16, words = 10000}) == gpu.RrStatus.ok;
+  #assert resource_stream_request(s[..], changed[..], q[..], r[..], 0).status == ResourceStreamStatus.invalid;
+  #assert !resource_stream_drop(s[..], changed[..], claim) && !resource_stream_return(s[..], changed[..], ResourceBorrowRef.{slot = claim.slot, serial = claim.serial, epoch = claim.epoch});
+  s[0].serial = 9223372036854775806; request := resource_stream_request(s[..], m[..], q[..], r[..], 0);
+  #assert request.status == ResourceStreamStatus.ok && request.key.generation == 9223372036854775807;
+  #assert resource_stream_hold(s[..], m[..], 0).slot == -1;
+  source := PNG_ONE; #assert rs_fixture_complete(s[..], m[..], q[..], request.key, source[..]) == ResourceStreamStatus.ok;
+  events: [3] ResourceAccepted; #assert resource_stream_publish(s[..], m[..], 0, events[..]) == 1;
+  s[0].borrow_serial = 9223372036854775806; final_borrow := resource_stream_borrow(s[..], 0);
+  #assert final_borrow.serial == 9223372036854775807 && s[0].serial == 9223372036854775807;
+  #assert resource_stream_borrow(s[..], 0).slot == -1 && resource_stream_return(s[..], m[..], final_borrow);
+  #assert resource_stream_retire(s[..], m[..]) && resource_stream_destroyed(s[..], m[..], q[..], r[..], request.key) && resource_stream_finished(s[..]);
+  fresh := [1] ResourceStream.[rs_fixture_stream(m[..])]; fresh[0].serial = 9223372036854775806;
+  last := resource_stream_hold(fresh[..], m[..], 0); #assert last.serial == 9223372036854775807;
+  #assert resource_stream_request(fresh[..], m[..], q[..], r[..], 0).status == ResourceStreamStatus.capacity && fresh[0].serial == 9223372036854775807;
+  #assert resource_stream_drop(fresh[..], m[..], last) && resource_stream_retire(fresh[..], m[..]) && resource_stream_finished(fresh[..]);
+  invalid: [1] ResourceStream; invalid[0].closing = true;
+  #assert !resource_stream_finished(invalid[..]) && !resource_stream_bound(invalid[..], m[..]) && !resource_stream_ready(invalid[..], 0);
+}
+
+resource_stream_open :: (m: [] ResourceManifest, budget: ResourceBudget, epoch: int, loads: int) -> ResourceStream #effects(all) {
+  if !m[0].valid || !resource_manifest_shape(m[0]) || !budget.valid || budget.total != 0 || epoch < 1 || loads < 1 || loads > RESOURCE_STREAM_LOADS { return ResourceStream.{}; }
+  return ResourceStream.{valid = true, epoch = epoch, manifest = m[0].identity, count = m[0].count, load_limit = loads, budget = [1] ResourceBudget.[budget]};
+}
+resource_stream_bound :: (s: [] ResourceStream, m: [] ResourceManifest) -> bool #effects(all) {
+  return s[0].valid && m[0].valid && s[0].count == m[0].count && assets.asset_same(s[0].manifest, m[0].identity);
+}
+resource_stream_interest :: (s: [] ResourceStream, m: [] ResourceManifest) #effects(all) {
+  for i: 0..<s[0].count { s[0].wanted[i] = false; }
+  for claim: s[0].claims { if claim.live { s[0].wanted[claim.root] = true; } }
+  for back: 0..<s[0].count {
+    i := s[0].count - 1 - back;
+    if s[0].wanted[i] { for d: 0..<m[0].entries[i].dependencies.count { s[0].wanted[m[0].entries[i].dependencies.owners[d]] = true; } }
+  }
+}
+resource_stream_sweep :: (s: [] ResourceStream, m: [] ResourceManifest) #effects(all) {
+  for back: 0..<s[0].count {
+    i := s[0].count - 1 - back;
+    if !s[0].owners[i].active || s[0].owners[i].refs != 0 || s[0].owners[i].borrowers != 0 { continue; }
+    phase := s[0].owners[i].phase;
+    if phase == ResourceOwnerPhase.absent {
+      s[0].owners[i].active = false;
+      for d: 0..<m[0].entries[i].dependencies.count { s[0].owners[m[0].entries[i].dependencies.owners[d]].refs -= 1; }
+    } else if phase == ResourceOwnerPhase.loaded || phase == ResourceOwnerPhase.ready { s[0].owners[i].phase = ResourceOwnerPhase.retiring; }
+  }
+}
+resource_stream_hold :: (s: [] ResourceStream, m: [] ResourceManifest, root: int) -> ResourceReference #effects(all) {
+  if !resource_stream_bound(s, m) || s[0].closing || root < 0 || root >= s[0].count || s[0].serial == 9223372036854775807 { s[0].refused += 1; return ResourceReference.{}; }
+  for slot: 0..<RESOURCE_STREAM_REFERENCES { if !s[0].claims[slot].live {
+    s[0].serial += 1; s[0].claims[slot] = ResourceClaimEntry.{live = true, serial = s[0].serial, root = root}; s[0].owners[root].refs += 1;
+    for back: 0..<s[0].count {
+      i := s[0].count - 1 - back;
+      if s[0].owners[i].refs != 0 && !s[0].owners[i].active {
+        s[0].owners[i].active = true;
+        for d: 0..<m[0].entries[i].dependencies.count { s[0].owners[m[0].entries[i].dependencies.owners[d]].refs += 1; }
+      }
+    }
+    resource_stream_interest(s, m); return ResourceReference.{slot = slot, serial = s[0].serial, epoch = s[0].epoch};
+  } }
+  s[0].refused += 1; return ResourceReference.{};
+}
+resource_stream_drop :: (s: [] ResourceStream, m: [] ResourceManifest, ref: ResourceReference) -> bool #effects(all) {
+  if !resource_stream_bound(s, m) || ref.slot < 0 || ref.slot >= RESOURCE_STREAM_REFERENCES || ref.epoch != s[0].epoch { return false; }
+  entry := s[0].claims[ref.slot]; if !entry.live || entry.serial != ref.serial { return false; }
+  s[0].claims[ref.slot] = ResourceClaimEntry.{}; s[0].owners[entry.root].refs -= 1;
+  resource_stream_interest(s, m); resource_stream_sweep(s, m); return true;
+}
+resource_stream_key :: (s: [] ResourceStream, owner: int) -> ResourceLoadKey #effects(all) {
+  return ResourceLoadKey.{owner = owner, generation = s[0].owners[owner].generation, epoch = s[0].epoch, content = s[0].owners[owner].content};
+}
+resource_stream_current :: (s: [] ResourceStream, key: ResourceLoadKey) -> bool #effects(all) {
+  if !s[0].valid || key.owner < 0 || key.owner >= s[0].count || key.epoch != s[0].epoch { return false; }
+  owner := s[0].owners[key.owner];
+  return owner.phase != ResourceOwnerPhase.absent && owner.generation == key.generation && assets.asset_same(owner.content, key.content);
+}
+resource_stream_request :: (s: [] ResourceStream, m: [] ResourceManifest, q: [] HostInboxQueue, r: [] gpu.RenderRegistry, owner: int) -> ResourceLoad #effects(all) {
+  if !resource_stream_bound(s, m) || owner < 0 || owner >= s[0].count { return ResourceLoad.{}; }
+  if s[0].closing { return ResourceLoad.{status = ResourceStreamStatus.closed}; }
+  if !s[0].wanted[owner] { return ResourceLoad.{status = ResourceStreamStatus.unwanted}; }
+  if s[0].owners[owner].phase != ResourceOwnerPhase.absent { return ResourceLoad.{status = ResourceStreamStatus.waiting}; }
+  if s[0].loading >= s[0].load_limit || s[0].serial == 9223372036854775807 { s[0].refused += 1; return ResourceLoad.{status = ResourceStreamStatus.capacity}; }
+  admission := resource_budget_admit(s[0].budget[..], q, r, m[0].entries[owner].plan);
+  if admission.status != ResourceAdmissionStatus.ok { s[0].refused += 1; return ResourceLoad.{status = ResourceStreamStatus.budget, reason = admission.status}; }
+  s[0].serial += 1; s[0].owners[owner].generation = s[0].serial; s[0].owners[owner].content = m[0].entries[owner].plan.content;
+  s[0].owners[owner].admission[0] = admission; s[0].owners[owner].phase = ResourceOwnerPhase.loading; s[0].loading += 1; s[0].requests += 1;
+  return ResourceLoad.{status = ResourceStreamStatus.ok, reason = ResourceAdmissionStatus.ok, key = resource_stream_key(s, owner)};
+}
+// The adapter supplies the actual codec result after all operation effects
+// stopped borrowing scratch. Source remains retained by its encoded ticket.
+resource_stream_complete :: (s: [] ResourceStream, m: [] ResourceManifest, q: [] HostInboxQueue, key: ResourceLoadKey, source: [] u8, decoded: ResourceCostStatus) -> ResourceStreamStatus #effects(all) {
+  if !resource_stream_bound(s, m) || !resource_stream_current(s, key) || s[0].owners[key.owner].phase != ResourceOwnerPhase.loading { return ResourceStreamStatus.stale; }
+  if !resource_budget_settle(s[0].budget[..], q, s[0].owners[key.owner].admission[..]) { return ResourceStreamStatus.invalid; }
+  s[0].loading -= 1;
+  if decoded != ResourceCostStatus.ok || !resource_matches(m[0].entries[key.owner].plan, source) {
+    s[0].owners[key.owner].phase = ResourceOwnerPhase.retiring; return ResourceStreamStatus.failed;
+  }
+  s[0].owners[key.owner].phase = ResourceOwnerPhase.loaded; resource_stream_sweep(s, m);
+  if !s[0].wanted[key.owner] { return ResourceStreamStatus.unwanted; }
+  return ResourceStreamStatus.ok;
+}
+resource_stream_publish :: (s: [] ResourceStream, m: [] ResourceManifest, tick: int, out: [] ResourceAccepted) -> int #effects(all) {
+  if !resource_stream_bound(s, m) || s[0].closing || tick <= s[0].last_tick { return -1; }
+  next := [1] ResourceStream.[s[0]]; events: [RESOURCE_MANIFEST_MAX] ResourceAccepted; n := 0;
+  for i: 0..<s[0].count {
+    if next[0].owners[i].phase != ResourceOwnerPhase.loaded || !next[0].wanted[i] { continue; }
+    ready := true;
+    for d: 0..<m[0].entries[i].dependencies.count { if next[0].owners[m[0].entries[i].dependencies.owners[d]].phase != ResourceOwnerPhase.ready { ready = false; } }
+    if ready { next[0].owners[i].phase = ResourceOwnerPhase.ready; events[n] = ResourceAccepted.{tick = tick, key = resource_stream_key(next[..], i)}; n += 1; }
+  }
+  if out.count < n { return -1; }
+  next[0].last_tick = tick; next[0].accepted += n;
+  s[0] = next[0]; for i: 0..<n { out[i] = events[i]; } return n;
+}
+resource_stream_ready :: (s: [] ResourceStream, owner: int) -> bool #effects(all) {
+  return s[0].valid && !s[0].closing && owner >= 0 && owner < s[0].count && s[0].wanted[owner] && s[0].owners[owner].phase == ResourceOwnerPhase.ready;
+}
+resource_stream_borrow :: (s: [] ResourceStream, owner: int) -> ResourceBorrowRef #effects(all) {
+  if !resource_stream_ready(s, owner) || s[0].borrow_serial == 9223372036854775807 { s[0].refused += 1; return ResourceBorrowRef.{}; }
+  for slot: 0..<RESOURCE_STREAM_REFERENCES { if !s[0].borrows[slot].live {
+    s[0].borrow_serial += 1; s[0].borrows[slot] = ResourceBorrowEntry.{live = true, serial = s[0].borrow_serial, owner = owner}; s[0].owners[owner].borrowers += 1;
+    return ResourceBorrowRef.{slot = slot, serial = s[0].borrow_serial, epoch = s[0].epoch};
+  } }
+  s[0].refused += 1; return ResourceBorrowRef.{};
+}
+resource_stream_return :: (s: [] ResourceStream, m: [] ResourceManifest, ref: ResourceBorrowRef) -> bool #effects(all) {
+  if !resource_stream_bound(s, m) || ref.slot < 0 || ref.slot >= RESOURCE_STREAM_REFERENCES || ref.epoch != s[0].epoch { return false; }
+  entry := s[0].borrows[ref.slot]; if !entry.live || entry.serial != ref.serial { return false; }
+  s[0].borrows[ref.slot] = ResourceBorrowEntry.{}; s[0].owners[entry.owner].borrowers -= 1;
+  resource_stream_sweep(s, m); return true;
+}
+// Physical destruction has completed. Dependency edges fall only now, not
+// when a root is dropped or an AbortController was merely signalled.
+resource_stream_destroyed :: (s: [] ResourceStream, m: [] ResourceManifest, q: [] HostInboxQueue, r: [] gpu.RenderRegistry, key: ResourceLoadKey) -> bool #effects(all) {
+  if !resource_stream_bound(s, m) || !resource_stream_current(s, key) || s[0].owners[key.owner].phase != ResourceOwnerPhase.retiring { return false; }
+  if !resource_budget_release(s[0].budget[..], q, r, s[0].owners[key.owner].admission[..]) { return false; }
+  // Preserve the released allocation receipt for diagnostics; phase absent
+  // fences the old generation and a later request replaces the admission.
+  s[0].owners[key.owner].phase = ResourceOwnerPhase.absent; s[0].destroyed += 1;
+  resource_stream_sweep(s, m); return true;
+}
+resource_stream_retire :: (s: [] ResourceStream, m: [] ResourceManifest) -> bool #effects(all) {
+  if !resource_stream_bound(s, m) || s[0].closing { return false; }
+  s[0].closing = true;
+  for i: 0..<RESOURCE_STREAM_REFERENCES { if s[0].claims[i].live {
+    s[0].owners[s[0].claims[i].root].refs -= 1; s[0].claims[i] = ResourceClaimEntry.{};
+  } }
+  resource_stream_interest(s, m); resource_stream_sweep(s, m); return true;
+}
+resource_stream_finished :: (s: [] ResourceStream) -> bool #effects(all) {
+  if !s[0].valid || !s[0].closing { return false; }
+  for i: 0..<s[0].count { if s[0].owners[i].active { return false; } }
+  return true;
+}

@@ -522,6 +522,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/resource-stream-parity.coax",
+      "chapter": "aethyr/book/ch016-budgets-that-refuse.md",
+      "stdout": "aethyr/fixtures/resource-stream-parity.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/resource-cost-parity.coax",
       "chapter": "aethyr/book/ch016-budgets-that-refuse.md",
       "stdout": "aethyr/fixtures/resource-cost-parity.out",

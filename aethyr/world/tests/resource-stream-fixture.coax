@@ -1,0 +1,28 @@
+// Source-derived fixtures for the owner graph, independent of its counters.
+rs_fixture_manifest :: () -> ResourceManifest #effects(all) {
+  source := PNG_ONE; inputs := [3] [] u8.[source[..], source[..], source[..]];
+  specs := [3] ResourceSpec.[ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 1},
+    ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.textures, side = 2},
+    ResourceSpec.{format = ResourceFormat.image_mips, category = ResourceCategory.lighting, side = 2}];
+  deps: [3] ResourceDependencies; deps[1].count = 1; deps[2].count = 1;
+  bytes: [1368] u8; out: [1] ResourceManifest;
+  if resource_manifest_build(inputs[..], specs[..], deps[..], bytes[..]) != ResourceManifestStatus.ok { return ResourceManifest.{}; }
+  if resource_manifest_read(bytes[..], assets.asset_id(cast(string) bytes[..]), out[..]) != ResourceManifestStatus.ok { return ResourceManifest.{}; }
+  return out[0];
+}
+rs_fixture_stream :: (m: [] ResourceManifest) -> ResourceStream #effects(all) {
+  caps := [7] int.[2000, 2000, 2000, 2000, 2000, 2000, 2000];
+  return resource_stream_open(m, resource_budget_open(caps, 10000, 8, 8), 7, 4);
+}
+rs_fixture_diamond :: () -> ResourceManifest #effects(all) {
+  m := rs_fixture_manifest(); m.entries[2].dependencies.count = 2; m.entries[2].dependencies.owners[1] = 1;
+  bytes: [1368] u8; out: [1] ResourceManifest;
+  if resource_manifest_write(m, bytes[..]) != ResourceManifestStatus.ok { return ResourceManifest.{}; }
+  if resource_manifest_read(bytes[..], assets.asset_id(cast(string) bytes[..]), out[..]) != ResourceManifestStatus.ok { return ResourceManifest.{}; }
+  return out[0];
+}
+rs_fixture_complete :: (s: [] ResourceStream, m: [] ResourceManifest, q: [] HostInboxQueue, key: ResourceLoadKey, source: [] u8) -> ResourceStreamStatus #effects(all) {
+  work: [256] u8; pixels: [20] u8;
+  result := resource_decode_image(m[0].entries[key.owner].plan, source, work[..], pixels[..]);
+  return resource_stream_complete(s, m, q, key, source, result);
+}

@@ -23,6 +23,9 @@ as muted headless Chrome 152 in `resource-cost-hosts.log`.
 | ASan/UBSan with leak detection | Same 32 words, zero sanitizer output |
 | Book chapter registries | All registries pass; status counts unchanged |
 | Tools language/reason gate | 1,848 tracked tools; zero new without a reason |
+| `resource-stream.coax --root-only` mutation | 440 killed, zero survivors |
+| Native/browser owner fixture | All 64 words equal across two actual codec/owner journeys |
+| Owner release and ASan/UBSan fixtures | Same 64 words; zero sanitizer output |
 
 All mutation gates execute their complete loaded baseline checks. Earlier
 survivors were addressed with exact capacity, lane, cost-forgery, closure,
@@ -101,8 +104,8 @@ copies are published, including a failure after three reservations.
 
 ## Work still required before closing #12990
 
-- Concrete shared/dependency owners, last borrowers and real asynchronous
-  failure/cancel/stale/superseded completion receipts.
+- Real asynchronous host adoption of the checked shared/dependency owners,
+  including failure/cancel/stale/superseded completion receipts.
 - Named interest/update/draw/audio/prefetch profiles bound to the existing
   cells, independent texture/lighting lifetimes and persistent services.
 - Actual shared-loader adoption in a walkable world larger than residency,
@@ -118,15 +121,57 @@ copies are published, including a failure after three reservations.
 - A final residual-adapter inventory and teaching/registry updates covering
   the completed consumer rather than these component contracts alone.
 
-The next owner boundary must distinguish wanted state from retained
-references. A cancelled parent can retain a dependency through a pending
-effect or final borrower without wanting that dependency published. Count
-each concrete parent's dependency edge once, retain it until actual parent
-destruction, and compute wanted closure from live claims. Old-epoch effects
-still need cleanup through their original records; replacement cannot reset
-or overwrite those records early. Fixed-tick publication additionally needs
-the complete dependency closure ready. These requirements are not yet
-implemented by the admission component alone.
+## Concrete dependency owners
+
+`resource-stream.coax` now implements separate retained-reference and
+wanted-closure records. Two roots sharing a texture hold one concrete
+texture owner. A second claim on an existing parent adds no second edge to
+that parent's dependencies. Dropping the final root claim prevents new
+borrows immediately; existing borrows and pending effects keep physical
+owners and their edges until actual destruction. Failed loads retire their
+physical attempt before a new generation may be admitted. Closing retains
+the old backing record and owner epoch for cleanup rather than resetting it
+under late callbacks.
+
+Readiness publication checks the retained manifest binding, a new fixed
+tick, current generation/epoch/content identity, wanted state and complete
+dependency readiness. Publication stages its whole output and refuses a
+short event span atomically. There are 64 root claims, 64 immutable borrows
+and at most four unfinished loads. Separate typed claim/borrow references
+and independent borrow serials keep render frequency out of load generation
+identity. Every new identifier refuses at exhaustion; cleanup stays usable.
+
+`owner-source-sha256.txt` pins this component qualification. The example
+`aethyr/examples/resource-stream-parity.coax` executes the same canonical
+PNG decoder and controller on native and browser Wasm. Both journeys retain
+three concrete resources, an 847-byte declared peak, twelve initial CPU
+tickets and eleven GPU-ledger words. One schedule publishes all three
+resources at tick 1; the other publishes the dependency at tick 0 and its
+parents at tick 1. Their accepted-history SHA-256 values differ as expected.
+An extra renderer borrow changes its private borrow serial but both
+journeys' next logical load generation remains 8. Cancelled loading keeps
+sixteen scratch bytes through completion, then waits for the destruction
+receipt. Both end with four actual controller retirements, zero CPU tickets,
+zero ledger words and no active owners.
+
+The executed 70,649-byte Wasm SHA-256 is
+`27289aed7f6c6bba86246b900ccac586dcba82ffe98615fb4de88595fffeafbc`.
+Its artifact, generated C and native/instrumented binaries are retained in
+the same shared directory as the earlier cost fixture. Commands:
+
+```sh
+coax/bin/coax mutate aethyr/world/resource-stream.coax --library --root-only --jobs 8
+coax/web/tool.sh aethyr/tools/resource-stream-hosts.coax
+coax/bin/coax run aethyr/examples/resource-stream-parity.coax --release
+```
+
+These are controller/codec receipts. They do not allocate real GPU objects
+or execute actual asynchronous SDK work. The actual host coordinator must
+drain completion facts only on paid steps and retain every applied failure,
+success and destruction outcome in its replay history. The full consumer
+and recorded-history replay requirement remains open; running these two
+live schedules is not a claim that different live timings produce identical
+simulation or a substitute for replaying a retained host record.
 
 The historical #12847 cell/edge/save work is retained and was inspected.
 Its closure did not qualify an activated large-world realm. The legacy
