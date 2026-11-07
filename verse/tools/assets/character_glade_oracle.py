@@ -99,12 +99,15 @@ if village:
     assert actual==expected and [sum(r[0]==i for r in actual) for i in range(4)]==[167,77,308,151]
     assert 'L 251 Quaternius Medieval Village MegaKit Source|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
     assert sum(1 for kind,license,_,offset,size,_,name in (struct.unpack_from('<BBHIII32s',raw,32+i*48) for i in range(struct.unpack_from('<I',raw,4)[0])) if kind==4 and license==251)==1
-    starts=[(-18,-23),(18,-20),(-50,25),(35,30)]
+    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23)]
+    site_groups=[0,1,2,3,3,0,1,3]
     tiles={'MI_Brick':0,'MI_FlatTiles':1,'MI_MetalOrnaments':2,'MI_Plaster':3,'MI_RockTrim':4,
            'MI_RoundRocks':5,'MI_RoundTiles':6,'MI_UnevenBrick':7,'MI_Vine':8,'MI_WoodTrim':9,
            'MI_WoodTrim_Wear':9,'MI_WindowGlass':10}
     cache={};vstart=village_vertices[0];vi=vstart;ii=next(k for k,x in enumerate(ids) if x>=vstart)
-    for group,name,t in actual:
+    placements=[(site,name,t) for group,name,t in actual for site,kind in enumerate(site_groups) if kind==group]
+    assert len(placements)==2*167+2*77+308+3*151
+    for group,name,t in placements:
         if name not in cache:
             gltf=json.loads((village_root/'glTF'/f'{name}.gltf').read_text())
             blob=(village_root/'glTF'/gltf['buffers'][0]['uri']).read_bytes()

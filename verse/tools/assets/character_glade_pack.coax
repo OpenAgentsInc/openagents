@@ -53,7 +53,7 @@ gp_village_tile :: (material:string)->int {
  if material=="MI_RoundTiles" {return 6;}if material=="MI_UnevenBrick" {return 7;}if material=="MI_Vine" {return 8;}
  if material=="MI_WoodTrim" || material=="MI_WoodTrim_Wear" {return 9;}if material=="MI_WindowGlass" {return 10;}return -1;
 }
-GP_VERTS :: 600000;
+GP_VERTS :: 900000;
 Gp :: struct {v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[64]string;encoded:[64]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[67108864]u8;atlas:[4194304]u8;village_layer:int = -1;}
 gp_word :: (b:[]u8,at:int,v:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(v>>cast(u32)(k*8));}}
 gp_clamp :: (x:f32,a:f32,b:f32)->f32 {return ifx x<a then a else ifx x>b then b else x;}
@@ -149,8 +149,8 @@ gp_village_normal :: (t:[12]f32,n:[3]f32)->[3]f32 {
  out:=[3]f32.[a[0]*n[0]+b[0]*n[1]+c[0]*n[2],a[1]*n[0]+b[1]*n[1]+c[1]*n[2],a[2]*n[0]+b[2]*n[1]+c[2]*n[2]];
  magnitude:=sqrt(out[0]*out[0]+out[1]*out[1]+out[2]*out[2]);if magnitude<0.000001 {ph_die("village source normal is empty");}for i:0..<3 {out[i]/=magnitude;}return out;
 }
-gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int) {
- path:=txt_cat3(w[0].txt[..],root,"/glTF/",txt_cat(w[0].txt[..],part.name,".gltf"));gl_load(g,path);site:=meadow.exp_site(part.group);base:=meadow.exp_height(site.x,site.z);t:=part.m;
+gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int,site_id:int) {
+ path:=txt_cat3(w[0].txt[..],root,"/glTF/",txt_cat(w[0].txt[..],part.name,".gltf"));gl_load(g,path);site:=meadow.exp_site(site_id);base:=meadow.exp_height(site.x,site.z);t:=part.m;
  for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {
   pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;idx:[262144]f64;
   nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;r:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);r=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;
@@ -166,7 +166,7 @@ gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int) {
 }
 gp_village :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,layout:string) {
  buf:[262144]u8;n:=fs_read(layout,buf[..]);if n<0 {ph_die("missing village layout");}atlas:=gp_village_atlas(w,iw,root);at:=0;counts:[4]int;
- while at<n {e:=at;while e<n && buf[e]!='\n' {e+=1;}if e>at {part:=gp_village_part(cast(string)buf[at..<e]);if !part.ok {ph_die("invalid village layout");}counts[part.group]+=1;gp_village_mesh(w,g,root,part,atlas);}at=e+1;}
+ while at<n {e:=at;while e<n && buf[e]!='\n' {e+=1;}if e>at {part:=gp_village_part(cast(string)buf[at..<e]);if !part.ok {ph_die("invalid village layout");}counts[part.group]+=1;for site:0..<meadow.EXP_SITES {if meadow.exp_site_group(site)==part.group {gp_village_mesh(w,g,root,part,atlas,site);}}}at=e+1;}
  if counts[0]!=167 || counts[1]!=77 || counts[2]!=308 || counts[3]!=151 {ph_die("incomplete village layout");}
 }
 gp_ground :: (w:[]Gp,white:int) {

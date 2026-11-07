@@ -4,25 +4,36 @@
 #load "character-glade.coax" as glade;
 
 ExpSite :: struct {x:f32;z:f32;left:f32;right:f32;back:f32;front:f32;}
-EXP_SITES :: 4;
+EXP_SITES :: 8;
 #test "experimental building sites are distinct, walkable and inside the meadow" {
  for i:0..<EXP_SITES {a:=exp_site(i);#assert abs(a.x)+a.left<82 && abs(a.x)+a.right<82 && abs(a.z)+a.back<82 && abs(a.z)+a.front<82;
   #assert exp_clear(a.x,a.z) && exp_height(a.x,a.z)==glade.cg_height(a.x,a.z);
-  for j:0..<i {b:=exp_site(j);#assert abs(a.x-b.x)>a.left+a.right+b.left+b.right || abs(a.z-b.z)>a.back+a.front+b.back+b.front;}}
+  for j:0..<i {b:=exp_site(j);#assert a.x+a.right+4<b.x-b.left || b.x+b.right+4<a.x-a.left || a.z+a.front+4<b.z-b.back || b.z+b.front+4<a.z-a.back;}}
  #assert !exp_clear(0,0);
+}
+#test "village has nearby groups of buildings as well as open spawn" {
+ #assert exp_site_group(4)==3 && exp_site_group(5)==0 && exp_site_group(6)==1 && exp_site_group(7)==3;
+ #assert abs(exp_site(4).x-exp_site(2).x)<32 && abs(exp_site(5).z-exp_site(2).z)<22;
+ #assert abs(exp_site(7).x-exp_site(0).x)<16 && !exp_clear(0,0);
 }
 #test "experimental foundations are level and fade continuously into the glade" {
  for i:0..<EXP_SITES {a:=exp_site(i);y:=exp_height(a.x,a.z);
   #assert abs(exp_height(a.x-a.left,a.z-a.back)-y)<0.001;
   #assert abs(exp_height(a.x+a.right,a.z+a.front)-y)<0.001;
-  #assert abs(exp_height(a.x+a.right+4,a.z)-glade.cg_height(a.x+a.right+4,a.z))<0.001;}
+  x:=a.x+a.right+4;unaffected:=true;for j:0..<EXP_SITES {if exp_distance(exp_site(j),x,a.z)<4 {unaffected=false;}}
+  if unaffected {#assert abs(exp_height(x,a.z)-glade.cg_height(x,a.z))<0.001;}}
 }
 exp_site :: (i:int)->ExpSite {
  if i==0 {return ExpSite.{x= -18,z= -23,left=10,right=4,back=10.8,front=4.1};}
  if i==1 {return ExpSite.{x=18,z= -20,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==2 {return ExpSite.{x= -50,z=25,left=3.7,right=23.6,back=6.9,front=6.1};}
- return ExpSite.{x=35,z=30,left=3.7,right=6.1,back=6.9,front=5.1};
+ if i==2 {return ExpSite.{x= -50,z=25,left=2.9,right=22,back=7,front=6.2};}
+ if i==3 {return ExpSite.{x=35,z=30,left=2.9,right=6.2,back=7,front=5.2};}
+ if i==4 {return ExpSite.{x= -20,z=25,left=2.9,right=6.2,back=7,front=5.2};}
+ if i==5 {return ExpSite.{x= -45,z=44,left=10,right=4,back=7.5,front=4.2};}
+ if i==6 {return ExpSite.{x= -19,z=45,left=4.2,right=3.8,back=4.1,front=3.9};}
+ return ExpSite.{x= -5,z= -23,left=2.9,right=6.2,back=7,front=5.2};
 }
+exp_site_group :: (i:int)->int {if i<4 {return i;}if i==4 || i==7 {return 3;}if i==5 {return 0;}return 1;}
 exp_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
 exp_distance :: (s:ExpSite,x:f32,z:f32)->f32 {
  dx:=exp_max(s.x-s.left-x,x-s.x-s.right);dz:=exp_max(s.z-s.back-z,z-s.z-s.front);return exp_max(dx,dz);

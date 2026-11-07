@@ -497,7 +497,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "ffbbb0b0864c65e5cb95f3f647c4b1a18b3b3d62248eab2d23767a6a82eba9ef",
+    "sha256": "b1132a1e38ad323398f4c0f87df70e9c6635743c3269fef47956199da84c49a6",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -506,7 +506,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "00fa3f0449e25c68156023497c12f620629ef59c39ffdd6eec803b73767e6c76",
+    "sha256": "b047d050331d7683db77d00a844982d2cee93c71de736fa6c30ef905169c2e5c",
     "budget_bytes": 67108864
   },
   "terrain": {
@@ -526,10 +526,10 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "b8e58b48a1729b80980a9280e2a32152e091af803cfb638d18518af314e489a4"
+      "sha256": "30ef6cb05a3a1aa6c0facb1df10de6d7c2bfcc5f992332b82cda305eb149e240"
     }
   },
-  "scope": "Nature meadow and four unique, source-authored Medieval Village sample-scene layouts; original Character Create scene and wardrobe remain unchanged.",
+  "scope": "Nature meadow and eight placements of four source-authored Medieval Village sample-scene layouts, grouped into larger settlements; original Character Create scene and wardrobe remain unchanged.",
   "village": {
     "package": "village",
     "revision": "b7e482187ae8533fea743014248b3c6b029f49f7bb6d3494f2fe217e62a66447",
@@ -584,7 +584,65 @@
     ],
     "duplicate": "House C2 has identical local parts and is omitted",
     "textures": "One padded 1024-square atlas from the source base-color textures",
-    "runtime_qualification": "static visual geometry; building collision is not yet authored"
+    "runtime_qualification": "static visual geometry; building collision is not yet authored",
+    "placements": [
+      {
+        "source": "House C",
+        "origin": [
+          -18,
+          -23
+        ]
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          18,
+          -20
+        ]
+      },
+      {
+        "source": "Houses A",
+        "origin": [
+          -50,
+          25
+        ]
+      },
+      {
+        "source": "Houses D",
+        "origin": [
+          35,
+          30
+        ]
+      },
+      {
+        "source": "Houses D",
+        "origin": [
+          -20,
+          25
+        ]
+      },
+      {
+        "source": "House C",
+        "origin": [
+          -45,
+          44
+        ]
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          -19,
+          45
+        ]
+      },
+      {
+        "source": "Houses D",
+        "origin": [
+          -5,
+          -23
+        ]
+      }
+    ]
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",

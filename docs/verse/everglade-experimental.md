@@ -8,8 +8,9 @@ edge.
 
 The world contains the four distinct layouts from Quaternius's Medieval Village
 Godot sample scene: House C, Tower, Houses A, and Houses D. House C2 is an exact
-local-layout duplicate of House C and is not duplicated. These layouts retain all
-703 source piece transforms, original meshes and base-color textures. They are
+local-layout duplicate of House C and is not duplicated. Eight placements combine these layouts into larger settlements, using 1,249
+source-authored pieces with their original transforms, meshes and base-color
+textures. They are
 static visual buildings; building collisions and interactive doors have not yet
 been authored. The terrain is levelled under the sites and blends back into the
 meadow. The extra geometry uses a single padded texture atlas and a 64 MiB pack
