@@ -6033,6 +6033,16 @@ scene is ready. Full-resolution interchange GLBs and contact sheets confer no
 new runtime-renderer, collision-hull or shader qualification. See
 `assets/registry/README.md` and `docs/verification/asset-library-2026-11-06/`.
 
+Character Create's Nature glade adds one static environment record (flag 16,
+32-byte vertices, zero joints) to the existing indexed people draw path. It
+never reads the animation palette or receives appearance/eye markers. Original
+wardrobe vertex, index and image payloads remain byte-identical; the combined
+pack remains below 32 MiB. The glade sky/light/wind path is selected only by
+Character Create's existing view marker. Camera and appearance saves retain
+their separate state. No host ABI or shared/native renderer qualification is
+inferred. See `docs/verse/character-glade.md` and
+`docs/verification/character-glade-2026-11-06/`.
+
 ## Everglade's private Link experiment is reversible and keeps room authority
 
 The unlisted `experiments/link-raid` page admits an owner-local combined pack.

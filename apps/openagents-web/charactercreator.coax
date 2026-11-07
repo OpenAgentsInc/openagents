@@ -8,7 +8,7 @@ VERTEX_FLOATS :: 16;
 
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 Creator :: struct {
-  on:bool; configured:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
+  on:bool; configured:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
   clock:f32; pose_at:f32; revision:int; saved:int; focused:int;
@@ -106,6 +106,11 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
     b[0].draws[n*4]=cast(u32)b[0].part_first[p];b[0].draws[n*4+1]=cast(u32)b[0].part_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
   for i:0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s.eye_color][k];}out[i*24+23]=2;}
+  if s.glade_count>0 && n<43 {
+    for k:0..<24 {out[n*24+k]=0;}
+    out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
+    b[0].draws[n*4]=cast(u32)s.glade_first;b[0].draws[n*4+1]=cast(u32)s.glade_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+  }
   b[0].draw_n=n;return n;
 }
 
@@ -164,7 +169,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   }
   for i:13..<15 { b:=s[0].boxes[i]; n=text(out,n,ifx i==13 then "RESET" else "SURPRISE ME",b.x0+10*k,b.y0+23*k,10*k,gold); }
   if s[0].mobile {b:=s[0].boxes[15];n=text(out,n,ifx s[0].pan_mode then "DRAG: PAN" else "DRAG: ROTATE",b.x0+10*k,b.y0+23*k,10*k,gold);}
-  if !s[0].mobile {n=text(out,n,"LEFT DRAG: ROTATE / RIGHT DRAG: PAN / SCROLL: ZOOM",w*0.5-230*k,h-77*k,9*k,dim);}
+  if !s[0].mobile {n=text(out,n,"LEFT DRAG: ROTATE / RIGHT DRAG: PAN / SCROLL: ZOOM",w*0.5-230*k,h-77*k,9*k,ink(k,0.20,0.23,0.15));}
   for i:0..<u.count { u[i]=0; }
   u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[10]=2;u[11]=0;
   // A steady studio camera; dragging turns the figure, the wheel changes distance.
@@ -176,7 +181,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   u[20]=0;u[21]=fy;u[22]=fz;u[23]=w*0.5;
   u[24]=1;u[25]=0;u[26]=0;u[27]=ifx s[0].mobile then (h-384*k)*0.5 else h*0.52;
   u[28]=0;u[29]=-fz;u[30]=fy;
-  u[32]=-0.4;u[33]=0.8;u[34]=0.6;
+  u[32]=-0.278;u[33]=0.913;u[34]=0.300;
   return n;
 }
 pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
@@ -252,12 +257,15 @@ preset :: (s:[]Creator,family:int) {
 ensure :: (s:[]Creator) {if !s[0].configured {preset(s,s[0].outfit);}}
 reset :: (s:[]Creator) { s[0].pan_x=0;s[0].pan_y=0;s[0].pan_mode=false;s[0].piece=18;s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].eye_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
 catalog :: (s:[]Creator,t:string) {
-  s[0].source_n=0;
+  s[0].source_n=0;s[0].glade_count=0;
   for i:0..<80 {s[0].source_count[i]=0;}
   at:=0;
   while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;} row:=t[at..<e];at=e+1;
     if row.count<9 || row[0..<2]!="C " {continue;}
     ne:=figs.bd_word_end(row,2);name:=row[2..<ne];
+    if name=="glade/environment" {
+      p:=ne;s[0].glade_first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].glade_count=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);s[0].glade_word=figs.bd_whole_at(row,p);
+    }
     for i:0..<80 {if name==PART_NAMES[i] {
       p:=ne;s[0].source_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);
       s[0].source_count[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);
@@ -277,7 +285,7 @@ catalog :: (s:[]Creator,t:string) {
 probe :: (s:Creator,f:int)->int {
   if f==0 {return s.source_n;} if f==1 {return s.outfit;}if f==2 {return ifx s.female then 1 else 0;}
   if f==3 {return s.variant;}if f==4 {return s.dye;}if f==5 {return s.skin;}if f==6 {return s.pose;}
-  if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}if f==13 {return int(s.yaw*1000);}
+  if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}if f==13 {return int(s.yaw*1000);}if f==14 {return s.glade_count;}
   return -1;
 }
 append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}return at+t.count;}
@@ -396,4 +404,17 @@ mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
   s[0].source_count[19]=0;#assert !catalog_ready(s[0]);
   s[0].worn[19]=true;bytes:[64]u8;size:=save(s[0],bytes[..]);t:[1]Creator;
   #assert restore(t[..],cast(string)bytes[0..<size]) && t[0].worn[19];
+}
+
+#test "creator glade catalog keeps scenery separate from wardrobe and saved appearance" {
+  s:[1]Creator;catalog(s[..],"C glade/environment 9 12 250 100 8 0\n");
+  #assert s[0].glade_first==9 && s[0].glade_count==12 && s[0].glade_word==100 && s[0].source_n==0;
+  // A scenery draw needs no animation palette and never receives the eye-color marker.
+  ensure(s[..]);for i:0..<80 {if PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
+  b:[1]figs.Bodies;b[0].ready=true;out:[44*24]f32;n:=scene(s[0],b[..],out[..]);
+  #assert n>1 && out[(n-1)*24+15]==16 && out[(n-1)*24+7]==100;
+  #assert b[0].draws[(n-1)*4]==9 && b[0].draws[(n-1)*4+1]==12;
+  saved:[64]u8;size:=save(s[0],saved[..]);t:[1]Creator;
+  #assert restore(t[..],cast(string)saved[0..<size]) && t[0].glade_count==0;
+  catalog(s[..],"C other 0 3 1 0 3 65\n");#assert s[0].glade_count==0;
 }

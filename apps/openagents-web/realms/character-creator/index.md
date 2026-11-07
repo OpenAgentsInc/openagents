@@ -10,3 +10,9 @@ Create a Quaternius human in Aethyr. Changes appear immediately on the animated 
 - RESET restores the studio look. SURPRISE ME changes appearance. The browser keeps this studio's state in its own save slot.
 
 Art: Quaternius Modular Character Outfits - Fantasy Source, Universal Base Characters and Universal Animation Library, CC0 1.0 Universal. The renderer and animation playback are Aethyr's existing people pipeline. No WoW artwork or code is used.
+
+The preview stands in a 3D Nature glade: a winding path, pale rock formations,
+green woodland, autumn birches, flowers and mushrooms beneath a cyan sky.
+Grass and leaves move in the wind. Zooming and panning explore the scene with
+the character. It is rebuilt from the Quaternius Nature Source assets against
+the pack's first preview image.

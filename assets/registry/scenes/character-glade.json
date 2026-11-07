@@ -1,0 +1,265 @@
+{
+  "schema": "oa-scene-v1",
+  "id": "openagents/scenes/character-glade",
+  "assets": [
+    {
+      "id": "quaternius/nature/birch-1",
+      "revision": "642c0476444b6f170630a1da6aa327f3bbfb9655ea93a70dec8ae9681fadb031"
+    },
+    {
+      "id": "quaternius/nature/birch-2",
+      "revision": "698f546d1b99dece31ce573fc51595936a680e58722a69f140e3f4b6d654e22b"
+    },
+    {
+      "id": "quaternius/nature/birch-3",
+      "revision": "bdb62c9ef3704d7d91bbd06047fcefd16e063aa62a19fd5a97f8e974d57200e9"
+    },
+    {
+      "id": "quaternius/nature/birch-4",
+      "revision": "990fa47911d6127b349c29c893a6b63e9efb52181f41364e785c54fa712fa135"
+    },
+    {
+      "id": "quaternius/nature/birch-5",
+      "revision": "a67973947dfee7982c7de4909d77b93f69722ee1d6ba22204cfa4987e8691597"
+    },
+    {
+      "id": "quaternius/nature/bush-common-flowers",
+      "revision": "1accb32f5e9e7d129bb6c2ea20d90d44464c49e27f7485919dcabf4fa4acf1e8"
+    },
+    {
+      "id": "quaternius/nature/commontree-1",
+      "revision": "99970fcb5207e5d8d3e89da16f722f42bad2d819c536359610ff1b2a7a0e83c2"
+    },
+    {
+      "id": "quaternius/nature/commontree-2",
+      "revision": "e0daf5db9e1e28d54e17fbf8ea0fd81005124e7dd7959f61b1b5415ba6a62d39"
+    },
+    {
+      "id": "quaternius/nature/commontree-3",
+      "revision": "1366eea41dfe08d9fecd49737a0855c35acae5ae52e89f016fcc0b25385e5b00"
+    },
+    {
+      "id": "quaternius/nature/commontree-4",
+      "revision": "defb0039fb1ba0a6eff067ab19bcd654cb5179da0264c61795243b92dc9eba6b"
+    },
+    {
+      "id": "quaternius/nature/commontree-5",
+      "revision": "ed6cf08e0ac701033ae466aace173b27e3df44a0fc8ee2ab43d1662cba61b6f8"
+    },
+    {
+      "id": "quaternius/nature/fern-1",
+      "revision": "3adb4cbb7a22f13b9d12d65223de331deb61b0a9feb260189560ef79558e3762"
+    },
+    {
+      "id": "quaternius/nature/flower-1-group",
+      "revision": "6693bb10e68954cf3bf75fa480bd37dbd6f6d1724c3e5ad96c8d3ca968fbe116"
+    },
+    {
+      "id": "quaternius/nature/mushroom-common",
+      "revision": "848b9580a785e24ac5b6a7a116bfeb70d77deb4a6e7cd2e91a1d9894eaf2809d"
+    },
+    {
+      "id": "quaternius/nature/rock-big-1",
+      "revision": "968b9d1cb9947c0c6d206bcb7d721e6e3d23706109e3ec9ccdb4fda6f7e68b5a"
+    },
+    {
+      "id": "quaternius/nature/rock-big-2",
+      "revision": "ae2ba6409e118b1989b6e691a0577d0b17f0e2bc51d10c5c1daed0c24495817c"
+    }
+  ],
+  "reference": {
+    "package": "nature",
+    "revision": "0e05d58ed4beda3f9bae85f924ff3d578cb724fd82d427a59bc72a9570760b0a",
+    "path": "Preview_1.jpg",
+    "sha256": "e9bbf4408c8bc8fc39ed43988cbf2a369a4cccc5a827141d55d37f24613fe13d"
+  },
+  "composition": {
+    "path": "verse/character-glade.coax",
+    "sha256": "c5dc2b142ef48bb55f42993eb54fc2479e3f9acdd4307f1155003aa898cc5f11"
+  },
+  "shader": {
+    "path": "apps/openagents-web/gpu/character-glade.coax",
+    "sha256": "1825eb6870675fd4eeed16bf488be55f7275093d534858789deac7275654ad6f"
+  },
+  "packer": {
+    "path": "verse/tools/assets/character_glade_pack.coax",
+    "sha256": "268158f9372ddc9ba1a6ecac5674282ce15540734f76039e259fa12bd4ecebe6"
+  },
+  "runtime": {
+    "pack": "/realms/character-creator/assets/glade.pack",
+    "sha256": "4dba248735a675b6a2a7a3e4837ad86857f1470f42d7ff52257ed99caa4d4e9e",
+    "bytes": 33368512,
+    "profile": "character-create-legacy-static-v1"
+  },
+  "lighting": {
+    "toward_sun": [
+      -0.278,
+      0.913,
+      0.3
+    ],
+    "source": "Unreal L_Overview.umap directional light rotation; warm/cool shading adapted to Aethyr"
+  },
+  "scope": "Reference-directed 3D recreation; original scene composition not recovered. Not pixel-identical Unreal rendering.",
+  "source_files": [
+    {
+      "path": "glTF/Bark_BirchTree.png",
+      "sha256": "7b9b222019803a5cffeb13f0b99c1c5fa591a5cd87e4c4b04f1215311295a19b"
+    },
+    {
+      "path": "glTF/Bark_NormalTree.png",
+      "sha256": "f36e94fdd73255347325b998e02a0b2575fdf714b0315bfe5e8ff34bc8e13603"
+    },
+    {
+      "path": "glTF/Birch_1.bin",
+      "sha256": "e8cf3eba0129dd60c7d5b73fbc28f39fe1b09d60d80d32d811ced06332c3d601"
+    },
+    {
+      "path": "glTF/Birch_1.gltf",
+      "sha256": "b2417ab9e37bfb29d0c0e7e9cbfe0a9927d836c433205218bb80047df722153d"
+    },
+    {
+      "path": "glTF/Birch_2.bin",
+      "sha256": "03412135679c42d630ede6b70d75ed4a5158e9c52c0215b909ec39e8fc3d25da"
+    },
+    {
+      "path": "glTF/Birch_2.gltf",
+      "sha256": "54231de70da5f5de9f0598371a780edef4cd6101fb2c19f2e4a1ba7cce5f3cde"
+    },
+    {
+      "path": "glTF/Birch_3.bin",
+      "sha256": "4d074226050c2030b2749a56383936195f2dc3859ee8081d6bd1750e12a69e28"
+    },
+    {
+      "path": "glTF/Birch_3.gltf",
+      "sha256": "aff61bd4367fb67c39219f48598243fcdf54b48e14e444b6a795f4c739877e41"
+    },
+    {
+      "path": "glTF/Birch_4.bin",
+      "sha256": "a6a0c06f8472e495230d563eed3329af3eefd908c5e712b652927bf790e5c18c"
+    },
+    {
+      "path": "glTF/Birch_4.gltf",
+      "sha256": "0087f7d29804fcf34156a833ac967a70e3b0890ee9ed9f9ab59aff7210361676"
+    },
+    {
+      "path": "glTF/Birch_5.bin",
+      "sha256": "a083559c62c1f7ec44c818eaaf2672d488733e6b312bcdb39415bc4743a2af36"
+    },
+    {
+      "path": "glTF/Birch_5.gltf",
+      "sha256": "8629e88c08e7ef5008c9005f405976b1748c00d373d1db277fb22e2fc8db4acd"
+    },
+    {
+      "path": "glTF/Bush_Common_Flowers.bin",
+      "sha256": "15f56a013afe0eecaded0eb97fd8f323305af11e1f0f7bb9b68472ec4cdc20d5"
+    },
+    {
+      "path": "glTF/Bush_Common_Flowers.gltf",
+      "sha256": "08768c680e3abeafd25858c9d3f369bcb7eed014661d3b6825a397f2a6a3deea"
+    },
+    {
+      "path": "glTF/CommonTree_1.bin",
+      "sha256": "9dd689e84e1aa2f5b08db8def591254d582783c73737af54ba0d89b3e549c3ae"
+    },
+    {
+      "path": "glTF/CommonTree_1.gltf",
+      "sha256": "b51cdea6545edb51d102dd6c27caafe62aa75e3c328ac8f9039f4e7bfd690bfa"
+    },
+    {
+      "path": "glTF/CommonTree_2.bin",
+      "sha256": "a273d69de31a675a9d7e3eb3c43f804aef2d1b031692111b9e76eb3b0b686d0c"
+    },
+    {
+      "path": "glTF/CommonTree_2.gltf",
+      "sha256": "67160975f0ac991b4a2ffb2add4ab4037b5e9c1bef9f66dac5235fcf0ba9bd52"
+    },
+    {
+      "path": "glTF/CommonTree_3.bin",
+      "sha256": "24541f46fd9553e2389aba15575f2697009226e82118ed76868284114fd12b49"
+    },
+    {
+      "path": "glTF/CommonTree_3.gltf",
+      "sha256": "17c6537aa8042bb7255fbb501bf7aeb2b6db87c16766f794f9c37be3ce70c976"
+    },
+    {
+      "path": "glTF/CommonTree_4.bin",
+      "sha256": "4fa52cc5bb9aa42d5ce1eee6cffca0f0a7f25dd07fe4431e371548e89bc30233"
+    },
+    {
+      "path": "glTF/CommonTree_4.gltf",
+      "sha256": "ddf0e8837705702871d3f03de8cf7aeed61ad4bf8ee92052b6f95bdd771297b6"
+    },
+    {
+      "path": "glTF/CommonTree_5.bin",
+      "sha256": "0e617612d50e6bb2ca3c64338383f8938ce9e04d55b548ff11cec7a7b7d8f072"
+    },
+    {
+      "path": "glTF/CommonTree_5.gltf",
+      "sha256": "fb7061f2bf9fe850870b056431f8f66cd8fdeb443c90695c5efbcf1fe6876d53"
+    },
+    {
+      "path": "glTF/Fern_1.bin",
+      "sha256": "5e92b87a27f81a69fe15347a533df3c77d567b48298dceeef43168ccb7c22853"
+    },
+    {
+      "path": "glTF/Fern_1.gltf",
+      "sha256": "d41915cffe9dbbde1ae88be381eb9c60f7caa2274511436cc78fe4de627468ab"
+    },
+    {
+      "path": "glTF/Flower_1_Group.bin",
+      "sha256": "cf330ea793c63273f209cf1450f1e56751141c669f05e9e384bed2e6b0c5bf87"
+    },
+    {
+      "path": "glTF/Flower_1_Group.gltf",
+      "sha256": "231d5e661554a22181948ef4a62528c5f1114318a42e737df11195aac8af9e97"
+    },
+    {
+      "path": "glTF/Flowers.png",
+      "sha256": "5c531f2329c241c625aafd6cb769de29f33b480ef2a16491c2489f3c68e62a6a"
+    },
+    {
+      "path": "glTF/Leaves.png",
+      "sha256": "23248cebe28a24e78add32db3c2ee2f4d7b9219e9d2467279722f0197a7b6bd5"
+    },
+    {
+      "path": "glTF/Leaves_Birch_C.png",
+      "sha256": "65d2eeed4ca14cde70c0d3b6a1aece5b8d29923ebbf16fa0870a3ce93849dd7d"
+    },
+    {
+      "path": "glTF/Leaves_NormalTree_C.png",
+      "sha256": "998612bdf0b76a22f5f54d65cd7a457815d2842d89653fa4348a4ebb42933ad3"
+    },
+    {
+      "path": "glTF/Mushroom_Common.bin",
+      "sha256": "e4cee9f2570505a172990a2754d52ed5775a4d75857a832fffa1b573e38a4051"
+    },
+    {
+      "path": "glTF/Mushroom_Common.gltf",
+      "sha256": "2088b39d92f2f6331f45e59a048d02814dcd8b22767b024f4d220143bc8339f4"
+    },
+    {
+      "path": "glTF/Mushrooms.png",
+      "sha256": "e29eed2db831e44a29634fe25c62e9e31edf201e978a52912b9e5221ffd4a1f3"
+    },
+    {
+      "path": "glTF/Rock_Big_1.bin",
+      "sha256": "6f35edd96f527680503132966d0d0f4c430fb923cd5d1e1f9fa282cfb90f1227"
+    },
+    {
+      "path": "glTF/Rock_Big_1.gltf",
+      "sha256": "48c551fef8d9ac8e9a2b99bcb9c9753e6e9865a2a1af9e3ef2ea06793e2ebba7"
+    },
+    {
+      "path": "glTF/Rock_Big_2.bin",
+      "sha256": "c339f4d285b946f54be76b2cf477b9ea66b6e0c186389ef6efe4a441d27e68aa"
+    },
+    {
+      "path": "glTF/Rock_Big_2.gltf",
+      "sha256": "207ceea44451ea6e8e553db9daf10943c6e350fbb458d3775d74772284f16501"
+    },
+    {
+      "path": "glTF/Rocks_Diffuse.png",
+      "sha256": "b813696df6081f469a127092eb0ce45cc39d56f3ccc0699152bfcd3804810b48"
+    }
+  ]
+}

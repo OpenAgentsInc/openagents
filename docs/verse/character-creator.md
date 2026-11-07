@@ -147,3 +147,13 @@ CC2's legacy slots remain frozen compatibility keys. Source discovery order
 cannot change saved garments. Runtime readiness now requires each referenced
 mesh, rather than an exact manually maintained count. The existing compiled
 people pack, appearance codec and renderer ABI are unchanged.
+
+## Nature glade background
+
+The character now stands in the real 3D Nature glade described in
+[character-glade.md](character-glade.md), composed against Quaternius's
+`Preview_1.jpg`. Character Create loads `assets/glade.pack`, which preserves
+all original wardrobe data and appends the static environment. Camera pitch,
+zoom and pan apply to the environment; clothing and saved appearance retain
+their existing behavior. The shared asset IDs and provenance are pinned in
+`assets/registry/scenes/character-glade.json`.

@@ -358,10 +358,10 @@
       "realm": {
         "slug": "character-creator", "style": "painterly", "clock": "fixed:0.5",
         "title": "Character Studio", "description": "Create a Quaternius human in Aethyr. Mix all 76 Fantasy Source clothing parts, three colourways, skin, hair and details with a live animated preview.",
-        "share": "Make someone yours: a live Aethyr character wardrobe.", "alt": "A Quaternius human in a studio with live clothing and appearance controls",
+        "share": "Make someone yours: a live Aethyr character wardrobe.", "alt": "A Quaternius human in a sunlit Nature glade with live clothing and appearance controls",
         "module": "fivelab", "slot": "character-creator",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/character-creator/assets/fantasy.pack", "particles:/fivelab-fx.wgsl"]
+        "assets": ["pack:/realms/character-creator/assets/glade.pack", "particles:/fivelab-fx.wgsl"]
       } },
     { "id": "fivelab", "name": "5E LAB", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 2.1, "size": 0.02 },
       "realm": {

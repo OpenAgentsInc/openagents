@@ -423,18 +423,11 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
   if (u[10]>1.5f32) {
     eye:V3=wg_at3(u,16);fwd:V3=wg_at3(u,20);
     rd:V3=normalize3(add3(fwd,add3(scale3(wg_at3(u,24),(p.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-p.y)/u[19]))));
-    c:V3=mix3(v3(0.022f32,0.032f32,0.043f32),v3(0.07f32,0.105f32,0.12f32),saturate(p.y/u[1]));
+    c:V3=cg_sky(rd,wg_at3(u,32),u[2]);
     dep:f32=1.0f32;
-    if (rd.y< -0.001f32) {
-      distance:f32=(-eye.y)/rd.y;hit:V3=add3(eye,scale3(rd,distance));r:f32=sqrt((hit.x*hit.x)+(hit.z*hit.z));
-      shade:f32=1.0f32-(0.6f32*exp((-r*r)*3.5f32));
-      c=scale3(v3(0.075f32,0.105f32,0.115f32),shade);
-      circle:f32=1.0f32-smoothstep(0.005f32,0.014f32,abs(r-0.93f32));
-      c=mix3(c,v3(0.28f32,0.23f32,0.14f32),circle*0.6f32);dep=fivelab_depth(distance*dot3(rd,fwd));
-    }
     k:f32=u[4];
-    if (u[0]<840.0f32*k) { if (p.y>u[1]-(444.0f32*k)) {c=v3(0.025f32,0.036f32,0.046f32);dep=0.0f32;} }
-    else {if (((p.x<286.0f32*k)||(p.x>u[0]-(286.0f32*k)))&&(p.y>140.0f32*k)) {c=v3(0.025f32,0.036f32,0.046f32);dep=0.0f32;} }
+    c=scale3(c,0.45f32+0.55f32*smoothstep(15.0f32*k,120.0f32*k,p.y));
+    if (cg_ui_cover(p,u[0],u[1],k)) {c=v3(0.025f32,0.036f32,0.046f32);dep=0.0f32;}
     return FivelabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=dep};
   }
   if (u[10]>0.5f32) {
@@ -445,6 +438,8 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
   c:V3=fivelab_glass(fivelab_flat(p,u,frame),p,u);
   return FivelabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=1.0f32};
 }
+#load "character-glade.coax";
+
 // ---- the figures: the pack's people parts (verse/tools/people.py's 24-byte vertex: x, y and z in
 // 16 bits over a 2.5 m box, the layer and the vertex's kind, the normal in three signed bytes, uv in
 // 16 bits, four joints and four weights in bytes), skinned on the GPU by up to four joints of a baked
@@ -575,6 +570,7 @@ fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->Fivela
 }
 fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
   m:FivelabObj=objects[cast(int)instance];
+  if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,u,vertices);}
   if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,u,bake); }
   b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,6));
   xy:V2=wg_unpack2x16unorm(vertices[cast(int)b]);
@@ -642,6 +638,7 @@ fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:T
   tex:V4=render_sample_layer8_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),1.0f32);
   m:FivelabObj=objects[cast(int)s.who];
   if (tex.w<0.35f32) { gpu_demote_helper(); }
+  if (s.dye.w>11.5f32) {return cg_environment_fs(s,tex,front,u);}
   t:f32=u[2];
   albedo:V3=mul3(fivelab_dye(v3(tex.x,tex.y,tex.z),s.dye),s.tint);
   glow:V3=v3(0.0f32,0.0f32,0.0f32);
@@ -713,7 +710,7 @@ fivelab_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:T
           verse_style_shade(albedo.z,shadow_light.z,lit_light.z,band));
   c=add3(c,scale3(v3(0.55f32,0.62f32,0.75f32),pow(rim,3.0f32)*0.25f32*saturate(n.y+0.6f32)));
   c=add3(c,glow);
-  if (u[10]>1.5f32) { c=add3(scale3(v3(pow(albedo.x,0.45f32),pow(albedo.y,0.45f32),pow(albedo.z,0.45f32)),0.7f32+(0.3f32*saturate(ndl))),scale3(v3(0.5f32,0.65f32,0.8f32),pow(rim,3.0f32)*0.12f32)); }
+  if (u[10]>1.5f32) { c=add3(scale3(v3(pow(albedo.x,0.45f32),pow(albedo.y,0.45f32),pow(albedo.z,0.45f32)),0.86f32+(0.28f32*saturate(ndl))),scale3(v3(0.65f32,0.75f32,0.52f32),pow(rim,3.0f32)*0.08f32)); }
   d:f32=wg_length3(sub3(s.world,eye));
   hz:f32=1.0f32-exp((-d)*0.011f32);
   hc:V3=mix3(v3(0.72f32,0.8f32,0.84f32),v3(1.0f32,0.9f32,0.75f32),verse_style_halo(dot3(rd,sun),5.0f32)*0.5f32);

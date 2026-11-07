@@ -163,3 +163,11 @@ to silently repair a corrupted object. New objects are hashed in staging,
 made read-only, then renamed into the store. Current object bytes are never
 edited in place. GLB export files in `cache/` can be discarded after indexing;
 the immutable copies remain in `objects/`.
+
+## Reusable scene declarations
+
+`scenes/character-glade.json` pins the reference image and registered Nature
+revisions used by Character Create's 3D meadow. Scene placements and terrain
+are Coax source, with separate runtime-pack and shader source hashes. This
+scene declaration is `oa-scene-v1`; it does not change the mesh-definition or
+runtime pack contracts. See `docs/verse/character-glade.md` for regeneration.
