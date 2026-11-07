@@ -40,7 +40,8 @@ for lockpath in sorted((registry/'packages').glob('*.json')):
         path=snapshot/'source'/name
         assert not path.is_symlink() and path.resolve().is_relative_to((snapshot/'source').resolve())
         assert path.stat().st_size==row['bytes'] and digest(path)==row['sha256'], name
-    assert 'License_Source.txt' in files
+    assert inventory['license_evidence'] in files
+    assert 'CC0 1.0' in (snapshot/'source'/inventory['license_evidence']).read_text()
     packages[lock['package']] = (lock, snapshot, files); source_files += len(files)
 
 records = {}
@@ -55,7 +56,21 @@ for p in sorted((registry/'assets').glob('*.jsonl')):
         assert (store/'objects'/row['revision']).read_bytes()==raw
         lock, snapshot, files = packages[definition['package']]
         assert definition['package_revision']==lock['revision']
-        obs=definition['source']; assert obs['source'] in files and obs['objects']
+        obs=definition['source']
+        if definition['kind']=='animation':
+            assert obs['path'] in files and obs['motion']=='in-place'
+            library=snapshot/'source'/obs['path']
+            data=glb(library)
+            assert data['animations'][obs['animation_index']]['name']==definition['name']
+            assert definition['artifacts'][0]['sha256']==files[obs['path']]['sha256']
+            for artifact in definition['artifacts']:
+                obj=store/'objects'/artifact['sha256']
+                if artifact['sha256'] not in seen_artifacts:
+                    assert digest(obj)==artifact['sha256'] and obj.stat().st_size==artifact['bytes']
+                    seen_artifacts.add(artifact['sha256'])
+            records[aid]=row
+            continue
+        assert obs['source'] in files and obs['objects']
         for image in obs['images']:
             if image['packed']: continue
             imagepath=image['path']
@@ -76,7 +91,7 @@ for p in sorted((registry/'assets').glob('*.jsonl')):
 for aid, row in records.items():
     d=row['definition']
     if d['kind']=='collision': assert d['collision_owner'] in records, aid
-    for parent in d['parents']: assert parent['id'] in records and records[parent['id']]['revision']==parent['revision']
+    for parent in d.get('parents', []): assert parent['id'] in records and records[parent['id']]['revision']==parent['revision']
 for p in (registry/'collections').glob('*.lock.json'):
     collection=json.loads(p.read_text())
     for pin in collection['assets']: assert records[pin['id']]['revision']==pin['revision'], (p, pin)

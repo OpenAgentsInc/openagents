@@ -174,8 +174,8 @@
       "female": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf"
     },
     "libraries": {
-      "ual1": "~/Downloads/Universal Animation Library[Standard]/Unreal-Godot/UAL1_Standard.glb",
-      "ual2": "~/Downloads/Universal Animation Library 2[Standard]/Unreal-Godot/UAL2_Standard.glb"
+      "ual1": "~/.openagents/assets/originals/e2adadc59702bc88770e299949d1f4c6790db1852133fd1ce374d2a0815537cd/source/Unreal-Godot/UAL1_Standard.glb",
+      "ual2": "~/.openagents/assets/originals/9871d41237032c6a69b1458652be2a45ff4cffc8f4b594bf4c72ef4ebae39381/source/Unreal-Godot/UAL2_Standard.glb"
     },
     "clips": [
       {
@@ -249,7 +249,10 @@
         "clip": "Crouch_Idle_Loop",
         "tolerance": 0.035,
         "still_fingers": true
-      }
+      },
+      { "name": "jump_start", "library": "ual1", "clip": "Jump_Start" },
+      { "name": "jump_loop", "library": "ual1", "clip": "Jump_Loop" },
+      { "name": "jump_land", "library": "ual1", "clip": "Jump_Land" }
     ],
     "kinds": {
       "MI_Peasant": "pale",

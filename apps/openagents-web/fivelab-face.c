@@ -24,7 +24,7 @@ static bool golden;
 // the most figures) are the Lab's records, in its state: the module's own memory stays under host.js's 8 MiB start.
 static uint8_t catalog[65536];
 static coax_t_People rig;
-static float bake[544440];        // fivelab-bodies.coax BD_BAKE_FLOATS
+static float bake[783120];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
@@ -72,7 +72,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     coax_t_P3 kept = lab_keep(at(state), player.pos.x, player.pos.z);
     if (kept.x != player.pos.x || kept.z != player.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
     coax_t_Vec3 feet = verse_player_feet(player);
-    lab_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player), touched, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+    lab_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player), !player.on_ground, touched, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   } else {
     sticks = verse_sticks_reset();
   }

@@ -1,3 +1,5 @@
+// MetaHuman Lab retains its established twelve-clip selector.
+META_CLIPS :: 12;
 // MetaHuman Lab, openagents.com/worlds/metahuman-lab (unlisted): the bench where Aethyr's human
 // runtime is built (docs/verse/metahuman-support.md, phases 0 and 1). One figure stands on a lit
 // studio floor with a skeleton driving it.
@@ -120,9 +122,9 @@ Lab :: struct {
   mesh: bool; pack_in: int; pack_failed: bool; pack_body: int = -1;
   bind: [MANNEQUIN_JOINTS] Point; binds: int;
   bturn: [MANNEQUIN_JOINTS] Quat;    // each joint's turn from the pack's bind pose to the rig's rest
-  post: [PEOPLE_CLIPS * PEOPLE_JOINTS] Quat;   // per clip and joint its posture's correction (posture_build)
+  post: [META_CLIPS * PEOPLE_JOINTS] Quat;   // per clip and joint its posture's correction (posture_build)
   post_for: int = -1;                // the rig (0 male, 1 female) post was built for
-  lift: [PEOPLE_CLIPS] f32;          // per clip the pelvis's rise that keeps the feet on the floor with the legs set straight
+  lift: [META_CLIPS] f32;          // per clip the pelvis's rise that keeps the feet on the floor with the legs set straight
   mats: [MATS * 4] f32;
   draws: [DRAWS_MAX * 4] u32; draw_n: int;
   water_n: int;   // how many of the last draws are blended over the scene (the eyes' layers)
@@ -275,7 +277,7 @@ posture_rest :: (r: SkinRig, j: int) -> Quat {
 }
 posture_build :: (s: [] Lab) {
   r := rig(s);
-  for c: 0..<PEOPLE_CLIPS {
+  for c: 0..<META_CLIPS {
     for j: 0..<PEOPLE_JOINTS {
       k := posture_kind(c, j);
       s[0].post[c * PEOPLE_JOINTS + j] = Quat.{};
@@ -321,7 +323,7 @@ posture :: (s: [] Lab) {
   if s[0].post_for != (ifx s[0].female then 1 else 0) { posture_build(s); }
   r := rig(s);
   c := s[0].skin[0].clip;
-  if c < 0 || c >= PEOPLE_CLIPS { return; }
+  if c < 0 || c >= META_CLIPS { return; }
   for j: 0..<PEOPLE_JOINTS {
     k := posture_kind(c, j);
     if k == 0 { continue; }
@@ -573,7 +575,7 @@ button :: (out: [] f32, at: int, b: Rect, t: string, on: bool, pressed: bool, k:
 status_text :: (s: [] Lab, l: [] u8) -> int {
   m := put(l, 0, ifx s[0].female then "FEMALE BODY" else "MALE BODY");
   m = put(l, m, "   CLIP "); m = put(l, m, clip_name(s[0].clip));
-  m = put(l, m, " "); m = put_int(l, m, s[0].clip + 1); m = put(l, m, "/"); m = put_int(l, m, PEOPLE_CLIPS);
+  m = put(l, m, " "); m = put_int(l, m, s[0].clip + 1); m = put(l, m, "/"); m = put_int(l, m, META_CLIPS);
   m = put(l, m, "   65 JOINTS");
   if s[0].face_state == 2 { m = put(l, m, "   FACE "); m = put(l, m, cast(string) s[0].expr_name[0..<s[0].expr_name_n]); }
   if s[0].lod_pick >= 0 || s[0].lod > 0 { m = put(l, m, "   LOD "); m = put_int(l, m, s[0].lod); }
@@ -666,7 +668,7 @@ leave_to :: (s: [] Lab, url: string) {
   s[0].action = ACT_NAVIGATE;
 }
 // The next clip, or the one before (by -1), round the twelve.
-cycle_clip :: (s: [] Lab, by: int) { s[0].clip = (s[0].clip + by + PEOPLE_CLIPS) % PEOPLE_CLIPS; }
+cycle_clip :: (s: [] Lab, by: int) { s[0].clip = (s[0].clip + by + META_CLIPS) % META_CLIPS; }
 switch_body :: (s: [] Lab) {
   if mesh_on(s) { next_outfit(s); return; }   // a mesh is one body: the button steps its outfits
   s[0].female = !s[0].female; pose(s);
@@ -1301,7 +1303,7 @@ frame_u :: (s: [] Lab, u: [] f32) -> int {
   ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 0, 0, 1); ok = lab_pointer(s[..], b.x0 + 2, b.y0 + 2, 2, 0, 1);
   #assert s[0].clip == PEOPLE_WALK;
   // every clip poses the body with its feet near the floor and the head above the hips
-  for c: 0..<PEOPLE_CLIPS {
+  for c: 0..<META_CLIPS {
     if c == PEOPLE_DIE { continue; }   // it ends lying down
     s[0].clip = c;
     for i: 0..<40 { lab_step(s[..], f32(STEP)); }
@@ -1586,7 +1588,7 @@ face_rig_in :: (s: [] Lab, text: [] u8) -> int {
   pack_in(s[..]);
   r := rig(s[..]);
   want: [MANNEQUIN_JOINTS * 12] f32;
-  for c: 0..<PEOPLE_CLIPS {
+  for c: 0..<META_CLIPS {
     s[0].clip = c;
     for i: 0..<25 { lab_step(s[..], f32(STEP)); }
     skin_palette(r, s[0].skin[..], want[..]);

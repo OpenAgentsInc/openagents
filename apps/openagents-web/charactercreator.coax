@@ -12,7 +12,7 @@ VERTEX_FLOATS :: 16;
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
-  experimental:bool; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
+  experimental:bool; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
   on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1;
@@ -190,6 +190,23 @@ look :: (s:Creator)->figs.BdLook {
   return l;
 }
 // One preview, using the existing instance format and actual Quaternius skinned parts.
+experimental_air :: (s:[]Creator,air:bool) {
+ if air && !s[0].airborne {s[0].air_at=s[0].clock;}
+ if !air && s[0].airborne {s[0].land_at=s[0].clock;}
+ s[0].airborne=air;
+}
+experimental_clip :: (s:Creator)->int {
+ if s.airborne {return ifx s.clock-s.air_at<0.2 then figs.BD_JUMP_START else figs.BD_JUMP_LOOP;}
+ if s.clock-s.land_at<0.35 {return figs.BD_JUMP_LAND;}
+ return ifx s.moving then figs.BD_RUN else figs.BD_IDLE;
+}
+#test "experimental character selects jump takeoff air and landing" {
+ s:[1]Creator;s[0].experimental=true;s[0].clock=1;experimental_air(s[..],true);
+ #assert experimental_clip(s[0])==figs.BD_JUMP_START;
+ s[0].clock=1.3;#assert experimental_clip(s[0])==figs.BD_JUMP_LOOP;
+ experimental_air(s[..],false);#assert experimental_clip(s[0])==figs.BD_JUMP_LAND;
+ s[0].clock=2;#assert experimental_clip(s[0])==figs.BD_IDLE;
+}
 scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
   b[0].draw_n=0;
   if !b[0].ready || !catalog_ready(s) { return 0; }
@@ -198,7 +215,7 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
   a.t0=s.pose_at; a.fade_at=-100; a.phase=(s.clock-s.pose_at)/figs.bd_seconds(a.clip); a.yaw=s.yaw;
   if s.pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s.pose_at+floor((s.clock-s.pose_at)/dur)*dur; }
   if s.walk.on {a=walk_figure(s,a);}
-  if s.experimental {a.x=s.player_x;a.z=s.player_z;a.y=glade.cg_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;a.clip=ifx s.moving then figs.BD_RUN else figs.BD_IDLE;a.phase=s.clock/figs.bd_seconds(a.clip);}
+  if s.experimental {a.x=s.player_x;a.z=s.player_z;a.y=glade.cg_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;a.clip=experimental_clip(s);a.t0=ifx a.clip==figs.BD_JUMP_START then s.clock-(s.clock-s.air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s.clock-(s.clock-s.land_at)*figs.bd_seconds(a.clip)/0.35 else 0;a.phase=s.clock/figs.bd_seconds(a.clip);}
   n:=0;
   for i:0..<40 { if s.worn[i] && available(s,i) && s.source_count[i+(ifx s.female then 0 else 40)]>0 {
     p:=i+ifx s.female then 0 else 40;
@@ -454,6 +471,7 @@ probe :: (s:Creator,f:int)->int {
   if f==0 {return s.source_n;} if f==1 {return s.outfit;}if f==2 {return ifx s.female then 1 else 0;}
   if f==3 {return s.variant;}if f==4 {return s.dye;}if f==5 {return s.skin;}if f==6 {return s.pose;}
   if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}if f==13 {return int(s.yaw*1000);}if f==18 {return ifx s.profile_ok then 1 else 0;}if f==19 {return ifx s.profile_failed then 1 else 0;}if f==14 {return s.glade_count;}
+  if f==28 && s.experimental {return experimental_clip(s);}
   if f==26 && s.experimental {return int(s.player_x*1000);}
   if f==27 && s.experimental {return int(s.player_z*1000);}
   if f>=20 && f<=25 {return walk_probe(s,f);}

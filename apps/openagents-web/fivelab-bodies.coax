@@ -33,14 +33,14 @@ BD_RECORDS :: 54912;      // instances at most: 16384 skeletons of three parts, 
 BD_REC_FLOATS :: 24;      // gpu/fivelab.coax FivelabObj: six vec4s
 BD_FPS :: 30.0;
 // The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
-BD_CLIPS :: 7;
-BD_IDLE :: 0; BD_WALK :: 1; BD_RUN :: 2; BD_SLASH :: 3; BD_SPELL :: 4; BD_KNOCK :: 5; BD_DIE :: 6;
-BD_CLIP :: [7] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_SPELL, PEOPLE_KNOCK, PEOPLE_DIE];
-BD_FRAMES :: [7] int.[75, 40, 28, 46, 63, 25, 72];
-BD_FIRST :: [7] int.[0, 75, 115, 143, 189, 252, 277];
-BD_TOTAL :: 349;          // frames a body
+BD_CLIPS :: 10;
+BD_IDLE :: 0; BD_WALK :: 1; BD_RUN :: 2; BD_SLASH :: 3; BD_SPELL :: 4; BD_KNOCK :: 5; BD_DIE :: 6; BD_JUMP_START :: 7; BD_JUMP_LOOP :: 8; BD_JUMP_LAND :: 9;
+BD_CLIP :: [10] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_SPELL, PEOPLE_KNOCK, PEOPLE_DIE, PEOPLE_JUMP_START, PEOPLE_JUMP_LOOP, PEOPLE_JUMP_LAND];
+BD_FRAMES :: [10] int.[75, 40, 28, 46, 63, 25, 72, 40, 75, 38];
+BD_FIRST :: [10] int.[0, 75, 115, 143, 189, 252, 277, 349, 389, 464];
+BD_TOTAL :: 502;          // frames a body
 BD_ROWS :: 195;           // rows a frame: 65 joints, three each
-BD_BAKE_FLOATS :: 544440; // 2 bodies * 349 frames * 195 rows * 4
+BD_BAKE_FLOATS :: 783120; // 2 bodies * 502 frames * 195 rows * 4
 BD_FADE :: 0.18;          // seconds a change of clip blends
 BD_WALK_FROM :: 0.35;     // m/s: slower stands
 BD_RUN_FROM :: 2.2;       // and faster runs
@@ -257,7 +257,7 @@ bd_wrap :: (a: f32) -> f32 {
 }
 bd_seconds :: (c: int) -> f32 { return f32(BD_FRAMES[c]) / f32(BD_FPS); }
 bd_gait :: (c: int) -> bool { return c == BD_WALK || c == BD_RUN; }
-bd_once :: (c: int) -> bool { return c == BD_SLASH || c == BD_KNOCK || c == BD_DIE; }
+bd_once :: (c: int) -> bool { return c == BD_SLASH || c == BD_KNOCK || c == BD_DIE || c == BD_JUMP_START || c == BD_JUMP_LAND; }
 // The frame clip c shows `now`, begun at t0, its gait at phase.
 bd_frame_of :: (c: int, t0: f32, phase: f32, now: f32) -> int {
   n := BD_FRAMES[c];
@@ -488,7 +488,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   }
   #assert BD_FIRST[BD_CLIPS - 1] + BD_FRAMES[BD_CLIPS - 1] == BD_TOTAL;
   #assert BD_ROWS == PEOPLE_JOINTS * 3 && BD_BAKE_FLOATS == 2 * BD_TOTAL * BD_ROWS * 4;
-  #assert bd_row(true, BD_DIE, BD_FRAMES[BD_DIE] - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS;
+  #assert bd_row(true, BD_JUMP_LAND, BD_FRAMES[BD_JUMP_LAND] - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS;
 }
 
 #test "a baked frame is the clip's pose as aethyr/skin.coax plays it" #steps 400000000 {

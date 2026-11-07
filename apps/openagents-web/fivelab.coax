@@ -1999,8 +1999,8 @@ lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
   return P3.{x = lo(r.x1, hi(r.x0, x)), z = lo(r.y1, hi(r.y0, z))};
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
-lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
-  if s[0].creator[0].experimental {s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=face;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on;}
+lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
+  if s[0].creator[0].experimental {cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=face;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on;}
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -3212,7 +3212,7 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
   #assert lab_key(s[..],'w',0); input:=lab_move_in(s[..]); #assert input.key_y==1 && input.theta==0;
   edge:=lab_keep(s[..],50,50); #assert edge.x==25 && edge.z==2;
   #assert !lab_move_world(s[..],0,0).still;
-  lab_you(s[..],2,0,3,1,false,false,0,0,0,0);
+  lab_you(s[..],2,0,3,1,false,false,false,0,0,0,0);
   #assert s[0].creator[0].player_x==2 && s[0].creator[0].player_z==3;
   #assert cc.probe(s[0].creator[0],26)==2000 && cc.probe(s[0].creator[0],27)==3000;
   released:=lab_key_up(s[..],'w',0); #assert lab_move_in(s[..]).key_y==0;
@@ -3679,7 +3679,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   mw := lab_move_world(s[..], w.x, w.z);
   #assert mw.deck && !mw.still && mw.pace > 0.9;
   // your body walks three squares right: the token follows it on your turn, the rules' squares
-  lab_you(s[..], w.x + 3 * f32(SQ), 0, w.z, 1.57, false, false, 0, 0, 0, 0);
+  lab_you(s[..], w.x + 3 * f32(SQ), 0, w.z, 1.57, false, false, false, 0, 0, 0, 0);
   for i: 0..<200 { step(s[..], f32(STEP)); w = lab_walk(s[..]); }
   #assert s[0].battle[0].c[me].x > x0 && !w.put;
   // a body far past one turn's Speed is held to it

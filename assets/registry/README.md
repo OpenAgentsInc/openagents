@@ -171,3 +171,20 @@ revisions used by Character Create's 3D meadow. Scene placements and terrain
 are Coax source, with separate runtime-pack and shader source hashes. This
 scene declaration is `oa-scene-v1`; it does not change the mesh-definition or
 runtime pack contracts. See `docs/verse/character-glade.md` for regeneration.
+
+## Universal animation libraries
+
+`ual1` and `ual2` pin the complete CC0 standard distributions, including
+the Unity, root-motion, in-place and supporting files. Their 86 animation
+records use stable `quaternius/ual1/...` and `quaternius/ual2/...` IDs.
+Each record identifies its named animation and index in the immutable in-place
+GLB; the full library object is shared by all its records. These records are
+authoring sources, not a claim of runtime rig compatibility. Root-motion
+exports remain in each complete source snapshot.
+
+Rebuild the clip index from a verified snapshot with:
+
+```sh
+coax/web/tool.sh verse/tools/assets/registry.coax animations ual1 Unreal-Godot/UAL1_Standard.glb "$HOME/.openagents/assets"
+coax/web/tool.sh verse/tools/assets/registry.coax animations ual2 Unreal-Godot/UAL2_Standard.glb "$HOME/.openagents/assets"
+```
