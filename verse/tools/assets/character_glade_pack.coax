@@ -87,6 +87,102 @@ gp_ground :: (w:[]Gp,white:int) {
  }}for iz:0..<side-1 {for ix:0..<side-1 {a:=iz*side+ix;gp_tri(w,a,a+1,a+side);gp_tri(w,a+1,a+side+1,a+side);}}
 
 }
+// ---- The road to Everglade: coarse ground past the glade grid and the town at the end of the road
+// (verse/character-glade.coax places both). Flat stone, plaster and tile faces use the Nature rock
+// layer, whose material colours by vertex tint; positions stay inside the pack's 100 m bound.
+#test "glade town faces wind outward and boxes close every side but the buried bottom" #steps 60000000 {
+ w:[1]GpTown;gp_box(w[..],0,0,1,2,0,3,0.4,[3]f32.[1,1,1],0);#assert w[0].nv==20 && w[0].ni==30;
+ for t:0..<10 {a:=gp_pos(w[..],gl_u32(w[0].i[..],t*12));b:=gp_pos(w[..],gl_u32(w[0].i[..],t*12+4));c:=gp_pos(w[..],gl_u32(w[0].i[..],t*12+8));
+  n:=gp_cross(gp_sub(b,a),gp_sub(c,a));mid:=[3]f32.[(a[0]+b[0]+c[0])/3,(a[1]+b[1]+c[1])/3-1.5,(a[2]+b[2]+c[2])/3];#assert n[0]*mid[0]+n[1]*mid[1]+n[2]*mid[2]>0;}
+ before:=w[0].nv;gp_prism(w[..],5,5,1,0,4,8,[3]f32.[1,1,1],0);gp_cone(w[..],5,5,1.2,4,6,8,[3]f32.[1,1,1],0);#assert w[0].nv-before==8*4+8*3;
+}
+gp_sub :: (a:[3]f32,b:[3]f32)->[3]f32 {return [3]f32.[a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+gp_cross :: (a:[3]f32,b:[3]f32)->[3]f32 {return [3]f32.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+gp_pos :: (w:[]GpTown,id:int)->[3]f32 {return [3]f32.[f32_from_bits(cast(u32)gl_u32(w[0].v[..],id*32)),f32_from_bits(cast(u32)gl_u32(w[0].v[..],id*32+4)),f32_from_bits(cast(u32)gl_u32(w[0].v[..],id*32+8))];}
+// One flat face (three or four corners) facing away from `inside`; its own normal, UVs across it.
+gp_face :: (w:[]GpTown,p:[4][3]f32,corners:int,inside:[3]f32,tint:[3]f32,layer:int) {
+ n:=gp_cross(gp_sub(p[1],p[0]),gp_sub(p[2],p[0]));l:=sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);if l<0.000001 {return;}
+ for k:0..<3 {n[k]/=l;}c:=gp_sub(p[0],inside);flip:=n[0]*c[0]+n[1]*c[1]+n[2]*c[2]<0;if flip {for k:0..<3 {n[k]= -n[k];}}
+ uvs:=[4][2]f32.[[2]f32.[0,1],[2]f32.[1,1],[2]f32.[1,0],[2]f32.[0,0]];ids:[4]int;
+ for k:0..<corners {ids[k]=gp_tv(w,p[k],n,uvs[k],tint,layer,4);gp_word(w[0].v[..],ids[k]*32+28,f32_bits(1));}
+ if flip {gp_tt(w,ids[0],ids[2],ids[1]);if corners==4 {gp_tt(w,ids[0],ids[3],ids[2]);}}
+ else {gp_tt(w,ids[0],ids[1],ids[2]);if corners==4 {gp_tt(w,ids[0],ids[2],ids[3]);}}
+}
+gp_corner :: (cx:f32,cz:f32,hx:f32,hz:f32,yaw:f32,y:f32)->[3]f32 {c:=cos(yaw);s:=sin(yaw);return [3]f32.[cx+hx*c+hz*s,y,cz-hx*s+hz*c];}
+// A box from y0 to y1 on a turned footprint; its bottom is underground and left out.
+gp_box :: (w:[]GpTown,cx:f32,cz:f32,hx:f32,hz:f32,y0:f32,y1:f32,yaw:f32,tint:[3]f32,layer:int) {
+ sx:=[4]f32.[-1,1,1,-1];sz:=[4]f32.[-1,-1,1,1];inside:=[3]f32.[cx,(y0+y1)*0.5,cz];
+ for k:0..<4 {j:=(k+1)%4;q:[4][3]f32;q[0]=gp_corner(cx,cz,hx*sx[k],hz*sz[k],yaw,y0);q[1]=gp_corner(cx,cz,hx*sx[j],hz*sz[j],yaw,y0);q[2]=gp_corner(cx,cz,hx*sx[j],hz*sz[j],yaw,y1);q[3]=gp_corner(cx,cz,hx*sx[k],hz*sz[k],yaw,y1);gp_face(w,q,4,inside,tint,layer);}
+ top:[4][3]f32;for k:0..<4 {top[k]=gp_corner(cx,cz,hx*sx[k],hz*sz[k],yaw,y1);}gp_face(w,top,4,inside,tint,layer);
+}
+// A gable roof whose ridge runs along the footprint's local x.
+gp_gable :: (w:[]GpTown,cx:f32,cz:f32,hx:f32,hz:f32,y0:f32,ridge:f32,yaw:f32,tint:[3]f32,layer:int) {
+ inside:=[3]f32.[cx,y0+(ridge-y0)*0.3,cz];
+ for side:0..<2 {sz:=ifx side==0 then -1.0f32 else 1.0f32;q:[4][3]f32;q[0]=gp_corner(cx,cz,-hx,hz*sz,yaw,y0);q[1]=gp_corner(cx,cz,hx,hz*sz,yaw,y0);q[2]=gp_corner(cx,cz,hx,0,yaw,ridge);q[3]=gp_corner(cx,cz,-hx,0,yaw,ridge);gp_face(w,q,4,inside,tint,layer);}
+ for side:0..<2 {sx:=ifx side==0 then -1.0f32 else 1.0f32;q:[4][3]f32;q[0]=gp_corner(cx,cz,hx*sx,-hz,yaw,y0);q[1]=gp_corner(cx,cz,hx*sx,hz,yaw,y0);q[2]=gp_corner(cx,cz,hx*sx,0,yaw,ridge);gp_face(w,q,3,inside,tint,layer);}
+}
+gp_pyramid :: (w:[]GpTown,cx:f32,cz:f32,hx:f32,hz:f32,y0:f32,apex:f32,yaw:f32,tint:[3]f32,layer:int) {
+ sx:=[4]f32.[-1,1,1,-1];sz:=[4]f32.[-1,-1,1,1];inside:=[3]f32.[cx,y0+(apex-y0)*0.25,cz];
+ for k:0..<4 {j:=(k+1)%4;q:[4][3]f32;q[0]=gp_corner(cx,cz,hx*sx[k],hz*sz[k],yaw,y0);q[1]=gp_corner(cx,cz,hx*sx[j],hz*sz[j],yaw,y0);q[2]=[3]f32.[cx,apex,cz];gp_face(w,q,3,inside,tint,layer);}
+}
+gp_prism :: (w:[]GpTown,cx:f32,cz:f32,r:f32,y0:f32,y1:f32,sides:int,tint:[3]f32,layer:int) {
+ inside:=[3]f32.[cx,(y0+y1)*0.5,cz];
+ for k:0..<sides {a:=f32(k)*6.2831853/f32(sides);b:=f32(k+1)*6.2831853/f32(sides);q:[4][3]f32;
+  q[0]=[3]f32.[cx+r*cos(a),y0,cz+r*sin(a)];q[1]=[3]f32.[cx+r*cos(b),y0,cz+r*sin(b)];q[2]=[3]f32.[cx+r*cos(b),y1,cz+r*sin(b)];q[3]=[3]f32.[cx+r*cos(a),y1,cz+r*sin(a)];gp_face(w,q,4,inside,tint,layer);}
+}
+gp_cone :: (w:[]GpTown,cx:f32,cz:f32,r:f32,y0:f32,apex:f32,sides:int,tint:[3]f32,layer:int) {
+ inside:=[3]f32.[cx,y0+(apex-y0)*0.25,cz];
+ for k:0..<sides {a:=f32(k)*6.2831853/f32(sides);b:=f32(k+1)*6.2831853/f32(sides);q:[4][3]f32;
+  q[0]=[3]f32.[cx+r*cos(a),y0,cz+r*sin(a)];q[1]=[3]f32.[cx+r*cos(b),y0,cz+r*sin(b)];q[2]=[3]f32.[cx,apex,cz];gp_face(w,q,3,inside,tint,layer);}
+}
+// The lowest and highest ground under a footprint (its corners, edges' middles and centre).
+gp_ground_span :: (cx:f32,cz:f32,hx:f32,hz:f32,yaw:f32)->[2]f32 {
+ lo:f32=1000;hi:f32= -1000;
+ for i:0..<3 {for j:0..<3 {p:=gp_corner(cx,cz,hx*f32(i-1),hz*f32(j-1),yaw,0);y:=cg_height(p[0],p[2]);if y<lo {lo=y;}if y>hi {hi=y;}}}
+ return [2]f32.[lo,hi];
+}
+gp_town_block :: (w:[]GpTown,b:CgBlock,layer:int) {
+ stone:=[3]f32.[0.60,0.58,0.50];tower:=[3]f32.[0.55,0.53,0.47];timber:=[3]f32.[0.36,0.25,0.15];plaster:=[3]f32.[0.88,0.82,0.68];tile:=[3]f32.[0.68,0.28,0.16];slate:=[3]f32.[0.32,0.35,0.40];
+ hx:=b.w*0.5;hz:=b.d*0.5;
+ if b.shape==0 {
+  // Walls follow the ground in segments of at most four metres, merlons along each top.
+  pieces:=int(ceil(f64(b.w)/4));piece:=b.w/f32(pieces);c:=cos(b.yaw);s:=sin(b.yaw);
+  for k:0..<pieces {along:= -hx+piece*(f32(k)+0.5);px:=b.x+along*c;pz:=b.z-along*s;span:=gp_ground_span(px,pz,piece*0.5,hz,b.yaw);top:=span[0]+b.h;if top<span[1]+0.8 {top=span[1]+0.8;}
+   gp_box(w,px,pz,piece*0.5,hz,span[0]-0.6,top,b.yaw,stone,layer);
+   merlons:=int(floor(f64(piece)/1.6));for m:0..<merlons {ma:=along-piece*0.5+(f32(m)+0.5)*piece/f32(merlons);gp_box(w,b.x+ma*c,b.z-ma*s,0.38,hz,top,top+0.7,b.yaw,stone,layer);}
+  }
+  return;
+ }
+ span:=gp_ground_span(b.x,b.z,hx,hz,b.yaw);base:=span[0]-0.6;top:=span[1]+b.h;
+ if b.shape==1 {gp_box(w,b.x,b.z,hx,hz,base,top,b.yaw,plaster,layer);gp_box(w,b.x,b.z,hx+0.06,hz+0.06,top-0.35,top,b.yaw,timber,layer);gp_gable(w,b.x,b.z,hx+0.35,hz+0.4,top,top+b.roof,b.yaw,tile,layer);}
+ if b.shape==2 {gp_box(w,b.x,b.z,hx,hz,base,top,b.yaw,tower,layer);gp_box(w,b.x,b.z,hx+0.2,hz+0.2,top-0.5,top,b.yaw,stone,layer);gp_pyramid(w,b.x,b.z,hx+0.35,hz+0.35,top,top+b.roof,b.yaw,ifx b.h>10 then slate else tile,layer);}
+ if b.shape==3 {gp_prism(w,b.x,b.z,hx,base,top,8,tower,layer);gp_cone(w,b.x,b.z,hx+0.35,top,top+b.roof,8,tile,layer);}
+ if b.shape==4 {y:=cg_height(b.x,b.z)+b.lift;gp_box(w,b.x,b.z,hx,hz,y,y+b.h,b.yaw,timber,layer);gp_box(w,b.x,b.z,hx,hz*0.9,y+b.h,y+b.h+0.7,b.yaw,stone,layer);}
+}
+gp_road_to_everglade :: (w:[]GpTown,layer:int) {
+ // Ground past the glade grid's last row (z -60), a little lower so its coarse edge never shows.
+ cols:=31;rows:=11;first:=w[0].nv;
+ for iz:0..<rows {z:= -60-f32(iz)*3.8;for ix:0..<cols {x:= -60+f32(ix)*4;y:=cg_height(x,z)-0.06;
+  dx:=(cg_height(x+0.5,z)-cg_height(x-0.5,z));dz:=(cg_height(x,z+0.5)-cg_height(x,z-0.5));l:=sqrt(dx*dx+1+dz*dz);
+  path:=cg_path(x,z);autumn:=cg_autumn(x,z);noise:=cg_hash(x,z);c:=[3]f32.[0.32+autumn*0.24,0.53-autumn*0.03,0.055];dirt:=[3]f32.[0.67+noise*0.015,0.60+noise*0.015,0.35];
+  for k:0..<3 {c[k]=c[k]*(1-path)+dirt[k]*path;}
+  id:=gp_tv(w,[3]f32.[x,y,z],[3]f32.[-dx/l,1/l,-dz/l],[2]f32.[0.5,0.5],c,0,5);
+ }}
+ for iz:0..<rows-1 {for ix:0..<cols-1 {a:=first+iz*cols+ix;gp_tt(w,a,a+1,a+cols);gp_tt(w,a+1,a+cols+1,a+cols);}}
+ for i:0..<CG_CITY {gp_town_block(w,cg_city(i),layer);}
+}
+// The town's own bounded store, appended to the environment after the glade's meshes.
+GP_TOWN_VERTS :: 6000;
+GpTown :: struct {v:[GP_TOWN_VERTS*32]u8;i:[GP_TOWN_VERTS*8]u8;nv:int;ni:int;}
+gp_tv :: (w:[]GpTown,p:[3]f32,n:[3]f32,uv:[2]f32,c:[3]f32,layer:int,kind:int)->int {
+ if w[0].nv>=GP_TOWN_VERTS {ph_die("town vertices exceed bounded store");}id:=w[0].nv;gp_vertex(w[0].v[..],id*32,p,n,uv,c,layer,kind);w[0].nv+=1;return id;
+}
+gp_tt :: (w:[]GpTown,a:int,b:int,c:int) {if (w[0].ni+3)*4>w[0].i.count {ph_die("town indices overflow");}for q:[3]int.[a,b,c] {put_u32(w[0].i[..],w[0].ni*4,q);w[0].ni+=1;}}
+gp_append_town :: (w:[]Gp,t:[]GpTown) {
+ base:=w[0].nv;if base+t[0].nv>GP_VERTS {ph_die("glade vertices exceed bounded store");}
+ for k:0..<t[0].nv*32 {w[0].v[base*32+k]=t[0].v[k];}w[0].nv+=t[0].nv;
+ for k:0..<t[0].ni/3 {gp_tri(w,base+gl_u32(t[0].i[..],k*12),base+gl_u32(t[0].i[..],k*12+4),base+gl_u32(t[0].i[..],k*12+8));}
+}
 gp_grass_seeds :: (w:[]Gp,white:int,group:int,proposals:int,source_height:f32) {
  w[0].seedfirst[group]=w[0].nv;hero:=cg_item(7);
  for i:0..<proposals {fi:=f32(i+group*100000);x:=(cg_hash(fi,2)-0.5)*(ifx i<proposals*4/5 then 26.0f32 else 54.0f32);z:=3-cg_hash(fi,5)*(ifx i<proposals*4/5 then 30.0f32 else 55.0f32);
@@ -122,9 +218,10 @@ tool_main :: ()->int #export_c #effects(all) {
  gp_mesh_scaled(w[..],g[..],iw[..],root,"Rock_Medium_4",-0.18,-2.4,0.16,0.05,1.1,[3]f32.[0.55,0.60,0.40],0);
  gp_mesh(w[..],g[..],iw[..],root,"Plant_3",1.05,1.0,0.35,0.8,[3]f32.[1,0.56,0.06]);
  // The reference's loose stones and lower left woodland break up the path edges.
- for i:0..<12 {fi:=f32(i);z:=-2-fi*1.7;x:=cg_path_x(z)+(ifx i%2==0 then -1.0f32 else 1.2f32);gp_mesh(w[..],g[..],iw[..],root,"Pebble_Round_1",x,z,0.3+cg_hash(fi,42)*0.2,fi,[3]f32.[0.7,0.7,0.5]);}
+ for i:0..<12 {fi:=f32(i);z:=-2-fi*1.7;x:=cg_road_x(z)+(ifx i%2==0 then -1.0f32 else 1.2f32);gp_mesh(w[..],g[..],iw[..],root,"Pebble_Round_1",x,z,0.3+cg_hash(fi,42)*0.2,fi,[3]f32.[0.7,0.7,0.5]);}
  for i:0..<12 {x:=-5.2+f32(i%4)*0.45;z:=-9.0-f32(i/4)*0.5;gp_mesh(w[..],g[..],iw[..],root,"Flower_2_Group",x,z,0.16+cg_hash(f32(i),61)*0.05,f32(i),[3]f32.[0.4,0.75,0.05]);}
  for i:0..<12 {fi:=f32(i);x:=-3.0+cg_hash(fi,62)*6.0;z:=-9.0-cg_hash(fi,63)*8.0;gp_mesh(w[..],g[..],iw[..],root,"Flower_3_Group",x,z,0.10+cg_hash(fi,64)*0.08,fi,[3]f32.[0.4,0.75,0.05]);}
+ town:[1]GpTown;gp_road_to_everglade(town[..],gp_texture(w[..],txt_cat3(w[0].txt[..],root,"/glTF/","Rocks_Diffuse.png"),iw[..]));gp_append_town(w[..],town[..]);
  w[0].envni=w[0].ni;
  for group:0..<3 {
   w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";

@@ -251,6 +251,48 @@ release it, and an explicitly opened in-world picker remains manual.
 The browser handoff test waits for an actual room seat without pressing Enter
 to dismiss a dialog, and rejects any automatic picker on reload.
 
+## The road to Everglade
+
+USE IN EVERGLADE still saves first. Nothing moves until the save is confirmed
+(message 17). Then the controls fade over half a second. The camera moves from
+the studio view to a chase shot behind the character over three seconds. The
+character turns to face the back of the glade and walks up the path, which
+becomes a road over the back ridge. The road ends at the gate of a walled town
+on a plateau: Everglade. You see it in the distance from the clearing. The walk
+takes exactly 30 seconds from the first step to the gate. The road, the pace and
+the camera are fixed functions of time, so every walk is the same
+(`apps/openagents-web/charactercreator-walk.coax`).
+
+While the character walks, the page asks the host to warm `/worlds/everglade`
+(action 18, `coax/web/prefetch-host.js`). The host reads that page's script tag
+and fetches the files `host.js` loads first: the engine, its shaders, the render
+package and the asset packs. It fetches them into the browser's HTTP cache, then
+Everglade's own loader reads them from there. Nothing is loaded a second way.
+The room seat is not taken early. Everglade asks for a new single-use ticket
+before each open, so the seat is still admitted on arrival.
+
+Near the gate, the screen fades to black, and Everglade opens with the saved
+character and no character dialog. If the warm-up is still running, the
+character waits at the gate and a small "ENTERING EVERGLADE NN%" line shows its
+progress. The character also waits there for up to 20 seconds if the host is
+slow. If the warm-up fails, or the host never answers, the page still goes and
+Everglade loads normally. Reduced motion skips the camera move. Input is ignored
+during the walk.
+
+```sh
+# Real time: the save, the 30 s walk, the hand-off, the same character, the seat, no dialog.
+coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --mbps 50
+# Everglade from a new browser with nothing warmed, for comparison.
+coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/everglade --cold --mbps 50
+# The film: 1920x1080 at 30 fps in clip mode; the load between the pages is filmed at its real length.
+coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --film walk.mp4 frames/ --mbps 50
+```
+
+Serve the site with `--static` for these checks. Without it, the browser's HTTP
+cache does not keep the files. The development host also fetches wasm and WGSL
+with `no-store`, so locally only the packs come from the warm-up. In production,
+every file does.
+
 ## Compact sidebar
 
 Desktop appearance choices, Reset/Surprise Me and Save/Use actions share one

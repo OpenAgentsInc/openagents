@@ -157,3 +157,17 @@ authored separately. The unlit sky plate has a scene-specific warm/cyan grade
 
 The source pack stays below 32 MiB with original wardrobe bytes preserved.
 Evidence: `docs/verification/character-glade-crowns-2026-11-06/`.
+
+## The road and the town
+
+Past the clearing, the path becomes a road (`cg_road_x` in
+`verse/character-glade.coax`). The road climbs a carved grade over the back
+ridge to a plateau at z -46. Past the plateau, low far hills close the view.
+On the plateau stands Everglade's town (`cg_city`): a stone wall with merlons,
+two gate towers with a timber lintel, round towers with cones, a keep with a
+slate roof, and ten houses with red tile gables. The gate is at `CG_GATE_Z`
+(-34.5), and the walk ends three metres before it. The town and far ground are
+built in `gp_road_to_everglade` from the existing rock texture, so the pack
+adds no texture layers. The pack is now 33,419,808 bytes (269,452 vertices).
+That is still under the 32 MiB budget, and the wardrobe bytes are unchanged.
+

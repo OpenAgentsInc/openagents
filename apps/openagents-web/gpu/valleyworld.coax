@@ -21,7 +21,7 @@ vw_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32,detail:[]u32,reference:[
 }
 vw_bg_vs :: (i:u32,j:u32)->V4 {return vc_bg_vs(i,j);}
 vw_bg_fs :: (p:V4,u:[]f32)->V4 {
- if u[110]>0.5 {return vc_bg_fs(p,u);}
+ if u[110]>0.5 {return vc_bg_fs(p,u).light;}
  ray:=wg_normalize3(cv_add(cv_at(u,20),cv_add(cv_scale(cv_at(u,12),(p.x/u[0]*2-1)/u[15]),cv_scale(cv_at(u,16),(1-p.y/u[1]*2)/u[19]))));
  t:=pow(clampf(ray.y,0.0f32,1.0f32),0.45f32);c:=cv_add(cv_scale(v3(0.73,0.73,0.66),1-t),cv_scale(v3(0.16,0.36,0.57),t));sun:=pow(fmax(0.0f32,wg_dot3(ray,cv_at(u,24))),1024.0f32);c=cv_add(c,cv_scale(v3(1,0.84,0.55),sun));return v4(c.x,c.y,c.z,1);
 }

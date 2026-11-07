@@ -239,6 +239,7 @@ import { openClipTimeline } from "./audio-timeline.js";
 import { RenderHost } from "./render.js";
 import {mediaSource} from "./media-source.js";
 import {actionSource} from "./action-source.js";
+import {warmPage} from "./prefetch-host.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -3176,6 +3177,8 @@ function after(gesture, tap = false) {
       try { localStorage.setItem("aethyr.player.appearance.v1", text);send(17,text); }
       catch {send(17,"");}
     }
+    // Warm another page (its engine, shaders and packs) into the HTTP cache; progress back as message 18.
+    else if (code === 18 && text.startsWith("/")) warmPage(root && !text.startsWith(root + "/") ? root + text : text, (t) => send(18, t));
     else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
     else if (code === BAR_KIND) { if (!golden) try { localStorage.setItem(barKey, text); } catch {} }
     else if (code === 6) setQuality(text);

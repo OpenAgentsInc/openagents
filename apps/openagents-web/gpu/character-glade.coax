@@ -224,7 +224,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(c);if (u[11]<0.5f32) {result=mix3(result,v3(0.07f32,0.095f32,0.085f32),cg_panel_opacity(pixel,u[0],u[1],u[4]));}return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(c);if (u[11]<0.5f32) {result=mix3(result,v3(0.07f32,0.095f32,0.085f32),cg_panel_opacity(pixel,u[0],u[1],u[4])*(1.0f32-u[40]));}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;
@@ -242,3 +242,11 @@ cg_sky_uv :: (ray:V3)->V2 {
  fy:=0.4f32/sqrt(9.77f32);fz:=-3.1f32/sqrt(9.77f32);depth:=fmax(ray.y*fy+ray.z*fz,0.001f32);
  return v2(0.5f32+ray.x/depth*(1080.0f32*1.78f32)/(2.0f32*1920.0f32),0.48f32-0.89f32*(ray.y*(-fz)+ray.z*fy)/depth);
 }
+
+// The walk into Everglade (charactercreator-walk.coax): u[40] fades the control panel's glass with
+// the controls, u[41] fades the finished frame to black before the page changes.
+#test "glade walk veil keeps the frame at rest and reaches black" {
+ u:[104]f32;c:=v3(0.5f32,0.25f32,1.0f32);a:=cg_walk_veil(c,u[..]);#assert a.x==c.x && a.y==c.y && a.z==c.z;
+ u[41]=1;b:=cg_walk_veil(c,u[..]);#assert b.x==0 && b.y==0 && b.z==0;
+}
+cg_walk_veil :: (c:V3,u:[]f32)->V3 {return scale3(c,1.0f32-saturate(u[41]));}

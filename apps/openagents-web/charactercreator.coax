@@ -4,6 +4,7 @@
 #load "font.coax";
 #load "../../verse/character-glade.coax" as glade;
 #load "charactercreator-font.coax";
+#load "charactercreator-walk.coax";
 #load "../../aethyr/character-appearance.coax" as appearance;
 VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
@@ -17,6 +18,7 @@ Creator :: struct {
   clock:f32; surprise_seed:int; pose_at:f32; revision:int; saved:int; focused:int;
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
+  walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
 }
 DYES :: appearance.CA_DYES;
 SKINS :: appearance.CA_SKINS;
@@ -120,6 +122,7 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
   a:figs.BdAnim; a.on=true; a.clip=[4]int.[figs.BD_IDLE,figs.BD_WALK,figs.BD_RUN,figs.BD_SPELL][s.pose];
   a.t0=s.pose_at; a.fade_at=-100; a.phase=(s.clock-s.pose_at)/figs.bd_seconds(a.clip); a.yaw=s.yaw;
   if s.pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s.pose_at+floor((s.clock-s.pose_at)/dur)*dur; }
+  if s.walk.on {a=walk_figure(s,a);}
   n:=0;
   for i:0..<40 { if s.worn[i] && available(s,i) && s.source_count[i+(ifx s.female then 0 else 40)]>0 {
     p:=i+ifx s.female then 0 else 40;
@@ -201,6 +204,7 @@ line :: (out:[]f32,n:int,x:f32,y:f32,bx:f32,by:f32,k:f32,r:f32,g:f32,b:f32)->int
   if lit(out,n,x,y,bx,by,0.6*k,1,0,r,g,b,0) { return n+6; } return n;
 }
 frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->int {
+  if s[0].walk.on || s[0].profile_go {ensure(s);layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.48,0.56,0.59); gold:=ink(k,0.83,0.69,0.43);
   n=text(out,n,"Character Create",24*k,54*k,(ifx s[0].mobile then 18 else 22)*k,white);
@@ -243,6 +247,7 @@ camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   u[32]=-0.45;u[33]=0.78;u[34]=-0.42;
 }
 pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
+  if s[0].walk.on {return true;}
   if phase==0 {
     for i:0..<18 { if i==15 && !s[0].mobile {continue;}if inside(s[0].boxes[i],x,y) { s[0].down=i; s[0].drag_id=id; return true; } }
     s[0].drag_pan=s[0].pan_mode;s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;return true;
@@ -267,13 +272,14 @@ pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   return true;
 }
 key :: (s:[]Creator,k:int)->bool {
+  if s[0].walk.on {return true;}
   if k=='p' || k=='P' {s[0].pan_mode=!s[0].pan_mode;return true;}
   if k==-15 { s[0].focused=(s[0].focused+1)%13;return true; }
   if k==-4 || k==-5 { change(s,s[0].focused,ifx k==-4 then -1 else 1);return true; }
   if k==' ' { change(s,9,1);return true; }
   return false;
 }
-wheel :: (s:[]Creator,dy:f32) { s[0].dist=cc_clamp(s[0].dist+dy*0.003,0.65,6); }
+wheel :: (s:[]Creator,dy:f32) { if s[0].walk.on {return;} s[0].dist=cc_clamp(s[0].dist+dy*0.003,0.65,6); }
 // Page identity is a bounded host fact, not a search over arbitrary message content.
 page :: (facts:string)->bool {
   at:=0;
@@ -349,6 +355,7 @@ probe :: (s:Creator,f:int)->int {
   if f==0 {return s.source_n;} if f==1 {return s.outfit;}if f==2 {return ifx s.female then 1 else 0;}
   if f==3 {return s.variant;}if f==4 {return s.dye;}if f==5 {return s.skin;}if f==6 {return s.pose;}
   if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}if f==13 {return int(s.yaw*1000);}if f==18 {return ifx s.profile_ok then 1 else 0;}if f==19 {return ifx s.profile_failed then 1 else 0;}if f==14 {return s.glade_count;}
+  if f>=20 && f<=25 {return walk_probe(s,f);}
   return -1;
 }
 append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}return at+t.count;}
@@ -423,6 +430,7 @@ catalog_ready :: (s:Creator)->bool {for i:0..<80 {if appearance.PART_NAMES[i]!="
 
 // DOM button numbers: left 0, right 2. Latch the gesture on down; moves may report -1.
 mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
+  if s[0].walk.on {return true;}
   if phase==0 {
     if s[0].dragging || (button!=0 && button!=2) {return true;}
     s[0].drag_button=button;

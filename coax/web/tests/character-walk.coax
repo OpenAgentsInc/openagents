@@ -1,0 +1,158 @@
+// Character Create -> USE IN EVERGLADE -> the walk -> Everglade, in headless Chrome
+// (docs/verse/character-creator.md, "The road to Everglade").
+//   coax/web/tool.sh coax/web/tests/character-walk.coax URL
+//     Real time: the saved character walks for 30 s while Everglade warms, the page hands off,
+//     Everglade admits a seat with the same appearance and no character dialog. Prints timings.
+//   coax/web/tool.sh coax/web/tests/character-walk.coax URL --film OUT.mp4 FRAMES_DIR
+//     The same journey stepped frame by frame at 30 fps (clip mode) and encoded at 1920x1080.
+//     The load between the pages is filmed at its real length.
+// URL is the creator, e.g. http://127.0.0.1:8817/worlds/character-creator, served --static so the
+// warm-up's HTTP cache works as it does on openagents.com.
+#import "Basic";
+#load "../../lib/media/media.coax";
+
+cw_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_kind(cdp_doc(c),n)==JV_TRUE;}
+cw_int :: (c:[]Cdp,js:string)->int {n:=cdp_evaluate(c,js);if n<0 {return -1000000;}return jv_int(cdp_doc(c),n,-1000000);}
+// A pointer press and release on the canvas, as a player's click reaches the page.
+cw_click :: (c:[]Cdp,x:int,y:int)->bool {
+  js:[512]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_put(o[..],"(()=>{const c=document.querySelector('canvas');for(const type of ['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:");
+  jo_int(o[..],x);jo_put(o[..],",clientY:");jo_int(o[..],y);jo_put(o[..],",pointerId:31,pointerType:'mouse',button:0,bubbles:true}));return true;})()");
+  return cw_eval(c,jo_text(o[..]));
+}
+// The creator's choices (probes 1 outfit, 2 female, 3 colorway, 4 dye, 10 eyes) and Everglade's
+// saved player (27, 22, 25, 23, 24): the same character on both sides of the hand-off.
+CW_CREATOR :: "[1,2,3,4,10].map(f=>coaxial.fieldProbe(f)).join(',')";
+CW_EVERGLADE :: "[27,22,25,23,24].map(f=>coaxial.fieldProbe(f)).join(',')";
+cw_text :: (c:[]Cdp,js:string,out:[]u8)->string {n:=cdp_evaluate(c,js);if n<0 {return "";}t:=jv_raw(cdp_doc(c),n);k:=0;for ch:t {if k<out.count {out[k]=ch;k+=1;}}return cast(string)out[0..<k];}
+CW_ARRIVED :: "location.pathname==='/worlds/everglade'&&!!globalThis.coaxial?.sceneReady&&coaxial.fieldProbe(20)===1";
+CW_SEATED :: "coaxial.netProbe(0)===2&&coaxial.netProbe(1)>=0";
+CW_PICKER :: "location.pathname==='/worlds/everglade'&&!!globalThis.coaxial?.sceneReady&&coaxial.fieldProbe(20)===1&&coaxial.fieldProbe(29)!==0";
+// The creator's USE IN EVERGLADE (desktop sidebar, boxes[17]) and SURPRISE ME (boxes[14]).
+CW_USE_X :: 260; CW_USE_Y :: 696; CW_SURPRISE_X :: 260; CW_SURPRISE_Y :: 652;
+
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {tool_errln("character-walk: URL [--film OUT.mp4 FRAMES_DIR]");return 2;}
+  // --mbps N throttles the browser's downloads to N megabits a second with 40 ms latency (a home
+  // connection), so the warm-up's overlap with the walk shows; without it localhost is near instant.
+  mb:=args_value(a[..],"--mbps","0");mbps:=0;for j:0..<mb.count {if mb[j]>=48 && mb[j]<=57 {mbps=mbps*10+cast(int)(mb[j]-48);}}
+  n:=ifx mbps>0 then args_count(a[..])-2 else args_count(a[..]);
+  url:=args_at(a[..],0);film:=n==4 && args_at(a[..],1)=="--film";cold:=n==2 && args_at(a[..],1)=="--cold";
+  if n!=1 && !film && !cold {tool_errln("character-walk: URL [--cold | --film OUT.mp4 FRAMES_DIR] [--mbps N]");return 2;}
+
+  c:[1]Cdp;if !cdp_launch(c[..],1920,1080,"character-walk-") {tool_errln(cdp_error(c[..]));return 1;}
+  status:=0;if cold {status=cw_cold(c[..],url,mbps);} else if film {status=cw_film(c[..],url,args_at(a[..],2),args_at(a[..],3),mbps);} else {status=cw_measure(c[..],url,mbps);}
+  cdp_close(c[..]);return status;
+}
+
+cw_open :: (c:[]Cdp,url:string,clip:bool,cw_mbps:int)->bool {
+  if !media_size(c,ArgsSize.{ok=true,w=1920,h=1080}) || cdp_call(c,"Runtime.enable","",CDP_CALL_MS)<0 || cdp_call(c,"Page.enable","",CDP_CALL_MS)<0 {return false;}
+  if cw_mbps>0 {
+    q:[256]u8;t:[1]Jo;jo_start(t[..],q[..]);jo_obj(t[..]);jo_key(t[..],"offline");jo_bool(t[..],false);jo_key(t[..],"latency");jo_int(t[..],40);
+    jo_key(t[..],"downloadThroughput");jo_int(t[..],cw_mbps*125000);jo_key(t[..],"uploadThroughput");jo_int(t[..],cw_mbps*125000);jo_end(t[..]);
+    if cdp_call(c,"Network.enable","",CDP_CALL_MS)<0 || cdp_call(c,"Network.emulateNetworkConditions",jo_text(t[..]),CDP_CALL_MS)<0 {return false;}
+  }
+  if clip {
+    for s:[3]string.["{\"source\":\"globalThis.coaxialClip = true\"}","{\"source\":\"globalThis.coaxialClipRoom = true\"}","{\"source\":\"Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })\"}"] {if cdp_call(c,"Page.addScriptToEvaluateOnNewDocument",s,CDP_CALL_MS)<0 {return false;}}
+  }
+  p:[4096]u8;o:[1]Jo;jo_start(o[..],p[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  return cdp_call(c,"Page.navigate",jo_text(o[..]),CDP_CALL_MS)>=0;
+}
+
+// ---- real time
+cw_measure :: (c:[]Cdp,url:string,mbps:int)->int {
+  if !cw_open(c,url,false,mbps) {tool_errln(cdp_error(c));return 1;}
+  ready:=false;for i:0..<600 {proc_sleep(100);if cw_eval(c,"!!globalThis.coaxial?.sceneReady&&coaxial.fieldProbe(14)>0") {ready=true;break;}}
+  if !ready {tool_errln("Character Create never drew its glade");return 1;}
+  if !cw_click(c,CW_SURPRISE_X,CW_SURPRISE_Y) {return 1;}proc_sleep(300);
+  look:[64]u8;before:=cw_text(c,CW_CREATOR,look[..]);
+  t0:=proc_now_ms();if !cw_click(c,CW_USE_X,CW_USE_Y) {return 1;}
+  walking:= -1;warm:= -1;warm_walk:= -1;went:= -1;walk_ms:= -1;moved:= -1;arrived:= -1;seated:= -1;bytes:= -1;picker:=false;state:=0;
+  for i:0..<1800 {
+    proc_sleep(100);now:=proc_now_ms()-t0;
+    if arrived<0 && went<0 {
+      w:=cw_int(c,"location.pathname==='/worlds/character-creator'?coaxial.fieldProbe(20):-1");
+      if w>=2 && walking<0 {walking=now;}
+      if warm<0 && cw_int(c,"location.pathname==='/worlds/character-creator'?coaxial.fieldProbe(23):-1")==1 {warm=now;warm_walk=cw_int(c,"coaxial.fieldProbe(21)");bytes=cw_int(c,"coaxial.fieldProbe(24)");}
+      if w>=4 && walk_ms<0 {walk_ms=cw_int(c,"coaxial.fieldProbe(21)");}
+      if w==5 {went=now;}
+    }
+    if moved<0 && cw_eval(c,"location.pathname==='/worlds/everglade'") {moved=now;if went<0 {went=now;}}
+    if moved>=0 && cw_eval(c,CW_PICKER) {picker=true;}
+    if moved>=0 && arrived<0 && cw_eval(c,CW_ARRIVED) {arrived=now;}
+    if arrived>=0 && seated<0 && cw_eval(c,CW_SEATED) {seated=now;}
+    if seated>=0 && now>seated+3000 {break;}
+  }
+  after:[64]u8;landed:=cw_text(c,CW_EVERGLADE,after[..]);
+  print("{\"walking_ms\":%,\"warm_done_ms\":%,\"warm_done_walk_ms\":%,\"warm_bytes\":%,\"fade_walk_ms\":%,\"left_ms\":%,\"everglade_page_ms\":%,\"everglade_drawn_ms\":%,\"seated_ms\":%,\"creator\":\"%\",\"everglade\":\"%\",\"picker\":%}\n",walking,warm,warm_walk,bytes,walk_ms,went,moved,arrived,seated,before,landed,ifx picker then "true" else "false");
+  if picker {tool_errln("Everglade opened a character dialog after the walk");return 1;}
+  if seated<0 {tool_errln("Everglade never seated the walker");return 1;}
+  if walk_ms<28000 || walk_ms>40000 {tool_errln("the walk did not take about 30 seconds");return 1;}
+  if !cw_same(before,landed) {tool_errln("Everglade's player is not the saved character");return 1;}
+  print("Character walk: save, 30 s walk with Everglade warming, hand-off, same character, seat, no dialog.\n");return 0;
+}
+// The comparison: Everglade opened straight from a new browser, with nothing warmed (URL is Everglade).
+cw_cold :: (c:[]Cdp,url:string,mbps:int)->int {
+  t0:=proc_now_ms();if !cw_open(c,url,false,mbps) {tool_errln(cdp_error(c));return 1;}
+  for i:0..<1200 {proc_sleep(50);if cw_eval(c,"!!globalThis.coaxial?.sceneReady") {print("{\"cold_everglade_drawn_ms\":%}\n",proc_now_ms()-t0);return 0;}}
+  tool_errln("Everglade never drew");return 1;
+}
+// "outfit,female,colorway,dye,eyes" from both sides.
+cw_same :: (a:string,b:string)->bool {return a.count>0 && a==b;}
+
+// ---- the film
+CW_FPS :: 30;
+cw_film :: (c:[]Cdp,url:string,out:string,frames:string,mbps:int)->int {
+  ok:=fs_mkdir(frames);
+  if !cw_open(c,url,true,mbps) {tool_errln(cdp_error(c));return 1;}
+  up:=false;for i:0..<600 {proc_sleep(100);if cw_eval(c,"typeof coaxialClipStep==='function'?coaxialClipStep(1,1e6).then(d=>d&&!document.getElementById('coaxial-load')&&coaxial.fieldProbe(14)>0):false") {up=true;break;}}
+  if !up {tool_errln("Character Create never drew in clip mode");return 1;}
+  if !cw_click(c,CW_SURPRISE_X,CW_SURPRISE_Y) {return 1;}
+  n:=0;t0:=proc_now_ms();
+  for i:0..<45 {if !cw_frame(c,frames,n) {return 1;}n+=1;}
+  look:[64]u8;before:=cw_text(c,CW_CREATOR,look[..]);
+  if !cw_click(c,CW_USE_X,CW_USE_Y) {return 1;}
+  left:=false;
+  for i:0..<(40*CW_FPS) {
+    // The page has gone once its clip step is gone (the navigation unloads it mid-step).
+    if !cw_frame(c,frames,n) {left=!cw_eval(c,"location.pathname==='/worlds/character-creator'&&typeof coaxialClipStep==='function'");break;}n+=1;
+    if i%10==0 {w:=cw_int(c,"location.pathname==='/worlds/character-creator'?coaxial.fieldProbe(20):-2");if w==5 || w== -2 || w== -1000000 {left=true;break;}}
+    if i%150==0 {print("walk frame % (walk % ms, warm-up %)\n",i,cw_int(c,"coaxial.fieldProbe(21)"),cw_int(c,"coaxial.fieldProbe(23)"));}
+  }
+  if !left {tool_errln("the walk never handed off");return 1;}
+  // The load between the pages, filmed at its real length: each shot repeats for the frames its time spans.
+  started:=proc_now_ms();written:=0;up=false;shot:[MEDIA_PNG]u8;size:=0;
+  for i:0..<1200 {
+    k:=cw_jpeg(c,shot[..]);if k>0 {size=k;}
+    due:=(proc_now_ms()-started)*CW_FPS/1000;
+    while written<due && size>0 {if !cw_write(frames,n,cast(string)shot[0..<size]) {return 1;}n+=1;written+=1;}
+    if cw_eval(c,"location.pathname==='/worlds/everglade'&&typeof coaxialClipStep==='function'?coaxialClipStep(1,1e6).then(d=>d&&!document.getElementById('coaxial-load')):false") {up=true;break;}
+    proc_sleep(30);
+  }
+  load_ms:=proc_now_ms()-started;
+  if !up {tool_errln("Everglade never finished loading after the walk");return 1;}
+  print("Everglade drew % ms after the hand-off\n",load_ms);
+  picker:=false;seat:= -1;
+  for i:0..<(8*CW_FPS) {if !cw_frame(c,frames,n) {return 1;}n+=1;if cw_eval(c,CW_PICKER) {picker=true;}if seat<0 && cw_eval(c,CW_SEATED) {seat=i;}}
+  after:[64]u8;landed:=cw_text(c,CW_EVERGLADE,after[..]);
+  print("{\"frames\":%,\"load_ms\":%,\"seat_frame\":%,\"creator\":\"%\",\"everglade\":\"%\",\"picker\":%,\"real_ms\":%}\n",n,load_ms,seat,before,landed,ifx picker then "true" else "false",proc_now_ms()-t0);
+  pattern:[4200]u8;err:[65536]u8;so:[4096]u8;
+  av:=[19]string.["ffmpeg","-v","error","-y","-framerate","30","-i",fs_join(frames,"f%05d.jpg",pattern[..]),"-c:v","libx264","-preset","slow","-pix_fmt","yuv420p","-crf","23","-movflags","+faststart",out];
+  enc:=proc_run(av[..],-1,so[..],err[..]);
+  if enc.started!=0 || enc.status!=0 {tool_errln("ffmpeg failed");tool_errln(cast(string)err[0..<enc.err_n]);return 1;}
+  if picker || seat<0 || !cw_same(before,landed) {tool_errln("the arrival was not the saved character, seated, without a dialog");return 1;}
+  print("Film: %\n",out);return 0;
+}
+cw_jpeg :: (c:[]Cdp,out:[]u8)->int {
+  r:=cdp_call(c,"Page.captureScreenshot","{\"format\":\"jpeg\",\"quality\":92}",CDP_CALL_MS);if r<0 {return -1;}
+  d:=cdp_doc(c);data:=jv_get(d,r,"data");if jv_kind(d,data)!=JV_STRING {return -1;}return b64_decode(jv_raw(d,data),out);
+}
+cw_write :: (frames:string,n:int,bytes:string)->bool {
+  name:[32]u8;name[0]=102;k:=1;digits:[8]u8;v:=n;for j:0..<5 {digits[4-j]=cast(u8)(48+v%10);v=v/10;}for j:0..<5 {name[k]=digits[j];k+=1;}ext:=".jpg";for j:0..<4 {name[k]=ext[j];k+=1;}
+  path:[4200]u8;return fs_write(fs_join(frames,cast(string)name[0..<k],path[..]),bytes);
+}
+// One step of game time, then its picture.
+cw_frame :: (c:[]Cdp,frames:string,n:int)->bool {
+  v:=cdp_evaluate(c,"coaxialClipStep(1,30)");if v<0 {return false;}
+  shot:[MEDIA_PNG]u8;k:=cw_jpeg(c,shot[..]);if k<=0 {return false;}
+  return cw_write(frames,n,cast(string)shot[0..<k]);
+}
