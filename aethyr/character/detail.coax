@@ -1,0 +1,19 @@
+// Shared CPU/GPU projected-detail rules for the native character pass, not Valley's frozen renderer.
+#module "aethyr.character.detail";
+DETAIL_GROUPS :: 251;
+detail_fade :: (head:f32,start:f32,end:f32)->f32 {x:=(head-start)/(end-start);x=ifx x<0 then 0.0f32 else ifx x>1 then 1.0f32 else x;return x*x*(3-2*x);}
+detail_hair :: (head:f32)->f32 {r:=head/300;q:=r*r*(0.125f32+0.875f32*detail_fade(head,64,96));return ifx q<0.004 then 0.004f32 else ifx q>0.5 then 0.5f32 else q;}
+detail_face :: (head:f32)->f32 {return detail_fade(head,32,64);}
+detail_light :: (head:f32)->f32 {return detail_fade(head,64,96);}
+// 44 is the inverse of the ordering stride 97 modulo 251.
+detail_rank :: (seed:f32)->int {group:=cast(int)(seed*251+0.5);return ((group%251+251)%251*44)%251;}
+detail_group_weight :: (seed:f32,share:f32)->f32 {x:=share*251-cast(f32)detail_rank(seed);return ifx x<0 then 0.0f32 else ifx x>1 then 1.0f32 else x;}
+#test "Groom group boundary weights are continuous in both directions and retain the prefix" {
+ for rank:0..<251 {seed:=cast(f32)(rank*97%251)/251;#assert detail_rank(seed)==rank;
+  a:=detail_group_weight(seed,cast(f32)rank/251);b:=detail_group_weight(seed,(cast(f32)rank+0.5)/251);c:=detail_group_weight(seed,(cast(f32)rank+1)/251);
+  #assert a<0.0001 && b>0.4999 && b<0.5001 && c>0.9999;
+ }
+ #assert detail_face(32)==0 && detail_face(48)==0.5 && detail_face(64)==1;
+ #assert detail_light(64)==0 && detail_light(80)==0.5 && detail_light(96)==1;
+ #assert detail_hair(48)==0.004f32 && detail_hair(300)==0.5;
+}

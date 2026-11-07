@@ -1,0 +1,75 @@
+// Frozen pre-optimization rain oracle; never loaded by a world shader.
+#load "gpu.coax";
+#test "Rain oracle fixtures include visible drops rather than only unchanged background pixels" {
+ u:[1536]f32;u[1065]=0.015;u[1472]=1;seen:=0;c:=v3(0.2,0.3,0.5);
+ for k:0..<256 {u[2]=cast(f32)k*0.137;v:=wg_normalize3(v3(cast(f32)(k%32-16)/16,cast(f32)(k/32-4)*0.08,1));
+  a:=rain_before(c,v,30,u[..]);b:=eg_weather_streaks(c,v,30,u[..]);if a.x!=c.x {seen+=1;}
+  #assert f32_bits(a.x)==f32_bits(b.x) && f32_bits(a.y)==f32_bits(b.y) && f32_bits(a.z)==f32_bits(b.z);
+ }
+ #assert seen>0;
+}
+#forall "Rain cheap rejection preserves every colour against the original roof-query order" k:0..<128 {
+ u:[1536]f32;u[2]=cast(f32)k*0.137;u[1065]=0.0015;u[1472]=cast(f32)(k%5)/4;u[1473]=2;u[1474]= -1;u[1482]=3;u[1483]=32;
+ u[24]=ifx k%3==0 then 88.0f32 else cast(f32)(k%9-4);u[25]=cast(f32)(k%7)/2;u[26]=ifx k%3==0 then -12.0f32 else cast(f32)(k%11-5);
+ for i:0..<32 {at:=1212+i*4;u[at]=cast(f32)(i%8-4)*3;u[at+1]=cast(f32)(i/8-2)*4;u[at+2]=u[at]+2;u[at+3]=u[at+1]+3;}
+ v:=wg_normalize3(v3(cast(f32)(k%13-6)*0.17,cast(f32)(k%9-4)*0.21,1));c:=v3(0.2,0.3,0.5);d:=cast(f32)(k%17+1)*4;
+ old:=rain_before(c,v,d,u[..]);next:=eg_weather_streaks(c,v,d,u[..]);#assert f32_bits(old.x)==f32_bits(next.x) && f32_bits(old.y)==f32_bits(next.y) && f32_bits(old.z)==f32_bits(next.z);
+}
+rain_before :: (c:V3,v:V3,d:f32,u:[]f32)->V3 {
+  rain:f32=u[1472];
+  if (rain<=0.01f32) {
+    return c;
+  }
+  layers:s32=ifx eg_weather_desktop(u) then 4 else 2;
+  t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
+  lean:V2=wg_div_f2f(v2(u[1473],u[1474]),7.0f32);
+  w:V3=v3(v.x+(lean.x*v.y),v.y,v.z+(lean.y*v.y)); // the ray in rain space (same s as along v)
+  flat:f32=wg_length2(v2(w.x,w.z));
+  k:f32=flat/fmax(wg_length3(w),1e-4f32); // the sine of the ray's angle off the fall axis
+  if (k<0.06f32) {
+    return c;
+  }
+  around:f32=(wg_atan2(w.x,w.z)*0.15915494f32)+0.5f32; // 0..1 round the axis
+  px:f32=fmax(u[1065],1e-4f32);
+  a:f32=0.0f32;
+  {
+    i:s32=0;
+    while i<4 {
+      if (i>=layers) {
+        break;
+      }
+      r:f32=1.2f32*wg_exp2(cast(f32)(i));
+      along:f32=r/flat; // how far along v the cylinder is
+      if (along>d) {
+        break;
+      }
+      if eg_weather_covered(wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(v,along)),u) {
+        {i+=1; continue;}
+      }
+      fade:f32=1.0f32-smoothstep(0.04f32,0.12f32,(px*along)/k); // a pixel's run up the axis, m
+      if (fade<=0.0f32) {
+        {i+=1; continue;}
+      }
+      y:f32=w.y*along;
+      cells:f32=wg_round((6.2831853f32*r)/0.12f32); // whole cells round, so no seam
+      q:V2=v2(around*cells,((y+(t*7.0f32))+((cast(f32)(i))*13.7f32))/0.85f32);
+      cell:V2=wg_floor_f2(q);
+      h:f32=eg_weather_hash(wg_add_f2f2(cell,v2((cast(f32)(i))*17.0f32,3.0f32)));
+      if (h>(rain*0.55f32)) {
+        {i+=1; continue;}
+      }
+      f:V2=wg_fract_f2(q);
+      off:f32=(eg_weather_hash(wg_add_f2f(cell,9.1f32))*0.7f32)+0.15f32;
+      top:f32=eg_weather_hash(wg_add_f2f(cell,4.7f32))*0.7f32;
+      width:f32=fmax(((px*along)*1.1f32)/0.12f32,0.02f32); // a pixel, in cells
+      x:f32=abs(f.x-off);
+      len_2:f32=(0.07f32*wg_exp2((cast(f32)(i))*0.5f32))/0.85f32; // 7 cm near, 20 cm at 9.6 m: shorter on screen the farther
+      streak:f32=((1.0f32-smoothstep(width*0.5f32,width,x))*smoothstep(top,top+0.02f32,f.y))*(1.0f32-smoothstep((top+len_2)-0.02f32,top+len_2,f.y));
+      a=a+((streak*(0.55f32-(0.1f32*(cast(f32)(i)))))*fade);
+      i+=1;
+    }
+  }
+  key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
+  tint:V3=wg_mul_f3f(v3(0.78f32,0.84f32,0.9f32),(0.45f32+(0.55f32*clampf(verse_style_luma(key.x,key.y,key.z),0.0f32,1.0f32))));
+  return wg_mix_f3f3f(c,tint,clampf(a,0.0f32,1.0f32)*0.4f32);
+}

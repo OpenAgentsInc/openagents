@@ -124,6 +124,12 @@ egfx_billow :: (c:V2,seed:f32,rag:f32,soft:f32,cover:f32,u:[]f32)->f32 {
   edge:f32=((1.0f32-wg_length2(c))+((n-0.5f32)*rag))-((1.0f32-clampf(cover,0.0f32,1.0f32))*(1.0f32+(0.5f32*rag)));
   return smoothstep(0.0f32,soft,edge);
 }
+#forall "Puff outer bound only skips pixels whose original billow has zero visible coverage" k:0..<400 {
+ u:[28]f32;u[2]=1.23;rag:=ifx k%2==0 then 0.6f32 else 0.7f32;cover:=cast(f32)(k%5)/4;
+ c:=v2(cast(f32)(k%20-10)/5,cast(f32)(k/20-10)/5);
+ if egfx_outside(c,rag,cover) {#assert egfx_billow(c,0.37,rag,0.08,cover,u[..])<=0.002f32;}
+}
+egfx_outside :: (c:V2,rag:f32,cover:f32)->bool {radius:=(1+0.5f32*rag)*clampf(cover,0.0f32,1.0f32);return wg_dot2(c,c)>=radius*radius;}
 // How much of a puff shows at this pixel for what stands behind it: none where it meets it, all a
 // little in front. The scene's w from its depth: clip z = b - a·w along any ray (a perspective's), b
 // the eye's clip z, a from one point ahead of the eye.
@@ -158,12 +164,17 @@ egfx_fire :: (p:EgfxP,m:f32,u:[]f32)->V3 {
 }
 egfx_particle_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
   kind:f32=p.look.x;
+  if p.near<=0 {return v4(0,0,0,0);}
+  if kind==EGFX_FIRE && egfx_outside(p.corner,0.6,p.look.z) {return v4(0,0,0,0);}
+  soft:=ifx kind==EGFX_RING then 1.0f32 else egfx_soft(p,u,particle_depth);
+  if soft<=0 {return v4(0,0,0,0);}
   a:f32=0.0f32;
   c:V3=v3(p.colour.x,p.colour.y,p.colour.z);
   if (kind==EGFX_RING) {
     // a ring at the quad's rim, thin and soft
     r:f32=wg_length2(p.corner);
     band:f32=1.0f32-smoothstep(0.0f32,0.16f32,abs(r-0.86f32));
+    if band<=0 {return v4(0,0,0,0);}
     a=band*(0.7f32+(0.6f32*egfx_noise2(wg_add_f2f2(wg_mul_f2f(p.corner,6.0f32),v2(p.look.y*9.0f32,u[2])))));
   } else if (kind==EGFX_GLOW) {
     // a smooth glow, or a spark's streak: a hot thin core in a soft halo
@@ -173,7 +184,7 @@ egfx_particle_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
     }
     r2:f32=wg_dot2(q,q);
     if (r2>=1.0f32) {
-      gpu_demote_helper();
+      return v4(0,0,0,0);
     }
     a=exp((-r2)*3.5f32)*(1.0f32-r2);
     c=wg_mix_f3f3f(c,wg_make_f3_f(fmax(c.x,fmax(c.y,c.z))),p.colour.w*exp((-r2)*18.0f32));
@@ -181,31 +192,33 @@ egfx_particle_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
     // fire: its body is drawn over (particle_over_fs); here only its heat's glow, which blooms
     m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
     if (m<=0.002f32) {
-      gpu_demote_helper();
+      return v4(0,0,0,0);
     }
     c=wg_mul_f3f(egfx_fire(p,m,u),(0.08f32+(0.4f32*p.colour.w)));
     a=m;
   }
-  k:f32=((a*p.near)*egfx_far(p.look.w,u))*(ifx kind==EGFX_RING then 1.0f32 else egfx_soft(p,u,particle_depth));
+  k:f32=((a*p.near)*egfx_far(p.look.w,u))*soft;
   // what it adds, and how much of that blooms
   return wg_make_f4_f3f(wg_mul_f3f(c,k),clampf(k*0.6f32,0.0f32,1.0f32));
 }
 egfx_particle_over_fs :: (p:EgfxP,u:[]f32,particle_depth:TexDepth)->V4 {
+  if p.near<=0 || egfx_outside(p.corner,ifx p.look.x==EGFX_FIRE then 0.6f32 else 0.7f32,ifx p.look.x==EGFX_FIRE then p.look.z else p.colour.w) {return v4(0,0,0,0);}
+  soft:=egfx_soft(p,u,particle_depth);if soft<=0 {return v4(0,0,0,0);}
   if (p.look.x==EGFX_FIRE) {
     // a billow of fire: its own light, covering what is behind as thickly as it is there
     m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
     if (m<=0.002f32) {
-      gpu_demote_helper();
+      return v4(0,0,0,0);
     }
-    a:f32=((clampf(m,0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*egfx_soft(p,u,particle_depth);
+    a:f32=((clampf(m,0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*soft;
     return wg_make_f4_f3f(wg_mul_f3f(egfx_fire(p,m,u),a),a);
   }
   // smoke: lit from above, darker under, ragged and churning, as thick as it says
   m:f32=egfx_billow(p.corner,p.look.y,0.7f32,0.12f32,p.colour.w,u);
   if (m<=0.002f32) {
-    gpu_demote_helper();
+    return v4(0,0,0,0);
   }
-  a:f32=((clampf(m*fmin(p.colour.w*1.6f32,0.92f32),0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*egfx_soft(p,u,particle_depth);
+  a:f32=((clampf(m*fmin(p.colour.w*1.6f32,0.92f32),0.0f32,1.0f32)*p.near)*egfx_far(p.look.w,u))*soft;
   // a ball of smoke lit from above: its top and its bulges catch the light, its underside in shadow
   n:f32=egfx_churn(wg_add_f2f2(wg_mul_f2f(p.corner,1.1f32),v2(0.0f32,0.4f32)),p.look.y+3.0f32,u);
   r:f32=wg_length2(p.corner);

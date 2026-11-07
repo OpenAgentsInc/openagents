@@ -45,10 +45,17 @@ ep_parse :: (t: string, gap: [] int, cpu: [] int, gpu: [] int, held: [] int) -> 
   return n;
 }
 ep_ms :: (us: int) -> f64 { return cast(f64) us / 1000.0; }
+#test "Echo performance suffix separates groom counts from actual raster dimensions" {
+ p:=ep_probe("1:2:3:1,|4/9274/1920/1080");#assert p[0]==4 && p[1]==9274 && p[2]==1920 && p[3]==1080;
+ p=ep_probe("1:2:3:1,|35/82638");#assert p[0]==35 && p[1]==82638 && p[2]==0 && p[3]==0;
+}
+ep_probe :: (text:string)->[4]int {out:[4]int;field:=0;started:=false;for ch:text {if ch=='|' {started=true;continue;}if !started {continue;}if ch=='/' {field+=1;continue;}if field<4 && ch>='0' && ch<='9' {out[field]=out[field]*10+cast(int)(ch-'0');}}return out;}
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 3 { print("usage: everglade-echo-perf URL close|medium|wide 1080|720\n"); return 2; }
+  if !args_load(a[..]) || (args_count(a[..]) != 3 && args_count(a[..]) != 4) { print("usage: everglade-echo-perf URL close|medium|wide 1080|720 [no-character]\n"); return 2; }
+  hide:=args_count(a[..])==4 && args_at(a[..],3)=="no-character";
+  if args_count(a[..])==4 && !hide {return 2;}
   shot := args_at(a[..], 1); big := args_at(a[..], 2) == "1080";
   if shot != "close" && shot != "medium" && shot != "wide" { print("everglade-echo-perf: SHOT is close, medium or wide\n"); return 2; }
   width := ifx big then 1920 else 1280; height := ifx big then 1080 else 720;
@@ -60,6 +67,11 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "source");
   jo_str(j[..], "globalThis.coaxialFrameTrace=true;globalThis.faceErrors=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");
   jo_end(j[..]); _ = cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(j[..]), 30000);
+  if hide {
+    print("DIAGNOSTIC: Echo draw calls suppressed; room, spells, lights and resident resources unchanged (not a hero FPS qualification)\n");
+    glue:[8192]u8;gn:=fs_read("coax/web/everglade-echo-isolate.js",glue[..]);#assert gn>0;
+    params:[16384]u8;jo_start(j[..],params[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],cast(string)glue[0..<gn]);jo_end(j[..]);#assert cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),30000)>=0;
+  }
   jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], args_at(a[..], 0)); jo_end(j[..]);
   _ = cdp_call(c[..], "Page.navigate", jo_text(j[..]), 30000);
   // the town drawn and her pass ready (a 1 GB pack)
@@ -70,6 +82,8 @@ tool_main :: () -> int #export_c #effects(all) {
     proc_sleep(100);
   }
   if !ready { print("FAIL the page (and her pass) never came ready\n"); cdp_close(c[..]); return 1; }
+  adapter:=cdp_evaluate(c[..],CDP_ADAPTER_JS);if adapter>=0 {print("adapter: %\n",jv_raw(c[0].doc[0],adapter));}
+  hardware:=cdp_evaluate(c[..],CDP_HARDWARE_JS);if hardware<0 || jv_raw(c[0].doc[0],hardware)!="true" {print("FAIL hardware WebGPU required\n");cdp_close(c[..]);return 1;}
   proc_sleep(2000);   // settle: her first uploads, the pipelines' first use
   ms := 5000;
   if shot == "close" { pressed := fc_key(c[..], "n"); ms = ifx pressed then 1200 else 0; }
@@ -91,7 +105,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // the measuring script, with its length in milliseconds
   script: [1024] u8; k := 0;
   head := "(async()=>{coaxial.takeFrameTrace();const t0=performance.now();await new Promise(r=>{const f=()=>{if(performance.now()-t0<";
-  tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+Math.round(r[8]*1000)+':'+(r[7]===0?0:1)).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)})()";
+  tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+Math.round(r[8]*1000)+':'+(r[7]===0?0:1)).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)+'/'+(t.at(-1)?.[5]??0)+'/'+(t.at(-1)?.[6]??0)})()";
   for ch: head { script[k] = ch; k += 1; }
   digits: [8] u8; d := 0; v := ms;
   while v > 0 { digits[d] = cast(u8) (48 + v % 10); v /= 10; d += 1; }
@@ -106,20 +120,15 @@ tool_main :: () -> int #export_c #effects(all) {
   p := frame_stats(cpu[..], count);
   g := frame_stats(gpu[..], count);
   // after the bar: the hair's share (thousandths) / the strands' segments drawn (groom levels, #12988)
-  share := 0; drawn := 0; at := 0; second := false;
-  while at < text.count && text[at] != '|' { at += 1; }
-  for ch: text[lo_int(at + 1, text.count)..<text.count] {
-    if ch == '/' { second = true; }
-    if ch >= '0' && ch <= '9' { if second { drawn = drawn * 10 + cast(int) (ch - '0'); } else { share = share * 10 + cast(int) (ch - '0'); } }
-  }
+  meta:=ep_probe(text);share:=meta[0];drawn:=meta[1];
   e := cdp_evaluate(c[..], "faceErrors.length===0");
   clean := e >= 0 && jv_raw(c[0].doc[0], e) == "true";
   holds := frame_holds(f);
-  print("% %x%: % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; gpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
-        shot, width, height, f.n, cast(f64) frame_fps10(f) / 10.0, ep_ms(f.p50), ep_ms(f.p95), ep_ms(f.max), held[0], ep_ms(p.p50), ep_ms(p.p95), ep_ms(g.p50), ep_ms(g.p95), share, drawn,
+  print("% %x% (render %x%): % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; gpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
+        shot, width, height, meta[2],meta[3],f.n, cast(f64) frame_fps10(f) / 10.0, ep_ms(f.p50), ep_ms(f.p95), ep_ms(f.max), held[0], ep_ms(p.p50), ep_ms(p.p95), ep_ms(g.p50), ep_ms(g.p95), share, drawn,
         ifx holds then "holds 60 FPS" else "misses 60 FPS", ifx clean then "" else " (console errors)");
   cdp_close(c[..]);
-  return ifx holds && clean then 0 else 1;
+  return ifx holds && clean && !hide then 0 else 1;
 }
 lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 

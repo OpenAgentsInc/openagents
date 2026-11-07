@@ -6089,3 +6089,21 @@ controller physics. VPK2 carries the 60 original texture maps without vertex
 colour baking; VPK1's 48-entry bound and the registry's 64-slot bound remain.
 See `docs/verse/2026-11-06-everglade-link-experiment.md` and
 `docs/protocol/everglade-link-input-v1.md` for fidelity, controls and rollback.
+
+## Native character detail keeps CPU draws and GPU coverage coherent
+
+The character pass shares projected-detail rules in `aethyr/character/detail.coax`.
+Its groom draws a prefix of 251 ordered curve groups, reuses identical ribbon
+corners, and fades the fractional last group. Width compensation uses the same
+effective share; shadows apply their own capped share and matching boundary
+weight. Face morph detail fades continuously. Body skinning retains all eight
+influences. These `ch_*` paths do not change Valley's frozen `cv_*` renderer.
+
+Everglade rejects empty rain candidates before querying roofs, outside-map
+shadow receivers before PCF, and provably empty or depth-hidden puffs before
+noise and lighting. Rain colours match the frozen reference oracle; the graphics
+quality ladder, pixel floor, spell state and frame-admission policy are unchanged.
+The frame timer reports actual raster dimensions, counts held callbacks in the
+next drawn frame, requires hardware WebGPU and labels draw-suppressed runs as
+non-qualifying diagnostics. R4's timing and complete head-frame review are in
+`docs/verse/2026-11-06-native-hero-characters.md`.

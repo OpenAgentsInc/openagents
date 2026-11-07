@@ -11,8 +11,8 @@
 //   8..10    the eye; 12..14 the camera's right, 15 its horizontal focal scale; 16..18 its up,
 //            19 its vertical focal scale; 20..22 the way it looks
 //   24..26   toward the key light (the sun or the moon)
-//   104..106 the character's feet; 108, 109 the cosine and sine of its heading; 111 1 when the face's
-//            morphs play (the character runtime fills it); 112 0 (Valley Lab's TF0290 rig is off);
+//   104..106 the character's feet; 108, 109 the cosine and sine of its heading; 111 the face morph
+//            detail share, 0..1 (the character runtime fills it); 112 0 (Valley Lab's TF0290 rig is off);
 //            114 the head's material profile (0 and up: the Slay profile)
 //   116..125 how the world moves the character (0 in 116: she stands where she is placed and her
 //            runtime idles her): 116 1 when the world moves her, 117 her speed over the ground (m/s),

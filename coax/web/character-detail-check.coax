@@ -1,0 +1,48 @@
+// Review every captured head, not a sparse selection of orbit frames.
+// CLI FRAMES_DIR CAPTURE_LOG OUTPUT_DIR; source renders and derived sheets stay owner-local.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
+#load "../lib/image/png.coax";
+#test "Detail capture parser retains signed screen positions and all eight observations" {
+ v:[8]int;#assert hc_numbers("detail 12 4/18486/0/54000/4000/-1/300",v[..])==8;
+ #assert v[0]==12 && v[2]==18486 && v[4]==54000 && v[6]== -1 && v[7]==300;
+ #assert hc_edge(-1,128,1920)==0 && hc_edge(2000,128,1920)==1792 && hc_edge(960,128,1920)==896;
+}
+hc_numbers :: (s:string,out:[]int)->int {
+ n:=0;v:=0;active:=false;negative:=false;
+ for ch:s {if ch>='0' && ch<='9' {v=v*10+cast(int)(ch-'0');active=true;}else {if active {if n>=out.count {return -1;}out[n]=ifx negative then -v else v;n+=1;v=0;active=false;}negative=ch=='-';}}
+ if active {if n>=out.count {return -1;}out[n]=ifx negative then -v else v;n+=1;}return n;
+}
+hc_edge :: (centre:int,size:int,limit:int)->int {x:=centre-size/2;return ifx x<0 then 0 else ifx x>limit-size then limit-size else x;}
+hc_name :: (frame:int,head:bool,b:[]u8)->string {n:=0;for ch:(ifx head then "head-" else "frame-") {b[n]=ch;n+=1;}b[n]=cast(u8)(48+frame/100);b[n+1]=cast(u8)(48+frame/10%10);b[n+2]=cast(u8)(48+frame%10);n+=3;for ch:".png" {b[n]=ch;n+=1;}return cast(string)b[0..<n];}
+hc_run :: (args:[]string) {out:[1024]u8;err:[8192]u8;r:=proc_run(args,60000,out[..],err[..]);if r.status!=0 {print("%\n",cast(string)err[0..<r.err_n]);}#assert r.started==0 && !r.timed_out && r.status==0;}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {print("usage: character-detail-check FRAMES_DIR CAPTURE_LOG OUTPUT_DIR\n");return 2;}
+ root:=args_at(a[..],2);#assert fs_mkdir(root) || fs_kind(root)>0;
+ traceBytes:[262144]u8;ln:=fs_read(args_at(a[..],1),traceBytes[..]);#assert ln>0 && ln<traceBytes.count;
+ name:[32]u8;inPath:[4096]u8;outPath:[4096]u8;filter:[256]u8;j:[1]Jo;v:[8]int;
+ png:[16777216]u8;rgba:[65536]u8;previous:[65536]u8;work:[1048576]u8;
+ start:=0;frames:=0;lastSegments:=0;changes:=0;maxAll:f64=0;maxLOD:f64=0;worstAll:=0;worstLOD:=0;
+ for k:0..<ln {if traceBytes[k]!='\n' {continue;}line:=cast(string)traceBytes[start..<k];start=k+1;if line.count<7 || line[0..<7]!="detail " {continue;}
+  #assert hc_numbers(line,v[..])==8 && v[0]==frames;
+  input:=fs_join(args_at(a[..],0),hc_name(frames,false,name[..]),inPath[..]);pn:=fs_read(input,png[..]);#assert pn>0;info:=png_info(png[0..<pn]);#assert info.status==PNG_OK;
+  size:=v[4]*3/1000;if size<16 {size=16;}if size>info.h {size=info.h;}if size>info.w {size=info.w;}
+  x:=hc_edge(v[6],size,info.w);y:=hc_edge(v[7],size,info.h);
+  jo_start(j[..],filter[..]);jo_put(j[..],"crop=");jo_int(j[..],size);jo_put(j[..],":");jo_int(j[..],size);jo_put(j[..],":");jo_int(j[..],x);jo_put(j[..],":");jo_int(j[..],y);jo_put(j[..],",scale=128:128:flags=area");
+  output:=fs_join(root,hc_name(frames,true,name[..]),outPath[..]);cmd:=[13]string.["ffmpeg","-nostdin","-hide_banner","-loglevel","error","-y","-i",input,"-vf",jo_text(j[..]),"-frames:v","1",output];hc_run(cmd[..]);
+  pn=fs_read(output,png[..]);#assert pn>0 && png_decode(png[0..<pn],work[..],rgba[..])==PNG_OK;
+  if frames>0 {sum:=0;for p:0..<128*128 {for c:0..<3 {d:=cast(int)rgba[p*4+c]-cast(int)previous[p*4+c];sum+=ifx d<0 then -d else d;}}
+   mad:=cast(f64)sum/(128.0*128.0*3.0*255.0);if mad>maxAll {maxAll=mad;worstAll=frames;}
+   if v[2]!=lastSegments {changes+=1;if mad>maxLOD {maxLOD=mad;worstLOD=frames;}}
+  }
+  for p:0..<rgba.count {previous[p]=rgba[p];}lastSegments=v[2];frames+=1;
+ }
+ #assert frames>=200;
+ patternA:[4096]u8;patternB:[4096]u8;from:=fs_join(root,"head-%03d.png",patternA[..]);into:=fs_join(root,"sheet-%02d.png",patternB[..]);
+ cmd:=[15]string.["ffmpeg","-nostdin","-hide_banner","-loglevel","error","-y","-framerate","24","-i",from,"-vf","tile=8x8:padding=2:margin=2:color=gray","-fps_mode","passthrough",into];hc_run(cmd[..]);
+ print("HEAD_REVIEW % frames, % groom-count transitions; max adjacent crop difference % percent at frame %, max at a transition % percent at frame %. Sheets require visual review; image differences include camera and animation motion.\n",frames,changes,maxAll*100,worstAll,maxLOD*100,worstLOD);return 0;
+}

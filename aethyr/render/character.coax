@@ -20,6 +20,7 @@
 #load "light.coax";
 #load "scene-lights.coax";
 #load "../anim/morph-gpu.coax";
+#load "../character/detail.coax" as detail;
 #load "../../verse/valley/echo-materials.coax";
 #load "../../verse/valley/slay-lights.coax";
 
@@ -285,6 +286,38 @@ cv_echo_material :: (normal:V3,tangent:V4,world:V3,uv:V2,material:f32,u:[]f32,sh
 // hand capsules (the character runtime's store), sheets her texture layers.
 ch_rows :: (u:[]f32,at:int,p:V3)->V4 {q:=v4(p.x,p.y,p.z,1);return v4(wg_dot4(wg_at4(u,at),q),wg_dot4(wg_at4(u,at+4),q),wg_dot4(wg_at4(u,at+8),q),wg_dot4(wg_at4(u,at+12),q));}
 ch_clip :: (u:[]f32,p:V3)->V4 {return ch_rows(u,SCL_CLIP,p);}
+ChSkinRows :: struct {a:V4;b:V4;c:V4;}
+#test "Reused character groom corners preserve every source endpoint side and segment" {
+ map:=[6]int.[0,1,2,2,1,5];for corner:0..<6 {#assert cv_groom_endpoint(corner)==cv_groom_endpoint(map[corner]) && cv_groom_side(corner)==cv_groom_side(map[corner]);}
+}
+#test "Character blended skin rows preserve eight influences positions and directions" {
+ v:[24]u32;bones:[96]f32;
+ for k:0..<8 {v[9+k/2]|=cast(u32)k<<cast(u32)(k%2*16);v[13+k/4]|=cast(u32)(k+1)<<cast(u32)(k%4*8);bones[k*12]=1;bones[k*12+5]=1;bones[k*12+10]=1;bones[k*12+3]=cast(f32)k;}
+ r:=ch_skin_rows(0,v[..],bones[..]);p:=ch_skin_point(r,v4(2,3,4,1));n:=ch_skin_point(r,v4(0,1,0,0));
+ #assert abs(p.x-(2+168.0f32/36))<0.00001 && abs(p.y-3)<0.00001 && abs(p.z-4)<0.00001;
+ #assert n.x==0 && abs(n.y-1)<0.00001 && n.z==0;
+ v[13]=0;v[14]=0;r=ch_skin_rows(0,v[..],bones[..]);p=ch_skin_point(r,v4(2,3,4,1));#assert p.x==0 && p.y==0 && p.z==0;
+}
+// Decode and blend the palette once, then reuse it for position, normal and tangent.
+// cv_skin remains unchanged for the qualified Valley renderer.
+ch_skin_rows :: (at:int,vertices:[]u32,bones:[]f32)->ChSkinRows {
+ r:ChSkinRows;sum:f32=0;
+ for k:0..<8 {joint:=cast(int)((vertices[at+9+k/2]>>cast(u32)((k%2)*16))&65535);w:=cast(f32)((vertices[at+13+k/4]>>cast(u32)((k%4)*8))&255)/255;
+  if w>0 && joint<334 {b:=joint*12;r.a=add4(r.a,scale4(wg_at4(bones,b),w));r.b=add4(r.b,scale4(wg_at4(bones,b+4),w));r.c=add4(r.c,scale4(wg_at4(bones,b+8),w));sum+=w;}}
+ gain:=1/fmax(sum,0.00001f32);r.a=scale4(r.a,gain);r.b=scale4(r.b,gain);r.c=scale4(r.c,gain);return r;
+}
+ch_skin_point :: (r:ChSkinRows,p:V4)->V3 {return v3(wg_dot4(r.a,p),wg_dot4(r.b,p),wg_dot4(r.c,p));}
+#test "Character morph fading preserves both endpoints and a continuous midpoint" {
+ base:=MorphVertex.{position=v3(1,2,3),normal=v3(0,1,0)};full:=MorphVertex.{position=v3(3,4,5),normal=v3(0.2,0.8,0)};
+ a:=ch_morph_mix(base,full,0);b:=ch_morph_mix(base,full,1);m:=ch_morph_mix(base,full,0.5);
+ #assert a.position.x==1 && a.normal.y==1 && b.position.z==5 && b.normal.x==0.2f32 && m.position.y==3 && m.normal.y==0.9f32;
+}
+ch_morph_mix :: (base:MorphVertex,full:MorphVertex,gain:f32)->MorphVertex {return MorphVertex.{position=cv_add(base.position,cv_scale(cv_sub(full.position,base.position),gain)),normal=cv_add(base.normal,cv_scale(cv_sub(full.normal,base.normal),gain))};}
+ch_morph :: (id:u32,vertices:[]u32,bones:[]f32,u:[]f32)->MorphVertex {
+ at:=cv_vertex_at(id,vertices);p:=v3(cv_word(vertices,at),cv_word(vertices,at+1),cv_word(vertices,at+2));n:=v3(cv_word(vertices,at+3),cv_word(vertices,at+4),cv_word(vertices,at+5));base:=MorphVertex.{position=p,normal=n};
+ if u[SCL_MORPH]<=0 {return base;}
+ full:=morph_gpu(p,n,vertices,cast(int)vertices[ECHO_MATERIAL_WORD+30*16],cast(int)vertices[at+20],cast(int)vertices[at+21],bones,4008,cast(int)vertices[ECHO_MATERIAL_WORD+30*16+1]);return ch_morph_mix(base,full,clampf(u[SCL_MORPH],0.0f32,1.0f32));
+}
 ch_shadow_place :: (u:[]f32,p:V3)->V3 {q:=v4(p.x,p.y,p.z,1);at:=SCL_SHADOW;return v3(wg_dot4(wg_at4(u,at),q),wg_dot4(wg_at4(u,at+4),q),wg_dot4(wg_at4(u,at+8),q));}
 // Her skinned, morphed place, normal and tangent (Valley Lab's instance 2), or a strand ribbon's.
 ChSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;tangent:V4;material:f32;paint:V4;extra:V4;extra2:V4;}
@@ -313,12 +346,12 @@ ch_place :: (id:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChSurface {
  if id>=1000000 {
   // groom levels (#12988): the pass draws only the strands its level keeps (a prefix of her strands,
   // ordered by group at load), so every strand drawn shows, widened by the share kept (|u[2]|)
-  g:=cv_groom(id,vertices,u,bones,false);rough:=mix(0.32f32,0.45f32,g.uv.y)*(1+0.1*g.uv.x);
+  g:=cv_groom(id,vertices,u,bones,false);g.coverage*=detail.detail_group_weight(g.uv.y,cv_groom_share(u,false));rough:=mix(0.32f32,0.45f32,g.uv.y)*(1+0.1*g.uv.x);
   lit:=ch_hair_light(u,cv_hair_colour(u,g.uv.x,g.uv.y),rough,g.uv.y,wg_normalize3(g.tangent),g.world);
   return ChSurface.{pos=ch_clip(u,g.world),world=g.world,normal=g.normal,uv=g.uv,tangent=v4(g.tangent.x,g.tangent.y,g.tangent.z,1),material=g.material,paint=v4(g.coverage,g.edge,1,1),extra=v4(lit.key.x,lit.key.y,lit.key.z,1),extra2=v4(lit.rest.x,lit.rest.y,lit.rest.z,0)};
  }
- at:=cv_vertex_at(id,vertices);m:=cv_morph(id,vertices,bones,u);world:=cv_add(cv_at(u,SCL_AT),cv_echo_direction(cv_skin(id,v4(m.position.x,m.position.y,m.position.z,1),vertices,bones),u));
- normal:=cv_echo_direction(cv_skin(id,v4(m.normal.x,m.normal.y,m.normal.z,0),vertices,bones),u);t:=cv_echo_direction(cv_skin(id,v4(cv_word(vertices,at+15),cv_word(vertices,at+16),cv_word(vertices,at+17),0),vertices,bones),u);
+ at:=cv_vertex_at(id,vertices);m:=ch_morph(id,vertices,bones,u);skin:=ch_skin_rows(at,vertices,bones);world:=cv_add(cv_at(u,SCL_AT),cv_echo_direction(ch_skin_point(skin,v4(m.position.x,m.position.y,m.position.z,1)),u));
+ normal:=cv_echo_direction(ch_skin_point(skin,v4(m.normal.x,m.normal.y,m.normal.z,0)),u);t:=cv_echo_direction(ch_skin_point(skin,v4(cv_word(vertices,at+15),cv_word(vertices,at+16),cv_word(vertices,at+17),0)),u);
  return ChSurface.{pos=ch_clip(u,world),world=world,normal=normal,uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7)),tangent=v4(t.x,t.y,t.z,cv_word(vertices,at+18)),material=cast(f32)vertices[at+8],paint=v4(1,1,1,1),extra=v4(1,1,1,1),extra2=v4(0,0,0,0)};
 }
 ch_character_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChSurface {return ch_place(id,u,vertices,bones);}
@@ -415,8 +448,8 @@ ChCaster :: struct {pos:V4;uv:V2;material:f32;coverage:f32;edge:f32;}
 ch_caster_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->ChCaster {
  if u[SCL_SHADOW_INFO]<0.5 {return ChCaster.{pos=v4(0,0,-2,1),uv=v2(0,0),material=26,coverage=0,edge=0};}
  world:=v3(0,0,0);uv:=v2(0,0);material:f32=0;coverage:f32=1;edge:f32=0;
- if id>=1000000 {g:=cv_groom(id,vertices,u,bones,true);world=g.world;uv=g.uv;material=g.material;coverage=g.coverage;edge=g.edge;}
- else {at:=cv_vertex_at(id,vertices);m:=cv_morph(id,vertices,bones,u);world=cv_add(cv_at(u,SCL_AT),cv_echo_direction(cv_skin(id,v4(m.position.x,m.position.y,m.position.z,1),vertices,bones),u));uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));material=cast(f32)vertices[at+8];}
+ if id>=1000000 {g:=cv_groom(id,vertices,u,bones,true);world=g.world;uv=g.uv;material=g.material;coverage=g.coverage*detail.detail_group_weight(g.uv.y,cv_groom_share(u,true));edge=g.edge;}
+ else {at:=cv_vertex_at(id,vertices);m:=ch_morph(id,vertices,bones,u);world=cv_add(cv_at(u,SCL_AT),cv_echo_direction(cv_skin(id,v4(m.position.x,m.position.y,m.position.z,1),vertices,bones),u));uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));material=cast(f32)vertices[at+8];}
  q:=ch_shadow_place(u,world);return ChCaster.{pos=v4(q.x,q.y,q.z,1),uv=uv,material=material,coverage=coverage,edge=edge};
 }
 ch_caster_fs :: (s:ChCaster,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler) {

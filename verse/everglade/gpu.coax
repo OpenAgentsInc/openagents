@@ -1017,6 +1017,9 @@ eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,p
   }
   q:V3=eg_shadow_place(wg_add_f3f3(p,wg_mul_f3f(n,0.08f32)),eg_light_space(u));
   uv:V2=v2(0.5f32+(0.5f32*q.x),0.5f32-(0.5f32*q.y));
+  // Outside the map the result is unconditionally lit; avoid all nine unused compares.
+  inside:bool=wg_all_gt_f2f2(uv,v2(0.0f32,0.0f32))&&wg_all_lt_f2f2(uv,v2(1.0f32,1.0f32));
+  if !inside {return 1.0f32;}
   texel_2:f32=1.0f32/(cast(f32)(wg_dims_depth(shadow_map).x));
   phone:f32=eg_st(31,u).z;
   taps:f32=ifx paint_leaf_far then 1.0f32 else eg_st(21,u).y;
@@ -1035,8 +1038,7 @@ eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,p
       k=k+1.0f32;
     }
   }
-  inside:bool=wg_all_gt_f2f2(uv,v2(0.0f32,0.0f32))&&wg_all_lt_f2f2(uv,v2(1.0f32,1.0f32));
-  return ifx inside then smoothstep(0.1f32,0.75f32,lit/fmax(taps,1.0f32)) else 1.0f32;
+  return smoothstep(0.1f32,0.75f32,lit/fmax(taps,1.0f32));
 }
 #test "eg_hash live lattice uses the portable integer noise profile" {
   #assert f32_bits(eg_hash(v2(1,2)))==0x3f6013da;
@@ -2073,9 +2075,6 @@ eg_weather_streaks :: (c:V3,v:V3,d:f32,u:[]f32)->V3 {
       if (along>d) {
         break;
       }
-      if eg_weather_covered(wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(v,along)),u) {
-        {i+=1; continue;}
-      }
       fade:f32=1.0f32-smoothstep(0.04f32,0.12f32,(px*along)/k); // a pixel's run up the axis, m
       if (fade<=0.0f32) {
         {i+=1; continue;}
@@ -2095,6 +2094,10 @@ eg_weather_streaks :: (c:V3,v:V3,d:f32,u:[]f32)->V3 {
       x:f32=abs(f.x-off);
       len_2:f32=(0.07f32*wg_exp2((cast(f32)(i))*0.5f32))/0.85f32; // 7 cm near, 20 cm at 9.6 m: shorter on screen the farther
       streak:f32=((1.0f32-smoothstep(width*0.5f32,width,x))*smoothstep(top,top+0.02f32,f.y))*(1.0f32-smoothstep((top+len_2)-0.02f32,top+len_2,f.y));
+      // Only a visible candidate needs the 32-building roof query. The original order
+      // asked every roof for all four layers at every shaded pixel, even between drops.
+      if streak<=0 {i+=1;continue;}
+      if eg_weather_covered(wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(v,along)),u) {i+=1;continue;}
       a=a+((streak*(0.55f32-(0.1f32*(cast(f32)(i)))))*fade);
       i+=1;
     }

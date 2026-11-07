@@ -64,6 +64,7 @@ tool_main :: ()->int #export_c #effects(all) {
    d:=[10]u8.[48,49,50,51,52,53,54,55,56,57];
    name[0]=102;name[1]=114;name[2]=97;name[3]=109;name[4]=101;name[5]=45;name[6]=d[k/100];name[7]=d[k/10%10];name[8]=d[k%10];name[9]=46;name[10]=112;name[11]=110;name[12]=103;
    ok=ok && fc_shot(c[..],args_at(a[..],1),cast(string)name[0..<13]);
+   if ok {dn:=cdp_evaluate(c[..],"[2,17,19,20,21,22,23].map(i=>coaxial.character().probe[i]).join('/')");if dn>=0 {print("detail % %\n",k,jv_raw(c[0].doc[0],dn));}}
   }
   n:=cdp_evaluate(c[..],"JSON.stringify(coaxial.character())");if n>=0 {print("character pass: %\n",jv_raw(c[0].doc[0],n));}
   ok=ok && fc_eval(c[..],"she drew every frame","coaxial.character().frames>=246");
@@ -78,6 +79,7 @@ tool_main :: ()->int #export_c #effects(all) {
    d:=[10]u8.[48,49,50,51,52,53,54,55,56,57];
    name[0]=102;name[1]=114;name[2]=97;name[3]=109;name[4]=101;name[5]=45;name[6]=d[k/100];name[7]=d[k/10%10];name[8]=d[k%10];name[9]=46;name[10]=112;name[11]=110;name[12]=103;
    ok=ok && fc_shot(c[..],args_at(a[..],1),cast(string)name[0..<13]);
+   if ok {dn:=cdp_evaluate(c[..],"[2,17,19,20,21,22,23].map(i=>coaxial.character().probe[i]).join('/')");if dn>=0 {print("detail % %\n",k,jv_raw(c[0].doc[0],dn));}}
   }
   n:=cdp_evaluate(c[..],"JSON.stringify(coaxial.character())");if n>=0 {print("character pass: %\n",jv_raw(c[0].doc[0],n));}
   ok=ok && fc_eval(c[..],"she drew every frame","coaxial.character().frames>=217");

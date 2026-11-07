@@ -21,6 +21,7 @@
 #load "../../verse/valley/slay-gpu-policy.coax";
 #load "../../aethyr/render/scene-lights.coax";
 #load "../../aethyr/character/idle.coax";
+#load "../../aethyr/character/detail.coax" as detail;
 #load "../../aethyr/character/fix.coax";
 #load "../../verse/valley/slay-shot-play.coax";
 
@@ -35,15 +36,14 @@ CHARACTER_STEP :: 1.0f32 / 64.0f32;
 // Her eyes over her feet, for the head's height on screen.
 CHARACTER_HEAD :: 1.6f32;
 // The hair's share by the head's height on screen (Valley Lab's canyon_hair_share): the strands per
-// pixel stay about the same below 300 pixels, never under 2%, at most half.
+// pixel stay about the same below 300 pixels; small heads take the shared far tier.
 CHARACTER_HAIR_FULL :: 300.0f32;
 CHARACTER_HAIR_MAX :: 0.5f32;
 // Groom levels (#12988). Her strands come in 251 groups (a strand's group is its curve number mod
 // 251, its seed); the host orders the strands' index range group by group (character_groom_group)
 // at load, so the strands a share keeps are a prefix of the range and the draw runs only those (the
-// whole range ran before, the vertex shader dropping the rest). A share is rounded up to whole groups
-// (0.4% of the strands each) and the kept strands widen by the share actually kept, so her hair's
-// coverage stays the same at every level and a change of share is never more than one group.
+// whole range ran before, the vertex shader dropping the rest). Draws round up to whole groups;
+// the last group's opacity fades continuously, and ribbons widen by the effective share.
 // The shadow map takes at most CHARACTER_GROOM_SHADOW of them, a prefix of the same order.
 CHARACTER_GROOM_GROUPS :: 251;
 CHARACTER_GROOM_STRIDE :: 97;      // the order's step through the groups (251 is prime: every group once)
@@ -104,9 +104,13 @@ character_asset :: (s: [] CharacterHost, index: int, bytes: int) #export_c #effe
 character_ready :: (s: [] CharacterHost) -> bool #export_c #effects(all) {
   return s[0].verified && !s[0].failed && s[0].echo[0].ready && s[0].assets[1] == slay_gpu_storage() && s[0].assets[2] == CHARACTER_INDEX_BYTES && s[0].assets[3] == CHARACTER_LAYERS;
 }
+#test "Wide groom tier keeps coverage with fewer curves and joins near detail continuously" {
+ #assert character_hair_share(0)==0.004f32 && character_hair_share(48)==0.004f32;
+ #assert character_hair_share(64)<0.006 && abs(character_hair_share(96)-(96.0f32/300)*(96.0f32/300))<0.00001;
+ previous:f32=0;for px:0..<301 {next:=character_hair_share(cast(f32)px);#assert next>=previous && next<=0.5 && next-previous<0.009;previous=next;}
+}
 character_hair_share :: (head: f32) -> f32 {
-  r := head / CHARACTER_HAIR_FULL; q := r * r;
-  return ifx q < 0.02 then 0.02f32 else ifx q > CHARACTER_HAIR_MAX then CHARACTER_HAIR_MAX else q;
+  return detail.detail_hair(head);
 }
 // Her head's height on screen in pixels, from the block's camera.
 character_head_pixels :: (b: [] f32) -> f32 {
@@ -115,6 +119,13 @@ character_head_pixels :: (b: [] f32) -> f32 {
   if z <= 0.05 { return 100000; }
   return 0.25 * b[SCL_FOCAL_Y] / z * b[SCL_SIZE + 1] * 0.5;
 }
+// Subpixel facial detail fades rather than switching at a distance boundary.
+#test "Character face detail fades continuously from a wide head to a readable face" {
+  #assert character_face_detail(0)==0 && character_face_detail(32)==0;
+  #assert character_face_detail(48)==0.5 && character_face_detail(64)==1 && character_face_detail(300)==1;
+  previous:f32=0;for px:0..<101 {next:=character_face_detail(cast(f32)px);#assert next>=previous && next-previous<0.05;previous=next;}
+}
+character_face_detail :: (head:f32)->f32 {return detail.detail_face(head);}
 // Her body on its idle clip, and her idle life bound to her pack's names (how many of the five it found).
 character_idle_start :: (s: [] CharacterHost) {
   e := s[0].echo[..];
@@ -205,10 +216,11 @@ character_frame :: (s: [] CharacterHost, dt: f32) -> int #export_c #effects(all)
   }
   if stepped && moved { character_motion(s, step); }
   s[0].frames += 1;
-  s[0].share = character_hair_share(character_head_pixels(b));
+  head:=character_head_pixels(b);
+  s[0].share = character_hair_share(head);
   b[SCL_HAIR] = character_groom_level(s, s[0].share);
   // the morphs run while a face clip or a blink shows
-  b[SCL_MORPH] = ifx (e[0].face[0].enabled && e[0].face[0].fade > 0) || s[0].idle[0].weight > 0 then 1.0f32 else 0.0f32;
+  b[SCL_MORPH] = ifx (e[0].face[0].enabled && e[0].face[0].fade > 0) || s[0].idle[0].weight > 0 then character_face_detail(head) else 0.0f32;
   b[SCL_RIG] = 0; b[SCL_PROFILE] = 1;
   for k: 0..<4 { s[0].draws[k] = CHARACTER_BODY[k]; s[0].draws[4 + k] = CHARACTER_GROOM[k]; s[0].draws[8 + k] = CHARACTER_GROOM[k]; }
   s[0].draws[5] = cast(u32) (s[0].kept * 6); s[0].draws[9] = cast(u32) (s[0].shadow_kept * 6);
@@ -216,6 +228,12 @@ character_frame :: (s: [] CharacterHost, dt: f32) -> int #export_c #effects(all)
 }
 // The group drawn at place `rank` in the order.
 character_groom_group :: (rank: int) -> int #export_c #effects(all) { return (rank * CHARACTER_GROOM_STRIDE) % CHARACTER_GROOM_GROUPS; }
+// The second triangle reuses the first triangle's identical ribbon corners.
+#test "Groom index reuse keeps two triangles with four distinct corners" {
+ #assert character_groom_corner(0)==0 && character_groom_corner(1)==1 && character_groom_corner(2)==2;
+ #assert character_groom_corner(3)==2 && character_groom_corner(4)==1 && character_groom_corner(5)==5;
+}
+character_groom_corner :: (corner:int)->int #export_c #effects(all) {return ifx corner==3 then 2 else ifx corner==4 then 1 else corner;}
 // The host's layout for ordering: 0 the groups, 1 the first segment's seed word, 2 words a segment,
 // 3 her strands' first index, 4 their indices.
 character_groom_layout :: (field: int) -> int #export_c #effects(all) {
@@ -236,24 +254,23 @@ character_groom_admit :: (s: [] CharacterHost) -> bool #export_c #effects(all) {
   s[0].grouped = total * 6 == cast(int) CHARACTER_GROOM[1];
   return s[0].grouped;
 }
-// The segments in the first groups of the order that hold at least `share` of them.
+// Draw the first ceil(share*251) groups; the shader fades the fractional boundary group.
 character_groom_prefix :: (s: [] CharacterHost, share: f32) -> int {
-  total := cast(f32) CHARACTER_GROOM[1] / 6; want := share * total; kept := 0;
+  kept := 0;
   for rank: 0..<CHARACTER_GROOM_GROUPS {
-    if cast(f32) kept >= want { break; }
+    if cast(f32)rank >= share*cast(f32)CHARACTER_GROOM_GROUPS { break; }
     kept += cast(int) s[0].groups[character_groom_group(rank)];
   }
   return kept;
 }
 // This frame's level: the strands kept for her and for the shadow map; returns the share actually
-// kept (the block's hair slot: the strands widen by its inverse). Ungrouped, every strand draws.
+// effective (the block's hair slot: ribbons widen by its inverse). Ungrouped, every strand draws.
 character_groom_level :: (s: [] CharacterHost, share: f32) -> f32 {
   total := cast(int) CHARACTER_GROOM[1] / 6;
   if !s[0].grouped { s[0].kept = total; s[0].shadow_kept = total; return 1; }
   s[0].kept = character_groom_prefix(s, share);
-  kept := cast(f32) s[0].kept / cast(f32) total;
-  s[0].shadow_kept = character_groom_prefix(s, ifx kept < CHARACTER_GROOM_SHADOW then kept else CHARACTER_GROOM_SHADOW);
-  return kept;
+  s[0].shadow_kept = character_groom_prefix(s, ifx share < CHARACTER_GROOM_SHADOW then share else CHARACTER_GROOM_SHADOW);
+  return share;
 }
 e_clip :: (s: [] CharacterHost) -> int { return s[0].echo[0].clip; }
 // 0 opaque, 2 blended over what is behind (host.js's scene blend profiles), 3 the shadow map only.
@@ -282,6 +299,14 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   if field == 28 { return ifx s[0].grouped then 1 else 0; }
   if field == 29 { return s[0].kept; }
   if field == 30 { return s[0].shadow_kept; }
+  if field == 31 {return cast(int)(s[0].block[SCL_MORPH]*1000);}
+  if field == 32 {return cast(int)(character_head_pixels(s[0].block[..])*1000);}
+  if field == 33 {return cast(int)(s[0].share*1000000);}
+  if field==34 || field==35 {
+    b:=s[0].block[..];x:=b[SCL_AT];y:=b[SCL_AT+1]+CHARACTER_HEAD;z:=b[SCL_AT+2];a:=SCL_CLIP+(ifx field==34 then 0 else 4);
+    q:=b[a]*x+b[a+1]*y+b[a+2]*z+b[a+3];w:=b[SCL_CLIP+12]*x+b[SCL_CLIP+13]*y+b[SCL_CLIP+14]*z+b[SCL_CLIP+15];if w<=0.05 {return -1;}
+    return cast(int)((0.5+(ifx field==34 then q else -q)/w*0.5)*b[SCL_SIZE+(ifx field==34 then 0 else 1)]);
+  }
   return -1;
 }
 
@@ -306,8 +331,8 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   #assert b[SCL_HAIR] == 1 && b[SCL_PROFILE] == 1 && b[SCL_RIG] == 0 && s[0].share == CHARACTER_HAIR_MAX;
   b[SCL_AT + 2] = 30;
   _ := character_frame(s[..], 0);
-  #assert s[0].share == 0.02f32;
-  #assert character_hair_share(10) == 0.02f32 && character_hair_share(600) == CHARACTER_HAIR_MAX && abs(character_hair_share(150) - 0.25) < 0.00001;
+  #assert s[0].share == 0.004f32;
+  #assert character_hair_share(10) == 0.004f32 && character_hair_share(600) == CHARACTER_HAIR_MAX && abs(character_hair_share(150) - 0.25) < 0.00001;
   #assert character_draw_blend(0) == 0 && character_draw_blend(1) == 2 && character_draw_blend(2) == 3;
   // the world's stage places her (the block's feet and heading), and her body loops its idle clip
   scl_place(b, 2, 0.5, -96, 3.14159265);
@@ -331,7 +356,7 @@ character_probe :: (s: [] CharacterHost, field: int) -> int #export_c #effects(a
   #assert character_groom_admit(s[..]);
   for share: [3]f32.[0.02, 0.183, 0.5] {
     kept := character_groom_level(s[..], share);
-    #assert kept >= share && kept < share + 0.005 && s[0].kept == cast(int) (kept * cast(f32) total + 0.5);
+    #assert kept == share && cast(f32)s[0].kept/cast(f32)total>=share && cast(f32)s[0].kept/cast(f32)total<share+0.005;
     #assert cast(f32) s[0].shadow_kept / cast(f32) total >= (ifx kept < 0.25 then kept else 0.25) - 0.00001 && s[0].shadow_kept <= s[0].kept;
   }
   // a small change of share moves the draw by at most one group

@@ -25,5 +25,6 @@ EXPORT("character_palette_version") uint32_t palette_version(uint32_t p){return 
 EXPORT("character_groom_groups") uint32_t groom_groups(uint32_t p){return (uint32_t)(uintptr_t)state(p)->groups.e;}
 EXPORT("character_groom_admit") uint32_t groom_admit(uint32_t p){return character_groom_admit(view(p));}
 EXPORT("character_groom_group") uint32_t groom_group(int32_t rank){return (uint32_t)character_groom_group(rank);}
+EXPORT("character_groom_corner") uint32_t groom_corner(int32_t corner){return (uint32_t)character_groom_corner(corner);}
 EXPORT("character_groom_layout") uint32_t groom_layout(int32_t f){return (uint32_t)character_groom_layout(f);}
 EXPORT("character_probe") int32_t probe(uint32_t p,int32_t f){return (int32_t)character_probe(view(p),f);}

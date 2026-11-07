@@ -301,6 +301,139 @@ Left for R4 and later: the groom's levels and a frame-rate check in a wide
 raid shot, a close shadow map for her face, her locomotion when a stage
 moves her, the production render path and the Valley page on the pass (H2).
 
+### R4: groom detail and the raid frame budget (done, #12988)
+
+Echo uses a native character pass in the live raid. Wide and medium shots hold
+60 FPS on this Mac at both 1920×1080 and 1280×720. The frame timer records the
+actual raster size as well as the viewport: these results render every requested
+pixel. The existing graphics-quality ladder, gameplay and two-frame submission
+limit are unchanged.
+
+**Groom and face detail.** `aethyr/character/detail.coax` is the shared CPU/GPU
+rule. The original projected-head quadratic share remains above 96 pixels, with
+a cheaper tier below 64 pixels and a smooth join between them. The minimum
+effective share is 0.004; the close-up maximum remains 0.5. The source curves,
+materials and fibre/dual-scattering lighting remain intact.
+
+At load, `character-host.js` orders the original segment indices in 251 curve
+groups, with stride 97. A draw uses the first `ceil(share * 251)` groups. The
+shader recovers a group's rank using the inverse stride 44 and gives its final
+group opacity `clamp(share * 251 - rank, 0, 1)`. Ribbons widen by the inverse
+effective share. A new group therefore enters with zero coverage rather than
+suddenly halving the existing ribbons' widths. Shadows use the same rule with
+their share capped at 0.25. The wide run draws 18,486 segments; the boundary
+group is mostly transparent at the minimum share.
+
+Each ribbon's two triangles reuse their identical corners: four vertex
+invocations instead of six, with the same endpoints, sides, UVs and material.
+The body blends its eight palette influences once and reuses those rows for
+position, normal and tangent. Face morph detail fades continuously from zero
+at a 32-pixel head to full detail at 64 pixels. Source body animation, face
+bones and idle life continue; skinning never narrows the original influences.
+
+**The remaining cost was in the town's rain.** A diagnostic suppressing only
+Echo's draw calls, while retaining her loaded resources, animation, room state,
+spells and lights, still measured about 49 FPS at 1080p. The rain shader queried
+up to 32 building footprints for each of four layers at every shaded pixel,
+before knowing whether that pixel contained a visible drop. It now rejects
+faded, empty and zero-coverage candidates first. A frozen pre-change oracle
+checks exact float colour bits over 384 ray fixtures, including visible rain.
+Outside-shadow-map pixels also return their existing fully lit result before
+performing unused PCF comparisons.
+
+Fire and smoke reject provably empty billow regions and fully depth-hidden
+pixels before their noise/lighting work. The conservative outer radius is
+`(1 + raggedness / 2) * clamp(cover, 0, 1)`, derived from the existing noise's
+maximum. Another 400 fixtures check that rejected points have no visible
+original coverage. These changes preserve the original rain, roof occlusion,
+shadow bounds, particle colours and spell simulation.
+
+**Measurements.** Apple M5 Max, 128 GB, AC power; competing 3D tabs closed,
+muted headless Chrome with hardware Metal WebGPU, DPR 1, normal AUTO graphics,
+`clock=0.95&weather=rain`. Wide starts at Echo's first cast; medium holds the
+orbit's last frame. Each wide/medium condition passed three five-second windows (12 windows,
+3,600 drawn frames in total), with zero held frames in every window. The close-up is
+the orbit's first 1.2 seconds and is recorded rather than required to hold 60.
+
+| Shot | Actual raster | FPS | Frame p50 / p95 / max, ms | Held frames |
+| --- | --- | ---: | --- | ---: |
+| Wide raid | 1920×1080 | 60.0 | 16.665 / 16.670 / 16.670 | 0 |
+| Wide raid | 1280×720 | 60.0 | 16.665 / 16.670 / 16.670 | 0 |
+| Medium | 1920×1080 | 60.0 | 16.665 / 16.670 / 16.670 | 0 |
+| Medium | 1280×720 | 60.0 | 16.665 / 16.670 / 16.670 | 0 |
+| Close | 1920×1080 | 59.2 | 16.665 / 16.670 / 33.330 | 1 |
+| Close | 1280×720 | 60.0 | 16.665 / 16.670 / 16.670 | 0 |
+
+Median p50 / p95 across the three windows (milliseconds):
+
+| Shot / raster | CPU | Submit-to-done observation |
+| --- | --- | --- |
+| Wide 1080 | 2.965 / 3.335 | 13.695 / 19.360 |
+| Wide 720 | 2.895 / 3.450 | 10.545 / 11.915 |
+| Medium 1080 | 2.105 / 2.515 | 10.935 / 11.550 |
+| Medium 720 | 1.015 / 1.090 | 9.440 / 9.925 |
+
+The rule is unchanged: at least 31 drawn frames, p95 at most 17.5 ms and no
+frame over 33 ms. A held callback counts in the next drawn frame's elapsed
+time. GPU submit-to-done observations include queued work and callback latency;
+they are not isolated GPU execution timestamps. Before the rain reorder, an
+otherwise identical character configuration missed the wide-shot rule at both
+sizes; after it, the wide/medium windows have no held frames. The timer's
+`no-character` diagnostic is labelled and cannot return a hero qualification.
+
+After rebasing onto `267ffbdc2b`, the renderer, room simulation and pack
+companion were rebuilt. All four wide/medium cases passed again at their full
+requested raster: 300 drawn frames each, 60.0 FPS, p95/max 16.670 ms and zero
+held callbacks. This additional run was on battery (32–28%), not AC; the
+three-run AC table above is kept separate. CPU p50/p95 and submit-to-done
+p50/p95 for that final-source check were:
+
+| Shot / raster | CPU, ms | Submit-to-done, ms |
+| --- | --- | --- |
+| Wide 1080 | 1.470 / 1.650 | 11.995 / 21.965 |
+| Wide 720 | 1.695 / 1.905 | 10.385 / 13.780 |
+| Medium 1080 | 0.990 / 1.085 | 10.005 / 14.200 |
+| Medium 720 | 0.985 / 1.090 | 9.510 / 12.590 |
+
+**Frame review and regression checks.** New captures contain 217 orbit frames
+and 246 raid frames at 1920×1080/24 fps. Every projected head was recentered into
+review sheets, not just a sparse set of crops. The orbit contains 57 groom-count
+transitions; no abrupt density change or holes were observed at those transitions.
+The raid retains a stable far tier, including running, casts and foreground
+occlusion. The largest image changes align with occluders and spell flashes;
+image differences alone are not treated as proof of no popping. Partial group
+weights and face fades have independent continuity checks.
+
+`valley-slay-frames` passes its five source frames, return to walking and isolated
+face check with no console errors. `valleycanyon.wgsl` remains byte-identical;
+Valley's `cv_*` rendering paths are unchanged. Focused checks pass: character
+runtime 126, character renderer 99, effects 95, frame timer 141, and the rain
+oracle. The character runtime is 62,513 bytes within its unchanged 64,000-byte
+budget. The whole-site shader checker reports zero stale modules and the
+pre-existing unrelated `valleyworld.coax` return-type failure.
+
+Reproduce the owner-local evidence (no private renders or packs are committed):
+
+```sh
+base='http://127.0.0.1:8931/worlds/everglade'
+out="$HOME/.openagents/verse/private-build/echo-r4-finish"
+mkdir -p "$out/raid"
+coax/web/tool.sh coax/web/everglade-echo-perf.coax \
+  "$base?raid=preview&stage=echo&clock=0.95&weather=rain" wide 1080
+coax/web/tool.sh coax/web/everglade-echo-perf.coax \
+  "$base?stage=echo&clock=0.95&weather=rain" medium 1080
+coax/web/tool.sh coax/web/everglade-echo-frames.coax \
+  "$base?raid=preview&stage=echo&clock=0.95&weather=rain" "$out/raid" raid \
+  > "$out/raid-capture.log"
+coax/web/tool.sh coax/web/character-detail-check.coax \
+  "$out/raid" "$out/raid-capture.log" "$out/raid-heads"
+```
+
+The private `raid.mp4` and `orbit.mp4`, full frames, per-frame detail observations
+and all head-review sheets are retained under that output directory. The helper
+reports adjacent-image differences for review; it does not automatically claim
+visual parity from a low numeric difference.
+
 ### R5: Echo fights and casts in the Cultist Raid (done, #12996)
 
 `/worlds/everglade?raid=preview&stage=echo` puts Echo in the raid on the

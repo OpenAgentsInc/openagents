@@ -186,8 +186,8 @@ export function characterPass(deps) {
     }
     const start = new Uint32Array(groups);
     for (let r = 0, at = 0; r < groups; r++) { const g = x.character_groom_group(r); start[g] = at; at += sizes[g]; }
-    const out = new Uint32Array(count);
-    for (let k = 0; k < segments; k++) { const at = start[group[k]]++ * 6; for (let v = 0; v < 6; v++) out[at + v] = 1000000 + k * 6 + v; }
+    const out = new Uint32Array(count), corners = Array.from({ length: 6 }, (_, i) => x.character_groom_corner(i));
+    for (let k = 0; k < segments; k++) { const at = start[group[k]]++ * 6; for (let v = 0; v < 6; v++) out[at + v] = 1000000 + k * 6 + corners[v]; }
     index.set(out, first);
     if (index.buffer !== indexBytes.buffer) indexBytes.set(new Uint8Array(index.buffer));
     new Uint32Array(memory.buffer, x.character_groom_groups(state), groups).set(sizes);
@@ -274,5 +274,5 @@ export function characterPass(deps) {
     drawEach(pass, c, (blend) => blend === 0 ? c.body : null);
     drawEach(pass, c, (blend) => blend === 2 ? c.hair : null);
   }
-  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
+  return { want, cast, draw, dispose, info: () => ({ ...info, probe: current?.runtime ? [0, 1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35].map((f) => current.runtime.x.character_probe(current.runtime.state, f)) : null }) };
 }
