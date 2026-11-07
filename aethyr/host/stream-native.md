@@ -38,7 +38,9 @@ separate adapters. The
 qualifies SDK failure prefixes and actual successful corridor use. The
 [owned upload record](../../docs/verification/aethyr-streaming-12990/walk-native-transfers.md)
 adds buffer/image pending views and held-observation early-release guards.
-Integrated SDK-error/deadline histories remain open.
+The [integrated SDK record](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
+qualifies scoped staging/destination/submission errors and upload-poll stops,
+including the unchanged ten-second deadline, on both tiers/backends.
 
 Persistent uniforms and the 320×180 color/depth attachments have separate
 existing renderer grants. Readback and replacement transfer buffers each
@@ -81,8 +83,9 @@ Final cleanup requires all resource, inbox, decoded image/audio, renderer
 and concrete SDK owners to reach zero. The additive
 [result-driven draw profile](../../docs/verification/aethyr-streaming-12990/walk-native-loss.md)
 now handles reported draw loss automatically and preserves submitted owners
-through a timeout. Integrated upload-error/deadline histories, the wider
-device/factory failure surface and native rescue remain unqualified exits.
+through a timeout. Scoped upload errors/deadline stops now have separate v6
+histories. The wider device/factory failure surface and native rescue remain
+unqualified exits.
 
 `stream-native-conformance.coax` admits sixteen independently supplied
 observation words: version; nonempty initial GPU set; equal full image;
@@ -197,7 +200,29 @@ requires their bound effect record. CPU replay reproduces the same partial
 allocation prefix, source outcome or decoder refusal before accepting the
 typed completion. See the [record](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md).
 
-Streamed Vulkan resource factories and upload submissions now return SDK
-errors and retain pending owners. Separate integrated SDK-error/deadline
-receipts remain required; these allocator/source/decode observations do not
-qualify that error surface. Surface/pipeline/readback adapters remain legacy.
+Streamed Vulkan resource factories and upload submissions return SDK errors
+and retain pending owners. The separate v6 qualification below covers their
+scoped error inputs. Surface/pipeline/readback adapters remain legacy.
+
+## Integrated SDK error and upload-stop inputs
+
+`native-sdk-fault.coax` admits `--sdk-{buffer|image}-stage-{1..4}`,
+`--sdk-{buffer|image}-create-{1..4}`, `--sdk-{buffer|image}-submit-{1..6}`
+and `--sdk-{buffer|image}-poll-{1..3}`. The independent linker wrapper binds
+the first matching streamed attempt's row/generation/epoch. Prefix inputs
+execute earlier real Vulkan calls, poison failed outputs and require complete
+private retirement. Staging errors finish as capacity 3; destination/submit
+errors finish as decode 5, with retirement before a newer retry.
+
+Poll inputs report an unknown error, device loss after actual fence success,
+or not-ready for 10.1 seconds before observing the real fence. They stop paid
+frames, retain pending owners/grants until terminal observation, and close
+without publishing ready content. These are explicit SDK observations, not
+physical OOM/reset or physical GPU-latency claims. The v6 `sdkFault` companion
+binds scope, private-child counts, real/reported results, stop snapshots,
+source hashes and timing. CPU replay reproduces allocation/codec prefixes
+and every paid step without executing GPU effects or wall time. All 136
+two-tier hardware/software histories and healthy-route regressions pass;
+the [record](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
+pins exact results and limitations. Actual stale/superseded callbacks and
+complete physical/transport/transient planning remain open.

@@ -8,10 +8,15 @@ Vulkan planning and remaining failed/superseded load paths stay open. Native
 [allocation/source/decode failures](../../docs/verification/aethyr-streaming-12990/walk-native-load-failures.md)
 now complete and retire through the shared owner before retry. Its
 [checked Vulkan resource factories](../../docs/verification/aethyr-streaming-12990/walk-native-factories.md)
-unwind partial creation, with actual successful carrier adoption. Integrated
-SDK-error histories remain open. [Owned native transfers](../../docs/verification/aethyr-streaming-12990/walk-native-transfers.md)
+unwind partial creation, with actual successful carrier adoption.
+[Owned native transfers](../../docs/verification/aethyr-streaming-12990/walk-native-transfers.md)
 now retain buffer/image views and staging through completion, with actual
 held-observation guards and exact CPU replay on both tiers/backends.
+The [integrated SDK qualifier](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
+adds 136 scoped staging/destination/submission/poll error histories, including
+upload deadline stops and exact CPU replay. Pending owners and sources stay
+retained until terminal observation; stopped attempts publish no ready data.
+These inputs do not qualify physical OOM or a driver reset.
 
 `cells.coax` is the historical #12847 controller: 64 m cells, separate
 resident/simulate/draw states, hysteresis, persistent sleeping bodies,

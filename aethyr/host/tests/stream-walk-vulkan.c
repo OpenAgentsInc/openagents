@@ -9,6 +9,7 @@
 #include "vks-submit.h"
 #include "vks-resource.h"
 #include "vks-transfer.h"
+#include "stream-sdk-fault.h"
 #include <time.h>
 
 typedef struct { VkcBuffer buffer; VksImage image; bool live,texture; int64_t generation,bytes; } SwVkObject;
@@ -92,7 +93,12 @@ static int64_t sw_vk_memory(void) {
   if(total>vk_memory_peak)vk_memory_peak=total;return total;
 }
 static void sw_vk_temporary(const VkcBuffer *buffer){VkMemoryRequirements req;vkGetBufferMemoryRequirements(vk.dev,buffer->buf,&req);int64_t bytes=sw_vk_memory()+(int64_t)req.size;if(bytes>vk_memory_peak)vk_memory_peak=bytes;}
-static void *sw_vk_stage_allocate(int32_t row,size_t bytes){if(!vk_opened||!fixed_live[5]||stages[row].buf)return NULL;if(vks_buffer_try(&vk,&stages[row],bytes,NULL)!=VK_SUCCESS)return NULL;sw_vk_memory();return stages[row].map;}
+static void *sw_vk_stage_allocate(int32_t row,size_t bytes){
+  if(!vk_opened||!fixed_live[5]||stages[row].buf)return NULL;
+  SwPhysical *p=&objects[row];int kind=p->plan&&p->plan->spec.format==COAX_ResourceFormat_image_mips?2:1;
+  sw_sdk_scope(1,kind,row,p->key.generation,p->key.epoch);VkResult result=vks_buffer_try(&vk,&stages[row],bytes,NULL);sw_sdk_scope(0,0,0,0,0);
+  if(result!=VK_SUCCESS)return NULL;sw_vk_memory();return stages[row].map;
+}
 static void sw_vk_stage_free(int32_t row){vkc_free(&vk,&stages[row]);memset(&stages[row],0,sizeof stages[row]);}
 static void sw_vk_pipes_close(void){for(int i=0;i<16;i++)if(vk_draws[i].live){vks_pipe_close(&vk,&vk_draws[i].pipe);vk_draws[i].live=false;}}
 int32_t sw_vk_open(coax_v_u8 shader,coax_v_u8 hud_shader,coax_v_u8 present_shader){
@@ -134,7 +140,8 @@ int64_t sw_vk_transfer_info(int32_t field){switch(field){case 0:return vk_transf
 int32_t sw_vk_upload_poll(void){
   if(!vk_transfer.kind)return vk_transfer_result==VK_SUCCESS;
   if(vk_transfer_hold_until&&sw_vk_now_ns()<vk_transfer_hold_until){vk_transfer_result=VK_NOT_READY;vk_transfer_hold_polls++;return 2;}
-  VkResult result=vks_transfer_poll(&vk,&vk_transfer,0);vk_transfer_result=result;
+  sw_sdk_scope(4,vk_transfer.kind,vk_transfer_row,vk_transfer_generation,vk_transfer_epoch);
+  VkResult result=vks_transfer_poll(&vk,&vk_transfer,0);sw_sdk_scope(0,0,0,0,0);vk_transfer_result=result;
   if(result!=VK_SUCCESS&&result!=VK_ERROR_DEVICE_LOST)return 2;
   if(vks_transfer_retire(&vk,&vk_transfer)!=VK_SUCCESS)return 2;
   vk_transfer_hold_until=0;
@@ -153,17 +160,19 @@ int32_t sw_vk_upload(int32_t row,int64_t generation,int64_t epoch,int32_t replac
   if(replacement){if(!fixed_live[4])return 0;vk_transfer_result=vks_buffer_try(&vk,&vk_transfer_stage,bytes,NULL);if(vk_transfer_result!=VK_SUCCESS)return 0;stage=&vk_transfer_stage;sw_vk_memory();}
   if(!stage->buf||stage->size!=bytes)goto refused;
   VkResult created;
+  sw_sdk_scope(2,image?2:1,row,generation,epoch);
   if(image){
     memcpy(stage->map,p->decoded,bytes);
     created=vks_image_try(&vk,&o->image,(uint32_t)p->plan->cost.width,(uint32_t)p->plan->cost.height,1,0,VK_FORMAT_R8G8B8A8_UNORM,VKS_TEXTURE,(uint32_t)p->plan->cost.levels,NULL);
-    if(created!=VK_SUCCESS){vk_transfer_result=created;goto refused;}
   }else{
     memcpy(stage->map,p->source,bytes);
-    created=vks_buffer_try(&vk,&o->buffer,bytes,NULL);if(created!=VK_SUCCESS){vk_transfer_result=created;goto refused;}
+    created=vks_buffer_try(&vk,&o->buffer,bytes,NULL);
   }
+  sw_sdk_scope(0,0,0,0,0);if(created!=VK_SUCCESS){vk_transfer_result=created;goto refused;}
   o->live=true;o->texture=image;o->generation=generation;o->bytes=(int64_t)bytes;sw_vk_memory();
   vk_transfer_row=row;vk_transfer_generation=generation;vk_transfer_epoch=epoch;
-  vk_transfer_result=image?vks_transfer_rgba8_begin(&vk,&vk_transfer,stage,&o->image):vks_transfer_buffer_begin(&vk,&vk_transfer,stage,&o->buffer,bytes);
+  sw_sdk_scope(3,image?2:1,row,generation,epoch);
+  vk_transfer_result=image?vks_transfer_rgba8_begin(&vk,&vk_transfer,stage,&o->image):vks_transfer_buffer_begin(&vk,&vk_transfer,stage,&o->buffer,bytes);sw_sdk_scope(0,0,0,0,0);
   if(vk_transfer_result!=VK_SUCCESS){sw_vk_drop(row,generation);goto refused;}
   if(vk_transfer_hold_next&&vk_transfer_hold_kind==vk_transfer.kind){vk_transfer_hold_until=sw_vk_now_ns()+vk_transfer_hold_next*1000000;vk_transfer_hold_next=0;}
   return sw_vk_upload_poll();
@@ -217,7 +226,7 @@ int64_t sw_vk_info(int32_t field){
   int64_t live=0,bytes=0,stage_n=0,stage_bytes=0;for(int i=0;i<64;i++){if(vk_objects[i].live){live++;bytes+=vk_objects[i].bytes;}if(stages[i].buf){stage_n++;stage_bytes+=(int64_t)stages[i].size;}}
   switch(field){case 0:return live;case 1:return bytes;case 2:return stage_n;case 3:return stage_bytes;case 4:return vk_opened;case 5:return vk_opens;case 6:return vk_closes;case 7:return vk_frames;case 8:return vk_commands;
     case 9:return vkc_validation_errors;case 10:return vkc_validation_warnings;case 11:return vk.validating;case 12:return vk.props.vendorID;case 13:return vk.props.deviceID;case 14:return vk.props.apiVersion;case 15:return vk.props.driverVersion;case 16:return sw_vk_memory();case 17:return vk_memory_peak;
-    case 18:return sizeof vk+sizeof stages+sizeof vk_uniforms+sizeof vk_color+sizeof vk_depth+sizeof vk_surface+sizeof vk_sampler+sizeof vk_objects+sizeof vk_draws+sizeof vk_words+sizeof vk_word_count+sizeof vk_opened+sizeof vk_surface_live+sizeof vk_opens+sizeof vk_closes+sizeof vk_frames+sizeof vk_commands+sizeof vk_memory_peak+sizeof vk_hud_vertices+sizeof vk_hud_uniforms+sizeof vk_hud_pipe+sizeof vk_hud_pass+sizeof vk_hud_binding+sizeof vk_hud_words+sizeof vk_hud_word_count+sizeof vk_hdr+sizeof vk_present_pipe+sizeof vk_present_pass+sizeof vk_present_bindings+sizeof vk_present_words+sizeof vk_present_word_count+sizeof vk_close_violations+sizeof vk_submission+sizeof vk_submit_result+sizeof vk_real_result+sizeof vk_injected_losses+sizeof vk_injected_failures+sizeof vk_refused_reopens+sizeof vk_injections+sizeof vk_hold_next_ms+sizeof vk_hold_until_ns+sizeof vk_delay_next_ms+sizeof vk_transfer+sizeof vk_transfer_stage+sizeof vk_transfer_row+sizeof vk_transfer_generation+sizeof vk_transfer_epoch+sizeof vk_transfer_result+sizeof vk_transfer_hold_next+sizeof vk_transfer_hold_until+sizeof vk_transfer_hold_polls+sizeof vk_transfer_hold_kind;
+    case 18:return sizeof vk+sizeof stages+sizeof vk_uniforms+sizeof vk_color+sizeof vk_depth+sizeof vk_surface+sizeof vk_sampler+sizeof vk_objects+sizeof vk_draws+sizeof vk_words+sizeof vk_word_count+sizeof vk_opened+sizeof vk_surface_live+sizeof vk_opens+sizeof vk_closes+sizeof vk_frames+sizeof vk_commands+sizeof vk_memory_peak+sizeof vk_hud_vertices+sizeof vk_hud_uniforms+sizeof vk_hud_pipe+sizeof vk_hud_pass+sizeof vk_hud_binding+sizeof vk_hud_words+sizeof vk_hud_word_count+sizeof vk_hdr+sizeof vk_present_pipe+sizeof vk_present_pass+sizeof vk_present_bindings+sizeof vk_present_words+sizeof vk_present_word_count+sizeof vk_close_violations+sizeof vk_submission+sizeof vk_submit_result+sizeof vk_real_result+sizeof vk_injected_losses+sizeof vk_injected_failures+sizeof vk_refused_reopens+sizeof vk_injections+sizeof vk_hold_next_ms+sizeof vk_hold_until_ns+sizeof vk_delay_next_ms+sizeof vk_transfer+sizeof vk_transfer_stage+sizeof vk_transfer_row+sizeof vk_transfer_generation+sizeof vk_transfer_epoch+sizeof vk_transfer_result+sizeof vk_transfer_hold_next+sizeof vk_transfer_hold_until+sizeof vk_transfer_hold_polls+sizeof vk_transfer_hold_kind+sw_sdk_fault_info(24);
     case 19:return vk_close_violations;default:return -1;}
 }
 int32_t sw_vk_name(coax_v_u8 out){size_t n=strlen(vk.props.deviceName);if(n>(size_t)out.count)return -1;memcpy(out.data,vk.props.deviceName,n);return(int32_t)n;}

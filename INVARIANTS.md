@@ -2002,9 +2002,12 @@ qualifies SDK error prefixes and successful consumer adoption. Streamed
 buffer/image uploads now use owned `VksTransfer` submissions; finish, destroy,
 paid frames and replacement refuse while a transfer is owned. The
 [upload record](docs/verification/aethyr-streaming-12990/walk-native-transfers.md)
-qualifies actual held observations and exact replay. Integrated factory/
-upload-error and deadline histories, surface/pipeline/readback adapters and
-native persistent rescue remain unqualified. See
+qualifies actual held observations and exact replay. The integrated
+[SDK failure record](docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
+qualifies scoped factory/upload errors and deadline stops over real effects,
+with retained source/owners through terminal observation and exact CPU replay.
+Physical OOM/reset, surface/pipeline/readback adapters and native persistent
+rescue remain unqualified. See
 `docs/verification/aethyr-streaming-12990/walk-native-loss.md`.
 
 ## The Grid steps only on its session's record

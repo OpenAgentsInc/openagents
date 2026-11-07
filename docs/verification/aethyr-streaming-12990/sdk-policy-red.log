@@ -1,0 +1,17 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/native-sdk-fault.coax:100:80: mutant survived: 1 became 2
+    return q[0] >= 0 && q[0] < 64 && q[1] > 0 && q[2] == 1 && nsf_pair(q[3],q[4],1) && nsf_pair(q[5],q[6],1) && nsf_pair(q[7],q[8],0) &&
+                                                                                 ^
+aethyr/host/native-sdk-fault.coax:100:105: mutant survived: 1 became 2
+    return q[0] >= 0 && q[0] < 64 && q[1] > 0 && q[2] == 1 && nsf_pair(q[3],q[4],1) && nsf_pair(q[5],q[6],1) && nsf_pair(q[7],q[8],0) &&
+                                                                                                          ^
+aethyr/host/native-sdk-fault.coax:102:16: mutant survived: 14 became 15
+      nsf_span(q[14],q[15],false) && q[16] >= q[15] && (phase != 3 || (q[15] - q[14] >= 10000000000 && q[16] - q[14] >= 10100000000)) &&
+                 ^
+aethyr/host/native-sdk-fault.coax:102:22: mutant survived: 15 became 16
+      nsf_span(q[14],q[15],false) && q[16] >= q[15] && (phase != 3 || (q[15] - q[14] >= 10000000000 && q[16] - q[14] >= 10100000000)) &&
+                       ^
+aethyr/host/native-sdk-fault.coax:102:42: mutant survived: '>=' became '>'
+      nsf_span(q[14],q[15],false) && q[16] >= q[15] && (phase != 3 || (q[15] - q[14] >= 10000000000 && q[16] - q[14] >= 10100000000)) &&
+                                           ^
+366 mutants, 361 killed, 5 survived

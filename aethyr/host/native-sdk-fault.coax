@@ -1,0 +1,107 @@
+// Explicit qualification inputs and their recorded SDK observations. These
+// are not physical allocator exhaustion or physical GPU-reset claims.
+#authority;
+#test "SDK qualifier arguments name exactly two kinds and all bounded SDK phases" {
+  names := [34] string.["--sdk-buffer-stage-1","--sdk-buffer-stage-2","--sdk-buffer-stage-3","--sdk-buffer-stage-4",
+    "--sdk-buffer-create-1","--sdk-buffer-create-2","--sdk-buffer-create-3","--sdk-buffer-create-4",
+    "--sdk-buffer-submit-1","--sdk-buffer-submit-2","--sdk-buffer-submit-3","--sdk-buffer-submit-4","--sdk-buffer-submit-5","--sdk-buffer-submit-6",
+    "--sdk-buffer-poll-1","--sdk-buffer-poll-2","--sdk-buffer-poll-3",
+    "--sdk-image-stage-1","--sdk-image-stage-2","--sdk-image-stage-3","--sdk-image-stage-4",
+    "--sdk-image-create-1","--sdk-image-create-2","--sdk-image-create-3","--sdk-image-create-4",
+    "--sdk-image-submit-1","--sdk-image-submit-2","--sdk-image-submit-3","--sdk-image-submit-4","--sdk-image-submit-5","--sdk-image-submit-6",
+    "--sdk-image-poll-1","--sdk-image-poll-2","--sdk-image-poll-3"];
+  for name,i: names {
+    #assert nsf_case(name) == i && nsf_kind(i) == (ifx i < 17 then 1 else 2);
+    slot := i % 17;domain := ifx slot < 4 then 1 else ifx slot < 8 then 2 else ifx slot < 14 then 3 else 4;
+    phase := slot - (ifx domain == 1 then 0 else ifx domain == 2 then 4 else ifx domain == 3 then 8 else 14) + 1;
+    #assert nsf_domain(i) == domain && nsf_phase(i) == phase;
+    #assert nsf_status(i) == (ifx domain == 1 then 3 else 5);
+    #assert nsf_reason(i) == (ifx domain != 4 then 0 else ifx phase == 3 then 2 else 3);
+  }
+  for name: [12] string.["","--sdk-buffer-stage-0","--sdk-buffer-stage-5","--sdk-image-create-5","--sdk-image-submit-7","--sdk-image-poll-4","--sdk-buffer-poll-00","--sdk-buffer-stage--1","--sdk-buffer-submit-01","--sdk-other-stage-1","--sdk-buffer-stage-1-more","--sdk-image-stage-"] { #assert nsf_case(name) == -1; }
+  for bad: [4] int.[-1,34,-9223372036854775808,9223372036854775807] { #assert nsf_kind(bad) == 0 && nsf_domain(bad) == 0 && nsf_phase(bad) == 0 && nsf_status(bad) == -1 && nsf_reason(bad) == -1; }
+}
+nsf_case :: (name: string) -> int #effects(all) {
+  prefixes := [8] string.["--sdk-buffer-stage-","--sdk-buffer-create-","--sdk-buffer-submit-","--sdk-buffer-poll-","--sdk-image-stage-","--sdk-image-create-","--sdk-image-submit-","--sdk-image-poll-"];
+  for prefix,i: prefixes {
+    if name.count == prefix.count + 1 && name[0..<prefix.count] == prefix {
+      phase := cast(int) name[prefix.count] - cast(int) '1';domain := i % 4;
+      limit := ifx domain == 2 then 6 else ifx domain == 3 then 3 else 4;
+      if phase < 0 || phase >= limit { return -1; }
+      return (i / 4) * 17 + (ifx domain == 0 then 0 else ifx domain == 1 then 4 else ifx domain == 2 then 8 else 14) + phase;
+    }
+  } return -1;
+}
+nsf_kind :: (which: int) -> int #effects(all) { if which < 0 || which >= 34 { return 0; } return which / 17 + 1; }
+nsf_domain :: (which: int) -> int #effects(all) { if nsf_kind(which) == 0 { return 0; } n := which % 17;return ifx n < 4 then 1 else ifx n < 8 then 2 else ifx n < 14 then 3 else 4; }
+nsf_phase :: (which: int) -> int #effects(all) { d := nsf_domain(which);if d == 0 { return 0; }return which % 17 - (ifx d == 1 then 0 else ifx d == 2 then 4 else ifx d == 3 then 8 else 14) + 1; }
+nsf_status :: (which: int) -> int #effects(all) { d := nsf_domain(which);return ifx d == 0 then -1 else ifx d == 1 then 3 else 5; }
+nsf_reason :: (which: int) -> int #effects(all) { d := nsf_domain(which);if d == 0 { return -1; }return ifx d != 4 then 0 else ifx nsf_phase(which) == 3 then 2 else 3; }
+
+#test "SDK effects retain exact scope phase provenance and fully retired private prefixes" {
+  for which: 0..<34 {
+    domain := nsf_domain(which);phase := nsf_phase(which);poll := domain == 4;
+    code := ifx !poll || phase == 1 then -1 else ifx phase == 2 then -4 else 1;
+    peak := ifx poll then 0 else ifx domain == 3 then (ifx phase == 1 then 0 else ifx phase < 3 then 1 else ifx phase < 6 then 2 else 3) else (ifx phase == 1 then 0 else ifx phase == 2 then 1 else 2);
+    q := [26] int.[nsf_kind(which),domain,phase,1,1,0,1,1,code,ifx !poll && phase == 1 then -2147483648 else 0,
+      ifx poll then 1 else phase - 1,ifx poll then 1 else phase,0,0,0,0,0,0,0,0,1,ifx poll && phase == 3 then 10100000001 else 1,peak,0,1,ifx poll then 1 else 0];
+    #assert nsf_effect(which,q[..]);
+    #assert !nsf_effect(-1,q[..]) && !nsf_effect(34,q[..]) && !nsf_effect(which,q[0..<25]);wide: [27] int;#assert !nsf_effect(which,wide[..]);
+    for field: [19] int.[0,1,2,3,4,7,8,9,12,13,14,15,16,17,18,19,22,23,25] { bad := q;bad[field] += 1;#assert !nsf_effect(which,bad[..]); }
+    for field: [2] int.[6,24] { bad := q;bad[field] = 0;#assert !nsf_effect(which,bad[..]);bad[field] = -1;#assert !nsf_effect(which,bad[..]); }
+    for row: [2] int.[-1,64] { bad := q;bad[5] = row;#assert !nsf_effect(which,bad[..]); }
+    bad := q;bad[5] = 63;#assert nsf_effect(which,bad[..]);
+    for field: [2] int.[10,11] { bad = q;bad[field] = ifx poll then 0 else q[field] + 1;#assert !nsf_effect(which,bad[..]); }
+    bad = q;bad[20] = 0;#assert !nsf_effect(which,bad[..]);bad = q;bad[21] = 0;#assert !nsf_effect(which,bad[..]);
+    if poll && phase == 3 { bad = q;bad[21] -= 1;#assert !nsf_effect(which,bad[..]); }
+  }
+}
+nsf_span :: (start: int, end: int, deadline: bool) -> bool #effects(all) { return start > 0 && end >= start && (!deadline || end - start >= 10100000000); }
+nsf_effect :: (which: int, q: [] int) -> bool #effects(all) {
+  kind := nsf_kind(which);if kind == 0 || q.count != 26 { return false; }domain := nsf_domain(which);phase := nsf_phase(which);poll := domain == 4;
+  code := ifx !poll || phase == 1 then -1 else ifx phase == 2 then -4 else 1;
+  peak := ifx poll then 0 else ifx domain == 3 then (ifx phase == 1 then 0 else ifx phase < 3 then 1 else ifx phase < 6 then 2 else 3) else (ifx phase == 1 then 0 else ifx phase == 2 then 1 else 2);
+  if q[0] != kind || q[1] != domain || q[2] != phase || q[3] != 1 || q[4] != 1 || q[5] < 0 || q[5] >= 64 || q[6] <= 0 || q[7] != 1 || q[8] != code || q[9] != (ifx !poll && phase == 1 then -2147483648 else 0) { return false; }
+  if poll { if q[10] < 1 || q[11] < 1 { return false; } }else if q[10] != phase - 1 || q[11] != phase { return false; }
+  for field: 12..<20 { if q[field] != 0 { return false; } }
+  return nsf_span(q[20],q[21],poll && phase == 3) && q[22] == peak && q[23] == 0 && q[24] > 0 && q[25] == (ifx poll then 1 else 0);
+}
+#test "SDK failures select only the bound attempt or GPU effects after a fatal stop" {
+  for which: -1..<35 { for target: 0..<2 { for after: 0..<2 { for gpu: 0..<2 {
+    expected := ifx which < 0 || which >= 34 || (target == 1 && gpu == 0) then -1 else
+      ifx target == 1 then (ifx which % 17 < 4 then 3 else 5) else ifx after == 1 && gpu == 1 && which % 17 >= 14 then 5 else 0;
+    #assert nsf_outcome(which,target == 1,after == 1,gpu == 1) == expected;
+  } } } }
+}
+nsf_outcome :: (which: int, target: bool, after: bool, gpu: bool) -> int #effects(all) {
+  if nsf_kind(which) == 0 || (target && !gpu) { return -1; }
+  if target { return nsf_status(which); }
+  return ifx after && gpu && nsf_domain(which) == 4 then 5 else 0;
+}
+#test "fatal upload stop observations retain owners until actual terminal observation" {
+  for kind: 0..<2 { for phase: 1..<4 {
+    which := kind * 17 + 13 + phase;lost := phase == 2;
+    q := [24] int.[0,1,1,4,4,100,100,20,20,ifx lost then 0 else 1,ifx lost then 0 else 1,0,0,
+      ifx phase == 3 then 2 else 3,1,ifx phase == 3 then 10000000001 else 2,ifx phase == 3 then 10100000001 else 3,
+      ifx phase == 1 then -1 else ifx lost then -4 else 1,ifx lost then -4 else 0,1,1,5,5,1];
+    #assert nsf_stop(which,q[..]) && !nsf_stop(0,q[..]) && !nsf_stop(-1,q[..]);
+    #assert !nsf_stop(which,q[0..<23]);wide: [25] int;#assert !nsf_stop(which,wide[..]);
+    for field: [16] int.[2,4,6,8,9,10,11,12,13,17,18,19,20,22,23,16] { bad := q;bad[field] += (ifx field == 16 then -2 else 1);#assert !nsf_stop(which,bad[..]); }
+    for field: [3] int.[1,3,5] { bad := q;bad[field] = 0;#assert !nsf_stop(which,bad[..]); }
+    bad := q;bad[0] = -1;#assert !nsf_stop(which,bad[..]);bad[0] = 64;#assert !nsf_stop(which,bad[..]);bad[0] = 63;#assert nsf_stop(which,bad[..]);
+    bad = q;bad[21] = -1;bad[22] = -1;#assert !nsf_stop(which,bad[..]);bad[21] = 0;bad[22] = 0;#assert nsf_stop(which,bad[..]);
+    bad = q;bad[7] = 0;bad[8] = 0;#assert nsf_stop(which,bad[..]);
+    for field: [2] int.[3,5] { bad = q;bad[field] = 1;bad[field + 1] = 1;#assert nsf_stop(which,bad[..]);bad[field] = 0;bad[field + 1] = 0;#assert !nsf_stop(which,bad[..]); }
+    bad = q;bad[14] = 0;#assert !nsf_stop(which,bad[..]);bad = q;bad[15] = 0;#assert !nsf_stop(which,bad[..]);
+    bad = q;bad[15] = bad[16];#assert nsf_stop(which,bad[..]);
+    if phase == 3 { bad = q;bad[15] -= 1;#assert !nsf_stop(which,bad[..]);bad = q;bad[16] -= 1;#assert !nsf_stop(which,bad[..]); }
+  } }
+}
+nsf_pair :: (a: int, b: int, minimum: int) -> bool #effects(all) { return a >= minimum && b == a; }
+nsf_stop :: (which: int, q: [] int) -> bool #effects(all) {
+  if nsf_domain(which) != 4 || q.count != 24 { return false; }phase := nsf_phase(which);lost := phase == 2;
+  return q[0] >= 0 && q[0] < 64 && q[1] > 0 && q[2] == 1 && nsf_pair(q[3],q[4],1) && nsf_pair(q[5],q[6],1) && nsf_pair(q[7],q[8],0) &&
+    q[9] == (ifx lost then 0 else 1) && q[10] == (ifx lost then 0 else 1) && q[11] == 0 && q[12] == 0 && q[13] == nsf_reason(which) &&
+    nsf_span(q[14],q[15],false) && q[16] >= q[15] && (phase != 3 || (q[15] - q[14] >= 10000000000 && q[16] - q[14] >= 10100000000)) &&
+    q[17] == (ifx phase == 1 then -1 else ifx lost then -4 else 1) && q[18] == (ifx lost then -4 else 0) && q[19] == 1 && q[20] == 1 && nsf_pair(q[21],q[22],0) && q[23] == 1;
+}

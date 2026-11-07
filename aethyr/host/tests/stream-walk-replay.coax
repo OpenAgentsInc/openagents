@@ -8,6 +8,7 @@
 #load "../stream-replay-profile.coax";
 #load "stream-pressure.coax";
 #load "../native-load-policy.coax";
+#load "../native-sdk-fault.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/json/json.coax";
@@ -16,6 +17,7 @@ sw_sdk_start :: (source: [] u8, root: [] u8, tier: int, backend: int) -> bool #f
 sw_sdk_copy :: (row: int, generation: int, epoch: int, source: [] u8) -> bool #foreign #effects(all);
 sw_sdk_pressure :: (source: [] u8, words: [] int, manifest: [] u8, hashes: [] u8) -> bool #foreign #effects(all);
 sw_fault_open :: (kind: s32, field: s32) -> s32 #foreign #effects(all);
+sw_fault_open_at :: (kind: s32, field: s32, row: s32) -> s32 #foreign #effects(all);
 sw_fault_take :: (kind: s32, row: s32, generation: int, epoch: int, field: s32) -> s32 #foreign #effects(all);
 sw_fault_source_result :: (result: int) #foreign #effects(all);
 sw_fault_info :: (field: s32) -> int #foreign #effects(all);
@@ -25,6 +27,7 @@ sw_host_step_word :: (step: s32, word: s32) -> int #foreign #effects(all);
 sw_host_ack :: () #foreign #effects(all);
 sw_host_close :: () -> s32 #foreign #effects(all);
 sw_host_info :: (field: s32) -> int #foreign #effects(all);
+sw_host_row :: (row: s32, field: s32) -> int #foreign #effects(all);
 sw_host_player :: (field: s32) -> f32 #foreign #effects(all);
 sw_host_command :: (retiring: s32, index: s32, field: s32) -> int #foreign #effects(all);
 sw_host_record :: (index: s32, field: s32) -> int #foreign #effects(all);
@@ -37,7 +40,9 @@ sw_host_cell :: (cell: s32, field: s32) -> int #foreign #effects(all);
 sw_host_trace_ack :: () #foreign #effects(all);
 
 SwReplaySources :: struct { data: [64] [4096] u8; count: [64] int; }
-SwReplayAttempts :: struct { generation: [64] int; epoch: [64] int; retiring: [64] bool; failed: [64] int; }
+SwReplayAttempts :: struct { generation: [64] int; epoch: [64] int; retiring: [64] bool; failed: [64] int;
+  sdk_case: int = -1; sdk: [26] int; sdk_seen: bool; sdk_after: bool; sdk_source: [64] u8;
+}
 SwReplaySnapshots :: struct {used: [RECORDED_SOURCE_EVENTS] bool;}
 #test "replay numbers preserve unsigned SHA words and source decimal binary32 values" {
   d: [1] Jv; nodes: [32] JvNode;
@@ -87,9 +92,26 @@ swr_effects :: (source: [] SwReplaySources, attempts: [] SwReplayAttempts, failu
     }
     if copied { decoded = cast(int) sw_host_decode(cast(s32) row,gen,epoch); }
     status := nlf_status(allocated,copied,decoded,true);
-    if status != 0 && (!failure || sw_fault_info(3) != 1 || sw_fault_info(4) != row || sw_fault_info(5) != gen || sw_fault_info(6) != epoch) { return false; }
+    target := attempts[0].sdk_case >= 0 && row == attempts[0].sdk[5] && gen == attempts[0].sdk[6] && epoch == attempts[0].sdk[7];
+    if status != 0 && (!failure || sw_fault_info(3) != 1 || sw_fault_info(4) != row || sw_fault_info(5) != gen || sw_fault_info(6) != epoch) && !(target && nsf_domain(attempts[0].sdk_case) == 1 && status == 3) { return false; }
+    if attempts[0].sdk_case >= 0 {
+      if target && attempts[0].sdk_seen { return false; }
+      status = nsf_outcome(attempts[0].sdk_case,target,attempts[0].sdk_after,sw_host_row(cast(s32) row,3) > 0);
+      if status < 0 { return false; }
+      if target { attempts[0].sdk_seen = true;attempts[0].sdk_after = true; }
+    }
     attempts[0].failed[row] = status;
     attempts[0].generation[row] = gen; attempts[0].epoch[row] = epoch;
+    if target && nsf_domain(attempts[0].sdk_case) == 4 {
+      fingerprint: [263168] u8;at := 0;
+      for owner: 0..<64 {
+        size := ifx attempts[0].generation[owner] > 0 then source[0].count[owner] else 0;
+        resource_put64(fingerprint[..],at,owner);resource_put64(fingerprint[..],at + 8,size);at += 16;
+        for byte: 0..<size { fingerprint[at] = source[0].data[owner][byte];at += 1; }
+      }
+      hex: [64] u8;#assert assets.asset_hex(assets.asset_id(cast(string) fingerprint[0..<at]),hex[..]);
+      if cast(string) hex[..] != cast(string) attempts[0].sdk_source[..] { return false; }
+    }
   }
   for i: 0..<sw_host_info(2) {
     row := sw_host_command(1, cast(s32) i, 0); gen := sw_host_command(1, cast(s32) i, 1); epoch := sw_host_command(1, cast(s32) i, 2);
@@ -132,7 +154,7 @@ swr_frame :: (trace: Jv, frame: int, closing: bool, native: bool, failure: bool,
     if kind == 0 {
       if !swr_snapshot(trace, record, source, snapshots) { return false; }
       status := cast(s32) swr_word(trace,jv_at(trace,record,5));
-      if failure {
+      if failure || attempts[0].sdk_case >= 0 {
         if cast(int) status != attempts[0].failed[row] || sw_host_finish_code(cast(s32) row,gen,epoch,status) != 1 { return false; }
       } else if sw_host_finish(cast(s32) row,gen,epoch,status) != 1 { return false; }
     } else if kind == 1 {
@@ -217,7 +239,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if size < 0 || jv_kind(d[0], captured) != JV_ARRAY || !recorded_source_profile(cast(string) name[0..<size], jv_len(d[0], captured)) { return 1; }
   }
   native := jv_get(d[0], 0, "backend") >= 0;
-  pressure := false; failure := false;
+  pressure := false; failure := false;sdk_fault := false;
   if native {
     schema: [64] u8; size := jv_str(d[0], jv_get(d[0], 0, "schema"), schema[..]);
     if size < 0 || !srp_native(cast(string) schema[0..<size], jv_int(d[0], jv_get(d[0], 0, "backend"), -1)) { return 1; }
@@ -225,6 +247,8 @@ tool_main :: () -> int #export_c #effects(all) {
     if !srp_pressure(cast(string) schema[0..<size], jv_get(d[0], 0, "categoryPressure") >= 0) { return 1; }
     failure = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v5";
     if !srp_failure(cast(string) schema[0..<size],jv_get(d[0],0,"loadFailure") >= 0) { return 1; }
+    sdk_fault = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v6";
+    if !srp_sdk(cast(string) schema[0..<size],jv_get(d[0],0,"sdkFault") >= 0) { return 1; }
   }
   profile := ifx native then 0 else jv_get(d[0], 0, "profile"); tier := ifx profile < 0 then 0 else jv_int(d[0], jv_get(d[0], profile, "tier"), -1);
   schema: [64] u8; schema_n := jv_str(d[0], jv_get(d[0], profile, "stateSchema"), schema[..]);
@@ -250,6 +274,25 @@ tool_main :: () -> int #export_c #effects(all) {
     if !nlf_effect(which,failure_words[..]) || sw_fault_open(cast(s32) failure_words[0],cast(s32) failure_words[1]) != 1 { return 1; }
   }
   attempts: [1] SwReplayAttempts; snapshots: [1] SwReplaySnapshots; observed: [1048576] u8; used: [1] int;
+  if sdk_fault {
+    entry := jv_get(d[0],0,"sdkFault");label: [128] u8;
+    size := jv_str(d[0],jv_get(d[0],entry,"schema"),label[..]);if size < 0 || cast(string) label[0..<size] != "aethyr.stream-native-sdk-fault.v1" { return 1; }
+    size = jv_str(d[0],jv_get(d[0],entry,"qualification"),label[..]);if size < 0 || cast(string) label[0..<size] != "scoped SDK error inputs over real Vulkan effects; no physical exhaustion or reset" { return 1; }
+    which := jv_int(d[0],jv_get(d[0],entry,"case"),-1);words := jv_get(d[0],entry,"words");if jv_len(d[0],words) != 26 { return 1; }
+    for i: 0..<26 { attempts[0].sdk[i] = swr_word(d[0],jv_at(d[0],words,i)); }
+    if !nsf_effect(which,attempts[0].sdk[..]) { return 1; }attempts[0].sdk_case = which;
+    stop := jv_get(d[0],entry,"stop");before: [64] u8;after: [64] u8;
+    bn := jv_str(d[0],jv_get(d[0],entry,"sourceBefore"),before[..]);an := jv_str(d[0],jv_get(d[0],entry,"sourceAfter"),after[..]);
+    policy := jv_get(d[0],entry,"policy");if jv_len(d[0],policy) != 7 { return 1; }
+    if nsf_domain(which) == 4 {
+      values: [24] int;if jv_len(d[0],stop) != 24 { return 1; }for i: 0..<24 { values[i] = swr_word(d[0],jv_at(d[0],stop,i)); }
+      if !nsf_stop(which,values[..]) || bn != 64 || an != 64 || cast(string) before[..] != cast(string) after[..] || !jv_bool(d[0],jv_get(d[0],entry,"stoppedFrameRefused")) { return 1; }
+      for i: 0..<3 { if values[i] != attempts[0].sdk[i + 5] { return 1; } }
+      if swr_word(d[0],jv_at(d[0],policy,1)) != 1 || swr_word(d[0],jv_at(d[0],policy,5)) != nsf_reason(which) { return 1; }
+      attempts[0].sdk_source = before;
+    }else if jv_len(d[0],stop) != 0 || bn != 0 || an != 0 || jv_bool(d[0],jv_get(d[0],entry,"stoppedFrameRefused")) || swr_word(d[0],jv_at(d[0],policy,1)) != 0 || swr_word(d[0],jv_at(d[0],policy,5)) != 0 { return 1; }
+    if nsf_domain(which) == 1 && sw_fault_open_at(1,4,cast(s32) attempts[0].sdk[5]) != 1 { return 1; }
+  }
   frames := jv_get(d[0], 0, ifx native then "warmup" else "frames"); route := ifx native then jv_get(d[0], 0, "route") else -1;
   count := jv_len(d[0], frames) + jv_len(d[0], route);
   if count < 1 { return 1; }
@@ -268,6 +311,7 @@ tool_main :: () -> int #export_c #effects(all) {
   closing := ifx native then jv_get(d[0], 0, "cleanup") else jv_path(d[0], 0, "cleanup.closingFrames");
   for i: 0..<jv_len(d[0], closing) { if !swr_frame(d[0], jv_at(d[0], closing, i), true, native, failure, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("closing replay failed at frame %\n", i); return 1; } }
   if failure { for word,i: failure_words { if word != sw_fault_info(cast(s32) i) { return 1; } } }
+  if sdk_fault && !attempts[0].sdk_seen { return 1; }
   for i: 0..<jv_len(d[0], jv_get(d[0], 0, "sourceSnapshots")) { if !snapshots[0].used[i] { return 1; } }
   for field: [7] s32.[8, 10, 11, 12, 14, 22, 23] { if sw_host_info(field) != 0 { print("cleanup field % remains %\n", field, sw_host_info(field)); return 1; } }
   if sw_host_info(24) != 1 || sw_host_info(20) != sw_host_info(21) { return 1; }

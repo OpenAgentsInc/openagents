@@ -449,7 +449,7 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
     source_bytes = (output / 'receipt.json').read_bytes()
     source = json.loads(source_bytes)
     report = json.loads(replay_path.read_bytes())
-    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v3', 'aethyr.stream-walk-native-gpu.v4', 'aethyr.stream-walk-native-gpu.v5')
+    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2', 'aethyr.stream-walk-native-gpu.v3', 'aethyr.stream-walk-native-gpu.v4', 'aethyr.stream-walk-native-gpu.v5', 'aethyr.stream-walk-native-gpu.v6')
     assert report['schema'] == 'aethyr.stream-walk-native-replay.v3'
     assert report['backend'] == source['backend'] == 1 and report['tier'] == source['tier']
     assert report['input_sha256'] == hashlib.sha256(source_bytes).hexdigest()
@@ -506,6 +506,10 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
         faults += tuple('pressure_digest_' + key for key in ('manifestSHA256','sourceSHA256','stateBefore','stateAfter','stateNormalized'))
     if source['schema'].endswith('.v5'):
         faults += ('load_missing','load_schema','load_case','load_provenance','load_status') + tuple('load_effect_' + str(i) for i in range(10))
+    if source['schema'].endswith('.v6'):
+        faults += ('sdk_missing','sdk_schema','sdk_case','sdk_provenance') + tuple('sdk_word_' + str(i) for i in range(26))
+        if source['sdkFault']['stop']:
+            faults += tuple('sdk_stop_' + str(i) for i in range(24)) + ('sdk_sourceBefore','sdk_sourceAfter','sdk_both_sources','sdk_stopped')
     with tempfile.TemporaryDirectory(prefix='aethyr-native-cpu-replay-') as temporary:
         target = Path(temporary)
         for fault in faults:
@@ -519,7 +523,7 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
             elif fault == 'position':
                 changed['warmup'][0]['positionBits'][2] ^= 1
             elif fault in ('completion_generation', 'completion_digest', 'missing_completion'):
-                frame = next(f for f in changed['warmup'] if f['records'])
+                frame = next(f for f in changed['warmup'] + changed['route'] + changed['cleanup'] if f['records'])
                 if fault == 'missing_completion':
                     frame['records'].pop(0)
                 else:
@@ -538,6 +542,19 @@ def inspect_cpu_replay(scene_dir, output, replay_path):
             elif fault == 'load_provenance': changed['loadFailure']['qualification'] = 'physical OS exhaustion'
             elif fault == 'load_status': next(r for f in changed['warmup'] for r in f['records'] if r[6] == 6)[5] = 0
             elif fault.startswith('load_effect_'): changed['loadFailure']['effect'][int(fault.rsplit('_',1)[1])] += 1
+            elif fault == 'sdk_missing': del changed['sdkFault']
+            elif fault == 'sdk_schema': changed['schema'] = 'aethyr.stream-walk-native-gpu.v5'
+            elif fault == 'sdk_case': changed['sdkFault']['case'] = -1
+            elif fault == 'sdk_provenance': changed['sdkFault']['qualification'] = 'physical GPU reset'
+            elif fault.startswith('sdk_word_'):
+                i = int(fault.rsplit('_',1)[1]);q = changed['sdkFault']['words']
+                q[i] = 0 if i in (20,21,24) or (q[1] == 4 and i in (10,11)) else q[i] + 1
+            elif fault.startswith('sdk_stop_'):
+                i = int(fault.rsplit('_',1)[1]);q = changed['sdkFault']['stop'];q[i] = 0 if i in (14,15,16) else q[i] + 1
+            elif fault in ('sdk_sourceBefore','sdk_sourceAfter'): changed['sdkFault'][fault[4:]] = '0' * 64
+            elif fault == 'sdk_both_sources':
+                for key in ('sourceBefore','sourceAfter'): changed['sdkFault'][key] = '0' * 64
+            elif fault == 'sdk_stopped': changed['sdkFault']['stoppedFrameRefused'] = False
             elif fault == 'pressure_missing': del changed['categoryPressure']
             elif fault == 'pressure_schema': changed['schema'] = 'aethyr.stream-walk-native-gpu.v3'
             elif fault in ('pressure_clock','pressure_serial'):

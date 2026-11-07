@@ -50,9 +50,10 @@ int32_t sw_fault_open(int32_t kind,int32_t field){
   load_fault[0]=kind;load_fault[1]=field;load_fault[2]=1;load_fault[4]=-1;return 1;
 }
 int32_t sw_fault_take(int32_t kind,int32_t row,int64_t generation,int64_t epoch,int32_t field){
-  if(load_fault[0]!=kind||load_fault[1]!=field||load_fault[2]!=1||row!=0)return 0;
+  if(load_fault[0]!=kind||load_fault[1]!=field||load_fault[2]!=1||row!=(load_fault[4]<0?0:load_fault[4]))return 0;
   load_fault[2]=0;load_fault[3]++;load_fault[4]=row;load_fault[5]=generation;load_fault[6]=epoch;return 1;
 }
+int32_t sw_fault_open_at(int32_t kind,int32_t field,int32_t row){if(row<0||row>=64||!sw_fault_open(kind,field))return 0;load_fault[4]=row;return 1;}
 void sw_fault_source_result(int64_t result){if(load_fault[0]==2&&load_fault[3]==1)load_fault[8]=result;}
 int64_t sw_fault_info(int32_t field){return field>=0&&field<10?load_fault[field]:-1;}
 #endif

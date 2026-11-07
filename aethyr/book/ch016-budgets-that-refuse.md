@@ -37,9 +37,13 @@ The [checked Vulkan factories](../../docs/verification/aethyr-streaming-12990/wa
 now unwind partial buffer/image creation and are used by streamed resource
 loads. [Owned uploads](../../docs/verification/aethyr-streaming-12990/walk-native-transfers.md)
 now retain pending views and refuse early scratch/resource release. Actual
-held-observation histories preserve every paid-step digest. Integrated SDK
-errors/deadline stops remain separate; logical budgets are not physical
-Vulkan allocation admission.
+held-observation histories preserve every paid-step digest. The separate
+[integrated SDK histories](../../docs/verification/aethyr-streaming-12990/walk-native-sdk-failures.md)
+now qualify scoped staging/destination/submission errors and upload-poll
+stops, with retained sources/owners and exact CPU replay on both tiers.
+Physical OOM/reset and physical Vulkan allocation admission are unqualified;
+actual stale/superseded callbacks and complete transport/transient planning
+remain open.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can
