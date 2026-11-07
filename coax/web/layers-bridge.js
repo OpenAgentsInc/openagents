@@ -8,6 +8,13 @@ export class LayerBridge {
     this.x=new WebAssembly.Instance(module,{env:{memory},wasi_snapshot_preview1:wasi}).exports;this.x._initialize?.();
   }
   side(profile){return Number(this.x.layers_profile_side(BigInt(profile)));}
+  // Coax's pick of a layer array's GPU format and side tier (aethyr/render/texture-format.coax).
+  format(features,carried,phone,role){
+    const x=this.x,code=x.layers_texture_format(BigInt(features),BigInt(carried),phone?1:0,BigInt(role));
+    const name=new TextDecoder().decode(new Uint8Array(this.memory.buffer,x.layers_format_text(code),x.layers_format_text_bytes(code)));
+    return {code,name,block:Number(x.layers_format_block(code))};
+  }
+  tierSide(declared,phone,code){return Number(this.x.layers_tier_side(BigInt(declared),phone?1:0,code));}
   decode(bytes,side){
     const x=this.x;if(bytes.length>x.layers_source_capacity())throw Error('canonical image exceeds physical source storage');
     new Uint8Array(this.memory.buffer,x.layers_source_ptr(),bytes.length).set(bytes);

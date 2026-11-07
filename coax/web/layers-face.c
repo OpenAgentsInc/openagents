@@ -25,3 +25,9 @@ LAYERS_EXPORT("layers_decode") int64_t layers_decode(void){
 }
 LAYERS_EXPORT("layers_output_ptr") uint32_t layers_output_ptr(void){return(uint32_t)(uintptr_t)layer_output;}
 LAYERS_EXPORT("layers_close") void layers_close(void){free(layer_work);free(layer_output);layer_work=NULL;layer_output=NULL;layer_work_bytes=0;layer_output_bytes=0;layer_input_bytes=0;coax_default_t_HostLayerPlan(&layer_plan);}
+/* Which GPU format a device's layers take and at which side (aethyr/render/texture-format.coax, GitHub #13014). */
+LAYERS_EXPORT("layers_texture_format") int64_t layers_texture_format(int64_t features,int64_t carried,int32_t phone,int64_t role){return tf_pick(features,carried,phone!=0,role);}
+LAYERS_EXPORT("layers_format_text") uint32_t layers_format_text(int64_t format){return(uint32_t)(uintptr_t)tf_name(format).data;}
+LAYERS_EXPORT("layers_format_text_bytes") int32_t layers_format_text_bytes(int64_t format){return(int32_t)tf_name(format).count;}
+LAYERS_EXPORT("layers_format_block") int64_t layers_format_block(int64_t format){return tf_block(format);}
+LAYERS_EXPORT("layers_tier_side") int64_t layers_tier_side(int64_t declared,int32_t phone,int64_t format){return tf_side(declared,phone!=0,format);}

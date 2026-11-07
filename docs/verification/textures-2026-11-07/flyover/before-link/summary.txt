@@ -1,0 +1,5 @@
+frames 3254: average 16.7 ms (59.7 FPS), p50 16.7, p95 16.7, worst 50.0 ms, 15 over 33 ms, 15 over 20 ms
+cpu (a frame's host and engine time): p50 1.2, p95 2.0, worst 3.7 ms
+gpu (first pass's start to last pass's end): p50 28.6, p95 40.4, worst 64.6 ms
+gpu, the shadow pass: p50 1.4, p95 10.2, worst 20.0 ms
+60 FPS: MISSED (p95 <= 17.5 ms and no frame over 33 ms)

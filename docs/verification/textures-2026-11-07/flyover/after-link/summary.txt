@@ -1,0 +1,6 @@
+frames 3273: average 16.7 ms (60.0 FPS), p50 16.7, p95 16.7, worst 16.7 ms, 0 over 33 ms, 0 over 20 ms
+cpu (a frame's host and engine time): p50 1.6, p95 2.3, worst 3.0 ms
+gpu (first pass's start to last pass's end): p50 20.9, p95 32.0, worst 42.7 ms
+gpu, the shadow pass: p50 1.7, p95 9.0, worst 14.3 ms
+60 FPS: held (p95 <= 17.5 ms and no frame over 33 ms)
+vs before: average -0.1 ms, p95 +0.0 ms, worst -33.3 ms, over 33 ms 15 -> 0, gpu p50 -7.7 ms, gpu p95 -8.4 ms, shadow p50 +0.2 ms, shadow p95 -1.2 ms

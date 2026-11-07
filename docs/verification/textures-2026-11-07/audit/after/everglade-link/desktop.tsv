@@ -1,0 +1,12 @@
+CLASS	FORMAT	WIDTH	HEIGHT	LAYERS	MIPS	SAMPLES	BYTES
+material	rgba8unorm-srgb	1536	1536	53	11	1	666893912
+target	depth32float	2048	2048	1	1	1	16777216
+target	rgba16float	1920	1080	1	1	1	16588800
+target	rgba16float	1920	1080	1	1	1	16588800
+target	rgba16float	1920	1080	1	1	1	16588800
+target	depth32float	1920	1080	1	1	1	8294400
+target	depth32float	1920	1080	1	1	1	8294400
+target	rgba16float	480	270	1	1	1	1036800
+target	rgba16float	480	270	1	1	1	1036800
+target	rgba16float	240	135	1	1	1	259200
+target	rgba16float	240	135	1	1	1	259200

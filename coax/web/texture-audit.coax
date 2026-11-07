@@ -1,0 +1,362 @@
+// The texture GPU-memory audit (GitHub #13014, part of #12998): a realm opened in headless
+// Chrome as a desktop and as a phone, with every GPU texture it makes counted. A script that
+// runs before the page wraps GPUDevice.createTexture and GPUTexture.destroy, so the ledger
+// holds every texture still alive, with its format, size, layers, mips, samples and usage; this
+// tool turns those rows into bytes. A texture of 8-bit or block texels that is uploaded to
+// (COPY_DST) is a material: pack layers, atlases, fonts. Every other is a target: the canvas's
+// depth, the light buffers, shadow maps, and the float and depth copies a pass samples.
+// The browser's own swap chain is not counted. A texture dropped without destroy() stays in the
+// ledger, as it stays on the GPU until it is collected.
+//   coax/web/tool.sh texture-audit [BASE_URL] [--world SLUG] [--query Q] [--tier desktop|phone|both]
+//                                  [--out DIR] [--settle MS]
+//   coax/bin/coax test coax/web/texture-audit.coax        # its own checks
+// Run from the repository root. BASE_URL defaults to http://127.0.0.1:8800. The page is
+// BASE_URL/worlds/SLUG?Q (SLUG everglade). The desktop is 1920x1080 at dpr 1 with a fine
+// pointer; the phone is 390x844 at dpr 3, mobile, with touch (so "(pointer: coarse)" holds).
+// Once the scene has drawn it waits --settle ms (default 4000) for late layers, then reads the
+// ledger. It writes DIR/TIER.tsv (CLASS FORMAT WIDTH HEIGHT LAYERS MIPS SAMPLES BYTES, largest
+// first), DIR/TIER.png (the page as it was measured) and DIR/summary.tsv (one line per tier: SLUG TIER MATERIAL_BYTES TARGET_BYTES TEXTURES
+// COARSE BC ASTC ETC2 BC7_BYTES ASTC4_BYTES ASTC6_BYTES), and prints the totals. The last three
+// columns are the material textures' bytes if every RGBA8 one were BC7, ASTC 4x4 or ASTC 6x6
+// at the same size: what block compression would save before any size tier. BC, ASTC and ETC2
+// are 1 when the adapter has texture-compression-bc, -astc or -etc2. DIR defaults to
+// coax/web/build/texture-audit-SLUG. Exit 0 on a measurement, 1 when the page failed, 2 on bad usage.
+#import "Basic";
+#load "../lib/media/media.coax";          // MEDIA_READY_JS, media_ready_step, media_value; it loads cdp.coax
+
+TA_READY_MS :: 90000;
+
+// A texel format's block: its width and height in texels and its bytes. ok is false for a
+// format this audit does not know, which it reports rather than guessing.
+TaFormat :: struct { ok: bool; bw: int; bh: int; bytes: int; }
+ta_block :: (bw: int, bh: int, bytes: int) -> TaFormat { f: TaFormat; f.ok = true; f.bw = bw; f.bh = bh; f.bytes = bytes; return f; }
+ta_strip_srgb :: (name: string) -> string {
+  if name.count > 5 && name[name.count - 5..<name.count] == "-srgb" { return name[0..<name.count - 5]; }
+  return name;
+}
+ta_format :: (full: string) -> TaFormat {
+  name := ta_strip_srgb(full);
+  ones := [6] string.["r8unorm", "r8snorm", "r8uint", "r8sint", "stencil8", "r8"];
+  for x: ones { if name == x { return ta_block(1, 1, 1); } }
+  twos := [8] string.["rg8unorm", "rg8snorm", "rg8uint", "rg8sint", "r16float", "r16uint", "r16sint", "depth16unorm"];
+  for x: twos { if name == x { return ta_block(1, 1, 2); } }
+  fours := [16] string.["rgba8unorm", "bgra8unorm", "rgba8snorm", "rgba8uint", "rgba8sint", "rg16float", "rg16uint", "rg16sint", "r32float", "r32uint", "r32sint", "rgb10a2unorm", "rg11b10ufloat", "rgb9e5ufloat", "depth32float", "depth24plus"];
+  for x: fours { if name == x { return ta_block(1, 1, 4); } }
+  // depth24plus-stencil8 and depth32float-stencil8 as most GPUs keep them: 4 and 8 bytes
+  if name == "depth24plus-stencil8" { return ta_block(1, 1, 4); }
+  eights := [8] string.["rgba16float", "rgba16uint", "rgba16sint", "rg32float", "rg32uint", "rg32sint", "depth32float-stencil8", "rgb10a2uint"];
+  for x: eights { if name == x { return ta_block(1, 1, 8); } }
+  sixteens := [3] string.["rgba32float", "rgba32uint", "rgba32sint"];
+  for x: sixteens { if name == x { return ta_block(1, 1, 16); } }
+  half := [5] string.["bc1-rgba-unorm", "bc4-r-unorm", "bc4-r-snorm", "etc2-rgb8unorm", "etc2-rgb8a1unorm"];
+  for x: half { if name == x { return ta_block(4, 4, 8); } }
+  if name == "eac-r11unorm" || name == "eac-r11snorm" { return ta_block(4, 4, 8); }
+  whole := [10] string.["bc2-rgba-unorm", "bc3-rgba-unorm", "bc5-rg-unorm", "bc5-rg-snorm", "bc6h-rgb-ufloat", "bc6h-rgb-float", "bc7-rgba-unorm", "etc2-rgba8unorm", "eac-rg11unorm", "eac-rg11snorm"];
+  for x: whole { if name == x { return ta_block(4, 4, 16); } }
+  // ASTC: 16 bytes a block of W by H texels, at the specification's fourteen 2D block sizes
+  for k: 0..<14 { if name == TA_ASTC[k] { return ta_block(TA_ASTC_W[k], TA_ASTC_H[k], 16); } }
+  return TaFormat.{};
+}
+TA_ASTC :: [14] string.["astc-4x4-unorm", "astc-5x4-unorm", "astc-5x5-unorm", "astc-6x5-unorm", "astc-6x6-unorm", "astc-8x5-unorm", "astc-8x6-unorm", "astc-8x8-unorm", "astc-10x5-unorm", "astc-10x6-unorm", "astc-10x8-unorm", "astc-10x10-unorm", "astc-12x10-unorm", "astc-12x12-unorm"];
+TA_ASTC_W :: [14] int.[4, 5, 5, 6, 6, 8, 8, 8, 10, 10, 10, 10, 12, 12];
+TA_ASTC_H :: [14] int.[4, 4, 5, 5, 6, 5, 6, 8, 5, 6, 8, 10, 10, 12];
+ta_is :: (name: string, bw: int, bh: int, bytes: int) -> bool { f := ta_format(name); return f.ok && f.bw == bw && f.bh == bh && f.bytes == bytes; }
+#test "every ASTC size reads its block from its own name" {
+  for k: 0..<14 {
+    name := TA_ASTC[k]; w := 0; at := 5;
+    while name[at] != 'x' { w = w * 10 + cast(int) (name[at] - '0'); at += 1; }
+    h := 0; at += 1; while name[at] != '-' { h = h * 10 + cast(int) (name[at] - '0'); at += 1; }
+    #assert ta_is(name, w, h, 16);
+  }
+  #assert !ta_format("astc-3x3-unorm").ok && !ta_format("astc-unorm").ok && ta_is("astc-12x12-unorm-srgb", 12, 12, 16);
+}
+#test "formats name their blocks; sRGB costs what its linear twin does; unknown names are refused" {
+  f := ta_format("rgba8unorm-srgb"); #assert f.ok && f.bw == 1 && f.bh == 1 && f.bytes == 4;
+  #assert ta_format("rgba16float").bytes == 8 && ta_format("rgba32float").bytes == 16 && ta_format("r8unorm").bytes == 1;
+  #assert ta_format("rg16float").bytes == 4 && ta_format("depth32float").bytes == 4 && ta_format("depth16unorm").bytes == 2;
+  #assert ta_format("depth32float-stencil8").bytes == 8 && ta_format("depth24plus-stencil8").bytes == 4 && ta_format("rg32float").bytes == 8;
+  b := ta_format("bc7-rgba-unorm-srgb"); #assert b.ok && b.bw == 4 && b.bh == 4 && b.bytes == 16;
+  #assert ta_format("bc1-rgba-unorm").bytes == 8 && ta_format("bc5-rg-unorm").bytes == 16 && ta_format("etc2-rgb8unorm").bytes == 8;
+  a := ta_format("astc-6x6-unorm-srgb"); #assert a.ok && a.bw == 6 && a.bh == 6 && a.bytes == 16;
+  a10 := ta_format("astc-10x8-unorm"); #assert a10.ok && a10.bw == 10 && a10.bh == 8;
+  #assert !ta_format("rgba9000").ok && !ta_format("").ok;
+  #assert ta_is("r8unorm", 1, 1, 1) && ta_is("stencil8", 1, 1, 1) && ta_is("rg8unorm", 1, 1, 2) && ta_is("r16float", 1, 1, 2) && ta_is("rgba8unorm", 1, 1, 4) && ta_is("depth24plus-stencil8", 1, 1, 4);
+  #assert ta_is("rgba16float", 1, 1, 8) && ta_is("rgba32float", 1, 1, 16) && ta_is("bc4-r-unorm", 4, 4, 8) && ta_is("eac-r11unorm", 4, 4, 8) && ta_is("eac-r11snorm", 4, 4, 8) && ta_is("bc3-rgba-unorm", 4, 4, 16);
+  #assert !ta_is("rgba8unorm", 1, 1, 8) && !ta_is("bc7-rgba-unorm", 1, 4, 16) && !ta_is("bc7-rgba-unorm", 4, 1, 16) && !ta_is("nope", 0, 0, 0);
+  #assert ta_strip_srgb("-srgb") == "-srgb" && ta_strip_srgb("x-srgb") == "x";
+}
+
+// The bytes a texture holds: every mip of every layer and sample, each level max(1, size >> mip)
+// texels, rounded up to whole blocks. A 3D texture's depth shrinks with its mips; an array's
+// layers do not. -1 when the format is unknown or a size is out of range.
+ta_bytes :: (format: string, w: int, h: int, layers: int, mips: int, samples: int, d3: bool) -> int {
+  f := ta_format(format);
+  if !f.ok || w < 1 || h < 1 || layers < 1 || mips < 1 || mips > 16 || samples < 1 || w > 65536 || h > 65536 || layers > 65536 { return -1; }
+  total := 0;
+  for m: 0..<mips {
+    lw := w >> m; if lw < 1 { lw = 1; } // mutant: equivalent (a side of 0 or 1 clamps to 1 either way)
+    lh := h >> m; if lh < 1 { lh = 1; } // mutant: equivalent (a side of 0 or 1 clamps to 1 either way)
+    ld := ifx d3 then layers >> m else layers; if ld < 1 { ld = 1; } // mutant: equivalent (a depth of 0 or 1 clamps to 1 either way)
+    total += ((lw + f.bw - 1) / f.bw) * ((lh + f.bh - 1) / f.bh) * f.bytes * ld;
+  }
+  return total * samples;
+}
+#test "a texture's bytes add up its mips, layers and samples, in whole blocks" {
+  #assert ta_bytes("rgba8unorm", 4, 4, 1, 1, 1, false) == 64;
+  #assert ta_bytes("rgba8unorm", 4, 4, 1, 3, 1, false) == 64 + 16 + 4;
+  #assert ta_bytes("rgba8unorm-srgb", 1024, 1024, 2, 11, 1, false) == 2 * 4 * 1398101;
+  #assert ta_bytes("bc7-rgba-unorm", 4, 4, 1, 3, 1, false) == 48;           // 4x4, then 2x2 and 1x1 each one block
+  #assert ta_bytes("bc7-rgba-unorm", 1024, 1024, 1, 1, 1, false) == 1048576;
+  #assert ta_bytes("astc-6x6-unorm", 13, 7, 1, 1, 1, false) == 3 * 2 * 16;
+  #assert ta_bytes("depth32float", 100, 50, 1, 1, 4, false) == 80000;
+  #assert ta_bytes("rgba8unorm", 8, 8, 8, 2, 1, true) == 8 * 8 * 4 * 8 + 4 * 4 * 4 * 4;
+  #assert ta_bytes("rgba8unorm", 2, 2, 1, 3, 1, true) == 16 + 4 + 4;      // depth stays at least 1
+  #assert ta_bytes("nope", 4, 4, 1, 1, 1, false) == -1 && ta_bytes("rgba8unorm", 0, 4, 1, 1, 1, false) == -1 && ta_bytes("rgba8unorm", 4, 0, 1, 1, 1, false) == -1;
+  #assert ta_bytes("rgba8unorm", 4, 4, 0, 1, 1, false) == -1 && ta_bytes("rgba8unorm", 4, 4, 1, 0, 1, false) == -1 && ta_bytes("rgba8unorm", 4, 4, 1, 17, 1, false) == -1;
+  #assert ta_bytes("rgba8unorm", 4, 4, 1, 16, 1, false) > 0 && ta_bytes("rgba8unorm", 4, 4, 1, 1, 0, false) == -1;
+  #assert ta_bytes("rgba8unorm", 65537, 1, 1, 1, 1, false) == -1 && ta_bytes("rgba8unorm", 1, 65537, 1, 1, 1, false) == -1 && ta_bytes("rgba8unorm", 1, 1, 65537, 1, 1, false) == -1;
+  #assert ta_bytes("rgba8unorm", 65536, 1, 65536, 1, 1, false) > 0 && ta_bytes("rgba8unorm", 1, 65536, 1, 1, 1, false) == 262144 && ta_bytes("rgba8unorm", 1, 1, 1, 1, 1, false) == 4;
+}
+
+// An image format, as materials are: 8-bit texels or blocks; not float, not depth or stencil.
+ta_image_format :: (name: string) -> bool {
+  for i: 0..<name.count { if name.count - i >= 5 && name[i..<i + 5] == "float" { return false; } }
+  return !(name.count >= 5 && (name[0..<5] == "depth" || name[0..<5] == "stenc"));
+}
+#test "materials are 8-bit or block images, never float or depth copies" {
+  #assert ta_image_format("rgba8unorm-srgb") && ta_image_format("bc7-rgba-unorm") && ta_image_format("astc-4x4-unorm") && ta_image_format("r8unorm");
+  #assert !ta_image_format("rgba16float") && !ta_image_format("rg11b10ufloat") && !ta_image_format("depth32float") && !ta_image_format("stencil8") && !ta_image_format("depth24plus");
+  #assert ta_image_format("dept") && ta_image_format("floa") && !ta_image_format("float") && !ta_image_format("depth");
+}
+
+// One ledger row: "FORMAT:W:H:LAYERS:MIPS:SAMPLES:USAGE:DIMENSION".
+TaRow :: struct { ok: bool; format: string; w: int; h: int; layers: int; mips: int; samples: int; usage: int; d3: bool; bytes: int; material: bool; }
+TA_COPY_DST :: 2;    // GPUTextureUsage.COPY_DST
+ta_row :: (text: string) -> TaRow {
+  r: TaRow; parts: [8] string; n := 0; at := 0;
+  for i: 0..<text.count + 1 { // mutant: equivalent (starting at 1 differs only for a leading ':', an empty format refused either way)
+    if i == text.count || text[i] == ':' {
+      if n >= 8 { return r; }
+      parts[n] = text[at..<i]; n += 1; at = i + 1;
+    }
+  }
+  if n != 8 { return r; }
+  nums: [6] int;
+  for k: 0..<6 { nums[k] = args_whole(parts[k + 1]); if nums[k] < 0 { return r; } }
+  r.format = parts[0]; r.w = nums[0]; r.h = nums[1]; r.layers = nums[2]; r.mips = nums[3]; r.samples = nums[4]; r.usage = nums[5];
+  r.d3 = parts[7] == "3d";
+  r.bytes = ta_bytes(r.format, r.w, r.h, r.layers, r.mips, r.samples, r.d3);
+  r.material = (r.usage & TA_COPY_DST) != 0 && ta_image_format(r.format);
+  r.ok = r.bytes != -1;
+  return r;
+}
+#test "a ledger row parses into bytes and a class, and a broken one is refused" {
+  r := ta_row("rgba8unorm-srgb:1024:1024:3:11:1:22:2d");
+  #assert r.ok && r.format == "rgba8unorm-srgb" && r.w == 1024 && r.h == 1024 && r.layers == 3 && r.mips == 11 && r.samples == 1 && r.usage == 22 && !r.d3 && r.material;
+  #assert r.bytes == 3 * 4 * 1398101;
+  t := ta_row("depth32float:1920:1080:1:1:1:16:2d"); #assert t.ok && !t.material && t.bytes == 1920 * 1080 * 4;
+  v := ta_row("rgba8unorm:8:8:8:2:1:6:3d"); #assert v.ok && v.d3 && v.bytes == 8 * 8 * 4 * 8 + 4 * 4 * 4 * 4;
+  #assert !ta_row("").ok && !ta_row("rgba8unorm:1:1:1:1:1:6").ok && !ta_row("rgba8unorm:1:1:1:1:1:6:2d:x").ok && !ta_row(":1:1:1:1:1:6:2d").ok;
+  z := ta_row("rgba8unorm:4:4:1:1:1:0:2d"); #assert z.ok && !z.material && z.usage == 0;
+  src := ta_row("rgba8unorm:4:4:1:1:1:1:2d"); #assert src.ok && !src.material;
+  #assert !ta_row("rgba8unorm:a:1:1:1:1:6:2d").ok && !ta_row("weird:1:1:1:1:1:6:2d").ok && !ta_row("rgba8unorm:1:1:1:1:1:x:2d").ok;
+}
+
+// The same texture as another format at the same size, for the compression projection: an
+// RGBA8 material re-expressed as that block format; any other row keeps its own bytes.
+ta_as :: (r: TaRow, format: string) -> int {
+  base := ta_strip_srgb(r.format);
+  if !r.material || (base != "rgba8unorm" && base != "bgra8unorm") { return r.bytes; }
+  return ta_bytes(format, r.w, r.h, r.layers, r.mips, r.samples, r.d3);
+}
+#test "the projection swaps only RGBA8 materials" {
+  m := ta_row("rgba8unorm-srgb:1024:1024:2:11:1:6:2d"); #assert ta_as(m, "bc7-rgba-unorm") == ta_bytes("bc7-rgba-unorm", 1024, 1024, 2, 11, 1, false);
+  b := ta_row("bgra8unorm:64:64:1:1:1:6:2d"); #assert ta_as(b, "astc-6x6-unorm") == 11 * 11 * 16;
+  t := ta_row("rgba8unorm:64:64:1:1:1:16:2d"); #assert ta_as(t, "bc7-rgba-unorm") == t.bytes;
+  f := ta_row("rgba16float:64:64:1:1:1:6:2d"); #assert !f.material && ta_as(f, "bc7-rgba-unorm") == f.bytes;
+  g := ta_row("rg8unorm:64:64:1:1:1:6:2d"); #assert g.material && ta_as(g, "bc7-rgba-unorm") == g.bytes;
+}
+
+// A tier's totals.
+TaSum :: struct { material: int; target: int; count: int; bc7: int; astc4: int; astc6: int; bad: int; }
+ta_add :: (s: TaSum, r: TaRow) -> TaSum {
+  o := s;
+  if !r.ok { o.bad += 1; return o; }
+  o.count += 1;
+  if r.material { o.material += r.bytes; o.bc7 += ta_as(r, "bc7-rgba-unorm"); o.astc4 += ta_as(r, "astc-4x4-unorm"); o.astc6 += ta_as(r, "astc-6x6-unorm"); }
+  else { o.target += r.bytes; }
+  return o;
+}
+#test "a tier adds materials and targets apart, and counts the rows it could not read" {
+  s: TaSum;
+  s = ta_add(s, ta_row("rgba8unorm:4:4:1:1:1:6:2d"));
+  s = ta_add(s, ta_row("depth32float:4:4:1:1:1:16:2d"));
+  s = ta_add(s, ta_row("rgba16float:4:4:1:1:1:6:2d"));
+  s = ta_add(s, ta_row("rg8unorm:4:4:1:1:1:6:2d"));
+  s = ta_add(s, ta_row("bogus"));
+  #assert s.count == 4 && s.bad == 1 && s.material == 64 + 32 && s.target == 64 + 128 && s.bc7 == 16 + 32 && s.astc4 == 16 + 32 && s.astc6 == 16 + 32;
+}
+
+TA_BUF :: 1048576;
+TaBuf :: struct { b: [TA_BUF] u8; n: int; bad: bool; }
+ta_put :: (o: [] TaBuf, t: string) {
+  if o[0].n + t.count > TA_BUF { o[0].bad = true; return; }
+  for k: 0..<t.count { o[0].b[o[0].n + k] = t[k]; }
+  o[0].n += t.count;
+}
+ta_int :: (o: [] TaBuf, v: int) {
+  if v < 0 { ta_put(o, "-"); ta_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; ta_put(o, cast(string) e[..]); }
+}
+// bytes as MiB with one decimal, rounded to nearest (a tie down)
+ta_mib :: (o: [] TaBuf, bytes: int) { t := (bytes * 10 + 524287) / 1048576; ta_int(o, t / 10); ta_put(o, "."); ta_int(o, t % 10); ta_put(o, " MiB"); }
+ta_text :: (o: [] TaBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+#test "sizes print as MiB with one decimal" {
+  o: [1] TaBuf; ta_mib(o[..], 1048576); #assert ta_text(o[..]) == "1.0 MiB";
+  p: [1] TaBuf; ta_mib(p[..], 1572864 + 52429); #assert ta_text(p[..]) == "1.6 MiB";
+  q: [1] TaBuf; ta_mib(q[..], 0); ta_put(q[..], " "); ta_int(q[..], -1234567); #assert ta_text(q[..]) == "0.0 MiB -1234567";
+  t: [1] TaBuf; ta_mib(t[..], 262144); ta_mib(t[..], 262145); #assert ta_text(t[..]) == "0.2 MiB0.3 MiB";
+  f: [1] TaBuf; f[0].n = f[0].b.count - 2; ta_put(f[..], "abc"); #assert f[0].bad && f[0].n == f[0].b.count - 2;
+  ta_put(f[..], "ab"); #assert f[0].n == f[0].b.count && f[0].b[f[0].n - 1] == 'b';
+  g: [1] TaBuf; ta_put(g[..], "x"); #assert !g[0].bad && g[0].n == 1;
+}
+
+// Runs before the page: the ledger, and what the adapter offers.
+TA_LEDGER_JS :: "(() => { if (!globalThis.GPUDevice) return; const live = new Map(); const L = globalThis.coaxialTextureLedger = { live, features: '' }; const P = GPUDevice.prototype, make = P.createTexture; P.createTexture = function (d) { const t = make.call(this, d); const s = d.size, w = s.width ?? s[0], h = s.height ?? s[1] ?? 1, l = s.depthOrArrayLayers ?? s[2] ?? 1; live.set(t, [d.format, w, h, l, d.mipLevelCount ?? 1, d.sampleCount ?? 1, d.usage, d.dimension ?? '2d'].join(':')); return t; }; const gone = GPUTexture.prototype.destroy; GPUTexture.prototype.destroy = function () { live.delete(this); return gone.call(this); }; const ask = GPUAdapter.prototype.requestDevice; GPUAdapter.prototype.requestDevice = function (o) { L.features = [...this.features].join(' '); return ask.call(this, o); }; })()";
+TA_READ_JS :: "(() => { const L = globalThis.coaxialTextureLedger; if (!L) return 'none'; const f = L.features; return (matchMedia('(pointer: coarse)').matches ? 1 : 0) + ' ' + (f.includes('texture-compression-bc') ? 1 : 0) + ' ' + (f.includes('texture-compression-astc') ? 1 : 0) + ' ' + (f.includes('texture-compression-etc2') ? 1 : 0) + '|' + [...L.live.values()].join(','); })()";
+
+TaTier :: struct { name: string; w: int; h: int; dpr: int; phone: bool; }
+TA_ROWS :: 4096;
+
+ta_measure :: (url: string, slug: string, tier: TaTier, settle_ms: int, out: string, summary: [] TaBuf) -> int {
+  c: [1] Cdp;
+  if !cdp_launch(c[..], tier.w, tier.h, "coax-texture-audit-") { tool_err("texture-audit: "); tool_errln(cdp_error(c[..])); return 1; }
+  vp: [1] TaBuf;
+  ta_put(vp[..], "{\"width\":"); ta_int(vp[..], tier.w); ta_put(vp[..], ",\"height\":"); ta_int(vp[..], tier.h);
+  ta_put(vp[..], ",\"deviceScaleFactor\":"); ta_int(vp[..], tier.dpr); ta_put(vp[..], ",\"mobile\":"); ta_put(vp[..], ifx tier.phone then "true}" else "false}");
+  js: [8192] u8; jo: [1] Jo; jo_start(jo[..], js[..]); jo_obj(jo[..]); jo_key(jo[..], "source"); jo_str(jo[..], TA_LEDGER_JS); jo_end(jo[..]);
+  touch := ifx tier.phone then "{\"enabled\":true,\"maxTouchPoints\":5}" else "{\"enabled\":false}";
+  if jo[0].bad || cdp_call(c[..], "Page.enable", "", 15000) < 0 || cdp_call(c[..], "Emulation.setDeviceMetricsOverride", ta_text(vp[..]), 15000) < 0
+     || cdp_call(c[..], "Emulation.setTouchEmulationEnabled", touch, 15000) < 0 || cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(jo[..]), 15000) < 0 {
+    tool_err("texture-audit: the browser failed: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1;
+  }
+  nav: [8192] u8; no: [1] Jo; jo_start(no[..], nav[..]); jo_obj(no[..]); jo_key(no[..], "url"); jo_str(no[..], url); jo_end(no[..]);
+  if no[0].bad || cdp_call(c[..], "Page.navigate", jo_text(no[..]), 15000) < 0 { tool_err("texture-audit: cannot open "); tool_errln(url); cdp_close(c[..]); return 1; }
+  proc_sleep(300);
+  t0 := proc_now_ms(); idle_from := -1;
+  while true {
+    word: [512] u8; wn := media_value(c[..], MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - t0, ifx idle_from < 0 then 0 else now - idle_from, TA_READY_MS);
+    if step == MEDIA_READY { break; }
+    if step == MEDIA_TIMEOUT { tool_errln("texture-audit: the scene didn't draw in 90 s"); cdp_close(c[..]); return 1; }
+    if step == MEDIA_FAILED { tool_err("texture-audit: the page says it failed: "); tool_errln(status); cdp_close(c[..]); return 1; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  gb: [256] u8; gpu_line := cdp_adapter(c[..], gb[..]);
+  proc_sleep(settle_ms);
+  text: [1048576] u8; tn := media_value(c[..], TA_READ_JS, text[..]);
+  // the picture the measured page drew, so a smaller tier can be checked by eye
+  png: [16777216] u8; pn := cdp_screenshot(c[..], png[..]);
+  cdp_close(c[..]);
+  shot: [4096] u8; shot_name: [1] TaBuf; ta_put(shot_name[..], tier.name); ta_put(shot_name[..], ".png");
+  if pn <= 0 || !fs_write(fs_join(out, ta_text(shot_name[..]), shot[..]), cast(string) png[0..<pn]) { tool_errln("texture-audit: the screenshot failed"); return 1; }
+  if tn <= 0 || cast(string) text[0..<tn] == "none" { tool_errln("texture-audit: the page has no texture ledger (no WebGPU?)"); return 1; }
+  got := cast(string) text[0..<tn];
+  bar := 0; while bar < got.count && got[bar] != '|' { bar += 1; }
+  if bar >= got.count || bar != 7 { tool_errln("texture-audit: the ledger did not parse"); return 1; }
+  head := got[0..<bar]; body := got[bar + 1..<got.count];
+  rows: [TA_ROWS] TaRow; n := 0; at := 0;
+  for i: 0..<body.count + 1 {
+    if i == body.count || body[i] == ',' {
+      if i > at && n < TA_ROWS { rows[n] = ta_row(body[at..<i]); n += 1; }
+      at = i + 1;
+    }
+  }
+  // largest first
+  for i: 1..<n { k := i; while k > 0 && rows[k - 1].bytes < rows[k].bytes { t := rows[k]; rows[k] = rows[k - 1]; rows[k - 1] = t; k -= 1; } }
+  s: TaSum; tsv: [1] TaBuf;
+  ta_put(tsv[..], "CLASS\tFORMAT\tWIDTH\tHEIGHT\tLAYERS\tMIPS\tSAMPLES\tBYTES\n");
+  for k: 0..<n {
+    r := rows[k]; s = ta_add(s, r);
+    ta_put(tsv[..], ifx !r.ok then "unread" else ifx r.material then "material" else "target"); ta_put(tsv[..], "\t"); ta_put(tsv[..], r.format);
+    vals := [6] int.[r.w, r.h, r.layers, r.mips, r.samples, r.bytes];
+    for v: vals { ta_put(tsv[..], "\t"); ta_int(tsv[..], v); }
+    ta_put(tsv[..], "\n");
+  }
+  path: [4096] u8; name: [1] TaBuf; ta_put(name[..], tier.name); ta_put(name[..], ".tsv");
+  if tsv[0].bad || !fs_write(fs_join(out, ta_text(name[..]), path[..]), ta_text(tsv[..])) { tool_err("texture-audit: cannot write into "); tool_errln(out); return 1; }
+  flags: [4] int; fn := 0; v := 0; digits := 0;
+  for i: 0..<head.count + 1 { if i == head.count || head[i] == ' ' { if digits == 0 || fn >= 4 { tool_errln("texture-audit: the ledger head did not parse"); return 1; } flags[fn] = v; fn += 1; v = 0; digits = 0; } else { v = v * 10 + cast(int) (head[i] - '0'); digits += 1; } }
+  ta_put(summary, slug); ta_put(summary, "\t"); ta_put(summary, tier.name);
+  vals := [10] int.[s.material, s.target, s.count, flags[0], flags[1], flags[2], flags[3], s.bc7, s.astc4, s.astc6];
+  for x: vals { ta_put(summary, "\t"); ta_int(summary, x); }
+  ta_put(summary, "\n");
+  p: [1] TaBuf;
+  ta_put(p[..], "texture-audit: "); ta_put(p[..], slug); ta_put(p[..], " "); ta_put(p[..], tier.name); ta_put(p[..], " ("); ta_put(p[..], gpu_line); ta_put(p[..], ")\n  ");
+  ta_int(p[..], s.count); ta_put(p[..], " textures: materials "); ta_mib(p[..], s.material); ta_put(p[..], ", targets "); ta_mib(p[..], s.target);
+  ta_put(p[..], "; coarse pointer "); ta_int(p[..], flags[0]); ta_put(p[..], ", bc "); ta_int(p[..], flags[1]); ta_put(p[..], ", astc "); ta_int(p[..], flags[2]); ta_put(p[..], ", etc2 "); ta_int(p[..], flags[3]);
+  ta_put(p[..], "\n  the RGBA8 materials as BC7: "); ta_mib(p[..], s.bc7); ta_put(p[..], ", ASTC 4x4: "); ta_mib(p[..], s.astc4); ta_put(p[..], ", ASTC 6x6: "); ta_mib(p[..], s.astc6);
+  if s.bad > 0 { ta_put(p[..], "\n  unread rows: "); ta_int(p[..], s.bad); }
+  ta_put(p[..], "\n");
+  print("%", ta_text(p[..]));
+  return 0;
+}
+
+ta_valued :: (s: string) -> bool {
+  names := [5] string.["--world", "--query", "--tier", "--out", "--settle"];
+  for x: names { if s == x { return true; } }
+  return false;
+}
+ta_slug_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 64 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+
+#test "the flags that take a value, and the realm names" {
+  #assert ta_valued("--world") && ta_valued("--query") && ta_valued("--tier") && ta_valued("--out") && ta_valued("--settle") && !ta_valued("--x") && !ta_valued("everglade");
+  #assert ta_slug_ok("everglade") && ta_slug_ok("character-creator") && ta_slug_ok("a9") && !ta_slug_ok("") && !ta_slug_ok("Everglade") && !ta_slug_ok("a/b") && !ta_slug_ok("a_b");
+  long: [65] u8; for i: 0..<65 { long[i] = 'a'; } #assert ta_slug_ok(cast(string) long[0..<64]) && !ta_slug_ok(cast(string) long[..]);
+  #assert ta_slug_ok("z0") && ta_slug_ok("0a") && !ta_slug_ok("a`") && !ta_slug_ok("a{") && !ta_slug_ok("a/") && !ta_slug_ok("a:") && !ta_slug_ok("a,") && !ta_slug_ok("a.");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  usage := "usage (from the repository root): coax/web/tool.sh texture-audit [BASE_URL] [--world SLUG] [--query Q] [--tier desktop|phone|both] [--out DIR] [--settle MS]";
+  base := "http://127.0.0.1:8800";
+  for i: 0..<args_count(a[..]) {
+    s := args_at(a[..], i); prev := ifx i > 0 then args_at(a[..], i - 1) else "";
+    if s.count > 0 && s[0] != '-' && !ta_valued(prev) { base = s; break; }
+  }
+  while base.count > 0 && base[base.count - 1] == '/' { base = base[0..<base.count - 1]; }
+  slug := args_value(a[..], "--world", "everglade");
+  query := args_value(a[..], "--query", "");
+  which := args_value(a[..], "--tier", "both");
+  settle := args_whole(args_value(a[..], "--settle", "4000"));
+  if !ok || !ta_slug_ok(slug) || (which != "desktop" && which != "phone" && which != "both") || settle < 0 || settle > 120000 { tool_errln(usage); return 2; }
+  default_out: [1] TaBuf; ta_put(default_out[..], "coax/web/build/texture-audit-"); ta_put(default_out[..], slug);
+  out := args_value(a[..], "--out", ta_text(default_out[..]));
+  if !fs_exists(out) && !fs_mkdir(out) { tool_err("texture-audit: cannot make "); tool_errln(out); return 2; }
+  u: [1] TaBuf; ta_put(u[..], base); ta_put(u[..], "/worlds/"); ta_put(u[..], slug); if query.count > 0 { ta_put(u[..], "?"); ta_put(u[..], query); }
+  url := ta_text(u[..]);
+  tiers := [2] TaTier.[TaTier.{name = "desktop", w = 1920, h = 1080, dpr = 1, phone = false}, TaTier.{name = "phone", w = 390, h = 844, dpr = 3, phone = true}];
+  summary: [1] TaBuf;
+  ta_put(summary[..], "SLUG\tTIER\tMATERIAL_BYTES\tTARGET_BYTES\tTEXTURES\tCOARSE\tBC\tASTC\tETC2\tBC7_BYTES\tASTC4_BYTES\tASTC6_BYTES\n");
+  for t: tiers {
+    if which != "both" && which != t.name { continue; }
+    print("texture-audit: % as a %\n", url, t.name);
+    r := ta_measure(url, slug, t, settle, out, summary[..]);
+    if r != 0 { return r; }
+  }
+  path: [4096] u8;
+  if !fs_write(fs_join(out, "summary.tsv", path[..]), ta_text(summary[..])) { tool_err("texture-audit: cannot write into "); tool_errln(out); return 1; }
+  print("texture-audit: wrote %\n", out);
+  return 0;
+}

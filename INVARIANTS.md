@@ -1897,6 +1897,25 @@ Checks: each realm's "... frames fit its declared budget" (three frames at
 each of three screens), and `aethyr/budget.coax`'s planted overflow
 (mutation 0 survivors).
 
+## A device's texture layers take Coax's format and size tier
+
+`aethyr/render/texture-format.coax` picks the GPU format of a realm's layer
+array from the adapter's block-compression features and the encodings its pack
+carries, and the side the array takes. A block format is picked only when the
+device has the feature and the pack carries layers encoded in it; otherwise
+the layers are RGBA8. A phone (a coarse pointer) keeps RGBA8 layers at most 512
+a side and block-compressed ones at most 1024; a desktop keeps the side its
+realm declares. The browser host (`coax/web/host.js` `layerTexture`) asks the
+shared image reactor (`host-layers.wasm`) for both and, when the reactor
+cannot load, uploads as it did before. The block encoder
+(`aethyr/render/texture-encode.coax`) ships only bitstreams the independent
+decoders (bcdec, ARM astcenc 5.7.1) read as its own decoder does:
+`aethyr/tools/texture-encode.coax check` fails on any texel that differs by
+more than one level. Checks: `coax/bin/coax test
+aethyr/render/texture-format.coax --library` (root-only mutation: zero
+survivors, one equivalent at the cap's boundary) and the encoder's
+`--library` checks. GitHub #13014.
+
 ## An asset is its content hash, and a pack is admitted whole or not at all
 
 An Aethyr asset's identity is the SHA-256 of its bytes (`aethyr/assets.coax`,

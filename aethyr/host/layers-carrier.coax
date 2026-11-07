@@ -1,4 +1,5 @@
 // Browser reactor for the same canonical compressed-image authority as native.
 #load "../render/host-layers.coax";
+#load "../render/texture-format.coax";   // which format and size tier a device's layers take (GitHub #13014)
 HostLayerSource :: struct {bytes:[HOST_LAYER_SOURCE_BYTES]u8;}
 hl_source_storage :: (bank:[]HostLayerSource)->[]u8 #export_c #effects(all) {return bank[0].bytes[..];}

@@ -227,6 +227,7 @@ import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { localRoomSocket } from "./room-worker.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
+import { layerFeatures, layerPolicy, warmLayerPolicy } from "./layers-host.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
@@ -938,8 +939,12 @@ async function openDevice(made = () => {}) {
   const storage = Math.max(engine?.exports.coaxial_storage_limit_v1?.() ?? 0, character);
   // a headless benchmark (coax/web/flyover.coax) asks for each pass's GPU time (globalThis.coaxialPassTimer)
   const passTiming = globalThis.coaxialPassTimer === true && adapter.features.has("timestamp-query");
-  const options = timing || passTiming ? { requiredFeatures: ["timestamp-query"] } : {};
+  // every block-compression format the adapter has, so Coax can pick one for the layers (GitHub #13014)
+  const features = [...(timing || passTiming ? ["timestamp-query"] : []),
+    ...["texture-compression-bc", "texture-compression-astc", "texture-compression-etc2"].filter((f) => adapter.features.has(f))];
+  const options = features.length ? { requiredFeatures: features } : {};
   if (storage) options.requiredLimits = { maxStorageBufferBindingSize: storage };
+  warmLayerPolicy();
   const device = await adapter.requestDevice(options);
   device.lost.then((info) => deviceLost(device, info));
   made(device);
@@ -1833,9 +1838,19 @@ async function layerTexture(images) {   // the loading screen counts each layer 
   const first = encoded ? await layerBitmap(images[0]) : images[0];
   if (encoded) loading.textures(1, 0);
   const { device } = gpu, declaredSide = engine?.exports.coaxial_layers_side_v1?.(arena.state) || 0,
-    [w, h] = declaredSide ? [declaredSide, declaredSide] : [first.width, first.height];
+    [dw, dh] = declaredSide ? [declaredSide, declaredSide] : [first.width, first.height];
+  // Coax picks the format and the size tier (aethyr/render/texture-format.coax): no pack carries
+  // block-encoded layers yet, so it is RGBA8, at most 512 a side on a phone. Without the reactor
+  // the layers go up as they always have.
+  const format = "rgba8unorm-srgb"; let w = dw, h = dh;
+  try {
+    const policy = await layerPolicy(layerFeatures(device.features), 0, matchMedia("(pointer: coarse)").matches, 0, Math.max(dw, dh));
+    if (policy.block === 1 && policy.name === "rgba8unorm-srgb" && policy.side > 0 && policy.side < Math.max(dw, dh)) {
+      const scale = policy.side / Math.max(dw, dh); w = Math.max(1, Math.round(dw * scale)); h = Math.max(1, Math.round(dh * scale));
+    }
+  } catch (error) { if (dev) console.warn("layer policy unavailable", error); }
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
-  const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
+  const texture = device.createTexture({ size: [w, h, images.length], format, mipLevelCount: levels,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
   try {
     let nextLayer = 0, failure = null;
