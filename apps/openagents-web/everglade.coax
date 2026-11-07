@@ -100,6 +100,7 @@
 #load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
+#load "../../aethyr/flyover.coax";   // #fly=PATH: the flyover benchmark's camera (coax/web/flyover.coax, #13017)
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;
@@ -509,6 +510,8 @@ Everglade :: struct {
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wl: Warlock;                             // the Warlock's bar and its spells' looks (everglade-warlock.coax)
   rp: RaidPreview;                         // the Cultist Raid offline, a preview (everglade-raid-preview.coax)
+  fly: FlyPath;                            // #fly=PATH: the flyover benchmark flies the camera (aethyr/flyover.coax)
+  fly_from: f64;                           // and the clock when it began
   character: [SCL_FLOATS] f32;             // the character pass's SceneLights block (everglade-character.coax)
   character_shown: bool;                   // the host draws her: she is a body (everglade_character_ready)
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
@@ -1309,6 +1312,9 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     if l >= 1 && l <= WANTED_LEVELS { s[0].wv.want = l; }
     everglade_hash(s, hash[0..<hash.count - 8]); return;
   }
+  // "fly=T,EX,EY,EZ,AX,AY,AZ~...": the flyover benchmark (coax/web/flyover.coax) takes the camera along
+  // that path from now, and holds its last key; "fly=" (or any path flyover.coax refuses) hands it back
+  if hash.count >= 4 && hash[0..<4] == "fly=" { s[0].fly = fly_parse(hash[4..<hash.count]); s[0].fly_from = s[0].time; return; }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
   // a pond's bank on its trail's side, facing the water; #rowboat: in the Lantern Pond's boat
   boat := hash == "rowboat";
@@ -3488,6 +3494,12 @@ everglade_flow_gain :: (s: [] Everglade) -> f32 #export_c #effects(all) { return
 // The motion your controls ask for this frame (verse_player_asked), from the face before the frame:
 // the follow camera turns toward it, never toward a velocity a collider or a room's correction set (#12777).
 everglade_intent :: (s: [] Everglade, x: f32, z: f32) #export_c #effects(all) { s[0].intent_x = x; s[0].intent_z = z; }
+// The flyover benchmark's probe (globalThis.coaxial.fieldProbe(30)): 0 when no #fly= path has the
+// camera, else 1 + the milliseconds it has flown, so coax/web/flyover.coax knows the page took it.
+everglade_fly_ms :: (s: [] Everglade) -> int #export_c #effects(all) {
+  if !s[0].fly.ok { return 0; }
+  return 1 + cast(int) (clamp(cast(f32) (s[0].time - s[0].fly_from), 0, 86400) * 1000);
+}
 
 camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
@@ -4165,6 +4177,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   rp_frame(s, t);
   shot := rp_shot(s, camera_frame(s, shown, s[0].intent_x, s[0].intent_z, t));   // heading: your controls' (everglade_intent)   // the raid preview's flight, else yours (everglade-raid-preview.coax)
   shot = spells_camera(s, shot, t);   // a blast shakes it; nothing turns it
+  if s[0].fly.ok { shot = fly_shot(s[0].fly, cast(f32) (s[0].time - s[0].fly_from)); }   // #fly=: the benchmark's path, unshaken
 
   for k: 0..<5 { s[0].counts[k] = 0; }
   s[0].lathe_n = 0;

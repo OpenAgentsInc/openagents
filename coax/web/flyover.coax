@@ -1,0 +1,400 @@
+// The flyover benchmark (GitHub #13017, learned from Solstice's `viewer --flyover`:
+// docs/verse/2026-11-07-solstice-comparison.md): a realm's camera flown along a keyed path in
+// headless Chrome, the time of every frame and a screenshot each second. A walk (realm-perf.coax)
+// never reaches a realm's worst views, and a still camera hides what moving costs (shadows redrawn,
+// detail streamed in); a flyover crosses them the same way on every run, so two builds compare, and
+// the pictures show what a speed-up changed.
+//   coax/web/tool.sh flyover [BASE_URL] [--world SLUG] [--path FILE] [--query Q] [--out DIR]
+//                            [--size WxH] [--dpr D] [--no-shots] [--previous FILE] [--software-ok]
+//   coax/bin/coax test coax/web/flyover.coax          # its own checks
+// Run from the repository root. BASE_URL defaults to https://openagents.com. The page is
+// BASE_URL/worlds/SLUG?Q (SLUG everglade, Q weather=clear&clock=0.45: the same light every run),
+// at 1440x900, dpr 1. The path (default coax/web/flyover/SLUG.txt) is one key a line,
+//   SECONDS  EYE_X EYE_Y EYE_Z  AT_X AT_Y AT_Z
+// '#' starts a comment. aethyr/flyover.coax checks it (2 to 16 keys, the first at 0, times rising)
+// and the page flies it from location.hash "fly=..." with the same module: the realm hands its
+// camera over and says how long it has flown (coaxial.fieldProbe(30)); a page that never takes the
+// camera is refused, so a build without the hook can't pass for a fast one.
+//
+// Once the scene is ready and has settled (2 s), it flies the path twice. The first flight takes a
+// JPEG each second (DIR/shot-000.jpg ...); it also warms the realm (every view's detail loaded,
+// shaders built), so the second compares between runs. The second is timed and nothing else runs:
+// every requestAnimationFrame's interval, and from host.js's frame trace (coaxialFrameTrace) each
+// frame's CPU time and its GPU time (submit to onSubmittedWorkDone). --no-shots skips the first.
+// It writes DIR/frames.tsv (FRAME AT_MS FRAME_US), DIR/trace.tsv (FRAME_US CPU_US GPU_US DRAWN),
+// DIR/summary.tsv (one line: SLUG flyover ok|FAIL FRAMES P50 P95 MAX OVER_20MS FPS_X10 OVER_33MS
+// GPU_P50 GPU_P95 GPU_MAX, times in microseconds) and DIR/summary.txt, and prints the average,
+// the 95th percentile, the worst frame and the frames over 33 ms. The 60 FPS rule is
+// aethyr/frame-report.coax's (more than 30 frames, p95 at most 17.5 ms, no frame over 33 ms).
+// --previous FILE (an earlier summary.tsv) prints how this run moved. DIR defaults to
+// coax/web/build/flyover-SLUG (its parent must exist). Exit 0 when the flight held 60 FPS, 1 when
+// it missed, 2 on bad usage, a refused path, a page that never took the camera, or a headless
+// Chrome with no hardware WebGPU adapter (--software-ok measures SwiftShader anyway, to check the
+// tool itself).
+#import "Basic";
+#load "../lib/media/media.coax";          // MEDIA_READY_JS, media_ready_step; it loads cdp.coax
+#load "../../aethyr/frame-report.coax";   // FrameStats, frame_stats, frame_holds, frame_fps10
+#load "../../aethyr/flyover.coax";        // fly_parse: the path's rules, the page's own
+
+FO_FRAMES :: 16384;            // frames timed in one flight (4.5 minutes at 60 FPS)
+FO_SLOW :: 33000;              // Solstice's count: frames over this many microseconds
+FO_READY_MS :: 60000; FO_SETTLE_MS :: 2000;
+FO_PROBE :: 30;                // coaxial.fieldProbe(30): 0, or 1 + the ms the page's flight has flown
+FO_TAKE_MS :: 3000;            // the page must take the camera within this
+
+FoBuf :: struct { b: [1048576] u8; n: int; bad: bool; }
+fo_put :: (o: [] FoBuf, t: string) {
+  if o[0].n + t.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<t.count { o[0].b[o[0].n + k] = t[k]; }
+  o[0].n += t.count;
+}
+fo_int :: (o: [] FoBuf, v: int) {
+  if v < 0 { fo_put(o, "-"); fo_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; fo_put(o, cast(string) e[..]); }
+}
+// microseconds as milliseconds with one decimal, rounded (us >= 0)
+fo_ms :: (o: [] FoBuf, us: int) { t := (us + 50) / 100; fo_int(o, t / 10); fo_put(o, "."); fo_int(o, t % 10); }
+fo_text :: (o: [] FoBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+// ---- the path file -------------------------------------------------------------
+
+// The path file as the hash's text ("0,1,2,3,4,5,6~7,..."), written into out: ok, its length,
+// and the first line that is not a key of seven numbers (0 when the lines are keys but
+// aethyr/flyover.coax refuses the path: too few or many keys, times not rising from 0).
+FoPathText :: struct { ok: bool; n: int; line: int; }
+fo_path_text :: (file: string, out: [] u8) -> FoPathText {
+  r: FoPathText; n := 0; at := 0; line := 0;
+  while at < file.count {
+    end := at; while end < file.count && file[end] != '\n' { end += 1; }
+    line += 1;
+    row := file[at..<end]; at = end + 1;
+    cut := 0; while cut < row.count && row[cut] != '#' { cut += 1; }
+    row = row[0..<cut];
+    fields := 0; i := 0;
+    keyed := n;
+    while i < row.count {
+      while i < row.count && (row[i] == ' ' || row[i] == '\t' || row[i] == '\r') { i += 1; }
+      if i >= row.count { break; }
+      e := i; while e < row.count && row[e] != ' ' && row[e] != '\t' && row[e] != '\r' { e += 1; }
+      word := row[i..<e]; i = e;
+      if !fly_number(word).ok || n + word.count + 1 > out.count { r.line = line; return r; }
+      if fields > 0 { out[n] = ','; n += 1; } else if keyed > 0 { out[n] = '~'; n += 1; }
+      for c: word { out[n] = c; n += 1; }
+      fields += 1;
+    }
+    if fields != 0 && fields != 7 { r.line = line; return r; }
+  }
+  r.n = n;
+  r.ok = fly_parse(cast(string) out[0..<n]).ok;
+  return r;
+}
+
+// ---- numbers from the page -----------------------------------------------------
+
+// Whole numbers separated by `sep` into out: how many (-1 when one is not a number, or too many).
+fo_ints :: (text: string, sep: u8, out: [] int) -> int {
+  if text.count == 0 { return 0; }
+  n := 0; v := 0; digits := 0; neg := false;
+  for i: 0..<text.count + 1 {
+    if i == text.count || text[i] == sep {
+      if digits == 0 || n >= out.count { return -1; }
+      out[n] = ifx neg then -v else v; n += 1; v = 0; digits = 0; neg = false;
+      continue;
+    }
+    c := text[i];
+    if c == '-' && digits == 0 && !neg { neg = true; continue; }
+    if c < '0' || c > '9' || digits >= 12 { return -1; }
+    v = v * 10 + cast(int) (c - '0'); digits += 1;
+  }
+  return n;
+}
+// Frames over limit microseconds.
+fo_over :: (us: [] int, n: int, limit: int) -> int { k := 0; for i: 0..<n { if us[i] > limit { k += 1; } } return k; }
+
+#test "a path file becomes the hash's text, or names its first bad line" {
+  out: [1024] u8;
+  r := fo_path_text("# a comment\n 0  1 2 3  4 5 6   # the start\n\n2\t-1.5 2 3 4 5 6\r\n", out[..]);
+  #assert r.ok && r.line == 0 && cast(string) out[0..<r.n] == "0,1,2,3,4,5,6~2,-1.5,2,3,4,5,6";
+  #assert fo_path_text("0 1 2 3 4 5 6\n1 1 2 3 4 5\n", out[..]).line == 2;            // six numbers
+  #assert fo_path_text("0 1 2 3 4 5 6 7\n", out[..]).line == 1;                      // eight
+  #assert fo_path_text("0 1 2 3 4 5 6\n1 1 2 x 4 5 6\n", out[..]).line == 2;         // not a number
+  only := fo_path_text("0 1 2 3 4 5 6\n", out[..]);                                  // one key: refused, no line
+  #assert !only.ok && only.line == 0;
+  late := fo_path_text("0 1 2 3 4 5 6\n0 1 2 3 4 5 6\n", out[..]);                    // times must rise
+  #assert !late.ok && late.line == 0;
+  #assert !fo_path_text("", out[..]).ok && fo_path_text("0 1 2 3 4 5 6\n1 1 2 3 4 5 6", out[0..<10]).line == 1;
+}
+#test "the page's numbers parse, and the slow frames count" {
+  v: [8] int;
+  #assert fo_ints("16667,33001,-1,0", ',', v[..]) == 4 && v[0] == 16667 && v[1] == 33001 && v[2] == -1 && v[3] == 0;
+  #assert fo_ints("", ',', v[..]) == 0 && fo_ints("1,,2", ',', v[..]) == -1 && fo_ints("1,", ',', v[..]) == -1 && fo_ints("1,x", ',', v[..]) == -1;
+  #assert fo_ints("1:2:3", ':', v[..]) == 3 && v[2] == 3 && fo_ints("1,2,3", ',', v[0..<2]) == -1 && fo_ints("--1", ',', v[..]) == -1;
+  #assert fo_ints("1234567890123", ',', v[..]) == -1;
+  #assert fo_over(v[..], 3, 2) == 1 && fo_over(v[..], 3, 0) == 3 && fo_over(v[..], 0, 0) == 0;
+}
+
+// ---- the report ------------------------------------------------------------------
+
+FoRun :: struct { f: FrameStats; slow: int; gpu: FrameStats; cpu: FrameStats; }
+fo_summary :: (o: [] FoBuf, slug: string, r: FoRun) {
+  fo_put(o, slug); fo_put(o, "\tflyover\t"); fo_put(o, ifx frame_holds(r.f) then "ok" else "FAIL");
+  vals := [10] int.[r.f.n, r.f.p50, r.f.p95, r.f.max, r.f.over, frame_fps10(r.f), r.slow, r.gpu.p50, r.gpu.p95, r.gpu.max];
+  for x: vals { fo_put(o, "\t"); fo_int(o, x); }
+  fo_put(o, "\n");
+}
+// An earlier summary.tsv line read back (FrameStats with total from its FPS), found false when it isn't one.
+FoBefore :: struct { found: bool; run: FoRun; }
+fo_field :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i <= line.count {
+    e := i; while e < line.count && line[e] != '\t' && line[e] != '\n' { e += 1; }
+    if n == k { return line[i..<e]; }
+    n += 1; i = e + 1;
+  }
+  return "";
+}
+fo_before :: (line: string) -> FoBefore {
+  b: FoBefore; v: [10] int;
+  if fo_field(line, 1) != "flyover" { return b; }
+  for k: 0..<10 { one: [1] int; if fo_ints(fo_field(line, 3 + k), ',', one[..]) != 1 { return b; } v[k] = one[0]; }
+  b.run.f = FrameStats.{n = v[0], p50 = v[1], p95 = v[2], max = v[3], over = v[4], total = ifx v[5] > 0 then v[0] * 10000000 / v[5] else 0};
+  b.run.slow = v[6]; b.run.gpu = FrameStats.{p50 = v[7], p95 = v[8], max = v[9]};
+  b.found = v[0] > 0;
+  return b;
+}
+// "+1.2 ms" / "-0.3 ms" for a move from a to b microseconds.
+fo_move :: (o: [] FoBuf, a: int, b: int) { d := b - a; fo_put(o, ifx d < 0 then "-" else "+"); fo_ms(o, ifx d < 0 then -d else d); fo_put(o, " ms"); }
+fo_show :: (o: [] FoBuf, r: FoRun) {
+  avg := ifx r.f.n > 0 then r.f.total / r.f.n else 0;
+  fo_put(o, "frames "); fo_int(o, r.f.n); fo_put(o, ": average "); fo_ms(o, avg); fo_put(o, " ms (");
+  t := frame_fps10(r.f); fo_int(o, t / 10); fo_put(o, "."); fo_int(o, t % 10);
+  fo_put(o, " FPS), p50 "); fo_ms(o, r.f.p50); fo_put(o, ", p95 "); fo_ms(o, r.f.p95); fo_put(o, ", worst "); fo_ms(o, r.f.max);
+  fo_put(o, " ms, "); fo_int(o, r.slow); fo_put(o, " over 33 ms, "); fo_int(o, r.f.over); fo_put(o, " over 20 ms\n");
+  if r.cpu.n > 0 { fo_put(o, "cpu (a frame's host and engine time): p50 "); fo_ms(o, r.cpu.p50); fo_put(o, ", p95 "); fo_ms(o, r.cpu.p95); fo_put(o, ", worst "); fo_ms(o, r.cpu.max); fo_put(o, " ms\n"); }
+  if r.gpu.n > 0 { fo_put(o, "gpu (submit to work done): p50 "); fo_ms(o, r.gpu.p50); fo_put(o, ", p95 "); fo_ms(o, r.gpu.p95); fo_put(o, ", worst "); fo_ms(o, r.gpu.max); fo_put(o, " ms\n"); }
+  fo_put(o, ifx frame_holds(r.f) then "60 FPS: held" else "60 FPS: MISSED"); fo_put(o, " (p95 <= 17.5 ms and no frame over 33 ms)\n");
+}
+
+#test "a summary line reads back, and moves print signed" {
+  o: [1] FoBuf;
+  r := FoRun.{f = FrameStats.{n = 600, total = 600 * 16700, p50 = 16600, p95 = 17100, max = 30100, over = 4}, slow = 0, gpu = FrameStats.{n = 600, p50 = 6100, p95 = 8200, max = 12000}};
+  fo_summary(o[..], "everglade", r);
+  line := fo_text(o[..]);
+  #assert line == "everglade\tflyover\tok\t600\t16600\t17100\t30100\t4\t599\t0\t6100\t8200\t12000\n";
+  b := fo_before(line);
+  #assert b.found && b.run.f.p95 == 17100 && b.run.gpu.p95 == 8200 && b.run.slow == 0 && frame_fps10(b.run.f) == 599 && frame_holds(b.run.f);
+  #assert !fo_before("everglade\tdpr1\tok\t1\t2\t3\t4\t5\t6").found && !fo_before("x\tflyover\tok\t1\t2").found && !fo_before("").found;
+  o[0].n = 0; fo_move(o[..], 17100, 16000); fo_put(o[..], " "); fo_move(o[..], 8200, 8250); fo_put(o[..], " "); fo_ms(o[..], 16949);
+  #assert fo_text(o[..]) == "-1.1 ms +0.1 ms 16.9";
+  o[0].n = 0; fo_show(o[..], r);
+  #assert fo_text(o[..]) == "frames 600: average 16.7 ms (59.9 FPS), p50 16.6, p95 17.1, worst 30.1 ms, 0 over 33 ms, 4 over 20 ms\ngpu (submit to work done): p50 6.1, p95 8.2, worst 12.0 ms\n60 FPS: held (p95 <= 17.5 ms and no frame over 33 ms)\n";
+}
+
+// ---- in the page (effects) -------------------------------------------------------
+
+// The timed flight: the camera handed back ("fly="), then the path set, every animation frame's
+// interval and host.js's trace rows (frame, CPU, GPU in microseconds, drawn) taken until ms have
+// passed. It returns {took: the probe at the end, d: "US,US,...", t: "F:C:G:D,..."}.
+fo_flight_js :: (o: [] FoBuf, path: string, ms: int) {
+  fo_put(o, "(async () => { const sleep = (t) => new Promise((r) => setTimeout(r, t)); const c = globalThis.coaxial;");
+  fo_put(o, " location.hash = 'fly='; await sleep(100); c.takeFrameTrace?.();");
+  fo_put(o, " const d = [], rows = []; let last = 0, stop = false;");
+  fo_put(o, " const tick = (t) => { if (last) d.push(Math.round((t - last) * 1000)); last = t; if (!stop) requestAnimationFrame(tick); };");
+  fo_put(o, " location.hash = 'fly="); fo_put(o, path); fo_put(o, "'; requestAnimationFrame(tick); const t0 = performance.now();");
+  fo_put(o, " while (performance.now() - t0 < "); fo_int(o, ms); fo_put(o, ") { await sleep(250); for (const r of c.takeFrameTrace?.() ?? []) rows.push(r); }");
+  fo_put(o, " stop = true; const took = c.fieldProbe?.("); fo_int(o, FO_PROBE); fo_put(o, ") ?? -1; for (const r of c.takeFrameTrace?.() ?? []) rows.push(r);");
+  fo_put(o, " const n = "); fo_int(o, FO_FRAMES); fo_put(o, "; return { took, d: d.slice(0, n).join(','),");
+  fo_put(o, " t: rows.slice(0, n).map((r) => Math.round(r[0] * 1000) + ':' + Math.round(r[4] * 1000) + ':' + Math.round(r[8] * 1000) + ':' + (r[7] | 0)).join(',') }; })()");
+}
+fo_call :: (c: [] Cdp, method: string, params: string) -> bool { return cdp_call(c, method, params, 15000) >= 0; }
+fo_probe :: (c: [] Cdp) -> int {
+  n := cdp_evaluate(c, "globalThis.coaxial?.fieldProbe?.(30) ?? -1");
+  return ifx n >= 0 then jv_int(cdp_doc(c), n, -1) else -1;
+}
+// Sets the hash (the path, or "" to hand the camera back) without waiting on anything.
+fo_hash :: (c: [] Cdp, path: string) -> bool {
+  o: [1] FoBuf; fo_put(o[..], "location.hash = 'fly="); fo_put(o[..], path); fo_put(o[..], "'; true");
+  return cdp_evaluate(c, fo_text(o[..])) >= 0;
+}
+fo_jpeg :: (c: [] Cdp, out: [] u8) -> int {
+  r := cdp_call(c, "Page.captureScreenshot", "{\"format\":\"jpeg\",\"quality\":85}", CDP_CALL_MS); if r < 0 { return -1; }
+  d := cdp_doc(c); data := jv_get(d, r, "data"); if jv_kind(d, data) != JV_STRING { return -1; }
+  return b64_decode(jv_raw(d, data), out);
+}
+fo_trim :: (s: string) -> string { n := s.count; while n > 0 && s[n - 1] == '/' { n -= 1; } return s[0..<n]; }
+fo_slug_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 64 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// The flags that take a value (a positional argument never follows one).
+fo_valued :: (s: string) -> bool {
+  names := [8] string.["--world", "--path", "--query", "--out", "--size", "--dpr", "--previous", "--seconds"];
+  for x: names { if s == x { return true; } }
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  usage := "usage (from the repository root): coax/web/tool.sh flyover [BASE_URL] [--world SLUG] [--path FILE] [--query Q] [--out DIR] [--size WxH] [--dpr D] [--no-shots] [--previous FILE] [--software-ok]";
+  base := "https://openagents.com";
+  for i: 0..<args_count(a[..]) {
+    s := args_at(a[..], i); prev := ifx i > 0 then args_at(a[..], i - 1) else "";
+    if s.count > 0 && s[0] != '-' && !fo_valued(prev) { base = s; break; }
+  }
+  base = fo_trim(base);
+  slug := args_value(a[..], "--world", "everglade");
+  query := args_value(a[..], "--query", "weather=clear&clock=0.45");
+  size := args_size(args_value(a[..], "--size", "1440x900"));
+  dpr := args_whole(args_value(a[..], "--dpr", "1"));
+  if !ok || !fo_slug_ok(slug) || !size.ok || dpr < 1 || dpr > 4 { tool_errln(usage); return 2; }
+  default_path: [1] FoBuf; fo_put(default_path[..], "coax/web/flyover/"); fo_put(default_path[..], slug); fo_put(default_path[..], ".txt");
+  path_file := args_value(a[..], "--path", fo_text(default_path[..]));
+  file: [65536] u8; fn := fs_read(path_file, file[..]);
+  if fn < 0 { tool_err("flyover: cannot read the path "); tool_errln(path_file); tool_errln(usage); return 2; }
+  text: [4096] u8; pt := fo_path_text(cast(string) file[0..<fn], text[..]);
+  if !pt.ok {
+    tool_err("flyover: refused the path "); tool_err(path_file);
+    if pt.line > 0 { l: [1] FoBuf; fo_put(l[..], ": line "); fo_int(l[..], pt.line); fo_put(l[..], " is not SECONDS and six numbers"); tool_errln(fo_text(l[..])); }
+    else { tool_errln(": it needs 2 to 16 keys, the first at 0 s and each later than the one before"); }
+    return 2;
+  }
+  fly := cast(string) text[0..<pt.n];
+  length_ms := cast(int) (fly_parse(fly).length * 1000);
+  default_out: [1] FoBuf; fo_put(default_out[..], "coax/web/build/flyover-"); fo_put(default_out[..], slug);
+  out := args_value(a[..], "--out", fo_text(default_out[..]));
+  if !fs_exists(out) && !fs_mkdir(out) { tool_err("flyover: cannot make "); tool_errln(out); return 2; }
+  shots := !args_has(a[..], "--no-shots");
+
+  u: [1] FoBuf; fo_put(u[..], base); fo_put(u[..], "/worlds/"); fo_put(u[..], slug); if query.count > 0 { fo_put(u[..], "?"); fo_put(u[..], query); }
+  url := fo_text(u[..]);
+  print("flyover: % (% %x% dpr %), the path % (% keys, % s), out %\n", url, slug, size.w, size.h, dpr, path_file, fly_parse(fly).flight.count, length_ms / 1000, out);
+
+  c: [1] Cdp;
+  if !cdp_launch(c[..], size.w, size.h, "coax-flyover-") { tool_err("flyover: "); tool_errln(cdp_error(c[..])); return 1; }
+  vp: [1] FoBuf;
+  fo_put(vp[..], "{\"width\":"); fo_int(vp[..], size.w); fo_put(vp[..], ",\"height\":"); fo_int(vp[..], size.h);
+  fo_put(vp[..], ",\"deviceScaleFactor\":"); fo_int(vp[..], dpr); fo_put(vp[..], ",\"mobile\":false}");
+  trace := "{\"source\":\"globalThis.coaxialFrameTrace = true;\"}";
+  if !fo_call(c[..], "Page.enable", "") || !fo_call(c[..], "Emulation.setDeviceMetricsOverride", fo_text(vp[..])) || !fo_call(c[..], "Page.addScriptToEvaluateOnNewDocument", trace) {
+    tool_err("flyover: the browser failed: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1;
+  }
+  nav: [8192] u8; jo: [1] Jo; jo_start(jo[..], nav[..]); jo_obj(jo[..]); jo_key(jo[..], "url"); jo_str(jo[..], url); jo_end(jo[..]);
+  if jo[0].bad || !fo_call(c[..], "Page.navigate", jo_text(jo[..])) { tool_err("flyover: cannot open "); tool_errln(url); cdp_close(c[..]); return 1; }
+  proc_sleep(300);
+  // ready as realm-perf takes it: the scene drawn and the loading card gone
+  t0 := proc_now_ms(); idle_from := -1;
+  while true {
+    word: [512] u8; wn := media_value(c[..], MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - t0, ifx idle_from < 0 then 0 else now - idle_from, FO_READY_MS);
+    if step == MEDIA_READY { break; }
+    if step == MEDIA_TIMEOUT { tool_errln("flyover: the scene didn't draw in 60 s"); cdp_close(c[..]); return 1; }
+    if step == MEDIA_FAILED { tool_err("flyover: the page says it failed: "); tool_errln(status); cdp_close(c[..]); return 1; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  gb: [256] u8; gpu_line := cdp_adapter(c[..], gb[..]);
+  print("flyover: WebGPU adapter: %\n", gpu_line);
+  if !cdp_adapter_hardware(gpu_line) {
+    if !(args_has(a[..], "--software-ok") && gpu_line.count > 9 && gpu_line[0..<9] == "software ") {
+      tool_errln("flyover: headless Chrome here has no hardware WebGPU adapter, so frame times would mean nothing");
+      cdp_close(c[..]); return 2;
+    }
+    print("flyover: only SwiftShader (--software-ok): these numbers check the tool, not the realm\n");
+  }
+  proc_sleep(FO_SETTLE_MS);
+
+  // the first flight: a picture a second (and the realm warmed for the timed one)
+  if shots {
+    if !fo_hash(c[..], "") { tool_errln("flyover: the browser failed"); cdp_close(c[..]); return 1; }
+    proc_sleep(100);
+    _ := fo_hash(c[..], fly);
+    started := proc_now_ms();
+    jpeg: [8388608] u8; list: [1] FoBuf; taken := 0;
+    k := 0;
+    while k * 1000 <= length_ms {
+      while proc_now_ms() - started < k * 1000 { proc_sleep(5); }
+      flown := fo_probe(c[..]);
+      if k == 0 || flown > 0 || proc_now_ms() - started < FO_TAKE_MS {
+        n := fo_jpeg(c[..], jpeg[..]);
+        name: [1] FoBuf; fo_put(name[..], "shot-"); if k < 100 { fo_put(name[..], "0"); } if k < 10 { fo_put(name[..], "0"); } fo_int(name[..], k); fo_put(name[..], ".jpg");
+        p: [4200] u8;
+        if n > 0 && fs_write(fs_join(out, fo_text(name[..]), p[..]), cast(string) jpeg[0..<n]) {
+          taken += 1; fo_put(list[..], fo_text(name[..])); fo_put(list[..], "\t"); fo_int(list[..], ifx flown > 0 then flown - 1 else -1); fo_put(list[..], "\n");
+        }
+      }
+      if k * 1000 >= FO_TAKE_MS && flown <= 0 { break; }
+      k += 1;
+    }
+    sp: [4200] u8; _ = fs_write(fs_join(out, "shots.tsv", sp[..]), fo_text(list[..]));
+    print("flyover: % pictures, one a second (shot-NNN.jpg; shots.tsv: each one's time into the flight, ms)\n", taken);
+    proc_sleep(FO_SETTLE_MS);
+  }
+
+  // the timed flight
+  js: [1] FoBuf; fo_flight_js(js[..], fly, length_ms + 500);
+  v := cdp_evaluate(c[..], fo_text(js[..]));
+  d := cdp_doc(c[..]);
+  if jv_kind(d, v) != JV_OBJECT { tool_err("flyover: the timed flight failed: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  took := jv_int(d, jv_get(d, v, "took"), -1);
+  if took <= 1 {
+    tool_errln("flyover: the page never took the camera (coaxial.fieldProbe(30) stayed 0): this build of the realm has no #fly= hook");
+    cdp_close(c[..]); return 2;
+  }
+  big: [1048576] u8;
+  frame_us: [FO_FRAMES] int;
+  dn := jv_str(d, jv_get(d, v, "d"), big[..]);
+  n := ifx dn >= 0 then fo_ints(cast(string) big[0..<dn], ',', frame_us[..]) else -1;
+  if n < 0 { tool_errln("flyover: the page's frame times did not parse"); cdp_close(c[..]); return 1; }
+  run: FoRun; run.f = frame_stats(frame_us[..], n); run.slow = fo_over(frame_us[..], n, FO_SLOW);
+  rows: [1] FoBuf; at := 0;
+  for i: 0..<n { at += frame_us[i]; fo_int(rows[..], i); fo_put(rows[..], "\t"); fo_int(rows[..], at / 1000); fo_put(rows[..], "\t"); fo_int(rows[..], frame_us[i]); fo_put(rows[..], "\n"); }
+  p0: [4200] u8; wrote := !rows[0].bad && fs_write(fs_join(out, "frames.tsv", p0[..]), fo_text(rows[..]));
+  // the trace: CPU and GPU a frame
+  tn := jv_str(d, jv_get(d, v, "t"), big[..]);
+  cpu_us: [FO_FRAMES] int; gpu_us: [FO_FRAMES] int; tr: [1] FoBuf; m := 0; g := 0;
+  if tn > 0 {
+    t := cast(string) big[0..<tn]; i := 0;
+    while i < t.count && m < FO_FRAMES {
+      e := i; while e < t.count && t[e] != ',' { e += 1; }
+      four: [4] int;
+      if fo_ints(t[i..<e], ':', four[..]) == 4 {
+        cpu_us[m] = four[1]; m += 1;
+        if four[2] > 0 { gpu_us[g] = four[2]; g += 1; }
+        fo_int(tr[..], four[0]); fo_put(tr[..], "\t"); fo_int(tr[..], four[1]); fo_put(tr[..], "\t"); fo_int(tr[..], four[2]); fo_put(tr[..], "\t"); fo_int(tr[..], four[3]); fo_put(tr[..], "\n");
+      }
+      i = e + 1;
+    }
+  }
+  run.cpu = frame_stats(cpu_us[..], m); run.gpu = frame_stats(gpu_us[..], g);
+  p1: [4200] u8; wrote = wrote && !tr[0].bad && fs_write(fs_join(out, "trace.tsv", p1[..]), fo_text(tr[..]));
+  cdp_close(c[..]);
+
+  report: [1] FoBuf; fo_show(report[..], run);
+  prev := args_value(a[..], "--previous", "");
+  if prev.count > 0 {
+    before: [4096] u8; bn := fs_read(prev, before[..]);
+    b := ifx bn > 0 then fo_before(cast(string) before[0..<bn]) else FoBefore.{};
+    if !b.found { fo_put(report[..], "vs before: no earlier summary at "); fo_put(report[..], prev); fo_put(report[..], "\n"); }
+    else {
+      bavg := b.run.f.total / b.run.f.n; avg := ifx run.f.n > 0 then run.f.total / run.f.n else 0;
+      fo_put(report[..], "vs before: average "); fo_move(report[..], bavg, avg); fo_put(report[..], ", p95 "); fo_move(report[..], b.run.f.p95, run.f.p95);
+      fo_put(report[..], ", worst "); fo_move(report[..], b.run.f.max, run.f.max); fo_put(report[..], ", over 33 ms "); fo_int(report[..], b.run.slow); fo_put(report[..], " -> "); fo_int(report[..], run.slow);
+      if b.run.gpu.p95 > 0 && run.gpu.n > 0 { fo_put(report[..], ", gpu p50 "); fo_move(report[..], b.run.gpu.p50, run.gpu.p50); fo_put(report[..], ", gpu p95 "); fo_move(report[..], b.run.gpu.p95, run.gpu.p95); }
+      fo_put(report[..], "\n");
+    }
+  }
+  print("%", fo_text(report[..]));
+  line: [1] FoBuf; fo_summary(line[..], slug, run);
+  p2: [4200] u8; p3: [4200] u8;
+  wrote = wrote && fs_write(fs_join(out, "summary.tsv", p2[..]), fo_text(line[..])) && fs_write(fs_join(out, "summary.txt", p3[..]), fo_text(report[..]));
+  if !wrote { tool_err("flyover: cannot write the report into "); tool_errln(out); return 1; }
+  print("flyover: frames.tsv, trace.tsv, summary.tsv and summary.txt in %\n", out);
+  return ifx frame_holds(run.f) then 0 else 1;
+}

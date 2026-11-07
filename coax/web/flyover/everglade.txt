@@ -1,0 +1,17 @@
+# Everglade's flyover (coax/web/flyover.coax, GitHub #13017): one line a key,
+#   seconds   eye x y z   looked-at x y z   (metres, world space; +z is north)
+# It comes in over the road from the south, low through the South Gate and the
+# Commons, along the Market to the River Crossing, then turns and looks back
+# over the Great Lawn across the whole town (its heaviest view: every quarter,
+# the forest and the grass in one frustum, the camera low), out to the Deep Wood
+# and up to a view of the whole city.
+ 0     0  40 -160      0  2  -60
+ 6     0  12 -100      0  3  -40
+12    -6   6  -52     10  3   20
+18    10   5  -10     40  3   10
+24    40   6  -15     95  2  -10
+30    90  10  -30     40  2   40
+36    40  25   60    -40  2    0
+42   -60  12   20   -150  4   25
+48  -120   8   30   -170  3   40
+54   -60  60  -60      0  0    0

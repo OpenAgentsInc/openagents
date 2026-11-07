@@ -371,6 +371,8 @@ EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, in
   if (field == 12) return everglade_busy(at(state));
   if (field == 13) return city(state)->chat.typing;
   if (field == 14) return everglade_held(at(state));
+  /* 30: the flyover benchmark (#fly=, coax/web/flyover.coax): 0 none, else 1 + the ms it has flown */
+  if (field == 30) return (int32_t)everglade_fly_ms(at(state));
   /* 100 + I: townsperson I's conditions (E5_CONDITION bits), for the drift check's notes of who holds what */
   if (field >= 100 && field < 100 + (int)(sizeof e5_view.cond / sizeof e5_view.cond.e[0]) - 1) return (int32_t)e5_view.cond.e[field - 99];
   return -1;

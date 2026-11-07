@@ -972,6 +972,39 @@ owner's request to rebuild it with that lighting and foliage:
 `?weather=clear&clock=0.45` pins clear noon for comparisons. Captures:
 `docs/verification/everglade-glade-light-2026-11-07/` (`before.jpg`, `after-clear-noon.jpg`).
 
+## The flyover benchmark (#13017)
+
+The flyover flies Everglade's camera along a fixed path in headless Chrome. It records the time
+of every frame and takes a picture each second. A walk never reaches the city's worst views, and a
+still camera hides what moving costs, so use the flyover to compare two builds:
+
+```
+coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:8870 --build true &
+coax/web/tool.sh flyover http://127.0.0.1:8870 --out coax/web/build/flyover-before
+# change the renderer, rebuild build/everglade5e.wasm, then:
+coax/web/tool.sh flyover http://127.0.0.1:8870 --out coax/web/build/flyover-after --previous coax/web/build/flyover-before/summary.tsv
+```
+
+- The page is `/worlds/everglade?weather=clear&clock=0.45`, at 1440x900 and dpr 1, so the light is
+  the same on every run.
+- The path is `coax/web/flyover/everglade.txt`, one key a line: seconds, the eye and the point
+  looked at, in metres. It comes in over the road from the south, passes low through the South
+  Gate, the Commons and the Market to the River Crossing, then looks back across the whole town
+  from over the Great Lawn. That is its heaviest view. The path ends in the Deep Wood and a view
+  of the whole city, 54 s in all.
+- The page flies the path itself. `#fly=T,EX,EY,EZ,AX,AY,AZ~...` hands the camera to
+  `aethyr/flyover.coax`, and `#fly=` hands it back. `coaxial.fieldProbe(30)` returns how long the
+  path has flown. The tool refuses a build that never takes the camera.
+- The tool flies twice. The first flight saves `shot-000.jpg` and one more JPEG each second, and
+  it warms the city. The second flight is timed, with nothing else running. The report gives the
+  average, p50, p95 and worst frame, the frames over 33 ms and over 20 ms, and the 60 FPS rule
+  from `aethyr/frame-report.coax`. It also gives each frame's CPU time and GPU time (from submit to
+  `onSubmittedWorkDone`) from host.js's frame trace.
+- Each run writes `frames.tsv`, `trace.tsv`, `summary.tsv` and `summary.txt` to its `--out`
+  folder. `--previous` takes an earlier `summary.tsv` and prints how each figure moved.
+  `--no-shots` skips the first flight. `--path`, `--world`, `--query`, `--size` and `--dpr`
+  change what is flown.
+
 ## Parity with the previous Everglade (October 30)
 
 From `verse/everglade/previous/`, the things the old Everglade had that this
