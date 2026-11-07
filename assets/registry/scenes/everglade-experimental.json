@@ -577,7 +577,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "176878c04449e06ccd3060727246b7b9ff018b1476520d4f728d94941bd2254d",
+    "sha256": "78a5743a12b9d44d58d7d27424a8f9e6861d2f0ae93add456eb7f5a9fcfacfeb",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -586,7 +586,7 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack",
-    "sha256": "fbc05c93d0d86cab54de297fe90c661975fe1c000ef2b41fe6c7d302e9f1bb54",
+    "sha256": "22a113fd76ce127dcd13378628cb08be1c9b4e9195c9b8431342c5b1fab8affa",
     "budget_bytes": 67108864
   },
   "terrain": {

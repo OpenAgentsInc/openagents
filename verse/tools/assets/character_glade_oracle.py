@@ -118,17 +118,21 @@ if village:
         if name not in cache:
             gltf=json.loads((village_root/'glTF'/f'{name}.gltf').read_text())
             blob=(village_root/'glTF'/gltf['buffers'][0]['uri']).read_bytes()
-            cache[name]=[(accessor(gltf,blob,p['attributes']['POSITION']),accessor(gltf,blob,p['attributes']['NORMAL']),accessor(gltf,blob,p['attributes']['TEXCOORD_0']),[x[0] for x in accessor(gltf,blob,p['indices'])],tiles[gltf['materials'][p['material']]['name']]) for mesh in gltf['meshes'] for p in mesh['primitives']]
+            cache[name]=[(accessor(gltf,blob,p['attributes']['POSITION']),accessor(gltf,blob,p['attributes']['NORMAL']),accessor(gltf,blob,p['attributes']['TEXCOORD_0']),[x[0] for x in accessor(gltf,blob,p['indices'])],tiles[gltf['materials'][p['material']]['name']],gltf['materials'][p['material']].get('pbrMetallicRoughness',{}).get('baseColorFactor',[1,1,1,1])) for mesh in gltf['meshes'] for p in mesh['primitives']]
         sx,sz=starts[group];gx=round((sx+90)/1.2);gz=round((90-sz)/1.2);base=pos[gz*151+gx][1]+.035
         cross=lambda a,b:(a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0])
         # Godot's text writer serializes the basis rows, not its axis columns.
         ca,cb,cc=t[0:9:3],t[1:9:3],t[2:9:3]; na,nb,nc=cross(cb,cc),cross(cc,ca),cross(ca,cb)
         assert sum(ca[d]*na[d] for d in range(3))>0
-        for vertices,normals,uvs,triangles,tile in cache[name]:
+        for vertices,normals,uvs,triangles,tile,factor in cache[name]:
             for k in {0,len(vertices)//2,len(vertices)-1}:
                 v=vertices[k];want=[sx+t[9]+sum(t[d]*v[d] for d in range(3)),base+t[10]+sum(t[3+d]*v[d] for d in range(3)),sz+t[11]+sum(t[6+d]*v[d] for d in range(3))]
                 assert all(abs(pos[vi+k][d]-want[d])<.003 for d in range(3)), (group,name,k,pos[vi+k],want)
                 off=word*4+(vi+k)*32
+                colour=struct.unpack_from('<4B',vb,off+20)
+                encode=lambda x: x*12.92 if x<=0.0031308 else 1.055*x**(1/2.4)-0.055
+                expected_colour=[round(255*encode(x)) for x in factor[:3]] if tile==8 else [255]*3
+                assert all(abs(colour[d]-expected_colour[d])<=1 for d in range(3)), (name,colour,expected_colour)
                 normal=[na[d]*normals[k][0]+nb[d]*normals[k][1]+nc[d]*normals[k][2] for d in range(3)]
                 mag=math.sqrt(sum(v*v for v in normal)); assert mag>0
                 packed=struct.unpack_from('<3b',vb,off+12)

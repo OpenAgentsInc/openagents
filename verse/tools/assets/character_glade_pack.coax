@@ -55,6 +55,14 @@ gp_exp_grass :: (i:int,group:int)->[2]f32 {v:=f32(i+group*100000+400000);span:=i
  #assert gp_village_tile("MI_WoodTrim_Wear")==9 && gp_village_tile("MI_WindowGlass")==10;
  #assert gp_village_tile("not-a-village-material")== -1;
 }
+#test "village vine preserves the source linear green factor in display colour" {
+ c:=gp_village_tint(8,[4]f64.[0.1023601443,0.348608315,0,1]);
+ #assert abs(c[0]-0.353)<0.002 && abs(c[1]-0.625)<0.002 && c[2]==0;
+ white:=gp_village_tint(0,[4]f64.[0.1,0.3,0,1]);#assert white[0]==1 && white[1]==1 && white[2]==1;
+}
+gp_village_tint :: (tile:int,factor:[4]f64)->[3]f32 {
+ if tile!=8 {return [3]f32.[1,1,1];}out:[3]f32;for i:0..<3 {x:=f32(factor[i]);out[i]=ifx x<=0.0031308f32 then x*12.92f32 else 1.055f32*pow(x,1.0f32/2.4f32)-0.055f32;}return out;
+}
 VILLAGE_IMAGES :: [10]string.["T_Brick_BaseColor.png","T_FlatTiles_BaseColor.png","T_MetalOrnaments_BaseColor.png","T_Plaster_BaseColor.png","T_RockTrim_BaseColor.png","T_RoundRocks_BaseColor.png","T_RoundTiles_BaseColor.png","T_UnevenBrick_BaseColor.png","T_VineLeaf_png.png","T_WoodTrim_BaseColor.png"];
 gp_village_tile :: (material:string)->int {
  if material=="MI_Brick" {return 0;}if material=="MI_FlatTiles" {return 1;}if material=="MI_MetalOrnaments" {return 2;}
@@ -165,11 +173,12 @@ gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int,site_
   pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;idx:[262144]f64;
   nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;r:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);r=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;
   mat:=gl_at(g,GA_MAT,gl_int(g,pr,"material",0));tile:=gp_village_tile(gl_str(g,mat,"name"));if tile<0 {ph_die2("unknown village material: ",gl_str(g,mat,"name"));}
+  factor:[4]f64=[4]f64.[1,1,1,1];if tile==8 && gl_nums(g,gl_get(g,mat,"pbrMetallicRoughness"),"baseColorFactor",factor[..])!=4 {ph_die("village vine missing source colour");}tint:=gp_village_tint(tile,factor);
   first:=w[0].nv;for v:0..<nv {x:=f32(pos[v*3]);y:=f32(pos[v*3+1]);z:=f32(pos[v*3+2]);nx:=f32(nor[v*3]);ny:=f32(nor[v*3+1]);nz:=f32(nor[v*3+2]);uu:=f32(uv[v*2]);vv:=f32(uv[v*2+1]);
    if abs(uu)>4 || abs(vv)>4 {ph_die("village source UV exceeds admitted range");}
    p:=[3]f32.[site.x+t[9]+t[0]*x+t[3]*y+t[6]*z,base+t[10]+t[1]*x+t[4]*y+t[7]*z,site.z+t[11]+t[2]*x+t[5]*y+t[8]*z];
    normal:=gp_village_normal(t,[3]f32.[nx,ny,nz]);
-   id:=gp_v(w,p,normal,[2]f32.[(uu+4)/8,(vv+4)/8],[3]f32.[1,1,1],atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.0+f32(tile)));
+   id:=gp_v(w,p,normal,[2]f32.[(uu+4)/8,(vv+4)/8],tint,atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.0+f32(tile)));
   }
   for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
  }}
