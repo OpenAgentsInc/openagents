@@ -1,0 +1,292 @@
+mutation scope: unit aethyr/world/stream-walk-state.coax (its procedures; every check retained)
+aethyr/world/stream-walk-state.coax:103:10: mutant survived: 0 became 1
+    for i: 0..<33 { words7 := [1] int.[cast(int) f32_bits(floats[i])]; sw_state_words(b, words7[..]); }
+           ^
+aethyr/world/stream-walk-state.coax:104:45: mutant survived: 1 became 2
+    words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
+                                              ^
+aethyr/world/stream-walk-state.coax:104:52: mutant survived: 0 became 1
+    words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
+                                                     ^
+aethyr/world/stream-walk-state.coax:104:98: mutant survived: 1 became 2
+    words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
+                                                                                                   ^
+aethyr/world/stream-walk-state.coax:104:105: mutant survived: 0 became 1
+    words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
+                                                                                                          ^
+aethyr/world/stream-walk-state.coax:104:131: mutant survived: 1 became 2
+    words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
+                                                                                                                                    ^
+aethyr/world/stream-walk-state.coax:104:138: mutant survived: 0 became 1
+    words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
+                                                                                                                                           ^
+aethyr/world/stream-walk-state.coax:105:23: mutant survived: 1 became 2
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                        ^
+aethyr/world/stream-walk-state.coax:105:30: mutant survived: 0 became 1
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                               ^
+aethyr/world/stream-walk-state.coax:105:56: mutant survived: 1 became 2
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                                                         ^
+aethyr/world/stream-walk-state.coax:105:63: mutant survived: 0 became 1
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                                                                ^
+aethyr/world/stream-walk-state.coax:105:95: mutant survived: 1 became 2
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                                                                                                ^
+aethyr/world/stream-walk-state.coax:105:102: mutant survived: 0 became 1
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                                                                                                       ^
+aethyr/world/stream-walk-state.coax:105:126: mutant survived: 1 became 2
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                                                                                                                               ^
+aethyr/world/stream-walk-state.coax:105:133: mutant survived: 0 became 1
+      (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+                                                                                                                                      ^
+aethyr/world/stream-walk-state.coax:106:95: mutant survived: 1 became 2
+      cast,trunc(int) p.collision_refusals, p.collision_passes, (ifx p.collision_floor_cut then 1 else 0), cast(int) cast(u8) p.query_status,
+                                                                                                ^
+aethyr/world/stream-walk-state.coax:106:102: mutant survived: 0 became 1
+      cast,trunc(int) p.collision_refusals, p.collision_passes, (ifx p.collision_floor_cut then 1 else 0), cast(int) cast(u8) p.query_status,
+                                                                                                       ^
+aethyr/world/stream-walk-state.coax:108:3: mutant survived: the call was removed
+    sw_state_clock(b, p.clock);
+    ^
+aethyr/world/stream-walk-state.coax:109:44: mutant survived: 1 became 2
+    press := [4] int.[(ifx p.jumps.held then 1 else 0), p.jumps.pressed, p.jumps.taken, p.jumps.lost]; sw_state_words(b, press[..]);
+                                             ^
+aethyr/world/stream-walk-state.coax:109:51: mutant survived: 0 became 1
+    press := [4] int.[(ifx p.jumps.held then 1 else 0), p.jumps.pressed, p.jumps.taken, p.jumps.lost]; sw_state_words(b, press[..]);
+                                                    ^
+aethyr/world/stream-walk-state.coax:109:102: mutant survived: the call was removed
+    press := [4] int.[(ifx p.jumps.held then 1 else 0), p.jumps.pressed, p.jumps.taken, p.jumps.lost]; sw_state_words(b, press[..]);
+                                                                                                       ^
+aethyr/world/stream-walk-state.coax:112:41: mutant survived: 1 became 2
+    words9 := [11] int.[(ifx p.valid then 1 else 0), p.total_cap, p.total, p.peak, p.actor_cap, p.actors, p.actor_peak, p.voice_cap, p.voices, p.voice_peak, p.refused]; sw_state_words(b, words9[..]);
+                                          ^
+aethyr/world/stream-walk-state.coax:112:48: mutant survived: 0 became 1
+    words9 := [11] int.[(ifx p.valid then 1 else 0), p.total_cap, p.total, p.peak, p.actor_cap, p.actors, p.actor_peak, p.voice_cap, p.voices, p.voice_peak, p.refused]; sw_state_words(b, words9[..]);
+                                                 ^
+aethyr/world/stream-walk-state.coax:112:168: mutant survived: the call was removed
+    words9 := [11] int.[(ifx p.valid then 1 else 0), p.total_cap, p.total, p.peak, p.actor_cap, p.actors, p.actor_peak, p.voice_cap, p.voices, p.voice_peak, p.refused]; sw_state_words(b, words9[..]);
+                                                                                                                                                                         ^
+aethyr/world/stream-walk-state.coax:113:10: mutant survived: 0 became 1
+    for i: 0..<7 { words10 := [3] int.[p.caps[i], p.used[i], p.peaks[i]]; sw_state_words(b, words10[..]); sw_state_lease(b, p.peak_owners[i]); }
+           ^
+aethyr/world/stream-walk-state.coax:113:73: mutant survived: the call was removed
+    for i: 0..<7 { words10 := [3] int.[p.caps[i], p.used[i], p.peaks[i]]; sw_state_words(b, words10[..]); sw_state_lease(b, p.peak_owners[i]); }
+                                                                          ^
+aethyr/world/stream-walk-state.coax:114:3: mutant survived: the call was removed
+    sw_state_lease(b, p.peak_owner); sw_state_lease(b, p.actor_peak_owner); sw_state_lease(b, p.voice_peak_owner);
+    ^
+aethyr/world/stream-walk-state.coax:114:36: mutant survived: the call was removed
+    sw_state_lease(b, p.peak_owner); sw_state_lease(b, p.actor_peak_owner); sw_state_lease(b, p.voice_peak_owner);
+                                     ^
+aethyr/world/stream-walk-state.coax:114:75: mutant survived: the call was removed
+    sw_state_lease(b, p.peak_owner); sw_state_lease(b, p.actor_peak_owner); sw_state_lease(b, p.voice_peak_owner);
+                                                                            ^
+aethyr/world/stream-walk-state.coax:118:12: mutant survived: 0 became 1
+    b[0].n = 0;
+             ^
+aethyr/world/stream-walk-state.coax:119:24: mutant survived: 1398231857 became 1398231858
+    words11 := [16] int.[1398231857, 1, (ifx s[0].valid then 1 else 0), (ifx s[0].closing then 1 else 0), s[0].tick, paid, s[0].query_epoch[0], s[0].prefetch_cell,
+                         ^
+aethyr/world/stream-walk-state.coax:119:36: mutant survived: 1 became 2
+    words11 := [16] int.[1398231857, 1, (ifx s[0].valid then 1 else 0), (ifx s[0].closing then 1 else 0), s[0].tick, paid, s[0].query_epoch[0], s[0].prefetch_cell,
+                                     ^
+aethyr/world/stream-walk-state.coax:119:60: mutant survived: 1 became 2
+    words11 := [16] int.[1398231857, 1, (ifx s[0].valid then 1 else 0), (ifx s[0].closing then 1 else 0), s[0].tick, paid, s[0].query_epoch[0], s[0].prefetch_cell,
+                                                             ^
+aethyr/world/stream-walk-state.coax:119:67: mutant survived: 0 became 1
+    words11 := [16] int.[1398231857, 1, (ifx s[0].valid then 1 else 0), (ifx s[0].closing then 1 else 0), s[0].tick, paid, s[0].query_epoch[0], s[0].prefetch_cell,
+                                                                    ^
+aethyr/world/stream-walk-state.coax:119:94: mutant survived: 1 became 2
+    words11 := [16] int.[1398231857, 1, (ifx s[0].valid then 1 else 0), (ifx s[0].closing then 1 else 0), s[0].tick, paid, s[0].query_epoch[0], s[0].prefetch_cell,
+                                                                                               ^
+aethyr/world/stream-walk-state.coax:119:101: mutant survived: 0 became 1
+    words11 := [16] int.[1398231857, 1, (ifx s[0].valid then 1 else 0), (ifx s[0].closing then 1 else 0), s[0].tick, paid, s[0].query_epoch[0], s[0].prefetch_cell,
+                                                                                                      ^
+aethyr/world/stream-walk-state.coax:127:55: mutant survived: the call was removed
+      words14 := [1] int.[cast,trunc(int) f64_bits(v)]; sw_state_words(b, words14[..]);
+                                                        ^
+aethyr/world/stream-walk-state.coax:130:180: mutant survived: the call was removed
+      fields := [7] int.[surface.id, surface.friction_policy, surface.restitution_policy, surface.footstep, surface.reaction, cast(int) surface.traversability, surface.fluid_kind]; sw_state_words(b, fields[..]);
+                                                                                                                                                                                     ^
+aethyr/world/stream-walk-state.coax:131:121: mutant survived: the call was removed
+      for value: [3] f32.[surface.density, surface.buoyancy, surface.drag] { bits := [1] int.[cast(int) f32_bits(value)]; sw_state_words(b, bits[..]); }
+                                                                                                                          ^
+aethyr/world/stream-walk-state.coax:133:61: mutant survived: the call was removed
+    w := s[0].cells[0]; words15 := [2] int.[w.n, w.requests]; sw_state_words(b, words15[..]); sw_state_words(b, w.counts[..]);
+                                                              ^
+aethyr/world/stream-walk-state.coax:133:93: mutant survived: the call was removed
+    w := s[0].cells[0]; words15 := [2] int.[w.n, w.requests]; sw_state_words(b, words15[..]); sw_state_words(b, w.counts[..]);
+                                                                                              ^
+aethyr/world/stream-walk-state.coax:134:10: mutant survived: 0 became 1
+    for i: 0..<w.n {
+           ^
+aethyr/world/stream-walk-state.coax:136:99: mutant survived: the call was removed
+      words16 := [6] int.[entry.cx, entry.cz, entry.digest, cell.level, cell.request, cell.body_n]; sw_state_words(b, words16[..]);
+                                                                                                    ^
+aethyr/world/stream-walk-state.coax:137:12: mutant survived: 0 became 1
+      for k: 0..<cell.body_n { sw_state_body(b, cell.bodies[k]); }
+             ^
+aethyr/world/stream-walk-state.coax:137:30: mutant survived: the call was removed
+      for k: 0..<cell.body_n { sw_state_body(b, cell.bodies[k]); }
+                               ^
+aethyr/world/stream-walk-state.coax:139:24: mutant survived: the call was removed
+    e := s[0].entity[0]; sw_state_words(b, e.counts[..]);
+                         ^
+aethyr/world/stream-walk-state.coax:140:10: mutant survived: 0 became 1
+    for i: 0..<SW_CELLS {
+           ^
+aethyr/world/stream-walk-state.coax:141:56: mutant survived: 1 became 2
+      words17 := [11] int.[e.gen[i], (ifx e.live[i] then 1 else 0), (ifx e.born[i] then 1 else 0), (ifx e.doomed[i] then 1 else 0), e.ids[i], e.free[i], e.spawns[i],
+                                                         ^
+aethyr/world/stream-walk-state.coax:141:63: mutant survived: 0 became 1
+      words17 := [11] int.[e.gen[i], (ifx e.live[i] then 1 else 0), (ifx e.born[i] then 1 else 0), (ifx e.doomed[i] then 1 else 0), e.ids[i], e.free[i], e.spawns[i],
+                                                                ^
+aethyr/world/stream-walk-state.coax:141:87: mutant survived: 1 became 2
+      words17 := [11] int.[e.gen[i], (ifx e.live[i] then 1 else 0), (ifx e.born[i] then 1 else 0), (ifx e.doomed[i] then 1 else 0), e.ids[i], e.free[i], e.spawns[i],
+                                                                                        ^
+aethyr/world/stream-walk-state.coax:141:94: mutant survived: 0 became 1
+      words17 := [11] int.[e.gen[i], (ifx e.live[i] then 1 else 0), (ifx e.born[i] then 1 else 0), (ifx e.doomed[i] then 1 else 0), e.ids[i], e.free[i], e.spawns[i],
+                                                                                               ^
+aethyr/world/stream-walk-state.coax:141:120: mutant survived: 1 became 2
+      words17 := [11] int.[e.gen[i], (ifx e.live[i] then 1 else 0), (ifx e.born[i] then 1 else 0), (ifx e.doomed[i] then 1 else 0), e.ids[i], e.free[i], e.spawns[i],
+                                                                                                                         ^
+aethyr/world/stream-walk-state.coax:141:127: mutant survived: 0 became 1
+      words17 := [11] int.[e.gen[i], (ifx e.live[i] then 1 else 0), (ifx e.born[i] then 1 else 0), (ifx e.doomed[i] then 1 else 0), e.ids[i], e.free[i], e.spawns[i],
+                                                                                                                                ^
+aethyr/world/stream-walk-state.coax:142:30: mutant survived: 1 became 2
+        (ifx s[0].born[i] then 1 else 0), (ifx s[0].awake[i] then 1 else 0), s[0].decoded_boxes[i].count, s[0].decoded_bodies[i].count]; sw_state_words(b, words17[..]);
+                               ^
+aethyr/world/stream-walk-state.coax:142:37: mutant survived: 0 became 1
+        (ifx s[0].born[i] then 1 else 0), (ifx s[0].awake[i] then 1 else 0), s[0].decoded_boxes[i].count, s[0].decoded_bodies[i].count]; sw_state_words(b, words17[..]);
+                                      ^
+aethyr/world/stream-walk-state.coax:142:65: mutant survived: 1 became 2
+        (ifx s[0].born[i] then 1 else 0), (ifx s[0].awake[i] then 1 else 0), s[0].decoded_boxes[i].count, s[0].decoded_bodies[i].count]; sw_state_words(b, words17[..]);
+                                                                  ^
+aethyr/world/stream-walk-state.coax:142:72: mutant survived: 0 became 1
+        (ifx s[0].born[i] then 1 else 0), (ifx s[0].awake[i] then 1 else 0), s[0].decoded_boxes[i].count, s[0].decoded_bodies[i].count]; sw_state_words(b, words17[..]);
+                                                                         ^
+aethyr/world/stream-walk-state.coax:144:88: mutant survived: the call was removed
+      for value: s[0].decoded_boxes[i] { words18 := [1] int.[cast(int) f32_bits(value)]; sw_state_words(b, words18[..]); }
+                                                                                         ^
+aethyr/world/stream-walk-state.coax:145:40: mutant survived: the call was removed
+      for body: s[0].decoded_bodies[i] { sw_state_body(b, body); }
+                                         ^
+aethyr/world/stream-walk-state.coax:148:42: mutant survived: 1 became 2
+    words19 := [12] int.[(ifx r.valid then 1 else 0), (ifx r.closing then 1 else 0), r.epoch, r.count, r.serial, r.last_tick, r.load_limit, r.loading,
+                                           ^
+aethyr/world/stream-walk-state.coax:148:49: mutant survived: 0 became 1
+    words19 := [12] int.[(ifx r.valid then 1 else 0), (ifx r.closing then 1 else 0), r.epoch, r.count, r.serial, r.last_tick, r.load_limit, r.loading,
+                                                  ^
+aethyr/world/stream-walk-state.coax:148:73: mutant survived: 1 became 2
+    words19 := [12] int.[(ifx r.valid then 1 else 0), (ifx r.closing then 1 else 0), r.epoch, r.count, r.serial, r.last_tick, r.load_limit, r.loading,
+                                                                          ^
+aethyr/world/stream-walk-state.coax:148:80: mutant survived: 0 became 1
+    words19 := [12] int.[(ifx r.valid then 1 else 0), (ifx r.closing then 1 else 0), r.epoch, r.count, r.serial, r.last_tick, r.load_limit, r.loading,
+                                                                                 ^
+aethyr/world/stream-walk-state.coax:149:54: mutant survived: the call was removed
+      r.requests, r.accepted, r.destroyed, r.refused]; sw_state_words(b, words19[..]);
+                                                       ^
+aethyr/world/stream-walk-state.coax:150:69: mutant survived: the call was removed
+    for word: r.manifest.words { words20 := [1] int.[cast(int) word]; sw_state_words(b, words20[..]); }
+                                                                      ^
+aethyr/world/stream-walk-state.coax:152:10: mutant survived: 0 became 1
+    for i: 0..<RESOURCE_MANIFEST_MAX {
+           ^
+aethyr/world/stream-walk-state.coax:154:45: mutant survived: 1 became 2
+      words21 := [14] int.[(ifx o.active then 1 else 0), o.refs, o.borrowers, o.generation, cast(int) cast(u8) o.phase, (ifx r.wanted[i] then 1 else 0),
+                                              ^
+aethyr/world/stream-walk-state.coax:154:52: mutant survived: 0 became 1
+      words21 := [14] int.[(ifx o.active then 1 else 0), o.refs, o.borrowers, o.generation, cast(int) cast(u8) o.phase, (ifx r.wanted[i] then 1 else 0),
+                                                     ^
+aethyr/world/stream-walk-state.coax:154:141: mutant survived: 1 became 2
+      words21 := [14] int.[(ifx o.active then 1 else 0), o.refs, o.borrowers, o.generation, cast(int) cast(u8) o.phase, (ifx r.wanted[i] then 1 else 0),
+                                                                                                                                              ^
+aethyr/world/stream-walk-state.coax:154:148: mutant survived: 0 became 1
+      words21 := [14] int.[(ifx o.active then 1 else 0), o.refs, o.borrowers, o.generation, cast(int) cast(u8) o.phase, (ifx r.wanted[i] then 1 else 0),
+                                                                                                                                                     ^
+aethyr/world/stream-walk-state.coax:155:111: mutant survived: 1 became 2
+        cast(int) cast(u8) a.status, a.category, a.retained, a.scratch, a.actors, a.voices, (ifx a.settled then 1 else 0), (ifx s[0].retire_sent[i] then 1 else 0)]; sw_state_words(b, words21[..]);
+                                                                                                                ^
+aethyr/world/stream-walk-state.coax:155:118: mutant survived: 0 became 1
+        cast(int) cast(u8) a.status, a.category, a.retained, a.scratch, a.actors, a.voices, (ifx a.settled then 1 else 0), (ifx s[0].retire_sent[i] then 1 else 0)]; sw_state_words(b, words21[..]);
+                                                                                                                       ^
+aethyr/world/stream-walk-state.coax:155:152: mutant survived: 1 became 2
+        cast(int) cast(u8) a.status, a.category, a.retained, a.scratch, a.actors, a.voices, (ifx a.settled then 1 else 0), (ifx s[0].retire_sent[i] then 1 else 0)]; sw_state_words(b, words21[..]);
+                                                                                                                                                         ^
+aethyr/world/stream-walk-state.coax:156:70: mutant survived: the call was removed
+      for word: o.content.words { words22 := [1] int.[cast(int) word]; sw_state_words(b, words22[..]); }
+                                                                       ^
+aethyr/world/stream-walk-state.coax:157:27: mutant survived: the call was removed
+      for lease: a.leases { sw_state_lease(b, lease); }
+                            ^
+aethyr/world/stream-walk-state.coax:160:66: mutant survived: 1 became 2
+    for claim: r.claims { words24 := [3] int.[(ifx claim.live then 1 else 0), claim.serial, claim.root]; sw_state_words(b, words24[..]); }
+                                                                   ^
+aethyr/world/stream-walk-state.coax:160:73: mutant survived: 0 became 1
+    for claim: r.claims { words24 := [3] int.[(ifx claim.live then 1 else 0), claim.serial, claim.root]; sw_state_words(b, words24[..]); }
+                                                                          ^
+aethyr/world/stream-walk-state.coax:160:104: mutant survived: the call was removed
+    for claim: r.claims { words24 := [3] int.[(ifx claim.live then 1 else 0), claim.serial, claim.root]; sw_state_words(b, words24[..]); }
+                                                                                                         ^
+aethyr/world/stream-walk-state.coax:163:41: mutant survived: 1 became 2
+    words26 := [8] int.[(ifx q.valid then 1 else 0), q.capacity, q.limit, q.count, q.bytes, q.epoch, q.serial, (ifx q.retired then 1 else 0)]; sw_state_words(b, words26[..]);
+                                          ^
+aethyr/world/stream-walk-state.coax:163:48: mutant survived: 0 became 1
+    words26 := [8] int.[(ifx q.valid then 1 else 0), q.capacity, q.limit, q.count, q.bytes, q.epoch, q.serial, (ifx q.retired then 1 else 0)]; sw_state_words(b, words26[..]);
+                                                 ^
+aethyr/world/stream-walk-state.coax:163:130: mutant survived: 1 became 2
+    words26 := [8] int.[(ifx q.valid then 1 else 0), q.capacity, q.limit, q.count, q.bytes, q.epoch, q.serial, (ifx q.retired then 1 else 0)]; sw_state_words(b, words26[..]);
+                                                                                                                                   ^
+aethyr/world/stream-walk-state.coax:163:137: mutant survived: 0 became 1
+    words26 := [8] int.[(ifx q.valid then 1 else 0), q.capacity, q.limit, q.count, q.bytes, q.epoch, q.serial, (ifx q.retired then 1 else 0)]; sw_state_words(b, words26[..]);
+                                                                                                                                          ^
+aethyr/world/stream-walk-state.coax:163:142: mutant survived: the call was removed
+    words26 := [8] int.[(ifx q.valid then 1 else 0), q.capacity, q.limit, q.count, q.bytes, q.epoch, q.serial, (ifx q.retired then 1 else 0)]; sw_state_words(b, words26[..]);
+                                                                                                                                               ^
+aethyr/world/stream-walk-state.coax:164:67: mutant survived: 1 became 2
+    for entry: q.entries { words27 := [3] int.coax: note[E0400]: compile-time steps: 18114373 of 20000000 used (90%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    6428225 steps  coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (661 times)
+    5711040 steps  coax/lib/crypto/sha256-kernel.coax:52:1  in 'S_rotr' (380736 times)
+    2464875 steps  aethyr/audio/host-opus.coax:85:1  in 'hpo_crc' (375 times)
+    1057600 steps  coax/lib/crypto/sha256-kernel.coax:56:1  in 'S_sum2' (132200 times)
+    719168 steps  coax/lib/crypto/sha256-kernel.coax:58:1  in 'S_sum5' (42304 times)
+  fix: do less work in 'S_compress', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+[(ifx entry.live then 1 else 0), entry.serial, entry.bytes]; sw_state_words(b, words27[..]); }
+                                                                    ^
+aethyr/world/stream-walk-state.coax:164:74: mutant survived: 0 became 1
+    for entry: q.entries { words27 := [3] int.[(ifx entry.live then 1 else 0), entry.serial, entry.bytes]; sw_state_words(b, words27[..]); }
+                                                                           ^
+aethyr/world/stream-walk-state.coax:165:67: mutant survived: the call was removed
+    words28 := [3] int.[s[0].load_n, s[0].retire_n, s[0].record_n]; sw_state_words(b, words28[..]);
+                                                                    ^
+aethyr/world/stream-walk-state.coax:166:10: mutant survived: 0 became 1
+    for i: 0..<s[0].load_n { sw_state_key(b, s[0].loads[i]); }
+           ^
+aethyr/world/stream-walk-state.coax:166:28: mutant survived: the call was removed
+    for i: 0..<s[0].load_n { sw_state_key(b, s[0].loads[i]); }
+                             ^
+aethyr/world/stream-walk-state.coax:167:10: mutant survived: 0 became 1
+    for i: 0..<s[0].retire_n { sw_state_key(b, s[0].retires[i]); }
+           ^
+aethyr/world/stream-walk-state.coax:167:30: mutant survived: the call was removed
+    for i: 0..<s[0].retire_n { sw_state_key(b, s[0].retires[i]); }
+                               ^
+aethyr/world/stream-walk-state.coax:168:10: mutant survived: 0 became 1
+    for i: 0..<s[0].record_n {
+           ^
+aethyr/world/stream-walk-state.coax:169:167: mutant survived: the call was removed
+      record := s[0].records[i]; words29 := [4] int.[record.tick, cast(int) cast(u8) record.kind, cast(int) cast(u8) record.decoded, cast(int) cast(u8) record.status]; sw_state_words(b, words29[..]);
+                                                                                                                                                                        ^
+aethyr/world/stream-walk-state.coax:170:5: mutant survived: the call was removed
+      sw_state_key(b, record.key); for word: record.source.words { words30 := [1] int.[cast(int) word]; sw_state_words(b, words30[..]); }
+      ^
+aethyr/world/stream-walk-state.coax:170:103: mutant survived: the call was removed
+      sw_state_key(b, record.key); for word: record.source.words { words30 := [1] int.[cast(int) word]; sw_state_words(b, words30[..]); }
+                                                                                                        ^
+185 mutants, 91 killed, 94 survived

@@ -55,9 +55,12 @@ SW_API("sw_host_auth") int32_t sw_host_auth(int32_t bytes){return bytes>=0&&byte
 SW_API("sw_host_start") int32_t sw_host_start(int32_t bytes,int32_t tier,int32_t backend){
   if(bytes<0||bytes>(int32_t)sizeof configuration||backend<0||backend>1)return 0;
   if(!state.valid)coax_default_t_SwWalk(&state);
-  return sw_load_manifest(sv(),mv(),(coax_v_u8){configuration,(uint64_t)bytes},(coax_string){(char*)root_hex,64},tier,(coax_t_ResourceBackend)backend);
+  bool ok=sw_load_manifest(sv(),mv(),(coax_v_u8){configuration,(uint64_t)bytes},(coax_string){(char*)root_hex,64},tier,(coax_t_ResourceBackend)backend);
+  if(ok)state.observe_steps=true;return ok;
 }
 SW_API("sw_host_frame") int32_t sw_host_frame(int64_t ns,float direction){return sw_frame(sv(),mv(),ns,direction);}
+SW_API("sw_host_step_count") int32_t sw_host_step_count(void){return(int32_t)state.step_n;}
+SW_API("sw_host_step_word") int64_t sw_host_step_word(int32_t step,int32_t word){if(step<0||step>=state.step_n||word<0||word>=8)return -1;return state.step_digest.e[step].words.e[word];}
 SW_API("sw_host_ack") void sw_host_ack(void){sw_ack(sv());}
 SW_API("sw_host_close") int32_t sw_host_close(void){return sw_close(sv(),mv());}
 SW_API("sw_host_info") int64_t sw_host_info(int32_t field){switch(field){

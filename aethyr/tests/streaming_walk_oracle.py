@@ -23,9 +23,42 @@ def f32(value):
     return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
+def state_wire_vector(flag):
+    """Independent v1 wire vector: zero scalars, one cell/body/decoded pair,
+    one command per outbox, and every Boolean set to the supplied bit.
+
+    This raw encoding fixture tests the byte contract, not world admission.
+    Offsets are semantic wire words, independent of C/Wasm struct layout.
+    """
+    v = int(flag)
+    header = [1398231857, 1, v, v] + [0] * 14
+    schedule = [0] * 13
+    player = [0] * 33 + [v, 0, v, v, 0, v, v, 0, v, v, 0, 0, 0, v, 0, 0] + [0] * 13 + [v, 0, 0, 0]
+    profile, surface = [0] * 26, [0] * 10
+    cells = [1, 0] + [0] * 7 + [0, 0, 0, 0, 0, 1] + [0] * 8
+    entities = [0] * 8
+    for i in range(12):
+        entities += [0, v, v, v, 0, 0, 0, v, v, 6 if i == 0 else 0, 1 if i == 0 else 0] + [0] * 8
+        if i == 0:
+            entities += [0] * 14
+    stream = [v, v] + [0] * 10 + [0] * 8
+    budget = [v] + [0] * 10 + [0] * (7 * 6 + 9)
+    owners = ([v, 0, 0, 0, 0, v, 0, 0, 0, 0, 0, 0, v, v] + [0] * (8 + 15 + 3)) * 64
+    claims, prefetch = [v, 0, 0] * 64, [0] * 3
+    inbox = [v, 0, 0, 0, 0, 0, 0, v] + [v, 0, 0] * 64
+    outboxes = [1, 1, 1] + [0] * (11 + 11 + 4 + 11 + 8)
+    words = header + schedule + player + profile + surface + cells + entities + stream + budget + owners + claims + prefetch + inbox + outboxes
+    data = struct.pack("<%dq" % len(words), *words)
+    return {"flag": v, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
 def inspect_native(scene_dir, receipt_path, receipt, report_path):
     report = json.loads(report_path.read_bytes())
-    assert report["schema"] == "aethyr.stream-walk-native-replay.v1"
+    version = report["schema"]
+    assert version in ("aethyr.stream-walk-native-replay.v1", "aethyr.stream-walk-native-replay.v2")
+    full_state = version.endswith(".v2")
+    if full_state:
+        assert report["state_schema"] == receipt["profile"]["stateSchema"] == "aethyr.stream-walk-state.v1"
     assert report["input_sha256"] == hashlib.sha256(receipt_path.read_bytes()).hexdigest()
     assert report["frames"] == len(receipt["frames"])
     assert report["ticks"] == receipt["cleanup"]["info"][0]
@@ -33,9 +66,16 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
     assert report.get("tier", 0) == receipt.get("profile", {}).get("tier", 0)
     assert 0 < report["cpu_peak"] <= 32768
     observed = bytearray()
-    all_frames = [(f[13], f[3:6]) for f in receipt["frames"]]
-    all_frames += [(f["records"], f["position"]) for f in receipt["cleanup"]["closingFrames"]]
-    for records, position in all_frames:
+    all_frames = [(f[13], f[3:6], f[14] if full_state else "", f[2]) for f in receipt["frames"]]
+    all_frames += [(f["records"], f["position"], "".join(f["stepDigests"]) if full_state else "", f["tick"])
+                   for f in receipt["cleanup"]["closingFrames"]]
+    previous_tick = 0
+    for records, position, marks, tick in all_frames:
+        if full_state:
+            assert len(marks) == (tick - previous_tick) * 64
+            assert all(c in "0123456789abcdef" for c in marks)
+            observed.extend(marks.encode("ascii"))
+        previous_tick = tick
         for record in records:
             observed.extend(struct.pack("<23q", *map(int, record)))
         for value in position:
@@ -45,14 +85,29 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
     # native route. Every observer must notice a changed expectation/history.
     with tempfile.TemporaryDirectory(prefix="aethyr-stream-replay-oracle-") as temp:
         temp = Path(temp)
-        for fault in ("position", "generation", "missing_completion"):
+        faults = ("position", "generation", "missing_completion")
+        if full_state:
+            faults += ("intermediate_state", "missing_step", "reordered_steps")
+        for fault in faults:
             changed = copy.deepcopy(receipt)
             if fault == "position":
                 changed["frames"][100][5] += 1
             elif fault == "generation":
                 changed["frames"][1][13][0][3] = str(int(changed["frames"][1][13][0][3]) + 1)
-            else:
+            elif fault == "missing_completion":
                 changed["frames"][1][13].pop(0)
+            else:
+                # Change only intermediate observations; the input, accepted
+                # history, frame endpoint and final actor state stay exact.
+                marks = changed["frames"][100][14]
+                assert len(marks) == 256
+                if fault == "intermediate_state":
+                    changed["frames"][100][14] = marks[:64] + ("0" if marks[64] != "0" else "1") + marks[65:]
+                elif fault == "missing_step":
+                    changed["frames"][100][14] = marks[64:]
+                else:
+                    assert marks[:64] != marks[64:128]
+                    changed["frames"][100][14] = marks[64:128] + marks[:64] + marks[128:]
             source, output = temp / (fault + ".json"), temp / (fault + ".result.json")
             source.write_text(json.dumps(changed))
             # A mismatched expectation deliberately stops the observer with
@@ -62,8 +117,11 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
             result = subprocess.run([str(report_path.parent / "replay"), str(scene_dir), str(source), str(output)],
                                     capture_output=True, timeout=30, env=env)
             assert result.returncode == 1 and not output.exists() and not result.stderr, (fault, result.stdout, result.stderr)
+            if fault == "intermediate_state":
+                expected_tick = changed["frames"][100][2] - 2
+                assert ("canonical state differs at paid tick %d" % expected_tick).encode() in result.stdout
     return {"observation_sha256": report["observation_sha256"], "cpu_peak": report["cpu_peak"],
-            "negative_histories_rejected": 3}
+            "negative_histories_rejected": len(faults), "canonical_paid_steps": previous_tick if full_state else 0}
 
 
 def compare_tiers(low_path, high_path):
@@ -207,12 +265,15 @@ def inspect(scene_dir, receipt_path, native_report=None):
     position, velocity, carry, tick = f32(56), f32(0), 0, 0
     frame_times, records = [], []
     for sample in receipt["frames"]:
-        assert isinstance(sample, list) and len(sample) == 14
-        ns, direction, observed_tick, x, y, z, active, drawn, updated, declared, cpu, gpu, elapsed, accepted = sample
+        full_state = receipt.get("profile", {}).get("stateSchema") == "aethyr.stream-walk-state.v1"
+        assert isinstance(sample, list) and len(sample) == (15 if full_state else 14)
+        ns, direction, observed_tick, x, y, z, active, drawn, updated, declared, cpu, gpu, elapsed, accepted = sample[:14]
         assert ns in (15625000, 62500000) and direction in (-1, 0, 1)
         carry += ns
         steps = carry // 15625000
         assert steps <= 8
+        if full_state:
+            assert len(sample[14]) == steps * 64 and all(c in "0123456789abcdef" for c in sample[14])
         carry -= steps * 15625000
         for _ in range(steps):
             difference = f32(f32(direction * 7.5) - velocity)
@@ -274,7 +335,9 @@ def inspect(scene_dir, receipt_path, native_report=None):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "--compare-tiers":
+    if sys.argv[1] == "--state-wire-vectors":
+        print(json.dumps([state_wire_vector(False), state_wire_vector(True)], sort_keys=True))
+    elif sys.argv[1] == "--compare-tiers":
         compare_tiers(Path(sys.argv[2]), Path(sys.argv[3]))
     elif sys.argv[1] == "--upload-failure":
         inspect_upload_failure(Path(sys.argv[2]), Path(sys.argv[3]))

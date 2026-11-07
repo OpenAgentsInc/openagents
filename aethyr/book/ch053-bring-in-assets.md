@@ -41,6 +41,13 @@ separately versioned VPK2 128-entry ceiling. `pack_write` preserves VPK1;
 current source. The new [RCM1 cost companion](../world/README.md) does not
 change either pack's bytes or asset identity.
 
+The [bounded streaming consumer](../world/README.md) authenticates actual
+HTTP container bytes and admitted entry spans before its canonical codecs
+and SDK uploads. Its allocation and per-paid-step replay receipts use an
+original CC0 corridor fixture with both visual tiers. This is a separate
+resource-cost/ownership profile; it does not complete this chapter's source
+import, rescale or generalized cast/drop teaching work.
+
 A pack is a header, a table of entries (kind, licence, offset, bytes, name)
 and their data on 4-byte boundaries. There is one catalog, one vertex buffer
 and one index buffer, then the texture layers, then the sounds. The catalog

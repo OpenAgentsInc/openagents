@@ -73,12 +73,15 @@ order.
 - [aethyr/world/cells.coax](../world/cells.coax): the existing streamed-cell
   policy, stable sleeping stores and edge/save checks from #12847.
 - [Resource-cost components](../world/README.md): source-derived RCM1 plans,
-  dependency closure and named admission; actual multi-cell host ownership
-  and measured route adoption are still being integrated.
+  dependency closure and named admission. The actual corridor consumer
+  walks 768 m and back using HTTP sources, browser WebGPU and native CPU
+  replay. Its versioned state observer compares every paid step; see the
+  [current verification scope](../../docs/verification/aethyr-streaming-12990/README.md).
 - [Named stream profiles](../world/stream-profile.coax): checked cell rings,
   independent media collection, paid-tick update cadence and neighbor
-  placement hints. These declarations do not yet qualify the actual host
-  route or grant spawn/simulation authority from prefetch readiness.
+  placement hints, adopted by that bounded consumer. Prefetch readiness
+  grants no spawn/simulation authority. Automatic recovery, native GPU
+  qualification and the chapter's complete teaching proof remain open.
 
 ## The design in Aethyr
 

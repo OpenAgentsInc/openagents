@@ -1,13 +1,15 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The latest [coordinator, GPU ownership and actual
-device-replacement record](walk-coordinator-recovery.md) qualifies 945/945
-coordinator mutants and 63/63 replacement mutants, real browser routes,
-native CPU replay, controlled GPU replacement and an exact-owner upload
-failure. The [earlier browser/replay record](walk-browser-cpu-replay.md)
-retains its historical failing gates and artifacts. Automatic loss handling,
-failed-replacement rescue, native GPU recovery, per-step replay and remaining
-host failure cases still need qualification before issue completion.
+Issue #12990 remains open. The latest [canonical paid-step replay
+record](walk-state-replay.md) adds a versioned state profile, independent
+byte vectors and actual native/browser comparison at every paid tick for
+both successful route histories. The preceding [coordinator and controlled
+GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
+real WebGPU replacement and exact-owner upload-failure evidence. The
+[earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
+historical failing gates and artifacts. Automatic loss handling,
+failed-replacement rescue, native GPU recovery, failure-history replay,+persistent HUD adoption and remaining host fault cases still prevent
+issue completion.
 
 Work starts from `df06d21dee90a9f54778143ffd6b8fe1c400e392`, in the reused
 `/home/christopherdavid/oa-open-issues` worktree. Exact component source

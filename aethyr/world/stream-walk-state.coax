@@ -1,0 +1,179 @@
+// Canonical streamed-walk state v1. Loaded after SwWalk's declaration.
+// All words are explicit LE64, including IEEE float bits and bool 0/1.
+// GPU handles/registry and draw-borrow serials are presentation state. Query
+// and navigation scratch are rebuilt each tick; unused capacity is not state.
+// The immutable admitted manifest binds resource layout and decoder identity.
+#authority;
+SW_STATE_BYTES :: 131072;
+SwStateBytes :: struct {bytes: [SW_STATE_BYTES] u8; n: int;}
+#load "tests/stream-walk-state-checks.coax";
+
+#test "canonical words preserve high bits signed zero and all byte positions" {
+  b: [1] SwStateBytes;
+  words1 := [4] int.[-1, 72623859790382856, cast,trunc(int) f64_bits(-0.0), cast(int) f32_bits(-0.0)]; sw_state_words(b[..], words1[..]);
+  #assert b[0].n == 32;
+  for i: 0..<8 { #assert b[0].bytes[i] == 255 && cast(int) b[0].bytes[8 + i] == 8 - i; }
+  for i: 0..<7 { #assert b[0].bytes[16 + i] == 0; }
+  #assert b[0].bytes[23] == 128 && b[0].bytes[27] == 128;
+  for i: 28..<32 { #assert b[0].bytes[i] == 0; }
+}
+#test "canonical body lease key and clock include every declared scalar" {
+  b: [1] SwStateBytes;
+  sw_state_body(b[..], cells.CellBody.{id = 1, x = 2, y = 3, z = 4, words = [4] int.[5, 6, 7, 8]});
+  sw_state_lease(b[..], HostInboxLease.{slot = 9, serial = 10, epoch = 11});
+  key := ResourceLoadKey.{owner = 12, generation = 13, epoch = 14}; for i: 0..<8 { key.content.words[i] = cast(u32) (15 + i); }
+  sw_state_key(b[..], key);
+  c := clock.FrameClock.{step_ns = 23, max_frame_ns = 24, max_steps = 25, carry_ns = 26, due = 27, ticks = 28, frames = 29,
+    refused = 30, overlong = 31, stalls = 32, dropped_ns = 33, counted_ns = 34, ran = 35};
+  sw_state_clock(b[..], c); #assert b[0].n == 35 * 8;
+  for i: 0..<35 { expected := i + 1;
+    if i >= 1 && i <= 3 { expected = cast,trunc(int) f64_bits(f64(i + 1)); }
+    #assert cast,trunc(int) resource_u64(b[0].bytes[..], i * 8) == expected;
+  }
+}
+#test "canonical walk state binds every lifecycle domain but excludes SDK pointers and derived scratch" #steps 100000000 {
+  m := [1] ResourceManifest.[sw_test_manifest()]; s: [1] SwWalk; #assert sw_open(s[..], m[..], 0, ResourceBackend.browser);
+  schedule := clock.loop_accept_ns(s[0].player.clock, 15625000); before: [1] SwStateBytes; after: [1] SwStateBytes;
+  original_n := sw_state_bytes(s[..], schedule, 0, before[..]); original := cast(string) before[0].bytes[0..<original_n];
+  for field: 0..<18 {
+    copy := s;
+    if field == 0 { copy[0].player.spring_vel.y = 0.25; }
+    if field == 1 { copy[0].player.collision_refusals = 4294967296; }
+    if field == 2 { copy[0].player.prev_face = -0.0; }
+    if field == 3 { copy[0].cells[0].cells[11].bodies[0].words[3] = 1; copy[0].cells[0].cells[11].body_n = 1; }
+    if field == 4 { copy[0].actor[11].words[3] = 1; }
+    if field == 5 { copy[0].entity[0].gen[11] = add_sat(copy[0].entity[0].gen[11], 1); }
+    if field == 6 { copy[0].stream[0].owners[63].generation += 1; }
+    if field == 7 { copy[0].stream[0].budget[0].peak_owners[6].epoch += 1; }
+    if field == 8 { copy[0].queue[0].entries[63].serial += 1; }
+    if field == 9 { copy[0].claims[63].epoch += 1; }
+    if field == 10 { copy[0].prefetch.serial += 1; }
+    if field == 11 { copy[0].retire_sent[63] = true; }
+    if field == 12 { copy[0].query_epoch[0] += 1; }
+    if field == 13 { copy[0].peak_active_tick += 1; }
+    if field == 14 { copy[0].profile.pools.sensors += 1; }
+    if field == 15 { copy[0].loads[0].content.words[7] = 1; copy[0].load_n = 1; }
+    if field == 16 { copy[0].retires[0].epoch = 1; copy[0].retire_n = 1; }
+    if field == 17 { copy[0].records[0].source.words[7] = 1; copy[0].record_n = 1; }
+    n := sw_state_bytes(copy[..], schedule, 0, after[..]); #assert original != cast(string) after[0].bytes[0..<n];
+  }
+  copy := s; copy[0].boxes[0] = 12; copy[0].nav_cost[0] = 4; copy[0].registry[0].epoch += 1; copy[0].stream[0].borrow_serial += 1;
+  n := sw_state_bytes(copy[..], schedule, 0, after[..]); #assert original == cast(string) after[0].bytes[0..<n];
+  n = sw_state_bytes(s[..], schedule, 1, after[..]); #assert original != cast(string) after[0].bytes[0..<n];
+  schedule.carry_ns += 1; n = sw_state_bytes(s[..], schedule, 0, after[..]); #assert original != cast(string) after[0].bytes[0..<n];
+  #assert assets.asset_same(sw_state_digest(s[..], schedule, 0), assets.asset_id(cast(string) after[0].bytes[0..<n]));
+}
+#test "paid step observer records distinct internal boundaries and no mark for a zero step frame" #steps 100000000 {
+  m := [1] ResourceManifest.[sw_test_manifest()]; a: [1] SwWalk; b: [1] SwWalk;
+  #assert sw_open(a[..], m[..], 0, ResourceBackend.browser) && sw_open(b[..], m[..], 0, ResourceBackend.browser);
+  a[0].observe_steps = true;
+  #assert sw_frame(a[..], m[..], 0, 1) && a[0].step_n == 0;
+  #assert sw_frame(b[..], m[..], 0, 1) && b[0].step_n == 0;
+  #assert sw_frame(a[..], m[..], 31250000, 1) && a[0].step_n == 2 && a[0].tick == 2;
+  #assert sw_frame(b[..], m[..], 31250000, 1) && b[0].step_n == 0 && b[0].tick == 2;
+  #assert !assets.asset_same(a[0].step_digest[0], a[0].step_digest[1]);
+  schedule := clock.loop_accept_ns(clock.FrameClock.{frames = 1}, 31250000);
+  pending := a; pending[0].player.clock = clock.FrameClock.{frames = 1};
+  #assert assets.asset_same(a[0].step_digest[1], sw_state_digest(pending[..], schedule, 2));
+  // Observer storage does not enter its own digest or change the simulation.
+  #assert assets.asset_same(sw_state_digest(a[..], schedule, 2), sw_state_digest(b[..], schedule, 2));
+  sw_ack(a[..]); #assert sw_frame(a[..], m[..], 0, 0) && a[0].step_n == 0;
+}
+
+sw_state_words :: (b: [] SwStateBytes, words: [] int) #effects(all) {
+  for word: words { resource_put64(b[0].bytes[..], b[0].n, word); b[0].n += 8; }
+}
+sw_state_lease :: (b: [] SwStateBytes, lease: HostInboxLease) #effects(all) {
+  words2 := [3] int.[lease.slot, lease.serial, lease.epoch]; sw_state_words(b, words2[..]);
+}
+sw_state_key :: (b: [] SwStateBytes, key: ResourceLoadKey) #effects(all) {
+  words3 := [3] int.[key.owner, key.generation, key.epoch]; sw_state_words(b, words3[..]);
+  for word: key.content.words { words4 := [1] int.[cast(int) word]; sw_state_words(b, words4[..]); }
+}
+sw_state_body :: (b: [] SwStateBytes, body: cells.CellBody) #effects(all) {
+  words5 := [4] int.[body.id, cast,trunc(int) f64_bits(body.x), cast,trunc(int) f64_bits(body.y), cast,trunc(int) f64_bits(body.z)]; sw_state_words(b, words5[..]);
+  body_words := body.words; sw_state_words(b, body_words[..]);
+}
+sw_state_clock :: (b: [] SwStateBytes, c: clock.FrameClock) #effects(all) {
+  words6 := [13] int.[c.step_ns, c.max_frame_ns, c.max_steps, c.carry_ns, c.due, c.ticks, c.frames,
+    c.refused, c.overlong, c.stalls, c.dropped_ns, c.counted_ns, c.ran]; sw_state_words(b, words6[..]);
+}
+sw_state_player :: (b: [] SwStateBytes, p: walking.Player) #effects(all) {
+  floats := [33] f32.[p.pos.x, p.pos.y, p.pos.z, p.vel.x, p.vel.y, p.vel.z, p.face, p.theta, p.phi, p.dist, p.max_dist, p.zoom_push,
+    p.target.x, p.target.y, p.target.z, p.spring_vel.x, p.spring_vel.y, p.spring_vel.z, p.key_x, p.key_y, p.pad_x, p.pad_y,
+    p.prev_pos.x, p.prev_pos.y, p.prev_pos.z, p.prev_target.x, p.prev_target.y, p.prev_target.z, p.prev_face, p.prev_dist,
+    p.pace, p.grip, p.collision_residual];
+  for i: 0..<33 { words7 := [1] int.[cast(int) f32_bits(floats[i])]; sw_state_words(b, words7[..]); }
+  words8 := [16] int.[(ifx p.on_ground then 1 else 0), cast(int) cast(u8) p.act, (ifx p.run then 1 else 0), (ifx p.jump_held then 1 else 0), p.jumps.waiting,
+    (ifx p.wings then 1 else 0), (ifx p.dive_held then 1 else 0), p.beats, (ifx p.diving then 1 else 0), (ifx p.sliding then 1 else 0), cast(int) cast(u8) p.collision_status,
+    cast,trunc(int) p.collision_refusals, p.collision_passes, (ifx p.collision_floor_cut then 1 else 0), cast(int) cast(u8) p.query_status,
+    cast(int) cast(u8) p.camera_query_status]; sw_state_words(b, words8[..]);
+  sw_state_clock(b, p.clock);
+  press := [4] int.[(ifx p.jumps.held then 1 else 0), p.jumps.pressed, p.jumps.taken, p.jumps.lost]; sw_state_words(b, press[..]);
+}
+sw_state_budget :: (b: [] SwStateBytes, p: ResourceBudget) #effects(all) {
+  words9 := [11] int.[(ifx p.valid then 1 else 0), p.total_cap, p.total, p.peak, p.actor_cap, p.actors, p.actor_peak, p.voice_cap, p.voices, p.voice_peak, p.refused]; sw_state_words(b, words9[..]);
+  for i: 0..<7 { words10 := [3] int.[p.caps[i], p.used[i], p.peaks[i]]; sw_state_words(b, words10[..]); sw_state_lease(b, p.peak_owners[i]); }
+  sw_state_lease(b, p.peak_owner); sw_state_lease(b, p.actor_peak_owner); sw_state_lease(b, p.voice_peak_owner);
+}
+sw_state_bytes :: (s: [] SwWalk, schedule: clock.FrameClock, paid: int, b: [] SwStateBytes) -> int #effects(all) {
+  #assert s[0].fact_n == 0; // observations follow complete application, never callback arrival
+  b[0].n = 0;
+  words11 := [16] int.[1398231857, 1, (ifx s[0].valid then 1 else 0), (ifx s[0].closing then 1 else 0), s[0].tick, paid, s[0].query_epoch[0], s[0].prefetch_cell,
+    s[0].active, s[0].drawn, s[0].updated, s[0].voices, s[0].audio_deferred, s[0].blocked, s[0].offered_refused, s[0].prefetch_refused]; sw_state_words(b, words11[..]);
+  words12 := [2] int.[s[0].peak_active, s[0].peak_active_tick]; sw_state_words(b, words12[..]); sw_state_clock(b, schedule); sw_state_player(b, s[0].player);
+  p := s[0].profile;
+  words13 := [18] int.[cast(int) cast(u8) p.status, p.id, p.tier, p.layer_side, p.rings.resident, p.rings.loads, p.near_ticks, p.far_ticks,
+    p.prefetch_bytes, p.prefetch_roots, p.persistent_services, p.pools.streamed_actors, p.pools.persistent_actors, p.pools.animation,
+    p.pools.sensors, p.pools.effects, p.pools.lights, p.pools.voices]; sw_state_words(b, words13[..]);
+  for v: [8] f64.[p.rings.draw, p.rings.simulate, p.rings.load, p.rings.hysteresis, p.texture_radius, p.lighting_radius, p.audio_radius, p.prefetch_edge] {
+    words14 := [1] int.[cast,trunc(int) f64_bits(v)]; sw_state_words(b, words14[..]);
+  }
+  for surface: s[0].surfaces {
+    fields := [7] int.[surface.id, surface.friction_policy, surface.restitution_policy, surface.footstep, surface.reaction, cast(int) surface.traversability, surface.fluid_kind]; sw_state_words(b, fields[..]);
+    for value: [3] f32.[surface.density, surface.buoyancy, surface.drag] { bits := [1] int.[cast(int) f32_bits(value)]; sw_state_words(b, bits[..]); }
+  }
+  w := s[0].cells[0]; words15 := [2] int.[w.n, w.requests]; sw_state_words(b, words15[..]); sw_state_words(b, w.counts[..]);
+  for i: 0..<w.n {
+    cell := w.cells[i]; entry := w.manifest[i];
+    words16 := [6] int.[entry.cx, entry.cz, entry.digest, cell.level, cell.request, cell.body_n]; sw_state_words(b, words16[..]);
+    for k: 0..<cell.body_n { sw_state_body(b, cell.bodies[k]); }
+  }
+  e := s[0].entity[0]; sw_state_words(b, e.counts[..]);
+  for i: 0..<SW_CELLS {
+    words17 := [11] int.[e.gen[i], (ifx e.live[i] then 1 else 0), (ifx e.born[i] then 1 else 0), (ifx e.doomed[i] then 1 else 0), e.ids[i], e.free[i], e.spawns[i],
+      (ifx s[0].born[i] then 1 else 0), (ifx s[0].awake[i] then 1 else 0), s[0].decoded_boxes[i].count, s[0].decoded_bodies[i].count]; sw_state_words(b, words17[..]);
+    sw_state_body(b, s[0].actor[i]);
+    for value: s[0].decoded_boxes[i] { words18 := [1] int.[cast(int) f32_bits(value)]; sw_state_words(b, words18[..]); }
+    for body: s[0].decoded_bodies[i] { sw_state_body(b, body); }
+  }
+  r := s[0].stream[0];
+  words19 := [12] int.[(ifx r.valid then 1 else 0), (ifx r.closing then 1 else 0), r.epoch, r.count, r.serial, r.last_tick, r.load_limit, r.loading,
+    r.requests, r.accepted, r.destroyed, r.refused]; sw_state_words(b, words19[..]);
+  for word: r.manifest.words { words20 := [1] int.[cast(int) word]; sw_state_words(b, words20[..]); }
+  sw_state_budget(b, r.budget[0]);
+  for i: 0..<RESOURCE_MANIFEST_MAX {
+    o := r.owners[i]; a := o.admission[0];
+    words21 := [14] int.[(ifx o.active then 1 else 0), o.refs, o.borrowers, o.generation, cast(int) cast(u8) o.phase, (ifx r.wanted[i] then 1 else 0),
+      cast(int) cast(u8) a.status, a.category, a.retained, a.scratch, a.actors, a.voices, (ifx a.settled then 1 else 0), (ifx s[0].retire_sent[i] then 1 else 0)]; sw_state_words(b, words21[..]);
+    for word: o.content.words { words22 := [1] int.[cast(int) word]; sw_state_words(b, words22[..]); }
+    for lease: a.leases { sw_state_lease(b, lease); }
+    ref := s[0].claims[i]; words23 := [3] int.[ref.slot, ref.serial, ref.epoch]; sw_state_words(b, words23[..]);
+  }
+  for claim: r.claims { words24 := [3] int.[(ifx claim.live then 1 else 0), claim.serial, claim.root]; sw_state_words(b, words24[..]); }
+  words25 := [3] int.[s[0].prefetch.slot, s[0].prefetch.serial, s[0].prefetch.epoch]; sw_state_words(b, words25[..]);
+  q := s[0].queue[0];
+  words26 := [8] int.[(ifx q.valid then 1 else 0), q.capacity, q.limit, q.count, q.bytes, q.epoch, q.serial, (ifx q.retired then 1 else 0)]; sw_state_words(b, words26[..]);
+  for entry: q.entries { words27 := [3] int.[(ifx entry.live then 1 else 0), entry.serial, entry.bytes]; sw_state_words(b, words27[..]); }
+  words28 := [3] int.[s[0].load_n, s[0].retire_n, s[0].record_n]; sw_state_words(b, words28[..]);
+  for i: 0..<s[0].load_n { sw_state_key(b, s[0].loads[i]); }
+  for i: 0..<s[0].retire_n { sw_state_key(b, s[0].retires[i]); }
+  for i: 0..<s[0].record_n {
+    record := s[0].records[i]; words29 := [4] int.[record.tick, cast(int) cast(u8) record.kind, cast(int) cast(u8) record.decoded, cast(int) cast(u8) record.status]; sw_state_words(b, words29[..]);
+    sw_state_key(b, record.key); for word: record.source.words { words30 := [1] int.[cast(int) word]; sw_state_words(b, words30[..]); }
+  }
+  return b[0].n;
+}
+sw_state_digest :: (s: [] SwWalk, schedule: clock.FrameClock, paid: int) -> assets.AssetId #effects(all) {
+  b: [1] SwStateBytes; n := sw_state_bytes(s, schedule, paid, b[..]); return assets.asset_id(cast(string) b[0].bytes[0..<n]);
+}

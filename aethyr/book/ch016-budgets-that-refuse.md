@@ -13,9 +13,12 @@ The resource-cost companion work for #12990 adds
 [RCM1 manifests](../world/resource-manifest.coax) and
 [named admission](../world/resource-admission.coax) around existing host
 tickets. The small [codec example](../examples/resource-cost-parity.coax)
-runs natively and in browser Wasm. Actual large-world streaming adoption
-and allocation reconciliation are still being built; see the
-[component record](../../docs/verification/aethyr-streaming-12990/README.md).
+runs natively and in browser Wasm. A separate actual 768 m corridor
+consumer adopts the resource owners, records physical allocations and
+compares canonical state after every paid step in native CPU replay. Its
+[verification record](../../docs/verification/aethyr-streaming-12990/README.md)
+limits qualification to the measured profile; automatic loss handling,
+native GPU recovery and the remaining failure histories are still open.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

@@ -14,7 +14,10 @@ The #12990 components currently provide:
 | `resource-manifest.coax` | Versioned RCM1 companion bytes, a pinned cost-model revision, complete expected identity, canonical dependency digests and bounded earlier-owner references |
 | `resource-admission.coax` | Seven named budget lines around the existing inbox leases and renderer ledger; atomic multi-ticket admission, explicit completion settlement, final retirement and first-peak owner records |
 | `resource-stream.coax` | Concrete dependency owners, typed claim/borrow references, completion generations, wanted closure and atomic fixed-tick readiness publication |
-| `stream-profile.coax` | Named small-world interest, update cadence, independent media collection and neighbor-placement hints; declarations await actual host qualification |
+| `stream-profile.coax` | Named small-world interest, update cadence, independent media collection and neighbor-placement hints |
+| `stream-walk.coax` | Actual bounded corridor consumer: fixed-step facts, semantic collision/navigation, stable sleeping entity state and original resource owners |
+| `stream-walk-state.coax` | Versioned, fieldwise canonical simulation state and SHA-256 observations after individual paid steps |
+| `stream-walk-recovery.coax` | Atomic replacement of GPU owner handles after the SDK quiescence/destruction barrier; automatic loss scheduling remains unfinished |
 | `../forge/vertices.coax` | Shared 48-byte static VPK vertex admission: eight finite floats followed by opaque packed color/layer/spare bytes |
 
 These files are source parts so a composed host has one owner of the
@@ -84,8 +87,8 @@ the controller, records every applied result including failures and cleanup,
 then publishes readiness. Host callbacks cannot mutate the simulation or
 replace an old stream's backing state. The retained manifest is immutable
 until the stream finishes; queue/registry arguments remain the concrete
-owners supplied to admission. These are caller obligations to be qualified
-by actual host adoption.
+owners supplied to admission. The corridor consumer implements these
+obligations; its exact measured scope is recorded below.
 
 `CellRings` and `cell_step_profile` add a checked profile entry without
 changing `CellWorld`, `CellStep` or the legacy entry points' default rings.
@@ -103,8 +106,8 @@ and charge that quota. The hint never writes cell state, answers a load or
 permits simulation. The intended active pools are four streamed actors, one
 persistent player and two voices; animation, sensors, effects and dynamic
 lights are zero in this initial profile. Player/camera/HUD are the three
-persistent services. Actual allocations and use of these declarations remain
-part of consumer integration.
+persistent services. The corridor adopts the player, camera and separate
+collection/update policies; persistent HUD adoption remains unfinished.
 
 `coax/web/tool.sh aethyr/tools/streaming-assets.coax NEW_OUTPUT_DIR` builds
 the original CC0 corridor fixture: 12 cells, 13 admitted VPK1 packs, raw
@@ -117,8 +120,31 @@ recomputes the geometry, PNG pixels/CRCs, PCM, dependency digests and all
 declared cost lanes, including rehashed deliberately broken fixtures.
 This qualifies asset preparation, not active residency or physical memory.
 
-The actual multi-cell consumer, platform asynchronous-effect integration,
-profile adoption, route/replay integration and native/browser GPU
-allocation/recovery measurements remain #12990 work. The current
-[verification record](../../docs/verification/aethyr-streaming-12990/README.md)
-qualifies these components and a small native/Wasm codec fixture.
+The [actual consumer and verification record](../../docs/verification/aethyr-streaming-12990/README.md)
+cover muted headless browser WebGPU over HTTP, a 768 m out-and-back route
+under a 32 KiB dynamic resource cap, two image tiers, physical allocation
+traces, native CPU/codec replay and explicit GPU replacement from retained
+sources. Native GPU recovery, automatic unsolicited-loss handling, rescue,
+the remaining host failure histories and persistent HUD adoption keep
+#12990 open. Browser and native GPU qualification are distinct claims.
+
+The optional paid-step observer uses canonical state profile
+`aethyr.stream-walk-state.v1`. It serializes explicit little-endian 64-bit
+words (IEEE bits for floats, zero/one for booleans), never struct padding or
+pointer addresses. State includes the pending frame schedule and paid-step
+ordinal, player/camera/input history, the named profile, physical surfaces,
+logical cells and sleeping bodies, entity-store fields, retained decoded
+collision/body values, resource generations/claims/admission leases and
+budgets, inbox entries, counters and live command/event outboxes. The
+immutable manifest identity binds source formats and cost models.
+
+Observations follow complete application of queued facts. GPU handles and
+registry state, render-borrow serials, overwritten query/navigation scratch,
+unused capacity and observer storage are outside this simulation profile;
+actual SDK ownership has separate traces. Pending callbacks do not enter a
+digest before their recorded paid boundary. Each observer digest uses a
+bounded 128 KiB local serialization buffer inside the separately reserved
+reactor arena; its eight retained digest slots are fixed controller storage.
+Replaying the same accepted history compares each paid step, including the
+steps between a frame's start and endpoint. Different live completion
+schedules still need not produce identical simulation.

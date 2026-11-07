@@ -11,6 +11,8 @@
 sw_sdk_start :: (source: [] u8, root: [] u8, tier: int, backend: int) -> bool #foreign #effects(all);
 sw_sdk_copy :: (row: int, generation: int, epoch: int, source: [] u8) -> bool #foreign #effects(all);
 sw_host_frame :: (ns: int, direction: f32) -> s32 #foreign #effects(all);
+sw_host_step_count :: () -> s32 #foreign #effects(all);
+sw_host_step_word :: (step: s32, word: s32) -> int #foreign #effects(all);
 sw_host_ack :: () #foreign #effects(all);
 sw_host_close :: () -> s32 #foreign #effects(all);
 sw_host_info :: (field: s32) -> int #foreign #effects(all);
@@ -90,6 +92,21 @@ swr_frame :: (trace: Jv, frame: int, closing: bool, source: [] SwReplaySources, 
   direction := f32(swr_number(trace, ifx closing then jv_get(trace, frame, "direction") else jv_at(trace, frame, 1)));
   tick := swr_word(trace, ifx closing then jv_get(trace, frame, "tick") else jv_at(trace, frame, 2));
   if sw_host_frame(ns, direction) != 1 || sw_host_info(0) != tick || sw_host_info(3) != jv_len(trace, records) { print("frame header differs at tick %\n", tick); return false; }
+  digest_text: [4096] u8;
+  digest_count := sw_host_step_count();
+  if closing {
+    expected_digests := jv_get(trace, frame, "stepDigests");
+    if jv_len(trace, expected_digests) != cast(int) digest_count { return false; }
+    for step: 0..<cast(int) digest_count { if jv_str(trace, jv_at(trace, expected_digests, step), digest_text[step * 64..<step * 64 + 64]) != 64 { return false; } }
+  } else if jv_str(trace, jv_at(trace, frame, 14), digest_text[..]) != cast(int) digest_count * 64 { return false; }
+  for step: 0..<cast(int) digest_count {
+    actual: assets.AssetId; hex: [64] u8;
+    for word: 0..<8 { actual.words[word] = cast(u32) sw_host_step_word(cast(s32) step, cast(s32) word); }
+    #assert assets.asset_hex(actual, hex[..]);
+    if cast(string) hex[..] != cast(string) digest_text[step * 64..<step * 64 + 64] { print("canonical state differs at paid tick %\n", tick - cast(int) digest_count + step + 1); return false; }
+    if used[0] > observed.count - 64 { return false; }
+    for byte, i: hex { observed[used[0] + i] = byte; } used[0] += 64;
+  }
   for i: 0..<jv_len(trace, records) { for field: 0..<23 {
     expected := swr_word(trace, jv_at(trace, jv_at(trace, records, i), field)); actual := sw_host_record(cast(s32) i, cast(s32) field);
     if actual != expected { print("record tick % event % field % expected % actual %\n", tick, i, field, expected, actual); return false; }
@@ -115,9 +132,11 @@ tool_main :: () -> int #export_c #effects(all) {
   n := fs_read(fs_join(args_at(a[..], 0), "scene.json", path[..]), scene_bytes[..]);
   if n < 1 || !jv_parse(scene[..], cast(string) scene_bytes[0..<n], scene_nodes[..]) { return 1; }
   sources: [1] SwReplaySources; if !swr_sources(scene[0], args_at(a[..], 0), sources[..]) { return 1; }
-  bytes: [1048576] u8; d: [1] Jv; nodes: [131072] JvNode;
+  bytes: [4194304] u8; d: [1] Jv; nodes: [262144] JvNode;
   trace_n := fs_read(args_at(a[..], 1), bytes[..]); if trace_n < 1 || !jv_parse(d[..], cast(string) bytes[0..<trace_n], nodes[..]) { return 1; }
   profile := jv_get(d[0], 0, "profile"); tier := ifx profile < 0 then 0 else jv_int(d[0], jv_get(d[0], profile, "tier"), -1);
+  schema: [64] u8; schema_n := jv_str(d[0], jv_get(d[0], profile, "stateSchema"), schema[..]);
+  if schema_n != 27 || cast(string) schema[0..<schema_n] != "aethyr.stream-walk-state.v1" { return 1; }
   if tier < 0 || tier > 1 { return 1; }
   item := jv_at(scene[0], jv_get(scene[0], 0, "manifests"), tier); root: [64] u8; name: [128] u8; manifest_bytes: [32768] u8;
   if jv_str(scene[0], jv_get(scene[0], item, "sha256"), root[..]) != 64 { return 1; }
@@ -141,12 +160,13 @@ tool_main :: () -> int #export_c #effects(all) {
   for field: [7] s32.[8, 10, 11, 12, 14, 22, 23] { if sw_host_info(field) != 0 { print("cleanup field % remains %\n", field, sw_host_info(field)); return 1; } }
   if sw_host_info(24) != 1 || sw_host_info(20) != sw_host_info(21) { return 1; }
   hex: [64] u8; report: [4096] u8; j: [1] Jo; jo_start(j[..], report[..]); jo_obj(j[..]);
-  jo_key(j[..], "schema"); jo_str(j[..], "aethyr.stream-walk-native-replay.v1"); jo_key(j[..], "frames"); jo_int(j[..], count);
+  jo_key(j[..], "schema"); jo_str(j[..], "aethyr.stream-walk-native-replay.v2"); jo_key(j[..], "frames"); jo_int(j[..], count);
   jo_key(j[..], "tier"); jo_int(j[..], tier);
   jo_key(j[..], "ticks"); jo_int(j[..], sw_host_info(0)); jo_key(j[..], "attempts"); jo_int(j[..], sw_host_info(20));
   jo_key(j[..], "cpu_peak"); jo_int(j[..], sw_host_info(15)); jo_key(j[..], "input_sha256"); #assert assets.asset_hex(assets.asset_id(cast(string) bytes[0..<trace_n]), hex[..]); jo_str(j[..], cast(string) hex[..]);
   jo_key(j[..], "observation_sha256"); #assert assets.asset_hex(assets.asset_id(cast(string) observed[0..<used[0]]), hex[..]); jo_str(j[..], cast(string) hex[..]);
-  jo_key(j[..], "qualified"); jo_str(j[..], "native CPU codecs and malloc/free; exact completion records, frame positions, active/drawn/updated/resident state, final actor identities/counters; no native GPU"); jo_end(j[..]);
+  jo_key(j[..], "state_schema"); jo_str(j[..], "aethyr.stream-walk-state.v1");
+  jo_key(j[..], "qualified"); jo_str(j[..], "native CPU codecs and malloc/free; canonical state SHA-256 after each paid step, exact completion records and final actor identities; no native GPU"); jo_end(j[..]);
   if j[0].bad || !fs_write(args_at(a[..], 2), jo_text(j[..])) { return 1; }
   print("PASS native replay % frames, % attempts, final zero owners\n", count, sw_host_info(20)); return 0;
 }

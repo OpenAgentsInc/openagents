@@ -124,6 +124,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
     if(closed||framing)throw Error('frame is closed or already running');framing=true;const start=performance.now();
     try{
       if(!x.sw_host_frame(BigInt(ns),direction))throw Error('paid frame refused');
+      const stepDigests=Array.from({length:x.sw_host_step_count()},(_,step)=>Array.from({length:8},(_,word)=>Number(x.sw_host_step_word(step,word)).toString(16).padStart(8,'0')).join(''));
       const loads=Array.from({length:info(1)},(_,i)=>command(0,i)),retiring=Array.from({length:info(2)},(_,i)=>command(1,i));
       const records=Array.from({length:info(3)},(_,i)=>Array.from({length:23},(_,f)=>String(x.sw_host_record(i,f))));
       onRecord?.(records);x.sw_host_ack();
@@ -135,7 +136,7 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       for(const [freed,owner,generation,epoch,field,bytes] of allocations)observedLive+=freed?-bytes:bytes;
       const cpu=info(14),gpuBytes=[...gpu.values()].reduce((n,r)=>n+r.bytes,0);
       if(observedLive!==cpu||cpu>info(10)||cpu+gpuBytes>info(8))throw Error('physical allocations disagree with original tickets/declared peak');
-      return {frameNs:ns,direction,tick:info(0),position:Array.from({length:3},(_,i)=>x.sw_host_player(i)),active:info(4),drawn:info(5),updated:info(6),declared:info(8),cpu,gpuBytes,allocations,stages:stages.splice(0),records,frameMs:performance.now()-start};
+      return {frameNs:ns,direction,tick:info(0),position:Array.from({length:3},(_,i)=>x.sw_host_player(i)),active:info(4),drawn:info(5),updated:info(6),declared:info(8),cpu,gpuBytes,allocations,stages:stages.splice(0),records,stepDigests,frameMs:performance.now()-start};
     }finally{framing=false;}
   }
   async function close(){
@@ -181,6 +182,6 @@ export async function openStreamWalk({canvas,sceneURL,sceneSHA,sceneBytes,manife
       return {before,after:Array.from({length:28},(_,f)=>info(f)),epoch:Number(x.sw_host_recover_info(2)),granted:Number(x.sw_host_recover_info(1)),uploaded,lossReason:loss.reason,adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description},ms:performance.now()-started};
     }finally{framing=false;}
   }
-  return Object.freeze({step,settle:()=>Promise.all([...pending]),close,capture,recover,profile:Object.freeze({tier,manifestSHA,sceneSHA}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
+  return Object.freeze({step,settle:()=>Promise.all([...pending]),close,capture,recover,profile:Object.freeze({tier,manifestSHA,sceneSHA,stateSchema:'aethyr.stream-walk-state.v1'}),cells:()=>Array.from({length:12},(_,i)=>Array.from({length:5},(_,f)=>Number(x.sw_host_cell(i,f)))),stats:()=>closed?finalSnapshot:({info:Array.from({length:28},(_,f)=>info(f)),wasmBytes:memory.buffer.byteLength,wasmReservedBytes:arena.bytes,transport:packs.info(),loadFailures,recentFailures:recentFailures.slice(),drawnCommands,fallbackDraws,gpuErrors:errors.slice(),runtimeMessages:runtimeMessages.slice()}),adapter:{vendor:adapter.info.vendor,architecture:adapter.info.architecture,device:adapter.info.device,description:adapter.info.description,userAgent:navigator.userAgent}});
   }catch(error){for(const dispose of startup.reverse())await dispose();throw error;}
 }

@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time steps: 18114373 of 20000000 used (90%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    6428225 steps  coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (661 times)
+    5711040 steps  coax/lib/crypto/sha256-kernel.coax:52:1  in 'S_rotr' (380736 times)
+    2464875 steps  aethyr/audio/host-opus.coax:85:1  in 'hpo_crc' (375 times)
+    1057600 steps  coax/lib/crypto/sha256-kernel.coax:56:1  in 'S_sum2' (132200 times)
+    719168 steps  coax/lib/crypto/sha256-kernel.coax:58:1  in 'S_sum5' (42304 times)
+  fix: do less work in 'S_compress', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+mutation scope: unit aethyr/world/stream-walk-state.coax (its procedures; every check retained)
+185 mutants, 185 killed, 0 survived

@@ -1,5 +1,9 @@
 # Stream coordinator and controlled GPU replacement — November 7, 2026
 
+This stage's frame-level replay is superseded by the separate
+[canonical paid-step replay record](walk-state-replay.md). Historical
+measurements and mutation results below retain their original scope.
+
 **#12990 remains open.** The coordinator and replacement ownership boundary
 now pass their complete root mutation gates. Actual browser probes cover a
 controlled device replacement with retained sources and an upload validation
