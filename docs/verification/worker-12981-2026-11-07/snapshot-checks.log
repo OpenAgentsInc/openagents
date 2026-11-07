@@ -1,0 +1,4 @@
+ok   #test completed snapshot zero and subsequent full or delta snapshots publish (1 case, 70 steps, 0 ms)
+ok   #test a continuation or missing part cannot publish a world (1 case, 87 steps, 0 ms)
+ok   #test failed headers and stale or future acknowledgements cannot publish (1 case, 52 steps, 0 ms)
+3 checks, 3 passed, 0 failed

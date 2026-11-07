@@ -1,0 +1,4 @@
+ok   #test background clearance uses every actual position and requires a known page (1 case, 1554 steps, 13 ms)
+ok   #test background clearance never publishes an incomplete multipart snapshot (1 case, 63891 steps, 5 ms)
+2 of 255 checks (--only 'background clearance'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

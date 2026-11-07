@@ -1,0 +1,45 @@
+{
+  "source_base": "70966abbb19710fff059241dd775181818c578d3",
+  "machine": "Apple M5 Max",
+  "host": "macOS hardware WebGPU/Metal; headless muted Chrome",
+  "worker_bytes": 1068379,
+  "metrics": [
+    {
+      "profile": "local",
+      "ticks": 1922,
+      "p50_us": 300,
+      "p95_us": 471,
+      "p99_us": 576
+    },
+    {
+      "profile": "100",
+      "ticks": 1922,
+      "p50_us": 310,
+      "p95_us": 440,
+      "p99_us": 566
+    },
+    {
+      "profile": "250",
+      "ticks": 1923,
+      "p50_us": 311,
+      "p95_us": 420,
+      "p99_us": 550
+    }
+  ],
+  "sha256": {
+    "coax/bin/coax": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e",
+    "coax/web/room/worker.coax": "1ea55ab3b0f3830657dd3ef326f1f5b31c58a4715e9c69020c3097c1b41a85f8",
+    "coax/web/room/build.sh": "6c91c02f15ef6f8a08bcbbbcfecf325fd106806232feab853fe92bc230b33914",
+    "coax/web/room/room.coax": "d12dd8f6f6b7ddb26747c593ef5f1e4415075be453aad34bbe4cf0950e4bdc25",
+    "apps/openagents-web/everglade.coax": "8e85b6cdd2652def06eba6b46818523764b5996a91a064436e5e7e24b9bab39a",
+    "apps/openagents-web/everglade-step.coax": "d000158966e911a52ee37c3c12afa88e279e8000aaac30938da913ed4b753765",
+    "verse/grid.coax": "042b7e8a307037be8b7983b146e7a05239eaa7cac4cfeead4e790302f4a270fc",
+    "verse/everglade/river.coax": "c5562ea8ced50ef3ccc3f73ae3fba182c7a59a5e767f8aa3395ddf544e6206f1",
+    "verse/everglade/guard-guide-policy.coax": "d33a2de53f833582c1c8899b31517b53d38798d7cd118724ec42b00bf488636c",
+    "coax/web/room/room-world.c": "826b5fba71e7db77fe2fce45cf65d8c5a8ca3a28adf984dd357393c39068146d",
+    "coax/web/room/room-tick.c": "24f7290328fd385d286ff5b746ab2310ec5463252ddbc2ba2a587b841a5f2c66",
+    "coax/web/room/room-host.c": "0360eb00aa1d454a5288a063fb24ba047e2b6112ad7e94d750146d7ee7c30a24",
+    "coax/web/room/room-worker.c": "7161ee7d431bd6716c1cc66ff30b3237dfb4748db32ae4772479dfe9e6d4951c",
+    "coax/web/room/room-math.c": "d30f3bd42f37a9c893d30218e30815d593db53c845059283d15644af15e8d659"
+  }
+}

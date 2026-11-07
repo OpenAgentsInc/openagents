@@ -14,6 +14,7 @@
 // bots are tagged as tests: room pair-drift-ROOM, player ids p-drift-K, names "Drift K".
 // Prints one line at the end: the casts sent, those refused and the D frames heard.
 #load "room-socket.coax";
+#load "../drift-snapshot.coax";
 #load "../../lib/sys/fs.coax";
 
 DB_MAX :: 8;
@@ -75,8 +76,12 @@ db_hear :: (b: [] DbBot, w: [] DbWorld, t: string, notes: string) {
   if rs_starts(t, "e cast ") && notes.count > 0 { _ := fs_append(notes, t); _ = fs_append(notes, "\n"); }
   if !rs_starts(t, "D ") { return; }
   b[0].d += 1;
-  _ := wire_mirror_frame(b[0].m[..], t);
+  frame := wire_mirror_frame(b[0].m[..], t);
+  // A full snapshot clears the mirror at part zero. Keep the last published
+  // world until its final part, rather than reporting a transient missing page.
+  if frame.tick<0 || (frame.f&2)!=0 {return;}
   for q: 0..<64 { w[0].seats[q] = false; }
+  if !ds_complete(frame.tick,b[0].m[0].heard,b[0].m[0].whole,frame.f) {return;}
   for e: 0..<WIRE_MIRROR {
     r := wire_mirror_get(b[0].m[..], e);
     if r.id < 0 || r.kind != WK_PLAYER || r.id >= 64 { continue; }
@@ -110,6 +115,24 @@ db_page_seat :: (b: [] DbBot, n: int, w: [] DbWorld) -> int {
   #assert b[0].seat == 1 && b[0].seen && abs(b[0].x - 1) < 0.01 && abs(b[0].z - 2) < 0.01 && b[0].d == 1 && b[0].m[0].heard == 10;
   #assert db_page_seat(b[..], 1, w[..]) == 0 && abs(w[0].pz[0] + 84) < 0.01;
   #assert db_atan2(1, 0) > 1.57 && db_atan2(1, 0) < 1.58;
+}
+
+#test "background clearance never publishes an incomplete multipart snapshot" {
+ b:[1]DbBot;w:[1]DbWorld;b[0].seat=1;b[0].seen=true;b[0].z=40;w[0].seats[0]=true;
+ zero:[WIRE_SF]s32;row:[WIRE_SF]s32;f:[WIRE_SERVER_FRAME]u8;
+ n:=wire_put_d(f[..],0,WireD.{tick=20,f=3});
+ wire_s_pack(WireS.{id=1,kind=WK_PLAYER,z=40},row[..]);n=wire_put_s(f[..],n,1,0,zero[..],row[..]);
+ db_hear(b[..],w[..],cast(string)f[0..<n],"");
+ #assert db_clear(b[..],1,w[..],0) && w[0].pz[0]==0;
+ n=wire_put_d(f[..],0,WireD.{tick=20,part=1});
+ wire_s_pack(WireS.{id=0,kind=WK_PLAYER,z=10},row[..]);n=wire_put_s(f[..],n,0,0,zero[..],row[..]);
+ db_hear(b[..],w[..],cast(string)f[0..<n],"");
+ #assert w[0].seats[0] && w[0].pz[0]==10 && !db_clear(b[..],1,w[..],0);
+ n=wire_put_d(f[..],0,WireD.{tick=21,f=3});db_hear(b[..],w[..],cast(string)f[0..<n],"");
+ #assert w[0].seats[0];
+ n=wire_put_d(f[..],0,WireD.{tick=21,part=2});db_hear(b[..],w[..],cast(string)f[0..<n],"");
+ #assert !db_clear(b[..],1,w[..],0); // a missing part must still refuse clearance
+
 }
 
 tool_main :: () -> int #export_c #effects(all) {

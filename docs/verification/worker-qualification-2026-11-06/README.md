@@ -1,5 +1,7 @@
 # Worker qualification follow-up
 
+The results below retain the 2026-11-06 failures. The [current Mac follow-up](../worker-12981-2026-11-07/README.md) now qualifies #12981 at 471/440/420 µs with all paired gameplay checks passing. It repairs camera/route assumptions and multipart position publication without changing limits. #12980 remains separate.
+
 Issues #12980 and #12981 keep the existing 1,060,000-byte worker budget and
 600-microsecond optimization qualification limit. Neither limit changes.
 

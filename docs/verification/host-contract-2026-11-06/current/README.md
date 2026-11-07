@@ -73,7 +73,10 @@ The command's additional `--tick-us 600` optimization gate fails and exits 1.
 The shared Mac records higher timings and one 250 ms NPC-condition mismatch
 while unrelated jobs consume CPU. These failures remain open in #12981;
 this record does not claim the supplemental command passes. The host-contract
-completion does not replace that separate optimization qualification.
+completion does not replace that separate optimization qualification. The
+[current Mac follow-up](../../worker-12981-2026-11-07/README.md) now completes
+#12981 with 471/440/420 µs p95 and all gameplay checks passing; the historical
+failures remain retained below.
 
 The [worker qualification follow-up](../../worker-qualification-2026-11-06/README.md)
 retains these failures, reproduces the oversized Linux worker, and fixes

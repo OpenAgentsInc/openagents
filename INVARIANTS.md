@@ -1685,6 +1685,16 @@ imports one of those functions. Checks: `coax/web/room/room-math-check.coax`
 the host C library's) and the drift check's local profile
 (`coax/web/tool.sh everglade-drift --no-raid`).
 
+The paired drift rehearsal explicitly turns its camera toward the route through
+ordinary pointer input before its start mark. Gravity placement must contain
+both complete NPC patrols and produce an actual condition. Background-player
+positions publish only from complete acknowledged wire snapshots; part zero of
+a multipart full snapshot cannot temporarily erase the page. A skipped part
+still refuses clearance. `drift-snapshot.coax` is authority (10 mutants killed,
+zero survivors). Neither the 32 m clearance nor the 600 µs supplemental worker
+gate changes. Current target evidence: `docs/verification/worker-12981-2026-11-07/`.
+
+
 Aethyrforge binds `local:` room sockets to its existing native room process,
 using the same text frames. Browsers retain the Wasm Worker. Native ticketless
 admission requires development mode, an explicit IPv4 loopback bind and the

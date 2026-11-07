@@ -1,0 +1,15 @@
+// A drift observer publishes player positions only from a completed wire snapshot.
+#authority;
+#test "completed snapshot zero and subsequent full or delta snapshots publish" {
+ #assert ds_complete(0,0,true,0) && ds_complete(20,20,true,0) && ds_complete(20,20,true,1);
+}
+#test "a continuation or missing part cannot publish a world" {
+ #assert !ds_complete(20,20,true,2) && !ds_complete(20,20,true,3);
+ #assert !ds_complete(20,20,false,0) && !ds_complete(20,20,false,1);
+}
+#test "failed headers and stale or future acknowledgements cannot publish" {
+ #assert !ds_complete(-1,-1,true,0) && !ds_complete(20,19,true,0) && !ds_complete(20,21,true,0);
+}
+ds_complete :: (tick:int,heard:int,whole:bool,flags:int)->bool #effects(all) {
+ return tick>=0 && tick==heard && whole && (flags&2)==0;
+}

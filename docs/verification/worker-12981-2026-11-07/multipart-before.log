@@ -1,0 +1,7 @@
+FAIL #test background clearance never publishes an incomplete multipart snapshot (8 ms)
+coax/web/room/drift-bots.coax:121:2: error[E0406]: assertion failed
+   #assert db_clear(b[..],1,w[..],0) && w[0].pz[0]==0;
+   ^
+  note: in #test background clearance never publishes an incomplete multipart snapshot
+1 of 252 checks (--only 'incomplete multipart'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,89 @@
+qualification process priority (nice): 0
+everglade-drift: room 127.0.0.1:9350, page 127.0.0.1:9351, results in /tmp/issue12981-local-fixed
+profile local: round trip 0 ms
+  native room ready after 1 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you 6300,-55300 mm, Bram -450,-5950 cm, Tilda 442,-5949 cm
+  gravity placement: you 6300,-55300 mm, Bram -450,-5950 cm, Tilda 440,-5948 cm
+  step wos
+  step ww
+  step held
+  scripted Hold Person target: room 41, offline 41
+  step folk
+  step end
+  transmitted inputs: origins 155/154, end steps 1770/1770, identical true
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker workload: 1920 ticks in completed cost batches, p50 321 us, p95 535 us, p99 640 us)
+  worker mean tick parts (us): move=29 abilities=55 town=23 spells=7 people=5 rules=12 write=30 send=0 core=366 flush=13 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 535 us, p99 640 us, budget 11000 us at p95: within)
+ok    local scripted Hold Person selects the same person
+ok    local background players stayed at least 32 m away
+DRIFT local gravity safely reaches and drops a townsperson: at 17558 ms (step rg): offline 0 against room 0, by 0 (0 frames off)
+ok    local worker tick p95
+ok    local movement inputs took effect (mm)
+ok    local jump inputs took effect (cm)
+ok    local position (in your heading, since the step)
+ok    local camera heading
+ok    local lift height
+ok    local Reverse Gravity shown
+ok    local Reverse Gravity particles
+ok    local Wind Wall shown
+ok    local Wind Wall particles
+ok    local Wall of Stone shown
+ok    local Wall of Stone panels
+ok    local spell and condition particles
+ok    local hotbar slots
+ok    local condition on you
+ok    local condition on others
+ok    local conditions on the town's people
+ok    local your engine conditions
+ok    local stables down
+ok    local plate text
+ok    local status lines
+ok    local camera jump, offline
+ok    local camera jump, room
+ok    local camera turn with no look, offline
+ok    local camera turn with no look, room
+ok    local corrections
+ok    local a townsperson held
+ok    local NPC speed against clip
+
+| probe | local |
+|---|---|
+| scripted Hold Person selects the same person | ok |
+| background players stayed at least 32 m away | ok |
+| gravity safely reaches and drops a townsperson | DRIFT |
+| worker tick p95 | ok |
+| movement inputs took effect (mm) | ok |
+| jump inputs took effect (cm) | ok |
+| position (in your heading, since the step) | ok |
+| camera heading | ok |
+| lift height | ok |
+| Reverse Gravity shown | ok |
+| Reverse Gravity particles | ok |
+| Wind Wall shown | ok |
+| Wind Wall particles | ok |
+| Wall of Stone shown | ok |
+| Wall of Stone panels | ok |
+| spell and condition particles | ok |
+| hotbar slots | ok |
+| condition on you | ok |
+| condition on others | ok |
+| conditions on the town's people | ok |
+| your engine conditions | ok |
+| stables down | ok |
+| plate text | ok |
+| status lines | ok |
+| camera jump, offline | ok |
+| camera jump, room | ok |
+| camera turn with no look, offline | ok |
+| camera turn with no look, room | ok |
+| corrections | ok |
+| a townsperson held | ok |
+| NPC speed against clip | ok |
+fails

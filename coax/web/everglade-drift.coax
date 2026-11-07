@@ -24,7 +24,7 @@
 // The session, sent to both pages at the same moments, each press at the same step of both pages
 // (dr_both: so both rooms hear the same inputs, #12893) (the room page at ?relay=ws://localhost:PROXY&room=pair-drift-N: the page takes
 // only a localhost relay):
-//   start, crate (W into the crate the world puts 1.5 m ahead of the spawn), strafe (W and D: along
+//   start, crate (W into the crate the world puts 1.5 m ahead of the spawn), strafe (W and A: along
 //   it), walk, jump, rg (Reverse Gravity from the bar, 5, and again to end it), wos (Wall of Stone,
 //   Shift+1), ww (Wind Wall, 6), held (Hold Person on you and the townsperson nearest you, one scripted
 //   spell on both pages: dr_hold; then W, which mustn't move you), folk (standing, the town's people
@@ -488,7 +488,8 @@ dr_rg_patrols :: (x: int, z: int) -> bool {
 #test "gravity placement contains both complete patrols, not only Bram's current point" {
   #assert !dr_rg_patrols(-6300, -60450);   // Tilda's Inn Street endpoint leaves the cylinder
   #assert !dr_rg_patrols(-15530, -56700);  // Bram's road endpoint leaves it
-  #assert dr_rg_patrols(-6300, -56700);
+  #assert dr_rg_patrols(-6300, -56700) && dr_rg_patrols(0,-56800) && dr_rg_patrols(-300,-56800);
+  #assert !dr_rg_patrols(6300,-55300) && !dr_rg_patrols(-6300,-55300); // the opposite gate post misses Bram's road endpoint
 }
 dr_rg_ready :: (c: [] Cdp) -> bool {
   x := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
@@ -498,20 +499,48 @@ dr_rg_ready :: (c: [] Cdp) -> bool {
   print("  gravity placement: you %,% mm, Bram %,% cm, Tilda %,% cm\n", x, z, nx, nz, tx, tz);
   return dr_rg_patrols(x, z) && dr_rg_margin(x, z, nx, nz) && dr_rg_margin(x, z, tx, tz) && dr_int(c, "__dr.probe(700)===1 && __dr.probe(701)===1 ? 1:0", 0) == 1;
 }
+#test "the rehearsal explicitly faces north from either initial camera heading" {
+ #assert dr_north_drag(0)== -571 && dr_north_drag(3142)==0 && dr_north_drag(-3142)==0;
+ for yaw:-3142..<3143 {px:=dr_north_drag(yaw);after:=yaw-px*11/2;delta:=3142-after;while delta>3142 {delta-=6284;}while delta< -3142 {delta+=6284;}#assert delta>= -6 && delta<=6;}
+}
+dr_north_drag :: (yaw:int)->int {
+ delta:=3142-yaw;while delta>3142 {delta-=6284;}while delta< -3142 {delta+=6284;}
+ return -delta*2/11; // actual LOOK_DRAG = 0.0055 radians per CSS pixel
+}
+dr_face_north :: (c:[]Cdp)->bool {
+ for attempt:0..<3 {
+  yaw:=dr_int(c,"__dr.probe(60)",-999999);if yaw== -999999 {return false;}
+  dx:=dr_north_drag(yaw);if dx==0 {return true;}
+  for phase:0..<3 {
+   buf:[512]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
+   jo_key(o[..],"type");jo_str(o[..],[3]string.["mousePressed","mouseMoved","mouseReleased"][phase]);
+   jo_key(o[..],"x");jo_int(o[..],640+(ifx phase==0 then 0 else dx));jo_key(o[..],"y");jo_int(o[..],250);
+   jo_key(o[..],"button");jo_str(o[..],"left");jo_key(o[..],"buttons");jo_int(o[..],ifx phase==2 then 0 else 1);jo_key(o[..],"clickCount");jo_int(o[..],1);jo_end(o[..]);
+   if cdp_call(c,"Input.dispatchMouseEvent",jo_text(o[..]),CDP_CALL_MS)<0 {return false;}
+   proc_sleep(30);
+  }
+  proc_sleep(150);
+ }
+ return false;
+}
 dr_script :: (p: DrPair, dir: string) -> bool {
+  if !dr_face_north(p.a) || !dr_face_north(p.b) {tool_errln("drift: camera did not face the north rehearsal route");return false;}
   dr_mark(p, "start");
   dr_both_key(p, true, "Escape", "Escape", 27); dr_both_key(p, false, "Escape", "Escape", 27);
   proc_sleep(1500);
   dr_mark(p, "crate");
   dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(2500);
   dr_mark(p, "strafe");
-  dr_both_key(p, true, "d", "KeyD", 68); proc_sleep(3000); dr_both_key(p, false, "d", "KeyD", 68);
+  dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(3000); dr_both_key(p, false, "a", "KeyA", 65);
   dr_mark(p, "walk"); proc_sleep(2500);
   dr_mark(p, "jump");
   dr_tap(p, " ", "Space", 32); proc_sleep(1800); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(1200);
-  // Walk to the closed gate's west edge: a physical stop contains both complete patrols.
-  // Backing south instead brought Tilda's Inn Street endpoint outside the cylinder.
-  dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(2000); dr_both_key(p, false, "a", "KeyA", 65); proc_sleep(500);
+  // Clear the front of the gate towers, cross to the open road, then enter
+  // the arch. The palisade/post corners are solid; approaching at x=+/-6.3
+  // leaves Bram's complete patrol outside the gravity cylinder.
+  dr_both_key(p,true,"s","KeyS",83);proc_sleep(300);dr_both_key(p,false,"s","KeyS",83);
+  dr_both_key(p,true,"d","KeyD",68);proc_sleep(2000);dr_both_key(p,false,"d","KeyD",68);
+  dr_both_key(p,true,"w","KeyW",87);proc_sleep(500);dr_both_key(p,false,"w","KeyW",87);proc_sleep(500);
   dr_mark(p, "rg");
   rg_ready := dr_rg_ready(p.a); rg_ready_b := dr_rg_ready(p.b);
   // a round (6 s) between casts: the rules' one action a round
@@ -1417,7 +1446,7 @@ tool_main :: () -> int #export_c #effects(all) {
   dir := args_value(a[..], "--out", btext(db[..]));
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
   inputs:[1]RtqInputs;
-  for file:[8]string.["coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
+  for file:[11]string.["coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
     if !rtq_input_add(inputs[..],file) {tool_errln("Cannot fence the actual drift inputs.");return 1;}
   }
   self:[4096]u8;self_n:=cxproc_self_path(self[..]);
