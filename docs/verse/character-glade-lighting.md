@@ -118,6 +118,12 @@ per block, timber-framed plaster darker at its foot, roof tiles in rows and stra
 Steep banks keep more of their olive under the hill's gold, and broad patches vary its value
 Inside the ridge cut the gold eases further (`gate-walk.jpg`). `reference-compare.jpg` stacks the reference, the main shot and the walk.
 
+A third pass cleared the cliff: the base air is a third thinner (.0055 a metre) and the forward
+haze window opens from 30 m to 65 m, so the cliff reads at its distance while the castle still
+hazes. Rocks keep more of their own olive (greyed .35) and moss climbs more faces. `cg_sun_veil`
+adds the reference's sunlit upper air, a soft warm lift over the far scene on the sun's side
+(`reference-compare-2.jpg`).
+
 Captures are in `docs/verification/character-glade-reference-light-2026-11-07/`: `base.jpg`
 before, `p3.jpg` after the scene passes, `p5.jpg` and `p5ui.jpg` on current main with
 the walk merged, and `p9.jpg` and `p9ui.jpg` after the backlit pass.

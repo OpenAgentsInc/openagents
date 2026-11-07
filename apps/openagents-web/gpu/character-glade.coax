@@ -169,8 +169,8 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (kind>3.5f32 && kind<4.5f32 && town<0) {
   // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
   // faces that look up, as the reference's cliff tops.
-  base:=cg_decode(s.tint);grey:=verse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.55f32);
-  moss:=smoothstep(0.55f32,0.92f32,n.y)*(0.55f32+0.45f32*cg_noise(v2(s.world.x*1.7f32,s.world.z*1.7f32)));
+  base:=cg_decode(s.tint);grey:=verse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
+  moss:=smoothstep(0.30f32,0.85f32,n.y+0.25f32*(cg_noise(v2(s.world.x*0.9f32+s.world.y,s.world.z*0.9f32))-0.5f32))*(0.55f32+0.45f32*cg_noise(v2(s.world.x*1.7f32,s.world.z*1.7f32)));
   base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
   albedo=scale3(base,0.60f32+0.50f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));
  }
@@ -295,6 +295,17 @@ cg_contact_ao :: (pixel:V2,u:[]f32,aux:Tex2D)->f32 {
  }
  return 1.0f32-sum*0.65f32/8.0f32;
 }
+// The reference's sunlit upper air: a soft warm veil over the far scene toward the top of the frame,
+// strongest on the sun's side (it stands behind the glade, up and to the right of centre), none on
+// the near ground. Linear light, added before the film curve.
+cg_sun_veil :: (uv:V2)->V3 {
+ side:=uv.x-0.62f32;k:=smoothstep(0.78f32,0.08f32,uv.y)*(0.2f32+0.8f32*exp(-side*side/0.08f32));
+ return scale3(v3(1.0f32,0.82f32,0.52f32),0.075f32*k);
+}
+#test "glade sun veil warms the far scene on the sun's side and leaves the near ground" {
+ a:=cg_sun_veil(v2(0.62f32,0.2f32));b:=cg_sun_veil(v2(0.05f32,0.2f32));c:=cg_sun_veil(v2(0.62f32,0.9f32));
+ #assert a.x>b.x && b.x>0 && c.x==0 && a.z<a.x;
+}
 charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
  pixel:=v2(pos.x,pos.y);uv:=v2(pos.x/u[0],pos.y/u[1]);raw:=gpu_sample_level(post_light,post_lin,uv,0);
  if (u[10]<1.5f32) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
@@ -308,7 +319,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(c);if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;
