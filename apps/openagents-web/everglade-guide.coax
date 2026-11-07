@@ -224,3 +224,33 @@ eg_first_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point)->int 
 }
 
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+
+// First raid arrival: a small opt-in preview of the opening. It never claims
+// a hit or completion; a later slice must use confirmed room outcomes.
+#test "raid arrival guidance follows the real siege and player position" {
+  #assert eg_raid_arrival_line(false, 7, -16) == 0;
+  #assert eg_raid_arrival_line(true, 0, -16) == 1;
+  #assert eg_raid_arrival_line(true, 7, -16) == 2;
+  #assert eg_raid_arrival_line(true, 7, -48) == 3;
+  #assert eg_raid_arrival_line(true, 8, -70) == 3;
+  #assert eg_raid_arrival_line(true, 5, -70) == 1;
+}
+eg_raid_arrival_line :: (preview:bool, phase:int, z:f32)->int {
+  if !preview {return 0;}
+  if phase != EGE_SIEGE && phase != EGE_STAND {return 1;}
+  if z > -42 {return 2;}
+  return 3;
+}
+eg_raid_arrival_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point)->int {
+  line:=eg_raid_arrival_line(s[0].rp.on,ege_of(s)[0].phase,you.z);
+  if line==0 {return at;}
+  title:=ifx line==1 then "THE WATCH IS PREPARING" else "CULTISTS AT THE SOUTH GATE";
+  how:=ifx line==1 then "FOLLOW THE ROAD TO THE SOUTH GATE" else ifx line==2 then "FOLLOW THE GUARDS TO THE SOUTH GATE" else "HELP THE WATCH PUSH THE CULTISTS BACK";
+  k:=hi(s[0].dpr,0.5);g:=16*k;tc:=8*k;dc:=6.5*k;room:=s[0].width-2*g-28*k;
+  tw:=text_width(title,tc);dw:=text_width(how,dc);
+  if tw>room {tc=tc*room/tw;tw=room;} if dw>room {dc=dc*room/dw;dw=room;}
+  pw:=hi(tw,dw)+28*k;
+  plate(s,u,Box.{x0=g,y0=top,x1=g+pw,y1=top+tc+dc+34*k},0.82,0);
+  n:=draw_text(out,at,title,g+14*k,top+12*k+tc,tc,GAP,SPACE,ink(k,0.95,GOLD_R,GOLD_G,GOLD_B),false,false);
+  return draw_text(out,n,how,g+14*k,top+22*k+tc+dc,dc,GAP,SPACE,ink(k,0.85,PARCH_R,PARCH_G,PARCH_B),false,false);
+}

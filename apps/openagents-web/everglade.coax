@@ -4058,12 +4058,13 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   if join_picking(s) { return join_pick_draw(s, out, u, n); }   // CHARACTER: before you join, and when asked
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
   if s[0].board { return board_panel(s, out, u, n); }
-  if s[0].lift < 0.5 && !s[0].ev.editing && !s[0].guide.quiet {
+  if s[0].lift < 0.5 && !s[0].ev.editing && (!s[0].guide.quiet || s[0].rp.on) {
     // under the title; on a phone, where the chat line and HP share the top, under them
     goal_top := gutter + cap + small + 44 * k;
     if phone(s) { goal_top = hi(goal_top, s[0].chat.box.y1 + 10 * k); }
-    n = tracker(s, out, u, n, goal_top, you);
-    n = eg_first_hud(s, out, u, n, goal_top, you);   // until a quest is taken, the first goal (everglade-guide.coax)
+    if !s[0].rp.on {n = tracker(s, out, u, n, goal_top, you);}
+    if s[0].rp.on {n = eg_raid_arrival_hud(s, out, u, n, goal_top, you);}
+    else {n = eg_first_hud(s, out, u, n, goal_top, you);}   // until a quest is taken, the first goal (everglade-guide.coax)
   }
   line := hint(s);
   hs := 7.5 * k;
