@@ -1,0 +1,184 @@
+// The glade south of the South Gate in Everglade's shaders (#13018; verse/everglade/glade-zone.coax,
+// apps/openagents-web/everglade-glade.coax): Character Create's Nature glade drawn by the scene's own
+// passes and lit by Everglade's sun, sky and haze at its clock, so walking up the road out of it
+// the light never changes hands. Its colours are the glade's own (the meadow's autumn gold, the
+// trail's olive earth, the crimson and orange crowns, the mossy grey stone); eg_paint lights them.
+// Loaded by gpu.coax after verse/style.coax.
+//
+// The pack's glade vertex (verse/tools/assets/character_glade_pack.coax gp_vertex), 8 words: the
+// position (3 f32, the glade's own frame), the normal (snorm8) with the kind in its top byte (0 sky,
+// 1 leaves, 2 grass, 3 flowers, 4 rock, 5 ground, 6 bark, 7 mushroom), the uv (unorm16; bark repeats
+// over -32..32), the tint (rgba8), the texture layer, and the ambient share (a grass seed: its turn).
+#load "../character-glade.coax";
+
+EG_LOOK_GLADE :: cast(u32)27;
+// Everglade's ground's south edge (glade-zone.coax EZ_SEAM): past it the ground is the glade's alone, and
+// Everglade's height field, clamped at that edge, holds no ground of its own, so its meadow grows none.
+EG_GLADE_SEAM :: -176.0f32;
+EG_GLADE_FADE_FROM :: 40.0f32;   // a grass blade fades out between these distances from the eye (m)
+EG_GLADE_FADE_TO :: 55.0f32;
+
+eg_glade_word :: (i:u32,vertices:[]u32)->f32 {return f32_from_bits(vertices[cast(int)i]);}
+eg_glade_world :: (m:EgObj,p:V3)->V3 {q:V4=v4(p.x,p.y,p.z,1.0f32);return v3(wg_dot4(m.r0,q),wg_dot4(m.r1,q),wg_dot4(m.r2,q));}
+eg_glade_turn :: (m:EgObj,n:V3)->V3 {return v3(wg_dot3(v3(m.r0.x,m.r0.y,m.r0.z),n),wg_dot3(v3(m.r1.x,m.r1.y,m.r1.z),n),wg_dot3(v3(m.r2.x,m.r2.y,m.r2.z),n));}
+
+// The static mesh (the object's colour.x its first vertex word).
+eg_glade_static :: (id:u32,m:EgObj,u:[]f32,vertices:[]u32)->EgS {
+  o:EgS;
+  b:u32=add_wrap(wg_u32_f(m.colour.x),mul_wrap(id,8));
+  p:V3=v3(eg_glade_word(b,vertices),eg_glade_word(add_wrap(b,1),vertices),eg_glade_word(add_wrap(b,2),vertices));
+  packed:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(packed>>24)&7;
+  uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);
+  if (kind==6) {uv=v2(uv.x*64.0f32-32.0f32,uv.y*64.0f32-32.0f32);}
+  // the glade's wind (character-glade.coax cg_environment_vs): leaves and grass sway in the local frame
+  t:f32=u[2];
+  wind:f32=sin(p.x*1.8f32+p.z*0.7f32+t*1.6f32)+sin(p.z*2.7f32+t*0.9f32)*0.35f32;
+  if ((kind==1)||(kind==2)) {p.x=p.x+wind*(ifx kind==2 then 0.025f32 else 0.035f32)*(ifx kind==2 then uv.y else saturate(p.y*0.7f32));}
+  nw:V4=wg_unpack4x8snorm(packed);
+  w:V3=eg_glade_world(m,p);
+  o.pos=ifx kind==0 then v4(2.0f32,2.0f32,2.0f32,1.0f32) else eg_clip(w,u);   // no sky of its own: Everglade's
+  o.world=w;o.normal=wg_normalize3(wg_add_f3f3(eg_glade_turn(m,v3(nw.x,nw.y,nw.z)),v3(0.0f32,0.00001f32,0.0f32)));
+  tint:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);
+  o.tint=v3(tint.x,tint.y,tint.z);o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];
+  o.uv1=v2(cast(f32)kind,eg_glade_word(add_wrap(b,7),vertices));o.local=p;o.look=EG_LOOK_GLADE;
+  o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32);o.tangent=v4(0.0f32,0.0f32,0.0f32,0.0f32);o.shard=0;
+  return o;
+}
+// A grass blade: a vertex of one of the three source blades (from the static mesh's first word, the
+// object's colour.y), at the seed the instance names (from the object's colour.x): its place, its
+// height and width, its turn; it fades out with distance from the eye.
+eg_glade_grass :: (id:u32,instance:u32,m:EgObj,u:[]f32,vertices:[]u32)->EgS {
+  o:EgS;
+  b:u32=add_wrap(wg_u32_f(m.colour.y),mul_wrap(id,8));seed:u32=add_wrap(wg_u32_f(m.colour.x),mul_wrap(instance&65535,8));
+  source:V3=v3(eg_glade_word(b,vertices),eg_glade_word(add_wrap(b,1),vertices),eg_glade_word(add_wrap(b,2),vertices));
+  center:V3=v3(eg_glade_word(seed,vertices),eg_glade_word(add_wrap(seed,1),vertices),eg_glade_word(add_wrap(seed,2),vertices));
+  sizes:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(seed,4)]);angle:f32=eg_glade_word(add_wrap(seed,7),vertices);
+  near:f32=wg_length3(wg_sub_f3f3(eg_glade_world(m,center),v3(u[24],u[25],u[26])));
+  fade:f32=1.0f32-smoothstep(EG_GLADE_FADE_FROM,EG_GLADE_FADE_TO,near);
+  cs:f32=cos(angle);sn:f32=sin(angle);
+  p:V3=v3(center.x+(source.x*cs+source.z*sn)*sizes.y,center.y+source.y*sizes.x*fade,center.z+(-source.x*sn+source.z*cs)*sizes.y);
+  height:f32=saturate(source.y);t:f32=u[2];
+  p.x=p.x+(sin(center.x*1.8f32+center.z*0.7f32+t*1.6f32)+sin(center.z*2.7f32+t*0.9f32)*0.35f32)*0.045f32*height*height;
+  packed:u32=vertices[cast(int)add_wrap(b,3)];nw:V4=wg_unpack4x8snorm(packed);
+  n:V3=wg_normalize3(v3((nw.x*cs+nw.z*sn)/sizes.y,nw.y/fmax(sizes.x,0.0001f32),(-nw.x*sn+nw.z*cs)/sizes.y));
+  base:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(seed,5)]);autumn:f32=cg_autumn(center.x,center.z);
+  rust:f32=saturate((center.x-0.5f32)/3.0f32)*smoothstep(0.50f32,0.72f32,eg_glade_noise(v2(center.x*0.8f32,center.z*0.8f32)))*(1.0f32-autumn);
+  bottom:V3=wg_mix_f3f3f(v3(base.x,base.y,base.z),v3(0.56f32,0.17f32,0.025f32),rust);
+  top:V3=wg_mix_f3f3f(v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),v3(0.95f32,0.41f32,0.035f32),rust);
+  w:V3=eg_glade_world(m,p);
+  o.pos=ifx fade>0.0f32 then eg_clip(w,u) else v4(2.0f32,2.0f32,2.0f32,1.0f32);
+  o.world=w;o.normal=eg_glade_turn(m,n);o.tint=wg_mix_f3f3f(bottom,top,height);
+  o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);o.slice=vertices[cast(int)add_wrap(b,6)];
+  o.uv1=v2(2.0f32,height);o.local=center;o.look=EG_LOOK_GLADE;
+  o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32);o.tangent=v4(0.0f32,0.0f32,0.0f32,0.0f32);o.shard=0;
+  return o;
+}
+
+#test "glade noise stays in the unit range and the soil's seams stay subtle" {
+  for i:0..<40 {v:=eg_glade_noise(v2(cast(f32)i*0.37f32,cast(f32)i*-0.61f32));#assert v>=0 && v<=1;}
+  a:=eg_glade_soil(v2(0.1,0.2));#assert a>=0.78 && a<=1.05;
+}
+eg_glade_noise :: (p:V2)->f32 {
+  i:V2=v2(floor(p.x),floor(p.y));f:V2=v2(fract(p.x),fract(p.y));
+  f=v2(f.x*f.x*(3.0f32-2.0f32*f.x),f.y*f.y*(3.0f32-2.0f32*f.y));
+  a:f32=verse_style_hash(i.x,i.y);b:f32=verse_style_hash(i.x+1.0f32,i.y);c:f32=verse_style_hash(i.x,i.y+1.0f32);d:f32=verse_style_hash(i.x+1.0f32,i.y+1.0f32);
+  return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
+}
+eg_glade_soil :: (p:V2)->f32 {
+  cell:V2=v2(floor(p.x*3.5f32),floor(p.y*3.5f32));local:V2=v2(fract(p.x*3.5f32),fract(p.y*3.5f32));
+  first:f32=10.0f32;second:f32=10.0f32;
+  for j:0..<3 {for i:0..<3 {x:f32=cast(f32)i-1.0f32;y:f32=cast(f32)j-1.0f32;
+    dx:f32=x+0.15f32+0.7f32*verse_style_hash(cell.x+x,cell.y+y)-local.x;
+    dy:f32=y+0.15f32+0.7f32*verse_style_hash(cell.x+x+17.0f32,cell.y+y+3.0f32)-local.y;
+    d:f32=dx*dx+dy*dy;if (d<first) {second=first;first=d;} else if (d<second) {second=d;}
+  }}
+  return (0.86f32+0.14f32*smoothstep(0.0f32,0.05f32,second-first))*(0.94f32+0.06f32*eg_glade_noise(v2(p.x*2.0f32,p.y*2.0f32)));
+}
+eg_glade_linear :: (x:f32)->f32 {return ifx x<=0.04045f32 then fmax(x,0.0f32)/12.92f32 else pow((x+0.055f32)/1.055f32,2.4f32);}
+eg_glade_decode :: (c:V3)->V3 {return v3(eg_glade_linear(c.x),eg_glade_linear(c.y),eg_glade_linear(c.z));}
+// An autumn crown's leaf colour by age (character-glade.coax cg_leaf_palette): old leaves orange,
+// young ones on a red tree the reference's crimson.
+eg_glade_leaf :: (tint:V3,age:f32)->V3 {
+  red:f32=saturate((0.5f32-tint.y)*3.0f32);
+  deep:V3=wg_mix_f3f3f(tint,v3(0.66f32,0.05f32,0.02f32),(1.0f32-smoothstep(0.20f32,0.55f32,age))*0.85f32*red);
+  return wg_mix_f3f3f(deep,v3(1.0f32,0.58f32,0.10f32),smoothstep(0.40f32,0.85f32,age)*0.55f32);
+}
+#test "glade leaves keep crimson lobes and orange ones" {
+  young:=eg_glade_leaf(v3(1,0.22f32,0.025f32),0.1f32);old:=eg_glade_leaf(v3(1,0.22f32,0.025f32),0.95f32);
+  #assert young.y<0.12 && old.y>0.38 && young.x>0.65;
+}
+// Character Create's studio light on you (f99a5cccc5 cc_player_light; everglade-create.coax cz_fill in
+// u[230]): a warm bounce from the camera's side, a little above it, on what stands within a few metres
+// of the eye (in the studio, only you), so your face and cloth read in the glade's daylight.
+eg_studio_fill :: (albedo:V3,n:V3,world:V3,u:[]f32)->V3 {
+  to_eye:V3=wg_sub_f3f3(v3(u[24],u[25],u[26]),world);
+  near:f32=1.0f32-smoothstep(5.0f32,9.0f32,wg_length3(to_eye));
+  facing:f32=clampf(wg_dot3(n,wg_normalize3(wg_add_f3f3(wg_normalize3(to_eye),v3(0.0f32,0.35f32,0.0f32)))),0.0f32,1.0f32);
+  return wg_mul_f3f(wg_mul_f3f3(albedo,v3(0.85f32,0.72f32,0.52f32)),facing*near*u[230]);
+}
+#test "the studio light warms what faces the camera nearby, and nothing far or with it off" {
+  u:[240]f32;u[24]=0;u[25]=1.5f32;u[26]=3;u[230]=1;
+  a:=eg_studio_fill(v3(0.4f32,0.3f32,0.2f32),v3(0,0,1),v3(0,1.5f32,0),u[..]);
+  #assert a.x>0.25f32 && a.x>a.z;
+  #assert eg_studio_fill(v3(0.4f32,0.3f32,0.2f32),v3(0,0,-1),v3(0,1.5f32,0),u[..]).x==0;
+  #assert eg_studio_fill(v3(0.4f32,0.3f32,0.2f32),v3(0,0,1),v3(0,1.5f32,-20),u[..]).x==0;
+  u[230]=0;#assert eg_studio_fill(v3(0.4f32,0.3f32,0.2f32),v3(0,0,1),v3(0,1.5f32,0),u[..]).x==0;
+}
+// The glade's colour (linear) at a fragment, its own as Character Create painted it (kind in uv1.x,
+// the glade-local place in local).
+eg_glade_albedo :: (s:EgS,tex:V4,n:V3)->V3 {
+  kind:f32=s.uv1.x;p:V3=s.local;
+  foliage:bool=(kind>0.5f32)&&(kind<2.5f32);leaves:bool=(kind>0.5f32)&&(kind<1.5f32);ground:bool=(kind>4.5f32)&&(kind<5.5f32);
+  albedo:V3=wg_mul_f3f3(v3(tex.x,tex.y,tex.z),eg_glade_decode(s.tint));
+  if (foliage||ground) {albedo=eg_glade_decode(s.tint);}
+  if (ground) {
+    trail:f32=cg_path(p.x,p.z);
+    steep:f32=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
+    cut:f32=(1.0f32-cg_ramp(3.0f32,10.0f32,abs(p.x-cg_road_x(p.z))))*cg_ramp(-17.0f32,-22.0f32,p.z);
+    steep=steep*(1.0f32-0.65f32*cut);
+    albedo=wg_mix_f3f3f(albedo,eg_glade_decode(v3(0.82f32,0.58f32,0.16f32)),cg_autumn(p.x,p.z)*0.80f32*steep*(1.0f32-trail));
+    albedo=wg_mul_f3f(albedo,0.84f32+0.32f32*eg_glade_noise(v2(p.x*0.35f32+4.0f32,p.z*0.35f32)));
+    albedo=wg_mix_f3f3f(albedo,eg_glade_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);
+    mottle:f32=eg_glade_noise(v2(p.x*2.0f32,p.z*2.0f32));meadow:f32=1.0f32-trail;grain:f32=eg_glade_noise(v2(p.x*14.0f32,p.z*14.0f32));
+    albedo=wg_mul_f3f(albedo,(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(eg_glade_soil(v2(p.x,p.z)),1.0f32,meadow));
+  }
+  if (leaves) {
+    if (s.tint.x>s.tint.y*1.2f32) {age:f32=eg_glade_noise(v2(p.x*1.4f32+p.y*0.7f32,p.z*1.4f32));albedo=eg_glade_decode(eg_glade_leaf(s.tint,age));}
+    albedo=wg_mul_f3f(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
+  }
+  if ((kind>2.5f32)&&(kind<3.5f32)&&(s.tint.y<0.99f32)) {albedo=wg_mul_f3f(eg_glade_decode(v3(1.0f32,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
+  if (kind>6.5f32) {albedo=wg_mul_f3f(eg_glade_decode(ifx n.y>0.15f32 then v3(1.0f32,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+  if ((kind>3.5f32)&&(kind<4.5f32)) {
+    // neutral grey stone with moss on the faces that look up, as the reference's cliff tops
+    base:V3=eg_glade_decode(s.tint);grey:f32=verse_style_luma(base.x,base.y,base.z);base=wg_mix_f3f3f(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
+    moss:f32=smoothstep(0.30f32,0.85f32,n.y+0.25f32*(eg_glade_noise(v2(p.x*0.9f32+p.y,p.z*0.9f32))-0.5f32))*(0.55f32+0.45f32*eg_glade_noise(v2(p.x*1.7f32,p.z*1.7f32)));
+    base=wg_mix_f3f3f(base,wg_mul_f3f(eg_glade_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
+    albedo=wg_mul_f3f(base,0.60f32+0.50f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));
+  }
+  if ((kind>1.5f32)&&(kind<2.5f32)) {
+    green:f32=saturate((s.tint.y-s.tint.x)*4.0f32);
+    albedo=wg_mul_f3f3(albedo,wg_mix_f3f3f(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));
+  }
+  return albedo;
+}
+// Its light: Everglade's, as the town's (eg_paint at the clock), with the glade's foliage letting the
+// sun through from behind and a grass blade's foot in its own shade.
+eg_glade_fs :: (s:EgS,tex:V4,front:bool,u:[]f32,heights:[]f32,water_nodes:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
+  if (tex.w<0.35f32) {gpu_demote_helper();}
+  kind:f32=s.uv1.x;foliage:bool=(kind>0.5f32)&&(kind<2.5f32);grass:bool=(kind>1.5f32)&&(kind<2.5f32);
+  n:V3=wg_normalize3(s.normal);
+  if ((!front)&&(!foliage)) {n=wg_neg_f3(n);}
+  albedo:V3=eg_glade_albedo(s,tex,n);
+  ao:f32=ifx grass then 0.36f32+0.64f32*s.uv1.y else 1.0f32;
+  if ((kind>0.5f32)&&(kind<1.5f32)) {ao=clampf(s.uv1.y,0.5f32,1.0f32);}
+  lit:f32=eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,false);
+  res:EgLit=eg_paint(wg_mul_f3f(albedo,ao),n,s.world,lit,false,false,u,heights,water_nodes,false);
+  if (foliage&&(eg_st(1,u).w<0.5f32)) {
+    l:V3=wg_sw_xyz_f4(eg_st(1,u));
+    v:V3=wg_normalize3(wg_sub_f3f3(s.world,v3(u[24],u[25],u[26])));
+    back:f32=pow(clampf(wg_dot3(v,l),0.0f32,1.0f32),2.0f32);
+    scatter:f32=((0.15f32+(0.60f32*back))*(1.0f32-(abs(wg_dot3(n,l))*0.65f32)))*lit*eg_st(0,u).w*(ifx grass then s.uv1.y else 1.0f32);
+    res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f(wg_mul_f3f3(albedo,v3(1.35f32,1.16f32,0.62f32)),scatter)),res.light.w);
+  }
+  return res;
+}

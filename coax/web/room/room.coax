@@ -1157,3 +1157,25 @@ rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -
   for i: 0..<3 { eg_test_tick(v[..], k); }
   #assert !v[0].eg[k].live;
 }
+#test "glade: a hello from Character Create asks for the glade's clearing, even after its seat was put, any other the gate (#13018)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 60000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 128 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 1 -");
+  #assert rm_eg_glade(v[..], k, SeatId.{value = 0}) && !rm_eg_glade(v[..], k, SeatId.{value = 1});
+  #assert !rm_eg_glade(v[..], k, SeatId.{value = 7}) && !rm_eg_glade(v[..], -1, SeatId.{value = 0});
+  // a seat put at the spawn before its hello came is put again when that hello is Character Create's
+  v[0].eg[k].seat[1].placed = true; v[0].eg[k].seat[1].checkpoint_hello = false;
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 128 -");
+  #assert rm_eg_glade(v[..], k, SeatId.{value = 1}) && !v[0].eg[k].seat[1].placed;
+}

@@ -1448,7 +1448,7 @@ net_hello :: (s: [] Everglade, n: [] EgNet) {
   n[0].hello_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
   net_send(n, wire_put_pins(n[0].out[..], 0, WirePins.{}));   // this page's build, which the room admits the hello against (#12839)
-  hello:=wire_hello_value(WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0) | (ifx ege_demo(s) then EGE_DEMO_FLAG else 0), name = ""});
+  hello:=wire_hello_value(WireHello.{look = look, kind = ifx wl_on(s) then "warlock" else "druid", flags = (ifx s[0].touch then 1 else 0) | (ifx n[0].account then 2 else 0) | (ifx ege_demo(s) then EGE_DEMO_FLAG else 0) | (ifx cz_creating(s) then EZ_GLADE_FLAG else 0), name = ""});   // at Character Create the room seats you at the glade's clearing (everglade-create.coax)
   net_send(n, wire_put_hello_value(n[0].out[..], 0, hello));
   md_send_blocks(n);   // who you block: the room sends you nothing of them (#12789)
 }

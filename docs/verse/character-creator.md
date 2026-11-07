@@ -1,10 +1,19 @@
 # Character Studio
 
-`/worlds/character-creator` is a live Aethyr wardrobe for the Quaternius humans.
-It uses the existing people renderer and animation clips, with an independent
-appearance save slot. Its controls and appearance rules are Coax in
-`apps/openagents-web/charactercreator.coax`; `fivelab.coax` dispatches this exact
-page to the studio instead of starting a battle.
+`/worlds/character-creator` is a live Aethyr wardrobe for the Quaternius humans,
+and it is a place in Everglade: Character Create and Everglade are one zone (#13018).
+The page boots Everglade itself (`everglade5e`, Everglade's slot, room and pack)
+at the glade's clearing south of the South Gate, in Character Create's mode: a
+studio camera on your character, the wardrobe down the left, and your keys and
+pointer on the wardrobe. USE IN EVERGLADE hands you the walk. You walk with your
+own keys up the road, through the gate and into the Commons. There is one page,
+one Wasm world, one renderer and one clock the whole way: nothing loads, nothing
+fades, and no frame or iframe opens. The address bar changes to
+`/worlds/everglade` in place (`history.replaceState`).
+
+The wardrobe is Coax in `apps/openagents-web/everglade-create.coax`. The glade's
+place in the world is `verse/everglade/glade-zone.coax`; its drawing is
+`apps/openagents-web/everglade-glade.coax` and `verse/everglade/gpu-glade.coax`.
 
 ## The complete Fantasy Source wardrobe
 
@@ -68,31 +77,23 @@ The source license is CC0 1.0 Universal (`License_Source.txt`).
 ## Build and check
 
 ```sh
-coax/bin/coax test apps/openagents-web/charactercreator.coax
+coax/bin/coax test apps/openagents-web/everglade5e.coax --only "create:"
+coax/bin/coax test apps/openagents-web/everglade5e.coax --only "glade:"
+coax/bin/coax test --library verse/everglade/glade-zone.coax
 coax/bin/coax test aethyr/render/adoption.coax
-coax/bin/coax mutate aethyr/render/adoption.coax --root-only
-coax/web/tool.sh coax/web/wgsl-module.coax \
-  apps/openagents-web/gpu/fivelab.coax apps/openagents-web/fivelab.wgsl \
-  apps/openagents-web/gpu/fivelab.module --check
-COAXIAL_MODE=dev coax/web/wasm.sh \
-  apps/openagents-web/fivelab.coax apps/openagents-web/fivelab-face.c \
-  apps/openagents-web/build/fivelab.wasm \
-  apps/openagents-web/everglade-step.coax aethyr/sticks.coax
-# Generate page metadata as the normal site build does.
+coax/web/tool.sh coax/web/wgsl-module.coax --site --check
+cd apps/openagents-web && ../../coax/web/wasm.sh everglade5e.coax everglade5e-face.c \
+  build/everglade5e.wasm everglade-step.coax ../../verse/grid.coax \
+  ../../verse/everglade/river.coax ../../verse/everglade/guard-guide-policy.coax everglade5e-rules.coax
+coax/web/tool.sh coax/web/room/worker.coax apps/openagents-web/build/everglade-room.wasm
 bun coax/web/realms.ts
-coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:8817 --static
-# With the server running in another terminal, checks real input and reload.
-coax/web/tool.sh coax/web/tests/charactercreator.coax \
-  http://127.0.0.1:8817/worlds/character-creator
+coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:8873
 ```
 
-Rendering adoption binds the exact `character-creator`/`fivelab` pair as an
-explicit legacy consumer; it does not claim a qualified shared/native renderer
-profile. The change does not alter existing battle selection or its look rules.
-
-The shared fivelab Wasm budget is 625,000 bytes after a measured 590,971-byte
-release build with the wardrobe UI and save codec (about 5% headroom). The
-asset pack is separately bounded to 32 MiB.
+Rendering adoption binds the `character-creator`/`everglade5e` pair as a tracked
+legacy consumer, as Everglade's own page is. The realm table's `place_of` says
+the page is a place in Everglade: it takes Everglade's module, slot, room and
+`data-realm`, and only its address and first place differ (`coax/web/realms.ts`).
 
 ## Selector appearance controls
 
@@ -152,12 +153,23 @@ people pack, appearance codec and renderer ABI are unchanged.
 
 ## Nature glade background
 
-The character now stands in the real 3D Nature glade described in
-[character-glade.md](character-glade.md), composed against Quaternius's
-`Preview_1.jpg`. Character Create loads `assets/glade.pack`, which preserves
-all original wardrobe data and appends the static environment. Camera pitch,
-zoom and pan apply to the environment; clothing and saved appearance retain
-their existing behavior. The shared asset IDs and provenance are pinned in
+The character stands in the Nature glade described in
+[character-glade.md](character-glade.md), now a region of Everglade's world. The
+glade's local frame is turned half round and set south of the map's edge, so its
+clearing lies about 150 m down the road from the South Gate and its road through
+the back ridge is Everglade's road out (`verse/everglade/glade-zone.coax`). The
+realm's pack, `everglade-zone.pack`, is `everglade-avatar.pack` with the glade's
+static mesh and three grass kinds appended (`character_glade_pack.coax` in zone
+mode). Everglade's renderer draws them with Everglade's sun, clock and haze; the
+glade keeps its own textures, foliage back-scatter and grass. Everglade's ground
+blends into the glade's from 150 m south of the fountain, the forest wall leaves a
+gap for the road, and the walk takes the glade's ground past the seam.
+
+The studio holds its light at late morning (`fixed:0.58`) while you are in it, so
+it is day on arrival. The town streams with the rest of the world while you
+choose: you can see Everglade's palisade up the road from the clearing. Phones
+draw a share of the grass (`GLADE_GRASS_PHONE`) and Everglade's phone tier for the
+rest. The shared asset IDs and provenance are pinned in
 `assets/registry/scenes/character-glade.json`.
 
 ## Main font: AR Kai C
@@ -175,8 +187,8 @@ The page manifest supplies its FontFace source and family. The browser loads it
 before GPU setup and rasterizes the five existing atlas mip sizes. Character
 Create lays every heading and control out in Coax using the source's exact
 ASCII advances (`charactercreator-font.coax`), with the existing textured-glyph
-vertex format. The tracked legacy fivelab shader now samples those glyphs beside
-its frame-storage binding; battle text remains Filament. The shared canonical
+vertex format. Everglade's HUD shader samples those glyphs (`eg_fx_fs`, the
+`sans_atlas` binding); Everglade's own HUD text remains Filament. The shared canonical
 renderer and font profile are unchanged. This is not a new native/shared font
 qualification. Device recreation reuses the loaded FontFace and rebuilds its
 atlas. Failure to load the requested font refuses startup instead of silently
@@ -242,63 +254,32 @@ coax/web/tool.sh coax/web/tests/player-appearance.coax \
 ## Entering Everglade after creation
 
 A valid saved Character Create profile is already a completed appearance choice.
-Everglade must join directly without automatically opening its legacy Ranger
-name/class/skin/cloak/trim picker. The server still owns the name and room seat.
-This works whether the profile loads before or after the room ticket; a late
-valid profile releases only the automatic picker hold. Invalid records do not
-release it, and an explicitly opened in-world picker remains manual.
-
-The browser handoff test waits for an actual room seat without pressing Enter
-to dismiss a dialog, and rejects any automatic picker on reload.
+Everglade joins directly without opening its legacy Ranger picker. The server
+still owns the name and room seat. A page at Character Create says so in its
+hello (`FLAGS` bit 128, `EZ_GLADE_FLAG`), and the room seats it at the glade's
+clearing (`coax/web/room/room-tick.c` `everglade_place`, `room-world.c`
+`world_place_glade`), so your seat and your page agree on where you stand.
 
 ## The road to Everglade
 
-USE IN EVERGLADE still saves first. Nothing moves until the save is confirmed
-(message 17). Then the controls fade over half a second. The camera moves from
-the studio view to a chase shot behind the character over three seconds. The
-character turns to face the back of the glade and walks up the path, which
-becomes a road over the back ridge. The road ends at the gate of a walled town
-on a plateau: Everglade. You see it in the distance from the clearing. The walk
-takes exactly 30 seconds from the first step to the gate. The road, the pace and
-the camera are fixed functions of time, so every walk is the same
-(`apps/openagents-web/charactercreator-walk.coax`).
-
-While the character walks, the page asks the host to open `/worlds/everglade`
-in place (action 18, `coax/web/zone-host.js`). The host loads Everglade for
-real, with its own `host.js`, in a full-window frame under Character Create's
-opaque canvas, where none of it shows. Everglade fetches and compiles its
-engine, builds its shader pipelines, reads its packs, uploads its textures,
-takes its room seat and draws its first frame there. Then its world loop is
-paused, so the walk keeps the GPU. Its progress comes back as message 18, in
-percent. Nothing is loaded twice.
-
-As the walk reaches the gate, the page asks to go to Everglade (action 1). The
-host hands over in place: the running Everglade cross-fades in over the last
-0.9 seconds of the walk, takes the input, the address bar and the title, and
-Character Create's engine stops and lets go of its GPU device. There is no
-loading screen and no black between the two. Everglade opens with the saved
-character and no character dialog. Back returns to Character Create as a new
-load.
-
-If Everglade is still opening, the character waits at the gate and a small
-"ENTERING EVERGLADE NN%" line shows its progress. After 20 seconds at the gate
-the screen fades to black and the host shows Everglade as it is, its own loading
-screen included, rather than starting it over. Only when the in-place open fails, or the host never answers,
-does the screen fade to black and the page go to Everglade the ordinary way.
-Reduced motion skips the camera move and the cross-fade. Input is ignored during
-the walk.
+USE IN EVERGLADE saves first. Nothing moves until the save is confirmed
+(message 17). Then the wardrobe goes, the camera glides from the studio shot to
+the chase camera behind you over 1.6 seconds, facing the road north, and the
+address bar says `/worlds/everglade` (action 19, `history.replaceState`). The walk
+is yours: your keys, Everglade's controller, Everglade's room. The road climbs out
+of the clearing through the ridge cut, meets the town's road where the two
+grounds join, and runs north to the South Gate and the Commons. It is the same
+world all the way, so there is nothing to hand over, nothing to load and nothing
+to fade.
 
 ```sh
-# Real time: the save, the 30 s walk, the hand-off in place, the same character, the seat, no dialog,
-# and no loading screen on any captured frame. Then a held W must walk the seated player, because
-# the hand-off moves keyboard focus into Everglade.
-coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --mbps 50
-# The same with prefers-reduced-motion: Everglade comes up in place within 5 s.
-coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --motion reduce
-# Everglade from a new browser, for comparison.
-coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/everglade --cold --mbps 50
-# The film: real-time 1920x1080 screenshots of the whole journey, encoded at 30 fps.
-coax/web/tool.sh coax/web/tests/character-walk.coax http://127.0.0.1:8817/worlds/character-creator --film walk.mp4 frames/ --mbps 50
+# Real key input: SURPRISE ME, USE IN EVERGLADE, then W and Shift held (A and D keep to the road)
+# from the clearing through the South Gate to the Commons. Fails on a loading screen, a frame, a new
+# page load, a different character, or a stretch of road under 50 fps.
+coax/web/tool.sh coax/web/tests/one-zone-walk.coax http://127.0.0.1:8873/worlds/character-creator?weather=clear
+# The film: real-time 1920x1080 screenshots of the walk at 30 fps; every frame's mean luminance
+# must be at least 40 of 255.
+coax/web/tool.sh coax/web/tests/one-zone-walk.coax http://127.0.0.1:8873/worlds/character-creator?weather=clear --film walk.mp4 frames/
 ```
 
 ## Compact sidebar
@@ -308,16 +289,12 @@ compact left sidebar. Rows are 40 display pixels apart with 36-pixel hit areas.
 Labels and values sit on one line; the right side remains unobstructed. Narrow
 or short layouts use the existing single bottom panel.
 
-The tinted panel is 75% opaque: the private post pass composites it over the
-fully rendered world, then the shared host draws crisp HUD strokes on the final
-canvas. It does not use an opaque depth mask. Scene-only comparison mode omits
-the panel and all controls. Appearance records and compatibility keys remain
-unchanged. See `docs/verification/character-create-sidebar-2026-11-06/`.
+A shade (one of Everglade's HUD plates) sits under the sidebar, and on a phone
+under the bottom panel and the title, so the labels read over any sky. Drag
+turns your character, P (or DRAG: PAN on a phone) switches the drag to panning,
+and the wheel zooms. Appearance records and compatibility keys remain unchanged.
 
-## Camera ground and sky bounds
+## Camera ground bound
 
-Camera eye height stays at least 0.28 m above the authored glade terrain at its
-actual panned/dollied position. This covers rotation, right-drag pan and zoom
-combinations. The reference sky draws over the full viewport with ray-projected
-UVs; a smooth transition over its outer 16% continues into directional sky,
-rather than exposing the edge of a finite quad or repeating/mirroring clouds.
+The studio camera's eye stays at least 0.28 m above the walk's ground at its
+panned and zoomed position (`cz_studio`). The sky is Everglade's.

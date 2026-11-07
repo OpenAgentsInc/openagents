@@ -1,0 +1,101 @@
+// The glade south of the South Gate (#13018): Character Create's Nature glade
+// (verse/character-glade.coax) as a region of Everglade's own world, so the creator
+// and the city are one zone: one page, one world, one clock. Turned half round and
+// set south of the map's edge, the glade's clearing lies about 150 m down the road
+// from the gate, and its road through the ridge cut is Everglade's road out. The
+// glade's geometry stays in its own local frame in the pack
+// (verse/tools/assets/character_glade_pack.coax, zone mode); this file is the one
+// place that says where that frame lies in the world. The page, the room server's
+// world, the shaders (verse/everglade/gpu-glade.coax) and the pack tool read it.
+//
+// Glade local (x, z) lies at world (EZ_GX - x, EZ_GZ - z), its heights EZ_OY lower:
+// the glade's -z (the road toward its old gate) is Everglade's +z (north, to the gate).
+//   coax/bin/coax test --library verse/everglade/glade-zone.coax
+#load "../character-glade.coax";
+
+EZ_GX :: 3.2;       // world x of the glade's local x 0 (its road at the cut runs near x 3: world x 0)
+EZ_GZ :: -206.5;    // world z of the glade's clearing (local z 0)
+EZ_OY :: -1.25;     // the glade's heights in the world: its clearing 1.25 m under the fountain
+EZ_SEAM :: -176.0;  // Everglade's ground's south edge (plan.coax EG_EDGE): past it the glade's ground alone
+EZ_JOIN :: -168.0;  // where the two grounds meet: Everglade's walkable edge (EG_BOUND)
+EZ_MORPH :: -150.0; // from here south Everglade's ground turns into the glade's (everglade_build_ground)
+EZ_HALF :: 30.0;    // how far east and west of its middle you may walk in the glade
+EZ_ROAD_GAP :: 8.0; // the thicket stands back this far either side of the road out (everglade.coax plant_thicket)
+EZ_SOUTH :: -236.0; // and how far south (local z +29.5: past the clearing, under the hills behind it)
+EZ_WIDE :: 60.0;    // the glade's ground's half width (local x), and its reach past the seam (EZ_LOCAL_NORTH)
+EZ_LOCAL_NORTH :: -38.0;  // the glade's ground's local z nearest the town: 8 m under Everglade's
+EZ_LOCAL_SOUTH :: 40.0;   // and past the clearing
+// The hello's FLAGS bit (coax/web/room/room-everglade.coax): this page starts in the glade, at
+// Character Create, so a seat it opens is put at the clearing (everglade_glade_spawn).
+EZ_GLADE_FLAG :: 128;
+
+#test "the glade's frame puts its clearing south of the seam and its road at the town's" {
+  c := ez_world(0, 0);
+  #assert c[0] == EZ_GX && c[1] == EZ_GZ && c[1] < EZ_SEAM - 25;
+  // the road through the ridge cut meets the town's road (x 0) where the grounds meet
+  r := ez_world(cg_road_x(EZ_GZ - EZ_SEAM), EZ_GZ - EZ_SEAM);
+  #assert abs(r[0]) < 0.5 && r[1] == EZ_SEAM;
+  back := ez_local(r[0], r[1]);
+  #assert abs(back[0] - cg_road_x(EZ_GZ - EZ_SEAM)) < 0.0001 && abs(back[1] - (EZ_GZ - EZ_SEAM)) < 0.0001;
+}
+// A glade local point's world x and z, and back.
+ez_world :: (x: f32, z: f32) -> [2] f32 { return [2] f32.[f32(EZ_GX) - x, f32(EZ_GZ) - z]; }
+ez_local :: (x: f32, z: f32) -> [2] f32 { return [2] f32.[f32(EZ_GX) - x, f32(EZ_GZ) - z]; }
+
+#test "the glade's ground keeps the clearing and its road and rises past its old edges" {
+  #assert ez_local_height(0, 0) == 0 && ez_local_height(cg_road_x(-30), -30) == cg_height(cg_road_x(-30), -30);
+  #assert ez_rise(0, -20) == 0 && ez_rise(25, 0) == 0 && ez_rise(55, 0) > 8 && ez_rise(0, 38) > 8;
+  // the clearing in the world, under the fountain by EZ_OY
+  #assert ez_height(f32(EZ_GX), f32(EZ_GZ)) == f32(EZ_OY);
+}
+// Past the composed glade (its old ground was 65 m across, 65 deep) its ground rises into hills,
+// so from the clearing and the road the glade ends in slopes, not at an edge.
+ez_rise :: (x: f32, z: f32) -> f32 { return 9 * cg_ramp(30, 55, abs(x)) + 9 * cg_ramp(8, 36, z); }
+ez_local_height :: (x: f32, z: f32) -> f32 { return cg_height(x, z) + ez_rise(x, z); }
+// The glade's ground's height at world (x, z).
+ez_height :: (x: f32, z: f32) -> f32 { l := ez_local(x, z); return ez_local_height(l[0], l[1]) + f32(EZ_OY); }
+// Whether world (x, z) lies on the glade's ground (its drawn extent).
+ez_on_ground :: (x: f32, z: f32) -> bool {
+  l := ez_local(x, z);
+  return abs(l[0]) <= f32(EZ_WIDE) && l[1] >= f32(EZ_LOCAL_NORTH) && l[1] <= f32(EZ_LOCAL_SOUTH);
+}
+// Whether world (x, z) is in the glade's walkable part, past Everglade's edge.
+ez_in_glade :: (x: f32, z: f32) -> bool {
+  return abs(x - f32(EZ_GX)) <= f32(EZ_HALF) && z >= f32(EZ_SOUTH) && z <= f32(EZ_JOIN);
+}
+// The walk's height where the glade's ground meets Everglade's (plan.coax everglade_walk_height_out):
+// past the seam the glade's alone; between the seam and the join the higher of the two, as drawn.
+ez_walk_height :: (everglade: f32, x: f32, z: f32) -> f32 {
+  if z >= f32(EZ_JOIN) || !ez_on_ground(x, z) { return everglade; }
+  g := ez_height(x, z);
+  if z < f32(EZ_SEAM) { return g; }
+  return ifx g > everglade then g else everglade;
+}
+#test "the walk takes the glade's ground past the seam and the higher one where they meet" {
+  #assert ez_walk_height(5, 0, -100) == 5;
+  #assert ez_walk_height(-20, f32(EZ_GX), -200) == ez_height(f32(EZ_GX), -200);
+  g := ez_height(0, -172);
+  #assert ez_walk_height(g - 1, 0, -172) == g && ez_walk_height(g + 1, 0, -172) == g + 1;
+}
+// How much of Everglade's ground point (x, z) gives way to the glade's (everglade_build_ground): none
+// north of EZ_MORPH, all of it by 2 m short of the join, across the glade's width and fading past it.
+ez_morph :: (x: f32, z: f32) -> f32 {
+  l := ez_local(x, z);
+  return cg_ramp(f32(EZ_MORPH), f32(EZ_JOIN) - 2, z) * (1 - cg_ramp(f32(EZ_WIDE), f32(EZ_WIDE) + 10, abs(l[0])));
+}
+// Everglade's ground there, turned into the glade's: under the join it lies 0.3 m under the glade's,
+// so the glade's finer ground shows over it where the two overlap.
+ez_ground :: (h: f32, x: f32, z: f32) -> f32 {
+  k := ez_morph(x, z);
+  if k <= 0 { return h; }
+  target := ez_height(x, z) - 0.3 * cg_ramp(f32(EZ_JOIN), f32(EZ_JOIN) - 1, z);
+  return h + (target - h) * k;
+}
+#test "Everglade's ground turns into the glade's toward the seam and stays itself north of it" {
+  #assert ez_ground(4, 0, -100) == 4 && ez_ground(4, 100, -175) == 4;
+  #assert abs(ez_ground(4, 0, -175) - (ez_height(0, -175) - 0.3)) < 0.0001;
+}
+// The place a seat opened by Character Create stands (room-world.c world_place_glade): the clearing,
+// facing the camera (local +z, world south).
+ez_spawn_x :: () -> f32 { return f32(EZ_GX); }
+ez_spawn_z :: () -> f32 { return f32(EZ_GZ); }

@@ -124,7 +124,7 @@ Coax; the Blender bridge performs only SDK inspection/export/rendering.
 
 ```sh
 coax/bin/coax test verse/tools/assets/registry.coax --only registry
-coax/bin/coax test apps/openagents-web/charactercreator.coax --only creator
+coax/bin/coax test apps/openagents-web/everglade.coax --only create:
 coax/web/tool.sh verse/tools/assets/registry.coax wardrobe --check
 coax/web/tool.sh verse/tools/assets/registry.coax check "$HOME/.openagents/assets"
 python3 verse/tools/assets/registry_oracle.py "$HOME/.openagents/assets"

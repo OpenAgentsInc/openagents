@@ -102,6 +102,9 @@
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
 #load "../../aethyr/flyover.coax";   // #fly=PATH: the flyover benchmark's camera (coax/web/flyover.coax, #13017)
+#load "everglade-glade.coax";   // the glade south of the South Gate, Character Create's, in this world (#13018)
+#load "charactercreator-font.coax";   // AR Kai C's advances, for Character Create's labels
+#load "everglade-create.coax";   // Character Create: this world in the studio at the glade's clearing (#13018)
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;
@@ -162,9 +165,10 @@ UNIFORM_FLOATS :: U_CASCADE + CASCADE_BLOCK;
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
 // (the boxes and spheres hold the spells' debris, fire and smoke too: everglade-spells.coax)
-SLOTS :: [5] int.[0, 700, 168, 72, 1640];
-SLOT_AT :: [5] int.[0, 0, 700, 868, 940];
-SHAPE_OBJECTS :: 2580;
+// The first GLADE_SLOTS are the glade's (everglade-glade.coax): its static mesh and its grass.
+SLOTS :: [5] int.[GLADE_SLOTS, 700, 168, 72, 1640];
+SLOT_AT :: [5] int.[0, GLADE_SLOTS, GLADE_SLOTS + 700, GLADE_SLOTS + 868, GLADE_SLOTS + 940];
+SHAPE_OBJECTS :: GLADE_SLOTS + 2580;
 // The kit's instances after the shapes, a group each: a tree kind (its
 // trunk and its leaves, two meshes drawn over the same instances), a small
 // thing of the undergrowth (a bush, a fern, two rocks), then one per piece
@@ -295,7 +299,8 @@ RANGER_FAR_DRAW :: SHARD_DRAW + KIT_MESHES;   // the others' Rangers past REMOTE
 RAID_DRAW :: RANGER_FAR_DRAW + 1;   // the raid's people, a part a draw (everglade-raid-preview.coax)
 LINK_DRAW :: RAID_DRAW + PEOPLE_PARTS;
 AVATAR_DRAW :: LINK_DRAW + 1;
-WATER_DRAW :: AVATAR_DRAW + AVATAR_PARTS;
+GLADE_DRAW :: AVATAR_DRAW + AVATAR_PARTS;   // the glade's static mesh, then its grass kinds (everglade-glade.coax)
+WATER_DRAW :: GLADE_DRAW + GLADE_SLOTS;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad, 2 a rowboat).
@@ -430,6 +435,9 @@ Everglade :: struct {
   counts: [5] int;
   lathe_n: int;
   draws: [DRAWS * 4] u32;
+  shadow_draws: [DRAWS * 4] u32;   // the shadow map's: the scene's but the water and the glade's grass (everglade-glade.coax)
+  glade: [1] EgGlade; glade_triangles: int;   // the glade south of the South Gate (#13018)
+  cz: [1] EgCreate;   // Character Create, when this page opened at it (everglade-create.coax)
   walls: [WALLS * 6] f32; wall_n: int;   // and after wall_n the bridge's two rails
   bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + DOOR_BODIES + GATE_BODIES + EG_CHARACTER_BODIES + FOREST_BODIES + TF_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), the doors' leaves and the gates shut near you (everglade-doors.coax), then the trunks and rocks round you, and the trunks lying (everglade-forest.coax)
   boxes: [BOXES * 6] f32; box_n: int;
@@ -790,7 +798,7 @@ woods_all_round :: (x: f32, z: f32, r: f32) -> bool {
          everglade_in_woods(x + d, z - d) && everglade_in_woods(x - d, z + d);
 }
 off_solids :: (solids: [] f32, count: int, x: f32, z: f32, gap: f32) -> bool {
-  for k: 0..<count - 4 { if box_gap(solids, k, x, z) < gap { return false; } }
+  for k: 0..<count - EG_EDGES { if box_gap(solids, k, x, z) < gap { return false; } }
   return true;
 }
 // Whether a tree at (x, z) is one of the great lawn's.
@@ -803,14 +811,14 @@ put_tree :: (out: [] f32, n: int, x: f32, z: f32, size: f32, yaw: f32, kind: int
   out[o] = x; out[o + 1] = z; out[o + 2] = size; out[o + 3] = yaw; out[o + 4] = f32(kind);
 }
 // The solids that reach out toward the woods (a box wholly inside the town more than 3 m from its
-// edge can't be near a tree), then the world's four edges as everglade_solids ends them (off_solids skips those).
+// edge can't be near a tree), then the world's edges as everglade_solids ends them (off_solids skips those).
 woods_solids :: (out: [] f32) -> int {
   all: [EG_SOLIDS * EG_BOX] f32;
   n := everglade_solids(all[..]);
   m := 0;
   for k: 0..<n {
     o := k * EG_BOX;
-    edge := k >= n - 4;
+    edge := k >= n - EG_EDGES;
     near := edge;
     for c: 0..<4 {
       x := all[o + (c % 2) * 2] + ifx c % 2 == 0 then -3.0f32 else 3.0f32;
@@ -895,6 +903,7 @@ thicket_brush :: (k: int) -> Brush {
   out.z = ifx side >= 2 then along else ifx side == 0 then -d else d;
   water := everglade_in_river(out.x, 1.0) && side < 2;
   if water && row == 1 { out.kind = -1; return out; }
+  if side == 0 && abs(out.x) < f32(EZ_ROAD_GAP) { out.kind = -1; return out; }   // the road on into the glade (glade-zone.coax)
   if water { out.size = 0.9 + jb * 0.1; out.kind = ifx jb < 0.5 then 6 else 7; return out; }
   out.size = 1.25 + jb * 0.3 + f32(row) * 0.15; out.kind = 4;
   return out;
@@ -911,7 +920,7 @@ plant_thicket :: (s: [] Everglade) {
       d := f32(EG_THICKET) + 2.4 + (ja - 0.5) * 0.3;
       x := ifx side < 2 then along else ifx side == 2 then -d else d;
       z := ifx side >= 2 then along else ifx side == 0 then -d else d;
-      if (everglade_in_river(x, 1.0) && side < 2) || n >= TREES { continue; }
+      if (everglade_in_river(x, 1.0) && side < 2) || n >= TREES || (side == 0 && abs(x) < f32(EZ_ROAD_GAP) + 1) { continue; }
       kind := ifx jb < 0.75 then cast(int) (jb / 0.375) else 2 + cast(int) ((jb - 0.75) * 8) % 2;
       put_tree(s[0].trees[..], n, x, z, 0.9 + ja * 0.3, yaw, kind);
       n += 1;
@@ -923,8 +932,15 @@ plant_thicket :: (s: [] Everglade) {
 
 // Keeps you inside the world's edge (plan.coax EG_BOUND), where the thicket stands: a step past
 // it slides along it. The woods are open; their trunks and rocks stand in your way as bodies.
+// South of the edge the glade (glade-zone.coax) is walkable too: a step that stays in the town's square
+// or the glade's goes; one that leaves both slides along the edge of the one it left.
 everglade_hold :: (s: [] Everglade, ox: f32, oz: f32, nx: f32, nz: f32) -> Point #export_c #effects(all) {
   b := f32(EG_BOUND);
+  inside := abs(nx) <= b && abs(nz) <= b;
+  if inside || ez_in_glade(nx, nz) { return v3(nx, 0, nz); }
+  if ez_in_glade(ox, oz) && !(abs(ox) <= b && abs(oz) <= b) {
+    return v3(clamp(nx, f32(EZ_GX) - f32(EZ_HALF), f32(EZ_GX) + f32(EZ_HALF)), 0, clamp(nz, f32(EZ_SOUTH), f32(EZ_JOIN)));
+  }
   return v3(clamp(nx, -b, b), 0, clamp(nz, -b, b));
 }
 
@@ -1054,6 +1070,7 @@ everglade_catalog :: (s: [] Everglade, input: string) #export_c #effects(all) {
   s[0].ranger_first = 0; s[0].ranger_count = 0; s[0].ranger_word = 0; s[0].rangers[0].layer = -1;
   s[0].rangers[0].far_first = 0; s[0].rangers[0].far_count = 0;
   cc.ca_catalog(s[0].avatar[..],text);
+  glade_catalog_start(s[0].glade[..]);
   for k: 0..<PEOPLE_PARTS { s[0].part_first[k] = 0; s[0].part_count[k] = 0; s[0].part_word[k] = 0; }
   i := 0;
   while i < text.count {
@@ -1075,6 +1092,7 @@ everglade_catalog :: (s: [] Everglade, input: string) #export_c #effects(all) {
       name_end := word_end(line, 2);
       at := name_end; nums: [6] int;
       for k: 0..<6 { nums[k] = whole_at(line, at); at = word_end(line, at + 1); }
+      if glade_catalog_line(s[0].glade[..], line[2..<name_end], nums) { continue; }   // the glade's (everglade-glade.coax)
       if line[2..<name_end] == RANGER_NAME && nums[0] >= 0 && nums[1] > 0 && nums[3] >= 0 && nums[5] == RANGER_JOINTS {
         s[0].ranger_first = nums[0]; s[0].ranger_count = nums[1]; s[0].ranger_word = nums[3];
       }
@@ -1115,7 +1133,8 @@ everglade_catalog :: (s: [] Everglade, input: string) #export_c #effects(all) {
 }
 everglade_pack_failed :: (s: [] Everglade) #export_c #effects(all) { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effects(all) {
-  if kind==16 {ok:=everglade_avatar_profile(s,text);return;}
+  if kind==16 {ok:=everglade_avatar_profile(s,text);if ok {cz_kept(s);}return;}
+  if cz_message(s, kind, text) { return; }   // Character Create's record kept (everglade-create.coax)
   everglade_guard_message(s, kind, text);
   if kind == 601 || kind == 603 { s[0].guide.asked=false; s[0].guide.help_requested=false; s[0].guide.key_down=false; s[0].guide.finger= -1; }
   // hidden and shown, through the shared lifecycle profile (everglade-net.coax net_life, #12856); a blur
@@ -1143,6 +1162,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effec
     rp_facts(s, fact(text, "url"));   // ?raid=preview (everglade-raid-preview.coax)
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
+    cz_facts(s, text);   // at Character Create: the glade's clearing, the studio's light (everglade-create.coax)
     ms := sp_number(fact(text, "now"));
     s[0].now_s = ifx ms >= 0 then ms / 1000.0 else -1.0;
     return;
@@ -1363,6 +1383,15 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
+  // the glade's clearing south of the gate, where Character Create opens (everglade-glade.coax)
+  if hash == "glade" {
+    x := ez_spawn_x(); z := ez_spawn_z();
+    s[0].spawn = v3(x, 0, z); s[0].spawn_face = f32(PI);
+    s[0].feet = v3(x, walk_at(s, x, z), z);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return;
+  }
   if door_hash(s, hash) { return; }   // #door-inn, #door-crypt: outside a shut door, facing it (everglade-doors.coax)
   for b: 0..<EG_BUILDINGS {
     if !EG_INTERIOR[b] || hash != EG_ROOM_ID[b] { continue; }
@@ -1442,6 +1471,7 @@ hold_bit :: (key: int) -> int {
 
 everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
+  if cz_key(s, key) { return true; }   // in the studio the keys are the wardrobe's (everglade-create.coax)
   if rp_echo_key(s, key) { return true; }   // ?stage=echo: N starts Echo's orbit (everglade-raid-preview.coax)
   if ega_key(s, key) { return true; }   // a SETTINGS row waiting for its key, or Esc shutting the pane (everglade-access.coax)
   if join_key(s, key) { return true; }   // the CHARACTER picker takes the keys while it is up
@@ -1478,6 +1508,7 @@ eg_play_key :: (s: [] Everglade, key: int, mods: int) -> bool {
 }
 
 everglade_key_up :: (s: [] Everglade, raw: int, mods: int) -> bool #export_c #effects(all) {
+  if cz_creating(s) { return true; }
   key := eg_key_play(s, raw);
   if key == 0 { return false; }
   if key == 'g' || key == 'G' { s[0].guide.key_down=false; }
@@ -1505,6 +1536,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
     s[0].sp.slot_held = -1; s[0].sp.slot_finger = -1;
   }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
+  if cz_pointer(s, x, y, phase, id) { return true; }   // the studio's wardrobe and its drag (everglade-create.coax)
   if join_pointer(s, x, y, phase, id) { return true; }   // INVITE, CHARACTER and its picker (everglade-join.coax)
   if pt_pointer(s, x, y, phase, id) { return true; }   // PARTY and its pane (everglade-party.coax)
   if md_pointer(s, x, y, phase, id) { return true; }   // a player's nameplate and its pane (everglade-moderate.coax)
@@ -1545,6 +1577,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
 }
 
 everglade_wheel :: (s: [] Everglade, dy: f32) #export_c #effects(all) {
+  if cz_wheel(s, dy) { return; }
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
@@ -1584,6 +1617,7 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
 // own hood and cloak, so then too.
 EYE_IN_CLOAK :: 0.9;   // m along the camera's ray from your head
 you_inside :: (s: [] Everglade) -> bool {
+  if cz_camera_own(s) { return false; }   // Character Create's studio camera, not the orbit, is looking (everglade-create.coax)
   o := s[0].orbit;
   pulled := finite(o.shown) && o.shown < lo(f32(EYE_IN_CLOAK), verse_orbit_ray(o).far - 0.1);
   return (verse_orbit_inside(o) || pulled) && s[0].lift < 0.5;
@@ -3314,7 +3348,7 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   // COND, everglade-status.coax): you drop onto your back and lie there until you are up again
   down := !dead && ((st_cond(s, ST_YOU) & (WC_UNCONSCIOUS | WC_PRONE)) != 0 || st_down(s, ST_YOU));
   s[0].down_t = ifx down then (ifx s[0].down_t < 0 then 0.0f32 else s[0].down_t + (ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32)) else -1.0f32;
-  motion := rangers_you_clip(s, ifx dead || down then SKIN_IDLE else skin_motion(speed, airborne), airborne, dead || down, dt);   // the swing as you cast
+  motion := cz_motion(s, rangers_you_clip(s, ifx dead || down then SKIN_IDLE else skin_motion(speed, airborne), airborne, dead || down, dt));   // the swing as you cast; in the studio its ANIMATION
   skin_advance(rig, s[0].skin[..], motion, speed, dt);
   fade := ifx s[0].skin[0].fade > 0 then s[0].skin[0].fade else f32(SKIN_FADE);
   if still && motion == SKIN_IDLE && s[0].skin[0].clock - s[0].skin[0].changed >= fade {
@@ -3355,7 +3389,7 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
     for k:0..<309*12 {s[0].palette[LINK_PAL_AT+k]=s[0].link[0].palette[k];}
     for k:0..<12 {s[0].objects[o+k]=rows[k];}s[0].objects[o+12]=cast(f32)s[0].link_word;s[0].objects[o+13]=cast(f32)(LINK_PAL_AT/4);s[0].objects[o+14]=9;s[0].objects[o+15]=24;shadow(s,u,feet.x,feet.z,floor_under(s,feet.x,feet.z,feet.y),0.45,0.6);return;
   }
-  avatar_figure(s,rows,motion,speed,ifx dead || down then 0.0f32 else dt,still);
+  avatar_figure(s,rows,motion,cz_speed(s,speed),ifx dead || down then 0.0f32 else dt,still);
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = f32(s[0].ranger_word); s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
@@ -3399,6 +3433,7 @@ horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
 
 ground_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
   lifted := add(r.from, v3(0, -0.5, 0));
+  if glade_ray_near(lifted, r.dir, r.far) { return glade_ground_ray(s, lifted, r.dir, r.far); }   // the glade's ground (everglade-glade.coax)
   return verse_terrain_ray(everglade_ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
@@ -4050,6 +4085,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   // the raid preview's flight: the film clean but for the names over heads, Darian's among them (everglade-raid-preview.coax)
   if rp_hud_off(s) { s[0].map_button = Box.{}; return labels(s, out, u, 0, you); }
+  if cz_creating(s) { s[0].map_button = Box.{}; return cz_hud(s, out, u); }   // Character Create's wardrobe alone (everglade-create.coax)
   if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
   md_plates_clear(s);
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
@@ -4254,6 +4290,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   rp_frame(s, t);
   shot := rp_shot(s, camera_frame(s, shown, s[0].intent_x, s[0].intent_z, t));   // heading: your controls' (everglade_intent)   // the raid preview's flight, else yours (everglade-raid-preview.coax)
   shot = spells_camera(s, shot, t);   // a blast shakes it; nothing turns it
+  shot = cz_shot(s, shown, shot, t);   // Character Create's studio camera, and its glide behind you (everglade-create.coax)
+  cz_tick(s, t, still);
   if s[0].fly.ok { shot = fly_shot(s[0].fly, cast(f32) (s[0].time - s[0].fly_from)); }   // #fly=: the benchmark's path, unshaken
 
   for k: 0..<5 { s[0].counts[k] = 0; }
@@ -4264,7 +4302,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   sp_marks(s, u, U_MARKS);
   view(shot, width, height, u, U_VIEW);
   // in a rowboat you sit on its thwart: your legs go down under it, out of sight
-  figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
+  figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, cz_face(s, face), speed, act == 3, t, still);
   egs_frame(s, shot, shown, speed, act == 3 || s[0].water == WATER_BOAT, t, still);   // the listener, your footfalls, who falls (everglade-sound.coax)
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t, still);
@@ -4334,6 +4372,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   if avatar_ready(s) && ci_you_shown(s) && !you_inside(s) && !link_visible {
     for i:0..<s[0].avatar_n {d=(AVATAR_DRAW+i)*4;s[0].draws[d+2]=cast(u32)(EG_CELLS*EG_CELLS+AVATAR_AT+i);s[0].draws[d+3]=1;}
   }
+  s[0].glade_triangles = 0;
+  glade_frame(s, shot.eye);   // the glade south of the South Gate (everglade-glade.coax)
   // the people: a part a draw, its instances the people shown wearing it
   for k: 0..<PEOPLE_PARTS {
     d = (PEOPLE_DRAW + k) * 4;
@@ -4373,6 +4413,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].water_triangles = s[0].water_vertices / 3 * waters;
 
   u[0] = width; u[1] = height; u[2] = f32(s[0].time); u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  u[U_PATH_INFO + 2] = cz_fill(s);   // the studio's soft front light on you (everglade-create.coax; gpu.coax eg_studio_fill)
   u[6] = s[0].dpr;
   u[7] = horizon_y(shot, u, height);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
@@ -4461,10 +4502,12 @@ board_middle :: () -> Point {
 }
 
 // While the map shows, while you talk or read the board, you stand still.
-everglade_busy :: (s: [] Everglade) -> bool #export_c #effects(all) { return s[0].above || s[0].talk >= 0 || s[0].board || watch_down(s) || join_picking(s); }
+everglade_busy :: (s: [] Everglade) -> bool #export_c #effects(all) { return s[0].above || s[0].talk >= 0 || s[0].board || watch_down(s) || join_picking(s) || cz_creating(s); }
 
 // Nothing draws until the pack is in: its index buffer holds the shapes' indices too.
 everglade_draws :: (s: [] Everglade) -> int #export_c #effects(all) { return ifx s[0].pack_ready then DRAWS else 0; }
+// The shadow map's own list (host.js coaxial_shadow_draws_v1): the scene's but the water and the glade's grass.
+everglade_shadow_draw_count :: (s: [] Everglade) -> int #export_c #effects(all) { return ifx s[0].pack_ready then glade_shadow_draws(s) else 0; }
 everglade_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return EG_GROUND_POINTS * 2 * 4; }
   if k == 2 { return PALETTE_FLOATS * 4; }
@@ -4825,6 +4868,14 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert c.x == 168 && c.z == 10.3;
   d := everglade_hold(g[..], -50, -167.9, -50.2, -168.5);
   #assert d.x == -50.2 && d.z == -168;
+  // Down the road south past the edge you walk on into the glade (glade-zone.coax), and in it you
+  // stay: its sides hold you, and back north you walk out into the town again.
+  e := everglade_hold(g[..], 0, -167.9, 0, -168.5);
+  #assert e.x == 0 && e.z == -168.5;
+  f := everglade_hold(g[..], f32(EZ_GX) + f32(EZ_HALF) - 0.1, -190, f32(EZ_GX) + f32(EZ_HALF) + 0.4, -190.2);
+  #assert f.x == f32(EZ_GX) + f32(EZ_HALF) && f.z == -190.2;
+  h := everglade_hold(g[..], 0, -168.2, 0, -167.6);
+  #assert h.z == -167.6;
   // The thicket stands all round, just past the edge: from every half metre along it, brush (or,
   // across the river, rock) reaches within a stride of the bound, and nothing of it stands inside.
   for side: 0..<4 {
@@ -4832,6 +4883,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
       along := -f32(EG_BOUND) + f32(i) * 0.5;
       bx := ifx side < 2 then along else ifx side == 2 then -f32(EG_BOUND) else f32(EG_BOUND);
       bz := ifx side >= 2 then along else ifx side == 0 then -f32(EG_BOUND) else f32(EG_BOUND);
+      if side == 0 && abs(along) < f32(EZ_ROAD_GAP) { continue; }   // but the road on into the glade
       least := 1000.0f32;
       for t: side * 2 * THICKET_ROW..<(side + 1) * 2 * THICKET_ROW {
         br := thicket_brush(t);

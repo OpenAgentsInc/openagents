@@ -698,6 +698,9 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   st[0].flags = eg_clamp(h.flags, 0, 255);
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
+  // Character Create's hello (RM_GLADE_FLAG) can come after the seat's first tick put it at the
+  // spawn: it is put again, at the glade's clearing (room-tick.c everglade_place)
+  if (st[0].flags & RM_GLADE_FLAG) != 0 { st[0].placed = false; }
   rv_hp_back(v, k, seat_id); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
   trv_carry(v, k, seat_id);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
   ck_restore(v,k, seat_id);
@@ -837,6 +840,12 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
 // Whether seat s sits and is still to be put in the world.
 rm_eg_unplaced :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
   return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k, s_id).schema!=2);
+}
+RM_GLADE_FLAG :: 128;   // verse/everglade/glade-zone.coax EZ_GLADE_FLAG (the room server doesn't load the plan: keep them alike)
+// A seat whose hello came from Character Create (FLAGS EZ_GLADE_FLAG, apps/openagents-web/everglade-create.coax):
+// it is seated at the glade's clearing south of the gate, where that page stands you (room-tick.c everglade_place).
+rm_eg_glade :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
+  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live && (v[0].eg[k].seat[s].flags & RM_GLADE_FLAG) != 0;
 }
 rm_eg_rooms :: () -> int #export_c #effects(all) { return EG_ROOMS; }
 rm_eg_seats :: () -> int #export_c #effects(all) { return EG_SEATS; }

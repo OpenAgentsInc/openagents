@@ -12,6 +12,17 @@ Camera movement, wind, warm sunlight, geometry shadows and contact shading
 remain live. The original scene placement was not recovered. Visual matching
 is authored against the reference and is not a claim of pixel equality.
 
+Since #13018 the glade is a region of Everglade's world, south of the South
+Gate, drawn by Everglade's renderer in Everglade's light, and Character Create is
+Everglade's page started at its clearing (docs/verse/everglade.md, "The glade
+south of the gate"). The zone pack, `everglade-zone.pack`, carries the glade
+without its sky shell or its distant town: Everglade's sky and Everglade's real
+town stand in for them. Build it with
+`coax/web/tool.sh verse/tools/assets/character_glade_pack.coax ... zone`; the
+sections below describe the glade's composition and its original standalone
+renderer (`apps/openagents-web/gpu/character-glade.coax`), kept as the lighting
+reference for the glade checks.
+
 ## Source inspection
 
 The owner also unzipped `Engine Projects/Stylized Nature MegaKit`, an Unreal

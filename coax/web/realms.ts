@@ -66,7 +66,9 @@ export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
 // page: the module's data-page (coaxial_page), when one module draws several pages: the Grid is the homepage's (newland, page 1).
-export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+// place_of: the realm this page opens a place in (Character Create, at Everglade's glade, #13018): one
+// world, so the page is that realm's, its module, slot and room; only its address and its first place differ.
+export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -110,7 +112,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     const r = w.realm
     if (!r) continue
     if (!ID.test(r.slug) || !ID.test(r.slot) || !/^[a-z][a-z0-9-]{0,31}$/.test(r.module)) throw new Error(`realms.json: ${w.id}: slug, slot or module`)
-    once(`slug ${r.slug}`); once(`slot ${r.slot}`)
+    once(`slug ${r.slug}`); if (!r.place_of) once(`slot ${r.slot}`)
     if (r.slot_was) once(`slot ${r.slot_was}`)
     if (!STYLES.includes(r.style)) throw new Error(`realms.json: ${r.slug}: style is one of ${STYLES.join(", ")}, not ${JSON.stringify(r.style)}`)
     variant(r.slug, r.style, r.variant)
@@ -147,6 +149,13 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
+  }
+  // a place in another realm is that realm's page: its module and its slot
+  for (const w of list) {
+    const r = w.realm
+    if (!r?.place_of) continue
+    const home = list.find((o) => o.realm?.slug === r.place_of && !o.realm.place_of)?.realm
+    if (!home || home.module !== r.module || home.slot !== r.slot) throw new Error(`realms.json: ${r.slug}: place_of ${r.place_of} is a realm with the same module and slot`)
   }
   return list
 }
@@ -271,7 +280,7 @@ export function page(r: Realm, isListed = true): string {
   // its link preview (docs/web/og-tags.md): its hand-made card, else the one og-render.ts renders from a still of it
   const card = `https://openagents.com${r.card ?? renderedCard(`realms/${r.slug}`)}`
   const alt = esc(r.card === DEFAULT_IMAGE ? "OpenAgents" : r.card ? r.alt : `${r.title}: a still of the world, with its name`)
-  const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
+  const slot = ` data-realm="${r.place_of ?? r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.page ? ` data-page="${r.page}"` : "")
     + (r.ui_font_src ? ` data-ui-font-src="${esc(r.ui_font_src)}" data-ui-font-family="${esc(r.ui_font_family ?? "RealmUIFont")}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")

@@ -21,6 +21,8 @@ bool world_prepare(int k);
 bool world_place(int k, int s, float out[WORLD_POSE]);
 /* seat s of room k where its player stood (x, y, z, facing yaw), as world_place does at the gate */
 bool world_place_at(int k, int s, float x, float y, float z, float yaw, float out[WORLD_POSE]);
+/* seat s of room k at the glade's clearing, where Character Create stands you (apps/openagents-web/everglade-glade.coax) */
+bool world_place_glade(int k, int s, float out[WORLD_POSE]);
 /* Seat s of room k steps one input (1 / WORLD_HZ s): its pose after it. */
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
 /* the rowboats (#12861): the room's floats a tick on; the n-th boat (WORLD_BOAT: x y z yaw rower oars float); a seat gone */

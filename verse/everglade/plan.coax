@@ -16,6 +16,7 @@
 //   coax/bin/coax test --library verse/everglade/plan.coax --steps 2000000000
 
 #load "../../aethyr/terrain.coax";
+#load "glade-zone.coax";   // the glade south of the South Gate, Character Create's (#13018)
 
 // Wave 1 of the map's expansion (docs/verse/2026-11-03-everglade-map-gap-analysis.md): the world
 // grew from 208 m to 352 m a side, as the previous engine's first expansion grew its glade into a
@@ -267,7 +268,18 @@ everglade_build_ground :: (heights: [] f32) -> bool {
   if !verse_terrain_build(everglade_ground(), heights, nodes[..], links[..], f32(EG_PATH_HALF), flats[..]) { return false; }
   everglade_carve_river(heights);
   everglade_carve_ponds(heights);
+  everglade_meet_glade(heights);
   return true;
+}
+// South of EZ_MORPH the ground turns into the glade's (glade-zone.coax ez_ground), so the road out of
+// the South Gate runs on through the ridge cut into Character Create's glade with no step or wall.
+everglade_meet_glade :: (heights: [] f32) {
+  w := EG_CELLS + 1;
+  for j: 0..<w {
+    z := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+    if z > f32(EZ_MORPH) { break; }
+    for i: 0..<w { x := f32(EG_EDGE) + f32(i) * f32(EG_CELL); heights[j * w + i] = ez_ground(heights[j * w + i], x, z); }
+  }
 }
 
 // ---- the ponds (docs/verse/water.md, W3: the previous Everglade's four, verse/everglade/previous/water.md
@@ -442,7 +454,7 @@ everglade_walk_height :: (heights: [] f32, deck: f32, x: f32, z: f32) -> f32 { r
 // The same with the deck's planks that are down (`out`, a bit each: everglade_deck_plank): where one
 // is down there is no deck, and you are on the ground under it (the river's bed).
 everglade_walk_height_out :: (heights: [] f32, deck: f32, out: int, x: f32, z: f32) -> f32 {
-  h := verse_terrain_height(everglade_ground(), heights, x, z);
+  h := ez_walk_height(verse_terrain_height(everglade_ground(), heights, x, z), x, z);   // past the seam, the glade's
   if everglade_deck_holds(out, x, z) { return hi(h, deck); }
   return h;
 }
@@ -474,8 +486,9 @@ everglade_deck_crossable :: (out: int) -> bool {
 
 // Every box a walker can't pass, five numbers each: the palisade, the
 // buildings, the solid props, the districts' shut houses, and the edge of the world (always the
-// last four). Returns how many.
-EG_SOLIDS :: EG_PALISADE_N + EG_BUILDINGS + 4 * EG_INTERIORS + EG_RIVER + EG_DHOUSES + 4;
+// last five). Returns how many.
+EG_EDGES :: 5;   // the world's edges: the south one in two, either side of the glade (glade-zone.coax)
+EG_SOLIDS :: EG_PALISADE_N + EG_BUILDINGS + 4 * EG_INTERIORS + EG_RIVER + EG_DHOUSES + EG_EDGES;
 everglade_solids :: (out: [] f32) -> int {
   bld := EG_BUILDING;
   pal := EG_PALISADE;
@@ -492,8 +505,10 @@ everglade_solids :: (out: [] f32) -> int {
   dh := EG_DHOUSE;
   for i: 0..<EG_DHOUSES { n = put_box(out, n, dh[..], i); }
   b := f32(EG_BOUND);
-  edges := [20] f32.[-b - 4, -b - 4, b + 4, -b, 12,   -b - 4, b, b + 4, b + 4, 12,   -b - 4, -b, -b, b, 12,   b, -b, b + 4, b, 12];
-  for i: 0..<4 { n = put_box(out, n, edges[..], i); }
+  // the south edge stands either side of the glade (glade-zone.coax): the road runs on into it
+  gw := f32(EZ_GX) - f32(EZ_HALF); ge := f32(EZ_GX) + f32(EZ_HALF);
+  edges := [EG_EDGES * EG_BOX] f32.[-b - 4, -b - 4, gw, -b, 12,   ge, -b - 4, b + 4, -b, 12,   -b - 4, b, b + 4, b + 4, 12,   -b - 4, -b, -b, b, 12,   b, -b, b + 4, b, 12];
+  for i: 0..<EG_EDGES { n = put_box(out, n, edges[..], i); }
   return n;
 }
 

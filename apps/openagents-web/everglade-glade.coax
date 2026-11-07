@@ -1,0 +1,164 @@
+// The glade south of the South Gate (#13018, verse/everglade/glade-zone.coax): Character Create's
+// Nature glade drawn by Everglade's own renderer, in Everglade's light. The realm's pack carries it
+// (verse/tools/assets/character_glade_pack.coax, zone mode): one static mesh, its trees, rocks,
+// flowers and ground, in the glade's own frame, and three kinds of grass blade, each drawn once for
+// every seed the pack planted (its place, size and turn). The glade's objects are the shapes' first
+// slots (everglade.coax SLOTS[0]): the static mesh's, then a grass kind's each. Each holds the
+// glade's frame (its three rows: local to world), the vertex words, and a mark the scene's shader
+// knows it by (verse/everglade/gpu-glade.coax).
+//   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "glade:"
+
+GLADE_GRASS :: 3;
+GLADE_SLOTS :: 1 + GLADE_GRASS;
+GLADE_MARK :: 10.0;          // the static mesh's colour.z (gpu-glade.coax eg_glade_place)
+GLADE_GRASS_MARK :: 11.0;    // a grass kind's
+GLADE_GRASS_BIT :: 0x40000000;   // a grass draw's base instance: this bit, its kind over 16 bits, the seed under
+GLADE_GRASS_NEAR :: 55.0;    // metres from the eye to the seeds' middle: all the grass drawn nearer than this
+GLADE_GRASS_FAR :: 85.0;     // and none past this (the shader fades each blade out from 40 m)
+GLADE_GRASS_PHONE :: 0.35;   // the share of the seeds a phone draws
+GLADE_SEEN :: 300.0;         // the static mesh is drawn while the eye is this near the clearing
+
+EgGladeDraw :: struct { first: int; count: int; word: int; n: int; }
+EgGlade :: struct { mesh: EgGladeDraw; grass: [GLADE_GRASS] EgGladeDraw; grass_n: int; on: bool; }
+
+// A catalog row of the zone pack's (C NAME FIRST COUNT SOURCE WORD VERTICES 0, SOURCE the glade's licence line): the static mesh's, or a
+// grass kind's (its WORD the seeds', VERTICES how many). true when it was the glade's.
+glade_catalog_line :: (g: [] EgGlade, name: string, nums: [6] int) -> bool {
+  if name == "glade/environment" && nums[0] >= 0 && nums[1] > 0 && nums[3] >= 0 {
+    g[0].mesh = EgGladeDraw.{first = nums[0], count = nums[1], word = nums[3], n = 1};
+    g[0].on = true;
+    return true;
+  }
+  if name.count == 12 && name[0..<11] == "glade/grass" {
+    k := cast(int) name[11] - cast(int) '0';
+    if k >= 0 && k < GLADE_GRASS && nums[0] >= 0 && nums[1] >= 3 && nums[3] >= 0 && nums[4] >= 1 && nums[4] <= 65535 {
+      g[0].grass[k] = EgGladeDraw.{first = nums[0], count = nums[1], word = nums[3], n = nums[4]};
+      g[0].grass_n = lo_i(GLADE_GRASS, hi_i(g[0].grass_n, k + 1));
+    }
+    return true;
+  }
+  return false;
+}
+glade_catalog_start :: (g: [] EgGlade) { g[0] = EgGlade.{}; }
+
+// The glade's frame as an object's three rows (glade-zone.coax: world x = EZ_GX - x, z = EZ_GZ - z).
+glade_object :: (objects: [] f32, slot: int, mark: f32, a: f32, b: f32) {
+  o := slot * OBJECT_FLOATS;
+  rows := [12] f32.[-1, 0, 0, f32(EZ_GX),   0, 1, 0, f32(EZ_OY),   0, 0, -1, f32(EZ_GZ)];
+  for k: 0..<12 { objects[o + k] = rows[k]; }
+  objects[o + 12] = a; objects[o + 13] = b; objects[o + 14] = mark; objects[o + 15] = 0;
+}
+// How much of the grass to draw from an eye d metres from the seeds' middle (the seeds come in no
+// order of place, so their first share is that share of them all round).
+glade_grass_share :: (d: f32, phone: bool) -> f32 {
+  near := 1 - clamp((d - f32(GLADE_GRASS_NEAR)) / (f32(GLADE_GRASS_FAR) - f32(GLADE_GRASS_NEAR)), 0, 1);
+  return near * (ifx phone then f32(GLADE_GRASS_PHONE) else 1.0f32);
+}
+// This frame's glade: its objects and its draws (everglade.coax GLADE_DRAW), the shadow's without grass.
+glade_frame :: (s: [] Everglade, eye: Point) {
+  g := s[0].glade[0];
+  for k: 0..<GLADE_SLOTS { d := (GLADE_DRAW + k) * 4; for q: 0..<4 { s[0].draws[d + q] = 0; } }
+  if !g.on { return; }
+  cx := f32(EZ_GX); cz := f32(EZ_GZ);
+  near := sqrt((eye.x - cx) * (eye.x - cx) + (eye.z - cz) * (eye.z - cz));
+  glade_object(s[0].objects[..], 0, f32(GLADE_MARK), f32(g.mesh.word), 0);
+  d := GLADE_DRAW * 4;
+  s[0].draws[d] = cast(u32) g.mesh.first; s[0].draws[d + 1] = cast(u32) g.mesh.count;
+  s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS); s[0].draws[d + 3] = ifx near < f32(GLADE_SEEN) then cast(u32) 1 else cast(u32) 0;
+  // the seeds' middle: local (0, -12), between the clearing and the ridge
+  mz := cz + 12;
+  share := glade_grass_share(sqrt((eye.x - cx) * (eye.x - cx) + (eye.z - mz) * (eye.z - mz)), phone(s));
+  for k: 0..<g.grass_n {
+    gr := g.grass[k];
+    glade_object(s[0].objects[..], 1 + k, f32(GLADE_GRASS_MARK), f32(gr.word), f32(g.mesh.word));
+    d = (GLADE_DRAW + 1 + k) * 4;
+    s[0].draws[d] = cast(u32) gr.first; s[0].draws[d + 1] = cast(u32) gr.count;
+    s[0].draws[d + 2] = cast(u32) (GLADE_GRASS_BIT + k * 65536);
+    s[0].draws[d + 3] = cast(u32) (cast(int) (f32(gr.n) * share));
+    s[0].glade_triangles += gr.count / 3 * cast(int) (f32(gr.n) * share);
+  }
+}
+// The shadow map's draws: the scene's but the water (drawn after it) and the grass (too fine to cast).
+glade_shadow_draws :: (s: [] Everglade) -> int {
+  for i: 0..<WATER_DRAW * 4 { s[0].shadow_draws[i] = s[0].draws[i]; }
+  for k: 0..<GLADE_GRASS { s[0].shadow_draws[(GLADE_DRAW + 1 + k) * 4 + 3] = 0; }
+  return WATER_DRAW;
+}
+// The camera's room over the ground near the glade (everglade.coax ground_room). Past the seam
+// Everglade's height field holds only its clamped edge, the ridge's height, which would stand over
+// the clearing and pull the camera into your head; there the ground is the one you walk on
+// (glade-zone.coax ez_walk_height), marched as verse_terrain_ray marches the town's.
+glade_ray_near :: (from: Point, dir: Point, far: f32) -> bool { return lo(from.z, from.z + dir.z * far) < f32(EZ_JOIN) + 2; }
+glade_ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return ez_walk_height(verse_terrain_height(everglade_ground(), s[0].heights[..], x, z), x, z); }
+glade_ground_ray :: (s: [] Everglade, from: Point, dir: Point, far: f32) -> f32 {
+  if !finite3(from) || !finite3(dir) || !(far > 0) { return 0; }
+  if from.y <= glade_ground_at(s, from.x, from.z) { return 0; }
+  t := 0.0f32;
+  while t < far {
+    next := lo(t + f32(RAY_STEP), far);
+    p := add(from, times(dir, next));
+    if p.y <= glade_ground_at(s, p.x, p.z) {
+      a := t; b := next;
+      for k: 0..<12 { m := (a + b) / 2; q := add(from, times(dir, m)); if q.y <= glade_ground_at(s, q.x, q.z) { b = m; } else { a = m; } }
+      return a;
+    }
+    t = next;
+  }
+  return far;
+}
+#test "glade: the camera backs out over the clearing, and its ground still stops it" #steps 1700000000 {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  p := everglade_glade_spawn(s[..]);
+  from := add(p, v3(0, 1.1, 0));
+  #assert glade_ray_near(from, v3(0, 0, -1), 4) && !glade_ray_near(v3(0, 1, 0), v3(0, 0, -1), 4);
+  // behind you at the clearing there is room: the town's clamped edge is not ground here
+  #assert glade_ground_ray(s[..], from, v3(0, 0.25, -0.97), 4) == 4;
+  // a ray down into the clearing stops at its ground
+  r := glade_ground_ray(s[..], from, v3(0, -1, 0), 4);
+  #assert r > 0.5 && r < 1.2;
+}
+// Where a seat Character Create opens stands (room-world.c world_place_glade): the clearing, facing
+// the camera, south.
+everglade_glade_spawn :: (s: [] Everglade) -> Point #export_c #effects(all) {
+  if !s[0].started { everglade_start(s); }
+  x := ez_spawn_x(); z := ez_spawn_z();
+  return v3(x, walk_at(s, x, z), z);
+}
+// Not square to the south: Character Create's studio turns you a little (everglade-create.coax's yaw
+// -0.22), and the walk out heads north, so a seat facing exactly south would ask the controller and the
+// room for a half turn each side may break the other way (#13018: drawn -1.71 rad, the room's +1.71).
+GLADE_FACE :: 2.9215927;   // PI - 0.22: the way you are drawn in the studio before any drag
+everglade_glade_face :: (s: [] Everglade) -> f32 #export_c #effects(all) { return f32(GLADE_FACE); }
+
+#test "glade: the zone pack's rows give the static mesh and the grass, and nothing else is taken" {
+  g: [1] EgGlade;
+  #assert glade_catalog_line(g[..], "glade/environment", [6] int.[9, 12, 250, 100, 8, 0]) && g[0].on && g[0].mesh.word == 100;
+  #assert glade_catalog_line(g[..], "glade/grass2", [6] int.[21, 465, 250, 164, 20000, 0]) && g[0].grass_n == 3 && g[0].grass[2].n == 20000;
+  #assert glade_catalog_line(g[..], "glade/grass7", [6] int.[21, 465, 250, 164, 20000, 0]) && g[0].grass_n == 3;
+  #assert glade_catalog_line(g[..], "glade/grass0", [6] int.[21, 465, 250, 164, 65536, 0]) && g[0].grass[0].n == 0;
+  #assert !glade_catalog_line(g[..], "Pine_5", [6] int.[0, 3, 1, 0, 3, 0]);
+  // nearer than GLADE_GRASS_NEAR all of it, past GLADE_GRASS_FAR none, a phone its share
+  #assert glade_grass_share(10, false) == 1 && glade_grass_share(100, false) == 0 && glade_grass_share(10, true) == f32(GLADE_GRASS_PHONE);
+  #assert glade_grass_share(70, false) > 0.4 && glade_grass_share(70, false) < 0.6;
+}
+#test "glade: its objects carry the frame and its grass casts no shadow" #steps 1700000000 {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  s[0].width = 1600; s[0].dpr = 1;   // a desktop's
+  s[0].glade[0].on = true; s[0].glade[0].mesh = EgGladeDraw.{first = 9, count = 12, word = 100, n = 1};
+  s[0].glade[0].grass_n = 1; s[0].glade[0].grass[0] = EgGladeDraw.{first = 21, count = 30, word = 164, n = 500};
+  glade_frame(s[..], v3(f32(EZ_GX), 0, f32(EZ_GZ)));
+  #assert s[0].objects[3] == f32(EZ_GX) && s[0].objects[0] == -1 && s[0].objects[11] == f32(EZ_GZ) && s[0].objects[14] == f32(GLADE_MARK);
+  #assert s[0].objects[OBJECT_FLOATS + 12] == 164 && s[0].objects[OBJECT_FLOATS + 13] == 100;
+  d := (GLADE_DRAW + 1) * 4;
+  #assert s[0].draws[d + 2] == cast(u32) GLADE_GRASS_BIT && s[0].draws[d + 3] == 500;
+  n := glade_shadow_draws(s[..]);
+  #assert n == WATER_DRAW && s[0].shadow_draws[d + 3] == 0 && s[0].shadow_draws[GLADE_DRAW * 4 + 3] == 1;
+  // from the commons the grass is not drawn, the glade still is
+  glade_frame(s[..], v3(0, 0, -16));
+  #assert s[0].draws[d + 3] == 0 && s[0].draws[GLADE_DRAW * 4 + 3] == 1;
+  // the clearing is a seat's place on the glade's ground
+  p := everglade_glade_spawn(s[..]);
+  #assert p.x == f32(EZ_GX) && p.z == f32(EZ_GZ) && abs(p.y - ez_height(p.x, p.z)) < 0.01;
+}

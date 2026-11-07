@@ -5395,19 +5395,21 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   world's first frame; on a failure it says what failed with one working
   action (no WebGPU: the realm's text page; anything else: try again). It is
   only on realm pages, written by `realms.ts` (a made realm's by the host),
-  and holds nothing else;
-- the zone frame (`coax/web/zone-host.js`, action 18): another same-origin
-  Coaxial page, loaded by its own host and drawing everything in Coax
-  itself, opened in a full-window frame under the page's opaque canvas and
-  shown in place on action 1 to it (Character Create's walk into Everglade,
-  so no loading screen shows between them). It holds nothing but that page.
+  and holds nothing else.
+
+Places that are one world, such as Character Create and Everglade (#13018), are
+one page, one engine and one renderer, and say a new address with action 19
+(`history.replaceState`, same origin only) rather than load it or open it in a
+frame. (`zone-host.js` and action 18 remain only for the old fivelab creator
+that Everglade Experimental and Everglade II build on.) Check:
+`coax/web/tests/one-zone-walk.coax` fails on any iframe, loading screen or new
+document during the walk from Character Create into the Commons.
 
 Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
 upload; `release.sh` runs it as a report, since only what breaks staging
 against production stops a release) refuses visible elements, inline styling of UI, and DOM-built UI in
 the app's HTML, the host and `coax/web/unlock/`; the loading screen's block
-may hold only its own elements, and `loader.js` styles only marked lines, as
-`zone-host.js` builds and styles only its marked zone frame.
+may hold only its own elements, and `loader.js` styles only marked lines.
 
 
 ## Private projects answer non-members with nothing
@@ -6109,8 +6111,9 @@ See `docs/verse/anim-directing-v1.md` and its A7 verification record.
 
 ## Character Studio renderer identity
 
-Character Studio binds only the exact `character-creator` slug and `fivelab`
-producer as an explicitly tracked legacy consumer. Its Quaternius wardrobe uses
+Character Studio binds only the exact `character-creator` slug and, since it is a
+place in Everglade (#13018), the `everglade5e` producer as an explicitly tracked
+legacy consumer. Its Quaternius wardrobe uses
 the existing people palette and draw format; this adds no shared/native renderer
 qualification. Unknown slug/producer pairs continue to refuse. The appearance
 save contains only versioned choices, never pack addresses or renderer state.

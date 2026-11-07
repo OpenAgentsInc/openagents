@@ -144,7 +144,8 @@ static void everglade_abilities(int k) {
 // town, the casts' sight, the rolls, and every seat's D frame queued: false when room k is closed.
 static void everglade_place(int k, int s, float *pose) {
   if (rm_eg_unplaced(view(), k, (coax_t_SeatId){ s}) &&
-      (rm_eg_back(view(), k, (coax_t_SeatId){ s}, 0) > 0 ? world_place_at(k, s, rm_eg_back(view(), k, (coax_t_SeatId){ s}, 1), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 2), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 3), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 4), pose)
+      (rm_eg_glade(view(), k, (coax_t_SeatId){ s}) ? world_place_glade(k, s, pose) :   /* Character Create's page: the glade's clearing */
+       rm_eg_back(view(), k, (coax_t_SeatId){ s}, 0) > 0 ? world_place_at(k, s, rm_eg_back(view(), k, (coax_t_SeatId){ s}, 1), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 2), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 3), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 4), pose)
                                         : world_place(k, s, pose)))
     rm_eg_moved(view(), k, (coax_t_SeatId){ s}, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
 }

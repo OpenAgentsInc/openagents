@@ -372,6 +372,10 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t11) -> coax_t
   {
     l_uv = coax_p_v2(((l_seed_uv.x * 0x1.000000p6f) - 0x1.000000p5f), ((l_seed_uv.y * 0x1.000000p6f) - 0x1.000000p5f));
   }
+  if (((l_kind == 4u) && (bitcast<f32>(vertices[i32((l_b + 7u))]) >= 0x1.900000p6f)))
+  {
+    l_uv = coax_p_v2(((l_seed_uv.x * 0x1.000000p3f) - 0x1.000000p2f), ((l_seed_uv.y * 0x1.000000p3f) - 0x1.000000p2f));
+  }
   l_tint = coax_p_wg_unpack4x8unorm(vertices[i32((l_b + 5u))]);
   l_wind = (sin((((l_p.x * 0x1.ccccccp0f) + (l_p.z * 0x1.666666p-1f)) + (coax_at_u(i32(2i)) * 0x1.99999ap0f))) + (sin(((l_p.z * 0x1.59999ap1f) + (coax_at_u(i32(2i)) * 0x1.ccccccp-1f))) * 0x1.666666p-2f));
   if (((l_kind == 1u) || (l_kind == 2u)))

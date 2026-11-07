@@ -104,7 +104,7 @@
         "slot": "everglade",
         "slot_was": "everglade-5e",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade/assets/everglade-avatar.pack", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
+        "assets": ["pack:/realms/everglade/assets/everglade-zone.pack", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "everglade-experimental", "name": "EVERGLADE EXPERIMENTAL", "kind": "open", "listed": false, "orbit": { "r": 0.34, "a": 4.2, "size": 0.02 },
       "realm": {
@@ -365,13 +365,13 @@
       } },
     { "id": "charactercreator", "name": "CHARACTER STUDIO", "kind": "open", "listed": false, "orbit": { "r": 0.4, "a": 2, "size": 0.02 },
       "realm": {
-        "slug": "character-creator", "style": "painterly", "clock": "fixed:0.5",
+        "slug": "character-creator", "place_of": "everglade", "style": "painterly", "clock": "cycle",
         "title": "Character Studio", "description": "Create a Quaternius human in Aethyr. Mix all 76 Fantasy Source clothing parts, three colourways, skin, hair and details with a live animated preview.",
         "share": "Make someone yours: a live Aethyr character wardrobe.", "alt": "A Quaternius human in a sunlit Nature glade with live clothing and appearance controls",
-        "module": "fivelab", "slot": "character-creator",
+        "voice": "everglade", "ruleset": "srd5", "module": "everglade5e", "slot": "everglade",
         "ui_font_src": "/realms/character-creator/assets/arkai_c.ttf", "ui_font_family": "CharacterCreateARKaiC",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/character-creator/assets/glade.pack", "particles:/fivelab-fx.wgsl"]
+        "assets": ["pack:/realms/everglade/assets/everglade-zone.pack", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "everglade2", "name": "EVERGLADE II", "kind": "open", "listed": false, "orbit": { "r": 0.44, "a": 2.2, "size": 0.02 },
       "realm": {

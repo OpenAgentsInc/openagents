@@ -138,7 +138,7 @@ eg_edit_fault :: (e: EgEdits, i: int) -> int {
      everglade_in_woods(box[0], box[3]) || everglade_in_woods(box[2], box[1]) { return EG_FAULT_WOODS; }
   solids: [EG_SOLIDS * EG_BOX] f32;
   n := everglade_solids(solids[..]);
-  for s: 0..<n - 4 { if boxes_gap(box[..], 0, solids[..], s) <= 0.05 { return EG_FAULT_SOLID; } }
+  for s: 0..<n - EG_EDGES { if boxes_gap(box[..], 0, solids[..], s) <= 0.05 { return EG_FAULT_SOLID; } }
   // and not on the bridge's deck, where the trail crosses the river
   br := EG_BRIDGE;
   if boxes_gap(box[..], 0, br[..], 0) <= 0.05 { return EG_FAULT_SOLID; }
@@ -259,7 +259,7 @@ eg_spot_free :: (e: EgEdits, solids: [] f32, n: int, x: f32, z: f32, r: f32) -> 
   b := f32(EG_BOUND) - 1;
   if x < -b || x > b || z < -b || z > b || everglade_in_woods(x, z) { return false; }
   box := [5] f32.[x - r, z - r, x + r, z + r, 0.5];
-  for s: 0..<n - 4 { if boxes_gap(box[..], 0, solids, s) <= 0.05 { return false; } }
+  for s: 0..<n - EG_EDGES { if boxes_gap(box[..], 0, solids, s) <= 0.05 { return false; } }
   br := EG_BRIDGE;
   if boxes_gap(box[..], 0, br[..], 0) <= 0.05 { return false; }
   for l: 0..<EG_LINKS { if link_box_gap(EG_LINK_AB[l * 2], EG_LINK_AB[l * 2 + 1], box[..], 0) < f32(EG_PATH_HALF) { return false; } }

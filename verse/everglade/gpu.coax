@@ -6,6 +6,7 @@
 #load "../../aethyr/render/noise.coax";
 #load "../gpu/wgsl.coax";
 #load "../style.coax";
+#load "gpu-glade.coax";   // the glade south of the South Gate (#13018)
 #load "../../aethyr/render/filmic.coax";
 
 // Everglade's three passes: the sky, the scene (with the river's water in
@@ -668,6 +669,8 @@ eg_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects
 eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,pose:[]V4)->EgS {
   o:EgS;
   n:u32=wg_u32_f(u[32]);
+  // a glade grass blade (everglade-glade.coax): the bit, its kind's object (the shapes' slot 1 + kind), the seed
+  if (instance>=0x40000000) {return eg_glade_grass(id,instance,objects[cast(int)add_wrap(1,(instance>>16)&255)],u,vertices);}
   if (instance<mul_wrap(n,n)) {
     c:V2=eg_quad(id%6);
     gx:s32=(cast,trunc(s32)(instance%n))+(wg_i32_f(c.x));
@@ -697,6 +700,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
   o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32);
   {
     _sw3:u32=kind;
+    if _sw3==0 && m.colour.z>9.5f32 {return eg_glade_static(id,m,u,vertices);}   // the glade's static mesh (gpu-glade.coax)
     if _sw3==0 && m.colour.z==9.0f32 {
       header:u32=wg_u32_f(m.colour.x);b:u32=vertices[cast(int)header]+id*32;pb:u32=wg_u32_f(m.colour.y);p0:V4=v4(eg_word(b,vertices),eg_word(b+1,vertices),eg_word(b+2,vertices),1.0f32);n0:V3=v3(eg_word(b+3,vertices),eg_word(b+4,vertices),eg_word(b+5,vertices));sp:V3=v3(0.0f32,0.0f32,0.0f32);sn:V3=sp;skinSum:f32=0;
       for k:0..<8 {joint:u32=(vertices[cast(int)(b+9+cast(u32)(k/2))]>>cast(u32)((k%2)*16))&65535;weight:f32=cast(f32)((vertices[cast(int)(b+13+cast(u32)(k/4))]>>cast(u32)((k%4)*8))&255);skinSum+=weight;r:u32=pb+joint*3;a:V4=pose[cast(int)r];c:V4=pose[cast(int)(r+1)];e:V4=pose[cast(int)(r+2)];sp=wg_add_f3f3(sp,wg_mul_ff3(weight,v3(wg_dot4(a,p0),wg_dot4(c,p0),wg_dot4(e,p0))));sn=wg_add_f3f3(sn,wg_mul_ff3(weight,v3(wg_dot3(v3(a.x,a.y,a.z),n0),wg_dot3(v3(c.x,c.y,c.z),n0),wg_dot3(v3(e.x,e.y,e.z),n0))));}
@@ -1011,7 +1015,7 @@ eg_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,object
   o.slice=v.slice;
   o.local=v.local;
   o.shard=v.shard;
-  o.cut=ifx ((((v.look==5)||(v.look==EG_LOOK_CANOPY))||(v.look==EG_LOOK_CHARACTER))||(v.look==EG_LOOK_ROCK))||(v.look==EG_LOOK_WINDOW) then 1 else 0;
+  o.cut=ifx (((((v.look==5)||(v.look==EG_LOOK_CANOPY))||(v.look==EG_LOOK_CHARACTER))||(v.look==EG_LOOK_ROCK))||(v.look==EG_LOOK_WINDOW))||(v.look==EG_LOOK_GLADE) then 1 else 0;
   if v.look==EG_LOOK_LINK {o.cut=2;}
   o.bare=ifx v.look==EG_LOOK_CANOPY then v.dye.z else 0.0f32;
   return o;
@@ -1387,6 +1391,7 @@ eg_person_dye :: (t:V3,dye:V4)->V3 {
 eg_scene_fs :: (s:EgS,front:bool,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,water_nodes:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->EgLit {
   g0:=og_grad(s.uv);g1:=og_grad(s.uv1);
   tex:V4=render_sample_layer8_bias(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),ifx s.look==EG_LOOK_CHARACTER then EG_CHARACTER_LOD_BIAS else 0.0f32);
+  if s.look==EG_LOOK_GLADE {return eg_glade_fs(s,tex,front,u,heights,water_nodes,shadow_map,shadow_cmp);}   // gpu-glade.coax
   if s.look==EG_LOOK_LINK {
     surface:=OgSurface.{normal=s.normal,world=s.world,uv=s.uv,uv1=s.uv1,tangent=s.tangent,colour=v4(1,1,1,1),character=1};
     material:=og_material_surface(surface,cast(int)s.slice,vertices,sheets,sheet,g0,g1);
@@ -1561,6 +1566,9 @@ eg_scene_fs :: (s:EgS,front:bool,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
     face:f32=(0.55f32+(0.25f32*n.y))+(0.2f32*fmax(wg_dot3(n,wg_sw_xyz_f4(eg_st(1,u))),0.0f32));
     fill:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(0.10f32,0.13f32,0.26f32),night),near),face),ifx figure then 1.7f32 else 0.5f32);
     res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),wg_mul_f3f3(base,fill)),res.light.w);
+  }
+  if ((u[230]>0.0f32)&&(figure||(s.look==5))) {
+    res.light=wg_make_f4_f3f(wg_add_f3f3(v3(res.light.x,res.light.y,res.light.z),eg_studio_fill(base,n,s.world,u)),res.light.w);
   }
   if ((s.look==EG_LOOK_CANOPY)&&(eg_st(1,u).w<0.5f32)) {
     // leaves pass the sun behind them, as the glade's crowns (character-glade.coax): warm, most where
@@ -1808,7 +1816,14 @@ eg_fx_vs :: (_vid4:u32,_iid5:u32,in_:eg_fx_vs_in,u:[]f32)->EgV {
   o.bar=d;
   return o;
 }
-eg_fx_fs :: (v:EgV,u:[]f32)->V4 {
+eg_fx_fs :: (v:EgV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if (v.tint.w>3.5f32) {
+    // A glyph from the host's atlas (apps/openagents-web/font.coax draw_sans), Character Create's
+    // labels (everglade-create.coax): place is the atlas coordinate, shape.x the em in pixels.
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),a),fmin(v.shape.z*1.15f32,1.0f32)),u[3]),1.0f32);
+  }
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
   d:f32=wg_length2(v2(along,v.place.y));
   core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
@@ -3624,8 +3639,12 @@ eg_meadow :: (q:V2)->V3 {
   u[234]=0;u[1212]=-1;u[1213]=-1;u[1214]=1;u[1215]=1;
   #assert eg_grass_mask(v2(0,0),u[..],h[..],water[..])==0.0f32;
   #assert eg_grass_mask(v2(1.55f32,0),u[..],h[..],water[..])>0.999f32;
+  // past the town's south edge the glade's own grass grows (gpu-glade.coax), not the meadow's
+  v:[2400]f32;v[32]=2;v[33]=1;v[34]=-1;v[35]=-1;
+  #assert eg_grass_mask(v2(0,EG_GLADE_SEAM+0.5f32),v[..],h[..],water[..])==1.0f32 && eg_grass_mask(v2(0,EG_GLADE_SEAM-0.5f32),v[..],h[..],water[..])==0.0f32;
 }
 eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
+  if (q.y<EG_GLADE_SEAM) { return 0.0f32; }
   m:f32=verse_style_grass_clear(eg_path_near(q,u)-u[229]);
   if (m==0.0f32) { return 0.0f32; }
   {

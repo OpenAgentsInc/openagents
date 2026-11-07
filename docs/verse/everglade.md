@@ -430,7 +430,7 @@ invisible wall stands short of visible geometry (the reach check,
 fails on any patch of open ground left over).
 
 - **The edge:** 168 m from the middle (`EG_BOUND`) a thicket runs all the
-  way round, two rows of `Bush_Common_Flowers` whose leaves reach the bound
+  way round but for the road south into the glade (below), two rows of `Bush_Common_Flowers` whose leaves reach the bound
   and a row of close-set trees behind them, with rocks across the river
   where it runs out (`plant_thicket`). You stop at the brush.
 
@@ -992,9 +992,8 @@ tile is drawn only when its view changes:
 - The shader (`verse/everglade/gpu.coax` `eg_casc_lit`) reads the finest drawn tile that holds
   the point with its filter. The filter keeps the old map's penumbra in metres, and the bias and
   normal offset grow with a tile's texel. The ink-and-band look is unchanged.
-- Character Create (`apps/openagents-web/gpu/character-glade.coax`) uses two tiles of one fixed
-  projection: the glade, drawn once and again only when geometry changes, and the player, drawn
-  every frame. Shadow visibility is the lesser of the two.
+- Character Create is Everglade's own page started at the glade (#13018), so it uses these
+  tiles too.
 - The host (`coax/web/host.js`) keeps the one texture binding: it clears a tile with a full-tile
   triangle at depth 1, then draws into the tile's rect with a scissor. `?shadowmap` keeps the old
   one map, for comparisons.
@@ -1055,6 +1054,39 @@ coax/web/tool.sh flyover http://127.0.0.1:8870 --out coax/web/build/flyover-afte
 - A sample run on the M-series Mac (November 7): 3272 frames, average 16.7 ms (60.0 FPS), p95
   16.7 ms, worst 33.3 ms, 1 frame over 33 ms; CPU p50 2.0 ms; GPU p50 16.5 ms, p95 24.0 ms; the
   shadow pass p50 0.8 ms, p95 7.7 ms. The one dropped frame misses the 60 FPS rule.
+
+## The glade south of the gate: Character Create (#13018)
+
+Character Create and Everglade are one zone. Character Create's Nature glade is a
+region of Everglade's world south of the South Gate, and `/worlds/character-creator`
+is Everglade's own page started there in Character Create's mode
+(docs/verse/character-creator.md). One page, one Wasm world, one renderer and one
+clock: you walk from the creator's clearing up the road, through the gate and into
+the Commons with your own keys, and nothing loads on the way.
+
+- **Where:** `verse/everglade/glade-zone.coax` puts the glade's local frame at world
+  x = 3.2 - x, z = -206.5 - z, 1.25 m under the fountain: turned half round, its
+  clearing about 150 m down the road from the gate (x 3.2, z -206.5), its road
+  through the back ridge meeting the town's road at x 0. Everglade's heightfield ends
+  at z -176; from z -150 south it blends into the glade's ground, and past the seam
+  the walk takes the glade's ground alone (`ez_walk_height`). The glade rises into
+  hills past its old edges, so it ends in slopes.
+- **Walls:** the south edge's wall is split by the glade's walkable width (30 m each
+  side of its middle, `EG_EDGES` five boxes in `plan.coax`), and the thicket and its
+  trees stand back 8 m either side of the road (`plant_thicket`). `everglade_hold`
+  keeps you inside the town's bound or the glade's rectangle (to z -236).
+- **Drawing:** the realm's pack is `everglade-zone.pack` (the avatar pack plus the
+  glade). The glade is the shapes' first four object slots (`everglade-glade.coax`):
+  its static mesh, drawn within 300 m, and three grass kinds instanced by seed, all
+  of them nearer than 55 m from the seeds' middle and none past 85 m (a phone a
+  third). `verse/everglade/gpu-glade.coax` decodes the glade's vertices and lights
+  them with Everglade's `eg_paint` (sun, clock, haze) and the glade's foliage
+  back-scatter. The glade casts shadows; its grass does not (the host's shadow list,
+  `coaxial_shadow_draws_v1`).
+- **Seats:** a hello from Character Create carries `FLAGS` bit 128, and the room seats
+  that player at the clearing (`world_place_glade`).
+
+`#glade` starts you at the clearing on Everglade's page.
 
 ## Parity with the previous Everglade (October 30)
 

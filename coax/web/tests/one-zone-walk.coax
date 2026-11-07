@@ -1,0 +1,178 @@
+// Character Create and Everglade as one zone (#13018, docs/verse/character-creator.md): in headless
+// Chrome, open Character Create, pick SURPRISE ME, press USE IN EVERGLADE, then walk with held keys
+// (real key events: W and Shift, A and D to keep to the road) from the glade's clearing up the road,
+// through the South Gate and into the Commons. One page and one world the whole way: the address
+// changes in place, nothing loads, and the same character walks.
+//   coax/web/tool.sh coax/web/tests/one-zone-walk.coax URL [--film OUT.mp4 FRAMES_DIR]
+// URL is Character Create, e.g. http://127.0.0.1:8873/worlds/character-creator?weather=clear.
+// Checks, every look: no loading screen and no new page load; with --film, every frame's mean
+// luminance (ffmpeg signalstats YAVG) at least OZ_LUMA. Prints the frame rate along the road in
+// stretches of OZ_STRETCH metres (the page's own frames, requestAnimationFrame), and fails a stretch
+// under OZ_FPS.
+#import "Basic";
+#load "../../lib/media/media.coax";
+#load "../../../verse/character-glade.coax";
+
+OZ_LUMA :: 40;         // of 255: the darkest frame the film may have (a black or loading frame is under it)
+OZ_FPS :: 50;          // frames a second each stretch of road keeps (Everglade's target is 60)
+OZ_STRETCH :: 40;      // metres of road a frame-rate sample covers
+OZ_GX :: 3.2; OZ_GZ :: -206.5;   // verse/everglade/glade-zone.coax EZ_GX, EZ_GZ: the clearing
+OZ_SEAM :: -176.0;
+OZ_COMMONS :: 12.0;    // metres from the fountain (the Commons, at the origin) that is there
+
+oz_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_kind(cdp_doc(c),n)==JV_TRUE;}
+oz_int :: (c:[]Cdp,js:string)->int {n:=cdp_evaluate(c,js);if n<0 {return -1000000;}return jv_int(cdp_doc(c),n,-1000000);}
+oz_text :: (c:[]Cdp,js:string,out:[]u8)->string {n:=cdp_evaluate(c,js);if n<0 {return "";}t:=jv_raw(cdp_doc(c),n);k:=0;for ch:t {if k<out.count {out[k]=ch;k+=1;}}return cast(string)out[0..<k];}
+oz_click :: (c:[]Cdp,x:int,y:int)->bool {
+  js:[512]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_put(o[..],"(()=>{const c=document.querySelector('canvas');for(const type of ['pointerdown','pointerup'])c.dispatchEvent(new PointerEvent(type,{clientX:");
+  jo_int(o[..],x);jo_put(o[..],",clientY:");jo_int(o[..],y);jo_put(o[..],",pointerId:31,pointerType:'mouse',button:0,bubbles:true}));return true;})()");
+  return oz_eval(c,jo_text(o[..]));
+}
+// A key down or up, as the keyboard sends it (Input.dispatchKeyEvent: the page's own key handlers).
+oz_key :: (c:[]Cdp,key:string,code:string,vk:int,down:bool)->bool {
+  p:[256]u8;o:[1]Jo;jo_start(o[..],p[..]);jo_obj(o[..]);
+  jo_key(o[..],"type");jo_str(o[..],ifx down then "rawKeyDown" else "keyUp");jo_key(o[..],"key");jo_str(o[..],key);jo_key(o[..],"code");jo_str(o[..],code);
+  jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],vk);jo_end(o[..]);
+  return cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),CDP_CALL_MS)>=0;
+}
+// Everglade's player (everglade5e-face.c fieldProbe 27 outfit, 22 female, 25 colorway, 23 dye, 24 eyes).
+OZ_LOOK :: "[27,22,25,23,24].map(f=>coaxial.fieldProbe(f)).join(',')";
+// A loading screen showing, or another page: 1 the loader, 2 a frame, 3 a new document.
+OZ_SHOWN :: "(()=>{const l=document.getElementById('coaxial-load');if(l&&!l.classList.contains('gone'))return 1;if(document.querySelector('iframe'))return 2;if(globalThis.__oz!==1)return 3;return 0;})()";
+// The page's own frame times: requestAnimationFrame from the click on.
+OZ_FRAMES :: "(()=>{globalThis.__oz=1;globalThis.__ozt=[];const f=t=>{__ozt.push(t);requestAnimationFrame(f)};requestAnimationFrame(f);return true})()";
+OZ_FRAME_N :: "__ozt.length";
+// USE IN EVERGLADE (desktop sidebar, everglade-create.coax boxes[17]) and SURPRISE ME (boxes[14]).
+OZ_USE_X :: 260; OZ_USE_Y :: 696; OZ_SURPRISE_X :: 260; OZ_SURPRISE_Y :: 652;
+
+// Where the road runs at world z: the glade's walk out of the clearing (verse/character-glade.coax
+// cg_walk_x, in the glade's frame turned half round), then the town's road at x 0.
+oz_road_x :: (z:f32)->f32 {
+  if z >= OZ_SEAM + 6 { return 0; }
+  local := f32(OZ_GZ) - z;
+  return f32(OZ_GX) - cg_walk_x(local);
+}
+
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 {tool_errln("one-zone-walk: URL [--film OUT.mp4 FRAMES_DIR]");return 2;}
+  url:=args_at(a[..],0);film:=args_count(a[..])==4 && args_at(a[..],1)=="--film";
+  if args_count(a[..])!=1 && !film {tool_errln("one-zone-walk: URL [--film OUT.mp4 FRAMES_DIR]");return 2;}
+  c:[1]Cdp;if !cdp_launch(c[..],1920,1080,"one-zone-walk-") {tool_errln(cdp_error(c[..]));return 1;}
+  status:=oz_walk(c[..],url,film,ifx film then args_at(a[..],2) else "",ifx film then args_at(a[..],3) else "");
+  cdp_close(c[..]);return status;
+}
+
+OZ_FPS_N :: 8;
+oz_walk :: (c:[]Cdp,url:string,film:bool,out:string,frames:string)->int {
+  if film {ok:=fs_mkdir(frames);}
+  if !media_size(c,ArgsSize.{ok=true,w=1920,h=1080}) || cdp_call(c,"Runtime.enable","",CDP_CALL_MS)<0 || cdp_call(c,"Page.enable","",CDP_CALL_MS)<0 {tool_errln(cdp_error(c));return 1;}
+  p:[4096]u8;o:[1]Jo;jo_start(o[..],p[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  if cdp_call(c,"Page.navigate",jo_text(o[..]),CDP_CALL_MS)<0 {tool_errln(cdp_error(c));return 1;}
+  // the studio up: the scene drawn, no loader, Character Create's mode and your character ready
+  ready:=false;for i:0..<900 {proc_sleep(100);if oz_eval(c,"!!globalThis.coaxial?.sceneReady&&(!document.getElementById('coaxial-load')||document.getElementById('coaxial-load').classList.contains('gone'))&&coaxial.fieldProbe(40)===1&&coaxial.fieldProbe(20)===1") {ready=true;break;}}
+  if !ready {tool_errln("Character Create never drew your character in the glade");return 1;}
+  if !oz_click(c,OZ_SURPRISE_X,OZ_SURPRISE_Y) {return 1;}
+  proc_sleep(400);
+  look:[64]u8;before:=oz_text(c,OZ_LOOK,look[..]);
+  if !oz_eval(c,OZ_FRAMES) {return 1;}
+  n:=0;shot:[MEDIA_PNG]u8;size:=0;written:=0;started:=proc_now_ms();
+  // a second and a half of the studio, in the film
+  while film && proc_now_ms()-started<1500 {k:=oz_jpeg(c,shot[..]);if k>0 {size=k;}due:=(proc_now_ms()-started)*30/1000;while written<due && size>0 {if !oz_write(frames,n,cast(string)shot[0..<size]) {return 1;}n+=1;written+=1;}}
+  if !oz_click(c,OZ_USE_X,OZ_USE_Y) {return 1;}
+  t0:=proc_now_ms();walking:= -1;address:= -1;keys:=false;arrived:= -1;bad:=0;bad_at:= -1;looks:=0;
+  steer:=0;   // -1 A held, 1 D held
+  fps_at:[OZ_FPS_N]int;fps_n:[OZ_FPS_N]int;for i:0..<OZ_FPS_N {fps_at[i]= -1;}
+  stretch:= -1;stretch_frames:=0;stretch_ms:=0;worst:=1000;
+  last_z:=f32(OZ_GZ);
+  while proc_now_ms()-t0<150000 {
+    if film {
+      k:=oz_jpeg(c,shot[..]);if k>0 {size=k;}
+      due:=(proc_now_ms()-started)*30/1000;while written<due && size>0 {if !oz_write(frames,n,cast(string)shot[0..<size]) {return 1;}n+=1;written+=1;}
+    } else {proc_sleep(40);}
+    now:=proc_now_ms()-t0;
+    v:=oz_int(c,OZ_SHOWN);looks+=1;if v!=0 && bad==0 {bad=v;bad_at=now;}
+    if walking<0 && oz_int(c,"coaxial.fieldProbe(41)")==1 {walking=now;}
+    if address<0 && oz_eval(c,"location.pathname==='/worlds/everglade'") {address=now;}
+    if walking<0 {continue;}
+    if !keys {
+      // the glide behind you takes 1.6 s; then W and Shift, held
+      if now-walking<1700 {continue;}
+      if !oz_key(c,"Shift","ShiftLeft",16,true) || !oz_key(c,"w","KeyW",87,true) {return 1;}
+      keys=true;
+    }
+    x:=f32(oz_int(c,"coaxial.fieldProbe(0)"))/1000;z:=f32(oz_int(c,"coaxial.fieldProbe(2)"))/1000;
+    // keep to the road: +x is west, so with the camera looking north D (east) brings x down
+    want:=oz_road_x(z);
+    turn:=ifx x>want+0.8 then 1 else ifx x<want-0.8 then -1 else 0;
+    if turn!=steer {
+      if steer==1 && !oz_key(c,"d","KeyD",68,false) {return 1;}
+      if steer== -1 && !oz_key(c,"a","KeyA",65,false) {return 1;}
+      if turn==1 && !oz_key(c,"d","KeyD",68,true) {return 1;}
+      if turn== -1 && !oz_key(c,"a","KeyA",65,true) {return 1;}
+      steer=turn;
+    }
+    // the frame rate by stretch of road, from the clearing
+    s:=int((z-f32(OZ_GZ))/f32(OZ_STRETCH));
+    if s>=0 && s<OZ_FPS_N && s!=stretch {
+      f:=oz_int(c,OZ_FRAME_N);
+      if stretch>=0 && stretch<OZ_FPS_N {fps_n[stretch]=f-stretch_frames;fps_at[stretch]=now-stretch_ms;}
+      stretch=s;stretch_frames=f;stretch_ms=now;
+    }
+    last_z=z;
+    if x*x+z*z<f32(OZ_COMMONS)*f32(OZ_COMMONS) {arrived=now;break;}
+  }
+  if stretch>=0 && stretch<OZ_FPS_N && fps_at[stretch]<0 {f:=oz_int(c,OZ_FRAME_N);fps_n[stretch]=f-stretch_frames;fps_at[stretch]=proc_now_ms()-t0-stretch_ms;}
+  ok:=oz_key(c,"w","KeyW",87,false) && oz_key(c,"Shift","ShiftLeft",16,false);
+  if steer==1 {ok=oz_key(c,"d","KeyD",68,false);} if steer== -1 {ok=oz_key(c,"a","KeyA",65,false);}
+  after:[64]u8;landed:=oz_text(c,OZ_LOOK,after[..]);
+  print("{\"walking_ms\":%,\"address_ms\":%,\"commons_ms\":%,\"last_z\":%,\"creator\":\"%\",\"everglade\":\"%\",\"looks\":%,\"loading_or_load\":%,\"loading_at_ms\":%,\"fps_by_stretch\":[",walking,address,arrived,last_z,before,landed,looks,bad,bad_at);
+  for i:0..<OZ_FPS_N {
+    fps:=ifx fps_at[i]>0 then fps_n[i]*1000/fps_at[i] else -1;
+    if fps>=0 && fps<worst {worst=fps;}
+    print("%{\"from_z\":%,\"fps\":%}",ifx i>0 then "," else "",int(f32(OZ_GZ))+i*OZ_STRETCH,fps);
+  }
+  print("]");
+  if film {print(",\"frames\":%",n);}
+  print("}\n");
+  if film {
+    pattern:[4200]u8;err:[65536]u8;so:[4096]u8;
+    av:=[19]string.["ffmpeg","-v","error","-y","-framerate","30","-i",fs_join(frames,"f%05d.jpg",pattern[..]),"-c:v","libx264","-preset","slow","-pix_fmt","yuv420p","-crf","23","-movflags","+faststart",out];
+    enc:=proc_run(av[..],-1,so[..],err[..]);
+    if enc.started!=0 || enc.status!=0 {tool_errln("ffmpeg failed");tool_errln(cast(string)err[0..<enc.err_n]);return 1;}
+    print("Film: %\n",out);
+    dark:=oz_darkest(frames);
+    print("{\"darkest_frame_luma\":%}\n",dark);
+    if dark<OZ_LUMA {tool_errln("a frame of the film is darker than the floor");return 1;}
+  }
+  if bad==3 {tool_errln("the page loaded another document on the way");return 1;}
+  if bad==2 {tool_errln("a frame (iframe) opened on the way");return 1;}
+  if bad>0 {tool_errln("a loading screen showed on the way");return 1;}
+  if walking<0 {tool_errln("USE IN EVERGLADE never handed you the walk");return 1;}
+  if address<0 {tool_errln("the address never said /worlds/everglade");return 1;}
+  if arrived<0 {tool_errln("the walk never reached the Commons");return 1;}
+  if before.count==0 || before!=landed {tool_errln("the character in the Commons is not the one made");return 1;}
+  if worst<OZ_FPS {tool_errln("a stretch of road fell under the frame rate");return 1;}
+  print("One zone: Character Create, USE IN EVERGLADE, the walk on held keys from the glade through the South Gate to the Commons; one page, no loading screen, the same character.\n");
+  return 0;
+}
+
+// The darkest frame's mean luminance (ffmpeg signalstats YAVG over every frame), 0 to 255.
+oz_darkest :: (frames:string)->int {
+  pattern:[4200]u8;err:[65536]u8;so:[1048576]u8;
+  av:=[10]string.["ffmpeg","-v","error","-i",fs_join(frames,"f%05d.jpg",pattern[..]),"-vf","signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-","-f","null","-"];
+  r:=proc_run(av[..],-1,so[..],err[..]);
+  if r.started!=0 || r.status!=0 {return -1;}
+  t:=cast(string)so[0..<r.out_n];key:="YAVG=";worst:=1000;i:=0;
+  while i+key.count<=t.count {
+    if t[i..<i+key.count]==key {v:=0;j:=i+key.count;while j<t.count && t[j]>='0' && t[j]<='9' {v=v*10+int(t[j]-'0');j+=1;}if v<worst {worst=v;}i=j;} else {i+=1;}
+  }
+  return ifx worst==1000 then -1 else worst;
+}
+oz_jpeg :: (c:[]Cdp,out:[]u8)->int {
+  r:=cdp_call(c,"Page.captureScreenshot","{\"format\":\"jpeg\",\"quality\":88}",CDP_CALL_MS);if r<0 {return -1;}
+  d:=cdp_doc(c);data:=jv_get(d,r,"data");if jv_kind(d,data)!=JV_STRING {return -1;}return b64_decode(jv_raw(d,data),out);
+}
+oz_write :: (frames:string,n:int,bytes:string)->bool {
+  name:[32]u8;name[0]=102;k:=1;digits:[8]u8;v:=n;for j:0..<5 {digits[4-j]=cast(u8)(48+v%10);v=v/10;}for j:0..<5 {name[k]=digits[j];k+=1;}ext:=".jpg";for j:0..<4 {name[k]=ext[j];k+=1;}
+  path:[4200]u8;return fs_write(fs_join(frames,cast(string)name[0..<k],path[..]),bytes);
+}

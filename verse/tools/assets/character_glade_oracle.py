@@ -12,7 +12,7 @@ source = Path(sys.argv[3]) if len(sys.argv)>3 and sys.argv[3]!='--experimental' 
 
 def parts(b):
     magic, n, total, budget, table, *_ = struct.unpack_from('<4s7I', b)
-    assert magic==b'VPK1' and len(b)==total<=budget<=(64 if village else 32)*1024*1024
+    assert (magic==b'VPK1' or (magic==b'VPK2' and n>48)) and len(b)==total<=budget<=(64 if village else 32)*1024*1024
     out = {}
     for i in range(n):
         kind, license, _, offset, size, _, name = struct.unpack_from('<BBHIII32s', b, table+i*48)
@@ -32,7 +32,7 @@ new=parts(raw); orig=parts(old)
 cat=next(v[1].decode() for v in new.values() if v[0]==1)
 assert int(next(l.split()[1] for l in cat.splitlines() if l.startswith('bytes ')))==len(raw)
 row=next(l.split() for l in cat.splitlines() if l.startswith('C glade/environment '))
-first,count,license,word,verts,joints=map(int,row[2:]); assert joints==0 and license==250
+first,count,license,word,verts,joints=map(int,row[2:]); src=sum(1 for l in cat.splitlines() if l.startswith('L ')); assert joints==0 and license==src-1
 vb=next(v[1] for v in new.values() if v[0]==2); ib=next(v[1] for v in new.values() if v[0]==3)
 oldvb=next(v[1] for v in orig.values() if v[0]==2); oldib=next(v[1] for v in orig.values() if v[0]==3)
 assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
@@ -56,14 +56,17 @@ for i in range(verts):
     if kind==6:
         u,v=struct.unpack_from('<2H',vb,at+16); bark_v.append(v/65535*64-32)
     pos.append(xyz)
-ground_indices=135000 if experimental else 60000
+# The zone's pack (VPK2, verse/everglade/glade-zone.coax) has a wider, coarser ground and no sky.
+zone=raw[:4]==b'VPK2'
+ground_indices=135000 if experimental else (141*92 if zone else 100*100)*6
 for i in range(0,ground_indices,3):
     a,b,c=[pos[k] for k in ids[i:i+3]]
     ux,uz=b[0]-a[0],b[2]-a[2]; vx,vz=c[0]-a[0],c[2]-a[2]
     assert uz*vx-ux*vz>0, 'Terrain winding points below hillside'
 # The far sky has four directional coordinates; no photographed terrain enters its texture.
-sky_ids=ids[ground_indices:ground_indices+6]; assert len(set(sky_ids))==4
-for i in set(sky_ids): assert vb[word*4+i*32+15]==0
+if not zone:
+    sky_ids=ids[ground_indices:ground_indices+6]; assert len(set(sky_ids))==4
+    for i in set(sky_ids): assert vb[word*4+i*32+15]==0
 assert leaves and min(leaves)<.9 and bark_v and min(bark_v)<-20
 if experimental:
     ground=pos[:151*151]
@@ -140,7 +143,7 @@ assert len(grows)==3
 next_index=first+count; heights=[]; instances=[]; template_vertices=0
 for group,(grow,name) in enumerate(zip(grows,names)):
     assert grow[1]==f'glade/grass{group}'
-    gf,gc,gl,gw,gn,gj=map(int,grow[2:]); assert gf==next_index and gl==250 and gj==0 and 1<=gn<=65535
+    gf,gc,gl,gw,gn,gj=map(int,grow[2:]); assert gf==next_index and gl==license and gj==0 and 1<=gn<=65535
     next_index=gf+gc; seedfirst=(gw-word)//8; assert (gw-word)%8==0 and seedfirst+gn<=verts
     doc=json.loads((source/'glTF'/f'{name}.gltf').read_text()); blob=(source/'glTF'/f'{name}.bin').read_bytes()
     pr=doc['meshes'][0]['primitives'][0]

@@ -166,6 +166,12 @@ bool world_place_at(int k, int s, float x, float y, float z, float yaw, float ou
   return true;
 }
 
+bool world_place_glade(int k, int s, float out[WORLD_POSE]) {
+  if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
+  coax_t_Point p = everglade_glade_spawn(at(k));
+  return world_place_at(k, s, p.x, p.y, p.z, everglade_glade_face(at(k)), out);
+}
+
 bool world_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]) {
   if (!world_of(k) || s < 0 || s >= WORLD_SEATS) return false;
   coax_t_Everglade *g = world[k];

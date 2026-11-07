@@ -355,6 +355,8 @@ EXPORT("coaxial_probe") int32_t coaxial_probe(cx_face_addr state) {
 static float probe_feet[3], probe_speed, probe_fix;
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, int32_t field) {
   if (field==29) return net_state.join.e[0].pick_open ? 1 : 0;
+  /* 40 + F: Character Create's state (everglade-create.coax everglade_create_probe) */
+  if (field >= 40 && field < 50) return (int32_t)everglade_create_probe(at(state), field - 40);
   if (field>=20 && field<=28) return (int32_t)everglade_avatar_probe(at(state),field);
   if (field >= 0 && field < 3) return (int32_t)(probe_feet[field] * 1000);
   if (field == 3) return (int32_t)verse_player_act(player);
@@ -784,6 +786,9 @@ EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr 
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return city(state)->started ? (int32_t)everglade_shadow_field(at(state), field) : -1; }
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { everglade_shadow_event(at(state), kind, arg); }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { return city(state)->started ? (uint32_t)everglade_draws(at(state)) : 0u; }
+/* the shadow map's own list: the scene's but the water and the glade's grass (everglade-glade.coax) */
+EXPORT("coaxial_shadow_draws_v1") cx_face_addr coaxial_shadow_draws_v1(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->shadow_draws.e; }
+EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(cx_face_addr state) { return city(state)->started ? (uint32_t)everglade_shadow_draw_count(at(state)) : 0u; }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)(k == 3 ? everglade_river_node_bytes() : everglade_store_cap(k)); }
 EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr state, int32_t k) {

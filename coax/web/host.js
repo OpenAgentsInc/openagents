@@ -3323,6 +3323,13 @@ function after(gesture, tap = false) {
     }
     // Open another page in place, out of sight until action 1 goes to it (zone-host.js); progress back as message 18.
     else if (code === 18 && text.startsWith("/")) warmPage(root && !text.startsWith(root + "/") ? root + text : text, (t) => send(18, t));
+    // The app's place in the site, said in the address bar without loading anything: one world whose
+    // places have their own addresses (Character Create walking into Everglade, #13018). Same origin
+    // only; the page's query and hash stay unless the path brings its own.
+    else if (code === 19 && text.startsWith("/") && !text.startsWith("//")) {
+      const to = new URL(root && !text.startsWith(root + "/") ? root + text : text, location.href);
+      if (to.origin === location.origin) history.replaceState(history.state, "", to.pathname + (to.search || location.search) + (to.hash || location.hash));
+    }
     else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
     else if (code === BAR_KIND) { if (!golden) try { localStorage.setItem(barKey, text); } catch {} }
     else if (code === 6) setQuality(text);
