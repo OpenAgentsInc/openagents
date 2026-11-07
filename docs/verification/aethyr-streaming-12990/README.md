@@ -1,7 +1,10 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The latest [canonical paid-step replay
-record](walk-state-replay.md) adds a versioned state profile, independent
+Issue #12990 remains open. The latest [receive-fault replay
+record](walk-receive-fault-replay.md) qualifies actual corrupt, oversized,
+cancelled, reordered and bad-container histories with retained source
+observations and exact native state at every paid step. The [canonical
+paid-step replay record](walk-state-replay.md) adds a versioned state profile, independent
 byte vectors and actual native/browser comparison at every paid tick for
 both successful route histories. A separate [actual upload-failure
 record](walk-upload-failure-replay.md) now qualifies every paid step through
@@ -11,8 +14,9 @@ GPU replacement record](walk-coordinator-recovery.md) retains its mutation,
 real WebGPU replacement and exact-owner upload-failure evidence. The
 [earlier browser/replay record](walk-browser-cpu-replay.md) preserves its
 historical failing gates and artifacts. Automatic loss handling,
-failed-replacement rescue, native GPU recovery, failure-history replay,+persistent HUD adoption and remaining host fault cases still prevent
-issue completion.
+failed-replacement rescue, native GPU recovery, remaining failure histories,
+persistent HUD adoption and remaining host fault cases still prevent issue
+completion.
 
 Work starts from `df06d21dee90a9f54778143ffd6b8fe1c400e392`, in the reused
 `/home/christopherdavid/oa-open-issues` worktree. Exact component source

@@ -1,0 +1,99 @@
+// Recorded retained source bytes for bounded host replay. A received or
+// zero-filled failed allocation has its own digest, not the manifest's.
+#authority;
+#load "../assets.coax" as assets;
+RECORDED_SOURCE_MAX :: 4096;
+RECORDED_SOURCE_EVENTS :: 64;
+RECORDED_SOURCE_SCHEMA :: "aethyr.recorded-source.v1";
+RecordedSourceStatus :: enum u8 { ok; invalid; capacity; mismatch; }
+RecordedSourceWord :: struct {ok: bool; value: int;}
+
+#test "recorded identity words preserve signed 64-bit integers beyond binary64 precision" {
+  #assert recorded_source_word("0").ok && recorded_source_word("0").value == 0;
+  #assert recorded_source_word("42").ok && recorded_source_word("42").value == 42;
+  #assert recorded_source_word("-42").ok && recorded_source_word("-42").value == -42;
+  #assert recorded_source_word("9007199254740993").ok && recorded_source_word("9007199254740993").value == 9007199254740993;
+  #assert recorded_source_word("9223372036854775807").ok && recorded_source_word("9223372036854775807").value == 9223372036854775807;
+  #assert recorded_source_word("-9223372036854775808").ok && recorded_source_word("-9223372036854775808").value == -9223372036854775808;
+  #assert recorded_source_word("-0").ok && recorded_source_word("-0").value == 0;
+  #assert recorded_source_word("00000000000000000000").ok && recorded_source_word("00000000000000000000").value == 0;
+  for bad: [8] string.["", "-", "+1", "1.0", "1e1", "9223372036854775808", "-9223372036854775809", "000000000000000000000"] { #assert !recorded_source_word(bad).ok; }
+}
+#forall "one-byte identity words accept exactly the ASCII digits" byte: 0..<256 {
+  text := [1] u8.[cast(u8) byte]; result := recorded_source_word(cast(string) text[..]);
+  #assert result.ok == (byte >= 48 && byte <= 57);
+  if result.ok { #assert result.value == byte - 48; }
+}
+
+#test "recorded source profile requires its exact version and bounded event count" {
+  #assert recorded_source_profile(RECORDED_SOURCE_SCHEMA, 0) && recorded_source_profile(RECORDED_SOURCE_SCHEMA, 64);
+  #assert !recorded_source_profile(RECORDED_SOURCE_SCHEMA, -1) && !recorded_source_profile(RECORDED_SOURCE_SCHEMA, 65);
+  #assert !recorded_source_profile("", 0) && !recorded_source_profile("aethyr.recorded-source.v2", 1);
+}
+
+#test "recorded source authenticates exact binary bytes and preserves the output tail" {
+  source := [4] u8.[42, 127, 128, 255]; out := [6] u8.[9, 9, 9, 9, 9, 9];
+  #assert recorded_source("2a7f80ff", assets.asset_id(cast(string) source[..]), 4, out[..]) == RecordedSourceStatus.ok;
+  for i: 0..<4 { #assert out[i] == source[i]; }
+  #assert out[4] == 9 && out[5] == 9;
+  #assert recorded_source("", assets.asset_id(""), 0, out[..]) == RecordedSourceStatus.ok && out[0] == 42;
+}
+#test "recorded source capacity is distinct from an invalid oversized spelling" {
+  out: [RECORDED_SOURCE_MAX + 1] u8;
+  #assert recorded_source("", assets.asset_id(""), RECORDED_SOURCE_MAX + 1, out[..]) == RecordedSourceStatus.capacity;
+  #assert out[0] == 0 && out[RECORDED_SOURCE_MAX] == 0;
+}
+#test "recorded source refuses invalid size spelling identity and capacity without publishing a prefix" {
+  source := [2] u8.[0, 255]; identity := assets.asset_id(cast(string) source[..]);
+  for which: 0..<7 {
+    out := [3] u8.[33, 34, 35]; text := "00ff"; count := 2; size := 3; expected := RecordedSourceStatus.invalid;
+    if which == 0 { count = -1; }
+    if which == 1 { count = RECORDED_SOURCE_MAX + 1; expected = RecordedSourceStatus.capacity; }
+    if which == 2 { size = 1; expected = RecordedSourceStatus.capacity; }
+    if which == 3 { text = "00f"; }
+    if which == 4 { text = "00FF"; }
+    if which == 5 { text = "00fg"; }
+    if which == 6 { text = "00fe"; expected = RecordedSourceStatus.mismatch; }
+    #assert recorded_source(text, identity, count, out[0..<size]) == expected;
+    #assert out[0] == 33 && out[1] == 34 && out[2] == 35;
+  }
+}
+#test "recorded source supports its exact maximum with every byte value" #steps 30000000 {
+  source: [RECORDED_SOURCE_MAX] u8; text: [RECORDED_SOURCE_MAX * 2] u8; out: [RECORDED_SOURCE_MAX] u8;
+  digits := "0123456789abcdef";
+  for i: 0..<RECORDED_SOURCE_MAX { source[i] = cast,trunc(u8) i; text[i * 2] = digits[(i % 256) / 16]; text[i * 2 + 1] = digits[i % 16]; }
+  #assert recorded_source(cast(string) text[..], assets.asset_id(cast(string) source[..]), RECORDED_SOURCE_MAX, out[..]) == RecordedSourceStatus.ok;
+  for i: 0..<RECORDED_SOURCE_MAX { #assert out[i] == source[i]; }
+}
+
+recorded_source_profile :: (schema: string, count: int) -> bool #effects(all) {
+  return schema == RECORDED_SOURCE_SCHEMA && count >= 0 && count <= RECORDED_SOURCE_EVENTS;
+}
+recorded_source_word :: (text: string) -> RecordedSourceWord #effects(all) {
+  if text.count == 0 || text.count > 20 { return RecordedSourceWord.{}; }
+  negative := text[0] == '-'; start := ifx negative then 1 else 0;
+  if start == text.count { return RecordedSourceWord.{}; }
+  value := 0;
+  for i: start..<text.count {
+    c := text[i]; if c < '0' || c > '9' { return RecordedSourceWord.{}; }
+    digit := cast(int) (c - '0');
+    // A negative carrier admits INT64_MIN without ever negating it.
+    if value < -922337203685477580 || (value == -922337203685477580 && digit > (ifx negative then 8 else 7)) { return RecordedSourceWord.{}; }
+    value = value * 10 - digit;
+  }
+  return RecordedSourceWord.{ok = true, value = ifx negative then value else -value};
+}
+recorded_source :: (hex: string, expected: assets.AssetId, count: int, out: [] u8) -> RecordedSourceStatus #effects(all) {
+  if count < 0 { return RecordedSourceStatus.invalid; }
+  if count > RECORDED_SOURCE_MAX || out.count < count { return RecordedSourceStatus.capacity; }
+  if hex.count != count * 2 { return RecordedSourceStatus.invalid; }
+  decoded: [RECORDED_SOURCE_MAX] u8;
+  for i: 0..<count {
+    high := assets.asset_digit(hex[i * 2]); low := assets.asset_digit(hex[i * 2 + 1]);
+    if high < 0 || low < 0 { return RecordedSourceStatus.invalid; }
+    decoded[i] = cast(u8) (high * 16 + low);
+  }
+  if !assets.asset_same(assets.asset_id(cast(string) decoded[0..<count]), expected) { return RecordedSourceStatus.mismatch; }
+  for i: 0..<count { out[i] = decoded[i]; }
+  return RecordedSourceStatus.ok;
+}

@@ -4,6 +4,7 @@
 #import "Basic";
 #load "../../world/stream-walk.coax";
 #load "../../forge/pack.coax" as packs;
+#load "../recorded-source.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/json/json.coax";
@@ -28,17 +29,23 @@ sw_host_trace_ack :: () #foreign #effects(all);
 
 SwReplaySources :: struct { data: [64] [4096] u8; count: [64] int; }
 SwReplayAttempts :: struct { generation: [64] int; epoch: [64] int; retiring: [64] bool; }
+SwReplaySnapshots :: struct {used: [RECORDED_SOURCE_EVENTS] bool;}
 #test "replay numbers preserve unsigned SHA words and source decimal binary32 values" {
   d: [1] Jv; nodes: [32] JvNode;
-  #assert jv_parse(d[..], "[\"4294967295\",-1,18.3974609375]", nodes[..]);
+  #assert jv_parse(d[..], "[\"4294967295\",-1,18.3974609375,\"9007199254740993\",\"9223372036854775807\",\"-9223372036854775808\"]", nodes[..]);
   #assert swr_word(d[0], jv_at(d[0], 0, 0)) == 4294967295 && swr_word(d[0], jv_at(d[0], 0, 1)) == -1;
   #assert f32(swr_number(d[0], jv_at(d[0], 0, 2))) == 18.3974609375;
+  #assert swr_word(d[0], jv_at(d[0], 0, 3)) == 9007199254740993;
+  #assert swr_word(d[0], jv_at(d[0], 0, 4)) == 9223372036854775807 && swr_word(d[0], jv_at(d[0], 0, 5)) == -9223372036854775808;
 }
 swr_number :: (d: Jv, at: int) -> f64 {
   #assert jv_kind(d, at) == JV_NUMBER || jv_kind(d, at) == JV_STRING;
   text := jv_raw(d, at); n := args_number(text); if !n.ok { print("unsupported replay number '%'\n", text); } #assert n.ok; return n.value;
 }
-swr_word :: (d: Jv, at: int) -> int { return cast(int) swr_number(d, at); }
+swr_word :: (d: Jv, at: int) -> int {
+  #assert jv_kind(d, at) == JV_NUMBER || jv_kind(d, at) == JV_STRING;
+  word := recorded_source_word(jv_raw(d, at)); #assert word.ok; return word.value;
+}
 swr_name :: (id: string, suffix: string, out: [] u8) -> string {
   #assert id.count == 64 && out.count >= 80;
   for c, i: id { out[i] = c; } for c, i: suffix { out[64 + i] = c; }
@@ -74,7 +81,30 @@ swr_effects :: (source: [] SwReplaySources, attempts: [] SwReplayAttempts) -> bo
   }
   sw_host_ack(); sw_host_trace_ack(); return true;
 }
-swr_frame :: (trace: Jv, frame: int, closing: bool, source: [] SwReplaySources, attempts: [] SwReplayAttempts, observed: [] u8, used: [] int) -> bool {
+swr_snapshot :: (trace: Jv, record: int, source: [] SwReplaySources, snapshots: [] SwReplaySnapshots) -> bool {
+  list := jv_get(trace, 0, "sourceSnapshots"); count := jv_len(trace, list);
+  if count > RECORDED_SOURCE_EVENTS { return false; }
+  row := swr_word(trace, jv_at(trace, record, 2)); gen := swr_word(trace, jv_at(trace, record, 3)); epoch := swr_word(trace, jv_at(trace, record, 4)); found := -1;
+  for i: 0..<count {
+    item := jv_at(trace, list, i);
+    if swr_word(trace, jv_get(trace, item, "owner")) == row && swr_word(trace, jv_get(trace, item, "generation")) == gen && swr_word(trace, jv_get(trace, item, "epoch")) == epoch {
+      if found >= 0 || snapshots[0].used[i] { return false; } found = i;
+    }
+  }
+  // Historical valid-source histories have no captured exception payload.
+  if found < 0 { return true; }
+  identity: assets.AssetId; for word: 0..<8 { identity.words[word] = cast(u32) swr_word(trace, jv_at(trace, record, word + 15)); }
+  item := jv_at(trace, list, found); text: [RECORDED_SOURCE_MAX * 2] u8; bytes: [RECORDED_SOURCE_MAX] u8;
+  n := jv_str(trace, jv_get(trace, item, "hex"), text[..]); if n < 0 { return false; }
+  if recorded_source(cast(string) text[0..<n], identity, source[0].count[row], bytes[..]) != RecordedSourceStatus.ok { return false; }
+  if !sw_sdk_copy(row, gen, epoch, bytes[0..<source[0].count[row]]) { return false; }
+  // Match the retained source/decoder attempt. Failed effects keep their
+  // recorded completion status; the shared gate still decides publication.
+  decoded := sw_host_decode(cast(s32) row, gen, epoch);
+  if decoded != 0 && swr_word(trace, jv_at(trace, record, 5)) == 0 { return false; }
+  snapshots[0].used[found] = true; return true;
+}
+swr_frame :: (trace: Jv, frame: int, closing: bool, source: [] SwReplaySources, attempts: [] SwReplayAttempts, snapshots: [] SwReplaySnapshots, observed: [] u8, used: [] int) -> bool {
   records := ifx closing then jv_get(trace, frame, "records") else jv_at(trace, frame, 13);
   for i: 0..<jv_len(trace, records) {
     record := jv_at(trace, records, i); if jv_len(trace, record) != 23 { return false; }
@@ -82,6 +112,7 @@ swr_frame :: (trace: Jv, frame: int, closing: bool, source: [] SwReplaySources, 
     row := swr_word(trace, jv_at(trace, record, 2)); gen := swr_word(trace, jv_at(trace, record, 3)); epoch := swr_word(trace, jv_at(trace, record, 4));
     if row < 0 || row >= 64 || attempts[0].generation[row] != gen || attempts[0].epoch[row] != epoch { return false; }
     if kind == 0 {
+      if !swr_snapshot(trace, record, source, snapshots) { return false; }
       if sw_host_finish(cast(s32) row, gen, epoch, cast(s32) swr_word(trace, jv_at(trace, record, 5))) != 1 { return false; }
     } else if kind == 1 {
       if !attempts[0].retiring[row] || sw_host_destroy(cast(s32) row, gen, epoch) != 1 { return false; }
@@ -134,6 +165,11 @@ tool_main :: () -> int #export_c #effects(all) {
   sources: [1] SwReplaySources; if !swr_sources(scene[0], args_at(a[..], 0), sources[..]) { return 1; }
   bytes: [4194304] u8; d: [1] Jv; nodes: [262144] JvNode;
   trace_n := fs_read(args_at(a[..], 1), bytes[..]); if trace_n < 1 || !jv_parse(d[..], cast(string) bytes[0..<trace_n], nodes[..]) { return 1; }
+  captured := jv_get(d[0], 0, "sourceSnapshots");
+  if captured >= 0 || jv_get(d[0], 0, "sourceSchema") >= 0 {
+    name: [64] u8; size := jv_str(d[0], jv_get(d[0], 0, "sourceSchema"), name[..]);
+    if size < 0 || jv_kind(d[0], captured) != JV_ARRAY || !recorded_source_profile(cast(string) name[0..<size], jv_len(d[0], captured)) { return 1; }
+  }
   profile := jv_get(d[0], 0, "profile"); tier := ifx profile < 0 then 0 else jv_int(d[0], jv_get(d[0], profile, "tier"), -1);
   schema: [64] u8; schema_n := jv_str(d[0], jv_get(d[0], profile, "stateSchema"), schema[..]);
   if schema_n != 27 || cast(string) schema[0..<schema_n] != "aethyr.stream-walk-state.v1" { return 1; }
@@ -146,9 +182,10 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   n = fs_read(fs_join(args_at(a[..], 0), swr_name(cast(string) root[..], ".rcm", name[..]), path[..]), manifest_bytes[..]);
   if n < 1 || !sw_sdk_start(manifest_bytes[0..<n], root[..], tier, 0) { return 1; }
-  attempts: [1] SwReplayAttempts; observed: [1048576] u8; used: [1] int; frames := jv_get(d[0], 0, "frames"); count := jv_len(d[0], frames);
+  attempts: [1] SwReplayAttempts; snapshots: [1] SwReplaySnapshots; observed: [1048576] u8; used: [1] int; frames := jv_get(d[0], 0, "frames"); count := jv_len(d[0], frames);
   if count < 1 { return 1; }
-  for i: 0..<count { if !swr_frame(d[0], jv_at(d[0], frames, i), false, sources[..], attempts[..], observed[..], used[..]) { print("replay failed at frame %\n", i); return 1; } }
+  if jv_len(d[0], jv_get(d[0], 0, "sourceSnapshots")) > RECORDED_SOURCE_EVENTS { return 1; }
+  for i: 0..<count { if !swr_frame(d[0], jv_at(d[0], frames, i), false, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("replay failed at frame %\n", i); return 1; } }
   // Native observer has made no GPU SDK objects. Existing ledger handles
   // are exercised by the shared owner; no GPU presentation is claimed.
   legs := jv_get(d[0], 0, "legs"); expected_cells := jv_get(d[0], jv_at(d[0], legs, jv_len(d[0], legs) - 1), "cells");
@@ -156,7 +193,8 @@ tool_main :: () -> int #export_c #effects(all) {
   for cell: 0..<12 { for field: 0..<5 { if sw_host_cell(cast(s32) cell, cast(s32) field) != swr_word(d[0], jv_at(d[0], jv_at(d[0], expected_cells, cell), field)) { return 1; } } }
   if sw_host_close() != 1 { return 1; }
   closing := jv_path(d[0], 0, "cleanup.closingFrames");
-  for i: 0..<jv_len(d[0], closing) { if !swr_frame(d[0], jv_at(d[0], closing, i), true, sources[..], attempts[..], observed[..], used[..]) { print("closing replay failed at frame %\n", i); return 1; } }
+  for i: 0..<jv_len(d[0], closing) { if !swr_frame(d[0], jv_at(d[0], closing, i), true, sources[..], attempts[..], snapshots[..], observed[..], used[..]) { print("closing replay failed at frame %\n", i); return 1; } }
+  for i: 0..<jv_len(d[0], jv_get(d[0], 0, "sourceSnapshots")) { if !snapshots[0].used[i] { return 1; } }
   for field: [7] s32.[8, 10, 11, 12, 14, 22, 23] { if sw_host_info(field) != 0 { print("cleanup field % remains %\n", field, sw_host_info(field)); return 1; } }
   if sw_host_info(24) != 1 || sw_host_info(20) != sw_host_info(21) { return 1; }
   hex: [64] u8; report: [4096] u8; j: [1] Jo; jo_start(j[..], report[..]); jo_obj(j[..]);
@@ -166,6 +204,8 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_key(j[..], "cpu_peak"); jo_int(j[..], sw_host_info(15)); jo_key(j[..], "input_sha256"); #assert assets.asset_hex(assets.asset_id(cast(string) bytes[0..<trace_n]), hex[..]); jo_str(j[..], cast(string) hex[..]);
   jo_key(j[..], "observation_sha256"); #assert assets.asset_hex(assets.asset_id(cast(string) observed[0..<used[0]]), hex[..]); jo_str(j[..], cast(string) hex[..]);
   jo_key(j[..], "state_schema"); jo_str(j[..], "aethyr.stream-walk-state.v1");
+  jo_key(j[..], "source_schema"); jo_str(j[..], ifx captured >= 0 then RECORDED_SOURCE_SCHEMA else "");
+  jo_key(j[..], "captured_sources"); jo_int(j[..], jv_len(d[0], captured));
   jo_key(j[..], "qualified"); jo_str(j[..], "native CPU codecs and malloc/free; canonical state SHA-256 after each paid step, exact completion records and final actor identities; no native GPU"); jo_end(j[..]);
   if j[0].bad || !fs_write(args_at(a[..], 2), jo_text(j[..])) { return 1; }
   print("PASS native replay % frames, % attempts, final zero owners\n", count, sw_host_info(20)); return 0;

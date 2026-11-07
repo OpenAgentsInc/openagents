@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/recorded-source.coax:41:14: mutant survived: 4096 became 4097
+    if count > RECORDED_SOURCE_MAX || out.count < count { return RecordedSourceStatus.capacity; }
+               ^
+aethyr/host/recorded-source.coax:44:10: mutant survived: 0 became 1
+    for i: 0..<count {
+           ^
+33 mutants, 31 killed, 2 survived

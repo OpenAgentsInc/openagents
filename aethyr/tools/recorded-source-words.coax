@@ -1,0 +1,16 @@
+// Actual native integer-reader observations; the Python oracle independently
+// checks full-width values and refusal with arbitrary-precision integers.
+#import "Basic";
+#load "../host/recorded-source.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/json/json.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  inputs := [16] string.["0", "42", "-42", "9007199254740993", "9223372036854775807", "-9223372036854775808", "-0", "00000000000000000000",
+    "", "-", "+1", "1.0", "1e1", "9223372036854775808", "-9223372036854775809", "000000000000000000000"];
+  bytes: [8192] u8; j: [1] Jo; jo_start(j[..], bytes[..]); jo_arr(j[..]);
+  for input: inputs {
+    word := recorded_source_word(input); jo_obj(j[..]); jo_key(j[..], "input"); jo_str(j[..], input);
+    jo_key(j[..], "ok"); jo_bool(j[..], word.ok); jo_key(j[..], "value"); jo_int(j[..], word.value); jo_end(j[..]);
+  }
+  jo_end(j[..]); if j[0].bad { return 1; } print("%\n", jo_text(j[..])); return 0;
+}

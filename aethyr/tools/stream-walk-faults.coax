@@ -1,0 +1,37 @@
+// Actual browser receive faults, retained-source observation and replay
+// receipts. JavaScript below calls SDKs; Coax owns the fixture and verdict.
+#load "../../coax/web/wasm-chrome.coax";
+#load "../host/recorded-source.coax";
+
+swf_install :: (c: [] Cdp) -> bool {
+  script := "(()=>{const original=WebAssembly.instantiate;window.sourceSnapshots=[];window.sourceSnapshotError=null;window.sourceSnapshotBytes=0;WebAssembly.instantiate=async function(module,imports){const result=await original.call(this,module,imports),instance=result.instance||result,actual=instance.exports;if(!actual.sw_host_finish)return result;const memory=imports.env.memory;const exports={...actual,sw_host_allocate(owner,...args){const value=actual.sw_host_allocate(owner,...args);window.sourceAllocatedOwner=owner;return value;},sw_host_finish(owner,generation,epoch,status){if(status!==0){try{const pointer=actual.sw_host_pointer(owner,0),count=Number(actual.sw_host_row(owner,1));if(sourceSnapshots.length>=64||count<0||count>4096)throw Error('retained-source diagnostic capacity');const bytes=pointer?new Uint8Array(memory.buffer,pointer,count):new Uint8Array(0);sourceSnapshots.push({owner,generation:String(generation),epoch:String(epoch),hex:Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('')});sourceSnapshotBytes+=bytes.length;}catch(e){sourceSnapshotError=String(e);}}return actual.sw_host_finish(owner,generation,epoch,status);}};const wrapped={exports};return result.instance?{...result,instance:wrapped}:wrapped;};})()";
+  bytes: [8192] u8; j: [1] Jo; jo_start(j[..], bytes[..]); jo_obj(j[..]); jo_key(j[..], "source"); jo_str(j[..], script); jo_end(j[..]);
+  return !j[0].bad && cdp_call(c, "Page.enable", "", CDP_CALL_MS) >= 0 && cdp_call(c, "Runtime.enable", "", CDP_CALL_MS) >= 0 &&
+    cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
+swf_run :: (c: [] Cdp, mode: string, output: string, raw_id: string) -> int {
+  if wc_eval(c, "Array.isArray(window.sourceSnapshots)") != "true" { tool_errln("retained source observer did not install before page startup"); return 1; }
+  // Install after metadata startup and before the first paid load request.
+  // Match collision owner 5's full content identity, independent of response order.
+  param: [4096] u8; j: [1] Jo; jo_start(j[..], param[..]); jo_obj(j[..]); jo_key(j[..], "mode"); jo_str(j[..], mode); jo_key(j[..], "raw"); jo_str(j[..], raw_id); jo_end(j[..]);
+  script: [16384] u8;
+  parts := [3] string.["(async()=>{const {mode,raw}=", jo_text(j[..]), ";const original=window.fetch;let injected=false,release;window.fetch=async function(...args){const owner=window.sourceAllocatedOwner,r=await original.apply(this,args);if(injected||!String(args[0]).endsWith(raw+(mode==='--corrupt-pack'?'.vpk':'.raw'))||(mode==='--corrupt-pack'&&owner!==0))return r;injected=true;window.sourceFaultURL=String(args[0]);const bytes=new Uint8Array(await r.arrayBuffer());if(mode==='--corrupt-source'){bytes[0]^=1;return new Response(bytes);}if(mode==='--corrupt-pack'){bytes[bytes.length-1]^=1;return new Response(bytes);}if(mode==='--oversize-source'){const excess=new Uint8Array(bytes.length+1);excess.set(bytes);return new Response(excess);}if(mode==='--cancel-replay')return new Response(new ReadableStream({start(c){c.enqueue(bytes);},cancel(){window.sourceFaultCancelled=true;}}));if(mode==='--out-of-order')return await new Promise(resolve=>{release=()=>resolve(new Response(bytes));});return r;};try{const frames=[];for(let i=0;i<32;i++){frames.push(await streamWalk.step(62500000,0));if((mode==='--cancel-replay')||(mode==='--out-of-order'&&i<8))await new Promise(r=>setTimeout(r,10));else{if(release){release();release=null;}await streamWalk.settle();}}const before=streamWalk.stats(),cells=streamWalk.cells();const cleanup=await Promise.race([streamWalk.close(),new Promise((_,reject)=>setTimeout(()=>reject(Error('fault shutdown exceeded five seconds')),5000))]);const records=[...frames.flatMap(f=>f.records),...cleanup.closingFrames.flatMap(f=>f.records)],completed=records.filter(r=>+r[1]===0),failed=completed.filter(r=>+r[6]===6),key=r=>r.slice(2,5).join('/'),noFailedReady=failed.every(f=>!records.some(r=>+r[1]===2&&key(r)===key(f))),retired=failed.every(f=>records.some(r=>+r[1]===1&&+r[6]===0&&key(r)===key(f))),retried=failed.every(f=>records.some(r=>+r[1]===2&&r[2]===f[2]&&BigInt(r[3])>BigInt(f[3]))),delayed=completed.findIndex(r=>+r[2]===5)>completed.findIndex(r=>+r[2]===6),closure=records.filter(r=>+r[1]===2&&+r[2]===6).every(r=>records.some(q=>+q[1]===2&&+q[2]===5&&+q[0]<=+r[0]));return {mode,injected,url:window.sourceFaultURL,cancelled:window.sourceFaultCancelled===true,noFailedReady,retired,retried,delayed,closure,failedOwners:failed.map(r=>+r[2]),sourceSchema:'aethyr.recorded-source.v1',sourceSnapshots,sourceSnapshotBytes,sourceSnapshotError,frames:frames.map(f=>[f.frameNs,f.direction,f.tick,...f.position,f.active,f.drawn,f.updated,f.declared,f.cpu,f.gpuBytes,f.frameMs,f.records,f.stepDigests.join('')]),legs:[{cells}],before,cleanup,records:frames.flatMap(f=>f.records),allocations:frames.filter(f=>f.allocations.length).map(f=>({tick:f.tick,events:f.allocations})),stages:frames.flatMap(f=>f.stages),profile:streamWalk.profile,adapter:streamWalk.adapter};}catch(e){return {error:String(e),stack:e.stack,stats:streamWalk.stats(),sourceSnapshots,sourceSnapshotError};}finally{window.fetch=original;}})()"];
+  result := cdp_evaluate(c, wc_cat(script[..], parts[..])); if result < 0 { tool_errln(cdp_error(c)); return 1; }
+  if jv_len(cdp_doc(c), result) == 0 { tool_errln(cdp_doc(c).text); }
+  doc := cdp_doc(c); report: [262144] u8; jo_start(j[..], report[..]); jv_write(doc, result, j[..]);
+  if j[0].bad || !fs_write(output, jo_text(j[..])) { return 1; }
+  ok := jv_get(doc, result, "error") < 0 && jv_bool(doc, jv_get(doc, result, "injected")) && jv_raw(doc, jv_get(doc, result, "sourceSnapshotError")) == "null";
+  failed := jv_get(doc, result, "failedOwners");
+  captured := jv_get(doc, result, "sourceSnapshots");
+  ok = ok && jv_len(doc, captured) == jv_len(doc, failed);
+  if mode == "--out-of-order" { ok = ok && jv_len(doc, failed) == 0 && jv_bool(doc, jv_get(doc, result, "delayed")) && jv_bool(doc, jv_get(doc, result, "closure")); }
+  else { ok = ok && jv_len(doc, failed) == 1 && jv_int(doc, jv_at(doc, failed, 0), -1) == (ifx mode == "--corrupt-pack" then 0 else 5) && jv_bool(doc, jv_get(doc, result, "noFailedReady")) && jv_bool(doc, jv_get(doc, result, "retired"));
+    ok = ok && jv_bool(doc, jv_get(doc, result, ifx mode == "--cancel-replay" then "cancelled" else "retried"));
+    ok = ok && jv_int(doc, jv_get(doc, jv_at(doc, captured, 0), "owner"), -1) == jv_int(doc, jv_at(doc, failed, 0), -2);
+  }
+  cleanup := jv_get(doc, result, "cleanup"); info := jv_get(doc, cleanup, "info");
+  for field: [8] int.[8, 10, 11, 12, 13, 14, 22, 23] { if jv_int(doc, jv_at(doc, info, field), -1) != 0 { ok = false; } }
+  transport := jv_get(doc, cleanup, "transport");
+  for key: [5] string.["owners", "loading", "published", "readers", "sdkPending"] { if jv_int(doc, jv_get(doc, transport, key), -1) != 0 { ok = false; } }
+  print("Actual receive fault % with retained source observation and final zero owners: %\n", mode, ok); return ifx ok then 0 else 1;
+}

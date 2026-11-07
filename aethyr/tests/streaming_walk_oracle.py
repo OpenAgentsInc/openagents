@@ -23,6 +23,21 @@ def f32(value):
     return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
+def inspect_recorded_words(path):
+    rows = json.loads(path.read_bytes())
+    expected = ["0", "42", "-42", "9007199254740993", "9223372036854775807", "-9223372036854775808", "-0", "00000000000000000000",
+                "", "-", "+1", "1.0", "1e1", "9223372036854775808", "-9223372036854775809", "000000000000000000000"]
+    assert [r["input"] for r in rows] == expected
+    for row in rows:
+        text = row["input"]
+        digits = text[1:] if text.startswith("-") else text
+        valid = bool(digits) and len(text) <= 20 and all(c in "0123456789" for c in digits)
+        value = int(text) if valid else 0
+        valid = valid and -(1 << 63) <= value < (1 << 63)
+        assert row["ok"] == valid and row["value"] == (value if valid else 0)
+    print(json.dumps({"native_integer_cases": len(rows), "exact_signed_bits": 64}, sort_keys=True))
+
+
 def state_wire_vector(flag):
     """Independent v1 wire vector: zero scalars, one cell/body/decoded pair,
     one command per outbox, and every Boolean set to the supplied bit.
@@ -59,6 +74,9 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
     full_state = version.endswith(".v2")
     if full_state:
         assert report["state_schema"] == receipt["profile"]["stateSchema"] == "aethyr.stream-walk-state.v1"
+    if "sourceSnapshots" in receipt:
+        assert report["source_schema"] == receipt["sourceSchema"] == "aethyr.recorded-source.v1"
+        assert report["captured_sources"] == len(receipt["sourceSnapshots"])
     assert report["input_sha256"] == hashlib.sha256(receipt_path.read_bytes()).hexdigest()
     assert report["frames"] == len(receipt["frames"])
     assert report["ticks"] == receipt["cleanup"]["info"][0]
@@ -91,6 +109,11 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
         faults = ("position", "generation", "missing_completion")
         if full_state:
             faults += ("intermediate_state", "missing_step", "reordered_steps")
+        if "sourceSnapshots" in receipt:
+            assert receipt["sourceSchema"] == "aethyr.recorded-source.v1"
+            faults += ("unknown_payload_schema", "missing_payload_schema", "missing_payload_table", "invalid_payload_table")
+        if receipt.get("sourceSnapshots"):
+            faults += ("missing_payload", "payload_bit", "payload_key", "duplicate_payload", "orphan_payload", "invalid_payload_hex", "short_payload", "payload_capacity")
         for fault in faults:
             changed = copy.deepcopy(receipt)
             if fault == "position":
@@ -100,6 +123,34 @@ def inspect_native(scene_dir, receipt_path, receipt, report_path):
                 r[3] = str(int(r[3]) + 1)
             elif fault == "missing_completion":
                 changed["frames"][completed_frame][13].pop(completed_record)
+            elif fault == "unknown_payload_schema":
+                changed["sourceSchema"] = "aethyr.recorded-source.v2"
+            elif fault == "missing_payload_schema":
+                del changed["sourceSchema"]
+            elif fault == "missing_payload_table":
+                del changed["sourceSnapshots"]
+            elif fault == "invalid_payload_table":
+                changed["sourceSnapshots"] = {}
+            elif fault in ("missing_payload", "payload_bit", "payload_key", "duplicate_payload", "orphan_payload", "invalid_payload_hex", "short_payload", "payload_capacity"):
+                snapshots = changed["sourceSnapshots"]
+                if fault == "missing_payload":
+                    snapshots.clear()
+                elif fault == "payload_bit":
+                    snapshots[0]["hex"] = ("0" if snapshots[0]["hex"][0] != "0" else "1") + snapshots[0]["hex"][1:]
+                elif fault == "payload_key":
+                    snapshots[0]["generation"] = str(int(snapshots[0]["generation"]) + 1)
+                elif fault == "duplicate_payload":
+                    snapshots.append(copy.deepcopy(snapshots[0]))
+                elif fault == "orphan_payload":
+                    extra = copy.deepcopy(snapshots[0])
+                    extra["generation"] = "999999"
+                    snapshots.append(extra)
+                elif fault == "invalid_payload_hex":
+                    snapshots[0]["hex"] = "g" + snapshots[0]["hex"][1:]
+                elif fault == "short_payload":
+                    snapshots[0]["hex"] = snapshots[0]["hex"][:-2]
+                else:
+                    changed["sourceSnapshots"] = [copy.deepcopy(snapshots[0]) for _ in range(65)]
             else:
                 # Change only intermediate observations; the input, accepted
                 # history, frame endpoint and final actor state stay exact.
@@ -338,8 +389,113 @@ def inspect(scene_dir, receipt_path, native_report=None):
     print(json.dumps(result, sort_keys=True))
 
 
+def inspect_receive_fault(scene_dir, report_path):
+    scene = json.loads((scene_dir / "scene.json").read_bytes())
+    report = json.loads(report_path.read_bytes())
+    mode = report["mode"]
+    assert mode in ("--corrupt-source", "--oversize-source", "--cancel-replay", "--out-of-order", "--corrupt-pack")
+    assert report["injected"] and report["sourceSnapshotError"] is None
+    assert report["sourceSchema"] == "aethyr.recorded-source.v1"
+    failed_owner = 0 if mode == "--corrupt-pack" else 5
+    assert report["url"].endswith(scene["resources"][failed_owner]["container_sha256"] + (".vpk" if mode == "--corrupt-pack" else ".raw"))
+    manifest_sha = report["profile"]["manifestSHA"]
+    manifest = (scene_dir / (manifest_sha + ".rcm")).read_bytes()
+    assert hashlib.sha256(manifest).hexdigest() == manifest_sha
+    costs = [struct.unpack_from("<13q", manifest, 48 + row * 440 + 44) for row in range(64)]
+    live, attempts, total, peak, events = {}, set(), 0, 0, 0
+    for group in list(report["allocations"]) + report["cleanup"]["closingFrames"]:
+        for freed, row, generation, epoch, field, size in group.get("events", group.get("allocations", [])):
+            key = row, generation, epoch, field
+            assert size == (costs[row][0], costs[row][1], costs[row][3], costs[row][4], costs[row][5])[field] > 0
+            if freed:
+                assert freed == 1 and live.pop(key) == size
+                total -= size
+            else:
+                assert freed == 0 and key not in live
+                live[key] = size
+                total += size
+                attempts.add(key[:3])
+            assert 0 <= total <= 32768
+            peak = max(peak, total)
+            events += 1
+    assert not live and total == 0 and peak == report["cleanup"]["info"][15]
+    assert len(attempts) == report["cleanup"]["info"][20] == report["cleanup"]["info"][21]
+    snapshots = {(p["owner"], int(p["generation"]), int(p["epoch"])): bytes.fromhex(p["hex"])
+                 for p in report["sourceSnapshots"]}
+    assert len(snapshots) == len(report["sourceSnapshots"])
+    assert sum(map(len, snapshots.values())) == report["sourceSnapshotBytes"]
+    records = list(report["records"]) + [r for frame in report["cleanup"]["closingFrames"] for r in frame["records"]]
+    states, ready, failures, completion_order = defaultdict(dict), {}, [], []
+    for record in records:
+        r = list(map(int, record))
+        tick, kind, row, generation, epoch, decoded, status = r[:7]
+        key = row, generation, epoch
+        assert key in attempts and kind in (0, 1, 2) and kind not in states[key]
+        assert struct.pack("<8I", *r[7:15]) == words(scene["resources"][row]["sha256"])
+        if kind == 0:
+            payload = snapshots.get(key)
+            expected = hashlib.sha256(payload).hexdigest() if payload is not None else scene["resources"][row]["sha256"]
+            assert struct.pack("<8I", *r[15:23]) == words(expected)
+            completion_order.append(row)
+            if status == 6:
+                assert decoded == 5 and row == failed_owner and payload is not None
+                failures.append(key)
+            else:
+                assert status in (0, 5) and decoded == 0
+        elif kind == 2:
+            assert status == 0 and 0 in states[key] and states[key][0][1] == 0
+            dependencies = struct.unpack_from("<I", manifest, 48 + row * 440 + 148)[0]
+            for i in range(dependencies):
+                dependency = struct.unpack_from("<I", manifest, 48 + row * 440 + 152 + i * 36)[0]
+                assert dependency in ready
+            ready[row] = generation
+        else:
+            assert status == 0 and 0 in states[key]
+            if ready.get(row) == generation:
+                del ready[row]
+        if kind != 0:
+            assert struct.pack("<8I", *r[15:23]) == words(hashlib.sha256(b"").hexdigest())
+        states[key][kind] = tick, status
+    assert set(states) == attempts and all(0 in s and 1 in s for s in states.values()) and not ready
+    if mode == "--out-of-order":
+        assert not failures and not snapshots and report["delayed"] and report["closure"]
+        assert completion_order.index(6) < completion_order.index(5)
+    else:
+        assert len(failures) == 1 and set(failures) == set(snapshots)
+        key = failures[0]
+        assert 2 not in states[key] and states[key][1][0] > states[key][0][0]
+        source = scene["resources"][failed_owner]
+        if mode == "--corrupt-pack":
+            assert snapshots[key] == bytes(source["bytes"])
+            failed_stages = [s for s in report["stages"] if s.get("status")]
+            assert len(failed_stages) == 1 and "Coax refused complete content identity" in failed_stages[0]["error"]
+            original = None
+        else:
+            original = (scene_dir / (source["container_sha256"] + ".raw")).read_bytes()
+        if mode == "--corrupt-source":
+            altered = bytes([original[0] ^ 1]) + original[1:]
+            assert snapshots[key] == altered
+        elif mode != "--corrupt-pack":
+            assert snapshots[key] == bytes(len(original))
+        if mode == "--cancel-replay":
+            assert report["cancelled"] and report["before"]["transport"]["readers"] > 0
+            assert not any(2 in s for k, s in states.items() if k[0] == 5)
+        else:
+            replacements = [s[2][0] for k, s in states.items() if k[0] == failed_owner and k[1] > key[1] and 2 in s]
+            assert replacements and min(replacements) > states[key][1][0]
+    cleanup = report["cleanup"]
+    assert all(cleanup["info"][i] == 0 for i in (4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 22, 23))
+    assert not cleanup["gpuErrors"]
+    assert all(cleanup["transport"][k] == 0 for k in ("owners", "loading", "published", "readers", "sdkPending"))
+    print(json.dumps({"mode": mode, "attempts": len(attempts), "physical_events": events, "cpu_peak": peak,
+                      "captured_source_bytes": sum(map(len, snapshots.values())), "failed_attempts": len(failures),
+                      "final_zero_owners": True}, sort_keys=True))
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == "--state-wire-vectors":
+    if sys.argv[1] == "--recorded-words":
+        inspect_recorded_words(Path(sys.argv[2]))
+    elif sys.argv[1] == "--state-wire-vectors":
         print(json.dumps([state_wire_vector(False), state_wire_vector(True)], sort_keys=True))
     elif sys.argv[1] == "--native-only":
         receipt = Path(sys.argv[3])
@@ -348,5 +504,7 @@ if __name__ == "__main__":
         compare_tiers(Path(sys.argv[2]), Path(sys.argv[3]))
     elif sys.argv[1] == "--upload-failure":
         inspect_upload_failure(Path(sys.argv[2]), Path(sys.argv[3]))
+    elif sys.argv[1] == "--receive-fault":
+        inspect_receive_fault(Path(sys.argv[2]), Path(sys.argv[3]))
     else:
         inspect(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]) if len(sys.argv) == 4 else None)

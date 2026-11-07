@@ -77,6 +77,9 @@ order.
   walks 768 m and back using HTTP sources, browser WebGPU and native CPU
   replay. Its versioned state observer compares every paid step; see the
   [current verification scope](../../docs/verification/aethyr-streaming-12990/README.md).
+  [Recorded retained-source bytes](../host/recorded-source.md) also replay
+  measured corrupt, oversized, cancelled and reordered receive histories;
+  recording a failed span does not admit it as an asset.
 - [Named stream profiles](../world/stream-profile.coax): checked cell rings,
   independent media collection, paid-tick update cadence and neighbor
   placement hints, adopted by that bounded consumer. Prefetch readiness

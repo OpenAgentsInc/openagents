@@ -18,6 +18,7 @@ The #12990 components currently provide:
 | `stream-walk.coax` | Actual bounded corridor consumer: fixed-step facts, semantic collision/navigation, stable sleeping entity state and original resource owners |
 | `stream-walk-state.coax` | Versioned, fieldwise canonical simulation state and SHA-256 observations after individual paid steps |
 | `stream-walk-recovery.coax` | Atomic replacement of GPU owner handles after the SDK quiescence/destruction barrier; automatic loss scheduling remains unfinished |
+| `../host/recorded-source.coax` | [Versioned retained-source observations](../host/recorded-source.md) for replaying corrupt, oversized and cancelled browser loads without substituting canonical fixture bytes |
 | `../forge/vertices.coax` | Shared 48-byte static VPK vertex admission: eight finite floats followed by opaque packed color/layer/spare bytes |
 
 These files are source parts so a composed host has one owner of the

@@ -4,16 +4,18 @@
 #load "../assets.coax" as assets;
 #load "../../coax/lib/image/pillow.coax";
 #load "../render/tests/compare-frames-policy.coax" as comparison;
+#load "stream-walk-faults.coax";
 ceil :: (x: f64) -> f64 #foreign #effects(all);
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 3 || args_count(a[..]) > 4 { tool_errln("usage: stream-walk-browser BASE_URL SCENE_JSON OUTPUT_JSON [--route|--route-high|--cancel-stall|--recover|--recover-high|--upload-failure]"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 3 || args_count(a[..]) > 4 { tool_errln("usage: stream-walk-browser BASE_URL SCENE_JSON OUTPUT_JSON [--route|--route-high|--cancel-stall|--recover|--recover-high|--upload-failure|--corrupt-source|--oversize-source|--cancel-replay|--out-of-order|--corrupt-pack]"); return 2; }
   high := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--route-high" || args_at(a[..], 3) == "--recover-high");
   route := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--route" || args_at(a[..], 3) == "--route-high");
   cancel_stall := args_count(a[..]) == 4 && args_at(a[..], 3) == "--cancel-stall";
   recover := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--recover" || args_at(a[..], 3) == "--recover-high");
   upload_failure := args_count(a[..]) == 4 && args_at(a[..], 3) == "--upload-failure";
-  if args_count(a[..]) == 4 && !route && !cancel_stall && !recover && !upload_failure { return 2; }
+  fault := args_count(a[..]) == 4 && (args_at(a[..], 3) == "--corrupt-source" || args_at(a[..], 3) == "--oversize-source" || args_at(a[..], 3) == "--cancel-replay" || args_at(a[..], 3) == "--out-of-order" || args_at(a[..], 3) == "--corrupt-pack");
+  if args_count(a[..]) == 4 && !route && !cancel_stall && !recover && !upload_failure && !fault { return 2; }
   data: [65536] u8; n := fs_read(args_at(a[..], 1), data[..]); if n < 1 { return 1; }
   d: [1] Jv; nodes: [4096] JvNode; if !jv_parse(d[..], cast(string) data[0..<n], nodes[..]) { return 1; }
   manifest := jv_at(d[0], jv_get(d[0], 0, "manifests"), ifx high then 1 else 0); root: [64] u8;
@@ -24,6 +26,7 @@ tool_main :: () -> int #export_c #effects(all) {
   target := wc_cat(url[..], pieces[..]); c: [1] Cdp;
   if !cdp_launch(c[..], 640, 360, "aethyr-stream-walk-") { tool_errln(cdp_error(c[..])); return 1; }
   defer { cdp_close(c[..]); }
+  if fault && !swf_install(c[..]) { return 1; }
   parameters: [8192] u8; j: [1] Jo; jo_start(j[..], parameters[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], target); jo_end(j[..]);
   if cdp_call(c[..], "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { return 1; }
   deadline := proc_now_ms() + 30000; ready := false;
@@ -34,6 +37,11 @@ tool_main :: () -> int #export_c #effects(all) {
     proc_sleep(50);
   }
   if !ready { tool_errln(cdp_error(c[..])); return 1; }
+  if fault {
+    raw: [64] u8; item := jv_at(d[0], jv_get(d[0], 0, "resources"), ifx args_at(a[..], 3) == "--corrupt-pack" then 0 else 5);
+    if jv_str(d[0], jv_get(d[0], item, "container_sha256"), raw[..]) != 64 { return 1; }
+    return swf_run(c[..], args_at(a[..], 3), args_at(a[..], 2), cast(string) raw[..]);
+  }
   if upload_failure {
     result := cdp_evaluate(c[..], "(async()=>{const original=GPUQueue.prototype.writeBuffer;let injected=false;GPUQueue.prototype.writeBuffer=function(buffer,offset,data,...rest){if(!injected&&buffer.size===24){injected=true;return original.call(this,buffer,buffer.size,data,...rest);}return original.call(this,buffer,offset,data,...rest);};try{const frames=[];for(let i=0;i<32;i++){frames.push(await streamWalk.step(62500000,0));await streamWalk.settle();}const records=frames.flatMap(f=>f.records),failed=records.filter(r=>+r[1]===0&&+r[6]===6),key=r=>r.slice(2,5).join('/');const staleReady=failed.some(f=>records.some(r=>+r[1]===2&&key(r)===key(f)));const retired=failed.every(f=>records.some(r=>+r[1]===1&&key(r)===key(f)&&+r[6]===0));const retried=failed.every(f=>records.some(r=>+r[1]===2&&r[2]===f[2]&&BigInt(r[3])>BigInt(f[3])&&r.slice(7,15).join('/')===f.slice(7,15).join('/')));const before=streamWalk.stats();return {injected,failed:failed.length,failedOwners:failed.map(r=>+r[2]),staleReady,retired,retried,frames:frames.map(f=>[f.frameNs,f.direction,f.tick,...f.position,f.active,f.drawn,f.updated,f.declared,f.cpu,f.gpuBytes,f.frameMs,f.records,f.stepDigests.join('')]),legs:[{cells:streamWalk.cells()}],records,allocations:frames.filter(f=>f.allocations.length).map(f=>({tick:f.tick,events:f.allocations})),stages:frames.flatMap(f=>f.stages),before,cleanup:await streamWalk.close(),profile:streamWalk.profile,adapter:streamWalk.adapter};}catch(e){return {error:String(e),stack:e.stack,stats:streamWalk.stats()};}finally{GPUQueue.prototype.writeBuffer=original;}})()");
     if result < 0 { tool_errln(cdp_error(c[..])); return 1; }
