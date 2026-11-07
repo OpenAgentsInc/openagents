@@ -208,8 +208,6 @@ cv_post_z :: (depth:TexDepth,aux:Tex2D,q:I2)->f32 {zd:=cv_view_z(wg_load_depth(d
 vc_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
  px:=i2(wg_i32_f(pos.x),wg_i32_f(pos.y));size:=wg_dims_2d(post_light);width:=cast(f32)size.x;
  raw:=wg_load_2d(post_light,px,0);
- // K: the coverage matte for laying Echo over another page's frame (aux.z: 1 under geometry).
- if u[131]>0.5 {m:=clampf(wg_load_2d(post_aux,px,0).z,0.0f32,1.0f32);return v4(m,m,m,1);}
  if u[112]<0.5 || u[129]<=0 {return v4(raw.x,raw.y,raw.z,1);}
  zc:=cv_post_z(post_depth,post_aux,px);rc:=cv_coc(zc,u,width);centre:=cv_light_at(post_light,px,size);
  skin:=wg_load_2d(post_aux,px,0).x;
