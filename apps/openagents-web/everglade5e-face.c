@@ -1018,6 +1018,8 @@ EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uin
 EXPORT("coaxial_particles") cx_face_addr coaxial_particles(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->sp.sprites.e; }
 EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(cx_face_addr state) { return (uint32_t)(city(state)->sp.sprite_n * 12 * sizeof(float)); }
 EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(cx_face_addr state) { return city(state)->started ? (uint32_t)city(state)->sp.sprite_n : 0u; }
+EXPORT("coaxial_grass_range_count_v1") uint32_t grass_range_count_v1(cx_face_addr state) { return city(state)->started ? (uint32_t)everglade_grass_range_n(at(state)) : 0u; }
+EXPORT("coaxial_grass_range_v1") uint32_t grass_range_v1(cx_face_addr state, uint32_t i, uint32_t field) { return (uint32_t)everglade_grass_range_at(at(state), i, field); }
 EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(cx_face_addr state) { return city(state)->started ? (uint32_t)everglade_grass_instances(at(state)) : 0u; }
 EXPORT("coaxial_field") cx_face_addr coaxial_field(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->field.e; }
 

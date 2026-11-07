@@ -1,0 +1,7 @@
+FAIL #test unused water vertices are clipped before accessing any node (0 ms)
+verse/everglade/gpu.coax:1772:21: error[E0410]: index 0 is out of bounds for 0 elements
+    return water_nodes[cast(int)add_wrap(mul_wrap(k,8),f)];
+                      ^
+  note: in #test unused water vertices are clipped before accessing any node
+1 of 112 checks (--only 'unused water vertices'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

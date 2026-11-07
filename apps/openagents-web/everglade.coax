@@ -95,6 +95,7 @@
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
 #load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
 #load "everglade-character.coax";   // a detailed character through the host's character pass (?stage=echo)
+#load "../../aethyr/render/grass-root.coax" as gr_root;
 #load "everglade-sound.coax";   // the spells', the fight's, the raid's and the town's sound (#12751)
 #load "everglade-access.coax";   // SETTINGS: keys and a pad through one record, text size, captions, the accessible layer (#12857)
 #load "../../verse/style-preset.coax";
@@ -379,6 +380,7 @@ Everglade :: struct {
   // the time of day (realms.json clock: cycle, or ?clock=T pinned): the clock now, how it runs, when it was read
   clock: f32; day: StyleClock; day_from: f64;
   now_s: f64;     // and the page's `now` (s since 1970, -1 none): the shared clock the guards' beats keep
+  grass_ranges:[1]gr_root.GrassRootRanges;
   grass_n: int;   // the blades this frame (everglade_grass_instances)
   time: f64;
   width: f32; height: f32; dpr: f32;
@@ -1151,6 +1153,8 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effec
   if loaded >= 0 && total > 0 { s[0].pack_loaded = loaded; s[0].pack_total = total; }
 }
 
+everglade_grass_range_n :: (s:[]Everglade)->int #export_c #effects(all) {return s[0].grass_ranges[0].n;}
+everglade_grass_range_at :: (s:[]Everglade,i:int,field:int)->int #export_c #effects(all) {return gr_root.grass_root_at(s[0].grass_ranges[..],i,field);}
 everglade_grass_instances :: (s: [] Everglade) -> int #export_c #effects(all) { return s[0].grass_n; }
 everglade_walls :: (s: [] Everglade) -> int #export_c #effects(all) { if !s[0].started { everglade_start(s); } return s[0].wall_n; }
 // The walls and bodies in your way: on the bridge's deck its rails too, off it the piles too.
@@ -4317,6 +4321,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   far := cast(int) (2 * gr) * cast(int) (2 * gr) * cast(int) u[STYLE_AT + SU_GRASS];
   ring := ifx u[STYLE_AT + SU_FOLIAGE + 3] > 0 then cast(int) (2 * reach) * cast(int) (2 * reach) * cast(int) u[STYLE_AT + SU_FOLIAGE + 3] else 0;
   s[0].grass_n = ifx s[0].pack_ready && s[0].lift < 0.01 then far + ring else 0;
+  s[0].grass_ranges[0].n=0;
+  if s[0].grass_n>0 {gr_root.grass_root_ranges(s[0].grass_ranges[..],u[U_VIEW..<U_VIEW+16],s[0].heights[..],everglade_ground(),shot.eye.x,shot.eye.z,cast(int)gr,cast(int)u[STYLE_AT+SU_GRASS],cast(int)reach,cast(int)u[STYLE_AT+SU_FOLIAGE+3]);}
   lamps(s, u, shot.eye, ifx phone(s) then LIGHTS_PHONE else LIGHTS);
   spells_lamps(s, u, ifx phone(s) then LIGHTS_PHONE else LIGHTS);   // the blasts' light, after the lamps
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
@@ -4516,6 +4522,14 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert g[0].objects[rk + 15] == f32(SHAPE_MESH + 8 * LOOK_ROCK) && g[0].objects[fk + 15] == f32(SHAPE_MESH + 8 * LOOK_KIT);
   // the grass: the far field's 4 r2 a density and the near ring's past it
   #assert g[0].grass_n == 64 * 64 * 24 + 14 * 14 * 32;
+  #assert everglade_grass_range_n(g[..])>0 && everglade_grass_range_n(g[..])<=128;
+  kept_blades:=0;for range:0..<everglade_grass_range_n(g[..]) {
+    first_blade:=everglade_grass_range_at(g[..],range,0);blades:=everglade_grass_range_at(g[..],range,1);
+    #assert first_blade>=0 && blades>0 && first_blade+blades<=g[0].grass_n;
+    kept_blades+=blades;
+  }
+  #assert kept_blades>0 && kept_blades<g[0].grass_n;
+
   everglade_pack_failed(g[..]);
   #assert !g[0].pack_failed;
 }

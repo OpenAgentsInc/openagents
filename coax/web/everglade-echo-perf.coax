@@ -28,20 +28,22 @@ EP_FRAMES :: 1200;
 // time since the drawn frame before it (the first drawn frame starts the count and has none), its CPU
 // part and the GPU time. Returns how many; the rows held back are added to `held`.
 ep_parse :: (t: string, gap: [] int, cpu: [] int, gpu: [] int, held: [] int) -> int {
-  n := 0; field := 0; v := 0; since := 0; started := false; row_gap := 0; row_cpu := 0; row_gpu := 0;
+  n := 0; field := 0; v := 0; since := 0; started := false; row_gap := 0; row_cpu := 0; row_gpu := 0;negative:=false;
   for ch: t {
     if ch == '|' { break; }
+    if ch=='-' {negative=true;continue;}
     if ch >= '0' && ch <= '9' { v = v * 10 + cast(int) (ch - '0'); continue; }
     if ch == ':' || ch == ',' {
-      if field == 0 { row_gap = v; } else if field == 1 { row_cpu = v; } else if field == 2 { row_gpu = v; }
+      value:=ifx negative then -v else v;
+      if field == 0 { row_gap = value; } else if field == 1 { row_cpu = value; } else if field == 2 { row_gpu = value; }
       else {
         since += row_gap;
-        if v == 1 {
+        if value == 1 {
           if started && n < gap.count { gap[n] = since; cpu[n] = row_cpu; gpu[n] = row_gpu; n += 1; }
           started = true; since = 0;
         } else if started { held[0] += 1; }
       }
-      v = 0;
+      v = 0;negative=false;
       if ch == ':' { field += 1; } else { field = 0; }
     }
   }
@@ -50,9 +52,10 @@ ep_parse :: (t: string, gap: [] int, cpu: [] int, gpu: [] int, held: [] int) -> 
 ep_ms :: (us: int) -> f64 { return cast(f64) us / 1000.0; }
 #test "Echo performance suffix separates groom counts from actual raster dimensions" {
  p:=ep_probe("1:2:3:1,|4/9274/1920/1080");#assert p[0]==4 && p[1]==9274 && p[2]==1920 && p[3]==1080;
+ p=ep_probe("1:2:3:1,|4/9274/1920/1080/12/1");#assert p[4]==12 && p[5]==1;
  p=ep_probe("1:2:3:1,|35/82638");#assert p[0]==35 && p[1]==82638 && p[2]==0 && p[3]==0;
 }
-ep_probe :: (text:string)->[4]int {out:[4]int;field:=0;started:=false;for ch:text {if ch=='|' {started=true;continue;}if !started {continue;}if ch=='/' {field+=1;continue;}if field<4 && ch>='0' && ch<='9' {out[field]=out[field]*10+cast(int)(ch-'0');}}return out;}
+ep_probe :: (text:string)->[6]int {out:[6]int;field:=0;started:=false;for ch:text {if ch=='|' {started=true;continue;}if !started {continue;}if ch=='/' {field+=1;continue;}if field<6 && ch>='0' && ch<='9' {out[field]=out[field]*10+cast(int)(ch-'0');}}return out;}
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
@@ -116,7 +119,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // the measuring script, with its length in milliseconds
   script: [1024] u8; k := 0;
   head := "(async()=>{coaxial.takeFrameTrace();const t0=performance.now();await new Promise(r=>{const f=()=>{if(performance.now()-t0<";
-  tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+Math.round(r[8]*1000)+':'+(r[7]===0?0:1)).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)+'/'+(t.at(-1)?.[5]??0)+'/'+(t.at(-1)?.[6]??0)})()";
+  tail := ")requestAnimationFrame(f);else r()};requestAnimationFrame(f)});const t=coaxial.takeFrameTrace();return t.map(r=>Math.round(r[0]*1000)+':'+Math.round(r[4]*1000)+':'+Math.round(r[8]*1000)+':'+r[7]).join(',')+',|'+(coaxial.character?.()?.probe?.[2]??0)+'/'+(coaxial.character?.()?.probe?.[17]??0)+'/'+(t.at(-1)?.[5]??0)+'/'+(t.at(-1)?.[6]??0)+'/'+Math.min(...t.filter(r=>r[7]===1).map(r=>r[11]??0))+'/'+Math.min(...t.filter(r=>r[7]===1).map(r=>r[12]??0))})()";
   for ch: head { script[k] = ch; k += 1; }
   digits: [8] u8; d := 0; v := ms;
   while v > 0 { digits[d] = cast(u8) (48 + v % 10); v /= 10; d += 1; }
@@ -137,7 +140,8 @@ tool_main :: () -> int #export_c #effects(all) {
   holds := frame_holds(f);
   live:=cdp_evaluate(c[..],"globalThis.coaxial?.character?.().status==='ready' && (coaxial.character().draws??0)>0");
   present:=echo && live>=0 && jv_raw(c[0].doc[0],live)=="true";
-  qualified:=ep_hero_ok(EpHeroProof.{holds=holds,clean=clean,hidden=hide,ready=present,share=share,segments=drawn,width=meta[2],height=meta[3],wanted_width=width,wanted_height=height});
+  qualified:=ep_hero_ok(EpHeroProof.{holds=holds,clean=clean,hidden=hide,ready=present,share=share,segments=drawn,width=meta[2],height=meta[3],wanted_width=width,wanted_height=height,world_draws=meta[4],hero_submitted=meta[5]});
+  print("confirmed frame provenance: minimum % world draws; hero submitted %\n",meta[4],meta[5]);
   if !present {print("DIAGNOSTIC: no ready Echo draw; not a hero FPS qualification\n");}
   if meta[2]!=width || meta[3]!=height {print("FAIL actual raster differs from the requested raster\n");}
   print("% %x% (render %x%): % frames, % fps; frame p50 % ms, p95 % ms, max % ms; % held back; cpu p50 % ms, p95 % ms; gpu p50 % ms, p95 % ms; hair share %/1000, % strand segments drawn; % %\n",
@@ -153,4 +157,9 @@ lo_int :: (a: int, b: int) -> int { return ifx a < b then a else b; }
   n := ep_parse("0:900:7000:1,16667:1200:7100:1,16700:300:7100:0,16600:1100:7300:1,|250", gap[..], cpu[..], gpu[..], held[..]);
   #assert n == 2 && gap[0] == 16667 && cpu[0] == 1200 && gpu[0] == 7100 && gap[1] == 33300 && cpu[1] == 1100 && gpu[1] == 7300 && held[0] == 1;
   #assert ep_parse("", gap[..], cpu[..], gpu[..], held[..]) == 0;
+}
+
+#test "unobserved trace callbacks never count as GPU submissions" {
+ gap:[4]int;cpu:[4]int;gpu:[4]int;held:[1]int;
+ n:=ep_parse("0:900:7000:1,16667:0:7000:-1,16666:1000:7000:1,|",gap[..],cpu[..],gpu[..],held[..]);#assert n==1 && gap[0]==33333 && held[0]==1;
 }

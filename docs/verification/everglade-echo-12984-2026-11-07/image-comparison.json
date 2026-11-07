@@ -1,0 +1,14 @@
+{
+  "frames": 217,
+  "raster": [
+    1920,
+    1080
+  ],
+  "identical": 0,
+  "mean_abs_rgb8": 0.0004627836922303768,
+  "worst_frame_mean_rgb8": 0.002032053755144033,
+  "p99_rgb8": 0,
+  "channels_over_2_fraction": 4.686966632531148e-06,
+  "max_rgb8": 96,
+  "passed": true
+}

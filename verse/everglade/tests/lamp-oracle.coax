@@ -1,0 +1,30 @@
+// Frozen pre-optimization lamp sum; intentionally visits every source lamp.
+eg_lamp_light_reference :: (p:V3,n:V3,u:[]f32)->V3 {
+  glow:f32=u[1341];
+  count:u32=wg_u32_f(u[1340]);
+  lit_by_day:u32=sub_wrap(count,wg_min_u(wg_u32_f(u[1342]),count)); // the spells' blasts (everglade-spells.coax spells_lamps) burn by day too
+  if ((glow<=0.0f32)&&(lit_by_day==count)) {
+    return v3(0.0f32,0.0f32,0.0f32);
+  }
+  sum:V3=v3(0.0f32,0.0f32,0.0f32);
+  {
+    i:u32=0;
+    while i<16 {
+      if (i>=count) {
+        break;
+      }
+      at:V4=wg_at4(u,(cast(int)mul_wrap(i,2))*4+1344);
+      c:V4=wg_at4(u,(cast(int)add_wrap(mul_wrap(i,2),1))*4+1344);
+      delta:V3=wg_sub_f3f3(v3(at.x,at.y,at.z),p);
+      d:f32=wg_length3(delta);
+      if (d>=at.w) {
+        {i=add_wrap(i,1); continue;}
+      }
+      k:f32=1.0f32-((d*d)/(at.w*at.w));
+      face:f32=fmax(0.15f32,(wg_dot3(n,wg_div_f3f(delta,fmax(d,0.001f32)))+0.3f32)/1.3f32);
+      sum=wg_add_f3f3(sum,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(c.x,c.y,c.z),c.w),k),k),face),ifx i>=lit_by_day then 1.0f32 else glow));
+      i=add_wrap(i,1);
+    }
+  }
+  return sum;
+}

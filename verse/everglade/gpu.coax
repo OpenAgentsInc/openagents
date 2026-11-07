@@ -176,9 +176,32 @@ eg_plates :: (p:V2,under:V3,u:[]f32)->V3 {
 eg_encode :: (c:V3)->V3 {
   return wg_pow_f3f3(wg_clamp_f3f3f3(c,v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),wg_make_f3_f(1.0f32/2.2f32));
 }
-eg_bg_vs :: (i:u32,_iid1:u32)->V4 {
+EgSky :: struct {pos:V4; ray:V4;}
+eg_bg_vs :: (i:u32,_iid1:u32,u:[]f32)->EgSky {
   p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
-  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+  return EgSky.{pos=v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32),ray=m4_apply(eg_unview(u),v4(p[cast(int)i].x,p[cast(int)i].y,0.9f32,1.0f32))};
+}
+eg_sky_ray :: (sky:EgSky,u:[]f32)->V3 {
+  return wg_normalize3(wg_sub_f3f3(wg_div_f3f(v3(sky.ray.x,sky.ray.y,sky.ray.z),sky.ray.w),v3(u[24],u[25],u[26])));
+}
+#test "interpolated sky rays agree with per-pixel unprojection over rotated translated cameras" {
+ u:[1600]f32;u[0]=1920;u[1]=1080;
+ for camera:0..<4 {
+  theta:=cast(f32)camera*0.8f32;ex:=cast(f32)camera*51;ey:=4.0f32;ez:=cast(f32)camera*(-37);
+  fx:=sin(theta);fz:=-cos(theta);rx:=cos(theta);rz:=sin(theta);
+  u[8]=1.1f32*rx;u[10]=1.1f32*rz;u[11]=-(u[8]*ex+u[10]*ez);u[13]=1.7f32;u[15]=-1.7f32*ey;
+  u[20]=fx;u[22]=fz;u[23]=-(fx*ex+fz*ez);u[16]=1.002f32*fx;u[18]=1.002f32*fz;u[19]=1.002f32*u[23]-0.2002f32;
+  u[24]=ex;u[25]=ey;u[26]=ez;
+  a:=eg_bg_vs(0,0,u[..]);b:=eg_bg_vs(1,0,u[..]);c:=eg_bg_vs(2,0,u[..]);
+  #assert a.pos.x==(-1.0f32) && a.pos.y==(-3.0f32) && a.pos.z==0.0f32 && a.pos.w==1.0f32;
+  for y:0..<9 {for x:0..<16 {
+   point:=v2((cast(f32)x+0.5f32)*120,(cast(f32)y+0.5f32)*120);
+   nx:=point.x/1920*2-1;ny:=1-point.y/1080*2;wa:=(1-ny)*0.25f32;wc:=(nx+1)*0.25f32;wb:=1-wa-wc;
+   ray:=add4(add4(wg_mul_f4f(a.ray,wa),wg_mul_f4f(b.ray,wb)),wg_mul_f4f(c.ray,wc));
+   original:=eg_pixel_ray(point,u[..]);result:=eg_sky_ray(EgSky.{pos=v4(point.x,point.y,0,1),ray=ray},u[..]);
+   #assert abs(original.x-result.x)<0.0002f32 && abs(original.y-result.y)<0.0002f32 && abs(original.z-result.z)<0.0002f32;
+  }}
+ }
 }
 // Everything draws light (rgba16float, its alpha the share that blooms) and aux (r: the sky's glow
 // the light shafts blur); post_fs blooms, tones, encodes and lays the plates over it (host.js post).
@@ -351,8 +374,8 @@ eg_ridges :: (d:V3,sky_c:V3,u:[]f32)->V3 {
   }
   return sky_c;
 }
-eg_bg_fs :: (pos:V4,u:[]f32)->EgLit {
-  d:V3=eg_pixel_ray(v2(pos.x,pos.y),u);
+eg_bg_fs :: (sky:EgSky,u:[]f32)->EgLit {
+  d:V3=eg_sky_ray(sky,u);
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   c:V3=eg_water_under_view(eg_weather_streaks(eg_weather_sky(eg_ridges(d,eg_sky(d,l,u),u),d,u),d,1000.0f32,u),wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(d,1000.0f32)),d,u); // the far ridges; the weather (W9); diving, the underwater look (W7)
   b:V4=eg_st(19,u);
@@ -1181,6 +1204,15 @@ eg_path_distance :: (p:V2,u:[]f32)->f32 {
 // so one cast on a bench's top darkens the bench, not the ground under it.
 // level: only surfaces within SHADOW_LEVEL of that floor take it (the water takes any).
 EG_SHADOW_LEVEL :: 0.35f32;
+#load "tests/blob-oracle.coax";
+#test "contact shadow rejection preserves levels and overlapping blob strengths" {
+ u:[1600]f32;
+ for k:0..<16 {at:=36+k*4;u[at]=cast(f32)(k%4)*3;u[at+1]=cast(f32)(k/4)*3;u[at+2]=1.5f32;u[at+3]=20000.5f32+cast(f32)(k%3)*2;}
+ for level:[2]bool.[false,true] {for y:[3]f32.[0,0.01f32,0.5f32] {for ix:0..<24 {for iz:0..<24 {
+  point:=v2(cast(f32)(ix-3)*0.5f32,cast(f32)(iz-3)*0.5f32);
+  #assert f32_bits(eg_shade_shadows_at(point,y,level,u[..]))==f32_bits(eg_blob_reference(point,y,level,u[..]));
+ }}}}
+}
 eg_shade_shadows_at :: (p:V2,y:f32,level:bool,u:[]f32)->f32 {
   s:f32=1.0f32;
   {
@@ -1189,6 +1221,9 @@ eg_shade_shadows_at :: (p:V2,y:f32,level:bool,u:[]f32)->f32 {
       b:V4=wg_at4(u,(cast(int)i)*4+36);
       if (b.z<=0.0f32) {
         break;
+      }
+      if ((abs(p.x-b.x)>=b.z)||(abs(p.y-b.y)>=b.z)) {
+        i+=1;continue;
       }
       cm:f32=floor(b.w*0.5f32);
       strength:f32=b.w-(cm*2.0f32);
@@ -1594,6 +1629,22 @@ eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,height
 }
 // The lamps' light at p (normal n): each pools within its reach, (1 - (d/reach)^2)^2, wrapped round
 // the surface a little so the ground under a lamp lights all round it; none by day.
+#load "tests/lamp-oracle.coax";
+#test "daylight spell lamps preserve the complete night and mixed lamp sum" {
+ u:[1600]f32;u[1340]=16;
+ for i:0..<16 {
+  at:=1344+i*8;u[at]=cast(f32)i-8;u[at+1]=2;u[at+2]=cast(f32)(i%3)-1;u[at+3]=5;
+  u[at+4]=0.5f32;u[at+5]=0.2f32;u[at+6]=0.1f32;u[at+7]=2;
+ }
+ for glow:[3]f32.[0,0.25f32,1] {for spells:[4]int.[0,1,7,16] {
+  u[1341]=glow;u[1342]=cast(f32)spells;
+  for i:0..<20 {
+   p:=v3(cast(f32)i-10,0,cast(f32)(i%4));n:=v3(0,1,0);
+   a:=eg_lamp_light(p,n,u[..]);b:=eg_lamp_light_reference(p,n,u[..]);
+   #assert f32_bits(a.x)==f32_bits(b.x) && f32_bits(a.y)==f32_bits(b.y) && f32_bits(a.z)==f32_bits(b.z);
+  }
+ }}
+}
 eg_lamp_light :: (p:V3,n:V3,u:[]f32)->V3 {
   glow:f32=u[1341];
   count:u32=wg_u32_f(u[1340]);
@@ -1603,18 +1654,23 @@ eg_lamp_light :: (p:V3,n:V3,u:[]f32)->V3 {
   }
   sum:V3=v3(0.0f32,0.0f32,0.0f32);
   {
-    i:u32=0;
+    // Ordinary lamps contribute exact zero by day; only the trailing spell lamps can light it.
+    i:u32=ifx glow==0.0f32 then lit_by_day else 0;
     while i<16 {
       if (i>=count) {
         break;
       }
       at:V4=wg_at4(u,(cast(int)mul_wrap(i,2))*4+1344);
-      c:V4=wg_at4(u,(cast(int)add_wrap(mul_wrap(i,2),1))*4+1344);
       delta:V3=wg_sub_f3f3(v3(at.x,at.y,at.z),p);
+      // Outside the lamp's bounding box its spherical contribution is exactly zero.
+      if ((abs(delta.x)>=at.w)||(abs(delta.y)>=at.w)||(abs(delta.z)>=at.w)) {
+        i=add_wrap(i,1);continue;
+      }
       d:f32=wg_length3(delta);
       if (d>=at.w) {
         {i=add_wrap(i,1); continue;}
       }
+      c:V4=wg_at4(u,(cast(int)add_wrap(mul_wrap(i,2),1))*4+1344);
       k:f32=1.0f32-((d*d)/(at.w*at.w));
       face:f32=fmax(0.15f32,(wg_dot3(n,wg_div_f3f(delta,fmax(d,0.001f32)))+0.3f32)/1.3f32);
       sum=wg_add_f3f3(sum,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(c.x,c.y,c.z),c.w),k),k),face),ifx i>=lit_by_day then 1.0f32 else glow));
@@ -2593,6 +2649,25 @@ eg_fx_shade :: (i:EgWaterOut,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompa
   o.transmit=wg_make_f3_f(1.0f32-alpha);
   return o;
 }
+#load "tests/water-vertex-oracle.coax";
+#test "unused water vertices are clipped before accessing any node" {
+ u:[1600]f32;h:[1]f32;nodes:[1]f32;
+ u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1077]=1;
+ o:=eg_water_vs(6,0,u[..],h[0..<0],nodes[0..<0]);#assert o.clip.z>o.clip.w;
+}
+#test "live water vertices preserve every frozen output field" {
+ u:[1600]f32;h:[4]f32;nodes:[32]f32;
+ u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1077]=1;u[8]=1;u[13]=1;u[18]=1;u[23]=1;
+ for i:0..<4 {nodes[i*8]=cast(f32)(i%2);nodes[i*8+2]=cast(f32)(i/2);nodes[i*8+3]=1;}
+ for id:0..<6 {
+  a:=eg_water_vs(cast(u32)id,0,u[..],h[..],nodes[..]);b:=eg_water_vertex_reference(cast(u32)id,0,u[..],h[..],nodes[..]);
+  #assert a.clip.x==b.clip.x && a.clip.y==b.clip.y && a.clip.z==b.clip.z && a.clip.w==b.clip.w;
+  #assert a.world_depth.x==b.world_depth.x && a.world_depth.y==b.world_depth.y && a.world_depth.z==b.world_depth.z && a.world_depth.w==b.world_depth.w;
+  #assert a.rest_flow.x==b.rest_flow.x && a.rest_flow.y==b.rest_flow.y && a.rest_flow.z==b.rest_flow.z && a.rest_flow.w==b.rest_flow.w;
+  #assert a.look.x==b.look.x && a.look.y==b.look.y && a.look.z==b.look.z && a.look.w==b.look.w;
+  #assert a.extra.x==b.extra.x && a.extra.y==b.extra.y && a.extra.z==b.extra.z && a.extra.w==b.extra.w;
+ }
+}
 eg_water_vs :: (id:u32,piece:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgWaterOut {
   o:EgWaterOut;
   patches:u32=wg_u32_f(u[1077]);
@@ -2608,6 +2683,9 @@ eg_water_vs :: (id:u32,piece:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgWat
   qa:u32=wg_u32_f(u[1074]);
   ql:u32=wg_u32_f(u[1075]);
   quad_id:u32=id/6;
+  if (quad_id>=mul_wrap(qa,ql)) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);return o;
+  }
   c:V2=eg_quad(id%6);
   qx:u32=quad_id%qa;
   qz:u32=quad_id/qa;
@@ -2625,7 +2703,7 @@ eg_water_vs :: (id:u32,piece:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgWat
     }
   }
   r:EgWaterRest=eg_water_rest(uv,u,water_nodes);
-  if (((low-u[1480])>EG_WATER_DRY)||(quad_id>=mul_wrap(qa,ql))) {
+  if ((low-u[1480])>EG_WATER_DRY) {
     o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
     return o;
   }
@@ -3430,8 +3508,24 @@ eg_meadow_srgb :: (t:f32)->V3 {
 eg_meadow :: (q:V2)->V3 {
   return wg_pow_f3f3(eg_meadow_srgb(eg_noise(wg_mul_f2f(q,0.13f32))),v3(2.2f32,2.2f32,2.2f32));
 }
+#test "grass clearing keeps exact path, square, building and open-ground masks" {
+  u:[2400]f32;h:[18]f32;water:[8]f32;
+  u[32]=2;u[33]=1;u[34]=-1;u[35]=-1;
+  #assert eg_grass_mask(v2(0,0),u[..],h[..],water[..])==1.0f32;
+  u[228]=1;u[100]=-10;u[102]=10;u[229]=0.5f32;
+  #assert eg_grass_mask(v2(0,0.5f32),u[..],h[..],water[..])==0.0f32;
+  #assert eg_grass_mask(v2(0,0.625f32),u[..],h[..],water[..])==0.5f32;
+  #assert eg_grass_mask(v2(0,0.75f32),u[..],h[..],water[..])==1.0f32;
+  u[228]=0;u[234]=1;
+  #assert eg_grass_mask(v2(0,0),u[..],h[..],water[..])==0.0f32;
+  #assert eg_grass_mask(v2(1.125f32,0),u[..],h[..],water[..])==0.5f32;
+  u[234]=0;u[1212]=-1;u[1213]=-1;u[1214]=1;u[1215]=1;
+  #assert eg_grass_mask(v2(0,0),u[..],h[..],water[..])==0.0f32;
+  #assert eg_grass_mask(v2(1.55f32,0),u[..],h[..],water[..])>0.999f32;
+}
 eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
   m:f32=verse_style_grass_clear(eg_path_near(q,u)-u[229]);
+  if (m==0.0f32) { return 0.0f32; }
   {
     k:s32=0;
     while k<4 {
@@ -3440,6 +3534,7 @@ eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
         break;
       }
       m=m*verse_style_grass_clear(wg_length2(wg_sub_f2f2(q,v2(sq.x,sq.y)))-sq.z);
+      if (m==0.0f32) { return 0.0f32; }
       k+=1;
     }
   }
@@ -3452,6 +3547,7 @@ eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
       }
       d:f32=fmax(fmax(b.x-q.x,q.x-b.z),fmax(b.y-q.y,q.y-b.w));
       m=m*verse_style_grass_clear(d-0.3f32);
+      if (m==0.0f32) { return 0.0f32; }
       k+=1;
     }
   }

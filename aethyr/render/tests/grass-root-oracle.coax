@@ -1,0 +1,24 @@
+// Independent reference: enumerate the containing terrain cell and all eight
+// root-box corners in f64. No analytic centre/radius bounds or range builder.
+gro_cell :: (v:[]f32,h:[]f32,n:int,cell:f32,west:f32,south:f32,x:f32,z:f32)->bool {
+ ix:=floor((cast(f64)x-cast(f64)west)/cast(f64)cell);
+ iz:=floor((cast(f64)z-cast(f64)south)/cast(f64)cell);
+ low:=1000000.0;high:=-1000000.0;
+ for j:0..<2 {for i:0..<2 {
+  gx:=cast(int)gro_min(gro_max(ix+cast(f64)i,0.0),cast(f64)n);
+  gz:=cast(int)gro_min(gro_max(iz+cast(f64)j,0.0),cast(f64)n);
+  y:=cast(f64)h[gz*(n+1)+gx];low=gro_min(low,y);high=gro_max(high,y);
+ }}
+ maxw:=-1000000.0;left:=1000000.0;right:=1000000.0;
+ for corner:0..<8 {
+  px:=cast(f64)x+cast(f64)(corner%2);pz:=cast(f64)z+cast(f64)(corner/4);
+  py:=ifx corner/2%2==0 then low else high;
+  cx:=cast(f64)v[0]*px+cast(f64)v[1]*py+cast(f64)v[2]*pz+cast(f64)v[3];
+  cw:=cast(f64)v[12]*px+cast(f64)v[13]*py+cast(f64)v[14]*pz+cast(f64)v[15];
+  maxw=gro_max(maxw,cw);left=gro_min(left,cx-cast(f64)1.2f32*cw);right=gro_min(right,-cx-cast(f64)1.2f32*cw);
+ }
+ return maxw>=cast(f64)(-1.01f32) && left<=cast(f64)1.01f32 && right<=cast(f64)1.01f32;
+}
+
+gro_min :: (a:f64,b:f64)->f64 {return ifx a<b then a else b;}
+gro_max :: (a:f64,b:f64)->f64 {return ifx a>b then a else b;}

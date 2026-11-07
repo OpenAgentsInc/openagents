@@ -1,0 +1,4 @@
+ok   #test unused water vertices are clipped before accessing any node (1 case, 1758 steps, 0 ms)
+ok   #test live water vertices preserve every frozen output field (1 case, 83574 steps, 1 ms)
+2 of 112 checks (--only 'water vertices'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

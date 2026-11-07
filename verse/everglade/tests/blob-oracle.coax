@@ -1,0 +1,22 @@
+// Frozen pre-optimization contact-shadow sum.
+eg_blob_reference :: (p:V2,y:f32,level:bool,u:[]f32)->f32 {
+  s:f32=1.0f32;
+  {
+    i:s32=0;
+    while i<16 {
+      b:V4=wg_at4(u,(cast(int)i)*4+36);
+      if (b.z<=0.0f32) {
+        break;
+      }
+      cm:f32=floor(b.w*0.5f32);
+      strength:f32=b.w-(cm*2.0f32);
+      if (level&&(abs(y-((cm*0.01f32)-100.0f32))>EG_SHADOW_LEVEL)) {
+        {i+=1; continue;}
+      }
+      d:f32=wg_length2(wg_sub_f2f2(p,v2(b.x,b.y)))/b.z;
+      s=s*(1.0f32-(strength*(1.0f32-smoothstep(0.35f32,1.0f32,d))));
+      i+=1;
+    }
+  }
+  return s;
+}

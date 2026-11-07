@@ -1,0 +1,3 @@
+adapter: hardware apple metal-3
+confirmed frame provenance: minimum 94 world draws; hero submitted 1
+wide 1920x1080 (render 1920x1080): 187 frames, 37.5 fps; frame p50 33.33 ms, p95 33.335 ms, max 50.005 ms; 112 held back; cpu p50 3.09 ms, p95 3.585 ms; gpu p50 41.545 ms, p95 57.385 ms; hair share 4/1000, 18486 strand segments drawn; misses 60 FPS

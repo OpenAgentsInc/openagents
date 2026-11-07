@@ -166,10 +166,15 @@
 // fragment), and bg_fs reads it as group 2 (group 1 empty):
 //   coaxial_caster_vertices(state), coaxial_caster_instances(state)  what caster_vs draws (0: none)
 // A traced bg_fs that writes @builtin(frag_depth) puts its depth in the scene's buffer. Grass, when the
-// WGSL has grass_vs/grass_fs (bg's groups), draws right after bg_fs, depth-tested and written; in a
+// WGSL has grass_vs/grass_fs (bg's groups), draws depth-tested and written; in an opaque mesh scene
+// it follows scene geometry so hidden fragments can fail depth early. Blended scenes retain the old order. In a
 // mesh scene (no caster_vs) it takes the scene's groups instead, so its blades stand on the scene's
 // ground and read its shadow map:
-//   coaxial_grass_instances(state)  blades to draw, one triangle (3 vertices) each (0: none)
+//   coaxial_grass_instances(state)  original blade domain, one triangle (3 vertices) each (0: none)
+// Optional grass ranges v1 retain IDs in that domain; absence retains the original full draw:
+//   coaxial_grass_range_count_v1(state)  at most 128 ordered, nonoverlapping ranges
+//   coaxial_grass_range_v1(state, range, field)  field 0 first instance, 1 instance count
+// Coax bounds/selects the ranges; the SDK issues draw(3, count, 0, first).
 // A traced page's surface (the water lab's clipmap sea), when the page has no scene, its WGSL has
 // surface_vs and surface_fs and the app exports coaxial_surface_vertices: the page gets a depth buffer,
 // bg_fs writes its depth (@builtin(frag_depth)), and that many vertices (no buffer, bg's group) draw right
@@ -2614,7 +2619,7 @@ function draw(now) {
     if(traceRow){traceRow[7]=0;traceRow[8]=gpu.device.__coaxialCompletionMs||0;}return;
   }
   const offer=hostLifecycle?.offer(Math.floor(now*1000),pending);
-  if(hostLifecycle&&!offer)return;
+  if(hostLifecycle&&!offer){if(traceRow){traceRow[7]=0;traceRow[8]=gpu.device.__coaxialCompletionMs||0;}return;}
   const dt = offer?offer.dt:(last ? (now - last) / 1000 : 0); last = now;
   if (canvas.width !== w || canvas.height !== h) {hostLifeEvent(1,Math.floor(now*1000));canvas.width = w; canvas.height = h; }
   const dpr = scale();
@@ -2679,9 +2684,11 @@ function draw(now) {
   const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
   // a draw whose base instance has its top bit set draws its vertices in order, with no index buffer
+  let observedWorldDraws = 0;
   const drawOne = (pass, i, source = list, shadow = false) => {
     const [first, count, base, instances] = [source[i * 4], source[i * 4 + 1], source[i * 4 + 2], source[i * 4 + 3]];
     if (!count || !instances) return;
+    if (!shadow) observedWorldDraws++;
     if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
     else pass.drawIndexed(count, instances, x.coaxial_draw_index_v1 ? x.coaxial_draw_index_v1(arena.state, i, shadow ? 1 : 0, 1) : first, 0, base);
   };
@@ -2728,16 +2735,26 @@ function draw(now) {
   if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
   pass.setPipeline(gpu.bg); pass.draw(3);
   const blades = gpu.grass && (gpu.caster || gpu.sceneGroup) ? x.coaxial_grass_instances(arena.state) : 0;
-  if (blades) {
+  const drawGrass = () => {
+    if (!blades) return;
     if (!gpu.caster) { pass.setBindGroup(1, gpu.sceneGroup); if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup); }
-    pass.setPipeline(gpu.grass); pass.draw(3, blades);
-  }
+    pass.setPipeline(gpu.grass);
+    if (x.coaxial_grass_range_count_v1 && x.coaxial_grass_range_v1) {
+      const count = x.coaxial_grass_range_count_v1(arena.state);
+      for (let i = 0; i < count; i++) pass.draw(3, x.coaxial_grass_range_v1(arena.state, i, 1), 0, x.coaxial_grass_range_v1(arena.state, i, 0));
+    } else pass.draw(3, blades);
+  };
+  // Without a blend ABI the scene is opaque: populate depth before shading hidden blades.
+  // Blended producers retain their existing ordering relative to grass.
+  const opaqueGrass = draws && !x.coaxial_draw_blend_v1;
+  if (!opaqueGrass) drawGrass();
   const surface = gpu.surface ? x.coaxial_surface_vertices(arena.state) : 0;
   if (surface) { pass.setPipeline(gpu.surface); pass.draw(surface); }
   if (draws) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
     drawScene(pass, true);
+    if (opaqueGrass) drawGrass();
     if (hero) {
       // after the world's opaque geometry, before its water and particles; then the world's groups again
       characters.draw(pass);
@@ -2816,7 +2833,7 @@ function draw(now) {
     device.queue.onSubmittedWorkDone().then(()=>{if(began)device.__coaxialCompletionMs=performance.now()-began;}).catch(()=>{}).finally(()=>{device.__coaxialFrames--;});
   }
   if (traceRow) {
-    traceRow[2]=performance.now()-legacyEncodeStart;traceRow[7]=1;traceRow[8]=device.__coaxialCompletionMs||0;traceRow[10]=device.__coaxialFrames||0;
+    traceRow[2]=performance.now()-legacyEncodeStart;traceRow[7]=1;traceRow[8]=device.__coaxialCompletionMs||0;traceRow[10]=device.__coaxialFrames||0;traceRow[11]=observedWorldDraws;traceRow[12]=hero?1:0;
   }
   if (timed) timingRead(gpu.timer);
   if (gpu.snap) { const take = gpu.snap; gpu.snap = null; take(); }   // card.js: this frame, before it is shown

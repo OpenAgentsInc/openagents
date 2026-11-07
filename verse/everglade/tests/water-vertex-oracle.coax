@@ -1,0 +1,46 @@
+// Frozen pre-optimization water vertex path for live-domain equivalence.
+eg_water_vertex_reference :: (id:u32,piece:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgWaterOut {
+  o:EgWaterOut;
+  patches:u32=wg_u32_f(u[1077]);
+  if (piece>=add_wrap(patches,64)) {
+    return eg_fx_vertex(id,sub_wrap(sub_wrap(piece,patches),64),u);
+  }
+  if (piece>=add_wrap(patches,32)) {
+    return eg_pond_vertex(id,sub_wrap(sub_wrap(piece,patches),32),u,heights);
+  }
+  if (piece>=patches) {
+    return eg_fountain_vertex(id,sub_wrap(piece,patches),u);
+  }
+  qa:u32=wg_u32_f(u[1074]);
+  ql:u32=wg_u32_f(u[1075]);
+  quad_id:u32=id/6;
+  c:V2=eg_quad(id%6);
+  qx:u32=quad_id%qa;
+  qz:u32=quad_id/qa;
+  across:f32=(u[1072]-1.0f32)/(cast(f32)(qa));
+  along:f32=u[1076]/(cast(f32)(ql));
+  base:f32=(cast(f32)(piece))*u[1076];
+  uv:V2=v2(((cast(f32)(qx))+c.x)*across,base+(((cast(f32)(qz))+c.y)*along));
+  low:f32=1000.0f32;
+  {
+    k:u32=0;
+    while k<4 {
+      corner:V2=v2((cast(f32)(add_wrap(qx,(k&1))))*across,base+((cast(f32)(add_wrap(qz,(k>>1))))*along));
+      low=fmin(low,-eg_water_rest(corner,u,water_nodes).depth);
+      k=add_wrap(k,1);
+    }
+  }
+  r:EgWaterRest=eg_water_rest(uv,u,water_nodes);
+  if (((low-u[1480])>EG_WATER_DRY)||(quad_id>=mul_wrap(qa,ql))) {
+    o.clip=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+    return o;
+  }
+  wave:V4=eg_water_gerstner(v2(r.pos.x,r.pos.z),r.depth,1.0f32,u);
+  world:V3=wg_add_f3f3(wg_add_f3f3(r.pos,v3(wave.x,wave.y,wave.z)),v3(0.0f32,u[1480],0.0f32)); // risen by the rain (W9)
+  o.clip=eg_clip(world,u);
+  o.world_depth=v4(world.x,world.y,world.z,r.depth+u[1480]);
+  o.rest_flow=wg_make_f4_f2f2(v2(r.pos.x,r.pos.z),r.flow);
+  o.look=v4(r.foam,0.0f32,wave.w,r.shore);
+  o.extra=v4(0.0f32,world.y-r.pos.y,0.0f32,0.0f32);
+  return o;
+}

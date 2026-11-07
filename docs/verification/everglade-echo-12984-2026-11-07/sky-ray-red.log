@@ -1,0 +1,7 @@
+FAIL #test interpolated sky rays agree with per-pixel unprojection over rotated translated cameras (0 ms)
+verse/everglade/gpu.coax:202:4: error[E0406]: assertion failed
+     #assert abs(original.x-result.x)<0.0002f32 && abs(original.y-result.y)<0.0002f32 && abs(original.z-result.z)<0.0002f32;
+     ^
+  note: in #test interpolated sky rays agree with per-pixel unprojection over rotated translated cameras
+1 of 113 checks (--only 'interpolated sky rays'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

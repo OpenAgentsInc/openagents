@@ -6182,3 +6182,24 @@ character or smaller raster cannot qualify a fast empty scene. Requested hero
 loads are awaited; terminal load failure refuses promptly. R4's historical
 timing and complete head-frame review are in
 `docs/verse/2026-11-06-native-hero-characters.md`.
+
+
+Everglade 5E's optional grass-range v1 draws preserve original instance IDs.
+The shared `render/grass-root.coax` profile rejects only complete root cells
+beyond the existing shader planes, using terrain-corner height bounds and at
+most 128 ordered ranges. Unsupported grid alignment keeps the original full
+draw. Its independent corner/terrain oracle and range access boundary kill
+206 mutants with zero survivors. Legacy producers retain the full-draw ABI;
+blended producers retain their grass ordering. The opaque browser path draws
+world geometry before grass without changing its density or material inputs.
+
+The sky's inverse projection runs at the background triangle's vertices;
+homogeneous world points interpolate before the existing per-pixel division
+and normalization. Lamp/contact-shadow rejection preserves the frozen sums,
+and unused water vertices return before reading nodes. The full fixed-epoch
+217-frame orbit comparison records the numerical scope and sparse extreme
+tail in the #12984 follow-up. A live hero FPS receipt requires confirmed GPU
+submissions with both current world draws and the hero in every sampled frame;
+stale readiness alone cannot qualify. The new receipt boundary kills all 30
+mutants. No change to the 60 FPS rule or two-frame admission limit is implied.
+See `docs/verification/everglade-echo-12984-2026-11-07/performance.md`.

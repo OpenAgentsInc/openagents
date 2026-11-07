@@ -43,6 +43,7 @@ headless captures. Reference engines stay in its ignored lab cache.
 | `assets.coax` | Asset identity: an asset is the SHA-256 of its bytes; a registry admits a pack whole or refuses it (an entry that doesn't hash to its table's id, new bytes past the declared limit, no free slot), shares bytes already held and frees them with their last use |
 | `render/frame.coax` | [Bounded CPU frame/pass/binding admission](render/README.md): resource slot/generation/epoch checks, atomic reservation/refusal and cleanup; adopted only at the Grid's native matrix-output boundary so far |
 | `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
+| `render/grass-root.coax` | Conservative whole-cell grass rejection against the existing root-clip planes; original instance IDs and density survive, with a bounded 128-range profile and independent terrain/corner oracle |
 | `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
 | `replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
 | `rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |

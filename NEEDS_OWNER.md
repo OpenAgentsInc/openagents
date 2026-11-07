@@ -1094,14 +1094,16 @@ The Mac was not available to the agent:
 
 ### Echo native recording: controlled GPU timing (#12984, November 7)
 
-- [ ] Pause other active 3D previews for the final full-raster Echo timing check.
-      Fresh 1080p medium measurements are about 52 FPS on both current code and
-      a controlled R4 baseline, with hardware Metal and Echo visible. Other
-      owner applications were left running; competing GPU load has not been
-      ruled out. The commons-spawn regression is fixed and the stricter hero
-      proof passes its mutation checks, but #12984 remains open until the
-      unchanged 60 FPS acceptance gate passes. Evidence:
-      `docs/verification/everglade-echo-12984-2026-11-07/README.md`.
+- [ ] Pause competing 3D/GPU previews for one minute, then signal that the
+      controlled full-raster Echo check can run. The rendering follow-up passes
+      its 217-frame fixed-clock image comparison, all SDK compatibility/recovery
+      checks and 236 policy mutants with zero survivors. Fresh live rain/night
+      timing still misses the unchanged 60 FPS gate. With all qualifier browsers
+      closed, IORegistry reports 89–99% device/renderer GPU utilization from
+      other work. Owner applications were left untouched. The historical R4
+      qualification closed competing 3D tabs; this owner action supplies the
+      matching condition. Evidence and exact commands:
+      `docs/verification/everglade-echo-12984-2026-11-07/performance.md`.
 
 ### Animation Lab directing: live-provider qualification (#12972, November 7)
 

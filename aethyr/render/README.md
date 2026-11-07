@@ -22,6 +22,7 @@ Its development route is `/render-fixtures/galaxy/`.
 | `build.coax`, `package.coax` | Content-addressed shader packages, dependency fences, runtime catalog/device admission and fetched-byte hashes |
 | `noise.coax`, `footprint.coax`, `sampling-core.coax`, `sampling.coax` | Portable integer noise, fine derivative footprints and the shared eight-tap texture filter |
 | `sky.coax`, `vegetation.coax` | Sky, halo, clouds, world-space gusts and wind, blade and canopy response, masks and distance fades; adopted through the existing style bridge |
+| `grass-root.coax` | Conservative root-cell instance ranges for the legacy grass profile; keeps original seed IDs, terrain-corner height bounds and full-draw fallback for unsupported grid alignment. Everglade 5E browser adoption uses optional grass-range ABI v1; native and other legacy adapters retain their full draw |
 | `shadow-filter.coax`, `post.coax` | Shadow sampling, exposure, saturation, lift, bloom and light shafts; these numerical functions do not own GPU passes |
 | `texture-codec.coax` | Physical texel decoding; sRGB RGB becomes linear before filtering, while alpha stays linear |
 | `reference-quad.coax`, `reference-ir.coax`, `reference-io.coax` | Four helper lanes, checked tree-v2/v3 execution, resource views and stage word layouts |
@@ -259,3 +260,14 @@ ABI. Keep small independent render references, nonzero fragment-quad derivative
 checks and exact source/compiler identities. Complete playable Grid adoption,
 remaining realms, fixed-step/input/replay/feet continuity and live audio remain
 separate exits.
+
+
+The legacy Everglade grass-range v1 profile accepts square admitted grids with
+integer metre spacing/origin, root radii at most 32 m and densities at most 64.
+It bounds roots using the four stored terrain heights surrounding each metre
+cell, envelopes accepted cells by row and merges adjacent spans. It preserves
+the shader's original instance domain and seed mapping. This is conservative
+rejection for Everglade's bounded coordinates, not far-origin camera admission.
+The optional browser face is documented in `coax/web/host.js`; other adapters
+still submit the full domain. Qualification and numerical/image scope are in
+[the Echo follow-up](../../docs/verification/everglade-echo-12984-2026-11-07/performance.md).

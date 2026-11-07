@@ -1,0 +1,66 @@
+{
+  "base_commit": "7d153a7c146e2a7658f562dc434082a185b41d4b",
+  "files_sha256": {
+    "aethyr/render/grass-root.coax": "dc76d8376fc9a222783bb4496b97d0437085e2c2dee327e56744280379073cd6",
+    "aethyr/render/tests/grass-root-oracle.coax": "3a7b771f2ca7f06f716294c4bb5c9c591762cb1eb7f586465ba5ececb12928a6",
+    "apps/openagents-web/everglade.coax": "dd4a1c6472353ab5344d97e35d2aafb96e84ab26794107d61771216fe3ad7a62",
+    "apps/openagents-web/everglade5e-face.c": "d929f7eefc77fd88b26f12c39dceca0e25b48e1f5ca60264e4754afadecec97c",
+    "apps/openagents-web/everglade5e.wgsl": "03293c78490d7332546af1ce0460e3b24b4cd1fd3057f5769accaa83a52f032b",
+    "apps/openagents-web/everglade.wgsl": "e32829c5909b2ba5d7f8d333178b5a8c57fe730b804c1d8fd66038df1367e3eb",
+    "apps/openagents-web/fivemmo.wgsl": "63d995eb95ec96790c456af6236623c79623979065e4e3fb7d622f8de54f3e59",
+    "verse/everglade/gpu.coax": "49592d281a7935f35ae0992dad69851192dc2d4e47f41a1afef29e66a7406b67",
+    "verse/everglade/tests/blob-oracle.coax": "15c20f7fe0da269d88f9af5b87867dcf42515729550e4f125888e94620c67720",
+    "verse/everglade/tests/lamp-oracle.coax": "8028c5d44e43c517747cd8ed935e1390f21be2da14abd39811a74873fcf0610b",
+    "verse/everglade/tests/water-vertex-oracle.coax": "e65e86d59594d0209b0dffc74b4f632aab77bf715d9b6bebc53a987dd617192e",
+    "coax/web/host.js": "451a3b475fdf03c049c93ac1ba33e2df99ab01364f50a5517cac7cdb4d1b12e1",
+    "coax/web/everglade-echo-perf.coax": "f70dc1990d0d9a17cfa56a8a7f9a8f0797e1a464164d4ed103af97fe953f8740",
+    "coax/web/everglade-echo-proof.coax": "6f9325676941ef3fb73d4a3ad632a09a38780ed9234a13e9ced2445aff7c77bf",
+    "coax/web/everglade-echo-frames.coax": "ce6be50324e074dc836b8a508e2607db90b26d7b1a2328eb82cefb218ca22a98",
+    "coax/web/grass-root-check.coax": "758f40c717e5da9a0e62d67dfebec3368ca5385442bfcb9f79c8c49fc897d119",
+    "coax/web/grass-root-probe.js": "4566995bde3f388dbacb0697a00aee92a1ddcee4bb48e7ea43cb6041f5d2c8ea",
+    "coax/web/clip-clock.js": "03ddf827de4726492e1dfe10fcef7bd44491ecbab2d4765e7cacf762baf1f10f",
+    "coax/web/everglade-echo-image-oracle.py": "11d2fd05ca3b20a7b7db7ad7c3eabbd476353b2cd945ecdde8d01ae0aba049d8"
+  },
+  "wasm": {
+    "bytes": 2040495,
+    "sha256": "a613933622fd781d4c6a97deab5c857abd8f3e7a627bbd97119f9702648072b2",
+    "budget_bytes": 2150000,
+    "build_seconds": 385.710974,
+    "compiler_sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e",
+    "checks": 1443,
+    "failed_checks": 0
+  },
+  "capture": {
+    "epoch_ms": 1794009600000,
+    "frames": 217,
+    "width": 1920,
+    "height": 1080,
+    "fps": 24,
+    "private_root": "~/.openagents/verse/private-build/echo-12984-opaque/",
+    "capture_host_sha256": "5955edbcb0e7a53ae1195cdb1415918e359c47be01fef7f6b78857ff031ecd86",
+    "note": "Capture precedes the trace-only fresh-draw provenance addition; render operations are identical."
+  },
+  "live_60_fps_qualification": "pending controlled GPU window",
+  "live_final_provenance": {
+    "wide": {
+      "frames": 187,
+      "fps": 37.5,
+      "p95_ms": 33.335,
+      "max_ms": 50.005,
+      "held": 112,
+      "minimum_world_draws": 94,
+      "hero_every_frame": true,
+      "passed": false
+    },
+    "medium": {
+      "frames": 228,
+      "fps": 45.6,
+      "p95_ms": 33.335,
+      "max_ms": 33.335,
+      "held": 72,
+      "minimum_world_draws": 81,
+      "hero_every_frame": true,
+      "passed": false
+    }
+  }
+}

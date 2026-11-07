@@ -2,6 +2,7 @@
 #authority;
 EpHeroProof :: struct {
   holds:bool;clean:bool;hidden:bool;ready:bool;
+  world_draws:int;hero_submitted:int;
   share:int;segments:int;width:int;height:int;wanted_width:int;wanted_height:int;
 }
 #test "a requested hero waits for its own readiness and a baseline still waits for the world" {
@@ -12,12 +13,14 @@ EpHeroProof :: struct {
 }
 ep_wait_ready :: (world:bool,wanted:bool,loaded:bool)->bool #effects() {return world && (!wanted || loaded);}
 #test "hero qualification needs a visible ready character and the entire requested raster" {
-  p:=EpHeroProof.{holds=true,clean=true,ready=true,share=4,segments=18486,width=1920,height=1080,wanted_width=1920,wanted_height=1080};
+  p:=EpHeroProof.{holds=true,clean=true,ready=true,world_draws=1,hero_submitted=1,share=4,segments=18486,width=1920,height=1080,wanted_width=1920,wanted_height=1080};
   #assert ep_hero_ok(p);
   q:=p;q.holds=false;#assert !ep_hero_ok(q);
   q=p;q.clean=false;#assert !ep_hero_ok(q);
   q=p;q.hidden=true;#assert !ep_hero_ok(q);
   q=p;q.ready=false;#assert !ep_hero_ok(q);
+  for bad:[3]int.[-1,0,2] {q=p;q.hero_submitted=bad;#assert !ep_hero_ok(q);}
+  for bad:[2]int.[-1,0] {q=p;q.world_draws=bad;#assert !ep_hero_ok(q);}
   q=p;q.share=0;#assert !ep_hero_ok(q);
   q=p;q.share=1001;#assert !ep_hero_ok(q);
   q=p;q.segments=0;#assert !ep_hero_ok(q);
@@ -37,6 +40,7 @@ ep_wait_ready :: (world:bool,wanted:bool,loaded:bool)->bool #effects() {return w
 }
 ep_hero_ok :: (p:EpHeroProof)->bool #effects() {
   return p.holds && p.clean && !p.hidden && p.ready &&
+    p.world_draws>0 && p.hero_submitted==1 &&
     p.share>0 && p.share<=1000 && p.segments>0 &&
     p.wanted_width>0 && p.wanted_height>0 &&
     p.width==p.wanted_width && p.height==p.wanted_height;

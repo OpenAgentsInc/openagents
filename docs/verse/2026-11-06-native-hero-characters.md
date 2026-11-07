@@ -6,6 +6,8 @@ milestone (#12984, R1–R4 below) has retained 1920×1080 recordings and histori
 60 FPS qualification. A fresh November 7 audit fixed a commons-spawn regression,
 but current full-raster timing misses the 60 FPS gate on both the current build
 and a controlled R4 baseline. The issue remains open. The
+[rendering follow-up](../verification/everglade-echo-12984-2026-11-07/performance.md)
+passes deterministic image and compatibility checks, but retains the live FPS gate. The
 [audit record](../verification/everglade-echo-12984-2026-11-07/README.md)
 separates historical evidence from the fresh results.
 

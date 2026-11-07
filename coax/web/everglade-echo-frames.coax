@@ -27,12 +27,21 @@ tool_main :: ()->int #export_c #effects(all) {
  c:[1]Cdp;if !cdp_launch_background(c[..],width,height,"echo-frames-") {return 1;}
  _:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Emulation.setDeviceMetricsOverride",ifx clip then "{\"width\":1920,\"height\":1080,\"deviceScaleFactor\":1,\"mobile\":false}" else "{\"width\":1280,\"height\":720,\"deviceScaleFactor\":1,\"mobile\":false}",30000);
  b:[4096]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],ifx fps then "globalThis.faceErrors=[];" else "globalThis.coaxialClip=true;globalThis.coaxialClipRoom=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';globalThis.faceErrors=[];globalThis.faceHashes=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");jo_end(j[..]);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),30000);
+ if !fps {
+  clock:[2048]u8;cn:=fs_read("coax/web/clip-clock.js",clock[..]);if cn<1 {cdp_close(c[..]);return 1;}
+  jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],cast(string)clock[0..<cn]);jo_end(j[..]);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),30000);
+ }
+
  jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],args_at(a[..],0));jo_end(j[..]);_=cdp_call(c[..],"Page.navigate",jo_text(j[..]),30000);
  // the world drawn, and with echo her pack loaded and admitted and her pass built (a 1 GB pack: minutes at most)
- want:=ifx castfps then "!!globalThis.coaxial?.ready&&coaxial.sceneReady&&coaxial.character?.().status==='ready'" else ifx fps then "!!globalThis.coaxial?.ready&&coaxial.sceneReady&&['off','ready','failed'].includes(coaxial.character?.().status??'off')" else ifx echo then "(async()=>!!globalThis.coaxial?.ready&&(await coaxialClipStep(1,30))===1&&coaxial.sceneReady&&coaxial.character().status==='ready')()" else "(async()=>!!globalThis.coaxial?.ready&&(await coaxialClipStep(1,30))===1&&coaxial.sceneReady)()";
+ // Poll with dt zero: asset load duration must not advance rain, wind or room time.
+ want:=ifx castfps then "!!globalThis.coaxial?.ready&&coaxial.sceneReady&&coaxial.character?.().status==='ready'" else ifx fps then "!!globalThis.coaxial?.ready&&coaxial.sceneReady&&['off','ready','failed'].includes(coaxial.character?.().status??'off')" else ifx echo then "(async()=>!!globalThis.coaxial?.ready&&(await coaxial.hostFrameAt(0),true)&&coaxial.sceneReady&&coaxial.character().status==='ready')()" else "(async()=>!!globalThis.coaxial?.ready&&(await coaxial.hostFrameAt(0),true)&&coaxial.sceneReady)()";
  ready:=false;until:=proc_now_ms()+240000;
  while proc_now_ms()<until {n:=cdp_evaluate(c[..],want);if n>=0 && jv_raw(c[0].doc[0],n)=="true" {ready=true;break;}proc_sleep(100);}
  if !ready {print("FAIL the page (and her pass) never came ready\n");n:=cdp_evaluate(c[..],"JSON.stringify({character:globalThis.coaxial?.character?.(),errors:faceErrors})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}cdp_close(c[..]);return 1;}
+ if !fps {proof:=cdp_evaluate(c[..],"JSON.stringify({date:Date.now(),clock:globalThis.clipClockProof,room:coaxial.roomHost?.transport})");if proof>=0 {print("capture clock %\n",jv_raw(c[0].doc[0],proof));}}
+ if !fps && !fc_eval(c[..],"page and local room use the frozen capture epoch","Date.now()===1794009600000&&(!coaxial.roomHost||coaxial.roomHost.transport!=='wasm-worker'||clipClockProof.workers===1)") {cdp_close(c[..]);return 1;}
+
  ok:=true;
  if castfps {
   // her first cast (her pass's wind-up share, probe 22, over 0), then frames a second through 2.5 s of it

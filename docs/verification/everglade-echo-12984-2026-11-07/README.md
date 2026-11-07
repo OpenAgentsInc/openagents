@@ -6,6 +6,11 @@ regression and made the performance qualification reject missing characters.
 Historical R1–R4 captures and passing measurements remain useful evidence;
 they are not a fresh performance pass.
 
+The [rendering follow-up](performance.md) adds conservative grass ranges,
+shader work rejection and a deterministic 217-frame image comparison. Its
+source/build receipts supersede this initial audit for changed files; live
+60 FPS qualification remains pending a controlled GPU window.
+
 Audit source base: `4522812690`. Historical R4 implementation and qualification:
 `e1af503e1de3cdf0d403dd017bd17636d2eb4c20`.
 
@@ -88,8 +93,8 @@ performance timer's 60 FPS measurements are separate observations.
 
 ## Source and scope
 
-`source-audit.json` records source and built-artifact hashes. The character
-runtime, character shader, orbit and capture tool remain byte-identical to R4.
+`source-audit.json` records source and built-artifact hashes. In this initial audit the character
+runtime, character shader, orbit and capture tool remained byte-identical to R4.
 The world's host character draw/depth/shadow section also remains unchanged.
 Surrounding world/arrival/network sources changed after R4; the fresh audit
 adds the raid spawn policy, regression checks and stricter performance proof.

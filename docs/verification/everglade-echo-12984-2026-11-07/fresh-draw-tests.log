@@ -1,0 +1,5 @@
+coax/web/everglade-echo-proof.coax:1:1: error[E0336]: the program has no 'main'
+  // A fast empty/downscaled scene is not a native hero frame qualification.
+  ^
+  fix: add main :: () { ... }
+1 error

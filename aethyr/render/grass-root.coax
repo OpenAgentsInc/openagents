@@ -1,0 +1,198 @@
+// Conservative instance rejection for the existing grass shader's root-clip profile v1.
+// Callers supply an axis-aligned box containing every root in a cell. A retained
+// cell keeps every original instance ID; this neither thins nor moves foliage.
+#module "aethyr.render.grassroot";
+#load "material.coax" as gr_material;
+#authority;
+
+#test "root clip rejects only a whole box beyond one published shader plane" {
+ v:[16]f32;v[0]=1;v[15]=1;
+ #assert grass_root_possible(v[..],0,1,0,1,0,1);
+ #assert !grass_root_possible(v[..],3,4,0,1,0,1);
+ #assert !grass_root_possible(v[..],-4,-3,0,1,0,1);
+ #assert grass_root_possible(v[..],2,3,0,1,0,1);
+ #assert grass_root_possible(v[..],2.205f32,2.205f32,0,0,0,0);
+ v[0]=0;v[1]=-1;
+ #assert !grass_root_possible(v[..],0,1,3,4,0,1);
+ v[1]=0;v[2]=1;
+ #assert !grass_root_possible(v[..],0,1,0,1,3,4);
+ v[2]=0;v[0]=1;v[15]=-2;
+ #assert !grass_root_possible(v[..],-10,10,0,1,0,1);
+ v[15]=-1.005f32;
+ #assert grass_root_possible(v[..],-10,10,0,1,0,1);
+ v[15]=-1;
+ #assert grass_root_possible(v[..],-10,10,0,1,0,1);
+}
+#test "retained root points imply a retained cell under varied projective rows" {
+ seed:=3;
+ for sample:0..<300 {
+  v:[16]f32;for k:0..<16 {seed=(seed*17+11)%97;v[k]=cast(f32)(seed-48)/13;}
+  kept:=false;
+  for corner:0..<8 {
+   x:=ifx corner%2==0 then -2.0f32 else 1.0f32;
+   y:=ifx corner/2%2==0 then -3.0f32 else 2.0f32;
+   z:=ifx corner/4==0 then -4.0f32 else 5.0f32;
+   cx:=v[0]*x+v[1]*y+v[2]*z+v[3];
+   cw:=v[12]*x+v[13]*y+v[14]*z+v[15];
+   if cw>=-1 && abs(cx)<=cw*1.2f32+1 {kept=true;}
+  }
+  if kept {#assert grass_root_possible(v[..],-2,1,-3,2,-4,5);}
+ }
+}
+#test "analytic cell bounds agree with independent eight-corner plane enumeration" {
+ seed:=7;
+ for sample:0..<500 {
+  v:[16]f32;for k:0..<16 {seed=(seed*25173+13849)%65521;v[k]=cast(f32)(seed%997-498)/137;}
+  seed=(seed*25173+13849)%65521;cx:=cast(f32)(seed%101-50);
+  seed=(seed*25173+13849)%65521;cy:=cast(f32)(seed%101-50);
+  seed=(seed*25173+13849)%65521;cz:=cast(f32)(seed%101-50);
+  maxw:=-10000.0f32;left:=10000.0f32;right:=10000.0f32;
+  for corner:0..<8 {
+   x:=cx+(ifx corner%2==0 then -1.0f32 else 2.0f32);
+   y:=cy+(ifx corner/2%2==0 then -3.0f32 else 1.0f32);
+   z:=cz+(ifx corner/4==0 then -2.0f32 else 4.0f32);
+   px:=v[0]*x+v[1]*y+v[2]*z+v[3];
+   pw:=v[12]*x+v[13]*y+v[14]*z+v[15];
+   if pw>maxw {maxw=pw;}
+   a:=px-1.2f32*pw;b:=-px-1.2f32*pw;
+   if a<left {left=a;}if b<right {right=b;}
+  }
+  expected:=maxw>=-1.01f32 && left<=1.01f32 && right<=1.01f32;
+  #assert grass_root_possible(v[..],cx-1,cx+2,cy-3,cy+1,cz-2,cz+4)==expected;
+ }
+}
+#test "root clipping retains the exact conservative margin and each projective extent" {
+ v:[16]f32;v[3]=1.01f32;
+ #assert grass_root_possible(v[..],0,0,0,0,0,0);
+ v[3]=0;v[0]=100;v[15]=-1.01f32;
+ #assert grass_root_possible(v[..],-2,2,-2,2,-2,2);
+ for axis:0..<3 {
+  v[12]=0;v[13]=0;v[14]=0;v[12+axis]=2.5f32;v[15]=-5.75f32;
+  #assert grass_root_possible(v[..],-2,2,-2,2,-2,2);
+ }
+}
+grass_root_possible :: (v:[]f32,x0:f32,x1:f32,y0:f32,y1:f32,z0:f32,z1:f32)->bool #export_c #effects(all) {
+ cx:=(x0+x1)*0.5f32;cy:=(y0+y1)*0.5f32;cz:=(z0+z1)*0.5f32;
+ rx:=(x1-x0)*0.5f32;ry:=(y1-y0)*0.5f32;rz:=(z1-z0)*0.5f32;
+ w:=v[12]*cx+v[13]*cy+v[14]*cz+v[15];
+ wr:=abs(v[12])*rx+abs(v[13])*ry+abs(v[14])*rz;
+ if w+wr < -1.01f32 {return false;}
+ for side:[2]f32.[-1,1] {
+  a:=side*v[0]-1.2f32*v[12];b:=side*v[1]-1.2f32*v[13];c:=side*v[2]-1.2f32*v[14];d:=side*v[3]-1.2f32*v[15];
+  low:=a*cx+b*cy+c*cz+d-(abs(a)*rx+abs(b)*ry+abs(c)*rz);
+  if low>1.01f32 {return false;}
+ }
+ return true;
+}
+
+#load "../ground.coax" as gr_ground;
+GrassRootRanges :: struct { n:int;first:[128]int;count:[128]int; }
+#test "cell ranges preserve instance IDs, merge adjacent rows and keep the near ring" {
+ out:[1]GrassRootRanges;v:[16]f32;h:[25]f32;
+ g:=gr_ground.Ground.{n=4,cell=2,west=-4,south=-4};v[0]=1;v[15]=1;
+ grass_root_ranges(out[..],v[..],h[..],g,0,0,4,2,2,3);
+ #assert out[0].n==9 && out[0].first[0]==2 && out[0].count[0]==12;
+ #assert out[0].first[7]==114 && out[0].count[7]==12 && out[0].first[8]==128 && out[0].count[8]==48;
+ v[0]=0;grass_root_ranges(out[..],v[..],h[..],g,0,0,4,2,2,3);
+ #assert out[0].n==1 && out[0].first[0]==0 && out[0].count[0]==176;
+ v[0]=1;v[3]=10;grass_root_ranges(out[..],v[..],h[..],g,0,0,4,2,2,3);#assert out[0].n==0;
+ g.cell=1.5f32;grass_root_ranges(out[..],v[..],h[..],g,0,0,4,2,2,3);
+ #assert out[0].n==1 && out[0].count[0]==176;
+}
+#load "tests/grass-root-oracle.coax";
+#test "every original instance agrees with the independent terrain/corner oracle" {
+ seed:=19;
+ for sample:0..<80 {
+  v:[16]f32;h:[25]f32;
+  for k:0..<16 {seed=(seed*25173+13849)%65521;v[k]=cast(f32)(seed%997-498)/137;}
+  for k:0..<25 {seed=(seed*25173+13849)%65521;h[k]=cast(f32)(seed%31-15)/3;}
+  g:=gr_ground.Ground.{n=4,cell=cast(f32)(sample%3+1),west=-4,south=-3};
+  ex:=cast(f32)(sample%13-6)+0.3f32;ez:=cast(f32)(sample%17-8)+0.7f32;
+  out:[1]GrassRootRanges;grass_root_ranges(out[..],v[..],h[..],g,ex,ez,4,2,2,3);
+  #assert out[0].n<=128;
+  for span:0..<out[0].n {
+   #assert out[0].first[span]>=0 && out[0].count[span]>0 && out[0].first[span]+out[0].count[span]<=176;
+   if span>0 {#assert out[0].first[span-1]+out[0].count[span-1]<out[0].first[span];}
+  }
+  for ring:0..<2 {
+   side:=ifx ring==0 then 8 else 4;per:=ifx ring==0 then 2 else 3;base:=ifx ring==0 then 0 else 128;
+   for row:0..<side {
+    left:=side;right:=-1;
+    for col:0..<side {
+     if gro_cell(v[..],h[..],g.n,g.cell,g.west,g.south,floor(ex)-cast(f32)(side/2)+cast(f32)col,floor(ez)-cast(f32)(side/2)+cast(f32)row) {if col<left {left=col;}right=col;}
+    }
+    for col:0..<side {for blade:0..<per {
+     id:=base+(row*side+col)*per+blade;hit:=false;
+     for span:0..<out[0].n {if id>=out[0].first[span] && id<out[0].first[span]+out[0].count[span] {hit=true;}}
+     #assert hit==(col>=left && col<=right);
+    }}
+   }
+  }
+ }
+}
+#test "empty rings and unsupported alignments reset previous ranges without dropping a valid cell profile" {
+ out:[1]GrassRootRanges;v:[16]f32;h:[25]f32;g:=gr_ground.Ground.{n=4,cell=1,west=-4,south=-4};v[0]=1;v[15]=1;
+ grass_root_ranges(out[..],v[..],h[..],g,0,0,4,2,0,0);#assert out[0].n==8 && out[0].count[0]==12;
+ grass_root_ranges(out[..],v[..],h[..],g,0,0,0,0,2,3);#assert out[0].n==1 && out[0].first[0]==0 && out[0].count[0]==48;
+ grass_root_ranges(out[..],v[..],h[..],g,0,0,0,0,0,0);#assert out[0].n==0;
+ for field:0..<3 {
+  g.cell=ifx field==0 then 0.5f32 else 1;g.west=ifx field==1 then -3.5f32 else -4;g.south=ifx field==2 then -3.5f32 else -4;
+  out[0].first[0]=999;out[0].count[0]=999;out[0].n=99;
+  grass_root_ranges(out[..],v[..],h[..],g,0,0,4,2,2,3);
+  #assert out[0].n==1 && out[0].first[0]==0 && out[0].count[0]==176;
+ }
+}
+#test "single-density and maximum row profiles retain their full bounded domains" {
+ out:[1]GrassRootRanges;v:[16]f32;h:[4]f32;g:=gr_ground.Ground.{n=1,cell=2};v[15]=1;
+ grass_root_ranges(out[..],v[..],h[..],g,0,0,2,1,0,0);
+ #assert out[0].n==1 && out[0].first[0]==0 && out[0].count[0]==16;
+ v[0]=1;grass_root_ranges(out[..],v[..],h[..],g,0,0,32,1,32,1);
+ #assert out[0].n==128 && out[0].first[0]==29 && out[0].count[127]==6 && out[0].first[127]==8160-3;
+}
+// Profile preconditions: square admitted grid, finite view/eye/heights, 0<=r,near<=32,
+// 0<=per,nper<=64, and complete caller-owned views. Unsupported grid alignment
+// uses the original full draw; the current painterly preset satisfies these bounds.
+grass_root_ranges :: (out:[]GrassRootRanges,v:[]f32,h:[]f32,g:gr_ground.Ground,eye_x:f32,eye_z:f32,r:int,per:int,near:int,nper:int) #effects(all) {
+ out[0].n=0;
+ total:=4*r*r*per+4*near*near*nper;
+ // This profile's one-metre root cells may not cross a terrain grid line.
+ // Unsupported alignments retain the full original draw instead of approximating.
+ if g.cell<1 || floor(g.cell)!=g.cell || floor(g.west)!=g.west || floor(g.south)!=g.south {
+  out[0].n=1;out[0].first[0]=0;out[0].count[0]=total;return;
+ }
+ grass_root_ring(out,v,h,g,eye_x,eye_z,r,per,0);
+ grass_root_ring(out,v,h,g,eye_x,eye_z,near,nper,4*r*r*per);
+}
+grass_root_ring :: (out:[]GrassRootRanges,v:[]f32,h:[]f32,g:gr_ground.Ground,eye_x:f32,eye_z:f32,r:int,per:int,base:int) #effects(all) {
+ if per==0 {return;}
+ side:=2*r;
+ for row:0..<side {
+  first:=-1;last:=0;z0:=floor(eye_z)-cast(f32)r+cast(f32)row;
+  iz:=cast(int)floor((z0-g.south)/g.cell);
+  zlow:=cast(int)gr_material.st_min(gr_material.st_max(cast(f32)iz,0.0f32),cast(f32)g.n);
+  zhigh:=cast(int)gr_material.st_min(gr_material.st_max(cast(f32)(iz+1),0.0f32),cast(f32)g.n);
+  for col:0..<side {
+   x0:=floor(eye_x)-cast(f32)r+cast(f32)col;ix:=cast(int)floor((x0-g.west)/g.cell);
+   xlow:=cast(int)gr_material.st_min(gr_material.st_max(cast(f32)ix,0.0f32),cast(f32)g.n);
+   xhigh:=cast(int)gr_material.st_min(gr_material.st_max(cast(f32)(ix+1),0.0f32),cast(f32)g.n);
+   a:=h[zlow*(g.n+1)+xlow];b:=h[zlow*(g.n+1)+xhigh];c:=h[zhigh*(g.n+1)+xlow];d:=h[zhigh*(g.n+1)+xhigh];
+   ymin:=gr_material.st_min(gr_material.st_min(a,b),gr_material.st_min(c,d));ymax:=gr_material.st_max(gr_material.st_max(a,b),gr_material.st_max(c,d));
+   if grass_root_possible(v,x0,x0+1,ymin,ymax,z0,z0+1) {if first<0 {first=col;}last=col+1;}
+  }
+  if last==0 {continue;}
+  start:=base+(row*side+first)*per;count:=(last-first)*per;n:=out[0].n;
+  if n>0 && out[0].first[n-1]+out[0].count[n-1]==start {out[0].count[n-1]+=count;}
+  else {out[0].first[n]=start;out[0].count[n]=count;out[0].n=n+1;}
+ }
+}
+
+#test "range accessor refuses stale or malformed indices and fields" {
+ out:[1]GrassRootRanges;out[0].n=1;out[0].first[0]=17;out[0].count[0]=23;
+ #assert grass_root_at(out[..],0,0)==17 && grass_root_at(out[..],0,1)==23;
+ #assert grass_root_at(out[..],-1,0)==0 && grass_root_at(out[..],1,0)==0 && grass_root_at(out[..],0,-1)==0 && grass_root_at(out[..],0,2)==0;
+ out[0].n=0;#assert grass_root_at(out[..],0,0)==0;
+}
+grass_root_at :: (out:[]GrassRootRanges,i:int,field:int)->int #effects(all) {
+ if i<0 || i>=out[0].n || field<0 || field>1 {return 0;}
+ return ifx field==0 then out[0].first[i] else out[0].count[i];
+}
