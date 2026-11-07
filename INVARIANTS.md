@@ -6224,6 +6224,21 @@ Studio brightness override or decode an already-lit display colour. Camera eye
 height remains at least 0.28 m above the glade terrain after pan and zoom. The
 reference sky covers the viewport and fades continuously into its extension;
 camera tilt must not expose a finite sky-card edge.
+Character Create's CLASS row (#13024) stores one of the twelve SRD 5.2.1 classes
+in the appearance record (`CC3`, `CC2` plus one class letter); `CC1`/`CC2`
+records still restore, with no class. A class plays a level 1 SRD character whose
+only bar slots are its slot 1 (wire slot 96 + class, `FB_CL0`) and Repair: the page
+rolls nothing, the room resolves the cast in its 5e engine, and the room refuses
+every other slot for that seat, levels on or off. The hello's `srd-*` kind word
+seats the class; the checkpoint's persisted class bit stays 0 or 1 (the Warlock
+or not), so a restoring hello reseats a class. USE IN EVERGLADE's run drives
+Everglade's ordinary input path (no teleport, no private movement), so the room
+moves the seat as for held keys and the drawn and room facings agree at the
+hand-off; its camera ends in the follow camera through `verse_orbit_toward`, and
+any key during it only skips. Checks: `fivebar-test.coax` "Character Create",
+`everglade5e-rules.coax`, `everglade5e-room-rules.coax` "#13024", room
+`room.coax` "Character Create class", `everglade5e.coax` "create:" and "classes:",
+`coax/web/tests/one-zone-walk.coax`.
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
 lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative

@@ -5,8 +5,9 @@ and it is a place in Everglade: Character Create and Everglade are one zone (#13
 The page boots Everglade itself (`everglade5e`, Everglade's slot, room and pack)
 at the glade's clearing south of the South Gate, in Character Create's mode: a
 studio camera on your character, the wardrobe down the left, and your keys and
-pointer on the wardrobe. USE IN EVERGLADE hands you the walk. You walk with your
-own keys up the road, through the gate and into the Commons. There is one page,
+pointer on the wardrobe. You pick one of the twelve SRD 5.2.1 classes on the
+CLASS row. USE IN EVERGLADE plays a short run up the road, then hands you the
+walk with your class's ability on the bar. There is one page,
 one Wasm world, one renderer and one clock the whole way: nothing loads, nothing
 fades, and no frame or iframe opens. The address bar changes to
 `/worlds/everglade` in place (`history.replaceState`).
@@ -44,9 +45,10 @@ not uniformly repainted by that mask.
 Tab selects a control, arrows change it, and Space cycles animations. Drag
 turns the model and adjusts the viewing pitch; the wheel zooms. Controls form
 two side columns on desktop and a two-column panel below the preview on narrow
-screens. The 56-byte `CC2` appearance record saves through the host's existing
-action 4/IndexedDB save slot and restores on message 4. It contains no asset
-addresses or renderer state. Invalid records leave the current appearance intact.
+screens. The appearance record is the 56-byte `CC2` record, or the 57-byte `CC3`
+record when a class is chosen (`CC3` is `CC2` plus one class letter, `a` for
+Barbarian to `l` for Wizard). It contains no asset addresses or renderer state.
+Invalid records leave the current appearance intact.
 
 ## Rebuild the asset pack
 
@@ -207,10 +209,11 @@ replace the active player until explicitly saved. PLAYER SAVED confirms the
 write; RETRY SAVE reports refused browser storage and never navigates away.
 
 The versioned origin-wide key is `aethyr.player.appearance.v1`. Its bounded
-payload is the existing CC2 record, parsed by `aethyr/character-appearance.coax`
+payload is the CC2 or CC3 record, parsed by `aethyr/character-appearance.coax`
 in both the creator and Everglade. Invalid records leave live choices intact.
 This is browser-local appearance, independent of login identity, quest saves,
-room permissions, movement, spell stats or inventory. It is not account/cloud
+room permissions, movement or inventory. The class it carries sets your bar in
+Everglade (see "Classes"). It is not account/cloud
 sync; other clients retain the existing multiplayer LOOK contract.
 
 The optional `coaxial_player_appearance_v1` capability opts a face into loading
@@ -260,22 +263,81 @@ hello (`FLAGS` bit 128, `EZ_GLADE_FLAG`), and the room seats it at the glade's
 clearing (`coax/web/room/room-tick.c` `everglade_place`, `room-world.c`
 `world_place_glade`), so your seat and your page agree on where you stand.
 
+## Classes
+
+The CLASS row is the first row of the sidebar. It offers the twelve classes of
+the SRD 5.2.1: Barbarian, Bard, Cleric, Druid, Fighter, Monk, Paladin, Ranger,
+Rogue, Sorcerer, Warlock and Wizard. It starts at Druid. The class is saved in
+the character record (`CC3`), so a reload keeps it, and Everglade restores it
+with the rest of your appearance.
+
+Each class is a level 1 character built by the SRD 5e engine
+(`apps/openagents-web/fivebar.coax` `fb_cl_hero`), with the class's Hit Points,
+Armor Class, ability scores and spell save DC. Its bar has one ability in slot 1
+(key 1) and Repair on R:
+
+| Class | Slot 1 | Kind |
+| --- | --- | --- |
+| Barbarian | Rage | Bonus Action, on you |
+| Bard | Vicious Mockery | Cantrip, 60 ft |
+| Cleric | Sacred Flame | Cantrip, 60 ft |
+| Druid | Starry Wisp | Cantrip, 60 ft |
+| Fighter | Second Wind | Bonus Action, on you |
+| Monk | Martial Arts | Unarmed Strike, 5 ft |
+| Paladin | Lay On Hands | Bonus Action, on you |
+| Ranger | Hunter's Mark | 1st-level spell, 90 ft |
+| Rogue | Sneak Attack | Shortbow, 80 ft |
+| Sorcerer | Fire Bolt | Cantrip, 120 ft |
+| Warlock | Eldritch Blast | Cantrip, 120 ft |
+| Wizard | Fire Bolt | Cantrip, 120 ft |
+
+An ability that acts on you goes at once. An aimed one is picked with 1; a
+click, a tap or 1 again casts it where you aim. The page rolls nothing: the cast
+goes to the room (`C` with slot 96 + class), the room's 5e engine resolves it
+(`everglade5e-room-rules.coax`), and every page plays its look when the room's
+cast event arrives. Offline, the local room worker does the same. The room
+refuses any other slot for a class's seat. Each slot's card is the SRD's text
+for what the slot does here.
+
+The page's side is `apps/openagents-web/everglade-classes.coax`. The hello's
+`KIND` word is `srd-barbarian` to `srd-wizard`. To show a class's bar without
+Character Create, add `?kit=srd-NAME` to Everglade's address; `&card=1` also
+shows slot 1's card. The icons and cards are generated with
+`coax/web/tool.sh verse/tools/everglade_hotbar.coax` (the `cl-*` pictures).
+
+The legacy CHARACTER picker's druid and Warlock are unchanged. A record without a
+class (`CC2`) keeps Everglade's own druid.
+
 ## The road to Everglade
 
 USE IN EVERGLADE saves first. Nothing moves until the save is confirmed
-(message 17). Then the wardrobe goes, the camera glides from the studio shot to
-the chase camera behind you over 1.6 seconds, facing the road north, and the
-address bar says `/worlds/everglade` (action 19, `history.replaceState`). The walk
-is yours: your keys, Everglade's controller, Everglade's room. The road climbs out
-of the clearing through the ridge cut, meets the town's road where the two
-grounds join, and runs north to the South Gate and the Commons. It is the same
-world all the way, so there is nothing to hand over, nothing to load and nothing
-to fade.
+(message 17). Then the run plays, in the same world, with no cut:
+
+1. The controls fade out over 0.8 seconds, and the camera swings round behind
+   you over 3 seconds.
+2. You run the road north on your own for 30 seconds. The run uses Everglade's
+   own input path (forward and running, steered toward the road 7 m ahead), so
+   the room moves you as it does for held keys. The camera keeps its own track:
+   a three-quarter view that sweeps across behind you, pulls out and cranes up
+   midway, and comes in to straight behind you.
+3. The orbit turns to look where the run's camera looks
+   (`verse_orbit_toward`), and the camera eases into the follow camera over
+   1.5 seconds, so there is no jump.
+4. The bar appears with your class's slot 1, and the keys are yours.
+
+Any key or a click during the run skips to step 3. The key is used for the skip
+and does nothing else. The address bar says `/worlds/everglade` from the start
+of the run (action 19, `history.replaceState`). The road climbs out of the
+clearing through the ridge cut, meets the town's road where the two grounds
+join, and runs north to the South Gate and the Commons. The run is in
+`everglade-create.coax` (`cz_drive`, `cz_shot`, `cz_frame`).
 
 ```sh
-# Real key input: SURPRISE ME, USE IN EVERGLADE, then W and Shift held (A and D keep to the road)
-# from the clearing through the South Gate to the Commons. Fails on a loading screen, a frame, a new
-# page load, a different character, or a stretch of road under 50 fps.
+# Real input: SURPRISE ME, USE IN EVERGLADE, the run with no keys, slot 1 at the hand-off (key 1,
+# twice for an aimed one), then W and Shift held (A and D keep to the road) to the Commons. Fails on
+# a loading screen, a frame, a new page load, a different character, a run that never hands over,
+# drawn and room facing that differ at the hand-off (netProbe 63 and 64), or a stretch of road under
+# 50 fps.
 coax/web/tool.sh coax/web/tests/one-zone-walk.coax http://127.0.0.1:8873/worlds/character-creator?weather=clear
 # The film: real-time 1920x1080 screenshots of the walk at 30 fps; every frame's mean luminance
 # must be at least 40 of 255.
@@ -284,8 +346,8 @@ coax/web/tool.sh coax/web/tests/one-zone-walk.coax http://127.0.0.1:8873/worlds/
 
 ## Compact sidebar
 
-Desktop appearance choices, Reset/Surprise Me and Save/Use actions share one
-compact left sidebar. Rows are 40 display pixels apart with 36-pixel hit areas.
+Desktop class and appearance choices, Reset/Surprise Me and Save/Use actions
+share one compact left sidebar. Rows are 40 display pixels apart with 36-pixel hit areas.
 Labels and values sit on one line; the right side remains unobstructed. Narrow
 or short layouts use the existing single bottom panel.
 

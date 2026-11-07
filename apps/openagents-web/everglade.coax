@@ -93,6 +93,7 @@
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/quality.coax)
 #load "everglade-warlock.coax";   // the Warlock's bar, spells and Zombies (CHARACTER: WARLOCK)
+#load "everglade-classes.coax";   // Character Create's twelve SRD classes, each with its slot 1 (#13024)
 #load "everglade-raid-preview.coax";   // the Cultist Raid offline, a preview (?raid=preview, &cine=1 its flight)
 #load "everglade-character.coax";   // a detailed character through the host's character pass (?stage=echo)
 #load "../../aethyr/render/cascades.coax";   // the key light's shadow cascades (#13016)
@@ -522,6 +523,7 @@ Everglade :: struct {
   doors: Doors;                            // every door you open and close with E (everglade-doors.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wl: Warlock;                             // the Warlock's bar and its spells' looks (everglade-warlock.coax)
+  cl: EgClass;                             // a Character Create class and its slot 1 (everglade-classes.coax)
   rp: RaidPreview;                         // the Cultist Raid offline, a preview (everglade-raid-preview.coax)
   fly: FlyPath;                            // #fly=PATH: the flyover benchmark flies the camera (aethyr/flyover.coax)
   fly_from: f64;                           // and the clock when it began
@@ -1605,6 +1607,7 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
     if !s[0].link_on || everglade_busy(s) || everglade_held(s) {s[0].link_seconds=0;s[0].link[0].forced=false;}
     else {s[0].link_flags|=ifx s[0].link_action==6 then 128 else 64;s[0].key_x=0;s[0].key_y=1;s[0].run=true;s[0].jump=s[0].link_action==6 && s[0].link_seconds>el_duration(s[0].link[..])-0.08;s[0].link_seconds=hi(0,s[0].link_seconds-clamp(dt,0,0.25));}
   }
+  if cz_drive(s, dt) { s[0].look_yaw = 0; s[0].look_pitch = 0; return; }   // Character Create's run: its own input, its own camera (everglade-create.coax)
   o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
   o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
@@ -4085,7 +4088,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   // the raid preview's flight: the film clean but for the names over heads, Darian's among them (everglade-raid-preview.coax)
   if rp_hud_off(s) { s[0].map_button = Box.{}; return labels(s, out, u, 0, you); }
-  if cz_creating(s) { s[0].map_button = Box.{}; return cz_hud(s, out, u); }   // Character Create's wardrobe alone (everglade-create.coax)
+  if cz_creating(s) || cz_running(s) { s[0].map_button = Box.{}; return cz_hud(s, out, u); }   // Character Create's wardrobe alone, then its run's clean screen (everglade-create.coax)
   if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
   md_plates_clear(s);
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
@@ -5338,7 +5341,11 @@ everglade_link_layer_side :: (s:[]Everglade)->int #export_c #effects(all) {retur
 
 // The same versioned wardrobe record as Character Create; its actor uses Everglade's controller.
 everglade_avatar_profile :: (s:[]Everglade,t:string)->bool #export_c #effects(all) {
- if !cc.ca_restore(s[0].avatar[..],t) {return false;}s[0].avatar_skin[0]=Skin.{};jn_character_created(s);return true;
+ if !cc.ca_restore(s[0].avatar[..],t) {return false;}s[0].avatar_skin[0]=Skin.{};
+ // its class (CC3, #13024): yours in the world; at Character Create a record without one starts at the druid
+ if s[0].avatar[0].klass<0 && s[0].cz[0].on {s[0].avatar[0].klass=CL_DRUID;}
+ if s[0].avatar[0].klass>=0 {cl_set(s,s[0].avatar[0].klass);}
+ jn_character_created(s);return true;
 }
 avatar_ready :: (s:[]Everglade)->bool {
  if !s[0].avatar[0].configured || !cc.ca_catalog_ready(s[0].avatar[0]) {return false;}

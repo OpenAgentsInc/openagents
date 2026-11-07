@@ -89,8 +89,7 @@ wl_set :: (s: [] Everglade, warlock: bool) {
   s[0].sp.armed = -1; s[0].sp.casting = -1;
   if net_on(s) && net_of(s)[0].state == NET_OPEN { net_of(s)[0].hello_due = true; }   // the room hears the class
 }
-everglade_class :: (s: [] Everglade) -> int #export_c #effects(all) { return ifx s[0].wl.on then 1 else 0; }
-everglade_set_class :: (s: [] Everglade, klass: int) #export_c #effects(all) { wl_set(s, klass == 1); }
+// The class the page rules play: everglade-classes.coax everglade_class.
 wl_v :: (p: Point) -> FxV { return fxp_v(p.x, p.y, p.z); }
 wl_hand :: (s: [] Everglade) -> Point { f := ab_you(s); return v3(f.x + sin(s[0].face) * 0.4, f.y + 1.45, f.z + cos(s[0].face) * 0.4); }
 

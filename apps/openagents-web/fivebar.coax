@@ -183,6 +183,68 @@ fb_warlock_bar :: (out: [] FbAb) -> int {
 FB_WL_LEVEL :: 17;
 fb_warlock_hero :: (name: string, team: int) -> RsCreature { c := rs_warlock(name, team, FB_WL_LEVEL, SP_ELDRITCH_BLAST); c.rebuke = true; return c; }
 
+// ---- Character Create's classes (#13024): the twelve SRD 5.2.1 classes at level 1
+
+// A character made in Character Create plays the class it chose there: the SRD 5.2.1 class at level
+// 1, built by the engine (aethyr/rules/srd/engine.coax rs_barbarian to rs_wizard), with one ability on
+// its bar. A caster has a cantrip from its class's list; a class with no cantrip at level 1 has its
+// signature level 1 action. On the wire the ability is slot FB_CL0 + class.
+FB_CL0 :: 96;
+FB_CL_N :: 12;
+FB_CL_BARBARIAN :: 0; FB_CL_BARD :: 1; FB_CL_CLERIC :: 2; FB_CL_DRUID :: 3; FB_CL_FIGHTER :: 4; FB_CL_MONK :: 5;
+FB_CL_PALADIN :: 6; FB_CL_RANGER :: 7; FB_CL_ROGUE :: 8; FB_CL_SORCERER :: 9; FB_CL_WARLOCK :: 10; FB_CL_WIZARD :: 11;
+FB_CL_NAME :: [12] string.["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"];
+// the hello's CLASS word for each (coax/web/room/room-everglade.coax), apart from Everglade's own
+// "druid" and "warlock"
+FB_CL_KIND :: [12] string.["srd-barbarian", "srd-bard", "srd-cleric", "srd-druid", "srd-fighter", "srd-monk", "srd-paladin", "srd-ranger", "srd-rogue", "srd-sorcerer", "srd-warlock", "srd-wizard"];
+FB_CL_ENGINE :: [12] int.[RS_BARBARIAN, RS_BARD, RS_CLERIC, RS_DRUID, RS_FIGHTER, RS_MONK, RS_PALADIN, RS_RANGER, RS_ROGUE, RS_SORCERER, RS_WARLOCK, RS_WIZARD];
+// The class whose hello word is `kind`, -1 none.
+fb_cl_of_kind :: (kind: string) -> int {
+  for c: 0..<FB_CL_N { if FB_CL_KIND[c] == kind { return c; } }
+  return -1;
+}
+// Class c at `level`, as the engine builds it.
+fb_cl_hero :: (c: int, name: string, team: int, level: int) -> RsCreature {
+  l := ifx level < 1 then 1 else level;
+  if c == FB_CL_BARBARIAN { return rs_barbarian(name, team, l); }
+  if c == FB_CL_BARD { return rs_bard(name, team, l); }
+  if c == FB_CL_CLERIC { return rs_cleric(name, team, l); }
+  if c == FB_CL_FIGHTER { return rs_fighter(name, team, l); }
+  if c == FB_CL_MONK { return rs_monk(name, team, l); }
+  if c == FB_CL_PALADIN { return rs_paladin(name, team, l); }
+  if c == FB_CL_RANGER { return rs_ranger(name, team, l); }
+  if c == FB_CL_ROGUE { return rs_rogue(name, team, l); }
+  if c == FB_CL_SORCERER { return rs_sorcerer(name, team, l); }
+  if c == FB_CL_WARLOCK { return rs_warlock(name, team, l, SP_ELDRITCH_BLAST); }
+  if c == FB_CL_WIZARD { return rs_wizard(name, team, l); }
+  return rs_druid(name, team, l);
+}
+// Class c's ability on slot 1: Bard Vicious Mockery, Cleric Sacred Flame, Druid Starry Wisp, Sorcerer
+// and Wizard Fire Bolt, Warlock Eldritch Blast; Barbarian Rage, Fighter Second Wind, Monk an Unarmed
+// Strike (Martial Arts), Paladin Lay On Hands, Ranger Hunter's Mark (Favored Enemy), Rogue a strike
+// with Sneak Attack. `delay`: seconds from the press to the strike, as the page draws it
+// (everglade-classes.coax CL_DELAY).
+fb_cl_ability :: (c: int) -> FbAb {
+  a: FbAb;
+  if c == FB_CL_BARBARIAN { a = fb_feature(FB_RAGE, "Rage", "cl-rage"); a.tg = FB_SELF; a.delay = 0.2; }
+  else if c == FB_CL_BARD { a = fb_spell(SP_VICIOUS_MOCKERY, 0, FB_FOE); a.delay = 0.3; }
+  else if c == FB_CL_CLERIC { a = fb_spell(SP_SACRED_FLAME, 0, FB_FOE); a.delay = 0.45; }
+  else if c == FB_CL_DRUID { a = fb_spell(SP_STARRY_WISP, 0, FB_FOE); a.delay = 0.4; }
+  else if c == FB_CL_FIGHTER { a = fb_feature(FB_SECOND, "Second Wind", "cl-second-wind"); a.tg = FB_SELF; a.delay = 0.2; }
+  else if c == FB_CL_MONK { a = fb_feature(FB_ATTACK, "Martial Arts", "cl-martial-arts"); a.delay = 0.25; }
+  else if c == FB_CL_PALADIN { a = fb_feature(FB_LAY, "Lay On Hands", "cl-lay-on-hands"); a.tg = FB_SELF; a.delay = 0.3; }
+  else if c == FB_CL_RANGER { a = fb_spell(SP_HUNTERS_MARK, 1, FB_FOE); a.delay = 0.3; }
+  else if c == FB_CL_ROGUE { a = fb_feature(FB_ATTACK, "Sneak Attack", "cl-sneak-attack"); a.delay = 0.25; }
+  else if c == FB_CL_SORCERER || c == FB_CL_WIZARD { a = fb_spell(SP_FIRE_BOLT, 0, FB_FOE); a.delay = 0.45; }
+  else if c == FB_CL_WARLOCK { a = fb_spell(SP_ELDRITCH_BLAST, 0, FB_FOE); a.delay = 0.35; }
+  else { a = fb_feature(FB_WORLD, "", ""); }
+  if a.kind == FB_SPELL { a.art = FB_CL_ART[c]; }
+  return a;
+}
+FB_CL_ART :: [12] string.["cl-rage", "cl-vicious-mockery", "cl-sacred-flame", "cl-starry-wisp", "cl-second-wind", "cl-martial-arts",
+                          "cl-lay-on-hands", "cl-hunters-mark", "cl-sneak-attack", "cl-sorcerer-fire-bolt", "cl-eldritch-blast", "cl-wizard-fire-bolt"];
+fb_cl_bar :: (out: [] FbAb) -> int { for c: 0..<FB_CL_N { out[c] = fb_cl_ability(c); } return FB_CL_N; }
+
 // Everglade's caster (its realm's tier, everglade-grove.coax: DC 15, +7, a 9th-level druid with
 // Wisdom +3; cantrips at two dice): the SRD 5.2.1 Druid at level 9, standard array, Wisdom first
 // to 16 and no feat raised it, Leather Armor and a Shield (AC 11 + Dex + 2). One house rule: a

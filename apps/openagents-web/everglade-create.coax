@@ -6,28 +6,44 @@
 // light. USE IN EVERGLADE saves the character (action 16, the browser's shared record), hands you
 // the walk, glides the camera round behind you and puts /worlds/everglade in the address bar
 // (action 19): the town at the top of the road is the same world, already loaded.
+// The CLASS row picks one of the SRD 5.2.1's twelve classes (everglade-classes.coax, #13024), kept in
+// the record (CC3). USE IN EVERGLADE then plays the run (cz_run_*): the controls fade, the camera
+// swings round behind you, you run the road north on your own while the camera keeps its own track,
+// and it eases into the follow camera, where the bar shows your class's slot 1 and the keys are yours.
+// Any key (or a click) skips to that hand-off.
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "create:"
 
 ACT_SAVE_PLAYER :: 16;   // host.js: keep the outbox as the shared character record; message 17 says it was kept
 MSG_PLAYER_KEPT :: 17;
 ACT_ADDRESS :: 19;       // host.js: this same-origin path in the address bar (history.replaceState), nothing loaded
 CZ_FIELDS :: 13;
-CZ_BOXES :: 18;
-CZ_GLIDE :: 1.6;         // seconds from the studio camera to the one behind you
+CZ_BOXES :: 19;
+CZ_CLASS_BOX :: 18;      // the CLASS row's box, drawn first in the sidebar (the fields' boxes are 0 to 12)
+CZ_CLASS :: 13;          // cz_change's and cz_value's field number for it
+CZ_SWING :: 3.0;         // s: the controls fade and the camera swings round behind you
+CZ_RUN :: 30.0;          // s: the run up the road north, on its own
+CZ_EASE :: 1.5;          // s: the camera eases into the follow camera, then the keys are yours
+CZ_FADE :: 0.8;          // s: the controls fade out
+CZ_TURN :: 1.6;          // rad/s: how fast the run turns to keep to the road
+CZ_AHEAD :: 7.0;         // m: the road's point the run heads for
+CZ_RECORD :: 57;         // the longest record (aethyr/character-appearance.coax CC3)
 CZ_CLOCK :: "fixed:0.58";   // the studio's light: late morning, the sun high over the glade
 CZ_FIELD_NAMES :: [13] string.["BODY", "CLOTHES", "HOOD", "COLORWAY", "CLOTH DYE", "SKIN TONE", "HAIR STYLE", "HAIR COLOR", "BEARD", "ANIMATION", "MODULAR PART", "WEAR SELECTED PART", "EYE COLOR"];
 
 EgCreate :: struct {
   on: bool;        // this page opened at Character Create
-  walking: bool;   // USE IN EVERGLADE taken: the walk is yours, the wardrobe gone
-  glide: f32;      // 0 the studio camera, 1 the one behind you
+  walking: bool;   // USE IN EVERGLADE taken: the run plays, the wardrobe gone
+  glide: f32;      // the run's share done, 0 to 1 (its seconds over CZ_SWING + CZ_RUN + CZ_EASE)
+  run_t: f32;      // seconds since USE IN EVERGLADE
+  handed: bool;    // the run is over: the follow camera, the bar and the keys are yours
+  toward: bool;    // the orbit turned to the run's camera, for the ease
   address: bool;   // the address bar still to say /worlds/everglade
   focused: int; boxes: [CZ_BOXES] Box; mobile: bool; width: f32; height: f32; scale: f32 = 1;
   yaw: f32 = -0.22; pitch: f32 = 0.1; dist: f32 = 3.1; pan_x: f32; pan_y: f32; pan_mode: bool;
   drag_pan: bool; dragging: bool; drag_id: int; dx: f32; dy: f32; down: int = -1;
   pose: int; pose_at: f32; clock: f32; surprise_seed: int; revision: int;
   profile_request: bool; profile_pending: bool; profile_ok: bool; profile_failed: bool; profile_want_go: bool;
-  profile_revision: int = -1; profile_at: int; profile_bytes: [56] u8;
+  profile_revision: int = -1; profile_at: int; profile_bytes: [CZ_RECORD] u8; profile_n: int;
   studio: Shot;    // the studio camera's last shot, where the glide starts
 }
 
@@ -35,7 +51,9 @@ cz_wrap :: (v: int, n: int) -> int { return (v % n + n) % n; }
 cz_clamp :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b { return b; } return v; }
 cz_creating :: (s: [] Everglade) -> bool { return s[0].cz[0].on && !s[0].cz[0].walking; }
 // The studio's camera (or its glide behind you) is the one shown, so the orbit's pulling in never hides you.
-cz_camera_own :: (s: [] Everglade) -> bool { c := s[0].cz[0]; return c.on && (!c.walking || c.glide < 1); }
+cz_camera_own :: (s: [] Everglade) -> bool { c := s[0].cz[0]; return c.on && !c.handed; }
+// The run after USE IN EVERGLADE is playing: no HUD, no bar, the keys skip it.
+cz_running :: (s: [] Everglade) -> bool { c := s[0].cz[0]; return c.on && c.walking && !c.handed; }
 
 // Whether the page's address is Character Create's (the url fact, any host, no query or hash).
 cz_page :: (url: string) -> bool {
@@ -56,6 +74,10 @@ cz_facts :: (s: [] Everglade, text: string) {
   c := s[0].cz[..];
   c[0].on = true;
   if !s[0].avatar[0].configured { cc.ca_preset(s[0].avatar[..], s[0].avatar[0].outfit); }
+  if s[0].avatar[0].klass < 0 { s[0].avatar[0].klass = CL_DRUID; }   // the CLASS row starts at the realm's own druid
+  kit := cl_of_kind(net_query(fact(text, "url"), "kit"));
+  if kit >= 0 { s[0].avatar[0].klass = kit; }   // ?kit=srd-NAME: the row starts there (a film of one class)
+  cl_set(s, s[0].avatar[0].klass);
   x := ez_spawn_x(); z := ez_spawn_z();
   s[0].spawn = v3(x, 0, z); s[0].spawn_face = f32(GLADE_FACE);   // as the room seats you (everglade-glade.coax)
   s[0].feet = v3(x, walk_at(s, x, z), z);
@@ -70,7 +92,7 @@ cz_facts :: (s: [] Everglade, text: string) {
 cz_available :: (a: cc.CharacterAppearance, p: int) -> bool { return cc.ca_available(a, p); }
 cz_preset :: (s: [] Everglade, family: int) { cc.ca_preset(s[0].avatar[..], family); }
 cz_change :: (s: [] Everglade, f: int, delta: int) {
-  if f < 0 || f >= CZ_FIELDS { return; }
+  if f < 0 || f > CZ_CLASS { return; }
   a := s[0].avatar[..]; c := s[0].cz[..];
   if !a[0].configured { cz_preset(s, a[0].outfit); }
   if f == 0 { a[0].female = !a[0].female; if !a[0].female && a[0].hair > 2 { a[0].hair = 2; } if !cz_available(a[0], a[0].piece) { a[0].piece = 18; } }
@@ -85,6 +107,7 @@ cz_change :: (s: [] Everglade, f: int, delta: int) {
   if f == 9 { c[0].pose = cz_wrap(c[0].pose + delta, 4); a[0].pose = c[0].pose; c[0].pose_at = c[0].clock; }
   if f == 10 { for attempt: 0..<40 { a[0].piece = cz_wrap(a[0].piece + (ifx delta < 0 then -1 else 1), 40); if cz_available(a[0], a[0].piece) { break; } } }
   if f == 12 { a[0].eye_color = cz_wrap(a[0].eye_color + delta, 6); }
+  if f == CZ_CLASS { a[0].klass = cz_wrap(hi_i(a[0].klass, 0) + delta, CL_N); cl_set(s, a[0].klass); }
   if f == 11 && cz_available(a[0], a[0].piece) { a[0].worn[a[0].piece] = !a[0].worn[a[0].piece]; a[0].hood = a[0].worn[26]; }
   c[0].focused = f; c[0].revision += 1;
 }
@@ -122,6 +145,7 @@ cz_value :: (s: [] Everglade, f: int) -> string {
   if f == 6 { if a.hood { return "UNDER HOOD"; } return ifx a.female then [4] string.["LONG", "BUNS", "CROPPED", "NONE"][a.hair] else [3] string.["PARTED", "CROPPED", "NONE"][a.hair]; }
   if f == 7 { return [6] string.["DARK", "CHESTNUT", "GOLD", "AUBURN", "SILVER", "VIOLET"][a.hair_color]; }
   if f == 8 { if a.female { return "MALE ONLY"; } return ifx a.beard then "BEARDED" else "CLEAN SHAVEN"; }
+  if f == CZ_CLASS { return CL_NAME[clamp_i(a.klass, 0, CL_N - 1)]; }
   if f == 12 { return [6] string.["BROWN", "BLUE", "GREEN", "AMBER", "GRAY", "VIOLET"][a.eye_color]; }
   if f == 10 { return cc.PART_LABELS[a.piece]; }
   if f == 11 { if !cz_available(a, a.piece) { return "MALE ONLY"; } return ifx a.worn[a.piece] then "ON" else "OFF"; }
@@ -133,7 +157,9 @@ cz_request :: (s: [] Everglade, go: bool) {
   c := s[0].cz[..];
   if c[0].profile_pending { return; }
   if !s[0].avatar[0].configured { cz_preset(s, s[0].avatar[0].outfit); }
-  if cc.ca_save(s[0].avatar[0], c[0].profile_bytes[..]) != 56 { return; }
+  n := cc.ca_save(s[0].avatar[0], c[0].profile_bytes[..]);
+  if n != cc.ca_size(s[0].avatar[0]) { return; }
+  c[0].profile_n = n;
   c[0].profile_at = c[0].revision; c[0].profile_pending = true; c[0].profile_request = true;
   c[0].profile_want_go = go; c[0].profile_failed = false;
 }
@@ -141,19 +167,51 @@ cz_reply :: (s: [] Everglade, t: string) {
   c := s[0].cz[..];
   if !c[0].profile_pending { return; }
   c[0].profile_pending = false; c[0].profile_request = false;
-  same := t.count == 56;
-  if same { for i: 0..<56 { if t[i] != c[0].profile_bytes[i] { same = false; } } }
+  same := t.count == c[0].profile_n;
+  if same { for i: 0..<c[0].profile_n { if t[i] != c[0].profile_bytes[i] { same = false; } } }
   c[0].profile_failed = !same; c[0].profile_ok = same;
   if same { c[0].profile_revision = c[0].profile_at; }
   if same && c[0].profile_want_go { cz_walk(s); }
 }
-// Into Everglade: the walk is yours; the camera glides round behind you, facing the road north.
+// Into Everglade: the run plays (cz_drive, cz_shot), heading up the road north.
 cz_walk :: (s: [] Everglade) {
   c := s[0].cz[..];
   if c[0].walking { return; }
-  c[0].walking = true; c[0].glide = 0; c[0].address = true; c[0].dragging = false; c[0].down = -1;
+  c[0].walking = true; c[0].glide = 0; c[0].run_t = 0; c[0].handed = false; c[0].toward = false;
+  c[0].address = true; c[0].dragging = false; c[0].down = -1;
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
   jn_character_created(s);
+}
+CZ_RUN_ALL :: CZ_SWING + CZ_RUN + CZ_EASE;
+// Any key or click while it plays: on to the ease into the follow camera.
+cz_skip :: (s: [] Everglade) {
+  c := s[0].cz[..];
+  if !cz_running(s) { return; }
+  c[0].run_t = hi(c[0].run_t, f32(CZ_SWING + CZ_RUN));
+}
+// The run's own input, as held keys would give it (everglade_controls): forward and running, turned
+// toward the road's point CZ_AHEAD m on. The room moves you by it as by any keys, so your drawn
+// facing and the room's agree when the keys are handed over.
+cz_drive :: (s: [] Everglade, dt: f32) -> bool {
+  if !cz_running(s) { return false; }
+  c := s[0].cz[0];
+  s[0].key_x = 0; s[0].key_y = 1; s[0].run = true; s[0].jump = false; s[0].dive = false;
+  if c.run_t < f32(CZ_SWING + CZ_RUN) {
+    f := s[0].feet;
+    z := f.z + f32(CZ_AHEAD);
+    want := atan2(cz_road_x(z) - f.x, z - f.z);
+    turn := wrap_angle(want - s[0].orbit.yaw);
+    step := f32(CZ_TURN) * clamp(dt, 0, 0.1);
+    s[0].orbit.yaw = wrap_angle(s[0].orbit.yaw + clamp(turn, -step, step));
+    s[0].orbit.idle = 0;
+  }
+  return true;
+}
+// Where the road runs at world z: the glade's walk out of the clearing (verse/character-glade.coax
+// cg_walk_x, in the glade's frame turned half round), then the town's road at x 0.
+cz_road_x :: (z: f32) -> f32 {
+  if z >= f32(EZ_SEAM) + 6 { return 0; }
+  return f32(EZ_GX) - cg_walk_x(f32(EZ_GZ) - z);
 }
 // The record kept by this browser came in (message 16): it is the working character until changed.
 cz_kept :: (s: [] Everglade) { if s[0].cz[0].on { s[0].cz[0].profile_ok = true; s[0].cz[0].profile_revision = s[0].cz[0].revision; } }
@@ -168,8 +226,8 @@ cz_action :: (s: [] Everglade) {
   c := s[0].cz[..];
   if !c[0].on || s[0].action != 0 { return; }
   if c[0].profile_request {
-    for i: 0..<56 { s[0].outbox[i] = c[0].profile_bytes[i]; }
-    s[0].out_n = 56; s[0].action = ACT_SAVE_PLAYER; c[0].profile_request = false;
+    for i: 0..<c[0].profile_n { s[0].outbox[i] = c[0].profile_bytes[i]; }
+    s[0].out_n = c[0].profile_n; s[0].action = ACT_SAVE_PLAYER; c[0].profile_request = false;
     return;
   }
   if c[0].address {
@@ -185,24 +243,31 @@ cz_action :: (s: [] Everglade) {
   #assert cz_creating(s[..]) && s[0].avatar[0].configured && abs(s[0].spawn.z - f32(EZ_GZ)) < 0.01 && everglade_busy(s[..]);
   // you stand facing as the room seats you, and as the studio draws you before any drag: no half turn to break
   #assert s[0].spawn_face == everglade_glade_face(s[..]) && abs(cz_face(s[..], 0) - s[0].spawn_face) < 0.0001 && abs(abs(s[0].spawn_face) - f32(PI)) > 0.1;
-  cz_change(s[..], 0, 1); cz_change(s[..], 12, 3);
+  // the CLASS row starts at the druid; one step back is the Cleric, and the hello says so
+  #assert s[0].avatar[0].klass == CL_DRUID && cl_on(s[..]) && cl_kind(s[..]) == "srd-druid";
+  cz_change(s[..], 0, 1); cz_change(s[..], 12, 3); cz_change(s[..], CZ_CLASS, -1);
+  #assert s[0].avatar[0].klass == CL_CLERIC && cz_value(s[..], CZ_CLASS) == "CLERIC" && everglade_class(s[..]) == CL_E5R0 + CL_CLERIC;
   cz_request(s[..], true); cz_action(s[..]);
-  #assert s[0].action == ACT_SAVE_PLAYER && s[0].out_n == 56;
-  kept := cast(string) s[0].outbox[0..<56];
-  b: [56] u8; for i: 0..<56 { b[i] = s[0].outbox[i]; }
+  #assert s[0].action == ACT_SAVE_PLAYER && s[0].out_n == CZ_RECORD;
+  b: [CZ_RECORD] u8; for i: 0..<CZ_RECORD { b[i] = s[0].outbox[i]; }
   s[0].action = 0;
-  #assert cz_message(s[..], MSG_PLAYER_KEPT, cast(string) b[0..<56]);
+  #assert cz_message(s[..], MSG_PLAYER_KEPT, cast(string) b[0..<CZ_RECORD]);
   #assert !cz_creating(s[..]) && s[0].cz[0].walking && s[0].avatar[0].female && s[0].avatar[0].eye_color == 3;
   cz_action(s[..]);
   #assert s[0].action == ACT_ADDRESS && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/everglade";
-  // the saved record is the one Everglade restores
+  // the saved record is the one Everglade restores, its class with it (a reload keeps the Cleric)
   t: [1] Everglade;
-  #assert everglade_avatar_profile(t[..], cast(string) b[0..<56]) && t[0].avatar[0].female && t[0].avatar[0].eye_color == 3;
+  #assert everglade_avatar_profile(t[..], cast(string) b[0..<CZ_RECORD]) && t[0].avatar[0].female && t[0].avatar[0].eye_color == 3;
+  #assert t[0].avatar[0].klass == CL_CLERIC && cl_on(t[..]) && t[0].cl.c == CL_CLERIC && cl_kind(t[..]) == "srd-cleric";
   // a refused keep stays in the studio
   u: [1] Everglade; everglade_start(u[..]);
   everglade_message(u[..], MSG_FACTS, "url=/worlds/character-creator\nnow=1000");
   cz_request(u[..], true); cz_reply(u[..], "");
   #assert cz_creating(u[..]) && u[0].cz[0].profile_failed;
+  // ?kit=srd-NAME starts the CLASS row at that class
+  w: [1] Everglade; everglade_start(w[..]);
+  everglade_message(w[..], MSG_FACTS, "url=/worlds/character-creator?weather=clear&kit=srd-rogue\nnow=1000");
+  #assert w[0].avatar[0].klass == CL_ROGUE && cl_kind(w[..]) == "srd-rogue";
   // Everglade's own page is not the studio
   v: [1] Everglade; everglade_start(v[..]);
   everglade_message(v[..], MSG_FACTS, "url=/worlds/everglade\nnow=1000");
@@ -213,17 +278,20 @@ cz_action :: (s: [] Everglade) {
 
 cz_layout :: (s: [] Everglade, w: f32, h: f32, k: f32) {
   c := s[0].cz[..];
-  c[0].width = w; c[0].height = h; c[0].scale = k; c[0].mobile = w < 840 * k || h < 760 * k;
+  c[0].width = w; c[0].height = h; c[0].scale = k; c[0].mobile = w < 840 * k || h < 800 * k;
+  // on a desktop CLASS is the sidebar's first row and the wardrobe's follow; on a phone it spans
+  // the width over the wardrobe's two columns
+  c[0].boxes[CZ_CLASS_BOX] = ifx c[0].mobile then Box.{x0 = 12 * k, y0 = h - 544 * k, x1 = w - 12 * k, y1 = h - 502 * k} else Box.{x0 = 28 * k, y0 = 102 * k, x1 = 332 * k, y1 = 138 * k};
   for i: 0..<CZ_FIELDS {
-    x := 28 * k; y := (102 + f32(i) * 40) * k; bw := 304 * k; bh := 36 * k;
+    x := 28 * k; y := (142 + f32(i) * 40) * k; bw := 304 * k; bh := 36 * k;
     if c[0].mobile { col := i % 2; row := i / 2; bw = (w - 36 * k) / 2; x = 12 * k + f32(col) * (bw + 12 * k); y = h - 484 * k + f32(row) * 60 * k; bh = 42 * k; }
     c[0].boxes[i] = Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + bh};
   }
-  by := ifx c[0].mobile then h - 56 * k else 634 * k;
+  by := ifx c[0].mobile then h - 56 * k else 674 * k;
   c[0].boxes[13] = Box.{x0 = 28 * k, y0 = by, x1 = 172 * k, y1 = by + 36 * k};
   c[0].boxes[14] = ifx c[0].mobile then Box.{x0 = w - 174 * k, y0 = by, x1 = w - 24 * k, y1 = by + 36 * k} else Box.{x0 = 188 * k, y0 = by, x1 = 332 * k, y1 = by + 36 * k};
-  c[0].boxes[16] = ifx c[0].mobile then Box.{x0 = 12 * k, y0 = 82 * k, x1 = w / 2 - 6 * k, y1 = 124 * k} else Box.{x0 = 28 * k, y0 = 678 * k, x1 = 172 * k, y1 = 714 * k};
-  c[0].boxes[17] = ifx c[0].mobile then Box.{x0 = w / 2 + 6 * k, y0 = 82 * k, x1 = w - 12 * k, y1 = 124 * k} else Box.{x0 = 188 * k, y0 = 678 * k, x1 = 332 * k, y1 = 714 * k};
+  c[0].boxes[16] = ifx c[0].mobile then Box.{x0 = 12 * k, y0 = 82 * k, x1 = w / 2 - 6 * k, y1 = 124 * k} else Box.{x0 = 28 * k, y0 = 718 * k, x1 = 172 * k, y1 = 754 * k};
+  c[0].boxes[17] = ifx c[0].mobile then Box.{x0 = w / 2 + 6 * k, y0 = 82 * k, x1 = w - 12 * k, y1 = 124 * k} else Box.{x0 = 188 * k, y0 = 718 * k, x1 = 332 * k, y1 = 754 * k};
   c[0].boxes[15] = ifx c[0].mobile then Box.{x0 = w / 2 + 6 * k, y0 = h - 124 * k, x1 = w - 12 * k, y1 = h - 82 * k} else Box.{};
 }
 #test "create: the wardrobe's controls fit a phone and a desktop" {
@@ -232,6 +300,12 @@ cz_layout :: (s: [] Everglade, w: f32, h: f32, k: f32) {
   for i: 0..<CZ_BOXES { if i == 15 { continue; } b := s[0].cz[0].boxes[i]; #assert b.x0 >= 0 && b.x1 <= 390 && b.y1 <= 844 && b.y1 - b.y0 >= 36; }
   cz_layout(s[..], 1440, 900, 1);
   for i: 0..<CZ_FIELDS { b := s[0].cz[0].boxes[i]; #assert b.x0 == 28 && b.x1 == 332; if i > 0 { #assert b.y0 >= s[0].cz[0].boxes[i - 1].y1 + 4; } }
+  // CLASS first, then the wardrobe, then the buttons, all inside the sidebar's panel (to 770)
+  #assert s[0].cz[0].boxes[CZ_CLASS_BOX].y1 + 4 <= s[0].cz[0].boxes[0].y0 && s[0].cz[0].boxes[12].y1 + 4 <= s[0].cz[0].boxes[13].y0;
+  for i: 13..<CZ_BOXES { b := s[0].cz[0].boxes[i]; if i == 15 || i == CZ_CLASS_BOX { continue; } #assert b.y1 <= 770; }
+  // and on a phone CLASS sits over the wardrobe's columns, clear of the top band
+  cz_layout(s[..], 390, 844, 1);
+  #assert s[0].cz[0].boxes[CZ_CLASS_BOX].y1 + 4 <= s[0].cz[0].boxes[0].y0 && s[0].cz[0].boxes[CZ_CLASS_BOX].y0 > 132;
 }
 
 cz_ink :: (k: f32, r: f32, g: f32, b: f32) -> Ink { return Ink.{core = 0.55 * k, light = 1, glow = 0.5 * k, red = r, green = g, blue = b, scale = k, sans = true}; }
@@ -246,8 +320,9 @@ cz_text :: (out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, k: Ink) ->
   }
   return v;
 }
+cz_fade :: (i: Ink, f: f32) -> Ink { o := i; o.light = i.light * f; o.glow = i.glow * f; return o; }
 cz_line :: (out: [] f32, n: int, x: f32, y: f32, bx: f32, by: f32, k: f32, c: Ink) -> int {
-  if lit(out, n, x, y, bx, by, 0.6 * k, 1, 0, c.red, c.green, c.blue, 0) { return n + 6; }
+  if lit(out, n, x, y, bx, by, 0.6 * k, c.light, 0, c.red, c.green, c.blue, 0) { return n + 6; }
   return n;
 }
 cz_hud :: (s: [] Everglade, out: [] f32, u: [] f32) -> int {
@@ -255,18 +330,24 @@ cz_hud :: (s: [] Everglade, out: [] f32, u: [] f32) -> int {
   cz_layout(s, w, h, k);
   c := s[0].cz[0];
   n := 0;
-  white := cz_ink(k, 0.91, 0.92, 0.9); dim := cz_ink(k, 0.70, 0.76, 0.74); gold := cz_ink(k, 0.83, 0.69, 0.43);
+  // the run: the controls fade out over its first CZ_FADE s, and nothing is drawn after
+  f := ifx c.walking then 1 - cz_ease(c.run_t / f32(CZ_FADE)) else 1.0f32;
+  if f <= 0.003 { return 0; }
+  white := cz_fade(cz_ink(k, 0.91, 0.92, 0.9), f); dim := cz_fade(cz_ink(k, 0.70, 0.76, 0.74), f); gold := cz_fade(cz_ink(k, 0.83, 0.69, 0.43), f);
   // a dark panel under the wardrobe, so it reads over any sky: on a desktop the compact left sidebar,
   // 75% opaque (5f2028dfda), on a phone the bands top and bottom (look 0: HUD's panel plate, not the
   // damage numbers' soft oval PLATE_SHADE)
-  if c.mobile { plate(s, u, Box.{x0 = 0, y0 = c.boxes[0].y0 - 26 * k, x1 = w, y1 = h}, 0.75, 0); plate(s, u, Box.{x0 = 0, y0 = 0, x1 = w, y1 = 132 * k}, 0.75, 0); }
-  else { plate(s, u, Box.{x0 = 16 * k, y0 = 28 * k, x1 = 350 * k, y1 = 730 * k}, 0.75, 0); }
+  if c.mobile { plate(s, u, Box.{x0 = 0, y0 = c.boxes[CZ_CLASS_BOX].y0 - 26 * k, x1 = w, y1 = h}, 0.75 * f, 0); plate(s, u, Box.{x0 = 0, y0 = 0, x1 = w, y1 = 132 * k}, 0.75 * f, 0); }
+  else { plate(s, u, Box.{x0 = 16 * k, y0 = 28 * k, x1 = 350 * k, y1 = 770 * k}, 0.75 * f, 0); }
   n = cz_text(out, n, "Character Create", (ifx c.mobile then 24.0f32 else 30.0f32) * k, (ifx c.mobile then 58.0f32 else 60.0f32) * k, (ifx c.mobile then 18.0f32 else 22.0f32) * k, white);
   if !c.mobile { n = cz_line(out, n, 30 * k, 78 * k, 334 * k, 78 * k, k, gold); }
-  for i: 0..<CZ_FIELDS {
-    b := c.boxes[i]; cap := 10.0f32;
-    if c.mobile { n = cz_text(out, n, CZ_FIELD_NAMES[i], b.x0, b.y0 - 7 * k, 8 * k, dim); }
-    else { n = cz_text(out, n, ifx i == 11 then "WEAR PART" else CZ_FIELD_NAMES[i], b.x0, b.y0 + 22 * k, 7.4 * k, cz_ink(k, 0.93, 0.88, 0.72)); }
+  for row: 0..<CZ_FIELDS + 1 {
+    // the CLASS row first (field CZ_CLASS, box CZ_CLASS_BOX), then the wardrobe's
+    i := ifx row == 0 then CZ_CLASS else row - 1;
+    b := c.boxes[ifx row == 0 then CZ_CLASS_BOX else i]; cap := 10.0f32;
+    name := ifx row == 0 then "CLASS" else CZ_FIELD_NAMES[i];
+    if c.mobile { n = cz_text(out, n, name, b.x0, b.y0 - 7 * k, 8 * k, dim); }
+    else { n = cz_text(out, n, ifx i == 11 then "WEAR PART" else name, b.x0, b.y0 + 22 * k, 7.4 * k, cz_fade(cz_ink(k, 0.93, 0.88, 0.72), f)); }
     col := ifx c.focused == i then gold else dim;
     n = cz_line(out, n, b.x0, b.y1, b.x1, b.y1, k, col);
     n = cz_text(out, n, "<", b.x0 + (ifx c.mobile then 4.0f32 else 116.0f32) * k, b.y0 + cap * k + 10 * k, cap * k, col);
@@ -276,7 +357,7 @@ cz_hud :: (s: [] Everglade, out: [] f32, u: [] f32) -> int {
     if i == 4 || i == 5 || i == 7 || i == 12 {
       a := s[0].avatar[0];
       rgb := ifx i == 4 then cc.CA_DYES[a.dye] else ifx i == 5 then cc.CA_SKINS[a.skin] else ifx i == 12 then cc.CA_EYES[a.eye_color] else cc.CA_HAIRS[a.hair_color];
-      if lit(out, n, b.x0 + (ifx c.mobile then 26.0f32 else 138.0f32) * k, b.y1 - 5 * k, b.x1 - 26 * k, b.y1 - 5 * k, 2 * k, 1, 0, rgb[0], rgb[1], rgb[2], 0) { n += 6; }
+      if lit(out, n, b.x0 + (ifx c.mobile then 26.0f32 else 138.0f32) * k, b.y1 - 5 * k, b.x1 - 26 * k, b.y1 - 5 * k, 2 * k, f, 0, rgb[0], rgb[1], rgb[2], 0) { n += 6; }
     }
   }
   for i: 13..<15 { b := c.boxes[i]; n = cz_text(out, n, ifx i == 13 then "RESET" else "SURPRISE ME", b.x0 + 10 * k, b.y0 + 23 * k, 10 * k, gold); }
@@ -286,7 +367,7 @@ cz_hud :: (s: [] Everglade, out: [] f32, u: [] f32) -> int {
     label := ifx i == 17 then "USE IN EVERGLADE" else ifx c.profile_pending then "SAVING..." else ifx c.profile_failed then "RETRY SAVE" else ifx c.profile_ok && c.profile_revision == c.revision then "PLAYER SAVED" else "SAVE PLAYER";
     n = cz_text(out, n, label, b.x0 + 8 * k, b.y0 + 23 * k, 9 * k, gold);
   }
-  if !c.mobile { n = cz_text(out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5 - 170 * k, h - 77 * k, 9 * k, cz_ink(k, 0.93, 0.9, 0.8)); }
+  if !c.mobile { n = cz_text(out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5 - 170 * k, h - 77 * k, 9 * k, cz_fade(cz_ink(k, 0.93, 0.9, 0.8), f)); }
   return n;
 }
 
@@ -294,6 +375,7 @@ cz_hud :: (s: [] Everglade, out: [] f32, u: [] f32) -> int {
 
 cz_inside :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 cz_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if cz_running(s) { if phase == 0 { cz_skip(s); } return true; }   // a click skips the run
   if !cz_creating(s) { return false; }
   c := s[0].cz[..];
   if phase == 0 {
@@ -320,6 +402,7 @@ cz_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
       if i < CZ_FIELDS { cz_change(s, i, ifx x < c[0].boxes[i].x0 + (ifx c[0].mobile then 22.0f32 else 136.0f32) * c[0].scale then -1 else 1); }
       else if i == 13 { cz_reset(s); }
       else if i == 16 || i == 17 { cz_request(s, i == 17); }
+      else if i == CZ_CLASS_BOX { cz_change(s, CZ_CLASS, ifx x < c[0].boxes[i].x0 + (ifx c[0].mobile then 22.0f32 else 136.0f32) * c[0].scale then -1 else 1); }
       else if i == 15 { c[0].pan_mode = !c[0].pan_mode; }
       else { cz_surprise(s); }
     }
@@ -327,15 +410,18 @@ cz_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   return true;
 }
 cz_key :: (s: [] Everglade, k: int) -> bool {
+  if cz_running(s) { cz_skip(s); return true; }   // any key skips the run, and is spent on it
   if !cz_creating(s) { return false; }
   c := s[0].cz[..];
   if k == 'p' || k == 'P' { c[0].pan_mode = !c[0].pan_mode; return true; }
-  if k == -15 { c[0].focused = (c[0].focused + 1) % CZ_FIELDS; return true; }
+  // Tab: the CLASS row (CZ_CLASS), then the wardrobe's fields in turn
+  if k == -15 { c[0].focused = ifx c[0].focused == CZ_CLASS then 0 else ifx c[0].focused + 1 >= CZ_FIELDS then CZ_CLASS else c[0].focused + 1; return true; }
   if k == -4 || k == -5 { cz_change(s, c[0].focused, ifx k == -4 then -1 else 1); return true; }
   if k == ' ' { cz_change(s, 9, 1); return true; }
   return true;   // the walk's keys wait for USE IN EVERGLADE
 }
 cz_wheel :: (s: [] Everglade, dy: f32) -> bool {
+  if cz_running(s) { return true; }
   if !cz_creating(s) { return false; }
   if finite(dy) { s[0].cz[0].dist = cz_clamp(s[0].cz[0].dist + clamp(dy, -400, 400) * 0.003, 0.65, 6); }
   return true;
@@ -370,14 +456,53 @@ cz_studio :: (s: [] Everglade, feet: Point) -> Shot {
   eye.y = hi(eye.y, walk_at(s, eye.x, eye.z) + 0.28);
   return Shot.{eye = eye, at = add(eye, v3(0, fy * 10, -fz * 10))};
 }
+// After USE IN EVERGLADE, the run's camera (cz_track): from the studio's it swings round behind you
+// over CZ_SWING s, keeps its own track through the run, then eases into the follow camera `chase`
+// over CZ_EASE s, the orbit turned first to look the way it looks (verse_orbit_toward), so the hand-off
+// has no jump. Then the follow camera alone.
 cz_shot :: (s: [] Everglade, feet: Point, chase: Shot, dt: f32) -> Shot {
   c := s[0].cz[..];
   if !c[0].on { return chase; }
   if !c[0].walking { c[0].studio = cz_studio(s, feet); return c[0].studio; }
-  if c[0].glide >= 1 { return chase; }
-  c[0].glide = lo(1, c[0].glide + dt / f32(CZ_GLIDE));
-  t := cz_ease(c[0].glide);
-  return Shot.{eye = mix(c[0].studio.eye, chase.eye, t), at = mix(c[0].studio.at, chase.at, t)};
+  if c[0].handed { return chase; }
+  if dt > 0 && dt < 1 { c[0].run_t += dt; }
+  t := c[0].run_t;
+  c[0].glide = lo(1, t / f32(CZ_RUN_ALL));
+  yaw := s[0].orbit.yaw;
+  if t < f32(CZ_SWING) {
+    // the studio's framing as the track's terms, eased into the track's start
+    v := sub(c[0].studio.eye, feet);
+    from := CzFrame.{turn = wrap_angle(atan2(-v.x, -v.z) - yaw), dist = hi(flat_length(v), 1), rise = v.y, look = sub(c[0].studio.at, feet)};
+    to := cz_frame(0);
+    e := cz_ease(t / f32(CZ_SWING));
+    return cz_frame_shot(s, feet, yaw, CzFrame.{turn = from.turn + wrap_angle(to.turn - from.turn) * e, dist = mix_f(from.dist, to.dist, e), rise = mix_f(from.rise, to.rise, e),
+                                                 look = mix(from.look, cz_frame_look(to, yaw), e)}, true);
+  }
+  track := cz_frame_shot(s, feet, yaw, cz_frame(clamp((t - f32(CZ_SWING)) / f32(CZ_RUN), 0, 1)), false);
+  if t < f32(CZ_SWING + CZ_RUN) { return track; }
+  if !c[0].toward { c[0].toward = true; s[0].orbit = verse_orbit_toward(s[0].orbit, track); }
+  if t < f32(CZ_RUN_ALL) { return verse_shot_mix(track, chase, (t - f32(CZ_SWING + CZ_RUN)) / f32(CZ_EASE)); }
+  c[0].handed = true;   // the follow camera, the bar and the keys are yours
+  return chase;
+}
+// The run's camera at share u of the run, relative to you and your heading: turned `turn` rad off
+// straight behind you, `dist` m back, `rise` m up, looking at `look` (from your feet).
+CzFrame :: struct { turn: f32; dist: f32; rise: f32; look: Point; }
+cz_frame :: (u: f32) -> CzFrame {
+  // a three-quarter view that sweeps across behind you and back, pulling out and craning up midway,
+  // and comes in to straight behind at the follow camera's height and reach
+  a := (1 - u) * 0.6 * cos(3 * f32(PI) * u);
+  arc := sin(f32(PI) * u);
+  return CzFrame.{turn = a, dist = mix_f(4.2, f32(FREE_DIST), u) + 2.5 * arc, rise = mix_f(1.7, f32(FREE_HEIGHT) + 0.9, u) + 2.2 * arc, look = v3(0, 1.3, 0)};
+}
+// Where a frame looks, from your feet: CZ_AHEAD / 2 m up the way you run.
+cz_frame_look :: (f: CzFrame, yaw: f32) -> Point { return add(f.look, v3(sin(yaw) * f32(CZ_AHEAD) * 0.5, 0, cos(yaw) * f32(CZ_AHEAD) * 0.5)); }
+cz_frame_shot :: (s: [] Everglade, feet: Point, yaw: f32, f: CzFrame, look_given: bool) -> Shot {
+  h := yaw + f.turn;
+  eye := v3(feet.x - sin(h) * f.dist, feet.y + f.rise, feet.z - cos(h) * f.dist);
+  eye.y = hi(eye.y, walk_at(s, eye.x, eye.z) + 0.5);
+  at := add(feet, ifx look_given then f.look else cz_frame_look(f, yaw));
+  return Shot.{eye = eye, at = at};
 }
 cz_ease :: (v: f32) -> f32 { t := cz_clamp(v, 0, 1); return t * t * (3 - 2 * t); }
 
@@ -388,9 +513,9 @@ cz_face :: (s: [] Everglade, face: f32) -> f32 { return ifx cz_creating(s) then 
 // figure reads in the glade's light instead of a dark cut-out (gpu.coax eg_studio_fill reads it).
 cz_fill :: (s: [] Everglade) -> f32 {
   c := s[0].cz[0];
-  if !c.on { return 0; }
+  if !c.on || c.handed { return 0; }
   if !c.walking { return 1; }
-  return 1 - cz_ease(c.glide);
+  return 1 - cz_ease(c.run_t / f32(CZ_SWING));
 }
 // The ANIMATION field's clip, while in the studio.
 cz_motion :: (s: [] Everglade, motion: int) -> int {
@@ -406,7 +531,7 @@ cz_tick :: (s: [] Everglade, dt: f32, still: bool) {
   if !still && dt > 0 && dt < 1 { s[0].cz[0].clock += dt; }
   cz_action(s);
 }
-#test "create: the studio camera looks at you from the south and glides behind you after USE" #steps 1700000000 {
+#test "create: the studio camera looks at you from the south; after USE the run plays, then hands over" #steps 1700000000 {
   s: [1] Everglade; everglade_start(s[..]);
   everglade_message(s[..], MSG_FACTS, "url=/worlds/character-creator\nnow=1000");
   feet := s[0].feet;
@@ -415,18 +540,39 @@ cz_tick :: (s: [] Everglade, dt: f32, still: bool) {
   #assert cz_face(s[..], 0) == f32(PI) + s[0].cz[0].yaw;
   s[0].cz[0].pose = 2; #assert cz_motion(s[..], SKIN_IDLE) == SKIN_RUN;
   chase := Shot.{eye = add(feet, v3(0, 2, -4)), at = add(feet, v3(0, 1, 4))};
+  studio := s[0].cz[0].studio;
   cz_walk(s[..]);
-  #assert cz_motion(s[..], SKIN_IDLE) == SKIN_IDLE && cz_fill(s[..]) == 1;
-  mid := cz_shot(s[..], feet, chase, f32(CZ_GLIDE) / 2);
-  #assert mid.eye.z != chase.eye.z;
-  end := cz_shot(s[..], feet, chase, f32(CZ_GLIDE));
-  #assert end.eye.z == chase.eye.z && end.eye.y == chase.eye.y;
+  #assert cz_motion(s[..], SKIN_IDLE) == SKIN_IDLE && cz_fill(s[..]) == 1 && cz_running(s[..]);
+  // the first frame is the studio's shot: no cut
+  first := cz_shot(s[..], feet, chase, 0.0001);
+  #assert length(sub(first.eye, studio.eye)) < 0.05;
+  // the run: forward and running on its own, the look ignored, toward the road north
+  s[0].orbit.yaw = 0.8;
+  #assert cz_drive(s[..], 0.1) && s[0].key_y == 1 && s[0].run && s[0].key_x == 0 && s[0].orbit.yaw < 0.8;
+  #assert everglade_key(s[..], 'w', 0) && s[0].held == 0 && cz_running(s[..]);   // a key skips ahead, spent on it
+  #assert s[0].cz[0].run_t >= f32(CZ_SWING + CZ_RUN) - 0.001;
+  // the ease ends on the follow camera, each step a small one: no jump
+  last := cz_shot(s[..], feet, chase, 0.016);
+  for i: 0..<int(f32(CZ_EASE) / 0.016) + 2 {
+    step := cz_shot(s[..], feet, chase, 0.016);
+    #assert length(sub(step.eye, last.eye)) < 0.6;
+    last = step;
+  }
+  #assert !cz_running(s[..]) && s[0].cz[0].handed && last.eye.z == chase.eye.z && last.eye.y == chase.eye.y;
+  #assert !cz_drive(s[..], 0.1);   // the keys are yours
   // the studio's front light is gone once the camera is behind you, and Everglade's own page has none
   #assert cz_fill(s[..]) == 0 && cz_camera_own(s[..]) == false;
 }
+#test "create: the run's camera keeps its own track and ends straight behind you" {
+  a := cz_frame(0); b := cz_frame(0.5); e := cz_frame(1);
+  #assert abs(e.turn) < 0.0001 && abs(e.dist - f32(FREE_DIST)) < 0.001 && b.rise > a.rise && b.dist > a.dist;
+  // the road the run keeps to: the glade's walk south of the seam, the town's road at x 0 north of it
+  #assert cz_road_x(-100) == 0 && abs(cz_road_x(f32(EZ_GZ)) - (f32(EZ_GX) - cg_walk_x(0))) < 0.001;
+}
 
 // For headless checks (host.js fieldProbe, everglade5e-face.c): 0 in the studio, 1 walking, 2 the
-// glide's thousandths, 3 the wardrobe's revision, 4 the record kept, 5 the outfit, 6 the body (1 female).
+// run's share done in thousandths, 3 the wardrobe's revision, 4 the record kept, 5 the outfit, 6 the
+// body (1 female), 7 the run playing, 8 its ms, 9 the class.
 everglade_create_probe :: (s: [] Everglade, f: int) -> int #export_c #effects(all) {
   c := s[0].cz[0];
   if f == 0 { return ifx cz_creating(s) then 1 else 0; }
@@ -436,5 +582,8 @@ everglade_create_probe :: (s: [] Everglade, f: int) -> int #export_c #effects(al
   if f == 4 { return ifx c.profile_ok then 1 else 0; }
   if f == 5 { return s[0].avatar[0].outfit; }
   if f == 6 { return ifx s[0].avatar[0].female then 1 else 0; }
+  if f == 7 { return ifx cz_running(s) then 1 else 0; }   // the run after USE IN EVERGLADE is playing
+  if f == 8 { return int(c.run_t * 1000); }                // its ms
+  if f == 9 { return s[0].avatar[0].klass; }               // the CLASS row's (CL_*), -1 none
   return -1;
 }

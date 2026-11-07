@@ -488,6 +488,7 @@ sp_row_used :: (s: [] Everglade, r: int) -> int {
 spells_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if !sp_on(s) || s[0].above || s[0].ev.editing { return false; }
   if wl_key(s, key, mods) { return true; }   // the Warlock's bar (everglade-warlock.coax)
+  if cl_key(s, key, mods) { return true; }   // a Character Create class's (everglade-classes.coax)
   p := sp_key_place(key, mods);
   b := ifx p >= 0 then sp_at_place(s, p) else -1;
   if b >= 0 && b < SP_SLOTS { sp_press(s, b); return true; }
@@ -552,7 +553,8 @@ spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: i
   k := hi(s[0].dpr, 0.5);
   if kind == 0 || phase == 0 { s[0].sp.px = x; s[0].sp.py = y; s[0].sp.seen = true; s[0].sp.mouse = kind == 0; }
   if wl_pointer(s, x, y, phase, kind, id) { return true; }   // the Warlock's bar (everglade-warlock.coax)
-  if wl_on(s) { return false; }
+  if cl_pointer(s, x, y, phase, kind, id) { return true; }   // a Character Create class's bar (everglade-classes.coax)
+  if wl_on(s) || cl_on(s) { return false; }
   if ar_pointer(s, x, y, phase, kind, id) { return true; }   // a slot picked up, carried, put down
   if phase == 0 {
     for b: 0..<SP_BAR + 1 {
@@ -1329,6 +1331,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   s[0].sp.fy = clamp(aspect * 1.25, 0.95, 1.9); s[0].sp.fx = s[0].sp.fy / aspect;
   if s[0].sp.on && s[0].sp.armed >= 0 && (s[0].sp.seen || phone(s)) { sp_aim(s); }
   wl_frame(s, dt);   // the Warlock's aim and casts on their way (everglade-warlock.coax)
+  cl_frame(s);   // a class's aim (everglade-classes.coax)
   mend_frame(s, dt);   // a Repair on its bar (everglade-repair.coax)
   rest_frame(s, dt);   // fighting, for the Long Rest (everglade-rest.coax)
   // the cast bar
@@ -1395,6 +1398,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
   fx0 = s[0].sp.stage_n;
   wl_draw(s);   // the Warlock's spells' looks (everglade-warlock.coax, aethyr/fx/warlock.coax)
+  cl_draw(s);   // a class's aim ring (everglade-classes.coax)
   s[0].sp.fx_by[3] += s[0].sp.stage_n - fx0;
   sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
@@ -2201,6 +2205,7 @@ SpBarTop :: struct { n: int; top: f32; }
 // rest over it (sp_phone_per).
 sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   if wl_on(s) { return wl_bar(s, out, u, at); }   // the Warlock's own row (everglade-warlock.coax)
+  if cl_on(s) { return cl_bar(s, out, u, at); }   // a Character Create class's (everglade-classes.coax)
   ar_frame(s);
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;

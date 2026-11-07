@@ -1,10 +1,13 @@
 // Character Create and Everglade as one zone (#13018, docs/verse/character-creator.md): in headless
-// Chrome, open Character Create, pick SURPRISE ME, press USE IN EVERGLADE, then walk with held keys
-// (real key events: W and Shift, A and D to keep to the road) from the glade's clearing up the road,
-// through the South Gate and into the Commons. One page and one world the whole way: the address
-// changes in place, nothing loads, and the same character walks.
+// Chrome, open Character Create, pick SURPRISE ME, press USE IN EVERGLADE and let its run play (#13024:
+// about 34 s on its own up the road north, no keys), then at the hand-off use the class's slot 1 (key 1,
+// twice for an aimed one) and walk on with held keys (real key events: W and Shift, A and D to keep to
+// the road) through the South Gate and into the Commons. One page and one world the whole way: the
+// address changes in place, nothing loads, and the same character walks. At the hand-off it prints
+// your drawn facing and the room's (netProbe 63 and 64) and fails if they differ by over OZ_FACING.
 //   coax/web/tool.sh coax/web/tests/one-zone-walk.coax URL [--film OUT.mp4 FRAMES_DIR]
-// URL is Character Create, e.g. http://127.0.0.1:8873/worlds/character-creator?weather=clear.
+// URL is Character Create, e.g. http://127.0.0.1:8873/worlds/character-creator?weather=clear; add
+// &kit=srd-NAME to start the CLASS row at that class (everglade-create.coax).
 // Checks, every look: no loading screen and no new page load; with --film, every frame's mean
 // luminance (ffmpeg signalstats YAVG) at least OZ_LUMA. Prints the frame rate along the road in
 // stretches of OZ_STRETCH metres (the page's own frames, requestAnimationFrame), and fails a stretch
@@ -19,6 +22,9 @@ OZ_STRETCH :: 40;      // metres of road a frame-rate sample covers
 OZ_GX :: 3.2; OZ_GZ :: -206.5;   // verse/everglade/glade-zone.coax EZ_GX, EZ_GZ: the clearing
 OZ_SEAM :: -176.0;
 OZ_COMMONS :: 12.0;    // metres from the fountain (the Commons, at the origin) that is there
+OZ_RUN_MS :: 45000;    // the run hands over by then (everglade-create.coax CZ_SWING + CZ_RUN + CZ_EASE, 34.5 s)
+OZ_FACING :: 200;      // thousandths of a radian your drawn facing and the room's may differ by at the hand-off
+OZ_CAST_MS :: 2500;    // the film's look at slot 1's cast
 
 oz_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_kind(cdp_doc(c),n)==JV_TRUE;}
 oz_int :: (c:[]Cdp,js:string)->int {n:=cdp_evaluate(c,js);if n<0 {return -1000000;}return jv_int(cdp_doc(c),n,-1000000);}
@@ -43,7 +49,7 @@ OZ_SHOWN :: "(()=>{const l=document.getElementById('coaxial-load');if(l&&!l.clas
 OZ_FRAMES :: "(()=>{globalThis.__oz=1;globalThis.__ozt=[];const f=t=>{__ozt.push(t);requestAnimationFrame(f)};requestAnimationFrame(f);return true})()";
 OZ_FRAME_N :: "__ozt.length";
 // USE IN EVERGLADE (desktop sidebar, everglade-create.coax boxes[17]) and SURPRISE ME (boxes[14]).
-OZ_USE_X :: 260; OZ_USE_Y :: 696; OZ_SURPRISE_X :: 260; OZ_SURPRISE_Y :: 652;
+OZ_USE_X :: 260; OZ_USE_Y :: 736; OZ_SURPRISE_X :: 260; OZ_SURPRISE_Y :: 692;
 
 // Where the road runs at world z: the glade's walk out of the clearing (verse/character-glade.coax
 // cg_walk_x, in the glade's frame turned half round), then the town's road at x 0.
@@ -80,6 +86,7 @@ oz_walk :: (c:[]Cdp,url:string,film:bool,out:string,frames:string)->int {
   while film && proc_now_ms()-started<1500 {k:=oz_jpeg(c,shot[..]);if k>0 {size=k;}due:=(proc_now_ms()-started)*30/1000;while written<due && size>0 {if !oz_write(frames,n,cast(string)shot[0..<size]) {return 1;}n+=1;written+=1;}}
   if !oz_click(c,OZ_USE_X,OZ_USE_Y) {return 1;}
   t0:=proc_now_ms();walking:= -1;address:= -1;keys:=false;arrived:= -1;bad:=0;bad_at:= -1;looks:=0;
+  sent:= -1;played:= -1;handed:= -1;hand_z:=f32(0);face:= -1000000;room_face:= -1000000;in_room:=0;klass:= -1;cast_at:= -1;
   steer:=0;   // -1 A held, 1 D held
   fps_at:[OZ_FPS_N]int;fps_n:[OZ_FPS_N]int;for i:0..<OZ_FPS_N {fps_at[i]= -1;}
   stretch:= -1;stretch_frames:=0;stretch_ms:=0;worst:=1000;
@@ -94,13 +101,28 @@ oz_walk :: (c:[]Cdp,url:string,film:bool,out:string,frames:string)->int {
     if walking<0 && oz_int(c,"coaxial.fieldProbe(41)")==1 {walking=now;}
     if address<0 && oz_eval(c,"location.pathname==='/worlds/everglade'") {address=now;}
     if walking<0 {continue;}
+    x:=f32(oz_int(c,"coaxial.fieldProbe(0)"))/1000;z:=f32(oz_int(c,"coaxial.fieldProbe(2)"))/1000;
+    if arrived<0 && x*x+z*z<f32(OZ_COMMONS)*f32(OZ_COMMONS) {arrived=now;}
+    // the run plays on its own: no keys (a key would skip it)
+    if handed<0 {
+      if oz_int(c,"coaxial.fieldProbe(47)")==1 && now-walking<OZ_RUN_MS {continue;}
+      handed=now;hand_z=f32(oz_int(c,"coaxial.fieldProbe(2)"))/1000;
+      face=oz_int(c,"coaxial.netProbe(63)");room_face=oz_int(c,"coaxial.netProbe(64)");in_room=oz_int(c,"coaxial.netProbe(84)");klass=oz_int(c,"coaxial.fieldProbe(49)");
+      // slot 1: key 1 (an aimed one is picked by it, and cast by it again where the screen's middle points)
+      if !oz_key(c,"1","Digit1",49,true) || !oz_key(c,"1","Digit1",49,false) {return 1;}
+      proc_sleep(150);
+      if !oz_key(c,"1","Digit1",49,true) || !oz_key(c,"1","Digit1",49,false) {return 1;}
+      cast_at=now;
+      continue;
+    }
     if !keys {
-      // the glide behind you takes 1.6 s; then W and Shift, held
-      if now-walking<1700 {continue;}
+      if now-cast_at<OZ_CAST_MS {continue;}
+      // slot 1's cast: sent to the room and its look played back (everglade-net.coax net_probe 990, 991)
+      if sent<0 {sent=oz_int(c,"coaxial.netProbe(990)");played=oz_int(c,"coaxial.netProbe(991)");}
+      if arrived>=0 {break;}   // the run reached the Commons
       if !oz_key(c,"Shift","ShiftLeft",16,true) || !oz_key(c,"w","KeyW",87,true) {return 1;}
       keys=true;
     }
-    x:=f32(oz_int(c,"coaxial.fieldProbe(0)"))/1000;z:=f32(oz_int(c,"coaxial.fieldProbe(2)"))/1000;
     // keep to the road: +x is west, so with the camera looking north D (east) brings x down
     want:=oz_road_x(z);
     turn:=ifx x>want+0.8 then 1 else ifx x<want-0.8 then -1 else 0;
@@ -119,13 +141,14 @@ oz_walk :: (c:[]Cdp,url:string,film:bool,out:string,frames:string)->int {
       stretch=s;stretch_frames=f;stretch_ms=now;
     }
     last_z=z;
-    if x*x+z*z<f32(OZ_COMMONS)*f32(OZ_COMMONS) {arrived=now;break;}
+    if arrived>=0 {break;}
   }
   if stretch>=0 && stretch<OZ_FPS_N && fps_at[stretch]<0 {f:=oz_int(c,OZ_FRAME_N);fps_n[stretch]=f-stretch_frames;fps_at[stretch]=proc_now_ms()-t0-stretch_ms;}
   ok:=oz_key(c,"w","KeyW",87,false) && oz_key(c,"Shift","ShiftLeft",16,false);
   if steer==1 {ok=oz_key(c,"d","KeyD",68,false);} if steer== -1 {ok=oz_key(c,"a","KeyA",65,false);}
   after:[64]u8;landed:=oz_text(c,OZ_LOOK,after[..]);
-  print("{\"walking_ms\":%,\"address_ms\":%,\"commons_ms\":%,\"last_z\":%,\"creator\":\"%\",\"everglade\":\"%\",\"looks\":%,\"loading_or_load\":%,\"loading_at_ms\":%,\"fps_by_stretch\":[",walking,address,arrived,last_z,before,landed,looks,bad,bad_at);
+  print("{\"handoff_ms\":%,\"handoff_z\":%,\"class\":%,\"in_room\":%,\"facing_drawn\":%,\"facing_room\":%,\"slot1_sent\":%,\"slot1_played\":%,",handed-walking,hand_z,klass,in_room,face,room_face,sent,played);
+  print("\"walking_ms\":%,\"address_ms\":%,\"commons_ms\":%,\"last_z\":%,\"creator\":\"%\",\"everglade\":\"%\",\"looks\":%,\"loading_or_load\":%,\"loading_at_ms\":%,\"fps_by_stretch\":[",walking,address,arrived,last_z,before,landed,looks,bad,bad_at);
   for i:0..<OZ_FPS_N {
     fps:=ifx fps_at[i]>0 then fps_n[i]*1000/fps_at[i] else -1;
     if fps>=0 && fps<worst {worst=fps;}
@@ -149,10 +172,14 @@ oz_walk :: (c:[]Cdp,url:string,film:bool,out:string,frames:string)->int {
   if bad>0 {tool_errln("a loading screen showed on the way");return 1;}
   if walking<0 {tool_errln("USE IN EVERGLADE never handed you the walk");return 1;}
   if address<0 {tool_errln("the address never said /worlds/everglade");return 1;}
+  if handed<0 || handed-walking>=OZ_RUN_MS {tool_errln("the run never handed over");return 1;}
+  if in_room==1 && (sent<1 || played<1) {tool_errln("slot 1's cast never came back from the room");return 1;}
+  if hand_z<f32(OZ_GZ)+60 {tool_errln("the run never went up the road");return 1;}
+  if in_room==1 {d:=face-room_face;if d<0 {d= -d;}d=d%6283;if d>3141 {d=6283-d;}if d>OZ_FACING {tool_errln("at the hand-off your drawn facing and the room's differ");return 1;}}
   if arrived<0 {tool_errln("the walk never reached the Commons");return 1;}
   if before.count==0 || before!=landed {tool_errln("the character in the Commons is not the one made");return 1;}
   if worst<OZ_FPS {tool_errln("a stretch of road fell under the frame rate");return 1;}
-  print("One zone: Character Create, USE IN EVERGLADE, the walk on held keys from the glade through the South Gate to the Commons; one page, no loading screen, the same character.\n");
+  print("One zone: Character Create, USE IN EVERGLADE, its run up the road and the hand-off, slot 1, the walk on held keys from the glade through the South Gate to the Commons; one page, no loading screen, the same character.\n");
   return 0;
 }
 

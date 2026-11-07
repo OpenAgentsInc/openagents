@@ -213,3 +213,35 @@ ft_slots :: (from: int, to: int) -> int {
   #assert n == HB_SLOTS;
   for k: 0..<n { #assert HB_NAME[k] == bar[k].art; }
 }
+
+// Character Create's classes (#13024): each SRD 5.2.1 class at level 1, its Hit Points and Armor
+// Class as the class tables and starting gear give them, and its slot 1 ability resolved by the
+// engine against a foe beside it (the heals with the hero hurt first).
+FT_CL_HP :: [12] int.[14, 9, 9, 9, 12, 9, 11, 11, 10, 7, 9, 7];
+FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
+#test "Character Create's twelve classes: level 1, their Hit Points and AC, and slot 1 resolved by the engine" #steps 4000000000 {
+  for c: 0..<FB_CL_N {
+    h := fb_cl_hero(c, "You", 0, 1);
+    #assert h.level == 1 && h.klass == FB_CL_ENGINE[c] && h.hp_max == FT_CL_HP[c] && h.ac == FT_CL_AC[c];
+    #assert fb_cl_of_kind(FB_CL_KIND[c]) == c;
+    b: [1] RsBattle; s: [1] FbSeat;
+    b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40; b[0].beat = 1.5; b[0].recharge = 9;
+    for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+    b[0].dice[0].state = cast(u64) (c + 5) * 7919 + 3;
+    _ := rs_add(b[..], h, 10, 10);
+    _ = rs_add(b[..], fb_folk("Guard", 1, 16, 400, [6] int.[13, 12, 12, 10, 11, 10]), 11, 10);
+    rs_begin(b[..]);
+    b[0].c[0].hp = 1;
+    s[0] = FbSeat.{me = 0};
+    b[0].clock = b[0].c[0].turn_at;
+    fb_seat_step(b[..], s[..]);
+    a := fb_cl_ability(c);
+    #assert a.kind != FB_WORLD && a.art == FB_CL_ART[c] && a.delay > 0;
+    seq := b[0].book[0].seq;
+    #assert fb_seat_use(b[..], s[..], a, 1, 11, 10, 0);
+    seen := 0;
+    for e: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) { ev := rs_recent(b[0].book[0], e); if ev.kind != RS_EV_TURN { seen += 1; } }
+    #assert seen > 0;
+  }
+  #assert fb_cl_of_kind("druid") == -1 && fb_cl_of_kind("warlock") == -1;
+}

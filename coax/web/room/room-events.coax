@@ -230,7 +230,15 @@ EV_REALM_SLOTS :: [2] int.[47, 48];
 EV_WL_BLAST :: 0; EV_WL_REBUILD :: 6; EV_WL_CHILL :: 7; EV_WL_HEX :: 8;   // fivebar.coax fb_warlock_bar's order
 // The bar slots a character has at `level` (0: Everglade's own, the whole bar): LO the druid's, HI the Warlock's.
 EvKit :: struct { lo: int; hi: int; }
-ev_kit :: (warlock: bool, level: int) -> EvKit {
+// A Character Create class (#13024) has its one slot (FB_CL0 + class, HI bit FB_CL0 - FB_WL0 + class)
+// and the realm's slots, at every level.
+ev_kit :: (klass: int, level: int) -> EvKit {
+  if klass >= E5R_CL0 && klass < E5R_CL0 + FB_CL_N {
+    lo := 0;
+    for q: EV_REALM_SLOTS { lo = lo | (1 << q); }
+    return EvKit.{lo = lo, hi = 1 << (FB_CL0 - FB_WL0 + klass - E5R_CL0)};
+  }
+  warlock := klass == E5R_WARLOCK;
   if level <= 0 { return EvKit.{}; }
   if warlock {
     return EvKit.{hi = (1 << EV_WL_BLAST) | (1 << EV_WL_REBUILD) | (1 << EV_WL_CHILL) | (1 << EV_WL_HEX)};
@@ -257,11 +265,8 @@ ev_build :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   b := v[0].eg[k].rules[0].b[..];
   i := E5RR_SEAT + s;
   c := b[0].c[i];
-  wl := v[0].eg[k].rules[0].klass[s] == 1;
   n: [1] RsCreature;
-  if want == 0 { n[0] = ifx wl then fb_warlock_hero("Player", 0) else fb_everglade_hero("Player", 0); }
-  else if wl { n[0] = rs_warlock("Player", 0, want, SP_ELDRITCH_BLAST); n[0].rebuke = true; }
-  else { n[0] = rs_druid("Player", 0, want); }
+  n[0] = e5rr_hero_of(v[0].eg[k].rules[0].klass[s], want);   // a Character Create class: the SRD class, at level 1 at least
   n[0].turn_at = c.turn_at; n[0].round_at = c.round_at; n[0].x = c.x; n[0].y = c.y;
   up := want > v[0].ev[k].level[s] && v[0].ev[k].level[s] > 0;
   if c.dead || c.hp <= 0 { n[0].hp = 0; n[0].dead = c.dead; }
@@ -275,7 +280,7 @@ ev_build :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
 ev_may_cast :: (v: [] RmServer, k: int, s_id: SeatId, slot: int, a: FbAb) -> bool { s := s_id.value;
   lv := v[0].ev[k].level[s];
   if lv == 0 { return true; }
-  if !ev_kit_has(ev_kit(v[0].eg[k].rules[0].klass[s] == 1, lv), slot) { return false; }
+  if !ev_kit_has(ev_kit(v[0].eg[k].rules[0].klass[s], lv), slot) { return false; }
   if a.kind != FB_SPELL || a.lvl <= 0 { return true; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
   for l: a.lvl..<10 { if c.slots_max[l] > 0 { return true; } }
@@ -893,7 +898,7 @@ ev_send :: (v: [] RmServer, k: int, s_id: SeatId, full: bool, unseen: int, o: []
   for q: 0..<EG_SEATS {
     if !v[0].eg[k].seat[q].live || ((unseen >> q) & 1) != 0 { e[0].heard_v[s * EG_SEATS + q] = 0; continue; }   // (unseen: #12789)
     lv := ifx e[0].level[q] > 0 then e[0].level[q] else ev_level(v, e[0].xp[q]);
-    kit := ev_kit(v[0].eg[k].rules[0].klass[q] == 1, e[0].level[q]);
+    kit := ev_kit(v[0].eg[k].rules[0].klass[q], ifx v[0].eg[k].rules[0].klass[q] >= E5R_CL0 then 1 else e[0].level[q]);
     rest := ifx ev_rest_ok(v, k, SeatId.{value = q}) then 1 else 0;
     h := eg_hash(cast(string) b[0..<wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], 0, lv), e[0].xp[q]), cap), kit.lo), kit.hi), rest)]);
     if e[0].heard_v[s * EG_SEATS + q] == h { continue; }
@@ -1309,7 +1314,7 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   eg_test_drain(v[..], box[..]);
   #assert v[0].ev[k].xp[0] == 300 && v[0].ev[k].level[0] == 2 && b[0].c[0].level == 2 && b[0].c[0].hp_max == 15 && b[0].c[0].slots_max[1] == 3;
   #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 300") && eg_test_has(eg_test_of(box[..], 1), "e level 0 2") && eg_test_has(eg_test_of(box[..], 1), "v 0 2 300 2 ");
-  #assert ev_kit_has(ev_kit(false, 2), 27) && !ev_kit_has(ev_kit(false, 1), 27) && !ev_kit_has(ev_kit(false, 2), 20);
+  #assert ev_kit_has(ev_kit(E5R_DRUID, 2), 27) && !ev_kit_has(ev_kit(E5R_DRUID, 1), 27) && !ev_kit_has(ev_kit(E5R_DRUID, 2), 20);
   // the cap is 2: XP past it is kept and gives nothing
   ev_award(v[..], k, SeatId.{value = 0}, 5000);
   #assert v[0].ev[k].level[0] == 2 && v[0].ev[k].xp[0] == 10300;

@@ -89,7 +89,8 @@ ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   c:=CharacterCapture.{ok=true,pid_n=tk.pid_n,room_n=v[0].relays[r].code_n};c.pid=tk.pid;c.room=v[0].relays[r].code;
   pins:=WirePins.{};hero:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s];
   c.n=[17]int.[2,tk.owner,v[0].vit.gen,v[0].ck.rev,v[0].wall_ms,v[0].wall_ms,pins.engine,pins.rules,pins.content,hero.hp,hero.hp_max,ev_xp_of(v,k, s_id),v[0].eg[k].wanted[s],eg_round(st.pose.x*1000),eg_round(st.pose.y*1000),eg_round(st.pose.z*1000),eg_round(st.pose.yaw*1000)];
-  c.dead=hero.dead&&hero.hp<=0;c.state[0]=v[0].eg[k].rules[0].klass[s];c.state[1]=ifx (st.flags&EV_DEMO_FLAG)!=0&&tk.admin then 1 else 0;c.state[2]=hero.temp;
+  c.dead=hero.dead&&hero.hp<=0;c.state[0]=ifx v[0].eg[k].rules[0].klass[s]==1 then 1 else 0;   // the capture's class bit: the Warlock or not (a Character Create class comes back with its hello)
+  c.state[1]=ifx (st.flags&EV_DEMO_FLAG)!=0&&tk.admin then 1 else 0;c.state[2]=hero.temp;
   c.state[3]=rs_max(0,trv_repair_ticks()-(v[0].eg[k].tick-st.repaired));c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<RS_USES{c.state[16+q]=hero.uses[q];}
   v[0].ck.slot[i].latest=c;v[0].ck.slot[i].capture_mono=v[0].mono_ms;

@@ -616,10 +616,12 @@ ega_shown :: (b: Box) -> bool { return b.x1 > b.x0 && b.y1 > b.y0; }
 // A bar slot's box and name: the Warlock's bar when it is up, else the druid's.
 ega_slot_box :: (s: [] Everglade, b: int) -> Box {
   if wl_on(s) { return ifx b < WL_SLOTS then s[0].wl.boxes[b] else Box.{}; }
+  if cl_on(s) { return ifx b < CL_BOXES then s[0].cl.boxes[b] else Box.{}; }
   return ifx b < SP_BAR then s[0].sp.boxes[b] else Box.{};
 }
 ega_slot_name :: (s: [] Everglade, b: int) -> string {
   if wl_on(s) { w := WL_HB_NAME[b]; return w[3..<w.count]; }
+  if cl_on(s) { w := cl_slot_name(s, b); return w[3..<w.count]; }
   return ifx b < 49 then HB_NAME[b] else "";
 }
 // The canvas box behind a layer id (none: an empty box).

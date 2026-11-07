@@ -1,0 +1,334 @@
+// Character Create's classes in Everglade (#13024): the twelve classes of the SRD 5.2.1, each a level 1
+// character with one slot of its own on the bar, picked on Character Create's CLASS row and kept in
+// the character record (aethyr/character-appearance.coax CC3). The SRD 5e engine rolls each use
+// (fivebar.coax fb_cl_ability, the room's everglade5e-room-rules.coax, the local host's offline);
+// this file is the page's side of it:
+//   - the bar: the class's slot 1 and Repair on R. A caster's slot 1 is a cantrip (Vicious Mockery,
+//     Sacred Flame, Starry Wisp, Fire Bolt, Eldritch Blast); a non-caster's is its signature level 1
+//     action (Rage, Second Wind, Martial Arts, Lay On Hands, Hunter's Mark, Sneak Attack). One that
+//     acts on you goes at once; an aimed one is picked with 1, and a click, a tap or 1 again casts it
+//     where you aim. A finger held on a slot (a mouse resting on it) shows its card;
+//   - the looks: the shared recipes (aethyr/fx/puff.coax), drawn with the Warlock's puffs
+//     (everglade-warlock.coax wl_draw), and their sounds (everglade-sound.coax).
+// The page rolls nothing: every use goes to the room (net_cast), and every page plays its look when
+// the room's cast event comes back (everglade-net.coax).
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+CL_SLOT0 :: 96;   // fivebar.coax FB_CL0: class c's slot is CL_SLOT0 + c on the wire
+CL_N :: 12;       // fivebar.coax FB_CL_N, in its order
+CL_E5R0 :: 2;     // everglade5e-rules.coax E5R_CL0: the page rules' class of class c is CL_E5R0 + c
+CL_BARBARIAN :: 0; CL_BARD :: 1; CL_CLERIC :: 2; CL_DRUID :: 3; CL_FIGHTER :: 4; CL_MONK :: 5;
+CL_PALADIN :: 6; CL_RANGER :: 7; CL_ROGUE :: 8; CL_SORCERER :: 9; CL_WARLOCK :: 10; CL_WIZARD :: 11;
+CL_NAME :: [12] string.["BARBARIAN", "BARD", "CLERIC", "DRUID", "FIGHTER", "MONK", "PALADIN", "RANGER", "ROGUE", "SORCERER", "WARLOCK", "WIZARD"];
+// The room's word for each (the hello's kind, fivebar.coax FB_CL_KIND) and ?kit=.
+CL_KIND :: [12] string.["srd-barbarian", "srd-bard", "srd-cleric", "srd-druid", "srd-fighter", "srd-monk", "srd-paladin", "srd-ranger", "srd-rogue", "srd-sorcerer", "srd-warlock", "srd-wizard"];
+// Slot 1's name, as the SRD has it.
+CL_ABILITY :: [12] string.["RAGE", "VICIOUS MOCKERY", "SACRED FLAME", "STARRY WISP", "SECOND WIND", "MARTIAL ARTS", "LAY ON HANDS", "HUNTER'S MARK", "SNEAK ATTACK", "FIRE BOLT", "ELDRITCH BLAST", "FIRE BOLT"];
+// Whether slot 1 acts on you (Rage, Second Wind, Lay On Hands: no aim).
+CL_SELF :: [12] bool.[true, false, false, false, true, false, true, false, false, false, false, false];
+// Each one's reach, m: 60 ft, 90 ft, 120 ft; the Monk's fists 5 ft; the Rogue's Shortbow 80 ft.
+CL_RANGE :: [12] f32.[0, 18.3, 18.3, 18.3, 0, 1.5, 0, 27.4, 24.4, 36.6, 36.6, 36.6];
+// The engine's wait between the cast and its strike, s (fivebar.coax fb_cl_ability's delay).
+CL_DELAY :: [12] f32.[0.2, 0.3, 0.45, 0.4, 0.2, 0.25, 0.3, 0.3, 0.25, 0.45, 0.35, 0.45];
+CL_BOXES :: 2;    // slot 1 and Repair
+
+EgClass :: struct {
+  on: bool;                  // you play a Character Create class
+  c: int;                    // which, CL_*
+  armed: bool;               // its aimed slot picked
+  boxes: [CL_BOXES] Box;
+  cast_t: f32;               // the Warlock's clock (wl.clock) when slot 1 was last used: its sweep
+  finger: int = -1; held: int = -1; held_t: f64;
+  down: bool; down_x: f32; down_y: f32; down_id: int; down_touch: bool;
+  card: bool;                // ?card=1: slot 1's card shown, for a still of the bar
+  sent: int; played: int;    // slot 1's casts sent to the room, and looks played (net_probe 990, 991)
+}
+
+cl_on :: (s: [] Everglade) -> bool { return s[0].cl.on; }
+// Class c (CL_*), or none (c < 0: the realm's own druid, or the Warlock).
+cl_set :: (s: [] Everglade, c: int) {
+  on := c >= 0 && c < CL_N;
+  if on == s[0].cl.on && (!on || c == s[0].cl.c) { return; }
+  if on { wl_set(s, false); }
+  s[0].cl.on = on; s[0].cl.c = ifx on then c else 0; s[0].cl.armed = false;
+  s[0].sp.armed = -1; s[0].sp.casting = -1;
+  if net_on(s) && net_of(s)[0].state == NET_OPEN { net_of(s)[0].hello_due = true; }   // the room hears the class
+}
+// The class whose hello word is `kind`, -1 none.
+cl_of_kind :: (kind: string) -> int {
+  for c: 0..<CL_N { if CL_KIND[c] == kind { return c; } }
+  return -1;
+}
+// The page rules' class (everglade5e-rules.coax e5r_class): the druid 0, the Warlock 1, class c CL_E5R0 + c.
+everglade_class :: (s: [] Everglade) -> int #export_c #effects(all) {
+  if cl_on(s) { return CL_E5R0 + s[0].cl.c; }
+  return ifx s[0].wl.on then 1 else 0;
+}
+everglade_set_class :: (s: [] Everglade, klass: int) #export_c #effects(all) {
+  if klass >= CL_E5R0 && klass < CL_E5R0 + CL_N { cl_set(s, klass - CL_E5R0); return; }
+  cl_set(s, -1); wl_set(s, klass == 1);
+}
+// ?kit=srd-NAME plays class NAME (a still or a film of its bar); ?card=1 shows its slot 1's card.
+cl_query :: (s: [] Everglade, url: string) {
+  c := cl_of_kind(net_query(url, "kit"));
+  if c >= 0 { cl_set(s, c); }
+  if net_query(url, "card") == "1" { s[0].cl.card = true; }
+}
+// The hello's kind word.
+cl_kind :: (s: [] Everglade) -> string {
+  if cl_on(s) { return CL_KIND[s[0].cl.c]; }
+  return ifx wl_on(s) then "warlock" else "druid";
+}
+
+// ---- keys and the pointer
+
+// 1 uses slot 1 (an aimed one: picks it; again casts where you aim), R repairs, Esc puts it away;
+// the druid's other keys do nothing here.
+cl_key :: (s: [] Everglade, key: int, mods: int) -> bool {
+  if !cl_on(s) { return false; }
+  p := sp_key_place(key, mods);
+  if p == 0 { cl_press(s, true); return true; }
+  if p >= 0 { return true; }
+  if key == 'r' || key == 'R' { s[0].cl.armed = false; mend_press(s, SP_REBUILD); return true; }
+  if key == KEY_ESCAPE && s[0].cl.armed { s[0].cl.armed = false; return true; }
+  return false;
+}
+// Slot 1 pressed (`key`: by its key, which casts an aimed one picked already).
+cl_press :: (s: [] Everglade, key: bool) {
+  s[0].sp.open = false;
+  c := s[0].cl.c;
+  if CL_SELF[c] { cl_cast(s); return; }
+  if s[0].cl.armed && key { sp_aim(s); cl_cast(s); return; }
+  s[0].cl.armed = !s[0].cl.armed;
+}
+// A press on a slot acts at once; with slot 1 picked, a click or a tap casts where it points; a drag
+// still turns the camera.
+cl_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  if !cl_on(s) { return false; }
+  w := s[0].cl;
+  k := hi(s[0].dpr, 0.5);
+  if phase == 0 {
+    for b: 0..<CL_BOXES {
+      if in_box(w.boxes[b], x, y) {
+        s[0].cl.finger = id; s[0].cl.held = -1;
+        if b == 0 { cl_press(s, false); } else { s[0].cl.armed = false; mend_press(s, SP_REBUILD); }
+        if kind != 0 { s[0].cl.held = b; s[0].cl.held_t = s[0].time; }
+        return true;
+      }
+    }
+  }
+  if id == w.finger && w.finger >= 0 {
+    if phase >= 2 { s[0].cl.finger = -1; s[0].cl.held = -1; }
+    return true;
+  }
+  if !w.armed { return false; }
+  if phase == 0 { s[0].cl.down = true; s[0].cl.down_x = x; s[0].cl.down_y = y; s[0].cl.down_id = id; s[0].cl.down_touch = kind != 0; return kind != 0; }
+  if phase == 1 { if kind != 0 && id == w.down_id { s[0].sp.px = x; s[0].sp.py = y; return true; } return false; }
+  if id != w.down_id || !w.down { return false; }
+  s[0].cl.down = false;
+  moved := abs(x - w.down_x) + abs(y - w.down_y);
+  if phase == 2 && moved < (ifx kind != 0 then 24.0f32 else 8.0f32) * k {
+    s[0].sp.px = x; s[0].sp.py = y;
+    sp_aim(s);
+    cl_cast(s);
+  }
+  return kind != 0;
+}
+
+// ---- using it
+
+// Slot 1 used: on you, or at the aim. In a room it goes to the server, which rolls it and has every
+// page play it (everglade-net.coax); a page with no room (a golden one) plays its look here.
+cl_cast :: (s: [] Everglade) {
+  c := s[0].cl.c;
+  slot := CL_SLOT0 + c;
+  at := s[0].feet;
+  if !CL_SELF[c] {
+    if !s[0].sp.aim_ok { cr_refused(s, slot, CR_AIM); return; }
+    at = s[0].sp.aim;
+    if flat_gap(at, s[0].feet) > CL_RANGE[c] + f32(CR_SLACK) { cr_refused(s, slot, CR_RANGE); return; }
+    s[0].face = atan2(at.x - s[0].feet.x, at.z - s[0].feet.z);
+  }
+  s[0].cl.armed = false;
+  s[0].cl.cast_t = s[0].wl.clock;
+  rangers_you_cast(s);
+  if net_live(s) { if net_cast(s, slot, at, -1) { s[0].cl.sent += 1; } return; }
+  egt_note(s, slot, false);
+  seed := cast(int) ((srd_next(s[0].sp.dice[..]) >> 34) | 1);
+  cl_look(s, c, wl_hand(s), at, seed);
+}
+// The room's cast event (e cast) of class c's slot, yours or another's: its look.
+cl_play :: (s: [] Everglade, c: int, from: Point, at: Point, seed: int, mine: bool) {
+  if c < 0 || c >= CL_N { return; }
+  if mine { s[0].cl.cast_t = s[0].wl.clock; s[0].cl.played += 1; }
+  cl_look(s, c, from, at, seed);
+}
+// Class c's look from `from` (a hand) at `at`, its sound, its strike CL_DELAY[c] s on.
+cl_look :: (s: [] Everglade, c: int, from: Point, at: Point, seed: int) {
+  p := s[0].wl.fx[..];
+  now := s[0].wl.clock;
+  d := CL_DELAY[c];
+  hit := add(at, v3(0, 1.0, 0));   // a creature's middle, for what strikes it
+  r := wl_seed(seed, 0);
+  if c == CL_BARBARIAN {
+    _ := fxp_start(p, FxCause.{recipe = FXR_EMBERS, seed = r, t0 = now, from = wl_v(from), to = wl_v(hit), col = fxp_v(1.0, 0.3, 0.15), big = 1.8}, now);
+    egs_hit(s, egs_look(-1, -1, SFX_SHIELD), at, d);
+  } else if c == CL_BARD {
+    _ := fxp_start(p, FxCause.{recipe = FXR_MOCKERY, seed = r, t0 = now + d, from = wl_v(from), to = wl_v(hit), col = fxp_v(0.95, 0.45, 0.9), big = 1.8}, now);
+    egs_cast(s, egs_look(SFX_ARCANE_CAST, -1, SFX_ARCANE_HIT), from, at, d); egs_hit(s, egs_look(-1, -1, SFX_ARCANE_HIT), at, d);
+  } else if c == CL_CLERIC {
+    _ := fxp_start(p, FxCause.{recipe = FXR_COLUMN, seed = r, t0 = now + d * 0.5, from = wl_v(add(at, v3(0, 8, 0))), to = wl_v(at), col = WL_HOLY, big = 1.8}, now);
+    egs_cast(s, egs_wl_look(WL_SACRED), from, at, d); egs_hit(s, egs_wl_look(WL_SACRED), at, d);
+  } else if c == CL_PALADIN {
+    _ := fxp_start(p, FxCause.{recipe = FXR_LAY, seed = r, t0 = now, from = wl_v(from), to = wl_v(hit), col = WL_GOLD, big = 1.8}, now);
+    egs_hit(s, egs_look(-1, -1, SFX_HEAL), at, d);
+  } else if c == CL_FIGHTER {
+    _ := fxp_start(p, FxCause.{recipe = FXR_BREATH, seed = r, t0 = now, from = wl_v(from), to = wl_v(hit), col = fxp_v(0.7, 0.9, 1.0), big = 1.8}, now);
+    egs_hit(s, egs_look(-1, -1, SFX_HEAL), at, d);
+  } else if c == CL_MONK {
+    _ := fxp_start(p, FxCause.{recipe = FXR_HIT, seed = r, t0 = now + d, from = wl_v(from), to = wl_v(hit), col = fxp_v(1.0, 0.85, 0.55), big = 1.9}, now);
+    egs_cast(s, egs_look(SFX_SWING, -1, SFX_HIT), from, at, d); egs_hit(s, egs_look(-1, -1, SFX_HIT), at, d);
+  } else if c == CL_RANGER {
+    _ := fxp_start(p, FxCause.{recipe = FXR_MARK, seed = r, t0 = now + d, from = wl_v(from), to = wl_v(hit), col = fxp_v(0.5, 0.95, 0.55), big = 1.8}, now);
+    egs_cast(s, egs_wl_look(WL_HEX), from, at, d); egs_hit(s, egs_wl_look(WL_HEX), at, d);
+  } else if c == CL_ROGUE {
+    a := FxCause.{recipe = FXR_ARROW, seed = r, from = wl_v(from), to = wl_v(hit), col = fxp_v(0.9, 0.85, 0.7), big = 1.8};
+    a.t0 = now + hi(d - fxp_flight(a, 40, 0.1, 0.6), 0);
+    _ := fxp_start(p, a, now);
+    _ = fxp_start(p, FxCause.{recipe = FXR_SHADOW_SLASH, seed = r, t0 = now + d, from = wl_v(from), to = wl_v(hit), col = fxp_v(0.6, 0.35, 0.95), big = 1.8}, now);
+    egs_cast(s, egs_look(SFX_SWING, -1, SFX_HIT_HEAVY), from, at, d); egs_hit(s, egs_look(-1, -1, SFX_HIT_HEAVY), at, d);
+  } else if c == CL_DRUID {
+    a := FxCause.{recipe = FXR_STAR, seed = r, from = wl_v(from), to = wl_v(hit), col = fxp_v(0.75, 0.85, 1.0), big = 2.0};
+    a.t0 = now + hi(d - fxp_flight(a, 22, 0.15, 0.8), 0);
+    _ := fxp_start(p, a, now);
+    egs_cast(s, egs_look(SFX_ARCANE_CAST, SFX_MISSILE, SFX_RADIANT), from, at, d); egs_hit(s, egs_look(-1, -1, SFX_RADIANT), at, d);
+  } else if c == CL_WARLOCK {
+    a := FxCause.{recipe = FXR_ELDRITCH, seed = r, from = wl_v(from), to = wl_v(hit), col = fxp_v(0.78, 0.5, 1.0), big = 1.8};
+    a.t0 = now + hi(d - fxp_flight(a, 60, 0.05, 0.4), 0);
+    _ := fxp_start(p, a, now);
+    egs_cast(s, egs_wl_look(WL_BLAST), from, at, d); egs_hit(s, egs_wl_look(WL_BLAST), at, d);
+  } else {
+    // Fire Bolt, the Sorcerer's and the Wizard's
+    a := FxCause.{recipe = FXR_FIREBOLT, seed = r, from = wl_v(from), to = wl_v(hit), col = WL_FIRE, big = 1.9, reach = 1};
+    a.t0 = now + hi(d - fxp_flight(a, 22, 0.15, 0.8), 0);
+    _ := fxp_start(p, a, now);
+    egs_cast(s, egs_wl_look(WL_FIRE_BOLT), from, at, d); egs_hit(s, egs_wl_look(WL_FIRE_BOLT), at, d);
+  }
+}
+
+// ---- each frame
+
+// The aim while slot 1 is picked.
+cl_frame :: (s: [] Everglade) {
+  if cl_on(s) && s[0].cl.armed && (s[0].sp.seen || phone(s)) { sp_aim(s); }
+}
+// The picked slot's ring where it would land (the looks are the Warlock's puffs, wl_draw).
+cl_draw :: (s: [] Everglade) {
+  if !cl_on(s) || !s[0].cl.armed || !s[0].sp.aim_ok { return; }
+  c := s[0].cl.c;
+  at := s[0].sp.aim;
+  far := flat_gap(at, s[0].feet) > CL_RANGE[c] + 3;
+  col := ifx far then v3(0.6, 0.15, 0.1) else v3(0.85, 0.75, 0.35);
+  sp_fx(s, FX_RING, v3(at.x, at.y + 0.04, at.z), 0.7, col, 0, v3(0, 0, 0), 0.3);
+  sp_glow(s, v3(at.x, at.y + 0.1, at.z), 0.25, times(col, 0.8));
+}
+
+// ---- the bar
+
+// Slot 1's picture and card, and Repair's (the Warlock's: the same).
+cl_slot_name :: (s: [] Everglade, b: int) -> string { return ifx b == 0 then CL_HB_NAME[s[0].cl.c] else WL_HB_NAME[WL_REBUILD]; }
+cl_card_w :: (s: [] Everglade, b: int, sc: int) -> f32 { return ifx b == 0 then CL_HB_CARD_W[s[0].cl.c * 3 + sc - 1] else WL_HB_CARD_W[WL_REBUILD * 3 + sc - 1]; }
+cl_card_h :: (s: [] Everglade, b: int, sc: int) -> f32 { return ifx b == 0 then CL_HB_CARD_H[s[0].cl.c * 3 + sc - 1] else WL_HB_CARD_H[WL_REBUILD * 3 + sc - 1]; }
+// The class's row: slot 1 and R, laid out as the Warlock's.
+cl_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  un := sp_unit(s);
+  ph := phone(s);
+  icon := sp_round(f32(ifx ph then HB_ICON else HB_DESK_ICON * 1.4) * un);
+  step := sp_round(f32(ifx ph then HB_STEP else HB_DESK_STEP * 1.4) * un);
+  pad := sp_round(f32(ifx ph then HB_PAD else HB_DESK_PAD * 1.4) * un);
+  width := 2 * pad + step * f32(CL_BOXES - 1) + icon;
+  left := sp_round((w - width) / 2);
+  bottom := sp_round(h - sp_bar_bottom(s) - f32(HB_MARGIN) * un);
+  top := bottom - (icon + 2 * pad);
+  edge := sp_round(k);
+  size := sp_icon_size(icon);
+  sp_plate(s, u, Box.{x0 = left, y0 = top, x1 = left + width, y1 = bottom}, PLATE_TRAY, edge);
+  for b: 0..<CL_BOXES {
+    x := sp_round(left + pad + step * f32(b)); y := top + pad;
+    bx := Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
+    s[0].cl.boxes[b] = bx;
+    on := b == 0 && s[0].cl.armed;
+    sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
+    inset := ifx on then edge else 0.0f32;
+    ib := Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset};
+    sp_media(s, "image", cl_slot_name(s, b), size, ib);
+    if b == 0 {
+      d := CL_DELAY[s[0].cl.c];
+      f := clamp((d - (s[0].wl.clock - s[0].cl.cast_t)) / d, 0, 1);
+      if f > 0.002 && s[0].cl.cast_t > 0 { sp_sweep(s, cl_slot_name(s, b), size, ib, f); }
+    }
+    if b == 1 && mend_wait(s) > 0.002 { sp_sweep(s, cl_slot_name(s, b), size, ib, mend_wait(s)); }
+  }
+  // the card: a finger held long enough on a slot, or the mouse resting on one
+  tip := -1;
+  if s[0].cl.held >= 0 {
+    if s[0].time - s[0].cl.held_t >= f64(HB_LONG) { tip = s[0].cl.held; }
+  } else {
+    over := -1;
+    if s[0].sp.mouse && s[0].sp.seen { for b: 0..<CL_BOXES { if in_box(s[0].cl.boxes[b], s[0].sp.px, s[0].sp.py) { over = 300 + b; } } }
+    t := sp_dwell(s, over, s[0].time);
+    tip = ifx t >= 300 && t < 300 + CL_BOXES then t - 300 else -1;
+  }
+  if s[0].cl.card { tip = 0; }   // ?card=1: slot 1's card shown (a still of every class's bar)
+  if tip >= 0 {
+    sc := clamp_i(cast(int) sp_round(k), 1, 3);
+    cw := cl_card_w(s, tip, sc) * k / f32(sc); ch := cl_card_h(s, tip, sc) * k / f32(sc);
+    room := w - 16 * k;
+    if cw > room { ch = ch * room / cw; cw = room; }
+    sb := s[0].cl.boxes[tip];
+    cx := clamp(sp_round((sb.x0 + sb.x1) / 2 - cw / 2), 8 * k, hi(w - 8 * k - cw, 8 * k));
+    cy := sp_round(top - 6 * k - ch);
+    card: [12] u8;
+    tail := sp_put(card[..], 0, "-card-"); tail = put_digits(card[..], tail, sc); tail = sp_put(card[..], tail, "x.jpg");
+    sp_media(s, "over", cl_slot_name(s, tip), cast(string) card[0..<tail], Box.{x0 = cx, y0 = cy, x1 = cx + sp_round(cw), y1 = cy + sp_round(ch)});
+  }
+  return SpBarTop.{n = at, top = top};
+}
+
+#test "classes: the page's twelve are the engine's, in its order, on their own wire slots" {
+  #assert CL_N == 12 && CL_SLOT0 >= WL_SLOT0 + 32;   // past the Warlock's bar and the raid's looks
+  #assert cl_of_kind("srd-barbarian") == CL_BARBARIAN && cl_of_kind("srd-wizard") == CL_WIZARD && cl_of_kind("warlock") < 0;
+  #assert CL_HB_SLOTS == CL_N;
+  for c: 0..<CL_N { #assert CL_SELF[c] == (CL_RANGE[c] == 0) && CL_DELAY[c] > 0; }
+}
+#test "classes: ?kit= picks a class; slot 1 acts on you at once, or is aimed and cast within its reach" #steps 2000000000 {
+  s: [1] Everglade; everglade_start(s[..]);
+  cl_query(s[..], "/worlds/everglade?weather=clear&kit=srd-fighter");
+  #assert cl_on(s[..]) && s[0].cl.c == CL_FIGHTER && everglade_class(s[..]) == CL_E5R0 + CL_FIGHTER && cl_kind(s[..]) == "srd-fighter";
+  // Second Wind: on you, at once (no room here: its look plays on this page)
+  s[0].wl.clock = 1;
+  #assert cl_key(s[..], '1', 0) && s[0].cl.cast_t == 1 && !s[0].cl.armed && fxp_live(s[0].wl.fx[..]) > 0;
+  // Fire Bolt: picked by 1, cast where you aim, refused past 120 feet
+  everglade_set_class(s[..], CL_E5R0 + CL_SORCERER);
+  #assert cl_on(s[..]) && s[0].cl.c == CL_SORCERER && !wl_on(s[..]);
+  #assert cl_key(s[..], '2', 0) && !s[0].cl.armed;   // the druid's other keys do nothing
+  #assert cl_key(s[..], '1', 0) && s[0].cl.armed;
+  s[0].wl.clock = 2;
+  s[0].sp.aim_ok = true; s[0].sp.aim = add(s[0].feet, v3(0, 0, 60));
+  cl_cast(s[..]);
+  #assert s[0].cl.cast_t == 1 && s[0].cl.armed;
+  s[0].sp.aim = add(s[0].feet, v3(0, 0, 20));
+  cl_cast(s[..]);
+  #assert s[0].cl.cast_t == 2 && !s[0].cl.armed;
+  // the Warlock's picker and the druid put it away
+  everglade_set_class(s[..], 1);
+  #assert !cl_on(s[..]) && wl_on(s[..]) && cl_kind(s[..]) == "warlock";
+  everglade_set_class(s[..], 0);
+  #assert !cl_on(s[..]) && !wl_on(s[..]) && everglade_class(s[..]) == 0;
+}

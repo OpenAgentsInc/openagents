@@ -15,6 +15,8 @@
 //   apps/openagents-web/realms/everglade/hotbar/NAME-card-Sx.jpg   a slot's card at S device px a CSS px
 //   apps/openagents-web/everglade-hotbar.coax                       their names and sizes, for the page
 //
+// The druid's bar, the Warlock's (wl-*) and Character Create's classes' slot 1 (cl-*, #13024).
+//
 // It needs rsvg-convert. The icons' credits are in assets/verse/icons/game-icons/CREDITS.md, and
 // the realm's licences page lists them.
 //
@@ -218,6 +220,48 @@ eg_warlock :: (s: [] HbSlot) -> int {
   return 9;
 }
 
+// Character Create's twelve classes (everglade-classes.coax, #13024): each class's slot 1, its SRD 5.2.1
+// cantrip or signature level 1 action, key 1. Its text is the SRD's, cut to what the slot does here.
+eg_classes :: (s: [] HbSlot) -> int {
+  s[0] = HbSlot.{name = "cl-rage", svg = "delapouite/angry-eyes.svg", tint = [3] f64.[1.0, 0.42, 0.3], key = "1", title = "Rage",
+    body = "A Bonus Action: you fly into a Rage. While it lasts you have Resistance to Bludgeoning, Piercing and Slashing damage, +2 damage on attacks that use Strength, and Advantage on Strength checks and saving throws.",
+    n = 3, dt = [6] string.["Key 1", "Bonus Action · Self", "Barbarian level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[1] = HbSlot.{name = "cl-vicious-mockery", svg = "lorc/screaming.svg", tint = [3] f64.[0.95, 0.5, 0.9], key = "1", title = "Vicious Mockery",
+    body = "You unleash a string of insults at a creature you can see within 60 feet. It makes a Wisdom saving throw; on a failure it takes 1d6 Psychic damage and has Disadvantage on its next attack roll before the end of its next turn.",
+    n = 3, dt = [6] string.["Key 1", "Cantrip · 60 ft", "Bard level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[2] = HbSlot.{name = "cl-sacred-flame", svg = "lorc/sun-radiations.svg", tint = [3] f64.[1.0, 0.9, 0.55], key = "1", title = "Sacred Flame",
+    body = "Flame-like radiance descends on a creature you can see within 60 feet. It makes a Dexterity saving throw; on a failure it takes 1d8 Radiant damage. It gains no benefit from Half Cover or Three-Quarters Cover.",
+    n = 3, dt = [6] string.["Key 1", "Cantrip · 60 ft", "Cleric level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[3] = HbSlot.{name = "cl-starry-wisp", svg = "lorc/star-swirl.svg", tint = [3] f64.[0.7, 0.82, 1.0], key = "1", title = "Starry Wisp",
+    body = "You launch a mote of light at a creature or object within 60 feet: a ranged spell attack, 1d8 Radiant damage on a hit. Until the end of your next turn it sheds Dim Light in a 10-foot radius and can't benefit from the Invisible condition.",
+    n = 3, dt = [6] string.["Key 1", "Cantrip · 60 ft", "Druid level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[4] = HbSlot.{name = "cl-second-wind", svg = "lorc/heart-bottle.svg", tint = [3] f64.[0.6, 0.88, 1.0], key = "1", title = "Second Wind",
+    body = "A Bonus Action: you draw on a limited well of physical and mental stamina and regain Hit Points equal to 1d10 plus your Fighter level.",
+    n = 3, dt = [6] string.["Key 1", "Bonus Action · Self", "Fighter level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[5] = HbSlot.{name = "cl-martial-arts", svg = "lorc/punch-blast.svg", tint = [3] f64.[1.0, 0.82, 0.5], key = "1", title = "Martial Arts",
+    body = "An Unarmed Strike at a creature within 5 feet: your Martial Arts die, 1d6, plus your Dexterity modifier in Bludgeoning damage on a hit.",
+    n = 3, dt = [6] string.["Key 1", "Action · 5 ft", "Monk level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[6] = HbSlot.{name = "cl-lay-on-hands", svg = "zeromancer/heart-plus.svg", tint = [3] f64.[1.0, 0.85, 0.4], key = "1", title = "Lay On Hands",
+    body = "A Bonus Action: you touch a creature and draw on your pool of healing, 5 times your Paladin level, to restore Hit Points to it. Here it heals you.",
+    n = 3, dt = [6] string.["Key 1", "Bonus Action · Self", "Paladin level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[7] = HbSlot.{name = "cl-hunters-mark", svg = "lorc/on-target.svg", tint = [3] f64.[0.5, 0.95, 0.55], key = "1", title = "Hunter's Mark",
+    body = "A Bonus Action: you magically mark a creature you can see within 90 feet as your quarry. While you concentrate, you deal an extra 1d6 Force damage to it whenever you hit it with an attack roll.",
+    n = 3, dt = [6] string.["Key 1", "1st-level slot · 90 ft", "Ranger level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[8] = HbSlot.{name = "cl-sneak-attack", svg = "lorc/cloak-dagger.svg", tint = [3] f64.[0.66, 0.45, 0.95], key = "1", title = "Sneak Attack",
+    body = "A Shortbow shot at a creature within 80 feet. Once a turn, an attack with Advantage, or with an ally of yours next to the target, deals an extra 1d6 damage.",
+    n = 3, dt = [6] string.["Key 1", "Action · 80 ft", "Rogue level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[9] = HbSlot.{name = "cl-sorcerer-fire-bolt", svg = "lorc/fire-ray.svg", tint = [3] f64.[1.0, 0.55, 0.2], key = "1", title = "Fire Bolt",
+    body = "You hurl a mote of fire at a creature or object within 120 feet: a ranged spell attack, 1d10 Fire damage on a hit. A flammable object hit by it starts burning if it isn't being worn or carried.",
+    n = 3, dt = [6] string.["Key 1", "Cantrip · 120 ft", "Sorcerer level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[10] = HbSlot.{name = "cl-eldritch-blast", svg = "lorc/beam-wake.svg", tint = [3] f64.[0.78, 0.5, 1.0], key = "1", title = "Eldritch Blast",
+    body = "A beam of crackling energy at a creature or object within 120 feet: a ranged spell attack, 1d10 Force damage on a hit. It makes more beams at levels 5, 11 and 17.",
+    n = 3, dt = [6] string.["Key 1", "Cantrip · 120 ft", "Warlock level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  s[11] = HbSlot.{name = "cl-wizard-fire-bolt", svg = "lorc/wizard-staff.svg", tint = [3] f64.[1.0, 0.55, 0.2], key = "1", title = "Fire Bolt",
+    body = "You hurl a mote of fire at a creature or object within 120 feet: a ranged spell attack, 1d10 Fire damage on a hit. A flammable object hit by it starts burning if it isn't being worn or carried.",
+    n = 3, dt = [6] string.["Key 1", "Cantrip · 120 ft", "Wizard level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
+  return 12;
+}
+
 // These never move: R's Repair and a phone's row switcher keep no bare icon.
 eg_moves :: (name: string) -> bool { return name == "rebuild" || name == "next-row"; }
 
@@ -249,6 +293,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !fs_mkdir(dir) && fs_kind(dir) <= 0 { tool_errln("everglade_hotbar: can't make the hotbar directory"); return 1; }
   slots: [64] HbSlot; n := eg_slots(slots[..]);
   warlock: [16] HbSlot; wn := eg_warlock(warlock[..]);
+  classes: [16] HbSlot; kn := eg_classes(classes[..]);
   buf: [12582912] u8;
   sizes := HB_SIZES;
   // bare icons beside the keyed ones, for the slots that can move
@@ -263,6 +308,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if !eg_card_sizes(hb, buf[..], dir, slots[0..<n], cw[..], ch[..], cn[..]) { return 1; }
   ww: [64] int; wh: [64] int; wcn: [1] int;
   if !eg_card_sizes(hb, buf[..], dir, warlock[0..<wn], ww[..], wh[..], wcn[..]) { return 1; }
+  kw: [64] int; kh: [64] int; kcn: [1] int;
+  if !eg_card_sizes(hb, buf[..], dir, classes[0..<kn], kw[..], kh[..], kcn[..]) { return 1; }
   marks := EG_ROW_MARK;
   for mark, r: marks {
     for c: 0..<EG_COL_KEY.count {
@@ -280,6 +327,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   names: [64] string; for s, i: slots[0..<n] { names[i] = s.name; }
   wnames: [16] string; for s, i: warlock[0..<wn] { wnames[i] = s.name; }
+  knames: [16] string; for s, i: classes[0..<kn] { knames[i] = s.name; }
   t: [1] HbText;
   hb_put(t[..], "// Everglade's spell bar pictures (realms/everglade/hotbar/), as the previous engine drew the bar:\n");
   hb_put(t[..], "// written by verse/tools/everglade_hotbar.coax, do not edit. Each slot's name, the icon sizes\n");
@@ -297,6 +345,11 @@ tool_main :: () -> int #export_c #effects(all) {
   hb_put(t[..], "WL_HB_NAME :: "); hb_put_names(t[..], wnames[0..<wn]);
   hb_put(t[..], "WL_HB_CARD_W :: "); hb_put_list(t[..], "f32", ww[0..<wcn[0]]);
   hb_put(t[..], "WL_HB_CARD_H :: "); hb_put_list(t[..], "f32", wh[0..<wcn[0]]);
+  hb_put(t[..], "// Character Create's classes' slot 1 (everglade-classes.coax), in fivebar.coax FB_CL order, as above.\n");
+  hb_put(t[..], "CL_HB_SLOTS :: "); hb_put_int(t[..], kn); hb_put(t[..], ";\n");
+  hb_put(t[..], "CL_HB_NAME :: "); hb_put_names(t[..], knames[0..<kn]);
+  hb_put(t[..], "CL_HB_CARD_W :: "); hb_put_list(t[..], "f32", kw[0..<kcn[0]]);
+  hb_put(t[..], "CL_HB_CARD_H :: "); hb_put_list(t[..], "f32", kh[0..<kcn[0]]);
   tp: [4096] u8;
   if !fs_write(fs_join(root, EG_TABLE, tp[..]), cast(string) t[0].b[0..<t[0].n]) { tool_errln("everglade_hotbar: can't write the table"); return 1; }
   print("% slots: 4 icon sizes and 3 cards each into %\n", n, EG_OUT);

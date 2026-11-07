@@ -253,7 +253,7 @@ AB_OUT_SHOW :: 1.5;   // s the count shows the oldest taken (it turns red and sw
 // count shows that for AB_OUT_SHOW s.
 ab_counts :: (s: [] Everglade, out: [] f32, at: int) -> int {
   n := at;
-  if wl_on(s) { return n; }
+  if wl_on(s) || cl_on(s) { return n; }
   k := hi(s[0].dpr, 0.5);
   ks := [2] int.[AB_WIND, AB_STONE];
   for j: 0..<2 {

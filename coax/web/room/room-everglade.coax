@@ -690,10 +690,13 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   }
   st[0].look_n = eg_word(cast(string)h.look[0..<h.look_n], st[0].look[..]);
   kind := cast(string)h.kind[0..<h.kind_n];
-  if tk.schema == 2 && tk.capture.ok { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
+  // a capture's class bit says Everglade's druid or Warlock; a Character Create class (srd-*, #13024)
+  // comes with the hello and stands
+  if tk.schema == 2 && tk.capture.ok && fb_cl_of_kind(kind) < 0 { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
   st[0].klass_n = eg_word(kind, st[0].klass[..]);
-  // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero), else the druid
-  wl := ifx cast(string) st[0].klass[0..<st[0].klass_n] == "warlock" then 1 else 0;
+  // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero); srd-*: that
+  // SRD class at level 1 (fb_cl_hero); else the druid
+  wl := e5rr_klass_of(cast(string) st[0].klass[0..<st[0].klass_n]);
   if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); ev_class(v, k, seat_id); }
   st[0].flags = eg_clamp(h.flags, 0, 255);
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
@@ -755,9 +758,8 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
   seq := wc.seq;
   mode := eg_clamp(wc.mode, 0, RA_MODES);
   slot := wc.slot;
-  // the druid's bar, or the Warlock's (FB_WL0 on) for a Warlock's seat
-  wl := v[0].eg[k].rules[0].klass[seat] == 1;
-  if !e5r_has(slot) || (slot >= FB_WL0) != wl { eg_refuse(v, k, seat_id, seq, "slot"); return; }
+  // the druid's bar, the Warlock's (FB_WL0 on) for a Warlock's seat, a Character Create class's one slot
+  if !e5r_slot_of(v[0].eg[k].rules[0].klass[seat], slot) { eg_refuse(v, k, seat_id, seq, "slot"); return; }
   a := e5rr_entry(v[0].eg[k].rules[..], slot);
   if a.kind == FB_WORLD && !cr_repair(slot) { eg_refuse(v, k, seat_id, seq, "slot"); return; }   // R is Repair (everglade-repair.coax)
   if !ev_may_cast(v, k, seat_id, slot, a) { eg_refuse(v, k, seat_id, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
@@ -2208,6 +2210,38 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert eg_test_has(eg_test_of(box[..], 0), "r 4 range");
 }
 
+#test "everglade room: a Character Create class's seat (srd-*) casts its one slot, levels on or off, and nothing else (#13024)" #steps 2000000000 {
+  for levels: 0..<2 {
+    v: [1] RmServer;
+    rm_init(v[..]);
+    rm_control(v[..], ifx levels == 1 then "levels 1 2\n" else "levels 0 2\n");
+    rm_clock(v[..], 0, 1762190000000);
+    ev := "GET /api/room/relay/everglade/pair-classes HTTP/1.1\r\n\r\n";
+    box: [1] EgInbox;
+    #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+    k := eg_room_at(v[..], v[0].conns[0].relay);
+    rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-sorcerer 0 -");
+    rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+    #assert v[0].eg[k].rules[0].klass[0] == E5R_CL0 + FB_CL_SORCERER && v[0].eg[k].rules[0].klass[1] == E5R_CL0 + FB_CL_FIGHTER;
+    b := v[0].eg[k].rules[0].b[..];
+    #assert b[0].c[E5RR_SEAT].klass == RS_SORCERER && b[0].c[E5RR_SEAT].level == 1 && b[0].c[E5RR_SEAT + 1].klass == RS_FIGHTER;
+    eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+    eg_test_drain(v[..], box[..]);
+    // Fire Bolt (slot 105) at (4, 7): within its 120 feet, heard by both
+    rm_heard(v[..], 0, "C 1 105 400 0 700 -1");
+    for q: 0..<4 { eg_test_tick(v[..], k); }
+    eg_test_drain(v[..], box[..]);
+    #assert eg_test_has(eg_test_of(box[..], 0), ";e cast 0 105 400 0 700 ") && eg_test_has(eg_test_of(box[..], 1), ";e cast 0 105 400 0 700 ");
+    for q: 0..<10 { eg_test_tick(v[..], k); }
+    eg_test_drain(v[..], box[..]);
+    // the druid's Thunderbolt, the Warlock's Eldritch Blast and another class's slot: refused
+    rm_heard(v[..], 0, "C 2 1 400 0 700 -1");
+    rm_heard(v[..], 0, "C 3 64 400 0 700 -1");
+    rm_heard(v[..], 1, "C 4 105 400 0 700 -1");
+    eg_test_drain(v[..], box[..]);
+    #assert eg_test_has(eg_test_of(box[..], 0), "r 2 slot") && eg_test_has(eg_test_of(box[..], 0), "r 3 slot") && eg_test_has(eg_test_of(box[..], 1), "r 4 slot");
+  }
+}
 #test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
