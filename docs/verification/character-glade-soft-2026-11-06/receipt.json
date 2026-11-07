@@ -26,5 +26,13 @@
     "screenshot_probe": "shot: WebGPU adapter: hardware apple metal-3\n{\"ready\":true,\"indices\":665322}\n/tmp/character-glade-soft-final.png",
     "tools_check": "tools-check: 1848 tracked tool files (35 of them vendored upstream vectors), 0 new without a reason"
   },
-  "scope": "Legacy Character Create shader, scene pack, and camera sun vector; no host ABI or shared/native renderer change."
+  "scope": "Legacy Character Create shader, scene pack, and camera sun vector; no host ABI or shared/native renderer change.",
+  "post_rebase": {
+    "commit": "609e33d26bd192214055b0434bb330f463d67c6c",
+    "reason": "Concurrent changes to shared movement code and the optional texture-layer size hook were incorporated before final validation.",
+    "wasm_bytes": 610839,
+    "wasm_sha256": "98f8eac603e6ac47ef0a56317dc0a366fcdb552f5bcdc4e15a693c3e75f7e551",
+    "wasm_budget_bytes": 625000,
+    "browser": "Character Studio: 3D Nature glade present; Noble selected on Female; eye color and cast changed through pointer input; appearance survived reload; physical zoom/pan passed."
+  }
 }

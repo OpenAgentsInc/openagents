@@ -40,3 +40,11 @@ With the static dev server on `127.0.0.1:8854`, the shader-only hardware gate is
 ```sh
 coax/web/tool.sh verse/tools/assets/glade_shader_check.coax
 ```
+
+After rebasing the visual change at `609e33d26b`, shared movement dependencies
+and the optional host texture-size hook had changed. The complete producer
+was rebuilt against those inputs: **610,839 bytes**, below its 625,000-byte
+budget. The physical browser flow passed again on that rebased build. This
+repeat was required by changed dependencies; the unchanged pack/source gates
+were not repeated. Exact identity and output are in the receipt's
+`post_rebase` record.
