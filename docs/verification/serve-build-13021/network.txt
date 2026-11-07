@@ -1,0 +1,2 @@
+PASS HTTP bytes/ranges/416/latency; concurrent 1 MiB transfers 1.296s at 8 Mbit/s, 120ms latency
+PASS invalid shaping arguments refuse

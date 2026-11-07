@@ -46,6 +46,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -72,6 +73,21 @@ static double throttle_bytes, latency_ms, next_send_ms;
 static bool shaping_send;
 static int shaping_fd = -1;
 static int listen_fd = -1;
+static pid_t build_pid;
+static int build_fd = -1;
+static double build_started;
+static char build_log[REQ_MAX / 2];
+static size_t build_used;
+static bool build_shaders, build_page;
+
+// This server forks only on its event-loop thread. Mark every owned socket
+// and pipe before the next fork, including accepted live-channel clients.
+static int private_fd(int fd) {
+  if (fd < 0) return -1;
+  int flags = fcntl(fd, F_GETFD);
+  if (flags >= 0 && fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0) return fd;
+  int error = errno; close(fd); errno = error; return -1;
+}
 
 #ifdef __APPLE__
 #define MTIME(st) ((st).st_mtimespec)
@@ -293,7 +309,7 @@ static void tunnel(int page, int api) {
 }
 // An /api/ request, its body whole, to the --api stand-in and the answer back to the page.
 static void proxy_api(client *c) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  int fd = private_fd(socket(AF_INET, SOCK_STREAM, 0));
   struct sockaddr_in a = {0};
   a.sin_family = AF_INET; a.sin_port = htons((uint16_t)api_port);
   inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
@@ -325,6 +341,7 @@ static void handle_request(client *c) {
     if (pid < 0) {respond(c->fd,503,"Busy","text/plain","",0);drop(c);return;}
     if (pid == 0) {
       close(listen_fd);
+      if (build_fd >= 0) close(build_fd);
       for (int i=0;i<MAX_CLIENTS;i++) if (clients[i].fd>=0 && clients[i].fd!=c->fd) close(clients[i].fd);
       sleep_until(monotonic_ms()+latency_ms);
       shaping_send = true; shaping_fd = c->fd;
@@ -402,35 +419,90 @@ static void json_escape(const char *in, char *out, size_t cap) {
   out[o] = 0;
 }
 
-// Runs the build; returns true on success with its output in log.
-static bool build(char *log, size_t cap, double *ms) {
-  char cmd[4200];
-  snprintf(cmd, sizeof cmd, "%s 2>&1", build_cmd);
-  double t0 = now_ms();
-  FILE *p = popen(cmd, "r");
-  size_t n = 0;
-  if (p) { n = fread(log, 1, cap - 1, p); }
-  log[n] = 0;
-  int status = p ? pclose(p) : -1;
-  *ms = now_ms() - t0;
-  return status == 0;
-}
-
-static void rebuild_and_tell(void) {
-  static char log[REQ_MAX / 2], escaped[REQ_MAX];
-  double ms;
-  if (build(log, sizeof log, &ms)) {
+static void build_finished(bool success) {
+  static char escaped[REQ_MAX];
+  double ms = monotonic_ms() - build_started;
+  build_pid = 0;
+  if (build_fd >= 0) { close(build_fd); build_fd = -1; }
+  build_log[build_used] = 0;
+  // Rebaseline generated files before notifying clients. An edit made in
+  // response to the completion message must belong to the next build.
+  for (int i = 0; i < file_count; i++) {
+    struct stat st;
+    if (stat(files[i].path, &st) == 0) files[i].mtime = MTIME(st);
+  }
+  if (success) {
     char msg[128];
     snprintf(msg, sizeof msg, "{\"kind\":\"wasm\",\"ms\":%.0f}", ms);
     logf_("engine rebuilt in %.0f ms", ms);
     broadcast(msg);
   } else {
-    logf_("build failed in %.0f ms:\n%s", ms, log);
-    json_escape(log, escaped, sizeof escaped - 32);
-    char *msg = malloc(strlen(escaped) + 40);
-    sprintf(msg, "{\"kind\":\"error\",\"text\":\"%s\"}", escaped);
+    logf_("build failed in %.0f ms:\n%s", ms, build_log);
+    json_escape(build_log, escaped, sizeof escaped - 32);
+    char msg[REQ_MAX + 64];
+    snprintf(msg, sizeof msg, "{\"kind\":\"error\",\"text\":\"%s\"}", escaped);
     broadcast(msg);
-    free(msg);
+  }
+  if (build_shaders) broadcast("{\"kind\":\"wgsl\"}");
+  if (build_page) broadcast("{\"kind\":\"page\"}");
+  build_shaders = build_page = false;
+}
+
+static void build_start(void) {
+  int p[2];
+  build_used = 0; build_started = monotonic_ms();
+  if (pipe(p)) goto failed;
+  p[0] = private_fd(p[0]); p[1] = private_fd(p[1]);
+  if (p[0] < 0 || p[1] < 0) goto close_failed;
+  int flags = fcntl(p[0], F_GETFL);
+  if (flags < 0 || fcntl(p[0], F_SETFL, flags | O_NONBLOCK)) goto close_failed;
+  pid_t pid = fork();
+  if (pid < 0) goto close_failed;
+  if (pid == 0) {
+    close(p[0]);
+    if (dup2(p[1], STDOUT_FILENO) < 0 || dup2(p[1], STDERR_FILENO) < 0) _exit(127);
+    if (p[1] > STDERR_FILENO) close(p[1]);
+    signal(SIGPIPE, SIG_DFL);
+    execl("/bin/sh", "sh", "-c", build_cmd, (char *)NULL);
+    _exit(127);
+  }
+  close(p[1]); build_fd = p[0]; build_pid = pid;
+  return;
+close_failed: {
+    int error = errno;
+    if (p[0] >= 0) close(p[0]);
+    if (p[1] >= 0) close(p[1]);
+    errno = error;
+  }
+failed:
+  build_used = (size_t)snprintf(build_log, sizeof build_log, "cannot start build: %s", strerror(errno));
+  build_finished(false);
+}
+
+static void build_drain(void) {
+  // Keep draining after the retained log fills, without letting a noisy
+  // builder monopolise the HTTP loop. No fread/pclose waits on the child.
+  char bytes[4096];
+  for (int i = 0; build_fd >= 0 && i < 16; i++) {
+    ssize_t n = read(build_fd, bytes, sizeof bytes);
+    if (n > 0) {
+      size_t keep = (size_t)n;
+      if (keep > sizeof build_log - 1 - build_used) keep = sizeof build_log - 1 - build_used;
+      memcpy(build_log + build_used, bytes, keep); build_used += keep;
+    } else if (n < 0 && errno == EINTR) { i--; }
+    else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+    else { close(build_fd); build_fd = -1; }
+  }
+}
+
+static void reap_children(void) {
+  int status; pid_t pid;
+  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    if (pid == build_pid) {
+      build_drain();
+      build_finished(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    }
+    // Shaped responses and WebSocket tunnels have no completion message.
   }
 }
 
@@ -448,17 +520,9 @@ static void check_changes(void) {
     logf_("changed %s", strrchr(p, '/') + 1);
   }
   if (engine) {
-    rebuild_and_tell();
-    // What changed while the build ran is the build's own output (apps/openagents-web/build.sh rewrites
-    // newland-data.coax and the project tables): taken as the new baseline, not as an edit, or every
-    // build would start the next one.
-    for (int i = 0; i < file_count; i++) {
-      struct stat st;
-      if (stat(files[i].path, &st)) continue;
-      if (MTIME(st).tv_sec == files[i].mtime.tv_sec && MTIME(st).tv_nsec == files[i].mtime.tv_nsec) continue;
-      files[i].mtime = MTIME(st);
-      logf_("written by the build: %s", strrchr(files[i].path, '/') + 1);
-    }
+    build_shaders = shaders; build_page = page;
+    build_start();
+    return;
   }
   if (shaders) broadcast("{\"kind\":\"wgsl\"}");
   if (page) broadcast("{\"kind\":\"page\"}");
@@ -508,8 +572,9 @@ int main(int argc, char **argv) {
   const char *colon = strrchr(listen_spec, ':');
   if (colon) { snprintf(host, sizeof host, "%.*s", (int)(colon - listen_spec), listen_spec); port = atoi(colon + 1); }
   signal(SIGPIPE, SIG_IGN);
-  signal(SIGCHLD, SIG_IGN);   // the WebSocket tunnels' children (tunnel) reap themselves
-  int lfd = socket(AF_INET, SOCK_STREAM, 0);
+  signal(SIGCHLD, SIG_DFL);   // reap without blocking, including build exit status
+  int lfd = private_fd(socket(AF_INET, SOCK_STREAM, 0));
+  if (lfd < 0) { perror("serve: socket"); return 1; }
   listen_fd = lfd;
   int one = 1; setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   struct sockaddr_in a = {.sin_family = AF_INET, .sin_port = htons((uint16_t)port)};
@@ -521,27 +586,26 @@ int main(int argc, char **argv) {
   if (!static_mode) {
     scan_dir(app_dir, true);
     scan_dir(host_dir, true);
-    static char log[REQ_MAX / 2];
-    double ms;
-    if (!build(log, sizeof log, &ms)) logf_("first build failed in %.0f ms:\n%s", ms, log);
-    else logf_("first build in %.0f ms", ms);
+    build_start();
   }
   printf("coax serve: http://%s:%d/  (app %s, %s)\n", host, port, app_dir, static_mode ? "static" : "watching");
   fflush(stdout);
 
   double last_scan = now_ms();
   for (;;) {
-    struct pollfd p[MAX_CLIENTS + 1];
-    int map[MAX_CLIENTS + 1], n = 0;
+    struct pollfd p[MAX_CLIENTS + 2];
+    int map[MAX_CLIENTS + 2], n = 0;
     p[n].fd = lfd; p[n].events = POLLIN; map[n++] = -1;
+    if (build_fd >= 0) { p[n].fd = build_fd; p[n].events = POLLIN; map[n++] = -2; }
     for (int i = 0; i < MAX_CLIENTS; i++)
       if (clients[i].fd >= 0) { p[n].fd = clients[i].fd; p[n].events = POLLIN; map[n++] = i; }
     int r = poll(p, (nfds_t)n, 50);
     if (r < 0 && errno != EINTR) break;
     for (int k = 0; r > 0 && k < n; k++) {
       if (!(p[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
-      if (map[k] < 0) {
-        int fd = accept(lfd, NULL, NULL);
+      if (map[k] == -2) { build_drain(); }
+      else if (map[k] == -1) {
+        int fd = private_fd(accept(lfd, NULL, NULL));
         if (fd < 0) continue;
         int slot = -1;
         for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].fd < 0) { slot = i; break; }
@@ -551,7 +615,8 @@ int main(int argc, char **argv) {
         on_readable(&clients[map[k]]);
       }
     }
-    if (!static_mode && now_ms() - last_scan >= 50) { last_scan = now_ms(); check_changes(); }
+    reap_children();
+    if (!static_mode && !build_pid && now_ms() - last_scan >= 50) { last_scan = now_ms(); check_changes(); }
   }
   return 0;
 }

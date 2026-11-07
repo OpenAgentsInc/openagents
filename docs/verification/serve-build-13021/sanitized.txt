@@ -1,0 +1,3 @@
+PASS initial HTTP and WebSocket while build held; successful completion
+PASS rebuild stays responsive; oversized output drains; failure event preserves last good response
+PASS builder remains alive after server stop; port can bind; accepted WebSocket reaches EOF

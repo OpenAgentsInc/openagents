@@ -214,6 +214,15 @@ Development runs `coax serve` on the Mac: the site server in dev mode plus a
 watcher. It rebuilds only what changed and pushes it to every open tab over
 a WebSocket. Four tiers, fastest first:
 
+Builds run in a child with a nonblocking output pipe, including the first
+build. HTTP and the live channel keep serving existing files while it runs;
+only successful completion publishes a `wasm` notification. Failed builds send
+the bounded compiler log instead. Generated watched files are rebaselined
+before completion notifications so they do not trigger a build loop. Server
+sockets and the build pipe are close-on-exec; a builder cannot retain the
+listening port or accepted clients after the server stops. The physical
+regression is `coax/web/tool.sh serve-build-check` after building `serve.sh`.
+
 | Change | What happens | Target, save to new frame |
 | --- | --- | --- |
 | Data (world layout, HUD layout, `home.textproto`, tuning) | Re-encoded, pushed, the engine re-admits it through the same checks as at load | under 50 ms |

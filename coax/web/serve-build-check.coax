@@ -1,0 +1,127 @@
+// Physical HTTP/WebSocket/descriptor regression for #13021. No browser/GPU.
+// Build serve.sh first, then: coax/web/tool.sh serve-build-check [SERVE_BINARY]
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/net/socket_foreign.coax";
+#load "../lib/net/ws.coax";
+#load "../lib/json/json.coax";
+
+sb_path :: (dir:string,name:string,out:[]u8)->string {return fs_join(dir,name,out);}
+sb_wait :: (path:string)->bool {
+  end:=proc_now_ms()+5000;
+  while proc_now_ms()<end {if fs_kind(path)==FS_FILE {return true;}proc_sleep(10);}
+  return false;
+}
+sb_connect :: (port:int)->int {
+  for ch:"127.0.0.1" {if cxsock_host_push(cast(int)ch)!=0 {return -1;}}
+  return cxsock_connect(port,500);
+}
+sb_send :: (h:int,text:string)->bool {
+  for ch:text {if cxsock_write(h,cast(int)ch)!=0 {return false;}}
+  return cxsock_flush(h,500)==0;
+}
+sb_read :: (h:int,out:[]u8,until:int)->int {
+  n:=0;
+  while proc_now_ms()<until {
+    k:=cxsock_read(h,until-proc_now_ms());
+    if k== -1 {return n;} // EOF
+    if k<0 || k>out.count-n {return -1;}
+    for i:0..<k {out[n+i]=cast,trunc(u8)cxsock_byte(h,i);}n+=k;
+  }
+  return -1;
+}
+sb_http :: (port:int)->bool {
+  h:=sb_connect(port);if h<0 {return false;}
+  ok:=sb_send(h,"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+  b:[4096]u8;n:=ifx ok then sb_read(h,b[..],proc_now_ms()+700) else -1;closed:=cxsock_close(h);
+  if n<=0 {return false;}text:=cast(string)b[0..<n];end:=ws_find_end(text);
+  return ws_starts(text,"HTTP/1.1 200 ") && end>0 && text[end..<n]=="last good\n";
+}
+sb_ws :: (port:int)->int {
+  h:=sb_connect(port);if h<0 {return -1;}
+  b:[8192]u8;n:=ws_request("127.0.0.1",port,"/coaxial/live","dGhlIHNhbXBsZSBub25jZQ==",b[..]);
+  ok:=n>0 && sb_send(h,cast(string)b[0..<n]);used:=0;end:=proc_now_ms()+1000;
+  while ok && proc_now_ms()<end {
+    k:=cxsock_read(h,100);if k== -2 {continue;}if k<=0 || k>b.count-used {break;}
+    for i:0..<k {b[used+i]=cast,trunc(u8)cxsock_byte(h,i);}used+=k;
+    r:=ws_response(cast(string)b[0..<used],"dGhlIHNhbXBsZSBub25jZQ==");
+    if r.status==WS_HELLO_OK && r.consumed==used {return h;}
+    if r.status!=WS_HELLO_MORE {break;}
+  }
+  closed:=cxsock_close(h);return -1;
+}
+sb_event :: (h:int,kind:string)->bool {
+  b:[16384]u8;used:=0;end:=proc_now_ms()+5000;
+  while proc_now_ms()<end {
+    n:=cxsock_read(h,100);if n== -2 {continue;}if n<=0 || n>b.count-used {return false;}
+    for i:0..<n {b[used+i]=cast,trunc(u8)cxsock_byte(h,i);}used+=n;
+    f:=ws_frame_read(cast(string)b[0..<used],b.count);
+    if f.status==WS_FRAME_MORE {continue;}
+    if f.status!=WS_FRAME_OK || f.op!=WS_OP_TEXT || !f.fin || f.total!=used {return false;}
+    d:[1]Jv;nodes:[64]JvNode;
+    if !jv_parse(d[..],cast(string)b[f.header..<f.total],nodes[..]) {return false;}
+    if jv_raw(d[0],jv_get(d[0],0,"kind"))!=kind {return false;}
+    if kind=="error" {s:[8192]u8;z:=jv_str(d[0],jv_get(d[0],0,"text"),s[..]);return z>0 && ws_starts(cast(string)s[0..<z],"fixture failure");}
+    return true;
+  }
+  return false;
+}
+// A real slow builder, released by the test. Output exceeds pipe/log capacity.
+sb_fixture :: (dir:string)->int {
+  p:[1024]u8;q:[1024]u8;t:[1024]u8;
+  started:=sb_path(dir,"started",p[..]);release:=sb_path(dir,"release",q[..]);tick:=sb_path(dir,"tick",t[..]);
+  if !fs_write(started,"started") {return 2;}
+  print("fixture failure \"quoted\"\n");noise:[1024]u8;for i:0..<noise.count {noise[i]='x';}
+  for i:0..<128 {print("%",cast(string)noise[..]);}
+  end:=proc_now_ms()+10000;i:=0;
+  while proc_now_ms()<end {
+    num:[32]u8;n:=ws_digits(num[..],0,i);written:=fs_write(tick,cast(string)num[0..<n]);i+=1;
+    value:[16]u8;k:=fs_read(release,value[..]);
+    if k>0 {return ifx value[0]=='0' then 0 else 1;}
+    proc_sleep(20);
+  }
+  return 2;
+}
+sb_run :: (server:int,dir:string,port:int,ws:[]int)->bool {
+  p:[1024]u8;q:[1024]u8;r:[1024]u8;t:[1024]u8;
+  started:=sb_path(dir,"started",p[..]);release:=sb_path(dir,"release",q[..]);source:=sb_path(dir,"watch.coax",r[..]);tick:=sb_path(dir,"tick",t[..]);
+  if !sb_wait(started) || !sb_http(port) {tool_errln("FAIL HTTP during held initial build");return false;}
+  ws[0]=sb_ws(port);if ws[0]<0 {return false;}
+  if !fs_write(release,"0") || !sb_event(ws[0],"wasm") {tool_errln("FAIL initial build success event");return false;}
+  print("PASS initial HTTP and WebSocket while build held; successful completion\n");
+  removed:=fs_remove(started);removed=fs_remove(release);removed=fs_remove(tick);
+  if !fs_write(source,"changed") || !sb_wait(started) || !sb_http(port) {tool_errln("FAIL HTTP during rebuild");return false;}
+  if !fs_write(release,"1") || !sb_event(ws[0],"error") || !sb_http(port) {tool_errln("FAIL failed build notification/last good response");return false;}
+  print("PASS rebuild stays responsive; oversized output drains; failure event preserves last good response\n");
+  removed=fs_remove(started);removed=fs_remove(release);removed=fs_remove(tick);
+  if !fs_write(source,"retry") || !sb_wait(started) || !sb_http(port) || !sb_wait(tick) {return false;}
+  // Kill only the server, deliberately leaving its builder alive.
+  number:[32]u8;n:=ws_digits(number[..],0,proc_pid(server));out:[1024]u8;err:[1024]u8;
+  command:=[3]string.["/bin/kill","-TERM",cast(string)number[0..<n]];killed:=proc_run(command[..],1000,out[..],err[..]);
+  if killed.status!=0 || proc_wait(server,1000)==PROC_RUNNING {return false;}
+  before:[32]u8;after:[32]u8;a:=fs_read(tick,before[..]);proc_sleep(150);b:=fs_read(tick,after[..]);
+  alive:=a>0 && b>0 && cast(string)before[0..<a]!=cast(string)after[0..<b];
+  listener:=cxsock_listen(port);free:=listener>=0;if listener>=0 {closed:=cxsock_close(listener);}
+  eof:=cxsock_read(ws[0],500)== -1;
+  if !alive || !free || !eof {print("FAIL socket ownership: builder alive %, port free %, accepted WebSocket EOF %\n",alive,free,eof);return false;}
+  print("PASS builder remains alive after server stop; port can bind; accepted WebSocket reaches EOF\n");return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) {return 2;}
+  if args_at(args[..],0)=="--fixture" {return sb_fixture(args_at(args[..],1));}
+  temp:[1024]u8;dir:=fs_temp("coax-serve-build-",temp[..]);if dir=="" {return 1;}
+  p:[1024]u8;ok:=fs_write(sb_path(dir,"index.html",p[..]),"last good\n") && fs_write(sb_path(dir,"watch.coax",p[..]),"original");
+  listener:=cxsock_listen(0);if listener<0 {return 1;}port:=cxsock_port(listener);closed:=cxsock_close(listener);
+  address:[64]u8;n:=ws_put(address[..],0,"127.0.0.1:");n=ws_digits(address[..],n,port);
+  self:[4096]u8;self_n:=cxargs_len(0);if self_n<1 || self_n>self.count {return 1;}
+  for i:0..<self_n {self[i]=cast,trunc(u8)cxargs_byte(0,i);}
+  cmd:[8192]u8;at:=ws_put(cmd[..],0,"'");at=ws_put(cmd[..],at,cast(string)self[0..<self_n]);at=ws_put(cmd[..],at,"' --fixture '");at=ws_put(cmd[..],at,dir);at=ws_put(cmd[..],at,"'");
+  h:=proc_new();argv:=[8]string.[ifx args_count(args[..])>0 then args_at(args[..],0) else "coax/web/build/serve",dir,"--listen",cast(string)address[0..<n],"--host-dir",dir,"--build",cast(string)cmd[0..<at]];
+  for x:argv {ok=ok && proc_arg(h,x);}ok=ok && proc_start(h)==0;
+  ws:=[1]int.[-1];if ok {ok=sb_run(h,dir,port,ws[..]);}
+  if ws[0]>=0 {closed=cxsock_close(ws[0]);}
+  released:=fs_write(sb_path(dir,"release",p[..]),"0");proc_sleep(100);released=proc_release(h);removed:=fs_remove(dir);
+  return ifx ok then 0 else 1;
+}
