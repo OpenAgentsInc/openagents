@@ -3,8 +3,9 @@
 `backing-budget.coax` charges an observed backend allocation before it occurs.
 It uses the existing `HostInboxQueue` and exact slot/serial/epoch leases;
 it does not allocate memory, create GPU objects or replace logical RCM1 costs.
-The first intended consumer is the bounded native stream carrier. That carrier
-still needs adoption; the current qualification is the SDK/component boundary.
+The bounded native stream carrier now adopts it through
+[device-bound plans and observed allocation lifetimes](native-backing.md).
+The original component/SDK qualification remains separately scoped.
 
 Eight named lines retain the existing resource categories 0–6 and add persistent
 renderer storage at 7. The caller declares each line's byte cap, aggregate cap

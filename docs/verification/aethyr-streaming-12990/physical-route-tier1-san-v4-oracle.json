@@ -1,0 +1,72 @@
+{
+  "allocated_peak": 1260264,
+  "allocations": 192,
+  "backing_events": 776,
+  "base": {
+    "allocation_events": 776,
+    "attempts": 114,
+    "category_cpu_logical_gpu_peaks": {
+      "0": 7272,
+      "1": 288,
+      "2": 1080,
+      "3": 1155,
+      "4": 6568,
+      "5": 1184,
+      "6": 0
+    },
+    "category_cpu_peaks": {
+      "0": 4224,
+      "1": 268,
+      "2": 1080,
+      "3": 1075,
+      "4": 6568,
+      "5": 1184,
+      "6": 1728
+    },
+    "core_static_bytes": 874009,
+    "cpu_peak": 14232,
+    "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+    "equal_image_channels": 691200,
+    "events": 3,
+    "explicit_vulkan_peak": 1260264,
+    "final_zero_owners": true,
+    "frame_ms": {
+      "p50": 12.770467,
+      "p95": 15.361867,
+      "p99": 23.221625
+    },
+    "mode": "--auto-route",
+    "physical_device_fault_qualified": false,
+    "quiesce_ms": 0.009656,
+    "recoveries": 3,
+    "sdk_static_bytes": 854086,
+    "ticks": 12931,
+    "tier": 1
+  },
+  "category_peaks": [
+    3048,
+    512,
+    0,
+    2048,
+    0,
+    0,
+    230400,
+    1024256
+  ],
+  "cpu_replay": {
+    "altered_native_histories_rejected": 12,
+    "backend": 1,
+    "canonical_paid_steps": 12931,
+    "cpu_peak": 14427,
+    "no_gpu_replay_claim": true,
+    "observation_sha256": "a946d2e38cfbc6e48abe9a806167cfce6101c538817f2dfb7c9425fc4aa651b0",
+    "tier": 1
+  },
+  "devices": 4,
+  "frees": 192,
+  "plans_per_device": 63,
+  "refusals": 0,
+  "releases": 192,
+  "reservations": 192,
+  "reserved_peak": 1260264
+}

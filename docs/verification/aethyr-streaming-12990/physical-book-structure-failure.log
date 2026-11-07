@@ -1,0 +1,4 @@
+ch25-case-study-voice.md: excerpt differs from examples/ch25_floor.coax
+ch11-writing-checks.md: excerpt differs from examples/ch11_build_profiles.coax
+ch15-asynchronous-work.md: excerpt differs from examples/lib/ch15_request_policy.coax
+ch06-memory.md: broken local link ../checked-state.md

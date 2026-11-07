@@ -9,6 +9,7 @@
 #load "../native-load-policy.coax";
 #load "../native-upload-policy.coax";
 #load "../native-sdk-fault.coax";
+#load "../native-backing.coax";
 #load "../../forge/pack.coax" as packs;
 #load "../stream-native-conformance.coax";
 #load "../../../coax/lib/sys/tool.coax";
@@ -55,6 +56,12 @@ sw_vk_transfer_info :: (field: s32) -> int #foreign #effects(all);
 sw_vk_transfer_hold :: (ms: int, kind: s32) -> s32 #foreign #effects(all);
 sw_sdk_fault_open :: (kind: s32, domain: s32, phase: s32) -> s32 #foreign #effects(all);
 sw_sdk_fault_info :: (field: s32) -> int #foreign #effects(all);
+sw_vk_backing_info :: (field:s32)->int #foreign #effects(all);
+sw_vk_backing_event :: (index:s32,field:s32)->int #foreign #effects(all);
+sw_vk_backing_device :: (index:s32,field:s32)->int #foreign #effects(all);
+sw_vk_backing_plan :: (device:s32,index:s32,field:s32)->int #foreign #effects(all);
+sw_vk_backing_pressure :: ()->s32 #foreign #effects(all);
+sw_vk_backing_clone :: ()->s32 #foreign #effects(all);
 sw_vk_reopen :: () -> s32 #foreign #effects(all);
 sw_vk_fault :: (kind: s32, count: int) -> s32 #foreign #effects(all);
 sw_host_return :: (row: s32) -> s32 #foreign #effects(all);
@@ -380,15 +387,35 @@ swn_pressure :: (scene: Jv, dir: string, output: string, j: [] Jo, ctx: [] SnNat
   jo_key(j, "cpuBytes"); jo_int(j, cpu); jo_key(j, "gpuBytes"); jo_int(j, gpu_bytes); jo_key(j, "gpuOwners"); jo_int(j, gpu_n); jo_key(j, "traceEvents"); jo_int(j, cast(int) trace_n);
   jo_end(j); return !j[0].bad;
 }
+swn_backing :: (j:[]Jo) #effects(all) {
+  jo_key(j,"backing");jo_obj(j);jo_key(j,"schema");jo_str(j,"aethyr.stream-native-backing.v1");
+  jo_key(j,"summary");jo_arr(j);for i:0..<13 {jo_int(j,sw_vk_backing_info(cast(s32) i));}jo_end(j);
+  jo_key(j,"devices");jo_arr(j);for d:0..<sw_vk_backing_info(12) {jo_arr(j);for f:0..<18 {jo_int(j,sw_vk_backing_device(cast(s32) d,cast(s32) f));}jo_end(j);}jo_end(j);
+  jo_key(j,"plans");jo_arr(j);for d:0..<sw_vk_backing_info(12) {jo_arr(j);for i:0..<135 {if sw_vk_backing_plan(cast(s32) d,cast(s32) i,0)>=0 {jo_arr(j);for f:0..<13 {jo_int(j,sw_vk_backing_plan(cast(s32) d,cast(s32) i,cast(s32) f));}jo_end(j);}}jo_end(j);}jo_end(j);
+  jo_key(j,"events");jo_arr(j);for i:0..<sw_vk_backing_info(11) {jo_arr(j);for f:0..<20 {jo_int(j,sw_vk_backing_event(cast(s32) i,cast(s32) f));}jo_end(j);}jo_end(j);jo_end(j);
+}
+swn_backing_pressure :: (j:[]Jo,output:string,ctx:[]SnNative)->bool #effects(all) {
+  before:[230400]u8;after:[230400]u8;sb:[64]u8;sa:[64]u8;cb:[64]u8;ca:[64]u8;path:[4096]u8;
+  if !swn_render(ctx) || !swn_capture(before[..]) || !swn_sources(sb[..]) || !sw_vk_state(cb[..]) {return false;}
+  words:=[7]int.[sw_host_info(0),0,sw_vk_backing_info(1),0,sw_vk_backing_info(2),0,0];
+  words[6]=cast(int) sw_vk_backing_clone();words[1]=sw_host_info(0);words[3]=sw_vk_backing_info(1);words[5]=sw_vk_backing_info(2);
+  if words[6]!= -1000069000 || words[0]!=words[1] || words[2]!=words[3] || words[4]!=words[5] || !swn_sources(sa[..]) || !sw_vk_state(ca[..]) || !swn_render(ctx) || !swn_capture(after[..]) {return false;}
+  if cast(string) sb[..]!=cast(string) sa[..] || cast(string) cb[..]!=cast(string) ca[..] || cast(string) before[..]!=cast(string) after[..] {return false;}
+  if !fs_write(fs_join(output,"backing-before.rgba",path[..]),cast(string) before[..]) || !fs_write(fs_join(output,"backing-after.rgba",path[..]),cast(string) after[..]) {return false;}
+  jo_key(j,"backingPressure");jo_obj(j);jo_key(j,"schema");jo_str(j,"aethyr.stream-native-backing-pressure.v1");jo_key(j,"words");jo_arr(j);for word:words {jo_int(j,word);}jo_end(j);
+  jo_key(j,"sourceBefore");jo_str(j,cast(string) sb[..]);jo_key(j,"sourceAfter");jo_str(j,cast(string) sa[..]);
+  jo_key(j,"stateBefore");jo_str(j,cast(string) cb[..]);jo_key(j,"stateAfter");jo_str(j,cast(string) ca[..]);jo_end(j);return true;
+}
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 5 || args_count(a[..]) > 6 { tool_errln("usage: stream-native SCENE_DIR SCENE_SHA256 SHADER.spv NEW_OUTPUT_DIR TIER [--route]"); return 2; }
   mode := ifx args_count(a[..]) == 6 then args_at(a[..], 5) else "";
   pressure := mode == "--category-pressure";
+  backing_pressure:=mode=="--backing-pressure";
   sdk_case := nsf_case(mode);sdk_fault := sdk_case >= 0;
   upload_probe := mode == "--upload-pending" || mode == "--upload-buffer-pending";
   failure_case := nlf_case(mode); failure := failure_case >= 0;
   automatic := mode == "--auto-loss" || mode == "--auto-repeat" || mode == "--auto-restart" || mode == "--auto-timeout" || mode == "--auto-fail" || mode == "--auto-oom" || mode == "--auto-route" || mode == "--auto-late";
-  route := mode == "--route" || mode == "--auto-route"; if mode != "" && !route && !automatic && !pressure && !failure && !upload_probe && !sdk_fault { return 2; }
+  route := mode == "--route" || mode == "--auto-route"; if mode != "" && !route && !automatic && !pressure && !failure && !upload_probe && !sdk_fault && !backing_pressure { return 2; }
   tier := args_at(a[..], 4); if tier != "0" && tier != "1" { return 2; } quality := ifx tier == "0" then 0 else 1;
   dir := args_at(a[..], 0); output := args_at(a[..], 3); if fs_exists(output) || !fs_mkdir(output) { return 2; }
   path: [4096] u8; scene_bytes: [65536] u8; scene: [1] Jv; nodes: [4096] JvNode; n := fs_read(fs_join(dir, "scene.json", path[..]), scene_bytes[..]);
@@ -399,12 +426,13 @@ tool_main :: () -> int #export_c #effects(all) {
   if mn < 1 || sw_loss_open() != 1 || !sw_sdk_start(manifest_bytes[0..<mn], root[..], quality, 1) { return 1; }
   if failure && sw_fault_open(cast(s32) (ifx failure_case < 5 then 1 else failure_case - 3), cast(s32) (ifx failure_case < 5 then failure_case else -1)) != 1 { return 1; }
   if sdk_fault && sw_sdk_fault_open(cast(s32) nsf_kind(sdk_case),cast(s32) nsf_domain(sdk_case),cast(s32) nsf_phase(sdk_case)) != 1 { return 1; }
+  if backing_pressure && sw_vk_backing_pressure()!=1 {return 1;}
   program: [65536] u8; hud_program: [65536] u8; present_program: [65536] u8; sn := fs_read(args_at(a[..], 2), program[..]);
   hsn := fs_read(fs_join(fs_dir(args_at(a[..], 2)), "stream-hud.spv", path[..]), hud_program[..]);
   psn := fs_read(fs_join(fs_dir(args_at(a[..], 2)), "stream-present.spv", path[..]), present_program[..]);
   if sn < 1 || hsn < 1 || psn < 1 || sw_vk_open(program[0..<sn], hud_program[0..<hsn], present_program[0..<psn]) != 1 || !swn_surface() { return 1; }
   device: [256] u8; dn := sw_vk_name(device[..]); if dn < 0 { return 1; }
-  report: [8388608] u8; j: [1] Jo; jo_start(j[..], report[..]); jo_obj(j[..]); jo_key(j[..], "schema"); jo_str(j[..], ifx sdk_fault then "aethyr.stream-walk-native-gpu.v6" else ifx failure then "aethyr.stream-walk-native-gpu.v5" else ifx pressure then "aethyr.stream-walk-native-gpu.v4" else ifx automatic then "aethyr.stream-walk-native-gpu.v3" else "aethyr.stream-walk-native-gpu.v2");
+  report: [8388608] u8; j: [1] Jo; jo_start(j[..], report[..]); jo_obj(j[..]); jo_key(j[..], "schema");jo_str(j[..],"aethyr.stream-walk-native-gpu.v7");jo_key(j[..],"observationSchema");jo_str(j[..], ifx sdk_fault then "aethyr.stream-walk-native-gpu.v6" else ifx failure then "aethyr.stream-walk-native-gpu.v5" else ifx pressure then "aethyr.stream-walk-native-gpu.v4" else ifx automatic then "aethyr.stream-walk-native-gpu.v3" else "aethyr.stream-walk-native-gpu.v2");
   jo_key(j[..], "device"); jo_str(j[..], cast(string) device[0..<cast(int) dn]); jo_key(j[..], "backend"); jo_int(j[..], 1); jo_key(j[..], "tier"); jo_int(j[..], quality);
   jo_key(j[..], "sceneSHA256"); jo_str(j[..], args_at(a[..], 1)); jo_key(j[..], "manifestSHA256"); jo_str(j[..], cast(string) root[..]);
   jo_key(j[..], "presentationSchema"); jo_str(j[..], "aethyr.stream-walk-display.v1");
@@ -421,6 +449,7 @@ tool_main :: () -> int #export_c #effects(all) {
     for i: 0..<rounds { if !swn_fault_frame(scene[0], dir, output, kind, count, j[..], ctx[..]) { tool_errln("automatic fault frame failed"); return 1; } }
   }
   jo_end(j[..]);
+  if backing_pressure && !swn_backing_pressure(j[..],output,ctx[..]) {tool_errln("native backing pressure failed");return 1;}
   if pressure { jo_key(j[..], "categoryPressure"); if !swn_pressure(scene[0], dir, output, j[..], ctx[..]) { tool_errln("native category pressure failed"); return 1; } }
   checkpoints: [2] [12] [5] int;
   for cell: 0..<12 { for field: 0..<5 { checkpoints[0][cell][field] = sw_host_cell(cast(s32) cell,cast(s32) field); } }
@@ -467,6 +496,8 @@ tool_main :: () -> int #export_c #effects(all) {
       for i: 0..<3 { passed = passed && ctx[0].sdk_stop[i] == sdk_words[i + 5]; }
     }else { passed = passed && !ctx[0].sdk_stopped && sw_loss_info(1) == 0 && swn_accept(q[..]); }
   }
+  for field:[5]s32.[0,1,2,3,7] {passed=passed && sw_vk_backing_info(field)==0;}
+  swn_backing(j[..]);
   jo_key(j[..], "observations"); jo_arr(j[..]); if automatic { for word: auto_words { jo_int(j[..], word); } } else { for word: q { jo_int(j[..], word); } } jo_end(j[..]); jo_key(j[..], "passed"); jo_bool(j[..], passed);
   if automatic {
     jo_key(j[..], "lossMode"); jo_str(j[..], mode); jo_key(j[..], "qualification"); jo_str(j[..], "SDK result injection after actual Vulkan submissions; no physical GPU reset");

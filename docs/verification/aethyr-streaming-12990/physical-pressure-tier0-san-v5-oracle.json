@@ -1,0 +1,118 @@
+{
+  "allocated_peak": 1258440,
+  "allocations": 56,
+  "altered_receipts_refused_by_both": 280,
+  "backing_events": 229,
+  "base": {
+    "attempts": 18,
+    "category_cpu_peaks": {
+      "0": 3768,
+      "1": 252,
+      "2": 648,
+      "3": 756,
+      "4": 6568,
+      "5": 888,
+      "6": 1728
+    },
+    "category_settled_cpu_logical_gpu_peaks": {
+      "0": 6528,
+      "1": 256,
+      "2": 648,
+      "3": 768,
+      "4": 6568,
+      "5": 888,
+      "6": 0
+    },
+    "core_static_bytes": 874009,
+    "cpu_peak": 13168,
+    "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+    "final_zero_owners": true,
+    "frame_ms": {
+      "p50": 12.545169,
+      "p95": 28.642125,
+      "p99": 29.067968
+    },
+    "frames": 35,
+    "owner_cpu_peaks": {
+      "0": 284,
+      "1": 216,
+      "10": 216,
+      "11": 296,
+      "12": 3284,
+      "13": 744,
+      "14": 284,
+      "15": 216,
+      "16": 296,
+      "18": 744,
+      "2": 456,
+      "3": 3624,
+      "4": 284,
+      "5": 216,
+      "6": 296,
+      "7": 3284,
+      "8": 744,
+      "9": 284
+    },
+    "physical_events": 124,
+    "recovery_image_sha256": "ba60476a8a7c43a580d4b89b5c86e96c14b6f58ec6eeb0384d0c36c645cb05e8",
+    "recovery_ms": 86.133317,
+    "sdk_memory_peak": 1258440,
+    "sdk_static_bytes": 854086,
+    "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+    "stage_ms": {
+      "allocation": {
+        "p50": 0.031711,
+        "p95": 0.076484,
+        "p99": 0.076484
+      },
+      "decode": {
+        "p50": 0.027503,
+        "p95": 0.190079,
+        "p99": 0.190079
+      },
+      "source": {
+        "p50": 0.258591,
+        "p95": 0.357671,
+        "p99": 0.357671
+      },
+      "total": {
+        "p50": 1.485279,
+        "p95": 1.810587,
+        "p99": 1.810587
+      },
+      "upload": {
+        "p50": 1.152732,
+        "p95": 1.293381,
+        "p99": 1.293381
+      }
+    },
+    "ticks": 131,
+    "tier": 0
+  },
+  "category_peaks": [
+    2760,
+    256,
+    0,
+    768,
+    0,
+    0,
+    230400,
+    1024256
+  ],
+  "cpu_replay": {
+    "altered_native_histories_rejected": 12,
+    "backend": 1,
+    "canonical_paid_steps": 131,
+    "cpu_peak": 13200,
+    "no_gpu_replay_claim": true,
+    "observation_sha256": "4f21f3f8e1f36bf6f9fcb4a29c86f13c2b422ea9d6db5d71dfbc7ec8ab574274",
+    "tier": 0
+  },
+  "devices": 2,
+  "frees": 56,
+  "plans_per_device": 63,
+  "refusals": 1,
+  "releases": 56,
+  "reservations": 56,
+  "reserved_peak": 1258440
+}

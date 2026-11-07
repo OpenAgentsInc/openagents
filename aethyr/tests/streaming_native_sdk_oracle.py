@@ -11,7 +11,7 @@ from streaming_native_oracle import f32
 SCENE = 'ceefa05a481f8c8562646be74be333607075ae874fa3a076982ba23a81d00810'
 
 
-def inspect(scene_dir, output, program, report=None):
+def inspect(scene_dir, output, program, report=None, backing_statics=0):
     r = report if report is not None else json.loads((output / 'receipt.json').read_bytes())
     assert r['schema'] == 'aethyr.stream-walk-native-gpu.v6' and r['passed'] is True
     assert r['backend'] == 1 and r['tier'] in (0,1)
@@ -115,7 +115,7 @@ def inspect(scene_dir, output, program, report=None):
         assert fields[key] == wanted
     final,gpu = r['finalInfo'],r['finalGPU'];assert final[20:22] == [len(attempts)] * 2 and final[15] == cpu_peak and final[24] == 1
     assert all(final[i] == 0 for i in (4,5,6,7,8,10,11,12,13,14,22,23)) and gpu[:7] == [0,0,0,0,0,1 if stopped else 2,1 if stopped else 2]
-    assert gpu[9:12] == [0,0,1] and gpu[18:] == [23046 + q[24],0] and final[27] == 874009 and r['fixedGrantsRetainedThroughDestruction'] is True
+    assert gpu[9:12] == [0,0,1] and gpu[18:] == [23046 + q[24] + backing_statics,0] and final[27] == 874009 and r['fixedGrantsRetainedThroughDestruction'] is True
     assert r['finalHUD'][1:] == [gpu[7],98304,0,0] and r['observations'] == ([0] * 15 + [1] if stopped else [1] * 11 + [0] * 4 + [1])
     if stopped:
         t = p['stop'];assert len(t) == 24 and t[:3] == list(target) and t[3:5] == [r['warmup'][0]['tick']] * 2

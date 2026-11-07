@@ -2005,7 +2005,16 @@ the real requirement size/alignment/type mask and selected memory type before
 backing-budget lease survives any subsequent SDK failure until private cleanup
 has returned, or successful final use and physical destruction. The component
 [backing-gate record](docs/verification/aethyr-streaming-12990/walk-native-backing-gate.md)
-qualifies this boundary; corridor adoption remains separate. Streamed
+qualifies this boundary. The bounded native corridor now binds all explicit
+buffer/image backing to its authenticated manifest and measured device plan
+before resource loading. Its staging, destination, renderer, replacement and
+readback allocations require exact planned requirements and live inbox leases.
+Actual allocation/free observations stay separate from reservations; release
+waits for physical destruction or failed-factory unwind. The v7 observation
+envelope carries the original observation contract and a mandatory backing
+history, checked through Coax ownership replay and an independent oracle.
+See the [integrated backing record](docs/verification/aethyr-streaming-12990/walk-native-backing.md).
+Streamed
 buffer/image uploads now use owned `VksTransfer` submissions; finish, destroy,
 paid frames and replacement refuse while a transfer is owned. The
 [upload record](docs/verification/aethyr-streaming-12990/walk-native-transfers.md)

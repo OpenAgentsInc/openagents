@@ -53,8 +53,11 @@ Physical admission now has a checked [backing-budget primitive](../host/backing-
 and an additive Vulkan factory callback before `vkAllocateMemory`. It charges
 actual SDK requirement sizes through existing inbox leases and retains those
 leases through cleanup/destruction. The [component record](../../docs/verification/aethyr-streaming-12990/walk-native-backing-gate.md)
-qualifies the policy and SDK ordering; the corridor still needs adoption and
-complete renderer/readback/transport planning before those caps are qualified.
+qualifies the policy and SDK ordering. The corridor now adopts
+[device-bound allocation plans](../host/native-backing.md) for resources,
+staging, renderer targets and readback, with reservation/allocation histories
+checked separately and replayed on the CPU. Browser transport/container and
+transient planning, plus the final consumer/teaching audit, remain open.
 
 A realm that draws more than its buffers hold has two bad options. It can
 clip quietly, so a lamp or a creature vanishes and nobody knows, or it can

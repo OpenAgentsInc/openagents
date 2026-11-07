@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_backing_oracle.py", line 163, in <module>
+    if len(sys.argv) == 5: result['altered_receipts_refused_by_both'] = negative(*args,Path(sys.argv[4]))
+                                                                        ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/christopherdavid/oa-open-issues/aethyr/tests/streaming_backing_oracle.py", line 155, in negative
+    assert result.returncode > 0, (i,result.returncode,result.stdout,result.stderr)
+           ^^^^^^^^^^^^^^^^^^^^^
+AssertionError: (229, 0, b'PASS native replay 32 frames, 18 attempts, final zero owners\n', b'')

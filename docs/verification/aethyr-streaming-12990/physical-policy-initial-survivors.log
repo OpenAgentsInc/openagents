@@ -1,0 +1,128 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/native-backing.coax:16:59: mutant survived: the assignment was removed
+    m:=resource_manifest_fixture(64);m.valid=true;m.identity=assets.asset_id("native-backing-unit-v1");
+                                                            ^
+aethyr/host/native-backing.coax:17:9: mutant survived: 0 became 1
+    for i:0..<64 {m.entries[i].plan.spec.backend=ResourceBackend.vulkan;m.entries[i].plan.cost.upload_scratch=4;}
+          ^
+aethyr/host/native-backing.coax:22:50: mutant survived: 4318 became 4319
+    m:=nb_test_manifest();if !nb_begin(s,m,[5]int.[4318,9988,4198400,1,4096],pressure) {return false;}
+                                                   ^
+aethyr/host/native-backing.coax:22:55: mutant survived: 9988 became 9989
+    m:=nb_test_manifest();if !nb_begin(s,m,[5]int.[4318,9988,4198400,1,4096],pressure) {return false;}
+                                                        ^
+aethyr/host/native-backing.coax:22:60: mutant survived: 4198400 became 4198401
+    m:=nb_test_manifest();if !nb_begin(s,m,[5]int.[4318,9988,4198400,1,4096],pressure) {return false;}
+                                                             ^
+aethyr/host/native-backing.coax:22:68: mutant survived: 1 became 2
+    m:=nb_test_manifest();if !nb_begin(s,m,[5]int.[4318,9988,4198400,1,4096],pressure) {return false;}
+                                                                     ^
+aethyr/host/native-backing.coax:22:70: mutant survived: 4096 became 4097
+    m:=nb_test_manifest();if !nb_begin(s,m,[5]int.[4318,9988,4198400,1,4096],pressure) {return false;}
+                                                                       ^
+aethyr/host/native-backing.coax:22:94: mutant survived: false became true
+    m:=nb_test_manifest();if !nb_begin(s,m,[5]int.[4318,9988,4198400,1,4096],pressure) {return false;}
+                                                                                               ^
+aethyr/host/native-backing.coax:23:124: mutant survived: '<' became '<='
+    for i:0..<NB_PLANS {if s[0].specs[i].valid {logical:=s[0].specs[i].logical;if !nb_plan(s,i,BackingNeed.{bytes=ifx logical<256 then 256 else logical,alignment=64,types=3,memory_type=1}) {return false;}}}
+                                                                                                                             ^
+aethyr/host/native-backing.coax:23:125: mutant survived: 256 became 257
+    for i:0..<NB_PLANS {if s[0].specs[i].valid {logical:=s[0].specs[i].logical;if !nb_plan(s,i,BackingNeed.{bytes=ifx logical<256 then 256 else logical,alignment=64,types=3,memory_type=1}) {return false;}}}
+                                                                                                                              ^
+aethyr/host/native-backing.coax:23:134: mutant survived: 256 became 257
+    for i:0..<NB_PLANS {if s[0].specs[i].valid {logical:=s[0].specs[i].logical;if !nb_plan(s,i,BackingNeed.{bytes=ifx logical<256 then 256 else logical,alignment=64,types=3,memory_type=1}) {return false;}}}
+                                                                                                                                       ^
+aethyr/host/native-backing.coax:23:196: mutant survived: false became true
+    for i:0..<NB_PLANS {if s[0].specs[i].valid {logical:=s[0].specs[i].logical;if !nb_plan(s,i,BackingNeed.{bytes=ifx logical<256 then 256 else logical,alignment=64,types=3,memory_type=1}) {return false;}}}
+                                                                                                                                                                                                     ^
+aethyr/host/native-backing.coax:96:41: mutant survived: 3 became 4
+    if row<0 || row>=64 || part<0 || part>3 {return -1;}return row*2+(ifx part==0 || part==2 then 0 else 1);
+                                          ^
+aethyr/host/native-backing.coax:96:66: mutant survived: 2 became 3
+    if row<0 || row>=64 || part<0 || part>3 {return -1;}return row*2+(ifx part==0 || part==2 then 0 else 1);
+                                                                   ^
+aethyr/host/native-backing.coax:99:133: mutant survived: '<' became '<='
+    if row<0 || row>=64 || part<0 || part>3 || p.status!=ResourceCostStatus.ok || p.spec.backend!=ResourceBackend.vulkan || p.cost.gpu<1 || p.cost.upload_scratch!=p.cost.gpu {return NativeBackingSpec.{};}
+                                                                                                                                      ^
+aethyr/host/native-backing.coax:99:134: mutant survived: 1 became 2
+    if row<0 || row>=64 || part<0 || part>3 || p.status!=ResourceCostStatus.ok || p.spec.backend!=ResourceBackend.vulkan || p.cost.gpu<1 || p.cost.upload_scratch!=p.cost.gpu {return NativeBackingSpec.{};}
+                                                                                                                                       ^
+aethyr/host/native-backing.coax:112:37: mutant survived: '>' became '>='
+    for word:device {if word<0 || word>4294967295 {return false;}}
+                                      ^
+aethyr/host/native-backing.coax:115:47: mutant survived: false became true
+    if next.budget[0].queue[0].count!=0 {return false;}
+                                                ^
+aethyr/host/native-backing.coax:116:22: mutant survived: the assignment was removed
+    next.budget[0].caps=nb_caps();next.phase=1;next.pressure=pressure;next.manifest=m.identity;next.device=device;
+                       ^
+aethyr/host/native-backing.coax:116:82: mutant survived: the assignment was removed
+    next.budget[0].caps=nb_caps();next.phase=1;next.pressure=pressure;next.manifest=m.identity;next.device=device;
+                                                                                   ^
+aethyr/host/native-backing.coax:116:105: mutant survived: the assignment was removed
+    next.budget[0].caps=nb_caps();next.phase=1;next.pressure=pressure;next.manifest=m.identity;next.device=device;
+                                                                                                          ^
+aethyr/host/native-backing.coax:117:36: mutant survived: the assignment was removed
+    for i:0..<NB_PLANS {next.specs[i]=NativeBackingSpec.{};next.planned[i]=false;}
+                                     ^
+aethyr/host/native-backing.coax:120:18: mutant survived: '>' became '>='
+      if p.cost.gpu>0 {for part:0..<2 {spec:=nb_resource(p,row,part);if !spec.valid {return false;}next.specs[row*2+part]=spec;}}
+                   ^
+aethyr/host/native-backing.coax:120:19: mutant survived: 0 became 1
+      if p.cost.gpu>0 {for part:0..<2 {spec:=nb_resource(p,row,part);if !spec.valid {return false;}next.specs[row*2+part]=spec;}}
+                    ^
+aethyr/host/native-backing.coax:120:35: mutant survived: 2 became 3
+      if p.cost.gpu>0 {for part:0..<2 {spec:=nb_resource(p,row,part);if !spec.valid {return false;}next.specs[row*2+part]=spec;}}
+                                    ^
+aethyr/host/native-backing.coax:120:91: mutant survived: false became true
+      if p.cost.gpu>0 {for part:0..<2 {spec:=nb_resource(p,row,part);if !spec.valid {return false;}next.specs[row*2+part]=spec;}}
+                                                                                            ^
+aethyr/host/native-backing.coax:122:56: mutant survived: '||' became '&&'
+    if !next.specs[1].valid || next.specs[1].category!=1 || next.specs[1].kind!=1 {return false;}
+                                                         ^
+aethyr/host/native-backing.coax:122:27: mutant survived: '||' became '&&'
+    if !next.specs[1].valid || next.specs[1].category!=1 || next.specs[1].kind!=1 {return false;}
+                            ^
+aethyr/host/native-backing.coax:122:18: mutant survived: 1 became 2
+    if !next.specs[1].valid || next.specs[1].category!=1 || next.specs[1].kind!=1 {return false;}
+                   ^
+aethyr/host/native-backing.coax:122:89: mutant survived: false became true
+    if !next.specs[1].valid || next.specs[1].category!=1 || next.specs[1].kind!=1 {return false;}
+                                                                                          ^
+aethyr/host/native-backing.coax:126:50: mutant survived: '||' became '&&'
+    if s[0].phase!=1 || index<0 || index>=NB_PLANS || !s[0].specs[index].valid || s[0].planned[index] || !backing_need(need) || need.bytes<s[0].specs[index].logical {return false;}
+                                                   ^
+aethyr/host/native-backing.coax:126:31: mutant survived: '||' became '&&'
+    if s[0].phase!=1 || index<0 || index>=NB_PLANS || !s[0].specs[index].valid || s[0].planned[index] || !backing_need(need) || need.bytes<s[0].specs[index].logical {return false;}
+                                ^
+aethyr/host/native-backing.coax:126:20: mutant survived: '||' became '&&'
+    if s[0].phase!=1 || index<0 || index>=NB_PLANS || !s[0].specs[index].valid || s[0].planned[index] || !backing_need(need) || need.bytes<s[0].specs[index].logical {return false;}
+                     ^
+aethyr/host/native-backing.coax:126:39: mutant survived: '>=' became '>'
+    if s[0].phase!=1 || index<0 || index>=NB_PLANS || !s[0].specs[index].valid || s[0].planned[index] || !backing_need(need) || need.bytes<s[0].specs[index].logical {return false;}
+                                        ^
+aethyr/host/native-backing.coax:126:41: mutant survived: 135 became 136
+    if s[0].phase!=1 || index<0 || index>=NB_PLANS || !s[0].specs[index].valid || s[0].planned[index] || !backing_need(need) || need.bytes<s[0].specs[index].logical {return false;}
+                                          ^
+aethyr/host/native-backing.coax:130:41: mutant survived: 0 became 1
+    if s[0].phase!=1 {return false;}for i:0..<NB_PLANS {if s[0].specs[i].valid && !s[0].planned[i] {return false;}}
+                                          ^
+aethyr/host/native-backing.coax:131:55: mutant survived: 1 became 2
+    if s[0].pressure {s[0].budget[0].caps[1]=s[0].needs[1].bytes;}s[0].phase=2;return true;
+                                                        ^
+aethyr/host/native-backing.coax:143:19: mutant survived: '||' became '&&'
+    if lease.slot<0 || lease.slot>=64 {return false;}owner:=s[0].owners[lease.slot];return owner.live && owner.lease.serial==lease.serial && owner.lease.epoch==lease.epoch;
+                    ^
+aethyr/host/native-backing.coax:143:32: mutant survived: '>=' became '>'
+    if lease.slot<0 || lease.slot>=64 {return false;}owner:=s[0].owners[lease.slot];return owner.live && owner.lease.serial==lease.serial && owner.lease.epoch==lease.epoch;
+                                 ^
+aethyr/host/native-backing.coax:143:34: mutant survived: 64 became 65
+    if lease.slot<0 || lease.slot>=64 {return false;}owner:=s[0].owners[lease.slot];return owner.live && owner.lease.serial==lease.serial && owner.lease.epoch==lease.epoch;
+                                   ^
+aethyr/host/native-backing.coax:143:45: mutant survived: false became true
+    if lease.slot<0 || lease.slot>=64 {return false;}owner:=s[0].owners[lease.slot];return owner.live && owner.lease.serial==lease.serial && owner.lease.epoch==lease.epoch;
+                                              ^
+aethyr/host/native-backing.coax:146:32: mutant survived: false became true
+    if !nb_live(s,lease) {return false;}owner:=s[0].owners[lease.slot];need:=s[0].needs[owner.index];return !owner.allocated && bytes==need.bytes && memory_type==need.memory_type;
+                                 ^
+419 mutants, 377 killed, 42 survived

@@ -1,0 +1,54 @@
+// Pure observation replay: device requirements remain recorded facts. There
+// are no Vulkan calls; the authority replays only plans and byte ownership.
+#load "../native-backing.coax";
+swr_backing :: (d:Jv,raw:[]u8)->bool #effects(all) {
+  b:=jv_get(d,0,"backing");label:[64]u8;n:=jv_str(d,jv_get(d,b,"schema"),label[..]);
+  if n<0 || cast(string) label[0..<n]!="aethyr.stream-native-backing.v1" {return false;}
+  m:[1]ResourceManifest;if resource_manifest_read(raw,assets.asset_id(cast(string) raw),m[..])!=ResourceManifestStatus.ok {return false;}
+  ds:=jv_get(d,b,"devices");ps:=jv_get(d,b,"plans");es:=jv_get(d,b,"events");summary:=jv_get(d,b,"summary");
+  devices:=jv_len(d,ds);if devices<1 || devices>8 || jv_len(d,ps)!=devices || jv_len(d,es)<1 || jv_len(d,es)>4096 || jv_len(d,summary)!=13 {return false;}
+  s:[1]NativeBacking;opened:=false;device:=0;tick:=0;pressure:= -1;refused:[20]int;first_device:[5]int;
+  for i:0..<jv_len(d,es) {
+    at:=jv_at(d,es,i);if jv_len(d,at)!=20 {return false;}e:[20]int;for f:0..<20 {e[f]=swr_word(d,jv_at(d,at,f));}
+    if e[1]<tick || e[1]>swr_word(d,jv_at(d,jv_get(d,0,"finalInfo"),0)) {return false;}tick=e[1];
+    if e[0]==5 {
+      if opened || device>=devices {return false;}at=jv_at(d,ds,device);if jv_len(d,at)!=18 {return false;}
+      v:[18]int;for f:0..<18 {v[f]=swr_word(d,jv_at(d,at,f));}
+      if v[6]!=0 && v[6]!=1 {return false;}
+      if pressure>=0 && pressure!=v[6] {return false;}pressure=v[6];
+      words:[5]int;for f:0..<5 {words[f]=v[f+1];}
+      for f:0..<4 {if words[f]!=swr_word(d,jv_at(d,jv_get(d,0,"finalGPU"),f+12)) {return false;}}
+      if device==0 {first_device=words;}else {for f:0..<5 {if words[f]!=first_device[f] {return false;}}}
+      if !nb_begin(s[..],m[0],words,v[6]==1) {return false;}
+      plans:=jv_at(d,ps,device);count:=jv_len(d,plans);if count!=v[17] {return false;}last:= -1;
+      for p:0..<count {
+        row:=jv_at(d,plans,p);if jv_len(d,row)!=13 {return false;}pv:[13]int;for f:0..<13 {pv[f]=swr_word(d,jv_at(d,row,f));}
+        index:=pv[0];if index<=last || index<0 || index>=NB_PLANS {return false;}last=index;spec:=s[0].specs[index];
+        expected:=[9]int.[index,spec.row,spec.part,spec.category,spec.kind,spec.logical,spec.width,spec.height,spec.levels];
+        for f:0..<9 {if pv[f]!=expected[f] {return false;}}
+        if !nb_plan(s[..],index,BackingNeed.{bytes=pv[9],alignment=pv[10],types=pv[11],memory_type=pv[12]}) {return false;}
+      }
+      if !nb_ready(s[..]) || v[0]!=s[0].budget[0].queue[0].epoch || v[7]!=s[0].budget[0].total_cap || v[8]!=s[0].budget[0].queue[0].capacity {return false;}
+      for f:0..<8 {if v[f+9]!=s[0].budget[0].caps[f] {return false;}}
+      opened=true;device+=1;
+    }else if e[0]==6 {if !opened || !nb_close(s[..]) {return false;}opened=false;}
+    else {if !opened || !nb_observe(s[..],e) {return false;}if e[0]==4 {refused=e;}}
+    if e[0]==5 || e[0]==6 {
+      expected:=[20]int.[e[0],tick,-1,-1,0,0,-1,-1,0,0,0,0,0,-1,0,device,0,0,0,0];
+      for f:0..<20 {if e[f]!=expected[f] {return false;}}
+    }
+  }
+  expected:=[13]int.[0,0,0,0,s[0].budget[0].peak,s[0].actual_peak,s[0].budget[0].refused,0,s[0].budget[0].queue[0].epoch,25272,803432,jv_len(d,es),devices];
+  for f:0..<13 {if swr_word(d,jv_at(d,summary,f))!=expected[f] {return false;}}
+  probe:=jv_get(d,0,"backingPressure");if (pressure==1)!=(probe>=0) {return false;}
+  if pressure==1 {
+    n=jv_str(d,jv_get(d,probe,"schema"),label[..]);if n<0 || cast(string) label[0..<n]!="aethyr.stream-native-backing-pressure.v1" {return false;}
+    if s[0].budget[0].refused!=1 || refused[2]!=1 || refused[6]!=3 || refused[7]!=1 || refused[16]!=2 {return false;}
+    values:=[7]int.[refused[1],refused[1],refused[17],refused[17],refused[18],refused[18],-1000069000];words:=jv_get(d,probe,"words");
+    if jv_len(d,words)!=7 {return false;}for f:0..<7 {if swr_word(d,jv_at(d,words,f))!=values[f] {return false;}}
+    recovery:=jv_get(d,0,"recovery");for key,i:[4]string.["sourceBefore","sourceAfter","stateBefore","stateAfter"] {
+      left:[64]u8;right:[64]u8;if jv_str(d,jv_get(d,probe,key),left[..])!=64 || jv_str(d,jv_get(d,recovery,ifx i<2 then "sourceSHA256" else "stateSHA256"),right[..])!=64 || cast(string) left[..]!=cast(string) right[..] {return false;}
+    }
+  }
+  return !opened && device==devices;
+}

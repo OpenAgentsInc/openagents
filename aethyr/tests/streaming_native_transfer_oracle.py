@@ -9,9 +9,9 @@ import sys
 import streaming_native_oracle as native
 
 
-def inspect(scene_dir, output, program, probe=None):
-    stats = native.inspect(scene_dir, output, program)
-    raw = (output / 'receipt.json').read_bytes(); report = json.loads(raw)
+def inspect(scene_dir, output, program, probe=None, report=None, stats=None):
+    stats = native.inspect(scene_dir, output, program, report) if stats is None else stats
+    raw = (output / 'receipt.json').read_bytes(); report = json.loads(raw) if report is None else report
     p = probe if probe is not None else json.loads((output / 'upload-probe.json').read_bytes())
     assert p['schema'] == 'aethyr.stream-native-upload-pending.v1'
     assert p['qualification'] == 'held fence observation after real Vulkan submission; no physical GPU delay'

@@ -59,7 +59,7 @@ VOID(vkDestroyCommandPool,(VkDevice,VkCommandPool,const VkAllocationCallbacks*))
 VOID(vkDestroyFence,(VkDevice,VkFence,const VkAllocationCallbacks*));
 VkResult __wrap_vkCreateBuffer(VkDevice d,const VkBufferCreateInfo *c,const VkAllocationCallbacks *a,VkBuffer *out){if(inject()){*out=POISON(VkBuffer);return VK_ERROR_OUT_OF_HOST_MEMORY;}VkResult r=observed(__real_vkCreateBuffer(d,c,a,out));if(!r)made(0,(uintptr_t)*out);return r;}
 VkResult __wrap_vkCreateImage(VkDevice d,const VkImageCreateInfo *c,const VkAllocationCallbacks *a,VkImage *out){if(inject()){*out=POISON(VkImage);return VK_ERROR_OUT_OF_HOST_MEMORY;}VkResult r=observed(__real_vkCreateImage(d,c,a,out));if(!r)made(1,(uintptr_t)*out);return r;}
-VkResult __wrap_vkAllocateMemory(VkDevice d,const VkMemoryAllocateInfo *c,const VkAllocationCallbacks *a,VkDeviceMemory *out){if(inject()){*out=POISON(VkDeviceMemory);return VK_ERROR_OUT_OF_HOST_MEMORY;}VkResult r=observed(__real_vkAllocateMemory(d,c,a,out));if(!r)made(2,(uintptr_t)*out);return r;}
+VkResult __wrap_vkAllocateMemory(VkDevice d,const VkMemoryAllocateInfo *c,const VkAllocationCallbacks *a,VkDeviceMemory *out){if(inject()){*out=POISON(VkDeviceMemory);return VK_ERROR_OUT_OF_HOST_MEMORY;}if(!sw_vk_backing_memory_allowed(c->allocationSize,c->memoryTypeIndex)){*out=POISON(VkDeviceMemory);return VK_ERROR_OUT_OF_POOL_MEMORY;}VkResult r=observed(__real_vkAllocateMemory(d,c,a,out));if(!r){made(2,(uintptr_t)*out);sw_vk_backing_memory_created((uintptr_t)*out,c->allocationSize,c->memoryTypeIndex);}return r;}
 VkResult __wrap_vkBindBufferMemory(VkDevice d,VkBuffer b,VkDeviceMemory m,VkDeviceSize o){return inject()?VK_ERROR_OUT_OF_HOST_MEMORY:observed(__real_vkBindBufferMemory(d,b,m,o));}
 VkResult __wrap_vkBindImageMemory(VkDevice d,VkImage b,VkDeviceMemory m,VkDeviceSize o){return inject()?VK_ERROR_OUT_OF_HOST_MEMORY:observed(__real_vkBindImageMemory(d,b,m,o));}
 VkResult __wrap_vkMapMemory(VkDevice d,VkDeviceMemory m,VkDeviceSize o,VkDeviceSize n,VkMemoryMapFlags f,void **out){if(inject()){*out=POISON(void*);return VK_ERROR_OUT_OF_HOST_MEMORY;}VkResult r=observed(__real_vkMapMemory(d,m,o,n,f,out));if(!r)made(4,(uintptr_t)m);return r;}
@@ -83,7 +83,7 @@ VkResult __wrap_vkGetFenceStatus(VkDevice d,VkFence f){
 void __wrap_vkDestroyBuffer(VkDevice d,VkBuffer b,const VkAllocationCallbacks *a){if(drop(0,(uintptr_t)b))__real_vkDestroyBuffer(d,b,a);}
 void __wrap_vkDestroyImage(VkDevice d,VkImage b,const VkAllocationCallbacks *a){if(drop(1,(uintptr_t)b))__real_vkDestroyImage(d,b,a);}
 void __wrap_vkDestroyImageView(VkDevice d,VkImageView b,const VkAllocationCallbacks *a){if(drop(3,(uintptr_t)b))__real_vkDestroyImageView(d,b,a);}
-void __wrap_vkFreeMemory(VkDevice d,VkDeviceMemory m,const VkAllocationCallbacks *a){if(drop(2,(uintptr_t)m))__real_vkFreeMemory(d,m,a);}
+void __wrap_vkFreeMemory(VkDevice d,VkDeviceMemory m,const VkAllocationCallbacks *a){if(drop(2,(uintptr_t)m)){__real_vkFreeMemory(d,m,a);sw_vk_backing_memory_freed((uintptr_t)m);}}
 void __wrap_vkUnmapMemory(VkDevice d,VkDeviceMemory m){if(drop(4,(uintptr_t)m))__real_vkUnmapMemory(d,m);}
 void __wrap_vkDestroyFence(VkDevice d,VkFence f,const VkAllocationCallbacks *a){if(drop(6,(uintptr_t)f))__real_vkDestroyFence(d,f,a);}
 void __wrap_vkDestroyCommandPool(VkDevice d,VkCommandPool p,const VkAllocationCallbacks *a){if(drop(5,(uintptr_t)p)){if(fault.scoped){fault.q[19]=0;fault.handles[7]=0;}__real_vkDestroyCommandPool(d,p,a);}}

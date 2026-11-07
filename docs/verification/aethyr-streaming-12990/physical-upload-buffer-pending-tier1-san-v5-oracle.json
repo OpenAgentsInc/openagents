@@ -1,0 +1,125 @@
+{
+  "allocated_peak": 1259464,
+  "allocations": 54,
+  "backing_events": 220,
+  "base": {
+    "attempts": 18,
+    "category_cpu_peaks": {
+      "0": 3768,
+      "1": 268,
+      "2": 648,
+      "3": 804,
+      "4": 6568,
+      "5": 888,
+      "6": 1728
+    },
+    "category_settled_cpu_logical_gpu_peaks": {
+      "0": 6528,
+      "1": 288,
+      "2": 648,
+      "3": 864,
+      "4": 6568,
+      "5": 888,
+      "6": 0
+    },
+    "core_static_bytes": 874009,
+    "cpu_peak": 13232,
+    "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+    "final_zero_owners": true,
+    "frame_ms": {
+      "p50": 13.627893,
+      "p95": 28.935194,
+      "p99": 30.436728
+    },
+    "frames": 35,
+    "held_poll_observations": 48,
+    "owner_cpu_peaks": {
+      "0": 316,
+      "1": 216,
+      "10": 216,
+      "11": 296,
+      "12": 3284,
+      "13": 744,
+      "14": 316,
+      "15": 216,
+      "16": 296,
+      "18": 744,
+      "2": 456,
+      "3": 3624,
+      "4": 316,
+      "5": 216,
+      "6": 296,
+      "7": 3284,
+      "8": 744,
+      "9": 316
+    },
+    "pending_cpu_bytes": 996,
+    "pending_gpu_payload_bytes": 44,
+    "physical_events": 124,
+    "physical_gpu_delay_qualified": false,
+    "probe_schema": "aethyr.stream-native-upload-pending.v1",
+    "recovery_image_sha256": "ba60476a8a7c43a580d4b89b5c86e96c14b6f58ec6eeb0384d0c36c645cb05e8",
+    "recovery_ms": 89.63595,
+    "refused_early_calls": 8,
+    "sdk_memory_peak": 1259464,
+    "sdk_static_bytes": 854086,
+    "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+    "source_sha256_at_probe": "1d7047934656540dac843cbba8f731face542cb1536aab747bcd2e11a448b62a",
+    "stage_ms": {
+      "allocation": {
+        "p50": 0.028851,
+        "p95": 0.081817,
+        "p99": 0.081817
+      },
+      "decode": {
+        "p50": 0.029207,
+        "p95": 0.187593,
+        "p99": 0.187593
+      },
+      "source": {
+        "p50": 0.259747,
+        "p95": 0.357976,
+        "p99": 0.357976
+      },
+      "total": {
+        "p50": 1.558853,
+        "p95": 2.088686,
+        "p99": 2.088686
+      },
+      "upload": {
+        "p50": 1.217399,
+        "p95": 1.59908,
+        "p99": 1.59908
+      }
+    },
+    "ticks": 131,
+    "tier": 1,
+    "transfer_kind": 1
+  },
+  "category_peaks": [
+    2760,
+    512,
+    0,
+    1536,
+    0,
+    0,
+    230400,
+    1024256
+  ],
+  "cpu_replay": {
+    "altered_native_histories_rejected": 12,
+    "backend": 1,
+    "canonical_paid_steps": 131,
+    "cpu_peak": 13280,
+    "no_gpu_replay_claim": true,
+    "observation_sha256": "d676194cc666309422dd84d4495ed95e45ac238fd61764f51bfe14d46fbbf5d9",
+    "tier": 1
+  },
+  "devices": 2,
+  "frees": 54,
+  "plans_per_device": 63,
+  "refusals": 0,
+  "releases": 54,
+  "reservations": 54,
+  "reserved_peak": 1259464
+}

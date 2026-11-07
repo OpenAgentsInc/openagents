@@ -1,0 +1,128 @@
+{
+  "allocated_peak": 1259464,
+  "allocations": 56,
+  "backing_events": 228,
+  "base": {
+    "attempts": 18,
+    "category_cpu_peaks": {
+      "0": 3768,
+      "1": 268,
+      "2": 648,
+      "3": 804,
+      "4": 6568,
+      "5": 888,
+      "6": 1728
+    },
+    "category_pressure": {
+      "aggregate_cap": 32768,
+      "aggregate_used": 15784,
+      "continued_paid_steps": 8,
+      "manifest_sha256": "3a97fd81a997b1ef4459e85985db634ab749b9986cffeddff1f1b2027ffbc809",
+      "requested_retained": 939,
+      "requested_scratch": 638,
+      "texture_cap": 512,
+      "texture_used": 288,
+      "unchanged_image_channels": 230400
+    },
+    "category_settled_cpu_logical_gpu_peaks": {
+      "0": 6528,
+      "1": 288,
+      "2": 648,
+      "3": 864,
+      "4": 6568,
+      "5": 888,
+      "6": 0
+    },
+    "core_static_bytes": 874009,
+    "cpu_peak": 13232,
+    "device": "llvmpipe (LLVM 21.1.8, 256 bits)",
+    "final_zero_owners": true,
+    "frame_ms": {
+      "p50": 12.657621,
+      "p95": 22.799258,
+      "p99": 28.836063
+    },
+    "frames": 43,
+    "owner_cpu_peaks": {
+      "0": 316,
+      "1": 216,
+      "10": 216,
+      "11": 296,
+      "12": 3284,
+      "13": 744,
+      "14": 316,
+      "15": 216,
+      "16": 296,
+      "18": 744,
+      "2": 456,
+      "3": 3624,
+      "4": 316,
+      "5": 216,
+      "6": 296,
+      "7": 3284,
+      "8": 744,
+      "9": 316
+    },
+    "physical_events": 124,
+    "recovery_image_sha256": "ba60476a8a7c43a580d4b89b5c86e96c14b6f58ec6eeb0384d0c36c645cb05e8",
+    "recovery_ms": 84.919785,
+    "sdk_memory_peak": 1259464,
+    "sdk_static_bytes": 854086,
+    "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+    "stage_ms": {
+      "allocation": {
+        "p50": 0.027919,
+        "p95": 0.075598,
+        "p99": 0.075598
+      },
+      "decode": {
+        "p50": 0.027723,
+        "p95": 0.188713,
+        "p99": 0.188713
+      },
+      "source": {
+        "p50": 0.25555,
+        "p95": 0.436436,
+        "p99": 0.436436
+      },
+      "total": {
+        "p50": 1.521085,
+        "p95": 1.773887,
+        "p99": 1.773887
+      },
+      "upload": {
+        "p50": 1.141365,
+        "p95": 1.267025,
+        "p99": 1.267025
+      }
+    },
+    "ticks": 139,
+    "tier": 1
+  },
+  "category_peaks": [
+    2760,
+    512,
+    0,
+    1536,
+    0,
+    0,
+    230400,
+    1024256
+  ],
+  "cpu_replay": {
+    "altered_native_histories_rejected": 12,
+    "backend": 1,
+    "canonical_paid_steps": 139,
+    "cpu_peak": 13280,
+    "no_gpu_replay_claim": true,
+    "observation_sha256": "61586db8b7b4d7a7c6b2f325320fad20246e7b0b96d7757c253b77dcdb6cea9c",
+    "tier": 1
+  },
+  "devices": 2,
+  "frees": 56,
+  "plans_per_device": 63,
+  "refusals": 0,
+  "releases": 56,
+  "reservations": 56,
+  "reserved_peak": 1259464
+}

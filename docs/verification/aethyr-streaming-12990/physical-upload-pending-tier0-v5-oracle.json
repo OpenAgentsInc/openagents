@@ -1,0 +1,125 @@
+{
+  "allocated_peak": 1648592,
+  "allocations": 54,
+  "backing_events": 220,
+  "base": {
+    "attempts": 18,
+    "category_cpu_peaks": {
+      "0": 3768,
+      "1": 252,
+      "2": 648,
+      "3": 756,
+      "4": 6568,
+      "5": 888,
+      "6": 1728
+    },
+    "category_settled_cpu_logical_gpu_peaks": {
+      "0": 6528,
+      "1": 256,
+      "2": 648,
+      "3": 768,
+      "4": 6568,
+      "5": 888,
+      "6": 0
+    },
+    "core_static_bytes": 874009,
+    "cpu_peak": 13168,
+    "device": "NVIDIA GeForce RTX 4080",
+    "final_zero_owners": true,
+    "frame_ms": {
+      "p50": 2.925322,
+      "p95": 8.272801,
+      "p99": 9.011178
+    },
+    "frames": 35,
+    "held_poll_observations": 48,
+    "owner_cpu_peaks": {
+      "0": 284,
+      "1": 216,
+      "10": 216,
+      "11": 296,
+      "12": 3284,
+      "13": 744,
+      "14": 284,
+      "15": 216,
+      "16": 296,
+      "18": 744,
+      "2": 456,
+      "3": 3624,
+      "4": 284,
+      "5": 216,
+      "6": 296,
+      "7": 3284,
+      "8": 744,
+      "9": 284
+    },
+    "pending_cpu_bytes": 796,
+    "pending_gpu_payload_bytes": 4,
+    "physical_events": 124,
+    "physical_gpu_delay_qualified": false,
+    "probe_schema": "aethyr.stream-native-upload-pending.v1",
+    "recovery_image_sha256": "80e658f14f95f2092605fc1262224825f1f2012f3f923dd6d9802794811c8082",
+    "recovery_ms": 378.243974,
+    "refused_early_calls": 8,
+    "sdk_memory_peak": 1648592,
+    "sdk_static_bytes": 854086,
+    "source_sha256": "067f27e4c0e88f99720ea0c77e1d678d794da2d69d2a89d0252f9031d2aa0937",
+    "source_sha256_at_probe": "49b6f83615e36e2f79fcda999a9bcf1746548a0e68539e2e6f812d5676d82b9c",
+    "stage_ms": {
+      "allocation": {
+        "p50": 0.068804,
+        "p95": 0.273192,
+        "p99": 0.273192
+      },
+      "decode": {
+        "p50": 0.001915,
+        "p95": 0.011046,
+        "p99": 0.011046
+      },
+      "source": {
+        "p50": 0.021156,
+        "p95": 0.030497,
+        "p99": 0.030497
+      },
+      "total": {
+        "p50": 1.926865,
+        "p95": 2.448183,
+        "p99": 2.448183
+      },
+      "upload": {
+        "p50": 1.511473,
+        "p95": 1.664147,
+        "p99": 1.664147
+      }
+    },
+    "ticks": 131,
+    "tier": 0,
+    "transfer_kind": 2
+  },
+  "category_peaks": [
+    2768,
+    512,
+    0,
+    1536,
+    0,
+    0,
+    230400,
+    1413376
+  ],
+  "cpu_replay": {
+    "altered_native_histories_rejected": 12,
+    "backend": 1,
+    "canonical_paid_steps": 131,
+    "cpu_peak": 13200,
+    "no_gpu_replay_claim": true,
+    "observation_sha256": "4f21f3f8e1f36bf6f9fcb4a29c86f13c2b422ea9d6db5d71dfbc7ec8ab574274",
+    "tier": 0
+  },
+  "devices": 2,
+  "frees": 54,
+  "plans_per_device": 63,
+  "refusals": 0,
+  "releases": 54,
+  "reservations": 54,
+  "reserved_peak": 1648592
+}

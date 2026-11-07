@@ -1,0 +1,72 @@
+{
+  "allocated_peak": 1651952,
+  "allocations": 192,
+  "backing_events": 776,
+  "base": {
+    "allocation_events": 776,
+    "attempts": 114,
+    "category_cpu_logical_gpu_peaks": {
+      "0": 7272,
+      "1": 288,
+      "2": 1080,
+      "3": 1155,
+      "4": 6568,
+      "5": 1184,
+      "6": 0
+    },
+    "category_cpu_peaks": {
+      "0": 4224,
+      "1": 268,
+      "2": 1080,
+      "3": 1075,
+      "4": 6568,
+      "5": 1184,
+      "6": 1728
+    },
+    "core_static_bytes": 874009,
+    "cpu_peak": 14232,
+    "device": "NVIDIA GeForce RTX 4080",
+    "equal_image_channels": 691200,
+    "events": 3,
+    "explicit_vulkan_peak": 1651952,
+    "final_zero_owners": true,
+    "frame_ms": {
+      "p50": 2.190891,
+      "p95": 2.747991,
+      "p99": 4.598829
+    },
+    "mode": "--auto-route",
+    "physical_device_fault_qualified": false,
+    "quiesce_ms": 0.000625,
+    "recoveries": 3,
+    "sdk_static_bytes": 854086,
+    "ticks": 12931,
+    "tier": 1
+  },
+  "category_peaks": [
+    3056,
+    1024,
+    0,
+    4096,
+    0,
+    0,
+    230400,
+    1413376
+  ],
+  "cpu_replay": {
+    "altered_native_histories_rejected": 12,
+    "backend": 1,
+    "canonical_paid_steps": 12931,
+    "cpu_peak": 14427,
+    "no_gpu_replay_claim": true,
+    "observation_sha256": "a946d2e38cfbc6e48abe9a806167cfce6101c538817f2dfb7c9425fc4aa651b0",
+    "tier": 1
+  },
+  "devices": 4,
+  "frees": 192,
+  "plans_per_device": 63,
+  "refusals": 0,
+  "releases": 192,
+  "reservations": 192,
+  "reserved_peak": 1651952
+}

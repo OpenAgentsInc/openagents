@@ -9,6 +9,7 @@
 #load "stream-pressure.coax";
 #load "../native-load-policy.coax";
 #load "../native-sdk-fault.coax";
+#load "stream-backing-replay.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/json/json.coax";
@@ -239,16 +240,19 @@ tool_main :: () -> int #export_c #effects(all) {
     if size < 0 || jv_kind(d[0], captured) != JV_ARRAY || !recorded_source_profile(cast(string) name[0..<size], jv_len(d[0], captured)) { return 1; }
   }
   native := jv_get(d[0], 0, "backend") >= 0;
-  pressure := false; failure := false;sdk_fault := false;
+  pressure := false; failure := false;sdk_fault := false;backing:=false;
   if native {
     schema: [64] u8; size := jv_str(d[0], jv_get(d[0], 0, "schema"), schema[..]);
-    if size < 0 || !srp_native(cast(string) schema[0..<size], jv_int(d[0], jv_get(d[0], 0, "backend"), -1)) { return 1; }
-    pressure = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v4";
-    if !srp_pressure(cast(string) schema[0..<size], jv_get(d[0], 0, "categoryPressure") >= 0) { return 1; }
-    failure = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v5";
-    if !srp_failure(cast(string) schema[0..<size],jv_get(d[0],0,"loadFailure") >= 0) { return 1; }
-    sdk_fault = cast(string) schema[0..<size] == "aethyr.stream-walk-native-gpu.v6";
-    if !srp_sdk(cast(string) schema[0..<size],jv_get(d[0],0,"sdkFault") >= 0) { return 1; }
+    if size<0 {return 1;}backing=cast(string) schema[0..<size]=="aethyr.stream-walk-native-gpu.v7";
+    observation:[64]u8;on:=jv_str(d[0],jv_get(d[0],0,"observationSchema"),observation[..]);if on<0 {on=0;}
+    resolved:=srp_observation(cast(string) schema[0..<size],cast(string) observation[0..<on],jv_get(d[0],0,"backing")>=0);
+    if !srp_native(resolved,jv_int(d[0],jv_get(d[0],0,"backend"),-1)) {return 1;}
+    pressure = resolved == "aethyr.stream-walk-native-gpu.v4";
+    if !srp_pressure(resolved, jv_get(d[0], 0, "categoryPressure") >= 0) { return 1; }
+    failure = resolved == "aethyr.stream-walk-native-gpu.v5";
+    if !srp_failure(resolved,jv_get(d[0],0,"loadFailure") >= 0) { return 1; }
+    sdk_fault = resolved == "aethyr.stream-walk-native-gpu.v6";
+    if !srp_sdk(resolved,jv_get(d[0],0,"sdkFault") >= 0) { return 1; }
   }
   profile := ifx native then 0 else jv_get(d[0], 0, "profile"); tier := ifx profile < 0 then 0 else jv_int(d[0], jv_get(d[0], profile, "tier"), -1);
   schema: [64] u8; schema_n := jv_str(d[0], jv_get(d[0], profile, "stateSchema"), schema[..]);
@@ -262,6 +266,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   n = fs_read(fs_join(args_at(a[..], 0), swr_name(cast(string) root[..], ".rcm", name[..]), path[..]), manifest_bytes[..]);
   if n < 1 || !sw_sdk_start(manifest_bytes[0..<n], root[..], tier, ifx native then 1 else 0) { return 1; }
+  if backing && !swr_backing(d[0],manifest_bytes[0..<n]) {tool_errln("backing observation replay differs");return 1;}
   failure_words: [10] int;
   if failure {
     entry := jv_get(d[0],0,"loadFailure"); words := jv_get(d[0],entry,"effect"); label: [128] u8;

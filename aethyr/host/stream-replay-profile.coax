@@ -1,6 +1,23 @@
 // Native GPU observations select their original native manifest. Browser
 // histories retain the existing browser profile and receipt identities.
 #authority;
+#test "backing receipt envelopes retain an explicit original observation contract" {
+  for schema:[6]string.["aethyr.stream-walk-native-gpu.v1","aethyr.stream-walk-native-gpu.v2","aethyr.stream-walk-native-gpu.v3","aethyr.stream-walk-native-gpu.v4","aethyr.stream-walk-native-gpu.v5","aethyr.stream-walk-native-gpu.v6"] {
+    #assert srp_observation(schema,"",false)==schema && srp_observation(schema,"",true)=="" && srp_observation(schema,schema,false)=="";
+  }
+  for observation:[5]string.["aethyr.stream-walk-native-gpu.v2","aethyr.stream-walk-native-gpu.v3","aethyr.stream-walk-native-gpu.v4","aethyr.stream-walk-native-gpu.v5","aethyr.stream-walk-native-gpu.v6"] {
+    #assert srp_observation("aethyr.stream-walk-native-gpu.v7",observation,true)==observation;
+    #assert srp_observation("aethyr.stream-walk-native-gpu.v7",observation,false)=="";
+  }
+  for observation:[3]string.["","aethyr.stream-walk-native-gpu.v1","aethyr.stream-walk-native-gpu.v8"] {#assert srp_observation("aethyr.stream-walk-native-gpu.v7",observation,true)=="";}
+  #assert srp_observation("unknown","",false)=="";
+}
+srp_observation :: (schema:string,observation:string,backing:bool)->string #effects(all) {
+  if schema=="aethyr.stream-walk-native-gpu.v7" {
+    if !backing || observation=="aethyr.stream-walk-native-gpu.v1" || !srp_native(observation,1) {return "";}return observation;
+  }
+  return ifx observation=="" && !backing && srp_native(schema,1) then schema else "";
+}
 #test "native replay accepts only named native observation schemas and backend" {
   for schema: [6] string.["aethyr.stream-walk-native-gpu.v1", "aethyr.stream-walk-native-gpu.v2", "aethyr.stream-walk-native-gpu.v3", "aethyr.stream-walk-native-gpu.v4", "aethyr.stream-walk-native-gpu.v5", "aethyr.stream-walk-native-gpu.v6"] {
     #assert srp_native(schema, 1);

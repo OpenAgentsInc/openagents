@@ -19,8 +19,10 @@ retained until terminal observation; stopped attempts publish no ready data.
 These inputs do not qualify physical OOM or a driver reset.
 The [backing-budget component](../host/backing-budget.md) and admitted Vulkan
 factories now reserve measured allocation sizes before `vkAllocateMemory`.
-Component/SDK checks pass; the actual corridor has not adopted these new
-entry points, so physical-planning qualification remains open.
+The actual corridor now adopts these entry points for streamed, staging,
+fixed-renderer, replacement and readback allocations, with device-bound
+[plans and allocation histories](../host/native-backing.md). Browser transport,
+container and transient planning remains separate required work.
 The [actual callback qualifier](../../docs/verification/aethyr-streaming-12990/walk-callback-retirement.md)
 holds image/buffer responses across unwanted-state cancellation, observes
 physical join/retirement before a newer generation, then redelivers the old
@@ -38,7 +40,8 @@ The #12990 components currently provide:
 | Source | Boundary |
 | --- | --- |
 | `resource-cost.coax` | SHA-256 identities and source-derived encoded, decoded, GPU, metadata and scratch costs; actual canonical mip/WAV/collision/body decoders |
-| `../host/backing-budget.coax` | Measured backend requirements, named/aggregate byte caps, original inbox leases, exact release and empty-ledger epoch reset; component qualification, consumer adoption remains |
+| `../host/backing-budget.coax` | Measured backend requirements, named/aggregate byte caps, original inbox leases, exact release and empty-ledger epoch reset |
+| `../host/native-backing.coax` | Native manifest/device-bound allocation plans, exact requirements and resource generations, reservations retained through observed physical free, and pure ownership replay |
 | `resource-manifest.coax` | Versioned RCM1 companion bytes, a pinned cost-model revision, complete expected identity, canonical dependency digests and bounded earlier-owner references |
 | `resource-admission.coax` | Seven named budget lines around the existing inbox leases and renderer ledger; atomic multi-ticket admission, explicit completion settlement, final retirement and first-peak owner records |
 | `resource-stream.coax` | Concrete dependency owners, typed claim/borrow references, completion generations, wanted closure and atomic fixed-tick readiness publication |
