@@ -9,8 +9,10 @@ from collections import Counter, defaultdict
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import tempfile
 
@@ -315,11 +317,109 @@ def compare_presentation(old, new):
     return {'canonical_paid_steps_unchanged_by_hud': ticks, 'exact_events_allocations_actor_identity': True}
 
 
+def inspect_cpu_replay(scene_dir, output, replay_path):
+    """Independently bind the CPU observation stream to an actual native history.
+
+    The CPU executable must also reject changed input; a plausible summary
+    digest alone cannot establish that it evaluated the per-step states.
+    """
+    source_bytes = (output / 'receipt.json').read_bytes()
+    source = json.loads(source_bytes)
+    report = json.loads(replay_path.read_bytes())
+    assert source['schema'] in ('aethyr.stream-walk-native-gpu.v1', 'aethyr.stream-walk-native-gpu.v2')
+    assert report['schema'] == 'aethyr.stream-walk-native-replay.v3'
+    assert report['backend'] == source['backend'] == 1 and report['tier'] == source['tier']
+    assert report['input_sha256'] == hashlib.sha256(source_bytes).hexdigest()
+    assert report['state_schema'] == 'aethyr.stream-walk-state.v1'
+    assert report['source_schema'] == '' and report['captured_sources'] == 0
+    frames = source['warmup'] + source['route'] + source['cleanup']
+    observed = bytearray()
+    previous = 0
+    for frame in frames:
+        digests = frame['stepDigests']
+        assert frame['tick'] - previous == len(digests) and 1 <= len(digests) <= 8
+        previous = frame['tick']
+        for digest in digests:
+            assert len(digest) == 64
+            bytes.fromhex(digest)
+            observed.extend(digest.encode('ascii'))
+        for record in frame['records']:
+            assert len(record) == 23
+            observed.extend(struct.pack('<23q', *map(int, record)))
+        observed.extend(struct.pack('<3q', *frame['positionBits']))
+    assert report['observation_sha256'] == hashlib.sha256(observed).hexdigest()
+    assert report['ticks'] == previous and report['frames'] == len(source['warmup']) + len(source['route'])
+    assert report['attempts'] == source['finalInfo'][20] == source['finalInfo'][21]
+    # CPU replay keeps effects until their recorded accepted boundary.
+    # The original synchronous Vulkan face may finish/free between ticks.
+    # Reconstruct replay's actual retention ordering instead of asserting
+    # that these different physical effect schedules have equal peaks.
+    live, current, peak = {}, 0, 0
+    for frame in frames:
+        for record in frame['records']:
+            kind, row, generation, epoch = map(int, record[1:5])
+            if kind not in (0, 1):
+                continue
+            for key in list(live):
+                if key[:3] == (row, generation, epoch) and (kind == 1 or key[3] in (3, 4)):
+                    current -= live.pop(key)
+        for freed, row, generation, epoch, field, extent in frame['allocations']:
+            if freed:
+                continue
+            key = row, generation, epoch, field
+            assert key not in live and extent > 0
+            live[key] = extent
+            current += extent
+            peak = max(peak, current)
+    assert not live and current == 0
+    assert report['cpu_peak'] == peak <= 32768
+    faults = ('first_step', 'interior_step', 'missing_step', 'tick', 'position', 'completion_generation',
+              'completion_digest', 'missing_completion', 'backend', 'manifest', 'scene', 'actor_state')
+    with tempfile.TemporaryDirectory(prefix='aethyr-native-cpu-replay-') as temporary:
+        target = Path(temporary)
+        for fault in faults:
+            changed = copy.deepcopy(source)
+            if fault in ('first_step', 'interior_step'):
+                changed['warmup'][0]['stepDigests'][0 if fault == 'first_step' else 1] = 'f' * 64
+            elif fault == 'missing_step':
+                changed['warmup'][0]['stepDigests'].pop()
+            elif fault == 'tick':
+                changed['warmup'][0]['tick'] += 1
+            elif fault == 'position':
+                changed['warmup'][0]['positionBits'][2] ^= 1
+            elif fault in ('completion_generation', 'completion_digest', 'missing_completion'):
+                frame = next(f for f in changed['warmup'] if f['records'])
+                if fault == 'missing_completion':
+                    frame['records'].pop(0)
+                else:
+                    frame['records'][0][3 if fault == 'completion_generation' else 15] ^= 1
+            elif fault == 'backend':
+                changed['backend'] = 0
+            elif fault == 'manifest':
+                changed['manifestSHA256'] = 'f' * 64
+            elif fault == 'scene':
+                changed['sceneSHA256'] = 'f' * 64
+            elif fault == 'actor_state':
+                changed['routeCells'][1][0][2] += 1
+            input_path, result_path = target / (fault + '.json'), target / (fault + '-result.json')
+            input_path.write_text(json.dumps(changed))
+            env = dict(os.environ, ASAN_OPTIONS='detect_leaks=1:abort_on_error=1', UBSAN_OPTIONS='halt_on_error=1')
+            result = subprocess.run([str(replay_path.parent / 'replay'), str(scene_dir), str(input_path), str(result_path)],
+                                    capture_output=True, timeout=90, env=env)
+            assert result.returncode != 0 and not result_path.exists(), ('tampered native CPU history accepted', fault)
+            assert b'AddressSanitizer' not in result.stderr and b'runtime error:' not in result.stderr, (fault, result.stderr)
+    return {'backend': 1, 'tier': source['tier'], 'canonical_paid_steps': previous,
+            'observation_sha256': report['observation_sha256'], 'cpu_peak': report['cpu_peak'],
+            'altered_native_histories_rejected': len(faults), 'no_gpu_replay_claim': True}
+
+
 if __name__ == '__main__':
     if sys.argv[1] == '--compare-tiers':
         result = compare_tiers(Path(sys.argv[2]), Path(sys.argv[3]))
     elif sys.argv[1] == '--compare-presentation':
         result = compare_presentation(Path(sys.argv[2]), Path(sys.argv[3]))
+    elif sys.argv[1] == '--cpu-replay':
+        result = inspect_cpu_replay(*map(Path, sys.argv[2:5]))
     else:
         scene, output, program = map(Path, sys.argv[1:4])
         result = inspect(scene, output, program)

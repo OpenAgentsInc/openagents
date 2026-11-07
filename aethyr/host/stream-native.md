@@ -101,9 +101,11 @@ publication, exact binary32 walking, source identity and every recovery
 readback byte. It rejects 22 altered v1 histories and 30 altered v2
 histories, including early HUD release, changed shader/profile identity,
 wrong draw counts, changed HUD bytes and false teardown claims. It retains paid-step
-canonical hashes but does not independently serialize or replay this new
-native GPU history; the earlier browser-to-native CPU replay qualification
-has its own input and backend profile. It does not infer shader numerical
+canonical hashes. The [native-history CPU replay](../../docs/verification/aethyr-streaming-12990/walk-native-cpu-replay.md)
+now consumes actual native v1/v2 histories using their original backend-1
+RCM1 companion and compares every paid step, record and final actor value.
+Its v3 output is distinct from the existing browser-input v2 replay.
+This does not independently reimplement the simulation serializer or infer shader numerical
 reference qualification from a nonuniform image.
 
 Current hardware/software scope and exact pins are in the

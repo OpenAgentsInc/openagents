@@ -1,6 +1,10 @@
 # Resource-cost and streaming work — #12990
 
-Issue #12990 remains open. The [persistent HUD record](walk-persistent-hud.md)
+Issue #12990 remains open. The [native-history CPU replay](walk-native-cpu-replay.md)
+now checks every paid step in the actual Vulkan histories against the CPU
+consumer, including twelve altered-history refusals per tier. The original
+native manifest/backend is retained; GPU effects are not replayed. The
+[persistent HUD record](walk-persistent-hud.md)
 adds actual native/browser rendering before any area resources, through
 unload/reload and physical GPU replacement. Both native tiers preserve
 every pre-HUD canonical paid-step digest. All-pixel HUD references stay

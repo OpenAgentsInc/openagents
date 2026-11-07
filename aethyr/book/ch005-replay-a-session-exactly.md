@@ -677,6 +677,13 @@ record transfer in both directions.
 
 ## Contract: one envelope for every external event
 
+The bounded streaming corridor also [replays actual native Vulkan
+histories](../../docs/verification/aethyr-streaming-12990/walk-native-cpu-replay.md)
+through its CPU consumer. The original native cost manifest stays pinned;
+every paid-step canonical digest, completion record, position bit and final
+actor value must agree. Browser-input replay keeps its existing profile.
+This fixture does not replay GPU effects or qualify all failure histories.
+
 > `aethyr/replay.coax` implements this contract, as the sections above
 > describe. Where the module differs from the text below:
 >

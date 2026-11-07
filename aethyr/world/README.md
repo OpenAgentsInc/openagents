@@ -171,3 +171,12 @@ reactor arena; its eight retained digest slots are fixed controller storage.
 Replaying the same accepted history compares each paid step, including the
 steps between a frame's start and endpoint. Different live completion
 schedules still need not produce identical simulation.
+
+The [native-history replay record](../../docs/verification/aethyr-streaming-12990/walk-native-cpu-replay.md)
+extends the actual CPU receiver to the Vulkan carrier's v1/v2 histories.
+It selects their original native manifest and emits an explicitly versioned
+v3 receipt. Every paid-step digest, completion record, position bit and final
+actor value is compared; this is offline CPU/codec replay, not recreated GPU
+effects. Replay's malloc scratch follows accepted completion boundaries,
+so its independently reconstructed physical peak differs from synchronous
+Vulkan effects. The existing browser input/output identities remain valid.
