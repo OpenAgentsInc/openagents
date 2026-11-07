@@ -6044,6 +6044,9 @@ name authority are unchanged. Desktop controls share one compact left sidebar
 with a 75%-opaque post-composited background; its depth must not occlude the
 world. HUD strokes draw on the final display canvas after postprocessing.
 Narrow layouts keep a single bottom panel, and scene-only mode excludes UI.
+The player uses the glade sun and geometry visibility in linear HDR, with
+normal-dependent sky/ground and soft front fill; do not reinstate the legacy
+Studio brightness override or decode an already-lit display colour.
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
 lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative

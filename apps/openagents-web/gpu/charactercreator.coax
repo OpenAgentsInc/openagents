@@ -8,12 +8,44 @@ charactercreator_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->CharacterCreatorBg {
  sky:=cg_decode(cg_sky(rd,wg_at3(u,32),u[2]));return CharacterCreatorBg.{c=v4(sky.x,sky.y,sky.z,0),depth=1};
 }
 charactercreator_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {return fivelab_scene_vs(id,instance,u,vertices,objects,bake);}
+#test "creator player sunlight follows normals and shadow visibility while retaining sky fill" {
+ sun:=normalize3(v3(-0.45,0.78,-0.42));view:=v3(0,0,1);base:=v3(0.4,0.25,0.12);
+ lit:=cc_player_light(base,sun,view,1);shade:=cc_player_light(base,sun,view,0);back:=cc_player_light(base,scale3(sun,-1),view,1);
+ #assert lit.x>shade.x+0.5 && lit.x>back.x && shade.z>0;
+ delta:=sub3(lit,shade);#assert delta.x/base.x>delta.z/base.z;
+ #assert cc_player_light(v3(0,0,0),sun,view,0).x==0;
+}
+cc_player_light :: (albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
+ sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));
+ // Same daylight as the meadow. Broad camera-side bounce keeps the face readable.
+ direct:=saturate(dot3(n,sun));fill:=saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0)))));
+ irradiance:=add3(cg_irradiance(n,direct,1,visibility),scale3(v3(0.85f32,0.72f32,0.52f32),fill));
+ return mul3(albedo,irradiance);
+}
+cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visibility:f32)->V4 {
+ m:=objects[cast(int)s.who];
+ // The array sampler already decodes sRGB. Dye masks are authored in display space.
+ display:=cg_encode(v3(tex.x,tex.y,tex.z));albedo:=mul3(cg_decode(fivelab_dye(display,s.dye)),cg_decode(s.tint));
+ if (m.f.w>1.5f32 && s.slice==FIVELAB_EYE_LAYER) {
+  iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(verse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
+  albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
+ }
+ n:=normalize3(add3(s.normal,v3(0,0.00001f32,0)));if (!front) {n=scale3(n,-1);}
+ eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));sun:=normalize3(v3(-0.45f32,0.78f32,-0.42f32));
+ colour:=cc_player_light(albedo,n,view,visibility);
+ // Broad, restrained dielectric highlight gives curved skin and fabric volume.
+ half_vector:=normalize3(add3(sun,view));spec:=pow(saturate(dot3(n,half_vector)),24.0f32)*saturate(dot3(n,sun))*visibility*0.12f32;
+ colour=add3(colour,scale3(v3(1.75f32,1.45f32,1.02f32),spec));
+ indirect:=mul3(albedo,add3(cg_hemisphere(n),scale3(v3(0.85f32,0.72f32,0.52f32),saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0))))))));
+ share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
+ colour=cg_atmosphere(colour,eye,s.world);return v4(colour.x,colour.y,colour.z,share);
+}
 charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
  tex:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,1);
  if (tex.w<0.35f32) {gpu_demote_helper();}
  c:V4;
  if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,shadow_map,shadow_cmp));}
- else {legacy:=fivelab_scene_colour(s,tex,front,u,objects);linear:=cg_decode(v3(legacy.x,legacy.y,legacy.z));c=v4(linear.x,linear.y,linear.z,0.4f32);}
+ else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,shadow_map,shadow_cmp));}
  n:=normalize3(s.normal);z:=dot3(sub3(s.world,wg_at3(u,16)),wg_at3(u,20));
  sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;
  indirect:=c.w;packed:=cg_normal_pack(n);

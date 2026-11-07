@@ -48,7 +48,9 @@ armature rest pose, preserves UVs/normals/skin weights, and uses the existing
 people vertex encoder. It retains the base pack's checked heads/hair and appends
 the Source clothing and 512px base-color layers. Identical encoded vertices are
 shared within a piece. Normal and ORM files remain source authoring inputs;
-the existing Aethyr people shader uses base color and stylized lighting.
+Character Create uses base color with glade sunlight, geometry shadows, sky/ground
+fill and a soft warm front bounce; its private shader stays in linear HDR through
+the shared output transform. Normal/ORM sampling is not yet implemented.
 
 ```sh
 SOURCE="$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy "$HOME/.openagents/assets")"

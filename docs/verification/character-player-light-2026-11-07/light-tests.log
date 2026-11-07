@@ -1,0 +1,3 @@
+ok   #test creator player sunlight follows normals and shadow visibility while retaining sky fill (1 case, 2157 steps, 0 ms)
+1 of 127 checks (--only 'creator player'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

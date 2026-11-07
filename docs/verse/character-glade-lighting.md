@@ -69,3 +69,20 @@ See `docs/verification/character-glade-ore-lighting-2026-11-06/`. Visual capture
 show more directional surface shading, brighter transmitted foliage and better
 separation of roots, crowns and distant hills. This is an improvement informed
 by Ore, with no claim of matching either game's native renderer exactly.
+
+## Player integration (2026-11-07)
+
+The player previously called the common legacy figure shader. Its Studio brightness
+override and display-space finish bypassed the glade light and shadow map. The
+private character shader now keeps sampled base colour linear, applies display-authored
+dye masks before decoding their result, and decodes skin/eye palette choices once.
+It uses the same world-space sun and PCF geometry visibility as the meadow, plus
+sky/ground hemisphere fill, a soft warm camera-side bounce and a restrained broad
+dielectric highlight. No constant brightness override or legacy fog/finish remains.
+The indirect luminance share reaches contact shading; the common HDR/post output
+handles the character and world together. Shared battle and Everglade shaders are
+unchanged. Normal and ORM textures remain authoring-only; full material-specific
+BRDFs and GI/probes are still absent.
+
+See `docs/verification/character-player-light-2026-11-07/` for the same-camera
+comparison, controls journey, directional/shadow check and desktop/phone GPU graphs.

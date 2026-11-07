@@ -149,7 +149,8 @@
       "green_power": 0.75,
       "blue_scale": 0.965
     },
-    "surface_tints": "Authored per-placement rock tints; warm crown fill and red/orange/gold variation; root-to-tip grass direct/ambient response"
+    "surface_tints": "Authored per-placement rock tints; warm crown fill and red/orange/gold variation; root-to-tip grass direct/ambient response",
+    "player": "Linear base colour and palette decode; glade warm directional sunlight with PCF geometry visibility, sky/ground hemisphere, soft warm camera-side bounce, broad dielectric highlight; no legacy brightness override"
   },
   "scope": "Reference-directed 3D reconstruction; original placement not recovered. Wind ribbons removed after user reported slash artifacts. No exact image parity claim.",
   "source_files": [
@@ -449,11 +450,11 @@
   },
   "shader_entry": {
     "path": "apps/openagents-web/gpu/charactercreator.coax",
-    "sha256": "c2e7976f6bc11c59df0313e1eefc86de879a634c586185a736a9b9a61aafcf2e"
+    "sha256": "37eeb8c91ea12f62fb1ab25d90c322ba37fb1b8f9a33ebae0d751f5fcc3222a6"
   },
   "shader_artifact": {
     "path": "apps/openagents-web/charactercreator.wgsl",
-    "sha256": "5110deca60478d7e5fc725d464147193d5f04cd0553486c60176d22e283cbf28"
+    "sha256": "342b82128cd382da4fc3ae31cc1bd4782382370e9262880312f266eeb27d54ff"
   },
   "camera": {
     "desktop_horizon_fraction": 0.595,
