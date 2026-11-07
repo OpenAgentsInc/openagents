@@ -1,0 +1,49 @@
+// The observation boundary for shadow-pair-v2, not a live FPS qualification.
+#authority;
+
+#test "shadow diagnostic kinds and source paths refuse ambiguous or external inputs" {
+  names:=[5]string.["map","receiver","receiver-one","load","shader"];
+  for i:0..<names.count {#assert sp_kind(names[i])==i;}
+  #assert sp_kind("")== -1 && sp_kind("map ")== -1 && sp_kind("unknown")== -1;
+  #assert sp_shader_path("/build/a.wgsl") && sp_shader_path("/build/az/09-_.wgsl");
+  bad:=[8]string.["/build/.wgsl","/build/../a.wgsl","https://example.org/a.wgsl","/build/a:.wgsl","/build/a{.wgsl","/build/A.wgsl","/build/a.wgsl?x","/other/a.wgsl"];
+  for path:bad {#assert !sp_shader_path(path);}
+  for size:256..<258 {
+    p:[257]u8;for i:0..<p.count {p[i]='a';}prefix:="/build/";suffix:=".wgsl";
+    for i:0..<prefix.count {p[i]=prefix[i];}for i:0..<suffix.count {p[size-5+i]=suffix[i];}
+    #assert sp_shader_path(cast(string)p[0..<size])==(size==256);
+  }
+}
+sp_kind :: (name:string)->int #effects(all) {
+  names:=[5]string.["map","receiver","receiver-one","load","shader"];
+  for i:0..<names.count {if name==names[i] {return i;}}return -1;
+}
+sp_shader_path :: (path:string)->bool #effects(all) {
+  if path.count<13 || path.count>256 {return false;}
+  if path[0..<7]!="/build/" || path[path.count-5..<path.count]!=".wgsl" {return false;}
+  for ch:path[7..<path.count-5] {if !((ch>='a' && ch<='z') || (ch>='0' && ch<='9') || ch=='/' || ch=='-' || ch=='_') {return false;}}
+  return true;
+}
+
+#test "paired shadow samples require matching cameras full raster and complete GPU stamps" {
+  a:=[11]int.[17,1440,900,10000,500,9,60000,2,1,1,16666667];b:=a;
+  #assert sp_match(a[..],b[..]);b[0]=18;#assert sp_match(a[..],b[..]);b[0]=20;#assert !sp_match(a[..],b[..]);
+  #assert !sp_match(a[0..<6],a[..]) && !sp_match(a[..],a[0..<6]);
+  for side:0..<2 {for field:0..<11 {
+    bad:=a;bad[field]=0;
+    #assert !sp_row(bad[..]);
+    if side==0 {#assert !sp_match(bad[..],a[..]);}else {#assert !sp_match(a[..],bad[..]);}
+  }}
+  a=[11]int.[1,1440,900,1,1,8,1,1,1,1,1];#assert sp_match(a[..],a[..]);
+  a[5]=16;#assert sp_match(a[..],a[..]);a[5]=17;#assert !sp_match(a[..],a[..]);
+  a[5]=8;a[3]=1;a[4]=2;a[6]=2;#assert !sp_match(a[..],a[..]);
+  a[3]=2;a[4]=2;a[6]=1;#assert !sp_match(a[..],a[..]);
+}
+sp_match :: (a:[]int,b:[]int)->bool #effects(all) {
+  if !sp_row(a) || !sp_row(b) {return false;}
+  return abs(cast(f64)(a[0]-b[0]))<=1;
+}
+sp_row :: (r:[]int)->bool #effects(all) {
+  if r.count!=11 {return false;}
+  return r[0]>0 && r[1]==1440 && r[2]==900 && r[4]>0 && r[4]<=r[3] && r[5]>=8 && r[5]<=16 && r[6]>=r[4] && r[7]>0 && r[8]==1 && r[9]==1 && r[10]>0;
+}

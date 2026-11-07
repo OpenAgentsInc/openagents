@@ -1,0 +1,5 @@
+kind receiver; left shader 1bb26c1974fb5daea0a9385dbd72db56b842c25856489578cd0e0fc3d24a0620; right shader 1bb26c1974fb5daea0a9385dbd72db56b842c25856489578cd0e0fc3d24a0620
+pairs 3240 (fixed 60 Hz simulation; NOT a live FPS qualification)
+GPU us: left p50 14461 p95 41446; right p50 15655 p95 43766
+right - left paired us: mean 1512 p50 1035 p95 11429; AB median 1014; BA median 1075
+shadow pass us: left p50 467 p95 7379; right p50 465 p95 7402

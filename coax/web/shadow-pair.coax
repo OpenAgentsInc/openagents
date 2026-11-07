@@ -1,0 +1,80 @@
+// Matched fixed-step GPU costs for the original one-map and tiled producers.
+// Both pages keep their own correct atlas and shadow schedule. Advance one
+// completed frame at a time, alternating AB/BA order at each camera sample.
+// This is a GPU experiment, never a live 60 FPS qualification.
+//   coax/web/tool.sh shadow-pair BASE_URL OUT.json [FRAMES=3240] [map|receiver|receiver-one|load|shader [SHADER_URL]]
+#import "Basic";
+#load "../lib/media/media.coax";
+#load "../../aethyr/flyover.coax";
+#load "shadow-pair-policy.coax";
+
+SP_PATH :: "0,0,40,-160,0,2,-60~6,0,12,-100,0,3,-40~12,-6,6,-52,10,3,20~18,10,5,-10,40,3,10~24,40,6,-15,95,2,-10~30,90,10,-30,40,2,40~36,40,25,60,-40,2,0~42,-60,12,20,-150,4,25~48,-120,8,30,-170,3,40~54,-60,60,-60,0,0,0";
+SP_STEP :: "(async()=>{coaxial.takePassTimes();coaxial.takeFrameTrace();const reads=shadowPairWitness.reads;await coaxialClipStep(1,60);let g=[];for(let i=0;i<100;i++){g.push(...coaxial.takePassTimes());if(g.length)break;await new Promise(r=>setTimeout(r,1));}const c=document.querySelector('canvas'),f=coaxial.takeFrameTrace().at(-1)||[];return [coaxial.fieldProbe(30),c.width,c.height,...(g.at(-1)||[0,0,0,0]),f[11]||0,f[7]||0,shadowPairWitness.reads-reads,shadowPairWitness.gpuDeltaNs]})()";
+
+#test "paired shadow experiment uses the authored 54 second flight" {
+  #assert fly_parse(SP_PATH).ok && fly_parse(SP_PATH).length==54;
+}
+sp_open :: (c:[]Cdp,url:string,hash:[]u8,kind:int,left:bool,shader_url:string)->bool {
+  if !cdp_launch_background(c,1440,900,"shadow-pair-") {return false;}
+  if cdp_call(c,"Page.enable","",15000)<0 || cdp_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":1440,\"height\":900,\"deviceScaleFactor\":1,\"mobile\":false}",15000)<0 {return false;}
+  config:[8192]u8;jo:[1]Jo;jo_start(jo[..],config[..]);jo_obj(jo[..]);
+  jo_key(jo[..],"legacy");jo_bool(jo[..],left && (kind==1 || kind==2));jo_key(jo[..],"one");jo_bool(jo[..],kind==2);
+  jo_key(jo[..],"clear");jo_bool(jo[..],left && kind==3);jo_key(jo[..],"shader");jo_str(jo[..],ifx left && kind==4 then shader_url else "");
+  jo_key(jo[..],"uniformFloats");jo_int(jo[..],2532);jo_key(jo[..],"cascadeOffset");jo_int(jo[..],2432);jo_key(jo[..],"tapsOffset");jo_int(jo[..],1169);jo_end(jo[..]);
+  glue:[16384]u8;gn:=fs_read("coax/web/shadow-pair-host.js",glue[..]);if gn<=0 {return false;}
+  script:[32768]u8;sn:=ws_put(script[..],0,"globalThis.shadowPairConfig=");sn=ws_put(script[..],sn,jo_text(jo[..]));sn=ws_put(script[..],sn,";\n");sn=ws_put(script[..],sn,cast(string)glue[0..<gn]);
+  params:[65536]u8;jo_start(jo[..],params[..]);jo_obj(jo[..]);jo_key(jo[..],"source");jo_str(jo[..],cast(string)script[0..<sn]);jo_end(jo[..]);
+  if jo[0].bad || cdp_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(jo[..]),15000)<0 {return false;}
+  buf:[8192]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);
+  if cdp_call(c,"Page.navigate",jo_text(o[..]),15000)<0 {return false;}
+  until:=proc_now_ms()+60000;ready:=false;
+  while proc_now_ms()<until {
+    n:=cdp_evaluate(c,"typeof coaxialClipStep==='function'?coaxialClipStep(1,1e6).then(()=>document.getElementById('coaxial-load')?.dataset.state==='fail'?'failed':!!coaxial.sceneReady&&!document.getElementById('coaxial-load')):false");
+    if n>=0 && jv_kind(c[0].doc[0],n)==JV_STRING && jv_raw(c[0].doc[0],n)=="failed" {return false;}
+    if n>=0 && jv_kind(c[0].doc[0],n)==JV_TRUE {ready=true;break;}
+    proc_sleep(100);
+  }
+  if !ready {return false;}
+  adapter:[256]u8;if !cdp_adapter_hardware(cdp_adapter(c,adapter[..])) {return false;}
+  sh:=cdp_evaluate(c,"(async()=>{const h=await Promise.all(shadowPairWitness.hashes);return h.length===1?h[0]:''})()");
+  if sh<0 || jv_str(c[0].doc[0],sh,hash)!=64 {return false;}
+  effect:=cdp_evaluate(c,"(()=>{const c=shadowPairConfig,w=shadowPairWitness;return (!(c.legacy||c.one)||(w.writes>0&&w.binds>0))&&(!c.clear||w.clears>0)&&(!c.shader||w.overrides===1)})()");
+  if effect<0 || jv_kind(c[0].doc[0],effect)!=JV_TRUE {return false;}
+  // Set the path before the first timed step, then drain readiness queries.
+  js:[8192]u8;j:[1]Jo;jo_start(j[..],js[..]);jo_str(j[..],SP_PATH);
+  command:[16384]u8;at:=ws_put(command[..],0,"location.hash='fly='+");at=ws_put(command[..],at,jo_text(j[..]));at=ws_put(command[..],at,";coaxial.takePassTimes();true");
+  return cdp_evaluate(c,cast(string)command[0..<at])>=0;
+}
+sp_step :: (c:[]Cdp,row:[]int)->bool {
+  n:=cdp_evaluate(c,SP_STEP);
+  if n<0 || jv_kind(c[0].doc[0],n)!=JV_ARRAY || jv_len(c[0].doc[0],n)!=11 {return false;}
+  for i:0..<11 {row[i]=jv_int(c[0].doc[0],jv_at(c[0].doc[0],n,i),-1);}
+  return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])<2 || args_count(args[..])>5 {tool_errln("usage: shadow-pair BASE_URL OUT.json [FRAMES=3240] [map|receiver|receiver-one|load|shader [SHADER_URL]]");return 2;}
+  frames:=3240;if args_count(args[..])>=3 {frames=args_whole(args_at(args[..],2));if frames<1 || frames>3240 {return 2;}}
+  name:=ifx args_count(args[..])>=4 then args_at(args[..],3) else "map";kind:=sp_kind(name);shader_url:=args_at(args[..],4);
+  if kind<0 || (kind==4 && !sp_shader_path(shader_url)) || (kind!=4 && args_count(args[..])==5) {return 2;}
+  a:[1]Cdp;b:[1]Cdp;url:[8192]u8;root:=args_at(args[..],0);at:=ws_put(url[..],0,root);at=ws_put(url[..],at,"/worlds/everglade?weather=clear&clock=0.45");if kind==0 {at=ws_put(url[..],at,"&shadowmap");}
+  left_hash:[64]u8;right_hash:[64]u8;opened:=sp_open(a[..],cast(string)url[0..<at],left_hash[..],kind,true,shader_url);
+  at=ws_put(url[..],0,root);at=ws_put(url[..],at,"/worlds/everglade?weather=clear&clock=0.45");
+  if opened {opened=sp_open(b[..],cast(string)url[0..<at],right_hash[..],kind,false,shader_url) && (kind==4 || cast(string)left_hash[..]==cast(string)right_hash[..]);}
+  if !opened {tool_errln("shadow-pair: both hardware pages must become ready");cdp_close(a[..]);cdp_close(b[..]);return 1;}
+  adapter_buf:[256]u8;adapter:=cdp_adapter(a[..],adapter_buf[..]);
+  output:[1048576]u8;j:[1]Jo;jo_start(j[..],output[..]);jo_obj(j[..]);jo_key(j[..],"format");jo_str(j[..],"shadow-pair-v2");jo_key(j[..],"kind");jo_str(j[..],name);jo_key(j[..],"shaderSha256");jo_str(j[..],cast(string)left_hash[..]);jo_key(j[..],"rightShaderSha256");jo_str(j[..],cast(string)right_hash[..]);jo_key(j[..],"adapter");jo_str(j[..],adapter);jo_key(j[..],"epochMs");jo_int(j[..],1794009600000);jo_key(j[..],"flight");jo_str(j[..],SP_PATH);jo_key(j[..],"fps");jo_int(j[..],60);jo_key(j[..],"rows");jo_arr(j[..]);
+  ok:=true;start:=proc_now_ms();
+  for f:0..<frames {
+    left:[11]int;right:[11]int;
+    if f%2==0 {ok=sp_step(a[..],left[..]) && sp_step(b[..],right[..]);}
+    else {ok=sp_step(b[..],right[..]) && sp_step(a[..],left[..]);}
+    if !ok || !sp_match(left[..],right[..]) {ok=false;print("refused pair %: % / %\n",f,left,right);break;}
+    jo_arr(j[..]);jo_int(j[..],f);for x:left {jo_int(j[..],x);}for x:right {jo_int(j[..],x);}jo_end(j[..]);
+    if f%300==0 {print("paired %/% frames, % ms\n",f+1,frames,proc_now_ms()-start);tool_errln("shadow-pair: 300-sample progress checkpoint");}
+    if proc_now_ms()-start>780000 {ok=false;tool_errln("shadow-pair: slice exceeds 13 minutes");break;}
+  }
+  jo_end(j[..]);jo_key(j[..],"complete");jo_bool(j[..],ok);jo_end(j[..]);
+  cdp_close(a[..]);cdp_close(b[..]);
+  if j[0].bad || !fs_write(args_at(args[..],1),jo_text(j[..])) {return 1;}
+  return ifx ok then 0 else 1;
+}

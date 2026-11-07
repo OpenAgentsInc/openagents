@@ -1004,9 +1004,17 @@ browsers, so whole-frame GPU times swing between runs). Each pair ran back to ba
 then the tiles: the shadow pass p50 0.83 to 0.57 ms and 0.97 to 0.73 ms, p95 6.2 to 4.8 ms and
 9.5 to 7.2 ms. The whole frame's GPU p50 rose 1.9 and 2.7 ms in the same pairs, outside the
 shadow pass. Frames held p50 and p95 at 16.7 ms in all four runs; frames over 33 ms were 6 and 9,
-then 6 and 35, under the machine's load. The cause is not found yet: turning the far
-tiles off in the shader did not remove it. Summaries and captures:
+then 6 and 35, under the machine's load. These original summaries and captures are in
 `docs/verification/shadow-cascades-2026-11-07/`.
+
+The controlled investigation for #13019 isolates the added cost to the receiver's
+projection/filtering path. A complete 3,240-pair flight measured a 1.011 ms median
+tile-minus-map difference; changing only the colour-pass receiver, with the same
+tile caster and atlas, reproduced 1.035 ms. Atlas preservation is tested separately
+with a deliberately invalid whole-atlas-clear control. The renderer is unchanged:
+these controls diagnose cost and do not qualify image quality or live 60 FPS.
+See [the experiment and raw receipts](../verification/shadow-cost-13019/README.md)
+and reproduce it with `coax/web/tool.sh shadow-pair BASE_URL OUT.json`.
 
 ## The flyover benchmark (#13017)
 

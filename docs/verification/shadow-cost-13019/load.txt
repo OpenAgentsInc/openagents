@@ -1,0 +1,5 @@
+kind load; left shader 1bb26c1974fb5daea0a9385dbd72db56b842c25856489578cd0e0fc3d24a0620; right shader 1bb26c1974fb5daea0a9385dbd72db56b842c25856489578cd0e0fc3d24a0620
+pairs 3240 (fixed 60 Hz simulation; NOT a live FPS qualification)
+GPU us: left p50 13109 p95 22113; right p50 13149 p95 21992
+right - left paired us: mean 53 p50 59 p95 5745; AB median 17; BA median 103
+shadow pass us: left p50 436 p95 625; right p50 440 p95 633

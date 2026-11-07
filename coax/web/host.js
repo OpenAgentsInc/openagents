@@ -2564,6 +2564,16 @@ function passTimerRead(timer) {
   }, () => { read.busy = false; });
 }
 let traceRow = null, traceLast = 0;
+function finishFrameTrace(observedStart) {
+  if (!traceRow) return;
+  traceRow[14] = performance.now();
+  traceRow[4] = traceRow[14] - observedStart;
+  if (traceRow[5] && globalThis.coaxial.sceneReady) {
+    frameTrace.push(traceRow);
+    if (frameTrace.length > 600) frameTrace.shift();
+  }
+  traceRow = null;
+}
 let clipNow = 0;
 let worldPaused = false, frameRequest = 0, worldFrames = 0, worldSubmissions = 0, shadowTilesDrawn = 0;
 function setWorldPaused(paused) {
@@ -2586,7 +2596,14 @@ if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
     clipNow += 1000 / fps;
     // the room to the same moment, and every frame it sent then in the app before it draws
     if (clipRoom && globalThis.coaxial?.roomHost?.advance) { await globalThis.coaxial.roomHost.advance(clipNow); if (engine) drainSockets(1e9); }
-    draw(clipNow); a11yMirror(clipNow);
+    const observedStart = frameTrace ? performance.now() : 0;
+    if (frameTrace) {
+      traceRow = [traceLast ? observedStart-traceLast : 0,0,0,0,0,0,0,-1,0,0,0];
+      traceLast = observedStart;
+    }
+    // Keep actual submission/world-draw facts in fixed-step diagnostics too.
+    // The trace interval is wall time, never the synthetic 1000/fps step.
+    try { draw(clipNow); a11yMirror(clipNow); } finally { finishFrameTrace(observedStart); }
   }
   if (gpu?.device) await gpu.device.queue.onSubmittedWorkDone();
   return engine && gpu?.bg ? 1 : 0;
@@ -2605,7 +2622,7 @@ function frame(now) {
   if (traceRow) traceRow[3] = t0 - observedStart;
   try { draw(now); } finally { frameCost = 0.9 * frameCost + 0.1 * (performance.now() - t0); }
   a11yMirror(now);
-  if (traceRow) { traceRow[14]=performance.now();traceRow[4] = traceRow[14] - observedStart;if (traceRow[5] && globalThis.coaxial.sceneReady) {frameTrace.push(traceRow);if(frameTrace.length>600)frameTrace.shift();}traceRow=null; }
+  finishFrameTrace(observedStart);
 }
 
 // A controller (a module that exports coaxial_pad): the first pad's left stick (x right, y

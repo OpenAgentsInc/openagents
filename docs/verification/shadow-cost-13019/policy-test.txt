@@ -1,0 +1,3 @@
+ok   #test shadow diagnostic kinds and source paths refuse ambiguous or external inputs (1 case, 8405 steps, 0 ms)
+ok   #test paired shadow samples require matching cameras full raster and complete GPU stamps (1 case, 5392 steps, 0 ms)
+2 checks, 2 passed, 0 failed

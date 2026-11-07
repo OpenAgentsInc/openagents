@@ -1,0 +1,37 @@
+// Report signed per-camera-pair differences, separately for AB and BA order.
+//   coax/web/tool.sh shadow-pair-report TRACE.json
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
+#load "../../aethyr/frame-report.coax";
+#load "shadow-pair-policy.coax";
+
+#test "paired GPU differences retain their signs through quantiles" {
+  samples:=[5]int.[-3000,2000,0,-1000,1000];s:=frame_stats(samples[..],samples.count);
+  #assert s.p50==0 && s.p95==2000 && s.total== -1000;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: shadow-pair-report TRACE.json");return 2;}
+  text:[1048576]u8;size:=fs_read(args_at(a[..],0),text[..]);doc:[1]Jv;nodes:[131072]JvNode;
+  if size<=0 || !jv_parse(doc[..],cast(string)text[0..<size],nodes[..]) {return 1;}
+  d:=doc[0];rows:=jv_get(d,0,"rows");n:=jv_len(d,rows);
+  if jv_raw(d,jv_get(d,0,"format"))!="shadow-pair-v2" || jv_kind(d,jv_get(d,0,"complete"))!=JV_TRUE || n<1 || n>3240 {tool_errln("shadow-pair-report: incomplete or unsupported trace");return 1;}
+  original:[3240]int;tiles:[3240]int;delta:[3240]int;old_shadow:[3240]int;new_shadow:[3240]int;
+  ab:[1620]int;ba:[1620]int;ab_n:=0;ba_n:=0;
+  for i:0..<n {
+    row:=jv_at(d,rows,i);left:[11]int;right:[11]int;
+    if jv_kind(d,row)!=JV_ARRAY || jv_len(d,row)!=23 || jv_int(d,jv_at(d,row,0),-1)!=i {return 1;}
+    for k:0..<11 {left[k]=jv_int(d,jv_at(d,row,1+k),-1);right[k]=jv_int(d,jv_at(d,row,12+k),-1);}
+    if !sp_match(left[..],right[..]) {tool_errln("shadow-pair-report: a pair failed observation admission");return 1;}
+    original[i]=left[3];tiles[i]=right[3];delta[i]=right[3]-left[3];old_shadow[i]=left[4];new_shadow[i]=right[4];
+    if i%2==0 {ab[ab_n]=delta[i];ab_n+=1;}else {ba[ba_n]=delta[i];ba_n+=1;}
+  }
+  old:=frame_stats(original[..],n);fresh:=frame_stats(tiles[..],n);diff:=frame_stats(delta[..],n);
+  os:=frame_stats(old_shadow[..],n);ns:=frame_stats(new_shadow[..],n);aa:=frame_stats(ab[..],ab_n);bb:=frame_stats(ba[..],ba_n);
+  print("kind %; left shader %; right shader %\npairs % (fixed 60 Hz simulation; NOT a live FPS qualification)\n",jv_raw(d,jv_get(d,0,"kind")),jv_raw(d,jv_get(d,0,"shaderSha256")),jv_raw(d,jv_get(d,0,"rightShaderSha256")),n);
+  print("GPU us: left p50 % p95 %; right p50 % p95 %\n",old.p50,old.p95,fresh.p50,fresh.p95);
+  print("right - left paired us: mean % p50 % p95 %; AB median %; BA median %\n",diff.total/n,diff.p50,diff.p95,aa.p50,bb.p50);
+  print("shadow pass us: left p50 % p95 %; right p50 % p95 %\n",os.p50,os.p95,ns.p50,ns.p95);
+  return 0;
+}

@@ -1,0 +1,5 @@
+kind map; left shader 1bb26c1974fb5daea0a9385dbd72db56b842c25856489578cd0e0fc3d24a0620; right shader 1bb26c1974fb5daea0a9385dbd72db56b842c25856489578cd0e0fc3d24a0620
+pairs 3240 (fixed 60 Hz simulation; NOT a live FPS qualification)
+GPU us: left p50 14626 p95 31310; right p50 16039 p95 34377
+right - left paired us: mean 1608 p50 1011 p95 10951; AB median 1004; BA median 1026
+shadow pass us: left p50 727 p95 5409; right p50 515 p95 4992

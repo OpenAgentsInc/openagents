@@ -1,0 +1,1 @@
+shadow-pair-report: incomplete or unsupported trace
