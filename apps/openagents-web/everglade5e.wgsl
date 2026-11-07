@@ -5346,7 +5346,7 @@ fn coax_p_eg_weather_surface(p_c: vec3f, p_base: vec3f, p_n: vec3f, p_world: vec
   l_wet = coax_p_eg_weather_wet_share(l_n, l_character);
   l_l = coax_p_wg_sw_xyz_f4(coax_p_eg_st(1u));
   l_key = coax_p_wg_mul_f3f(coax_p_wg_sw_xyz_f4(coax_p_eg_st(0u)), (coax_p_eg_st(0u)).w);
-  if ((l_wet > 0.0f))
+  if (((l_wet > 0.0f) && (!l_character)))
   {
     l_r = coax_p_wg_reflect3(l_v, l_n);
     l_o = coax_p_wg_add_f3f3(l_o, coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(l_key, coax_p_smoothstep(0x1.dc28f6p-1f, 0x1.f33334p-1f, coax_p_wg_dot3(l_r, l_l))), l_wet), 0x1.666666p-2f), l_lit));
@@ -6171,7 +6171,7 @@ fn coax_p_eg_fountain_depth_at(p_p: vec3f) -> f32 {
 fn coax_p_eg_weather_wet_share(p_n: vec3f, p_character: bool) -> f32 {
   var l_n: vec3f = p_n;
   var l_character: bool = p_character;
-  return (coax_at_u(i32(1476i)) * select(coax_p_smoothstep((-0x1.333334p-2f), 0x1.666666p-1f, l_n.y), 0x1.99999ap-1f, l_character));
+  return (coax_at_u(i32(1476i)) * select(coax_p_smoothstep((-0x1.333334p-2f), 0x1.666666p-1f, l_n.y), 0x1.333334p-2f, l_character));
 }
 fn coax_p_verse_style_cool(p_c: f32, p_tint: f32, p_tint_lum: f32, p_amount: f32) -> f32 {
   var l_c: f32 = p_c;

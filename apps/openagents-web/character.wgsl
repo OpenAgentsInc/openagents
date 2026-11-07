@@ -189,12 +189,12 @@ fn coax_p_character_fs(p_s: coax_t11) -> coax_t21 {
   if (l_hair)
   {
     l_colour = coax_p_cv_add(coax_p_cv_scale(coax_p_v3(l_s.f7.x, l_s.f7.y, l_s.f7.z), coax_p_ch_shadow(l_s.y, l_geo)), coax_p_v3(l_s.f8.x, l_s.f8.y, l_s.f8.z));
-    l_colour = coax_p_cv_scale(l_colour, (0x1.000000p0f - (0x1.333334p-2f * l_wet)));
+    l_colour = coax_p_cv_scale(l_colour, (0x1.000000p0f - (0x1.eb851ep-4f * l_wet)));
     return coax_p_ch_out(coax_p_ch_haze(l_colour, l_s.y, coax_p_cv_scale(l_v, (-0x1.000000p0f))), coax_p_cv_groom_opacity(l_s.f6.x, l_s.f6.y), l_s.y);
   }
   l_skin = ((l_s.f5 == 0x1.600000p3f) || (l_s.f5 == 0x1.800000p2f));
-  l_albedo = coax_p_cv_scale(coax_p_ch_saturate(l_e.y, coax_at_u(i32(195i))), (0x1.000000p0f - (select(0x1.333334p-2f, 0x1.eb851ep-4f, l_skin) * l_wet)));
-  l_rough = coax_p_clampf((l_e.z * (0x1.000000p0f - (0x1.666666p-2f * l_wet))), 0x1.70a3d8p-5f, 0x1.000000p0f);
+  l_albedo = coax_p_cv_scale(coax_p_ch_saturate(l_e.y, coax_at_u(i32(195i))), (0x1.000000p0f - (select(0x1.eb851ep-4f, 0x1.47ae14p-5f, l_skin) * l_wet)));
+  l_rough = coax_p_clampf((l_e.z * (0x1.000000p0f - (0x1.47ae14p-4f * l_wet))), 0x1.70a3d8p-5f, 0x1.000000p0f);
   l_metal = l_e.w;
   l_n = l_e.x;
   l_nv = coax_p_fmax(0x1.a36e2ep-14f, coax_p_wg_dot3(l_n, l_v));
@@ -235,7 +235,7 @@ fn coax_p_character_fs(p_s: coax_t11) -> coax_t21 {
   }
   l_env = coax_p_pbr_environment(l_rough, l_nv);
   l_sky = coax_p_cv_at(172i);
-  l_reflect = coax_p_cv_scale(coax_p_cv_add(coax_p_cv_scale(l_f0, l_env.x), coax_p_v3(l_env.y, l_env.y, l_env.y)), ((coax_p_cv_specular_occlusion(l_nv, l_e.f5, l_rough) * l_inner) * (0x1.000000p0f + l_wet)));
+  l_reflect = coax_p_cv_scale(coax_p_cv_add(coax_p_cv_scale(l_f0, l_env.x), coax_p_v3(l_env.y, l_env.y, l_env.y)), ((coax_p_cv_specular_occlusion(l_nv, l_e.f5, l_rough) * l_inner) * (0x1.000000p0f + (0x1.333334p-3f * l_wet))));
   l_colour_29 = coax_p_cv_add(l_colour_29, coax_p_cv_mul(l_reflect, l_sky));
   l_colour_29 = coax_p_ch_keep_chroma(l_colour_29, l_albedo, coax_at_u(i32(194i)));
   return coax_p_ch_out(coax_p_ch_haze(l_colour_29, l_s.y, coax_p_cv_scale(l_v, (-0x1.000000p0f))), 0.0f, l_s.y);

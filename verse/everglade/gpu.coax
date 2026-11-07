@@ -2132,9 +2132,9 @@ eg_weather_rain_slope :: (p:V2,u:[]f32)->V2 {
   return wg_mul_f2f(g,rain);
 }
 // What rain does to a surface's colour as the ground wets: porous albedo darkens (Lagarde 2013),
-// what faces up most; a character all over.
+// what faces up most; a character's cloth a little all over.
 eg_weather_wet_share :: (n:V3,character:bool,u:[]f32)->f32 {
-  return u[1476]*(ifx character then 0.8f32 else smoothstep(-0.3f32,0.7f32,n.y));
+  return u[1476]*(ifx character then 0.3f32 else smoothstep(-0.3f32,0.7f32,n.y));
 }
 eg_weather_wet_base :: (base:V3,n:V3,character:bool,u:[]f32)->V3 {
   wet:f32=eg_weather_wet_share(n,character,u);
@@ -2150,7 +2150,7 @@ eg_weather_surface :: (c:V3,base:V3,n:V3,world:V3,v:V3,lit:f32,character:bool,u:
   wet:f32=eg_weather_wet_share(n,character,u);
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
-  if (wet>0.0f32) {
+  if ((wet>0.0f32)&&(!character)) { // cloth and skin don't mirror the key
     r:V3=wg_reflect3(v,n);
     o=wg_add_f3f3(o,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(key,smoothstep(0.93f32,0.975f32,wg_dot3(r,l))),wet),0.35f32),lit));
   }

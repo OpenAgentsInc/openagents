@@ -414,12 +414,13 @@ ch_character_fs :: (s:ChSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
  if hair {
   // strands are lit per vertex (ch_hair_light); a hair pixel adds the key's shadow and its coverage
   colour:=cv_add(cv_scale(v3(s.extra.x,s.extra.y,s.extra.z),ch_shadow(u,s.world,geo,shadow_map,shadow_cmp)),v3(s.extra2.x,s.extra2.y,s.extra2.z));
-  colour=cv_scale(colour,1-0.3*wet);
+  colour=cv_scale(colour,1-0.12*wet);
   return ch_out(u,ch_haze(u,colour,s.world,cv_scale(v,-1)),cv_groom_opacity(s.paint.x,s.paint.y),s.world);
  }
  skin:=s.material==ECHO_HEAD_SLOT || s.material==ECHO_SKIN_SLOT;
- // rain darkens what it wets and sharpens its highlights
- albedo:=cv_scale(ch_saturate(e.albedo,u[SCL_ALBEDO_SAT]),1-(ifx skin then 0.12f32 else 0.3f32)*wet);rough:=clampf(e.rough*(1-0.35*wet),0.045f32,1.0f32);metal:=e.metal;n:=e.normal;
+ // rain darkens cloth a little; cloth and skin soak it up and stay matte, never glossy (2026-11-07: a
+ // rougher-by-a-third, double-reflection wet look made every character shiny and dark in rain)
+ albedo:=cv_scale(ch_saturate(e.albedo,u[SCL_ALBEDO_SAT]),1-(ifx skin then 0.04f32 else 0.12f32)*wet);rough:=clampf(e.rough*(1-0.08*wet),0.045f32,1.0f32);metal:=e.metal;n:=e.normal;
  nv:=fmax(0.0001f32,wg_dot3(n,v));f0:=v3(mix(e.f0,albedo.x,metal),mix(e.f0,albedo.y,metal),mix(e.f0,albedo.z,metal));
  // the eyes sit under her lids and brow, which the world's shadow map (centimetres a texel) can't
  // resolve: they take CH_EYE_SHADE of the light, as her own close shadow map gives them on Valley Lab
@@ -436,7 +437,7 @@ ch_character_fs :: (s:ChSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
   if share>0 {colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_scale(delta,1/fmax(d,0.001f32)),v,1,0),CH_PI*share*u[at+7]*soft),cv_at(u,at+4)));}
  }
  // reflections of the sky: the split-sum environment at the sky's ambient, faded in creases
- env:=pbr_environment(rough,nv);sky:=cv_at(u,SCL_SKY);reflect:=cv_scale(cv_add(cv_scale(f0,env.a),v3(env.b,env.b,env.b)),cv_specular_occlusion(nv,e.occlusion,rough)*inner*(1+wet));
+ env:=pbr_environment(rough,nv);sky:=cv_at(u,SCL_SKY);reflect:=cv_scale(cv_add(cv_scale(f0,env.a),v3(env.b,env.b,env.b)),cv_specular_occlusion(nv,e.occlusion,rough)*inner*(1+0.15*wet));
  colour=cv_add(colour,cv_mul(reflect,sky));
  colour=ch_keep_chroma(colour,albedo,u[SCL_CHROMA_KEEP]);
  return ch_out(u,ch_haze(u,colour,s.world,cv_scale(v,-1)),0,s.world);
