@@ -106,6 +106,15 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade/assets/everglade-avatar.pack", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
+    { "id": "everglade-experimental", "name": "EVERGLADE EXPERIMENTAL", "kind": "open", "listed": false, "orbit": { "r": 0.34, "a": 4.2, "size": 0.02 },
+      "realm": {
+        "slug": "everglade-experimental", "title": "Everglade Experimental", "module": "everglade5e", "slot": "everglade-experimental",
+        "description": "An unlisted experimental copy of Everglade, with its character controller and world.",
+        "alt": "Everglade Experimental, an experimental forest city",
+        "card": "/worlds/everglade/og.jpg", "style": "painterly", "clock": "cycle", "ruleset": "srd5",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "assets": ["pack:/realms/everglade/assets/everglade-avatar.pack", "particles:/everglade-fx.wgsl", "sounds:/realms/everglade/sfx/"]
+      } },
     { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
       "realm": {
         "slug": "fairy-forest",

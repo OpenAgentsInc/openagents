@@ -1,5 +1,9 @@
 # Owner actions
 
+## Everglade Experimental local preview (2026-11-07)
+
+- Open http://127.0.0.1:8891/worlds/everglade-experimental?offline=worker to play the local development preview.
+
 ## Coax compiler builds: GitHub mirror on the release Mac (2026-11-07)
 
 - Cloud agent sessions can't reach `storage.googleapis.com` (their proxy refuses it), so every session bootstrapped the compiler for 30+ minutes. Published builds are now mirrored to GitHub releases (`coax-build-…` tags), which those sessions can reach. On the release Mac, make sure `gh auth status` shows an account with write access to OpenAgentsInc/openagents (the launchd agent's environment needs it too). The next `publish-host.sh` round then mirrors `main`'s builds for every platform, including the existing ones. Check: `gh release list --repo OpenAgentsInc/openagents | grep coax-build`.
