@@ -671,7 +671,12 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
   o.dye=v4(0.0f32,0.0f32,0.0f32,0.0f32);
   {
     _sw3:u32=kind;
-    if _sw3==1 {
+    if _sw3==0 && m.colour.z==9.0f32 {
+      b:u32=wg_u32_f(m.colour.x)+id*32;pb:u32=wg_u32_f(m.colour.y);p0:V4=v4(eg_word(b,vertices),eg_word(b+1,vertices),eg_word(b+2,vertices),1.0f32);n0:V3=v3(eg_word(b+3,vertices),eg_word(b+4,vertices),eg_word(b+5,vertices));sp:V3=v3(0.0f32,0.0f32,0.0f32);sn:V3=sp;
+      for k:0..<8 {joint:u32=(vertices[cast(int)(b+9+cast(u32)(k/2))]>>cast(u32)((k%2)*16))&65535;weight:f32=cast(f32)((vertices[cast(int)(b+13+cast(u32)(k/4))]>>cast(u32)((k%4)*8))&255)/255.0f32;r:u32=pb+joint*3;a:V4=pose[cast(int)r];c:V4=pose[cast(int)(r+1)];e:V4=pose[cast(int)(r+2)];sp=wg_add_f3f3(sp,wg_mul_ff3(weight,v3(wg_dot4(a,p0),wg_dot4(c,p0),wg_dot4(e,p0))));sn=wg_add_f3f3(sn,wg_mul_ff3(weight,v3(wg_dot3(v3(a.x,a.y,a.z),n0),wg_dot3(v3(c.x,c.y,c.z),n0),wg_dot3(v3(e.x,e.y,e.z),n0))));}
+      v=EgVert.{p=sp,n=sn};rgba:V4=wg_unpack4x8unorm(vertices[cast(int)(b+19)]);tint=v3(rgba.x,rgba.y,rgba.z);
+    } else if _sw3==1 {
+
       v=eg_box_vertex(id);
     } else if _sw3==2 {
       v=eg_sphere_vertex(id);

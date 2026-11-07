@@ -109,23 +109,23 @@ ob_clip :: (b:[]u8,a:int,id:int,source:int,rig:ObRig,out:[]u8,cursor:[]int) {
   }
  }
  #assert curveCount==ob_int(b,a+68);entry:=32+id*32;scan_put(out,entry,cast(u32)start);scan_put(out,entry+4,cast(u32)frames);scan_put(out,entry+8,f32_bits(cast(f32)nframes/30));scan_put(out,entry+12,0);scan_put(out,entry+16,f32_bits(30));scan_put(out,entry+20,cast(u32)source);scan_put(out,entry+24,cast(u32)(ifx scaled then 6 else 4));scan_put(out,entry+28,cast(u32)(ifx scaled then scaleStart else 0));
- flagsStart:=scaleStart+(ifx scaled then frames*rig.count*12 else 0);for joint:0..<rig.count {scan_put(out,flagsStart+joint*4,localFlags[joint]);}cursor[0]=flagsStart+rig.count*4;print("Ocarina clip % source=% frames=% curves=% scales=% scaleMin=% scaleMax=%\n",OCL_NAMES[id],source,frames,curveCount,scaled,scaleMin,scaleMax);
+ flagsStart:=scaleStart+(ifx scaled then frames*rig.count*12 else 0);for joint:0..<rig.count {scan_put(out,flagsStart+joint*4,localFlags[joint]);}cursor[0]=flagsStart+rig.count*4;print("Ocarina clip slot % source=% frames=% curves=% scales=% scaleMin=% scaleMax=%\n",id,source,frames,curveCount,scaled,scaleMin,scaleMax);
 }
-ob_find_clips :: (b:[]u8,source:int,rig:ObRig,out:[]u8,cursor:[]int,done:[]bool) {
+ob_find_clips :: (b:[]u8,source:int,rig:ObRig,out:[]u8,cursor:[]int,done:[]bool,raid:bool) {
  ob_file(b);array:=ob_ptr(b,88);n:=ob_u16(b,226);#assert n<=2000;
- for k:0..<n {a:=array+k*80;#assert ob_word(b,a)==0x414b5346;name:=ob_name(b,a+8);for id:0..<OCL_CLIPS {if !done[id] && name==OCL_NAMES[id] {ob_clip(b,a,id,source,rig,out,cursor);done[id]=true;}}}
+ for k:0..<n {a:=array+k*80;#assert ob_word(b,a)==0x414b5346;name:=ob_name(b,a+8);for id:0..<OCL_CLIPS {if !done[id] && name==(ifx raid && id==7 then "Rolling_Short" else OCL_NAMES[id]) {ob_clip(b,a,id,source,rig,out,cursor);done[id]=true;}}}
 }
 ob_rig_write :: (rig:ObRig,out:[]u8)->int {
  scan_put(out,0,0x314c434f);scan_put(out,4,1);scan_put(out,8,cast(u32)rig.count);scan_put(out,12,OCL_CLIPS);at:=32+OCL_CLIPS*32;scan_put(out,16,cast(u32)at);scan_put(out,24,cast(u32)rig.count);
  for k:0..<rig.count {b:=rig.bone[k];scan_put(out,at,cast(u32)(b.parent+1));at+=4;for j:0..<12 {scan_put(out,at,f32_bits(b.bind[j]));at+=4;}ob_pose_write(out,at,b.rest);at+=28;}return at;
 }
 tool_main :: ()->int #export_c #effects(all) {
- args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=7 {print("usage: MODEL PACK1 PACK2 PACK3 PACK4 FACIAL OUTPUT_DIR\n");return 2;}
- data:[67108864]u8;vertices:[OCL_VERTICES*128]u8;indices:[OCL_INDEX*4]u8;poses:[33554432]u8;rig:[1]ObRig;counts:[2]int;cursor:[1]int;done:[OCL_CLIPS]bool;path:[4096]u8;
+ args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=7 && args_count(args[..])!=8) {print("usage: MODEL PACK1 PACK2 PACK3 PACK4 FACIAL OUTPUT_DIR\n");return 2;}
+ raid:=args_has(args[..],"--raid");data:[67108864]u8;vertices:[OCL_VERTICES*128]u8;indices:[OCL_INDEX*4]u8;poses:[33554432]u8;rig:[1]ObRig;counts:[2]int;cursor:[1]int;done:[OCL_CLIPS]bool;path:[4096]u8;
  n:=fs_read(args_at(args[..],0),data[..]);if n<=0 {return 3;}ob_rig(data[0..<n],rig[..]);#assert rig[0].count==309;ob_mesh(data[0..<n],rig[0],vertices[..],indices[..],counts[..]);cursor[0]=ob_rig_write(rig[0],poses[..]);
- for source:1..<6 {n=fs_read(args_at(args[..],source),data[..]);if n<=0 {return 4;}ob_find_clips(data[0..<n],source,rig[0],poses[..],cursor[..],done[..]);}
+ for source:1..<6 {n=fs_read(args_at(args[..],source),data[..]);if n<=0 {return 4;}ob_find_clips(data[0..<n],source,rig[0],poses[..],cursor[..],done[..],raid);}
  for id:0..<OCL_CLIPS {if !done[id] {print("missing original clip %\n",OCL_NAMES[id]);return 5;}}
- scan_put(poses[..],20,cast(u32)cursor[0]);dest:=args_at(args[..],6);if !fs_mkdir(dest) {return 6;}
+ if raid {scan_put(poses[..],0,0x324c434f);}scan_put(poses[..],20,cast(u32)cursor[0]);dest:=args_at(args[..],6);if !fs_mkdir(dest) {return 6;}
  if !fs_write(fs_join(dest,"link.vertices",path[..]),cast(string)vertices[0..<counts[0]*128]) || !fs_write(fs_join(dest,"link.indices",path[..]),cast(string)indices[0..<counts[1]*4]) || !fs_write(fs_join(dest,"link.rig",path[..]),cast(string)poses[0..<cursor[0]]) {return 7;}
- print("OCL1 bones=% vertices=% indices=% triangles=% rig_bytes=%\n",rig[0].count,counts[0],counts[1],counts[1]/3,cursor[0]);return 0;
+ print("% bones=% vertices=% indices=% triangles=% rig_bytes=%\n",ifx raid then "OCL2" else "OCL1",rig[0].count,counts[0],counts[1],counts[1]/3,cursor[0]);return 0;
 }

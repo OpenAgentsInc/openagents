@@ -73,7 +73,8 @@ static bool placed;
 static double now;
 static float width, height, dpr;
 static uint8_t inbox[16384];
-static uint8_t catalog[16384];
+static uint8_t catalog[16777216];
+static uint8_t link_data[12582912];
 static coax_t_Track track_state;
 static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everglade-track.coax)
 #define NPC_URL "/api/playtest/npc/ask"
@@ -979,7 +980,10 @@ EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr st
 }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   start(state);
-  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) {
+    everglade_link_storage(at(state), (coax_v_u8){link_data, sizeof link_data});
+    everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
+  }
   if (i >= 0 && i <= 3 && bytes == 0) everglade_pack_failed(at(state));
 }
 
@@ -1072,6 +1076,7 @@ static void guide_out(cx_face_addr state) {
   everglade_guide_view(at(state), ggs_view(guides(), ms), observation, ggp_offer(facts), ms);
 }
 EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr state, int32_t field) {
+  if (field >= 300 && field <= 305) return (int32_t)everglade_link_probe(at(state), field);
   if (field == 248) return guide_authenticated ? 1 : 0;
   if (field >= 240 && field <= 252) return (int32_t)everglade_guide_probe(at(state), field);
   if (field >= 200) return (int32_t)ggs_probe(guides(), field);

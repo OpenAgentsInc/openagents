@@ -1,6 +1,6 @@
 // OCL1 private Link rig profile: 309 joints, eight named source clips, TQ/S3/flags.
 // Content identity is a separate whole-pack gate. No view is formed before this succeeds.
-#load "../valley/scan.coax";
+#load "../../aethyr/binary-words.coax";
 #load "rig-policy-fixture.coax";
 #authority;
 OCL_JOINTS :: 309;
@@ -44,6 +44,9 @@ OclRigClip :: struct {ok:bool;start:int;end:int;frames:int;scale:int;flags:int;}
  scale:=cast(int)scan_u32(b[..],32+28);scan_put(b[..],scale,0x7fc00000);#assert !ocarina_rig_valid(b[..]);
 }
 
+#test "OCL2 raid profile admits original Rolling in slot seven without weakening OCL1 provenance" #steps 100000000 {
+ b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);scan_put(b[..],0,0x324c434f);#assert !ocarina_rig_valid(b[..]);scan_put(b[..],32+7*32+20,3);#assert ocarina_rig_valid(b[..]);scan_put(b[..],0,0x314c434f);#assert !ocarina_rig_valid(b[..]);scan_put(b[..],0,0x334c434f);#assert !ocarina_rig_valid(b[..]);
+}
 ocr_span :: (size:int,at:int,n:int)->bool #effects(all) {return at>=0 && n>=0 && at<=size && n<=size-at;}
 ocr_finite :: (b:[]u8,at:int,n:int)->bool #effects(all) {
  if !ocr_span(b.count,at,0) || n<0 {return false;}
@@ -64,14 +67,14 @@ ocr_clip :: (b:[]u8,entry:int)->OclRigClip #effects(all) {
  start:=cast(int)scan_u32(b,entry);frames:=cast(int)scan_u32(b,entry+4);scale:=cast(int)scan_u32(b,entry+28);flags:=cast(int)scan_u32(b,entry+24);
  if !ocr_frames(frames) || !ocr_finite_bits(scan_u32(b,entry+12)) || flags!=6 {return OclRigClip.{};}
  fps:=scan_float(b,entry+16);duration:=scan_float(b,entry+8);source:=cast(int)scan_u32(b,entry+20);id:=(entry-32)/32;
- if fps!=30 || duration!=cast(f32)(frames-1)/30 || source!=[8]int.[4,2,2,2,2,2,1,5][id] {return OclRigClip.{};}
+ if fps!=30 || duration!=cast(f32)(frames-1)/30 || source!=(ifx scan_u32(b,0)==0x324c434f && id==7 then 3 else [8]int.[4,2,2,2,2,2,1,5][id]) {return OclRigClip.{};}
  bytes:=frames*OCL_JOINTS*40+OCL_JOINTS*4;
  if start<OCL_RIG_BASE+OCL_JOINTS*80 || scale!=start+frames*OCL_JOINTS*28 || !ocr_span(b.count,start,bytes) {return OclRigClip.{};}
  return OclRigClip.{ok=true,start=start,end=start+bytes,frames=frames,scale=scale,flags=scale+frames*OCL_JOINTS*12};
 }
 ocarina_rig_valid :: (b:[]u8)->bool #effects(all) {
  if !ocr_size_ok(b.count) {return false;}
- if scan_u32(b,0)!=0x314c434f || scan_u32(b,4)!=1 || scan_u32(b,8)!=OCL_JOINTS || scan_u32(b,12)!=OCL_RIG_CLIPS || scan_u32(b,16)!=OCL_RIG_BASE || scan_u32(b,20)!=cast(u32)b.count || scan_u32(b,24)!=OCL_JOINTS || scan_u32(b,28)!=0 {return false;}
+ if (scan_u32(b,0)!=0x314c434f && scan_u32(b,0)!=0x324c434f) || scan_u32(b,4)!=1 || scan_u32(b,8)!=OCL_JOINTS || scan_u32(b,12)!=OCL_RIG_CLIPS || scan_u32(b,16)!=OCL_RIG_BASE || scan_u32(b,20)!=cast(u32)b.count || scan_u32(b,24)!=OCL_JOINTS || scan_u32(b,28)!=0 {return false;}
  rigEnd:=OCL_RIG_BASE+OCL_JOINTS*80;if !ocr_bones(b) {return false;}
  clips:[8]OclRigClip;total:=rigEnd;
  for k:0..<8 {c:=ocr_clip(b,32+k*32);if !c.ok {return false;}clips[k]=c;total+=c.end-c.start;for j:0..<k {p:=clips[j];if c.start<p.end && p.start<c.end {return false;}}}

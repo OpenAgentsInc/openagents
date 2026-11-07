@@ -1,0 +1,11 @@
+// Shared little-endian words and point codec; mechanically separated from asset admission.
+#load "points.coax";
+#test "scan LE codec preserves float bits and byte order" {
+  b:[4]u8;scan_put(b[..],0,0x40302010);#assert b[0]==16 && b[1]==32 && b[2]==48 && b[3]==64 && scan_u32(b[..],0)==0x40302010;
+  scan_put(b[..],0,f32_bits(-1.5));#assert scan_float(b[..],0)== -1.5;
+}
+scan_u32 :: (b:[]u8,k:int)->u32 #effects(all) {return cast(u32)b[k] | (cast(u32)b[k+1]<<8) | (cast(u32)b[k+2]<<16) | (cast(u32)b[k+3]<<24);}
+scan_float :: (b:[]u8,k:int)->f32 #effects(all) {return f32_from_bits(scan_u32(b,k));}
+scan_put :: (b:[]u8,k:int,v:u32) #effects(all) {for j:0..<4 {b[k+j]=cast,trunc(u8)(v>>(j*8));}}
+scan_point :: (b:[]u8,k:int)->Point #effects(all) {return v3(scan_float(b,k),scan_float(b,k+4),scan_float(b,k+8));}
+scan_write_point :: (b:[]u8,k:int,p:Point) #effects(all) {scan_put(b,k,f32_bits(p.x));scan_put(b,k+4,f32_bits(p.y));scan_put(b,k+8,f32_bits(p.z));}

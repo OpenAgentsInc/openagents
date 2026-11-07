@@ -56,6 +56,7 @@
 //   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000
 
 #load "font.coax";
+#load "everglade-link.coax";
 #load "analytics.coax";
 #load "../../aethyr/camera.coax";
 #load "../../verse/everglade/plan.coax";
@@ -228,7 +229,8 @@ PERSON_MARK :: 2.0;
 // Then the others' Rangers' (everglade-rangers.coax REMOTE_PAL_AT).
 RAID_PAL_AT :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4 + REMOTE_PALETTE;
 // Then the raid's people's, last (everglade-raid-preview.coax).
-PALETTE_FLOATS :: RAID_PAL_AT + RAID_SHOWN * PERSON_ROWS * 4;
+LINK_PAL_AT :: RAID_PAL_AT + RAID_SHOWN * PERSON_ROWS * 4;
+PALETTE_FLOATS :: LINK_PAL_AT + 309*12;
 OBJECT_FLOATS :: 16;
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4; LOOK_KIT :: 5;
 // The kit's rocks (Rock_Medium_1 and _2: the undergrowth's and the waystone's): the kit's texture, darkened
@@ -280,7 +282,8 @@ PEOPLE_DRAW :: LATHE_DRAW + 1;
 SHARD_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
 RANGER_FAR_DRAW :: SHARD_DRAW + KIT_MESHES;   // the others' Rangers past REMOTE_LOD_FROM, the pack's far mesh
 RAID_DRAW :: RANGER_FAR_DRAW + 1;   // the raid's people, a part a draw (everglade-raid-preview.coax)
-WATER_DRAW :: RAID_DRAW + PEOPLE_PARTS;
+LINK_DRAW :: RAID_DRAW + PEOPLE_PARTS;
+WATER_DRAW :: LINK_DRAW + 1;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad, 2 a rowboat).
@@ -473,6 +476,7 @@ Everglade :: struct {
   flock: bool;                             // the bird flock is yours (the river quest handed in)
   birds: [1] Flock;                        // and where its birds are (aethyr/flock.coax)
   // you, the Ranger: its rig, its playback and its joints' skinning matrices (store 2)
+  link:[1]EgLink;link_on:bool;link_ready:bool;link_first:int;link_count:int;link_word:int;link_carry:f32;link_action:int;link_air:bool;link_seconds:f32;
   rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
   // the city's people: how each lives, their poses, their rig, the pack's parts and who is shown
   folk: [EG_SPOTS] Folk; people_rig: [1] People;
@@ -1024,7 +1028,8 @@ whole_at :: (line: string, from: int) -> int {
   while i < line.count && line[i] >= '0' && line[i] <= '9' { v = v * 10 + cast(int) (line[i] - '0'); i += 1; any = true; }
   return ifx any then v else -1;
 }
-everglade_catalog :: (s: [] Everglade, text: string) #export_c #effects(all) {
+everglade_catalog :: (s: [] Everglade, input: string) #export_c #effects(all) {
+  text:=input;
   if !s[0].started { everglade_start(s); }
   for m: 0..<KIT_MESHES { s[0].kit_first[m] = 0; s[0].kit_count[m] = 0; }
   for k: 0..<KIT_TREES * 3 { s[0].canopy_rgb[k] = 0; }
@@ -1038,6 +1043,8 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c #effects(all) {
     line := text[i..<e];
     i = e + 1;
     if line.count < 4 || line[1] != ' ' { continue; }
+    if line[0]=='Z' && !s[0].link_ready {n:=b64_decode(line[2..<line.count],s[0].link[0].data);if n>0 {s[0].link_ready=el_admit(s[0].link[..],s[0].link[0].data[0..<n]);}continue;}
+    if line[0]=='X' && s[0].link_ready {at:=word_end(line,2);s[0].link_first=whole_at(line,at);at=word_end(line,at+1);s[0].link_count=whole_at(line,at);at=word_end(line,at+1);s[0].link_word=whole_at(line,at);s[0].link_on=s[0].link_count==218334 && s[0].link_first>=0 && s[0].link_word>=0;continue;}
     if line[0] == 'T' { rangers_catalog_line(s[0].rangers[..], line); continue; }   // the Ranger's layers (everglade-rangers.coax)
     if line[0] == 'I' {
       first := whole_at(line, 2); after := word_end(line, 2);
@@ -1415,6 +1422,8 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c #effec
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
   if s[0].chat.typing { return chat_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
+  if s[0].link_ready && mods==1 && (key==76 || key==108) {s[0].link_on=!s[0].link_on;s[0].link_action=0;s[0].link_seconds=0;s[0].link[0].forced=false;return true;}
+  if s[0].link_ready && s[0].link_on && mods==1 && (key==82 || key==114 || key==66 || key==98) && !s[0].link_air && !s[0].link[0].forced && !everglade_busy(s) && !everglade_held(s) {s[0].link_action=ifx key==82 || key==114 then 7 else 6;el_select(s[0].link[..],s[0].link_action);s[0].link[0].time=0;s[0].link[0].forced=true;s[0].link_seconds=el_duration(s[0].link[..]);return true;}
   play := eg_key_play(s, key);   // through the settings record: a rebound key does its action's
   if play == 0 { return false; }
   return eg_play_key(s, play, mods);
@@ -1527,6 +1536,13 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
   s[0].run = h & HOLD_RUN != 0;
   s[0].jump = h & HOLD_JUMP != 0;
   s[0].dive = h & HOLD_DIVE != 0;
+  // Use ordinary serialized movement inputs: the room applies its normal collisions,
+  // spell slows and jump rules too. These are input macros, not native Link physics.
+  if s[0].link_seconds>0 {
+    if !s[0].link_on || everglade_busy(s) || everglade_held(s) {s[0].link_seconds=0;s[0].link[0].forced=false;}
+    else {s[0].key_x=0;s[0].key_y=ifx s[0].link_action==6 then -1.0f32 else 1.0f32;s[0].run=true;s[0].jump=s[0].link_action==6 && s[0].link_seconds>el_duration(s[0].link[..])-0.08;s[0].link_seconds=hi(0,s[0].link_seconds-clamp(dt,0,0.25));}
+  }
+
   o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
   o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
@@ -3304,6 +3320,11 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
       rows = [12] f32.[c, sn * sp, sn * cp, feet.x,   0, cp, -sp, feet.y + 0.12 * abs(sp),   -sn, c * sp, c * cp, feet.z];
     }
   }
+  if everglade_link_body(s) {
+    s[0].link_air=airborne;s[0].link_carry+=clamp(dt,0,0.25);while s[0].link_carry>=1.0f32/64 {el_tick(s[0].link[..],speed,!airborne);s[0].link_carry-=1.0f32/64;}
+    for k:0..<309*12 {s[0].palette[LINK_PAL_AT+k]=s[0].link[0].palette[k];}
+    for k:0..<12 {s[0].objects[o+k]=rows[k];}s[0].objects[o+12]=cast(f32)s[0].link_word;s[0].objects[o+13]=cast(f32)(LINK_PAL_AT/4);s[0].objects[o+14]=9;s[0].objects[o+15]=24;shadow(s,u,feet.x,feet.z,floor_under(s,feet.x,feet.z,feet.y),0.45,0.6);return;
+  }
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = f32(s[0].ranger_word); s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);
@@ -4179,7 +4200,9 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d + 1] = cast(u32) s[0].ranger_count;
   // you not in a beast's shape (everglade-circle.coax), nor zoomed into your head (first person,
   // aethyr/camera.coax); then the others' (everglade-rangers.coax)
-  you_on := s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s);
+  link_visible:=everglade_link_body(s) && ci_you_shown(s) && !you_inside(s);
+  s[0].draws[LINK_DRAW*4]=cast(u32)s[0].link_first;s[0].draws[LINK_DRAW*4+1]=cast(u32)s[0].link_count;s[0].draws[LINK_DRAW*4+2]=cast(u32)(EG_CELLS*EG_CELLS+RANGER_AT);s[0].draws[LINK_DRAW*4+3]=ifx link_visible then cast(u32)1 else cast(u32)0;
+  you_on := !link_visible && s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s);
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + (ifx you_on then RANGER_AT else REMOTE_AT));
   bodies := ifx s[0].ranger_count > 0 then (ifx you_on then 1 else 0) + s[0].rangers[0].n else 0;
   s[0].draws[d + 3] = cast(u32) bodies;
@@ -4331,7 +4354,7 @@ everglade_store_cap :: (k: int) -> int #export_c #effects(all) {
 }
 // What of store k the host uploads this frame: the raid's people's part only while a raid is drawn.
 everglade_store_used :: (s: [] Everglade, k: int) -> int #export_c #effects(all) {
-  if k == 2 { return ifx rp_drawn(s) then PALETTE_FLOATS * 4 else RAID_PAL_AT * 4; }
+  if k == 2 { return ifx s[0].link_ready && s[0].link_on then PALETTE_FLOATS*4 else ifx rp_drawn(s) then LINK_PAL_AT*4 else RAID_PAL_AT*4; }
   if k == 1 { return ifx rp_drawn(s) then ALL_OBJECTS * OBJECT_FLOATS * 4 else RAID_AT * OBJECT_FLOATS * 4; }
   return everglade_store_cap(k);
 }
@@ -5094,3 +5117,25 @@ EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, byte
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
 // Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 #load "../../aethyr/frame-pacing.coax";
+#test "Link raid toggle is reversible and cannot activate without a complete private rig" #steps 2000000000 {
+ s:[1]Everglade;everglade_start(s[..]);#assert !s[0].link_on;s[0].link_ready=true;s[0].link_on=true;#assert everglade_key(s[..],76,1) && !s[0].link_on;#assert everglade_key(s[..],76,1) && s[0].link_on;#assert DRAWS==WATER_DRAW+1 && LINK_PAL_AT+309*12==PALETTE_FLOATS;
+}
+
+// Private experiment diagnostics through the existing host probe ABI.
+everglade_link_probe :: (s:[]Everglade,field:int)->int #export_c #effects(all) {
+ if field==300 {return ifx s[0].link_ready then 1 else 0;}if field==301 {return ifx s[0].link_on then 1 else 0;}if field==302 {return s[0].link[0].clip;}if field==303 {return s[0].link[0].revision;}if field==304 {return cast(int)s[0].draws[LINK_DRAW*4+3];}if field==305 {return s[0].link_count;}return -1;
+}
+#test "Link raid actions use serialized movement and cancel on toggle" #steps 650000000 {
+ s:[1]Everglade;everglade_start(s[..]);s[0].link_ready=true;s[0].link_on=true;s[0].link_action=7;s[0].link_seconds=1;
+ everglade_controls(s[..],0.02,0,0);#assert s[0].key_y==1 && s[0].run && !s[0].jump && s[0].link_seconds<1;
+ s[0].link_action=6;s[0].link_seconds=1;everglade_controls(s[..],0.02,0,0);#assert s[0].key_y== -1 && s[0].jump;
+ #assert everglade_key(s[..],76,1);everglade_controls(s[..],0.02,0,0);#assert !s[0].link_on && s[0].link_seconds==0 && s[0].key_y==0 && !s[0].jump;
+}
+
+// The face supplies stable private storage; source bytes never inflate gameplay snapshots.
+everglade_link_storage :: (s:[]Everglade,b:[]u8) #export_c #effects(all) {if !s[0].link_ready {s[0].link[0].data=b;}}
+
+everglade_link_body :: (s:[]Everglade)->bool {
+ dead:=s[0].wv.started && watch_you(s[0].wt[..])[0].dead;
+ return s[0].link_ready && s[0].link_on && !dead && !st_down(s,ST_YOU) && (st_cond(s,ST_YOU)&(WC_UNCONSCIOUS|WC_PRONE))==0;
+}

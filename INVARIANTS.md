@@ -6023,3 +6023,17 @@ the existing people palette and draw format; this adds no shared/native renderer
 qualification. Unknown slug/producer pairs continue to refuse. The appearance
 save contains only versioned choices, never pack addresses or renderer state.
 See `docs/verse/character-creator.md`.
+## Everglade's private Link experiment is reversible and keeps room authority
+
+The unlisted `experiments/link-raid` page admits an owner-local combined pack.
+OCL2 keeps OCL1's layout and full admission checks, with source file 03's original
+Rolling_Short in slot seven; it cannot silently relabel the OCL1 facial clip.
+The face owns bounded rig storage outside gameplay snapshots. Source skinning
+preserves all eight 16-bit joint indices, source scales and SSC. The extra draw
+replaces only the local standing avatar; water remains the final blended draw.
+Shift+L restores the ordinary avatar and cancels its movement macro. Spell
+controls and remote characters retain their existing paths. Roll/backflip use
+ordinary serialized movement inputs and do not bypass room collision or combat
+rules. They are not a claim of recovered original controller physics. See
+`docs/verse/2026-11-06-everglade-link-experiment.md` for source, rendering limits,
+controls and rollback.
