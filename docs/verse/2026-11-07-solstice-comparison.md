@@ -245,8 +245,12 @@ before/after table for each change, and states what was *not* measured.
 
 ## Proposed sequence
 
-1. **Watertight residency** in `pages.coax`: N slots, dependency invariant,
-   `#forall` over random request sequences, zero mutants.
+1. **Watertight CPU residency** landed in `aethyr/render/geometry/residency.coax`
+   (#12999): N slots, dependency-safe installation/eviction, `#forall` over random
+   request sequences and zero mutation survivors. The delayed-child install fix
+   and 464-mutant gate are recorded in
+   [the verification](../verification/geometry-residency-12999/README.md).
+   Valley Lab adoption and the draw rule remain in #13008.
 2. **Range and throttle in `coax serve`** (landed, #13000), with time to first image measured
    for Everglade before anything else changes.
 3. **Range-addressable packs** with a SHA-256 per page, Range fetches in

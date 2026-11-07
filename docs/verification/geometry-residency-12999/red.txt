@@ -1,0 +1,7 @@
+FAIL #test a delayed child never evicts its own parent to make its install slot (0 ms)
+aethyr/render/geometry/residency.coax:199:3: error[E0406]: assertion failed
+    #assert blocked.page== -1 && blocked.slot== -1 && blocked.evicted== -1;
+    ^
+  note: in #test a delayed child never evicts its own parent to make its install slot
+1 of 15 checks (--only 'a delayed child'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
