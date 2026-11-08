@@ -2,3 +2,4 @@
 #load "private-pack.coax";
 #load "buffers.coax";
 #load "transport-cost.coax";
+#load "page-stream.coax";

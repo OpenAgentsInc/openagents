@@ -132,7 +132,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     }
     // its pack's style (verse/packs/<pack>.json "style", none is lowpoly) is one the realm draws in
     for (const a of r.assets) {
-      const pack = /^pack:.*\/([a-z0-9-]+)\.pack$/.exec(a)?.[1]
+      const pack = /^pack:.*\/([a-z0-9-]+)\.(?:pack|vpk3)$/.exec(a)?.[1]
       const manifest = pack && join(packs, `${pack}.json`)
       if (!manifest || !existsSync(manifest)) continue
       const declared = JSON.parse(readFileSync(manifest, "utf8")).style, ps = declared ?? "lowpoly"

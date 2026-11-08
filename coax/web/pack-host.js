@@ -61,6 +61,7 @@ export async function openPackHost(){
    if(!x.pack_stream_finish())throw Error('Coax refused incomplete pack stream');return {target,address,ticket};
   }
   function load(pack,{owner,current=()=>true,progress,observe}={}){
+   if(/\.vpk3$/.test(pack.url))return loadPaged(pack,{owner,current,progress,observe});
    if(pack.broker&&pack.bytes!==undefined)throw Error('private transport needs its separately admitted crypto plan');
    const op=operation(owner,current,progress,pack.bytes,false,observe);
    op.finished=(async()=>{try{
@@ -82,6 +83,79 @@ export async function openPackHost(){
     op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source:plain.target,bytes:plain.target.byteLength,owner,close:()=>op.abort(),async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;
    }catch(error){op.retired=true;op.controller.abort();throw error;}finally{op.loading=false;op.dispose();}})();return op.finished;
   }
+  // A range-addressable VPK3 pack (aethyr/forge/page-pack.coax): the header and manifest in one
+  // range, then runs of pages, roots first, a few ranges at once, each retried with back-off. A
+  // server that ignores Range sends the file once and the ranges are cut from it. Each page is
+  // inflated here and written at its place in the image arena; Coax admits it by size and SHA-256
+  // (aethyr/host/page-stream.coax). The roots held, the image is admitted as a whole pack is, and
+  // the result is published; pages that are not roots follow, and result.complete waits for them.
+  // With image:true the image is published once its roots are held, without the VPK1 reader: for
+  // a caller that reads the image itself (host.js's whole-pack path, geometry pages).
+  function loadPaged(pack,{owner,current=()=>true,progress,observe,image=false}={}){
+   const op=operation(owner,current,progress,undefined,false,observe);let trailing=null;
+   op.finished=(async()=>{try{
+    const url=pack.url,signal=op.controller.signal,init=pack.quiet?{cache:'no-store'}:{},sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    let whole=null,total=0,etag=null;
+    const range=async(from,to)=>{
+     for(let attempt=0;;attempt++){
+      op.check();
+      try{
+       if(whole)return whole.subarray(from,Math.min(to,whole.length));
+       const r=await fetch(url,{...init,signal,headers:{Range:`bytes=${from}-${to-1}`}});op.check();
+       const tag=r.headers.get('etag');if(etag===null)etag=tag;else if(tag!==etag){await r.body?.cancel();throw Object.assign(Error('pack changed while loading'),{final:true});}
+       if(r.status===206){
+        const m=/^bytes (\d+)-(\d+)\/(\d+)$/.exec(r.headers.get('content-range')||''),body=new Uint8Array(await r.arrayBuffer());op.check();
+        if(!m||Number(m[1])!==from||body.length!==Number(m[2])-from+1)throw Error('pack range answered with other bytes');total=Number(m[3]);return body;
+       }
+       if(r.status===200){const body=new Uint8Array(await r.arrayBuffer());op.check();op.reserve(body.length);op.buffers.push(body);whole=body;total=body.length;return whole.subarray(from,Math.min(to,total));}
+       await r.body?.cancel();throw Object.assign(Error(`pack range: ${r.status}`),{final:r.status===404||r.status===416});
+      }catch(error){if(error?.name==='AbortError'||op.retired||error.final||attempt>=3)throw error;await sleep(250*2**attempt);}
+     }
+    };
+    const x=op.context.x,cap=x.pack_paged_capacity();
+    const put=bytes=>new Uint8Array(op.context.memory.buffer,x.pack_paged_ptr(),bytes.length).set(bytes);
+    let head=await range(0,cap);
+    if(head.length<96)throw Error('not a VPK3 pack');
+    const need=96+new DataView(head.buffer,head.byteOffset,head.length).getUint32(16,true)*64;
+    if(need>cap)throw Error('VPK3 manifest is larger than the reader holds');
+    if(head.length<need)head=await range(0,need);
+    put(head.subarray(0,need));
+    if(!x.pack_paged_open(need))throw Error('Coax refused the VPK3 manifest');
+    const pages=Number(x.pack_page_info(-1,0)),imageBytes=Number(x.pack_page_info(-1,1)),fileBytes=Number(x.pack_page_info(-1,2));
+    if(total&&total!==fileBytes)throw Error('VPK3 file is not the size its header says');
+    const info=[];for(let k=0;k<pages;k++){const f=[0,1,2,3,4,5].map(i=>Number(x.pack_page_info(k,i)));info.push({at:f[0],stored:f[1],image:f[2],decoded:f[3],codec:f[4],root:f[5]===1});}
+    const address=arena(op,imageBytes),held=new Uint8Array(pages);let loaded=need;op.progress?.(loaded,fileBytes);
+    // Runs: consecutive pages of one kind (root or not), up to 2 MiB of stored bytes each.
+    const runs=root=>{const out=[];let run=null;for(let k=0;k<pages;k++){if(info[k].root!==root){run=null;continue;}
+     if(run&&k===run.at(-1)+1&&info[k].at+info[k].stored-info[run[0]].at<=2097152)run.push(k);else out.push(run=[k]);}return out;};
+    const inflate=async bytes=>new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    const fetchRun=async run=>{
+     const first=info[run[0]],last=info[run.at(-1)];
+     for(let attempt=0;;attempt++){
+      const bytes=await range(first.at,last.at+last.stored);let ok=bytes.length===last.at+last.stored-first.at;
+      for(const k of run){
+       if(!ok)break;if(held[k])continue;const g=info[k],stored=bytes.subarray(g.at-first.at,g.at-first.at+g.stored);
+       let decoded;op.sdkPending++;try{decoded=g.codec===1?await inflate(stored):stored;}catch{ok=false;break;}finally{op.sdkPending--;}
+       op.check();if(decoded.length!==g.decoded){ok=false;break;}
+       new Uint8Array(op.context.memory.buffer,address+g.image,g.decoded).set(decoded);
+       if(!x.pack_page_admit(k)){ok=false;break;}held[k]=1;loaded+=g.stored;op.copied+=g.decoded;op.progress?.(loaded,fileBytes);
+      }
+      if(ok)return;if(attempt>=2)throw Error('Coax refused a VPK3 page');await sleep(250*2**attempt);
+     }
+    };
+    const workers=async list=>{const queue=[...list],width=Math.max(1,Math.min(16,pack.ranges||4));await Promise.all(Array.from({length:Math.min(width,queue.length)},async()=>{while(queue.length)await fetchRun(queue.shift());}));};
+    await workers(runs(true));op.check();
+    if(!x.pack_paged_finish()||(!image&&!x.pack_admit(0)))throw Error('Coax refused complete pack identity, layout or catalog');
+    const memory=op.context.memory,source=new Uint8Array(memory.buffer,address,imageBytes);
+    const entries=[];if(!image)for(let i=0;i<x.pack_entry_count();i++){const fields=[0,1,2,3,4,5].map(f=>Number(x.pack_entry(i,f)));entries.push(Object.freeze({kind:fields[0],licence:fields[1],name:new TextDecoder().decode(new Uint8Array(memory.buffer,fields[4],fields[5])),bytes:source.subarray(fields[2],fields[2]+fields[3]),at:fields[2]}));}
+    const rest=runs(false);trailing=rest.length?workers(rest):null;const complete=(trailing||Promise.resolve()).then(()=>{op.check();});complete.catch(()=>{});
+    op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source,bytes:imageBytes,stored:fileBytes,pages,owner,complete,
+     ready:entry=>!!op.context&&!!op.context.x.pack_paged_ready(entry.at,entry.bytes.length),close:()=>op.abort(),
+     async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;
+   }catch(error){op.retired=true;op.controller.abort();throw error;}finally{
+    if(trailing){op.loading=true;trailing.catch(()=>{}).finally(()=>{op.loading=false;op.dispose();});}else{op.loading=false;op.dispose();}
+   }})();return op.finished;
+  }
   // A byte transfer is not an admitted asset. The consumer must authenticate
   // and decode the complete result through its Coax content authority.
   function loadBytes(url,expected,{owner,current=()=>true,observe}={}){
@@ -95,6 +169,6 @@ export async function openPackHost(){
    }catch(error){op.retired=true;op.controller.abort();await response?.body?.cancel().catch(()=>{});throw error;}finally{op.loading=false;op.dispose();}})();return op.finished;
   }
   function retainBytes(bytes){let ticket=reserve(bytes);return Object.freeze({bytes,release(){if(!ticket)throw Error('retained storage already released');release(ticket);ticket=null;}});}
-  return Object.freeze({load,loadBytes,retainBytes,info,abortReads(owner){for(const op of ops)if(op.owner===owner&&!op.published)op.abort();},async retire(owner){const selected=[...ops].filter(op=>op.owner===owner);for(const op of selected)op.abort();await Promise.allSettled(selected.map(op=>op.finished));await Promise.all(selected.map(op=>op.closed));},masterBytes:master.memory.buffer.byteLength});
+  return Object.freeze({load,loadPaged,loadBytes,retainBytes,info,abortReads(owner){for(const op of ops)if(op.owner===owner&&!op.published)op.abort();},async retire(owner){const selected=[...ops].filter(op=>op.owner===owner);for(const op of selected)op.abort();await Promise.allSettled(selected.map(op=>op.finished));await Promise.all(selected.map(op=>op.closed));},masterBytes:master.memory.buffer.byteLength});
  })().catch(error=>{opened=null;throw error;});return opened;
 }

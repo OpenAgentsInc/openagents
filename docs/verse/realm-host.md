@@ -118,6 +118,15 @@ separate files; Ice Cream Man, Dead Gears and Everglade use packs.
   sounds are added by name for `coaxial_sounds`. While it streams the realm
   gets message 605, `LOADED TOTAL` bytes, about ten times a second; then
   `coaxial_asset_ready` for each of the four (bytes 0: it failed).
+- **By ranges**: name `pack:/realms/<slug>/assets/<realm>.vpk3` instead, and
+  add the file to the `.vpk3` loop in `apps/openagents-web/build.sh`, which
+  writes it from the tracked `.pack` (`coax/web/tool.sh
+  aethyr/tools/page-pack.coax IN.pack OUT.vpk3`). VPK3
+  (`aethyr/forge/page-pack.coax`, #13001) holds the same pack as pages, each
+  deflated on its own and named by its SHA-256. The page fetches the
+  manifest and then the pages with HTTP Range, a few at once, and Coax admits
+  each page by content. The realm sees the same four assets and the same
+  message 605 (in stored bytes).
 - **The catalog**, a line each: `pack NAME`, `budget BYTES`, `bytes BYTES`;
   `L K NAME|LICENCE|URL` licence K; `M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1`
   a mesh (its indices into the pack's index buffer, its licence, its bounds

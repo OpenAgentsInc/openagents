@@ -1962,6 +1962,20 @@ part of that pack to the GPU. Checks: `verse/valley/canyon-pack-policy.coax`
 (mutation zero survivors) and `coax/web/valley-canyon-check.coax`'s same-length
 vertex edit. The versioned optional ABI is `coax/web/PACK-GATE.md`.
 
+A range-addressable VPK3 pack (`aethyr/forge/page-pack.coax`, `#authority`,
+#13001) is admitted a page at a time, and only by content. Its manifest's
+SHA-256 is in its header. Every record must cover the image in order and the
+file without gaps, and a deflated page must be smaller than its bytes. A page
+is held only when its decoded bytes are its record's size and SHA-256
+(`ppk_admit`, run in the browser's pack reactor by `aethyr/host/page-stream.coax`
+over the bytes already in its arena). A page refused is fetched again, never
+used. The image is published to the complete-pack reader only once every root
+page is held. An entry that is not a root is used only when `ppk_ready` says
+every page under it is held. The assembled image is the VPK1 pack byte for
+byte, so a realm's pack pin still names it. Checks:
+`aethyr/forge/page-pack.coax` (edited, short, repeated and out-of-range pages;
+every fixed header and manifest byte) and `aethyr/host/page-stream.coax`.
+
 ## A lost GPU device or an engine trap keeps the realm's session
 
 The browser host (`coax/web/host.js`) answers `GPUDevice.lost` for its current

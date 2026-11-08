@@ -42,6 +42,11 @@ host_services=$!
 host_sockets=$!
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-packs.coax" "$here/../.." "$here/build/host-packs.wasm" &
 host_packs=$!
+# Range-addressable packs (VPK3, aethyr/forge/page-pack.coax, #13001): each .vpk3 a realm names in
+# realms.json is written from its tracked .pack beside it (rewritten only when the pack changed).
+for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
+  "$here/../../coax/web/tool.sh" "$here/../../aethyr/tools/page-pack.coax" "${vpk3%.vpk3}.pack" "$vpk3" > /dev/null
+done
 # Opt-in room timing stays separate from the realm's producer.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-latency.coax" "$here/../.." "$here/build/latency-client.wasm" &
 room_latency=$!

@@ -1,0 +1,243 @@
+// DEFLATE (RFC 1951) encoding, the inverse of inflate.coax: LZ77 over a 32 KiB window with hash
+// chains, then each block as dynamic Huffman codes or stored, whichever is smaller. Codes are
+// length-limited (15 bits, 7 for the code-length code) by halving counts until they fit. Nothing
+// is allocated: the caller gives the output and one DeflateWork, and an output too small is -1,
+// never a cut stream. Range-addressable packs (aethyr/forge/page-pack.coax) deflate each page
+// with this, and the browser inflates it with DecompressionStream("deflate-raw").
+//   coax/bin/coax test coax/lib/image/deflate.coax
+#load "inflate.coax";
+
+DFL_WINDOW :: 32768;
+DFL_HASH :: 32768;
+DFL_CHAIN :: 48;       // candidates a position tries at most
+DFL_BLOCK :: 32768;    // symbols a block holds at most
+DFL_NICE :: 128;       // a match this long ends the search
+
+DeflateWork :: struct {
+  head: [DFL_HASH] int;    // the last position + 1 with this hash, else 0
+  prev: [DFL_WINDOW] int;  // the previous position + 1 with the same hash
+  sym: [DFL_BLOCK] int;    // a literal (0..255), or a length (3..258) + 256
+  dist: [DFL_BLOCK] int;   // 0 for a literal
+  count: int;
+}
+DflOut :: struct { out: []u8; at: int; bits: int; n: int; bad: bool; }
+DflCode :: struct { len: [288] int; code: [288] int; }
+
+dfl_put :: (o: []DflOut, value: int, k: int) #effects(all) {
+  o[0].bits = o[0].bits | (value << o[0].n); o[0].n += k;
+  while o[0].n >= 8 {
+    if o[0].at >= o[0].out.count { o[0].bad = true; } else { o[0].out[o[0].at] = cast(u8) (o[0].bits & 255); }
+    o[0].at += 1; o[0].bits = o[0].bits >> 8; o[0].n -= 8;
+  }
+}
+dfl_align :: (o: []DflOut) #effects(all) { if o[0].n > 0 { dfl_put(o, 0, 8 - o[0].n); } }
+
+// Code lengths for counts, none past limit: Huffman's merge, the counts halved until it fits. A
+// lone used symbol gets a partner, so every code with a symbol is complete.
+dfl_lengths :: (freq: []int, limit: int, lens: []int) #effects(all) {
+  n := freq.count; f: [288] int;
+  for k: 0..<n { f[k] = freq[k]; lens[k] = 0; }
+  used := 0; for k: 0..<n { if f[k] > 0 { used += 1; } }
+  if used == 0 { lens[0] = 1; lens[1] = 1; return; }
+  if used == 1 { for k: 0..<n { if f[k] > 0 { lens[k] = 1; lens[ifx k == 0 then 1 else 0] = 1; } } return; }
+  while true {
+    w: [576] int; parent: [576] int; alive: [576] bool; m := 0; leaf: [288] int;
+    for k: 0..<n { leaf[k] = -1; if f[k] > 0 { w[m] = f[k]; parent[m] = -1; alive[m] = true; leaf[k] = m; m += 1; } }
+    left := m;
+    while left > 1 {
+      a := -1; b := -1;
+      for j: 0..<m { if alive[j] { if a == -1 || w[j] < w[a] { b = a; a = j; } else if b == -1 || w[j] < w[b] { b = j; } } }
+      w[m] = w[a] + w[b]; parent[m] = -1; alive[m] = true; alive[a] = false; alive[b] = false; parent[a] = m; parent[b] = m; m += 1; left -= 1;
+    }
+    deepest := 0;
+    for k: 0..<n { if leaf[k] >= 0 { d := 0; j := leaf[k]; while parent[j] != -1 { j = parent[j]; d += 1; } lens[k] = d; if d > deepest { deepest = d; } } }
+    if deepest <= limit { return; }
+    for k: 0..<n { if f[k] > 0 { f[k] = (f[k] + 1) / 2; } }
+  }
+}
+// Canonical codes for lengths (RFC 1951 3.2.2), each bit-reversed for the LSB-first writer.
+dfl_codes :: (c: []DflCode, n: int) #effects(all) {
+  count: [16] int; next: [16] int;
+  for k: 0..<n { count[c[0].len[k]] += 1; }
+  count[0] = 0; code := 0;
+  for b: 1..<16 { code = (code + count[b - 1]) << 1; next[b] = code; }
+  for k: 0..<n {
+    l := c[0].len[k];
+    if l > 0 { v := next[l]; next[l] += 1; r := 0; for j: 0..<l { r = (r << 1) | ((v >> j) & 1); } c[0].code[k] = r; } else { c[0].code[k] = 0; }
+  }
+}
+dfl_len_code :: (ln: int) -> int #effects(all) { i := 28; while INF_LBASE[i] > ln { i -= 1; } return i; }
+dfl_dist_code :: (dist: int) -> int #effects(all) { i := 29; while INF_DBASE[i] > dist { i -= 1; } return i; }
+
+// The code-length symbols for lens (16: repeat the last 3-6, 17: 3-10 zeros, 18: 11-138 zeros), as
+// symbol + extra * 32. Their count.
+dfl_rle :: (lens: []int, out: []int) -> int #effects(all) {
+  m := 0; i := 0;
+  while i < lens.count {
+    v := lens[i]; run := 1; while i + run < lens.count && lens[i + run] == v { run += 1; }
+    if v == 0 && run >= 3 {
+      r := run; while r >= 11 { t := ifx r > 138 then 138 else r; out[m] = 18 + (t - 11) * 32; m += 1; r -= t; }
+      if r >= 3 { out[m] = 17 + (r - 3) * 32; m += 1; r = 0; }
+      for j: 0..<r { out[m] = 0; m += 1; }
+    } else if v != 0 && run >= 4 {
+      out[m] = v; m += 1; r := run - 1;
+      while r >= 3 { t := ifx r > 6 then 6 else r; out[m] = 16 + (t - 3) * 32; m += 1; r -= t; }
+      for j: 0..<r { out[m] = v; m += 1; }
+    } else { for j: 0..<run { out[m] = v; m += 1; } }
+    i += run;
+  }
+  return m;
+}
+DFL_EXTRA :: [19] int.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,3,7];
+
+// One block of w's symbols, covering src[from..<to]: dynamic codes, or stored when that is smaller.
+dfl_block :: (o: []DflOut, w: []DeflateWork, src: string, from: int, to: int, last: bool) #effects(all) {
+  lf: [286] int; df: [30] int;
+  for k: 0..<w[0].count {
+    s := w[0].sym[k];
+    if s < 256 { lf[s] += 1; } else { lf[257 + dfl_len_code(s - 256)] += 1; df[dfl_dist_code(w[0].dist[k])] += 1; }
+  }
+  lf[256] = 1;
+  lc: [1] DflCode; dc: [1] DflCode;
+  dfl_lengths(lf[..], 15, lc[0].len[0..<286]); dfl_lengths(df[..], 15, dc[0].len[0..<30]);
+  dfl_codes(lc[..], 286); dfl_codes(dc[..], 30);
+  hlit := 286; while hlit > 257 && lc[0].len[hlit - 1] == 0 { hlit -= 1; }
+  hdist := 30; while hdist > 1 && dc[0].len[hdist - 1] == 0 { hdist -= 1; }
+  all: [316] int; for k: 0..<hlit { all[k] = lc[0].len[k]; } for k: 0..<hdist { all[hlit + k] = dc[0].len[k]; }
+  rle: [316] int; nr := dfl_rle(all[0..<hlit + hdist], rle[..]);
+  cf: [19] int; for k: 0..<nr { cf[rle[k] % 32] += 1; }
+  cc: [1] DflCode; dfl_lengths(cf[..], 7, cc[0].len[0..<19]); dfl_codes(cc[..], 19);
+  hclen := 19; while hclen > 4 && cc[0].len[INF_ORDER[hclen - 1]] == 0 { hclen -= 1; }
+  bits := 3 + 14 + hclen * 3;
+  for k: 0..<nr { s := rle[k] % 32; bits += cc[0].len[s] + DFL_EXTRA[s]; }
+  for k: 0..<w[0].count {
+    s := w[0].sym[k];
+    if s < 256 { bits += lc[0].len[s]; }
+    else { l := dfl_len_code(s - 256); d := dfl_dist_code(w[0].dist[k]); bits += lc[0].len[257 + l] + INF_LEXT[l] + dc[0].len[d] + INF_DEXT[d]; }
+  }
+  bits += lc[0].len[256];
+  n := to - from; stored := 0; left := n; while true { stored += 40; c := ifx left > 65535 then 65535 else left; left -= c; if left == 0 { break; } }
+  stored = stored + n * 8 + 8;
+  if stored <= bits {
+    at := from;
+    while true {
+      c := ifx to - at > 65535 then 65535 else to - at; fin := last && at + c == to;
+      dfl_put(o, ifx fin then 1 else 0, 1); dfl_put(o, 0, 2); dfl_align(o);
+      dfl_put(o, c, 16); dfl_put(o, 65535 - c, 16);
+      for k: at..<at + c { dfl_put(o, cast(int) src[k], 8); }
+      at += c; if at == to { break; }
+    }
+    return;
+  }
+  dfl_put(o, ifx last then 1 else 0, 1); dfl_put(o, 2, 2);
+  dfl_put(o, hlit - 257, 5); dfl_put(o, hdist - 1, 5); dfl_put(o, hclen - 4, 4);
+  for k: 0..<hclen { dfl_put(o, cc[0].len[INF_ORDER[k]], 3); }
+  for k: 0..<nr { s := rle[k] % 32; dfl_put(o, cc[0].code[s], cc[0].len[s]); if DFL_EXTRA[s] > 0 { dfl_put(o, rle[k] / 32, DFL_EXTRA[s]); } }
+  for k: 0..<w[0].count {
+    s := w[0].sym[k];
+    if s < 256 { dfl_put(o, lc[0].code[s], lc[0].len[s]); }
+    else {
+      ln := s - 256; l := dfl_len_code(ln); dist := w[0].dist[k]; d := dfl_dist_code(dist);
+      dfl_put(o, lc[0].code[257 + l], lc[0].len[257 + l]); if INF_LEXT[l] > 0 { dfl_put(o, ln - INF_LBASE[l], INF_LEXT[l]); }
+      dfl_put(o, dc[0].code[d], dc[0].len[d]); if INF_DEXT[d] > 0 { dfl_put(o, dist - INF_DBASE[d], INF_DEXT[d]); }
+    }
+  }
+  dfl_put(o, lc[0].code[256], lc[0].len[256]);
+}
+
+dfl_hash :: (src: string, i: int) -> int #effects(all) {
+  return ((cast(int) src[i] << 10) ^ (cast(int) src[i + 1] << 5) ^ cast(int) src[i + 2]) & (DFL_HASH - 1);
+}
+dfl_insert :: (w: []DeflateWork, src: string, i: int) #effects(all) {
+  if i + 2 >= src.count { return; }
+  h := dfl_hash(src, i); w[0].prev[i & (DFL_WINDOW - 1)] = w[0].head[h]; w[0].head[h] = i + 1;
+}
+
+// src as one raw DEFLATE stream in out: its length, or -1 when out is too small.
+deflate_raw :: (src: string, out: []u8, w: []DeflateWork) -> int #effects(all) {
+  for k: 0..<DFL_HASH { w[0].head[k] = 0; }
+  w[0].count = 0;
+  ob: [1] DflOut; ob[0] = DflOut.{out = out}; o := ob[..];
+  i := 0; from := 0;
+  while i < src.count {
+    best := 0; bestd := 0;
+    if i + 2 < src.count {
+      cand := w[0].head[dfl_hash(src, i)]; tries := 0;
+      limit := ifx src.count - i > 258 then 258 else src.count - i;
+      while cand > 0 && tries < DFL_CHAIN {
+        c := cand - 1; d := i - c;
+        if d > DFL_WINDOW { break; }
+        if src[c + best] == src[i + best] {
+          l := 0; while l < limit && src[c + l] == src[i + l] { l += 1; }
+          if l > best { best = l; bestd = d; if l >= DFL_NICE || l == limit { break; } }
+        }
+        next := w[0].prev[c & (DFL_WINDOW - 1)];
+        if next >= cand { break; }
+        cand = next; tries += 1;
+      }
+    }
+    if best >= 3 {
+      w[0].sym[w[0].count] = 256 + best; w[0].dist[w[0].count] = bestd;
+      for k: 0..<best { dfl_insert(w, src, i + k); }
+      i += best;
+    } else {
+      w[0].sym[w[0].count] = cast(int) src[i]; w[0].dist[w[0].count] = 0; dfl_insert(w, src, i); i += 1;
+    }
+    w[0].count += 1;
+    if w[0].count == DFL_BLOCK && i < src.count { dfl_block(o, w, src, from, i, false); from = i; w[0].count = 0; if o[0].bad { return -1; } }
+  }
+  dfl_block(o, w, src, from, src.count, true); dfl_align(o);
+  if o[0].bad { return -1; }
+  return o[0].at;
+}
+
+dfl_round :: (src: []u8, w: []DeflateWork, z: []u8, back: []u8) -> int #effects(all) {
+  n := deflate_raw(cast(string) src, z, w);
+  if n < 0 { return -1; }
+  m := inflate(z[0..<n], back);
+  if m != src.count { return -2; }
+  for k: 0..<m { if back[k] != src[k] { return -3; } }
+  return n;
+}
+#test "short inputs, runs and text round-trip through inflate" {
+  w: [1] DeflateWork; z: [70000] u8; back: [70000] u8; src: [70000] u8;
+  #assert dfl_round(src[0..<0], w[..], z[..], back[..]) > 0;
+  src[0] = 65; #assert dfl_round(src[0..<1], w[..], z[..], back[..]) > 0;
+  src[1] = 65; src[2] = 66; #assert dfl_round(src[0..<3], w[..], z[..], back[..]) > 0;
+  for k: 0..<1000 { src[k] = 7; }
+  n := dfl_round(src[0..<1000], w[..], z[..], back[..]); #assert n > 0 && n < 30;
+  for k: 0..<20000 { src[k] = inf_text(k); }
+  n = dfl_round(src[0..<20000], w[..], z[..], back[..]); #assert n > 0 && n < 8000;
+}
+#test "incompressible bytes are stored, past one stored block, and cost almost nothing more" #steps 1500000000 {
+  w: [1] DeflateWork; z: [141000] u8; back: [140000] u8; src: [140000] u8; x := 12345;
+  for k: 0..<src.count { x = (x * 1103515245 + 12345) % 2147483648; src[k] = cast(u8) ((x >> 16) & 255); }
+  n := dfl_round(src[0..<140000], w[..], z[..], back[..]); #assert n > 0 && n <= 140000 + 30;
+  #assert deflate_raw(cast(string) src[0..<140000], z[0..<1000], w[..]) == -1;
+}
+#test "matches reach the farthest distance and the longest length" #steps 1500000000 {
+  w: [1] DeflateWork; z: [80000] u8; back: [80000] u8; src: [80000] u8; x := 99;
+  for k: 0..<32768 { x = (x * 1103515245 + 12345) % 2147483648; src[k] = cast(u8) ((x >> 16) & 255); }
+  for k: 32768..<65536 { src[k] = src[k - 32768]; }
+  n := dfl_round(src[0..<65536], w[..], z[..], back[..]); #assert n > 0 && n < 32768 + 2000;
+  for k: 0..<600 { src[k] = cast(u8) (k % 3); }
+  #assert dfl_round(src[0..<600], w[..], z[..], back[..]) > 0;
+}
+#test "many blocks of symbols, every length and distance code" #steps 3000000000 {
+  w: [1] DeflateWork; z: [300000] u8; back: [300000] u8; src: [300000] u8; x := 7; at := 0;
+  while at < 290000 {
+    x = (x * 1103515245 + 12345) % 2147483648;
+    if at > 300 && (x >> 8) % 3 == 0 { l := 3 + (x >> 4) % 256; d := 1 + (x >> 12) % (ifx at < 32768 then at else 32768); for k: 0..<l { src[at] = src[at - d]; at += 1; } }
+    else { src[at] = cast(u8) ((x >> 16) % 40); at += 1; }
+  }
+  n := dfl_round(src[0..<at], w[..], z[..], back[..]); #assert n > 0 && n < at;
+}
+#test "code lengths stay within their limit for skewed counts" {
+  f: [30] int; lens: [30] int; a := 1; b := 1;
+  for k: 0..<30 { f[k] = a; t := a + b; a = b; b = t; }
+  dfl_lengths(f[..], 15, lens[..]); kraft := 0;
+  for k: 0..<30 { #assert lens[k] >= 1 && lens[k] <= 15; kraft += 1 << (15 - lens[k]); }
+  #assert kraft == 32768;
+  dfl_lengths(f[0..<19], 7, lens[0..<19]); kraft = 0;
+  for k: 0..<19 { #assert lens[k] <= 7; kraft += 1 << (7 - lens[k]); } #assert kraft == 128;
+}

@@ -123,7 +123,11 @@ existing `assets.coax` admission. That is stronger than an ETag. The steps:
 - Add Range and a bandwidth/latency throttle to `coax serve`. Done in `bc066a9a` (#13000):
   `coax/web/http-range.coax`, per-connection shaping, and first-image baselines in
   `docs/verification/network-first-image-13000.md`.
-- Teach `coax/web/host.js` to fetch ranges, falling back to the whole file.
+- Teach `coax/web/host.js` to fetch ranges, falling back to the whole file. Done
+  (#13001): VPK3 (`aethyr/forge/page-pack.coax`), a SHA-256 per page admitted in
+  Coax, and `coax/web/pack-host.js` range loading. Everglade II's first image at
+  50 Mbit/s fell from 22.3 s to 14.0 s with one range at a time
+  ([receipt](../verification/range-packs-13001/README.md)).
 - Make *time to first image at 50 Mbit/s and 30 ms* a number every realm
   reports beside the 60 FPS rule.
 
@@ -254,7 +258,7 @@ before/after table for each change, and states what was *not* measured.
 2. **Range and throttle in `coax serve`** (landed, #13000), with time to first image measured
    for Everglade before anything else changes.
 3. **Range-addressable packs** with a SHA-256 per page, Range fetches in
-   `host.js` and the whole-file fallback.
+   `host.js` and the whole-file fallback (landed, #13001).
 4. **Valley Lab step 6:** the request array, frustum culling and two-phase
    Hi-Z in Coax-emitted WGSL, and the draw rule in the cull pass.
 5. **Texture memory audit, then ASTC/BC** with tiers.

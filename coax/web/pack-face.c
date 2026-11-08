@@ -13,6 +13,9 @@ static coax_t_HostPrivatePack private_plan;
 static coax_t_PackRead pack;
 static coax_t_HptGrant transport_plan;
 static uint8_t prefix[12],metadata[4096];
+// A VPK3 pack's header and manifest, then its arrival state (aethyr/host/page-stream.coax).
+static uint8_t paged_head[96+1024*64];
+static coax_t_PpkLoad paged;
 static coax_v_t_HostInboxQueue storage_view(void){return(coax_v_t_HostInboxQueue){&storage,1};}
 static coax_v_t_HostPackStream stream_view(void){return(coax_v_t_HostPackStream){&stream,1};}
 PACK_EXPORT("pack_storage_open") void pack_storage_open(void){storage=hpk_storage_open();}
@@ -50,4 +53,12 @@ PACK_EXPORT("pack_private_info") int64_t pack_private_info(int32_t field){switch
 PACK_EXPORT("pack_admit") uint32_t pack_admit(uint32_t required_private){uint64_t measured=(uint64_t)__builtin_wasm_memory_size(0)*65536;if(!htb_copy_span((uint64_t)allocation.address,(uint64_t)(allocation.memory_bytes-allocation.address),(uint64_t)stream.loaded,measured))return 0;return hpk_stream_pack((coax_string){(char*)(uintptr_t)allocation.address,stream.loaded},stream,private_plan,required_private!=0,(coax_v_t_PackRead){&pack,1});}
 PACK_EXPORT("pack_entry_count") uint32_t pack_entry_count(void){return(uint32_t)pack.count;}
 PACK_EXPORT("pack_entry") int64_t pack_entry(int32_t index,int32_t field){if(index<0||index>=pack.count)return -1;coax_t_PackEntry e=pack.entries.e[index];switch(field){case 0:return e.kind;case 1:return e.licence;case 2:return e.at;case 3:return e.n;case 4:return(uintptr_t)e.name.data;case 5:return e.name.count;default:return -1;}}
-PACK_EXPORT("pack_close") void pack_close(void){stream=hpk_stream_open(-1,false);private_plan=hpk_private((coax_string){"",0});coax_default_t_PackRead(&pack);allocation=hpk_allocation(-1,0);memset(metadata,0,sizeof metadata);memset(prefix,0,sizeof prefix);}
+static coax_string paged_image(void){uint64_t measured=(uint64_t)__builtin_wasm_memory_size(0)*65536;int64_t bytes=hpg_page(paged,-1,1);if(bytes<0||!allocation.valid||!htb_copy_span((uint64_t)allocation.address,(uint64_t)(allocation.memory_bytes-allocation.address),(uint64_t)bytes,measured))return(coax_string){"",0};return(coax_string){(char*)(uintptr_t)allocation.address,bytes};}
+PACK_EXPORT("pack_paged_ptr") uint32_t pack_paged_ptr(void){return(uint32_t)(uintptr_t)paged_head;}
+PACK_EXPORT("pack_paged_capacity") uint32_t pack_paged_capacity(void){return sizeof paged_head;}
+PACK_EXPORT("pack_paged_open") uint32_t pack_paged_open(uint32_t bytes){if(bytes>sizeof paged_head)return 0;return hpg_open((coax_v_t_PpkLoad){&paged,1},(coax_string){(char*)paged_head,bytes});}
+PACK_EXPORT("pack_page_info") int64_t pack_page_info(int32_t page,int32_t field){return hpg_page(paged,page,field);}
+PACK_EXPORT("pack_page_admit") uint32_t pack_page_admit(int32_t page){coax_string image=paged_image();return image.count>0&&hpg_admit((coax_v_t_PpkLoad){&paged,1},page,image);}
+PACK_EXPORT("pack_paged_ready") uint32_t pack_paged_ready(int64_t at,int64_t bytes){return hpg_ready(paged,at,bytes);}
+PACK_EXPORT("pack_paged_finish") uint32_t pack_paged_finish(void){coax_string image=paged_image();if(!image.count)return 0;stream=hpg_stream(paged,image);return stream.done;}
+PACK_EXPORT("pack_close") void pack_close(void){memset(paged_head,0,sizeof paged_head);memset(&paged,0,sizeof paged);stream=hpk_stream_open(-1,false);private_plan=hpk_private((coax_string){"",0});coax_default_t_PackRead(&pack);allocation=hpk_allocation(-1,0);memset(metadata,0,sizeof metadata);memset(prefix,0,sizeof prefix);}

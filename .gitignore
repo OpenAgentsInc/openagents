@@ -78,3 +78,5 @@ aethyr/lab/.cache/
 
 # The experimental pack is rebuilt locally; its compressed transport is tracked.
 /apps/openagents-web/realms/everglade-experimental/assets/glade.pack
+# Range-addressable packs: apps/openagents-web/build.sh writes each from its tracked .pack (#13001).
+/apps/openagents-web/realms/**/*.vpk3

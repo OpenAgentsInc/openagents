@@ -1515,7 +1515,8 @@ function parseAssets(text) {
     const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1), i = list.length;
     if (kind === "sound") { const e = rest.indexOf("="); list.push({ i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }); }
     else if (kind === "sounds") { if (/^\/[a-z0-9/_-]+\/$/.test(rest)) soundDir = rest; }
-    else if (kind === "pack") { const pack = { url: rest }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
+    // A .vpk3 pack loads by ranges (coax/web/pack-host.js); in development ?ranges=N sets how many at once.
+    else if (kind === "pack") { const pack = { url: rest, ranges: dev ? Number(new URLSearchParams(location.search).get("ranges")) || undefined : undefined }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
       // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.coax --outfit), its own pack, BASE-NAME.
       // On a local address only when asked (serve.c's /private/); on openagents.com always, through
@@ -1552,7 +1553,15 @@ async function loadPack(pack) {
     // Broker sessions still perform their authorization and download each time.
     let bytes = !pack.broker && pack.retainedSource?.owner.deref() === owner && pack.retainedSource.generation === generation
       ? pack.retainedSource.bytes : null;
-    if (!bytes) {
+    if (!bytes && /\.vpk3$/.test(pack.url)) {
+      // A range-addressable pack: the reactor admits each page; this path takes the whole image.
+      pack.retainedSource = null;packHost ??= await openPackHost();let told = 0;
+      const result = await packHost.loadPaged(pack, { image: true, owner: pack, current: () => engine === owner && wanted === generation,
+        progress: (loaded, total) => { loading.bytes(pack.url, loaded, total); if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); } } });
+      try { await result.complete; bytes = result.source.slice(); } finally { result.close(); }
+      send(PACK_KIND, `${result.stored} ${result.stored}`);
+    }
+    else if (!bytes) {
       pack.retainedSource = null;
       let session = null, r = null;
       // the first of its urls that answers (a phone's build, then the full pack)
@@ -1660,11 +1669,15 @@ async function loadPackV1(pack){
         else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX:GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
       }
       layers.texture=texture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;
-      for(const entry of of(PACK_SOUND))if(!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
+      for(const entry of of(PACK_SOUND))if((!result.ready||result.ready(entry))&&!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
         const sound={i:assets.length,kind:"sound",name:entry.name,bytes:entry.bytes,done:true,sourcePack:pack};group.sounds.push(sound);assets.push(sound);
       }
-      if(!waiting)send(PACK_KIND,`${result.bytes} ${result.bytes}`);
+      if(!waiting)send(PACK_KIND,`${result.stored??result.bytes} ${result.stored??result.bytes}`);
     });
+    // A VPK3 pack's deferred pages (its sounds) follow the first image.
+    const later=group.result;
+    if(later.ready)later.complete.then(()=>later.use(async result=>{for(const entry of result.entries)if(entry.kind===PACK_SOUND&&!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
+      const sound={i:assets.length,kind:"sound",name:entry.name,bytes:entry.bytes,done:true,sourcePack:pack};group.sounds.push(sound);assets.push(sound);}})).catch(()=>{});
   }catch(error){
     if(group.retired||wanted!==generation||engine?.exports!==exports)return;
     for(const row of parts)row.failed=true;
