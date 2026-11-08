@@ -32,7 +32,7 @@
     #assert r.admitted==(mode!=0) && b[0].c[0].reacted==(mode!=0);
   }
 }
-#test "typed opportunity retains shared critical follow-up without giving the mover that movement" {
+#test "typed opportunity retains shared critical follow-up without giving the mover that movement" #steps 40000000 {
   critical:=false;
   for seed:1..<65 {
     b:[1]RsBattle; sa_field(b[..]); rs_start_turn(b[..],1); b[0].dice[0].fixed=false; b[0].dice[0].state=cast(u64)seed*7919;

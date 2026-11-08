@@ -1029,7 +1029,12 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     mm := sqrt(mx * mx + mz * mz);
     if mm > step { mx = mx / mm * step; mz = mz / mm * step; mm = step; }
     rt_slide(sl[0].g, bt[0].x, bt[0].z, mx, mz, o[..]);
-    if sl[0].stage != E5RD_FLEE {rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), spawn_r, o[..]);}
+    if sl[0].stage != E5RD_FLEE {
+      rt_clear(o[0], o[1], f32(E5RD_SPAWN_X), f32(E5RD_SPAWN_Z), spawn_r, o[..]);
+      // where a building meets the spawn's edge the clear would put it in the building: it stands at
+      // the nearest free ground instead, so the pinch there doesn't trap it
+      if rt_blocked(sl[0].g, o[0], o[1], f32(RT_BODY)) >= 0 { rt_free(sl[0].g, o[0], o[1], o[..]); }
+    }
     mx = o[0] - bt[0].x; mz = o[1] - bt[0].z; mm = sqrt(mx * mx + mz * mz);
     bt[0].x = o[0]; bt[0].z = o[1];
     bt[0].moving = mm > step * 0.3;   // walking, not a nudge off a neighbour (#12771)
@@ -1372,6 +1377,10 @@ e5rd_test_room :: (r: [] E5rRoom) {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
   e5rr_join(r[..], 0, 0, -36);
+  // A player who can't make the Wisdom save against Command (DC 13): Wisdom 1 and no proficiency, and
+  // Exhaustion 3 (-6 on every d20 test), so at most 9. The halt then follows the cast, not the seed.
+  seat := r[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1];
+  seat[0].score[RS_WIS] = 1; seat[0].save_prof[RS_WIS] = false; seat[0].exhaustion = 3; seat[0].cond |= RS_EXHAUSTION;
   r[0].raid[0].mix = RtMix.{skirm = 1, casters = 0, support = 2, guard = 0};
   south := rt_gate(0, -56, 6, false, -64, 64, 0, 0);
   priests := 0;
