@@ -73,6 +73,21 @@ ev_prop_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
 #test "all captured scene assets are gathered where placed" #steps 500000000 {
  a:[1]EvNear;for box:EXPERIMENTAL_SCENE_BOXES {x:=f32(box[0]+box[3])*0.0005;z:=f32(box[2]+box[5])*0.0005;ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if abs(a[0].walls[o]-f32(box[0])*0.001)<0.001 && abs(a[0].walls[o+2]-f32(box[2])*0.001)<0.001 && abs(a[0].walls[o+3]-f32(box[3])*0.001)<0.001 && abs(a[0].walls[o+5]-f32(box[5])*0.001)<0.001 {found=true;}}#assert found && !a[0].overflow;}
 }
+#test "bush volume slows walking without affecting open space or air above it" {
+ boxes:=[2][6]int.[[6]int.[1000,0,2000,3000,1500,4000],[6]int.[5000,0,5000,6000,900,6000]];
+ #assert ev_bush_pace_in(boxes[..],2,0,3)==0.8 && ev_bush_pace_in(boxes[..],4,0,3)==1;
+ #assert ev_bush_pace_in(boxes[..],2,2,3)==1 && ev_bush_pace_in(boxes[..],5.5,0,5.5)==0.8;
+}
+#test "each placed bush is a soft volume, not a solid scene box" #steps 100000000 {
+ bushes:=EXPERIMENTAL_BUSH_BOXES;#assert bushes.count>0;
+ for b:bushes {x:=f32(b[0]+b[3])*0.0005;y:=f32(b[1]+b[4])*0.0005;z:=f32(b[2]+b[5])*0.0005;#assert ev_bush_pace_in(bushes[..],x,y,z)==0.8;
+  for solid:EXPERIMENTAL_SCENE_BOXES {same:=true;for k:0..<6 {if solid[k]!=b[k] {same=false;}}#assert !same;}}
+}
+// The character moves through bush foliage at 80% pace, only while vertically inside it.
+ev_bush_pace_in :: (boxes:[][6]int,x:f32,y:f32,z:f32)->f32 {
+ for b:boxes {if x>=f32(b[0])*0.001 && x<=f32(b[3])*0.001 && z>=f32(b[2])*0.001 && z<=f32(b[5])*0.001 && y>=f32(b[1])*0.001-0.15 && y<f32(b[4])*0.001 {return 0.8;}}return 1;
+}
+ev_bush_pace :: (x:f32,y:f32,z:f32)->f32 {boxes:=EXPERIMENTAL_BUSH_BOXES;return ev_bush_pace_in(boxes[..],x,terrain.exp_height(x,z)+y,z);}
 ev_scene_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
  for b:EXPERIMENTAL_SCENE_BOXES {x0:=f32(b[0])*0.001;z0:=f32(b[2])*0.001;x1:=f32(b[3])*0.001;z1:=f32(b[5])*0.001;
   if x<x0-reach || x>x1+reach || z<z0-reach || z>z1+reach {continue;}

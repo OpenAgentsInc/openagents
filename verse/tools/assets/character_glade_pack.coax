@@ -76,7 +76,7 @@ gp_village_tile :: (material:string)->int {
  box:=gp_vertex_bounds(b[..],0,2,false);#assert box[0]<=2000 && box[3]>=3000 && box[2]<= -3000 && box[5]>= -2000;
 }
 GP_VERTS :: 8000000;
-Gp :: struct {colliders:[1024][6]int;collider_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
+Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
 // Capture exactly the world-space vertices emitted for one placed asset.
 // Tree trunks use their bark geometry so a broad canopy does not become a wall.
 gp_vertex_bounds :: (vertices:[]u8,first:int,last:int,bark:bool)->[6]int {
@@ -89,9 +89,13 @@ gp_capture :: (w:[]Gp,first:int,bark:bool) {
  if first==w[0].nv {return;}if w[0].collider_n>=1024 {ph_die("scene collider capture overflow");}
  w[0].colliders[w[0].collider_n]=gp_vertex_bounds(w[0].v[..],first,w[0].nv,bark);w[0].collider_n+=1;
 }
+gp_capture_bush :: (w:[]Gp,first:int) {
+ if first==w[0].nv {return;}if w[0].bush_n>=128 {ph_die("scene bush capture overflow");}
+ w[0].bushes[w[0].bush_n]=gp_vertex_bounds(w[0].v[..],first,w[0].nv,false);w[0].bush_n+=1;
+}
 gp_write_colliders :: (w:[]Gp,path:string)->bool {
  b:[262144]u8;s:[1]Sb;s[0]=sb(b[..]);sb_put(s[..],"// Generated from the scene pack's placed vertices; millimetres in world space.\nEXPERIMENTAL_SCENE_BOXES :: [");sb_int(s[..],w[0].collider_n);sb_put(s[..],"][6]int.[\n");
- for i:0..<w[0].collider_n {sb_put(s[..]," [6]int.[");for k:0..<6 {if k>0 {sb_byte(s[..],',');}sb_int(s[..],w[0].colliders[i][k]);}sb_put(s[..],"],\n");}sb_put(s[..],"];\n");return fs_write(path,sb_text(s[..]));
+ for i:0..<w[0].collider_n {sb_put(s[..]," [6]int.[");for k:0..<6 {if k>0 {sb_byte(s[..],',');}sb_int(s[..],w[0].colliders[i][k]);}sb_put(s[..],"],\n");}sb_put(s[..],"];\nEXPERIMENTAL_BUSH_BOXES :: [");sb_int(s[..],w[0].bush_n);sb_put(s[..],"][6]int.[\n");for i:0..<w[0].bush_n {sb_put(s[..]," [6]int.[");for k:0..<6 {if k>0 {sb_byte(s[..],',');}sb_int(s[..],w[0].bushes[i][k]);}sb_put(s[..],"],\n");}sb_put(s[..],"];\n");return fs_write(path,sb_text(s[..]));
 }
 gp_word :: (b:[]u8,at:int,v:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(v>>cast(u32)(k*8));}}
 gp_clamp :: (x:f32,a:f32,b:f32)->f32 {return ifx x<a then a else ifx x>b then b else x;}
@@ -147,7 +151,7 @@ gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:
   }
   for t:0..<ni/3 {gp_tri(w,first+int(idx[t*3]),first+int(idx[t*3+1]),first+int(idx[t*3+2]));}
  }}
- if !(starts(name,"Grass_") && x==0 && z==0 && scale==1) {gp_capture(w,capture_first,starts(name,"Birch_") || starts(name,"CommonTree_"));}
+ if starts(name,"Bush_") {gp_capture_bush(w,capture_first);}else if !(starts(name,"Grass_") && x==0 && z==0 && scale==1) {gp_capture(w,capture_first,starts(name,"Birch_") || starts(name,"CommonTree_"));}
 }
 // One shared atlas preserves the source colour maps while staying under the
 // renderer's 64-layer ceiling. Two-pixel edge padding keeps samples in tile.

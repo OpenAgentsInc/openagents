@@ -57,3 +57,9 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
 #test "castle internal arch connects the southern courtyard" #steps 200000000 {
  p:=walk.walk_place(34,0,-48,0);for i:0..<100 {p=village_walk(p,1);}#assert p.pos.z< -52.5 && p.pos.z> -74;
 }
+#test "walking through a real bush slows without stopping" #steps 200000000 {
+ normal:=walk.walk_place(-74,0,58,0);slow:=normal;touched:=false;
+ for i:0..<80 {normal.pace=1;normal=village_walk(normal,1);slow.pace=village.ev_bush_pace(slow.pos.x,slow.pos.y,slow.pos.z);if slow.pace<1 {touched=true;}slow=village_walk(slow,1);}
+ #assert touched;#assert slow.pos.z<55;#assert normal.pos.z+0.05<slow.pos.z;
+ #assert village.ev_bush_pace(slow.pos.x,slow.pos.y,slow.pos.z)==1;
+}
