@@ -48,6 +48,8 @@
 #load "ability-check-math.coax";
 #load "ability-checks.coax";
 #load "stabilization.coax";
+#load "short-rest-resources.coax";
+#load "short-rest.coax";
 #load "help.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
@@ -290,6 +292,8 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
   if b[0].n >= b[0].c.count { return -1; }
   i := b[0].n;
   b[0].c[i] = c; b[0].c[i].x = -1; b[0].c[i].y = -1;
+  rs_rest_seed(b[0].c[i..<b[0].c.count]);
+  rs_rest_interrupt_at(b[0].c,i); // this admission rolls Initiative below
   rs_place(b, i, x, y);
   // Initiative uses the shared ability-check plan, including condition edges.
   initiative := rs_initiative_plan(c);
@@ -427,6 +431,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
   if !rs_cast_reaction_slot(b,j,SP_HELLISH_REBUKE,slot,true) { return false; }
+  rs_rest_spell_at(b[0].c,j,rs_spell(SP_HELLISH_REBUKE).level);
   dc := rs_dc(b, j);
   saving := rs_saving_throw(b,by,RS_DEX,dc);
   st := saving.total;
@@ -546,6 +551,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
   if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
   // spend
+  rs_rest_spell_at(b[0].c,i,s.level);
   b[0].aff_used = false;
   if s.cast_time == RS_T_ACTION && !quick { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
   if quick { b[0].c[i].uses[RS_USE_SORCERY] -= 2; b[0].turn.quickened = true; }
@@ -690,6 +696,7 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
   if c.npc != RS_NPC_NONE && slot != 1 { return false; }
   if slot == 0 { return false; }
   if !rs_cast_reaction_slot(b,j,SP_SHIELD,slot,c.npc != RS_NPC_MAGE) { return false; }
+  rs_rest_spell_at(b[0].c,j,rs_spell(SP_SHIELD).level);
   rs_shield_begin(b[0].c[j..<j+1]);
   l: [1] RsLine;
   rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Shield ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot): AC ");
@@ -1315,6 +1322,7 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
     for k: 0..<RS_EFFECTS { if rs_effect_uses_clock(b[0].c[i].eff[k].kind) && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
     _ := rs_stable_recover(b,i);
+    rest_finished := rs_short_rest_finish(b,i);
     // the action adapter: spent slots and uses come back on a cooldown, one at a time
     if rs_timing_recharge(b[0].timing) > 0 && !b[0].c[i].dead {
       r := rs_timing_recharge(b[0].timing);
@@ -1420,6 +1428,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
 rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: RsWeapon, printed_bonus: int, ab: int, damage_modifier: int) -> bool {
   me := b[0].c[i];
   strength := ab == RS_STR;
+  rs_rest_interrupt_at(b[0].c,i);
   b[0].turn.struck = true;
   melee := wp.range_ft <= 5 || (wp.both && rs_feet_to(b, i, j) <= 5);   // Arcane Burst: melee from 5 feet
   far := 0;

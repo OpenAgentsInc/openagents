@@ -19,6 +19,7 @@
 #load "spell-access.coax";
 #load "spell-selection.coax";
 #load "spell-loadouts.coax";
+#load "rest-state.coax";
 #load "effect-storage.coax";
 #load "hit-points.coax";
 #load "exhaustion.coax";
@@ -191,6 +192,7 @@ RsCreature :: struct {
   save_prof: [6] bool;
   checks: RsCheckTraining;
   ac: int; hp: int; hp_max: int;
+  rest: RsRestState;
   temp: int;                // Temporary Hit Points
   speech_blocked: bool;     // gagged or inside magical silence
   gesture_hand: bool = true; material_hand: bool = true;
@@ -262,7 +264,7 @@ RsCreature :: struct {
   // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
   // Strike saved against halves Speed until (halved_until)
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
-  ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool; // Scholar's selected Expertise is in checks
+  ritual: bool; arcane_recovery: bool; natural_recovery:bool; scholar: bool; savant: bool; memorize: bool; // Scholar's selected Expertise is in checks
   sculpt: bool;                    // Sculpt Spells (Evoker)
   cunning_rite: bool; own_luck: bool;   // Magical Cunning (a 1-minute rite, not in a battle), Dark One's Own Luck
   jack: bool; font: bool; discoveries: [2] int;   // Jack of All Trades (checks only), Font of Inspiration, Magical Discoveries
@@ -355,7 +357,7 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   // slots; Natural Recovery at 6 (p. 46): one circle spell (Hold Person) without a slot. Its level 5
   // polar circle spells (Sleet Storm, Slow) aren't records yet.
   c[0].companion = level >= 2; c[0].resurgence = level >= 5;
-  if level >= 6 { c[0].free_spell = SP_HOLD_PERSON; rs_use_set(c[..], RS_USE_FREE, 1); }
+  if level >= 6 { c[0].free_spell = SP_HOLD_PERSON; c[0].natural_recovery=true; rs_use_set(c[..], RS_USE_FREE, 1); }
   // Wild Shape's two uses from level 2 (p. 42), spent here on the Circle of the Land's Land's Aid at 3
   // (p. 46); polar land, so Hold Person is among its circle spells
   if level >= 2 { rs_use_set(c[..], RS_USE_WILD, ifx level >= 17 then 4 else ifx level >= 6 then 3 else 2); }

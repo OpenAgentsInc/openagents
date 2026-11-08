@@ -1,0 +1,93 @@
+// SRD 5.2.1 Short Rest p.187. The authoritative world starts restful downtime
+// and reports other strenuous activity; shared damage/casting/Initiative hook
+// their own actual accepted transitions. A clock tick alone cannot start rest.
+#authority;
+RsRestRoll :: struct { admitted:bool; roll:int; modifier:int; healed:int; }
+RsRestSlots :: struct { levels:[]const int; spellbook:bool; }
+
+#test "Short Rest choices execute through the same API in every engine consumer" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].dice[0].fixed=true;
+  c[0]=rs_wizard("Reader",0,3); c[1]=rs_sorcerer("Sorcerer",0,5);
+  c[0].hp=1; c[0].slots[1]=0; c[1].uses[RS_USE_SORCERY]=0;
+  #assert rs_short_rest_begin(b[..],0) && rs_short_rest_begin(b[..],1);
+  b[0].clock=3600;
+  #assert rs_short_rest_finish(b[..],0) && rs_short_rest_finish(b[..],1);
+  #assert rs_short_rest_hit_die(b[..],0).healed>0;
+  pick:=[2]int.[1,1];
+  #assert rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..],spellbook=true}) && c[0].slots[1]==2;
+  #assert rs_short_rest_sorcery(b[..],1,2) && c[1].uses[RS_USE_SORCERY]==2;
+}
+
+rs_rest_clock :: (t:f32)->bool #effects(all) { return t>=0 && t-t==0; }
+rs_short_rest_begin :: (b:[]RsBattle,i:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) { return false; }
+  if b[0].c[i].dead || b[0].c[i].hp<1 || b[0].c[i].rest.phase==1 { return false; }
+  rs_rest_seed(b[0].c[i..<b[0].c.count]);
+  b[0].c[i].rest.phase=1; b[0].c[i].rest.started=b[0].clock;
+  rs_say(b,RS_EV_CONDITION,i,i,0," starts a Short Rest");
+  return true;
+}
+// Polling grants the base benefits once, at the first boundary at/after one
+// hour. Optional Hit Dice, spell slots and Sorcery Points are separate choices.
+rs_short_rest_finish :: (b:[]RsBattle,i:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].c[i].rest.phase!=1 { return false; }
+  if b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) || !(b[0].clock>=b[0].c[i].rest.started+3600) { return false; }
+  if b[0].c[i].dead || b[0].c[i].hp<1 { return false; }
+  b[0].c[i].rest.phase=2;
+  rs_short_rest_resources(b[0].c[i..<b[0].c.count]);
+  // No Rage can last through this hour of restful downtime.
+  rs_rage_end(b,i," (Short Rest)");
+  rs_say(b,RS_EV_END,i,i,0," finishes a Short Rest");
+  return true;
+}
+rs_short_rest_choices :: (b:[]RsBattle,i:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].reaction_frame.on { return false; }
+  return b[0].c[i].rest.phase==2 && !b[0].c[i].dead && b[0].c[i].hp>0;
+}
+rs_short_rest_hit_die :: (b:[]RsBattle,i:int)->RsRestRoll #effects(all) {
+  r:RsRestRoll;
+  if !rs_short_rest_choices(b,i) { return r; }
+  if b[0].c[i].rest.dice<=0 || !rs_rest_die_valid(b[0].c[i].rest.die) { return r; }
+  b[0].c[i].rest.dice-=1; r.admitted=true;
+  r.roll=rs_roll(b[0].dice[..],b[0].c[i].rest.die); r.modifier=rs_mod(b[0].c[i].score[RS_CON]);
+  r.healed=rs_heal(b[0].c[i..<b[0].c.count],rs_max(r.roll+r.modifier,1));
+  rs_say(b,RS_EV_HEAL,i,i,r.healed," spends a Hit Die");
+  return r;
+}
+rs_rest_slot_budget :: (c:RsCreature,book:bool)->int #effects(all) {
+  if c.level<1 || c.level>20 { return 0; }
+  if (c.klass==RS_WIZARD && c.arcane_recovery && book) || (c.klass==RS_DRUID && c.level>=6 && c.natural_recovery) {
+    return c.level/2+c.level%2;
+  }
+  return 0;
+}
+rs_short_rest_slots :: (b:[]RsBattle,i:int,q:RsRestSlots)->bool #effects(all) {
+  if !rs_short_rest_choices(b,i) || b[0].c[i].rest.recovery_used { return false; }
+  budget:=rs_rest_slot_budget(b[0].c[i],q.spellbook);
+  if q.levels.count==0 || q.levels.count>budget { return false; }
+  counts:[6]int; spent:=0;
+  for level:q.levels {
+    if level<1 || level>5 { return false; }
+    counts[level]+=1; spent+=level;
+  }
+  if spent>budget { return false; }
+  for level:1..<6 {
+    if counts[level]==0 { continue; }
+    current:=b[0].c[i].slots[level]; capacity:=rs_max(b[0].c[i].slots_max[level],0);
+    if current<0 || counts[level]>capacity-current { return false; }
+  }
+  for level:1..<6 { b[0].c[i].slots[level]+=counts[level]; }
+  b[0].c[i].rest.recovery_used=true;
+  rs_say(b,RS_EV_FEAT,i,i,spent,ifx b[0].c[i].klass==RS_WIZARD then " uses Arcane Recovery" else " uses Natural Recovery");
+  return true;
+}
+rs_short_rest_sorcery :: (b:[]RsBattle,i:int,amount:int)->bool #effects(all) {
+  if !rs_short_rest_choices(b,i) { return false; }
+  c:=b[0].c[i];
+  if c.klass!=RS_SORCERER || c.level<5 || !c.restoration || c.rest.restoration_used || amount<1 || amount>c.level/2 { return false; }
+  current:=c.uses[RS_USE_SORCERY]; capacity:=rs_max(c.uses_max[RS_USE_SORCERY],0);
+  if current<0 || amount>capacity-current { return false; }
+  b[0].c[i].uses[RS_USE_SORCERY]+=amount; b[0].c[i].rest.restoration_used=true;
+  rs_say(b,RS_EV_FEAT,i,i,amount," uses Sorcerous Restoration");
+  return true;
+}

@@ -1,0 +1,41 @@
+// Source-specific Short Rest bank recovery. It never renews a turn/Reaction,
+// daily uses, ordinary Spellcasting slots, temporary HP or Hit Dice.
+#authority;
+rs_rest_one :: (current:int,maximum:int)->int #effects(all) {
+  return ifx current>=0 && current<maximum then current+1 else current;
+}
+rs_rest_all :: (current:int,maximum:int)->int #effects(all) {
+  return ifx current<0 then current else rs_max(current,maximum);
+}
+rs_short_rest_mode :: (c:RsCreature,u:int)->int #effects(all) {
+  if u==RS_USE_CHANNEL && (c.klass==RS_CLERIC || c.klass==RS_PALADIN) { return 1; }
+  if u==RS_USE_WILD && c.klass==RS_DRUID { return 1; }
+  if c.klass==RS_FIGHTER {
+    if u==RS_USE_WIND { return 1; }
+    if u==RS_USE_SURGE { return 2; }
+  }
+  if c.klass==RS_BARD && c.level>=5 && c.font && u==RS_USE_INSPIRE { return 2; }
+  return 0;
+}
+rs_short_rest_resources :: (c:[]RsCreature) #effects(all) {
+  if c[0].klass==RS_BARBARIAN { c[0].rages=rs_rest_one(c[0].rages,c[0].rages_max); }
+  if c[0].klass==RS_MONK { c[0].focus=rs_rest_all(c[0].focus,c[0].focus_max); }
+  if c[0].klass==RS_WARLOCK {
+    for level:1..<6 { c[0].slots[level]=rs_rest_all(c[0].slots[level],c[0].slots_max[level]); }
+  }
+  u:=0;
+  for current:c[0].uses {
+    mode:=rs_short_rest_mode(c[0],u);
+    if mode==1 { c[0].uses[u]=rs_rest_one(current,c[0].uses_max[u]); }
+    if mode==2 { c[0].uses[u]=rs_rest_all(current,c[0].uses_max[u]); }
+    u+=1;
+  }
+}
+
+#test "one and all recovery saturate without erasing over-capacity or malformed counters" {
+  for current:-1..<5 { for maximum:0..<5 {
+    expected:=current>=0 && current<maximum;
+    #assert rs_rest_one(current,maximum)==(ifx expected then current+1 else current);
+    #assert rs_rest_all(current,maximum)==(ifx expected then maximum else current);
+  } }
+}

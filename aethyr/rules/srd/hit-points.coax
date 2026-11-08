@@ -17,6 +17,7 @@ rs_hurt :: (c: [] RsCreature, dealt: int, crit: bool) -> RsHurt #effects(all) {
   r: RsHurt;
   if c[0].dead || dealt <= 0 { return r; }
   r.taken = dealt;
+  rs_rest_interrupt(c);
   // Taking damage still matters when temporary HP absorb it completely.
   if c[0].conc >= 0 { r.conc_dc = rs_min(rs_max(10,dealt/2),30); }
   soak := rs_min(c[0].temp,dealt);

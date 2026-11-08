@@ -1,0 +1,53 @@
+// Rest ownership is creature-local; copying a turn cannot refill Hit Dice or
+// reset a recovery feature's once-per-Long-Rest use.
+#authority;
+RsRestState :: struct {
+  phase:int; started:f32; // 0 idle, 1 resting, 2 completed Short Rest choices
+  seeded:bool; die:int; dice:int; dice_max:int;
+  recovery_used:bool; restoration_used:bool;
+}
+rs_rest_die_valid :: (sides:int)->bool #effects(all) {
+  return sides==4 || sides==6 || sides==8 || sides==10 || sides==12 || sides==20;
+}
+
+#test "rest Hit Dice accept only the six source die sizes" {
+  expected:=[22]bool.[false,false,false,false,true,false,true,false,true,false,true,false,true,false,false,false,false,false,false,false,true,false];
+  #assert !rs_rest_die_valid(-1);
+  for sides:0..<22 { #assert rs_rest_die_valid(sides)==expected[sides]; }
+}
+
+rs_class_hit_die :: (klass:int)->int #effects(all) {
+  if klass==RS_BARBARIAN { return 12; }
+  if klass==RS_FIGHTER || klass==RS_PALADIN || klass==RS_RANGER { return 10; }
+  if klass==RS_WIZARD || klass==RS_SORCERER { return 6; }
+  if klass==RS_DRUID || klass==RS_WARLOCK || klass==RS_MONK || klass==RS_BARD || klass==RS_CLERIC || klass==RS_ROGUE { return 8; }
+  return 0;
+}
+rs_rest_seed :: (c:[]RsCreature) #effects(all) {
+  if c[0].rest.seeded { return; }
+  c[0].rest.seeded=true;
+  if c[0].level<1 || c[0].level>20 { return; }
+  die:=rs_class_hit_die(c[0].klass);
+  if die==0 { return; }
+  c[0].rest.die=die; c[0].rest.dice=c[0].level; c[0].rest.dice_max=c[0].level;
+}
+// Known strenuous activity, Initiative, damage and accepted leveled spells end
+// both the in-progress rest and its sequential post-completion choice window.
+rs_rest_interrupt :: (c:[]RsCreature) #effects(all) { c[0].rest.phase=0; }
+rs_rest_spell :: (c:[]RsCreature,level:int) #effects(all) { if level>0 { rs_rest_interrupt(c); } }
+rs_rest_interrupt_at :: (c:[]RsCreature,actor:int) #effects(all) { rs_rest_interrupt(c[actor..<c.count]); }
+rs_rest_spell_at :: (c:[]RsCreature,actor:int,level:int) #effects(all) { rs_rest_spell(c[actor..<c.count],level); }
+
+#test "rest interruption preserves spent dice and feature history while cantrips keep either rest phase" {
+  c:[1]RsCreature; c[0].rest.dice=2; c[0].rest.dice_max=4;
+  c[0].rest.recovery_used=true; c[0].rest.restoration_used=true;
+  for phase:1..<3 {
+    c[0].rest.phase=phase; rs_rest_spell(c[..],0); #assert c[0].rest.phase==phase;
+    rs_rest_spell(c[..],1); #assert c[0].rest.phase==0;
+    c[0].rest.phase=phase; rs_rest_interrupt(c[..]); #assert c[0].rest.phase==0;
+  }
+  #assert c[0].rest.dice==2 && c[0].rest.dice_max==4 && c[0].rest.recovery_used && c[0].rest.restoration_used;
+  other:[2]RsCreature; other[0].rest.phase=1; other[1].rest.phase=2;
+  rs_rest_spell_at(other[..],1,1); #assert other[0].rest.phase==1 && other[1].rest.phase==0;
+  other[1].rest.phase=2; rs_rest_interrupt_at(other[..],0); #assert other[0].rest.phase==0 && other[1].rest.phase==2;
+}

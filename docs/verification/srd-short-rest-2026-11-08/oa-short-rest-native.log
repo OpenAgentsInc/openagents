@@ -1,0 +1,30 @@
+passed               aethyr/rules/srd/short-rest-checks.coax
+  passed             a Short Rest completes once after an actual uninterrupted hour without renewing turn budgets
+  passed             the real battle clock completes only the resting actor and never heals without a chosen Hit Die
+  passed             all twelve level one to six class loadouts recover only their declared Short Rest banks
+  passed             class Hit Dice seed once and restarting or rejoining cannot refill spent dice
+  passed             Hit Dice are chosen one at a time with current Constitution minimum one and separate temporary HP
+  passed             a spent Hit Die respects blocked healing and maximum HP without refunding its chosen die
+  passed             damage interrupts even through temporary HP while zero damage and failed strikes do not
+  passed             a completed rests Hit Dice choice ends on actual damage but never refunds its recovered resources
+  passed             initiative admission ends a carried rest without replenishing its Hit Dice
+  passed             accepted leveled spells interrupt a rest while cantrips and refused requests preserve it
+  passed             actual Shield interrupts only after accepted component and slot payment
+  passed             Arcane Recovery validates complete slot choices and studying the book before changing any slot
+  passed             Natural Recovery belongs to the level six Land Druid and needs no Wizard book
+  passed             slot recovery refuses empty invalid over-budget and unexpended choices atomically
+  passed             Sorcerous Restoration is an explicit once per Long Rest choice with floor half-level limits
+  passed             rest APIs refuse logical actor edges and borrowed reaction frames before writes or dice
+  passed             unliving zero-HP and reversed-clock rests cannot grant or consume recovery
+  passed             a real attack or Dash ends downtime only after its own admission
+  passed             a whole Short Rest cannot retain Rage or refill daily Warlock Arcanum or free-cast banks
+  passed             optional rest recovery refuses malformed resource bounds and unsupported feature provenance
+  passed             borrowed actors seed fresh Hit Dice when rest starts and report the actual begin and die events
+  passed             source recovery modes stay distinct even when a particular preset has no uses of that bank
+  passed             untracked Dash binds its old walking allowance before adding another full current Speed
+  passed             slot recovery rounds up all legal source levels and admits exactly full low or fifth-level budgets
+  passed             weighted slot recovery cannot buy two second-level slots with a three-level budget
+  passed             Natural Recovery and a chosen single Sorcery Point publish their actual recovered amount
+  passed             zero-capacity resource banks cannot be manufactured by a rest recovery choice
+  passed             Short Rest resource reads and writes belong to the first actor of its admitted view
+native checks: passed {"passed": 28}

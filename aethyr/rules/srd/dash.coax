@@ -21,6 +21,7 @@ rs_dash_use :: (b: [] RsBattle, i: int, mode: int) -> bool #effects(all) {
     else { return false; }
     b[0].turn.bonus=true;
   }
+  rs_rest_interrupt_at(b[0].c,i);
   t: [1] RsTurn; t[0]=b[0].turn;
   rs_reprice_movement(t[..],rs_movement_allowance(b,i));
   b[0].turn=t[0]; b[0].turn.dash_n+=1;

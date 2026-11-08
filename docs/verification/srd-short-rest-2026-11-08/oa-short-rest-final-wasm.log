@@ -1,0 +1,19 @@
+coax: note[E0400]: compile-time steps: 167384329 of 200000000 used (83%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    25045115 steps  verse/experimental-village.coax:161:1  in 'ev_near_radius' (2876 times)
+    23866480 steps  verse/experimental-village.coax:70:1  in 'ev_prop_near' (2876 times)
+    18278554 steps  verse/experimental-hostiles.coax:113:1  in 'hostile_blocked_pad' (2876 times)
+    15403856 steps  verse/experimental-castle.coax:16:1  in 'castle_segment' (382508 times)
+    14005515 steps  verse/experimental-terrain.coax:30:1  in 'exp_site' (221352 times)
+  fix: do less work in 'ev_near_radius', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 125906511 of 134217728 used (93%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    28274400 visits  aethyr/points.coax:19:1  in 'v3' (4712400 times)
+    9950600 visits  apps/openagents-web/charactercreator.coax:497:1  in 'cc_pose' (2200 times)
+    6693768 visits  apps/openagents-web/charactercreator.coax:330:5  copying arguments into 'experimental_hold' (2232 calls)
+    5803344 visits  aethyr/anim/pose.coax:17:1  in 'quat_scaled' (725418 times)
+    5450400 visits  apps/openagents-web/charactercreator.coax:532:8  copying arguments into 'experimental_figure' (1800 calls)
+  fix: copy fewer whole arrays and structs in 'v3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time value slots: 27287624 of 33554432 used (81%), above three quarters of the limit; more than 33554432 fails with E0400
+wasm.sh: oa-short-rest-final-fivelab.wasm: 81.9 s: Coax to C 73.6 s (2/3 cached), clang 5.1 s (3/4 cached), link 2.1 s, wasm-opt 0.8 s; 2541003 bytes; report /tmp/.c/oa-short-rest-final-fivelab.timings.json
+wasm-size: oa-short-rest-final-fivelab is 2541003 bytes and has no size budget: add a line "oa-short-rest-final-fivelab BYTES" to apps/openagents-web/wasm-budgets.txt
