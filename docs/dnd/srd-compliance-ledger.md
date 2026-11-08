@@ -472,3 +472,13 @@ Action spending. Saved-seat adapters preserve the running actor's turn.
 gates kill 165/87/37/112 mutants, all zero survivors. World controls/geometry,
 remaining condition/action rules, Healer's Kit, knockout and rests remain active
 #13039/#13040/#13046 work. This does not close those issues.
+
+### Displayed class-kit access/component audit (2026-11-08)
+
+All displayed spells in all 12 class presets at levels 1–6 pass shared
+access/preparation and component availability checks; every displayed kit is
+nonempty. Twelve class slices and their complete 200-check library composition
+pass. [Evidence](../verification/srd-kit-admission-2026-11-08/README.md).
+This verifies fresh preset supply for displayed spell choices, not effect
+execution, complete SRD choice coverage, nonspell feature behavior, physical
+inventory acquisition or world state projection. No issue closes on this audit.

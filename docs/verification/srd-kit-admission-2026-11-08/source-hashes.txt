@@ -1,0 +1,4 @@
+5778a42dbbbd0afc7661a04f61303754bb3f644952ebc6ea36110a3f1c0dbc3c  apps/openagents-web/class-kit.coax
+7a3545c65afc7104d34082efe5803ee5b8c74a87d0c2d45e85321d66a74a7397  apps/openagents-web/class-kit-admission-checks.coax
+382618d2e7c8a80751e9cfe06324b78d09818a828cf9a856f66ce87695033d03  aethyr/rules/srd/spell-loadouts.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax

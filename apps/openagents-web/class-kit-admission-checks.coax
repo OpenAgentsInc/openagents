@@ -1,0 +1,40 @@
+// Level-selector loadouts must provide actual components for every displayed spell.
+#load "class-kit.coax";
+
+xk_check_components :: (klass:int) {
+  for level:1..<7 {
+    hero:=fb_cl_hero(klass,"You",0,level);
+    bar:[XC_SLOTS] FbAb; n:=xc_bar_level(klass,level,bar[..]);
+    #assert n>0;
+    for i:0..<n {
+      a:=bar[i];
+      if a.kind!=FB_SPELL { continue; }
+      #assert rs_spell_ready(hero,a.sp);
+      #assert rs_cast_components_ready(hero,a.sp);
+    }
+  }
+}
+
+#test "level 1–6 barbarian displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_BARBARIAN); }
+
+#test "level 1–6 bard displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_BARD); }
+
+#test "level 1–6 cleric displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_CLERIC); }
+
+#test "level 1–6 druid displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_DRUID); }
+
+#test "level 1–6 fighter displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_FIGHTER); }
+
+#test "level 1–6 monk displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_MONK); }
+
+#test "level 1–6 paladin displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_PALADIN); }
+
+#test "level 1–6 ranger displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_RANGER); }
+
+#test "level 1–6 rogue displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_ROGUE); }
+
+#test "level 1–6 sorcerer displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_SORCERER); }
+
+#test "level 1–6 warlock displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_WARLOCK); }
+
+#test "level 1–6 wizard displayed spell kit supplies legal access and components" #steps 400000000 { xk_check_components(FB_CL_WIZARD); }
