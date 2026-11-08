@@ -77,7 +77,7 @@ named below are selected evidence only, not exhaustive qualification.
 | CORE-REST | Rules Glossary, class recovery rules | Partial | Uses/maxima and selected recovery features | Short/long rests, Hit Dice, limits and recovery effects, M3/M5 |
 | CAST-ACCESS | Classes and Gaining Spells pp.104-105 | Partial | Shared class eligibility/grants plus canonical cantrip/prepared selections, class limits and Wizard spellbook membership; CAST-CLASS and CAST-PREPARED pass ([selection evidence](../verification/srd-spell-selection-2026-11-08/README.md)) | Full source-feature/origin grant provenance and legal rest/level-up/copying workflows, #13038/#13044 |
 | CAST-COMPONENTS | Casting Spells pp.104-106 | Missing | Display strings, no complete component state | V/S/M, focus/pouch, cost, consumption, rituals/long casts, M2/M3 |
-| CAST-TARGETS | Casting Spells pp.105-106 | Partial | Shared target policy now separates malformed/dead/out-of-range refusal from spent, unaffected invalid-type casts; `CAST-INVALID-TARGET` passes | Explicit upcast/multiple target selections and full slice casting admission remain in #13038 |
+| CAST-TARGETS | Casting Spells pp.105-106 | Partial | Shared target policy separates malformed/dead/out-of-range refusal from spent, unaffected invalid-type casts; canonical Self requests enforce the caster while preserving originating effects/helpers; CAST-INVALID-TARGET and CAST-SELF pass | Explicit upcast/multiple target selections and full slice casting admission remain in #13038 |
 | CAST-RESOURCES | Spell slots/casting rules pp.104-106 | Partial | Slot checks and turn budgets; unknown executable IDs and malformed cantrip slots now refuse atomically ([evidence](../verification/srd-casting-request-2026-11-08/README.md)); four admission probes pass | Preparation, full free-cast restrictions, transactional preflight, M3 |
 | CAST-CONCENTRATION | Rules Glossary Concentration | Partial | Concentration saves, replacement and expiration | Full interruption, overlapping effects and duration fixtures, M3/M4 |
 | FX-EXECUTOR | Spec typed effect program | Partial | Closed step set with specialized handlers | Transform, summon, sense, general modify/terrain/light/narrative, M4 |
@@ -129,6 +129,7 @@ predicate to PASS without deleting an expected-failure exemption.
 | CAST-RANGE | Out-of-touch-range Cure Wounds refuses without spending | PASS | Range admission |
 | CAST-CLASS | Unmodified preset Druid cannot cast Guiding Bolt | PASS | Class eligibility and explicit extra-list grants enforced in shared admission; separate selected-state admission is covered by CAST-PREPARED |
 | CAST-PREPARED | An eligible but unselected Cure Wounds refuses without spending | PASS | Complete legal alternative loadout excludes Cure Wounds; shared readiness refuses it, including native execution |
+| CAST-SELF | False Life cannot name another primary creature | PASS | Structural request refusal preserves resources; source Self range is distinguished from originating effects and later helper actions |
 | CAST-INVALID-TARGET | Hold Person on a Skeleton spends its used slot without affecting it or rolling a save | PASS | Corrected shared target policy/outcome; apparent save succeeds with no invented roll, SRD p.106 and p.141 |
 | SPELL-POLYMORPH | Failed save grants form temp HP, retains HP/type, does not merely Incapacitate | FAIL | Necessary witness only; current API cannot select a Beast, so even a future PASS would not qualify the full spell |
 | CAP-EFFECT | Adding another effect never silently removes independent existing effects | FAIL | Direct storage boundary, not an alternative SRD stacking rule |
@@ -151,6 +152,8 @@ The [selection change](../verification/srd-spell-selection-2026-11-08/README.md)
 adds CAST-PREPARED: seven of ten witnesses now pass. The Polymorph fixture now
 explicitly prepares its spell and provides a level-appropriate slot, so its
 failure still diagnoses transformation rather than missing selection state.
+The subsequent [Self request change](../verification/srd-self-targets-2026-11-08/README.md)
+adds CAST-SELF: eight of eleven witnesses pass, with the same three failures.
 
 ## Canonical source inventory
 

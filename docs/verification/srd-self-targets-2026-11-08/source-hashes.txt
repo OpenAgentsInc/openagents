@@ -1,0 +1,8 @@
+2ca66f27fe6159bff3e680d97c0d5c4a3973b541af87c3feaed8a46847e81d51  aethyr/rules/srd/battle.coax
+19d03e3e2b65dff53947c319624f565122bc91916f276646bbb64ed8c68f704a  aethyr/rules/srd/cast-self.coax
+f3ce6add25e1fc7340781c8e852957c3d17a5a388ef4105c37cf4952488eef10  aethyr/rules/srd/cast-target-checks.coax
+c53f5b834d576ed6158da02924b4a6cbb9365386ce5f486ca0a40926809e4cf9  aethyr/rules/srd/compliance-check.coax
+f55e015bcfd7ae5459296dc1a2542f425cc9d1037c8202d276767a0ad4d99d9e  aethyr/rules/srd/compliance-probes.coax
+8d392f3e55f5b674a09d86bfc971100ea91ca9469fa8795922bafe9712e3bd22  aethyr/rules/srd/data/spell-index.coax
+4ebf58511f4a2eb4ae5b9059605dfac39d95f076a00ff7c239da3728af223e80  aethyr/rules/srd/spell-access-source-checks.coax
+ab51d092cd29e0a10f4660117456d71cd3d96c27c6fb037ab19ba5b0809e6e81  aethyr/rules/srd/spell-index-build.coax

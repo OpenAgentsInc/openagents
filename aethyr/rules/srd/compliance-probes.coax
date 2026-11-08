@@ -18,6 +18,9 @@
 #test "compliance admission: class access and prepared selections both refuse unauthorized casts" {
   #assert sc_admission_class() && sc_admission_prepared();
 }
+#test "compliance admission: a Self spell cannot use another primary creature" {
+  #assert sc_admission_self();
+}
 #test "compliance effects: adding into free storage retains existing independent effects" {
   c: [1] RsCreature;
   rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 1, until = 60});
@@ -93,6 +96,12 @@ sc_admission_prepared :: () -> bool {
   if !rs_set_spells(b[0].c[0..<1], keys[..]) { return false; }
   p := sc_before(b[..]);
   return rs_spell_access(b[0].c[0], SP_CURE_WOUNDS) && !rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, 0) && sc_unchanged(b[..], p);
+}
+sc_admission_self :: () -> bool {
+  b: [1] RsBattle; sc_setup(b[..]);
+  b[0].c[0] = rs_wizard("Wizard",0,3); b[0].c[0].x = 1; b[0].c[0].y = 1;
+  p := sc_before(b[..]);
+  return rs_can_cast(b[..],0,SP_FALSE_LIFE,1) && !rs_cast(b[..],0,SP_FALSE_LIFE,1,0,0,1) && sc_unchanged(b[..],p);
 }
 // SRD p.106 Invalid Targets and Hold Person p.141: the Skeleton is not Humanoid.
 // A used slot is expended, the target remains unaffected, and it rolls no save.

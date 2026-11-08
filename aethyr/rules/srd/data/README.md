@@ -13,7 +13,7 @@ No imported record is thereby qualified as executable spell mechanics.
 | `class-lists.tsv` | The same independent class-table inventory using textual spell IDs |
 | `discrepancies.tsv` | Nine reviewed differences inside the pinned source, with both values and page references |
 | `manifest.txt` | PDF identity, extraction hashes/profile, counts and qualification scope |
-| `spell-index.coax` | Compact derived loadout index: 339 source IDs/levels/class-table masks, current executable-to-source map and named Wizard setup keys |
+| `spell-index.coax` | Compact derived loadout/admission index: 339 source IDs/levels/class-table masks/range forms, current executable-to-source map and named Wizard setup keys |
 
 TSV files start with a `#` attribution comment, followed by their header.
 Generated outputs are checked in. Normal builds need neither the PDF nor Poppler.

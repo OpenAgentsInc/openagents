@@ -3,6 +3,28 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "Self spells refuse another creature before ordinary or Quickened costs" {
+  for quick: 0..<2 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    caster := ifx quick == 0 then rs_wizard("Wizard",0,3) else rs_sorcerer("Sorcerer",0,3);
+    a := rs_add(b[..], caster, 1, 1); t := rs_add(b[..], rs_skeleton("Target",1),3,1);
+    rs_start_turn(b[..], a);
+    b[0].aff_used = true; b[0].c[a].conc = SP_HEX; b[0].c[a].conc_until = 90;
+    slots := b[0].c[a].slots[1]; points := b[0].c[a].uses[RS_USE_SORCERY];
+    seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+    #assert !rs_cast_as(b[..],a,SP_FALSE_LIFE,1,0,0,t,quick == 1);
+    #assert b[0].c[a].slots[1] == slots && b[0].c[a].uses[RS_USE_SORCERY] == points;
+    #assert b[0].aff_used && b[0].c[a].conc == SP_HEX && b[0].c[a].conc_until == 90;
+    #assert !b[0].turn.action && !b[0].turn.bonus && !b[0].turn.slot_spent && !b[0].turn.quickened;
+    #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && b[0].c[t].temp == 0;
+    #assert rs_cast_as(b[..],a,SP_FALSE_LIFE,1,0,0,a,quick == 1);
+    #assert b[0].c[a].temp >= 6 && b[0].c[a].temp <= 12 && b[0].c[t].temp == 0;
+    #assert b[0].c[a].slots[1] == slots - 1 && b[0].c[a].uses[RS_USE_SORCERY] == points - (ifx quick == 1 then 2 else 0);
+    #assert b[0].turn.action == (quick == 0) && b[0].turn.bonus == (quick == 1);
+    #assert b[0].c[a].conc == SP_HEX && b[0].c[a].conc_until == 90;
+  }
+}
+
 #test "unprepared reactions preserve their budgets and selected reactions spend normally" {
   b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
   wizard := rs_add(b[..], rs_wizard("Wizard", 0, 1), 1, 1);
