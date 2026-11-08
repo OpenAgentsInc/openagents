@@ -40,6 +40,7 @@
 
 #load "socket.coax";
 #load "everglade-wire.coax";
+#load "everglade-net-core.coax";   // the states' ring, the jitter buffer, the clock: Everglade II's page keeps them too (#13054)
 #load "../../aethyr/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
@@ -48,74 +49,25 @@
 #load "everglade-events.coax";     // the raid's banner, your level and kit, the admin's EVENTS (#12737)
 
 NET_ENTS :: WIRE_MIRROR;
-NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
-NET_HIST :: 64;            // your inputs kept for the server's ACK
 NET_FX :: 8;               // casts waiting for their time
 NET_MINE :: 8;             // your casts sent, kept to read a refusal of them by (r SEQ WHY)
-NET_ID :: 24; NET_NAME :: 40; NET_LOOK :: 32; NET_CODE :: 24; NET_URL :: 200;
-NET_TICKET :: 4096;  // profile 2's v4 envelope (legacy core remains 256 bytes)
 NET_PIPE_STATE :: 5;    // the pipe's save of what you bring back into a room: its bytes the JSON to POST to /api/playtest/room-state (#12715)
 NET_STATE_EVERY :: 2000;   // ms: a changed look is saved at most this often (WANTED is the room's to save, #12794)
 NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST, a newline, the body (the face carries it)
-NET_BASE :: 0; NET_LOW :: 100; NET_HIGH :: 300;   // ms: the jitter buffer's delay (NET_BASE over the states' lateness, spread and interval, NET_LOW at least)
-// The drawn delay moves to the buffer's at most this much a second (s/s): its first NET_SETTLE ticks
-// at once, then the world's time runs 10% slow or fast while it comes. A burst of states after a
-// socket's hold raises the spread at once, and a delay taken at once drew everyone back (#12890).
-NET_SLEW :: 0.1; NET_SETTLE :: 30;
-NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
-// ms a townsperson goes on: they walk their way at their pace, so their velocity holds while the
-// states stop. A read lost on the socket holds every read after it for TCP's resend (200 ms, or two
-// round trips: 500 ms at 250 ms), which NET_AHEAD and the buffer's spread don't cover (#12890).
-NET_AHEAD_FOLK :: 700;
-NET_EASE :: 0.2;           // s an entity's difference from where it went on to is eased out over
-NET_SNAP :: 1.5;           // m: a re-run's difference this big is taken at once (a teleport, a throw)
-NET_SMOOTH :: 0.12;        // s a smaller one is eased out over (a start or stop the page and server stepped apart)
-NET_PINGS :: 8;
 NET_RELOAD_MS :: 1500;      // ms a new version's message shows before the page reloads
 NET_ACT_NAVIGATE :: 1;      // host.js: go to the outbox's path
 NET_SAY :: 4.0;            // s a refusal shows
 NET_GAME :: "everglade";
 NET_OFF :: 0; NET_OPENING :: 1; NET_OPEN :: 2; NET_DOWN :: 3;
-// A socket that goes quiet is closed and tried again: the server sends state every tick, so an open
-// socket that hears nothing for NET_SILENT_MS lost its network without a close (a phone between
-// networks, a laptop's wifi gone), which the browser can take minutes to notice; one opening that
-// hasn't opened in NET_OPEN_MS the same. A frame that comes NET_STALL_MS or more after the last one (a
-// hidden or frozen tab draws none) starts the wait again: the socket had no chance to be heard.
-NET_SILENT_MS :: 6000; NET_OPEN_MS :: 10000; NET_STALL_MS :: 1000;
 // what an entity is: a player (WK_PLAYER), a townsperson or guard (WK_FOLK), else a creature or zone
 // (everglade-wire.coax WK_*); a townsperson's and a creature's ids in the table
 NET_FOLK_ID :: WIRE_ID_FOLK; NET_MADE_ID :: WIRE_ID_MADE;
 // a target or hit's WHO code (the wire's TGT): 0-999 a watch actor, 1000 + SS a seat, 2000 + EID a creature
 net_who :: (who: int) -> int { return ifx who >= 2000 then NET_MADE_ID + who - 2000 else ifx who >= 1000 then who - 1000 else NET_FOLK_ID + who; }
 
-NetState :: struct { t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; f: int; a: int; ax: f32; az: f32; age: f32; }
-NetEnt :: struct {
-  generation:u32 #counter;
-  live: bool; eid: int; kind: int; owner: int = -1;   // eid: a seat, NET_FOLK_ID + its index, NET_MADE_ID + the server's EID
-  ring: [NET_RING] NetState; ring_n: int;   // oldest first, server times
-  hp: int; max: int; temp: int; p1: int; p2: int; form: int;
-  cond: int;                 // its row's COND: the conditions on it (a townsperson's; a player's is P1 too)
-  wanted: int;               // a player's WANTED level (w)
-  born: int;                 // server ms it was first seen
-  seen: int;                 // the last tick it was in
-  life: int; warp: int;      // its row's LIFE and WARP: a new life or a jump starts its ring again
-  t0: int; dur: int;         // its row's T0 and DUR (ticks): an effect's start and length, DUR 0 held up
-  // who a player is (n)
-  seat: int = -1; id: [NET_ID] u8; id_n: int; look: [NET_LOOK] u8; look_n: int; name: [NET_NAME] u8; name_n: int;
-  cls: [16] u8; cls_n: int; hello_flags: int;   // its class and its hello's FLAGS (1 touch, 2 an account)
-  // drawn this frame (net_step)
-  shown: NetState; run: f32;
-  // where it went on to past its newest state (lead: that state; lead_on: drawn past it last frame),
-  // and the difference from where the states after it put it, eased out (NET_EASE)
-  lead: NetState; lead_on: bool; ease_x: f32; ease_y: f32; ease_z: f32;
-  cast_slot: int = -1; cast_at: int;   // its last cast (e cast), server ms
-}
-NetInput :: struct { seq: int; input: EgMoveIn; }
 // Where a socket goes: the address and instance, and how they were chosen (EgNet's own and its away).
 NetDest :: struct { url: [NET_URL] u8; url_n: int; host_n: int; code: [NET_CODE] u8; code_n: int; base_n: int; named: bool; test: bool; list_due: bool; local_relay: bool; }
 NetFx :: struct { live: bool; slot: int; caster: int; at: Point; seed: int; t: int; mode: int; }
-// You as the server has you after input `ack` (D's p entry for your seat).
-NetFix :: struct { ok: bool; ack: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; ground: bool; carry: f32; jump: bool; }
 EgNet :: struct {
   party_only:[16]bool;party_hp:[16]int;party_max:[16]int;party_seen:[16]int;
   want: bool;
@@ -222,43 +174,13 @@ net_now :: (n: [] EgNet) -> int { return n[0].mono + n[0].offset; }
 // The server clock in ms, -1 while none is known.
 net_clock :: (s: [] Everglade) -> int #export_c #effects(all) { if !net_on(s) || net_of(s)[0].mono == 0 { return -1; } return net_now(net_of(s)); }
 
-net_copy :: (out: [] u8, t: string) -> int {
-  n := 0;
-  for ch: t { if n >= out.count { break; } if ch <= 32 || ch == 127 { continue; } out[n] = ch; n += 1; }
-  return n;
-}
 net_send :: (n: [] EgNet, count: int) {
   if n[0].state != NET_OPEN || n[0].sock < 0 || count <= 0 { return; }
   if pipe_send(n[0].pipe[..], n[0].sock, cast(string) n[0].out[0..<count]) { n[0].frames_out += 1; }
 }
-net_turn :: (a: f32, b: f32) -> f32 {
-  d := b - a;
-  while d > f32(PI) { d -= f32(TAU); }
-  while d < -f32(PI) { d += f32(TAU); }
-  return d;
-}
 
 // ---- the page: where the socket goes, and the clock
 
-net_query :: (url: string, key: string) -> string {
-  at := 0;
-  while at + key.count + 1 <= url.count {
-    before := ifx at == 0 then cast(u8) 63 else url[at - 1];
-    if (before == 63 || before == 38) && url[at..<at + key.count] == key && url[at + key.count] == 61 {
-      i := at + key.count + 1; e := i;
-      while e < url.count && url[e] != 38 && url[e] != 35 { e += 1; }
-      return url[i..<e];
-    }
-    at += 1;
-  }
-  return "";
-}
-net_code_ok :: (t: string) -> bool {
-  if t.count == 0 || t.count > NET_CODE { return false; }
-  for ch: t { if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') { return false; } }
-  return true;
-}
-net_number :: (t: string) -> int { r: [1] WireRd; v := wire_num(t, r[..]); return ifx r[0].ok then v else -1; }
 // The page facts (message 600): the socket's address, your player id, the wall clock. `room` is the
 // room's name when the URL names none; a golden page opens no socket.
 net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #export_c #effects(all) {
@@ -509,18 +431,6 @@ net_restore :: (s: [] Everglade, n: [] EgNet, answer: string) {
   }
 }
 // A field of a flat JSON answer, its text without quotes ("" none).
-net_json_field :: (t: string, name: string) -> string {
-  for i: 0..<t.count {
-    if t[i] != '"' || i + name.count + 3 > t.count || t[i + 1..<i + 1 + name.count] != name || t[i + 1 + name.count] != '"' || t[i + 2 + name.count] != ':' { continue; }
-    a := i + 3 + name.count;
-    q := a < t.count && t[a] == '"';
-    if q { a += 1; }
-    e := a;
-    while e < t.count && (ifx q then t[e] != '"' else (t[e] != ',' && t[e] != '}')) { e += 1; }
-    return t[a..<e];
-  }
-  return "";
-}
 // While you play in a room: a look that changed is saved (at most every NET_STATE_EVERY). Your WANTED
 // level is not the page's to save: the room reports it signed with your HP and XP, and the API refuses
 // it from a page (coax/web/room/room-vitals.coax, coax/web/api/player.c room_state, #12794).
@@ -587,8 +497,7 @@ net_down :: (n: [] EgNet) {
 // What the page holds of the server's rows, forgotten: a new seat's are a new snapshot.
 net_forget :: (n: [] EgNet) {
   for q:0..<16 {n[0].party_only[q]=false;}
-  for e: 0..<WIRE_MIRROR { n[0].mir[0].ents[e].live = false; }
-  n[0].mir[0].heard = 0; n[0].mir[0].tick = 0; n[0].mir[0].part = 0; n[0].mir[0].whole = false;
+  wire_mirror_forget(n[0].mir[..]);
   n[0].out_got = 0; n[0].was_snap = false; n[0].town_check = false;   // a new seat's count starts again (#12902)
 }
 // book:begin quiet-socket
@@ -721,8 +630,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     q := n[0].pings % NET_PINGS;
     n[0].ping_rtt[q] = rtt; n[0].ping_off[q] = clock + rtt / 2 - n[0].mono;
     n[0].pings += 1;
-    best := 0;
-    for i: 0..<lo_int(n[0].pings, NET_PINGS) { if n[0].ping_rtt[i] < n[0].ping_rtt[best] { best = i; } }
+    best := net_ping_best(n[0].ping_rtt[..], n[0].pings);
     n[0].offset = n[0].ping_off[best]; n[0].synced = 2;
     return;
   }
@@ -739,15 +647,10 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     clock := net_tick_t(n, d.tick);
     if d.part == 0 && (d.tick != n[0].tick || n[0].ticks == 0) {
       // the jitter buffer: how late each state comes, its spread, and the states' interval
-      late := f32(net_now(n) - clock);
-      if n[0].ticks == 0 { n[0].late_mean = late; }
-      n[0].jitter += (abs(late - n[0].late_mean) - n[0].jitter) * 0.1;
-      n[0].late_mean += (late - n[0].late_mean) * 0.1;
-      if n[0].ticks > 0 && clock > n[0].tick_t { n[0].interval += (f32(clock - n[0].tick_t) - n[0].interval) * 0.1; }
-      // behind the newest state by how late states come (late_mean: the way here and the server's
-      // send), one interval and their spread, so the time drawn has a state after it; NET_LOW at
-      // least, and more as the spread grows
-      n[0].delay = clamp_i(NET_BASE + cast(int) (hi(n[0].late_mean, 0) + n[0].interval + 2 * n[0].jitter), NET_LOW, NET_HIGH);
+      // (everglade-net-core.coax net_jitter_heard, net_jitter_delay)
+      j := net_jitter_heard(NetJitter.{late_mean = n[0].late_mean, jitter = n[0].jitter, interval = n[0].interval}, n[0].ticks, net_now(n), clock, n[0].tick_t);
+      n[0].late_mean = j.late_mean; n[0].jitter = j.jitter; n[0].interval = j.interval;
+      n[0].delay = net_jitter_delay(j);
       n[0].ticks += 1;
     }
     n[0].tick = d.tick; n[0].tick_t = clock;
@@ -1114,19 +1017,6 @@ net_effects :: (s: [] Everglade, out: [] NetEffect) -> int {
   }
   return m;
 }
-// A state into the ring. After a gap of ticks with no row, an entity whose last row stood still
-// stood there those ticks (the server sends a row only when it changed, and a start changes its
-// velocity), so that state goes in again a tick before this one; one whose last row moved was held
-// back by the byte budget, and is drawn between the two.
-net_push_row :: (en: [] NetEnt, p: NetState, hz: int) {
-  c := en[0].ring_n;
-  tick := 1000 / hi_int(hz, 1);
-  if c > 0 && p.t - en[0].ring[c - 1].t > tick + tick / 2 {
-    last := en[0].ring[c - 1];
-    if last.vx * last.vx + last.vy * last.vy + last.vz * last.vz < 1.0e-4 { last.t = p.t - tick; net_push(en, last); }
-  }
-  net_push(en, p);
-}
 // Watch actor i (a townsperson or guard) as the server has them now (f), interpolated; ok false while
 // none is heard (indoors, out of view, or no room).
 // since: seconds in their mode (from the row's T0: -1 not said); casting: seconds into a spell (-1
@@ -1166,57 +1056,6 @@ net_where :: (s: [] Everglade, n: [] EgNet, id: int) -> NetWhere {
   y := ifx n[0].ents[k].kind == WK_FOLK then walk_at(s, p.x, p.z) else p.y;
   return NetWhere.{ok = true, x = p.x, y = y, z = p.z};
 }
-// book:begin interp-buffer
-// A state into an entity's ring, oldest first: one no newer than the newest replaces it.
-net_push :: (en: [] NetEnt, p: NetState) {
-  c := en[0].ring_n;
-  if c > 0 && p.t <= en[0].ring[c - 1].t { en[0].ring[c - 1] = p; return; }
-  if c == NET_RING { for q: 0..<NET_RING - 1 { en[0].ring[q] = en[0].ring[q + 1]; } c -= 1; }
-  en[0].ring[c] = p; en[0].ring_n = c + 1;
-}
-// How long entity en goes on past its newest state (ms).
-net_ahead :: (en: [] NetEnt) -> int { return ifx en[0].kind == WK_FOLK then NET_AHEAD_FOLK else NET_AHEAD; }
-// State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
-net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
-  ahead := f32(lo_int(hi_int(rt - p.t, 0), ahead_ms)) / 1000;
-  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
-}
-// Where entity en is at server time rt.
-net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
-  c := en[0].ring_n;
-  if c == 0 { return NetState.{}; }
-  if rt <= en[0].ring[0].t { return en[0].ring[0]; }
-  for q: 0..<c - 1 {
-    a := en[0].ring[q]; b := en[0].ring[q + 1];
-    if rt > b.t { continue; }
-    f := f32(rt - a.t) / f32(hi_int(b.t - a.t, 1));
-    o := ifx f < 0.5 then a else b;
-    return NetState.{t = rt, x = lerp(a.x, b.x, f), y = lerp(a.y, b.y, f), z = lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
-                     vx = lerp(a.vx, b.vx, f), vy = lerp(a.vy, b.vy, f), vz = lerp(a.vz, b.vz, f), f = o.f, a = o.a};
-  }
-  // past the newest: on by its velocity for net_ahead ms (a frame late or lost), then held
-  return net_on_from(en[0].ring[c - 1], rt, net_ahead(en));
-}
-// Drawn past its newest state last frame, and newer states came since: where they put it differs
-// from where it went on to (a turn or a stop it made meanwhile). That difference is drawn and eased
-// out over NET_EASE s, so it doesn't jump back; past NET_SNAP m (a new life, a jump), taken at once.
-// p: where the ring has it at rt now; dt: the frame's seconds.
-net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) {
-  c := en[0].ring_n;
-  newest := en[0].ring[c - 1];
-  if c < 2 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
-  else if en[0].lead_on && newest.t > en[0].lead.t {
-    q := net_on_from(en[0].lead, rt, net_ahead(en));
-    ex := en[0].ease_x + q.x - p.x; ey := en[0].ease_y + q.y - p.y; ez := en[0].ease_z + q.z - p.z;
-    if abs(ex) + abs(ey) + abs(ez) > f32(NET_SNAP) { ex = 0; ey = 0; ez = 0; }
-    en[0].ease_x = ex; en[0].ease_y = ey; en[0].ease_z = ez;
-  }
-  en[0].lead = newest; en[0].lead_on = rt > newest.t;
-  k := clamp01(1 - dt / f32(NET_EASE));
-  en[0].ease_x *= k; en[0].ease_y *= k; en[0].ease_z *= k;
-  if abs(en[0].ease_x) + abs(en[0].ease_y) + abs(en[0].ease_z) < 0.001 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
-}
-// book:end interp-buffer
 
 #test "net: tree tilt and fire age sample the pose clock at boundaries and between rows" {
   en: [1] NetEnt; en[0].kind = WK_TREE; en[0].ring_n = 2;
@@ -1233,22 +1072,6 @@ net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) {
   #assert net_forest_sample(en[..], p).ax == 9 && net_forest_sample(en[..], p).age == 8;
   en[0].kind = WK_TREE; en[0].ring_n = 0;
   #assert net_forest_sample(en[..], p).ax == 9;
-}
-// Tree-specific fields share the pose's sampled time. The common pose buffer stays realm-neutral.
-net_forest_sample :: (en: [] NetEnt, pose: NetState) -> NetState {
-  if en[0].kind != WK_TREE || en[0].ring_n == 0 { return pose; }
-  sample := en[0].ring[0];
-  for q: 1..<en[0].ring_n {
-    next := en[0].ring[q];
-    if pose.t <= next.t {
-      f := clamp01(f32(pose.t - sample.t) / f32(hi_int(next.t - sample.t, 1)));
-      sample.ax = lerp(sample.ax, next.ax, f); sample.az = lerp(sample.az, next.az, f); sample.age = lerp(sample.age, next.age, f);
-      break;
-    }
-    sample = next;
-  }
-  out := pose; out.ax = sample.ax; out.az = sample.az; out.age = sample.age;
-  return out;
 }
 
 // ---- your movement: the inputs out, the server's word back (the face runs the step)
@@ -1394,8 +1217,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   }
   // the world, a jitter buffer's delay behind the server clock
   dt := f32(clamp_i(mono - n[0].drawn_at, 0, 100)) / 1000; n[0].drawn_at = mono;
-  if n[0].ticks <= NET_SETTLE { n[0].lag = f32(n[0].delay); }
-  else { step := dt * 1000 * f32(NET_SLEW); n[0].lag += clamp(f32(n[0].delay) - n[0].lag, -step, step); }
+  n[0].lag = net_lag_step(n[0].lag, n[0].delay, n[0].ticks, dt);
   rt := now - cast(int) n[0].lag; n[0].rt = rt;
   for e: 0..<NET_ENTS {
     en := n[0].ents[e..<e + 1];
@@ -1618,19 +1440,6 @@ net_rebuild :: (s: [] Everglade) -> bool {
   n[0].seq += 1;
   net_send(n, wire_put_rebuild(n[0].out[..], 0, n[0].seq));
   return true;
-}
-// This page's build, "ENGINE.RULES.CONTENT" (WirePins), at `at` in out: the end.
-net_put_build :: (out: [] u8, at: int) -> int {
-  p := WirePins.{};
-  pins := [3] int.[p.engine, p.rules, p.content];
-  k := at;
-  for i: 0..<3 {
-    if i > 0 { k = wire_put(out, k, "."); }
-    d := wire_int(out, k, pins[i]);   // " N": its digits moved over the space
-    for j: k + 1..<d { out[j - 1] = out[j]; }
-    k = d - 1;
-  }
-  return k;
 }
 // Travel to the instance `code` of this realm, asked of the room (#12850, coax/web/room/room-travel.coax):
 // the room sets you aside a seat there and answers "g CODE" (net_go), or refuses with r. False offline.

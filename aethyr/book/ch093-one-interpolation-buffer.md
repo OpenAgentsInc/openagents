@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The page keeps each remote entity's last 8
 > server states and draws it a delay behind the server clock, a delay that
-> adapts to how late and how irregular the frames are (`everglade-net.coax`,
+> adapts to how late and how irregular the frames are (`everglade-net-core.coax`, which Everglade II's page shares,
 > #12706). Since wire 3 every remote entity is drawn from this one buffer,
 > townsfolk included: 100 ms or more as jitter grows, velocity for
 > `NET_AHEAD` ms on a gap, then held. Townsfolk drawn walking in place fell
@@ -28,7 +28,7 @@ entity at the server time `now − delay`, between the two states that
 bracket it, the yaw turning the short way. Past the newest state, the
 entity goes on by its velocity for at most `NET_AHEAD` 150 ms, then holds.
 
-<!-- source: apps/openagents-web/everglade-net.coax interp-buffer -->
+<!-- source: apps/openagents-web/everglade-net-core.coax interp-buffer -->
 ```jai
 // A state into an entity's ring, oldest first: one no newer than the newest replaces it.
 net_push :: (en: [] NetEnt, p: NetState) {
@@ -41,7 +41,7 @@ net_push :: (en: [] NetEnt, p: NetState) {
 net_ahead :: (en: [] NetEnt) -> int { return ifx en[0].kind == WK_FOLK then NET_AHEAD_FOLK else NET_AHEAD; }
 // State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
 net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
-  ahead := f32(lo_int(hi_int(rt - p.t, 0), ahead_ms)) / 1000;
+  ahead := f32(nc_lo(nc_hi(rt - p.t, 0), ahead_ms)) / 1000;
   return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
 }
 // Where entity en is at server time rt.
@@ -52,10 +52,10 @@ net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
   for q: 0..<c - 1 {
     a := en[0].ring[q]; b := en[0].ring[q + 1];
     if rt > b.t { continue; }
-    f := f32(rt - a.t) / f32(hi_int(b.t - a.t, 1));
+    f := f32(rt - a.t) / f32(nc_hi(b.t - a.t, 1));
     o := ifx f < 0.5 then a else b;
-    return NetState.{t = rt, x = lerp(a.x, b.x, f), y = lerp(a.y, b.y, f), z = lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
-                     vx = lerp(a.vx, b.vx, f), vy = lerp(a.vy, b.vy, f), vz = lerp(a.vz, b.vz, f), f = o.f, a = o.a};
+    return NetState.{t = rt, x = nc_lerp(a.x, b.x, f), y = nc_lerp(a.y, b.y, f), z = nc_lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
+                     vx = nc_lerp(a.vx, b.vx, f), vy = nc_lerp(a.vy, b.vy, f), vz = nc_lerp(a.vz, b.vz, f), f = o.f, a = o.a};
   }
   // past the newest: on by its velocity for net_ahead ms (a frame late or lost), then held
   return net_on_from(en[0].ring[c - 1], rt, net_ahead(en));
@@ -75,7 +75,7 @@ net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) {
     en[0].ease_x = ex; en[0].ease_y = ey; en[0].ease_z = ez;
   }
   en[0].lead = newest; en[0].lead_on = rt > newest.t;
-  k := clamp01(1 - dt / f32(NET_EASE));
+  k := nc_clamp01(1 - dt / f32(NET_EASE));
   en[0].ease_x *= k; en[0].ease_y *= k; en[0].ease_z *= k;
   if abs(en[0].ease_x) + abs(en[0].ease_y) + abs(en[0].ease_z) < 0.001 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
 }

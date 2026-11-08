@@ -1,5 +1,6 @@
 #load "../../../apps/openagents-web/everglade-link-wire.coax";
 #load "../../../aethyr/ids.coax";
+#load "../../../apps/openagents-web/everglade2-move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
 // The room server's Everglade rooms: the server is the authority (spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
 // An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are
@@ -90,7 +91,7 @@ EG_CASTS :: 32;                 // casts heard and on their way, from the press 
 EG_PLAYER_STRIKES :: EFFECT_SEATS * EFFECT_PLAYER_CAP;
 EG_WORLD_STRIKES :: EG_PLAYER_STRIKES + E5RD_CASTS + E5RR_BEASTS + RT_HOUSE_BLASTS;
 EG_CAST_GAP :: 8;               // ticks between a seat's casts at least (about 4 a second)
-EG_NAME :: 24; EG_LOOK :: 32;
+EG_NAME :: 24; EG_LOOK :: 64;   // a look: Character Create's CC3 record (57 bytes, aethyr/character-appearance.coax) or v1's ranger.S.D.T
 // A tick's events (e entries) at most. An outcome (eg_ev_outcome: the town's pieces, a rebuild, an edit:
 // a page that misses one is wrong until it joins again) has EG_EV_KEEP more events and EG_EV_KEEP_BYTES
 // more bytes that cues never take, so a busy tick's cues can't crowd one out (#12836); so does a cue
@@ -201,6 +202,9 @@ EgRoom :: struct {
   old_n: int;          // seats on the old wire, its window open (room-oldwire.coax)
   behind_n: int;       // seat ticks whose rows waited, its socket behind
   live: bool; relay: int = -1;
+  // Everglade II's room (#13053): its world is Everglade II's land, path and woods (apps/openagents-web/
+  // everglade2-move.coax, room-world.c world2_*), with no town, river or watch
+  e2: bool;
   tick: int; seed: int;
   ev_dropped: int;               // events a tick had no room for (EG_EVENTS, EG_EV_BYTES), since the host last asked
   sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
@@ -294,6 +298,20 @@ eg_word :: (t: string, out: [] u8) -> int {
 
 // ---- rooms
 
+// Whether a room's code is one of Everglade II's instances (#13053): the realm's own (everglade2-N, a
+// fork's everglade2-SLUG-N) or a check's (pair-e2-...). Their world is Everglade II's.
+EG_E2_REALM :: "everglade2";
+eg_e2_code :: (code: string) -> bool {
+  if code.count > EG_E2_REALM.count && code[0..<EG_E2_REALM.count] == EG_E2_REALM && code[EG_E2_REALM.count] == '-' { return true; }
+  return code.count > 8 && code[0..<8] == "pair-e2-";
+}
+#test "Everglade II's rooms are its realm's instances and its checks'" {
+  #assert eg_e2_code("everglade2-1") && eg_e2_code("everglade2-12") && eg_e2_code("pair-e2-ab12");
+  #assert !eg_e2_code("everglade-1") && !eg_e2_code("everglade2") && !eg_e2_code("everglade20-1") && !eg_e2_code("pair-drift-x") && !eg_e2_code("pair-e2-");
+}
+// Room k runs Everglade II's world (the host steps its seats on world2_*, room-tick.c).
+rm_eg_e2 :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return rm_eg_live(v, k) && v[0].eg[k].e2; }
+
 eg_room_at :: (v: [] RmServer, r: int) -> int {
   for k: 0..<EG_ROOMS { if v[0].eg[k].live && v[0].eg[k].relay == r { return k; } }
   return -1;
@@ -305,6 +323,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
   for q: 0..<EG_ROOMS {
     if v[0].eg[q].live { continue; }
     v[0].eg[q].initialized=false;v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
+    v[0].eg[q].e2 = r >= 0 && r < RELAYS && v[0].relays[r].live && eg_e2_code(cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n]);
     v[0].eg[q].work[0]=WorkBudget.{};
     v[0].eg[q].effect_known=false;v[0].eg[q].house_free=0;for s:0..<EG_SEATS{v[0].eg[q].effect_free[s]=0;}
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }

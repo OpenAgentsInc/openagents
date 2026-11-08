@@ -1,0 +1,496 @@
+// Everglade II's room (#13054): the page's side of the server's world for the Everglade II realm.
+// From USE IN EVERGLADE on, the run down the path and the clearing are one room
+// (coax/web/room/room-everglade.coax eg_e2_code: everglade2-N, a check's pair-e2-*), whose world steps
+// you as this page does (everglade2-move.coax). This file holds the socket, the seat ticket, the
+// clock, your inputs and the server's word on you, and the other players as the room says them,
+// drawn a jitter buffer behind (everglade-net-core.coax, which Everglade's page shares). The face
+// (everglade2-face.c) carries its pipe to the host and steps you at the room's rate.
+//
+// The order of a join: the page facts (message 600) name the room's host and your player id; a seat
+// ticket is asked for with the realm (the API's directory places you in an instance and on its shard);
+// the socket opens with it; the room's y seats you; the page sends its build (WirePins) and hello with
+// your Character Create record as its look and your name; the room's rows follow. A dropped socket
+// comes back on a doubling, jittered wait, each open with a fresh ticket.
+#load "socket.coax";
+#load "everglade-net-core.coax";
+
+E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
+E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
+E2N_REALM :: "everglade2";
+E2N_GAME :: "everglade";        // the room server's game path (/api/room/relay/everglade/CODE)
+E2N_PIPE_TICKET :: 4;           // the pipe's ask for a seat ticket: the API path, a newline, the body (as Everglade's, everglade5e-face.c)
+E2N_PIPE_NAME :: 9;             // the pipe's POST of your name: /api/playtest/player/name, a newline, the body
+E2N_HOLD_MS :: 4000;            // the run waits this long at most for its seat before it walks on its own
+E2N_SAY :: 48;
+
+E2Net :: struct {
+  want: bool;                   // a room: the page facts named a host and this is not a staged shot
+  state: int; sock: int = -1; tries: int; retry: int;
+  url: [NET_URL] u8; url_n: int; host_n: int;
+  code: [NET_CODE] u8; code_n: int;   // the instance: the directory's, a check's (?room=) or none (the realm asks)
+  local_relay: bool;            // ?relay=ws://localhost:PORT: a room server on this machine
+  ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool;
+  pid: [NET_ID] u8; pid_n: int; account: bool;
+  look: [NET_LOOK] u8; look_n: int;   // your Character Create record (CC3), the hello's look
+  name: [NET_NAME] u8; name_n: int;   // your name, as the ticket's answer says it
+  joined: bool;                 // the run began (USE IN EVERGLADE) or you came in with a record: the page joins
+  mono: int; offset: int; synced: int;
+  ping_rtt: [NET_PINGS] int; ping_off: [NET_PINGS] int; pings: int; ping_at: int; ping_n: int;
+  seat: int = -1; sat: bool; lost: bool; stale: bool; elsewhere: bool;
+  ents: [E2N_ENTS] NetEnt;
+  hz: int = WIRE_HZ; w_tick: int; w_t: int; worlds: int;
+  tick: int; tick_t: int;
+  late_mean: f32; jitter: f32; interval: f32 = 33; delay: int = NET_LOW; ticks: int;
+  lag: f32 = NET_LOW; rt: int; drawn_at: int;
+  mir: [1] WireMirror;
+  seq: int; inputs: [NET_HIST] NetInput; acked: int;
+  fix: NetFix; fix_due: bool;
+  off_x: f32; off_y: f32; off_z: f32;
+  hello_due: bool;
+  pipe: [1] Pipe;
+  out: [WIRE_FRAME] u8;
+  frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
+  said: [E2N_SAY] u8; said_n: int; said_at: int;
+}
+
+e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >= 0; }
+e2n_now :: (n: [] E2Net) -> int { return n[0].mono + n[0].offset; }
+e2n_send :: (n: [] E2Net, count: int) {
+  if n[0].state != E2N_OPEN || n[0].sock < 0 || count <= 0 { return; }
+  if pipe_send(n[0].pipe[..], n[0].sock, cast(string) n[0].out[0..<count]) { n[0].frames_out += 1; }
+}
+e2n_tell :: (n: [] E2Net, t: string) {
+  n[0].said_n = 0;
+  for ch: t { if n[0].said_n < E2N_SAY { n[0].said[n[0].said_n] = ch; n[0].said_n += 1; } }
+  n[0].said_at = n[0].mono;
+}
+
+// ---- the page: where the socket goes
+
+// The page facts (message 600): the host, ?relay= and ?room=, your player id, the wall clock. A
+// staged shot (?at=, ?walk) and a golden page open no socket.
+e2n_facts :: (n: [] E2Net, facts: string, alone: bool) {
+  url := fact_of(facts, "url");
+  sl := 0; k := 0;
+  while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
+  secure := url.count > 5 && url[0..<5] == "https";
+  start := ifx secure then 8 else 7;
+  m := wire_put(n[0].url[..], 0, ifx secure then "wss://" else "ws://");
+  if start < k { m = wire_put(n[0].url[..], m, url[start..<k]); }
+  n[0].local_relay = false;
+  relay := net_query(url, "relay");
+  if relay.count > 15 && relay.count < 40 && relay[0..<15] == "ws://localhost:" {
+    ok := true;
+    for c: relay[15..<relay.count] { if c < '0' || c > '9' { ok = false; } }
+    if ok { m = wire_put(n[0].url[..], 0, relay); n[0].local_relay = true; }
+  }
+  n[0].host_n = m;
+  m = wire_put(n[0].url[..], m, "/api/room/relay/"); m = wire_put(n[0].url[..], m, E2N_GAME); m = wire_put(n[0].url[..], m, "/");
+  n[0].url_n = m;
+  room := net_query(url, "room");
+  n[0].code_n = 0;
+  if net_code_ok(room) && e2n_code_ok(room) { n[0].code_n = net_copy(n[0].code[..], room); n[0].url_n = wire_put(n[0].url[..], n[0].url_n, room); }
+  n[0].want = !alone && start < k;
+  pid := fact_of(facts, "player");
+  if pid.count > 0 { n[0].pid_n = net_copy(n[0].pid[..], pid); }
+  n[0].account = fact_of(facts, "account").count > 0;
+  wall := net_number(fact_of(facts, "now")); nav := net_number(fact_of(facts, "nav"));
+  if wall > 0 && nav >= 0 && n[0].synced == 0 { n[0].offset = wall - nav; }
+}
+// A page fact's value: the line "KEY=VALUE".
+fact_of :: (facts: string, key: string) -> string {
+  at := 0;
+  while at < facts.count {
+    e := at; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - at > key.count && facts[at..<at + key.count] == key && facts[at + key.count] == '=' { return facts[at + key.count + 1..<e]; }
+    at = e + 1;
+  }
+  return "";
+}
+// The rooms Everglade II plays in: its realm's instances, and its checks' (the room's eg_e2_code).
+e2n_code_ok :: (code: string) -> bool {
+  return (code.count > 11 && code[0..<11] == "everglade2-") || (code.count > 8 && code[0..<8] == "pair-e2-");
+}
+#test "Everglade II's page finds its room's host, a local room and a check's room in the page facts" {
+  n: [1] E2Net;
+  e2n_facts(n[..], "url=https://openagents.com/worlds/everglade2\nplayer=p-abc\nnow=5000\nnav=1000\n", false);
+  #assert n[0].want && cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/relay/everglade/" && n[0].code_n == 0;
+  #assert cast(string) n[0].pid[0..<n[0].pid_n] == "p-abc" && n[0].offset == 4000;
+  m: [1] E2Net;
+  e2n_facts(m[..], "url=http://127.0.0.1:8863/worlds/everglade2?relay=ws://localhost:8930&room=pair-e2-check-1\n", false);
+  #assert m[0].local_relay && cast(string) m[0].url[0..<m[0].url_n] == "ws://localhost:8930/api/room/relay/everglade/pair-e2-check-1";
+  // a v1 room's code is not Everglade II's: the realm asks instead
+  o: [1] E2Net; e2n_facts(o[..], "url=http://127.0.0.1:8863/worlds/everglade2?room=pair-load-1\n", false); #assert o[0].code_n == 0;
+  q: [1] E2Net; e2n_facts(q[..], "url=http://127.0.0.1:8863/worlds/everglade2?at=40\n", true); #assert !q[0].want;
+}
+
+// The seat ticket's ask: /api/playtest/room-ticket/CODE (a check's room) or the realm's
+// (?realm=everglade2: the directory places you), with this page's build and checkpoint 2.
+e2n_ask_ticket :: (n: [] E2Net) {
+  t: [256] u8;
+  k := wire_put(t[..], 0, "/api/playtest/room-ticket/");
+  listed := n[0].code_n == 0;
+  k = wire_put(t[..], k, ifx listed then E2N_REALM else cast(string) n[0].code[0..<n[0].code_n]);
+  if listed { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, E2N_REALM); k = net_put_build(t[..], wire_put(t[..], k, "&build=")); k = wire_put(t[..], k, "&checkpoint=2"); }
+  else { k = wire_put(t[..], k, "?checkpoint=2"); }
+  k = wire_put(t[..], k, "\n{}");
+  if pipe_put(n[0].pipe[..], E2N_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
+}
+// The ticket's answer: the ticket, the instance and shard the directory placed you in, your name.
+e2n_ticket :: (n: [] E2Net, answer: string) {
+  n[0].ticket_asked = false; n[0].ticket_n = 0;
+  if answer.count <= 4 || answer[0..<4] != "200\n" { e2n_down(n); return; }
+  tk := net_json_field(answer, "ticket");
+  if tk.count == 0 || tk.count > NET_TICKET { e2n_down(n); return; }
+  n[0].ticket_n = net_copy(n[0].ticket[..], tk);
+  // the instance the ticket is for (the directory's, or the API's numbered instance of a check's room:
+  // pair-e2-x becomes pair-e2-x-1), on its shard when the answer names one
+  room := net_json_field(answer, "room"); shard := net_number(net_json_field(answer, "shard"));
+  if e2n_code_ok(room) && net_code_ok(room) {
+    n[0].code_n = net_copy(n[0].code[..], room);
+    m := n[0].host_n;
+    if !n[0].local_relay && shard >= 1 && shard <= 99 {
+      m = wire_put(n[0].url[..], m, "/api/room/s"); d := wire_int(n[0].url[..], m, shard);
+      for q: m + 1..<d { n[0].url[q - 1] = n[0].url[q]; }   // wire_int puts " N": the space goes
+      m = d - 1;
+      m = wire_put(n[0].url[..], m, "/relay/");
+    } else { m = wire_put(n[0].url[..], m, "/api/room/relay/"); }
+    m = wire_put(n[0].url[..], m, E2N_GAME); m = wire_put(n[0].url[..], m, "/");
+    m = wire_put(n[0].url[..], m, room);
+    n[0].url_n = m;
+  }
+  name := net_json_field(answer, "name");
+  if name.count > 0 { e2n_name_is(n, name); }
+}
+e2n_name_is :: (n: [] E2Net, name: string) {
+  m := 0;
+  for ch: name { if m >= NET_NAME { break; } if ch < 32 || ch == 127 { continue; } n[0].name[m] = ch; m += 1; }
+  n[0].name_n = m;
+}
+#test "a seat ticket's answer places you on its shard's room and says your name" {
+  n: [1] E2Net;
+  e2n_facts(n[..], "url=https://openagents.com/worlds/everglade2\nplayer=p-1\n", false);
+  e2n_ticket(n[..], "200\n{\"ticket\":\"abc.def\",\"room\":\"everglade2-3\",\"shard\":4,\"name\":\"Ash Wood\"}");
+  #assert cast(string) n[0].ticket[0..<n[0].ticket_n] == "abc.def";
+  #assert cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/s4/relay/everglade/everglade2-3";
+  #assert cast(string) n[0].name[0..<n[0].name_n] == "Ash Wood";
+  // a check's room: the API's numbered instance of it, on the room server's own path
+  l: [1] E2Net;
+  e2n_facts(l[..], "url=http://127.0.0.1:8863/worlds/character-creator?relay=ws://localhost:8945&room=pair-e2-ab\n", false);
+  e2n_ticket(l[..], "200\n{\"ticket\":\"t1\",\"room\":\"pair-e2-ab-1\"}");
+  #assert cast(string) l[0].url[0..<l[0].url_n] == "ws://localhost:8945/api/room/relay/everglade/pair-e2-ab-1";
+  // a refusal: no ticket, and the next ask waits
+  m: [1] E2Net; e2n_ticket(m[..], "503\n{}"); #assert m[0].ticket_n == 0 && m[0].state == E2N_DOWN && m[0].tries == 1;
+}
+
+// ---- the socket
+
+e2n_opened :: (n: [] E2Net, id: int) { if id < 0 { e2n_down(n); return; } n[0].sock = id; }
+// Closed: everyone else goes (nothing is drawn that the room isn't saying) and the socket is tried
+// again after a wait that doubles to a minute, 75% to 125% of it, so a restarted room's pages spread.
+e2n_down :: (n: [] E2Net) {
+  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1;
+  n[0].tries += 1;
+  wait := 1000;
+  for q: 0..<nc_lo(n[0].tries - 1, 6) { wait *= 2; }
+  wait = nc_lo(wait, 60000);
+  j := ((n[0].mono * 7919 + n[0].tries * 104729 + n[0].pid_n * 31) % 1000 + 1000) % 1000;
+  n[0].retry = n[0].mono + wait * 3 / 4 + wait * j / 2000;
+  for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
+  wire_mirror_forget(n[0].mir[..]);
+  n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; n[0].ticks = 0;
+}
+// A socket event (message 256 + 4 id + event): true when it was this room's.
+e2n_event :: (n: [] E2Net, kind: int, text: string) -> bool {
+  ev := socket_event(kind);
+  if ev.id < 0 || ev.id != n[0].sock { return false; }
+  if ev.event == SOCKET_OPENED { n[0].state = E2N_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; return true; }
+  if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == E2N_OPEN { return true; }   // a frame over the inbox: dropped
+  if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
+    if n[0].seat >= 0 { n[0].lost = true; e2n_tell(n, "LOST THE ROOM · REJOINING"); }
+    e2n_down(n); return true;
+  }
+  if ev.event == SOCKET_FRAME { n[0].frames_in += 1; n[0].bytes_in += text.count; e2n_record(n, text); }
+  return true;
+}
+// The entity with id eid, made when new (make); -1 none.
+e2n_ent :: (n: [] E2Net, eid: int, make: bool) -> int {
+  free := -1;
+  for e: 0..<E2N_ENTS {
+    if n[0].ents[e].live && n[0].ents[e].eid == eid { return e; }
+    if !n[0].ents[e].live && free < 0 { free = e; }
+  }
+  if !make || free < 0 { return -1; }
+  n[0].ents[free] = NetEnt.{live = true, eid = eid, born = n[0].tick_t};
+  return free;
+}
+e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
+  if n[0].worlds == 0 || n[0].hz <= 0 { return e2n_now(n); }
+  return n[0].w_t + (tick - n[0].w_tick) * 1000 / n[0].hz;
+}
+// One frame from the room.
+e2n_record :: (n: [] E2Net, t: string) {
+  if t.count < 1 { return; }
+  r: [1] WireRd; r[0] = wire_rd(t, 1);
+  if !r[0].ok { return; }
+  c := t[0];
+  if c == 'y' {
+    seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
+    if seat < 0 { return; }
+    n[0].seat = seat; n[0].sat = true;
+    wire_mirror_forget(n[0].mir[..]);
+    for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
+    if n[0].lost { n[0].lost = false; e2n_tell(n, "BACK IN THE ROOM"); }
+    if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
+    n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false;
+    return;
+  }
+  if c == 't' {
+    sent := wire_num(t, r[..]); clock := wire_num(t, r[..]);
+    if !r[0].ok || sent > n[0].mono || sent <= 0 { return; }
+    rtt := n[0].mono - sent;
+    q := n[0].pings % NET_PINGS;
+    n[0].ping_rtt[q] = rtt; n[0].ping_off[q] = clock + rtt / 2 - n[0].mono;
+    n[0].pings += 1;
+    n[0].offset = n[0].ping_off[net_ping_best(n[0].ping_rtt[..], n[0].pings)]; n[0].synced = 2;
+    return;
+  }
+  if c == 'W' {
+    w := wire_read_world(t, r[..]);
+    if !r[0].ok { return; }
+    n[0].w_tick = w.tick; n[0].w_t = e2n_now(n); n[0].hz = nc_clamp(w.hz, 1, 120); n[0].worlds += 1;
+    return;
+  }
+  if c == 'D' {
+    d := wire_read_d(t, r[..]);
+    if !r[0].ok { return; }
+    clock := e2n_tick_t(n, d.tick);
+    if d.part == 0 && (d.tick != n[0].tick || n[0].ticks == 0) {
+      j := net_jitter_heard(NetJitter.{late_mean = n[0].late_mean, jitter = n[0].jitter, interval = n[0].interval}, n[0].ticks, e2n_now(n), clock, n[0].tick_t);
+      n[0].late_mean = j.late_mean; n[0].jitter = j.jitter; n[0].interval = j.interval;
+      n[0].delay = net_jitter_delay(j);
+      n[0].ticks += 1;
+    }
+    n[0].tick = d.tick; n[0].tick_t = clock;
+    _ := wire_mirror_d(n[0].mir[..], d);
+    from := r[0].at;
+    for k: 0..<wire_entries(t, from) { e2n_entry(n, wire_entry(t, from, k), d); }
+    wire_mirror_end(n[0].mir[..], d);
+    if (d.f & 1) != 0 && (d.f & 2) == 0 {
+      // a whole snapshot: whoever it doesn't hold has gone
+      for e: 0..<E2N_ENTS { if n[0].ents[e].live && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
+    }
+    return;
+  }
+  if c == 'r' {
+    seq := wire_num(t, r[..]);
+    why := wire_word(t, r[..]);
+    if why == WIRE_REFUSE_VERSION { n[0].stale = true; n[0].want = false; e2n_tell(n, "A NEW VERSION IS OUT · RELOAD THE PAGE"); return; }
+    if why == WIRE_REFUSE_ELSEWHERE { n[0].elsewhere = true; n[0].want = false; e2n_tell(n, "YOU'RE PLAYING ELSEWHERE · RELOAD TO PLAY HERE"); return; }
+    if why == WIRE_REFUSE_RESTARTING {
+      if n[0].sock >= 0 { _ := pipe_close(n[0].pipe[..], n[0].sock); }
+      e2n_tell(n, "RESTARTING · BACK IN A MOMENT"); n[0].ticket_n = 0; n[0].tries = 0; e2n_down(n);
+    }
+    return;
+  }
+}
+// One entry of a state (D): a row (s), who a seat is (n), one gone (x).
+e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
+  if t.count < 1 { return; }
+  r: [1] WireRd; r[0] = wire_rd(t, 1);
+  c := t[0];
+  if c == 's' {
+    e := wire_mirror_s(n[0].mir[..], d.tick, t);
+    if e >= 0 { e2n_row(n, wire_mirror_get(n[0].mir[..], e), d); }
+    return;
+  }
+  if c == 'n' {
+    w := wire_read_n(t, r[..]);
+    if !r[0].ok || w.ss < 0 { return; }
+    k := e2n_ent(n, w.ss, true);
+    if k < 0 { return; }
+    en := n[0].ents[k..<k + 1];
+    if en[0].ring_n == 0 { en[0].kind = WK_PLAYER; en[0].owner = w.ss; }
+    en[0].seat = w.ss; en[0].seen = d.tick;
+    en[0].id_n = net_copy(en[0].id[..], w.id);
+    en[0].look_n = net_copy(en[0].look[..], w.look);
+    nm := 0;
+    for ch: w.name { if nm >= NET_NAME { break; } if ch < 32 { continue; } en[0].name[nm] = ch; nm += 1; }
+    en[0].name_n = nm;
+    return;
+  }
+  if c == 'x' {
+    id := wire_num(t, r[..]);
+    if !r[0].ok { return; }
+    _ := wire_mirror_x(n[0].mir[..], id);
+    k := e2n_ent(n, id, false);
+    if k >= 0 { n[0].ents[k].live = false; }
+    return;
+  }
+}
+e2n_row :: (n: [] E2Net, w: WireS, d: WireD) {
+  if w.id < 0 || w.kind != WK_PLAYER { return; }
+  k := e2n_ent(n, w.id, true);
+  if k < 0 { return; }
+  en := n[0].ents[k..<k + 1];
+  if en[0].ring_n > 0 && (w.life != en[0].life || w.warp != en[0].warp) { en[0].ring_n = 0; en[0].born = n[0].tick_t; }
+  en[0].life = w.life; en[0].warp = w.warp; en[0].kind = w.kind; en[0].seat = w.id; en[0].seen = d.tick; en[0].hp = w.hp; en[0].max = w.max;
+  net_push_row(en, NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz, f = w.g, a = w.clip}, n[0].hz);
+  if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
+  if w.id == n[0].seat && d.ack > n[0].acked {
+    n[0].acked = d.ack;
+    held := n[0].inputs[d.ack % NET_HIST];
+    n[0].fix = NetFix.{ok = true, ack = d.ack, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz,
+                       ground = (w.g & WG_GROUND) != 0, carry = w.carry, jump = held.seq == d.ack && held.input.jump};
+    n[0].fix_due = true;
+  }
+}
+
+// ---- your inputs and the server's word on you
+
+// An input as the wire carries it (sticks in whole hundredths, the heading in WIRE_FINE units), so the
+// page steps what the room steps.
+e2n_as_sent :: (m: EgMoveIn) -> EgMoveIn {
+  theta := f32(wire_fine(m.theta)) / f32(WIRE_FINE);
+  return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
+                   pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta};
+}
+// One step's input: kept for the re-run and sent (I). Its sequence number, 0 with no room.
+e2n_input :: (n: [] E2Net, input: EgMoveIn) -> int {
+  if !e2n_open(n) { return 0; }
+  n[0].seq += 1;
+  n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
+  b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0);
+  e2n_send(n, wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard}));
+  return n[0].seq;
+}
+e2n_fix_due :: (n: [] E2Net) -> bool { return e2n_open(n) && n[0].fix_due && n[0].fix.ok; }
+// The inputs after the server's, oldest first: how many, and the k-th.
+e2n_replay_n :: (n: [] E2Net) -> int {
+  c := 0; last := n[0].seq;
+  for q: n[0].fix.ack + 1..<last + 1 { if q > last - NET_HIST && n[0].inputs[q % NET_HIST].seq == q { c += 1; } }
+  return c;
+}
+e2n_replay_input :: (n: [] E2Net, k: int) -> EgMoveIn {
+  c := 0; last := n[0].seq;
+  for q: n[0].fix.ack + 1..<last + 1 {
+    if q <= last - NET_HIST || n[0].inputs[q % NET_HIST].seq != q { continue; }
+    if c == k { return e2n_as_sent(n[0].inputs[q % NET_HIST].input); }
+    c += 1;
+  }
+  return EgMoveIn.{};
+}
+// The re-run is done: (dx, dy, dz) is where it puts you less where you were drawn; eased out, or past
+// NET_SNAP m taken at once (as Everglade's net_fixed).
+e2n_fixed :: (n: [] E2Net, dx: f32, dy: f32, dz: f32) {
+  n[0].fix_due = false; n[0].replays += 1; n[0].fix_sq = dx * dx + dy * dy + dz * dz;
+  ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
+  if abs(ox) + abs(oy) + abs(oz) > f32(NET_SNAP) { ox = 0; oy = 0; oz = 0; }
+  n[0].off_x = ox; n[0].off_y = oy; n[0].off_z = oz;
+}
+// Where you are drawn less where you are this frame (dt s), eased to nothing over NET_SMOOTH s.
+e2n_offset :: (n: [] E2Net, dt: f32) -> [3] f32 {
+  k := nc_clamp01(1 - dt / f32(NET_SMOOTH));
+  n[0].off_x *= k; n[0].off_y *= k; n[0].off_z *= k;
+  if abs(n[0].off_x) + abs(n[0].off_y) + abs(n[0].off_z) < 0.001 { n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; }
+  return [3] f32.[n[0].off_x, n[0].off_y, n[0].off_z];
+}
+#test "your inputs go as the wire carries them and the re-run takes those the room hasn't stepped" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
+  for i: 0..<5 { _ := e2n_input(n[..], EgMoveIn.{key_y = 1, run = true, theta = 0.123456}); }
+  #assert n[0].seq == 5 && n[0].pipe[0].n == 5;
+  n[0].fix = NetFix.{ok = true, ack = 3}; n[0].fix_due = true;
+  #assert e2n_fix_due(n[..]) && e2n_replay_n(n[..]) == 2;
+  m := e2n_replay_input(n[..], 1); #assert m.key_y == 1 && m.run && abs(m.theta - 0.1235) < 0.0001;
+  e2n_fixed(n[..], 0.1, 0, 0); #assert !n[0].fix_due && abs(n[0].off_x + 0.1) < 0.0001;
+  e2n_fixed(n[..], 5, 0, 0); #assert n[0].off_x == 0;   // a jump of metres is taken at once
+}
+
+// ---- each frame
+
+// The clock, the socket, a ping, the hello, the others where they are drawn. Joins only once you
+// joined (the run began).
+e2n_step :: (n: [] E2Net, mono: int) {
+  n[0].mono = mono;
+  if n[0].want && n[0].joined && (n[0].state == E2N_OFF || (n[0].state == E2N_DOWN && mono >= n[0].retry)) {
+    if n[0].ticket_n > 0 {
+      u: [NET_URL + NET_TICKET + 9] u8;
+      k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]);
+      k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
+      if n[0].lost { k = wire_put(u[..], k, "&re=1"); }
+      if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = E2N_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
+    } else if !n[0].ticket_asked { e2n_ask_ticket(n); }
+  }
+  if e2n_open(n) {
+    if n[0].ping_at == 0 || mono - n[0].ping_at >= (ifx n[0].ping_n < 8 then 1000 else 10000) {
+      m := wire_put(n[0].out[..], 0, "t"); m = wire_int(n[0].out[..], m, mono);
+      e2n_send(n, m);
+      n[0].ping_at = mono; n[0].ping_n += 1;
+    }
+    if n[0].hello_due { e2n_hello(n); }
+  }
+  dt := f32(nc_clamp(mono - n[0].drawn_at, 0, 100)) / 1000; n[0].drawn_at = mono;
+  n[0].lag = net_lag_step(n[0].lag, n[0].delay, n[0].ticks, dt);
+  rt := e2n_now(n) - cast(int) n[0].lag; n[0].rt = rt;
+  for e: 0..<E2N_ENTS {
+    en := n[0].ents[e..<e + 1];
+    if !en[0].live || en[0].ring_n == 0 { continue; }
+    p := net_state_at(en, rt);
+    net_ease(en, p, rt, dt);
+    p.x += en[0].ease_x; p.y += en[0].ease_y; p.z += en[0].ease_z;
+    en[0].shown = p;
+  }
+}
+e2n_hello :: (n: [] E2Net) {
+  n[0].hello_due = false;
+  look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
+  e2n_send(n, wire_put_pins(n[0].out[..], 0, WirePins.{}));
+  e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = "druid", flags = ifx n[0].account then 2 else 0, name = ""})));
+}
+// Your look for the hello: the record Character Create keeps (CC2 or CC3); said again if seated.
+e2n_set_look :: (n: [] E2Net, record: string) {
+  b: [NET_LOOK] u8; m := 0;
+  for ch: record { if m >= NET_LOOK { break; } if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') { b[m] = ch; m += 1; } }
+  changed := m != n[0].look_n;
+  for i: 0..<m { if n[0].look[i] != b[i] { changed = true; } n[0].look[i] = b[i]; }
+  n[0].look_n = m;
+  if e2n_open(n) && changed { n[0].hello_due = true; }
+}
+
+// ---- the others, for the scene
+
+// The k-th other player drawn this frame: false past the last. Its seat, where it is drawn (feet, the
+// room's flat ground: the page lifts it onto the land), facing, speed and whether it is in the air.
+E2Remote :: struct { ok: bool; slot: int; seat: int; x: f32; y: f32; z: f32; yaw: f32; speed: f32; air: bool; }
+e2n_remote :: (n: [] E2Net, k: int) -> E2Remote {
+  c := 0;
+  for e: 0..<E2N_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.ring_n == 0 || en.kind != WK_PLAYER || en.seat == n[0].seat || en.seat < 0 { continue; }
+    if c == k {
+      p := en.shown;
+      return E2Remote.{ok = true, slot = e, seat = en.seat, x = p.x, y = p.y, z = p.z, yaw = p.yaw, speed = sqrt(p.vx * p.vx + p.vz * p.vz), air = (p.f & WG_GROUND) == 0};
+    }
+    c += 1;
+  }
+  return E2Remote.{};
+}
+e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1; } return c; }
+#test "the room's rows draw the others a jitter buffer behind, never you, and a snapshot drops who left" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].mono = 1000;
+  e2n_record(n[..], "y 1 0 1000");
+  #assert n[0].seat == 1 && n[0].hello_due;
+  e2n_step(n[..], 1000); #assert !n[0].hello_due && n[0].pipe[0].n >= 3;   // ping, pins, hello
+  // seat 3 runs north; you (1) stand
+  for i: 0..<12 {
+    e := n[0].ents[0..<1];
+    k := e2n_ent(n[..], 3, true); en := n[0].ents[k..<k + 1]; en[0].kind = WK_PLAYER; en[0].seat = 3; en[0].seen = i;
+    net_push(en, NetState.{t = 1000 + i * 33, z = -4.25 * f32(i) / 30, vz = -4.25});
+    y := e2n_ent(n[..], 1, true); n[0].ents[y].kind = WK_PLAYER; n[0].ents[y].seat = 1; net_push(n[0].ents[y..<y + 1], NetState.{t = 1000 + i * 33});
+  }
+  e2n_step(n[..], 1300);
+  r := e2n_remote(n[..], 0); #assert r.ok && r.seat == 3 && r.z < 0 && r.z > -1.7 && abs(r.speed - 4.25) < 0.01;
+  #assert !e2n_remote(n[..], 1).ok && e2n_remotes(n[..]) == 1;
+  // the socket goes: so does everyone
+  e2n_down(n[..]); #assert e2n_remotes(n[..]) == 0 && n[0].state == E2N_DOWN;
+}

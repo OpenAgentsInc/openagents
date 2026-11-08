@@ -155,6 +155,38 @@ static bool everglade_prepare(int k) {
   room_prepare_us[k] = now_us() - preparing;
   return prepared;
 }
+/* Everglade II's room k (#13053, room-everglade.coax rm_eg_e2): each seat at the glade when it sits, its
+   queued inputs through Everglade II's movement step (room-world.c world2_*), the rules' tick, and
+   every seat's D frame queued. Its land has no town, river, watch or pieces to step. */
+static void everglade2_place(int k, int s, float *pose) {
+  if (rm_eg_unplaced(view(), k, (coax_t_SeatId){ s}) && world2_place(k, s, pose))
+    rm_eg_moved(view(), k, (coax_t_SeatId){ s}, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+}
+static bool everglade2_room_tick(int k, int64_t room_work_start) {
+  int64_t in[WORLD_IN]; float pose[WORLD_POSE];
+  coax_v_s64 inv = {in, WORLD_IN};
+  if (!world2_prepare()) { rm_work_done(view(), k, now_us() - room_work_start); return false; }
+  int64_t tm = now_us();
+  for (int s = 0; s < WORLD_SEATS; s++) {
+    everglade2_place(k, s, pose);
+    while (rm_eg_input(view(), k, (coax_t_SeatId){ s}, inv)) {
+      int64_t input_began = ROOM_LATENCY_ACTIVE(k,s) ? now_us() : 0;
+      if (!world2_step(k, s, in, pose)) break;
+      rm_eg_moved(view(), k, (coax_t_SeatId){ s}, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+      if(input_began)ROOM_LATENCY_STEP(k,s,in[0],input_began,now_us());
+    }
+  }
+  part_us[PART_MOVE] += now_us() - tm;
+  int64_t te = now_us();
+  rm_eg_rules(view(), k);
+  for (int s = 0; s < WORLD_SEATS; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, (coax_t_SeatId){ s});
+  int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
+  rm_eg_send(view(), k);
+  ROOM_LATENCY_SERIALIZED(k,tw,tw,now_us());
+  part_us[PART_WRITE] += now_us() - tw;
+  rm_work_done(view(), k, now_us() - room_work_start);
+  return true;
+}
 static bool everglade_room_tick(int k) {
   int64_t room_work_start = now_us();
 #ifdef COAX_ROOM_PROFILE
@@ -172,11 +204,12 @@ static bool everglade_room_tick(int k) {
         rm_work_done(view(),k,now_us()-room_work_start);
         if(!prepared)return false;
       }
-      for (int s = 0; s < WORLD_SEATS; s++) everglade_place(k, s, pose);
+      for (int s = 0; s < WORLD_SEATS; s++) { if (rm_eg_e2(view(), k)) everglade2_place(k, s, pose); else everglade_place(k, s, pose); }
     }
     return false;
   }
   ROOM_PROFILE_PHASE(0,phase_start);
+  if (rm_eg_e2(view(), k)) return everglade2_room_tick(k, room_work_start);
   if (!everglade_prepare(k)) { rm_work_done(view(), k, now_us() - room_work_start); return false; }
   ROOM_PROFILE_PHASE(1,phase_start);
   if (rm_eg_fresh(view(), k)) world_fresh(k);

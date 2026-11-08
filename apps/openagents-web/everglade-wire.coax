@@ -565,6 +565,11 @@ wire_mirror_find :: (m: [] WireMirror, id: int) -> int {
 }
 // A D's header: its part in order, or the tick isn't whole; a snapshot's first part forgets everything.
 // True when it did.
+// Everything the page held of the server's rows, forgotten: a new seat's are a new snapshot.
+wire_mirror_forget :: (m: [] WireMirror) {
+  for e: 0..<WIRE_MIRROR { m[0].ents[e].live = false; }
+  m[0].heard = 0; m[0].tick = 0; m[0].part = 0; m[0].whole = false;
+}
 wire_mirror_d :: (m: [] WireMirror, d: WireD) -> bool {
   cleared := false;
   if d.part == 0 {

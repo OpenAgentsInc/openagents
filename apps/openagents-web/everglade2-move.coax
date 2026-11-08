@@ -1,0 +1,163 @@
+// Everglade II's movement world (docs/verse/everglade2.md, docs/verse/2026-11-07-everglade-multiplayer-audit.md):
+// where you may stand, the trunks and rocks that stop you, and Everglade II's pace. The page
+// (everglade2.coax, everglade2-face.c) and the room server (coax/web/room/room-world.c, its
+// Everglade II rooms) both #load this file and step the same controller (everglade-step.coax) on it,
+// so the page's prediction and the room's word on you agree. Plain numbers only: no drawing.
+//   coax/bin/coax test --library apps/openagents-web/everglade2-move.coax
+#load "everglade-move-types.coax";
+#load "../../verse/everglade2/plant.coax";
+
+E2_NEAR_BODIES :: 48;         // trunks and rocks the controller walks round
+// Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/locomotion.coax:
+// run 7.5, walk 3.5 m/s, Everglade's) are scaled by the step's pace, so v1 keeps its own.
+E2_RUN_SPEED :: 4.25; E2_WALK_SPEED :: 1.5;   // m/s
+E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // aethyr/locomotion.coax LocomotionProfile's defaults
+e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running then f32(E2_RUN_SPEED) / f32(E2_BASE_RUN) else f32(E2_WALK_SPEED) / f32(E2_BASE_WALK); }
+
+// Where a new seat stands: the glade's middle, facing the studio's camera (everglade2.coax e2_start).
+E2_SPAWN_X :: 0.0; E2_SPAWN_Z :: 0.0; E2_SPAWN_FACE :: 3.14159265;
+
+// ---- where you may stand: the glade, the path's corridor, the clearing
+e2_may_stand :: (x: f32, z: f32) -> bool #export_c #effects(all) {
+  // the glade, out to the thick woods round it (forest.coax e2_wooded: thick from 24 m)
+  if x * x + z * z < f32(E2_GLADE_WALK) * f32(E2_GLADE_WALK) { return true; }
+  if z <= -20 && z > E2_CLEAR_Z - E2_CLEAR_R && e2_road_dist(x, z) < f32(E2_WALK) { return true; }
+  return e2_clearing(x, z) > 0.15;
+}
+// Where a step that ended at (x, z) from (fx, fz) may leave you: there, or slid along the edge it
+// crossed, or back where it started.
+E2Spot :: struct { x: f32; z: f32; }
+e2m_keep :: (x: f32, z: f32, fx: f32, fz: f32) -> E2Spot #export_c #effects(all) {
+  if e2_may_stand(x, z) { return E2Spot.{x = x, z = z}; }
+  if e2_may_stand(x, fz) { return E2Spot.{x = x, z = fz}; }
+  if e2_may_stand(fx, z) { return E2Spot.{x = fx, z = z}; }
+  return E2Spot.{x = fx, z = fz};
+}
+
+// ---- the trunks and rocks round you, as capsules on the controller's level ground. A rock's capsule
+// lies along its long axis at waist height, fitted to its model's footprint (E2_ROCK_FIT: the
+// footprint's middle x and z, the long axis's angle, half its length and half its width, from the
+// Stylized Nature models), and is scaled and turned with the placed rock. Pebbles stay walk-through.
+E2_ROCK_FIT :: [6][5] f32.[
+  [5] f32.[-0.167, 0.252, 0.784, 1.578, 1.484],   // Rock_Medium_1
+  [5] f32.[-0.110, 0.075, -0.133, 1.537, 1.253],  // Rock_Medium_2
+  [5] f32.[-0.071, 0.611, 0.619, 1.669, 1.350],   // Rock_Medium_3
+  [5] f32.[0.492, -0.173, -0.335, 1.795, 1.774],  // Rock_Medium_4
+  [5] f32.[0.070, 0.259, -0.604, 2.707, 1.977],   // Rock_Big_1
+  [5] f32.[-0.023, -0.146, -0.713, 3.389, 2.799]];// Rock_Big_2
+E2_ROCK_SNUG :: 0.85;         // the capsule's radius against the footprint's half width (rocks are rounded)
+// A rock's capsule (fit row, placed at x z, turned by yaw, sh across): the two ends and the radius.
+e2_rock_capsule :: (fit: int, x: f32, z: f32, yaw: f32, sh: f32) -> [5] f32 {
+  f := E2_ROCK_FIT[fit]; c := cos(yaw); sn := sin(yaw);
+  r := f[4] * f32(E2_ROCK_SNUG); half := f[3] - r; if half < 0 { half = 0; }
+  ax := cos(f[2]); az := sin(f[2]);
+  p0x := f[0] - ax * half; p0z := f[1] - az * half; p1x := f[0] + ax * half; p1z := f[1] + az * half;
+  return [5] f32.[x + sh * (p0x * c + p0z * sn), z + sh * (-p0x * sn + p0z * c), x + sh * (p1x * c + p1z * sn), z + sh * (-p1x * sn + p1z * c), r * sh];
+}
+// Each tree kind's trunk at waist height (kits 0 to 14: CommonTree, Birch and Pine 1 to 5): its middle's
+// x and z and its radius, from the Stylized Nature models. You brush past a trunk but not through it.
+E2_TRUNK_FIT :: [15][3] f32.[
+  [3] f32.[0.001, 0.084, 0.46], [3] f32.[0.009, 0.070, 0.48], [3] f32.[0.025, 0.077, 0.48], [3] f32.[-0.077, 0.054, 0.49], [3] f32.[0.052, 0.105, 0.45],
+  [3] f32.[0.057, -0.080, 0.18], [3] f32.[0.036, -0.069, 0.27], [3] f32.[0.041, -0.072, 0.18], [3] f32.[0.054, -0.081, 0.18], [3] f32.[0.041, -0.064, 0.20],
+  [3] f32.[-0.005, -0.448, 0.50], [3] f32.[-0.005, -0.448, 0.50], [3] f32.[0.121, -0.596, 0.50], [3] f32.[0.0, -0.30, 0.45], [3] f32.[0.010, -0.137, 0.35]];
+// A tree's trunk (kind 0 to 14, placed at x z, turned by yaw, sh across): its middle and radius.
+e2_trunk :: (kind: int, x: f32, z: f32, yaw: f32, sh: f32) -> [3] f32 {
+  f := E2_TRUNK_FIT[kind]; c := cos(yaw); sn := sin(yaw);
+  return [3] f32.[x + sh * (f[0] * c + f[1] * sn), z + sh * (-f[0] * sn + f[1] * c), f[2] * sh];
+}
+// The kit piece's rock fit row, or -1 when it isn't a rock that stops you.
+e2_kit_rock :: (kit: int) -> int { return ifx kit >= 20 && kit <= 22 then kit - 20 else ifx kit == 23 || kit == 24 then kit - 19 else -1; }
+e2m_body :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32, r: f32) -> int {
+  if n >= E2_NEAR_BODIES || (n + 1) * 7 > out.count { return n; }
+  m := n * 7;
+  out[m] = x0; out[m + 1] = y0; out[m + 2] = z0; out[m + 3] = x1; out[m + 4] = y1; out[m + 5] = z1; out[m + 6] = r;
+  return n + 1;
+}
+// The world for a step at (x, z): every trunk and rock round you into `out` (7 floats each), from the
+// planting (items, kinds and first, plant.coax e2_plant) and the glade's own composition.
+e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: [] f32, x: f32, z: f32) -> EgMoveWorld {
+  w: EgMoveWorld; w.deck = true; n := 0;
+  ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
+  for dj: -1..<2 { for di: -1..<2 {
+    i := ci + di; j := cj + dj;
+    if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z || !planted { continue; }
+    c := j * E2_CELLS_X + i;
+    for q: first[c]..<first[c + 1] {
+      kit := cast(int) kinds[q]; rock := e2_kit_rock(kit);
+      if kit >= E2_TREES && rock < 0 { continue; }
+      o := q * E2_ITEM_FLOATS; px := items[o]; pz := items[o + 2]; sh := items[o + 5];
+      reach := ifx rock >= 0 then 5 + 4 * sh else 5.0f32;
+      if abs(px - x) > reach || abs(pz - z) > reach { continue; }
+      if rock >= 0 { k := e2_rock_capsule(rock, px, pz, items[o + 3], sh); n = e2m_body(out, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]); }
+      else { t := e2_trunk(kit, px, pz, items[o + 3], sh); n = e2m_body(out, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); }
+    }
+  }}
+  // the glade's own trees and rocks (its pack's composition, verse/character-glade.coax cg_item)
+  for i: 0..<CG_ITEMS {
+    gt := cg_item(i); if !e2_glade_kept(gt) { continue; }
+    if abs(gt.x - x) > 5 + 4 * gt.scale || abs(gt.z - z) > 5 + 4 * gt.scale { continue; }
+    if gt.kind <= 1 { tv := ifx gt.variant < 0 then 0 else ifx gt.variant > 4 then 4 else gt.variant; t := e2_trunk(tv + 5 * gt.kind, gt.x, gt.z, gt.yaw, gt.scale); n = e2m_body(out, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); continue; }
+    fit := ifx gt.kind == 3 then gt.variant else 4 + gt.variant;
+    if fit < 0 || fit > 5 { continue; }
+    k := e2_rock_capsule(fit, gt.x, gt.z, gt.yaw, gt.scale); n = e2m_body(out, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]);
+  }
+  w.bodies = n; return w;
+}
+
+// ---- the room server's copy (coax/web/room/room-world.c): one planting for every Everglade II room,
+// for it is a pure function of the land, and the bodies round the seat being stepped.
+E2MoveGround :: struct {
+  items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; done: bool;
+  bodies: [E2_NEAR_BODIES * 7] f32;
+}
+e2mg_plant :: (g: [] E2MoveGround) #export_c #effects(all) {
+  if g[0].done { return; }
+  g[0].planted = e2_plant(g[0].items[..], g[0].kinds[..], g[0].first[..]); g[0].done = true;
+}
+// The step's world at (x, z) when running (or not): its bodies are e2mg_bodies' until the next call.
+e2mg_move_world :: (g: [] E2MoveGround, x: f32, z: f32, running: bool) -> EgMoveWorld #export_c #effects(all) {
+  w := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], g[0].done, g[0].bodies[..], x, z);
+  w.pace = e2_pace(running);
+  return w;
+}
+e2mg_bodies :: (g: [] E2MoveGround) -> [] f32 #export_c #effects(all) { return g[0].bodies[..]; }
+e2mg_spawn_x :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_X); }
+e2mg_spawn_z :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_Z); }
+e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE); }
+
+#test "you may stand in the glade, along the path and in the clearing, not deep in the woods" {
+  #assert e2_may_stand(0, 0) && e2_may_stand(-10, -20) && e2_may_stand(e2_road_x(-200), -200) && e2_may_stand(e2_clear_x(), E2_CLEAR_Z);
+  #assert !e2_may_stand(e2_road_x(-200) + 40, -200) && !e2_may_stand(0, 40) && !e2_may_stand(150, -300);
+}
+#test "a step past the edge slides along it, or stays where it started" {
+  z := -200.0f32; x := e2_road_x(z);
+  a := e2m_keep(x + 0.5, z - 0.5, x, z); #assert a.x == x + 0.5 && a.z == z - 0.5;
+  out := x + f32(E2_WALK) + 1;
+  b := e2m_keep(out, z - 0.5, x, z); #assert b.x == x && b.z == z - 0.5;
+  c := e2m_keep(0, 40, 0, 20); #assert c.x == 0 && c.z == 20;
+}
+#test "a rock's capsule fits its footprint, scaled and turned with it" {
+  a := e2_rock_capsule(4, 10, -20, 0, 1); mx := (a[0] + a[2]) / 2; mz := (a[1] + a[3]) / 2;
+  #assert abs(mx - 10.070) < 0.01 && abs(mz + 19.741) < 0.01 && abs(a[4] - 1.977 * 0.85) < 0.001;
+  l := sqrt((a[2] - a[0]) * (a[2] - a[0]) + (a[3] - a[1]) * (a[3] - a[1])); #assert abs(l / 2 + a[4] - 2.707) < 0.01;
+  b := e2_rock_capsule(4, 10, -20, 1.2, 2); lb := sqrt((b[2] - b[0]) * (b[2] - b[0]) + (b[3] - b[1]) * (b[3] - b[1]));
+  #assert abs(lb - 2 * l) < 0.01 && abs(b[4] - 2 * a[4]) < 0.001;
+}
+#test "every tree kind has a trunk sized to it" {
+  for k: 0..<15 { t := e2_trunk(k, 5, -9, 0.7, 0.8); #assert t[2] > 0.1 && t[2] < 0.5 && abs(t[0] - 5) < 0.6 && abs(t[1] + 9) < 0.6; }
+}
+#test "the run is a jog and the walk a stroll" {
+  #assert abs(e2_pace(true) * f32(E2_BASE_RUN) - 4.25) < 0.001 && abs(e2_pace(false) * f32(E2_BASE_WALK) - 1.5) < 0.001;
+}
+#test "the room's ground holds the trunks the page walks round, never more than fit" #steps 4000000000 {
+  g: [1] E2MoveGround; e2mg_plant(g[..]); #assert g[0].done && g[0].planted > 20000;
+  z := -150.0f32; x := e2_road_x(z) + 3;
+  w := e2mg_move_world(g[..], x, z, true);
+  #assert w.bodies > 0 && w.bodies <= E2_NEAR_BODIES && w.deck && abs(w.pace * f32(E2_BASE_RUN) - 4.25) < 0.001;
+  // the same as the page's own call on its own planting
+  out: [E2_NEAR_BODIES * 7] f32;
+  v := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], true, out[..], x, z);
+  #assert v.bodies == w.bodies;
+  for i: 0..<w.bodies * 7 { #assert out[i] == g[0].bodies[i]; }
+  e2mg_plant(g[..]); #assert g[0].done;   // once
+}

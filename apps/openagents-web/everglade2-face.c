@@ -5,6 +5,9 @@
 // (aethyr/sticks.coax). The scene is three stores: the records (the glade, its grass, your
 // character's parts), the clips baked once (into the state, sized by fivelab-bodies.coax), and the
 // kit pieces in view this frame.
+// In a room (everglade2-net.coax, #13054) the controller steps at the room's rate, 1/30 s, each step's
+// input sent; the room's word on you starts you again where it has you and re-runs the inputs it
+// hasn't stepped, the difference eased out of the draw (as everglade5e-face.c does for Everglade).
 #include "everglade2.h"
 #include "Everglade-step.h"
 #include "Sticks.h"
@@ -12,6 +15,12 @@
 #include <stddef.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
+#define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
+IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t url, uint32_t len);
+IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len);
+IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t id);
+IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
+IMPORT("coaxial_now_ms") int64_t coaxial_now_ms(void);
 
 static uint8_t inbox[4096];
 static uint8_t catalog[65536];
@@ -23,6 +32,17 @@ static coax_t_Player player;
 static coax_t_Sticks sticks;
 static float width, height, dpr;
 static double now;
+/* the room (everglade2-net.coax): the step's clock and where the last step began, the seat ticket's
+   POST and the player key's mint (POST /api/playtest/player, kept by the host as action 5) */
+static float step_acc, step_jump_held;
+static coax_t_Vec3 step_from;
+static int64_t joined_ms = -1;
+static int32_t ticket_id = -1, mint_id = -1;
+static bool has_player, mint_tried, facts_seen;
+static char ticket_url[256]; static uint32_t ticket_url_n;
+static char ticket_body[64]; static uint32_t ticket_body_n;
+static bool ticket_due;
+#define PLAYER_URL "/api/playtest/player"
 
 static coax_t_E2 *e2_at(uint32_t state) { return (coax_t_E2 *)(uintptr_t)state; }
 static coax_v_t_E2 at(uint32_t state) { return (coax_v_t_E2){e2_at(state), 1}; }
@@ -48,6 +68,72 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
 static float cull_u[100];
 static uint32_t cull_buckets[2 * 36 * 3], cull_runs[4 * 384], cull_draws[384];
 static int64_t cull_n;
+/* One step of the controller: the world round you, Everglade II's pace, its two halves over the trunks
+   and rocks, then kept where you may stand. The room's world2_step (coax/web/room/room-world.c) is the same. */
+static coax_t_Player step_frame(uint32_t state, coax_t_Player p, coax_t_EgMoveIn input, float step, float frame) {
+  float fx = p.pos.x, fz = p.pos.z;
+  coax_t_EgMoveWorld mw = e2_move_world(at(state), p.pos.x, p.pos.z);
+  mw.pace = e2_pace(input.run);
+  p = eg_step_begin(p, input, mw, step);
+  coax_v_f32 near = e2_move_bodies(at(state));
+  p = eg_step_advance(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, frame);
+  coax_t_Point kept = e2_keep_from(at(state), p.pos.x, p.pos.z, fx, fz);
+  if (kept.x != p.pos.x || kept.z != p.pos.z) p = verse_player_constrain(p, kept.x, kept.z);
+  return p;
+}
+static coax_t_Player step_once(uint32_t state, coax_t_Player p, coax_t_EgMoveIn input, float dt) {
+  return step_frame(state, p, input, dt, dt);   /* the room steps 1/30 s, not the clock's count (room-world.c world2_step) */
+}
+/* The room's commands (everglade2-net.coax's pipe) to the host, in order: open, send, close, and the
+   seat ticket's ask (op 4: the path, a newline, the body). */
+static void net_drain(uint32_t state) {
+  int64_t c = e2_net_pipe(at(state));
+  for (int64_t k = 0; k < c; k++) {
+    int64_t op = e2_net_pipe_op(at(state), k);
+    uint32_t from = (uint32_t)(uintptr_t)&e2_at(state)->net.e[0].pipe.e[0].buf.e[e2_net_pipe_from(at(state), k)];
+    uint32_t len = (uint32_t)e2_net_pipe_len(at(state), k);
+    int32_t id = (int32_t)e2_net_pipe_id(at(state), k);
+    if (op == 1) e2_net_opened(at(state), coaxial_socket_open(from, len));
+    else if (op == 2) coaxial_socket_send(id, from, len);
+    else if (op == 3) coaxial_socket_close(id);
+    else if (op == 4) {
+      const uint8_t *b = (const uint8_t *)(uintptr_t)from;
+      uint32_t cut = 0; while (cut < len && b[cut] != '\n') cut++;
+      uint32_t bn = cut < len ? len - cut - 1 : 0;
+      if (cut < sizeof ticket_url && bn < sizeof ticket_body) {
+        for (uint32_t i = 0; i < cut; i++) ticket_url[i] = (char)b[i];
+        for (uint32_t i = 0; i < bn; i++) ticket_body[i] = (char)b[cut + 1 + i];
+        ticket_url_n = cut; ticket_body_n = bn; ticket_due = true;
+      }
+    }
+  }
+  e2_net_pipe_done(at(state));
+}
+/* The seat ticket's POST, with the player key; a page with no key mints one first. */
+static void ticket_out(void) {
+  if (!ticket_due || ticket_id >= 0 || !facts_seen) return;
+  if (!has_player && !mint_tried) {
+    mint_tried = true;
+    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    if (mint_id < 0) mint_id = -1;
+    return;
+  }
+  if (mint_id >= 0 || !has_player) return;
+  ticket_due = false;
+  if (!ticket_body_n) { ticket_body[0] = '{'; ticket_body[1] = '}'; ticket_body_n = 2; }
+  ticket_id = coaxial_http((uint32_t)(uintptr_t)ticket_url, ticket_url_n, (uint32_t)(uintptr_t)ticket_body, ticket_body_n, 1 | 4 | 8);
+  if (ticket_id < 0) { ticket_id = -1; ticket_due = true; }
+}
+static bool has_line(uint32_t length, const char *prefix) {
+  uint32_t pn = 0; while (prefix[pn]) pn++;
+  for (uint32_t i = 0; i + pn <= length; i++) {
+    if (i > 0 && inbox[i - 1] != '\n') continue;
+    uint32_t j = 0; while (j < pn && inbox[i + j] == (uint8_t)prefix[j]) j++;
+    if (j == pn && i + pn < length && inbox[i + pn] != '\n') return true;
+  }
+  return false;
+}
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   width = w; height = h; dpr = scale; now += dt;
@@ -62,14 +148,46 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
   input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
   input.jump = input.jump || sticks.jump;
-  coax_t_EgMoveWorld mw = e2_move_world(at(state), player.pos.x, player.pos.z);
-  mw.pace = e2_pace(input.run);
-  player = eg_step_begin(player, input, mw, step);
-  coax_v_f32 near = e2_move_bodies(at(state));
-  player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, frame);
-  coax_t_Point kept = e2_keep(at(state), player.pos.x, player.pos.z);
-  if (kept.x != player.pos.x || kept.z != player.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
+  int64_t mono = coaxial_now_ms();
+  if (e2_net_live(at(state))) {
+    /* the room's rate: each 1/30 s step's input as the wire carries it, sent; the room's word re-runs the rest */
+    const float STEP = 1.0f / 30;   /* everglade-wire.coax WIRE_HZ */
+    input = e2_net_as_sent(at(state), input);
+    if (input.jump) step_jump_held = 1;
+    if (e2_net_fix_due(at(state))) {
+      coax_t_Vec3 was = eg_step_feet(player);
+      coax_t_NetFix f = e2_net_fix(at(state));
+      player = eg_step_set(player, f.x, f.y, f.z, f.yaw, f.vx, f.vy, f.vz, f.ground, f.carry, f.jump);
+      int64_t again = e2_net_replay_n(at(state));
+      for (int64_t k = 0; k < again; k++) player = step_once(state, player, e2_net_replay_input(at(state), k), STEP);
+      coax_t_Vec3 now_at = eg_step_feet(player);
+      float dx = now_at.x - was.x, dy = now_at.y - was.y, dz = now_at.z - was.z;
+      step_from.x += dx; step_from.y += dy; step_from.z += dz;
+      e2_net_fixed(at(state), dx, dy, dz);
+    }
+    step_acc += frame > 0.25f ? 0.25f : frame;
+    while (step_acc >= STEP) {
+      coax_t_EgMoveIn one = input; one.jump = step_jump_held != 0; step_jump_held = 0;
+      step_from = eg_step_feet(player);
+      e2_net_input(at(state), one);
+      player = step_once(state, player, one, STEP);
+      step_acc -= STEP;
+    }
+  } else {
+    /* the run holds its feet while the room seats you (E2N_HOLD_MS at most); alone, the frame's own step */
+    if (joined_ms < 0 && e2_at(state)->net.e[0].joined) joined_ms = mono;
+    if (joined_ms >= 0 && e2_net_holding(at(state), mono - joined_ms)) { input.key_x = 0; input.key_y = 0; input.pad_x = 0; input.pad_y = 0; input.jump = false; }
+    step_acc = 0; step_jump_held = 0;
+    player = step_frame(state, player, input, step, frame);
+    step_from = eg_step_feet(player);
+  }
   coax_t_Vec3 feet = verse_player_feet(player);
+  if (e2_net_live(at(state))) {
+    /* drawn between the last two steps' ends, less what a re-run moved you, eased out */
+    coax_t_Point off = e2_net_offset(at(state), frame);
+    feet = eg_step_drawn(step_from, player, step_acc * 30);
+    feet.x += off.x; feet.y += off.y; feet.z += off.z;
+  }
   e2_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player));
   sticks = verse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_e2_max_vertices() * coaxial_e2_vertex_floats()};
@@ -82,6 +200,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   }
   cull_n = draw_n > 0 ? e2_cull_fill(at(state), u, (coax_v_f32){cull_u, 100}, (coax_v_u32){cull_buckets, sizeof cull_buckets / 4},
                                      (coax_v_u32){cull_runs, sizeof cull_runs / 4}, (coax_v_u32){cull_draws, sizeof cull_draws / 4}) : 0;
+  e2_net_step(at(state), mono);
+  net_drain(state);
+  ticket_out();
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -159,7 +280,18 @@ EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; re
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
+  if (kind == 600) { facts_seen = true; if (has_line(length, "player=")) has_player = true; }
+  if (mint_id >= 0 && kind == 512 + mint_id) {
+    mint_id = -1;
+    if (length > 4 && inbox[0] == '2' && inbox[1] == '0' && inbox[2] == '0' && inbox[3] == '\n') {
+      e2_keep_player(at(state), (coax_string){(const char *)inbox + 4, length - 4});
+      has_player = true;
+    }
+    return;
+  }
+  if (ticket_id >= 0 && kind == 512 + ticket_id) { ticket_id = -1; e2_net_ticket(at(state), (coax_string){(const char *)inbox, length}); return; }
   e2_message(at(state), kind, (coax_string){(const char *)inbox, length});
+  if (kind >= 256 && kind < 512) net_drain(state);
 }
 // Character Create's actions (everglade2-create.coax): 16 keeps the record, 19 says the address.
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)e2_action(at(state)); }

@@ -10,6 +10,8 @@
 #load "charactercreator.coax" as cc;
 #load "fivelab-bodies.coax" as figs;
 #load "everglade-move-types.coax";
+#load "everglade2-move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
+#load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the glade's admitted tile and canopy bake (#12995)
@@ -23,13 +25,14 @@ E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 16384;     // strokes: the frame rate in the bottom right corner
 E2_UNIFORM_FLOATS :: 208;     // 52 vec4s (gpu/everglade2.bindings)
 E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (aethyr/render/cascades.coax cascade_rows)
-E2_RECORDS :: 32;             // the objects store: the glade, its grass, your character's parts
-E2_DRAWS :: 384;              // draws a pass at most (the woods' runs and the grass field's blocks)
+E2_RECORDS :: 256;            // the objects store: the glade, its grass, your character's parts and the others' (11 a body)
+E2_DRAWS :: 640;              // draws a pass at most (the woods' runs, the grass field's blocks, 11 a body)
+E2_REMOTES :: 16;             // other players drawn at most (a room seats 16)
+E2_PLATE_NEAR :: 20.0; E2_PLATE_FAR :: 32.0;   // m: a name over a head is whole within NEAR, gone past FAR
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
 E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
 E2_BUCKETS :: E2_KITS * E2_LODS;
 E2_CAM_TRUNKS :: 64;          // trunks the follow camera keeps in front of
-E2_NEAR_BODIES :: 48;         // trunks and rocks the controller walks round
 E2_LOOK_DRAG :: 0.0055; E2_WHEEL_ZOOM :: 0.006;
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 HOLD_JUMP :: 1024; HOLD_ALL :: 2047;
@@ -66,10 +69,17 @@ E2 :: struct {
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
   shade: [3] f32; casc: [1] CascadeState;
   cz: [1] E2Create;                      // Character Create's studio and its run (everglade2-create.coax)
-  outbox: [64] u8; out_n: int; action: int;   // the host action this frame (16 keep the record, 19 the address)
+  outbox: [1024] u8; out_n: int; action: int;   // the host action this frame (5 keep the player key, 16 keep the record, 19 the address)
+  player_key: [1024] u8; player_key_n: int;      // a minted player key waiting for the host action (e2_keep_player)
   reseat: bool;                          // the controller to take you as the studio drew you (everglade2-face.c)
   media: [2048] u8; media_n: int;        // the pictures this frame names for the host (the class pane's, everglade2-create.coax)
+  // the room (everglade2-net.coax): the others, each with its own animation, its jump and its look
+  net: [1] E2Net; staged: bool;          // staged: ?at= or ?walk, a shot that opens no room
+  ranim: [E2N_ENTS] figs.BdAnim; rair: [E2N_ENTS] bool; rair_at: [E2N_ENTS] f32; rland_at: [E2N_ENTS] f32; rlife: [E2N_ENTS] int;
+  rtmp: [1] cc.Creator;                  // a remote's look: your creator's catalog with its record (e2_remote_look)
+  plates: [E2_REMOTES] E2Plate; plate_n: int;   // the names over the others' heads this frame (e2_plates)
 }
+E2Plate :: struct { x: f32; y: f32; alpha: f32; name: [NET_NAME] u8; name_n: int; }
 
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
 e2_catalog :: (s: [] E2, text: string) #export_c #effects(all) {
@@ -111,11 +121,20 @@ e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film")
 // u[62] the canopy's baked AO at your middle (verse/everglade2/ground.coax): it shades only your indirect light.
 e2_material_uniforms :: (s: [] E2, u: [] f32) { u[60] = ifx s[0].film then 1.0f32 else 0.0f32; u[61] = ifx s[0].maps_off then 1.0f32 else 0.0f32; u[62] = e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0); }
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
-  if kind == 16 { cc.load_player(s[0].creator[..], t); return; }
+  if kind == 16 { cc.load_player(s[0].creator[..], t); e2_net_look(s); return; }
   if kind == 4 { ok := cc.restore(s[0].creator[..], t); return; }
   if kind == E2C_KEPT { e2c_reply(s, t); return; }
   if kind == E2_HOST_HIDDEN || kind == E2_HOST_SHOWN { e2c_seen(s, kind == E2_HOST_SHOWN, t); return; }
-  if kind == E2_HOST_PAGE { e2_material_facts(s, t); e2c_facts(s, t); if s[0].cz[0].on { return; } at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
+  if kind == E2_HOST_PAGE {
+    e2_material_facts(s, t); e2c_facts(s, t);
+    if !s[0].cz[0].on { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
+    // a staged shot (?at=, ?walk) and a film stand where they are put: no room
+    s[0].staged = s[0].start_z < 0 || s[0].autowalk || s[0].film;
+    e2n_facts(s[0].net[..], t, s[0].staged);
+    e2_net_look(s);
+    return;
+  }
+  if kind >= 256 && kind < 512 { seen := e2n_event(s[0].net[..], kind, t); return; }
 }
 #test "a page's ?at= says how far down the path you start" {
   #assert e2_query_at("url=http://127.0.0.1:8863/worlds/everglade2?at=120\n") == 120;
@@ -153,10 +172,6 @@ e2_query_at :: (t: string) -> int {
   #assert s[0].kits && s[0].kit_first[0] == 100 && s[0].kit_count[0] == 30 && s[0].kit_count[2] == 12 && s[0].kit_count[1] == 0;
   #assert s[0].kit_first[32 * E2_LODS] == 200 && s[0].kit_count[32 * E2_LODS] == 6;
 }
-#test "you may stand in the glade, along the path and in the clearing, not deep in the woods" {
-  #assert e2_may_stand(0, 0) && e2_may_stand(-10, -20) && e2_may_stand(e2_road_x(-200), -200) && e2_may_stand(e2_clear_x(), E2_CLEAR_Z);
-  #assert !e2_may_stand(e2_road_x(-200) + 40, -200) && !e2_may_stand(0, 40) && !e2_may_stand(150, -300);
-}
 #test "wherever you may not go on, thick woods stand: no edge on open ground" {
   // round the glade, off the path, and along both sides of the path to the clearing
   for i: 0..<64 { a := f32(i) * 0.0982; x := cos(a) * (f32(E2_GLADE_WALK) + 0.5); z := sin(a) * (f32(E2_GLADE_WALK) + 0.5);
@@ -171,18 +186,10 @@ e2_query_at :: (t: string) -> int {
     if e2_may_stand(x, z) || e2_road_dist(x, z) < f32(E2_WALK) + 1 { continue; }
     #assert e2_forest(x, z) > 0.7; }
 }
-e2_may_stand :: (x: f32, z: f32) -> bool {
-  // the glade, out to the thick woods round it (forest.coax e2_wooded: thick from 24 m)
-  if x * x + z * z < f32(E2_GLADE_WALK) * f32(E2_GLADE_WALK) { return true; }
-  if z <= -20 && z > E2_CLEAR_Z - E2_CLEAR_R && e2_road_dist(x, z) < f32(E2_WALK) { return true; }
-  return e2_clearing(x, z) > 0.15;
-}
-e2_keep :: (s: [] E2, x: f32, z: f32) -> figs.Point #export_c #effects(all) {
-  if e2_may_stand(x, z) { return figs.v3(x, 0, z); }
-  if e2_may_stand(x, s[0].you_z) { return figs.v3(x, 0, s[0].you_z); }
-  if e2_may_stand(s[0].you_x, z) { return figs.v3(s[0].you_x, 0, z); }
-  return figs.v3(s[0].you_x, 0, s[0].you_z);
-}
+// Where the step leaves you, from where you stood (everglade2-move.coax e2m_keep).
+e2_keep :: (s: [] E2, x: f32, z: f32) -> figs.Point #export_c #effects(all) { k := e2m_keep(x, z, s[0].you_x, s[0].you_z); return figs.v3(k.x, 0, k.z); }
+// Kept where you may stand from where the step began (fx, fz): the room keeps you so (room-world.c world2_step).
+e2_keep_from :: (s: [] E2, x: f32, z: f32, fx: f32, fz: f32) -> figs.Point #export_c #effects(all) { k := e2m_keep(x, z, fx, fz); return figs.v3(k.x, 0, k.z); }
 
 // ---- the controller's half of a step (everglade2-face.c)
 hold_bit :: (key: int) -> int {
@@ -216,92 +223,11 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
                    theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
 }
-// The trunks and rocks round you, as capsules on the controller's level ground. A rock's capsule
-// lies along its long axis at waist height, fitted to its model's footprint (E2_ROCK_FIT: the
-// footprint's middle x and z, the long axis's angle, half its length and half its width, from the
-// Stylized Nature models), and is scaled and turned with the placed rock. Pebbles stay walk-through.
-E2_ROCK_FIT :: [6][5] f32.[
-  [5] f32.[-0.167, 0.252, 0.784, 1.578, 1.484],   // Rock_Medium_1
-  [5] f32.[-0.110, 0.075, -0.133, 1.537, 1.253],  // Rock_Medium_2
-  [5] f32.[-0.071, 0.611, 0.619, 1.669, 1.350],   // Rock_Medium_3
-  [5] f32.[0.492, -0.173, -0.335, 1.795, 1.774],  // Rock_Medium_4
-  [5] f32.[0.070, 0.259, -0.604, 2.707, 1.977],   // Rock_Big_1
-  [5] f32.[-0.023, -0.146, -0.713, 3.389, 2.799]];// Rock_Big_2
-E2_ROCK_SNUG :: 0.85;         // the capsule's radius against the footprint's half width (rocks are rounded)
-// A rock's capsule (fit row, placed at x z, turned by yaw, sh across): the two ends and the radius.
-e2_rock_capsule :: (fit: int, x: f32, z: f32, yaw: f32, sh: f32) -> [5] f32 {
-  f := E2_ROCK_FIT[fit]; c := cos(yaw); sn := sin(yaw);
-  r := f[4] * f32(E2_ROCK_SNUG); half := f[3] - r; if half < 0 { half = 0; }
-  ax := cos(f[2]); az := sin(f[2]);
-  p0x := f[0] - ax * half; p0z := f[1] - az * half; p1x := f[0] + ax * half; p1z := f[1] + az * half;
-  return [5] f32.[x + sh * (p0x * c + p0z * sn), z + sh * (-p0x * sn + p0z * c), x + sh * (p1x * c + p1z * sn), z + sh * (-p1x * sn + p1z * c), r * sh];
-}
-#test "a rock's capsule fits its footprint, scaled and turned with it" {
-  a := e2_rock_capsule(4, 10, -20, 0, 1); mx := (a[0] + a[2]) / 2; mz := (a[1] + a[3]) / 2;
-  #assert abs(mx - 10.070) < 0.01 && abs(mz + 19.741) < 0.01 && abs(a[4] - 1.977 * 0.85) < 0.001;
-  l := sqrt((a[2] - a[0]) * (a[2] - a[0]) + (a[3] - a[1]) * (a[3] - a[1])); #assert abs(l / 2 + a[4] - 2.707) < 0.01;
-  b := e2_rock_capsule(4, 10, -20, 1.2, 2); lb := sqrt((b[2] - b[0]) * (b[2] - b[0]) + (b[3] - b[1]) * (b[3] - b[1]));
-  #assert abs(lb - 2 * l) < 0.01 && abs(b[4] - 2 * a[4]) < 0.001;
-}
-// Each tree kind's trunk at waist height (kits 0 to 14: CommonTree, Birch and Pine 1 to 5): its middle's
-// x and z and its radius, from the Stylized Nature models. You brush past a trunk but not through it.
-E2_TRUNK_FIT :: [15][3] f32.[
-  [3] f32.[0.001, 0.084, 0.46], [3] f32.[0.009, 0.070, 0.48], [3] f32.[0.025, 0.077, 0.48], [3] f32.[-0.077, 0.054, 0.49], [3] f32.[0.052, 0.105, 0.45],
-  [3] f32.[0.057, -0.080, 0.18], [3] f32.[0.036, -0.069, 0.27], [3] f32.[0.041, -0.072, 0.18], [3] f32.[0.054, -0.081, 0.18], [3] f32.[0.041, -0.064, 0.20],
-  [3] f32.[-0.005, -0.448, 0.50], [3] f32.[-0.005, -0.448, 0.50], [3] f32.[0.121, -0.596, 0.50], [3] f32.[0.0, -0.30, 0.45], [3] f32.[0.010, -0.137, 0.35]];
-// A tree's trunk (kind 0 to 14, placed at x z, turned by yaw, sh across): its middle and radius.
-e2_trunk :: (kind: int, x: f32, z: f32, yaw: f32, sh: f32) -> [3] f32 {
-  f := E2_TRUNK_FIT[kind]; c := cos(yaw); sn := sin(yaw);
-  return [3] f32.[x + sh * (f[0] * c + f[1] * sn), z + sh * (-f[0] * sn + f[1] * c), f[2] * sh];
-}
-#test "every tree kind has a trunk sized to it" {
-  for k: 0..<15 { t := e2_trunk(k, 5, -9, 0.7, 0.8); #assert t[2] > 0.1 && t[2] < 0.5 && abs(t[0] - 5) < 0.6 && abs(t[1] + 9) < 0.6; }
-}
-// The kit piece's rock fit row, or -1 when it isn't a rock that stops you.
-e2_kit_rock :: (kit: int) -> int { return ifx kit >= 20 && kit <= 22 then kit - 20 else ifx kit == 23 || kit == 24 then kit - 19 else -1; }
-e2_body :: (s: [] E2, n: int, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32, r: f32) -> int {
-  if n >= E2_NEAR_BODIES { return n; }
-  m := n * 7;
-  s[0].move_bodies[m] = x0; s[0].move_bodies[m + 1] = y0; s[0].move_bodies[m + 2] = z0;
-  s[0].move_bodies[m + 3] = x1; s[0].move_bodies[m + 4] = y1; s[0].move_bodies[m + 5] = z1; s[0].move_bodies[m + 6] = r;
-  return n + 1;
-}
+// The trunks and rocks round you (everglade2-move.coax e2m_world, which the room steps by too).
 e2_move_world :: (s: [] E2, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
-  w: EgMoveWorld; w.deck = true; n := 0;
-  ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
-  for dj: -1..<2 { for di: -1..<2 {
-    i := ci + di; j := cj + dj;
-    if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z || !s[0].plant_done { continue; }
-    c := j * E2_CELLS_X + i;
-    for q: s[0].first[c]..<s[0].first[c + 1] {
-      kit := cast(int) s[0].kinds[q]; rock := e2_kit_rock(kit);
-      if kit >= E2_TREES && rock < 0 { continue; }
-      o := q * E2_ITEM_FLOATS; px := s[0].items[o]; pz := s[0].items[o + 2]; sh := s[0].items[o + 5];
-      reach := ifx rock >= 0 then 5 + 4 * sh else 5.0f32;
-      if abs(px - x) > reach || abs(pz - z) > reach { continue; }
-      if rock >= 0 { k := e2_rock_capsule(rock, px, pz, s[0].items[o + 3], sh); n = e2_body(s, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]); }
-      else { t := e2_trunk(kit, px, pz, s[0].items[o + 3], sh); n = e2_body(s, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); }
-    }
-  }}
-  // the glade's own trees and rocks (its pack's composition, verse/character-glade.coax cg_item)
-  for i: 0..<CG_ITEMS {
-    gt := cg_item(i); if !e2_glade_kept(gt) { continue; }
-    if abs(gt.x - x) > 5 + 4 * gt.scale || abs(gt.z - z) > 5 + 4 * gt.scale { continue; }
-    if gt.kind <= 1 { tv := ifx gt.variant < 0 then 0 else ifx gt.variant > 4 then 4 else gt.variant; t := e2_trunk(tv + 5 * gt.kind, gt.x, gt.z, gt.yaw, gt.scale); n = e2_body(s, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); continue; }
-    fit := ifx gt.kind == 3 then gt.variant else 4 + gt.variant;
-    if fit < 0 || fit > 5 { continue; }
-    k := e2_rock_capsule(fit, gt.x, gt.z, gt.yaw, gt.scale); n = e2_body(s, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]);
-  }
-  w.bodies = n; return w;
+  return e2m_world(s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_done, s[0].move_bodies[..], x, z);
 }
-// Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/locomotion.coax:
-// run 7.5, walk 3.5 m/s, Everglade's) are scaled by the step's pace, so v1 keeps its own.
-E2_RUN_SPEED :: 4.25; E2_WALK_SPEED :: 1.5;   // m/s
-E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // aethyr/locomotion.coax LocomotionProfile's defaults
-e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running then f32(E2_RUN_SPEED) / f32(E2_BASE_RUN) else f32(E2_WALK_SPEED) / f32(E2_BASE_WALK); }
-#test "the run is a jog and the walk a stroll" {
-  #assert abs(e2_pace(true) * f32(E2_BASE_RUN) - 4.25) < 0.001 && abs(e2_pace(false) * f32(E2_BASE_WALK) - 1.5) < 0.001;
-  // the body's gait reads them as a run and a walk (fivelab-bodies.coax BD_RUN_FROM)
+#test "the body's gait reads Everglade II's jog and stroll as a run and a walk" {
   #assert f32(E2_RUN_SPEED) > f32(figs.BD_RUN_FROM) + 0.5 && f32(E2_WALK_SPEED) < f32(figs.BD_RUN_FROM) && f32(E2_WALK_SPEED) > f32(figs.BD_WALK_FROM);
 }
 e2_move_bodies :: (s: [] E2) -> [] f32 #export_c #effects(all) { return s[0].move_bodies[..]; }
@@ -583,7 +509,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2c_arrive_uniforms(s, u);
   e2_material_uniforms(s, u);
   e2_shadows(s, u);
-  return e2_fps(s, out, e2c_hud(s, out), dt);
+  return e2_fps(s, out, e2_plates(s, out, e2c_hud(s, out)), dt);
 }
 
 // ---- the key light's shadow tiles (aethyr/render/cascades.coax, #13016, as Everglade's)
@@ -900,28 +826,16 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   // your character: the look Character Create saved, walking as the controller moves you
   a := s[0].anim[..];
   a[0].on = true; a[0].x = s[0].you_x; a[0].z = s[0].you_z; a[0].y = s[0].you_y; a[0].yaw = s[0].you_face; a[0].own = true;
-  figs.bd_step(a, s[0].clock, ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32);
+  bdt := ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32;
+  figs.bd_step(a, s[0].clock, bdt);
   b[0].now = s[0].clock;
-  l := cc.look(c); l.variant = 0;
   fig := ifx e2c_creating(s) then e2c_figure(s) else e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at);
-  out := s[0].records[..];
   s[0].cz[0].fig0 = rec;
-  for i: 0..<40 { if c.worn[i] && cc.available(c, i) && c.source_count[i + (ifx c.female then 0 else 40)] > 0 && rec < E2_RECORDS {
-    p := i + ifx c.female then 0 else 40;
-    figs.bd_record(fig, l, c.source_word[p], false, s[0].clock, out, rec); out[rec * 24 + 11] = f32(c.variant);
-    n = e2_draw(s[0].draws[..], n, c.source_first[p], c.source_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, c.source_first[p], c.source_count[p], rec, 1); rec += 1;
-  } }
-  parts: [3] int; pn := 0;
-  if !c.worn[7] { parts[pn] = l.head; pn += 1; }
-  if l.hair >= 0 && !c.worn[7] && !c.worn[26] { parts[pn] = l.hair; pn += 1; }
-  if l.extra == figs.BP_BEARD && !c.worn[7] { parts[pn] = l.extra; pn += 1; }
-  for i: 0..<pn { if rec < E2_RECORDS {
-    p := parts[i]; figs.bd_record(fig, l, b[0].part_word[p], false, s[0].clock, out, rec);
-    n = e2_draw(s[0].draws[..], n, b[0].part_first[p], b[0].part_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, b[0].part_first[p], b[0].part_count[p], rec, 1); rec += 1;
-  } }
-  s[0].cz[0].fig1 = rec;
-  if n > 0 { s[0].cz[0].drawn += 1; }
-  for i: 1 + c.grass_groups..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
+  d := e2_body(s, c, fig, E2Drawn.{rec = rec, n = n, sn = sn});
+  s[0].cz[0].fig1 = d.rec;
+  if d.n > 0 { s[0].cz[0].drawn += 1; }
+  d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade2-net.coax)
+  rec = d.rec; n = d.n; sn = d.sn;
   n = e2_pieces(s, s[0].draws[..], n, false);
   n = e2_field(s, s[0].draws[..], n);
   sn = e2_pieces(s, s[0].shadow[..], sn, true);
@@ -960,6 +874,180 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 14 || field == 15 { v := 0; for i: 0..<s[0].draw_n { k := i * 4; grass := s[0].draws[k + 2] >= cast(u32) E2_FIELD_BASE;
       tree := !grass && s[0].draws[k + 2] >= cast(u32) E2_KIT_BASE && s[0].draws[k] < cast(u32) s[0].kit_first[E2_TREES * E2_LODS];
       if (field == 14 && grass) || (field == 15 && tree) { v += cast(int)(s[0].draws[k + 1] * s[0].draws[k + 3]) / 1000; } } return v; }
+  // 16 the names drawn over the others this frame (e2_plates), 17 the others' bodies collected for it
+  if field == 16 { c := 0; for i: 0..<s[0].plate_n { if s[0].plates[i].alpha > 0 { c += 1; } } return c; }
+  if field == 17 { return s[0].plate_n; }
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
+  if field >= 40 && field < 60 { return e2_net_probe(s, field); }   // the room's (e2_net_probe)
   return -1;
+}
+
+// ---- the room (#13054): what the face asks of everglade2-net.coax, and the others drawn
+
+// Your look for the room's hello: the record Character Create keeps for you.
+e2_net_look :: (s: [] E2) {
+  b: [64] u8;
+  if !s[0].creator[0].configured { return; }
+  m := cc.save(s[0].creator[0], b[..]);
+  if m > 0 { e2n_set_look(s[0].net[..], cast(string) b[0..<m]); }
+}
+// The frame's room work, from the face: you join once the run starts (USE IN EVERGLADE), or at once
+// when you come in with a character; then the clock, the socket, the others where they are drawn.
+e2_net_step :: (s: [] E2, mono: int) #export_c #effects(all) {
+  n := s[0].net[..];
+  if s[0].player_key_n > 0 && s[0].action == 0 {
+    for i: 0..<s[0].player_key_n { s[0].outbox[i] = s[0].player_key[i]; }
+    s[0].out_n = s[0].player_key_n; s[0].action = E2_ACT_PLAYER; s[0].player_key_n = 0;
+  }
+  n[0].joined = !s[0].cz[0].on || s[0].cz[0].walking;
+  if n[0].joined { e2_net_look(s); }   // the record as it stands: a change in the studio is said again
+  e2n_step(n, mono);
+}
+// Seated in a room: the face steps you at its rate and sends each step.
+e2_net_live :: (s: [] E2) -> bool #export_c #effects(all) { return e2n_open(s[0].net[..]); }
+// The run holds its feet until the room seats you, E2N_HOLD_MS at most (then it walks on alone).
+e2_net_holding :: (s: [] E2, waited_ms: int) -> bool #export_c #effects(all) {
+  n := s[0].net[0];
+  return n.want && n.joined && !n.stale && !n.elsewhere && !e2n_open(s[0].net[..]) && !n.sat && waited_ms < E2N_HOLD_MS;
+}
+e2_net_as_sent :: (s: [] E2, m: EgMoveIn) -> EgMoveIn #export_c #effects(all) { return e2n_as_sent(m); }
+e2_net_input :: (s: [] E2, m: EgMoveIn) -> int #export_c #effects(all) { return e2n_input(s[0].net[..], m); }
+e2_net_fix_due :: (s: [] E2) -> bool #export_c #effects(all) { return e2n_fix_due(s[0].net[..]); }
+e2_net_fix :: (s: [] E2) -> NetFix #export_c #effects(all) { return s[0].net[0].fix; }
+e2_net_replay_n :: (s: [] E2) -> int #export_c #effects(all) { return e2n_replay_n(s[0].net[..]); }
+e2_net_replay_input :: (s: [] E2, k: int) -> EgMoveIn #export_c #effects(all) { return e2n_replay_input(s[0].net[..], k); }
+e2_net_fixed :: (s: [] E2, dx: f32, dy: f32, dz: f32) #export_c #effects(all) { e2n_fixed(s[0].net[..], dx, dy, dz); }
+e2_net_offset :: (s: [] E2, dt: f32) -> figs.Point #export_c #effects(all) { o := e2n_offset(s[0].net[..], dt); return figs.v3(o[0], o[1], o[2]); }
+// The socket's commands for the host (the face drains them): the pipe, as Everglade's.
+e2_net_pipe :: (s: [] E2) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].n; }
+e2_net_pipe_op :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].op[k]; }
+e2_net_pipe_id :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].id[k]; }
+e2_net_pipe_from :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].from[k]; }
+e2_net_pipe_len :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].len[k]; }
+e2_net_pipe_done :: (s: [] E2) #export_c #effects(all) { pipe_drained(s[0].net[0].pipe[..]); }
+e2_net_opened :: (s: [] E2, id: int) #export_c #effects(all) { e2n_opened(s[0].net[..], id); }
+e2_net_ticket :: (s: [] E2, answer: string) #export_c #effects(all) { e2n_ticket(s[0].net[..], answer); }
+// For headless checks (e2_probe 40 to 59): the room as this page has it.
+e2_net_probe :: (s: [] E2, f: int) -> int {
+  n := s[0].net[0];
+  if f == 40 { return n.state; } if f == 41 { return n.seat; } if f == 42 { return e2n_remotes(s[0].net[..]); }
+  if f == 43 { return n.delay; } if f == 44 { return cast(int) n.lag; } if f == 45 { return cast(int)(n.jitter * 100); }
+  if f == 46 { return n.replays; } if f == 47 { return cast(int)(sqrt(n.fix_sq) * 1000); } if f == 48 { return n.frames_in; }
+  if f == 49 { return n.tries; } if f == 50 { return ifx n.want then 1 else 0; } if f == 51 { return ifx n.joined then 1 else 0; }
+  if f == 52 { return n.look_n; } if f == 54 { return n.pings; }
+  if f == 53 { c := 0; for e: 0..<E2N_ENTS { en := n.ents[e]; if en.live && en.kind == WK_PLAYER && en.seat != n.seat && en.name_n > 0 { c += 1; } } return c; }
+  if f == 55 { return ifx n.pings > 0 then n.ping_rtt[net_ping_best(n.ping_rtt[..], n.pings)] else -1; }
+  // 56, 57: USE IN EVERGLADE's centre (canvas px), for a check that presses it; 58 the first other's
+  // drawn x and 59 its z (cm), -999999 none
+  if f == 56 || f == 57 { b := s[0].cz[0].boxes[17]; return cast(int)(ifx f == 56 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
+  if f == 58 || f == 59 { r := e2n_remote(s[0].net[..], 0); if !r.ok { return -999999; } return cast(int)((ifx f == 58 then r.x else r.z) * 100); }
+  return -1;
+}
+
+// A remote's look: your creator (its catalog, its parts) with that player's record restored. False
+// when the record is no Character Create record (a v1 page's ranger.S.D.T): drawn as you are dressed.
+e2_remote_look :: (s: [] E2, look: string) -> bool {
+  s[0].rtmp[0] = s[0].creator[0];
+  return cc.restore(s[0].rtmp[..], look);
+}
+E2Drawn :: struct { rec: int; n: int; sn: int; }
+// One body's draws: its worn parts, then its head, hair and beard, each a record with the figure's
+// pose and the body's eyes.
+e2_body :: (s: [] E2, c: cc.Creator, fig: figs.BdAnim, at: E2Drawn) -> E2Drawn {
+  b := s[0].bodies[..]; out := s[0].records[..];
+  rec := at.rec; n := at.n; sn := at.sn; from := rec;
+  l := cc.look(c); l.variant = 0;
+  for i: 0..<40 { if c.worn[i] && cc.available(c, i) && c.source_count[i + (ifx c.female then 0 else 40)] > 0 && rec < E2_RECORDS {
+    p := i + ifx c.female then 0 else 40;
+    figs.bd_record(fig, l, c.source_word[p], false, s[0].clock, out, rec); out[rec * 24 + 11] = f32(c.variant);
+    n = e2_draw(s[0].draws[..], n, c.source_first[p], c.source_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, c.source_first[p], c.source_count[p], rec, 1); rec += 1;
+  } }
+  parts: [3] int; pn := 0;
+  if !c.worn[7] { parts[pn] = l.head; pn += 1; }
+  if l.hair >= 0 && !c.worn[7] && !c.worn[26] { parts[pn] = l.hair; pn += 1; }
+  if l.extra == figs.BP_BEARD && !c.worn[7] { parts[pn] = l.extra; pn += 1; }
+  for i: 0..<pn { if rec < E2_RECORDS {
+    p := parts[i]; figs.bd_record(fig, l, b[0].part_word[p], false, s[0].clock, out, rec);
+    n = e2_draw(s[0].draws[..], n, b[0].part_first[p], b[0].part_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, b[0].part_first[p], b[0].part_count[p], rec, 1); rec += 1;
+  } }
+  for i: from..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
+  return E2Drawn.{rec = rec, n = n, sn = sn};
+}
+// The others, as the room has them drawn this frame: each on the land, its own walk and run from how
+// fast it goes, its jump from its feet off the ground, its own look; and its name for e2_plates.
+e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
+  d := at; s[0].plate_n = 0;
+  for k: 0..<E2_REMOTES {
+    r := e2n_remote(s[0].net[..], k);
+    if !r.ok { break; }
+    en := s[0].net[0].ents[r.slot];
+    a := s[0].ranim[r.slot..<r.slot + 1];
+    if !a[0].on || s[0].rlife[r.slot] != en.born { a[0] = figs.BdAnim.{}; a[0].on = true; s[0].rair[r.slot] = false; s[0].rland_at[r.slot] = -100; s[0].rlife[r.slot] = en.born; }
+    ground := e2_height(r.x, r.z);
+    a[0].x = r.x; a[0].z = r.z; a[0].y = ground + r.y; a[0].yaw = r.yaw; a[0].own = false;
+    figs.bd_step(a, s[0].clock, bdt);
+    air := r.y > f32(E2_AIRBORNE);
+    if air && !s[0].rair[r.slot] { s[0].rair_at[r.slot] = s[0].clock; }
+    if !air && s[0].rair[r.slot] { s[0].rland_at[r.slot] = s[0].clock; }
+    s[0].rair[r.slot] = air;
+    fig := e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[r.slot], s[0].rland_at[r.slot]);
+    look := cast(string) en.look[0..<en.look_n];
+    c := ifx e2_remote_look(s, look) then s[0].rtmp[0] else s[0].creator[0];
+    d = e2_body(s, c, fig, d);
+    if s[0].plate_n < E2_REMOTES && en.name_n > 0 {
+      p := s[0].plates[s[0].plate_n..<s[0].plate_n + 1];
+      p[0].x = r.x; p[0].y = ground + r.y + 2.05; p[0].alpha = r.z;   // the head's top; alpha holds z until e2_plates
+      p[0].name_n = en.name_n; for i: 0..<en.name_n { p[0].name[i] = en.name[i]; }
+      s[0].plate_n += 1;
+    }
+  }
+  return d;
+}
+// The names over the others' heads, in Character Create's face (AR Kai C, cc.text): each where its
+// head is on the screen, whole within E2_PLATE_NEAR m, fading to nothing at E2_PLATE_FAR, and not
+// drawn when the land stands between your eye and the head.
+e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
+  v := at; k := s[0].k; w := s[0].width; h := s[0].height;
+  e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up;
+  for i: 0..<s[0].plate_n {
+    p := s[0].plates[i];
+    hx := p.x; hy := p.y; hz := p.alpha;
+    dx := hx - e[0]; dy := hy - e[1]; dz := hz - e[2];
+    ahead := dx * f[0] + dy * f[1] + dz * f[2];
+    dist := sqrt(dx * dx + dy * dy + dz * dz);
+    s[0].plates[i].alpha = 0;
+    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) || !e2_plate_seen(e, hx, hy, hz) { continue; }
+    alpha := ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR);
+    sx := w * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
+    sy := h * 0.5 - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
+    cap := 13 * k; em := cc.sans_em(cap); wide: f32 = 0;
+    name := cast(string) p.name[0..<p.name_n];
+    for ch: name { if ch >= 32 && ch <= 126 { wide += f32(cc.CC_FONT_WIDTH[cast(int) ch - 32]) / f32(cc.CC_FONT_UPM) * em; } }
+    if sx + wide * 0.5 < 0 || sx - wide * 0.5 > w || sy < 0 || sy > h { continue; }
+    ink := cc.ink(k, 0.95 * alpha, 0.93 * alpha, 0.82 * alpha); ink.light = alpha; ink.glow *= alpha; ink.core *= alpha;
+    v = cc.text(out, v, name, sx - wide * 0.5, sy - cap, cap, ink);
+    s[0].plates[i].alpha = alpha;
+  }
+  return v;
+}
+// The land doesn't stand between the eye and (x, y, z): its height under eight points along the way.
+e2_plate_seen :: (e: [3] f32, x: f32, y: f32, z: f32) -> bool {
+  for q: 1..<8 {
+    t := f32(q) / 8;
+    px := e[0] + (x - e[0]) * t; py := e[1] + (y - e[1]) * t; pz := e[2] + (z - e[2]) * t;
+    if e2_height(px, pz) > py { return false; }
+  }
+  return true;
+}
+#test "a name over a head fades with distance and hides behind the land" {
+  #assert e2_plate_seen([3] f32.[0, e2_height(0, 0) + 2, 0], 0, e2_height(0, -10) + 2, -10);
+  #assert !e2_plate_seen([3] f32.[0, e2_height(0, 0) - 50, 0], 0, e2_height(0, -10) - 50, -10);
+}
+// A player key the API minted (POST /api/playtest/player): the host keeps it as this browser's player
+// (host.js action 5) when no other action is waiting, and the seat ticket asks with it.
+E2_ACT_PLAYER :: 5;
+e2_keep_player :: (s: [] E2, record: string) #export_c #effects(all) {
+  if record.count > 1024 { return; }
+  for i: 0..<record.count { s[0].player_key[i] = record[i]; }
+  s[0].player_key_n = record.count;
 }
