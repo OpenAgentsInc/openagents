@@ -19,14 +19,14 @@ Nights ::struct {
  env:NFrame;bad:bool;ready:bool;loaded:[4]int;choosing:bool=true;started:bool;you:pc.Player;keys:int;thumbs:Sticks;
  palette:int;skin_n:int=1;hair_n:int=1;dye_n:int=1;palette_n:int=1;palette_stride:int=1;saved_hero:int= -1;saved_palette:int;dirty:bool;outbox:[8]u8;out_n:int;
  clock:f32;clip_clock:f32;clip:int;forced:int= -1;width:f32=1280;height:f32=800;d:f32=1;drag:bool;drag_id:int;px:f32;py:f32;look_x:f32;look_y:f32;
- light:[108]f32;light_n:int;
+ light:[108]f32;light_n:int;ground_grass:int= -1;ground_earth:int= -1;ground_repeat:f32=1.6;ground_ready:bool;
  records:[48]f32;draws:[8]u32;draw_n:int;revision:int;
 }
 night_num :: (t:string)->int {if t.count==0 {return -1;}v:=0;for i:0..<t.count {if t[i]<'0' || t[i]>'9' {return -1;}d:=int(t[i]-'0');if v>(134217728-d)/10 {return -1;}v=v*10+d;}return v;}
 night_real :: (t:string)->f32 {if t.count==0 {return 0;}sign:=1.0f32;p:=0;if t[0]=='-' {sign= -1;p=1;}v:=0.0f32;share:=0.0f32;for i:p..<t.count {if t[i]=='.' && share==0 {share=0.1;continue;}if t[i]<'0' || t[i]>'9' {return 0;}d:=f32(t[i]-'0');if share>0 {v+=d*share;share*=0.1;}else {v=v*10+d;}if v>100000 {return 0;}}return sign*v;}
 night_copy :: (out:[]u8,t:string)->int {n:=ifx t.count<out.count then t.count else out.count;for i:0..<n {out[i]=ifx t[i]=='_' then ' ' else t[i];}return n;}
 night_catalog :: (s:[]Nights,t:string) #export_c #effects(all) {
- nui.catalog(s[0].ui[..],t);s[0].menu=false;s[0].ui_down=0;
+ nui.catalog(s[0].ui[..],t);s[0].ground_grass= -1;s[0].ground_earth= -1;s[0].ground_repeat=1.6;s[0].ground_ready=false;s[0].menu=false;s[0].ui_down=0;
  for h:0..<32 {s[0].heroes[h]=NHero.{};}s[0].env=NFrame.{};s[0].hero_n=0;s[0].palette_n=1;s[0].palette_stride=1;s[0].skin_n=1;s[0].hair_n=1;s[0].dye_n=1;s[0].zone_n=0;s[0].box_n=0;s[0].ready=false;s[0].bad=false;
  at:=0;while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;}row:=t[at..<e];at=e+1;w:[12]string;wn:=0;p:=0;
  while p<row.count {while p<row.count && (row[p]==' ' || row[p]=='\t' || row[p]=='\r') {p+=1;}if p>=row.count {break;}q:=p;while p<row.count && row[p]!=' ' && row[p]!='\t' && row[p]!='\r' {p+=1;}if wn<12 {w[wn]=row[q..<p];wn+=1;}else {s[0].bad=true;}}
@@ -39,6 +39,7 @@ night_catalog :: (s:[]Nights,t:string) #export_c #effects(all) {
   s[0].heroes[h].frames[f]=NFrame.{first=a,count=c,word=o};s[0].heroes[h].frame_n+=1;
  }
  if w[1]!="nights" {continue;}
+ if w[0]=="R" && w[2]=="ground" {if wn!=6 || s[0].ground_grass>=0 {s[0].bad=true;continue;}grass:=night_num(w[3]);earth:=night_num(w[4]);repeat:=night_real(w[5]);if grass<0 || grass>=124 || earth<0 || earth>=124 || !(repeat>=0.5 && repeat<=8) {s[0].bad=true;continue;}s[0].ground_grass=grass;s[0].ground_earth=earth;s[0].ground_repeat=repeat;}
  if w[0]=="Q" {if wn!=5 {s[0].bad=true;continue;}a:=night_num(w[2]);b:=night_num(w[3]);c:=night_num(w[4]);if a<1 || b<1 || c<1 || a>32 || b>32 || c>32 || a*b*c>32 {s[0].bad=true;continue;}s[0].skin_n=a;s[0].hair_n=b;s[0].dye_n=c;}
  if w[0]=="V" {if wn!=4 {s[0].bad=true;continue;}n:=night_num(w[2]);stride:=night_num(w[3]);if n<1 || n>32 || stride<1 || stride>32 {s[0].bad=true;continue;}s[0].palette_n=n;s[0].palette_stride=stride;}
  if w[0]=="P" {if wn!=6 {s[0].bad=true;continue;}hi:=night_num(w[2]);g:=night_num(w[3]);he:=night_num(w[4]);o:=night_num(w[5]);if hi<0 || hi>=32 || g<0 || g>1 || he<0 || he>31 || o<0 || o>31 {s[0].bad=true;continue;}s[0].heroes[hi].gender=g;s[0].heroes[hi].head=he;s[0].heroes[hi].outfit=o;}
@@ -48,6 +49,7 @@ night_catalog :: (s:[]Nights,t:string) #export_c #effects(all) {
  if w[0]=="B" {if wn!=6 || s[0].box_n>=1024 {s[0].bad=true;continue;}b:=NBox.{x0=night_real(w[2]),z0=night_real(w[3]),x1=night_real(w[4]),z1=night_real(w[5])};if b.x1<=b.x0 || b.z1<=b.z0 {s[0].bad=true;continue;}bi:=s[0].box_n;s[0].boxes[bi]=b;s[0].walls[bi*6]=b.x0;s[0].walls[bi*6+1]=0;s[0].walls[bi*6+2]=b.z0;s[0].walls[bi*6+3]=b.x1;s[0].walls[bi*6+4]=8;s[0].walls[bi*6+5]=b.z1;s[0].box_n+=1;}
  }
  for h:0..<32 {next:=0;hero:=s[0].heroes[h];if hero.frame_n==0 && hero.clip_n==0 && hero.name_n==0 {continue;}ok:=hero.name_n>0 && hero.clip_n>0;for c:0..<hero.clip_n {if hero.clips[c].first!=next {ok=false;}next+=hero.clips[c].count;}if next>128 || next!=hero.frame_n {ok=false;}for f:0..<(ifx next<128 then next else 128) {if hero.frames[f].count==0 {ok=false;}}s[0].heroes[h].ready=ok;if !ok || h!=s[0].hero_n {s[0].bad=true;}s[0].hero_n+=1;}
+ if s[0].ground_grass>=0 {s[0].ground_ready=s[0].ui[0].declared[s[0].ground_grass] && s[0].ui[0].declared[s[0].ground_earth];if !s[0].ground_ready {s[0].bad=true;}}
  s[0].ready= !s[0].bad && s[0].env.count>0 && s[0].hero_n>0 && s[0].zone_n==3;s[0].hero=ifx s[0].saved_hero>=0 && s[0].saved_hero<s[0].hero_n then s[0].saved_hero else night_default_hero(s);s[0].palette=ifx s[0].saved_palette>=0 && s[0].saved_palette<s[0].palette_n then s[0].saved_palette else 0;s[0].zone=0;s[0].started=false;s[0].choosing=true;s[0].clip=0;s[0].forced= -1;s[0].clip_clock=0;
 }
 night_default_hero :: (s:[]Nights)->int {
@@ -111,6 +113,7 @@ night_frame :: (s:[]Nights,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #
  p:=s[0].you;yaw:=p.theta;pitch:=p.phi-1.5707963;dist:=ifx s[0].choosing then p.max_dist else p.dist;cy:=cos(pitch);sy:=sin(pitch);sx:=sin(yaw);cz:=cos(yaw);target:=p.pos.y+1.2;
  room:=night_camera_room(s,p.pos.x,p.pos.z,sx*cy*dist,cz*cy*dist);dist*=room;
  u[16]=p.pos.x+sx*cy*dist;u[17]=target-sy*dist;u[18]=p.pos.z+cz*cy*dist;u[19]=h*0.89;u[20]= -sx*cy;u[21]=sy;u[22]= -cz*cy;u[23]=w*0.5;u[24]=cz;u[26]= -sx;u[27]=ifx s[0].choosing && w<700*d then h*0.32f32 else h*0.52f32;u[28]=sx*sy;u[29]=cy;u[30]=cz*sy;u[32]= -0.45;u[33]=0.78;u[34]= -0.42;
+ u[104]=f32(s[0].ground_grass);u[105]=f32(s[0].ground_earth);u[106]=s[0].ground_repeat;u[107]=ifx s[0].ground_ready then 1 else 0;
  night_light(s,u);
  return night_ui_draw(s,out);
 }
@@ -236,4 +239,12 @@ night_fixture :: (s:[]Nights) {
 
 #test "Nights scene readiness requires both source world and native UI" {
  s:[1]Nights;night_fixture(s[..]);#assert !night_ready(s[..]);s[0].ui[0].ready=true;#assert night_ready(s[..]);s[0].ready=false;#assert !night_ready(s[..]);
+}
+
+#test "Nights ground material accepts declared native layers and bounded metre repeat only" {
+ s:[1]Nights;night_catalog(s[..],"T 120 nwn/grass 240\nT 121 nwn/earth 240\nR nights ground 120 121 1.6\n");#assert s[0].ground_ready && s[0].ground_repeat==1.6;
+ night_catalog(s[..],"T 120 nwn/grass 240\nR nights ground 120 121 1.6\n");#assert !s[0].ground_ready && s[0].bad;
+ night_catalog(s[..],"R nights ground 124 121 1.6\n");#assert s[0].bad;
+ night_catalog(s[..],"T 120 nwn/grass 240\nT 121 nwn/earth 240\nR nights ground 120 121 0.1\n");#assert s[0].bad;
+ night_catalog(s[..],"");#assert !s[0].ground_ready && s[0].ground_grass== -1;
 }

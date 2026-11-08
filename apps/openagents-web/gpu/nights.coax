@@ -5,7 +5,42 @@ nights_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->CharacterCreatorBg {return charact
 nights_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
  s:=charactercreator_scene_vs(id,instance,u,vertices,objects,bake);m:=objects[cast(int)instance];if (m.d.w>17.5f32 && m.d.w<18.5f32) {s.slice+=u32(m.d.y);}return s;
 }
-nights_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {return charactercreator_scene_fs(s,front,u,objects,sheets,sheet,shadow_map,shadow_cmp);}
+// Only explicitly marked native forest floors use the new material. The
+// existing shared environment lighting, shadows and MRT encoding stay intact.
+nights_ground_active :: (kind:f32,marker:f32,enabled:f32)->bool {return kind>5.5f32 && kind<6.5f32 && marker>7000.5f32 && marker<7001.5f32 && enabled>0.5f32;}
+nights_ground_uv :: (x:f32,z:f32,metres:f32)->V2 {return v2(x/metres,z/metres);}
+nights_ground_earth :: (x:f32,z:f32)->f32 {
+ center:=sin(z*0.13f32)*0.35f32+sin(z*0.043f32)*0.25f32;trail:=1.0f32-smoothstep(0.85f32,2.0f32,abs(x-center));clearing:=1.0f32-smoothstep(3.6f32,5.0f32,sqrt(x*x+(z+10.0f32)*(z+10.0f32)));path:=fmax(trail,clearing);quiet:=0.08f32+0.07f32*sin(x*0.37f32+z*0.23f32)*sin(z*0.31f32);return quiet+(0.85f32-quiet)*path;
+}
+#test "Nights ground filtering is explicitly scoped and its native material mask stays quiet" {
+ #assert nights_ground_active(6,7001,1) && !nights_ground_active(6,0,1) && !nights_ground_active(5,7001,1) && !nights_ground_active(6,7001,0);
+ #assert abs(nights_ground_uv(1.6,3.2,1.6).x-1)<0.00001;
+ #assert nights_ground_earth(0,-10)>0.8 && nights_ground_earth(12,20)<0.16;
+ for i:0..<40 {v:=nights_ground_earth(f32(i)-20,f32(i)*2-20);#assert v>=0 && v<=0.85f32;}
+}
+nights_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
+ uv:=s.uv;ray:=add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(s.pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-s.pos.y)/u[19])));plate:=cg_sky_uv(ray);
+ if (s.dye.w>11.5f32 && s.local.x<0.5f32) {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
+ if (s.dye.w>11.5f32 && s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32) {uv=cg_village_uv(uv,s.local.y);}
+ // Derivatives are taken before the material branch; repeated ground UVs
+ // remain continuous world coordinates, never fract() of the footprint.
+ dx:=v2(gpu_dpdx_fine(uv.x),gpu_dpdx_fine(uv.y));dy:=v2(gpu_dpdy_fine(uv.x),gpu_dpdy_fine(uv.y));repeat:=ifx u[106]>=0.5f32 then u[106] else 1.6f32;
+ guv:=nights_ground_uv(s.world.x,s.world.z,repeat);gdx:=v2(gpu_dpdx_fine(guv.x),gpu_dpdx_fine(guv.y));gdy:=v2(gpu_dpdy_fine(guv.x),gpu_dpdy_fine(guv.y));ground:=nights_ground_active(s.local.x,s.local.y,u[107]);
+ tex:=render_sample_layer8_grad(sheets,sheet,ifx ground then guv else uv,ifx ground then s32(u[104]) else s32(s.slice),ifx ground then gdx else dx,ifx ground then gdy else dy,ifx ground then 0.0f32 else 1.0f32);
+ if ground {earth:=render_sample_layer8_grad(sheets,sheet,v2(guv.x+11.375f32,guv.y-7.125f32),s32(u[105]),gdx,gdy,0);share:=nights_ground_earth(s.world.x,s.world.z);tex=v4(tex.x+(earth.x-tex.x)*share,tex.y+(earth.y-tex.y)*share,tex.z+(earth.z-tex.z)*share,1);}
+ if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
+  sky:=mix3(cg_decode(cg_sky(u,normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
+ }
+ if (tex.w<0.35f32) {gpu_demote_helper();}
+ c:V4;
+ if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
+ else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
+ n:=normalize3(s.normal);z:=dot3(sub3(s.world,wg_at3(u,16)),wg_at3(u,20));
+ sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;
+ indirect:=c.w;packed:=cg_normal_pack(n);
+ c.w=ifx sky then 0.0f32 else ifx foliage then 0.4f32 else 0.12f32;
+ return CharacterCreatorLit.{c=c,aux=v4(packed.x,packed.y,indirect,ifx sky then 0.0f32 else ifx foliage then -z else z)};
+}
 nights_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->CgShadow {s:=charactercreator_shadow_vs(id,instance,u,vertices,objects,bake);m:=objects[cast(int)instance];if (m.d.w>17.5f32 && m.d.w<18.5f32) {s.slice+=u32(m.d.y);}return s;}
 nights_shadow_fs :: (s:CgShadow,sheets:Tex2DArray,sheet:Sampler) {charactercreator_shadow_fs(s,sheets,sheet);}
 NightsUIIn ::struct {a:V4;b:V4;c:V4;d:V4;}

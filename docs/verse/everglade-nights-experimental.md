@@ -31,6 +31,7 @@ V nights PALETTE_COUNT LAYER_STRIDE
 Q nights SKIN_COUNT HAIR_COUNT CLOTH_COUNT
 Z nights REGION MIN_X MIN_Z MAX_X MAX_Z FLOOR_Y SPAWN_X SPAWN_Z
 B nights MIN_X MIN_Z MAX_X MAX_Z
+R nights ground GRASS_LAYER EARTH_LAYER REPEAT_METRES
 ```
 
 `H` is a contiguous zero-based actor bank (at most 32); `F` is a contiguous zero-based frame (at most 128 per bank). Each actor has at most eight ordered clips whose frame ranges exactly partition its frames. Missing or duplicate frames and malformed bounded actor metadata refuse scene readiness. Clip names are native, with `pause1`, `walk` and `run` driving locomotion. Other clips are available for inspection. Names are copied from catalog storage, never retained as borrowed strings.
@@ -68,3 +69,9 @@ This is a local asset rebuild: no multiplayer room, authoritative combat, spell 
 After rebasing onto the shared environment-frame interface, Nights writes the resolver’s cached fixed-noon 108-word record at uniform offset 208 in a 316-float block. The corresponding focused check and rebuilt hardware WebGPU page pass; the shader is generated against the current shared delegates.
 
 The native UI revision uses one additional source-bound 1024² atlas at layer 119 (120 layers total), containing twelve NWN sprite crops and all 256 Galahad14 glyphs. Its full-frame slot border comes from `gui_spell_hilite`; the twelve-slot layout follows the native quickbar, while action mappings belong to Nights. All previous scene payload bytes remain unchanged. Final raw/gzip pack sizes are 91,879,916/43,258,896 bytes. The UI release Wasm is 68,480 bytes. Fifteen focused runtime checks and the independent browser FX transport oracle pass. Actual hardware clicks changed gender, entered exploration, selected City, opened the menu and jumped on a 430-pixel phone viewport (observed feet Y=0.72656). Original UI pixels and font RGBA were independently compared with the installed resources and match exactly.
+
+## Forest ground revision
+
+The forest uses dedicated native 512² grass/earth images at layers 120/121, blended across continuous world coordinates at two metres per repeat. The bounded `R` row requires both declared layers below 124 and repeat 0.5–8 metres. Coax writes the admitted fields at uniforms 104–107. Only native flat forest-floor vertices marked with float32 7001.0 in word seven use this material. The new branch removes the extra +1 ground mip bias while retaining derivative-based eight-tap filtering and shared lighting. Other scene textures and actors keep their original rendering.
+
+Sparse original NWN groundcover adds 84 grass tufts and 36 ferns, with two native image layers (124 total). They share the existing environment draw and do not change navigation. The private packer preserves actor vertex records and relocates their index starts exactly around the environment insertion. Four pack checks and two focused runtime/shader checks pass; the release is 68,917 bytes. Native source/placement receipts and visual evidence are documented in ore’s `nights/ground.md`.
