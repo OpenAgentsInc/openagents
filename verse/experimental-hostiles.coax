@@ -157,7 +157,7 @@ hostile_damage :: (s:[]Hostiles,amount:int,x:f32,y:f32,z:f32) {
 hostile_loose :: (s:[]Hostiles,i:int,px:f32,py:f32,pz:f32) {
  e:=s[0].enemies[i];slot:=-1;for k:0..<HS_SHOTS {if s[0].shots[k].state==HS_FREE {slot=k;break;}}if slot<0 {return;}
  dx:=px-e.x;dz:=pz-e.z;gap:=sqrt(dx*dx+dz*dz);if gap<0.01 {return;}
- hand:=0.35*e.scale;fx:=e.x+dx/gap*hand;fz:=e.z+dz/gap*hand;fy:=terrain.exp_height(e.x,e.z)+1.2*e.scale;
+ hand:=0.35*e.scale;fx:=e.x+dx/gap*hand;fz:=e.z+dz/gap*hand;fy:=terrain.exp_height(e.x,e.z)+0.75*e.scale;   // its hand, at the shoulder of a body scale tall
  ty:=terrain.exp_height(px,pz)+py+1.2;sx:=px-fx;sy:=ty-fy;sz:=pz-fz;
  s[0].shots[slot]=HsShot.{state=HS_FLYING,foe=i,kind=e.kind,fx=fx,fy=fy,fz=fz,tx=px,ty=ty,tz=pz,t0=s[0].time,fly=sqrt(sx*sx+sy*sy+sz*sz)/hostile_shot_speed(e.kind)};
 }
