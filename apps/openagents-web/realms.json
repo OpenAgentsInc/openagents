@@ -493,7 +493,7 @@
     { "id": "valleyworld", "name": "VALLEY LAB ANCIENT WORLD", "kind": "open", "listed": false,
       "orbit": { "r": 0.4, "a": 3.4, "size": 0.02 },
       "realm": {
-        "slug": "valley-world", "title": "Valley Lab - Ancient World", "module": "valleyworld", "slot": "valley-world",
+        "slug": "valley-world", "title": "Valley Lab - Ancient World", "module": "valleyworld", "slot": "valley-world", "card": "/og/realms/valley-canyon.jpg",
         "description": "Explore a 250 metre Ancient World slice with Echo, 27,501 original placements and recovered source material maps.",
         "alt": "Echo walking through the original sandstone basin in Valley Lab",
         "style": "lowpoly", "clock": "fixed:0.5", "timing": true,

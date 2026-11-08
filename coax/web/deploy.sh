@@ -48,6 +48,8 @@ assets, site = os.path.join(stage, "assets"), os.path.join(stage, "site")
 def put(src, rel):
     h = hashlib.sha256(open(src, "rb").read()).hexdigest()[:12]
     stem, ext = os.path.splitext(rel)
+    # a gzipped pack keeps .pack.gz at its end: host.js unzips by that ending
+    if rel.endswith(".pack.gz"): stem, ext = rel[:-len(".pack.gz")], ".pack.gz"
     named = f"{stem}.{h}{ext}"
     for root in (assets, site):
         os.makedirs(os.path.dirname(os.path.join(root, named)), exist_ok=True)
@@ -81,6 +83,8 @@ for f in pages:
             declared_shader.group(1) if declared_shader else ""], text=True).strip().lstrip("/")
         wgsl = put(os.path.join(app, shader_source), "build/" + shader_source)
         rest = re.sub(r'\sdata-wgsl="[^"]+"', "", m.group(1))
+        # The page's UI font (data-ui-font-src, realms.json ui_font_src): named by its content too, or it isn't on the site.
+        rest = re.sub(r'data-ui-font-src="(/[^"]+)"', lambda r: 'data-ui-font-src="' + put(os.path.join(app, r.group(1)[1:]), "build/" + r.group(1)[1:]) + '"', rest)
         rest = re.sub(r'data-render="([^"]+)"', lambda r: 'data-render="' + stage_package(Path(app), r.group(1), Path(stage)) + '"', rest)
         # A scene's assets (data-assets): each URL named by its content too,
         # under /build/ (the page's directory's assets/ in development). A local: asset stays as it
