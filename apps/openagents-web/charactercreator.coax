@@ -308,7 +308,19 @@ experimental_air :: (s:[]Creator,air:bool) {
 experimental_clip :: (s:Creator)->int {
  if s.airborne {return ifx s.clock-s.air_at<0.2 then figs.BD_JUMP_START else figs.BD_JUMP_LOOP;}
  if s.clock-s.land_at<0.35 {return figs.BD_JUMP_LAND;}
+ return experimental_stance(s);
+}
+// Standing or running: with a two-handed weapon, the owned two-handed hold (both hands on the haft) over
+// the idle's or the run's legs; otherwise the plain idle or run.
+experimental_stance :: (s:Creator)->int {
+ h:=experimental_hold(s);
+ if h>=0 {return h+(ifx s.moving then 1 else 0);}
  return ifx s.moving then figs.BD_RUN else figs.BD_IDLE;
+}
+// The first of a two-hander's owned clips (its idle; then its run and its cleave), or -1 for none.
+experimental_hold :: (s:Creator)->int {
+ if s.weapon<0 || s.weapon>=CC_KITS || !CC_KIT_TWO[s.weapon] {return -1;}
+ return figs.BD_OWN+CC_KIT_HOLD[s.weapon];
 }
 // Blend the authored jump over the locomotion pose, easing in during takeoff and
 // back out shortly after landing. The jump never fully replaces the arms.
@@ -323,7 +335,7 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
  a.t0=ifx a.clip==figs.BD_JUMP_START then s.clock-(s.clock-s.air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s.clock-(s.clock-s.land_at)*figs.bd_seconds(a.clip)/0.35 else 0;
  a.phase=(s.clock-(ifx s.dev_animations && s.preview_clip>=0 then s.preview_at else 0))/figs.bd_seconds(a.clip);
  if !(s.dev_animations && s.preview_clip>=0) && (s.airborne || s.clock-s.land_at<0.35) {
-  a.prev=ifx s.moving then figs.BD_RUN else figs.BD_IDLE;a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);
+  a.prev=experimental_stance(s);a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);
   a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_jump_weight(s);
  }
  if !(s.dev_animations && s.preview_clip>=0) && s.swing_clip>=0 && s.clock-s.swing_at<figs.bd_seconds(s.swing_clip) {
@@ -347,8 +359,11 @@ experimental_swing_weight :: (s:Creator)->f32 {
 CC_KITS :: 4;
 CC_KIT_MESH :: [4]int.[0,3,2,1];               // greataxe, the Fighter's greatsword, the Paladin's longsword, shortsword
 CC_KIT_SCALE :: [4]f32.[0.6,0.55,0.45,0.33];   // about 1.3 m, 1.5 m, 1.05 m and 0.75 m long
-CC_KIT_GRIP :: [4]f32.[-0.42,0.3,0.0,0.0];     // the greataxe low on its haft; the greatsword's upper hand under the guard; a sword mid-grip
-CC_KIT_TWO :: [4]bool.[true,false,false,false];
+CC_KIT_GRIP :: [4]f32.[-0.36,0.05,0.0,0.0];    // where the (lower) right fist closes: the greataxe and greatsword low on the grip, a sword mid-grip
+CC_KIT_TWO :: [4]bool.[true,true,false,false];  // held in both hands: the left fist up the haft, as the owned two-handed clips place it
+CC_KIT_HOLD :: [4]int.[0,3,0,0];               // a two-hander's first owned clip (verse/everglade/two-hand-rig.coax): the axe's, the sword's
+// The left fist's middle from its joint, in the bind pose (the mirror of CC_FIST).
+CC_FIST_L :: [3]f32.[0.075,-0.03,0.0];
 // The fist's middle from the hand's joint, in the bind pose (metres: toward the fingers, then under the palm).
 CC_FIST :: [3]f32.[-0.075,-0.03,0.0];
 CC_TILT :: 0.45;   // radians the blade leans from straight ahead toward the fingers: down and ahead with the arm at rest
@@ -357,7 +372,9 @@ CC_TILT :: 0.45;   // radians the blade leans from straight ahead toward the fin
 held_weapon :: (s:Creator,b:[]figs.Bodies,out:[]f32,n:int)->int {
  if s.weapon<0 || s.weapon>=CC_KITS {return n;}m:=CC_KIT_MESH[s.weapon];if s.weapon_count[m]<=0 {return n;}
  o:=ifx s.female then 3 else 0;
- w:=weapon_matrix(figs.bd_hand(b,out[4],out[5],out[6]),[3]f32.[b[0].hand_at[o],b[0].hand_at[o+1],b[0].hand_at[o+2]],s.weapon,out[3],[3]f32.[out[0],out[1],out[2]]);
+ hr:=figs.bd_hand(b,out[4],out[5],out[6],false);hand:=[3]f32.[b[0].hand_at[o],b[0].hand_at[o+1],b[0].hand_at[o+2]];
+ w:=ifx CC_KIT_TWO[s.weapon] then two_hand_matrix(hr,figs.bd_hand(b,out[4],out[5],out[6],true),hand,[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],s.weapon,out[3],[3]f32.[out[0],out[1],out[2]])
+  else weapon_matrix(hr,hand,s.weapon,out[3],[3]f32.[out[0],out[1],out[2]]);
  for k:0..<24 {out[n*24+k]=0;}
  at:=[4]int.[0,8,16,20];for i:0..<4 {for r:0..<3 {out[n*24+at[i]+r]=w[i*3+r];}}
  out[n*24+7]=f32(s.glade_word);out[n*24+15]=19;
@@ -382,6 +399,50 @@ weapon_matrix :: (h:[12]f32,hand:[3]f32,k:int,yaw:f32,at:[3]f32)->[12]f32 {
  for r:0..<3 {w[r]+=at[r];}
  return w;
 }
+// A two-hander's place: its haft runs from the right fist through the left (both hands' poses hr and hl,
+// their bind positions), the right fist at its grip, the edge along the right hand's knuckles.
+two_hand_matrix :: (hr:[12]f32,hl:[12]f32,hand:[3]f32,hand_l:[3]f32,k:int,yaw:f32,at:[3]f32)->[12]f32 {
+ sc:=CC_KIT_SCALE[k];
+ a:=cc_pose_point(hr,[3]f32.[hand[0]+CC_FIST[0],hand[1]+CC_FIST[1],hand[2]+CC_FIST[2]]);
+ l:=cc_pose_point(hl,[3]f32.[hand_l[0]+CC_FIST_L[0],hand_l[1]+CC_FIST_L[1],hand_l[2]+CC_FIST_L[2]]);
+ d:=cc_unit([3]f32.[l[0]-a[0],l[1]-a[1],l[2]-a[2]]);
+ // the knuckles: the right hand's fingers (bind -X), square to the haft
+ e0:=[3]f32.[-hr[0],-hr[4],-hr[8]];de:=e0[0]*d[0]+e0[1]*d[1]+e0[2]*d[2];
+ e:=cc_unit([3]f32.[e0[0]-de*d[0],e0[1]-de*d[1],e0[2]-de*d[2]]);
+ z:=[3]f32.[e[1]*d[2]-e[2]*d[1],e[2]*d[0]-e[0]*d[2],e[0]*d[1]-e[1]*d[0]];
+ g:=CC_KIT_GRIP[k];
+ v:=[4][3]f32.[[3]f32.[a[0]-sc*g*d[0],a[1]-sc*g*d[1],a[2]-sc*g*d[2]],[3]f32.[sc*e[0],sc*e[1],sc*e[2]],[3]f32.[sc*d[0],sc*d[1],sc*d[2]],[3]f32.[sc*z[0],sc*z[1],sc*z[2]]];
+ c:=cos(yaw);sn:=sin(yaw);w:[12]f32;
+ for i:0..<4 {w[i*3]=v[i][0]*c+v[i][2]*sn;w[i*3+1]=v[i][1];w[i*3+2]= -v[i][0]*sn+v[i][2]*c;}
+ for r:0..<3 {w[r]+=at[r];}
+ return w;
+}
+cc_pose_point :: (h:[12]f32,p:[3]f32)->[3]f32 {
+ q:[3]f32;for r:0..<3 {q[r]=h[r*4]*p[0]+h[r*4+1]*p[1]+h[r*4+2]*p[2]+h[r*4+3];}
+ return q;
+}
+cc_unit :: (v:[3]f32)->[3]f32 {
+ m:=sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);if m<0.000001 {return [3]f32.[0,1,0];}
+ return [3]f32.[v[0]/m,v[1]/m,v[2]/m];
+}
+#test "a two-hander's haft runs from the right fist through the left" {
+ id:=[12]f32.[1,0,0,0, 0,1,0,0, 0,0,1,0];hand:=[3]f32.[-0.1,1.0,0.3];hl:=[3]f32.[-0.1-0.075-0.075,1.0+0.4,0.3];
+ w:=two_hand_matrix(id,id,hand,hl,0,0,[3]f32.[0,0,0]);   // the greataxe, the left fist 0.4 m straight up
+ // the blade (Y) points up the haft; the right fist is at the grip, -0.36 source units
+ #assert abs(w[7]-0.6)<0.0001 && abs(w[6])<0.0001 && abs(w[8])<0.0001;
+ #assert abs(w[1]-(1.0-0.03+0.6*0.36))<0.0001 && abs(w[0]-(-0.175))<0.0001;
+ // the edge (X) along the knuckles (bind -X), square to the haft
+ #assert abs(w[3]+0.6)<0.0001 && abs(w[4])<0.0001 && abs(w[5])<0.0001;
+ // the left fist is up the haft at 0.307 source units
+ #assert abs((1.0-0.03+0.4)-(w[1]+0.6*0.3067))<0.001;
+}
+#test "a two-hander plays the owned two-handed hold; a one-hander the plain idle and run" {
+ s:[1]Creator;s[0].weapon=0;#assert experimental_clip(s[0])==figs.BD_OWN+figs.TWOHAND_AXE_IDLE_LOOP;
+ s[0].moving=true;#assert experimental_clip(s[0])==figs.BD_OWN+figs.TWOHAND_AXE_RUN_LOOP;
+ s[0].weapon=1;#assert experimental_clip(s[0])==figs.BD_OWN+figs.TWOHAND_SWORD_RUN_LOOP;
+ s[0].weapon=2;#assert experimental_clip(s[0])==figs.BD_RUN;
+ s[0].weapon= -1;s[0].moving=false;#assert experimental_clip(s[0])==figs.BD_IDLE;
+}
 #test "a held weapon's grip sits in the fist and its blade points ahead of the hand" {
  id:=[12]f32.[1,0,0,0, 0,1,0,0, 0,0,1,0];hand:=[3]f32.[-0.68,1.45,-0.06];
  w:=weapon_matrix(id,hand,2,0,[3]f32.[10,0,5]);   // the Paladin's longsword, held mid-grip
@@ -390,8 +451,8 @@ weapon_matrix :: (h:[12]f32,hand:[3]f32,k:int,yaw:f32,at:[3]f32)->[12]f32 {
  #assert w[8]>0.39 && w[6]<0 && abs(w[7])<0.0001 && abs(w[4]-0.45)<0.0001 && abs(w[3])<0.0001;
  // turned a quarter round (facing +X), the blade points mostly +X
  q:=weapon_matrix(id,hand,0,1.5707963,[3]f32.[0,0,0]);#assert q[6]>0.5 && q[6]>abs(q[8]);
- // the greataxe is held low on its haft: its grip is 0.42 source units down the weapon (scale 0.6)
- g:=weapon_matrix(id,hand,0,0,[3]f32.[0,0,0]);#assert abs(g[2]-(-0.06+0.6*0.42*cos(f32(CC_TILT))))<0.0001;
+ // the greataxe's right fist is low on its haft: 0.36 source units down the weapon (scale 0.6)
+ g:=weapon_matrix(id,hand,0,0,[3]f32.[0,0,0]);#assert abs(g[2]-(-0.06+0.6*0.36*cos(f32(CC_TILT))))<0.0001;
 }
 #test "animation browser is enabled only for local development origins" {
  #assert dev_local("url=http://127.0.0.1:8891/worlds/everglade-experimental\n");

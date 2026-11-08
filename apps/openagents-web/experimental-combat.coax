@@ -236,7 +236,7 @@ xc_press :: (s: [] Lab, k: int) -> bool {
   // a blow with a weapon in hand swings first and lands at the swing's impact (xc_swing)
   kit := xc_kit(x[0].klass);
   if kit >= 0 && xc_aim_kind(s, a).kind == XC_AIM_MELEE {
-    clip := ifx cc.CC_KIT_TWO[kit] then figs.BD_CLIPS + figs.BD_CHOP else figs.BD_SLASH;
+    clip := ifx cc.CC_KIT_TWO[kit] then figs.BD_OWN + cc.CC_KIT_HOLD[kit] + 2 else figs.BD_SLASH;   // a two-hander's owned cleave
     cr[0].weapon = kit; cr[0].swing_clip = clip; cr[0].swing_at = now;
     x[0].pend = k; x[0].pend_at = now + figs.bd_blow(s[0].bodies[..], cr[0].female, clip) * figs.bd_seconds(clip);
     x[0].cool_at = now; x[0].used = k;
@@ -711,7 +711,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 #test "experimental combat: a melee class holds its weapon, and a blow lands at its swing's impact, not at the press" #steps 2000000000 {
   #assert xc_kit(FB_CL_BARBARIAN) == 0 && cc.CC_KIT_TWO[0] && xc_kit(FB_CL_FIGHTER) == 1 && xc_kit(FB_CL_PALADIN) == 2;
   #assert xc_kit(FB_CL_RANGER) == 3 && xc_kit(FB_CL_ROGUE) == 3 && xc_kit(FB_CL_MONK) == -1 && xc_kit(FB_CL_WIZARD) == -1 && xc_kit(FB_CL_CLERIC) == -1;
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_PALADIN, 0);
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2;   // just ahead, in reach
   hp := xc_hp_sum(s[..]);
   tries := 0;
@@ -727,9 +727,12 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
     tries += 1;
   }
   #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp;
-  // the Barbarian's greataxe swings the two-handed chop
+  // the Barbarian's greataxe and the Fighter's greatsword swing the owned two-handed cleave, landing at its impact
   t: [1] Lab; xc_test_lab(t[..], FB_CL_BARBARIAN, 0); t[0].creator[0].clock = 5;
-  #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_CLIPS + figs.BD_CHOP && t[0].creator[0].weapon == 0;
+  #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_OWN + figs.TWOHAND_AXE_CLEAVE && t[0].creator[0].weapon == 0;
+  #assert abs(t[0].xc[0].pend_at - (5 + figs.BD_OWN_IMPACT * figs.bd_seconds(figs.BD_OWN + figs.TWOHAND_AXE_CLEAVE))) < 0.001;
+  xc_test_lab(t[..], FB_CL_FIGHTER, 0); t[0].creator[0].clock = 9; t[0].xc[0].pend = -1;
+  #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_OWN + figs.TWOHAND_SWORD_CLEAVE && t[0].creator[0].weapon == 1;
   // a caster's spell resolves at once, with no swing
   w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 0); w[0].creator[0].clock = 5;
   #assert xc_press(w[..], 0) && w[0].xc[0].pend == -1 && w[0].creator[0].swing_clip == -1;

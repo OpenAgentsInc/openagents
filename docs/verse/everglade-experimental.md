@@ -68,15 +68,28 @@ You fight the monsters with your class's level 1 kit
 - CLASSES, a column under ANIMATIONS on the left (or at the top when ANIMATIONS is hidden), lists
   the twelve SRD classes. Click one to become that class at level 1. The bar reloads with its
   kit. Click CLASSES to fold the column.
-- Melee classes hold a weapon from the Ultimate RPG kit in the right hand: the Barbarian a
-  greataxe (Axe_Double), the Fighter a greatsword (Sword_big), the Paladin a golden longsword
-  (Sword_Golden), and the Ranger and Rogue a shortsword (Sword, smaller). The Monk fights
-  unarmed, and casters hold nothing. The weapon is fixed to the right hand's bone, so it follows
-  every animation. Changing class in CLASSES swaps it.
-- A blow with a weapon (Attack, Sneak Attack, Divine Smite) plays a swing over what you're doing,
-  blended like the jump: the Universal Animation Library 1 sword attack, or the Library 2 chop
-  for the greataxe. The blow lands at the swing's impact, the frame where the hand moves fastest
-  forward or down, not at the key press.
+- Melee classes hold a weapon from the Ultimate RPG kit: the Barbarian a greataxe (Axe_Double),
+  the Fighter a greatsword (Sword_big), the Paladin a golden longsword (Sword_Golden), and the
+  Ranger and Rogue a shortsword (Sword, smaller). The Monk fights unarmed, and casters hold
+  nothing. Changing class in CLASSES swaps the weapon.
+- One-handed weapons are fixed to the right hand's bone, so they follow every animation.
+- The greataxe and greatsword are held in both hands. No Universal Animation Library clip holds
+  a weapon in two hands, so OpenAgents authored its own: a two-handed ready stance, the same
+  hold over the run, and an overhead cleave, one set for each weapon. While you hold a
+  two-hander, these replace the idle and run, so the legs still run. The right fist is low on
+  the grip and the left fist is up the haft (about 40 cm for the greataxe, 16 cm for the
+  greatsword). The weapon runs from the right fist through the left, so both hands stay on it.
+- A blow with a weapon (Attack, Sneak Attack, Divine Smite) plays a swing over what you're
+  doing, blended like the jump. One-handers use the Universal Animation Library 1 sword
+  attack, and the blow lands at the frame where the hand moves fastest forward or down.
+  Two-handers use the authored cleave, and the blow lands at its impact, 0.55 s into the
+  1.2 s swing. In both cases the blow lands then, not at the key press.
+- The two-handed clips are authored in Blender by `verse/tools/assets/two_hand_clips.py` over
+  the Universal Animation Library 1 rig: the haft is keyed in the chest's space, each wrist is
+  pinned to it with IK, and the result is baked to plain keys. The `.blend` source, the GLB and
+  their provenance are the registered package `openagents-two-hand-clips` (see
+  `assets/registry/README.md`). `verse/tools/clip_rig.py` retargets them from
+  `verse/packs/everglade-two-hand.json` into `verse/everglade/two-hand-rig.coax`.
 
 Thirty-six additional flower, plant, fern, clover, mushroom, bush and grass variants grow in
 the eastern meadow. The remaining sixty nature models, including trees, rocks and paths,

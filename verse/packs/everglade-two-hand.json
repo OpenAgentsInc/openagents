@@ -1,0 +1,43 @@
+{
+  "pack": "everglade-two-hand",
+  "libraries": {
+    "ual1": "~/.openagents/assets/originals/e2adadc59702bc88770e299949d1f4c6790db1852133fd1ce374d2a0815537cd/source/Unreal-Godot/UAL1_Standard.glb",
+    "two-hand": "~/.openagents/assets/originals/0c5de453e3110d333b802a63d0b38387f6031db136abb30e009957b9eb113e9a/source/two-hand-clips.glb"
+  },
+  "clips": [
+    {
+      "name": "axe_idle_loop",
+      "library": "two-hand",
+      "clip": "TwoHand_Axe_Idle_Loop"
+    },
+    {
+      "name": "axe_run_loop",
+      "library": "two-hand",
+      "clip": "TwoHand_Axe_Run_Loop"
+    },
+    {
+      "name": "axe_cleave",
+      "library": "two-hand",
+      "clip": "TwoHand_Axe_Cleave"
+    },
+    {
+      "name": "sword_idle_loop",
+      "library": "two-hand",
+      "clip": "TwoHand_Sword_Idle_Loop"
+    },
+    {
+      "name": "sword_run_loop",
+      "library": "two-hand",
+      "clip": "TwoHand_Sword_Run_Loop"
+    },
+    {
+      "name": "sword_cleave",
+      "library": "two-hand",
+      "clip": "TwoHand_Sword_Cleave"
+    }
+  ],
+  "skeletons": {
+    "male": "~/.openagents/assets/originals/9415c92b26b8b7b760ab72d333a0eee8e1f2f24bac62fb0a857f95203b91fed5/source/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf",
+    "female": "~/.openagents/assets/originals/9415c92b26b8b7b760ab72d333a0eee8e1f2f24bac62fb0a857f95203b91fed5/source/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf"
+  }
+}

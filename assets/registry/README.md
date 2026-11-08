@@ -220,6 +220,25 @@ coax/web/tool.sh verse/tools/assets/registry.coax animations ual1 Unreal-Godot/U
 coax/web/tool.sh verse/tools/assets/registry.coax animations ual2 Unreal-Godot/UAL2_Standard.glb "$HOME/.openagents/assets"
 ```
 
+## Two-handed weapon clips
+
+`openagents-two-hand-clips` is an OpenAgents original (CC0): six animation records under
+`openagents/two-hand/...` for holding a greataxe or greatsword in both hands. For each weapon
+there is an idle, a run and a cleave. The package snapshot holds the Blender source
+(`two-hand-clips.blend`), the exported GLB, the authoring script, `report.json` and
+`provenance.json`. Each record names its parent Universal Animation Library 1 clips by
+revision: Idle_Loop or Jog_Fwd_Loop for the body, and Driving_Loop for the closed fingers.
+`recipe_sha256` pins the script. To rebuild the source, run:
+
+```sh
+Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
+  --python verse/tools/assets/two_hand_clips.py -- \
+  ~/.openagents/assets/originals/e2adadc59702bc88770e299949d1f4c6790db1852133fd1ce374d2a0815537cd/source/Unreal-Godot/UAL1_Standard.glb OUT_DIR
+```
+
+Then import `OUT_DIR` with `License_Source.txt` and `provenance.json` beside it
+(`registry.coax import OUT_DIR openagents-two-hand-clips "$HOME/.openagents/assets"`).
+
 ## External asset discovery
 
 The [CodePawl asset index](https://huggingface.co/datasets/codepawl/asset-index)

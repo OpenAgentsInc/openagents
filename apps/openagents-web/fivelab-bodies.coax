@@ -35,18 +35,25 @@ BD_FPS :: 30.0;
 // The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
 #load "../../verse/everglade/preview-rig.coax";
 #load "preview-clips.coax";
+#load "../../verse/everglade/two-hand-rig.coax";   // the owned two-handed weapon clips (verse/tools/assets/two_hand_clips.py)
 BD_CLIPS :: 10;
 BD_IDLE :: 0; BD_WALK :: 1; BD_RUN :: 2; BD_SLASH :: 3; BD_SPELL :: 4; BD_KNOCK :: 5; BD_DIE :: 6; BD_JUMP_START :: 7; BD_JUMP_LOOP :: 8; BD_JUMP_LAND :: 9;
 BD_CLIP :: [10] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_SPELL, PEOPLE_KNOCK, PEOPLE_DIE, PEOPLE_JUMP_START, PEOPLE_JUMP_LOOP, PEOPLE_JUMP_LAND];
 BD_FRAMES :: [10] int.[75, 40, 28, 46, 63, 25, 72, 40, 75, 38];
 BD_FIRST :: [10] int.[0, 75, 115, 143, 189, 252, 277, 349, 389, 464];
 BD_BASE_TOTAL :: 502;
-BD_TOTAL :: PREVIEW_TOTAL;          // frames a body
+// The owned two-handed clips (verse/everglade/two-hand-rig.coax), baked always after the previews, at
+// 30 a second: clip BD_OWN + k is TWOHAND clip k.
+BD_OWN_IMPACT :: 0.46;    // the share of an owned cleave at its impact (two_hand_clips.py IMPACT: 0.55 s of 1.2)
+BD_OWN :: 96;             // BD_CLIPS + PREVIEW_BAKED
+BD_OWN_FRAMES :: [6] int.[75, 28, 36, 75, 28, 36];
+BD_OWN_FIRST :: [6] int.[3844, 3919, 3947, 3983, 4058, 4086];
+BD_TOTAL :: 4122;         // frames a body: PREVIEW_TOTAL and the owned clips'
 BD_ROWS :: 195;           // rows a frame: 65 joints, three each
-BD_BAKE_FLOATS :: 5996640; // 2 bodies * PREVIEW_TOTAL frames * 195 rows * 4
+BD_BAKE_FLOATS :: 6430320; // 2 bodies * BD_TOTAL frames * 195 rows * 4
 BD_HAND :: 34;            // the right hand's joint (the weapon's bone)
-BD_HAND_FLOATS :: 92256;  // 2 bodies * PREVIEW_TOTAL frames * 12: its three rows a frame
-BD_CHOP :: 80;            // the preview clip a two-handed blow plays (ual2_treechopping_loop), baked always
+BD_HAND_L :: 10;          // the left hand's (a two-handed weapon's upper hand)
+BD_HAND_FLOATS :: 197856; // 2 bodies * BD_TOTAL frames * 24: both hands' three rows a frame
 BD_FADE :: 0.18;          // seconds a change of clip blends
 BD_WALK_FROM :: 0.35;     // m/s: slower stands
 BD_RUN_FROM :: 2.2;       // and faster runs
@@ -193,8 +200,8 @@ Bodies :: struct {
   draws: [176] u32; draw_n: int;  // a draw a part worn, and one of the blocks
   shown: int;               // figures drawn this frame
   blocks: int;              // of them, drawn as blocks
-  hand: [BD_HAND_FLOATS] f32;  // the right hand's skinning rows, every baked frame (bd_keep_hands)
-  hand_at: [6] f32;            // where the right hand is in each body's bind pose (male, female)
+  hand: [BD_HAND_FLOATS] f32;  // the right then left hand's skinning rows, every baked frame (bd_keep_hands)
+  hand_at: [12] f32;           // where the right then left hand is in each body's bind pose (male, female)
 }
 
 // ---- the pack's catalog (verse/tools/pack_realm.py): "C NAME FIRST COUNT K WORD VERTICES JOINTS" a part
@@ -233,7 +240,7 @@ bd_catalog :: (b: [] Bodies, text: string) {
 // Frame f of baked clip c on a body: the first of its rows in the bake.
 bd_row :: (female: bool, c: int, f: int) -> int {
   body := ifx female then 1 else 0;
-  first:=ifx c>=BD_CLIPS then PREVIEW_FIRST[c-BD_CLIPS] else BD_FIRST[c];
+  first:=ifx c>=BD_OWN then BD_OWN_FIRST[c-BD_OWN] else ifx c>=BD_CLIPS then PREVIEW_FIRST[c-BD_CLIPS] else BD_FIRST[c];
   return ((body * BD_TOTAL) + first + f) * BD_ROWS;
 }
 // Bakes body `body`'s clip c (or all of them, c -1) into out (BD_BAKE_FLOATS floats).
@@ -254,12 +261,25 @@ bd_bake_clip :: (d: [] People, body: int, c: int, out: [] f32) {
 bd_bake :: (d: [] People, out: [] f32, previews:bool) {
   if out.count < BD_BAKE_FLOATS { return; }
   for body: 0..<2 { for c: 0..<BD_CLIPS { bd_bake_clip(d, body, c, out); } }
+  if !previews {return;}
   data:[1]Preview;preview_load(data[..]);
   for body:0..<2 {rig:=preview_rig(data[..],body==1);sk:[1]Skin;
-    for c:0..<PREVIEW_BAKED {if !previews && c!=BD_CHOP {continue;}n:=PREVIEW_FRAMES[c];for f:0..<n {
+    for c:0..<PREVIEW_BAKED {n:=PREVIEW_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);
       for j:0..<PEOPLE_JOINTS {sk[0].now[j]=skin_sample(rig,c,j,t);}
       at:=bd_row(body==1,BD_CLIPS+c,f)*4;skin_palette(rig,sk[..],out[at..<at+BD_ROWS*4]);
+    }}
+  }
+}
+// The owned two-handed weapon clips, into their rows (a world whose figures hold weapons bakes them too).
+bd_bake_owned :: (out: [] f32) {
+  if out.count < BD_BAKE_FLOATS { return; }
+  own:[1]Twohand;twohand_load(own[..]);
+  for body:0..<2 {rig:=twohand_rig(own[..],body==1);sk:[1]Skin;
+    for c:0..<TWOHAND_CLIPS {n:=BD_OWN_FRAMES[c];for f:0..<n {
+      t:=f32(f)*rig.duration[c]/f32(n);
+      for j:0..<PEOPLE_JOINTS {sk[0].now[j]=skin_sample(rig,c,j,t);}
+      at:=bd_row(body==1,BD_OWN+c,f)*4;skin_palette(rig,sk[..],out[at..<at+BD_ROWS*4]);
     }}
   }
 }
@@ -272,12 +292,13 @@ bd_wrap :: (a: f32) -> f32 {
   while x < -f32(PI) { x += 2 * f32(PI); }
   return x;
 }
-bd_seconds :: (c: int) -> f32 { if c>=BD_CLIPS {return PREVIEW_DURATION[c-BD_CLIPS];}return f32(BD_FRAMES[c]) / f32(BD_FPS); }
+bd_seconds :: (c: int) -> f32 { if c>=BD_OWN {return TWOHAND_DURATION[c-BD_OWN];}if c>=BD_CLIPS {return PREVIEW_DURATION[c-BD_CLIPS];}return f32(BD_FRAMES[c]) / f32(BD_FPS); }
+bd_frames :: (c: int) -> int { if c >= BD_OWN { return BD_OWN_FRAMES[c - BD_OWN]; } if c >= BD_CLIPS { return PREVIEW_FRAMES[c - BD_CLIPS]; } return BD_FRAMES[c]; }
 bd_gait :: (c: int) -> bool { return c == BD_WALK || c == BD_RUN; }
 bd_once :: (c: int) -> bool { return c == BD_SLASH || c == BD_KNOCK || c == BD_DIE || c == BD_JUMP_START || c == BD_JUMP_LAND; }
 // The frame clip c shows `now`, begun at t0, its gait at phase.
 bd_frame_of :: (c: int, t0: f32, phase: f32, now: f32) -> int {
-  n := ifx c>=BD_CLIPS then PREVIEW_FRAMES[c-BD_CLIPS] else BD_FRAMES[c];
+  n := bd_frames(c);
   if c>=BD_CLIPS || bd_gait(c) { p := phase - floor(phase); return clamp_int(cast(int) (p * f32(n)), 0, n - 1); }
   s := (now - t0) / bd_seconds(c);
   if !finite(s) || s < 0 { s = 0; }
@@ -404,18 +425,25 @@ bd_seen :: (c: BdCam, x: f32, z: f32) -> f32 {
 // weapon it holds.
 bd_keep_hands :: (b: [] Bodies, d: [] People, bake: [] f32) {
   if bake.count < BD_BAKE_FLOATS { return; }
-  for f: 0..<2 * BD_TOTAL { for k: 0..<12 { b[0].hand[f * 12 + k] = bake[(f * BD_ROWS + BD_HAND * 3) * 4 + k]; } }
+  for f: 0..<2 * BD_TOTAL { for k: 0..<12 { b[0].hand[f * 24 + k] = bake[(f * BD_ROWS + BD_HAND * 3) * 4 + k]; b[0].hand[f * 24 + 12 + k] = bake[(f * BD_ROWS + BD_HAND_L * 3) * 4 + k]; } }
   // the inverse bind is [A | t]: the joint stands at -A^-1 t
-  for body: 0..<2 {
-    rig := people_rig(d, body == 1); m := rig.bind[BD_HAND * 12..<BD_HAND * 12 + 12];
-    a0 := m[0]; a1 := m[1]; a2 := m[2]; b0 := m[4]; b1 := m[5]; b2 := m[6]; c0 := m[8]; c1 := m[9]; c2 := m[10];
-    det := a0 * (b1 * c2 - b2 * c1) - a1 * (b0 * c2 - b2 * c0) + a2 * (b0 * c1 - b1 * c0);
-    if abs(det) < 0.000001 { continue; }
-    t0 := -m[3]; t1 := -m[7]; t2 := -m[11];
-    b[0].hand_at[body * 3] = ((b1 * c2 - b2 * c1) * t0 - (a1 * c2 - a2 * c1) * t1 + (a1 * b2 - a2 * b1) * t2) / det;
-    b[0].hand_at[body * 3 + 1] = (-(b0 * c2 - b2 * c0) * t0 + (a0 * c2 - a2 * c0) * t1 - (a0 * b2 - a2 * b0) * t2) / det;
-    b[0].hand_at[body * 3 + 2] = ((b0 * c1 - b1 * c0) * t0 - (a0 * c1 - a1 * c0) * t1 + (a0 * b1 - a1 * b0) * t2) / det;
+  for q: 0..<4 {
+    body := q % 2; joint := ifx q < 2 then BD_HAND else BD_HAND_L; o := (q / 2) * 6 + body * 3;
+    rig := people_rig(d, body == 1); p := bd_bind_at(rig.bind[joint * 12..<joint * 12 + 12]);
+    for k: 0..<3 { b[0].hand_at[o + k] = p[k]; }
   }
+}
+// Where a joint stands in the bind pose, from its inverse bind m = [A | t]: at -A^-1 t.
+bd_bind_at :: (m: [] f32) -> [3] f32 {
+  a0 := m[0]; a1 := m[1]; a2 := m[2]; b0 := m[4]; b1 := m[5]; b2 := m[6]; c0 := m[8]; c1 := m[9]; c2 := m[10];
+  det := a0 * (b1 * c2 - b2 * c1) - a1 * (b0 * c2 - b2 * c0) + a2 * (b0 * c1 - b1 * c0);
+  r: [3] f32;
+  if abs(det) < 0.000001 { return r; }
+  t0 := -m[3]; t1 := -m[7]; t2 := -m[11];
+  r[0] = ((b1 * c2 - b2 * c1) * t0 - (a1 * c2 - a2 * c1) * t1 + (a1 * b2 - a2 * b1) * t2) / det;
+  r[1] = (-(b0 * c2 - b2 * c0) * t0 + (a0 * c2 - a2 * c0) * t1 - (a0 * b2 - a2 * b0) * t2) / det;
+  r[2] = ((b0 * c1 - b1 * c0) * t0 - (a0 * c1 - a1 * c0) * t1 + (a0 * b1 - a1 * b0) * t2) / det;
+  return r;
 }
 // Where the hand is at kept frame h (hand[h..h+12]): its rows applied to its bind position.
 bd_hand_point :: (b: [] Bodies, female: bool, h: int) -> [3] f32 {
@@ -426,10 +454,11 @@ bd_hand_point :: (b: [] Bodies, female: bool, h: int) -> [3] f32 {
 }
 // The frame of the blow in clip c (0 to 1 of its length): when the right hand moves fastest forward or down.
 bd_blow :: (b: [] Bodies, female: bool, c: int) -> f32 {
-  n := ifx c >= BD_CLIPS then PREVIEW_FRAMES[c - BD_CLIPS] else BD_FRAMES[c];
+  if c >= BD_OWN { return BD_OWN_IMPACT; }   // an owned cleave lands where it was authored
+  n := bd_frames(c);
   best := -1.0f32; at := 0.5f32;
   for f: 1..<n {
-    p := bd_row(female, c, f - 1) / BD_ROWS * 12; q := bd_row(female, c, f) / BD_ROWS * 12;
+    p := bd_row(female, c, f - 1) / BD_ROWS * 24; q := bd_row(female, c, f) / BD_ROWS * 24;
     u := bd_hand_point(b, female, p); w := bd_hand_point(b, female, q);
     dx := w[0] - u[0]; dy := w[1] - u[1]; dz := w[2] - u[2];
     v := dx * dx + dy * dy + dz * dz;
@@ -437,9 +466,11 @@ bd_blow :: (b: [] Bodies, female: bool, c: int) -> f32 {
   }
   return at;
 }
-// The hand's pose (three rows of four) between bake rows ra and rb (bd_record's out[4], out[5]) at mix.
-bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix: f32) -> [12] f32 {
-  fa := clamp_int(int(ra) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 12; fb := clamp_int(int(rb) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 12;
+// The right (or left) hand's pose (three rows of four) between bake rows ra and rb (bd_record's out[4],
+// out[5]) at mix.
+bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix: f32, left: bool) -> [12] f32 {
+  side := ifx left then 12 else 0;
+  fa := clamp_int(int(ra) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 24 + side; fb := clamp_int(int(rb) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 24 + side;
   h: [12] f32;
   for k: 0..<12 { h[k] = b[0].hand[fa + k] * (1 - mix) + b[0].hand[fb + k] * mix; }
   return h;
@@ -546,8 +577,11 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
  #assert PREVIEW_BAKED==PREVIEW_CLIPS && PREVIEW_FIRST[0]==BD_BASE_TOTAL;
  for c:0..<PREVIEW_BAKED {#assert PREVIEW_FRAMES[c]>=2 && PREVIEW_FRAMES[c]<=256;
   if c>0 {#assert PREVIEW_FIRST[c]==PREVIEW_FIRST[c-1]+PREVIEW_FRAMES[c-1];}}
- #assert PREVIEW_FIRST[PREVIEW_BAKED-1]+PREVIEW_FRAMES[PREVIEW_BAKED-1]==BD_TOTAL;
- #assert bd_row(true,BD_CLIPS+PREVIEW_BAKED-1,PREVIEW_FRAMES[PREVIEW_BAKED-1]-1)*4+BD_ROWS*4==BD_BAKE_FLOATS;
+ #assert BD_OWN==BD_CLIPS+PREVIEW_BAKED && PREVIEW_FIRST[PREVIEW_BAKED-1]+PREVIEW_FRAMES[PREVIEW_BAKED-1]==PREVIEW_TOTAL && BD_OWN_FIRST[0]==PREVIEW_TOTAL;
+ // the owned clips after them, at 30 a second
+ for c:0..<TWOHAND_CLIPS {#assert BD_OWN_FRAMES[c]==cast(int)(TWOHAND_DURATION[c]*f32(BD_FPS)+0.5);if c>0 {#assert BD_OWN_FIRST[c]==BD_OWN_FIRST[c-1]+BD_OWN_FRAMES[c-1];}}
+ #assert BD_OWN_FIRST[TWOHAND_CLIPS-1]+BD_OWN_FRAMES[TWOHAND_CLIPS-1]==BD_TOTAL && BD_HAND_FLOATS==2*BD_TOTAL*24;
+ #assert bd_row(true,BD_OWN+TWOHAND_CLIPS-1,BD_OWN_FRAMES[TWOHAND_CLIPS-1]-1)*4+BD_ROWS*4==BD_BAKE_FLOATS;
 }
 #test "the baked clips' frames are their seconds at 30 a second, and the bake holds both bodies" {
   for c: 0..<BD_CLIPS {
@@ -556,7 +590,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   }
   #assert BD_FIRST[BD_CLIPS - 1] + BD_FRAMES[BD_CLIPS - 1] == BD_BASE_TOTAL;
   #assert BD_ROWS == PEOPLE_JOINTS * 3 && BD_BAKE_FLOATS == 2 * BD_TOTAL * BD_ROWS * 4;
-  #assert bd_row(true, BD_CLIPS+PREVIEW_BAKED-1, PREVIEW_FRAMES[PREVIEW_BAKED-1] - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS;
+  #assert bd_row(true, BD_OWN+TWOHAND_CLIPS-1, BD_OWN_FRAMES[TWOHAND_CLIPS-1] - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS;
 }
 
 #test "a baked frame is the clip's pose as aethyr/skin.coax plays it" #steps 400000000 {
@@ -577,6 +611,32 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   #assert worst < 0.0001;
 }
 
+#test "the owned two-handed clips keep both fists on the haft, the left its grip's spacing up from the right" #steps 2000000000 {
+  own: [1] Twohand; twohand_load(own[..]);
+  spacing := [6] f32.[0.40, 0.40, 0.40, 0.16, 0.16, 0.16];
+  out: [BD_ROWS * 4] f32; worst: [6] f32;
+  for body: 0..<2 {
+    rig := twohand_rig(own[..], body == 1); sk: [1] Skin;
+    br := bd_bind_at(rig.bind[BD_HAND * 12..<BD_HAND * 12 + 12]); bl := bd_bind_at(rig.bind[BD_HAND_L * 12..<BD_HAND_L * 12 + 12]);
+    br[0] -= 0.075; br[1] -= 0.03; bl[0] += 0.075; bl[1] -= 0.03;   // the fists' middles (charactercreator.coax CC_FIST)
+    for c: 0..<TWOHAND_CLIPS { for f: 0..<BD_OWN_FRAMES[c] {
+      t := f32(f) * rig.duration[c] / f32(BD_OWN_FRAMES[c]);
+      for j: 0..<PEOPLE_JOINTS { sk[0].now[j] = skin_sample(rig, c, j, t); }
+      skin_palette(rig, sk[..], out[..]);
+      r: [3] f32; l: [3] f32;
+      for k: 0..<3 {
+        hr := (BD_HAND * 3 + k) * 4; hl := (BD_HAND_L * 3 + k) * 4;
+        r[k] = out[hr] * br[0] + out[hr + 1] * br[1] + out[hr + 2] * br[2] + out[hr + 3];
+        l[k] = out[hl] * bl[0] + out[hl + 1] * bl[1] + out[hl + 2] * bl[2] + out[hl + 3];
+      }
+      gap := sqrt((l[0] - r[0]) * (l[0] - r[0]) + (l[1] - r[1]) * (l[1] - r[1]) + (l[2] - r[2]) * (l[2] - r[2]));
+      worst[c] = hi(worst[c], abs(gap - spacing[c]));
+    } }
+  }
+  // the gap between the fists, against the grip's spacing: within 9 cm in the hold and run, 35 cm and 16 cm
+  // in the axe's and sword's cleaves (the arms' reach in the wind-up); the weapon runs through both fists
+  #assert worst[0] < 0.09 && worst[1] < 0.09 && worst[3] < 0.09 && worst[4] < 0.09 && worst[2] < 0.35 && worst[5] < 0.16;
+}
 #test "the catalog names the sixteen parts; without them nothing draws" {
   b: [1] Bodies;
   bd_catalog(b[..], "pack everglade\nC people/male-peasant 1 2 4 3 4 65\n");

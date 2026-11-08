@@ -39,7 +39,8 @@ fairy 695000
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
 # The development animation browser's preview rig (verse/everglade/preview-rig.coax, 8a0af0b1ac) and
 # the jump clips (da98ab3915) bake into its body table: 2,220,945 bytes measured; 9f5a8c07ce (#13025) set 2,360,000.
-fivelab 2360000
+# The owned two-handed weapon clips (verse/everglade/two-hand-rig.coax) and two-handed grip: 2,360,897 bytes measured; about 3% headroom.
+fivelab 2430000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
