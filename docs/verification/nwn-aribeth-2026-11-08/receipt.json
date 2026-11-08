@@ -1,0 +1,565 @@
+{
+  "base_pack_sha256": "38cefc955e8c862e1046e6d484436f2eb8ae8b319571345c7b5b09cd917df9d3",
+  "bounds": {
+    "max": [
+      2.047841714561218,
+      1.6241752170204786,
+      -1.8938839296371397
+    ],
+    "min": [
+      1.6017259227635805,
+      0.0,
+      -2.1745780744024357
+    ]
+  },
+  "environment_vertex_origin_words": 2525712,
+  "index_insertion": 8197042,
+  "input_paths": {
+    "base_pack": "/Users/christopherdavid/.codex/worktrees/oa-aribeth-experimental/openagents/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
+    "model_dir": "/Users/christopherdavid/ore-nwn-private/aribeth/rest-v2"
+  },
+  "layer": 93,
+  "meshes": 18,
+  "model_export_glb_sha256": "46afa8ea297048d701b2a7c4b40d6b470db9e8fa13060f75d398bc655ad804b7",
+  "original_index_stream_sha256": "d356cc3cd2ada87e94e887d5f2aa8ceee62c3c3dfe845051c16f7de0112a037b",
+  "original_vertex_prefix_sha256": "ca6233305ab7d37b46a904f3842e7be8d00042cbd36c5a54ed8a6b5947c7d67e",
+  "output_pack_bytes": 246771440,
+  "output_pack_sha256": "ea0e50aa9c2310fb92ebeec38a89652cf24ca1ce06d5078e01d31105e58198fe",
+  "output_path": "/Users/christopherdavid/ore-nwn-private/aribeth/experimental-v1/glade.pack.gz",
+  "placement": {
+    "feet_aligned_to_min_y": true,
+    "scale": 1.0,
+    "x": 1.8,
+    "y": 0.0,
+    "yaw_degrees": 180.0,
+    "z": -2.0
+  },
+  "preservation_checks_passed": true,
+  "preserved_catalog_draws": 270,
+  "preserved_layers": [
+    {
+      "name": "layer0",
+      "sha256": "f242802e24e24958022432f7a338f20875de8fb88d5eabd94eaa9c044e858b60",
+      "source": 0
+    },
+    {
+      "name": "layer1",
+      "sha256": "72db4f1e782c9c9dce10f4cd09c1a9adb573bff2e0c8845a2bb7d190f90917ca",
+      "source": 0
+    },
+    {
+      "name": "layer2",
+      "sha256": "6cbf172cf924f222756e853dd1e49aa59144d4fc57a3ba152b9050a1fc327011",
+      "source": 0
+    },
+    {
+      "name": "layer3",
+      "sha256": "0acd3d88634b74bb0d86ed5b2a1ebb70814bd580a32482f5f4f03faa218acecb",
+      "source": 0
+    },
+    {
+      "name": "layer4",
+      "sha256": "d33523250b3c82559d90968da193c81432260cad2af4ae441cb7b1f7e61a384d",
+      "source": 0
+    },
+    {
+      "name": "layer5",
+      "sha256": "f02ab7683fbfacf576267d929c2680a3b8792bb0ad653c481722986259088046",
+      "source": 0
+    },
+    {
+      "name": "layer6",
+      "sha256": "f97d2bf2a83c784e50d18be29a63f5c2045994b6a76846d8d722bc640aab1f4f",
+      "source": 1
+    },
+    {
+      "name": "layer7",
+      "sha256": "09bff3b5702de2143fc5a29cabdb46778d3ff8168b7c57d4c7f43dd78dbe9bd7",
+      "source": 1
+    },
+    {
+      "name": "layer8",
+      "sha256": "54474c2f8654355cf9357a37ce8fe51d0b934787396c58135332d3b9f858dcc3",
+      "source": 1
+    },
+    {
+      "name": "layer9",
+      "sha256": "1256df605977783cb657456a047f623f427e60cfd38e0070b455c55502dd9378",
+      "source": 1
+    },
+    {
+      "name": "layer10",
+      "sha256": "58133c46848f940f9ff160c746acca5a9548364d17e26f8841809e365c65d0ed",
+      "source": 1
+    },
+    {
+      "name": "layer11",
+      "sha256": "625c7e8fa28a08a2a12761e01a20d737fae2300008c4a04b84ea9bb6bbc1ebe2",
+      "source": 1
+    },
+    {
+      "name": "layer12",
+      "sha256": "a6b82776222d25da3bec405264ea14308dbef5429ed60e9379b34bc2372e0284",
+      "source": 1
+    },
+    {
+      "name": "layer13",
+      "sha256": "21c5312b0d28c4f3483fd77f2bc8ac9d3e8dd2eb91521828a20d12f44af75014",
+      "source": 2
+    },
+    {
+      "name": "layer14",
+      "sha256": "3d333383dd5fd27638e736e9abfdfef1a8702b6fa6530d1308a396ed4d6ec64d",
+      "source": 2
+    },
+    {
+      "name": "layer15",
+      "sha256": "b46d7f41690cc27b3da8ad67d9764107422a97432d6d9b15f531926feef3226b",
+      "source": 2
+    },
+    {
+      "name": "layer16",
+      "sha256": "3bbde5e4effccafd114a183a8a0ee52bcfc08f1cb962641f1b3a69c8bc72ab86",
+      "source": 2
+    },
+    {
+      "name": "layer17",
+      "sha256": "2a920c3f7c943001e00145e47980cbbb4e3632543395cf5c70c425462df9ed02",
+      "source": 2
+    },
+    {
+      "name": "layer18",
+      "sha256": "7c372d5151c247e1966b03192e570cc892d02f15c99f4e3f6bdcc40bdad1514d",
+      "source": 5
+    },
+    {
+      "name": "layer19",
+      "sha256": "7c372d5151c247e1966b03192e570cc892d02f15c99f4e3f6bdcc40bdad1514d",
+      "source": 5
+    },
+    {
+      "name": "layer20",
+      "sha256": "2667cb28c2d93a9063d1324082c4fe3b26afe0dbe3b8b7eeded9e69edd0b86bc",
+      "source": 3
+    },
+    {
+      "name": "layer21",
+      "sha256": "555a056a846ff2993e003e943e2c38c1de8d793b2be91f91b4a8aa1f296f4dd4",
+      "source": 3
+    },
+    {
+      "name": "layer22",
+      "sha256": "5cc9ba2cd33d9860a1f524fc5374471b676ff876b1be8599e0a5a1ae845926fe",
+      "source": 3
+    },
+    {
+      "name": "layer23",
+      "sha256": "bad20ebb7ddbd2b7db0d1a92de7bbd47a2e311709f891c637d41987ef8ff9c01",
+      "source": 3
+    },
+    {
+      "name": "layer24",
+      "sha256": "18725934ae61924c59e343d5d78ace0511d89d56dc29b55383c12afa5270a0ce",
+      "source": 3
+    },
+    {
+      "name": "layer25",
+      "sha256": "8c14223dd77a97f5f922f1ad73f6dd6a68f2e97de371e5a8f354d7445fb7a960",
+      "source": 4
+    },
+    {
+      "name": "layer26",
+      "sha256": "c5fa0bcf3a1082fce501e271eabea2184fb6987f494699d3f055ee4288d39a70",
+      "source": 4
+    },
+    {
+      "name": "layer27",
+      "sha256": "cf340c296a6025d71dcdb750a0f935daa0690e0ea11a5da56bb8c2bd2b69f6dd",
+      "source": 4
+    },
+    {
+      "name": "layer28",
+      "sha256": "855f70f93d8fdbbda0fc662aaf23ab0974ce94b0e36fc0e16c182b5c19dac6e7",
+      "source": 4
+    },
+    {
+      "name": "layer29",
+      "sha256": "2f06b76028a409a42a5d163838103997d320f054cc0028e61e75e92e15885c3d",
+      "source": 4
+    },
+    {
+      "name": "layer30",
+      "sha256": "1b954e7931328d37f357ee8702a01f3a42b47b59a11389b508352fdaf8dd585a",
+      "source": 4
+    },
+    {
+      "name": "layer31",
+      "sha256": "fd64417595a39b4b6520f68ecd004614edabd9816ec0dd6afbd2c7c5aa445f99",
+      "source": 4
+    },
+    {
+      "name": "layer32",
+      "sha256": "e89ab72f8a5e7386b5663ac940084a9a8f502fc36fe20a498b2249feca3aa281",
+      "source": 4
+    },
+    {
+      "name": "layer33",
+      "sha256": "abbd8138f300e43b9e51a0e3cd0782a557f3c246ae2011c036b408e198163169",
+      "source": 4
+    },
+    {
+      "name": "layer34",
+      "sha256": "e4edb6bcf5333065f99f553bd4703e16f594fc41a3053b12b9deb9d2f73e0b4c",
+      "source": 4
+    },
+    {
+      "name": "layer35",
+      "sha256": "bda36e32b7de7ddcce124b95c2677606d28c2a755334b814176e8798df4f568b",
+      "source": 4
+    },
+    {
+      "name": "layer36",
+      "sha256": "989c254516a4bb3518f1b3660a57657813570817ff89c6343eb8d2504815df94",
+      "source": 4
+    },
+    {
+      "name": "layer37",
+      "sha256": "975d8b914115c7e10811aa99e8357c9887a82c580f7f189ccbbc88e59eb7366e",
+      "source": 4
+    },
+    {
+      "name": "layer38",
+      "sha256": "0d5828e330776ea7777b650bba5b59d7427d25d719a81cde9caa916fea591a54",
+      "source": 6
+    },
+    {
+      "name": "layer39",
+      "sha256": "cf9e8bd00b95c14428bcf3091657bebc87033e9b8c09e2b2eeaf2133003a00a4",
+      "source": 6
+    },
+    {
+      "name": "layer40",
+      "sha256": "22c6128fa0084976dced27fbe865420d346c3a3f1bd31036f3ed3dd694baaf1c",
+      "source": 6
+    },
+    {
+      "name": "layer41",
+      "sha256": "32c1510e80d8df78a031b393d036b1106a08c0cd6903cdb999509bd855d7525c",
+      "source": 6
+    },
+    {
+      "name": "layer42",
+      "sha256": "d635b6b181e769e164b3342ce3c6f44ed06d06054b367bec5eb4ce022726325f",
+      "source": 6
+    },
+    {
+      "name": "layer43",
+      "sha256": "25d5cc526439b78ff68628170806642f9aefa0dfeb9943e996231fe765fe2794",
+      "source": 6
+    },
+    {
+      "name": "layer44",
+      "sha256": "7963ba7cd2b6babaa3ee96dc197b86b75558a91d5d72cf670e4a387fe323195a",
+      "source": 6
+    },
+    {
+      "name": "layer45",
+      "sha256": "5b7d68c0ed12b215ac2690cef2f65a82562d435182bff6695fe5f417d9fcc874",
+      "source": 6
+    },
+    {
+      "name": "layer46",
+      "sha256": "464011e96d13e03bc5f8fecc9d4b9e4df7a663845f08170f5c2435b5211316f3",
+      "source": 6
+    },
+    {
+      "name": "layer47",
+      "sha256": "17797d124e12ace3fc6371182c10b04fdaf7ca6a303e2afca50aaa2e8fc0c7e1",
+      "source": 6
+    },
+    {
+      "name": "layer48",
+      "sha256": "9917949e14a73942b01d51c4958b83daa354736b39befb0e6a0cb59ab5588428",
+      "source": 6
+    },
+    {
+      "name": "layer49",
+      "sha256": "7895ddd5171148a986c282fe0d3cf0678d4e516dc569655c36da0eac20f3bec9",
+      "source": 6
+    },
+    {
+      "name": "layer50",
+      "sha256": "5aa221a3e84be47848024e0c905b8eff7232a9fd5a129884b546948cd0b3fc86",
+      "source": 6
+    },
+    {
+      "name": "layer51",
+      "sha256": "5719dd49cac3ea66ff9c5436e95ef343cce29e8b2c27ae7349c380aefa1dcb3a",
+      "source": 6
+    },
+    {
+      "name": "layer52",
+      "sha256": "97fa77bf3cb71697884e13a27679a71506bbf96eb62ac3000b67cbfaae8351eb",
+      "source": 6
+    },
+    {
+      "name": "layer53",
+      "sha256": "7df2de35d2385a6a65c250e62381eb3318099aeb900dde410f2bff9fdaa4da59",
+      "source": 250
+    },
+    {
+      "name": "layer54",
+      "sha256": "4a6c1a27ee1f5ce870d782e5824337a1e8304850d168587c98ce60db0607d769",
+      "source": 250
+    },
+    {
+      "name": "layer55",
+      "sha256": "59f2b4b65fc87980a9479b2266870a1db586340addf0819fdbbac28873746f45",
+      "source": 250
+    },
+    {
+      "name": "layer56",
+      "sha256": "7606f3f7a7e96dcfd6d43ca8ab246166a490343b801e8a051fd4e8a6d70d0a50",
+      "source": 250
+    },
+    {
+      "name": "layer57",
+      "sha256": "6b7ef9fb8730eb93333da47dfe265f39eb8582100cd0b10440e81822674a8edb",
+      "source": 250
+    },
+    {
+      "name": "layer58",
+      "sha256": "e6b0c485c9d4bd9ad978b215f5b5ece68ecd807d60f64af0a6688b9bc3c4a962",
+      "source": 250
+    },
+    {
+      "name": "layer59",
+      "sha256": "21a5ed614cf773b4cf89579c3afde305b476892380450751944a2dc9fbb86210",
+      "source": 250
+    },
+    {
+      "name": "layer60",
+      "sha256": "cd207ee63417c2e17ed55717dafb1a552c7b94e55b073b4035d4c4698f4b925d",
+      "source": 250
+    },
+    {
+      "name": "layer61",
+      "sha256": "32b50acedaec0875f20b92f7d437c88b721cac6eaf22305f5889c0405ac14ea8",
+      "source": 251
+    },
+    {
+      "name": "layer62",
+      "sha256": "ff8cb5549bc691759a610eea33d2b9a87c9c8f662cb3d793cb6e9de49adec8c7",
+      "source": 254
+    },
+    {
+      "name": "layer63",
+      "sha256": "6c364ca68a699c9a596cc9917fc402eabfcd54b21a25224308c7ed6095b664e8",
+      "source": 250
+    },
+    {
+      "name": "layer64",
+      "sha256": "e4ac08e5a3a78abd9bad4f6a9f860ccaec451cb25e416a3e6426a667f256287e",
+      "source": 250
+    },
+    {
+      "name": "layer65",
+      "sha256": "bc63b99cf47d764a10a2829d2f79a4328c2f131dee301e9335e825394097aeff",
+      "source": 250
+    },
+    {
+      "name": "layer66",
+      "sha256": "9b445942420eb704b806f4d1bd1f555b7e5660b97ab61ecd79af0c9d51a87275",
+      "source": 250
+    },
+    {
+      "name": "layer67",
+      "sha256": "7d6d54d883a4a15fbdc72bce1604b68ad618022d5cf00122b2c7ba5bae7884f2",
+      "source": 250
+    },
+    {
+      "name": "layer68",
+      "sha256": "adfe92dbf48795789cda8b99ae06736ec7fdc1650d6c026355fe9eb3ff0a1dab",
+      "source": 250
+    },
+    {
+      "name": "layer69",
+      "sha256": "33750e2beca05ff8a11883211c1494a18c08312921b4df699d574a63a8877932",
+      "source": 250
+    },
+    {
+      "name": "layer70",
+      "sha256": "bece0d42e665ceda25e73e7f5298a4b05cc29c34f2f4694a1ca5c0c0d573e87f",
+      "source": 250
+    },
+    {
+      "name": "layer71",
+      "sha256": "07245e31da2d8ac390a1876c363c81e93920efc43ac388e60c935eb8357c9d63",
+      "source": 250
+    },
+    {
+      "name": "layer72",
+      "sha256": "613e97cf5684de0640d5e2a636acdcca8fb0dbf51b1aa2923c3cf9451e694cb0",
+      "source": 250
+    },
+    {
+      "name": "layer73",
+      "sha256": "0dcdecf3e469992644de7b96b684bc44a417e161c6de85dfedf9b91ad927eadb",
+      "source": 250
+    },
+    {
+      "name": "layer74",
+      "sha256": "060d80ad924bda3e4d27f8abb6897cee84a034941324ee67199cb8857a523e10",
+      "source": 249
+    },
+    {
+      "name": "layer75",
+      "sha256": "d64cd9fa916c3f43c7348c31f6caa137379f34eba59c93e469afd81c96ddd583",
+      "source": 249
+    },
+    {
+      "name": "layer76",
+      "sha256": "630974c3877ed7029b1fa1c3b4035e0404aaaafef21de38d5f3a274676e04e44",
+      "source": 249
+    },
+    {
+      "name": "layer77",
+      "sha256": "060d80ad924bda3e4d27f8abb6897cee84a034941324ee67199cb8857a523e10",
+      "source": 249
+    },
+    {
+      "name": "layer78",
+      "sha256": "630974c3877ed7029b1fa1c3b4035e0404aaaafef21de38d5f3a274676e04e44",
+      "source": 249
+    },
+    {
+      "name": "layer79",
+      "sha256": "d64cd9fa916c3f43c7348c31f6caa137379f34eba59c93e469afd81c96ddd583",
+      "source": 249
+    },
+    {
+      "name": "layer80",
+      "sha256": "060d80ad924bda3e4d27f8abb6897cee84a034941324ee67199cb8857a523e10",
+      "source": 249
+    },
+    {
+      "name": "layer81",
+      "sha256": "64e31c2af9c8dde222d806db8a7745ff7d6a3c1d59489f5366de9c2883cd1782",
+      "source": 249
+    },
+    {
+      "name": "layer82",
+      "sha256": "1dde4c3d8f7e13ba12a2902d4bad73e8b87e4d831ade49278d9bff2e5cf06ddb",
+      "source": 249
+    },
+    {
+      "name": "layer83",
+      "sha256": "797a874ddcf7c5e8e0f9a806ecfb8527ed5faa92d719ba7a8c446bf3b0a2131b",
+      "source": 249
+    },
+    {
+      "name": "layer84",
+      "sha256": "d64cd9fa916c3f43c7348c31f6caa137379f34eba59c93e469afd81c96ddd583",
+      "source": 249
+    },
+    {
+      "name": "layer85",
+      "sha256": "fe4458d6a4b7a45f8961646eeed11d0d0aa7445db716443af16ad2c587bec13e",
+      "source": 249
+    },
+    {
+      "name": "layer86",
+      "sha256": "c7a47502acb6fc70dd8562bab7b7605dfe33d5bd4f68d16978e9bc2128643159",
+      "source": 249
+    },
+    {
+      "name": "layer87",
+      "sha256": "d64cd9fa916c3f43c7348c31f6caa137379f34eba59c93e469afd81c96ddd583",
+      "source": 249
+    },
+    {
+      "name": "layer88",
+      "sha256": "630974c3877ed7029b1fa1c3b4035e0404aaaafef21de38d5f3a274676e04e44",
+      "source": 249
+    },
+    {
+      "name": "layer89",
+      "sha256": "39646d80859b39107f8ef306e4c8b008a38c194ab4f1029b92631044b593c8d1",
+      "source": 249
+    },
+    {
+      "name": "layer90",
+      "sha256": "26840c055c054a93485fd5d3e84a90a5b13acb78d64226f3d2c1210e11a06466",
+      "source": 249
+    },
+    {
+      "name": "layer91",
+      "sha256": "64cb79cf4fb0db7e4f074bdccd4b97cf7ece53580bc4ac9ccedb48ef094495b5",
+      "source": 249
+    },
+    {
+      "name": "layer92",
+      "sha256": "64cb79cf4fb0db7e4f074bdccd4b97cf7ece53580bc4ac9ccedb48ef094495b5",
+      "source": 249
+    }
+  ],
+  "render_verification": {
+    "adapter": "hardware apple metal-3",
+    "baseline_release_limit": {
+      "budget": 2585000,
+      "measured": 2594021,
+      "scope": "Unmodified fivelab build exceeded existing release size budget; local dev build used for the visual experiment. No budget or source changes."
+    },
+    "ready": true,
+    "scene_ready": true,
+    "screenshot_private_path": "~/ore-nwn-private/aribeth/everglade-aribeth-v1.png",
+    "screenshot_sha256": "13b41c942782283806a41894a04261eb735b715972ea70e20c7dd3b50f68c110",
+    "source_commit": "9f9ba23ccf2a91f9f2d748ebf9e19e1a0ca44f87",
+    "url": "http://127.0.0.1:8949/worlds/everglade-experimental",
+    "viewport": [
+      1600,
+      1000
+    ],
+    "wasm_mode": "dev",
+    "wasm_sha256": "399c0f1ac13783a1ce8b9a0c2a6f644129a871d87e2983414552eb77d9288968"
+  },
+  "scope": "Private static/rest-pose visual specimen in the actual Everglade Experimental environment draw; no NPC, collision, inherited animation, or native NWN lighting parity.",
+  "source_assets": [
+    {
+      "container": "data/models_01.bif",
+      "extension": "mdl",
+      "index": 228,
+      "key": "data/nwn_base.key",
+      "kind": "bif",
+      "name": "c_aribeth",
+      "offset": 4175262,
+      "resource_id": 239075556,
+      "sha256": "30c8b97ea0962c12ce1ed697c9af133f127cd40fe726d4c9ce3931ed89831186",
+      "size": 132556,
+      "type_id": 2002
+    },
+    {
+      "container": "data/textures_01.bif",
+      "extension": "tga",
+      "index": 44,
+      "key": "data/nwn_base.key",
+      "kind": "bif",
+      "name": "c_aribeth",
+      "offset": 718287,
+      "resource_id": 46137388,
+      "sha256": "672cea56fdaa5b00efeee88b7d7201633163e8bed991436d89dfa9c139c7488f",
+      "size": 65616,
+      "type_id": 3
+    }
+  ],
+  "source_id": 248,
+  "source_model": "c_aribeth",
+  "stored_sha256": "7b86868905ed6436f243861a7f7ae24f2e9d733e2bbc32b40bdb25606eeff264",
+  "texture_dimensions": [
+    128,
+    128
+  ],
+  "texture_sha256": "557baf02f1d02e614e30840b46d1f10d0d8a1b00b61a18109c0329e27187e35b",
+  "triangles": 1242,
+  "vertices": 1969
+}
