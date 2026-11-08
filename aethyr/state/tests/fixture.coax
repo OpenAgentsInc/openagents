@@ -1,0 +1,29 @@
+#test "playable fixture adopts real decoded roots and rebuilds navigation only from the published cut" #steps 200000000 #traversal 2000000000 {
+ s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});
+ #assert s[0].world[0].variant==0 && s[0].world[0].facts.phase==0 && !s[0].nav_reached && s[0].credit.credits==0;
+ state_lab_action(s[..],0);for i:0..<6 {state_lab_frame(s[..],15625000);}
+ #assert s[0].world[0].facts.values[0].integer==1 && s[0].nav_reached && s[0].credit.credits==1;
+ #assert s[0].clock.ticks==6 && s[0].world[0].facts.tick==6 && s[0].pool[0].loading==0;
+}
+#test "each stale subsystem receipt refuses the entire publication before a clean retry" #steps 300000000 #traversal 3000000000 {
+ for role:0..<6 {s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});s[0].fail_role=role;state_lab_action(s[..],0);observed:=false;
+  for i:0..<6 {state_lab_frame(s[..],15625000);if s[0].failed_roles!=0 && s[0].last_status==STATE_WAITING {observed=true;#assert s[0].world[0].variant==0 && s[0].world[0].facts.values[0].integer==0 && s[0].credit.credits==0;}}
+  #assert observed && s[0].failed_roles==(cast(u32)1<<cast(u32)role) && s[0].world[0].facts.values[0].integer==1 && s[0].credit.credits==1;
+ }
+}
+#test "cold restore needs only declared facts the content sources and the separate credit domain" #steps 200000000 #traversal 2000000000 {
+ s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});state_lab_action(s[..],0);for i:0..<6 {state_lab_frame(s[..],15625000);}state_lab_action(s[..],3);
+ bytes:=s[0].saved;n:=s[0].saved_n;credit:=s[0].credit;#assert state_lab_open(s[..],credit) && !s[0].nav_reached && s[0].world[0].facts.values[0].integer==0;
+ #assert state_lab_import(s[..],bytes[0..<n]);state_lab_action(s[..],4);for i:0..<6 {state_lab_frame(s[..],15625000);}
+ #assert s[0].world[0].facts.values[0].integer==1 && s[0].nav_reached && s[0].credit.credits==1;
+ state_lab_action(s[..],10);state_lab_frame(s[..],15625000);#assert s[0].last_status==STATE_STALE && s[0].world[0].facts.values[0].integer==1;
+}
+#test "the fluid volume and scheduled actor follow restored facts while credit is outside retry" #steps 300000000 #traversal 3000000000 {
+ s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});#assert state_lab_fluid(s[..],3,3)==0;
+ state_lab_action(s[..],1);for i:0..<6 {state_lab_frame(s[..],15625000);}#assert state_lab_fluid(s[..],3,3)>0.9;
+ state_lab_action(s[..],0);for i:0..<6 {state_lab_frame(s[..],15625000);}#assert s[0].credit.credits==1;
+ state_lab_action(s[..],3);#assert s[0].saved_n>0;
+ state_lab_action(s[..],6);for i:0..<6 {state_lab_frame(s[..],15625000);}
+ #assert s[0].world[0].facts.values[0].integer==0 && s[0].world[0].facts.values[2].integer==1 && s[0].credit.credits==1;
+ state_lab_action(s[..],4);for i:0..<6 {state_lab_frame(s[..],15625000);}#assert s[0].world[0].facts.values[0].integer==1 && s[0].credit.credits==1;
+}

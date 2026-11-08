@@ -1,0 +1,66 @@
+// One prepared fact batch per caller-owned paid step. No independent clock.
+#load "declarations.coax";
+#authority;
+STATE_OK :: 0; STATE_INVALID :: 1; STATE_DUPLICATE :: 2; STATE_STALE :: 3; STATE_REFERENCE :: 4; STATE_CAPACITY :: 5; STATE_VARIANT :: 6; STATE_WAITING :: 7; STATE_SCHEMA :: 8;
+STATE_COUNTER_MAX :: 1000000000;
+StateStore :: struct {
+ ready:bool;schema:int;version:int;epoch:int #counter;revision:int #counter;tick:int= -1;sequence:int #counter;
+ day:int;phase:int;values:[STATE_FIELDS]StateValue;
+}
+StatePatch :: struct {id:int;value:StateValue;}
+StateCommand :: struct {
+ epoch:int;revision:int;tick:int;sequence:int;event:int= -1;
+ jump:bool;day:int;phase:int;n:int;patches:[8]StatePatch;
+}
+StateDraft :: struct {status:int=STATE_INVALID;state:StateStore;day_changed:bool;}
+#load "tests/lifecycle.coax";
+state_construct :: (schema:StateSchema,refs:StateRefs,epoch:int)->StateStore #effects(all) {
+ s:StateStore;if epoch<1 || epoch>STATE_COUNTER_MAX || !state_schema_ok(schema,refs) {return s;}
+ s.ready=true;s.schema=schema.id;s.version=schema.revision;s.epoch=epoch;
+ for i:0..<schema.n {s.values[i]=schema.fields[i].initial;}return s;
+}
+state_store_ok :: (schema:StateSchema,s:StateStore,refs:StateRefs)->bool #effects(all) {
+ if !s.ready || s.schema!=schema.id || s.version!=schema.revision || s.epoch<1 || s.epoch>STATE_COUNTER_MAX || s.revision<0 || s.revision>STATE_COUNTER_MAX || s.tick< -1 || s.tick>STATE_COUNTER_MAX || s.sequence<0 || s.sequence>STATE_COUNTER_MAX || s.day<0 || s.day>STATE_COUNTER_MAX || s.phase<0 || s.phase>=schema.day_ticks {return false;}
+ for i:0..<schema.n {if !state_value_ok(schema.fields[i],s.values[i],refs) {return false;}}return true;
+}
+state_reset_values :: (schema:StateSchema,s:[]StateStore,event:int) #effects(all) {
+ for i:0..<schema.n {f:=schema.fields[i];if (f.resets & (1<<event))!=0 {s[0].values[i]=f.initial;}}
+}
+state_prepare :: (schema:StateSchema,live:StateStore,refs:StateRefs,fence:int,c:StateCommand)->StateDraft #effects(all) {
+ if !state_schema_ok(schema,refs) || !state_store_ok(schema,live,refs) {return StateDraft.{};}
+ if live.epoch!=fence || c.epoch!=fence || c.revision!=live.revision || c.tick!=live.tick+1 {return StateDraft.{status=STATE_STALE};}
+ if c.sequence<0 || c.event< -1 || c.event>STATE_EDITOR || c.n<0 || c.n>8 {return StateDraft.{};}
+ operation:=c.event>=0 || c.n>0 || c.jump;
+ if operation && c.sequence==0 {return StateDraft.{};}
+ if c.sequence>0 && c.sequence<=live.sequence {return StateDraft.{status=STATE_DUPLICATE};}
+ next:=[1]StateStore.[live];next[0].tick=c.tick;next[0].revision=add_sat(next[0].revision,1);
+ if c.sequence>0 {next[0].sequence=c.sequence;}
+ if c.event!=STATE_LOAD {next[0].phase+=1;if next[0].phase==schema.day_ticks {next[0].phase=0;next[0].day+=1;}}
+ if c.jump {next[0].day=c.day;next[0].phase=c.phase;}
+ changed:=next[0].day!=live.day;
+ if changed {state_reset_values(schema,next[..],STATE_DAY);}
+ if c.event>=0 {state_reset_values(schema,next[..],c.event);}
+ for i:0..<c.n {
+  p:=c.patches[i];at:=state_find(schema,p.id);
+  if at<0 || !state_value_ok(schema.fields[at],p.value,refs) {return StateDraft.{};}
+  for j:0..<i {if c.patches[j].id==p.id {return StateDraft.{};}}
+  next[0].values[at]=p.value;
+ }
+ if !state_store_ok(schema,next[0],refs) {return StateDraft.{};}
+ return StateDraft.{status=STATE_OK,state=next[0],day_changed=changed};
+}
+// Temporary retry carries local retry-participating facts only. It never owns
+// external progression, resource handles or the caller's simulation clock.
+StateRetry :: struct {valid:bool;schema:int;version:int;epoch:int;values:[STATE_FIELDS]StateValue;}
+state_retry_capture :: (schema:StateSchema,s:StateStore,refs:StateRefs)->StateRetry #effects(all) {
+ r:StateRetry;if !state_schema_ok(schema,refs) || !state_store_ok(schema,s,refs) {return r;}
+ r.valid=true;r.schema=s.schema;r.version=s.version;r.epoch=s.epoch;r.values=s.values;return r;
+}
+state_retry_prepare :: (schema:StateSchema,live:StateStore,refs:StateRefs,fence:int,c:StateCommand,snapshot:StateRetry)->StateDraft #effects(all) {
+ if c.n!=0 || c.jump {return StateDraft.{};}
+ d:=state_prepare(schema,live,refs,fence,c);if d.status!=STATE_OK {return d;}
+ if c.event!=STATE_RETRY || !snapshot.valid || snapshot.schema!=schema.id || snapshot.version!=schema.revision || snapshot.epoch!=fence {return StateDraft.{status=STATE_STALE};}
+ for i:0..<schema.n {if schema.fields[i].retry {d.state.values[i]=snapshot.values[i];}}
+ reset:=[1]StateStore.[d.state];if d.day_changed {state_reset_values(schema,reset[..],STATE_DAY);}state_reset_values(schema,reset[..],STATE_RETRY);d.state=reset[0];
+ if !state_store_ok(schema,d.state,refs) {return StateDraft.{status=STATE_REFERENCE};}return d;
+}

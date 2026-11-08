@@ -1,0 +1,23 @@
+// The engine-owned fixture's once-per-instance external credit. This is a
+// domain model, not a wallet or server XP adapter. It is never in FST1/retry.
+#load "../checkpoint.coax" as checkpoints;
+#authority;
+StateCredit :: struct {operation:int;credits:int #counter;}
+state_credit_key :: ()->int #effects(all) {return checkpoints.checkpoint_op(1,0,10);}
+#test "the declared gate grant survives retries and old saves without duplication or stale-owner writes" {
+ key:=checkpoints.checkpoint_op(1,0,10);#assert state_credit_key()==key;
+ s:StateCredit;
+ #assert state_credit_award(s,key,1,1,false).credits==0;
+ #assert state_credit_award(s,key,1,2,true).credits==0;
+ #assert state_credit_award(s,key+1,1,1,true).credits==0;
+ s=state_credit_award(s,key,1,1,true);#assert s.credits==1 && s.operation==key;
+ for i:0..<10 {s=state_credit_award(s,key,1,1,true);#assert s.credits==1;}
+ #assert state_credit_valid(StateCredit.{}) && state_credit_valid(s);
+ #assert !state_credit_valid(StateCredit.{operation=key}) && !state_credit_valid(StateCredit.{credits=1}) && !state_credit_valid(StateCredit.{operation=key,credits=2});
+ #assert state_credit_award(StateCredit.{credits=2},key,1,1,true).credits==2;
+}
+state_credit_valid :: (s:StateCredit)->bool #effects(all) {return (s.credits==0 && s.operation==0) || (s.credits==1 && s.operation==state_credit_key());}
+state_credit_award :: (s:StateCredit,operation:int,epoch:int,fence:int,broken:bool)->StateCredit #effects(all) {
+ if !state_credit_valid(s) || epoch!=fence || operation!=state_credit_key() || !broken {return s;}
+ return StateCredit.{operation=operation,credits=1};
+}

@@ -125,3 +125,6 @@ latency-client 26000
 # The rig's jump clips (da98ab3915) and scene directions (7d153a7c14): 439,903 bytes measured 2026-11-07; about 5% headroom.
 animationlab 460000
 ocarinalab 190000
+
+# Declared facts, six-root variants and bounded runtime qualification (#12991).
+state-lab 170000

@@ -1,0 +1,42 @@
+// Engine-owned, playable top-down adoption fixture for declared-state profile 1.
+// The one FrameClock pays both the shared walker and the fact/variant update.
+#module "aethyr.state.fixture";
+#load "restore.coax";
+#load "fixture-policy.coax";
+#load "../walk.coax" as walking;
+#load "../loop.coax" as clock;
+#load "../input.coax" as input;
+#load "../nav/grid.coax" as navigation;
+#load "../query-fluid.coax" as fluids;
+#load "../query.coax" as queries;
+#load "../assets.coax" as assets;
+#load "../world/cells.coax" as cells;
+#load "../render/registry.coax" as gpu;
+#load "../space.coax" as space;
+#load "../query-scene.coax" as scene;
+#load "../query-filter.coax" as filters;
+#load "../../apps/openagents-web/save.coax";
+#load "../../coax/lib/net/ws.coax";
+
+STATE_LAB_RESOURCES :: 12;
+StateLabLoad :: struct {live:bool;due:int;key:ResourceLoadKey;}
+StateLabRect :: struct {x:f32;y:f32;w:f32;h:f32;r:f32;g:f32;b:f32;kind:f32;}
+StateLab :: struct {
+ ready:bool;clock:clock.FrameClock;world:[1]StateWorld;schema:StateSchema;variants:StateVariants;
+ manifest:[1]ResourceManifest;identity:[1]assets.AssetId;pool:[1]ResourceStream;inbox:[1]HostInboxQueue;registry:[1]gpu.RenderRegistry;
+ source:[STATE_LAB_RESOURCES][256]u8;length:[STATE_LAB_RESOURCES]int;specs:[STATE_LAB_RESOURCES]ResourceSpec;
+ pins:[STATE_LAB_RESOURCES]ResourceReference;loads:[4]StateLabLoad;
+ bodies:[STATE_LAB_RESOURCES]cells.CellBody;boxes:[STATE_LAB_RESOURCES][6]f32;vertices:[STATE_LAB_RESOURCES][16]f32;pixels:[20]u8;
+ player:walking.Player;walls:[42]f32;credit:StateCredit;retry:StateRetry;pending_retry:StateRetry;saved:[8192]u8;saved_n:int;saved_version:int;
+ intent:int= -1;command:StateCommand;words:[STATE_SAVE_WORDS]int;word_n:int;last_status:int;waiting:int;refused:int;applied:int;
+ key_x:f32;key_y:f32;keys:[18]input.InputPress;script:bool;visual:bool;fail_role:int= -1;next_fault:int;failed_roles:u32;
+ nav_owner:int= -1;walk:[128]bool;cost:[128]f32;heap:[128]s32;slot:[128]s32;order:[128]s32;nav_reached:bool;
+ rects:[128]StateLabRect;rect_n:int;info:[512]u8;info_n:int;width:f32=960;height:f32=640;
+ observe:bool;trace_n:int;trace_metrics:[19][28]f64;trace_ids:[19]assets.AssetId;
+}
+#load "tests/fixture.coax";
+#load "fixture-assets.coax";
+#load "fixture-runtime.coax";
+#load "fixture-view.coax";
+#load "fixture-metrics.coax";
+#load "fixture-trial.coax";

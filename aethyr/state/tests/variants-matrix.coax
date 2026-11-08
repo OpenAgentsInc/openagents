@@ -1,0 +1,110 @@
+#test "predicate admission and evaluation cover table endpoints and each invalid typed address" {
+ schema:=state_test_schema();refs:StateRefs;s:=state_construct(schema,refs,1);terms:[33]StateTerm;terms[0]=StateTerm.{id=10,value=state_bool(false)};
+ for i:1..<33 {terms[i]=StateTerm.{op=STATE_NOT,a=i-1};}
+ p:=state_program(schema,refs,terms[0..<32],31);#assert p.valid && state_program_eval(p,s)==0;
+ over:=p;over.n=33;#assert state_program_eval(over,s)== -1;
+ pair:=terms;pair[1]=StateTerm.{op=STATE_AND,a=0,b=0};both:=state_program(schema,refs,pair[0..<2],1);#assert both.valid && state_program_eval(both,s)==1;
+ pair[1].op=STATE_OR;both=state_program(schema,refs,pair[0..<2],1);#assert both.valid && state_program_eval(both,s)==1;
+ #assert !state_program(schema,refs,terms[0..<0],0).valid && !state_program(schema,refs,terms[..],0).valid;
+ #assert !state_program(schema,refs,terms[0..<1],-1).valid && !state_program(schema,refs,terms[0..<1],1).valid;
+ badschema:=schema;badschema.fields[0].name="";#assert !state_program(badschema,refs,terms[0..<1],0).valid;
+ for which:0..<10 {bad:=terms;
+  if which==0 {bad[0].id=99;}else if which==1 {bad[0].value=state_int(0);}else if which==2 {bad[0].op=STATE_LESS;}
+  else if which==3 {bad[1].a= -1;}else if which==4 {bad[1].a=1;}else if which==5 {bad[1].op=STATE_AND;bad[1].b= -1;}
+  else if which==6 {bad[1].op=STATE_OR;bad[1].b=1;}else if which==7 {bad[1].op=5;}else if which==8 {bad[0].op= -1;}else {bad[1].op=STATE_LESS;bad[1].id=10;bad[1].value=state_bool(true);}
+  #assert !state_program(schema,refs,bad[0..<2],1).valid;
+ }
+ p=state_program(schema,refs,terms[0..<2],1);
+ for which:0..<15 {bad:=p;live:=s;
+  if which==0 {bad.valid=false;}else if which==1 {live.ready=false;}else if which==2 {bad.schema=0;}else if which==3 {bad.version=0;}
+  else if which==4 {bad.n=0;}else if which==5 {bad.n=33;}else if which==6 {bad.root= -1;}else if which==7 {bad.root=2;}
+  else if which==8 {bad.terms[0].field= -1;}else if which==9 {bad.terms[0].field=32;}else if which==10 {bad.terms[1].a= -1;}
+  else if which==11 {bad.terms[1].a=1;}else if which==12 {bad.terms[1].op=STATE_AND;bad.terms[1].b= -1;}
+  else if which==13 {bad.terms[1].op=STATE_OR;bad.terms[1].b=1;}else {bad.terms[1].op=5;bad.terms[1].b=0;}
+  #assert state_program_eval(bad,live)== -1;
+ }
+ one:=[1]StateTerm.[StateTerm.{id=20,op=STATE_LESS,value=state_int(1)}];p=state_program(schema,refs,one[..],0);
+ #assert state_program_eval(p,s)==1;s.values[1]=state_int(1);#assert state_program_eval(p,s)==0;
+ forged:=p;forged.terms[0].value=state_bool(true);#assert state_program_eval(forged,s)== -1;
+ schema.fields[1].kind=STATE_SCALAR;schema.fields[1].initial=StateValue.{kind=STATE_SCALAR};one[0].value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[0.5,0,0]};p=state_program(schema,refs,one[..],0);s=state_construct(schema,refs,1);
+ #assert p.valid && state_program_eval(p,s)==1;s.values[1].number[0]=0.5;#assert state_program_eval(p,s)==0;s.values[1]=state_bool(false);#assert state_program_eval(p,s)== -1;
+ a:=StateValue.{kind=STATE_VECTOR,number=[3]f64.[0,1,2]};#assert state_equal(a,a);
+ for i:0..<8 {b:=a;if i==0 {b.kind=1;}else if i==1 {b.integer=1;}else if i==2 {b.entity=1;}else if i==3 {b.generation=1;}else if i==4 {b.content=assets.asset_id("different");}else {b.number[i-5]+=1;}#assert !state_equal(a,b);}
+}
+StateVariantFixture :: struct {schema:StateSchema;m:[1]ResourceManifest;pool:[1]ResourceStream;v:StateVariants;world:[1]StateWorld;ticket:StateVariantTicket;q:[1]HostInboxQueue;r:[1]gpu.RenderRegistry;}
+state_variant_fixture :: ()->StateVariantFixture #effects(all) {
+ f:StateVariantFixture;refs:StateRefs;f.schema=state_test_schema();f.m[0]=rs_fixture_manifest();f.pool[0]=rs_fixture_stream(f.m[..]);f.v=state_test_variants(f.schema,f.m[..]);f.world[0].facts=state_construct(f.schema,refs,1);
+ c:=state_test_command(f.world[0].facts);c.sequence=1;c.n=1;c.patches[0]=StatePatch.{id=10,value=state_bool(true)};f.ticket=state_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,c);
+ f.q[0]=hiq_open(HOST_INBOX_CAPACITY);#assert gpu.rr_open(f.r[..],gpu.RrLimits.{slots=16,words=10000})==gpu.RrStatus.ok;src:=PNG_ONE;
+ for i:[2]int.[0,2] {load:=resource_stream_request(f.pool[..],f.m[..],f.q[..],f.r[..],i);#assert load.status==ResourceStreamStatus.ok;#assert rs_fixture_complete(f.pool[..],f.m[..],f.q[..],load.key,src[..])==ResourceStreamStatus.ok;}
+ accepted:[3]ResourceAccepted;#assert resource_stream_publish(f.pool[..],f.m[..],1,accepted[..])==2;return f;
+}
+#test "variant admission validates all six roots every predicate and the full bounded catalogue" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;
+ for which:0..<17 {v:=f.v;m:=f.m;schema:=f.schema;
+  if which==0 {v.n=0;}else if which==1 {v.n=17;}else if which==2 {m[0].valid=false;}else if which==3 {schema.id=0;}
+  else if which==4 {v.items[0].id=0;}else if which==5 {v.items[1].id=1;}else if which==6 {v.items[0].test.valid=false;}
+  else if which==7 {v.items[0].test.schema=0;}else if which==8 {v.items[0].test.version=0;}else if which==9 {v.items[0].test.n=0;}
+  else if which==10 {v.items[0].test.n=33;}else if which==11 {v.items[0].test.root= -1;}else if which==12 {v.items[0].test.terms[0].field=1;}
+  else if which==13 {v.items[0].owners[0]= -1;}else if which==14 {v.items[0].owners[5]=3;}else if which==15 {v.items[0].content[0]=assets.asset_id("wrong");}else {v.items[0].test.terms[0].id=99;}
+  #assert !state_variants_ok(schema,refs,m[..],v);
+ }
+ #assert !state_variants_ok(f.schema,refs,f.m[0..<0],f.v);
+ wide:=f.m;wide[0].count=64;#assert state_variants_ok(f.schema,refs,wide[..],f.v);wide[0].count=65;#assert !state_variants_ok(f.schema,refs,wide[..],f.v);
+ single:=f.v;single.n=1;#assert state_variants_ok(f.schema,refs,f.m[..],single);
+ beyond:=f.v;beyond.items[0].owners[0]=f.m[0].count;beyond.items[0].content[0]=f.m[0].entries[f.m[0].count].plan.content;#assert !state_variants_ok(f.schema,refs,f.m[..],beyond);
+ full:=f.v;full.n=16;for i:0..<16 {full.items[i]=f.v.items[0];full.items[i].id=i+1;full.items[i].owners[5]=0;full.items[i].content[5]=f.m[0].entries[0].plan.content;}
+ #assert state_variants_ok(f.schema,refs,f.m[..],full);full.n=1;#assert state_choose(full,f.world[0].facts)==0;
+ full.n=0;#assert state_choose(full,f.world[0].facts)== -1;full.n=17;#assert state_choose(full,f.world[0].facts)== -1;
+ full=f.v;full.items[0].test.valid=false;#assert state_choose(full,f.world[0].facts)== -1;
+ chain:[32]StateTerm;chain[0]=StateTerm.{id=10,value=state_bool(false)};for i:1..<32 {chain[i]=StateTerm.{op=STATE_NOT,a=i-1};}
+ full=f.v;full.items[0].test=state_program(f.schema,refs,chain[..],31);#assert state_variants_ok(f.schema,refs,f.m[..],full);
+ full.n=16;for i:0..<16 {full.items[i]=f.v.items[1];full.items[i].id=i+1;}full.items[15].test=f.v.items[0].test;
+ #assert state_variants_ok(f.schema,refs,f.m[..],full) && state_choose(full,f.world[0].facts)==15;
+ full.n=17;#assert !state_variants_ok(f.schema,refs,f.m[..],full) && state_choose(full,f.world[0].facts)== -1;
+}
+#test "variant zero publishes and retires safely and replacement resource epochs do not alias old slots" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;c:=state_test_command(f.world[0].facts);
+ zero:=state_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,c);#assert zero.status==STATE_OK && zero.variant==0;
+ load:=resource_stream_request(f.pool[..],f.m[..],f.q[..],f.r[..],1);src:=PNG_ONE;#assert load.status==ResourceStreamStatus.ok && rs_fixture_complete(f.pool[..],f.m[..],f.q[..],load.key,src[..])==ResourceStreamStatus.ok;
+ accepted:[3]ResourceAccepted;#assert resource_stream_publish(f.pool[..],f.m[..],2,accepted[..])==1;
+ #assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,zero)==STATE_OK && f.world[0].variant==0;
+ again:=zero;again.command=state_test_command(f.world[0].facts);#assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,again)==STATE_INVALID;
+ fresh:=state_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,again.command);#assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,fresh)==STATE_OK;
+ // A lost device's old lease cache has another resource epoch. The complete
+ // new closure may reuse slot numbers; it cannot reuse current-epoch claims.
+ for i:0..<6 {f.world[0].members[i].epoch=6;}
+ reused:=fresh;reused.command=state_test_command(f.world[0].facts);#assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,reused)==STATE_OK;
+}
+#test "publication checks live claims epochs identities duplicates and old-world aliases before one assignment" #steps 100000000 #traversal 1000000000 {
+ base:=state_variant_fixture();refs:StateRefs;
+ for which:0..<14 {f:=base;t:=f.ticket;expected:=STATE_WAITING;
+  if which==0 {t.members[0].slot= -1;}else if which==1 {t.members[0].slot=64;}else if which==2 {t.members[0].epoch=0;}
+  else if which==3 {f.pool[0].claims[t.members[0].slot].live=false;}else if which==4 {t.members[0].serial+=1;}
+  else if which==5 {f.pool[0].claims[t.members[0].slot].root=0;}else if which==6 {f.pool[0].owners[2].phase=ResourceOwnerPhase.loading;}
+  else if which==7 {f.pool[0].owners[2].content=assets.asset_id("wrong");}else if which==8 {t.members[5]=t.members[0];expected=STATE_INVALID;}
+  else if which==9 {t.variant=0;expected=STATE_VARIANT;}else if which==10 {t.status=STATE_INVALID;expected=STATE_INVALID;}
+  else if which==11 {t.command.revision=1;expected=STATE_STALE;}else if which==12 {f.v.n=0;expected=STATE_VARIANT;}else {f.pool[0].manifest=assets.asset_id("foreign");expected=STATE_VARIANT;}
+  #assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,t)==expected;
+  #assert f.world[0].variant== -1 && f.world[0].facts.tick== -1 && f.world[0].facts.sequence==0;
+ }
+ f:=base;#assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0..<0],1,f.ticket)==STATE_INVALID;
+ #assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,f.ticket)==STATE_OK;
+ old:=f.ticket;reuse:=old;reuse.command=state_test_command(f.world[0].facts);
+ #assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,reuse)==STATE_INVALID;
+ next:=state_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,reuse.command);#assert next.status==STATE_OK;
+ #assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,next)==STATE_OK;
+ state_variant_drop(f.pool[..],f.m[..],old);#assert f.pool[0].owners[2].refs==6;
+ state_variant_drop(f.pool[..],f.m[..],next);#assert f.pool[0].owners[2].refs==0;
+}
+#test "failed variant acquisition rolls back only its own partial claims and never the live world" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;c:=f.ticket.command;
+ bad:=c;bad.epoch=2;#assert state_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,bad).status==STATE_STALE;
+ badv:=f.v;badv.n=0;#assert state_variant_hold(f.schema,refs,f.m[..],f.pool[..],badv,f.world[0],1,c).status==STATE_VARIANT;
+ badv=f.v;badv.n=1;#assert state_variant_hold(f.schema,refs,f.m[..],f.pool[..],badv,f.world[0],1,c).status==STATE_VARIANT;
+ badpool:=f.pool;badpool[0].valid=false;#assert state_variant_hold(f.schema,refs,f.m[..],badpool[..],f.v,f.world[0],1,c).status==STATE_VARIANT;
+ for i:0..<55 {ref:=resource_stream_hold(f.pool[..],f.m[..],0);#assert ref.slot>=0;}
+ #assert state_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,c).status==STATE_CAPACITY;
+ count:=0;for claim:f.pool[0].claims {if claim.live {count+=1;}}#assert count==61 && f.pool[0].owners[2].refs==6;
+ #assert f.world[0].facts.sequence==0;state_variant_drop(f.pool[..],f.m[..],StateVariantTicket.{});
+}

@@ -1,0 +1,99 @@
+state_test_command :: (s:StateStore)->StateCommand #effects(all) {return StateCommand.{epoch=s.epoch,revision=s.revision,tick=s.tick+1};}
+#test "construction resets and each recorded lifecycle batch use exactly the declared defaults" {
+ refs:StateRefs;schema:=state_test_schema();s:=state_construct(schema,refs,1);#assert s.ready && s.values[0].integer==0;
+ for event:0..<7 {
+  schema.fields[0].resets=1<<event;s=state_construct(schema,refs,1);s.values[0]=state_bool(true);s.values[1]=state_int(2);
+  c:=state_test_command(s);c.sequence=1;c.event=event;d:=state_prepare(schema,s,refs,1,c);
+  #assert d.status==STATE_OK && d.state.values[0].integer==0 && d.state.values[1].integer==ifx event==STATE_NEW || event==STATE_DAY then 0 else 2;
+  again:=state_prepare(schema,d.state,refs,1,state_command_retry(c,d.state));#assert again.status==STATE_DUPLICATE;
+ }
+}
+state_command_retry :: (c:StateCommand,s:StateStore)->StateCommand #effects(all) {next:=c;next.revision=s.revision;next.tick=s.tick+1;return next;}
+#test "publication preparation fences stale owners revisions times types and conflicting patches" {
+ refs:StateRefs;schema:=state_test_schema();s:=state_construct(schema,refs,3);c:=state_test_command(s);c.sequence=1;c.n=1;c.patches[0]=StatePatch.{id=10,value=state_bool(true)};
+ d:=state_prepare(schema,s,refs,3,c);#assert d.status==STATE_OK && d.state.values[0].integer==1 && d.state.tick==0 && d.state.revision==1;
+ #assert state_prepare(schema,s,refs,4,c).status==STATE_STALE;
+ c.revision=1;#assert state_prepare(schema,s,refs,3,c).status==STATE_STALE;c.revision=0;
+ c.tick=1;#assert state_prepare(schema,s,refs,3,c).status==STATE_STALE;c.tick=0;
+ c.patches[0].value=state_int(1);#assert state_prepare(schema,s,refs,3,c).status==STATE_INVALID;
+ c.patches[0]=StatePatch.{id=99,value=state_bool(true)};#assert state_prepare(schema,s,refs,3,c).status==STATE_INVALID;
+ c.patches[0]=StatePatch.{id=10,value=state_bool(true)};c.n=2;c.patches[1]=c.patches[0];#assert state_prepare(schema,s,refs,3,c).status==STATE_INVALID;
+ #assert s.values[0].integer==0 && s.revision==0;
+}
+#test "midnight and recorded time jumps reset day facts once while visual time is absent" {
+ refs:StateRefs;schema:=state_test_schema();schema.day_ticks=2;s:=state_construct(schema,refs,1);s.values[1]=state_int(2);
+ d:=state_prepare(schema,s,refs,1,state_test_command(s));#assert d.status==STATE_OK && !d.day_changed && d.state.phase==1;
+ d=state_prepare(schema,d.state,refs,1,state_test_command(d.state));#assert d.status==STATE_OK && d.day_changed && d.state.day==1 && d.state.phase==0 && d.state.values[1].integer==0;
+ c:=state_test_command(d.state);c.sequence=1;c.jump=true;c.day=17;c.phase=1;
+ d=state_prepare(schema,d.state,refs,1,c);#assert d.status==STATE_OK && d.day_changed && d.state.day==17 && d.state.phase==1;
+}
+#test "retry restores only local participating facts and preserves operation watermarks" {
+ refs:StateRefs;schema:=state_test_schema();schema.fields[2].retry=false;s:=state_construct(schema,refs,1);snapshot:=state_retry_capture(schema,s,refs);
+ s.values[0]=state_bool(true);s.values[2]=state_int(1);s.sequence=7;c:=state_test_command(s);c.sequence=8;c.event=STATE_RETRY;
+ d:=state_retry_prepare(schema,s,refs,1,c,snapshot);#assert d.status==STATE_OK && d.state.values[0].integer==0 && d.state.values[2].integer==1 && d.state.sequence==8;
+ snapshot.epoch=2;#assert state_retry_prepare(schema,s,refs,1,c,snapshot).status==STATE_STALE;
+ snapshot=state_retry_capture(schema,s,refs);c.n=1;#assert state_retry_prepare(schema,s,refs,1,c,snapshot).status==STATE_INVALID;c.n=0;c.jump=true;#assert state_retry_prepare(schema,s,refs,1,c,snapshot).status==STATE_INVALID;
+ c.jump=false;schema.fields[0].resets=32;snapshot.values[0]=state_bool(true);#assert state_retry_prepare(schema,s,refs,1,c,snapshot).state.values[0].integer==0;
+ schema.day_ticks=1;s=state_construct(schema,refs,1);snapshot=state_retry_capture(schema,s,refs);snapshot.values[1]=state_int(2);c=state_test_command(s);c.sequence=1;c.event=STATE_RETRY;
+ #assert state_retry_prepare(schema,s,refs,1,c,snapshot).state.values[1].integer==0;
+}
+#test "store boundary matrix refuses every invalid scalar and preserves all admitted endpoints" {
+ refs:StateRefs;schema:=state_test_schema();s:=state_construct(schema,refs,1);
+ for which:0..<19 {
+  bad:=s;
+  if which==0 {bad.ready=false;}else if which==1 {bad.schema=1;}else if which==2 {bad.version=2;}
+  else if which==3 {bad.epoch=0;}else if which==4 {bad.epoch=1000000001;}
+  else if which==5 {bad.revision= -1;}else if which==6 {bad.revision=1000000001;}
+  else if which==7 {bad.tick= -2;}else if which==8 {bad.tick=1000000001;}
+  else if which==9 {bad.sequence= -1;}else if which==10 {bad.sequence=1000000001;}
+  else if which==11 {bad.day= -1;}else if which==12 {bad.day=1000000001;}
+  else if which==13 {bad.phase= -1;}else if which==14 {bad.phase=schema.day_ticks;}
+  else if which==15 {bad.values[0]=state_int(0);}else if which==16 {bad.values[2]=state_int(2);}
+  else if which==17 {bad.values[0]=state_bool(true);bad.values[0].integer=2;}else {bad.values[1]=state_int(-1);}
+  #assert !state_store_ok(schema,bad,refs);
+ }
+ s.epoch=1000000000;s.revision=1000000000;s.tick=1000000000;s.sequence=1000000000;s.day=1000000000;s.phase=schema.day_ticks-1;
+ #assert state_store_ok(schema,s,refs) && state_construct(schema,refs,1000000000).ready;
+ #assert !state_construct(schema,refs,0).ready && !state_construct(schema,refs,1000000001).ready;
+ schema.n=0;#assert !state_construct(schema,refs,1).ready;
+}
+#test "command boundaries and retry fences are all-or-nothing without consuming clocks or IDs" {
+ refs:StateRefs;schema:=state_test_schema();s:=state_construct(schema,refs,1);base:=state_test_command(s);
+ for which:0..<15 {
+  c:=base;c.sequence=1;
+  if which==0 {c.epoch=0;}else if which==1 {c.sequence= -1;}else if which==2 {c.sequence=1000000001;}
+  else if which==3 {c.event= -2;}else if which==4 {c.event=7;}else if which==5 {c.n= -1;}else if which==6 {c.n=9;}
+  else if which==7 {c.jump=true;c.day= -1;}else if which==8 {c.jump=true;c.day=1000000001;}
+  else if which==9 {c.jump=true;c.phase= -1;}else if which==10 {c.jump=true;c.phase=schema.day_ticks;}
+  else if which==11 {c.event=STATE_NEW;c.sequence=0;}else if which==12 {c.n=1;c.sequence=0;}
+  else if which==13 {c.jump=true;c.sequence=0;}else {c.n=1;c.patches[0]=StatePatch.{id=20,value=state_int(3)};}
+  #assert state_prepare(schema,s,refs,1,c).status!=STATE_OK;
+ }
+ c:=base;c.sequence=1000000000;#assert state_prepare(schema,s,refs,1,c).status==STATE_OK;
+ s.sequence=7;c=state_test_command(s);d:=state_prepare(schema,s,refs,1,c);#assert d.status==STATE_OK && d.state.sequence==7;
+ c.sequence=7;#assert state_prepare(schema,s,refs,1,c).status==STATE_DUPLICATE;
+ c.sequence=8;c.jump=true;c.day=1000000000;c.phase=0;d=state_prepare(schema,s,refs,1,c);#assert d.status==STATE_OK && d.state.day==1000000000 && d.state.phase==0;
+ s.revision=1000000000;c=state_test_command(s);#assert state_prepare(schema,s,refs,1,c).status!=STATE_OK;
+ s=state_construct(schema,refs,1);s.tick=1000000000;c=state_test_command(s);#assert state_prepare(schema,s,refs,1,c).status!=STATE_OK;
+ s=state_construct(schema,refs,1);s.day=1000000000;s.phase=schema.day_ticks-1;#assert state_prepare(schema,s,refs,1,state_test_command(s)).status!=STATE_OK;
+ bad:=schema;bad.id=0;#assert state_prepare(bad,s,refs,1,state_test_command(s)).status!=STATE_OK;
+ s.ready=false;#assert state_prepare(schema,s,refs,1,state_test_command(s)).status!=STATE_OK && !state_retry_capture(schema,s,refs).valid;
+ s=state_construct(schema,refs,1);snapshot:=state_retry_capture(schema,s,refs);c=state_test_command(s);c.sequence=1;c.event=STATE_RETRY;
+ for which:0..<6 {r:=snapshot;cmd:=c;if which==0 {cmd.epoch=2;}else if which==1 {cmd.event=STATE_ENTER;}else if which==2 {r.valid=false;}else if which==3 {r.schema=4;}else if which==4 {r.version=2;}else {r.values[0]=state_int(1);}got:=state_retry_prepare(schema,s,refs,1,cmd,r);#assert got.status==ifx which==5 then STATE_REFERENCE else STATE_STALE;}
+ #assert !state_retry_capture(bad,s,refs).valid;
+ schema.day_ticks=1;schema.fields[0].resets=8;s=state_construct(schema,refs,1);s.values[0]=state_bool(true);c=state_test_command(s);c.sequence=1;c.event=STATE_DAY;
+ d=state_prepare(schema,s,refs,1,c);#assert d.status==STATE_OK && d.day_changed && d.state.values[0].integer==0;
+ schema.day_ticks=4;s=state_construct(schema,refs,1);s.phase=3;s.day=5;c=state_test_command(s);c.sequence=1;c.event=STATE_LOAD;d=state_prepare(schema,s,refs,1,c);#assert d.status==STATE_OK && d.state.phase==3 && d.state.day==5 && !d.day_changed;
+}
+#test "invalid source state cannot be repaired by a patch and single or full patch batches need IDs" {
+ refs:StateRefs;schema:=state_test_schema();s:=state_construct(schema,refs,1);bad:=schema;bad.fields[0].name="";
+ #assert state_prepare(bad,s,refs,1,state_test_command(s)).status==STATE_INVALID;
+ c:=state_test_command(s);c.n=1;c.sequence=1;c.patches[0]=StatePatch.{id=10,value=state_bool(false)};s.values[0]=state_int(7);
+ #assert state_prepare(schema,s,refs,1,c).status==STATE_INVALID;
+ s=state_construct(schema,refs,1);c.sequence=0;#assert state_prepare(schema,s,refs,1,c).status==STATE_INVALID;
+ full:=StateSchema.{id=1,n=8};letters:="ABCDEFGH";for i:0..<8 {full.fields[i]=StateField.{id=i+1,name=letters[i..<i+1]};}
+ s=state_construct(full,refs,1);c=state_test_command(s);c.sequence=1;c.n=8;for i:0..<8 {c.patches[i]=StatePatch.{id=i+1,value=state_int(1)};}
+ d:=state_prepare(full,s,refs,1,c);#assert d.status==STATE_OK;for i:0..<8 {#assert d.state.values[i].integer==1;}
+ c.n=9;#assert state_prepare(full,s,refs,1,c).status==STATE_INVALID;
+ s.tick=999999999;c=state_test_command(s);#assert state_prepare(full,s,refs,1,c).status==STATE_OK;
+}

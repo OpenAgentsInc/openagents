@@ -1,0 +1,52 @@
+#test "raw value slots lengths schema capacity and exact output extents are canonical" #steps 100000000 {
+ #assert state_fmin(1,2)==1 && state_fmin(2,1)==1 && state_fmax(1,2)==2 && state_fmax(2,1)==2;
+ #assert f64_bits(state_fmin(-0.0,0.0))==0 && f64_bits(state_fmin(0.0,-0.0))==f64_bits(-0.0);
+ #assert f64_bits(state_fmax(-0.0,0.0))==0 && f64_bits(state_fmax(0.0,-0.0))==f64_bits(-0.0);
+ raw:[15]int;raw[0]=STATE_VECTOR;raw[2]=cast,trunc(int)f64_bits(0.25);raw[3]=cast,trunc(int)f64_bits(-1.0);raw[4]=cast,trunc(int)f64_bits(2.0);raw[5]=1;raw[6]=2;raw[14]=4294967295;
+ got:=state_value_read(raw[..],0);#assert got.kind==STATE_VECTOR && got.number[0]==0.25 && got.number[1]== -1 && got.number[2]==2 && got.entity==1 && got.generation==2 && got.content.words[7]==4294967295;
+ #assert state_value_read(raw[0..<14],0).kind== -1;raw[2]=0x7ff8000000000001;#assert state_value_read(raw[..],0).kind== -1;
+ refs:StateRefs;s:=StateSchema.{id=1,n=32};letters:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
+ for i:0..<32 {s.fields[i]=StateField.{id=i+1,name=letters[i..<i+1]};}
+ none:assets.AssetId;#assert !assets.asset_same(state_schema_id(s),none);
+ single:=s;single.n=1;name:[63]u8;for i:0..<63 {name[i]='x';}single.fields[0].name=cast(string)name[..];#assert !assets.asset_same(state_schema_id(single),none);
+ live:=state_construct(s,refs,1);words:[STATE_SAVE_WORDS+1]int;n:=state_save(s,live,refs,words[0..<STATE_SAVE_WORDS]);#assert n==STATE_SAVE_WORDS;
+ c:=state_test_command(live);c.sequence=1;c.event=STATE_LOAD;#assert state_load(s,s,live,refs,1,c,words[0..<n],StateMigration.{}).draft.status==STATE_OK;
+ single=state_test_schema();for i:0..<single.n {single.fields[i].saved=false;}live=state_construct(single,refs,1);n=state_save(single,live,refs,words[0..<26]);#assert n==26;
+ c=state_test_command(live);c.sequence=1;c.event=STATE_LOAD;#assert state_load(single,single,live,refs,1,c,words[0..<n],StateMigration.{}).draft.status==STATE_OK;
+ c.event=STATE_ENTER;#assert state_load(single,single,live,refs,1,c,words[0..<n],StateMigration.{}).draft.status==STATE_INVALID;c.event=STATE_LOAD;c.n=1;#assert state_load(single,single,live,refs,1,c,words[0..<n],StateMigration.{}).draft.status==STATE_INVALID;c.n=0;c.jump=true;#assert state_load(single,single,live,refs,1,c,words[0..<n],StateMigration.{}).draft.status==STATE_INVALID;
+ c.jump=false;c.epoch=2;#assert state_load(single,single,live,refs,1,c,words[0..<n],StateMigration.{}).draft.status==STATE_STALE;
+}
+#test "migration repair is explicit per field and never drops a fact without an approved discard" #steps 100000000 {
+ refs:StateRefs;source:=state_test_schema();old:=state_construct(source,refs,1);old.values[0]=state_bool(true);old.sequence=99;old.phase=3;
+ words:[STATE_SAVE_WORDS]int;n:=state_save(source,old,refs,words[..]);target:=source;target.revision=2;target.fields[0]=source.fields[1];target.fields[1]=source.fields[2];target.n=2;
+ live:=state_construct(target,refs,1);c:=state_test_command(live);c.sequence=1;c.event=STATE_LOAD;m:=StateMigration.{approved=true,source=state_schema_id(source),target=state_schema_id(target)};
+ #assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_SCHEMA;
+ m.discard=1;loaded:=state_load(source,target,live,refs,1,c,words[0..<n],m);#assert loaded.draft.status==STATE_OK && loaded.draft.state.sequence==99;
+ target=source;target.revision=2;target.fields[1]=source.fields[2];target.n=2;live=state_construct(target,refs,1);m.target=state_schema_id(target);m.discard=2;#assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_OK;
+ m.discard=1;
+ target=source;target.revision=2;target.fields[0].saved=false;live=state_construct(target,refs,1);m.target=state_schema_id(target);#assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_OK;m.discard=0;#assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_SCHEMA;
+ // Equal-revision edits cannot be disguised as migrations; foreign schema IDs cannot be coerced.
+ target=source;target.fields[0].name="rename";live=state_construct(target,refs,1);m.target=state_schema_id(target);#assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_SCHEMA;
+ target=source;target.id=3;target.revision=2;live=state_construct(target,refs,1);m.target=state_schema_id(target);#assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_SCHEMA;
+ target=source;target.revision=2;target.day_ticks=2;live=state_construct(target,refs,1);m.target=state_schema_id(target);#assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_REFERENCE;
+ target=source;target.revision=2;target.fields[0].resets=17;live=state_construct(target,refs,1);m.target=state_schema_id(target);loaded=state_load(source,target,live,refs,1,c,words[0..<n],m);#assert loaded.draft.status==STATE_OK && loaded.draft.state.values[0].integer==0;
+ // A load preserves unsaved day-local state until its declared LOAD reset, even at midnight.
+ source.fields[1].saved=false;n=state_save(source,old,refs,words[..]);live=state_construct(source,refs,1);live.values[1]=state_int(2);live.day=5;live.phase=source.day_ticks-1;
+ loaded=state_load(source,source,live,refs,1,c,words[0..<n],StateMigration.{});#assert loaded.draft.status==STATE_OK && loaded.draft.state.values[1].integer==2;
+}
+#test "scalar vector integer and reference migration cases return precise repair receipts" #steps 100000000 {
+ refs:StateRefs;
+ for kind:[3]int.[STATE_INT,STATE_SCALAR,STATE_VECTOR] {
+  source:=StateSchema.{id=1,n=1};v:=StateValue.{kind=kind,number=[3]f64.[0,0,0]};if kind==STATE_INT {v.integer= -2;}else if kind==STATE_SCALAR {v.number[0]= -0.5;}else {v.number=[3]f64.[-1,0.5,2];}
+  source.fields[0]=StateField.{id=1,name="sample",kind=kind,low= -3,high=3,minimum= -3,maximum=3,initial=v};old:=state_construct(source,refs,1);words:[STATE_SAVE_WORDS]int;n:=state_save(source,old,refs,words[..]);
+  target:=source;target.revision=2;target.fields[0].low=0;target.fields[0].high=1;target.fields[0].minimum=0.5;target.fields[0].maximum=1;target.fields[0].initial=StateValue.{kind=kind};if kind==STATE_SCALAR {target.fields[0].initial.number[0]=0.5;}else if kind==STATE_VECTOR {target.fields[0].initial.number=[3]f64.[0.5,0.5,0.5];}
+  live:=state_construct(target,refs,1);c:=state_test_command(live);c.sequence=1;c.event=STATE_LOAD;m:=StateMigration.{approved=true,source=state_schema_id(source),target=state_schema_id(target)};
+  #assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_REFERENCE;
+  m.clamp=1;got:=state_load(source,target,live,refs,1,c,words[0..<n],m);#assert got.draft.status==STATE_OK && got.repaired==1;
+  if kind==STATE_INT {#assert got.draft.state.values[0].integer==0;}else {#assert got.draft.state.values[0].number[0]==0.5;if kind==STATE_VECTOR {#assert got.draft.state.values[0].number[1]==0.5 && got.draft.state.values[0].number[2]==1;}}
+ }
+ source:=state_test_schema();old:=state_construct(source,refs,1);words:[STATE_SAVE_WORDS]int;n:=state_save(source,old,refs,words[..]);target:=source;target.revision=2;target.fields[0].kind=STATE_INT;target.fields[0].initial=state_int(0);live:=state_construct(target,refs,1);c:=state_test_command(live);c.sequence=1;c.event=STATE_LOAD;m:=StateMigration.{approved=true,source=state_schema_id(source),target=state_schema_id(target),clamp=1};
+ #assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_SCHEMA;
+ ents:=[1]StateEntity.[StateEntity.{id=1,generation=1}];refs.entities=ents[..];source.fields[0]=StateField.{id=10,name="follow",kind=STATE_ENTITY,optional=true,initial=StateValue.{kind=STATE_ENTITY}};old=state_construct(source,refs,1);n=state_save(source,old,refs,words[..]);target=source;target.revision=2;target.fields[0].optional=false;target.fields[0].initial=StateValue.{kind=STATE_ENTITY,entity=1,generation=1};live=state_construct(target,refs,1);m.source=state_schema_id(source);m.target=state_schema_id(target);
+ #assert state_load(source,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_REFERENCE;
+}

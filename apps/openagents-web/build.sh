@@ -264,6 +264,9 @@ cmp -s "$here/nip01.wgsl" "$here/pylon.wgsl" || cp "$here/nip01.wgsl" "$here/pyl
 pylon=$!
 # Keep the public join command identical to the tested source, never a fork.
 cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
+# Engine-owned declared-state adoption and host-conformance fixture (#12991).
+COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/../../aethyr/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
+state_lab=$!
 # /worlds: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
 "$here/../../coax/web/wasm.sh" "$here/realmlist.coax" "$here/realmlist-face.c" "$here/build/realmlist.wasm" &
 realmlist=$!
@@ -349,3 +352,5 @@ wait "$animelab"
 [[ -z "$newland" ]] || wait "$newland"
 wait "$connectpylon"
 wait "$changelog"
+
+wait "$state_lab"

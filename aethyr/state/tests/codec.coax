@@ -1,0 +1,29 @@
+#test "fact payloads preserve only saved facts and refuse every truncation or changed word" #steps 250000000 #traversal 1000000000 {
+ refs:StateRefs;schema:=state_test_schema();schema.fields[1].saved=false;schema.fields[1].resets=17;s:=state_construct(schema,refs,2);s.values[0]=state_bool(true);s.values[1]=state_int(2);s.sequence=5;
+ words:[STATE_SAVE_WORDS]int;n:=state_save(schema,s,refs,words[..]);#assert n>0;
+ c:=state_test_command(s);c.sequence=6;c.event=STATE_LOAD;
+ got:=state_load(schema,schema,s,refs,2,c,words[0..<n],StateMigration.{});
+ #assert got.draft.status==STATE_OK && got.draft.state.values[0].integer==1 && got.draft.state.values[1].integer==0 && got.draft.state.sequence==6;
+ for size:0..<n {#assert state_load(schema,schema,s,refs,2,c,words[0..<size],StateMigration.{}).draft.status!=STATE_OK;}
+ for i:0..<n {bad:=words;bad[i]=bad[i]^1;#assert state_load(schema,schema,s,refs,2,c,bad[0..<n],StateMigration.{}).draft.status!=STATE_OK;}
+ #assert state_save(schema,s,refs,words[0..<n-1])==0;
+}
+#test "migration is pinned approved defaults and explicit bounded repair not ownership or identity coercion" {
+ refs:StateRefs;old:=state_test_schema();s:=state_construct(old,refs,1);s.values[1]=state_int(2);words:[STATE_SAVE_WORDS]int;n:=state_save(old,s,refs,words[..]);
+ target:=old;target.revision=2;target.n=4;target.fields[3]=StateField.{id=40,name="new.flag",initial=state_int(1)};
+ live:=state_construct(target,refs,1);live.values[3]=state_int(0);c:=state_test_command(live);c.sequence=1;c.event=STATE_LOAD;
+ m:=StateMigration.{approved=true,source=state_schema_id(old),target=state_schema_id(target),defaults=8};
+ got:=state_load(old,target,live,refs,1,c,words[0..<n],m);#assert got.draft.status==STATE_OK && got.defaulted==8 && got.repaired==0 && got.draft.state.values[3].integer==1;
+ m.approved=false;#assert state_load(old,target,live,refs,1,c,words[0..<n],m).draft.status==STATE_SCHEMA;m.approved=true;
+ m.defaults=0;#assert state_load(old,target,live,refs,1,c,words[0..<n],m).draft.status!=STATE_OK;m.defaults=8;
+ target.fields[1].high=1;live=state_construct(target,refs,1);m.target=state_schema_id(target);
+ #assert state_load(old,target,live,refs,1,c,words[0..<n],m).draft.status!=STATE_OK;
+ m.clamp=2;got=state_load(old,target,live,refs,1,c,words[0..<n],m);#assert got.draft.status==STATE_OK && got.repaired==2 && got.draft.state.values[1].integer==1;
+ target.fields[1].owner=8;m.target=state_schema_id(target);live=state_construct(target,refs,1);#assert state_load(old,target,live,refs,1,c,words[0..<n],m).draft.status!=STATE_OK;
+}
+#test "newer snapshots stale owners and changed schema identities refuse before publication" {
+ refs:StateRefs;schema:=state_test_schema();s:=state_construct(schema,refs,1);words:[STATE_SAVE_WORDS]int;n:=state_save(schema,s,refs,words[..]);c:=state_test_command(s);c.sequence=1;c.event=STATE_LOAD;
+ #assert state_load(schema,schema,s,refs,2,c,words[0..<n],StateMigration.{}).draft.status!=STATE_OK;
+ different:=schema;different.fields[0].name="different";#assert !assets.asset_same(state_schema_id(schema),state_schema_id(different));
+ newer:=schema;newer.revision=2;#assert state_load(newer,schema,s,refs,1,c,words[0..<n],StateMigration.{}).draft.status!=STATE_OK;
+}

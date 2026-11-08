@@ -233,3 +233,7 @@ reader's query.
 ([Coax chapter 21](../../coax/book/ch21-targets.md)), and R16 snapshots
 ([Coax roadmap](../../coax/ROADMAP.md)), which reuse the same construction
 when restoring.
+
+## Declared-state adoption (#12991)
+
+Construction now also has a bounded semantic schema: full field IDs/names, typed defaults, scopes and reset masks. NEW and every reset use the same admitted defaults, independent of native/Wasm zeroed storage. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.

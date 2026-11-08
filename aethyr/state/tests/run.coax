@@ -1,0 +1,20 @@
+// Native CPU receipt for the same fixed-step source compiled to Wasm.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../fixture.coax" as lab;
+#run_steps 250000000;
+state_receipt :: (s:[]lab.StateLab,name:string) {
+ hash:[64]u8;#assert lab.state_lab_hash(s,hash[..]);print("{\"case\":\"%\",\"hash\":\"%\",\"metrics\":{",name,cast(string)hash[..]);
+ for i:0..<lab.STATE_LAB_METRICS {if i>0 {print(",");}print("\"%\":%",lab.state_lab_metric_name(i),lab.state_lab_metric(s,i));}print("}}");
+}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) {return 2;}fps:=args_whole(args_at(args[..],0));if fps!=30 && fps!=60 && fps!=144 && fps!=0 {return 2;}
+ s:[1]lab.StateLab;if !lab.state_lab_trial(s[..],fps,false,true) {return 1;}
+ contract:[64]u8;#assert lab.state_lab_contract_hex(fps,contract[..]);print("{\"profile\":\"declared-state-1\",\"contract_hash\":\"%\",\"fps\":%,\"trace\":[",cast(string)contract[..],fps);
+ for row:0..<s[0].trace_n {if row>0 {print(",");}hash:[64]u8;#assert lab.state_lab_trace_hash(s[..],row,hash[..]);print("{\"hash\":\"%\",\"metrics\":{",cast(string)hash[..]);
+  for i:0..<lab.STATE_LAB_METRICS {if i>0 {print(",");}print("\"%\":%",lab.state_lab_metric_name(i),lab.state_lab_trace_metric(s[..],row,i));}print("}}");
+ }print("],\"final\":");state_receipt(s[..],"final");print("}");
+ if args_count(args[..])>1 {path:=args_at(args[..],1);if !fs_write(path,cast(string)s[0].saved[0..<s[0].saved_n]) {return 1;}}
+ return ifx s[0].clock.ticks==640 then 0 else 1;
+}

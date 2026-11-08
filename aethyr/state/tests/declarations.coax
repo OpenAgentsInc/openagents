@@ -1,0 +1,77 @@
+state_test_schema :: ()->StateSchema #effects(all) {
+ s:=StateSchema.{id=12991,n=3};
+ s.fields[0]=StateField.{id=10,name="gate.broken",kind=STATE_BOOL,initial=state_bool(false)};
+ s.fields[1]=StateField.{id=20,name="npc.schedule",scope=STATE_ACTOR,owner=7,high=2,resets=9};
+ s.fields[2]=StateField.{id=30,name="area.fluid",scope=STATE_AREA,owner=4,high=1};return s;
+}
+#test "declarations bind full names IDs scope owners defaults and bounded tables" {
+ refs:StateRefs;s:=state_test_schema();#assert state_schema_ok(s,refs);
+ #assert state_find(s,10)==0 && state_find(s,30)==2 && state_find(s,99)== -1;
+ bad:=s;bad.fields[1].id=10;#assert !state_schema_ok(bad,refs); // ID/hash collision never aliases names
+ bad=s;bad.fields[1].name="gate.broken";#assert !state_schema_ok(bad,refs);
+ bad=s;bad.fields[1].owner=0;#assert !state_schema_ok(bad,refs);
+ bad=s;bad.n=33;#assert !state_schema_ok(bad,refs);bad.n=0;#assert !state_schema_ok(bad,refs);
+ bad=s;bad.fields[1].initial.integer=3;#assert !state_schema_ok(bad,refs);
+}
+#test "typed values reject noncanonical inactive words nonfinite scalars and stale references" {
+ refs:StateRefs;f:=StateField.{id=1,name="value",high=5};
+ #assert state_value_ok(f,state_int(5),refs) && !state_value_ok(f,state_int(6),refs) && !state_value_ok(f,state_bool(true),refs);
+ v:=state_int(1);v.number[1]=1;#assert !state_value_ok(f,v,refs);
+ f.kind=STATE_SCALAR;v=StateValue.{kind=STATE_SCALAR,number=[3]f64.[0.5,0,0]};#assert state_value_ok(f,v,refs);
+ v.number[0]=1.1;#assert !state_value_ok(f,v,refs); // NaN/Inf bit patterns are checked before decoding in the codec.
+ f.kind=STATE_VECTOR;v=StateValue.{kind=STATE_VECTOR,number=[3]f64.[0,0.5,1]};#assert state_value_ok(f,v,refs);
+ v.number[2]=1.1;#assert !state_value_ok(f,v,refs);
+ ents:=[1]StateEntity.[StateEntity.{id=7,generation=2}];ids:=[1]assets.AssetId.[assets.asset_id("gate")];refs=StateRefs.{entities=ents[..],content=ids[..]};
+ f.kind=STATE_ENTITY;v=StateValue.{kind=STATE_ENTITY,entity=7,generation=2};#assert state_value_ok(f,v,refs);
+ v.generation=1;#assert !state_value_ok(f,v,refs);v.entity=0;v.generation=0;#assert !state_value_ok(f,v,refs);f.optional=true;#assert state_value_ok(f,v,refs);
+ f.kind=STATE_CONTENT;v=StateValue.{kind=STATE_CONTENT,content=ids[0]};#assert state_value_ok(f,v,refs);
+ v.content=assets.asset_id("other");#assert !state_value_ok(f,v,refs);
+}
+#test "every inactive value word and both boolean encodings have canonical meaning" {
+ refs:StateRefs;f:=StateField.{kind=STATE_BOOL};#assert state_bool(true).integer==1 && state_bool(false).integer==0;
+ for i:0..<4 {v:=StateValue.{kind=STATE_BOOL,integer=i};#assert state_value_ok(f,v,refs)==(i<2);}
+ f=StateField.{};
+ for i:0..<14 {
+  v:=state_int(0);
+  if i<3 {v.number[i]=1;}else if i==3 {v.entity=1;}else if i==4 {v.generation=1;}else {v.content.words[(i-5)%8]=1;}
+  #assert !state_value_ok(f,v,refs);
+ }
+ f.kind=STATE_CONTENT;v:=StateValue.{kind=STATE_CONTENT};#assert !state_value_ok(f,v,refs);f.optional=true;#assert state_value_ok(f,v,refs);
+ f.kind=6;v.kind=6;#assert !state_value_ok(f,v,refs);
+ f.kind=STATE_SCALAR;v=StateValue.{kind=STATE_SCALAR,integer=1};#assert !state_value_ok(f,v,refs);
+ f.kind=STATE_ENTITY;f.optional=true;v=StateValue.{kind=STATE_ENTITY,entity=1};#assert !state_value_ok(f,v,refs);
+ v=StateValue.{kind=STATE_ENTITY,generation=1};#assert !state_value_ok(f,v,refs);
+ ents:[65]StateEntity;ids:[65]assets.AssetId;
+ for i:0..<65 {ents[i]=StateEntity.{id=i+1,generation=1};ids[i]=assets.asset_id("one");}
+ refs=StateRefs.{entities=ents[0..<64],content=ids[0..<64]};v=StateValue.{kind=STATE_ENTITY,entity=1,generation=1};#assert state_value_ok(f,v,refs);
+ refs.entities=ents[..];#assert !state_value_ok(f,v,refs);refs.entities=ents[0..<0];#assert !state_value_ok(f,v,refs);
+ f.kind=STATE_CONTENT;v=StateValue.{kind=STATE_CONTENT,content=ids[0]};#assert state_value_ok(f,v,refs);refs.content=ids[..];#assert !state_value_ok(f,v,refs);
+ refs.content=ids[0..<0];#assert !state_value_ok(f,v,refs);
+ ents[0]=StateEntity.{id= -1,generation=1};refs.entities=ents[0..<1];f.kind=STATE_ENTITY;v=StateValue.{kind=STATE_ENTITY,entity= -1,generation=1};#assert !state_value_ok(f,v,refs);
+}
+#test "schema boundary matrix covers complete tables names scopes reset masks and finite bounds" {
+ refs:StateRefs;full:=StateSchema.{id=1,n=32};letters:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";
+ for i:0..<32 {full.fields[i]=StateField.{id=i+1,name=letters[i..<i+1]};}
+ #assert state_schema_ok(full,refs) && state_find(full,32)==31;
+ single:=full;single.n=1;#assert state_schema_ok(single,refs);
+ empty:=full;empty.n=0;#assert state_find(empty,1)== -1;empty.n= -1;#assert state_find(empty,1)== -1;empty.n=33;#assert state_find(empty,1)== -1;
+ for which:0..<18 {
+  s:=full;
+  if which==0 {s.id=0;}else if which==1 {s.revision=0;}else if which==2 {s.n=33;}else if which==3 {s.fields[0].id=0;}
+  else if which==4 {s.fields[0].name="";}else if which==5 {s.fields[0].kind= -1;}else if which==6 {s.fields[0].kind=6;}
+  else if which==7 {s.fields[0].scope= -1;s.fields[0].owner=1;}else if which==8 {s.fields[0].scope=5;s.fields[0].owner=1;}else if which==9 {s.fields[0].resets= -1;}
+  else if which==10 {s.fields[0].resets=128;}else if which==11 {s.fields[0].owner=1;}else if which==12 {s.fields[0].low=2;}
+  else if which==13 {s.fields[0].minimum= -1000000000001;}else if which==14 {s.fields[0].maximum=1000000000001;}
+  else if which==15 {s.fields[0].minimum=2;}else if which==16 {s.day_ticks=0;}else {s.day_ticks=5529601;}
+  #assert !state_schema_ok(s,refs);
+ }
+ for scope:0..<5 {s:=full;s.fields[0].scope=scope;s.fields[0].owner=ifx scope==STATE_WORLD || scope==STATE_OPTIONS then 0 else 1;#assert state_schema_ok(s,refs);}
+ for resets:[2]int.[0,127] {s:=full;s.fields[0].resets=resets;#assert state_schema_ok(s,refs);}
+ for edge:[2]f64.[-1000000000000,1000000000000] {s:=full;s.fields[0].kind=STATE_SCALAR;s.fields[0].minimum=edge;s.fields[0].maximum=edge;s.fields[0].initial=StateValue.{kind=STATE_SCALAR,number=[3]f64.[edge,0,0]};#assert state_schema_ok(s,refs);}
+ s:=full;s.fields[0].low=0;s.fields[0].high=0;#assert state_schema_ok(s,refs);s.day_ticks=1;#assert state_schema_ok(s,refs);
+ name:[64]u8;for i:0..<64 {name[i]='a';}s.fields[0].name=cast(string)name[0..<63];#assert state_schema_ok(s,refs);s.fields[0].name=cast(string)name[..];#assert !state_schema_ok(s,refs);
+ for ch:[4]u8.[32,33,126,127] {name[0]=ch;s.fields[0].name=cast(string)name[0..<1];#assert state_schema_ok(s,refs)==(ch==33 || ch==126);}
+ s=full;s.fields[0].kind=STATE_CONTENT;s.fields[0].optional=true;s.fields[0].initial=StateValue.{kind=STATE_CONTENT};#assert state_schema_ok(s,refs);
+ for edge:[2]int.[-1000000000000,1000000000000] {s=full;s.fields[0].low=edge;s.fields[0].high=edge;s.fields[0].initial=state_int(edge);#assert state_schema_ok(s,refs);}
+ s=full;s.fields[0].low= -1000000000001;#assert !state_schema_ok(s,refs);s=full;s.fields[0].high=1000000000001;#assert !state_schema_ok(s,refs);
+}

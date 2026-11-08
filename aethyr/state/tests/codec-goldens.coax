@@ -1,0 +1,38 @@
+state_rich_schema :: ()->StateSchema #effects(all) {
+ s:=StateSchema.{id=7,revision=3,day_ticks=64,n=6};
+ s.fields[0]=StateField.{id=11,name="world.flag",kind=STATE_BOOL,retry=false,resets=127,low= -9,high=9,minimum= -3,maximum=5,initial=state_bool(true)};
+ s.fields[1]=StateField.{id=12,name="area.counter",scope=STATE_AREA,owner=1,saved=false,resets=0,low= -17,high=42,minimum= -2,maximum=3,optional=true,initial=state_int(-8)};
+ s.fields[2]=StateField.{id=13,name="actor.height",kind=STATE_SCALAR,scope=STATE_ACTOR,owner=9,resets=4,minimum= -1,maximum=2,initial=StateValue.{kind=STATE_SCALAR,number=[3]f64.[0.25,0,0]}};
+ s.fields[3]=StateField.{id=14,name="player.pos",kind=STATE_VECTOR,scope=STATE_PLAYER,owner=2,resets=64,minimum= -3,maximum=3,initial=StateValue.{kind=STATE_VECTOR,number=[3]f64.[-1,0.5,2]}};
+ s.fields[4]=StateField.{id=15,name="options.follow",kind=STATE_ENTITY,scope=STATE_OPTIONS,retry=false,resets=2,optional=true,initial=StateValue.{kind=STATE_ENTITY,entity=1,generation=1}};
+ s.fields[5]=StateField.{id=16,name="world.asset",kind=STATE_CONTENT,resets=8,initial=StateValue.{kind=STATE_CONTENT,content=assets.asset_id("gate")}};return s;
+}
+state_test_hex :: (id:assets.AssetId)->[64]u8 #effects(all) {out:[64]u8;#assert assets.asset_hex(id,out[..]);return out;}
+state_rehash :: (words:[]int) #effects(all) {id:=state_words_id(words[0..<words.count-8]);for i:0..<8 {words[words.count-8+i]=cast(int)id.words[i];}}
+#test "independent Python LE64 SHA goldens bind every declaration and each typed payload lane" #steps 100000000 {
+ ents:=[1]StateEntity.[StateEntity.{id=1,generation=1}];ids:=[1]assets.AssetId.[assets.asset_id("gate")];refs:=StateRefs.{entities=ents[..],content=ids[..]};schema:=state_rich_schema();
+ h:=state_test_hex(state_schema_id(schema));#assert cast(string)h[..]=="850c5ed76b1ec0406ec090f6aaf9eff61ce1953007cf6e8f57cc959a051e654e";
+ s:=state_construct(schema,refs,3);s.tick=17;s.day=19;s.phase=23;s.sequence=29;s.revision=33;words:[STATE_SAVE_WORDS]int;n:=state_save(schema,s,refs,words[..]);#assert n==106;
+ h=state_test_hex(state_words_id(words[0..<n]));#assert cast(string)h[..]=="d714f7a3c60595b09c9345575a2cb7f1d7c45a782e29e80cafedc9189d8f1d08";
+ live:=s;live.day=3;live.phase=4;live.sequence=31;c:=state_test_command(live);c.sequence=32;c.event=STATE_LOAD;got:=state_load(schema,schema,live,refs,3,c,words[0..<n],StateMigration.{});#assert got.draft.status==STATE_OK && got.draft.state.day==19 && got.draft.state.phase==23 && got.draft.state.tick==18 && got.draft.state.sequence==32 && got.draft.day_changed;
+ // The flag explicitly resets on load; every other field round-trips.
+ for i:1..<6 {a:[15]int;b:[15]int;state_value_words(a[..],0,s.values[i]);state_value_words(b[..],0,got.draft.state.values[i]);for k:0..<15 {#assert a[k]==b[k];}}
+ zero:[4097]int;h=state_test_hex(state_words_id(zero[0..<4096]));#assert cast(string)h[..]=="c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479";
+ none:assets.AssetId;#assert assets.asset_same(state_words_id(zero[..]),none);
+ bad:=schema;bad.n=0;#assert assets.asset_same(state_schema_id(bad),none);bad.n=33;#assert assets.asset_same(state_schema_id(bad),none);
+ name:[64]u8;for i:0..<64 {name[i]='x';}bad=schema;bad.fields[0].name=cast(string)name[..];#assert assets.asset_same(state_schema_id(bad),none);
+}
+#test "well-checksummed hostile snapshots cannot hide unknown fields nonfinite data stale refs or bad headers" #steps 250000000 #traversal 1000000000 {
+ refs:StateRefs;schema:=state_test_schema();s:=state_construct(schema,refs,1);words:[STATE_SAVE_WORDS]int;n:=state_save(schema,s,refs,words[..]);c:=state_test_command(s);c.sequence=1;c.event=STATE_LOAD;
+ for which:0..<18 {
+  bad:=words;expected:=STATE_SCHEMA;
+  if which==0 {bad[0]=0;}else if which==1 {bad[1]=2;}else if which==2 {bad[2]=0;}else if which==3 {bad[3]=2;}
+  else if which==4 {bad[4]+=1;}else if which==5 {bad[12]=2;}else if which==6 {bad[17]=0;}else if which==7 {bad[18]=999;}
+  else {expected=STATE_REFERENCE;if which==8 {bad[13]= -2;}else if which==9 {bad[14]= -1;}else if which==10 {bad[15]=schema.day_ticks;}else if which==11 {bad[16]= -1;}
+   else if which==12 {bad[19]=6;}else if which==13 {bad[20]=2;}else if which==14 {bad[21]=0x7ff8000000000000;}else if which==15 {bad[21]=0x7ff0000000000000;}else if which==16 {bad[26]= -1;}else {bad[26]=4294967296;}}
+  state_rehash(bad[0..<n]);#assert state_load(schema,schema,s,refs,1,c,bad[0..<n],StateMigration.{}).draft.status==expected;
+ }
+ #assert state_value_read(words[0..<14],0).kind== -1 && state_value_read(words[0..<15],-1).kind== -1;
+ badstate:=s;badstate.ready=false;words[0]=97;#assert state_save(schema,badstate,refs,words[..])==0 && words[0]==97;
+ invalid:=schema;invalid.id=0;#assert state_save(invalid,s,refs,words[..])==0;
+}

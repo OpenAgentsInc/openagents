@@ -1,6 +1,7 @@
 // Haunted House: original content, live rules, editing and save semantics.
 // Native code owns memory, Metal/audio bindings and file/share effects only.
 #import_proto "../proto/descriptors/haunt.pb" as HH;
+#load "haunt-state.coax" as lifetimes;
 
 HauntPoint :: struct { x:f32; y:f32; z:f32; }
 HauntMesh :: struct { name:string; first:u32; count:u32; low:HauntPoint; high:HauntPoint; }
@@ -417,7 +418,7 @@ hh_encode_entity :: (e:HauntEntity,out:[]u8,tmp:[]u8)->HH_Entity {
  v=HH_Entity_set_glow(v,e.glow,tmp);v=HH_Entity_set_hidden(v,e.hidden,out);v=HH_Entity_set_fixed(v,e.fixed,tmp);v=HH_Entity_set_solid(v,e.solid,out);v=HH_Entity_set_motion(v,cast(u32)e.motion,tmp);v=HH_Entity_set_parent(v,e.parent,out);return v;
 }
 verse_haunt_save :: (s:Haunt,out:[]u8,tmp:[]u8)->int #export_c #effects(all) {
- if !s.ok{return 0;}
+ if !s.ok || !lifetimes.haunt_facts_ok(s.quest,s.fired,s.zone_count) {return 0;}
  v:=HH_Save_set_version(HH_Save_new(),1,out);v=HH_Save_set_world_id(v,s.world_id,tmp);v=HH_Save_set_source_commit(v,s.revision,out);v=HH_Save_set_fired_zones(v,s.fired,tmp);v=HH_Save_set_quest_step(v,cast(u32)s.quest,out);v=HH_Save_set_title(v,s.title,tmp);v=HH_Save_set_instance_id(v,s.instance_id,out);v=HH_Save_set_feedback(v,s.feedback,tmp);
  a:[8192]u8;b:[8192]u8;
  use_out:=true;
@@ -558,7 +559,7 @@ verse_haunt_save_valid :: (s:Haunt,bytes:[]u8)->bool #export_c #effects(all) {
  if bytes.count>262144{return false;}
  v:=HH_Save_decode_minimal(bytes);if v.error!=0 || HH_Save_get_version(v).value!=1 || HH_Save_get_world_id(v).value!=s.world_id || HH_Save_get_source_commit(v).value!=s.revision {return false;}
  quest:=cast(int)HH_Save_get_quest_step(v).value;fired:=HH_Save_get_fired_zones(v).value;
- if HH_Save_get_title(v).value.count>128 || HH_Save_get_instance_id(v).value.count>128 || HH_Save_get_feedback(v).value.count>4096 || quest>8 || (fired>>s.zone_count)!=0 {return false;}
+ if HH_Save_get_title(v).value.count>128 || HH_Save_get_instance_id(v).value.count>128 || HH_Save_get_feedback(v).value.count>4096 || !lifetimes.haunt_facts_ok(quest,fired,s.zone_count) {return false;}
  count:=0;iterator:=HH_Save_iter_entities(v);
  while iterator.has_value {
   e:=hh_entity(iterator.value);if !hh_entity_ok(e,s.mesh_count) || e.id.count<1 || e.id.count>128 || e.name.count>128 || e.motion>6 || count>=512 {return false;}

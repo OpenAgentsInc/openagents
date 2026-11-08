@@ -1,0 +1,47 @@
+#test "loading saved facts reconstructs the same prepared variant and cannot publish a changed ticket" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;source:=state_construct(f.schema,refs,1);source.values[0]=state_bool(true);source.values[1]=state_int(2);source.day=3;source.phase=4;source.sequence=9;
+ words:[STATE_SAVE_WORDS]int;n:=state_save(f.schema,source,refs,words[..]);c:=state_test_command(f.world[0].facts);c.sequence=1;c.event=STATE_LOAD;
+ t:=state_load_variant_hold(f.schema,f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,c,words[0..<n],StateMigration.{});#assert t.status==STATE_OK;
+ bad:=t;bad.words[0]=0;#assert state_restore_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,bad)==STATE_SCHEMA && f.world[0].variant== -1;
+ #assert state_restore_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,t)==STATE_OK;
+ #assert f.world[0].variant==1 && f.world[0].facts.values[1].integer==2 && f.world[0].facts.sequence==9 && f.world[0].facts.day==3 && f.world[0].facts.phase==4;
+ #assert state_restore_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,t)==STATE_STALE;
+}
+#test "restore tickets own their input bind the schema and propagate every refusal without publication" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;source:=state_construct(f.schema,refs,1);source.values[0]=state_bool(true);words:[STATE_SAVE_WORDS]int;n:=state_save(f.schema,source,refs,words[..]);c:=state_test_command(f.world[0].facts);c.sequence=1;c.event=STATE_LOAD;
+ t:=state_load_variant_hold(f.schema,f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,c,words[0..<n],StateMigration.{});#assert t.status==STATE_OK;words[0]=0;
+ for which:0..<10 {bad:=t;pool:=f.pool;expected:=STATE_INVALID;
+  if which==0 {bad.status=STATE_INVALID;}else if which==1 {bad.target=assets.asset_id("wrong");expected=STATE_SCHEMA;}
+  else if which==2 {bad.mode=0;}else if which==3 {bad.n= -1;}else if which==4 {bad.n=539;}
+  else if which==5 {bad.n=0;expected=STATE_SCHEMA;}else if which==6 {bad.hold.command.epoch=2;expected=STATE_STALE;}
+  else if which==7 {bad.hold.status=STATE_INVALID;}else if which==8 {bad.hold.variant=0;expected=STATE_VARIANT;}
+  else {bad.hold.members[5].serial+=1;expected=STATE_WAITING;}
+  #assert state_restore_publish(f.schema,refs,f.m[..],pool[..],f.v,f.world[..],1,bad)==expected && f.world[0].facts.revision==0;
+ }
+ #assert state_restore_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0..<0],1,t)==STATE_INVALID;
+ #assert state_restore_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,t)==STATE_OK;
+ c=state_test_command(f.world[0].facts);c.sequence=2;c.event=STATE_LOAD;
+ #assert state_load_variant_hold(f.schema,f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],2,c,t.words[0..<t.n],StateMigration.{}).status==STATE_STALE;
+ snapshot:=state_retry_capture(f.schema,f.world[0].facts,refs);c.event=STATE_RETRY;snapshot.epoch=2;
+ #assert state_retry_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,c,snapshot).status==STATE_STALE;
+}
+#test "restore composes an approved old-schema migration and all 32 saved fields" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;source:=f.schema;old:=state_construct(source,refs,1);old.values[0]=state_bool(true);words:[STATE_SAVE_WORDS]int;n:=state_save(source,old,refs,words[..]);
+ target:=source;target.revision=2;target.n=4;target.fields[3]=StateField.{id=40,name="new",initial=state_int(1)};world:=[1]StateWorld.[StateWorld.{facts=state_construct(target,refs,1)}];v:=state_test_variants(target,f.m[..]);c:=state_test_command(world[0].facts);c.sequence=1;c.event=STATE_LOAD;
+ migration:=StateMigration.{approved=true,source=state_schema_id(source),target=state_schema_id(target),defaults=8};
+ t:=state_load_variant_hold(source,target,refs,f.m[..],f.pool[..],v,world[0],1,c,words[0..<n],migration);#assert t.status==STATE_OK;
+ #assert state_restore_publish(target,refs,f.m[..],f.pool[..],v,world[..],1,t)==STATE_OK && world[0].facts.values[3].integer==1;
+ target=source;target.n=32;letters:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef";for i:3..<32 {target.fields[i]=StateField.{id=100+i,name=letters[i..<i+1]};}
+ old=state_construct(target,refs,1);old.values[0]=state_bool(true);n=state_save(target,old,refs,words[..]);#assert n==538;
+ world[0]=StateWorld.{facts=state_construct(target,refs,1)};v=state_test_variants(target,f.m[..]);t=state_load_variant_hold(target,target,refs,f.m[..],f.pool[..],v,world[0],1,c,words[..],StateMigration.{});#assert t.status==STATE_OK;
+ #assert state_restore_publish(target,refs,f.m[..],f.pool[..],v,world[..],1,t)==STATE_OK;
+}
+#test "retry changes canonical local facts only after the replacement closure is ready" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;snapshot:=state_retry_capture(f.schema,f.world[0].facts,refs);
+ #assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,f.ticket)==STATE_OK;
+ c:=state_test_command(f.world[0].facts);c.sequence=2;c.event=STATE_RETRY;t:=state_retry_variant_hold(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[0],1,c,snapshot);#assert t.status==STATE_OK;
+ #assert state_restore_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,t)==STATE_WAITING && f.world[0].variant==1 && f.world[0].facts.sequence==1;
+ src:=PNG_ONE;load:=resource_stream_request(f.pool[..],f.m[..],f.q[..],f.r[..],1);#assert load.status==ResourceStreamStatus.ok && rs_fixture_complete(f.pool[..],f.m[..],f.q[..],load.key,src[..])==ResourceStreamStatus.ok;
+ accepted:[3]ResourceAccepted;#assert resource_stream_publish(f.pool[..],f.m[..],2,accepted[..])==1;
+ #assert state_restore_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,t)==STATE_OK && f.world[0].variant==0 && f.world[0].facts.values[0].integer==0 && f.world[0].facts.tick==1;
+}

@@ -1,0 +1,85 @@
+// FST1 is the fact payload, not a replacement for AESV or ACK1 envelopes.
+#load "lifecycle.coax";
+#load "../assets.coax" as assets;
+#authority;
+STATE_SAVE_WORDS :: 538;
+STATE_FACT_MAGIC :: 1179866161;
+StateMigration :: struct {approved:bool;source:assets.AssetId;target:assets.AssetId;defaults:u32;clamp:u32;discard:u32;}
+StateLoaded :: struct {draft:StateDraft;defaulted:u32;repaired:u32;}
+#load "tests/codec.coax";
+#load "tests/codec-goldens.coax";
+#load "tests/codec-matrix.coax";
+// Finite scalar selectors retain the second operand on a tie, including its
+// zero sign. Integer facts are bounded to 1e12 and convert to f64 exactly.
+state_fmin :: (a:f64,b:f64)->f64 #effects(all) {if a<b {return a;}return b;}
+state_fmax :: (a:f64,b:f64)->f64 #effects(all) {if a>b {return a;}return b;}
+state_words_id :: (words:[]const int)->assets.AssetId #effects(all) {
+ bytes:[32768]u8;if words.count>4096 {return assets.AssetId.{};}
+ for value,i:words {v:=cast,trunc(u64)value;for k:0..<8 {bytes[i*8+k]=cast,trunc(u8)(v>>cast(u64)(k*8));}}
+ return assets.asset_id(cast(string)bytes[0..<words.count*8]);
+}
+state_value_words :: (out:[]int,at:int,v:StateValue) #effects(all) {
+ out[at]=v.kind;out[at+1]=v.integer;for i:0..<3 {out[at+2+i]=cast,trunc(int)f64_bits(v.number[i]);}
+ out[at+5]=v.entity;out[at+6]=v.generation;for i:0..<8 {out[at+7+i]=cast(int)v.content.words[i];}
+}
+state_value_read :: (words:[]const int,at:int)->StateValue #effects(all) {
+ v:=StateValue.{kind= -1};if at<0 || at>words.count-15 {return v;}
+ v.kind=words[at];v.integer=words[at+1];
+ for i:0..<3 {bits:=cast,trunc(u64)words[at+2+i];if (bits&0x7ff0000000000000)==0x7ff0000000000000 {return StateValue.{kind= -1};}v.number[i]=f64_from_bits(bits);}
+ v.entity=words[at+5];v.generation=words[at+6];for i:0..<8 {w:=words[at+7+i];if w<0 || w>4294967295 {return StateValue.{kind= -1};}v.content.words[i]=cast(u32)w;}return v;
+}
+state_schema_id :: (schema:StateSchema)->assets.AssetId #effects(all) {
+ words:[4096]int;at:=4;if schema.n<1 || schema.n>STATE_FIELDS {return assets.AssetId.{};}
+ words[0]=STATE_FACT_MAGIC;words[1]=schema.id;words[2]=schema.revision;words[3]=schema.day_ticks;
+ for i:0..<schema.n {
+  f:=schema.fields[i];if f.name.count>63 {return assets.AssetId.{};}
+  values:=[14]int.[f.id,f.kind,f.scope,f.owner,ifx f.saved then 1 else 0,ifx f.retry then 1 else 0,f.resets,f.low,f.high,cast,trunc(int)f64_bits(f.minimum),cast,trunc(int)f64_bits(f.maximum),ifx f.optional then 1 else 0,f.name.count,15];
+  for v:values {words[at]=v;at+=1;}for c:f.name {words[at]=cast(int)c;at+=1;}state_value_words(words[..],at,f.initial);at+=15;
+ }return state_words_id(words[0..<at]);
+}
+state_save :: (schema:StateSchema,s:StateStore,refs:StateRefs,out:[]int)->int #effects(all) {
+ if !state_schema_ok(schema,refs) || !state_store_ok(schema,s,refs) {return 0;}
+ count:=0;for i:0..<schema.n {if schema.fields[i].saved {count+=1;}}
+ n:=26+count*16;if out.count<n {return 0;}
+ out[0]=STATE_FACT_MAGIC;out[1]=1;out[2]=schema.id;out[3]=schema.revision;pin:=state_schema_id(schema);
+ for i:0..<8 {out[4+i]=cast(int)pin.words[i];}
+ out[12]=s.epoch;out[13]=s.tick;out[14]=s.day;out[15]=s.phase;out[16]=s.sequence;out[17]=count;at:=18;
+ for i:0..<schema.n {if schema.fields[i].saved {out[at]=schema.fields[i].id;state_value_words(out,at+1,s.values[i]);at+=16;}}
+ sum:=state_words_id(out[0..<at]);for i:0..<8 {out[at+i]=cast(int)sum.words[i];}return n;
+}
+state_load :: (source:StateSchema,target:StateSchema,live:StateStore,refs:StateRefs,fence:int,c:StateCommand,words:[]const int,m:StateMigration)->StateLoaded #effects(all) {
+ result:StateLoaded;if c.event!=STATE_LOAD || c.n!=0 || c.jump {return result;}
+ d:=state_prepare(target,live,refs,fence,c);if d.status!=STATE_OK {return StateLoaded.{draft=d};}
+ result.draft.status=STATE_SCHEMA;
+ if !state_schema_ok(source,refs) || source.id!=target.id || source.revision>target.revision || words.count<26 {return result;}
+ a:=state_schema_id(source);b:=state_schema_id(target);migrating:=!assets.asset_same(a,b);
+ if migrating && (source.revision==target.revision || !m.approved || !assets.asset_same(m.source,a) || !assets.asset_same(m.target,b)) {return result;}
+ if words[0]!=STATE_FACT_MAGIC || words[1]!=1 || words[2]!=source.id || words[3]!=source.revision || words[12]!=fence {return result;}
+ for i:0..<8 {if words[4+i]!=cast(int)a.words[i] {return result;}}
+ count:=0;for i:0..<source.n {if source.fields[i].saved {count+=1;}}
+ if words[17]!=count || words.count!=26+count*16 {return result;}
+ sum:=state_words_id(words[0..<words.count-8]);for i:0..<8 {if words[words.count-8+i]!=cast(int)sum.words[i] {return result;}}
+ previous:=state_construct(source,refs,fence);previous.tick=words[13];previous.day=words[14];previous.phase=words[15];previous.sequence=words[16];at:=18;
+ for i:0..<source.n {if source.fields[i].saved {if words[at]!=source.fields[i].id {return result;}previous.values[i]=state_value_read(words,at+1);at+=16;}}
+ if !state_store_ok(source,previous,refs) {result.draft.status=STATE_REFERENCE;return result;}
+ for i:0..<source.n {if source.fields[i].saved {now:=state_find(target,source.fields[i].id);if now<0 || !target.fields[now].saved {if !migrating || (m.discard&(cast(u32)1<<cast(u32)i))==0 {return result;}}}}
+ d.state.day=previous.day;d.state.phase=previous.phase;d.state.sequence=cast(int)state_fmax(f64(previous.sequence),f64(d.state.sequence));
+ for i:0..<target.n {
+  f:=target.fields[i];if !f.saved {continue;}bit:=cast(u32)1<<cast(u32)i;old:=state_find(source,f.id);
+  if old<0 || !source.fields[old].saved {
+   if !migrating || (m.defaults&bit)==0 {return result;}d.state.values[i]=f.initial;result.defaulted=result.defaulted|bit;continue;
+  }
+  was:=source.fields[old];if was.kind!=f.kind || was.scope!=f.scope || was.owner!=f.owner {return result;}
+  v:=previous.values[old];
+  if !state_value_ok(f,v,refs) {
+   if !migrating || (m.clamp&bit)==0 {result.draft.status=STATE_REFERENCE;return result;}
+   if f.kind==STATE_INT {v.integer=cast(int)state_fmin(f64(f.high),state_fmax(f64(f.low),f64(v.integer)));}
+   else if f.kind==STATE_SCALAR || f.kind==STATE_VECTOR {for k:0..<ifx f.kind==STATE_SCALAR then 1 else 3 {v.number[k]=state_fmin(f.maximum,state_fmax(f.minimum,v.number[k]));}}
+   else {result.draft.status=STATE_REFERENCE;return result;}
+   result.repaired=result.repaired|bit;
+  }d.state.values[i]=v;
+ }
+ reset:=[1]StateStore.[d.state];state_reset_values(target,reset[..],STATE_LOAD);d.state=reset[0];
+ if !state_store_ok(target,d.state,refs) {result.draft.status=STATE_REFERENCE;return result;}
+ d.day_changed=d.state.day!=live.day;result.draft=d;return result;
+}

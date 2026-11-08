@@ -321,3 +321,7 @@ versions), [chapter 6](ch006-entities-are-born-and-die.md) (stable IDs) and
 document and deterministic layout. A physics-bearing realm later maps that
 document into [chapter 17](ch017-a-scene-owns-the-state.md)'s scene and checks
 that mapping; constructing the document does not require the physics engine.
+
+## Declared-state adoption (#12991)
+
+A document adapter may declare persistent facts and compile typed variant predicates offline. Profile 1 pins placements, collision, navigation, fluid, lighting and rendering together. Existing forge document encoding remains unchanged; migrating arbitrary document fields is a residual adapter. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.

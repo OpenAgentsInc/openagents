@@ -239,3 +239,7 @@ Tensor views and placement (Psionic chapters 3 and 6), the tensor IR's plans
 (Psionic chapter 38), and the counter-based RNG for any sampling during build. From
 Coax: stable identities (R5), replay inventories (R16), provenance-typed
 parameters (R20) and, for the batch dimension and layouts, R21.
+
+## Declared-state adoption (#12991)
+
+A scene can publish declared facts together with the six resource roots its typed predicates select. Preparation owns references privately; stale or missing members preserve the complete previous world until a paid-step publication succeeds. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.

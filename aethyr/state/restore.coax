@@ -1,0 +1,42 @@
+// Restore adapters compose the same fact readers and atomic owner publication.
+// Tickets own snapshot words; no asynchronous borrow of an input buffer survives.
+#load "variants.coax";
+#load "codec.coax";
+#load "../assets.coax" as assets;
+#authority;
+STATE_RESTORE_LOAD :: 1; STATE_RESTORE_RETRY :: 2;
+StateRestoreTicket :: struct {
+ status:int=STATE_INVALID;mode:int;target:assets.AssetId;hold:StateVariantTicket;
+ source:StateSchema;migration:StateMigration;words:[STATE_SAVE_WORDS]int;n:int;retry:StateRetry;
+}
+#load "tests/restore.coax";
+state_restore_draft :: (schema:StateSchema,world:StateWorld,refs:StateRefs,fence:int,t:StateRestoreTicket)->StateDraft #effects(all) {
+ if !assets.asset_same(t.target,state_schema_id(schema)) {return StateDraft.{status=STATE_SCHEMA};}
+ if t.mode==STATE_RESTORE_LOAD {if t.n<0 || t.n>STATE_SAVE_WORDS {return StateDraft.{};}return state_load(t.source,schema,world.facts,refs,fence,t.hold.command,t.words[0..<t.n],t.migration).draft;}
+ if t.mode==STATE_RESTORE_RETRY {return state_retry_prepare(schema,world.facts,refs,fence,t.hold.command,t.retry);}return StateDraft.{};
+}
+state_restore_prior :: (world:StateWorld,d:StateDraft)->StateWorld #effects(all) {
+ prior:=world;prior.facts.values=d.state.values;return prior;
+}
+state_load_variant_hold :: (source:StateSchema,schema:StateSchema,refs:StateRefs,m:[]ResourceManifest,pool:[]ResourceStream,v:StateVariants,world:StateWorld,fence:int,c:StateCommand,words:[]const int,migration:StateMigration)->StateRestoreTicket #effects(all) {
+ t:=StateRestoreTicket.{mode=STATE_RESTORE_LOAD,target=state_schema_id(schema),source=source,migration=migration,n=words.count};
+ d:=state_load(source,schema,world.facts,refs,fence,c,words,migration).draft;if d.status!=STATE_OK {t.status=d.status;return t;}
+ for value,i:words {t.words[i]=value;}
+ t.hold=state_variant_hold(schema,refs,m,pool,v,state_restore_prior(world,d),fence,c);t.status=t.hold.status;return t;
+}
+state_retry_variant_hold :: (schema:StateSchema,refs:StateRefs,m:[]ResourceManifest,pool:[]ResourceStream,v:StateVariants,world:StateWorld,fence:int,c:StateCommand,snapshot:StateRetry)->StateRestoreTicket #effects(all) {
+ t:=StateRestoreTicket.{mode=STATE_RESTORE_RETRY,target=state_schema_id(schema),retry=snapshot};
+ d:=state_retry_prepare(schema,world.facts,refs,fence,c,snapshot);if d.status!=STATE_OK {t.status=d.status;return t;}
+ t.hold=state_variant_hold(schema,refs,m,pool,v,state_restore_prior(world,d),fence,c);t.status=t.hold.status;return t;
+}
+state_restore_publish :: (schema:StateSchema,refs:StateRefs,m:[]ResourceManifest,pool:[]ResourceStream,v:StateVariants,world:[]StateWorld,fence:int,t:StateRestoreTicket)->int #effects(all) {
+ if world.count!=1 || t.status!=STATE_OK {return STATE_INVALID;}
+ d:=state_restore_draft(schema,world[0],refs,fence,t);if d.status!=STATE_OK {return d.status;}
+ prior:=[1]StateWorld.[state_restore_prior(world[0],d)];
+ status:=state_variant_publish(schema,refs,m,pool,v,prior[..],fence,t.hold);if status!=STATE_OK {return status;}
+ // The projection gives the ordinary publisher exactly the restored values:
+ // LOAD freezes that projection's time, and reset-to-default is idempotent.
+ // Preserve the reader's canonical clock and maximum persisted operation ID.
+ prior[0].facts=d.state;
+ world[0]=prior[0];return STATE_OK;
+}

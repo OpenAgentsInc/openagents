@@ -1,0 +1,42 @@
+// Recorded frame schedules, driven through the same entry as the real SDK.
+// This has no world transition logic: state_lab_frame owns every paid step.
+state_lab_trial :: (s:[]StateLab,fps:int,visual:bool,observe:bool)->bool #export_c #effects(all) {
+ if fps!=0 && fps!=30 && fps!=60 && fps!=144 {return false;}
+ if !state_lab_start(s,0) {return false;}state_lab_replay(s,true,observe);s[0].visual=visual;
+ elapsed:=0;frame:=0;total:=10000000000;uneven:=[5]int.[1000000,23000000,7000000,48000000,11000000];
+ while elapsed<total {
+  dt:=ifx fps==0 then uneven[frame%5] else ((frame+1)*1000000000/fps-frame*1000000000/fps);if elapsed+dt>total {dt=total-elapsed;}
+  state_lab_frame(s,dt);elapsed+=dt;frame+=1;if !s[0].ready {return false;}
+ }return s[0].clock.ticks==640;
+}
+state_lab_steps :: (s:[]StateLab,count:int)->bool #export_c #effects(all) {
+ if count<0 || count>1024 {return false;}for i:0..<count {state_lab_frame(s,15625000);}return s[0].ready;
+}
+// Runtime host-conformance probe, isolated from the playable instance. Every
+// event gets its own declared field plus one unrelated survivor. The same
+// frame schedules cross natural midnights and a recorded day jump.
+state_lab_contract :: (fps:int)->assets.AssetId #export_c #effects(all) {
+ if fps!=0 && fps!=30 && fps!=60 && fps!=144 {return assets.AssetId.{};}
+ schema:=StateSchema.{id=1299102,day_ticks=16,n=8};refs:StateRefs;
+ names:=[8]string.["new","enter","leave","day","load","retry","editor","survivor"];
+ for i:0..<8 {schema.fields[i]=StateField.{id=i+1,name=names[i],high=2,initial=state_int(1),resets=ifx i<7 then 1<<i else 0};}
+ f:=state_construct(schema,refs,1);boot:=StateCommand.{epoch=1,tick=0,sequence=1,event=STATE_NEW,jump=true};d:=state_prepare(schema,f,refs,1,boot);if d.status!=STATE_OK {return assets.AssetId.{};}f=d.state;
+ for i:0..<8 {f.values[i]=state_int(2);}
+ trail:assets.AssetId;t:clock.FrameClock;elapsed:=0;frame:=0;total:=10000000000;uneven:=[5]int.[1000000,23000000,7000000,48000000,11000000];
+ while elapsed<total {
+  ns:=ifx fps==0 then uneven[frame%5] else ((frame+1)*1000000000/fps-frame*1000000000/fps);if elapsed+ns>total {ns=total-elapsed;}
+  schedule:=clock.loop_accept_ns(t,ns);count:=clock.loop_due(schedule);
+  for i:0..<count {
+   tick:=schedule.ticks+i+1;c:=StateCommand.{epoch=1,revision=f.revision,tick=f.tick+1,sequence=add_sat(f.sequence,1)};
+   if tick<=7 {c.event=tick-1;}if tick==33 {c.jump=true;c.day=5;}
+   next:=state_prepare(schema,f,refs,1,c);if next.status!=STATE_OK {return assets.AssetId.{};}f=next.state;
+   duplicate:=c;duplicate.revision=f.revision;duplicate.tick=f.tick+1;
+   if state_prepare(schema,f,refs,1,duplicate).status!=STATE_DUPLICATE {return assets.AssetId.{};}
+   saved:[STATE_SAVE_WORDS]int;n:=state_save(schema,f,refs,saved[..]);cut:=state_words_id(saved[0..<n]);chain:[16]int;
+   for j:0..<8 {chain[j]=cast(int)trail.words[j];chain[8+j]=cast(int)cut.words[j];}trail=state_words_id(chain[..]);
+  }t=clock.loop_ran(schedule);elapsed+=ns;frame+=1;
+ }
+ return trail;
+}
+
+state_lab_contract_hex :: (fps:int,out:[]u8)->bool #export_c #effects(all) {return assets.asset_hex(state_lab_contract(fps),out);}

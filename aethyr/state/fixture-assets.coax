@@ -1,0 +1,80 @@
+// Local immutable descriptor/geometry sources, admitted by the ordinary RCM1
+// plans and actual decoders. No resource-ready flags are forged by the fixture.
+state_lab_refs :: (s:[]StateLab)->StateRefs #effects(all) {return StateRefs.{content=s[0].identity[..]};}
+state_lab_schema :: (id:assets.AssetId)->StateSchema #effects(all) {
+ schema:=StateSchema.{id=12991,day_ticks=512,n=4};
+ schema.fields[0]=StateField.{id=10,name="gate.broken",kind=STATE_BOOL,initial=state_bool(false),resets=65};
+ schema.fields[1]=StateField.{id=20,name="npc.schedule",scope=STATE_ACTOR,owner=7,high=2,resets=73};
+ schema.fields[2]=StateField.{id=30,name="area.fluid",scope=STATE_AREA,owner=4,high=1,resets=65,retry=false};
+ schema.fields[3]=StateField.{id=40,name="world.content",kind=STATE_CONTENT,retry=false,resets=0,initial=StateValue.{kind=STATE_CONTENT,content=id}};return schema;
+}
+state_lab_sources :: (s:[]StateLab) #effects(all) {
+ png:=PNG_ONE;for v,i:png {s[0].source[0][i]=v;}s[0].length[0]=png.count;s[0].specs[0]=ResourceSpec.{format=ResourceFormat.image_mips,category=ResourceCategory.lighting,side=1};
+ for owner:1..<12 {
+  if owner==1 || owner==2 {
+   box:=ifx owner==1 then [6]f32.[7.5,0,3,8.5,3,5] else [6]f32.[20,0,0,21,3,1];for v,k:box {resource_put32(s[0].source[owner][..],k*4,f32_bits(v));}
+   s[0].length[owner]=24;s[0].specs[owner]=ResourceSpec.{format=ResourceFormat.boxes,category=ResourceCategory.collision};
+  }else if owner>=10 {
+   small:=owner==11;points:=[16]f32.[ifx small then 7.8 else 7.5,ifx small then 0.2 else 3,ifx small then 3.8 else 3,1,ifx small then 8.2 else 8.5,0,ifx small then 3.8 else 3,1,ifx small then 8.2 else 8.5,0,ifx small then 4.2 else 5,1,ifx small then 7.8 else 7.5,0,ifx small then 4.2 else 5,1];
+   for v,k:points {resource_put32(s[0].source[owner][..],k*4,f32_bits(v));}s[0].length[owner]=64;s[0].specs[owner]=ResourceSpec.{format=ResourceFormat.positions4,category=ResourceCategory.geometry};
+  }else {
+   body:=cells.CellBody.{id=ifx owner<=4 then 300 else ifx owner<=6 then 500 else 7,x=12,z=4};
+   if owner==3 || owner==4 {body.words[0]=ifx owner==3 then 1 else 0;}
+   else if owner==5 || owner==6 {body.x=3.5;body.z=3.5;body.y=ifx owner==5 then 0.2 else 1.5;body.words=[4]int.[2,2,5,5];}
+   else {body.words[0]=owner-7;body.words[2]=1;body.z=ifx owner==7 then 2 else 6;}
+   values:=[8]int.[body.id,cast,trunc(int)f64_bits(body.x),cast,trunc(int)f64_bits(body.y),cast,trunc(int)f64_bits(body.z),body.words[0],body.words[1],body.words[2],body.words[3]];
+   for v,k:values {resource_put64(s[0].source[owner][..],k*8,v);}s[0].length[owner]=64;s[0].specs[owner]=ResourceSpec.{format=ResourceFormat.cell_bodies,category=ResourceCategory.actors};
+  }
+ }
+ // Logical content identity excludes host-dependent allocation accounting.
+ catalog:[8192]u8;at:=0;for owner:0..<12 {spec:=s[0].specs[owner];header:=[6]int.[owner,spec.version,cast(int)cast(u8)spec.format,cast(int)cast(u8)spec.category,spec.side,s[0].length[owner]];
+  for v:header {resource_put64(catalog[..],at,v);at+=8;}for i:0..<s[0].length[owner] {catalog[at]=s[0].source[owner][i];at+=1;}
+ }s[0].identity[0]=assets.asset_id(cast(string)catalog[0..<at]);
+}
+state_lab_variants :: (s:[]StateLab)->StateVariants #effects(all) {
+ v:=StateVariants.{n=12};refs:=state_lab_refs(s);
+ for gate:0..<2 {for npc:0..<3 {for water:0..<2 {
+  i:=gate*6+npc*2+water;terms:=[5]StateTerm.[StateTerm.{id=10,value=state_bool(gate==1)},StateTerm.{id=20,value=state_int(npc)},StateTerm.{op=STATE_AND,a=0,b=1},StateTerm.{id=30,value=state_int(water)},StateTerm.{op=STATE_AND,a=2,b=3}];
+  v.items[i]=StateVariant.{id=i+1,test=state_program(s[0].schema,refs,terms[..],4),owners=[6]int.[7+npc,1+gate,3+gate,5+water,0,10+gate]};
+  for role:0..<6 {v.items[i].content[role]=s[0].manifest[0].entries[v.items[i].owners[role]].plan.content;}
+ }}}return v;
+}
+state_lab_decode :: (s:[]StateLab,owner:int)->ResourceCostStatus #effects(all) {
+ plan:=s[0].manifest[0].entries[owner].plan;source:=s[0].source[owner][0..<s[0].length[owner]];
+ if owner==0 {work:[256]u8;return resource_decode_image(plan,source,work[..],s[0].pixels[..]);}
+ if owner==1 || owner==2 {return resource_decode_collision(plan,source,s[0].boxes[owner][..]);}
+ if owner>=10 {if !resource_matches(plan,source) {return ResourceCostStatus.mismatch;}for i:0..<16 {s[0].vertices[owner][i]=f32_from_bits(resource_u32(source,i*4));}return ResourceCostStatus.ok;}
+ out:[1]cells.CellBody;status:=resource_decode_bodies(plan,source,out[..]);if status==ResourceCostStatus.ok {s[0].bodies[owner]=out[0];}return status;
+}
+state_lab_load_now :: (s:[]StateLab,owner:int)->bool #effects(all) {
+ load:=resource_stream_request(s[0].pool[..],s[0].manifest[..],s[0].inbox[..],s[0].registry[..],owner);
+ if load.status!=ResourceStreamStatus.ok {return false;}
+ return resource_stream_complete(s[0].pool[..],s[0].manifest[..],s[0].inbox[..],load.key,s[0].source[owner][0..<s[0].length[owner]],state_lab_decode(s,owner))==ResourceStreamStatus.ok;
+}
+state_lab_open :: (s:[]StateLab,credit:StateCredit)->bool #export_c #effects(all) {
+ if s.count!=1 || !state_credit_valid(credit) {return false;}s[0]=StateLab.{};s[0].credit=credit;state_lab_sources(s);
+ inputs:[12][]u8;deps:[12]ResourceDependencies;for i:0..<12 {inputs[i]=s[0].source[i][0..<s[0].length[i]];}
+ bytes:[RESOURCE_MANIFEST_MAX_BYTES]u8;n:=resource_manifest_build(inputs[..],s[0].specs[..],deps[..],bytes[..]);if n!=ResourceManifestStatus.ok {return false;}
+ used:=RESOURCE_MANIFEST_HEADER+12*RESOURCE_MANIFEST_ROW;
+ if resource_manifest_read(bytes[0..<used],assets.asset_id(cast(string)bytes[0..<used]),s[0].manifest[..])!=ResourceManifestStatus.ok {return false;}
+ s[0].schema=state_lab_schema(s[0].identity[0]);s[0].variants=state_lab_variants(s);refs:=state_lab_refs(s);
+ caps:=[7]int.[262144,262144,262144,262144,262144,262144,262144];s[0].pool[0]=resource_stream_open(s[0].manifest[..],resource_budget_open(caps,524288,32,0),1,4);s[0].inbox[0]=hiq_open(HOST_INBOX_CAPACITY);
+ if gpu.rr_open(s[0].registry[..],gpu.RrLimits.{slots=32,words=8192})!=gpu.RrStatus.ok {return false;}
+ for i:0..<12 {s[0].pins[i]=resource_stream_hold(s[0].pool[..],s[0].manifest[..],i);if s[0].pins[i].slot<0 {return false;}}
+ s[0].world[0].facts=state_construct(s[0].schema,refs,1);c:=StateCommand.{epoch=1,revision=0,tick=0,sequence=1,event=STATE_NEW,jump=true};
+ t:=state_variant_hold(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,s[0].world[0],1,c);if t.status!=STATE_OK {return false;}
+ for role:0..<6 {owner:=s[0].variants.items[0].owners[role];if !state_lab_load_now(s,owner) {return false;}}
+ events:[12]ResourceAccepted;if resource_stream_publish(s[0].pool[..],s[0].manifest[..],0,events[..])!=6 {return false;}
+ if state_variant_publish(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,s[0].world[..],1,t)!=STATE_OK {return false;}
+ s[0].retry=state_retry_capture(s[0].schema,s[0].world[0].facts,refs);s[0].player=walking.walk_place(4,0,4,0);s[0].player.theta=0;s[0].ready=true;state_lab_nav(s);return true;
+}
+state_lab_pump :: (s:[]StateLab,tick:int) #effects(all) {
+ for i:0..<4 {if s[0].loads[i].live && s[0].loads[i].due<=tick {load:=s[0].loads[i];owner:=load.key.owner;status:=resource_stream_complete(s[0].pool[..],s[0].manifest[..],s[0].inbox[..],load.key,s[0].source[owner][0..<s[0].length[owner]],state_lab_decode(s,owner));if status!=ResourceStreamStatus.ok {s[0].refused+=1;}s[0].loads[i].live=false;}}
+ events:[12]ResourceAccepted;published:=resource_stream_publish(s[0].pool[..],s[0].manifest[..],tick,events[..]);if published<0 {s[0].refused+=1;}
+}
+state_lab_want :: (s:[]StateLab,variant:int,tick:int) #effects(all) {
+ if variant<0 || variant>=12 {return;}
+ for role:0..<6 {owner:=s[0].variants.items[variant].owners[role];if s[0].pool[0].owners[owner].phase!=ResourceOwnerPhase.absent {continue;}
+  for slot:0..<4 {if !s[0].loads[slot].live {load:=resource_stream_request(s[0].pool[..],s[0].manifest[..],s[0].inbox[..],s[0].registry[..],owner);if load.status==ResourceStreamStatus.ok {s[0].loads[slot]=StateLabLoad.{live=true,due=tick+1,key=load.key};}break;}}
+ }
+}

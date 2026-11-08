@@ -1,0 +1,9 @@
+coax: note[E0400]: compile-time steps: 21889806 of 28000000 used (78%), above three quarters of the limit; more than 28000000 fails with E0400
+  top users of compile-time steps:
+    3325140 steps  aethyr/query.coax:81:1  in 'query_finite' (255780 times)
+    2930966 steps  aethyr/walk.coax:399:1  in 'step' (8820 times)
+    2143260 steps  aethyr/locomotion.coax:72:1  in 'locomotion_profile_ok' (8820 times)
+    1852200 steps  aethyr/locomotion.coax:69:1  in 'locomotion_finite' (132300 times)
+    1058400 steps  aethyr/collide.coax:164:1  in 'collide_move' (8820 times)
+  fix: do less work in 'query_finite', split the check, or give it a larger budget with a larger #steps N on the check
+wasm.sh: state-lab.wasm: 3.6 s: Coax to C 2.2 s (0/1 cached), clang 0.8 s (1/2 cached), link 0.2 s, wasm-opt 0.2 s; 146029 bytes; report /Users/christopherdavid/.codex/worktrees/issue-fixes/openagents/apps/openagents-web/build/.c/state-lab.timings.json

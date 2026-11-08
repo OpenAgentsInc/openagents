@@ -1,0 +1,40 @@
+state_test_variants :: (schema:StateSchema,m:[]ResourceManifest)->StateVariants #effects(all) {
+ refs:StateRefs;v:=StateVariants.{n=2};
+ for i:0..<2 {terms:=[1]StateTerm.[StateTerm.{id=10,value=state_bool(i==1)}];v.items[i].id=i+1;v.items[i].test=state_program(schema,refs,terms[..],0);
+  for role:0..<6 {v.items[i].owners[role]=i+1;v.items[i].content[role]=m[0].entries[i+1].plan.content;}
+ }return v;
+}
+#test "predicate addresses resolve once and typed boolean DAGs reject forward or foreign fields" {
+ schema:=state_test_schema();refs:StateRefs;terms:=[4]StateTerm.[StateTerm.{id=10,value=state_bool(false)},StateTerm.{op=STATE_LESS,id=20,value=state_int(2)},StateTerm.{op=STATE_AND,a=0,b=1},StateTerm.{op=STATE_NOT,a=2}];
+ p:=state_program(schema,refs,terms[..],3);s:=state_construct(schema,refs,1);#assert p.valid && state_program_eval(p,s)==0;
+ s.values[1]=state_int(2);#assert state_program_eval(p,s)==1;
+ terms[2].op=STATE_OR;p=state_program(schema,refs,terms[..],2);#assert p.valid && state_program_eval(p,s)==1;
+ terms[2].a=2;#assert !state_program(schema,refs,terms[..],2).valid;terms[2].a=0;
+ terms[0].id=999;#assert !state_program(schema,refs,terms[..],2).valid;terms[0].id=10;terms[0].value=state_int(0);#assert !state_program(schema,refs,terms[..],2).valid;
+}
+#test "atomic variants wait for a complete owner closure and leave all facts and members unchanged on refusal" {
+ schema:=state_test_schema();refs:StateRefs;m:=[1]ResourceManifest.[rs_fixture_manifest()];pool:=[1]ResourceStream.[rs_fixture_stream(m[..])];v:=state_test_variants(schema,m[..]);
+ world:=[1]StateWorld.[StateWorld.{facts=state_construct(schema,refs,1)}];c:=state_test_command(world[0].facts);c.sequence=1;c.n=1;c.patches[0]=StatePatch.{id=10,value=state_bool(true)};
+ t:=state_variant_hold(schema,refs,m[..],pool[..],v,world[0],1,c);#assert t.status==STATE_OK;
+ #assert state_variant_publish(schema,refs,m[..],pool[..],v,world[..],1,t)==STATE_WAITING && world[0].variant== -1 && world[0].facts.values[0].integer==0;
+ q:=[1]HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)];r:[1]gpu.RenderRegistry;#assert gpu.rr_open(r[..],gpu.RrLimits.{slots=16,words=10000})==gpu.RrStatus.ok;
+ source:=PNG_ONE;
+ for i:[2]int.[0,2] {load:=resource_stream_request(pool[..],m[..],q[..],r[..],i);#assert load.status==ResourceStreamStatus.ok;#assert rs_fixture_complete(pool[..],m[..],q[..],load.key,source[..])==ResourceStreamStatus.ok;}
+ accepted:[3]ResourceAccepted;#assert resource_stream_publish(pool[..],m[..],1,accepted[..])==2;
+ saved:=t;t.members[5].serial+=1;#assert state_variant_publish(schema,refs,m[..],pool[..],v,world[..],1,t)==STATE_WAITING && world[0].facts.revision==0;t=saved;
+ #assert state_variant_publish(schema,refs,m[..],pool[..],v,world[..],2,t)==STATE_STALE;
+ #assert state_variant_publish(schema,refs,m[..],pool[..],v,world[..],1,t)==STATE_OK && world[0].variant==1 && world[0].facts.values[0].integer==1;
+ #assert state_variant_publish(schema,refs,m[..],pool[..],v,world[..],1,t)==STATE_STALE;
+ state_variant_drop(pool[..],m[..],t);
+}
+#test "missing ambiguous and corrupt variants cannot become a partially selected world" {
+ schema:=state_test_schema();refs:StateRefs;m:=[1]ResourceManifest.[rs_fixture_manifest()];v:=state_test_variants(schema,m[..]);s:=state_construct(schema,refs,1);
+ #assert state_variants_ok(schema,refs,m[..],v) && state_choose(v,s)==0;
+ v.items[0].content[5]=assets.asset_id("wrong");#assert !state_variants_ok(schema,refs,m[..],v);
+ v=state_test_variants(schema,m[..]);v.items[1].test=v.items[0].test;#assert state_choose(v,s)== -1;
+ v.n=1;s.values[0]=state_bool(true);#assert state_choose(v,s)== -1;
+}
+#test "predicate representation version refuses unknown formats before selection or publication" #steps 100000000 #traversal 1000000000 {
+ f:=state_variant_fixture();refs:StateRefs;
+ for version:[2]int.[0,2] {p:=f.v.items[0].test;p.format=version;#assert state_program_eval(p,f.world[0].facts)== -1;v:=f.v;v.items[0].test=p;#assert !state_variants_ok(f.schema,refs,f.m[..],v);}
+}

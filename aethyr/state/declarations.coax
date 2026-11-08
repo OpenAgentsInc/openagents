@@ -1,0 +1,58 @@
+// Bounded declared facts, profile 1. Names are retained identity, never hashes.
+#module "aethyr.state";
+#load "../assets.coax" as assets;
+#authority;
+STATE_FIELDS :: 32;
+STATE_BOOL :: 0; STATE_INT :: 1; STATE_SCALAR :: 2; STATE_VECTOR :: 3; STATE_ENTITY :: 4; STATE_CONTENT :: 5;
+STATE_WORLD :: 0; STATE_AREA :: 1; STATE_ACTOR :: 2; STATE_PLAYER :: 3; STATE_OPTIONS :: 4;
+STATE_NEW :: 0; STATE_ENTER :: 1; STATE_LEAVE :: 2; STATE_DAY :: 3; STATE_LOAD :: 4; STATE_RETRY :: 5; STATE_EDITOR :: 6;
+StateValue :: struct {kind:int=STATE_INT;integer:int;number:[3]f64;entity:int;generation:int;content:assets.AssetId;}
+StateField :: struct {
+ id:int;name:string;kind:int=STATE_INT;scope:int;owner:int;
+ saved:bool=true;retry:bool=true;resets:int=1;
+ low:int;high:int=1;minimum:f64;maximum:f64=1;optional:bool;
+ initial:StateValue;
+}
+StateSchema :: struct {id:int;revision:int=1;day_ticks:int=5529600;n:int;fields:[STATE_FIELDS]StateField;}
+StateEntity :: struct {id:int;generation:int;}
+StateRefs :: struct {entities:[]const StateEntity;content:[]const assets.AssetId;}
+#load "tests/declarations.coax";
+state_int :: (value:int)->StateValue #effects(all) {return StateValue.{integer=value};}
+state_bool :: (value:bool)->StateValue #effects(all) {return StateValue.{kind=STATE_BOOL,integer=ifx value then 1 else 0};}
+state_value_ok :: (f:StateField,v:StateValue,refs:StateRefs)->bool #effects(all) {
+ if v.kind!=f.kind {return false;}
+ zero:assets.AssetId;
+ if v.kind!=STATE_ENTITY && (v.entity!=0 || v.generation!=0) {return false;}
+ if v.kind!=STATE_CONTENT && !assets.asset_same(v.content,zero) {return false;}
+ if v.kind!=STATE_BOOL && v.kind!=STATE_INT && v.integer!=0 {return false;}
+ for x,k:v.number {
+  if v.kind==STATE_VECTOR || (v.kind==STATE_SCALAR && k==0) {if !(x>=f.minimum && x<=f.maximum) {return false;}}
+  else {if f64_bits(x)!=0 {return false;}}
+ }
+ if v.kind==STATE_BOOL {return v.integer==0 || v.integer==1;}
+ if v.kind==STATE_INT {return v.integer>=f.low && v.integer<=f.high;}
+ if v.kind==STATE_SCALAR || v.kind==STATE_VECTOR {return true;}
+ if v.kind==STATE_ENTITY {
+  if v.entity==0 && v.generation==0 {return f.optional;}
+  if v.entity<1 || v.generation<1 || refs.entities.count>64 {return false;}
+  for e:refs.entities {if e.id==v.entity && e.generation==v.generation {return true;}}return false;
+ }
+ if v.kind==STATE_CONTENT {
+  if assets.asset_same(v.content,zero) {return f.optional;}
+  if refs.content.count>64 {return false;}
+  for id:refs.content {if assets.asset_same(id,v.content) {return true;}}return false;
+ }return false;
+}
+state_schema_ok :: (s:StateSchema,refs:StateRefs)->bool #effects(all) {
+ if s.id<1 || s.revision<1 || s.day_ticks<1 || s.day_ticks>5529600 || s.n<1 || s.n>STATE_FIELDS {return false;}
+ for i:0..<s.n {
+  f:=s.fields[i];
+  if f.id<1 || f.name.count<1 || f.name.count>63 || f.scope<STATE_WORLD || f.scope>STATE_OPTIONS || f.resets<0 || f.resets>127 {return false;}
+  for c:f.name {if c<33 || c>126 {return false;}}
+  if (f.scope==STATE_WORLD || f.scope==STATE_OPTIONS) {if f.owner!=0 {return false;}}else {if f.owner<1 {return false;}}
+  if !(f.low>= -1000000000000 && f.high<=1000000000000 && f.low<=f.high) || !(f.minimum>= -1000000000000.0 && f.maximum<=1000000000000.0 && f.minimum<=f.maximum) {return false;}
+  for j:0..<i {if s.fields[j].id==f.id || s.fields[j].name==f.name {return false;}}
+  if !state_value_ok(f,f.initial,refs) {return false;}
+ }return true;
+}
+state_find :: (s:StateSchema,id:int)->int #effects(all) {if s.n>STATE_FIELDS {return -1;}for i:0..<s.n {if s.fields[i].id==id {return i;}}return -1;}

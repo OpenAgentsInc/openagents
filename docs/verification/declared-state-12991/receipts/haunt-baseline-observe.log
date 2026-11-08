@@ -1,0 +1,2 @@
+baseline actual: ok=1 entities=1659 meshes=88 areas=16 people=4 zones=9 lights=26
+Assertion failed: (s.ok&&s.entity_count==1645&&s.mesh_count==87&&s.area_count==16&&s.people_count==4&&s.zone_count==9&&s.light_count==26), function main, file observe.c, line 19.

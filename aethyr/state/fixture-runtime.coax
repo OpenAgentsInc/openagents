@@ -1,0 +1,140 @@
+// Intent/SDK orchestration. All fact, ownership, codec and publication
+// decisions use the checked shared modules; drawing never changes them.
+state_lab_nav :: (s:[]StateLab) #effects(all) {
+ if s[0].world[0].variant<0 {return;}owner:=s[0].variants.items[s[0].world[0].variant].owners[2];if owner==s[0].nav_owner {return;}
+ shut:=s[0].bodies[owner].words[0]==1;for z:0..<8 {for x:0..<16 {s[0].walk[z*16+x]=!(x>=7 && x<=8 && (z<3 || z>=5 || shut));}}
+ g:=navigation.NavGrid.{nx=16,nz=8,cell=1};result:=navigation.nav_grid_flow(g,s[0].walk[..],s[0].cost[..],s[0].heap[..],s[0].slot[..],s[0].order[..],76,1000,128);
+ s[0].nav_reached=result.status==navigation.NavFlowStatus.ok && s[0].cost[68]<1000;s[0].nav_owner=owner;
+}
+state_lab_fluid :: (s:[]StateLab,x:f32,z:f32)->f32 #effects(all) {
+ if s[0].world[0].variant<0 {return 0;}owner:=s[0].variants.items[s[0].world[0].variant].owners[3];body:=s[0].bodies[owner];
+ box:=[6]f32.[f32(body.words[0]),-2,f32(body.words[1]),f32(body.words[2]),2,f32(body.words[3])];epoch:=[1]int.[add_sat(s[0].world[0].facts.revision,1)];
+ metadata:=[1]filters.QueryCollider.[filters.QueryCollider.{ref=filters.ColliderRef.{id=500,generation=1},shape=queries.QueryShape.box,role=filters.QueryRole.fluid,surface=1}];
+ surfaces:=[1]filters.PhysicalSurface.[filters.PhysicalSurface.{id=1,fluid_kind=1,density=1000,buoyancy=1,drag=1}];
+ w:=scene.QueryWorld.{geometry=queries.Colliders.{ground_enabled=false,boxes=box[..]},metadata=metadata[..],surfaces=surfaces[..],current_epoch=epoch[..],epoch=epoch[0],tick=s[0].world[0].facts.tick};
+ volumes:=[1]fluids.FluidVolume.[fluids.FluidVolume.{body=metadata[0].ref,kind=fluids.FluidSurfaceKind.flat,level=f32(body.y)}];holes:[1]fluids.FluidHole;output:[1]fluids.FluidSample;
+ got:=fluids.query_fluid_samples(w,filters.QueryFilter.{},volumes[..],holes[0..<0],space.world_point(x,0.5,z),output[..]);return ifx got.status==queries.QueryStatus.ok && got.count==1 then output[0].depth else 0;
+}
+state_lab_npc :: (s:[]StateLab)->bool #effects(all) {
+ if s[0].world[0].variant<0 {return false;}owner:=s[0].variants.items[s[0].world[0].variant].owners[0];mode:=s[0].bodies[owner].words[0];phase:=s[0].world[0].facts.phase;
+ return (mode==0 && phase<256) || (mode==1 && phase>=256);
+}
+state_lab_save :: (s:[]StateLab)->bool #effects(all) {
+ words:[STATE_SAVE_WORDS]int;n:=state_save(s[0].schema,s[0].world[0].facts,state_lab_refs(s),words[..]);if n==0 {return false;}
+ bytes:[STATE_SAVE_WORDS*8]u8;for i:0..<n {resource_put64(bytes[..],i*8,words[i]);}
+ used:=save_pack("state-lab",1,bytes[..],n*8,s[0].saved[..]);if used<1 {return false;}s[0].saved_n=used;s[0].saved_version+=1;return true;
+}
+state_lab_read_save :: (s:[]StateLab)->bool #effects(all) {
+ opened:=save_open(s[0].saved[..],s[0].saved_n,"state-lab",1);
+ if !opened.ok || opened.schema!=1 || opened.count%8!=0 || opened.count/8>STATE_SAVE_WORDS {return false;}
+ s[0].word_n=opened.count/8;for i:0..<s[0].word_n {s[0].words[i]=cast,trunc(int)resource_u64(s[0].saved[..],opened.at+i*8);}return true;
+}
+state_lab_action :: (s:[]StateLab,action:int) #export_c #effects(all) {
+ if s.count!=1 || !s[0].ready || action<0 || action>13 {return;}
+ if action==3 {if !state_lab_save(s) {s[0].last_status=STATE_SCHEMA;}return;}
+ if action==5 {s[0].retry=state_retry_capture(s[0].schema,s[0].world[0].facts,state_lab_refs(s));return;}
+ if action==8 {s[0].fail_role=s[0].next_fault;s[0].next_fault=(s[0].next_fault+1)%6;return;}
+ if action==13 {s[0].visual=!s[0].visual;return;}
+ f:=s[0].world[0].facts;c:=StateCommand.{epoch=f.epoch,revision=f.revision,tick=f.tick+1,sequence=add_sat(f.sequence,1)};
+ if action==0 {c.n=1;c.patches[0]=StatePatch.{id=10,value=state_bool(true)};}
+ else if action==1 {c.n=1;c.patches[0]=StatePatch.{id=30,value=state_int(1-f.values[2].integer)};}
+ else if action==2 {c.n=1;c.patches[0]=StatePatch.{id=20,value=state_int((f.values[1].integer+1)%3)};}
+ else if action==4 || action==9 {
+  if !state_lab_read_save(s) {s[0].last_status=STATE_SCHEMA;s[0].refused+=1;return;}c.event=STATE_LOAD;if action==9 {s[0].words[0]=0;}
+ }else if action==6 {c.event=STATE_RETRY;s[0].pending_retry=s[0].retry;}
+ else if action==7 {c.jump=true;c.day=f.day+1;c.phase=0;}
+ else if action==11 {c.event=STATE_NEW;c.jump=true;}
+ else if action==12 {c.event=STATE_EDITOR;}
+ else if action!=10 {return;}
+ s[0].intent=action;s[0].command=c;
+}
+state_lab_ready_roots :: (s:[]StateLab,variant:int)->bool #effects(all) {
+ for owner:s[0].variants.items[variant].owners {if !resource_stream_ready(s[0].pool[..],owner) {return false;}}return true;
+}
+state_lab_safe_place :: (s:[]StateLab,variant:int)->bool #effects(all) {
+ old:=s[0].variants.items[s[0].world[0].variant].owners[1];next:=s[0].variants.items[variant].owners[1];if old==next {return true;}
+ ids:[1]queries.QueryId;p:=s[0].player.pos;hit:=queries.query_overlap_checked(queries.Colliders.{ground_enabled=false,boxes=s[0].boxes[next][..]},space.world_point(p.x,p.y+0.5,p.z),0.3,ids[..]);
+ return hit.status==queries.QueryStatus.ok && hit.count==0;
+}
+state_lab_attempt :: (s:[]StateLab,tick:int)->int #effects(all) {
+ refs:=state_lab_refs(s);c:=s[0].command;c.revision=s[0].world[0].facts.revision;c.tick=s[0].world[0].facts.tick+1;
+ fence:=ifx s[0].intent==10 then 2 else 1;old:=s[0].world[0];status:=STATE_INVALID;
+ if s[0].intent==4 || s[0].intent==9 || s[0].intent==6 {
+  restore:StateRestoreTicket;
+  if s[0].intent==6 {restore=state_retry_variant_hold(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,old,fence,c,s[0].pending_retry);}
+  else {restore=state_load_variant_hold(s[0].schema,s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,old,fence,c,s[0].words[0..<s[0].word_n],StateMigration.{});}
+  if restore.status!=STATE_OK {return restore.status;}state_lab_want(s,restore.hold.variant,tick);original:=restore.hold;
+  if state_lab_ready_roots(s,restore.hold.variant) && !state_lab_safe_place(s,restore.hold.variant) {state_variant_drop(s[0].pool[..],s[0].manifest[..],original);return STATE_VARIANT;}
+  if s[0].fail_role>=0 && state_lab_ready_roots(s,restore.hold.variant) {restore.hold.members[s[0].fail_role].serial+=1;s[0].failed_roles=s[0].failed_roles|(cast(u32)1<<cast(u32)s[0].fail_role);s[0].fail_role= -1;}
+  status=state_restore_publish(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,s[0].world[..],fence,restore);
+  if status!=STATE_OK {state_variant_drop(s[0].pool[..],s[0].manifest[..],original);}
+ }else {
+  t:=state_variant_hold(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,old,fence,c);if t.status!=STATE_OK {return t.status;}state_lab_want(s,t.variant,tick);original:=t;
+  if state_lab_ready_roots(s,t.variant) && !state_lab_safe_place(s,t.variant) {state_variant_drop(s[0].pool[..],s[0].manifest[..],original);return STATE_VARIANT;}
+  if s[0].fail_role>=0 && state_lab_ready_roots(s,t.variant) {t.members[s[0].fail_role].serial+=1;s[0].failed_roles=s[0].failed_roles|(cast(u32)1<<cast(u32)s[0].fail_role);s[0].fail_role= -1;}
+  status=state_variant_publish(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,s[0].world[..],fence,t);
+  if status!=STATE_OK {state_variant_drop(s[0].pool[..],s[0].manifest[..],original);}
+ }
+ if status==STATE_OK {state_variant_drop(s[0].pool[..],s[0].manifest[..],StateVariantTicket.{members=old.members});s[0].credit=state_credit_award(s[0].credit,state_credit_key(),1,1,s[0].world[0].facts.values[0].integer==1);s[0].applied+=1;}
+ return status;
+}
+state_lab_idle :: (s:[]StateLab)->bool #effects(all) {
+ old:=s[0].world[0];c:=StateCommand.{epoch=1,revision=old.facts.revision,tick=old.facts.tick+1};refs:=state_lab_refs(s);
+ t:=state_variant_hold(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,old,1,c);if t.status!=STATE_OK {return false;}
+ status:=state_variant_publish(s[0].schema,refs,s[0].manifest[..],s[0].pool[..],s[0].variants,s[0].world[..],1,t);
+ if status!=STATE_OK {state_variant_drop(s[0].pool[..],s[0].manifest[..],t);return false;}
+ state_variant_drop(s[0].pool[..],s[0].manifest[..],StateVariantTicket.{members=old.members});return true;
+}
+state_lab_walls :: (s:[]StateLab) #effects(all) {
+ fixed:=[36]f32.[-1,-1,-1,0,3,9,16,-1,-1,17,3,9,0,-1,-1,16,3,0,0,-1,8,16,3,9,7.5,0,0,8.5,3,3,7.5,0,5,8.5,3,8];
+ for v,i:fixed {s[0].walls[i]=v;}owner:=s[0].variants.items[s[0].world[0].variant].owners[1];for i:0..<6 {s[0].walls[36+i]=s[0].boxes[owner][i];}
+}
+state_lab_script :: (s:[]StateLab,tick:int) #effects(all) {
+ s[0].key_x=ifx tick<224 then 1 else 0;s[0].key_y=0;
+ if tick==16 {state_lab_action(s,5);}else if tick==128 {state_lab_action(s,0);}else if tick==160 {state_lab_action(s,1);}else if tick==192 {state_lab_action(s,2);}else if tick==224 {state_lab_action(s,3);}
+ else if tick==256 {state_lab_action(s,6);}else if tick==288 {state_lab_action(s,4);}else if tick==320 {state_lab_action(s,0);s[0].command.sequence=s[0].world[0].facts.sequence;}
+ else if tick==352 {state_lab_action(s,7);}else if tick==384 {state_lab_action(s,9);}else if tick==416 {state_lab_action(s,10);}
+ else if tick==448 {state_lab_action(s,8);state_lab_action(s,1);}else if tick==480 {state_lab_action(s,12);}else if tick==512 {state_lab_action(s,0);}
+}
+state_lab_step :: (s:[]StateLab,tick:int) #effects(all) {
+ state_lab_pump(s,tick);if s[0].script {state_lab_script(s,tick);}
+ else {for i:0..<18 {take:=input.input_take(s[0].keys[i]);s[0].keys[i]=take.edge;if i>=4 && take.pressed {state_lab_action(s,i-4);}}
+  s[0].key_x=(ifx s[0].keys[1].held then 1.0f32 else 0.0f32)-(ifx s[0].keys[0].held then 1.0f32 else 0.0f32);
+  s[0].key_y=(ifx s[0].keys[2].held then 1.0f32 else 0.0f32)-(ifx s[0].keys[3].held then 1.0f32 else 0.0f32);
+ }accepted:=false;
+ if s[0].intent>=0 {status:=state_lab_attempt(s,tick);s[0].last_status=status;if status==STATE_OK {accepted=true;s[0].intent= -1;}
+  else if status==STATE_WAITING {s[0].waiting+=1;}else {s[0].refused+=1;s[0].intent= -1;}
+ }
+ if !accepted && !state_lab_idle(s) {s[0].ready=false;return;}state_lab_nav(s);state_lab_walls(s);
+ p:=s[0].player;p.pace=ifx state_lab_fluid(s,p.pos.x,p.pos.z)>0 then 0.5 else 1;
+ p=walking.walk_input(p,s[0].key_x,s[0].key_y,0,0,false,false,0,0);
+ s[0].player=walking.step(walking.World.{walls=s[0].walls[..]},p,1.0f32/64.0f32);
+}
+state_lab_key :: (s:[]StateLab,key:string,down:bool) #export_c #effects(all) {
+ keys:=[18]string.["a","d","w","s","b","t","n","p","l","c","r","j","f","x","o","g","e","v"];
+ lower:[1]u8;name:=key;if key.count==1 {lower[0]=key[0];if lower[0]>='A' && lower[0]<='Z' {lower[0]+=32;}name=cast(string)lower[..];}
+ for k,i:keys {if name==k {s[0].keys[i]=input.input_level(s[0].keys[i],down);return;}}
+ arrows:=[4]string.["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"];for k,i:arrows {if key==k {s[0].keys[i]=input.input_level(s[0].keys[i],down);return;}}
+}
+state_lab_start :: (s:[]StateLab,credits:int)->bool #export_c #effects(all) {
+ if credits!=0 && credits!=1 {return false;}
+ return state_lab_open(s,StateCredit.{operation=ifx credits==1 then state_credit_key() else 0,credits=credits});
+}
+state_lab_replay :: (s:[]StateLab,script:bool,observe:bool) #export_c #effects(all) {s[0].script=script;s[0].observe=observe;s[0].trace_n=0;}
+state_lab_import :: (s:[]StateLab,bytes:[]u8)->bool #export_c #effects(all) {
+ if bytes.count<0 || bytes.count>8192 {return false;}opened:=save_open(bytes,bytes.count,"state-lab",1);
+ if !opened.ok || opened.schema!=1 || opened.count%8!=0 || opened.count/8>STATE_SAVE_WORDS {return false;}
+ words:[STATE_SAVE_WORDS]int;count:=opened.count/8;for i:0..<count {words[i]=cast,trunc(int)resource_u64(bytes,opened.at+i*8);}
+ f:=s[0].world[0].facts;c:=StateCommand.{epoch=f.epoch,revision=f.revision,tick=f.tick+1,sequence=add_sat(f.sequence,1),event=STATE_LOAD};
+ if state_load(s[0].schema,s[0].schema,f,state_lab_refs(s),1,c,words[0..<count],StateMigration.{}).draft.status!=STATE_OK {return false;}
+ for v,i:bytes {s[0].saved[i]=v;}s[0].saved_n=bytes.count;s[0].saved_version+=1;return true;
+}
+state_lab_frame :: (s:[]StateLab,ns:int) #export_c #effects(all) {
+ if s.count!=1 || !s[0].ready {return;}schedule:=clock.loop_accept_ns(s[0].clock,ns);count:=clock.loop_due(schedule);
+ s[0].clock=schedule;for i:0..<count {state_lab_step(s,schedule.ticks+i+1);s[0].clock=clock.loop_ran_some(schedule,i+1);state_lab_observe(s);}s[0].clock=clock.loop_ran(schedule);
+}
+state_lab_digest :: (s:[]StateLab)->assets.AssetId #effects(all) {
+ words:[2048]int;n:=state_save(s[0].schema,s[0].world[0].facts,state_lab_refs(s),words[..]);p:=s[0].player;
+ values:=[15]int.[s[0].clock.ticks,s[0].world[0].variant,cast(int)f32_bits(p.pos.x),cast(int)f32_bits(p.pos.y),cast(int)f32_bits(p.pos.z),cast(int)f32_bits(p.vel.x),cast(int)f32_bits(p.vel.y),cast(int)f32_bits(p.vel.z),cast(int)f32_bits(p.face),s[0].credit.operation,s[0].credit.credits,s[0].intent,ifx s[0].nav_reached then 1 else 0,ifx state_lab_npc(s) then 1 else 0,cast(int)f32_bits(state_lab_fluid(s,3,3))];
+ for v:values {words[n]=v;n+=1;}for id:s[0].variants.items[s[0].world[0].variant].content {for w:id.words {words[n]=cast(int)w;n+=1;}}return state_words_id(words[0..<n]);
+}

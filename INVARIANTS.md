@@ -6339,3 +6339,20 @@ submissions with both current world draws and the hero in every sampled frame;
 stale readiness alone cannot qualify. The new receipt boundary kills all 30
 mutants. No change to the 60 FPS rule or two-frame admission limit is implied.
 See `docs/verification/everglade-echo-12984-2026-11-07/performance.md`.
+
+## Declared facts publish with their world variant (#12991)
+
+`aethyr/state/` profile 1 admits full field identities, typed defaults and explicit
+lifetimes. A paid fixed step prepares resets and changes privately. Persisted
+epoch/revision/operation fences reject stale owners and duplicate effects.
+Predicates select one complete six-resource variant; publication validates every
+owned ready root before replacing facts and derived world together. On refusal
+keep all old subsystems. Retire old references only after successful publication.
+
+FST1 stores versioned facts and time, not pointers, caches or GPU objects. Schema
+migrations require both full identities and explicit default/repair/discard masks;
+never coerce owners or reference identities. Retry contains only declared local
+fields and cannot roll back an external committed domain. Day changes use the
+existing paid clock; visual time cannot drive authoritative routines. AESV, ACK1,
+HH_Save v1 and server revision/CAS retain their existing contracts. The supported
+bounds and residual adapters are in `aethyr/state/README.md`.

@@ -1,0 +1,91 @@
+// Atomic facts + six prepared subsystem roots, over the existing RCM1 owners.
+#load "lifecycle.coax";
+#load "../world/resource-stream.coax";
+#load "../assets.coax" as assets;
+#authority;
+STATE_VARIANTS :: 16;
+STATE_EQ :: 0; STATE_LESS :: 1; STATE_AND :: 2; STATE_OR :: 3; STATE_NOT :: 4;
+// Member order is fixed: placements, collision, navigation, fluid, lighting, render.
+StateTerm :: struct {op:int;id:int;field:int= -1;a:int= -1;b:int= -1;value:StateValue;}
+StateProgram :: struct {format:int=1;valid:bool;schema:int;version:int;n:int;root:int;terms:[32]StateTerm;}
+StateVariant :: struct {id:int;test:StateProgram;owners:[6]int;content:[6]assets.AssetId;}
+StateVariants :: struct {n:int;items:[STATE_VARIANTS]StateVariant;}
+StateWorld :: struct {facts:StateStore;variant:int= -1;members:[6]ResourceReference;}
+StateVariantTicket :: struct {status:int=STATE_INVALID;command:StateCommand;variant:int= -1;members:[6]ResourceReference;}
+#load "tests/variants.coax";
+#load "tests/variants-matrix.coax";
+state_program :: (schema:StateSchema,refs:StateRefs,terms:[]const StateTerm,root:int)->StateProgram #effects(all) {
+ p:StateProgram;if !state_schema_ok(schema,refs) || terms.count<1 || terms.count>32 || root<0 || root>=terms.count {return p;}
+ p.schema=schema.id;p.version=schema.revision;p.n=terms.count;p.root=root;
+ for term,i:terms {
+  t:=term;
+  if t.op==STATE_EQ || t.op==STATE_LESS {
+   t.field=state_find(schema,t.id);if t.field<0 || !state_value_ok(schema.fields[t.field],t.value,refs) {return StateProgram.{};}
+   if t.op==STATE_LESS && t.value.kind!=STATE_INT && t.value.kind!=STATE_SCALAR {return StateProgram.{};}
+  }else if t.op==STATE_AND || t.op==STATE_OR || t.op==STATE_NOT {
+   if t.a<0 || t.a>=i {return StateProgram.{};}if t.op!=STATE_NOT && (t.b<0 || t.b>=i) {return StateProgram.{};}
+  }else {return StateProgram.{};}
+  p.terms[i]=t;
+ }p.valid=true;return p;
+}
+state_equal :: (a:StateValue,b:StateValue)->bool #effects(all) {
+ if a.kind!=b.kind || a.integer!=b.integer || a.entity!=b.entity || a.generation!=b.generation || !assets.asset_same(a.content,b.content) {return false;}
+ for i:0..<3 {if a.number[i]!=b.number[i] {return false;}}return true;
+}
+state_program_eval :: (p:StateProgram,s:StateStore)->int #effects(all) {
+ if p.format!=1 || !p.valid || !s.ready || p.schema!=s.schema || p.version!=s.version || p.n<1 || p.n>32 || p.root<0 || p.root>=p.n {return -1;}
+ out:[32]bool;
+ for i:0..<p.n {
+  t:=p.terms[i];
+  if t.op==STATE_EQ || t.op==STATE_LESS {
+   if t.field<0 || t.field>=STATE_FIELDS {return -1;}v:=s.values[t.field];
+   if t.op==STATE_EQ {out[i]=state_equal(v,t.value);}
+   else if v.kind==STATE_INT && t.value.kind==STATE_INT {out[i]=v.integer<t.value.integer;}
+   else if v.kind==STATE_SCALAR && t.value.kind==STATE_SCALAR {out[i]=v.number[0]<t.value.number[0];}else {return -1;}
+  }else {
+   if t.a<0 || t.a>=i {return -1;}if t.op==STATE_NOT {out[i]=!out[t.a];}
+   else {if t.b<0 || t.b>=i {return -1;}if t.op==STATE_AND {out[i]=out[t.a] && out[t.b];}else if t.op==STATE_OR {out[i]=out[t.a] || out[t.b];}else {return -1;}}
+  }
+ }return ifx out[p.root] then 1 else 0;
+}
+state_variants_ok :: (schema:StateSchema,refs:StateRefs,m:[]ResourceManifest,v:StateVariants)->bool #effects(all) {
+ if !state_schema_ok(schema,refs) || m.count!=1 || !m[0].valid || v.n<1 || v.n>STATE_VARIANTS {return false;}
+ if m[0].count>RESOURCE_MANIFEST_MAX {return false;}
+ for i:0..<v.n {
+  item:=v.items[i];p:=item.test;
+  if item.id<1 || p.format!=1 || !p.valid || p.schema!=schema.id || p.version!=schema.revision || p.n<1 || p.n>32 {return false;}
+  for j:0..<i {if v.items[j].id==item.id {return false;}}
+  checked:=state_program(schema,refs,p.terms[0..<p.n],p.root);if !checked.valid {return false;}
+  for k:0..<p.n {if checked.terms[k].field!=p.terms[k].field {return false;}}
+  for role:0..<6 {owner:=item.owners[role];if owner<0 || owner>=m[0].count || !assets.asset_same(item.content[role],m[0].entries[owner].plan.content) {return false;}}
+ }return true;
+}
+state_choose :: (v:StateVariants,s:StateStore)->int #effects(all) {
+ if v.n<1 || v.n>STATE_VARIANTS {return -1;}found:= -1;
+ for i:0..<v.n {answer:=state_program_eval(v.items[i].test,s);if answer<0 {return -1;}if answer==1 {if found>=0 {return -1;}found=i;}}return found;
+}
+state_variant_hold :: (schema:StateSchema,refs:StateRefs,m:[]ResourceManifest,pool:[]ResourceStream,v:StateVariants,world:StateWorld,fence:int,c:StateCommand)->StateVariantTicket #effects(all) {
+ d:=state_prepare(schema,world.facts,refs,fence,c);if d.status!=STATE_OK {return StateVariantTicket.{status=d.status};}
+ if !state_variants_ok(schema,refs,m,v) || !resource_stream_bound(pool,m) {return StateVariantTicket.{status=STATE_VARIANT};}
+ which:=state_choose(v,d.state);if which<0 {return StateVariantTicket.{status=STATE_VARIANT};}
+ t:=StateVariantTicket.{status=STATE_OK,command=c,variant=which};
+ for role:0..<6 {t.members[role]=resource_stream_hold(pool,m,v.items[which].owners[role]);if t.members[role].slot<0 {state_variant_drop(pool,m,t);return StateVariantTicket.{status=STATE_CAPACITY};}}
+ return t;
+}
+state_variant_publish :: (schema:StateSchema,refs:StateRefs,m:[]ResourceManifest,pool:[]ResourceStream,v:StateVariants,world:[]StateWorld,fence:int,t:StateVariantTicket)->int #effects(all) {
+ if world.count!=1 || t.status!=STATE_OK {return STATE_INVALID;}
+ d:=state_prepare(schema,world[0].facts,refs,fence,t.command);if d.status!=STATE_OK {return d.status;}
+ if !state_variants_ok(schema,refs,m,v) || !resource_stream_bound(pool,m) {return STATE_VARIANT;}
+ which:=state_choose(v,d.state);if which<0 || which!=t.variant {return STATE_VARIANT;}
+ for role:0..<6 {
+  ref:=t.members[role];if ref.slot<0 || ref.slot>=RESOURCE_STREAM_REFERENCES || ref.epoch!=pool[0].epoch {return STATE_WAITING;}
+  claim:=pool[0].claims[ref.slot];if !claim.live || claim.serial!=ref.serial || claim.root!=v.items[which].owners[role] {return STATE_WAITING;}
+  if !resource_stream_ready(pool,claim.root) || !assets.asset_same(pool[0].owners[claim.root].content,v.items[which].content[role]) {return STATE_WAITING;}
+  for j:0..<role {if t.members[j].slot==ref.slot {return STATE_INVALID;}}
+  // A current pool slot cannot simultaneously belong to the retiring world.
+  // A replaced resource epoch is distinct; old-pool retirement stays with its owner.
+  if world[0].variant>=0 {for old:world[0].members {if old.slot==ref.slot && old.epoch==ref.epoch {return STATE_INVALID;}}}
+ }
+ world[0]=StateWorld.{facts=d.state,variant=which,members=t.members};return STATE_OK;
+}
+state_variant_drop :: (pool:[]ResourceStream,m:[]ResourceManifest,t:StateVariantTicket) #effects(all) {for r:t.members {if r.slot>=0 {dropped:=resource_stream_drop(pool,m,r);}}}

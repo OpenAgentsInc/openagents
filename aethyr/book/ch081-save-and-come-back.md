@@ -359,3 +359,7 @@ Chapters [3](ch003-state-starts-from-its-defaults.md) (defaults),
 replaces). Coax: R5 derivation and R16 snapshots in the
 [roadmap](../../coax/ROADMAP.md), and
 [chapter 18](../../coax/book/ch18-protocol.md) for versioned records.
+
+## Declared-state adoption (#12991)
+
+FST1 adds full-schema identity, bounded typed fact snapshots and explicit default/clamp/discard migration receipts inside AESV. Loads reconstruct and validate all six variant roots before publication. Retry snapshots exclude external durable progression. HH_Save v1 quest and fired-zone admission now uses the shared declarations while preserving its original wire. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.

@@ -503,3 +503,7 @@ up, with the shared layer in [verse/edit/edit.coax](../../verse/edit/edit.coax).
 [chapter 6](ch006-entities-are-born-and-die.md) (stable IDs),
 [chapter 15](ch015-ui-and-the-hud.md) (panes) and
 [chapter 51](ch051-a-realm-is-a-document.md) (the document).
+
+## Declared-state adoption (#12991)
+
+EDITOR is an explicit, fenced paid-step event applying only the declared reset masks. State Lab adopts it; the general forge editing/undo document remains its existing adapter. Editor previews cannot publish half of a selected resource cut. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.

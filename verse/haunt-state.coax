@@ -1,0 +1,24 @@
+// Existing HH_Save v1 choices admitted by the shared fact declarations.
+#module "verse.haunt.state";
+#load "../aethyr/state/declarations.coax" as facts;
+#authority;
+#test "Haunted House v1 quest and once-zone facts retain their exact old wire ranges" {
+ for zones:0..<33 {
+  schema:=haunt_fact_schema(zones);refs:facts.StateRefs;#assert facts.state_schema_ok(schema,refs);
+  #assert haunt_facts_ok(0,0,zones) && haunt_facts_ok(8,0,zones) && !haunt_facts_ok(9,0,zones) && !haunt_facts_ok(-1,0,zones);
+  last:=ifx zones==32 then cast(u32)4294967295 else cast(u32)((1<<zones)-1);
+  #assert haunt_facts_ok(4,last,zones);if zones<32 {#assert !haunt_facts_ok(4,last+1,zones);}
+ }
+ #assert !haunt_facts_ok(0,0,-1) && !haunt_facts_ok(0,0,33);
+ schema:=haunt_fact_schema(32);#assert schema.id==1299101 && schema.revision==1 && schema.n==2 && schema.fields[0].id==1 && schema.fields[1].id==2 && !schema.fields[0].retry && !schema.fields[1].retry;
+}
+haunt_fact_schema :: (zones:int)->facts.StateSchema #effects(all) {
+ if zones<0 || zones>32 {return facts.StateSchema.{};}
+ schema:=facts.StateSchema.{id=1299101,n=2};
+ schema.fields[0]=facts.StateField.{id=1,name="quest.step",high=8,retry=false};
+ schema.fields[1]=facts.StateField.{id=2,name="zones.fired",high=(1<<zones)-1,retry=false};return schema;
+}
+haunt_facts_ok :: (quest:int,fired:u32,zones:int)->bool #effects(all) {
+ schema:=haunt_fact_schema(zones);refs:facts.StateRefs;
+ return facts.state_schema_ok(schema,refs) && facts.state_value_ok(schema.fields[0],facts.state_int(quest),refs) && facts.state_value_ok(schema.fields[1],facts.state_int(cast(int)fired),refs);
+}

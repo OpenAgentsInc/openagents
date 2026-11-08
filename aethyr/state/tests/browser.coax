@@ -1,0 +1,37 @@
+// Real Wasm/Canvas SDK receipts. Every frame schedule and transition is Coax.
+// tool.sh: stack-gib 2
+#load "../../../coax/web/wasm-chrome.coax";
+#load "../../../coax/lib/sys/fs.coax";
+state_browser_write :: (c:[]Cdp,expression:string,path:string)->bool {
+ value:=cdp_evaluate(c,expression);if value<0 {tool_errln(cdp_error(c));return false;}
+ bytes:[131072]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jv_write(cdp_doc(c),value,o[..]);return !o[0].bad && fs_write(path,jo_text(o[..]));
+}
+state_browser_path :: (prefix:string,suffix:string,out:[]u8)->string {n:=ws_put(out,0,prefix);n=ws_put(out,n,suffix);return ifx n<0 then "" else cast(string)out[0..<n];}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || (args_count(a[..])<2 || args_count(a[..])>3) {return 2;}url:=args_at(a[..],0);prefix:=args_at(a[..],1);
+ c:[1]Cdp;if !cdp_launch(c[..],960,640,"state-facts-") {tool_errln(cdp_error(c[..]));return 1;}defer {cdp_close(c[..]);}
+ enabled:=cdp_call(c[..],"Page.enable","{}",CDP_CALL_MS);setup:=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument","{\"source\":\"window.__stateErrors=[];addEventListener('error',e=>__stateErrors.push(e.message));addEventListener('unhandledrejection',e=>__stateErrors.push(String(e.reason)))\"}",CDP_CALL_MS);
+ params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);navigated:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+ until:=proc_now_ms()+30000;ready:=false;while proc_now_ms()<until {if wc_eval(c[..],"!!window.stateLab?.ready")=="true" {ready=true;break;}proc_sleep(50);}
+ if !ready {tool_errln(wc_eval(c[..],"JSON.stringify({url:location.href,errors:window.__stateErrors,body:document.body?.innerText})"));tool_errln(cdp_error(c[..]));return 1;}
+ paused:=wc_eval(c[..],"stateLab.pause();true");path:[4096]u8;script:[8192]u8;
+ for fps:[4]int.[30,60,144,0] {
+  jo_start(o[..],script[..]);jo_put(o[..],"(async()=>{const l=await stateLab.create();const began=performance.now();const r=l.trial(");jo_int(o[..],fps);jo_put(o[..],");r.elapsed_ms=performance.now()-began;r.fps=");jo_int(o[..],fps);jo_put(o[..],";stateLab.show(l);return r})()");
+  tail:[64]u8;n:=ws_put(tail[..],0,"-");n=ws_digits(tail[..],n,fps);n=ws_put(tail[..],n,".json");
+  if !state_browser_write(c[..],jo_text(o[..]),state_browser_path(prefix,cast(string)tail[0..<n],path[..])) {return 1;}
+ }
+ if !state_browser_write(c[..],"(async()=>{const original=stateLab.current,saved=original.snapshot(),cold=await stateLab.create(original.metrics().credits);const imported=cold.import(saved);cold.action(4);cold.steps(8);const beforeBad=cold.snapshot(),bad=beforeBad.slice();bad[0]^=1;const refused=!cold.import(bad),preserved=beforeBad.every((x,i)=>cold.snapshot()[i]===x);stateLab.show(cold);return {imported,refused,preserved,original:original.final(),cold:cold.final()}})()",state_browser_path(prefix,"-cold.json",path[..])) {return 1;}
+ if args_count(a[..])==3 {
+  raw:[8192]u8;encoded:[12000]u8;expr:[16384]u8;rn:=fs_read(args_at(a[..],2),raw[..]);if rn<1 {return 1;}bn:=b64_encode(cast(string)raw[0..<rn],encoded[..]);
+  q:=ws_put(expr[..],0,"(async()=>{const l=await stateLab.create(1);const bytes=Uint8Array.from(atob('");q=ws_put(expr[..],q,cast(string)encoded[0..<bn]);q=ws_put(expr[..],q,"'),x=>x.charCodeAt(0));const imported=l.import(bytes);l.action(4);l.steps(8);return {imported,final:l.final(),sameSave:bytes.every((x,i)=>l.snapshot()[i]===x)}})()");
+  if q<0 || !state_browser_write(c[..],cast(string)expr[0..<q],state_browser_path(prefix,"-cross-save.json",path[..])) {return 1;}
+ }
+ if !state_browser_write(c[..],"(async()=>{const visual=await stateLab.create();visual.trial(60,true,false);return visual.final()})()",state_browser_path(prefix,"-visual.json",path[..])) {return 1;}
+ for role:0..<6 {
+  initialized:=wc_eval(c[..],"(async()=>{window._stateFault=await stateLab.create();return true})()");for i:0..<role+1 {armed:=wc_eval(c[..],"_stateFault.action(8);true");}
+  if !state_browser_write(c[..],"(()=>{_stateFault.action(0);_stateFault.steps(2);const before=_stateFault.final();_stateFault.steps(4);return {before,after:_stateFault.final()}})()",state_browser_path(prefix,ifx role==0 then "-fault0.json" else ifx role==1 then "-fault1.json" else ifx role==2 then "-fault2.json" else ifx role==3 then "-fault3.json" else ifx role==4 then "-fault4.json" else "-fault5.json",path[..])) {return 1;}
+ }
+ png:[2097152]u8;shown:=wc_eval(c[..],"stateLab.draw();true");count:=cdp_screenshot(c[..],png[..]);if count<1 || !fs_write(state_browser_path(prefix,"-desktop.png",path[..]),cast(string)png[0..<count]) {return 1;}
+ resized:=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}",CDP_CALL_MS);proc_sleep(100);shown=wc_eval(c[..],"stateLab.draw();true");count=cdp_screenshot(c[..],png[..]);if count<1 || !fs_write(state_browser_path(prefix,"-phone.png",path[..]),cast(string)png[0..<count]) {return 1;}
+ print("Wasm receipts and desktop/phone captures written.\n");return 0;
+}

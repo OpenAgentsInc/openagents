@@ -1,6 +1,8 @@
 # 71. Sky, weather and the time of day
 
-> **Status: unimplemented — design draft.** Today each realm keeps its own
+> **Status: partly implemented.** The bounded declared day/phase clock below
+> is qualified on native and Wasm; the shared sky/weather renderer remains a
+> design draft. Today each realm keeps its own
 > clock of the day and its own sky: Everglade's 48-minute day and weather
 > schedule, Fairy Forest's day and night in
 > [`verse/fairy-forest/night.coax`](../../verse/fairy-forest/night.coax),
@@ -110,3 +112,19 @@ The chapter is done when:
 Chapters 1 (the clock), 5 (replay), 12 (materials) and 13 (the lighting
 record). Chapter 70 for rising water. From Coax: R13 typed clocks for civil
 and simulation time.
+
+## Declared-state adoption (#12991)
+
+Declared-state profile 1 implements day plus phase from the existing paid clock, recorded jumps, day reset masks and a separate visual-only override. It does not implement the complete shared sky/weather renderer planned here; that broader design remains draft. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.
+
+For the bounded profile, declare `day_ticks` on `StateSchema`, and set the NPC
+field’s reset mask to include `STATE_DAY`. At each step paid by `FrameClock`,
+prepare one command against the live revision. Normal commands advance phase by
+one; wrapping phase increments day and applies DAY defaults once. A recorded
+jump sets day and phase explicitly and uses that same reset batch. Duplicate
+operation IDs refuse before any reset. A visual override changes only drawing.
+
+State Lab uses 512 ticks per day to make these transitions observable. The
+runtime conformance probe uses 16, all seven reset events, a day jump and natural
+midnights, under four native/Wasm frame schedules. These deliberately short
+days qualify lifecycle semantics, not astronomical time or weather rendering.
