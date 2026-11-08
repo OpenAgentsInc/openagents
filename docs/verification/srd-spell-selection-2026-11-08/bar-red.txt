@@ -1,0 +1,7 @@
+FAIL #test experimental combat level progression (42 ms)
+apps/openagents-web/experimental-combat.coax:1282:51: error[E0406]: assertion failed
+        for i: 0..<n { if bar[i].kind == FB_SPELL { #assert rs_spell_ready(hero, bar[i].sp); } }
+                                                    ^
+  note: in #test experimental combat level progression
+1 of 577 checks (--only 'experimental combat level progression'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -15,6 +15,9 @@
 #test "compliance admission: malformed target and out of range refuse without spending" {
   #assert sc_admission_target() && sc_admission_range();
 }
+#test "compliance admission: class access and prepared selections both refuse unauthorized casts" {
+  #assert sc_admission_class() && sc_admission_prepared();
+}
 #test "compliance effects: adding into free storage retains existing independent effects" {
   c: [1] RsCreature;
   rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 1, until = 60});
@@ -84,6 +87,13 @@ sc_admission_class :: () -> bool {
   b: [1] RsBattle; sc_setup(b[..]); p := sc_before(b[..]);
   return !rs_cast(b[..], 0, SP_GUIDING_BOLT, 1, 0, 0, 1) && sc_unchanged(b[..], p);
 }
+sc_admission_prepared :: () -> bool {
+  b: [1] RsBattle; sc_setup(b[..]);
+  keys := [8] int.[RS_EXEC_SOURCE[SP_STARRY_WISP],RS_EXEC_SOURCE[SP_PRODUCE_FLAME],RS_EXEC_SOURCE[SP_ENTANGLE],RS_EXEC_SOURCE[SP_THUNDERWAVE],RS_EXEC_SOURCE[SP_HEALING_WORD],RS_EXEC_SOURCE[SP_FAERIE_FIRE],RS_EXEC_SOURCE[SP_MOONBEAM],RS_EXEC_SOURCE[SP_SPIKE_GROWTH]];
+  if !rs_set_spells(b[0].c[0..<1], keys[..]) { return false; }
+  p := sc_before(b[..]);
+  return rs_spell_access(b[0].c[0], SP_CURE_WOUNDS) && !rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, 0) && sc_unchanged(b[..], p);
+}
 // SRD p.106 Invalid Targets and Hold Person p.141: the Skeleton is not Humanoid.
 // A used slot is expended, the target remains unaffected, and it rolls no save.
 sc_invalid_target_spends :: () -> bool {
@@ -96,9 +106,19 @@ sc_invalid_target_spends :: () -> bool {
 // A deliberately necessary (not sufficient) Polymorph witness: a failed save
 // must not simply Incapacitate the creature. It retains HP/type and gains form
 // Temporary HP. The current API has no Beast choice; full qualification must add it.
+#test "compliance Polymorph witness uses a prepared spell and an available fourth-level slot" {
+  b: [1] RsBattle; #assert sc_polymorph_setup(b[..]);
+  #assert rs_spell_ready(b[0].c[0], SP_POLYMORPH) && rs_can_cast(b[..], 0, SP_POLYMORPH, 4);
+}
+sc_polymorph_setup :: (b: [] RsBattle) -> bool {
+  sc_setup(b);
+  b[0].c[0] = rs_druid("Druid", 0, 7); b[0].c[0].x = 1; b[0].c[0].y = 1;
+  b[0].c[0].slots[4] = 1; b[0].c[0].slots_max[4] = 1;
+  choice := [1] int.[RS_EXEC_SOURCE[SP_POLYMORPH]];
+  return rs_set_spells(b[0].c[0..<1], choice[..]);
+}
 sc_polymorph :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]);
-  b[0].c[0].level = 9; b[0].c[0].slots[4] = 1;
+  b: [1] RsBattle; if !sc_polymorph_setup(b[..]) { return false; }
   hp := b[0].c[1].hp; humanoid := b[0].c[1].humanoid;
   accepted := rs_cast(b[..], 0, SP_POLYMORPH, 4, 0, 0, 1);
   return accepted && !rs_has(b[0].c[1], RS_INCAPACITATED) && b[0].c[1].temp > 0 &&

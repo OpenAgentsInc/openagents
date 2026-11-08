@@ -1,0 +1,59 @@
+// Declared preset choices, in priority order. Every choice goes through the
+// shared selection authority; this file cannot relax class/level/count rules.
+RS_PROFILE_DRUID :: [16] int.[SP_STARRY_WISP,SP_PRODUCE_FLAME,SP_POISON_SPRAY,SP_THUNDERWAVE,SP_ENTANGLE,SP_HEALING_WORD,SP_CURE_WOUNDS,SP_FAERIE_FIRE,SP_SPIKE_GROWTH,SP_MOONBEAM,SP_ICE_KNIFE,SP_CALL_LIGHTNING,SP_CONJURE_ANIMALS,SP_WATER_BREATHING,SP_WATER_WALK,SP_SLEET_STORM];
+RS_PROFILE_WIZARD :: [17] int.[SP_FIRE_BOLT,SP_CHILL_TOUCH,SP_RAY_OF_FROST,SP_POISON_SPRAY,SP_RAY_OF_SICKNESS,SP_FALSE_LIFE,SP_THUNDERWAVE,SP_SHIELD,SP_SCORCHING_RAY,SP_BLINDNESS,SP_FIREBALL,SP_HYPNOTIC_PATTERN,SP_HOLD_PERSON,SP_BURNING_HANDS,SP_LIGHTNING_BOLT,SP_RAY_OF_ENFEEBLEMENT,SP_FOG_CLOUD];
+RS_PROFILE_SORCERER :: [14] int.[SP_FIRE_BOLT,SP_CHILL_TOUCH,SP_RAY_OF_FROST,SP_POISON_SPRAY,SP_RAY_OF_SICKNESS,SP_THUNDERWAVE,SP_SHIELD,SP_FALSE_LIFE,SP_SCORCHING_RAY,SP_HOLD_PERSON,SP_FIREBALL,SP_BLINDNESS,SP_HYPNOTIC_PATTERN,SP_LIGHTNING_BOLT];
+RS_PROFILE_WARLOCK :: [11] int.[SP_ELDRITCH_BLAST,SP_CHILL_TOUCH,SP_POISON_SPRAY,SP_HEX,SP_HELLISH_REBUKE,SP_HOLD_PERSON,SP_RAY_OF_ENFEEBLEMENT,SP_SPEAK_WITH_ANIMALS,SP_HYPNOTIC_PATTERN,SP_BLIGHT,SP_DIMENSION_DOOR];
+RS_PROFILE_BARD :: [10] int.[SP_VICIOUS_MOCKERY,SP_STARRY_WISP,SP_HEALING_WORD,SP_THUNDERWAVE,SP_FAERIE_FIRE,SP_CURE_WOUNDS,SP_BANE,SP_BLINDNESS,SP_HYPNOTIC_PATTERN,SP_HOLD_PERSON];
+RS_PROFILE_CLERIC :: [9] int.[SP_SACRED_FLAME,SP_GUIDING_BOLT,SP_HEALING_WORD,SP_CURE_WOUNDS,SP_BLESS,SP_SHIELD_OF_FAITH,SP_COMMAND,SP_BANE,SP_SPIRIT_GUARDIANS];
+RS_PROFILE_PALADIN :: [5] int.[SP_DIVINE_SMITE,SP_CURE_WOUNDS,SP_BLESS,SP_SHIELD_OF_FAITH,SP_COMMAND];
+RS_PROFILE_RANGER :: [5] int.[SP_HUNTERS_MARK,SP_ENTANGLE,SP_CURE_WOUNDS,SP_FOG_CLOUD,SP_SPIKE_GROWTH];
+RS_PROFILE_NONE :: [1] int.[-1];
+rs_profile_spells :: (klass: int) -> [] const int {
+  if klass == RS_DRUID { return RS_PROFILE_DRUID[..]; }
+  if klass == RS_WIZARD { return RS_PROFILE_WIZARD[..]; }
+  if klass == RS_SORCERER { return RS_PROFILE_SORCERER[..]; }
+  if klass == RS_WARLOCK { return RS_PROFILE_WARLOCK[..]; }
+  if klass == RS_BARD { return RS_PROFILE_BARD[..]; }
+  if klass == RS_CLERIC { return RS_PROFILE_CLERIC[..]; }
+  if klass == RS_PALADIN { return RS_PROFILE_PALADIN[..]; }
+  if klass == RS_RANGER { return RS_PROFILE_RANGER[..]; }
+  return RS_PROFILE_NONE[0..<0];
+}
+rs_preset_spells :: (c: [] RsCreature) {
+  learned := 0;
+  if c[0].klass == RS_WIZARD {
+    _ := rs_spellbook_add(c, RS_KEY_MAGE_ARMOR); _ = rs_spellbook_add(c, RS_KEY_MAGIC_MISSILE);
+    _ = rs_select_spell(c, RS_KEY_MAGE_ARMOR);
+    learned = 2;
+  }
+  for sp: rs_profile_spells(c[0].klass) {
+    key := RS_EXEC_SOURCE[sp];
+    if c[0].klass == RS_WIZARD && learned < 6 + 2 * (c[0].level - 1) {
+      if rs_spellbook_add(c, key) { learned += 1; }
+    }
+    if !rs_spell_granted(c[0], sp) { _ := rs_select_spell(c, key); }
+  }
+  // Fill the Wizard's remaining class-granted research choices, including
+  // source spells with no executor yet. This adds no paid copied spells.
+  if c[0].klass == RS_WIZARD {
+    for key: 0..<RS_SPELL_KEYS.count {
+      if learned >= 6 + 2 * (c[0].level - 1) { break; }
+      if (c[0].spells.known[key / 64] & (cast(u64) 1 << (key % 64))) != 0 { continue; }
+      if rs_spellbook_add(c, key) { learned += 1; }
+    }
+  }
+  // Complete the declared source loadout even when a choice has no executor.
+  // Always-prepared feature spells do not use up these ordinary choices.
+  granted: [6] u64;
+  for sp: 0..<RS_MORE_END {
+    if rs_spell_granted(c[0], sp) {
+      key := RS_EXEC_SOURCE[sp]; granted[key / 64] |= cast(u64) 1 << (key % 64);
+    }
+  }
+  for key: 0..<RS_SPELL_KEYS.count {
+    if c[0].spells.cantrips >= rs_cantrip_limit(c[0].klass,c[0].level) && c[0].spells.prepared >= rs_prepared_limit(c[0].klass,c[0].level) { break; }
+    if (granted[key / 64] & (cast(u64) 1 << (key % 64))) != 0 { continue; }
+    _ := rs_select_spell(c, key);
+  }
+}

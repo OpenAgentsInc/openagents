@@ -1,0 +1,164 @@
+// Legal cantrip/prepared selections and Wizard spellbook membership. These
+// setup/configuration APIs do not perform Long Rests, level-ups or paid copying.
+#authority;
+#load "data/spell-index.coax";
+#load "spell-limits.coax";
+#load "source-schema.coax";
+RsSpellSelection :: struct { selected: [6] u64; known: [6] u64; cantrips: int; prepared: int; }
+
+#test "readiness uses selected parent spells and explicit grants rather than all eligible records" {
+  c: [1] RsCreature; c[0] = rs_druid("Druid",0,1);
+  #assert rs_spell_ready(c[0], SP_STARRY_WISP) && rs_spell_ready(c[0], SP_FLAME_HURL);
+  #assert !rs_spell_ready(c[0], SP_FAERIE_FIRE) && !rs_spell_ready(c[0], SP_WATER_ORB) && !rs_spell_ready(c[0], -1);
+  #assert rs_grant_spell(c[..], SP_WATER_ORB) && rs_spell_ready(c[0], SP_WATER_ORB);
+}
+
+#test "all caster presets through level six have legal counted selections and class-granted Wizard research" #steps 100000000 {
+  for level: 1..<7 {
+    heroes := [8] RsCreature.[rs_druid("D",0,level),rs_wizard("W",0,level),rs_warlock("K",0,level,SP_ELDRITCH_BLAST),rs_bard("B",0,level),rs_cleric("C",0,level),rs_paladin("P",0,level),rs_ranger("R",0,level),rs_sorcerer("S",0,level)];
+    for c: heroes {
+      cantrips := 0; prepared := 0; known := 0;
+      for key: 0..<RS_SPELL_KEYS.count {
+        bit := cast(u64) 1 << (key % 64);
+        if (c.spells.known[key / 64] & bit) != 0 { known += 1; #assert c.klass == RS_WIZARD && rs_key_eligible(c,key) && RS_SPELL_KEYS[key].level > 0; }
+        if (c.spells.selected[key / 64] & bit) != 0 {
+          #assert rs_key_eligible(c, key);
+          if RS_SPELL_KEYS[key].level == 0 { cantrips += 1; } else {
+            prepared += 1;
+            if c.klass == RS_WIZARD { #assert (c.spells.known[key / 64] & bit) != 0; }
+          }
+        }
+      }
+      #assert cantrips == c.spells.cantrips && prepared == c.spells.prepared;
+      #assert cantrips == rs_cantrip_limit(c.klass, level) && prepared == rs_prepared_limit(c.klass, level);
+      if c.klass == RS_WIZARD { #assert known == 6 + 2 * (level - 1); #assert (c.spells.selected[RS_KEY_MAGE_ARMOR / 64] & (cast(u64) 1 << (RS_KEY_MAGE_ARMOR % 64))) != 0; }
+    }
+  }
+}
+
+#test "source class mapping and level one to six limits match the class tables" {
+  for klass: 0..<RS_CLASS.count {
+    k := rs_source_class(klass);
+    if klass == RS_BARBARIAN || klass == RS_MONK || klass == RS_MONSTER || klass == RS_FIGHTER || klass == RS_ROGUE { #assert k == -1; }
+    else { #assert k >= 0 && k < 8 && SRD_CLASSES[k] == RS_CLASS[klass]; }
+  }
+  #assert rs_source_class(-1) == -1 && rs_source_class(13) == -1;
+  expected := [6] int.[4,5,6,7,9,10]; half := [6] int.[2,3,4,5,6,6]; warlock := [6] int.[2,3,4,5,6,7]; sorcerer := [6] int.[2,4,6,7,9,10];
+  for level: 1..<7 {
+    for klass: [8] int.[RS_BARD,RS_CLERIC,RS_DRUID,RS_PALADIN,RS_RANGER,RS_SORCERER,RS_WARLOCK,RS_WIZARD] {
+      want := ifx klass == RS_WARLOCK then warlock[level-1] else ifx klass == RS_SORCERER then sorcerer[level-1] else ifx klass == RS_PALADIN || klass == RS_RANGER then half[level-1] else expected[level-1];
+      #assert rs_prepared_limit(klass, level) == want;
+      #assert rs_prepare_level(klass, level) == (ifx klass == RS_PALADIN || klass == RS_RANGER then (ifx level < 5 then 1 else 2) else (level+1)/2);
+      base := ifx klass == RS_SORCERER then 4 else ifx klass == RS_CLERIC || klass == RS_WIZARD then 3 else 2;
+      #assert rs_cantrip_limit(klass, level) == (ifx klass == RS_PALADIN || klass == RS_RANGER then 0 else base + (ifx level >= 4 then 1 else 0));
+    }
+  }
+  #assert rs_prepared_limit(RS_MONK, 3) == 0 && rs_cantrip_limit(RS_FIGHTER, 3) == 0 && rs_prepare_level(RS_ROGUE, 3) == 0;
+  for level: [2] int.[0,21] { #assert rs_prepared_limit(RS_DRUID, level) == 0 && rs_cantrip_limit(RS_DRUID, level) == 0 && rs_prepare_level(RS_DRUID, level) == 0; }
+  #assert rs_prepare_level(RS_WIZARD, 20) == 9 && rs_prepare_level(RS_WARLOCK, 20) == 5 && rs_prepare_level(RS_RANGER, 20) == 5;
+  #assert rs_prepared_limit(RS_WIZARD, 20) == 25 && rs_prepared_limit(RS_DRUID, 20) == 22;
+  #assert rs_cantrip_limit(RS_WIZARD, 10) == 5 && rs_cantrip_limit(RS_WIZARD, 20) == 5;
+  c: RsCreature; c.klass = RS_WIZARD; c.level = 3;
+  #assert rs_key_eligible(c, 0);
+  c.level = 20; #assert rs_key_eligible(c, 0);
+  c.level = 21; #assert !rs_key_eligible(c, 1);
+  c.level = 0; #assert !rs_key_eligible(c, 1);
+  c.level = 1; c.klass = RS_MONK; #assert !rs_key_eligible(c, 0);
+}
+
+#test "selection rejects foreign, too-high and absent spellbook entries without changing choices" {
+  c: [1] RsCreature; c[0] = rs_druid("Druid", 0, 1);
+  before := c[0].spells;
+  #assert !rs_select_spell(c[..], -1) && !rs_select_spell(c[..], RS_SPELL_KEYS.count);
+  #assert !rs_select_spell(c[..], RS_EXEC_SOURCE[SP_GUIDING_BOLT]);
+  #assert !rs_select_spell(c[..], RS_EXEC_SOURCE[SP_CALL_LIGHTNING]);
+  #assert c[0].spells.cantrips == before.cantrips && c[0].spells.prepared == before.prepared;
+  for i: 0..<6 { #assert c[0].spells.selected[i] == before.selected[i]; }
+  c[0] = rs_wizard("Wizard", 0, 3); c[0].spells.known = [6] u64.[0,0,0,0,0,0];
+  #assert rs_set_spells(c[..], RS_PROFILE_NONE[0..<0]);
+  #assert !rs_select_spell(c[..], RS_EXEC_SOURCE[SP_SCORCHING_RAY]);
+  #assert rs_spellbook_add(c[..], RS_EXEC_SOURCE[SP_SCORCHING_RAY]);
+  #assert rs_select_spell(c[..], RS_EXEC_SOURCE[SP_SCORCHING_RAY]);
+  #assert !rs_spellbook_add(c[..], RS_EXEC_SOURCE[SP_FIRE_BOLT]);
+  #assert !rs_spellbook_add(c[..], RS_EXEC_SOURCE[SP_GUIDING_BOLT]);
+  #assert !rs_spellbook_add(c[..], RS_EXEC_SOURCE[SP_FIREBALL]);
+}
+#test "loadout replacement is atomic, counts unique choices and keeps known spells separate" {
+  c: [1] RsCreature; c[0] = rs_druid("Druid", 0, 1);
+  keys := [6] int.[RS_EXEC_SOURCE[SP_STARRY_WISP], RS_EXEC_SOURCE[SP_PRODUCE_FLAME], RS_EXEC_SOURCE[SP_CURE_WOUNDS], RS_EXEC_SOURCE[SP_HEALING_WORD], RS_EXEC_SOURCE[SP_ENTANGLE], RS_EXEC_SOURCE[SP_THUNDERWAVE]];
+  #assert rs_set_spells(c[..], keys[..]);
+  #assert c[0].spells.cantrips == 2 && c[0].spells.prepared == 4;
+  #assert rs_select_spell(c[..], keys[0]) && rs_select_spell(c[..], keys[2]);
+  #assert c[0].spells.cantrips == 2 && c[0].spells.prepared == 4;
+  #assert !rs_select_spell(c[..], RS_EXEC_SOURCE[SP_POISON_SPRAY]);
+  #assert !rs_select_spell(c[..], RS_EXEC_SOURCE[SP_FAERIE_FIRE]);
+  invalid := [2] int.[keys[0], RS_EXEC_SOURCE[SP_GUIDING_BOLT]];
+  before := c[0].spells;
+  #assert !rs_set_spells(c[..], invalid[..]);
+  for i: 0..<6 { #assert c[0].spells.selected[i] == before.selected[i] && c[0].spells.known[i] == before.known[i]; }
+  #assert c[0].spells.cantrips == 2 && c[0].spells.prepared == 4;
+  #assert rs_set_spells(c[..], keys[0..<0]) && c[0].spells.cantrips == 0 && c[0].spells.prepared == 0;
+  for word: c[0].spells.selected { #assert word == 0; }
+}
+
+rs_source_class :: (klass: int) -> int #effects(all) {
+  map := [13] int.[2,7,6,-1,-1,-1,0,1,-1,3,4,-1,5];
+  return ifx klass >= 0 && klass < map.count then map[klass] else -1;
+}
+rs_prepare_level :: (klass: int, level: int) -> int #effects(all) {
+  if level < 1 || level > 20 || rs_source_class(klass) < 0 { return 0; }
+  if klass == RS_PALADIN || klass == RS_RANGER { return (level + 3) / 4; }
+  return rs_min(ifx klass == RS_WARLOCK then 5 else 9, (level + 1) / 2);
+}
+rs_prepared_limit :: (klass: int, level: int) -> int #effects(all) {
+  if level < 1 || level > 20 || rs_source_class(klass) < 0 { return 0; }
+  if klass == RS_PALADIN || klass == RS_RANGER { return RS_PREP_HALF[level]; }
+  if klass == RS_WARLOCK { return RS_PREP_WARLOCK[level]; }
+  if klass == RS_SORCERER { return RS_PREP_SORCERER[level]; }
+  if klass == RS_WIZARD { return RS_PREP_WIZARD[level]; }
+  return RS_PREP_FULL[level];
+}
+rs_cantrip_limit :: (klass: int, level: int) -> int #effects(all) {
+  if level < 1 || level > 20 || rs_source_class(klass) < 0 || klass == RS_PALADIN || klass == RS_RANGER { return 0; }
+  base := ifx klass == RS_SORCERER then 4 else ifx klass == RS_CLERIC || klass == RS_WIZARD then 3 else 2;
+  return base + (ifx level >= 4 then 1 else 0) + (ifx level >= 10 then 1 else 0);
+}
+rs_key_eligible :: (c: RsCreature, key: int) -> bool #effects(all) {
+  if key < 0 || key >= RS_SPELL_KEYS.count || c.level < 1 || c.level > 20 { return false; }
+  klass := rs_source_class(c.klass); if klass < 0 { return false; }
+  s := RS_SPELL_KEYS[key];
+  return (s.classes & (1 << klass)) != 0 && s.level <= rs_prepare_level(c.klass, c.level);
+}
+rs_spellbook_add :: (c: [] RsCreature, key: int) -> bool #effects(all) {
+  if c[0].klass != RS_WIZARD || !rs_key_eligible(c[0], key) || RS_SPELL_KEYS[key].level == 0 { return false; }
+  c[0].spells.known[key / 64] |= cast(u64) 1 << (key % 64);
+  return true;
+}
+rs_select_spell :: (c: [] RsCreature, key: int) -> bool #effects(all) {
+  if !rs_key_eligible(c[0], key) { return false; }
+  mask := cast(u64) 1 << (key % 64); word := key / 64;
+  if (c[0].spells.selected[word] & mask) != 0 { return true; }
+  cantrip := RS_SPELL_KEYS[key].level == 0;
+  if cantrip {
+    if c[0].spells.cantrips >= rs_cantrip_limit(c[0].klass, c[0].level) { return false; }
+  } else {
+    if c[0].spells.prepared >= rs_prepared_limit(c[0].klass, c[0].level) { return false; }
+    if c[0].klass == RS_WIZARD && (c[0].spells.known[word] & mask) == 0 { return false; }
+  }
+  c[0].spells.selected[word] |= mask;
+  if cantrip { c[0].spells.cantrips += 1; } else { c[0].spells.prepared += 1; }
+  return true;
+}
+rs_set_spells :: (c: [] RsCreature, keys: [] const int) -> bool #effects(all) {
+  candidate := [1] RsCreature.[c[0]];
+  candidate[0].spells.selected = [6] u64.[0,0,0,0,0,0]; candidate[0].spells.cantrips = 0; candidate[0].spells.prepared = 0;
+  for key: keys { if !rs_select_spell(candidate[..], key) { return false; } }
+  c[0].spells = candidate[0].spells;
+  return true;
+}
+rs_spell_ready :: (c: RsCreature, sp: int) -> bool #effects(all) {
+  if !rs_spell_access(c, sp) { return false; }
+  if rs_spell_granted(c, sp) { return true; }
+  key := RS_EXEC_SOURCE[sp];
+  return rs_key_eligible(c, key) && (c.spells.selected[key / 64] & (cast(u64) 1 << (key % 64))) != 0;
+}

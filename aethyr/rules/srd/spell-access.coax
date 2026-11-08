@@ -1,4 +1,4 @@
-// Class eligibility and explicit extra-list grants. Eligibility is necessary,
+// Class eligibility and explicit always-prepared/extra-list grants. Eligibility is necessary,
 // not sufficient: prepared/known selection is a separate casting requirement.
 // Loaded with engine.coax; spell records are supplied by the containing entry.
 #authority;
@@ -70,14 +70,35 @@
   #assert rs_spell_access(fanatic, SP_HOLD_PERSON) && !rs_spell_access(fanatic, SP_FIREBALL);
 }
 
+#test "always-prepared and arcanum grants remain distinct from ordinary class eligibility" {
+  for level: 1..<15 {
+    d := rs_druid("Druid", 0, level);
+    #assert rs_spell_granted(d, SP_FOG_CLOUD) == (level >= 3) && rs_spell_granted(d, SP_HOLD_PERSON) == (level >= 3);
+    #assert rs_spell_granted(d, SP_SLEET_STORM) == (level >= 5);
+    p := rs_paladin("Paladin", 0, level);
+    #assert rs_spell_granted(p, SP_DIVINE_SMITE) == (level >= 2);
+    #assert rs_spell_granted(p, SP_SHIELD_OF_FAITH) == (level >= 3);
+    c := rs_cleric("Cleric", 0, level);
+    #assert rs_spell_granted(c, SP_BLESS) == (level >= 3) && rs_spell_granted(c, SP_CURE_WOUNDS) == (level >= 3);
+    #assert rs_spell_granted(rs_ranger("Ranger", 0, level), SP_HUNTERS_MARK);
+    w := rs_warlock("Warlock", 0, level, SP_ELDRITCH_BLAST);
+    #assert rs_spell_granted(w, SP_CIRCLE_OF_DEATH) == (level >= 11);
+    #assert rs_spell_granted(w, SP_FINGER_OF_DEATH) == (level >= 13);
+  }
+  w := rs_wizard("Wizard", 0, 3);
+  #assert !rs_spell_granted(w, SP_HUNTERS_MARK) && !rs_spell_granted(w, -1);
+}
+
 // Only these constructors' declared subclass/style/discovery selections use
 // this helper. Raw rs_hero and world-defined characters gain no preset choices.
 rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
   level := c[0].level;
   if c[0].klass == RS_DRUID {
-    // Circle of the Land polar spells, p.46; the other listed spells are on
-    // the base Druid list and do not need extra-list permission here.
+    // Circle of the Land polar spells, p.46. Base-list entries are included
+    // because always-prepared grants do not consume ordinary selections.
     if level >= 3 { _ := rs_grant_spell(c, SP_RAY_OF_FROST); }
+    if level >= 3 { _ := rs_grant_spell(c, SP_FOG_CLOUD); _ = rs_grant_spell(c, SP_HOLD_PERSON); }
+    if level >= 5 { _ := rs_grant_spell(c, SP_SLEET_STORM); }
   } else if c[0].klass == RS_WARLOCK {
     // Fiend Spells, p.75. Unimplemented source spells are not granted IDs.
     if level >= 3 {
@@ -85,16 +106,26 @@ rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
     }
     if level >= 5 { _ := rs_grant_spell(c, SP_FIREBALL); }
     if level >= 7 { _ := rs_grant_spell(c, SP_WALL_OF_FIRE); }
+    // The existing high-level preset chooses these Mystic Arcanum spells.
+    if level >= 11 { _ := rs_grant_spell(c, SP_CIRCLE_OF_DEATH); }
+    if level >= 13 { _ := rs_grant_spell(c, SP_FINGER_OF_DEATH); }
   } else if c[0].klass == RS_BARD {
     // This Lore Bard chooses Fireball and Spirit Guardians at level 6, p.35.
     if level >= 6 { _ := rs_grant_spell(c, SP_FIREBALL); _ = rs_grant_spell(c, SP_SPIRIT_GUARDIANS); }
   } else if c[0].klass == RS_PALADIN {
     // Blessed Warrior's chosen Sacred Flame, p.54.
     if level >= 2 { _ := rs_grant_spell(c, SP_SACRED_FLAME); }
+    if level >= 2 { _ := rs_grant_spell(c, SP_DIVINE_SMITE); }
+    if level >= 3 { _ := rs_grant_spell(c, SP_SHIELD_OF_FAITH); }
   } else if c[0].klass == RS_SORCERER {
     // Draconic Spells, p.70.
     if level >= 3 { _ := rs_grant_spell(c, SP_COMMAND); }
+  } else if c[0].klass == RS_CLERIC {
+    if level >= 3 { _ := rs_grant_spell(c, SP_BLESS); _ = rs_grant_spell(c, SP_CURE_WOUNDS); }
+  } else if c[0].klass == RS_RANGER {
+    _ := rs_grant_spell(c, SP_HUNTERS_MARK);
   }
+  rs_preset_spells(c);
 }
 
 rs_class_spell :: (list: string, klass: int) -> bool #effects(all) {
@@ -116,10 +147,18 @@ rs_grant_spell :: (c: [] RsCreature, sp: int) -> bool #effects(all) {
 }
 rs_spell_access :: (c: RsCreature, sp: int) -> bool #effects(all) {
   if !rs_executable_spell(sp) { return false; }
-  helper := rs_spell(sp).part_of; parent := ifx helper >= 0 then helper else sp;
-  if (c.spell_grants[parent / 64] & (cast(u64) 1 << (parent % 64))) != 0 { return true; }
-  s := rs_spell(parent);
-  // Fiendish Vigor is an explicitly selected invocation in creature state.
-  if parent == SP_FALSE_LIFE && c.klass == RS_WARLOCK && c.level >= 2 && c.vigor { return true; }
+  if rs_spell_granted(c, sp) { return true; }
+  s := rs_spell(rs_spell_root(sp));
   return s.srd && c.spell_ability >= 0 && rs_class_spell(s.classes, c.klass);
+}
+rs_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
+  if !rs_executable_spell(sp) { return false; }
+  parent := rs_spell_root(sp);
+  if (c.spell_grants[parent / 64] & (cast(u64) 1 << (parent % 64))) != 0 { return true; }
+  // Fiendish Vigor is an explicitly selected invocation in creature state.
+  return parent == SP_FALSE_LIFE && c.klass == RS_WARLOCK && c.level >= 2 && c.vigor;
+}
+rs_spell_root :: (sp: int) -> int #effects(all) {
+  helper := rs_spell(sp).part_of;
+  return ifx helper >= 0 then helper else sp;
 }

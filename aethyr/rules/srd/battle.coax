@@ -417,7 +417,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
 rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   if by < 0 || by >= b[0].n || by == j { return false; }
   c := b[0].c[j];
-  if !c.rebuke || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_access(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
+  if !c.rebuke || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_ready(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
   slot := 0;
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
@@ -473,7 +473,7 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || b[0].c[i].raging { return false; }
   s := rs_spell(sp);
   if !rs_cast_slot_shape(s.level, slot) { return false; }
-  if !rs_spell_access(b[0].c[i], sp) { return false; }
+  if !rs_spell_ready(b[0].c[i], sp) { return false; }
   if s.cast_time == RS_T_REACTION { return false; }
   t := s.cast_time;
   if quick {
@@ -640,7 +640,7 @@ rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) {
 // turn, including against the triggering attack; its lowest free slot.
 rs_shield :: (b: [] RsBattle, j: int) -> bool {
   c := b[0].c[j];
-  if !c.shield_spell || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_access(c, SP_SHIELD) { return false; }
+  if !c.shield_spell || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_ready(c, SP_SHIELD) { return false; }
   slot := 0;
   for k: 1..<10 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
@@ -2155,6 +2155,10 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
 #test "Ray of Enfeeblement: on a failed Con save the target's damage loses 1d8, until it saves at the end of a turn" {
   b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 77;
   a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
+  // This scenario chooses Ray of Enfeeblement for its legal prepared list.
+  _ := rs_spellbook_add(b[0].c[a..<a+1], RS_EXEC_SOURCE[SP_RAY_OF_ENFEEBLEMENT]);
+  choices := [2] int.[RS_KEY_MAGE_ARMOR, RS_EXEC_SOURCE[SP_RAY_OF_ENFEEBLEMENT]];
+  #assert rs_set_spells(b[0].c[a..<a+1], choices[..]);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 8, 3);
   held := false;
   for k: 0..<20 {
@@ -2174,6 +2178,8 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
 #test "Blindness/Deafness: Blinded on a failed save; attacks against it have Advantage; it saves to end it" {
   b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 13;
   a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
+  choices := [2] int.[RS_KEY_MAGE_ARMOR, RS_EXEC_SOURCE[SP_BLINDNESS]];
+  #assert rs_set_spells(b[0].c[a..<a+1], choices[..]);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 8, 3);
   blind := false;
   for k: 0..<20 {
@@ -2434,6 +2440,8 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   s := rs_add(b[..], rs_skeleton("Skeleton", 2), 4, 3);
   w := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 8, 3);
   d := rs_add(b[..], rs_druid("Rowan", 0, 3), 5, 4);
+  poison_choice := [1] int.[RS_EXEC_SOURCE[SP_POISON_SPRAY]];
+  #assert rs_set_spells(b[0].c[d..<d+1], poison_choice[..]);
   hit := false;
   for k: 0..<20 {
     b[0].c[s].hp = 13; b[0].c[s].dead = false; b[0].c[s].cond = 0;
@@ -2994,6 +3002,8 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
 #test "Lightning Bolt: a 100-foot Line 5 feet wide from you, Dex save, 8d6 Lightning or half; Burning Hands: 3d6 Fire in 15 feet" {
   b: [1] RsBattle; b[0].w = 40; b[0].h = 30; b[0].dice[0].state = 29;
   w := rs_add(b[..], rs_wizard("Vesk", 1, 5), 2, 2);
+  choices := [3] int.[RS_KEY_MAGE_ARMOR, RS_EXEC_SOURCE[SP_LIGHTNING_BOLT], RS_EXEC_SOURCE[SP_BURNING_HANDS]];
+  #assert rs_set_spells(b[0].c[w..<w+1], choices[..]);
   on := rs_add(b[..], rs_skeleton("Skeleton", 2), 10, 10);     // on the diagonal: in the Line
   far := rs_add(b[..], rs_skeleton("Skeleton", 2), 21, 21);    // 95 feet along it: in
   past := rs_add(b[..], rs_skeleton("Skeleton", 2), 24, 24);   // 110 feet: past its end
@@ -3026,6 +3036,8 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
 #test "Gust of Wind: a 60-foot Line 10 feet wide from you, a Strength save or pushed 15 feet, and again for one that ends its turn in it (#12884)" {
   b: [1] RsBattle; b[0].w = 40; b[0].h = 20; b[0].dice[0].state = 31;
   d := rs_add(b[..], rs_druid("Rowan", 0, 5), 2, 10);
+  choices := [1] int.[RS_EXEC_SOURCE[SP_GUST_OF_WIND]];
+  #assert rs_set_spells(b[0].c[d..<d+1], choices[..]);
   on := rs_add(b[..], rs_skeleton("Skeleton", 2), 8, 10);      // on the Line
   edge := rs_add(b[..], rs_skeleton("Skeleton", 2), 9, 11);    // 5 feet off its middle: in (10 feet wide)
   side := rs_add(b[..], rs_skeleton("Skeleton", 2), 9, 12);    // 10 feet off: out

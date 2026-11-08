@@ -1,0 +1,17 @@
+ok   #test experimental combat: every class's level 1 bar holds its Character Create ability first, each slot with its picture (1 case, 12596 steps, 0 ms)
+ok   #test experimental combat: a Wizard's Fire Bolt and a Fighter's Attack fell a monster, which then lies still (1 case, 5384520 steps, 648 ms)
+ok   #test experimental combat: a bolt flies the way you face; one behind you is never hit, one ahead is, and a miss does no damage (1 case, 3988911 steps, 304 ms)
+ok   #test experimental combat: a blow strikes ahead within reach, a save spell takes the cone ahead, and nothing behind is picked (1 case, 34093579 steps, 1279 ms)
+ok   #test experimental combat: a melee class holds its weapon, and a blow lands where its blade meets a monster, not at the press (1 case, 7139418 steps, 793 ms)
+ok   #test experimental combat level progression (1 case, 4125547 steps, 140 ms)
+ok   #test experimental combat changing level preserves class and monsters (1 case, 243050 steps, 8 ms)
+ok   #test experimental combat level selector and multirow hotbar (1 case, 2451135 steps, 298 ms)
+ok   #test experimental combat shift drag swaps keys without casting and cancels safely (1 case, 2444932 steps, 288 ms)
+ok   #test experimental combat hotbar arrangement survives a reload (1 case, 490711 steps, 18 ms)
+ok   #test experimental combat stores swaps through the host (1 case, 4515549 steps, 457 ms)
+ok   #test experimental combat: one swing makes one contact at 30, 60 and 144 FPS (1 case, 7646201 steps, 725 ms)
+ok   #test experimental combat: one swing makes one contact over uneven frames and a stall; out of reach it whiffs (1 case, 8219981 steps, 728 ms)
+ok   #test experimental combat dash propels the player forward and stops after its burst (1 case, 2226640 steps, 240 ms)
+14 of 579 checks (--only 'experimental combat'), 14 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 32645881 of 33554432 used (97%), above three quarters of the limit; more than 33554432 fails with E0400

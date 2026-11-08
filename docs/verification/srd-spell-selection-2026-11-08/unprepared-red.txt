@@ -1,0 +1,7 @@
+FAIL #test unprepared eligible spells refuse without spending and helper actions require their selected parent (4 ms)
+aethyr/rules/srd/cast-target-checks.coax:15:3: error[E0406]: assertion failed
+    #assert !rs_can_cast(b[..], a, SP_CURE_WOUNDS, 1) && !rs_cast(b[..], a, SP_CURE_WOUNDS, 1, 0, 0, a);
+    ^
+  note: in #test unprepared eligible spells refuse without spending and helper actions require their selected parent
+1 of 108 checks (--only 'unprepared eligible'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

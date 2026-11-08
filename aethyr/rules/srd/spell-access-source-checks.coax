@@ -2,6 +2,24 @@
 // Source import is not spell execution; this checks eligibility only.
 #load "cast-target-checks.coax";
 #load "catalog.coax";
+#load "executable-source-ids.coax";
+
+#test "compact loadout index retains every canonical identity, level and independent class membership" #steps 100000000 {
+  #assert RS_SPELL_KEYS.count == SRD_SOURCE_SPELLS && RS_SPELL_KEY_PIN == SRD_SOURCE_PDF_SHA256;
+  #assert RS_EXECUTABLE_SOURCE_IDS.count == RS_MORE_END && RS_EXEC_SOURCE.count == RS_MORE_END;
+  for key: 0..<RS_SPELL_KEYS.count {
+    meta := RS_SPELL_KEYS[key]; source := srd_source_spell(key);
+    #assert meta.id == source.id && meta.level == source.level;
+    for klass: 0..<8 { #assert ((meta.classes & (1 << klass)) != 0) == srd_source_in_table(klass, key); }
+  }
+  for sp: 0..<RS_MORE_END {
+    parent := rs_spell_root(sp); s := rs_spell(parent); key := RS_EXEC_SOURCE[sp];
+    #assert key >= 0 && key < RS_SPELL_KEYS.count;
+    #assert RS_SPELL_KEYS[key].id == (ifx parent == SP_CREATE_WATER then "create-or-destroy-water" else s.id);
+    #assert RS_EXECUTABLE_SOURCE_IDS[sp] == RS_SPELL_KEYS[key].id;
+  }
+  #assert RS_SPELL_KEYS[RS_KEY_MAGE_ARMOR].id == "mage-armor" && RS_SPELL_KEYS[RS_KEY_MAGIC_MISSILE].id == "magic-missile";
+}
 
 #test "executable spell class eligibility matches independently imported source class tables" #steps 100000000 {
   classes := [8] int.[RS_BARD, RS_CLERIC, RS_DRUID, RS_PALADIN, RS_RANGER, RS_SORCERER, RS_WARLOCK, RS_WIZARD];

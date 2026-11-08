@@ -75,7 +75,7 @@ named below are selected evidence only, not exhaustive qualification.
 | CORE-CONDITIONS | Rules Glossary pp.176-191 | Partial | All 15 named bits; selected enforced behaviors | Each condition's clauses, Exhaustion levels, stacking/lifecycle, M3 |
 | CORE-HP | Damage/healing/death pp.15-18 | Partial | `rs_hurt`, `rs_heal`, `rs_death_save`; embedded checks | Full interaction and source-clause fixtures, M3 |
 | CORE-REST | Rules Glossary, class recovery rules | Partial | Uses/maxima and selected recovery features | Short/long rests, Hit Dice, limits and recovery effects, M3/M5 |
-| CAST-ACCESS | Classes and Gaining Spells pp.104-105 | Partial | Shared class eligibility, explicit preset/stat-block/world grants and helper inheritance; `CAST-CLASS` passes ([evidence](../verification/srd-spell-access-2026-11-08/README.md)) | Legal known/prepared selections and limits, grant provenance, full strict admission, #13038/#13044 |
+| CAST-ACCESS | Classes and Gaining Spells pp.104-105 | Partial | Shared class eligibility/grants plus canonical cantrip/prepared selections, class limits and Wizard spellbook membership; CAST-CLASS and CAST-PREPARED pass ([selection evidence](../verification/srd-spell-selection-2026-11-08/README.md)) | Full source-feature/origin grant provenance and legal rest/level-up/copying workflows, #13038/#13044 |
 | CAST-COMPONENTS | Casting Spells pp.104-106 | Missing | Display strings, no complete component state | V/S/M, focus/pouch, cost, consumption, rituals/long casts, M2/M3 |
 | CAST-TARGETS | Casting Spells pp.105-106 | Partial | Shared target policy now separates malformed/dead/out-of-range refusal from spent, unaffected invalid-type casts; `CAST-INVALID-TARGET` passes | Explicit upcast/multiple target selections and full slice casting admission remain in #13038 |
 | CAST-RESOURCES | Spell slots/casting rules pp.104-106 | Partial | Slot checks and turn budgets; unknown executable IDs and malformed cantrip slots now refuse atomically ([evidence](../verification/srd-casting-request-2026-11-08/README.md)); four admission probes pass | Preparation, full free-cast restrictions, transactional preflight, M3 |
@@ -127,7 +127,8 @@ predicate to PASS without deleting an expected-failure exemption.
 | CAST-SLOT | Unavailable slot refuses without spending | PASS | One selected slot boundary |
 | CAST-TARGET-INDEX | Missing/negative target index refuses without spending | PASS | Malformed request, not SRD invalid-target rule |
 | CAST-RANGE | Out-of-touch-range Cure Wounds refuses without spending | PASS | Range admission |
-| CAST-CLASS | Unmodified preset Druid cannot cast Guiding Bolt | PASS | Class eligibility and explicit extra-list grants enforced in shared admission; known/prepared selection is still incomplete |
+| CAST-CLASS | Unmodified preset Druid cannot cast Guiding Bolt | PASS | Class eligibility and explicit extra-list grants enforced in shared admission; separate selected-state admission is covered by CAST-PREPARED |
+| CAST-PREPARED | An eligible but unselected Cure Wounds refuses without spending | PASS | Complete legal alternative loadout excludes Cure Wounds; shared readiness refuses it, including native execution |
 | CAST-INVALID-TARGET | Hold Person on a Skeleton spends its used slot without affecting it or rolling a save | PASS | Corrected shared target policy/outcome; apparent save succeeds with no invented roll, SRD p.106 and p.141 |
 | SPELL-POLYMORPH | Failed save grants form temp HP, retains HP/type, does not merely Incapacitate | FAIL | Necessary witness only; current API cannot select a Beast, so even a future PASS would not qualify the full spell |
 | CAP-EFFECT | Adding another effect never silently removes independent existing effects | FAIL | Direct storage boundary, not an alternative SRD stacking rule |
@@ -146,6 +147,10 @@ not close #13038: class/preparation/component admission and explicit target
 choices remain open. The subsequent [spell-access evidence](../verification/srd-spell-access-2026-11-08/README.md)
 turns CAST-CLASS to PASS: six witnesses pass and three fail. Polymorph remains a
 parked higher-level failure; the two capacity failures remain active work.
+The [selection change](../verification/srd-spell-selection-2026-11-08/README.md)
+adds CAST-PREPARED: seven of ten witnesses now pass. The Polymorph fixture now
+explicitly prepares its spell and provides a level-appropriate slot, so its
+failure still diagnoses transformation rather than missing selection state.
 
 ## Canonical source inventory
 

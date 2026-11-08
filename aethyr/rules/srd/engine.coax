@@ -16,6 +16,8 @@
 
 #load "npcs.coax";   // the townsfolk's and the cultists' stat blocks, and a siege's two armies
 #load "spell-access.coax";
+#load "spell-selection.coax";
+#load "spell-loadouts.coax";
 
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
@@ -183,6 +185,7 @@ RsCreature :: struct {
   spell_ability: int;       // the spellcasting ability (-1: none)
   slots: [10] int; slots_max: [10] int;   // spell slots by level (0 unused)
   spell_grants: [2] u64;     // explicit feature/stat-block/world extra-list grants, by executable ID
+  spells: RsSpellSelection;  // canonical-source cantrips/preparation and Wizard spellbook
   cond: int;                // conditions, bits
   // effects that last
   conc: int;                // the spell held by concentration (-1 none)
@@ -365,13 +368,15 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].slots[1] -= 1;   // Mage Armor
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
-  // Shield prepared (p. 161), and the Evoker's Potent Cantrip at level 3 (p. 82)
+  // Shield's reaction is available only when selected (p.161); the Evoker's
+  // Potent Cantrip begins at level 3 (p.82).
   c[0].shield_spell = true; c[0].potent = level >= 3; c[0].weapon = W_DAGGER;
   // Ritual Adept and Arcane Recovery at 1, Scholar at 2, Evocation Savant at 3, Memorize Spell at 5
   // (p. 79-82: rituals, rests, skills and spellbook copying, none of which a battle reaches); Sculpt
   // Spells at 6 (p. 82); Fireball prepared from 5
   c[0].ritual = true; c[0].arcane_recovery = true; c[0].scholar = level >= 2; c[0].savant = level >= 3; c[0].memorize = level >= 5;
   c[0].sculpt = level >= 6;
+  rs_preset_spell_grants(c[..]);
   return c[0];
 }
 
@@ -642,6 +647,7 @@ rs_cleric :: (name: string, team: int, level: int) -> RsCreature {
   // Sear Undead at 5 (p. 37), Spirit Guardians with its 3rd-level slots; the Life Domain's Blessed
   // Healer at 6 (p. 40). Its level 5 domain spells (Mass Healing Word, Revivify) aren't records yet.
   c[0].sear = level >= 5; c[0].blessed_healer = level >= 6;
+  rs_preset_spell_grants(c[..]);
   return c[0];
 }
 // The SRD 5.2.1 Fighter (p. 47-49): Strength and Constitution saves, a d10 hit die, Chain Mail (AC
@@ -708,6 +714,7 @@ rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
   c[0].explorer = level >= 2; c[0].lore = level >= 3;
   if level >= 5 { c[0].extra_attack = 1; }
   if level >= 6 { c[0].speed += 10; c[0].climb = c[0].speed; c[0].swim = c[0].speed; }
+  rs_preset_spell_grants(c[..]);
   return c[0];
 }
 // The SRD 5.2.1 Rogue (p. 61-64): Dexterity and Intelligence saves, a d8 hit die, Leather Armor, a
@@ -733,7 +740,8 @@ rs_rogue :: (name: string, team: int, level: int) -> RsCreature {
 // The SRD 5.2.1 Sorcerer (p. 64-70): Charisma casting, Constitution and Charisma saves, a d6 hit
 // die. Innate Sorcery (twice), Font of Magic (Sorcery Points equal to its level from 2) and two
 // Metamagic options, Quickened Spell and Seeking Spell; Draconic Sorcery at 3: Draconic Resilience
-// (3 more Hit Points and 1 a level after, AC 10 + Dex + Cha unarmored). Shield prepared. Charisma first.
+// (3 more Hit Points and 1 a level after, AC 10 + Dex + Cha unarmored). Shield
+// uses the selected loadout. Charisma first.
 rs_sorcerer :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_SORCERER, [6] int.[8, 14, 13, 10, 12, 16], RS_CON, RS_CHA, 6);

@@ -163,7 +163,14 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
     for j: 0..<n { if out[j].kind == a.kind && (a.kind != FB_SPELL || out[j].sp == a.sp) { duplicate = true; } }
     if !duplicate && n < out.count { out[n] = a; n += 1; }
   }
-  return n;
+  // The preset's selected spells, not slot availability alone, determine the
+  // playable bar. Stable ability identities preserve saved ordering/sounds.
+  selected := 0;
+  for i: 0..<n {
+    if out[i].kind == FB_SPELL && !rs_spell_ready(hero, out[i].sp) { continue; }
+    out[selected] = out[i]; selected += 1;
+  }
+  return selected;
 }
 xc_set_level :: (x: [] XcCombat, level: int) {
   if level < 1 || level > 6 { return; }
@@ -1278,6 +1285,8 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
       n := xc_bar_level(c, level, bar[..]);
       #assert n > 0 && n <= XC_SLOTS;
       #assert bar[0].kind == fb_cl_ability(c).kind;
+      hero := fb_cl_hero(c, "You", 0, level);
+      for i: 0..<n { if bar[i].kind == FB_SPELL { #assert rs_spell_ready(hero, bar[i].sp); } }
     }
   }
   n1 := xc_bar_level(FB_CL_WIZARD, 1, bar[..]);

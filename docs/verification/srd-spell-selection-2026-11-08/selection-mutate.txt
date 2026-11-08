@@ -1,0 +1,2 @@
+mutation scope: unit aethyr/rules/srd/spell-selection.coax (its procedures; every check retained)
+236 mutants, 236 killed, 0 survived
