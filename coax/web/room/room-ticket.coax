@@ -45,6 +45,7 @@ Ticket :: struct {
   owner: int;             // the character's owner generation the API issued with it (#12834; 0 none): its vitals lines carry it
   schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
   capture: CharacterCapture;     // ticket v4's signed durable resume profile (schema 2)
+  rest: CharacterRest;           // and a profile 3 capture's rest (#13046)
 }
 // book:end seat-ticket
 
@@ -116,7 +117,7 @@ tk_check :: (key: string, ticket: string, room: string, now: int) -> Ticket {
   if ticket.count>=3&&ticket[0..<3]=="v4." {
     e:=rt_read(key,ticket);if !e.ok{return t;}
     inner:=tk_check(key,cast(string)e.legacy[0..<e.legacy_n],room,now);
-    if !inner.ok||inner.owner<1{return t;}inner.schema=2;inner.capture=e.capture;return inner;
+    if !inner.ok||inner.owner<1{return t;}inner.schema=2;inner.capture=e.capture;inner.rest=e.rest;return inner;
   }
   if key.count < 32 || ticket.count == 0 || ticket.count > TICKET_TEXT { return t; }
   // the eight fields (v2), or nine (v3: the shard after the room)

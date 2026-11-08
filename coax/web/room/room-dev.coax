@@ -66,7 +66,7 @@ RmDev :: struct {
 // started again brings its players back where they were, as production's does.
 DEV_CK :: 16;   // a local room's few players
 DEV_STORE :: DEV_CK * (CC_BODY + 128);
-DevCheckpoint :: struct { pid: [TICKET_PID] u8; pid_n: int; owner: int; saved: bool; c: CharacterCapture; accepted: int; }
+DevCheckpoint :: struct { pid: [TICKET_PID] u8; pid_n: int; owner: int; saved: bool; c: CharacterCapture; rest: CharacterRest; accepted: int; }
 
 // --dev: the stand-in's key signs and checks every seat ticket, and a join needs one, as in production.
 rm_dev_start :: (v: [] RmServer) #export_c #effects(all) {
@@ -189,6 +189,8 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
     tb: [TICKET_TEXT] u8;
     // ?checkpoint=2 for Everglade II's rooms: the next owner generation, and the last accepted capture
     // wrapped in (a v4 ticket). Everglade's local rooms keep the v2 ticket, so its drift checks are as they were.
+    // &rest=1 (#13046) takes a profile 3 capture as it is; without it, its profile 2 part
+    three := dv_has(tk_query_line(req), "rest=1");
     resume := dv_has(tk_query_line(req), "checkpoint=2") && eg_e2_code(room);
     ci := ifx resume then dv_ck_owner_next(v, pid) else -1;
     if resume && ci < 0 { return dv_answer(v, "503", "{\"error\":\"character recovery unavailable\"}"); }
@@ -197,7 +199,7 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
     tn := tk_sign_owner(DEV_KEY, pid, false, name, room, 0, expires, hp, ifx xp > 0 then xp else -1, wanted, owner, tb[..]);
     if tn == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
     rb4: [RT_TEXT] u8; saved: [CC_BODY] u8; ticket := cast(string) tb[0..<tn];
-    if ci >= 0 { ticket = resume_ticket_wrap(DEV_KEY, ticket, ifx v[0].dev.ck[ci].saved then cc_stored(v[0].dev.ck[ci].c, saved[..]) else "-", rb4[..]); }
+    if ci >= 0 { ticket = resume_ticket_wrap(DEV_KEY, ticket, ifx v[0].dev.ck[ci].saved then cc_stored_as(v[0].dev.ck[ci].c, v[0].dev.ck[ci].rest, ifx three then 3 else 2, saved[..]) else "-", rb4[..]); }
     if ticket.count == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
     b: [RT_TEXT + 512] u8;
     n := dv_put(b[..], 0, "{\"ticket\":\""); n = dv_put(b[..], n, ticket);
@@ -289,16 +291,16 @@ rm_dev_checkpoint :: (v: [] RmServer) -> bool #export_c #effects(all) {
   if n <= 0 { return false; }
   request := v[0].ck.request;
   body := cast(string) v[0].ck.out[0..<n];
-  c := cc_read(body, true);
+  c := cc_read(body, true); rest := cc_rest(body, true);
   if !c.ok || !checkpoint2_input(body, v[0].wall_ms) { rm_checkpoint_answer(v, request, 400, "{\"error\":\"bad checkpoint\"}"); return true; }
   i := dv_ck_find(v, cast(string) c.pid[0..<c.pid_n]);
   known := i >= 0 && v[0].dev.ck[i].owner > 0;
   e := ifx i >= 0 then v[0].dev.ck[i] else DevCheckpoint.{};
   a: [CC_BODY] u8; b: [CC_BODY] u8;
-  same := e.saved && cc_stored(c, a[..]) == cc_stored(e.c, b[..]);
+  same := e.saved && cc_stored_rest(c, rest, a[..]) == cc_stored_rest(e.c, e.rest, b[..]);
   code := room_checkpoint_decide(true, known, OwnerGeneration.{value = c.n[1]}, OwnerGeneration.{value = e.owner}, c.n[2], c.n[3], c.n[11],
                                  OwnerGeneration.{value = ifx e.saved then e.c.n[1] else 0}, ifx e.saved then e.c.n[2] else 0, ifx e.saved then e.c.n[3] else 0, ifx e.saved then e.c.n[11] else 0, same);
-  if code == 0 { c.n[5] = c.n[4]; v[0].dev.ck[i].c = c; v[0].dev.ck[i].saved = true; v[0].dev.ck[i].accepted = v[0].wall_ms; v[0].dev.ck_dirty = true; }
+  if code == 0 { c.n[5] = c.n[4]; v[0].dev.ck[i].c = c; v[0].dev.ck[i].rest = rest; v[0].dev.ck[i].saved = true; v[0].dev.ck[i].accepted = v[0].wall_ms; v[0].dev.ck_dirty = true; }
   r := ifx i >= 0 then v[0].dev.ck[i] else DevCheckpoint.{};
   o: [1] Jo; out: [256] u8; jo_start(o[..], out[..]); jo_obj(o[..]);
   jo_key(o[..], "v"); jo_int(o[..], 2); jo_key(o[..], "status"); jo_str(o[..], room_checkpoint_status(code));
@@ -315,7 +317,7 @@ rm_dev_store :: (v: [] RmServer) -> int #export_c #effects(all) {
     e := v[0].dev.ck[i]; cb: [CC_BODY] u8;
     n = dv_put(v[0].dev.store[..], n, "c "); n = dv_put(v[0].dev.store[..], n, cast(string) e.pid[0..<e.pid_n]);
     n = rv_int(v[0].dev.store[..], dv_put(v[0].dev.store[..], n, " "), e.owner); n = rv_int(v[0].dev.store[..], dv_put(v[0].dev.store[..], n, " "), e.accepted);
-    n = dv_put(v[0].dev.store[..], n, " "); n = dv_put(v[0].dev.store[..], n, ifx e.saved then cc_stored(e.c, cb[..]) else "-"); n = dv_put(v[0].dev.store[..], n, "\n");
+    n = dv_put(v[0].dev.store[..], n, " "); n = dv_put(v[0].dev.store[..], n, ifx e.saved then cc_stored_rest(e.c, e.rest, cb[..]) else "-"); n = dv_put(v[0].dev.store[..], n, "\n");
   }
   if n > DEV_STORE { return 0; }
   v[0].dev.ck_dirty = false;
@@ -339,8 +341,8 @@ rm_dev_restore :: (v: [] RmServer, text: string) -> int #export_c #effects(all) 
     // merged as the API's one table is shared by every shard: the newest owner, the newest accepted capture
     v[0].dev.ck[i].owner = rs_max(v[0].dev.ck[i].owner, dv_whole(f[1]));
     if f[3] != "-" {
-      c := cc_read(f[3], false); was := v[0].dev.ck[i];
-      if c.ok && (!was.saved || c.n[1] > was.c.n[1] || (c.n[1] == was.c.n[1] && (c.n[2] != was.c.n[2] || c.n[3] > was.c.n[3]))) { v[0].dev.ck[i].c = c; v[0].dev.ck[i].saved = true; v[0].dev.ck[i].accepted = dv_whole(f[2]); }
+      c := cc_read(f[3], false); rest := cc_rest(f[3], false); was := v[0].dev.ck[i];
+      if c.ok && (!was.saved || c.n[1] > was.c.n[1] || (c.n[1] == was.c.n[1] && (c.n[2] != was.c.n[2] || c.n[3] > was.c.n[3]))) { v[0].dev.ck[i].c = c; v[0].dev.ck[i].rest = rest; v[0].dev.ck[i].saved = true; v[0].dev.ck[i].accepted = dv_whole(f[2]); }
     }
   }
   v[0].dev.ck_dirty = false;

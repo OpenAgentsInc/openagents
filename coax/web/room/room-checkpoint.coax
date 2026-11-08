@@ -5,13 +5,14 @@
 #load "tests/checkpoint-fixture.coax";
 CheckpointSlot :: struct {
   live:bool;owner:int;pid:[TICKET_PID]u8;pid_n:int;
-  latest:CharacterCapture;capture_mono:int;acked:int;accepted:bool;accepted_mono:int;
+  latest:CharacterCapture;latest_rest:CharacterRest;capture_mono:int;acked:int;accepted:bool;accepted_mono:int;
   receipt_mono:int;accepted_at:int;accepted_process:int;accepted_capture_wall:int;
 }
 RmCheckpoints :: struct {
   slot:[CF_CAP]CheckpointSlot;
   cursor:int;rev:int;last:int;force:bool;
-  fly:bool;waiting:bool;fly_i:int;fly_capture:CharacterCapture;fly_mono:int;
+  fly:bool;waiting:bool;fly_i:int;fly_capture:CharacterCapture;fly_rest:CharacterRest;fly_mono:int;
+  two_only:bool;two_falls:int;   // profile 3 refused by this API (400 or 5xx): profile 2 from then on (#13046)
   request:int;sent_mono:int;retry_at:int;tries:int;
   out:[CC_BODY]u8;out_n:int;mac:[64]u8;
   posts:int;retries:int;applied:int;duplicates:int;failures:int;late:int;refused:int;fenced:int;
@@ -93,7 +94,9 @@ ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   c.state[1]=ifx (st.flags&EV_DEMO_FLAG)!=0&&tk.admin then 1 else 0;c.state[2]=hero.temp;
   c.state[3]=rs_max(0,trv_repair_ticks()-(v[0].eg[k].tick-st.repaired));c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<RS_USES{c.state[16+q]=hero.uses[q];}
-  v[0].ck.slot[i].latest=c;v[0].ck.slot[i].capture_mono=v[0].mono_ms;
+  // Everglade II also carries the seat's rest (profile 3)
+  rest:=CharacterRest.{};if v[0].eg[k].e2&&rs_carry_out(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;}
+  v[0].ck.slot[i].latest=c;v[0].ck.slot[i].latest_rest=rest;v[0].ck.slot[i].capture_mono=v[0].mono_ms;
 }
 ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   tk:=eg_ticket(v,k, s_id);c:=tk.capture;if tk.schema!=2||!c.ok{return;}
@@ -103,6 +106,8 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].repaired=v[0].eg[k].tick-(trv_repair_ticks()-c.state[3]);v[0].eg[k].seat[s].last_cast=v[0].eg[k].tick-(EG_CAST_GAP-c.state[4]);v[0].ev[k].down[s]=c.state[5];
   v[0].ev[k].fought[s]=v[0].eg[k].tick+1; // a restart is not a free out-of-combat Long Rest
   v[0].eg[k].wanted[s]=c.n[12];v[0].eg[k].seat[s].want_seed=c.n[12];
+  // a profile 3 rest resumes where it was, without offline credit; one that does not fit this body is dropped
+  if v[0].eg[k].e2&&c.n[0]==3&&tk.rest.on{_:=rs_carry_in(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,tk.rest.n[..]);v[0].eg[k].seat[s].rest_told= -1;}
   r:=v[0].eg[k].relay;room:=c.room;v[0].eg[k].seat[s].back=false;
   // the same room's code, or for Everglade II any of its rooms: they are one land (#13057), so a
   // restarted or drained room's player comes back where they stood in whichever instance takes them
@@ -134,9 +139,10 @@ rm_checkpoint_due :: (v:[]RmServer)->int #export_c #effects(all) {
   if v[0].mono_ms<v[0].ck.retry_at{return 0;}
   if !v[0].ck.fly{
     for q:0..<CF_CAP{i:=(v[0].ck.cursor+q)%CF_CAP;e:=v[0].ck.slot[i..<i+1];if !e[0].live||!e[0].latest.ok||e[0].latest.n[3]<=e[0].acked{continue;}
-      v[0].ck.fly=true;v[0].ck.fly_i=i;v[0].ck.fly_capture=e[0].latest;v[0].ck.fly_mono=e[0].capture_mono;v[0].ck.cursor=(i+1)%CF_CAP;break;}
+      v[0].ck.fly=true;v[0].ck.fly_i=i;v[0].ck.fly_capture=e[0].latest;v[0].ck.fly_rest=e[0].latest_rest;v[0].ck.fly_mono=e[0].capture_mono;v[0].ck.cursor=(i+1)%CF_CAP;break;}
   }
-  if !v[0].ck.fly{return 0;}c:=v[0].ck.fly_capture;c.n[5]=rs_max(v[0].wall_ms,c.n[4]);body:=cc_write(c,v[0].ck.out[..]);
+  if !v[0].ck.fly{return 0;}c:=v[0].ck.fly_capture;c.n[5]=rs_max(v[0].wall_ms,c.n[4]);
+  if v[0].ck.two_only{c.n[0]=2;}body:=cc_write_rest(c,v[0].ck.fly_rest,v[0].ck.out[..]);
   if body.count==0||!checkpoint2_input(body,c.n[5])||!tk_mac(cast(string)v[0].tkey[0..<v[0].tkey_n],body,v[0].ck.mac[..]){return 0;}
   v[0].ck.request+=1;v[0].ck.waiting=true;v[0].ck.sent_mono=v[0].mono_ms;v[0].ck.out_n=body.count;v[0].ck.posts+=1;if v[0].ck.tries>0{v[0].ck.retries+=1;}return body.count;
 }
@@ -148,6 +154,7 @@ rm_checkpoint_answer :: (v:[]RmServer,request:int,status:int,body:string) #expor
   version:=jv_int(d[0],jv_get(d[0],0,"v"),0);owner:=jv_int(d[0],jv_get(d[0],0,"owner"),0);process:=jv_int(d[0],jv_get(d[0],0,"process"),0);rev:=jv_int(d[0],jv_get(d[0],0,"rev"),0);accepted:=jv_int(d[0],jv_get(d[0],0,"accepted_at"),0);
   if !valid||!cf_ack(version,name,OwnerGeneration.{value=owner},process,rev,accepted,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){
     if valid&&cf_fenced(version,name,OwnerGeneration.{value=owner},process,rev,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){v[0].ck.fenced+=1;pid:=f.pid;_:=rl_owner_drop(v,cast(string)pid[0..<f.pid_n],owner+1,-1);i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].live=false;}v[0].ck.fly=false;v[0].ck.waiting=false;return;}
+    if !v[0].ck.two_only&&f.n[0]==3&&(status==400||status>=500){v[0].ck.two_only=true;v[0].ck.two_falls+=1;}
     ck_failed(v);return;
   }
   i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].acked=rev;v[0].ck.slot[i].accepted=true;v[0].ck.slot[i].accepted_mono=v[0].ck.fly_mono;v[0].ck.slot[i].receipt_mono=v[0].mono_ms;v[0].ck.slot[i].accepted_at=accepted;v[0].ck.slot[i].accepted_process=process;v[0].ck.slot[i].accepted_capture_wall=f.n[4];}

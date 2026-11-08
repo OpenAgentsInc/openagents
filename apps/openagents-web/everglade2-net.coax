@@ -153,8 +153,8 @@ e2n_ask_ticket :: (n: [] E2Net) {
   k := wire_put(t[..], 0, "/api/playtest/room-ticket/");
   listed := n[0].code_n == 0;
   k = wire_put(t[..], k, ifx listed then E2N_REALM else cast(string) n[0].code[0..<n[0].code_n]);
-  if listed { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, E2N_REALM); k = net_put_build(t[..], wire_put(t[..], k, "&build=")); k = wire_put(t[..], k, "&checkpoint=2"); }
-  else { k = wire_put(t[..], k, "?checkpoint=2"); }
+  if listed { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, E2N_REALM); k = net_put_build(t[..], wire_put(t[..], k, "&build=")); k = wire_put(t[..], k, "&checkpoint=2&rest=1"); }
+  else { k = wire_put(t[..], k, "?checkpoint=2&rest=1"); }   // rest=1: a profile 3 capture as it is (#13046)
   k = wire_put(t[..], k, "\n{}");
   if pipe_put(n[0].pipe[..], E2N_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
 }

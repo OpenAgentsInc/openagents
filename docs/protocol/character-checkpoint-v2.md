@@ -75,3 +75,6 @@ The operator must first put schema-2 rooms on every eligible destination;
 rolling back does not discard or translate a newer capture. Account linking
 carries the latest accepted body to the account and advances both ownership
 fences. No checkpoint row expires because the player was absent.
+
+Profile 3 (`character-checkpoint-v3.md`) extends this profile with the
+character's rest on the same endpoint, table and receipts.

@@ -4,7 +4,7 @@
 #load "resume-payload.coax";
 #load "../../coax/lib/crypto/hmac.coax";
 #load "../../coax/lib/nostr/block/fi-base64url.coax";
-ResumeEnvelope :: struct {ok:bool;legacy:[256]u8;legacy_n:int;capture:CharacterCapture;}
+ResumeEnvelope :: struct {ok:bool;legacy:[256]u8;legacy_n:int;capture:CharacterCapture;rest:CharacterRest;}
 #test "resume envelope: signed core and full capture are bound together, or no capture for a first join" {
   key:="profile-check-key-not-a-secret-0123456789";core:="v3.p-a.0.-.pair-a.1.1762190600000.-x350g7.signature";
   c:=cc_fixture();saved:[CC_BODY]u8;out:[RT_TEXT]u8;s:=resume_ticket_wrap(key,core,cc_stored(c,saved[..]),out[..]);r:=rt_read(key,s);
@@ -49,7 +49,7 @@ rt_read :: (key:string,text:string)->ResumeEnvelope #effects(all) {
   mac:[64]u8;if !rt_mac(key,text[0..<starts[3]-1],mac[..]){return r;}diff:=0;for i:0..<64{diff=diff|cast(int)(mac[i]^f[3][i]);}if diff!=0{return r;}
   core:=fi_b64url_decode(f[1],r.legacy[..]);if core.error!=NC_OK{return r;}r.legacy_n=core.written;
   if !rt_core(cast(string)r.legacy[0..<r.legacy_n]){return ResumeEnvelope.{};}
-  if f[2]!="-"{saved:[CC_BODY]u8;n:=fi_b64url_decode(f[2],saved[..]);if n.error!=NC_OK{return ResumeEnvelope.{};}r.capture=cc_read(cast(string)saved[0..<n.written],false);if !r.capture.ok{return ResumeEnvelope.{};}}
+  if f[2]!="-"{saved:[CC_BODY]u8;n:=fi_b64url_decode(f[2],saved[..]);if n.error!=NC_OK{return ResumeEnvelope.{};}r.capture=cc_read(cast(string)saved[0..<n.written],false);if !r.capture.ok{return ResumeEnvelope.{};}r.rest=cc_rest(cast(string)saved[0..<n.written],false);}
   r.ok=true;return r;
 }
 

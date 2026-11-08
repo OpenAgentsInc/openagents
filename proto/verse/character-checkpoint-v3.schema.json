@@ -1,0 +1,411 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents:verse:character-checkpoint:3",
+  "title": "Character checkpoint v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "pid",
+    "owner",
+    "process",
+    "rev",
+    "at",
+    "sent",
+    "engine",
+    "rules",
+    "content",
+    "hp",
+    "max",
+    "dead",
+    "xp",
+    "wanted",
+    "room",
+    "x_mm",
+    "y_mm",
+    "z_mm",
+    "yaw_mrad",
+    "state",
+    "rest"
+  ],
+  "properties": {
+    "v": {
+      "const": 3
+    },
+    "pid": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,40}$"
+    },
+    "owner": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "process": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "rev": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "at": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sent": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "engine": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "rules": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "content": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "hp": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 99999
+    },
+    "max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 99999
+    },
+    "dead": {
+      "type": "boolean"
+    },
+    "xp": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9999999
+    },
+    "wanted": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "room": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,24}$"
+    },
+    "x_mm": {
+      "type": "integer",
+      "minimum": -10000000,
+      "maximum": 10000000
+    },
+    "y_mm": {
+      "type": "integer",
+      "minimum": -10000000,
+      "maximum": 10000000
+    },
+    "z_mm": {
+      "type": "integer",
+      "minimum": -10000000,
+      "maximum": 10000000
+    },
+    "yaw_mrad": {
+      "type": "integer",
+      "minimum": -1000000,
+      "maximum": 1000000
+    },
+    "state": {
+      "type": "array",
+      "minItems": 27,
+      "maxItems": 27,
+      "description": "Class, demo, temporary HP, Repair ticks, cast ticks, down seconds, 10 slots and 11 limited uses; field bounds in the profile contract.",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99999
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18000
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18000
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99
+        }
+      ],
+      "items": false
+    },
+    "rest": {
+      "type": "array",
+      "minItems": 19,
+      "maxItems": 19,
+      "items": false,
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "short phase (0 none, 1 resting, 2 choosing Hit Dice)"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600000,
+          "description": "short rest age ms"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "description": "Hit Dice left"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Hit Dice seeded"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Short Rest recovery used"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "restoration used"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "long phase (0 none, 1 open, 2 interrupted, 3 pending)"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "long mode (1 sleep, 2 watch, 3 exertion; 0 with no open rest)"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000,
+          "description": "long elapsed ms"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000,
+          "description": "long sleep ms"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000,
+          "description": "long light activity ms"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000,
+          "description": "long exertion ms"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99,
+          "description": "interruptions"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000,
+          "description": "quiet ms"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "fallback"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "completed"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 57600000,
+          "description": "completion age ms (capped at 16 h)"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Short Rest due"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "light activity reported"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "dead": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "hp": {
+            "const": 0
+          }
+        }
+      }
+    }
+  ]
+}

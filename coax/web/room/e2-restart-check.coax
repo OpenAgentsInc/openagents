@@ -12,6 +12,12 @@
 // players after the page's first retry, once with A and once without; then both must be within 1 m.
 //   coax/web/tool.sh coax/web/room/e2-restart-check.coax [--drain] [--players N] [--walk S] [--port P] [--room BIN]
 // Holds when every player sat again within 2500 ms and came back within 1 m (the kill: with A).
+// With --rest (#13046) two players rest as the room rules: player 0 settles and sleeps (z 3), walks while
+// asleep (it must not move), takes the watch (z 4), walks (exertion, z 5) and stops (z 4); player 1's
+// Short Rest (z 1) is broken by walking (z 0); player 0's socket closes and sits again within the grace
+// (it hears its watch again); then it sleeps, the room is killed (SIGKILL) after a checkpoint, started
+// again, and player 0 sits again asleep, with its night so far (z 3), while player 1 has no rest.
+//   coax/web/tool.sh coax/web/room/e2-restart-check.coax --rest [--port P] [--room BIN]
 // With --interest (#13058) nothing is killed: the players run up and down the path for S seconds, N
 // (--near, 10) between z -5 and -60 and the rest between -140 and -260, so they come into each other's
 // view and leave it. Every 250 ms each player's picture of the room (its mirror, as a page holds it) is
@@ -40,6 +46,7 @@ RxBot :: struct {
   claim: bool;                      // say A as it sits again
   down_at: int; retry_at: int; back: bool; back_ms: int; err_mm: int; first_seen: bool;
   lo: f32; hi: f32; dir: f32 = -1; next_c: int;  // --interest: the stretch of the path it runs up and down (z), and which way
+  go: bool; rest_code: int = -1; rest_dice: int = -1; rest_heard: int; rest_refused: int; rest_asked: int;   // --rest (#13046)
 }
 rx_body_field :: (t: string, key: string, out: [] u8) -> string {
   // "key":"VALUE" in a flat JSON answer
@@ -87,7 +94,7 @@ rx_room :: (bin: string, port: int, dir: string, store: string) -> int {
 // Sit (again): a fresh ticket for the room, the socket, and once seated the build, A and the hello.
 rx_sit :: (b: [] RxBot, port: int, code: string) -> bool {
   tb: [6144] u8; tk: [4400] u8;
-  path: [128] u8; pn := rs_put(path[..], 0, "/api/playtest/room-ticket/"); pn = rs_put(path[..], pn, code); pn = rs_put(path[..], pn, "?checkpoint=2");
+  path: [128] u8; pn := rs_put(path[..], 0, "/api/playtest/room-ticket/"); pn = rs_put(path[..], pn, code); pn = rs_put(path[..], pn, "?checkpoint=2&rest=1");
   ans := rx_post(port, cast(string) path[0..<pn], cast(string) b[0].key[0..<b[0].key_n], tb[..]);
   ticket := rx_body_field(ans, "ticket", tk[..]);
   if ticket.count == 0 { return false; }
@@ -118,7 +125,7 @@ rx_pump :: (b: [] RxBot, now: int, walk: bool) {
   while code == RC_TEXT {
     t := cast(string) b[0].conn[0].text[0..<b[0].conn[0].text_n];
     if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); rx_said(b); }
-    rx_cast_record(b,t);
+    rx_cast_record(b,t); rx_rest_record(b, t);
     if rs_starts(t, "D ") {
       r:[1] WireRd; r[0]=wire_rd(t,1); _:=wire_read_d(t,r[..]);
       for q:0..<wire_entries(t,r[0].at) { rx_cast_entry(b,wire_entry(t,r[0].at,q)); }
@@ -287,12 +294,13 @@ rx_interest_main :: (n: int, near: int, seconds: int, port: int, code: string) -
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   n := 4; walk := 7; port := 0; bin := "coax/web/room/bin/room"; drain := false;
-  interest := false; near := 10; seconds := 90; external := 0; code := ""; given_n := false;
+  interest := false; rest := false; near := 10; seconds := 90; external := 0; code := ""; given_n := false;
   i := 0;
   while i < args_count(a[..]) {
     x := args_at(a[..], i);
     if x == "--drain" { drain = true; i += 1; continue; }
     if x == "--interest" { interest = true; i += 1; continue; }
+    if x == "--rest" { rest = true; i += 1; continue; }
     if i + 1 >= args_count(a[..]) { tool_errln("usage: e2-restart-check.coax [--drain] [--players N] [--walk S] [--port P] [--room BIN]"); return 2; }
     y := args_at(a[..], i + 1);
     if x == "--players" { n = rs_num(y); given_n = true; } else if x == "--near" { near = rs_num(y); } else if x == "--seconds" { seconds = rs_num(y); }
@@ -301,6 +309,8 @@ tool_main :: () -> int #export_c #effects(all) {
     i += 2;
   }
   if interest && !given_n { n = 14; }
+  if rest && !given_n { n = 2; }
+  if rest && n < 2 { return 2; }
   if n < 1 || n > RX_MAX || walk < 1 || (!interest && n > 8) { return 2; }
   if interest && external > 0 { return rx_interest_main(n, near, seconds, external, code); }
   if !fs_exists(bin) { tool_errln("e2-restart-check: no room binary (coax/web/room/build.sh)"); return 2; }
@@ -331,6 +341,9 @@ tool_main :: () -> int #export_c #effects(all) {
     rx_bands(bots[..], n, near);
     print("e2-restart-check: % players in % on 127.0.0.1:%, % near, the rest far up the path\n", n, codes[0], ports[0], near);
     ok = rx_interest(bots[..], n, seconds, false);
+  } else if rest {
+    print("e2-restart-check: % players in % on 127.0.0.1:%: the room's rest over real sockets, then a kill\n", n, codes[0], ports[0]);
+    ok = rx_rest(bots[..], n, bin, ports[..], dir, store, codes[..], rooms[..]);
   } else if drain {
     print("e2-restart-check: % players in % on 127.0.0.1:%, walking % s before each drain\n", n, codes[0], ports[0], walk);
     ok = rx_phase(bots[..], n, bin, ports[..], dir, store, codes[..], walk * 1000, true, rooms[..], 0, 1, true);
@@ -371,4 +384,72 @@ rx_cast_entry :: (b:[] RxBot,t:string) {
   r:[1] WireRd; r[0]=wire_rd(t,6); e:=wire_read_cast_e(t,r[..]);
   if !r[0].ok || e.slot!=RX_DRUID_CAST { return; }
   if e.ss==b[0].seat { b[0].cast_mine+=1; } else { b[0].cast_others+=1; }
+}
+
+// --rest (#13046): the room's z (rest state) and r rest refusals as a page hears them. Requests are
+// rest-control.coax's (this tool links no rules): 1 Short Rest, 2 sleep, 3 watch.
+RX_SHORT :: 1; RX_SLEEP :: 2; RX_WATCH :: 3;
+rx_rest_record :: (b: [] RxBot, t: string) {
+  if rs_starts(t, "z ") { b[0].rest_code = rs_num(rs_field(t, 2)); b[0].rest_dice = rs_num(rs_field(t, 3)); b[0].rest_heard += 1; }
+  if rs_starts(t, "r ") && rs_field(t, 2) == "rest" { b[0].rest_refused += 1; }
+}
+rx_rest_ask :: (b: [] RxBot, req: int) {
+  b[0].rest_asked += 1; m: [64] u8;
+  k := rs_put(m[..], 0, "Z "); k = rs_int(m[..], k, 3000000 + b[0].rest_asked); k = rs_put(m[..], k, " "); k = rs_int(m[..], k, req);
+  _ := relay_conn_send(b[0].conn[..], cast(string) m[0..<k]);
+}
+// Every player for ms, each walking when its go says.
+rx_run :: (bots: [] RxBot, n: int, ms: int) {
+  until := rs_now() + ms;
+  while rs_now() < until { now := rs_now(); for i: 0..<n { rx_pump(bots[i..<i + 1], now, bots[i].go); } proc_sleep(2); }
+}
+// Pump until player i's rest code is code (true), or ms pass.
+rx_until :: (bots: [] RxBot, n: int, i: int, code: int, ms: int) -> bool {
+  until := rs_now() + ms;
+  while rs_now() < until { if bots[i].rest_code == code { return true; } rx_run(bots, n, 20); }
+  return bots[i].rest_code == code;
+}
+rx_rest_step :: (name: string, held: bool, b: RxBot) -> bool {
+  print("  % %: rest % dice %, % heard, % refused\n", ifx held then "ok  " else "FAIL", name, b.rest_code, b.rest_dice, b.rest_heard, b.rest_refused);
+  return held;
+}
+rx_rest :: (bots: [] RxBot, n: int, bin: string, ports: [] int, dir: string, store: string, codes: [] string, rooms: [] int) -> bool {
+  for i: 0..<n { bots[i].go = false; }
+  rx_run(bots, n, 2500);   // seated, landed and still
+  ok := rx_rest_step("both seated and told no rest", bots[0].rest_code == 0 && bots[1].rest_code == 0, bots[0]);
+  rx_rest_ask(bots[0..<1], RX_SLEEP);
+  ok = rx_rest_step("player 0 asleep", rx_until(bots, n, 0, 3, 3000), bots[0]) && ok;
+  x := bots[0].own.x; z := bots[0].own.z; bots[0].go = true; rx_run(bots, n, 1500); bots[0].go = false;
+  ok = rx_rest_step("asleep, its keys move nothing", abs(bots[0].own.x - x) < 0.01 && abs(bots[0].own.z - z) < 0.01 && bots[0].rest_code == 3, bots[0]) && ok;
+  rx_rest_ask(bots[0..<1], RX_WATCH);
+  ok = rx_rest_step("player 0 on watch", rx_until(bots, n, 0, 4, 3000), bots[0]) && ok;
+  bots[0].go = true;
+  ok = rx_rest_step("walking on watch is exertion", rx_until(bots, n, 0, 5, 3000), bots[0]) && ok;
+  bots[0].go = false;
+  ok = rx_rest_step("stopping is the watch again", rx_until(bots, n, 0, 4, 4000), bots[0]) && ok;
+  rx_run(bots, n, 1000); rx_rest_ask(bots[1..<2], RX_SHORT);
+  ok = rx_rest_step("player 1 in a Short Rest", rx_until(bots, n, 1, 1, 3000), bots[1]) && ok;
+  bots[1].go = true;
+  ok = rx_rest_step("walking breaks player 1's Short Rest", rx_until(bots, n, 1, 0, 3000), bots[1]) && ok;
+  bots[1].go = false;
+  // a socket drop and a sit again within the grace: the same rest, told to the new socket
+  c := relay_conn_close(bots[0].conn[..], 1000); bots[0].open = false; bots[0].rest_code = -1; bots[0].claim = false;
+  rx_run(bots, n, 800);
+  sat := rx_sit(bots[0..<1], ports[0], codes[0]);
+  ok = rx_rest_step("a new socket within the grace hears the watch", sat && rx_until(bots, n, 0, 4, 4000), bots[0]) && ok;
+  rx_run(bots, n, 1500); rx_rest_ask(bots[0..<1], RX_SLEEP);
+  ok = rx_rest_step("player 0 asleep again", rx_until(bots, n, 0, 3, 3000), bots[0]) && ok;
+  rx_run(bots, n, 7000);   // past a checkpoint (every 5 s)
+  // the kill: SIGKILL, the room again on its port and store, both sit again
+  k := proc_kill(rooms[0], 9); w := proc_wait(rooms[0], 5000); r := proc_release(rooms[0]);
+  for i: 0..<n { bots[i].open = false; cc := relay_conn_close(bots[i].conn[..], 1000); bots[i].rest_code = -1; bots[i].claim = false; }
+  rooms[0] = rx_room(bin, ports[0], dir, store);
+  back := rooms[0] >= 0 && rx_health(ports[0]);
+  proc_sleep(750);
+  for i: 0..<n { back = rx_sit(bots[i..<i + 1], ports[0], codes[0]) && back; }
+  ok = rx_rest_step("after the kill player 0 is back asleep", back && rx_until(bots, n, 0, 3, 6000), bots[0]) && ok;
+  ok = rx_rest_step("and player 1 has no rest", rx_until(bots, n, 1, 0, 3000), bots[1]) && ok;
+  x = bots[0].own.x; z = bots[0].own.z; bots[0].go = true; rx_run(bots, n, 1000); bots[0].go = false;
+  ok = rx_rest_step("still asleep, it cannot move", abs(bots[0].own.x - x) < 0.01 && abs(bots[0].own.z - z) < 0.01 && bots[0].rest_code == 3, bots[0]) && ok;
+  return ok;
 }

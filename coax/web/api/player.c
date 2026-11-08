@@ -324,6 +324,8 @@ static int ticket_resume(const request *q, PGconn *db, const char *pid, char sav
   const char *pv[1]={pid}; PGresult *r=NULL; char who[96], asked[8];
   const char *enabled=getenv("OA_ROOM_CHECKPOINTS");
   bool wants=api_query(q,"checkpoint",asked,sizeof asked)&&!strcmp(asked,"2");
+  // rest=1 (character-checkpoint-v3): a profile 3 capture as it is; otherwise its profile 2 part
+  char rest_q[8]; const char *three=api_query(q,"rest",rest_q,sizeof rest_q)&&!strcmp(rest_q,"1")?"t":"f";
   if (!progress_run(db,"BEGIN")) return -1;
   r=PQexecParams(db,"SELECT coalesce(account,id) FROM verse.players WHERE id=$1 FOR SHARE",1,NULL,pv,NULL,NULL,0);
   if (PQresultStatus(r)!=PGRES_TUPLES_OK||PQntuples(r)!=1) goto fail;
@@ -342,7 +344,8 @@ static int ticket_resume(const request *q, PGconn *db, const char *pid, char sav
     *owner=atoll(PQgetvalue(r,0,0));PQclear(r);r=NULL;
     r=PQexecParams(db,"INSERT INTO verse.character_profiles_v2(who) VALUES($1) ON CONFLICT DO NOTHING",1,NULL,wv,NULL,NULL,0);
     if(PQresultStatus(r)!=PGRES_COMMAND_OK)goto fail;PQclear(r);r=NULL;
-    r=PQexecParams(db,"SELECT coalesce((SELECT body::text FROM verse.character_checkpoints_v2 WHERE who=$1),'-'),greatest(coalesce((SELECT xp FROM verse.room_vitals WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v1 WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v2 WHERE who=$1),0))",1,NULL,wv,NULL,NULL,0);
+    const char *rv[2]={who,three};
+    r=PQexecParams(db,"SELECT coalesce((SELECT (CASE WHEN $2::boolean OR body->>'v'<>'3' THEN body ELSE (body-'rest')||'{\"v\":2}'::jsonb END)::text FROM verse.character_checkpoints_v2 WHERE who=$1),'-'),greatest(coalesce((SELECT xp FROM verse.room_vitals WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v1 WHERE who=$1),0),coalesce((SELECT (body->>'xp')::bigint FROM verse.character_checkpoints_v2 WHERE who=$1),0))",2,NULL,rv,NULL,NULL,0);
     if (PQresultStatus(r)!=PGRES_TUPLES_OK||PQntuples(r)!=1||strlen(PQgetvalue(r,0,0))>2048) goto fail;
     snprintf(saved,2049,"%s",PQgetvalue(r,0,0));*xp=atoi(PQgetvalue(r,0,1));PQclear(r);r=NULL;
   }

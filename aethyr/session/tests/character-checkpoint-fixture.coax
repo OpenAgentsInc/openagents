@@ -3,3 +3,11 @@ cc_fixture :: ()->CharacterCapture {
   c:=CharacterCapture.{ok=true,pid_n=3,room_n=6};c.pid[0]='p';c.pid[1]='-';c.pid[2]='a';c.room[0]='p';c.room[1]='a';c.room[2]='i';c.room[3]='r';c.room[4]='-';c.room[5]='a';
   c.n=[17]int.[2,7,101,3,1762190000000,1762190000000,1,1,1,0,20,350,2,-1234,200,-9876,1234];c.dead=true;c.state[0]=1;c.state[2]=4;c.state[3]=50;c.state[4]=2;c.state[5]=6;c.state[7]=2;c.state[16]=1;return c;
 }
+// A profile 3 fixture's rest: every field at its high.
+cc_rest_fixture :: ()->CharacterRest { r:=CharacterRest.{on=true}; for i:0..<CC_REST{r.n[i]=CC_REST_HIGH[i];} return r; }
+// Where pat first starts in s, or -1.
+cc_find :: (s:string,pat:string)->int { for i:0..<s.count-pat.count+1{if s[i..<i+pat.count]==pat{return i;}} return -1; }
+// s[0..<cut] then tail, into out.
+cc_splice :: (s:string,cut:int,tail:string,out:[]u8)->string {
+  for i:0..<cut{out[i]=s[i];} for i:0..<tail.count{out[cut+i]=tail[i];} return cast(string)out[0..<cut+tail.count];
+}

@@ -7251,3 +7251,22 @@ the current state; the new page must be seen still again before it changes the
 rest. Pre-v5 `L` rest requests are refused in Everglade II rooms. Evidence:
 `coax/web/room/room-e2-rest.coax` checks and
 `docs/protocol/everglade-session-v5.md`.
+
+## A carried rest earns nothing offline and keeps the Long Rest gate
+
+Character checkpoint profile 3 carries a seat's rest as 19 bounded integers
+(`aethyr/rules/srd/rest-carry.coax`, `docs/protocol/character-checkpoint-v3.md`).
+`rs_carry_in` lays it on all or none: a field out of range, two rests in
+progress, a mode without an open journal, a completion age without a
+completion, parts that exceed the elapsed time, more Hit Dice than the body has,
+or a body that cannot sleep for an open sleeping rest refuses it, and the body
+is unchanged. Times resume as captured and are stamped at the restore, so time
+between processes earns no rest. The completion age keeps the 16-hour gate, and
+an Everglade II room's rest clock starts at `RS_CARRY_EPOCH`, so that age is
+always representable. A dead or 0-HP body keeps its Hit Dice and history but no
+rest in progress. Profile 2 readers never see a profile 3 body: the API gives a
+profile 3 body's profile 2 part unless the page asks `rest=1`, and a room whose
+profile 3 post is refused (400 or 5xx) sends profile 2 for the rest of its
+process. Evidence: the `rest carry` checks (zero mutation survivors in
+`rest-carry.coax`), the `character checkpoint` checks (zero root survivors),
+the `e2 rest` room checks and the `resume3` API checks.
