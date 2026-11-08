@@ -221,8 +221,7 @@ FT_HERO :: 0; FT_FOE :: 1; FT_NEXT :: 2; FT_ALLY :: 3;
 ft_field :: (b: [] RsBattle, s: [] FbSeat, seed: int) {
   rs_reset(b);
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40;
-  #assert rs_set_timing(b,RS_ACTION_TIMING);
-  #assert rs_set_areas(b,RS_SPARE_CASTER_AREAS);   // Everglade's bar: no caster in its own blast
+  #assert rs_set_world(b,RS_ACTION_WORLD);   // Everglade's bar: action beats, no caster in its own blast
   for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   _ := rs_add(b, fb_everglade_hero("You", 0), 10, 10);

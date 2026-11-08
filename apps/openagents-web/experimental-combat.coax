@@ -190,8 +190,7 @@ xc_start :: (x: [] XcCombat, klass: int) {
   b := x[0].b[..];
   rs_reset(b);
   b[0].w = XC_SIDE; b[0].h = XC_SIDE;
-  timing_selected := rs_set_timing(b,RS_ACTION_TIMING);
-  areas_selected := rs_set_areas(b,RS_SPARE_CASTER_AREAS);   // house rule: no caster in its own blast
+  world_selected := rs_set_world(b,RS_EVERGLADE_WORLD);   // every declared deviation: world-profile.coax
   rest_scheduled := rs_rest_schedule_enable(b);
   b[0].dice[0].state = cast(u64) 13025 * 7919 + 3;
   _ := rs_add(b, fb_cl_hero(klass, "You", 0, 1), XC_MID, XC_MID);
@@ -849,7 +848,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   saved_budget:=rs_press_budget(me[0],x[0].seat[0].turn);
   was_open:=x[0].seat[0].open;
   press_turn:[1] RsTurn; press_turn[0]=x[0].seat[0].turn;
-  prepared:=rs_press_prepare(me,press_turn[..],RS_UNLIMITED_PRESS);
+  prepared:=rs_press_prepare(me,press_turn[..],b[0].press);
   x[0].seat[0].turn=press_turn[0];
   hp_before := me[0].hp; temp_before := me[0].temp;
   x[0].seat[0].open = true;
@@ -1950,7 +1949,7 @@ xc_play_kit :: (c: int) {
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6;
   s[0].creator[0].clock = 5;
   #assert xc_use(s[..], ray);
-  // Experimental presses refill slots first (RS_UNLIMITED_PRESS), so the chosen level is the one spent
+  // Experimental presses refill slots first (its world's RS_UNLIMITED_PRESS), so the chosen level is the one spent
   #assert x[0].whiffs == 0 && x[0].b[0].c[0].slots[1] == x[0].b[0].c[0].slots_max[1] && x[0].b[0].c[0].slots[2] == x[0].b[0].c[0].slots_max[2] - 1;
 }
 #test "experimental combat: Hex's bottom strip picks its ability, and an option it can't take spends nothing (#13038)" #steps 2000000000 {

@@ -20,7 +20,7 @@ e2r_apply :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool #effects(a
   e:=xk_entry(klass,slot);
   if !e.ok || !rs_can_act(b[0].c[i]) { return false; }
   turn:[1] RsTurn; turn[0]=seats[0].turn;
-  _:=rs_press_prepare(b[0].c[i..<b[0].n],turn[..],RS_UNLIMITED_PRESS);
+  _:=rs_press_prepare(b[0].c[i..<b[0].n],turn[..],b[0].press);
   seats[0].turn=turn[0]; seats[0].open=true;
   fb_seat_in(b,seats);
   ok:=e2r_dispatch(b,i,e.ab);

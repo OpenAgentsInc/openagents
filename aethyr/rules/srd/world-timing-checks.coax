@@ -1,0 +1,129 @@
+// SRD 5.2.1 world profiles and continuous walking paid from the turn's feet
+// (pp.14, 179, 180, 188), checked in strict and declared action timing.
+#load "battle.coax";
+
+
+#test "removing the world profile gives strict beats, grants, recovery, areas, presses and walking" {
+  for world: 0..<2 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    #assert rs_set_world(b[..],ifx world == 1 then RS_EVERGLADE_WORLD else RS_STRICT_WORLD);
+    a := rs_add(b[..],rs_rogue("Runner",0,3),1,1);
+    b[0].c[a].slots_max[1] = 2; b[0].c[a].slots[1] = 0;
+    rs_start_turn(b[..],a);
+    #assert rs_beat(b[..]) == (ifx world == 1 then 1.5f32 else 6.0f32);
+    #assert rs_movement_left(b[..],a) == (ifx world == 1 then 10 else 30);
+    #assert rs_area_spares_caster(RS_A_SPHERE,false,b[0].areas) == (world == 1);
+    t: [1] RsTurn; t[0] = b[0].turn;
+    #assert rs_press_prepare(b[0].c[a..<a+1],t[..],b[0].press) && b[0].c[a].slots[1] == (ifx world == 1 then 2 else 0);
+    b[0].c[a].slots[1] = 0;
+    #assert rs_walk_pay(b[..],a,30) == (ifx world == 1 then 30.0f32 else 30*RS_FOOT_M);
+    #assert rs_movement_left(b[..],a) == (ifx world == 1 then 10 else 0);
+    rs_end_turn(b[..],a); rs_tick(b[..],1); rs_tick(b[..],9);
+    #assert b[0].c[a].slots[1] == world;
+  }
+}
+
+wt_field :: (b: [] RsBattle, world: RsWorldProfile, speed: int) {
+  b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  #assert rs_set_world(b,world);
+  _ := rs_add(b,rs_rogue("Runner",0,3),1,1);
+  b[0].c[0].speed = speed;
+  rs_start_turn(b,0);
+}
+// Walks in equal requests until refused; the total granted, metres.
+wt_walk :: (b: [] RsBattle, step: f32) -> f32 {
+  total: f32 = 0;
+  for k: 0..<10000 {
+    g := rs_walk_pay(b,0,step);
+    #assert g >= 0 && g <= step;
+    if g <= 0 { return total; }
+    total += g;
+  }
+  return total;
+}
+wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
+
+#test "continuous walking pays exact feet up to the strict turn's Speed and then stops" {
+  for speed: [4] int.[7,25,30,45] {
+    b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,speed);
+    #assert rs_walk_pay(b[..],0,1) == 1 && b[0].turn.moved;
+    total := 1 + wt_walk(b[..],0.1);
+    #assert wt_near(total,f32(speed)*RS_FOOT_M) && total <= f32(speed)*RS_FOOT_M + 0.0001;
+    #assert rs_movement_left(b[..],0) == 0 && rs_walk_left(b[..],0) == 0 && rs_walk_pay(b[..],0,1) == 0;
+  }
+}
+
+#test "Difficult Terrain and crawling each cost one extra foot per foot walked" {
+  for prone: 0..<2 { for difficult: 0..<2 {
+    b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+    if prone == 1 { b[0].c[0].cond = RS_PRONE; }
+    if difficult == 1 { b[0].zone[0] = RsZone.{on=true, difficult=true, x0=0, y0=0, x1=29, y1=7}; }
+    #assert rs_walk_cost(b[..],0) == 1 + prone + difficult;
+    total := wt_walk(b[..],0.25);
+    #assert wt_near(total,30*RS_FOOT_M/f32(1 + prone + difficult));
+  } }
+}
+
+#test "each Dash adds the walker's current Speed and spent feet stay spent through Speed changes" {
+  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  #assert rs_dash(b[..],0) && wt_near(rs_walk_left(b[..],0),60);
+  #assert wt_near(rs_walk_pay(b[..],0,20*RS_FOOT_M),20*RS_FOOT_M) && wt_near(rs_walk_left(b[..],0),40);
+  b[0].c[0].speed = 10;
+  #assert rs_walk_left(b[..],0) == 0 && rs_walk_pay(b[..],0,1) == 0;
+  b[0].c[0].speed = 30;
+  #assert wt_near(rs_walk_left(b[..],0),40) && wt_near(wt_walk(b[..],0.3),40*RS_FOOT_M);
+}
+
+#test "continuous and grid movement spend one budget, carrying part of a foot" {
+  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  #assert wt_near(rs_walk_pay(b[..],0,12.5*RS_FOOT_M),12.5*RS_FOOT_M);
+  #assert rs_movement_left(b[..],0) == 18 && wt_near(b[0].turn.walk_ft,0.5) && wt_near(rs_walk_left(b[..],0),17.5);
+  for x: 2..<5 { #assert rs_step_to(b[..],0,x,1); }
+  #assert rs_movement_left(b[..],0) == 3 && wt_near(rs_walk_left(b[..],0),2.5);
+  #assert wt_near(wt_walk(b[..],1),2.5*RS_FOOT_M) && rs_movement_left(b[..],0) == 0 && !rs_step_to(b[..],0,5,1);
+  rs_end_turn(b[..],0); rs_start_turn(b[..],0);
+  #assert b[0].turn.walk_ft == 0 && rs_walk_left(b[..],0) == 30;
+}
+
+#test "walking pays nothing outside the walker's own turn, when it cannot move or for an empty request" {
+  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  _ := rs_add(b[..],rs_rogue("Other",0,3),5,5);
+  zero: f32 = 0;
+  for metres: [3] f32.[0,-1,zero/zero] { #assert rs_walk_pay(b[..],0,metres) == 0; }
+  #assert rs_walk_pay(b[..],1,1) == 0 && rs_walk_left(b[..],1) == 0;
+  #assert rs_walk_pay(b[..],-1,1) == 0 && rs_walk_pay(b[..],b[0].n,1) == 0 && rs_walk_left(b[..],-1) == 0 && rs_walk_left(b[..],b[0].n) == 0;
+  b[0].c[0].cond = RS_GRAPPLED;
+  #assert rs_walk_pay(b[..],0,1) == 0 && rs_walk_left(b[..],0) == 0;
+  b[0].c[0].cond = 0;
+  #assert rs_walk_left(b[..],0) == 30 && !b[0].turn.moved;
+  #assert wt_near(rs_walk_pay(b[..],0,1e9),30*RS_FOOT_M) && rs_movement_left(b[..],0) == 0;
+}
+
+#test "declared action timing pays its quarter-round grant; the Everglade world walks unpaid" {
+  b: [1] RsBattle; wt_field(b[..],RS_ACTION_WORLD,30);
+  #assert wt_near(wt_walk(b[..],0.2),10*RS_FOOT_M) && rs_walk_scale(b[..],0) == 0;
+  rs_end_turn(b[..],0); rs_start_turn(b[..],0);
+  #assert rs_walk_scale(b[..],0) == 1 && rs_dash(b[..],0) && wt_near(wt_walk(b[..],0.2),40*RS_FOOT_M);
+  e: [1] RsBattle; wt_field(e[..],RS_EVERGLADE_WORLD,30);
+  #assert rs_walk_pay(e[..],0,0) == 0 && !e[0].turn.moved;
+  #assert rs_walk_pay(e[..],0,50) == 50 && rs_movement_left(e[..],0) == 10 && rs_walk_scale(e[..],0) == 1 && e[0].turn.moved;
+  #assert rs_walk_pay(e[..],0,1e9) == RS_WALK_MAX_M;
+  // unpaid walking still needs a creature that can move, in its own turn
+  e[0].c[0].cond = RS_GRAPPLED; #assert rs_walk_pay(e[..],0,1) == 0 && rs_walk_scale(e[..],0) == 0;
+  e[0].c[0].cond = 0; e[0].who = -1; #assert rs_walk_pay(e[..],-1,1) == 0;
+  e[0].who = e[0].n; e[0].c[e[0].n] = e[0].c[0]; #assert rs_walk_pay(e[..],e[0].n,1) == 0;
+  // a paid creature with no movement this turn pays and records nothing
+  z: [1] RsBattle; wt_field(z[..],RS_STRICT_WORLD,0);
+  #assert rs_walk_pay(z[..],0,1) == 0 && !z[0].turn.moved && rs_walk_left(z[..],0) == 0;
+}
+
+#test "the walker's step is cut where the turn's movement runs out" {
+  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  to := rs_walk_take(b[..],0,1,2,4,6);   // 5 metres
+  #assert to.x == 4 && to.z == 6 && to.metres == 5;
+  to = rs_walk_take(b[..],0,4,6,4,16);
+  #assert wt_near(to.metres,30*RS_FOOT_M - 5) && to.x == 4 && wt_near(to.z,6 + 30*RS_FOOT_M - 5);
+  to = rs_walk_take(b[..],0,4,7,8,7);
+  #assert to.x == 4 && to.z == 7 && to.metres == 0;
+  #assert rs_walk_scale(b[..],0) == 0;
+}

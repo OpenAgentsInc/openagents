@@ -60,6 +60,8 @@
 #load "opportunity-movement.coax";
 #load "movement-credit.coax";
 #load "locomotion-scale.coax";
+#load "world-profile.coax";
+#load "walk-budget.coax";
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
 #load "ability-checks.coax";
@@ -102,7 +104,7 @@ RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1:
 // Colossus Slayer, leveled (a level 1+ spell cast) and quickened (Quickened Spell used).
 RsTurn :: struct { disengaged: bool; action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; move_basis: int; move_debt: int; move_tracked: bool; dash_n: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
-                   leveled: bool; quickened: bool; stunned: bool; resurged: bool; }
+                   leveled: bool; quickened: bool; stunned: bool; resurged: bool; walk_ft: f32; }
 RsReactionFrame :: struct { on:bool; who:int = -1; turn:RsTurn; }
 RsBattle :: struct {
   c: [] RsCreature; n: int;   // the creatures: own's room (rs_room), or a world's (rs_use)
@@ -125,6 +127,9 @@ RsBattle :: struct {
   // Repeat saves, death saves and Rage upkeep stay on six-second rounds.
   timing: RsTimingProfile;
   areas: RsAreaProfile;      // strict, or a declared house rule sparing the caster (area-origin.coax)
+  press: RsPressProfile;     // paid, or a declared unlimited press budget (press-budget.coax)
+  walk: int;                 // RS_WALK_PAID or the declared unpaid RS_WALK_RATE (world-profile.coax)
+  // A world selects all four together with rs_set_world (world-profile.coax).
   timing_sealed: bool;       // configured before begin/turn/tick; reset opens it
   // Who stands on each square (1 + the creature, 0 none), so rs_at is one look rather than a scan
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
@@ -206,7 +211,7 @@ rs_reset :: (b: [] RsBattle) {
   b[0].book[0] = RsLog.{};
   b[0].rest_clock=RsRestClock.{}; rs_rest_schedule_reset(b);
   b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
-  b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_timing(b); rs_reset_areas(b);
+  b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_world(b);
   for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
 }
 rs_inside :: (z: RsZone, x: int, y: int) -> bool {

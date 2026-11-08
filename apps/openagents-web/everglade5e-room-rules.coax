@@ -101,8 +101,7 @@ e5rr_of_tgt :: (t: int) -> int {
 e5rr_start :: (r: [] E5rRoom, seed: int) #export_c #effects(reads,writes,traps) {
   b := r[0].b[..];
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
-  timing_selected := rs_set_timing(b,RS_ACTION_TIMING);
-  areas_selected := rs_set_areas(b,RS_SPARE_CASTER_AREAS);   // house rule: no caster in its own blast
+  world_selected := rs_set_world(b,RS_EVERGLADE_WORLD);   // every declared deviation: world-profile.coax
   for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   for s: 0..<E5RR_SEATS {
@@ -312,7 +311,7 @@ e5rr_use_apply :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> b
   // The enclosing transaction restores it on refusal; Reactions stay spent.
   c := b[0].c[me..<me + 1];
   press_turn:[1] RsTurn; press_turn[0]=r[0].seat[s].turn;
-  prepared:=rs_press_prepare(c,press_turn[..],RS_UNLIMITED_PRESS);
+  prepared:=rs_press_prepare(c,press_turn[..],b[0].press);
   r[0].seat[s].turn=press_turn[0]; r[0].seat[s].open=true;
   tx := e5r_sq(x); ty := e5r_sq(z);
   foe := ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else e5rr_of_tgt(tgt);

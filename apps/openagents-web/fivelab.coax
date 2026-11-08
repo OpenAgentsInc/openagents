@@ -843,7 +843,7 @@ new_battle :: (s: [] Lab) {
   }
   s[0].battle[0].clock = 0;
   // Action mode is a house profile: its timing, and no caster caught in its own blast; round mode is strict.
-  if s[0].mode == MODE_ACTION { timing_selected := rs_set_timing(s[0].battle[..],RS_ACTION_TIMING); areas_selected := rs_set_areas(s[0].battle[..],RS_SPARE_CASTER_AREAS); }
+  if s[0].mode == MODE_ACTION { world_selected := rs_set_world(s[0].battle[..],RS_ACTION_WORLD); }
   rs_begin(bt(s));
   bt(s)[0].kept = true;   // every move here goes through rs_add and rs_place
   due_all(s);
@@ -2030,7 +2030,7 @@ lab_queue_escape :: (s:[]Lab,x:f32,y:f32,z:f32) {
 lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
   if !s[0].creator[0].experimental || !s[0].xc[0].started { return 1; }
   xc_sync_world(s);
-  return rs_locomotion_scale(s[0].xc[0].b[..],0);
+  return rs_walk_scale(s[0].xc[0].b[..],0);
 }
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;

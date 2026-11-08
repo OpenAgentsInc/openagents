@@ -1,0 +1,84 @@
+// Continuous walking paid from the turn's movement, SRD 5.2.1 p.188 (Speed:
+// move up to it), p.14 (Difficult Terrain: 1 extra foot per foot), p.179
+// (Crawling: 1 extra foot, 2 in Difficult Terrain) and p.180 (Dash adds Speed). The physical
+// walker asks before it moves and moves at most the distance granted, so it can
+// never spend more than rs_movement_left. The part of a foot walked carries between
+// steps; whole feet come off the same budget the grid steps pay from.
+// A world declaring RS_WALK_RATE (world-profile.coax) walks unpaid instead.
+#authority;
+
+RS_FOOT_M :: 0.3048f32;      // metres in a foot
+RS_WALK_MAX_M :: 1000.0f32;    // one request's bound, far above any turn's Speed
+RsWalkTo :: struct { x: f32; z: f32; metres: f32; }
+
+// Feet of movement one foot of walking costs where the creature stands: 1, 2 or 3.
+rs_walk_cost :: (b: [] RsBattle, i: int) -> int #effects(all) {
+  return rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,b[0].c[i].x,b[0].c[i].y))/RS_SQUARE;
+}
+// Feet of movement left for continuous walking. Only a creature that can move,
+// in its own turn, has any; the carried part of a foot is less than one.
+rs_walk_left :: (b: [] RsBattle, i: int) -> f32 #effects(all) {
+  feet := rs_movement_left(b,i);
+  return ifx feet > 0 && rs_can_move(b[0].c[i]) then f32(feet) - b[0].turn.walk_ft else 0;
+}
+// Pays for up to `metres` of walking and returns the distance granted: all of
+// it while the turn's movement lasts, then only what is left. Walking counts as
+// moving this turn and interrupts a rest under either walking profile.
+rs_walk_pay :: (b: [] RsBattle, i: int, metres: f32) -> f32 #effects(all) {
+  if i < 0 || i >= b[0].n || b[0].who != i || !(metres > 0) || !rs_can_move(b[0].c[i]) { return 0; }
+  m := rs_minf(metres,RS_WALK_MAX_M);
+  granted := m;
+  if b[0].walk != RS_WALK_RATE {
+    cost := f32(rs_walk_cost(b,i));
+    granted = rs_minf(m,rs_walk_left(b,i)/cost*RS_FOOT_M);
+    if !(granted > 0) { return 0; }
+    carried := b[0].turn.walk_ft + granted/RS_FOOT_M*cost;
+    whole := cast(int) floor(carried);
+    left := b[0].turn.move_left*5 + b[0].turn.move_feet - whole;
+    b[0].turn.move_left = left/5; b[0].turn.move_feet = left%5; b[0].turn.walk_ft = carried - f32(whole);
+  }
+  b[0].turn.moved = true;
+  rs_rest_interrupt_at(b[0].c,i);
+  return granted;
+}
+// The walker's step from (fx, fz) toward (tx, tz), cut short where the turn's
+// movement runs out.
+rs_walk_take :: (b: [] RsBattle, i: int, fx: f32, fz: f32, tx: f32, tz: f32) -> RsWalkTo #effects(all) {
+  dx := tx - fx; dz := tz - fz; d2 := dx*dx + dz*dz;
+  if !(d2 - d2 == 0) { return RsWalkTo.{x=fx, z=fz}; }   // a NaN or infinite request stays put
+  d := sqrt(d2);
+  paid := rs_walk_pay(b,i,d);
+  k := ifx paid > 0 then paid/d else 0;
+  return RsWalkTo.{x=fx + dx*k, z=fz + dz*k, metres=paid};
+}
+// The walker's rate: the profile's Speed-proportional scale, and none once a
+// paid turn's movement is gone.
+rs_walk_scale :: (b: [] RsBattle, i: int) -> f32 #effects(all) {
+  if b[0].walk == RS_WALK_PAID && rs_walk_left(b,i) <= 0 { return 0; }
+  return rs_locomotion_scale(b,i);
+}
+
+#test "a strict walker pays one extra foot per foot in Difficult Terrain and stops where its movement runs out" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  _ := rs_add(b[..],rs_rogue("Runner",0,3),1,1); _ = rs_add(b[..],rs_rogue("Resting",0,3),5,5);
+  b[0].c[0].cond = RS_BLINDED; rs_start_turn(b[..],0);
+  b[0].c[0].rest.phase = 1; b[0].c[1].rest.phase = 1;
+  #assert rs_walk_cost(b[..],0) == 1 && rs_walk_scale(b[..],0) == 1 && rs_walk_left(b[..],0) == 30;
+  to := rs_walk_take(b[..],0,1,2,4,6);   // 5 metres
+  #assert to.x == 4 && to.z == 6 && to.metres == 5 && b[0].turn.moved;
+  #assert b[0].c[0].rest.phase == 0 && b[0].c[1].rest.phase == 1;
+  b[0].zone[0] = RsZone.{on=true, difficult=true, x0=0, y0=0, x1=29, y1=7};
+  #assert rs_walk_cost(b[..],0) == 2;
+  left := rs_walk_left(b[..],0);
+  to = rs_walk_take(b[..],0,4,6,-6,16);
+  #assert to.metres == left/2*RS_FOOT_M && abs(to.x - 4 + to.metres*0.70710678) < 0.0001 && abs(to.z - 6 - to.metres*0.70710678) < 0.0001;
+  #assert rs_walk_left(b[..],0) == 0 && rs_walk_scale(b[..],0) == 0 && rs_movement_left(b[..],0) == 0;
+  to = rs_walk_take(b[..],0,4,7,8,7);
+  #assert to.x == 4 && to.z == 7 && to.metres == 0;
+  // a zero step and a NaN target stay put; a speed loss below the carried foot leaves none
+  rs_start_turn(b[..],0); b[0].zone[0].on = false;
+  to = rs_walk_take(b[..],0,3,3,3,3); #assert to.x == 3 && to.z == 3 && to.metres == 0;
+  zero: f32 = 0; to = rs_walk_take(b[..],0,3,3,zero/zero,3); #assert to.x == 3 && to.z == 3 && to.metres == 0;
+  #assert rs_walk_pay(b[..],0,12.5*RS_FOOT_M) > 0 && b[0].turn.walk_ft > 0.4;
+  b[0].c[0].speed = 10; #assert rs_walk_left(b[..],0) == 0;
+}
