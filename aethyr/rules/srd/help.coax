@@ -1,0 +1,85 @@
+// SRD 5.2.1 pp.182-183. Help's benefits belong to a matching check/attack and
+// expire at the helper's actual next turn. Geometry/task feasibility is a
+// world fact, supplied when granting and updated per helper for an actual check.
+#authority;
+
+RsHelpRequest :: struct { skill: int = -1; tool: int = -1; possible: bool; }
+
+rs_help_admit :: (b: [] RsBattle, i: int, j: int, possible: bool) -> bool #effects(all) {
+  return i>=0 && i<b[0].n && j>=0 && j<b[0].n && i!=j && possible && rs_action_free(b,i) && !b[0].c[j].dead;
+}
+rs_help_keep :: (b: [] RsBattle, i: int, j: int, kind: int, choice: int) -> bool #effects(all) {
+  if !rs_put_effect(b,j,RsEffect.{kind=kind,cond=choice,by=i,spell=-1,save=-1}) { return false; }
+  b[0].turn.action=true;
+  l: [1] RsLine; rs_add_name(l[..],b,i);
+  rs_add_text(l[..],ifx kind==EF_HELP_CHECK then " helps " else " distracts "); rs_add_name(l[..],b,j);
+  rs_add_text(l[..],ifx kind==EF_HELP_CHECK then " with an ability check" else " to help an ally attack");
+  rs_tell(b,RS_EV_CONDITION,-1,i,j,choice,0,l[..]);
+  return true;
+}
+rs_help_ability :: (b: [] RsBattle, i: int, j: int, q: RsHelpRequest) -> bool #effects(all) {
+  if !rs_help_admit(b,i,j,q.possible) || b[0].c[i].team!=b[0].c[j].team { return false; }
+  if q.skill != -1 {
+    if q.skill<0 || q.skill>=RS_SKILLS || q.tool != -1 || (b[0].c[i].checks.skills & (1<<q.skill))==0 { return false; }
+    return rs_help_keep(b,i,j,EF_HELP_CHECK,q.skill);
+  }
+  if q.tool<0 || q.tool>=RS_TOOLS || (b[0].c[i].checks.tools & rs_tool_bit(q.tool))==0 { return false; }
+  return rs_help_keep(b,i,j,EF_HELP_CHECK,RS_SKILLS+q.tool);
+}
+rs_help_attack :: (b: [] RsBattle, i: int, j: int, possible: bool) -> bool #effects(all) {
+  if !rs_help_admit(b,i,j,possible) || b[0].c[i].team==b[0].c[j].team { return false; }
+  // Grid positions are whole five-foot squares. Express the boundary as one
+  // square directly, retaining the common diagonal/absolute-distance rule.
+  if rs_max(rs_abs(b[0].c[i].x-b[0].c[j].x),rs_abs(b[0].c[i].y-b[0].c[j].y))>1 { return false; }
+  return rs_help_keep(b,i,j,EF_HELP_ATTACK,0);
+}
+
+rs_help_matches :: (e: RsEffect, q: RsAbilityRequest) -> bool #effects(all) {
+  return e.kind==EF_HELP_CHECK && (e.cond==q.skill || (q.tool>=0 && e.cond==RS_SKILLS+q.tool));
+}
+// Query first, so Advantage is combined before cancellation. Consume only an
+// admitted matching check, including a failed/canceled/automatic failure. A
+// passive score or malformed request does not consume a next-check benefit.
+rs_help_check :: (b: [] RsBattle, j: int, q: RsAbilityRequest, consume: bool) -> bool #effects(all) {
+  any:=false;
+  for k: 0..<RS_EFFECTS {
+    e:=b[0].c[j].eff[k];
+    if !rs_help_matches(e,q) { continue; }
+    usable:=e.by>=0 && e.by<b[0].n && rs_capable(b[0].c[e.by]);
+    for blocked: q.help_blocked { if blocked==e.by { usable=false; } }
+    if usable { any=true; }
+    if consume { rs_drop_effect(b,j,k); }
+  }
+  return any;
+}
+rs_take_help_attack :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) {
+  any:=false;
+  for k: 0..<RS_EFFECTS {
+    e:=b[0].c[j].eff[k];
+    if e.kind==EF_HELP_ATTACK && e.by>=0 && e.by<b[0].n && e.by!=i && b[0].c[e.by].team==b[0].c[i].team {
+      rs_drop_effect(b,j,k); any=true;
+    }
+  }
+  return any;
+}
+// The caller admits an actual logical turn for this helper.
+rs_help_start_turn :: (b: [] RsBattle, i: int) #effects(all) {
+  for j: 0..<b[0].n { for k: 0..<RS_EFFECTS {
+    e:=b[0].c[j].eff[k];
+    if (e.kind==EF_HELP_CHECK || e.kind==EF_HELP_ATTACK) && e.by==i { rs_drop_effect(b,j,k); }
+  } }
+}
+
+#test "Help entry points retain query consume attack and turn ownership" {
+  b: [1] RsBattle; c: [3] RsCreature; b[0].c=c[..]; b[0].n=3;
+  for i: 0..<3 { c[i].hp=1; c[i].score[RS_STR]=10; }
+  c[0].checks.skills=1<<SK_ATHLETICS; c[2].team=1; b[0].dice[0].fixed=true;
+  #assert rs_help_ability(b[..],0,1,RsHelpRequest.{skill=SK_ATHLETICS,possible=true});
+  q:=RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS,dc=10};
+  #assert rs_help_check(b[..],1,q,false) && c[1].eff[0].kind==EF_HELP_CHECK;
+  #assert rs_ability_check(b[..],1,q).edge==1 && c[1].eff[0].kind==EF_NONE;
+  b[0].turn.action=false; #assert rs_help_attack(b[..],0,2,true);
+  #assert rs_take_help_attack(b[..],1,2) && c[2].eff[0].kind==EF_NONE;
+  b[0].turn.action=false; #assert rs_help_attack(b[..],0,2,true);
+  rs_help_start_turn(b[..],0); #assert c[2].eff[0].kind==EF_NONE;
+}

@@ -457,3 +457,18 @@ fails on three wider checks, all reproduced on unmodified main `79a2ce92b3` with
 the same compiler; no Wasm/browser qualification is claimed. Canonical monster
 profiles, remaining overrides/world integration and the build blockers keep
 #13046 open. [Evidence](../verification/srd-contact-health-2026-11-08/README.md).
+
+### General Help action, 2026-11-08
+
+The shared engine now admits both Help benefits: an actual skill/tool proficiency
+assists another ally's next matching check, and a five-foot distraction assists
+another ally's next attack against that enemy. Benefits join ordinary Advantage
+before cancellation, consume on the matching check/attack, and expire at the
+helper's actual next turn rather than a clock estimate. Current task/geometry
+exclusions are per helper; first aid forwards them. Full storage refuses before
+Action spending. Saved-seat adapters preserve the running actor's turn.
+[Evidence](../verification/srd-help-2026-11-08/README.md): 297 composed core checks,
+219 hotbar checks, 21 root native O0/O2 scenarios; Help/resolver/clock/first-aid
+gates kill 165/87/37/112 mutants, all zero survivors. World controls/geometry,
+remaining condition/action rules, Healer's Kit, knockout and rests remain active
+#13039/#13040/#13046 work. This does not close those issues.

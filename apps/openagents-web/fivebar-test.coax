@@ -501,3 +501,26 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   r=fb_seat_first_aid(b[..],s[..],-1,RsFirstAidContext.{contact=true});
   #assert !r.accepted && b[0].who==FT_FOE && b[0].turn.move_left==7;
 }
+
+#test "saved-seat Help assists another actor while preserving the running actors entire turn" {
+  for kind: 0..<2 {
+    b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+    b[0].c[FT_HERO].checks.skills|=1<<SK_ATHLETICS;
+    b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.bonus=true; b[0].turn.move_left=7; b[0].turn.move_feet=2;
+    target:=ifx kind==0 then FT_ALLY else FT_FOE;
+    if kind==0 { #assert fb_seat_help_ability(b[..],s[..],target,RsHelpRequest.{skill=SK_ATHLETICS,possible=true}); }
+    else {
+      rs_place(b[..],FT_FOE,b[0].c[FT_HERO].x+1,b[0].c[FT_HERO].y);
+      #assert fb_seat_help_attack(b[..],s[..],target,true);
+    }
+    #assert s[0].turn.action && !s[0].turn.bonus;
+    #assert b[0].who==FT_FOE && b[0].turn.action && b[0].turn.bonus && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
+    found:=false; for e: b[0].c[target].eff { if e.kind==(ifx kind==0 then EF_HELP_CHECK else EF_HELP_ATTACK) && e.by==FT_HERO { found=true; } }
+    #assert found;
+    if kind==0 { #assert !fb_seat_help_ability(b[..],s[..],target,RsHelpRequest.{skill=SK_ATHLETICS,possible=true}); }
+    else { #assert !fb_seat_help_attack(b[..],s[..],target,true); }
+    s[0].open=false; s[0].turn.action=false;
+    #assert !fb_seat_help_ability(b[..],s[..],-1,RsHelpRequest.{skill=SK_ATHLETICS,possible=true});
+    #assert !fb_seat_help_attack(b[..],s[..],-1,true) && !s[0].turn.action;
+  }
+}

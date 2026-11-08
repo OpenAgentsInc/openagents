@@ -501,6 +501,20 @@ fb_seat_first_aid :: (b: [] RsBattle, s: [] FbSeat, target: int, q: RsFirstAidCo
   fb_seat_out(b,s);
   return r;
 }
+fb_seat_help_ability :: (b: [] RsBattle, s: [] FbSeat, target: int, q: RsHelpRequest) -> bool {
+  if !s[0].open { return false; }
+  fb_seat_in(b,s);
+  ok:=rs_help_ability(b,s[0].me,target,q);
+  fb_seat_out(b,s);
+  return ok;
+}
+fb_seat_help_attack :: (b: [] RsBattle, s: [] FbSeat, target: int, possible: bool) -> bool {
+  if !s[0].open { return false; }
+  fb_seat_in(b,s);
+  ok:=rs_help_attack(b,s[0].me,target,possible);
+  fb_seat_out(b,s);
+  return ok;
+}
 fb_seat_use :: (b: [] RsBattle, s: [] FbSeat, a: FbAb, foe: int, tx: int, ty: int, ally: int) -> bool {
   if !s[0].open { return false; }
   fb_seat_in(b, s);

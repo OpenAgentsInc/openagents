@@ -1,0 +1,321 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/help-checks.coax",
+      "source_sha256": "b288d52d1d69ff0cc1f15425ae16f7af0e05e21afcfc1f24ae2a0881a6c2a006",
+      "checks": [
+        {
+          "name": "the next allied attack consumes a retained Help distraction and receives Advantage",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help selects each actual skill or tool proficiency without granting a second proficiency bonus",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help skill selection refuses malformed choices absent training and impossible assistance transactionally",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "both Help actions refuse invalid logical actors wrong turns incapacity self and dead targets",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "full recipient storage refuses either Help action before spending or losing an existing owner",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a Help distraction needs an enemy within five feet and a possible distraction",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help events retain the helper recipient selection and action identity without imposing conditions",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help matches its selected skill or tool and is consumed even on a failed or canceled check",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "unrelated checks passive scores and malformed requests preserve a held Help benefit",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "an accepted automatically failed check consumes matching Help without dice or optional rescue spending",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "all matching Help owners are consumed by one check while another skill remains pending",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "attack Help benefits only another ally of its helper and consumes every qualifying distraction",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help expires only at its helpers actual next turn and preserves other owners and unrelated effects",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help admits a recipient at index zero and can distract an enemy there",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "check assistance accounts for each helpers current capability and unavailable task context",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "unknown Help owners cannot supply Advantage and tool-minus-one cannot alias Survival",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a remote ally consumes a distraction on its first actual missed ranged attack even when edges cancel",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help applies to an actual Medicine first-aid check with current assistance facts",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help refuses a recipient beyond physical storage before reading its team or life",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Help distraction uses one five-foot grid square including every diagonal and refuses two squares on either axis",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a legal spell attack consumes Help while a refused cast and a saving throw preserve the distraction",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "c286dfb500432dd36783fe99893d317c6050366c2ebe9ae80c9687683903da4c",
+            "binary_sha256": "ff96f098eb1be1475fc38134b154b5a5ea2997dd7cecd9217b3de1930c112abe"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "f819322295d33b22147b4078d4c78e823bfaf5b89720813915721505f5522709",
+            "binary_sha256": "b05d60423a99e973de29ae5423eca5803ef3fda440823c729724c5764343a360"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 21
+  },
+  "outcome": "passed"
+}

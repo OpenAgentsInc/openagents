@@ -38,6 +38,7 @@
 #load "ability-check-math.coax";
 #load "ability-checks.coax";
 #load "stabilization.coax";
+#load "help.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -784,6 +785,7 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
   if rs_take_pending(b, j, EF_EXPOSED, -1) { ups += 1; }
   if rs_take_pending(b, i, EF_VEX, j) { ups += 1; }
+  if rs_take_help_attack(b,i,j) { ups += 1; }
   if b[0].who == i && b[0].turn.aimed { b[0].turn.aimed = false; ups += 1; }
   return rs_edge(ups, downs);
 }
@@ -1191,6 +1193,7 @@ rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
 // death saving throw. A Prone creature chooses later whether to stand or crawl.
 rs_start_turn :: (b: [] RsBattle, i: int) {
   rs_seal_timing(b);
+  rs_help_start_turn(b,i);
   _ := rs_stable_recover(b,i);
   concentration_lost := rs_sync_concentration(b,i);
   if !b[0].kept { rs_index(b); }

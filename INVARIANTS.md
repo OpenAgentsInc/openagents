@@ -6772,7 +6772,8 @@ declared class-only preset choices. Expertise must be trained. `ability-check-ma
 and `ability-checks.coax` combine the requested ability, one proficiency bonus,
 Expertise/Jack, task senses, circumstance/condition edges and existing rescue
 policies. Automatic sensory failures and malformed requests consume no dice or
-resources. Tactical Mind spends a Second Wind use only if its added die succeeds.
+rescue resources. An admitted automatic check consumes matching next-check Help.
+Tactical Mind spends a Second Wind use only if its added die succeeds.
 Entangle escape and Initiative use the shared plan; rolled results preserve
 Exhaustion. Passive Perception uses a score without dice/rescues. The internal
 creature stores explicit masks; a display count cannot grant Expertise.
@@ -6822,3 +6823,20 @@ are still house data, and the per-press resource adapter remains unqualified.
 The subsequent checked Lab Wasm build clears the three reproduced baseline
 check failures; browser/runtime qualification remains separate. See
 `docs/verification/srd-siege-build-2026-11-08/README.md`. Contact evidence: `docs/verification/srd-contact-health-2026-11-08/README.md`.
+
+## Help is a next-roll benefit owned by the helper's actual turn
+
+`help.coax` admits one trained skill/tool for another ally, or a distraction on
+an enemy within one five-foot grid square. Effect retention precedes Action
+spending; capacity refusal loses neither resources nor another owner. Matching
+ability-check Help joins Advantage before cancellation and retires on the next
+admitted matching check, even if it fails automatically. Malformed requests,
+other skills and passive scores leave it pending. Current helper capability and
+per-helper task/geometry exclusions decide whether assistance can contribute.
+Attack distractions benefit the next attack by another ally of the helper,
+including spell/ranged attacks and misses; independent matching owners consume
+together without stacking Advantage. Only that helper's actual next turn clears
+its unused records; clock expiry never substitutes for that event. Saved-seat
+adapters preserve the other actor's turn. Caller facts, native scope, world input
+and remaining action/recovery boundaries:
+`docs/verification/srd-help-2026-11-08/README.md`.

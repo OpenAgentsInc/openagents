@@ -5,6 +5,7 @@
 RsFirstAidContext :: struct {
   contact: bool; sight: bool; hearing: bool; fear_visible: bool;
   advantage: bool; disadvantage: bool;
+  help_blocked: [] const int;
 }
 
 rs_first_aid :: (b: [] RsBattle, i: int, j: int, q: RsFirstAidContext) -> RsAbilityResult #effects(all) {
@@ -12,7 +13,7 @@ rs_first_aid :: (b: [] RsBattle, i: int, j: int, q: RsFirstAidContext) -> RsAbil
   if i<0 || i>=b[0].n || j<0 || j>=b[0].n || !q.contact || !rs_action_free(b,i) || !rs_death_eligible(b[0].c[j]) { return r; }
   b[0].turn.action=true;
   r=rs_ability_check(b,i,RsAbilityRequest.{ability=RS_WIS,skill=SK_MEDICINE,dc=10,
-    sight=q.sight,hearing=q.hearing,fear_visible=q.fear_visible,advantage=q.advantage,disadvantage=q.disadvantage});
+    sight=q.sight,hearing=q.hearing,fear_visible=q.fear_visible,advantage=q.advantage,disadvantage=q.disadvantage,help_blocked=q.help_blocked});
   if r.passed {
     b[0].c[j].stable=true; b[0].c[j].death_ok=0; b[0].c[j].death_fail=0;
     // A previous stable episode may have ended through damage since the last

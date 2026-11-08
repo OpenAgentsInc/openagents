@@ -1,0 +1,23 @@
+passed               aethyr/rules/srd/help-checks.coax
+  passed             the next allied attack consumes a retained Help distraction and receives Advantage
+  passed             Help selects each actual skill or tool proficiency without granting a second proficiency bonus
+  passed             Help skill selection refuses malformed choices absent training and impossible assistance transactionally
+  passed             both Help actions refuse invalid logical actors wrong turns incapacity self and dead targets
+  passed             full recipient storage refuses either Help action before spending or losing an existing owner
+  passed             a Help distraction needs an enemy within five feet and a possible distraction
+  passed             Help events retain the helper recipient selection and action identity without imposing conditions
+  passed             Help matches its selected skill or tool and is consumed even on a failed or canceled check
+  passed             unrelated checks passive scores and malformed requests preserve a held Help benefit
+  passed             an accepted automatically failed check consumes matching Help without dice or optional rescue spending
+  passed             all matching Help owners are consumed by one check while another skill remains pending
+  passed             attack Help benefits only another ally of its helper and consumes every qualifying distraction
+  passed             Help expires only at its helpers actual next turn and preserves other owners and unrelated effects
+  passed             Help admits a recipient at index zero and can distract an enemy there
+  passed             check assistance accounts for each helpers current capability and unavailable task context
+  passed             unknown Help owners cannot supply Advantage and tool-minus-one cannot alias Survival
+  passed             a remote ally consumes a distraction on its first actual missed ranged attack even when edges cancel
+  passed             Help applies to an actual Medicine first-aid check with current assistance facts
+  passed             Help refuses a recipient beyond physical storage before reading its team or life
+  passed             Help distraction uses one five-foot grid square including every diagonal and refuses two squares on either axis
+  passed             a legal spell attack consumes Help while a refused cast and a saving throw preserve the distraction
+native checks: passed {"passed": 21}

@@ -6,6 +6,7 @@ RsAbilityRequest :: struct {
   ability: int; skill: int = -1; tool: int = -1; dc: int;
   primal: bool; sight: bool; hearing: bool; fear_visible: bool;
   advantage: bool; disadvantage: bool;
+  help_blocked: [] const int; // helpers currently unable to assist this task/geometry
 }
 RsCheckPlan :: struct { accepted: bool; automatic: bool; ability: int; bonus: int; penalty: int; edge: int; }
 

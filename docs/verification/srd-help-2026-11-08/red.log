@@ -1,0 +1,7 @@
+FAIL #test the next allied attack consumes a retained Help distraction and receives Advantage (4 ms)
+aethyr/rules/srd/help-checks.coax:9:3: error[E0406]: assertion failed
+    #assert rs_attack_edge(b[..],1,2,true,true)==1;
+    ^
+  note: in #test the next allied attack consumes a retained Help distraction and receives Advantage
+1 of 208 checks (--only 'retained Help distraction'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

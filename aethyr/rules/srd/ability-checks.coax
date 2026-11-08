@@ -9,9 +9,13 @@ RsAbilityResult :: struct {
 rs_ability_check :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbilityResult #effects(all) {
   r: RsAbilityResult;
   if j < 0 || j >= b[0].n { return r; }
-  p := rs_check_plan(b[0].c[j],q);
+  request:=q;
+  request.advantage=q.advantage || rs_help_check(b,j,q,false);
+  p := rs_check_plan(b[0].c[j],request);
   r.accepted = p.accepted; r.automatic = p.automatic; r.ability = p.ability; r.edge = p.edge;
-  if !p.accepted || p.automatic { return r; }
+  if !p.accepted { return r; }
+  _ := rs_help_check(b,j,q,true);
+  if p.automatic { return r; }
   d := rs_d20(b[0].dice[..],p.edge);
   r.total = d.roll+p.bonus-p.penalty;
   r.inspiration = rs_inspired_roll(b,j,r.total,q.dc); r.total += r.inspiration;
