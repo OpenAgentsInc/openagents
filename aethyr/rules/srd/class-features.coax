@@ -26,10 +26,33 @@ rs_cf_table :: (out: [] RsCf) -> int {
   n = cf(out, n, RS_BARBARIAN, 4, 29, "Weapon Mastery (3)");
   n = cf(out, n, RS_BARBARIAN, 5, 29, "Extra Attack"); n = cf(out, n, RS_BARBARIAN, 5, 29, "Fast Movement");
   n = cf(out, n, RS_BARBARIAN, 6, 30, "Mindless Rage");
+  // Fighter (p. 47-49), Champion
+  n = cf(out, n, RS_FIGHTER, 1, 47, "Fighting Style"); n = cf(out, n, RS_FIGHTER, 1, 48, "Second Wind");
+  n = cf(out, n, RS_FIGHTER, 1, 48, "Weapon Mastery"); n = cf(out, n, RS_FIGHTER, 2, 48, "Action Surge");
+  n = cf(out, n, RS_FIGHTER, 2, 48, "Tactical Mind"); n = cf(out, n, RS_FIGHTER, 3, 49, "Improved Critical");
+  n = cf(out, n, RS_FIGHTER, 3, 49, "Remarkable Athlete"); n = cf(out, n, RS_FIGHTER, 4, 48, "Ability Score Improvement");
+  n = cf(out, n, RS_FIGHTER, 4, 48, "Second Wind (3)"); n = cf(out, n, RS_FIGHTER, 4, 48, "Weapon Mastery (4)");
+  n = cf(out, n, RS_FIGHTER, 5, 48, "Extra Attack"); n = cf(out, n, RS_FIGHTER, 5, 48, "Tactical Shift");
+  n = cf(out, n, RS_FIGHTER, 6, 48, "Ability Score Improvement (6)");
   return n;
 }
 // The classes whose rows are complete and held to the presets.
-RS_CF_DONE :: [1] int.[RS_BARBARIAN];
+RS_CF_DONE :: [2] int.[RS_BARBARIAN, RS_FIGHTER];
+
+// A dice state whose first roll of a `sides` die lands on `face` (for a check of one exact roll, a 19).
+cf_seed :: (sides: int, face: int) -> u64 {
+  for s: 1..<100000 { d: [1] RsDice; d[0].state = cast(u64) s; if rs_roll(d[..], sides) == face { return cast(u64) s; } }
+  return 0;
+}
+// A hero at (1, 1) and a plain foe beside it at 200 of 300 Hit Points, AC `ac`; fixed dice (each
+// die on half its faces), the hero's turn open.
+cf_field :: (b: [] RsBattle, hero: RsCreature, ac: int) {
+  b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b, hero, 1, 1);
+  t := rs_add(b, rs_sorcerer("Foe", 1, 3), 2, 1);
+  b[0].c[t].hp = 200; b[0].c[t].hp_max = 300; b[0].c[t].ac = ac; b[0].c[t].shield_spell = false; b[0].c[t].deflect = false;
+  rs_fresh(b, 0);
+}
 
 rs_cf_hero :: (klass: int, level: int) -> RsCreature {
   if klass == RS_BARBARIAN { return rs_barbarian("Hero", 0, level); }
@@ -61,6 +84,21 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
     if f == "Extra Attack" { return c.extra_attack == 1; }
     if f == "Fast Movement" { return c.speed == 40; }
     if f == "Mindless Rage" { return c.mindless; }
+  }
+  if c.klass == RS_FIGHTER {
+    if f == "Fighting Style" { return c.ac == 16 + 1; }   // Defense: +1 AC in Chain Mail
+    if f == "Second Wind" { return c.uses_max[RS_USE_WIND] >= 2; }
+    if f == "Weapon Mastery" { return c.mastery_n >= 3 && (c.masteries & (1 << M_GRAZE)) != 0; }
+    if f == "Action Surge" { return c.uses_max[RS_USE_SURGE] == 1; }
+    if f == "Tactical Mind" { return c.tactical; }
+    if f == "Improved Critical" { return c.crit_range == 1; }
+    if f == "Remarkable Athlete" { return c.athlete; }
+    if f == "Ability Score Improvement" { return c.score[RS_STR] >= 18; }
+    if f == "Second Wind (3)" { return c.uses_max[RS_USE_WIND] == 3; }
+    if f == "Weapon Mastery (4)" { return c.mastery_n == 4; }
+    if f == "Extra Attack" { return c.extra_attack == 1; }
+    if f == "Tactical Shift" { return c.shift; }
+    if f == "Ability Score Improvement (6)" { return c.score[RS_STR] == 20; }
   }
   return false;
 }

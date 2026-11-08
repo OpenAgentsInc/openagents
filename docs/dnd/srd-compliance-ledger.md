@@ -606,6 +606,7 @@ Each feature then resolves against its text with fixed dice in
 | Class (subclass) | Features checked | Status |
 | --- | --- | --- |
 | Barbarian (Berserker) | Rage, Unarmored Defense, Weapon Mastery (2, 3 at 4), Danger Sense, Reckless Attack, Primal Knowledge, Frenzy, ASI, Extra Attack, Fast Movement, Mindless Rage | Done |
+| Fighter (Champion) | Fighting Style (Defense), Second Wind (2, 3 at 4), Weapon Mastery (3, 4 at 4), Action Surge, Tactical Mind, Improved Critical, Remarkable Athlete, ASI at 4 and 6, Extra Attack, Tactical Shift | Done |
 
 ### Used-monster stat blocks (2026-11-08)
 
