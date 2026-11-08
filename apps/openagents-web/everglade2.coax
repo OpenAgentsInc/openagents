@@ -57,6 +57,7 @@ E2 :: struct {
   cz: [1] E2Create;                      // Character Create's studio and its run (everglade2-create.coax)
   outbox: [64] u8; out_n: int; action: int;   // the host action this frame (16 keep the record, 19 the address)
   reseat: bool;                          // the controller to take you as the studio drew you (everglade2-face.c)
+  media: [2048] u8; media_n: int;        // the pictures this frame names for the host (the class pane's, everglade2-create.coax)
 }
 
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
@@ -582,7 +583,7 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
 }
 e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if u.count < E2_UNIFORM_FLOATS || w < 1 || h < 1 { return 0; }
-  s[0].width = w; s[0].height = h; s[0].k = ifx dpr < 0.5 then 0.5f32 else dpr;
+  s[0].width = w; s[0].height = h; s[0].k = ifx dpr < 0.5 then 0.5f32 else dpr; s[0].media_n = 0;
   cc.ensure(s[0].creator[..]); s[0].creator[0].clock = s[0].clock;
   e2c_action(s);
   if !s[0].plant_done { s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true; }

@@ -131,6 +131,9 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)e2_action(at(state)); }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)e2_at(state)->out_n; }
+// The class pane's picture for the host to draw (coax/web/host.js coaxial_media): everglade2-create.coax e2c_media.
+EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->media.e; }
+EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { return (uint32_t)e2_at(state)->media_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { e2_action_done(at(state)); }
 
 // Your saved character arrives as message 16 (the browser's own copy, from Character Create).

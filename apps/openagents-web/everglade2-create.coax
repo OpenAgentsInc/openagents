@@ -228,6 +228,7 @@ e2c_hud :: (s: [] E2, out: [] f32) -> int {
     n = cc.text(out, n, t, b.x0 + 8 * k, b.y0 + 22 * k, 9 * k, gold);
   }
   if !c.mobile { n = cc.text(out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5 - 170 * k, h - 77 * k, 9 * k, label); }
+  n = e2c_pane_draw(s, out, n, f);
   return n;
 }
 // The glass panel under the controls (gpu/everglade2.coax's post pass, Character Create's
@@ -236,6 +237,7 @@ e2c_uniforms :: (s: [] E2, u: [] f32) {
   f := e2c_shown(s);
   if f <= 0 { return; }
   u[11] = 0; u[40] = 1 - f;
+  e2c_pane_uniforms(s, u);
 }
 
 // ---- input: in the studio the keys and the pointer are the wardrobe's
@@ -429,4 +431,212 @@ e2c_probe :: (s: [] E2, f: int) -> int {
   if f == 28 { return cr.klass; }
   if f == 29 { return cast(int)(c.run_t * 1000); }
   return -1;
+}
+
+// ---- the class pane: the CLASS row's class, in words, on its own glass
+// On a desktop a panel at the screen's right, clear of you in the middle; on a phone two narrow
+// columns in the sky either side of you, between the top band and the wardrobe's. It says what the
+// class is and how it plays, its Hit Die and primary ability, its saving throws, its armor and
+// weapon training, its level 1 features, and the ability its bar starts with (slot 1, the same as
+// Everglade's: everglade-classes.coax CL_ABILITY) with that ability's picture. It changes with the
+// row. The facts follow the SRD 5.2.1's classes (core traits and level 1 features); the
+// descriptions are ours.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+E2C_CLASS_TITLES :: [12] string.["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"];
+E2C_ABOUT :: [12] string.[
+  "A fierce warrior fueled by primal power. In battle you enter a Rage that makes you hard to hurt and makes your blows land harder. You fight best up close with heavy weapons.",
+  "An inspiring performer whose words and music carry magic. You support your allies with Bardic Inspiration and a broad set of spells, and you cut foes down with mockery.",
+  "A priest who channels divine power. You heal and protect your allies and call down radiant light on your foes, armored for the front line.",
+  "A keeper of the old ways who draws magic from nature. You strike with starlight and flame, tangle foes in plants, and heal your friends.",
+  "A master of weapons and armor. You fight in heavy armor with any weapon, and Second Wind keeps you on your feet when the battle turns.",
+  "A martial artist who channels inner focus. You fight unarmored with fast fists and feet, and you strike more than once a turn.",
+  "A holy warrior bound by a sacred oath. You fight in heavy armor, heal with Lay On Hands, and smite foes with divine power.",
+  "A wanderer of the wild who hunts with skill and magic. You mark your quarry with Hunter's Mark and strike it from afar with a bow.",
+  "A skilled trickster who relies on stealth and precision. You strike where a foe is weakest with Sneak Attack and slip out of danger.",
+  "A spellcaster whose magic is an inborn gift. Innate Sorcery makes your spells hit harder, and Fire Bolt burns foes from afar.",
+  "A wielder of magic granted by a pact with an otherworldly patron. Eldritch Blast is your signature attack, and your Eldritch Invocations shape how you fight.",
+  "A scholar of arcane magic with the widest choice of spells. You stay out of reach and blast foes with Fire Bolt while your spellbook grows."];
+E2C_DIE :: [12] string.["d12", "d8", "d8", "d8", "d10", "d8", "d10", "d10", "d8", "d6", "d8", "d6"];
+E2C_PRIMARY :: [12] string.["Strength", "Charisma", "Wisdom", "Wisdom", "Strength or Dexterity", "Dexterity and Wisdom", "Strength and Charisma",
+                            "Dexterity and Wisdom", "Dexterity", "Charisma", "Charisma", "Intelligence"];
+E2C_SAVES :: [12] string.["Strength, Constitution", "Dexterity, Charisma", "Wisdom, Charisma", "Intelligence, Wisdom", "Strength, Constitution",
+                          "Strength, Dexterity", "Wisdom, Charisma", "Strength, Dexterity", "Dexterity, Intelligence", "Constitution, Charisma",
+                          "Wisdom, Charisma", "Intelligence, Wisdom"];
+E2C_ARMOR :: [12] string.["Light, Medium, Shields", "Light", "Light, Medium, Shields", "Light, Shields", "Light, Medium, Heavy, Shields", "None",
+                          "Light, Medium, Heavy, Shields", "Light, Medium, Shields", "Light", "None", "Light", "None"];
+E2C_WEAPONS :: [12] string.["Simple and Martial", "Simple", "Simple", "Simple", "Simple and Martial", "Simple, and Martial with the Light property",
+                            "Simple and Martial", "Simple and Martial", "Simple, and Martial with the Finesse or Light property", "Simple", "Simple", "Simple"];
+E2C_FEATURES :: [12] string.["Rage, Unarmored Defense, Weapon Mastery", "Bardic Inspiration, Spellcasting", "Spellcasting, Divine Order",
+                             "Spellcasting, Druidic, Primal Order", "Fighting Style, Second Wind, Weapon Mastery", "Martial Arts, Unarmored Defense",
+                             "Lay On Hands, Spellcasting, Weapon Mastery", "Spellcasting, Favored Enemy, Weapon Mastery",
+                             "Expertise, Sneak Attack, Thieves' Cant, Weapon Mastery", "Spellcasting, Innate Sorcery", "Eldritch Invocations, Pact Magic",
+                             "Spellcasting, Ritual Adept, Arcane Recovery"];
+// Slot 1: its name, its picture (realms/everglade/hotbar, everglade-hotbar.coax CL_HB_NAME) and what it does.
+E2C_ABILITY :: [12] string.["Rage", "Vicious Mockery", "Sacred Flame", "Starry Wisp", "Second Wind", "Martial Arts", "Lay On Hands", "Hunter's Mark",
+                            "Sneak Attack", "Fire Bolt", "Eldritch Blast", "Fire Bolt"];
+E2C_ICON :: [12] string.["cl-rage", "cl-vicious-mockery", "cl-sacred-flame", "cl-starry-wisp", "cl-second-wind", "cl-martial-arts", "cl-lay-on-hands",
+                         "cl-hunters-mark", "cl-sneak-attack", "cl-sorcerer-fire-bolt", "cl-eldritch-blast", "cl-wizard-fire-bolt"];
+E2C_ICON_URL :: "/worlds/everglade/hotbar/";
+E2C_SLOT :: [12] string.[
+  "Bonus Action. You resist Bludgeoning, Piercing and Slashing damage and deal extra damage with Strength attacks.",
+  "Cantrip. A creature makes a Wisdom save or takes 1d6 Psychic damage and has Disadvantage on its next attack roll.",
+  "Cantrip. A creature makes a Dexterity save or takes 1d8 Radiant damage.",
+  "Cantrip. A ranged spell attack for 1d8 Radiant damage. The target sheds light and can't be invisible.",
+  "Bonus Action. You regain 1d10 plus your Fighter level in Hit Points.",
+  "Your Unarmed Strikes use Dexterity and your Martial Arts die, and you can make one as a Bonus Action.",
+  "Bonus Action. Touch a creature to restore Hit Points from a pool of five times your Paladin level.",
+  "Bonus Action spell. Mark a creature, and your weapon attacks deal it an extra 1d6 Force damage.",
+  "Once a turn, 1d6 extra damage when you hit with a Finesse or Ranged weapon and have Advantage.",
+  "Cantrip. A ranged spell attack for 1d10 Fire damage.",
+  "Cantrip. A beam of crackling energy: a ranged spell attack for 1d10 Force damage.",
+  "Cantrip. A ranged spell attack for 1d10 Fire damage."];
+E2C_PANE_W :: 330.0;   // the desktop pane's width, CSS px
+E2C_PAD :: 14.0;
+E2cLines :: struct { n: int; lines: int; }
+E2cPane :: struct { a: cc.Box; b: cc.Box; }   // a desktop's one panel (a), or a phone's two columns (a left, b right)
+
+e2c_class_of :: (s: [] E2) -> int { k := s[0].creator[0].klass; return ifx k < 0 then E2C_DRUID else ifx k >= E2C_CLASSES then E2C_CLASSES - 1 else k; }
+// The width of t at cap, as cc.text sets it.
+e2c_width :: (t: string, cap: f32) -> f32 {
+  em := cc.sans_em(cap); w := 0.0f32;
+  for i: 0..<t.count { c := cast(int) t[i]; w += f32(cc.CC_FONT_WIDTH[ifx c >= 32 && c <= 126 then c - 32 else 31]) / f32(cc.CC_FONT_UPM) * em; }
+  return w;
+}
+// t in lines no wider than `wide`, `lh` apart, the first's baseline at y (draw false: only counted).
+e2c_set_lines :: (out: [] f32, at: int, t: string, x: f32, y: f32, cap: f32, wide: f32, lh: f32, k: cc.Ink, draw: bool) -> E2cLines {
+  n := at; lines := 0; start := 0; last := -1; i := 0;
+  while i <= t.count {
+    if i == t.count || t[i] == ' ' {
+      if e2c_width(t[start..<i], cap) > wide && last > start {
+        if draw { n = cc.text(out, n, t[start..<last], x, y + f32(lines) * lh, cap, k); }
+        lines += 1; start = last + 1; last = -1;
+        continue;
+      }
+      last = i;
+    }
+    i += 1;
+  }
+  if start < t.count { if draw { n = cc.text(out, n, t[start..<t.count], x, y + f32(lines) * lh, cap, k); } lines += 1; }
+  return E2cLines.{n = n, lines = lines};
+}
+// The pane's words for class cl, set from (x, y) in a column `wide` across; part 0 all of it (a
+// desktop), on a phone 1 the left column (the class and its traits) and 2 the right (what it is,
+// its level 1 features and slot 1). Returns the strokes' end and the height used (device px).
+E2cSet :: struct { n: int; h: f32; }
+e2c_words :: (s: [] E2, out: [] f32, at: int, cl: int, x: f32, y0: f32, wide: f32, k: f32, part: int, f: f32, draw: bool) -> E2cSet {
+  white := e2c_ink(k, 0.91, 0.92, 0.9, f); dim := e2c_ink(k, 0.78, 0.82, 0.8, f);
+  gold := e2c_ink(k, 0.83, 0.69, 0.43, f); label := e2c_ink(k, 0.93, 0.88, 0.72, f);
+  phone := part != 0;
+  body := (ifx phone then 7.0f32 else 9.4f32) * k; lh := (ifx phone then 10.8f32 else 17.0f32) * k; tag := (ifx phone then 5.8f32 else 7.4f32) * k;
+  n := at; y := y0; w: E2cLines;
+  if part != 2 {
+    // the class and its traits
+    y += (ifx phone then 16.0f32 else 26.0f32) * k;
+    if draw { n = cc.text(out, n, E2C_CLASS_TITLES[cl], x, y, (ifx phone then 13.0f32 else 20.0f32) * k, white); }
+    if !phone {
+      y += 14 * k; if draw { n = cc.line(out, n, x, y, x + wide, y, k, gold.red * f, gold.green * f, gold.blue * f); }
+      y += 20 * k; if draw { n = cc.text(out, n, "LEVEL 1  ·  SRD 5.2.1", x, y, tag, label); }
+      y += 22 * k;
+      w = e2c_set_lines(out, n, E2C_ABOUT[cl], x, y, body, wide, lh, white, draw); n = w.n; y += f32(w.lines) * lh + 8 * k;
+    } else { y += 14 * k; }
+    names := [5] string.["HIT DIE", "PRIMARY ABILITY", "SAVING THROWS", "ARMOR TRAINING", "WEAPONS"];
+    rows := [5] string.[E2C_DIE[cl], E2C_PRIMARY[cl], E2C_SAVES[cl], E2C_ARMOR[cl], E2C_WEAPONS[cl]];
+    vx := ifx phone then x else x + 124 * k; vw := ifx phone then wide else wide - 124 * k;
+    for r: 0..<5 {
+      if draw { n = cc.text(out, n, names[r], x, y, tag, label); }
+      if phone { y += 11 * k; }
+      w = e2c_set_lines(out, n, rows[r], vx, y, body, vw, lh, white, draw); n = w.n; y += f32(w.lines) * lh + (ifx phone then 3.0f32 else 5.0f32) * k;
+    }
+  }
+  if part != 1 {
+    if phone { y += 10 * k; w = e2c_set_lines(out, n, E2C_ABOUT[cl], x, y, body, wide, lh, white, draw); n = w.n; y += f32(w.lines) * lh; }
+    // the level 1 features, and slot 1 with its picture (a phone has no room for what it does)
+    y += 6 * k;
+    if draw { n = cc.text(out, n, "LEVEL 1 FEATURES", x, y, tag, label); }
+    y += (ifx phone then 10.0f32 else 16.0f32) * k;
+    w = e2c_set_lines(out, n, E2C_FEATURES[cl], x, y, body, wide, lh, white, draw); n = w.n; y += f32(w.lines) * lh + (ifx phone then 4.0f32 else 8.0f32) * k;
+    if draw { n = cc.text(out, n, "ON YOUR BAR", x, y, tag, label); }
+    y += (ifx phone then 5.0f32 else 8.0f32) * k;
+    icon := (ifx phone then 28.0f32 else 52.0f32) * k;
+    if draw && f > 0.5 { e2c_media(s, E2C_ICON[cl], ifx icon > 72 then "-128.jpg" else ifx icon > 48 then "-72.jpg" else "-48.jpg", x, y, x + icon, y + icon); }
+    if draw { n = cc.text(out, n, E2C_ABILITY[cl], x + icon + 8 * k, y + icon * 0.5 + 4 * k, (ifx phone then 8.4f32 else 10.5f32) * k, gold); }
+    y += icon + 12 * k;
+    if !phone { w = e2c_set_lines(out, n, E2C_SLOT[cl], x, y, body, wide, lh, dim, draw); n = w.n; y += f32(w.lines) * lh; }
+  }
+  return E2cSet.{n = n, h = y - y0 - lh * 0.5};
+}
+// Where the pane goes: a desktop's at the right, as tall as its words; a phone's two columns
+// either side of you in the sky, from under the top band to over the wardrobe's.
+e2c_pane :: (s: [] E2, w: f32, h: f32, k: f32) -> E2cPane {
+  cl := e2c_class_of(s); out: [1] f32;
+  if w < 840 * k || h < 760 * k {
+    top := 130 * k; bottom := h - 510 * k;
+    side := w * 0.5 - 46 * k - 8 * k;
+    if bottom - top < 150 * k || side < 120 * k { return E2cPane.{}; }
+    return E2cPane.{a = cc.Box.{x0 = 8 * k, y0 = top, x1 = 8 * k + side, y1 = bottom}, b = cc.Box.{x0 = w - 8 * k - side, y0 = top, x1 = w - 8 * k, y1 = bottom}};
+  }
+  pw := f32(E2C_PANE_W) * k; pad := f32(E2C_PAD) * k;
+  tall := e2c_words(s, out[..], 0, cl, 0, 0, pw - 2 * pad, k, 0, 1, false).h + 2 * pad;
+  return E2cPane.{a = cc.Box.{x0 = w - 16 * k - pw, y0 = 20 * k, x1 = w - 16 * k, y1 = 20 * k + e2c_clamp(tall, 200 * k, h - 40 * k)}};
+}
+e2c_pane_draw :: (s: [] E2, out: [] f32, at: int, f: f32) -> int {
+  w := s[0].width; h := s[0].height; k := s[0].k; cl := e2c_class_of(s);
+  p := e2c_pane(s, w, h, k); n := at; pad := f32(E2C_PAD) * k;
+  if p.a.x1 <= p.a.x0 { return n; }
+  if p.b.x1 <= p.b.x0 { return e2c_words(s, out, n, cl, p.a.x0 + pad, p.a.y0 + pad * 0.5, p.a.x1 - p.a.x0 - 2 * pad, k, 0, f, true).n; }
+  inset := 8 * k;
+  n = e2c_words(s, out, n, cl, p.a.x0 + inset, p.a.y0 + 2 * k, p.a.x1 - p.a.x0 - 2 * inset, k, 1, f, true).n;
+  return e2c_words(s, out, n, cl, p.b.x0 + inset, p.b.y0 + 2 * k, p.b.x1 - p.b.x0 - 2 * inset, k, 2, f, true).n;
+}
+// A picture for the host to draw (coax/web/host.js coaxial_media): "image URL X0 Y0 X1 Y1".
+e2c_put :: (m: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < m.count { m[n] = t[i]; n += 1; } } return n; }
+e2c_media :: (s: [] E2, name: string, tail: string, x0: f32, y0: f32, x1: f32, y1: f32) {
+  m := s[0].media[..]; n := s[0].media_n;
+  if n + 120 > m.count { return; }
+  if n > 0 { m[n] = 10; n += 1; }
+  n = e2c_put(m, n, "image "); n = e2c_put(m, n, E2C_ICON_URL); n = e2c_put(m, n, name); n = e2c_put(m, n, tail);
+  e := [4] f32.[x0, y0, x1, y1];
+  for i: 0..<4 {
+    n = e2c_put(m, n, " "); v := cast(int) floor(e[i] + 0.5); if v < 0 { n = e2c_put(m, n, "-"); v = -v; }
+    d: [12] u8; c := 0; while true { d[c] = cast(u8)('0' + v % 10); c += 1; v /= 10; if v == 0 { break; } }
+    while c > 0 { c -= 1; if n < m.count { m[n] = d[c]; n += 1; } }
+  }
+  s[0].media_n = n;
+}
+// The pane's glass (gpu/everglade2.coax post pass): u[52..55] the desktop panel or a phone's left
+// column, u[56..59] a phone's right one, device px; all 0 when there is none.
+e2c_pane_uniforms :: (s: [] E2, u: [] f32) {
+  p := e2c_pane(s, s[0].width, s[0].height, s[0].k);
+  e := [8] f32.[p.a.x0, p.a.y0, p.a.x1, p.a.y1, p.b.x0, p.b.y0, p.b.x1, p.b.y1];
+  for i: 0..<8 { u[52 + i] = e[i]; }
+}
+#test "create: the class pane says every class in full, and stays clear of you and the wardrobe" #steps 400000000 {
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
+  out: [24000] f32;
+  for cl: 0..<E2C_CLASSES {
+    #assert E2C_ABOUT[cl].count > 80 && E2C_SLOT[cl].count > 30 && E2C_FEATURES[cl].count > 5 && E2C_ICON[cl].count > 3;
+    s[0].creator[0].klass = cl;
+    // a desktop: at the right, clear of the middle and of the left glass, inside the screen
+    for size: 0..<2 {
+      w := ifx size == 0 then 1440.0f32 else 900.0f32; h := ifx size == 0 then 900.0f32 else 780.0f32;
+      p := e2c_pane(s[..], w, h, 1);
+      #assert p.a.x0 > w * 0.5 + 60 && p.a.x0 > 350 && p.a.x1 <= w - 16 && p.a.y0 >= 20 && p.a.y1 <= h - 20 && p.b.x1 == 0;
+    }
+    // a phone: two columns between the top band (to 124) and the wardrobe's (from h - 504), clear of
+    // your figure in the middle (about 30 px either side of centre)
+    p := e2c_pane(s[..], 390, 844, 1);
+    #assert p.a.x0 >= 0 && p.a.x1 <= 195 - 40 && p.b.x0 >= 195 + 40 && p.b.x1 <= 390 && p.a.y0 >= 124 && p.a.y1 <= 844 - 504 && p.b.y1 == p.a.y1;
+    // and each column's words fit in it
+    cw := p.a.x1 - p.a.x0 - 16;
+    #assert e2c_words(s[..], out[..], 0, cl, 0, 0, cw, 1, 1, 1, false).h <= p.a.y1 - p.a.y0;
+    #assert e2c_words(s[..], out[..], 0, cl, 0, 0, cw, 1, 2, 1, false).h <= p.b.y1 - p.b.y0;
+    // drawn, slot 1's picture is named
+    s[0].width = 1440; s[0].height = 900; s[0].k = 1; s[0].media_n = 0;
+    _ := e2c_pane_draw(s[..], out[..], 0, 1);
+    #assert s[0].media_n > 20 && s[0].media[6] == '/';
+  }
 }

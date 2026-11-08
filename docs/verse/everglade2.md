@@ -14,6 +14,13 @@ Character Create (`/worlds/character-creator`) is a place in this world: its stu
 glade, and USE IN EVERGLADE runs you out of the glade and down the path, then hands you the keys
 (`apps/openagents-web/everglade2-create.coax`, `docs/verse/character-creator.md`).
 
+The studio shows a class pane beside the wardrobe. On a desktop it is a glass panel at the right
+of the screen. On a phone it is two narrow columns in the sky on either side of your character. It
+shows the class from the CLASS row: what the class is and how it plays, its Hit Die, primary
+ability, saving throws, and armor and weapon training, its level 1 features, and the ability on
+slot 1 of its bar with that ability's picture. The pane changes when the class changes. The facts
+follow the SRD 5.2.1 classes (CC-BY-4.0, attributed in the source).
+
 - Open `/worlds/everglade2`.
 - W, A, S, and D run at a jog (4.25 m/s). Hold Shift to walk (1.5 m/s). Space jumps.
 - Drag to look. You can look 1.2 radians above or below the horizon. Scroll to zoom. The arrow

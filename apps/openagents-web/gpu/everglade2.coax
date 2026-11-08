@@ -221,6 +221,20 @@ everglade2_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f3
   return v4(c.x,c.y,c.z,1.0f32);
 }
 
+// Character Create's class pane (everglade2-create.coax e2c_pane_uniforms): u[52..55] and u[56..59],
+// device px, each a glass box like the wardrobe's (0 opacity outside, 0.58 inside), with its rim.
+e2_in_box :: (p:V2,x0:f32,y0:f32,x1:f32,y1:f32)->bool {return x1>x0 && p.x>=x0 && p.x<=x1 && p.y>=y0 && p.y<=y1;}
+e2_pane_cover :: (p:V2,u:[]f32)->f32 {return ifx e2_in_box(p,u[52],u[53],u[54],u[55]) || e2_in_box(p,u[56],u[57],u[58],u[59]) then 0.58f32 else 0.0f32;}
+e2_box_edge :: (p:V2,x0:f32,y0:f32,x1:f32,y1:f32,k:f32)->f32 {
+ if (!e2_in_box(p,x0,y0,x1,y1)) {return 0;}
+ d:=fmin(fmin(p.x-x0,x1-p.x),fmin(p.y-y0,y1-p.y));return 1.0f32-smoothstep(0.0f32,1.25f32*k,d);
+}
+e2_pane_edge :: (p:V2,u:[]f32)->f32 {return fmax(e2_box_edge(p,u[52],u[53],u[54],u[55],u[4]),e2_box_edge(p,u[56],u[57],u[58],u[59],u[4]));}
+#test "the class pane's glass covers its boxes only, with a rim" {
+ u:[104]f32;u[4]=1;u[52]=1000;u[53]=20;u[54]=1300;u[55]=500;
+ #assert e2_pane_cover(v2(1100,200),u[..])>0.5f32 && e2_pane_cover(v2(900,200),u[..])==0 && e2_pane_cover(v2(1100,600),u[..])==0;
+ #assert e2_pane_edge(v2(1000.2f32,200),u[..])>0.5f32 && e2_pane_edge(v2(1100,200),u[..])==0;
+}
 everglade2_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
  pixel:=v2(pos.x,pos.y);uv:=v2(pos.x/u[0],pos.y/u[1]);raw:=gpu_sample_level(post_light,post_lin,uv,0);
  if (u[10]<1.5f32) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
@@ -234,7 +248,7 @@ everglade2_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_e
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=fmax(cg_panel_opacity(pixel,u[0],u[1],u[4]),e2_pane_cover(pixel,u));fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),fmax(cg_panel_edge(pixel,u[0],u[1],u[4]),e2_pane_edge(pixel,u))*0.55f32*fade);}}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
 }
 everglade2_fx_vs_in :: struct {a:V4;b:V4;c:V4;d:V4;}
 everglade2_fx_vs :: (id:u32,instance:u32,in_:everglade2_fx_vs_in,u:[]f32)->FivelabV {return fivelab_fx_vs(id,instance,fivelab_fx_vs_in.{a=in_.a,b=in_.b,c=in_.c,d=in_.d},u);}
