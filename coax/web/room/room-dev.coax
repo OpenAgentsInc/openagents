@@ -210,7 +210,14 @@ dv_set_name :: (v: [] RmServer, req: string) -> int {
     if i >= 0 { last := v[0].dev.named_count - 1; v[0].dev.named_pid[i] = v[0].dev.named_pid[last]; v[0].dev.named_pid_n[i] = v[0].dev.named_pid_n[last]; v[0].dev.named[i] = v[0].dev.named[last]; v[0].dev.named_n[i] = v[0].dev.named_n[last]; v[0].dev.named_count = last; }
   } else {
     if pn_why(want) != PN_OK { return dv_answer(v, "400", "{\"error\":\"pick another name: 3 to 20 letters, digits, spaces, hyphens\"}"); }
-    if i < 0 { if v[0].dev.named_count >= DEV_NAMED { return dv_answer(v, "503", "{\"error\":\"no name\"}"); } i = v[0].dev.named_count; v[0].dev.named_count += 1; }
+    if i < 0 {
+      // full: the oldest name goes (a local room's pages come and go)
+      if v[0].dev.named_count >= DEV_NAMED {
+        for q: 1..<DEV_NAMED { v[0].dev.named_pid[q - 1] = v[0].dev.named_pid[q]; v[0].dev.named_pid_n[q - 1] = v[0].dev.named_pid_n[q]; v[0].dev.named[q - 1] = v[0].dev.named[q]; v[0].dev.named_n[q - 1] = v[0].dev.named_n[q]; }
+        v[0].dev.named_count -= 1;
+      }
+      i = v[0].dev.named_count; v[0].dev.named_count += 1;
+    }
     v[0].dev.named_pid_n[i] = dv_put(v[0].dev.named_pid[i][..], 0, pid);
     v[0].dev.named_n[i] = dv_put(v[0].dev.named[i][..], 0, want);
   }
@@ -242,6 +249,14 @@ dv_has :: (t: string, part: string) -> bool { if part.count > t.count { return f
   c := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) rb[0..<clear])];
   #assert c[0..<4] == "200\n" && net_field_dev(c, "name") != "Crowd Alpha" && net_field_dev(c, "name").count > 0 && v[0].dev.named_count == 0;
   #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/player/name HTTP/1.1\r\n\r\n{\"name\":\"Ash\"}")][0..<4] == "403\n";
+  // more players than the table holds: the oldest name goes, the newest is kept
+  for q: 0..<DEV_NAMED + 2 {
+    kb: [64] u8; kn := dv_put(kb[..], 0, "dev-key-for-the-name-check-1"); kn = rv_int(kb[..], kn, q);
+    qb: [256] u8; qn := dv_put(qb[..], 0, "POST /api/playtest/player/name HTTP/1.1\r\nX-Verse-Player: "); qn = dv_put(qb[..], qn, cast(string) kb[0..<kn]);
+    qn = dv_put(qb[..], qn, "\r\n\r\n{\"name\":\"Crowd Alpha\"}");
+    #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) qb[0..<qn])][0..<4] == "200\n";
+  }
+  #assert v[0].dev.named_count == DEV_NAMED;
 }
 
 // ---- the realm's edit layer (verse/edit/edit.coax), as the API's verse.edit_spec, edit_switch and edit_settings
