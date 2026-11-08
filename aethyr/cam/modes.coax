@@ -1,0 +1,375 @@
+// Camera modes (book chapters 10 and 78, GitHub #12994): a new camera situation is a validated
+// parameter record and a declared target or volume, not a realm's own controller.
+//
+// A CamMode names its parent and overrides only the fields its mask sets; cam_modes_resolve flattens
+// the table once, before the hot path, refusing unknown parents, cycles and out-of-range values.
+// cam_select picks the mode from the input, the attention state, the actor's mode and the camera
+// volumes the subject stands in (volumes bias the choice by priority; they never write camera state).
+//
+// The centred follow (Everglade II's, from Everglade Experimental's camera, #13023): the eye sits on a
+// line straight back from the subject's head, centred at every pitch. Looking up swings the eye down
+// behind until it meets the ground, ground_clear over it; past that the eye holds where it met it and
+// the aim lifts over the head (press), up to press_lift, so nothing jumps as the eye reaches the land.
+// The ground is a CamGround: a ring of heights the realm fills from its own terrain function around the
+// subject (cam_ground_next / cam_ground_put), sampled bilinearly. The body (the eye's volume: trunks,
+// walls) is separate from sight (cam_sight_fade: what hides the subject from the eye, which is only
+// faded, never removed from physics or gameplay).
+//
+//   coax/bin/coax test aethyr/cam/modes.coax --library
+
+#load "../camera.coax";
+#load "../points.coax";
+
+CAM_MODES :: 16;
+CAM_GROUND_N :: 64;                 // cells a side of the ground ring
+CAM_GROUND_CELLS :: 4096;
+CAM_VOLUMES :: 16;
+
+CamModeId :: enum u8 { follow; indoor; shoulder; lock_on; talk; cinematic; }
+// Fields a mode sets over its parent.
+CAM_F_PITCH :: 1; CAM_F_CLEAR :: 2; CAM_F_AIM :: 4; CAM_F_LIFT :: 8; CAM_F_SHOULDER :: 16; CAM_F_DIST :: 32; CAM_F_FOV :: 64; CAM_F_YAW_RATE :: 128;
+
+CamMode :: struct {
+  id: CamModeId; parent: int = -1; set: int;
+  pitch_up: f32 = 1.2; pitch_down: f32 = 1.2;   // radians above and below level the look may go
+  ground_clear: f32 = 0.2;                     // metres the eye keeps over the ground
+  aim_ahead: f32 = 5.2;                        // metres ahead of the eye the view aims
+  press_lift: f32 = 2.0;                       // metres over the head the aim rises, pressed to the ground
+  shoulder: f32;                               // metres right of the subject the view centres (0: centred)
+  near: f32 = 1.5; far: f32 = 12.0;            // distance range
+  fov: f32 = 0.9;                              // vertical field of view, radians
+  yaw_rate: f32 = 6.0;                         // radians a second the mode may turn on its own
+}
+CamModes :: struct { items: [CAM_MODES] CamMode; n: int; ok: bool; }
+
+// book:begin resolve
+cam_mode_ok :: (m: CamMode) -> bool {
+  return m.pitch_up >= 0 && m.pitch_up <= 1.5 && m.pitch_down >= 0 && m.pitch_down <= 1.5 && m.ground_clear >= 0 && m.ground_clear <= 2
+      && m.aim_ahead > 0 && m.aim_ahead <= 50 && m.press_lift >= 0 && m.press_lift <= 10 && abs(m.shoulder) <= 2
+      && m.near > 0 && m.far >= m.near && m.far <= 100 && m.fov > 0.1 && m.fov < 3 && m.yaw_rate > 0 && m.yaw_rate <= 50;
+}
+// Flatten the table: each mode takes its parent's values for every field its mask leaves unset.
+cam_modes_resolve :: (t: CamModes) -> CamModes {
+  out := t; out.ok = false;
+  if t.n < 1 || t.n > CAM_MODES { return out; }
+  done: [CAM_MODES] bool;
+  for pass: 0..<CAM_MODES {
+    for i: 0..<t.n {
+      if done[i] { continue; }
+      m := t.items[i]; p := m.parent;
+      if p == i || p >= t.n || p < -1 { return out; }
+      if p >= 0 && !done[p] { continue; }
+      if p >= 0 {
+        b := out.items[p]; r := m;
+        if (m.set & CAM_F_PITCH) == 0 { r.pitch_up = b.pitch_up; r.pitch_down = b.pitch_down; }
+        if (m.set & CAM_F_CLEAR) == 0 { r.ground_clear = b.ground_clear; }
+        if (m.set & CAM_F_AIM) == 0 { r.aim_ahead = b.aim_ahead; }
+        if (m.set & CAM_F_LIFT) == 0 { r.press_lift = b.press_lift; }
+        if (m.set & CAM_F_SHOULDER) == 0 { r.shoulder = b.shoulder; }
+        if (m.set & CAM_F_DIST) == 0 { r.near = b.near; r.far = b.far; }
+        if (m.set & CAM_F_FOV) == 0 { r.fov = b.fov; }
+        if (m.set & CAM_F_YAW_RATE) == 0 { r.yaw_rate = b.yaw_rate; }
+        out.items[i] = r;
+      }
+      if !cam_mode_ok(out.items[i]) { return out; }
+      done[i] = true;
+    }
+  }
+  for i: 0..<t.n { if !done[i] { return out; } }   // a cycle
+  out.ok = true;
+  return out;
+}
+cam_mode_find :: (t: CamModes, id: CamModeId) -> int { for i: 0..<t.n { if t.items[i].id == id { return i; } } return -1; }
+// book:end resolve
+
+// book:begin select
+// A camera volume: an axis-aligned box that biases the mode while the subject stands in it.
+CamVolume :: struct { lo: Point; hi: Point; mode: CamModeId; priority: int; }
+CamInput :: struct { aim: bool; lock: bool; talking: bool; cinematic: bool; }
+// The mode for this step: a cinematic first, then talk, a lock-on with a target, aiming, then the
+// highest-priority volume the subject is in (the first on a tie), else follow.
+cam_select :: (in: CamInput, has_target: bool, feet: Point, volumes: [] CamVolume) -> CamModeId {
+  if in.cinematic { return CamModeId.cinematic; }
+  if in.talking { return CamModeId.talk; }
+  if in.lock && has_target { return CamModeId.lock_on; }
+  if in.aim { return CamModeId.shoulder; }
+  best := -1; pick := CamModeId.follow;
+  n := ifx volumes.count < CAM_VOLUMES then volumes.count else CAM_VOLUMES;
+  for i: 0..<n {
+    v := volumes[i];
+    if feet.x < v.lo.x || feet.x > v.hi.x || feet.y < v.lo.y || feet.y > v.hi.y || feet.z < v.lo.z || feet.z > v.hi.z { continue; }
+    if v.priority > best { best = v.priority; pick = v.mode; }
+  }
+  return pick;
+}
+// book:end select
+
+// book:begin ground
+// A ring of ground heights round the subject: cell (i, j) covers world (i * cell, j * cell) and lives in
+// slot (i mod N, j mod N), its key the cell it holds. The realm fills what cam_ground_next asks for.
+CamGround :: struct { cell: f32 = 0.5; key_i: [CAM_GROUND_CELLS] int; key_j: [CAM_GROUND_CELLS] int; h: [CAM_GROUND_CELLS] f32; held: [CAM_GROUND_CELLS] bool; filled: int; }
+cam_ground_slot :: (i: int, j: int) -> int { a := ((i % CAM_GROUND_N) + CAM_GROUND_N) % CAM_GROUND_N; b := ((j % CAM_GROUND_N) + CAM_GROUND_N) % CAM_GROUND_N; return b * CAM_GROUND_N + a; }
+cam_ground_has :: (g: [] CamGround, i: int, j: int) -> bool { k := cam_ground_slot(i, j); return g[0].held[k] && g[0].key_i[k] == i && g[0].key_j[k] == j; }
+// The cells within half metres of (x, z) the ring doesn't hold yet, at most out.count of them (i then j
+// in pairs). half must leave the ring room: at most (N / 2 - 2) cells.
+cam_ground_next :: (g: [] CamGround, x: f32, z: f32, half: f32, out: [] int) -> int {
+  r := cast(int) floor(half / g[0].cell) + 1;
+  if r > CAM_GROUND_N / 2 - 2 { r = CAM_GROUND_N / 2 - 2; }
+  ci := cast(int) floor(x / g[0].cell); cj := cast(int) floor(z / g[0].cell);
+  n := 0;
+  for dj: -r..<r + 2 { for di: -r..<r + 2 {
+    if n + 2 > out.count { return n / 2; }
+    i := ci + di; j := cj + dj;
+    if !cam_ground_has(g, i, j) { out[n] = i; out[n + 1] = j; n += 2; }
+  }}
+  return n / 2;
+}
+cam_ground_x :: (g: [] CamGround, i: int) -> f32 { return f32(i) * g[0].cell; }
+cam_ground_put :: (g: [] CamGround, i: int, j: int, h: f32) {
+  k := cam_ground_slot(i, j);
+  if !g[0].held[k] { g[0].filled += 1; }
+  g[0].key_i[k] = i; g[0].key_j[k] = j; g[0].h[k] = h; g[0].held[k] = true;
+}
+// The height at (x, z), bilinear over the four cells round it; a cell the ring doesn't hold reads as
+// -1000 (nothing to clamp against) and is counted by the realm's next fill.
+cam_ground_height :: (g: [] CamGround, x: f32, z: f32) -> f32 {
+  fx := x / g[0].cell; fz := z / g[0].cell;
+  i := cast(int) floor(fx); j := cast(int) floor(fz); u := fx - f32(i); v := fz - f32(j);
+  if !cam_ground_has(g, i, j) || !cam_ground_has(g, i + 1, j) || !cam_ground_has(g, i, j + 1) || !cam_ground_has(g, i + 1, j + 1) { return -1000; }
+  a := g[0].h[cam_ground_slot(i, j)]; b := g[0].h[cam_ground_slot(i + 1, j)]; c := g[0].h[cam_ground_slot(i, j + 1)]; d := g[0].h[cam_ground_slot(i + 1, j + 1)];
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+// book:end ground
+
+// book:begin centred
+// The pitch range of mode m, widening into first person as the orbit goes in.
+cam_pitch :: (m: CamMode, o: Orbit, p: f32) -> f32 {
+  f := verse_orbit_first(o);
+  low := -(m.pitch_up + (f32(FREE_FIRST_PITCH) - m.pitch_up) * f);
+  high := m.pitch_down + (f32(FREE_FIRST_PITCH) - m.pitch_down) * f;
+  return ifx p < low then low else ifx p > high then high else p;
+}
+// The eye's line at pitch p: from the head (the eyes in first person), straight back along the look.
+CamRay :: struct { from: Point; dir: Point; far: f32; }
+cam_ray :: (o: Orbit, p: f32) -> CamRay {
+  q := o; q.pitch = p; f := verse_orbit_forward(q);
+  return CamRay.{from = verse_orbit_ray(o).from, dir = v3(-f.x, -f.y, -f.z), far = ifx o.zoom > 0 then o.zoom else 0.0f32};
+}
+cam_ray_ok :: (m: CamMode, g: [] CamGround, r: CamRay, t: f32) -> bool {
+  x := r.from.x + r.dir.x * t; z := r.from.z + r.dir.z * t;
+  return r.from.y + r.dir.y * t >= cam_ground_height(g, x, z) + m.ground_clear;
+}
+// How far along the line the eye may go and stay ground_clear over the land: the first of 16 samples
+// under it, then a binary search back to the crossing.
+cam_ground_room :: (m: CamMode, g: [] CamGround, r: CamRay) -> f32 {
+  lo := 0.0f32; hi := r.far;
+  for i: 1..<17 { t := r.far * f32(i) / 16; if !cam_ray_ok(m, g, r, t) { hi = t; break; } lo = t; }
+  if lo >= r.far { return r.far; }
+  for i: 0..<12 { mid := (lo + hi) * 0.5; if cam_ray_ok(m, g, r, mid) { lo = mid; } else { hi = mid; } }
+  return lo;
+}
+// The eye's pitch for a look at p: p while the whole line clears the land, else the lowest pitch at
+// which it does (where the eye met the ground).
+cam_eye_pitch :: (m: CamMode, g: [] CamGround, o: Orbit, p: f32) -> f32 {
+  r := cam_ray(o, p); if r.far < 0.001 || cam_ground_room(m, g, r) >= r.far - 0.001 { return p; }
+  lo := p; hi := m.pitch_down;
+  for i: 0..<14 { mid := (lo + hi) * 0.5; q := cam_ray(o, mid); if cam_ground_room(m, g, q) >= q.far - 0.001 { hi = mid; } else { lo = mid; } }
+  return hi;
+}
+// How far past the eye's pitch the look has gone, 0 to 1 (none in first person).
+cam_press :: (m: CamMode, o: Orbit, p: f32, eye: f32) -> f32 {
+  if eye <= p { return 0; }
+  v := (eye - p) / (eye + m.pitch_up); v = ifx v > 1 then 1.0f32 else v;
+  return v * (1 - verse_orbit_first(o));
+}
+// How far along the line before a body sphere (x, y, z, r each), keeping the orbit's clearance.
+cam_sphere_room :: (r: CamRay, spheres: [] f32) -> f32 {
+  room := r.far;
+  for i: 0..<spheres.count / 4 {
+    ox := r.from.x - spheres[i * 4]; oy := r.from.y - spheres[i * 4 + 1]; oz := r.from.z - spheres[i * 4 + 2];
+    big := spheres[i * 4 + 3] + f32(FREE_CLEAR);
+    b := ox * r.dir.x + oy * r.dir.y + oz * r.dir.z; c2 := ox * ox + oy * oy + oz * oz - big * big;
+    if c2 <= 0 { continue; }
+    disc := b * b - c2; if disc < 0 { continue; }
+    t := -b - sqrt(disc); if t >= 0 && t < room { room = t; }
+  }
+  return room;
+}
+// What to draw: the eye on its line, aiming along the look, or, pressed to the ground, at the head
+// lifted by the press.
+cam_shot :: (m: CamMode, o: Orbit, eye_pitch: f32, press: f32) -> Shot {
+  r := cam_ray(o, eye_pitch);
+  t := ifx o.shown < r.far then o.shown else r.far; t = ifx t > 0 then t else 0.0f32;
+  eye := v3(r.from.x + r.dir.x * t, r.from.y + r.dir.y * t, r.from.z + r.dir.z * t);
+  d := m.aim_ahead;
+  if press <= 0 || t < 0.05 { f := verse_orbit_forward(o); return Shot.{eye = eye, at = v3(eye.x + f.x * d, eye.y + f.y * d, eye.z + f.z * d)}; }
+  ax := r.from.x - eye.x; ay := r.from.y + press * m.press_lift - eye.y; az := r.from.z - eye.z;
+  l := sqrt(ax * ax + ay * ay + az * az);
+  return Shot.{eye = eye, at = v3(eye.x + ax / l * d, eye.y + ay / l * d, eye.z + az / l * d)};
+}
+// One step of the centred follow's eye: the eye pitch and press for orbit o, and the room along its
+// line before the ground and the body spheres. The caller limits the orbit with the room
+// (verse_orbit_limit: in at once, out gently) after every pose it reads is final.
+CamCentred :: struct { eye_pitch: f32; press: f32; room: f32; }
+cam_centred :: (m: CamMode, g: [] CamGround, o: Orbit, body: [] f32) -> CamCentred {
+  out: CamCentred;
+  out.eye_pitch = cam_eye_pitch(m, g, o, o.pitch); out.press = cam_press(m, o, o.pitch, out.eye_pitch);
+  ray := cam_ray(o, out.eye_pitch);
+  out.room = cam_ground_room(m, g, ray);
+  if body.count >= 4 { b := cam_sphere_room(ray, body); if b < out.room { out.room = b; } }
+  return out;
+}
+// book:end centred
+
+// book:begin sight
+// Sight, separate from the body: which of the occluder spheres hide the subject point from the eye.
+// Their indices go in fade (presentation only: the occluder keeps its physics and gameplay visibility).
+cam_sight_fade :: (eye: Point, subject: Point, occluders: [] f32, fade: [] int) -> int {
+  dx := subject.x - eye.x; dy := subject.y - eye.y; dz := subject.z - eye.z;
+  span := sqrt(dx * dx + dy * dy + dz * dz);
+  if span < 0.0001 { return 0; }
+  ux := dx / span; uy := dy / span; uz := dz / span; n := 0;
+  for i: 0..<occluders.count / 4 {
+    ox := occluders[i * 4] - eye.x; oy := occluders[i * 4 + 1] - eye.y; oz := occluders[i * 4 + 2] - eye.z; r := occluders[i * 4 + 3];
+    t := ox * ux + oy * uy + oz * uz;
+    if t <= 0 || t >= span { continue; }
+    px := ox - ux * t; py := oy - uy * t; pz := oz - uz * t;
+    if px * px + py * py + pz * pz <= r * r && n < fade.count { fade[n] = i; n += 1; }
+  }
+  return n;
+}
+// book:end sight
+
+// book:begin shake
+// A bounded shake: amplitude metres, decaying over life seconds, attenuated by distance from its
+// source (none past reach). Its offset is cosmetic: the final eye is moved only within the room the
+// body left along the eye's line, so a shake cannot push it through a wall.
+CamShake :: struct { amplitude: f32; life: f32; reach: f32 = 20; at: Point; born: f32; seed: f32; }
+cam_shake_offset :: (k: CamShake, now: f32, listener: Point) -> Point {
+  t := now - k.born;
+  if !(k.amplitude > 0) || !(k.life > 0) || t < 0 || t >= k.life { return v3(0, 0, 0); }
+  dx := listener.x - k.at.x; dy := listener.y - k.at.y; dz := listener.z - k.at.z;
+  d := sqrt(dx * dx + dy * dy + dz * dz);
+  if d >= k.reach { return v3(0, 0, 0); }
+  a := k.amplitude * (1 - t / k.life) * (1 - t / k.life) * (1 - d / k.reach);
+  if a > 0.5 { a = 0.5; }
+  return v3(a * sin(37 * t + k.seed), a * sin(53 * t + k.seed * 1.7), a * sin(41 * t + k.seed * 2.3));
+}
+// The shaken eye, kept within the body's room: the offset is cut back so the eye stays at least
+// FREE_CLEAR inside room metres from the head along the line.
+cam_shake_apply :: (s: Shot, head: Point, room: f32, off: Point) -> Shot {
+  e := v3(s.eye.x + off.x, s.eye.y + off.y, s.eye.z + off.z);
+  dx := e.x - head.x; dy := e.y - head.y; dz := e.z - head.z;
+  d := sqrt(dx * dx + dy * dy + dz * dz);
+  lim := room;
+  if d > lim && d > 0.0001 { k := lim / d; e = v3(head.x + dx * k, head.y + dy * k, head.z + dz * k); }
+  return Shot.{eye = e, at = v3(s.at.x + off.x, s.at.y + off.y, s.at.z + off.z)};
+}
+// book:end shake
+
+// The audio listener follows the final active camera: its eye and facing, never the shake.
+CamListener :: struct { at: Point; forward: Point; preset: CamModeId; }
+cam_listener :: (s: Shot, mode: CamModeId) -> CamListener {
+  dx := s.at.x - s.eye.x; dy := s.at.y - s.eye.y; dz := s.at.z - s.eye.z; l := sqrt(dx * dx + dy * dy + dz * dz);
+  if l < 0.0001 { l = 1; }
+  return CamListener.{at = s.eye, forward = v3(dx / l, dy / l, dz / l), preset = mode};
+}
+
+// ---- checks
+// Fill the ring round (x, z) from a height function given as a slope and a bump.
+cam_test_fill :: (g: [] CamGround, x: f32, z: f32, slope: f32) {
+  cells: [20000] int;
+  n := cam_ground_next(g, x, z, 13, cells[..]);
+  for k: 0..<n { i := cells[k * 2]; j := cells[k * 2 + 1]; cam_ground_put(g, i, j, cam_test_height(cam_ground_x(g, i), cam_ground_x(g, j), slope)); }
+}
+cam_test_height :: (x: f32, z: f32, slope: f32) -> f32 { return slope * z + 0.8 * sin(x * 0.4) * cos(z * 0.3); }
+cam_off_axis :: (s: Shot, x: f32, z: f32) -> f32 {
+  fx := s.at.x - s.eye.x; fz := s.at.z - s.eye.z; l := sqrt(fx * fx + fz * fz);
+  if l < 0.0001 { return 0; }
+  return abs((x - s.eye.x) * (-fz / l) + (z - s.eye.z) * (fx / l));
+}
+
+#test "modes resolve once: parents fill unset fields; bad parents, cycles and ranges refuse" {
+  t: CamModes; t.n = 3;
+  t.items[0] = CamMode.{id = CamModeId.follow};
+  t.items[1] = CamMode.{id = CamModeId.indoor, parent = 0, set = CAM_F_DIST, near = 0.8, far = 3, pitch_up = 0.1};   // pitch_up not set: inherited
+  t.items[2] = CamMode.{id = CamModeId.shoulder, parent = 1, set = CAM_F_SHOULDER | CAM_F_FOV, shoulder = 0.55, fov = 0.7};
+  r := cam_modes_resolve(t);
+  #assert r.ok && r.items[1].far == 3 && r.items[1].pitch_up == 1.2 && r.items[2].far == 3 && r.items[2].shoulder == 0.55 && r.items[2].fov == 0.7;
+  #assert cam_mode_find(r, CamModeId.shoulder) == 2 && cam_mode_find(r, CamModeId.talk) == -1;
+  c := t; c.items[0].parent = 2; #assert !cam_modes_resolve(c).ok;   // a cycle
+  b := t; b.items[1].parent = 9; #assert !cam_modes_resolve(b).ok;
+  b = t; b.items[1].parent = 1; #assert !cam_modes_resolve(b).ok;
+  b = t; b.items[1].far = 0.5; #assert !cam_modes_resolve(b).ok;
+  b = t; b.items[0].fov = 4; #assert !cam_modes_resolve(b).ok;
+  b = t; b.n = 0; #assert !cam_modes_resolve(b).ok;
+}
+
+#test "the mode is chosen from input, attention, actor mode and volumes, deterministically" {
+  vols := [2] CamVolume.[CamVolume.{lo = v3(0, -5, 0), hi = v3(10, 5, 10), mode = CamModeId.indoor, priority = 1},
+                          CamVolume.{lo = v3(4, -5, 4), hi = v3(6, 5, 6), mode = CamModeId.talk, priority = 3}];
+  #assert cam_select(CamInput.{}, false, v3(20, 0, 20), vols[..]) == CamModeId.follow;
+  #assert cam_select(CamInput.{}, false, v3(1, 0, 1), vols[..]) == CamModeId.indoor;
+  #assert cam_select(CamInput.{}, false, v3(5, 0, 5), vols[..]) == CamModeId.talk;
+  #assert cam_select(CamInput.{aim = true}, false, v3(5, 0, 5), vols[..]) == CamModeId.shoulder;
+  #assert cam_select(CamInput.{lock = true}, false, v3(1, 0, 1), vols[..]) == CamModeId.indoor;   // no target: no lock
+  #assert cam_select(CamInput.{lock = true, aim = true}, true, v3(1, 0, 1), vols[..]) == CamModeId.lock_on;
+  #assert cam_select(CamInput.{talking = true, lock = true}, true, v3(1, 0, 1), vols[..]) == CamModeId.talk;
+  #assert cam_select(CamInput.{cinematic = true, talking = true}, true, v3(1, 0, 1), vols[..]) == CamModeId.cinematic;
+}
+
+#test "the ground ring holds what it was given and asks only for what it lacks" {
+  g: [1] CamGround;
+  cam_test_fill(g[..], 3, -40, 0.1);
+  #assert abs(cam_ground_height(g[..], 3.25, -40.25) - cam_test_height(3.25, -40.25, 0.1)) < 0.01;
+  cells: [20000] int;
+  #assert cam_ground_next(g[..], 3, -40, 13, cells[..]) == 0;
+  // a step of one cell asks for one new row
+  #assert cam_ground_next(g[..], 3, -40.5, 13, cells[..]) == 56;
+  // beyond what it holds, nothing to clamp against
+  #assert cam_ground_height(g[..], 50, 50) == -1000;
+}
+
+#test "the centred follow: up past the horizon, centred, over the land, and no jump as the eye meets it" #steps 400000000 {
+  none: [4] f32;
+  m: CamMode; g: [1] CamGround;
+  feet := v3(2, cam_test_height(2, -30, 0.05), -30);
+  cam_test_fill(g[..], feet.x, feet.z, 0.05);
+  o := verse_orbit_start(feet, 0.4);
+  pressed := false; last: Shot; first := true;
+  for k: 0..<40 {
+    o.pitch = cam_pitch(m, o, 1.1 - f32(k) * 0.06);
+    c := cam_centred(m, g[..], o, none[0..<0]);
+    o = verse_orbit_limit(o, c.room, 0.016);
+    s := cam_shot(m, o, c.eye_pitch, c.press);
+    #assert s.eye.y >= cam_ground_height(g[..], s.eye.x, s.eye.z) + 0.19;
+    #assert cam_off_axis(s, feet.x, feet.z) < 0.02;
+    if c.press > 0 { pressed = true; }
+    if !first { dx := s.eye.x - last.eye.x; dy := s.eye.y - last.eye.y; dz := s.eye.z - last.eye.z; #assert dx * dx + dy * dy + dz * dz < 0.25; }
+    last = s; first = false;
+  }
+  #assert pressed && o.pitch <= -1.0;
+  // a body sphere on the line pulls the room in
+  o.pitch = 0.3;
+  free := cam_centred(m, g[..], o, none[0..<0]).room;
+  r := cam_ray(o, 0.3);
+  ball := [4] f32.[r.from.x + r.dir.x * 2, r.from.y + r.dir.y * 2, r.from.z + r.dir.z * 2, 0.4];
+  #assert cam_centred(m, g[..], o, ball[..]).room < free && cam_centred(m, g[..], o, ball[..]).room < 2;
+}
+
+#test "sight fades only what hides the subject; shake decays, attenuates and never leaves the room" {
+  occ := [8] f32.[0, 1, 5, 0.5, 3, 1, 5, 0.5];
+  fade: [4] int;
+  #assert cam_sight_fade(v3(0, 1, 0), v3(0, 1, 10), occ[..], fade[..]) == 1 && fade[0] == 0;
+  #assert cam_sight_fade(v3(0, 1, 0), v3(0, 1, 4), occ[..], fade[..]) == 0;   // beyond the subject
+  k := CamShake.{amplitude = 0.3, life = 1, reach = 10, at = v3(0, 0, 0), born = 2};
+  #assert cam_shake_offset(k, 1.9, v3(0, 0, 0)).x == 0 && cam_shake_offset(k, 3, v3(0, 0, 0)).y == 0;
+  #assert cam_shake_offset(k, 2.5, v3(20, 0, 0)).z == 0;
+  near := cam_shake_offset(k, 2.1, v3(0, 0, 0)); far := cam_shake_offset(k, 2.1, v3(8, 0, 0));
+  #assert abs(near.x) > abs(far.x) && abs(near.x) <= 0.3;
+  s := Shot.{eye = v3(0, 1, -2), at = v3(0, 1, 3)};
+  out := cam_shake_apply(s, v3(0, 1, 0), 2, v3(0, 0, -1));
+  #assert abs(out.eye.z - (-2)) < 0.0001;   // pushed back past the room: held at it
+  l := cam_listener(s, CamModeId.talk);
+  #assert l.preset == CamModeId.talk && l.forward.z == 1 && l.at.z == -2;
+}

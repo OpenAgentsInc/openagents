@@ -50,7 +50,7 @@ E2Create :: struct {
   walking: bool;   // USE IN EVERGLADE taken: the run plays, the wardrobe gone
   run_t: f32;      // seconds since the record was kept
   handed: bool;    // the run is over: the follow camera and the keys are yours
-  toward: bool;    // the orbit turned to the run's camera, for the ease
+  cut: [1] figs.CamCut;   // the run as an Aethyr cinematic (aethyr/cam/handback.coax): its hand-back retains the run's look
   address: bool;   // the address bar still to say /worlds/everglade2
   boxes: [E2C_BOXES] cc.Box; mobile: bool;
   down: int = -1; dragging: bool; drag_pan: bool; drag_id: int; dx: f32; dy: f32;
@@ -219,7 +219,7 @@ e2c_reply :: (s: [] E2, t: string) {
 e2c_walk :: (s: [] E2) {
   c := s[0].cz[..];
   if c[0].walking { return; }
-  c[0].walking = true; c[0].run_t = 0; c[0].handed = false; c[0].toward = false; c[0].address = true;
+  c[0].walking = true; c[0].run_t = 0; c[0].handed = false; c[0].cut[0] = figs.cam_cut_enter(c[0].studio, s[0].orbit, 0, 0, figs.CamOutcome.retain); c[0].cut[0].hand = E2C_EASE; c[0].address = true;
   c[0].dragging = false; c[0].down = -1;
   s[0].you_face = s[0].creator[0].yaw; s[0].reseat = true;   // the controller takes you as the studio drew you
   heading := e2_auto_heading(s[0].you_x, s[0].you_z);
@@ -508,11 +508,14 @@ e2c_shot :: (s: [] E2, feet: figs.Point, chase: figs.Shot, dt: f32) -> figs.Shot
     return e2c_frame_shot(feet, yaw, E2cFrame.{turn = from.turn + figs.wrap_angle(to.turn - from.turn) * e, dist = e2c_mix(from.dist, to.dist, e), rise = e2c_mix(from.rise, to.rise, e)}, look);
   }
   track := e2c_frame_shot(feet, yaw, e2c_frame(e2c_clamp((t - f32(E2C_SWING)) / f32(E2C_RUN), 0, 1)), e2c_look(feet, yaw));
-  if t < f32(E2C_SWING + E2C_RUN) { return track; }
-  if !c[0].toward { c[0].toward = true; s[0].orbit = figs.verse_orbit_toward(s[0].orbit, track); return track; }
-  if t < f32(E2C_SWING + E2C_RUN + E2C_EASE) { return figs.verse_shot_mix(track, chase, (t - f32(E2C_SWING + E2C_RUN)) / f32(E2C_EASE)); }
-  c[0].handed = true;   // the follow camera and the keys are yours
-  return chase;
+  cut := c[0].cut[..];
+  if t < f32(E2C_SWING + E2C_RUN) { return figs.cam_cut_play(cut, track, t); }
+  // the run ends: the orbit turned to look the way the run looked (the retain outcome), then the
+  // hand-back eases from the run's framing, still on you, to the follow camera
+  if figs.cam_cut_live(cut[0]) && cut[0].phase != figs.CamCutPhase.handing { _p := figs.cam_cut_play(cut, track, t); s[0].orbit = figs.cam_cut_end(cut, s[0].orbit, s[0].you_face, f32(E2C_SWING + E2C_RUN)); return track; }
+  shown := figs.cam_cut_hand_on(cut, track, chase, t);
+  if !figs.cam_cut_live(cut[0]) { c[0].handed = true; }   // the follow camera and the keys are yours
+  return shown;
 }
 // The studio's lens: on a phone you stand in the gap over the wardrobe (Character Create's own
 // focal and centre), easing to the follow camera's as the camera swings behind you.

@@ -44,6 +44,7 @@
 #load "../../aethyr/action/action.coax" as act;
 #load "../../aethyr/action/sensor.coax" as sense;
 #load "../../aethyr/query.coax" as aq;
+#load "../../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
 
 XC_FOES :: 6;
 XC_SLOTS :: 24;
@@ -327,6 +328,21 @@ xc_aim_kind :: (s: [] Lab, a: FbAb) -> XcAim {
   }
   return XcAim.{kind = XC_AIM_SELF};
 }
+// A single-target spell's monster: Aethyr's attention query (aethyr/cam/attention.coax) for an action
+// target within reach in a 30 degree cone ahead, the nearest first (angle-weighted), ties by id. The
+// SRD still decides what the spell does; this only says at whom. -1 when none.
+xc_attend :: (s: [] Lab, fx: f32, fz: f32, reach: f32) -> int {
+  cr := s[0].creator[0]; h := cr.hostiles[0];
+  y := xmeadow.exp_height(cr.player_x, cr.player_z) + 1.2;
+  ts: [XC_FOES] attn.AttnTarget;
+  for i: 0..<XC_FOES {
+    e := h.enemies[i];
+    ts[i] = attn.AttnTarget.{id = i, gen = 1, caps = attn.ATTN_ACTION, at = asp.world_point(e.x, y, e.z), radius = 0, valid = !e.dead};
+  }
+  q := attn.AttnQuery.{origin = asp.world_point(cr.player_x, y, cr.player_z), forward = asp.world_point(fx, 0, fz), need = attn.ATTN_ACTION, acquire = reach, acquire_cos = 0.9659};
+  c: aq.Colliders; c.ground = -1000;   // the meadow fight has no walls between you and a monster
+  return attn.attn_step(attn.AttnState.{}, q, ts[..], c, 0, false, false).target;
+}
 // Ability a's aim from where you stand and face: its kind, its reach, your forward and its monster.
 xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
   cr := s[0].creator[0]; h := cr.hostiles[0];
@@ -342,10 +358,11 @@ xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
     hit := false;
     if m.kind == XC_AIM_BOLT { hit = along > 0 && along <= m.reach + f32(XC_BODY) && (side <= f32(XC_BODY) || side <= along * f32(XC_ASSIST)); }
     else if m.kind == XC_AIM_MELEE { hit = d <= m.reach && along >= d * 0.7071; }
-    else { hit = d <= hi(m.reach, 1) && along >= d * 0.9659; }   // a cone and an area's point: 30 degrees
+    else if m.kind == XC_AIM_AREA { hit = d <= hi(m.reach, 1) && along >= d * 0.9659; }   // an area's point: 30 degrees
     key := ifx m.kind == XC_AIM_BOLT then along else d;
     if hit && key < best { best = key; m.foe = i; }
   }
+  if m.kind == XC_AIM_CONE { m.foe = xc_attend(s, m.fx, m.fz, hi(m.reach, 1)); }
   if m.kind == XC_AIM_AREA {
     sp := rs_spell(a.sp);
     // a cube from you is set ahead of you; a placed area lands on that monster, or 6 m on
