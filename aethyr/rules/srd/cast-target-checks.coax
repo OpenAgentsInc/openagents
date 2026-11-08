@@ -3,6 +3,73 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "mixed Blindness Deafness choices prepay the actual immunity branch at each recipient" {
+  for immune: [2] int.[RS_BLINDED,RS_DEAFENED] {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+    t := rs_add(b[..],rs_skeleton("Deaf choice",1),3,1); b[0].c[t].immune_cond = immune;
+    u := rs_add(b[..],rs_skeleton("Blind choice",1),4,1);
+    for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }
+    keys := [1] int.[RS_EXEC_SOURCE[SP_BLINDNESS]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+    rs_start_turn(b[..],a); picks := [2] int.[t,u]; options := [2] RsCastOptions.[RsCastOptions.{blindness=RS_DEAFENED},RsCastOptions.{}];
+    slots := b[0].c[a].slots[3]; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+    #assert rs_cast_creatures_with(b[..],a,SP_BLINDNESS,3,picks[..],false,options[..]) == (immune == RS_DEAFENED);
+    if immune == RS_BLINDED {
+      #assert b[0].c[a].slots[3] == slots && b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && !b[0].turn.action;
+      b[0].c[t].eff[RS_EFFECTS-1].kind = EF_NONE;
+      #assert rs_cast_creatures_with(b[..],a,SP_BLINDNESS,3,picks[..],false,options[..]);
+      #assert rs_has(b[0].c[t],RS_DEAFENED) && !rs_has(b[0].c[t],RS_BLINDED);
+    } else {
+      #assert !rs_has(b[0].c[t],RS_DEAFENED) && !rs_has(b[0].c[t],RS_BLINDED);
+      for k: 0..<b[0].book[0].count { e := rs_recent(b[0].book[0],k); #assert !(e.kind == RS_EV_CONDITION && e.to == t); }
+    }
+    #assert rs_has(b[0].c[u],RS_BLINDED) && !rs_has(b[0].c[u],RS_DEAFENED);
+  }
+}
+#test "malformed or unrelated spell options refuse before costs, rolls or concentration changes" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",1),3,1);
+  keys := [1] int.[RS_EXEC_SOURCE[SP_BLINDNESS]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+  rs_start_turn(b[..],a); picks := [1] int.[t]; bad := [2] RsCastOptions.[RsCastOptions.{blindness=RS_PRONE},RsCastOptions.{}];
+  slots := b[0].c[a].slots[2]; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+  #assert !rs_cast_creatures_with(b[..],a,SP_BLINDNESS,2,picks[..],false,bad[0..<1]);
+  bad[0] = RsCastOptions.{}; #assert !rs_cast_creatures_with(b[..],a,SP_BLINDNESS,2,picks[..],false,bad[..]);
+  bad[0].hex_ability = RS_CHA; #assert !rs_cast_creatures_with(b[..],a,SP_BLINDNESS,2,picks[..],false,bad[0..<1]);
+  #assert b[0].c[a].slots[2] == slots && b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && !b[0].turn.action && b[0].c[a].conc == -1;
+}
+
+#test "chosen Blindness Deafness option changes the retained condition, save and deadline" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",1),3,1);
+  keys := [1] int.[RS_EXEC_SOURCE[SP_BLINDNESS]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+  rs_start_turn(b[..],a); picks := [1] int.[t];
+  options := [1] RsCastOptions.[RsCastOptions.{blindness=RS_DEAFENED}];
+  #assert rs_cast_creatures_with(b[..],a,SP_BLINDNESS,2,picks[..],false,options[..]);
+  #assert rs_has(b[0].c[t],RS_DEAFENED) && !rs_has(b[0].c[t],RS_BLINDED);
+  e := b[0].c[t].eff[0]; #assert e.kind == EF_COND && e.cond == RS_DEAFENED && e.until == 60 && e.save == RS_CON && e.dc == rs_dc(b[..],a);
+  rs_tick(b[..],60); #assert !rs_has(b[0].c[t],RS_DEAFENED);
+}
+#test "Hex retains the chosen ability and uses its source upcast concentration duration" {
+  for ability: 0..<6 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    a := rs_add(b[..],rs_warlock("Caster",0,5,SP_ELDRITCH_BLAST),1,1);
+    t := rs_add(b[..],rs_skeleton("Target",1),3,1);
+    keys := [1] int.[RS_EXEC_SOURCE[SP_HEX]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+    rs_start_turn(b[..],a); picks := [1] int.[t];
+    options := [1] RsCastOptions.[RsCastOptions.{hex_ability=ability}];
+    #assert rs_cast_creatures_with(b[..],a,SP_HEX,3,picks[..],false,options[..]);
+    #assert b[0].c[t].eff[0].kind == EF_HEX && b[0].c[t].eff[0].cond == ability;
+    #assert b[0].c[t].eff[0].until == 28800 && b[0].c[a].conc_until == 28800;
+    #assert rs_save_edge(b[..],t,ability) == 0 && rs_attack_edge(b[..],t,a,true,true) == 0;
+    u := rs_add(b[..],rs_skeleton("New target",1),4,1);
+    b[0].c[t].hp = 1; rs_damage(b[..],a,t,1,RS_FORCE,false,SP_ELDRITCH_BLAST);
+    rs_end_turn(b[..],a); rs_tick(b[..],6); rs_start_turn(b[..],a);
+    #assert rs_hex_move(b[..],a,u) && b[0].c[u].eff[0].cond == ability && b[0].c[u].eff[0].until == 28800;
+  }
+}
+
 #test "a chosen self Hold Person cannot leave orphaned effects after concentration breaks" {
   for self_first: 0..<2 {
     b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;

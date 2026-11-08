@@ -21,6 +21,7 @@
 #load "reaction-slot.coax";
 #load "effect-rolls.coax";
 #load "cast-choices.coax";
+#load "cast-options.coax";
 
 // Creatures a battle holds of its own. A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
@@ -495,20 +496,28 @@ rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target
 rs_cast_quick :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool { return rs_cast_as(b, i, sp, slot, tx, ty, target, true); }
 rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool) -> bool {
   empty: [1] int;
-  return rs_cast_request_as(b,i,sp,slot,tx,ty,target,quick,empty[0..<0],false);
+  defaults: [1] RsCastOptions;
+  return rs_cast_request_as(b,i,sp,slot,tx,ty,target,quick,empty[0..<0],false,defaults[0..<0]);
 }
 // Explicit recipients for distinct-target spells, or one ordered assignment
 // for each beam/ray. Area and destination-point spells use rs_cast instead.
 rs_cast_creatures :: (b: [] RsBattle, i: int, sp: int, slot: int, picks: [] const int, quick: bool) -> bool {
-  target := ifx picks.count > 0 then picks[0] else -1;
-  return rs_cast_request_as(b,i,sp,slot,0,0,target,quick,picks,true);
+  defaults: [1] RsCastOptions;
+  return rs_cast_creatures_with(b,i,sp,slot,picks,quick,defaults[0..<0]);
 }
-rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool, picks: [] const int, chosen: bool) -> bool {
+// Empty options use defaults. Otherwise one entry belongs to each recipient,
+// allowing mixed Blinded/Deafened choices in an upcast cast.
+rs_cast_creatures_with :: (b: [] RsBattle, i: int, sp: int, slot: int, picks: [] const int, quick: bool, options: [] const RsCastOptions) -> bool {
+  target := ifx picks.count > 0 then picks[0] else -1;
+  return rs_cast_request_as(b,i,sp,slot,0,0,target,quick,picks,true,options);
+}
+rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool, picks: [] const int, chosen: bool, options: [] const RsCastOptions) -> bool {
   if !rs_can_cast_as(b, i, sp, slot, quick) { return false; }
-  s := rs_spell(sp);
+  s := rs_spell_variant(rs_spell(sp),sp,slot,RsCastOptions.{});
   me := b[0].c[i];
   smite := rs_is_smite(s);
   if chosen && !rs_creature_choices(b,i,s,sp,slot,picks) { return false; }
+  if !rs_options_valid(sp,picks.count,options) { return false; }
   if !chosen && !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
   if s.area == RS_A_NONE && !chosen {
     exists := target >= 0 && target < b[0].n;
@@ -531,7 +540,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
     if zone_at < 0 { return false; }
   }
   if chosen {
-    if !rs_chosen_effect_room(b,i,s,sp,picks) { return false; }
+    if !rs_options_effect_room(b,i,s,sp,slot,picks,options) { return false; }
   } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
   // spend
   b[0].aff_used = false;
@@ -569,11 +578,13 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
   if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
   if chosen {
-    for j: picks {
+    for pick: 0..<picks.count {
+      j := picks[pick];
       if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
       if b[0].c[j].dead { continue; }
       if rs_unaffected_target_kept(b,i,j,sp,true) { continue; }
-      rs_affect_as(b,i,j,sp,slot,zone_at,true);
+      variant := rs_spell_variant(s,sp,slot,rs_option_at(options,pick));
+      rs_affect_program(b,i,j,sp,slot,zone_at,true,variant);
     }
   }
   if !chosen {
@@ -812,7 +823,9 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
   rs_affect_as(b,i,j,sp,slot,zone_at,false);
 }
 rs_affect_as :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool) {
-  s := rs_spell(sp);
+  rs_affect_program(b,i,j,sp,slot,zone_at,keep_concentration,rs_spell(sp));
+}
+rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell) {
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
   ran_save := false; saved := false; crit := false; attack_hit := false; tier_dice := true; potent_miss := false; bane := 0;
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_REPEAT && s.steps[k].c == 1 { tier_dice = false; } }
@@ -973,6 +986,7 @@ rs_affect_as :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: in
     } else if st.kind == RS_S_TIMED {
       // saved: a one-target concentration spell has nothing to hold, and ends
       if ran_save && saved { if !keep_concentration && s.concentration && s.area == RS_A_NONE && b[0].c[i].conc == sp { b[0].c[i].conc = -1; } continue; }
+      if rs_effect_condition_mask(b[0].c[j],st.a) == 0 { continue; }
       e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0};
       if st.b == 2 { e.until = b[0].clock + s.duration_s; e.save = st.c; e.dc = rs_dc(b, i); }
       _ := rs_put_effect(b, j, e);
@@ -2278,6 +2292,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   u := rs_add(b[..], rs_druid("Fern", 0, 3), 10, 6);
   rs_start_turn(b[..], a);
   #assert rs_cast(b[..], a, SP_HEX, 2, 0, 0, t) && b[0].c[a].conc == SP_HEX && b[0].c[a].slots[2] == 1;
+  #assert b[0].c[a].conc_until == 14400 && b[0].c[t].eff[0].until == 14400;
   #assert !rs_cast(b[..], a, SP_HOLD_PERSON, 2, 0, 0, u);   // one slot a turn
   #assert rs_effect(b[0].c[t], EF_HEX);
   extra := false;

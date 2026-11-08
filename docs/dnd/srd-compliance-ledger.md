@@ -84,7 +84,7 @@ named below are selected evidence only, not exhaustive qualification.
 | FX-TARGETING | Spec target step | Partial | Explicit recipient/ray API shares the existing executor; legacy convenience auto-selection remains during migration | Full filters/geometry, source effect options and world choice surfaces, #13038/#13043/#13046 |
 | FX-ZONES | Spec zone triggers and shapes | Partial | Eight zones; Lines/Spheres and rectangular approximations | True shapes, enter/start/end timing, movement and multi-area spells, M4 |
 | FX-CAP-EFFECT | Spec lasting effects; deterministic complete results | Partial | Six owned records; explicit refusal, whole-operation preflight and independent restraint leases; `CAP-EFFECT` passes | Full source stacking/condition qualification remains under #13039; bounded capacity is qualified separately under #13041 |
-| FX-CAP-ZONE | Spec lasting areas; admitted cast results | Partial | Eight owned slots with preflight, concentration release/reuse and deadline expiry; CAP-ZONE passes | Complete independent effect/zone-restraint ownership and related effect admission, #13041/#13039 |
+| FX-CAP-ZONE | Spec lasting areas; admitted cast results | Partial | Eight owned slots with preflight, release/reuse, expiry and independent restraint ownership; bounded-capacity #13041 is closed | Full geometry/trigger/condition qualification remains under FX-ZONES and #13039 |
 | CONTENT-SPELLS | Spell Descriptions pp.107-175 | Partial | All 339 descriptions imported; eight class tables independently reconciled with nine source differences; executable subset unchanged | Implement/qualify every mechanical clause and explicitly resolve gameplay interpretations of source differences, M3/M4 |
 | SPELL-POLYMORPH | Polymorph pp.153-154 | Partial | `more` uses Incapacitated; `SPELL-POLYMORPH` fails | Beast choice/CR, replaced stats, retained identity/HP/type, form temp HP, anatomy/gear and reversion, M4 |
 | CONTENT-CHARACTERS | Character Creation pp.19-27 | Partial | Preset ability arrays and fixed builds | Legal choices, levels/XP/proficiency progression, independent fixtures, M5 |
@@ -127,6 +127,7 @@ predicate to PASS without deleting an expected-failure exemption.
 | CAST-SLOT | Unavailable slot refuses without spending | PASS | One selected slot boundary |
 | CAST-REACTION-SLOT | Own-turn reaction casting respects the slot limit and records its cost before later casting | PASS | Shield/Rebuke budgets share ordinary casting's turn flags; another actor's flags do not leak into a reaction |
 | CAST-CHOSEN-TARGETS | A chosen recipient set, including the caster, admits as one complete operation or refuses before spending | PASS | Native chosen Bless excludes an unchosen nearby creature and preserves state at full recipient storage |
+| SPELL-OPTIONS | Named condition/ability choices reach execution and source deadlines | PASS | Native mixed Blindness/Deafness and Hex ability/duration; this does not qualify all condition/check consequences |
 | CAST-TARGET-INDEX | Missing/negative target index refuses without spending | PASS | Malformed request, not SRD invalid-target rule |
 | CAST-RANGE | Out-of-touch-range Cure Wounds refuses without spending | PASS | Range admission |
 | CAST-CLASS | Unmodified preset Druid cannot cast Guiding Bolt | PASS | Class eligibility and explicit extra-list grants enforced in shared admission; separate selected-state admission is covered by CAST-PREPARED |
@@ -194,6 +195,14 @@ successful saves do not cancel other recipients' concentration effects, and
 all requested effect storage is checked before costs. Existing worlds still
 have their legacy convenience picker during migration; this is an engine API
 slice, not a claim that all player/wire choice surfaces have been adopted.
+
+The [spell-option change](../verification/srd-spell-options-2026-11-08/README.md)
+adds SPELL-OPTIONS: thirteen of fourteen witnesses pass, with parked Polymorph
+still failing. Each chosen recipient can select Blinded or Deafened; Hex retains
+the selected ability through curse transfer and uses source upcast durations.
+The actual variant is used for immunity/capacity preflight and execution.
+General ability checks, condition consequences, remaining Command options and
+world choice surfaces remain active work.
 
 ## Canonical source inventory
 

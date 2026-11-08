@@ -4,6 +4,13 @@
 #load "catalog.coax";
 #load "executable-source-ids.coax";
 
+#test "spell option source pages match the pinned canonical entries" {
+  for sp: [2] int.[SP_BLINDNESS,SP_HEX] {
+    source := srd_source_spell(RS_EXEC_SOURCE[sp]);
+    #assert rs_spell(sp).id == source.id && rs_spell(sp).page == source.page;
+  }
+}
+
 #test "compact loadout index retains every canonical identity, level and independent class membership" #steps 100000000 {
   #assert RS_SPELL_KEYS.count == SRD_SOURCE_SPELLS && RS_SPELL_KEY_PIN == SRD_SOURCE_PDF_SHA256;
   #assert RS_EXECUTABLE_SOURCE_IDS.count == RS_MORE_END && RS_EXEC_SOURCE.count == RS_MORE_END;
