@@ -34,7 +34,7 @@ empty so the other specimens keep their positions.
 The remaining 74 Fantasy Props Standard models have a display area in the
 western meadow. The Imp and Gremlin (the Puglin model) from the Bestiary Dungeon Monsters Standard
 pack stand near spawn. Their source pack contains no animations, so they cycle
-through six compatible Universal Animation Library 1 motions every three seconds. Three additional imps and three gremlins pursue the player and make timed melee attacks using the SRD combat rules. Player health is shown on a bar, hits raise damage numbers, and after the death animation the enemies return toward their starting places. Their original
+through six compatible Universal Animation Library 1 motions every three seconds. Three additional imps and three gremlins pursue the player and make timed melee attacks using the SRD combat rules. Player health is shown on a bar, hits raise damage numbers, and after the death animation the enemies return toward their starting places. Press R or click the respawn prompt to return to spawn at full health; defeated monsters stay defeated. Their original
 Quaternius Asset License v1.0 is retained in the registry and scene catalog.
 
 ## Fight back

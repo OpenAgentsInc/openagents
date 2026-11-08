@@ -258,7 +258,7 @@ combat_hud :: (s:Creator,out:[]f32,u:[]f32,at:int,w:f32,k:f32)->int {
  n=text(out,n,cast(string)label[..],x+10*k,y-1*k,10*k,ink(k,0.98,0.94,0.85));
  bx:=x+104*k;end:=x+190*k;by:=y+8*k;if lit(out,n,bx,by,end,by,3*k,1,0,0.35,0.22,0.20,0) {n+=6;}
  if hp>0 && lit(out,n,bx,by,bx+(end-bx)*f32(hp)/44,by,3*k,1,0,0.85,0.13,0.10,0) {n+=6;}
- if hp==0 {n=text(out,n,"YOU DIED",w*0.5-50*k,95*k,15*k,ink(k,1,0.3,0.25));}
+ if hp==0 {n=text(out,n,"YOU DIED",w*0.5-50*k,95*k,15*k,ink(k,1,0.3,0.25));n=text(out,n,"R / CLICK TO RESPAWN",w*0.5-100*k,137*k,10*k,ink(k,0.98,0.94,0.82));}
  for i:0..<8 {p:=s.hostiles[0].pops[i];age:=s.hostiles[0].time-p.born;if p.amount<=0 || age<0 || age>=1.2 {continue;}
   t:=age/1.2;rise:=0.8*(1-(1-t)*(1-t));rx:=p.x-u[16];ry:=p.y+rise-u[17];rz:=p.z-u[18];depth:=rx*u[20]+ry*u[21]+rz*u[22];if depth<=0.5 {continue;}
   sx:=u[23]+u[19]*(rx*u[24]+ry*u[25]+rz*u[26])/depth;sy:=u[27]-u[19]*(rx*u[28]+ry*u[29]+rz*u[30])/depth;
