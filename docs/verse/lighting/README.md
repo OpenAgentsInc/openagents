@@ -45,6 +45,14 @@ the normal packing and contact taps in `aethyr/render/contact-shade.coax`, and t
 response in `aethyr/render/filmic.coax`. The `cg_*` names in the app files are thin delegates, and
 `verse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default environment.
 
+Since #13065, `verse_style_compat_profile` turns a preset's four clock keys into a profile:
+painterly's noon knot is the glade's (it resolves bit-equal to `env_glade_profile()`), and its
+dawn, dusk and night are deltas on the glade; lowpoly keeps its own. Everglade II's places are in
+`verse/everglade2/environment.coax` (`e2_environment_set()`): the open glade as the map default,
+a subtle sunlit-path delta and a deeper, cooler canopy delta, as prisms along the path. Town,
+interior and river deltas wait until Everglade II has those places. Receipts:
+`docs/verification/aethyr-lighting-p1-5-2026-11-08/`.
+
 Everglade II already reads part of this (`apps/openagents-web/gpu/everglade2.coax`
 calls `cg_decode`, `cg_hemisphere`, `cg_sun_dir`, `cg_sky`, `cg_output` and
 more), and Experimental/fivelab loads it too. It is still private: the numbers

@@ -14,8 +14,9 @@
 //                    the path from z -20) still open to the glade's sky behind: a subtle delta, the
 //                    sky light a little greener through the leaves, the ground bounce a little less,
 //                    the sun a touch weaker and the air a touch thicker. From z -42 (none north of
-//                    -20, so the glade's open ground and the arrival are the glade) to z -250; full
-//                    from -64 to -228.
+//                    -20, so the glade's open ground and the arrival are the glade) to z -270; full
+//                    from -64 to -248, so it holds under the canopy's band and the glade never
+//                    shows through between them.
 //   the deep canopy  the long middle of the path, more than 200 m from any open ground, where the
 //                    woods stand thickest (1.0 at z -280 to -300): a cooler, dimmer sky light and
 //                    ground bounce, less direct sun, and a denser haze held lower to the ground.
@@ -38,7 +39,7 @@ E2_ENV_CANOPY_REGION :: 22;
 E2_ENV_HALF :: 70.0;          // metres either side of the path a region's polygon reaches
 E2_ENV_FLOOR :: -40.0; E2_ENV_CEILING :: 120.0;
 // The stretches along the path (z, north is -z) and their bands (metres).
-E2_ENV_SUNLIT_FROM :: -42.0; E2_ENV_SUNLIT_TO :: -250.0; E2_ENV_SUNLIT_INNER :: 22.0; E2_ENV_SUNLIT_OUTER :: 22.0;
+E2_ENV_SUNLIT_FROM :: -42.0; E2_ENV_SUNLIT_TO :: -270.0; E2_ENV_SUNLIT_INNER :: 22.0; E2_ENV_SUNLIT_OUTER :: 22.0;
 E2_ENV_CANOPY_FROM :: -235.0; E2_ENV_CANOPY_TO :: -395.0; E2_ENV_CANOPY_INNER :: 30.0; E2_ENV_CANOPY_OUTER :: 30.0;
 
 // ---- checks (written before the code below)

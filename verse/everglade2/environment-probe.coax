@@ -1,0 +1,109 @@
+// Everglade II's environment deltas, probed before routing (lighting plan Phase 1 step 5, GitHub
+// #13065). The painterly default's evaluation (aethyr/render/painterly.coax) reads the glade's
+// constants until #13066 routes it through the resolver; ld_* below are the same arithmetic reading
+// a ResolvedEnvironment, and the first check holds them to paint_* on the glade, so a table here is
+// what the shared functions give with each delta.
+//   coax/bin/coax test verse/everglade2/environment-probe.coax
+//   coax/bin/coax run verse/everglade2/environment-probe.coax > probes.tsv
+// The table: for each variant (the open glade, the sunlit path, the deep canopy, and painterly's
+// compatibility keys night, dawn, noon and dusk) at each of the P1.1 baseline's Everglade II cameras
+// (?at=1, 60 and 300 m down the path), the camera's resolved profile and weights, the key, the
+// ambient, a lit and a shaded mid-grey ground, the haze over 20, 40 and 80 m, the sky and the
+// output; then a walk down the whole path every 10 m (each region's weight and the key).
+#import "Basic";
+#load "../../aethyr/render/painterly.coax";
+#load "../style-preset.coax";
+#load "environment.coax";
+
+ld_v :: (c: EnvRgb) -> V3 { return v3(c.r, c.g, c.b); }
+ld_sun_dir :: (e: ResolvedEnvironment) -> V3 { return v3(e.dir.x, e.dir.y, e.dir.z); }
+ld_sun_colour :: (e: ResolvedEnvironment) -> V3 { return ld_v(e.direct); }
+ld_hemisphere :: (e: ResolvedEnvironment, n: V3) -> V3 { a := e.channels.ambient; return mix3(ld_v(a.lower), ld_v(a.upper), saturate(n.y * 0.5f32 + 0.5f32)); }
+ld_irradiance :: (e: ResolvedEnvironment, n: V3, direct: f32, occlusion: f32, visibility: f32) -> V3 {
+  return add3(scale3(ld_hemisphere(e, n), occlusion), scale3(ld_sun_colour(e), direct * visibility));
+}
+ld_air_depth :: (e: ResolvedEnvironment, eye: V3, p: V3) -> f32 {
+  f := e.channels.fog; ray := sub3(p, eye); distance := wg_length3(ray); density: f32 = 0;
+  for i: 0..<4 { height := eye.y + ray.y * (cast(f32) i + 0.5f32) * 0.25f32; density = density + exp(-fmax(height, 0) / f.height_falloff); }
+  return fmax(distance - f.start, 0) * f.density * density * 0.25f32;
+}
+ld_haze_window :: (e: ResolvedEnvironment, distance: f32) -> f32 { f := e.channels.fog; return verse_style_haze_window(distance, f.near, f.far, f.far_gain); }
+ld_atmosphere :: (e: ResolvedEnvironment, colour: V3, eye: V3, p: V3) -> V3 {
+  f := e.channels.fog;
+  d := sub3(p, eye); ray := normalize3(add3(d, v3(0, 0.00001f32, 0))); sun := ld_sun_dir(e);
+  mie := fmin(paint_phase(dot3(ray, sun), f.phase_g), f.phase_cap);
+  air := add3(ld_v(f.air), scale3(ld_v(f.sun_tint), mie * f.sun_strength));
+  trans := exp(-ld_air_depth(e, eye, p) * ld_haze_window(e, wg_length3(d))); return add3(scale3(colour, trans), scale3(air, 1.0f32 - trans));
+}
+ld_film :: (e: ResolvedEnvironment, c: V3) -> V3 { f := film_exposed(film_rgb(c.x, c.y, c.z), e.channels.presentation.exposure); return v3(f.r, f.g, f.b); }
+ld_output :: (e: ResolvedEnvironment, c: V3) -> V3 {
+  f := ld_film(e, c); y := f.x * 0.2126f32 + f.y * 0.7152f32 + f.z * 0.0722f32; s := e.channels.presentation.saturation;
+  return transfer_encode(v3(verse_style_saturation(f.x, y, s), verse_style_saturation(f.y, y, s), verse_style_saturation(f.z, y, s)));
+}
+ld_sky_base :: (e: ResolvedEnvironment, rd: V3) -> V3 {
+  k := e.channels.sky; up := saturate(rd.y); return mix3(ld_v(k.horizon), ld_v(k.zenith), sqrt(saturate(up * 1.5f32 + 0.08f32)));
+}
+
+#test "ld_* on the glade's resolved values are paint_*, so the table is the shared functions'" {
+  e := env_profile_sample(env_glade_profile(), 0.5);
+  for i: 0..<12 {
+    n := normalize3(v3(f32(i % 3) - 1, f32(i % 4) - 1.5, f32(i % 5) - 2));
+    a := ld_irradiance(e, n, 0.7, 0.8, 0.6); b := paint_irradiance(n, 0.7, 0.8, 0.6);
+    #assert a.x == b.x && a.y == b.y && a.z == b.z;
+    eye := v3(0, 1.7, 3); p := v3(f32(i) * 3 - 15, f32(i % 3), -10 - f32(i) * 9);
+    #assert ld_air_depth(e, eye, p) == paint_air_depth(eye, p) && ld_haze_window(e, f32(i) * 8) == paint_haze_window(f32(i) * 8);
+    c := v3(0.2, 0.3, 0.1);
+    x := ld_atmosphere(e, c, eye, p); y := paint_atmosphere(c, eye, p);
+    #assert abs(x.x - y.x) < 0.000001 && abs(x.y - y.y) < 0.000001 && abs(x.z - y.z) < 0.000001;
+    o := ld_output(e, v3(f32(i) * 0.1, 0.2, 0.05)); q := paint_output(v3(f32(i) * 0.1, 0.2, 0.05));
+    #assert o.x == q.x && o.y == q.y && o.z == q.z;
+  }
+  s := ld_sun_dir(e); t := paint_sun_dir(); #assert abs(s.x - t.x) < 0.000001 && abs(s.y - t.y) < 0.000001 && abs(s.z - t.z) < 0.000001;
+  sky := ld_sky_base(e, v3(0, -1, 0)); want := paint_sky(v3(0, -1, 0), v3(0, 1, 0), 0);
+  #assert abs(sky.x - want.x) < 0.000001 && abs(sky.y - want.y) < 0.000001 && abs(sky.z - want.z) < 0.000001;
+}
+
+LD_VARIANTS :: 7;
+LD_NAMES :: [7] string.["glade", "sunlit-path", "deep-canopy", "painterly-night", "painterly-dawn", "painterly-noon", "painterly-dusk"];
+// A variant's whole-frame environment: Everglade II's profile for the first three, the painterly
+// compatibility profile at its key's time for the rest. (The camera's own blend is printed beside it.)
+ld_resolve :: (v: int, active: [] EnvironmentSet, index: [] EnvRegionIndex, eye: EnvDir) -> EnvRegionResolve {
+  // the delta named, as the frame's whole light (the set's profiles are the glade, sunlit, canopy)
+  if v < 3 { out: EnvRegionResolve; out.env = env_profile_sample(active[0].profiles[v], 0.5); return out; }
+  p := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP)).profile;
+  out: EnvRegionResolve; out.env = env_profile_sample(p, cast(f64) (v - 3) * 0.25); return out;
+}
+ld_print3 :: (c: V3) { print("\t%\t%\t%", c.x, c.y, c.z); }
+
+main :: () {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex;
+  if !e2_env_admit(active[..], index[..]) { print("the set was refused\n"); return; }
+  print("variant\tat_m\tcam_profile\tw_glade\tw_sunlit\tw_canopy\tkey_r\tkey_g\tkey_b\tsky_amb_r\tsky_amb_g\tsky_amb_b\tground_amb_r\tground_amb_g\tground_amb_b");
+  print("\tlit_r\tlit_g\tlit_b\tshade_r\tshade_g\tshade_b\thaze20_r\thaze20_g\thaze20_b\thaze40_r\thaze40_g\thaze40_b\thaze80_r\thaze80_g\thaze80_b\tsky_h_r\tsky_h_g\tsky_h_b\tsky_z_r\tsky_z_g\tsky_z_b\n");
+  for v: 0..<LD_VARIANTS {
+    for c: 0..<3 {
+      at := [3] f32.[1, 60, 300][c];
+      eye := e2_env_on_path(-at, 1.6);
+      cam := env_resolve_camera(active[..], index[..], e2_env_state(), eye);
+      r := ld_resolve(v, active[..], index[..], eye); e := r.env;
+      print("%\t%\t%\t%\t%\t%", LD_NAMES[v], at, cam.env.profile, cam.weights.weights[0], cam.weights.weights[1], cam.weights.weights[2]);
+      up := v3(0, 1, 0); grey := v3(0.18, 0.18, 0.18); sun := ld_sun_dir(e);
+      ld_print3(ld_sun_colour(e)); ld_print3(ld_hemisphere(e, up)); ld_print3(ld_hemisphere(e, v3(0, -1, 0)));
+      // a mid-grey ground in sun and in full shadow (the glade's indirect and direct split), through the output
+      lit := mul3(grey, add3(ld_hemisphere(e, up), ld_irradiance(e, up, saturate(sun.y), 0, 1)));
+      shade := mul3(grey, ld_hemisphere(e, up));
+      ld_print3(ld_output(e, lit)); ld_print3(ld_output(e, shade));
+      e3 := v3(eye.x, eye.y, eye.z);
+      for k: 0..<3 { d := [3] f32.[20, 40, 80][k]; ld_print3(ld_output(e, ld_atmosphere(e, lit, e3, v3(eye.x, eye.y - 1.6, eye.z - d)))); }
+      ld_print3(ld_sky_base(e, v3(0, 0, -1))); ld_print3(ld_sky_base(e, v3(0, 1, 0)));
+      print("\n");
+    }
+  }
+  print("\nwalk_z\tprofile\tw_glade\tw_sunlit\tw_canopy\tkey_luma\tsky_amb_luma\tfog_density\tfog_near\n");
+  for i: 0..<49 {
+    z := 5 - f32(i) * 10;
+    r := env_resolve_camera(active[..], index[..], e2_env_state(), e2_env_on_path(z, 1.6));
+    print("%\t%\t%\t%\t%\t%\t%\t%\t%\n", z, r.env.profile, r.weights.weights[0], r.weights.weights[1], r.weights.weights[2],
+      e2_env_luma(r.env.direct), e2_env_luma(r.env.channels.ambient.upper), r.env.channels.fog.density, r.env.channels.fog.near);
+  }
+}

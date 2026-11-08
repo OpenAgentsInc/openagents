@@ -1,0 +1,6 @@
+e2-arrival	load	/worlds/everglade2?at=1	1920x1080	ready_ms=3240	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":629,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-arrival	frame	1920x1080	05cb3738f3fff139983f459d02948a2c7130e7bc4ebf279d90e4377819087286
+e2-sunlit-path	load	/worlds/everglade2?at=60	1920x1080	ready_ms=2803	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-sunlit-path	frame	1920x1080	b8391d63252f578bee5c652934f673a0d6fbd41568f6196707d308ce458462df
+e2-deep-canopy	load	/worlds/everglade2?at=300	1920x1080	ready_ms=2839	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-deep-canopy	frame	1920x1080	3677dbc607749019e83eddbcf621855c992ff4a955e262b4c3404e7d6d1f13c5

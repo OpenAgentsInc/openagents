@@ -1,0 +1,4 @@
+capture	blocks	moved	moved_ppm	mae	peak	result
+e2-arrival	32400	0	0	0.0000	0.000	pass
+e2-sunlit-path	32400	0	0	0.0000	0.000	pass
+e2-deep-canopy	32400	0	0	0.0000	0.000	pass
