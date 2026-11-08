@@ -1,0 +1,6 @@
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax
+8408fd6e27745df6d905723d19def58d2bfa3a82d3951a50c8b8bbe188d3b2d6  aethyr/rules/srd/dash.coax
+2549643d76f984d38c7fb416f785e68361e1185c57bf76789924ee819e09ca12  aethyr/rules/srd/dash-checks.coax
+46ad9ed587e01dd91927c8b8feedbf6ce8a97239c18229184120caa44a18085b  aethyr/rules/srd/dash-native.coax
+7db9e2c8a5a9ffbccd824d7823bbbee83f942628fe060e271afc571e9fb350f8  aethyr/rules/srd/battle.coax
+33d4c01f4e3e2ce741a9a299c7a3f873f0d665250226c23ba68a0ef26871d50b  apps/openagents-web/fivebar-test.coax

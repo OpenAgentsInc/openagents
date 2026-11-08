@@ -6709,3 +6709,13 @@ separate trigger invocations do not share; a new pulse gets a fresh scope.
 World batch callers must pass one scope across simultaneous recipients rather
 than repeatedly invoke the single-recipient convenience wrapper. Evidence and
 remaining qualification: `docs/verification/srd-shared-damage-2026-11-08/README.md`.
+
+## Dash credits current walking Speed without truncating feet
+
+`dash.coax` shares admission and movement credit across Action Dash, Cunning
+Action and free Step of the Wind. Each uses current tracked walking Speed;
+zero-Speed states cannot gain movement. Whole-square and residual feet remain
+exact. Action/Bonus Action budgets and feature events stay distinct; refusal
+changes no budget, movement, dice or events. The declared action profile retains
+its existing full-Speed Dash grant. Scope and remaining mid-turn/special-speed
+work: `docs/verification/srd-dash-2026-11-08/README.md`.

@@ -436,3 +436,14 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
     #assert b[0].dice[0].rolled==before+4; // two saves and one 2d10 roll
   }
 }
+
+#test "saved-seat Dash uses current modified Speed and preserves another actors turn" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b[0].c[FT_HERO].speed=37; b[0].c[FT_HERO].slowed_until=20; b[0].c[FT_HERO].halved_until=20;
+  s[0].turn.move_left=1; s[0].turn.move_feet=3;
+  b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.move_left=7; b[0].turn.move_feet=2;
+  #assert fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
+  #assert s[0].turn.action && s[0].turn.move_left==4 && s[0].turn.move_feet==1;
+  #assert b[0].who==FT_FOE && b[0].turn.action && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
+  #assert !fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
+}

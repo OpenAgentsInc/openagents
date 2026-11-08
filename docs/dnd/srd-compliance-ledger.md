@@ -345,3 +345,13 @@ remain individual; separate attacks/triggers/pulses remain independent. Roll
 modifiers precede save halving. Policy mutation kills all 20 mutants; Fireball,
 Enfeeblement/affinity/resistance and renewed Moonbeam pulse regressions pass.
 This does not complete #13039/#13043; see [scoped evidence](../verification/srd-shared-damage-2026-11-08/README.md).
+
+### Dash movement progress, 2026-11-08
+
+Shared Action Dash, Cunning Action and free Step of the Wind now credit current
+tracked walking Speed in exact feet, including Slow/halving, residual feet and
+zero-Speed boundaries. Refusal preserves budgets/events; feature event identities
+and the separate Action/Bonus Action costs remain. Policy gate kills all 78
+mutants; native Dash, 198 hotbar and 21 selected Experimental checks pass.
+#13040 remains open for special speeds, mid-turn credit reconciliation and other
+action/reaction rules. [Evidence](../verification/srd-dash-2026-11-08/README.md).

@@ -29,6 +29,7 @@
 #load "effect-lifecycle.coax";
 #load "death-save-roll.coax";
 #load "dodge.coax";
+#load "dash.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -1767,11 +1768,7 @@ rs_patient_defense :: (b: [] RsBattle, i: int) -> bool {
 }
 // Step of the Wind without a Focus Point: Dash as a Bonus Action (its Speed again).
 rs_step_of_the_wind :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].focus_max <= 0 { return false; }
-  b[0].turn.bonus = true;
-  b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
-  rs_quiet_ft(b, i, RS_FT_STEP_OF_THE_WIND);
-  return true;
+  return rs_dash_use(b,i,RS_DASH_WIND);
 }
 // ---- the classes' features
 
@@ -1943,11 +1940,7 @@ rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool {
 
 // Cunning Action (p. 62): Dash as a Bonus Action.
 rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_bonus_free(b, i) || !b[0].c[i].cunning { return false; }
-  b[0].turn.bonus = true;
-  b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
-  rs_quiet_ft(b, i, RS_FT_CUNNING_DASH);
-  return true;
+  return rs_dash_use(b,i,RS_DASH_CUNNING);
 }
 // Steady Aim (p. 62): a Bonus Action, only if it hasn't moved this turn; Advantage on its next
 // attack roll this turn, and its Speed is 0 until the turn ends.
@@ -2022,10 +2015,7 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
 
 // The Dash action: its Speed again.
 rs_dash :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) { return false; }
-  b[0].turn.action = true;
-  b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
-  return true;
+  return rs_dash_use(b,i,RS_DASH_ACTION);
 }
 
 #test "who stands where: the squares' index follows adds, steps, a world's moves and a reset" {
