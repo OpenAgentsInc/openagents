@@ -8,7 +8,38 @@
   #assert sc_check_exit(0, 0) == 2 && sc_check_exit(-1, 0) == 2;
   #assert sc_check_exit(9, -1) == 2 && sc_check_exit(9, 10) == 2;
 }
+#test "only declared probes outside the active slice are parked" {
+  #assert sc_parked("SPELL-POLYMORPH");
+  #assert !sc_parked("SPELL-POLYMORPH ") && !sc_parked("SPELL-POLY");
+  #assert !sc_parked("CAST-SLOT") && !sc_parked("CAP-ZONE") && !sc_parked("");
+}
+#test "active evidence fails on any active failure and refuses empty or malformed counts" {
+  #assert sc_active_exit(19, 1, 0) == 0;
+  #assert sc_active_exit(19, 1, 1) == 1 && sc_active_exit(19, 1, 18) == 1;
+  #assert sc_active_exit(2, 1, 0) == 0 && sc_active_exit(2, 1, 1) == 1;
+  #assert sc_active_exit(19, 0, 0) == 0 && sc_active_exit(19, 0, 19) == 1;
+  // Too many active failures for the active count, or negative counts.
+  #assert sc_active_exit(19, 1, 19) == 2 && sc_active_exit(19, 0, 20) == 2;
+  #assert sc_active_exit(19, 1, -1) == 2 && sc_active_exit(19, -1, 0) == 2;
+  // Nothing measured, or every probe parked: no active evidence, never success.
+  #assert sc_active_exit(0, 0, 0) == 2 && sc_active_exit(-1, 0, 0) == 2;
+  #assert sc_active_exit(1, 1, 0) == 2 && sc_active_exit(19, 19, 0) == 2;
+  #assert sc_active_exit(19, 20, 0) == 2;
+}
 sc_check_exit :: (measured: int, failed: int) -> int #effects(all) {
   if measured <= 0 || failed < 0 || failed > measured { return 2; }
+  return ifx failed > 0 then 1 else 0;
+}
+// Probes deliberately outside the active Everglade levels 1-6 slice (#13030).
+// They still run and print in every mode; the default command still counts
+// them. Only `--active` leaves them out of its exit status. Parking is not
+// completion: un-park a probe here when its work becomes active.
+sc_parked :: (id: string) -> bool #effects(all) {
+  return id == "SPELL-POLYMORPH";   // #13042, 4th-level spell
+}
+// `failed` counts failing probes that are not parked.
+sc_active_exit :: (measured: int, parked: int, failed: int) -> int #effects(all) {
+  if measured <= 0 || parked < 0 || parked >= measured { return 2; }
+  if failed < 0 || failed > measured - parked { return 2; }
   return ifx failed > 0 then 1 else 0;
 }

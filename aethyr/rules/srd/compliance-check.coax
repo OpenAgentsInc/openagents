@@ -1,15 +1,24 @@
-// Focused milestone 1 regression command. No expected-failure suppression:
-// FAIL always contributes to exit 1. Exit 0 means only these witnesses passed.
+// Focused milestone 1 regression command. No expected-failure suppression by
+// default: every FAIL contributes to exit 1. Exit 0 means only these witnesses
+// passed. `--active` runs and prints the same witnesses but leaves the probes
+// compliance-policy.coax declares parked (outside the active slice) out of its
+// exit status, so a new failure in active work is not hidden behind a known one.
 // Usage: coax/web/tool.sh aethyr/rules/srd/compliance-check.coax
+//        coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --active
 //        coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --inventory
 #load "compliance-probes.coax";
 #load "compliance-policy.coax";
 #load "../../../coax/lib/sys/tool.coax";
 
 sc_print_int :: (n: int) { buf: [32] u8; used := rs_put_int(buf[..], 0, n); tool_err(cast(string) buf[0..<used]); }
-sc_report :: (id: string, passed: bool) -> int {
-  tool_err(ifx passed then "PASS\t" else "FAIL\t"); tool_errln(id);
-  return ifx passed then 0 else 1;
+ScTally :: struct { measured: int; failed: int; parked: int; parked_failed: int; }
+sc_report :: (t: [] ScTally, id: string, passed: bool) {
+  parked := sc_parked(id);
+  t[0].measured += 1;
+  if parked { t[0].parked += 1; }
+  if !passed { t[0].failed += 1; if parked { t[0].parked_failed += 1; } }
+  tool_err(ifx passed then "PASS\t" else "FAIL\t"); tool_err(id);
+  tool_errln(ifx parked then "\tparked" else "");
 }
 sc_inventory :: () {
   tool_errln("record_id\tparent_id\tkind\ttext_present\tpage\teffect_steps");
@@ -35,29 +44,36 @@ tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) { return 2; }
   if args[0].n == 1 && args_at(args[..], 0) == "--inventory" { sc_inventory(); return 0; }
-  if args[0].n != 0 { tool_errln("usage: compliance-check [--inventory]"); return 2; }
+  active := args[0].n == 1 && args_at(args[..], 0) == "--active";
+  if args[0].n != 0 && !active { tool_errln("usage: compliance-check [--active | --inventory]"); return 2; }
   tool_errln("Focused SRD regression witnesses; NOT whole-SRD qualification");
-  failed := 0;
-  failed += sc_report("CAST-ACTOR", sc_admission_actor());
-  failed += sc_report("CAST-SLOT", sc_admission_slot());
-  failed += sc_report("CAST-REACTION-SLOT", sc_reaction_slot());
-  failed += sc_report("CAST-CHOSEN-TARGETS", sc_chosen_recipients());
-  failed += sc_report("SPELL-OPTIONS", sc_spell_options());
-  failed += sc_report("COMMAND-HALT-TURN", sc_halt_turn());
-  failed += sc_report("CONDITION-PRONE", sc_prone());
-  failed += sc_report("TIMING-PROFILE", sc_timing());
-  failed += sc_report("CAST-COMPONENTS", sc_components());
-  failed += sc_report("CONCENTRATION-LIFECYCLE", sc_concentration());
-  failed += sc_report("CAST-TARGET-INDEX", sc_admission_target());
-  failed += sc_report("CAST-RANGE", sc_admission_range());
-  failed += sc_report("CAST-CLASS", sc_admission_class());
-  failed += sc_report("CAST-PREPARED", sc_admission_prepared());
-  failed += sc_report("CAST-SELF", sc_admission_self());
-  failed += sc_report("CAST-INVALID-TARGET", sc_invalid_target_spends());
-  failed += sc_report("SPELL-POLYMORPH", sc_polymorph());
-  failed += sc_report("CAP-EFFECT", sc_effect_capacity());
-  failed += sc_report("CAP-ZONE", sc_zone_capacity());
-  tool_err("measured=19 failed="); sc_print_int(failed);
+  tally: [1] ScTally;
+  t := tally[..];
+  sc_report(t, "CAST-ACTOR", sc_admission_actor());
+  sc_report(t, "CAST-SLOT", sc_admission_slot());
+  sc_report(t, "CAST-REACTION-SLOT", sc_reaction_slot());
+  sc_report(t, "CAST-CHOSEN-TARGETS", sc_chosen_recipients());
+  sc_report(t, "SPELL-OPTIONS", sc_spell_options());
+  sc_report(t, "COMMAND-HALT-TURN", sc_halt_turn());
+  sc_report(t, "CONDITION-PRONE", sc_prone());
+  sc_report(t, "TIMING-PROFILE", sc_timing());
+  sc_report(t, "CAST-COMPONENTS", sc_components());
+  sc_report(t, "CONCENTRATION-LIFECYCLE", sc_concentration());
+  sc_report(t, "CAST-TARGET-INDEX", sc_admission_target());
+  sc_report(t, "CAST-RANGE", sc_admission_range());
+  sc_report(t, "CAST-CLASS", sc_admission_class());
+  sc_report(t, "CAST-PREPARED", sc_admission_prepared());
+  sc_report(t, "CAST-SELF", sc_admission_self());
+  sc_report(t, "CAST-INVALID-TARGET", sc_invalid_target_spends());
+  sc_report(t, "SPELL-POLYMORPH", sc_polymorph());
+  sc_report(t, "CAP-EFFECT", sc_effect_capacity());
+  sc_report(t, "CAP-ZONE", sc_zone_capacity());
+  c := tally[0];
+  tool_err("measured="); sc_print_int(c.measured);
+  tool_err(" failed="); sc_print_int(c.failed);
+  tool_err(" parked="); sc_print_int(c.parked);
+  tool_err(" parked_failed="); sc_print_int(c.parked_failed);
   tool_errln("; complete SRD content and rules remain unmeasured");
-  return sc_check_exit(19, failed);
+  if active { return sc_active_exit(c.measured, c.parked, c.failed - c.parked_failed); }
+  return sc_check_exit(c.measured, c.failed);
 }

@@ -112,11 +112,19 @@ Run from the repository root:
 coax/bin/coax test --library aethyr/rules/srd/compliance-probes.coax
 coax/bin/coax mutate --library aethyr/rules/srd/compliance-policy.coax
 coax/web/tool.sh aethyr/rules/srd/compliance-check.coax
+coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --active
 coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --inventory
 ```
 
 The third command is intentionally strict: it currently exits **1** because
-the parked Polymorph outcome is unmet. These are executable regression predicates,
+the parked Polymorph outcome is unmet. The fourth runs and prints the same
+witnesses, marks the probes `compliance-policy.coax` declares parked (outside the
+active #13030 slice; today only SPELL-POLYMORPH), and exits **1** only when an
+active witness fails, so a new regression is not hidden behind the known one.
+It refuses (exit 2) when every probe is parked. Parking is not completion and
+`--active` passing is not compliance; the strict command remains the record.
+The measured count is tallied from the reports, so adding a probe needs only its
+`sc_report` line. These are executable regression predicates,
 not `#test` assertions that bugs should remain. The first command's ordinary
 checks guard working boundaries and free-capacity controls. Fixes change a
 predicate to PASS without deleting an expected-failure exemption.
