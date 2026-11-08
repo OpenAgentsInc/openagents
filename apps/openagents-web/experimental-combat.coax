@@ -91,6 +91,7 @@ XcCombat :: struct {
   whiffs: int;                      // bolts that flew to their range and blows that met no one
   fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
   seeded: bool;                     // the dice mixed with the clock at the first press, so each visit rolls its own
+  knockout: bool;                   // KNOCK OUT: your melee blows leave a monster at 1 HP and Unconscious (SRD p.17)
   pend: int = -1;                   // a blow swinging: its slot (xc_swing_step), -1 none
   swing_def: act.ActionDef; swing: act.ActionInstance; swing_tick: int = -1;   // its action and the last tick sensed
   swing_struck: bool; swing_next: int = 1; ledger: sense.HitLedger;
@@ -764,6 +765,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   now := cr[0].clock;
   a := x[0].bar[k];
   b := x[0].b[..];
+  b[0].c[0].knockout = x[0].knockout;
   px := cr[0].player_x; pz := cr[0].player_z;
   // what it aims at: ahead of you, by its kind (xc_aim); nothing is picked for you behind or beside you
   aim := xc_aim(s, a);
@@ -858,7 +860,8 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     if lost > 0 { struck = true; x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
       if !c.dead && c.hp > 0 { xc_stop_hit(s, i, ifx swung then react.DMG_SLASH else cast(u32) 0); }
       xc_cue(s, snd.hit, 0.55, e[0].x, e[0].z, snd.rate);
-      if !c.dead && c.hp > 0 { xc_voice(s, i, false); } }
+      if !c.dead && c.hp > 0 { xc_voice(s, i, false); }
+      if rs_knocked_out(c) { xc_float(x, e[0].x, 2.4, e[0].z, now, "KNOCKED OUT", false); } }
     if !e[0].dead && (c.dead || c.hp <= 0) {
       e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
       x[0].kills += 1; xc_voice(s, i, true);
@@ -1015,6 +1018,9 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     r:=xc_rest_box(x,i);
     n=cc.text(out,n,XC_REST_LABELS[i],r.x0,r.y0+16*k,8*k,ink_col(k,0.91,0.93,0.88));
   }
+  ko:=xc_rest_box(x,5);
+  n=cc.text(out,n,ifx x[0].knockout then "KNOCK OUT: ON" else "KNOCK OUT",ko.x0,ko.y0+16*k,8*k,
+    ifx x[0].knockout then ink_col(k,1,0.75,0.3) else ink_col(k,0.91,0.93,0.88));
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
@@ -1113,6 +1119,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       c := x[0].b[0].c[1 + t];
       ln = put(line[..], ln, "  ·  "); ln = put(line[..], ln, ifx t < 3 then "IMP " else "GREMLIN ");
       ln = put_int(line[..], ln, rs_max(c.hp, 0)); ln = put(line[..], ln, " / "); ln = put_int(line[..], ln, c.hp_max); ln = put(line[..], ln, " HP");
+      if rs_has(c, RS_UNCONSCIOUS) { ln = put(line[..], ln, "  ·  UNCONSCIOUS"); }
     }
     tl := cast(string) line[0..<ln];
     n = cc.text(out, n, tl, (w - xc_text_w(tl, 10 * k)) / 2, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7));
@@ -1170,6 +1177,7 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
       if in_col {
         if py >= x[0].top + (xc_class_height(x)+34) * k {
           for i:0..<5 { if xc_in(xc_rest_box(x,i),px,py) { accepted:=xc_rest_request(s,XC_REST_REQUESTS[i]); } }
+          if xc_in(xc_rest_box(x,5),px,py) { x[0].knockout = !x[0].knockout; }
         }
         else if py >= x[0].top + xc_class_height(x) * k {
           level := cast(int) floor((px / k - 94) / 34) + 1;
@@ -1266,6 +1274,26 @@ xc_probe :: (s: [] Lab, f: int) -> int {
     #assert x[0].b[0].c[4].hp <= 0 && x[0].target == -1;
     // the felled gremlin is out of the fight: the next press finds no one in reach for a sword, and no one is hurt
     for i: 0..<XC_FOES { if i == 3 { continue; } #assert x[0].b[0].c[1 + i].hp == x[0].b[0].c[1 + i].hp_max; }
+  }
+}
+
+#test "experimental combat: with KNOCK OUT on, a Fighter's blow leaves a monster at 1 HP, Unconscious and still; off, it kills" #steps 2000000000 {
+  for pass: 0..<2 {
+    s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+    cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..];
+    h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.2;   // a gremlin (a Goblin Warrior) just ahead
+    x[0].b[0].c[4].hp = 1;
+    // the KNOCK OUT toggle (the sixth box under REST) sets this
+    if pass == 0 { x[0].knockout = true; }
+    tries := 0;
+    while x[0].landed == 0 && tries < 60 { cr[0].clock += 1.1; h[0].hp = XC_PLAYER_MAX; _ := xc_press(s[..], 1); tries += 1; }
+    c := x[0].b[0].c[4];
+    if pass == 0 {
+      #assert c.hp == 1 && !c.dead && rs_knocked_out(c) && rs_has(c, RS_UNCONSCIOUS) && !h[0].enemies[3].dead && x[0].kills == 0;
+      #assert h[0].enemies[3].held && h[0].enemies[3].inactive && x[0].target == 3;
+    } else {
+      #assert c.dead && h[0].enemies[3].dead && x[0].kills == 1;
+    }
   }
 }
 
