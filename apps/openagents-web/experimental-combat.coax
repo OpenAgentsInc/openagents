@@ -463,7 +463,7 @@ xc_hostile_tick :: (s:[] Lab,dt:f32) {
     proposed:[1]hostile.Hostiles; proposed[0]=h[0];
     for i:0..<XC_FOES { proposed[0].enemies[i].walk_scale=rs_locomotion_scale(s[0].xc[0].b[..],i+1); }
     hostile.hostile_tick(proposed[..],cr[0].player_x,cr[0].player_y,cr[0].player_z,dt/f32(parts));
-    h[0].time=proposed[0].time; h[0].contacts[0]=proposed[0].contacts[0];
+    h[0].time=proposed[0].time; h[0].contacts[0]=proposed[0].contacts[0]; h[0].shots=proposed[0].shots;   // the shots loosed and landed
     for foe:0..<XC_FOES { xc_monster_move(s,foe,proposed[0].enemies[foe]); }
   }
   h[0].time=time+dt;
@@ -1842,6 +1842,11 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert h[0].shots[0].state==hostile.HS_LANDED && h[0].shots[0].hit;
   xc_shots_step(s[..]); #assert h[0].shots[0].ended && fxp_live(s[0].puffs[..])==2;
   hostile.hostile_tick(h,0,0,0,0.05); #assert h[0].shots[0].state==hostile.HS_FREE;
+  // through the world's own tick (the bodies proposed, then moved): the shot is kept
+  h[0].enemies[g].z=10; h[0].enemies[g].cool=0; h[0].enemies[g].swing= -1;
+  for k: 0..<14 { xc_hostile_tick(s[..],0.05); }
+  kept := false; for k: 0..<hostile.HS_SHOTS { if h[0].shots[k].state!=hostile.HS_FREE { kept=true; } }
+  #assert kept;
   // the Hill Giant 2 m off: Tree Club twice, and you are knocked Prone
   boss := -1; for i: 0..<XC_FOES { if hostile.hostile_kind(i)==xdungeon.DG_KIND_BOSS { boss=i; } }
   #assert boss>=0;
