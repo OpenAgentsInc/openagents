@@ -145,6 +145,8 @@ for realm in "${realms[@]}"; do
   # your hand as the pointer (os/verse-hands.coax), linked into vk-realm too
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-hands.coax --library --header "$ship/verse-hands.h") > "$ship/verse-hands.c"
   cp "$here"/vkhands.h "$ship/"
+  # the film profile (aethyr/film.coax, #13004): vk-realm's samples, jitter and lens
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/film.coax --library --header "$ship/film.h") > "$ship/film.c"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
   mkdir -p "$ship/kms" && cp "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/kms/"
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"
@@ -224,7 +226,7 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
        flags=\"\$flags -ffunction-sections -fdata-sections\"; link_flags=(-Wl,--gc-sections)
      fi
      pids=()
-     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c wayland-input.c wayland-text.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
+     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c wayland-input.c wayland-text.c film.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
      for pid in \"\${pids[@]}\"; do wait \$pid; done
      gcc \$flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o && gcc \$flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
      gcc \$flags -c ../wl/text-input-unstable-v3-protocol.c -o wl-text-input.o

@@ -70,6 +70,10 @@ int64_t rh_lifecycle_info(int field);
 // Optional v1 audio SDK. Device starts inactive; actual input gestures start
 // this engine's clock. Muting changes only the concrete output samples.
 int rh_audio_enable(RealmHost *h,int muted);
+// A film's sound (#13003): the same mixer with no device, its session started, rendered by the
+// caller in step with the frames (rh_audio_take: FRAMES stereo f32 frames at 48 kHz).
+int rh_audio_offline(RealmHost *h);
+int rh_audio_take(RealmHost *h,float *out,size_t frames);
 void rh_audio_gesture(RealmHost *h);
 void rh_audio_pause(RealmHost *h,int paused);
 void rh_audio_retire(RealmHost *h);

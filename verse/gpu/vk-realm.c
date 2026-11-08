@@ -10,6 +10,8 @@
 //   vk-realm DIR PACK ... --window [--fullscreen] [--size WxH] ...          in a window on the Wayland desktop (vkw.h)
 //   vk-realm DIR PACK ... --headless FRAMES [--out OUT.f32]                 offscreen
 //            [--fps N] [--frames-dir DIR [--film-start A] [--film-end B]]  film frames (#13003)
+//            [--samples N] [--shutter S] [--shutter-position start|center|end] [--seed K]
+//            [--fstop F --focus M] [--film-view U] [--no-jitter] [--film-audio OUT.wav]  the film profile (#13004)
 // DIR holds spec.txt and its files. --size is what the passes draw at (default: the screen's,
 // or the spec's offscreen); on the screen it is scaled to the mode's size. --headless runs
 // FRAMES frames at 1/60 s each (as realm-run and wasm-run do), drawing every one but the first, and writes the last frame's targets as
@@ -19,7 +21,13 @@
 // frame-NNNNNN.rgba16f (the --raw-out layout: half RGBA of each last target in turn), with
 // DIR/film.txt (size, targets, fps, range) and DIR/timing.txt (open, then each written
 // frame's step, GPU and read-back seconds); aethyr/tools/film-frames.coax makes them
-// review PNGs, hashes, meta.json and the encode. Escape held a second, the --seconds limit, SIGINT or SIGTERM end it on the
+// review PNGs, hashes, meta.json and the encode. The film profile (aethyr/film.coax) makes each
+// written frame the average of N samples: the realm advanced to each sample's time (stratified in
+// the shutter, whole nanoseconds, so it runs the steps one sample would), its view-projection
+// (the 16 floats at uniform U, --film-view) moved by the sample's pixel jitter and, with --fstop
+// and --focus, its eye on the aperture; each sample's final targets are read back and added in
+// f32, and the mean is written. --film-audio renders the realm's own mixer with no device, frame
+// by frame at 48 kHz, into OUT.wav. Escape held a second, the --seconds limit, SIGINT or SIGTERM end it on the
 // screen; display.sh-style launchers (verse/gpu/realm.sh) switch to a free VT first.
 // --net DIR gives the realm its network and what it keeps (realm-host.h, rh_net_open): its
 // requests go to HOST (default openagents.com, port 443) through DIR/../net or ./net (the
@@ -46,6 +54,24 @@
 #include "vk-spec.h"
 #endif
 #include "vkd.h"
+// The film profile (aethyr/film.coax as C, built beside this file by realm.sh and
+// build-linux-world.coax); a build without it refuses the film flags.
+#if defined(__has_include)
+#if __has_include("film.h")
+#include "film.h"
+#define VK_FILM 1
+#endif
+#endif
+#ifndef VK_FILM
+#define VK_FILM 0
+static int32_t film_host_admit(int32_t a,float b,int32_t c,int32_t d,int32_t e,int32_t f){(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;return 0;}
+static int64_t film_host_sample_ns(int32_t a,float b,int32_t c,int64_t d,int64_t e,int32_t f,int32_t g){(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;return 0;}
+static float film_host_jitter(int32_t a,float b,int32_t c,int64_t d,int64_t e,int32_t f,int32_t g){(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;return 0;}
+static float film_host_lens(int32_t a,float b,int32_t c,int64_t d,int64_t e,int32_t f,int32_t g){(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;return 0;}
+typedef struct { float *data; int64_t count; } vk_film_view;
+#define coax_v_f32 vk_film_view
+static _Bool film_host_matrix(vk_film_view m,float a,float b,float c,float d,float e,float f,float g,float h){(void)m;(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;(void)h;return 0;}
+#endif
 #include "vkw.h"
 #include "vkdesk.h"
 #include "vkhands.h"
@@ -418,6 +444,25 @@ static float half(uint16_t h) {
   float v = e == 0 ? ldexpf((float)m, -24) : e == 31 ? (m ? NAN : INFINITY) : ldexpf(1.0f + m / 1024.0f, e - 15);
   return s ? -v : v;
 }
+// f32 to binary16, rounding to nearest even (the targets' format), for a film's resolved mean.
+static uint16_t to_half(float f) {
+  uint32_t x; memcpy(&x, &f, 4);
+  uint32_t sign = (x >> 16) & 0x8000, e = (x >> 23) & 255, m = x & 0x7fffff;
+  if (e == 255) return (uint16_t)(sign | 0x7c00 | (m ? 0x200 : 0));
+  int ex = (int)e - 127 + 15;
+  if (ex >= 31) return (uint16_t)(sign | 0x7c00);
+  if (ex <= 0) {
+    if (ex < -10) return (uint16_t)sign;
+    m |= 0x800000;
+    int shift = 14 - ex;
+    uint32_t h = m >> shift, rest = m & ((1u << shift) - 1), halfway = 1u << (shift - 1);
+    if (rest > halfway || (rest == halfway && (h & 1))) h++;
+    return (uint16_t)(sign | h);
+  }
+  uint32_t h = (uint32_t)ex << 10 | m >> 13, rest = m & 0x1fff;
+  if (rest > 0x1000 || (rest == 0x1000 && (h & 1))) h++;
+  return (uint16_t)(sign | h);
+}
 static int cmp_double(const void *a, const void *b) { double x = *(const double *)a, y = *(const double *)b; return x < y ? -1 : x > y; }
 
 // Travel (--go FILE): a navigation that opens another realm writes its slug to FILE, and the run
@@ -497,6 +542,8 @@ int main(int argc, char **argv) {
   int page = 0;
   int sample_capacity = MAX_FRAMES;
   const char *frames_dir = NULL; double fps = 60; int film_start = 0, film_end = -1;
+  int film_n = 1, film_position = 1, film_view = -1, film_jitter = 1; long long film_seed = 0;
+  double film_shutter = 0, film_fstop = 0, film_focus = 0; const char *film_audio = NULL;
   for (int i = 3; i < argc; i++) {
     const char *a = argv[i], *val = i + 1 < argc ? argv[i + 1] : NULL;
     if (!strcmp(a, "--golden")) golden = 1;
@@ -506,6 +553,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a,"--benchmark-no-timestamps")) benchmark_timestamps=0;
     else if (!strcmp(a,"--mute-audio")) audio_muted=1;
     else if (!strcmp(a,"--audio")) headless_audio=1;
+    else if (!strcmp(a,"--no-jitter")) film_jitter=0;
     else if (!val) { fprintf(stderr, "vk-realm: %s wants a value\n", a); return 2; }
     else if (!strcmp(a, "--facts")) facts = val, i++;
     else if (!strcmp(a, "--facts-once")) facts = val, facts_once = 1, i++;   // read, then removed: facts that must not stay on disk
@@ -526,6 +574,14 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--frames-dir")) frames_dir = val, i++;
     else if (!strcmp(a, "--film-start")) film_start = atoi(val), i++;
     else if (!strcmp(a, "--film-end")) film_end = atoi(val), i++;
+    else if (!strcmp(a, "--samples")) film_n = atoi(val), i++;
+    else if (!strcmp(a, "--shutter")) film_shutter = atof(val), i++;
+    else if (!strcmp(a, "--shutter-position")) { film_position = !strcmp(val, "start") ? 0 : !strcmp(val, "center") ? 1 : !strcmp(val, "end") ? 2 : -1; i++; }
+    else if (!strcmp(a, "--seed")) film_seed = atoll(val), i++;
+    else if (!strcmp(a, "--fstop")) film_fstop = atof(val), i++;
+    else if (!strcmp(a, "--focus")) film_focus = atof(val), i++;
+    else if (!strcmp(a, "--film-view")) film_view = atoi(val), i++;
+    else if (!strcmp(a, "--film-audio")) film_audio = val, i++;
     else if (!strcmp(a, "--page")) page = atoi(val), i++;
     else if (!strcmp(a, "--leave-to")) leave_to = atoi(val), i++;
     else if (!strcmp(a, "--activity")) activity = val, touched = 1, i++;   // the person present: this file's time
@@ -549,6 +605,11 @@ int main(int argc, char **argv) {
     fprintf(stderr, "vk-realm: --frames-dir needs --headless FRAMES and 0 <= --film-start <= --film-end < FRAMES\n"); return 2;
   }
   if (!sample_capacity) { fprintf(stderr, "vk-realm: --stats-frames must be 64..100000\n"); return 2; }
+  int film_multi = film_n != 1 || film_shutter != 0 || film_fstop > 0;
+  if ((film_multi || film_audio) && !VK_FILM) { fprintf(stderr, "vk-realm: this build has no film profile (aethyr/film.coax)\n"); return 2; }
+  if ((film_multi || film_audio) && (!frames_dir || fps != (double)(int)fps)) { fprintf(stderr, "vk-realm: the film profile needs --frames-dir and a whole --fps\n"); return 2; }
+  if (film_fstop > 0 && !(film_focus > 0)) { fprintf(stderr, "vk-realm: --fstop needs --focus METRES\n"); return 2; }
+  if (film_multi && film_view < 0) { fprintf(stderr, "vk-realm: the film profile needs --film-view U, where the realm's view-projection starts in its uniforms\n"); return 2; }
   signal(SIGTERM, on_signal);
 
   // The realm: as realm-run starts it (the page's facts, the viewer, the pack's parts).
@@ -678,7 +739,8 @@ int main(int argc, char **argv) {
   if (headless) {
     // every frame drawn and waited for: the realm's step, then the GPU's
     // the frame before the spec was opened is the first of them
-    FILE *film_timing = NULL; uint16_t *film_raw = NULL;
+    FILE *film_timing = NULL, *film_wav = NULL; uint16_t *film_raw = NULL; float *film_acc = NULL;
+    int64_t film_at = 0, film_audio_frames = 0;   // the nanosecond the realm has reached; the sound's frames written
     if (frames_dir) {
       char path[4096];
       snprintf(path, sizeof path, "%s/film.txt", frames_dir);
@@ -692,25 +754,81 @@ int main(int argc, char **argv) {
       film_raw = malloc((size_t)w * h * 8);
       if (!film_timing || !film_raw) { fprintf(stderr, "vk-realm: cannot write %s\n", path); return 1; }
       fprintf(film_timing, "open %.6f\n", now_s() - benchmark_begin);
+      int refused = film_host_admit(film_n, (float)film_shutter, film_position, (int32_t)w, (int32_t)h, nlast);
+      if (refused) { fprintf(stderr, "vk-realm: the film profile is refused (aethyr/film.coax FilmRefusal %d)\n", refused); return 2; }
+      if (film_multi) {
+        film_acc = calloc((size_t)w * h * 4 * nlast, sizeof(float));
+        if (!film_acc) { fprintf(stderr, "vk-realm: no memory for the film's accumulation\n"); return 1; }
+      }
+      if (film_audio) {
+        if (rh_audio_offline(&H)) { fprintf(stderr, "vk-realm: the realm's mixer is unavailable for --film-audio\n"); return 1; }
+        film_wav = fopen(film_audio, "wb");
+        if (!film_wav || fwrite("RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x03\0\x02\0\x80\xbb\0\0\0\xdc\x05\0\x08\0\x20\0data\0\0\0\0", 1, 44, film_wav) != 44) { fprintf(stderr, "vk-realm: cannot write %s\n", film_audio); return 1; }
+      }
     }
     for (frames = rh_host_version()==1?0:1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
       double t0 = now_s();
       if (net_dir) rh_net_poll(&H);
       press_keys(keys, frames);
+      int film_in = frames_dir && frames >= film_start && (film_end < 0 || frames <= film_end);
+      int samples_now = film_multi && film_in ? film_n : 1;
+      if (film_acc && film_in) memset(film_acc, 0, (size_t)w * h * 4 * nlast * sizeof(float));
+      for (int sample = 0; sample < samples_now; sample++) {
+      // the time this sample is drawn at: the film profile's, else the frame's (1/fps a frame)
+      float dt = (float)(1.0 / fps);
+      if (film_multi || film_audio) {
+        int64_t t = samples_now > 1 || film_shutter > 0 ? film_host_sample_ns(film_n, (float)film_shutter, film_position, film_seed, frames + 1, (int32_t)fps, sample)
+                                                         : (int64_t)(frames + 1) * 1000000000LL / (int64_t)fps;
+        if (t < film_at) t = film_at;
+        dt = (float)((double)(t - film_at) * 1e-9); film_at = t;
+      }
 #ifdef AETHYR_RENDER_TYPED
       if(!rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
 #endif
-      hud_vertices = produce_frame((float)w,(float)h,scale,(float)(1.0/fps));
+      hud_vertices = produce_frame((float)w,(float)h,scale,dt);
+      if (samples_now > 1 || (film_multi && film_in)) {
+        // the sample's place in the pixel and on the aperture, on the realm's own matrix (aethyr/film.coax)
+        float jx = film_jitter ? film_host_jitter(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 0) : 0;
+        float jy = film_jitter ? film_host_jitter(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 1) : 0;
+        float lu = film_host_lens(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 0);
+        float lv = film_host_lens(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 1);
+        if ((size_t)film_view + 16 > (size_t)H.uniform_floats ||
+            !film_host_matrix((coax_v_f32){(float *)rh_ptr(H.uniforms) + film_view, 16}, (float)w, (float)h, jx, jy, lu, lv, (float)film_fstop, (float)film_focus)) {
+          fprintf(stderr, "vk-realm: --film-view %d is not a view-projection in the realm's %u uniforms\n", film_view, (unsigned)H.uniform_floats); return 1;
+        }
+      }
 #ifdef AETHYR_RENDER_TYPED
       if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);frame_image(s);rhgr_deliver_media(s);
 #else
       update(s);
 #endif
       rh_after(&H, net_dir != NULL);
+#ifndef AETHYR_RENDER_TYPED
+      if (film_acc && film_in) vks_submit(&v, record, s);
+#endif
+      if (film_acc && film_in) {
+        for (int i = 0; i < nlast; i++) {
+          if (!last[i]) { fprintf(stderr, "vk-realm: no completed frame\n"); return 1; }
+          vks_read(&v, last[i], film_raw, (size_t)w * h * 8);
+          float *a = film_acc + (size_t)w * h * 4 * i;
+          for (size_t k = 0; k < (size_t)w * h * 4; k++) a[k] += half(film_raw[k]);
+        }
+      }
+      }
+      if (film_wav) {
+        // the sound up to this frame's time, from the same clock (48 kHz frames, rounded down)
+        int64_t until = (int64_t)(frames + 1) * 48000 / (int64_t)fps, n = until - film_audio_frames;
+        float block[2 * 4096];
+        while (n > 0) {
+          int64_t k = n < 4096 ? n : 4096;
+          if (rh_audio_take(&H, block, (size_t)k) || fwrite(block, 8, (size_t)k, film_wav) != (size_t)k) { fprintf(stderr, "vk-realm: the film's sound failed\n"); return 1; }
+          n -= k; film_audio_frames += k;
+        }
+      }
       if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; frames++; break; }
       double t1 = now_s();
 #ifndef AETHYR_RENDER_TYPED
-      vks_submit(&v, record, s);
+      if (!(film_acc && film_in)) vks_submit(&v, record, s);
 #endif
       stepped[frames] = t1 - t0;
       took[frames] = now_s() - t1;
@@ -722,7 +840,11 @@ int main(int argc, char **argv) {
         if (!f) { fprintf(stderr, "vk-realm: cannot write %s\n", path); return 1; }
         for (int i = 0; i < nlast; i++) {
           if (!last[i]) { fprintf(stderr, "vk-realm: no completed frame\n"); return 1; }
-          vks_read(&v, last[i], film_raw, (size_t)w * h * 8);
+          if (film_acc) {
+            // the mean of the samples, rounded to half as the targets are
+            const float *a = film_acc + (size_t)w * h * 4 * i;
+            for (size_t k = 0; k < (size_t)w * h * 4; k++) film_raw[k] = to_half(a[k] / (float)samples_now);
+          } else vks_read(&v, last[i], film_raw, (size_t)w * h * 8);
           if (fwrite(film_raw, 8, (size_t)w * h, f) != (size_t)w * h) return 1;
         }
         if (fclose(f)) return 1;
@@ -730,7 +852,12 @@ int main(int argc, char **argv) {
       }
     }
     if (film_timing && fclose(film_timing)) return 1;
-    free(film_raw);
+    if (film_wav) {
+      // the RIFF and data sizes, now that the frames are known
+      uint32_t data = (uint32_t)(film_audio_frames * 8), riff = data + 36;
+      if (fseek(film_wav, 4, SEEK_SET) || fwrite(&riff, 4, 1, film_wav) != 1 || fseek(film_wav, 40, SEEK_SET) || fwrite(&data, 4, 1, film_wav) != 1 || fclose(film_wav)) return 1;
+    }
+    free(film_raw); free(film_acc);
     if (!travelled) why = "it drew its frames";
 #ifdef AETHYR_RENDER_TYPED
     if(host_recovery){if(!world_replacement(s,&v,w,h,scale,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: replacement failed: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);}

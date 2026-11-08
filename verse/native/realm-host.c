@@ -61,6 +61,7 @@ extern uint32_t coaxial_sounds_capacity(cx_face_addr) __attribute__((weak));
 #pragma weak rha_command_current
 #pragma weak rha_info
 #pragma weak rha_close
+#pragma weak rha_render
 #pragma weak rhap_open
 #pragma weak rhap_start
 #pragma weak rhap_pause
@@ -220,6 +221,20 @@ int rh_audio_enable(RealmHost *h,int muted){
   if(!h->audio_device){rh_audio_close(h);return -1;}
   return h->audio_status<0?-1:0;
 }
+int rh_audio_offline(RealmHost *h){
+  if(h->audio||h->audio_device)return -1;
+  h->audio_status=-1;h->audio_command=-1;
+  if(rh_host_version()!=1||!coaxial_host_copy_span||!coaxial_sound_bank_len||!coaxial_sound_bank||!coaxial_sound_bank_capacity||!coaxial_sound_bank_storage||!coaxial_sound_bank_storage_bytes||!coaxial_sounds||!coaxial_sounds_len||!coaxial_sounds_capacity||!rha_open||!rha_bank_lazy||!rha_session_event||!rha_command_current||!rha_info||!rha_close||!rha_render)return -1;
+  uint32_t n=coaxial_sound_bank_len(h->state),cap=coaxial_sound_bank_capacity(h->state);
+  cx_face_addr at=coaxial_sound_bank(h->state),base=coaxial_sound_bank_storage(h->state);uint32_t bytes=coaxial_sound_bank_storage_bytes(h->state);
+  if(!coaxial_host_copy_span(at,cap,n,rh_address_limit())||!coaxial_host_copy_span(base,bytes,bytes,rh_address_limit()))return -1;
+  h->audio=rha_open();if(!h->audio)return -1;
+  h->audio_status=rha_bank_lazy(h->audio,rh_ptr(at),n,rh_ptr(base),bytes);
+  if(rhao_resources&&!rhao_resources(h->audio,"render-assets")){rh_audio_close(h);return -1;}
+  if(h->audio_status<0||!rha_session_event(h->audio,1)){rh_audio_close(h);return -1;}
+  return 0;
+}
+int rh_audio_take(RealmHost *h,float *out,size_t frames){return h->audio&&!h->audio_device&&rha_render(h->audio,out,frames,false)?0:-1;}
 void rh_audio_gesture(RealmHost *h){if(h->audio_device)(void)rhap_start(h->audio_device);}
 void rh_audio_pause(RealmHost *h,int paused){if(h->audio_device)(void)rhap_pause(h->audio_device,paused!=0);}
 void rh_audio_retire(RealmHost *h){if(h->audio){(void)rha_session_event(h->audio,4);if(h->audio_device){rhap_close(h->audio_device);h->audio_device=NULL;}}}

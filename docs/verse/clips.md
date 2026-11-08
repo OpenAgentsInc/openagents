@@ -117,6 +117,39 @@ screen target in `OUT/review/`, and with `--out` an H.264 encode. Two runs of
 the same input give the same hashes; hashes are not promised across GPU
 vendors.
 
+### The film profile
+
+Each written frame can instead be the average of N samples (#13004, phase
+F1; the record and its checks are `aethyr/film.coax`):
+
+```sh
+./vk-realm DRAWDIR GIVEN... --size 1920x1080 --headless 300 --fps 24 \
+  --frames-dir OUT --film-start 48 --film-end 287 \
+  --samples 16 --shutter 0.5 --shutter-position center --seed 1 \
+  --fstop 2.8 --focus 6 --film-view 8 --film-audio OUT/audio.wav
+```
+
+- `--samples N` (1 to 256) draws each frame N times. Sample times are
+  stratified inside the shutter (`--shutter` frames open, 0 to 1, placed
+  `start`, `center` or `end` of the frame's time) and kept in whole
+  nanoseconds, so the realm runs the same fixed steps it runs at one sample.
+- Each sample moves the realm's view-projection (the 16 uniforms at
+  `--film-view U`; Everglade's is 8, `U_VIEW`) by its pixel jitter (a Latin
+  square of strata; `--no-jitter` turns it off) and, with `--fstop` and
+  `--focus` metres, its eye on the aperture, keeping the focus plane still.
+  The lens's focal length is the one the realm's field of view gives on a
+  36 mm sensor.
+- The final targets of every sample are read back and added in f32; the
+  mean is written, rounded to half as the targets are. Bloom and tone run in
+  each sample, as the realm's graph draws them.
+- `--film-audio OUT.wav` renders the realm's own mixer with no device, frame
+  by frame from the same clock, as 48 kHz stereo f32.
+- `--samples 4 --no-jitter` gives the one-sample frame to the bit; the
+  film profile changes no simulation.
+
+On the RTX 4080, Everglade at 1920x1080 with 16 samples, a half-frame
+shutter and f/2.8 took 1.6 to 2.0 s a frame (85cfc9d1b1's producer).
+
 ## Next
 
 - Inputs on a timeline in `clip.coax` (key and pointer events at frame

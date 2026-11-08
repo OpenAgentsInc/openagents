@@ -281,6 +281,49 @@ film_coc_px :: (c: CameraLens, width: f32, height: f32, depth: f32) -> f32 {
   return coc * 1000 / film_sensor(c, width, height)[0] * width;
 }
 
+// ---- a realm's own matrix
+
+// A sample applied to a realm's view-projection matrix m (16 floats by rows: clip x is
+// m[0] x + m[1] y + m[2] z + m[3], and clip w is the fourth row, the distance ahead of the eye
+// times its length), so a realm keeps building its camera as it does and the host moves only the
+// sample: the pixel jitter (pixels), and, with an f-stop, the eye on the aperture with the image
+// shifted so the plane `focus` metres ahead stays still. The lens's focal length is the one the
+// matrix's field of view gives on the 36 mm sensor, so the aperture is (36 sx / 2) / fstop mm.
+// Returns false, changing nothing, for a matrix with no perspective.
+film_matrix :: (m: [] f32, width: f32, height: f32, q: FilmSample, fstop: f32, focus: f32) -> bool {
+  if m.count < 16 || !(width > 0) || !(height > 0) { return false; }
+  // the forward axis and how long the fourth row's is
+  fx := m[12]; fy := m[13]; fz := m[14];
+  reach := sqrt(fx * fx + fy * fy + fz * fz);
+  if !(reach > 0.000001) { return false; }
+  fx /= reach; fy /= reach; fz /= reach;
+  // the first two rows across the forward axis: NDC per metre at one metre ahead, and the
+  // world's right and up
+  ax := m[0]; ay := m[1]; az := m[2]; along := ax * fx + ay * fy + az * fz;
+  rx := ax - along * fx; ry := ay - along * fy; rz := az - along * fz;
+  bx := m[4]; by := m[5]; bz := m[6]; above := bx * fx + by * fy + bz * fz;
+  ux := bx - above * fx; uy := by - above * fy; uz := bz - above * fz;
+  sx := sqrt(rx * rx + ry * ry + rz * rz) / reach; sy := sqrt(ux * ux + uy * uy + uz * uz) / reach;
+  if !(sx > 0) || !(sy > 0) { return false; }
+  kx := 2 * q.jx / width; ky := 2 * q.jy / height;
+  if fstop > 0 && focus > 0 {
+    // the aperture's radius in metres: half of (focal length / f-stop)
+    r := 0.036 * sx / 2 / fstop / 2;
+    ex := r * q.lu; ey := r * q.lv;
+    // the eye moves by e along right and up: every column's point is seen from there
+    wx := ex * rx / (sx * reach) + ey * ux / (sy * reach);
+    wy := ex * ry / (sx * reach) + ey * uy / (sy * reach);
+    wz := ex * rz / (sx * reach) + ey * uz / (sy * reach);
+    for row: 0..<4 { m[row * 4 + 3] -= m[row * 4] * wx + m[row * 4 + 1] * wy + m[row * 4 + 2] * wz; }
+    kx += sx * ex / focus; ky += sy * ey / focus;
+  }
+  for c: 0..<4 { m[c] += kx * m[12 + c]; m[4 + c] += ky * m[12 + c]; }
+  return true;
+}
+film_host_matrix :: (m: [] f32, width: f32, height: f32, jx: f32, jy: f32, lu: f32, lv: f32, fstop: f32, focus: f32) -> bool #export_c #effects(all) {
+  return film_matrix(m, width, height, FilmSample.{jx = jx, jy = jy, lu = lu, lv = lv}, fstop, focus);
+}
+
 // ---- accumulation
 
 // Add a sample (RGBA16F's values as f32) into the f32 accumulation, and divide at the end. Post
@@ -581,4 +624,41 @@ film_edge_variance :: (n: int, stratified: bool) -> f64 {
   #assert out[0] == 2 && out[1] == 2 && out[2] == 2 && out[3] == 2;
   short: [3] f32;
   #assert !film_add(acc[..], short[..]) && !film_resolve(acc[..], 0, out[..]) && !film_resolve(acc[..], 2, short[..]);
+}
+
+// A look-at camera's matrix as a realm builds one: perspective with sx, sy over a view whose
+// eye is at (ex, ey, ez) looking along +Z, right +X, up +Y.
+film_test_matrix :: (sx: f32, sy: f32, ex: f32, ey: f32, ez: f32) -> [16] f32 {
+  return [16] f32.[sx, 0, 0, -sx * ex, 0, sy, 0, -sy * ey, 0, 0, 1, -ez - 0.1, 0, 0, 1, -ez];
+}
+film_test_ndc :: (m: [] f32, x: f32, y: f32, z: f32) -> [2] f32 {
+  w := m[12] * x + m[13] * y + m[14] * z + m[15];
+  return [2] f32.[(m[0] * x + m[1] * y + m[2] * z + m[3]) / w, (m[4] * x + m[5] * y + m[6] * z + m[7]) / w];
+}
+
+#test "a sample on a realm's matrix: jitter moves the image, the lens keeps the focus plane still" {
+  sx := 2.7777777f32; sy := sx * 16 / 9;
+  base := film_test_matrix(sx, sy, 1, 2, 3);
+  m := base;
+  #assert film_matrix(m[..], 1920, 1080, FilmSample.{jx = 0.25, jy = -0.5}, 0, 0);
+  a := film_test_ndc(base[..], 1.5, 2.2, 9); b := film_test_ndc(m[..], 1.5, 2.2, 9);
+  #assert film_near(b[0] - a[0], 0.5 / 1920, 0.0000001) && film_near(b[1] - a[1], -1.0 / 1080, 0.0000001);
+  // the lens: f/2 with focus 6 m ahead of the eye (z = 9)
+  c: CameraLens; c.use_dof = true; c.aperture_fstop = 2; c.focus_distance = 6; c.lens = 18 * sx;
+  for k: 0..<8 {
+    angle := cast(f32) k * 0.7853982f32;
+    q := FilmSample.{lu = cos(angle), lv = sin(angle)};
+    n := base;
+    #assert film_matrix(n[..], 1920, 1080, q, 2, 6);
+    // a point on the focus plane does not move
+    on := film_test_ndc(n[..], 1.7, 1.6, 9); was := film_test_ndc(base[..], 1.7, 1.6, 9);
+    #assert film_near(on[0], was[0], 0.000002) && film_near(on[1], was[1], 0.000002);
+    // a point 3 m ahead (z = 6) moves as film_view's lens moves it
+    v := film_view(c, 1920, 1080, q);
+    want := film_project(v, 1.7 - 1, 1.6 - 2, 3);
+    got := film_test_ndc(n[..], 1.7, 1.6, 6);
+    #assert film_near(got[0], want[0], 0.00001) && film_near(got[1], want[1], 0.00001);
+  }
+  flat: [16] f32;
+  #assert !film_matrix(flat[..], 1920, 1080, FilmSample.{}, 0, 0) && !film_matrix(m[0..<8], 1920, 1080, FilmSample.{}, 0, 0) && !film_matrix(m[..], 0, 1080, FilmSample.{}, 0, 0);
 }
