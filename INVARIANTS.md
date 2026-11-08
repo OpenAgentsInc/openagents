@@ -6807,3 +6807,17 @@ Raw borrowed-state producers must report the transition when clock ownership
 begins. Saved-seat first aid spends only that player's Action. Exact native,
 world/control and remaining recovery scope:
 `docs/verification/srd-stabilization-2026-11-08/README.md`.
+
+## Experimental physical contacts resolve through shared NPC turns and hero HP
+
+The live Experimental frame binds contact-only physics before its first tick.
+A bounded FIFO carries actor IDs; it cannot manufacture damage or overwrite
+accepted contacts. Saved NPC turns advance even without contact, and shared
+stat attacks spend only that actor's Action. The shared hero owns HP/temp HP;
+casts do not synthesize/reset health and the HUD projects class maximum and TEMP.
+Legacy damage refuses in shared mode. Landed events drive each striker's hit
+stop; positive loss alone drives damage pops. Respawn resets the shared preset,
+clears pending contacts and preserves defeated foes. Named body attack profiles
+are still house data, and the per-press resource adapter remains unqualified.
+The wider release build has three reproduced baseline blockers; no Wasm/browser
+qualification is claimed. Evidence: `docs/verification/srd-contact-health-2026-11-08/README.md`.

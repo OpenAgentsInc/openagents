@@ -4,6 +4,7 @@
 #load "experimental-terrain.coax" as terrain;
 #load "experimental-dungeon.coax" as dungeon;
 #load "rules/srd5-combat.coax";
+#load "hostile-contact.coax";
 
 // dead: felled (apps/openagents-web/experimental-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move;
 // inactive: cannot begin or continue an attack, independently of movement
@@ -11,9 +12,9 @@
 // kind: experimental-dungeon.coax's DG_KIND_*, scale its size; a sleeper waits where it stands until it sees you near
 Enemy :: struct {x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;}
 // the village's six (two of them, 2 and 5, in the dungeon's entrance hall) and the dungeon's own
-HS_N :: 45;
+HS_N :: HC_MAX;
 DamagePop :: struct {amount:int;x:f32;y:f32;z:f32;born:f32;}
-Hostiles :: struct {ready:bool;enemies:[HS_N]Enemy;hp:int;hits:int;time:f32;died_at:f32;pops:[8]DamagePop;pop_next:int;dice:[1]SrdDice;last:int= -1;}   // last: the enemy whose blow landed last
+Hostiles :: struct {ready:bool;enemies:[HS_N]Enemy;hp:int;max_hp:int=44;temp:int;player_dead:bool;shared:bool;contacts:[1]HcContacts;hits:int;time:f32;died_at:f32;pops:[8]DamagePop;pop_next:int;dice:[1]SrdDice;last:int= -1;}   // last: the enemy whose blow landed last
 #test "six enemies pursue and inflict real melee damage" #steps 200000000 {
  s:[1]Hostiles;hostile_start(s[..]);#assert s[0].ready && s[0].hp==44;
  before:=abs(s[0].enemies[0].x)+abs(s[0].enemies[0].z);
@@ -119,7 +120,7 @@ hostile_blocked_pad :: (x:f32,z:f32,pad:f32)->bool {
 // Whether monster e sees the player at (x, z): no wall between (experimental-dungeon.coax dg_sight).
 hostile_sees :: (e:Enemy,x:f32,z:f32)->bool {return dungeon.dg_sight(e.x,e.z,x,z);}
 hostile_damage :: (s:[]Hostiles,amount:int,x:f32,y:f32,z:f32) {
- if amount<=0 || s[0].hp<=0 {return;}lost:=ifx amount>s[0].hp then s[0].hp else amount;s[0].hp-=lost;s[0].hits+=1;
+ if s[0].shared || amount<=0 || s[0].hp<=0 {return;}lost:=ifx amount>s[0].hp then s[0].hp else amount;s[0].hp-=lost;s[0].hits+=1;
  s[0].pops[s[0].pop_next]=DamagePop.{amount=lost,x=x,y=y,z=z,born=s[0].time};s[0].pop_next=(s[0].pop_next+1)%8;if s[0].hp==0 {s[0].died_at=s[0].time;}
 }
 hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
@@ -133,7 +134,7 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
   if gap>0.001 {e[0].face_x=dx/gap;e[0].face_z=dz/gap;}
   // a bigger body reaches further: it stops and swings from further off
   reach:=1.45+0.45*(e[0].scale-1);
-  if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<reach+0.35 && abs(py)<2 && !hostile_blocked((e[0].x+px)*0.5,(e[0].z+pz)*0.5) {hit:=srd_attack(s[0].dice[..],hostile_blow(e[0].kind),15);if hit.hit {s[0].last=i;hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
+  if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<reach+0.35 && abs(py)<2 && !hostile_blocked((e[0].x+px)*0.5,(e[0].z+pz)*0.5) {if s[0].shared {accepted:=hc_offer(s[0].contacts[..],i);} else {hit:=srd_attack(s[0].dice[..],hostile_blow(e[0].kind),15);if hit.hit {s[0].last=i;hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
   if gap<reach {if !e[0].inactive && e[0].cool<=0 {e[0].swing=0;e[0].struck=false;}continue;}
   if e[0].held {continue;}
   gx:=px+ox[i%6]*e[0].scale-e[0].x;gz:=pz+oz[i%6]*e[0].scale-e[0].z;distance:=sqrt(gx*gx+gz*gz);if distance<0.01 {continue;}
@@ -167,4 +168,14 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
  hostile_tick(s[..],0,0,0,0.05);#assert e[0].x==0 && e[0].z==0;
  e[0].stopped=false;e[0].dead=true;
  hostile_tick(s[..],0,0,0,0.05);#assert e[0].x==0 && e[0].z==0;
+}
+
+#test "shared contacts emit intent without rolling an attack or changing observer HP" {
+  s: [1] Hostiles; hostile_start(s[..]); s[0].shared=true;
+  for i: 0..<HS_N { s[0].enemies[i].dead=true; }
+  s[0].enemies[0].dead=false; s[0].enemies[0].x=0; s[0].enemies[0].z=1; s[0].enemies[0].swing=0.34;
+  before := s[0].dice[0]; hostile_tick(s[..],0,0,0,0.05);
+  #assert s[0].hp==44 && s[0].hits==0 && s[0].contacts[0].count==1 && s[0].dice[0].state==before.state;
+  #assert hc_take(s[0].contacts[..])==0 && hc_take(s[0].contacts[..]) == -1;
+  hostile_damage(s[..],5,0,0,0); #assert s[0].hp==44 && s[0].hits==0;
 }

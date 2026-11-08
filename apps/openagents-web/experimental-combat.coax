@@ -4,7 +4,8 @@
 //
 // Every roll is the SRD 5e engine's (aethyr/rules/srd/), through the hotbar layer Everglade 5E
 // plays on (fivebar.coax: fb_cl_hero, fb_cl_ability, fb_seat_use). You are creature 0, the engine's
-// selected-level hero of your class; the three imps and three gremlins are creatures 1 to 6. The page
+// selected-level hero of your class; the village and dungeon bodies map to creatures 1 through
+// XC_FOES by stable index. The page
 // rolls offline, as Experimental runs: there is no room. Before each use the monsters stand on the
 // engine's squares as they stand round you in metres (one square 5 feet, 1.524 m), so its reach
 // and ranges are the world's.
@@ -17,7 +18,7 @@
 //
 // Aim: everything goes the way you face (xc_aim): bolts fly straight ahead, blows strike ahead of
 // you, and nothing behind or beside you is picked for you. A heal is yours: what it heals is added
-// to your Hit Points (verse/experimental-hostiles.coax hp).
+// through the same shared Hit Points and Temporary Hit Points as hostile attacks.
 //
 // Weapons: a melee class holds its weapon in the right hand (xc_kit; charactercreator.coax
 // held_weapon). A blow with it is an Aethyr action (aethyr/action/, #12993): the swing's clip is its
@@ -54,7 +55,7 @@ XC_SIDE :: 48; XC_MID :: 24;   // the engine's grid round you, squares (73 m a s
 XC_AWAY :: -1000;
 XC_SQ :: 1.524;
 XC_SINK :: 2.4;                // seconds a fallen monster takes to sink away
-XC_PLAYER_MAX :: 44;           // your Hit Points in Experimental (experimental-hostiles.coax hostile_start)
+XC_PLAYER_MAX :: 44;           // legacy body-only fixture HP; live HP is the selected class's shared state
 XC_FLOATS :: 8;
 // the CLASSES column, CSS px: its header, its rows, the gap above it
 XC_HEAD :: 32.0; XC_ROW :: 24.0; XC_ROWS_TOP :: 40.0; XC_GAP :: 8.0;
@@ -91,6 +92,7 @@ XcCombat :: struct {
   lock: attn.AttnState;             // your target, held through attention (xc_lock_step): target is its answer
   stops: react.Stops;               // hit stops in force: a struck monster pauses, and a monster that strikes you
   present: react.PresentQueue;      // this frame's numbers, through react_present's caps
+  npc_seat: [XC_FOES] FbSeat;
   seen_hits: int;                   // the monsters' landed blows already given their hit stop
   shown: int; suppressed: int;      // numbers shown and suppressed (lab_creator_probe 934, 935)
 }
@@ -185,6 +187,7 @@ xc_start :: (x: [] XcCombat, klass: int) {
   _ := rs_add(b, fb_cl_hero(klass, "You", 0, 1), XC_MID, XC_MID);
   for i: 0..<XC_FOES { _ = rs_add(b, xc_foe(hostile.hostile_kind(i)), XC_AWAY, XC_AWAY); }
   rs_begin(b);
+  for i: 0..<XC_FOES { x[0].npc_seat[i]=FbSeat.{me=i+1}; }
   x[0].started = true;
   xc_set_class(x, klass);
 }
@@ -194,6 +197,8 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   if !x[0].started { xc_start(x, c); return; }
   b := x[0].b[..];
   t := b[0].c[0].turn_at; ro := b[0].c[0].round_at;
+  rs_end_concentration(b,0," (class preset changed)");
+  rs_release_turned(b,0);
   b[0].c[0] = fb_cl_hero(c, "You", 0, x[0].level);
   b[0].c[0].turn_at = t; b[0].c[0].round_at = ro;
   rs_place(b, 0, XC_MID, XC_MID);
@@ -303,12 +308,16 @@ xc_stop_hit :: (s: [] Lab, foe: int, kinds: u32) {
   r := react.react_decide(a, react.TargetResponse.{}, asp.world_point(e.face_x, 0, e.face_z), toward, 1);
   x[0].stops = react.react_stop_add(x[0].stops, r, 0, 1 + foe, xc_tick(cr.clock));
 }
+xc_stop_striker :: (s: [] Lab, foe: int) {
+  x := s[0].xc[..]; cr := s[0].creator[0];
+  claw := react.AttackAttrs.{kinds = react.DMG_SLASH, stop = react.HitStop.{ticks = XC_STOP_STRIKER, scope = react.StopScope.source}};
+  r := react.react_decide(claw, react.TargetResponse.{}, asp.world_point(sin(cr.player_face),0,cos(cr.player_face)),asp.world_point(0,0,1),1);
+  x[0].stops = react.react_stop_add(x[0].stops,r,1+foe,0,xc_tick(cr.clock));
+}
 xc_stops_step :: (s: [] Lab) {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; now := xc_tick(cr[0].clock);
   if h[0].hits > x[0].seen_hits && h[0].last >= 0 && h[0].last < XC_FOES {
-    claw := react.AttackAttrs.{kinds = react.DMG_SLASH, stop = react.HitStop.{ticks = XC_STOP_STRIKER, scope = react.StopScope.source}};
-    r := react.react_decide(claw, react.TargetResponse.{}, asp.world_point(sin(cr[0].player_face), 0, cos(cr[0].player_face)), asp.world_point(0, 0, 1), 1);
-    x[0].stops = react.react_stop_add(x[0].stops, r, 1 + h[0].last, 0, now);
+    xc_stop_striker(s,h[0].last);
   }
   x[0].seen_hits = h[0].hits;
   x[0].stops = react.react_stop_expire(x[0].stops, now);
@@ -360,12 +369,55 @@ xc_wave_contains :: (w: XcWave, x: f32, z: f32) -> bool {
 // ongoing areas and later combat steps continue to use world-aligned squares.
 xc_sync_world :: (s: [] Lab) {
   b := s[0].xc[0].b[..]; cr := s[0].creator[0];
+  rs_place(b,0,XC_MID,XC_MID);
   for i: 0..<XC_FOES {
     e := cr.hostiles[0].enemies[i];
     qx := xc_square(e.x-cr.player_x); qz := xc_square(e.z-cr.player_z);
     if e.dead || qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
     rs_place(b, i+1, qx, qz);
   }
+}
+// The bodies publish contact intent; the shared battle owns all outcomes.
+xc_hostile_attack :: (kind: int) -> RsStatAttack {
+  if kind<0 || kind>=XC_FOE_NAMES.count { return RsStatAttack.{}; }
+  old := hostile.hostile_blow(kind);
+  names := [5] string.["experimental-imp","experimental-gremlin","experimental-brute","experimental-fiend","experimental-warlord"];
+  return RsStatAttack.{id=names[kind],name=XC_FOE_NAMES[kind],bonus=old.attack,dice=old.dice,sides=old.sides,flat=old.bonus,kind=old.kind,
+    ability=ifx kind==xdungeon.DG_KIND_FIEND then RS_DEX else RS_STR,reach=ifx kind==xdungeon.DG_KIND_BRUTE || kind==xdungeon.DG_KIND_BOSS then 10 else 5};
+}
+xc_sync_vitals :: (s: [] Lab) {
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  if !s[0].xc[0].started { return; }
+  if h[0].hp>0 && b[0].c[0].hp==0 { h[0].died_at=h[0].time; }
+  if !h[0].shared { for i: 0..<XC_FOES { if h[0].enemies[i].dead { b[0].c[i+1].hp=0; b[0].c[i+1].dead=true; } } }
+  h[0].shared=true; h[0].hp=b[0].c[0].hp; h[0].max_hp=b[0].c[0].hp_max;
+  h[0].temp=b[0].c[0].temp; h[0].player_dead=b[0].c[0].dead;
+}
+xc_hostile_contacts :: (s: [] Lab) {
+  x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  xc_sync_world(s);
+  // Quiet actors take turns too: repeat saves do not depend on reaching you.
+  for i: 0..<XC_FOES { fb_seat_step(b,x[0].npc_seat[i..<i+1]); }
+  while h[0].contacts[0].count>0 {
+    foe := hostile.hc_take(h[0].contacts[..]);
+    if foe<0 || foe>=XC_FOES || !rs_up(b[0].c[0]) || h[0].enemies[foe].dead || !x[0].npc_seat[foe].open { continue; }
+    before := b[0].c[0].hp+b[0].c[0].temp; seq := b[0].book[0].seq;
+    fb_seat_in(b,x[0].npc_seat[foe..<foe+1]);
+    accepted := rs_stat_attack(b,foe+1,0,xc_hostile_attack(h[0].enemies[foe].kind));
+    fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
+    lost := before-b[0].c[0].hp-b[0].c[0].temp;
+    landed := false;
+    for k: 0..<rs_min(b[0].book[0].seq-seq,RS_EVENTS) {
+      event := rs_recent(b[0].book[0],k);
+      if event.kind==RS_EV_ATTACK && event.by==foe+1 && event.to==0 { landed=true; }
+    }
+    if accepted && landed { h[0].hits+=1; h[0].last=foe; xc_stop_striker(s,foe); x[0].seen_hits=h[0].hits; }
+    if accepted && lost>0 {
+      h[0].pops[h[0].pop_next]=hostile.DamagePop.{amount=lost,x=cr[0].player_x,y=cr[0].player_y+2.1,z=cr[0].player_z,born=h[0].time};
+      h[0].pop_next=(h[0].pop_next+1)%8;
+    }
+  }
+  xc_sync_vitals(s);
 }
 // Project shared movement/action permissions independently into the body AI.
 // A Stunned actor can move; a Restrained actor can still take an action.
@@ -374,6 +426,12 @@ xc_sync_permissions :: (s: [] Lab) {
   for i: 0..<XC_FOES {
     if i+1>=b[0].n { break; }
     c := b[0].c[i+1];
+    if c.dead && !h[0].enemies[i].dead {
+      h[0].enemies[i].dead=true; h[0].enemies[i].died=s[0].creator[0].clock;
+      h[0].enemies[i].moving=false; h[0].enemies[i].swing = -1;
+      s[0].xc[0].kills+=1;
+      if s[0].xc[0].target==i { s[0].xc[0].target = -1; }
+    }
     h[0].enemies[i].held = !rs_can_move(c) || rs_walk_speed(b,i+1)<=0;
     h[0].enemies[i].inactive = !rs_can_act(c);
     // Retire a pending attack immediately, including between body ticks.
@@ -385,6 +443,7 @@ xc_sync_permissions :: (s: [] Lab) {
 xc_press :: (s: [] Lab, k: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   if !cr[0].experimental || cr[0].walk.on || !x[0].started || k < 0 || k >= x[0].bar_n { return false; }
+  xc_sync_vitals(s);
   now := cr[0].clock;
   if now - x[0].cool_at < f32(XC_COOL) || h[0].hp <= 0 { x[0].refused += 1; return false; }
   xc_strike_due(s);
@@ -603,8 +662,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   for l: 0..<10 { me[0].slots[l] = me[0].slots_max[l]; }
   for q: 0..<RS_USES { me[0].uses[q] = me[0].uses_max[q]; }
   me[0].focus = me[0].focus_max; me[0].rages = me[0].rages_max;
-  me[0].reacted = false; me[0].dead = false;
-  me[0].hp = 1; me[0].temp = 0;   // so a heal's whole roll shows (added to your Hit Points below)
+  hp_before := me[0].hp; temp_before := me[0].temp;
   x[0].seat[0].open = true;
   x[0].seat[0].turn.action = false; x[0].seat[0].turn.bonus = false; x[0].seat[0].turn.slot_spent = false;
   before: [XC_FOES] int; bx: [XC_FOES] int; bz: [XC_FOES] int;
@@ -614,8 +672,9 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   else if foe >= 0 { tx = b[0].c[1 + foe].x; ty = b[0].c[1 + foe].y; }
   else if aim.kind == XC_AIM_AREA { tx = XC_MID + cast(int) floor(aim.fx * aim.reach / f32(XC_SQ) + 0.5); ty = XC_MID + cast(int) floor(aim.fz * aim.reach / f32(XC_SQ) + 0.5); }
   ok := fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, 0);
-  gain := b[0].c[0].hp - 1 + b[0].c[0].temp;
-  b[0].c[0].hp = b[0].c[0].hp_max; b[0].c[0].temp = 0; b[0].c[0].dead = false;
+  gain := rs_max(b[0].c[0].hp-hp_before,0);
+  temp_gain := rs_max(b[0].c[0].temp-temp_before,0);
+  xc_sync_vitals(s);
   if !ok { if facing_cube { xc_sync_world(s); } x[0].refused += 1; return false; }
   if a.kind == FB_SPELL && a.sp == SP_THUNDERWAVE {
     x[0].wave = xc_wave_make(x, px, pz, cr[0].player_face); x[0].wave.y = cr[0].player_y; x[0].wave_until = now + 1.4;
@@ -625,10 +684,10 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   }
   x[0].cool_at = now; x[0].used = k; x[0].casts += 1;
   if foe >= 0 { xc_lock_on(s, foe); }   // the one struck at: your target, its Hit Points over the bar
-  if gain > 0 && h[0].hp < XC_PLAYER_MAX {
-    h[0].hp = ifx h[0].hp + gain > XC_PLAYER_MAX then XC_PLAYER_MAX else h[0].hp + gain;
+  if gain > 0 {
     xc_float_int(x, px, cr[0].player_y + 2.1, pz, now, gain, true);
   }
+  if temp_gain>0 { l: [1] RsLine; rs_add_int(l[..],temp_gain); rs_add_text(l[..]," TEMP HP"); xc_float(x,px,cr[0].player_y+2.1,pz,now,cast(string)l[0].buf[0..<l[0].n],true); }
   xc_look(s, a, foe, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
   if !swung { xc_cast_sound(s, a); }
   // what it did to each monster: the numbers, and the fallen
@@ -748,10 +807,12 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   now := cr[0].clock;
   cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
   x[0].present = react.react_present_drain(x[0].present);
+  if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
+  xc_hostile_contacts(s);
+  n=cc.combat_hud(cr[0],out,u,n,w,k);
   xc_strike_due(s);
   xc_lock_step(s);
   xc_stops_step(s);
-  if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   // Refresh both permissions after shared expiry, independently of body hit stop.
   xc_sync_permissions(s);
   // the column: under ANIMATIONS (its rows give it room: cc dev_visible), at the top without it
@@ -1414,4 +1475,92 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert h[0].enemies[0].held && !h[0].enemies[0].inactive && h[0].enemies[0].swing<0;
   rs_drop_effect(b,1,0); xc_sync_permissions(s[..]);
   #assert !h[0].enemies[0].held && !h[0].enemies[0].inactive;
+}
+
+#test "experimental combat: physical contact uses shared class AC, defenses, temporary HP and the saved player turn" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=10;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].kind=xdungeon.DG_KIND_IMP;
+  b[0].c[1].turn_at=0;
+  xc_sync_vitals(s[..]);
+  #assert h[0].shared && hostile.hc_offer(h[0].contacts[..],0);
+  kept := b[0].turn; seat := s[0].xc[0].seat[0].turn;
+  xc_hostile_contacts(s[..]);
+  #assert b[0].c[0].hp==20 && b[0].c[0].temp==6 && h[0].hp==20 && h[0].temp==6;
+  #assert h[0].contacts[0].count==0 && h[0].hits==1;
+  #assert b[0].turn.action==kept.action && s[0].xc[0].seat[0].turn.action==seat.action;
+  // A second contact before the actor's next turn cannot obtain another Action.
+  rolls := b[0].dice[0].rolled;
+  #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+  #assert b[0].dice[0].rolled==rolls && h[0].hits==1;
+  b[0].clock=1.5; b[0].c[0].temp=0; b[0].c[0].resist=1<<RS_SLASHING;
+  #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+  #assert b[0].c[0].hp==18 && h[0].hp==18 && h[0].hits==2;
+  b[0].clock=3; b[0].c[0].ac=30; rolls=b[0].dice[0].rolled;
+  #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+  #assert b[0].c[0].hp==18 && b[0].dice[0].rolled==rolls+1 && h[0].hits==2;
+  #assert !rs_stat_attack_valid(xc_hostile_attack(-1)) && !rs_stat_attack_valid(xc_hostile_attack(5));
+  b[0].clock=4.5; b[0].c[0].ac=10; b[0].c[0].immune=1<<RS_SLASHING;
+  #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+  #assert b[0].c[0].hp==18 && h[0].hits==3;
+}
+
+#test "experimental combat: accepted and refused casts preserve actual HP and temporary HP rather than synthetic healing" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  b[0].c[0].hp=3; b[0].c[0].temp=7; xc_sync_vitals(s[..]);
+  h[0].enemies[0].x=0; h[0].enemies[0].z=4; s[0].creator[0].clock=2;
+  #assert xc_press(s[..],0);
+  #assert b[0].c[0].hp==3 && b[0].c[0].temp==7 && h[0].hp==3 && h[0].temp==7;
+  #assert !xc_press(s[..],0) && b[0].c[0].hp==3 && b[0].c[0].temp==7;
+}
+
+#test "experimental combat: quiet NPC turns repeat their saves without physical contact" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  b := s[0].xc[0].b[..]; b[0].dice[0].fixed=true;
+  b[0].c[1].turn_at=0; b[0].c[1].round_at=0; b[0].c[1].score[RS_WIS]=30;
+  #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_PARALYZED,by=0,spell=-1,until=60,save=RS_WIS,dc=13});
+  xc_hostile_contacts(s[..]); #assert rs_has(b[0].c[1],RS_PARALYZED);
+  b[0].clock=1.5; xc_hostile_contacts(s[..]); xc_sync_permissions(s[..]);
+  #assert !rs_has(b[0].c[1],RS_PARALYZED) && !s[0].creator[0].hostiles[0].enemies[0].held;
+}
+
+#test "experimental combat: healing caps at class HP and False Life never becomes ordinary healing" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  x := s[0].xc[..]; b := x[0].b[..]; h := s[0].creator[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].hp=29; b[0].c[0].hp_max=30; b[0].c[0].temp=7;
+  x[0].bar[0]=fb_spell(SP_CURE_WOUNDS,1,FB_SELF); x[0].bar_n=1; s[0].creator[0].clock=2;
+  xc_sync_vitals(s[..]); #assert xc_press(s[..],0);
+  #assert b[0].c[0].hp==30 && b[0].c[0].temp==7 && h[0].hp==30 && h[0].max_hp==30 && h[0].temp==7;
+  xc_set_class(x,FB_CL_WIZARD); #assert rs_grant_spell(b[0].c[0..<1],SP_FALSE_LIFE);
+  b[0].c[0].hp=3; b[0].c[0].hp_max=30; b[0].c[0].temp=2;
+  x[0].bar[0]=fb_spell(SP_FALSE_LIFE,1,FB_SELF); x[0].bar_n=1; s[0].creator[0].clock=4;
+  #assert xc_press(s[..],0);
+  #assert b[0].c[0].hp==3 && b[0].c[0].temp==8 && h[0].hp==3 && h[0].temp==8;
+}
+
+#test "experimental combat: the real frame binds contact-only physics before the first hostile tick" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  for i: 1..<XC_FOES { h[0].enemies[i].dead=true; }
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].swing=0.34;
+  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=10;
+  b[0].c[0].turn_at=0; b[0].c[1].turn_at=0;
+  before := h[0].dice[0].state;
+  u: [104] f32; out: [1] f32;
+  _ := lab_frame(s[..],out[..],u[..],1280,720,1,0.05,false);
+  #assert h[0].shared && h[0].contacts[0].count==0 && h[0].dice[0].state==before;
+  #assert b[0].c[0].hp==20 && b[0].c[0].temp==6 && h[0].hp==20 && h[0].temp==6;
+}
+
+#test "experimental combat: simultaneous shared hits stop each striker even when temporary HP absorb them" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].temp=20;
+  b[0].c[1].turn_at=0; b[0].c[2].turn_at=0;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[1].x=1; h[0].enemies[1].z=0;
+  #assert hostile.hc_offer(h[0].contacts[..],0) && hostile.hc_offer(h[0].contacts[..],1);
+  xc_hostile_contacts(s[..]);
+  #assert h[0].hits==2 && react.react_held(s[0].xc[0].stops,1,0) && react.react_held(s[0].xc[0].stops,2,0);
 }

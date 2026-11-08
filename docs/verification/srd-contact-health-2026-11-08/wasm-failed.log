@@ -1,0 +1,34 @@
+aethyr/rules/srd/spell-selection.coax:138:25: error[E0400]: compile-time aggregate traversal limit exceeded: 268435457 value and field visits needed, the limit is 268435456
+    if !rs_key_eligible(c[0], key) { return false; }
+                          ^
+  compile-time traversal work: 268435457 visits needed, the limit is 268435456
+  top users of compile-time traversal work:
+    71107920 visits  aethyr/rules/srd/spell-loadouts.coax:50:8  copying arguments into 'rs_spell_granted' (200304 calls)
+    53815732 visits  aethyr/rules/srd/spell-selection.coax:138:7  copying arguments into 'rs_key_eligible' (151594 calls)
+    29042845 visits  aethyr/rules/srd/spells.coax:103:1  in 'rs_spell' (233864 times)
+    27673318 visits  aethyr/rules/srd/more.coax:46:1  in 'rs_more_spell' (134554 times)
+    18894776 visits  apps/openagents-web/fivelab.coax:3921:1  #test 'the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them' itself
+  fix: pass a view, an index or only the fields it needs instead of copying arguments into 'rs_spell_granted' by value; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+  note: in #test the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them
+apps/openagents-web/fivelab.coax:4060:3: error[E0406]: assertion failed
+    #assert met;
+    ^
+  note: in #test the Siege's tactics: the cult swarms, its leader stays back with its Arcanum, the watch holds its line
+apps/openagents-web/fivelab-warlock.coax:165:5: error[E0406]: assertion failed
+      #assert lw_test_turn(s[..], me, foe, list[k]);
+      ^
+  note: in #test Player mode's Warlock: level 17, every spell on its bar cast from its slots, and Finger of Death's dead rise
+3 errors
+coax: note[E0400]: compile-time steps: 167384314 of 200000000 used (83%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    25045115 steps  verse/experimental-village.coax:161:1  in 'ev_near_radius' (2876 times)
+    23866480 steps  verse/experimental-village.coax:70:1  in 'ev_prop_near' (2876 times)
+    18278554 steps  verse/experimental-hostiles.coax:113:1  in 'hostile_blocked_pad' (2876 times)
+    15403856 steps  verse/experimental-castle.coax:16:1  in 'castle_segment' (382508 times)
+    14005515 steps  verse/experimental-terrain.coax:30:1  in 'exp_site' (221352 times)
+  fix: do less work in 'ev_near_radius', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 125906511 of 134217728 used (93%), above three quarters of the limit; more than 134217728 fails with E0400
+coax: note[E0400]: compile-time value slots: 26698446 of 33554432 used (79%), above three quarters of the limit; more than 33554432 fails with E0400
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

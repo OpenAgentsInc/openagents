@@ -1,0 +1,10 @@
+FAIL #test Player mode's Warlock: level 17, every spell on its bar cast from its slots, and Finger of Death's dead rise (665 ms)
+apps/openagents-web/fivelab-warlock.coax:165:5: error[E0406]: assertion failed
+      #assert lw_test_turn(s[..], me, foe, list[k]);
+      ^
+  note: in #test Player mode's Warlock: level 17, every spell on its bar cast from its slots, and Finger of Death's dead rise
+1 of 737 checks (--only 'Player mode's Warlock'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

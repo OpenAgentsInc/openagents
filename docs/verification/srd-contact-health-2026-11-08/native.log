@@ -1,0 +1,9 @@
+coax: note[E0400]: compile-time steps: 167384329 of 200000000 used (83%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    25045115 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/verse/experimental-village.coax:161:1  in 'ev_near_radius' (2876 times)
+    23866480 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/verse/experimental-village.coax:70:1  in 'ev_prop_near' (2876 times)
+    18278554 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/verse/experimental-hostiles.coax:113:1  in 'hostile_blocked_pad' (2876 times)
+    15403856 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/verse/experimental-castle.coax:16:1  in 'castle_segment' (382508 times)
+    14005515 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/verse/experimental-terrain.coax:30:1  in 'exp_site' (221352 times)
+  fix: do less work in 'ev_near_radius', split the check, or give it a larger budget with a larger #steps N on the check
+PASS CONTACT-HEALTH

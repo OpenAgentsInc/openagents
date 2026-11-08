@@ -1,0 +1,33 @@
+// Bounded physical contacts carry actor identities, never attack or HP outcomes.
+#authority;
+HC_MAX :: 45;
+HcContacts :: struct { actors: [HC_MAX] int; head: int; count: int; dropped: int; }
+
+#test "contact FIFO preserves accepted actors across capacity refusal and slot reuse" {
+  q: [1] HcContacts;
+  for i: 0..<HC_MAX { #assert hc_offer(q[..],i); }
+  #assert !hc_offer(q[..],0) && q[0].dropped==1 && q[0].count==HC_MAX;
+  for i: 0..<HC_MAX { #assert hc_take(q[..])==i; }
+  #assert hc_take(q[..]) == -1 && q[0].count==0;
+  for i: 0..<HC_MAX*2 { #assert hc_offer(q[..],i%HC_MAX); #assert hc_take(q[..])==i%HC_MAX; }
+  #assert !hc_offer(q[..],-1) && !hc_offer(q[..],HC_MAX) && q[0].dropped==3;
+}
+
+hc_offer :: (q: [] HcContacts, actor: int) -> bool #effects(all) {
+  if actor<0 || actor>=HC_MAX || q[0].count>=HC_MAX { q[0].dropped+=1; return false; }
+  q[0].actors[(q[0].head+q[0].count)%HC_MAX]=actor; q[0].count+=1; return true;
+}
+hc_take :: (q: [] HcContacts) -> int #effects(all) {
+  if q[0].count==0 { return -1; }
+  actor := q[0].actors[q[0].head]; q[0].head=(q[0].head+1)%HC_MAX; q[0].count-=1; return actor;
+}
+
+#test "FIFO wraps an insertion behind retained contacts without overwriting them" {
+  q: [1] HcContacts;
+  for i: 0..<HC_MAX { #assert hc_offer(q[..],i); }
+  for i: 0..<17 { #assert hc_take(q[..])==i; }
+  for i: 0..<17 { #assert hc_offer(q[..],i); }
+  for i: 17..<HC_MAX { #assert hc_take(q[..])==i; }
+  for i: 0..<17 { #assert hc_take(q[..])==i; }
+  #assert hc_take(q[..]) == -1;
+}

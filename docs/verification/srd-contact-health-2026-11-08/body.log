@@ -1,0 +1,3 @@
+ok   #test shared contacts emit intent without rolling an attack or changing observer HP (1 case, 53132 steps, 0 ms)
+1 of 201 checks (--only 'shared contacts'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

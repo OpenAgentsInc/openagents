@@ -1,0 +1,46 @@
+apps/openagents-web/experimental-combat.coax:1425:3: error[E0315]: procedure 'xc_sync_vitals' is not declared
+    xc_sync_vitals(s[..]);
+    ^
+apps/openagents-web/experimental-combat.coax:1426:15: error[E0351]: struct 'Hostiles' has no field 'shared'
+    #assert h[0].shared && hostile.hc_offer(h[0].contacts[..],0);
+                ^
+  fix: its fields are: ready enemies hp hits time died_at pops pop_next dice last
+apps/openagents-web/experimental-combat.coax:1426:26: error[E0385]: module 'verse.experimentalhostiles' has no procedure 'hc_offer'
+    #assert h[0].shared && hostile.hc_offer(h[0].contacts[..],0);
+                           ^
+apps/openagents-web/experimental-combat.coax:1426:47: error[E0351]: struct 'Hostiles' has no field 'contacts'
+    #assert h[0].shared && hostile.hc_offer(h[0].contacts[..],0);
+                                                ^
+  fix: its fields are: ready enemies hp hits time died_at pops pop_next dice last
+apps/openagents-web/experimental-combat.coax:1428:3: error[E0315]: procedure 'xc_hostile_contacts' is not declared
+    xc_hostile_contacts(s[..]);
+    ^
+apps/openagents-web/experimental-combat.coax:1429:71: error[E0351]: struct 'Hostiles' has no field 'temp'
+    #assert b[0].c[0].hp==20 && b[0].c[0].temp==6 && h[0].hp==20 && h[0].temp==6;
+                                                                        ^
+  fix: its fields are: ready enemies hp hits time died_at pops pop_next dice last
+apps/openagents-web/experimental-combat.coax:1430:15: error[E0351]: struct 'Hostiles' has no field 'contacts'
+    #assert h[0].contacts[0].count==0 && h[0].hits==1;
+                ^
+  fix: its fields are: ready enemies hp hits time died_at pops pop_next dice last
+apps/openagents-web/experimental-combat.coax:1434:11: error[E0385]: module 'verse.experimentalhostiles' has no procedure 'hc_offer'
+    #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+            ^
+apps/openagents-web/experimental-combat.coax:1434:32: error[E0351]: struct 'Hostiles' has no field 'contacts'
+    #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+                                 ^
+  fix: its fields are: ready enemies hp hits time died_at pops pop_next dice last
+apps/openagents-web/experimental-combat.coax:1434:50: error[E0315]: procedure 'xc_hostile_contacts' is not declared
+    #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+                                                   ^
+apps/openagents-web/experimental-combat.coax:1441:37: error[E0315]: procedure 'xc_sync_vitals' is not declared
+    b[0].c[0].hp=3; b[0].c[0].temp=7; xc_sync_vitals(s[..]);
+                                      ^
+apps/openagents-web/experimental-combat.coax:1444:69: error[E0351]: struct 'Hostiles' has no field 'temp'
+    #assert b[0].c[0].hp==3 && b[0].c[0].temp==7 && h[0].hp==3 && h[0].temp==7;
+                                                                      ^
+  fix: its fields are: ready enemies hp hits time died_at pops pop_next dice last
+12 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

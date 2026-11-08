@@ -443,3 +443,17 @@ Evidence: [stabilization](../verification/srd-stabilization-2026-11-08/README.md
 112 stabilization and 32 battle death-save mutants killed, zero survivors.
 Healer's Kit, knockout/Short Rest, general Help, world inputs and remaining
 #13039/#13040 acceptance are still open. This is not full recovery qualification.
+
+### Experimental contact and health migration, 2026-11-08
+
+The live physical path now emits bounded contacts and resolves shared typed NPC
+attacks through saved turns, including quiet repeat saves. Actual class AC,
+reactions, defenses and temporary HP reach the player. Shared hero HP is canonical;
+per-cast synthetic HP/reset/transfer is removed. HUD and explicit respawn consume
+that state; every landed striker receives its own hit stop. Queue mutation kills
+45 mutants with zero survivors; 51 selected Experimental, 216 hotbar, focused HUD/
+respawn/body checks and the native component chain pass. A real release build
+fails on three wider checks, all reproduced on unmodified main `79a2ce92b3` with
+the same compiler; no Wasm/browser qualification is claimed. Canonical monster
+profiles, remaining overrides/world integration and the build blockers keep
+#13046 open. [Evidence](../verification/srd-contact-health-2026-11-08/README.md).

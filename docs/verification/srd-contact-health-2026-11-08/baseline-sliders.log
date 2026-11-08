@@ -1,0 +1,18 @@
+FAIL #test the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them (4268 ms)
+aethyr/rules/srd/spell-selection.coax:138:25: error[E0400]: compile-time aggregate traversal limit exceeded: 268435457 value and field visits needed, the limit is 268435456
+    if !rs_key_eligible(c[0], key) { return false; }
+                          ^
+  compile-time traversal work: 268435457 visits needed, the limit is 268435456
+  top users of compile-time traversal work:
+    71107920 visits  aethyr/rules/srd/spell-loadouts.coax:50:8  copying arguments into 'rs_spell_granted' (200304 calls)
+    53822642 visits  aethyr/rules/srd/spell-selection.coax:138:7  copying arguments into 'rs_key_eligible' (151614 calls)
+    29042845 visits  aethyr/rules/srd/spells.coax:103:1  in 'rs_spell' (233864 times)
+    27673318 visits  aethyr/rules/srd/more.coax:46:1  in 'rs_more_spell' (134554 times)
+    18887161 visits  apps/openagents-web/fivelab.coax:3907:1  #test 'the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them' itself
+  fix: pass a view, an index or only the fields it needs instead of copying arguments into 'rs_spell_granted' by value; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+  note: in #test the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them
+1 of 737 checks (--only 'the sliders:'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh
