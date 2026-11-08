@@ -103,6 +103,19 @@ snapshot; persist textual IDs instead. Unknown IDs produce index `-1` or an empt
 record. Table membership is source evidence, not effective casting permission:
 subclass grants, feats, preparation and world profiles are separate rules.
 
+The current executor's base-class eligibility metadata is reconciled against
+these independent class tables with:
+
+```sh
+coax/bin/coax test --library aethyr/rules/srd/spell-access-source-checks.coax
+```
+
+This checks every executable parent record, preserving helper inheritance and
+the legacy `create-water` alias for source `create-or-destroy-water`. It is not
+a preparation check or qualification of those spells' effect programs. Runtime
+eligibility uses `spell-access.coax`; explicit feature/stat-block/world grants
+are creature-local, and ordinary class membership never grants house spells.
+
 ## Reviewed source differences
 
 | Entry | Description | Class tables | Preservation policy |

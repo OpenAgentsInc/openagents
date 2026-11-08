@@ -15,6 +15,7 @@
 //   coax/bin/coax test --library aethyr/rules/srd/engine.coax
 
 #load "npcs.coax";   // the townsfolk's and the cultists' stat blocks, and a siege's two armies
+#load "spell-access.coax";
 
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
@@ -181,6 +182,7 @@ RsCreature :: struct {
   speed: int;               // feet a turn
   spell_ability: int;       // the spellcasting ability (-1: none)
   slots: [10] int; slots_max: [10] int;   // spell slots by level (0 unused)
+  spell_grants: [2] u64;     // explicit feature/stat-block/world extra-list grants, by executable ID
   cond: int;                // conditions, bits
   // effects that last
   conc: int;                // the spell held by concentration (-1 none)
@@ -332,6 +334,7 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   // (p. 46); polar land, so Hold Person is among its circle spells
   if level >= 2 { rs_use_set(c[..], RS_USE_WILD, ifx level >= 17 then 4 else ifx level >= 6 then 3 else 2); }
   c[0].lands_aid = level >= 3;
+  rs_preset_spell_grants(c[..]);
   return c[0];
 }
 
@@ -422,6 +425,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   // 1d10 on a failed save or check, Cha modifier uses. The invocations it gains at 5 past Agonizing
   // and Repelling Blast aren't modeled.
   c[0].cunning_rite = level >= 2; c[0].own_luck = level >= 6;
+  rs_preset_spell_grants(c[..]);
   if level >= 6 { rs_use_set(c[..], RS_USE_LUCK, rs_max(rs_mod(c[0].score[RS_CHA]), 1)); }
   return c[0];
 }
@@ -616,7 +620,10 @@ rs_bard :: (name: string, team: int, level: int) -> RsCreature {
   c[0].expertise = ifx level >= 9 then 4 else ifx level >= 2 then 2 else 0; c[0].jack = level >= 2;
   c[0].font = level >= 5;
   c[0].discoveries[0] = -1; c[0].discoveries[1] = -1;
-  if level >= 6 { c[0].discoveries[0] = SP_FIREBALL; c[0].discoveries[1] = SP_SPIRIT_GUARDIANS; }
+  if level >= 6 {
+    c[0].discoveries[0] = SP_FIREBALL; c[0].discoveries[1] = SP_SPIRIT_GUARDIANS;
+  }
+  rs_preset_spell_grants(c[..]);
   return c[0];
 }
 // The SRD 5.2.1 Cleric (p. 36-40): Wisdom casting, Wisdom and Charisma saves, a d8 hit die, its
@@ -676,6 +683,7 @@ rs_paladin :: (name: string, team: int, level: int) -> RsCreature {
   rs_half_slots(c[..], level);
   rs_use_set(c[..], RS_USE_LAY, 5 * level);
   if level >= 2 { c[0].free_spell = SP_DIVINE_SMITE; rs_use_set(c[..], RS_USE_FREE, 1); }
+  rs_preset_spell_grants(c[..]);
   if level >= 3 { rs_use_set(c[..], RS_USE_CHANNEL, ifx level >= 11 then 3 else 2); }
   return c[0];
 }
@@ -742,6 +750,7 @@ rs_sorcerer :: (name: string, team: int, level: int) -> RsCreature {
   rs_use_set(c[..], RS_USE_INNATE, 2);
   if level >= 2 { rs_use_set(c[..], RS_USE_SORCERY, level); c[0].quickened = true; c[0].seeking = true; }
   c[0].shield_spell = true;
+  rs_preset_spell_grants(c[..]);
   // Sorcerous Restoration at 5 (a Short Rest, p. 66); Elemental Affinity at 6 (p. 70): Fire, its
   // Resistance and the Charisma modifier on one damage roll of a Fire spell; Fireball from 5
   c[0].restoration = level >= 5;

@@ -120,7 +120,7 @@ rs_more_spell :: (i: int) -> RsSpell {
   } else if i == SP_SHAPECHANGE {
     s = rs_more("shapechange", "Shapechange", 9, "Transmutation", "Druid, Wizard", RS_T_ACTION, 0, "Concentration, up to 1 hour", 3600, true, RS_A_NONE, 0);
   } else if i == SP_SPEAK_WITH_ANIMALS {
-    s = rs_more("speak-with-animals", "Speak with Animals", 1, "Divination", "Bard, Druid, Ranger", RS_T_ACTION, 0, "10 minutes", 600, false, RS_A_NONE, 0);
+    s = rs_more("speak-with-animals", "Speak with Animals", 1, "Divination", "Bard, Druid, Ranger, Warlock", RS_T_ACTION, 0, "10 minutes", 600, false, RS_A_NONE, 0);
   } else if i == SP_RAY_OF_FROST {
     s = rs_more("ray-of-frost", "Ray of Frost", 0, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
     s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 8, RS_COLD, 0); s.step_n = 2;
@@ -147,7 +147,7 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.wide_ft = 10; s.turn_save = true;
     s.steps[0] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_PUSH, 15, 0, 0, 0); s.step_n = 2;
   } else if i == SP_WALL_OF_STONE {
-    s = rs_more("wall-of-stone", "Wall of Stone", 5, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 120, "Concentration, up to 10 minutes", 600, true, RS_A_SQUARE, 10);
+    s = rs_more("wall-of-stone", "Wall of Stone", 5, "Evocation", "Druid, Sorcerer, Wizard", RS_T_ACTION, 120, "Concentration, up to 10 minutes", 600, true, RS_A_SQUARE, 10);
   } else if i == SP_TELEKINESIS {
     s = rs_more("telekinesis", "Telekinesis", 5, "Transmutation", "Sorcerer, Wizard", RS_T_ACTION, 60, "Concentration, up to 10 minutes", 600, true, RS_A_NONE, 0);
     s.steps[0] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_TIMED, RS_RESTRAINED, 1, 0, 0); s.step_n = 2;

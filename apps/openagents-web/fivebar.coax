@@ -260,6 +260,15 @@ fb_everglade_hero :: (name: string, team: int) -> RsCreature {
   for l: 0..<10 { c[0].slots_max[l] = FB_EG_SLOTS_MAX[l]; c[0].slots[l] = FB_EG_SLOTS_MAX[l]; }
   c[0].companion = true; c[0].resurgence = true; c[0].lands_aid = true;
   rs_use_set(c[..], RS_USE_WILD, 3);
+  // The declared Everglade world profile grants exactly its shared bar's
+  // spells, including extra-list and house entries; ordinary Druids do not.
+  bar: [FB_EG_SLOTS] FbAb; n := fb_everglade(bar[..]);
+  for i: 0..<n {
+    if bar[i].kind == FB_SPELL {
+      sp := bar[i].sp; s := rs_spell(sp);
+      _ := rs_grant_spell(c[..], ifx s.part_of >= 0 then s.part_of else sp);
+    }
+  }
   return c[0];
 }
 // A stat block for a world's own people, from its numbers (Everglade's watch: verse/rules/srd5.coax

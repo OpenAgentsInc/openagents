@@ -3,7 +3,8 @@
 // Every creature's turn comes round every 6 seconds on its own beat, staggered by initiative;
 // in its turn it has one action, one Bonus Action, its Speed in movement and one spell slot to
 // spend (the SRD's one-slot-a-turn rule). rs_cast runs any spell record's effect program;
-// the world decides who casts what (its own AI or a player) and draws the events.
+// the world chooses requests (its own AI or a player); the engine checks spell
+// eligibility and resources, and the world draws the events.
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
@@ -14,7 +15,7 @@
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 
-// Creatures a battle holds of its own (1464 bytes a creature). A world that fields more gives the
+// Creatures a battle holds of its own. A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
 // other worlds' state stays small. Worlds keep their RsBattle in their state, never on the stack
 // (rs_reset clears one in place).
@@ -416,7 +417,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
 rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   if by < 0 || by >= b[0].n || by == j { return false; }
   c := b[0].c[j];
-  if !c.rebuke || c.reacted || !rs_can_act(c) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
+  if !c.rebuke || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_access(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
   slot := 0;
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
@@ -472,6 +473,7 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || b[0].c[i].raging { return false; }
   s := rs_spell(sp);
   if !rs_cast_slot_shape(s.level, slot) { return false; }
+  if !rs_spell_access(b[0].c[i], sp) { return false; }
   if s.cast_time == RS_T_REACTION { return false; }
   t := s.cast_time;
   if quick {
@@ -638,7 +640,7 @@ rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) {
 // turn, including against the triggering attack; its lowest free slot.
 rs_shield :: (b: [] RsBattle, j: int) -> bool {
   c := b[0].c[j];
-  if !c.shield_spell || c.reacted || !rs_can_act(c) || c.raging { return false; }
+  if !c.shield_spell || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_access(c, SP_SHIELD) { return false; }
   slot := 0;
   for k: 1..<10 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's

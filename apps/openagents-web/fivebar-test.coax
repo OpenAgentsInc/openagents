@@ -12,6 +12,24 @@
 #load "fivemmo-hotbar.coax";   // 5E MMO's hotbar pictures, by name
 #load "everglade-hotbar.coax";  // Everglade's
 
+#test "Everglade extra-list and house grants are exactly its declared spell bar and stay off ordinary Druids" {
+  world := fb_everglade_hero("World", 0); ordinary := rs_druid("Druid", 0, 9);
+  bar: [FB_EG_SLOTS] FbAb; n := fb_everglade(bar[..]);
+  for sp: 0..<RS_HOUSE_END {
+    expected := false;
+    for k: 0..<n {
+      if bar[k].kind != FB_SPELL { continue; }
+      helper := rs_spell(bar[k].sp).part_of;
+      root := ifx helper >= 0 then helper else bar[k].sp;
+      if sp == root { expected = true; }
+    }
+    #assert ((world.spell_grants[sp / 64] & (cast(u64) 1 << (sp % 64))) != 0) == expected;
+  }
+  #assert rs_spell_access(world, SP_WATER_ORB) && !rs_spell_access(ordinary, SP_WATER_ORB);
+  #assert rs_spell_access(world, SP_LEVITATE) && !rs_spell_access(ordinary, SP_LEVITATE);
+  #assert !rs_spell_access(world, SP_GUIDING_BOLT) && !rs_spell_access(ordinary, SP_GUIDING_BOLT);
+}
+
 FT_HERO :: 0; FT_FOE :: 1; FT_NEXT :: 2; FT_ALLY :: 3;
 // A small field: you at (10, 10), a foe two squares east and another beside it, a hurt friend
 // beside you; your seat's turn open. Foes have 400 Hit Points, so a blow shows and nobody drops.

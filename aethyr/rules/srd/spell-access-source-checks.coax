@@ -1,0 +1,15 @@
+// Independent canonical-table check of the executable records' class metadata.
+// Source import is not spell execution; this checks eligibility only.
+#load "cast-target-checks.coax";
+#load "catalog.coax";
+
+#test "executable spell class eligibility matches independently imported source class tables" #steps 100000000 {
+  classes := [8] int.[RS_BARD, RS_CLERIC, RS_DRUID, RS_PALADIN, RS_RANGER, RS_SORCERER, RS_WARLOCK, RS_WIZARD];
+  for sp: 0..<RS_MORE_END {
+    s := rs_spell(sp); if s.part_of >= 0 { continue; }
+    // The legacy executor uses this shorter ID for the source spell.
+    id := ifx sp == SP_CREATE_WATER then "create-or-destroy-water" else s.id;
+    source := srd_source_index(id); #assert source >= 0;
+    for k: 0..<8 { #assert rs_class_spell(s.classes, classes[k]) == srd_source_in_table(k, source); }
+  }
+}
