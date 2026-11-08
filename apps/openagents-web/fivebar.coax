@@ -391,8 +391,8 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   if a.lvl > 0 && sl == 0 { return false; }
   // a Reaction (Feather Fall): its own Reaction and a slot, not the turn's action
   if s.cast_time == RS_T_REACTION {
-    if b[0].c[i].reacted || !rs_can_act(b[0].c[i]) { return false; }
-    b[0].c[i].reacted = true; b[0].c[i].slots[sl] -= 1;
+    if !rs_capable(b[0].c[i]) || b[0].c[i].raging || !rs_spell_ready(b[0].c[i],a.sp) { return false; }
+    if !rs_reaction_slot(b,i,sl,true) { return false; }
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " casts "); rs_add_text(l[..], s.name); rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[sl]); rs_add_text(l[..], "-level slot, Reaction)");
     rs_tell(b, RS_EV_CAST, a.sp, i, i, sl, 0, l[..]);
@@ -484,11 +484,12 @@ fb_seat_use :: (b: [] RsBattle, s: [] FbSeat, a: FbAb, foe: int, tx: int, ty: in
 }
 // Whether the seat's turn still has what an entry spends: its action, its Bonus Action, a slot.
 fb_seat_can :: (b: [] RsBattle, s: [] FbSeat, a: FbAb) -> bool {
-  if !s[0].open || !rs_can_act(b[0].c[s[0].me]) { return false; }
+  if !s[0].open || !rs_capable(b[0].c[s[0].me]) { return false; }
   if !fb_ready(b, s[0].me, a) { return false; }
-  if a.kind != FB_SPELL { return true; }
+  if a.kind != FB_SPELL { return rs_can_act(b[0].c[s[0].me]); }
   sp := rs_spell(a.sp);
-  if sp.cast_time == RS_T_REACTION { return true; }
+  if sp.cast_time == RS_T_REACTION { return !b[0].c[s[0].me].raging && rs_spell_ready(b[0].c[s[0].me],a.sp) && rs_reaction_slot_allowed(true,s[0].turn.slot_spent,s[0].turn.quickened,true); }
+  if !rs_can_act(b[0].c[s[0].me]) { return false; }
   if sp.level > 0 && s[0].turn.slot_spent { return false; }
   if sp.cast_time == RS_T_BONUS { return !s[0].turn.bonus; }
   if a.conjure && b[0].c[s[0].me].flame_until <= b[0].clock && s[0].turn.bonus { return false; }

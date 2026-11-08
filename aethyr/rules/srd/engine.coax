@@ -12,7 +12,8 @@
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-//   coax/bin/coax test --library aethyr/rules/srd/engine.coax
+// Class loadouts also need the spell records; use the composed check entry:
+//   coax/bin/coax test --library aethyr/rules/srd/spells.coax
 
 #load "npcs.coax";   // the townsfolk's and the cultists' stat blocks, and a siege's two armies
 #load "spell-access.coax";
@@ -20,6 +21,7 @@
 #load "spell-loadouts.coax";
 #load "effect-storage.coax";
 #load "hit-points.coax";
+#load "command-halt.coax";
 
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
@@ -136,10 +138,11 @@ EF_TURNED :: 6; EF_MARK :: 7; EF_EXPOSED :: 8; EF_VEX :: 9;
 // Hypnotic Pattern's stupor (EF_DAZED): Charmed and Incapacitated, Speed 0, ending when it takes damage
 EF_DAZED :: 10;
 // Bless (EF_BLESS: 1d4 more on its attack rolls and saving throws) and Bane (EF_BANE: 1d4 less), Shield
-// of Faith (EF_FAITH: +2 AC) and Command's Halt (EF_HALT: no move, action or Bonus Action until the
-// end of its next turn; here no Reaction either, as rs_can_act has it)
+// of Faith (EF_FAITH: +2 AC) and Command's next-turn directive. Pending Halt
+// becomes EF_HALT at turn start; it blocks move/action/bonus, not Reactions.
 EF_BLESS :: 11; EF_BANE :: 12; EF_FAITH :: 13; EF_HALT :: 15;
 EF_ZONE_RESTRAIN :: 16; // cond is the owned zone index, not a condition mask
+EF_HALT_PENDING :: 17;
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -302,7 +305,7 @@ rs_up :: (c: RsCreature) -> bool { return !c.dead && c.hp > 0; }
 // Can take actions this turn (not Incapacitated, Paralyzed, Petrified, Stunned or Unconscious).
 rs_can_act :: (c: RsCreature) -> bool {
   for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_HALT { return false; } }
-  return rs_up(c) && (c.cond & (RS_INCAPACITATED | RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS)) == 0;
+  return rs_capable(c);
 }
 
 // The SRD 5.2.1 Druid at a level, from its class table (Wisdom casting, Intelligence and Wisdom

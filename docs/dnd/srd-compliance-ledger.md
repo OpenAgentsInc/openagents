@@ -213,6 +213,13 @@ The actual variant is used for immunity/capacity preflight and execution.
 General ability checks, condition consequences, remaining Command options and
 world choice surfaces remain active work.
 
+The [Command Halt turn change](../verification/srd-command-halt-2026-11-08/README.md)
+queues Halt until the recipient's next logical turn, blocks movement, Actions
+and Bonus Actions for that turn, and retires it at turn end. Reactions and
+passive features remain available. COMMAND-HALT-TURN adds a native witness;
+Approach, Flee, Grovel and Drop remain unqualified. This is partial #13040 and
+#13043 progress and does not complete those issues.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

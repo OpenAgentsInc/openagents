@@ -31,6 +31,23 @@
   #assert !rs_has(b[0].c[FT_ALLY],RS_UNCONSCIOUS) && rs_has(b[0].c[FT_ALLY],RS_PRONE) && rs_can_act(b[0].c[FT_ALLY]);
 }
 
+#test "a real-time seat activates Halt at its next beat but retains an unspent Reaction" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  #assert rs_effect_add(b[0].c[FT_HERO..<FT_HERO+1],RsEffect.{kind=EF_HALT_PENDING,by=FT_FOE,spell=SP_COMMAND,save=-1});
+  attack := fb_feature(FB_ATTACK,"ATTACK","attack"); reaction := fb_art_spell(SP_FEATHER_FALL,FB_SELF,"feather-fall");
+  #assert fb_seat_can(b[..],s[..],attack);
+  b[0].clock = fb_seat_next(b[..],s[..]); fb_seat_step(b[..],s[..]);
+  #assert !fb_seat_can(b[..],s[..],attack) && fb_seat_can(b[..],s[..],reaction);
+  // Exercise response admission for a supplied Reaction trigger; falling
+  // motion and Feather Fall's physical effect are not this budget fixture.
+  #assert fb_seat_use(b[..],s[..],reaction,-1,10,10,FT_HERO);
+  #assert s[0].turn.slot_spent && s[0].turn.leveled && !s[0].turn.action && !s[0].turn.bonus;
+  #assert !fb_seat_can(b[..],s[..],reaction);
+  rs_tick(b[..],100); #assert !rs_can_act(b[0].c[FT_HERO]);
+  fb_seat_step(b[..],s[..]);
+  #assert rs_can_act(b[0].c[FT_HERO]) && !rs_effect(b[0].c[FT_HERO],EF_HALT) && !rs_effect(b[0].c[FT_HERO],EF_HALT_PENDING);
+}
+
 #test "a hotbar weapon attack gets one Bless die and retires all next-roll weaknesses on its missed roll" {
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],71);
   b[0].dice[0].fixed = true;

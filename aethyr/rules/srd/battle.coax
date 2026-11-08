@@ -172,13 +172,13 @@ rs_threatened :: (b: [] RsBattle, i: int) -> bool {
         j := b[0].occ[y * b[0].w + x] - 1;
         if j < 0 || j == i { continue; }
         if j >= b[0].n || b[0].c[j].x != x || b[0].c[j].y != y { stale = true; continue; }
-        if b[0].c[j].team != b[0].c[i].team && rs_can_act(b[0].c[j]) { return true; }
+        if b[0].c[j].team != b[0].c[i].team && rs_capable(b[0].c[j]) { return true; }
       }
     }
     if !stale { return false; }
   }
   for j: 0..<b[0].n {
-    if j != i && b[0].c[j].team != b[0].c[i].team && rs_can_act(b[0].c[j]) && rs_feet_to(b, i, j) <= 5 { return true; }
+    if j != i && b[0].c[j].team != b[0].c[i].team && rs_capable(b[0].c[j]) && rs_feet_to(b, i, j) <= 5 { return true; }
   }
   return false;
 }
@@ -420,7 +420,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
 rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   if by < 0 || by >= b[0].n || by == j { return false; }
   c := b[0].c[j];
-  if !c.rebuke || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_ready(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
+  if !c.rebuke || c.reacted || !rs_capable(c) || c.raging || !rs_spell_ready(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
   slot := 0;
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
@@ -675,7 +675,7 @@ rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) {
 // turn, including against the triggering attack; its lowest free slot.
 rs_shield :: (b: [] RsBattle, j: int) -> bool {
   c := b[0].c[j];
-  if !c.shield_spell || c.reacted || !rs_can_act(c) || c.raging || !rs_spell_ready(c, SP_SHIELD) { return false; }
+  if !c.shield_spell || c.reacted || !rs_capable(c) || c.raging || !rs_spell_ready(c, SP_SHIELD) { return false; }
   slot := 0;
   for k: 1..<10 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
@@ -696,7 +696,7 @@ rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
   for k: 0..<b[0].n {
     if !b[0].c[k].cutting { continue; }
     c := b[0].c[k];
-    if !c.cutting || c.team == b[0].c[i].team || c.reacted || !rs_can_act(c) || c.uses[RS_USE_INSPIRE] <= 0 { continue; }
+    if !c.cutting || c.team == b[0].c[i].team || c.reacted || !rs_capable(c) || c.uses[RS_USE_INSPIRE] <= 0 { continue; }
     if margin >= c.insp_die || rs_feet_to(b, k, i) > 60 { continue; }
     b[0].c[k].reacted = true; b[0].c[k].uses[RS_USE_INSPIRE] -= 1;
     cut := rs_roll(b[0].dice[..], c.insp_die);
@@ -784,7 +784,7 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if b[0].c[j].reckless_until > t { ups += 1; }
   if strength && b[0].c[i].reckless_until > t { ups += 1; }
   // the Dodge action
-  if b[0].c[j].dodge_until > t && rs_can_act(b[0].c[j]) { downs += 1; }
+  if b[0].c[j].dodge_until > t && rs_capable(b[0].c[j]) { downs += 1; }
   // Frightened: Disadvantage on attack rolls (the source of its fear is always in sight here)
   if rs_has(b[0].c[i], RS_FRIGHTENED) { downs += 1; }
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
@@ -813,8 +813,8 @@ rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int {
   if ability == RS_DEX && rs_has(c, RS_RESTRAINED) { downs += 1; }
   if ability == RS_STR && rs_effect(c, EF_ENFEEBLED) { downs += 1; }
   if ability == RS_STR && c.raging { ups += 1; }
-  if ability == RS_DEX && c.danger_sense && !rs_has(c, RS_INCAPACITATED) && rs_can_act(c) { ups += 1; }
-  if ability == RS_DEX && c.dodge_until > b[0].clock && rs_can_act(c) { ups += 1; }
+  if ability == RS_DEX && c.danger_sense && !rs_has(c, RS_INCAPACITATED) && rs_capable(c) { ups += 1; }
+  if ability == RS_DEX && c.dodge_until > b[0].clock && rs_capable(c) { ups += 1; }
   return rs_edge(ups, downs);
 }
 
@@ -1055,9 +1055,9 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_HALT {
       if ran_save && saved { continue; }
-      _ := rs_put_effect(b, j, RsEffect.{kind = EF_HALT, by = i, spell = sp, until = rs_own_turn_end(b, j), save = -1, dc = 0});
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_HALT_PENDING, by = i, spell = sp, until = 0, save = -1, dc = 0});
       l: [1] RsLine;
-      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is commanded to halt: no move, action or Bonus Action on its next turn");
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " will halt on its next turn: no move, action or Bonus Action");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_MARK {
       _ := rs_put_effect(b, j, RsEffect.{kind = EF_MARK, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
@@ -1114,7 +1114,7 @@ rs_hex_move :: (b: [] RsBattle, i: int, j: int) -> bool {
 // A Restrained creature's action against what holds it: a Strength (Athletics) check against the
 // caster's spell save DC (Entangle).
 rs_escape :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || b[0].turn.action || !rs_has(b[0].c[i], RS_RESTRAINED) { return false; }
+  if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) || !rs_has(b[0].c[i], RS_RESTRAINED) { return false; }
   z := b[0].c[i].restrained_by;
   if z < 0 || !b[0].zone[z].on { return false; }
   b[0].turn.action = true;
@@ -1212,6 +1212,7 @@ rs_guarded :: (b: [] RsBattle, i: int) -> bool {
 rs_start_turn :: (b: [] RsBattle, i: int) {
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
+  rs_halt_begin(b[0].c[i..<i+1],b[0].clock+rs_beat(b));
   // a beat moves its share of a round's Speed (at least a square)
   // the Slow mastery: 10 feet less
   speed := b[0].c[i].speed - (ifx b[0].c[i].slowed_until > b[0].clock then 10 else 0);
@@ -1224,7 +1225,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
   if b[0].turn.new_round { b[0].c[i].round_at += f32(RS_ROUND); }
   b[0].c[i].reacted = false;
-  if b[0].c[i].raging && !rs_can_act(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
+  if b[0].c[i].raging && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
     if b[0].c[i].stable || !b[0].turn.new_round { return; }
     c: [1] RsCreature; c[0] = b[0].c[i];
@@ -1305,6 +1306,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
     else { rs_rage_end(b, i, ""); }
   }
   if b[0].turn.new_round { b[0].c[i].struck_round = false; }
+  rs_halt_finish(b[0].c[i..<i+1]);
   b[0].c[i].turn_at += rs_beat(b);
   if b[0].who == i { b[0].who = -1; }
 }
@@ -1316,7 +1318,7 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
     if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
-    for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind != EF_NONE && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
+    for k: 0..<RS_EFFECTS { if rs_effect_uses_clock(b[0].c[i].eff[k].kind) && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
     // the action adapter: spent slots and uses come back on a cooldown, one at a time
     if b[0].recharge > 0 && !b[0].c[i].dead {
       r := b[0].recharge;
@@ -1430,7 +1432,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   // Improved Critical: weapons and Unarmed Strikes score a Critical Hit on 20 - crit_range or higher
   r := rs_roll_attack(b, i, j, edge, bonus, 20 - me.crit_range, false);
   // Parry (a Knight's or a Warrior Veteran's Reaction, holding a weapon): +2 AC against a melee hit
-  if r.hit && !r.crit && melee && b[0].c[j].parry && !b[0].c[j].reacted && rs_can_act(b[0].c[j]) && r.total < r.ac + 2 {
+  if r.hit && !r.crit && melee && b[0].c[j].parry && !b[0].c[j].reacted && rs_capable(b[0].c[j]) && r.total < r.ac + 2 {
     b[0].c[j].reacted = true; r.hit = false; r.ac += 2; r.parry = true;
   }
   crit := r.crit;
@@ -1509,7 +1511,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   rs_add_text(dl[..], "  "); rs_add_name(dl[..], b, j); rs_add_text(dl[..], " takes ");
   // Deflect Attacks: a Monk's Reaction cuts Bludgeoning, Piercing or Slashing damage from a hit
   cut := 0;
-  if tg.deflect && !tg.reacted && rs_can_act(tg) && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING) {
+  if tg.deflect && !tg.reacted && rs_capable(tg) && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING) {
     b[0].c[j].reacted = true;
     cut = rs_roll(b[0].dice[..], 10) + rs_mod(tg.score[RS_DEX]) + tg.level;
   }
@@ -1517,7 +1519,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   dealt = rs_resisted(b, j, dealt, kind);
   // Uncanny Dodge (p. 63): a Reaction halves an attack's damage (round down)
   dodged := false;
-  if tg.uncanny && !b[0].c[j].reacted && rs_can_act(tg) && dealt > 0 && rs_up(b[0].c[i]) { b[0].c[j].reacted = true; dealt = dealt / 2; dodged = true; }
+  if tg.uncanny && !b[0].c[j].reacted && rs_capable(tg) && dealt > 0 && rs_up(b[0].c[i]) { b[0].c[j].reacted = true; dealt = dealt / 2; dodged = true; }
   rs_add_int(dl[..], dealt); rs_add_text(dl[..], " "); rs_add_text(dl[..], RS_DAMAGE[kind]); rs_add_text(dl[..], " (");
   if ndice > 0 { rs_add_int(dl[..], ndice * mult); rs_add_text(dl[..], "d"); rs_add_int(dl[..], sides); } else { rs_add_text(dl[..], "1"); }
   if !nomod || mod < 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], mod); }
@@ -1624,7 +1626,7 @@ rs_aura :: (b: [] RsBattle, j: int) -> int {
   for k: 0..<b[0].n {
     if !b[0].c[k].aura { continue; }
     p := b[0].c[k];
-    if p.team != b[0].c[j].team || !rs_can_act(p) || rs_has(p, RS_INCAPACITATED) || rs_feet_to(b, k, j) > 10 { continue; }
+    if p.team != b[0].c[j].team || !rs_capable(p) || rs_has(p, RS_INCAPACITATED) || rs_feet_to(b, k, j) > 10 { continue; }
     best = rs_max(best, rs_max(rs_mod(p.score[RS_CHA]), 1));
   }
   return best;
@@ -3450,10 +3452,10 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
   for k: 0..<20 {
     b[0].c[p].slots[1] = 4;
     rs_start_turn(b[..], p); #assert rs_cast(b[..], p, SP_COMMAND, 1, 0, 0, g2); rs_end_turn(b[..], p);
-    if rs_effect(b[0].c[g2], EF_HALT) { halted = true; break; }
+    if rs_effect(b[0].c[g2], EF_HALT_PENDING) { halted = true; break; }
   }
-  #assert halted && !rs_can_act(b[0].c[g2]) && !rs_can_move(b[0].c[g2]);
-  rs_start_turn(b[..], g2); #assert !rs_attack(b[..], g2, a2, false, -1); rs_end_turn(b[..], g2);
+  #assert halted && rs_can_act(b[0].c[g2]) && rs_can_move(b[0].c[g2]);
+  rs_start_turn(b[..], g2); #assert !rs_can_act(b[0].c[g2]) && !rs_can_move(b[0].c[g2]) && !rs_attack(b[..], g2, a2, false, -1); rs_end_turn(b[..], g2);
   rs_tick(b[..], 0.2);
   #assert !rs_effect(b[0].c[g2], EF_HALT) && rs_can_act(b[0].c[g2]);
 }

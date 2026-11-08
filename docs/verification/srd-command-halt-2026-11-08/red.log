@@ -1,0 +1,10 @@
+FAIL #test Command Halt waits for the next logical turn, preserves reactions and ends with that turn (10 ms)
+aethyr/rules/srd/cast-target-checks.coax:13:3: error[E0406]: assertion failed
+    #assert rs_can_act(b[0].c[t]) && rs_can_move(b[0].c[t]);
+    ^
+  note: in #test Command Halt waits for the next logical turn, preserves reactions and ends with that turn
+1 of 173 checks (--only 'Command Halt waits'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

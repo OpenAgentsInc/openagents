@@ -19,7 +19,7 @@
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
-//   coax/bin/coax test --library aethyr/rules/srd/engine.coax --only "stat block"
+//   coax/bin/coax test --library aethyr/rules/srd/spells.coax --only "stat block"
 
 #load "npc-kinds.coax";
 // the siege's warlocks are class levels, not stat blocks; their roles are counted here too

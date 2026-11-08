@@ -3,6 +3,40 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "Halt does not suppress Aura of Protection, Danger Sense or Rage through false incapacitation" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  p := rs_add(b[..],rs_paladin("Paladin",0,6),1,1);
+  ally := rs_add(b[..],rs_druid("Ally",0,1),2,1);
+  aura := rs_aura(b[..],ally); #assert aura > 0;
+  #assert rs_effect_add(b[0].c[p..<p+1],RsEffect.{kind=EF_HALT_PENDING,by=ally,spell=SP_COMMAND,save=-1});
+  rs_start_turn(b[..],p);
+  #assert !rs_can_act(b[0].c[p]) && rs_capable(b[0].c[p]) && rs_aura(b[..],ally) == aura;
+  b[0].c[p].cond = RS_INCAPACITATED; #assert rs_aura(b[..],ally) == 0;
+  b[0].c[p].cond = 0; rs_end_turn(b[..],p);
+  m := rs_add(b[..],rs_barbarian("Barbarian",0,3),2,2); b[0].c[m].raging = true; b[0].c[m].rage_kept = true;
+  #assert rs_effect_add(b[0].c[m..<m+1],RsEffect.{kind=EF_HALT_PENDING,by=ally,spell=SP_COMMAND,save=-1});
+  rs_start_turn(b[..],m);
+  #assert b[0].c[m].raging && !rs_can_act(b[0].c[m]) && rs_save_edge(b[..],m,RS_DEX) == 1;
+}
+
+#test "Command Halt waits for the next logical turn, preserves reactions and ends with that turn" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..],rs_cleric("Caster",0,3),1,1);
+  t := rs_add(b[..],rs_sorcerer("Target",1,3),2,1);
+  commands := [1] int.[RS_EXEC_SOURCE[SP_COMMAND]]; #assert rs_set_spells(b[0].c[a..<a+1],commands[..]);
+  spells := [2] int.[RS_EXEC_SOURCE[SP_SHIELD],RS_EXEC_SOURCE[SP_FALSE_LIFE]]; #assert rs_set_spells(b[0].c[t..<t+1],spells[..]); b[0].c[t].shield_spell = true;
+  rs_start_turn(b[..],a); #assert rs_cast(b[..],a,SP_COMMAND,1,0,0,t);
+  #assert rs_can_act(b[0].c[t]) && rs_can_move(b[0].c[t]);
+  rs_tick(b[..],100); #assert rs_can_act(b[0].c[t]) && rs_shield(b[..],t);
+  rs_end_turn(b[..],a); rs_start_turn(b[..],t);
+  #assert !rs_can_act(b[0].c[t]) && !rs_can_move(b[0].c[t]);
+  seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled; slots := b[0].c[t].slots[1];
+  #assert !rs_attack(b[..],t,a,false,-1) && !rs_cast(b[..],t,SP_FALSE_LIFE,1,0,0,t) && !rs_innate_sorcery(b[..],t);
+  #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && b[0].c[t].slots[1] == slots && !b[0].turn.action && !b[0].turn.bonus;
+  #assert rs_shield(b[..],t);
+  rs_end_turn(b[..],t); #assert rs_can_act(b[0].c[t]) && rs_can_move(b[0].c[t]);
+}
+
 #test "mixed Blindness Deafness choices prepay the actual immunity branch at each recipient" {
   for immune: [2] int.[RS_BLINDED,RS_DEAFENED] {
     b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;

@@ -301,7 +301,8 @@ e5rr_use_apply :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> b
   me := E5RR_SEAT + s;
   a := e5rr_entry(r, k);
   if a.kind == FB_WORLD { return true; }
-  if b[0].c[me].dead || b[0].c[me].hp <= 0 || !rs_can_act(b[0].c[me]) { return false; }
+  if !rs_capable(b[0].c[me]) { return false; }
+  if !rs_can_act(b[0].c[me]) && !(a.kind == FB_SPELL && rs_spell(a.sp).cast_time == RS_T_REACTION) { return false; }
   if a.kind == FB_SPELL && a.sp == SP_CONJURE_ANIMALS { return e5rr_conjure(r, s, x, z); }
   // nothing on the bar runs out: a fresh turn, every slot back
   c := b[0].c[me..<me + 1];

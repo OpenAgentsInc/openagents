@@ -1,0 +1,65 @@
+// Command's Halt is owned by the target's next logical turn, not a timer or
+// Incapacitated condition. Reactions and passive features remain available.
+#authority;
+
+#test "pending Halt directives reserve effect capacity until the commanded turn is consumed" {
+  c: [1] RsCreature;
+  #assert rs_effect_free(c[0]) == RS_EFFECTS;
+  for k: 0..<RS_EFFECTS { #assert rs_effect_add(c[..],RsEffect.{kind=EF_HALT_PENDING,by=k,spell=SP_COMMAND,save=-1}); }
+  #assert rs_effect_free(c[0]) == 0;
+  rs_halt_finish(c[..]); #assert rs_effect_free(c[0]) == 0;
+  rs_halt_begin(c[..],6); #assert rs_effect_free(c[0]) == 0;
+  rs_halt_finish(c[..]); #assert rs_effect_free(c[0]) == RS_EFFECTS;
+}
+
+#test "general capability keeps Halt separate from incapacitating conditions and reaction budgets" {
+  for hp: 0..<2 { for dead: 0..<2 {
+    for condition: [13] int.[0,RS_BLINDED,RS_CHARMED,RS_DEAFENED,RS_FRIGHTENED,RS_PRONE,RS_GRAPPLED,RS_RESTRAINED,RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
+      c: RsCreature; c.hp = hp; c.dead = dead == 1; c.cond = condition; c.reacted = true;
+      expected := hp == 1 && dead == 0 && (condition == 0 || condition == RS_BLINDED || condition == RS_CHARMED || condition == RS_DEAFENED || condition == RS_FRIGHTENED || condition == RS_PRONE || condition == RS_GRAPPLED || condition == RS_RESTRAINED);
+      #assert rs_capable(c) == expected;
+      c.eff[0].kind = EF_HALT; #assert rs_capable(c) == expected && !rs_can_act(c);
+      c.eff[0].kind = EF_HALT_PENDING; #assert rs_can_act(c) == expected;
+    }
+  } }
+}
+#test "Halt pending and active records are event-owned rather than clock-owned" {
+  for kind: -1..<20 {
+    #assert rs_effect_uses_clock(kind) == (kind != 0 && kind != 15 && kind != 17);
+  }
+}
+#test "Halt lifecycle promotes only pending directives and retires only the active turn" {
+  c: [1] RsCreature; c[0].hp = 1; c[0].cond = RS_BLINDED;
+  c[0].eff[0] = RsEffect.{kind=EF_HALT_PENDING,by=1,spell=SP_COMMAND,save=-1,until=0};
+  c[0].eff[1] = RsEffect.{kind=EF_HALT,by=2,spell=SP_COMMAND,save=-1,until=9};
+  c[0].eff[2] = RsEffect.{kind=EF_HEX,by=3,spell=SP_HEX,cond=RS_WIS,until=30};
+  c[0].eff[RS_EFFECTS-1] = RsEffect.{kind=EF_HALT_PENDING,by=4,spell=SP_COMMAND,save=-1,until=1};
+  rs_halt_begin(c[..],12);
+  #assert c[0].eff[0].kind == EF_HALT && c[0].eff[0].until == 12 && c[0].eff[0].by == 1 && c[0].eff[0].spell == SP_COMMAND && c[0].eff[0].save == -1;
+  #assert c[0].eff[RS_EFFECTS-1].kind == EF_HALT && c[0].eff[RS_EFFECTS-1].until == 12 && c[0].eff[RS_EFFECTS-1].by == 4;
+  #assert c[0].eff[1].until == 9 && c[0].eff[1].by == 2;
+  c[0].eff[3] = RsEffect.{kind=EF_HALT_PENDING,by=5,spell=SP_COMMAND,until=0};
+  rs_halt_finish(c[..]); rs_halt_finish(c[..]);
+  #assert c[0].eff[0].kind == EF_NONE && c[0].eff[1].kind == EF_NONE && c[0].eff[RS_EFFECTS-1].kind == EF_NONE;
+  #assert c[0].eff[3].kind == EF_HALT_PENDING && c[0].eff[3].by == 5;
+  #assert c[0].eff[2].kind == EF_HEX && c[0].eff[2].cond == RS_WIS && c[0].eff[2].until == 30 && c[0].cond == RS_BLINDED;
+  rs_halt_begin(c[..],20); rs_halt_begin(c[..],25);
+  #assert c[0].eff[3].kind == EF_HALT && c[0].eff[3].until == 20;
+  rs_halt_finish(c[..]); #assert c[0].eff[3].kind == EF_NONE;
+}
+rs_capable :: (c: RsCreature) -> bool #effects(all) {
+  return rs_up(c) && (c.cond & (RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS)) == 0;
+}
+rs_effect_uses_clock :: (kind: int) -> bool #effects(all) {
+  return kind != EF_NONE && kind != EF_HALT && kind != EF_HALT_PENDING;
+}
+// until is only the world's estimate for display. The turn-end event retires
+// the active record even when the clock has not reached that estimate.
+rs_halt_begin :: (c: [] RsCreature, until: f32) #effects(all) {
+  for k: 0..<RS_EFFECTS {
+    if c[0].eff[k].kind == EF_HALT_PENDING { c[0].eff[k].kind = EF_HALT; c[0].eff[k].until = until; }
+  }
+}
+rs_halt_finish :: (c: [] RsCreature) #effects(all) {
+  for k: 0..<RS_EFFECTS { if c[0].eff[k].kind == EF_HALT { rs_effect_end(c,k); } }
+}
