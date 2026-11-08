@@ -1,0 +1,114 @@
+// Bounded native behavior definitions; no scripts or display-text dispatch.
+#module "aethyr.actors.behavior_plan";
+#authority;
+#load "definitions.coax" as archetypes;
+#load "../state/declarations.coax";
+#load "../assets.coax" as assets;
+BEHAVIOR_SEQUENCES :: 8; BEHAVIOR_GUARDS :: 4; BEHAVIOR_ACTIONS :: 4;
+BEHAVIOR_SCHEDULES :: 8; BEHAVIOR_ANCHORS :: 16; BEHAVIOR_TICKS :: 230400;
+BEHAVIOR_EQUAL :: 0; BEHAVIOR_LESS :: 1; BEHAVIOR_SIGNAL :: 2; BEHAVIOR_SCHEDULE :: 3;
+BEHAVIOR_KNOWN :: 0; BEHAVIOR_VISIBLE :: 1; BEHAVIOR_ALERT :: 2;
+BEHAVIOR_PATH_PENDING :: 3; BEHAVIOR_PATH_SUCCESS :: 4; BEHAVIOR_PATH_FAILED :: 5;
+BEHAVIOR_PATH_INVALID :: 6; BEHAVIOR_PATH_EXHAUSTED :: 7;
+BEHAVIOR_HOLD :: 0; BEHAVIOR_GO :: 1; BEHAVIOR_CHASE :: 2; BEHAVIOR_FLEE :: 3;
+BEHAVIOR_INTERACT :: 4; BEHAVIOR_SAY :: 5; BEHAVIOR_CONTROLLED :: 6;
+BehaviorGuard :: struct {kind:int;field:int;slot:int= -1;signal:int;expected:bool=true;value:StateValue;}
+BehaviorAction :: struct {verb:int;argument:int;anchor_slot:int= -1;duration:int=1;interruptible:bool=true;}
+BehaviorSequence :: struct {id:int;priority:int;weight:int=1;cooldown:int;guard_n:int;guards:[BEHAVIOR_GUARDS]BehaviorGuard;action_n:int=1;actions:[BEHAVIOR_ACTIONS]BehaviorAction;}
+BehaviorSchedule :: struct {phase:int;anchor:int;anchor_slot:int= -1;day_period:int=1;day_remainder:int;guard_n:int;guards:[BEHAVIOR_GUARDS]BehaviorGuard;}
+BehaviorDefinition :: struct {version:int=1;id:int;revision:int=1;n:int;sequences:[BEHAVIOR_SEQUENCES]BehaviorSequence;schedule_n:int;schedules:[BEHAVIOR_SCHEDULES]BehaviorSchedule;}
+BehaviorPlan :: struct {
+ valid:bool;id:int;revision:int;archetype:int;archetype_revision:int;identity:assets.AssetId;schema:assets.AssetId;day_ticks:int;work:int;skip_last:bool;
+ field_count:int;fields:[archetypes.ACTOR_FIELD_REFS]archetypes.ActorCompiledField;
+ anchor_n:int;anchors:[BEHAVIOR_ANCHORS]int;
+ n:int;sequences:[BEHAVIOR_SEQUENCES]BehaviorSequence;schedule_n:int;schedules:[BEHAVIOR_SCHEDULES]BehaviorSchedule;
+}
+BehaviorPlanStatus :: enum u8 {ok;version;identity;capacity;schema;field;guard;action;anchor;schedule;profile;}
+BehaviorCompiled :: struct {status:BehaviorPlanStatus;row:int= -1;plan:BehaviorPlan;}
+BehaviorGuardResult :: struct {valid:bool;guard:BehaviorGuard;}
+#load "tests/behavior-plan.coax";
+
+behavior_anchor :: (anchors:[]const int,id:int)->int #effects(all) {
+ for anchor,i:anchors {if anchor==id {return i;}}return -1;
+}
+behavior_guard_compile :: (a:archetypes.ActorArchetype,s:StateSchema,refs:StateRefs,g:BehaviorGuard,scheduled:bool)->BehaviorGuardResult #effects(all) {
+ if g.slot!= -1 {return BehaviorGuardResult.{};}
+ // The shared value gate admits finite bounded active values and canonical
+ // zero inactive lanes before the policy fingerprint is written.
+ out:=g;
+ if g.kind==BEHAVIOR_EQUAL || g.kind==BEHAVIOR_LESS {
+  if g.signal!=0 {return BehaviorGuardResult.{};}
+  at:= -1;for i:0..<a.field_count {if a.fields[i].reference.id==g.field {at=i;}}
+  if at<0 {return BehaviorGuardResult.{};}field:=s.fields[a.fields[at].slot];
+  if !state_value_ok(field,g.value,refs) {return BehaviorGuardResult.{};}
+  if g.kind==BEHAVIOR_LESS && g.value.kind!=STATE_INT && g.value.kind!=STATE_SCALAR {return BehaviorGuardResult.{};}
+  out.slot=at;
+ }else {
+  if g.field!=0 || !state_value_ok(StateField.{high=0},g.value,StateRefs.{}) {return BehaviorGuardResult.{};}
+  if g.kind==BEHAVIOR_SIGNAL {if g.signal<0 || g.signal>7 {return BehaviorGuardResult.{};}}
+  else if g.kind==BEHAVIOR_SCHEDULE {if !scheduled || g.signal!=0 {return BehaviorGuardResult.{};}}
+  else {return BehaviorGuardResult.{};}
+ }
+ return BehaviorGuardResult.{valid=true,guard=out};
+}
+behavior_plan_identity :: (p:BehaviorPlan)->assets.AssetId #effects(all) {
+ words:[4096]int;header:=[13]int.[0x31424741,1,p.id,p.revision,p.archetype,p.archetype_revision,p.day_ticks,p.work,ifx p.skip_last then 1 else 0,p.field_count,p.anchor_n,p.n,p.schedule_n];
+ at:=0;for v:header {words[at]=v;at+=1;}for word:p.schema.words {words[at]=cast(int)word;at+=1;}
+ for i:0..<p.field_count {f:=p.fields[i];for v:[5]int.[f.slot,f.reference.id,f.reference.kind,f.reference.scope,f.reference.owner] {words[at]=v;at+=1;}}
+ for i:0..<p.anchor_n {words[at]=p.anchors[i];at+=1;}
+ for i:0..<p.n {
+  row:=p.sequences[i];for v:[6]int.[row.id,row.priority,row.weight,row.cooldown,row.guard_n,row.action_n] {words[at]=v;at+=1;}
+  for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+   archetypes.state_value_words(words[..],at,g.value);at+=15;}
+  for k:0..<row.action_n {act:=row.actions[k];for v:[5]int.[act.verb,act.argument,act.anchor_slot,act.duration,ifx act.interruptible then 1 else 0] {words[at]=v;at+=1;}}
+ }
+ for i:0..<p.schedule_n {
+  row:=p.schedules[i];for v:[6]int.[row.phase,row.anchor,row.anchor_slot,row.day_period,row.day_remainder,row.guard_n] {words[at]=v;at+=1;}
+  for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+   archetypes.state_value_words(words[..],at,g.value);at+=15;}
+ }
+ return archetypes.state_words_id(words[0..<at]);
+}
+behavior_compile :: (a:archetypes.ActorArchetype,s:StateSchema,refs:StateRefs,d:BehaviorDefinition,anchors:[]const int)->BehaviorCompiled #effects(all) {
+ if d.version!=1 {return BehaviorCompiled.{status=BehaviorPlanStatus.version};}
+ if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+ if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+ work:=a.parameters[archetypes.ACTOR_ACTION_WORK];repeat:=a.parameters[archetypes.ACTOR_REPEAT];controller:=a.parameters[archetypes.ACTOR_CONTROLLER];
+ if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+ if !state_schema_ok(s,refs) || !assets.asset_same(a.schema,archetypes.state_schema_id(s)) {return BehaviorCompiled.{status=BehaviorPlanStatus.schema};}
+ for i:0..<a.field_count {
+  f:=a.fields[i];if f.slot<0 || f.slot>=s.n {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}actual:=s.fields[f.slot];
+  if f.reference.id!=actual.id || f.reference.kind!=actual.kind || f.reference.scope!=actual.scope || f.reference.owner!=actual.owner {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}
+  for j:0..<i {if a.fields[j].slot==f.slot {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}}
+ }
+ for id,i:anchors {if id<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}for j:0..<i {if anchors[j]==id {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}}}
+ p:=BehaviorPlan.{id=d.id,revision=d.revision,archetype=a.id,archetype_revision=a.revision,schema=a.schema,day_ticks=s.day_ticks,work=work.integer,skip_last=repeat.integer==1,field_count=a.field_count,anchor_n=anchors.count,n=d.n,schedule_n=d.schedule_n};
+ for i:0..<a.field_count {p.fields[i]=a.fields[i];}for id,i:anchors {p.anchors[i]=id;}
+ for i:0..<d.n {
+  row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+  if row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS || row.action_n<1 || row.action_n>BEHAVIOR_ACTIONS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity,row=i};}
+  for j:0..<i {if d.sequences[j].id==row.id {return BehaviorCompiled.{status=BehaviorPlanStatus.identity,row=i};}}
+  for k:0..<row.guard_n {r:=behavior_guard_compile(a,s,refs,row.guards[k],true);if !r.valid {return BehaviorCompiled.{status=BehaviorPlanStatus.guard,row=i};}row.guards[k]=r.guard;}
+  for k:0..<row.action_n {
+   act:=row.actions[k];if act.verb<BEHAVIOR_HOLD || act.verb>BEHAVIOR_CONTROLLED || act.duration<1 || act.duration>BEHAVIOR_TICKS || act.anchor_slot!= -1 {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}
+   if controller.integer==0 && (act.verb==BEHAVIOR_GO || act.verb==BEHAVIOR_CHASE || act.verb==BEHAVIOR_FLEE) {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}
+   if act.verb==BEHAVIOR_GO {
+    if act.argument==0 {if d.schedule_n==0 || !act.interruptible {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}}
+    else {act.anchor_slot=behavior_anchor(anchors,act.argument);if act.anchor_slot<0 {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}}
+   }else if act.verb==BEHAVIOR_SAY {if act.argument<0 || act.argument>31 {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}}
+   else {if act.argument!=0 || (act.verb==BEHAVIOR_CONTROLLED && controller.integer!=2) {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}}
+   row.actions[k]=act;
+  }
+  // One-based rank includes self; priority ties use the full stable ID.
+  rank:=0;for j:0..<d.n {other:=d.sequences[j];if other.priority<row.priority || (other.priority==row.priority && other.id<=row.id) {rank+=1;}}
+  p.sequences[rank-1]=row;
+ }
+ for i:0..<d.schedule_n {
+  row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+  if (i==0 && row.phase!=0) || (i>0 && row.phase<=d.schedules[i-1].phase) {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+  if row.anchor!=0 {row.anchor_slot=behavior_anchor(anchors,row.anchor);if row.anchor_slot<0 {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}}
+  for k:0..<row.guard_n {r:=behavior_guard_compile(a,s,refs,row.guards[k],false);if !r.valid {return BehaviorCompiled.{status=BehaviorPlanStatus.guard,row=i};}row.guards[k]=r.guard;}
+  p.schedules[i]=row;
+ }
+ p.identity=behavior_plan_identity(p);p.valid=true;return BehaviorCompiled.{plan=p};
+}

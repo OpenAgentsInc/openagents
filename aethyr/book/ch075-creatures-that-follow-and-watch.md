@@ -15,8 +15,9 @@
 > ([aethyr/flock.coax](../../aethyr/flock.coax)) keeps its own f32
 > accumulator and reads its target once a frame, so it isn't the same at
 > every frame rate; the example shows that. No realm senses through the new
-> module yet: Everglade's watch and guards keep their own rules, and
-> decisions as data, remote choices and sleep budgets aren't built. See
+> module yet: Everglade's watch and guards keep their own rules. Their
+> integration with compiled actor programs, shared remote-decision
+> admission and sleep budgets remains. See
 > [Still to do](#still-to-do).
 
 A creature in a realm does three things each step: it senses, it decides and
@@ -417,9 +418,10 @@ would change Everglade's companion, so it is left as it is (see below).
   Everglade, which the owner is changing now.
 - **The flock on the fixed step.** `aethyr/flock.coax` on loop.coax's ticks,
   reading its target per tick, with Everglade's companion golden unchanged.
-- **Decisions as data.** States and transitions (a guard's beat, turning on
-  you, `GUARD_RUN`, `SWING_EVERY`) and utility choices, with every input
-  recorded and each decision's rule kept for inspection.
+- **Decisions as data in a realm.** The bounded actor program below compiles
+  typed guards, actions and weighted priority rows. Migrate states and
+  transitions (a guard's beat, turning on you, `GUARD_RUN`, `SWING_EVERY`)
+  through it, with every input recorded and each rule kept for inspection.
 - **A check against reading truth.** Today a decision reads the memory by
   convention; nothing refuses one that reads true positions.
 - **Remote choices.** Admission of a decision model's answer only as an enum
@@ -436,6 +438,14 @@ would change Everglade's companion, so it is left as it is (see below).
 
 ## What exists today
 
+- [aethyr/actors/](../actors/README.md): compiled typed archetypes, dependency
+  phases and bounded native intent selection with schedules, cooldowns,
+  interruption and seeded weighted choice. Its
+  [qualification record](../../docs/verification/aethyr-actors-12992/behavior.md)
+  covers scripted observations/body feedback on native and browser Wasm.
+  Live perception, body execution and guard/villager adoption through these
+  archetypes remain #12992; this does not complete the chapter's teaching or
+  recorded-fight requirements.
 - [aethyr/ai/stimulus.coax](../../aethyr/ai/stimulus.coax): senses, stimuli
   and memory, used by this chapter's example.
 - [aethyr/follower.coax](../../aethyr/follower.coax): the follower and the

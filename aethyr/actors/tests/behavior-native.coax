@@ -1,0 +1,9 @@
+// Exercise the same thin ABI face that Chrome calls. Every loop stays Coax.
+#import "Basic";
+actor_behavior_trial :: (fps:s32)->s32 #foreign #effects(foreign);
+actor_behavior_word :: (row:s32,word:s32)->s64 #foreign #effects(foreign);
+main :: () #effects(all) {
+ for fps:[4]int.[30,60,144,0] {#assert actor_behavior_trial(cast(s32)fps)==256;
+  for row:0..<256 {print("% %",fps,row);for word:0..<64 {print(" %",actor_behavior_word(cast(s32)row,cast(s32)word));}print("\n");}
+ }
+}

@@ -2,8 +2,9 @@
 
 `definitions.coax` flattens typed authored archetypes, and `phases.coax`
 compiles their service graph into an immutable execution plan. The definition
-and phase compilers are implemented; no actor execution or playable consumer
-uses them yet.
+and phase compilers are implemented. `behavior-plan.coax` compiles bounded
+native intent programs and `behavior.coax` selects their commands on paid
+fixed steps. Physical execution and playable adoption remain.
 
 ## Compiled definitions
 
@@ -74,6 +75,48 @@ task/dependency where available. A typed `ActorPlan` copied from an untrusted
 source is not itself evidence of admission. No durable plan wire format or
 public ABI is introduced here.
 
+## Bounded behavior selection
+
+`behavior_compile` binds an admitted archetype and its complete state-schema
+identity to an owned program: up to eight priority sequences, four conjunctive
+guards and four actions per sequence, eight world-time schedule rows, and
+16 stable anchors. The declared action-work budget must cover all rows.
+Guards compare declared typed facts, supplied sensed/path flags or the current
+schedule. They contain no runtime expressions or display-text dispatch.
+
+Native verbs are HOLD, GO, CHASE, FLEE, INTERACT, SAY and CONTROLLED. GO uses
+a fixed admitted anchor or the current schedule; CONTROLLED requires a rider
+archetype. Stationary controllers cannot compile movement verbs. This is
+typed intent, not a claim that a movement or speech body has executed it.
+
+`behavior_project` copies only declared facts from an admitted `StateStore`.
+`behavior_open` binds a cursor to program identity, actor ID, generation,
+owner, world epoch and seed. `behavior_step` requires the exact next already
+paid `FrameClock` step. It adds no clock. A refusal returns the old cursor
+and no command/events; the caller must discard stale feedback and complete
+that same paid step with admitted input before publishing.
+
+Lower priority numbers win. Rows are compiled in priority/full-ID order.
+Weighted choice consumes exactly one existing counter-based random draw per
+fresh choice, even for a sole option; continuation and idle consume none.
+Repeat suppression excludes the last choice only when an alternate in the
+same winning priority group is eligible. Cooldowns use authoritative ticks.
+HOLD/SAY complete at their duration; other verbs fail at timeout unless
+matching body feedback completes them. Action serials bind body feedback to
+the full actor/generation/owner/world-epoch key. A next action with unavailable
+inputs fails without minting a serial. An interruptible action can yield to
+guards or a higher priority. Lost/replaced targets force cancellation even
+for a noninterruptible action. A time jump selects only the current schedule
+row, cancelling and retargeting a scheduled GO without visiting skipped rows.
+
+Each successful step reports bounded work and at most two events. Selection
+evaluates at most 36 guards, eight sequences, one draw and one command;
+counters refuse at their declared cap without changing the old cursor.
+The program fingerprint binds all active fields, guards, actions and schedule
+data. Programs and projected facts are trusted internal admitted snapshots,
+not an untrusted wire format. In particular, body feedback correlation does
+not prove that an entity or owner is still current in the live world.
+
 ```sh
 coax/bin/coax test aethyr/actors/phases.coax --library
 coax/bin/coax mutate aethyr/actors/phases.coax --library --root-only --jobs 8
@@ -83,13 +126,24 @@ coax/bin/coax test aethyr/actors/definitions.coax --library
 coax/bin/coax mutate aethyr/actors/definitions.coax --library --root-only --jobs 8
 coax/bin/coax run aethyr/actors/tests/definition-cases.coax > /tmp/actor-definitions.txt
 python3 aethyr/actors/tests/definition_oracle.py /tmp/actor-definitions.txt
+coax/bin/coax test aethyr/actors/behavior.coax --library
+coax/bin/coax mutate aethyr/actors/behavior-plan.coax --library --root-only --jobs 8
+coax/bin/coax mutate aethyr/actors/behavior.coax --library --root-only --shard 1/2 --jobs 8 > /tmp/behavior-1.rec
+coax/bin/coax mutate aethyr/actors/behavior.coax --library --root-only --shard 2/2 --jobs 8 > /tmp/behavior-2.rec
+coax/bin/coax mutate aethyr/actors/behavior.coax --library --root-only --merge /tmp/behavior-1.rec --merge /tmp/behavior-2.rec
 ```
 
 The [phase qualification record](../../docs/verification/aethyr-actors-12992/phases.md)
-and [definition record](../../docs/verification/aethyr-actors-12992/definitions.md)
-retain the exact tested scopes. Remaining issue work includes aggregate
-pool/resource admission and instance lifecycle hooks; the bounded
-behavior/schedule/perception runtime; current-owner
-navigation/model result admission; common player/AI rider input; guard and
-villager playable adoption; and fixed-step native/Wasm replays, captures and
-the residual-adapter inventory. This directory does not complete #12992.
+and [definition record](../../docs/verification/aethyr-actors-12992/definitions.md),
+plus the [behavior record](../../docs/verification/aethyr-actors-12992/behavior.md),
+retain the exact tested scopes. The behavior trial checks selection from
+scripted observations/body outcomes at 30/60/144 FPS and uneven frames in
+native C and actual browser Wasm. It does not draw or move live actors.
+
+Remaining issue work includes aggregate pool/resource admission and instance
+lifecycle hooks; actual perception/query integration with discover/alert/track,
+culling and lost-target counters; current-owner navigation/model admission and
+failure/retry modes; common player/AI rider input; guard and villager playable
+adoption plus a mount-like fixture; resource retirement; actual adopted
+native/Wasm replays and captures; and the residual-adapter inventory. This
+directory does not complete #12992.

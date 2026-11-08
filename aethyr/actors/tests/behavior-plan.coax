@@ -1,0 +1,180 @@
+behavior_fixture_schema :: ()->StateSchema #effects(all) {s:=archetypes.actor_definition_schema();s.day_ticks=8;return s;}
+behavior_fixture_archetype :: ()->archetypes.ActorArchetype #effects(all) {
+ m:=[1]archetypes.ResourceManifest.[archetypes.actor_definition_manifest()];defs:=archetypes.actor_definition_sources(m[0]);services:=archetypes.actor_definition_services();refs:StateRefs;
+ r:=archetypes.actor_definition_compile(defs[..],30,services[..],behavior_fixture_schema(),refs,m[..]);#assert r.status==archetypes.ActorCompileStatus.ok;return r.archetype;
+}
+behavior_fixture_definition :: ()->BehaviorDefinition #effects(all) {
+ d:=BehaviorDefinition.{id=12992004,n=2,schedule_n=2};
+ d.sequences[0]=BehaviorSequence.{id=10,cooldown=3,guard_n=1};d.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,signal=BEHAVIOR_VISIBLE};
+ d.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_SAY,argument=4,duration=2};
+ d.sequences[1]=BehaviorSequence.{id=20,priority=1};
+ d.schedules[0]=BehaviorSchedule.{anchor=100};d.schedules[1]=BehaviorSchedule.{phase=4,anchor=200};return d;
+}
+#test "behavior definitions bind only declared typed facts and flatten stable priority groups and anchors" #steps 30000000 {
+ a:=behavior_fixture_archetype();s:=behavior_fixture_schema();d:=behavior_fixture_definition();anchors:=[2]int.[100,200];refs:StateRefs;
+ d.sequences[1].guard_n=1;d.sequences[1].guards[0]=BehaviorGuard.{kind=BEHAVIOR_LESS,field=101,value=state_int(2)};
+ d.sequences[1].actions[0]=BehaviorAction.{verb=BEHAVIOR_GO,argument=200,duration=32};
+ r:=behavior_compile(a,s,refs,d,anchors[..]);p:=r.plan;
+ #assert r.status==BehaviorPlanStatus.ok && p.valid && p.id==d.id && p.revision==1 && p.archetype==a.id && p.archetype_revision==a.revision;
+ #assert p.n==2 && p.work==8 && p.skip_last && p.field_count==2 && p.sequences[1].guards[0].slot==0;
+ #assert p.sequences[1].actions[0].anchor_slot==1 && p.schedules[0].anchor_slot==0 && p.schedules[1].anchor_slot==1;
+ old:=p.identity;swap:=d.sequences[0];d.sequences[0]=d.sequences[1];d.sequences[1]=swap;
+ r=behavior_compile(a,s,refs,d,anchors[..]);#assert r.status==BehaviorPlanStatus.ok && assets.asset_same(old,r.plan.identity);
+ d.sequences[1].weight=2;r=behavior_compile(a,s,refs,d,anchors[..]);#assert !assets.asset_same(old,r.plan.identity);
+ d.sequences[1].actions[0].argument=5;#assert p.sequences[0].actions[0].argument==4;
+}
+#test "behavior guard admission refuses unknown hidden or incorrectly typed facts and recursive schedule predicates" #steps 30000000 {
+ a:=behavior_fixture_archetype();s:=behavior_fixture_schema();d:=behavior_fixture_definition();anchors:=[2]int.[100,200];refs:StateRefs;
+ for which:0..<9 {bad:=d;g:=BehaviorGuard.{kind=BEHAVIOR_EQUAL,field=101,value=state_int(1)};
+  if which==0 {g.field=999;}if which==1 {g.value=state_bool(true);}if which==2 {g.signal=1;}
+  if which==3 {g.slot=0;}if which==4 {g.kind=4;}if which==5 {g=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,signal=8};}
+  if which==6 {g=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,field=101};}if which==7 {g=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,value=state_int(1)};}
+  if which==8 {g=BehaviorGuard.{kind=BEHAVIOR_LESS,field=102,value=state_bool(false)};}
+  bad.sequences[0].guards[0]=g;r:=behavior_compile(a,s,refs,bad,anchors[..]);#assert r.status==BehaviorPlanStatus.guard && !r.plan.valid;
+ }
+ a.field_count=1;d.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_EQUAL,field=102,value=state_bool(false)};
+ #assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.guard;
+ a=behavior_fixture_archetype();d=behavior_fixture_definition();d.schedules[0].guard_n=1;d.schedules[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SCHEDULE};
+ #assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.guard;
+}
+#test "behavior schedules and native verbs refuse unsupported references and unsafe timed profiles" #steps 30000000 {
+ a:=behavior_fixture_archetype();s:=behavior_fixture_schema();d:=behavior_fixture_definition();anchors:=[2]int.[100,200];refs:StateRefs;
+ for which:0..<8 {bad:=d;act:=BehaviorAction.{verb=BEHAVIOR_GO,argument=100};
+  if which==0 {act.verb=7;}if which==1 {act.argument=999;}if which==2 {act.duration=0;}if which==3 {act.duration=230401;}
+  if which==4 {act.anchor_slot=0;}if which==5 {act=BehaviorAction.{verb=BEHAVIOR_HOLD,argument=1};}
+  if which==6 {act=BehaviorAction.{verb=BEHAVIOR_SAY,argument=32};}if which==7 {act=BehaviorAction.{verb=BEHAVIOR_CONTROLLED};}
+  bad.sequences[0].actions[0]=act;r:=behavior_compile(a,s,refs,bad,anchors[..]);#assert r.status==BehaviorPlanStatus.action && !r.plan.valid;
+ }
+ d.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_GO};#assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.ok;
+ d.sequences[0].actions[0].interruptible=false;#assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.action;
+ d=behavior_fixture_definition();d.schedules[1].phase=0;#assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.schedule;
+ d=behavior_fixture_definition();d.schedules[0].anchor=999;#assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.schedule;
+}
+#test "behavior identity matches the independent canonical schema and plan oracle" #steps 30000000 {
+ a:=behavior_fixture_archetype();s:=behavior_fixture_schema();d:=behavior_fixture_definition();anchors:=[2]int.[100,200];refs:StateRefs;
+ p:=behavior_compile(a,s,refs,d,anchors[..]).plan;
+ expected:=[8]u32.[1482140900,33806678,2448512460,1708316304,2624564721,2247749003,1014902380,1698283775];
+ for i:0..<8 {#assert p.identity.words[i]==expected[i];}
+ // Every fact/command/schedule identity word affects the retained policy pin.
+ for which:0..<30 {bad:=p;
+  if which==0 {bad.id+=1;}if which==1 {bad.revision+=1;}if which==2 {bad.archetype+=1;}if which==3 {bad.archetype_revision+=1;}
+  if which==4 {bad.day_ticks+=1;}if which==5 {bad.work+=1;}if which==6 {bad.skip_last=false;}if which==7 {bad.schema.words[7]^=1;}
+  if which==8 {bad.fields[0].slot=1;}if which==9 {bad.fields[0].reference.id+=1;}if which==10 {bad.fields[0].reference.kind=2;}
+  if which==11 {bad.fields[0].reference.scope=1;}if which==12 {bad.fields[0].reference.owner=8;}if which==13 {bad.anchors[0]=101;}
+  if which==14 {bad.sequences[0].id+=1;}if which==15 {bad.sequences[0].priority+=1;}if which==16 {bad.sequences[0].weight+=1;}
+  if which==17 {bad.sequences[0].cooldown+=1;}if which==18 {bad.sequences[0].guards[0].expected=false;}
+  if which==19 {bad.sequences[0].guards[0].signal=2;}if which==20 {bad.sequences[0].actions[0].verb=BEHAVIOR_HOLD;}
+  if which==21 {bad.sequences[0].actions[0].argument=5;}if which==22 {bad.sequences[0].actions[0].duration=3;}
+  if which==23 {bad.sequences[0].actions[0].interruptible=false;}if which==24 {bad.schedules[0].phase=1;}
+  if which==25 {bad.schedules[0].anchor=200;}if which==26 {bad.schedules[0].anchor_slot=1;}
+  if which==27 {bad.schedules[0].day_period=2;}if which==28 {bad.schedules[0].day_remainder=1;}
+  if which==29 {bad.schedules[0].guard_n=1;bad.schedules[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL};}
+  #assert !assets.asset_same(p.identity,behavior_plan_identity(bad));
+ }
+}
+#test "behavior compilation admits every exact table limit and refuses invalid headers and counts" #steps 120000000 {
+ a:=behavior_fixture_archetype();s:=behavior_fixture_schema();refs:StateRefs;anchors:[17]int;for i:0..<17 {anchors[i]=100+i;}
+ a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(2);a.parameters[archetypes.ACTOR_ACTION_WORK]=state_int(32);
+ d:=BehaviorDefinition.{id=1,n=8,schedule_n=8};
+ for i:0..<8 {
+  row:=BehaviorSequence.{id=8-i,priority=255,weight=65535,cooldown=BEHAVIOR_TICKS,guard_n=4,action_n=4};
+  row.guards[0]=BehaviorGuard.{field=101,value=state_int(0)};row.guards[1]=BehaviorGuard.{kind=BEHAVIOR_LESS,field=101,value=state_int(2)};
+  row.guards[2]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,signal=7,expected=false};row.guards[3]=BehaviorGuard.{kind=BEHAVIOR_SCHEDULE};
+  row.actions[0]=BehaviorAction.{duration=BEHAVIOR_TICKS};row.actions[1]=BehaviorAction.{verb=BEHAVIOR_GO,argument=100};
+  row.actions[2]=BehaviorAction.{verb=BEHAVIOR_SAY,argument=31};row.actions[3]=BehaviorAction.{verb=BEHAVIOR_CONTROLLED};d.sequences[i]=row;
+  sc:=BehaviorSchedule.{phase=i,anchor=100+i,day_period=366,day_remainder=365,guard_n=4};
+  for j:0..<4 {sc.guards[j]=row.guards[j];}sc.guards[3]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,signal=5,expected=false};d.schedules[i]=sc;
+ }
+ p:=behavior_compile(a,s,refs,d,anchors[0..<16]);#assert p.status==BehaviorPlanStatus.ok && p.plan.n==8 && p.plan.anchor_n==16;
+ for i:0..<8 {#assert p.plan.sequences[i].id==i+1 && p.plan.sequences[i].actions[3].verb==BEHAVIOR_CONTROLLED;}
+ #assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.capacity;
+ for which:0..<10 {bad:=d;
+  if which==0 {bad.n=0;}if which==1 {bad.n=9;}if which==2 {bad.schedule_n= -1;}if which==3 {bad.schedule_n=9;}
+  if which==4 {bad.sequences[0].guard_n= -1;}if which==5 {bad.sequences[0].guard_n=5;}
+  if which==6 {bad.sequences[0].action_n=0;}if which==7 {bad.sequences[0].action_n=5;}
+  if which==8 {bad.version=0;}if which==9 {bad.revision=0;}
+  r:=behavior_compile(a,s,refs,bad,anchors[0..<16]);#assert r.status!=BehaviorPlanStatus.ok && !r.plan.valid && r.plan.n==0;
+ }
+}
+#test "behavior admission distinguishes every identity profile reference and schedule boundary" #steps 150000000 {
+ a:=behavior_fixture_archetype();s:=behavior_fixture_schema();d:=behavior_fixture_definition();anchors:=[2]int.[100,200];refs:StateRefs;
+ for which:0..<8 {bad:=a;source:=d;
+  if which==0 {bad.valid=false;}if which==1 {bad.version=2;}if which==2 {bad.id=0;}if which==3 {bad.revision=0;}
+  if which==4 {source.id=0;}if which==5 {source.revision=0;}if which==6 {bad.field_count= -1;}if which==7 {bad.field_count=9;}
+  r:=behavior_compile(bad,s,refs,source,anchors[..]);#assert r.status==(ifx which<6 then BehaviorPlanStatus.identity else BehaviorPlanStatus.capacity);
+ }
+ small:=d;small.n=1;small.schedule_n=0;small.sequences[0]=BehaviorSequence.{id=1};one:=[1]int.[1];
+ a.id=1;a.revision=1;small.id=1;a.field_count=0;a.parameters[archetypes.ACTOR_ACTION_WORK]=state_int(1);
+ a.parameters[archetypes.ACTOR_REPEAT]=state_int(0);a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(0);
+ #assert behavior_compile(a,s,refs,small,one[..]).status==BehaviorPlanStatus.ok;
+ a=behavior_fixture_archetype();a.parameters[archetypes.ACTOR_ACTION_WORK]=state_int(2);
+ #assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.ok;
+ for which:0..<10 {bad:=a;
+  if which==0 {bad.parameters[archetypes.ACTOR_ACTION_WORK].kind=STATE_SCALAR;}if which==1 {bad.parameters[archetypes.ACTOR_ACTION_WORK].integer=0;}
+  if which==2 {bad.parameters[archetypes.ACTOR_ACTION_WORK].integer=33;}if which==3 {bad.parameters[archetypes.ACTOR_REPEAT].kind=STATE_SCALAR;}
+  if which==4 {bad.parameters[archetypes.ACTOR_REPEAT].integer= -1;}if which==5 {bad.parameters[archetypes.ACTOR_REPEAT].integer=2;}
+  if which==6 {bad.parameters[archetypes.ACTOR_CONTROLLER].kind=STATE_SCALAR;}if which==7 {bad.parameters[archetypes.ACTOR_CONTROLLER].integer= -1;}
+  if which==8 {bad.parameters[archetypes.ACTOR_CONTROLLER].integer=3;}if which==9 {bad.parameters[archetypes.ACTOR_ACTION_WORK].integer=1;}
+  #assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.profile;
+ }
+ a=behavior_fixture_archetype();for which:0..<7 {bad:=a;
+  if which==0 {bad.fields[0].slot= -1;}if which==1 {bad.fields[0].slot=s.n;}if which==2 {bad.fields[0].reference.id=999;}
+  if which==3 {bad.fields[0].reference.kind=STATE_SCALAR;}if which==4 {bad.fields[0].reference.scope=STATE_WORLD;}
+  if which==5 {bad.fields[0].reference.owner=8;}if which==6 {bad.fields[1]=bad.fields[0];}
+  #assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.field;
+ }
+ bad:=a;bad.schema.words[0]^=1;#assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.schema;
+ bad=a;bad.fields[0]=archetypes.ActorCompiledField.{slot=s.n,reference=archetypes.ActorFieldRef.{kind=STATE_INT}};
+ #assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.field;
+ broken:=s;broken.id=0;#assert behavior_compile(a,broken,refs,d,anchors[..]).status==BehaviorPlanStatus.schema;
+ bad=a;bad.schema=archetypes.state_schema_id(broken);#assert behavior_compile(bad,broken,refs,d,anchors[..]).status==BehaviorPlanStatus.schema;
+ dup:=[2]int.[100,100];#assert behavior_compile(a,s,refs,d,dup[..]).status==BehaviorPlanStatus.anchor;
+ dup[0]=0;#assert behavior_compile(a,s,refs,d,dup[..]).status==BehaviorPlanStatus.anchor;
+ for which:0..<7 {source:=d;
+  if which==0 {source.sequences[0].id=0;}if which==1 {source.sequences[0].priority= -1;}if which==2 {source.sequences[0].priority=256;}
+  if which==3 {source.sequences[0].weight=0;}if which==4 {source.sequences[0].weight=65536;}
+  if which==5 {source.sequences[0].cooldown= -1;}if which==6 {source.sequences[0].cooldown=230401;}
+  #assert behavior_compile(a,s,refs,source,anchors[..]).status==BehaviorPlanStatus.profile;
+ }
+ source:=d;source.sequences[1].id=10;#assert behavior_compile(a,s,refs,source,anchors[..]).status==BehaviorPlanStatus.identity;
+ for which:0..<10 {source=d;
+  if which==0 {source.schedules[0].phase= -1;}if which==1 {source.schedules[1].phase=8;}if which==2 {source.schedules[0].anchor_slot=0;}
+  if which==3 {source.schedules[0].day_period=0;}if which==4 {source.schedules[0].day_period=367;}
+  if which==5 {source.schedules[0].day_remainder= -1;}if which==6 {source.schedules[0].day_remainder=1;}
+  if which==7 {source.schedules[0].guard_n= -1;}if which==8 {source.schedules[0].guard_n=5;}if which==9 {source.schedules[0].phase=1;}
+  #assert behavior_compile(a,s,refs,source,anchors[..]).status==BehaviorPlanStatus.schedule;
+ }
+ source=d;source.schedules[0].anchor=0;#assert behavior_compile(a,s,refs,source,anchors[..]).status==BehaviorPlanStatus.ok;
+ source=small;source.schedule_n=1;source.schedules[0]=BehaviorSchedule.{anchor=1};source.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_GO};
+ #assert behavior_compile(a,s,refs,source,one[..]).status==BehaviorPlanStatus.ok;
+ source=small;source.sequences[0].actions[0]=BehaviorAction.{verb=7};#assert behavior_compile(a,s,refs,source,one[..]).status==BehaviorPlanStatus.action;
+ source.sequences[0].actions[0]=BehaviorAction.{verb= -1};#assert behavior_compile(a,s,refs,source,one[..]).status==BehaviorPlanStatus.action;
+ source.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_SAY};#assert behavior_compile(a,s,refs,source,one[..]).status==BehaviorPlanStatus.ok;
+ source=small;source.sequences[0].guard_n=1;source.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL};
+ #assert behavior_compile(a,s,refs,source,one[..]).status==BehaviorPlanStatus.ok;
+ source.sequences[0].guards[0].signal= -1;#assert behavior_compile(a,s,refs,source,one[..]).status==BehaviorPlanStatus.guard;
+}
+#test "behavior fingerprints retain complete schedule predicates and guard scalar limits" #steps 60000000 {
+ a:=behavior_fixture_archetype();s:=behavior_fixture_schema();d:=behavior_fixture_definition();anchors:=[2]int.[100,200];refs:StateRefs;
+ d.schedules[0].guard_n=1;d.schedules[0].guards[0]=BehaviorGuard.{field=102,value=state_bool(false)};
+ r:=behavior_compile(a,s,refs,d,anchors[..]);#assert r.status==BehaviorPlanStatus.ok && r.plan.schedules[0].guards[0].slot==1;
+ expected:=[8]u32.[1569667102,2723039758,1594425672,3916051173,2885235599,2528780033,2939215223,2377309125];for i:0..<8 {#assert r.plan.identity.words[i]==expected[i];}
+ old:=r.plan.identity;d.schedules[0].guards[0].expected=false;r=behavior_compile(a,s,refs,d,anchors[..]);#assert !assets.asset_same(old,r.plan.identity);
+ d.schedules[0].guards[0].expected=true;d.schedules[0].guards[0].value=state_bool(true);r=behavior_compile(a,s,refs,d,anchors[..]);#assert !assets.asset_same(old,r.plan.identity);
+ s.n=8;names:=[8]string.["a","b","c","d","e","f","g","h"];a.field_count=8;
+ for i:0..<8 {s.fields[i]=StateField.{id=i+1,name=names[i]};a.fields[i]=archetypes.ActorCompiledField.{slot=i,reference=archetypes.ActorFieldRef.{id=i+1,kind=STATE_INT}};}
+ s.fields[0].kind=STATE_SCALAR;s.fields[0].minimum= -1000000000000.0;s.fields[0].maximum=1000000000000.0;s.fields[0].initial=StateValue.{kind=STATE_SCALAR};a.fields[0].reference.kind=STATE_SCALAR;a.schema=archetypes.state_schema_id(s);
+ source:=BehaviorDefinition.{id=3,n=1};source.sequences[0]=BehaviorSequence.{id=1,guard_n=1};
+ for edge:[2]f64.[-1000000000000.0,1000000000000.0] {source.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_LESS,field=1,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[edge,0,0]}};#assert behavior_compile(a,s,refs,source,anchors[..]).status==BehaviorPlanStatus.ok;}
+ source.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL};
+ for invalid:0..<3 {zero:f64=0;source.sequences[0].guards[0].value.number[0]=ifx invalid==0 then zero/zero else ifx invalid==1 then 1/zero else -1/zero;
+  #assert behavior_compile(a,s,refs,source,anchors[..]).status==BehaviorPlanStatus.guard;
+ }
+}
+#test "behavior stationary controllers cannot admit movement verbs" #steps 30000000 {
+ a:=behavior_fixture_archetype();a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(0);s:=behavior_fixture_schema();refs:StateRefs;anchors:=[1]int.[100];
+ for verb:1..<4 {d:=BehaviorDefinition.{id=8,n=1};d.sequences[0]=BehaviorSequence.{id=1};
+  d.sequences[0].actions[0]=BehaviorAction.{verb=verb,argument=ifx verb==BEHAVIOR_GO then 100 else 0};
+  #assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.action;
+ }
+}

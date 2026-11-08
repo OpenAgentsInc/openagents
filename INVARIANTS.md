@@ -6380,8 +6380,19 @@ parameter slots and phase order require no runtime name or parent lookup.
 Canonical RCM1 metadata must match its complete retained pin; payload decoding
 and physical resource admission still belong to the shared stream.
 
-A compiled definition is not a spawn grant. Entity lifecycle, owner fencing,
-aggregate pools, resource reservations and actual native behavior remain the
-actor execution boundary's responsibility. Current compiler qualification
-does not establish actor execution or playable adoption; its limits and
-remaining integrations are in `aethyr/actors/README.md`.
+A compiled definition is not a spawn grant. Entity lifecycle, current-owner
+fencing, aggregate pools, resource reservations and physical execution remain
+the actor execution boundary's responsibility.
+
+Behavior programs bind complete schema and program identities. Selection runs
+once on the exact next paid realm step; refusal preserves the complete cursor
+and emits no command or events. Projected facts include only declared fields;
+context supplies sensed knowledge rather than arbitrary world lookup. Stable
+priority/ID ordering and one random draw per fresh choice make weighted intent
+selection replayable. Body feedback requires the full action correlation key;
+this local check is not proof of live entity ownership. A time jump chooses the
+current schedule row without replaying skipped transitions. A caller must
+complete a refused step with admitted input before publishing that tick.
+Current qualification covers typed intent selection from supplied observations,
+not physical actor execution or playable adoption. Limits and remaining
+integrations are in `aethyr/actors/README.md`.

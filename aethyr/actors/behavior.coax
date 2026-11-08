@@ -1,0 +1,174 @@
+// Intent selection on an already paid realm step. Body execution is separate.
+#module "aethyr.actors.behavior";
+#authority;
+#load "behavior-plan.coax" as policy;
+#load "definitions.coax" as archetypes;
+#load "../state/declarations.coax";
+#load "../assets.coax" as assets;
+#load "../loop.coax" as clock;
+#load "../rand.coax" as random;
+BEHAVIOR_COUNTER_MAX :: 1000000000;
+BEHAVIOR_NONE :: 0; BEHAVIOR_RUNNING :: 1; BEHAVIOR_SUCCESS :: 2; BEHAVIOR_FAILURE :: 3; BEHAVIOR_INTERRUPTED :: 4;
+BEHAVIOR_MOVING :: 1; BEHAVIOR_INTERACTING :: 2; BEHAVIOR_INTERRUPTIBLE :: 4;
+BehaviorActionKey :: struct {actor:int;generation:int;owner:int;world_epoch:int;serial:int;}
+BehaviorFeedback :: struct {key:BehaviorActionKey;outcome:int;}
+BehaviorContext :: struct {actor:int;generation:int;owner:int;signals:u32;target:int;target_generation:int;feedback:BehaviorFeedback;}
+BehaviorFacts :: struct {valid:bool;policy:assets.AssetId;epoch:int;tick:int;day:int;phase:int;values:[archetypes.ACTOR_FIELD_REFS]StateValue;}
+BehaviorState :: struct {
+ ready:bool;policy:assets.AssetId;actor:int;generation:int;owner:int;world_epoch:int;seed:int;tick:int;
+ draws:int;serial:int;selected:int= -1;step:int;started:int;argument:int;anchor_slot:int= -1;target:int;target_generation:int;last:int= -1;
+ cooling:[policy.BEHAVIOR_SEQUENCES]bool;completed:[policy.BEHAVIOR_SEQUENCES]int;successes:int;failures:int;interrupts:int;
+}
+BehaviorCommand :: struct {active:bool;started:bool;key:BehaviorActionKey;sequence:int;step:int;verb:int;argument:int;anchor_slot:int= -1;target:int;target_generation:int;attributes:int;}
+BehaviorEvent :: struct {serial:int;sequence:int;step:int;outcome:int;finished:bool;}
+BehaviorWork :: struct {guards:int;sequences:int;draws:int;actions:int;}
+BehaviorStatus :: enum u8 {ok;plan;identity;state;clock;facts;context;feedback;exhausted;}
+BehaviorResult :: struct {status:BehaviorStatus;state:BehaviorState;command:BehaviorCommand;event_n:int;events:[2]BehaviorEvent;work:BehaviorWork;schedule:int= -1;anchor:int;}
+BehaviorScheduleChoice :: struct {row:int= -1;active:bool;anchor:int;slot:int= -1;guards:int;}
+#load "tests/behavior.coax";
+
+behavior_plan_shape :: (p:policy.BehaviorPlan)->bool #effects(all) {
+ if !p.valid || p.n<1 || p.n>policy.BEHAVIOR_SEQUENCES || p.field_count<0 || p.field_count>archetypes.ACTOR_FIELD_REFS ||
+  p.anchor_n<0 || p.anchor_n>policy.BEHAVIOR_ANCHORS || p.schedule_n<0 || p.schedule_n>policy.BEHAVIOR_SCHEDULES || p.day_ticks<1 || p.day_ticks>5529600 {return false;}
+ for i:0..<p.n {row:=p.sequences[i];if row.guard_n<0 || row.guard_n>policy.BEHAVIOR_GUARDS || row.action_n<1 || row.action_n>policy.BEHAVIOR_ACTIONS {return false;}}
+ for i:0..<p.schedule_n {if p.schedules[i].guard_n<0 || p.schedules[i].guard_n>policy.BEHAVIOR_GUARDS {return false;}}
+ return true;
+}
+behavior_open :: (p:policy.BehaviorPlan,actor:int,generation:int,owner:int,world_epoch:int,seed:int,tick:int)->BehaviorState #effects(all) {
+ if !behavior_plan_shape(p) || !assets.asset_same(p.identity,policy.behavior_plan_identity(p)) || actor<1 || generation<1 || generation>BEHAVIOR_COUNTER_MAX || owner<1 || owner>BEHAVIOR_COUNTER_MAX || world_epoch<1 || world_epoch>BEHAVIOR_COUNTER_MAX || tick<0 || tick>BEHAVIOR_COUNTER_MAX {return BehaviorState.{};}
+ return BehaviorState.{ready=true,policy=p.identity,actor=actor,generation=generation,owner=owner,world_epoch=world_epoch,seed=seed,tick=tick};
+}
+behavior_project :: (p:policy.BehaviorPlan,s:StateSchema,store:archetypes.StateStore,refs:StateRefs,fence:int)->BehaviorFacts #effects(all) {
+ if !behavior_plan_shape(p) || !state_schema_ok(s,refs) || !assets.asset_same(p.schema,archetypes.state_schema_id(s)) ||
+  !archetypes.state_store_ok(s,store,refs) || store.epoch!=fence {return BehaviorFacts.{};}
+ f:=BehaviorFacts.{valid=true,policy=p.identity,epoch=store.epoch,tick=store.tick,day=store.day,phase=store.phase};
+ for i:0..<p.field_count {at:=p.fields[i].slot;if at<0 || at>=s.n || s.fields[at].id!=p.fields[i].reference.id {return BehaviorFacts.{};}f.values[i]=store.values[at];}
+ return f;
+}
+behavior_value_equal :: (a:StateValue,b:StateValue)->bool #effects(all) {
+ if a.kind!=b.kind || a.integer!=b.integer || a.entity!=b.entity || a.generation!=b.generation || !assets.asset_same(a.content,b.content) {return false;}
+ for i:0..<3 {if a.number[i]!=b.number[i] {return false;}}return true;
+}
+behavior_observed_guard :: (g:policy.BehaviorGuard,f:BehaviorFacts,c:BehaviorContext)->bool #effects(all) {
+ if g.kind==policy.BEHAVIOR_EQUAL {return behavior_value_equal(f.values[g.slot],g.value)==g.expected;}
+ if g.kind==policy.BEHAVIOR_LESS {v:=f.values[g.slot];less:=ifx v.kind==STATE_INT then v.integer<g.value.integer else v.number[0]<g.value.number[0];return less==g.expected;}
+ return (((c.signals>>cast(u32)g.signal)&1)!=0)==g.expected;
+}
+behavior_guard :: (g:policy.BehaviorGuard,f:BehaviorFacts,c:BehaviorContext,scheduled:bool)->bool #effects(all) {
+ if g.kind==policy.BEHAVIOR_SCHEDULE {return scheduled==g.expected;}return behavior_observed_guard(g,f,c);
+}
+behavior_schedule :: (p:policy.BehaviorPlan,f:BehaviorFacts,c:BehaviorContext)->BehaviorScheduleChoice #effects(all) {
+ if p.schedule_n==0 {return BehaviorScheduleChoice.{};}
+ at:=0;for i:1..<p.schedule_n {if p.schedules[i].phase<=f.phase {at=i;}}
+ row:=p.schedules[at];out:=BehaviorScheduleChoice.{row=at};yes:=row.anchor!=0 && f.day%row.day_period==row.day_remainder;
+ for i:0..<row.guard_n {test:=behavior_observed_guard(row.guards[i],f,c);out.guards+=1;yes=yes && test;}
+ if yes {out.active=true;out.anchor=row.anchor;out.slot=row.anchor_slot;}return out;
+}
+behavior_needs_target :: (act:policy.BehaviorAction)->bool #effects(all) {return act.verb==policy.BEHAVIOR_CHASE || act.verb==policy.BEHAVIOR_FLEE || act.verb==policy.BEHAVIOR_INTERACT;}
+behavior_action_available :: (act:policy.BehaviorAction,c:BehaviorContext,scheduled:bool)->bool #effects(all) {
+ if behavior_needs_target(act) && (c.signals&1)==0 {return false;}
+ return !(act.verb==policy.BEHAVIOR_GO && act.argument==0 && !scheduled);
+}
+behavior_state_ok :: (p:policy.BehaviorPlan,s:BehaviorState)->bool #effects(all) {
+ if !s.ready || !assets.asset_same(p.identity,s.policy) || s.actor<1 || s.generation<1 || s.generation>BEHAVIOR_COUNTER_MAX || s.owner<1 || s.owner>BEHAVIOR_COUNTER_MAX || s.world_epoch<1 || s.world_epoch>BEHAVIOR_COUNTER_MAX {return false;}
+ for count:[6]int.[s.tick,s.draws,s.serial,s.successes,s.failures,s.interrupts] {if count<0 || count>BEHAVIOR_COUNTER_MAX {return false;}}
+ if s.selected< -1 || s.selected>=p.n || s.last< -1 || s.last>=p.n {return false;}
+ for i:0..<p.n {if s.cooling[i] {if s.completed[i]<0 || s.completed[i]>s.tick {return false;}}else if s.completed[i]!=0 {return false;}}
+ if s.selected<0 {return s.step==0 && s.started==0 && s.argument==0 && s.anchor_slot== -1 && s.target==0 && s.target_generation==0;}
+ row:=p.sequences[s.selected];if s.step<0 || s.step>=row.action_n || s.started<0 || s.started>s.tick || s.serial<1 {return false;}act:=row.actions[s.step];
+ if act.verb==policy.BEHAVIOR_GO {if s.anchor_slot<0 || s.anchor_slot>=p.anchor_n || p.anchors[s.anchor_slot]!=s.argument || (act.argument!=0 && act.argument!=s.argument) {return false;}}
+ else if s.anchor_slot!= -1 || s.argument!=act.argument {return false;}
+ if behavior_needs_target(act) {return s.target>0 && s.target!=s.actor && s.target_generation>=1 && s.target_generation<=BEHAVIOR_COUNTER_MAX;}
+ return s.target==0 && s.target_generation==0;
+}
+behavior_key :: (s:BehaviorState)->BehaviorActionKey #effects(all) {return BehaviorActionKey.{actor=s.actor,generation=s.generation,owner=s.owner,world_epoch=s.world_epoch,serial=s.serial};}
+behavior_key_equal :: (a:BehaviorActionKey,b:BehaviorActionKey)->bool #effects(all) {return a.actor==b.actor && a.generation==b.generation && a.owner==b.owner && a.world_epoch==b.world_epoch && a.serial==b.serial;}
+behavior_clear :: (r:[]BehaviorResult) #effects(all) {
+ r[0].state.selected= -1;r[0].state.step=0;r[0].state.started=0;r[0].state.argument=0;r[0].state.anchor_slot= -1;r[0].state.target=0;r[0].state.target_generation=0;
+}
+behavior_event :: (r:[]BehaviorResult,p:policy.BehaviorPlan,serial:int,outcome:int,finished:bool) #effects(all) {
+ // One body completion and one interruption at most; the ordinary array
+ // store retains its runtime bounds check. This helper owns no extra slot.
+ s:=r[0].state;
+ r[0].events[r[0].event_n]=BehaviorEvent.{serial=serial,sequence=p.sequences[s.selected].id,step=s.step,outcome=outcome,finished=finished};r[0].event_n+=1;
+}
+behavior_finish :: (r:[]BehaviorResult,p:policy.BehaviorPlan,now:int,serial:int,outcome:int,cooldown:bool)->bool #effects(all) {
+ if outcome==BEHAVIOR_SUCCESS {if r[0].state.successes==BEHAVIOR_COUNTER_MAX {return false;}r[0].state.successes+=1;}
+ else if outcome==BEHAVIOR_FAILURE {if r[0].state.failures==BEHAVIOR_COUNTER_MAX {return false;}r[0].state.failures+=1;}
+ else {if r[0].state.interrupts==BEHAVIOR_COUNTER_MAX {return false;}r[0].state.interrupts+=1;}
+ behavior_event(r,p,serial,outcome,true);at:=r[0].state.selected;
+ if cooldown {r[0].state.cooling[at]=true;r[0].state.completed[at]=now;}
+ behavior_clear(r);return true;
+}
+behavior_eligible :: (p:policy.BehaviorPlan,s:BehaviorState,guards:[policy.BEHAVIOR_SEQUENCES]bool,c:BehaviorContext,scheduled:bool,now:int)->[policy.BEHAVIOR_SEQUENCES]bool #effects(all) {
+ eligible:[policy.BEHAVIOR_SEQUENCES]bool;
+ for i:0..<p.n {row:=p.sequences[i];eligible[i]=guards[i] && (!s.cooling[i] || now-s.completed[i]>=row.cooldown) && behavior_action_available(row.actions[0],c,scheduled);}
+ return eligible;
+}
+behavior_best :: (p:policy.BehaviorPlan,eligible:[policy.BEHAVIOR_SEQUENCES]bool)->int #effects(all) {for i:0..<p.n {if eligible[i] {return i;}}return -1;}
+behavior_start :: (r:[]BehaviorResult,p:policy.BehaviorPlan,c:BehaviorContext,schedule:BehaviorScheduleChoice,now:int)->bool #effects(all) {
+ if r[0].state.serial==BEHAVIOR_COUNTER_MAX {return false;}r[0].state.serial+=1;r[0].state.started=now;
+ s:=r[0].state;act:=p.sequences[s.selected].actions[s.step];r[0].state.argument=act.argument;r[0].state.anchor_slot=act.anchor_slot;r[0].state.target=0;r[0].state.target_generation=0;
+ if act.verb==policy.BEHAVIOR_GO && act.argument==0 {r[0].state.argument=schedule.anchor;r[0].state.anchor_slot=schedule.slot;}
+ if behavior_needs_target(act) {r[0].state.target=c.target;r[0].state.target_generation=c.target_generation;}
+ r[0].command.started=true;return true;
+}
+behavior_step :: (p:policy.BehaviorPlan,live:BehaviorState,paid:clock.FrameClock,f:BehaviorFacts,c:BehaviorContext)->BehaviorResult #effects(all) {
+ if !behavior_plan_shape(p) {return BehaviorResult.{status=BehaviorStatus.plan,state=live};}
+ if !behavior_state_ok(p,live) {return BehaviorResult.{status=BehaviorStatus.state,state=live};}
+ if c.actor!=live.actor || c.generation!=live.generation || c.owner!=live.owner {return BehaviorResult.{status=BehaviorStatus.identity,state=live};}
+ if live.tick==BEHAVIOR_COUNTER_MAX {return BehaviorResult.{status=BehaviorStatus.exhausted,state=live};}
+ if paid.step_ns!=clock.LOOP_STEP_NS || paid.max_steps<1 || paid.max_steps>clock.LOOP_MAX_STEPS || paid.max_frame_ns<1 || paid.max_frame_ns>clock.LOOP_MAX_FRAME_NS || paid.frames<1 || paid.due!=0 || paid.ran<1 || paid.ran>paid.max_steps || paid.ticks!=live.tick+1 || paid.carry_ns<0 || paid.carry_ns>=paid.step_ns*paid.max_steps || paid.counted_ns<0 || paid.counted_ns>paid.max_frame_ns {return BehaviorResult.{status=BehaviorStatus.clock,state=live};}
+ now:=paid.ticks;
+ if !f.valid || !assets.asset_same(f.policy,p.identity) || f.epoch!=live.world_epoch || f.tick< -1 || f.tick>now || f.day<0 || f.day>BEHAVIOR_COUNTER_MAX || f.phase<0 || f.phase>=p.day_ticks {return BehaviorResult.{status=BehaviorStatus.facts,state=live};}
+ known:=(c.signals&1)!=0;
+ if c.signals>255 || (c.signals&3)==2 || (known && (c.target<1 || c.target==live.actor || c.target_generation<1 || c.target_generation>BEHAVIOR_COUNTER_MAX)) || (!known && (c.target!=0 || c.target_generation!=0)) {return BehaviorResult.{status=BehaviorStatus.context,state=live};}
+ feedback:=c.feedback;
+ if feedback.outcome<BEHAVIOR_NONE || feedback.outcome>BEHAVIOR_INTERRUPTED || (feedback.outcome==BEHAVIOR_NONE && !behavior_key_equal(feedback.key,BehaviorActionKey.{})) ||
+  (feedback.outcome!=BEHAVIOR_NONE && (live.selected<0 || !behavior_key_equal(feedback.key,behavior_key(live)))) {return BehaviorResult.{status=BehaviorStatus.feedback,state=live};}
+ r:=[1]BehaviorResult.[BehaviorResult.{state=live}];schedule:=behavior_schedule(p,f,c);r[0].schedule=schedule.row;r[0].anchor=schedule.anchor;r[0].work.guards=schedule.guards;
+ guards:[policy.BEHAVIOR_SEQUENCES]bool;
+ for i:0..<p.n {row:=p.sequences[i];yes:=true;for k:0..<row.guard_n {test:=behavior_guard(row.guards[k],f,c,schedule.active);r[0].work.guards+=1;yes=yes && test;}guards[i]=yes;r[0].work.sequences+=1;}
+ need_start:=false;
+ if live.selected>=0 {
+  row:=p.sequences[live.selected];act:=row.actions[live.step];outcome:=feedback.outcome;
+  if outcome<=BEHAVIOR_RUNNING && now-live.started>=act.duration {outcome=ifx act.verb==policy.BEHAVIOR_HOLD || act.verb==policy.BEHAVIOR_SAY then BEHAVIOR_SUCCESS else BEHAVIOR_FAILURE;}
+  if outcome>=BEHAVIOR_SUCCESS {
+   if outcome==BEHAVIOR_SUCCESS && live.step+1<row.action_n {behavior_event(r[..],p,live.serial,outcome,false);r[0].state.step+=1;need_start=true;}
+   else if !behavior_finish(r[..],p,now,live.serial,outcome,true) {return BehaviorResult.{status=BehaviorStatus.exhausted,state=live};}
+  }
+ }
+ eligible:=behavior_eligible(p,r[0].state,guards,c,schedule.active,now);best:=behavior_best(p,eligible);
+ if r[0].state.selected>=0 {
+  s:=r[0].state;act:=p.sequences[s.selected].actions[s.step];available:=behavior_action_available(act,c,schedule.active);
+  schedule_changed:=act.verb==policy.BEHAVIOR_GO && act.argument==0 && !need_start && s.argument!=schedule.anchor;
+  target_changed:=behavior_needs_target(act) && !need_start && (s.target!=c.target || s.target_generation!=c.target_generation);
+  preempt:=act.interruptible && (!guards[s.selected] || (best>=0 && p.sequences[best].priority<p.sequences[s.selected].priority));
+  if !available || schedule_changed || target_changed || preempt {
+   outcome:=ifx need_start && !available then BEHAVIOR_FAILURE else BEHAVIOR_INTERRUPTED;
+   if !behavior_finish(r[..],p,now,ifx need_start then 0 else s.serial,outcome,!schedule_changed) {return BehaviorResult.{status=BehaviorStatus.exhausted,state=live};}
+  }
+ }
+ if r[0].state.selected<0 {
+  eligible=behavior_eligible(p,r[0].state,guards,c,schedule.active,now);best=behavior_best(p,eligible);
+  if best>=0 {
+   if r[0].state.draws==BEHAVIOR_COUNTER_MAX {return BehaviorResult.{status=BehaviorStatus.exhausted,state=live};}
+   priority:=p.sequences[best].priority;other:=false;
+   for i:0..<p.n {if eligible[i] && p.sequences[i].priority==priority && i!=r[0].state.last {other=true;}}
+   total:=0;for i:0..<p.n {if eligible[i] && p.sequences[i].priority==priority && !(p.skip_last && other && i==r[0].state.last) {total+=p.sequences[i].weight;}}
+   choice:=random.rand_below(live.seed,live.actor,r[0].state.draws,total);r[0].state.draws+=1;r[0].work.draws=1;
+   for i:0..<p.n {if !eligible[i] || p.sequences[i].priority!=priority || (p.skip_last && other && i==r[0].state.last) {continue;}
+    if choice<p.sequences[i].weight {r[0].state.selected=i;break;}choice-=p.sequences[i].weight;
+   }
+   r[0].state.last=r[0].state.selected;need_start=true;
+  }
+ }
+ if r[0].state.selected>=0 {
+  if need_start && !behavior_start(r[..],p,c,schedule,now) {return BehaviorResult.{status=BehaviorStatus.exhausted,state=live};}
+  s:=r[0].state;act:=p.sequences[s.selected].actions[s.step];attributes:=0;
+  if act.verb==policy.BEHAVIOR_GO || act.verb==policy.BEHAVIOR_CHASE || act.verb==policy.BEHAVIOR_FLEE || act.verb==policy.BEHAVIOR_CONTROLLED {attributes|=BEHAVIOR_MOVING;}
+  if act.verb==policy.BEHAVIOR_INTERACT || act.verb==policy.BEHAVIOR_SAY {attributes|=BEHAVIOR_INTERACTING;}if act.interruptible {attributes|=BEHAVIOR_INTERRUPTIBLE;}
+  r[0].command=BehaviorCommand.{active=true,started=r[0].command.started,key=behavior_key(s),sequence=p.sequences[s.selected].id,step=s.step,verb=act.verb,argument=s.argument,anchor_slot=s.anchor_slot,target=s.target,target_generation=s.target_generation,attributes=attributes};r[0].work.actions=1;
+ }
+ r[0].state.tick=now;return r[0];
+}

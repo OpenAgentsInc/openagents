@@ -1,0 +1,5 @@
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/behavior-v4/sanitized.txt: 1024 exact paid-step rows, [0, 30, 60, 144]; sha256=b4c59675eddc0225ad01b51df709c885c4a2a1d128548ab000199a002a2fbfec
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/behavior-v4/browser-30.txt: 256 exact paid-step rows, [30]; sha256=8536ec29f7f9795ab1e2101a4ca182107481cc91cf73642a0843e7bfdc7d288e
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/behavior-v4/browser-60.txt: 256 exact paid-step rows, [60]; sha256=296340786736a7ea8b081a677ac1e4ee683a607c629c87f4666288bb723989dd
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/behavior-v4/browser-144.txt: 256 exact paid-step rows, [144]; sha256=1b6e634a27aa8cfb31fd417e6ddd0de0d3ada380e7fc4344a6fc8ca496cd07fd
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/behavior-v4/browser-0.txt: 256 exact paid-step rows, [0]; sha256=513081fdeb97a473ec4a60a1adc4b965163faa4463092bae2082d65fe8da0118

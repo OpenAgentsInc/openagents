@@ -1,0 +1,11 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/actors/behavior-plan.coax:37:50: mutant survived: '&&' became '||'
+   for x:g.value.number {if !(x>= -1000000000000.0 && x<=1000000000000.0) {return BehaviorGuardResult.{};}}
+                                                   ^
+aethyr/actors/behavior-plan.coax:68:4: mutant survived: the call was removed
+     archetypes.state_value_words(words[..],at,g.value);at+=15;}
+     ^
+aethyr/actors/behavior-plan.coax:80:39: mutant survived: '>=' became '>'
+    f:=a.fields[i];if f.slot<0 || f.slot>=s.n {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}actual:=s.fields[f.slot];
+                                        ^
+395 mutants, 392 killed, 3 survived

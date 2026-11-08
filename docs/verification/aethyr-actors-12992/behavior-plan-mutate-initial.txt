@@ -1,0 +1,278 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/actors/behavior-plan.coax:37:50: mutant survived: '&&' became '||'
+   for x:g.value.number {if !(x>= -1000000000000.0 && x<=1000000000000.0) {return BehaviorGuardResult.{};}}
+                                                   ^
+aethyr/actors/behavior-plan.coax:37:30: mutant survived: '>=' became '>'
+   for x:g.value.number {if !(x>= -1000000000000.0 && x<=1000000000000.0) {return BehaviorGuardResult.{};}}
+                               ^
+aethyr/actors/behavior-plan.coax:37:54: mutant survived: '<=' became '<'
+   for x:g.value.number {if !(x>= -1000000000000.0 && x<=1000000000000.0) {return BehaviorGuardResult.{};}}
+                                                       ^
+aethyr/actors/behavior-plan.coax:44:72: mutant survived: 2 became 3
+    if g.kind==BEHAVIOR_LESS && g.value.kind!=STATE_INT && g.value.kind!=STATE_SCALAR {return BehaviorGuardResult.{};}
+                                                                         ^
+aethyr/actors/behavior-plan.coax:48:42: mutant survived: '<' became '<='
+    if g.kind==BEHAVIOR_SIGNAL {if g.signal<0 || g.signal>7 {return BehaviorGuardResult.{};}}
+                                           ^
+aethyr/actors/behavior-plan.coax:48:43: mutant survived: 0 became 1
+    if g.kind==BEHAVIOR_SIGNAL {if g.signal<0 || g.signal>7 {return BehaviorGuardResult.{};}}
+                                            ^
+aethyr/actors/behavior-plan.coax:67:9: mutant survived: 0 became 1
+    for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+          ^
+aethyr/actors/behavior-plan.coax:67:108: mutant survived: 1 became 2
+    for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+                                                                                                             ^
+aethyr/actors/behavior-plan.coax:67:115: mutant survived: 0 became 1
+    for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+                                                                                                                    ^
+aethyr/actors/behavior-plan.coax:67:128: mutant survived: the assignment was removed
+    for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+                                                                                                                                 ^
+aethyr/actors/behavior-plan.coax:67:133: mutant survived: the assignment was removed
+    for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+                                                                                                                                      ^
+aethyr/actors/behavior-plan.coax:67:133: mutant survived: '+=' became '-='
+    for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+                                                                                                                                      ^
+aethyr/actors/behavior-plan.coax:67:135: mutant survived: 1 became 2
+    for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
+                                                                                                                                        ^
+aethyr/actors/behavior-plan.coax:68:4: mutant survived: the call was removed
+     archetypes.state_value_words(words[..],at,g.value);at+=15;}
+     ^
+aethyr/actors/behavior-plan.coax:68:57: mutant survived: the assignment was removed
+     archetypes.state_value_words(words[..],at,g.value);at+=15;}
+                                                          ^
+aethyr/actors/behavior-plan.coax:68:57: mutant survived: '+=' became '-='
+     archetypes.state_value_words(words[..],at,g.value);at+=15;}
+                                                          ^
+aethyr/actors/behavior-plan.coax:68:59: mutant survived: 15 became 16
+     archetypes.state_value_words(words[..],at,g.value);at+=15;}
+                                                            ^
+aethyr/actors/behavior-plan.coax:74:56: mutant survived: '||' became '&&'
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+                                                         ^
+aethyr/actors/behavior-plan.coax:74:40: mutant survived: '||' became '&&'
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+                                         ^
+aethyr/actors/behavior-plan.coax:74:30: mutant survived: '||' became '&&'
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+                               ^
+aethyr/actors/behavior-plan.coax:74:14: mutant survived: '||' became '&&'
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+               ^
+aethyr/actors/behavior-plan.coax:74:37: mutant survived: '<' became '<='
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+                                      ^
+aethyr/actors/behavior-plan.coax:74:38: mutant survived: 1 became 2
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+                                       ^
+aethyr/actors/behavior-plan.coax:74:53: mutant survived: '<' became '<='
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+                                                      ^
+aethyr/actors/behavior-plan.coax:74:54: mutant survived: 1 became 2
+   if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
+                                                       ^
+aethyr/actors/behavior-plan.coax:75:8: mutant survived: '<' became '<='
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+         ^
+aethyr/actors/behavior-plan.coax:75:9: mutant survived: 1 became 2
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+          ^
+aethyr/actors/behavior-plan.coax:75:52: mutant survived: '<' became '<='
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+                                                     ^
+aethyr/actors/behavior-plan.coax:75:53: mutant survived: 0 became 1
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+                                                      ^
+aethyr/actors/behavior-plan.coax:75:140: mutant survived: '<' became '<='
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+                                                                                                                                             ^
+aethyr/actors/behavior-plan.coax:75:141: mutant survived: 0 became 1
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+                                                                                                                                              ^
+aethyr/actors/behavior-plan.coax:75:159: mutant survived: '>' became '>='
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+                                                                                                                                                                ^
+aethyr/actors/behavior-plan.coax:75:160: mutant survived: 8 became 9
+   if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+                                                                                                                                                                 ^
+aethyr/actors/behavior-plan.coax:77:207: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                                                                                                ^
+aethyr/actors/behavior-plan.coax:77:183: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                                                                        ^
+aethyr/actors/behavior-plan.coax:77:159: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                                                ^
+aethyr/actors/behavior-plan.coax:77:129: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                  ^
+aethyr/actors/behavior-plan.coax:77:109: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                              ^
+aethyr/actors/behavior-plan.coax:77:89: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                          ^
+aethyr/actors/behavior-plan.coax:77:63: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                ^
+aethyr/actors/behavior-plan.coax:77:44: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                             ^
+aethyr/actors/behavior-plan.coax:77:26: mutant survived: '||' became '&&'
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                           ^
+aethyr/actors/behavior-plan.coax:77:41: mutant survived: '<' became '<='
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                          ^
+aethyr/actors/behavior-plan.coax:77:42: mutant survived: 1 became 2
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                           ^
+aethyr/actors/behavior-plan.coax:77:60: mutant survived: 32 became 33
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                             ^
+aethyr/actors/behavior-plan.coax:77:106: mutant survived: '<' became '<='
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                           ^
+aethyr/actors/behavior-plan.coax:77:107: mutant survived: 0 became 1
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                            ^
+aethyr/actors/behavior-plan.coax:77:127: mutant survived: 1 became 2
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                ^
+aethyr/actors/behavior-plan.coax:77:180: mutant survived: '<' became '<='
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                                                                     ^
+aethyr/actors/behavior-plan.coax:77:181: mutant survived: 0 became 1
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                                                                      ^
+aethyr/actors/behavior-plan.coax:77:205: mutant survived: 2 became 3
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                                                                                              ^
+aethyr/actors/behavior-plan.coax:77:213: mutant survived: '>' became '>='
+   if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
+                                                                                                                                                                                                                      ^
+aethyr/actors/behavior-plan.coax:78:30: mutant survived: '||' became '&&'
+   if !state_schema_ok(s,refs) || !assets.asset_same(a.schema,archetypes.state_schema_id(s)) {return BehaviorCompiled.{status=BehaviorPlanStatus.schema};}
+                               ^
+aethyr/actors/behavior-plan.coax:79:8: mutant survived: 0 became 1
+   for i:0..<a.field_count {
+         ^
+aethyr/actors/behavior-plan.coax:80:30: mutant survived: '||' became '&&'
+    f:=a.fields[i];if f.slot<0 || f.slot>=s.n {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}actual:=s.fields[f.slot];
+                               ^
+aethyr/actors/behavior-plan.coax:80:39: mutant survived: '>=' became '>'
+    f:=a.fields[i];if f.slot<0 || f.slot>=s.n {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}actual:=s.fields[f.slot];
+                                        ^
+aethyr/actors/behavior-plan.coax:81:100: mutant survived: '||' became '&&'
+    if f.reference.id!=actual.id || f.reference.kind!=actual.kind || f.reference.scope!=actual.scope || f.reference.owner!=actual.owner {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}
+                                                                                                     ^
+aethyr/actors/behavior-plan.coax:81:65: mutant survived: '||' became '&&'
+    if f.reference.id!=actual.id || f.reference.kind!=actual.kind || f.reference.scope!=actual.scope || f.reference.owner!=actual.owner {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}
+                                                                  ^
+aethyr/actors/behavior-plan.coax:81:32: mutant survived: '||' became '&&'
+    if f.reference.id!=actual.id || f.reference.kind!=actual.kind || f.reference.scope!=actual.scope || f.reference.owner!=actual.owner {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}
+                                 ^
+aethyr/actors/behavior-plan.coax:82:9: mutant survived: 0 became 1
+    for j:0..<i {if a.fields[j].slot==f.slot {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}}
+          ^
+aethyr/actors/behavior-plan.coax:84:25: mutant survived: '<' became '<='
+   for id,i:anchors {if id<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}for j:0..<i {if anchors[j]==id {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}}}
+                          ^
+aethyr/actors/behavior-plan.coax:84:26: mutant survived: 1 became 2
+   for id,i:anchors {if id<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}for j:0..<i {if anchors[j]==id {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}}}
+                           ^
+aethyr/actors/behavior-plan.coax:84:95: mutant survived: 0 became 1
+   for id,i:anchors {if id<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}for j:0..<i {if anchors[j]==id {return BehaviorCompiled.{status=BehaviorPlanStatus.anchor};}}}
+                                                                                                ^
+aethyr/actors/behavior-plan.coax:88:127: mutant survived: '||' became '&&'
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                                                                                                ^
+aethyr/actors/behavior-plan.coax:88:109: mutant survived: '||' became '&&'
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                                                                              ^
+aethyr/actors/behavior-plan.coax:88:89: mutant survived: '||' became '&&'
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                                                          ^
+aethyr/actors/behavior-plan.coax:88:73: mutant survived: '||' became '&&'
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                                          ^
+aethyr/actors/behavior-plan.coax:88:53: mutant survived: '||' became '&&'
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                      ^
+aethyr/actors/behavior-plan.coax:88:35: mutant survived: '||' became '&&'
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                    ^
+aethyr/actors/behavior-plan.coax:88:69: mutant survived: 255 became 256
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                                      ^
+aethyr/actors/behavior-plan.coax:88:103: mutant survived: 65535 became 65536
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                                                                        ^
+aethyr/actors/behavior-plan.coax:88:143: mutant survived: 230400 became 230401
+    row:=d.sequences[i];if row.id<1 || row.priority<0 || row.priority>255 || row.weight<1 || row.weight>65535 || row.cooldown<0 || row.cooldown>BEHAVIOR_TICKS {return BehaviorCompiled.{status=BehaviorPlanStatus.profile,row=i};}
+                                                                                                                                                ^
+aethyr/actors/behavior-plan.coax:90:9: mutant survived: 0 became 1
+    for j:0..<i {if d.sequences[j].id==row.id {return BehaviorCompiled.{status=BehaviorPlanStatus.identity,row=i};}}
+          ^
+aethyr/actors/behavior-plan.coax:93:50: mutant survived: '||' became '&&'
+     act:=row.actions[k];if act.verb<BEHAVIOR_HOLD || act.verb>BEHAVIOR_CONTROLLED || act.duration<1 || act.duration>BEHAVIOR_TICKS || act.anchor_slot!= -1 {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}
+                                                   ^
+aethyr/actors/behavior-plan.coax:93:62: mutant survived: 6 became 7
+     act:=row.actions[k];if act.verb<BEHAVIOR_HOLD || act.verb>BEHAVIOR_CONTROLLED || act.duration<1 || act.duration>BEHAVIOR_TICKS || act.anchor_slot!= -1 {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}
+                                                               ^
+aethyr/actors/behavior-plan.coax:95:42: mutant survived: 0 became 1
+      if act.argument==0 {if d.schedule_n==0 || !act.interruptible {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}}
+                                           ^
+aethyr/actors/behavior-plan.coax:97:52: mutant survived: '<' became '<='
+     }else if act.verb==BEHAVIOR_SAY {if act.argument<0 || act.argument>31 {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}}
+                                                     ^
+aethyr/actors/behavior-plan.coax:97:53: mutant survived: 0 became 1
+     }else if act.verb==BEHAVIOR_SAY {if act.argument<0 || act.argument>31 {return BehaviorCompiled.{status=BehaviorPlanStatus.action,row=i};}}
+                                                      ^
+aethyr/actors/behavior-plan.coax:106:207: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                                                                                                                                ^
+aethyr/actors/behavior-plan.coax:106:190: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                                                                                                               ^
+aethyr/actors/behavior-plan.coax:106:153: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                                                                          ^
+aethyr/actors/behavior-plan.coax:106:130: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                                                   ^
+aethyr/actors/behavior-plan.coax:106:108: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                             ^
+aethyr/actors/behavior-plan.coax:106:88: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                         ^
+aethyr/actors/behavior-plan.coax:106:64: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                 ^
+aethyr/actors/behavior-plan.coax:106:38: mutant survived: '||' became '&&'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                       ^
+aethyr/actors/behavior-plan.coax:106:50: mutant survived: '>=' became '>'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                   ^
+aethyr/actors/behavior-plan.coax:106:126: mutant survived: 366 became 367
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                                               ^
+aethyr/actors/behavior-plan.coax:106:173: mutant survived: '>=' became '>'
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                                                                                              ^
+aethyr/actors/behavior-plan.coax:106:222: mutant survived: 4 became 5
+    row:=d.schedules[i];if row.phase<0 || row.phase>=s.day_ticks || row.anchor_slot!= -1 || row.day_period<1 || row.day_period>366 || row.day_remainder<0 || row.day_remainder>=row.day_period || row.guard_n<0 || row.guard_n>BEHAVIOR_GUARDS {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}
+                                                                                                                                                                                                                               ^
+aethyr/actors/behavior-plan.coax:108:18: mutant survived: 0 became 1
+    if row.anchor!=0 {row.anchor_slot=behavior_anchor(anchors,row.anchor);if row.anchor_slot<0 {return BehaviorCompiled.{status=BehaviorPlanStatus.schedule,row=i};}}
+                   ^
+aethyr/actors/behavior-plan.coax:109:173: mutant survived: the assignment was removed
+    for k:0..<row.guard_n {r:=behavior_guard_compile(a,s,refs,row.guards[k],false);if !r.valid {return BehaviorCompiled.{status=BehaviorPlanStatus.guard,row=i};}row.guards[k]=r.guard;}
+                                                                                                                                                                              ^
+383 mutants, 291 killed, 92 survived
