@@ -56,6 +56,7 @@ headless captures. Reference engines stay in its ignored lab cache.
 | `render/sky.coax`, `render/vegetation.coax` | Shared sky/cloud fields and world-space wind, grass, canopy, mask and fade functions; existing shaders consume them through `verse/style.coax` |
 | `render/grass-root.coax` | Conservative whole-cell grass rejection against the existing root-clip planes; original instance IDs and density survive, with a bounded 128-range profile and independent terrain/corner oracle |
 | `render/shadow-filter.coax`, `render/post.coax` | Shared shadow sampling, exposure, saturation, black lift, bloom and light shafts; pass orchestration remains with each renderer |
+| `action/` | [Actions, contacts and reactions](action/README.md): versioned tick-timed actions whose events fire once at any frame rate, swept blade sensors with attack-instance deduplication, typed attack/response/reaction tables, scoped hit stop, capped presentation, reflection, breakables and attachments; Everglade Experimental's weapon blows land on blade contact (#12993) |
 | `replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
 | `rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
 | `scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
