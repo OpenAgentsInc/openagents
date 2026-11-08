@@ -1,0 +1,18 @@
+#load "fivelab.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  for mode:0..<4 {
+    s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+    b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+    b[0].dice[0].fixed=true; b[0].c[0].hp=20; b[0].c[0].ac=13;
+    spells:=[1]int.[RS_EXEC_SOURCE[SP_SHIELD]];
+    if !rs_set_spells(b[0].c[0..<1],spells[..]) { return 1; } b[0].c[0].shield_spell=true;
+    s[0].xc[0].seat[0].turn.slot_spent=(mode&1)!=0; s[0].xc[0].seat[0].turn.quickened=(mode&2)!=0;
+    h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+    slots:=b[0].c[0].slots[1]; body:=lab_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
+    if body.z!=f32(-0.1) || !b[0].c[1].reacted || b[0].c[0].hp!=20-(ifx mode==0 then 0 else 4) { return 2; }
+    if b[0].c[0].slots[1]!=slots-(ifx mode==0 then 1 else 0) || b[0].reaction_frame.on { return 3; }
+    if s[0].xc[0].seat[0].turn.slot_spent!=((mode&1)!=0 || mode==0) { return 4; }
+  }
+  tool_errln("PASS PHYSICAL-OPPORTUNITY"); return 0;
+}

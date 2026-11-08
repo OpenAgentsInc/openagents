@@ -7,6 +7,7 @@
 RsOpportunityMove :: struct {
   x:int; y:int; reach:int; melee:bool; seen:bool; teleport:bool;
   movement:bool; action:bool; bonus:bool; reaction:bool;
+  measured:bool; from_feet:f32; to_feet:f32; // trusted physical metric, not rounded cells
 }
 rs_opportunity_trigger :: (b:[] RsBattle,reactor:int,mover:int,q:RsOpportunityMove)->bool #effects(all) {
   if reactor<0 || reactor>=b[0].n || mover<0 || mover>=b[0].n || reactor==mover { return false; }
@@ -15,7 +16,9 @@ rs_opportunity_trigger :: (b:[] RsBattle,reactor:int,mover:int,q:RsOpportunityMo
   if b[0].who==mover && b[0].turn.disengaged { return false; }
   rx:=b[0].c[reactor].x; ry:=b[0].c[reactor].y;
   mx:=b[0].c[mover].x; my:=b[0].c[mover].y;
-  if rx<0 || ry<0 || mx<0 || my<0 || q.x<0 || q.y<0 || rx>=b[0].w || mx>=b[0].w || q.x>=b[0].w || ry>=b[0].h || my>=b[0].h || q.y>=b[0].h { return false; }
+  if rx<0 || ry<0 || mx<0 || my<0 || rx>=b[0].w || mx>=b[0].w || ry>=b[0].h || my>=b[0].h { return false; }
+  if q.measured { return q.from_feet>=0 && q.from_feet<=f32(q.reach) && q.to_feet>f32(q.reach); }
+  if q.x<0 || q.y<0 || q.x>=b[0].w || q.y>=b[0].h { return false; }
   return rs_feet(rx,ry,mx,my)<=q.reach && rs_feet(rx,ry,q.x,q.y)>q.reach;
 }
 rs_opportunity_suppress :: (c:[] RsCreature) #effects(all) { c[0].opportunity_blocked=true; }

@@ -1,0 +1,3 @@
+ok   #test experimental teleport publishes a new origin without provoking for the teleport displacement (1 case, 2479009 steps, 423 ms)
+1 of 771 checks (--only 'experimental teleport'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

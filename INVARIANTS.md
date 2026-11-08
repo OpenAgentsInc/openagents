@@ -6978,3 +6978,16 @@ The record has no mastery/Finesse retained rider. The physical controller is
 still a separate integration requirement; this does not alter E2's social
 no-bystander-harm profile. Evidence and limits:
 `docs/verification/srd-stat-opportunity-2026-11-08/README.md`.
+
+## Experimental player locomotion resolves measured monster opportunities before publication
+
+The physical controller supplies its real pre-step and proposed bodies to
+Coax `lab_keep_body` before publishing feet. Experimental measures departure
+in terrain-adjusted feet, uses shared trigger/typed Reaction execution with
+the saved player turn, and retains accepted damage if movement is stopped.
+Disengage, ordinary sight and Addle remain shared; teleport placement updates
+its origin without provoking for that displacement. Hit/number presentation
+uses the same result path as physical Action contacts. This wires incoming
+monster opportunities on player locomotion; monster AI departure/player
+Reactions and broader physical distance/timing qualification remain separate.
+Evidence: `docs/verification/srd-physical-opportunity-2026-11-08/README.md`.

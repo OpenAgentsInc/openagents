@@ -378,6 +378,39 @@ xc_sync_world :: (s: [] Lab) {
     rs_place(b, i+1, qx, qz);
   }
 }
+// Controller locomotion proposes a physical position; current creature/body
+// positions remain authoritative until this returns. Teleports synchronize their
+// origin separately in lab_walk and never pass their displacement here.
+xc_depart :: (s:[] Lab,origin:EgBody,proposed:EgBody)->bool {
+  x:=s[0].xc[..]; if !x[0].started { return true; }
+  b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+  if !rs_can_move(b[0].c[0]) || rs_walk_speed(b,0)<=0 { return false; }
+  px:=cr[0].player_x; py0:=cr[0].player_y; pz:=cr[0].player_z;
+  cr[0].player_x=origin.x; cr[0].player_y=origin.y; cr[0].player_z=origin.z;
+  xc_sync_world(s);
+  fb_seat_in(b,x[0].seat[..]);
+  py:=xmeadow.exp_height(cr[0].player_x,cr[0].player_z)+cr[0].player_y;
+  next_y:=xmeadow.exp_height(proposed.x,proposed.z)+proposed.y;
+  for foe:0..<XC_FOES {
+    e:=h[0].enemies[foe]; if e.dead { continue; }
+    a:=xc_hostile_attack(e.kind);
+    dx:=e.x-cr[0].player_x; dz:=e.z-cr[0].player_z; ey:=xmeadow.exp_height(e.x,e.z);
+    dy:=ey-py; tx:=e.x-proposed.x; tz:=e.z-proposed.z; ty:=ey-next_y;
+    before:=sqrt(dx*dx+dy*dy+dz*dz)/f32(XC_SQ)*5;
+    after:=sqrt(tx*tx+ty*ty+tz*tz)/f32(XC_SQ)*5;
+    seen:=!rs_has(b[0].c[foe+1],RS_BLINDED) && !rs_has(b[0].c[0],RS_INVISIBLE) && hostile.hostile_sees(e,cr[0].player_x,cr[0].player_z);
+    q:=RsOpportunityMove.{measured=true,from_feet=before,to_feet=after,reach=a.reach,melee=true,seen=seen,movement=true};
+    if !rs_stat_attack_valid(a) || !rs_opportunity_trigger(b,foe+1,0,q) { continue; }
+    hp_before:=b[0].c[0].hp+b[0].c[0].temp; seq:=b[0].book[0].seq;
+    result:=rs_stat_opportunity(b,foe+1,0,a,q);
+    xc_hostile_result(s,foe,hp_before,seq,result.admitted);
+    if !rs_can_move(b[0].c[0]) || rs_walk_speed(b,0)<=0 { break; }
+  }
+  fb_seat_out(b,x[0].seat[..]);
+  cr[0].player_x=px; cr[0].player_y=py0; cr[0].player_z=pz;
+  xc_sync_vitals(s); xc_sync_permissions(s);
+  return rs_can_move(b[0].c[0]) && rs_walk_speed(b,0)>0;
+}
 // The bodies publish contact intent; the shared battle owns all outcomes.
 xc_hostile_attack :: (kind: int) -> RsStatAttack {
   if kind<0 || kind>=XC_FOE_NAMES.count { return RsStatAttack.{}; }
@@ -394,6 +427,21 @@ xc_sync_vitals :: (s: [] Lab) {
   h[0].shared=true; h[0].hp=b[0].c[0].hp; h[0].max_hp=b[0].c[0].hp_max;
   h[0].temp=b[0].c[0].temp; h[0].player_dead=b[0].c[0].dead;
 }
+// Shared damage/hit presentation for Action contacts and opportunity Reactions.
+xc_hostile_result :: (s:[] Lab,foe:int,before:int,seq:int,accepted:bool) {
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+    lost := before-b[0].c[0].hp-b[0].c[0].temp;
+    landed := false;
+    for k: 0..<rs_min(b[0].book[0].seq-seq,RS_EVENTS) {
+      event := rs_recent(b[0].book[0],k);
+      if event.kind==RS_EV_ATTACK && event.by==foe+1 && event.to==0 { landed=true; }
+    }
+    if accepted && landed { h[0].hits+=1; h[0].last=foe; xc_stop_striker(s,foe); x[0].seen_hits=h[0].hits; }
+    if accepted && lost>0 {
+      h[0].pops[h[0].pop_next]=hostile.DamagePop.{amount=lost,x=cr[0].player_x,y=cr[0].player_y+2.1,z=cr[0].player_z,born=h[0].time};
+      h[0].pop_next=(h[0].pop_next+1)%8;
+    }
+}
 xc_hostile_contacts :: (s: [] Lab) {
   x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   xc_sync_world(s);
@@ -406,17 +454,7 @@ xc_hostile_contacts :: (s: [] Lab) {
     fb_seat_in(b,x[0].npc_seat[foe..<foe+1]);
     accepted := rs_stat_attack(b,foe+1,0,xc_hostile_attack(h[0].enemies[foe].kind));
     fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
-    lost := before-b[0].c[0].hp-b[0].c[0].temp;
-    landed := false;
-    for k: 0..<rs_min(b[0].book[0].seq-seq,RS_EVENTS) {
-      event := rs_recent(b[0].book[0],k);
-      if event.kind==RS_EV_ATTACK && event.by==foe+1 && event.to==0 { landed=true; }
-    }
-    if accepted && landed { h[0].hits+=1; h[0].last=foe; xc_stop_striker(s,foe); x[0].seen_hits=h[0].hits; }
-    if accepted && lost>0 {
-      h[0].pops[h[0].pop_next]=hostile.DamagePop.{amount=lost,x=cr[0].player_x,y=cr[0].player_y+2.1,z=cr[0].player_z,born=h[0].time};
-      h[0].pop_next=(h[0].pop_next+1)%8;
-    }
+    xc_hostile_result(s,foe,before,seq,accepted);
   }
   xc_sync_vitals(s);
 }
@@ -1581,4 +1619,61 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   b[0].c[0].speech_blocked=false;
   #assert xc_use_on(s[..],2,-2) && b[0].c[0].hp>1 && b[0].c[0].reacted;
   #assert b[0].c[0].slots[1]==b[0].c[0].slots_max[1]-1;
+}
+
+#test "experimental physical opportunity interrupts the admitted body before leaving exact reach" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].hp=1; b[0].c[0].ac=10;
+  cr[0].player_x=0; cr[0].player_y=0; cr[0].player_z=0;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+  body:=lab_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
+  #assert body.z==0 && body.vz==0 && b[0].c[0].hp==0 && b[0].c[1].reacted;
+  #assert h[0].hp==0 && cr[0].player_z==0 && h[0].hits==1 && h[0].pops[0].amount==1;
+}
+#test "experimental physical opportunity keeps the accepted move and saved budgets after nonlethal damage" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].hp=100; b[0].c[0].ac=10;
+  cr[0].player_x=0; cr[0].player_y=0; cr[0].player_z=0;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+  s[0].xc[0].seat[0].turn.action=true; s[0].xc[0].seat[0].turn.slot_spent=true;
+  body:=lab_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
+  #assert body.z==f32(-0.1) && b[0].c[0].hp==96 && b[0].c[1].reacted;
+  #assert s[0].xc[0].seat[0].turn.action && s[0].xc[0].seat[0].turn.slot_spent;
+  #assert !s[0].xc[0].npc_seat[0].turn.action;
+}
+
+#test "experimental physical opportunity respects Disengage ordinary sight and Addle" {
+  for mode:0..<4 {
+    s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+    b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+    b[0].dice[0].fixed=true; b[0].c[0].hp=100; b[0].c[0].ac=10;
+    cr[0].player_x=0; cr[0].player_y=0; cr[0].player_z=0;
+    h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+    if mode==0 { s[0].xc[0].seat[0].turn.disengaged=true; }
+    if mode==1 { b[0].c[0].cond|=RS_INVISIBLE; }
+    if mode==2 { b[0].c[1].cond|=RS_BLINDED; }
+    if mode==3 { b[0].c[1].opportunity_blocked=true; }
+    body:=lab_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
+    #assert body.z==f32(-0.1) && b[0].c[0].hp==100 && !b[0].c[1].reacted;
+  }
+}
+#test "experimental physical opportunity uses controller origin rather than interpolated render position" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].hp=100; b[0].c[0].ac=10; cr[0].player_z=4;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+  body:=lab_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
+  #assert body.z==f32(-0.1) && b[0].c[0].hp==96 && cr[0].player_z==4;
+}
+#test "experimental teleport publishes a new origin without provoking for the teleport displacement" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].hp=100;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+  s[0].put_on=true; s[0].put_z=4; w:=lab_walk(s[..]);
+  #assert w.put && cr[0].player_z==4;
+  body:=lab_keep_body(s[..],EgBody.{z=4},EgBody.{z=4.1});
+  #assert body.z==f32(4.1) && b[0].c[0].hp==100 && !b[0].c[1].reacted;
 }

@@ -1,0 +1,40 @@
+aethyr/rules/srd/measured-opportunity-checks.coax:5:25: error[E0351]: struct 'RsOpportunityMove' has no field 'measured'
+    q:=RsOpportunityMove.{measured=true,from_feet=5,to_feet=5.01,reach=5,melee=true,seen=true,movement=true};
+                          ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:5:39: error[E0351]: struct 'RsOpportunityMove' has no field 'from_feet'
+    q:=RsOpportunityMove.{measured=true,from_feet=5,to_feet=5.01,reach=5,melee=true,seen=true,movement=true};
+                                        ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:5:51: error[E0351]: struct 'RsOpportunityMove' has no field 'to_feet'
+    q:=RsOpportunityMove.{measured=true,from_feet=5,to_feet=5.01,reach=5,melee=true,seen=true,movement=true};
+                                                    ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:7:4: error[E0351]: struct 'RsOpportunityMove' has no field 'to_feet'
+    q.to_feet=5; #assert !rs_opportunity_trigger(b[..],0,1,q);
+     ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:8:4: error[E0351]: struct 'RsOpportunityMove' has no field 'to_feet'
+    q.to_feet=6; q.from_feet=5.01; #assert !rs_opportunity_trigger(b[..],0,1,q);
+     ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:8:17: error[E0351]: struct 'RsOpportunityMove' has no field 'from_feet'
+    q.to_feet=6; q.from_feet=5.01; #assert !rs_opportunity_trigger(b[..],0,1,q);
+                  ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:9:4: error[E0351]: struct 'RsOpportunityMove' has no field 'from_feet'
+    q.from_feet=0; #assert rs_opportunity_trigger(b[..],0,1,q);
+     ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:10:4: error[E0351]: struct 'RsOpportunityMove' has no field 'from_feet'
+    q.from_feet= -0.01; #assert !rs_opportunity_trigger(b[..],0,1,q);
+     ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+aethyr/rules/srd/measured-opportunity-checks.coax:11:4: error[E0351]: struct 'RsOpportunityMove' has no field 'from_feet'
+    q.from_feet=5; q.teleport=true; #assert !rs_opportunity_trigger(b[..],0,1,q);
+     ^
+  fix: its fields are: x y reach melee seen teleport movement action bonus reaction
+9 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

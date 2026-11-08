@@ -1946,7 +1946,7 @@ LabWalk :: struct { on: bool; put: bool; x: f32; y: f32; z: f32; face: f32; }
 // token moved by what the rules did (a shove, a new battle).
 lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
   w: LabWalk;
-  if s[0].creator[0].experimental {if s[0].creator[0].hostiles[0].ready && s[0].creator[0].hostiles[0].hp<=0 {return w;}w.on=true;if s[0].put_on {w.put=true;w.x=s[0].put_x;w.y=s[0].put_y;w.z=s[0].put_z;w.face=s[0].put_face;s[0].put_on=false;s[0].you_on=true;}else if !s[0].you_on {w.put=true;s[0].you_on=true;}if w.put {s[0].you_x=w.x;s[0].you_y=w.y;s[0].you_z=w.z;s[0].you_face=w.face;}return w;}
+  if s[0].creator[0].experimental {if s[0].creator[0].hostiles[0].ready && s[0].creator[0].hostiles[0].hp<=0 {return w;}w.on=true;if s[0].put_on {w.put=true;w.x=s[0].put_x;w.y=s[0].put_y;w.z=s[0].put_z;w.face=s[0].put_face;s[0].put_on=false;s[0].you_on=true;}else if !s[0].you_on {w.put=true;s[0].you_on=true;}if w.put {s[0].you_x=w.x;s[0].you_y=w.y;s[0].you_z=w.z;s[0].you_face=w.face;s[0].creator[0].player_x=w.x;s[0].creator[0].player_y=w.y;s[0].creator[0].player_z=w.z;}return w;}
   if !s[0].started || !s[0].player || s[0].me < 0 || s[0].golden { s[0].you_on = false; return w; }
   b := bt(s);
   me := s[0].me;
@@ -2042,6 +2042,18 @@ lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
   if s[0].me < 0 { return P3.{x = x, z = z}; }
   r := you_box(s);
   return P3.{x = lo(r.x1, hi(r.x0, x)), z = lo(r.y1, hi(r.y0, z))};
+}
+// Admission between controller advance and body publication. The host only
+// transports this result back into the shared controller.
+lab_keep_body :: (s:[] Lab,origin:EgBody,proposed:EgBody)->EgBody #export_c #effects(all) {
+  body:=proposed; kept:=lab_keep(s,body.x,body.z); body.x=kept.x; body.z=kept.z;
+  if body.x!=proposed.x { body.px=body.x; body.vx=0; }
+  if body.z!=proposed.z { body.pz=body.z; body.vz=0; }
+  if s[0].creator[0].experimental && !xc_depart(s,origin,body) {
+    body.x=origin.x; body.z=origin.z;
+    body.px=body.x; body.pz=body.z; body.vx=0; body.vz=0;
+  }
+  return body;
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {

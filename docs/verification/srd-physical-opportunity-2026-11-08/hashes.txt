@@ -1,0 +1,5 @@
+6421757a33d9bb62569e42542b2f07703c370c243d528048cbd55bcf17d9476c  aethyr/rules/srd/opportunity-trigger.coax
+1a95b84b58493e18aa8e682bc189b722d4e72ba453d69410db59418c58176169  apps/openagents-web/experimental-combat.coax
+bbada56a07d628c89bb15c1aa29dc4299b90c5379c862a36f2ef05d258531cd0  apps/openagents-web/fivelab.coax
+cad6ce51b46223b74d69e75fe184835da4a4dded4e2614740a2a4bf203619d84  apps/openagents-web/fivelab-face.c
+7cfab0ccfb124288ce954e4fda7accaafa002e9c8ad9090e58dc0e375fdac01d  /tmp/srd-physical-opportunity-fivelab.wasm
