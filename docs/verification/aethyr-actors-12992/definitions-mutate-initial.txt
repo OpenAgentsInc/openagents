@@ -1,0 +1,179 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/actors/definitions.coax:67:8: mutant survived: 0 became 1
+   for i:0..<manifest[0].count {p:=manifest[0].entries[i].plan;
+         ^
+aethyr/actors/definitions.coax:73:15: mutant survived: '<' became '<='
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                ^
+aethyr/actors/definitions.coax:73:16: mutant survived: 1 became 2
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                 ^
+aethyr/actors/definitions.coax:73:31: mutant survived: '>' became '>='
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                                ^
+aethyr/actors/definitions.coax:73:32: mutant survived: 16 became 17
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                                 ^
+aethyr/actors/definitions.coax:73:67: mutant survived: '<' became '<='
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                                                                    ^
+aethyr/actors/definitions.coax:73:68: mutant survived: 1 became 2
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                                                                     ^
+aethyr/actors/definitions.coax:73:87: mutant survived: '>' became '>='
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                                                                                        ^
+aethyr/actors/definitions.coax:73:88: mutant survived: 32 became 33
+   if defs.count<1 || defs.count>ACTOR_DEFINITIONS || services.count<1 || services.count>ACTOR_SERVICES {return ActorCompiled.{status=ActorCompileStatus.capacity};}
+                                                                                         ^
+aethyr/actors/definitions.coax:85:41: mutant survived: '||' became '&&'
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                                          ^
+aethyr/actors/definitions.coax:85:29: mutant survived: '||' became '&&'
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                              ^
+aethyr/actors/definitions.coax:85:13: mutant survived: '||' became '&&'
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+              ^
+aethyr/actors/definitions.coax:85:10: mutant survived: '<' became '<='
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+           ^
+aethyr/actors/definitions.coax:85:11: mutant survived: 1 became 2
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+            ^
+aethyr/actors/definitions.coax:85:50: mutant survived: '>=' became '>'
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                                                   ^
+aethyr/actors/definitions.coax:85:52: mutant survived: 6 became 7
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                                                     ^
+aethyr/actors/definitions.coax:85:105: mutant survived: '>' became '>='
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                                                                                                          ^
+aethyr/actors/definitions.coax:85:106: mutant survived: 63 became 64
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                                                                                                           ^
+aethyr/actors/definitions.coax:86:9: mutant survived: 0 became 1
+    for j:0..<i {if services[j].id==s.id {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}}
+          ^
+aethyr/actors/definitions.coax:91:10: mutant survived: '<' became '<='
+    if d.id<1 || d.revision<1 {return ActorCompiled.{status=ActorCompileStatus.identity,definition=d.id};}
+           ^
+aethyr/actors/definitions.coax:91:11: mutant survived: 1 became 2
+    if d.id<1 || d.revision<1 {return ActorCompiled.{status=ActorCompileStatus.identity,definition=d.id};}
+            ^
+aethyr/actors/definitions.coax:92:9: mutant survived: 0 became 1
+    for j:0..<i {if defs[j].id==d.id {return ActorCompiled.{status=ActorCompileStatus.identity,definition=d.id};}}
+          ^
+aethyr/actors/definitions.coax:94:76: mutant survived: '||' became '&&'
+     d.field_count< -1 || d.field_count>ACTOR_FIELD_REFS || d.root_count< -1 || d.root_count>ACTOR_ROOTS {return ActorCompiled.{status=ActorCompileStatus.capacity,definition=d.id};}
+                                                                             ^
+aethyr/actors/definitions.coax:94:56: mutant survived: '||' became '&&'
+     d.field_count< -1 || d.field_count>ACTOR_FIELD_REFS || d.root_count< -1 || d.root_count>ACTOR_ROOTS {return ActorCompiled.{status=ActorCompileStatus.capacity,definition=d.id};}
+                                                         ^
+aethyr/actors/definitions.coax:94:22: mutant survived: '||' became '&&'
+     d.field_count< -1 || d.field_count>ACTOR_FIELD_REFS || d.root_count< -1 || d.root_count>ACTOR_ROOTS {return ActorCompiled.{status=ActorCompileStatus.capacity,definition=d.id};}
+                       ^
+aethyr/actors/definitions.coax:93:119: mutant survived: '||' became '&&'
+    if d.parameter_count<0 || d.parameter_count>ACTOR_PARAMETERS || d.binding_count<0 || d.binding_count>ACTOR_BINDINGS ||
+                                                                                                                        ^
+aethyr/actors/definitions.coax:93:85: mutant survived: '||' became '&&'
+    if d.parameter_count<0 || d.parameter_count>ACTOR_PARAMETERS || d.binding_count<0 || d.binding_count>ACTOR_BINDINGS ||
+                                                                                      ^
+aethyr/actors/definitions.coax:93:64: mutant survived: '||' became '&&'
+    if d.parameter_count<0 || d.parameter_count>ACTOR_PARAMETERS || d.binding_count<0 || d.binding_count>ACTOR_BINDINGS ||
+                                                                 ^
+aethyr/actors/definitions.coax:93:26: mutant survived: '||' became '&&'
+    if d.parameter_count<0 || d.parameter_count>ACTOR_PARAMETERS || d.binding_count<0 || d.binding_count>ACTOR_BINDINGS ||
+                           ^
+aethyr/actors/definitions.coax:93:46: mutant survived: '>' became '>='
+    if d.parameter_count<0 || d.parameter_count>ACTOR_PARAMETERS || d.binding_count<0 || d.binding_count>ACTOR_BINDINGS ||
+                                               ^
+aethyr/actors/definitions.coax:93:47: mutant survived: 20 became 21
+    if d.parameter_count<0 || d.parameter_count>ACTOR_PARAMETERS || d.binding_count<0 || d.binding_count>ACTOR_BINDINGS ||
+                                                ^
+aethyr/actors/definitions.coax:93:104: mutant survived: 6 became 7
+    if d.parameter_count<0 || d.parameter_count>ACTOR_PARAMETERS || d.binding_count<0 || d.binding_count>ACTOR_BINDINGS ||
+                                                                                                         ^
+aethyr/actors/definitions.coax:94:38: mutant survived: '>' became '>='
+     d.field_count< -1 || d.field_count>ACTOR_FIELD_REFS || d.root_count< -1 || d.root_count>ACTOR_ROOTS {return ActorCompiled.{status=ActorCompileStatus.capacity,definition=d.id};}
+                                       ^
+aethyr/actors/definitions.coax:94:39: mutant survived: 8 became 9
+     d.field_count< -1 || d.field_count>ACTOR_FIELD_REFS || d.root_count< -1 || d.root_count>ACTOR_ROOTS {return ActorCompiled.{status=ActorCompileStatus.capacity,definition=d.id};}
+                                        ^
+aethyr/actors/definitions.coax:94:91: mutant survived: '>' became '>='
+     d.field_count< -1 || d.field_count>ACTOR_FIELD_REFS || d.root_count< -1 || d.root_count>ACTOR_ROOTS {return ActorCompiled.{status=ActorCompileStatus.capacity,definition=d.id};}
+                                                                                            ^
+aethyr/actors/definitions.coax:94:92: mutant survived: 8 became 9
+     d.field_count< -1 || d.field_count>ACTOR_FIELD_REFS || d.root_count< -1 || d.root_count>ACTOR_ROOTS {return ActorCompiled.{status=ActorCompileStatus.capacity,definition=d.id};}
+                                                                                             ^
+aethyr/actors/definitions.coax:96:78: mutant survived: '<' became '<='
+    if d.parent!=0 {parent[i]=actor_definition_find(defs,d.parent);if parent[i]<0 {return ActorCompiled.{status=ActorCompileStatus.parent,definition=d.id,detail=d.parent};}}
+                                                                               ^
+aethyr/actors/definitions.coax:96:79: mutant survived: 0 became 1
+    if d.parent!=0 {parent[i]=actor_definition_find(defs,d.parent);if parent[i]<0 {return ActorCompiled.{status=ActorCompileStatus.parent,definition=d.id,detail=d.parent};}}
+                                                                                ^
+aethyr/actors/definitions.coax:104:16: mutant survived: '||' became '&&'
+     if b.kind<0 || b.kind>=ACTOR_BINDINGS || at<0 {return ActorCompiled.{status=ActorCompileStatus.binding,definition=d.id,detail=b.service};}
+                 ^
+aethyr/actors/definitions.coax:104:25: mutant survived: '>=' became '>'
+     if b.kind<0 || b.kind>=ACTOR_BINDINGS || at<0 {return ActorCompiled.{status=ActorCompileStatus.binding,definition=d.id,detail=b.service};}
+                          ^
+aethyr/actors/definitions.coax:104:27: mutant survived: 6 became 7
+     if b.kind<0 || b.kind>=ACTOR_BINDINGS || at<0 {return ActorCompiled.{status=ActorCompileStatus.binding,definition=d.id,detail=b.service};}
+                            ^
+aethyr/actors/definitions.coax:106:10: mutant survived: 0 became 1
+     for j:0..<k {if d.bindings[j].kind==b.kind {return ActorCompiled.{status=ActorCompileStatus.binding,definition=d.id,detail=b.service};}}
+           ^
+aethyr/actors/definitions.coax:113:10: mutant survived: 0 became 1
+     for j:0..<k {if d.fields[j].id==f.id {return ActorCompiled.{status=ActorCompileStatus.field,definition=d.id,detail=f.id};}}
+           ^
+aethyr/actors/definitions.coax:116:54: mutant survived: '<' became '<='
+     at:=actor_resource_find(manifest,d.roots[k]);if at<0 {return ActorCompiled.{status=ActorCompileStatus.resource,definition=d.id,detail=k};}
+                                                       ^
+aethyr/actors/definitions.coax:116:55: mutant survived: 0 became 1
+     at:=actor_resource_find(manifest,d.roots[k]);if at<0 {return ActorCompiled.{status=ActorCompileStatus.resource,definition=d.id,detail=k};}
+                                                        ^
+aethyr/actors/definitions.coax:117:10: mutant survived: 0 became 1
+     for j:0..<k {if actor_resource_find(manifest,d.roots[j])==at {return ActorCompiled.{status=ActorCompileStatus.resource,definition=d.id,detail=k};}}
+           ^
+aethyr/actors/definitions.coax:124:20: mutant survived: '<<' became '>>'
+     bit:=cast(u32)(1<<at);if (visited & bit)!=0 {return ActorCompiled.{status=ActorCompileStatus.cycle,definition=defs[i].id,detail=defs[at].id};}
+                     ^
+aethyr/actors/definitions.coax:124:19: mutant survived: 1 became 2
+     bit:=cast(u32)(1<<at);if (visited & bit)!=0 {return ActorCompiled.{status=ActorCompileStatus.cycle,definition=defs[i].id,detail=defs[at].id};}
+                    ^
+aethyr/actors/definitions.coax:132:8: mutant survived: 0 became 1
+   for k:0..<ACTOR_PARAMETERS {a.parameters[k]=params.fields[k].initial;}
+         ^
+aethyr/actors/definitions.coax:138:38: mutant survived: 0 became 1
+     a.field_count=d.field_count;for j:0..<ACTOR_FIELD_REFS {a.fields[j]=ActorCompiledField.{};}
+                                       ^
+aethyr/actors/definitions.coax:138:71: mutant survived: the assignment was removed
+     a.field_count=d.field_count;for j:0..<ACTOR_FIELD_REFS {a.fields[j]=ActorCompiledField.{};}
+                                                                        ^
+aethyr/actors/definitions.coax:142:36: mutant survived: 0 became 1
+     a.root_count=d.root_count;for j:0..<ACTOR_ROOTS {a.roots[j]=0;}
+                                     ^
+aethyr/actors/definitions.coax:142:63: mutant survived: the assignment was removed
+     a.root_count=d.root_count;for j:0..<ACTOR_ROOTS {a.roots[j]=0;}
+                                                                ^
+aethyr/actors/definitions.coax:142:64: mutant survived: 0 became 1
+     a.root_count=d.root_count;for j:0..<ACTOR_ROOTS {a.roots[j]=0;}
+                                                                 ^
+aethyr/actors/definitions.coax:155:27: mutant survived: '<' became '<='
+    s:=a.services[i];if s.id<1 {return ActorCompiled.{status=ActorCompileStatus.binding,definition=target,detail=i};}
+                            ^
+aethyr/actors/definitions.coax:155:28: mutant survived: 1 became 2
+    s:=a.services[i];if s.id<1 {return ActorCompiled.{status=ActorCompileStatus.binding,definition=target,detail=i};}
+                             ^
+aethyr/actors/definitions.coax:157:9: mutant survived: 0 became 1
+    for j:0..<ACTOR_BINDINGS {if (s.needs & cast(u32)(1<<j))!=0 {tasks[i].dependencies[tasks[i].dependency_count]=a.services[j].id;tasks[i].dependency_count+=1;}}
+          ^
+aethyr/actors/definitions.coax:157:13: mutant survived: 6 became 7
+    for j:0..<ACTOR_BINDINGS {if (s.needs & cast(u32)(1<<j))!=0 {tasks[i].dependencies[tasks[i].dependency_count]=a.services[j].id;tasks[i].dependency_count+=1;}}
+              ^
+aethyr/actors/definitions.coax:157:53: mutant survived: 1 became 2
+    for j:0..<ACTOR_BINDINGS {if (s.needs & cast(u32)(1<<j))!=0 {tasks[i].dependencies[tasks[i].dependency_count]=a.services[j].id;tasks[i].dependency_count+=1;}}
+                                                      ^
+315 mutants, 256 killed, 59 survived

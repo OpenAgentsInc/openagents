@@ -1,0 +1,41 @@
+// Native observations for the independent flattened-archetype oracle.
+#import "Basic";
+#load "../definitions.coax" as actors;
+#load "../../state/declarations.coax" as state;
+main :: () #effects(all) {
+ for sample:0..<64 {
+  m:=[1]actors.ResourceManifest.[actors.actor_definition_manifest()];defs:=actors.actor_definition_sources(m[0]);
+  services:=actors.actor_definition_services();schema:=actors.actor_definition_schema();refs:state.StateRefs;
+  defs[0].parameter_count=5;
+  defs[0].parameters[0]=actors.ActorParameter.{id=5,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%33),0,0]}};
+  defs[0].parameters[1]=actors.ActorParameter.{id=6,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%21),0,0]}};
+  defs[0].parameters[2]=actors.ActorParameter.{id=1,value=state.state_int(sample%3)};
+  defs[0].parameters[3]=actors.ActorParameter.{id=9,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%3-1),0,0]}};
+  defs[0].parameters[4]=actors.ActorParameter.{id=4,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[0.1+cast(f64)(sample%40)/10,0,0]}};
+  mode:=sample%16;
+  if mode==8 {defs[1].parent=30;}
+  if mode==9 {defs[0].parameters[3]=actors.ActorParameter.{id=8,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[10,0,0]}};}
+  if mode==10 {defs[1].roots[0].content.words[0]^=1;}
+  if mode==11 {defs[1].fields[0].owner=8;}
+  if mode==12 {defs[0].parameters[4].id=99;}
+  if mode==13 {defs[1].bindings[3].service=999;}
+  if mode==14 {m[0].identity.words[7]^=1;}
+  if mode==15 {defs[0].parameter_count=6;defs[0].parameters[5]=actors.ActorParameter.{id=3,value=state.state_int(1)};}
+  r:=actors.actor_definition_compile(defs[..],30,services[..],schema,refs,m[..]);a:=r.archetype;
+  print("% % % % % % % % % % %",sample,cast(int)r.status,ifx a.valid then 1 else 0,a.id,a.revision,a.lineage_n,
+   ifx a.plan.valid then 1 else 0,a.plan.n,a.field_count,a.root_count,a.resource_count);
+  if a.valid {
+   for i:0..<a.lineage_n {print(" % %",a.lineage[i].id,a.lineage[i].revision);}
+   for v:a.parameters {
+    print(" % %",v.kind,v.integer);for number:v.number {print(" %",cast,trunc(int)f64_bits(number));}
+    print(" % %",v.entity,v.generation);for word:v.content.words {print(" %",word);}
+   }
+   for s:a.services {print(" % % % % % % %",s.id,s.version,s.kind,s.implementation,s.needs,s.reads,s.writes);}
+   for inputs:a.inputs {print(" %",inputs.n);for slot:inputs.slots {print(" %",slot);}}
+   for i:0..<a.plan.n {p:=a.plan.steps[i];print(" % % % %",p.id,p.phase,p.reads,p.writes);}
+   for i:0..<a.field_count {f:=a.fields[i];print(" % % % % %",f.slot,f.reference.id,f.reference.kind,f.reference.scope,f.reference.owner);}
+   for i:0..<a.root_count {print(" %",a.roots[i]);}for present:a.closure {print(" %",ifx present then 1 else 0);}
+   for word:a.schema.words {print(" %",word);}for word:a.manifest.words {print(" %",word);}
+  }print("\n");
+ }
+}

@@ -6356,3 +6356,18 @@ fields and cannot roll back an external committed domain. Day changes use the
 existing paid clock; visual time cannot drive authoritative routines. AESV, ACK1,
 HH_Save v1 and server revision/CAS retain their existing contracts. The supported
 bounds and residual adapters are in `aethyr/state/README.md`.
+
+## Actor definitions compile before any instance may publish (#12992)
+
+`aethyr/actors/` compiles typed authored inheritance and declared service inputs
+into owned flat records. Unknown keys, mismatched fact/resource identities,
+cycles and unordered read/write conflicts refuse a complete result. Fixed
+parameter slots and phase order require no runtime name or parent lookup.
+Canonical RCM1 metadata must match its complete retained pin; payload decoding
+and physical resource admission still belong to the shared stream.
+
+A compiled definition is not a spawn grant. Entity lifecycle, owner fencing,
+aggregate pools, resource reservations and actual native behavior remain the
+actor execution boundary's responsibility. Current compiler qualification
+does not establish actor execution or playable adoption; its limits and
+remaining integrations are in `aethyr/actors/README.md`.

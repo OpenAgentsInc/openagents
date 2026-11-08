@@ -1,0 +1,213 @@
+actor_definition_schema :: ()->StateSchema #effects(all) {
+ s:=StateSchema.{id=12992002,n=2};
+ s.fields[0]=StateField.{id=101,name="actor.mode",scope=STATE_ACTOR,owner=7,high=2};
+ s.fields[1]=StateField.{id=102,name="world.gate",kind=STATE_BOOL,initial=state_bool(false)};return s;
+}
+actor_definition_manifest :: ()->ResourceManifest #effects(all) {
+ a:=[4]u8.[1,0,0,0];b:=[4]u8.[2,0,0,0];c:=[4]u8.[3,0,0,0];sources:=[3][]u8.[a[..],b[..],c[..]];
+ spec:=ResourceSpec.{format=ResourceFormat.indices};specs:=[3]ResourceSpec.[spec,spec,spec];deps:[3]ResourceDependencies;
+ deps[1].count=1;deps[2].count=1;bytes:[1368]u8;
+ #assert resource_manifest_build(sources[..],specs[..],deps[..],bytes[..])==ResourceManifestStatus.ok;
+ result:[1]ResourceManifest;#assert resource_manifest_read(bytes[..],assets.asset_id(cast(string)bytes[..]),result[..])==ResourceManifestStatus.ok;
+ return result[0];
+}
+actor_definition_services :: ()->[6]ActorService #effects(all) {
+ services:[6]ActorService;reads:=[6]u32.[128,9,2,4,8,48];writes:=[6]u32.[15,2,4,8,48,64];
+ for i:0..<6 {services[i]=ActorService.{id=10+i,kind=i,implementation=i,reads=reads[i],writes=writes[i],needs=ifx i==0 then 0 else cast(u32)(1<<(i-1))};}
+ return services;
+}
+actor_definition_sources :: (m:ResourceManifest)->[3]ActorDefinition #effects(all) {
+ defs:[3]ActorDefinition;
+ defs[0]=ActorDefinition.{id=30,revision=3,parent=20};
+ defs[1]=ActorDefinition.{id=10,field_count=2,root_count=2};
+ defs[2]=ActorDefinition.{id=20,revision=2,parent=10,parameter_count=2};
+ defs[2].parameters[0]=ActorParameter.{id=ACTOR_SPEED+1,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[7,0,0]}};
+ defs[2].parameters[1]=ActorParameter.{id=ACTOR_DISCOVER+1,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[6,0,0]}};
+ defs[1].binding_count=6;for i:0..<6 {defs[1].bindings[i]=ActorBinding.{kind=i,service=10+i};}
+ defs[1].fields[0]=ActorFieldRef.{id=101,kind=STATE_INT,scope=STATE_ACTOR,owner=7};
+ defs[1].fields[1]=ActorFieldRef.{id=102,kind=STATE_BOOL,scope=STATE_WORLD};
+ for i:0..<2 {defs[1].roots[i]=ActorResourceRef.{content=m.entries[i+1].plan.content,spec=m.entries[i+1].plan.spec};}
+ return defs;
+}
+#test "actor archetypes flatten out-of-order inheritance defaults typed fields services and shared resource closures" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ r:=actor_definition_compile(defs[..],30,services[..],s,refs,m[..]);a:=r.archetype;
+ #assert r.status==ActorCompileStatus.ok && a.valid && a.id==30 && a.revision==3 && a.version==1;
+ #assert a.lineage_n==3 && a.lineage[0].id==10 && a.lineage[0].revision==1 && a.lineage[1].id==20 && a.lineage[1].revision==2 && a.lineage[2].id==30 && a.lineage[2].revision==3;
+ #assert a.parameters[ACTOR_SPEED].number[0]==7 && a.parameters[ACTOR_DISCOVER].number[0]==6 && a.parameters[ACTOR_RADIUS].number[0]==0.3;
+ #assert a.field_count==2 && a.fields[0].slot==0 && a.fields[0].reference.owner==7 && a.fields[1].slot==1;
+ #assert a.root_count==2 && a.roots[0]==1 && a.roots[1]==2 && a.resource_count==3;
+ for i:0..<64 {#assert a.closure[i]==(i<3);}
+ #assert assets.asset_same(a.schema,state_schema_id(s)) && assets.asset_same(a.manifest,m[0].identity);
+ #assert a.plan.valid && a.plan.n==6;for i:0..<6 {
+  #assert a.services[i].id==10+i && a.plan.steps[i].id==10+i && a.plan.steps[i].phase==i;
+  #assert a.inputs[i].n==(ifx i==0 then 0 else 1);
+  for j:0..<6 {#assert a.inputs[i].slots[j]==(ifx i>0 && j==0 then i-1 else 0);}
+ }
+ defs[2].parameters[0].value.number[0]=1;services[3].id=999;m[0].entries[1].plan.content=assets.asset_id("replacement");s.fields[0].owner=99;
+ #assert a.parameters[ACTOR_SPEED].number[0]==7 && a.services[3].id==13 && a.fields[0].reference.owner==7;
+}
+#test "actor parameter overrides have closed typed keys and inherit independently of library order" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ for which:0..<6 {bad:=defs;bad[0].parameter_count=1;bad[0].parameters[0]=defs[2].parameters[0];
+  if which==0 {bad[0].parameters[0].id=0;}if which==1 {bad[0].parameters[0].id=21;}
+  if which==2 {bad[0].parameters[0].value.kind=STATE_INT;}
+  if which==3 {bad[0].parameters[0].value.number[0]=33;}
+  if which==4 {bad[0].parameters[0].value.integer=1;}
+  if which==5 {bad[0].parameter_count=2;bad[0].parameters[1]=bad[0].parameters[0];}
+  r:=actor_definition_compile(bad[..],30,services[..],s,refs,m[..]);#assert r.status==ActorCompileStatus.parameter && !r.archetype.valid;
+ }
+ defs[0].parameter_count=1;defs[0].parameters[0]=defs[2].parameters[0];defs[0].parameters[0].value.number[0]=4;
+ r:=actor_definition_compile(defs[..],30,services[..],s,refs,m[..]);#assert r.status==ActorCompileStatus.ok && r.archetype.parameters[ACTOR_SPEED].number[0]==4 && r.archetype.parameters[ACTOR_DISCOVER].number[0]==6;
+ defs[0].field_count=0;defs[0].root_count=0;r=actor_definition_compile(defs[..],30,services[..],s,refs,m[..]);
+ #assert r.status==ActorCompileStatus.ok && r.archetype.field_count==0 && r.archetype.root_count==0 && r.archetype.resource_count==0;
+}
+#test "actor libraries refuse cyclic missing duplicate and unsupported definitions before a compiled record escapes" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ for which:0..<8 {bad:=defs;
+  if which==0 {bad[1].parent=30;}if which==1 {bad[0].parent=30;}
+  if which==2 {bad[0].parent=999;}if which==3 {bad[1].id=30;}
+  if which==4 {bad[0].revision=0;}if which==5 {bad[0].version=2;}
+  if which==6 {bad[0].parameter_count=21;}if which==7 {bad[0].id=0;}
+  r:=actor_definition_compile(bad[..],30,services[..],s,refs,m[..]);#assert r.status!=ActorCompileStatus.ok && !r.archetype.valid && r.archetype.lineage_n==0;
+ }
+ #assert actor_definition_compile(defs[..],999,services[..],s,refs,m[..]).status==ActorCompileStatus.identity;
+ #assert actor_definition_compile(defs[0..<0],30,services[..],s,refs,m[..]).status==ActorCompileStatus.capacity;
+}
+#test "actor service field and resource substitutions cannot alias admitted references" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ for which:0..<9 {bad:=defs;
+  if which==0 {bad[1].bindings[0].service=999;}if which==1 {bad[1].bindings[0].kind=6;}
+  if which==2 {bad[1].bindings[1].kind=0;}if which==3 {bad[1].bindings[0].service=11;}
+  if which==4 {bad[1].fields[0].kind=STATE_BOOL;}if which==5 {bad[1].fields[0].owner=8;}
+  if which==6 {bad[1].fields[0].id=999;}if which==7 {bad[1].roots[0].content=assets.asset_id("foreign");}
+  if which==8 {bad[1].roots[0].spec.backend=ResourceBackend.vulkan;}
+  r:=actor_definition_compile(bad[..],30,services[..],s,refs,m[..]);#assert r.status!=ActorCompileStatus.ok && !r.archetype.valid;
+ }
+ broken:=services;broken[0].needs=32;#assert actor_definition_compile(defs[..],30,broken[..],s,refs,m[..]).status==ActorCompileStatus.plan;
+ broken=services;broken[0].writes=64;#assert actor_definition_compile(defs[..],30,broken[..],s,refs,m[..]).status==ActorCompileStatus.plan;
+ broken=services;broken[0].implementation=1;#assert actor_definition_compile(defs[..],30,broken[..],s,refs,m[..]).status==ActorCompileStatus.binding;
+ broken=services;broken[0].id=11;#assert actor_definition_compile(defs[..],30,broken[..],s,refs,m[..]).status==ActorCompileStatus.binding;
+}
+#test "actor parameter declarations retain every default type bound and nonfinite refusal" #steps 30000000 {
+ s:=actor_parameter_schema();refs:StateRefs;#assert state_schema_ok(s,refs) && s.n==20 && s.day_ticks==1 && s.id==12992001;
+ defaults:=[20]f64.[1,1,0,0.3,3.5,12,20,30,-1,10,80,128,64,16,8,128,8,16,1.6,1];
+ lows:=[20]f64.[0,0,0,0.1,0,0,0,0,-1,0,0,1,0,0,1,1,1,1,0,0];
+ highs:=[20]f64.[2,2,1,4,32,1000,1000,1000,1,1000,1000,230400,230400,230400,64,4096,32,64,100,1];
+ for i:0..<20 {
+  f:=s.fields[i];scalar:=(i>=3 && i<=10) || i==18;
+  #assert f.id==i+1 && f.scope==STATE_OPTIONS && !f.saved && !f.retry && f.resets==0;
+  #assert f.kind==(ifx scalar then STATE_SCALAR else STATE_INT) && state_value_ok(f,f.initial,refs);
+  for edge:0..<2 {value:=ifx edge==0 then lows[i] else highs[i];v:=ifx scalar then StateValue.{kind=STATE_SCALAR,number=[3]f64.[value,0,0]} else state_int(cast(int)value);
+   #assert state_value_ok(f,v,refs);
+   if scalar {v.number[0]+=ifx edge==0 then -0.01 else 0.01;}else {v.integer+=ifx edge==0 then -1 else 1;}
+   #assert !state_value_ok(f,v,refs);
+  }
+  if scalar {#assert f.initial.number[0]==defaults[i];for invalid:0..<3 {
+   zero:f64=0;v:=f.initial;v.number[0]=ifx invalid==0 then zero/zero else ifx invalid==1 then 1/zero else -1/zero;#assert !state_value_ok(f,v,refs);
+  }}else {#assert f.initial.integer==cast(int)defaults[i];}
+ }
+}
+#test "actor controller compatibility and perception bands refuse unsupported resolved combinations" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ for controller:0..<3 {for animation:0..<3 {for physics:0..<2 {
+  bad:=defs;bad[0].parameter_count=3;
+  bad[0].parameters[0]=ActorParameter.{id=1,value=state_int(controller)};
+  bad[0].parameters[1]=ActorParameter.{id=2,value=state_int(animation)};
+  bad[0].parameters[2]=ActorParameter.{id=3,value=state_int(physics)};
+  r:=actor_definition_compile(bad[..],30,services[..],s,refs,m[..]);
+  supported:=physics==0 && animation<2 && (controller!=2 || animation==1);
+  #assert (r.status==ActorCompileStatus.ok)==supported;
+  if !supported {#assert r.status==ActorCompileStatus.profile && !r.archetype.valid && r.archetype.lineage_n==0;}
+ }}}
+ for i:0..<3 {bad:=defs;bad[0].parameter_count=1;slot:=ifx i==0 then ACTOR_DISCOVER else ifx i==1 then ACTOR_ALERT else ACTOR_TRACK;
+  value:=ifx i==0 then 21 else ifx i==1 then 31 else 81;
+  bad[0].parameters[0]=ActorParameter.{id=slot+1,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[cast(f64)value,0,0]}};
+  #assert actor_definition_compile(bad[..],30,services[..],s,refs,m[..]).status==ActorCompileStatus.profile;
+ }
+ defs[0].parameter_count=4;for i:0..<4 {slot:=ifx i==0 then ACTOR_DISCOVER else ifx i==1 then ACTOR_ALERT else ifx i==2 then ACTOR_TRACK else ACTOR_CULL;
+  defs[0].parameters[i]=ActorParameter.{id=slot+1,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[20,0,0]}};
+ }#assert actor_definition_compile(defs[..],30,services[..],s,refs,m[..]).status==ActorCompileStatus.ok;
+}
+#test "actor compilation authenticates complete manifest metadata rather than trusting its ready tag" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ for which:0..<5 {bad:=m;
+  if which==0 {bad[0].identity.words[7]^=1;}if which==1 {bad[0].entries[0].plan.cost.gpu+=4;}
+  if which==2 {bad[0].entries[1].dependencies.count=0;}if which==3 {bad[0].valid=false;}
+  if which==4 {bad[0].count=0;}
+  r:=actor_definition_compile(defs[..],30,services[..],s,refs,bad[..]);#assert r.status==ActorCompileStatus.manifest && !r.archetype.valid;
+ }
+ #assert actor_definition_compile(defs[..],30,services[..],s,refs,m[0..<0]).status==ActorCompileStatus.manifest;
+}
+actor_definition_repin :: (m:ResourceManifest)->ResourceManifest #effects(all) {
+ bytes:[RESOURCE_MANIFEST_MAX_BYTES]u8;#assert resource_manifest_write(m,bytes[..])==ResourceManifestStatus.ok;
+ out:=m;out.valid=true;out.identity=assets.asset_id(cast(string)bytes[0..<RESOURCE_MANIFEST_HEADER+RESOURCE_MANIFEST_ROW*m.count]);return out;
+}
+#test "actor definitions admit exact minimum and maximum tables and clear replaced reference tails" #steps 300000000 {
+ // Metadata-only size/closure fixture; no successful source decoding is claimed.
+ m:=[1]ResourceManifest.[resource_manifest_fixture(64)];for i:1..<64 {m[0].entries[i].dependencies.count=1;m[0].entries[i].dependencies.owners[0]=i-1;}m[0]=actor_definition_repin(m[0]);
+ services:[33]ActorService;first:=actor_definition_services();for i:0..<6 {services[i]=first[i];}
+ for i:6..<33 {services[i]=ActorService.{id=100+i,kind=i%6,implementation=i%6};}
+ s:=StateSchema.{id=12992003,n=8};names:=[8]string.["a","b","c","d","e","f","g","h"];
+ for i:0..<8 {s.fields[i]=StateField.{id=i+1,name=names[i],scope=STATE_ACTOR,owner=7};}
+ defs:[17]ActorDefinition;for i:0..<17 {defs[i]=ActorDefinition.{id=i+1,parent=ifx i==0 then 0 else i};}
+ base:=actor_definition_sources(m[0])[1];base.id=1;base.parameter_count=20;base.field_count=8;base.root_count=8;params:=actor_parameter_schema();
+ for i:0..<20 {base.parameters[i]=ActorParameter.{id=i+1,value=params.fields[i].initial};}
+ for i:0..<8 {base.fields[i]=ActorFieldRef.{id=i+1,kind=STATE_INT,scope=STATE_ACTOR,owner=7};
+  base.roots[i]=ActorResourceRef.{content=m[0].entries[56+i].plan.content,spec=m[0].entries[56+i].plan.spec};}
+ defs[0]=base;refs:StateRefs;
+ r:=actor_definition_compile(defs[0..<16],16,services[0..<32],s,refs,m[..]);#assert r.status==ActorCompileStatus.ok && r.archetype.lineage_n==16 && r.archetype.resource_count==64;
+ for i:0..<64 {#assert r.archetype.closure[i];}for i:0..<8 {#assert r.archetype.fields[i].slot==i && r.archetype.roots[i]==56+i;}
+ #assert actor_definition_compile(defs[..],16,services[0..<32],s,refs,m[..]).status==ActorCompileStatus.capacity;
+ #assert actor_definition_compile(defs[0..<16],16,services[..],s,refs,m[..]).status==ActorCompileStatus.capacity;
+ #assert actor_definition_compile(defs[0..<16],16,services[0..<0],s,refs,m[..]).status==ActorCompileStatus.capacity;
+ #assert actor_definition_compile(defs[0..<16],16,services[0..<1],s,refs,m[..]).status==ActorCompileStatus.binding;
+ r=actor_definition_compile(defs[0..<1],1,services[0..<6],s,refs,m[..]);#assert r.status==ActorCompileStatus.ok && r.archetype.lineage_n==1;
+ for i:0..<20 {#assert r.archetype.parameters[i].kind==params.fields[i].initial.kind && r.archetype.parameters[i].integer==params.fields[i].initial.integer && r.archetype.parameters[i].number[0]==params.fields[i].initial.number[0];}
+ defs[15].field_count=0;defs[15].root_count=0;r=actor_definition_compile(defs[0..<16],16,services[0..<32],s,refs,m[..]);#assert r.status==ActorCompileStatus.ok && r.archetype.resource_count==0;
+ for i:0..<8 {#assert r.archetype.fields[i].reference.id==0 && r.archetype.roots[i]==0;}
+ for i:0..<64 {#assert !r.archetype.closure[i];}
+}
+#test "actor count and identity refusals identify the invalid boundary before traversing arrays" #steps 60000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ for which:0..<8 {bad:=defs;
+  if which==0 {bad[0].parameter_count= -1;}if which==1 {bad[0].parameter_count=21;}
+  if which==2 {bad[0].binding_count= -1;}if which==3 {bad[0].binding_count=7;}
+  if which==4 {bad[0].field_count= -2;}if which==5 {bad[0].field_count=9;}
+  if which==6 {bad[0].root_count= -2;}if which==7 {bad[0].root_count=9;}
+  r:=actor_definition_compile(bad[..],30,services[..],s,refs,m[..]);#assert r.status==ActorCompileStatus.capacity && r.definition==30;
+ }
+ for which:0..<4 {bad:=defs;
+  if which==0 {bad[1].id=30;}if which==1 {bad[2].id=30;}
+  if which==2 {bad[0].id= -1;}if which==3 {bad[0].revision=0;}
+  expected:=ifx which==1 then ActorCompileStatus.parent else ActorCompileStatus.identity;
+  #assert actor_definition_compile(bad[..],30,services[..],s,refs,m[..]).status==expected;
+ }
+ bad:=defs;bad[1].binding_count=5;#assert actor_definition_compile(bad[..],30,services[..],s,refs,m[..]).status==ActorCompileStatus.binding;
+ bad=defs;bad[1].fields[1]=bad[1].fields[0];#assert actor_definition_compile(bad[..],30,services[..],s,refs,m[..]).status==ActorCompileStatus.field;
+ bad=defs;bad[1].roots[1]=bad[1].roots[0];#assert actor_definition_compile(bad[..],30,services[..],s,refs,m[..]).status==ActorCompileStatus.resource;
+ bad=defs;bad[1].fields[0].scope=STATE_WORLD;#assert actor_definition_compile(bad[..],30,services[..],s,refs,m[..]).status==ActorCompileStatus.field;
+ bad=defs;bad[1].roots[0]=ActorResourceRef.{content=m[0].entries[0].plan.content,spec=m[0].entries[0].plan.spec};
+ r:=actor_definition_compile(bad[..],30,services[..],s,refs,m[..]);#assert r.status==ActorCompileStatus.ok && r.archetype.roots[0]==0;
+}
+#test "actor service catalog validates every role and keeps explicit cycle outcomes at all mask boundaries" #steps 60000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ for which:0..<7 {bad:=services;
+  if which==0 {bad[0].id=0;}if which==1 {bad[0].version=0;}if which==2 {bad[0].kind= -1;bad[0].implementation= -1;}
+  if which==3 {bad[0].kind=6;bad[0].implementation=6;}if which==4 {bad[0].implementation=1;}
+  if which==5 {bad[0].needs=64;}if which==6 {bad[1].id=10;}
+  r:=actor_definition_compile(defs[..],30,bad[..],s,refs,m[..]);#assert r.status==ActorCompileStatus.binding && r.definition==0;
+ }
+ services[0].id=1;defs[1].bindings[0].service=1;
+ #assert actor_definition_compile(defs[..],30,services[..],s,refs,m[..]).status==ActorCompileStatus.ok;
+ for mask:[3]u32.[1,32,63] {bad:=services;bad[0].needs=mask;
+  #assert actor_definition_compile(defs[..],30,bad[..],s,refs,m[..]).status==ActorCompileStatus.plan;
+ }
+ defs[1].bindings[1].kind=0;defs[1].bindings[1].service=1;
+ r:=actor_definition_compile(defs[..],30,services[..],s,refs,m[..]);#assert r.status==ActorCompileStatus.binding && r.definition==10;
+}
+#test "actor unpatched defaults survive compilation rather than only parameter-schema admission" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();s:=actor_definition_schema();refs:StateRefs;
+ r:=actor_definition_compile(defs[..],10,services[..],s,refs,m[..]);#assert r.status==ActorCompileStatus.ok;params:=actor_parameter_schema();
+ for i:0..<20 {v:=r.archetype.parameters[i];f:=params.fields[i];#assert v.kind==f.initial.kind && v.integer==f.initial.integer && v.number[0]==f.initial.number[0];}
+}

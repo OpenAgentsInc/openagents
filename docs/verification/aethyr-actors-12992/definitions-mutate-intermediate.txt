@@ -1,0 +1,23 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/actors/definitions.coax:85:50: mutant survived: '>=' became '>'
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                                                   ^
+aethyr/actors/definitions.coax:85:52: mutant survived: 6 became 7
+    if s.id<1 || s.version!=1 || s.kind<0 || s.kind>=ACTOR_BINDINGS || s.implementation!=s.kind || s.needs>63 {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}
+                                                     ^
+aethyr/actors/definitions.coax:86:9: mutant survived: 0 became 1
+    for j:0..<i {if services[j].id==s.id {return ActorCompiled.{status=ActorCompileStatus.binding,detail=s.id};}}
+          ^
+aethyr/actors/definitions.coax:107:10: mutant survived: 0 became 1
+     for j:0..<k {if d.bindings[j].kind==b.kind {return ActorCompiled.{status=ActorCompileStatus.binding,definition=d.id,detail=b.service};}}
+           ^
+aethyr/actors/definitions.coax:133:8: mutant survived: 0 became 1
+   for k:0..<ACTOR_PARAMETERS {a.parameters[k]=params.fields[k].initial;}
+         ^
+aethyr/actors/definitions.coax:160:18: mutant survived: '&' became '|'
+     if (remaining & 1)!=0 {tasks[i].dependencies[tasks[i].dependency_count]=a.services[j].id;tasks[i].dependency_count+=1;}
+                   ^
+aethyr/actors/definitions.coax:161:28: mutant survived: the assignment was removed
+     remaining=remaining>>1;j+=1;
+                             ^
+312 mutants, 305 killed, 7 survived
