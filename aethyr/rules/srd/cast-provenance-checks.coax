@@ -8,13 +8,14 @@
 #load "battle.coax";
 
 RsGrantSource :: struct { klass: int; from: int; sp: int; page: int; }
-// Circle of the Land (Polar) p.46, Fiend Spells p.76, Fiendish Vigor p.73 (this preset's level 5
+// Druidic p.42, Circle of the Land (Polar) p.46, Fiend Spells p.76, Fiendish Vigor p.73 (this preset's level 5
 // invocation; Level 2+ Warlock), Magical Discoveries p.35 (this preset's two
 // choices), Blessed Warrior and Paladin's Smite p.54, Oath of Devotion Spells p.56, Draconic Spells
 // p.70, Life Domain Spells p.40, Favored Enemy p.58. Source spells without engine records (Aid,
 // Suggestion, Alter Self, Protection from Evil and Good, Lesser Restoration, Revivify and others)
 // grant no ID.
-RS_GRANT_SOURCES :: [19] RsGrantSource.[
+RS_GRANT_SOURCES :: [20] RsGrantSource.[
+  RsGrantSource.{klass = RS_DRUID, from = 1, sp = SP_SPEAK_WITH_ANIMALS, page = 42},
   RsGrantSource.{klass = RS_DRUID, from = 3, sp = SP_FOG_CLOUD, page = 46}, RsGrantSource.{klass = RS_DRUID, from = 3, sp = SP_HOLD_PERSON, page = 46},
   RsGrantSource.{klass = RS_DRUID, from = 3, sp = SP_RAY_OF_FROST, page = 46}, RsGrantSource.{klass = RS_DRUID, from = 5, sp = SP_SLEET_STORM, page = 46},
   RsGrantSource.{klass = RS_WARLOCK, from = 3, sp = SP_BURNING_HANDS, page = 76}, RsGrantSource.{klass = RS_WARLOCK, from = 3, sp = SP_COMMAND, page = 76},
