@@ -70,3 +70,14 @@ Verification: two source boundary checks pass; all 41 generated mutants are
 killed with zero survivors or exemptions. `coax/web/tool.sh tools-check` passes
 (1897 tracked tools, 35 vendored, zero missing reasons). No product/world ABI
 changed, so the previous unchanged world build receipt is not rerun.
+
+## Retained activity journal
+
+`long-rest-state.coax` now retains explicit activity segments and interruption
+extensions, pauses without crediting elapsed interruption time, and reports
+Short Rest eligibility at the interruption. It stops at the first completion,
+one-hour exertion or two-hour light-activity boundary. Completion remains
+pending until the owner applies benefits and acknowledges its exact timestamp;
+that timestamp controls subsequent sixteen-hour admission. Actual world sleep,
+clock conversion, causal producer hooks, benefits and persistence remain the
+next integration work. [State/native evidence](../verification/srd-long-rest-state-2026-11-08/README.md).

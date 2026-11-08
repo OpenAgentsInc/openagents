@@ -1,0 +1,247 @@
+// Retained, integer-second activity journal. The owner reports actual modes,
+// synchronizes before causal events, consumes each boundary, and applies
+// benefits before acknowledging completion. No clock passage starts sleep.
+#load "long-rest-timing.coax";
+#authority;
+RsLongRest :: struct {
+  phase:int; // 0 idle, 1 active, 2 interrupted, 3 benefits pending
+  mode:int; // 1 sleep, 2 light activity, 3 physical exertion
+  stamp:int; elapsed:int; sleep:int; light:int; exertion:int;
+  interruptions:int; quiet:int; fallback:bool;
+  completed:bool; finished:int;
+}
+RsLongRestBoundary :: struct { accepted:bool; short_rest:bool; ready:bool; light_limit:bool; }
+
+#test "retained sleep and watch finish at the actual boundary before a late event" {
+  s:[1]RsLongRest;
+  #assert !rs_long_rest_begin(s[..],0,0,1);
+  #assert !rs_long_rest_begin(s[..],1,-1,1);
+  #assert !rs_long_rest_begin(s[..],1,0,0);
+  #assert !rs_long_rest_begin(s[..],1,0,4);
+  #assert rs_long_rest_begin(s[..],1,10,2);
+  #assert !rs_long_rest_begin(s[..],1,10,1);
+  #assert rs_long_rest_advance(s[..],7210).accepted;
+  #assert s[0].light==7200 && s[0].sleep==0 && s[0].phase==1;
+  #assert rs_long_rest_mode(s[..],1);
+  #assert rs_long_rest_advance(s[..],40000).ready;
+  #assert s[0].stamp==28810 && s[0].sleep==21600 && s[0].elapsed==28800;
+  #assert !rs_long_rest_advance(s[..],40000).light_limit;
+  #assert s[0].phase==3 && !s[0].completed;
+  #assert !rs_long_rest_advance(s[..],40001).accepted;
+  #assert !rs_long_rest_mode(s[..],2);
+  #assert !rs_long_rest_resume(s[..],40000,1);
+  #assert rs_long_rest_commit(s[..]);
+  #assert s[0].completed && s[0].finished==28810 && s[0].phase==0;
+  #assert !rs_long_rest_commit(s[..]);
+  #assert !rs_long_rest_begin(s[..],1,86409,1);
+  #assert rs_long_rest_begin(s[..],1,86410,1);
+  #assert s[0].finished==28810 && s[0].completed && s[0].elapsed==0;
+}
+
+#test "interrupted rests retain progress and charge an hour for every resumption" {
+  s:[1]RsLongRest;
+  #assert rs_long_rest_begin(s[..],1,0,1);
+  #assert !rs_long_rest_advance(s[..],-1).accepted;
+  #assert rs_long_rest_advance(s[..],3599).accepted;
+  #assert !rs_long_rest_interrupt(s[..]).short_rest;
+  #assert s[0].phase==2 && s[0].interruptions==1;
+  #assert !rs_long_rest_interrupt(s[..]).accepted;
+  #assert !rs_long_rest_resume(s[..],3598,1);
+  #assert !rs_long_rest_resume(s[..],3600,0);
+  #assert !rs_long_rest_resume(s[..],3600,4);
+  #assert !rs_long_rest_advance(s[..],10000).accepted;
+  #assert rs_long_rest_resume(s[..],10000,1);
+  #assert rs_long_rest_advance(s[..],13600).accepted;
+  #assert rs_long_rest_interrupt(s[..]).short_rest;
+  #assert s[0].interruptions==2 && s[0].elapsed==7199;
+  #assert rs_long_rest_resume(s[..],13600,1);
+  #assert !rs_long_rest_advance(s[..],42400).ready;
+  #assert rs_long_rest_advance(s[..],42401).ready;
+  #assert s[0].stamp==42401 && s[0].elapsed==36000 && s[0].sleep==36000;
+}
+
+#test "physical exertion interrupts at one hour and never manufactures restful sleep" {
+  s:[1]RsLongRest;
+  #assert rs_long_rest_begin(s[..],1,0,1);
+  #assert rs_long_rest_advance(s[..],3600).accepted;
+  #assert rs_long_rest_mode(s[..],3);
+  #assert !rs_long_rest_mode(s[..],0) && !rs_long_rest_mode(s[..],4);
+  #assert rs_long_rest_advance(s[..],7199).accepted;
+  #assert s[0].phase==1 && s[0].exertion==3599;
+  event:=rs_long_rest_advance(s[..],10000);
+  #assert event.accepted && event.short_rest && !event.ready;
+  #assert s[0].stamp==7200 && s[0].phase==2 && s[0].sleep==3600;
+  #assert rs_long_rest_resume(s[..],10000,2);
+  #assert s[0].exertion==0 && s[0].quiet==0 && !s[0].fallback;
+  #assert rs_long_rest_advance(s[..],10001).accepted;
+  #assert !rs_long_rest_interrupt(s[..]).short_rest;
+}
+
+#test "light budget is an explicit boundary and switching to sleep preserves it" {
+  s:[1]RsLongRest;
+  #assert rs_long_rest_begin(s[..],1,0,2);
+  r:=rs_long_rest_advance(s[..],28800);
+  #assert r.light_limit && !r.ready && s[0].stamp==7200;
+  #assert s[0].sleep==0 && s[0].light==7200 && s[0].quiet==7200;
+  #assert rs_long_rest_advance(s[..],7201).light_limit;
+  #assert rs_long_rest_mode(s[..],1);
+  #assert rs_long_rest_advance(s[..],28800).ready;
+  #assert s[0].stamp==28800 && s[0].phase==3;
+  #assert !rs_long_rest_interrupt(s[..]).accepted;
+}
+
+#test "activity changes preserve only the uninterrupted restful segment" {
+  s:[1]RsLongRest;
+  #assert rs_long_rest_begin(s[..],1,0,3);
+  #assert rs_long_rest_advance(s[..],0).accepted;
+  #assert rs_long_rest_advance(s[..],1).accepted;
+  #assert rs_long_rest_mode(s[..],1);
+  #assert rs_long_rest_advance(s[..],3601).accepted;
+  #assert rs_long_rest_mode(s[..],1) && s[0].quiet==3600;
+  #assert rs_long_rest_mode(s[..],3) && s[0].quiet==0 && s[0].fallback;
+  #assert rs_long_rest_mode(s[..],3) && s[0].fallback;
+  #assert rs_long_rest_mode(s[..],2) && !s[0].fallback;
+  #assert rs_long_rest_advance(s[..],3602).accepted;
+  #assert !rs_long_rest_interrupt(s[..]).short_rest;
+  #assert rs_long_rest_resume(s[..],3602,3) && s[0].mode==3 && s[0].quiet==0;
+  #assert !rs_long_rest_advance(s[..],7201).short_rest;
+  #assert rs_long_rest_advance(s[..],7202).accepted && s[0].phase==2;
+}
+
+#test "sleep first can finish in light activity and large timestamps do not wrap" {
+  s:[1]RsLongRest;
+  #assert rs_long_rest_begin(s[..],1,0,1);
+  #assert rs_long_rest_advance(s[..],21600).accepted;
+  #assert rs_long_rest_mode(s[..],2);
+  #assert !rs_long_rest_advance(s[..],28799).light_limit;
+  r:=rs_long_rest_advance(s[..],30000);
+  #assert r.ready && r.light_limit && s[0].stamp==28800;
+  other:[1]RsLongRest;
+  #assert rs_long_rest_begin(other[..],1,9223372036854747007,1);
+  #assert rs_long_rest_advance(other[..],9223372036854775807).ready;
+  #assert other[0].stamp==9223372036854775807 && other[0].elapsed==28800;
+}
+
+#test "late polling remains bounded across the full clock range" {
+  s:[1]RsLongRest;
+  #assert rs_long_rest_begin(s[..],1,0,1);
+  #assert rs_long_rest_advance(s[..],9223372036854775807).ready;
+  #assert s[0].stamp==28800;
+  s[0]=RsLongRest.{};
+  #assert rs_long_rest_begin(s[..],1,0,2);
+  r:=rs_long_rest_advance(s[..],7200);
+  #assert r.light_limit && !r.ready;
+  #assert rs_long_rest_mode(s[..],1);
+  #assert rs_long_rest_advance(s[..],28799).accepted;
+  #assert rs_long_rest_advance(s[..],28800).ready;
+  s[0]=RsLongRest.{};
+  #assert rs_long_rest_begin(s[..],1,0,1);
+  #assert rs_long_rest_advance(s[..],25000).accepted;
+  #assert rs_long_rest_mode(s[..],2);
+  r=rs_long_rest_advance(s[..],40000);
+  #assert r.ready && !r.light_limit && s[0].stamp==28800 && s[0].light==3800;
+  s[0]=RsLongRest.{}; s[0].phase=1; s[0].mode=1;
+  s[0].interruptions=4611686018427387904/3600;
+  required:=28800+s[0].interruptions*3600;
+  s[0].elapsed=required-4611686018427387905;
+  s[0].stamp=s[0].elapsed; s[0].sleep=s[0].elapsed;
+  #assert rs_long_rest_advance(s[..],9223372036854775807).ready;
+  #assert s[0].stamp==required;
+  s[0]=RsLongRest.{}; s[0].phase=1; s[0].interruptions=9223372036854775806;
+  #assert rs_long_rest_interrupt(s[..]).accepted;
+  #assert s[0].interruptions==9223372036854775807;
+  s[0].phase=1;
+  #assert !rs_long_rest_interrupt(s[..]).accepted;
+  #assert s[0].interruptions==9223372036854775807;
+}
+
+rs_long_rest_begin :: (s:[]RsLongRest,hp:int,now:int,mode:int)->bool #effects(all) {
+  if s[0].phase!=0 || mode<1 || mode>3 { return false; }
+  if !rs_long_rest_start_allowed(hp,now,s[0].completed,s[0].finished) { return false; }
+  old:=s[0]; s[0]=RsLongRest.{};
+  s[0].completed=old.completed; s[0].finished=old.finished;
+  s[0].phase=1; s[0].stamp=now; s[0].mode=mode;
+  return true;
+}
+// Call after synchronizing the previous mode through the event timestamp.
+rs_long_rest_mode :: (s:[]RsLongRest,mode:int)->bool #effects(all) {
+  if s[0].phase!=1 || mode<1 || mode>3 { return false; }
+  if mode==3 && s[0].mode!=3 {
+    s[0].fallback=s[0].quiet>=3600; s[0].quiet=0;
+  }
+  if mode!=3 { s[0].fallback=false; }
+  s[0].mode=mode; return true;
+}
+rs_long_rest_interrupt :: (s:[]RsLongRest)->RsLongRestBoundary #effects(all) {
+  r:RsLongRestBoundary;
+  if s[0].phase!=1 || s[0].interruptions==9223372036854775807 { return r; }
+  r.accepted=true; r.short_rest=s[0].quiet>=3600 || s[0].fallback;
+  s[0].phase=2; s[0].interruptions+=1;
+  return r;
+}
+rs_long_rest_resume :: (s:[]RsLongRest,now:int,mode:int)->bool #effects(all) {
+  if s[0].phase!=2 || now<s[0].stamp || mode<1 || mode>3 { return false; }
+  s[0].phase=1; s[0].stamp=now; s[0].mode=mode;
+  s[0].quiet=0; s[0].fallback=false; s[0].exertion=0;
+  return true;
+}
+// Credit only a bounded, monotonic interval selected by the scheduler below.
+rs_long_rest_credit :: (s:[]RsLongRest,delta:int) #effects(all) {
+  s[0].stamp+=delta; s[0].elapsed+=delta;
+  if s[0].mode==1 { s[0].sleep+=delta; s[0].quiet+=delta; }
+  if s[0].mode==2 { s[0].light+=delta; s[0].quiet+=delta; }
+  if s[0].mode==3 { s[0].exertion+=delta; }
+}
+// A monotonic duration/sleep query used only after a bounded segment's end
+// has passed the full readiness policy. Wide offsets avoid signed overflow;
+// light/exertion bounds have already been enforced by the segment owner.
+rs_long_rest_offset_ready :: (s:RsLongRest,offset:u64)->bool #effects(all) {
+  elapsed:=u64(s.elapsed)+offset;
+  sleep:=u64(s.sleep);
+  if s.mode==1 { sleep+=offset; }
+  return elapsed>=28800 && sleep>=21600 && u64(s.interruptions)<=(elapsed-28800)/3600;
+}
+rs_long_rest_advance :: (s:[]RsLongRest,now:int)->RsLongRestBoundary #effects(all) {
+  r:RsLongRestBoundary;
+  if s[0].phase!=1 || now<s[0].stamp { return r; }
+  r.accepted=true;
+  delta:=now-s[0].stamp;
+  interrupt:=false;
+  if s[0].mode==3 {
+    left:=3600-s[0].exertion;
+    if delta>=left { delta=left; interrupt=true; }
+  }
+  if s[0].mode==2 {
+    left:=7200-s[0].light;
+    if delta>=left { delta=left; r.light_limit=true; }
+  }
+  trial:[1]RsLongRest; trial[0]=s[0]; rs_long_rest_credit(trial[..],delta);
+  if rs_long_rest_ready(trial[0].elapsed,trial[0].sleep,trial[0].light,trial[0].interruptions) {
+    // Readiness is monotonic within this segment: light was bounded above,
+    // and all accounted counters only grow. Find the first second, without
+    // multiplying interruption counts or walking each second of a late poll.
+    // Greedy binary lifting visits each of the 63 signed-positive bits once.
+    // lo always remains an interval length that is not yet ready.
+    lo:=0; step:=4611686018427387904;
+    while step>0 {
+      candidate:=u64(lo)+u64(step);
+      if !rs_long_rest_offset_ready(s[0],candidate) { lo=int(candidate); }
+      step/=2;
+    }
+    lo+=1;
+    rs_long_rest_credit(s,lo); s[0].phase=3; r.ready=true;
+    // Completion wins before a later light-limit event.
+    r.light_limit=s[0].mode==2 && s[0].light==7200;
+    return r;
+  }
+  rs_long_rest_credit(s,delta);
+  if interrupt { return rs_long_rest_interrupt(s); }
+  return r;
+}
+// Only after the owner atomically applies all completion benefits. A boundary
+// alone does not grant HP/resources or start the sixteen-hour history.
+rs_long_rest_commit :: (s:[]RsLongRest)->bool #effects(all) {
+  if s[0].phase!=3 { return false; }
+  s[0].completed=true; s[0].finished=s[0].stamp; s[0].phase=0;
+  return true;
+}

@@ -7073,3 +7073,11 @@ and HP state are not granted by this primitive. It has no world completion
 caller yet: sleep/activity/interruption/16-hour admission and other completion
 benefits remain separate required work. Evidence:
 `docs/verification/srd-long-rest-resources-2026-11-08/README.md`.
+
+The additive Long Rest journal retains actual activity modes and interruption
+extensions separately from Short Rest choices. Advancement reports the first
+completion/exertion/light boundary; a late poll cannot move completion history
+later. Pending completion grants no benefits until its owner applies and
+acknowledges them. Its private integer-second state has no world caller yet;
+condition ownership, causal event hooks, full benefits and persistence remain
+required. See `docs/verification/srd-long-rest-state-2026-11-08/README.md`.
