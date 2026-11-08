@@ -1,0 +1,168 @@
+// Typed stat-block attack integration. These declared fixture numbers are not a new catalog.
+#load "battle.coax";
+#load "condition-roll-checks.coax";
+
+#test "typed stat attacks use printed attack and damage modifiers rather than deriving them from scores" {
+  b: [1] RsBattle; sa_field(b[..]);
+  a := sa_record(); b[0].c[0].score[RS_STR]=6;
+  #assert rs_stat_attack(b[..],0,1,a);
+  #assert b[0].turn.action && b[0].c[1].hp==91; // 2d6 + 3, not Strength -2
+  #assert b[0].dice[0].rolled==3;
+  #assert !rs_stat_attack(b[..],0,1,a) && b[0].c[1].hp==91;
+}
+
+#test "typed stat attacks retain shared target defenses and reactions" {
+  for mode: 0..<3 {
+    b: [1] RsBattle; sa_field(b[..]);
+    if mode==0 { b[0].c[1].resist=1<<RS_PIERCING; }
+    if mode==1 { b[0].c[1].immune=1<<RS_PIERCING; }
+    if mode==2 { b[0].c[1].uncanny=true; }
+    #assert rs_stat_attack(b[..],0,1,sa_record());
+    #assert b[0].c[1].hp==(ifx mode==1 then 100 else 96);
+    #assert b[0].c[1].reacted==(mode==2);
+  }
+}
+
+#test "a missed typed stat attack spends the Action but no damage dice" {
+  b: [1] RsBattle; sa_field(b[..]); b[0].c[1].ac=30;
+  #assert rs_stat_attack(b[..],0,1,sa_record());
+  #assert b[0].turn.action && b[0].c[1].hp==100 && b[0].dice[0].rolled==1;
+}
+
+sa_record :: () -> RsStatAttack {
+  return RsStatAttack.{id="fixture-sting",name="Sting",bonus=5,dice=2,sides=6,flat=3,kind=RS_PIERCING,ability=RS_STR,reach=5};
+}
+sa_field :: (b: [] RsBattle) {
+  b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
+  _ := rs_add(b,rs_guard("Attacker",0),1,1);
+  j := rs_add(b,rs_fighter("Target",1,1),2,1);
+  b[0].c[j].hp=100; b[0].c[j].hp_max=100; b[0].c[j].ac=12;
+  rs_start_turn(b,0); b[0].dice[0].rolled=0;
+}
+
+#test "invalid stat attack metadata refuses before budgets, rolls or events" {
+  for state: 0..<13 {
+    b: [1] RsBattle; sa_field(b[..]); a := sa_record();
+    if state==0 { a.id=""; } if state==1 { a.name=""; }
+    if state==2 { a.dice = -1; } if state==3 { a.dice=101; }
+    if state==4 { a.sides = -1; } if state==5 { a.sides=101; }
+    if state==6 { a.sides=0; }
+    if state==7 { a.kind=0; } if state==8 { a.kind=RS_DAMAGE.count; }
+    if state==9 { a.ability = -1; } if state==10 { a.ability=6; }
+    if state==11 { a.reach = -1; } if state==12 { a.reach=1001; }
+    events := b[0].book[0].seq;
+    #assert !rs_stat_attack_valid(a) && !rs_stat_attack(b[..],0,1,a);
+    #assert !b[0].turn.action && b[0].dice[0].rolled==0 && b[0].book[0].seq==events && b[0].c[1].hp==100;
+  }
+}
+
+#test "stat attack work bounds and zero-dice flat damage are explicit" {
+  a := sa_record(); a.dice=100; a.sides=100; a.reach=1000; a.ability=5; a.kind=13;
+  #assert rs_stat_attack_valid(a);
+  a.dice=0; a.sides=0; a.ability=0; a.kind=1; a.reach=0;
+  #assert rs_stat_attack_valid(a);
+  a.dice=1; a.sides=1; #assert rs_stat_attack_valid(a);
+  b: [1] RsBattle; sa_field(b[..]); a=sa_record(); a.dice=0; a.sides=0; a.flat=7;
+  #assert rs_stat_attack(b[..],0,1,a) && b[0].c[1].hp==93 && b[0].dice[0].rolled==1;
+}
+
+#test "stat attack admission rejects malformed actors, wrong turns, incapacity and targets before spending" {
+  for state: 0..<12 {
+    b: [1] RsBattle; sa_field(b[..]); i := 0; j := 1;
+    if state==0 { i = -1; b[0].who=i; }
+    if state==1 { i=b[0].n; b[0].who=i; b[0].c[i]=b[0].c[0]; }
+    if state==2 { j = -1; }
+    if state==3 { j=b[0].n; b[0].c[j]=b[0].c[1]; }
+    if state==4 { j=0; }
+    if state==5 { b[0].who=1; }
+    if state==6 { b[0].turn.action=true; }
+    if state==7 { b[0].c[0].klass=RS_FIGHTER; }
+    if state==8 { b[0].c[0].cond=RS_STUNNED; }
+    if state==9 { b[0].c[1].dead=true; }
+    if state==10 { rs_place(b[..],1,3,1); }
+    if state==11 { b[0].c[0].eff[0].kind=EF_HALT; }
+    events := b[0].book[0].seq; action := b[0].turn.action;
+    #assert !rs_stat_attack(b[..],i,j,sa_record());
+    #assert b[0].turn.action==action && b[0].book[0].seq==events && b[0].dice[0].rolled==0 && b[0].c[1].hp==100;
+  }
+}
+
+#test "typed extended reach remains melee and critical dice double without doubling the printed modifier" {
+  b: [1] RsBattle; sa_field(b[..]); a := sa_record(); a.reach=10;
+  rs_place(b[..],1,3,1);
+  #assert rs_stat_attack(b[..],0,1,a) && b[0].c[1].hp==91 && b[0].dice[0].rolled==3;
+  rs_start_turn(b[..],0); rs_place(b[..],1,2,1); b[0].c[1].hp=100; b[0].c[1].cond=RS_PARALYZED;
+  rolls := b[0].dice[0].rolled;
+  #assert rs_stat_attack(b[..],0,1,a) && b[0].c[1].hp==85;
+  #assert b[0].dice[0].rolled==rolls+6;
+}
+
+#test "one-character source labels and a creature at logical index zero are valid" {
+  b: [1] RsBattle; sa_field(b[..]); a := sa_record(); a.id="a"; a.name="B";
+  #assert rs_stat_attack_valid(a);
+  b[0].c[1]=rs_guard("Attacker",1); b[0].c[0]=rs_fighter("Target",0,1);
+  b[0].c[0].hp=100; b[0].c[0].hp_max=100; b[0].c[0].ac=12;
+  rs_place(b[..],0,1,1); rs_place(b[..],1,2,1); rs_start_turn(b[..],1);
+  #assert rs_stat_attack(b[..],1,0,a) && b[0].c[0].hp==91;
+}
+
+#test "a printed natural attack does not acquire weapon mastery from an unrelated weapon ID" {
+  b: [1] RsBattle; sa_field(b[..]); b[0].c[0].masteries=1<<M_SAP;
+  #assert rs_stat_attack(b[..],0,1,sa_record());
+  #assert !rs_effect(b[0].c[1],EF_WEAK) && b[0].c[1].hp==91;
+}
+
+#test "typed attack continuation retains the shared critical movement feature" {
+  b: [1] RsBattle; sa_field(b[..]); b[0].c[0].athlete=true; b[0].c[1].cond=RS_PARALYZED;
+  #assert rs_stat_attack(b[..],0,1,sa_record());
+  #assert b[0].turn.move_left==9 && !b[0].turn.last_crit;
+}
+
+#test "typed stat attack native witness covers declared numbers, defenses, budgets and malformed metadata" {
+  #assert sa_native();
+}
+sa_native :: () -> bool {
+  b: [1] RsBattle; sa_field(b[..]); b[0].c[0].score[RS_STR]=6;
+  b[0].c[1].resist=1<<RS_PIERCING;
+  if !rs_stat_attack(b[..],0,1,sa_record()) || b[0].c[1].hp!=96 || b[0].dice[0].rolled!=3 { return false; }
+  if rs_stat_attack(b[..],0,1,sa_record()) { return false; }
+  rs_start_turn(b[..],0); a := sa_record(); a.sides=0;
+  rolls := b[0].dice[0].rolled;
+  return !rs_stat_attack(b[..],0,1,a) && !b[0].turn.action && b[0].dice[0].rolled==rolls;
+}
+
+#test "typed natural attack presentation retains its printed name rather than impersonating an Unarmed Strike" {
+  b: [1] RsBattle; sa_field(b[..]); before := b[0].book[0].seq;
+  #assert rs_stat_attack(b[..],0,1,sa_record());
+  named := false;
+  for k: 0..<b[0].book[0].seq-before {
+    e := rs_recent(b[0].book[0],k);
+    if e.kind==RS_EV_ATTACK { #assert cast(string)e.text[0..<e.text_n]=="Attacker attacks Target with Sting: 10 + 5 = 15 vs AC 12: hit"; named=true; }
+  }
+  #assert named;
+}
+
+#test "typed strikes use prepared Shield and Deflect Attacks rather than bypassing shared reactions" {
+  b: [1] RsBattle; sa_field(b[..]); b[0].c[1]=rs_wizard("Ward",1,3);
+  rs_place(b[..],1,2,1); b[0].c[1].hp=100; b[0].c[1].hp_max=100; b[0].c[1].ac=12;
+  slots := b[0].c[1].slots[1];
+  #assert rs_stat_attack(b[..],0,1,sa_record());
+  #assert b[0].c[1].hp==100 && b[0].c[1].reacted && b[0].c[1].slots[1]==slots-1 && b[0].dice[0].rolled==1;
+  rs_start_turn(b[..],0); b[0].c[1]=rs_monk("Deflect",1,3);
+  rs_place(b[..],1,2,1); b[0].c[1].hp=100; b[0].c[1].hp_max=100; b[0].c[1].ac=12; b[0].c[1].focus=0;
+  #assert rs_stat_attack(b[..],0,1,sa_record());
+  #assert b[0].c[1].hp==100 && b[0].c[1].reacted;
+}
+
+#test "typed strikes retain temporary HP absorption and dropping-to-zero concentration cleanup" {
+  b: [1] RsBattle; sa_field(b[..]); b[0].c[1].temp=10;
+  #assert rs_stat_attack(b[..],0,1,sa_record()) && b[0].c[1].hp==100 && b[0].c[1].temp==1;
+  b[0].c[1]=rs_cleric("Target",1,3); rs_place(b[..],1,2,1);
+  rs_start_turn(b[..],1);
+  #assert rs_cast(b[..],1,SP_BLESS,1,0,0,1);
+  b[0].c[1].hp=1; b[0].c[1].ac=12;
+  rs_start_turn(b[..],0);
+  #assert rs_stat_attack(b[..],0,1,sa_record());
+  #assert b[0].c[1].hp==0 && rs_has(b[0].c[1],RS_UNCONSCIOUS) && b[0].c[1].conc == -1;
+  #assert !rs_effect(b[0].c[1],EF_BLESS);
+}

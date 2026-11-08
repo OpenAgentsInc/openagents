@@ -27,6 +27,8 @@
 #load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
 #load "condition-permissions.coax";
+#load "stat-attack.coax";
+#load "strike-policy.coax";
 #load "effect-lifecycle.coax";
 #load "death-save-roll.coax";
 #load "dodge.coax";
@@ -1386,9 +1388,14 @@ rs_mastery :: (b: [] RsBattle, i: int, w: int, m: int) -> bool { return rs_weapo
 // Hex and Hunter's Mark. True on a hit.
 rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if !rs_strikes_fit(b,i,j,w,1,false) { return false; }
-  wp := rs_weapon(w);
+  c := b[0].c[i];
+  return rs_strike_resolved(b,i,j,w,bare,rs_weapon(w),rs_weapon_attack(c,w),rs_attack_ability(c,w),rs_mod(c.score[rs_attack_ability(c,w)]));
+}
+// Both ordinary weapons and printed stat-block numbers use this executor.
+// Callers preflight any retained riders before spending; the natural melee
+// stat record has no weapon mastery or Finesse rider to reserve.
+rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: RsWeapon, printed_bonus: int, ab: int, damage_modifier: int) -> bool {
   me := b[0].c[i];
-  ab := rs_attack_ability(me, w);
   strength := ab == RS_STR;
   b[0].turn.struck = true;
   melee := wp.range_ft <= 5 || (wp.both && rs_feet_to(b, i, j) <= 5);   // Arcane Burst: melee from 5 feet
@@ -1396,9 +1403,9 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   if !melee && rs_feet_to(b, i, j) > wp.range_ft { far = -1; }   // long range: Disadvantage
   edge := rs_attack_edge(b, i, j, melee, strength);
   if far < 0 { edge = rs_edge(ifx edge > 0 then 1 else 0, 1 + (ifx edge < 0 then 1 else 0)); }
-  bonus := rs_weapon_attack(me, w);
+  bonus := printed_bonus;
   // Sacred Weapon: its Charisma modifier (at least +1) on the attack rolls of a melee weapon
-  sacred := melee && w != W_UNARMED && me.sacred_until > b[0].clock;
+  sacred := rs_strike_sacred(melee,w,me.sacred_until > b[0].clock);
   if sacred { bonus += rs_max(rs_mod(me.score[RS_CHA]), 1); }
   // Improved Critical: weapons and Unarmed Strikes score a Critical Hit on 20 - crit_range or higher
   r := rs_roll_attack(b, i, j, edge, bonus, 20 - me.crit_range, false);
@@ -1435,8 +1442,8 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   ndice := wp.dice; sides := wp.sides;
   if w == W_UNARMED && me.martial_die > 0 { ndice = 1; sides = me.martial_die; }
   mult := ifx crit then 2 else 1;
-  rolled := ifx ndice > 0 then rs_sum(b[0].dice[..], ndice * mult, sides) else 1;
-  mod := rs_mod(me.score[ab]);
+  rolled := ifx ndice > 0 then rs_sum(b[0].dice[..], ndice * mult, sides) else rs_strike_flat_base(w);
+  mod := damage_modifier;
   amount := rolled;
   nomod := bare || wp.bare;   // Radiant Flame adds no modifier
   if !nomod || mod < 0 { amount += mod; }
@@ -1492,7 +1499,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   dodged := false;
   if tg.uncanny && !b[0].c[j].reacted && rs_capable(tg) && dealt > 0 && rs_up(b[0].c[i]) { b[0].c[j].reacted = true; dealt = dealt / 2; dodged = true; }
   rs_add_int(dl[..], dealt); rs_add_text(dl[..], " "); rs_add_text(dl[..], RS_DAMAGE[kind]); rs_add_text(dl[..], " (");
-  if ndice > 0 { rs_add_int(dl[..], ndice * mult); rs_add_text(dl[..], "d"); rs_add_int(dl[..], sides); } else { rs_add_text(dl[..], "1"); }
+  if ndice > 0 { rs_add_int(dl[..], ndice * mult); rs_add_text(dl[..], "d"); rs_add_int(dl[..], sides); } else { rs_add_int(dl[..],rolled); }
   if !nomod || mod < 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], mod); }
   if rage > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], rage); rs_add_text(dl[..], " Rage"); }
   if frenzy > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], frenzy); rs_add_text(dl[..], " Frenzy"); }

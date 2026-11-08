@@ -417,3 +417,14 @@ Initiative preserves Invisible/Athlete and incapacitation sources through the
 shared permission helpers; their updated 17-mutant gate also has zero survivors.
 Geometry, full grant/build legality, other class/order bonuses and the remaining
 #13039/#13044 requirements stay open. [Evidence](../verification/srd-ability-checks-2026-11-08/README.md).
+
+### Typed stat-attack prerequisite, 2026-11-08
+
+Printed melee NPC attacks now have a validated shared Action entry that supplies
+explicit attack/damage modifiers to the existing strike executor. Shared reactions,
+defenses, temporary HP and zero-HP concentration cleanup remain active; source
+names and zero-dice damage are preserved without fake catalog weapons. Policy
+mutation gates kill 80/8 mutants, zero survive. The rebased tree passes 210 core,
+214 hotbar and 22 selected Experimental checks and an actual native witness.
+Physical contact wiring, player HP migration and used-monster data remain;
+#13034/#13046 stay open. [Evidence](../verification/srd-stat-attacks-2026-11-08/README.md).

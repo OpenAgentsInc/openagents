@@ -1,0 +1,22 @@
+aethyr/rules/srd/stat-attack-checks.coax:32:20: error[E0302]: unknown type 'RsStatAttack'
+  sa_record :: () -> RsStatAttack {
+                     ^
+aethyr/rules/srd/stat-attack-checks.coax:33:10: error[E0302]: 'RsStatAttack' is not a struct
+    return RsStatAttack.{id="fixture-sting",name="Sting",bonus=5,dice=2,sides=6,flat=3,kind=RS_PIERCING,ability=RS_STR,reach=5};
+           ^
+aethyr/rules/srd/stat-attack-checks.coax:8:11: error[E0315]: procedure 'rs_stat_attack' is not declared
+    #assert rs_stat_attack(b[..],0,1,a);
+            ^
+aethyr/rules/srd/stat-attack-checks.coax:11:12: error[E0315]: procedure 'rs_stat_attack' is not declared
+    #assert !rs_stat_attack(b[..],0,1,a) && b[0].c[1].hp==91;
+             ^
+aethyr/rules/srd/stat-attack-checks.coax:20:13: error[E0315]: procedure 'rs_stat_attack' is not declared
+      #assert rs_stat_attack(b[..],0,1,sa_record());
+              ^
+aethyr/rules/srd/stat-attack-checks.coax:28:11: error[E0315]: procedure 'rs_stat_attack' is not declared
+    #assert rs_stat_attack(b[..],0,1,sa_record());
+            ^
+6 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

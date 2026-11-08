@@ -6781,3 +6781,14 @@ Task geometry, usable tools and source grant provenance remain caller facts.
 Legacy open-grid fear visibility, the passive Exhaustion interpretation, exact
 native/sanitizer scope and remaining #13039/#13044 acceptance are recorded in
 `docs/verification/srd-ability-checks-2026-11-08/README.md`.
+
+## Printed NPC melee attacks use the common strike executor
+
+`stat-attack.coax` validates typed source/world-declared melee records and NPC
+Action admission before spending. Printed attack/damage modifiers are supplied
+explicitly, without rewriting scores or inventing catalog weapons. Normal weapon
+and typed stat attacks share the resolved strike/target-defense/HP path. Natural
+zero-dice damage has no Unarmed Strike base and cannot gain Sacred Weapon.
+This simple entry has no retained rider; ordinary weapon preflight remains.
+Physical hostile wiring and canonical monster records remain migration work.
+Evidence: `docs/verification/srd-stat-attacks-2026-11-08/README.md`.

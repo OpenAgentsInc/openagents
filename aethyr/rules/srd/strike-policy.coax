@@ -1,0 +1,14 @@
+// Source attack representation: an Unarmed Strike has a fixed one-point base;
+// printed zero-dice stat damage does not. Sacred Weapon requires a weapon.
+#authority;
+rs_strike_flat_base :: (w: int) -> int #effects(all) { return ifx w==W_UNARMED then 1 else 0; }
+rs_strike_sacred :: (melee: bool, w: int, active: bool) -> bool #effects(all) { return melee && w>W_UNARMED && active; }
+
+#test "natural attacks do not impersonate a weapon or acquire the Unarmed Strike fixed point" {
+  for w: -1..<20 {
+    #assert rs_strike_flat_base(w)==(ifx w==0 then 1 else 0);
+    for melee: 0..<2 { for active: 0..<2 {
+      #assert rs_strike_sacred(melee==1,w,active==1)==(melee==1 && w>=1 && active==1);
+    } }
+  }
+}

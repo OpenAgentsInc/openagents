@@ -1,0 +1,6 @@
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax
+3679140e3501206b3cc90089d706546f9df70ebf1035bf47c331921c8a387c6e  aethyr/rules/srd/stat-attack-checks.coax
+c1596a650fa9ee532e0a256dca755a9b3a0140aaeaf1492125a94109ddfa8926  aethyr/rules/srd/stat-attack-native.coax
+146f2968a3ef99bfb0661631b8c91e579ccfa9c30ed33312e6d8263ee7446f5d  aethyr/rules/srd/stat-attack.coax
+4eca3f9b5628fa1262c8c8e2dd964fe04552c5fa7256ac5207ca7972f4d51d9a  aethyr/rules/srd/strike-policy.coax
+9aae828a071942b2426f41dc9fd54ec3ba20a729c1f60b789e05bf7a3928cb87  aethyr/rules/srd/battle.coax
