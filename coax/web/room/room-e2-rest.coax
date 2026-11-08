@@ -260,6 +260,29 @@ e2rt_land :: (v: [] RmServer, k: int) { for q: 0..<90 { eg_test_tick(v, k); } }
   kx := e2rt_ck_join(v[..], 0, 9, two_cap, CharacterRest.{}); #assert kx >= 0;
   #assert v[0].eg[kx].rules[0].b[0].c[E5RR_SEAT].long_rest.phase == 0 && !rs_sleeping(v[0].eg[kx].rules[0].b[0].c[E5RR_SEAT]);
 }
+#test "e2 rest: a restarted room's profile 3 checkpoint carries the limited uses past profile 2's 11; a body without them leaves those full (#13046)" #steps 4000000000 {
+  v: [1] RmServer; ck_test_init(v[..]); k := e2rt_ck_join(v[..], 0, 7, CharacterCapture.{}, CharacterRest.{});
+  #assert k >= 0; #assert rm_checkpoint_due(v[..]) > 0; e2rt_ack(v[..]); e2rt_land(v[..], k);
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1];
+  // Uncanny Metabolism and Faithful Steed spent, Magical Cunning left
+  for q: 0..<CC_MORE { c[0].uses_max[CK_USES + q] = 1; c[0].uses[CK_USES + q] = ifx q == 1 then 1 else 0; }
+  ck_capture(v[..], k, SeatId.{value = 0}); #assert rm_checkpoint_due(v[..]) > 0;
+  body := cast(string) v[0].ck.out[0..<v[0].ck.out_n]; cap := cc_read(body, true); rest := cc_rest(body, true);
+  #assert cap.ok && cap.n[0] == 3 && rest.on && rest.more && rest.uses[0] == 0 && rest.uses[1] == 1 && rest.uses[2] == 0;
+  e2rt_ack(v[..]);
+  for older: 0..<2 {
+    ck_test_init(v[..]);
+    r := rest; if older == 1 { r.more = false; r.uses = [3] int.[0, 0, 0]; }   // an older room's profile 3 body
+    kw := e2rt_ck_join(v[..], 0, 8 + older, cap, r); #assert kw >= 0;
+    wc := v[0].eg[kw].rules[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1];
+    // a body that has these features (an srd-* seat starts at level 1), then the restore
+    for q: 0..<CC_MORE { wc[0].uses_max[CK_USES + q] = 1; wc[0].uses[CK_USES + q] = 1; }
+    ck_restore(v[..], kw, SeatId.{value = 0});
+    for q: 0..<CC_MORE { #assert wc[0].uses[CK_USES + q] == (ifx older == 1 || q == 1 then 1 else 0); }
+    // never more than this body's own
+    wc[0].uses_max[CK_USES + 1] = 0; ck_restore(v[..], kw, SeatId.{value = 0}); #assert wc[0].uses[CK_USES + 1] == (ifx older == 1 then 1 else 0);
+  }
+}
 #test "e2 rest: a still input still queued (a page sends one each 1/30 s) does not refuse a rest; a queued walking or jumping one does" #steps 4000000000 {
   v: [1] RmServer; k := e2rt_room(v[..], "srd-fighter"); c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; box: [16384] u8;
   e2rt_step(v[..], k, 0, 1, 0); _ := e2rt_heard(v[..], 0, box[..]);

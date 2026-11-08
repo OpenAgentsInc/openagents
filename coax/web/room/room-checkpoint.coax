@@ -3,10 +3,10 @@
 // capture/flow policies. A schema 1 seat keeps the legacy path unchanged.
 #load "../../../aethyr/session/checkpoint-flow.coax";
 #load "tests/checkpoint-fixture.coax";
-// The limited-use counts profiles 2 and 3 carry: the first 11 (state 16..26). The rules have more
-// since 1cba288c2a (RS_USES 14); those start full in a new process until a profile carries them.
+// The limited-use counts profile 2 carries: the first 11 (state 16..26). Profile 3 carries the rest
+// of the rules' RS_USES in its optional `uses` (CC_MORE); a profile 2 restore leaves those full.
 CK_USES :: CC_STATE - 16;
-#test "checkpoint: a capture carries the profile's 11 limited-use counts, however many the rules keep" { #assert CK_USES == 11 && CK_USES <= RS_USES; }
+#test "checkpoint: a capture carries every limited-use count the rules keep, 11 in state and the rest in uses" { #assert CK_USES == 11 && CK_USES + CC_MORE == RS_USES; }
 CheckpointSlot :: struct {
   live:bool;owner:int;pid:[TICKET_PID]u8;pid_n:int;
   latest:CharacterCapture;latest_rest:CharacterRest;capture_mono:int;acked:int;accepted:bool;accepted_mono:int;
@@ -99,7 +99,7 @@ ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   c.state[3]=rs_max(0,trv_repair_ticks()-(v[0].eg[k].tick-st.repaired));c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<CK_USES{c.state[16+q]=hero.uses[q];}
   // Everglade II also carries the seat's rest (profile 3)
-  rest:=CharacterRest.{};if v[0].eg[k].e2&&rs_carry_out(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;}
+  rest:=CharacterRest.{};if v[0].eg[k].e2&&rs_carry_out(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;rest.more=true;for q:0..<CC_MORE{rest.uses[q]=hero.uses[CK_USES+q];}}
   v[0].ck.slot[i].latest=c;v[0].ck.slot[i].latest_rest=rest;v[0].ck.slot[i].capture_mono=v[0].mono_ms;
 }
 ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
@@ -111,6 +111,7 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   v[0].ev[k].fought[s]=v[0].eg[k].tick+1; // a restart is not a free out-of-combat Long Rest
   v[0].eg[k].wanted[s]=c.n[12];v[0].eg[k].seat[s].want_seed=c.n[12];
   // a profile 3 rest resumes where it was, without offline credit; one that does not fit this body is dropped
+  if c.n[0]==3&&tk.rest.more{for q:0..<CC_MORE{hero[0].uses[CK_USES+q]=rs_min(tk.rest.uses[q],hero[0].uses_max[CK_USES+q]);}}
   if v[0].eg[k].e2&&c.n[0]==3&&tk.rest.on{_:=rs_carry_in(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,tk.rest.n[..]);v[0].eg[k].seat[s].rest_told= -1;}
   r:=v[0].eg[k].relay;room:=c.room;v[0].eg[k].seat[s].back=false;
   // the same room's code, or for Everglade II any of its rooms: they are one land (#13057), so a

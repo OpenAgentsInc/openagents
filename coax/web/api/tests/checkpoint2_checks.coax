@@ -65,16 +65,16 @@ tool_main :: ()->int #export_c #effects(all) {
   st=c2_post(t[..],c);
   ap_check(t[..],"matrix2: a repeated latest report keeps its exact original acceptance",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="duplicate"&&ap_member_int(ap_body(t[..]),"accepted_at",0)==new_accept,ap_body(t[..]));
   // character-checkpoint-v3 (#13046): profile 2's table and receipts, plus the rest
-  three:=c;three.n[0]=3;three.n[3]=5;rest:=cc_rest_fixture();rb:[CC_BODY]u8;
+  three:=c;three.n[0]=3;three.n[3]=5;rest:=cc_rest_fixture();rest.more=true;rest.uses=[3]int.[1,0,1];rb:[CC_BODY]u8;
   st=c2_signed_post(t[..],"/api/playtest/room-checkpoint-v2",cc_write_rest(three,rest,rb[..]));
   ap_check(t[..],"resume3: a profile 3 capture and its rest commit under profile 2's receipt",st==200&&ap_member(ap_body(t[..]),"status",b[..])=="applied",ap_body(t[..]));
   sb_clear(q[..]);sb(q[..],"select (body->>'v')||':'||jsonb_array_length(body->'rest') from verse.character_checkpoints_v2 where who='");sb(q[..],pid);sb(q[..],"'");
   ap_check(t[..],"resume3: the stored body keeps its 19 rest numbers",ap_sql(t[..],sb_text(q[..]),b[..])=="3:19","");
   two:=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
-  ap_check(t[..],"resume3: a page that does not ask for rest gets the capture's profile 2 part",two.ok&&two.capture.ok&&two.capture.n[0]==2&&!two.rest.on&&two.capture.n[3]==5,"");
+  ap_check(t[..],"resume3: a page that does not ask for rest gets the capture's profile 2 part, without rest or uses",two.ok&&two.capture.ok&&two.capture.n[0]==2&&!two.rest.on&&two.capture.n[3]==5,"");
   kept:=rt_read(t[0].room_key,c2_ticket_rest(t[..],pl_key(p[..]),ticket[..]));
-  exact:=kept.ok&&kept.capture.ok&&kept.capture.n[0]==3&&kept.rest.on;for i:0..<CC_REST{exact=exact&&kept.rest.n[i]==CC_REST_HIGH[i];}
-  ap_check(t[..],"resume3: rest=1 gets the profile 3 capture with its exact rest",exact,"");
+  exact:=kept.ok&&kept.capture.ok&&kept.capture.n[0]==3&&kept.rest.on&&kept.rest.more;for i:0..<CC_REST{exact=exact&&kept.rest.n[i]==CC_REST_HIGH[i];}for i:0..<CC_MORE{exact=exact&&kept.rest.uses[i]==rest.uses[i];}
+  ap_check(t[..],"resume3: rest=1 gets the profile 3 capture with its exact rest and uses",exact,"");
   sb_clear(q[..]);sb(q[..],"insert into verse.accounts(id,created_ms) values('checkpoint-account',1);update verse.players set account='checkpoint-account' where id='");sb(q[..],pid);sb(q[..],"'");ap_do(t[..],sb_text(q[..]));
   restored=rt_read(t[0].room_key,c2_ticket(t[..],pl_key(p[..]),ticket[..]));
   ap_check(t[..],"resume2: account linking carries the durable body and fences its old owner",restored.ok&&restored.capture.ok&&restored.capture.dead&&restored.capture.n[11]==101,"");

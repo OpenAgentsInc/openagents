@@ -388,6 +388,33 @@
           "description": "light activity reported"
         }
       ]
+    },
+    "uses": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false,
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99,
+          "description": "Uncanny Metabolism uses left (rules RS_USES 11)"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99,
+          "description": "Magical Cunning uses left (rules RS_USES 12)"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99,
+          "description": "Faithful Steed uses left (rules RS_USES 13)"
+        }
+      ],
+      "description": "optional: the limited-use counts after profile 2's 11; absent in an older room's body"
     }
   },
   "allOf": [

@@ -31,8 +31,15 @@ integers, each from 0 to its bound:
 | 17 | A Short Rest is due | 1 |
 | 18 | Light activity reported | 1 |
 
-A profile 2 body never has `rest`. A profile 3 body always has it. The ingress
-body has 22 members and the stored body has 21.
+A profile 3 body may also have `uses`: an array of exactly 3 integers, each
+from 0 to 99. These are the limited-use counts after profile 2's 11 in `state`,
+in the rules' order (`RS_USES` 11 to 13): Uncanny Metabolism, Magical Cunning
+and Faithful Steed. A room writes `uses` with every profile 3 body. A body
+without it, from an older room, still reads, and those three uses start full.
+
+A profile 2 body never has `rest` or `uses`. A profile 3 body always has
+`rest`. The ingress body has 22 members, or 23 with `uses`. The stored body has
+21, or 22 with `uses`.
 
 ## Exchange
 
@@ -42,7 +49,7 @@ Migration `0136_character_checkpoints_v3.sql` lets the table hold both bodies.
 
 A page asks for its ticket with `checkpoint=2&rest=1`. The API then puts the
 stored body in the v4 ticket as it is. Without `rest=1`, the API gives a
-profile 3 body's profile 2 part: `v` 2 and no `rest`. An older page and an
+profile 3 body's profile 2 part: `v` 2, with no `rest` and no `uses`. An older page and an
 older room therefore never see a profile 3 body. An API that predates this
 ignores `rest=1`, and since it refuses profile 3 bodies, it holds only
 profile 2 ones.
@@ -52,9 +59,15 @@ profile 3 post with 400 or 5xx, the room sends that capture and every later one
 as profile 2 for the rest of its process (`two_only`, counted in `two_falls`).
 So rooms and the API can deploy in either order. Rolling the API back after it
 has stored profile 3 bodies hands them to pages as they are, and only a room
-with profile 3 can read them, so roll back rooms and pages first.
+with profile 3 can read them, so roll back rooms and pages first. A room or API
+from before `uses` refuses a body that has it: such an API answers 400, and the
+room falls back to profile 2 as above. A room rolled back to before `uses`
+treats a stored body that has it as no capture.
 
 ## Restore
+
+A room lays a body's `uses` on the restored body, each at most that body's
+own maximum, whether or not its rest fits.
 
 A room lays a profile 3 rest on the restored body with `rs_carry_in`, all or
 none, after profile 2's restore. Offline time earns no rest: an open rest

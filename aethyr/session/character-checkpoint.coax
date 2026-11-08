@@ -10,7 +10,10 @@ CharacterCapture :: struct #persisted {ok:bool; n:[17]int; pid:[40]u8;pid_n:int;
 // Profile 3's rest (aethyr/rules/srd/rest-carry.coax's RS_CARRY fields), on only in a valid v3 capture.
 CC_REST :: 19;
 CC_REST_HIGH :: [19]int.[2,3600000,20,1,1,1,3,3,86400000,86400000,86400000,86400000,99,86400000,1,1,57600000,1,1];
-CharacterRest :: struct #persisted {on:bool; n:[CC_REST]int;}
+// and, when `more`, the limited-use counts after profile 2's 11 (the rules' RS_USES 11..13: Uncanny
+// Metabolism, Magical Cunning, Faithful Steed), each 0 to CC_MORE_HIGH: profile 3's optional `uses`.
+CC_MORE :: 3; CC_MORE_HIGH :: 99;
+CharacterRest :: struct #persisted {on:bool; n:[CC_REST]int; more:bool=false; uses:[CC_MORE]int=[3]int.[0,0,0];}
 #load "tests/character-checkpoint-fixture.coax";
 #test "character checkpoint: a whole dead character, place and spent resources round trip" {
   c:=cc_fixture();out:[CC_BODY]u8;s:=cc_write(c,out[..]);d:=cc_read(s,true);
@@ -79,6 +82,28 @@ CharacterRest :: struct #persisted {on:bool; n:[CC_REST]int;}
   #assert cc_read(cc_splice(s,s.count-2,"]}",b[..]),true).ok;          // the splice itself keeps a valid capture
   v:=cc_find(s,"\"v\":3");#assert v>=0;b[v+4]='2';#assert !cc_read(cast(string)b[0..<s.count],true).ok;   // v2 with a rest
 }
+#test "character checkpoint: profile 3's optional uses carry the newer limited-use counts; a body without them still reads" {
+  c:=cc_fixture();c.n[0]=3;r:=cc_rest_fixture();o:[CC_BODY]u8;b:[CC_BODY]u8;
+  old:=cc_write_rest(c,r,o[..]);#assert cc_find(old,"uses")<0&&cc_read(old,true).ok&&cc_rest(old,true).on&&!cc_rest(old,true).more;
+  r.more=true;r.uses=[3]int.[1,0,CC_MORE_HIGH];s:=cc_write_rest(c,r,o[..]);
+  #assert checkpoint2_input(s,c.n[5]);back:=cc_rest(s,true);#assert back.on&&back.more&&back.uses[0]==1&&back.uses[1]==0&&back.uses[2]==CC_MORE_HIGH;
+  st:[CC_BODY]u8;kept:=cc_stored_rest(c,r,st[..]);k:=cc_rest(kept,false);#assert k.more&&k.uses[2]==CC_MORE_HIGH&&cc_read(kept,false).ok&&!cc_read(kept,true).ok;
+  two:=cc_stored_as(c,r,2,st[..]);#assert cc_read(two,false).ok&&cc_find(two,"uses")<0&&cc_find(two,"rest")<0;
+  v2:=cc_fixture();vb:[CC_BODY]u8;#assert cc_find(cc_write_rest(v2,r,vb[..]),"uses")<0;
+  #assert cc_more_field(0)&&cc_more_field(CC_MORE_HIGH)&&!cc_more_field(-1)&&!cc_more_field(CC_MORE_HIGH+1)&&CC_MORE==3&&CC_MORE_HIGH==99;
+  q:[CC_BODY]u8;
+  for i:0..<CC_MORE{w:=r;w.uses[i]=CC_MORE_HIGH+1;#assert !cc_read(cc_write_rest(c,w,q[..]),true).ok&&!cc_rest(cc_write_rest(c,w,q[..]),true).on;w.uses[i]= -1;#assert !cc_read(cc_write_rest(c,w,q[..]),true).ok;}
+  at:=cc_find(s,",\"uses\":");#assert at>0;
+  #assert cc_read(cc_splice(s,at,"}",b[..]),true).ok;                       // without uses: an older room's body
+  #assert !cc_read(cc_splice(s,s.count-5,"]}",b[..]),true).ok;             // 2 uses
+  #assert !cc_read(cc_splice(s,s.count-2,",0]}",b[..]),true).ok;           // 4
+  #assert !cc_read(cc_splice(s,at,",\"uses\":1}",b[..]),true).ok;        // not an array
+  #assert cc_read(cc_splice(s,s.count-2,"]}",b[..]),true).ok;              // the splice itself keeps a valid capture
+  v:=cc_find(s,"\"v\":3");#assert v>=0;
+  w:=cc_splice(s,at,"}",b[..]);ws:=cc_find(w,",\"rest\":");#assert ws>0;u:[CC_BODY]u8;
+  #assert !cc_read(cc_splice(w,ws,",\"uses\":[0,0,0]}",u[..]),true).ok;  // uses without its rest
+  for i:0..<s.count{b[i]=s[i];}b[v+4]='2';#assert !cc_read(cast(string)b[0..<s.count],true).ok;   // v2 with uses
+}
 #test "character checkpoint: malformed, partial and substituted captures never publish" {
   #assert !cc_read("{}",true).ok&&!cc_read("[]",true).ok&&!cc_read("bad",true).ok;
   c:=cc_fixture();o:[CC_BODY]u8;s:=cc_write(c,o[..]);#assert !cc_read(s[0..<s.count-1],true).ok;
@@ -95,12 +120,14 @@ cc_read :: (text:string,ingress:bool)->CharacterCapture #effects(all) {r:[1]Char
 // A v3 capture's rest; off for v2 or anything invalid.
 cc_rest :: (text:string,ingress:bool)->CharacterRest #effects(all) {r:[1]CharacterRest;c:=cc_parse(text,ingress,r[..]);return ifx c.ok then r[0] else CharacterRest.{};}
 cc_rest_field :: (i:int,n:int)->bool #effects(all) {return i>=0&&i<CC_REST&&n>=0&&n<=CC_REST_HIGH[i];}
+cc_more_field :: (n:int)->bool #effects(all) {return n>=0&&n<=CC_MORE_HIGH;}
 cc_parse :: (text:string,ingress:bool,rest:[]CharacterRest)->CharacterCapture #effects(all) {
   c:=CharacterCapture.{};if text.count>CC_BODY{return c;}
   nodes:[160]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]){return c;}
   if jv_kind(d[0],0)!=JV_OBJECT{return c;}
   for i:0..<17{if i==5&&!ingress{continue;}n:=cc_integer(d[0],jv_get(d[0],0,CC_KEYS[i]));if !cc_number(i,n){return CharacterCapture.{};}c.n[i]=n;}
-  v3:=c.n[0]==3;if jv_len(d[0],0)!=(ifx ingress then 21 else 20)+(ifx v3 then 1 else 0){return CharacterCapture.{};}
+  v3:=c.n[0]==3;more:=v3&&jv_get(d[0],0,"uses")>=0;
+  if jv_len(d[0],0)!=(ifx ingress then 21 else 20)+(ifx v3 then 1 else 0)+(ifx more then 1 else 0){return CharacterCapture.{};}
   if !ingress{c.n[5]=c.n[4];}
   c.pid_n=jv_str(d[0],jv_get(d[0],0,"pid"),c.pid[..]);c.room_n=jv_str(d[0],jv_get(d[0],0,"room"),c.room[..]);
   if !cc_present(c.pid_n){return CharacterCapture.{};}if !cc_present(c.room_n){return CharacterCapture.{};}
@@ -113,6 +140,11 @@ cc_parse :: (text:string,ingress:bool,rest:[]CharacterRest)->CharacterCapture #e
     e:=jv_get(d[0],0,"rest");if jv_kind(d[0],e)!=JV_ARRAY||jv_len(d[0],e)!=CC_REST{return CharacterCapture.{};}
     for i:0..<CC_REST{n:=cc_integer(d[0],jv_at(d[0],e,i));if !cc_rest_field(i,n){return CharacterCapture.{};}rest[0].n[i]=n;}
     rest[0].on=true;
+    if more{
+      u:=jv_get(d[0],0,"uses");if jv_kind(d[0],u)!=JV_ARRAY||jv_len(d[0],u)!=CC_MORE{return CharacterCapture.{};}
+      for i:0..<CC_MORE{n:=cc_integer(d[0],jv_at(d[0],u,i));if !cc_more_field(n){return CharacterCapture.{};}rest[0].uses[i]=n;}
+      rest[0].more=true;
+    }
   }
   c.ok=true;return c;
 }
@@ -122,6 +154,7 @@ cc_encode :: (c:CharacterCapture,rest:CharacterRest,out:[]u8,ingress:bool)->stri
   jo_key(o[..],"pid");jo_str(o[..],cast(string)pid[0..<c.pid_n]);jo_key(o[..],"room");jo_str(o[..],cast(string)room[0..<c.room_n]);jo_key(o[..],"dead");jo_bool(o[..],c.dead);
   jo_key(o[..],"state");jo_arr(o[..]);for i:0..<CC_STATE{jo_int(o[..],c.state[i]);}jo_end(o[..]);
   if c.n[0]==3{jo_key(o[..],"rest");jo_arr(o[..]);for i:0..<CC_REST{jo_int(o[..],rest.n[i]);}jo_end(o[..]);}
+  if c.n[0]==3&&rest.more{jo_key(o[..],"uses");jo_arr(o[..]);for i:0..<CC_MORE{jo_int(o[..],rest.uses[i]);}jo_end(o[..]);}
   jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
 }
 cc_write :: (c:CharacterCapture,out:[]u8)->string #effects(all) {return cc_encode(c,CharacterRest.{},out,true);}
