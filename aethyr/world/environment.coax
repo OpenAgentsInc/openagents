@@ -1,0 +1,918 @@
+// Environment records, version 1 (lighting plan Phase 1 step 2, GitHub #13062;
+// docs/verse/lighting/README.md). What a realm's light is made of, in one typed, versioned shape
+// that the painterly default (the Character Create glade) and every later profile are written in.
+//
+// Records:
+//   EnvironmentKnot     one authored instant: its time of day, the key light (body, direction,
+//                       colour temperature, white balance, strength) and the separate channels
+//   EnvironmentTrack    1..ENV_MAX_KNOTS knots, strictly increasing in time, cyclic over a day
+//   EnvironmentProfile  a versioned, identified track (the glade is profile ENV_GLADE_ID)
+//   EnvironmentRegion   where a profile applies: sphere, box or polygon prism, its transition bands
+//                       and priority. Shape fields only; lookup and blending are #13063
+//   EnvironmentSet      the active profiles and regions, replaced whole or not at all
+//   EnvironmentState    what is being resolved: the profile and the day (from the simulation clock)
+//   ResolvedEnvironment the values one frame reads; aethyr/render/environment.coax packs it for the GPU
+//
+// Time. A knot's time is a day fraction in [0, 1): 0 midnight, .25 dawn, .5 noon, .75 dusk (the
+// clock of aethyr/render/light.coax). A state's day is any finite count of days (|day| <=
+// ENV_DAY_MAX); its fraction day - floor(day) is the time, so -0.25 and 3.75 are both dusk and a
+// fraction that rounds to 1 in f32 is midnight. The track is cyclic: between the last knot and the
+// first it interpolates across midnight over (first + 1 - last). One knot is a constant.
+//
+// Interpolation. At a time t on the segment from knot i to the next knot j, weight u in [0, 1):
+//   - every channel float, the direct colour and the ambient, sky, fog, water colours are linear
+//     RGB and mix as a + (b - a) u. The direct colour is converted to linear RGB at each knot first
+//     (decode(balanced(kelvin, white)) * intensity, as the glade's cg_sun_colour), then mixed.
+//   - the key direction is normalized at each knot and mixed by normalized interpolation (nlerp).
+//     Antipodal rule: adjacent knots (the wrap pair included) whose unit directions have a dot
+//     below ENV_ANTIPODAL_DOT (about 143 degrees) are refused, so an admitted track never nears
+//     the singularity; author a knot between them. env_dir_mix, which later blends (#13063) also
+//     use, returns its first input when the mix is degenerate (exactly opposite at u = .5).
+//   - identifiers and flags never interpolate: body, film and flags are knot i's. Resource
+//     identifiers become an explicit blend reference (EnvBlend): knot i's id at weight 1 - u and
+//     knot j's at u, or one id when they are equal; at most ENV_MAX_BLEND ids per slot.
+//   - u == 0 (at a knot, and always for a one-knot track) is that knot's resolved value exactly.
+//
+// Admission. A set is admitted only whole by env_set_replace: any malformed, nonfinite, out of
+// range, duplicate, unknown or over-capacity field refuses the whole candidate with the first
+// failure's reason and place, and the active set keeps every value and its generation.
+//   coax/bin/coax test aethyr/world/environment.coax
+//   coax/bin/coax mutate aethyr/world/environment.coax --root-only
+#module "aethyr.world.environment";
+#authority;
+#load "../render/light.coax" as light;
+
+ENV_VERSION :: 1;          // these records' version (EnvironmentProfile, Set, State, ResolvedEnvironment)
+ENV_MAX_KNOTS :: 12;
+ENV_MAX_PROFILES :: 8;
+ENV_MAX_REGIONS :: 32;
+ENV_MAX_POINTS :: 8;       // a prism's polygon corners
+ENV_RESOURCES :: 2;        // resource slots per knot
+ENV_RES_SKY :: 0;          // a sky plate or texture id (0: the procedural sky)
+ENV_RES_GRADE :: 1;        // a grade/look-up id (0: none)
+ENV_MAX_BLEND :: 4;        // ids one resolved slot may blend
+ENV_ID_MAX :: 16777215;    // ids are 1..2^24-1, exact in an f32 GPU word
+ENV_GLADE_ID :: 1;         // the painterly default profile: the Character Create glade
+ENV_FLAG_CLOUD_SHADOW :: 1;
+ENV_FLAG_WATER :: 2;
+ENV_FLAGS_KNOWN :: 3;
+ENV_ANTIPODAL_DOT :: -0.8f32;
+ENV_DIR_MIN :: 0.00000095367431640625f32; // 2^-20: squared length below which a direction is degenerate
+ENV_DAY_MAX :: 1000000000.0;
+ENV_POS_MAX :: 10000000.0f32; // metres
+ENV_AREA_MIN :: 0.01f32;      // square metres
+
+// The channels as linear floats, 18 vec4 rows (the GPU layout's channel block uses the same order).
+ENV_CHANNELS :: 72;
+ENV_C_AMBIENT_UPPER :: 0;    ENV_C_AMBIENT_HORIZON :: 4;  ENV_C_AMBIENT_LOWER :: 8;
+ENV_C_SKY_ZENITH :: 12;      ENV_C_SKY_CLOUD_COVER :: 15;
+ENV_C_SKY_HORIZON :: 16;     ENV_C_SKY_HALO_STRENGTH :: 19;
+ENV_C_SKY_CLOUD_SHADE :: 20; ENV_C_SKY_HALO_POWER :: 23;
+ENV_C_SKY_CLOUD_LIGHT :: 24; ENV_C_SKY_WISP_STRENGTH :: 27;
+ENV_C_SKY_HALO :: 28;        ENV_C_SKY_WISP :: 32;
+ENV_C_FOG_AIR :: 36;         ENV_C_FOG_SUN_STRENGTH :: 39;
+ENV_C_FOG_SUN_TINT :: 40;    ENV_C_FOG_PHASE_G :: 43;
+ENV_C_FOG_DENSITY :: 44;     ENV_C_FOG_HEIGHT_FALLOFF :: 45; ENV_C_FOG_START :: 46; ENV_C_FOG_PHASE_CAP :: 47;
+ENV_C_FOG_NEAR :: 48;        ENV_C_FOG_FAR :: 49;         ENV_C_FOG_FAR_GAIN :: 50;
+ENV_C_CLOUD_SHADE :: 52;     ENV_C_CLOUD_SCALE :: 53;     ENV_C_CLOUD_DETAIL_SCALE :: 54;
+ENV_C_CLOUD_EDGE_LO :: 56;   ENV_C_CLOUD_EDGE_HI :: 57;   ENV_C_CLOUD_DRIFT_X :: 58; ENV_C_CLOUD_DRIFT_Z :: 59;
+ENV_C_WATER_SHALLOW :: 60;   ENV_C_WATER_ABSORPTION :: 63;
+ENV_C_WATER_DEEP :: 64;      ENV_C_WATER_REFLECTION :: 67;
+ENV_C_EXPOSURE :: 68;        ENV_C_SATURATION :: 69;
+ENV_PADS :: [9] int.[3, 7, 11, 31, 35, 51, 55, 70, 71];
+// Each channel float's admitted range (pads are 0).
+ENV_CHANNEL_LO :: [72] f32.[
+  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,
+  0, 0, 0, 0,  0, 0, 0, -0.99,  0, 0.001, 0, 0,  0, 0, 0, 0,
+  0, 0, 0, 0,  0, 0, -1000, -1000,
+  0, 0, 0, 0,  0, 0, 0, 0,
+  0.001, 0, 0, 0];
+ENV_CHANNEL_HI :: [72] f32.[
+  1000, 1000, 1000, 0,  1000, 1000, 1000, 0,  1000, 1000, 1000, 0,
+  1000, 1000, 1000, 1,  1000, 1000, 1000, 1000,  1000, 1000, 1000, 10000,  1000, 1000, 1000, 1,  1000, 1000, 1000, 0,  1000, 1000, 1000, 0,
+  1000, 1000, 1000, 1000,  1000, 1000, 1000, 0.99,  10, 100000, 100000, 1000,  100000, 100000, 1000, 0,
+  1, 1000, 1000, 0,  1, 1, 1000, 1000,
+  1000, 1000, 1000, 1000,  1000, 1000, 1000, 1,
+  1000, 10, 0, 0];
+// Field codes in EnvCheck.field beyond the channel indices.
+ENV_F_NONE :: -1;
+ENV_F_TIME :: 100; ENV_F_DIR :: 101; ENV_F_KELVIN :: 102; ENV_F_WHITE :: 103; ENV_F_INTENSITY :: 104;
+ENV_F_FLAGS :: 105; ENV_F_RESOURCE :: 106;
+ENV_F_REGION_ID :: 110; ENV_F_REGION_PROFILE :: 111; ENV_F_PRIORITY :: 112; ENV_F_POSITION :: 113;
+ENV_F_RADIUS :: 114; ENV_F_HALF :: 115; ENV_F_POINTS :: 116; ENV_F_HEIGHTS :: 117; ENV_F_BANDS :: 118;
+
+EnvBody :: enum u8 { sun; moon; }
+EnvFilm :: enum u8 { none; source; }   // source: aethyr/render/filmic.coax film_rec709 after exposure
+EnvShape :: enum u8 { sphere; box; prism; }
+EnvRefusal :: enum u8 { none; version; empty; capacity; nonfinite; range; order; duplicate; antipodal; direction; flags; identity; reference; shape; }
+
+EnvRgb :: struct { r: f32; g: f32; b: f32; }
+EnvDir :: struct { x: f32; y: f32; z: f32; }     // also a point (metres) in regions
+EnvXZ :: struct { x: f32; z: f32; }
+EnvAmbient :: struct { upper: EnvRgb; horizon: EnvRgb; lower: EnvRgb; }
+EnvSky :: struct {
+  zenith: EnvRgb; horizon: EnvRgb; cloud_shade: EnvRgb; cloud_light: EnvRgb; halo: EnvRgb; wisp: EnvRgb;
+  cloud_cover: f32; halo_strength: f32; halo_power: f32; wisp_strength: f32;
+}
+EnvFog :: struct {
+  density: f32;        // optical depth per metre at the ground
+  height_falloff: f32; // metres per e-fold of density with height
+  start: f32;          // metres before which no optical depth accrues
+  near: f32;           // the clear near field (metres); the far window ends at `far`
+  far: f32;
+  far_gain: f32;       // how much thicker the haze is past `far`
+  phase_g: f32;        // forward-scatter asymmetry (Henyey-Greenstein g)
+  phase_cap: f32;      // the phase lobe's cap
+  air: EnvRgb;         // in-scattered sky air
+  sun_tint: EnvRgb;    // sun in-scatter tint, weighted by the phase lobe
+  sun_strength: f32;
+}
+EnvCloud :: struct { shade: f32; scale: f32; detail_scale: f32; edge_lo: f32; edge_hi: f32; drift_x: f32; drift_z: f32; }
+EnvWater :: struct { shallow: EnvRgb; deep: EnvRgb; absorption: f32; reflection: f32; }
+EnvPresentation :: struct { exposure: f32; saturation: f32; }
+EnvChannels :: struct { ambient: EnvAmbient; sky: EnvSky; fog: EnvFog; cloud: EnvCloud; water: EnvWater; presentation: EnvPresentation; }
+
+EnvironmentKnot :: struct {
+  time: f32;           // day fraction, [0, 1)
+  body: EnvBody;       // which body is the key light
+  dir: EnvDir;         // toward the key light; any nonzero length, unit once resolved
+  kelvin: f32;         // the key's colour temperature,
+  white: f32;          // seen through this white balance (K),
+  intensity: f32;      // times this strength
+  channels: EnvChannels;
+  film: EnvFilm;       // film response selection
+  flags: u32;          // ENV_FLAG_*
+  resources: [ENV_RESOURCES] u32;  // per slot (ENV_RES_*), 0 none
+}
+EnvironmentTrack :: struct { count: int; knots: [ENV_MAX_KNOTS] EnvironmentKnot; }
+EnvironmentProfile :: struct { version: u32; id: u32; track: EnvironmentTrack; }
+EnvironmentRegion :: struct {
+  id: u32; profile: u32; priority: s32;   // higher wins; equal priority breaks by id (#13063)
+  shape: EnvShape;
+  center: EnvDir;                          // sphere and box centre (metres)
+  radius: f32;                             // sphere
+  half: EnvDir;                            // box half extents, axis aligned
+  count: int; points: [ENV_MAX_POINTS] EnvXZ;  // prism polygon, either winding
+  floor: f32; ceiling: f32;                // prism heights (metres)
+  inner: f32;                              // band inside the boundary to full weight (metres)
+  outer: f32;                              // band outside the boundary to zero weight (metres)
+}
+EnvironmentSet :: struct {
+  version: u32; generation: int; default_profile: u32;
+  profile_count: int; profiles: [ENV_MAX_PROFILES] EnvironmentProfile;
+  region_count: int; regions: [ENV_MAX_REGIONS] EnvironmentRegion;
+}
+EnvironmentState :: struct { version: u32; profile: u32; day: f64; }   // profile 0: the set's default
+EnvBlend :: struct { count: int; ids: [ENV_MAX_BLEND] u32; weights: [ENV_MAX_BLEND] f32; }
+ResolvedEnvironment :: struct {
+  version: u32; profile: u32;
+  time: f32; from: int; to: int; weight: f32;   // the segment and u it came from
+  body: EnvBody; film: EnvFilm; flags: u32;
+  dir: EnvDir;          // unit, toward the key light
+  direct: EnvRgb;       // the key's linear colour times its strength
+  channels: EnvChannels;
+  resources: [ENV_RESOURCES] EnvBlend;
+}
+EnvCheck :: struct { refusal: EnvRefusal; at: int; knot: int; field: int; }
+EnvResolve :: struct { refusal: EnvRefusal; env: ResolvedEnvironment; }
+
+// ---- checks (written before the code below)
+
+#test "the glade is a one-knot noon profile holding its exact numbers" {
+  p := env_glade_profile(); k := p.track.knots[0]; c := k.channels;
+  #assert env_profile_check(p).refusal == EnvRefusal.none && p.version == ENV_VERSION && p.id == ENV_GLADE_ID && p.track.count == 1;
+  #assert k.time == 0.5 && k.body == EnvBody.sun && k.dir.x == -0.40f32 && k.dir.y == 0.58f32 && k.dir.z == -0.62f32;
+  #assert k.kelvin == 4500 && k.white == 6500 && k.intensity == 2.15f32 && k.film == EnvFilm.source && k.flags == ENV_FLAG_CLOUD_SHADOW;
+  #assert c.ambient.upper.r == 0.49f32 && c.ambient.upper.g == 0.55f32 && c.ambient.upper.b == 0.62f32;
+  #assert c.ambient.lower.r == 0.32f32 && c.ambient.lower.g == 0.34f32 && c.ambient.lower.b == 0.16f32;
+  #assert c.ambient.horizon.r == 0.405f32 && c.ambient.horizon.g == 0.445f32 && c.ambient.horizon.b == 0.39f32;
+  #assert c.fog.near == 30 && c.fog.far == 65 && c.fog.far_gain == 0.6f32 && c.fog.phase_g == 0.62f32 && c.fog.phase_cap == 6;
+  #assert c.fog.density == 0.0055f32 && c.fog.height_falloff == 8 && c.fog.start == 6 && c.fog.sun_strength == 0.40f32;
+  #assert c.fog.air.r == 0.50f32 && c.fog.air.g == 0.70f32 && c.fog.air.b == 0.88f32;
+  #assert c.fog.sun_tint.r == 0.78f32 && c.fog.sun_tint.g == 0.58f32 && c.fog.sun_tint.b == 0.22f32;
+  #assert c.presentation.exposure == 1.18f32 && c.presentation.saturation == 1.16f32;
+  #assert c.cloud.shade == 0.45f32 && c.cloud.scale == 0.10f32 && c.cloud.detail_scale == 0.27f32 && c.cloud.edge_lo == 0.44f32 && c.cloud.edge_hi == 0.60f32;
+  #assert c.cloud.drift_x == 0 && c.cloud.drift_z == 0;
+  #assert c.sky.zenith.r == 0.52f32 && c.sky.zenith.g == 0.86f32 && c.sky.zenith.b == 0.94f32;
+  #assert c.sky.horizon.r == 0.84f32 && c.sky.horizon.g == 0.95f32 && c.sky.horizon.b == 0.96f32;
+  #assert c.sky.cloud_shade.r == 0.76f32 && c.sky.cloud_shade.g == 0.85f32 && c.sky.cloud_shade.b == 0.90f32;
+  #assert c.sky.cloud_light.r == 1 && c.sky.cloud_light.g == 0.995f32 && c.sky.cloud_light.b == 0.98f32;
+  #assert c.sky.halo.r == 1 && c.sky.halo.g == 0.97f32 && c.sky.halo.b == 0.81f32 && c.sky.wisp.r == 0.98f32 && c.sky.wisp.g == 0.99f32 && c.sky.wisp.b == 0.99f32;
+  #assert c.sky.cloud_cover == 0.95f32 && c.sky.halo_strength == 0.16f32 && c.sky.halo_power == 8 && c.sky.wisp_strength == 0.85f32;
+  #assert c.water.absorption == 0 && c.water.reflection == 0 && k.resources[0] == 0 && k.resources[1] == 0;
+  // The horizon ambient is the two-colour hemisphere's midpoint, so three-colour ambient keeps it.
+  #assert abs(c.ambient.horizon.r - (c.ambient.upper.r + c.ambient.lower.r) * 0.5f32) < 0.0000001f32;
+  #assert abs(c.ambient.horizon.g - (c.ambient.upper.g + c.ambient.lower.g) * 0.5f32) < 0.0000001f32;
+  #assert abs(c.ambient.horizon.b - (c.ambient.upper.b + c.ambient.lower.b) * 0.5f32) < 0.0000001f32;
+}
+#test "the glade resolves to its sun colour and direction at every time of day" {
+  p := env_glade_profile(); base := env_profile_sample(p, 0.5);
+  // cg_sun_colour: decode(balanced(4500 K, 6500 K)) * 2.15; cg_sun_dir: normalize(-.40, .58, -.62).
+  #assert base.direct.r == env_srgb_linear(light.verse_style_balanced(4500, 6500, 0)) * 2.15f32;
+  #assert base.direct.g == env_srgb_linear(light.verse_style_balanced(4500, 6500, 1)) * 2.15f32;
+  #assert base.direct.b == env_srgb_linear(light.verse_style_balanced(4500, 6500, 2)) * 2.15f32;
+  #assert base.direct.r == 2.15f32 && base.direct.g > 1.5f32 && base.direct.g < 1.6f32 && base.direct.b > 1.1f32 && base.direct.b < 1.2f32;
+  n := sqrt(0.40f32 * 0.40f32 + 0.58f32 * 0.58f32 + 0.62f32 * 0.62f32);
+  #assert base.dir.x == -0.40f32 / n && base.dir.y == 0.58f32 / n && base.dir.z == -0.62f32 / n;
+  #assert base.version == ENV_VERSION && base.profile == ENV_GLADE_ID && base.from == 0 && base.to == 0 && base.weight == 0;
+  #assert base.body == EnvBody.sun && base.film == EnvFilm.source && base.flags == ENV_FLAG_CLOUD_SHADOW;
+  #assert env_channels_same(base.channels, p.track.knots[0].channels);
+  #assert base.resources[0].count == 1 && base.resources[0].ids[0] == 0 && base.resources[0].weights[0] == 1 && base.resources[1].count == 1;
+  for i: 0..<9 {
+    day := [9] f64.[0, 0.25, 0.49, 0.51, 0.75, 0.9999999999, -0.5, -3.75, 12345.125][i];
+    r := env_profile_sample(p, day);
+    #assert env_resolved_same(r, base, false) && r.time == env_day_time(day) && r.weight == 0 && r.from == 0 && r.to == 0;
+  }
+}
+#forall "a knot's time is the day's fraction: whole days and the midnight wrap never change it" k: 0..<16, n: -3..<4 {
+  t := env_day_time(cast(f64) k / 16 + cast(f64) n);
+  #assert t == cast(f32) k / 16;
+}
+#test "a fraction that rounds to one is midnight, and negative days count back from midnight" {
+  #assert env_day_time(0.99999999999) == 0 && env_day_time(-0.00000000001) == 0 && env_day_time(-0.25) == 0.75f32;
+  #assert env_day_time(1) == 0 && env_day_time(0.9999) == cast(f32) 0.9999 && env_day_time(-1.5) == 0.5f32;
+}
+#test "irregular knots interpolate on each segment and across midnight" {
+  p := env_test_profile3();
+  #assert env_profile_check(p).refusal == EnvRefusal.none;
+  a := p.track.knots[0].channels.fog.near; b := p.track.knots[1].channels.fog.near; c := p.track.knots[2].channels.fog.near;
+  // 0.1 -> 0.3: at .2 halfway.
+  r := env_profile_sample(p, 0.2);
+  #assert r.from == 0 && r.to == 1 && abs(r.weight - 0.5f32) < 0.000001f32 && abs(r.channels.fog.near - (a + (b - a) * r.weight)) < 0.0001f32;
+  // 0.3 -> 0.75: at .5, u = .2 / .45.
+  r = env_profile_sample(p, 0.5);
+  #assert r.from == 1 && r.to == 2 && abs(r.weight - 0.2f32 / 0.45f32) < 0.000001f32 && abs(r.channels.fog.near - (b + (c - b) * r.weight)) < 0.0001f32;
+  // 0.75 -> 1.1 across midnight (span .35): at .95 u = .2 / .35, at 0.0 u = .25 / .35, at .05 u = .3 / .35.
+  r = env_profile_sample(p, 0.95);
+  #assert r.from == 2 && r.to == 0 && abs(r.weight - 0.2f32 / 0.35f32) < 0.00001f32 && abs(r.channels.fog.near - (c + (a - c) * r.weight)) < 0.001f32;
+  r = env_profile_sample(p, 0);
+  #assert r.from == 2 && r.to == 0 && abs(r.weight - 0.25f32 / 0.35f32) < 0.00001f32;
+  r = env_profile_sample(p, 1.05);
+  #assert r.from == 2 && r.to == 0 && abs(r.weight - 0.3f32 / 0.35f32) < 0.00001f32;
+  // The colours mix in linear space, channel by channel, and so does the direct colour.
+  r = env_profile_sample(p, 0.2);
+  #assert abs(r.channels.ambient.upper.g - 0.5f32 * (p.track.knots[0].channels.ambient.upper.g + p.track.knots[1].channels.ambient.upper.g)) < 0.00001f32;
+  k0 := env_knot_resolve(p.track.knots[0]); k1 := env_knot_resolve(p.track.knots[1]);
+  dm := env_dir_mix(k0.dir, k1.dir, r.weight); #assert r.dir.x == dm.x && r.dir.y == dm.y && r.dir.z == dm.z && r.dir.x != k0.dir.x;
+  v0 := env_channels_flat(k0.channels); v1 := env_channels_flat(k1.channels); vr := env_channels_flat(r.channels);
+  for i: 0..<ENV_CHANNELS { #assert vr[i] == v0[i] + (v1[i] - v0[i]) * r.weight; }
+  #assert vr[0] != v0[0];
+  #assert abs(r.direct.r - (k0.direct.r + (k1.direct.r - k0.direct.r) * r.weight)) < 0.00001f32;
+  #assert abs(r.direct.g - (k0.direct.g + (k1.direct.g - k0.direct.g) * r.weight)) < 0.00001f32;
+  #assert abs(r.direct.b - (k0.direct.b + (k1.direct.b - k0.direct.b) * r.weight)) < 0.00001f32;
+  // Exactly at a knot the knot's resolved value, exactly.
+  for i: 0..<3 {
+    at := env_profile_sample(p, cast(f64) p.track.knots[i].time);
+    expect := env_knot_resolve(p.track.knots[i]); expect.profile = 7; expect.from = i; expect.to = ifx i == 2 then 0 else i + 1;
+    #assert at.weight == 0 && at.from == i && env_resolved_same(at, expect, true);
+  }
+}
+#test "identifiers and flags hold the segment's first knot; resources blend by explicit reference" {
+  p := env_test_profile3(); r := env_profile_sample(p, 0.6);
+  #assert r.from == 1 && r.body == EnvBody.sun && r.film == EnvFilm.none && r.flags == 2;
+  r = env_profile_sample(p, 0.9);
+  #assert r.from == 2 && r.body == EnvBody.moon && r.film == EnvFilm.source && r.flags == 3;
+  // Sky slot: 5 -> 9 on 0.1 -> 0.3, then 9 -> 9, then 9 -> 5 across midnight. Grade: 0 throughout.
+  r = env_profile_sample(p, 0.2);
+  #assert r.resources[0].count == 2 && r.resources[0].ids[0] == 5 && r.resources[0].ids[1] == 9;
+  #assert abs(r.resources[0].weights[0] - 0.5f32) < 0.000001f32 && r.resources[0].weights[1] == r.weight && r.resources[0].weights[0] == 1 - r.weight;
+  #assert r.resources[1].count == 1 && r.resources[1].ids[0] == 0 && r.resources[1].weights[0] == 1;
+  r = env_profile_sample(p, 0.5);
+  #assert r.resources[0].count == 1 && r.resources[0].ids[0] == 9 && r.resources[0].weights[0] == 1 && r.resources[0].weights[1] == 0;
+  r = env_profile_sample(p, 0.9);
+  #assert r.resources[0].count == 2 && r.resources[0].ids[0] == 9 && r.resources[0].ids[1] == 5;
+  r = env_profile_sample(p, 0.1);
+  #assert r.resources[0].count == 1 && r.resources[0].ids[0] == 5;
+}
+#test "directions use normalized interpolation and a defined antipodal rule" {
+  x := EnvDir.{x = 1}; y := EnvDir.{y = 1}; nx := EnvDir.{x = -1};
+  m := env_dir_mix(x, y, 0.5);
+  #assert abs(m.x - 0.70710678f32) < 0.000001f32 && abs(m.y - 0.70710678f32) < 0.000001f32 && m.z == 0;
+  m = env_dir_mix(x, y, 0.25); #assert abs(m.x * m.x + m.y * m.y - 1) < 0.000001f32 && m.x > m.y;
+  // Exactly opposite: the mix's own sign away from the midpoint, the first input at it.
+  m = env_dir_mix(x, nx, 0.5); #assert m.x == 1 && m.y == 0 && m.z == 0;
+  m = env_dir_mix(nx, x, 0.5); #assert m.x == -1;
+  m = env_dir_mix(x, nx, 0.25); #assert m.x == 1;
+  m = env_dir_mix(x, nx, 0.75); #assert m.x == -1;
+  // Admission: adjacent knots at the bound (dot -0.8 exactly) are admitted, past it refused,
+  // the wrap pair included.
+  p := env_test_profile3();
+  p.track.knots[1].dir = EnvDir.{x = 1}; p.track.knots[2].dir = EnvDir.{x = -4, y = 3};
+  p.track.knots[0].dir = EnvDir.{x = 0, y = 1};
+  #assert env_profile_check(p).refusal == EnvRefusal.none;
+  p.track.knots[2].dir = EnvDir.{x = -4.01, y = 3};
+  c := env_profile_check(p); #assert c.refusal == EnvRefusal.antipodal && c.knot == 1 && c.field == ENV_F_DIR;
+  p.track.knots[2].dir = EnvDir.{y = 1}; p.track.knots[0].dir = EnvDir.{x = 0.1, y = -1};
+  c = env_profile_check(p); #assert c.refusal == EnvRefusal.antipodal && c.knot == 2;
+  p.track.knots[0].dir = EnvDir.{y = 1};
+  #assert env_profile_check(p).refusal == EnvRefusal.none;
+  // Two knots: each is the other's neighbour both ways.
+  q := env_glade_profile(); q.track.count = 2; q.track.knots[1] = q.track.knots[0]; q.track.knots[1].time = 0.9;
+  q.track.knots[1].dir = EnvDir.{x = 0.40, y = -0.58, z = 0.62};
+  c = env_profile_check(q); #assert c.refusal == EnvRefusal.antipodal && c.knot == 0;
+  // A degenerate direction is refused before any mixing.
+  q.track.knots[1].dir = EnvDir.{x = 0.0009};
+  c = env_profile_check(q); #assert c.refusal == EnvRefusal.direction && c.knot == 1 && c.field == ENV_F_DIR;
+  q.track.knots[1].dir = EnvDir.{x = 0.0009765625};
+  #assert env_profile_check(q).refusal == EnvRefusal.none;
+  // The mix's own degenerate bound, 2^-20 squared length exactly, still normalizes.
+  m = env_dir_mix(EnvDir.{x = 2}, EnvDir.{x = -2}, 0.499755859375); #assert m.x == 1;
+  m = env_dir_mix(EnvDir.{x = 2}, EnvDir.{x = -2}, 0.5); #assert m.x == 2;
+  m = env_dir_mix(EnvDir.{z = 1}, EnvDir.{y = 1}, 0.25);
+  #assert m.x == 0 && abs(m.y - 0.31622777f32) < 0.000001f32 && abs(m.z - 0.94868330f32) < 0.000001f32;
+  m = env_dir_mix(EnvDir.{y = 1}, EnvDir.{z = 1}, 0.25);
+  #assert m.x == 0 && abs(m.y - 0.94868330f32) < 0.000001f32 && abs(m.z - 0.31622777f32) < 0.000001f32;
+  m = env_dir_mix(EnvDir.{z = 1}, EnvDir.{x = 1, z = 1}, 0.5);
+  #assert abs(m.x - 0.4472136f32) < 0.000001f32 && abs(m.z - 0.8944272f32) < 0.000001f32 && m.y == 0;
+}
+#test "duplicate and decreasing knot times are refused" {
+  p := env_test_profile3(); p.track.knots[2].time = 0.3;
+  c := env_profile_check(p); #assert c.refusal == EnvRefusal.duplicate && c.knot == 2 && c.field == ENV_F_TIME;
+  p.track.knots[2].time = 0.2;
+  c = env_profile_check(p); #assert c.refusal == EnvRefusal.order && c.knot == 2 && c.field == ENV_F_TIME;
+  p = env_test_profile3(); p.track.knots[1].time = 0.1;
+  c = env_profile_check(p); #assert c.refusal == EnvRefusal.duplicate && c.knot == 1;
+  for t: [4] f32.[-0.0001, 1, 1.5, -1] {
+    p = env_test_profile3(); p.track.knots[0].time = t;
+    c = env_profile_check(p); #assert c.refusal == EnvRefusal.range && c.knot == 0 && c.field == ENV_F_TIME;
+  }
+  p = env_test_profile3(); p.track.knots[0].time = 0; #assert env_profile_check(p).refusal == EnvRefusal.none;
+  p.track.knots[2].time = 0.99999994f32; #assert env_profile_check(p).refusal == EnvRefusal.none;
+}
+#forall "every channel float refuses nonfinite and out-of-range values and admits its bounds" i: 0..<72, kind: 0..<5 {
+  base := env_test_profile3(); k := base.track.knots[1];
+  v := env_channels_flat(k.channels);
+  inf := 1.0f32 / 0.0f32;
+  pad := false; for j: 0..<9 { if ENV_PADS[j] == i { pad = true; } }
+  value := [5] f32.[0.0f32 / 0.0f32, inf, ENV_CHANNEL_LO[i] - 0.5f32, ENV_CHANNEL_HI[i] + 0.5f32, ENV_CHANNEL_LO[i]][kind];
+  if kind == 4 { value = ifx i == ENV_C_FOG_FAR || i == ENV_C_CLOUD_EDGE_HI then ENV_CHANNEL_HI[i] else ENV_CHANNEL_LO[i]; }
+  v[i] = value; k.channels = env_channels_from(v); base.track.knots[1] = k;
+  c := env_profile_check(base);
+  if pad || kind == 4 { #assert c.refusal == EnvRefusal.none; }
+  else {
+    #assert c.refusal == (ifx kind < 2 then EnvRefusal.nonfinite else EnvRefusal.range) && c.knot == 1 && c.field == i && c.at == -1;
+  }
+}
+#test "a channel's range holds at its upper bound, and the near/far window and cloud edges keep their order" {
+  for i: 0..<72 {
+    p := env_test_profile3(); v := env_channels_flat(p.track.knots[0].channels); v[i] = ENV_CHANNEL_HI[i];
+    if i == ENV_C_FOG_NEAR { v[ENV_C_FOG_FAR] = ENV_CHANNEL_HI[i]; }
+    if i == ENV_C_CLOUD_EDGE_LO { v[i] = 0.99f32; v[ENV_C_CLOUD_EDGE_HI] = 1; }
+    p.track.knots[0].channels = env_channels_from(v);
+    #assert env_profile_check(p).refusal == EnvRefusal.none;
+  }
+  p := env_test_profile3(); p.track.knots[0].channels.fog.far = p.track.knots[0].channels.fog.near;
+  #assert env_profile_check(p).refusal == EnvRefusal.none;
+  p.track.knots[0].channels.fog.far = p.track.knots[0].channels.fog.near - 0.5f32;
+  c := env_profile_check(p); #assert c.refusal == EnvRefusal.order && c.field == ENV_C_FOG_FAR && c.knot == 0;
+  p = env_test_profile3(); p.track.knots[0].channels.cloud.edge_hi = p.track.knots[0].channels.cloud.edge_lo;
+  c = env_profile_check(p); #assert c.refusal == EnvRefusal.order && c.field == ENV_C_CLOUD_EDGE_HI;
+}
+#test "the key light's temperature, balance and strength refuse nonfinite and out-of-range values" {
+  nan := 0.0f32 / 0.0f32;
+  for f: 0..<3 {
+    for kind: 0..<6 {
+      p := env_test_profile3(); value := [6] f32.[nan, 999, 40001, 1000, 40000, -0.5][kind];
+      if f == 2 { value = [6] f32.[nan, -0.5, 1000.5, 0, 1000, -1][kind]; }
+      if f == 0 { p.track.knots[2].kelvin = value; } else if f == 1 { p.track.knots[2].white = value; } else { p.track.knots[2].intensity = value; }
+      c := env_profile_check(p);
+      if kind == 3 || kind == 4 { #assert c.refusal == EnvRefusal.none; }
+      else { #assert c.refusal == (ifx kind == 0 then EnvRefusal.nonfinite else EnvRefusal.range) && c.knot == 2 && c.field == ENV_F_KELVIN + f; }
+    }
+  }
+  inf := 1.0f32 / 0.0f32;
+  for axis: 0..<3 {
+    for kind: 0..<3 {
+      p := env_test_profile3(); value := [3] f32.[nan, inf, -1001][kind];
+      if axis == 0 { p.track.knots[0].dir.x = value; } else if axis == 1 { p.track.knots[0].dir.y = value; } else { p.track.knots[0].dir.z = value; }
+      c := env_profile_check(p); #assert c.refusal == (ifx kind < 2 then EnvRefusal.nonfinite else EnvRefusal.range) && c.field == ENV_F_DIR;
+    }
+  }
+  p := env_test_profile3(); p.track.knots[0].dir = EnvDir.{x = -1000, y = 1000, z = 1000}; p.track.knots[1].dir = EnvDir.{x = 0, y = 1, z = 1};
+  #assert env_profile_check(p).refusal == EnvRefusal.none;
+  p.track.knots[0].time = nan; #assert env_profile_check(p).refusal == EnvRefusal.nonfinite;
+}
+#test "unknown flags, oversized resource ids and bad versions or ids are refused" {
+  p := env_test_profile3(); p.track.knots[1].flags = ENV_FLAGS_KNOWN; #assert env_profile_check(p).refusal == EnvRefusal.none;
+  p.track.knots[1].flags = 4; c := env_profile_check(p); #assert c.refusal == EnvRefusal.flags && c.knot == 1 && c.field == ENV_F_FLAGS;
+  for slot: 0..<2 {
+    p = env_test_profile3(); p.track.knots[2].resources[slot] = ENV_ID_MAX; #assert env_profile_check(p).refusal == EnvRefusal.none;
+    p.track.knots[2].resources[slot] = ENV_ID_MAX + 1;
+    c = env_profile_check(p); #assert c.refusal == EnvRefusal.identity && c.knot == 2 && c.field == ENV_F_RESOURCE + slot;
+  }
+  p = env_test_profile3(); p.version = 2; c = env_profile_check(p); #assert c.refusal == EnvRefusal.version && c.knot == -1 && c.field == ENV_F_NONE;
+  p = env_test_profile3(); p.id = 0; #assert env_profile_check(p).refusal == EnvRefusal.identity;
+  p.id = ENV_ID_MAX; #assert env_profile_check(p).refusal == EnvRefusal.none;
+  p.id = ENV_ID_MAX + 1; #assert env_profile_check(p).refusal == EnvRefusal.identity;
+}
+#test "a track holds one to twelve knots" {
+  p := env_glade_profile(); p.track.count = 0; #assert env_profile_check(p).refusal == EnvRefusal.empty;
+  p.track.count = -1; #assert env_profile_check(p).refusal == EnvRefusal.empty;
+  p.track.count = ENV_MAX_KNOTS + 1; #assert env_profile_check(p).refusal == EnvRefusal.capacity;
+  p = env_glade_profile(); p.track.count = ENV_MAX_KNOTS;
+  for i: 0..<ENV_MAX_KNOTS { p.track.knots[i] = p.track.knots[0]; p.track.knots[i].time = cast(f32) i / 12; }
+  #assert env_profile_check(p).refusal == EnvRefusal.none;
+  r := env_profile_sample(p, 0.99); #assert r.from == 11 && r.to == 0;
+  r = env_profile_sample(p, 0.5); #assert r.from == 6 && r.to == 7 && r.weight == 0;
+}
+#test "the fixtures hold what the checks assume, and an admitted record reports no place" {
+  p := env_test_profile3();
+  #assert p.id == 7 && p.track.count == 3;
+  for i: 0..<3 {
+    k := p.track.knots[i];
+    #assert k.time == [3] f32.[0.1, 0.3, 0.75][i] && k.channels.fog.near == [3] f32.[10, 40, 25][i] && k.channels.fog.far == 70;
+    #assert k.channels.ambient.upper.g == [3] f32.[0.2, 0.6, 0.4][i] && k.channels.ambient.upper.r == [3] f32.[0.3, 0.5, 0.7][i];
+    #assert k.channels.water.reflection == [3] f32.[0.1, 0.5, 0.9][i] && k.kelvin == [3] f32.[3000, 5500, 9000][i] && k.intensity == [3] f32.[0.5, 2, 0.25][i];
+    #assert k.dir.x == [3] f32.[0.3, -0.4, 0.2][i] && k.dir.y == [3] f32.[0.2, 0.58, 0.9][i] && k.dir.z == [3] f32.[0.5, -0.62, 0.1][i];
+    #assert k.flags == cast(u32) i + 1 && k.resources[0] == [3] u32.[5, 9, 9][i] && k.resources[1] == 0;
+  }
+  b := env_region_box(5, 1);
+  #assert b.id == 5 && b.profile == 1 && b.priority == 2 && b.shape == EnvShape.box && b.center.x == 4 && b.center.y == 0 && b.half.x == 3 && b.half.y == 2 && b.half.z == 5 && b.outer == 1 && b.inner == 0;
+  q := env_region_prism(6, 1);
+  #assert q.priority == -3 && q.shape == EnvShape.prism && q.count == 3 && q.floor == -2 && q.ceiling == 10 && q.inner == 1 && q.outer == 1 && env_polygon_area2(q) == 80;
+  #assert q.points[0].x == 1 && q.points[0].z == 1 && q.points[1].x == 11 && q.points[1].z == 1 && q.points[2].x == 1 && q.points[2].z == 9;
+  sp := env_region_sphere(4, 1);
+  #assert sp.center.x == 4 && sp.center.y == 1 && sp.center.z == -3 && sp.radius == 12 && sp.inner == 2 && sp.outer == 6 && sp.priority == 0;
+  t := env_test_set();
+  #assert t.regions[0].id == 11 && t.regions[0].profile == 7 && t.regions[1].id == 12 && t.regions[1].profile == ENV_GLADE_ID && t.regions[2].id == 13 && t.regions[2].profile == 7;
+  #assert t.profiles[1].id == 7 && t.default_profile == ENV_GLADE_ID;
+  ok := env_profile_check(env_glade_profile()); #assert ok.refusal == EnvRefusal.none && ok.at == -1 && ok.knot == -1 && ok.field == ENV_F_NONE;
+  c := env_region_check(env_region_box(0, 1)); #assert c.refusal == EnvRefusal.identity && c.at == -1 && c.knot == -1 && c.field == ENV_F_REGION_ID;
+  p.track.knots[1].flags = 9; c = env_profile_check(p); #assert c.at == -1 && c.knot == 1;
+  p.version = 0; c = env_profile_check(p); #assert c.at == -1 && c.knot == -1 && c.field == ENV_F_NONE;
+}
+#test "regions check their shape fields" {
+  s := env_region_sphere(4, 1); #assert env_region_check(s).refusal == EnvRefusal.none;
+  s.radius = 0; c := env_region_check(s); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_RADIUS;
+  s.radius = 1000000; #assert env_region_check(s).refusal == EnvRefusal.none;
+  s.radius = 1000001; #assert env_region_check(s).refusal == EnvRefusal.shape;
+  s = env_region_sphere(4, 1); s.id = 0; c = env_region_check(s); #assert c.refusal == EnvRefusal.identity && c.field == ENV_F_REGION_ID;
+  s.id = ENV_ID_MAX + 1; #assert env_region_check(s).refusal == EnvRefusal.identity;
+  s.id = ENV_ID_MAX; #assert env_region_check(s).refusal == EnvRefusal.none;
+  s.profile = 0; c = env_region_check(s); #assert c.refusal == EnvRefusal.identity && c.field == ENV_F_REGION_PROFILE;
+  s.profile = ENV_ID_MAX + 1; #assert env_region_check(s).refusal == EnvRefusal.identity;
+  s.profile = ENV_ID_MAX; #assert env_region_check(s).refusal == EnvRefusal.none;
+  for i: 0..<ENV_MAX_POINTS {
+    for a: 0..<2 {
+      r := env_region_sphere(4, 1); if a == 0 { r.points[i].x = 0.0f32 / 0.0f32; } else { r.points[i].z = -10000001; }
+      c = env_region_check(r); #assert c.refusal == (ifx a == 0 then EnvRefusal.nonfinite else EnvRefusal.range) && c.field == ENV_F_POSITION;
+    }
+  }
+  s = env_region_sphere(4, 1);
+  for pr: [4] s32.[-1000, 1000, -1001, 1001] { s.priority = pr; c = env_region_check(s); #assert (c.refusal == EnvRefusal.none) == (pr == -1000 || pr == 1000); }
+  s = env_region_sphere(4, 1); s.priority = 1001; c = env_region_check(s); #assert c.field == ENV_F_PRIORITY && c.refusal == EnvRefusal.range;
+  nan := 0.0f32 / 0.0f32;
+  for f: 0..<14 {
+    for kind: 0..<2 {
+      r := env_region_sphere(4, 1); value := ifx kind == 0 then nan else 10000001;
+      if f == 0 { r.center.x = value; } else if f == 1 { r.center.y = value; } else if f == 2 { r.center.z = value; }
+      else if f == 3 { r.half.x = value; } else if f == 4 { r.half.y = value; } else if f == 5 { r.half.z = value; }
+      else if f == 6 { r.points[0].x = value; } else if f == 7 { r.points[7].z = value; } else if f == 8 { r.floor = value; }
+      else if f == 9 { r.ceiling = value; } else if f == 10 { r.inner = value; } else if f == 11 { r.outer = value; }
+      else if f == 12 { r.radius = value; } else { r.points[3].x = value; }
+      c = env_region_check(r);
+      #assert c.refusal == (ifx kind == 0 then EnvRefusal.nonfinite else ifx f == 12 then EnvRefusal.shape else ifx f >= 10 && f <= 11 then EnvRefusal.range else EnvRefusal.range);
+      #assert c.field == (ifx f == 12 then ENV_F_RADIUS else ifx f == 10 || f == 11 then ENV_F_BANDS else ENV_F_POSITION) || kind == 0;
+    }
+  }
+  r := env_region_sphere(4, 1); r.center.x = -10000000; r.half.z = 10000000; #assert env_region_check(r).refusal == EnvRefusal.none;
+  r.inner = 100000; r.outer = 100000; #assert env_region_check(r).refusal == EnvRefusal.none;
+  r.inner = -0.5; c = env_region_check(r); #assert c.refusal == EnvRefusal.range && c.field == ENV_F_BANDS;
+  r.inner = 0; r.outer = -0.5; #assert env_region_check(r).refusal == EnvRefusal.range;
+  r.outer = 100001; #assert env_region_check(r).refusal == EnvRefusal.range;
+  b := env_region_box(5, 1); #assert env_region_check(b).refusal == EnvRefusal.none;
+  for axis: 0..<3 {
+    b = env_region_box(5, 1);
+    if axis == 0 { b.half.x = 0; } else if axis == 1 { b.half.y = 0; } else { b.half.z = 0; }
+    c = env_region_check(b); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_HALF;
+  }
+  b = env_region_box(5, 1); b.radius = 0; #assert env_region_check(b).refusal == EnvRefusal.none;
+  q := env_region_prism(6, 1); #assert env_region_check(q).refusal == EnvRefusal.none;
+  q.count = 2; c = env_region_check(q); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_POINTS;
+  q.count = 9; #assert env_region_check(q).refusal == EnvRefusal.shape;
+  q.count = 8; for i: 3..<8 { q.points[i] = q.points[2]; } #assert env_region_check(q).refusal == EnvRefusal.none;
+  q = env_region_prism(6, 1); q.ceiling = q.floor; c = env_region_check(q); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_HEIGHTS;
+  q = env_region_prism(6, 1); q.points[2] = EnvXZ.{x = 3, z = 1}; c = env_region_check(q); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_POINTS;
+  // Area at the bound: a triangle of exactly .01 square metres is admitted, a smaller one refused.
+  q = env_region_prism(6, 1); q.points[0] = EnvXZ.{}; q.points[1] = EnvXZ.{x = 0.25}; q.points[2] = EnvXZ.{z = 0.08};
+  #assert env_region_check(q).refusal == EnvRefusal.none;
+  q.points[1] = EnvXZ.{z = 0.25}; q.points[2] = EnvXZ.{x = 0.08}; #assert env_region_check(q).refusal == EnvRefusal.none;
+  q.points[2] = EnvXZ.{x = 0.079}; #assert env_region_check(q).refusal == EnvRefusal.shape;
+  #assert env_polygon_area2(q) < 0;
+}
+#test "a set replaces the active set whole or not at all" {
+  active: [1] EnvironmentSet; next: [1] EnvironmentSet;
+  st := EnvironmentState.{version = ENV_VERSION, profile = 0, day = 0.5};
+  #assert env_resolve(active[..], st).refusal == EnvRefusal.reference;
+  next[0] = env_test_set();
+  c := env_set_replace(active[..], next[..]);
+  #assert c.refusal == EnvRefusal.none && active[0].generation == 1 && active[0].profile_count == 2 && active[0].region_count == 3;
+  first := active[0];
+  r := env_resolve(active[..], st); #assert r.refusal == EnvRefusal.none && r.env.profile == ENV_GLADE_ID;
+  #assert env_resolved_same(r.env, env_profile_sample(env_glade_profile(), 0.5), true);
+  st.profile = 7; r = env_resolve(active[..], st); #assert r.refusal == EnvRefusal.none && r.env.profile == 7 && r.env.from == 1;
+  // Each malformed candidate leaves every active value and the generation untouched.
+  for bad: 0..<16 {
+    next[0] = env_test_set();
+    if bad == 0 { next[0].profiles[1].track.knots[2].channels.fog.density = 0.0f32 / 0.0f32; }
+    else if bad == 1 { next[0].version = 0; }
+    else if bad == 2 { next[0].profile_count = 0; }
+    else if bad == 3 { next[0].profile_count = ENV_MAX_PROFILES + 1; }
+    else if bad == 4 { next[0].region_count = ENV_MAX_REGIONS + 1; }
+    else if bad == 5 { next[0].profiles[1].id = ENV_GLADE_ID; }
+    else if bad == 6 { next[0].default_profile = 9; }
+    else if bad == 7 { next[0].regions[2].profile = 9; }
+    else if bad == 8 { next[0].regions[2].id = next[0].regions[0].id; }
+    else if bad == 9 { next[0].regions[1].radius = 0; next[0].regions[1].shape = EnvShape.sphere; }
+    else if bad == 10 { next[0].region_count = -1; }
+    else if bad == 11 { next[0].profiles[1].track.knots[1].time = 0.1; }
+    else if bad == 12 { next[0].regions[1].id = next[0].regions[2].id; }
+    else if bad == 13 { next[0].profiles[0].track.count = 0; }
+    else if bad == 15 { next[0].regions[0].radius = 0; }
+    else if bad == 14 { next[0].profiles[0].id = next[0].profiles[1].id; }
+    c = env_set_replace(active[..], next[..]);
+    expect := [16] EnvRefusal.[EnvRefusal.nonfinite, EnvRefusal.version, EnvRefusal.empty, EnvRefusal.capacity, EnvRefusal.capacity,
+      EnvRefusal.duplicate, EnvRefusal.reference, EnvRefusal.reference, EnvRefusal.duplicate, EnvRefusal.shape, EnvRefusal.capacity,
+      EnvRefusal.duplicate, EnvRefusal.duplicate, EnvRefusal.empty, EnvRefusal.duplicate, EnvRefusal.shape][bad];
+    at := [16] int.[1, -1, -1, -1, -1, 1, -1, 2, 2, 1, -1, 1, 2, 0, 1, 0][bad];
+    field := [16] int.[ENV_C_FOG_DENSITY, ENV_F_NONE, ENV_F_NONE, ENV_F_NONE, ENV_F_NONE, ENV_F_NONE, ENV_F_NONE, ENV_F_REGION_PROFILE, ENV_F_REGION_ID,
+      ENV_F_RADIUS, ENV_F_NONE, ENV_F_TIME, ENV_F_REGION_ID, ENV_F_NONE, ENV_F_NONE, ENV_F_RADIUS][bad];
+    #assert c.refusal == expect && c.at == at && c.field == field;
+    #assert active[0].generation == 1 && env_set_same(active[0], first);
+  }
+  next[0] = env_test_set(); next[0].profiles[1].track.knots[0].channels.fog.near = 12; next[0].region_count = 0; next[0].generation = 40;
+  c = env_set_replace(active[..], next[..]);
+  #assert c.refusal == EnvRefusal.none && active[0].generation == 2 && active[0].region_count == 0 && active[0].profiles[1].track.knots[0].channels.fog.near == 12;
+  next[0].region_count = ENV_MAX_REGIONS; for i: 0..<ENV_MAX_REGIONS { next[0].regions[i] = env_region_sphere(cast(u32) i + 1, 7); }
+  next[0].profile_count = ENV_MAX_PROFILES; for i: 2..<ENV_MAX_PROFILES { next[0].profiles[i] = env_glade_profile(); next[0].profiles[i].id = cast(u32) i + 20; }
+  c = env_set_replace(active[..], next[..]); #assert c.refusal == EnvRefusal.none && active[0].generation == 3;
+}
+#test "the sRGB decode matches the glade's at its seam, and a one-profile set with no regions is admitted" {
+  #assert env_srgb_linear(0.04045f32) == 0.04045f32 / 12.92f32 && env_srgb_linear(0) == 0 && env_srgb_linear(1) == 1;
+  #assert abs(env_srgb_linear(0.5) - 0.214041f32) < 0.00001f32 && env_srgb_linear(0.04046f32) > env_srgb_linear(0.04045f32);
+  active: [1] EnvironmentSet; next := [1] EnvironmentSet.[env_test_set()]; next[0].profile_count = 1; next[0].region_count = 0;
+  #assert env_set_replace(active[..], next[..]).refusal == EnvRefusal.none && active[0].profile_count == 1;
+}
+#test "resolving refuses a wrong version, a nonfinite or far day and an unknown profile" {
+  active: [1] EnvironmentSet; next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_set_replace(active[..], next[..]).refusal == EnvRefusal.none;
+  st := EnvironmentState.{version = 2, day = 0.5}; #assert env_resolve(active[..], st).refusal == EnvRefusal.version;
+  st.version = ENV_VERSION;
+  st.day = 0.0 / 0.0; #assert env_resolve(active[..], st).refusal == EnvRefusal.nonfinite;
+  st.day = 1.0 / 0.0; #assert env_resolve(active[..], st).refusal == EnvRefusal.nonfinite;
+  st.day = ENV_DAY_MAX; #assert env_resolve(active[..], st).refusal == EnvRefusal.none;
+  st.day = -ENV_DAY_MAX; #assert env_resolve(active[..], st).refusal == EnvRefusal.none;
+  st.day = ENV_DAY_MAX + 1; #assert env_resolve(active[..], st).refusal == EnvRefusal.range;
+  st.day = -ENV_DAY_MAX - 1; #assert env_resolve(active[..], st).refusal == EnvRefusal.range;
+  st.day = 0.5; st.profile = 8; #assert env_resolve(active[..], st).refusal == EnvRefusal.reference;
+  st.profile = 7; r := env_resolve(active[..], st); #assert r.refusal == EnvRefusal.none && r.env.profile == 7;
+}
+#test "comparison helpers notice every field" {
+  a := env_profile_sample(env_test_profile3(), 0.2);
+  for f: 0..<14 {
+    b := a;
+    if f == 0 { b.version = 2; } else if f == 1 { b.profile = 3; } else if f == 2 { b.time = 0.3; } else if f == 3 { b.from = 2; }
+    else if f == 4 { b.to = 2; } else if f == 5 { b.weight = 0.1; } else if f == 6 { b.body = EnvBody.moon; } else if f == 7 { b.film = EnvFilm.none; }
+    else if f == 8 { b.flags = 0; } else if f == 9 { b.dir.y = 0; } else if f == 10 { b.direct.b = 0; } else if f == 11 { b.channels.water.reflection = 0.7; }
+    else if f == 12 { b.resources[1].ids[0] = 4; } else { b.resources[0].weights[1] = 0; }
+    #assert !env_resolved_same(a, b, true) && (env_resolved_same(a, b, false) == (f == 2 || f == 3 || f == 4 || f == 5));
+  }
+  for f: 0..<3 {
+    b := a; if f == 0 { b.dir.x = 0.5; } else if f == 1 { b.dir.z = 0.5; } else { b.resources[0].count = 1; }
+    #assert !env_resolved_same(a, b, false);
+  }
+  b := a; b.channels.ambient.upper.r = 0.9; #assert !env_resolved_same(a, b, false);
+  b = a; b.direct.r = 0; #assert !env_resolved_same(a, b, false); b = a; b.direct.g = 0; #assert !env_resolved_same(a, b, false);
+  s := env_test_set();
+  for f: 0..<16 {
+    t := s;
+    if f == 0 { t.version = 2; } else if f == 1 { t.generation = 5; } else if f == 2 { t.default_profile = 7; } else if f == 3 { t.profile_count = 1; }
+    else if f == 4 { t.region_count = 2; } else if f == 5 { t.profiles[1].track.knots[2].flags = 0; } else if f == 6 { t.regions[2].outer = 9; }
+    else if f == 7 { t.regions[2].id = 9; } else if f == 11 { t.profiles[1].id = 9; } else if f == 12 { t.profiles[1].track.count = 2; }
+    else if f == 13 { t.profiles[0].track.knots[0].time = 0.4; } else if f == 14 { t.regions[0].outer = 9; } else if f == 15 { t.profiles[1].track.knots[0].flags = 0; } else if f == 8 { t.regions[2].profile = 9; } else if f == 9 { t.regions[2].radius = 9; } else if f == 10 { t.regions[2].inner = 9; }
+    #assert env_set_same(s, s) && !env_set_same(s, t);
+  }
+}
+
+// ---- the glade and the fixtures
+
+// The painterly default: Character Create's glade (apps/openagents-web/gpu/character-glade-light.coax
+// and character-glade.coax). A constant noon: one knot. Every number is the glade's own.
+env_glade_profile :: () -> EnvironmentProfile #effects(all) {
+  k := EnvironmentKnot.{time = 0.5, body = EnvBody.sun, dir = EnvDir.{x = -0.40, y = 0.58, z = -0.62},
+    kelvin = 4500, white = 6500, intensity = 2.15, film = EnvFilm.source, flags = ENV_FLAG_CLOUD_SHADOW};
+  k.channels.ambient = EnvAmbient.{upper = env_rgb(0.49, 0.55, 0.62), horizon = env_rgb(0.405, 0.445, 0.39), lower = env_rgb(0.32, 0.34, 0.16)};
+  k.channels.sky = EnvSky.{zenith = env_rgb(0.52, 0.86, 0.94), horizon = env_rgb(0.84, 0.95, 0.96), cloud_shade = env_rgb(0.76, 0.85, 0.90),
+    cloud_light = env_rgb(1, 0.995, 0.98), halo = env_rgb(1, 0.97, 0.81), wisp = env_rgb(0.98, 0.99, 0.99),
+    cloud_cover = 0.95, halo_strength = 0.16, halo_power = 8, wisp_strength = 0.85};
+  k.channels.fog = EnvFog.{density = 0.0055, height_falloff = 8, start = 6, near = 30, far = 65, far_gain = 0.6, phase_g = 0.62, phase_cap = 6,
+    air = env_rgb(0.50, 0.70, 0.88), sun_tint = env_rgb(0.78, 0.58, 0.22), sun_strength = 0.40};
+  k.channels.cloud = EnvCloud.{shade = 0.45, scale = 0.10, detail_scale = 0.27, edge_lo = 0.44, edge_hi = 0.60};
+  k.channels.presentation = EnvPresentation.{exposure = 1.18, saturation = 1.16};
+  p := EnvironmentProfile.{version = ENV_VERSION, id = ENV_GLADE_ID}; p.track.count = 1; p.track.knots[0] = k;
+  return p;
+}
+env_rgb :: (r: f32, g: f32, b: f32) -> EnvRgb #effects(all) { return EnvRgb.{r = r, g = g, b = b}; }
+// Three irregular knots (0.1, 0.3, 0.75) off the glade, each changing values, identifiers and flags.
+env_test_profile3 :: () -> EnvironmentProfile #effects(all) {
+  p := env_glade_profile(); p.id = 7; p.track.count = 3;
+  k := p.track.knots[0];
+  for i: 0..<3 {
+    q := k; q.time = [3] f32.[0.1, 0.3, 0.75][i];
+    q.channels.fog.near = [3] f32.[10, 40, 25][i]; q.channels.fog.far = 70;
+    q.channels.ambient.upper.g = [3] f32.[0.2, 0.6, 0.4][i]; q.channels.ambient.upper.r = [3] f32.[0.3, 0.5, 0.7][i];
+    q.channels.water.reflection = [3] f32.[0.1, 0.5, 0.9][i];
+    q.kelvin = [3] f32.[3000, 5500, 9000][i]; q.intensity = [3] f32.[0.5, 2, 0.25][i];
+    q.dir = [3] EnvDir.[EnvDir.{x = 0.3, y = 0.2, z = 0.5}, EnvDir.{x = -0.4, y = 0.58, z = -0.62}, EnvDir.{x = 0.2, y = 0.9, z = 0.1}][i];
+    q.body = ifx i == 2 then EnvBody.moon else EnvBody.sun; q.film = ifx i == 1 then EnvFilm.none else EnvFilm.source;
+    q.flags = cast(u32) i + 1; q.resources[ENV_RES_SKY] = ifx i == 0 then 5 else 9;
+    p.track.knots[i] = q;
+  }
+  return p;
+}
+env_region_sphere :: (id: u32, profile: u32) -> EnvironmentRegion #effects(all) {
+  return EnvironmentRegion.{id = id, profile = profile, shape = EnvShape.sphere, center = EnvDir.{x = 4, y = 1, z = -3}, radius = 12, inner = 2, outer = 6};
+}
+env_region_box :: (id: u32, profile: u32) -> EnvironmentRegion #effects(all) {
+  return EnvironmentRegion.{id = id, profile = profile, priority = 2, shape = EnvShape.box, center = EnvDir.{x = 4}, half = EnvDir.{x = 3, y = 2, z = 5}, outer = 1};
+}
+env_region_prism :: (id: u32, profile: u32) -> EnvironmentRegion #effects(all) {
+  r := EnvironmentRegion.{id = id, profile = profile, priority = -3, shape = EnvShape.prism, count = 3, floor = -2, ceiling = 10, inner = 1, outer = 1};
+  r.points[0] = EnvXZ.{x = 1, z = 1}; r.points[1] = EnvXZ.{x = 11, z = 1}; r.points[2] = EnvXZ.{x = 1, z = 9};
+  return r;
+}
+env_test_set :: () -> EnvironmentSet #effects(all) {
+  s := EnvironmentSet.{version = ENV_VERSION, default_profile = ENV_GLADE_ID, profile_count = 2, region_count = 3};
+  s.profiles[0] = env_glade_profile(); s.profiles[1] = env_test_profile3();
+  s.regions[0] = env_region_sphere(11, 7); s.regions[1] = env_region_box(12, ENV_GLADE_ID); s.regions[2] = env_region_prism(13, 7);
+  return s;
+}
+
+// ---- admission
+
+env_scalar :: (x: f32, lo: f32, hi: f32) -> EnvRefusal #effects(all) {
+  if !(x - x == 0) { return EnvRefusal.nonfinite; }
+  if x < lo || x > hi { return EnvRefusal.range; }
+  return EnvRefusal.none;
+}
+env_refuse :: (r: EnvRefusal, knot: int, field: int) -> EnvCheck #effects(all) {
+  return EnvCheck.{refusal = r, at = -1, knot = knot, field = field};
+}
+env_refuse_field :: (r: EnvRefusal, field: int) -> EnvCheck #effects(all) { return env_refuse(r, -1, field); }
+env_refuse_whole :: (r: EnvRefusal) -> EnvCheck #effects(all) { return env_refuse_field(r, ENV_F_NONE); }
+env_refuse_item :: (r: EnvRefusal, at: int, field: int) -> EnvCheck #effects(all) { c := env_refuse_field(r, field); c.at = at; return c; }
+env_ok :: () -> EnvCheck #effects(all) { return env_refuse_whole(EnvRefusal.none); }
+env_knot_check :: (k: EnvironmentKnot, i: int) -> EnvCheck #effects(all) {
+  r := env_scalar(k.time, 0, 1);
+  if r == EnvRefusal.none && k.time == 1 { r = EnvRefusal.range; }
+  if r != EnvRefusal.none { return env_refuse(r, i, ENV_F_TIME); }
+  for a: 0..<3 {
+    r = env_scalar([3] f32.[k.dir.x, k.dir.y, k.dir.z][a], -1000, 1000);
+    if r != EnvRefusal.none { return env_refuse(r, i, ENV_F_DIR); }
+  }
+  if env_dot(k.dir, k.dir) < ENV_DIR_MIN { return env_refuse(EnvRefusal.direction, i, ENV_F_DIR); }
+  for f: 0..<3 {
+    value := [3] f32.[k.kelvin, k.white, k.intensity][f];
+    r = ifx f == 2 then env_scalar(value, 0, 1000) else env_scalar(value, 1000, 40000);
+    if r != EnvRefusal.none { return env_refuse(r, i, ENV_F_KELVIN + f); }
+  }
+  v := env_channels_flat(k.channels);
+  for c: 0..<ENV_CHANNELS {
+    r = env_scalar(v[c], ENV_CHANNEL_LO[c], ENV_CHANNEL_HI[c]);
+    if r != EnvRefusal.none { return env_refuse(r, i, c); }
+  }
+  if k.channels.fog.far < k.channels.fog.near { return env_refuse(EnvRefusal.order, i, ENV_C_FOG_FAR); }
+  if k.channels.cloud.edge_hi <= k.channels.cloud.edge_lo { return env_refuse(EnvRefusal.order, i, ENV_C_CLOUD_EDGE_HI); }
+  if k.flags > ENV_FLAGS_KNOWN { return env_refuse(EnvRefusal.flags, i, ENV_F_FLAGS); }
+  for s: 0..<ENV_RESOURCES {
+    if k.resources[s] > ENV_ID_MAX { return env_refuse(EnvRefusal.identity, i, ENV_F_RESOURCE + s); }
+  }
+  return env_ok();
+}
+env_profile_check :: (p: EnvironmentProfile) -> EnvCheck #effects(all) {
+  if p.version != ENV_VERSION { return env_refuse_whole(EnvRefusal.version); }
+  if p.id == 0 || p.id > ENV_ID_MAX { return env_refuse_whole(EnvRefusal.identity); }
+  n := p.track.count;
+  if n < 1 { return env_refuse_whole(EnvRefusal.empty); }
+  if n > ENV_MAX_KNOTS { return env_refuse_whole(EnvRefusal.capacity); }
+  for i: 0..<n {
+    c := env_knot_check(p.track.knots[i], i);
+    if c.refusal != EnvRefusal.none { return c; }
+    if i > 0 {
+      before := p.track.knots[i - 1].time; t := p.track.knots[i].time;
+      if t <= before { return env_refuse(ifx t == before then EnvRefusal.duplicate else EnvRefusal.order, i, ENV_F_TIME); }
+    }
+  }
+  // One knot is its own neighbour (dot 1).
+  for i: 0..<n {
+    j := ifx i == n - 1 then 0 else i + 1;
+    if env_dot(env_dir_unit(p.track.knots[i].dir), env_dir_unit(p.track.knots[j].dir)) < ENV_ANTIPODAL_DOT {
+      return env_refuse(EnvRefusal.antipodal, i, ENV_F_DIR);
+    }
+  }
+  return env_ok();
+}
+// Twice the prism polygon's signed area (shoelace).
+env_polygon_area2 :: (r: EnvironmentRegion) -> f32 #effects(all) {
+  a: f32 = 0;
+  for i: 0..<r.count {
+    p := r.points[i]; q := r.points[ifx i == r.count - 1 then 0 else i + 1];
+    a = a + (p.x * q.z - q.x * p.z);
+  }
+  return a;
+}
+env_region_check :: (r: EnvironmentRegion) -> EnvCheck #effects(all) {
+  if r.id == 0 || r.id > ENV_ID_MAX { return env_refuse_field(EnvRefusal.identity, ENV_F_REGION_ID); }
+  if r.profile == 0 || r.profile > ENV_ID_MAX { return env_refuse_field(EnvRefusal.identity, ENV_F_REGION_PROFILE); }
+  if r.priority < -1000 || r.priority > 1000 { return env_refuse_field(EnvRefusal.range, ENV_F_PRIORITY); }
+  at := [8] f32.[r.center.x, r.center.y, r.center.z, r.half.x, r.half.y, r.half.z, r.floor, r.ceiling];
+  for f: 0..<8 {
+    s := env_scalar(at[f], -ENV_POS_MAX, ENV_POS_MAX); if s != EnvRefusal.none { return env_refuse_field(s, ENV_F_POSITION); }
+  }
+  for i: 0..<ENV_MAX_POINTS {
+    s := env_scalar(r.points[i].x, -ENV_POS_MAX, ENV_POS_MAX); if s != EnvRefusal.none { return env_refuse_field(s, ENV_F_POSITION); }
+    s = env_scalar(r.points[i].z, -ENV_POS_MAX, ENV_POS_MAX); if s != EnvRefusal.none { return env_refuse_field(s, ENV_F_POSITION); }
+  }
+  for b: 0..<2 {
+    s := env_scalar([2] f32.[r.inner, r.outer][b], 0, 100000); if s != EnvRefusal.none { return env_refuse_field(s, ENV_F_BANDS); }
+  }
+  s := env_scalar(r.radius, 0, 1000000); if s != EnvRefusal.none { return env_refuse_field(ifx s == EnvRefusal.nonfinite then s else EnvRefusal.shape, ENV_F_RADIUS); }
+  if r.shape == EnvShape.sphere && r.radius == 0 { return env_refuse_field(EnvRefusal.shape, ENV_F_RADIUS); }
+  if r.shape == EnvShape.box && (r.half.x <= 0 || r.half.y <= 0 || r.half.z <= 0) { return env_refuse_field(EnvRefusal.shape, ENV_F_HALF); }
+  if r.shape == EnvShape.prism {
+    if r.count < 3 || r.count > ENV_MAX_POINTS { return env_refuse_field(EnvRefusal.shape, ENV_F_POINTS); }
+    if r.ceiling <= r.floor { return env_refuse_field(EnvRefusal.shape, ENV_F_HEIGHTS); }
+    if abs(env_polygon_area2(r)) < 2.0f32 * ENV_AREA_MIN { return env_refuse_field(EnvRefusal.shape, ENV_F_POINTS); }
+  }
+  return env_ok();
+}
+env_set_profile :: (s: EnvironmentSet, id: u32) -> int #effects(all) {
+  for i: 0..<s.profile_count { if s.profiles[i].id == id { return i; } }
+  return -1;
+}
+env_set_check :: (s: EnvironmentSet) -> EnvCheck #effects(all) {
+  if s.version != ENV_VERSION { return env_refuse_whole(EnvRefusal.version); }
+  if s.profile_count < 1 { return env_refuse_whole(EnvRefusal.empty); }
+  if s.profile_count > ENV_MAX_PROFILES || s.region_count < 0 || s.region_count > ENV_MAX_REGIONS { return env_refuse_whole(EnvRefusal.capacity); }
+  for i: 0..<s.profile_count {
+    c := env_profile_check(s.profiles[i]);
+    if c.refusal != EnvRefusal.none { c.at = i; return c; }
+    if env_set_profile(s, s.profiles[i].id) != i { return env_refuse_item(EnvRefusal.duplicate, i, ENV_F_NONE); }
+  }
+  if env_set_profile(s, s.default_profile) < 0 { return env_refuse_whole(EnvRefusal.reference); }
+  for i: 0..<s.region_count {
+    c := env_region_check(s.regions[i]);
+    if c.refusal != EnvRefusal.none { c.at = i; return c; }
+    for j: 0..<i { if s.regions[j].id == s.regions[i].id { return env_refuse_item(EnvRefusal.duplicate, i, ENV_F_REGION_ID); } }
+    if env_set_profile(s, s.regions[i].profile) < 0 { return env_refuse_item(EnvRefusal.reference, i, ENV_F_REGION_PROFILE); }
+  }
+  return env_ok();
+}
+// The one way to change the active set: the candidate whole, or nothing.
+env_set_replace :: (active: [] EnvironmentSet, next: [] EnvironmentSet) -> EnvCheck #effects(all) {
+  c := env_set_check(next[0]);
+  if c.refusal != EnvRefusal.none { return c; }
+  generation := active[0].generation;
+  active[0] = next[0]; active[0].generation = generation + 1;
+  return c;
+}
+
+// ---- resolution
+
+env_srgb_linear :: (x: f32) -> f32 #effects(all) {
+  if x <= 0.04045f32 { return x / 12.92f32; }   // inputs are balanced channels, never negative
+  return pow((x + 0.055f32) / 1.055f32, 2.4f32);
+}
+env_dot :: (a: EnvDir, b: EnvDir) -> f32 #effects(all) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+env_dir_unit :: (d: EnvDir) -> EnvDir #effects(all) {
+  n := sqrt(env_dot(d, d)); return EnvDir.{x = d.x / n, y = d.y / n, z = d.z / n};
+}
+// Normalized interpolation; exactly opposite inputs at the midpoint give the first.
+env_dir_mix :: (a: EnvDir, b: EnvDir, u: f32) -> EnvDir #effects(all) {
+  m := EnvDir.{x = a.x + (b.x - a.x) * u, y = a.y + (b.y - a.y) * u, z = a.z + (b.z - a.z) * u};
+  if env_dot(m, m) < ENV_DIR_MIN { return a; }
+  return env_dir_unit(m);
+}
+env_day_time :: (day: f64) -> f32 #effects(all) {
+  t := cast(f32) (day - floor(day));
+  return ifx t >= 1 then 0 else t;
+}
+env_knot_resolve :: (k: EnvironmentKnot) -> ResolvedEnvironment #effects(all) {
+  r := ResolvedEnvironment.{version = ENV_VERSION, time = k.time, body = k.body, film = k.film, flags = k.flags, dir = env_dir_unit(k.dir), channels = k.channels};
+  r.direct = EnvRgb.{r = env_srgb_linear(light.verse_style_balanced(k.kelvin, k.white, 0)) * k.intensity,
+    g = env_srgb_linear(light.verse_style_balanced(k.kelvin, k.white, 1)) * k.intensity,
+    b = env_srgb_linear(light.verse_style_balanced(k.kelvin, k.white, 2)) * k.intensity};
+  for s: 0..<ENV_RESOURCES { r.resources[s].count = 1; r.resources[s].ids[0] = k.resources[s]; r.resources[s].weights[0] = 1; }
+  return r;
+}
+// An admitted profile at `day` (env_resolve checks the state and finds the profile).
+env_profile_sample :: (p: EnvironmentProfile, day: f64) -> ResolvedEnvironment #effects(all) {
+  n := p.track.count; t := env_day_time(day);
+  i := n - 1;
+  for k: 0..<n { if p.track.knots[k].time <= t { i = k; } }
+  j := ifx i == n - 1 then 0 else i + 1;
+  a := env_knot_resolve(p.track.knots[i]);
+  a.profile = p.id; a.time = t; a.from = i; a.to = j;
+  span := p.track.knots[j].time - p.track.knots[i].time; d := t - p.track.knots[i].time;
+  if j == 0 { span = span + 1; }
+  if d < 0 { d = d + 1; }
+  if n == 1 || d == 0 { return a; }
+  u := d / span; b := env_knot_resolve(p.track.knots[j]);
+  a.weight = u;
+  a.dir = env_dir_mix(a.dir, b.dir, u);
+  a.direct = EnvRgb.{r = a.direct.r + (b.direct.r - a.direct.r) * u, g = a.direct.g + (b.direct.g - a.direct.g) * u, b = a.direct.b + (b.direct.b - a.direct.b) * u};
+  va := env_channels_flat(a.channels); vb := env_channels_flat(b.channels);
+  for c: 0..<ENV_CHANNELS { va[c] = va[c] + (vb[c] - va[c]) * u; }
+  a.channels = env_channels_from(va);
+  for s: 0..<ENV_RESOURCES {
+    if b.resources[s].ids[0] != a.resources[s].ids[0] {
+      a.resources[s].count = 2; a.resources[s].ids[1] = b.resources[s].ids[0];
+      a.resources[s].weights[0] = 1 - u; a.resources[s].weights[1] = u;
+    }
+  }
+  return a;
+}
+env_resolve :: (set: [] EnvironmentSet, state: EnvironmentState) -> EnvResolve #effects(all) {
+  out: EnvResolve;
+  if state.version != ENV_VERSION { out.refusal = EnvRefusal.version; return out; }
+  if !(state.day - state.day == 0) { out.refusal = EnvRefusal.nonfinite; return out; }
+  if abs(state.day) > ENV_DAY_MAX { out.refusal = EnvRefusal.range; return out; }
+  i := env_set_profile(set[0], ifx state.profile == 0 then set[0].default_profile else state.profile);
+  if i < 0 { out.refusal = EnvRefusal.reference; return out; }
+  out.env = env_profile_sample(set[0].profiles[i], state.day);
+  return out;
+}
+
+// ---- the channels as floats (the same order as the GPU channel block)
+
+env_put3 :: (v: [] f32, at: int, c: EnvRgb) #effects(all) { v[at] = c.r; v[at + 1] = c.g; v[at + 2] = c.b; }
+env_get3 :: (v: [] f32, at: int) -> EnvRgb #effects(all) { return EnvRgb.{r = v[at], g = v[at + 1], b = v[at + 2]}; }
+env_channels_flat :: (c: EnvChannels) -> [ENV_CHANNELS] f32 #effects(all) {
+  v: [ENV_CHANNELS] f32;
+  env_put3(v[..], ENV_C_AMBIENT_UPPER, c.ambient.upper); env_put3(v[..], ENV_C_AMBIENT_HORIZON, c.ambient.horizon); env_put3(v[..], ENV_C_AMBIENT_LOWER, c.ambient.lower);
+  env_put3(v[..], ENV_C_SKY_ZENITH, c.sky.zenith); v[ENV_C_SKY_CLOUD_COVER] = c.sky.cloud_cover;
+  env_put3(v[..], ENV_C_SKY_HORIZON, c.sky.horizon); v[ENV_C_SKY_HALO_STRENGTH] = c.sky.halo_strength;
+  env_put3(v[..], ENV_C_SKY_CLOUD_SHADE, c.sky.cloud_shade); v[ENV_C_SKY_HALO_POWER] = c.sky.halo_power;
+  env_put3(v[..], ENV_C_SKY_CLOUD_LIGHT, c.sky.cloud_light); v[ENV_C_SKY_WISP_STRENGTH] = c.sky.wisp_strength;
+  env_put3(v[..], ENV_C_SKY_HALO, c.sky.halo); env_put3(v[..], ENV_C_SKY_WISP, c.sky.wisp);
+  env_put3(v[..], ENV_C_FOG_AIR, c.fog.air); v[ENV_C_FOG_SUN_STRENGTH] = c.fog.sun_strength;
+  env_put3(v[..], ENV_C_FOG_SUN_TINT, c.fog.sun_tint); v[ENV_C_FOG_PHASE_G] = c.fog.phase_g;
+  v[ENV_C_FOG_DENSITY] = c.fog.density; v[ENV_C_FOG_HEIGHT_FALLOFF] = c.fog.height_falloff; v[ENV_C_FOG_START] = c.fog.start; v[ENV_C_FOG_PHASE_CAP] = c.fog.phase_cap;
+  v[ENV_C_FOG_NEAR] = c.fog.near; v[ENV_C_FOG_FAR] = c.fog.far; v[ENV_C_FOG_FAR_GAIN] = c.fog.far_gain;
+  v[ENV_C_CLOUD_SHADE] = c.cloud.shade; v[ENV_C_CLOUD_SCALE] = c.cloud.scale; v[ENV_C_CLOUD_DETAIL_SCALE] = c.cloud.detail_scale;
+  v[ENV_C_CLOUD_EDGE_LO] = c.cloud.edge_lo; v[ENV_C_CLOUD_EDGE_HI] = c.cloud.edge_hi; v[ENV_C_CLOUD_DRIFT_X] = c.cloud.drift_x; v[ENV_C_CLOUD_DRIFT_Z] = c.cloud.drift_z;
+  env_put3(v[..], ENV_C_WATER_SHALLOW, c.water.shallow); v[ENV_C_WATER_ABSORPTION] = c.water.absorption;
+  env_put3(v[..], ENV_C_WATER_DEEP, c.water.deep); v[ENV_C_WATER_REFLECTION] = c.water.reflection;
+  v[ENV_C_EXPOSURE] = c.presentation.exposure; v[ENV_C_SATURATION] = c.presentation.saturation;
+  return v;
+}
+env_channels_from :: (w: [ENV_CHANNELS] f32) -> EnvChannels #effects(all) {
+  c: EnvChannels; v := w;
+  c.ambient = EnvAmbient.{upper = env_get3(v[..], ENV_C_AMBIENT_UPPER), horizon = env_get3(v[..], ENV_C_AMBIENT_HORIZON), lower = env_get3(v[..], ENV_C_AMBIENT_LOWER)};
+  c.sky = EnvSky.{zenith = env_get3(v[..], ENV_C_SKY_ZENITH), horizon = env_get3(v[..], ENV_C_SKY_HORIZON), cloud_shade = env_get3(v[..], ENV_C_SKY_CLOUD_SHADE),
+    cloud_light = env_get3(v[..], ENV_C_SKY_CLOUD_LIGHT), halo = env_get3(v[..], ENV_C_SKY_HALO), wisp = env_get3(v[..], ENV_C_SKY_WISP),
+    cloud_cover = v[ENV_C_SKY_CLOUD_COVER], halo_strength = v[ENV_C_SKY_HALO_STRENGTH], halo_power = v[ENV_C_SKY_HALO_POWER], wisp_strength = v[ENV_C_SKY_WISP_STRENGTH]};
+  c.fog = EnvFog.{density = v[ENV_C_FOG_DENSITY], height_falloff = v[ENV_C_FOG_HEIGHT_FALLOFF], start = v[ENV_C_FOG_START], near = v[ENV_C_FOG_NEAR],
+    far = v[ENV_C_FOG_FAR], far_gain = v[ENV_C_FOG_FAR_GAIN], phase_g = v[ENV_C_FOG_PHASE_G], phase_cap = v[ENV_C_FOG_PHASE_CAP],
+    air = env_get3(v[..], ENV_C_FOG_AIR), sun_tint = env_get3(v[..], ENV_C_FOG_SUN_TINT), sun_strength = v[ENV_C_FOG_SUN_STRENGTH]};
+  c.cloud = EnvCloud.{shade = v[ENV_C_CLOUD_SHADE], scale = v[ENV_C_CLOUD_SCALE], detail_scale = v[ENV_C_CLOUD_DETAIL_SCALE],
+    edge_lo = v[ENV_C_CLOUD_EDGE_LO], edge_hi = v[ENV_C_CLOUD_EDGE_HI], drift_x = v[ENV_C_CLOUD_DRIFT_X], drift_z = v[ENV_C_CLOUD_DRIFT_Z]};
+  c.water = EnvWater.{shallow = env_get3(v[..], ENV_C_WATER_SHALLOW), deep = env_get3(v[..], ENV_C_WATER_DEEP), absorption = v[ENV_C_WATER_ABSORPTION], reflection = v[ENV_C_WATER_REFLECTION]};
+  c.presentation = EnvPresentation.{exposure = v[ENV_C_EXPOSURE], saturation = v[ENV_C_SATURATION]};
+  return c;
+}
+
+// ---- exact comparison (checks and readback)
+
+env_channels_same :: (a: EnvChannels, b: EnvChannels) -> bool #effects(all) {
+  va := env_channels_flat(a); vb := env_channels_flat(b);
+  for i: 0..<ENV_CHANNELS { if va[i] != vb[i] { return false; } }
+  return true;
+}
+env_resolved_same :: (a: ResolvedEnvironment, b: ResolvedEnvironment, segment: bool) -> bool #effects(all) {
+  if segment && (a.time != b.time || a.from != b.from || a.to != b.to || a.weight != b.weight) { return false; }
+  if a.version != b.version || a.profile != b.profile || a.body != b.body || a.film != b.film || a.flags != b.flags { return false; }
+  if a.dir.x != b.dir.x || a.dir.y != b.dir.y || a.dir.z != b.dir.z || a.direct.r != b.direct.r || a.direct.g != b.direct.g || a.direct.b != b.direct.b { return false; }
+  if !env_channels_same(a.channels, b.channels) { return false; }
+  for s: 0..<ENV_RESOURCES {
+    if a.resources[s].count != b.resources[s].count { return false; }
+    for k: 0..<ENV_MAX_BLEND { if a.resources[s].ids[k] != b.resources[s].ids[k] || a.resources[s].weights[k] != b.resources[s].weights[k] { return false; } }
+  }
+  return true;
+}
+env_set_same :: (a: EnvironmentSet, b: EnvironmentSet) -> bool #effects(all) {
+  if a.version != b.version || a.generation != b.generation || a.default_profile != b.default_profile || a.profile_count != b.profile_count || a.region_count != b.region_count { return false; }
+  for i: 0..<a.profile_count {
+    if a.profiles[i].id != b.profiles[i].id || a.profiles[i].track.count != b.profiles[i].track.count { return false; }
+    for k: 0..<a.profiles[i].track.count {
+      x := env_knot_resolve(a.profiles[i].track.knots[k]); y := env_knot_resolve(b.profiles[i].track.knots[k]);
+      if !env_resolved_same(x, y, true) { return false; }
+    }
+  }
+  for i: 0..<a.region_count {
+    x := a.regions[i]; y := b.regions[i];
+    if x.id != y.id || x.profile != y.profile || x.radius != y.radius || x.inner != y.inner || x.outer != y.outer { return false; }
+  }
+  return true;
+}
