@@ -34,6 +34,7 @@ Portal :: struct {
   look0: Fv; yaw0: f32; pitch0: f32; focal0: f32; cx0: f32; cy0: f32; taken: bool;   // the view at the press
   sx: f32; sy: f32; rx: f32; ry: f32; on: bool;   // the face on screen this frame
   fill: f32;                                   // how much of the view its light has taken (1: all)
+  shown: bool;                                 // this page has the portal: data-page 3, an unlisted lander (`/` has none)
 }
 
 // The page's wall clock (its facts' now=, in ms): the shimmer's clock starts from it.
@@ -113,6 +114,7 @@ portal_fly :: (s: [] LandState, t: f32, c: Cam, width: f32, height: f32) -> Cam 
 // the face's place on screen kept for the frame's end (portal_face). What stands behind the face is
 // dimmed under it, from `under` on (the scene drawn before it).
 portal_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int {
+  if !s[0].portal[0].shown { return at; }
   q := s[0].portal[..]; d := p.d;
   grow := ifx p.still then 1.0f32 else ease((t - 1.0) / 1.6);   // it lights as the page comes up
   q[0].on = false;
@@ -181,6 +183,7 @@ portal_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) 
 }
 // Its name over it, faded with the HUD.
 portal_name :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, light: f32) -> int {
+  if !s[0].portal[0].shown { return at; }
   if light <= 0.003 { return at; }
   top := spot(c, fv_add(portal_mid(s), fv(0, PORTAL_R * 1.1 + 0.55, 0)));
   if !top.ok || !inside(c.clip, top.x, top.y) { return at; }
@@ -193,6 +196,7 @@ portal_name :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, light: f3
 // The face: one quad on screen, over the ellipse and its glow (the whole view once it fills it), its
 // light gpu/newland.coax's newland_portal. Drawn last, after the HUD.
 portal_face :: (out: [] f32, at: int, s: [] LandState, width: f32, height: f32, p: Pen, t: f32) -> int {
+  if !s[0].portal[0].shown { return at; }
   q := s[0].portal[..];
   grow := ifx p.still then 1.0f32 else ease((t - 1.0) / 1.6);
   if grow <= 0 { return at; }
@@ -229,6 +233,7 @@ portal_face :: (out: [] f32, at: int, s: [] LandState, width: f32, height: f32, 
 }
 // The button, under the HUD's glass in slot g (one the page's own five don't use).
 portal_button :: (out: [] f32, at: int, s: [] LandState, uniforms: [] f32, l: Layout, p: Pen, light: f32, width: f32, height: f32) -> int {
+  if !s[0].portal[0].shown { return at; }
   q := s[0].portal[..];
   b := portal_box(l, width, height, p.d);
   q[0].box = b;
@@ -262,7 +267,7 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
 #test "portal: the button warms Character Create, the flight fills the view with the portal's light, then the page goes on" #steps 300000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
-  s[0].time = 9;
+  s[0].time = 9; coaxial_land_page(s[..], 3);
   coaxial_land_message(s[..], 600, "now=1700000123456\n");
   #assert s[0].portal[0].clocked && abs(s[0].portal[0].wall - 323.456) < 0.01;
   #assert coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false) > 1000 && s[0].portal[0].on;
@@ -297,7 +302,7 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
 #test "portal: the flight starts on the page's own view, with no cut" #steps 200000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
-  s[0].time = 9;
+  s[0].time = 9; coaxial_land_page(s[..], 3);
   n := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
   before := s[0].view;
   portal_go(s[..]);
@@ -310,6 +315,20 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
     #assert abs(nx.cx - last.cx) < 12 && abs(nx.cy - last.cy) < 12;
     last = nx;
   }
+}
+#test "portal: the homepage itself has no portal and no button; only the lander's page (3) does" #steps 300000000 {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9;
+  n := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert n > 1000; #assert !s[0].portal[0].on; #assert u[5] == f32(PANELS);
+  b := s[0].portal[0].box; #assert b.x1 <= b.x0;
+  for i: 0..<n { #assert out[i * VERTEX_FLOATS + 11] > -0.5; }
+  // a press where the lander's button would be does nothing of the portal's
+  l := layout(1440, 900, 1); w := portal_box(l, 1440, 900, 1);
+  _ := coaxial_land_pointer(s[..], (w.x0 + w.x1) * 0.5, (w.y0 + w.y1) * 0.5, POINTER_DOWN, 0, 1);
+  _ = coaxial_land_pointer(s[..], (w.x0 + w.x1) * 0.5, (w.y0 + w.y1) * 0.5, POINTER_UP, 0, 1);
+  #assert !s[0].portal[0].going && s[0].action != ACT_WARM;
 }
 #test "portal: the button fits a phone above its row of buttons" {
   l := layout(390 * 3, 844 * 3, 3);

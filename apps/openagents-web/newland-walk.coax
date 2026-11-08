@@ -63,7 +63,7 @@ Walk :: struct {
 }
 
 // The face: which page this is (host.js data-page; 1 the Grid, 2 Penultimate Frontier: the Grid flown).
-coaxial_land_page :: (s: [] LandState, page: int) #export_c #effects(all) { if s.count > 0 { s[0].walking = page == 1 || page == 2; s[0].flying = page == 2; } }
+coaxial_land_page :: (s: [] LandState, page: int) #export_c #effects(all) { if s.count > 0 { s[0].walking = page == 1 || page == 2; s[0].flying = page == 2; s[0].portal[0].shown = page == 3; } }
 coaxial_land_flying :: (s: [] LandState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].flying; }
 coaxial_land_walking :: (s: [] LandState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].walking; }
 coaxial_walk_spawn_x :: () -> f32 #export_c #effects(all) { return WK_SPAWN_X; }

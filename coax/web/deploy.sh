@@ -150,6 +150,7 @@ registry = os.path.join(app, "realms.json")
 hidden_realms = subprocess.check_output([os.path.join(tools, "tool.sh"), "discovery-realms", registry], text=True).splitlines() if os.path.isfile(registry) else []
 def unlisted(f):
     if any(f.replace(os.sep, "/").startswith(prefix) for prefix in hidden_realms): return True
+    if os.path.exists(os.path.join(app, os.path.dirname(f), "UNLISTED")): return True   # an unlisted page: shipped, never listed
     j = os.path.join(app, os.path.dirname(f), "project.json")
     return f.startswith("projects" + os.sep) and os.path.exists(j) and json.load(open(j, encoding="utf-8")).get("visibility") in ("unlisted", "private")
 public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "og" + os.sep, "projects" + os.sep + "private")) and not unlisted(f))

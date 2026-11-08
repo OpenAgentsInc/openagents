@@ -17,13 +17,14 @@ loaded into `everglade2.coax`. The wardrobe's choices and record are
 added to the record (`CC3`). The glade is Everglade II's own
 (`docs/verse/everglade2.md`).
 
-## Through the portal from the homepage
+## Through the portal from an unlisted lander
 
-The homepage (`newland.coax`, `newland-portal.coax`) has one Everglade portal in
-the Grid and one button, CREATE YOUR CHARACTER. A press warms Character
+An unlisted lander, the homepage's module with `data-page="3"` (`newland.coax`,
+`newland-portal.coax`), has one Everglade portal in the Grid and one button,
+CREATE YOUR CHARACTER. The homepage itself has neither. A press warms Character
 Create's page, engine, shaders and pack into the HTTP cache (host action 21),
-fades the homepage's panels, and flies the camera into the portal until its
-light fills the view. The homepage then opens `/worlds/character-creator?via=portal`.
+fades the lander's panels, and flies the camera into the portal until its
+light fills the view. The lander then opens `/worlds/character-creator?via=portal`.
 
 The light is one function, `portal_field` in `apps/openagents-web/gpu/portal.coax`,
 drawn by both pages at the same scale (`PORTAL_HANDOFF`) and on the same clock

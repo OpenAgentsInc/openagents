@@ -1387,7 +1387,7 @@ gal_step :: (s: [] LandState, forward: bool) {
 // A click in the panel: a planet opens (a finger's first tap only selects it),
 // OPEN opens the selected one, and the rest of the panel is the panel's.
 gal_click :: (s: [] LandState, x: f32, y: f32) -> bool {
-  if inside(s[0].portal[0].box, x, y) { portal_go(s); return true; }
+  if s[0].portal[0].shown && inside(s[0].portal[0].box, x, y) { portal_go(s); return true; }
   if inside(s[0].network_box,x,y) {if s[0].card==CARD_NETWORK {close_card(s);}else {open_card(s,CARD_NETWORK,-1);}return true;}
   if s[0].card==CARD_NETWORK {
     if inside(s[0].network_join,x,y) {network_copy(s);return true;}
@@ -2031,7 +2031,7 @@ coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c #ef
 coaxial_land_cursor :: (s: [] LandState) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].touch || !s[0].pointed || (s[0].down && s[0].moved) { return 0; }
   x := s[0].px; y := s[0].py;
-  if inside(s[0].network_box,x,y) || inside(s[0].portal[0].box,x,y) {return 1;}
+  if inside(s[0].network_box,x,y) || (s[0].portal[0].shown && inside(s[0].portal[0].box,x,y)) {return 1;}
   if s[0].card==CARD_NETWORK && (inside(s[0].network_join,x,y) || inside(s[0].network_guide,x,y)) {return 1;}
   if s[0].card != CARD_NONE {
     if inside(s[0].close_box, x, y) || inside(s[0].open_box, x, y) { return 1; }
@@ -2200,7 +2200,7 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     s[0].card_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
     s[0].close_box = s[0].card_box; s[0].open_box = s[0].card_box;
   }
-  uniforms[5] = f32(PANELS + 1);   // and the portal's button's glass after the page's five
+  uniforms[5] = f32(ifx s[0].portal[0].shown then PANELS + 1 else PANELS);   // on the lander, the portal's button's glass after the page's five
   uniforms[3] *= 1 - s[0].dive_fade;   // the dive goes dark as the Grid comes
   hud_end := v;
   v = portal_face(out, v, s, width, height, p, t);   // the portal's face, over all: as the camera flies in, the view

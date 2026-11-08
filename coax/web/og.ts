@@ -222,7 +222,7 @@ if (import.meta.main) {
   const draft = process.env.COAXIAL_OG_DRAFT === "1"
   if (args[0] === "--report") {
     const app = args[1]
-    const list = pages(app).map(({ dir, file }) => preview(readFileSync(file, "utf8"), dir, app, app))
+    const list = pages(app).filter(({ dir }) => !dir || !existsSync(join(app, dir, "UNLISTED"))).map(({ dir, file }) => preview(readFileSync(file, "utf8"), dir, app, app))
     shared(list)
     process.stdout.write(table(list))
     process.exit(0)
@@ -257,7 +257,9 @@ if (import.meta.main) {
   // the workbench's order: pages people share first (the homepage, then by address), noindex ones last
   list.sort((a, b) => Number(a.noindex) - Number(b.noindex) || (a.path === "/" ? -1 : b.path === "/" ? 1 : a.path.localeCompare(b.path)))
   mkdirSync(join(site, "og"), { recursive: true })
-  writeFileSync(join(site, "og", "pages.txt"), table(list))
+  // a page whose source directory holds an UNLISTED file ships with its tags, but the workbench's
+  // public table leaves it out (as the sitemap and llms files do: deploy.sh)
+  writeFileSync(join(site, "og", "pages.txt"), table(list.filter((p) => !existsSync(join(app, p.path.slice(1), "UNLISTED")) || p.path === "/")))
   const bad = list.filter((p) => p.errors.length)
   const warned = list.filter((p) => p.warnings.length).length
   console.log(`  og       ${list.length} pages, ${filled} filled in, ${warned} with warnings (og/pages.txt, /og)`)
