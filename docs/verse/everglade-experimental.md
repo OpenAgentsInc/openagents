@@ -47,8 +47,19 @@ You fight the monsters with your class's level 1 kit
   spells, and features that work with no ally present. For example, a Wizard has Fire Bolt,
   Chill Touch, Ray of Sickness, False Life, and Thunderwave, and a Fighter has Second Wind and
   Attack. Hover over a slot to see its card. You can also click a slot.
-- An attack or spell goes at your target: the monster you clicked, or else the nearest living
-  one. A heal adds to your Hit Points. One second passes between uses.
+- Everything goes the way your character faces. Nothing picks a target for you, and you can't
+  click a monster to target it.
+  - A bolt or ray (Fire Bolt, Eldritch Blast, Starry Wisp, Guiding Bolt, a bow's Attack) flies
+    straight ahead to its SRD range. It strikes the first monster whose body its line crosses,
+    with about 5 degrees of aim help. Otherwise it flies on and fizzles.
+  - A blow (a sword's Attack, Sneak Attack, Chill Touch) strikes the nearest monster within
+    reach in a 90-degree arc ahead, or swings at the air.
+  - A single-target spell with a saving throw (Sacred Flame, Vicious Mockery, Hex) takes the
+    nearest monster in range within a 30-degree cone ahead. With no one there, its icon flashes
+    red and no turn is spent.
+  - Self and area abilities (Second Wind, Rage, Thunderwave, Entangle) work from where you stand,
+    with the area set the way you face.
+- A heal adds to your Hit Points. One second passes between uses.
 - The SRD 5e engine (`aethyr/rules/srd/`, through `fivebar.coax`) rolls every attack, save, and
   damage roll offline. The Imp has AC 13 and 10 Hit Points. The Gremlin has AC 12 and 13 Hit
   Points. Each monster shows its name and Hit Points, and damage numbers rise off it.

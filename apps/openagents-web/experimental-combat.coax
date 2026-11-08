@@ -15,9 +15,9 @@
 // realms/5e-mmo/hotbar/. As on Everglade's bar, nothing runs out: every slot and use comes back for
 // each press. One second passes between presses (XC_COOL).
 //
-// Aim: a foe's spell or attack goes at your target: the monster you clicked, or else the nearest
-// living one. A spell aimed at a point (Thunderwave, Entangle) lands on your target's square. A
-// heal is yours: what it heals is added to your Hit Points (verse/experimental-hostiles.coax hp).
+// Aim: everything goes the way you face (xc_aim): bolts fly straight ahead, blows strike ahead of
+// you, and nothing behind or beside you is picked for you. A heal is yours: what it heals is added
+// to your Hit Points (verse/experimental-hostiles.coax hp).
 //
 // A monster at 0 Hit Points dies: it stops, a puff of dust rises, and it sinks into the ground over
 // XC_SINK seconds (charactercreator.coax scene).
@@ -56,7 +56,7 @@ XcCombat :: struct {
   started: bool; klass: int = 11;
   bar: [XC_SLOTS] FbAb; bar_n: int;
   b: [1] RsBattle; seat: [1] FbSeat;
-  target: int = -1;                 // the monster you aim at (0 to 5), -1 none
+  target: int = -1;                 // the monster struck at last (0 to 5), -1 none: its Hit Points over the bar
   cool_at: f32 = -100;              // when the last press was
   used: int = -1;                   // the slot pressed last
   u: [36] f32; w: f32; h: f32; k: f32; seen: bool;   // the last frame's camera and screen
@@ -67,6 +67,8 @@ XcCombat :: struct {
   media: [4096] u8; media_n: int;   // the bar's pictures for the host (coaxial_media)
   fl: [XC_FLOATS] XcFloat;
   casts: int; landed: int; kills: int; refused: int; last_dmg: int;   // for the checks (lab_creator_probe 900+)
+  whiffs: int;                      // bolts that flew to their range and blows that met no one
+  fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
   seeded: bool;                     // the dice mixed with the clock at the first press, so each visit rolls its own
 }
 
@@ -138,19 +140,6 @@ xc_square :: (d: f32) -> int {
   q := cast(int) floor(d / f32(XC_SQ) + 0.5);
   return ifx q <= -XC_MID || q >= XC_MID then XC_AWAY else XC_MID + q;
 }
-// The living monster nearest (px, pz) within reach metres, -1 none.
-xc_nearest :: (s: [] Lab, px: f32, pz: f32, reach: f32) -> int {
-  h := s[0].creator[0].hostiles[..];
-  best := -1; bd := reach * reach;
-  for i: 0..<XC_FOES {
-    e := h[0].enemies[i];
-    if e.dead { continue; }
-    d := (e.x - px) * (e.x - px) + (e.z - pz) * (e.z - pz);
-    if d < bd { bd = d; best = i; }
-  }
-  return best;
-}
-xc_aims_foe :: (a: FbAb) -> bool { return a.tg == FB_FOE || a.tg == FB_POINT || (a.kind == FB_ATTACK); }
 xc_float :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) {
   q := 0; oldest := 1e9f32;
   for i: 0..<XC_FLOATS { if !x[0].fl[i].on { q = i; break; } if x[0].fl[i].t0 < oldest { oldest = x[0].fl[i].t0; q = i; } }
@@ -165,7 +154,70 @@ xc_float_int :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, v: int, hea
   xc_float(x, wx, wy, wz, t0, cast(string) buf[0..<n], heal);
 }
 
-// Press slot k: the engine resolves it at your target. True when it was used. Sets what the
+// ---- aim: everything goes the way you face (#13025 owner feedback). Nothing picks a target for you.
+// - a bolt or ray (a ranged spell attack, or a ranged weapon's Attack) flies straight ahead to its SRD
+//   range and strikes the first monster whose body its line crosses, with about 5 degrees of help; if
+//   none, it flies on and fizzles at its range.
+// - a blow (a melee Attack, Sneak Attack, a touch spell) strikes the nearest monster within reach in a
+//   90 degree arc ahead, or swings at the air.
+// - a single-target spell with no projectile (a saving throw: Sacred Flame, Vicious Mockery, Hex) takes
+//   the nearest monster in range in a 30 degree cone ahead, or nothing: its icon fizzles, no words.
+// - yourself and areas (Second Wind, Rage, Thunderwave's cube, Entangle's square) work from where you
+//   stand, the area set the way you face (Entangle's square on the first monster in that cone, or 6 m on).
+XC_AIM_SELF :: 0; XC_AIM_BOLT :: 1; XC_AIM_MELEE :: 2; XC_AIM_CONE :: 3; XC_AIM_AREA :: 4;
+XC_BODY :: 0.55;        // m: a monster's body, as a bolt's line meets it
+XC_ASSIST :: 0.0875;    // tan 5 degrees: a bolt's aim help
+XC_REACH :: 2.3;        // m: 5 feet of reach from your middle to a monster's
+XcAim :: struct { kind: int; foe: int = -1; reach: f32; fx: f32; fz: f32; }
+XC_FT :: 0.3048;
+// What kind of aim ability a takes, and its reach in metres.
+xc_aim_kind :: (s: [] Lab, a: FbAb) -> XcAim {
+  x := s[0].xc[..];
+  if a.tg == FB_SELF || a.tg == FB_ALLY { return XcAim.{kind = XC_AIM_SELF}; }
+  if a.kind == FB_SPELL {
+    sp := rs_spell(a.sp);
+    if sp.area != RS_A_NONE { return XcAim.{kind = XC_AIM_AREA, reach = f32(sp.range_ft) * f32(XC_FT)}; }
+    if sp.range_ft <= 5 { return XcAim.{kind = XC_AIM_MELEE, reach = f32(XC_REACH)}; }
+    ranged := false;
+    for q: 0..<sp.step_n { if sp.steps[q].kind == RS_S_ATTACK && sp.steps[q].a == 0 { ranged = true; } }
+    return XcAim.{kind = ifx ranged then XC_AIM_BOLT else XC_AIM_CONE, reach = f32(sp.range_ft) * f32(XC_FT)};
+  }
+  if a.kind == FB_ATTACK {
+    w := rs_weapon(x[0].b[0].c[0].weapon);
+    if w.range_ft > 5 { return XcAim.{kind = XC_AIM_BOLT, reach = f32(w.range_ft) * f32(XC_FT)}; }
+    return XcAim.{kind = XC_AIM_MELEE, reach = f32(XC_REACH)};
+  }
+  return XcAim.{kind = XC_AIM_SELF};
+}
+// Ability a's aim from where you stand and face: its kind, its reach, your forward and its monster.
+xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
+  cr := s[0].creator[0]; h := cr.hostiles[0];
+  m := xc_aim_kind(s, a);
+  m.fx = sin(cr.player_face); m.fz = cos(cr.player_face);   // aethyr/walk.coax: you face atan2(x, z)
+  if m.kind == XC_AIM_SELF { return m; }
+  best := 1e9f32;
+  for i: 0..<XC_FOES {
+    e := h.enemies[i];
+    if e.dead { continue; }
+    dx := e.x - cr.player_x; dz := e.z - cr.player_z;
+    along := dx * m.fx + dz * m.fz; side := abs(dx * m.fz - dz * m.fx); d := sqrt(dx * dx + dz * dz);
+    hit := false;
+    if m.kind == XC_AIM_BOLT { hit = along > 0 && along <= m.reach + f32(XC_BODY) && (side <= f32(XC_BODY) || side <= along * f32(XC_ASSIST)); }
+    else if m.kind == XC_AIM_MELEE { hit = d <= m.reach && along >= d * 0.7071; }
+    else { hit = d <= hi(m.reach, 1) && along >= d * 0.9659; }   // a cone and an area's point: 30 degrees
+    key := ifx m.kind == XC_AIM_BOLT then along else d;
+    if hit && key < best { best = key; m.foe = i; }
+  }
+  if m.kind == XC_AIM_AREA {
+    sp := rs_spell(a.sp);
+    // a cube from you is set ahead of you; a placed area lands on that monster, or 6 m on
+    m.reach = ifx sp.area == RS_A_CUBE_SELF then f32(sp.area_ft) * f32(XC_FT) else ifx m.foe >= 0 then best else lo(m.reach, 6);
+    m.foe = -1;
+  }
+  return m;
+}
+
+// Press slot k: the engine resolves it at what it aims at (xc_aim). True when it was used. Sets what the
 // world shows: the look (xc_look), the numbers and the fallen.
 xc_press :: (s: [] Lab, k: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
@@ -176,11 +228,16 @@ xc_press :: (s: [] Lab, k: int) -> bool {
   b := x[0].b[..];
   if !x[0].seeded { x[0].seeded = true; b[0].dice[0].state = b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
   px := cr[0].player_x; pz := cr[0].player_z;
-  // your target: the one you picked if it lives, else the nearest within the bar's longest reach (120 feet)
-  if x[0].target >= 0 && h[0].enemies[x[0].target].dead { x[0].target = -1; }
-  foe := x[0].target;
-  if foe < 0 && xc_aims_foe(a) { foe = xc_nearest(s, px, pz, 36.6); }
-  if xc_aims_foe(a) && foe < 0 { x[0].refused += 1; return false; }
+  // what it aims at: ahead of you, by its kind (xc_aim); nothing is picked for you behind or beside you
+  aim := xc_aim(s, a);
+  foe := aim.foe;
+  if aim.kind == XC_AIM_CONE && foe < 0 { x[0].fizzle = k; x[0].fizzle_at = now; x[0].refused += 1; return false; }   // no one ahead: the icon fizzles
+  if (aim.kind == XC_AIM_BOLT || aim.kind == XC_AIM_MELEE) && foe < 0 {
+    // the bolt flies on to its range and fizzles; the blow swings at the air. No roll, no damage.
+    x[0].cool_at = now; x[0].used = k; x[0].casts += 1; x[0].whiffs += 1;
+    xc_look(s, a, -1, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
+    return true;
+  }
   // the monsters on the engine's squares round you
   rs_place(b, 0, XC_MID, XC_MID);
   for i: 0..<XC_FOES {
@@ -203,18 +260,18 @@ xc_press :: (s: [] Lab, k: int) -> bool {
   for i: 0..<XC_FOES { before[i] = b[0].c[1 + i].hp; }
   tx := XC_MID; ty := XC_MID;
   if foe >= 0 { tx = b[0].c[1 + foe].x; ty = b[0].c[1 + foe].y; }
-  if a.tg == FB_SELF || a.tg == FB_ALLY { tx = XC_MID; ty = XC_MID; }
-  ok := fb_seat_use(b, x[0].seat[..], a, ifx a.tg == FB_SELF || a.tg == FB_ALLY then -1 else 1 + foe, tx, ty, 0);
+  else if aim.kind == XC_AIM_AREA { tx = XC_MID + cast(int) floor(aim.fx * aim.reach / f32(XC_SQ) + 0.5); ty = XC_MID + cast(int) floor(aim.fz * aim.reach / f32(XC_SQ) + 0.5); }
+  ok := fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, 0);
   gain := b[0].c[0].hp - 1 + b[0].c[0].temp;
   b[0].c[0].hp = b[0].c[0].hp_max; b[0].c[0].temp = 0; b[0].c[0].dead = false;
   if !ok { x[0].refused += 1; return false; }
   x[0].cool_at = now; x[0].used = k; x[0].casts += 1;
-  if foe >= 0 && a.tg != FB_SELF && a.tg != FB_ALLY { x[0].target = foe; }
+  if foe >= 0 { x[0].target = foe; }   // the one struck at: its Hit Points over the bar
   if gain > 0 && h[0].hp < XC_PLAYER_MAX {
     h[0].hp = ifx h[0].hp + gain > XC_PLAYER_MAX then XC_PLAYER_MAX else h[0].hp + gain;
     xc_float_int(x, px, cr[0].player_y + 2.1, pz, now, gain, true);
   }
-  xc_look(s, a, foe);
+  xc_look(s, a, foe, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
   // what it did to each monster: the numbers, and the fallen
   struck := false;
   for i: 0..<XC_FOES {
@@ -230,7 +287,7 @@ xc_press :: (s: [] Lab, k: int) -> bool {
       fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
     }
   }
-  if !struck && foe >= 0 && a.tg == FB_FOE { xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
+  if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
   return true;
 }
 // One of the glade's effects (aethyr/fx/puff.coax), on the creator's clock.
@@ -239,13 +296,13 @@ fx_start_at :: (s: [] Lab, recipe: int, now: f32, from: FxV, to: FxV, col: FxV, 
   _ := fxp_start(s[0].puffs[..], c, now);
 }
 // A slot's look: Everglade's recipes for its spells and features (everglade-classes.coax cl_look).
-xc_look :: (s: [] Lab, a: FbAb, foe: int) {
+xc_look :: (s: [] Lab, a: FbAb, foe: int, ax: f32, az: f32) {
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
   now := cr[0].clock;
   px := cr[0].player_x; pz := cr[0].player_z; py := cr[0].player_y;
   hand := fxp_v(px + cos(cr[0].player_face) * 0.3, py + 1.3, pz - sin(cr[0].player_face) * 0.3);
   me := fxp_v(px, py + 1.0, pz);
-  at := me;
+  at := fxp_v(ax, py + 1.0, az);   // where it is aimed: ahead of you (a bolt's full range when it hits no one)
   if foe >= 0 { at = fxp_v(h[0].enemies[foe].x, 0.8, h[0].enemies[foe].z); }
   gold := fxp_v(1.0, 0.78, 0.4);
   col := ifx a.kind == FB_SPELL then fx_col(a.sp) else gold;
@@ -382,6 +439,13 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
      n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));}
     if i == x[0].used && left > 0 { n = xc_line(out, n, r.x0, r.y1 + 4 * k, r.x1, r.y1 + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
   }
+  // a spell that found no one ahead: its icon flashes red a moment (no words)
+  if x[0].fizzle >= 0 && x[0].fizzle < x[0].bar_n && now - x[0].fizzle_at < 0.45 {
+    r := xc_slot_box(x[0], x[0].fizzle); g := 1 - (now - x[0].fizzle_at) / 0.45; wd := 2.5 * k;
+    n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
+    n = xc_line(out, n, r.x0, r.y0, r.x0, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x1, r.y0, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
+    n = xc_line(out, n, r.x0 + 8 * k, r.y0 + 8 * k, r.x1 - 8 * k, r.y1 - 8 * k, wd, 0.95 * g, 0.2 * g, 0.15 * g);
+  }
   if x[0].hover >= 0 && x[0].hover < x[0].bar_n {
     a := x[0].bar[x[0].hover];
     r := xc_slot_box(x[0], x[0].hover);
@@ -460,25 +524,10 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
       }
       return true;
     }
-    if d == -3 && abs(px - x[0].down_x) < 6 * k && abs(py - x[0].down_y) < 6 * k { xc_pick(s, px, py); }
     return false;
   }
   if phase == 3 { x[0].down = -100; }
   return x[0].down >= 0 || x[0].down == -2;
-}
-// The living monster drawn nearest the point (within 70 px of its middle) becomes your target.
-xc_pick :: (s: [] Lab, px: f32, py: f32) {
-  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[..];
-  best := -1; bd := 70 * x[0].k; bd = bd * bd;
-  for i: 0..<XC_FOES {
-    e := hs[0].enemies[i];
-    if e.dead { continue; }
-    p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 0.8, e.z);
-    if !p.ok { continue; }
-    d := (p.x - px) * (p.x - px) + (p.y - py) * (p.y - py);
-    if d < bd { bd = d; best = i; }
-  }
-  if best >= 0 { x[0].target = best; }
 }
 // What the checks read (lab_creator_probe 900 on).
 xc_probe :: (s: [] Lab, f: int) -> int {
@@ -490,6 +539,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   if f == 904 { return x[0].kills; }
   if f == 905 { return x[0].target; }
   if f == 906 { return x[0].refused; }
+  if f == 909 { return x[0].whiffs; }
   if f == 907 { return x[0].last_dmg; }
   if f == 908 { return hs[0].hp; }
   if f >= 910 && f < 916 { return ifx x[0].started then x[0].b[0].c[1 + f - 910].hp else -1; }
@@ -531,10 +581,10 @@ xc_probe :: (s: [] Lab, f: int) -> int {
     x := s[0].xc[..];
     xc_start(x, ifx pass == 0 then FB_CL_WIZARD else FB_CL_FIGHTER);
     xc_set_class(x, ifx pass == 0 then FB_CL_WIZARD else FB_CL_FIGHTER);
-    // one imp beside you (in reach of a sword), the rest far off
+    // one imp just ahead of you (in reach of a sword), the rest far off
     cr[0].player_x = 0; cr[0].player_z = 0;
     for i: 0..<XC_FOES { h[0].enemies[i].x = 60; h[0].enemies[i].z = 60 + f32(i) * 3; }
-    h[0].enemies[0].x = 1.2; h[0].enemies[0].z = 0;
+    h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2; cr[0].player_face = 0;   // ahead of you (you face +z)
     slot := ifx pass == 0 then 0 else 1;   // Fire Bolt is slot 1; the Fighter's Attack slot 2
     #assert (pass == 0 && x[0].bar[0].sp == SP_FIRE_BOLT) || (pass == 1 && x[0].bar[1].kind == FB_ATTACK);
     tries := 0;
@@ -547,4 +597,70 @@ xc_probe :: (s: [] Lab, f: int) -> int {
     // the felled imp is out of the fight: the next press finds no one in reach for a sword, and no one is hurt
     for i: 1..<XC_FOES { #assert x[0].b[0].c[1 + i].hp == x[0].b[0].c[1 + i].hp_max; }
   }
+}
+
+// A fresh fight for the aim checks: class c, you at the origin facing +z (or `face`), every monster
+// far away except those the check places.
+xc_test_lab :: (s: [] Lab, c: int, face: f32) {
+  lab_message(s, 600, "url=http://localhost/worlds/everglade-experimental\n");
+  cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  h[0].ready = true; h[0].hp = XC_PLAYER_MAX;
+  for i: 0..<XC_FOES { h[0].enemies[i].swing = -1; h[0].enemies[i].x = 70 + f32(i) * 3; h[0].enemies[i].z = -70; }
+  xc_start(s[0].xc[..], c); xc_set_class(s[0].xc[..], c);
+  cr[0].player_x = 0; cr[0].player_z = 0; cr[0].player_face = face;
+}
+xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b[0].c[1 + i].hp; } return t; }
+#test "experimental combat: a bolt flies the way you face; one behind you is never hit, one ahead is, and a miss does no damage" #steps 2000000000 {
+  // behind you (you face +z, the imp 8 m at -z), fifty Fire Bolts: none touch it
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = -8;
+  hp := xc_hp_sum(s[..]);
+  for i: 0..<50 { s[0].creator[0].clock += 1.1; #assert xc_press(s[..], 0); }
+  #assert xc_hp_sum(s[..]) == hp && s[0].xc[0].whiffs == 50 && s[0].xc[0].landed == 0 && s[0].xc[0].target == -1;
+  // beside you, out of the 5 degree help: never hit either
+  h[0].enemies[0].x = 6; h[0].enemies[0].z = 6;
+  for i: 0..<20 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); }
+  #assert xc_hp_sum(s[..]) == hp;
+  // past Fire Bolt's 120 feet (36.6 m) straight ahead: it fizzles short of it
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = 40;
+  for i: 0..<20 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); }
+  #assert xc_hp_sum(s[..]) == hp;
+  // turn round to face it, or put it ahead a little off the line (within 5 degrees): it is struck at
+  h[0].enemies[0].x = 0.9; h[0].enemies[0].z = 20;   // 2.6 degrees off
+  m := xc_aim(s[..], s[0].xc[0].bar[0]); #assert m.kind == XC_AIM_BOLT && m.foe == 0 && abs(m.reach - 36.576) < 0.01;
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = -8; s[0].creator[0].player_face = 3.14159265;
+  m = xc_aim(s[..], s[0].xc[0].bar[0]); #assert m.foe == 0;
+  // the first monster on the line is the one struck, not one behind it
+  h[0].enemies[1].x = 0; h[0].enemies[1].z = -4;
+  m = xc_aim(s[..], s[0].xc[0].bar[0]); #assert m.foe == 1;
+  h[0].enemies[1].z = -70;
+  landed := 0; tries := 0;
+  while s[0].xc[0].landed == 0 && tries < 40 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); tries += 1; }
+  #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].target == 0;
+}
+#test "experimental combat: a blow strikes ahead within reach, a save spell takes the cone ahead, and nothing behind is picked" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  h := s[0].creator[0].hostiles[..]; bar := s[0].xc[0].bar[1];   // Attack (a longsword: a blow)
+  #assert xc_aim_kind(s[..], bar).kind == XC_AIM_MELEE;
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = -1.2;   // right behind you
+  hp := xc_hp_sum(s[..]);
+  for i: 0..<30 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 1); }
+  #assert xc_hp_sum(s[..]) == hp && s[0].xc[0].landed == 0;
+  h[0].enemies[0].x = 1.0; h[0].enemies[0].z = 1.0;   // 45 degrees ahead, in reach
+  #assert xc_aim(s[..], bar).foe == 0;
+  h[0].enemies[0].x = 0; h[0].enemies[0].z = 3.5;     // ahead but out of reach
+  #assert xc_aim(s[..], bar).foe == -1;
+  // Sacred Flame: the nearest in range within 30 degrees ahead, or nothing (its icon fizzles, no turn spent)
+  c: [1] Lab; xc_test_lab(c[..], FB_CL_CLERIC, 0);
+  g := c[0].creator[0].hostiles[..]; flame := c[0].xc[0].bar[0];
+  #assert xc_aim_kind(c[..], flame).kind == XC_AIM_CONE;
+  g[0].enemies[0].x = 4; g[0].enemies[0].z = 4;      // 45 degrees off: outside the cone
+  c[0].creator[0].clock = 5;
+  #assert !xc_press(c[..], 0) && c[0].xc[0].fizzle == 0 && c[0].xc[0].casts == 0;
+  g[0].enemies[0].x = 1; g[0].enemies[0].z = 8;      // 7 degrees off: inside
+  #assert xc_aim(c[..], flame).foe == 0;
+  // Thunderwave's cube is set ahead of you; Second Wind is yours
+  w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 1.5707963);
+  tw := xc_aim(w[..], w[0].xc[0].bar[4]); #assert tw.kind == XC_AIM_AREA && tw.fx > 0.99 && abs(tw.reach - 4.572) < 0.01;
+  #assert xc_aim_kind(s[..], s[0].xc[0].bar[0]).kind == XC_AIM_SELF;
 }
