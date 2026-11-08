@@ -12,12 +12,14 @@ struct coax_t13 {
   y: vec2f,
   z: u32,
   w: vec2f,
+  f4: f32,
 }
 struct coax_io_13 {
   @builtin(position) x: vec4f,
   @location(0) y: vec2f,
   @location(1) @interpolate(flat) z: u32,
   @location(2) w: vec2f,
+  @location(3) f4: f32,
 }
 struct coax_t15 {
   x: vec4f,
@@ -179,6 +181,7 @@ fn coax_p_shadow_vs(p_id: u32, p_instance: u32) -> coax_t13 {
   l_o.w = coax_p_v2(l_q.x, l_q.y);
   l_o.y = l_s.w;
   l_o.z = l_s.f4;
+  l_o.f4 = coax_p_e2_body_fade(l_s);
   return l_o;
 }
 fn coax_p_scene_vs(p_id: u32, p_instance: u32) -> coax_t15 {
@@ -230,6 +233,10 @@ fn coax_p_shadow_fs(p_s: coax_t13) {
   {
     discard;
   }
+  if ((!coax_p_e2_dither_keep(coax_p_v2(l_s.x.x, l_s.x.y), l_s.f4)))
+  {
+    discard;
+  }
   l_t = coax_p_render_sample_layer8_bias(l_s.y, i32(l_s.z), 0.0f);
   if ((l_t.w < 0x1.666666p-2f))
   {
@@ -271,6 +278,10 @@ fn coax_p_scene_fs(p_s: coax_t15, p_front: bool) -> coax_t25 {
     discard;
   }
   if (((l_s.f6.w > 0x1.700000p3f) && (!coax_p_e2_dither_keep(coax_p_v2(l_s.x.x, l_s.x.y), l_s.f6.x))))
+  {
+    discard;
+  }
+  if (((l_s.f6.w < 0x1.700000p3f) && (!coax_p_e2_dither_keep(coax_p_v2(l_s.x.x, l_s.x.y), coax_p_e2_body_fade(l_s)))))
   {
     discard;
   }
@@ -422,6 +433,16 @@ fn coax_p_v2(p_x: f32, p_y: f32) -> vec2f {
   var l_x: f32 = p_x;
   var l_y: f32 = p_y;
   return vec2f(l_x, l_y);
+}
+fn coax_p_e2_body_fade(p_s: coax_t15) -> f32 {
+  var l_s: coax_t15 = p_s;
+  var l_w: f32;
+  if ((l_s.f6.w > 0x1.700000p3f))
+  {
+    return 0.0f;
+  }
+  l_w = objects[i32(l_s.f8)].f5.w;
+  return select(0.0f, (l_w - 0x1.000000p1f), ((l_w > 0x1.001062p1f) && (l_w < 0x1.800000p1f)));
 }
 fn coax_p_e2_field_vs(p_id: u32, p_instance: u32) -> coax_t15 {
   var l_id: u32 = p_id;
@@ -707,6 +728,13 @@ fn coax_p_cg_decode(p_c: vec3f) -> vec3f {
   var l_c: vec3f = p_c;
   return coax_p_v3(coax_p_cg_linear(l_c.x), coax_p_cg_linear(l_c.y), coax_p_cg_linear(l_c.z));
 }
+fn coax_p_e2_dither_keep(p_pixel: vec2f, p_fade: f32) -> bool {
+  var l_pixel: vec2f = p_pixel;
+  var l_fade: f32 = p_fade;
+  var l_n: f32;
+  l_n = coax_p_fract((0x1.a7dd04p5f * coax_p_fract(((0x1.12e286p-4f * floor(l_pixel.x)) + (0x1.7e8b20p-8f * floor(l_pixel.y))))));
+  return select(select(true, (l_n < (-l_fade)), (l_fade < 0.0f)), (l_n >= l_fade), (l_fade > 0.0f));
+}
 fn coax_p_render_sample_layer8_bias(p_uv: vec2f, p_layer: i32, p_bias: f32) -> vec4f {
   var l_uv: vec2f = p_uv;
   var l_layer: i32 = p_layer;
@@ -742,13 +770,6 @@ fn coax_p_mix3(p_a: vec3f, p_b: vec3f, p_t: f32) -> vec3f {
   var l_b: vec3f = p_b;
   var l_t: f32 = p_t;
   return vec3f(coax_p_mix(l_a.x, l_b.x, l_t), coax_p_mix(l_a.y, l_b.y, l_t), coax_p_mix(l_a.z, l_b.z, l_t));
-}
-fn coax_p_e2_dither_keep(p_pixel: vec2f, p_fade: f32) -> bool {
-  var l_pixel: vec2f = p_pixel;
-  var l_fade: f32 = p_fade;
-  var l_n: f32;
-  l_n = coax_p_fract((0x1.a7dd04p5f * coax_p_fract(((0x1.12e286p-4f * floor(l_pixel.x)) + (0x1.7e8b20p-8f * floor(l_pixel.y))))));
-  return select(select(true, (l_n < (-l_fade)), (l_fade < 0.0f)), (l_n >= l_fade), (l_fade > 0.0f));
 }
 fn coax_p_e2_shadow_visibility(p_p: vec3f, p_n: vec3f) -> f32 {
   var l_p: vec3f = p_p;
@@ -2028,6 +2049,10 @@ fn coax_p_cg_linear(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
   return select(coax_pow_bg_vs(((l_x + 0x1.c28f5cp-5f) / 0x1.0e147ap0f), 0x1.333334p1f), (coax_p_fmax(l_x, 0.0f) / 0x1.9d70a4p3f), (l_x <= 0x1.4b5dccp-5f));
 }
+fn coax_p_fract(p_x: f32) -> f32 {
+  var l_x: f32 = p_x;
+  return (l_x - floor(l_x));
+}
 fn coax_p_render_sample_layer8_grad(p_uv: vec2f, p_layer: i32, p_dx: vec2f, p_dy: vec2f, p_bias: f32) -> vec4f {
   var l_uv: vec2f = p_uv;
   var l_layer: i32 = p_layer;
@@ -2056,10 +2081,6 @@ fn coax_p_mix(p_a: f32, p_b: f32, p_t: f32) -> f32 {
   var l_b: f32 = p_b;
   var l_t: f32 = p_t;
   return (l_a + ((l_b - l_a) * l_t));
-}
-fn coax_p_fract(p_x: f32) -> f32 {
-  var l_x: f32 = p_x;
-  return (l_x - floor(l_x));
 }
 fn coax_p_e2_casc_try(p_p: vec3f, p_n: vec3f, p_k: i32) -> f32 {
   var l_p: vec3f = p_p;
@@ -3725,7 +3746,7 @@ fn bg_vs(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid
 @vertex
 fn shadow_vs(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32) -> coax_io_13 {
   let coax_r = coax_p_shadow_vs(coax_vid, coax_iid);
-  return coax_io_13(coax_r.x, coax_r.y, coax_r.z, coax_r.w);
+  return coax_io_13(coax_r.x, coax_r.y, coax_r.z, coax_r.w, coax_r.f4);
 }
 @vertex
 fn scene_vs(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32) -> coax_io_15 {
@@ -3744,7 +3765,7 @@ fn bg_fs(@builtin(position) coax_pos: vec4f) -> coax_out_19 {
 }
 @fragment
 fn shadow_fs(coax_in: coax_io_13) {
-  coax_p_shadow_fs(coax_t13(coax_in.x, coax_in.y, coax_in.z, coax_in.w));
+  coax_p_shadow_fs(coax_t13(coax_in.x, coax_in.y, coax_in.z, coax_in.w, coax_in.f4));
 }
 @fragment
 fn scene_fs(coax_in: coax_io_15, @builtin(front_facing) coax_front: bool) -> coax_out_25 {

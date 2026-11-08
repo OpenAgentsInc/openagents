@@ -153,15 +153,25 @@ e2_casc_clip :: (q:V3,u:[]f32,k:int)->V4 {
  c:=e2_casc_clip(v3(1,1,0.3),u[..],0);#assert abs(c.x-0)<0.0001 && abs(c.y-1)<0.0001;
  d:=e2_casc_clip(v3(-1,-1,0.3),u[..],0);#assert abs(d.x+1)<0.0001 && abs(d.y-0)<0.0001;
 }
-everglade2_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->CgShadow {
- o:CgShadow;o.pos=v4(0,0,-2,1);
+// A caster for the key light's tiles: CgShadow's, and a body's fade (e2_body_fade) so a player coming
+// into or leaving your view thins its shadow as it thins itself.
+E2Shadow :: struct {pos:V4;uv:V2;slice:u32;edge:V2;fade:f32;}
+// A body's fade: the page's record word f.w is 2 for an Everglade II body (its eye colour in f.xyz)
+// plus the share of its pixels the dither drops while it comes into or leaves your view (0 whole).
+e2_body_fade :: (s:FivelabS,objects:[]FivelabObj)->f32 {
+ if (s.dye.w>11.5f32) {return 0;}
+ w:=objects[cast(int)s.who].f.w;return ifx w>2.0005f32 && w<3.0f32 then w-2.0f32 else 0.0f32;
+}
+everglade2_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->E2Shadow {
+ o:E2Shadow;o.pos=v4(0,0,-2,1);
  k:=cast(int)u[E2_U_CASCADE+1];
  if (u[10]<1.5f32 || u[E2_U_CASCADE]<0.5f32 || k<0 || k>3) {return o;}
  s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {return o;}
- q:=e2_casc_place(s.world,u,k);o.pos=e2_casc_clip(q,u,k);o.edge=v2(q.x,q.y);o.uv=s.uv;o.slice=s.slice;return o;
+ q:=e2_casc_place(s.world,u,k);o.pos=e2_casc_clip(q,u,k);o.edge=v2(q.x,q.y);o.uv=s.uv;o.slice=s.slice;o.fade=e2_body_fade(s,objects);return o;
 }
-everglade2_shadow_fs :: (s:CgShadow,sheets:Tex2DArray,sheet:Sampler) {
+everglade2_shadow_fs :: (s:E2Shadow,sheets:Tex2DArray,sheet:Sampler) {
  if (abs(s.edge.x)>1.0f32 || abs(s.edge.y)>1.0f32) {gpu_demote_helper();}
+ if (!e2_dither_keep(v2(s.pos.x,s.pos.y),s.fade)) {gpu_demote_helper();}
  t:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,0);
  if (t.w<0.35f32) {gpu_demote_helper();}
 }
@@ -389,6 +399,7 @@ everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:
  }
  if (tex.w<0.35f32) {gpu_demote_helper();}
  if (s.dye.w>11.5f32 && !e2_dither_keep(v2(s.pos.x,s.pos.y),s.dye.x)) {gpu_demote_helper();}
+ if (s.dye.w<11.5f32 && !e2_dither_keep(v2(s.pos.x,s.pos.y),e2_body_fade(s,objects))) {gpu_demote_helper();}
  c:V4;
  if (s.dye.w>11.5f32) {c=e2_environment_fs(s,tex,front,u,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),ground);}
  else {c=cc_player_fs(s,tex,front,u,objects,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),mats,data,sheet,deriv);}

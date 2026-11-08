@@ -28,6 +28,8 @@ E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (aethyr/rend
 E2_RECORDS :: 256;            // the objects store: the glade, its grass, your character's parts and the others' (11 a body)
 E2_DRAWS :: 640;              // draws a pass at most (the woods' runs, the grass field's blocks, 11 a body)
 E2_REMOTES :: 16;             // other players drawn at most (a room seats 16)
+E2_FADE_S :: 0.6;             // s: another player thins in as it comes into your view, and out as it leaves
+E2_POP :: 0.25;               // a body cut off while more than this of it showed is a pop (e2_probe 19)
 E2_PLATE_NEAR :: 20.0; E2_PLATE_FAR :: 32.0;   // m: a name over a head is whole within NEAR, gone past FAR
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
 E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
@@ -77,12 +79,16 @@ E2 :: struct {
   // the room (everglade2-net.coax): the others, each with its own animation, its jump and its look
   net: [1] E2Net; staged: bool;          // staged: ?at= or ?walk, a shot that opens no room
   ranim: [E2N_ENTS] figs.BdAnim; rair: [E2N_ENTS] bool; rair_at: [E2N_ENTS] f32; rland_at: [E2N_ENTS] f32; rlife: [E2N_ENTS] int;
+  // each slot's fade (0 gone, 1 whole) and what it last drew, so one coming into your view (the room's
+  // interest, 110 m) thins in and one leaving it (130 m, or the room) thins out where it was: no pops
+  rfade: [E2N_ENTS] f32; rlast: [E2N_ENTS] E2Remote; rseat: [E2N_ENTS] int; rlook: [E2N_ENTS * NET_LOOK] u8; rlook_n: [E2N_ENTS] int;
+  fade_ins: int; pops: int; ghosts: int;   // e2_probe 18, 19, 87
   rtmp: [1] cc.Creator;                  // a remote's look: your creator's catalog with its record (e2_remote_look)
   plates: [E2_REMOTES] E2Plate; plate_n: int;   // the names over the others' heads this frame (e2_plates)
   plates_drawn: int;                             // the names e2_plates drew in the last frame
   cy: f32;                                       // the picture's centre row (e2c_lens: the studio frames you off centre)
 }
-E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; sy: f32; name: [NET_NAME] u8; name_n: int; }
+E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; fade: f32 = 1; sy: f32; name: [NET_NAME] u8; name_n: int; }
 
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
 // The face keeps the ground's two tile sets outside the state (everglade2-face.c), as it does the catalog.
@@ -908,8 +914,11 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // 16 the names drawn over the others this frame (e2_plates), 17 the others' bodies collected for it
   if field == 16 { return s[0].plates_drawn; }
   if field == 17 { return s[0].plate_n; }
+  // 18 the others that came into your view and thinned in, 19 pops (a body cut off more than E2_POP
+  // shown), 87 the bodies thinning out this frame (e2_remotes_draw)
+  if field == 18 { return s[0].fade_ins; } if field == 19 { return s[0].pops; } if field == 87 { return s[0].ghosts; }
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
-  if field >= 40 && field < 66 + E2_REMOTES { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
+  if (field >= 40 && field < 66 + E2_REMOTES) || (field >= 84 && field <= 86) { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
   // the ground (#13059): 90 its route (1 the pack's record, 2 converted here), 91 its tiles, 92 sets
   // published, 93 refusals, 94 the first refusal's code, 95 KiB resident, 96 and 97 the set's and the
   // glade tile's revision (first word, as a signed int), 98 queries off the tiles
@@ -940,6 +949,7 @@ e2_net_step :: (s: [] E2, mono: int) #export_c #effects(all) {
     s[0].out_n = s[0].player_key_n; s[0].action = E2_ACT_PLAYER; s[0].player_key_n = 0;
   }
   n[0].joined = !s[0].cz[0].on || s[0].cz[0].walking;
+  e2n_where(n, s[0].you_x, s[0].you_z, s[0].you_face);   // for a hello after a lost room (#13057)
   if n[0].joined { e2_net_look(s); }   // the record as it stands: a change in the studio is said again
   e2n_step(n, mono);
 }
@@ -979,6 +989,9 @@ e2_net_probe :: (s: [] E2, f: int) -> int {
   if f == 46 { return n.replays; } if f == 47 { return cast(int)(sqrt(n.fix_sq) * 1000); } if f == 48 { return n.frames_in; }
   if f == 49 { return n.tries; } if f == 50 { return ifx n.want then 1 else 0; } if f == 51 { return ifx n.joined then 1 else 0; }
   if f == 52 { return n.look_n; } if f == 54 { return n.pings; }
+  // 84 the times this page sat again and said where it stood (A), 85 the room's first word on you after
+  // the last of them less where you were drawn (mm, -1 none), 86 the ms from losing the room to it (#13057)
+  if f == 84 { return n.agains; } if f == 85 { return n.back_fix_mm; } if f == 86 { return n.back_ms; }
   if f == 53 { c := 0; for e: 0..<E2N_ENTS { en := n.ents[e]; if en.live && en.kind == WK_PLAYER && en.seat != n.seat && en.name_n > 0 { c += 1; } } return c; }
   if f == 55 { return ifx n.pings > 0 then n.ping_rtt[net_ping_best(n.ping_rtt[..], n.pings)] else -1; }
   // 56, 57: USE IN EVERGLADE's centre (canvas px), for a check that presses it; 58 the first other's
@@ -1051,32 +1064,80 @@ e2_body :: (s: [] E2, c: cc.Creator, fig: figs.BdAnim, at: E2Drawn) -> E2Drawn {
 // The others, as the room has them drawn this frame: each on the land, its own walk and run from how
 // fast it goes, its jump from its feet off the ground, its own look; and its name for e2_plates.
 e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
-  d := at; s[0].plate_n = 0;
+  d := at; s[0].plate_n = 0; s[0].ghosts = 0;
+  step := ifx bdt > 0 then bdt / f32(E2_FADE_S) else 0.0f32;
+  seen: [E2N_ENTS] bool;
   for k: 0..<E2_REMOTES {
     r := e2n_remote(s[0].net[..], k);
     if !r.ok { break; }
-    en := s[0].net[0].ents[r.slot];
-    a := s[0].ranim[r.slot..<r.slot + 1];
-    if !a[0].on || s[0].rlife[r.slot] != en.born { a[0] = figs.BdAnim.{}; a[0].on = true; s[0].rair[r.slot] = false; s[0].rland_at[r.slot] = -100; s[0].rlife[r.slot] = en.born; }
+    en := s[0].net[0].ents[r.slot]; slot := r.slot; seen[slot] = true;
+    // a new player in this slot: from nothing (one still thinning out here is cut: a pop if it showed)
+    if s[0].rseat[slot] != r.seat + 1 {
+      if s[0].rfade[slot] > f32(E2_POP) { s[0].pops += 1; }
+      s[0].rfade[slot] = 0; s[0].rseat[slot] = r.seat + 1; s[0].fade_ins += 1;
+    }
+    up := s[0].rfade[slot] + step; s[0].rfade[slot] = ifx up > 1 then 1.0f32 else up;
+    s[0].rlast[slot] = r;
+    ln := ifx en.look_n < NET_LOOK then en.look_n else NET_LOOK; s[0].rlook_n[slot] = ln; for i: 0..<ln { s[0].rlook[slot * NET_LOOK + i] = en.look[i]; }
+    a := s[0].ranim[slot..<slot + 1];
+    if !a[0].on || s[0].rlife[slot] != en.born { a[0] = figs.BdAnim.{}; a[0].on = true; s[0].rair[slot] = false; s[0].rland_at[slot] = -100; s[0].rlife[slot] = en.born; }
     ground := e2_height(r.x, r.z);
-    a[0].x = r.x; a[0].z = r.z; a[0].y = ground + r.y; a[0].yaw = r.yaw; a[0].own = false;
-    figs.bd_step(a, s[0].clock, bdt);
-    air := r.y > f32(E2_AIRBORNE);
-    if air && !s[0].rair[r.slot] { s[0].rair_at[r.slot] = s[0].clock; }
-    if !air && s[0].rair[r.slot] { s[0].rland_at[r.slot] = s[0].clock; }
-    s[0].rair[r.slot] = air;
-    fig := e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[r.slot], s[0].rland_at[r.slot]);
-    look := cast(string) en.look[0..<en.look_n];
-    _ := e2_remote_look(s, look); c := s[0].rtmp[0];
-    d = e2_body(s, c, fig, d);
+    d = e2_remote_body(s, r, slot, d, bdt);
     if s[0].plate_n < E2_REMOTES && en.name_n > 0 {
       p := s[0].plates[s[0].plate_n..<s[0].plate_n + 1];
-      p[0].x = r.x; p[0].y = ground + r.y + 2.05; p[0].z = r.z; p[0].alpha = 0;   // the head's top
+      p[0].x = r.x; p[0].y = ground + r.y + 2.05; p[0].z = r.z; p[0].alpha = 0; p[0].fade = s[0].rfade[slot];   // the head's top
       p[0].name_n = en.name_n; for i: 0..<en.name_n { p[0].name[i] = en.name[i]; }
       s[0].plate_n += 1;
     }
   }
+  // the ones gone from your view: thinning out where they were last drawn
+  for slot: 0..<E2N_ENTS {
+    if seen[slot] || s[0].rseat[slot] == 0 { continue; }
+    down := s[0].rfade[slot] - step; s[0].rfade[slot] = ifx down < 0 then 0.0f32 else down;
+    if s[0].rfade[slot] <= 0 { s[0].rseat[slot] = 0; continue; }
+    s[0].ghosts += 1;
+    d = e2_remote_body(s, s[0].rlast[slot], slot, d, bdt);
+  }
   return d;
+}
+// One other's body at r with slot's look and fade: on the land, its walk and run from its speed, its
+// jump from its feet off the ground, its records' fade word (gpu/everglade2.coax e2_body_fade).
+e2_remote_body :: (s: [] E2, r: E2Remote, slot: int, at: E2Drawn, bdt: f32) -> E2Drawn {
+  a := s[0].ranim[slot..<slot + 1];
+  ground := e2_height(r.x, r.z);
+  a[0].x = r.x; a[0].z = r.z; a[0].y = ground + r.y; a[0].yaw = r.yaw; a[0].own = false;
+  figs.bd_step(a, s[0].clock, bdt);
+  air := r.y > f32(E2_AIRBORNE);
+  if air && !s[0].rair[slot] { s[0].rair_at[slot] = s[0].clock; }
+  if !air && s[0].rair[slot] { s[0].rland_at[slot] = s[0].clock; }
+  s[0].rair[slot] = air;
+  fig := e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[slot], s[0].rland_at[slot]);
+  look := cast(string) s[0].rlook[slot * NET_LOOK..<slot * NET_LOOK + s[0].rlook_n[slot]];
+  _ := e2_remote_look(s, look); c := s[0].rtmp[0];
+  from := at.rec;
+  d := e2_body(s, c, fig, at);
+  drop := e2_fade_drop(s[0].rfade[slot]);
+  for i: from..<d.rec { s[0].records[i * 24 + 23] = 2 + drop; }
+  return d;
+}
+// The share of a body's pixels the dither drops at fade f (0 gone, 1 whole): eased, and never all of
+// them while it is drawn (the record's word stays under 3).
+e2_fade_drop :: (f: f32) -> f32 { t := ifx f < 0 then 0.0f32 else ifx f > 1 then 1.0f32 else f; e := t * t * (3 - 2 * t); return ifx 1 - e > 0.999 then 0.999f32 else 1 - e; }
+#test "another player thins in over E2_FADE_S as it comes into your view, and out where it was as it leaves" {
+  #assert e2_fade_drop(1) == 0 && e2_fade_drop(0) > 0.99 && e2_fade_drop(0) < 1 && abs(e2_fade_drop(0.5) - 0.5) < 0.001;
+  s: [1] E2; s[0].net[0].state = E2N_OPEN; s[0].net[0].seat = 1;
+  k := e2n_ent(s[0].net[..], 3, true); en := s[0].net[0].ents[k..<k + 1]; en[0].kind = WK_PLAYER; en[0].seat = 3;
+  net_push(en, NetState.{t = 0, x = 4, z = -2});
+  rows := 0; shown: [45] f32;
+  for f: 0..<45 {
+    if f == 20 { s[0].net[0].ents[k].live = false; }   // the room's x: gone from your view
+    d := e2_remotes_draw(s[..], E2Drawn.{}, 1.0 / 60.0);
+    shown[f] = s[0].rfade[k]; if d.rec > 0 { rows += 1; }
+  }
+  #assert s[0].fade_ins == 1 && s[0].pops == 0;
+  // up a sixtieth over E2_FADE_S a frame, never a jump; then down from where it was to nothing
+  for f: 1..<45 { #assert abs(shown[f] - shown[f - 1]) < 0.03; }
+  #assert shown[19] > 0.5 && shown[19] < 0.6 && shown[44] == 0 && s[0].rseat[k] == 0 && rows >= 38 && rows <= 40;
 }
 // The names over the others' heads, in Character Create's face (AR Kai C, cc.text): each where its
 // head is on the screen, whole within E2_PLATE_NEAR m, fading to nothing at E2_PLATE_FAR, and not
@@ -1118,7 +1179,7 @@ e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
     ink := cc.ink(k, 0.95 * alpha, 0.93 * alpha, 0.82 * alpha); ink.light = alpha; ink.glow *= alpha; ink.core *= alpha;
     v = cc.text(out, v, name, sx - wide * 0.5, sy - cap, cap, ink);
     taken[tn * 4] = sx - wide * 0.5; taken[tn * 4 + 1] = sy - cap * 1.3; taken[tn * 4 + 2] = sx + wide * 0.5; taken[tn * 4 + 3] = sy; tn += 1;
-    s[0].plates[i].alpha = alpha; s[0].plates_drawn += 1; s[0].plates[i].sy = sy;
+    s[0].plates[i].alpha = alpha * p.fade; s[0].plates_drawn += 1; s[0].plates[i].sy = sy;
   }
   return v;
 }
