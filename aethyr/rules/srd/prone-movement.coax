@@ -1,0 +1,87 @@
+// SRD 5.2.1 Crawling and Prone: feet spent, not an Action or Bonus Action.
+#authority;
+
+#test "crawling and difficult terrain costs add rather than multiply" {
+  #assert rs_step_feet(false,false) == 5;
+  #assert rs_step_feet(false,true) == 10;
+  #assert rs_step_feet(true,false) == 10;
+  #assert rs_step_feet(true,true) == 15;
+}
+#test "movement payment preserves every foot and refuses without mutation" {
+  for squares: 0..<8 { for extra: 0..<5 { for cost: -1..<42 {
+    t: [1] RsTurn; t[0].move_left = squares; t[0].move_feet = extra;
+    t[0].action = true; t[0].bonus = true;
+    total := squares*5+extra;
+    ok := cost >= 0 && cost <= total;
+    #assert rs_pay_move(t[..],cost) == ok;
+    if ok { #assert t[0].move_left == (total-cost)/5 && t[0].move_feet == (total-cost)%5; }
+    else { #assert t[0].move_left == squares && t[0].move_feet == extra; }
+    #assert t[0].action && t[0].bonus;
+  } } }
+}
+#test "standing pays half current Speed rounded down without spending an action" {
+  for speed: 1..<42 {
+    c: [1] RsCreature; c[0].hp = 1; c[0].cond = RS_PRONE|RS_BLINDED;
+    t: [1] RsTurn; t[0].move_left = 9;
+    #assert rs_prone_stand(c[..],t[..],speed,true);
+    #assert c[0].cond == RS_BLINDED && t[0].move_left*5+t[0].move_feet == 45-speed/2;
+    #assert !t[0].action && !t[0].bonus;
+    #assert !rs_prone_stand(c[..],t[..],speed,true);
+  }
+}
+#test "standing refuses zero Speed, anchoring, another turn and movement-blocking conditions" {
+  for state: 0..<13 {
+    c: [1] RsCreature; c[0].hp = 1; c[0].cond = RS_PRONE;
+    t: [1] RsTurn; t[0].move_left = 6;
+    speed := 30;
+    if state == 0 { speed = 0; }
+    if state == 1 { t[0].anchored = true; }
+    if state == 3 { c[0].hp = 0; }
+    if state == 4 { c[0].dead = true; }
+    if state == 5 { c[0].cond |= RS_GRAPPLED; }
+    if state == 6 { c[0].cond |= RS_RESTRAINED; }
+    if state == 7 { c[0].cond |= RS_PARALYZED; }
+    if state == 8 { c[0].cond |= RS_PETRIFIED; }
+    if state == 9 { c[0].cond |= RS_STUNNED; }
+    if state == 10 { c[0].cond |= RS_UNCONSCIOUS; }
+    if state == 11 { c[0].eff[0].kind = EF_HALT; }
+    if state == 12 { t[0].move_left = 2; }
+    before := c[0].cond; left := t[0].move_left;
+    #assert !rs_prone_stand(c[..],t[..],speed,state != 2);
+    #assert c[0].cond == before && t[0].move_left == left && t[0].move_feet == 0 && !t[0].action && !t[0].bonus;
+  }
+  c: [1] RsCreature; c[0].hp = 1; c[0].cond = RS_PRONE|RS_INCAPACITATED;
+  t: [1] RsTurn; t[0].move_left = 6;
+  #assert rs_prone_stand(c[..],t[..],30,true) && c[0].cond == RS_INCAPACITATED;
+}
+#test "Prone attack sources depend on distance rather than the weapon attack mode" {
+  for own: 0..<2 { for target: 0..<2 { for feet: [4] int.[0,5,6,10] {
+    #assert rs_prone_ups(target==1,feet) == (ifx target==1 && feet<=5 then 1 else 0);
+    expected := own + (ifx target==1 && feet>5 then 1 else 0);
+    #assert rs_prone_downs(own==1,target==1,feet) == expected;
+  } } }
+}
+
+rs_step_feet :: (prone: bool, difficult: bool) -> int #effects(all) {
+  return 5 + (ifx prone then 5 else 0) + (ifx difficult then 5 else 0);
+}
+// move_left retains whole 5-foot cells for existing grid callers; move_feet
+// retains the 0..4 feet left by standing with an odd Speed. Never round costs
+// up to cells or throw away the residual before a subsequent payment.
+rs_pay_move :: (turn: [] RsTurn, feet: int) -> bool #effects(all) {
+  total := turn[0].move_left*5+turn[0].move_feet;
+  if feet < 0 || feet > total { return false; }
+  left := total-feet;
+  turn[0].move_left = left/5; turn[0].move_feet = left%5;
+  return true;
+}
+rs_prone_stand :: (c: [] RsCreature, turn: [] RsTurn, speed: int, current: bool) -> bool #effects(all) {
+  if !current || !rs_has(c[0],RS_PRONE) || !rs_can_move(c[0]) || turn[0].anchored || speed <= 0 { return false; }
+  if !rs_pay_move(turn,speed/2) { return false; }
+  c[0].cond = rs_clear(c[0].cond,RS_PRONE);
+  return true;
+}
+rs_prone_ups :: (target: bool, feet: int) -> int #effects(all) { return ifx target && feet <= 5 then 1 else 0; }
+rs_prone_downs :: (own: bool, target: bool, feet: int) -> int #effects(all) {
+  return (ifx own then 1 else 0) + (ifx target && feet > 5 then 1 else 0);
+}

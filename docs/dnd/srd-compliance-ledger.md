@@ -220,6 +220,14 @@ passive features remain available. COMMAND-HALT-TURN adds a native witness;
 Approach, Flee, Grovel and Drop remain unqualified. This is partial #13040 and
 #13043 progress and does not complete those issues.
 
+The [Prone movement change](../verification/srd-prone-2026-11-08/README.md)
+removes automatic turn-start standing. Explicit standing pays half current
+Speed rounded down in feet; crawling costs ten feet per five-foot step, fifteen
+in Difficult Terrain. Residual feet are retained. The creature's attacks have
+Disadvantage, while attacks against it use distance, not a melee-only test.
+CONDITION-PRONE adds a native witness. Movement modes, profiles and world
+controls remain open under #13039/#13040/#13045/#13046.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

@@ -6532,3 +6532,20 @@ where another Unconscious source still prevents acting.
 Checks: `aethyr/rules/srd/hit-point-checks.coax`, its scoped HP/storage authority
 gates and the Healing Word hotbar regression. Exact source, native scope and
 remaining #13039 work: `docs/verification/srd-hit-points-2026-11-08/README.md`.
+
+## Prone is a movement choice, not automatic turn-start recovery
+
+The shared SRD turn start leaves Prone intact, including after healing from
+zero HP. `rs_stand_up` spends half current tracked walking Speed rounded down
+in feet, refuses at Speed zero or when movement is forbidden, and spends no
+Action or Bonus Action. Whole-cell `move_left` and residual `move_feet` retain
+every foot of that payment. `rs_step_to` crawls while Prone: a five-foot step
+costs ten feet, or fifteen into Difficult Terrain. Terrain sources do not
+multiply that cost. Standing/crawling refusal changes neither position nor budget.
+
+Prone imposes Disadvantage on the creature's attacks. Attacks against it gain
+Advantage within five feet and Disadvantage farther away, regardless of attack
+mode; other edge sources still cancel normally. `prone-movement.coax` owns
+the changed payment, standing and edge policies. Evidence and the remaining
+world controls/timing/movement requirements are in
+`docs/verification/srd-prone-2026-11-08/README.md`.

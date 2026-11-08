@@ -1,0 +1,77 @@
+// Source SRD 5.2.1: Crawling p.179; Prone p.186. Grid distances are feet.
+#load "battle.coax";
+
+#test "Prone remains a choice at turn start and crawling spends extra movement" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
+  b[0].c[a].cond = RS_PRONE;
+  rs_start_turn(b[..],a);
+  #assert rs_has(b[0].c[a],RS_PRONE);
+  b[0].turn.move_left = 6;
+  #assert rs_step_to(b[..],a,2,1) && b[0].turn.move_left == 4;
+  #assert rs_has(b[0].c[a],RS_PRONE) && b[0].turn.moved;
+}
+
+#test "standing spends current Speed rather than half the remaining movement and preserves residual feet" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..],rs_fighter("Standing",0,1),1,1);
+  b[0].c[a].speed = 25; b[0].c[a].cond = RS_PRONE;
+  rs_start_turn(b[..],a); b[0].turn.move_left = 5;
+  #assert rs_step_to(b[..],a,2,1); // Crawl 5 feet for 10 before standing.
+  #assert rs_stand_up(b[..],a);
+  #assert !rs_has(b[0].c[a],RS_PRONE) && b[0].turn.move_left == 0 && b[0].turn.move_feet == 3;
+  #assert !b[0].turn.action && !b[0].turn.bonus && !rs_step_to(b[..],a,3,1);
+  b[0].turn.move_left += 1;
+  #assert rs_step_to(b[..],a,3,1) && b[0].turn.move_left == 0 && b[0].turn.move_feet == 3;
+  seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+  #assert !rs_stand_up(b[..],-1) && !rs_stand_up(b[..],b[0].n) && !rs_stand_up(b[..],a);
+  #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls;
+  b[0].c[a].cond |= RS_PRONE; b[0].turn.move_left = 6;
+  b[0].c[a].slowed_until = 10; b[0].c[a].halved_until = 10;
+  // (25-10)/2 = Speed 7, standing costs 3 feet.
+  #assert rs_stand_up(b[..],a) && b[0].turn.move_left == 6 && b[0].turn.move_feet == 0;
+}
+
+#test "Prone attack edges cancel with ranged close-combat disadvantage without inventing melee requirements" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..],rs_fighter("Attacker",0,1),1,1);
+  t := rs_add(b[..],rs_fighter("Prone target",1,1),2,1);
+  b[0].c[t].cond = RS_PRONE;
+  #assert rs_attack_edge(b[..],a,t,true,false) == 1;
+  #assert rs_attack_edge(b[..],a,t,false,false) == 0; // close-foe Disadvantage cancels.
+  b[0].c[t].cond |= RS_INCAPACITATED;
+  #assert rs_attack_edge(b[..],a,t,false,false) == 1; // Incapacitated foe cannot impose the close-foe penalty.
+  rs_place(b[..],t,3,1);
+  #assert rs_attack_edge(b[..],a,t,true,false) == -1 && rs_attack_edge(b[..],a,t,false,false) == -1;
+  b[0].c[t].cond = 0; b[0].c[a].cond = RS_PRONE;
+  #assert rs_attack_edge(b[..],a,t,true,false) == -1 && rs_attack_edge(b[..],a,t,false,false) == -1;
+}
+
+#test "standing refuses a depleted or immobile turn without spending" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
+  b[0].c[a].cond = RS_PRONE;
+  rs_start_turn(b[..],a);
+  b[0].turn.move_left = 2;
+  #assert !rs_stand_up(b[..],a) && b[0].turn.move_left == 2 && rs_has(b[0].c[a],RS_PRONE);
+  b[0].who = -1; b[0].turn.move_left = 6;
+  #assert !rs_stand_up(b[..],a) && !rs_step_to(b[..],a,2,1);
+  b[0].who = a; b[0].c[a].cond |= RS_RESTRAINED;
+  #assert !rs_stand_up(b[..],a) && !rs_step_to(b[..],a,2,1);
+  b[0].c[a].cond = RS_PRONE; b[0].c[a].speed = 0;
+  #assert !rs_stand_up(b[..],a);
+}
+
+#test "crawling into overlapping difficult terrain pays fifteen feet once and refuses atomically" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
+  b[0].c[a].cond = RS_PRONE;
+  rs_start_turn(b[..],a);
+  for k: 0..<2 { b[0].zone[k] = RsZone.{on=true,difficult=true,x0=2,y0=1,x1=2,y1=1}; }
+  b[0].turn.move_left = 2; b[0].turn.move_feet = 4;
+  #assert !rs_step_to(b[..],a,2,1) && b[0].c[a].x == 1 && !b[0].turn.moved;
+  #assert b[0].turn.move_left == 2 && b[0].turn.move_feet == 4;
+  b[0].turn.move_left = 3;
+  #assert rs_step_to(b[..],a,2,1) && b[0].turn.move_left == 0 && b[0].turn.move_feet == 4;
+  #assert rs_has(b[0].c[a],RS_PRONE);
+}

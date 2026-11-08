@@ -12,6 +12,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
+#load "prone-movement.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -38,7 +39,7 @@ RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1:
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
 // attack hit, 0 none: Divine Smite follows it) and last_crit, the once-a-turn Sneak Attack and
 // Colossus Slayer, leveled (a level 1+ spell cast) and quickened (Quickened Spell used).
-RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
+RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
                    leveled: bool; quickened: bool; stunned: bool; resurged: bool; }
 RsBattle :: struct {
@@ -779,7 +780,8 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS) || rs_has(b[0].c[j], RS_STUNNED) { ups += 1; }
   if rs_take_weak(b, i) { downs += 1; }
   if !melee && rs_threatened(b, i) { downs += 1; }
-  if rs_has(b[0].c[j], RS_PRONE) { if melee && rs_feet_to(b, i, j) <= 5 { ups += 1; } else { downs += 1; } }
+  ups += rs_prone_ups(rs_has(b[0].c[j],RS_PRONE),rs_feet_to(b,i,j));
+  downs += rs_prone_downs(rs_has(b[0].c[i],RS_PRONE),rs_has(b[0].c[j],RS_PRONE),rs_feet_to(b,i,j));
   // Reckless Attack: Advantage on its Strength attacks, and on attacks against it
   if b[0].c[j].reckless_until > t { ups += 1; }
   if strength && b[0].c[i].reckless_until > t { ups += 1; }
@@ -1161,9 +1163,11 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   if b[0].who != i || !rs_can_move(b[0].c[i]) || b[0].turn.anchored { return false; }
   if rs_feet(b[0].c[i].x, b[0].c[i].y, x, y) != RS_SQUARE { return false; }
   if x < 0 || y < 0 || x >= b[0].w || y >= b[0].h || rs_at(b, x, y) >= 0 { return false; }
-  cost := ifx rs_difficult(b, x, y) then 2 else 1;
-  if b[0].turn.move_left < cost { return false; }
-  b[0].turn.move_left -= cost; b[0].turn.moved = true;
+  cost := rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,x,y));
+  turn: [1] RsTurn; turn[0] = b[0].turn;
+  if !rs_pay_move(turn[..],cost) { return false; }
+  b[0].turn = turn[0];
+  b[0].turn.moved = true;
   rs_place(b, i, x, y);
   if b[0].guards > 0 {
     // into someone's Spirit Guardians, or its own Emanation onto someone
@@ -1207,18 +1211,30 @@ rs_guarded :: (b: [] RsBattle, i: int) -> bool {
   return false;
 }
 
-// The start of i's turn: what has run out ends, a creature at 0 makes its death saving throw, a
-// Prone one stands (half its Speed).
+// Current walking Speed, including the existing tracked Slow and halving effects.
+rs_walk_speed :: (b: [] RsBattle, i: int) -> int {
+  speed := rs_max(b[0].c[i].speed - (ifx b[0].c[i].slowed_until > b[0].clock then 10 else 0),0);
+  if b[0].c[i].halved_until > b[0].clock { speed = speed/2; }
+  if rs_guarded(b,i) { speed = speed/2; }
+  return speed;
+}
+// Standing is a movement choice, not a turn-start consequence or an Action.
+rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
+  if i < 0 || i >= b[0].n { return false; }
+  turn: [1] RsTurn; turn[0] = b[0].turn;
+  ok := rs_prone_stand(b[0].c[i..<i+1],turn[..],rs_walk_speed(b,i),b[0].who == i);
+  if ok { b[0].turn = turn[0]; }
+  return ok;
+}
+// The start of i's turn: what has run out ends and a creature at 0 makes its
+// death saving throw. A Prone creature chooses later whether to stand or crawl.
 rs_start_turn :: (b: [] RsBattle, i: int) {
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
   rs_halt_begin(b[0].c[i..<i+1],b[0].clock+rs_beat(b));
   // a beat moves its share of a round's Speed (at least a square)
   // the Slow mastery: 10 feet less
-  speed := b[0].c[i].speed - (ifx b[0].c[i].slowed_until > b[0].clock then 10 else 0);
-  // a Stunning Strike saved against: half its Speed
-  if b[0].c[i].halved_until > b[0].clock { speed = speed / 2; }
-  if rs_guarded(b, i) { speed = speed / 2; }
+  speed := rs_walk_speed(b,i);
   b[0].turn_no += 1;
   squares := rs_max(cast(int) (f32(rs_max(speed, 0) / RS_SQUARE) * rs_beat(b) / f32(RS_ROUND) + 0.5), ifx speed > 0 then 1 else 0);
   b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = squares};
@@ -1241,10 +1257,6 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
            rs_add_int(l[..], b[0].c[i].death_ok); rs_add_text(l[..], " of 3 successes, "); rs_add_int(l[..], b[0].c[i].death_fail); rs_add_text(l[..], " of 3 failures)"); }
     rs_tell(b, ifx r == RS_DS_DEAD then RS_EV_DEATH else ifx r == RS_DS_UP then RS_EV_UP else RS_EV_STABLE, -1, i, i, r, 0, l[..]);
     if r != RS_DS_UP { return; }
-  }
-  if rs_has(b[0].c[i], RS_PRONE) && rs_can_act(b[0].c[i]) {
-    b[0].c[i].cond = rs_clear(b[0].c[i].cond, RS_PRONE);
-    b[0].turn.move_left = b[0].turn.move_left / 2;
   }
 }
 // Creature i ends its turn: in a lasting area whose spell says so (Gust of Wind's Line), it makes the

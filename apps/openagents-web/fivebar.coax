@@ -475,6 +475,13 @@ fb_seat_step :: (b: [] RsBattle, s: [] FbSeat) {
   fb_seat_out(b, s);
 }
 // Use an entry in the seat's turn.
+fb_seat_stand :: (b: [] RsBattle, s: [] FbSeat) -> bool {
+  if !s[0].open { return false; }
+  fb_seat_in(b,s);
+  ok := rs_stand_up(b,s[0].me);
+  fb_seat_out(b,s);
+  return ok;
+}
 fb_seat_use :: (b: [] RsBattle, s: [] FbSeat, a: FbAb, foe: int, tx: int, ty: int, ally: int) -> bool {
   if !s[0].open { return false; }
   fb_seat_in(b, s);

@@ -9,6 +9,22 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "battle.coax";
 
+#test "compliance Prone: optional standing, exact feet, crawling and distance-based attack edges" { #assert sc_prone(); }
+sc_prone :: () -> bool {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
+  t := rs_add(b[..],rs_fighter("Target",1,1),3,1);
+  b[0].c[a].speed = 25; b[0].c[a].cond = RS_PRONE;
+  rs_start_turn(b[..],a); b[0].turn.move_left = 5;
+  if !rs_has(b[0].c[a],RS_PRONE) || !rs_step_to(b[..],a,2,1) || b[0].turn.move_left != 3 { return false; }
+  if !rs_stand_up(b[..],a) || rs_has(b[0].c[a],RS_PRONE) || b[0].turn.move_left != 0 || b[0].turn.move_feet != 3 { return false; }
+  if b[0].turn.action || b[0].turn.bonus || rs_step_to(b[..],a,2,2) { return false; }
+  b[0].c[t].cond = RS_PRONE|RS_INCAPACITATED;
+  if rs_attack_edge(b[..],a,t,false,false) != 1 { return false; }
+  rs_place(b[..],t,4,1);
+  return rs_attack_edge(b[..],a,t,true,false) == -1;
+}
+
 #test "compliance Command: pending and active Halt follow logical turns while preserving reactions" {
   #assert sc_halt_turn();
 }
