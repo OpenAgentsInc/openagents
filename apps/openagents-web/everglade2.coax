@@ -79,8 +79,9 @@ E2 :: struct {
   rtmp: [1] cc.Creator;                  // a remote's look: your creator's catalog with its record (e2_remote_look)
   plates: [E2_REMOTES] E2Plate; plate_n: int;   // the names over the others' heads this frame (e2_plates)
   plates_drawn: int;                             // the names e2_plates drew in the last frame
+  cy: f32;                                       // the picture's centre row (e2c_lens: the studio frames you off centre)
 }
-E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; name: [NET_NAME] u8; name_n: int; }
+E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; sy: f32; name: [NET_NAME] u8; name_n: int; }
 
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
 e2_catalog :: (s: [] E2, text: string) #export_c #effects(all) {
@@ -122,6 +123,7 @@ e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film")
 // u[62] the canopy's baked AO at your middle (verse/everglade2/ground.coax): it shades only your indirect light.
 e2_material_uniforms :: (s: [] E2, u: [] f32) { u[60] = ifx s[0].film then 1.0f32 else 0.0f32; u[61] = ifx s[0].maps_off then 1.0f32 else 0.0f32; u[62] = e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0); }
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
+  if kind == 1 { e2c_name_type(s, t); return; }   // typed or pasted text: Character Create's NAME
   if kind == 16 { cc.load_player(s[0].creator[..], t); e2_net_look(s); return; }
   if kind == 4 { ok := cc.restore(s[0].creator[..], t); return; }
   if kind == E2C_KEPT { e2c_reply(s, t); return; }
@@ -496,7 +498,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   up := [3]f32.[r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
   fy := (w / h) * 1.25; fy = ifx fy < 0.95 then 0.95f32 else ifx fy > 1.9 then 1.9f32 else fy;
   lens := e2c_lens(s, fy * h / 2, h * 0.5);
-  s[0].focal = lens[0];
+  s[0].focal = lens[0]; s[0].cy = lens[1];
   s[0].eye = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z]; s[0].fwd = f; s[0].right = r; s[0].up = up;
   // the shadow casters' centre: the eye (e2_shadows draws the tiles round it)
   s[0].shade = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z];
@@ -879,7 +881,7 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 16 { return s[0].plates_drawn; }
   if field == 17 { return s[0].plate_n; }
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
-  if field >= 40 && field < 60 { return e2_net_probe(s, field); }   // the room's (e2_net_probe)
+  if field >= 40 && field < 66 + E2_REMOTES { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
   return -1;
 }
 
@@ -926,6 +928,10 @@ e2_net_pipe_id :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0
 e2_net_pipe_from :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].from[k]; }
 e2_net_pipe_len :: (s: [] E2, k: int) -> int #export_c #effects(all) { return s[0].net[0].pipe[0].len[k]; }
 e2_net_pipe_done :: (s: [] E2) #export_c #effects(all) { pipe_drained(s[0].net[0].pipe[..]); }
+e2_net_named :: (s: [] E2, answer: string) #export_c #effects(all) { e2c_named(s, answer); }
+// The host's keyboard field (host.js coaxial_wants_text, coaxial_field): over NAME while it takes keys.
+e2_wants_text :: (s: [] E2) -> bool #export_c #effects(all) { return e2c_creating(s) && s[0].cz[0].editing; }
+e2_text_field :: (s: [] E2, out: [] f32) #export_c #effects(all) { b := s[0].cz[0].boxes[E2C_NAME_BOX]; if out.count >= 4 { out[0] = b.x0; out[1] = b.y0; out[2] = b.x1; out[3] = b.y1; } }
 e2_net_opened :: (s: [] E2, id: int) #export_c #effects(all) { e2n_opened(s[0].net[..], id); }
 e2_net_ticket :: (s: [] E2, answer: string) #export_c #effects(all) { e2n_ticket(s[0].net[..], answer); }
 // For headless checks (e2_probe 40 to 59): the room as this page has it.
@@ -941,15 +947,46 @@ e2_net_probe :: (s: [] E2, f: int) -> int {
   // 56, 57: USE IN EVERGLADE's centre (canvas px), for a check that presses it; 58 the first other's
   // drawn x and 59 its z (cm), -999999 none
   if f == 56 || f == 57 { b := s[0].cz[0].boxes[17]; return cast(int)(ifx f == 56 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
+  // 60, 61: SURPRISE ME's centre, for a check that makes each page someone different
+  if f == 60 || f == 61 { b := s[0].cz[0].boxes[14]; return cast(int)(ifx f == 60 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
+  // 62, 63: NAME's centre; 64 a refused name's reason shown (its length), 65 the name with the API;
+  // 66 + K the K-th other's name as 31 bits of FNV-1a (0 none), for a check that names each page
+  if f == 62 || f == 63 { b := s[0].cz[0].boxes[E2C_NAME_BOX]; return cast(int)(ifx f == 62 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
+  if f == 64 { return s[0].cz[0].said_n; } if f == 65 { return ifx s[0].cz[0].naming then 1 else 0; }
+  if f >= 66 && f < 66 + E2_REMOTES {
+    r := e2n_remote(s[0].net[..], f - 66); if !r.ok { return 0; }
+    en := s[0].net[0].ents[r.slot]; return e2_name_hash(cast(string) en.name[0..<en.name_n]);
+  }
   if f == 58 || f == 59 { r := e2n_remote(s[0].net[..], 0); if !r.ok { return -999999; } return cast(int)((ifx f == 58 then r.x else r.z) * 100); }
   return -1;
 }
 
-// A remote's look: your creator (its catalog, its parts) with that player's record restored. False
-// when the record is no Character Create record (a v1 page's ranger.S.D.T): drawn as you are dressed.
+// 31 bits of FNV-1a: the probes' way to say a name (e2_net_probe 66 + K).
+e2_name_hash :: (t: string) -> int { h := 2166136261; for ch: t { h = ((h ^ cast(int) ch) * 16777619) & 0xffffffff; } return h & 0x7fffffff; }
+#test "the crowd check's probes: SURPRISE ME's and NAME's boxes, the name with the API, and the others' names" {
+  s: [1] E2; e2c_layout(s[..], 1280, 720, 1);
+  #assert e2_probe(s[..], 60) > 0 && e2_probe(s[..], 61) > 0 && e2_probe(s[..], 62) > 0 && e2_probe(s[..], 63) > 0;
+  #assert e2_probe(s[..], 64) == 0 && e2_probe(s[..], 65) == 0 && e2_probe(s[..], 66) == 0 && e2_probe(s[..], 66 + E2_REMOTES) == -1;
+}
+#test "a name's probe hash is FNV-1a's, 31 bits" { #assert e2_name_hash("") == 2166136261 & 0x7fffffff && e2_name_hash("a") == 0x640c292c && e2_name_hash("Crowd Alpha") != e2_name_hash("Crowd Bravo"); }
+// A remote's look: your creator (its catalog, its parts) with that player's record restored. When the
+// record is no Character Create record (a v1 page's ranger.S.D.T, or none) it is Character Create's
+// default body, never you as you are dressed. False then.
 e2_remote_look :: (s: [] E2, look: string) -> bool {
   s[0].rtmp[0] = s[0].creator[0];
-  return cc.restore(s[0].rtmp[..], look);
+  if cc.restore(s[0].rtmp[..], look) { return true; }
+  s[0].rtmp[0] = s[0].creator[0]; cc.reset(s[0].rtmp[..]);
+  return false;
+}
+#test "another's v1 look or none draws Character Create's default body, not you" {
+  s: [1] E2;
+  cc.reset(s[0].creator[..]); s[0].creator[0].outfit = 3; s[0].creator[0].dye = 2; s[0].creator[0].female = true;
+  #assert !e2_remote_look(s[..], "ranger.1.2.3");
+  #assert s[0].rtmp[0].outfit == 2 && s[0].rtmp[0].dye == 8 && !s[0].rtmp[0].female;
+  #assert !e2_remote_look(s[..], "");
+  #assert s[0].rtmp[0].outfit == 2 && s[0].creator[0].outfit == 3;
+  out: [64] u8; n := cc.save(s[0].creator[0], out[..]);
+  #assert e2_remote_look(s[..], cast(string) out[0..<n]) && s[0].rtmp[0].outfit == 3 && s[0].rtmp[0].female;
 }
 E2Drawn :: struct { rec: int; n: int; sn: int; }
 // One body's draws: its worn parts, then its head, hair and beard, each a record with the figure's
@@ -993,7 +1030,7 @@ e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
     s[0].rair[r.slot] = air;
     fig := e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[r.slot], s[0].rland_at[r.slot]);
     look := cast(string) en.look[0..<en.look_n];
-    c := ifx e2_remote_look(s, look) then s[0].rtmp[0] else s[0].creator[0];
+    _ := e2_remote_look(s, look); c := s[0].rtmp[0];
     d = e2_body(s, c, fig, d);
     if s[0].plate_n < E2_REMOTES && en.name_n > 0 {
       p := s[0].plates[s[0].plate_n..<s[0].plate_n + 1];
@@ -1010,7 +1047,16 @@ e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
 e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
   v := at; k := s[0].k; w := s[0].width; h := s[0].height; s[0].plates_drawn = 0;
   e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up;
+  // nearest first, so a nearer name keeps its place and one behind it in the picture moves up clear
+  order: [E2_REMOTES] int; dists: [E2_REMOTES] f32;
   for i: 0..<s[0].plate_n {
+    p := s[0].plates[i]; dx := p.x - e[0]; dy := p.y - e[1]; dz := p.z - e[2];
+    dists[i] = dx * dx + dy * dy + dz * dz; order[i] = i;
+    j := i; while j > 0 && dists[order[j - 1]] > dists[order[j]] { t := order[j]; order[j] = order[j - 1]; order[j - 1] = t; j -= 1; }
+  }
+  taken: [E2_REMOTES * 4] f32; tn := 0;
+  for oi: 0..<s[0].plate_n {
+    i := order[oi];
     p := s[0].plates[i];
     hx := p.x; hy := p.y; hz := p.z;
     dx := hx - e[0]; dy := hy - e[1]; dz := hz - e[2];
@@ -1020,16 +1066,36 @@ e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
     if ahead < 0.5 || dist > f32(E2_PLATE_FAR) || !e2_plate_seen(e, hx, hy, hz) { continue; }
     alpha := ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR);
     sx := w * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-    sy := h * 0.5 - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
+    sy := (ifx s[0].cy > 0 then s[0].cy else h * 0.5) - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     cap := 13 * k; em := cc.sans_em(cap); wide: f32 = 0;
     name := cast(string) p.name[0..<p.name_n];
     for ch: name { if ch >= 32 && ch <= 126 { wide += f32(cc.CC_FONT_WIDTH[cast(int) ch - 32]) / f32(cc.CC_FONT_UPM) * em; } }
+    // over a nearer name: up a line at a time, at most four
+    for lift: 0..<4 {
+      over := false;
+      for q: 0..<tn { if sx - wide * 0.5 < taken[q * 4 + 2] && sx + wide * 0.5 > taken[q * 4] && sy - cap * 1.3 < taken[q * 4 + 3] && sy > taken[q * 4 + 1] { over = true; } }
+      if !over { break; }
+      sy -= cap * 1.4;
+    }
     if sx + wide * 0.5 < 0 || sx - wide * 0.5 > w || sy < 0 || sy > h { continue; }
     ink := cc.ink(k, 0.95 * alpha, 0.93 * alpha, 0.82 * alpha); ink.light = alpha; ink.glow *= alpha; ink.core *= alpha;
     v = cc.text(out, v, name, sx - wide * 0.5, sy - cap, cap, ink);
-    s[0].plates[i].alpha = alpha; s[0].plates_drawn += 1;
+    taken[tn * 4] = sx - wide * 0.5; taken[tn * 4 + 1] = sy - cap * 1.3; taken[tn * 4 + 2] = sx + wide * 0.5; taken[tn * 4 + 3] = sy; tn += 1;
+    s[0].plates[i].alpha = alpha; s[0].plates_drawn += 1; s[0].plates[i].sy = sy;
   }
   return v;
+}
+#test "two names in the same place in the picture: the farther one moves up clear of the nearer" {
+  s: [1] E2; out: [8192 * E2_VERTEX_FLOATS] f32;
+  s[0].k = 1; s[0].width = 1280; s[0].height = 720; s[0].focal = 900;
+  y := e2_height(0, -150) + 2;
+  s[0].eye = [3]f32.[0, y, -150]; s[0].fwd = [3]f32.[0, 0, -1]; s[0].right = [3]f32.[1, 0, 0]; s[0].up = [3]f32.[0, 1, 0];
+  s[0].plate_n = 2;
+  s[0].plates[0].x = 0; s[0].plates[0].y = y + 0.4; s[0].plates[0].z = -162;   // farther, first in the list
+  s[0].plates[1].x = 0; s[0].plates[1].y = y + 0.3; s[0].plates[1].z = -158;
+  for i: 0..<2 { for c: 0..<6 { s[0].plates[i].name[c] = "Badger"[c]; } s[0].plates[i].name_n = 6; }
+  _ := e2_plates(s[..], out[..], 0);
+  #assert s[0].plates_drawn == 2 && s[0].plates[0].sy < s[0].plates[1].sy - 13;
 }
 // The land doesn't stand between the eye and (x, y, z): its height under eight points along the way.
 e2_plate_seen :: (e: [3] f32, x: f32, y: f32, z: f32) -> bool {

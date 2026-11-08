@@ -1,0 +1,42 @@
+// A player's chosen name, the shape the API takes (coax/web/api/migrations/0121 verse.name_ok): 3 to 20
+// characters, a letter or digit first, then letters, digits, spaces, apostrophes and hyphens, never two
+// spaces together, and nothing that reads as an address (http, www, .com, .net, .org, discord,
+// onlyfans). The API also refuses its blocked words, which only it holds; a page checks the shape at
+// once and says the API's refusal for the rest. Names are not unique: the player id is who you are.
+// Loaded by everglade2-create.coax (Character Create's NAME) and coax/web/room/room-dev.coax (the
+// local API's stand-in), so the two say the same.
+//   coax/bin/coax test --library apps/openagents-web/player-name.coax
+
+PN_OK :: 0; PN_SHORT :: 1; PN_LONG :: 2; PN_CHARS :: 3; PN_ADDRESS :: 4;
+PN_MIN :: 3; PN_MAX :: 20;
+PN_SAY :: [5] string.["", "AT LEAST 3 LETTERS", "20 LETTERS AT MOST", "LETTERS, DIGITS, SPACES, ' AND - ONLY", "NO WEB ADDRESSES"];
+PN_ADDRESSES :: [7] string.["http", "www", ".com", ".net", ".org", "discord", "onlyfans"];
+
+pn_alnum :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'); }
+// Why a name can't be taken (PN_OK when it can).
+pn_why :: (name: string) -> int {
+  if name.count < PN_MIN { return PN_SHORT; }
+  if name.count > PN_MAX { return PN_LONG; }
+  if !pn_alnum(name[0]) { return PN_CHARS; }
+  for i: 0..<name.count {
+    c := name[i];
+    if !pn_alnum(c) && c != ' ' && c != '\'' && c != '-' { return PN_CHARS; }
+    if c == ' ' && i > 0 && name[i - 1] == ' ' { return PN_CHARS; }
+  }
+  for a: PN_ADDRESSES {
+    if a.count > name.count { continue; }
+    for i: 0..<name.count - a.count + 1 {
+      same := true;
+      for j: 0..<a.count { c := name[i + j]; if c >= 'A' && c <= 'Z' { c += 32; } if c != a[j] { same = false; break; } }
+      if same { return PN_ADDRESS; }
+    }
+  }
+  return PN_OK;
+}
+#test "a name's shape: 3 to 20, letters first, no addresses, as the API's filter" {
+  #assert pn_why("Ash") == PN_OK && pn_why("Mossy Badger") == PN_OK && pn_why("O'Neil-2") == PN_OK && pn_why("12345678901234567890") == PN_OK;
+  #assert pn_why("") == PN_SHORT && pn_why("Al") == PN_SHORT && pn_why("123456789012345678901") == PN_LONG;
+  #assert pn_why(" Ash") == PN_CHARS && pn_why("-Ash") == PN_CHARS && pn_why("Ash  Wood") == PN_CHARS && pn_why("Ash_Wood") == PN_CHARS && pn_why("Ash\"") == PN_CHARS;
+  #assert pn_why("go.COM") == PN_CHARS && pn_why("Http x") == PN_ADDRESS && pn_why("my discord") == PN_ADDRESS && pn_why("wwwa") == PN_ADDRESS;
+  #assert PN_SAY[PN_OK] == "" && PN_SAY[PN_ADDRESS].count > 0;
+}

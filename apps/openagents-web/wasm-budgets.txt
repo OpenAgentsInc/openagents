@@ -54,7 +54,7 @@ fivelab 2560000
 # Texel-snapped shadow tiles (aethyr/render/cascades.coax) and rank-faded pieces (#13023): 365,055 measured;
 # about 5% headroom.
 # The room (everglade2-net.coax: its socket, the jitter buffer, the re-run, the others' bodies and their
-# names, #13054): 399,063 measured; about 5% headroom.
+# names, #13054): 399,063; Character Create's NAME and the names kept clear of each other (#13056): 407,698 measured; about 3% headroom.
 everglade2 420000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.

@@ -1065,7 +1065,7 @@ ev_test_entry :: (t: string, part: string) -> bool {
 // The whole raid at the allowances' limits (#12836): the siege at its caps, seat 0's wolves, ten of the
 // town's pieces breaking every 6 ticks, a third page joining every 2 s (the second time its snapshot's
 // first part is lost on the way), and seat 1's socket behind for a second.
-#test "events: a whole raid at the allowances' limits keeps your own row every tick, starves nothing, bounds each tick's bytes, and brings a late or broken join whole (#12836)" #steps 400000000000 {
+#test "events: a whole raid at the allowances' limits keeps your own row every tick, starves nothing, bounds each tick's bytes, and brings a late or broken join whole (#12836)" #steps 400000000000 #traversal 200000000 {
   v: [1] RmServer;
   box: [1] EgInbox;
   k := ev_test_server(v[..]);

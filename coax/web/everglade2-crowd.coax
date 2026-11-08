@@ -8,7 +8,10 @@
 // bots). Every session carries the automation mark pair-check-<hex> (the verse-automation cookie), so
 // analytics and the usage counts leave them out.
 // The journey, each step a line, then one JSON line per page with every number, then holds/fails:
-//   1. each page opens Character Create and presses USE IN EVERGLADE (its box from e2_probe 56, 57);
+//   1. each page opens Character Create, page K presses SURPRISE ME K times (e2_probe 60, 61), so each is
+//      someone different, takes the name Crowd Alpha, Bravo or Charlie in NAME (e2_probe 62 to 65; the
+//      first tries "http x" first, which must be said and not sent), and presses USE IN EVERGLADE (its
+//      box from e2_probe 56, 57); every page then has every other's chosen name (e2_probe 66 + K);
 //   2. each is seated in the room (e2_probe 40 open, 41 a seat) within 10 s, while its run plays;
 //   3. each draws the other N - 1 players (e2_probe 42) during the run, by its end;
 //   4. after the run each holds W for S seconds, then stands; the window's numbers (everglade2-crowd.js:
@@ -62,6 +65,30 @@ ec_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
 ec_probe :: (c: [] Cdp, f: int) -> int { q: [1] Buf; bput(q[..], "__e2.probe("); bint(q[..], f); bput(q[..], ")"); return ec_int(c, btext(q[..]), -1); }
 ec_key :: (c: [] Cdp, down: bool) -> bool {
   return cdp_call(c, "Input.dispatchKeyEvent", ifx down then "{\"type\":\"keyDown\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87,\"nativeVirtualKeyCode\":87,\"text\":\"w\"}" else "{\"type\":\"keyUp\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87,\"nativeVirtualKeyCode\":87}", CDP_CALL_MS) >= 0;
+}
+// Typed text, as a keyboard's (into the host's keyboard field when it has focus), and Enter.
+ec_type :: (c: [] Cdp, t: string) -> bool {
+  params: [256] u8; o: [1] Jo; jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], t); jo_end(o[..]);
+  return cdp_call(c, "Input.insertText", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+ec_enter :: (c: [] Cdp) -> bool {
+  a := cdp_call(c, "Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}", CDP_CALL_MS) >= 0;
+  return cdp_call(c, "Input.dispatchKeyEvent", "{\"type\":\"keyUp\",\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13}", CDP_CALL_MS) >= 0 && a;
+}
+// The names the pages take (Character Create's NAME), and the probes' hash of a name (everglade2.coax e2_name_hash).
+EC_NAMES :: [3] string.["Crowd Alpha", "Crowd Bravo", "Crowd Charlie"];
+ec_hash :: (t: string) -> int { h := 2166136261; for ch: t { h = ((h ^ cast(int) ch) * 16777619) & 0xffffffff; } return h & 0x7fffffff; }
+// NAME: pressed, the old text cleared, t typed and Enter; then its answer waited for (e2_probe 65).
+ec_name :: (p: [] Cdp, t: string) -> bool {
+  nx := ec_probe(p, 62); ny := ec_probe(p, 63);
+  if nx <= 0 || ny <= 0 || !ec_click(p, nx, ny) { return false; }
+  proc_sleep(200);
+  for q: 0..<24 { _ := cdp_call(p, "Input.dispatchKeyEvent", "{\"type\":\"keyDown\",\"key\":\"Backspace\",\"code\":\"Backspace\",\"windowsVirtualKeyCode\":8,\"nativeVirtualKeyCode\":8}", CDP_CALL_MS); }
+  if !ec_type(p, t) || !ec_enter(p) { return false; }
+  deadline := proc_now_ms() + 5000;
+  proc_sleep(100);
+  while ec_probe(p, 65) == 1 && proc_now_ms() < deadline { proc_sleep(100); }
+  return ec_probe(p, 65) == 0;
 }
 ec_click :: (c: [] Cdp, x: int, y: int) -> bool {
   q: [1] Buf;
@@ -141,7 +168,7 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   for i: 0..<n { if !ec_open(c[i..<i + 1], url, origin, mark, w, h, script) { tool_errln("everglade2-crowd: can't open a page"); print("fails\n"); return 1; } }
   print("room %, % players, mark %\n", url, n, mark);
   // 1. Character Create, then USE IN EVERGLADE on each
-  pressed: [E2C_MAX] bool; t_press: [E2C_MAX] int;
+  pressed: [E2C_MAX] bool; t_press: [E2C_MAX] int; named_ok: [E2C_MAX] bool; refused_said := false;
   deadline := proc_now_ms() + 60000;
   left := n;
   while left > 0 && proc_now_ms() < deadline {
@@ -153,12 +180,23 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
       bx := ec_probe(p, 56); by := ec_probe(p, 57);
       if bx <= 0 || by <= 0 { continue; }
       proc_sleep(300);
+      // each page after the first is someone different: SURPRISE ME (e2_probe 60, 61), once per page number
+      sx := ec_probe(p, 60); sy := ec_probe(p, 61);
+      if sx > 0 && sy > 0 { for k: 0..<i { _ := ec_click(p, sx, sy); proc_sleep(250); } }
+      // each page names itself (NAME); the first tries an address first, which is said and changes nothing
+      if !named_ok[i] {
+        if i == 0 { _ := ec_name(p, "http x"); refused_said = ec_probe(p, 64) > 0 && ec_probe(p, 65) == 0; }
+        named_ok[i] = ec_name(p, EC_NAMES[i]) && ec_probe(p, 64) == 0;
+      }
       _ := ec_click(p, bx, by);
       proc_sleep(400);
       if ec_probe(p, 21) == 1 || ec_probe(p, 25) == 1 { pressed[i] = true; t_press[i] = proc_now_ms(); left -= 1; }
     }
   }
   all := ec_check(left == 0, "every page pressed USE IN EVERGLADE and its run began");
+  names_taken := true; for i: 0..<n { if !named_ok[i] { names_taken = false; } }
+  all = ec_check(refused_said, "a refused name (an address) is said, and nothing is sent") && all;
+  all = ec_check(names_taken, "every page took its name in Character Create (NAME, the API's player/name)") && all;
   if left > 0 {
     for i: 0..<n { p := c[i..<i + 1]; print("  page %: studio % button (%, %) walking % kept % frames %\n", i, ec_probe(p, 20), ec_probe(p, 56), ec_probe(p, 57), ec_probe(p, 21), ec_probe(p, 25), ec_int(p, "__e2.fr.length", -1)); }
     print("fails\n"); return 1;
@@ -182,6 +220,19 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
     if seen && any_running { during = true; }
   }
   all = ec_check(seen, "every page draws every other player") && all;
+  // each page has every other page's name, as it was set: how long after the last seat
+  t_named := -1; deadline = proc_now_ms() + 5000; t_last := proc_now_ms();
+  while t_named < 0 && proc_now_ms() < deadline {
+    have := true;
+    for i: 0..<n { for j: 0..<n {
+      if i == j { continue; }
+      found := false; for k: 0..<16 { if ec_probe(c[i..<i + 1], 66 + k) == ec_hash(EC_NAMES[j]) { found = true; break; } }
+      if !found { have = false; }
+    } }
+    if have { t_named = proc_now_ms() - t_last; } else { proc_sleep(100); }
+  }
+  all = ec_check(t_named >= 0, "every page has every other's chosen name") && all;
+  print("  names in % ms after every page drew every other\n", t_named);
   print("  seen while a run played: %\n", ifx during then "yes" else "no (the runs had ended)");
   for i: 0..<n { ec_shot(c[i..<i + 1], shot, "run", i); }
   // the runs end (they hand the walk to you)

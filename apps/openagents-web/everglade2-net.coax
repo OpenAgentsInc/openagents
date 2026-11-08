@@ -13,6 +13,7 @@
 // comes back on a doubling, jittered wait, each open with a fresh ticket.
 #load "socket.coax";
 #load "everglade-net-core.coax";
+#load "player-name.coax";
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -33,6 +34,7 @@ E2Net :: struct {
   pid: [NET_ID] u8; pid_n: int; account: bool;
   look: [NET_LOOK] u8; look_n: int;   // your Character Create record (CC3), the hello's look
   name: [NET_NAME] u8; name_n: int;   // your name, as the ticket's answer says it
+  naming: bool;                 // your name's POST is out: the seat ticket waits for it, so it carries the name
   joined: bool;                 // the run began (USE IN EVERGLADE) or you came in with a record: the page joins
   mono: int; offset: int; synced: int;
   ping_rtt: [NET_PINGS] int; ping_off: [NET_PINGS] int; pings: int; ping_at: int; ping_n: int;
@@ -166,6 +168,47 @@ e2n_name_is :: (n: [] E2Net, name: string) {
   m := 0;
   for ch: name { if m >= NET_NAME { break; } if ch < 32 || ch == 127 { continue; } n[0].name[m] = ch; m += 1; }
   n[0].name_n = m;
+}
+// Your own name (Character Create's NAME): POST /api/playtest/player/name {name}, with your player key.
+// The seat ticket is asked after its answer, so the room's row for you carries it. A shape the page
+// already refused is never sent (player-name.coax).
+e2n_rename :: (n: [] E2Net, name: string) -> bool {
+  if n[0].naming || name.count > PN_MAX { return false; }
+  t: [128] u8;
+  k := wire_put(t[..], 0, "/api/playtest/player/name\n{\"name\":\"");
+  for ch: name { if ch == '"' || ch == '\\' || ch < 32 { return false; } }
+  k = wire_put(t[..], k, name); k = wire_put(t[..], k, "\"}");
+  if !pipe_put(n[0].pipe[..], E2N_PIPE_NAME, -1, cast(string) t[0..<k]) { return false; }
+  n[0].naming = true;
+  return true;
+}
+// Its answer ("STATUS\nBODY"): the name everyone now sees, or the API's refusal (its error, "" none).
+E2nNamed :: struct { ok: bool; said: string; }
+e2n_named :: (n: [] E2Net, answer: string) -> E2nNamed {
+  n[0].naming = false;
+  if answer.count > 4 && answer[0..<4] == "200\n" {
+    name := net_json_field(answer, "name");
+    if name.count > 0 { e2n_name_is(n, name); }
+    return E2nNamed.{ok = true};
+  }
+  return E2nNamed.{said = ifx answer.count > 4 then net_json_field(answer, "error") else ""};
+}
+#test "your name's POST goes before the seat ticket, and its answer is your name" {
+  n: [1] E2Net;
+  e2n_facts(n[..], "url=http://127.0.0.1:8946/worlds/character-creator?relay=ws://localhost:8945\nplayer=p-1\n", false);
+  #assert e2n_rename(n[..], "Crowd Alpha") && n[0].naming && !e2n_rename(n[..], "Other");
+  #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == E2N_PIPE_NAME;
+  #assert pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/player/name\n{\"name\":\"Crowd Alpha\"}";
+  // the run starts while it is out: no ticket yet
+  n[0].joined = true; pipe_drained(n[0].pipe[..]); e2n_step(n[..], 1000);
+  #assert !n[0].ticket_asked;
+  r := e2n_named(n[..], "200\n{\"name\":\"Crowd Alpha\",\"account\":false}");
+  #assert r.ok && cast(string) n[0].name[0..<n[0].name_n] == "Crowd Alpha";
+  e2n_step(n[..], 1016); #assert n[0].ticket_asked;
+  // a refusal says the API's words and keeps the name
+  q := e2n_named(n[..], "400\n{\"error\":\"pick another name\"}");
+  #assert !q.ok && q.said == "pick another name" && cast(string) n[0].name[0..<n[0].name_n] == "Crowd Alpha";
+  #assert !e2n_rename(n[..], "A\"b");
 }
 #test "a seat ticket's answer places you on its shard's room and says your name" {
   n: [1] E2Net;
@@ -419,7 +462,7 @@ e2n_step :: (n: [] E2Net, mono: int) {
       k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
       if n[0].lost { k = wire_put(u[..], k, "&re=1"); }
       if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = E2N_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
-    } else if !n[0].ticket_asked { e2n_ask_ticket(n); }
+    } else if !n[0].ticket_asked && !n[0].naming { e2n_ask_ticket(n); }
   }
   if e2n_open(n) {
     if n[0].ping_at == 0 || mono - n[0].ping_at >= (ifx n[0].ping_n < 8 then 1000 else 10000) {

@@ -11,9 +11,10 @@
 // Loaded into everglade2.coax, so it shares its E2, its glade, its path and figs.
 
 E2C_FIELDS :: 13;        // the wardrobe's fields (charactercreator.coax change and value, 0 to 12)
-E2C_BOXES :: 19;
+E2C_BOXES :: 20;
 E2C_CLASS :: 13;         // the CLASS row's field number
 E2C_CLASS_BOX :: 18;     // and its box (0 to 12 the fields, 13 RESET, 14 SURPRISE ME, 15 a phone's drag mode, 16 SAVE, 17 USE)
+E2C_NAME_BOX :: 19;      // NAME: your name over your head, for everyone (player-name.coax, the API's player/name)
 E2C_SWING :: 3.0;        // s: the controls fade and the camera swings round behind you
 E2C_RUN :: 20.0;         // s: the run out of the glade and down the path, on its own
 E2C_EASE :: 1.5;         // s: the camera eases into the follow camera, then the keys are yours
@@ -63,6 +64,10 @@ E2Create :: struct {
   wall: f32; wall_clock: f32; clocked: bool;   // the wall clock's s (mod E2C_PORTAL_WALL) at the facts, and the page's clock then
   fig0: int; fig1: int;  // your character's records, for the pop
   hidden: bool;        // out of sight: the arrival waits (opened in place under the lander, or a hidden tab)
+  editing: bool;                         // NAME takes your keys (the host's keyboard field over its box)
+  draft: [NET_NAME] u8; draft_n: int;    // what you have typed
+  naming: bool;                          // the name is with the API; its answer says it or refuses it
+  said: [64] u8; said_n: int;            // a refused name's reason, said where the name is until you next press
 }
 
 e2c_creating :: (s: [] E2) -> bool { return s[0].cz[0].on && !s[0].cz[0].walking; }
@@ -223,6 +228,7 @@ e2c_value :: (s: [] E2, f: int) -> string {
 e2c_request :: (s: [] E2, go: bool) {
   c := s[0].cz[..]; cr := s[0].creator[..];
   if c[0].pending { return; }
+  if c[0].editing { e2c_name_done(s); }
   cc.ensure(cr);
   n := cc.save(cr[0], c[0].bytes[..]);
   if n < 56 || n > E2C_RECORD { return; }
@@ -316,8 +322,10 @@ e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   c[0].mobile = w < 840 * k || h < 760 * k;   // as the glass panel's (gpu/character-glade.coax cg_ui_cover)
   if c[0].mobile {
     bw := (w - 36 * k) / 2;
+    // NAME across the bottom band's top, then the fields two to a row
+    c[0].boxes[E2C_NAME_BOX] = cc.Box.{x0 = 12 * k, y0 = h - 484 * k, x1 = w - 12 * k, y1 = h - 442 * k};
     for i: 0..<E2C_FIELDS + 1 {
-      col := i % 2; row := i / 2; x := 12 * k + f32(col) * (bw + 12 * k); y := h - 484 * k + f32(row) * 60 * k;
+      col := i % 2; row := i / 2; x := 12 * k + f32(col) * (bw + 12 * k); y := h - 430 * k + f32(row) * 54 * k;
       c[0].boxes[ifx i == E2C_FIELDS then E2C_CLASS_BOX else i] = cc.Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + 42 * k};
     }
     by := h - 56 * k;
@@ -330,14 +338,15 @@ e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
     c[0].boxes[17] = cc.Box.{x0 = w / 2 + 6 * k, y0 = 82 * k, x1 = w - 12 * k, y1 = 124 * k};
     return;
   }
-  // a desktop: CLASS first in the sidebar, then the wardrobe's fields, then the buttons, all on the glass
-  c[0].boxes[E2C_CLASS_BOX] = cc.Box.{x0 = 28 * k, y0 = 90 * k, x1 = 332 * k, y1 = 124 * k};
-  for i: 0..<E2C_FIELDS { y := (128 + f32(i) * 38) * k; c[0].boxes[i] = cc.Box.{x0 = 28 * k, y0 = y, x1 = 332 * k, y1 = y + 34 * k}; }
-  c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = 628 * k, x1 = 172 * k, y1 = 662 * k};
-  c[0].boxes[14] = cc.Box.{x0 = 188 * k, y0 = 628 * k, x1 = 332 * k, y1 = 662 * k};
+  // a desktop: NAME and CLASS first in the sidebar, then the wardrobe's fields, then the buttons, all on the glass
+  c[0].boxes[E2C_NAME_BOX] = cc.Box.{x0 = 28 * k, y0 = 90 * k, x1 = 332 * k, y1 = 124 * k};
+  c[0].boxes[E2C_CLASS_BOX] = cc.Box.{x0 = 28 * k, y0 = 128 * k, x1 = 332 * k, y1 = 162 * k};
+  for i: 0..<E2C_FIELDS { y := (166 + f32(i) * 36) * k; c[0].boxes[i] = cc.Box.{x0 = 28 * k, y0 = y, x1 = 332 * k, y1 = y + 32 * k}; }
+  c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = 640 * k, x1 = 172 * k, y1 = 674 * k};
+  c[0].boxes[14] = cc.Box.{x0 = 188 * k, y0 = 640 * k, x1 = 332 * k, y1 = 674 * k};
   c[0].boxes[15] = cc.Box.{};
-  c[0].boxes[16] = cc.Box.{x0 = 28 * k, y0 = 672 * k, x1 = 172 * k, y1 = 706 * k};
-  c[0].boxes[17] = cc.Box.{x0 = 188 * k, y0 = 672 * k, x1 = 332 * k, y1 = 706 * k};
+  c[0].boxes[16] = cc.Box.{x0 = 28 * k, y0 = 680 * k, x1 = 172 * k, y1 = 714 * k};
+  c[0].boxes[17] = cc.Box.{x0 = 188 * k, y0 = 680 * k, x1 = 332 * k, y1 = 714 * k};
 }
 #test "create: the wardrobe fits a phone and a desktop, on the glass" {
   s: [1] E2;
@@ -370,6 +379,21 @@ e2c_hud :: (s: [] E2, out: [] f32) -> int {
   white := e2c_ink(k, 0.91, 0.92, 0.9, f); dim := e2c_ink(k, 0.70, 0.76, 0.74, f); gold := e2c_ink(k, 0.83, 0.69, 0.43, f); label := e2c_ink(k, 0.93, 0.88, 0.72, f);
   n := cc.text(out, 0, "Character Create", (ifx c.mobile then 24.0f32 else 30.0f32) * k, (ifx c.mobile then 58.0f32 else 60.0f32) * k, e2c_title_cap(s, k), white);
   if !c.mobile { n = cc.line(out, n, 30 * k, 78 * k, 334 * k, 78 * k, k, gold.red * f, gold.green * f, gold.blue * f); }
+  {
+    b := c.boxes[E2C_NAME_BOX]; cap := 10.0f32;
+    if c.mobile { n = cc.text(out, n, "NAME", b.x0, b.y0 - 7 * k, 8 * k, dim); }
+    else { n = cc.text(out, n, "NAME", b.x0, b.y0 + 21 * k, 7.4 * k, label); }
+    col := ifx c.editing then gold else dim;
+    n = cc.line(out, n, b.x0, b.y1, b.x1, b.y1, k, col.red * f, col.green * f, col.blue * f);
+    vx := b.x0 + (ifx c.mobile then 8.0f32 else 138.0f32) * k; vy := b.y0 + cap * k + 9 * k;
+    if c.said_n > 0 && !c.editing { n = cc.text(out, n, cast(string) c.said[0..<c.said_n], vx, vy, 8 * k, e2c_ink(k, 0.95, 0.52, 0.42, f)); }
+    else {
+      t := e2c_name_shown(s); ink := ifx t.count == 0 then dim else ifx c.naming then dim else white;
+      v: [NET_NAME + 1] u8; m := 0; for ch: t { v[m] = ch; m += 1; }
+      if c.editing && (cast(int)(s[0].clock * 2) % 2 == 0) { v[m] = '_'; m += 1; }
+      n = cc.text(out, n, ifx m == 0 && !c.editing then "TYPE A NAME" else cast(string) v[0..<m], vx, vy, cap * k, ifx m == 0 then dim else ink);
+    }
+  }
   for row: 0..<E2C_FIELDS + 1 {
     i := ifx row == 0 then E2C_CLASS else row - 1;
     b := c.boxes[ifx row == 0 then E2C_CLASS_BOX else i]; cap := 10.0f32;
@@ -407,6 +431,87 @@ e2c_uniforms :: (s: [] E2, u: [] f32) {
   e2c_pane_uniforms(s, u);
 }
 
+// ---- NAME: typed into the host's keyboard field over its box (a phone's keyboard comes up), checked
+// for the API's shape at once (player-name.coax), then POSTed (everglade2-net.coax e2n_rename) before the
+// seat ticket is asked, so the room's row for you, and the name over your head, carry it.
+E2C_BACKSPACE :: -3; E2C_ENTER :: -2; E2C_ESCAPE :: -1;
+e2c_name_shown :: (s: [] E2) -> string {
+  c := s[0].cz[0..<1];
+  if c[0].editing || c[0].naming { return cast(string) c[0].draft[0..<c[0].draft_n]; }
+  return cast(string) s[0].net[0].name[0..<s[0].net[0].name_n];
+}
+e2c_name_edit :: (s: [] E2) {
+  c := s[0].cz[..];
+  if c[0].naming { return; }
+  t := cast(string) s[0].net[0].name[0..<s[0].net[0].name_n];
+  c[0].draft_n = 0; for ch: t { if c[0].draft_n < PN_MAX { c[0].draft[c[0].draft_n] = ch; c[0].draft_n += 1; } }
+  c[0].editing = true; c[0].said_n = 0;
+}
+e2c_name_type :: (s: [] E2, t: string) {
+  c := s[0].cz[..];
+  if !c[0].editing { return; }
+  for ch: t { if ch >= 32 && ch <= 126 && c[0].draft_n < PN_MAX { c[0].draft[c[0].draft_n] = ch; c[0].draft_n += 1; } }
+}
+e2c_name_key :: (s: [] E2, key: int) {
+  c := s[0].cz[..];
+  if key == E2C_BACKSPACE { if c[0].draft_n > 0 { c[0].draft_n -= 1; } return; }
+  if key == E2C_ENTER { e2c_name_done(s); return; }
+  if key == E2C_ESCAPE { c[0].editing = false; return; }
+  if key >= 32 && key <= 126 { b: [1] u8; b[0] = cast(u8) key; e2c_name_type(s, cast(string) b[..]); }
+}
+e2c_name_say :: (s: [] E2, t: string) {
+  c := s[0].cz[..]; c[0].said_n = 0;
+  for ch: t { if c[0].said_n < 64 { c[0].said[c[0].said_n] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; c[0].said_n += 1; } }
+}
+// Done typing: the same name, or none, changes nothing; a shape the API refuses is said at once;
+// else it goes to the API.
+e2c_name_done :: (s: [] E2) {
+  c := s[0].cz[..];
+  if !c[0].editing { return; }
+  c[0].editing = false;
+  a := 0; z := c[0].draft_n;
+  while a < z && c[0].draft[a] == ' ' { a += 1; } while z > a && c[0].draft[z - 1] == ' ' { z -= 1; }
+  want := cast(string) c[0].draft[a..<z];
+  if want.count == 0 || want == cast(string) s[0].net[0].name[0..<s[0].net[0].name_n] { return; }
+  why := pn_why(want);
+  if why != PN_OK { e2c_name_say(s, PN_SAY[why]); return; }
+  m := 0; for ch: want { c[0].draft[m] = ch; m += 1; } c[0].draft_n = m;
+  if e2n_rename(s[0].net[..], cast(string) c[0].draft[0..<m]) { c[0].naming = true; }
+}
+// The API's answer: the name everyone now sees, or its reason.
+e2c_named :: (s: [] E2, answer: string) {
+  r := e2n_named(s[0].net[..], answer);
+  s[0].cz[0].naming = false;
+  if !r.ok { e2c_name_say(s, ifx r.said.count > 0 then r.said else "PICK ANOTHER NAME"); }
+}
+#test "create: NAME takes typed keys, says a refused shape at once, and sends a good one before the ticket" #steps 2000000000 {
+  s: [1] E2;
+  e2_message(s[..], E2_HOST_PAGE, "url=http://127.0.0.1:8946/worlds/character-creator?relay=ws://localhost:8945\nplayer=p-1\nnow=1000");
+  e2c_layout(s[..], 1440, 900, 1);
+  b := s[0].cz[0].boxes[E2C_NAME_BOX]; x := (b.x0 + b.x1) / 2; y := (b.y0 + b.y1) / 2;
+  #assert e2c_pointer(s[..], x, y, 0, 1) && e2c_pointer(s[..], x, y, 2, 1) && s[0].cz[0].editing;
+  // the walk's keys are the name's while it takes them
+  #assert e2_key(s[..], 'w', 0) && s[0].held == 0 && s[0].cz[0].draft_n == 1;
+  #assert e2_key(s[..], E2C_BACKSPACE, 0) && s[0].cz[0].draft_n == 0;
+  e2_message(s[..], 1, "Al"); _ := e2_key(s[..], E2C_ENTER, 0);
+  #assert !s[0].cz[0].editing && cast(string) s[0].cz[0].said[0..<s[0].cz[0].said_n] == PN_SAY[PN_SHORT] && s[0].net[0].pipe[0].n == 0;
+  _ = e2c_pointer(s[..], x, y, 0, 1); _ = e2c_pointer(s[..], x, y, 2, 1);
+  e2_message(s[..], 1, "http x"); _ = e2_key(s[..], E2C_ENTER, 0);
+  #assert cast(string) s[0].cz[0].said[0..<s[0].cz[0].said_n] == PN_SAY[PN_ADDRESS] && !s[0].cz[0].naming && s[0].net[0].pipe[0].n == 0;
+  // a good name: to the API, and the ticket waits for its answer
+  _ = e2c_pointer(s[..], x, y, 0, 1); _ = e2c_pointer(s[..], x, y, 2, 1);
+  #assert s[0].cz[0].said_n == 0 && s[0].cz[0].editing;
+  for q: 0..<10 { _ = e2_key(s[..], E2C_BACKSPACE, 0); }
+  _ = e2_key(s[..], 'A', 0); e2_message(s[..], 1, "sh Wood "); _ = e2_key(s[..], E2C_ENTER, 0);
+  #assert s[0].cz[0].naming && s[0].net[0].naming && pipe_bytes(s[0].net[0].pipe[..], 0) == "/api/playtest/player/name\n{\"name\":\"Ash Wood\"}";
+  e2c_named(s[..], "200\n{\"name\":\"Ash Wood\"}");
+  #assert !s[0].cz[0].naming && e2c_name_shown(s[..]) == "Ash Wood" && s[0].cz[0].said_n == 0;
+  // the API's refusal is said, and the name stays
+  _ = e2c_pointer(s[..], x, y, 0, 1); _ = e2c_pointer(s[..], x, y, 2, 1); e2_message(s[..], 1, "x"); _ = e2_key(s[..], E2C_ENTER, 0);
+  e2c_named(s[..], "400\n{\"error\":\"pick another name: 3 to 20 letters\"}");
+  #assert e2c_name_shown(s[..]) == "Ash Wood" && cast(string) s[0].cz[0].said[0..<4] == "PICK";
+}
+
 // ---- input: in the studio the keys and the pointer are the wardrobe's
 e2c_inside :: (b: cc.Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
@@ -415,6 +520,8 @@ e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
   if !e2c_creating(s) { return false; }
   c := s[0].cz[..]; cr := s[0].creator[..]; k := s[0].k;
   if phase == 0 {
+    c[0].said_n = 0;
+    if c[0].editing && !e2c_inside(c[0].boxes[E2C_NAME_BOX], x, y) { e2c_name_done(s); }
     for i: 0..<E2C_BOXES { if e2c_inside(c[0].boxes[i], x, y) { c[0].down = i; c[0].drag_id = id; return true; } }
     c[0].drag_pan = cr[0].pan_mode; c[0].dragging = true; c[0].drag_id = id; c[0].dx = x; c[0].dy = y;
     return true;
@@ -436,7 +543,8 @@ e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
     i := c[0].down; c[0].down = -1; c[0].dragging = false;
     if phase == 2 && i >= 0 && e2c_inside(c[0].boxes[i], x, y) {
       left := x < c[0].boxes[i].x0 + (ifx c[0].mobile then 22.0f32 else 136.0f32) * k;
-      if i < E2C_FIELDS { e2c_change(s, i, ifx left then -1 else 1); }
+      if i == E2C_NAME_BOX { e2c_name_edit(s); }
+      else if i < E2C_FIELDS { e2c_change(s, i, ifx left then -1 else 1); }
       else if i == E2C_CLASS_BOX { e2c_change(s, E2C_CLASS, ifx left then -1 else 1); }
       else if i == 13 { cc.reset(cr); }
       else if i == 14 { cc.surprise(cr); }
@@ -451,6 +559,7 @@ e2c_key :: (s: [] E2, key: int) -> bool {
   if s[0].cz[0].arriving { e2c_arrive_skip(s); return true; }
   if e2c_running(s) { e2c_skip(s); return true; }   // any key skips the run, and is spent on it
   if !e2c_creating(s) { return false; }
+  if s[0].cz[0].editing { e2c_name_key(s, key); return true; }
   cr := s[0].creator[..];
   if key == 'p' || key == 'P' { cr[0].pan_mode = !cr[0].pan_mode; return true; }
   // Tab: the CLASS row, then the wardrobe's fields in turn

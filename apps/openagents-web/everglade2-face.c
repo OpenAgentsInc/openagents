@@ -39,10 +39,15 @@ static coax_t_Vec3 step_from;
 static int64_t joined_ms = -1;
 static int32_t ticket_id = -1, mint_id = -1;
 static bool has_player, mint_tried, facts_seen;
+static int key_wait;   /* frames until a minted key is the host's (action 5 runs after the frame that hands it over) */
 static char ticket_url[256]; static uint32_t ticket_url_n;
 static char ticket_body[64]; static uint32_t ticket_body_n;
 static bool ticket_due;
+static int32_t name_id = -1;
+static char name_body[128]; static uint32_t name_body_n;
+static bool name_due;
 #define PLAYER_URL "/api/playtest/player"
+#define NAME_URL "/api/playtest/player/name"
 
 static coax_t_E2 *e2_at(uint32_t state) { return (coax_t_E2 *)(uintptr_t)state; }
 static coax_v_t_E2 at(uint32_t state) { return (coax_v_t_E2){e2_at(state), 1}; }
@@ -106,19 +111,35 @@ static void net_drain(uint32_t state) {
         ticket_url_n = cut; ticket_body_n = bn; ticket_due = true;
       }
     }
+    else if (op == 9) {   /* your name's POST (everglade2-net.coax e2n_rename): its path, a newline, the body */
+      const uint8_t *b = (const uint8_t *)(uintptr_t)from;
+      uint32_t cut = 0; while (cut < len && b[cut] != '\n') cut++;
+      uint32_t bn = cut < len ? len - cut - 1 : 0;
+      if (bn < sizeof name_body) { for (uint32_t i = 0; i < bn; i++) name_body[i] = (char)b[cut + 1 + i]; name_body_n = bn; name_due = true; }
+      else e2_net_named(at(state), (coax_string){"413\n{}", 6});
+    }
   }
   e2_net_pipe_done(at(state));
 }
-/* The seat ticket's POST, with the player key; a page with no key mints one first. */
+/* The seat ticket's and your name's POSTs, with the player key; a page with no key mints one first.
+   The name goes first: the ticket waits for its answer (everglade2-net.coax e2n_step), so it carries it. */
 static void ticket_out(void) {
-  if (!ticket_due || ticket_id >= 0 || !facts_seen) return;
-  if (!has_player && !mint_tried) {
-    mint_tried = true;
-    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
-    if (mint_id < 0) mint_id = -1;
+  if (!facts_seen || (!ticket_due && !name_due)) return;
+  if (!has_player) {
+    if (!mint_tried) {
+      mint_tried = true;
+      mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+      if (mint_id < 0) mint_id = -1;
+    }
     return;
   }
-  if (mint_id >= 0 || !has_player) return;
+  if (mint_id >= 0) return;
+  if (name_due && name_id < 0) {
+    name_due = false;
+    name_id = coaxial_http((uint32_t)(uintptr_t)NAME_URL, sizeof NAME_URL - 1, (uint32_t)(uintptr_t)name_body, name_body_n, 1 | 4 | 8);
+    if (name_id < 0) { name_id = -1; name_due = true; }
+  }
+  if (!ticket_due || ticket_id >= 0) return;
   ticket_due = false;
   if (!ticket_body_n) { ticket_body[0] = '{'; ticket_body[1] = '}'; ticket_body_n = 2; }
   ticket_id = coaxial_http((uint32_t)(uintptr_t)ticket_url, ticket_url_n, (uint32_t)(uintptr_t)ticket_body, ticket_body_n, 1 | 4 | 8);
@@ -202,6 +223,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
                                      (coax_v_u32){cull_runs, sizeof cull_runs / 4}, (coax_v_u32){cull_draws, sizeof cull_draws / 4}) : 0;
   e2_net_step(at(state), mono);
   net_drain(state);
+  if (key_wait > 0 && e2_at(state)->player_key_n == 0 && --key_wait == 0) has_player = true;
   ticket_out();
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
@@ -268,6 +290,10 @@ EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32
 }
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { return k == 1 ? baked : k == 3 ? (uint32_t)e2_at(state)->mats_v : k == 4 ? (uint32_t)e2_at(state)->eg.e[0].gpu_v : frames; }
 
+/* The host's keyboard field over Character Create's NAME while it takes keys (host.js placeField). */
+static float field_box[4];
+EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return e2_wants_text(at(state)) ? 1u : 0u; }
+EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { e2_text_field(at(state), (coax_v_f32){field_box, 4}); return (uint32_t)(uintptr_t)field_box; }
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return e2_key(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return e2_key_up(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { e2_blur(at(state)); sticks = verse_sticks_reset(); }
@@ -289,11 +315,12 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     mint_id = -1;
     if (length > 4 && inbox[0] == '2' && inbox[1] == '0' && inbox[2] == '0' && inbox[3] == '\n') {
       e2_keep_player(at(state), (coax_string){(const char *)inbox + 4, length - 4});
-      has_player = true;
-    }
+      key_wait = 2;   /* the POSTs that carry the key wait until the host keeps it (X-Verse-Player) */
+    } else if (name_due) { name_due = false; e2_net_named(at(state), (coax_string){"503\n{}", 6}); }   /* no player: the name can't go */
     return;
   }
   if (ticket_id >= 0 && kind == 512 + ticket_id) { ticket_id = -1; e2_net_ticket(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (name_id >= 0 && kind == 512 + name_id) { name_id = -1; e2_net_named(at(state), (coax_string){(const char *)inbox, length}); return; }
   e2_message(at(state), kind, (coax_string){(const char *)inbox, length});
   if (kind >= 256 && kind < 512) net_drain(state);
 }

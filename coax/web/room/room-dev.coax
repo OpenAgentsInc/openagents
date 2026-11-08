@@ -6,6 +6,8 @@
 // serve.sh --api sends here:
 //   POST /api/playtest/player                 a new player: {"key":KEY,"id":PID} (player.c)
 //   POST /api/playtest/room-ticket/ROOM       a seat ticket for ROOM, for the X-Verse-Player key
+//   POST /api/playtest/player/name            {name}: the key's own name, the API's shape (player-name.coax; the
+//                                          blocked words are the API's alone), {"name": ""} the made one
 //   POST /api/playtest/room-state             what you bring back (look, class): taken, not kept; WANTED is the room's
 //   GET  /api/playtest/rooms/SLUG             the instances (rm_rooms, room-relay.coax)
 //   GET  /api/playtest/world/everglade     the world document (room-host.c)
@@ -41,8 +43,10 @@ DEV_ROW_LABELS :: [4] string.["The flock that follows you", "Ducks and lily pads
 DEV_NAMES_A :: [8] string.["Mossy", "Quiet", "Amber", "Swift", "Cedar", "Misty", "Bright", "Rowan"];
 DEV_NAMES_B :: [8] string.["Heron", "Otter", "Wren", "Badger", "Lynx", "Finch", "Hare", "Newt"];
 
+DEV_NAMED :: 8;              // players with a name of their own (a local room's few pages), in memory for the room's life
 RmDev :: struct {
   on: bool;
+  named_pid: [DEV_NAMED][TICKET_PID] u8; named_pid_n: [DEV_NAMED] int; named: [DEV_NAMED][24] u8; named_n: [DEV_NAMED] int; named_count: int;
   admin: bool;               // the viewer is the realm's admin (rm_dev_start: on unless OA_ROOM_DEV_ADMIN=0)
   minted: int;               // players made (each key's number)
   row_off: [4] bool;         // the board's rows switched off (DEV_ROWS), in memory for the room's life
@@ -97,7 +101,16 @@ dv_pid :: (key: string, out: [] u8) -> int {
   n := dv_put(out, 0, "p-");
   return dv_hex(out, n, mac[..], 16);
 }
-// Its name, two words from the id.
+// Its name: its own (POST /api/playtest/player/name), else two words from the id.
+dv_name_of :: (v: [] RmServer, pid: string, out: [] u8) -> int {
+  i := dv_named_at(v, pid);
+  if i >= 0 { return dv_put(out, 0, cast(string) v[0].dev.named[i][0..<v[0].dev.named_n[i]]); }
+  return dv_name(pid, out);
+}
+dv_named_at :: (v: [] RmServer, pid: string) -> int {
+  for i: 0..<v[0].dev.named_count { if cast(string) v[0].dev.named_pid[i][0..<v[0].dev.named_pid_n[i]] == pid { return i; } }
+  return -1;
+}
 dv_name :: (pid: string, out: [] u8) -> int {
   h := 0;
   for c: pid { h = (h * 31 + cast(int) c) % 1000003; }
@@ -147,7 +160,7 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
     if key.count == 0 { return dv_answer(v, "401", "{\"error\":\"a player key\"}"); }
     pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]);
     pid := cast(string) pb[0..<pn];
-    nb: [32] u8; nn := dv_name(pid, nb[..]);
+    nb: [32] u8; nn := dv_name_of(v, pid, nb[..]);
     name := cast(string) nb[0..<nn];
     // HP for 10 minutes and the XP, from the room's own vitals (the API's verse.room_vitals)
     hp := -1; xp := 0; wanted := 0;
@@ -170,6 +183,7 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
     n = dv_put(b[..], n, "\",\"expires\":"); n = rv_int(b[..], n, expires); n = dv_put(b[..], n, "}");
     return dv_answer(v, "200", cast(string) b[0..<n]);
   }
+  if dv_path(req, "POST", "/api/playtest/player/name") { return dv_set_name(v, req); }
   if dv_path(req, "POST", "/api/playtest/room-state") { return dv_answer(v, "200", "{\"ok\":true}"); }
   // who is viewing: the realm's admin, or nobody logged in (a 200 with nothing, as the API's)
   if dv_path(req, "GET", "/api/auth/viewer") { return dv_answer(v, "200", ifx v[0].dev.admin then "A|1\n" else ""); }
@@ -179,6 +193,55 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
   if dv_path(req, "GET", "/api/playtest/realms/everglade") || dv_path(req, "POST", "/api/playtest/realms/everglade") { return dv_realm(v, req); }
   if dv_path(req, "GET", "/api/") || dv_path(req, "POST", "/api/") { return dv_answer(v, "404", "{\"error\":\"not in the local API\"}"); }
   return -1;
+}
+
+// POST /api/playtest/player/name {name}: as verse.player_set_name (migrations/0116): the key's player,
+// the name trimmed, "" back to the made one, a shape the filter refuses 400, else {name, account}.
+dv_set_name :: (v: [] RmServer, req: string) -> int {
+  key := dv_header(req, "x-verse-player");
+  if key.count == 0 { return dv_answer(v, "403", "{\"error\":\"unknown player key\"}"); }
+  pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]); pid := cast(string) pb[0..<pn];
+  body := req; for i: 0..<req.count - 3 { if req[i] == '\r' && req[i + 1] == '\n' && req[i + 2] == '\r' && req[i + 3] == '\n' { body = req[i + 4..<req.count]; break; } }
+  if net_field_dev(body, "name").count == 0 && !dv_has(body, "\"name\"") { return dv_answer(v, "400", "{\"error\":\"not json\"}"); }
+  want := net_field_dev(body, "name");
+  a := 0; z := want.count; while a < z && want[a] == ' ' { a += 1; } while z > a && want[z - 1] == ' ' { z -= 1; } want = want[a..<z];
+  i := dv_named_at(v, pid);
+  if want.count == 0 {
+    if i >= 0 { last := v[0].dev.named_count - 1; v[0].dev.named_pid[i] = v[0].dev.named_pid[last]; v[0].dev.named_pid_n[i] = v[0].dev.named_pid_n[last]; v[0].dev.named[i] = v[0].dev.named[last]; v[0].dev.named_n[i] = v[0].dev.named_n[last]; v[0].dev.named_count = last; }
+  } else {
+    if pn_why(want) != PN_OK { return dv_answer(v, "400", "{\"error\":\"pick another name: 3 to 20 letters, digits, spaces, hyphens\"}"); }
+    if i < 0 { if v[0].dev.named_count >= DEV_NAMED { return dv_answer(v, "503", "{\"error\":\"no name\"}"); } i = v[0].dev.named_count; v[0].dev.named_count += 1; }
+    v[0].dev.named_pid_n[i] = dv_put(v[0].dev.named_pid[i][..], 0, pid);
+    v[0].dev.named_n[i] = dv_put(v[0].dev.named[i][..], 0, want);
+  }
+  nb: [32] u8; nn := dv_name_of(v, pid, nb[..]);
+  b: [96] u8;
+  n := dv_put(b[..], 0, "{\"name\":\""); n = dv_put(b[..], n, cast(string) nb[0..<nn]); n = dv_put(b[..], n, "\",\"account\":false}");
+  return dv_answer(v, "200", cast(string) b[0..<n]);
+}
+dv_has :: (t: string, part: string) -> bool { if part.count > t.count { return false; } for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return true; } } return false; }
+#test "dev: a guest names itself, its next ticket carries the name, and a name of the wrong shape is refused" {
+  v: [1] RmServer;
+  rm_init(v[..]); rm_clock(v[..], 100, 1800000000000); rm_dev_start(v[..]);
+  key := "dev-key-for-the-name-check-0001";
+  rb: [256] u8;
+  m := dv_put(rb[..], 0, "POST /api/playtest/player/name HTTP/1.1\r\nX-Verse-Player: "); m = dv_put(rb[..], m, key);
+  bad := dv_put(rb[..], m, "\r\n\r\n{\"name\":\"http x\"}");
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) rb[0..<bad])][0..<4] == "400\n";
+  ok := dv_put(rb[..], m, "\r\n\r\n{\"name\":\" Crowd Alpha \"}");
+  a := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) rb[0..<ok])];
+  #assert a[0..<4] == "200\n" && net_field_dev(a, "name") == "Crowd Alpha";
+  tb: [256] u8;
+  t := dv_put(tb[..], 0, "POST /api/playtest/room-ticket/pair-e2-n-1 HTTP/1.1\r\nX-Verse-Player: "); t = dv_put(tb[..], t, key); t = dv_put(tb[..], t, "\r\n\r\n{}");
+  ans := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) tb[0..<t])];
+  #assert ans[0..<4] == "200\n" && net_field_dev(ans, "name") == "Crowd Alpha";
+  tk := tk_check(DEV_KEY, net_field_dev(ans, "ticket"), "pair-e2-n-1", v[0].wall_ms);
+  #assert tk.ok && cast(string) tk.name[0..<tk.name_n] == "Crowd Alpha";
+  // "" goes back to the made name
+  clear := dv_put(rb[..], m, "\r\n\r\n{\"name\":\"\"}");
+  c := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) rb[0..<clear])];
+  #assert c[0..<4] == "200\n" && net_field_dev(c, "name") != "Crowd Alpha" && net_field_dev(c, "name").count > 0 && v[0].dev.named_count == 0;
+  #assert cast(string) v[0].dev.out[0..<rm_dev_api(v[..], "POST /api/playtest/player/name HTTP/1.1\r\n\r\n{\"name\":\"Ash\"}")][0..<4] == "403\n";
 }
 
 // ---- the realm's edit layer (verse/edit/edit.coax), as the API's verse.edit_spec, edit_switch and edit_settings
