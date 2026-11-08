@@ -103,3 +103,14 @@ once, wakes natural sleep and commits its actual timestamp without granting a
 turn or Reaction. The journal now lives on the creature. Source-specific loss
 and nutrition producers, derived-stat consequences, world clock/activity
 synchronization, controls and rejoin persistence remain required. [Completion evidence](../verification/srd-long-rest-completion-2026-11-08/README.md).
+
+## Frame clock and microsecond boundaries
+
+`rest-clock.coax` now advances an owned microsecond timeline from actual battle
+ticks, retaining fractional carry and refusing malformed time/overflow before
+ordinary tick effects. The journal supports explicit seconds or microseconds;
+its unit cannot change under completed history. Native execution runs all
+1,843,200 frames of a rest starting between seconds, then verifies exact
+completion and sixteen-hour readmission. World admission/mode transitions and
+automatic journal synchronization are still next; legacy f32 assignments do
+not migrate this timeline. [Clock evidence](../verification/srd-rest-clock-2026-11-08/README.md).

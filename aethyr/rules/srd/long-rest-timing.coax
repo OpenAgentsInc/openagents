@@ -1,4 +1,4 @@
-// SRD 5.2.1 p185. Integer seconds at the policy boundary; world adapters must
+// SRD 5.2.1 p185. Integer seconds or microseconds; world adapters must
 // retain actual activity ownership before supplying these accumulated totals.
 #authority;
 
@@ -22,12 +22,15 @@
   #assert !rs_long_rest_ready(28800,21600,7200,2147483647);
   #assert !rs_long_rest_ready(28800,2147483647,2147483647,0);
 }
+rs_long_rest_rate_valid :: (rate:int)->bool #effects(all) { return rate==1 || rate==1000000; }
 rs_long_rest_ready :: (elapsed:int,sleep:int,light:int,interruptions:int)->bool #effects(all) {
-  if elapsed<28800 || sleep<21600 || light<0 || light>7200 || interruptions<0 { return false; }
-  // Subtraction/division avoid overflowing either accumulated sums or the
-  // additional-hour requirement for malformed large interruption counts.
+  return rs_long_rest_ready_rate(elapsed,sleep,light,interruptions,1);
+}
+rs_long_rest_ready_rate :: (elapsed:int,sleep:int,light:int,interruptions:int,rate:int)->bool #effects(all) {
+  if !rs_long_rest_rate_valid(rate) { return false; }
+  if elapsed<28800*rate || sleep<21600*rate || light<0 || light>7200*rate || interruptions<0 { return false; }
   if light>elapsed-sleep { return false; }
-  return interruptions<=(elapsed-28800)/3600;
+  return interruptions<=(elapsed-28800*rate)/(3600*rate);
 }
 
 #test "new Long Rest starts sixteen hours after actual completion with positive HP" {
@@ -44,8 +47,28 @@ rs_long_rest_ready :: (elapsed:int,sleep:int,light:int,interruptions:int)->bool 
   #assert !rs_long_rest_start_allowed(1,2147483647,true,2147426048);
 }
 rs_long_rest_start_allowed :: (hp:int,now:int,completed:bool,finished:int)->bool #effects(all) {
-  if hp<1 || now<0 { return false; }
+  return rs_long_rest_start_rate(hp,now,completed,finished,1);
+}
+rs_long_rest_start_rate :: (hp:int,now:int,completed:bool,finished:int,rate:int)->bool #effects(all) {
+  if !rs_long_rest_rate_valid(rate) || hp<1 || now<0 { return false; }
   if !completed { return true; }
   if finished<0 { return false; }
-  return now-finished>=57600;
+  return now-finished>=57600*rate;
+}
+
+#test "microsecond timing preserves all source boundaries without rounding a fractional start" {
+  r:=1000000; start:=15625;
+  #assert rs_long_rest_ready_rate(28800*r,21600*r,7200*r,0,r);
+  #assert !rs_long_rest_ready_rate(28800*r-1,21600*r,7200*r-1,0,r);
+  #assert !rs_long_rest_ready_rate(28800*r,21600*r-1,7200*r,0,r);
+  #assert !rs_long_rest_ready_rate(28800*r+1,21600*r,7200*r+1,0,r);
+  #assert rs_long_rest_ready_rate(32400*r,25200*r,7200*r,1,r);
+  #assert !rs_long_rest_ready_rate(32400*r-1,25200*r,7200*r-1,1,r);
+  #assert rs_long_rest_start_rate(1,start+57600*r,true,start,r);
+  #assert !rs_long_rest_start_rate(1,start+57600*r-1,true,start,r);
+  for bad:[5]int.[-1,0,2,999999,1000001] {
+    #assert !rs_long_rest_rate_valid(bad);
+    #assert !rs_long_rest_ready_rate(28800000000,28800000000,0,0,bad);
+    #assert !rs_long_rest_start_rate(1,0,false,0,bad);
+  }
 }

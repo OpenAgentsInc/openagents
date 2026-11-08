@@ -1,0 +1,76 @@
+// A rest timeline measured in microseconds. Fractional carry retains frame
+// time below one microsecond; the exposed integer clock is the admitted
+// simulation quantum. It is independent of f32 spell/display deadlines.
+#authority;
+RsRestClock :: struct { ticks:int; fraction:f64; }
+
+#test "rest clock retains exact fixed frames and fractional microsecond carry" {
+  c:[1]RsRestClock;
+  for frame:0..<64 { #assert rs_rest_clock_step(c[..],1.0/64); }
+  #assert c[0].ticks==1000000 && c[0].fraction==0;
+  #assert rs_rest_clock_step(c[..],0) && c[0].ticks==1000000;
+  c[0]=RsRestClock.{}; c[0].fraction=0.5;
+  #assert rs_rest_clock_step(c[..],0.0000005);
+  #assert c[0].ticks==1 && c[0].fraction==0;
+  c[0].fraction=0.5;
+  #assert rs_rest_clock_step(c[..],1.0/1048576);
+  #assert c[0].ticks==2 && c[0].fraction==0.45367431640625;
+}
+
+#test "rest clock refuses malformed time and exact overflow before mutation" {
+  zero:f64=0;
+  for bad:[4]f64.[-1,zero/zero,1/zero,1e308] {
+    c:[1]RsRestClock; c[0].ticks=12; c[0].fraction=0.5;
+    #assert !rs_rest_clock_step(c[..],bad) && c[0].ticks==12 && c[0].fraction==0.5;
+  }
+  c:[1]RsRestClock;
+  #assert !rs_rest_clock_step(c[..],9223372036854775808.0/1000000);
+  c[0].ticks=9223372036854760182;
+  #assert rs_rest_clock_step(c[..],1.0/64) && c[0].ticks==9223372036854775807;
+  #assert !rs_rest_clock_step(c[..],1.0/64) && c[0].ticks==9223372036854775807;
+  for bad:[4]f64.[-0.5,1,zero/zero,1/zero] {
+    c[0].ticks=0; c[0].fraction=bad;
+    #assert !rs_rest_clock_step(c[..],0);
+  }
+  c[0].fraction=0; c[0].ticks = -1;
+  #assert !rs_rest_clock_step(c[..],1);
+}
+
+#test "actual battle ticks advance and reset the rest clock and refuse poisoned deltas atomically" {
+  b:[1]RsBattle; b[0].who = -1;
+  for frame:0..<64 { rs_tick(b[..],1.0/64); }
+  #assert b[0].rest_clock.ticks==1000000 && b[0].rest_clock.fraction==0 && b[0].clock==1;
+  #assert rs_tick_admit(b[..],0) && b[0].rest_clock.ticks==1000000;
+  zero:f32=0;
+  for bad:[3]f32.[-1,zero/zero,1/zero] {
+    #assert !rs_tick_admit(b[..],bad) && b[0].rest_clock.ticks==1000000;
+    rs_tick(b[..],bad);
+    #assert b[0].clock==1 && b[0].rest_clock.ticks==1000000;
+  }
+  b[0].rest_clock.fraction=1;
+  #assert !rs_tick_admit(b[..],1);
+  b[0].rest_clock.fraction=0; b[0].clock = -1;
+  #assert !rs_tick_admit(b[..],1);
+  b[0].clock=zero/zero; #assert !rs_tick_admit(b[..],1);
+  rs_reset(b[..]);
+  #assert b[0].clock==0 && b[0].rest_clock.ticks==0 && b[0].rest_clock.fraction==0;
+}
+
+rs_rest_clock_step :: (c:[]RsRestClock,dt:f64)->bool #effects(all) {
+  if c[0].ticks<0 || !(c[0].fraction>=0 && c[0].fraction<1) || !(dt>=0 && dt-dt==0) { return false; }
+  scaled:=dt*1000000;
+  // f64(MAX_INT) rounds to 2^63. Refuse that boundary before conversion.
+  if scaled>=9223372036854775808.0 { return false; }
+  whole:=int(scaled);
+  fraction:=scaled-f64(whole)+c[0].fraction;
+  if fraction>=1 { whole+=1; fraction-=1; }
+  if whole>9223372036854775807-c[0].ticks { return false; }
+  c[0].ticks+=whole; c[0].fraction=fraction;
+  return true;
+}
+rs_tick_admit :: (b:[]RsBattle,dt:f32)->bool #effects(all) {
+  if !rs_rest_clock(b[0].clock) { return false; }
+  c:[1]RsRestClock; c[0]=b[0].rest_clock;
+  if !rs_rest_clock_step(c[..],f64(dt)) { return false; }
+  b[0].rest_clock=c[0]; return true;
+}

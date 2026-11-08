@@ -7096,3 +7096,11 @@ Exhaustion restrictions, wakes only natural sleep, closes old Short Rest choices
 and commits the actual completion timestamp. It grants no turn/Reaction budget.
 World causal scheduling, source loss/nutrition producers and persistence remain
 required. See `docs/verification/srd-long-rest-completion-2026-11-08/README.md`.
+
+Admitted battle ticks advance a private integer-microsecond rest clock with
+fractional carry. Invalid time/metadata or overflow refuse before ordinary tick
+effects; rs_reset resets its ownership. The journal retains its explicit second
+or microsecond unit across completion history and cannot reinterpret that
+history by changing units. Old f32 clock assignments do not migrate the rest
+timeline. Actor synchronization, causal event hooks, world controls and rejoin
+binding remain required. See `docs/verification/srd-rest-clock-2026-11-08/README.md`.

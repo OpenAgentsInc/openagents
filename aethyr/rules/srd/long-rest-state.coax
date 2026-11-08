@@ -1,9 +1,10 @@
-// Retained, integer-second activity journal. The owner reports actual modes,
+// Retained, integer activity journal (seconds or microseconds). The owner reports actual modes,
 // synchronizes before causal events, consumes each boundary, and applies
 // benefits before acknowledging completion. No clock passage starts sleep.
 #load "long-rest-timing.coax";
 #authority;
 RsLongRest :: struct {
+  rate:int = 1; // ticks per second, fixed while completion history is retained
   phase:int; // 0 idle, 1 active, 2 interrupted, 3 benefits pending
   mode:int; // 1 sleep, 2 light activity, 3 physical exertion
   stamp:int; elapsed:int; sleep:int; light:int; exertion:int;
@@ -155,11 +156,40 @@ RsLongRestBoundary :: struct { accepted:bool; short_rest:bool; ready:bool; light
   #assert s[0].interruptions==9223372036854775807;
 }
 
+#test "fractional-second starts and interruptions retain exact microsecond completion history" {
+  s:[1]RsLongRest; rate:=1000000; start:=15625;
+  #assert rs_long_rest_begin_rate(s[..],1,start,1,rate);
+  #assert s[0].rate==rate;
+  #assert !rs_long_rest_advance(s[..],start+3600*rate-1).short_rest;
+  #assert !rs_long_rest_interrupt(s[..]).short_rest;
+  #assert rs_long_rest_resume(s[..],start+3600*rate,1);
+  #assert rs_long_rest_advance(s[..],start+7200*rate).accepted;
+  #assert rs_long_rest_mode(s[..],3) && s[0].fallback;
+  #assert !rs_long_rest_advance(s[..],start+10800*rate-1).short_rest;
+  #assert rs_long_rest_advance(s[..],start+10800*rate).short_rest;
+  #assert rs_long_rest_resume(s[..],start+10800*rate,2);
+  #assert rs_long_rest_advance(s[..],start+18000*rate).light_limit;
+  #assert rs_long_rest_mode(s[..],1);
+  #assert !rs_long_rest_advance(s[..],start+36000*rate).ready;
+  #assert rs_long_rest_advance(s[..],start+36000*rate+1).ready;
+  #assert s[0].stamp==start+36000*rate+1 && s[0].rate==rate;
+  #assert rs_long_rest_commit(s[..]);
+  finish:=s[0].finished;
+  #assert !rs_long_rest_begin(s[..],1,finish+57600*rate,1);
+  #assert !rs_long_rest_begin_rate(s[..],1,finish+57600*rate-1,1,rate);
+  #assert rs_long_rest_begin_rate(s[..],1,finish+57600*rate,1,rate);
+  #assert s[0].rate==rate && s[0].completed && s[0].finished==finish;
+}
+
 rs_long_rest_begin :: (s:[]RsLongRest,hp:int,now:int,mode:int)->bool #effects(all) {
+  return rs_long_rest_begin_rate(s,hp,now,mode,1);
+}
+rs_long_rest_begin_rate :: (s:[]RsLongRest,hp:int,now:int,mode:int,rate:int)->bool #effects(all) {
   if s[0].phase!=0 || mode<1 || mode>3 { return false; }
-  if !rs_long_rest_start_allowed(hp,now,s[0].completed,s[0].finished) { return false; }
+  if s[0].completed && s[0].rate!=rate { return false; }
+  if !rs_long_rest_start_rate(hp,now,s[0].completed,s[0].finished,rate) { return false; }
   old:=s[0]; s[0]=RsLongRest.{};
-  s[0].completed=old.completed; s[0].finished=old.finished;
+  s[0].completed=old.completed; s[0].finished=old.finished; s[0].rate=rate;
   s[0].phase=1; s[0].stamp=now; s[0].mode=mode;
   return true;
 }
@@ -167,7 +197,7 @@ rs_long_rest_begin :: (s:[]RsLongRest,hp:int,now:int,mode:int)->bool #effects(al
 rs_long_rest_mode :: (s:[]RsLongRest,mode:int)->bool #effects(all) {
   if s[0].phase!=1 || mode<1 || mode>3 { return false; }
   if mode==3 && s[0].mode!=3 {
-    s[0].fallback=s[0].quiet>=3600; s[0].quiet=0;
+    s[0].fallback=s[0].quiet>=3600*s[0].rate; s[0].quiet=0;
   }
   if mode!=3 { s[0].fallback=false; }
   s[0].mode=mode; return true;
@@ -175,7 +205,7 @@ rs_long_rest_mode :: (s:[]RsLongRest,mode:int)->bool #effects(all) {
 rs_long_rest_interrupt :: (s:[]RsLongRest)->RsLongRestBoundary #effects(all) {
   r:RsLongRestBoundary;
   if s[0].phase!=1 || s[0].interruptions==9223372036854775807 { return r; }
-  r.accepted=true; r.short_rest=s[0].quiet>=3600 || s[0].fallback;
+  r.accepted=true; r.short_rest=s[0].quiet>=3600*s[0].rate || s[0].fallback;
   s[0].phase=2; s[0].interruptions+=1;
   return r;
 }
@@ -199,7 +229,7 @@ rs_long_rest_offset_ready :: (s:RsLongRest,offset:u64)->bool #effects(all) {
   elapsed:=u64(s.elapsed)+offset;
   sleep:=u64(s.sleep);
   if s.mode==1 { sleep+=offset; }
-  return elapsed>=28800 && sleep>=21600 && u64(s.interruptions)<=(elapsed-28800)/3600;
+  return elapsed>=u64(28800*s.rate) && sleep>=u64(21600*s.rate) && u64(s.interruptions)<=(elapsed-u64(28800*s.rate))/u64(3600*s.rate);
 }
 rs_long_rest_advance :: (s:[]RsLongRest,now:int)->RsLongRestBoundary #effects(all) {
   r:RsLongRestBoundary;
@@ -208,18 +238,18 @@ rs_long_rest_advance :: (s:[]RsLongRest,now:int)->RsLongRestBoundary #effects(al
   delta:=now-s[0].stamp;
   interrupt:=false;
   if s[0].mode==3 {
-    left:=3600-s[0].exertion;
+    left:=3600*s[0].rate-s[0].exertion;
     if delta>=left { delta=left; interrupt=true; }
   }
   if s[0].mode==2 {
-    left:=7200-s[0].light;
+    left:=7200*s[0].rate-s[0].light;
     if delta>=left { delta=left; r.light_limit=true; }
   }
   trial:[1]RsLongRest; trial[0]=s[0]; rs_long_rest_credit(trial[..],delta);
-  if rs_long_rest_ready(trial[0].elapsed,trial[0].sleep,trial[0].light,trial[0].interruptions) {
+  if rs_long_rest_ready_rate(trial[0].elapsed,trial[0].sleep,trial[0].light,trial[0].interruptions,trial[0].rate) {
     // Readiness is monotonic within this segment: light was bounded above,
-    // and all accounted counters only grow. Find the first second, without
-    // multiplying interruption counts or walking each second of a late poll.
+    // and all accounted counters only grow. Find the first tick, without
+    // multiplying interruption counts or walking each tick of a late poll.
     // Greedy binary lifting visits each of the 63 signed-positive bits once.
     // lo always remains an interval length that is not yet ready.
     lo:=0; step:=4611686018427387904;
@@ -231,7 +261,7 @@ rs_long_rest_advance :: (s:[]RsLongRest,now:int)->RsLongRestBoundary #effects(al
     lo+=1;
     rs_long_rest_credit(s,lo); s[0].phase=3; r.ready=true;
     // Completion wins before a later light-limit event.
-    r.light_limit=s[0].mode==2 && s[0].light==7200;
+    r.light_limit=s[0].mode==2 && s[0].light==7200*s[0].rate;
     return r;
   }
   rs_long_rest_credit(s,delta);

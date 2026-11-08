@@ -1,0 +1,26 @@
+#load "long-rest-resources-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1; c[0].exhaustion=1; c[0].cond=RS_EXHAUSTION;
+  // Start between whole seconds, then execute every real 64 Hz battle tick.
+  rs_tick(b[..],1.0/64);
+  if b[0].rest_clock.ticks!=15625 || !rs_sleep_begin(b[..],0) { return 1; }
+  journal:[1]RsLongRest;
+  if !rs_long_rest_begin_rate(journal[..],1,b[0].rest_clock.ticks,1,1000000) { return 2; }
+  for frame:0..<1843199 { rs_tick(b[..],1.0/64); }
+  if rs_long_rest_advance(journal[..],b[0].rest_clock.ticks).ready { return 3; }
+  rs_tick(b[..],1.0/64);
+  if !rs_long_rest_advance(journal[..],b[0].rest_clock.ticks).ready { return 4; }
+  c[0].long_rest=journal[0];
+  if !rs_long_rest_apply(b[..],0) || c[0].long_rest.finished!=28800015625 { return 5; }
+  if c[0].hp!=c[0].hp_max || c[0].exhaustion!=0 || rs_sleeping(c[0]) { return 6; }
+  journal[0]=c[0].long_rest;
+  rs_tick(b[..],57600.0-1.0/64);
+  if rs_long_rest_begin_rate(journal[..],1,b[0].rest_clock.ticks,1,1000000) { return 7; }
+  rs_tick(b[..],1.0/64);
+  if !rs_long_rest_begin_rate(journal[..],1,b[0].rest_clock.ticks,1,1000000) { return 8; }
+  clock:[1]RsRestClock; clock[0].ticks=9223372036854775807; clock[0].fraction=0.5;
+  if rs_rest_clock_step(clock[..],0.0000005) || clock[0].ticks!=9223372036854775807 || clock[0].fraction!=0.5 { return 9; }
+  tool_errln("PASS REST-CLOCK (1843200 real rest frames, fractional start and 16-hour readmission)"); return 0;
+}
