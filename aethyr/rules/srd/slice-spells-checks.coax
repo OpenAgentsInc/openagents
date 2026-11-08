@@ -1,4 +1,4 @@
-// Inflict Wounds, Acid Splash, Magic Missile and Mass Healing Word (#13043):
+// Inflict Wounds, Acid Splash, Magic Missile, Mass Healing Word and Shatter (#13043):
 // records against the pinned source, and their effects through the shared
 // battle with fixed dice (every die lands on half its faces: d4 2, d6 3,
 // d10 5, d20 10), so each expected number is read from the SRD text.
@@ -7,14 +7,19 @@
 #load "catalog.coax";
 #load "executable-source-ids.coax";
 
-sl_learn :: (b: [] RsBattle, i: int, sp: int) { keys := [1] int.[RS_EXEC_SOURCE[sp]]; #assert rs_set_spells(b[0].c[i..<i+1],keys[..]); }
+sl_learn :: (b: [] RsBattle, i: int, sp: int) {
+  keys := [1] int.[RS_EXEC_SOURCE[sp]];
+  // A Wizard prepares only from its spellbook: copy the spell in first, as a Wizard would.
+  if b[0].c[i].klass == RS_WIZARD { _ := rs_spellbook_add(b[0].c[i..<i+1],keys[0]); }
+  #assert rs_set_spells(b[0].c[i..<i+1],keys[..]);
+}
 sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   b[0].c[j].hp = 200; b[0].c[j].hp_max = 200; b[0].c[j].score[RS_CON] = con; b[0].c[j].score[RS_DEX] = dex;
   b[0].c[j].shield_spell = false;   // the preset Sorcerer knows Shield; a plain target here does not
 }
 
-#test "the four slice records carry their pinned source level, timing, range, components, page and classes" #steps 100000000 {
-  for sp: [4] int.[SP_INFLICT_WOUNDS,SP_ACID_SPLASH,SP_MAGIC_MISSILE,SP_MASS_HEALING_WORD] {
+#test "the slice records carry their pinned source level, timing, range, components, page and classes" #steps 100000000 {
+  for sp: [5] int.[SP_INFLICT_WOUNDS,SP_ACID_SPLASH,SP_MAGIC_MISSILE,SP_MASS_HEALING_WORD,SP_SHATTER] {
     s := rs_spell(sp); src := srd_source_lookup(s.id);
     #assert s.srd && s.part_of < 0 && s.step_n > 0 && rs_executable_spell(sp);
     #assert s.level == src.level && s.page == src.page && s.components == src.components;
@@ -196,4 +201,36 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   // Removing the profile (a reset) restores strict areas.
   b: [1] RsBattle; #assert rs_set_areas(b[..],RS_SPARE_CASTER_AREAS); rs_reset(b[..]);
   #assert b[0].areas.kind == RS_AREA_STRICT;
+}
+
+#test "Shatter: a Con save for half of 3d8 Thunder in a 10-foot Sphere, one more d8 a slot level; a Construct saves with Disadvantage" {
+  for slot: [2] int.[2,3] { for strong: 0..<2 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
+    a := rs_add(b[..],rs_wizard("Wizard",0,5),1,1);
+    t := rs_add(b[..],rs_sorcerer("Centre",1,3),8,5); u := rs_add(b[..],rs_sorcerer("Edge",1,3),10,5);
+    far := rs_add(b[..],rs_sorcerer("Outside",1,3),12,5);
+    for j: [3] int.[t,u,far] { sl_sturdy(b[..],j,ifx strong == 1 then 30 else 1,10); }
+    sl_learn(b[..],a,SP_SHATTER); rs_start_turn(b[..],a);
+    #assert rs_cast(b[..],a,SP_SHATTER,slot,8,5,-1);
+    full := 4 * (3 + slot - 2);
+    dealt := ifx strong == 1 then full / 2 else full;
+    #assert 200 - b[0].c[t].hp == dealt && 200 - b[0].c[u].hp == dealt && b[0].c[far].hp == 200;
+  } }
+  // The Construct rider is a Disadvantage source: it joins other sources before they cancel.
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  t := rs_add(b[..],rs_sorcerer("Thing",1,3),3,3);
+  #assert rs_save_edge_with(b[..],t,RS_CON,rs_save_rider_downs(RS_SAVE_RIDER_CONSTRUCT_DIS,b[0].c[t].construct)) == 0;
+  b[0].c[t].construct = true;
+  #assert rs_save_edge_with(b[..],t,RS_CON,rs_save_rider_downs(RS_SAVE_RIDER_CONSTRUCT_DIS,b[0].c[t].construct)) == -1;
+  // Advantage from Rage on a Strength save cancels it rather than being overridden.
+  b[0].c[t].raging = true;
+  #assert rs_save_edge_with(b[..],t,RS_STR,1) == 0 && rs_save_edge_with(b[..],t,RS_STR,0) == 1;
+  // Fixed dice show the second d20 is taken at Disadvantage: the save still rolls once a die.
+  c: [1] RsBattle; c[0].w = 30; c[0].h = 12;
+  a := rs_add(c[..],rs_wizard("Wizard",0,5),1,1); g := rs_add(c[..],rs_sorcerer("Golem",1,3),8,5);
+  sl_sturdy(c[..],g,10,10); c[0].c[g].construct = true;
+  sl_learn(c[..],a,SP_SHATTER); rs_start_turn(c[..],a);
+  before := c[0].dice[0].rolled;
+  #assert rs_cast(c[..],a,SP_SHATTER,2,8,5,-1);
+  #assert c[0].dice[0].rolled - before == 2 + 3;   // two d20s at Disadvantage, then 3d8
 }

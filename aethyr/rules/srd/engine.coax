@@ -250,6 +250,7 @@ RsCreature :: struct {
   uses: [RS_USES] int; uses_max: [RS_USES] int; uses_back: [RS_USES] f32;
   free_spell: int;
   undead: bool;             // its creature type is Undead (Turn Undead, Divine Smite)
+  construct: bool;          // its creature type is Construct (Shatter's save Disadvantage)
   // Bard: the Bardic Inspiration die it gives, the one it holds (0 none), the College of Lore's Cutting Words
   insp_die: int; inspired: int; cutting: bool;
   // Cleric: Life Domain's Turn Undead (Channel Divinity), Preserve Life and Disciple of Life

@@ -2,7 +2,7 @@
 // their parent's ID; house spells have no canonical source entry. Update this
 // registry when assigning an executable ID, then regenerate the compact index.
 // spell-access-source-checks.coax checks every row against the actual records.
-RS_EXECUTABLE_SOURCE_IDS :: [82] string.[
+RS_EXECUTABLE_SOURCE_IDS :: [83] string.[
   "produce-flame",
   "produce-flame",
   "starry-wisp",
@@ -84,5 +84,6 @@ RS_EXECUTABLE_SOURCE_IDS :: [82] string.[
   "inflict-wounds",
   "acid-splash",
   "magic-missile",
-  "mass-healing-word"
+  "mass-healing-word",
+  "shatter"
 ];

@@ -168,3 +168,13 @@ co_field :: (b: [] RsBattle) {
   b[0].c[1].immune = 0; b[0].c[1].resist = 0; b[0].c[1].vulnerable = 0;
   b[0].who = 0; b[0].dice[0].rolled = 0;
 }
+
+#test "Exhaustion lowers a saving throw's total by 2 a level (SRD 5.2.1 Rules Glossary, Exhaustion), with and without a spell rider" {
+  for level: 0..<4 { for downs: 0..<2 {
+    b: [1] RsBattle; b[0].w = 10; b[0].h = 4; b[0].dice[0].fixed = true;
+    t := rs_add(b[..],rs_sorcerer("Tired",1,3),2,2); b[0].c[t].exhaustion = level;
+    base := rs_saving_throw_with(b[..],t,RS_CON,30,downs);
+    // fixed dice: each d20 lands on 10, so the rider changes how many dice roll, not the total
+    #assert base.total == 10 + rs_save_in(b[..],t,RS_CON) - 2 * level && !base.passed;
+  } }
+}

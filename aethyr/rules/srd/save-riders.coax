@@ -1,0 +1,18 @@
+// A spell's own saving-throw rider, carried in its SAVE step's `c` field.
+// Shatter (SRD 5.2.1 p.161): "A Construct has Disadvantage on the save." The
+// rider adds one Disadvantage source; it joins the target's other Advantage
+// and Disadvantage sources before they cancel (D20 Tests), so it never simply
+// overrides an Advantage.
+#authority;
+
+RS_SAVE_RIDER_NONE :: 0;
+RS_SAVE_RIDER_CONSTRUCT_DIS :: 1;   // a Construct has Disadvantage on this save
+
+#test "only the Construct rider on a Construct adds a Disadvantage source" {
+  for rider: -1..<4 { for construct: 0..<2 {
+    #assert rs_save_rider_downs(rider,construct == 1) == (ifx rider == RS_SAVE_RIDER_CONSTRUCT_DIS && construct == 1 then 1 else 0);
+  } }
+}
+rs_save_rider_downs :: (rider: int, construct: bool) -> int #effects(all) {
+  return ifx rider == RS_SAVE_RIDER_CONSTRUCT_DIS && construct then 1 else 0;
+}

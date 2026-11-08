@@ -133,9 +133,8 @@ an executable effect program mapped to their canonical entry (`--list` prints
 one row per spell; `--max-level N` widens it). Baseline when the report landed: 43 of
 the 183 distinct spells at levels 0-3 had an executor. After the
 [slice spells](../verification/srd-slice-spells-2026-11-08/README.md) (Inflict
-Wounds, Acid Splash, Magic Missile, Mass Healing Word): 47 of 183, 136 source
-text only (Wizard 21/109, Sorcerer 20/83, Druid 17/63, Cleric 13/58, Bard 12/72,
-Warlock 9/40, Ranger 7/40, Paladin 5/30). An executor is not qualification:
+Wounds, Acid Splash, Magic Missile, Mass Healing Word) and [Shatter](../verification/srd-shatter-2026-11-08/README.md):
+48 of 183, 135 source text only. An executor is not qualification:
 it does not show that every mechanical clause of the spell is implemented. These are executable regression predicates,
 not `#test` assertions that bugs should remain. The first command's ordinary
 checks guard working boundaries and free-capacity controls. Fixes change a

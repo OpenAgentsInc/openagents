@@ -825,8 +825,10 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
 }
 
 // Advantage or Disadvantage on j's saving throw of an ability.
-rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int {
-  ups := 0; downs := 0;
+rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int { return rs_save_edge_with(b,j,ability,0); }
+// `extra` more Disadvantage sources from the effect itself (a spell's save rider, save-riders.coax)
+rs_save_edge_with :: (b: [] RsBattle, j: int, ability: int, extra: int) -> int {
+  ups := 0; downs := extra;
   c := b[0].c[j];
   if ability == RS_DEX && rs_has(c, RS_RESTRAINED) { downs += 1; }
   if ability == RS_STR && rs_effect(c, EF_ENFEEBLED) { downs += 1; }
@@ -890,7 +892,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     } else if st.kind == RS_S_SAVE {
       ran_save = true;
       dc := rs_dc(b, i);
-      saving := rs_saving_throw(b,j,st.a,dc);
+      saving := rs_saving_throw_with(b,j,st.a,dc,rs_save_rider_downs(st.c,b[0].c[j].construct));
       fails := saving.automatic; total := saving.total; insp := saving.inspiration;
       saved = saving.passed;
       l: [1] RsLine;

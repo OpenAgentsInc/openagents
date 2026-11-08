@@ -36,7 +36,8 @@ SP_BURNING_HANDS :: 72; SP_LIGHTNING_BOLT :: 73;
 SP_BLESS :: 74; SP_BANE :: 75; SP_SHIELD_OF_FAITH :: 76; SP_COMMAND :: 77;
 // the levels 1-6 slice's (#13043): spells the closed step set already expresses
 SP_INFLICT_WOUNDS :: 78; SP_ACID_SPLASH :: 79; SP_MAGIC_MISSILE :: 80; SP_MASS_HEALING_WORD :: 81;
-RS_MORE_END :: 82;
+SP_SHATTER :: 82;
+RS_MORE_END :: 83;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -233,6 +234,12 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.components = "V"; s.page = 148; s.targets = 6; s.targets_optional = true;
     s.text = "Up to six creatures of your choice that you can see within range regain Hit Points equal to 2d4 plus your spellcasting ability modifier. Using a Higher-Level Spell Slot. The healing increases by 1d4 for each spell slot level above 3.";
     s.steps[0] = rs_step(RS_S_HEAL, 2, 4, 1, 1); s.step_n = 1;
+  } else if i == SP_SHATTER {
+    // Damage to unattended nonmagical objects in the area is the world's.
+    s = rs_more("shatter", "Shatter", 2, "Evocation", "Bard, Sorcerer, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_SPHERE, 10);
+    s.components = "V, S, M (a chip of mica)"; s.page = 161;
+    s.text = "A loud noise erupts from a point of your choice within range. Each creature in a 10-foot-radius Sphere centered there makes a Constitution saving throw, taking 3d8 Thunder damage on a failed save or half as much damage on a successful one. A Construct has Disadvantage on the save. A nonmagical object that isn't being worn or carried also takes the damage if it's in the spell's area. Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 2.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, RS_SAVE_RIDER_CONSTRUCT_DIS, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 3, 8, RS_THUNDER, 1); s.step_n = 2;
   } else if i == SP_BLESS {
     s = rs_more("bless", "Bless", 1, "Enchantment", "Cleric, Paladin", RS_T_ACTION, 30, "Concentration, up to 1 minute", 60, true, RS_A_NONE, 0);
     s.components = "V, S, M (a Holy Symbol worth 5+ GP)"; s.targets = 3; s.target_growth = 1; s.targets_optional = true;

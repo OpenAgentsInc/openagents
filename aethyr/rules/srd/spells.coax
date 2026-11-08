@@ -10,6 +10,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library aethyr/rules/srd/spells.coax
 #load "engine.coax";
+#load "save-riders.coax";   // a SAVE step's rider (its c field)
 // More records past the first RS_SPELLS: SRD spells a world needed (more.coax) and house rules,
 // marked srd: false (house.coax). rs_spell answers for both, not for the whole source catalog.
 #load "more.coax";

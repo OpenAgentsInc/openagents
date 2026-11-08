@@ -7146,3 +7146,12 @@ segment; exertion closes old choices, and earned fallback is granted once
 without automatic HP healing or renewed Reaction. Causal damage/casting/
 Initiative hooks and world activation/persistence remain required. Evidence:
 `docs/verification/srd-rest-scheduler-2026-11-08/README.md`.
+
+## A spell's save rider is one more Disadvantage source, never an override
+
+A SAVE step's `c` field names its rider (`aethyr/rules/srd/save-riders.coax`,
+`#authority`); Shatter's Construct rider adds one Disadvantage source that
+joins the target's other Advantage and Disadvantage sources before they cancel.
+`rs_saving_throw` and `rs_save_edge` keep their meaning as zero-rider wrappers.
+See `docs/verification/srd-shatter-2026-11-08/README.md`.
+
