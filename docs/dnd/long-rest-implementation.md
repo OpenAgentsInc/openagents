@@ -137,3 +137,16 @@ choices and cannot begin a new Short Rest. World controls have not enabled the
 mode yet. Ordered damage/casting/Initiative hooks and optional-choice producers
 are next, then actual world observations, controls and rejoin binding.
 [Scheduler evidence](../verification/srd-rest-scheduler-2026-11-08/README.md).
+
+## Accepted damage cause
+
+The production `rs_damage` path now interrupts synchronized Long Rest and wakes
+natural sleep before HP/protection snapshots, including damage absorbed by
+Temporary HP. Earned Short Rest banks precede the ensuing Reaction without
+renewing its budget. This producer declines unconfigured optional choices;
+queued choices and controller-owned simultaneous ordering remain required.
+Undead Fortitude now protects HP without erasing damage-taken triggers.
+Casting must interrupt after complete admission but before slot payment; adding
+it to the existing after-payment hook would incorrectly refill paid Pact slots.
+Initiative, non-damage death, real activity/control producers and rejoin binding
+remain next. [Damage evidence](../verification/srd-rest-damage-2026-11-08/README.md).

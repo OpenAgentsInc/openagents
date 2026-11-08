@@ -57,6 +57,8 @@
 #load "rest-clock.coax";
 #load "long-rest-owned.coax";
 #load "rest-scheduler.coax";
+#load "rest-damage.coax";
+#load "damage-protection.coax";
 #load "short-rest.coax";
 #load "rest-sleep.coax";
 #load "help.coax";
@@ -380,26 +382,13 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) {
 }
 // Damage, with dropping to 0 and the concentration save the SRD calls for.
 rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) {
-  hurt: [1] RsCreature; hurt[0] = b[0].c[j];
-  dealt := amount;
-  // Undead Fortitude (the Zombie, p. 343): damage that would reduce it to 0 Hit Points, unless Radiant
-  // or from a Critical Hit, calls for a Constitution save of DC 5 plus the damage; on a success it
-  // drops to 1 Hit Point instead
-  if hurt[0].fortitude && !hurt[0].dead && hurt[0].hp > 0 && amount >= hurt[0].hp + hurt[0].temp && kind != RS_RADIANT && !crit {
-    saving := rs_saving_throw(b,j,RS_CON,5+amount);
-    total := saving.total;
-    // The save can spend creature-local rescue resources; retain that state
-    // before applying HP loss through the local copy below.
-    hurt[0] = b[0].c[j];
-    l: [1] RsLine;
-    rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " Undead Fortitude: Con save "); rs_add_int(l[..], total);
-    rs_add_text(l[..], " vs DC "); rs_add_int(l[..], 5 + amount);
-    if saving.passed { dealt = hurt[0].hp + hurt[0].temp - 1; rs_add_text(l[..], ": it drops to 1 Hit Point"); } else { rs_add_text(l[..], ": failure"); }
-    rs_tell(b, RS_EV_SAVE, -1, by, j, total, 0, l[..]);
-  }
-  // a floor (RsCreature.floor): the damage stops there, its Temporary Hit Points first as ever
-  if hurt[0].floor > 0 && !hurt[0].dead { dealt = rs_max(rs_min(dealt, hurt[0].hp + hurt[0].temp - hurt[0].floor), 0); }
-  r := rs_hurt(hurt[..], dealt, crit);
+  rs_rest_damage_before(b,j,amount);
+  dealt:=rs_damage_floor(b[0].c[j],amount);
+  protected_hp:=rs_damage_protection(b,by,j,dealt,kind,crit);
+  // Saving throws may consume creature-local rescue resources. Snapshot only
+  // after the rest cause and protection save have committed that state.
+  hurt:[1]RsCreature; hurt[0]=b[0].c[j];
+  r:=rs_hurt_protected(hurt[..],dealt,crit,protected_hp);
   b[0].c[j] = hurt[0];
   // Turn Undead ends early on a creature that takes any damage
   if r.taken > 0 {

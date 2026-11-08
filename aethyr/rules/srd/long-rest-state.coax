@@ -202,10 +202,11 @@ rs_long_rest_mode :: (s:[]RsLongRest,mode:int)->bool #effects(all) {
   if mode!=3 { s[0].fallback=false; }
   s[0].mode=mode; return true;
 }
+rs_long_rest_short_eligible :: (s:RsLongRest)->bool #effects(all) { return s.quiet>=3600*s.rate || s.fallback; }
 rs_long_rest_interrupt :: (s:[]RsLongRest)->RsLongRestBoundary #effects(all) {
   r:RsLongRestBoundary;
   if s[0].phase!=1 || s[0].interruptions==9223372036854775807 { return r; }
-  r.accepted=true; r.short_rest=s[0].quiet>=3600*s[0].rate || s[0].fallback;
+  r.accepted=true; r.short_rest=rs_long_rest_short_eligible(s[0]);
   s[0].phase=2; s[0].interruptions+=1;
   return r;
 }

@@ -258,12 +258,7 @@ rs_rest_schedule_credit :: (b:[]RsBattle,cursor:int,through:int) #effects(all) {
 rs_rest_schedule_consume :: (b:[]RsBattle) #effects(all) {
   for i:0..<b[0].n {
     if b[0].c[i].long_rest.phase==3 { completed:=rs_long_rest_apply(b,i); }
-    if b[0].c[i].long_rest.short_due {
-      rs_rest_seed(b[0].c[i..<i+1]); rs_short_rest_resources(b[0].c[i..<i+1]);
-      rs_rage_end(b,i," (Short Rest)");
-      b[0].c[i].rest.phase=2; b[0].c[i].long_rest.short_due=false;
-      rs_say(b,RS_EV_END,i,i,0," gains a Short Rest after interruption");
-    }
+    rs_rest_short_grant(b,i);
   }
 }
 rs_rest_tick :: (b:[]RsBattle,dt:f32)->bool #effects(all) {

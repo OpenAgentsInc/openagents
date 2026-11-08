@@ -12,10 +12,24 @@
   #assert rs_has(c[0],RS_UNCONSCIOUS) && d[0].rolled == 1;
 }
 
+#test "admitted HP protection keeps full damage taken and concentration DC without inventing a drop" {
+  c:[1]RsCreature; c[0].hp=2; c[0].hp_max=20; c[0].temp=3; c[0].conc=0; c[0].rest.phase=1;
+  r:=rs_hurt_protected(c[..],30,false,1);
+  #assert c[0].hp==1 && c[0].temp==0 && r.taken==30 && r.conc_dc==15 && !r.dropped && !r.killed;
+  #assert !rs_has(c[0],RS_UNCONSCIOUS) && c[0].rest.phase==0;
+  #assert rs_hurt_protected(c[..],1,false,-1).taken==0 && c[0].hp==1;
+  #assert rs_hurt_protected(c[..],1,false,2).taken==0 && c[0].hp==1;
+}
+
 RsHurt :: struct { taken: int; dropped: bool; killed: bool; conc_dc: int; }
 rs_hurt :: (c: [] RsCreature, dealt: int, crit: bool) -> RsHurt #effects(all) {
+  return rs_hurt_protected(c,dealt,crit,0);
+}
+// The protection floor is admitted by the owning damage resolver. It changes
+// HP loss, not the amount taken or the Temporary Hit Points consumed.
+rs_hurt_protected :: (c:[]RsCreature,dealt:int,crit:bool,floor_hp:int)->RsHurt #effects(all) {
   r: RsHurt;
-  if c[0].dead || dealt <= 0 { return r; }
+  if c[0].dead || dealt <= 0 || floor_hp<0 || floor_hp>c[0].hp { return r; }
   r.taken = dealt;
   rs_rest_interrupt(c);
   // Taking damage still matters when temporary HP absorb it completely.
@@ -31,7 +45,7 @@ rs_hurt :: (c: [] RsCreature, dealt: int, crit: bool) -> RsHurt #effects(all) {
   }
   if remaining == 0 { return r; }
   left := remaining-c[0].hp;
-  c[0].hp = rs_max(c[0].hp-remaining,0);
+  c[0].hp = rs_max(c[0].hp-remaining,floor_hp);
   if c[0].hp == 0 {
     r.dropped = true;
     if left >= c[0].hp_max || c[0].klass == RS_MONSTER { c[0].dead = true; r.killed = true; }

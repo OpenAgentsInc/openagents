@@ -7155,3 +7155,16 @@ joins the target's other Advantage and Disadvantage sources before they cancel.
 `rs_saving_throw` and `rs_save_edge` keep their meaning as zero-rider wrappers.
 See `docs/verification/srd-shatter-2026-11-08/README.md`.
 
+## HP protection preserves damage taken and rest interruption
+
+Accepted battle damage interrupts a synchronized Long Rest before HP snapshots
+or protection saves, including Temporary HP absorption. Earned Short Rest banks
+are available to the damage Reaction without renewing its budget. Natural sleep
+wakes without erasing independent Unconscious ownership. Zero or entirely
+house-floor-prevented damage does not interrupt. Capacity exhaustion retires an
+unresumable rest instead of leaving it active. Optional recovery choices and
+same-time controller ordering remain separate required producers.
+Undead Fortitude protects remaining HP, not damage taken: full damage still
+consumes Temporary HP, ends Turn Undead and calls for concentration. Saving
+throw rescue expenditure is retained before the HP snapshot. Evidence:
+`docs/verification/srd-rest-damage-2026-11-08/README.md`.
