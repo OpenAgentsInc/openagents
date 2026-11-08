@@ -13,7 +13,7 @@
 
 The unlisted `/worlds/everglade-nights-experimental` route selects `nights.coax` and `nights-face.c`. It imports no `fivelab.coax`, `charactercreator.coax` or `fivelab-bodies.coax` product logic. The source shader imports engine math and lighting from `gpu/charactercreator.coax`; that shader source has no source-art payload dependency. The HUD uses native NWN bitmap font glyphs, panels, buttons and quickbar artwork from an owner-local atlas. There is no procedural stroke font or Quaternius UI art.
 
-The private pack is served at `/realms/everglade-nights-experimental/assets/nights.pack.gz` through an owner-local web root. The payload remains outside Git. The tracked route and catalog contract do not publish or reconstruct the original game distribution.
+The private pack is served at `/realms/everglade-nights-experimental/assets/nights.pack.gz` through an owner-local web root. The payload remains outside Git. The tracked route and catalog contract do not publish or reconstruct the original game distribution. The route's directory holds `DEV-ONLY`, so `coax/web/deploy.sh` never stages it: a release would otherwise need the private pack it names, which is not in the checkout.
 
 The tiny C face transports the scalar browser ABI. Coax owns pack metadata admission, appearance selection, movement, animation, camera, drawing and save bytes. It uses the shared fixed-step walk/run/jump controller and touch sticks. Scene coordinates and native frame positions are Y-up metres. Native actor geometry is local to its feet, facing -Z at record yaw zero. The picker keeps native forward toward its camera; exploration adds π to the rendered actor yaw to match the shared controller’s +Z-forward convention, without changing physics or source geometry.
 
