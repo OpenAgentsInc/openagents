@@ -17,12 +17,10 @@
   b[0].c[FT_HERO].cond |= RS_PRONE;
   b[0].clock = fb_seat_next(b[..],s[..]); fb_seat_step(b[..],s[..]);
   #assert rs_has(b[0].c[FT_HERO],RS_PRONE);
-  // The world's short beat has insufficient movement for half full Speed.
-  #assert !fb_seat_stand(b[..],s[..]);
-  s[0].turn.move_left = 6;
+  // The declared action profile prices standing at half the beat's grant.
   held := b[0].turn; who := b[0].who;
   #assert fb_seat_stand(b[..],s[..]) && !rs_has(b[0].c[FT_HERO],RS_PRONE);
-  #assert !s[0].turn.action && !s[0].turn.bonus && s[0].turn.move_left == 3;
+  #assert !s[0].turn.action && !s[0].turn.bonus && s[0].turn.move_left == 1;
   #assert b[0].who == who && b[0].turn.move_left == held.move_left && b[0].turn.action == held.action;
   #assert !fb_seat_stand(b[..],s[..]);
 }
@@ -109,7 +107,9 @@ FT_HERO :: 0; FT_FOE :: 1; FT_NEXT :: 2; FT_ALLY :: 3;
 // A small field: you at (10, 10), a foe two squares east and another beside it, a hurt friend
 // beside you; your seat's turn open. Foes have 400 Hit Points, so a blow shows and nobody drops.
 ft_field :: (b: [] RsBattle, s: [] FbSeat, seed: int) {
-  b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40; b[0].beat = 1.5; b[0].recharge = 9;
+  rs_reset(b);
+  b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40;
+  #assert rs_set_timing(b,RS_ACTION_TIMING);
   for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   _ := rs_add(b, fb_everglade_hero("You", 0), 10, 10);
@@ -318,7 +318,8 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
     #assert h.level == 1 && h.klass == FB_CL_ENGINE[c] && h.hp_max == FT_CL_HP[c] && h.ac == FT_CL_AC[c];
     #assert fb_cl_of_kind(FB_CL_KIND[c]) == c;
     b: [1] RsBattle; s: [1] FbSeat;
-    b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40; b[0].beat = 1.5; b[0].recharge = 9;
+    b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40;
+    #assert rs_set_timing(b[..],RS_ACTION_TIMING);
     for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
     b[0].dice[0].state = cast(u64) (c + 5) * 7919 + 3;
     _ := rs_add(b[..], h, 10, 10);

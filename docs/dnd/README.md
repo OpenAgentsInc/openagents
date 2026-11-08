@@ -198,6 +198,10 @@ separate rule set.
 
 ### 4. World tweaks
 
+Implemented timing subset: [timing-profiles.md](timing-profiles.md). Strict
+and action-combat presets now replace direct battle beat/recharge assignments.
+The broader profile syntax and all overrides below remain implementation work.
+
 A world can change the rules, but only by declaring the change in its
 **ruleset profile**, a small table beside its `realms.json` entry, or in a
 made world's spec. The engine applies tweaks; worlds never fork engine code.

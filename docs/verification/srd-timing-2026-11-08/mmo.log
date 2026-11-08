@@ -1,0 +1,3 @@
+ok   #test 5E MMO: a party of four and a wave of six, on the action clock (1 case, 506819 steps, 20 ms)
+1 of 156 checks (--only 'on the action clock'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

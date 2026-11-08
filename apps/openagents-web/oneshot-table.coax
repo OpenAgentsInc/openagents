@@ -292,7 +292,7 @@ os_open :: (t: [] OsTable, c: OsCampaign, seed: u64) {
   t[0].camp = c;
   t[0].b[0].dice[0].state = seed;
   t[0].b[0].w = OS_COLS; t[0].b[0].h = OS_ROWS; t[0].b[0].who = -1;
-  t[0].b[0].beat = f32(RS_ROUND);
+  // The zero-initialized timing profile is strict: six-second turns, no recharge.
   seq := os_log(t, LN_GM, false, "The session begins");
 }
 os_log :: (t: [] OsTable, kind: int, hidden: bool, text: string) -> int {

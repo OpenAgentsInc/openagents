@@ -870,7 +870,7 @@ new_battle :: (s: [] Lab) {
     j := place_on(s, rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
   }
   s[0].battle[0].clock = 0;
-  if s[0].mode == MODE_ACTION { s[0].battle[0].beat = ACTION_BEAT; s[0].battle[0].recharge = ACTION_RECHARGE; }
+  if s[0].mode == MODE_ACTION { timing_selected := rs_set_timing(s[0].battle[..],RS_ACTION_TIMING); }
   rs_begin(bt(s));
   bt(s)[0].kept = true;   // every move here goes through rs_add and rs_place
   due_all(s);
@@ -3730,7 +3730,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert lab_key(s[..], 'f', 0) && s[0].fast;
   r := s[0].round;
   #assert lab_key(s[..], 'r', 0) && s[0].round == r + 1;
-  #assert s[0].mode == MODE_ACTION && s[0].battle[0].beat == ACTION_BEAT && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ROUNDS && s[0].battle[0].beat == 0 && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ACTION;
+  #assert s[0].mode == MODE_ACTION && s[0].battle[0].timing.kind == RS_TIME_ACTION && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ROUNDS && s[0].battle[0].timing.kind == RS_TIME_STRICT && lab_key(s[..], 'm', 0) && s[0].mode == MODE_ACTION;
   #assert s[0].view == VIEW_GLADE && lab_key(s[..], 'v', 0) && s[0].view == VIEW_FLAT && lab_key(s[..], 'v', 0) && s[0].view == VIEW_GLADE;
   n := frame_at(s[..], 1600, 1000, 1, 0.016);
   b := s[0].back;
@@ -4101,7 +4101,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   s: [1] Lab; s[0].siege = true; s[0].horde = false; s[0].town = 12; s[0].cult = 14; s[0].mode = MODE_ACTION;
   lab_start(s[..]);
   b := bt(s[..]);
-  #assert b[0].beat == ACTION_BEAT && b[0].n == 27;
+  #assert rs_beat(b) == ACTION_BEAT && b[0].n == 27;
   t0 := b[0].turn_no;
   for f: 0..<600 { step(s[..], f32(STEP)); }
   #assert b[0].turn_no > t0 + 20;

@@ -1,0 +1,3 @@
+ok   #test a turn runs on the engine: an attack rolls, the log keeps it, a monster's rolls stay hidden (1 case, 433764 steps, 21 ms)
+1 of 160 checks (--only 'a turn runs on the engine'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -6560,7 +6560,7 @@ remaining #13039 work: `docs/verification/srd-hit-points-2026-11-08/README.md`.
 ## Prone is a movement choice, not automatic turn-start recovery
 
 The shared SRD turn start leaves Prone intact, including after healing from
-zero HP. `rs_stand_up` spends half current tracked walking Speed rounded down
+zero HP. In strict timing, `rs_stand_up` spends half current tracked walking Speed rounded down
 in feet, refuses at Speed zero or when movement is forbidden, and spends no
 Action or Bonus Action. Whole-cell `move_left` and residual `move_feet` retain
 every foot of that payment. `rs_step_to` crawls while Prone: a five-foot step
@@ -6573,3 +6573,24 @@ mode; other edge sources still cancel normally. `prone-movement.coax` owns
 the changed payment, standing and edge policies. Evidence and the remaining
 world controls/timing/movement requirements are in
 `docs/verification/srd-prone-2026-11-08/README.md`.
+
+## Combat timing is a declared profile selected before the clock starts
+
+`RsBattle.timing` defaults to `RS_STRICT_TIMING`: six-second turns, exact feet
+of current Speed per turn and no automatic resource recovery. The only current
+alternative is `RS_ACTION_TIMING`: a 1.5-second turn, the existing proportional
+whole-square movement grant, nine-second slot/Rage/ordinary-use cooldowns and
+4.5-second Focus and point/pool recovery. In this house profile standing costs half the
+beat's movement grant, rounded down; strict standing uses current Speed.
+
+`rs_set_timing` rejects unknown profiles and changes after begin, turn start
+or tick without changing state. `rs_reset` restores strict and reopens selection.
+No consumer assigns bare beat/recharge fields. A short action turn refreshes
+its Reaction; repeat saves, death saves and Rage upkeep keep the existing
+six-second round boundary. The timer policy does not grant spells, waive
+materials or declare legacy free-resource paths qualified.
+
+Checks: `timing-checks.coax`, the new policy's zero-survivor mutation gate,
+strict/native witnesses, saved-seat and selected world/mode regressions.
+Scope and outstanding #13045 acceptance:
+`docs/verification/srd-timing-2026-11-08/README.md`.

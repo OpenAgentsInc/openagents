@@ -228,6 +228,14 @@ Disadvantage, while attacks against it use distance, not a melee-only test.
 CONDITION-PRONE adds a native witness. Movement modes, profiles and world
 controls remain open under #13039/#13040/#13045/#13046.
 
+The [timing-profile change](../verification/srd-timing-2026-11-08/README.md)
+replaces bare battle beat/recharge values with validated strict/action presets.
+Strict grants exact Speed in feet with no timer-based recovery. Action combat
+explicitly retains its shorter beat, cooldowns and rounded movement grant,
+including a standing cost based on that grant. Selection seals before play;
+reset returns to strict. TIMING-PROFILE adds a native witness. General profiles,
+free casting/material/grant overrides and full world migration remain open.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

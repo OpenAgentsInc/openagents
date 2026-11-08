@@ -91,7 +91,7 @@ mb_new :: (s: [] Mb, pick: int, seed: int) #export_c #effects(all) {
     _ = rs_add(bt(s), rs_skeleton(cast(string) nm[0..<nn], 2), 1 + q * 2, 1 + q % 2);
   }
   s[0].battle[0].clock = 0;
-  s[0].battle[0].beat = ACTION_BEAT; s[0].battle[0].recharge = ACTION_RECHARGE;
+  timing_selected := rs_set_timing(s[0].battle[..],RS_ACTION_TIMING);
   rs_begin(bt(s));
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].wave = 1; s[0].wave_t = 0; s[0].kills = 0;
@@ -1030,7 +1030,7 @@ mb_class_of :: (pick: int) -> int #export_c #effects(all) { return ROSTER[rs_max
 #test "5E MMO: a party of four and a wave of six, on the action clock" #steps 400000000 {
   m: [1] Mb;
   mb_new(m[..], 6, 3);
-  #assert m[0].battle[0].n == ACTORS && m[0].battle[0].beat == ACTION_BEAT;
+  #assert m[0].battle[0].n == ACTORS && rs_beat(m[0].battle[..]) == ACTION_BEAT;
   #assert m[0].battle[0].c[0].klass == RS_FIGHTER && m[0].battle[0].c[1].klass == RS_WIZARD && m[0].battle[0].c[3].klass == RS_WARLOCK;
   for q: 0..<WAVE { #assert m[0].battle[0].c[PARTY + q].team == 2; }
   // picking the Wizard puts the Druid in its place among the friends

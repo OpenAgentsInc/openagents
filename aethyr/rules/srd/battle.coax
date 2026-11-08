@@ -13,6 +13,7 @@
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
 #load "prone-movement.coax";
+#load "timing-profile.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -54,13 +55,13 @@ RsBattle :: struct {
   aff_used: bool;             // Elemental Affinity's one roll spent in this casting
   who: int;                   // whose turn is running (-1 none)
   turn: RsTurn;
-  // The time adapter. The SRD's: a turn every 6 seconds (beat 0 means RS_ROUND), slots and uses back
-  // only on a rest (recharge 0). The action adapter: a shorter beat, each beat a whole turn's
-  // economy, and every spent slot, Rage and Focus Point back `recharge` seconds later (the ruleset
-  // profile's `cost cooldown N`). Saves that repeat, death saves and Rage's upkeep stay on 6-second
-  // rounds either way.
-  beat: f32;
-  recharge: f32;
+  // Strict timing is the default: six-second turns and no automatic recovery.
+  // The declared action profile gives 1.5-second turns, proportional rounded
+  // movement, slot/Rage/ordinary-use recharge at 9 seconds, Focus and the
+  // existing point/pool exceptions at 4.5 seconds.
+  // Repeat saves, death saves and Rage upkeep stay on six-second rounds.
+  timing: RsTimingProfile;
+  timing_sealed: bool;       // configured before begin/turn/tick; reset opens it
   // Who stands on each square (1 + the creature, 0 none), so rs_at is one look rather than a scan
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
   // turn's start (rs_index) for whatever a world moved by hand.
@@ -84,7 +85,7 @@ rs_use :: (b: [] RsBattle, c: [] RsCreature, occ: [] int) {
 }
 // The most creatures the battle can hold.
 rs_room_for :: (b: [] RsBattle) -> int { rs_room(b); return b[0].c.count; }
-rs_beat :: (b: [] RsBattle) -> f32 { return ifx b[0].beat > 0 then b[0].beat else f32(RS_ROUND); }
+rs_beat :: (b: [] RsBattle) -> f32 { return rs_timing_beat(b[0].timing); }
 
 rs_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
 rs_sign :: (v: int) -> int { if v > 0 { return 1; } if v < 0 { return -1; } return 0; }
@@ -140,7 +141,7 @@ rs_reset :: (b: [] RsBattle) {
   b[0].dice[0] = RsDice.{};
   b[0].book[0] = RsLog.{};
   b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
-  b[0].turn = RsTurn.{}; b[0].beat = 0; b[0].recharge = 0;
+  b[0].turn = RsTurn.{}; rs_reset_timing(b);
   for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
 }
 rs_inside :: (z: RsZone, x: int, y: int) -> bool {
@@ -268,6 +269,7 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
 }
 // The turns begin: the highest initiative first, the rest spread over the 6-second round.
 rs_begin :: (b: [] RsBattle) {
+  rs_seal_timing(b);
   rs_index(b);
   b[0].who = -1;
   // each creature's rank: those with a higher initiative, then those before it with the same (a
@@ -1222,22 +1224,24 @@ rs_walk_speed :: (b: [] RsBattle, i: int) -> int {
 rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
   if i < 0 || i >= b[0].n { return false; }
   turn: [1] RsTurn; turn[0] = b[0].turn;
-  ok := rs_prone_stand(b[0].c[i..<i+1],turn[..],rs_walk_speed(b,i),b[0].who == i);
+  ok := rs_prone_stand(b[0].c[i..<i+1],turn[..],rs_timing_stand_speed(b[0].timing,rs_walk_speed(b,i)),b[0].who == i);
   if ok { b[0].turn = turn[0]; }
   return ok;
 }
 // The start of i's turn: what has run out ends and a creature at 0 makes its
 // death saving throw. A Prone creature chooses later whether to stand or crawl.
 rs_start_turn :: (b: [] RsBattle, i: int) {
+  rs_seal_timing(b);
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
   rs_halt_begin(b[0].c[i..<i+1],b[0].clock+rs_beat(b));
-  // a beat moves its share of a round's Speed (at least a square)
+  // The profile declares the movement grant: exact feet in strict mode, or
+  // the legacy proportional whole-square grant in action combat.
   // the Slow mastery: 10 feet less
   speed := rs_walk_speed(b,i);
   b[0].turn_no += 1;
-  squares := rs_max(cast(int) (f32(rs_max(speed, 0) / RS_SQUARE) * rs_beat(b) / f32(RS_ROUND) + 0.5), ifx speed > 0 then 1 else 0);
-  b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = squares};
+  feet := rs_timing_move(b[0].timing,speed);
+  b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = feet/5, move_feet=feet%5};
   b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
   if b[0].turn.new_round { b[0].c[i].round_at += f32(RS_ROUND); }
   b[0].c[i].reacted = false;
@@ -1324,6 +1328,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
 }
 // The clock moves on: what lasts for a time ends when it runs out.
 rs_tick :: (b: [] RsBattle, dt: f32) {
+  rs_seal_timing(b);
   b[0].clock += dt;
   t := b[0].clock;
   for i: 0..<b[0].n {
@@ -1332,8 +1337,8 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
     for k: 0..<RS_EFFECTS { if rs_effect_uses_clock(b[0].c[i].eff[k].kind) && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
     // the action adapter: spent slots and uses come back on a cooldown, one at a time
-    if b[0].recharge > 0 && !b[0].c[i].dead {
-      r := b[0].recharge;
+    if rs_timing_recharge(b[0].timing) > 0 && !b[0].c[i].dead {
+      r := rs_timing_recharge(b[0].timing);
       for l: 1..<10 {
         if b[0].c[i].slots[l] >= b[0].c[i].slots_max[l] { b[0].c[i].slot_back[l] = 0; continue; }
         if b[0].c[i].slot_back[l] == 0 { b[0].c[i].slot_back[l] = t + r; }
@@ -2495,7 +2500,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
 }
 #test "the action adapter: a turn every 1.5 seconds, slots back after the cooldown, saves still on 6-second rounds" {
   b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 21;
-  b[0].beat = 1.5; b[0].recharge = 9;
+  #assert rs_set_timing(b[..],RS_ACTION_TIMING);
   a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 9, 3);
   rs_begin(b[..]);

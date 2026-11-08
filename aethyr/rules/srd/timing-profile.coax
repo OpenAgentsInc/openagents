@@ -1,0 +1,57 @@
+// Only the timing profiles currently consumed by the shared combat worlds.
+// Action combat is a declared house rule, not strict SRD six-second turns.
+#authority;
+RS_TIME_STRICT :: 0;
+RS_TIME_ACTION :: 1;
+RsTimingProfile :: struct { kind: int; }
+RS_STRICT_TIMING :: RsTimingProfile.{};
+RS_ACTION_TIMING :: RsTimingProfile.{kind=RS_TIME_ACTION};
+
+#test "timing admission accepts exactly strict and action profiles before the clock is sealed" {
+  for kind: -2..<4 { for sealed: 0..<2 {
+    p := RsTimingProfile.{kind=kind};
+    #assert rs_timing_allowed(p,sealed==1) == ((kind==0 || kind==1) && sealed==0);
+  } }
+}
+#test "profile timing declares beat cooldown and movement without changing strict defaults" {
+  #assert rs_timing_beat(RS_STRICT_TIMING) == 6 && rs_timing_beat(RS_ACTION_TIMING) == 1.5;
+  #assert rs_timing_recharge(RS_STRICT_TIMING) == 0 && rs_timing_recharge(RS_ACTION_TIMING) == 9;
+  for speed: -1..<101 {
+    #assert rs_timing_move(RS_STRICT_TIMING,speed) == (ifx speed>0 then speed else 0);
+    expected := 0;
+    if speed>0 {
+      // Existing action adapter: nearest whole square per quarter-round,
+      // at least one square for positive Speed. Independent interval oracle.
+      if speed<30 { expected=5; }
+      else if speed<50 { expected=10; }
+      else if speed<70 { expected=15; }
+      else if speed<90 { expected=20; }
+      else { expected=25; }
+    }
+    #assert rs_timing_move(RS_ACTION_TIMING,speed) == expected;
+    #assert rs_timing_stand_speed(RS_STRICT_TIMING,speed) == (ifx speed>0 then speed else 0);
+    #assert rs_timing_stand_speed(RS_ACTION_TIMING,speed) == expected;
+  }
+}
+
+rs_timing_allowed :: (p: RsTimingProfile, sealed: bool) -> bool #effects(all) {
+  return !sealed && (p.kind==RS_TIME_STRICT || p.kind==RS_TIME_ACTION);
+}
+rs_set_timing :: (b: [] RsBattle, p: RsTimingProfile) -> bool #effects(all) {
+  if !rs_timing_allowed(p,b[0].timing_sealed) { return false; }
+  b[0].timing = p; return true;
+}
+rs_seal_timing :: (b: [] RsBattle) #effects(all) { b[0].timing_sealed = true; }
+rs_reset_timing :: (b: [] RsBattle) #effects(all) { b[0].timing = RS_STRICT_TIMING; b[0].timing_sealed = false; }
+rs_timing_beat :: (p: RsTimingProfile) -> f32 #effects(all) { return ifx p.kind==RS_TIME_ACTION then 1.5 else 6; }
+rs_timing_recharge :: (p: RsTimingProfile) -> f32 #effects(all) { return ifx p.kind==RS_TIME_ACTION then 9 else 0; }
+rs_timing_move :: (p: RsTimingProfile, speed: int) -> int #effects(all) {
+  if speed<=0 { return 0; }
+  if p.kind==RS_TIME_STRICT { return speed; }
+  return rs_max((speed/5+2)/4,1)*5;
+}
+// The action profile prices standing against its beat's movement grant. Strict
+// mode uses actual current Speed. The Prone policy rounds the half-cost down.
+rs_timing_stand_speed :: (p: RsTimingProfile, speed: int) -> int #effects(all) {
+  return ifx p.kind==RS_TIME_ACTION then rs_timing_move(p,speed) else rs_max(speed,0);
+}

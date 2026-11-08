@@ -267,7 +267,7 @@ RsCreature :: struct {
   innate_until: f32; quickened: bool; seeking: bool; shield_spell: bool; shield_until: f32;
   potent: bool; lands_aid: bool;
   slowed_until: f32;        // the Slow mastery: 10 feet less Speed until then
-  // the action adapter (RsBattle.recharge > 0): when the next spent slot of each level, Rage or
+  // the declared action timing profile: when the next spent slot of each level, Rage or
   // Focus Point comes back, and when its next 6-second round begins
   slot_back: [10] f32; rage_back: f32; focus_back: f32;
   round_at: f32;
