@@ -23,7 +23,9 @@ IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint
 IMPORT("coaxial_now_ms") int64_t coaxial_now_ms(void);
 
 static uint8_t inbox[4096];
-static uint8_t catalog[65536];
+static uint8_t catalog[2097152];   /* the pack's catalog, with the ground's record in its G lines (#13059) */
+static uint8_t ground_record[1048576], catalog_rest[65536];   /* that record decoded, and the catalog without it */
+static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published and staged (verse/everglade2/ground.coax) */
 static coax_t_People rig;
 static uint32_t baked;
 static uint32_t frames;
@@ -56,7 +58,7 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_E2) * 1000003u + offsetof(coax_t_E2, inst) * 13u + 0x45324532u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_E2); }
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_E2((coax_t_E2 *)(uintptr_t)state); }
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_E2((coax_t_E2 *)(uintptr_t)state); e2_ground_store(at(state), (coax_v_t_E2Tiles){ground_tiles, 2}); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_e2_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_e2_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_e2_uniform_floats(); }
@@ -235,7 +237,7 @@ EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32
 }
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
-  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) e2_catalog(at(state), (coax_string){(const char *)catalog, bytes});
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) e2_catalog(at(state), (coax_string){(const char *)catalog, bytes}, (coax_v_u8){ground_record, sizeof ground_record}, (coax_v_u8){catalog_rest, sizeof catalog_rest});
 }
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }

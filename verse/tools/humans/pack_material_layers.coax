@@ -54,9 +54,11 @@ tool_main :: ()->int #export_c #effects(all) {
   print("D % % % bytes\n",i,ML_NAMES[i],m[0].mapn[i]);
  }
  // the catalog with its D rows after the rest, and its byte count patched below
- cb:[262144]u8;c:[1]Sb;c[0]=sb(cb[..]);at:=0;
+ // (4 MiB: Everglade II's catalog carries its ground record in G lines, #13059)
+ cb:[4194304]u8;c:[1]Sb;c[0]=sb(cb[..]);at:=0;
  while at<cat.count {e:=at;while e<cat.count && cat[e]!='\n' {e+=1;}line:=cat[at..<e];at=e+1;if line.count==0 {continue;}if starts(line,"bytes ") {sb_put(c[..],"bytes 0000000000\n");}else {sb_put(c[..],line);sb_byte(c[..],'\n');}}
  for i:0..<ML_MAPS {sb_put(c[..],"D ");sb_int(c[..],i);sb_byte(c[..],' ');sb_put(c[..],ML_NAMES[i]);sb_byte(c[..],' ');sb_int(c[..],ML_LICENCE);sb_byte(c[..],'\n');}
+ if c[0].n>=cb.count {tool_errln("pack_material_layers: the catalog doesn't fit its buffer");return 1;}
  // The data layers go after the colour layers and before the sounds: a paged pack (VPK3) defers
  // its sounds, so every entry before them is a root and lands first.
  ins:=ne;for i:0..<ne {if ins==ne && cast(int)old[table+i*48]==5 {ins=i;}}

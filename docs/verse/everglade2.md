@@ -49,19 +49,52 @@ share:
   gold inside it, and a gentle share outside it, so the woods' floor and the clearing stay
   green.
 
-### The admitted ground and its baked light (#12995)
+### The admitted ground and its baked light (#12995, #13059)
 
-`verse/everglade2/ground.coax` turns the glade's land into an Aethyr terrain tile
-(`aethyr/terrain-tile.coax`) once the woods are planted: the pack's glade grid exactly (100 cells
-of 0.65 m from (-32.5, -60) to (32.5, 5), each split on the same diagonal as the pack's
-triangles), with Everglade II's ground material table (meadow, autumn meadow, forest litter,
-path dirt) and four weights a sample from `e2_gold`, `e2_forest` and `e2_path`. Inside it the walk
-stands on the admitted triangles (`e2g_y`), so your feet and the drawn ground agree at every
-sample and along every triangle; the pack draws that surface 0.035 m lower, a declared decorative
-offset. Past the tile (the path's ribbon, the coarse ground) the walk still reads `e2_height`.
+`verse/everglade2/ground.coax` holds Everglade II's land as a set of Aethyr terrain tiles
+(`aethyr/terrain-tile.coax`) against Everglade II's ground material table (meadow, autumn meadow,
+forest litter, path dirt), with four weights a sample from `e2_gold`, `e2_forest` and `e2_path`.
+All tiles lie on one lattice, the glade's 0.65 m samples from (-32.5, -60), each worked out once
+in f64 and rounded once, so a sample two tiles share is the same point and height in both, bit
+for bit.
+
+- The glade: tile 0, the pack's old grid exactly (100 cells of 0.65 m from (-32.5, -60) to
+  (32.5, 5), each split on the same diagonal as the pack's triangles).
+- The path: 65 m tiles in rows south of the glade. Rows 0 to 4 are 100 cells of 0.65 m; rows 5
+  to 7, round the clearing, are 50 cells of 1.3 m. A cell is solid where the old ribbon ran, a
+  hole elsewhere, and a tile with no solid cell is left out: 21 tiles in all.
+- Seams: neighbours of one spacing repeat their shared edge exactly. Where a 0.65 m row meets a
+  1.3 m row (z -385), the finer edge is stitched onto the coarser one (LOD profile v1), so no
+  edge cracks. Every tile draws at its stored level: nothing swaps as you walk.
+
+The walk stands on the admitted triangles (`e2g_y`) on every tile, so your feet and the drawn
+ground agree at every sample and along every triangle; the pack draws that surface 0.035 m lower,
+a declared decorative offset. Past the tiles (the coarse ground) the walk reads `e2_height`, and
+`e2_probe` 98 counts those reads.
+
+The asset route. The pack tool converts the land once and writes the whole set into the pack's
+catalog as one record (E2T1: a header, each tile's header and revision, its holes, and every live
+sample) in base64 `G` lines. The page reads that record as the catalog arrives
+(`e2g_record_read`). Every tile is admitted against the page's own table and must come out at the
+revision the record names; then the seams and the set's revision are checked, and only then does
+the set publish, whole. A refusal is counted and the set published before stays. Without a record,
+or when it refuses, the page converts the land itself. `e2_probe` 90 to 97 report the route (1 the
+pack, 2 converted), the tiles, publishes, refusals, the first refusal's code, the KiB resident, and
+the set's and the glade's revisions.
+
+The frame. Tiles keep f64 world origins; the page reads them through one frame origin (`frame_x`,
+`frame_z`), and the queries, the bake and the shader's store all use it. Everglade II runs at frame
+origin 0; the tests check that a set placed 1e8 m out answers the same queries, draws the same
+grid and bakes the same light, and that a frame too far from a tile refuses.
+
+`coax/web/everglade2-terrain-check.coax` is the receipt: it walks the glade, the path and the
+fine-to-coarse seam headless at 2400x1400, DPR 2, and reports load time, frame times, GPU pass
+time, Wasm memory and the ground's facts. It passes only on the pack route with no refusal and no
+memory growth.
 
 The woods' and the glade's tree crowns (sphere proxies per kit) are then baked onto the tile as
-ambient occlusion (`aethyr/render/bake.coax`, keyed by the tile's revision and the crowns' digest).
+ambient occlusion (`aethyr/render/bake.coax`, keyed by the tile's revision, the crowns' digest and one world-state
+axis, the realm's variant: a bake for other land, crowns or state refuses and the live bake stays).
 A crown of radius r whose centre is D away along d hides (r / D)^2 max(0, n . d) of the
 cosine-weighted sky; AO = clamp(1 - sum, 0.6, 1), with no bounce, eased to open sky over the last 6 m inside the tile's edge so leaving it is no step in light. Your character
 takes the AO at your middle (u[62]) on your indirect light only, never the sun, so you darken under
@@ -99,12 +132,13 @@ in the clearing, and that trees crowd the path.
 ## The pack
 
 `verse/tools/assets/everglade2_pack.coax` writes `realms/everglade2/assets/everglade2.pack`
-(43 MB) in about 10 seconds. The pack holds:
+(48 MB). The pack holds:
 
 - Character Create's people pack (the wardrobe and the rig).
 - The glade's own composition, placed on Everglade II's land.
-- The ground: the glade's grid, a 1 m ribbon along the path that widens round the clearing,
-  and coarse 4 m ground out to the valley's edges.
+- The ground: the admitted tiles' own samples (their solid cells only), the coarse 4 m ground
+  out to the valley's edges, and the tiles' record in the catalog. The ground vertices carry no
+  colour: the shader takes the ground's colour from the material table.
 - The 36 kit pieces, each at the origin. Each tree has three levels of detail: whole; two crown
   cards in three with bark on the lower half; and one crown card in three with bark on the
   trunk only.
@@ -120,7 +154,7 @@ coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
 
 Then add the characters' material maps (#13012). The tool appends the Fantasy Source's normal and
 ORM maps for each outfit family, and the base bodies' normal and roughness maps, as 14 linear
-data layers at 512 px, between the colour layers and the sounds. That brings the pack to 47 MB.
+data layers at 512 px, between the colour layers and the sounds. That brings the pack to 48 MB.
 `build.sh` then writes the range-loaded `everglade2.vpk3` from it:
 
 ```sh

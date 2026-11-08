@@ -6487,8 +6487,8 @@ table's (`verse/everglade2/ground.coax` `e2g_table`), evaluated per pixel by
 `aethyr/render/terrain-shade.coax`'s equations with the weights the tile's
 converter uses (`verse/everglade2/forest.coax` `e2_ground_layer`). The ground's
 indirect light takes `E2G_GROUND_AO_SHARE` of the published canopy bake, and
-AO 1 before the bake publishes and off the tile. The pack's vertex colours are
-not a second source. A material table entry may take part of its blend from a
+AO 1 before the bake publishes and off the tile. The pack's ground vertices
+carry no colour (#13059). A material table entry may take part of its blend from a
 layer share, one named material's weight against another's at the point. Such
 a share names two other known materials, the shares add to one, and any share
 makes the table's identity "ATM2". A table without shares keeps its "ATM1"
@@ -6499,6 +6499,30 @@ against the other ...", `verse/everglade2/ground.coax` "the table draws the
 pack's ground colours ...", `apps/openagents-web/gpu/everglade2.coax` "the
 ground reads its table's material, the litter's share of the layers under it,
 and the bake's AO".
+
+## Everglade II's ground is one admitted tile set, published whole (#13059)
+
+The walkable land in `/worlds/everglade2` is a set of Aethyr terrain tiles
+(`verse/everglade2/ground.coax`): the glade and the path's tiles on one f64
+lattice, so a sample two tiles share is bit-identical in both. Neighbours of
+one spacing repeat their shared edge exactly, and a fine edge meeting a coarse
+one is stitched (LOD profile v1), so no edge cracks; every tile draws at its
+stored level, so nothing swaps as you walk. The page takes the set from the
+pack's catalog record (route 1): every tile is admitted against the page's own
+table and must come out at the revision the record names, the seams and the
+set's revision must check, and only then does the set publish, whole. A
+refusal is counted and keeps the set published before; with no record or a
+refused one, the page converts the land itself (route 2). The walk stands on
+the admitted triangles wherever a tile has ground; reads past the tiles are
+counted. Queries, the bake and the shader's store read tiles through one frame
+origin, never raw world coordinates. The canopy bake is keyed by the glade
+tile's revision, the crowns' digest and one world-state axis (the realm's
+variant); a bake for another key refuses and the live bake stays. The pack's
+ground vertices carry no colour.
+Checks: `verse/everglade2/ground.coax` (the path's tiles and seams, the
+record's round trip and its six damage refusals, far origin, the canopy bake's
+state axis), and `coax/web/everglade2-terrain-check.coax` (route 1, no refusal
+and no memory growth across the glade, the path and the seam walks).
 
 ## Shared combat rolls retain owners without multiplying named benefits
 

@@ -14,7 +14,7 @@
 #load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
-#load "../../verse/everglade2/ground.coax";   // the glade's admitted tile and canopy bake (#12995)
+#load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
 #load "../../aethyr/quality.coax";
 #load "../../aethyr/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "everglade2-create.coax";   // Character Create, in this world: /worlds/character-creator
@@ -42,7 +42,8 @@ E2 :: struct {
   creator: [1] cc.Creator;
   bodies: [1] figs.Bodies;
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
-  eg: [1] E2Ground;                                   // the glade's ground tile and its baked AO (verse/everglade2/ground.coax)
+  eg: [1] E2Ground;                                   // the ground's tiles and the glade's baked AO (verse/everglade2/ground.coax)
+  catalog_in: bool; ground_code: int = -1; ground_done: bool;   // the catalog came; its ground record's status (-1 none); the ground settled and baked
   kit_first: [E2_BUCKETS] int; kit_count: [E2_BUCKETS] int; kits: bool;
   records: [E2_RECORDS * 24] f32;
   // the characters' materials, one record a colour layer (aethyr/character/material.coax), the
@@ -84,7 +85,14 @@ E2 :: struct {
 E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; sy: f32; name: [NET_NAME] u8; name_n: int; }
 
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
-e2_catalog :: (s: [] E2, text: string) #export_c #effects(all) {
+// The face keeps the ground's two tile sets outside the state (everglade2-face.c), as it does the catalog.
+e2_ground_store :: (s: [] E2, sets: [] E2Tiles) #export_c #effects(all) { e2g_store(s[0].eg[..], sets); }
+e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effects(all) {
+  // the ground's record rides in the catalog as G lines (verse/everglade2/ground.coax): read and
+  // published now, whole or not at all; the rest is the catalog the others read
+  n := e2g_record_from_catalog(whole, rec);
+  s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1; s[0].catalog_in = true;
+  text := e2_catalog_rest(whole, rest);
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text);
   s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]); s[0].mats_v += 1;
   for b: 0..<E2_BUCKETS { s[0].kit_first[b] = 0; s[0].kit_count[b] = 0; }
@@ -101,6 +109,26 @@ e2_catalog :: (s: [] E2, text: string) #export_c #effects(all) {
     if first >= 0 && count > 0 { s[0].kit_first[kit * E2_LODS + lod] = first; s[0].kit_count[kit * E2_LODS + lod] = count; any = true; }
   }
   s[0].kits = any;
+}
+// The catalog without its G lines (or as it came, when that is too long to copy).
+e2_catalog_rest :: (t: string, out: [] u8) -> string {
+  n := 0; at := 0;
+  while at < t.count {
+    e := at; while e < t.count && t[e] != '\n' { e += 1; }
+    if !(e - at > 1 && t[at] == 'G' && t[at + 1] == ' ') {
+      if n + e - at + 1 > out.count { return t; }
+      for q: at..<e { out[n] = t[q]; n += 1; } out[n] = '\n'; n += 1;
+    }
+    at = e + 1;
+  }
+  return cast(string) out[0..<n];
+}
+// The ground, once the planting and the catalog are in: the pack's record published it, or (no
+// record, or it refused) the land is converted here; then the woods' crowns are baked onto the glade's tile.
+e2_ground :: (s: [] E2) {
+  s[0].ground_done = true;
+  if !s[0].eg[0].ok && !e2g_build(s[0].eg[..]) { return; }
+  _b := e2g_bake(s[0].eg[..], s[0].items[..], s[0].kinds[..], s[0].planted);
 }
 // The clips, baked once into the state's own store, sized by the bodies module so it never falls behind.
 e2_bake :: (s: [] E2, d: [] figs.People) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, s[0].bake[..], false); }
@@ -171,7 +199,8 @@ e2_query_at :: (t: string) -> int {
 // ---- where you may stand: the glade, the path's corridor, the clearing
 #test "the catalog's kit rows fill their (kit, level) buckets" {
   s: [1] E2;
-  e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\nC e2/k0/0 100 30 250 100 8 0\nC e2/k0/2 130 12 250 100 8 0\nC e2/k32/0 200 6 250 100 8 0\nC e2/k33/0 1 3 250 100 8 0\n");
+  rec: [16] u8; rest: [512] u8;
+  e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\nC e2/k0/0 100 30 250 100 8 0\nC e2/k0/2 130 12 250 100 8 0\nC e2/k32/0 200 6 250 100 8 0\nC e2/k33/0 1 3 250 100 8 0\n", rec[..], rest[..]);
   #assert s[0].kits && s[0].kit_first[0] == 100 && s[0].kit_count[0] == 30 && s[0].kit_count[2] == 12 && s[0].kit_count[1] == 0;
   #assert s[0].kit_first[32 * E2_LODS] == 200 && s[0].kit_count[32 * E2_LODS] == 6;
 }
@@ -484,9 +513,8 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2c_action(s);
   if !s[0].plant_done {
     s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
-    // the glade's ground: admitted as a tile, then the woods' crowns baked onto it
-    if e2g_build(s[0].eg[..]) { _b := e2g_bake(s[0].eg[..], s[0].items[..], s[0].kinds[..], s[0].planted); }
   }
+  if !s[0].ground_done && s[0].catalog_in { e2_ground(s); }
   step := ifx still || dt <= 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].clock += step;
   e2_follow(s, step);
@@ -882,6 +910,15 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 17 { return s[0].plate_n; }
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
   if field >= 40 && field < 66 + E2_REMOTES { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
+  // the ground (#13059): 90 its route (1 the pack's record, 2 converted here), 91 its tiles, 92 sets
+  // published, 93 refusals, 94 the first refusal's code, 95 KiB resident, 96 and 97 the set's and the
+  // glade tile's revision (first word, as a signed int), 98 queries off the tiles
+  if field >= 90 && field < 99 { g := s[0].eg[..];
+    if field == 90 { return g[0].route; } if field == 92 { return g[0].published; }
+    if field == 93 { return g[0].refused; } if field == 94 { return g[0].first_refusal; } if field == 95 { return e2g_resident(g) / 1024; }
+    if field == 91 || field == 96 { if !g[0].ok { return 0; } ls := e2g_live_set(g); return ifx field == 91 then ls[0].n else cast(int)cast,trunc(s32) ls[0].revision[0]; }
+    if field == 97 { return cast(int)cast,trunc(s32) g[0].receipt.output[0]; }
+    return g[0].outside; }
   return -1;
 }
 

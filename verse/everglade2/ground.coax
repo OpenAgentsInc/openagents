@@ -1,53 +1,91 @@
-// Everglade II's admitted ground (GitHub #12995, book chapters 8, 12 and 13): the glade's land as an
-// Aethyr terrain tile (aethyr/terrain-tile.coax, `aethyr.terrain.tile.v1`) against Everglade II's
-// ground material table, and the canopy's ambient occlusion baked on that tile
+// Everglade II's admitted ground (GitHub #12995, #13052, #13059; book chapters 8, 12 and 13): the
+// land as a set of Aethyr terrain tiles (aethyr/terrain-tile.coax, `aethyr.terrain.tile.v1`) against
+// Everglade II's ground material table, and the canopy's ambient occlusion baked on the glade's tile
 // (aethyr/render/bake.coax, `aethyr.bake.grid.v1`). The realm supplies content and this adapter; the
 // engine admits, samples and publishes.
 //
-// The tile is the pack's glade grid exactly (verse/tools/assets/everglade2_pack.coax gp_ground): 100
-// cells a side, 0.65 m each, from (-32.5, -60) to (32.5, 5), every cell split on its south-west /
-// north-east diagonal as the pack's triangles are. Heights are e2_height at the samples, in metres
-// (converted once, unit metre, converter E2G_CONVERTER). The pack draws that surface E2G_DRAW_DROP
-// lower, a declared decorative offset; the walk stands on the admitted triangles, so the feet and
-// the drawn ground agree at every sample and along every triangle (e2g_y).
+// The tiles. All lie on one lattice: the glade's 0.65 m samples from (-32.5, -60), sample (I, J) at
+// (-32.5 + I s, -60 + J s) with s = 0.65 as an f32, worked out once in f64 and rounded once, so a
+// sample two tiles share is the same point and the same height in both, bit for bit.
+//   - The glade: 100 cells a side, 0.65 m each, from (-32.5, -60) to (32.5, 5), no holes (tile 0).
+//   - The path: 65 m tiles in rows south of the glade (row k from z -60 - 65 (k + 1) to -60 - 65 k)
+//     and columns 65 m wide (column m from x -32.5 + 65 m). Rows 0 to 4 are 100 cells of 0.65 m;
+//     rows 5 to 7, round the clearing, 50 cells of 1.3 m (every second lattice sample). A cell is
+//     solid where the old ribbon ran (its centre within e2g_ribbon_half of e2g_ribbon_x, between
+//     z -59 and -520), a hole elsewhere; a tile with no solid cell is left out.
+//   - Seams: east and north neighbours of one spacing repeat their shared edge exactly
+//     (terrain_tile_edges_agree). Where a 0.65 m row meets a 1.3 m one (z -385), the finer tile's
+//     edge is stitched onto the coarser one (terrain_tile_stitched, LOD profile v1 at level 1):
+//     its odd samples lie on the line between the even ones, which are the coarse tile's own. So no
+//     edge has a crack, and the pack draws every tile at its stored level: nothing changes as you
+//     walk, nothing pops.
+//   - A sample no solid cell touches, off the tile's boundary, holds the canonical filler (height
+//     0, all meadow): no triangle draws or queries it.
 //
-// Materials: meadow, autumn meadow, forest litter and path dirt: the pack's colours (sRGB, as the
-// ground shader decoded them) re-encoded for the table's 2.2 power, so each decodes to the same
-// linear colour. A sample's weights are the pack's layers in order with aethyr_terrain_over: autumn
+// Heights are e2_height at the samples, in metres (unit metre, converter E2G_CONVERTER). The pack
+// draws the tiles E2G_DRAW_DROP lower, a declared decorative offset; the walk stands on the admitted
+// triangles, so the feet and the drawn ground agree at every sample and along every triangle
+// (e2g_y). Past the tiles the land is e2_height, counted.
+//
+// The asset route. The pack tool (verse/tools/assets/everglade2_pack.coax) converts the land here
+// once, writes the whole set into the pack's catalog as one content-addressed record (E2T1: its
+// header, each tile's header and revision, the holes and every live sample; e2g_record_write) in
+// `G` lines, and draws the tiles' own samples. The page reads that record (e2g_record_read): every
+// tile is admitted against the page's own table, and must come out at the revision the record names
+// (its content address); then the seams are checked and the set's revision compared; only then does
+// the set publish, whole (e2g_publish). Any refusal is counted and the set published before stays.
+// Without a record, or when it refuses, the page converts the land itself (E2G_ROUTE_CONVERTED).
+//
+// Materials: meadow, autumn meadow, forest litter and path dirt: the pack's old vertex colours
+// (sRGB, as the ground shader decoded them) re-encoded for the table's 2.2 power, so each decodes to
+// the same linear colour. A sample's weights are the layers in order with aethyr_terrain_over: autumn
 // over the meadow by e2_gold, litter over both by 0.6 e2_forest, the path over all by e2_path
-// (forest.coax e2_ground_layer); each quantized to a byte. The pack's litter takes the autumn under
-// it (red 0.25 to 0.45): the litter's blend is a layer share, autumn's weight against the meadow's,
-// which gives back e2_gold wherever any meadow is left (the litter covers at most 0.6). The pack's
-// per-vertex hash grain on the litter's green and the dirt is the table's value noise at the glade
-// grid's 1.5 per metre: the dirt's as its two colours, the litter's as a 4% gain.
+// (forest.coax e2_ground_layer); each quantized to a byte. The litter takes the autumn under it (red
+// 0.25 to 0.45): its blend is a layer share, autumn's weight against the meadow's, which gives back
+// e2_gold wherever any meadow is left (the litter covers at most 0.6). The grain is the table's value
+// noise at the glade grid's 1.5 per metre: the dirt's as its two colours, the litter's as a 4% gain.
 //
 // The ground shader (gpu/everglade2.coax e2_ground_albedo) draws from this table and the bake: the
 // page uploads both as one store (e2g_gpu, E2G_GPU_FLOATS) and the shader takes the same weights at
 // each pixel, evaluates aethyr/render/terrain-shade.coax's equations, and shades the ground's
 // indirect light by E2G_GROUND_AO_SHARE of the bake's AO, eased out over E2G_EDGE inside the tile's edge.
 //
-// Baked light: AO on the tile's samples from the woods' and the glade's tree crowns as sphere
+// Baked light: AO on the glade tile's samples from the woods' and the glade's tree crowns as sphere
 // proxies (centre and radius per kit, E2G_CROWN). A sphere of radius r whose centre is D away along
 // the unit direction d, wholly above the ground's tangent plane, hides (r / D)^2 max(0, n . d) of
-// the cosine-weighted sky; crowns are summed and AO = clamp(1 - sum, E2G_AO_FLOOR, 1), eased to the fallback over the last E2G_EDGE metres inside the tile's edge. A point
-// inside a crown takes the floor. No bounce (0 in every channel). The bake is keyed by the tile's
-// revision and the crowns' content digest; until it publishes, a sample is the fallback (AO 1),
-// counted. Its one consumer so far is your character's indirect light (u[62], gpu/everglade2.coax
-// cc_player_fs).
+// the cosine-weighted sky; crowns are summed and AO = clamp(1 - sum, E2G_AO_FLOOR, 1), eased to the
+// fallback over the last E2G_EDGE metres inside the tile's edge. A point inside a crown takes the
+// floor. No bounce (0 in every channel). The bake is keyed by the tile's revision, the crowns'
+// content digest and one world-state axis, the realm's variant (E2G_VARIANT: its one state so far,
+// the woods as planted); a bake for other geometry, other crowns or another state refuses and the
+// live bake stays. Until it publishes, a sample is the fallback (AO 1), counted.
+//
+// The frame. Tiles keep f64 world origins; one Ground per tile in the realm's frame (frame_x,
+// frame_z: terrain_tile_ground), and the queries, the bake and the shader's store all read those.
+// Everglade II runs at frame origin 0.
 //
 //   coax/bin/coax test verse/everglade2/ground.coax --library
 #load "plant.coax";
 #load "../../aethyr/terrain-tile.coax" as e2tt;
 #load "../../aethyr/render/bake.coax" as e2bk;
+#load "../../coax/lib/text/base64.coax";
 
 E2G_CELLS :: 100;
 E2G_SPACING :: 0.65;
 E2G_WEST :: -32.5;
 E2G_SOUTH :: -60.0;
-E2G_POINTS :: 10201;          // (E2G_CELLS + 1)^2
-E2G_DRAW_DROP :: 0.035;       // the pack draws the glade's ground this far below the admitted surface
-E2G_CONVERTER :: 1;           // this converter's revision
+E2G_POINTS :: 10201;          // (E2G_CELLS + 1)^2: a tile's samples at most
+E2G_HOLES :: 10000;           // E2G_CELLS^2: its cells at most
+E2G_TILES :: 24;              // the glade's and the path's
+E2G_ROWS :: 8;                // path rows south of the glade
+E2G_COL_LO :: -4; E2G_COL_HI :: 4; E2G_COLS :: 9;
+E2G_COARSE_ROW :: 5;          // rows from here (z below -385, round the clearing) are 1.3 m tiles
+E2G_RIBBON_TOP :: -59.0; E2G_RIBBON_END :: -520.0;   // the path's ground runs between these
+E2G_DRAW_DROP :: 0.035;       // the pack draws the tiles this far below the admitted surface
+E2G_CONVERTER :: 2;           // this converter's revision (2: the lattice in f64, the path's tiles)
+E2G_VARIANT :: 1;             // the realm's world state (the bake's one axis): the woods as planted
 E2G_MEADOW :: 0; E2G_AUTUMN :: 1; E2G_LITTER :: 2; E2G_PATH :: 3;
+E2G_ROUTE_PACK :: 1; E2G_ROUTE_CONVERTED :: 2;
 E2G_RISE :: 6.0;              // m: the bake fades to open sky over this height above the ground
 E2G_AO_FLOOR :: 0.6;          // the darkest the canopy makes it
 E2G_EDGE :: 6.0;              // m: inside the tile's edge the bake eases to the fallback, so leaving it is no step
@@ -63,21 +101,46 @@ E2G_GPU_HEAD :: 2; E2G_GPU_MATERIAL :: 5;
 E2G_GPU_AO :: 88;             // (E2G_GPU_HEAD + 4 E2G_GPU_MATERIAL) 4: where the AO starts (floats)
 E2G_GPU_FLOATS :: 10292;      // E2G_GPU_AO + E2G_POINTS, rounded up to whole vec4s
 
+// The record (E2T1, little-endian): a 120-byte header, then per tile a 64-byte header, its holes one
+// bit a cell, and its live samples in index order (height bits, then the four weights; a weight's
+// material is its slot, none where it is 0).
+E2G_RECORD_MAGIC :: 0x31543245;   // "E2T1"
+E2G_RECORD_VERSION :: 1;
+E2G_RECORD_HEAD :: 120; E2G_RECORD_TILE :: 64;
+E2G_RECORD_MAX :: 1048576;
+E2G_REC_OK :: 0; E2G_REC_SHORT :: 1; E2G_REC_MAGIC :: 2; E2G_REC_LAYOUT :: 3; E2G_REC_TABLE :: 4;
+E2G_REC_TILE :: 5; E2G_REC_IDENTITY :: 6; E2G_REC_SEAM :: 7; E2G_REC_SET :: 8; E2G_REC_SIZE :: 9;
+
+// A set of tiles, the glade first.
+E2Tiles :: struct {
+  n: int;
+  tile: [E2G_TILES] e2tt.TerrainTile;
+  frame: [E2G_TILES] Ground;                       // each in the realm's frame (e2g_frames)
+  receipt: [E2G_TILES] e2tt.TerrainTileReceipt;
+  m: [E2G_TILES] int; k: [E2G_TILES] int;          // column, and row (-1 the glade)
+  heights: [E2G_TILES * E2G_POINTS] f32;
+  holes: [E2G_TILES * E2G_HOLES] u8;
+  ids: [E2G_TILES * E2G_POINTS * 4] u8; weights: [E2G_TILES * E2G_POINTS * 4] u8;
+  live: int;                                       // live samples, all tiles
+  revision: [8] u32;                               // the set's identity (e2g_set_revision)
+}
+
 E2Ground :: struct {
   table: [4] e2tt.TerrainMaterial;
-  tile: e2tt.TerrainTile;
-  frame: Ground;
-  receipt: e2tt.TerrainTileReceipt;
-  ok: bool;
-  source: [E2G_POINTS] f32; heights: [E2G_POINTS] f32;
-  holes: [E2G_CELLS * E2G_CELLS] u8; ids: [E2G_POINTS * 4] u8; weights: [E2G_POINTS * 4] u8;
+  sets: [] E2Tiles; cur: int;                      // two sets the owner keeps (e2g_store): the published one, and the one staged into
+  ok: bool;                                        // a set is published
+  route: int;                                      // how it came: E2G_ROUTE_PACK or E2G_ROUTE_CONVERTED
+  published: int; refused: int; first_refusal: int;
+  frame_x: f64; frame_z: f64;                      // the realm's frame origin (world metres)
+  tile: e2tt.TerrainTile; frame: Ground; receipt: e2tt.TerrainTileReceipt;   // the published glade tile's (the bake's)
+  source: [E2G_POINTS] f32;                        // the converter's scratch
   crowns: [E2G_CROWNS * 4] f32; crown_n: int;   // x, y, z, r
   bake: [1] e2bk.BakeSet; key: e2bk.BakeKey;
   ao: [E2G_POINTS] f32; bounce: [E2G_POINTS * 3] f32;
   live_ao: [E2G_POINTS] f32; live_bounce: [E2G_POINTS * 3] f32;
   baked: int;                                    // the bake's publish status (e2bk.BAKE_OK when live), -1 not yet
   gpu: [E2G_GPU_FLOATS] f32; gpu_v: int;         // the table and the live AO as the ground shader reads them (e2g_gpu)
-  outside: int;                                  // queries outside the tile (answered by e2_height)
+  outside: int;                                  // queries off every tile (answered by e2_height)
 }
 
 // An sRGB colour (the pack's) re-encoded for the table's 2.2 power: the same linear colour.
@@ -89,8 +152,8 @@ e2g_material :: (id: int, a: [3] f32, b: [3] f32) -> e2tt.TerrainMaterial {
   m.blend_scale[0] = E2G_GRAIN;
   return m;
 }
-// The pack's colours (verse/tools/assets/everglade2_pack.coax gp_colour): the meadow and its autumn
-// constant; the litter's red follows the autumn under it, its green the grain; the dirt's grain.
+// The pack's old ground colours (e2g_pack_colour): the meadow and its autumn constant; the litter's
+// red follows the autumn under it, its green the grain; the dirt's grain.
 e2g_table :: (t: [] e2tt.TerrainMaterial) {
   t[0] = e2g_material(E2G_MEADOW, [3] f32.[0.32, 0.53, 0.055], [3] f32.[0.32, 0.53, 0.055]);
   t[1] = e2g_material(E2G_AUTUMN, [3] f32.[0.56, 0.50, 0.055], [3] f32.[0.56, 0.50, 0.055]);
@@ -114,66 +177,339 @@ e2g_albedo :: (t: [] e2tt.TerrainMaterial, w: [4] f32, x: f32, z: f32) -> [3] f3
   return out;
 }
 e2g_byte :: (w: f32) -> u8 { v := floor(w * 255 + 0.5); return cast(u8)(ifx v < 0 then 0.0f32 else ifx v > 255 then 255.0f32 else v); }
-// A sample's four weights from the land: the pack's layers, in its order.
+// A sample's four weights from the land: the layers, in order.
 e2g_weights :: (x: f32, z: f32) -> [4] f32 {
   w := [4] f32.[1, 0, 0, 0];
   for l: 0..<3 { c := e2_ground_layer(x, z, l); for k: 0..<4 { w[k] = e2bk.aethyr_terrain_over(w[k], c, ifx k == l + 1 then 1.0f32 else 0.0f32); } }
   return w;
 }
-// The sample (i, j)'s world point: rows south to north (+z), west to east.
-e2g_x :: (i: int) -> f32 { return f32(E2G_WEST) + f32(i) * f32(E2G_SPACING); }
-e2g_z :: (j: int) -> f32 { return f32(E2G_SOUTH) + f32(j) * f32(E2G_SPACING); }
 
-// Convert the land into the tile and admit it. True when admitted.
-e2g_build :: (g: [] E2Ground) -> bool {
-  e2g_table(g[0].table[..]);
-  t: e2tt.TerrainTile; t.cells = E2G_CELLS; t.spacing = E2G_SPACING; t.origin_x = E2G_WEST; t.origin_z = E2G_SOUTH;
+// ---- the lattice and the tiles' layout
+e2g_s64 :: () -> f64 { return f64(f32(E2G_SPACING)); }
+// Lattice coordinate `index` (half-steps allowed through `half`) from base: one f64 sum, one rounding.
+e2g_at :: (base: f32, index: int) -> f32 { return f32(f64(base) + f64(index) * e2g_s64()); }
+e2g_mid :: (base: f32, index: int, step: int) -> f32 { return f32(f64(base) + (f64(index) + 0.5 * f64(step)) * e2g_s64()); }
+// The glade's sample (i, j): rows south to north (+z), west to east.
+e2g_x :: (i: int) -> f32 { return e2g_at(f32(E2G_WEST), i); }
+e2g_z :: (j: int) -> f32 { return e2g_at(f32(E2G_SOUTH), j); }
+e2g_step :: (k: int) -> int { return ifx k >= E2G_COARSE_ROW then 2 else 1; }
+e2g_cells_of :: (k: int) -> int { return E2G_CELLS / e2g_step(k); }
+e2g_x0 :: (m: int) -> int { return m * E2G_CELLS; }          // the lattice index of a column's west edge
+e2g_z0 :: (k: int) -> int { return -(k + 1) * E2G_CELLS; }   // and of a row's south edge (the glade's row is -1)
+e2g_header :: (g: [] E2Ground, m: int, k: int) -> e2tt.TerrainTile {
+  t: e2tt.TerrainTile; t.cells = e2g_cells_of(k); t.spacing = f32(E2G_SPACING) * f32(e2g_step(k));
+  t.origin_x = f64(f32(E2G_WEST)) + f64(e2g_x0(m)) * e2g_s64(); t.origin_z = f64(f32(E2G_SOUTH)) + f64(e2g_z0(k)) * e2g_s64();
   t.table = e2tt.terrain_materials_revision(g[0].table[..]);
-  n := E2G_CELLS + 1;
-  for j: 0..<n { for i: 0..<n {
-    k := j * n + i; x := e2g_x(i); z := e2g_z(j);
-    g[0].source[k] = e2_height(x, z);
-    w := e2g_weights(x, z);
-    for q: 0..<4 { b := e2g_byte(w[q]); g[0].ids[k * 4 + q] = ifx b == 0 then cast(u8) e2tt.TERRAIN_TILE_NO_MATERIAL else cast(u8) q; g[0].weights[k * 4 + q] = b; }
-  } }
-  for c: 0..<E2G_CELLS * E2G_CELLS { g[0].holes[c] = 0; }
-  // the source's identity: the land function's name and this converter's revision
+  return t;
+}
+// The path's ground: the old ribbon's middle and half width (wider round the clearing).
+e2g_ribbon_x :: (z: f32) -> f32 { return e2_road_x(ifx z < E2_CLEAR_Z then E2_CLEAR_Z else z); }
+e2g_ribbon_half :: (z: f32) -> f32 { return ifx z < -410 then 48.0f32 else 26.0f32; }
+// Whether cell (i, j) of tile (m, k) has ground: all the glade's; the path's where the ribbon ran.
+e2g_solid :: (m: int, k: int, i: int, j: int) -> bool {
+  if k < 0 { return true; }
+  s := e2g_step(k);
+  cx := e2g_mid(f32(E2G_WEST), e2g_x0(m) + i * s, s); cz := e2g_mid(f32(E2G_SOUTH), e2g_z0(k) + j * s, s);
+  return cz <= f32(E2G_RIBBON_TOP) && cz >= f32(E2G_RIBBON_END) && abs(cx - e2g_ribbon_x(cz)) <= e2g_ribbon_half(cz);
+}
+// Whether sample (i, j) of an n-cell tile is live: on the tile's boundary, or a corner of a solid cell.
+e2g_live :: (holes: [] u8, n: int, i: int, j: int) -> bool {
+  if i == 0 || j == 0 || i == n || j == n { return true; }
+  return holes[(j - 1) * n + i - 1] == 0 || holes[(j - 1) * n + i] == 0 || holes[j * n + i - 1] == 0 || holes[j * n + i] == 0;
+}
+// Tile t's views.
+e2g_n :: (s: [] E2Tiles, t: int) -> int { return s[0].tile[t].cells; }
+e2g_h :: (s: [] E2Tiles, t: int) -> [] f32 { n := e2g_n(s, t); return s[0].heights[t * E2G_POINTS..<t * E2G_POINTS + (n + 1) * (n + 1)]; }
+e2g_hl :: (s: [] E2Tiles, t: int) -> [] u8 { n := e2g_n(s, t); return s[0].holes[t * E2G_HOLES..<t * E2G_HOLES + n * n]; }
+e2g_id :: (s: [] E2Tiles, t: int) -> [] u8 { n := e2g_n(s, t); return s[0].ids[t * E2G_POINTS * 4..<t * E2G_POINTS * 4 + (n + 1) * (n + 1) * 4]; }
+e2g_wt :: (s: [] E2Tiles, t: int) -> [] u8 { n := e2g_n(s, t); return s[0].weights[t * E2G_POINTS * 4..<t * E2G_POINTS * 4 + (n + 1) * (n + 1) * 4]; }
+// The tile at (m, k), or -1.
+e2g_find :: (s: [] E2Tiles, m: int, k: int) -> int { for t: 0..<s[0].n { if s[0].m[t] == m && s[0].k[t] == k { return t; } } return -1; }
+// The land's identity: the land function's name and this converter's revision.
+e2g_source :: () -> [8] u32 {
   d := [1] e2tt.TerrainTileDigest.[e2tt.terrain_tile_digest()];
   for ch: "verse/everglade2/forest.coax e2_height" { e2tt.terrain_tile_digest_byte(d[..], ch); }
   e2tt.terrain_tile_digest_int(d[..], E2G_CONVERTER);
-  g[0].receipt = e2tt.terrain_tile_convert(t, g[0].table[..], e2tt.terrain_tile_digest_end(d[..]), e2tt.TERRAIN_UNIT_METRE, E2G_CONVERTER,
-    g[0].source[..], g[0].heights[..], g[0].holes[..], g[0].ids[..], g[0].weights[..]);
-  g[0].ok = g[0].receipt.code == e2tt.TERRAIN_TILE_OK;
-  if !g[0].ok { return false; }
-  g[0].tile = t; g[0].frame = e2tt.terrain_tile_ground(t, 0, 0);
-  g[0].baked = -1;
-  e2g_gpu(g);
-  return true;
+  return e2tt.terrain_tile_digest_end(d[..]);
+}
+// The set's identity: its tiles' places and revisions, in order.
+e2g_set_revision :: (s: [] E2Tiles) -> [8] u32 {
+  d := [1] e2tt.TerrainTileDigest.[e2tt.terrain_tile_digest()];
+  e2tt.terrain_tile_digest_u32(d[..], 0x45325331);   // "E2S1"
+  e2tt.terrain_tile_digest_int(d[..], s[0].n);
+  for t: 0..<s[0].n { e2tt.terrain_tile_digest_int(d[..], s[0].m[t] + 100); e2tt.terrain_tile_digest_int(d[..], s[0].k[t] + 100); e2tt.terrain_tile_digest_words(d[..], s[0].receipt[t].output); }
+  return e2tt.terrain_tile_digest_end(d[..]);
 }
 
-// Where you stand at (x, z): the admitted tile's triangle inside it, e2_height past it (the ribbon and
-// the coarse ground are not tiles yet).
+// ---- conversion: the land into a set (the pack tool's route, and the page's when the record refuses)
+// Converts tile (m, k) into set slot s[0].n. False when it refuses; a tile with no ground is skipped.
+e2g_convert_tile :: (g: [] E2Ground, s: [] E2Tiles, m: int, k: int) -> bool {
+  t := s[0].n;
+  if t >= E2G_TILES { return false; }
+  tile := e2g_header(g, m, k); n := tile.cells; side := n + 1; st := e2g_step(k);
+  s[0].tile[t] = tile;   // for the views below
+  holes := e2g_hl(s, t); ids := e2g_id(s, t); ws := e2g_wt(s, t);
+  any := false;
+  for j: 0..<n { for i: 0..<n { solid := e2g_solid(m, k, i, j); holes[j * n + i] = ifx solid then 0 else 1; if solid { any = true; } } }
+  if !any { return true; }
+  for j: 0..<side { for i: 0..<side {
+    q := j * side + i;
+    if !e2g_live(holes, n, i, j) {
+      g[0].source[q] = 0;
+      for c: 0..<4 { ids[q * 4 + c] = ifx c == 0 then 0 else cast(u8) e2tt.TERRAIN_TILE_NO_MATERIAL; ws[q * 4 + c] = ifx c == 0 then 255 else 0; }
+      continue;
+    }
+    x := e2g_at(f32(E2G_WEST), e2g_x0(m) + i * st); z := e2g_at(f32(E2G_SOUTH), e2g_z0(k) + j * st);
+    g[0].source[q] = e2_height(x, z);
+    w := e2g_weights(x, z);
+    for c: 0..<4 { b := e2g_byte(w[c]); ids[q * 4 + c] = ifx b == 0 then cast(u8) e2tt.TERRAIN_TILE_NO_MATERIAL else cast(u8) c; ws[q * 4 + c] = b; }
+  } }
+  // the last fine row's south edge lies on the coarse row's line (LOD profile v1, level 1)
+  if k == E2G_COARSE_ROW - 1 { for e: 0..<side { if e % 2 == 1 { g[0].source[e] = e2tt.terrain_tile_stitched(g[0].source[0..<side * side], n, 0, 1, e); } } }
+  r := e2tt.terrain_tile_convert(tile, g[0].table[..], e2g_source(), e2tt.TERRAIN_UNIT_METRE, E2G_CONVERTER,
+    g[0].source[0..<side * side], e2g_h(s, t), holes, ids, ws);
+  if r.code != e2tt.TERRAIN_TILE_OK { return false; }
+  s[0].receipt[t] = r; s[0].m[t] = m; s[0].k[t] = k; s[0].n += 1;
+  return true;
+}
+// The whole set: the glade, then the path's rows north to south, each west to east.
+e2g_convert :: (g: [] E2Ground, s: [] E2Tiles) -> bool {
+  s[0].n = 0;
+  if !e2g_convert_tile(g, s, 0, -1) || s[0].n != 1 { return false; }
+  for k: 0..<E2G_ROWS { for m: E2G_COL_LO..<E2G_COL_HI + 1 { if !e2g_convert_tile(g, s, m, k) { return false; } } }
+  e2g_count_live(s);
+  s[0].revision = e2g_set_revision(s);
+  return true;
+}
+e2g_count_live :: (s: [] E2Tiles) {
+  s[0].live = 0;
+  for t: 0..<s[0].n { n := e2g_n(s, t); hl := e2g_hl(s, t); for j: 0..<n + 1 { for i: 0..<n + 1 { if e2g_live(hl, n, i, j) { s[0].live += 1; } } } }
+}
+
+// ---- seams: every shared edge repeats bit for bit, and the coarse rows' edge is stitched
+// 0 when every seam holds, else 1 + the tile whose seam fails.
+e2g_seams :: (s: [] E2Tiles) -> int {
+  for b: 0..<s[0].n {
+    mb := s[0].m[b]; kb := s[0].k[b];
+    // b's west neighbour, then its south one
+    a := e2g_find(s, mb - 1, kb);
+    if a >= 0 && !e2tt.terrain_tile_edges_agree(s[0].tile[a], e2g_h(s, a), e2g_id(s, a), e2g_wt(s, a), s[0].tile[b], e2g_h(s, b), e2g_id(s, b), e2g_wt(s, b)) { return 1 + b; }
+    a = e2g_find(s, mb, kb + 1);
+    if a < 0 { continue; }
+    if e2g_step(kb + 1) == e2g_step(kb) {
+      if !e2tt.terrain_tile_edges_agree(s[0].tile[a], e2g_h(s, a), e2g_id(s, a), e2g_wt(s, a), s[0].tile[b], e2g_h(s, b), e2g_id(s, b), e2g_wt(s, b)) { return 1 + b; }
+      continue;
+    }
+    // a coarse tile south of a fine one: its north samples are the fine south edge's even ones, and
+    // the fine edge's odd samples lie on the line between them
+    na := e2g_n(s, a); nb := e2g_n(s, b); ha := e2g_h(s, a); hb := e2g_h(s, b);
+    if nb != na * 2 { return 1 + b; }
+    for e: 0..<nb + 1 {
+      if f32_bits(hb[e]) != f32_bits(e2tt.terrain_tile_stitched(hb, nb, 0, 1, e)) { return 1 + b; }
+      if e % 2 == 0 && f32_bits(hb[e]) != f32_bits(ha[e2tt.terrain_tile_edge_index(na, 2, e / 2)]) { return 1 + b; }
+    }
+  }
+  return 0;
+}
+
+// ---- publication: a set goes live whole, or not at all
+// The two sets' storage (3 MB each), the owner's: a page keeps it outside its state, a tool or a check on its stack.
+e2g_store :: (g: [] E2Ground, sets: [] E2Tiles) { g[0].sets = sets; }
+e2g_stored :: (g: [] E2Ground) -> bool { return g[0].sets.count >= 2; }
+e2g_frames :: (g: [] E2Ground, s: [] E2Tiles) {
+  for t: 0..<s[0].n { s[0].frame[t] = e2tt.terrain_tile_ground(s[0].tile[t], g[0].frame_x, g[0].frame_z); }
+}
+e2g_refuse :: (g: [] E2Ground, code: int) -> int { g[0].refused += 1; if g[0].first_refusal == 0 { g[0].first_refusal = code; } return code; }
+// Publishes the staged set (sets[1 - cur]) when its seams hold and every frame converts. The status.
+e2g_publish :: (g: [] E2Ground, route: int) -> int {
+  if !e2g_stored(g) { return e2g_refuse(g, E2G_REC_LAYOUT); }
+  nx := 1 - g[0].cur; s := g[0].sets[nx..<nx + 1];
+  if s[0].n < 1 || s[0].m[0] != 0 || s[0].k[0] != -1 { return e2g_refuse(g, E2G_REC_LAYOUT); }
+  if e2g_seams(s) != 0 { return e2g_refuse(g, E2G_REC_SEAM); }
+  e2g_frames(g, s);
+  for t: 0..<s[0].n { if s[0].frame[t].n == 0 { return e2g_refuse(g, E2G_REC_LAYOUT); } }
+  g[0].cur = nx; g[0].ok = true; g[0].route = route; g[0].published += 1;
+  g[0].tile = s[0].tile[0]; g[0].frame = s[0].frame[0]; g[0].receipt = s[0].receipt[0];
+  if !e2tt.terrain_tile_same(g[0].key.tile, g[0].receipt.output) { g[0].baked = -1; }   // a new glade tile wants a new bake
+  e2g_gpu(g);
+  return E2G_REC_OK;
+}
+e2g_live_set :: (g: [] E2Ground) -> [] E2Tiles { return g[0].sets[g[0].cur..<g[0].cur + 1]; }
+e2g_staged :: (g: [] E2Ground) -> [] E2Tiles { nx := 1 - g[0].cur; return g[0].sets[nx..<nx + 1]; }
+
+// Convert the land into the set and publish it (the converter's route). True when published.
+e2g_build :: (g: [] E2Ground) -> bool {
+  e2g_table(g[0].table[..]);
+  if !e2g_stored(g) { return false; }
+  if !e2g_convert(g, e2g_staged(g)) { _r := e2g_refuse(g, E2G_REC_TILE); return false; }
+  return e2g_publish(g, E2G_ROUTE_CONVERTED) == E2G_REC_OK;
+}
+
+// ---- the record: the pack's route
+e2g_put32 :: (b: [] u8, at: int, v: u32) { for q: 0..<4 { b[at + q] = cast,trunc(u8)(v >> cast(u32)(q * 8)); } }
+e2g_get32 :: (b: [] u8, at: int) -> u32 { v: u32 = 0; for q: 0..<4 { v = v | (cast(u32) b[at + q] << cast(u32)(q * 8)); } return v; }
+e2g_put64 :: (b: [] u8, at: int, v: u64) { e2g_put32(b, at, cast,trunc(u32) v); e2g_put32(b, at + 4, cast,trunc(u32)(v >> 32)); }
+e2g_get64 :: (b: [] u8, at: int) -> u64 { return cast(u64) e2g_get32(b, at) | (cast(u64) e2g_get32(b, at + 4) << 32); }
+e2g_put_words :: (b: [] u8, at: int, w: [8] u32) { for q: 0..<8 { e2g_put32(b, at + q * 4, w[q]); } }
+e2g_get_words :: (b: [] u8, at: int) -> [8] u32 { w: [8] u32; for q: 0..<8 { w[q] = e2g_get32(b, at + q * 4); } return w; }
+e2g_bits_bytes :: (n: int) -> int { return (n * n + 7) / 8; }
+// The record of set s (converted with table g.table) into out: its length, or -1 when out is too small.
+e2g_record_write :: (g: [] E2Ground, s: [] E2Tiles, out: [] u8) -> int {
+  at := E2G_RECORD_HEAD + s[0].n * E2G_RECORD_TILE;
+  if out.count < at { return -1; }
+  for q: 0..<at { out[q] = 0; }
+  e2g_put32(out, 0, cast(u32) E2G_RECORD_MAGIC); e2g_put32(out, 4, cast(u32) E2G_RECORD_VERSION); e2g_put32(out, 8, cast(u32) s[0].n);
+  e2g_put32(out, 12, cast(u32) E2G_CONVERTER); e2g_put32(out, 16, cast(u32) e2tt.TERRAIN_UNIT_METRE);
+  e2g_put_words(out, 24, e2tt.terrain_materials_revision(g[0].table[..])); e2g_put_words(out, 56, e2g_source()); e2g_put_words(out, 88, s[0].revision);
+  for t: 0..<s[0].n {
+    h := E2G_RECORD_HEAD + t * E2G_RECORD_TILE; tile := s[0].tile[t]; n := tile.cells;
+    e2g_put32(out, h, cast,trunc(u32)(s[0].m[t] + 100)); e2g_put32(out, h + 4, cast,trunc(u32)(s[0].k[t] + 100)); e2g_put32(out, h + 8, cast(u32) n);
+    e2g_put32(out, h + 12, f32_bits(tile.spacing)); e2g_put64(out, h + 16, f64_bits(tile.origin_x)); e2g_put64(out, h + 24, f64_bits(tile.origin_z));
+    e2g_put_words(out, h + 32, s[0].receipt[t].output);
+    hl := e2g_hl(s, t); hs := e2g_h(s, t); ws := e2g_wt(s, t);
+    bits := e2g_bits_bytes(n);
+    if at + bits > out.count { return -1; }
+    for q: 0..<bits { out[at + q] = 0; }
+    for c: 0..<n * n { if hl[c] != 0 { out[at + c / 8] = out[at + c / 8] | cast(u8)(1 << (c % 8)); } }
+    at += bits;
+    for j: 0..<n + 1 { for i: 0..<n + 1 {
+      if !e2g_live(hl, n, i, j) { continue; }
+      if at + 8 > out.count { return -1; }
+      q := j * (n + 1) + i; e2g_put32(out, at, f32_bits(hs[q])); for c: 0..<4 { out[at + 4 + c] = ws[q * 4 + c]; } at += 8;
+    } }
+  }
+  e2g_put32(out, 20, cast(u32) at);
+  return at;
+}
+// Reads a record into the staged set and publishes it: every tile admitted against g's table at the
+// revision the record names, the seams held and the set's revision met. The status; any refusal
+// leaves the published set as it was.
+e2g_record_read :: (g: [] E2Ground, b: [] u8) -> int {
+  if !e2g_stored(g) { return e2g_refuse(g, E2G_REC_LAYOUT); }
+  if b.count < E2G_RECORD_HEAD { return e2g_refuse(g, E2G_REC_SHORT); }
+  if e2g_get32(b, 0) != cast(u32) E2G_RECORD_MAGIC || e2g_get32(b, 4) != cast(u32) E2G_RECORD_VERSION { return e2g_refuse(g, E2G_REC_MAGIC); }
+  if cast(int) e2g_get32(b, 20) != b.count { return e2g_refuse(g, E2G_REC_SIZE); }
+  if e2g_get32(b, 12) != cast(u32) E2G_CONVERTER || e2g_get32(b, 16) != cast(u32) e2tt.TERRAIN_UNIT_METRE { return e2g_refuse(g, E2G_REC_LAYOUT); }
+  e2g_table(g[0].table[..]);
+  table := e2tt.terrain_materials_revision(g[0].table[..]);
+  if !e2tt.terrain_tile_same(e2g_get_words(b, 24), table) { return e2g_refuse(g, E2G_REC_TABLE); }
+  source := e2g_get_words(b, 56);
+  count := cast(int) e2g_get32(b, 8);
+  if count < 1 || count > E2G_TILES || b.count < E2G_RECORD_HEAD + count * E2G_RECORD_TILE { return e2g_refuse(g, E2G_REC_LAYOUT); }
+  s := e2g_staged(g); s[0].n = 0;
+  at := E2G_RECORD_HEAD + count * E2G_RECORD_TILE;
+  for t: 0..<count {
+    h := E2G_RECORD_HEAD + t * E2G_RECORD_TILE;
+    m := cast(int) e2g_get32(b, h) - 100; k := cast(int) e2g_get32(b, h + 4) - 100; n := cast(int) e2g_get32(b, h + 8);
+    if m < E2G_COL_LO || m > E2G_COL_HI || k < -1 || k >= E2G_ROWS || (k == -1 && m != 0) || e2g_find(s, m, k) >= 0 || (t == 0) != (k == -1) { return e2g_refuse(g, E2G_REC_LAYOUT); }
+    want := e2g_header(g, m, k);
+    if n != want.cells || e2g_get32(b, h + 12) != f32_bits(want.spacing) || e2g_get64(b, h + 16) != f64_bits(want.origin_x) || e2g_get64(b, h + 24) != f64_bits(want.origin_z) { return e2g_refuse(g, E2G_REC_LAYOUT); }
+    s[0].tile[t] = want;
+    hl := e2g_hl(s, t); hs := e2g_h(s, t); ids := e2g_id(s, t); ws := e2g_wt(s, t);
+    bits := e2g_bits_bytes(n);
+    if at + bits > b.count { return e2g_refuse(g, E2G_REC_SHORT); }
+    for c: 0..<n * n { hl[c] = (b[at + c / 8] >> cast(u8)(c % 8)) & 1; }
+    for c: n * n..<bits * 8 { if ((b[at + c / 8] >> cast(u8)(c % 8)) & 1) != 0 { return e2g_refuse(g, E2G_REC_LAYOUT); } }
+    at += bits;
+    for j: 0..<n + 1 { for i: 0..<n + 1 {
+      q := j * (n + 1) + i;
+      if !e2g_live(hl, n, i, j) {
+        hs[q] = 0; for c: 0..<4 { ids[q * 4 + c] = ifx c == 0 then 0 else cast(u8) e2tt.TERRAIN_TILE_NO_MATERIAL; ws[q * 4 + c] = ifx c == 0 then 255 else 0; }
+        continue;
+      }
+      if at + 8 > b.count { return e2g_refuse(g, E2G_REC_SHORT); }
+      hs[q] = f32_from_bits(e2g_get32(b, at));
+      for c: 0..<4 { w := b[at + 4 + c]; ws[q * 4 + c] = w; ids[q * 4 + c] = ifx w == 0 then cast(u8) e2tt.TERRAIN_TILE_NO_MATERIAL else cast(u8) c; }
+      at += 8;
+    } }
+    a := e2tt.terrain_tile_admit(want, g[0].table[..], hs, hl, ids, ws);
+    if a.code != e2tt.TERRAIN_TILE_OK { return e2g_refuse(g, E2G_REC_TILE); }
+    if !e2tt.terrain_tile_same(a.revision, e2g_get_words(b, h + 32)) { return e2g_refuse(g, E2G_REC_IDENTITY); }
+    holes := 0; for c: 0..<n * n { holes += cast(int) hl[c]; }
+    s[0].receipt[t] = e2tt.TerrainTileReceipt.{source = source, units = e2tt.TERRAIN_UNIT_METRE, rescale = 1, converter = E2G_CONVERTER, table = table,
+      dependencies = 1, samples = (n + 1) * (n + 1), cells = n * n, holes = holes, materials = 4, output = a.revision};
+    s[0].m[t] = m; s[0].k[t] = k; s[0].n += 1;
+  }
+  if at != b.count { return e2g_refuse(g, E2G_REC_SIZE); }
+  e2g_count_live(s);
+  s[0].revision = e2g_set_revision(s);
+  if !e2tt.terrain_tile_same(s[0].revision, e2g_get_words(b, 88)) { return e2g_refuse(g, E2G_REC_SET); }
+  return e2g_publish(g, E2G_ROUTE_PACK);
+}
+// The record as the pack's catalog carries it: `G ` lines of base64, 96 characters each (the last
+// shorter). The lines written into out: their length, or -1.
+E2G_LINE :: 72;   // bytes a line (96 characters)
+e2g_record_lines :: (rec: [] u8, out: [] u8) -> int {
+  at := 0; r := 0;
+  while r < rec.count {
+    e := ifx r + E2G_LINE < rec.count then r + E2G_LINE else rec.count;
+    if at + 2 + b64_encoded_size(e - r) + 1 > out.count { return -1; }
+    out[at] = 'G'; out[at + 1] = ' '; at += 2;
+    n := b64_encode(cast(string) rec[r..<e], out[at..<out.count]); at += n; out[at] = '\n'; at += 1; r = e;
+  }
+  return at;
+}
+// The record back out of a catalog's `G` lines into out: its length (0 with no lines, -1 refused).
+e2g_record_from_catalog :: (text: string, out: [] u8) -> int {
+  at := 0; p := 0;
+  while p < text.count {
+    e := p; while e < text.count && text[e] != '\n' { e += 1; }
+    if e - p > 2 && text[p] == 'G' && text[p + 1] == ' ' {
+      if at + b64_decoded_max(e - p - 2) > out.count { return -1; }
+      n := b64_decode(text[p + 2..<e], out[at..<out.count]);
+      if n < 0 { return -1; }
+      at += n;
+    }
+    p = e + 1;
+  }
+  return at;
+}
+
+// ---- queries
+// Where you stand at (x, z), in the realm's frame: the admitted tile's triangle where a tile has
+// ground there, e2_height past them (counted).
 e2g_y :: (g: [] E2Ground, x: f32, z: f32) -> f32 {
-  span := f32(E2G_CELLS) * f32(E2G_SPACING);
-  inside := x >= f32(E2G_WEST) && x <= f32(E2G_WEST) + span && z >= f32(E2G_SOUTH) && z <= f32(E2G_SOUTH) + span;   // the sampler clamps past its edges
-  if g[0].ok && inside {
-    q := e2tt.terrain_tile_sample(g[0].frame, g[0].heights[..], g[0].holes[..], x, z);
-    if q.ok { return q.height; }
+  if g[0].ok {
+    s := e2g_live_set(g);
+    for t: 0..<s[0].n {
+      f := s[0].frame[t]; span := f32(f.n) * f.cell;
+      if x < f.west || x > f.west + span || z < f.south || z > f.south + span { continue; }   // the sampler clamps past its edges
+      q := e2tt.terrain_tile_sample(f, e2g_h(s, t), e2g_hl(s, t), x, z);
+      if q.ok { return q.height; }
+    }
   }
   g[0].outside += 1;
-  return e2_height(x, z);
+  return e2_height(x + f32(g[0].frame_x), z + f32(g[0].frame_z));
+}
+// Whether a tile has ground at (x, z).
+e2g_ground_at :: (g: [] E2Ground, x: f32, z: f32) -> bool {
+  if !g[0].ok { return false; }
+  s := e2g_live_set(g);
+  for t: 0..<s[0].n {
+    f := s[0].frame[t]; span := f32(f.n) * f.cell;
+    if x < f.west || x > f.west + span || z < f.south || z > f.south + span { continue; }
+    if e2tt.terrain_tile_sample(f, e2g_h(s, t), e2g_hl(s, t), x, z).ok { return true; }
+  }
+  return false;
+}
+// The bytes the published set keeps resident: heights, holes and influences (the receipt's memory).
+e2g_resident :: (g: [] E2Ground) -> int {
+  if !g[0].ok { return 0; }
+  s := e2g_live_set(g); n := 0;
+  for t: 0..<s[0].n { c := e2g_n(s, t); n += (c + 1) * (c + 1) * 12 + c * c; }
+  return n;
 }
 
 // ---- the bake
 // A crown proxy for kit k at scales (sv, sh): centre height and radius.
 E2G_CROWN :: [3][2] f32.[[2] f32.[5.0, 2.6], [2] f32.[5.5, 1.8], [2] f32.[4.0, 2.0]];   // common, birch, pine
 e2g_crown :: (k: int) -> [2] f32 { return E2G_CROWN[ifx k < 5 then 0 else ifx k < 10 then 1 else 2]; }
-e2g_near :: (x: f32, z: f32) -> bool {
-  r := f32(E2G_REACH); span := f32(E2G_CELLS) * f32(E2G_SPACING);
-  return x > f32(E2G_WEST) - r && x < f32(E2G_WEST) + span + r && z > f32(E2G_SOUTH) - r && z < f32(E2G_SOUTH) + span + r;
+e2g_near :: (g: [] E2Ground, x: f32, z: f32) -> bool {
+  r := f32(E2G_REACH); f := g[0].frame; span := f32(f.n) * f.cell;
+  return x > f.west - r && x < f.west + span + r && z > f.south - r && z < f.south + span + r;
 }
 e2g_add_crown :: (g: [] E2Ground, x: f32, y: f32, z: f32, r: f32) {
-  if g[0].crown_n >= E2G_CROWNS || !e2g_near(x, z) { return; }
+  if g[0].crown_n >= E2G_CROWNS || !e2g_near(g, x, z) { return; }
   o := g[0].crown_n * 4; g[0].crowns[o] = x; g[0].crowns[o + 1] = y; g[0].crowns[o + 2] = z; g[0].crowns[o + 3] = r; g[0].crown_n += 1;
 }
 // The crowns: the glade's own trees and the planted woods' near the tile.
@@ -212,31 +548,42 @@ e2g_content :: (g: [] E2Ground) -> [8] u32 {
   for k: 0..<g[0].crown_n * 4 { e2tt.terrain_tile_digest_f32(d[..], g[0].crowns[k]); }
   return e2tt.terrain_tile_digest_end(d[..]);
 }
-// Bake the canopy's AO on the tile and publish it onto the current key. The publish status.
+// The key the world has now: the glade tile's revision, the crowns' and the realm's state.
+e2g_now :: (g: [] E2Ground, variant: int) -> e2bk.BakeKey {
+  k: e2bk.BakeKey; k.tile = g[0].receipt.output; k.content = e2g_content(g); k.axes = 1; k.state[0] = cast(u32) variant;
+  return k;
+}
+// The bake's grid: the glade tile's.
+e2g_grid :: (g: [] E2Ground) -> e2bk.BakeGrid {
+  grid: e2bk.BakeGrid; grid.cells = g[0].tile.cells; grid.spacing = g[0].tile.spacing; grid.origin_x = g[0].tile.origin_x; grid.origin_z = g[0].tile.origin_z; grid.rise = E2G_RISE;
+  return grid;
+}
+// Bake the canopy's AO on the glade tile and publish it onto the current key. The publish status.
 e2g_bake :: (g: [] E2Ground, items: [] f32, kinds: [] u8, planted: int) -> int {
   if !g[0].ok { return -1; }
   e2g_crowns(g, items, kinds, planted);
-  n := E2G_CELLS + 1;
+  s := e2g_live_set(g); hs := e2g_h(s, 0); hl := e2g_hl(s, 0);
+  n := g[0].tile.cells + 1; f := g[0].frame;
   for j: 0..<n { for i: 0..<n {
-    k := j * n + i; x := e2g_x(i); z := e2g_z(j);
-    q := e2tt.terrain_tile_sample(g[0].frame, g[0].heights[..], g[0].holes[..], x, z);
+    k := j * n + i; x := f.west + f32(i) * f.cell; z := f.south + f32(j) * f.cell;
+    q := e2tt.terrain_tile_sample(f, hs, hl, x, z);
     nl := sqrt(q.gx * q.gx + 1 + q.gz * q.gz);
-    g[0].ao[k] = e2g_ao_of(e2g_occluded(g[0].crowns[..], g[0].crown_n, x, g[0].heights[k], z, -q.gx / nl, 1 / nl, -q.gz / nl));
+    g[0].ao[k] = e2g_ao_of(e2g_occluded(g[0].crowns[..], g[0].crown_n, x, hs[k], z, -q.gx / nl, 1 / nl, -q.gz / nl));
     for c: 0..<3 { g[0].bounce[k * 3 + c] = 0; }
   } }
-  grid: e2bk.BakeGrid; grid.cells = E2G_CELLS; grid.spacing = E2G_SPACING; grid.origin_x = E2G_WEST; grid.origin_z = E2G_SOUTH; grid.rise = E2G_RISE;
-  grid.key.tile = g[0].receipt.output; grid.key.content = e2g_content(g);
+  grid := e2g_grid(g); grid.key = e2g_now(g, E2G_VARIANT);
   g[0].key = grid.key;
   g[0].baked = e2bk.bake_publish(g[0].bake[..], grid, g[0].tile, g[0].key, g[0].ao[..], g[0].bounce[..], g[0].live_ao[..], g[0].live_bounce[..]);
   e2g_gpu(g);
   return g[0].baked;
 }
-// The store the ground shader reads: the grid's frame, the admitted table, and the live AO (1 until the
-// bake publishes; its bounce is 0 everywhere, so only the AO goes up). A new version on every change.
+// The store the ground shader reads: the glade grid's frame (in the realm's frame), the admitted
+// table, and the live AO (1 until the bake publishes; its bounce is 0 everywhere, so only the AO
+// goes up). A new version on every change.
 e2g_gpu :: (g: [] E2Ground) {
   o := g[0].gpu[..];
   for k: 0..<E2G_GPU_FLOATS { o[k] = 0; }
-  o[0] = f32(E2G_CELLS); o[1] = E2G_SPACING; o[2] = E2G_WEST; o[3] = E2G_SOUTH;
+  o[0] = f32(E2G_CELLS); o[1] = E2G_SPACING; o[2] = ifx g[0].ok then g[0].frame.west else f32(E2G_WEST); o[3] = ifx g[0].ok then g[0].frame.south else f32(E2G_SOUTH);
   live := g[0].ok && g[0].bake[0].live && g[0].baked == e2bk.BAKE_OK;
   o[4] = E2G_RISE; o[5] = E2G_EDGE; o[6] = ifx live then 1.0f32 else 0.0f32; o[7] = E2G_GROUND_AO_SHARE;
   for m: 0..<4 {
@@ -255,55 +602,151 @@ e2g_least :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
 // and past the tile. Within E2G_EDGE of the tile's edge it eases to the fallback (smoothstep on the
 // distance to the edge), so walking off the tile under the woods is no sudden step in light.
 e2g_ao :: (g: [] E2Ground, x: f32, z: f32, above: f32) -> f32 {
-  if !g[0].ok { return 1; }
+  if !g[0].ok || g[0].baked != e2bk.BAKE_OK { return 1; }
   s := e2bk.bake_sample(g[0].bake[..], g[0].key, g[0].frame, g[0].live_ao[..], g[0].live_bounce[..], x, z, above);
   if !s.ok || s.fallback { return 1; }
-  span := f32(E2G_CELLS) * f32(E2G_SPACING);
-  edge := e2g_least(e2g_least(x - f32(E2G_WEST), f32(E2G_WEST) + span - x), e2g_least(z - f32(E2G_SOUTH), f32(E2G_SOUTH) + span - z));
+  f := g[0].frame; span := f32(f.n) * f.cell;
+  edge := e2g_least(e2g_least(x - f.west, f.west + span - x), e2g_least(z - f.south, f.south + span - z));
   t := edge / f32(E2G_EDGE); t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
   return 1 + (s.ao - 1) * t * t * (3 - 2 * t);
 }
 
 // ---- checks
-#test "the glade's tile is the pack's grid: admitted, its samples the land, its weights the pack's layers" #steps 2000000000 {
-  g: [1] E2Ground;
-  #assert e2g_build(g[..]);
+#test "the glade's tile is the pack's old grid: admitted, its samples the land, its weights the layers" #steps 4000000000 {
+  g: [1] E2Ground; gt: [2] E2Tiles; e2g_store(g[..], gt[..]);
+  #assert e2g_build(g[..]) && g[0].route == E2G_ROUTE_CONVERTED;
   r := g[0].receipt;
   #assert r.units == e2tt.TERRAIN_UNIT_METRE && r.rescale == 1 && r.converter == E2G_CONVERTER && r.samples == E2G_POINTS && r.holes == 0 && r.materials == 4;
-  // the pack's vertices (gp_ground: x = (ix - 50) 0.65, z = 5 - iz 0.65) are the tile's samples
+  // the old pack grid's vertices (x = (ix - 50) 0.65, z = 5 - iz 0.65) are the tile's samples
   for t: 0..<40 {
     ix := (t * 37) % 101; iz := (t * 53) % 101;
     x := (f32(ix) - 50) * 0.65; z := 5 - f32(iz) * 0.65;
     #assert abs(e2g_y(g[..], x, z) - e2_height(x, z)) < 0.002;
   }
-  // between samples the walk stands on the pack's triangle: (a, a + 1, a + side) and (a + 1, a + side + 1, a + side)
+  // between samples the walk stands on the drawn triangle: (NW, NE, SW) and (NE, SE, SW)
   for t: 0..<40 {
     ix := (t * 29) % 100; iz := (t * 41) % 100;
     x0 := (f32(ix) - 50) * 0.65; z0 := 5 - f32(iz) * 0.65;
     ha := e2_height(x0, z0); hb := e2_height(x0 + 0.65, z0); hc := e2_height(x0, z0 - 0.65); hd := e2_height(x0 + 0.65, z0 - 0.65);
-    u := 0.2f32 + f32(t % 5) * 0.12; v := 0.15f32 + f32(t % 3) * 0.1;   // u east, v south, inside (a, a + 1, a + side): u + v < 1
+    u := 0.2f32 + f32(t % 5) * 0.12; v := 0.15f32 + f32(t % 3) * 0.1;   // u east, v south, inside (NW, NE, SW): u + v < 1
     want := ha + (hb - ha) * u + (hc - ha) * v;
     #assert abs(e2g_y(g[..], x0 + 0.65 * u, z0 - 0.65 * v) - want) < 0.003;
     u2 := 1 - v; v2 := 1 - u + 0.0001;   // the other triangle: u + v > 1
     want2 := hd + (hc - hd) * (1 - u2) + (hb - hd) * (1 - v2);
     #assert abs(e2g_y(g[..], x0 + 0.65 * u2, z0 - 0.65 * v2) - want2) < 0.003;
   }
-  // past the tile: the land itself, counted
+  // past every tile: the land itself, counted
   was := g[0].outside;
-  #assert e2g_y(g[..], 0, -200) == e2_height(0, -200) && g[0].outside == was + 1;
-  #assert e2g_y(g[..], 32.5, 5) == e2_height(32.5, 5);   // the far corner too
+  #assert e2g_y(g[..], 120, -200) == e2_height(120, -200) && g[0].outside == was + 1;
+  #assert abs(e2g_y(g[..], 32.5, 5) - e2_height(32.5, 5)) < 0.002;   // the far corner too
   // the weights: the meadow at the glade's middle, the path on the path
-  k0 := (int(floor((0 - f32(E2G_SOUTH)) / f32(E2G_SPACING) + 0.5))) * 101 + 50;
+  s := e2g_live_set(g[..]);
   pz := -30.0f32; j := int(floor((pz - f32(E2G_SOUTH)) / f32(E2G_SPACING) + 0.5)); px := e2_road_x(e2g_z(j)); i := int(floor((px - f32(E2G_WEST)) / f32(E2G_SPACING) + 0.5));
   w := e2g_weights(e2g_x(i), e2g_z(j));
   #assert w[3] > 0.8 && abs(w[0] + w[1] + w[2] + w[3] - 1) < 0.0001;
-  b := e2tt.terrain_tile_blend(g[0].frame, g[0].ids[..], g[0].weights[..], e2g_x(i), e2g_z(j));
+  b := e2tt.terrain_tile_blend(s[0].frame[0], e2g_id(s, 0), e2g_wt(s, 0), e2g_x(i), e2g_z(j));
   path := 0.0f32; for q: 0..<b.count { if b.ids[q] == E2G_PATH { path = b.weights[q]; } }
   #assert b.ok && abs(path - w[3]) < 0.01;
-  #assert k0 > 0;
 }
 
-#test "the canopy AO matches an independent sampling of the sky, and the bake publishes onto its key only" #steps 2000000000 {
+#test "the path's tiles meet the glade and each other bit for bit, the coarse rows on the fine edge, and the walk never steps" #steps 8000000000 {
+  g: [1] E2Ground; gt: [2] E2Tiles; e2g_store(g[..], gt[..]); #assert e2g_build(g[..]);
+  s := e2g_live_set(g[..]);
+  // the glade, then a run of path tiles in both spacings, the glade's south neighbour among them
+  coarse := 0; for t: 0..<s[0].n { if e2g_step(s[0].k[t]) == 2 { coarse += 1; } }
+  #assert s[0].n >= 15 && s[0].n <= E2G_TILES && coarse >= 3 && e2g_find(s, 0, 0) > 0 && e2g_seams(s) == 0;
+  // a fine/coarse pair exists, so the stitch is checked on this land
+  pairs := 0; for t: 0..<s[0].n { if s[0].k[t] == E2G_COARSE_ROW && e2g_find(s, s[0].m[t], E2G_COARSE_ROW - 1) >= 0 { pairs += 1; } }
+  #assert pairs >= 1;
+  // the path's middle is ground from the glade to the clearing; a corridor's far side is not
+  for i: 0..<92 { z := -61.0f32 - f32(i) * 5; #assert e2g_ground_at(g[..], e2g_ribbon_x(z), z); }
+  #assert !e2g_ground_at(g[..], e2g_ribbon_x(-200) + 40, -200);
+  // the recorded walk (the path's middle and 1.5 m to each side, every 0.25 m from the glade to the
+  // clearing): every step is the land's own slope, never a jump at a tile's edge, and the feet stay
+  // within a few centimetres of the land itself
+  for side: 0..<3 {
+    off := f32(side - 1) * 1.5; last := e2g_y(g[..], e2g_ribbon_x(-40) + off, -40);
+    for i: 1..<1900 {
+      z := -40.0f32 - f32(i) * 0.25; x := e2g_ribbon_x(z) + off; y := e2g_y(g[..], x, z);
+      #assert abs(y - last) < 0.2 && abs(y - e2_height(x, z)) < 0.06;
+      last = y;
+    }
+  }
+  // across every shared edge the two tiles give the same ground
+  for t: 1..<s[0].n {
+    if e2g_find(s, s[0].m[t], s[0].k[t] - 1) < 0 { continue; }   // only where a tile lies north
+    f := s[0].frame[t]; n := f.n;
+    for e: 0..<n + 1 {
+      x := f.west + f32(e) * f.cell; z := f.south + f32(n) * f.cell;   // its north edge
+      if !e2tt.terrain_tile_sample(f, e2g_h(s, t), e2g_hl(s, t), x, z - 0.001).ok || !e2g_ground_at(g[..], x, z + 0.001) { continue; }
+      #assert abs(e2g_y(g[..], x, z - 0.001) - e2g_y(g[..], x, z + 0.001)) < 0.002;
+    }
+  }
+  // a changed edge sample breaks a seam, and such a set never publishes
+  st := e2g_staged(g[..]); #assert e2g_convert(g[..], st);
+  a := e2g_find(st, 0, 0); hs := e2g_h(st, a); hs[E2G_CELLS * (E2G_CELLS + 1) + 50] += 0.01;
+  before := g[0].published;
+  #assert e2g_seams(st) != 0 && e2g_publish(g[..], E2G_ROUTE_CONVERTED) == E2G_REC_SEAM && g[0].published == before && e2g_seams(e2g_live_set(g[..])) == 0;
+}
+
+#test "the record round-trips: the pack's route admits the same set, and any damage refuses with the old set kept" #steps 12000000000 {
+  g: [1] E2Ground; gt: [2] E2Tiles; e2g_store(g[..], gt[..]); #assert e2g_build(g[..]);
+  rec: [E2G_RECORD_MAX] u8;
+  n := e2g_record_write(g[..], e2g_live_set(g[..]), rec[..]);
+  #assert n > E2G_RECORD_HEAD && n < E2G_RECORD_MAX;
+  // through the catalog's lines and back
+  lines: [1500000] u8; ln := e2g_record_lines(rec[0..<n], lines[..]); back: [E2G_RECORD_MAX] u8;
+  #assert ln > n && e2g_record_from_catalog(cast(string) lines[0..<ln], back[..]) == n;
+  for q: 0..<n { #assert back[q] == rec[q]; }
+  #assert e2g_record_from_catalog("C glade/environment 9 12 250 100 8 0\n", back[..]) == 0;
+  // a fresh page: published from the record, the same tiles, heights and revision
+  p: [1] E2Ground; pt: [2] E2Tiles; e2g_store(p[..], pt[..]);
+  #assert e2g_record_read(p[..], rec[0..<n]) == E2G_REC_OK && p[0].route == E2G_ROUTE_PACK && p[0].ok;
+  a := e2g_live_set(g[..]); b := e2g_live_set(p[..]);
+  #assert b[0].n == a[0].n && e2tt.terrain_tile_same(a[0].revision, b[0].revision) && e2tt.terrain_tile_same(p[0].receipt.output, g[0].receipt.output);
+  for t: 0..<a[0].n { #assert e2tt.terrain_tile_same(a[0].receipt[t].output, b[0].receipt[t].output); }
+  for z: 0..<60 { x := e2g_ribbon_x(-2.0f32 - f32(z) * 8) + 0.3; zz := -2.0f32 - f32(z) * 8; #assert f32_bits(e2g_y(p[..], x, zz)) == f32_bits(e2g_y(g[..], x, zz)); }
+  // damage: a height, a hole bit, the set's identity, the table, a short or long record. Each
+  // refuses and the published set (and its revision) stays
+  kept := b[0].revision;
+  for which: 0..<6 {
+    bad: [E2G_RECORD_MAX] u8; for q: 0..<n { bad[q] = rec[q]; }
+    m := n;
+    if which == 0 { bad[n - 8] = bad[n - 8] ^ 1; }                                  // the last live sample's height
+    if which == 1 { bad[E2G_RECORD_HEAD + a[0].n * E2G_RECORD_TILE] ^= 2; }          // a glade cell becomes a hole
+    if which == 2 { bad[88] ^= 1; }                                                  // the set's revision
+    if which == 3 { bad[24] ^= 1; }                                                  // the table's
+    if which == 4 { m = n - 8; e2g_put32(bad[..], 20, cast(u32) m); }                // cut short
+    if which == 5 { m = n + 8; e2g_put32(bad[..], 20, cast(u32) m); }                // a tail
+    want := [6] int.[E2G_REC_IDENTITY, E2G_REC_IDENTITY, E2G_REC_SET, E2G_REC_TABLE, E2G_REC_SHORT, E2G_REC_SIZE][which];
+    was := p[0].refused;
+    #assert e2g_record_read(p[..], bad[0..<m]) == want && p[0].refused == was + 1;
+    #assert e2tt.terrain_tile_same(e2g_live_set(p[..])[0].revision, kept) && p[0].route == E2G_ROUTE_PACK;
+  }
+}
+
+#test "far from the origin the tiles answer as at it: queries, the drawn grid and the bake's frame agree" #steps 8000000000 {
+  g: [1] E2Ground; gt: [2] E2Tiles; e2g_store(g[..], gt[..]); #assert e2g_build(g[..]);
+  // the same set placed 10^8 m out, read from a frame there: every local Ground is the one at 0
+  f: [1] E2Ground; ft: [2] E2Tiles; e2g_store(f[..], ft[..]); f[0].frame_x = 100000000; f[0].frame_z = -100000000; e2g_table(f[0].table[..]);
+  st := e2g_staged(f[..]); a := e2g_live_set(g[..]);
+  st[0] = a[0];
+  for t: 0..<st[0].n { st[0].tile[t].origin_x += f[0].frame_x; st[0].tile[t].origin_z += f[0].frame_z; }
+  #assert e2g_publish(f[..], E2G_ROUTE_CONVERTED) == E2G_REC_OK;
+  b := e2g_live_set(f[..]);
+  for t: 0..<a[0].n {
+    p := a[0].frame[t]; q := b[0].frame[t];
+    #assert p.n == q.n && f32_bits(p.cell) == f32_bits(q.cell) && f32_bits(p.west) == f32_bits(q.west) && f32_bits(p.south) == f32_bits(q.south);
+  }
+  for i: 0..<200 { x := e2g_ribbon_x(-1.0f32 - f32(i) * 2.6) - 0.7; z := -1.0f32 - f32(i) * 2.6; #assert f32_bits(e2g_y(f[..], x, z)) == f32_bits(e2g_y(g[..], x, z)); }
+  #assert f[0].gpu[2] == g[0].gpu[2] && f[0].gpu[3] == g[0].gpu[3] && f[0].gpu[2] == f32(E2G_WEST);
+  // a frame past ground.coax's range never publishes
+  st = e2g_staged(f[..]); st[0] = a[0]; f[0].frame_x = 0; f[0].frame_z = 0;
+  for t: 0..<st[0].n { st[0].tile[t].origin_x += 5000000; }
+  #assert e2g_publish(f[..], E2G_ROUTE_CONVERTED) == E2G_REC_LAYOUT;
+}
+
+#test "the canopy AO matches an independent sampling of the sky, and the bake publishes onto its key and state only" #steps 9000000000 {
   // one crown straight up and one off to the side, both wholly above the ground
   crowns := [8] f32.[0, 6, 0, 2, 7, 3, 1, 1.5];
   got := e2g_occluded(crowns[..], 2, 0, 0, 0, 0, 1, 0);
@@ -323,24 +766,29 @@ e2g_ao :: (g: [] E2Ground, x: f32, z: f32, above: f32) -> f32 {
   #assert abs(got - f32(hit) / f32(total)) < 0.01;
   #assert e2g_ao_of(got) == 1 - got && e2g_ao_of(5) == f32(E2G_AO_FLOOR) && e2g_occluded(crowns[..], 2, 0, 5.5, 0, 0, 1, 0) == 1;
   // the bake on the tile with no woods: open sky; with a crown over the glade's middle, darker under it
-  g: [1] E2Ground; #assert e2g_build(g[..]);
+  g: [1] E2Ground; gt: [2] E2Tiles; e2g_store(g[..], gt[..]); #assert e2g_build(g[..]);
   #assert e2g_ao(g[..], 0, -10, 0) == 1;   // the fallback before it publishes
   items: [E2_ITEM_FLOATS] f32; kinds: [1] u8;
   items[0] = 0; items[1] = e2_height(0, -10); items[2] = -10; items[4] = 1; items[5] = 1; kinds[0] = 0;
-  #assert e2g_bake(g[..], items[..], kinds[..], 1) == e2bk.BAKE_OK && g[0].bake[0].live;
+  #assert e2g_bake(g[..], items[..], kinds[..], 1) == e2bk.BAKE_OK && g[0].bake[0].live && g[0].key.axes == 1 && g[0].key.state[0] == E2G_VARIANT;
   under := e2g_ao(g[..], 0, -10, 0); open := e2g_ao(g[..], 0, -40, 0);
   #assert under < 0.85 && open > under && e2g_ao(g[..], 0, -10, 20) > 0.999;   // high above, open sky
-  // the edge eases to the fallback: at the edge and past it, 1; small steps on the way
+  // the edge eases to the fallback: at the edge and past it, 1
   #assert e2g_ao(g[..], 0, f32(E2G_SOUTH), 0) == 1 && e2g_ao(g[..], 0, f32(E2G_SOUTH) - 1, 0) == 1;
-  // a stale key (other crowns) refuses and the live bake stays
+  // a stale key (other crowns) refuses, a bake for another world state refuses, and the live bake stays
   before := g[0].bake[0].revision;
-  grid: e2bk.BakeGrid; grid.cells = E2G_CELLS; grid.spacing = E2G_SPACING; grid.origin_x = E2G_WEST; grid.origin_z = E2G_SOUTH; grid.rise = E2G_RISE;
-  grid.key = g[0].key; grid.key.content[0] += 1;
+  grid := e2g_grid(g[..]); grid.key = g[0].key; grid.key.content[0] += 1;
   #assert e2bk.bake_publish(g[0].bake[..], grid, g[0].tile, g[0].key, g[0].ao[..], g[0].bounce[..], g[0].live_ao[..], g[0].live_bounce[..]) == e2bk.BAKE_STALE;
+  grid.key = e2g_now(g[..], E2G_VARIANT + 1);
+  #assert e2bk.bake_publish(g[0].bake[..], grid, g[0].tile, g[0].key, g[0].ao[..], g[0].bounce[..], g[0].live_ao[..], g[0].live_bounce[..]) == e2bk.BAKE_STATE;
   #assert e2tt.terrain_tile_same(before, g[0].bake[0].revision) && e2g_ao(g[..], 0, -10, 0) == under;
+  // a newly published set of the same land keeps its bake; another glade tile wants a new one
+  #assert e2g_build(g[..]) && g[0].baked == e2bk.BAKE_OK && e2g_ao(g[..], 0, -10, 0) == under;
+  g[0].key.tile[0] += 1; #assert e2g_build(g[..]) && g[0].baked == -1 && e2g_ao(g[..], 0, -10, 0) == 1;
 }
 
-// The pack's ground colour (verse/tools/assets/everglade2_pack.coax gp_colour), sRGB: the look the table keeps.
+// The pack's old ground colour (verse/tools/assets/everglade2_pack.coax gp_colour before #13059), sRGB:
+// the look the table keeps.
 e2g_pack_colour :: (x: f32, z: f32) -> [3] f32 {
   path := e2_path(x, z); noise := cg_hash(x, z); autumn := e2_gold(x, z); c := [3] f32.[0.32 + autumn * 0.24, 0.53 - autumn * 0.03, 0.055];
   litter := [3] f32.[0.25 + autumn * 0.20, 0.36 + noise * 0.03, 0.07]; f := e2_forest(x, z) * 0.6; for k: 0..<3 { c[k] = c[k] * (1 - f) + litter[k] * f; }
@@ -348,7 +796,7 @@ e2g_pack_colour :: (x: f32, z: f32) -> [3] f32 {
   return c;
 }
 e2g_srgb :: (x: f32) -> f32 { return ifx x <= 0.0031308 then 12.92 * x else 1.055 * pow(x, 1.0f32 / 2.4f32) - 0.055; }
-#test "the table draws the pack's ground colours: the same linear colour each, the litter's autumn, the grain" #steps 4000000000 {
+#test "the table draws the pack's old ground colours: the same linear colour each, the litter's autumn, the grain" #steps 4000000000 {
   t: [4] e2tt.TerrainMaterial; e2g_table(t[..]);
   #assert e2tt.terrain_materials_check(t[..]).code == e2tt.TERRAIN_TILE_OK;
   // each constant decodes to the pack's sRGB colour exactly
@@ -373,8 +821,8 @@ e2g_srgb :: (x: f32) -> f32 { return ifx x <= 0.0031308 then 12.92 * x else 1.05
   w = [4] f32.[0.4, 0, 0.6, 0]; a = e2g_albedo(t[..], w, 3, 4);
   #assert abs(e2g_srgb((a[0] - 0.4 * pow(t[0].albedo_a[0], 2.2f32)) / 0.6) - 0.25) < 0.02;
   // the store the shader reads: the frame, the table, then AO 1 before the bake
-  g: [1] E2Ground; #assert e2g_build(g[..]);
-  #assert g[0].gpu[0] == 100 && g[0].gpu[1] == f32(E2G_SPACING) && g[0].gpu[6] == 0 && g[0].gpu[7] == f32(E2G_GROUND_AO_SHARE) && g[0].gpu_v == 1;
+  g: [1] E2Ground; gt: [2] E2Tiles; e2g_store(g[..], gt[..]); #assert e2g_build(g[..]);
+  #assert g[0].gpu[0] == 100 && g[0].gpu[1] == f32(E2G_SPACING) && g[0].gpu[2] == f32(E2G_WEST) && g[0].gpu[3] == f32(E2G_SOUTH) && g[0].gpu[6] == 0 && g[0].gpu[7] == f32(E2G_GROUND_AO_SHARE) && g[0].gpu_v == 1;
   b := (E2G_GPU_HEAD + 2 * E2G_GPU_MATERIAL) * 4;
   #assert g[0].gpu[b] == g[0].table[2].albedo_a[0] && g[0].gpu[b + 3] == 1 && g[0].gpu[b + 7] == f32(E2G_AUTUMN) && g[0].gpu[b + 18] == f32(E2G_MEADOW);
   #assert g[0].gpu[E2G_GPU_AO] == 1 && g[0].gpu[E2G_GPU_AO + E2G_POINTS - 1] == 1 && E2G_GPU_FLOATS % 4 == 0 && E2G_GPU_FLOATS >= E2G_GPU_AO + E2G_POINTS;

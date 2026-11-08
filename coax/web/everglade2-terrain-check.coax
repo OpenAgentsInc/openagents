@@ -1,0 +1,117 @@
+// Everglade II's ground in headless Chrome (GitHub #13059): how long the page takes to load, how its
+// frames run while you walk the path across the ground's tiles, and what its ground reports.
+// For each walk (from the glade, from 120 m down the path, and across the fine/coarse seam at 360 m:
+// `?walk`, `?at=120&walk`, `?at=360&walk`) it opens the page with the cache off, times the load to
+// the scene drawn and the loading card gone, then lets you walk for --seconds (default 15) and
+//   - times every requestAnimationFrame (p50, p95, p99, the worst; FPS) and the GPU's passes
+//     (coaxialPassTimer: the median and p95 of the first pass's start to the last one's end);
+//   - takes the Wasm memories before and after the walk (an allocation during travel grows one);
+//   - reads the ground's facts (everglade2.coax e2_probe 90 to 98): its route (1 the pack's record),
+//     tiles, sets published, refusals, the first refusal, KiB resident, the set's and the glade
+//     tile's revision words, and queries off the tiles.
+//   coax/web/tool.sh coax/web/everglade2-terrain-check.coax http://127.0.0.1:PORT [OUT.tsv] [--size WxH] [--dpr N] [--seconds S]
+// Serve the app first: coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:PORT.
+// --size defaults to 2400x1400 and --dpr to 2. OUT.tsv keeps one line a walk:
+//   WALK LOAD_MS FRAMES P50_US P95_US P99_US MAX_US FPS10 GPU50_US GPU95_US MEM_BEFORE MEM_AFTER ROUTE TILES PUBLISHED REFUSED FIRST KIB SET GLADE OFF
+// Exit 0 when every walk loaded its ground from the pack's record with no refusal and no memory grew
+// during the walk, 1 when not, 2 on bad usage or a headless Chrome with no hardware WebGPU adapter.
+#import "Basic";
+#load "../lib/media/media.coax";      // MEDIA_READY_JS; it loads cdp.coax
+#load "../lib/sys/fs.coax";
+
+ET_WALKS :: 3;
+ET_NAMES :: [3] string.["glade", "path", "seam"];
+ET_QUERY :: [3] string.["walk", "at=120&walk", "at=360&walk"];
+// Before the page loads: count the Wasm memories it makes, and time the passes.
+ET_INIT_JS :: "globalThis.coaxialPassTimer=true;(()=>{const mems=globalThis.__etMems=[];const keep=r=>{try{const i=r.instance||r;for(const v of Object.values(i.exports||{}))if(v instanceof WebAssembly.Memory&&!mems.includes(v))mems.push(v);}catch(e){}return r;};const I=WebAssembly.instantiate,S=WebAssembly.instantiateStreaming,N=WebAssembly.Instance;WebAssembly.instantiate=function(...a){return I.apply(this,a).then(keep);};if(S)WebAssembly.instantiateStreaming=function(...a){return S.apply(this,a).then(keep);};const M=WebAssembly.Memory;WebAssembly.Memory=function(d){const m=new M(d);mems.push(m);return m;};WebAssembly.Memory.prototype=M.prototype;})();";
+ET_MEM_JS :: "(globalThis.__etMems||[]).reduce((n,m)=>n+m.buffer.byteLength,0)";
+// The walk's frames: rAF intervals and pass times over ms; [count, p50, p95, p99, max, fps10, gpu50, gpu95] in microseconds.
+ET_FRAMES_JS :: "(async(ms)=>{const c=globalThis.coaxial;c.takePassTimes();const t=[];let last=performance.now();const end=last+ms;await new Promise(r=>{const f=now=>{t.push(now-last);last=now;if(now<end)requestAnimationFrame(f);else r();};requestAnimationFrame(f);});const p=c.takePassTimes().map(r=>r[0]).filter(x=>x>0).sort((a,b)=>a-b);t.sort((a,b)=>a-b);const q=(a,f)=>a.length?a[Math.min(a.length-1,Math.floor(a.length*f))]:-1;const sum=t.reduce((a,b)=>a+b,0);return [t.length,Math.round(q(t,0.5)*1000),Math.round(q(t,0.95)*1000),Math.round(q(t,0.99)*1000),Math.round(t[t.length-1]*1000),Math.round(t.length/(sum/1000)*10),Math.round(q(p,0.5)),Math.round(q(p,0.95))].join(' ');})";
+ET_FACTS_JS :: "[90,91,92,93,94,95,96,97,98].map(f=>globalThis.coaxial.fieldProbe(f)).join(' ')";
+
+EtBuf :: struct { b: [8192] u8; n: int; }
+et_put :: (o: [] EtBuf, s: string) { for ch: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = ch; o[0].n += 1; } } }
+et_int :: (o: [] EtBuf, value: int) { v := value; if v < 0 { et_put(o, "-"); v = -v; } d: [24] u8; k := 0; while true { d[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } } while k > 0 { k -= 1; et_put(o, cast(string) d[k..<k + 1]); } }
+et_tabs :: (o: [] EtBuf, s: string) { for ch: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = ifx ch == ' ' then cast(u8) '\t' else ch; o[0].n += 1; } } }
+et_text :: (o: [] EtBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+et_call :: (c: [] Cdp, method: string, params: string) -> bool { return cdp_call(c, method, params, 30000) >= 0; }
+et_number :: (c: [] Cdp, js: string) -> int { n := cdp_evaluate(c, js); if n < 0 { return -1; } return jv_int(c[0].doc[0], n, -1); }
+et_string :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  n := cdp_evaluate(c, js); if n < 0 { return ""; }
+  s := jv_raw(c[0].doc[0], n); if s.count >= 2 && s[0] == '"' { s = s[1..<s.count - 1]; }
+  k := 0; for ch: s { if k < out.count { out[k] = ch; k += 1; } }
+  return cast(string) out[0..<k];
+}
+et_word :: (s: string, i: int) -> int {
+  at := 0; w := 0;
+  while at < s.count {
+    while at < s.count && s[at] == ' ' { at += 1; }
+    e := at; while e < s.count && s[e] != ' ' { e += 1; }
+    if w == i { v := 0; neg := false; for p: at..<e { if s[p] == '-' { neg = true; } else { v = v * 10 + cast(int)(s[p] - '0'); } } return ifx neg then -v else v; }
+    w += 1; at = e;
+  }
+  return -1;
+}
+et_whole :: (s: string) -> int { v := 0; for ch: s { if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int)(ch - '0'); } return ifx s.count > 0 then v else -1; }
+// The time from navigation to the scene drawn with its loading card gone, or -1 (90 s at most).
+et_load :: (c: [] Cdp, t0: int) -> int {
+  while proc_now_ms() - t0 < 90000 {
+    word: [512] u8; wn := media_value(c, MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    if status == "scene" { return proc_now_ms() - t0; }
+    if status.count >= 6 && status[0..<6] == "failed" { return -1; }
+    proc_sleep(25);
+  }
+  return -1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: everglade2-terrain-check BASE_URL [OUT.tsv] [--size WxH] [--dpr N] [--seconds S]\n"); return 2; }
+  base := args_at(a[..], 0); out := ifx args_count(a[..]) >= 2 && args_at(a[..], 1)[0] != '-' then args_at(a[..], 1) else "";
+  size := args_value(a[..], "--size", "2400x1400"); dpr := et_whole(args_value(a[..], "--dpr", "2")); secs := et_whole(args_value(a[..], "--seconds", "15"));
+  w := 0; h := 0; at := 0;
+  while at < size.count && size[at] >= '0' && size[at] <= '9' { w = w * 10 + cast(int) (size[at] - '0'); at += 1; }
+  at += 1; while at < size.count && size[at] >= '0' && size[at] <= '9' { h = h * 10 + cast(int) (size[at] - '0'); at += 1; }
+  if w < 64 || h < 64 || dpr < 1 || dpr > 4 || secs < 1 || secs > 120 { print("everglade2-terrain-check: --size WxH, --dpr 1 to 4, --seconds 1 to 120\n"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], w, h, "e2-terrain-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer { cdp_close(c[..]); }
+  vp: [1] EtBuf; et_put(vp[..], "{\"width\":"); et_int(vp[..], w); et_put(vp[..], ",\"height\":"); et_int(vp[..], h); et_put(vp[..], ",\"deviceScaleFactor\":"); et_int(vp[..], dpr); et_put(vp[..], ",\"mobile\":false}");
+  init: [4096] u8; ij: [1] Jo; jo_start(ij[..], init[..]); jo_obj(ij[..]); jo_key(ij[..], "source"); jo_str(ij[..], ET_INIT_JS); jo_end(ij[..]);
+  if !et_call(c[..], "Page.enable", "") || !et_call(c[..], "Network.enable", "") || !et_call(c[..], "Network.setCacheDisabled", "{\"cacheDisabled\":true}")
+     || !et_call(c[..], "Emulation.setDeviceMetricsOverride", et_text(vp[..])) || !et_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(ij[..])) {
+    tool_errln(cdp_error(c[..])); return 1;
+  }
+  report: [1] EtBuf; ok := true;
+  for v: 0..<ET_WALKS {
+    u: [1] EtBuf; et_put(u[..], base); et_put(u[..], "/worlds/everglade2?"); et_put(u[..], ET_QUERY[v]);
+    nav: [4096] u8; jo: [1] Jo; jo_start(jo[..], nav[..]); jo_obj(jo[..]); jo_key(jo[..], "url"); jo_str(jo[..], et_text(u[..])); jo_end(jo[..]);
+    t0 := proc_now_ms();
+    if !et_call(c[..], "Page.navigate", jo_text(jo[..])) { print("FAIL %: navigation\n", ET_NAMES[v]); ok = false; continue; }
+    load := et_load(c[..], t0);
+    if load < 0 { print("FAIL %: the scene didn't draw\n", ET_NAMES[v]); ok = false; continue; }
+    if v == 0 {
+      gb: [256] u8; line := cdp_adapter(c[..], gb[..]); print("everglade2-terrain-check: WebGPU adapter: %\n", line);
+      if !cdp_adapter_hardware(line) { tool_errln("everglade2-terrain-check: no hardware WebGPU adapter"); return 2; }
+    }
+    proc_sleep(2000);
+    before := et_number(c[..], ET_MEM_JS);
+    js: [1] EtBuf; et_put(js[..], ET_FRAMES_JS); et_put(js[..], "("); et_int(js[..], secs * 1000); et_put(js[..], ")");
+    fb: [512] u8; frames := et_string(c[..], et_text(js[..]), fb[..]);
+    after := et_number(c[..], ET_MEM_JS);
+    gb2: [512] u8; facts := et_string(c[..], ET_FACTS_JS, gb2[..]);
+    pass := et_word(facts, 0) == 1 && et_word(facts, 3) == 0 && after == before && frames.count > 0;
+    if !pass { ok = false; }
+    print("% %: load % ms; frames [n p50 p95 p99 max us, fps x10, gpu p50 p95 us] %; wasm memory % -> % bytes; ground [route tiles published refused first KiB set glade off] %\n",
+      ifx pass then "ok  " else "FAIL", ET_NAMES[v], load, frames, before, after, facts);
+    et_put(report[..], ET_NAMES[v]); et_put(report[..], "\t"); et_int(report[..], load);
+    et_put(report[..], "\t"); et_tabs(report[..], frames);
+    et_put(report[..], "\t"); et_int(report[..], before); et_put(report[..], "\t"); et_int(report[..], after);
+    et_put(report[..], "\t"); et_tabs(report[..], facts);
+    et_put(report[..], "\n");
+  }
+  if out.count > 0 && !fs_write(out, et_text(report[..])) { print("FAIL: can't write %\n", out); return 1; }
+  print("% everglade2 terrain\n", ifx ok then "PASS" else "FAIL");
+  return ifx ok then 0 else 1;
+}
