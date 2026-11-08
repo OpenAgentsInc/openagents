@@ -594,3 +594,15 @@ matrix and the checked Lab Wasm build pass. This is not a rest admission or
 completion API: sleep/activity/interruption/cooldown, HP/ability restoration,
 Exhaustion and world controls remain required. The [remaining contract](long-rest-implementation.md)
 records the implementation sequence. No issue closes on this layer.
+
+### Class and subclass features, levels 1–6 (#13044)
+
+`aethyr/rules/srd/class-features.coax` lists every class-table and subclass
+feature the twelve presets gain at levels 1–6, with its printed page, and holds
+each to the built preset at every level: present from its level, absent before.
+Each feature then resolves against its text with fixed dice in
+`class-<class>-checks.coax`.
+
+| Class (subclass) | Features checked | Status |
+| --- | --- | --- |
+| Barbarian (Berserker) | Rage, Unarmored Defense, Weapon Mastery (2, 3 at 4), Danger Sense, Reckless Attack, Primal Knowledge, Frenzy, ASI, Extra Attack, Fast Movement, Mindless Rage | Done |

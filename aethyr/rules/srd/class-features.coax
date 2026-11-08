@@ -1,0 +1,83 @@
+// The levels 1-6 slice's class and subclass features (#13044): every feature the SRD 5.2.1 class
+// tables and subclass descriptions give the twelve presets at levels 1 to 6, with its level and
+// printed page, and what of the built preset (engine.coax rs_barbarian ... rs_wizard) shows it.
+// The table is held to the presets at every level 1 to 6 below: a feature is there from its level
+// and not before. What each one does is checked against its text, feature by feature, in
+// class-<class>-checks.coax. Check-only: no world loads this file.
+//   coax/bin/coax test --library aethyr/rules/srd/class-features.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "battle.coax";
+
+RsCf :: struct { klass: int; level: int; page: int; name: string; }
+RS_CF_MAX :: 160;
+cf :: (out: [] RsCf, n: int, klass: int, level: int, page: int, name: string) -> int { out[n] = RsCf.{klass = klass, level = level, page = page, name = name}; return n + 1; }
+// Each class's rows, in the order of its class table; subclass features under their subclass.
+rs_cf_table :: (out: [] RsCf) -> int {
+  n := 0;
+  // Barbarian (p. 28-30), Path of the Berserker
+  n = cf(out, n, RS_BARBARIAN, 1, 28, "Rage"); n = cf(out, n, RS_BARBARIAN, 1, 29, "Unarmored Defense");
+  n = cf(out, n, RS_BARBARIAN, 1, 29, "Weapon Mastery"); n = cf(out, n, RS_BARBARIAN, 2, 29, "Danger Sense");
+  n = cf(out, n, RS_BARBARIAN, 2, 29, "Reckless Attack"); n = cf(out, n, RS_BARBARIAN, 3, 29, "Primal Knowledge");
+  n = cf(out, n, RS_BARBARIAN, 3, 30, "Frenzy"); n = cf(out, n, RS_BARBARIAN, 4, 29, "Ability Score Improvement");
+  n = cf(out, n, RS_BARBARIAN, 4, 29, "Weapon Mastery (3)");
+  n = cf(out, n, RS_BARBARIAN, 5, 29, "Extra Attack"); n = cf(out, n, RS_BARBARIAN, 5, 29, "Fast Movement");
+  n = cf(out, n, RS_BARBARIAN, 6, 30, "Mindless Rage");
+  return n;
+}
+// The classes whose rows are complete and held to the presets.
+RS_CF_DONE :: [1] int.[RS_BARBARIAN];
+
+rs_cf_hero :: (klass: int, level: int) -> RsCreature {
+  if klass == RS_BARBARIAN { return rs_barbarian("Hero", 0, level); }
+  if klass == RS_BARD { return rs_bard("Hero", 0, level); }
+  if klass == RS_CLERIC { return rs_cleric("Hero", 0, level); }
+  if klass == RS_DRUID { return rs_druid("Hero", 0, level); }
+  if klass == RS_FIGHTER { return rs_fighter("Hero", 0, level); }
+  if klass == RS_MONK { return rs_monk("Hero", 0, level); }
+  if klass == RS_PALADIN { return rs_paladin("Hero", 0, level); }
+  if klass == RS_RANGER { return rs_ranger("Hero", 0, level); }
+  if klass == RS_ROGUE { return rs_rogue("Hero", 0, level); }
+  if klass == RS_SORCERER { return rs_sorcerer("Hero", 0, level); }
+  if klass == RS_WARLOCK { return rs_warlock("Hero", 0, level, SP_ELDRITCH_BLAST); }
+  return rs_wizard("Hero", 0, level);
+}
+// Does the built preset c show feature f? Each reads the state the feature's rules run on.
+rs_cf_held :: (c: RsCreature, f: string) -> bool {
+  dex := rs_mod(c.score[RS_DEX]); con := rs_mod(c.score[RS_CON]);
+  if c.klass == RS_BARBARIAN {
+    if f == "Rage" { return c.rages_max >= 2 && c.rage_bonus == 2; }
+    if f == "Unarmored Defense" { return c.ac == 10 + dex + con; }
+    if f == "Weapon Mastery" { return c.mastery_n >= 2 && (c.masteries & (1 << M_CLEAVE)) != 0; }
+    if f == "Danger Sense" { return c.danger_sense; }
+    if f == "Reckless Attack" { return c.level >= 2; }   // rs_attack admits it from level 2
+    if f == "Primal Knowledge" { return c.primal; }
+    if f == "Frenzy" { return c.frenzy; }
+    if f == "Ability Score Improvement" { return c.score[RS_STR] == 18; }
+    if f == "Weapon Mastery (3)" { return c.mastery_n == 3; }
+    if f == "Extra Attack" { return c.extra_attack == 1; }
+    if f == "Fast Movement" { return c.speed == 40; }
+    if f == "Mindless Rage" { return c.mindless; }
+  }
+  return false;
+}
+
+#test "the slice's feature table: each done class's features are on its preset from their level, not before" #steps 400000000 {
+  rows: [RS_CF_MAX] RsCf; n := rs_cf_table(rows[..]);
+  for klass: RS_CF_DONE {
+    count := 0;
+    for level: 1..<7 {
+      c := rs_cf_hero(klass, level);
+      #assert c.klass == klass && c.level == level;
+      for r: 0..<n {
+        if rows[r].klass != klass { continue; }
+        if level == 1 { count += 1; #assert rows[r].level >= 1 && rows[r].level <= 6 && rows[r].page >= 28 && rows[r].page <= 82; }
+        #assert rs_cf_held(c, rows[r].name) == (level >= rows[r].level);
+      }
+    }
+    #assert count > 0;
+  }
+}

@@ -236,6 +236,7 @@ RsCreature :: struct {
   weapon: int;              // what it attacks with (W_*)
   ranged: int;              // a ranged weapon it can shoot instead (-1 none)
   masteries: int;           // the weapon mastery properties it can use, bits of 1 << M_*
+  mastery_n: int;           // Weapon Mastery: how many kinds of weapon it has chosen (two kinds can share a property)
   reacted: bool;            // its Reaction is spent until its next turn starts
   opportunity_blocked: bool; // Addle: until actual next turn start
   dodging: bool;            // Dodge until actual next turn start, or lost to incapacity/Speed zero
@@ -490,7 +491,10 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c[0].ac = 10 + rs_mod(c[0].score[RS_DEX]) + con;
   c[0].speed = 30;
   c[0].spell_ability = -1;
-  c[0].weapon = W_GREATAXE; c[0].masteries = 1 << M_CLEAVE;
+  // Weapon Mastery (p. 29): two kinds, three from level 4: its Greataxe (Cleave) and Handaxes (Vex),
+  // then the Greatsword (Graze)
+  c[0].weapon = W_GREATAXE; c[0].masteries = (1 << M_CLEAVE) | (1 << M_VEX); c[0].mastery_n = 2;
+  if level >= 4 { c[0].masteries |= 1 << M_GRAZE; c[0].mastery_n = 3; }
   rages := [21] int.[0, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6];
   c[0].rages = rages[rs_min(rs_max(level, 1), 20)]; c[0].rages_max = c[0].rages;
   c[0].rage_bonus = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
@@ -702,7 +706,9 @@ rs_fighter :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_FIGHTER, [6] int.[16, 13, 14, 8, 12, 10], RS_STR, RS_CON, 10);
   c[0].ac = 16 + 1;
-  c[0].weapon = W_GREATSWORD; c[0].masteries = 1 << M_GRAZE;
+  // Weapon Mastery (p. 48): three kinds, four from level 4: its Greatsword (Graze), Flail (Sap) and
+  // Javelins (Slow), then the Longsword (Sap)
+  c[0].weapon = W_GREATSWORD; c[0].masteries = (1 << M_GRAZE) | (1 << M_SAP) | (1 << M_SLOW); c[0].mastery_n = ifx level >= 4 then 4 else 3;
   rs_use_set(c[..], RS_USE_WIND, ifx level >= 10 then 4 else ifx level >= 4 then 3 else 2);
   if level >= 2 { rs_use_set(c[..], RS_USE_SURGE, ifx level >= 17 then 2 else 1); }
   c[0].crit_range = ifx level >= 15 then 2 else ifx level >= 3 then 1 else 0;
@@ -726,7 +732,8 @@ rs_paladin :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 5 { c[0].extra_attack = 1; c[0].steed = true; }
   c[0].aura = level >= 6;
   c[0].ac = 16 + 2;
-  c[0].spell_ability = RS_CHA; c[0].weapon = W_LONGSWORD; c[0].masteries = 1 << M_SAP;
+  c[0].spell_ability = RS_CHA; c[0].weapon = W_LONGSWORD;
+  c[0].masteries = (1 << M_SAP) | (1 << M_SLOW); c[0].mastery_n = 2;   // Weapon Mastery (p. 54): Longsword and Javelins
   rs_half_slots(c[..], level);
   rs_use_set(c[..], RS_USE_LAY, 5 * level);
   if level >= 2 { c[0].free_spell = SP_DIVINE_SMITE; rs_use_set(c[..], RS_USE_FREE, 1); }
@@ -745,7 +752,7 @@ rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 4 { c[0].score[RS_DEX] = rs_min(c[0].score[RS_DEX] + 2, 20); }
   c[0].ac = 12 + rs_mod(c[0].score[RS_DEX]);
   c[0].spell_ability = RS_WIS; c[0].weapon = W_SHORTSWORD; c[0].ranged = W_LONGBOW;
-  c[0].masteries = (1 << M_SLOW) | (1 << M_VEX);
+  c[0].masteries = (1 << M_SLOW) | (1 << M_VEX); c[0].mastery_n = 2;   // Weapon Mastery (p. 58)
   rs_half_slots(c[..], level);
   c[0].free_spell = SP_HUNTERS_MARK;
   rs_use_set(c[..], RS_USE_FREE, ifx level >= 17 then 6 else ifx level >= 13 then 5 else ifx level >= 9 then 4 else ifx level >= 5 then 3 else 2);
@@ -767,7 +774,8 @@ rs_rogue :: (name: string, team: int, level: int) -> RsCreature {
   // an Ability Score Improvement at 4 (the feat, p. 87): Dexterity +2
   if level >= 4 { c[0].score[RS_DEX] = rs_min(c[0].score[RS_DEX] + 2, 20); }
   c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]);
-  c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW; c[0].masteries = 1 << M_VEX;
+  c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW;
+  c[0].masteries = (1 << M_VEX) | (1 << M_NICK); c[0].mastery_n = 2;   // Weapon Mastery (p. 62): Shortsword and Daggers
   c[0].sneak_dice = (level + 1) / 2;
   c[0].cunning = level >= 2; c[0].steady_aim = level >= 3;
   // Expertise in two skills at 1 and two more at 6, Thieves' Cant (p. 61-62); the Thief's Fast Hands
