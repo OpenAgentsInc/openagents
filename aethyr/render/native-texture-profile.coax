@@ -17,7 +17,7 @@ RenderNativeTextureMip :: struct {valid:bool;width:int;height:int;offset:u64;row
  for p:0..<18 {
   q:=render_native_texture_needs(p);#assert q.valid;
   #assert q.layers==((u32(3717)&(u32(1)<<u32(p)))!=0);
-  #assert q.sans==((u32(131074)&(u32(1)<<u32(p)))!=0);
+  #assert q.sans==((u32(131078)&(u32(1)<<u32(p)))!=0);
  }
  #assert !render_native_texture_needs(-1).valid && !render_native_texture_needs(18).valid;
 }

@@ -227,19 +227,8 @@ of the run (action 19, `history.replaceState`). The run is in
 `everglade2-create.coax` (`e2c_walk`, `e2c_shot`, `e2c_frame`). Everglade II
 doesn't show the class bar yet.
 
-The old checks below drove the run into Everglade and no longer apply.
-
-```sh
-# Real input: SURPRISE ME, USE IN EVERGLADE, the run with no keys, slot 1 at the hand-off (key 1,
-# twice for an aimed one), then W and Shift held (A and D keep to the road) to the Commons. Fails on
-# a loading screen, a frame, a new page load, a different character, a run that never hands over,
-# drawn and room facing that differ at the hand-off (netProbe 63 and 64), or a stretch of road under
-# 50 fps.
-coax/web/tool.sh coax/web/tests/one-zone-walk.coax http://127.0.0.1:8873/worlds/character-creator?weather=clear
-# The film: real-time 1920x1080 screenshots of the walk at 30 fps; every frame's mean luminance
-# must be at least 40 of 255.
-coax/web/tool.sh coax/web/tests/one-zone-walk.coax http://127.0.0.1:8873/worlds/character-creator?weather=clear --film walk.mp4 frames/
-```
+Check: `coax/bin/coax test --library apps/openagents-web/everglade2-create.coax`
+(the "create:" tests).
 
 ## Compact sidebar
 

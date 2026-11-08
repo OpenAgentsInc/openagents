@@ -356,6 +356,10 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t11) -> coax_t
   var l_tint: vec4f;
   var l_wind: f32;
   var l_nw: vec4f;
+  var l_normal3: vec3f;
+  var l_local: vec3f;
+  var l_cs: f32;
+  var l_sn: f32;
   var l_o: coax_t16;
   l_b = (coax_p_wg_u32_f(l_m.y.w) + (l_id * 8u));
   l_p = coax_p_v3(bitcast<f32>(vertices[i32(l_b)]), bitcast<f32>(vertices[i32((l_b + 1u))]), bitcast<f32>(vertices[i32((l_b + 2u))]));
@@ -383,10 +387,19 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t11) -> coax_t
     l_p.x = (l_p.x + ((l_wind * select(0x1.1eb852p-5f, 0x1.99999ap-6f, (l_kind == 2u))) * select(coax_p_saturate((l_p.y * 0x1.666666p-1f)), (coax_p_wg_unpack2x16unorm(vertices[i32((l_b + 4u))])).y, (l_kind == 2u))));
   }
   l_nw = coax_p_wg_unpack4x8snorm(l_normal);
+  l_normal3 = coax_p_v3(l_nw.x, l_nw.y, l_nw.z);
+  if ((l_m.w.w > 0x1.180000p4f))
+  {
+    l_local = coax_p_sub3(l_p, coax_p_v3(l_m.y.x, l_m.y.y, l_m.y.z));
+    l_cs = l_m.z.y;
+    l_sn = l_m.z.x;
+    l_p = coax_p_add3(coax_p_v3(l_m.x.x, l_m.x.y, l_m.x.z), coax_p_v3(((l_local.x * l_cs) + (l_local.z * l_sn)), l_local.y, (((-l_local.x) * l_sn) + (l_local.z * l_cs))));
+    l_normal3 = coax_p_v3(((l_normal3.x * l_cs) + (l_normal3.z * l_sn)), l_normal3.y, (((-l_normal3.x) * l_sn) + (l_normal3.z * l_cs)));
+  }
   l_o = coax_t16();
   l_o.x = select(coax_p_fivelab_project(l_p), l_sky_clip, (l_kind == 0u));
   l_o.y = l_p;
-  l_o.z = coax_p_v3(l_nw.x, l_nw.y, l_nw.z);
+  l_o.z = l_normal3;
   l_o.w = l_uv;
   l_o.f4 = vertices[i32((l_b + 6u))];
   l_o.f5 = coax_p_v3(l_tint.x, l_tint.y, l_tint.z);
@@ -1244,6 +1257,11 @@ fn coax_p_cg_sky_ray(p_x: f32, p_y: f32) -> vec3f {
   l_qy = (((l_y * 0x1.000000p-1f) - 0x1.47ae14p-6f) / 0x1.c7ae14p-1f);
   return coax_p_v3(l_qx, (l_fy - (l_qy * l_fz)), (l_fz + (l_qy * l_fy)));
 }
+fn coax_p_sub3(p_a: vec3f, p_b: vec3f) -> vec3f {
+  var l_a: vec3f = p_a;
+  var l_b: vec3f = p_b;
+  return vec3f((l_a.x - l_b.x), (l_a.y - l_b.y), (l_a.z - l_b.z));
+}
 fn coax_p_wg_trunc(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
   if ((l_x < 0.0f))
@@ -1282,11 +1300,6 @@ fn coax_p_mix(p_a: f32, p_b: f32, p_t: f32) -> f32 {
   var l_b: f32 = p_b;
   var l_t: f32 = p_t;
   return (l_a + ((l_b - l_a) * l_t));
-}
-fn coax_p_sub3(p_a: vec3f, p_b: vec3f) -> vec3f {
-  var l_a: vec3f = p_a;
-  var l_b: vec3f = p_b;
-  return vec3f((l_a.x - l_b.x), (l_a.y - l_b.y), (l_a.z - l_b.z));
 }
 fn coax_p_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;

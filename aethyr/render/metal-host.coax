@@ -15,11 +15,11 @@ MetalHostInterface :: struct {valid:bool;vertex:string;fragment:string;count:int
  #assert !metal_host_use(-1,0,"u",1,0,0,4,3).valid;
 }
 #forall "Metal host reflection refuses either namespace edge and mismatched resource facts" f:0..<12 {
- name:="u";kind:=1;slot:=0;shape:=0;stride:=4;stages:=2;
+ name:="u";kind:=1;slot:=0;shape:=0;stride:=4;stages:=3;   // Everglade's background reads u in both stages
  if f==0 {kind=0;}if f==1 {kind=2;}if f==2 {slot=-1;}if f==3 {slot=29;}
  if f==4 {shape=1;}if f==5 {stride=8;}if f==6 {stages=0;}if f==7 {stages=1;}if f==8 {name="U";}
  if f==9 {stages=4;}if f==10 {stride=0;}
- if f==11 {stages=3;}
+ if f==11 {stages=2;}
  #assert !metal_host_use(2,0,name,kind,slot,shape,stride,stages).valid;
 }
 #test "Metal host texture and sampler ceilings and ordinary versus comparison shapes" {
@@ -30,7 +30,7 @@ MetalHostInterface :: struct {valid:bool;vertex:string;fragment:string;count:int
  #assert !metal_host_use(2,5,"shadow_cmp",3,0,0,0,2).valid;
 }
 #test "Metal interface publishes exactly the declared complete entry with distinct slots" {
- uses:=[1]MetalHostUse.[metal_host_use(2,0,"u",1,0,0,4,2)];attrs:[]RenderVertexInput;
+ uses:=[1]MetalHostUse.[metal_host_use(2,0,"u",1,0,0,4,3)];attrs:[]RenderVertexInput;
  #assert metal_host_interface(2,0,"eg_bg_vs","eg_bg_fs",uses[..],attrs,0).valid;
  #assert !metal_host_interface(2,0,"eg_bg_vs","eg_scene_fs",uses[..],attrs,0).valid;
  #assert !metal_host_interface(2,0,"other","eg_bg_fs",uses[..],attrs,0).valid;
@@ -39,7 +39,7 @@ MetalHostInterface :: struct {valid:bool;vertex:string;fragment:string;count:int
  uses[0].valid=false;#assert !metal_host_interface(2,0,"eg_bg_vs","eg_bg_fs",uses[..],attrs,0).valid;
 }
 #test "Metal interface observes every HUD attribute and refuses forged source mappings" {
- uses:=[1]MetalHostUse.[metal_host_use(2,12,"u",1,0,0,4,3)];attrs:[4]RenderVertexInput;
+ uses:=[3]MetalHostUse.[metal_host_use(2,12,"u",1,0,0,4,3),metal_host_use(2,12,"sans_atlas",2,1,0,0,2),metal_host_use(2,12,"sans_sampler",3,2,0,0,2)];attrs:[4]RenderVertexInput;   // the HUD's glyphs (#13018)
  for i:0..<4 {attrs[i]=RenderVertexInput.{location=i,scalar=2,width=4,offset=i*16};}
  #assert metal_host_interface(2,12,"eg_fx_vs","eg_fx_fs",uses[..],attrs[..],64).valid;
  for field:0..<6 {bad:=attrs;

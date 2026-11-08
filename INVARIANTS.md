@@ -5489,13 +5489,13 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   only on realm pages, written by `realms.ts` (a made realm's by the host),
   and holds nothing else.
 
-Places that are one world, such as Character Create and Everglade (#13018), are
-one page, one engine and one renderer, and say a new address with action 19
-(`history.replaceState`, same origin only) rather than load it or open it in a
-frame. (`zone-host.js` and action 18 remain only for the old fivelab creator
-that Everglade Experimental and Everglade II build on.) Check:
-`coax/web/tests/one-zone-walk.coax` fails on any iframe, loading screen or new
-document during the walk from Character Create into the Commons.
+Places that are one world, such as Character Create and Everglade II (#13018,
+#13023), are one page, one engine and one renderer, and say a new address with
+action 19 (`history.replaceState`, same origin only) rather than load it or open
+it in a frame. (`zone-host.js` and action 18 remain only for the old fivelab
+creator that Everglade Experimental builds on.) Check:
+`apps/openagents-web/everglade2-create.coax` "create:" tests (the save, action 19
+to `/worlds/everglade2` and the run with no load).
 
 Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
 upload; `release.sh` runs it as a report, since only what breaks staging
@@ -6237,8 +6237,9 @@ moves the seat as for held keys and the drawn and room facings agree at the
 hand-off; its camera ends in the follow camera through `verse_orbit_toward`, and
 any key during it only skips. Checks: `fivebar-test.coax` "Character Create",
 `everglade5e-rules.coax`, `everglade5e-room-rules.coax` "#13024", room
-`room.coax` "Character Create class", `everglade5e.coax` "create:" and "classes:",
-`coax/web/tests/one-zone-walk.coax`.
+`room.coax` "Character Create class", `everglade5e.coax` "create:" and "classes:".
+(Character Create now opens in Everglade II, #13023, so the browser walk into
+Everglade's Commons was removed.)
 The shared authoring catalog (`assets/registry/`) distinguishes stable logical
 lookup keys from immutable revision hashes and Aethyr's runtime byte identities.
 Source snapshots retain their exact file inventories. Published derivative

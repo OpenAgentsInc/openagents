@@ -1,7 +1,7 @@
 // Independent role blueprints for every declared resource in the pre-move
 // inventory. Each character denotes an origin, not a WGSL slot or name guess.
 RBS_EXPECTED :: [18]string.[
- "UVDDLSHSPSBIQEATS", "UNS", "UVDDDDLSHSWZPSBIQEATS", "UDDDPSBIQEATS", "UD", "U", "UM", "UHSVDLSPSBIQEATS", "U", "UVDLS", "UVDLS", "UVDDLSHSPSBIQEATS", "UDD", "UDDPSBIQEATS", "U", "U", "UDD", "UNS"];
+ "UVDDLSHSPSBIQEATS", "UNS", "UVDDDDLSHSWZPSBIQEATSNS", "UDDDPSBIQEATS", "UD", "U", "UM", "UHSVDLSPSBIQEATS", "U", "UVDLS", "UVDLS", "UVDDLSHSPSBIQEATS", "UDD", "UDDPSBIQEATS", "U", "U", "UDD", "UNS"];
 rbs_test_expected :: (code:u8,index:int,sampler:string)->RenderBindingSource {
  r:=RenderBindingSource.{valid=true};
  if code=='U' {r.kind=RenderSourceKind.main_uniform;r.index=0;r.buffer_mode=resource_views.RenderBufferMode.declared_uniform;}
