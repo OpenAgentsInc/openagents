@@ -6707,6 +6707,18 @@ invalid target. Sight is the open-grid flag model; Total Cover, obscurement
 and alternate senses remain world facts to admit. Evidence:
 `docs/verification/srd-casting-workflows-2026-11-08/README.md`.
 
+## An object target refuses before costs and takes damage by the object rules
+
+`object-target.coax` decides which executable spells may attack an object
+(Eldritch Blast, Fire Bolt, Produce Flame's hurl and Starry Wisp, compared with
+every canonical description that names "a creature or (an) object"), an
+object's AC by substance and Hit Points by size, its Poison and Psychic
+Immunity, its damage threshold and Fire Bolt's ignition of an unattended
+flammable object. `rs_cast_object` refuses another spell, a destroyed object or
+one out of range before any cost and otherwise uses the shared cast admission
+and component payment. Cover and GM-set vulnerabilities remain world facts.
+Evidence: `docs/verification/srd-casting-workflows-2026-11-08/README.md`.
+
 ## Accepted incapacitating effects interrupt concentration immediately
 
 `effect-lifecycle.coax` owns accepted effect insertion and its shared

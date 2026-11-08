@@ -1,0 +1,83 @@
+// A spell cast at an object (object-target.coax's decisions applied to a battle). The world keeps
+// its objects; a cast takes one by its slice. Admission is the shared cast's (rs_can_cast_as):
+// prepared, components, the action, Produce Flame in hand. A spell that can't take an object, a
+// destroyed object or one out of range is refused before any cost. An object has no Dexterity and
+// no turn: the attack meets its substance's AC; Blinded casters roll with Disadvantage and Innate
+// Sorcery gives Advantage. Cover, obscurement and an object's own GM-set vulnerabilities are world
+// facts not yet admitted.
+#load "object-target.coax";
+RS_OBJECT_NAME :: 24;
+RsObject :: struct {
+  name: [RS_OBJECT_NAME] u8; name_n: int;
+  x: int; y: int;
+  material: int; size: int = RS_MEDIUM; resilient: bool;
+  hp: int; threshold: int;
+  flammable: bool; attended: bool;   // attended: worn or carried
+  burning: bool; glow_until: f32; destroyed: bool;
+}
+rs_object :: (name: string, x: int, y: int, material: int, size: int, resilient: bool) -> RsObject {
+  o := RsObject.{x = x, y = y, material = material, size = size, resilient = resilient};
+  o.hp = rs_object_hp(size, resilient);
+  o.flammable = material == RS_OBJ_CLOTH || material == RS_OBJ_WOOD;
+  o.name_n = rs_put(o.name[..], 0, name);
+  return o;
+}
+// Caster i casts cantrip sp at object o. True when it was cast (hit or miss); false spends nothing.
+rs_cast_object :: (b: [] RsBattle, i: int, sp: int, o: [] RsObject) -> bool {
+  if !rs_object_spell(sp) || o[0].destroyed || !rs_can_cast_as(b, i, sp, 0, false) { return false; }
+  s := rs_spell(sp);
+  me := b[0].c[i];
+  if rs_feet(me.x, me.y, o[0].x, o[0].y) > s.range_ft { return false; }
+  rs_rest_cast_before(b, i, s.level);
+  if !rs_cast_components_pay(b[0].c[i..<i+1], sp) { return false; }
+  if s.components.count > 0 && s.components[0] == 86 { rs_unhide(b, i); }
+  b[0].turn.action = true;
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i);
+  rs_add_text(l[..], ifx s.part_of >= 0 then " hurls Produce Flame at the " else " casts ");
+  if s.part_of < 0 { rs_add_text(l[..], s.name); rs_add_text(l[..], " at the "); }
+  rs_add_text(l[..], cast(string) o[0].name[0..<o[0].name_n]);
+  rs_tell(b, RS_EV_CAST, sp, i, -1, 0, 0, l[..]);
+  beams := 1; dice := 1; sides := 0; kind := 0;
+  for k: 0..<s.step_n {
+    st := s.steps[k];
+    if st.kind == RS_S_REPEAT && st.c == 1 { beams = st.a * rs_cantrip_tier(me.level); }
+    if st.kind == RS_S_DAMAGE { dice = st.a; sides = st.b; kind = st.c; }
+  }
+  if beams == 1 { dice *= rs_cantrip_tier(me.level); }
+  ac := rs_object_ac(o[0].material);
+  bonus := rs_spell_attack(me);
+  edge := rs_edge(ifx me.innate_until > b[0].clock then 1 else 0, ifx rs_has(me, RS_BLINDED) then 1 else 0);
+  agony := ifx me.agonizing == sp && sp != SP_FLAME_HURL then rs_mod(me.score[RS_CHA]) else 0;
+  for beam: 0..<beams {
+    if o[0].destroyed { break; }
+    d := rs_d20(b[0].dice[..], edge);
+    total := d.roll + bonus - rs_exhaustion_penalty(me);
+    hit := rs_object_hit(d.roll, total, ac);
+    a: [1] RsLine;
+    rs_add_text(a[..], "  attack "); rs_add_int(a[..], total); rs_add_text(a[..], " vs AC "); rs_add_int(a[..], ac);
+    rs_add_text(a[..], ifx hit then ": hit" else ": miss");
+    rs_tell(b, ifx hit then RS_EV_ATTACK else RS_EV_MISS, sp, i, -1, total, ifx d.roll == 20 then 1 else 0, a[..]);
+    if !hit { continue; }
+    rolled := rs_sum(b[0].dice[..], ifx d.roll == 20 then dice * 2 else dice, sides) + s.plus + agony;
+    taken := rs_object_damage(rolled, kind, o[0].threshold);
+    o[0].hp = rs_max(o[0].hp - taken, 0);
+    if o[0].hp == 0 { o[0].destroyed = true; o[0].burning = false; }
+    if rs_object_ignites(sp, hit, o[0].flammable, o[0].attended) && !o[0].destroyed { o[0].burning = true; }
+    if sp == SP_STARRY_WISP { o[0].glow_until = me.turn_at + rs_beat(b); }
+    t: [1] RsLine;
+    rs_add_text(t[..], "  the "); rs_add_text(t[..], cast(string) o[0].name[0..<o[0].name_n]); rs_add_text(t[..], " takes ");
+    rs_add_int(t[..], taken); rs_add_text(t[..], " "); rs_add_text(t[..], RS_DAMAGE[kind]);
+    rs_add_text(t[..], ifx o[0].destroyed then ", destroyed" else ifx o[0].burning then ", burning" else "");
+    rs_tell(b, RS_EV_DAMAGE, sp, i, -1, taken, kind, t[..]);
+  }
+  return true;
+}
+// A burning object's round: 1d4 Fire damage (p.178 Burning), through its threshold.
+rs_object_burn :: (b: [] RsBattle, o: [] RsObject) -> int {
+  if !o[0].burning || o[0].destroyed { return 0; }
+  taken := rs_object_damage(rs_roll(b[0].dice[..], 4), RS_FIRE, o[0].threshold);
+  o[0].hp = rs_max(o[0].hp - taken, 0);
+  if o[0].hp == 0 { o[0].destroyed = true; o[0].burning = false; }
+  return taken;
+}

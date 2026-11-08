@@ -1,0 +1,72 @@
+// SRD 5.2.1 pp.177-178 Breaking Objects, p.178 Burning, p.180 Damage Threshold; the spells
+// that name "a creature or (an) object": Eldritch Blast p.127, Fire Bolt p.132, Produce Flame's
+// hurl p.156, Starry Wisp p.165. An object's AC is its substance's (Object Armor Class table),
+// its Hit Points its size's fragile or resilient average (Object Hit Points table, Large or
+// smaller), it has Immunity to Poison and Psychic damage, and with a damage threshold it takes an
+// instance of damage only when that instance is at least the threshold. Fire Bolt sets a
+// flammable object burning when it hits one not worn or carried; a burning object takes 1d4 Fire
+// damage each round. The decisions are here; object-cast.coax applies them to a battle.
+#authority;
+RS_OBJ_CLOTH :: 0; RS_OBJ_GLASS :: 1; RS_OBJ_WOOD :: 2; RS_OBJ_STONE :: 3; RS_OBJ_IRON :: 4; RS_OBJ_MITHRAL :: 5; RS_OBJ_ADAMANTINE :: 6;
+RS_OBJECT_AC :: [7] int.[11, 13, 15, 17, 19, 21, 23];
+// Tiny, Small, Medium and Large (RS_TINY..RS_LARGE): the table's fragile and resilient averages.
+RS_OBJECT_HP :: [8] int.[2, 5, 3, 10, 4, 18, 5, 27];
+// Reviewed against each executable description that names "a creature or (an) object".
+RS_OBJECT_SPELLS :: [4] int.[SP_ELDRITCH_BLAST, SP_FIRE_BOLT, SP_FLAME_HURL, SP_STARRY_WISP];
+
+#test "an object's AC is its substance's and its Hit Points its size's fragile or resilient average" {
+  #assert RS_OBJECT_AC[RS_OBJ_CLOTH] == 11 && RS_OBJECT_AC[RS_OBJ_GLASS] == 13 && RS_OBJECT_AC[RS_OBJ_WOOD] == 15 && RS_OBJECT_AC[RS_OBJ_STONE] == 17;
+  #assert RS_OBJECT_AC[RS_OBJ_IRON] == 19 && RS_OBJECT_AC[RS_OBJ_MITHRAL] == 21 && RS_OBJECT_AC[RS_OBJ_ADAMANTINE] == 23;
+  for m: -1..<8 { #assert rs_object_ac(m) == ifx m >= 0 && m < 7 then RS_OBJECT_AC[m] else -1; }
+  want := [8] int.[2, 5, 3, 10, 4, 18, 5, 27];
+  for size: RS_TINY - 1..<RS_HUGE + 1 { for r: 0..<2 {
+    #assert rs_object_hp(size, r == 1) == ifx size >= RS_TINY && size <= RS_LARGE then want[(size - RS_TINY) * 2 + r] else 0;
+  } }
+}
+#test "objects are immune to Poison and Psychic, and a threshold stops any smaller instance" {
+  for kind: 0..<14 { for amount: 0..<13 { for threshold: 0..<12 {
+    immune := kind == RS_POISON || kind == RS_PSYCHIC;
+    expected := ifx immune || amount < threshold then 0 else amount;
+    #assert rs_object_damage(amount, kind, threshold) == expected;
+  } } }
+  // the SRD's example: a threshold of 10 takes nothing from 9 and all of 11
+  #assert rs_object_damage(9, RS_FIRE, 10) == 0 && rs_object_damage(11, RS_FIRE, 10) == 11 && rs_object_damage(10, RS_FIRE, 10) == 10;
+}
+#test "only the reviewed spells take an object, and only Fire Bolt's hit sets an unattended flammable one burning" {
+  for sp: -1..<RS_MORE_END + 1 {
+    listed := false; for s: RS_OBJECT_SPELLS { if s == sp { listed = true; } }
+    #assert rs_object_spell(sp) == listed;
+    for hit: 0..<2 { for flammable: 0..<2 { for attended: 0..<2 {
+      expected := sp == SP_FIRE_BOLT && hit == 1 && flammable == 1 && attended == 0;
+      #assert rs_object_ignites(sp, hit == 1, flammable == 1, attended == 1) == expected;
+    } } }
+  }
+}
+#test "a spell attack hits an object on a 20, never on a 1, else when it meets the AC" {
+  for roll: 1..<21 { for total: 0..<30 { for ac: 10..<24 {
+    #assert rs_object_hit(roll, total, ac) == (roll != 1 && (roll == 20 || total >= ac));
+  } } }
+}
+
+rs_object_ac :: (material: int) -> int #effects(all) {
+  if material < 0 || material >= RS_OBJECT_AC.count { return -1; }
+  return RS_OBJECT_AC[material];
+}
+rs_object_hp :: (size: int, resilient: bool) -> int #effects(all) {
+  if size < RS_TINY || size > RS_LARGE { return 0; }
+  return RS_OBJECT_HP[(size - RS_TINY) * 2 + ifx resilient then 1 else 0];
+}
+rs_object_damage :: (amount: int, kind: int, threshold: int) -> int #effects(all) {
+  if kind == RS_POISON || kind == RS_PSYCHIC || amount < threshold { return 0; }
+  return amount;
+}
+rs_object_spell :: (sp: int) -> bool #effects(all) {
+  for s: RS_OBJECT_SPELLS { if s == sp { return true; } }
+  return false;
+}
+rs_object_ignites :: (sp: int, hit: bool, flammable: bool, attended: bool) -> bool #effects(all) {
+  return sp == SP_FIRE_BOLT && hit && flammable && !attended;
+}
+rs_object_hit :: (roll: int, total: int, ac: int) -> bool #effects(all) {
+  return roll != 1 && (roll == 20 || total >= ac);
+}
