@@ -701,3 +701,21 @@ glossary. Queued Short Rest choices apply in the controller's order when nobody
 is there to choose. Experimental's bars end with HIDE, GRAPPLE, SHOVE and READY.
 The sixteen new or changed authorities kill all 2,268 mutants, zero survivors.
 [Evidence and limits](../verification/srd-actions-movement-2026-11-08/README.md).
+
+### Experimental controls for Rituals, Ready, Shove and the skill actions (2026-11-08, #13030)
+
+Experimental's bars now play the engine-only actions on their icons, with no
+banners. READY's bottom strip picks ATTACK, MOVE or SPELL (the kit's first
+action spell at a creature, cast and held when readied); the first monster that
+moves sets it off, and a readied move carries you straight away from it up to
+your Speed (p.186). SHOVE's strip picks PRONE or PUSH, and a push moves the
+monster 5 feet through the world, stopping at a wall (p.181). One SEARCH slot
+takes Search (Perception, DC 15), Study (the target's Area of Knowledge, p.188:
+Religion for Fiends, Arcana for Fey, History for Giants; a pass shows its AC)
+and Influence (Intimidation, Hesitant and Hostile; a monster that complies
+stands down until harmed, and a failure waits 24 hours); its frame flashes
+green or red with the result. A class with a prepared ritual spell (the Druid's
+Speak with Animals) gets a RITUAL slot: begun with a press, kept going
+each turn, its ten minutes filling the icon's edge, then cast with no slot
+(pp.104-105). Checks: five new Experimental checks; 91 Experimental, 448
+fivebar and 414 class-kit checks pass.

@@ -135,6 +135,8 @@ XC_FT :: 0.3048;
 // (rs_weapon: a ranged one makes Attack a bolt).
 xc_aim_for :: (a: FbAb, weapon: int) -> XcAim {
   if a.tg == FB_SELF || a.tg == FB_ALLY { return XcAim.{kind = XC_AIM_SELF}; }
+  // Search looks round you; Study and Influence take the monster ahead within 30 feet (p.176)
+  if a.kind == FB_SKILL { return ifx a.opt <= 0 then XcAim.{kind = XC_AIM_SELF} else XcAim.{kind = XC_AIM_CONE, reach = 30 * f32(XC_FT)}; }
   if a.kind == FB_SPELL {
     sp := rs_spell(a.sp);
     if sp.area != RS_A_NONE { return XcAim.{kind = XC_AIM_AREA, reach = f32(sp.range_ft) * f32(XC_FT)}; }

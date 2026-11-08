@@ -35,6 +35,10 @@ FB_WILD :: 22;      // Wild Shape (aethyr/rules/srd/wild-shape.coax): into the b
 // the actions every creature has (#13040, aethyr/rules/srd/ hide, grapple, ready): Hide (p.183) where
 // the world admits cover; an Unarmed Strike's Grapple or Shove (Prone) at your target; Ready an attack
 FB_HIDE :: 23; FB_GRAPPLE :: 24; FB_SHOVE :: 25; FB_READY :: 26;
+// Search, Study and Influence (p.176) on one slot, its option the action; a Ritual (pp.104-105) of
+// the ritual spell the creature may cast so (fb_ritual_spell): begun, kept going, then cast
+FB_SKILL :: 27; FB_RITUAL :: 28;
+FB_SKILL_DC :: 15;   // the world's DC for what is sought or recalled: Medium (p.8, Typical Difficulty Classes)
 // how it is aimed: your target, a point (the ground under your target, or where you point), you,
 // the friend most hurt, the friends round a point (up to six)
 FB_FOE :: 0; FB_POINT :: 1; FB_SELF :: 2; FB_ALLY :: 3; FB_ALLIES :: 4;
@@ -349,6 +353,7 @@ fb_ready :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
   if a.kind == FB_WILD { return c.wild_form != 0 || (c.uses[RS_USE_WILD] > 0 && rs_wild_knows(c, fb_wild_form(c))); }
   if a.kind == FB_RESURGE { return c.resurgence && (c.uses[RS_USE_WILD] > 0 || fb_free_slot(b, i, 1) > 0); }
   if a.kind == FB_TURN || a.kind == FB_PRESERVE || a.kind == FB_SACRED { return c.uses[RS_USE_CHANNEL] > 0; }
+  if a.kind == FB_RITUAL { return !rs_casting_barred(c) && rs_cast_components_ready(c, a.sp); }
   return true;
 }
 // What an entry has left to show in its corner: slots at its level, uses, Rages or Focus (-1: none).
@@ -414,9 +419,42 @@ fb_use :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: in
   if a.kind == FB_WILD { if b[0].c[i].wild_form != 0 { return rs_wild_shape_leave(b, i); } return rs_wild_shape(b, i, fb_wild_form(b[0].c[i])); }
   // Hide: concealed when the world's cover facts hide you from every enemy (cover.coax)
   if a.kind == FB_HIDE { return rs_hide(b, i, rs_hide_concealed(b, i, true), false).accepted; }
-  if a.kind == FB_GRAPPLE || a.kind == FB_SHOVE { return at >= 0 && rs_attack_unarmed(b, i, at, ifx a.kind == FB_GRAPPLE then UO_GRAPPLE else UO_PRONE); }
-  if a.kind == FB_READY { return rs_ready(b, i, RD_ATTACK, -1, -1, 0); }   // an attack at the next creature that moves
+  if a.kind == FB_GRAPPLE { return at >= 0 && rs_attack_unarmed(b, i, at, UO_GRAPPLE); }
+  if a.kind == FB_SHOVE { return at >= 0 && rs_attack_unarmed(b, i, at, ifx a.opt == 1 then UO_PUSH else UO_PRONE); }
+  // Ready (p.186) at the next creature that moves: an attack, a move, or the spell `sp` at slot `lvl`
+  if a.kind == FB_READY { r := RD_ATTACK + rs_min(rs_max(a.opt, 0), 2); return rs_ready(b, i, r, -1, ifx r == RD_SPELL then a.sp else -1, ifx r == RD_SPELL then a.lvl else 0); }
+  if a.kind == FB_SKILL { return fb_skill(b, i, a, at, SK_ARCANA).accepted; }
+  if a.kind == FB_RITUAL { return fb_ritual(b, i, a.sp); }
   return false;
+}
+// The skill slot's action (p.176) at creature `at`: Search with Perception, finding the hidden;
+// Study with `lore`, the skill for `at`'s kind (p.188, Areas of Knowledge); Influence with
+// Intimidation, the monster Hesitant and Hostile. The check's result, `accepted` false when refused.
+fb_skill :: (b: [] RsBattle, i: int, a: FbAb, at: int, lore: int) -> RsAbilityResult {
+  o := rs_max(a.opt, 0);
+  if o == 0 { return rs_search(b, i, SK_PERCEPTION, FB_SKILL_DC); }
+  r: RsAbilityResult;
+  if at < 0 || at >= b[0].n || b[0].c[at].team == b[0].c[i].team { return r; }
+  if o == 1 { return rs_study(b, i, lore, FB_SKILL_DC); }
+  return rs_influence(b, i, at, SK_INTIMIDATION, IN_HESITANT, AT_HOSTILE, true);
+}
+// A Ritual's slot: begun with the first Magic action, kept going each turn, then cast with its
+// normal casting time and no slot once its ten minutes are up (ritual-cast.coax).
+fb_ritual :: (b: [] RsBattle, i: int, sp: int) -> bool {
+  c := b[0].c[i];
+  if c.rite < 0 { return rs_ritual_begin(b, i, sp); }
+  if c.rite != sp { return false; }
+  if rs_rite_due_now(b, i, sp) { return rs_cast(b, i, sp, 0, 0, 0, i); }
+  return rs_ritual_continue(b, i);
+}
+// The spell creature c may cast as a Ritual (tagged, and prepared or, for a Wizard, in its book), -1 none.
+FB_RITUAL_SPELLS :: [3] int.[SP_SPEAK_WITH_ANIMALS, SP_WATER_WALK, SP_WATER_BREATHING];
+fb_ritual_spell :: (c: RsCreature) -> int {
+  for sp: FB_RITUAL_SPELLS {
+    book := c.klass == RS_WIZARD && rs_spell_access(c, sp) && rs_rite_book_has(c.spells.known, RS_EXEC_SOURCE[sp]);
+    if rs_rite_admits(rs_spell(sp).ritual, rs_spell_ready(c, sp), book, c.ritual, false, false) { return sp; }
+  }
+  return -1;
 }
 // The form a class kit's Wild Shape slot takes: the Black Bear's two Rends once it is known (level
 // 4), else the Wolf's Pack Tactics and knocking Bite.
@@ -502,6 +540,18 @@ fb_option :: (sp: int, k: int) -> RsCastOptions {
   return ifx k == 0 then RsCastOptions.{} else RsCastOptions.{blindness = -1};
 }
 FB_HEX_OPTIONS :: [6] string.["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+// A feature slot's options, on its bottom strip: Shove's Prone or push, Ready's attack, move or
+// spell, and the skill slot's action.
+FB_KIND_OPTIONS :: [8] string.["PRONE", "PUSH", "ATTACK", "MOVE", "SPELL", "SEARCH", "STUDY", "INFLUENCE"];
+fb_ab_option_n :: (a: FbAb) -> int {
+  if a.kind == FB_SPELL { return fb_option_n(a.sp); }
+  return ifx a.kind == FB_SHOVE then 2 else ifx a.kind == FB_READY || a.kind == FB_SKILL then 3 else 0;
+}
+fb_ab_option_label :: (a: FbAb, k: int) -> string {
+  if a.kind == FB_SPELL { return fb_option_label(a.sp, k); }
+  base := ifx a.kind == FB_SHOVE then 0 else ifx a.kind == FB_READY then 2 else 5;
+  return FB_KIND_OPTIONS[base + rs_min(rs_max(k, 0), fb_ab_option_n(a) - 1)];
+}
 // How many named options spell sp offers (0: none), and option k's short label.
 fb_option_n :: (sp: int) -> int { return ifx sp == SP_HEX then 6 else ifx sp == SP_BLINDNESS then 2 else 0; }
 fb_option_label :: (sp: int, k: int) -> string {
@@ -571,6 +621,14 @@ fb_seat_stand :: (b: [] RsBattle, s: [] FbSeat) -> bool {
   ok := rs_stand_up(b,s[0].me);
   fb_seat_out(b,s);
   return ok;
+}
+fb_seat_skill :: (b: [] RsBattle, s: [] FbSeat, a: FbAb, at: int, lore: int) -> RsAbilityResult {
+  r: RsAbilityResult;
+  if !s[0].open { return r; }
+  fb_seat_in(b,s);
+  r=fb_skill(b,s[0].me,a,at,lore);
+  fb_seat_out(b,s);
+  return r;
 }
 fb_seat_first_aid :: (b: [] RsBattle, s: [] FbSeat, target: int, q: RsFirstAidContext) -> RsAbilityResult {
   r: RsAbilityResult;
