@@ -1,6 +1,7 @@
 # Coax Aethyr lighting implementation plan
 
-Date: 2026-11-08. Source baseline: `7fab57cd75`.
+Date: 2026-11-08. Source baseline: `7fab57cd75`. Revised 2026-11-08 (owner
+direction: the Character Create glade is the look).
 Status: proposed implementation sequence; no phase is qualified by this document.
 
 Build one shared lighting system for Coax Aethyr, with Everglade as its first
@@ -8,6 +9,54 @@ complete production consumer. It must support authored environmental character,
 readable interiors, moving characters, many local lights, stable shadows, layered
 atmosphere, water and effects, and controlled final color. Shared code that the
 playable realm does not consume is an unfinished phase.
+
+## The reference look: Character Create's glade
+
+The owner's direction (2026-11-08): the Character Create glade is the most
+beautiful thing we render, and its look extends through **every painterly
+realm** as the **default** lighting. A painterly realm that authors nothing gets
+the glade; authored profiles are deltas from it, never a fresh start.
+
+"Everglade" in this plan means **Everglade II** (`/worlds/everglade2`,
+`apps/openagents-web/everglade2*.coax`, `verse/everglade2/`), which is becoming
+Everglade. Version one (`verse/everglade/gpu.coax`) is frozen: it gets the
+painterly default through a compatibility adapter at the end, not new work.
+
+What the glade is today, and what becomes the painterly default:
+
+| Glade element | Where it lives now | Default it becomes |
+| --- | --- | --- |
+| Linear HDR, decode once, encode once | `apps/openagents-web/gpu/character-glade-light.coax` (`cg_linear`, `cg_srgb`, `cg_decode`, `cg_encode`) | The one transfer contract for painterly realms (Phase 2) |
+| Key light: 4500 K sun under 6500 K white balance, x2.15, fixed direction | `cg_sun_colour`, `cg_sun_dir` | The painterly noon key in the default profile |
+| Warm ground / cool sky hemisphere ambient | `cg_hemisphere`, `cg_irradiance` (indirect occlusion and sun visibility on separate terms) | Default upper/lower ambient and the direct/indirect split |
+| Height air with a clear 30 m near field, forward-scatter haze to 65 m | `cg_air_depth`, `cg_phase` (g 0.62), `cg_haze_window`, `cg_atmosphere` | Default analytic atmosphere (Phase 6 starts here) |
+| Cyan daylight sky, drifting cloud shadows (sun x0.45 in shade) | `apps/openagents-web/gpu/character-glade.coax` (`cg_sky`, `cg_cloud`) | Default sky and cloud-shadow layer |
+| Film response at exposure 1.18, saturation lift 1.16 | `cg_film`, `cg_output` over `aethyr/render/filmic.coax` | Default painterly presentation (Phase 9's identity grade) |
+| Octahedral normals with room for an indirect-light weight; normal/depth contact shading | `cg_normal_pack`, the glade's contact pass | Default contact/AO path (Phase 5) |
+| Painterly bands, rim, dab, cool shadow band | `verse/style-preset.coax` (`painterly_key`, `shadow_cool` 1.5) | Kept as the painterly material response; the glade defaults sit under it |
+
+Everglade II already reads part of this (`apps/openagents-web/gpu/everglade2.coax`
+calls `cg_decode`, `cg_hemisphere`, `cg_sun_dir`, `cg_sky`, `cg_output` and
+more), and Experimental/fivelab loads it too. It is still private: the numbers
+are constants in an app file, not a shared profile a realm can select or vary.
+
+Rules for the default:
+
+- **Character Create is the identity test.** After every phase, Character
+  Create's glade must render the same as before, within a declared image and
+  probe bound. If it changes, it's a regression, unless the owner approved
+  the new look.
+- **One default, many consumers.** The glade's values live once in a shared
+  painterly default profile. Character Create, Everglade II, Experimental,
+  `oneshot-glade`, made realms (`myrealm`, Aethyrforge's painterly default) and
+  the v1 Everglade adapter all read it. No copy of the numbers in a realm.
+- **Other times and places derive from it.** Dusk, night, deep canopy, interiors
+  and river mist are authored as bounded deltas on the glade profile in the same
+  style. They keep its film response, saturation and painterly bands, so the
+  whole world still reads as the glade.
+- **Non-painterly styles** (lowpoly, flat, anime, photoreal) keep their own
+  presets. They may adopt shared mechanics (lights, shadows, fog), but they do
+  not inherit the glade's colours.
 
 ## Starting point
 
@@ -85,15 +134,29 @@ Camera grading/sky selection and spatial surface/fog evaluation have explicit,
 separate rules. Store bounded region candidates rather than recomputing an
 unbounded world search per pixel.
 
-## Phase 1 — Shared environment profiles, used by Everglade
+## Phase 1 — The glade as the shared painterly default profile
 
-**Outcome:** the playable Everglade reads a shared environment resolver for its
-key, ambient, sky, haze and existing post inputs. This is the first delivery.
+**Outcome:** the glade's lighting lives in one shared painterly default profile.
+Character Create, Everglade II and Experimental read it through a shared
+environment resolver for key, ambient, sky, haze, cloud shadow and presentation.
+Character Create looks the same. This is the first delivery.
 
-1. Before changing the render path, record pinned Everglade frames and numerical
-   probes for its current day/night, forest, open ground, interior, river and
-   storm states. Record the active producer, package, compiler, raster, device
-   and settings so later comparisons have a concrete baseline.
+0. Lift the glade first. Move `character-glade-light.coax`'s and
+   `character-glade.coax`'s lighting numbers and functions into shared Aethyr
+   owners: the profile in `aethyr/world/environment.coax`, the evaluation in
+   `aethyr/render/environment.coax`, and the presentation in `post.coax` or
+   `filmic.coax`. Then make `verse/style-preset.coax`'s painterly preset point at
+   that profile as its default. The `cg_*` names may stay as thin delegates while
+   consumers move. Character Create's pinned captures must match before and
+   after.
+1. Before changing any render path, record pinned frames and numerical probes:
+   - Character Create: the glade, a character close-up, and the camera turn.
+   - Everglade II: the glade arrival, the open path in sun, and the deep canopy
+     path.
+   - Experimental.
+
+   Record the active producer, package, compiler, raster, device and settings,
+   so later comparisons have a concrete baseline.
 2. Define versioned `EnvironmentProfile`, `EnvironmentTrack`,
    `EnvironmentRegion`, `EnvironmentState` and `ResolvedEnvironment` records.
    Profiles own bounded, irregular time knots, including one-knot constants;
@@ -110,12 +173,13 @@ key, ambient, sky, haze and existing post inputs. This is the first delivery.
    global weather from local visual overlays. Evaluate versioned condition
    inputs from known game state; the lighting resolver does not invent gameplay
    policy. Cache only under complete tick/state/profile identities.
-5. Convert the existing four-key style preset to a compatibility profile first.
-   Add Everglade profiles for open ground, woodland, town/interior and river
-   atmosphere. Keep style response separate from the environment so a palette
+5. Convert the existing four-key style preset to a compatibility profile.
+   Painterly's compatibility profile is the glade default. Add Everglade II
+   regions as glade deltas: the open glade, the sunlit path and the deep canopy.
+   Add town, interior and river deltas when Everglade II has those places. Keep style response separate from the environment so a palette
    change does not switch the material model. Author content from Everglade's
    actual geometry and routes rather than relying on placeholder regions.
-6. Route Everglade's uniform writer, sky, terrain/props, ordinary avatars,
+6. Route Everglade II's uniform writer, sky, terrain/props, ordinary avatars,
    detailed character `SceneLights`, river and effects through the resolved
    context. Remove their independent key/ambient/fog calculations from the
    enabled path. Compatibility exports may delegate to shared evaluation.
@@ -123,7 +187,10 @@ key, ambient, sky, haze and existing post inputs. This is the first delivery.
    diagnostic comparison switch is allowed; an opt-in experiment alone does
    not finish the phase. Record remaining non-Everglade consumers separately.
 
-**Exit:** check-first tests cover midnight wrap, irregular knots, invalid/nonfinite
+**Exit:** Character Create's glade is unchanged within its bound, and it now
+reads the shared default. Everglade II and Experimental read the same default,
+and walking from Character Create into Everglade II shows no lighting jump at the
+hand-over. A made painterly realm with no lighting authored gets the glade. Check-first tests cover midnight wrap, irregular knots, invalid/nonfinite
 fields, overlaps, condition changes and bounded refusal. Fixed-state replay and
 late-join evaluation agree. Actual browser readback shows world and character
 receive the expected resolved values. Walking a pinned route through forest,
@@ -154,8 +221,11 @@ reviewed images. A malformed replacement cannot partially replace the active set
 - Keep HUD/display-authored overlays after scene presentation. Define a single
   scene output transform and explicit exceptions for already-authored skies.
 
-**Everglade exit:** a room has authored colored illumination without a fake
-emissive wall; its doorway transitions continuously. Gray, saturated fabric,
+**Everglade exit:** Everglade II's ground, trees, grass and characters decode once
+and encode once, through the glade's transfer contract. No realm-private gamma
+stays in the enabled path. When Everglade II gains a room, it has authored
+colored illumination without a fake emissive wall, and its doorway transitions
+continuously. Gray, saturated fabric,
 skin, leaf and water probes retain expected linear values, including radiance
 above one. World and character react to the same environment changes. Direct,
 indirect, emission and authored-illumination debug views isolate the terms.
@@ -182,7 +252,8 @@ indirect, emission and authored-illumination debug views isolate the terms.
   are different budgets. Replace the separate 16-world/eight-character selection
   paths only when actual consumers read the new lists.
 
-**Everglade exit:** a dense night route and overlapping spell workload illuminate
+**Everglade exit:** Everglade II's class-bar casts with several players, under a
+dusk delta of the glade profile, form a dense spell workload. That workload lights the
 world and characters consistently, including spots and one animated attachment.
 Cluster output matches an independent all-lights reference on bounded scenes;
 near/far boundaries and overflow are checked. Record CPU setup, GPU cost and
@@ -216,7 +287,7 @@ Telemetry exposes map sizes, selected lights, caster counts and cache updates.
 
 **Outcome:** objects sit in the world, and interiors retain authored atmosphere.
 
-- Generalize normal/depth contact shading into a shared quality-scaled AO path:
+- Generalize the glade's normal/depth contact shading into a shared quality-scaled AO path:
   reconstruction, sampling, edge-aware filtering and indirect-only application.
   Keep baked sky visibility and authored AO as separate inputs with documented
   combination; avoid multiplying several equivalent occlusion estimates blindly.
@@ -229,8 +300,9 @@ Telemetry exposes map sizes, selected lights, caster counts and cache updates.
   fields where room gradients need more than vertex illumination. These remain
   authored indirect light, not a claim of real-time multi-bounce GI.
 
-**Everglade exit:** courtyard contact, a furnished room, forest roots and a moving
-character show contact without halos, double-darkening or darkened emissive
+**Everglade exit:** the glade's contact look carries onto Everglade II's path.
+Forest roots, a moving character, and later a courtyard and a furnished room
+when Everglade II has them, show contact without halos, double-darkening or darkened emissive
 sprites. Doorway crossings preserve interior/exterior continuity. Direct-light
 probes remain unchanged when only indirect occlusion is varied.
 
@@ -240,8 +312,9 @@ probes remain unchanged when only indirect occlusion is varied.
 volumetrics are introduced.
 
 - Share distance/height density integration, sun-facing tint, independent layer
-  colors, start/cap controls and bounded profile blending. Use the private
-  glade's integrated-height work as a starting point, preserving cheaper tiers.
+  colors, start/cap controls and bounded profile blending. The glade's height
+  air, 30 m clear near field and g 0.62 forward lobe are the default layer.
+  Preserve cheaper tiers.
 - Add positioned/oriented local volumes with bounded shapes, falloffs, density,
   scattering color, emission, noise and animation. Keep volume placement distinct
   from broad environment selection and gameplay weather overlays.
@@ -249,8 +322,8 @@ volumetrics are introduced.
   for zero density, large distance and camera-inside-volume cases. A local visual
   fog edit cannot change rain history or water simulation.
 
-**Everglade exit:** river mist, low forest haze, a room volume and a clear nearby
-foreground coexist. Pinned height/distance probes match integration references.
+**Everglade exit:** low forest haze under Everglade II's canopy and the glade's clear
+near field coexist, plus river mist and a room volume once those places exist. Pinned height/distance probes match integration references.
 Terrain, characters, water and effects agree on atmosphere at shared positions.
 
 ## Phase 7 — Volumetric scattering and temporal integration
@@ -306,6 +379,8 @@ simulation and spell gameplay checks remain unchanged.
 **Outcome:** final color is authored per environment without hiding lighting
 errors in arbitrary postprocessing.
 
+- The glade's film response (exposure 1.18, saturation 1.16) is the painterly
+  identity presentation. Every LUT and grade below is measured against it.
 - Add versioned 3D LUT assets, identity grading, interpolation and bounded
   profile/state blends. Declare each LUT's input domain, range and transfer
   function, including HDR handling and its place relative to exposure/tone.
@@ -371,8 +446,13 @@ Do not defer all realm wiring, asset authoring or performance work to Phase 10.
    cluster membership, shadow coverage, AO and fog integration. Compare actual
    shader values with declared tolerances; never infer a runtime feature from
    the presence of a source module or a shader name.
-3. Keep a fixed Everglade capture suite: open meadow, dense canopy, town at dusk,
-   lit room/doorway, river mist, underwater, crowded night spells and moving hero.
+3. Keep a fixed capture suite:
+   - Character Create's glade, close-up and camera turn. This is the identity
+     reference: it must not drift.
+   - Everglade II's arrival, open sunlit path, dense canopy, glade-to-path
+     hand-over, dusk delta, crowded casts and moving hero.
+   - Town at dusk, a lit room and its doorway, river mist and underwater, added
+     as Everglade II gains those places.
    Include clocks around midnight and state/region boundaries. Pair stills with
    deterministic moving-camera/light sequences. Review complete frames as well
    as numeric probes; image hashes alone cannot judge intended appearance.
@@ -395,7 +475,8 @@ deliverable is a playable, measured shared system, not a collection of examples.
 
 ## Scope and dependency order
 
-The critical chain is profiles → material/color contracts → shared lights →
+The critical chain is the glade lifted into the shared painterly default →
+profiles → material/color contracts → shared lights →
 shadows/indirect visibility → atmosphere → complete material composition → final
 grading and host qualification. Authoring and measurement continue throughout.
 LUT decoding and bounded offline tools may be prepared earlier, but enabled
