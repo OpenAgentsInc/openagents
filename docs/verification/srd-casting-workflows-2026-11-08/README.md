@@ -1,4 +1,4 @@
-# Rituals and you-can-see targets (#13038)
+# Rituals, targets, objects and choices (#13038)
 
 Source: SRD 5.2.1, pinned PDF SHA-256
 `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87`.
@@ -14,6 +14,13 @@ Source: SRD 5.2.1, pinned PDF SHA-256
 | A Ritual can't be cast at a higher level | p.188 Ritual | completion only at slot 0; Quickened refused | "only the due rite's caster casts it free…" |
 | Source Ritual tags and casting times | catalog | `RsSpell.ritual` on Speak with Animals, Water Walk, Water Breathing | "every executable record carries the source Ritual tag and no executable spell has a timed casting" |
 | A spell's description says what it targets; "a creature you can see" | p.106 Targets; p.177 Blinded; p.184 Invisible | `cast-sight.coax` (22 spells + Vicious Mockery's see or hear) | "the reviewed sight list matches every executable description…", "an unseen creature or point refuses…" |
+| An object's AC by substance, HP by size (fragile or resilient), Poison and Psychic Immunity | pp.177-178 Breaking Objects | `object-target.coax` | `object-target.coax` unit checks; `cast-object-checks.coax` "Fire Bolt hits a wooden barrel…" |
+| A damage threshold stops a smaller instance and takes all of one that meets it | p.180 Damage Threshold | `rs_object_damage` | "a carried or stone object doesn't catch, a threshold stops a small hit…" |
+| Eldritch Blast, Fire Bolt, Produce Flame's hurl and Starry Wisp may attack an object; Fire Bolt ignites an unattended flammable one; burning deals 1d4 Fire | pp.127, 132, 156, 165; p.178 Burning | `object-cast.coax` `rs_cast_object`, `rs_object_burn` | "Eldritch Blast's beams…", "Starry Wisp lights an object…", "the reviewed object list matches every executable description that targets a creature or an object" |
+| A spell that can't take the object, a destroyed or distant object, a spent action or a blocked component spends nothing | p.106 Targets; pp.105-106 Components | `rs_cast_object` before costs | "a spell that can't take an object… refuses with nothing spent" |
+| Always-prepared grants come from named features | pp.35, 40, 46, 54, 56, 58, 70, 73, 76 | `rs_preset_spell_grants` | `cast-provenance-checks.coax` "every level 1-6 preset's always-prepared spell is a listed SRD feature grant…", "the listed grants follow their features' rules" |
+| Material components come from the class's focus, a pouch or an exact receipt; priced or consumed ones only from a receipt | pp.105-106 Material | `cast-components.coax` | "every spell a level 1-6 preset can cast has its components…" |
+| Experimental's hotbar sends the player's target, option and slot level; a refused option spends nothing | p.106 Targets; Hex p.140, Blindness/Deafness p.113 | `fivebar.coax` `fb_option`, `fb_cast_levels`; `experimental-combat.coax` `xc_choose`, `xc_pick_at` | Experimental combat "(#13038)" checks |
 
 ## Decisions
 
@@ -35,6 +42,18 @@ Source: SRD 5.2.1, pinned PDF SHA-256
   Invisible target; the caster is not hidden from itself). Total Cover,
   obscurement and alternate senses are world facts not yet admitted.
 
+- An object is a world fact handed to `rs_cast_object` by slice; it has no
+  turn, so the world calls `rs_object_burn` once a round. Objects fail saves,
+  but no executable save spell takes an object yet.
+- The Experimental hotbar marks a spell's choices on its own icon: the slot
+  level digit in the top-right corner and the option label along the bottom.
+  A tap there steps the choice instead of casting. A spell aimed at a creature
+  sends that one creature through the chosen-target path, so the engine's
+  option, sight and capacity preflight applies.
+- Fiendish Vigor's False Life is this Warlock preset's level 5 invocation and
+  Magical Discoveries' Fireball and Spirit Guardians are the Lore Bard preset's
+  choices; both are checked against their features' rules.
+
 ## Evidence
 
 - `cast-workflow-checks.coax`: 334 checks pass (includes the battle library).
@@ -47,14 +66,25 @@ Source: SRD 5.2.1, pinned PDF SHA-256
   components 364, spell state 325, saving throws 334, HP interaction 419,
   spell-access source 363, compliance probes 339, class kit 325; 41 selected
   Experimental combat checks.
-- Lab Wasm (`fivelab`): 2,566,015 bytes of its 2,575,000 budget, SHA-256
-  `a59803b9b7c1c13da25279f5286f625d06be19cae64448ea74aa373f5d14dbbd`.
+- `cast-object-checks.coax` 349 checks; `object-target.coax` mutation 45/45
+  killed, no exemptions. `cast-provenance-checks.coax` 339 checks.
+- Experimental's choices: 4 new checks; 45 selected Experimental combat checks,
+  hotbar (fivebar-test) 375 and class kit 338 pass.
+- Lab Wasm (`fivelab`): 2,566,015 bytes after Rituals and sight; 2,576,249
+  bytes after the hotbar choices (the chosen-target admission is now live in
+  the lab), SHA-256
+  `ab49c37339b86519cdbe7e3a720e92243d3268bb2e179bcfa8c72f85d5c48709` before
+  the last call-site merge; budget raised to 2,585,000.
 
 ```sh
 coax/bin/coax test aethyr/rules/srd/cast-workflow-checks.coax --library
 coax/bin/coax mutate aethyr/rules/srd/cast-workflow-checks.coax --library --unit aethyr/rules/srd/ritual.coax --jobs 2
 coax/bin/coax mutate aethyr/rules/srd/cast-workflow-checks.coax --library --unit aethyr/rules/srd/cast-sight.coax --jobs 2
 coax/bin/coax mutate aethyr/rules/srd/concentration-checks.coax --library --unit aethyr/rules/srd/concentration.coax --jobs 2
+coax/bin/coax test aethyr/rules/srd/cast-object-checks.coax --library
+coax/bin/coax mutate aethyr/rules/srd/cast-object-checks.coax --library --unit aethyr/rules/srd/object-target.coax --jobs 2
+coax/bin/coax test aethyr/rules/srd/cast-provenance-checks.coax --library
+coax/bin/coax test --library apps/openagents-web/fivelab.coax --only '#13038'
 coax/web/wasm.sh apps/openagents-web/fivelab.coax apps/openagents-web/fivelab-face.c /tmp/lab.wasm apps/openagents-web/everglade-step.coax aethyr/sticks.coax
 ```
 
@@ -63,4 +93,8 @@ coax/web/wasm.sh apps/openagents-web/fivelab.coax apps/openagents-web/fivelab-fa
 No world control begins or continues a Ritual yet: Everglade's bars cast these
 three spells as ordinary slot casts. A Wizard's need to read from the book is
 not modeled. Feather Fall's sight lives in its Reaction trigger, which the
-world supplies. Hunter's Mark and Hex moves are not sight-checked.
+world supplies. Hunter's Mark and Hex moves are not sight-checked. No world places objects or
+offers an object target yet; Cover, obscurement and GM-set object
+vulnerabilities are not admitted. Everglade II's bar does not yet carry the
+choices (#13046 adopts the shared kit). Character origin (background and
+species) grants have no engine records.
