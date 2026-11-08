@@ -25,7 +25,7 @@ XK_MANIFEST :: [24] int.[
   SP_STARRY_WISP,        // C  Druid
   SP_FLAME_HURL,         // C  Druid (Produce Flame: the flame, then the hurl, on one slot)
   SP_VICIOUS_MOCKERY,    // C  Bard
-  SP_SACRED_FLAME,       // C  Cleric, Paladin from level 3
+  SP_SACRED_FLAME,       // C  Cleric, Paladin from level 2
   SP_HEALING_WORD,       // 1  Bard, Cleric, Druid
   SP_THUNDERWAVE,        // 1  Bard, Druid, Sorcerer, Wizard
   SP_ENTANGLE,           // 1  Druid, Ranger

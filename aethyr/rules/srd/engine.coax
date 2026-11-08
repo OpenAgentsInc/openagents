@@ -153,6 +153,7 @@ EF_HELP_CHECK :: 18; // cond encodes a skill, or RS_SKILLS + a tool
 EF_REST_SLEEP :: 20; // natural sleep, owned by sleep/wake events
 EF_HELP_ATTACK :: 19; // distraction on this enemy, eligible helper allies consume it
 EF_KNOCKOUT :: 21; // knocked out at 1 HP (knockout.coax): Unconscious until its Short Rest ends, healing or first aid
+EF_SENSE :: 22; // Divine Sense (p. 54), on the Paladin: Celestials, Fiends and Undead within 60 feet known
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -168,6 +169,8 @@ RS_USE_CHANNEL :: 0; RS_USE_INSPIRE :: 1; RS_USE_WIND :: 2; RS_USE_SURGE :: 3; R
 RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8; RS_USE_WHOLE :: 9; RS_USE_LUCK :: 10;
 // once a Long Rest each: Uncanny Metabolism (Monk), Magical Cunning (Warlock), Faithful Steed's
 // free Find Steed (Paladin)
+// Divine Order (Cleric p. 37) and Primal Order (Druid p. 42): the armor and weapon training chosen
+RS_ORDER_PROTECTOR :: 1; RS_ORDER_WARDEN :: 2;
 RS_USE_METABOLISM :: 11; RS_USE_CUNNING :: 12; RS_USE_STEED :: 13;
 RS_USES :: 14;
 
@@ -260,6 +263,8 @@ RsCreature :: struct {
   free_spell: int;
   undead: bool;             // its creature type is Undead (Turn Undead, Divine Smite)
   fiend: bool;              // its creature type is Fiend (Divine Smite)
+  celestial: bool;          // its creature type is Celestial (Divine Sense)
+  order: int;               // its Divine Order or Primal Order (RS_ORDER_*, 0 none)
   construct: bool;          // its creature type is Construct (Shatter's save Disadvantage)
   // Bard: the Bardic Inspiration die it gives, the one it holds (0 none), the College of Lore's Cutting Words
   insp_die: int; inspired: int; cutting: bool;
@@ -702,8 +707,10 @@ rs_cleric :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 2 { rs_use_set(c[..], RS_USE_CHANNEL, ifx level >= 18 then 4 else ifx level >= 6 then 3 else 2); }
   c[0].turn_undead = level >= 2; c[0].disciple = level >= 3; c[0].preserve_life = level >= 3;
   // Sear Undead at 5 (p. 37), Spirit Guardians with its 3rd-level slots; the Life Domain's Blessed
-  // Healer at 6 (p. 40). Its level 5 domain spells (Mass Healing Word, Revivify) aren't records yet.
+  // Healer at 6 (p. 40). Of its level 5 domain spells Revivify isn't a record yet.
   c[0].sear = level >= 5; c[0].blessed_healer = level >= 6;
+  // Divine Order (p. 37): Protector, Martial weapons and Heavy armor training
+  c[0].order = RS_ORDER_PROTECTOR;
   rs_preset_spell_grants(c[..]);
   return c[0];
 }
@@ -751,6 +758,8 @@ rs_paladin :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 2 { c[0].free_spell = SP_DIVINE_SMITE; rs_use_set(c[..], RS_USE_FREE, 1); }
   rs_preset_spell_grants(c[..]);
   if level >= 3 { rs_use_set(c[..], RS_USE_CHANNEL, ifx level >= 11 then 3 else 2); }
+  // Faithful Steed (p. 55): Find Steed once a Long Rest without a slot; the summoning isn't modeled
+  if level >= 5 { rs_use_set(c[..], RS_USE_STEED, 1); }
   return c[0];
 }
 // The SRD 5.2.1 Ranger (p. 57-61): Wisdom casting, Strength and Dexterity saves, a d10 hit die,
@@ -855,7 +864,8 @@ RS_FT_NONE :: 0; RS_FT_SECOND_WIND :: 1; RS_FT_ACTION_SURGE :: 2; RS_FT_SNEAK_AT
 RS_FT_CUNNING_DASH :: 5; RS_FT_FLURRY :: 6; RS_FT_STUNNING_STRIKE :: 7; RS_FT_PATIENT_DEFENSE :: 8; RS_FT_STEP_OF_THE_WIND :: 9;
 RS_FT_WHOLENESS :: 10; RS_FT_LAY_ON_HANDS :: 11; RS_FT_SACRED_WEAPON :: 12; RS_FT_TURN_UNDEAD :: 13; RS_FT_PRESERVE_LIFE :: 14;
 RS_FT_LANDS_AID :: 15; RS_FT_INSPIRATION :: 16; RS_FT_FONT :: 17; RS_FT_CUTTING_WORDS :: 18; RS_FT_INNATE_SORCERY :: 19;
-RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22; RS_FT_METABOLISM :: 23;
+RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22; RS_FT_METABOLISM :: 23; RS_FT_DIVINE_SENSE :: 24;
+RS_FT_DIVINE_SPARK :: 25; RS_FT_BLESSED_HEALER :: 26;
 RsEvent :: struct {
   kind: int; spell: int; by: int; to: int;
   feat: int;                  // the class feature it tells of (RS_FT_*, 0 none)

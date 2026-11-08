@@ -18,6 +18,9 @@
 #load "concentration.coax";
 #load "hide.coax";
 #load "monk-features.coax";
+#load "paladin-features.coax";
+#load "ranger-features.coax";
+#load "cleric-features.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -653,7 +656,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   if b[0].c[i].blessed_healer && slot > 0 && (s.area != RS_A_NONE || target != i) {
     heals := false;
     for k: 0..<s.step_n { if s.steps[k].kind == RS_S_HEAL { heals = true; } }
-    if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer", RS_FT_NONE); }
+    if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer", RS_FT_BLESSED_HEALER); }
   }
   return true;
 }

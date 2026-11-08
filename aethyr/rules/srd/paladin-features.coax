@@ -1,0 +1,89 @@
+// The Paladin's Channel Divinity option Divine Sense (SRD 5.2.1 p. 54): a Bonus Action and a use of
+// Channel Divinity; for 10 minutes, or until the Paladin has the Incapacitated condition, it knows
+// where every Celestial, Fiend and Undead within 60 feet is and what it is. The battle holds it as an
+// EF_SENSE effect on the Paladin. (Consecrated and desecrated places are the world's.)
+//   coax/bin/coax test --library aethyr/rules/srd/class-paladin-checks.coax
+#authority;
+
+
+// The Divine Sense effect on c, or -1.
+rs_sense_at :: (c: RsCreature) -> int #effects(all) {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_SENSE { return k; } }
+  return -1;
+}
+// The acting level 3 Paladin opens Divine Sense with its Bonus Action and a Channel Divinity use.
+// Refused, with nothing spent, while it is already open.
+rs_divine_sense :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if !rs_bonus_free(b, i) || b[0].c[i].klass != RS_PALADIN || b[0].c[i].level < 3 || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
+  if rs_sense_at(b[0].c[i]) >= 0 || rs_effect_free(b[0].c[i]) == 0 { return false; }
+  b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
+  _ := rs_put_effect(b, i, RsEffect.{kind = EF_SENSE, by = i, spell = -1, until = b[0].clock + 600, save = -1});
+  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_DIVINE_SENSE, " opens a Divine Sense");
+  return true;
+}
+// Divine Sense ends when the Paladin has the Incapacitated condition (rs_interrupt_incapacitated).
+rs_divine_sense_end :: (b: [] RsBattle, i: int) #effects(all) {
+  k := rs_sense_at(b[0].c[i]);
+  if k >= 0 && !rs_capable(b[0].c[i]) { rs_drop_effect(b, i, k); }
+}
+// Does i's Divine Sense show it j: a living Celestial, Fiend or Undead within 60 feet?
+rs_divine_sensed :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) {
+  rs_divine_sense_end(b, i);
+  if rs_sense_at(b[0].c[i]) < 0 || j == i || b[0].c[j].dead { return false; }
+  return (b[0].c[j].undead || b[0].c[j].fiend || b[0].c[j].celestial) && rs_feet_to(b, i, j) / 5 <= 12;   // 60 feet: 12 squares
+}
+
+#test "Divine Sense takes the acting level 3 Paladin's Bonus Action and a Channel Divinity use, once open" {
+  for mode: 0..<8 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 6;
+    _ := rs_add(b[..], rs_paladin("Ulf", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
+    if mode == 1 { b[0].who = 1; } else if mode == 2 { b[0].turn.bonus = true; } else if mode == 3 { b[0].c[0].uses[RS_USE_CHANNEL] = 0; }
+    else if mode == 4 { b[0].c[0].level = 2; } else if mode == 5 { b[0].c[0].klass = RS_CLERIC; }
+    else if mode == 6 { for k: 0..<RS_EFFECTS { b[0].c[0].eff[k].kind = EF_BLESS; } }
+    else if mode == 7 { b[0].c[0].uses[RS_USE_CHANNEL] = 1; }
+    uses := b[0].c[0].uses[RS_USE_CHANNEL]; ok := mode == 0 || mode == 7;
+    #assert rs_divine_sense(b[..], 0) == ok && b[0].c[0].uses[RS_USE_CHANNEL] == (ifx ok then uses - 1 else uses);
+    #assert b[0].turn.bonus == (ok || mode == 2) && !b[0].turn.action && (rs_sense_at(b[0].c[0]) >= 0) == ok;
+    if ok {
+      e := b[0].c[0].eff[rs_sense_at(b[0].c[0])]; #assert e.until == b[0].clock + 600 && e.by == 0 && e.cond == 0 && e.spell == -1 && e.save == -1;
+      told := rs_recent(b[0].book[0], 0); #assert told.feat == RS_FT_DIVINE_SENSE && told.by == 0 && told.kind == RS_EV_CONDITION && told.amount == 0;
+      rs_fresh(b[..], 0); #assert !rs_divine_sense(b[..], 0) && b[0].c[0].uses[RS_USE_CHANNEL] == uses - 1;   // already open
+    }
+  }
+}
+#test "Divine Sense knows living Celestials, Fiends and Undead within 60 feet, and ends on Incapacitated" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 6;
+  _ := rs_add(b[..], rs_paladin("Ulf", 0, 3), 1, 1);
+  for k: 0..<5 { _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2 + k, 2); }
+  b[0].c[1].fiend = true; b[0].c[2].undead = true; b[0].c[3].celestial = true;   // 5, 10 and 15 feet off
+  b[0].c[5].undead = true; b[0].c[5].x = 13; b[0].c[5].y = 1;   // 60 feet
+  rs_fresh(b[..], 0);
+  #assert !rs_divine_sensed(b[..], 0, 1);   // not yet open
+  #assert rs_divine_sense(b[..], 0);
+  #assert rs_divine_sensed(b[..], 0, 1) && rs_divine_sensed(b[..], 0, 2) && rs_divine_sensed(b[..], 0, 3) && !rs_divine_sensed(b[..], 0, 4) && rs_divine_sensed(b[..], 0, 5);
+  #assert !rs_divine_sensed(b[..], 0, 0);
+  b[0].c[5].x = 14; #assert !rs_divine_sensed(b[..], 0, 5);   // 65 feet
+  b[0].c[2].dead = true; #assert !rs_divine_sensed(b[..], 0, 2);
+  b[0].c[0].fiend = true; #assert !rs_divine_sensed(b[..], 0, 0);
+  // Incapacitated: it ends, and stays ended once the condition goes
+  #assert rs_sense_at(b[0].c[0]) >= 0;
+  #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, spell = -1, until = b[0].clock + 6, save = -1});
+  #assert rs_sense_at(b[0].c[0]) < 0;
+  b[0].c[0].cond = 0; #assert !rs_divine_sensed(b[..], 0, 1);
+  // the 10 minutes run out with the effect
+  w: [1] RsBattle; w[0].w = 20; w[0].h = 6;
+  _ = rs_add(w[..], rs_paladin("Ulf", 0, 3), 1, 1); _ = rs_add(w[..], rs_wizard("Foe", 1, 1), 2, 1); w[0].c[1].fiend = true; rs_fresh(w[..], 0);
+  #assert rs_divine_sense(w[..], 0); rs_tick(w[..], 599); #assert rs_divine_sensed(w[..], 0, 1);
+  rs_tick(w[..], 2); #assert rs_sense_at(w[0].c[0]) < 0 && !rs_divine_sensed(w[..], 0, 1);
+  // the effect goes only on a creature in the battle
+  #assert !rs_put_effect(w[..], -1, RsEffect.{kind = EF_SENSE, by = 0}) && !rs_put_effect(w[..], 2, RsEffect.{kind = EF_SENSE, by = 0});
+  // set straight on the creature, the condition still ends it at the next look
+  s: [1] RsBattle; s[0].w = 20; s[0].h = 6;
+  _ = rs_add(s[..], rs_paladin("Ulf", 0, 3), 1, 1); _ = rs_add(s[..], rs_wizard("Foe", 1, 1), 2, 1); s[0].c[1].fiend = true; rs_fresh(s[..], 0);
+  #assert rs_divine_sense(s[..], 0); s[0].c[0].cond = RS_INCAPACITATED;
+  #assert !rs_divine_sensed(s[..], 0, 1) && rs_sense_at(s[0].c[0]) < 0;
+  s[0].c[0].cond = 0; rs_divine_sense_end(s[..], 0); #assert rs_sense_at(s[0].c[0]) < 0;
+  t: [1] RsBattle; t[0].w = 20; t[0].h = 6;
+  _ = rs_add(t[..], rs_paladin("Ulf", 0, 3), 1, 1); _ = rs_add(t[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(t[..], 0);
+  #assert rs_divine_sense(t[..], 0); rs_divine_sense_end(t[..], 0); #assert rs_sense_at(t[0].c[0]) >= 0;   // capable: it holds
+}

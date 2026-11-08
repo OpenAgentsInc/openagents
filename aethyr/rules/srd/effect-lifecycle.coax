@@ -9,6 +9,7 @@ rs_interrupt_incapacitated :: (b: [] RsBattle, j: int) #effects(all) {
   rs_end_concentration(b,j," (Incapacitated)");
   rs_release_turned(b,j);
   rs_rage_end(b,j," (Incapacitated)");
+  rs_divine_sense_end(b,j);
 }
 
 // Admitted executors have prepaid room. Other callers receive explicit

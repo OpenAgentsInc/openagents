@@ -51,10 +51,37 @@ rs_cf_table :: (out: [] RsCf) -> int {
   n = cf(out, n, RS_MONK, 5, 51, "Stunning Strike"); n = cf(out, n, RS_MONK, 5, 50, "Martial Arts (d8)");
   n = cf(out, n, RS_MONK, 6, 51, "Empowered Strikes"); n = cf(out, n, RS_MONK, 6, 52, "Wholeness of Body");
   n = cf(out, n, RS_MONK, 6, 51, "Unarmored Movement (+15)");
+  // Paladin (p. 53-56), Oath of Devotion
+  n = cf(out, n, RS_PALADIN, 1, 53, "Lay On Hands"); n = cf(out, n, RS_PALADIN, 1, 54, "Spellcasting");
+  n = cf(out, n, RS_PALADIN, 1, 54, "Weapon Mastery"); n = cf(out, n, RS_PALADIN, 2, 54, "Fighting Style");
+  n = cf(out, n, RS_PALADIN, 2, 54, "Paladin's Smite"); n = cf(out, n, RS_PALADIN, 3, 54, "Channel Divinity");
+  n = cf(out, n, RS_PALADIN, 3, 56, "Oath of Devotion Spells"); n = cf(out, n, RS_PALADIN, 3, 56, "Sacred Weapon");
+  n = cf(out, n, RS_PALADIN, 4, 55, "Ability Score Improvement"); n = cf(out, n, RS_PALADIN, 5, 55, "Extra Attack");
+  n = cf(out, n, RS_PALADIN, 5, 55, "Faithful Steed"); n = cf(out, n, RS_PALADIN, 6, 55, "Aura of Protection");
+  // Ranger (p. 57-61), Hunter
+  n = cf(out, n, RS_RANGER, 1, 57, "Spellcasting"); n = cf(out, n, RS_RANGER, 1, 58, "Favored Enemy");
+  n = cf(out, n, RS_RANGER, 1, 58, "Weapon Mastery"); n = cf(out, n, RS_RANGER, 2, 59, "Deft Explorer");
+  n = cf(out, n, RS_RANGER, 2, 59, "Fighting Style"); n = cf(out, n, RS_RANGER, 3, 61, "Hunter's Lore");
+  n = cf(out, n, RS_RANGER, 3, 61, "Hunter's Prey"); n = cf(out, n, RS_RANGER, 4, 59, "Ability Score Improvement");
+  n = cf(out, n, RS_RANGER, 5, 59, "Extra Attack"); n = cf(out, n, RS_RANGER, 5, 58, "Favored Enemy (3)");
+  n = cf(out, n, RS_RANGER, 6, 59, "Roving");
+  // Cleric (p. 36-40), Life Domain
+  n = cf(out, n, RS_CLERIC, 1, 36, "Spellcasting"); n = cf(out, n, RS_CLERIC, 1, 37, "Divine Order");
+  n = cf(out, n, RS_CLERIC, 2, 37, "Channel Divinity"); n = cf(out, n, RS_CLERIC, 3, 40, "Life Domain Spells");
+  n = cf(out, n, RS_CLERIC, 3, 40, "Disciple of Life"); n = cf(out, n, RS_CLERIC, 3, 40, "Preserve Life");
+  n = cf(out, n, RS_CLERIC, 4, 37, "Ability Score Improvement"); n = cf(out, n, RS_CLERIC, 5, 37, "Sear Undead");
+  n = cf(out, n, RS_CLERIC, 5, 40, "Life Domain Spells (5)"); n = cf(out, n, RS_CLERIC, 6, 40, "Blessed Healer");
+  n = cf(out, n, RS_CLERIC, 6, 37, "Channel Divinity (3)");
+  // Bard (p. 31-35), College of Lore
+  n = cf(out, n, RS_BARD, 1, 31, "Bardic Inspiration"); n = cf(out, n, RS_BARD, 1, 32, "Spellcasting");
+  n = cf(out, n, RS_BARD, 2, 32, "Expertise"); n = cf(out, n, RS_BARD, 2, 32, "Jack of All Trades");
+  n = cf(out, n, RS_BARD, 3, 35, "Bonus Proficiencies"); n = cf(out, n, RS_BARD, 3, 35, "Cutting Words");
+  n = cf(out, n, RS_BARD, 4, 32, "Ability Score Improvement"); n = cf(out, n, RS_BARD, 5, 32, "Font of Inspiration");
+  n = cf(out, n, RS_BARD, 5, 31, "Bardic Inspiration (d8)"); n = cf(out, n, RS_BARD, 6, 35, "Magical Discoveries");
   return n;
 }
 // The classes whose rows are complete and held to the presets.
-RS_CF_DONE :: [4] int.[RS_BARBARIAN, RS_FIGHTER, RS_ROGUE, RS_MONK];
+RS_CF_DONE :: [8] int.[RS_BARBARIAN, RS_FIGHTER, RS_ROGUE, RS_MONK, RS_PALADIN, RS_RANGER, RS_CLERIC, RS_BARD];
 
 // A dice state whose first roll of a `sides` die lands on `face` (for a check of one exact roll, a 19).
 cf_seed :: (sides: int, face: int) -> u64 {
@@ -151,6 +178,58 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
     if f == "Empowered Strikes" { return c.empowered; }
     if f == "Wholeness of Body" { return c.uses_max[RS_USE_WHOLE] == rs_max(rs_mod(c.score[RS_WIS]), 1); }
     if f == "Unarmored Movement (+15)" { return c.speed == 45; }
+  }
+  if c.klass == RS_PALADIN {
+    if f == "Lay On Hands" { return c.uses_max[RS_USE_LAY] == 5 * c.level; }
+    if f == "Spellcasting" { return c.spell_ability == RS_CHA && c.slots_max[1] >= 2; }
+    if f == "Weapon Mastery" { return c.mastery_n == 2 && (c.masteries & (1 << M_SAP)) != 0 && (c.masteries & (1 << M_SLOW)) != 0; }
+    if f == "Fighting Style" { return rs_class_spell_granted(c, SP_SACRED_FLAME); }   // Blessed Warrior
+    if f == "Paladin's Smite" { return c.free_spell == SP_DIVINE_SMITE && c.uses_max[RS_USE_FREE] == 1 && rs_class_spell_granted(c, SP_DIVINE_SMITE); }
+    if f == "Channel Divinity" { return c.uses_max[RS_USE_CHANNEL] == 2; }
+    if f == "Oath of Devotion Spells" { return rs_class_spell_granted(c, SP_SHIELD_OF_FAITH); }
+    if f == "Sacred Weapon" { return c.level >= 3; }   // rs_sacred_weapon admits it from level 3
+    if f == "Ability Score Improvement" { return c.score[RS_STR] == 18; }
+    if f == "Extra Attack" { return c.extra_attack == 1; }
+    if f == "Faithful Steed" { return c.steed && c.uses_max[RS_USE_STEED] == 1; }
+    if f == "Aura of Protection" { return c.aura; }
+  }
+  if c.klass == RS_RANGER {
+    if f == "Spellcasting" { return c.spell_ability == RS_WIS && c.slots_max[1] >= 2; }
+    if f == "Favored Enemy" { return c.free_spell == SP_HUNTERS_MARK && c.uses_max[RS_USE_FREE] >= 2 && rs_class_spell_granted(c, SP_HUNTERS_MARK); }
+    if f == "Weapon Mastery" { return c.mastery_n == 2 && (c.masteries & (1 << M_VEX)) != 0 && (c.masteries & (1 << M_SLOW)) != 0; }
+    if f == "Deft Explorer" { return c.explorer && (c.checks.expert & (1 << SK_SURVIVAL)) != 0; }
+    if f == "Fighting Style" { return c.archery; }
+    if f == "Hunter's Lore" { return c.lore; }
+    if f == "Hunter's Prey" { return c.colossus; }
+    if f == "Ability Score Improvement" { return c.score[RS_DEX] == 18; }
+    if f == "Extra Attack" { return c.extra_attack == 1; }
+    if f == "Favored Enemy (3)" { return c.uses_max[RS_USE_FREE] == 3; }
+    if f == "Roving" { return c.speed == 40 && c.climb == 40 && c.swim == 40; }
+  }
+  if c.klass == RS_CLERIC {
+    if f == "Spellcasting" { return c.spell_ability == RS_WIS && c.slots_max[1] >= 2; }
+    if f == "Divine Order" { return c.order == RS_ORDER_PROTECTOR; }
+    if f == "Channel Divinity" { return c.uses_max[RS_USE_CHANNEL] >= 2 && c.turn_undead; }   // Divine Spark and Turn Undead
+    if f == "Life Domain Spells" { return rs_class_spell_granted(c, SP_BLESS) && rs_class_spell_granted(c, SP_CURE_WOUNDS); }
+    if f == "Disciple of Life" { return c.disciple; }
+    if f == "Preserve Life" { return c.preserve_life; }
+    if f == "Ability Score Improvement" { return c.score[RS_WIS] == 18; }
+    if f == "Sear Undead" { return c.sear; }
+    if f == "Life Domain Spells (5)" { return rs_class_spell_granted(c, SP_MASS_HEALING_WORD); }
+    if f == "Blessed Healer" { return c.blessed_healer; }
+    if f == "Channel Divinity (3)" { return c.uses_max[RS_USE_CHANNEL] == 3; }
+  }
+  if c.klass == RS_BARD {
+    if f == "Bardic Inspiration" { return c.insp_die >= 6 && c.uses_max[RS_USE_INSPIRE] == rs_max(rs_mod(c.score[RS_CHA]), 1); }
+    if f == "Spellcasting" { return c.spell_ability == RS_CHA && c.slots_max[1] >= 2; }
+    if f == "Expertise" { return c.checks.expert == (1 << SK_PERFORMANCE) | (1 << SK_PERSUASION); }
+    if f == "Jack of All Trades" { return c.jack; }
+    if f == "Bonus Proficiencies" { return (c.checks.skills & (1 << SK_INSIGHT)) != 0; }
+    if f == "Cutting Words" { return c.cutting; }
+    if f == "Ability Score Improvement" { return c.score[RS_CHA] == 18; }
+    if f == "Font of Inspiration" { return c.font; }
+    if f == "Bardic Inspiration (d8)" { return c.insp_die == 8; }
+    if f == "Magical Discoveries" { return c.discoveries[0] == SP_FIREBALL && c.discoveries[1] == SP_SPIRIT_GUARDIANS; }
   }
   return false;
 }

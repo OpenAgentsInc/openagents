@@ -1,0 +1,93 @@
+// The Cleric's levels 1-6 features (#13044; class-features.coax lists them), each resolved through
+// the shared battle against its SRD 5.2.1 text (p. 36-40), with fixed dice (d4 2, d8 4, d20 10).
+// The preset is a Life Domain Cleric, Divine Order Protector, in a Chain Shirt with a Shield and a
+// Mace, Wisdom 16.
+//   coax/bin/coax test --library aethyr/rules/srd/class-cleric-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "class-features.coax";
+
+// A Cleric at (1, 1), a hurt ally beside it (5 of 40 Hit Points), fixed dice, its turn open.
+cc_field :: (b: [] RsBattle, level: int) {
+  b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b, rs_cleric("Ama", 0, level), 1, 1);
+  a := rs_add(b, rs_fighter("Ally", 0, 3), 2, 1); b[0].c[a].hp = 5; b[0].c[a].hp_max = 40;
+  rs_fresh(b, 0);
+}
+
+#test "Spellcasting p.36: Wisdom, DC 8 + proficiency + Wisdom; the Cleric table's slots" {
+  ones := [7] int.[0, 2, 3, 4, 4, 4, 4]; twos := [7] int.[0, 0, 0, 2, 3, 3, 3]; threes := [7] int.[0, 0, 0, 0, 0, 2, 3];
+  for level: 1..<7 {
+    c := rs_cleric("A", 0, level);
+    #assert c.spell_ability == RS_WIS && c.slots_max[1] == ones[level] && c.slots_max[2] == twos[level] && c.slots_max[3] == threes[level];
+    #assert rs_spell_dc(c) == 8 + rs_proficiency(level) + rs_mod(c.score[RS_WIS]);
+  }
+}
+
+#test "Divine Order p.37: the Protector's Martial weapon and Heavy armor training" {
+  for level: 1..<7 { #assert rs_cleric("A", 0, level).order == RS_ORDER_PROTECTOR; }
+}
+
+#test "Channel Divinity p.37: two uses from level 2, three at 6; one back on a Short Rest; Divine Spark heals or harms" {
+  #assert rs_cleric("A", 0, 1).uses_max[RS_USE_CHANNEL] == 0 && rs_cleric("A", 0, 2).uses_max[RS_USE_CHANNEL] == 2 && rs_cleric("A", 0, 6).uses_max[RS_USE_CHANNEL] == 3;
+  b: [1] RsBattle; cc_field(b[..], 2);
+  #assert rs_divine_spark(b[..], 0, 1, true, 0) && b[0].c[1].hp == 5 + 4 + 3 && b[0].c[0].uses[RS_USE_CHANNEL] == 1;
+  b[0].c[0].uses[RS_USE_CHANNEL] = 0; rs_short_rest_resources(b[0].c[0..<1]); #assert b[0].c[0].uses[RS_USE_CHANNEL] == 1;
+  #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_CHANNEL] == 2;
+  one: [1] RsBattle; cc_field(one[..], 1); #assert !rs_divine_spark(one[..], 0, 1, true, 0);
+}
+
+#test "Turn Undead p.37: each Undead foe within 30 feet that fails a Wisdom save is Frightened and Incapacitated" {
+  b: [1] RsBattle; cc_field(b[..], 2);
+  near := rs_add(b[..], rs_skeleton("Near", 1), 7, 1); far := rs_add(b[..], rs_skeleton("Far", 1), 8, 2);
+  rs_fresh(b[..], 0);
+  #assert rs_turn_undead(b[..], 0) && b[0].c[0].uses[RS_USE_CHANNEL] == 1;
+  #assert rs_effect(b[0].c[near], EF_TURNED) && rs_has(b[0].c[near], RS_FRIGHTENED) && rs_has(b[0].c[near], RS_INCAPACITATED) && !rs_effect(b[0].c[far], EF_TURNED);
+}
+
+#test "Life Domain Spells p.40: Bless and Cure Wounds always prepared from level 3, Mass Healing Word from 5" {
+  #assert !rs_class_spell_granted(rs_cleric("A", 0, 2), SP_BLESS) && !rs_class_spell_granted(rs_cleric("A", 0, 2), SP_CURE_WOUNDS);
+  #assert rs_class_spell_granted(rs_cleric("A", 0, 3), SP_BLESS) && rs_class_spell_granted(rs_cleric("A", 0, 3), SP_CURE_WOUNDS);
+  #assert !rs_class_spell_granted(rs_cleric("A", 0, 4), SP_MASS_HEALING_WORD) && rs_class_spell_granted(rs_cleric("A", 0, 5), SP_MASS_HEALING_WORD);
+}
+
+#test "Disciple of Life p.40: from level 3, a slot spell's healing is 2 + the slot's level more" {
+  for level: [2] int.[2, 3] {
+    b: [1] RsBattle; cc_field(b[..], level);
+    #assert rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, 1);
+    #assert b[0].c[1].hp == 5 + 2 * 4 + 3 + (ifx level == 3 then 3 else 0);   // 2d8 + Wisdom, + 2 + 1
+  }
+}
+
+#test "Preserve Life p.40: from level 3, five times its level in Hit Points among Bloodied creatures within 30 feet, none above half" {
+  b: [1] RsBattle; cc_field(b[..], 3);
+  #assert rs_preserve_life(b[..], 0) && b[0].c[1].hp == 5 + 15 && b[0].c[0].uses[RS_USE_CHANNEL] == 1;
+  c: [1] RsBattle; cc_field(c[..], 3); c[0].c[1].hp = 18;
+  #assert rs_preserve_life(c[..], 0) && c[0].c[1].hp == 20;   // no more than half its maximum
+  two: [1] RsBattle; cc_field(two[..], 2); #assert !rs_preserve_life(two[..], 0);
+}
+
+#test "Ability Score Improvement p.37: Wisdom 16 to 18 at level 4" {
+  #assert rs_cleric("A", 0, 3).score[RS_WIS] == 16 && rs_cleric("A", 0, 4).score[RS_WIS] == 18;
+}
+
+#test "Sear Undead p.37: from level 5, Turn Undead's failing Undead take Wisdom-modifier d8s of Radiant damage" {
+  for level: [2] int.[4, 5] {
+    b: [1] RsBattle; cc_field(b[..], level);
+    u := rs_add(b[..], rs_skeleton("Bones", 1), 4, 1); b[0].c[u].hp = 100; b[0].c[u].hp_max = 100; rs_fresh(b[..], 0);
+    #assert rs_turn_undead(b[..], 0) && rs_effect(b[0].c[u], EF_TURNED);
+    #assert b[0].c[u].hp == 100 - (ifx level == 5 then 4 * 4 else 0);
+  }
+}
+
+#test "Blessed Healer p.40: from level 6, a slot spell that heals another heals the Cleric 2 + the slot's level" {
+  for level: [2] int.[5, 6] {
+    b: [1] RsBattle; cc_field(b[..], level); b[0].c[0].hp = 10;
+    #assert rs_cast(b[..], 0, SP_HEALING_WORD, 1, 0, 0, 1);
+    #assert b[0].c[0].hp == 10 + (ifx level == 6 then 3 else 0);
+    if level == 6 { e := rs_recent(b[0].book[0], 0); #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_BLESSED_HEALER && e.to == 0 && e.amount == 3; }
+  }
+}

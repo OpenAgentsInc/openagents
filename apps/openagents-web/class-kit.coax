@@ -77,7 +77,8 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
     if a.kind == FB_TURN && !hero.turn_undead { continue; }
     if a.kind == FB_PRESERVE && !hero.preserve_life { continue; }
     if a.kind == FB_LANDS && !hero.lands_aid { continue; }
-    if klass == FB_CL_PALADIN && a.kind == FB_SPELL && a.sp == SP_SACRED_FLAME && level < 3 { continue; }
+    // the Paladin's Sacred Flame is Blessed Warrior's, its Fighting Style from level 2 (p. 54)
+    if klass == FB_CL_PALADIN && a.kind == FB_SPELL && a.sp == SP_SACRED_FLAME && level < 2 { continue; }
     // Produce Flame is already represented by the combined conjure-and-hurl slot.
     if klass == FB_CL_DRUID && a.kind == FB_SPELL && a.sp == SP_PRODUCE_FLAME { continue; }
     duplicate := false;
