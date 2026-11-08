@@ -103,6 +103,8 @@ xc_bar :: (c: int, out: [] FbAb) -> int {
 }
 // A slot's picture: the class's own (cl-*) are Everglade's, the rest 5E MMO's.
 xc_url :: (art: string) -> string { return ifx art.count > 3 && art[0] == 'c' && art[1] == 'l' && art[2] == '-' then XC_EG_URL else XC_MMO_URL; }
+// Character Create class icons already have their slot 1 key baked into the art.
+xc_draw_slot_key :: (slot:int,art:string)->bool {return slot!=0 || xc_url(art)!=XC_EG_URL;}
 
 // The battle, once: you and the six monsters, off the grid until a press places them.
 xc_start :: (x: [] XcCombat, klass: int) {
@@ -376,8 +378,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
       m = xc_box_text(x[0].media[..], m, dim); m = put(x[0].media[..], m, " 35 0 "); m = put_int(x[0].media[..], m, cast(int) (share * 1000)); m = put(x[0].media[..], m, "\n");
     }
-    key: [2] u8; key[0] = cast(u8) (49 + i);
-    n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));
+    if xc_draw_slot_key(i,a.art) {key: [2] u8; key[0] = cast(u8) (49 + i);
+     n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));}
     if i == x[0].used && left > 0 { n = xc_line(out, n, r.x0, r.y1 + 4 * k, r.x1, r.y1 + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
   }
   if x[0].hover >= 0 && x[0].hover < x[0].bar_n {
@@ -505,6 +507,10 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   return -1;
 }
 
+#test "the class icon already carries its key and other slots draw theirs" {
+ bar:[XC_SLOTS]FbAb;for c:0..<FB_CL_N {n:=xc_bar(c,bar[..]);#assert !xc_draw_slot_key(0,bar[0].art);for i:1..<n {#assert xc_draw_slot_key(i,bar[i].art);}}
+ #assert xc_draw_slot_key(0,"attack") && xc_draw_slot_key(1,"cl-second-wind");
+}
 #test "experimental combat: every class's level 1 bar holds its Character Create ability first, each slot with its picture" #steps 400000000 {
   bar: [XC_SLOTS] FbAb;
   for c: 0..<FB_CL_N {
