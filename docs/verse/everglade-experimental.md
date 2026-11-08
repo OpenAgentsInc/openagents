@@ -69,7 +69,7 @@ You fight the monsters with your class's level 1 kit
   the twelve SRD classes. Click one to become that class at level 1. The bar reloads with its
   kit. Click CLASSES to fold the column.
 - Melee classes hold a weapon from the Ultimate RPG kit in the right hand: the Barbarian a
-  greataxe (Axe_Double), the Fighter a longsword (Sword), the Paladin a golden longsword
+  greataxe (Axe_Double), the Fighter a greatsword (Sword_big), the Paladin a golden longsword
   (Sword_Golden), and the Ranger and Rogue a shortsword (Sword, smaller). The Monk fights
   unarmed, and casters hold nothing. The weapon is fixed to the right hand's bone, so it follows
   every animation. Changing class in CLASSES swaps it.

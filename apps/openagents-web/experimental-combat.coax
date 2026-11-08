@@ -252,7 +252,7 @@ xc_strike_due :: (s: [] Lab) {
   if s[0].creator[0].hostiles[0].hp > 0 { _ := xc_use(s, k); }
 }
 // The weapon a class holds (charactercreator.coax CC_KITS), as close to its SRD starting weapon as the
-// Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's and Paladin's longswords, the Ranger's
+// Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's greatsword, the Paladin's longsword, the Ranger's
 // and Rogue's shortswords. The Monk fights unarmed and the casters hold none: -1.
 xc_kit :: (c: int) -> int {
   if c == FB_CL_BARBARIAN { return 0; }

@@ -302,15 +302,15 @@ if animal_run:
         next_index+=ac
     assert any(frame_positions[0]!=x for x in frame_positions[1:]), 'animal frames are static'
 else: assert not animal_vertices
-# The hero's held weapons (Axe_Double, Sword, Sword_Golden), after the animal frames: each in its own space, blade up +Y.
+# The hero's held weapons (Axe_Double, Sword, Sword_Golden, Sword_big), after the animal frames: each in its own space, blade up +Y.
 weapons=[l.split() for l in cat.splitlines() if l.startswith('C glade/weapon')]
 if animal_run:
-    assert len(weapons)==3 and weapon_vertices==list(range(weapon_vertices[0],weapon_vertices[-1]+1))
+    assert len(weapons)==4 and weapon_vertices==list(range(weapon_vertices[0],weapon_vertices[-1]+1))
     for i,draw in enumerate(weapons):
         assert draw[1]==f'glade/weapon{i}'
         wf,wc,wl,ww,wn,wj=map(int,draw[2:]);assert wf==next_index and wc>0 and wl==253 and ww==word and wn==0 and wj==0
         indices=struct.unpack_from('<'+str(wc)+'I',ib,wf*4);assert all(weapon_vertices[0]<=x<=weapon_vertices[-1] for x in indices)
-        ys=[pos[x][1] for x in indices];assert max(ys)>1.4 and min(ys)<-0.2 and all(abs(pos[x][0])<0.5 and abs(pos[x][2])<0.2 for x in indices)
+        ys=[pos[x][1] for x in indices];assert max(ys)>1.4 and min(ys)<-0.1 and all(abs(pos[x][0])<0.5 and abs(pos[x][2])<0.2 for x in indices)
         next_index+=wc
 else: assert not weapons and not weapon_vertices
 for group,(grow,name) in enumerate(zip(grows,names)):

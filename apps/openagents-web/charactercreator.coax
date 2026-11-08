@@ -46,7 +46,7 @@ Creator :: struct {
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
   klass:int = -1;
-  weapon_first:[3]int; weapon_count:[3]int;   // the pack's held weapons (glade/weapon0..2)
+  weapon_first:[4]int; weapon_count:[4]int;   // the pack's held weapons (glade/weapon0..3)
   weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (experimental-combat.coax)
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
   dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
@@ -342,12 +342,12 @@ experimental_swing_weight :: (s:Creator)->f32 {
  return top*cc_clamp(t/0.1,0,1)*cc_clamp((d-t)/0.25,0,1);
 }
 // ---- the weapon in your hand (#13025): a melee class's kit, on the right hand's bone, its grip in the fist.
-// A kit: which of the pack's weapons (glade/weapon0 Axe_Double, 1 Sword, 2 Sword_Golden), its scale
+// A kit: which of the pack's weapons (glade/weapon0 Axe_Double, 1 Sword, 2 Sword_Golden, 3 Sword_big), its scale
 // from the source, and where along the blade (+Y, source units) the fist closes.
 CC_KITS :: 4;
-CC_KIT_MESH :: [4]int.[0,1,2,1];               // greataxe, longsword, the Paladin's longsword, shortsword
-CC_KIT_SCALE :: [4]f32.[0.6,0.45,0.45,0.33];   // about 1.3 m, 1.05 m, 1.05 m and 0.75 m long
-CC_KIT_GRIP :: [4]f32.[-0.42,0.0,0.0,0.0];     // the greataxe low on its haft; a sword in the middle of its grip
+CC_KIT_MESH :: [4]int.[0,3,2,1];               // greataxe, the Fighter's greatsword, the Paladin's longsword, shortsword
+CC_KIT_SCALE :: [4]f32.[0.6,0.55,0.45,0.33];   // about 1.3 m, 1.5 m, 1.05 m and 0.75 m long
+CC_KIT_GRIP :: [4]f32.[-0.42,0.3,0.0,0.0];     // the greataxe low on its haft; the greatsword's upper hand under the guard; a sword mid-grip
 CC_KIT_TWO :: [4]bool.[true,false,false,false];
 // The fist's middle from the hand's joint, in the bind pose (metres: toward the fingers, then under the palm).
 CC_FIST :: [3]f32.[-0.075,-0.03,0.0];
@@ -384,7 +384,7 @@ weapon_matrix :: (h:[12]f32,hand:[3]f32,k:int,yaw:f32,at:[3]f32)->[12]f32 {
 }
 #test "a held weapon's grip sits in the fist and its blade points ahead of the hand" {
  id:=[12]f32.[1,0,0,0, 0,1,0,0, 0,0,1,0];hand:=[3]f32.[-0.68,1.45,-0.06];
- w:=weapon_matrix(id,hand,1,0,[3]f32.[10,0,5]);
+ w:=weapon_matrix(id,hand,2,0,[3]f32.[10,0,5]);   // the Paladin's longsword, held mid-grip
  // the grip (source Y 0) is the fist's middle; the blade (+Y) goes ahead, +Z; the edges up and down
  #assert abs(w[0]-(10-0.68-0.075))<0.0001 && abs(w[1]-(1.45-0.03))<0.0001 && abs(w[2]-(5-0.06))<0.0001;
  #assert w[8]>0.39 && w[6]<0 && abs(w[7])<0.0001 && abs(w[4]-0.45)<0.0001 && abs(w[3])<0.0001;
@@ -768,7 +768,7 @@ preset :: (s:[]Creator,family:int) {
 ensure :: (s:[]Creator) {if !s[0].configured {preset(s,s[0].outfit);}}
 reset :: (s:[]Creator) { s[0].pan_x=0;s[0].pan_y=0;s[0].pan_mode=false;s[0].piece=18;s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].eye_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
 catalog :: (s:[]Creator,t:string) {
-  s[0].source_n=0;s[0].glade_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<3 {s[0].weapon_count[i]=0;}
+  s[0].source_n=0;s[0].glade_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<4 {s[0].weapon_count[i]=0;}
   for i:0..<80 {s[0].source_count[i]=0;}
   at:=0;
   while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;} row:=t[at..<e];at=e+1;
@@ -781,7 +781,7 @@ catalog :: (s:[]Creator,t:string) {
       i:=figs.bd_whole_at(name,12);if i>=0 && i<10 {p:=ne;s[0].animal_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].animal_count[i]=figs.bd_whole_at(row,p);if s[0].animal_count[i]>0 {s[0].animal_n+=1;}}
     }
     if name.count>12 && name[0..<12]=="glade/weapon" {
-      i:=figs.bd_whole_at(name,12);if i>=0 && i<3 {p:=ne;s[0].weapon_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].weapon_count[i]=figs.bd_whole_at(row,p);}
+      i:=figs.bd_whole_at(name,12);if i>=0 && i<4 {p:=ne;s[0].weapon_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].weapon_count[i]=figs.bd_whole_at(row,p);}
     }
     if name.count>13 && name[0..<13]=="glade/monster" {
       i:=figs.bd_whole_at(name,13);if i>=0 && i<48 {p:=ne;s[0].monster_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].monster_count[i]=figs.bd_whole_at(row,p);if s[0].monster_count[i]>0 {s[0].monster_n+=1;}}
