@@ -66,9 +66,11 @@ export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // share: the line a link preview shows (at most 200 characters; else the description, shortened).
 // page: the module's data-page (coaxial_page), when one module draws several pages: the Grid is the homepage's (newland, page 1).
+// project_asset: an owner-local asset (local:/private/NAME.EXT) that ?project=SLUG swaps for /private/SLUG.EXT
+// before the host starts (Animation Lab's project bundles).
 // place_of: the realm this page opens a place in (Character Create, at Everglade's glade, #13018): one
 // world, so the page is that realm's, its module, slot and room; only its address and its first place differ.
-export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -336,8 +338,25 @@ ${loaderMarkup(r.title, `/worlds/${r.slug}/index.md`)}
 <h1>${t}</h1><p><a href="/worlds/${r.slug}/index.md">${t}</a></p>${existsSync(join(SITE, "realms", r.slug, "map.fallback")) ? "\n" + readFileSync(join(SITE, "realms", r.slug, "map.fallback"), "utf8").trimEnd() : ""}
 </main>
 <script type="module" src="/coaxial/host.js" data-app="${r.module}"${renderAttributes(r.slug, r.module)}${slot}${assets}></script>
-</body>
+${r.project_asset ? projectScript(r.module, r.project_asset) : ""}</body>
 </html>
+`
+}
+
+// The ?project= swap for a realm's project_asset: an inline script after the host's module script runs
+// before it (module scripts wait for the document), so the host reads the swapped address.
+function projectScript(module: string, asset: string): string {
+  const m = /^\/private\/[a-z0-9-]+(\.[a-z]+)$/.exec(asset)
+  if (!m) throw new Error(`realms.ts: project_asset ${asset} is not /private/NAME.EXT`)
+  return `
+<script>
+// Firm reason: 1 (bind an owner-local project asset before the browser host starts).
+const project = new URLSearchParams(location.search).get("project");
+if (project && /^[a-z0-9-]{1,64}$/.test(project)) {
+  const entry = document.querySelector("script[data-app=${module}]");
+  entry.dataset.assets = entry.dataset.assets.replace("${asset}", "/private/" + project + "${m[1]}");
+}
+</script>
 `
 }
 
