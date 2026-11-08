@@ -785,6 +785,52 @@ verse_style_glade_light :: (p: StylePreset) -> StylePreset {
   #assert q.keys[0].key_strength == p.keys[0].key_strength && q.keys[1].haze_cap == p.keys[1].haze_cap && q.keys[3].exposure == p.keys[3].exposure;
 }
 
+// ---- a made realm under the glade (lighting plan Phase 1, #13066)
+// A painterly realm that authors no lighting (no time of day, no mist) renders under the glade: its
+// style block is the glade-lit preset's (verse_style_glade_light: the material response, the bands,
+// rim, dab, haze reach and the style shader's exposure) with every lighting word that means the same
+// thing in both read from the resolved environment: the key's direction and colour (its strength in
+// the style shader's own units stays the preset's), the sky and ground ambient, the haze's air and
+// sun tint, the sky's zenith and horizon, and the saturation. The numbers live once, in the profile.
+#test "a made painterly realm with nothing authored is the glade's resolved light" {
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  r := env_profile_sample(env_glade_profile(), 0.5); c := r.channels;
+  o: [STYLE_FLOATS] f32; #assert verse_style_glade_env(p, r, o[..]);
+  #assert o[SU_KEY_DIR] == r.dir.x && o[SU_KEY_DIR + 1] == r.dir.y && o[SU_KEY_DIR + 2] == r.dir.z && o[SU_KEY_DIR + 3] == 0;
+  m := r.direct.r;   // the glade's key is warm: red is its largest
+  #assert o[SU_KEY] == 1 && o[SU_KEY + 1] == r.direct.g / m && o[SU_KEY + 2] == r.direct.b / m;
+  #assert o[SU_SKY_AMB] == c.ambient.upper.r && o[SU_SKY_AMB + 2] == c.ambient.upper.b && o[SU_GROUND_AMB + 1] == c.ambient.lower.g;
+  #assert o[SU_HAZE_COLOUR] == c.fog.air.r && o[SU_HAZE_KEY + 2] == c.fog.sun_tint.b && o[SU_ZENITH + 1] == c.sky.zenith.g && o[SU_HORIZON + 2] == c.sky.horizon.b;
+  #assert o[SU_TONE + 1] == c.presentation.saturation;
+  // the rest is the glade-lit preset's at the record's time
+  g: [STYLE_FLOATS] f32; #assert verse_style_at(verse_style_glade_light(p), r.time, g[..]);
+  #assert o[SU_KEY + 3] == g[SU_KEY + 3] && o[SU_SKY_AMB + 3] == g[SU_SKY_AMB + 3] && o[SU_TONE] == g[SU_TONE] && o[SU_BANDS + 2] == g[SU_BANDS + 2] && o[SU_HAZE] == g[SU_HAZE];
+  #assert o[SU_STYLE + 3] == g[SU_STYLE + 3] && o[SU_GRASS] == g[SU_GRASS];
+  // the painterly compatibility profile at noon is the same light
+  q: [STYLE_FLOATS] f32; #assert verse_style_glade_env(p, env_profile_sample(verse_style_compat_profile(p).profile, 0.5), q[..]);
+  for i: 0..<STYLE_FLOATS { #assert q[i] == o[i]; }
+  // a moon key flags it; a too-short block or a preset that isn't ok writes nothing
+  n := r; n.body = EnvBody.moon; #assert verse_style_glade_env(p, n, o[..]) && o[SU_KEY_DIR + 3] == 1;
+  short: [8] f32; #assert !verse_style_glade_env(p, r, short[..]);
+  bad := p; bad.ok = false; #assert !verse_style_glade_env(bad, r, o[..]);
+}
+/** `p` lit as the glade from the resolved environment `r` into `out` (at least STYLE_FLOATS). */
+verse_style_glade_env :: (p: StylePreset, r: ResolvedEnvironment, out: [] f32) -> bool {
+  if !verse_style_at(verse_style_glade_light(p), r.time, out) { return false; }
+  c := r.channels; d := r.direct;
+  m := d.r; if d.g > m { m = d.g; } if d.b > m { m = d.b; } if m <= 0 { m = 1; }
+  out[SU_KEY] = d.r / m; out[SU_KEY + 1] = d.g / m; out[SU_KEY + 2] = d.b / m;
+  put4(out, SU_KEY_DIR, r.dir.x, r.dir.y, r.dir.z, ifx r.body == EnvBody.moon then 1.0 else 0.0);
+  out[SU_SKY_AMB] = c.ambient.upper.r; out[SU_SKY_AMB + 1] = c.ambient.upper.g; out[SU_SKY_AMB + 2] = c.ambient.upper.b;
+  out[SU_GROUND_AMB] = c.ambient.lower.r; out[SU_GROUND_AMB + 1] = c.ambient.lower.g; out[SU_GROUND_AMB + 2] = c.ambient.lower.b;
+  out[SU_HAZE_COLOUR] = c.fog.air.r; out[SU_HAZE_COLOUR + 1] = c.fog.air.g; out[SU_HAZE_COLOUR + 2] = c.fog.air.b;
+  out[SU_HAZE_KEY] = c.fog.sun_tint.r; out[SU_HAZE_KEY + 1] = c.fog.sun_tint.g; out[SU_HAZE_KEY + 2] = c.fog.sun_tint.b;
+  out[SU_ZENITH] = c.sky.zenith.r; out[SU_ZENITH + 1] = c.sky.zenith.g; out[SU_ZENITH + 2] = c.sky.zenith.b;
+  out[SU_HORIZON] = c.sky.horizon.r; out[SU_HORIZON + 1] = c.sky.horizon.g; out[SU_HORIZON + 2] = c.sky.horizon.b;
+  out[SU_TONE + 1] = c.presentation.saturation;
+  return true;
+}
+
 /** `p` with no toon outlines: no outline pass (outline_max 0) and no rim line along silhouettes,
  *  on the world and on characters, at every key and on both tiers. Everglade draws so (the owner,
  *  October 29: "remove the toon outlines from everglade"); the other painterly realms keep theirs. */

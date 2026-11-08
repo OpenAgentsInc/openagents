@@ -1,0 +1,264 @@
+// The frame's resolved environment for a painterly page (lighting plan Phase 1 step 6, GitHub #13066;
+// docs/verse/lighting/README.md). Each frame a page asks for the environment at its camera
+// (env_resolve_camera over its admitted set and region index, at the day its clock reads) and writes
+// it through env_gpu_pack into its frame uniforms at `at`; its shaders read that block
+// (aethyr/render/painterly.coax paint_env_*, PAINT_ENV_U) instead of constants.
+//
+// Phase 1's binding: one camera-resolved record a frame, in the frame's uniform block. Surfaces and
+// fog read that record; a region's transition band blends the record as the camera crosses it, so
+// nothing jumps. Per-surface spatial records (env_resolve_at from a stored tile) wait until a realm
+// needs a surface to differ from the camera's place in the same frame.
+//
+// Rules:
+// - A page that admitted no set draws the painterly default: a set holding only the glade profile.
+// - A refused set leaves the active set and index as they were (env_region_index_replace is atomic).
+// - A frame whose clock or resolve refuses writes the last record it wrote, or the glade's noon when
+//   none has been written, and counts the refusal; it never writes a partial block.
+// - A clock is taken only when day_check admits it for the page's world (a shared world never reads
+//   a visitor's own clock). Before any clock is set the page's day is the glade's fixed noon.
+//   coax/bin/coax test aethyr/render/environment-frame.coax
+//   coax/bin/coax mutate aethyr/render/environment-frame.coax --root-only
+#module "aethyr.render.environment_frame";
+#authority;
+#load "environment.coax";
+#load "../world/environment-region.coax";
+#load "../world/day.coax" as day;
+
+ENV_FRAME_HZ :: 30;   // the fixed noon's rate before a page sets its clock (Everglade's room ticks at 30 Hz)
+// Where the glade's sky paints its sun's halo (the reference's sun disc, above and right of the key's
+// direction): the sky's halo position, not a light. The page writes it beside the record for the sky
+// functions' `sun` (aethyr/render/painterly.coax paint_env_sky); the key is the record's direction.
+ENV_FRAME_HALO :: [3] f32.[-0.45, 0.78, -0.42];
+ENV_FRAME_FLOATS :: ENV_GPU_FLOATS;   // the block a page reserves in its uniforms
+
+EnvFrame :: struct {
+  set: [1] EnvironmentSet; index: [1] EnvRegionIndex; admitted: bool;
+  clock: day.DayClock; world: day.DayWorld;   // version 0 until set: the glade's fixed noon then
+  held: ResolvedEnvironment; has: bool;    // the last record written
+  writes: int; refusals: int; refused: EnvRefusal; day_refused: day.DayRefusal;
+}
+
+// ---- checks (written before the code below)
+
+env_frame_test_u :: (f: [] EnvFrame, tick: s64, eye: EnvDir, w: [] f32) -> bool #effects(all) {
+  u: [ENV_GPU_FLOATS] f32; ok := env_frame_write(f, tick, eye, u[..], 0);
+  for i: 0..<ENV_GPU_FLOATS { w[i] = u[i]; }
+  return ok;
+}
+#test "a page that admitted nothing draws the glade's noon, exactly" {
+  f: [1] EnvFrame; w: [ENV_GPU_FLOATS] f32;
+  #assert env_frame_test_u(f[..], 12345, EnvDir.{x = 3, y = 1, z = -40}, w[..]);
+  g := env_gpu_pack(env_profile_sample(env_glade_profile(), 0.5));
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == g[i]; }
+  #assert f[0].admitted && f[0].set[0].profile_count == 1 && f[0].set[0].region_count == 0 && f[0].writes == 1 && f[0].refusals == 0;
+  #assert f[0].clock.mode == day.DayMode.fixed && f[0].clock.at == 0.5 && f[0].clock.hz == ENV_FRAME_HZ && f[0].world == day.DayWorld.solo && f[0].has;
+  #assert f[0].day_refused == day.DayRefusal.none && f[0].refused == EnvRefusal.none;
+  // the block goes at `at` and nowhere else; a slot that cannot hold it gets nothing
+  u: [300] f32; for i: 0..<300 { u[i] = -7; }
+  #assert env_frame_write(f[..], 0, EnvDir.{}, u[..], 100);
+  for i: 0..<300 { #assert u[i] == ifx i >= 100 && i < 100 + ENV_GPU_FLOATS then g[i - 100] else -7; }
+  exact: [ENV_GPU_FLOATS] f32; #assert env_frame_write(f[..], 0, EnvDir.{}, exact[..], 0) && exact[0] == g[0] && exact[ENV_GPU_FLOATS - 1] == g[ENV_GPU_FLOATS - 1];
+  #assert env_frame_write(f[..], 0, EnvDir.{}, u[..], 300 - ENV_GPU_FLOATS) && u[299] == g[ENV_GPU_FLOATS - 1];
+  f[0].writes = 1;
+  // the same at every tick and place
+  for k: 0..<5 {
+    #assert env_frame_test_u(f[..], [5] s64.[0, 1, 99999, 4000000, 7][k], EnvDir.{x = f32(k) * 50 - 100, y = f32(k), z = -f32(k) * 70}, w[..]);
+    for i: 0..<ENV_GPU_FLOATS { #assert w[i] == g[i]; }
+  }
+  #assert f[0].writes == 6;
+}
+#test "the glade set is admitted as the painterly default and resolves to the glade" {
+  s: [1] EnvironmentSet; s[0] = env_frame_glade_set();
+  #assert env_set_check(s[0]).refusal == EnvRefusal.none && s[0].default_profile == ENV_GLADE_ID && s[0].version == ENV_VERSION;
+  r := env_resolve(s[..], EnvironmentState.{version = ENV_VERSION, day = 0.5});
+  #assert r.refusal == EnvRefusal.none && env_resolved_same(r.env, env_profile_sample(env_glade_profile(), 0.5), true);
+}
+#test "a region the camera stands in resolves its profile; outside every band the default" {
+  f: [1] EnvFrame; n: [1] EnvironmentSet; n[0] = env_frame_glade_set();
+  p := env_test_profile3(); n[0].profiles[1] = p; n[0].profile_count = 2;
+  n[0].regions[0] = env_region_sphere(4, 7); n[0].region_count = 1;   // centre (4, 1, -3), radius 12
+  #assert env_frame_admit(f[..], n[..]).refusal == EnvRefusal.none && f[0].admitted;
+  #assert env_frame_clock(f[..], day.day_fixed(0.2, 30), day.DayWorld.solo) == day.DayRefusal.none;
+  w: [ENV_GPU_FLOATS] f32;
+  #assert env_frame_test_u(f[..], 0, EnvDir.{x = 4, y = 1, z = -3}, w[..]);
+  inside := env_gpu_pack(env_profile_sample(p, 0.2));
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == inside[i]; }
+  #assert env_frame_test_u(f[..], 0, EnvDir.{x = 400, y = 1, z = -3}, w[..]);
+  out := env_gpu_pack(env_profile_sample(env_glade_profile(), 0.2));
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == out[i]; }
+  // in its band, between the two and continuous
+  a: f32 = -1; prev: [ENV_GPU_FLOATS] f32;
+  for k: 0..<200 {
+    x := 4 + 10 + f32(k) * 0.05;
+    #assert env_frame_test_u(f[..], 0, EnvDir.{x = x, y = 1, z = -3}, w[..]);
+    if k > 0 { for i: 20..<92 { #assert abs(w[i] - prev[i]) < 0.05; } }
+    for i: 0..<ENV_GPU_FLOATS { prev[i] = w[i]; }
+  }
+}
+#test "a refused set leaves the active set; a refused clock keeps the one before" {
+  f: [1] EnvFrame; n: [1] EnvironmentSet; n[0] = env_frame_glade_set();
+  n[0].profiles[1] = env_test_profile3(); n[0].profile_count = 2;
+  #assert env_frame_admit(f[..], n[..]).refusal == EnvRefusal.none;
+  gen := f[0].set[0].generation;
+  bad := n; bad[0].profiles[1].track.knots[0].intensity = 0.0f32 / 0.0f32;
+  #assert env_frame_admit(f[..], bad[..]).refusal == EnvRefusal.nonfinite;
+  #assert f[0].set[0].generation == gen && f[0].set[0].profile_count == 2 && f[0].set[0].profiles[1].id == 7 && f[0].admitted;
+  #assert env_frame_clock(f[..], day.day_fixed(0.2, 30), day.DayWorld.shared) == day.DayRefusal.none;
+  local := day.day_cycle(0.1, 30, 0, day.DaySource.local);
+  #assert env_frame_clock(f[..], local, day.DayWorld.shared) == day.DayRefusal.local_clock;
+  #assert f[0].clock.mode == day.DayMode.fixed && f[0].clock.at == 0.2 && f[0].world == day.DayWorld.shared;
+  // a solo page may read its own clock
+  #assert env_frame_clock(f[..], local, day.DayWorld.solo) == day.DayRefusal.none && f[0].clock.mode == day.DayMode.cycle && f[0].world == day.DayWorld.solo;
+  // a set refused before any was admitted leaves the page on the glade default
+  g: [1] EnvFrame;
+  #assert env_frame_admit(g[..], bad[..]).refusal == EnvRefusal.nonfinite && !g[0].admitted;
+  w: [ENV_GPU_FLOATS] f32; #assert env_frame_test_u(g[..], 0, EnvDir.{}, w[..]);
+  glade := env_gpu_pack(env_profile_sample(env_glade_profile(), 0.5));
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == glade[i]; }
+}
+#test "the room's clock turns the day; its tick picks the knot" {
+  f: [1] EnvFrame; n: [1] EnvironmentSet; n[0] = env_frame_glade_set();
+  n[0].profiles[0] = env_test_profile3(); n[0].profiles[0].id = ENV_GLADE_ID;   // knots at 0.1, 0.3 and 0.75
+  #assert env_frame_admit(f[..], n[..]).refusal == EnvRefusal.none;
+  span := cast(s64) 2880000;
+  c := day.day_from_room(90, 30, 0, span);   // midnight at tick 90
+  #assert env_frame_clock(f[..], c, day.DayWorld.shared) == day.DayRefusal.none && day.day_clock_same(f[0].clock, c);
+  w: [ENV_GPU_FLOATS] f32;
+  for k: 0..<4 {
+    at := [4] f64.[0.05, 0.2, 0.5, 0.9][k];
+    tick := 90 + cast(s64) (at * 86400.0);
+    #assert env_frame_test_u(f[..], tick, EnvDir.{}, w[..]);
+    want := env_gpu_pack(env_profile_sample(n[0].profiles[0], day.day_at(c, day.DayWorld.shared, tick).day));
+    for i: 0..<ENV_GPU_FLOATS { #assert w[i] == want[i]; }
+  }
+}
+#test "the room's W header sets a shared clock once; the same header again changes nothing" {
+  f: [1] EnvFrame; span := cast(s64) 2880000;
+  #assert env_frame_room(f[..], 9000, 30, 1440000, span) == day.DayRefusal.none;
+  c := f[0].clock; #assert f[0].world == day.DayWorld.shared && day.day_clock_same(c, day.day_from_room(9000, 30, 1440000, span));
+  #assert env_frame_room(f[..], 9030, 30, 1441000, span) == day.DayRefusal.none && day.day_clock_same(f[0].clock, c);
+  // a malformed header is refused and the clock stays
+  #assert env_frame_room(f[..], 9030, 30, span, span) == day.DayRefusal.range && day.day_clock_same(f[0].clock, c);
+  #assert env_frame_room(f[..], 9030, 0, 10, span) == day.DayRefusal.rate && day.day_clock_same(f[0].clock, c);
+  // the same clock held for a solo page becomes the room's shared one
+  g: [1] EnvFrame; #assert env_frame_clock(g[..], c, day.DayWorld.solo) == day.DayRefusal.none && g[0].world == day.DayWorld.solo;
+  #assert env_frame_room(g[..], 9000, 30, 1440000, span) == day.DayRefusal.none && g[0].world == day.DayWorld.shared;
+}
+#test "a page's names: the default set, the eye as three numbers and the glade's words" {
+  f: [1] EnvFrame; #assert env_frame_admit_default(f[..]).refusal == EnvRefusal.none && f[0].admitted && f[0].set[0].profile_count == 1;
+  #assert f[0].set[0].profiles[0].id == ENV_GLADE_ID && f[0].set[0].region_count == 0 && ENV_FRAME_FLOATS == 108;
+  n: [1] EnvironmentSet; n[0] = env_frame_glade_set(); n[0].profiles[1] = env_test_profile3(); n[0].profile_count = 2;
+  n[0].regions[0] = env_region_sphere(4, 7); n[0].region_count = 1;
+  #assert env_frame_admit(f[..], n[..]).refusal == EnvRefusal.none;
+  u: [ENV_GPU_FLOATS] f32; w: [ENV_GPU_FLOATS] f32;
+  for k: 0..<3 {
+    x := [3] f32.[4, 13, 400][k]; y := [3] f32.[1, 2, -5][k]; z := [3] f32.[-3, -4, 9][k];
+    #assert env_frame_write_eye(f[..], 0, x, y, z, u[..], 0) && env_frame_test_u(f[..], 0, EnvDir.{x = x, y = y, z = z}, w[..]);
+    for i: 0..<ENV_GPU_FLOATS { #assert u[i] == w[i]; }
+  }
+  g := env_frame_glade_words(); want := env_gpu_pack(env_profile_sample(env_glade_profile(), 0.5));
+  for i: 0..<ENV_GPU_FLOATS { #assert g[i] == want[i]; }
+}
+#test "the sky's halo sits where the glade paints it" {
+  u: [40] f32; for i: 0..<40 { u[i] = 9; }
+  env_frame_sky_halo(u[..], 32);
+  #assert u[31] == 9 && u[32] == -0.45f32 && u[33] == 0.78f32 && u[34] == -0.42f32 && u[35] == 9;
+  env_frame_sky_halo(u[..], 38); #assert u[38] == 9 && u[39] == 9;
+  env_frame_sky_halo(u[..], -1); #assert u[0] == 9;
+  env_frame_sky_halo(u[..], 37); #assert u[36] == 9 && u[37] == -0.45f32 && u[39] == -0.42f32;
+  env_frame_sky_halo(u[..], 0); #assert u[0] == -0.45f32 && u[2] == -0.42f32 && u[3] == 9;
+}
+#test "the state asks for the set's default profile, whichever it is" {
+  f: [1] EnvFrame; n: [1] EnvironmentSet; n[0] = env_frame_glade_set();
+  n[0].profiles[1] = env_test_profile3(); n[0].profile_count = 2; n[0].default_profile = 7;
+  #assert env_frame_admit(f[..], n[..]).refusal == EnvRefusal.none;
+  w: [ENV_GPU_FLOATS] f32; #assert env_frame_test_u(f[..], 0, EnvDir.{}, w[..]);
+  want := env_gpu_pack(env_profile_sample(n[0].profiles[1], 0.5));
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == want[i]; }
+}
+#test "a frame that cannot resolve writes the record before it, whole, and counts the refusal" {
+  f: [1] EnvFrame; w: [ENV_GPU_FLOATS] f32;
+  #assert env_frame_test_u(f[..], 0, EnvDir.{x = 1}, w[..]);
+  first := w;
+  // a tick the clock cannot read (before the simulation's first) refuses the day
+  #assert !env_frame_test_u(f[..], -1, EnvDir.{x = 1}, w[..]) && f[0].day_refused == day.DayRefusal.range && f[0].refusals == 1;
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == first[i]; }
+  #assert env_frame_test_u(f[..], 0, EnvDir.{x = 1}, w[..]) && f[0].day_refused == day.DayRefusal.none;
+  f[0].refusals = 0; f[0].writes = 1;
+  // a far eye refuses the camera's tile (ENV_QUERY_MAX); the block is the last one, whole
+  #assert !env_frame_test_u(f[..], 0, EnvDir.{x = 30000000}, w[..]);
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == first[i]; }
+  #assert f[0].refusals == 1 && f[0].refused != EnvRefusal.none && f[0].writes == 2;
+  // and a page whose first frame refuses writes the glade's noon
+  g: [1] EnvFrame;
+  #assert !env_frame_test_u(g[..], 0, EnvDir.{x = 30000000}, w[..]);
+  for i: 0..<ENV_GPU_FLOATS { #assert w[i] == first[i]; }
+  #assert g[0].refusals == 1 && g[0].has;
+  // the slot must hold the whole block
+  short: [100] f32; for i: 0..<100 { short[i] = 3; }
+  #assert !env_frame_write(f[..], 0, EnvDir.{}, short[..], 0) && short[0] == 3 && short[99] == 3 && f[0].writes == 2;
+  #assert !env_frame_write(f[..], 0, EnvDir.{}, short[..], -1);
+}
+
+// ---- the set, the clock and the write
+
+// The painterly default as a set: the glade profile alone, no regions.
+env_frame_glade_set :: () -> EnvironmentSet #effects(all) {
+  s: EnvironmentSet; s.version = ENV_VERSION; s.default_profile = ENV_GLADE_ID;
+  s.profile_count = 1; s.profiles[0] = env_glade_profile();
+  return s;
+}
+// Admit `next` with its region index, whole or not at all.
+env_frame_admit :: (f: [] EnvFrame, next: [] EnvironmentSet) -> EnvCheck #effects(all) {
+  c := env_region_index_replace(f[0].set[..], f[0].index[..], next);
+  if c.refusal == EnvRefusal.none { f[0].admitted = true; }
+  return c;
+}
+// Take `c` as the page's clock when the page's world admits it.
+env_frame_clock :: (f: [] EnvFrame, c: day.DayClock, world: day.DayWorld) -> day.DayRefusal #effects(all) {
+  r := day.day_check(c, world);
+  if r == day.DayRefusal.none { f[0].clock = c; f[0].world = world; }
+  return r;
+}
+// Resolve the camera's environment at `tick` and write it at u[at ..< at + ENV_GPU_FLOATS]. False when
+// the frame wrote the record it held (a refusal) or, when u has no room for the block, nothing.
+env_frame_write :: (f: [] EnvFrame, tick: s64, eye: EnvDir, u: [] f32, at: int) -> bool #effects(all) {
+  if at < 0 || at + ENV_GPU_FLOATS > u.count { return false; }
+  if !f[0].admitted { _ := env_frame_admit_default(f); }
+  if f[0].clock.version == 0 { f[0].clock = day.day_fixed(0.5, ENV_FRAME_HZ); }
+  ok := false;
+  st := day.day_state(f[0].clock, f[0].world, tick, 0);
+  f[0].day_refused = st.refusal;
+  if st.refusal == day.DayRefusal.none {
+    r := env_resolve_camera(f[0].set[..], f[0].index[..], st.state, eye);
+    f[0].refused = r.refusal;
+    if r.refusal == EnvRefusal.none { f[0].held = r.env; f[0].has = true; ok = true; }
+  }
+  if !ok {
+    f[0].refusals += 1;
+    if !f[0].has { f[0].held = env_profile_sample(env_glade_profile(), 0.5); f[0].has = true; }
+  }
+  w := env_gpu_pack(f[0].held);
+  for i: 0..<ENV_GPU_FLOATS { u[at + i] = w[i]; }
+  f[0].writes += 1;
+  return ok;
+}
+// The room's clock from its W header (aethyr/world/day.coax day_from_room) for a shared world.
+env_frame_room :: (f: [] EnvFrame, tick: s64, hz: u32, day_ms: s64, len_ms: s64) -> day.DayRefusal #effects(all) {
+  c := day.day_from_room(tick, hz, day_ms, len_ms);
+  if f[0].world == day.DayWorld.shared && day.day_clock_same(c, f[0].clock) { return day.DayRefusal.none; }
+  return env_frame_clock(f, c, day.DayWorld.shared);
+}
+env_frame_sky_halo :: (u: [] f32, at: int) #effects(all) {
+  if at < 0 || at + 3 > u.count { return; }
+  for i: 0..<3 { u[at + i] = ENV_FRAME_HALO[i]; }
+}
+// What a page calls: the painterly default as its set, the eye as three numbers, and the glade's noon
+// as words (its checks compare against them).
+env_frame_admit_default :: (f: [] EnvFrame) -> EnvCheck #effects(all) {
+  g: [1] EnvironmentSet; g[0] = env_frame_glade_set(); return env_frame_admit(f, g[..]);
+}
+env_frame_write_eye :: (f: [] EnvFrame, tick: s64, x: f32, y: f32, z: f32, u: [] f32, at: int) -> bool #effects(all) {
+  return env_frame_write(f, tick, EnvDir.{x = x, y = y, z = z}, u, at);
+}
+env_frame_glade_words :: () -> [ENV_GPU_FLOATS] f32 #effects(all) { return env_gpu_pack(env_profile_sample(env_glade_profile(), 0.5)); }

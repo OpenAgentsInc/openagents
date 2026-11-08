@@ -210,6 +210,7 @@ MyRealm :: struct {
   glow_pen: f32;           // what is drawn next glows by this much (glowing)
   trees: int; tree_kind: int; rocks: int; plants: int;
   mist: bool;              // mist over the land (0092): the haze thick and near, pale
+  timed: bool;             // the spec names a time of day: it authors its light (#13066)
   lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
   birds: int; bats: bool; owls: bool;
   great: bool; great_kind: int; great_x: f32; great_z: f32;
@@ -394,7 +395,7 @@ slug_ok :: (text: string) -> bool {
 // The spec (verse.builder_spec), a line each.
 read_spec :: (s: [] MyRealm, text: string) -> bool {
   for i: 0..<TOOLS { s[0].tools[i] = false; }
-  s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0; s[0].great = false; s[0].mist = false;
+  s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0; s[0].great = false; s[0].mist = false; s[0].timed = false;
   s[0].prop_n = 0; s[0].houses = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
   s[0].herd = 0; s[0].herd_split = HERD; s[0].dwellings = 0; s[0].villagers = 0; s[0].palette = 0;
   s[0].water_kind = 1; s[0].land = 0; s[0].flier = 0; s[0].plant_kind = 0; s[0].building_n = 0;
@@ -412,7 +413,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
     if head == "name" && line.count > 5 { s[0].name_n = copy_into(s[0].name[..], line[5..<line.count]); continue; }
     if head == "style" { s[0].style_n = copy_into(s[0].style[..], word_of(line, 1)); continue; }
     if head == "ground" { g := word_of(line, 1); for k: 0..<6 { if GROUNDS[k] == g { s[0].ground = k; } } continue; }
-    if head == "time" { t := word_of(line, 1); for k: 0..<4 { if TIMES[k] == t { s[0].tod = k; } } continue; }
+    if head == "time" { t := word_of(line, 1); for k: 0..<4 { if TIMES[k] == t { s[0].tod = k; s[0].timed = true; } } continue; }
     if head == "owner" { s[0].owner = word_of(line, 1) == "1"; continue; }
     if head == "camera" { c := word_of(line, 1); for k: 0..<4 { if CAMERA_NAMES[k] == c { s[0].camera = k; } } continue; }
     if head == "palette" { pw := word_of(line, 1); for k: 0..<4 { if PALETTES[k] == pw { s[0].palette = k; } } continue; }
@@ -2672,6 +2673,27 @@ VIVID_SKY :: [3] f32.[0.7, 0.85, 1.12]; MUTED_HAZE :: [3] f32.[0.62, 0.64, 0.62]
 POOL_SHARE :: [4] f32.[0, 0.3, 0.7, 1.1];
 STARS :: [4] f32.[0, 0.1, 0.35, 1];
 
+// A painterly realm that authors no light (no time of day, no mist) renders under the glade: the
+// painterly compatibility profile at its noon, which is the glade's (lighting plan Phase 1, #13066).
+realm_unlit :: (s: [] MyRealm) -> bool { return !s[0].timed && !s[0].mist; }
+realm_glade_style :: (p: StylePreset, o: [] f32) -> bool {
+  e := verse_style_compat_profile(p); if !e.ok { return false; }
+  return verse_style_glade_env(p, env_profile_sample(e.profile, 0.5), o);
+}
+#test "a made painterly realm with nothing authored renders under the glade" {
+  s: [1] MyRealm;
+  #assert read_spec(s[..], "realm built\nname Quiet\nstyle painterly\nground meadow\n") && realm_unlit(s[..]) && s[0].tod == 0;
+  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  o: [STYLE_FLOATS] f32; #assert realm_glade_style(p, o[..]);
+  g: [STYLE_FLOATS] f32; #assert verse_style_glade_env(p, env_profile_sample(env_glade_profile(), 0.5), g[..]);
+  for i: 0..<STYLE_FLOATS { #assert o[i] == g[i]; }
+  // a time of day or mist is authored light: the realm keeps its own keys
+  #assert read_spec(s[..], "realm built\nname Dusk\nstyle painterly\ntime day\n") && !realm_unlit(s[..]);
+  #assert read_spec(s[..], "realm built\nname Mist\nstyle painterly\nfeature mist\n") && !realm_unlit(s[..]);
+  #assert read_spec(s[..], "realm built\nname Quiet\nstyle painterly\n") && realm_unlit(s[..]);
+  // a flat preset has no glade
+  #assert !realm_glade_style(verse_style_preset(STYLE_FLAT, STYLE_DESKTOP), o[..]);
+}
 realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   begin(s);
@@ -2749,7 +2771,8 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   if s[0].spec_ready && (style == "painterly" || style == "flat") {
     tier := ifx width < 600 * s[0].dpr then STYLE_PHONE else STYLE_DESKTOP;
     p := ifx style == "flat" then verse_style_flat(FLAT_GARDEN, tier) else verse_style_preset(STYLE_PAINTERLY, tier);
-    done := verse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
+    done := ifx style == "painterly" && realm_unlit(s) then realm_glade_style(p, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS])
+      else verse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
     if snow_paint && (tod == 1 || tod == 2) { snow_low_sky(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
     if s[0].mist { mist_style(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
   }

@@ -423,7 +423,7 @@ fivelab_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->FivelabBg {
   if (u[10]>1.5f32) {
     eye:V3=wg_at3(u,16);fwd:V3=wg_at3(u,20);
     rd:V3=normalize3(add3(fwd,add3(scale3(wg_at3(u,24),(p.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-p.y)/u[19]))));
-    c:V3=cg_sky(rd,wg_at3(u,32),u[2]);
+    c:V3=cg_sky(u,rd,wg_at3(u,32),u[2]);
     dep:f32=1.0f32;
     k:f32=u[4];
     if (u[11]<0.5f32) {c=scale3(c,1.0f32-0.50f32*(1.0f32-smoothstep(450.0f32*k,520.0f32*k,p.x))*(1.0f32-smoothstep(45.0f32*k,105.0f32*k,p.y)));}

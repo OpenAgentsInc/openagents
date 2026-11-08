@@ -7427,3 +7427,24 @@ resolves to the glade profile"), the delegate checks in
 `apps/openagents-web/gpu/character-glade-light.coax` and `character-glade.coax`,
 and `docs/verification/aethyr-lighting-p1-0-2026-11-08/`.
 
+## Lit passes read the camera's resolved environment, written once a frame
+
+Character Create, Everglade II, Experimental and 5E Lab write one `ResolvedEnvironment` a frame
+(`aethyr/render/environment-frame.coax` `env_frame_write`: the realm's set admitted whole, the day
+from `aethyr/world/day.coax`, `env_resolve_camera` at the eye, `env_gpu_pack`) into words
+208..315 of the frame's uniform block, and their passes read the key, direct colour, ambient,
+haze, sky, cloud-shadow flag, exposure and saturation only from it (`aethyr/render/painterly.coax`
+`paint_env_*`, through the `cg_*` delegates, which take the block). No lit path in those pages
+holds its own key direction, ambient or fog numbers; Everglade II's shadow tiles look along the
+record's key. A refused resolution writes the last record held, or the glade's noon, never a
+partial one. Everglade II's set is `verse/everglade2/environment.coax` `e2_environment_set`, its
+day the room's (`day_from_room`); a page with no room is the glade's fixed noon. A painterly made
+realm (`myrealm`) that authors no time of day and no mist writes its style block under the glade
+(`verse/style-preset.coax` `verse_style_glade_env`). Character Create stays inside the P1.1
+baseline's bounds (GitHub #13066). Checks: `coax test aethyr/render/environment-frame.coax`
+(`#authority`, zero mutants), `coax test aethyr/render/painterly.coax` ("the glade record draws
+exactly the constants"), the `every frame writes the camera's environment` checks in
+`apps/openagents-web/everglade2.coax` and `fivelab.coax`, `coax test verse/style-preset.coax`
+("a made painterly realm with nothing authored is the glade's resolved light"), and
+`docs/verification/aethyr-lighting-p1-6-2026-11-08/`.
+

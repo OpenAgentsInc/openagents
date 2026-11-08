@@ -4,8 +4,9 @@ Date: 2026-11-08. Source baseline: `7fab57cd75`. Revised 2026-11-08 (owner
 direction: the Character Create glade is the look).
 Status: Phase 1 in progress. Done: step 0, the glade lifted into the shared painterly default
 (#13060; identity receipt `docs/verification/aethyr-lighting-p1-0-2026-11-08/`), step 1, the baseline
-(#13061), step 2, the records (#13062), step 3, the regions (#13063) and step 4, day and weather
-(#13064). No phase is qualified yet.
+(#13061), step 2, the records (#13062), step 3, the regions (#13063), step 4, day and weather
+(#13064), and step 6, the realms routed through the resolved environment (#13066; receipt
+`docs/verification/aethyr-lighting-p1-6-2026-11-08/`). No phase is qualified yet.
 
 Build one shared lighting system for Coax Aethyr, with Everglade as its first
 complete production consumer. It must support authored environmental character,

@@ -25,12 +25,20 @@
 // functions (cg_sun_colour, cg_hemisphere, cg_sky, cg_atmosphere, cg_cloud, cg_output ...) on the
 // page's GPU device at fixed world points and directions, with one measurement entry point added
 // to that module: key, ambient, sky, haze, cloud shade and output, in linear light.
+// Since #13066 the glade functions read the frame's resolved environment from the page's uniforms
+// (aethyr/render/painterly.coax PAINT_ENV_U), so the GPU probes bind the page's own last uniform
+// block. "E" reads back what the page wrote there every frame of the load (host.js's uniform writes,
+// kept by the setup script): OUTDIR/env.tsv has each load's frames, how many distinct light records
+// they held, the largest step of any light word between two frames, the time of day at the first and
+// last frame, and how many light words of the last frame differ from the glade's noon
+// (env_frame_glade_words). The hand-over's light words must not step at all.
 // Headless only; one Chrome at a time; it kills only the Chrome and server it started.
 //   coax/bin/coax test coax/web/lighting-baseline.coax      # its own checks
 #import "Basic";
 #load "../lib/media/media.coax";   // cdp, json, fs, proc, args; media_size, media_value
 #load "../lib/image/jpeg.coax";
 #load "../lib/image/jpeg_enc.coax";
+#load "../../aethyr/render/environment-frame.coax" as envf;   // the glade's noon, as a page writes it (#13066)
 
 // ---- the bounds of the identity check (declared before any later step runs it) --------------
 // An image differs when more than LB_BLOCKS_PPM parts per million of its 8 px blocks moved (a
@@ -60,7 +68,8 @@ LB_SETTLE_MS :: 120000;
 // ---- the capture set: one page load each, its raster, what makes it ready, and its plan -------
 // A plan is steps separated by ';': sN (N steps of 1/30 s), dX,Y / mX,Y / uX,Y (pointer down,
 // move, up at CSS pixels), cX,Y (a click), wDYxN (N wheel turns of DY), kKEY (a key press),
-// Csuffix (capture NAME-suffix, or NAME when the suffix is empty), P (the GPU probes).
+// Csuffix (capture NAME-suffix, or NAME when the suffix is empty), P (the GPU probes), E (the
+// environment the page wrote every frame so far, into env.tsv).
 LB_LOADS :: 7;
 LB_NAMES :: [7] string.["cc", "cc-phone", "handover", "e2-arrival", "e2-sunlit-path", "e2-deep-canopy", "exp-combat"];
 LB_PATHS :: [7] string.["/worlds/character-creator", "/worlds/character-creator", "/worlds/character-creator",
@@ -71,13 +80,13 @@ LB_TALL :: [7] int.[1080, 844, 1080, 1080, 1080, 1080, 1080];
 LB_E2_READY :: "coaxial.fieldProbe(3)>0&&coaxial.fieldProbe(4)>0&&coaxial.fieldProbe(92)>0&&coaxial.fieldProbe(9)===0";
 LB_READY :: [7] string.[LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, "true"];
 LB_PLANS :: [7] string.[
-  "s60;C-glade;P;w-200x4;s30;C-closeup;w200x4;s30;d1400,560;s10;C-turn-0;m1520,560;s10;C-turn-1;m1640,560;s10;C-turn-2;m1760,560;s10;C-turn-3;u1760,560",
-  "s60;C-glade",
-  "s60;c260,697;s15;C-0;s45;C-1;s90;C-2;s240;C-3;s315;C-4",
-  "s60;C",
-  "s60;C",
-  "s60;C",
-  "d960,600;m1260,600;m1560,600;u1560,600;s30;k1;s4;C;P"];
+  "s60;C-glade;P;w-200x4;s30;C-closeup;w200x4;s30;d1400,560;s10;C-turn-0;m1520,560;s10;C-turn-1;m1640,560;s10;C-turn-2;m1760,560;s10;C-turn-3;u1760,560;E",
+  "s60;C-glade;E",
+  "s60;c260,697;s15;C-0;s45;C-1;s90;C-2;s240;C-3;s315;C-4;E",
+  "s60;C;E",
+  "s60;C;E",
+  "s60;C;E",
+  "d960,600;m1260,600;m1560,600;u1560,600;s30;k1;s4;C;P;E"];
 
 // ---- the GPU probes: one line of the measurement entry each, writing lb_out[i] ---------------
 LB_PROBE_NAMES :: [LB_PROBES] string.[
@@ -118,11 +127,11 @@ LB_PIX_R :: 4;   // a 9x9 mean
 // ---- browser glue, injected before the page's own scripts ------------------------------------
 // clip mode, the render target read back, the tier held, no visit counted, console errors kept,
 // and the shader modules the page compiles kept (with their device) for the GPU probes.
-LB_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialClipRoom=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';try{localStorage.setItem('verse.quality','high')}catch{}Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});globalThis.lbErrors=[];{const ce=console.error;console.error=(...a)=>{lbErrors.push(a.map(String).join(' ').slice(0,300));ce(...a)}}globalThis.__lbShaders=[];if(globalThis.GPUDevice){const f=GPUDevice.prototype.createShaderModule;GPUDevice.prototype.createShaderModule=function(d){if(d&&typeof d.code==='string'&&__lbShaders.length<64)__lbShaders.push({code:d.code,device:this});return f.call(this,d)}}";
+LB_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialClipRoom=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';try{localStorage.setItem('verse.quality','high')}catch{}Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});globalThis.lbErrors=[];{const ce=console.error;console.error=(...a)=>{lbErrors.push(a.map(String).join(' ').slice(0,300));ce(...a)}}globalThis.__lbU={};globalThis.__lbEnv={frames:0,distinct:0,step:0,span:0,t0:-1,t1:-1,first:null,last:null};if(globalThis.GPUQueue){const wb=GPUQueue.prototype.writeBuffer;globalThis.__lbWB=wb;GPUQueue.prototype.writeBuffer=function(b,o,d,doff,sz){try{if(o===0&&b&&(b.usage&GPUBufferUsage.UNIFORM)&&d&&d.BYTES_PER_ELEMENT===4){const at=doff||0;const a=new Float32Array(d.buffer,d.byteOffset+at*4,sz!==undefined?sz:d.length-at).slice();__lbU[a.length]=a;if(a.length===316){const e=a.slice(208,316),L=__lbEnv;L.frames++;if(L.t0<0)L.t0=e[3];L.t1=e[3];if(!L.last){L.distinct=1;L.first=e}else{let m=0,diff=false;for(let i=4;i<108;i++){const q=Math.abs(e[i]-L.last[i]);if(q>m)m=q;if(e[i]!==L.last[i])diff=true}if(diff)L.distinct++;if(m>L.step)L.step=m;for(let i=4;i<108;i++){const q=Math.abs(e[i]-L.first[i]);if(q>L.span)L.span=q}}L.last=e}}}catch(_){}return wb.apply(this,arguments)}}globalThis.__lbShaders=[];if(globalThis.GPUDevice){const f=GPUDevice.prototype.createShaderModule;GPUDevice.prototype.createShaderModule=function(d){if(d&&typeof d.code==='string'&&__lbShaders.length<64)__lbShaders.push({code:d.code,device:this});return f.call(this,d)}}";
 // The GPU probes: the page's module that has every glade function, plus one compute entry (BODY,
 // built by lb_probe_js) writing N vec4s at a binding no page entry uses; dispatched once on the
 // page's device and read back. Returns "SHA256 v0 v1 ..." (the module's SHA-256), "none" or "error ...".
-LB_PROBE_FN :: "globalThis.__lbProbe=async(body,n)=>{const need=['cg_sun_colour','cg_sun_dir','cg_hemisphere','cg_irradiance','cg_sky','cg_decode','cg_atmosphere','cg_cloud','cg_output'];const m=__lbShaders.find(x=>need.every(f=>x.code.includes('fn coax_p_'+f+'(')));if(!m)return 'none';const code=m.code+'\\n@group(0) @binding(15) var<storage, read_write> lb_out: array<vec4f, '+n+'>;\\n@compute @workgroup_size(1) fn lb_probe() {\\n'+body+'\\n}\\n';const d=m.device;d.pushErrorScope('validation');const mod=d.createShaderModule({code});const p=d.createComputePipeline({layout:'auto',compute:{module:mod,entryPoint:'lb_probe'}});const out=d.createBuffer({size:n*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});const rd=d.createBuffer({size:n*16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});const bg=d.createBindGroup({layout:p.getBindGroupLayout(0),entries:[{binding:15,resource:{buffer:out}}]});const e=d.createCommandEncoder();const pass=e.beginComputePass();pass.setPipeline(p);pass.setBindGroup(0,bg);pass.dispatchWorkgroups(1);pass.end();e.copyBufferToBuffer(out,0,rd,0,n*16);d.queue.submit([e.finish()]);await rd.mapAsync(GPUMapMode.READ);const v=Array.from(new Float32Array(rd.getMappedRange().slice(0)));rd.unmap();out.destroy();rd.destroy();const err=await d.popErrorScope();if(err)return 'error '+err.message;const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(m.code))),x=>x.toString(16).padStart(2,'0')).join('');return h+' '+v.map(x=>x.toPrecision(9)).join(' ')};true";
+LB_PROBE_FN :: "globalThis.__lbProbe=async(body,n)=>{const need=['cg_sun_colour','cg_sun_dir','cg_hemisphere','cg_irradiance','cg_sky','cg_decode','cg_atmosphere','cg_cloud','cg_output'];const m=__lbShaders.find(x=>need.every(f=>x.code.includes('fn coax_p_'+f+'(')));if(!m)return 'none';const code=m.code+'\\n@group(0) @binding(15) var<storage, read_write> lb_out: array<vec4f, '+n+'>;\\n@compute @workgroup_size(1) fn lb_probe() {\\n'+body+'\\n}\\n';const d=m.device;d.pushErrorScope('validation');const mod=d.createShaderModule({code});const p=d.createComputePipeline({layout:'auto',compute:{module:mod,entryPoint:'lb_probe'}});const out=d.createBuffer({size:n*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});const rd=d.createBuffer({size:n*16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});const ents=[{binding:15,resource:{buffer:out}}];const um=m.code.match(/@group\\(0\\) @binding\\(0\\) var<uniform> u: array<vec4f, (\\d+)>/);let ub=null;if(um){const src=__lbU[(+um[1])*4];if(!src)return 'no uniform block';ub=d.createBuffer({size:src.length*4,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});__lbWB.call(d.queue,ub,0,src);ents.push({binding:0,resource:{buffer:ub}})}const bg=d.createBindGroup({layout:p.getBindGroupLayout(0),entries:ents});const e=d.createCommandEncoder();const pass=e.beginComputePass();pass.setPipeline(p);pass.setBindGroup(0,bg);pass.dispatchWorkgroups(1);pass.end();e.copyBufferToBuffer(out,0,rd,0,n*16);d.queue.submit([e.finish()]);await rd.mapAsync(GPUMapMode.READ);const v=Array.from(new Float32Array(rd.getMappedRange().slice(0)));rd.unmap();out.destroy();rd.destroy();if(ub)ub.destroy();const err=await d.popErrorScope();if(err)return 'error '+err.message;const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(m.code))),x=>x.toString(16).padStart(2,'0')).join('');return h+' '+v.map(x=>x.toPrecision(9)).join(' ')};true";
 // Ready: the host's scene drawn, its loading card gone, nothing failed.
 LB_HOST_READY :: "(()=>{const c=globalThis.coaxial,card=document.getElementById('coaxial-load');if(card&&card.dataset.state==='fail')return 'failed';return !!c&&c.ready===true&&c.sceneReady===true&&(!card||card.classList.contains('gone'))?'ready':'loading'})()";
 // One step of (almost) no game time and its frame's SHA-256: the page settles on these.
@@ -261,10 +270,11 @@ lb_capture_name :: (load: string, suffix: string, o: [] LbBuf) -> string { o[0].
   seen: [64] LbBuf; n := 0; nb: [1] LbBuf;
   for l: 0..<LB_LOADS {
     plan := LB_PLANS[l]; k := lb_fields(plan, ';');
+    #assert lb_field(plan, ';', k - 1) == "E";   // every load ends by reading back the environment it wrote
     for i: 0..<k {
       op := lb_field(plan, ';', i); #assert op.count > 0;
       c := op[0];
-      #assert c == 's' || c == 'd' || c == 'm' || c == 'u' || c == 'c' || c == 'w' || c == 'k' || c == 'C' || c == 'P';
+      #assert c == 's' || c == 'd' || c == 'm' || c == 'u' || c == 'c' || c == 'w' || c == 'k' || c == 'C' || c == 'P' || c == 'E';
       if c == 's' { #assert args_number(op[1..<op.count]).ok; }
       if c == 'd' || c == 'm' || c == 'u' || c == 'c' { #assert lb_xy(op[1..<op.count]).ok; }
       if c == 'C' {
@@ -316,6 +326,7 @@ lb_key :: (c: [] Cdp, key: string) -> bool {
 Lb :: struct {
   out: string;
   probes: [1] LbBuf;       // probes.tsv
+  env: [1] LbBuf;          // env.tsv
   run: [1] LbBuf;          // run.tsv
   names: [LB_CAPTURES] LbBuf; widths: [LB_CAPTURES] int; heights: [LB_CAPTURES] int; n: int;
   thumbs: [LB_CAPTURES * LB_THUMB_W * LB_THUMB_H * 4] u8;
@@ -403,6 +414,27 @@ lb_gpu_probes :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
   return true;
 }
 
+// What the page wrote at the environment's words every frame so far, into env.tsv: the frames, the
+// distinct light records, the largest change of any light word (4 on) between two frames, the
+// largest change since the first frame, and the day. Across the hand-over no frame may change a light
+// word by more than LB_ENV_JUMP: the walk out of the glade enters the sunlit path's band
+// (verse/everglade2/environment.coax, 44 m), whose ramp moves a word at most about 0.01 a frame at a
+// run; a seam would move it by the whole delta at once.
+LB_ENV_JUMP :: 0.02;
+LB_ENV :: "(()=>{const L=__lbEnv;return L.frames+' '+L.distinct+' '+L.step+' '+L.span+' '+L.t0+' '+L.t1+' '+(L.last?Array.from(L.last,x=>x.toPrecision(9)).join(' '):'')})()";
+lb_env :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
+  out: [1] LbBuf; t := lb_eval_text(c, LB_ENV, out[0].b[..]);
+  if lb_fields(t, ' ') != 6 + envf.ENV_FRAME_FLOATS { print("FAIL % environment readback: %\n", name, ifx t.count > 0 then t else cdp_error(c)); return false; }
+  g := envf.env_frame_glade_words(); off := 0;
+  for i: 4..<envf.ENV_FRAME_FLOATS { if cast(f32) args_number(lb_field(t, ' ', 6 + i)).value != g[i] { off += 1; } }
+  frames := lb_field(t, ' ', 0); step := args_number(lb_field(t, ' ', 2)).value;
+  o := s[0].env[..];
+  lb_put(o, name); for k: 0..<6 { lb_put(o, "\t"); lb_put(o, lb_field(t, ' ', k)); } lb_put(o, "\t"); lb_int(o, off); lb_put(o, "\n");
+  print("  % environment: % frames, % light records, largest step % of % in all, day % to %, % light words off the glade's noon\n", name, frames, lb_field(t, ' ', 1), step, lb_field(t, ' ', 3), lb_field(t, ' ', 4), lb_field(t, ' ', 5), off);
+  if name == "handover" && step > LB_ENV_JUMP { print("FAIL handover: the light jumped % in one frame across the hand-over\n", step); return false; }
+  return args_number(frames).value > 0;
+}
+
 // One page load: a new Chrome, the page pinned, ready and settled, then its plan.
 lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
   w := LB_WIDE[l]; h := LB_TALL[l]; name := LB_NAMES[l];
@@ -453,6 +485,7 @@ lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
     else if op[0] == 'k' { ok = lb_key(c[..], arg); }
     else if op[0] == 'C' { ok = lb_capture(c[..], s, lb_capture_name(name, arg, nb[..]), px, jpg); }
     else if op[0] == 'P' { ok = lb_gpu_probes(c[..], s, name); }
+    else if op[0] == 'E' { ok = lb_env(c[..], s, name); }
     if !ok { print("FAIL %: step %\n", name, op); return false; }
   }
   errors := lb_eval_text(c[..], "JSON.stringify(lbErrors)", word[..]);
@@ -603,6 +636,8 @@ tool_main :: () -> int #export_c #effects(all) {
   path: [4096] u8;
   ok = fs_write(fs_join(out, "probes.tsv", path[..]), lb_text(s[0].probes[..])) && ok;
   ok = fs_write(fs_join(out, "run.tsv", path[..]), lb_text(s[0].run[..])) && ok;
+  e: [1] LbBuf; lb_put(e[..], "load\tframes\tlight_records\tlargest_step\tlargest_change\tday_first\tday_last\tlight_words_off_glade\n"); lb_put(e[..], lb_text(s[0].env[..]));
+  ok = fs_write(fs_join(out, "env.tsv", path[..]), lb_text(e[..])) && ok;
   if s[0].n > 0 && !lb_sheet(s, lb_jpg_buf[..], lb_work[..]) { print("FAIL the contact sheet\n"); ok = false; }
   print("% captures in %\n", s[0].n, out);
   if compare.count > 0 {

@@ -1,0 +1,12 @@
+realm-perf: 3 cases (shard 1 of 1) at http://127.0.0.1:8987, a 8 s walk a case, p95 <= 17.5 ms and every frame <= 33 ms
+realm-perf: WebGPU adapter: hardware apple metal-3
+ok   1440x900 dpr 1 everglade2: 60.0 FPS, p50 16.7 ms, p95 16.7 ms, max 16.7 ms, 0/506 over 20 ms
+FAIL 1440x900 dpr 2 everglade2: 59.8 FPS, p50 16.7 ms, p95 16.7 ms, max 33.3 ms, 2/506 over 20 ms
+FAIL 390x844 phone  everglade2: 59.9 FPS, p50 16.7 ms, p95 16.7 ms, max 33.3 ms, 1/507 over 20 ms
+realm-perf: 2 of 3 cases missed 60 FPS
+realm-perf: 3 cases (shard 1 of 1) at http://127.0.0.1:8987, a 8 s walk a case, p95 <= 17.5 ms and every frame <= 33 ms
+realm-perf: WebGPU adapter: hardware apple metal-3
+ok   1440x900 dpr 1 everglade2: 60.0 FPS, p50 16.7 ms, p95 16.7 ms, max 16.7 ms, 0/507 over 20 ms
+ok   1440x900 dpr 2 everglade2: 60.0 FPS, p50 16.7 ms, p95 16.7 ms, max 16.7 ms, 0/507 over 20 ms
+ok   390x844 phone  everglade2: 60.0 FPS, p50 16.7 ms, p95 16.7 ms, max 16.7 ms, 0/507 over 20 ms
+realm-perf: 0 of 3 cases missed 60 FPS

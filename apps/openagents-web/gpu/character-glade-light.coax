@@ -3,17 +3,20 @@
 // aethyr/world/environment.coax (ENV_GLADE_*, env_glade_profile), their evaluation in
 // aethyr/render/painterly.coax, the transfer helpers in aethyr/render/transfer.coax and the normal
 // packing in aethyr/render/contact-shade.coax, with their checks. The cg_* names below are thin
-// delegates so Everglade II, Experimental and the lighting probes keep calling them until their
-// consumers read the resolver (#13066).
+// delegates. Since #13066 every one that lights (the key, the ambient, the air, the film and output)
+// reads the frame's resolved environment, which the page writes into its uniforms at PAINT_ENV_U
+// (aethyr/render/environment-frame.coax), so Character Create, Everglade II, Experimental and the
+// lighting probes all draw what the resolver gives them. The transfer and packing names need none.
 #load "../../../aethyr/render/painterly.coax";
 #load "../../../aethyr/render/contact-shade.coax";
-#test "the glade's names are the shared painterly default's" {
+#test "the glade's names are the shared painterly default's, read from the frame's record" {
+ u:=paint_env_glade_u();
  n:=normalize3(v3(0.3,0.7,-0.4));e:=v3(0,1,3);p:=v3(4,2,-50);c:=v3(0.4,0.3,0.2);
  #assert cg_linear(0.5)==transfer_linear(0.5) && cg_srgb(0.5)==transfer_srgb(0.5) && cg_shoulder(3)==transfer_shoulder(3);
- #assert cg_decode(c).y==transfer_decode(c).y && cg_encode(c).z==transfer_encode(c).z && cg_film(c).x==paint_film(c).x && cg_output(c).y==paint_output(c).y;
- #assert cg_hemisphere(n).x==paint_hemisphere(n).x && cg_irradiance(n,0.5,0.7,0.3).z==paint_irradiance(n,0.5,0.7,0.3).z;
- #assert cg_air_depth(e,p)==paint_air_depth(e,p) && cg_phase(0.4,0.62)==paint_phase(0.4,0.62) && cg_haze_window(50)==paint_haze_window(50);
- #assert cg_sun_dir().y==paint_sun_dir().y && cg_sun_colour().z==paint_sun_colour().z && cg_atmosphere(c,e,p).x==paint_atmosphere(c,e,p).x;
+ #assert cg_decode(c).y==transfer_decode(c).y && cg_encode(c).z==transfer_encode(c).z && cg_film(u[..],c).x==paint_film(c).x && cg_output(u[..],c).y==paint_output(c).y;
+ #assert abs(cg_hemisphere(u[..],n).x-paint_hemisphere(n).x)<0.000001 && abs(cg_irradiance(u[..],n,0.5,0.7,0.3).z-paint_irradiance(n,0.5,0.7,0.3).z)<0.000001;
+ #assert cg_air_depth(u[..],e,p)==paint_air_depth(e,p) && cg_phase(0.4,0.62)==paint_phase(0.4,0.62) && cg_haze_window(u[..],50)==paint_haze_window(50);
+ #assert abs(cg_sun_dir(u[..]).y-paint_sun_dir().y)<0.000001 && cg_sun_colour(u[..]).z==paint_sun_colour().z && abs(cg_atmosphere(u[..],c,e,p).x-paint_atmosphere(c,e,p).x)<0.000001;
  #assert cg_sign(-2)==shade_sign(-2) && cg_normal_pack(n).x==shade_normal_pack(n).x && cg_normal_unpack(v2(0.2,-0.3)).z==shade_normal_unpack(v2(0.2,-0.3)).z;
 }
 cg_linear :: (x:f32)->f32 {return transfer_linear(x);}
@@ -21,16 +24,16 @@ cg_srgb :: (x:f32)->f32 {return transfer_srgb(x);}
 cg_decode :: (c:V3)->V3 {return transfer_decode(c);}
 cg_encode :: (c:V3)->V3 {return transfer_encode(c);}
 cg_shoulder :: (x:f32)->f32 {return transfer_shoulder(x);}
-cg_film :: (c:V3)->V3 {return paint_film(c);}
-cg_output :: (c:V3)->V3 {return paint_output(c);}
-cg_hemisphere :: (n:V3)->V3 {return paint_hemisphere(n);}
-cg_irradiance :: (n:V3,direct:f32,occlusion:f32,visibility:f32)->V3 {return paint_irradiance(n,direct,occlusion,visibility);}
-cg_air_depth :: (eye:V3,p:V3)->f32 {return paint_air_depth(eye,p);}
+cg_film :: (u:[]f32,c:V3)->V3 {return paint_env_film(u,c);}
+cg_output :: (u:[]f32,c:V3)->V3 {return paint_env_output(u,c);}
+cg_hemisphere :: (u:[]f32,n:V3)->V3 {return paint_env_hemisphere(u,n);}
+cg_irradiance :: (u:[]f32,n:V3,direct:f32,occlusion:f32,visibility:f32)->V3 {return paint_env_irradiance(u,n,direct,occlusion,visibility);}
+cg_air_depth :: (u:[]f32,eye:V3,p:V3)->f32 {return paint_env_air_depth(u,eye,p);}
 cg_phase :: (cos_t:f32,g:f32)->f32 {return paint_phase(cos_t,g);}
-cg_haze_window :: (distance:f32)->f32 {return paint_haze_window(distance);}
-cg_sun_dir :: ()->V3 {return paint_sun_dir();}
-cg_sun_colour :: ()->V3 {return paint_sun_colour();}
-cg_atmosphere :: (colour:V3,eye:V3,p:V3)->V3 {return paint_atmosphere(colour,eye,p);}
+cg_haze_window :: (u:[]f32,distance:f32)->f32 {return paint_env_haze_window(u,distance);}
+cg_sun_dir :: (u:[]f32)->V3 {return paint_env_sun_dir(u);}
+cg_sun_colour :: (u:[]f32)->V3 {return paint_env_sun_colour(u);}
+cg_atmosphere :: (u:[]f32,colour:V3,eye:V3,p:V3)->V3 {return paint_env_atmosphere(u,colour,eye,p);}
 cg_sign :: (x:f32)->f32 {return shade_sign(x);}
 cg_normal_pack :: (n:V3)->V2 {return shade_normal_pack(n);}
 cg_normal_unpack :: (p:V2)->V3 {return shade_normal_unpack(p);}

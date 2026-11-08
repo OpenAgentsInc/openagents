@@ -1,0 +1,78 @@
+serving apps/openagents-web on http://127.0.0.1:8987 (pid 5639)
+cc (/worlds/character-creator 1920x1080)
+  ready in 3442 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  cc-glade 1920x1080 165e08856e92e694a421ea7352e4b9746e7ffaf6dc5d8d9a830d1c35abe0277c
+  cc GPU probes: module 67e35e323ef13e6ed7bb7c7c6974439217752aea2fc34ef31dfd10fba21454b8
+  cc-closeup 1920x1080 8187a70efa3f4ad3634884d849e929353b4be623b331c367681ef1b35e9abe95
+  cc-turn-0 1920x1080 1e646ee452993f4ca793d9923b68dd6a1d92cf2cf7768ed3d2d6b8e28dda1997
+  cc-turn-1 1920x1080 e1928eb352b67e95cc6c09832e15d5f0260fa2c83e5b723fd814b1ddfd0fa796
+  cc-turn-2 1920x1080 60ee4c4e1f3e5dd49b99b7040baabc001231446cac7b4152a2ff2b6712ee53cf
+  cc-turn-3 1920x1080 7ef8337476fbab6a7d9a32100ba3979ff9ec904625e4bc95f94b5621ba530663
+  cc environment: 185 frames, 1 light records, largest step 0.0 of 0 in all, day 0.5 to 0.5, 0 light words off the glade's noon
+cc-phone (/worlds/character-creator 390x844)
+  ready in 2390 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  cc-phone-glade 390x844 fae104606117319ebae8bccaffce2ce51c36bb5233e70599dd434d2a8990fb27
+  cc-phone environment: 73 frames, 1 light records, largest step 0.0 of 0 in all, day 0.5 to 0.5, 0 light words off the glade's noon
+handover (/worlds/character-creator 1920x1080)
+  ready in 3350 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  handover-0 1920x1080 091ceec04b821848ade0d69b234ffcf223ccf02b2a9579d59a0c1d9e9eea137d
+  handover-1 1920x1080 e807db5b42538023d8d64d579d219e58de26af08c3ae11af8115b210611ba795
+  handover-2 1920x1080 3b60199d1808a08e589ac36b85c5c1a20e255dac14ee587c1a340d05cacdf323
+  handover-3 1920x1080 04f8f9ceca92894df1350408031235e5edd6040ea5a9f732627ed7d5f7c8b0d4
+  handover-4 1920x1080 2db4fd232bf7c64ff52ebffd0ed64d868162627eb1134745653c5428a3f3dfad
+  handover environment: 788 frames, 335 light records, largest step 0.010128021240234377 of 2 in all, day 0.5 to 0.5, 13 light words off the glade's noon
+e2-arrival (/worlds/everglade2?at=1 1920x1080)
+  ready in 2847 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":629,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  e2-arrival 1920x1080 b0bfaae9542801feb6012b41bb6306a124a7690041933a458fa0a92a7d82fb09
+  e2-arrival environment: 78 frames, 1 light records, largest step 0.0 of 0 in all, day 0.5 to 0.5, 0 light words off the glade's noon
+e2-sunlit-path (/worlds/everglade2?at=60 1920x1080)
+  ready in 2806 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  e2-sunlit-path 1920x1080 650544f659810e6b699d336d84cdef5aaef2e59ebec3f41667f05773bcf7a95e
+  e2-sunlit-path environment: 77 frames, 1 light records, largest step 0.0 of 0 in all, day 0.5 to 0.5, 18 light words off the glade's noon
+e2-deep-canopy (/worlds/everglade2?at=300 1920x1080)
+  ready in 2830 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  e2-deep-canopy 1920x1080 980ba9423c9743ca13bc43d308d60d8ea64d8e59f0ada7d63e98b603ef5b7911
+  e2-deep-canopy environment: 78 frames, 1 light records, largest step 0.0 of 0 in all, day 0.5 to 0.5, 21 light words off the glade's noon
+exp-combat (/worlds/everglade-experimental 1920x1080)
+  ready in 2510 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"fivelab","clock":"fixed:0.5","field10":null,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  exp-combat 1920x1080 1ecc4a0884c5976935b309e69cfe7d84aa7f783f4c9de290369fe4788ed8e09d
+  exp-combat GPU probes: module 9e362abeae01df924024e010f719c9a2a3c1f54aba91ee0399cef04f9e964764
+  exp-combat environment: 54 frames, 1 light records, largest step 0.0 of 0 in all, day 0.5 to 0.5, 0 light words off the glade's noon
+16 captures in /private/tmp/claude-501/-Users-christopherdavid-work-openagents/feace06f-bb9a-44fc-87c4-47d0644e22c1/scratchpad/lb-out
+identity check against docs/verification/aethyr-lighting-p1-baseline-2026-11-08
+  cc-glade image: 0 of 32400 blocks moved, mean shift 0.000025237911522633743, peak block 1.640625 pass
+  cc-closeup image: 0 of 32400 blocks moved, mean shift 0.00008391203703703703, peak block 1.25 pass
+  cc-turn-0 image: 0 of 32400 blocks moved, mean shift 4.822530864197531e-07, peak block 0.015625 pass
+  cc-turn-1 image: 0 of 32400 blocks moved, mean shift 9.002057613168725e-06, peak block 0.609375 pass
+  cc-turn-2 image: 0 of 32400 blocks moved, mean shift 0.000049350565843621396, peak block 1.28125 pass
+  cc-turn-3 image: 0 of 32400 blocks moved, mean shift 4.9832818930041145e-06, peak block 0.25 pass
+  cc-phone-glade image: 0 of 5194 blocks moved, mean shift 0.0, peak block 0.0 pass
+  handover-0 image: 0 of 32400 blocks moved, mean shift 1.1252572016460904e-06, peak block 0.0625 pass
+  handover-1 image: 0 of 32400 blocks moved, mean shift 5.9477880658436205e-06, peak block 0.171875 pass
+  handover-2 image: 0 of 32400 blocks moved, mean shift 3.858024691358025e-06, peak block 0.109375 pass
+  handover-3 image: 0 of 32400 blocks moved, mean shift 0.28543129501028924, peak block 5.328125 pass
+  handover-4 image: 125 of 32400 blocks moved, mean shift 1.7709940843621326, peak block 13.0 FAIL
+  e2-arrival image: 0 of 32400 blocks moved, mean shift 3.375771604938272e-06, peak block 0.078125 pass
+  e2-sunlit-path image: 111 of 32400 blocks moved, mean shift 1.7606802983538887, peak block 12.8125 FAIL
+  e2-deep-canopy image: 29466 of 32400 blocks moved, mean shift 9.322630690586513, peak block 50.328125 FAIL
+  exp-combat image: 93 of 32400 blocks moved, mean shift 0.04372347608024691, peak block 70.828125 FAIL
+  probe handover-4:p50_25 pixel moved 4.234999999999999 FAIL
+  probe handover-4:p25_50 pixel moved 4.715999999999994 FAIL
+  probe handover-4:p50_50 pixel moved 4.543999999999983 FAIL
+  probe handover-4:p25_75 pixel moved 3.2590000000000146 FAIL
+  probe handover-4:p50_75 pixel moved 3.358000000000004 FAIL
+  probe e2-sunlit-path:p25_25 pixel moved 3.88900000000001 FAIL
+  probe e2-sunlit-path:p50_25 pixel moved 4.542999999999978 FAIL
+  probe e2-sunlit-path:p25_75 pixel moved 3.099000000000018 FAIL
+  probe e2-sunlit-path:p50_75 pixel moved 3.0619999999999834 FAIL
+  probe e2-deep-canopy:p25_25 pixel moved 8.296 FAIL
+  probe e2-deep-canopy:p50_25 pixel moved 7.888999999999996 FAIL
+  probe e2-deep-canopy:p75_25 pixel moved 11.72799999999998 FAIL
+  probe e2-deep-canopy:p25_50 pixel moved 9.703000000000003 FAIL
+  probe e2-deep-canopy:p50_50 pixel moved 6.334000000000003 FAIL
+  probe e2-deep-canopy:p75_50 pixel moved 13.407999999999987 FAIL
+  probe e2-deep-canopy:p25_75 pixel moved 20.406999999999982 FAIL
+  probe e2-deep-canopy:p50_75 pixel moved 20.382000000000005 FAIL
+  probe e2-deep-canopy:p75_75 pixel moved 18.135999999999996 FAIL
+  192 probes, 18 outside their bounds
+FAIL: outside the declared bounds (see compare.tsv)

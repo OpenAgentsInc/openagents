@@ -3,15 +3,16 @@
 #load "../../../verse/character-glade.coax";
 #load "character-glade-light.coax";
 // The sky, the soil seams and the cloud shadows are the shared painterly default's
-// (aethyr/render/painterly.coax, #13060), with their checks; these names delegate to it.
+// (aethyr/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
+// shadows and the sky read the frame's resolved environment (u at PAINT_ENV_U, #13066).
 cg_soil :: (p:V2)->f32 {return paint_soil(p);}
 cg_noise :: (p:V2)->f32 {return paint_noise(p);}
-cg_cloud :: (x:f32,z:f32)->f32 {return paint_cloud(x,z);}
+cg_cloud :: (u:[]f32,x:f32,z:f32)->f32 {return paint_env_cloud(u,x,z);}
 cg_cloud_fbm :: (p:V2)->f32 {return paint_cloud_fbm(p);}
-cg_sky :: (rd:V3,sun:V3,time:f32)->V3 {return paint_sky(rd,sun,time);}
+cg_sky :: (u:[]f32,rd:V3,sun:V3,time:f32)->V3 {return paint_env_sky(u,rd,sun,time);}
 #test "the glade's sky, soil and cloud names are the shared default's" {
- r:=v3(0.3,0.4,-0.8);s:=v3(-0.4,0.8,0.6);
- #assert cg_sky(r,s,2).y==paint_sky(r,s,2).y && cg_cloud(12,-20)==paint_cloud(12,-20) && cg_noise(v2(1.3,2.7))==paint_noise(v2(1.3,2.7));
+ r:=v3(0.3,0.4,-0.8);s:=v3(-0.4,0.8,0.6);u:=paint_env_glade_u();
+ #assert cg_sky(u[..],r,s,2).y==paint_sky(r,s,2).y && cg_cloud(u[..],12,-20)==paint_cloud(12,-20) && cg_noise(v2(1.3,2.7))==paint_noise(v2(1.3,2.7));
  #assert cg_soil(v2(0.1,0.2))==paint_soil(v2(0.1,0.2)) && cg_cloud_fbm(v2(0.4,1.1))==paint_cloud_fbm(v2(0.4,1.1));
 }
 #test "glade sky texture rays preserve reference image alignment" {
@@ -130,7 +131,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  kind:=s.local.x;village:=kind>3.5f32 && kind<4.5f32 && s.local.y>=100.0f32;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
  foliage:=kind>0.5f32 && kind<2.5f32;grass:=kind>1.5f32 && kind<2.5f32;leaves:=kind>0.5f32 && kind<1.5f32;ground:=kind>4.5f32 && kind<5.5f32;
  if (!front && !foliage) {n=scale3(n,-1);}
- sun:=cg_sun_dir();eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
+ sun:=cg_sun_dir(u);eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
  if (foliage || ground) {albedo=cg_decode(s.tint);}
  if (ground) {trail:=cg_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
@@ -158,15 +159,15 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
   albedo=scale3(base,0.60f32+0.50f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));
  }
- visibility:=shadow*cg_cloud(s.world.x,s.world.z);
+ visibility:=shadow*cg_cloud(u,s.world.x,s.world.z);
  ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
  if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
  if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
  if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
  fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 && town<0 && !village then 0.78f32 else 1.0f32;
- indirect:=mul3(albedo,scale3(cg_hemisphere(n),ao*fill));
+ indirect:=mul3(albedo,scale3(cg_hemisphere(u,n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
- colour:=add3(indirect,mul3(albedo,cg_irradiance(n,direct,0,visibility)));
+ colour:=add3(indirect,mul3(albedo,cg_irradiance(u,n,direct,0,visibility)));
  if (foliage) {
   // Thin leaves transmit rear sunlight; volume normals and ambient mask stay separate.
   back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);scatter:=(0.15f32+0.60f32*back)*(1.0f32-abs(ndl)*0.65f32)*visibility;
@@ -179,7 +180,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   colour=cg_dungeon_light(albedo,n,s.world,u);indirect=scale3(albedo,0.04f32);
   inner:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,inner);
  }
- colour=cg_atmosphere(colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
+ colour=cg_atmosphere(u,colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
 // Everglade Experimental's dungeon (verse/experimental-dungeon.coax), lit by its torches alone:
 // u[60..63] its block (west, south, east, north), u[64] its ceiling's height (0 when there is none
@@ -232,11 +233,11 @@ cg_glass :: (uv:V2,u:[]f32,image:Tex2D,lin:Sampler)->V3 {
 }
 
 #test "glade shadow projection contains the clearing and separates light depth" {
- a:=cg_shadow_clip(v3(0,0,0));b:=cg_shadow_clip(v3(0,1,0));
+ u:=paint_env_glade_u();a:=cg_shadow_clip(u[..],v3(0,0,0));b:=cg_shadow_clip(u[..],v3(0,1,0));
  #assert abs(a.x)<1 && abs(a.y)<1 && a.z>0 && a.z<1 && b.z<a.z;
 }
-cg_shadow_clip :: (p:V3)->V4 {
- sun:=cg_sun_dir();right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
+cg_shadow_clip :: (u:[]f32,p:V3)->V4 {
+ sun:=cg_sun_dir(u);right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,v3(0,5,-16));
  return v4(dot3(r,right)/26.0f32,dot3(r,up)/26.0f32,0.5f32-dot3(r,sun)/70.0f32,1);
 }
 // The shadow tiles (charactercreator.coax shadow_frame, #13016): u[10] 3 or 4 puts the glade's casters
@@ -248,7 +249,7 @@ charactercreator_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,object
  o:CgShadow;
  if (u[10]<1.5f32 || instance>=65536) {o.pos=v4(0,0,-2,1);return o;}
  s:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}
- c:=cg_shadow_clip(s.world);o.pos=c;o.edge=v2(c.x,c.y);o.uv=ifx s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32 then cg_village_uv(s.uv,s.local.y) else s.uv;o.slice=s.slice;
+ c:=cg_shadow_clip(u,s.world);o.pos=c;o.edge=v2(c.x,c.y);o.uv=ifx s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32 then cg_village_uv(s.uv,s.local.y) else s.uv;o.slice=s.slice;
  if cg_shadow_tiles(u) {
   glade:=s.dye.w>11.5f32;
   if (glade && u[10]>3.5f32) {o.pos=v4(0,0,-2,1);return o;}
@@ -270,7 +271,7 @@ cg_shadow_taps :: (uv:V2,z:f32,half:f32,at:f32,map:TexDepth,cmp:SamplerCompare)-
  return sum/12.0f32;
 }
 cg_shadow_visibility :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare)->f32 {
- c:=cg_shadow_clip(add3(p,scale3(normalize3(n),0.025f32)));uv:=v2(c.x*0.5f32+0.5f32,0.5f32-c.y*0.5f32);
+ c:=cg_shadow_clip(u,add3(p,scale3(normalize3(n),0.025f32)));uv:=v2(c.x*0.5f32+0.5f32,0.5f32-c.y*0.5f32);
  if (uv.x<0 || uv.x>1 || uv.y<0 || uv.y>1 || c.z<0 || c.z>1) {return 1;}
  if !cg_shadow_tiles(u) {return cg_shadow_taps(uv,c.z,1.0f32,0.0f32,map,cmp);}
  return fmin(cg_shadow_taps(uv,c.z,0.5f32,0.0f32,map,cmp),cg_shadow_taps(uv,c.z,0.5f32,0.5f32,map,cmp));
@@ -365,7 +366,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,scale3(cg_sun_veil(uv),ifx cg_dungeon_in(v3(u[16],u[17],u[18]),u) then 0.0f32 else 1.0f32)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}if (u[11]>1.5f32 && cg_dev_panel(pixel,u[1]-u[52],u[4],u[11]>2.5f32)) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[54]>u[53] && cg_column(pixel,u[53],u[54],u[4])) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[42]>0.5f32 && cg_health_panel(pixel,u[0],u[4])) {result=mix3(result,v3(0.025f32,0.035f32,0.03f32),0.88f32);}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(u,add3(c,scale3(cg_sun_veil(uv),ifx cg_dungeon_in(v3(u[16],u[17],u[18]),u) then 0.0f32 else 1.0f32)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(u,cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}if (u[11]>1.5f32 && cg_dev_panel(pixel,u[1]-u[52],u[4],u[11]>2.5f32)) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[54]>u[53] && cg_column(pixel,u[53],u[54],u[4])) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[42]>0.5f32 && cg_health_panel(pixel,u[0],u[4])) {result=mix3(result,v3(0.025f32,0.035f32,0.03f32),0.88f32);}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;

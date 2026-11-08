@@ -2,7 +2,7 @@
 # group 0 the frame's uniforms and the frame store (host.js: the tokens and squares); group 1 the scene: the pack's vertices, the stores (the figures'
 # instances, the baked clips, the visible kit pieces, the characters' materials, the ground's table and bake), the pack's layers and their sampler,
 # then its linear data layers (normal and ORM maps, host.js PACK_DATA_LAYER).
-u 0 0 uniform 52
+u 0 0 uniform 79
 frame 0 1
 vertices 1 0
 objects 1 1

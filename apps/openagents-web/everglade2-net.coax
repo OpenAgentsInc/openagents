@@ -47,6 +47,7 @@ E2Net :: struct {
   seat: int = -1; sat: bool; lost: bool; stale: bool; elsewhere: bool;
   ents: [E2N_ENTS] NetEnt;
   hz: int = WIRE_HZ; w_tick: int; w_t: int; worlds: int;
+  w_day: int = -1;              // the room's ms into its day at w_tick (W), -1 before one is heard: the light's clock (everglade2.coax e2_light)
   tick: int; tick_t: int;
   late_mean: f32; jitter: f32; interval: f32 = 33; delay: int = NET_LOW; ticks: int;
   lag: f32 = NET_LOW; rt: int; drawn_at: int;
@@ -326,7 +327,7 @@ e2n_record :: (n: [] E2Net, t: string) {
   if c == 'W' {
     w := wire_read_world(t, r[..]);
     if !r[0].ok { return; }
-    n[0].w_tick = w.tick; n[0].w_t = e2n_now(n); n[0].hz = nc_clamp(w.hz, 1, 120); n[0].worlds += 1;
+    n[0].w_tick = w.tick; n[0].w_t = e2n_now(n); n[0].hz = nc_clamp(w.hz, 1, 120); n[0].worlds += 1; n[0].w_day = w.day;
     return;
   }
   if c == 'D' {

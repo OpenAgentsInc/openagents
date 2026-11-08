@@ -5,21 +5,21 @@ CharacterCreatorLit :: struct {c:V4;aux:V4;}
 charactercreator_bg_vs :: (id:u32,instance:u32)->V4 {return fivelab_bg_vs(id,instance);}
 charactercreator_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->CharacterCreatorBg {
  eye:=wg_at3(u,16);rd:=normalize3(add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-pos.y)/u[19]))));
- sky:=cg_decode(cg_sky(rd,wg_at3(u,32),u[2]));return CharacterCreatorBg.{c=v4(sky.x,sky.y,sky.z,0),depth=1};
+ sky:=cg_decode(cg_sky(u,rd,wg_at3(u,32),u[2]));return CharacterCreatorBg.{c=v4(sky.x,sky.y,sky.z,0),depth=1};
 }
 charactercreator_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {return fivelab_scene_vs(id,instance,u,vertices,objects,bake);}
 #test "creator player sunlight follows normals and shadow visibility while retaining sky fill" {
- sun:=normalize3(v3(-0.45,0.78,-0.42));view:=v3(0,0,1);base:=v3(0.4,0.25,0.12);
- lit:=cc_player_light(base,sun,view,1);shade:=cc_player_light(base,sun,view,0);back:=cc_player_light(base,scale3(sun,-1),view,1);
+ sun:=normalize3(v3(-0.45,0.78,-0.42));view:=v3(0,0,1);base:=v3(0.4,0.25,0.12);u:=paint_env_glade_u();
+ lit:=cc_player_light(u[..],base,sun,view,1);shade:=cc_player_light(u[..],base,sun,view,0);back:=cc_player_light(u[..],base,scale3(sun,-1),view,1);
  #assert lit.x>shade.x+0.5 && lit.x>back.x && shade.z>0;
  delta:=sub3(lit,shade);#assert delta.x/base.x>delta.z/base.z;
- #assert cc_player_light(v3(0,0,0),sun,view,0).x==0;
+ #assert cc_player_light(u[..],v3(0,0,0),sun,view,0).x==0;
 }
-cc_player_light :: (albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
- sun:=cg_sun_dir();
+cc_player_light :: (u:[]f32,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
+ sun:=cg_sun_dir(u);
  // Same daylight as the meadow. Broad camera-side bounce keeps the face readable.
  direct:=saturate(dot3(n,sun));fill:=saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0)))));
- irradiance:=add3(cg_irradiance(n,direct,1,visibility),scale3(v3(0.85f32,0.72f32,0.52f32),fill));
+ irradiance:=add3(cg_irradiance(u,n,direct,1,visibility),scale3(v3(0.85f32,0.72f32,0.52f32),fill));
  return mul3(albedo,irradiance);
 }
 cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visibility:f32)->V4 {
@@ -31,17 +31,17 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
  }
  n:=normalize3(add3(s.normal,v3(0,0.00001f32,0)));if (!front) {n=scale3(n,-1);}
- eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));sun:=cg_sun_dir();
- colour:=cc_player_light(albedo,n,view,visibility);
+ eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));sun:=cg_sun_dir(u);
+ colour:=cc_player_light(u,albedo,n,view,visibility);
  // Broad, restrained dielectric highlight gives curved skin and fabric volume.
  half_vector:=normalize3(add3(sun,view));spec:=pow(saturate(dot3(n,half_vector)),24.0f32)*saturate(dot3(n,sun))*visibility*0.12f32;
- colour=add3(colour,scale3(cg_sun_colour(),spec));
- indirect:=mul3(albedo,add3(cg_hemisphere(n),scale3(v3(0.85f32,0.72f32,0.52f32),saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0))))))));
+ colour=add3(colour,scale3(cg_sun_colour(u),spec));
+ indirect:=mul3(albedo,add3(cg_hemisphere(u,n),scale3(v3(0.85f32,0.72f32,0.52f32),saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0))))))));
  dark:=cg_dungeon_in(s.world,u);
  if (dark) {colour=cg_dungeon_light(albedo,n,s.world,u);indirect=scale3(albedo,0.04f32);}
  share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
  // the dungeon's air carries no sky haze
- if (!dark) {colour=cg_atmosphere(colour,eye,s.world);}
+ if (!dark) {colour=cg_atmosphere(u,colour,eye,s.world);}
  return v4(colour.x,colour.y,colour.z,share);
 }
 charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
@@ -50,7 +50,7 @@ charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj
  if (s.dye.w>11.5f32 && s.local.x>3.5f32 && s.local.x<4.5f32 && s.local.y>=100.0f32) {uv=cg_village_uv(uv,s.local.y);}
  tex:=render_sample_layer8_bias(sheets,sheet,uv,cast(s32)s.slice,1);
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
-  sky:=mix3(cg_decode(cg_sky(normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
+  sky:=mix3(cg_decode(cg_sky(u,normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
  }
  if (tex.w<0.35f32) {gpu_demote_helper();}
  c:V4;
