@@ -1,0 +1,13 @@
+ok   #test experimental combat: every class's level 1 bar holds its Character Create ability first, each slot with its picture (1 case, 12596 steps, 0 ms)
+ok   #test experimental combat: a Wizard's Fire Bolt and a Fighter's Attack fell a monster, which then lies still (1 case, 5560273 steps, 1447 ms)
+ok   #test experimental combat: a bolt flies the way you face; one behind you is never hit, one ahead is, and a miss does no damage (1 case, 4407794 steps, 611 ms)
+ok   #test experimental combat: a blow strikes ahead within reach, a save spell takes the cone ahead, and nothing behind is picked (1 case, 21895454 steps, 2905 ms)
+ok   #test experimental combat: a melee class holds its weapon, and a blow lands where its blade meets a monster, not at the press (1 case, 7185160 steps, 1574 ms)
+ok   #test experimental combat: one swing makes one contact at 30, 60 and 144 FPS (1 case, 7665761 steps, 1509 ms)
+ok   #test experimental combat: one swing makes one contact over uneven frames and a stall; out of reach it whiffs (1 case, 7976583 steps, 1513 ms)
+ok   #test experimental combat: your target is held by attention, never picked for you, kept through the grace and dropped when it falls (1 case, 2499077 steps, 491 ms)
+ok   #test experimental combat: a landed blow holds the struck monster for its hit stop, a monster's landed blow holds it, and nothing else pauses (1 case, 3000908 steps, 521 ms)
+ok   #test experimental combat: numbers go through the presentation queue, capped a source a frame and counted (1 case, 2387480 steps, 488 ms)
+10 of 695 checks (--only 'experimental combat:'), 10 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 32653137 of 33554432 used (97%), above three quarters of the limit; more than 33554432 fails with E0400

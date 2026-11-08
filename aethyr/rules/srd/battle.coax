@@ -377,11 +377,15 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
   // or from a Critical Hit, calls for a Constitution save of DC 5 plus the damage; on a success it
   // drops to 1 Hit Point instead
   if hurt[0].fortitude && !hurt[0].dead && hurt[0].hp > 0 && amount >= hurt[0].hp + hurt[0].temp && kind != RS_RADIANT && !crit {
-    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_in(b, j, RS_CON);
+    saving := rs_saving_throw(b,j,RS_CON,5+amount);
+    total := saving.total;
+    // The save can spend creature-local rescue resources; retain that state
+    // before applying HP loss through the local copy below.
+    hurt[0] = b[0].c[j];
     l: [1] RsLine;
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " Undead Fortitude: Con save "); rs_add_int(l[..], total);
     rs_add_text(l[..], " vs DC "); rs_add_int(l[..], 5 + amount);
-    if total >= 5 + amount { dealt = hurt[0].hp + hurt[0].temp - 1; rs_add_text(l[..], ": it drops to 1 Hit Point"); } else { rs_add_text(l[..], ": failure"); }
+    if saving.passed { dealt = hurt[0].hp + hurt[0].temp - 1; rs_add_text(l[..], ": it drops to 1 Hit Point"); } else { rs_add_text(l[..], ": failure"); }
     rs_tell(b, RS_EV_SAVE, -1, by, j, total, 0, l[..]);
   }
   // a floor (RsCreature.floor): the damage stops there, its Temporary Hit Points first as ever
@@ -408,8 +412,9 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     return;
   }
   if r.conc_dc > 0 && b[0].c[j].conc >= 0 {
-    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_in(b, j, RS_CON) + rs_boon_roll(b, j);
-    if total < r.conc_dc {
+    saving := rs_saving_throw(b,j,RS_CON,r.conc_dc);
+    total := saving.total;
+    if !saving.passed {
       l: [1] RsLine;
       rs_add_text(l[..], " (Con save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], r.conc_dc); rs_add_text(l[..], ")");
       why := cast(string) l[0].buf[0..<l[0].n];
@@ -430,21 +435,20 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   if slot == 0 { return false; }
   if !rs_reaction_slot(b,j,slot,true) { return false; }
   dc := rs_dc(b, j);
-  sd := rs_d20(b[0].dice[..], rs_save_edge(b, by, RS_DEX));
-  st := sd.roll + rs_save_in(b, by, RS_DEX);
-  if rs_helpless(b[0].c[by]) { st = 0; }
+  saving := rs_saving_throw(b,by,RS_DEX,dc);
+  st := saving.total;
   n := 1 + slot;
   dmg := rs_sum(b[0].dice[..], n, 10);
-  if st >= dc { dmg = dmg / 2; }
+  if saving.passed { dmg = dmg / 2; }
   got := rs_resisted(b, by, dmg, RS_FIRE);
   l: [1] RsLine;
   rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Hellish Rebuke ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot) at ");
   rs_add_name(l[..], b, by); rs_add_text(l[..], ": DEX save "); rs_add_int(l[..], st); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
-  rs_add_text(l[..], ifx st >= dc then ": success" else ": failure");
+  rs_add_text(l[..], ifx saving.passed then ": success" else ": failure");
   rs_tell(b, RS_EV_CAST, SP_HELLISH_REBUKE, j, by, slot, 0, l[..]);
   dl: [1] RsLine;
   rs_add_text(dl[..], "  "); rs_add_name(dl[..], b, by); rs_add_text(dl[..], " takes "); rs_add_int(dl[..], got); rs_add_text(dl[..], " Fire (");
-  rs_add_int(dl[..], n); rs_add_text(dl[..], "d10"); if st >= dc { rs_add_text(dl[..], ", halved"); } rs_add_text(dl[..], ")");
+  rs_add_int(dl[..], n); rs_add_text(dl[..], "d10"); if saving.passed { rs_add_text(dl[..], ", halved"); } rs_add_text(dl[..], ")");
   rs_tell(b, RS_EV_DAMAGE, SP_HELLISH_REBUKE, j, by, got, RS_FIRE, dl[..]);
   rs_damage(b, j, by, got, RS_FIRE, false, SP_HELLISH_REBUKE);
   return true;
@@ -1169,11 +1173,8 @@ rs_guardians :: (b: [] RsBattle, j: int) {
     if g.conc != SP_SPIRIT_GUARDIANS || g.team == b[0].c[j].team || rs_feet_to(b, k, j) > 15 { continue; }
     b[0].c[j].guard_turn = b[0].turn_no;
     dc := rs_dc(b, k);
-    d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_WIS));
-    total := d.roll + rs_save_in(b, j, RS_WIS);
-    total += rs_inspired_roll(b, j, total, dc);
-    total += rs_own_luck(b, j, total, dc);
-    ok := total >= dc;
+    saving := rs_saving_throw(b,j,RS_WIS,dc);
+    total := saving.total; ok := saving.passed;
     amount := rs_sum(b[0].dice[..], 3 + rs_max(g.guard_slot - 3, 0), 8);
     if ok { amount = amount / 2; }
     amount = rs_resisted(b, j, amount, RS_RADIANT);
@@ -1272,11 +1273,8 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   for k: 0..<RS_EFFECTS {
     e := b[0].c[i].eff[k];
     if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead || !b[0].turn.new_round { continue; }
-    d := rs_d20(b[0].dice[..], 0);
-    total := d.roll + rs_save_in(b, i, e.save) + rs_boon_roll(b, i);
-    total += rs_inspired_roll(b, i, total, e.dc);
-    total += rs_own_luck(b, i, total, e.dc);
-    ok := total >= e.dc;
+    saving := rs_saving_throw(b,i,e.save,e.dc);
+    total := saving.total; ok := saving.passed;
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[e.save]); rs_add_text(l[..], " save against ");
     rs_add_text(l[..], ifx e.spell >= 0 then rs_spell(e.spell).name else "the poison"); rs_add_text(l[..], " "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], e.dc);
@@ -1563,13 +1561,13 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   // all damage cut away: the Monk may spend a Focus Point to send the force back at a melee attacker
   if cut > 0 && amount - cut <= 0 && b[0].c[j].focus > 0 && rs_up(b[0].c[j]) && rs_up(b[0].c[i]) {
     b[0].c[j].focus -= 1;
-    sd := rs_d20(b[0].dice[..], rs_save_edge(b, i, RS_DEX));
-    st := sd.roll + rs_save_in(b, i, RS_DEX);
     dc := rs_focus_dc(b[0].c[j]);
+    saving := rs_saving_throw(b,i,RS_DEX,dc);
+    st := saving.total;
     rl: [1] RsLine;
     rs_add_name(rl[..], b, j); rs_add_text(rl[..], " redirects the blow: "); rs_add_name(rl[..], b, i);
     rs_add_text(rl[..], " DEX save "); rs_add_int(rl[..], st); rs_add_text(rl[..], " vs DC "); rs_add_int(rl[..], dc);
-    if st >= dc { rs_add_text(rl[..], ": success"); rs_tell(b, RS_EV_SAVE, -1, j, i, st, 0, rl[..]); }
+    if saving.passed { rs_add_text(rl[..], ": success"); rs_tell(b, RS_EV_SAVE, -1, j, i, st, 0, rl[..]); }
     else {
       back := rs_sum(b[0].dice[..], 2, b[0].c[j].martial_die) + rs_mod(b[0].c[j].score[RS_DEX]);
       rs_add_text(rl[..], ": failure, "); rs_add_int(rl[..], back); rs_add_text(rl[..], " "); rs_add_text(rl[..], RS_DAMAGE[kind]);
@@ -1639,11 +1637,8 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   if rs_effect_free(b[0].c[j]) < 1 { return; }
   b[0].turn.stunned = true; b[0].c[i].focus -= 1;
   dc := rs_focus_dc(me);
-  d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_CON));
-  total := d.roll + rs_save_in(b, j, RS_CON);
-  total += rs_inspired_roll(b, j, total, dc);
-  total += rs_own_luck(b, j, total, dc);
-  ok := total >= dc;
+  saving := rs_saving_throw(b,j,RS_CON,dc);
+  total := saving.total; ok := saving.passed;
   until := rs_before_next_turn(b, i) + 0.01;
   l: [1] RsLine;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on a Stunning Strike: "); rs_add_name(l[..], b, j);
@@ -1743,10 +1738,8 @@ rs_open_hand :: (b: [] RsBattle, i: int, j: int, how: int) {
   }
   ab := ifx how == OH_PUSH then RS_STR else RS_DEX;
   dc := rs_focus_dc(b[0].c[i]);
-  fails := rs_helpless(b[0].c[j]);
-  d := rs_d20(b[0].dice[..], rs_save_edge(b, j, ab));
-  total := d.roll + rs_save_in(b, j, ab);
-  saved := !fails && total >= dc;
+  saving := rs_saving_throw(b,j,ab,dc);
+  total := saving.total; saved := saving.passed;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[ab]); rs_add_text(l[..], " save ");
   rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
   if saved { rs_add_text(l[..], ": success"); rs_tell(b, RS_EV_SAVE, -1, i, j, total, 0, l[..]); return; }
@@ -1877,9 +1870,8 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
     if !b[0].c[j].undead || rs_feet_to(b, i, j) > 30 { continue; }
     c := b[0].c[j];
     if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > 30 { continue; }
-    d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_WIS));
-    total := d.roll + rs_save_in(b, j, RS_WIS);
-    ok := total >= dc;
+    saving := rs_saving_throw(b,j,RS_WIS,dc);
+    total := saving.total; ok := saving.passed;
     l: [1] RsLine;
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " WIS save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
     rs_add_text(l[..], ifx ok then ": success" else ": turned, Frightened and Incapacitated");
@@ -2028,11 +2020,8 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
   for j: 0..<b[0].n {
     c := b[0].c[j];
     if c.team == b[0].c[i].team || !rs_up(c) || rs_feet(tx, ty, c.x, c.y) > 10 { continue; }
-    d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_CON));
-    total := d.roll + rs_save_in(b, j, RS_CON);
-    total += rs_inspired_roll(b, j, total, dc);
-    total += rs_own_luck(b, j, total, dc);
-    ok := total >= dc;
+    saving := rs_saving_throw(b,j,RS_CON,dc);
+    total := saving.total; ok := saving.passed;
     amount := rs_sum(b[0].dice[..], n6, 6);
     if ok { amount = amount / 2; }
     amount = rs_resisted(b, j, amount, RS_NECROTIC);

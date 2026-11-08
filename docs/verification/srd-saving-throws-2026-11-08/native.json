@@ -1,0 +1,191 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/saving-throw-checks.coax",
+      "source_sha256": "7bd9893c52a66b606168e7d2a9361482cf0a84ebc29e6a1e960f0e95ad7a0e9e",
+      "checks": [
+        {
+          "name": "Undead Fortitude uses boon and rescue dice without restoring spent resources from an old creature copy",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "concentration damage saves can be rescued by Inspiration and Own Luck after Bless",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Hellish Rebuke automatic failures roll only damage and preserve every save rescue resource",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "normal Hellish Rebuke includes Bless before rescue and halves the actual damage on a successful save",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Spirit Guardians and Lands Aid apply Bless to their saving throws",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "end turn repeat saves use Strength Advantage and Dexterity Disadvantage instead of a flat d20",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "end turn automatic save failures neither escape their record nor consume dice or rescue resources",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Stunning Strike and Open Hand use the same normal boon and rescue ordering",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Open Hand automatic Strength and Dexterity failures do not roll or spend a rescue die",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Turn Undead includes held saving throw bonuses before applying its conditions",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Deflect Attacks redirection lets the attacker use Bless and Inspiration on its Dexterity save",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "e3aa84bdd2d5426a6def1b0e40e6952c8819d938af011c2ad835eae34a837b25",
+            "binary_sha256": "79b713bdb590eb7cb1e3a4f4afd9fa7fd4f9d52b7b1a423f683ab50916dc9b4a"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "5f3e2d3df729f74aaafab36bb4bb286f430e8ef487a403e641814c022e44f3c1",
+            "binary_sha256": "fbddd48ce62306dc849afd47bf15bcbeda77629d9fcd236a79cbb98ca2a6011a"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 11
+  },
+  "outcome": "passed"
+}

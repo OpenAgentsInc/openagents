@@ -248,6 +248,14 @@ condition property and hotbar integration have scoped receipts. Prone remains
 owned by the independently landed movement policy. General checks, other
 conditions, lifecycle/concentration and remaining save producers keep #13039 open.
 
+The [saving-throw integration](../verification/srd-saving-throws-2026-11-08/README.md)
+moves all existing ordinary battle save producers onto that same resolver:
+Fortitude, concentration damage, reaction/feature and repeat saves now receive
+its modifiers, resource spending and automatic failures. Fortitude's HP update
+preserves rescue resources consumed by its save. Eleven new evaluator/native
+scenarios cover the migrated paths. Death saves, condition lifecycle and wider
+combat acceptance remain open; #13039 is not complete.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

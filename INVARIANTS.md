@@ -6593,6 +6593,13 @@ Source, core/native/hotbar evidence and remaining #13039 requirements:
 `docs/verification/srd-condition-rolls-2026-11-08/README.md`. This does not qualify
 every legacy save producer, condition lifecycle, immunity or concentration rule.
 
+The existing ordinary saving-throw producers in `battle.coax` now all use that
+resolver, including damage concentration, Fortitude, reactions, repeat saves
+and class-feature saves. Fortitude refreshes its creature copy after the save
+so its HP update cannot restore spent rescue resources. Death saves retain
+their separate natural-face path. Integration evidence and remaining scope:
+`docs/verification/srd-saving-throws-2026-11-08/README.md`.
+
 ## Combat timing is a declared profile selected before the clock starts
 
 `RsBattle.timing` defaults to `RS_STRICT_TIMING`: six-second turns, exact feet

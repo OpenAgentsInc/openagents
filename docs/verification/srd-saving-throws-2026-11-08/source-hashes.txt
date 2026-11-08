@@ -1,0 +1,4 @@
+590d8f8baa32558ae14fa6903acae9c47ede9e73202fd00b03c73efcbc44c749  aethyr/rules/srd/battle.coax
+b71f216c85dcf38db5782c75757f2bbecde057a2ff48c4fe41cbe199df7d4598  aethyr/rules/srd/condition-rolls.coax
+7bd9893c52a66b606168e7d2a9361482cf0a84ebc29e6a1e960f0e95ad7a0e9e  aethyr/rules/srd/saving-throw-checks.coax
+3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9  coax/bin/coax

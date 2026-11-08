@@ -1,0 +1,13 @@
+passed               aethyr/rules/srd/saving-throw-checks.coax
+  passed             Undead Fortitude uses boon and rescue dice without restoring spent resources from an old creature copy
+  passed             concentration damage saves can be rescued by Inspiration and Own Luck after Bless
+  passed             Hellish Rebuke automatic failures roll only damage and preserve every save rescue resource
+  passed             normal Hellish Rebuke includes Bless before rescue and halves the actual damage on a successful save
+  passed             Spirit Guardians and Lands Aid apply Bless to their saving throws
+  passed             end turn repeat saves use Strength Advantage and Dexterity Disadvantage instead of a flat d20
+  passed             end turn automatic save failures neither escape their record nor consume dice or rescue resources
+  passed             Stunning Strike and Open Hand use the same normal boon and rescue ordering
+  passed             Open Hand automatic Strength and Dexterity failures do not roll or spend a rescue die
+  passed             Turn Undead includes held saving throw bonuses before applying its conditions
+  passed             Deflect Attacks redirection lets the attacker use Bless and Inspiration on its Dexterity save
+native checks: passed {"passed": 11}
