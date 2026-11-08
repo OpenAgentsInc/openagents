@@ -182,7 +182,7 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   }
   // your class over the bar
   b0 := e2k_box(k, 0, w, h, kk);
-  health:[80] u8; hn:=e2k_health_text(s,health[..]);
+  health:[E2K_HEALTH] u8; hn:=e2k_health_text(s,health[..]);
   if hn>0 { n=cc.text(out,n,cast(string)health[0..<hn],(w-f32(hn)*8*kk*0.78)/2,b0[1]-48*kk,8*kk,cc.ink(kk,0.95,0.9,0.75)); }
   reqs: [4] int; rn := e2k_rest_choices(s, reqs[..]);
   for j: 0..<rn {
@@ -244,8 +244,25 @@ e2k_health_text :: (s:[] E2,out:[] u8)->int {
     if code==WIRE_REST_EXERT { n=e2k_put(out,n," · ON THE MOVE"); }
     if code==WIRE_REST_BROKEN { n=e2k_put(out,n," · REST BROKEN"); }
   }
+  // the conditions and spell effects the room's rules hold on you (its row's cond bits): Unconscious
+  // is said above, at 0 HP or asleep
+  asleep:=row.hp>0 && net[0].rest_known && net[0].rest_code==WIRE_REST_SLEEP;
+  for i:0..<RS_CONDITIONS {
+    if (row.cond&(1<<i))==0 || ((1<<i)==RS_UNCONSCIOUS && (row.hp==0 || asleep)) { continue; }
+    n=e2k_put(out,n," · "); n=e2k_put(out,n,E2K_CONDITION[i]);
+  }
+  for i:0..<E2K_EFFECTS { if (row.cond&E2K_EFFECT_BIT[i])!=0 { n=e2k_put(out,n," · "); n=e2k_put(out,n,E2K_EFFECT[i]); } }
   return n;
 }
+E2K_HEALTH :: 320;   // bytes: every condition and effect at once fits
+// RS_CONDITION's names in its bit order (aethyr/rules/srd/engine.coax), as the bar says them
+E2K_CONDITION :: [15] string.["BLINDED", "CHARMED", "DEAFENED", "EXHAUSTED", "FRIGHTENED", "GRAPPLED", "INCAPACITATED", "INVISIBLE",
+                              "PARALYZED", "PETRIFIED", "POISONED", "PRONE", "RESTRAINED", "STUNNED", "UNCONSCIOUS"];
+// the spell effects a row carries past the conditions (everglade-wire.coax WC_*)
+E2K_EFFECTS :: 8;
+E2K_EFFECT_BIT :: [8] int.[WC_HALTED, WC_SLOWED, WC_BOUND, WC_BANED, WC_ENFEEBLED, WC_HEXED, WC_BLESSED, WC_FAITH];
+E2K_EFFECT :: [8] string.["HALTED", "SLOWED", "EARTHBOUND", "BANED", "ENFEEBLED", "HEXED", "BLESSED", "SHIELD OF FAITH"];
+#test "Everglade II's health line names a condition bit in the rules' order, once each" { #assert E2K_CONDITION.count == RS_CONDITIONS && (1 << 11) == RS_PRONE && (1 << 14) == RS_UNCONSCIOUS && (1 << 3) == RS_EXHAUSTION; }
 
 // ---- rest (#13046): the controls the room's rest allows now, over the bar; the room decides each
 E2K_REST_W :: 78; E2K_REST_H :: 20; E2K_REST_GAP :: 6; E2K_REST_UP :: 66;
