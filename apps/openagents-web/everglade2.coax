@@ -14,19 +14,20 @@
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the glade's admitted tile and canopy bake (#12995)
 #load "../../aethyr/quality.coax";
+#load "../../aethyr/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "everglade2-create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "../../aethyr/character/material.coax" as cmat;   // the characters' material table (#13012)
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 16384;     // strokes: the frame rate in the bottom right corner
-E2_UNIFORM_FLOATS :: 104;     // 26 vec4s (gpu/everglade2.bindings)
+E2_UNIFORM_FLOATS :: 208;     // 52 vec4s (gpu/everglade2.bindings)
+E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (aethyr/render/cascades.coax cascade_rows)
 E2_RECORDS :: 32;             // the objects store: the glade, its grass, your character's parts
 E2_DRAWS :: 384;              // draws a pass at most (the woods' runs and the grass field's blocks)
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
 E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
 E2_BUCKETS :: E2_KITS * E2_LODS;
 E2_CAM_TRUNKS :: 64;          // trunks the follow camera keeps in front of
-E2_SHADOW_REACH :: 40.0;      // metres from the shadow map's centre a piece still casts
 E2_NEAR_BODIES :: 48;         // trunks and rocks the controller walks round
 E2_LOOK_DRAG :: 0.0055; E2_WHEEL_ZOOM :: 0.006;
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
@@ -62,7 +63,7 @@ E2 :: struct {
   fps_counter:[1]cc.FpsCounter;          // the frame rate shown, and the frames since it was last worked out
   clock: f32; width: f32; height: f32; k: f32 = 1;
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
-  shade: [3] f32;
+  shade: [3] f32; casc: [1] CascadeState;
   cz: [1] E2Create;                      // Character Create's studio and its run (everglade2-create.coax)
   outbox: [64] u8; out_n: int; action: int;   // the host action this frame (16 keep the record, 19 the address)
   reseat: bool;                          // the controller to take you as the studio drew you (everglade2-face.c)
@@ -569,9 +570,8 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   lens := e2c_lens(s, fy * h / 2, h * 0.5);
   s[0].focal = lens[0];
   s[0].eye = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z]; s[0].fwd = f; s[0].right = r; s[0].up = up;
-  // the key light's map follows you, in 2 m steps so it holds still under a slow walk
-  cx := floor(s[0].you_x / 2 + 0.5) * 2; cz := floor(s[0].you_z / 2 + 0.5) * 2;
-  s[0].shade = [3]f32.[cx, e2_height(cx, cz) + 2, cz];
+  // the shadow casters' centre: the eye (e2_shadows draws the tiles round it)
+  s[0].shade = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z];
   for i: 0..<u.count { u[i] = 0; }
   u[0] = w; u[1] = h; u[2] = s[0].clock; u[3] = 1; u[4] = s[0].k; u[10] = 2; u[11] = 1;
   for q: 0..<3 { u[16 + q] = s[0].eye[q]; u[20 + q] = f[q]; u[24 + q] = r[q]; u[28 + q] = up[q]; u[44 + q] = s[0].shade[q]; }
@@ -581,9 +581,89 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2c_uniforms(s, u);
   e2c_arrive_uniforms(s, u);
   e2_material_uniforms(s, u);
+  e2_shadows(s, u);
   return e2_fps(s, out, e2c_hud(s, out), dt);
 }
 
+// ---- the key light's shadow tiles (aethyr/render/cascades.coax, #13016, as Everglade's)
+// The host makes one depth atlas of up to four tiles (two on a phone), each a ring further out round
+// the eye. A tile's middle snaps to a whole number of its texels in the light's own space and it is
+// drawn again only once the eye has walked past that step, so every shadow stays fixed to the land:
+// a tile never slides under it. The nearest tile is drawn every frame (your character moves in it);
+// at most one other tile a frame. Its casters are the pieces as the view draws them, at the same
+// levels (e2_pieces casting).
+E2_SUN :: [3]f32.[-0.40, 0.58, -0.62];   // toward the sun (gpu/character-glade-light.coax cg_sun_dir)
+e2_shadows :: (s: [] E2, u: [] f32) {
+  c := s[0].casc[..];
+  for i: 0..<CASCADE_BLOCK { u[E2_U_CASCADE + i] = 0; }
+  if !c[0].on { return; }
+  l := E2_SUN; n := sqrt(l[0] * l[0] + l[1] * l[1] + l[2] * l[2]);
+  _ := cascade_frame(c, s[0].eye[0], s[0].eye[2], l[0] / n, l[1] / n, l[2] / n, true);
+  // the filter: 2.5 texels of a 2048 map over 68 m, the same metres of penumbra in every tile
+  cascade_rows(c[0], u[E2_U_CASCADE..<E2_U_CASCADE + CASCADE_BLOCK], 2.5, 68.0f32 / 2048, 34);
+}
+// How far round the eye a tile's casters reach: its own reach across its diagonal and its leash,
+// and the tallest tree's shadow beside it.
+e2_cast_reach :: (s: [] E2) -> f32 {
+  c := s[0].casc[0];
+  if !c.on || c.draw < 0 { return 0; }
+  return c.tier.reach[c.draw] * 1.42 + cascade_leash(c.tier, c.draw) + 20;
+}
+// Whether a piece standing at p, up to h tall, can throw its shadow into the tile drawn this frame:
+// its span up the light's view (base to top) crosses the tile's square, with room for its crown.
+e2_casts_into :: (s: [] E2, x: f32, y: f32, z: f32, h: f32) -> bool {
+  c := s[0].casc[0];
+  if !c.on || c.draw < 0 { return false; }
+  q := c.slot[c.draw]; a := cascade_axes(q.lx, q.ly, q.lz); r := c.tier.reach[c.draw] + h * 0.35 + 1;
+  across := x * a.axx + z * a.axz - q.cx;
+  if across < -r || across > r { return false; }
+  up0 := x * a.ayx + y * a.ayy + z * a.ayz - q.cy; up1 := up0 + a.ayy * h;
+  lo := ifx up0 < up1 then up0 else up1; hi := ifx up0 < up1 then up1 else up0;
+  return hi >= -r && lo <= r;
+}
+// The host's side (the face's coaxial_shadow_*_v1, coax/web/host.js), as Everglade's
+// (everglade.coax everglade_shadow_field): the atlas in texels (`which` 0 across, 1 down; a phone's
+// when `coarse`); field 0 the tile drawn this frame (-1 none), 1 to 4 its rect in texels, 5 the
+// host's character pass (none here: your character is in the shadow list), 6 the tiles, 7 those
+// cleared first, 16 + 4 k to 19 + 4 k tile k's rect; events 0 the atlas made (arg 1 a phone's),
+// 1 geometry installed, 2 this frame's tile not drawn.
+e2_shadow_atlas :: (s: [] E2, coarse: int, which: int) -> int #export_c #effects(all) { return cascade_atlas(coarse != 0, which); }
+e2_shadow_field :: (s: [] E2, field: int) -> int #export_c #effects(all) {
+  c := s[0].casc[0];
+  if !c.on { return -1; }
+  if field == 6 { return c.tier.count; }
+  if field >= 16 && field < 16 + 4 * c.tier.count { j := (field - 16) % 4; return cascade_rect_px(c.tier, (field - 16) / 4, ifx j <= 1 then j else 2); }
+  d := c.draw;
+  if field == 0 { return d; }
+  if d < 0 { return -1; }
+  if field >= 1 && field <= 4 { return cascade_rect_px(c.tier, d, ifx field <= 2 then field - 1 else 2); }
+  if field == 5 { return 0; }
+  if field == 7 { return 1 << cast(u64) d; }
+  return -1;
+}
+e2_shadow_event :: (s: [] E2, kind: int, arg: int) #export_c #effects(all) {
+  c := s[0].casc[..];
+  if kind == 0 { cascade_open(c, arg != 0); } else if kind == 1 { cascade_stale(c); } else if kind == 2 { cascade_dropped(c); }
+}
+#test "Everglade II's shadow tiles: snapped to the light's texels, redrawn only past a step, the near one every frame" #steps 400000000 {
+  s: [1] E2; u: [E2_UNIFORM_FLOATS] f32;
+  #assert e2_shadow_field(s[..], 0) == -1;
+  e2_shadow_event(s[..], 0, 0);
+  #assert e2_shadow_field(s[..], 6) == 4 && e2_shadow_atlas(s[..], 0, 0) == 2048;
+  // standing still: every tile is drawn once, then only the near one
+  s[0].eye = [3]f32.[3, 2, -150];
+  drawn: [4] int;
+  for f: 0..<40 { e2_shadows(s[..], u[..]); d := e2_shadow_field(s[..], 0); if d >= 0 { drawn[d] += 1; } }
+  #assert drawn[0] >= 30 && drawn[1] == 1 && drawn[2] == 1 && drawn[3] == 1;
+  // a tile's middle is a whole number of its texels along the light's axes
+  for k: 0..<4 { q := s[0].casc[0].slot[k]; e := cascade_texel(s[0].casc[0].tier, k);
+    #assert abs(q.cx / e - floor(q.cx / e + 0.5)) < 0.01 && abs(q.cy / e - floor(q.cy / e + 0.5)) < 0.01; }
+  // the far tile holds still while the eye walks less than its step
+  far := s[0].casc[0].slot[3];
+  for f: 0..<60 { s[0].eye[2] -= 0.05; e2_shadows(s[..], u[..]); }
+  #assert s[0].casc[0].slot[3].cx == far.cx && s[0].casc[0].slot[3].cy == far.cy;
+  #assert u[E2_U_CASCADE] == 4;
+}
 // ---- the scene: the glade's records and draws, your character, the kit pieces in view
 e2_rec_clear :: (s: [] E2, n: int) { for k: 0..<24 { s[0].records[n * 24 + k] = 0; } }
 e2_draw :: (d: [] u32, n: int, first: int, count: int, base: int, instances: int) -> int {
@@ -632,12 +712,19 @@ e2_field :: (s: [] E2, d: [] u32, n0: int) -> int {
   return n;
 }
 // Each visible piece into its (kit, level) bucket's run of the instance store; one draw a bucket.
-// `cast` lists the pieces round the shadow map's centre instead, at level 1.
+// `casting` lists the pieces for the shadow tile drawn this frame instead (e2_cast_reach).
+// Every piece keeps its one place, turn and size at every distance: distance only picks its level
+// and fades it. A tree is whole near you, two of its crown's cards in three past E2_LOD1 and one in
+// three past E2_LOD2 (the same cards in the same places, verse/tools/assets/everglade2_pack.coax),
+// each pair of levels cross-fading in a screen dither over E2_LOD_BAND, and every piece dithers out
+// past E2_FAR_START of its kit's reach, each at its own rank (e2_piece_shown).
 e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
   n := n0;
   if !s[0].plant_done || !s[0].kits { return n; }
   counts: [E2_BUCKETS] int; start: [E2_BUCKETS] int;
-  ex := ifx casting then s[0].shade[0] else s[0].eye[0]; ez := ifx casting then s[0].shade[2] else s[0].eye[2];
+  ex := s[0].eye[0]; ez := s[0].eye[2];
+  cast_far := ifx casting then e2_cast_reach(s) else 0.0f32;
+  if casting && cast_far <= 0 { return n; }
   for pass: 0..<2 {
     if pass == 1 {
       at := s[0].inst_n;
@@ -647,7 +734,7 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
     for c: 0..<E2_CELLS_X * E2_CELLS_Z {
       i := c % E2_CELLS_X; j := c / E2_CELLS_X;
       mx := e2_cell_x(i) + f32(E2_CELL) * 0.5; mz := e2_cell_z(j) - f32(E2_CELL) * 0.5;
-      far := ifx casting then f32(E2_SHADOW_REACH) else 300.0f32;
+      far := ifx casting then (ifx cast_far < E2_KIT_FAR[0] then cast_far else E2_KIT_FAR[0]) else E2_KIT_FAR[0];
       dx := mx - ex; dz := mz - ez;
       if dx * dx + dz * dz > (far + 12) * (far + 12) { continue; }
       if !casting && !e2_in_view(s, mx, e2_height(mx, mz) + 6, mz, 20) { continue; }
@@ -655,29 +742,137 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
         kit := cast(int) s[0].kinds[q]; o := q * E2_ITEM_FLOATS;
         px := s[0].items[o]; py := s[0].items[o + 1]; pz := s[0].items[o + 2];
         qx := px - ex; qz := pz - ez; dd := sqrt(qx * qx + qz * qz);
-        lod := 0;
+        looks: E2Looks;
         if casting {
-          if kit >= 25 || dd > f32(E2_SHADOW_REACH) { continue; }
-          lod = ifx kit < E2_TREES then 1 else 0;
+          // what the view draws, at its levels, but all round the eye (a shadow falls from behind
+          // you too); a piece more than half faded out casts nothing. The near tile, drawn every
+          // frame, takes every tree at level 1 (the same cards, two in three) so it never changes
+          // level as you walk and stays cheap.
+          if kit >= 25 || dd > cast_far || dd >= E2_KIT_FAR[kit] { continue; }
+          if !e2_casts_into(s, px, py, pz, ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 3.0f32) { continue; }
+          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz));
+          if looks.n == 1 && looks.code[0] >= 32 { continue; }
+          if s[0].casc[0].draw == 0 && kit < E2_TREES { looks.n = 1; looks.lod[0] = 1; looks.code[0] = 0; }
+          // the far tiles (past 60 m) take the trees at their sparsest level, as the view draws
+          // them out there, and the big rocks; a bush's shadow that far is under a texel
+          if s[0].casc[0].draw >= 2 { if kit >= 15 && kit < 23 { continue; } if kit < E2_TREES { looks.n = 1; looks.lod[0] = 2; looks.code[0] = 0; } }
         } else {
-          if dd > E2_KIT_FAR[kit] { continue; }
+          if dd >= E2_KIT_FAR[kit] { continue; }
           reach := ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 2.5f32;
           if !e2_in_view(s, px, py + reach * 0.5, pz, reach) { continue; }
-          if kit < E2_TREES { lod = ifx dd < f32(E2_LOD1) then 0 else ifx dd < f32(E2_LOD2) then 1 else 2; }
-          // far off, one tree in three stands for its neighbours, a third larger; further, one in six
-          if lod == 2 && (q % 3 != 0 || (dd > f32(E2_FAR_THIN) && q % 6 != 0)) { continue; }
+          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz));
         }
-        b := kit * E2_LODS + lod;
-        if s[0].kit_count[b] <= 0 { continue; }
-        if pass == 1 { at := (start[b] + counts[b]) * E2_ITEM_FLOATS; for k: 0..<E2_ITEM_FLOATS { s[0].inst[at + k] = s[0].items[o + k]; }
-          if lod == 2 { grow := ifx dd > f32(E2_FAR_THIN) then 1.5f32 else 1.3f32; s[0].inst[at + 4] *= grow; s[0].inst[at + 5] *= grow; } }
-        counts[b] += 1;
+        for e: 0..<looks.n {
+          b := kit * E2_LODS + looks.lod[e];
+          if s[0].kit_count[b] <= 0 { continue; }
+          if pass == 1 { at := (start[b] + counts[b]) * E2_ITEM_FLOATS; for k: 0..<E2_ITEM_FLOATS { s[0].inst[at + k] = s[0].items[o + k]; }
+            s[0].inst[at + 7] += 4 * f32(looks.code[e]); }
+          counts[b] += 1;
+        }
       }
     }
   }
   for b: 0..<E2_BUCKETS { if counts[b] > 0 { n = e2_draw(d, n, s[0].kit_first[b], s[0].kit_count[b], E2_KIT_BASE + start[b], counts[b]); } }
   s[0].inst_n = start[E2_BUCKETS - 1] + counts[E2_BUCKETS - 1];
   return n;
+}
+// The one or two ways a piece is drawn at dd metres: its levels and their fade codes (the shader's
+// e2_inst_fade: 0 whole, 1 to 63 that many 64ths of its pixels dropped, 65 to 127 only (code - 64)
+// 64ths kept, the other half of a cross-fade).
+E2Looks :: struct { n: int; lod: [2] int; code: [2] int; }
+E2_LOD_BAND :: 8.0;      // metres a tree's two levels cross-fade over, centred on E2_LOD1 and E2_LOD2
+E2_FAR_START :: 0.55;    // of a kit's reach: past this its pieces thin out, each at its own rank
+E2_FAR_BAND :: 0.10;     // of the share: how long one piece takes to dither out
+e2_fade_code :: (drop: f32) -> int { k := cast(int) floor(drop * 64 + 0.5); return ifx k < 0 then 0 else ifx k > 63 then 63 else k; }
+// A piece's rank (0 to 1) from where it stands alone: the order the pieces of a kit thin out in.
+e2_piece_rank :: (x: f32, z: f32) -> f32 { return e2_unit(e2_field_hash(cast(u32)(cast(int) floor(x * 16) + 65536), cast(u32)(cast(int) floor(z * 16) + 65536), 9)); }
+// How much of a piece shows at dd (its rank `rank`): all near; past E2_FAR_START of its kit's
+// reach the share left falls smoothly to none at the reach, and each piece dithers out over
+// E2_FAR_BAND as the share passes its rank, so the edge is ragged and nothing pops or shrinks.
+e2_piece_shown :: (kit: int, dd: f32, rank: f32) -> f32 {
+  far := E2_KIT_FAR[kit]; t := (dd - far * f32(E2_FAR_START)) / (far * (1 - f32(E2_FAR_START)));
+  t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
+  share := 1 - t * t * (3 - 2 * t);
+  v := (share - rank * (1 - f32(E2_FAR_BAND))) / f32(E2_FAR_BAND);
+  return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
+}
+e2_piece_looks :: (kit: int, dd: f32, rank: f32) -> E2Looks {
+  l: E2Looks;
+  l.n = 1; l.lod[0] = 0; l.code[0] = e2_fade_code(1 - e2_piece_shown(kit, dd, rank));
+  if kit >= E2_TREES { return l; }
+  // the level this far, and how far into the cross-fade to the next one
+  lod := 0; at := f32(E2_LOD1);
+  if dd >= f32(E2_LOD1) + f32(E2_LOD_BAND) * 0.5 { lod = 1; at = f32(E2_LOD2); }
+  if dd >= f32(E2_LOD2) + f32(E2_LOD_BAND) * 0.5 { lod = 2; }
+  l.lod[0] = lod;
+  if lod == 2 { return l; }
+  k := e2_fade_code((dd - (at - f32(E2_LOD_BAND) * 0.5)) / f32(E2_LOD_BAND));
+  if k == 0 { return l; }
+  if k >= 63 { l.lod[0] = lod + 1; return l; }
+  // the nearer level drops k 64ths of its pixels and the farther one keeps exactly those
+  l.n = 2; l.code[0] = k; l.lod[1] = lod + 1; l.code[1] = 64 + k;
+  return l;
+}
+#test "a piece keeps its place and size at every distance and only fades" {
+  // a tree: whole near, cross-faded round E2_LOD1 and E2_LOD2 (the two halves cover each pixel
+  // once), then its sparsest level out to its reach
+  last := 0;
+  for i: 0..<3000 { dd := f32(i) * 0.1; l := e2_piece_looks(3, dd, 0.5);
+    #assert l.n >= 1 && l.n <= 2;
+    if l.n == 2 { #assert l.lod[1] == l.lod[0] + 1 && l.code[1] == 64 + l.code[0] && l.code[0] > 0 && l.code[0] < 63; }
+    if dd < f32(E2_LOD1) - f32(E2_LOD_BAND) { #assert l.n == 1 && l.lod[0] == 0 && l.code[0] == 0; }
+    if dd > f32(E2_LOD1) + f32(E2_LOD_BAND) && dd < f32(E2_LOD2) - f32(E2_LOD_BAND) { #assert l.n == 1 && l.lod[0] == 1 && l.code[0] == 0; }
+    if dd > f32(E2_LOD2) + f32(E2_LOD_BAND) { #assert l.n == 1 && l.lod[0] == 2; }
+    // the far fade only grows with distance, by at most a couple of 64ths a step
+    if dd > f32(E2_LOD2) + f32(E2_LOD_BAND) { #assert l.code[0] >= last && l.code[0] - last <= 2; last = l.code[0]; }
+  }
+  // through each band the farther level's share rises smoothly from none to all
+  for band: 0..<2 { c := ifx band == 0 then f32(E2_LOD1) else f32(E2_LOD2); prev := 0;
+    for i: 0..<201 { dd := c - f32(E2_LOD_BAND) * 0.5 - 0.5 + f32(i) * 0.045; l := e2_piece_looks(0, dd, 0.5);
+      k := ifx l.n == 2 then l.code[0] else ifx l.lod[0] == band + 1 then 64 else 0;
+      #assert k >= prev && k - prev <= 3; prev = k; } #assert prev == 64; }
+  // small pieces thin out over the far part of their reach, each at its own rank: near all show,
+  // at the reach none; a piece's share only falls with distance and never jumps
+  for kit: 15..<E2_KITS { far := E2_KIT_FAR[kit];
+    for r: 0..<20 { rank := f32(r) / 20 + 0.02; was := 1.0f32;
+      #assert e2_piece_shown(kit, far * 0.5, rank) == 1 && e2_piece_shown(kit, far, rank) == 0;
+      for i: 0..<400 { v := e2_piece_shown(kit, far * f32(i) / 400, rank); #assert v <= was && was - v < 0.2; was = v; } } }
+  // ranks spread, so the edge is ragged: halfway through the thinning about half the pieces show
+  shown := 0; for i: 0..<1000 { if e2_piece_shown(18, E2_KIT_FAR[18] * 0.78, e2_piece_rank(f32(i) * 1.37, f32(i) * 0.71)) > 0.5 { shown += 1; } }
+  #assert shown > 300 && shown < 700;
+}
+// The draws of the woods with the eye at path metre m (3 m behind and 2 up, looking down the path).
+e2_test_view :: (s: [] E2, d: [] u32, m: f32) -> int {
+  z := -m; x := e2_road_x(z); s[0].eye = [3]f32.[x, e2_height(x, z + 3) + 2, z + 3];
+  s[0].fwd = [3]f32.[0, 0, -1]; s[0].right = [3]f32.[1, 0, 0]; s[0].up = [3]f32.[0, 1, 0];
+  s[0].width = 1280; s[0].height = 720; s[0].focal = 900; s[0].inst_n = 0;
+  return e2_pieces(s, d, 0, false);
+}
+#test "the woods' pieces never move, grow or swap as you walk, and come back the same" #steps 60000000000 {
+  s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true; s[0].kits = true;
+  for b: 0..<E2_BUCKETS { s[0].kit_first[b] = b; s[0].kit_count[b] = 1; }
+  d: [E2_DRAWS * 4] u32;
+  // A, then a metre on, then 30 m on and back to A
+  na := e2_test_view(s[..], d[..], 150); an := s[0].inst_n; a: [E2_VISIBLE * E2_ITEM_FLOATS] f32;
+  for k: 0..<an * E2_ITEM_FLOATS { a[k] = s[0].inst[k]; }
+  walk := [7]f32.[151, 160, 170, 180, 170, 160, 152];
+  for step: 0..<7 {
+    m := walk[step];
+    n := e2_test_view(s[..], d[..], m);
+    // every drawn piece is a planted one exactly (place, turn, size, tint), only its fade added
+    for i: 0..<s[0].inst_n { if i % 5 != step % 5 { continue; } o := i * E2_ITEM_FLOATS; x := s[0].inst[o]; z := s[0].inst[o + 2];
+      ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
+      found := false;
+      for dc: 0..<9 { ii := ci + dc % 3 - 1; jj := cj + dc / 3 - 1; if ii < 0 || jj < 0 || ii >= E2_CELLS_X || jj >= E2_CELLS_Z { continue; } c := jj * E2_CELLS_X + ii;
+      for q: s[0].first[c]..<s[0].first[c + 1] { p := q * E2_ITEM_FLOATS; same := true;
+        for k: 0..<7 { if s[0].items[p + k] != s[0].inst[o + k] { same = false; } }
+        w := s[0].inst[o + 7] - s[0].items[p + 7]; kk := floor(w / 4 + 0.5); if same && kk >= 0 && kk < 128 && abs(w - 4 * kk) < 0.001 { found = true; } } }
+      #assert found;
+    }
+  }
+  nb := e2_test_view(s[..], d[..], 150);
+  #assert nb == na && s[0].inst_n == an && an > 1000;
+  for k: 0..<an * E2_ITEM_FLOATS { #assert s[0].inst[k] == a[k]; }
 }
 e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   c := s[0].creator[0]; b := s[0].bodies[..];
@@ -687,8 +882,9 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   // record 0 the glade, 1 to 3 its grass (their base instance (record + 1) << 16: cg_instanced_vs)
   e2_rec_clear(s, 0); s[0].records[7] = f32(c.glade_word); s[0].records[15] = 16;
   n = e2_draw(s[0].draws[..], n, c.glade_first, c.glade_count, 0, 1);
-  near_glade := s[0].shade[2] > -75;
-  if near_glade { sn = e2_draw(s[0].shadow[..], sn, c.glade_first, c.glade_count, 0, 1); }
+  tile := s[0].casc[0].on && s[0].casc[0].draw >= 0;
+  near_glade := s[0].eye[2] - e2_cast_reach(s) < 75;
+  if tile && near_glade { sn = e2_draw(s[0].shadow[..], sn, c.glade_first, c.glade_count, 0, 1); }
   rec := 1;
   // the glade's own grass (Character Create's, about 27 000 tufts of up to 1 482 vertices: 35 million
   // vertices a frame) is not drawn: the grass field (verse/everglade2/field.coax) covers the glade too.
@@ -756,6 +952,13 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 9 { return s[0].eg[0].baked; }
   if field == 10 { return cast(int)(e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0) * 1000); }
   if field == 11 { return s[0].eg[0].crown_n; }
+  // 12 the vertices the scene's draws run this frame (thousands), 13 the shadow tiles'
+  if field == 12 || field == 13 { n := ifx field == 12 then s[0].draw_n else s[0].shadow_n; v := 0;
+    for i: 0..<n { k := i * 4; v += cast(int)(ifx field == 12 then s[0].draws[k + 1] * s[0].draws[k + 3] else s[0].shadow[k + 1] * s[0].shadow[k + 3]) / 1000; } return v; }
+  // 14 the grass field's share of 12 (thousands), 15 the trees' (kits 0 to 14)
+  if field == 14 || field == 15 { v := 0; for i: 0..<s[0].draw_n { k := i * 4; grass := s[0].draws[k + 2] >= cast(u32) E2_FIELD_BASE;
+      tree := !grass && s[0].draws[k + 2] >= cast(u32) E2_KIT_BASE && s[0].draws[k] < cast(u32) s[0].kit_first[E2_TREES * E2_LODS];
+      if (field == 14 && grass) || (field == 15 && tree) { v += cast(int)(s[0].draws[k + 1] * s[0].draws[k + 3]) / 1000; } } return v; }
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
   return -1;
 }

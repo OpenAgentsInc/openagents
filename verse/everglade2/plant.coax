@@ -5,8 +5,9 @@
 // draws the ones in view. The glade's own composition stays in the glade's pack mesh.
 #load "forest.coax";
 
-// The kit: the pack's templates, in this order. Trees have three levels of detail (0 whole, 1 the
-// crown and a plain trunk, 2 a third of the crown's cards, larger); the rest one.
+// The kit: the pack's templates, in this order. Trees have three levels of detail (0 whole, 1 two of the
+// crown's cards in three and a plain trunk, 2 one card in three: the same cards in the same places,
+// so a tree keeps its shape as it thins); the rest one.
 E2_KITS :: 36;
 E2_KIT_NAME :: [36] string.["CommonTree_1","CommonTree_2","CommonTree_3","CommonTree_4","CommonTree_5",
  "Birch_1","Birch_2","Birch_3","Birch_4","Birch_5","Pine_1","Pine_2","Pine_3","Pine_4","Pine_5",
@@ -17,10 +18,11 @@ E2_KIT_NAME :: [36] string.["CommonTree_1","CommonTree_2","CommonTree_3","Common
 E2_TREES :: 15;          // kits 0 to 14 are trees
 E2_GRASS :: 33;          // kits 33 to 35 are the glade's grass, as tufts
 E2_LODS :: 3;
-// How far each kit is drawn (metres), and a tree's levels of detail start.
-E2_KIT_FAR :: [36] f32.[300,300,300,300,300,300,300,300,300,300,300,300,300,300,300,
+// How far each kit reaches (metres: past E2_FAR_START of it the kit thins out by rank, everglade2.coax
+// e2_piece_shown), and where a tree's levels of detail start.
+E2_KIT_FAR :: [36] f32.[165,165,165,165,165,165,165,165,165,165,165,165,165,165,165,
  95,95,95,80,80, 110,110,110,240,240, 45,45,45,26,45,55,40,26, 42,42,42];
-E2_LOD1 :: 36.0; E2_LOD2 :: 70.0; E2_FAR_THIN :: 160.0;
+E2_LOD1 :: 32.0; E2_LOD2 :: 52.0;   // past these a tree draws its level 1, then 2 (cross-faded: everglade2.coax e2_piece_looks)
 E2_CELL :: 16.0;         // metres a planting cell
 E2_CELLS_X :: 27; E2_CELLS_Z :: 46;
 E2_CELL_X0 :: -200.0; E2_CELL_Z0 :: 80.0;   // the first cell's west and north... south edge: cells run to -z

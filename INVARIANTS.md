@@ -6444,3 +6444,23 @@ Actor Lab qualifies the procedural walking profile; it does not migrate
 Everglade's private logic, add seats/attachments, grant combat/dialogue authority
 or define a complete actor save archive. See `aethyr/actors/README.md` and
 `docs/verification/actors-12992/README.md` for the measured scope and residuals.
+
+## Everglade II's pieces and tufts hold still and only fade (#13023)
+
+Every drawn tree, plant, rock and grass tuft in `/worlds/everglade2` is one
+planted instance at one fixed world position, turn, scale and shape at every
+eye distance. Distance never moves, grows, widens or swaps an instance; it only
+fades it out in a screen dither (`e2_inst_fade`, `e2_dither_keep`). A tree's
+levels of detail are the same crown cards in the same places, and a change of
+level is a dither cross-fade in which the two levels cover each pixel once. A
+kit thins out past part of its reach by a per-instance rank hashed from where it
+stands, never by a hard radius or by one piece standing in for its neighbours.
+The frame depends only on where the eye is, so walking away and back gives the
+same instances. The key light's shadow tiles snap to whole light-space texels
+(`aethyr/render/cascades.coax`), so shadows stay fixed to the land.
+Checks: `apps/openagents-web/everglade2.coax` "a piece keeps its place and size
+at every distance and only fades", "the woods' pieces never move, grow or swap
+as you walk, and come back the same", "Everglade II's shadow tiles: ...";
+`apps/openagents-web/gpu/everglade2.coax` "a grass tuft stands in one place at
+one size wherever the eye is, and only fades" and "a shadow tile places a
+point by its rows and draws it inside its own rect".

@@ -91,6 +91,10 @@ EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
 EXPORT("coaxial_shadow_draws_v1") uint32_t coaxial_shadow_draws_v1(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->shadow.e; }
 EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(uint32_t state) { return draw_n > 0 ? (uint32_t)e2_at(state)->shadow_n : 0u; }
+/* The key light's shadow tiles (aethyr/render/cascades.coax, everglade2.coax e2_shadows; coax/web/host.js shadowLayout). */
+EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(uint32_t state, int32_t coarse, int32_t which) { return (uint32_t)e2_shadow_atlas(at(state), coarse, which); }
+EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(uint32_t state, int32_t field) { return (int32_t)e2_shadow_field(at(state), field); }
+EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(uint32_t state, int32_t kind, int32_t arg) { e2_shadow_event(at(state), kind, arg); }
 EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(uint32_t state) { return (uint32_t)e2_layers_side(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
 /* the pack's data layers (normal and ORM maps) bound after the colour layers' sampler (host.js) */

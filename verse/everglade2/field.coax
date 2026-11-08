@@ -6,11 +6,13 @@
 // The tiers nest. Each farther tier's cell holds four of the last tier's, and its one tuft is one of
 // those four (the cell's own hash picks which), at the same spot with the same look. So a farther
 // tier draws only tufts the nearer one drew too. Out to E2_FIELD_NEAR every tuft stands. Past it,
-// tufts drop out one by one by their own rank (each shrinking away over a short stretch), a quarter
-// left every E2_FIELD_STEP metres, and the ones left widen by as much to cover the ground. Where a
-// tier hands over to the next, the tufts left are exactly the next tier's, at the same width, so
-// nothing appears, swaps or grows near you as you walk. The page
-// (apps/openagents-web/everglade2.coax e2_field) draws the blocks of 16 by 16 cells in view.
+// tufts fade out one by one by their own rank (each dissolving in a screen dither over a short
+// stretch), a quarter left every E2_FIELD_STEP metres, and the last tier's fade to none by
+// E2_FIELD_FAR, where the meadow's own ground carries on. A tuft never moves, turns, grows, widens
+// or swaps for another: its place, turn, height and width are its fine cell's alone, and distance
+// only fades it. Where a tier hands over to the next, the tufts left are exactly the next tier's,
+// whole. The page (apps/openagents-web/everglade2.coax e2_field) draws the blocks of 16 by 16 cells
+// in view.
 #load "forest.coax";
 
 E2_FIELD_BASE :: 4194304;      // a base instance at or past this draws field tufts
@@ -20,7 +22,7 @@ E2_FIELD_ROW :: 128;           // blocks a row in a tier's code (the zone is 90 
 E2_FIELD_NEAR :: 16.0;         // metres from the eye that every tuft stands to
 E2_FIELD_STEP :: 12.0;         // past that, a quarter of the tufts left every this many metres
 E2_FIELD_FAR :: 140.0;         // and the last few fade out by here
-E2_FIELD_SHRINK :: 0.06;       // how much of a tier's share a tuft takes to shrink away
+E2_FIELD_FADE :: 0.08;         // how much of a tier's share a tuft takes to fade out
 E2_FIELD_MESH :: 1.31172;      // Grass_Common_Short's height
 // Per tier (written as choices, not tables, so the shader can read them too): metres a cell, and
 // the distances from the eye it draws over.
@@ -32,11 +34,6 @@ e2_field_out :: (t:int)->f32 {return ifx t==3 then f32(E2_FIELD_FAR) else f32(E2
 e2_field_rel :: (t:int,d:f32)->f32 {
  if t==3 {v:=1-(d-e2_field_start(3))/(f32(E2_FIELD_FAR)-e2_field_start(3));return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
  v:=pow(0.25f32,(d-f32(E2_FIELD_NEAR)-f32(t)*f32(E2_FIELD_STEP))/f32(E2_FIELD_STEP));return ifx v>1 then 1.0f32 else v;
-}
-// How wide the tufts left stand, against a near tuft: as much wider as they are fewer.
-e2_field_wide :: (t:int,d:f32)->f32 {
- if t==3 {return 8;}
- return pow(2.0f32,f32(t))/sqrt(e2_field_rel(t,d));
 }
 // How thick the grass grows at (x, z): none on the bare path (thinning in at its edges), thinner
 // under the trees, and full in the glade (the field is its only grass).
@@ -77,9 +74,9 @@ e2_field_rank :: (t:int,x:u32,z:u32,fx:u32,fz:u32)->f32 {
  if (x&1)==(p&1) && (z&1)==(p>>1) {return 0;}
  return 0.25f32+0.75f32*u;
 }
-// How tall a tuft stands against its full height: whole while its rank is under the tier's share,
-// shrinking to nothing over E2_FIELD_SHRINK as the share falls to it.
-e2_field_grow :: (rel:f32,rank:f32)->f32 {v:=(rel-rank)/f32(E2_FIELD_SHRINK);return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
+// How much of a tuft shows (the share of its pixels the dither keeps; its size never changes): all
+// while its rank is under the tier's share, fading to none over E2_FIELD_FADE as the share falls to it.
+e2_field_shown :: (rel:f32,rank:f32)->f32 {v:=(rel-rank)/f32(E2_FIELD_FADE);return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
 
 #test "a tier's tuft is one of the nearer tier's, in the same spot" {
  for t:0..<3 {for i:0..<200 {
@@ -94,16 +91,16 @@ e2_field_grow :: (rel:f32,rank:f32)->f32 {v:=(rel-rank)/f32(E2_FIELD_SHRINK);ret
 }
 #test "the grass thins smoothly past the near ground, and tiers hand over with nothing changing" {
  // every tuft stands near you
- for i:0..<32 {#assert e2_field_rel(0,f32(i)*0.5)==1 && e2_field_wide(0,f32(i)*0.5)==1;}
+ for i:0..<32 {#assert e2_field_rel(0,f32(i)*0.5)==1;}
  for t:0..<3 {
   e:=e2_field_out(t);#assert e2_field_start(t+1)==e;
-  // the share left at a tier's end is the next tier's whole, and the tufts left are as wide
+  // the share left at a tier's end is the next tier's whole, and the tufts it keeps show whole
   #assert abs(e2_field_rel(t,e)-0.25)<0.0001 && e2_field_rel(t+1,e)==1;
-  #assert abs(e2_field_wide(t,e)-e2_field_wide(t+1,e))<0.001;
+  #assert e2_field_shown(e2_field_rel(t,e),0)==1 && e2_field_shown(e2_field_rel(t+1,e),0.999)>0;
  }
  // no step in the share or the width anywhere along the way
  for t:0..<4 {a:=e2_field_start(t);b:=e2_field_out(t);for i:0..<100 {d:=a+(b-a)*f32(i)/100;q:=d+(b-a)/100;
-  #assert abs(e2_field_rel(t,q)-e2_field_rel(t,d))<0.05;#assert abs(e2_field_wide(t,q)-e2_field_wide(t,d))<0.3;}}
+  #assert abs(e2_field_rel(t,q)-e2_field_rel(t,d))<0.05;}}
  #assert e2_field_rel(3,f32(E2_FIELD_FAR))==0;
 }
 #test "a cell's hash spreads over the unit and differs cell to cell" {

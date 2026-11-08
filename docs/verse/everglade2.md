@@ -148,16 +148,25 @@ sheen and hair highlights.
   stride and a 1.3 m walking one), so the feet keep pace.
 - Each frame, the page picks the pieces in view, sorts them into one run for each kit piece and
   level of detail, and draws each run as one instanced draw. About 75 draws make a frame.
-- Trees are whole to 36 m and lighter to 70 m. Past 70 m, one tree in three stands for its
-  neighbours, a third larger, and past 160 m one in six, half again larger.
+- Every piece stands in one place at one size at every distance; with distance it only fades
+  out in a screen dither, so nothing moves, grows or swaps as you walk (#13023). A tree draws
+  whole to 32 m, two of its three crown cards to 52 m, and one past that. The cards it keeps are
+  the same cards in the same places, and each change cross-fades over 8 m: the nearer level drops
+  a share of its pixels and the farther level draws exactly those. Past 55% of its kit's reach
+  (165 m for trees, 26 to 110 m for the small plants, 240 m for the big rocks) a kit thins out:
+  the share left falls smoothly to none at the reach, and each piece dithers out as the share
+  passes its own rank, a hash of where it stands, so the edge is ragged and never a line
+  (`e2_piece_shown`, `e2_piece_looks`).
 - Character Create's glade grass isn't drawn. At about 35 million vertices a frame it cost
   about 10 ms of GPU time; the blade grass covers the glade instead.
 - Blade grass covers all of the ground except the bare path (`verse/everglade2/field.coax`). The
   GPU places one tuft in each cell of a grid fixed to the land, seeded by the cell, in four
   nested tiers round the eye: 0.5 m cells to 28 m, 1 m to 40 m, 2 m to 52 m, and 4 m to 140 m.
-  Each coarse tuft stands exactly where one of the four finer tufts under it stood. Past 16 m,
-  the other three shrink away one by one, and the one that stays grows wider, so the grass only
-  thins with distance and never swaps one tuft for another. The grass thins in at the path's
+  Each coarse tuft stands exactly where one of the four finer tufts under it stood, with the same
+  turn, height and width, all from the finest cell. Past 16 m, the other three dither out one by
+  one at their own rank, so the grass only thins with distance and no tuft moves, widens or is
+  replaced. Past 24 m the ground under the grass takes on the grass's colour by the same cover,
+  so the field's far end fades into grass-coloured ground, not a line. The grass thins in at the path's
   edges and grows thinner, shorter, and darker under the trees. The page draws the blocks of 16
   by 16 cells in view.
 - A jump plays its takeoff over 0.2 s, its loop while you are in the air, and its landing over
@@ -173,7 +182,12 @@ sheen and hair highlights.
 - A frame-rate counter in the bottom-right corner shows frames a second, averaged over 0.5 s.
 - The graphics governor (`aethyr/quality.coax`) sets how many pixels the page draws. It lowers
   the resolution when frames run slow and raises it again when there's room.
-- The key light's shadow map follows you, 68 m across, in 2 m steps.
+- The key light's shadows are Aethyr's cascades (`aethyr/render/cascades.coax`): four tiles in
+  a 2048 atlas reaching 24, 60, 150 and 360 m round you (two, to 20 and 75 m, on a phone). Each tile's middle snaps to whole texels
+  in the light's space and moves only in steps of 8 to 120 m, so shadows stay fixed to the land
+  as you walk. The near tile casts every tree at its second level, the 60 m tile what the view
+  draws, and the far tiles only the trees at their third level and the big rocks. The shader
+  reads the finest tile that covers a point.
 
 Read the counter in your own browser for the frame rate. Headless measurements on a busy Mac
 put GPU time at 2400 by 1400 at about 16 ms at the glade (31 ms before the glade grass was

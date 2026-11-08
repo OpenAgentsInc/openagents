@@ -19,8 +19,21 @@ everglade2_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->Everglade2Bg {
  t:=e2_unpack_tint(v4(0,0,255.0f32*256.0f32+128.0f32,0.5f32));#assert t.x==1 && abs(t.y-128.0f32/255.0f32)<0.001 && t.z==0.5f32;
  g:=e2_unpack_tint(v4(0,0,0,2.25f32));#assert g.z==0.25f32;
 }
-// A piece's tint: red and green bytes in z (red * 256 + green), blue in w (plus 2 for grass).
-e2_unpack_tint :: (c:V4)->V3 {hi:=floor(c.z/256.0f32);return v3(hi/255.0f32,(c.z-hi*256.0f32)/255.0f32,ifx c.w>1.5f32 then c.w-2.0f32 else c.w);}
+// A piece's tint: red and green bytes in z (red * 256 + green), blue in w (plus 2 for grass, plus 4
+// times its fade code: e2_inst_fade).
+e2_unpack_tint :: (c:V4)->V3 {
+ hi:=floor(c.z/256.0f32);b:=c.w-4.0f32*floor(c.w/4.0f32);
+ return v3(hi/255.0f32,(c.z-hi*256.0f32)/255.0f32,ifx b>1.5f32 then b-2.0f32 else b);
+}
+// A piece's fade (the page's e2_fade_code in w's fours): 0 whole; above 0 the share of its pixels
+// the dither drops; below 0 a cross-fade's other half, keeping only that share (e2_dither_keep).
+e2_inst_fade :: (c:V4)->f32 {k:=floor(c.w/4.0f32);return ifx k>64.5f32 then (64.0f32-k)/64.0f32 else k/64.0f32;}
+// Whether a pixel of a fading piece stays: a fixed screen pattern (interleaved gradient noise)
+// against the piece's fade, so two levels of detail at the same place cover each pixel once.
+e2_dither_keep :: (pixel:V2,fade:f32)->bool {
+ n:=fract(52.9829189f32*fract(0.06711056f32*floor(pixel.x)+0.00583715f32*floor(pixel.y)));
+ return ifx fade>0.0f32 then n>=fade else ifx fade<0.0f32 then n< -fade else true;
+}
 // One vertex of a kit piece: the pack's template at the origin (u[48] its first vertex word), placed
 // by its instance (x y z yaw, vertical and horizontal scale, tint).
 e2_kit_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,inst:[]V4)->FivelabS {
@@ -38,7 +51,7 @@ e2_kit_place :: (id:u32,a:V4,c:V4,u:[]f32,vertices:[]u32)->FivelabS {
  uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);if (kind==6) {uv=v2(uv.x*64.0f32-32.0f32,uv.y*64.0f32-32.0f32);}
  vt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);t:=ifx (kind==1)||(kind==4) then e2_unpack_tint(c) else v3(1,1,1);
  o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=n;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];
- o.tint=ifx kind==1 then t else mul3(v3(vt.x,vt.y,vt.z),t);o.dye=v4(0,0,0,12);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0);o.who=0;
+ o.tint=ifx kind==1 then t else mul3(v3(vt.x,vt.y,vt.z),t);o.dye=v4(e2_inst_fade(c),0,0,12);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0);o.who=0;
  if (kind==2) {
   // a grass tuft is shaded as the glade's grass (cg_instanced_vs): its height up the blade, its
   // root colour the piece's tint, its tips lighter, gold where the land is autumn
@@ -61,16 +74,17 @@ e2_field_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->FivelabS {
  // this tier draws it only over its own stretch: the same tuft is the next tier's past it
  if (d<e2_field_start(t) || d>=e2_field_out(t)) {return o;}
  if (e2_unit(e2_field_hash(fx,fz,cast(u32)6))>=e2_field_cover(x,z)) {return o;}
- rel:=e2_field_rel(t,d);grow:=e2_field_grow(rel,e2_field_rank(t,gx,gz,fx,fz));
- if (grow<=0.0f32) {return o;}
- wide:=e2_field_wide(t,d);
+ // distance only fades a tuft (a dither share, e2_dither_keep); its place and size are its cell's
+ shown:=e2_field_shown(e2_field_rel(t,d),e2_field_rank(t,gx,gz,fx,fz));
+ if (shown<=0.0f32) {return o;}
  woods:=e2_forest(x,z);edge:=e2_smooth(0.03,0.30,e2_path(x,z));
- hgt:=(0.22f32+0.26f32*e2_unit(e2_field_hash(fx,fz,cast(u32)4)))*(1.0f32-0.40f32*edge)*(1.0f32-0.25f32*woods)*(1.0f32+0.05f32*(wide-1.0f32))*grow;
- sv:=hgt/f32(E2_FIELD_MESH);sh:=(0.55f32+0.35f32*e2_unit(e2_field_hash(fx,fz,cast(u32)7)))*wide*0.85f32*grow;
+ hgt:=(0.22f32+0.26f32*e2_unit(e2_field_hash(fx,fz,cast(u32)4)))*(1.0f32-0.40f32*edge)*(1.0f32-0.25f32*woods);
+ sv:=hgt/f32(E2_FIELD_MESH);sh:=(0.55f32+0.35f32*e2_unit(e2_field_hash(fx,fz,cast(u32)7)))*0.85f32;
  au:=e2_gold(x,z);dark:=1.0f32-0.38f32*woods;
  tr:=(0.30f32+0.26f32*au)*dark;tg:=0.48f32*dark;tb:=0.055f32*dark;
  c:=v4(sv,sh,floor(tr*255.0f32+0.5f32)*256.0f32+floor(tg*255.0f32+0.5f32),tb+2.0f32);
- return e2_kit_place(id,v4(x,e2_height(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),c,u,vertices);
+ o=e2_kit_place(id,v4(x,e2_height(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),c,u,vertices);
+ o.dye.x=1.0f32-shown;return o;
 }
 everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->FivelabS {
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
@@ -86,33 +100,94 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
  }
  return o;
 }
-// The key light's map: 34 m either side of u[44..46] (the page moves it with the player in steps).
-E2_SHADOW_HALF :: 34.0;
-#test "the shadow map follows its centre and separates light depth" {
- u:[104]f32;u[44]=10;u[45]=3;u[46]= -200;a:=e2_shadow_clip(v3(10,3,-200),u[..]);b:=e2_shadow_clip(v3(10,4,-200),u[..]);
- #assert abs(a.x)<0.001 && abs(a.y)<0.001 && a.z>0 && a.z<1 && b.z<a.z;
- c:=e2_shadow_clip(v3(10+E2_SHADOW_HALF*2,3,-200),u[..]);#assert abs(c.x)>1 || abs(c.y)>1;
+#test "a grass tuft stands in one place at one size wherever the eye is, and only fades" #steps 4000000000 {
+ // one template vertex (a grass blade's, kind 2) at the pack's start
+ vtx:[8]u32;vtx[0]=f32_bits(0.3f32);vtx[1]=f32_bits(1.0f32);vtx[2]=f32_bits(0.2f32);vtx[3]=cast(u32)2<<24;
+ u:[208]f32;u[0]=1280;u[1]=720;u[19]=900;u[20]=0;u[21]=0;u[22]= -1;u[24]=1;u[29]=1;
+ seen:=0;faded:=0;
+ for t:0..<4 {for i:0..<300 {
+  // blocks round the walk, near and far from it
+  pz:= -150.0f32+f32((i*13)%120);px:=e2_road_x(pz)+f32((i*29)%90)-45.0f32;bs:=e2_field_block(t);
+  bx:=cast(int)floor((px-E2_WEST)/bs);bz:=cast(int)floor((E2_BACK-pz)/bs);cell:=(i*37)%256;
+  inst:=cast(u32)(e2_field_code(t,bx,bz,2)+cell);
+  wx:f32=0;wy:f32=0;wz:f32=0;has:=false;
+  // the eye walks in 0.5 m steps 60 m down the path and back
+  for k:0..<240 {
+   ex:=e2_road_x(-120.0f32+f32(ifx k<120 then k else 239-k)*0.5f32);ez:= -120.0f32+f32(ifx k<120 then k else 239-k)*0.5f32;
+   u[16]=ex;u[17]=e2_height(ex,ez)+2;u[18]=ez;
+   o:=e2_field_vs(0,inst,u[..],vtx[..]);
+   if (o.pos.z< -1.5f32) {continue;}
+   #assert o.dye.x>=0 && o.dye.x<1;
+   if (o.dye.x>0) {faded+=1;}
+   if (!has) {wx=o.world.x;wy=o.world.y;wz=o.world.z;has=true;seen+=1;}
+   else {#assert abs(o.world.x-wx)<0.0001 && abs(o.world.y-wy)<0.0001 && abs(o.world.z-wz)<0.0001;}
+  }
+ }}
+ #assert seen>100 && faded>0;
 }
-e2_shadow_clip :: (p:V3,u:[]f32)->V4 {
- sun:=cg_sun_dir();right:=normalize3(v3(sun.z,0,-sun.x));up:=v3(sun.y*right.z,sun.z*right.x-sun.x*right.z,-sun.y*right.x);r:=sub3(p,wg_at3(u,44));
- return v4(dot3(r,right)/E2_SHADOW_HALF,dot3(r,up)/E2_SHADOW_HALF,0.5f32-dot3(r,sun)/120.0f32,1);
+// ---- the key light's shadow tiles (aethyr/render/cascades.coax cascade_rows; the page's
+// E2_U_CASCADE, everglade2.coax e2_shadows): up to four tiles of one depth atlas round the eye, each
+// a ring further out, each snapped to its own texels in the light's space and drawn again only once
+// the eye walks past its step. The header says how many and which is drawn this frame; each tile has
+// its rect in the atlas, its rows across, up and in depth, its filter and its edge. As Everglade's
+// (verse/everglade/gpu.coax eg_casc_*).
+E2_U_CASCADE :: 104;
+e2_casc :: (u:[]f32,k:int,row:int)->V4 {return wg_at4(u,E2_U_CASCADE+4+k*24+row*4);}
+// A point's place in tile k: across and up -1 to 1, its depth 0 toward the light to 1.
+e2_casc_place :: (w:V3,u:[]f32,k:int)->V3 {
+ p:=v4(w.x,w.y,w.z,1);
+ return v3(wg_dot4(e2_casc(u,k,1),p),wg_dot4(e2_casc(u,k,2),p),wg_dot4(e2_casc(u,k,3),p));
+}
+// Tile k's -1 to 1 into the atlas's (y up), where its casters draw.
+e2_casc_clip :: (q:V3,u:[]f32,k:int)->V4 {
+ r:=e2_casc(u,k,0);
+ return v4(q.x*r.z+2.0f32*r.x+r.z-1.0f32,q.y*r.w+1.0f32-2.0f32*r.y-r.w,q.z,1);
+}
+#test "a shadow tile places a point by its rows and draws it inside its own rect" {
+ u:[208]f32;o:=E2_U_CASCADE+4;
+ // tile 0: the atlas's top-left quarter, 10 m reach round (0, 0), depth along y
+ u[E2_U_CASCADE]=4;u[E2_U_CASCADE+1]=0;u[o]=0;u[o+1]=0;u[o+2]=0.5;u[o+3]=0.5;
+ u[o+4]=0.1;u[o+11]=0;u[o+10]=0.1;u[o+13]= -0.01;u[o+15]=0.5;
+ q:=e2_casc_place(v3(5,2,-5),u[..],0);#assert abs(q.x-0.5)<0.0001 && abs(q.y+0.5)<0.0001 && q.z>0 && q.z<0.5;
+ c:=e2_casc_clip(v3(1,1,0.3),u[..],0);#assert abs(c.x-0)<0.0001 && abs(c.y-1)<0.0001;
+ d:=e2_casc_clip(v3(-1,-1,0.3),u[..],0);#assert abs(d.x+1)<0.0001 && abs(d.y-0)<0.0001;
 }
 everglade2_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->CgShadow {
- o:CgShadow;
- if (u[10]<1.5f32) {o.pos=v4(0,0,-2,1);return o;}
- s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {o.pos=v4(0,0,-2,1);return o;}
- c:=e2_shadow_clip(s.world,u);o.pos=c;o.edge=v2(c.x,c.y);o.uv=s.uv;o.slice=s.slice;return o;
+ o:CgShadow;o.pos=v4(0,0,-2,1);
+ k:=cast(int)u[E2_U_CASCADE+1];
+ if (u[10]<1.5f32 || u[E2_U_CASCADE]<0.5f32 || k<0 || k>3) {return o;}
+ s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {return o;}
+ q:=e2_casc_place(s.world,u,k);o.pos=e2_casc_clip(q,u,k);o.edge=v2(q.x,q.y);o.uv=s.uv;o.slice=s.slice;return o;
 }
 everglade2_shadow_fs :: (s:CgShadow,sheets:Tex2DArray,sheet:Sampler) {
  if (abs(s.edge.x)>1.0f32 || abs(s.edge.y)>1.0f32) {gpu_demote_helper();}
  t:=render_sample_layer8_bias(sheets,sheet,s.uv,cast(s32)s.slice,0);
  if (t.w<0.35f32) {gpu_demote_helper();}
 }
+// Tile k's share of the key at p, -1 when it holds no picture or p is outside it with its filter.
+// Called with a literal k (e2_shadow_visibility), so every row it reads is a fixed uniform.
+e2_casc_try :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare,k:int)->f32 {
+ x:=e2_casc(u,k,5);
+ if (x.y<0.5f32) {return -1;}
+ f:=e2_casc(u,k,4);
+ q:=e2_casc_place(add3(p,scale3(normalize3(n),f.w)),u,k);
+ edge:=1.0f32-x.x;
+ if (!(abs(q.x)<edge && abs(q.y)<edge && q.z>0 && q.z<1)) {return -1;}
+ r:=e2_casc(u,k,0);uv:=v2(r.x+(0.5f32+0.5f32*q.x)*r.z,r.y+(0.5f32-0.5f32*q.y)*r.w);
+ lit:f32=0;
+ for i:0..<12 {a:=cast(f32)i*2.399963f32;d:=sqrt((cast(f32)i+0.5f32)/12.0f32);
+  lit=lit+gpu_compare(map,cmp,v2(uv.x+cos(a)*d*f.x,uv.y+sin(a)*d*f.y),q.z-f.z);}
+ return lit/12.0f32;
+}
+// How much of the key reaches p: the finest drawn tile that holds p; outside them all, lit.
 e2_shadow_visibility :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare)->f32 {
- c:=e2_shadow_clip(add3(p,scale3(normalize3(n),0.03f32)),u);uv:=v2(c.x*0.5f32+0.5f32,0.5f32-c.y*0.5f32);
- if (uv.x<0 || uv.x>1 || uv.y<0 || uv.y>1 || c.z<0 || c.z>1) {return 1;}
- edge:=smoothstep(0.86f32,1.0f32,fmax(abs(c.x),abs(c.y)));
- return mix(cg_shadow_taps(uv,c.z,1.0f32,0.0f32,map,cmp),1.0f32,edge);
+ if (u[E2_U_CASCADE]<0.5f32) {return 1;}
+ a:=e2_casc_try(p,n,u,map,cmp,0);if (a>=0) {return a;}
+ b:=e2_casc_try(p,n,u,map,cmp,1);if (b>=0) {return b;}
+ if (u[E2_U_CASCADE]<2.5f32) {return 1;}
+ c:=e2_casc_try(p,n,u,map,cmp,2);if (c>=0) {return c;}
+ d:=e2_casc_try(p,n,u,map,cmp,3);if (d>=0) {return d;}
+ return 1;
 }
 e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
@@ -133,7 +208,13 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   albedo=mix3(albedo,mul3(albedo,v3(0.62f32,0.70f32,0.55f32)),woods*0.55f32*(1.0f32-trail));
   albedo=scale3(albedo,0.84f32+0.32f32*cg_noise(v2(s.world.x*0.35f32+4.0f32,s.world.z*0.35f32)));
   // The reference trail is packed olive earth, darker than sand.
-  albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);}
+  albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);
+  // where the grass field thins out with distance its colour carries on in the ground, by the same
+  // cover (verse/everglade2/field.coax e2_field_cover), so the field never ends in a line
+  au:=e2_gold(s.world.x,s.world.z);dk:=1.0f32-0.38f32*woods;
+  lawn:=mul3(cg_decode(scale3(v3(0.47f32+0.27f32*au,0.66f32-0.10f32*au,0.06f32),dk)),mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),0.6f32));
+  away:=smoothstep(24.0f32,120.0f32,wg_length3(sub3(s.world,wg_at3(u,16))));
+  albedo=mix3(albedo,lawn,e2_field_cover(s.world.x,s.world.z)*away*0.75f32);}
  if (leaves) {
   if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));albedo=cg_decode(cg_leaf_palette(s.tint,age));}
   albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
@@ -230,6 +311,7 @@ everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:
   sky:=mix3(cg_decode(cg_sky(normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
  }
  if (tex.w<0.35f32) {gpu_demote_helper();}
+ if (s.dye.w>11.5f32 && !e2_dither_keep(v2(s.pos.x,s.pos.y),s.dye.x)) {gpu_demote_helper();}
  c:V4;
  if (s.dye.w>11.5f32) {c=e2_environment_fs(s,tex,front,u,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
  else {c=cc_player_fs(s,tex,front,u,objects,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),mats,data,sheet,deriv);}
