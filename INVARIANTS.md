@@ -7345,3 +7345,25 @@ world, clock and condition), and a refusal is never cached. Checks: `coax test`
 on both files ("fixed-state replay and late-join evaluation agree", "the
 cache holds one value under its whole identity", "a shared world never uses a
 visitor's local wall clock"), with zero `coax mutate --root-only` survivors.
+
+## Environment regions blend continuously, from a bounded candidate list
+
+`aethyr/world/environment-region.coax` decides where a profile applies. The
+state's profile (0: the set's default) is the map default, and outside every
+region's band the result is `env_resolve`'s exactly. A region's weight is a
+smoothstep over its inner/outer band, and admission refuses a band narrower
+than `ENV_BAND_MIN` (0.25 m) and a polygon whose non-adjacent edges meet, so no
+region has a hard edge. Overlaps apply in priority order, equal priority with
+the lower id last; every weight is continuous and the weights sum to 1. The
+dominant profile (largest weight, equal weights to the lower id) supplies the
+identifiers and flags; channels mix linearly. A resource slot keeps its four
+heaviest ids and reports the weight it leaves out. A set and its fixed index are
+replaced together or not at all. A bucket holds at most 8 regions, and a
+candidate list holds at most 8 and is refused rather than truncated, so a query
+costs at most 64 × 8 index entries whatever the world's size. Camera grading and
+sky read `env_resolve_camera` at the eye; surfaces and fog read `env_resolve_at`
+inside their stored tile, which refuses a point outside the tile or a stale set
+generation. Checks: `coax test aethyr/world/environment-region.coax` ("band
+weights are continuous and monotone across every shape's edge, sampled
+densely", "overlapping regions normalize by priority", "a pinned route walk
+changes continuously"), with zero `coax mutate --root-only` survivors.
