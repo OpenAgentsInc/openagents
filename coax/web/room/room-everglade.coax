@@ -2696,4 +2696,8 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_heard(v[..],1,cast(string)wire[0..<wire_put_cast(wire[..],0,WireCast.{seq=2,slot=xk_slot(FB_CL_WIZARD,0),ax=0,ay=1,az=30})]);
   #assert v[0].eg[k].e2_casts==1 && v[0].eg[k].seat[1].last_cast==before;
   #assert b[0].c[1].slots[1]==0;
+  b[0].c[0].temp=7;
+  eg_test_tick(v[..],k); inbox:[1] EgInbox; eg_test_drain(v[..],inbox[..]);
+  projected:=eg_test_ent(inbox[..],0,0);
+  #assert projected.hp==b[0].c[0].hp && projected.max==b[0].c[0].hp_max && projected.temp==7;
 }

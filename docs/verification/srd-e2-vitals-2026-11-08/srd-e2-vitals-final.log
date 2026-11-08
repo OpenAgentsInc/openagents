@@ -1,0 +1,4 @@
+ok   #test Everglade II health label uses its server row including temporary HP and snapshot removal (1 case, 9096143 steps, 254 ms)
+ok   #test Everglade II health ignores peers and invalid rows and distinguishes unconscious from dead (1 case, 9109861 steps, 176 ms)
+2 of 860 checks (--only 'Everglade II health'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

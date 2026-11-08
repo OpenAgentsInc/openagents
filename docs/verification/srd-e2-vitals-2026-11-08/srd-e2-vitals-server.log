@@ -1,0 +1,4 @@
+ok   #test everglade II room executes self healing and refuses a speech-blocked spell before publishing (1 case, 7833527 steps, 713 ms)
+1 of 887 checks (--only 'everglade II room executes'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 30672239 of 33554432 used (91%), above three quarters of the limit; more than 33554432 fails with E0400

@@ -1,0 +1,6 @@
+194ceb8c4c1873cdaa43db1c5fdf0aa5902b7794c31b28053595d8fa4d4bcf06  /tmp/srd-e2-vitals.wasm
+d22ea8a9400533b9d03e6984a4461ae6a19e33199cb93ea3bb946ae5e72e5c60  apps/openagents-web/everglade2-net.coax
+6777d45962e1bd34e9d6d346db0b03392206477e634f1424d22caba483fb1c4e  apps/openagents-web/everglade2-cast.coax
+8410e2a967fa3b4d0e4ecba3afeaa1b952d138b33fc8904a5f9d10c996c9292b  apps/openagents-web/everglade2.coax
+fc8ec776a55de31768e45d00880f82f1d200d9eea3ceb5e8272d5df60e94d387  coax/web/room/room-everglade.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax

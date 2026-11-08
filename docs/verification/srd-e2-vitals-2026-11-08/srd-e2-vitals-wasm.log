@@ -1,0 +1,19 @@
+coax: note[E0400]: compile-time steps: 167384329 of 200000000 used (83%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    25045115 steps  verse/experimental-village.coax:161:1  in 'ev_near_radius' (2876 times)
+    23866480 steps  verse/experimental-village.coax:70:1  in 'ev_prop_near' (2876 times)
+    18278554 steps  verse/experimental-hostiles.coax:113:1  in 'hostile_blocked_pad' (2876 times)
+    15403856 steps  verse/experimental-castle.coax:16:1  in 'castle_segment' (382508 times)
+    14005515 steps  verse/experimental-terrain.coax:30:1  in 'exp_site' (221352 times)
+  fix: do less work in 'ev_near_radius', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 125906511 of 134217728 used (93%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    28274400 visits  aethyr/points.coax:19:1  in 'v3' (4712400 times)
+    9950600 visits  apps/openagents-web/charactercreator.coax:497:1  in 'cc_pose' (2200 times)
+    6693768 visits  apps/openagents-web/charactercreator.coax:330:5  copying arguments into 'experimental_hold' (2232 calls)
+    5803344 visits  aethyr/anim/pose.coax:17:1  in 'quat_scaled' (725418 times)
+    5450400 visits  apps/openagents-web/charactercreator.coax:532:8  copying arguments into 'experimental_figure' (1800 calls)
+  fix: copy fewer whole arrays and structs in 'v3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time value slots: 28932435 of 33554432 used (86%), above three quarters of the limit; more than 33554432 fails with E0400
+wasm.sh: srd-e2-vitals.wasm: 23.7 s: Coax to C 21.1 s (2/3 cached), clang 1.5 s (3/4 cached), link 0.5 s, wasm-opt 0.4 s; 633653 bytes; report /tmp/.c/srd-e2-vitals.timings.json
+wasm-size: srd-e2-vitals is 633653 bytes and has no size budget: add a line "srd-e2-vitals BYTES" to apps/openagents-web/wasm-budgets.txt

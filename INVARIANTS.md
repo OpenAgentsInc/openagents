@@ -6885,3 +6885,14 @@ clock ages and clears it on a new locally admitted press. Connection-version,
 elsewhere and restart handling retain priority. Already predicted sound/effects
 are not undone; shared state projection and broader runtime qualification remain
 separate. Evidence: `docs/verification/srd-e2-refusal-feedback-2026-11-08/README.md`.
+
+## Everglade II's health label reads the server mirror
+
+The hotbar reads the current seat's valid WK_PLAYER WireMirror row while
+connected/seated: HP/max, positive TEMP and zero-HP unconscious/dead status.
+It does not initialize visible HP from class defaults or predict healing.
+Unknown/invalid/wrong-seat state hides the label. Full snapshot omission,
+mirror reset and disconnection cannot leave invented health visible. Movement
+ACK and remote render-pool capacity are not prerequisites. Existing server rows
+already carry these fields; no wire/core policy changes. Evidence and remaining
+world scope: `docs/verification/srd-e2-vitals-2026-11-08/README.md`.

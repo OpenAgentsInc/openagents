@@ -182,6 +182,8 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   }
   // your class over the bar
   b0 := e2k_box(k, 0, w, h, kk);
+  health:[80] u8; hn:=e2k_health_text(s,health[..]);
+  if hn>0 { n=cc.text(out,n,cast(string)health[0..<hn],(w-f32(hn)*8*kk*0.78)/2,b0[1]-48*kk,8*kk,cc.ink(kk,0.95,0.9,0.75)); }
   refused:=e2n_cast_message(s[0].net[..]);
   if refused.count>0 {
     n=cc.text(out,n,refused,(w-f32(refused.count)*8*kk*0.78)/2,b0[1]-30*kk,8*kk,cc.ink(kk,1,0.55,0.4));
@@ -211,4 +213,13 @@ e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
   if i < 0 || phase != 0 { return false; }   // a move over it shows its card and leaves the look's drag be
   _ := e2k_press(s, i);
   return true;
+}
+
+// The latest server health, independent of movement-input acknowledgements.
+e2k_health_text :: (s:[] E2,out:[] u8)->int {
+  row:=e2n_vitals(s[0].net[..]); if row.id<0 { return 0; }
+  n:=e2k_put(out,0,"HP "); n=e2k_int(out,n,row.hp); n=e2k_put(out,n,"/"); n=e2k_int(out,n,row.max);
+  if row.temp>0 { n=e2k_put(out,n," · TEMP "); n=e2k_int(out,n,row.temp); }
+  if row.hp==0 { n=e2k_put(out,n,ifx (row.g&WG_DEAD)!=0 then " · DEAD" else " · UNCONSCIOUS"); }
+  return n;
 }

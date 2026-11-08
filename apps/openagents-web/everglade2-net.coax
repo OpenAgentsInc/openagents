@@ -686,3 +686,12 @@ e2n_cast_message :: (n:[] E2Net)->string {
   #assert e2n_cast_reason("cooldown")=="CAST NOT READY" && e2n_cast_reason("range")=="OUT OF RANGE";
   #assert e2n_cast_reason("slot")=="ABILITY UNAVAILABLE" && e2n_cast_reason("aim")=="CANNOT AIM THERE";
 }
+
+// Read the authoritative mirror, not a predicted/default class HP value.
+// Snapshot removal, seat replacement and disconnection naturally hide it.
+e2n_vitals :: (n:[] E2Net)->WireS {
+  if !e2n_open(n) { return WireS.{id=-1}; }
+  row:=wire_mirror_of(n[0].mir[..],n[0].seat);
+  if row.id!=n[0].seat || row.kind!=WK_PLAYER || row.max<=0 || row.hp<0 || row.hp>row.max || row.temp<0 { return WireS.{id=-1}; }
+  return row;
+}

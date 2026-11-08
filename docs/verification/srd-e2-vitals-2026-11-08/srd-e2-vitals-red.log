@@ -1,0 +1,16 @@
+apps/openagents-web/everglade2.coax:1330:11: error[E0315]: procedure 'e2k_health_text' is not declared
+    #assert e2k_health_text(s[..],label[..])==0;
+            ^
+apps/openagents-web/everglade2.coax:1336:9: error[E0315]: procedure 'e2k_health_text' is not declared
+    count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 3/8 · TEMP 7";
+          ^
+apps/openagents-web/everglade2.coax:1340:9: error[E0315]: procedure 'e2k_health_text' is not declared
+    count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 6/8";
+          ^
+apps/openagents-web/everglade2.coax:1342:11: error[E0315]: procedure 'e2k_health_text' is not declared
+    #assert e2k_health_text(s[..],label[..])==0;
+            ^
+4 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh
