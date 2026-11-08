@@ -1,0 +1,21 @@
+#load "fivelab.coax";
+#load "everglade-step.coax" as controller;
+#load "../../aethyr/walk.coax" as walker;
+#load "../../aethyr/collide.coax" as collision;
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  distance:[3]f32; rates:=[3]f32.[0.5,1,2]; empty:[1]f32; w:=EgMoveWorld.{deck=true};
+  for mode:0..<3 {
+    p:=walker.walk_input(walker.walk_place(0,0,0,0),0,1,0,0,true,false,0,0);
+    for i:0..<64 { p=controller.eg_step_advance_scaled(p,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walker.STEP),rates[mode]); }
+    if p.clock.ticks!=64 { return 1; } distance[mode]=p.pos.z;
+  }
+  if distance[0]>=distance[1]*f32(0.6) || distance[2]<=distance[1]*f32(1.7) { return 2; }
+  wall:=[6]f32.[-3,0,2,3,3,2.05]; p:=walker.walk_input(walker.walk_place(0,0,0,0),0,1,0,0,true,false,0,0);
+  for i:0..<64 { p=controller.eg_step_advance_scaled(p,w,empty[0..<0],wall[..],empty[0..<0],f32(walker.STEP),2); }
+  if p.pos.z>f32(1.70001) || p.clock.ticks!=64 || p.collision_status!=collision.CollideStatus.ok { return 5; }
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_MONK,0); s[0].xc[0].level=6; xc_set_class(s[0].xc[..],FB_CL_MONK);
+  if lab_move_scale(s[..])!=f32(1.5) { return 3; }
+  if !xc_check_ai_rate(15) || !xc_check_ai_rate(60) { return 4; }
+  tool_errln("PASS PHYSICAL-MOTION"); return 0;
+}

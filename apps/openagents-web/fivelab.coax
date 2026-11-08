@@ -1955,7 +1955,7 @@ lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
     s[0].put_x = wx(s, f32(b[0].c[me].x)); s[0].put_z = wz(s, f32(b[0].c[me].y));
     if me != s[0].you_me {
       // a new hero faces the way the camera looks, so the follow camera swings in from behind it
-      s[0].put_face = atan2(s[0].fwd.x, s[0].fwd.z);
+      s[0].put_face = figs.atan2(s[0].fwd.x, s[0].fwd.z);
       s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].put_x, 0, s[0].put_z), s[0].put_face);
     } else { s[0].put_face = s[0].you_face; }
     s[0].you_me = me; s[0].my_sx = b[0].c[me].x; s[0].my_sy = b[0].c[me].y;
@@ -1997,6 +1997,13 @@ lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
 lab_queue_escape :: (s:[]Lab,x:f32,y:f32,z:f32) {
  use_safe:=s[0].safe_on && (abs(s[0].safe_x-x)+abs(s[0].safe_y-y)+abs(s[0].safe_z-z)>0.05);
  s[0].put_on=true;s[0].put_x=ifx use_safe then s[0].safe_x else 0.0f32;s[0].put_y=ifx use_safe then s[0].safe_y else 0.0f32;s[0].put_z=ifx use_safe then s[0].safe_z else 0.0f32;s[0].put_face=ifx use_safe then s[0].safe_face else s[0].you_face;
+}
+// The combat controller rate is distinct from environmental pace (which the
+// generic walker deliberately clamps to one). Other modes retain their path.
+lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
+  if !s[0].creator[0].experimental || !s[0].xc[0].started { return 1; }
+  xc_sync_world(s);
+  return rs_locomotion_scale(s[0].xc[0].b[..],0);
 }
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;

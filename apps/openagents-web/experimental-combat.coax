@@ -41,6 +41,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "fivebar.coax";
+#load "../../aethyr/walk-substep-policy.coax" as xtravel;
 #load "../../aethyr/rules/srd/press-budget.coax";
 #load "class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
@@ -413,10 +414,23 @@ xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
 }
 xc_hostile_tick :: (s:[] Lab,dt:f32) {
   h:=s[0].creator[0].hostiles[..]; cr:=s[0].creator[..];
-  proposed:[1]hostile.Hostiles; proposed[0]=h[0];
-  hostile.hostile_tick(proposed[..],cr[0].player_x,cr[0].player_y,cr[0].player_z,dt);
-  h[0].time=proposed[0].time; h[0].contacts[0]=proposed[0].contacts[0];
-  for foe:0..<XC_FOES { xc_monster_move(s,foe,proposed[0].enemies[foe]); }
+  xc_sync_world(s);
+  fastest:f32=0; limit:f32=0.15;
+  for i:0..<XC_FOES {
+    rate:=rs_locomotion_scale(s[0].xc[0].b[..],i+1); if rate>fastest { fastest=rate; }
+    radius:=h[0].enemies[i].scale; if radius>0 && radius<1 && radius*f32(0.15)<limit { limit=radius*f32(0.15); }
+  }
+  parts:=xtravel.walk_travel_parts(fastest*f32(2.4),dt,limit);
+  if parts==0 { return; }
+  time:=h[0].time;
+  for part:0..<parts {
+    proposed:[1]hostile.Hostiles; proposed[0]=h[0];
+    for i:0..<XC_FOES { proposed[0].enemies[i].walk_scale=rs_locomotion_scale(s[0].xc[0].b[..],i+1); }
+    hostile.hostile_tick(proposed[..],cr[0].player_x,cr[0].player_y,cr[0].player_z,dt/f32(parts));
+    h[0].time=proposed[0].time; h[0].contacts[0]=proposed[0].contacts[0];
+    for foe:0..<XC_FOES { xc_monster_move(s,foe,proposed[0].enemies[foe]); }
+  }
+  h[0].time=time+dt;
 }
 // Controller locomotion proposes a physical position; current creature/body
 // positions remain authoritative until this returns. Teleports synchronize their
@@ -1781,3 +1795,23 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   xc_monster_move(s[..],0,proposed);
   #assert !b[0].c[0].reacted && h[0].enemies[0].z==f32(1.6);
 }
+
+#test "experimental walking scale exposes class Speed and condition changes without the terrain pace clamp" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_MONK,0);
+  s[0].xc[0].level=6; xc_set_class(s[0].xc[..],FB_CL_MONK);
+  b:=s[0].xc[0].b[..]; #assert b[0].c[0].speed==45 && lab_move_scale(s[..])==f32(1.5);
+  b[0].c[0].halved_until=60; #assert lab_move_scale(s[..])==f32(22)/30;
+  b[0].c[0].halved_until=0; b[0].c[0].cond|=RS_PRONE; #assert lab_move_scale(s[..])==f32(0.75);
+  b[0].c[0].cond|=RS_GRAPPLED; #assert lab_move_scale(s[..])==0;
+}
+xc_check_ai_rate :: (speed:int)->bool {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].c[1].speed=speed;
+  h[0].enemies[0].x=4; h[0].enemies[0].z=0;
+  xc_hostile_tick(s[..],0.05);
+  dx:=h[0].enemies[0].x-4; dz:=h[0].enemies[0].z;
+  return abs(sqrt(dx*dx+dz*dz)-f32(0.12)*f32(speed)/30)<f32(0.0001);
+}
+#test "experimental walking scale changes actual AI distance at half base Speed" { #assert xc_check_ai_rate(15); }
+#test "experimental walking scale retains actual AI distance at base Speed" { #assert xc_check_ai_rate(30); }
+#test "experimental walking scale changes actual AI distance at twice base Speed" { #assert xc_check_ai_rate(60); }

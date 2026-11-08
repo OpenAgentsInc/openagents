@@ -507,3 +507,17 @@ four core scopes kill 31/55/6/47 mutants, zero survivors/no exemptions. The
 ordinary checked Lab Wasm build passes without budget overrides. Full legal
 equipment/grants, special senses/geometry, class/recovery and physical/network
 world migration remain open; no issue closes on this progress.
+
+### Physical walking rate and bounded collision integration (2026-11-08)
+
+Shared current walking Speed and additive crawling/difficult-terrain costs now
+reach Experimental's real player controller and staged AI, including rates above
+one. An opt-in bounded subdivision driver retains the original fixed clock,
+interpolation, queued-input refusal and collision travel limits; default exports
+and replay remain unchanged. [Evidence](../verification/srd-physical-scale-2026-11-08/README.md):
+316 walker and 200 SRD-rate checks pass; three core gates kill 25/25/15 mutants,
+zero survivors/no exemptions. World cases exercise Monk Speed, halving, crawling
+and actual slower/faster AI movement. Strict continuous feet-per-turn payment,
+special speeds/jumps, complete effect grants and world-zone/timing qualification
+remain open. Continuous action tuning is explicitly documented as a house
+profile, not strict movement compliance; no issue closes from this slice.

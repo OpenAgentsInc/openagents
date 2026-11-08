@@ -13,6 +13,7 @@
 #module "everglade.step";
 #load "../../aethyr/player.coax";
 #load "../../aethyr/walk.coax" as walk;
+#load "../../aethyr/collide.coax" as scaled_collision;
 #load "everglade-move-types.coax";
 #load "../../aethyr/math.coax" as link_math;
 #load "../../aethyr/collision-profiles.coax" as link_collision;
@@ -283,4 +284,47 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
   dash = walk.walk_place(0, 0, 0, 0);
   for k: 0..<64 { dash = eg_step_advance(eg_step_begin(dash, di, dw, 1.0f32 / 64), dw, empty[0..<0], walls[..], empty[0..<0], 1.0f32 / 64); }
   #assert dash.pos.z > 1 && dash.pos.z < 2 && walk.walk_collision_refusals(dash) == 0;
+}
+
+// Experimental combat's proportional walking rate. This is an opt-in native
+// surface; the ordinary shared/replayed controller export remains unchanged.
+eg_step_advance_scaled :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32)->walk.Player #export_c #effects(reads,writes,traps) {
+  if scale==1 { return eg_step_advance(p0,w,bodies,walls,floors,frame); }
+  if !walk.finite(scale) || scale<0 || w.aboard || (w.link_flags&32)!=0 {
+    return walk.collision_report(p0,scaled_collision.CollideResult.{status=scaled_collision.CollideStatus.bad_profile});
+  }
+  p:=p0;
+  if scale==0 { p.vel.x=0; p.vel.z=0; }
+  profile:=link_collision.collision_profile_lookup("everglade");
+  world:=walk.World.{bodies=bodies,walls=walls,floors=floors,collision=profile.profile};
+  if !w.deck && bodies.count>=7 && p.pos.y>0.6 { bodies[4]=1.9; bodies[6]=0.62; }
+  if (w.link_flags&512)!=0 { world.locomotion.run_speed=9.2; }
+  world.locomotion.walk_speed*=scale; world.locomotion.run_speed*=scale;
+  return walk.advance_scaled_in(world,p,frame);
+}
+#test "combat walking rate speeds and slows actual motion while keeping the same controller clock" {
+  w:=EgMoveWorld.{deck=true}; empty:[1]f32;
+  base:=walk.walk_input(walk.walk_place(0,0,0,0),0,1,0,0,true,false,0,0); fast:=base; slow:=base;
+  for i:0..<64 {
+    base=eg_step_advance_scaled(base,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),1);
+    fast=eg_step_advance_scaled(fast,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),2);
+    slow=eg_step_advance_scaled(slow,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),0.5);
+  }
+  #assert fast.pos.z>base.pos.z*f32(1.7) && slow.pos.z<base.pos.z*f32(0.6);
+  #assert base.clock.ticks==64 && fast.clock.ticks==64 && slow.clock.ticks==64;
+  #assert fast.collision_status==scaled_collision.CollideStatus.ok;
+}
+
+#test "combat walking rate refuses unsupported profiles and stops horizontal motion at zero" {
+  p:=walk.walk_input(walk.walk_place(0,0,0,0),0,1,0,0,true,false,0,0); p.vel.z=7.5;
+  empty:[1]f32; zero:f32=0;
+  for mode:0..<5 {
+    w:=EgMoveWorld.{deck=true}; rate:f32=2;
+    if mode==0 { rate= -1; } if mode==1 { rate=zero/zero; } if mode==2 { rate=1/zero; }
+    if mode==3 { w.aboard=true; } if mode==4 { w.link_flags=32; }
+    q:=eg_step_advance_scaled(p,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),rate);
+    #assert q.collision_status==scaled_collision.CollideStatus.bad_profile && q.pos.z==p.pos.z && q.clock.ticks==p.clock.ticks;
+  }
+  w:=EgMoveWorld.{deck=true}; q:=eg_step_advance_scaled(p,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),0);
+  #assert q.vel.z==0 && q.pos.z==p.pos.z && q.clock.ticks==1;
 }

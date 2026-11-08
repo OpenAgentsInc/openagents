@@ -7024,3 +7024,18 @@ remain intact; per-enemy permission projection preserves shared death/action/
 movement state without repeated army scans. This completes the two locomotion
 producer boundaries, not all movement/timing/world qualification. Evidence:
 `docs/verification/srd-monster-departure-2026-11-08/README.md`.
+
+## Experimental physical walking consumes shared Speed and per-foot costs
+
+`locomotion-scale.coax` projects current walking Speed and additive crawl/
+difficult-terrain costs onto the declared Speed-30 action locomotion baseline.
+Player rate is separate from terrain pace, so rates above one reach the actual
+controller; AI pursuit/home motion receives the same projection. Opt-in
+`walk-scaled.coax` keeps one paid fixed tick/camera history while subdividing
+collision integration through `walk-substep-policy.coax`'s bounded powers of
+two. Original collision travel limits are unchanged. Refusal restores the
+fixed step's physical/control state and correct interpolation history. Normal
+controller exports/replay remain unchanged. AI opportunities resolve between
+candidate subdivisions. This does not qualify strict continuous movement
+payments or every movement/effect/world mode. Evidence and explicit tuning:
+`docs/verification/srd-physical-scale-2026-11-08/README.md`.

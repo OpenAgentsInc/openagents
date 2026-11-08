@@ -1,0 +1,10 @@
+FAIL #test a refused scaled tick keeps the same interpolation history as an ordinary refused tick (1 ms)
+aethyr/tests/walk-scaled-checks.coax:26:3: error[E0406]: assertion failed
+    #assert walk.walker_same(a,b) && a.prev_pos.z==b.prev_pos.z && a.prev_target.z==b.prev_target.z;
+    ^
+  note: in #test a refused scaled tick keeps the same interpolation history as an ordinary refused tick
+1 of 314 checks (--only 'refused scaled tick'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

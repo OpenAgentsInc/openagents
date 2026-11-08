@@ -74,7 +74,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     coax_v_f32 walls = lab_move_walls(at(state));
     coax_v_f32 floors = lab_move_floors(at(state));
     coax_t_EgBody origin = eg_step_body(player);
-    player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){walls.data, mw.walls * 6}, (coax_v_f32){floors.data, mw.floors * 10}, frame);
+    player = eg_step_advance_scaled(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){walls.data, mw.walls * 6}, (coax_v_f32){floors.data, mw.floors * 10}, frame, lab_move_scale(at(state)));
     coax_t_EgBody kept = lab_keep_body(at(state), origin, eg_step_body(player));
     if (kept.x != player.pos.x || kept.z != player.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
     player = eg_step_put(player, kept);

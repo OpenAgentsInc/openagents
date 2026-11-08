@@ -1,0 +1,43 @@
+// Explicit faster-locomotion adapter. The ordinary advance_in contract remains
+// one collision integration per tick; this opt-in keeps the same paid clock.
+#authority;
+step :: (w:World,given:Player,dt:f32)->Player #effects(all) {
+  if !locomotion_profile_ok(w.locomotion) || walk_travel_parts(w.locomotion.run_speed,f32(STEP),w.collision.max_travel)!=1 {
+    return collision_report(given,CollideResult.{status=CollideStatus.bad_profile});
+  }
+  return step_body(w,given,dt);
+}
+step_substep :: (w:World,given:Player,dt:f32)->Player #effects(all) {
+  if !locomotion_profile_ok(w.locomotion) || walk_travel_parts(w.locomotion.run_speed,dt,w.collision.max_travel)!=1 {
+    return collision_report(given,CollideResult.{status=CollideStatus.bad_profile});
+  }
+  return step_body(w,given,dt);
+}
+walk_substep_refusal :: (given:Player,attempt:Player)->Player #effects(all) {
+  return collision_report(given,CollideResult.{status=attempt.collision_status,passes=attempt.collision_passes,residual=attempt.collision_residual,floor_cut=attempt.collision_floor_cut});
+}
+walk_scaled_fixed :: (w:World,given:Player)->Player #effects(all) {
+  parts:=walk_travel_parts(w.locomotion.run_speed,f32(STEP),w.collision.max_travel);
+  start:=given; start.prev_pos=given.pos; start.prev_target=given.target; start.prev_face=given.face; start.prev_dist=given.dist;
+  if parts==0 { return collision_report(start,CollideResult.{status=CollideStatus.bad_profile}); }
+  next:=start;
+  for part:0..<parts {
+    next=step_substep(w,next,f32(STEP)/f32(parts));
+    if next.collision_status!=CollideStatus.ok { return walk_substep_refusal(start,next); }
+  }
+  return camera_step(w,next,f32(STEP));
+}
+advance_scaled_in :: (w:World,given:Player,frame:f32)->Player #effects(all) {
+  schedule:=walk_schedule(given.clock,frame);
+  if !schedule.ok { return collision_report(given,CollideResult.{status=CollideStatus.bad_profile}); }
+  next:=given; next.clock=schedule.clock;
+  for tick:0..<schedule.count { next=walk_scaled_fixed(w,next); }
+  next.clock=loop_ran(next.clock);
+  return next;
+}
+#test "ordinary scaled entry keeps one tick and a refused step preserves queued input" {
+  w:World; p:=walk_input(walk_place(0,0,0,0),0,1,0,0,true,true,0,0);
+  q:=advance_scaled_in(w,p,f32(STEP)); #assert q.clock.ticks==1 && q.jumps.taken==1;
+  w.collision.max_passes=0; q=advance_scaled_in(w,p,f32(STEP));
+  #assert q.clock.ticks==1 && q.pos.z==p.pos.z && q.jumps.waiting==p.jumps.waiting && q.collision_refusals==1;
+}

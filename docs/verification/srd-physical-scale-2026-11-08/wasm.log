@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time steps: 22692426 of 28000000 used (81%), above three quarters of the limit; more than 28000000 fails with E0400
+  top users of compile-time steps:
+    3325140 steps  aethyr/query.coax:81:1  in 'query_finite' (255780 times)
+    2798666 steps  aethyr/walk.coax:401:1  in 'step_body' (8820 times)
+    2143260 steps  aethyr/locomotion.coax:72:1  in 'locomotion_profile_ok' (8820 times)
+    1852200 steps  aethyr/locomotion.coax:69:1  in 'locomotion_finite' (132300 times)
+    1058400 steps  aethyr/collide.coax:164:1  in 'collide_move' (8820 times)
+  fix: do less work in 'query_finite', split the check, or give it a larger budget with a larger #steps N on the check
+wasm.sh: srd-physical-scale-fivelab.wasm: 3.5 s: Coax to C 1.5 s (2/3 cached), clang 0.2 s (3/4 cached), link 1.0 s, wasm-opt 0.7 s; 2536771 bytes; report /tmp/.c/srd-physical-scale-fivelab.timings.json
+wasm-size: srd-physical-scale-fivelab is 2536771 bytes and has no size budget: add a line "srd-physical-scale-fivelab BYTES" to apps/openagents-web/wasm-budgets.txt

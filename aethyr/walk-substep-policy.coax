@@ -1,0 +1,29 @@
+// A bounded physical integration subdivision, never extra logical clock ticks.
+#module "aethyr.walksubsteps";
+#authority;
+walk_travel_parts :: (speed:f32,dt:f32,limit:f32)->int #effects(all) {
+  if !walk_travel_finite(speed) || speed<0 || !walk_travel_finite(dt) || dt<=0 || !walk_travel_finite(limit) || limit<=0 { return 0; }
+  for parts:[5]int.[1,2,4,8,16] { if speed*dt<=limit*f32(parts) { return parts; } }
+  return 0;
+}
+#test "substep admission uses exact travel bounds and rejects malformed or excessive work" {
+  for parts:[5]int.[1,2,4,8,16] {
+    #assert walk_travel_parts(f32(parts),1,1)==parts;
+    if parts>1 { #assert walk_travel_parts(f32(parts)-f32(0.01),1,1)==parts; }
+  }
+  #assert walk_travel_parts(0,1,0)==0;
+  #assert walk_travel_parts(0,1,1)==1 && walk_travel_parts(16.01,1,1)==0;
+  #assert walk_travel_parts(7.5,f32(0.015625),0.15)==1 && walk_travel_parts(30,f32(0.015625),0.15)==4;
+  zero:f32=0;
+  for value:[5]f32.[-1,0,zero/zero,1/zero,1000000] {
+    #assert walk_travel_parts(1,value,1)==0 && walk_travel_parts(1,1,value)==0;
+    if value!=0 { #assert walk_travel_parts(value,1,1)==0; }
+  }
+}
+
+walk_travel_finite :: (value:f32)->bool #effects(all) { return value==value && value> -1000000 && value<1000000; }
+#test "subdivision numeric boundary rejects both finite endpoints and nonfinite values" {
+  #assert walk_travel_finite(999999) && walk_travel_finite(-999999);
+  #assert !walk_travel_finite(1000000) && !walk_travel_finite(-1000000);
+  zero:f32=0; #assert !walk_travel_finite(zero/zero) && !walk_travel_finite(1/zero);
+}

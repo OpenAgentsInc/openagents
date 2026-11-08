@@ -1,0 +1,19 @@
+aethyr/tests/walk-scaled-checks.coax:6:20: error[E0385]: module 'aethyr.walk' has no procedure 'advance_scaled_in'
+    for i:0..<64 { p=walk.advance_scaled_in(w,p,f32(walk.STEP)); }
+                     ^
+aethyr/tests/walk-scaled-checks.coax:7:52: error[E0385]: module 'aethyr.walk' has no declaration 'CollideStatus'
+    #assert p.clock.ticks==64 && p.collision_status==walk.CollideStatus.ok && p.pos.z>10;
+                                                     ^
+aethyr/tests/walk-scaled-checks.coax:10:20: error[E0385]: module 'aethyr.walk' has no procedure 'advance_scaled_in'
+    for i:0..<64 { p=walk.advance_scaled_in(w,p,f32(walk.STEP)); }
+                     ^
+aethyr/tests/walk-scaled-checks.coax:11:52: error[E0385]: module 'aethyr.walk' has no declaration 'CollideStatus'
+    #assert p.clock.ticks==64 && p.collision_status==walk.CollideStatus.ok && p.pos.z<=f32(1.70001);
+                                                     ^
+aethyr/tests/walk-scaled-checks.coax:15:59: error[E0385]: module 'aethyr.walk' has no procedure 'advance_scaled_in'
+    for i:0..<32 { a=walk.advance_in(w,a,f32(walk.STEP)); b=walk.advance_scaled_in(w,b,f32(walk.STEP)); }
+                                                            ^
+5 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

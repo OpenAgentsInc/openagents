@@ -1,0 +1,17 @@
+#load "battle.coax";
+#test "physical walking scale follows current Speed and additive crawl terrain costs" {
+  b:[1]RsBattle; b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Walker",0,1),2,2);
+  for speed:[4]int.[0,15,30,120] { for prone:0..<2 { for terrain:0..<2 {
+    b[0].c[0].speed=speed; b[0].c[0].cond=ifx prone==1 then RS_PRONE else 0;
+    b[0].zone[0]=RsZone.{on=terrain==1,difficult=true,x0=0,y0=0,x1=7,y1=7};
+    expected:=f32(speed)/30/f32(1+prone+terrain);
+    #assert rs_locomotion_scale(b[..],0)==expected;
+  } } }
+  b[0].c[0].speed=30; b[0].c[0].cond=RS_GRAPPLED; #assert rs_locomotion_scale(b[..],0)==0;
+  b[0].c[0].cond=RS_STUNNED; b[0].zone[0].on=false; #assert rs_locomotion_scale(b[..],0)==1;
+  b[0].c[0].cond=0; b[0].c[0].slowed_until=60; #assert rs_locomotion_scale(b[..],0)==f32(20)/30;
+  b[0].c[0].halved_until=60; #assert rs_locomotion_scale(b[..],0)==f32(10)/30;
+  b[0].c[b[0].n]=rs_guard("Unused",0);
+  b[0].c[0].slowed_until=0; b[0].c[0].halved_until=0; b[0].c[0].cond=RS_BLINDED; #assert rs_locomotion_scale(b[..],0)==1;
+  #assert rs_locomotion_scale(b[..],-1)==0 && rs_locomotion_scale(b[..],b[0].n)==0;
+}

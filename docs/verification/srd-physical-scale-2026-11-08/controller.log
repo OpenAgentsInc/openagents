@@ -1,0 +1,4 @@
+ok   #test combat walking rate speeds and slows actual motion while keeping the same controller clock (1 case, 980592 steps, 22 ms)
+ok   #test combat walking rate refuses unsupported profiles and stops horizontal motion at zero (1 case, 5668 steps, 0 ms)
+2 of 332 checks (--only 'combat walking rate'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

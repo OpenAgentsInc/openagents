@@ -25,6 +25,8 @@
 #load "collision-profiles.coax" as realm_collision;
 #load "tests/player-collision-checks.coax";
 #load "locomotion.coax";
+#load "walk-substep-policy.coax";
+#load "walk-scaled.coax";
 #load "locomotion-source.coax" as source_motion;
 #load "tests/echo-walk-checks.coax";
 #load "flight.coax";   // the per-step flight hook a flying realm declares (Fairy Forest)
@@ -396,10 +398,7 @@ spring_axis :: (cur: f32, vel: f32, dest: f32, dt: f32) -> Vec3 #effects(all) {
 
 // book:begin take
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
-  if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
-    return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
-  }
+step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;

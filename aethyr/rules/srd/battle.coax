@@ -42,6 +42,7 @@
 #load "stat-opportunity.coax";
 #load "opportunity-movement.coax";
 #load "movement-credit.coax";
+#load "locomotion-scale.coax";
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
 #load "ability-checks.coax";

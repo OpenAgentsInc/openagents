@@ -75,3 +75,14 @@ movement; failed execution rolls back before cooldown/publication. This is a
 named world deviation, not strict target semantics. Page prediction and complete
 state/runtime qualification remain open. See
 [Everglade II evidence](../verification/srd-e2-shared-cast-2026-11-08/README.md).
+
+Experimental's continuous action locomotion also declares its existing physical
+baseline separately from the grid grant: Speed 30 corresponds to player
+walk/run 3.5/7.5 m/s (dash 9.2) and AI pursuit/home 2.4/1.5 m/s.
+`locomotion-scale.coax` now propagates current walking Speed and additive
+crawl/difficult-terrain costs proportionally, including rates above one. The
+controller's opt-in subdivision path preserves the paid 1/64-second clock and
+original collision travel bounds; it does not multiply world time. This keeps
+the continuous action profile explicit and does not claim strict feet-per-turn
+payment, special speeds, Haste's program, or complete world-zone/timing behavior.
+See [physical locomotion evidence](../verification/srd-physical-scale-2026-11-08/README.md).

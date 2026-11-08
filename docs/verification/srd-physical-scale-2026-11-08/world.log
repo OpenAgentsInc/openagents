@@ -1,0 +1,6 @@
+ok   #test experimental walking scale exposes class Speed and condition changes without the terrain pace clamp (1 case, 2262832 steps, 411 ms)
+ok   #test experimental walking scale changes actual AI distance at half base Speed (1 case, 7989743 steps, 505 ms)
+ok   #test experimental walking scale retains actual AI distance at base Speed (1 case, 7989739 steps, 465 ms)
+ok   #test experimental walking scale changes actual AI distance at twice base Speed (1 case, 13731611 steps, 413 ms)
+4 of 925 checks (--only 'experimental walking scale'), 4 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
