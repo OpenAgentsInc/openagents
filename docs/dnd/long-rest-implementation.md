@@ -150,3 +150,14 @@ Casting must interrupt after complete admission but before slot payment; adding
 it to the existing after-payment hook would incorrectly refill paid Pact slots.
 Initiative, non-damage death, real activity/control producers and rejoin binding
 remain next. [Damage evidence](../verification/srd-rest-damage-2026-11-08/README.md).
+
+## Accepted casting cause
+
+Ordinary, Reaction and empty-target casting now consume admitted non-cantrip
+interruptions before slot payment. Components/targets/capacity and true-owner
+Reaction budgets are checked first; refused casts and cantrips do not recover
+banks. Earned Pact recovery cannot refund the cast. Empty-target free spells
+now pay their source feature rather than slot zero. Initiative and non-damage
+death remain next, followed by real world controls/activity and persistent
+binding. Optional choices/simultaneous ordering remain separate required work.
+[Casting evidence](../verification/srd-rest-casting-2026-11-08/README.md).

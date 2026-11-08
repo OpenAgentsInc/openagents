@@ -400,7 +400,6 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   if s.cast_time == RS_T_REACTION {
     if !rs_capable(b[0].c[i]) || b[0].c[i].raging || !rs_spell_ready(b[0].c[i],a.sp) { return false; }
     if !rs_cast_reaction_slot(b,i,a.sp,sl,true) { return false; }
-    rs_rest_spell_at(b[0].c,i,s.level);
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " casts "); rs_add_text(l[..], s.name); rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[sl]); rs_add_text(l[..], "-level slot, Reaction)");
     rs_tell(b, RS_EV_CAST, a.sp, i, i, sl, 0, l[..]);
@@ -454,10 +453,15 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
 // Action, its slot and its concentration are spent as rs_cast spends them, and nothing is affected.
 fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
   if !rs_can_cast(b, i, sp, sl) { return false; }
+  rs_rest_cast_before(b,i,rs_spell(sp).level);
   if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
   s := rs_spell(sp);
   if s.cast_time == RS_T_ACTION { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
-  if s.level > 0 { b[0].turn.leveled = true; b[0].c[i].slots[sl] -= 1; b[0].turn.slot_spent = true; }
+  if s.level > 0 {
+    b[0].turn.leveled = true;
+    if sl>0 { b[0].c[i].slots[sl] -= 1; b[0].turn.slot_spent = true; }
+    else if !(sp==SP_FALSE_LIFE && b[0].c[i].vigor) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
+  }
   if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + s.duration_s; }
   l: [1] RsLine;
   rs_add_name(l[..], b, i); rs_add_text(l[..], " casts "); rs_add_text(l[..], s.name);

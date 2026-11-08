@@ -58,6 +58,7 @@
 #load "long-rest-owned.coax";
 #load "rest-scheduler.coax";
 #load "rest-damage.coax";
+#load "rest-casting.coax";
 #load "damage-protection.coax";
 #load "short-rest.coax";
 #load "rest-sleep.coax";
@@ -431,7 +432,6 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
   if !rs_cast_reaction_slot(b,j,SP_HELLISH_REBUKE,slot,true) { return false; }
-  rs_rest_spell_at(b[0].c,j,rs_spell(SP_HELLISH_REBUKE).level);
   dc := rs_dc(b, j);
   saving := rs_saving_throw(b,by,RS_DEX,dc);
   st := saving.total;
@@ -549,9 +549,9 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   if chosen {
     if !rs_options_effect_room(b,i,s,sp,slot,picks,options) { return false; }
   } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
+  rs_rest_cast_before(b,i,s.level);
   if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
   // spend
-  rs_rest_spell_at(b[0].c,i,s.level);
   b[0].aff_used = false;
   if s.cast_time == RS_T_ACTION && !quick { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
   if quick { b[0].c[i].uses[RS_USE_SORCERY] -= 2; b[0].turn.quickened = true; }
@@ -697,7 +697,6 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
   if c.npc != RS_NPC_NONE && slot != 1 { return false; }
   if slot == 0 { return false; }
   if !rs_cast_reaction_slot(b,j,SP_SHIELD,slot,c.npc != RS_NPC_MAGE) { return false; }
-  rs_rest_spell_at(b[0].c,j,rs_spell(SP_SHIELD).level);
   rs_shield_begin(b[0].c[j..<j+1]);
   l: [1] RsLine;
   rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Shield ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot): AC ");

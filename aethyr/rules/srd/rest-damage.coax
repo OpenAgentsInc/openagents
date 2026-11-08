@@ -117,6 +117,11 @@ rs_rest_damage_before :: (b:[]RsBattle,i:int,amount:int) #effects(all) {
   // A declared house floor can prevent the entire event. Undead Fortitude is
   // HP protection, not damage immunity, and must not erase the interruption.
   if rs_damage_floor(b[0].c[i],amount)<=0 { return; }
+  rs_rest_cause_before(b,i);
+}
+// Called only for an admitted interruption on an already synchronized owner.
+rs_rest_cause_before :: (b:[]RsBattle,i:int) #effects(all) {
+  if i<0 || i>=b[0].n || b[0].c[i].dead { return; }
   if b[0].c[i].long_rest.phase==1 {
     journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
     event:=rs_long_rest_interrupt(journal[..]);

@@ -7168,3 +7168,16 @@ Undead Fortitude protects remaining HP, not damage taken: full damage still
 consumes Temporary HP, ends Turn Undead and calls for concentration. Saving
 throw rescue expenditure is retained before the HP snapshot. Evidence:
 `docs/verification/srd-rest-damage-2026-11-08/README.md`.
+
+## Casting interruption precedes spell payment after admission
+
+Ordinary and empty-target casts apply admitted non-cantrip rest interruption
+before component/slot payment. Shared Reaction payment applies it after
+spell/component and true-owner budget admission, before spending its slot.
+Earned Pact recovery cannot refund a paid cast. Refusals and cantrips preserve
+rest; damage floors do not suppress casting interruptions. The common consumer
+retains one interruption/recovery and grants no turn or Reaction. Empty-target
+free casts consume their source use where required, preserve unlimited Vigor
+and never spend slot zero. Owners still synchronize journals before admission;
+world activation, Initiative and optional ordering remain required. Evidence:
+`docs/verification/srd-rest-casting-2026-11-08/README.md`.

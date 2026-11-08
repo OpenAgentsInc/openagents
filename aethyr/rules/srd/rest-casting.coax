@@ -1,0 +1,70 @@
+// SRD 5.2.1 p185: casting a non-cantrip interrupts Long Rest. Admission
+// precedes the cause; earned Short Rest recovery precedes slot payment.
+#authority;
+
+rs_rest_cast_before :: (b:[]RsBattle,i:int,level:int) #effects(all) {
+  if level>0 { rs_rest_cause_before(b,i); }
+}
+
+#test "accepted ordinary leveled casting recovers Pact slots before paying rather than refunding the cast" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+  c[0]=rs_warlock("Watching caster",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Target",1,3); c[1].x=3;
+  c[0].slots[2]=1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],3600); b[0].who=0;
+  #assert rs_cast(b[..],0,SP_HEX,2,0,0,1);
+  #assert c[0].long_rest.phase==2 && c[0].long_rest.interruptions==1 && c[0].slots[2]==1;
+  #assert c[0].rest.phase==0 && !c[0].long_rest.short_due && b[0].turn.action==false && b[0].turn.bonus && b[0].turn.slot_spent;
+  #assert c[0].conc==SP_HEX && c[1].hp==c[1].hp_max;
+}
+#test "refused casts and cantrips preserve Long Rest and never recover empty Pact slots" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+  c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Target",1,3); c[1].x=3;
+  c[0].slots[2]=0;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],3600); b[0].who=0;
+  #assert !rs_cast(b[..],0,SP_HEX,2,0,0,1);
+  #assert c[0].long_rest.phase==1 && c[0].slots[2]==0 && !b[0].turn.slot_spent;
+  c[0].slots[2]=1;
+  #assert !rs_cast(b[..],0,SP_HEX,2,0,0,-1);
+  #assert c[0].long_rest.phase==1 && c[0].slots[2]==1;
+  #assert rs_cast(b[..],0,SP_ELDRITCH_BLAST,0,0,0,1);
+  #assert c[0].long_rest.phase==1 && c[0].slots[2]==1 && c[0].long_rest.interruptions==0;
+}
+#test "accepted leveled Reaction recovers Pact slots before payment and preserves another actor turn" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+  c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Striker",1,3); c[1].x=3;
+  c[0].slots[2]=1; c[0].rebuke=true;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],3600); b[0].who=1; b[0].turn.action=true; b[0].turn.bonus=true;
+  #assert rs_hellish_rebuke(b[..],0,1);
+  #assert c[0].long_rest.phase==2 && c[0].long_rest.interruptions==1 && c[0].slots[2]==1 && c[0].reacted;
+  #assert c[0].rest.phase==0 && b[0].who==1 && b[0].turn.action && b[0].turn.bonus && !b[0].turn.slot_spent && !b[0].turn.leveled;
+}
+
+#test "cast interruption distinguishes cantrip levels, sub-hour rest, house floors and repeated causes" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[0].slots[2]=1; c[0].floor=c[0].hp;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],3599);
+  for level:[2]int.[-1,0] { rs_rest_cast_before(b[..],0,level); #assert c[0].long_rest.phase==1 && c[0].slots[2]==1; }
+  rs_rest_cast_before(b[..],0,1);
+  #assert c[0].long_rest.phase==2 && c[0].long_rest.interruptions==1 && c[0].slots[2]==1 && !c[0].rest.seeded;
+  rs_rest_cast_before(b[..],0,9);
+  #assert c[0].long_rest.interruptions==1 && c[0].slots[2]==1;
+  rs_rest_cast_before(b[..],-1,1); rs_rest_cast_before(b[..],1,1);
+  c[0].dead=true; c[0].rest.phase=1; rs_rest_cast_before(b[..],0,1); #assert c[0].rest.phase==1;
+}
+#test "spell and Reaction component refusals leave eligible recovery untouched" {
+  for reaction:0..<2 { for blocked:0..<2 {
+    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+    c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Striker",1,3); c[1].x=3;
+    c[0].slots[2]=1; c[0].rebuke=true;
+    #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+    rs_tick(b[..],3600); b[0].who=0;
+    if blocked==0 { c[0].speech_blocked=true; } else { c[0].gesture_hand=false; c[0].material_hand=false; c[0].focus_held=false; }
+    if reaction==0 { #assert !rs_cast(b[..],0,SP_HEX,2,0,0,1); }
+    else { #assert !rs_hellish_rebuke(b[..],0,1); }
+    #assert c[0].long_rest.phase==1 && c[0].slots[2]==1 && !c[0].reacted && !b[0].turn.slot_spent && !c[0].rest.seeded;
+  } }
+}
