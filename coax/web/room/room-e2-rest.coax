@@ -31,10 +31,16 @@ e2_rest_step :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, was: EgPose, wa
   st[0].rest_seen = true; st[0].rest_settled = still && !keys && !jump;
   _ := rs_rest_observe_motion(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s, walked, jumped, still);
 }
-// Whether the room's own observation of seat s admits starting or changing a rest now.
+// Whether the room's own observation of seat s admits starting or changing a rest now: its latest
+// stepped input stood it still, and every input still queued (a page sends one each 1/30 s, so one
+// is often waiting) holds its controls released too, unless the body can't move (asleep: its steps
+// carry no locomotion, rm_eg_input).
 e2_rest_settled :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value;
   st := v[0].eg[k].seat[s];
-  return st.live && st.placed && st.rest_seen && st.rest_settled && st.q_n == 0 && v[0].eg[k].rules[0].live[s];
+  if !(st.live && st.placed && st.rest_seen && st.rest_settled && v[0].eg[k].rules[0].live[s]) { return false; }
+  if rs_locomotion_scale(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s) <= 0 { return true; }
+  for i: 0..<st.q_n { q := st.q[i]; if q.kx != 0 || q.ky != 0 || q.px != 0 || q.py != 0 || (q.b & WB_JUMP) != 0 { return false; } }
+  return true;
 }
 // Z SEQ REQ.
 e2_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
@@ -253,4 +259,22 @@ e2rt_land :: (v: [] RmServer, k: int) { for q: 0..<90 { eg_test_tick(v, k); } }
   ck_test_init(v[..]);
   kx := e2rt_ck_join(v[..], 0, 9, two_cap, CharacterRest.{}); #assert kx >= 0;
   #assert v[0].eg[kx].rules[0].b[0].c[E5RR_SEAT].long_rest.phase == 0 && !rs_sleeping(v[0].eg[kx].rules[0].b[0].c[E5RR_SEAT]);
+}
+#test "e2 rest: a still input still queued (a page sends one each 1/30 s) does not refuse a rest; a queued walking or jumping one does" #steps 4000000000 {
+  v: [1] RmServer; k := e2rt_room(v[..], "srd-fighter"); c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; box: [16384] u8;
+  e2rt_step(v[..], k, 0, 1, 0); _ := e2rt_heard(v[..], 0, box[..]);
+  rm_heard(v[..], 0, "I 2 0 0 0 100 0 0 0"); #assert v[0].eg[k].seat[0].q_n == 1;
+  e2rt_ask(v[..], 0, 1, RS_REST_SHORT); #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 1 rest") && c[0].rest.phase == 0;
+  eg_test_tick(v[..], k); e2rt_step(v[..], k, 0, 3, 0);
+  m: [64] u8; q := put(m[..], 0, "I 4 0 0 0 0 0 "); q = put_int(m[..], q, WB_JUMP); q = put(m[..], q, " 0");
+  rm_heard(v[..], 0, cast(string) m[0..<q]); #assert v[0].eg[k].seat[0].q_n == 1;
+  e2rt_ask(v[..], 0, 2, RS_REST_SHORT); #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 2 rest") && c[0].rest.phase == 0;
+  eg_test_tick(v[..], k); e2rt_step(v[..], k, 0, 5, 0); for t: 0..<30 { eg_test_tick(v[..], k); } e2rt_step(v[..], k, 0, 6, 0);
+  rm_heard(v[..], 0, "I 7 0 0 0 0 0 0 0"); #assert v[0].eg[k].seat[0].q_n == 1;
+  e2rt_ask(v[..], 0, 3, RS_REST_SHORT); #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 3 1 ") && c[0].rest.phase == 1;
+  // asleep, a queued walking input moves nothing, so it does not keep the sleeper from the watch
+  e2rt_ask(v[..], 0, 4, RS_REST_END); eg_test_tick(v[..], k); e2rt_step(v[..], k, 0, 8, 0);
+  e2rt_ask(v[..], 0, 5, RS_REST_SLEEP); #assert rs_sleeping(c[0]);
+  rm_heard(v[..], 0, "I 9 0 0 100 0 0 0 0"); #assert v[0].eg[k].seat[0].q_n == 1;
+  e2rt_ask(v[..], 0, 6, RS_REST_WATCH); #assert !rs_sleeping(c[0]) && c[0].long_rest.mode == 2;
 }

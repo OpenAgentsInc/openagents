@@ -410,12 +410,13 @@ rx_until :: (bots: [] RxBot, n: int, i: int, code: int, ms: int) -> bool {
   return bots[i].rest_code == code;
 }
 rx_rest_step :: (name: string, held: bool, b: RxBot) -> bool {
-  print("  % %: rest % dice %, % heard, % refused\n", ifx held then "ok  " else "FAIL", name, b.rest_code, b.rest_dice, b.rest_heard, b.rest_refused);
+  print("  % %: rest % dice %, % heard, % refused (at % % %, moving % % %, ground %)\n", ifx held then "ok  " else "FAIL", name, b.rest_code, b.rest_dice, b.rest_heard, b.rest_refused,
+        b.own.x, b.own.y, b.own.z, b.own.vx, b.own.vy, b.own.vz, b.own.g);
   return held;
 }
 rx_rest :: (bots: [] RxBot, n: int, bin: string, ports: [] int, dir: string, store: string, codes: [] string, rooms: [] int) -> bool {
   for i: 0..<n { bots[i].go = false; }
-  rx_run(bots, n, 2500);   // seated, landed and still
+  rx_run(bots, n, 6000);   // seated, landed and still
   ok := rx_rest_step("both seated and told no rest", bots[0].rest_code == 0 && bots[1].rest_code == 0, bots[0]);
   rx_rest_ask(bots[0..<1], RX_SLEEP);
   ok = rx_rest_step("player 0 asleep", rx_until(bots, n, 0, 3, 3000), bots[0]) && ok;

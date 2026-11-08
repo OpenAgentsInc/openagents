@@ -7243,7 +7243,7 @@ only authority over a seat's rest. A page asks with `Z SEQ REQ` and hears the
 room's state as `z SEQ CODE DICE`; it never decides rest locally. The room
 admits a request only through `rs_rest_control`, only after it has itself seen
 that seat placed, grounded, still and with released controls in the latest
-accepted step, with no queued movement. Walking and jumping are observed from
+accepted step, and every input still queued also holds its controls released. Walking and jumping are observed from
 the room's accepted steps and displacement, never from page claims; a sleeping
 seat's steps carry no locomotion. Recovery happens once, in the scheduler. A
 grace rejoin keeps the creature, rest and cast history and tells the new socket
