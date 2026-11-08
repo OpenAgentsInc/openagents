@@ -278,13 +278,20 @@ ${links}
 export const hasMaker = (slug: string, site = SITE) => existsSync(join(site, "realms", slug, "tip", "index.html"))
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
 // A page opened through Everglade's portal on the homepage (?via=portal, newland-portal.coax): until
-// the engine draws, the page is the portal's light (gpu/portal.coax's colours at the hand-over's
-// scale) rather than the loading screen, so the way in has no black and no bar; the engine then
+// the engine draws, the loading screen is the portal's light (gpu/portal.coax's colours at the
+// hand-over's scale), still moving: a slow swirl and rings running out, on the compositor, so it
+// moves while the engine compiles. No black and no bar; the engine then
 // draws the same light and opens the world through it (everglade2-create.coax). A failure still
 // says what failed.
-const PORTAL_ARRIVAL_CSS = `html.portal.gpu,html.portal.gpu body{background:radial-gradient(ellipse at 50% 50%,#a1e2be 0%,#91d5b1 40%,#87cfac 75%,#7fcaaa 100%)}
-html.portal.gpu #coaxial-load{background:transparent}
-html.portal.gpu #coaxial-load:not([data-state=fail]) .lf{visibility:hidden}`
+const PORTAL_ARRIVAL_CSS = `html.portal.gpu,html.portal.gpu body{background:#86c39d}
+html.portal.gpu #coaxial-load{overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#a1e2be 0%,#91d5b1 40%,#87cfac 75%,#7fcaaa 100%)}
+html.portal.gpu #coaxial-load::before,html.portal.gpu #coaxial-load::after{content:"";position:absolute;left:50%;top:50%;width:250vmax;height:250vmax;margin:-125vmax 0 0 -125vmax;pointer-events:none;will-change:transform,opacity}
+html.portal.gpu #coaxial-load::before{background:conic-gradient(from 0deg,rgba(60,160,140,.42),rgba(205,245,220,.30),rgba(55,140,130,.42),rgba(240,215,150,.26),rgba(60,160,140,.42),rgba(190,240,225,.30),rgba(60,160,140,.42));filter:blur(28px);animation:portal-swirl 4s linear infinite}
+html.portal.gpu #coaxial-load::after{background:radial-gradient(circle at 50% 50%,rgba(240,225,170,.35) 0,rgba(240,225,170,0) 9vmax),repeating-radial-gradient(circle at 50% 50%,rgba(205,248,228,0) 0,rgba(205,248,228,0) 2.4vmax,rgba(205,248,228,.22) 3.4vmax,rgba(205,248,228,0) 4.4vmax),conic-gradient(from 90deg,rgba(40,120,115,.22),rgba(40,120,115,0),rgba(40,120,115,.22),rgba(40,120,115,0),rgba(40,120,115,.22));animation:portal-rings 2.4s linear infinite}
+html.portal.gpu #coaxial-load:not([data-state=fail]) .lf{visibility:hidden}
+@keyframes portal-swirl{from{transform:rotate(0deg) scale(1)}50%{transform:rotate(180deg) scale(1.12)}to{transform:rotate(360deg) scale(1)}}
+@keyframes portal-rings{0%{transform:rotate(0deg) scale(1)}50%{transform:rotate(-90deg) scale(1.16)}100%{transform:rotate(-180deg) scale(1)}}
+@media (prefers-reduced-motion:reduce){html.portal.gpu #coaxial-load::before,html.portal.gpu #coaxial-load::after{animation:none}}`
 
 export function page(r: Realm, isListed = true): string {
   const url = `https://openagents.com/worlds/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))

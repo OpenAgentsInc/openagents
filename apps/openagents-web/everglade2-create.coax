@@ -32,7 +32,7 @@ E2C_PANEL_BOTTOM :: 730.0;   // the glass panel's foot on a desktop (gpu/charact
 // the same scale and wall clock), holds it until the glade has drawn E2C_ARRIVE_FRAMES frames, then:
 // the glade opens through it from the middle, the camera comes round and in to the studio's
 // framing, your character pops up, and the wardrobe fades in. A key, click or scroll skips to the end.
-E2C_ARRIVE_FRAMES :: 12;
+E2C_ARRIVE_FRAMES :: 2;
 E2C_ARRIVE_OPEN :: 0.15;     // s: the glade starts to open through the light
 E2C_ARRIVE_OPENED :: 1.5;    // s: and has opened to the corners
 E2C_ARRIVE_CAMERA :: 2.8;    // s: the camera has come round to the studio's framing

@@ -22,7 +22,7 @@ PORTAL_R :: 1.9;         // grid units: the ring's radius
 PORTAL_LIFT :: 0.4;      // its foot over the floor
 PORTAL_DAIS :: 2.5;      // the dais's radius
 PORTAL_FLY :: 2.1;       // s: the camera flies to the portal and into it
-PORTAL_HOLD :: 0.45;     // s: its light holds the view, swelling, before the page goes on
+PORTAL_HOLD :: 0.2;      // s: its light holds the view, swelling, before the page goes on
 PORTAL_THROUGH :: 3.0;   // the face's radius at the hand-over, in half view diagonals (gpu/portal.coax PORTAL_HANDOFF)
 PORTAL_WALL :: 600000;   // the shimmer's clock: the wall clock's ms modulo this, in seconds (everglade2-create.coax)
 PORTAL_MOTES :: 18;
