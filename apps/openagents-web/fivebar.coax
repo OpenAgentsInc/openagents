@@ -45,6 +45,7 @@ FbAb :: struct {
   part: int = -1;     // a part that follows (Ice Knife's burst round its target)
   again: int = -1;    // a lasting area's part, run on whoever is in it each round (-1 none)
   delay: f32;         // seconds from the press to the strike, as the world draws it (a cast bar, a fall)
+  opt: int = -1;      // a player's explicit choice: -1 the world's picks; k this creature only, with option k (fb_option)
 }
 fb_feature :: (kind: int, name: string, art: string) -> FbAb { return FbAb.{kind = kind, sp = -1, name = name, art = art}; }
 fb_spell :: (sp: int, lvl: int, tg: int) -> FbAb { s := rs_spell(sp); return FbAb.{kind = FB_SPELL, sp = sp, lvl = lvl, tg = tg, name = s.name, art = s.id}; }
@@ -434,7 +435,15 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   else if a.tg == FB_POINT && s.area != RS_A_NONE { ok = rs_cast(b, i, a.sp, sl, tx, ty, -1); }
   else if a.tg == FB_POINT && s.steps[0].kind == RS_S_TELEPORT { ok = rs_cast(b, i, a.sp, sl, tx, ty, i); }   // Dimension Door: you, to the point
   else if a.tg == FB_POINT { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx foe >= 0 then foe else i); }   // a point the world aims, no creature's
-  else if foe >= 0 { ok = rs_cast(b, i, a.sp, sl, 0, 0, foe); }
+  else if foe >= 0 {
+    // the player's choice (a.opt >= 0): this creature (every ray at it) with option a.opt, and no one
+    // picked besides; otherwise the world's picks round it
+    chosen := a.opt >= 0 && s.area == RS_A_NONE;
+    n := ifx !chosen then 0 else ifx rs_choice_rays(s) then rs_min(rs_choice_limit(s, sl, b[0].c[i].level), RS_CAST_CHOICES) else 1;
+    picks: [RS_CAST_CHOICES] int; opts: [RS_CAST_CHOICES] RsCastOptions;
+    for k: 0..<n { picks[k] = foe; opts[k] = fb_option(a.sp, a.opt); }
+    ok = rs_cast_request_as(b, i, a.sp, sl, 0, 0, foe, false, picks[0..<n], chosen, opts[0..<n]);
+  }
   else { ok = fb_cast_at_nothing(b, i, a.sp, sl); }
   if !ok { return false; }
   // what follows: Ice Knife's shard bursts round its target, hit or miss
@@ -449,6 +458,29 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   return true;
 }
 
+// Option k of spell sp's named choices: Hex's ability (STR to CHA), Blindness/Deafness's condition.
+// Option 0 is the default elsewhere; any other k is a choice the engine refuses before costs.
+fb_option :: (sp: int, k: int) -> RsCastOptions {
+  if sp == SP_HEX { return RsCastOptions.{hex_ability = k}; }
+  if sp == SP_BLINDNESS { return RsCastOptions.{blindness = ifx k == 0 then RS_BLINDED else ifx k == 1 then RS_DEAFENED else -1}; }
+  return ifx k == 0 then RsCastOptions.{} else RsCastOptions.{blindness = -1};
+}
+FB_HEX_OPTIONS :: [6] string.["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+// How many named options spell sp offers (0: none), and option k's short label.
+fb_option_n :: (sp: int) -> int { return ifx sp == SP_HEX then 6 else ifx sp == SP_BLINDNESS then 2 else 0; }
+fb_option_label :: (sp: int, k: int) -> string {
+  if sp == SP_HEX && k >= 0 && k < 6 { return FB_HEX_OPTIONS[k]; }
+  return ifx k == 1 then "DEAF" else "BLIND";
+}
+// The slot levels hero can cast kit spell a with (the spell's own level up), into out; how many.
+fb_cast_levels :: (hero: RsCreature, a: FbAb, out: [] int) -> int {
+  if a.kind != FB_SPELL || a.sp < 0 { return 0; }
+  base := rs_spell(a.sp).level;
+  if base <= 0 { return 0; }
+  n := 0;
+  for l: base..<10 { if hero.slots_max[l] > 0 && n < out.count { out[n] = l; n += 1; } }
+  return n;
+}
 // A spell aimed at a creature cast where none is (at a wall, at the ground): its action or Bonus
 // Action, its slot and its concentration are spent as rs_cast spends them, and nothing is affected.
 fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {

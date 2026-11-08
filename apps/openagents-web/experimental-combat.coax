@@ -78,6 +78,7 @@ XcCombat :: struct {
   arranging: bool; order_dirty: bool; drag_x: f32; drag_y: f32;
   b: [1] RsBattle; seat: [1] FbSeat;
   target: int = -1;                 // the monster struck at last (0 to 5), -1 none: its Hit Points over the bar
+  picked: int = -1;                 // the monster you clicked (#13038): single-target spells go to it while it stands in reach
   cool_at: f32 = -100;              // when the last press was
   used: int = -1;                   // the slot pressed last
   u: [36] f32; w: f32; h: f32; k: f32; seen: bool;   // the last frame's camera and screen
@@ -759,6 +760,48 @@ xc_cast_sound :: (s: [] Lab, a: FbAb) {
 }
 // Slot k used now: the engine resolves it at what it aims at (xc_aim). True when it was used.
 xc_use :: (s: [] Lab, k: int) -> bool { return xc_use_on(s, k, -2); }
+// Whether the monster you clicked still stands within reach metres and in sight; a fallen one is let go.
+xc_pick_live :: (s: [] Lab, reach: f32) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[0]; p := x[0].picked;
+  if p < 0 || p >= XC_FOES { return false; }
+  e := cr.hostiles[0].enemies[p];
+  if e.dead { x[0].picked = -1; return false; }
+  dx := e.x - cr.player_x; dz := e.z - cr.player_z;
+  return dx * dx + dz * dz <= (reach + 1) * (reach + 1) && hostile.hostile_sees(e, cr.player_x, cr.player_z);
+}
+// A spell slot's choices (#13038), in the bar's own style: its slot level in the top right corner and
+// its option along the bottom edge. A tap there steps to the next choice instead of casting; the
+// engine refuses a choice it can't take, spending nothing.
+XC_BADGE :: 18.0;   // CSS px: the corner's tap square, and the bottom strip's height
+xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
+  x := s[0].xc[..]; k := x[0].k;
+  if i < 0 || i >= x[0].bar_n || x[0].bar[i].kind != FB_SPELL { return false; }
+  r := xc_slot_box(x, i); a := x[0].bar[i..<i + 1];
+  levels: [9] int; n := fb_cast_levels(x[0].b[0].c[0], a[0], levels[..]);
+  if n > 1 && px >= r.x1 - f32(XC_BADGE) * k && py <= r.y0 + f32(XC_BADGE) * k {
+    next := levels[0];
+    for q: 0..<n - 1 { if levels[q] == a[0].lvl { next = levels[q + 1]; } }
+    a[0].lvl = next; return true;
+  }
+  m := fb_option_n(a[0].sp);
+  if m > 0 && py >= r.y1 - f32(XC_BADGE) * k { a[0].opt = (rs_max(a[0].opt, 0) + 1) % m; return true; }
+  return false;
+}
+// Click the monster under the pointer to pick it (true); a click on nothing lets the pick go.
+xc_pick_at :: (s: [] Lab, px: f32, py: f32) -> bool {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[..]; k := x[0].k;
+  best := -1; bd := 30 * k * 30 * k;
+  for i: 0..<XC_FOES {
+    e := hs[0].enemies[i];
+    if e.dead { continue; }
+    p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 0.8, e.z);
+    d := (p.x - px) * (p.x - px) + (p.y - py) * (p.y - py);
+    if p.ok && d < bd { bd = d; best = i; }
+  }
+  x[0].picked = best;
+  if best >= 0 { xc_lock_on(s, best); }
+  return best >= 0;
+}
 // Slot k used now against monster on (a blade's contact), or at what it aims at when on is -2.
 xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
@@ -770,6 +813,10 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   // what it aims at: ahead of you, by its kind (xc_aim); nothing is picked for you behind or beside you
   aim := xc_aim(s, a);
   if on >= -1 { aim.foe = on; }
+  // your choices (#13038): a spell at a creature takes only the one aimed at, with the slot's option;
+  // a clicked monster in reach and sight is that creature for a spell with no projectile
+  if a.kind == FB_SPELL && a.tg == FB_FOE && rs_spell(a.sp).area == RS_A_NONE && a.opt < 0 { a.opt = 0; }
+  if on == -2 && aim.kind == XC_AIM_CONE && xc_pick_live(s, aim.reach) { aim.foe = x[0].picked; }
   foe := aim.foe;
   snd := xc_sound(a, x[0].klass);
   swung := xc_kit(x[0].klass) >= 0 && aim.kind == XC_AIM_MELEE;   // its whoosh played at the press (xc_press)
@@ -1078,6 +1125,15 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if i < 9 && xc_draw_slot_key(i,art) {key: [2] u8; key[0] = cast(u8) (49 + i);
      n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));}
     if i == x[0].used && left > 0 { n = xc_line(out, n, r.x0, r.y1 + 4 * k, r.x1, r.y1 + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
+    // its choices: the slot level it casts at (when it has more than one) and its option
+    levels: [9] int;
+    if a.kind == FB_SPELL && fb_cast_levels(x[0].b[0].c[0], a, levels[..]) > 1 {
+      lv: [2] u8; lv[0] = cast(u8) (48 + a.lvl);
+      n = cc.text(out, n, cast(string) lv[0..<1], r.x1 - 10 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 1, 0.82, 0.35));
+    }
+    if a.kind == FB_SPELL && fb_option_n(a.sp) > 0 {
+      n = cc.text(out, n, fb_option_label(a.sp, rs_max(a.opt, 0)), r.x0 + 4 * k, r.y1 - 4 * k, 8 * k, ink_col(k, 1, 0.82, 0.35));
+    }
   }
   // The picked-up icon follows the pointer, as in the original Everglade bar.
   if x[0].arranging && x[0].down >= 0 && x[0].down < x[0].bar_n {
@@ -1170,9 +1226,10 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     d := x[0].down; x[0].down = -100;
     if d >= 0 {
       if x[0].arranging { xc_swap(x, d, over); x[0].arranging = false; }
-      else if d == over { _ := xc_press(s, d); }
+      else if d == over && !xc_choose(s, d, px, py) { _ := xc_press(s, d); }
       return true;
     }
+    if d == -3 && abs(px - x[0].down_x) + abs(py - x[0].down_y) < 6 * k { return xc_pick_at(s, px, py); }
     if d == -2 {
       if in_col {
         if py >= x[0].top + (xc_class_height(x)+34) * k {
@@ -1878,6 +1935,61 @@ xc_play_kit :: (c: int) {
   #assert b[0].c[0].slots[1]==b[0].c[0].slots_max[1]-1;
 }
 
+#test "experimental combat: a spell slot's corner steps its slot level and the cast spends that slot (#13038)" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  x := s[0].xc[..]; xc_set_level(x, 3); x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
+  ray := 2; #assert x[0].bar[ray].sp == SP_RAY_OF_SICKNESS && x[0].bar[ray].lvl == 1;
+  levels: [9] int; #assert fb_cast_levels(x[0].b[0].c[0], x[0].bar[ray], levels[..]) == 2 && levels[0] == 1 && levels[1] == 2;
+  r := xc_slot_box(x, ray);
+  for want: [3] int.[2, 1, 2] {
+    #assert xc_pointer(s[..], r.x1 - 3, r.y0 + 3, 0, 4) && xc_pointer(s[..], r.x1 - 3, r.y0 + 3, 2, 4);
+    #assert x[0].bar[ray].lvl == want && x[0].casts == 0;
+  }
+  // a cantrip and a one-level spell show no corner, and their corner casts as usual
+  #assert fb_cast_levels(x[0].b[0].c[0], x[0].bar[0], levels[..]) == 0;
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6;
+  s[0].creator[0].clock = 5;
+  #assert xc_use(s[..], ray);
+  // Experimental presses refill slots first (RS_UNLIMITED_PRESS), so the chosen level is the one spent
+  #assert x[0].whiffs == 0 && x[0].b[0].c[0].slots[1] == x[0].b[0].c[0].slots_max[1] && x[0].b[0].c[0].slots[2] == x[0].b[0].c[0].slots_max[2] - 1;
+}
+#test "experimental combat: Hex's bottom strip picks its ability, and an option it can't take spends nothing (#13038)" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_WARLOCK, 0);
+  x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
+  hex := 2; #assert x[0].bar[hex].sp == SP_HEX && fb_option_n(SP_HEX) == 6;
+  r := xc_slot_box(x, hex);
+  #assert xc_pointer(s[..], r.x0 + 3, r.y1 - 3, 0, 5) && xc_pointer(s[..], r.x0 + 3, r.y1 - 3, 2, 5);
+  #assert x[0].bar[hex].opt == 1 && x[0].casts == 0 && fb_option_label(SP_HEX, 1) == "DEX";
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6;
+  b := x[0].b[..]; was := b[0].c[0];
+  x[0].bar[hex].opt = 7; s[0].creator[0].clock = 5;
+  #assert !xc_use(s[..], hex);
+  #assert b[0].c[0].slots[1] == was.slots[1] && b[0].c[0].conc == was.conc && !rs_effect(b[0].c[1], EF_HEX);
+  x[0].bar[hex].opt = 1;
+  #assert xc_use(s[..], hex) && b[0].c[0].slots[1] == b[0].c[0].slots_max[1] - 1;
+  cursed := false; for e: b[0].c[1].eff { if e.kind == EF_HEX && e.cond == RS_DEX { cursed = true; } }
+  #assert cursed;
+}
+#test "experimental combat: Blindness/Deafness names its two conditions and refuses any third (#13038)" {
+  #assert fb_option(SP_BLINDNESS, 0).blindness == RS_BLINDED && fb_option(SP_BLINDNESS, 1).blindness == RS_DEAFENED;
+  #assert fb_option(SP_BLINDNESS, 2).blindness == -1 && fb_option_n(SP_BLINDNESS) == 2 && fb_option_label(SP_BLINDNESS, 1) == "DEAF";
+  #assert fb_option(SP_HEX, 4).hex_ability == RS_WIS && fb_option(SP_FIRE_BOLT, 0).blindness == RS_BLINDED && fb_option(SP_FIRE_BOLT, 1).blindness == -1;
+  #assert fb_option_n(SP_FIRE_BOLT) == 0;
+}
+#test "experimental combat: a clicked monster in reach takes a cone spell; out of reach or fallen it is let go (#13038)" #steps 2000000000 {
+  c: [1] Lab; xc_test_lab(c[..], FB_CL_CLERIC, 0);
+  x := c[0].xc[..]; g := c[0].creator[0].hostiles[..]; flame := x[0].bar[0];
+  g[0].enemies[0].x = 0; g[0].enemies[0].z = 4;      // nearer, dead ahead
+  g[0].enemies[1].x = 1; g[0].enemies[1].z = 9;      // the one you clicked
+  #assert xc_aim(c[..], flame).foe == 0;
+  x[0].picked = 1; #assert xc_pick_live(c[..], 18.288);
+  c[0].creator[0].clock = 5;
+  #assert xc_use(c[..], 0) && x[0].target == 1;
+  g[0].enemies[1].z = 40; #assert !xc_pick_live(c[..], 18.288);
+  g[0].enemies[1].z = 9; g[0].enemies[1].dead = true; #assert !xc_pick_live(c[..], 18.288) && x[0].picked == -1;
+  // no camera yet: a click picks nothing and lets the pick go
+  x[0].picked = 0; #assert !xc_pick_at(c[..], 600, 400) && x[0].picked == -1;
+}
 #test "experimental physical opportunity interrupts the admitted body before leaving exact reach" {
   s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];

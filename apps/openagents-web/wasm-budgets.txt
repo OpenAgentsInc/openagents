@@ -45,7 +45,9 @@ fairy 695000
 # second for the clearance check bring it to 2,447,639; about 2% headroom.
 # Experimental's ten-times dungeon (verse/experimental-dungeon.coax), its 45-monster roster and torch
 # lights add about 37 KB; about 2% headroom.
-fivelab 2575000
+# The hotbar's target, option and slot-level choices on the engine's chosen-target path (#13038):
+# 2,576,249 bytes measured 2026-11-08; about 0.3% headroom.
+fivelab 2585000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
