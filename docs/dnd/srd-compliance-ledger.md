@@ -475,6 +475,11 @@ fails on three wider checks, all reproduced on unmodified main `79a2ce92b3` with
 the same compiler; no Wasm/browser qualification is claimed. Canonical monster
 profiles, remaining overrides/world integration and the build blockers keep
 #13046 open. [Evidence](../verification/srd-contact-health-2026-11-08/README.md).
+Later the same day the three build blockers were resolved: sliders and the
+level-17 Warlock in [Lab build](../verification/srd-lab-build-2026-11-08/README.md),
+Siege tactics in [Siege build](../verification/srd-siege-build-2026-11-08/README.md);
+subsequent evidence records complete checked Lab Wasm builds. They no longer
+block #13046, which stays open for its other acceptance items.
 
 ### General Help action, 2026-11-08
 
