@@ -55,3 +55,18 @@ exposed. The bank helper is not creation eligibility validation.
 6. Retain source fixtures, zero-survivor changed core policy gates, native
    execution and focused adapter evidence. Audit the full acceptance above
    before closing issues. Existing passing unchanged receipts are reused.
+
+## Timing policy boundary
+
+`long-rest-timing.coax` now checks the source duration and start boundaries in
+integer seconds: eight hours plus one hour per interruption, six hours of
+sleep, no more than two hours of light activity, nonoverlapping activity totals,
+and sixteen hours since actual completion with positive starting HP. Arithmetic
+avoids overflow at maximum integer inputs. This is a policy predicate, not
+retained activity ownership or a world clock adapter. It has no completion
+caller. The six integration steps above remain required.
+
+Verification: two source boundary checks pass; all 41 generated mutants are
+killed with zero survivors or exemptions. `coax/web/tool.sh tools-check` passes
+(1897 tracked tools, 35 vendored, zero missing reasons). No product/world ABI
+changed, so the previous unchanged world build receipt is not rerun.

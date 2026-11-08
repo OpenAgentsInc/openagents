@@ -1,0 +1,51 @@
+// SRD 5.2.1 p185. Integer seconds at the policy boundary; world adapters must
+// retain actual activity ownership before supplying these accumulated totals.
+#authority;
+
+#test "Long Rest requires eight hours with six sleeping and at most two light" {
+  #assert rs_long_rest_ready(28800,21600,7200,0);
+  #assert rs_long_rest_ready(28800,28800,0,0);
+  #assert !rs_long_rest_ready(28799,21600,7199,0);
+  #assert !rs_long_rest_ready(28800,21599,7200,0);
+  #assert !rs_long_rest_ready(28801,21600,7201,0);
+  #assert !rs_long_rest_ready(28800,21601,7200,0);
+  #assert rs_long_rest_ready(32400,25200,7200,1);
+  #assert !rs_long_rest_ready(32399,25200,7199,1);
+  #assert rs_long_rest_ready(36000,28800,7200,2);
+  #assert !rs_long_rest_ready(35999,28800,7199,2);
+  for bad:[3]int.[-1,-100,-2147483647] {
+    #assert !rs_long_rest_ready(bad,21600,7200,0);
+    #assert !rs_long_rest_ready(28800,bad,7200,0);
+    #assert !rs_long_rest_ready(28800,21600,bad,0);
+    #assert !rs_long_rest_ready(28800,21600,7200,bad);
+  }
+  #assert !rs_long_rest_ready(28800,21600,7200,2147483647);
+  #assert !rs_long_rest_ready(28800,2147483647,2147483647,0);
+}
+rs_long_rest_ready :: (elapsed:int,sleep:int,light:int,interruptions:int)->bool #effects(all) {
+  if elapsed<28800 || sleep<21600 || light<0 || light>7200 || interruptions<0 { return false; }
+  // Subtraction/division avoid overflowing either accumulated sums or the
+  // additional-hour requirement for malformed large interruption counts.
+  if light>elapsed-sleep { return false; }
+  return interruptions<=(elapsed-28800)/3600;
+}
+
+#test "new Long Rest starts sixteen hours after actual completion with positive HP" {
+  #assert rs_long_rest_start_allowed(1,0,false,0);
+  #assert !rs_long_rest_start_allowed(0,57600,false,0);
+  #assert !rs_long_rest_start_allowed(-1,57600,false,0);
+  #assert !rs_long_rest_start_allowed(1,-1,false,0);
+  #assert rs_long_rest_start_allowed(1,57610,true,10);
+  #assert rs_long_rest_start_allowed(1,57600,true,0);
+  #assert !rs_long_rest_start_allowed(1,57609,true,10);
+  #assert !rs_long_rest_start_allowed(1,9,true,10);
+  #assert !rs_long_rest_start_allowed(1,57600,true,-1);
+  #assert rs_long_rest_start_allowed(1,2147483647,true,2147426047);
+  #assert !rs_long_rest_start_allowed(1,2147483647,true,2147426048);
+}
+rs_long_rest_start_allowed :: (hp:int,now:int,completed:bool,finished:int)->bool #effects(all) {
+  if hp<1 || now<0 { return false; }
+  if !completed { return true; }
+  if finished<0 { return false; }
+  return now-finished>=57600;
+}
