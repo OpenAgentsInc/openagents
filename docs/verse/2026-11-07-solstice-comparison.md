@@ -193,6 +193,10 @@ This is the largest item and the one that unlocks arbitrary imported assets
 (Quaternius, glTF). Do it after items 1 to 3, so streaming and selection have
 a real consumer.
 
+**Landed (#13015):** `aethyr/render/geometry/dag.coax` builds this DAG from
+any indexed mesh, with each of the six properties above as a check. See the
+Valley Lab note "Landed: a general cluster DAG".
+
 ### 6. Workarounds where WebGPU lacks a feature
 
 They found these already, so we don't have to:
@@ -263,7 +267,7 @@ before/after table for each change, and states what was *not* measured.
    Hi-Z in Coax-emitted WGSL, and the draw rule in the cull pass.
 5. **Texture memory audit, then ASTC/BC** with tiers.
 6. **The general DAG builder,** with Solstice's watertight properties as
-   `#forall` checks.
+   `#forall` checks (landed, #13015: `aethyr/render/geometry/dag.coax`).
 7. **Cached cascades** and the **flyover benchmark,** as worlds grow.
 
 Items 1, 2 and 7's flyover are small and independent, and can start now.

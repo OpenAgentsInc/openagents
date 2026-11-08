@@ -384,6 +384,41 @@ HTTP and recovery evidence is in the
 [three-phase receipt](../verification/valley-lab-next-three-2026-11-05/README.md).
 No book draft is upgraded.
 
+## Landed: a general cluster DAG (#13015)
+
+`aethyr/render/geometry/dag.coax` builds a cluster LOD DAG from any indexed
+mesh, the way Solstice does (see
+[the comparison](2026-11-07-solstice-comparison.md), item 5):
+
+- It welds every vertex by exact position, so a seam's two copies become one
+  vertex and borders match exactly.
+- It splits the mesh into clusters of at most 128 triangles, grown across
+  shared edges from seeds in Morton order.
+- Each round, it groups up to four neighbouring clusters by shared edges and
+  simplifies each group to about half with quadric half-edge collapses. A
+  vertex on the group's border, or used by a triangle outside it, is locked.
+  Each collapse must pass the link condition and must not flip a triangle.
+- A group that keeps more than 85% stays as it is and is grouped again next
+  round. A group of loose islands (foliage cards) is thinned instead: every
+  other island is dropped and the rest grow to keep the area.
+- Errors and spheres only grow toward the roots, so a cut is a threshold.
+- Pages are sibling sets, written from the last round to the first with the
+  roots on page 0. A page's parents are always on lower pages, which is the
+  rule `residency.coax` keeps. `dag_links` gives the links for `res_open`, and
+  `dag_draw` is the draw rule over installed pages.
+
+The checks build a sphere from six separately generated faces (seams), an
+open terrain and 400 foliage cards. For each, the finest cut is the source
+exactly, every uniform cut is watertight, and errors and spheres grow toward
+the roots. Perspective cuts from random viewpoints stay watertight, and some
+of them mix levels. Random residency sequences through `res_*` always draw a
+watertight cut. Foliage drawn far away has at most half the triangles and
+keeps its area within 15%.
+
+Run `coax/bin/coax test aethyr/render/geometry/dag.coax --library` to check
+it. It doesn't reuse `clusters.coax`: those leaves hold 124 triangles and 64
+vertices, sized for Valley Lab's narrow simplifiers.
+
 ## What the book gives us
 
 Read the [book construction plan](../../aethyr/book/PLAN.md) and the
