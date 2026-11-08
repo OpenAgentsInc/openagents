@@ -946,13 +946,13 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // px: x, y, x, y), 104 its level, 105 your bar's slots, 106 the room's word on it known (1), 107
   // refused casts undone, 108 their fades still going, 110 + i what slot i has left (-1 unknown) and
   // 120 + i whether it holds (1)
-  if field >= 100 && field < 130 { k := s[0].casts[0];
+  if field >= 100 && field < 130 { k := s[0].casts[..];
     if field < 104 { b := s[0].cz[0].boxes[ifx field < 102 then E2C_LEVEL_BOX else E2C_CLASS_BOX];
       return cast(int)(ifx field % 2 == 0 then b.x0 + (b.x1 - b.x0) * 0.8 else (b.y0 + b.y1) / 2); }
-    if field == 104 { return e2c_level_of(s); } if field == 105 { return k.bar_n; }
-    if field == 106 { return ifx e2n_kit(s[0].net[..], 0, k.bar_n).ok then 1 else 0; } if field == 107 { return k.undone; }
-    if field == 108 { m := 0; for f: 0..<E2K_FADES { if k.fades[f].slot >= 0 && s[0].clock - k.fades[f].at <= f32(E2K_FADE) { m += 1; } } return m; }
-    w := e2n_kit(s[0].net[..], field % 10, k.bar_n); if field >= 110 && field < 120 { return w.left; } if field >= 120 { return ifx w.on then 1 else 0; }
+    if field == 104 { return e2c_level_of(s); } if field == 105 { return k[0].bar_n; }
+    if field == 106 { return ifx e2n_kit(s[0].net[..], 0, k[0].bar_n).ok then 1 else 0; } if field == 107 { return k[0].undone; }
+    if field == 108 { m := 0; for f: 0..<E2K_FADES { if k[0].fades[f].slot >= 0 && s[0].clock - k[0].fades[f].at <= f32(E2K_FADE) { m += 1; } } return m; }
+    w := e2n_kit(s[0].net[..], field % 10, k[0].bar_n); if field >= 110 && field < 120 { return w.left; } if field >= 120 { return ifx w.on then 1 else 0; }
     return -1; }
   // the ground (#13059): 90 its route (1 the pack's record, 2 converted here), 91 its tiles, 92 sets
   // published, 93 refusals, 94 the first refusal's code, 95 KiB resident, 96 and 97 the set's and the
@@ -1018,17 +1018,17 @@ e2_net_opened :: (s: [] E2, id: int) #export_c #effects(all) { e2n_opened(s[0].n
 e2_net_ticket :: (s: [] E2, answer: string) #export_c #effects(all) { e2n_ticket(s[0].net[..], answer); }
 // For headless checks (e2_probe 40 to 59): the room as this page has it.
 e2_net_probe :: (s: [] E2, f: int) -> int {
-  n := s[0].net[0];
-  if f == 40 { return n.state; } if f == 41 { return n.seat; } if f == 42 { return e2n_remotes(s[0].net[..]); }
-  if f == 43 { return n.delay; } if f == 44 { return cast(int) n.lag; } if f == 45 { return cast(int)(n.jitter * 100); }
-  if f == 46 { return n.replays; } if f == 47 { return cast(int)(sqrt(n.fix_sq) * 1000); } if f == 48 { return n.frames_in; }
-  if f == 49 { return n.tries; } if f == 50 { return ifx n.want then 1 else 0; } if f == 51 { return ifx n.joined then 1 else 0; }
-  if f == 52 { return n.look_n; } if f == 54 { return n.pings; }
+  n := s[0].net[..];   // a view: E2Net is too big to copy onto the stack for each probe
+  if f == 40 { return n[0].state; } if f == 41 { return n[0].seat; } if f == 42 { return e2n_remotes(s[0].net[..]); }
+  if f == 43 { return n[0].delay; } if f == 44 { return cast(int) n[0].lag; } if f == 45 { return cast(int)(n[0].jitter * 100); }
+  if f == 46 { return n[0].replays; } if f == 47 { return cast(int)(sqrt(n[0].fix_sq) * 1000); } if f == 48 { return n[0].frames_in; }
+  if f == 49 { return n[0].tries; } if f == 50 { return ifx n[0].want then 1 else 0; } if f == 51 { return ifx n[0].joined then 1 else 0; }
+  if f == 52 { return n[0].look_n; } if f == 54 { return n[0].pings; }
   // 84 the times this page sat again and said where it stood (A), 85 the room's first word on you after
   // the last of them less where you were drawn (mm, -1 none), 86 the ms from losing the room to it (#13057)
-  if f == 84 { return n.agains; } if f == 85 { return n.back_fix_mm; } if f == 86 { return n.back_ms; }
-  if f == 53 { c := 0; for e: 0..<E2N_ENTS { en := n.ents[e]; if en.live && en.kind == WK_PLAYER && en.seat != n.seat && en.name_n > 0 { c += 1; } } return c; }
-  if f == 55 { return ifx n.pings > 0 then n.ping_rtt[net_ping_best(n.ping_rtt[..], n.pings)] else -1; }
+  if f == 84 { return n[0].agains; } if f == 85 { return n[0].back_fix_mm; } if f == 86 { return n[0].back_ms; }
+  if f == 53 { c := 0; for e: 0..<E2N_ENTS { en := n[0].ents[e]; if en.live && en.kind == WK_PLAYER && en.seat != n[0].seat && en.name_n > 0 { c += 1; } } return c; }
+  if f == 55 { return ifx n[0].pings > 0 then n[0].ping_rtt[net_ping_best(n[0].ping_rtt[..], n[0].pings)] else -1; }
   // 56, 57: USE IN EVERGLADE's centre (canvas px), for a check that presses it; 58 the first other's
   // drawn x and 59 its z (cm), -999999 none
   if f == 56 || f == 57 { b := s[0].cz[0].boxes[17]; return cast(int)(ifx f == 56 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
