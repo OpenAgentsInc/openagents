@@ -77,7 +77,7 @@ named below are selected evidence only, not exhaustive qualification.
 | CORE-REST | Rules Glossary, class recovery rules | Partial | Uses/maxima and selected recovery features | Short/long rests, Hit Dice, limits and recovery effects, M3/M5 |
 | CAST-ACCESS | Classes and Gaining Spells pp.104-105 | Partial | `rs_can_cast_as` checks budget/slots; `CAST-CLASS` fails | Legal known/prepared lists, feature grants and strict admission, M3/M5 |
 | CAST-COMPONENTS | Casting Spells pp.104-106 | Missing | Display strings, no complete component state | V/S/M, focus/pouch, cost, consumption, rituals/long casts, M2/M3 |
-| CAST-TARGETS | Casting Spells pp.105-106 | Partial | Range/type checks; `CAST-INVALID-TARGET` fails | Explicit selections; separate malformed refusal from spent invalid-target cast, M3 |
+| CAST-TARGETS | Casting Spells pp.105-106 | Partial | Shared target policy now separates malformed/dead/out-of-range refusal from spent, unaffected invalid-type casts; `CAST-INVALID-TARGET` passes | Explicit upcast/multiple target selections and full slice casting admission remain in #13038 |
 | CAST-RESOURCES | Spell slots/casting rules pp.104-106 | Partial | Slot checks and turn budgets; four admission probes pass | Preparation, full free-cast restrictions, transactional preflight, M3 |
 | CAST-CONCENTRATION | Rules Glossary Concentration | Partial | Concentration saves, replacement and expiration | Full interruption, overlapping effects and duration fixtures, M3/M4 |
 | FX-EXECUTOR | Spec typed effect program | Partial | Closed step set with specialized handlers | Transform, summon, sense, general modify/terrain/light/narrative, M4 |
@@ -116,7 +116,7 @@ coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --inventory
 ```
 
 The third command is intentionally strict: it currently exits **1** because
-five desired outcomes are unmet. These are executable regression predicates,
+four desired outcomes are unmet. These are executable regression predicates,
 not `#test` assertions that bugs should remain. The first command's ordinary
 checks guard working boundaries and free-capacity controls. Fixes change a
 predicate to PASS without deleting an expected-failure exemption.
@@ -128,7 +128,7 @@ predicate to PASS without deleting an expected-failure exemption.
 | CAST-TARGET-INDEX | Missing/negative target index refuses without spending | PASS | Malformed request, not SRD invalid-target rule |
 | CAST-RANGE | Out-of-touch-range Cure Wounds refuses without spending | PASS | Range admission |
 | CAST-CLASS | Unmodified preset Druid cannot cast Guiding Bolt | FAIL | Missing strict class/preparation admission; no feature grant or caller whitelist is supplied |
-| CAST-INVALID-TARGET | Hold Person on a Skeleton spends its used slot without affecting it or rolling a save | FAIL | SRD p.106 Invalid Targets and p.141 Hold Person |
+| CAST-INVALID-TARGET | Hold Person on a Skeleton spends its used slot without affecting it or rolling a save | PASS | Corrected shared target policy/outcome; apparent save succeeds with no invented roll, SRD p.106 and p.141 |
 | SPELL-POLYMORPH | Failed save grants form temp HP, retains HP/type, does not merely Incapacitate | FAIL | Necessary witness only; current API cannot select a Beast, so even a future PASS would not qualify the full spell |
 | CAP-EFFECT | Adding another effect never silently removes independent existing effects | FAIL | Direct storage boundary, not an alternative SRD stacking rule |
 | CAP-ZONE | Full unrelated zones refuse before resources, concentration or effects change | FAIL | Engine capacity contract; no SRD claim about a maximum number of zones |
@@ -137,6 +137,14 @@ Refusal snapshots check slots, action/bonus/slot/leveled budgets, dice, event-lo
 counters, concentration and target HP/temp/conditions. The zone probe also checks
 existing zone identity/bounds/duration. These are selected observable projections,
 not a byte-for-byte proof of complete battle-state equivalence.
+
+The 2026-11-08 [target-casting evidence](../verification/srd-casting-target-2026-11-08/README.md)
+records the first core slice change: invalid-type casts pay their resources,
+while request refusals preserve preflight state (including the per-cast affinity
+flag). Core policy/outcome mutation gates kill all 31 selected mutants. This does
+not close #13038: class/preparation/component admission and explicit target
+choices remain open. Polymorph remains a parked higher-level failure; the other
+three failing witnesses are active class-access/capacity work.
 
 ## Canonical source inventory
 

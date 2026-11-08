@@ -1,0 +1,4 @@
+9f92a6e125a81307774b291fe88dd318c3d5b36f15eafb89b6d0f30fff2437a1  aethyr/rules/srd/battle.coax
+f26993075989ffc9d66bca89943b66c4dde31dcad732e146cbbe7ee7faf16c3f  aethyr/rules/srd/cast-target-checks.coax
+7d57c070e3f0a1395e0766e5824fb47a91cf558ea3e9531fd34fe17a92ffb3cc  aethyr/rules/srd/cast-target-outcome.coax
+d58494aec56ab178e9d13349fb507a0a64cff180be000179f8e341281decceb7  aethyr/rules/srd/cast-target.coax

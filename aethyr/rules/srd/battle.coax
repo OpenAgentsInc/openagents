@@ -11,6 +11,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
+#load "cast-target-outcome.coax";
 
 // Creatures a battle holds of its own (1464 bytes a creature). A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
@@ -489,26 +490,29 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
 }
 rs_can_cast :: (b: [] RsBattle, i: int, sp: int, slot: int) -> bool { return rs_can_cast_as(b, i, sp, slot, false); }
 // Cast spell sp with a slot of level `slot` (0 for a cantrip) at the point (tx, ty), on creature
-// `target` for a spell with no area. False, and nothing spent, when it can't be cast so.
+// `target` for a spell with no area. False, and nothing spent, on request refusal.
+// A cast at an invalid creature type is accepted/spent but affects nothing (p.106).
 rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool { return rs_cast_as(b, i, sp, slot, tx, ty, target, false); }
 // The same with Quickened Spell: an action spell as a Bonus Action, for 2 Sorcery Points.
 rs_cast_quick :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool { return rs_cast_as(b, i, sp, slot, tx, ty, target, true); }
 rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool) -> bool {
   if !rs_can_cast_as(b, i, sp, slot, quick) { return false; }
   s := rs_spell(sp);
-  b[0].aff_used = false;
   me := b[0].c[i];
   smite := rs_is_smite(s);
   if s.area == RS_A_NONE {
-    if target < 0 || target >= b[0].n || b[0].c[target].dead { return false; }
-    if s.humanoid_only && !b[0].c[target].humanoid { return false; }
-    if s.range_ft > 0 && rs_feet_to(b, i, target) > s.range_ft { return false; }
+    exists := target >= 0 && target < b[0].n;
+    dead := ifx exists then b[0].c[target].dead else false;
+    humanoid := ifx exists then b[0].c[target].humanoid else false;
+    in_range := exists && (s.range_ft <= 0 || rs_feet_to(b, i, target) <= s.range_ft);
+    if rs_target_decision(exists, dead, in_range, s.humanoid_only, humanoid) == RS_TARGET_REFUSE { return false; }
     // Divine Smite: right after a melee weapon hit on this target
     if smite && b[0].turn.last_hit != target + 1 { return false; }
   } else if s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
     if rs_feet(me.x, me.y, tx, ty) > s.range_ft { return false; }
   }
   // spend
+  b[0].aff_used = false;
   if s.cast_time == RS_T_ACTION && !quick { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
   if quick { b[0].c[i].uses[RS_USE_SORCERY] -= 2; b[0].turn.quickened = true; }
   if s.level > 0 {
@@ -527,6 +531,7 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   if quick { rs_add_text(l[..], ", Quickened"); }
   if s.area == RS_A_NONE && target != i && (s.range_ft > 0 || smite) { rs_add_text(l[..], ifx smite then " on " else " at "); rs_add_name(l[..], b, target); }
   rs_tell(b, RS_EV_CAST, sp, i, ifx s.area == RS_A_NONE then target else -1, slot, 0, l[..]);
+  if s.area == RS_A_NONE && rs_unaffected_target(b, i, target, sp) { return true; }
   // the area, and what lasts in it
   area: RsZone;
   zone_at := -1;
@@ -2434,7 +2439,9 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   }
   #assert hit;
   rs_start_turn(b[..], w);
-  #assert !rs_cast(b[..], w, SP_HOLD_PERSON, 2, 0, 0, s);
+  before_slots := b[0].c[w].slots[2];
+  #assert rs_cast(b[..], w, SP_HOLD_PERSON, 2, 0, 0, s);
+  #assert b[0].c[w].slots[2] == before_slots - 1 && !rs_has(b[0].c[s], RS_PARALYZED);
   rs_end_turn(b[..], w);
   for k: 0..<10 {
     b[0].c[s].hp = 13; b[0].c[s].dead = false; b[0].c[s].cond = 0;

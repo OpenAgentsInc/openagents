@@ -1,0 +1,11 @@
+Focused SRD regression witnesses; NOT whole-SRD qualification
+PASS	CAST-ACTOR
+PASS	CAST-SLOT
+PASS	CAST-TARGET-INDEX
+PASS	CAST-RANGE
+FAIL	CAST-CLASS
+PASS	CAST-INVALID-TARGET
+FAIL	SPELL-POLYMORPH
+FAIL	CAP-EFFECT
+FAIL	CAP-ZONE
+measured=9 failed=4; complete SRD content and rules remain unmeasured

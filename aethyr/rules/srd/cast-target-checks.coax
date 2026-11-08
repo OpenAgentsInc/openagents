@@ -1,0 +1,40 @@
+// Target admission integration plus caller-facing battle lifecycle/budget checks.
+// Mutation gates use this entry so the existing public wrappers are exercised,
+// rather than exempted from the compiler's whole-entry execution coverage.
+#load "battle.coax";
+
+#test "caller-owned battles retain separate storage, due turns, casting budgets and diagnostics" {
+  b: [1] RsBattle; other: [1] RsBattle;
+  creatures: [4] RsCreature; squares: [64] int;
+  rs_use(b[..], creatures[..], squares[..]); b[0].w = 8; b[0].h = 8;
+  #assert rs_room_for(b[..]) == 4;
+  a := rs_add(b[..], rs_druid("Caster", 0, 3), 1, 1);
+  t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
+  _ := rs_add(other[..], rs_cleric("Other", 0, 3), 1, 1);
+  b[0].c[a].initiative = 20; b[0].c[t].initiative = 1;
+  rs_begin(b[..]); #assert rs_due(b[..]) == -1 && !rs_can_cast(b[..], a, SP_CURE_WOUNDS, 1);
+  b[0].clock = b[0].c[a].turn_at;
+  #assert rs_due(b[..]) == a;
+  rs_start_turn(b[..], a);
+  #assert rs_can_cast(b[..], a, SP_CURE_WOUNDS, 1) && rs_cast(b[..], a, SP_CURE_WOUNDS, 1, 0, 0, a);
+  #assert !rs_can_cast(b[..], a, SP_CURE_WOUNDS, 1);
+  #assert other[0].n == 1 && other[0].c[0].slots[1] == other[0].c[0].slots_max[1];
+  #assert rs_team_up(b[..], 0) == 1 && rs_team_up(b[..], 1) == 1;
+  b[0].c[t].hp = 0; #assert rs_team_up(b[..], 1) == 0;
+  line: [1] RsLine; line[0] = rs_line(); rs_add_text(line[..], "Room "); rs_add_int(line[..], rs_room_for(b[..]));
+  #assert cast(string) line[0].buf[0..<line[0].n] == "Room 4";
+}
+#test "Monk bonus strike and Step of the Wind share one Bonus Action while Dash spends its action" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_monk("Monk", 0, 3), 1, 1);
+  t := rs_add(b[..], rs_skeleton("Target", 1), 2, 1);
+  b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
+  rs_start_turn(b[..], a); movement := b[0].turn.move_left;
+  #assert rs_bonus_strike(b[..], a, t) && b[0].turn.bonus;
+  #assert !rs_bonus_strike(b[..], a, t) && !rs_step_of_the_wind(b[..], a);
+  #assert rs_dash(b[..], a) && b[0].turn.move_left == movement + 8 && !rs_dash(b[..], a);
+  rs_end_turn(b[..], a); rs_start_turn(b[..], a);
+  focus := b[0].c[a].focus;
+  #assert rs_step_of_the_wind(b[..], a) && b[0].turn.move_left == 16 && b[0].c[a].focus == focus;
+  #assert !rs_bonus_strike(b[..], a, t);
+}
