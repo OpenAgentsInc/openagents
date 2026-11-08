@@ -438,10 +438,7 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
     rs_tell(b, RS_EV_CAST, a.sp, i, i, sl, 0, l[..]);
     return true;
   }
-  // Produce Flame on one slot: to hand first (a Bonus Action), then hurled
-  if a.conjure && b[0].c[i].flame_until <= b[0].clock {
-    if !rs_cast(b, i, SP_PRODUCE_FLAME, 0, 0, 0, i) { return false; }
-  }
+  if !fb_conjure(b, i, a) { return false; }
   ok := false;
   if a.tg == FB_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
   else if a.tg == FB_ALLY { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx ally >= 0 then ally else i); }
@@ -515,6 +512,12 @@ fb_cast_levels :: (hero: RsCreature, a: FbAb, out: [] int) -> int {
 }
 // A spell aimed at a creature cast where none is (at a wall, at the ground): its action or Bonus
 // Action, its slot and its concentration are spent as rs_cast spends them, and nothing is affected.
+// Produce Flame on one slot: to hand first (a Bonus Action), then hurled. False when the flame was
+// needed and could not come.
+fb_conjure :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
+  if !a.conjure || b[0].c[i].flame_until > b[0].clock { return true; }
+  return rs_cast(b, i, SP_PRODUCE_FLAME, 0, 0, 0, i);
+}
 fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
   if !rs_can_cast(b, i, sp, sl) { return false; }
   rs_rest_cast_before(b,i,rs_spell(sp).level);

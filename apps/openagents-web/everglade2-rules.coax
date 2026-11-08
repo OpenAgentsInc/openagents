@@ -33,27 +33,23 @@ e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) {
   }
   if a.kind==FB_SPELL {
     // the Druid's one Produce Flame slot: the flame to hand first (a Bonus Action), as fivebar.coax fb_cast
-    if a.conjure && b[0].c[i].flame_until<=b[0].clock && !rs_cast(b,i,SP_PRODUCE_FLAME,0,0,0,i) { return false; }
+    if !fb_conjure(b,i,a) { return false; }
     sl:=ifx a.lvl>0 then fb_free_slot(b,i,a.lvl) else a.lvl;
     return fb_cast_at_nothing(b,i,a.sp,sl);
   }
-  if (a.kind==FB_ATTACK || a.kind==FB_RECKLESS) && !b[0].turn.action {
-    // Empty swing: no invented target, hit roll, damage or on-hit benefit.
-    b[0].turn.action=true; return true;
-  }
-  if a.kind==FB_FLURRY {
-    // Flurry of Blows at the air: its Focus Point and Bonus Action, no strike (SRD 5.2.1 p. 49)
-    if b[0].turn.bonus || b[0].c[i].focus<=0 || !rs_can_act(b[0].c[i]) { return false; }
-    b[0].c[i].focus-=1; b[0].turn.bonus=true; return true;
-  }
+  // Empty swing: no invented target, hit roll, damage or on-hit benefit. With the Action spent, the
+  // shared rules refuse a swing at no one (below).
+  if (a.kind==FB_ATTACK || a.kind==FB_RECKLESS) && !b[0].turn.action { b[0].turn.action=true; return true; }
+  // Flurry of Blows at the air: its Focus Point and Bonus Action, no strike (SRD 5.2.1 p. 49)
+  if a.kind==FB_FLURRY && !b[0].turn.bonus && b[0].c[i].focus>0 && rs_can_act(b[0].c[i]) { b[0].c[i].focus-=1; b[0].turn.bonus=true; return true; }
   // A feature of the caster's own that picks no creature (#13046: Action Surge, Dash, Cunning Action,
   // Patient Defense, Step of the Wind, Steady Aim, Wild Shape, Turn Undead, Preserve Life, Land's Aid
   // round the caster, its heal its own): the shared rules' own entry. Land's Aid harms only another
-  // team, and every seat is the players' one. Bardic Inspiration needs another creature: refused.
-  if a.kind==FB_INSPIRE || a.kind==FB_ATTACK || a.kind==FB_RECKLESS { return false; }
+  // team, and every seat is the players' one. Bardic Inspiration needs another creature, and a swing
+  // or a Flurry needs one to strike: the shared rules refuse them here.
   // Action Surge gives an Action back (rules: only once one is spent). A press's Action is the one it
   // gives: spent first, so the Surge's use and its Action are the shared rules' own.
-  if a.kind==FB_SURGE && !b[0].turn.action && b[0].c[i].uses[RS_USE_SURGE]>0 { b[0].turn.action=true; }
+  if a.kind==FB_SURGE && b[0].c[i].uses[RS_USE_SURGE]>0 { b[0].turn.action=true; }
   return fb_use(b,i,a,-1,b[0].c[i].x,b[0].c[i].y,i);
 }
 
