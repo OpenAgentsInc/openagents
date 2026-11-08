@@ -574,6 +574,7 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  e2_fps_count(s,dt);h:=s[0].height;k:=s[0].k;
  // on a phone's studio it sits over the bottom buttons (RESET, SURPRISE ME), not on them
  if s[0].cz[0].mobile && e2c_shown(s)>0.003 {h=s[0].cz[0].boxes[13].y0+10*k;}
+ if s[0].cz[0].arriving && e2c_shown(s)<0.5 {return at;}   // through the portal: with the wardrobe
  return cc.fps_draw(s[0].fps_counter[0],out,at,s[0].width,h,k);
 }
 #test "the frame rate is the frames over the last half second" {
@@ -593,6 +594,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   step := ifx still || dt <= 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].clock += step;
   e2_follow(s, step);
+  e2c_arrive_step(s, step);
   shot := e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_shot(s[0].orbit, s[0].eye_pitch, s[0].press), step);
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
@@ -612,6 +614,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   u[32] = -0.45; u[33] = 0.78; u[34] = -0.42;
   u[48] = f32(s[0].creator[0].glade_word);
   e2c_uniforms(s, u);
+  e2c_arrive_uniforms(s, u);
   return e2_fps(s, out, e2c_hud(s, out), dt);
 }
 
@@ -739,6 +742,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   l := cc.look(c); l.variant = 0;
   fig := ifx e2c_creating(s) then e2c_figure(s) else e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at);
   out := s[0].records[..];
+  s[0].cz[0].fig0 = rec;
   for i: 0..<40 { if c.worn[i] && cc.available(c, i) && c.source_count[i + (ifx c.female then 0 else 40)] > 0 && rec < E2_RECORDS {
     p := i + ifx c.female then 0 else 40;
     figs.bd_record(fig, l, c.source_word[p], false, s[0].clock, out, rec); out[rec * 24 + 11] = f32(c.variant);
@@ -752,6 +756,8 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
     p := parts[i]; figs.bd_record(fig, l, b[0].part_word[p], false, s[0].clock, out, rec);
     n = e2_draw(s[0].draws[..], n, b[0].part_first[p], b[0].part_count[p], rec, 1); sn = e2_draw(s[0].shadow[..], sn, b[0].part_first[p], b[0].part_count[p], rec, 1); rec += 1;
   } }
+  s[0].cz[0].fig1 = rec;
+  if n > 0 { s[0].cz[0].drawn += 1; }
   for i: 1 + c.grass_groups..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
   n = e2_pieces(s, s[0].draws[..], n, false);
   n = e2_field(s, s[0].draws[..], n);

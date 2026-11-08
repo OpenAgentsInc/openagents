@@ -4,6 +4,7 @@
 // follows the player.
 #load "fivelab.coax";
 #load "../../../verse/everglade2/field.coax";
+#load "portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
 Everglade2Bg :: struct {c:V4;aux:V4;depth:f32 #depth;}
 Everglade2Lit :: struct {c:V4;aux:V4;}
 E2_KIT_BASE :: 1048576;   // a base instance at or past this draws kit pieces: inst[2 (instance - base)]
@@ -73,7 +74,16 @@ e2_field_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->FivelabS {
 everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->FivelabS {
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst);}
- return fivelab_scene_vs(id,instance,u,vertices,objects,bake);
+ o:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);
+ // Character Create's arrival (everglade2-create.coax): your character pops up from its feet, u[99]
+ // the share it is still short of its size (below 0 a little over it), for your records,
+ // u[101] up to u[102]
+ fi:=cast(f32)instance;
+ if (abs(u[99])>0.0005f32 && fi>=u[101] && fi<u[102]) {
+  m:=objects[cast(int)instance];k:=1.0f32-u[99];
+  w:=v3(m.a.x+(o.world.x-m.a.x)*k,m.a.y+(o.world.y-m.a.y)*k,m.a.z+(o.world.z-m.a.z)*k);o.world=w;o.pos=fivelab_project(w,u);
+ }
+ return o;
 }
 // The key light's map: 34 m either side of u[44..46] (the page moves it with the player in steps).
 E2_SHADOW_HALF :: 34.0;
@@ -235,9 +245,43 @@ e2_pane_edge :: (p:V2,u:[]f32)->f32 {return fmax(e2_box_edge(p,u[52],u[53],u[54]
  #assert e2_pane_cover(v2(1100,200),u[..])>0.5f32 && e2_pane_cover(v2(900,200),u[..])==0 && e2_pane_cover(v2(1100,600),u[..])==0;
  #assert e2_pane_edge(v2(1000.2f32,200),u[..])>0.5f32 && e2_pane_edge(v2(1100,200),u[..])==0;
 }
+// Character Create's arrival through Everglade's portal (everglade2-create.coax): u[96] how much of the
+// view the portal's light still holds, u[97] its clock, u[98] its swell, u[100] how far the glade has
+// opened through it from the middle. The light is gpu/portal.coax's, at the scale the homepage handed
+// over (PORTAL_HANDOFF half diagonals); the glade opens from the middle through rings that shimmer,
+// and the picture ripples as it settles.
+e2_arrival_uv :: (uv:V2,u:[]f32)->V2 {
+ if (u[98]<=0.0005f32) {return uv;}
+ x:=(uv.x-0.5f32)*u[0];y:=(uv.y-0.5f32)*u[1];half:=0.5f32*sqrt(u[0]*u[0]+u[1]*u[1]);l:=fmax(sqrt(x*x+y*y),1.0f32);r:=l/half;
+ w:=sin(r*26.0f32-u[97]*7.0f32)*u[98]*0.011f32*half*(1.0f32-0.5f32*saturate(r));
+ return v2(uv.x+x/l*w/u[0],uv.y+y/l*w/u[1]);
+}
+e2_arrival :: (c:V3,pixel:V2,u:[]f32)->V3 {
+ if (u[96]<=0.0005f32) {return c;}
+ half:=0.5f32*sqrt(u[0]*u[0]+u[1]*u[1]);x:=pixel.x-0.5f32*u[0];y:=pixel.y-0.5f32*u[1];big:=PORTAL_HANDOFF*half;
+ p:=v2(x/big,y/big);light:=portal_field(p,u[97],u[98]);
+ rn:=sqrt(x*x+y*y)/half;
+ edge:=u[100]*1.5f32-0.25f32-rn+(portal_noise(v2(p.x*30.0f32+u[97]*0.6f32,p.y*30.0f32-u[97]*0.4f32))-0.5f32)*0.16f32;
+ hold:=saturate(u[96]*(1.0f32-smoothstep(-0.02f32,0.22f32,edge)));
+ rim:=exp(-(edge*edge)/0.004f32)*u[96]*(1.0f32-u[96]*0.5f32)*0.55f32;
+ o:=mix3(c,light,hold);
+ return v3(o.x+0.5f32*rim,o.y+0.92f32*rim,o.z+0.84f32*rim);
+}
+#test "the arrival's veil: whole, it is the portal's light; gone, the picture is untouched" {
+ u:[104]f32;u[0]=1440;u[1]=900;c:=v3(0.2f32,0.4f32,0.1f32);
+ a:=e2_arrival(c,v2(700,400),u[..]);#assert a.x==c.x && a.y==c.y && a.z==c.z;
+ b:=e2_arrival_uv(v2(0.3f32,0.6f32),u[..]);#assert b.x==0.3f32 && b.y==0.6f32;
+ u[96]=1;u[97]=12;u[98]=1;
+ half:=0.5f32*sqrt(1440.0f32*1440.0f32+900.0f32*900.0f32);
+ l:=portal_field(v2((700.0f32-720.0f32)/(PORTAL_HANDOFF*half),(400.0f32-450.0f32)/(PORTAL_HANDOFF*half)),12,1);d:=e2_arrival(c,v2(700,400),u[..]);
+ #assert abs(d.x-l.x)<0.001f32 && abs(d.y-l.y)<0.001f32 && abs(d.z-l.z)<0.001f32;
+ // opening: the middle shows the glade before the corners do
+ u[100]=0.5f32;m:=e2_arrival(c,v2(720,450),u[..]);k:=e2_arrival(c,v2(5,5),u[..]);
+ #assert abs(m.y-c.y)<0.05f32 && abs(k.y-c.y)>0.05f32;
+}
 everglade2_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
- pixel:=v2(pos.x,pos.y);uv:=v2(pos.x/u[0],pos.y/u[1]);raw:=gpu_sample_level(post_light,post_lin,uv,0);
- if (u[10]<1.5f32) {encoded:=cg_encode(v3(raw.x,raw.y,raw.z));return v4(encoded.x,encoded.y,encoded.z,1);}
+ pixel:=v2(pos.x,pos.y);uv:=e2_arrival_uv(v2(pos.x/u[0],pos.y/u[1]),u);raw:=gpu_sample_level(post_light,post_lin,uv,0);
+ if (u[10]<1.5f32) {encoded:=e2_arrival(cg_encode(v3(raw.x,raw.y,raw.z)),pixel,u);return v4(encoded.x,encoded.y,encoded.z,1);}
  a:=wg_load_2d(post_aux,cg_post_pixel(pixel,wg_dims_2d(post_aux)),0);
  c:=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);c=scale3(c,1.0f32-(1.0f32-cg_contact_ao(pixel,u,post_aux))*saturate(a.z));
  glow:=add3(scale3(cg_post_sample(post_quarter,post_lin,uv),0.20f32),scale3(cg_post_sample(post_eighth,post_lin,uv),0.20f32));
@@ -248,7 +292,7 @@ everglade2_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_e
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=fmax(cg_panel_opacity(pixel,u[0],u[1],u[4]),e2_pane_cover(pixel,u));fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),fmax(cg_panel_edge(pixel,u[0],u[1],u[4]),e2_pane_edge(pixel,u))*0.55f32*fade);}}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=fmax(cg_panel_opacity(pixel,u[0],u[1],u[4]),e2_pane_cover(pixel,u));fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),fmax(cg_panel_edge(pixel,u[0],u[1],u[4]),e2_pane_edge(pixel,u))*0.55f32*fade);}}result=cg_walk_veil(result,u);result=e2_arrival(result,pixel,u);return v4(result.x,result.y,result.z,1);
 }
 everglade2_fx_vs_in :: struct {a:V4;b:V4;c:V4;d:V4;}
 everglade2_fx_vs :: (id:u32,instance:u32,in_:everglade2_fx_vs_in,u:[]f32)->FivelabV {return fivelab_fx_vs(id,instance,fivelab_fx_vs_in.{a=in_.a,b=in_.b,c=in_.c,d=in_.d},u);}

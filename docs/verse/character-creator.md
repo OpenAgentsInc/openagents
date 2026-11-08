@@ -17,6 +17,27 @@ loaded into `everglade2.coax`. The wardrobe's choices and record are
 added to the record (`CC3`). The glade is Everglade II's own
 (`docs/verse/everglade2.md`).
 
+## Through the portal from the homepage
+
+The homepage (`newland.coax`, `newland-portal.coax`) has one Everglade portal in
+the Grid and one button, CREATE YOUR CHARACTER. A press warms Character
+Create's page, engine, shaders and pack into the HTTP cache (host action 21),
+fades the homepage's panels, and flies the camera into the portal until its
+light fills the view. The homepage then opens `/worlds/character-creator?via=portal`.
+
+The light is one function, `portal_field` in `apps/openagents-web/gpu/portal.coax`,
+drawn by both pages at the same scale (`PORTAL_HANDOFF`) and on the same clock
+(the wall clock's seconds, from each page's `now=` fact). Until Character
+Create's engine draws, its page background is a gradient in the light's
+colours and the loading screen is hidden (`"arrival": "portal"` in
+`realms.json`). A failure still shows the loading screen's message. The engine
+then draws the light (`e2_arrival` in `gpu/everglade2.coax`) and holds it until
+the glade has drawn 12 frames. Over the next 2.9 s the glade opens through the
+light from the middle, the camera comes round and in to the studio's framing,
+your character pops up from its feet, and the wardrobe fades in. A key, click
+or scroll skips to the end. A plain visit to `/worlds/character-creator` has no
+arrival.
+
 Everglade at `/worlds/everglade` no longer has a Character Create entrance. It
 still reads the saved record, class included, when you open it.
 

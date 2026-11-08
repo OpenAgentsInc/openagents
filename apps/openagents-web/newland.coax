@@ -19,6 +19,7 @@
 #load "analytics.coax";
 #load "../../verse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
 #load "newland-walkers.coax";
+#load "newland-portal.coax";   // Everglade's portal and "Create your character": the way into Character Create
 #load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)
 #load "../../aethyr/orbit.coax";   // Belt 2200's space, for Penultimate Frontier's sky
 #load "newland-frontier.coax";   // Penultimate Frontier: this scene, flown, with its story (data-page 2)
@@ -101,7 +102,7 @@ coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c #effects(
     if end-from>=5 && text[from..<from+4]=="now=" {
       n:=0;ok:=end-from<=20;
       for i:from+4..<end {if text[i]<'0' || text[i]>'9' || n>900719925474 {ok=false;break;}n=n*10+cast(int)text[i]-48;}
-      if ok && n>0 {s[0].wall=n/1000;s[0].wall_age=s[0].data_age;}return;
+      if ok && n>0 {s[0].wall=n/1000;s[0].wall_age=s[0].data_age;portal_clock(s,n);}return;
     }from=end+1;
   }
 }
@@ -138,6 +139,7 @@ LandState :: struct {
   agents: int; agent_row: [MAX_AGENTS] int; agent_plot: [MAX_AGENTS] int;
   pylons: int; pyl: [MAX_PYLONS] Pyl;
   walk: [1] Walkers; walk_box: Box; walk_click: bool; dive_fade: f32;   // WALK AROUND and the Grid's walkers (newland-walkers.coax)
+  portal: [1] Portal;   // Everglade's portal and its button (newland-portal.coax)
   walking: bool; wk: [1] Walk;   // the Grid's page (data-page 1): this scene walked, you in it (newland-walk.coax)
   flying: bool;                   // Penultimate Frontier's page (data-page 2): the Grid flown through, nobody in it
   ed: [1] RealmEdit; grid_names_off: bool; grid_walkers_off: bool;   // the Grid's EDIT, and the board's rows it switches (zero: on)
@@ -1385,6 +1387,7 @@ gal_step :: (s: [] LandState, forward: bool) {
 // A click in the panel: a planet opens (a finger's first tap only selects it),
 // OPEN opens the selected one, and the rest of the panel is the panel's.
 gal_click :: (s: [] LandState, x: f32, y: f32) -> bool {
+  if inside(s[0].portal[0].box, x, y) { portal_go(s); return true; }
   if inside(s[0].network_box,x,y) {if s[0].card==CARD_NETWORK {close_card(s);}else {open_card(s,CARD_NETWORK,-1);}return true;}
   if s[0].card==CARD_NETWORK {
     if inside(s[0].network_join,x,y) {network_copy(s);return true;}
@@ -1928,6 +1931,7 @@ slot_of :: (s: [] LandState, id: int) -> int {
 }
 coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
+  if s[0].portal[0].going { return true; }   // the flight to the portal: the view is its own
   d := hi(s[0].dpr, 1);
   s[0].px = x; s[0].py = y; s[0].pointed = true;
   k := slot_of(s, id);
@@ -2004,7 +2008,7 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
 }
 // The wheel (and a trackpad's pinch) zooms toward the pointer.
 coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c #effects(all) {
-  if s.count < 1 { return; }
+  if s.count < 1 || s[0].portal[0].going { return; }
   if s[0].card==CARD_NETWORK {s[0].network_scroll=clamp(s[0].network_scroll+dy,0,s[0].network_scroll_max);return;}
   take(s);
   s[0].zoom_to = clamp(s[0].zoom_to * exp(clamp(dy, -400, 400) * 0.0016), ZOOM_IN, ZOOM_OUT);
@@ -2015,6 +2019,7 @@ coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c #effects(all) {
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;   // host.js KEYS
 coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
+  if s[0].portal[0].going { return true; }
   if key == KEY_ESCAPE && s[0].card != CARD_NONE { close_card(s); return true; }
   if s[0].card==CARD_NETWORK {if key==KEY_UP || key==KEY_DOWN {s[0].network_scroll=clamp(s[0].network_scroll+(ifx key==KEY_DOWN then 48 else -48),0,s[0].network_scroll_max);return true;}return false;}
   if s[0].card != CARD_NONE { return false; }
@@ -2026,7 +2031,7 @@ coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c #ef
 coaxial_land_cursor :: (s: [] LandState) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].touch || !s[0].pointed || (s[0].down && s[0].moved) { return 0; }
   x := s[0].px; y := s[0].py;
-  if inside(s[0].network_box,x,y) {return 1;}
+  if inside(s[0].network_box,x,y) || inside(s[0].portal[0].box,x,y) {return 1;}
   if s[0].card==CARD_NETWORK && (inside(s[0].network_join,x,y) || inside(s[0].network_guide,x,y)) {return 1;}
   if s[0].card != CARD_NONE {
     if inside(s[0].close_box, x, y) || inside(s[0].open_box, x, y) { return 1; }
@@ -2116,13 +2121,16 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   walk_dive(s, step);   // WALK AROUND: the view dives in (newland-walkers.coax)
   walkers_step(s, step);
   c := frame_view(s, l, t, step, still, width, height, d);
+  c = portal_view(s, c, step, width, height);   // after "Create your character": the flight to the portal
   v := land_scene(out, 0, s, c, s[0].look, p, t, motion);
+  v = portal_scene(out, v, s, c, p, t);   // Everglade's portal in the Grid (newland-portal.coax)
   scene_end := v;
   // the HUD over it
   hud := ifx still then 1.0f32 else ease((t - 2.0) / 1.0);
   s[0].playtest = l.playtest;s[0].network_box=l.network;s[0].walk_box=l.walk;
   hover := !s[0].touch && s[0].pointed;
   sheet := l.phone && s[0].card != CARD_NONE;
+  v = portal_name(out, v, s, c, p, hud);
   v = wordmark(out, v, l, p);
   capture:[192]u8;cn:=land_status(s,capture[..]);
   if !sheet {
@@ -2142,8 +2150,9 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     v = feed(out, v, s, l, p, t, feed_on);
     glass(uniforms, 0, l.feed, 10 * d, 0.92 * feed_on, 0);
     glass(uniforms, 1, l.playtest, 7 * d, 0.95 * hud, 1);
+    v = portal_button(out, v, s, uniforms, l, p, hud, width, height);
   } else {
-    s[0].playtest = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};s[0].network_box=s[0].playtest;s[0].walk_box=s[0].playtest;
+    s[0].playtest = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};s[0].network_box=s[0].playtest;s[0].walk_box=s[0].playtest;s[0].portal[0].box=s[0].playtest;
   }
   if s[0].card == CARD_NONE {
     // the small galaxy, in the glass the card uses while it's up
@@ -2191,8 +2200,11 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     s[0].card_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
     s[0].close_box = s[0].card_box; s[0].open_box = s[0].card_box;
   }
-  uniforms[5] = f32(PANELS);
+  uniforms[5] = f32(PANELS + 1);   // and the portal's button's glass after the page's five
   uniforms[3] *= 1 - s[0].dive_fade;   // the dive goes dark as the Grid comes
+  hud_end := v;
+  v = portal_face(out, v, s, width, height, p, t);   // the portal's face, over all: as the camera flies in, the view
+  portal_end(s, out, scene_end, hud_end, uniforms);
   return v;
 }
 
@@ -2225,7 +2237,7 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   }
 }
 
-#test "a laptop frame draws within the vertex budget" {
+#test "a laptop frame draws within the vertex budget" #steps 40000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   s[0].time = 9;
@@ -2240,7 +2252,7 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   #assert m > 1000 && m < TEST_VERTICES;
 }
 
-#test "desktop Playtest button opens /verse" {
+#test "desktop Playtest button opens /verse" #steps 40000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   s[0].time = 9;
@@ -2265,7 +2277,7 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1, 1);
   #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/verse");
 }
-#test "the small galaxy holds only the public realms, and opens them" {
+#test "the small galaxy holds only the public realms, and opens them" #steps 40000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   s[0].time = 9;

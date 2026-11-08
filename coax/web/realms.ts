@@ -70,7 +70,7 @@ export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // before the host starts (Animation Lab's project bundles).
 // place_of: the realm this page opens a place in (Character Create, at Everglade's glade, #13018): one
 // world, so the page is that realm's, its module, slot and room; only its address and its first place differ.
-export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; arrival?: "portal"; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -277,6 +277,15 @@ ${links}
 // so the others don't log a 404 for every visitor (host.js, data-maker).
 export const hasMaker = (slug: string, site = SITE) => existsSync(join(site, "realms", slug, "tip", "index.html"))
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
+// A page opened through Everglade's portal on the homepage (?via=portal, newland-portal.coax): until
+// the engine draws, the page is the portal's light (gpu/portal.coax's colours at the hand-over's
+// scale) rather than the loading screen, so the way in has no black and no bar; the engine then
+// draws the same light and opens the world through it (everglade2-create.coax). A failure still
+// says what failed.
+const PORTAL_ARRIVAL_CSS = `html.portal.gpu,html.portal.gpu body{background:radial-gradient(ellipse at 50% 50%,#a1e2be 0%,#91d5b1 40%,#87cfac 75%,#7fcaaa 100%)}
+html.portal.gpu #coaxial-load{background:transparent}
+html.portal.gpu #coaxial-load:not([data-state=fail]) .lf{visibility:hidden}`
+
 export function page(r: Realm, isListed = true): string {
   const url = `https://openagents.com/worlds/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))
   // its link preview (docs/web/og-tags.md): its hand-made card, else the one og-render.ts renders from a still of it
@@ -317,7 +326,8 @@ export function page(r: Realm, isListed = true): string {
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/worlds/${r.slug}/index.md">
-<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")${r.arrival === "portal" ? `
+if (/[?&]via=portal(&|$)/.test(location.search)) document.documentElement.classList.add("portal")` : ""}</script>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
 body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
@@ -328,7 +338,7 @@ html:not(.gpu) body{overflow:auto}
 a{color:#ff8c1f}
 /* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
 .gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
-${LOADER_CSS}
+${LOADER_CSS}${r.arrival === "portal" ? "\n" + PORTAL_ARRIVAL_CSS : ""}
 </style>
 </head>
 <body>

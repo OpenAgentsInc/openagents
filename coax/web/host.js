@@ -3270,6 +3270,29 @@ function navigateTo(path) {
   tabLocation.assign(to.href);
   if (samePage && to.hash) tabLocation.reload();
 }
+// Action 21: the page at path, its engine, shaders, UI font and first assets (its script's data-wasm or
+// /build/APP.wasm, data-wgsl or /APP.wgsl, data-ui-font-src and data-assets' same-origin files, sounds
+// aside: they load when first played) fetched once into the HTTP cache, in the background. Nothing
+// is kept here, and a failure only means the page loads as it would have.
+const warmed = new Set();
+async function warmCache(path) {
+  const to = new URL(path, location.href);
+  if (to.origin !== location.origin || warmed.has(to.href)) return;
+  warmed.add(to.href);
+  try {
+    const doc = new DOMParser().parseFromString(await (await fetch(to.href)).text(), "text/html");
+    const d = doc.querySelector("script[data-app]")?.dataset;
+    if (!d) return;
+    const urls = [d.wasm || `/build/${d.app}.wasm`, d.wgsl || `/${d.app}.wgsl`];
+    if (d.uiFontSrc) urls.push(d.uiFontSrc);
+    for (const entry of (d.assets || "").split(/\s+/).filter(Boolean)) {
+      const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1);
+      if (kind !== "sound" && kind !== "sounds" && kind !== "private" && rest.startsWith("/") && !rest.startsWith("//")) urls.push(rest);
+    }
+    // read through and let go as it comes (a world's pack can be tens of MB: never held whole here)
+    await Promise.all(urls.map((u) => fetch(new URL(u, to.href)).then((r) => r.body ? r.body.pipeTo(new WritableStream()) : null, () => null).catch(() => null)));
+  } catch {}
+}
 // This page has handed the tab to the page it opened in place: it stops as if it were unloaded.
 function zoneOut() {
   leaving = true;send(LEAVE_KIND);httpRequests.reset();
@@ -3324,6 +3347,9 @@ function after(gesture, tap = false) {
     }
     // Open another page in place, out of sight until action 1 goes to it (zone-host.js); progress back as message 18.
     else if (code === 18 && text.startsWith("/")) warmPage(root && !text.startsWith(root + "/") ? root + text : text, (t) => send(18, t));
+    // Fetch a same-origin page and what its engine loads first into the HTTP cache, so going there
+    // next (action 1) loads from it: Everglade's portal on the homepage asks while its camera flies.
+    else if (code === 21 && text.startsWith("/") && !text.startsWith("//")) warmCache(root && !text.startsWith(root + "/") ? root + text : text);
     // The app's place in the site, said in the address bar without loading anything: one world whose
     // places have their own addresses (Character Create walking into Everglade, #13018). Same origin
     // only; the page's query and hash stay unless the path brings its own.

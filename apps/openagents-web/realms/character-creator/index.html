@@ -22,7 +22,8 @@
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/worlds/character-creator/index.md">
-<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")
+if (/[?&]via=portal(&|$)/.test(location.search)) document.documentElement.classList.add("portal")</script>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
 body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
@@ -53,6 +54,9 @@ html:not(.gpu) #coaxial-load .le,#coaxial-load[data-state=fail] .le{display:bloc
 html:not(.gpu) #coaxial-load .la,#coaxial-load[data-state=fail] .la{display:inline-block;margin-top:16px;padding:8px 12px;border:1px solid rgba(240,240,240,.45);color:#f0f0f0;text-decoration:none}
 #coaxial-load .la:hover,#coaxial-load .la:focus-visible{color:hsl(180,68.07%,53.33%);border-color:hsl(180,68.07%,53.33%);outline:none}
 @media (prefers-reduced-motion:reduce){#coaxial-load,#coaxial-load .lb i{transition:none}}
+html.portal.gpu,html.portal.gpu body{background:radial-gradient(ellipse at 50% 50%,#a1e2be 0%,#91d5b1 40%,#87cfac 75%,#7fcaaa 100%)}
+html.portal.gpu #coaxial-load{background:transparent}
+html.portal.gpu #coaxial-load:not([data-state=fail]) .lf{visibility:hidden}
 </style>
 </head>
 <body>

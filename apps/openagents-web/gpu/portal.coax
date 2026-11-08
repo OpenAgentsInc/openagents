@@ -1,0 +1,76 @@
+// Everglade's portal: the light on its face, one function of the portal's own coordinates and the
+// shimmer's clock, drawn by both sides of the way in. The homepage (gpu/newland.coax, portal mode)
+// draws it on the portal in the Grid and, as the camera flies through, over the whole view; Character
+// Create (gpu/everglade2.coax, the arrival veil) draws the same light at the same scale and clock when
+// its page opens, then lets the glade through it. The clock is the wall clock's seconds (both pages
+// read it from their facts), so the light runs on unbroken across the page change.
+//   p: the portal's coordinates, its rim at length 1 (the middle at 0).
+//   t: the shimmer's seconds.
+//   ripple: 0 at rest, 1 the shimmer's swell as the camera passes through.
+// The light stays below PORTAL_MOST in every channel: a deep teal, aqua swirls, a gold middle,
+// never white.
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/render/noise.coax";
+
+PORTAL_MOST :: 0.82;
+// How far the homepage's portal reaches over the view at the hand-over: its radius, in half the
+// view's diagonals. Character Create's veil opens at the same scale (newland-portal.coax PORTAL_THROUGH).
+PORTAL_HANDOFF :: 3.0;
+
+portal_noise :: (p:V2)->f32 {
+  ix:=floor(p.x);iy:=floor(p.y);fx:=p.x-ix;fy:=p.y-iy;
+  sx:=fx*fx*(3.0f32-2.0f32*fx);sy:=fy*fy*(3.0f32-2.0f32*fy);
+  a:=render_noise2(ix,iy);b:=render_noise2(ix+1.0f32,iy);c:=render_noise2(ix,iy+1.0f32);d:=render_noise2(ix+1.0f32,iy+1.0f32);
+  return mix(mix(a,b,sx),mix(c,d,sx),sy);
+}
+portal_fbm :: (q:V2)->f32 {
+  p:=q;v:=0.0f32;a:=0.5f32;
+  for k:0..<4 {v=v+a*portal_noise(p);p=v2(p.x*2.03f32+1.7f32,p.y*2.03f32+9.2f32);a=a*0.5f32;}
+  return v/0.9375f32;
+}
+// The light at p (see the file's head).
+portal_field :: (p:V2,t:f32,ripple:f32)->V3 {
+  r:=sqrt(p.x*p.x+p.y*p.y);
+  // the swirl turns faster toward the middle, and the whole face turns slowly
+  a:=2.4f32*exp(-r*1.3f32)+t*0.23f32;ca:=cos(a);sa:=sin(a);
+  q:=v2(p.x*ca-p.y*sa,p.x*sa+p.y*ca);
+  n:=portal_fbm(v2(q.x*2.2f32+t*0.11f32,q.y*2.2f32-t*0.07f32));
+  m:=portal_fbm(v2(q.x*5.3f32-t*0.19f32+3.1f32,q.y*5.3f32+t*0.13f32-1.7f32));
+  // rings running out from the middle, bent by the swirl: the shimmer
+  ring:=0.5f32+0.5f32*sin(r*21.0f32-t*3.1f32+n*5.0f32);
+  r2:=ring*ring;r4:=r2*r2;glint:=r4*r4*(0.35f32+0.65f32*m);
+  swell:=0.5f32+0.5f32*sin(r*8.0f32-t*6.5f32+m*2.0f32);s2:=swell*swell;s4:=s2*s2;
+  core:=exp(-r*r*2.6f32);
+  deep:=v3(0.016f32,0.115f32,0.125f32);aqua:=v3(0.085f32,0.50f32,0.47f32);gold:=v3(0.92f32,0.74f32,0.42f32);hi:=v3(0.50f32,0.92f32,0.84f32);
+  c:=mix3(deep,aqua,saturate(0.2f32+0.8f32*n*(1.2f32-0.45f32*saturate(r))));
+  c=add3(c,scale3(gold,core*0.5f32*(0.7f32+0.6f32*m)));
+  c=add3(c,scale3(hi,glint*(0.2f32+0.25f32*ripple)*(1.0f32-0.45f32*core)));
+  c=add3(c,scale3(hi,s4*s4*0.22f32*ripple));
+  // a few motes catching the light, twinkling
+  cell:=v2(floor(q.x*34.0f32),floor(q.y*34.0f32));
+  h:=render_noise2(cell.x,cell.y);
+  tw:=0.5f32+0.5f32*sin(t*2.7f32+h*40.0f32);
+  c=add3(c,scale3(hi,stepf(0.985f32,h)*tw*0.35f32));
+  return v3(fmin(c.x,PORTAL_MOST),fmin(c.y,PORTAL_MOST),fmin(c.z,PORTAL_MOST));
+}
+#test "the portal's light is bounded, never white, brightest toward its middle" {
+  most:=0.0f32;mid:=0.0f32;rim:=0.0f32;
+  for i:0..<24 {for j:0..<24 {
+    p:=v2((cast(f32)i-11.5f32)/9.0f32,(cast(f32)j-11.5f32)/9.0f32);
+    c:=portal_field(p,13.7f32+cast(f32)i*0.1f32,1.0f32);
+    #assert c.x>=0 && c.y>=0 && c.z>=0 && c.x<=PORTAL_MOST && c.y<=PORTAL_MOST && c.z<=PORTAL_MOST;
+    most=fmax(most,fmax(c.x,fmax(c.y,c.z)));
+    l:=c.x*0.2126f32+c.y*0.7152f32+c.z*0.0722f32;r:=sqrt(p.x*p.x+p.y*p.y);
+    if r<0.3f32 {mid=mid+l;} else if r>0.9f32 && r<1.1f32 {rim=rim+l;}
+  }}
+  #assert most>0.3f32 && mid>0 && rim>0;
+  // the middle's light, per sample, beats the rim's
+  #assert mid/16.0f32>rim/60.0f32;
+}
+#test "the portal's light moves smoothly: a frame apart, no jump" {
+  for i:0..<12 {
+    p:=v2(0.1f32*cast(f32)i-0.6f32,0.05f32*cast(f32)i);
+    a:=portal_field(p,20.0f32,0.5f32);b:=portal_field(p,20.0f32+1.0f32/60.0f32,0.5f32);
+    #assert abs(a.x-b.x)+abs(a.y-b.y)+abs(a.z-b.z)<0.2f32;
+  }
+}
