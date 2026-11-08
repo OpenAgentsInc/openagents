@@ -1,7 +1,9 @@
 // Film frames (#13003, docs/research/vork/2026-11-07-desktop-film-renderer.md, F0): what
 // vk-realm --headless --frames-dir wrote (film.txt, timing.txt, frame-NNNNNN.rgba16f) made
 // into review PNGs, a per-frame hash, a meta.json and, with --out, an H.264 encode.
-//   coax/web/tool.sh aethyr/tools/film-frames.coax DIR [--out OUT.mp4] [--audio WAV] [--target K] [--no-png]
+//   coax/web/tool.sh aethyr/tools/film-frames.coax DIR [--out OUT.mp4] [--audio WAV] [--target K] [--no-png] [--exr]
+// --exr also writes DIR/exr/fNNNNN.exr (#13005): ZIP half layers, the last target as R, G, B, A
+// and each other target K as targetK.R, targetK.G, targetK.B, targetK.A.
 // Each frame's hash is the SHA-256 of its raw bytes exactly as the GPU wrote them (every
 // target, half floats), so two renders of the same input compare bit for bit. The review
 // PNG is target K (default the last: the realm's screen) read as display-encoded values,
@@ -11,6 +13,7 @@
 #load "../../coax/lib/media/media.coax";
 #load "../../coax/lib/crypto/sha256-memory.coax";
 #load "../../coax/lib/json/json.coax";
+#load "../exr.coax";
 
 FILM_MAX_PIXELS :: 3840 * 2160;
 FILM_MAX_TARGETS :: 4;
@@ -248,7 +251,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ok := args_load(a[..]);
   dir := args_at(a[..], 0);
   if !ok || dir.count == 0 || (dir.count >= 2 && dir[0] == '-' && dir[1] == '-') {
-    tool_errln("usage: coax/web/tool.sh aethyr/tools/film-frames.coax DIR [--out OUT.mp4] [--audio WAV] [--target K] [--no-png]");
+    tool_errln("usage: coax/web/tool.sh aethyr/tools/film-frames.coax DIR [--out OUT.mp4] [--audio WAV] [--target K] [--no-png] [--exr]");
     return 2;
   }
   pb: [4200] u8; pb2: [4200] u8;
@@ -264,9 +267,15 @@ tool_main :: () -> int #export_c #effects(all) {
   if target >= m.targets { tool_errln("film-frames: --target is past the frame's targets"); return 2; }
   film_raw: [FILM_MAX_FRAME_BYTES] u8;
   film_rgba: [FILM_MAX_PIXELS * 4] u8;
+  film_exr: [FILM_MAX_FRAME_BYTES + 1048576] u8;
+  film_exr_work: [3840 * 8 * FILM_MAX_TARGETS * 16 * 3 + 64] u8;
   frame_bytes := m.w * m.h * 8 * m.targets;
   if frame_bytes > film_raw.count { tool_errln("film-frames: frames this large need a larger buffer"); return 1; }
   png := !args_has(a[..], "--no-png");
+  exr := args_has(a[..], "--exr");
+  eb: [4200] u8; exr_dir := "";
+  if exr { exr_dir = fs_join(dir, "exr", eb[..]); if !fs_exists(exr_dir) && !fs_mkdir(exr_dir) { tool_errln("film-frames: cannot make DIR/exr"); return 1; } }
+  exr_names: [FILM_MAX_TARGETS * 4] [16] u8;
   out := args_value(a[..], "--out", "");
   if out.count > 0 && !png { tool_errln("film-frames: --out encodes the review PNGs; drop --no-png"); return 2; }
 
@@ -347,6 +356,21 @@ tool_main :: () -> int #export_c #effects(all) {
       gone := fs_remove(rgba);
       if r.started != 0 { tool_errln("film-frames: ffmpeg was not found"); return 1; }
       if r.status != 0 { tool_err("film-frames: ffmpeg failed: "); tool_errln(cast(string) se[0..<r.err_n]); return 1; }
+    }
+    if exr {
+      ch: [FILM_MAX_TARGETS * 4] ExrChannel;
+      for t: 0..<m.targets { for c: 0..<4 {
+        k := t * 4 + c; nb := exr_names[k][..]; nn := 0;
+        if t != m.targets - 1 { nn = ws_put(nb, 0, "target"); nn = ws_digits(nb, nn, t); nn = ws_put(nb, nn, "."); }
+        nb[nn] = "RGBA"[c]; nn += 1;
+        ch[k] = ExrChannel.{name = cast(string) nb[0..<nn], type = EXR_HALF, src = film_raw[0..<n], src_type = EXR_HALF, offset = t * m.w * m.h * 8 + c * 2, stride = 8};
+      } }
+      e := exr_write(m.w, m.h, ch[0..<m.targets * 4], EXR_ZIP, film_exr[..], film_exr_work[..]);
+      if e <= 0 { tool_errln("film-frames: the EXR did not fit its buffer"); return 1; }
+      name := clip_frame_name(written, sb[..]);
+      ep: [4200] u8; en: [64] u8;
+      stem := ws_put(en[..], 0, cast(string) name[0..<name.count - 4]); stem = ws_put(en[..], stem, ".exr");
+      if !fs_write(fs_join(exr_dir, cast(string) en[0..<stem], ep[..]), cast(string) film_exr[0..<e]) { tool_errln("film-frames: cannot write the EXR"); return 1; }
     }
     written += 1;
   }

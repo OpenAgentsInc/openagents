@@ -150,6 +150,20 @@ F1; the record and its checks are `aethyr/film.coax`):
 On the RTX 4080, Everglade at 1920x1080 with 16 samples, a half-frame
 shutter and f/2.8 took 1.6 to 2.0 s a frame (85cfc9d1b1's producer).
 
+### EXR layers
+
+`film-frames.coax OUT --exr` also writes `OUT/exr/fNNNNN.exr` (#13005, phase
+F2): one OpenEXR file a frame, written by `aethyr/exr.coax`. Each file is
+single-part scanline, ZIP compression (zlib over 16 lines, from
+`coax/lib/image/deflate.coax`), half channels, scene-linear and
+premultiplied. The screen target is `R`, `G`, `B`, `A`; any other target K is
+`targetK.R` and so on. ffmpeg's EXR decoder reads the files.
+`aethyr/exr.coax` also reads any channel back as f32, for `labs cut`.
+`aethyr/tests/exr_oracle.py` decodes the files on its own and checks every
+value bit for bit: run it bare for the sample files, or with `--frame
+FRAME.rgba16f FILE.exr` for a film frame. A 1920x1080 Everglade frame
+writes in under a second and takes 4.4 MB; its raw halves take 16.6 MB.
+
 ## Next
 
 - Inputs on a timeline in `clip.coax` (key and pointer events at frame

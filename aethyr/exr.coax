@@ -1,0 +1,266 @@
+// OpenEXR, the film profile's layer format (GitHub #13005, phase F2 of
+// docs/research/vork/2026-11-07-desktop-film-renderer.md): a single-part scanline file whose
+// channels carry every layer by name (R, G, B, A for the beauty; "depth.Z", "normal.X" and so on
+// for the AOVs, as Blender and Nuke name them). Pixels are scene-linear and premultiplied, stored
+// as half or float, uncompressed or ZIP (zlib over 16 lines, after OpenEXR's byte split and
+// predictor). The reader takes back what the writer writes, so `labs cut` can grade layers.
+//
+// tests/exr_oracle.py (Firm reason 2) decodes the writer's files on its own, from the
+// OpenEXR file layout, and is the independent check.
+#load "../coax/lib/image/deflate.coax";
+
+EXR_NONE :: 0;
+EXR_ZIPS :: 2;           // zlib, one line a chunk
+EXR_ZIP :: 3;            // zlib, 16 lines a chunk
+EXR_UINT :: 0;
+EXR_HALF :: 1;
+EXR_FLOAT :: 2;
+EXR_MAX_CHANNELS :: 64;
+
+// One channel: its name, the type stored in the file, and where its values are in the caller's
+// bytes (half or float, little-endian, at offset + (y * width + x) * stride).
+ExrChannel :: struct { name: string; type: int; src: []u8; src_type: int; offset: int; stride: int; }
+
+exr_half :: (x: f32) -> int #effects(all) {
+  b := cast(int) f32_bits(x); sign := (b >> 16) & 32768; e := (b >> 23) & 255; m := b & 8388607;
+  if e == 255 { return sign | 31744 | (ifx m != 0 then 512 else 0); }
+  e2 := e - 112;
+  if e2 >= 31 { return sign | 31744; }
+  if e2 <= 0 {
+    if e2 < -10 { return sign; }
+    m = m | 8388608; shift := 14 - e2;
+    q := m >> shift; rem := m & ((1 << shift) - 1); mid := 1 << (shift - 1);
+    if rem > mid || (rem == mid && (q & 1) == 1) { q += 1; }
+    return sign | q;
+  }
+  q := (e2 << 10) | (m >> 13); rem := m & 8191;
+  if rem > 4096 || (rem == 4096 && (q & 1) == 1) { q += 1; }
+  return sign | q;
+}
+exr_from_half :: (h: int) -> f32 #effects(all) {
+  sign := (h & 32768) << 16; e := (h >> 10) & 31; m := h & 1023;
+  if e == 31 { return f32_from_bits(cast(u32) (sign | 2139095040 | (m << 13))); }
+  if e == 0 {
+    if m == 0 { return f32_from_bits(cast(u32) sign); }
+    v := cast(f32) m * 0.000000059604644775390625f32;
+    return ifx sign != 0 then -v else v;
+  }
+  return f32_from_bits(cast(u32) (sign | ((e + 112) << 23) | (m << 13)));
+}
+exr_u16 :: (b: []u8, at: int) -> int #effects(all) { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+exr_u32 :: (b: []u8, at: int) -> int #effects(all) { return exr_u16(b, at) | (exr_u16(b, at + 2) << 16); }
+exr_u64 :: (b: []u8, at: int) -> int #effects(all) { return exr_u32(b, at) | (exr_u32(b, at + 4) << 32); }
+exr_size :: (type: int) -> int #effects(all) { return ifx type == EXR_HALF then 2 else 4; }
+
+exr_adler :: (src: []u8) -> int #effects(all) {
+  a := 1; b := 0;
+  for i: 0..<src.count { a = (a + cast(int) src[i]) % 65521; b = (b + a) % 65521; }
+  return b * 65536 + a;
+}
+// A zlib stream (RFC 1950: header 78 01, deflate.coax's blocks, the Adler-32): bytes, or -1.
+exr_zlib :: (src: []u8, out: []u8, w: []DeflateWork) -> int #effects(all) {
+  if out.count < 6 { return -1; }
+  out[0] = 120; out[1] = 1;
+  n := deflate_raw(cast(string) src, out[2..<out.count - 4], w);
+  if n < 0 { return -1; }
+  sum := exr_adler(src);
+  for k: 0..<4 { out[2 + n + k] = cast(u8) ((sum >> (24 - 8 * k)) & 255); }
+  return n + 6;
+}
+
+ExrOut :: struct { out: []u8; at: int; bad: bool; }
+exr_byte :: (o: []ExrOut, v: int) #effects(all) {
+  if o[0].at >= o[0].out.count { o[0].bad = true; return; }
+  o[0].out[o[0].at] = cast(u8) (v & 255); o[0].at += 1;
+}
+exr_int :: (o: []ExrOut, v: int, k: int) #effects(all) { for i: 0..<k { exr_byte(o, v >> (8 * i)); } }
+exr_text :: (o: []ExrOut, s: string) #effects(all) { for i: 0..<s.count { exr_byte(o, cast(int) s[i]); } exr_byte(o, 0); }
+exr_attr :: (o: []ExrOut, name: string, type: string, size: int) #effects(all) { exr_text(o, name); exr_text(o, type); exr_int(o, size, 4); }
+// Names compare as bytes, as OpenEXR orders its channel list.
+exr_before :: (a: string, b: string) -> bool #effects(all) {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+exr_lines :: (compression: int) -> int #effects(all) { return ifx compression == EXR_ZIP then 16 else 1; }
+// One channel's value at a pixel, as the file stores it (half bits or float bits).
+exr_value :: (c: ExrChannel, p: int) -> int #effects(all) {
+  at := c.offset + p * c.stride;
+  if c.src_type == EXR_HALF {
+    h := exr_u16(c.src, at);
+    return ifx c.type == EXR_HALF then h else cast(int) f32_bits(exr_from_half(h));
+  }
+  bits := exr_u32(c.src, at);
+  return ifx c.type == EXR_FLOAT then bits else exr_half(f32_from_bits(cast(u32) bits));
+}
+exr_valid :: (w: int, h: int, ch: []ExrChannel, compression: int) -> bool #effects(all) {
+  if w <= 0 || h <= 0 || ch.count <= 0 || ch.count > EXR_MAX_CHANNELS { return false; }
+  if compression != EXR_NONE && compression != EXR_ZIPS && compression != EXR_ZIP { return false; }
+  for c, i: ch {
+    if c.name.count == 0 || c.name.count > 255 || (c.type != EXR_HALF && c.type != EXR_FLOAT) || (c.src_type != EXR_HALF && c.src_type != EXR_FLOAT) { return false; }
+    if c.offset < 0 || c.stride < exr_size(c.src_type) || c.offset + (w * h - 1) * c.stride + exr_size(c.src_type) > c.src.count { return false; }
+    for k: 0..<i { if ch[k].name == c.name { return false; } }
+  }
+  return true;
+}
+// The bytes a whole file needs at most (ZIP never grows a chunk: a chunk that would grow is stored).
+exr_bound :: (w: int, h: int, ch: []ExrChannel, compression: int) -> int #effects(all) {
+  names := 0; px := 0;
+  for c: ch { names += c.name.count + 17; px += exr_size(c.type); }
+  chunks := (h + exr_lines(compression) - 1) / exr_lines(compression);
+  return 400 + names + chunks * 16 + w * h * px;
+}
+// The work buffer a write needs: two copies of one chunk's pixels and its zlib stream.
+exr_work :: (w: int, ch: []ExrChannel, compression: int) -> int #effects(all) {
+  px := 0;
+  for c: ch { px += exr_size(c.type); }
+  raw := w * px * exr_lines(compression);
+  return 3 * raw + 64;
+}
+
+// Write the file into out: the bytes written, or -1 (bad channels, or a buffer too small).
+exr_write :: (w: int, h: int, ch: []ExrChannel, compression: int, out: []u8, work: []u8) -> int #effects(all) {
+  if !exr_valid(w, h, ch, compression) || work.count < exr_work(w, ch, compression) { return -1; }
+  order: [EXR_MAX_CHANNELS] int;
+  for i: 0..<ch.count {
+    k := i;
+    while k > 0 && exr_before(ch[i].name, ch[order[k - 1]].name) { order[k] = order[k - 1]; k -= 1; }
+    order[k] = i;
+  }
+  os: [1] ExrOut; os[0] = ExrOut.{out = out}; o := os[..];
+  exr_int(o, 20000630, 4); exr_int(o, 2, 4);
+  list := 1;
+  for c: ch { list += c.name.count + 17; }
+  exr_attr(o, "channels", "chlist", list);
+  for k: 0..<ch.count {
+    c := ch[order[k]];
+    exr_text(o, c.name); exr_int(o, c.type, 4); exr_int(o, 0, 4); exr_int(o, 1, 4); exr_int(o, 1, 4);
+  }
+  exr_byte(o, 0);
+  exr_attr(o, "compression", "compression", 1); exr_byte(o, compression);
+  exr_attr(o, "dataWindow", "box2i", 16); exr_int(o, 0, 4); exr_int(o, 0, 4); exr_int(o, w - 1, 4); exr_int(o, h - 1, 4);
+  exr_attr(o, "displayWindow", "box2i", 16); exr_int(o, 0, 4); exr_int(o, 0, 4); exr_int(o, w - 1, 4); exr_int(o, h - 1, 4);
+  exr_attr(o, "lineOrder", "lineOrder", 1); exr_byte(o, 0);
+  exr_attr(o, "pixelAspectRatio", "float", 4); exr_int(o, cast(int) f32_bits(1.0f32), 4);
+  exr_attr(o, "screenWindowCenter", "v2f", 8); exr_int(o, 0, 8);
+  exr_attr(o, "screenWindowWidth", "float", 4); exr_int(o, cast(int) f32_bits(1.0f32), 4);
+  exr_byte(o, 0);
+  lines := exr_lines(compression);
+  chunks := (h + lines - 1) / lines;
+  table := o[0].at;
+  for i: 0..<8 * chunks { exr_byte(o, 0); }
+  if o[0].bad { return -1; }
+  px := 0;
+  for c: ch { px += exr_size(c.type); }
+  raw := work[0..<w * px * lines];
+  split := work[raw.count..<2 * raw.count];
+  packed := work[2 * raw.count..<work.count];
+  dw: [1] DeflateWork;
+  for chunk: 0..<chunks {
+    y0 := chunk * lines; y1 := ifx y0 + lines < h then y0 + lines else h;
+    n := 0;
+    for y: y0..<y1 {
+      for k: 0..<ch.count {
+        c := ch[order[k]]; size := exr_size(c.type);
+        for x: 0..<w {
+          v := exr_value(c, y * w + x);
+          for b: 0..<size { raw[n] = cast(u8) ((v >> (8 * b)) & 255); n += 1; }
+        }
+      }
+    }
+    at := o[0].at;
+    for b: 0..<8 { out[table + chunk * 8 + b] = cast(u8) ((at >> (8 * b)) & 255); }
+    exr_int(o, y0, 4);
+    stored := n; data := raw[0..<n];
+    if compression != EXR_NONE {
+      // OpenEXR's ZIP: even bytes then odd bytes, then each byte as the difference from the last
+      half := (n + 1) / 2;
+      for i: 0..<n { if i % 2 == 0 { split[i / 2] = raw[i]; } else { split[half + i / 2] = raw[i]; } }
+      p := cast(int) split[0];
+      for i: 1..<n { v := cast(int) split[i]; split[i] = cast(u8) ((v - p + 384) & 255); p = v; }
+      z := exr_zlib(split[0..<n], packed, dw[..]);
+      if z > 0 && z < n { stored = z; data = packed[0..<z]; }
+    }
+    exr_int(o, stored, 4);
+    for i: 0..<stored { exr_byte(o, cast(int) data[i]); }
+    if o[0].bad { return -1; }
+  }
+  return o[0].at;
+}
+
+// What a reader found: the size, the compression and the channels (name bytes in the file).
+ExrInfo :: struct { ok: bool; w: int; h: int; compression: int; channels: int; name_at: [EXR_MAX_CHANNELS] int; name_n: [EXR_MAX_CHANNELS] int; type: [EXR_MAX_CHANNELS] int; table: int; }
+exr_info :: (b: []u8) -> ExrInfo #effects(all) {
+  r: ExrInfo; r.compression = -1;
+  if b.count < 8 || exr_u32(b, 0) != 20000630 || (exr_u32(b, 4) & 255) != 2 || (exr_u32(b, 4) >> 8) != 0 { return r; }
+  at := 8; window := false;
+  while at < b.count && b[at] != 0 {
+    name := at; while at < b.count && b[at] != 0 { at += 1; }
+    nm := cast(string) b[name..<at]; at += 1;
+    type := at; while at < b.count && b[at] != 0 { at += 1; }
+    at += 1;
+    if at + 4 > b.count { return r; }
+    size := exr_u32(b, at); at += 4;
+    if size < 0 || at + size > b.count { return r; }
+    if nm == "channels" {
+      c := at;
+      while c < at + size - 1 {
+        if r.channels >= EXR_MAX_CHANNELS { return r; }
+        s := c; while c < at + size && b[c] != 0 { c += 1; }
+        if c + 17 > at + size { return r; }
+        r.name_at[r.channels] = s; r.name_n[r.channels] = c - s; r.type[r.channels] = exr_u32(b, c + 1);
+        if (r.type[r.channels] != EXR_HALF && r.type[r.channels] != EXR_FLOAT) || exr_u32(b, c + 9) != 1 || exr_u32(b, c + 13) != 1 { return r; }
+        r.channels += 1; c += 17;
+      }
+    } else if nm == "compression" && size == 1 { r.compression = cast(int) b[at]; }
+    else if nm == "dataWindow" && size == 16 {
+      if exr_u32(b, at) != 0 || exr_u32(b, at + 4) != 0 { return r; }
+      r.w = exr_u32(b, at + 8) + 1; r.h = exr_u32(b, at + 12) + 1; window = true;
+    }
+    at += size;
+  }
+  r.table = at + 1;
+  r.ok = window && r.channels > 0 && r.w > 0 && r.h > 0 && (r.compression == EXR_NONE || r.compression == EXR_ZIPS || r.compression == EXR_ZIP);
+  return r;
+}
+exr_channel :: (b: []u8, r: ExrInfo, name: string) -> int #effects(all) {
+  for i: 0..<r.channels { if cast(string) b[r.name_at[i]..<r.name_at[i] + r.name_n[i]] == name { return i; } }
+  return -1;
+}
+// One channel of the file, as f32, into out (w * h values): true when every chunk decoded.
+exr_read :: (b: []u8, name: string, out: []f32, work: []u8) -> bool #effects(all) {
+  r := exr_info(b);
+  if !r.ok { return false; }
+  want := exr_channel(b, r, name);
+  if want < 0 || out.count < r.w * r.h { return false; }
+  px := 0; skip := 0;
+  for i: 0..<r.channels { px += exr_size(r.type[i]); if i < want { skip += exr_size(r.type[i]); } }
+  lines := exr_lines(r.compression);
+  chunks := (r.h + lines - 1) / lines;
+  if r.table + 8 * chunks > b.count || work.count < 2 * r.w * px * lines { return false; }
+  raw := work[0..<r.w * px * lines]; tmp := work[raw.count..<2 * raw.count];
+  for chunk: 0..<chunks {
+    at := exr_u64(b, r.table + 8 * chunk);
+    if at < 0 || at + 8 > b.count { return false; }
+    y0 := exr_u32(b, at); size := exr_u32(b, at + 4);
+    if y0 != chunk * lines || at + 8 + size > b.count { return false; }
+    y1 := ifx y0 + lines < r.h then y0 + lines else r.h;
+    n := (y1 - y0) * r.w * px;
+    data := b[at + 8..<at + 8 + size];
+    if size == n { for i: 0..<n { raw[i] = data[i]; } }
+    else {
+      if r.compression == EXR_NONE || zlib_inflate(data, tmp[0..<n]) != n { return false; }
+      for i: 1..<n { tmp[i] = cast(u8) ((cast(int) tmp[i - 1] + cast(int) tmp[i] - 128) & 255); }
+      half := (n + 1) / 2;
+      for i: 0..<n { raw[i] = ifx i % 2 == 0 then tmp[i / 2] else tmp[half + i / 2]; }
+    }
+    for y: y0..<y1 {
+      line := (y - y0) * r.w * px + skip * r.w;
+      for x: 0..<r.w {
+        if r.type[want] == EXR_HALF { out[y * r.w + x] = exr_from_half(exr_u16(raw, line + 2 * x)); }
+        else { out[y * r.w + x] = f32_from_bits(cast(u32) exr_u32(raw, line + 4 * x)); }
+      }
+    }
+  }
+  return true;
+}

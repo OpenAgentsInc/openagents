@@ -1,0 +1,19 @@
+// The sample image of tests/exr.coax and tools/exr-sample.coax: values half holds exactly,
+// from the channel and the pixel, with the largest half, a negative subnormal and the smallest.
+EXR_W :: 37;
+EXR_H :: 21;
+exr_sample :: (c: int, x: int, y: int) -> f32 #effects(all) {
+  p := y * EXR_W + x;
+  if p == 0 { return 65504.0f32; }
+  if p == 1 { return -0.0000152587890625f32; }
+  if p == 2 { return 0.000000059604644775390625f32; }
+  return cast(f32) ((x * 7 + y * 13 + c * 5) % 61) / 16.0f32 - 1.5f32;
+}
+exr_fill :: (src: []u8, channels: int, half: bool) #effects(all) {
+  for y: 0..<EXR_H { for x: 0..<EXR_W { for c: 0..<channels {
+    v := exr_sample(c, x, y); i := (y * EXR_W + x) * channels + c;
+    if half { h := exr_half(v); src[2 * i] = cast(u8) (h & 255); src[2 * i + 1] = cast(u8) (h >> 8); }
+    else { b := cast(int) f32_bits(v); for k: 0..<4 { src[4 * i + k] = cast(u8) ((b >> (8 * k)) & 255); } }
+  } } }
+}
+EXR_NAMES :: [5] string.["R", "G", "B", "A", "depth.Z"];

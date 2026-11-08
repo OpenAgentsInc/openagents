@@ -1,0 +1,28 @@
+// Write the EXR sample files that aethyr/tests/exr_oracle.py decodes on its own:
+//   coax/web/tool.sh aethyr/tools/exr-sample.coax DIR
+// DIR gets none.exr, zips.exr and zip.exr, each 37x21 with half R, G, B, A and a float
+// depth.Z, from tests/exr-image.coax.
+#import "Basic";
+#load "../exr.coax";
+#load "../tests/exr-image.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: coax/web/tool.sh aethyr/tools/exr-sample.coax DIR"); return 2; }
+  dir := args_at(a[..], 0);
+  if !fs_exists(dir) && !fs_mkdir(dir) { tool_errln("exr-sample: cannot make DIR"); return 1; }
+  src: [EXR_W * EXR_H * 5 * 4] u8;
+  exr_fill(src[..], 5, false);
+  ch: [5] ExrChannel;
+  for c: 0..<5 { ch[c] = ExrChannel.{name = EXR_NAMES[c], type = ifx c == 4 then EXR_FLOAT else EXR_HALF, src = src[..], src_type = EXR_FLOAT, offset = c * 4, stride = 20}; }
+  file: [40000] u8; work: [40000] u8; pb: [4200] u8;
+  names := [3] string.["none.exr", "zips.exr", "zip.exr"];
+  kinds := [3] int.[EXR_NONE, EXR_ZIPS, EXR_ZIP];
+  for k: 0..<3 {
+    n := exr_write(EXR_W, EXR_H, ch[..], kinds[k], file[..], work[..]);
+    if n <= 0 || !fs_write(fs_join(dir, names[k], pb[..]), cast(string) file[0..<n]) { tool_errln("exr-sample: write failed"); return 1; }
+  }
+  return 0;
+}
