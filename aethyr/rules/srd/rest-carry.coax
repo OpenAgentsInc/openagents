@@ -1,0 +1,238 @@
+// A character's rest carried across processes (#13046): a durable checkpoint
+// holds it as numbers relative to the capture's own rest clock, and a new
+// process lays it on a fresh body against its own clock. Offline time earns no
+// rest; an in-progress rest resumes where it was captured, its journal stamped
+// at the restore. Completion history keeps the sixteen-hour gate: its age is
+// capped at that gate, so a destination clock at least RS_CARRY_EPOCH old can
+// always represent it. Hit Dice, the Short Rest's daily recovery uses and an
+// interrupted Long Rest's counts carry exactly.
+#authority;
+RS_CARRY :: 19;
+RS_CARRY_MS :: 1000;                 // journal microseconds per carried millisecond
+RS_CARRY_DAY :: 86400000;            // ms: the most any carried Long Rest count may hold
+RS_CARRY_GATE :: 57600000;           // ms: the sixteen hours between Long Rests
+RS_CARRY_HOUR :: 3600000;            // ms: a Short Rest
+RS_CARRY_EPOCH :: 61200000000;       // µs: a destination rest clock this old represents every carried age
+// Carried field i's closed upper bound (all are at least 0), or -1 for no field.
+RS_CARRY_HIGH :: [19]int.[2,RS_CARRY_HOUR,20,1,1,1,3,3,RS_CARRY_DAY,RS_CARRY_DAY,RS_CARRY_DAY,RS_CARRY_DAY,99,RS_CARRY_DAY,1,1,RS_CARRY_GATE,1,1];
+rs_carry_max :: (i:int)->int #effects(all) { if i<0 || i>=RS_CARRY { return -1; } return RS_CARRY_HIGH[i]; }
+rs_carry_field :: (i:int,n:int)->bool #effects(all) { return n>=0 && n<=rs_carry_max(i); }
+rs_carry_ms :: (us:int)->int #effects(all) { return us/RS_CARRY_MS; }
+rs_carry_flag :: (b:bool)->int #effects(all) { return ifx b then 1 else 0; }
+rs_carry_cap :: (n:int,high:int)->int #effects(all) { return rs_min(rs_max(n,0),high); }
+
+// Creature i's rest as carried numbers, against battle b's rest clock, each within its range.
+rs_carry_out :: (b:[]RsBattle,i:int,out:[]int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || out.count<RS_CARRY { return false; }
+  c:=b[0].c[i]; now:=b[0].rest_clock.ticks; r:=c.rest; l:=c.long_rest; raw:[RS_CARRY]int;
+  raw[0]=r.phase;
+  if r.phase==1 { raw[1]=rs_carry_ms(now-r.started); }
+  if r.seeded { raw[2]=r.dice; }
+  raw[3]=rs_carry_flag(r.seeded); raw[4]=rs_carry_flag(r.recovery_used); raw[5]=rs_carry_flag(r.restoration_used);
+  // Only an owned (microsecond) journal carries; a manual one stays with its world.
+  if l.rate==1000000 {
+    raw[6]=l.phase;
+    if l.phase!=0 { raw[7]=l.mode; }
+    raw[8]=rs_carry_ms(l.elapsed); raw[9]=rs_carry_ms(l.sleep); raw[10]=rs_carry_ms(l.light); raw[11]=rs_carry_ms(l.exertion);
+    raw[12]=l.interruptions; raw[13]=rs_carry_ms(l.quiet); raw[14]=rs_carry_flag(l.fallback); raw[15]=rs_carry_flag(l.completed);
+    if l.completed { raw[16]=rs_carry_ms(now-l.finished); }
+    raw[17]=rs_carry_flag(l.short_due); raw[18]=rs_carry_flag(l.light_reported);
+  }
+  for q:0..<RS_CARRY { out[q]=rs_carry_cap(raw[q],rs_carry_max(q)); }
+  return true;
+}
+// Lay carried rest `in` on creature i of battle b (scheduled, its clock at least RS_CARRY_EPOCH),
+// all or none. Refused: a field out of range, an inconsistent rest, or an unrepresentable clock.
+rs_carry_in :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
+  switch rs_carry_atomic(b,i,in) { case none { return false; } case some(ok) { return ok; } }
+}
+rs_carry_atomic :: (b:[]RsBattle,i:int,in:[]int)->bool? #effects(all) {
+  #transaction {
+    if !rs_carry_apply(b,i,in) { return null; }
+  }
+  return some(true);
+}
+rs_carry_apply :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || in.count<RS_CARRY || !b[0].rest_auto || b[0].reaction_frame.on { return false; }
+  for q:0..<RS_CARRY { if !rs_carry_field(q,in[q]) { return false; } }
+  now:=b[0].rest_clock.ticks;
+  if now<RS_CARRY_EPOCH || now>9223372036854775807-RS_CARRY_EPOCH { return false; }
+  c:=b[0].c[i..<i+1];
+  // Only one rest at a time is in progress; a mode belongs to an open journal.
+  if in[0]==1 && (in[6]==1 || in[6]==3) { return false; }
+  if (in[6]==0) != (in[7]==0) || (in[16]>0 && in[15]==0) { return false; }
+  if in[9]+in[10]+in[11]>in[8] { return false; }
+  rs_rest_seed(c);
+  if in[3]==1 {
+    if !c[0].rest.seeded || in[2]>c[0].rest.dice_max { return false; }
+    c[0].rest.dice=in[2];
+  }
+  c[0].rest.recovery_used=in[4]==1; c[0].rest.restoration_used=in[5]==1;
+  journal:=RsLongRest.{rate=1000000};
+  journal.elapsed=in[8]*RS_CARRY_MS; journal.sleep=in[9]*RS_CARRY_MS; journal.light=in[10]*RS_CARRY_MS; journal.exertion=in[11]*RS_CARRY_MS;
+  journal.interruptions=in[12]; journal.quiet=in[13]*RS_CARRY_MS; journal.fallback=in[14]==1;
+  journal.completed=in[15]==1;
+  if journal.completed { journal.finished=now-in[16]*RS_CARRY_MS; }
+  journal.short_due=in[17]==1; journal.light_reported=in[18]==1; journal.stamp=now;
+  c[0].rest.phase=0; c[0].long_rest=journal;
+  rs_sleep_end(c);
+  if c[0].dead || c[0].hp<1 { return true; }   // a body down or dead keeps its history and Hit Dice, never a rest
+  if in[0]==1 { c[0].rest.phase=1; c[0].rest.started=now-in[1]*RS_CARRY_MS; }
+  if in[0]==2 { c[0].rest.phase=2; }
+  // A pending completion is laid on as the open rest it ended; the scheduler completes it again.
+  c[0].long_rest.phase=ifx in[6]==3 then 1 else in[6]; c[0].long_rest.mode=in[7];
+  if c[0].long_rest.phase==1 && in[7]==1 && !rs_sleep_begin(b,i) { return false; }
+  return true;
+}
+
+#test "rest carry: a sleeping Long Rest and its counts resume in a new battle without offline credit and complete once" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=2;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],3*3600);
+  carried:[RS_CARRY]int; #assert rs_carry_out(b[..],0,carried[..]);
+  #assert carried[6]==1 && carried[7]==1 && carried[8]==10800000 && carried[9]==10800000 && carried[15]==0;
+  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
+  e[0]=rs_wizard("Sleeper",0,3); e[0].hp=2;
+  #assert !rs_carry_in(d[..],0,carried[..]);   // unscheduled
+  #assert rs_rest_schedule_enable(d[..]);
+  #assert !rs_carry_in(d[..],0,carried[..]) && e[0].long_rest.phase==0;   // a clock too young for the gate
+  d[0].rest_clock.ticks=RS_CARRY_EPOCH;
+  #assert rs_carry_in(d[..],0,carried[..]) && rs_sleeping(e[0]) && e[0].long_rest.sleep==10800000000 && e[0].long_rest.stamp==RS_CARRY_EPOCH;
+  rs_tick(d[..],5*3600-1); #assert !e[0].long_rest.completed && e[0].hp==2;
+  rs_tick(d[..],1); #assert e[0].long_rest.completed && e[0].hp==e[0].hp_max && !rs_sleeping(e[0]);
+  e[0].hp=2; rs_tick(d[..],3600); #assert e[0].hp==2;
+}
+#test "rest carry: completion history keeps the sixteen-hour gate, Hit Dice and recovery uses carry, and a Short Rest resumes its hour" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+  c[0]=rs_fighter("Patient",0,3);
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],8*3600); #assert c[0].long_rest.completed;
+  rs_tick(b[..],3600); c[0].hp=1;
+  #assert rs_rest_control(b[..],0,RS_REST_SHORT,true); rs_tick(b[..],3600);
+  #assert rs_rest_control(b[..],0,RS_REST_DIE,true) && c[0].rest.dice==2;
+  #assert rs_rest_control(b[..],0,RS_REST_END,false);
+  #assert rs_short_rest_begin(b[..],0); rs_tick(b[..],1200);
+  carried:[RS_CARRY]int; #assert rs_carry_out(b[..],0,carried[..]);
+  #assert carried[0]==1 && carried[1]==1200000 && carried[2]==2 && carried[3]==1 && carried[15]==1 && carried[16]==8400000;
+  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
+  e[0]=rs_fighter("Patient",0,3); e[0].hp=e[0].hp_max;
+  #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH;
+  #assert rs_carry_in(d[..],0,carried[..]) && e[0].rest.dice==2 && e[0].rest.phase==1 && e[0].long_rest.completed;
+  #assert !rs_long_rest_start_owned(d[..],0,1,true);   // under sixteen hours since the carried completion
+  rs_tick(d[..],2399); #assert e[0].rest.phase==1;
+  rs_tick(d[..],1); #assert e[0].rest.phase==2;
+  #assert rs_rest_control(d[..],0,RS_REST_END,false);
+  rs_tick(d[..],57600-10800-1); #assert !rs_long_rest_start_owned(d[..],0,1,true);
+  rs_tick(d[..],1); #assert rs_long_rest_start_owned(d[..],0,1,true);
+  // an old completion is capped at the gate, which a clock at the epoch still represents
+  carried[16]=RS_CARRY_GATE; carried[0]=0; carried[1]=0;
+  f:[1]RsBattle; g:[1]RsCreature; f[0].c=g[..]; f[0].n=1; f[0].who = -1; g[0]=rs_fighter("Patient",0,3);
+  #assert rs_rest_schedule_enable(f[..]); f[0].rest_clock.ticks=RS_CARRY_EPOCH;
+  #assert rs_carry_in(f[..],0,carried[..]) && g[0].long_rest.finished==RS_CARRY_EPOCH-RS_CARRY_GATE*RS_CARRY_MS && rs_long_rest_start_owned(f[..],0,1,true);
+}
+#test "rest carry: an interrupted Long Rest stays interrupted and resumes explicitly; a down body keeps history but no rest" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_cleric("Watcher",0,3);
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  #assert rs_rest_observe_motion(b[..],0,true,false,false); rs_tick(b[..],3600);
+  #assert c[0].long_rest.phase==2;
+  carried:[RS_CARRY]int; #assert rs_carry_out(b[..],0,carried[..]);
+  #assert carried[6]==2 && carried[7]==3 && carried[11]==3600000 && carried[12]==1;
+  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1; e[0]=rs_cleric("Watcher",0,3);
+  #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH;
+  #assert rs_carry_in(d[..],0,carried[..]) && e[0].long_rest.phase==2 && e[0].long_rest.interruptions==1 && !rs_sleeping(e[0]);
+  rs_tick(d[..],600); #assert e[0].long_rest.phase==2;
+  #assert rs_rest_control(d[..],0,RS_REST_SLEEP,true) && e[0].long_rest.phase==1 && rs_sleeping(e[0]);
+  e[0]=rs_cleric("Watcher",0,3); e[0].hp=0;
+  #assert rs_carry_in(d[..],0,carried[..]) && e[0].long_rest.phase==0 && e[0].long_rest.interruptions==1 && !rs_sleeping(e[0]);
+}
+#test "rest carry: every field's closed range, inconsistent rests and bad owners refuse with the body unchanged" {
+  for i:0..<RS_CARRY { #assert rs_carry_field(i,0) && rs_carry_field(i,rs_carry_max(i)) && !rs_carry_field(i,-1) && !rs_carry_field(i,rs_carry_max(i)+1); }
+  #assert !rs_carry_field(-1,0) && !rs_carry_field(RS_CARRY,0) && rs_carry_max(RS_CARRY)== -1;
+  #assert rs_carry_max(1)==3600000 && rs_carry_max(2)==20 && rs_carry_max(7)==3 && rs_carry_max(12)==99 && rs_carry_max(16)==57600000 && rs_carry_max(13)==86400000;
+  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1; e[0]=rs_wizard("Reader",0,3);
+  #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH;
+  ok:[RS_CARRY]int; ok[3]=1; ok[2]=1;
+  for bad:0..<9 {
+    w:=ok;
+    if bad==0 { w[0]=1; w[6]=1; w[7]=1; w[8]=1; w[9]=1; }
+    if bad==1 { w[6]=2; }
+    if bad==2 { w[7]=2; }
+    if bad==3 { w[16]=5; }
+    if bad==4 { w[2]=4; }
+    if bad==5 { w[6]=2; w[7]=2; w[8]=10; w[10]=11; }
+    if bad==6 { w[12]=100; }
+    if bad==7 { w[0]=1; w[6]=3; w[7]=1; }
+    if bad==8 { w[1]= -1; }
+    #assert !rs_carry_in(d[..],0,w[..]) && !e[0].rest.seeded && e[0].long_rest.phase==0;
+  }
+  #assert !rs_carry_in(d[..],-1,ok[..]) && !rs_carry_in(d[..],1,ok[..]) && !rs_carry_in(d[..],0,ok[0..<RS_CARRY-1]);
+  d[0].reaction_frame.on=true; #assert !rs_carry_in(d[..],0,ok[..]); d[0].reaction_frame.on=false;
+  d[0].rest_clock.ticks=9223372036854775807-RS_CARRY_EPOCH+1; #assert !rs_carry_in(d[..],0,ok[..]);
+  d[0].rest_clock.ticks=9223372036854775807-RS_CARRY_EPOCH; #assert rs_carry_in(d[..],0,ok[..]) && e[0].rest.dice==1;
+  out:[RS_CARRY]int; #assert !rs_carry_out(d[..],1,out[..]) && !rs_carry_out(d[..],-1,out[..]) && !rs_carry_out(d[..],0,out[0..<3]);
+  // a manual (unowned) journal is not carried
+  e[0].long_rest=RsLongRest.{phase=1,mode=2,elapsed=50,completed=true,finished=1};
+  #assert rs_carry_out(d[..],0,out[..]) && out[6]==0 && out[7]==0 && out[8]==0 && out[15]==0;
+}
+#test "rest carry: every field round trips exactly, each journal value is capped, and pending or unsleepable rests lay on as told" {
+  #assert RS_CARRY==19 && rs_carry_flag(true)==1 && rs_carry_flag(false)==0 && rs_carry_ms(1999)==1 && rs_carry_ms(2000)==2;
+  highs:=[19]int.[2,3600000,20,1,1,1,3,3,86400000,86400000,86400000,86400000,99,86400000,1,1,57600000,1,1];
+  for i:0..<19 { #assert rs_carry_max(i)==highs[i]; }
+  #assert rs_carry_max(-1)== -1 && rs_carry_max(19)== -1;
+  #assert rs_carry_cap(-1,5)==0 && rs_carry_cap(0,5)==0 && rs_carry_cap(3,5)==3 && rs_carry_cap(5,5)==5 && rs_carry_cap(6,5)==5;
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; c[0]=rs_wizard("Keeper",0,3);
+  #assert rs_rest_schedule_enable(b[..]); b[0].rest_clock.ticks=RS_CARRY_EPOCH+5; now:=b[0].rest_clock.ticks;
+  zero:[RS_CARRY]int; for q:0..<RS_CARRY { zero[q]=7; }
+  #assert rs_carry_out(b[..],0,zero[..]); for q:0..<RS_CARRY { #assert zero[q]==0; }
+  rs_rest_seed(c[..]); m:=c[0].rest.dice_max; #assert m>=2;
+  c[0].rest.phase=2; c[0].rest.started=5; c[0].rest.dice=m-1; c[0].rest.recovery_used=true; c[0].rest.restoration_used=true;
+  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
+  #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH+9;
+  want:[RS_CARRY]int; got:[RS_CARRY]int;
+  for pass:0..<2 {
+    on:=pass==0;   // the second pass clears every other flag, so no flag can stand in for its neighbour
+    c[0].rest.restoration_used=on;
+    c[0].long_rest=RsLongRest.{rate=1000000,phase=2,mode=3,stamp=now,elapsed=7200000000,sleep=1000000000,light=2000000000,exertion=3000000000,interruptions=4,quiet=500000000,fallback=on,completed=true,finished=now-1234000000,short_due=true,light_reported=on};
+    want=[19]int.[2,0,m-1,1,1,rs_carry_flag(on),2,3,7200000,1000000,2000000,3000000,4,500000,rs_carry_flag(on),1,1234000,1,rs_carry_flag(on)];
+    #assert rs_carry_out(b[..],0,got[..]); for q:0..<RS_CARRY { #assert got[q]==want[q]; }
+    e[0]=rs_wizard("Keeper",0,3);
+    #assert rs_sleep_begin(d[..],0);   // the target's own sleep gives way
+    #assert rs_carry_in(d[..],0,got[..]) && !rs_sleeping(e[0]) && e[0].rest.phase==2 && e[0].long_rest.stamp==RS_CARRY_EPOCH+9;
+    #assert e[0].long_rest.quiet==500000000 && e[0].long_rest.finished==RS_CARRY_EPOCH+9-1234000000 && e[0].rest.dice==m-1;
+    #assert e[0].rest.recovery_used && e[0].rest.restoration_used==on && e[0].long_rest.fallback==on && e[0].long_rest.light_reported==on && e[0].long_rest.short_due;
+    back:[RS_CARRY]int; #assert rs_carry_out(d[..],0,back[..]); for q:0..<RS_CARRY { #assert back[q]==want[q]; }
+  }
+  want[5]=1; want[14]=1; want[18]=1;
+  // out-of-range journal values are capped to their fields; an unowned journal carries nothing
+  c[0].long_rest.interruptions=150; c[0].long_rest.elapsed=100000000000; c[0].long_rest.finished=now-RS_CARRY_EPOCH;
+  c[0].rest.phase=1; c[0].rest.started=now-7200000000;
+  #assert rs_carry_out(b[..],0,got[..]) && got[12]==99 && got[8]==86400000 && got[16]==57600000 && got[1]==3600000 && got[0]==1;
+  c[0].long_rest.phase=0; c[0].long_rest.completed=false;
+  #assert rs_carry_out(b[..],0,got[..]) && got[6]==0 && got[7]==0 && got[15]==0 && got[16]==0 && got[13]==500000;
+  c[0].long_rest.rate=60; #assert rs_carry_out(b[..],0,got[..]) && got[8]==0 && got[12]==0 && got[13]==0 && got[3]==1 && got[2]==m-1;
+  // a pending completion resumes as the sleep it ended; the target's own Short Rest gives way
+  p:=want; p[0]=0; p[6]=3; p[7]=1; p[15]=0; p[16]=0;
+  e[0]=rs_wizard("Keeper",0,3); e[0].rest.phase=2;
+  #assert rs_carry_in(d[..],0,p[..]) && e[0].rest.phase==0 && e[0].long_rest.phase==1 && e[0].long_rest.mode==1 && rs_sleeping(e[0]);
+  #assert e[0].long_rest.finished==0 && !e[0].long_rest.completed;
+  e[0]=rs_wizard("Keeper",0,3); e[0].hp=1; #assert rs_carry_in(d[..],0,p[..]) && e[0].long_rest.phase==1;
+  e[0]=rs_wizard("Keeper",0,3); e[0].dead=true; #assert rs_carry_in(d[..],0,p[..]) && e[0].long_rest.phase==0 && !rs_sleeping(e[0]);
+  // an interrupted sleeping journal never sleeps the body; an open one on a body that cannot sleep refuses whole
+  w:=want; w[7]=1; e[0]=rs_wizard("Keeper",0,3); e[0].immune_cond=RS_UNCONSCIOUS;
+  #assert rs_carry_in(d[..],0,w[..]) && e[0].long_rest.phase==2 && e[0].long_rest.mode==1 && !rs_sleeping(e[0]);
+  e[0]=rs_wizard("Keeper",0,3); e[0].immune_cond=RS_UNCONSCIOUS;
+  #assert !rs_carry_in(d[..],0,p[..]) && !e[0].rest.seeded && e[0].long_rest.phase==0;
+  // consistency: each journal part counts toward the elapsed time; one rest at a time; a finish needs a completion
+  for k:9..<12 {
+    x:=want; x[8]=10; x[9]=0; x[10]=0; x[11]=0; x[k]=11; e[0]=rs_wizard("Keeper",0,3);
+    #assert !rs_carry_in(d[..],0,x[..]) && !e[0].rest.seeded;
+    x[k]=10; #assert rs_carry_in(d[..],0,x[..]);
+  }
+  y:=want; y[0]=1; y[6]=1; y[7]=2; e[0]=rs_wizard("Keeper",0,3); #assert !rs_carry_in(d[..],0,y[..]) && !e[0].rest.seeded;
+  y=want; y[15]=0; y[16]=1; #assert !rs_carry_in(d[..],0,y[..]) && !e[0].rest.seeded;
+  y=want; y[0]=3; #assert !rs_carry_in(d[..],0,y[..]) && !e[0].rest.seeded;
+  y=want; y[2]=m; #assert rs_carry_in(d[..],0,y[..]) && e[0].rest.dice==m;
+  y=want; y[2]=m+1; e[0]=rs_wizard("Keeper",0,3); #assert !rs_carry_in(d[..],0,y[..]) && !e[0].rest.seeded;
+}
