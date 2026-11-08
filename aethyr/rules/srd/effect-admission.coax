@@ -199,9 +199,28 @@
   #assert rs_effect_demand(c,s,-1,0,0) == 1;
   c.raging = true; c.mindless = true; #assert rs_effect_demand(c,s,-1,0,0) == 0;
 }
+#test "a Blinded creature in a sight-required area needs no effect room" {
+  for blinded: 0..<2 {
+    b: [1] RsBattle; b[0].w=20; b[0].h=20; b[0].dice[0].fixed=true;
+    i := rs_add(b[..],rs_bard("Bard",0,5),1,1);
+    j := rs_add(b[..],rs_fighter("Seen",1,1),6,6);
+    for k: 0..<RS_EFFECTS { b[0].c[j].eff[k].kind=EF_HEX; }
+    b[0].c[j].cond = ifx blinded==1 then RS_BLINDED else RS_CHARMED;
+    #assert rs_cast_effect_room(b[..],i,rs_spell(SP_HYPNOTIC_PATTERN),SP_HYPNOTIC_PATTERN,3,6,6,-1)==(blinded==1);
+  }
+}
+#test "Petrified creatures are immune to Poisoned and keep other conditions" {
+  c: RsCreature; c.cond=RS_PETRIFIED;
+  #assert rs_effect_condition_mask(c,RS_POISONED)==0 && rs_effect_condition_mask(c,RS_POISONED|RS_BLINDED)==RS_BLINDED;
+  c.cond=RS_BLINDED; #assert rs_effect_condition_mask(c,RS_POISONED|RS_BLINDED)==(RS_POISONED|RS_BLINDED);
+  c.cond=RS_PETRIFIED; c.raging=true; c.mindless=true;
+  #assert rs_effect_condition_mask(c,RS_POISONED|RS_CHARMED|RS_FRIGHTENED|RS_PRONE)==RS_PRONE;
+}
 rs_effect_condition_mask :: (c: RsCreature, mask: int) -> int #effects(all) {
   if (c.immune_cond & mask) != 0 { return 0; }
-  return ifx c.raging && c.mindless then mask & (32767-RS_CHARMED-RS_FRIGHTENED) else mask;
+  // Petrified (p.186): Immunity to the Poisoned condition.
+  m := ifx rs_has(c,RS_PETRIFIED) then mask & (32767-RS_POISONED) else mask;
+  return ifx c.raging && c.mindless then m & (32767-RS_CHARMED-RS_FRIGHTENED) else m;
 }
 rs_effect_demand :: (c: RsCreature, s: RsSpell, zone: int, by: int, spell: int) -> int #effects(all) {
   n := 0;

@@ -1,0 +1,55 @@
+// SRD 5.2.1 pp.17 and 185, Knocking Out a Creature. When a melee attack would
+// reduce a creature to 0 Hit Points, its attacker can instead leave it at 1 Hit
+// Point with the Unconscious condition. It starts a Short Rest, at whose end the
+// condition ends; regaining any Hit Points or a successful first aid ends it early.
+// The attacker's standing choice is RsCreature.knockout; the strike executor scopes
+// it to that attack's own damage through RsBattle.ko_by.
+// The EF_KNOCKOUT record owns that Unconscious; the zero-HP and sleep owners are
+// independent, and Prone stays when it ends. A creature immune to Unconscious, or
+// one with no free effect record, cannot be knocked out: the damage applies as dealt.
+#authority;
+
+#test "knockout policy executes on bare creatures" {
+  b: [1] RsBattle; c: [2] RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].dice[0].fixed=true;
+  c[0].hp=5; c[1].hp=2; c[1].hp_max=7; c[1].focus_held=true; b[0].ko_by=1;
+  #assert rs_knockout_due(b[..],0,1,2) && !rs_knockout_due(b[..],0,1,1);
+  c[1].hp=1; rs_knock_out(b[..],0,1);
+  #assert rs_knocked_out(c[1]) && c[1].cond==(RS_UNCONSCIOUS|RS_PRONE) && !c[1].focus_held;
+  #assert c[1].eff[0].kind==EF_KNOCKOUT && c[1].eff[0].by==0 && c[1].eff[0].spell == -1 && c[1].eff[0].save == -1 && c[1].eff[0].cond==0;
+  e:=rs_recent_at(b[0].book[..],0);
+  #assert c[1].rest.phase==1 && cast(string)e.text[0..<e.text_n]==" starts a Short Rest";
+  e=rs_recent_at(b[0].book[..],1);
+  #assert e.kind==RS_EV_CONDITION && e.amount==1 && cast(string)e.text[0..<e.text_n]==" is knocked out: 1 Hit Point, Unconscious";
+  rs_knockout_end(c[1..<2]);
+  #assert !rs_knocked_out(c[1]) && c[1].cond==RS_PRONE;
+}
+
+rs_knocked_out :: (c: RsCreature) -> bool #effects(all) {
+  if c.dead || c.hp<1 { return false; }
+  for e: c.eff { if e.kind==EF_KNOCKOUT { return true; } }
+  return false;
+}
+// Whether this damage from `by` to `j` is the scoped melee attack's and would reduce
+// it to 0 Hit Points (after any Temporary Hit Points), with a record to hold it.
+rs_knockout_due :: (b: [] RsBattle, by: int, j: int, dealt: int) -> bool #effects(all) {
+  if by<0 || by>=b[0].n || j<0 || j>=b[0].n || b[0].ko_by!=by+1 { return false; }
+  c:=b[0].c[j];
+  if c.dead || c.hp<1 || (c.immune_cond & RS_UNCONSCIOUS)!=0 || rs_max(dealt,0)-c.temp<c.hp { return false; }
+  return rs_knocked_out(c) || rs_effect_free(c)>0;
+}
+// After the damage left `j` at 1 Hit Point.
+rs_knock_out :: (b: [] RsBattle, by: int, j: int) #effects(all) {
+  if !rs_knocked_out(b[0].c[j]) {
+    // Preserve an already-present raw source, as sleep does.
+    raw:=b[0].c[j].cond & RS_UNCONSCIOUS;
+    for e: b[0].c[j].eff { raw=rs_clear(raw,rs_effect_conditions(e)); }
+    _ := rs_put_effect(b,j,RsEffect.{kind=EF_KNOCKOUT,cond=raw,by=by,spell=-1,save=-1});
+  }
+  b[0].c[j].cond |= rs_effect_condition_mask(b[0].c[j],RS_PRONE);
+  b[0].c[j].focus_held=false;
+  rs_say(b,RS_EV_CONDITION,j,j,1," is knocked out: 1 Hit Point, Unconscious");
+  _ := rs_short_rest_begin(b,j);
+}
+rs_knockout_end :: (c: [] RsCreature) #effects(all) {
+  for k: 0..<RS_EFFECTS { if c[0].eff[k].kind==EF_KNOCKOUT { rs_effect_end(c,k); } }
+}

@@ -1,6 +1,7 @@
 // SRD 5.2.1 Short Rest p.187; class-specific recovery in each class chapter.
 #load "battle.coax";
 #load "hit-point-checks.coax";
+#load "knockout-checks.coax";
 #load "dash-checks.coax";
 
 #test "a Short Rest completes once after an actual uninterrupted hour without renewing turn budgets" {

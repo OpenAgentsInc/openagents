@@ -63,6 +63,7 @@ rs_heal :: (c: [] RsCreature, amount: int) -> int #effects(all) {
   if gain == 0 { return 0; }
   before := c[0].hp;
   c[0].hp += gain;
+  rs_knockout_end(c);   // a knocked-out creature wakes when it regains any Hit Points
   if before == 0 {
     held := false;
     for e: c[0].eff { if (rs_effect_conditions(e) & RS_UNCONSCIOUS) != 0 { held = true; } }

@@ -24,8 +24,8 @@
   } }
 }
 #test "Halt pending and active records are event-owned rather than clock-owned" {
-  for kind: -1..<22 {
-    #assert rs_effect_uses_clock(kind) == (kind != 0 && kind != 15 && kind != 17 && kind != 18 && kind != 19 && kind != 20);
+  for kind: -1..<23 {
+    #assert rs_effect_uses_clock(kind) == (kind != 0 && kind != 15 && kind != 17 && kind != 18 && kind != 19 && kind != 20 && kind != 21);
   }
 }
 #test "Halt lifecycle promotes only pending directives and retires only the active turn" {
@@ -51,7 +51,7 @@ rs_capable :: (c: RsCreature) -> bool #effects(all) {
   return rs_up(c) && (c.cond & (RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS)) == 0;
 }
 rs_effect_uses_clock :: (kind: int) -> bool #effects(all) {
-  return kind != EF_NONE && kind != EF_HALT && kind != EF_HALT_PENDING && kind != EF_HELP_CHECK && kind != EF_HELP_ATTACK && kind != EF_REST_SLEEP;
+  return kind != EF_NONE && kind != EF_HALT && kind != EF_HALT_PENDING && kind != EF_HELP_CHECK && kind != EF_HELP_ATTACK && kind != EF_REST_SLEEP && kind != EF_KNOCKOUT;
 }
 // until is only the world's estimate for display. The turn-end event retires
 // the active record even when the clock has not reached that estimate.

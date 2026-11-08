@@ -10,11 +10,15 @@ RsFirstAidContext :: struct {
 
 rs_first_aid :: (b: [] RsBattle, i: int, j: int, q: RsFirstAidContext) -> RsAbilityResult #effects(all) {
   r: RsAbilityResult;
-  if i<0 || i>=b[0].n || j<0 || j>=b[0].n || !q.contact || !rs_action_free(b,i) || !rs_death_eligible(b[0].c[j]) { return r; }
+  // First aid also ends a knockout's Unconscious condition (p.17).
+  if i<0 || i>=b[0].n || j<0 || j>=b[0].n || !q.contact || !rs_action_free(b,i) { return r; }
+  ko:=rs_knocked_out(b[0].c[j]);
+  if !ko && !rs_death_eligible(b[0].c[j]) { return r; }
   b[0].turn.action=true;
   r=rs_ability_check(b,i,RsAbilityRequest.{ability=RS_WIS,skill=SK_MEDICINE,dc=10,
     sight=q.sight,hearing=q.hearing,fear_visible=q.fear_visible,advantage=q.advantage,disadvantage=q.disadvantage,help_blocked=q.help_blocked});
-  if r.passed {
+  if r.passed && ko { rs_knockout_end(b[0].c[j..<b[0].c.count]); }
+  else if r.passed {
     b[0].c[j].stable=true; b[0].c[j].death_ok=0; b[0].c[j].death_fail=0;
     // A previous stable episode may have ended through damage since the last
     // clock reconciliation. Its retained inactive deadline cannot be reused.
@@ -25,9 +29,47 @@ rs_first_aid :: (b: [] RsBattle, i: int, j: int, q: RsFirstAidContext) -> RsAbil
   rs_add_text(l[..],": WIS (Medicine) ");
   if r.automatic { rs_add_text(l[..],"automatic failure"); }
   else { rs_add_int(l[..],r.total); rs_add_text(l[..]," vs DC 10"); }
-  rs_add_text(l[..],ifx r.passed then ": Stable" else ": not stabilized");
-  rs_tell(b,ifx r.passed then RS_EV_STABLE else RS_EV_CONDITION,-1,i,j,r.total,0,l[..]);
+  if ko { rs_add_text(l[..],ifx r.passed then ": conscious" else ": still unconscious"); }
+  else { rs_add_text(l[..],ifx r.passed then ": Stable" else ": not stabilized"); }
+  rs_tell(b,ifx r.passed then (ifx ko then RS_EV_END else RS_EV_STABLE) else RS_EV_CONDITION,-1,i,j,r.total,0,l[..]);
   return r;
+}
+
+#test "a Healer's Kit spends a Utilize action and one use to stabilize with no check" {
+  b: [1] RsBattle; c: [2] RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who=1; b[0].dice[0].fixed=true; b[0].clock=10;
+  c[1]=rs_druid("Healer",0,3); c[1].healer_kit=10; c[1].score[RS_WIS]=1;
+  c[0]=rs_druid("Patient",0,3); c[0].hp=0; c[0].cond=RS_UNCONSCIOUS|RS_PRONE; c[0].death_ok=1; c[0].death_fail=2; c[0].stable_due=5;
+  #assert !rs_healers_kit(b[..],1,0,false) && c[1].healer_kit==10 && !b[0].turn.action;
+  #assert rs_healers_kit(b[..],1,0,true);
+  #assert c[1].healer_kit==9 && b[0].turn.action && c[0].stable && c[0].hp==0 && c[0].death_ok==0 && c[0].death_fail==0;
+  #assert rs_has(c[0],RS_UNCONSCIOUS) && c[0].stable_due==7210 && b[0].dice[0].rolled==1;   // the d4 recovery only: no check
+  e:=rs_recent_at(b[0].book[..],0);
+  #assert e.kind==RS_EV_STABLE && e.amount==9 && e.spell == -1 && e.damage==0 && e.by==1 && e.to==0;
+  #assert cast(string)e.text[0..<e.text_n]=="Healer uses a Healer's Kit on Patient: Stable";
+  b[0].turn.action=false;
+  #assert !rs_healers_kit(b[..],1,0,true) && c[1].healer_kit==9;          // already Stable
+  for mode: 0..<10 {
+    c[0].stable=false; c[0].hp=0; c[0].dead=false; c[0].cond=RS_UNCONSCIOUS; c[1].healer_kit=1; b[0].turn.action=false; b[0].who=1;
+    i:=1; j:=0;
+    if mode==0 { c[1].healer_kit=0; } else if mode==1 { c[0].hp=1; } else if mode==2 { c[0].dead=true; }
+    else if mode==3 { c[0].cond=RS_BLINDED; } else if mode==4 { b[0].turn.action=true; } else if mode==5 { b[0].who=0; }
+    else if mode==6 { j=2; } else if mode==7 { i = -1; b[0].who = -1; } else if mode==8 { i=2; b[0].who=2; } else { j = -1; }
+    #assert !rs_healers_kit(b[..],i,j,true) && !c[0].stable && (mode==0 || c[1].healer_kit==1);
+  }
+}
+
+// Healer's Kit (p.97): a Utilize action expends one of its ten
+// uses to stabilize an Unconscious creature at 0 Hit Points with no check.
+// Contact is the authoritative world's fact, as for first aid.
+rs_healers_kit :: (b: [] RsBattle, i: int, j: int, contact: bool) -> bool #effects(all) {
+  if i<0 || i>=b[0].n || j<0 || j>=b[0].n || !contact || !rs_action_free(b,i) || b[0].c[i].healer_kit<=0 { return false; }
+  if !rs_death_eligible(b[0].c[j]) || !rs_has(b[0].c[j],RS_UNCONSCIOUS) { return false; }
+  b[0].turn.action=true; b[0].c[i].healer_kit-=1;
+  b[0].c[j].stable=true; b[0].c[j].death_ok=0; b[0].c[j].death_fail=0; b[0].c[j].stable_due=0;
+  _ := rs_stable_arm(b,j);
+  l: [1] RsLine; rs_add_name(l[..],b,i); rs_add_text(l[..]," uses a Healer's Kit on "); rs_add_name(l[..],b,j); rs_add_text(l[..],": Stable");
+  rs_tell(b,RS_EV_STABLE,-1,i,j,b[0].c[i].healer_kit,0,l[..]);
+  return true;
 }
 
 // Arm once per stable episode. A restored deadline is preserved. Callers that

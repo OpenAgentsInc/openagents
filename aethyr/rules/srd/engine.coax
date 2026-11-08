@@ -152,6 +152,7 @@ EF_HALT_PENDING :: 17;
 EF_HELP_CHECK :: 18; // cond encodes a skill, or RS_SKILLS + a tool
 EF_REST_SLEEP :: 20; // natural sleep, owned by sleep/wake events
 EF_HELP_ATTACK :: 19; // distraction on this enemy, eligible helper allies consume it
+EF_KNOCKOUT :: 21; // knocked out at 1 HP (knockout.coax): Unconscious until its Short Rest ends, healing or first aid
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -238,6 +239,8 @@ RsCreature :: struct {
   resist: int; vulnerable: int; immune: int;   // damage types, bits of 1 << RS_* (Resistance, Vulnerability, Immunity)
   immune_cond: int;         // conditions it can't have
   floor: int;               // Hit Points damage can't take it below (0: none): a story's foe who can't be killed
+  knockout: bool;           // its melee attacks knock out rather than drop to 0 HP (knockout.coax)
+  healer_kit: int;          // Healer's Kit uses left (stabilization.coax)
   weapon: int;              // what it attacks with (W_*)
   ranged: int;              // a ranged weapon it can shoot instead (-1 none)
   masteries: int;           // the weapon mastery properties it can use, bits of 1 << M_*

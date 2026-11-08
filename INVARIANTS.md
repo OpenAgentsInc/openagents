@@ -6821,6 +6821,23 @@ begins. Saved-seat first aid spends only that player's Action. Exact native,
 world/control and remaining recovery scope:
 `docs/verification/srd-stabilization-2026-11-08/README.md`.
 
+## A knockout owns its Unconscious; a Healer's Kit stabilizes without a check
+
+`knockout.coax` decides Knocking Out (SRD 5.2.1 pp.17, 185). Only damage from the
+melee attack the strike executor is resolving, whose attacker chose
+`RsCreature.knockout`, can knock out, and only when it would reduce a living
+creature above 0 HP to 0 after Temporary HP. The creature stays at 1 HP with an
+`EF_KNOCKOUT` record owning Unconscious, Prone and no held focus, and starts a
+Short Rest. Massive damage, Monster Death and Undead Fortitude never apply to that
+damage. The record ends when that Short Rest finishes, when the creature regains
+any HP, or on successful first aid; it is never clock-retired, and other
+Unconscious owners and Prone stay. A creature immune to Unconscious, or with no
+free effect record, takes the damage as dealt. `rs_healers_kit` spends the Action
+and one use to stabilize an Unconscious creature at 0 HP with no check.
+Condition owners (which record or state owns each of the 15 conditions) are listed
+and checked in `aethyr/rules/srd/hp-interaction-checks.coax`. Scope:
+`docs/verification/srd-knockout-conditions-2026-11-08/README.md`.
+
 ## Experimental physical contacts resolve through shared NPC turns and hero HP
 
 The live Experimental frame binds contact-only physics before its first tick.

@@ -54,6 +54,7 @@
 #load "ability-check-math.coax";
 #load "ability-checks.coax";
 #load "stabilization.coax";
+#load "knockout.coax";
 #load "short-rest-resources.coax";
 #load "long-rest-resources.coax";
 #load "long-rest-benefits.coax";
@@ -105,6 +106,7 @@ RsBattle :: struct {
   aff_used: bool;             // Elemental Affinity's one roll spent in this casting
   who: int;                   // whose turn is running (-1 none)
   turn: RsTurn;
+  ko_by: int;                 // 1 + the attacker whose melee attack may knock out (knockout.coax), 0 none
   reaction_frame: RsReactionFrame; // true turn while a Reaction strike borrows acting state
   // Strict timing is the default: six-second turns and no automatic recovery.
   // The declared action profile gives 1.5-second turns, proportional rounded
@@ -392,7 +394,9 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) {
 rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) {
   rs_rest_damage_before(b,j,amount);
   dealt:=rs_damage_floor(b[0].c[j],amount);
-  protected_hp:=rs_damage_protection(b,by,j,dealt,kind,crit);
+  // A knockout replaces dropping to 0, so Undead Fortitude has nothing to save against.
+  ko:=rs_knockout_due(b,by,j,dealt);
+  protected_hp:=ifx ko then 1 else rs_damage_protection(b,by,j,dealt,kind,crit);
   // Saving throws may consume creature-local rescue resources. Snapshot only
   // after the rest cause and protection save have committed that state.
   hurt:[1]RsCreature; hurt[0]=b[0].c[j];
@@ -409,6 +413,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
       }
     }
   }
+  if ko { rs_knock_out(b,by,j); }
   if r.dropped || r.killed {
     l: [1] RsLine;
     rs_add_name(l[..], b, j); rs_add_text(l[..], ifx r.killed then " dies" else " drops to 0 Hit Points");
@@ -815,6 +820,7 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) { downs += 1; }
   // Frightened: Disadvantage on attack rolls (the source of its fear is always in sight here)
   if rs_has(b[0].c[i], RS_FRIGHTENED) { downs += 1; }
+  if rs_grapple_down(b[0].c[i],j) { downs += 1; }
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
   if rs_take_pending(b, j, EF_EXPOSED, -1) { ups += 1; }
   if rs_take_pending(b, i, EF_VEX, j) { ups += 1; }
@@ -1475,6 +1481,8 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   rs_unhide(b,i);   // an attack roll ends hiding (p. 183)
   b[0].turn.struck = true;
   melee := wp.range_ft <= 5 || (wp.both && rs_feet_to(b, i, j) <= 5);   // Arcane Burst: melee from 5 feet
+  // Knocking Out (p.17): only this melee attack's own damage, never a Reaction it provokes
+  ko_prev := b[0].ko_by; b[0].ko_by = ifx melee && me.knockout then i + 1 else 0;
   far := 0;
   if !melee && rs_feet_to(b, i, j) > wp.range_ft { far = -1; }   // long range: Disadvantage
   edge := rs_attack_edge(b, i, j, melee, strength);
@@ -1511,6 +1519,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
       rs_tell(b, RS_EV_DAMAGE, -1, i, j, g, wp.damage, gl[..]);
       rs_damage(b, i, j, g, wp.damage, false, -1);
     }
+    b[0].ko_by = ko_prev;
     return false;
   }
   tg := b[0].c[j];
@@ -1643,6 +1652,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
       rs_damage(b, j, i, rs_resisted(b, i, back, kind), kind, false, -1);
     }
   }
+  b[0].ko_by = ko_prev;
   return true;
 }
 
@@ -1651,7 +1661,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
 // a second creature within 5 feet of j and of the attacker (-1 none).
 rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) -> bool {
   if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) { return false; }
-  if j < 0 || j >= b[0].n || b[0].c[j].dead || j == i || rs_feet_to(b, i, j) > 5 { return false; }
+  if j < 0 || j >= b[0].n || b[0].c[j].dead || j == i || rs_feet_to(b, i, j) > 5 || rs_charmed_by(b[0].c[i],j) { return false; }
   if !rs_strikes_fit(b,i,j,b[0].c[i].weapon,1+b[0].c[i].extra_attack,true) { return false; }
   b[0].turn.action = true;
   w := b[0].c[i].weapon;

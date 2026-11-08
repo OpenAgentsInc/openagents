@@ -18,6 +18,46 @@ rs_condition_critical :: (target: RsCreature, feet: int) -> bool #effects(all) {
   return feet <= 5 && rs_has(target,RS_PARALYZED|RS_UNCONSCIOUS);
 }
 
+#test "a Charmed creature cannot attack its charmer but can attack anyone else; a raw bit names no charmer" {
+  c: RsCreature;
+  #assert !rs_charmed_by(c,1);
+  c.cond=RS_CHARMED; #assert !rs_charmed_by(c,1);
+  c.eff[3]=RsEffect.{kind=EF_COND,cond=RS_CHARMED,by=1};
+  #assert rs_charmed_by(c,1) && !rs_charmed_by(c,2) && !rs_charmed_by(c,0);
+  c.eff[3].kind=EF_DAZED; c.eff[3].cond=RS_CHARMED|RS_INCAPACITATED; #assert rs_charmed_by(c,1);
+  c.eff[3].cond=RS_INCAPACITATED; #assert !rs_charmed_by(c,1);
+  c.eff[3].kind=EF_HEX; c.eff[3].cond=RS_CHARMED; #assert !rs_charmed_by(c,1);
+  c.eff[3].kind=EF_COND; c.eff[3].cond=RS_BLINDED|RS_DEAFENED; #assert !rs_charmed_by(c,1);
+}
+#test "a Grappled creature has Disadvantage against everyone but its grappler" {
+  c: RsCreature;
+  #assert !rs_grapple_down(c,1);
+  c.cond=RS_GRAPPLED; #assert !rs_grapple_down(c,1);
+  c.eff[0]=RsEffect.{kind=EF_COND,cond=RS_GRAPPLED|RS_PRONE,by=1};
+  #assert !rs_grapple_down(c,1) && rs_grapple_down(c,2) && rs_grapple_down(c,0);
+  c.eff[4]=RsEffect.{kind=EF_COND,cond=RS_GRAPPLED,by=2};   // two grapplers: each may be attacked freely
+  #assert !rs_grapple_down(c,1) && !rs_grapple_down(c,2) && rs_grapple_down(c,3);
+  c.eff[0].cond=RS_PRONE; #assert rs_grapple_down(c,1) && !rs_grapple_down(c,2);
+  c.eff[4].cond=RS_BLINDED; #assert !rs_grapple_down(c,1);
+}
+
+// Charmed (p.177): no attack on the charmer. Grappled (p.182): Disadvantage on
+// attacks against any target other than the grappler. The owner is the
+// record's creator; a raw bit with no record names no charmer or grappler.
+rs_charmed_by :: (actor: RsCreature, j: int) -> bool #effects(all) {
+  for e: actor.eff { if e.by==j && (rs_effect_conditions(e)&RS_CHARMED)!=0 { return true; } }
+  return false;
+}
+rs_grapple_down :: (actor: RsCreature, j: int) -> bool #effects(all) {
+  other := false;
+  for e: actor.eff {
+    if (rs_effect_conditions(e)&RS_GRAPPLED)==0 { continue; }
+    if e.by==j { return false; }
+    other = true;
+  }
+  return other;
+}
+
 // These four conditions automatically fail Strength and Dexterity saves.
 // Callers restrict the ability; this says nothing about Constitution saves.
 rs_helpless :: (c: RsCreature) -> bool #effects(all) {
