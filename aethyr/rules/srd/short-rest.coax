@@ -22,6 +22,7 @@ rs_rest_clock :: (t:f32)->bool #effects(all) { return t>=0 && t-t==0; }
 rs_short_rest_begin :: (b:[]RsBattle,i:int)->bool #effects(all) {
   if i<0 || i>=b[0].n || b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) { return false; }
   if b[0].c[i].dead || b[0].c[i].hp<1 || b[0].c[i].rest.phase==1 { return false; }
+  if b[0].c[i].long_rest.phase==1 && b[0].c[i].long_rest.mode==3 { return false; }
   rs_rest_seed(b[0].c[i..<b[0].c.count]);
   b[0].c[i].rest.phase=1; b[0].c[i].rest.started=b[0].clock;
   rs_say(b,RS_EV_CONDITION,i,i,0," starts a Short Rest");
@@ -34,6 +35,7 @@ rs_short_rest_finish :: (b:[]RsBattle,i:int)->bool #effects(all) {
   if b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) || !(b[0].clock>=b[0].c[i].rest.started+3600) { return false; }
   if b[0].c[i].dead || b[0].c[i].hp<1 { return false; }
   b[0].c[i].rest.phase=2;
+  if b[0].rest_auto && b[0].c[i].long_rest.phase==1 { b[0].c[i].long_rest.quiet=0; }
   rs_short_rest_resources(b[0].c[i..<b[0].c.count]);
   // No Rage can last through this hour of restful downtime.
   rs_rage_end(b,i," (Short Rest)");

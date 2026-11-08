@@ -9,7 +9,7 @@ RsLongRest :: struct {
   mode:int; // 1 sleep, 2 light activity, 3 physical exertion
   stamp:int; elapsed:int; sleep:int; light:int; exertion:int;
   interruptions:int; quiet:int; fallback:bool;
-  completed:bool; finished:int;
+  completed:bool; finished:int; short_due:bool; light_reported:bool;
 }
 RsLongRestBoundary :: struct { accepted:bool; short_rest:bool; ready:bool; light_limit:bool; abandoned:bool; }
 

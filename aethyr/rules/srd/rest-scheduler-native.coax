@@ -1,0 +1,51 @@
+#load "long-rest-resources-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
+    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+    c[0]=rt_class(klass,level); c[1]=rs_wizard("Watcher",0,3);
+    c[0].hp=1; c[1].hp=1; c[0].reacted=true;
+    c[0].slots[1]=0; c[0].focus=0; c[0].rages=0;
+    for u:0..<RS_USES { c[0].uses[u]=0; }
+    if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 1; }
+    if !rs_effect_add(c[0..<1],RsEffect.{kind=EF_NOHEAL,until=30000,by=-1,spell=-1}) { return 2; }
+    rs_tick(b[..],1.0/64);
+    if !rs_long_rest_start_owned(b[..],1,2,true) { return 3; }
+    rs_tick(b[..],7200);
+    if !rs_long_rest_activity_owned(b[..],1,1).admitted { return 4; }
+    rs_tick(b[..],40000);
+    if c[0].long_rest.finished!=28800000000 || c[1].long_rest.finished!=28800015625 { return 5; }
+    if c[0].hp!=1 || c[1].hp!=c[1].hp_max || rs_sleeping(c[0]) || rs_sleeping(c[1]) { return 6; }
+    if c[0].rest.dice!=level || c[0].slots[1]!=c[0].slots_max[1] || !c[0].reacted { return 7; }
+    for u:0..<RS_USES { if c[0].uses[u]!=c[0].uses_max[u] { return 8; } }
+    if c[0].focus!=c[0].focus_max || c[0].rages!=c[0].rages_max { return 9; }
+    hurt:=rs_hurt(c[0..<1],1,false);
+    if hurt.taken!=1 || c[0].hp!=0 || rs_long_rest_apply(b[..],0) { return 10; }
+  } }
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
+  if !rs_rest_schedule_enable(b[..]) { return 11; }
+  rs_tick(b[..],1.0/64);
+  if !rs_long_rest_start_owned(b[..],0,1,true) { return 12; }
+  for frame:0..<1843199 { rs_tick(b[..],1.0/64); }
+  if c[0].long_rest.completed { return 13; }
+  rs_tick(b[..],1.0/64);
+  if !c[0].long_rest.completed || c[0].long_rest.finished!=28800015625 || c[0].hp!=c[0].hp_max { return 14; }
+  c[0]=rs_barbarian("Walker",0,3); c[0].hp=1; c[0].rages=0;
+  if !rs_long_rest_start_owned(b[..],0,1,true) { return 15; }
+  rs_tick(b[..],3600);
+  if !rs_long_rest_activity_owned(b[..],0,3).admitted || rs_short_rest_begin(b[..],0) { return 16; }
+  rs_tick(b[..],3600);
+  if c[0].long_rest.phase!=2 || c[0].rages!=1 || c[0].hp!=1 || c[0].rest.phase!=2 { return 17; }
+  rs_reset(b[..]); c[0]=rs_barbarian("Manual walker",0,3); b[0].n=1; b[0].who = -1;
+  if !rs_long_rest_start_owned(b[..],0,1,true) || !rs_long_rest_activity_owned(b[..],0,3).admitted { return 18; }
+  if rs_short_rest_begin(b[..],0) { return 19; }
+  rs_reset(b[..]); c[0]=rs_wizard("Fractional sleeper",0,3); c[0].hp=1; b[0].n=1; b[0].who = -1;
+  if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 20; }
+  journal:[1]RsLongRest; journal[0]=c[0].long_rest;
+  if !rs_long_rest_advance(journal[..],28799999999).accepted { return 21; }
+  c[0].long_rest=journal[0]; b[0].rest_clock.ticks=28799999999; b[0].rest_clock.fraction=0.5;
+  if !rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=f32(0.00000075),by=-1,spell=-1}) { return 22; }
+  if !rs_rest_tick(b[..],1.0/1048576) || c[0].hp!=1 || c[0].long_rest.finished!=28800000000 || rs_effect(c[0],EF_NOHEAL) { return 23; }
+  tool_errln("PASS REST-SCHEDULER (72 class/level transactions, 1843200 automatic frames, exertion and fractional ordering)"); return 0;
+}

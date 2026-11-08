@@ -3,6 +3,7 @@
 // reported boundary before applying later events or permitting resumption.
 #authority;
 RsRestActivity :: struct { admitted:bool; boundary:RsLongRestBoundary; }
+RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
 
 #test "owned rest admits actual sleep and watch and binds the actor to the precise clock" {
   b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
@@ -134,13 +135,15 @@ rs_long_rest_sync_owned :: (b:[]RsBattle,i:int)->RsLongRestBoundary #effects(all
   if !rs_long_rest_owner_valid(b,i) { return r; }
   if b[0].c[i].long_rest.rate!=1000000 { return r; }
   if b[0].c[i].long_rest.mode==1 && !rs_sleeping(b[0].c[i]) { return r; }
-  journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
-  r=rs_long_rest_advance(journal[..],b[0].rest_clock.ticks);
-  if !r.accepted { return r; }
-  if r.light_limit && !r.ready && journal[0].stamp<b[0].rest_clock.ticks {
-    journal[0].phase=0; r.abandoned=true;
-  }
-  b[0].c[i].long_rest=journal[0]; return r;
+  plan:=rs_long_rest_plan(b[0].c[i].long_rest,b[0].rest_clock.ticks);
+  if plan.boundary.accepted { b[0].c[i].long_rest=plan.journal; }
+  return plan.boundary;
+}
+rs_long_rest_plan :: (state:RsLongRest,through:int)->RsRestPlan #effects(all) {
+  r:RsRestPlan; journal:[1]RsLongRest; journal[0]=state;
+  r.boundary=rs_long_rest_advance(journal[..],through);
+  if r.boundary.light_limit && !r.boundary.ready && journal[0].stamp<through { journal[0].phase=0; r.boundary.abandoned=true; }
+  r.journal=journal[0]; return r;
 }
 rs_long_rest_activity_owned :: (b:[]RsBattle,i:int,mode:int)->RsRestActivity #effects(all) {
   r:RsRestActivity;
@@ -152,6 +155,7 @@ rs_long_rest_activity_owned :: (b:[]RsBattle,i:int,mode:int)->RsRestActivity #ef
   } else { rs_sleep_end(b[0].c[i..<i+1]); }
   journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
   selected:=rs_long_rest_mode(journal[..],mode);
+  if mode==3 { rs_rest_interrupt(b[0].c[i..<i+1]); }
   b[0].c[i].long_rest=journal[0]; r.admitted=true; return r;
 }
 rs_long_rest_resume_owned :: (b:[]RsBattle,i:int,mode:int,settled:bool)->bool #effects(all) {

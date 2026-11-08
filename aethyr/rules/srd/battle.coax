@@ -56,6 +56,7 @@
 #load "long-rest-completion.coax";
 #load "rest-clock.coax";
 #load "long-rest-owned.coax";
+#load "rest-scheduler.coax";
 #load "short-rest.coax";
 #load "rest-sleep.coax";
 #load "help.coax";
@@ -86,7 +87,7 @@ RsBattle :: struct {
   zone: [RS_ZONES] RsZone;
   dice: [1] RsDice;
   book: [1] RsLog;
-  clock: f32; rest_clock:RsRestClock;
+  clock: f32; rest_clock:RsRestClock; rest_auto:bool;
   w: int; h: int;             // the grid, squares
   turn_no: int;               // turns begun, for what happens once a turn
   guards: int;                // Spirit Guardians cast and not yet ended
@@ -180,7 +181,7 @@ rs_reset :: (b: [] RsBattle) {
   for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
   b[0].dice[0] = RsDice.{};
   b[0].book[0] = RsLog.{};
-  b[0].rest_clock=RsRestClock.{};
+  b[0].rest_clock=RsRestClock.{}; rs_rest_schedule_reset(b);
   b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
   b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_timing(b); rs_reset_areas(b);
   for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
@@ -1331,8 +1332,8 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   if b[0].who == i { b[0].who = -1; }
 }
 // The clock moves on: what lasts for a time ends when it runs out.
-rs_tick :: (b: [] RsBattle, dt: f32) {
-  if !rs_tick_admit(b,dt) { return; }
+rs_tick :: (b: [] RsBattle, dt: f32) { admitted:=rs_rest_tick(b,dt); }
+rs_tick_raw :: (b: [] RsBattle, dt: f32) {
   rs_seal_timing(b);
   b[0].clock += dt;
   t := b[0].clock;

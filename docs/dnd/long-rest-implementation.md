@@ -125,3 +125,15 @@ Results preserve observed boundaries separately from requested activity
 admission. Automatic world scheduling, causal interruption producers and
 consumption of Short Rest fallback/choices remain next, followed by controls
 and rejoin persistence. [Owned-operation evidence](../verification/srd-long-rest-owned-2026-11-08/README.md).
+
+## Ordered automatic scheduling
+
+`rest-scheduler.coax` now supplies opt-in battle-owned scheduling. Actual ticks
+split at actor rest boundaries, expire preceding timed effects, and consume
+completion or one Short Rest fallback before advancing further. Fractional
+completion/timer ordering and same-quantum light-limit progress are retained.
+Explicit Short Rest completion consumes its quiet segment; exertion closes old
+choices and cannot begin a new Short Rest. World controls have not enabled the
+mode yet. Ordered damage/casting/Initiative hooks and optional-choice producers
+are next, then actual world observations, controls and rejoin binding.
+[Scheduler evidence](../verification/srd-rest-scheduler-2026-11-08/README.md).

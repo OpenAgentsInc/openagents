@@ -7135,3 +7135,14 @@ New battles are strict; the profile is chosen before the clock is sealed and
 `rs_reset` restores strict. Worlds that use action timing declare the house
 rule explicitly. See `docs/verification/srd-area-origin-2026-11-08/README.md`.
 
+## Rest boundaries precede later time
+
+Opt-in battle-owned rest scheduling splits time at actor boundaries. Journal
+credit precedes ordinary expiry through the boundary, and completion/fallback
+is consumed before later time. Fractional carry cannot rewind either timer
+epoch or let later expiry retroactively permit healing. A light-limit marker
+prevents repeated same-quantum stalls. Explicit Short Rest consumes its quiet
+segment; exertion closes old choices, and earned fallback is granted once
+without automatic HP healing or renewed Reaction. Causal damage/casting/
+Initiative hooks and world activation/persistence remain required. Evidence:
+`docs/verification/srd-rest-scheduler-2026-11-08/README.md`.

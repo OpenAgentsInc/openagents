@@ -1,0 +1,288 @@
+// Opt-in battle-owned rest scheduling. Every distinct actor boundary is
+// processed before advancing to the next; an actor contributes at most one
+// boundary per step (completion, exertion interruption, or abandoned light).
+#authority;
+
+#test "scheduled completion precedes later time and damage and does not clear a then-active healing prohibition" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
+  #assert rs_rest_schedule_enable(b[..]);
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=30000,by=-1,spell=-1});
+  rs_tick(b[..],40000);
+  #assert c[0].long_rest.completed && c[0].long_rest.finished==28800000000;
+  #assert c[0].hp==1 && !rs_effect(c[0],EF_NOHEAL) && !rs_sleeping(c[0]);
+  #assert b[0].rest_clock.ticks==40000000000 && b[0].clock==40000;
+  c[0]=rs_wizard("Second",0,3); c[0].hp=1;
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],30000);
+  #assert c[0].hp==c[0].hp_max && c[0].long_rest.finished==68800000000;
+  hurt:=rs_hurt(c[..],1,false);
+  #assert hurt.taken==1 && c[0].hp==c[0].hp_max-1 && !rs_long_rest_apply(b[..],0);
+}
+
+#test "scheduler orders distinct actor finishes and prior effect expiry" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+  c[0]=rs_wizard("First",0,3); c[1]=rs_cleric("Second",0,3); c[0].hp=1; c[1].hp=1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_rest_schedule_enable(b[..]);
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],1);
+  #assert rs_long_rest_start_owned(b[..],1,1,true);
+  #assert rs_effect_add(c[0..<1],RsEffect.{kind=EF_NOHEAL,until=28000,by=-1,spell=-1});
+  #assert rs_effect_add(c[1..<2],RsEffect.{kind=EF_NOHEAL,until=28800.5,by=-1,spell=-1});
+  rs_tick(b[..],40000);
+  #assert c[0].long_rest.finished==28800000000 && c[1].long_rest.finished==28801000000;
+  #assert c[0].hp==c[0].hp_max && c[1].hp==c[1].hp_max;
+  #assert b[0].rest_clock.ticks==40001000000 && b[0].clock==40001;
+}
+
+#test "scheduled watch can change exactly at the cap and continued watch abandons without crediting sleep" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Watcher",0,3);
+  #assert rs_rest_schedule_enable(b[..]);
+  #assert rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],7199); #assert !c[0].long_rest.light_reported;
+  rs_tick(b[..],1);
+  #assert c[0].long_rest.phase==1 && c[0].long_rest.light==7200000000 && c[0].long_rest.light_reported;
+  #assert rs_long_rest_activity_owned(b[..],0,1).admitted;
+  rs_tick(b[..],21600);
+  #assert c[0].long_rest.completed && c[0].long_rest.finished==28800000000;
+  c[0]=rs_wizard("Late watcher",0,3);
+  #assert rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],7201);
+  #assert c[0].long_rest.phase==0 && !c[0].long_rest.completed && c[0].long_rest.sleep==0;
+  #assert c[0].long_rest.stamp==36000000000 && b[0].rest_clock.ticks==36001000000;
+}
+
+#test "scheduled exertion grants one Short Rest without HP healing and does not regrant on later ticks" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_barbarian("Sleeper",0,3); c[0].hp=1; c[0].rages=0;
+  #assert rs_rest_schedule_enable(b[..]);
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],3600);
+  #assert rs_long_rest_activity_owned(b[..],0,3).admitted;
+  rs_tick(b[..],3599); c[0].raging=true; c[0].rage_kept=true;
+  seq:=b[0].book[0].seq;
+  rs_tick(b[..],3601);
+  #assert !c[0].raging && !c[0].rage_kept && b[0].book[0].seq==seq+2;
+  event:=b[0].book[0].ev[(b[0].book[0].head+b[0].book[0].count-1)%RS_EVENTS];
+  #assert event.kind==RS_EV_END && event.by==0 && event.to==0 && event.amount==0 && event.at==7200;
+  #assert c[0].long_rest.phase==2 && c[0].long_rest.interruptions==1;
+  #assert c[0].rages==1 && c[0].hp==1 && c[0].rest.phase==2 && c[0].rest.seeded;
+  #assert !c[0].long_rest.short_due;
+  rs_tick(b[..],1); #assert c[0].rages==1;
+  #assert rs_long_rest_resume_owned(b[..],0,1,true);
+  rs_tick(b[..],25200);
+  #assert c[0].long_rest.completed && c[0].long_rest.finished==36001000000;
+}
+
+#test "an explicit Short Rest consumes its own quiet segment rather than doubling Long Rest fallback" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_barbarian("Sleeper",0,3); c[0].rages=0;
+  #assert rs_rest_schedule_enable(b[..]);
+  #assert rs_long_rest_start_owned(b[..],0,1,true) && rs_short_rest_begin(b[..],0);
+  rs_tick(b[..],3600);
+  #assert c[0].rages==1 && c[0].long_rest.quiet==0;
+  #assert rs_long_rest_activity_owned(b[..],0,3).admitted && c[0].rest.phase==0;
+  #assert !rs_short_rest_begin(b[..],0);
+  rs_tick(b[..],3600);
+  #assert c[0].rages==1 && c[0].long_rest.phase==2;
+}
+
+#test "scheduler preflight preserves all actors and clocks on invalid late state or stale pending completion" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+  c[0].slots[9] = -1;
+  #assert !rs_rest_tick(b[..],40000) && b[0].clock==0 && b[0].rest_clock.ticks==0 && c[0].hp==1;
+  c[0].slots[9]=0; c[0].score_lost[5] = -1;
+  #assert !rs_rest_tick(b[..],40000) && c[0].long_rest.elapsed==0;
+  c[0].score_lost[5]=0;
+  b[0].reaction_frame.on=true; #assert !rs_rest_tick(b[..],1);
+  b[0].reaction_frame.on=false;
+  #assert !rs_rest_tick(b[..],-1);
+  c[0].long_rest.phase=3; c[0].long_rest.stamp=1;
+  #assert !rs_rest_tick(b[..],1);
+  c[0].long_rest.phase=1; c[0].long_rest.stamp=0;
+  c[0].long_rest.rate=1; #assert !rs_rest_tick(b[..],1);
+  c[0].long_rest.rate=1000000;
+  rs_sleep_end(c[..]); #assert !rs_rest_tick(b[..],1);
+  #assert rs_sleep_begin(b[..],0);
+  #assert rs_rest_tick(b[..],28800) && c[0].long_rest.completed;
+  rs_reset(b[..]); #assert !b[0].rest_auto;
+}
+
+#test "enabling scheduling requires idle journals and valid clocks and preserves inactive Short Rest history" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3);
+  #assert rs_rest_tick(b[..],1) && !rs_rest_tick(b[..],-1);
+  b[0].rest_clock.fraction=1;
+  #assert !rs_rest_schedule_enable(b[..]) && !b[0].rest_auto;
+  b[0].rest_clock.fraction=0;
+  for phase:1..<4 {
+    c[0].long_rest.phase=phase; c[0].long_rest.rate=1000000; c[0].long_rest.stamp=b[0].rest_clock.ticks;
+    #assert !rs_rest_schedule_enable(b[..]) && !b[0].rest_auto;
+  }
+  c[0].long_rest=RsLongRest.{};
+  #assert rs_rest_schedule_enable(b[..]);
+  c[0].long_rest.quiet=17; c[0].long_rest.fallback=true;
+  #assert rs_short_rest_begin(b[..],0);
+  rs_tick(b[..],3600);
+  #assert c[0].rest.phase==2 && c[0].long_rest.quiet==17 && c[0].long_rest.fallback;
+  c[0].long_rest=RsLongRest.{};
+  #assert rs_long_rest_start_owned(b[..],0,1,true) && rs_rest_tick(b[..],0);
+  c[0].long_rest.stamp=b[0].rest_clock.ticks+2000000;
+  #assert !rs_rest_schedule_valid(b[..],b[0].rest_clock.ticks+1000000);
+  c[0].long_rest.stamp=0;
+  b[0].rest_clock.ticks=100000000000;
+  #assert !rs_rest_schedule_valid(b[..],100001000000);
+}
+
+#test "fractional segments never rewind either timer epoch at a pending completion" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+  rs_rest_schedule_credit(b[..],28800000000,28800000000);
+  b[0].rest_clock.ticks=28800000000; b[0].rest_clock.fraction=0.5;
+  // The private persistent timeline and a newly reset legacy timer epoch can
+  // differ. A due legacy effect must still retire before current completion.
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=0,by=-1,spell=-1});
+  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert c[0].hp==c[0].hp_max && c[0].long_rest.finished==28800000000;
+  #assert b[0].rest_clock.ticks==28800000001 && b[0].rest_clock.fraction==0.45367431640625;
+  rs_reset(b[..]); #assert rs_rest_schedule_enable(b[..]);
+  b[0].rest_clock.fraction=0.5;
+  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert b[0].clock==f32(1.0/1048576) && b[0].rest_clock.fraction==0.45367431640625;
+}
+
+#test "fractional completion keeps effects that expire between the boundary and the end of the step" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+  journal:[1]RsLongRest; journal[0]=c[0].long_rest;
+  #assert rs_long_rest_advance(journal[..],28799999999).accepted;
+  c[0].long_rest=journal[0]; b[0].rest_clock.ticks=28799999999; b[0].rest_clock.fraction=0.5;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=f32(0.00000075),by=-1,spell=-1});
+  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert c[0].long_rest.finished==28800000000 && c[0].hp==1 && !rs_effect(c[0],EF_NOHEAL);
+}
+
+#test "fractional carry at the light limit progresses without reemitting the same boundary" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Watcher",0,3);
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert !c[0].long_rest.light_reported && b[0].rest_clock.fraction==0.95367431640625;
+  rs_reset(b[..]); c[0]=rs_wizard("Watcher",0,3); b[0].n=1; b[0].who = -1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],7200);
+  #assert c[0].long_rest.light_reported;
+  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert c[0].long_rest.phase==1 && b[0].rest_clock.fraction==0.95367431640625;
+  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert c[0].long_rest.phase==0 && b[0].rest_clock.ticks==7200000001;
+}
+
+#test "pending completion is consumed at current time before even a fractional future effect expiry" {
+  for dt:[2]f32.[0.0000005,1.0/524288] {
+    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    c[0]=rs_wizard("Sleeper",0,3); c[0].hp=1;
+    #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+    rs_rest_schedule_credit(b[..],28800000000,28800000000);
+    b[0].rest_clock.ticks=28800000000;
+    #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,until=f32(0.00000025),by=-1,spell=-1});
+    #assert rs_rest_tick(b[..],dt);
+    #assert c[0].long_rest.finished==28800000000 && c[0].hp==1 && !rs_effect(c[0],EF_NOHEAL);
+  }
+}
+
+rs_rest_schedule_reset :: (b:[]RsBattle) #effects(all) { b[0].rest_auto=false; }
+rs_rest_schedule_enable :: (b:[]RsBattle)->bool #effects(all) {
+  if b[0].rest_auto { return true; }
+  if !rs_rest_schedule_valid(b,b[0].rest_clock.ticks) { return false; }
+  for i:0..<b[0].n { if b[0].c[i].long_rest.phase!=0 { return false; } }
+  b[0].rest_auto=true; return true;
+}
+rs_rest_schedule_valid :: (b:[]RsBattle,through:int)->bool #effects(all) {
+  if b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) { return false; }
+  clock:[1]RsRestClock; clock[0]=b[0].rest_clock;
+  if !rs_rest_clock_step(clock[..],0) { return false; }
+  for i:0..<b[0].n {
+    c:=b[0].c[i];
+    if c.long_rest.phase!=1 && c.long_rest.phase!=3 { continue; }
+    if c.long_rest.rate!=1000000 || !rs_long_rest_body_valid(c) || !rs_long_rest_banks_valid(c) { return false; }
+    if c.long_rest.phase==3 {
+      if c.long_rest.stamp!=b[0].rest_clock.ticks { return false; }
+    } else {
+      if c.long_rest.mode==1 && !rs_sleeping(c) { return false; }
+      plan:=rs_long_rest_plan(c.long_rest,through);
+      if !plan.boundary.accepted || plan.journal.stamp<b[0].rest_clock.ticks { return false; }
+    }
+  }
+  return true;
+}
+rs_rest_schedule_next :: (b:[]RsBattle,target:RsRestClock)->RsRestClock #effects(all) {
+  next:=target.ticks;
+  for i:0..<b[0].n {
+    if b[0].c[i].long_rest.phase==3 { next=rs_min(next,b[0].rest_clock.ticks); }
+    if b[0].c[i].long_rest.phase!=1 { continue; }
+    plan:=rs_long_rest_plan(b[0].c[i].long_rest,target.ticks);
+    next=rs_min(next,plan.journal.stamp);
+  }
+  event:=false;
+  for i:0..<b[0].n {
+    if b[0].c[i].long_rest.phase==3 { event=true; }
+    if b[0].c[i].long_rest.phase!=1 { continue; }
+    plan:=rs_long_rest_plan(b[0].c[i].long_rest,target.ticks);
+    if plan.journal.stamp==next && (plan.journal.phase!=1 || (plan.boundary.light_limit && !b[0].c[i].long_rest.light_reported)) { event=true; }
+  }
+  stop:=target;
+  if next<target.ticks || event {
+    stop.ticks=next;
+    if next==b[0].rest_clock.ticks { stop.fraction=b[0].rest_clock.fraction; }
+    else { stop.fraction=0; }
+  }
+  return stop;
+}
+rs_rest_schedule_credit :: (b:[]RsBattle,cursor:int,through:int) #effects(all) {
+  for i:0..<b[0].n {
+    if b[0].c[i].long_rest.phase!=1 { continue; }
+    plan:=rs_long_rest_plan(b[0].c[i].long_rest,through);
+    if plan.journal.stamp>cursor { plan=rs_long_rest_plan(b[0].c[i].long_rest,cursor); }
+    b[0].c[i].long_rest=plan.journal;
+    if plan.boundary.short_rest { b[0].c[i].long_rest.short_due=true; }
+    if plan.boundary.light_limit && plan.journal.phase==1 { b[0].c[i].long_rest.light_reported=true; }
+  }
+}
+rs_rest_schedule_consume :: (b:[]RsBattle) #effects(all) {
+  for i:0..<b[0].n {
+    if b[0].c[i].long_rest.phase==3 { completed:=rs_long_rest_apply(b,i); }
+    if b[0].c[i].long_rest.short_due {
+      rs_rest_seed(b[0].c[i..<i+1]); rs_short_rest_resources(b[0].c[i..<i+1]);
+      rs_rage_end(b,i," (Short Rest)");
+      b[0].c[i].rest.phase=2; b[0].c[i].long_rest.short_due=false;
+      rs_say(b,RS_EV_END,i,i,0," gains a Short Rest after interruption");
+    }
+  }
+}
+rs_rest_tick :: (b:[]RsBattle,dt:f32)->bool #effects(all) {
+  if !b[0].rest_auto {
+    if !rs_tick_admit(b,dt) { return false; }
+    rs_tick_raw(b,dt); return true;
+  }
+  target:[1]RsRestClock; target[0]=b[0].rest_clock;
+  if !rs_rest_clock_step(target[..],f64(dt)) || !rs_rest_schedule_valid(b,target[0].ticks) { return false; }
+  running:=true;
+  while running {
+    stop:=rs_rest_schedule_next(b,target[0]);
+    cursor:=stop.ticks;
+    segment:=f32((f64(stop.ticks-b[0].rest_clock.ticks)+stop.fraction-b[0].rest_clock.fraction)/1000000);
+    rs_rest_schedule_credit(b,cursor,target[0].ticks);
+    b[0].rest_clock=stop;
+    rs_tick_raw(b,segment);
+    rs_rest_schedule_consume(b);
+    running=stop.ticks!=target[0].ticks || stop.fraction!=target[0].fraction;
+  }
+  return true;
+}
