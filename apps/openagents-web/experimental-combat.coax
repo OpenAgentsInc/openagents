@@ -185,6 +185,7 @@ xc_start :: (x: [] XcCombat, klass: int) {
   rs_reset(b);
   b[0].w = XC_SIDE; b[0].h = XC_SIDE;
   timing_selected := rs_set_timing(b,RS_ACTION_TIMING);
+  areas_selected := rs_set_areas(b,RS_SPARE_CASTER_AREAS);   // house rule: no caster in its own blast
   b[0].dice[0].state = cast(u64) 13025 * 7919 + 3;
   _ := rs_add(b, fb_cl_hero(klass, "You", 0, 1), XC_MID, XC_MID);
   for i: 0..<XC_FOES { _ = rs_add(b, xc_foe(hostile.hostile_kind(i)), XC_AWAY, XC_AWAY); }

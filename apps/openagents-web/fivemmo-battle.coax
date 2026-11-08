@@ -92,6 +92,7 @@ mb_new :: (s: [] Mb, pick: int, seed: int) #export_c #effects(all) {
   }
   s[0].battle[0].clock = 0;
   timing_selected := rs_set_timing(s[0].battle[..],RS_ACTION_TIMING);
+  areas_selected := rs_set_areas(s[0].battle[..],RS_SPARE_CASTER_AREAS);   // house rule: no caster in its own blast
   rs_begin(bt(s));
   s[0].seen = s[0].battle[0].book[0].seq;
   s[0].over = false; s[0].wave = 1; s[0].wave_t = 0; s[0].kills = 0;

@@ -29,6 +29,7 @@
 #load "condition-rolls.coax";
 #load "attack-sight.coax";
 #load "magic-missile-ward.coax";
+#load "area-origin.coax";
 #load "strike-features.coax";
 #load "condition-permissions.coax";
 #load "stat-attack.coax";
@@ -99,6 +100,7 @@ RsBattle :: struct {
   // existing point/pool exceptions at 4.5 seconds.
   // Repeat saves, death saves and Rage upkeep stay on six-second rounds.
   timing: RsTimingProfile;
+  areas: RsAreaProfile;      // strict, or a declared house rule sparing the caster (area-origin.coax)
   timing_sealed: bool;       // configured before begin/turn/tick; reset opens it
   // Who stands on each square (1 + the creature, 0 none), so rs_at is one look rather than a scan
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
@@ -180,7 +182,7 @@ rs_reset :: (b: [] RsBattle) {
   b[0].book[0] = RsLog.{};
   b[0].rest_clock=RsRestClock.{};
   b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
-  b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_timing(b);
+  b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_timing(b); rs_reset_areas(b);
   for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
 }
 rs_inside :: (z: RsZone, x: int, y: int) -> bool {
@@ -633,7 +635,8 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
         if j != target && !also { continue; }
       } else {
         if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
-        if j == i { continue; }   // "each creature (other than you)"; a cube from you starts beside you
+        // A Cube or Line from you starts at you and leaves you out; an area at a point includes you (area-origin.coax)
+        if j == i && rs_area_spares_caster(s.area,b[0].areas) { continue; }
         // Sculpt Spells (Evoker, p. 82): up to 1 + the spell's level allies are spared an Evocation
         if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1 + s.level { sculpted += 1; continue; }
       }

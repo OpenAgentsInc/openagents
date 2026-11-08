@@ -1,0 +1,54 @@
+// Whether a spell's area includes its own caster (SRD 5.2.1 Areas of Effect,
+// Rules Glossary). A Cube or Line that originates from the caster has its point
+// of origin on the caster, outside the area, so it never includes the caster.
+// A Sphere, Cylinder or Cube centered on a chosen point includes every creature
+// inside it, the caster too ("Each creature in a 20-foot-radius Sphere centered
+// on that point", Fireball p.131). Evocation's Sculpt Spells still lets an
+// Evoker choose to spare creatures, the caster among them.
+//
+// A world may declare the house rule RS_SPARE_CASTER_AREAS instead (Everglade's
+// destruction bar: a caster is never caught in its own blast). Like the timing
+// profile it is chosen before the battle's clock is sealed; rs_reset restores
+// strict areas.
+#authority;
+
+RS_AREA_STRICT :: 0;
+RS_AREA_SPARE_CASTER :: 1;
+RsAreaProfile :: struct { kind: int; }
+RS_STRICT_AREAS :: RsAreaProfile.{};
+RS_SPARE_CASTER_AREAS :: RsAreaProfile.{kind=RS_AREA_SPARE_CASTER};
+
+#test "strict areas leave out only a caster at an origin; the declared house rule spares it everywhere" {
+  for area: 0..<8 {
+    #assert rs_area_spares_caster(area,RS_STRICT_AREAS) == (area == RS_A_CUBE_SELF || area == RS_A_LINE);
+    #assert rs_area_spares_caster(area,RS_SPARE_CASTER_AREAS);
+  }
+}
+#test "area profile admission accepts exactly the two declared profiles before the clock is sealed" {
+  for kind: -2..<4 { for sealed: 0..<2 {
+    #assert rs_area_allowed(RsAreaProfile.{kind=kind},sealed==1) == ((kind==0 || kind==1) && sealed==0);
+  } }
+}
+#test "a battle starts strict, takes a declared profile before its clock is sealed and resets to strict" {
+  b: [1] RsBattle;
+  #assert b[0].areas.kind == RS_AREA_STRICT;
+  #assert !rs_set_areas(b[..],RsAreaProfile.{kind=7}) && b[0].areas.kind == RS_AREA_STRICT;
+  #assert rs_set_areas(b[..],RS_SPARE_CASTER_AREAS) && b[0].areas.kind == RS_AREA_SPARE_CASTER;
+  b[0].timing_sealed = true;
+  #assert !rs_set_areas(b[..],RS_STRICT_AREAS) && b[0].areas.kind == RS_AREA_SPARE_CASTER;
+  rs_reset_areas(b[..]); #assert b[0].areas.kind == RS_AREA_STRICT;
+}
+
+rs_area_spares_caster :: (area: int, p: RsAreaProfile) -> bool #effects(all) {
+  return area == RS_A_CUBE_SELF || area == RS_A_LINE || p.kind == RS_AREA_SPARE_CASTER;
+}
+rs_area_allowed :: (p: RsAreaProfile, sealed: bool) -> bool #effects(all) {
+  return !sealed && (p.kind == RS_AREA_STRICT || p.kind == RS_AREA_SPARE_CASTER);
+}
+// Shares the timing profile's seal: both are chosen before the battle's clock runs.
+rs_set_areas :: (b: [] RsBattle, p: RsAreaProfile) -> bool #effects(all) {
+  if !rs_area_allowed(p,b[0].timing_sealed) { return false; }
+  b[0].areas = p;
+  return true;
+}
+rs_reset_areas :: (b: [] RsBattle) #effects(all) { b[0].areas = RS_STRICT_AREAS; }

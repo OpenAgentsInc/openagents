@@ -842,7 +842,8 @@ new_battle :: (s: [] Lab) {
     j := place_on(s, rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
   }
   s[0].battle[0].clock = 0;
-  if s[0].mode == MODE_ACTION { timing_selected := rs_set_timing(s[0].battle[..],RS_ACTION_TIMING); }
+  // Action mode is a house profile: its timing, and no caster caught in its own blast; round mode is strict.
+  if s[0].mode == MODE_ACTION { timing_selected := rs_set_timing(s[0].battle[..],RS_ACTION_TIMING); areas_selected := rs_set_areas(s[0].battle[..],RS_SPARE_CASTER_AREAS); }
   rs_begin(bt(s));
   bt(s)[0].kept = true;   // every move here goes through rs_add and rs_place
   due_all(s);

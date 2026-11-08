@@ -117,9 +117,10 @@
   b[0].c[a].eff[0] = RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=a,spell=SP_BLESS};
   #assert !rs_cast_effect_room(b[..],a,s,SP_BLESS,1,0,0,a);
 }
-#test "area preflight excludes only outside, dead, caster, invalid types and actually sculpted allies" {
+#test "area preflight excludes only outside, dead, invalid types, actually sculpted allies and a caster at its origin" {
   b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
-  a := rs_add(b[..],rs_wizard("Caster",0,5),1,1);
+  // The caster stands outside this Sphere (it reaches x 7); a caster inside is checked at the end.
+  a := rs_add(b[..],rs_wizard("Caster",0,5),12,1);
   t := rs_add(b[..],rs_skeleton("Target",0),3,1);
   u := rs_add(b[..],rs_skeleton("Second",0),4,1);
   v := rs_add(b[..],rs_skeleton("Third",0),5,1);
@@ -141,6 +142,11 @@
   // An area runs once, even if its data contains a repeated single-target step.
   s.humanoid_only = false; s.steps[1] = RsStep.{kind=RS_S_REPEAT,a=2}; s.step_n = 2;
   for j: 1..<4 { b[0].c[j].eff[RS_EFFECTS-1].kind = EF_NONE; }
+  #assert rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
+  // A caster inside its own Sphere is one more recipient (area-origin.coax); a Cube from it is not.
+  b[0].c[a].x = 2; #assert !rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
+  b[0].c[a].eff[RS_EFFECTS-1].kind = EF_NONE; #assert rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
+  b[0].c[a].eff[RS_EFFECTS-1].kind = EF_HEX; s.area = RS_A_CUBE_SELF; s.area_ft = 15;
   #assert rs_cast_effect_room(b[..],a,s,SP_FIREBALL,2,3,1,t);
 }
 
@@ -228,7 +234,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
       for m: 0..<more_n { if more[m] == j { chosen = true; } }
       if !chosen { continue; }
     } else {
-      if !rs_inside(area,b[0].c[j].x,b[0].c[j].y) || b[0].c[j].dead || j == i { continue; }
+      if !rs_inside(area,b[0].c[j].x,b[0].c[j].y) || b[0].c[j].dead || (j == i && rs_area_spares_caster(s.area,b[0].areas)) { continue; }
       if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1+s.level { sculpted += 1; continue; }
     }
     if s.humanoid_only && !b[0].c[j].humanoid { continue; }
@@ -244,3 +250,4 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
 // Reserve the worst case at every eligible adjacent target. No roll is used
 // to discover whether the operation can afford authoritative records.
 #load "strike-admission.coax";
+#load "area-origin.coax";

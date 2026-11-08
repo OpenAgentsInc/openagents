@@ -86,3 +86,15 @@ original collision travel bounds; it does not multiply world time. This keeps
 the continuous action profile explicit and does not claim strict feet-per-turn
 payment, special speeds, Haste's program, or complete world-zone/timing behavior.
 See [physical locomotion evidence](../verification/srd-physical-scale-2026-11-08/README.md).
+
+## Area origin profile
+
+`aethyr/rules/srd/area-origin.coax` is a second declared profile with the same
+contract (default strict, chosen before the clock is sealed, reset restores
+strict). `RS_STRICT_AREAS` follows the SRD: a Cube or Line originating from
+the caster leaves it out; an area at a point includes it. `RS_SPARE_CASTER_AREAS`
+is a house rule that keeps a caster out of every area it casts. Each world that
+selects `RS_ACTION_TIMING` also declares `RS_SPARE_CASTER_AREAS`, preserving its
+play; it is a separate declaration, not part of the timing profile. See
+[area-origin evidence](../verification/srd-area-origin-2026-11-08/README.md).
+

@@ -7124,3 +7124,14 @@ Acid Splash, Magic Missile and Mass Healing Word execute through the existing
 closed step set. Checks naming "the first unassigned spell ID" use
 `RS_MORE_END`. See `docs/verification/srd-slice-spells-2026-11-08/README.md`.
 
+## A caster is in its own area unless the area starts at it or a world declares otherwise
+
+Strict battles include a caster standing inside its own Sphere, Cylinder or
+Cube at a point (SRD 5.2.1 Areas of Effect; Fireball p.131) and leave it out
+of a Cube or Line originating from it. The decision and the declared house
+profile `RS_SPARE_CASTER_AREAS` are `aethyr/rules/srd/area-origin.coax`
+(`#authority`), consulted by both the cast loop and the effect-room preflight.
+New battles are strict; the profile is chosen before the clock is sealed and
+`rs_reset` restores strict. Worlds that use action timing declare the house
+rule explicitly. See `docs/verification/srd-area-origin-2026-11-08/README.md`.
+
