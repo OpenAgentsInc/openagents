@@ -262,7 +262,12 @@ e5rd_raider :: (r: [] E5rRoom, npc0: int, level: int, number: int, x: f32, z: f3
     c[0].npc = RS_NPC_WARLOCK; c[0].rebuke = true;
     c[0].vigor = c[0].level >= 2;   // Fiendish Vigor, its invocation from level 2
     c[0].repelling = -1;   // no Repelling Blast: a player's place is theirs and the world's, not the rules' to push
-  } else { c[0] = rs_cultist(name, E5RD_TEAM); c[0].spell_ability = RS_WIS; }
+  } else {
+    // the raid's Cultists cast the world's cantrips (everglade-raid-spells.coax rt_spell): the
+    // engine refuses a spell a creature has no access to, so the world grants them
+    c[0] = rs_cultist(name, E5RD_TEAM); c[0].spell_ability = RS_WIS;
+    _ := rs_grant_spell(c[..], SP_CHILL_TOUCH); _ = rs_grant_spell(c[..], SP_RAY_OF_FROST); _ = rs_grant_spell(c[..], SP_FIRE_BOLT);
+  }
   return e5rd_join(r, c[0], E5RR_FORM_RAID + c[0].npc, x, z, g, squad, k, ifx burner then RT_CASTER else rt_role_of(npc, id, mix), sx, sz);
 }
 E5RD_PRIEST_LEVEL :: 3;   // a Cult Priest: a level 3 Cleric (Bless, Shield of Faith, Bane, Command)
@@ -1242,7 +1247,7 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert doors >= 1 && dx * dx + dz * dz > 20 * 20;
 }
 
-#test "room raid: squads at every gate and the bridge go round the walls, towers, buildings and trees, through the wall only by a gate or where the town's wall is broken, and home again (#12747)" #steps 30000000000 {
+#test "room raid: squads at every gate and the bridge go round the walls, towers, buildings and trees, through the wall only by a gate or where the town's wall is broken, and home again (#12747)" #steps 30000000000 #traversal 200000000 {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
   // a squad of 8 Cultists 20 m out of each way in (room-events.coax ev_way, ev_gate): an even squad
