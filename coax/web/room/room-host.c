@@ -70,6 +70,37 @@ static bool no_rooms;   /* --no-rooms (with --dev): the rooms list and joins ans
 static void world_ask(void);
 static char *dev_world; static size_t dev_world_n;
 static long long dev_stamp;   /* --dev: the wall ms of the last local publish (its "edit" stamp), 0 none */
+/* --dev: the stand-in's checkpoint store (room-dev.coax rm_dev_store, #13057), kept in a file so a local
+   room killed and started again finds its players' places: OA_ROOM_DEV_STORE, else
+   ~/.openagents/room-dev/checkpoints-PORT.txt (the room's port, so local rooms keep their own). */
+static char dev_store_path[1024];
+static void dev_store_read(void) {
+  FILE *f = dev_store_path[0] ? fopen(dev_store_path, "rb") : NULL;
+  if (!f) return;
+  static char text[1 << 16]; size_t k = fread(text, 1, sizeof text, f); fclose(f);
+  rm_dev_restore(view(), (coax_string){text, (int64_t)k});
+}
+static void dev_store_save(void) {
+  if (!dev_store_path[0] || !rm_dev_dirty(view())) return;
+  dev_store_read();   /* what another local room wrote since, merged first */
+  int64_t n = rm_dev_store(view());
+  char tmp[1100]; snprintf(tmp, sizeof tmp, "%s.new", dev_store_path);
+  FILE *f = fopen(tmp, "wb");
+  bool ok = f && fwrite(server->dev.store.e, 1, (size_t)n, f) == (size_t)n;
+  if (f) { ok = fflush(f) == 0 && ok; ok = fsync(fileno(f)) == 0 && ok; ok = fclose(f) == 0 && ok; }
+  if (!ok || rename(tmp, dev_store_path) != 0) { unlink(tmp); fprintf(stderr, "room: the local checkpoint store %s was not saved\n", dev_store_path); }
+}
+static void dev_store_open(int port) {
+  const char *p = getenv("OA_ROOM_DEV_STORE"), *home = getenv("HOME");
+  if (p && *p) snprintf(dev_store_path, sizeof dev_store_path, "%s", p);
+  else if (home && *home) {
+    char dir[900]; snprintf(dir, sizeof dir, "%s/.openagents", home); mkdir(dir, 0700);
+    snprintf(dir, sizeof dir, "%s/.openagents/room-dev", home); mkdir(dir, 0700);
+    snprintf(dev_store_path, sizeof dev_store_path, "%s/checkpoints-%d.txt", dir, port);
+  } else return;
+  dev_store_read();
+  printf("room: the local checkpoint store %s: %lld players\n", dev_store_path, (long long)server->dev.ck_n);
+}
 static char *dev_read(const char *name, size_t *n) {
   char path[1024]; snprintf(path, sizeof path, "%s/%s", dev_dir, name);
   FILE *f = fopen(path, "rb");
@@ -484,7 +515,9 @@ static void opening(int i) {
       memcpy(body, server->forge.out.e, nn); body[nn] = 0;
       http(i, fs == 200 ? "200 OK" : fs == 409 ? "409 Conflict" : fs == 403 ? "403 Forbidden" : "400 Bad Request", "application/json", body); return;
     }
+    if (!strncmp((char *)c->in, "POST /api/playtest/room-ticket/", 31)) dev_store_read();   /* another shard's captures (a drain's) */
     int64_t an = rm_dev_api(view(), whole);
+    dev_store_save();   /* a v4 ticket's owner generation, before its answer goes */
     if (an < 0) {
       static char pub[256];
       int st = dev_publish((const char *)c->in, len + want <= c->n ? len + want : c->n, pub, sizeof pub);
@@ -765,7 +798,8 @@ static void vitals_post(void) {
 }
 static void checkpoint_post(void) {
   const char *dev_url=getenv("OA_ROOM_CHECKPOINT_URL");
-  if (dev_dir && !(dev_url && *dev_url)) return;
+  /* --dev with no API: the stand-in's store answers, as production's API does (#13057) */
+  if (dev_dir && !(dev_url && *dev_url)) { if (rm_dev_checkpoint(view())) dev_store_save(); return; }
   int64_t n=rm_checkpoint_due(view()); if(n<=0)return;
   char buf[512];int64_t request=server->ck.request;
   if(!post_report(POST_CHECKPOINT,api_url("OA_ROOM_CHECKPOINT_URL","/api/playtest/room-checkpoint-v2",buf,sizeof buf),server->ck.mac.e,server->ck.out.e,n,request))
@@ -933,7 +967,7 @@ int main(int argc, char **argv) {
   rm_vitals_gen(view(), wall_ms());   /* this process's generation, in every vitals operation ID (#12793) */
   { const char *dg = getenv("OA_ROOM_DIR_GEN"); if (dg && !strcmp(dg, "1")) rm_dir_gen(view(), true); }   /* the directory's fence (#12797) */
   signal(SIGTERM, on_term);
-  if (dev_dir) { rm_dev_start(view()); const char *da = getenv("OA_ROOM_DEV_ADMIN"); if (da && !strcmp(da, "0")) rm_dev_admin(view(), false); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
+  if (dev_dir) { rm_dev_start(view()); dev_store_open(port); const char *da = getenv("OA_ROOM_DEV_ADMIN"); if (da && !strcmp(da, "0")) rm_dev_admin(view(), false); printf("room: --dev %s: the API's stand-in (seat tickets checked and required)\n", dev_dir); }
   if (native_local && !rm_native_local(view(), (coax_string){address,(int64_t)strlen(address)})) {
     fprintf(stderr,"room: --native-local requires --dev and --listen 127.0.0.1\n");return 1;
   }

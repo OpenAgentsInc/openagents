@@ -104,7 +104,10 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   v[0].ev[k].fought[s]=v[0].eg[k].tick+1; // a restart is not a free out-of-combat Long Rest
   v[0].eg[k].wanted[s]=c.n[12];v[0].eg[k].seat[s].want_seed=c.n[12];
   r:=v[0].eg[k].relay;room:=c.room;v[0].eg[k].seat[s].back=false;
-  if r>=0&&cast(string)room[0..<c.room_n]==cast(string)v[0].relays[r].code[0..<v[0].relays[r].code_n]{st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;}
+  // the same room's code, or for Everglade II any of its rooms: they are one land (#13057), so a
+  // restarted or drained room's player comes back where they stood in whichever instance takes them
+  here:=ifx r>=0 then cast(string)v[0].relays[r].code[0..<v[0].relays[r].code_n] else "";saved:=cast(string)room[0..<c.room_n];
+  if r>=0&&(saved==here||(v[0].eg[k].e2&&eg_e2_code(saved)&&eg_e2_code(here))){st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;st[0].back_at=c.n[4];}
 }
 ck_can_play :: (v:[]RmServer,k:int, s_id: SeatId)->bool {
   tk:=eg_ticket(v,k, s_id);if tk.schema!=2{return net_session_saved(NET_DURABLE_NONE,false,0);}i:=ck_slot_seat(v,k, s_id);return i>=0&&net_session_saved(NET_DURABLE_RECEIPTS,v[0].ck.slot[i].accepted,v[0].mono_ms-v[0].ck.slot[i].accepted_mono);

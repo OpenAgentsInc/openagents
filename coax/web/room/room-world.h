@@ -102,6 +102,6 @@ bool world_use(int k, int kind, int s, int i);   /* seat s uses i (WE_DOOR: open
 int world_doors(int k, int w);          /* the doors open, word w of them (WK_DOORS) */
 /* Everglade II's rooms (#13053): one planting for all, each seat placed at the glade and stepped on its land */
 bool world2_prepare(void);
-bool world2_place(int k, int s, float out[WORLD_POSE]);
+bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]);
 bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
 #endif

@@ -386,9 +386,10 @@ bool world2_prepare(void) {
   e2mg_plant(e2mg());
   return e2_ground->done;
 }
-bool world2_place(int k, int s, float out[WORLD_POSE]) {
+/* at (x, z, facing): where the room puts the seat back (room-everglade.coax rm_e2_place, #13057); NULL the spawn */
+bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]) {
   if (k < 0 || k >= WORLD_ROOMS || s < 0 || s >= WORLD_SEATS || !world2_prepare()) return false;
-  seat_p[k][s] = verse_player_place(e2mg_spawn_x(), 0, e2mg_spawn_z(), e2mg_spawn_face()); seat_cut[k][s] = true;
+  seat_p[k][s] = at ? verse_player_place(at[0], 0, at[1], at[2]) : verse_player_place(e2mg_spawn_x(), 0, e2mg_spawn_z(), e2mg_spawn_face()); seat_cut[k][s] = true;
   pose_of(seat_p[k][s], false, out);
   return true;
 }

@@ -143,7 +143,7 @@ rv_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   if e.placed_at == 0 || v[0].wall_ms - e.placed_at > VITALS_PLACE_MS { return; }
   if cast(string) e.room[0..<e.room_n] != cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n] { return; }
   st := v[0].eg[k].seat[s..<s + 1];
-  st[0].back = true; st[0].back_x = e.x; st[0].back_y = e.y; st[0].back_z = e.z; st[0].back_yaw = e.yaw;
+  st[0].back = true; st[0].back_x = e.x; st[0].back_y = e.y; st[0].back_z = e.z; st[0].back_yaw = e.yaw; st[0].back_at = e.placed_at;
 }
 // For the host, placing seat s of room k: 1 when it goes back where its player stood, then (field 1
 // to 4) that place's x, y, z and facing; 0 to the gate.

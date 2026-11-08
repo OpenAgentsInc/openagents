@@ -5,7 +5,8 @@
 // vitals (room-vitals.coax), as the API keeps them. The page asks its usual /api/ paths, which
 // serve.sh --api sends here:
 //   POST /api/playtest/player                 a new player: {"key":KEY,"id":PID} (player.c)
-//   POST /api/playtest/room-ticket/ROOM       a seat ticket for ROOM, for the X-Verse-Player key
+//   POST /api/playtest/room-ticket/ROOM       a seat ticket for ROOM, for the X-Verse-Player key; with
+//                                          ?checkpoint=2 a v4 ticket carrying the character's checkpoint (#13057)
 //   POST /api/playtest/player/name            {name}: the key's own name, the API's shape (player-name.coax; the
 //                                          blocked words are the API's alone), {"name": ""} the made one
 //   POST /api/playtest/room-state             what you bring back (look, class): taken, not kept; WANTED is the room's
@@ -33,7 +34,7 @@ dv_numbered :: (room: string) -> bool {
   while k > 0 && room[k - 1] >= '0' && room[k - 1] <= '9' { k -= 1; }
   return k < room.count && k > 1 && room[k - 1] == '-';
 }
-DEV_OUT :: 1024;
+DEV_OUT :: 6144;   // a v4 ticket's answer (RT_TEXT) fits
 // Everglade's realm as migrations/0050_realm_edit.sql seeds it: the tools its code honours, the things a
 // visitor may propose, and the board's rows (KEY, LABEL).
 DEV_TOOLS :: [2] string.["map", "build"];
@@ -52,7 +53,20 @@ RmDev :: struct {
   row_off: [4] bool;         // the board's rows switched off (DEV_ROWS), in memory for the room's life
   tool_off: [2] bool;        // the tools visitors don't get (DEV_TOOLS)
   out: [DEV_OUT] u8;         // the answer: "STATUS\n" then the JSON body
+  ck: [DEV_CK] DevCheckpoint; ck_n: int; ck_dirty: bool;   // the checkpoint store (#13057)
+  store: [DEV_STORE] u8;     // the store as the host keeps it on disk (rm_dev_store)
 }
+
+// The stand-in's character checkpoint store (character-checkpoint-v2, #13057), as the API's
+// verse.character_checkpoints_v2 and verse.room_owners keep it: each player's owner generation (one
+// more each v4 ticket) and the last accepted capture. The room posts its captures here in-process
+// (room-host.c checkpoint_post under --dev, rm_dev_checkpoint), ordered by the API's own rule
+// (coax/web/api/checkpoint-policy.coax room_checkpoint_decide), and the host keeps the store in a file
+// (OA_ROOM_DEV_STORE, else ~/.openagents/room-dev/checkpoints-PORT.txt), so a local room killed and
+// started again brings its players back where they were, as production's does.
+DEV_CK :: 16;   // a local room's few players
+DEV_STORE :: DEV_CK * (CC_BODY + 128);
+DevCheckpoint :: struct { pid: [TICKET_PID] u8; pid_n: int; owner: int; saved: bool; c: CharacterCapture; accepted: int; }
 
 // --dev: the stand-in's key signs and checks every seat ticket, and a join needs one, as in production.
 rm_dev_start :: (v: [] RmServer) #export_c #effects(all) {
@@ -173,10 +187,20 @@ rm_dev_api :: (v: [] RmServer, req: string) -> int #export_c #effects(all) {
     }
     expires := v[0].wall_ms + TICKET_LIFE_MS;
     tb: [TICKET_TEXT] u8;
-    tn := tk_sign_wanted(DEV_KEY, pid, false, name, room, 0, expires, hp, ifx xp > 0 then xp else -1, wanted, tb[..]);
+    // ?checkpoint=2 for Everglade II's rooms: the next owner generation, and the last accepted capture
+    // wrapped in (a v4 ticket). Everglade's local rooms keep the v2 ticket, so its drift checks are as they were.
+    resume := dv_has(tk_query_line(req), "checkpoint=2") && eg_e2_code(room);
+    ci := ifx resume then dv_ck_owner_next(v, pid) else -1;
+    if resume && ci < 0 { return dv_answer(v, "503", "{\"error\":\"character recovery unavailable\"}"); }
+    owner := ifx ci >= 0 then v[0].dev.ck[ci].owner else 0;
+    if ci >= 0 && v[0].dev.ck[ci].saved { xp = rs_max(xp, v[0].dev.ck[ci].c.n[11]); }
+    tn := tk_sign_owner(DEV_KEY, pid, false, name, room, 0, expires, hp, ifx xp > 0 then xp else -1, wanted, owner, tb[..]);
     if tn == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
-    b: [640] u8;
-    n := dv_put(b[..], 0, "{\"ticket\":\""); n = dv_put(b[..], n, cast(string) tb[0..<tn]);
+    rb4: [RT_TEXT] u8; saved: [CC_BODY] u8; ticket := cast(string) tb[0..<tn];
+    if ci >= 0 { ticket = resume_ticket_wrap(DEV_KEY, ticket, ifx v[0].dev.ck[ci].saved then cc_stored(v[0].dev.ck[ci].c, saved[..]) else "-", rb4[..]); }
+    if ticket.count == 0 { return dv_answer(v, "500", "{\"error\":\"no ticket\"}"); }
+    b: [RT_TEXT + 512] u8;
+    n := dv_put(b[..], 0, "{\"ticket\":\""); n = dv_put(b[..], n, ticket);
     n = dv_put(b[..], n, "\",\"id\":\""); n = dv_put(b[..], n, pid);
     n = dv_put(b[..], n, "\",\"account\":false,\"name\":\""); n = dv_put(b[..], n, name);
     n = dv_put(b[..], n, "\",\"room\":\""); n = dv_put(b[..], n, room);
@@ -227,6 +251,134 @@ dv_set_name :: (v: [] RmServer, req: string) -> int {
   return dv_answer(v, "200", cast(string) b[0..<n]);
 }
 dv_has :: (t: string, part: string) -> bool { if part.count > t.count { return false; } for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return true; } } return false; }
+// The request line's query ("" none).
+tk_query_line :: (req: string) -> string {
+  e := 0; while e < req.count && req[e] != '\r' && req[e] != '\n' { e += 1; }
+  line := req[0..<e]; q := 0; while q < line.count && line[q] != '?' { q += 1; }
+  return ifx q < line.count then line[q..<line.count] else "";
+}
+
+// ---- the checkpoint store (#13057)
+dv_ck_find :: (v: [] RmServer, pid: string) -> int {
+  for i: 0..<v[0].dev.ck_n { if cast(string) v[0].dev.ck[i].pid[0..<v[0].dev.ck[i].pid_n] == pid { return i; } }
+  return -1;
+}
+// Player pid's entry, made when new (the store full: the one longest unsaved-to goes); -1 none.
+dv_ck_entry :: (v: [] RmServer, pid: string) -> int {
+  if pid.count == 0 || pid.count > TICKET_PID { return -1; }
+  i := dv_ck_find(v, pid);
+  if i >= 0 { return i; }
+  if v[0].dev.ck_n < DEV_CK { i = v[0].dev.ck_n; v[0].dev.ck_n += 1; }
+  else { i = 0; for j: 1..<DEV_CK { if v[0].dev.ck[j].accepted < v[0].dev.ck[i].accepted { i = j; } } }
+  v[0].dev.ck[i] = DevCheckpoint.{pid_n = pid.count};
+  for q: 0..<pid.count { v[0].dev.ck[i].pid[q] = pid[q]; }
+  return i;
+}
+// A v4 ticket's owner generation: one more than the last (verse.room_owner_next).
+dv_ck_owner_next :: (v: [] RmServer, pid: string) -> int {
+  i := dv_ck_entry(v, pid);
+  if i < 0 || v[0].dev.ck[i].owner >= 2147483646 { return -1; }
+  v[0].dev.ck[i].owner += 1; v[0].dev.ck_dirty = true;
+  return i;
+}
+// The room's due checkpoint post (rm_checkpoint_due), answered here as the API answers
+// POST /api/playtest/room-checkpoint-v2 (player.c room_checkpoint): false when none was due.
+rm_dev_checkpoint :: (v: [] RmServer) -> bool #export_c #effects(all) {
+  if !v[0].dev.on { return false; }
+  n := rm_checkpoint_due(v);
+  if n <= 0 { return false; }
+  request := v[0].ck.request;
+  body := cast(string) v[0].ck.out[0..<n];
+  c := cc_read(body, true);
+  if !c.ok || !checkpoint2_input(body, v[0].wall_ms) { rm_checkpoint_answer(v, request, 400, "{\"error\":\"bad checkpoint\"}"); return true; }
+  i := dv_ck_find(v, cast(string) c.pid[0..<c.pid_n]);
+  known := i >= 0 && v[0].dev.ck[i].owner > 0;
+  e := ifx i >= 0 then v[0].dev.ck[i] else DevCheckpoint.{};
+  a: [CC_BODY] u8; b: [CC_BODY] u8;
+  same := e.saved && cc_stored(c, a[..]) == cc_stored(e.c, b[..]);
+  code := room_checkpoint_decide(true, known, OwnerGeneration.{value = c.n[1]}, OwnerGeneration.{value = e.owner}, c.n[2], c.n[3], c.n[11],
+                                 OwnerGeneration.{value = ifx e.saved then e.c.n[1] else 0}, ifx e.saved then e.c.n[2] else 0, ifx e.saved then e.c.n[3] else 0, ifx e.saved then e.c.n[11] else 0, same);
+  if code == 0 { c.n[5] = c.n[4]; v[0].dev.ck[i].c = c; v[0].dev.ck[i].saved = true; v[0].dev.ck[i].accepted = v[0].wall_ms; v[0].dev.ck_dirty = true; }
+  r := ifx i >= 0 then v[0].dev.ck[i] else DevCheckpoint.{};
+  o: [1] Jo; out: [256] u8; jo_start(o[..], out[..]); jo_obj(o[..]);
+  jo_key(o[..], "v"); jo_int(o[..], 2); jo_key(o[..], "status"); jo_str(o[..], room_checkpoint_status(code));
+  jo_key(o[..], "owner"); jo_int(o[..], ifx r.saved then r.c.n[1] else r.owner); jo_key(o[..], "process"); jo_int(o[..], ifx r.saved then r.c.n[2] else 0);
+  jo_key(o[..], "rev"); jo_int(o[..], ifx r.saved then r.c.n[3] else 0); jo_key(o[..], "accepted_at"); jo_int(o[..], r.accepted); jo_end(o[..]);
+  rm_checkpoint_answer(v, request, 200, jo_text(o[..]));
+  return true;
+}
+// The store as text for the host's file, one line a player: "c PID OWNER ACCEPTED CAPTURE" (CAPTURE "-"
+// none, else its stored JSON); its count in dev.store, and the store marked kept.
+rm_dev_store :: (v: [] RmServer) -> int #export_c #effects(all) {
+  n := 0;
+  for i: 0..<v[0].dev.ck_n {
+    e := v[0].dev.ck[i]; cb: [CC_BODY] u8;
+    n = dv_put(v[0].dev.store[..], n, "c "); n = dv_put(v[0].dev.store[..], n, cast(string) e.pid[0..<e.pid_n]);
+    n = rv_int(v[0].dev.store[..], dv_put(v[0].dev.store[..], n, " "), e.owner); n = rv_int(v[0].dev.store[..], dv_put(v[0].dev.store[..], n, " "), e.accepted);
+    n = dv_put(v[0].dev.store[..], n, " "); n = dv_put(v[0].dev.store[..], n, ifx e.saved then cc_stored(e.c, cb[..]) else "-"); n = dv_put(v[0].dev.store[..], n, "\n");
+  }
+  if n > DEV_STORE { return 0; }
+  v[0].dev.ck_dirty = false;
+  return n;
+}
+rm_dev_dirty :: (v: [] RmServer) -> bool #export_c #effects(all) { return v[0].dev.on && v[0].dev.ck_dirty; }
+// The host's file read (at the start, and before each write and ticket, since another local room may
+// share it: two shards over one store, as production's API is), merged into the store: the entries it holds.
+rm_dev_restore :: (v: [] RmServer, text: string) -> int #export_c #effects(all) {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[at..<e]; at = e + 1;
+    if line.count < 4 || line[0..<2] != "c " { continue; }
+    f: [4] string; k := 0; p := 2;   // PID OWNER ACCEPTED, then the capture (the rest of the line)
+    while k < 3 && p <= line.count { q := p; while q < line.count && line[q] != ' ' { q += 1; } f[k] = line[p..<q]; k += 1; p = q + 1; }
+    if k < 3 || p > line.count { continue; }
+    f[3] = line[p..<line.count];
+    i := dv_ck_entry(v, f[0]);
+    if i < 0 { continue; }
+    // merged as the API's one table is shared by every shard: the newest owner, the newest accepted capture
+    v[0].dev.ck[i].owner = rs_max(v[0].dev.ck[i].owner, dv_whole(f[1]));
+    if f[3] != "-" {
+      c := cc_read(f[3], false); was := v[0].dev.ck[i];
+      if c.ok && (!was.saved || c.n[1] > was.c.n[1] || (c.n[1] == was.c.n[1] && (c.n[2] != was.c.n[2] || c.n[3] > was.c.n[3]))) { v[0].dev.ck[i].c = c; v[0].dev.ck[i].saved = true; v[0].dev.ck[i].accepted = dv_whole(f[2]); }
+    }
+  }
+  v[0].dev.ck_dirty = false;
+  return v[0].dev.ck_n;
+}
+dv_whole :: (t: string) -> int { n := 0; for c: t { if c < '0' || c > '9' || n > 100000000000000 { return 0; } n = n * 10 + cast(int) (c - '0'); } return n; }
+#test "dev: a v4 ticket brings back the last accepted checkpoint, which the store keeps across a restart" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]); rm_clock(v[..], 100, 1800000000000); rm_dev_start(v[..]); rm_vitals_gen(v[..], 77);
+  key := "dev-key-for-the-checkpoint-check-1";
+  pb: [TICKET_PID] u8; pn := dv_pid(key, pb[..]); pid := cast(string) pb[0..<pn];
+  rb: [256] u8;
+  m := dv_put(rb[..], 0, "POST /api/playtest/room-ticket/pair-e2-ck-1?checkpoint=2 HTTP/1.1\r\nX-Verse-Player: "); m = dv_put(rb[..], m, key); m = dv_put(rb[..], m, "\r\n\r\n{}");
+  a := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) rb[0..<m])];
+  #assert a[0..<4] == "200\n";
+  tk := tk_check(DEV_KEY, net_field_dev(a, "ticket"), "pair-e2-ck-1", v[0].wall_ms);
+  #assert tk.ok && tk.schema == 2 && tk.owner == 1 && !tk.capture.ok && rm_dev_dirty(v[..]);
+  // a seat of Everglade II's room with it: its capture goes to the store, whose receipt lets it play
+  jb: [RT_TEXT + 128] u8; jn := dv_put(jb[..], 0, "GET /api/room/relay/everglade/pair-e2-ck-1?t="); jn = dv_put(jb[..], jn, net_field_dev(a, "ticket")); jn = dv_put(jb[..], jn, " HTTP/1.1\r\n\r\n");
+  #assert rm_join(v[..], 0, cast(string) jb[0..<jn]) >= 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0 && v[0].eg[k].e2;
+  rm_heard(v[..], 0, "A 12345 0 -9876 150"); rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 Ash");
+  rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 123.45, 0, -98.76, 1.5, 0, 0, 0, 0, 0, 0);
+  #assert rm_checkpoint_paused(v[..], k) && rm_dev_checkpoint(v[..]) && !rm_checkpoint_paused(v[..], k);
+  i := dv_ck_find(v[..], pid); #assert i >= 0 && v[0].dev.ck[i].saved && v[0].dev.ck[i].c.n[13] == 123450 && v[0].dev.ck[i].c.n[15] == -98760;
+  // kept on disk and read back by a new process: its next ticket carries the place
+  n := rm_dev_store(v[..]); #assert n > 0 && !rm_dev_dirty(v[..]);
+  kept: [4096] u8; for q: 0..<n { kept[q] = v[0].dev.store[q]; }
+  for q: 0..<DEV_CK { v[0].dev.ck[q] = DevCheckpoint.{}; } v[0].dev.ck_n = 0;   // the process gone with what it held
+  #assert rm_dev_restore(v[..], cast(string) kept[0..<n]) == 1;
+  b := cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) rb[0..<m])];
+  t2 := tk_check(DEV_KEY, net_field_dev(b, "ticket"), "pair-e2-ck-1", v[0].wall_ms);
+  #assert t2.ok && t2.schema == 2 && t2.owner == 2 && t2.capture.ok && t2.capture.n[13] == 123450 && t2.capture.n[15] == -98760;
+  // without checkpoint=2: the old ticket, no capture
+  m2 := dv_put(rb[..], 0, "POST /api/playtest/room-ticket/pair-e2-ck-1 HTTP/1.1\r\nX-Verse-Player: "); m2 = dv_put(rb[..], m2, key); m2 = dv_put(rb[..], m2, "\r\n\r\n{}");
+  t3 := tk_check(DEV_KEY, net_field_dev(cast(string) v[0].dev.out[0..<rm_dev_api(v[..], cast(string) rb[0..<m2])], "ticket"), "pair-e2-ck-1", v[0].wall_ms);
+  #assert t3.ok && t3.schema != 2;
+}
 #test "dev: a guest names itself, its next ticket carries the name, and a name of the wrong shape is refused" {
   v: [1] RmServer;
   rm_init(v[..]); rm_clock(v[..], 100, 1800000000000); rm_dev_start(v[..]);

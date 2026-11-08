@@ -1,0 +1,339 @@
+// Everglade II's restart check (#13057): a local room server (bin/room --dev, the API's stand-in with
+// its checkpoint store, room-dev.coax) is killed (SIGKILL) while its players run down the path, then
+// started again on the same port and store. Each player is a native socket that does what the page
+// does (everglade2-net.coax): it mints a player key, asks for a v4 seat ticket (?checkpoint=2), sends
+// its build and hello, an input every 1/30 s, and when the room goes it waits the page's first retry
+// (750 to 1250 ms), asks a fresh ticket and sits again, its hello first saying where it stood (A).
+// Then once more with no A (a page from before #13057): the room puts it where its last checkpoint
+// had it. Each phase prints the players' return times (from the kill to the room's first word on
+// them) and their place's error (that word against where the room had them as it died).
+// With --drain the room is drained instead (SIGTERM, as a release drains a shard: r 0 restarting, every
+// seat saved) while a second room on the same store (another shard, its own instance code) takes the
+// players after the page's first retry, once with A and once without; then both must be within 1 m.
+//   coax/web/tool.sh coax/web/room/e2-restart-check.coax [--drain] [--players N] [--walk S] [--port P] [--room BIN]
+// Holds when every player sat again within 2500 ms and came back within 1 m (the kill: with A).
+// With --interest (#13058) nothing is killed: the players run up and down the path for S seconds, N
+// (--near, 10) between z -5 and -60 and the rest between -140 and -260, so they come into each other's
+// view and leave it. Every 250 ms each player's picture of the room (its mirror, as a page holds it) is
+// held against where the others are: within IM_ENTER less 6 m it must have them, past IM_EXIT and 6 m
+// it must not. It prints the pairs held near and culled far, the misses, and the farthest a player came
+// into another's view and the nearest it left it; holds with no far one held and under 1% near missed.
+// --external PORT --code CODE seats the players in a room already running (local.coax's), so a page in
+// the same room (everglade2-crowd --room CODE) draws them: 10 and more near, with their casts (C).
+//   coax/web/tool.sh coax/web/room/e2-restart-check.coax --interest [--players N] [--near N] [--seconds S] [--external PORT --code CODE]
+// The room and its directory are this run's own (a temporary --dev directory and store); both go at the end.
+#load "room-socket.coax";
+#load "../../lib/net/http.coax";
+#load "../../lib/sys/fs.coax";
+
+RX_MAX :: 15;
+RxBot :: struct {
+  conn: [1] RelayConn; mirror: [1] WireMirror; open: bool;
+  key: [96] u8; key_n: int;
+  seat: int = -1; seq: int; next_i: int; theta: int;
+  own: WireS; have: bool;           // the room's last word on it
+  kx: f32; kz: f32;                 // where the room had it as it died
+  claim: bool;                      // say A as it sits again
+  down_at: int; retry_at: int; back: bool; back_ms: int; err_mm: int; first_seen: bool;
+  lo: f32; hi: f32; dir: f32 = -1; next_c: int;  // --interest: the stretch of the path it runs up and down (z), and which way
+}
+rx_body_field :: (t: string, key: string, out: [] u8) -> string {
+  // "key":"VALUE" in a flat JSON answer
+  pat: [64] u8; pn := rs_put(pat[..], 0, "\""); pn = rs_put(pat[..], pn, key); pn = rs_put(pat[..], pn, "\":\"");
+  p := cast(string) pat[0..<pn];
+  if t.count < p.count { return ""; }
+  for i: 0..<t.count - p.count + 1 {
+    if t[i..<i + p.count] == p {
+      e := i + p.count; n := 0;
+      while e < t.count && t[e] != '"' && n < out.count { out[n] = t[e]; n += 1; e += 1; }
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+#test "the restart check reads a flat answer's field" {
+  b: [32] u8; #assert rx_body_field("{\"key\":\"dev-1\",\"id\":\"p-2\"}", "id", b[..]) == "p-2" && rx_body_field("{}", "id", b[..]) == "";
+}
+rx_post :: (port: int, path: string, key: string, out: [] u8) -> string {
+  u: [256] u8; n := rs_put(u[..], 0, "http://127.0.0.1:"); n = rs_int(u[..], n, port); n = rs_put(u[..], n, path);
+  hb: [160] u8; hn := rs_put(hb[..], 0, "X-Verse-Player: "); hn = rs_put(hb[..], hn, key);
+  hs := [2] string.["Content-Type: application/json", cast(string) hb[0..<hn]];
+  w: [1] HttpWork;
+  r := http_do(w[..], "POST", cast(string) u[0..<n], ifx key.count > 0 then hs[..] else hs[0..<1], "{}", 3000, 0, out);
+  if r.error != HTTP_OK || r.code != 200 { return ""; }
+  return cast(string) out[0..<r.n];
+}
+rx_health :: (port: int) -> bool {
+  u: [128] u8; n := rs_put(u[..], 0, "http://127.0.0.1:"); n = rs_int(u[..], n, port); n = rs_put(u[..], n, "/health");
+  w: [1] HttpWork; out: [4096] u8; none: [1] string;
+  r := http_do(w[..], "GET", cast(string) u[0..<n], none[0..<0], "", 300, 0, out[..]);
+  return r.error == HTTP_OK && r.code == 200;
+}
+rx_room :: (bin: string, port: int, dir: string, store: string) -> int {
+  h := proc_new(); if h < 0 { return -1; }
+  pb: [16] u8; pn := rs_int(pb[..], 0, port);
+  sb: [600] u8; sn := rs_put(sb[..], 0, "OA_ROOM_DEV_STORE="); sn = rs_put(sb[..], sn, store);
+  ok := proc_arg(h, bin) && proc_arg(h, "--port") && proc_arg(h, cast(string) pb[0..<pn]) && proc_arg(h, "--listen") && proc_arg(h, "127.0.0.1") &&
+        proc_arg(h, "--dev") && proc_arg(h, dir) && proc_env(h, cast(string) sb[0..<sn]) && proc_quiet(h);
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  until := rs_now() + 15000;
+  while rs_now() < until { if rx_health(port) { return h; } proc_sleep(25); }
+  return h;
+}
+// Sit (again): a fresh ticket for the room, the socket, and once seated the build, A and the hello.
+rx_sit :: (b: [] RxBot, port: int, code: string) -> bool {
+  tb: [6144] u8; tk: [4400] u8;
+  path: [128] u8; pn := rs_put(path[..], 0, "/api/playtest/room-ticket/"); pn = rs_put(path[..], pn, code); pn = rs_put(path[..], pn, "?checkpoint=2");
+  ans := rx_post(port, cast(string) path[0..<pn], cast(string) b[0].key[0..<b[0].key_n], tb[..]);
+  ticket := rx_body_field(ans, "ticket", tk[..]);
+  if ticket.count == 0 { return false; }
+  room: [64] u8; rn := rx_body_field(ans, "room", room[..]);
+  u: [4600] u8; n := rs_put(u[..], 0, "ws://localhost:"); n = rs_int(u[..], n, port); n = rs_put(u[..], n, "/api/room/relay/everglade/");
+  n = rs_put(u[..], n, ifx rn.count > 0 then rn else code); n = rs_put(u[..], n, "?t="); n = rs_put(u[..], n, ticket);
+  b[0].mirror[0] = WireMirror.{}; b[0].seat = -1; b[0].have = false;
+  b[0].open = relay_conn_open(b[0].conn[..], cast(string) u[0..<n]);
+  return b[0].open;
+}
+rx_said :: (b: [] RxBot) {
+  m: [128] u8;
+  ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
+  if b[0].claim { ok = relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].kx, z = b[0].kz, yaw = b[0].own.yaw})]) && ok; }
+  ok = relay_conn_send(b[0].conn[..], "H 5 ranger.0.0.0 druid 0 -") && ok;
+}
+rx_pump :: (b: [] RxBot, now: int, walk: bool) {
+  if !b[0].open { return; }
+  m: [160] u8;
+  if now >= b[0].next_i && b[0].seat >= 0 {
+    b[0].seq += 1;
+    k := rs_put(m[..], 0, "I "); k = rs_int(m[..], k, b[0].seq); k = rs_put(m[..], k, ifx walk then " 0 100 0 0 " else " 0 0 0 0 ");
+    k = rs_int(m[..], k, b[0].theta); k = rs_put(m[..], k, ifx walk then " 1 " else " 0 "); k = rs_int(m[..], k, b[0].mirror[0].heard);
+    ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<k]);
+    b[0].next_i = now + 33;
+  }
+  code := relay_conn_poll(b[0].conn[..], 0);
+  while code == RC_TEXT {
+    t := cast(string) b[0].conn[0].text[0..<b[0].conn[0].text_n];
+    if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); rx_said(b); }
+    if rs_starts(t, "D ") {
+      d := wire_mirror_frame(b[0].mirror[..], t);
+      if d.tick >= 0 && b[0].seat >= 0 {
+        o := wire_mirror_of(b[0].mirror[..], b[0].seat);
+        if o.id == b[0].seat { b[0].own = o; b[0].have = true; }
+      }
+    }
+    code = relay_conn_poll(b[0].conn[..], 0);
+  }
+  if code == RC_FAIL || code == RC_CLOSED { b[0].open = false; r := relay_conn_close(b[0].conn[..], 1000); }
+}
+// One phase: the players walk walk_ms in room `rooms[from]`, which then goes: killed (SIGKILL) and
+// started again on its port and store, or drained (SIGTERM: it tells every page "restarting", saves
+// every seat and exits) while the players sit again in room `rooms[to]` (another shard on the same
+// store), code `to_code`. claim: their hellos say A.
+rx_phase :: (bots: [] RxBot, n: int, bin: string, ports: [] int, dir: string, store: string, codes: [] string, walk_ms: int, claim: bool, rooms: [] int, from: int, to: int, drain: bool) -> bool {
+  until := rs_now() + walk_ms;
+  while rs_now() < until { now := rs_now(); for i: 0..<n { rx_pump(bots[i..<i + 1], now, true); } proc_sleep(2); }
+  for i: 0..<n { bots[i].kx = bots[i].own.x; bots[i].kz = bots[i].own.z; bots[i].claim = claim; bots[i].back = false; }
+  killed := rs_now(); started := 0;
+  if drain {
+    // the drain: each page hears r 0 restarting (its socket closed) and sits again elsewhere at once
+    k := proc_kill(rooms[from], 15);
+    gone_by := rs_now() + 12000;
+    while rs_now() < gone_by { now := rs_now(); open := 0; for i: 0..<n { rx_pump(bots[i..<i + 1], now, false); if bots[i].open { open += 1; } } if open == 0 { break; } proc_sleep(2); }
+    // as the page does (everglade2-net.coax e2n_down): its first retry 750 to 1250 ms after the word
+    for i: 0..<n { spread := ifx n > 1 then n - 1 else 1; bots[i].down_at = rs_now(); bots[i].retry_at = killed + 750 + 500 * i / spread; bots[i].seat = -1; }
+  } else {
+    k := proc_kill(rooms[from], 9); w := proc_wait(rooms[from], 5000); r := proc_release(rooms[from]);
+    for i: 0..<n { bots[i].open = false; c := relay_conn_close(bots[i].conn[..], 1000); spread := ifx n > 1 then n - 1 else 1; bots[i].down_at = killed; bots[i].retry_at = killed + 750 + 500 * i / spread; bots[i].seat = -1; }
+    rooms[from] = rx_room(bin, ports[from], dir, store);
+    started = rs_now() - killed;
+  }
+  done := rs_now() + 15000;
+  while rs_now() < done {
+    now := rs_now(); all := true;
+    for i: 0..<n {
+      bt := bots[i..<i + 1];
+      if !bt[0].open && !bt[0].back && now >= bt[0].retry_at {
+        if !rx_sit(bt, ports[to], codes[to]) { bt[0].retry_at = now + 2000; }
+      }
+      rx_pump(bt, now, false);
+      if bt[0].open && bt[0].have && !bt[0].back {
+        bt[0].back = true; bt[0].back_ms = now - killed;
+        dx := bt[0].own.x - bt[0].kx; dz := bt[0].own.z - bt[0].kz; bt[0].err_mm = cast(int) (sqrt(dx * dx + dz * dz) * 1000);
+      }
+      if !bt[0].back { all = false; }
+    }
+    if all { break; }
+    proc_sleep(2);
+  }
+  if drain { w := proc_wait(rooms[from], 12000); exit := w; r := proc_release(rooms[from]); print("drained room's exit status %\n", exit); rooms[from] = rx_room(bin, ports[from], dir, store); }
+  worst_ms := 0; worst_mm := 0; back := 0;
+  if drain { print("drained to another room (%), % A:\n", codes[to], ifx claim then "with" else "without"); }
+  else { print("killed and started again (up % ms after the kill), % A:\n", started, ifx claim then "with" else "without"); }
+  for i: 0..<n {
+    if bots[i].back { back += 1; } if bots[i].back_ms > worst_ms { worst_ms = bots[i].back_ms; } if bots[i].err_mm > worst_mm { worst_mm = bots[i].err_mm; }
+    print("  player %: back % ms after, % mm from where the room had it (at % %, back at % %)\n", i, ifx bots[i].back then bots[i].back_ms else -1, bots[i].err_mm, bots[i].kx, bots[i].kz, bots[i].own.x, bots[i].own.z);
+  }
+  print("  % of % back; the slowest % ms; the largest error % mm\n", back, n, worst_ms, worst_mm);
+  return back == n && worst_ms <= 2500 && worst_mm < 1000;
+}
+
+// The path's middle at z (verse/everglade2/forest.coax e2_road_x and verse/character-glade.coax
+// cg_road_x, cg_path_x, cg_ramp, copied: this tool links no world), so the players run along it.
+rx_ramp :: (a: f32, b: f32, x: f32) -> f32 { t := (x - a) / (b - a); t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t; return t * t * (3 - 2 * t); }
+rx_road_x :: (z: f32) -> f32 {
+  path := 2.1 * sin(z * 0.27) + 0.9 - (ifx z > 0 then z * 0.55 else 0.0f32);
+  b0 := rx_ramp(-13, -19, z); glade := path * (1 - b0) + (3.3 + 0.3 * sin((z + 21) * 0.25)) * b0;
+  if z > -30 { return glade; }
+  b := rx_ramp(-30, -75, z); t := z + 30;
+  wind := 15 * sin(t * 0.022) + 6 * sin(t * 0.051 + 1.3) - 6 * sin(1.3f32) + 2 * sin(t * 0.12);
+  return glade * (1 - b) + (3.3 + wind) * b;
+}
+#test "the path's middle runs from the glade north and winds" {
+  #assert abs(rx_road_x(-30) - rx_road_x(-30.001)) < 0.01 && abs(rx_road_x(-200)) < 30 && abs(rx_road_x(-75) - rx_road_x(-74.9)) < 0.1;
+}
+// Its heading (0.1 mrad, the wire's THETA: 0 north, -z) up or down its stretch of the path, turning at the ends.
+rx_steer :: (b: [] RxBot) {
+  if !b[0].have { return; }
+  z := b[0].own.z;
+  if z < b[0].lo { b[0].dir = 1; } if z > b[0].hi { b[0].dir = -1; }
+  tz := z + b[0].dir * 8; dx := rx_road_x(tz) - b[0].own.x; dz := tz - z;
+  b[0].theta = cast(int) (rx_atan2(-dx, -dz) * 10000);
+}
+// atan2 (drift-bots.coax db_atan2's polynomial, to a few thousandths of a radian)
+rx_atan2 :: (y: f32, x: f32) -> f32 {
+  if x == 0 && y == 0 { return 0; }
+  ax := ifx x < 0 then -x else x; ay := ifx y < 0 then -y else y;
+  a := ifx ax > ay then ay / ax else ax / ay; s := a * a;
+  r := ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+  if ay > ax { r = 1.57079637 - r; } if x < 0 { r = 3.14159274 - r; } if y < 0 { r = -r; }
+  return r;
+}
+RX_ENTER :: 110.0; RX_EXIT :: 130.0;   // m: room-interest.coax IM_ENTER and IM_EXIT
+RX_SLACK :: 6.0;   // m: a player moves this far in the time a picture is old (a tick and the socket)
+rx_interest :: (bots: [] RxBot, n: int, seconds: int, casts: bool) -> bool {
+  t0 := rs_now(); until := t0 + seconds * 1000; next := t0 + 5000;
+  had: [RX_MAX * RX_MAX] bool;
+  near_ok := 0; near_miss := 0; far_ok := 0; far_held := 0; arrivals := 0; leaves := 0;
+  in_far: f32 = 0; out_near: f32 = 100000; most_near := 0; least_near := 1000;
+  while rs_now() < until {
+    now := rs_now();
+    for i: 0..<n {
+      rx_steer(bots[i..<i + 1]); rx_pump(bots[i..<i + 1], now, true);
+      // a near player's cast every 5 s (Thunderbolt 5 m ahead, as load.coax's), for a page drawing them
+      if casts && bots[i].hi > -100 && bots[i].open && bots[i].seat >= 0 && now >= bots[i].next_c {
+        m: [96] u8; bots[i].seq += 1;
+        k := rs_put(m[..], 0, "C "); k = rs_int(m[..], k, bots[i].seq); k = rs_put(m[..], k, " 1 ");
+        k = rs_int(m[..], k, cast(int) (bots[i].own.x * 100)); k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (bots[i].own.z * 100) - 500); k = rs_put(m[..], k, " -1");
+        _ := relay_conn_send(bots[i].conn[..], cast(string) m[0..<k]);
+        bots[i].next_c = now + 5000;
+      }
+    }
+    if now >= next {
+      next = now + 250;
+      for i: 0..<n {
+        bi := bots[i]; if !bi.have || bi.seat < 0 { continue; }
+        held := 0;
+        for j: 0..<n {
+          bj := bots[j]; if j == i || !bj.have || bj.seat < 0 { continue; }
+          dx := bj.own.x - bi.own.x; dz := bj.own.z - bi.own.z; d := sqrt(dx * dx + dz * dz);
+          has := wire_mirror_of(bots[i].mirror[..], bj.seat).id == bj.seat;
+          if has { held += 1; }
+          if d < f32(RX_ENTER) - f32(RX_SLACK) { if has { near_ok += 1; } else { near_miss += 1; } }
+          if d > f32(RX_EXIT) + f32(RX_SLACK) { if has { far_held += 1; } else { far_ok += 1; } }
+          was := had[i * RX_MAX + j];
+          if has && !was { arrivals += 1; if d > in_far { in_far = d; } }
+          if !has && was { leaves += 1; if d < out_near { out_near = d; } }
+          had[i * RX_MAX + j] = has;
+        }
+        if held > most_near { most_near = held; } if held < least_near { least_near = held; }
+      }
+    }
+    proc_sleep(2);
+  }
+  print("interest over % s, % players: near pairs held %, missed %; far pairs culled %, held %\n", seconds, n, near_ok, near_miss, far_ok, far_held);
+  print("  % came into a view (the farthest at % m), % left one (the nearest at % m); each held % to % others\n", arrivals, cast(int) in_far, leaves, ifx leaves > 0 then cast(int) out_near else -1, least_near, most_near);
+  return far_held == 0 && far_ok > 0 && near_ok > 0 && near_miss * 100 < near_ok + 1 && arrivals > 0 && leaves > 0;
+}
+// --interest's stretches: the first `near` between z -60 and -5, the rest between -260 and -140.
+rx_bands :: (bots: [] RxBot, n: int, near: int) {
+  for q: 0..<n { if q < near { bots[q].lo = -60; bots[q].hi = -5; } else { bots[q].lo = -260; bots[q].hi = -140; } bots[q].next_c = rs_now() + 500 + q * 333; }
+}
+// --interest --external: the players in a room already running on PORT (local.coax's), instance CODE.
+rx_interest_main :: (n: int, near: int, seconds: int, port: int, code: string) -> int {
+  if code.count == 0 || !rx_health(port) { tool_errln("e2-restart-check: --external needs a running room (its port) and --code"); return 2; }
+  bots: [RX_MAX] RxBot; ab: [1024] u8; kb: [96] u8;
+  for q: 0..<n {
+    key := rx_body_field(rx_post(port, "/api/playtest/player", "", ab[..]), "key", kb[..]);
+    bots[q].key_n = rs_put(bots[q].key[..], 0, key);
+    if key.count == 0 || !rx_sit(bots[q..<q + 1], port, code) { tool_errln("e2-restart-check: a player could not sit"); }
+  }
+  rx_bands(bots[..], n, near);
+  print("e2-restart-check: % players in % on 127.0.0.1:% for % s, % near (casting), the rest far up the path\n", n, code, port, seconds, near);
+  ok := rx_interest(bots[..], n, seconds, true);
+  for q: 0..<n { if bots[q].open { c := relay_conn_close(bots[q].conn[..], 1000); } }
+  print("%\n", ifx ok then "holds" else "fails");
+  return ifx ok then 0 else 1;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  n := 4; walk := 7; port := 0; bin := "coax/web/room/bin/room"; drain := false;
+  interest := false; near := 10; seconds := 90; external := 0; code := ""; given_n := false;
+  i := 0;
+  while i < args_count(a[..]) {
+    x := args_at(a[..], i);
+    if x == "--drain" { drain = true; i += 1; continue; }
+    if x == "--interest" { interest = true; i += 1; continue; }
+    if i + 1 >= args_count(a[..]) { tool_errln("usage: e2-restart-check.coax [--drain] [--players N] [--walk S] [--port P] [--room BIN]"); return 2; }
+    y := args_at(a[..], i + 1);
+    if x == "--players" { n = rs_num(y); given_n = true; } else if x == "--near" { near = rs_num(y); } else if x == "--seconds" { seconds = rs_num(y); }
+    else if x == "--external" { external = rs_num(y); } else if x == "--code" { code = y; } else if x == "--walk" { walk = rs_num(y); } else if x == "--port" { port = rs_num(y); } else if x == "--room" { bin = y; }
+    else { tool_errln("usage: e2-restart-check.coax [--players N] [--walk S] [--port P] [--room BIN]"); return 2; }
+    i += 2;
+  }
+  if interest && !given_n { n = 14; }
+  if n < 1 || n > RX_MAX || walk < 1 || (!interest && n > 8) { return 2; }
+  if interest && external > 0 { return rx_interest_main(n, near, seconds, external, code); }
+  if !fs_exists(bin) { tool_errln("e2-restart-check: no room binary (coax/web/room/build.sh)"); return 2; }
+  ports: [2] int; ports[0] = port;
+  for q: 0..<2 { if ports[q] == 0 { l := cxsock_listen(0); ports[q] = cxsock_port(l); c := cxsock_close(l); } }
+  tb: [4200] u8; dir := fs_temp("e2-restart-", tb[..]);
+  wb: [1048576] u8; wn := fs_read("coax/web/room/dev/world-everglade.json", wb[..]);
+  cb: [65536] u8; cn := fs_read("coax/web/room/dev/room-control.txt", cb[..]);
+  pa: [4300] u8; pb: [4300] u8; sp: [4300] u8;
+  if dir.count == 0 || wn <= 0 || cn <= 0 || !fs_write(fs_join(dir, "world-everglade.json", pa[..]), cast(string) wb[0..<wn]) || !fs_write(fs_join(dir, "room-control.txt", pb[..]), cast(string) cb[0..<cn]) {
+    tool_errln("e2-restart-check: can't make the room's directory"); return 1;
+  }
+  store := fs_join(dir, "checkpoints.txt", sp[..]);
+  rooms: [2] int; rooms[0] = rx_room(bin, ports[0], dir, store); rooms[1] = -1;
+  if drain { rooms[1] = rx_room(bin, ports[1], dir, store); }
+  if rooms[0] < 0 || !rx_health(ports[0]) || (drain && !rx_health(ports[1])) { tool_errln("e2-restart-check: the room did not start"); return 1; }
+  cbuf: [64] u8; cl := rs_put(cbuf[..], 0, "pair-e2-rs-"); cl = rs_int(cbuf[..], cl, rs_stamp());
+  dbuf: [64] u8; dl := rs_put(dbuf[..], 0, cast(string) cbuf[0..<cl]); dl = rs_put(dbuf[..], dl, "-b");
+  codes := [2] string.[cast(string) cbuf[0..<cl], cast(string) dbuf[0..<dl]];
+  bots: [RX_MAX] RxBot; ab: [1024] u8; kb: [96] u8;
+  for q: 0..<n {
+    key := rx_body_field(rx_post(ports[0], "/api/playtest/player", "", ab[..]), "key", kb[..]);
+    bots[q].key_n = rs_put(bots[q].key[..], 0, key); bots[q].theta = (q * 9000) % 62832 - 31416;
+    if key.count == 0 || !rx_sit(bots[q..<q + 1], ports[0], codes[0]) { tool_errln("e2-restart-check: a player could not sit"); }
+  }
+  ok := false;
+  if interest {
+    rx_bands(bots[..], n, near);
+    print("e2-restart-check: % players in % on 127.0.0.1:%, % near, the rest far up the path\n", n, codes[0], ports[0], near);
+    ok = rx_interest(bots[..], n, seconds, false);
+  } else if drain {
+    print("e2-restart-check: % players in % on 127.0.0.1:%, walking % s before each drain\n", n, codes[0], ports[0], walk);
+    ok = rx_phase(bots[..], n, bin, ports[..], dir, store, codes[..], walk * 1000, true, rooms[..], 0, 1, true);
+    old := rx_phase(bots[..], n, bin, ports[..], dir, store, codes[..], walk * 1000, false, rooms[..], 1, 0, true);
+    ok = ok && old;   // a drain saves every seat as it goes: exact with or without A
+  } else {
+    print("e2-restart-check: % players in % on 127.0.0.1:%, walking % s before each kill\n", n, codes[0], ports[0], walk);
+    ok = rx_phase(bots[..], n, bin, ports[..], dir, store, codes[..], walk * 1000, true, rooms[..], 0, 0, false);
+    old := rx_phase(bots[..], n, bin, ports[..], dir, store, codes[..], walk * 1000, false, rooms[..], 0, 0, false);
+  }
+  for q: 0..<n { if bots[q].open { c := relay_conn_close(bots[q].conn[..], 1000); } }
+  for q: 0..<2 { if rooms[q] >= 0 { k := proc_kill(rooms[q], 15); w := proc_wait(rooms[q], 12000); if w == PROC_RUNNING { k = proc_kill(rooms[q], 9); w = proc_wait(rooms[q], 2000); } r := proc_release(rooms[q]); } }
+  gone := fs_remove(dir);
+  print("%\n", ifx ok then "holds" else "fails");
+  return ifx ok then 0 else 1;
+}

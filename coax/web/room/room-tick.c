@@ -159,7 +159,9 @@ static bool everglade_prepare(int k) {
    queued inputs through Everglade II's movement step (room-world.c world2_*), the rules' tick, and
    every seat's D frame queued. Its land has no town, river, watch or pieces to step. */
 static void everglade2_place(int k, int s, float *pose) {
-  if (rm_eg_unplaced(view(), k, (coax_t_SeatId){ s}) && world2_place(k, s, pose))
+  float at[3];
+  if (rm_eg_unplaced(view(), k, (coax_t_SeatId){ s}) &&
+      world2_place(k, s, rm_e2_place(view(), k, (coax_t_SeatId){ s}, (coax_v_f32){at, 3}) ? at : NULL, pose))
     rm_eg_moved(view(), k, (coax_t_SeatId){ s}, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
 }
 static bool everglade2_room_tick(int k, int64_t room_work_start) {

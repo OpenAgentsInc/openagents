@@ -49,6 +49,12 @@ E2Net :: struct {
   fix: NetFix; fix_due: bool;
   off_x: f32; off_y: f32; off_z: f32;
   hello_due: bool;
+  // where you stand (the face's, each frame), and whether this page sat before: sitting again after a
+  // lost or restarted room, the hello says it first (A), so the room puts you back here (#13057)
+  at_x: f32; at_z: f32; at_yaw: f32; at_known: bool; sat_before: bool; again: bool; agains: int;
+  // the last such return: the room's first word on you less where you were drawn (mm), and the time
+  // from losing the room to it (ms); lost_at when the socket went (0 not lost)
+  lost_at: int; back_pending: bool; back_fix_mm: int = -1; back_ms: int = -1;
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
@@ -232,6 +238,7 @@ e2n_opened :: (n: [] E2Net, id: int) { if id < 0 { e2n_down(n); return; } n[0].s
 // Closed: everyone else goes (nothing is drawn that the room isn't saying) and the socket is tried
 // again after a wait that doubles to a minute, 75% to 125% of it, so a restarted room's pages spread.
 e2n_down :: (n: [] E2Net) {
+  if n[0].seat >= 0 && n[0].lost_at == 0 { n[0].lost_at = ifx n[0].mono > 0 then n[0].mono else 1; }
   n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1;
   n[0].tries += 1;
   wait := 1000;
@@ -281,6 +288,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
     n[0].seat = seat; n[0].sat = true;
+    n[0].again = n[0].sat_before; n[0].sat_before = true; n[0].back_pending = n[0].again;
     wire_mirror_forget(n[0].mir[..]);
     for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
     if n[0].lost { n[0].lost = false; e2n_tell(n, "BACK IN THE ROOM"); }
@@ -427,6 +435,7 @@ e2n_replay_input :: (n: [] E2Net, k: int) -> EgMoveIn {
 // NET_SNAP m taken at once (as Everglade's net_fixed).
 e2n_fixed :: (n: [] E2Net, dx: f32, dy: f32, dz: f32) {
   n[0].fix_due = false; n[0].replays += 1; n[0].fix_sq = dx * dx + dy * dy + dz * dz;
+  if n[0].back_pending { n[0].back_pending = false; n[0].back_fix_mm = cast(int)(sqrt(dx * dx + dz * dz) * 1000); n[0].back_ms = ifx n[0].lost_at > 0 then n[0].mono - n[0].lost_at else -1; n[0].lost_at = 0; }
   ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
   if abs(ox) + abs(oy) + abs(oz) > f32(NET_SNAP) { ox = 0; oy = 0; oz = 0; }
   n[0].off_x = ox; n[0].off_y = oy; n[0].off_z = oz;
@@ -488,7 +497,25 @@ e2n_hello :: (n: [] E2Net) {
   n[0].hello_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
   e2n_send(n, wire_put_pins(n[0].out[..], 0, WirePins.{}));
+  if n[0].again && n[0].at_known { e2n_send(n, wire_put_at(n[0].out[..], 0, WireAt.{x = n[0].at_x, z = n[0].at_z, yaw = n[0].at_yaw})); n[0].agains += 1; }
+  n[0].again = false;
   e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = "druid", flags = ifx n[0].account then 2 else 0, name = ""})));
+}
+// Where you stand this frame (the face's feet and facing), for a hello after a lost room (A).
+e2n_where :: (n: [] E2Net, x: f32, z: f32, yaw: f32) {
+  if !(x == x) || !(z == z) || !(yaw == yaw) { return; }
+  n[0].at_x = x; n[0].at_z = z; n[0].at_yaw = yaw; n[0].at_known = true;
+}
+#test "sitting again after a lost room, the hello first says where you stand" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].mono = 1000;
+  e2n_where(n[..], 3, -40.5, 3.1);
+  e2n_record(n[..], "y 1 0 1000"); e2n_step(n[..], 1000);
+  for i: 0..<n[0].pipe[0].n { #assert pipe_bytes(n[0].pipe[..], i)[0] != 'A'; }   // the first sit: none
+  pipe_drained(n[0].pipe[..]);
+  e2n_down(n[..]); n[0].state = E2N_OPEN; n[0].sock = 2; e2n_where(n[..], 3, -60.25, 3.0);
+  e2n_record(n[..], "y 2 0 2000"); e2n_step(n[..], 2000);
+  said := false; for i: 0..<n[0].pipe[0].n { if pipe_bytes(n[0].pipe[..], i) == "A 300 0 -6025 300" { said = true; } }
+  #assert said && n[0].agains == 1;
 }
 // Your look for the hello: the record Character Create keeps (CC2 or CC3); said again if seated.
 e2n_set_look :: (n: [] E2Net, record: string) {

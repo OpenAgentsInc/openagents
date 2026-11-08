@@ -31,6 +31,9 @@
 //   T SEQ CODE                     go to the instance CODE of this realm (#12850, coax/web/room/room-travel.coax)
 //   O N                            the page heard N outcomes, fewer than an o said: the room sends the town again
 //                                  from the start, then e town (#12902)
+//   A X Y Z YAW                    where you stand as you sit again after a lost room (cm, centiradians), just
+//                                  before the hello: an Everglade II room puts you there when it is no farther
+//                                  from where it last saved you than you could have run since (#13057)
 // Server to page (the relay's own first: y SS N T, j SS, l SS, t MS T):
 //   W TICK HZ SEED DAY WEATHER BUDGET  the world header, after y, and again to everyone when the weather
 //                                  turns (#12709): the tick now, the tick rate, the room's seed, ms into the
@@ -329,6 +332,16 @@ wire_outcome :: (t: string) -> bool {
 wire_put_town :: (out: [] u8, at: int) -> int { return wire_put(out, at, "e town"); }
 wire_put_outcomes :: (out: [] u8, at: int, n: int) -> int { return wire_int(out, wire_put(out, at, "o"), n); }
 wire_put_missed :: (out: [] u8, at: int, n: int) -> int { return wire_int(out, wire_put(out, at, "O"), n); }
+// A X Y Z YAW: where you stand as you sit again (#13057).
+WireAt :: struct { x: f32; y: f32; z: f32; yaw: f32; }
+wire_put_at :: (out: [] u8, at: int, p: WireAt) -> int { return wire_yaw(out, wire_m(out, wire_m(out, wire_m(out, wire_put(out, at, "A"), p.x), p.y), p.z), p.yaw); }
+wire_read_at :: (t: string, r: [] WireRd) -> WireAt { p: WireAt; p.x = wire_f(t, r); p.y = wire_f(t, r); p.z = wire_f(t, r); p.yaw = wire_f(t, r); return p; }
+#test "A says where you stand as you sit again, in cm and centiradians" {
+  b: [64] u8; n := wire_put_at(b[..], 0, WireAt.{x = 12.345, y = -0.5, z = -120.004, yaw = 3.5});
+  #assert cast(string) b[0..<n] == "A 1235 -50 -12000 -278";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 1); p := wire_read_at(cast(string) b[0..<n], r[..]);
+  #assert r[0].ok && abs(p.x - 12.35) < 0.001 && abs(p.z + 120.0) < 0.001 && abs(p.yaw + 2.78) < 0.001;
+}
 wire_put_rested :: (out: [] u8, at: int, seat: int) -> int { return wire_int(out, wire_put(out, at, "e rest"), seat); }
 wire_put_edit :: (out: [] u8, at: int, version: int) -> int { return wire_int(out, wire_put(out, at, "e edit"), version); }
 wire_put_wanted :: (out: [] u8, at: int, ss: int, level: int) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "w"), ss), level); }

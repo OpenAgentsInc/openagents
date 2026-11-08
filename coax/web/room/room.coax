@@ -50,6 +50,7 @@
 #load "room-directory.coax";
 #load "room-events.coax";
 #load "../../../apps/openagents-web/player-name.coax";   // a chosen name's shape, as the API's (the dev stand-in's player/name)
+#load "../api/checkpoint-policy.coax";   // the API's checkpoint ordering, which the dev stand-in's store keeps too (#13057)
 #load "room-dev.coax";
 #load "room-forge.coax";
 #load "room-forge-raid.coax";
