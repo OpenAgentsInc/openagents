@@ -14,7 +14,10 @@ case "$(uname -s)" in
     ;;
   Linux)
     coaxial_tc="${COAXIAL_TOOLCHAIN:-$HOME/.cache/coax-wasm-toolchain}"
-    if [[ -z "${COAXIAL_CLANG:-}" && ! -x "$coaxial_tc/bin/clang" ]]; then
+    builtins="$coaxial_tc/resource/lib/wasm32-unknown-wasip1/libclang_rt.builtins.a"
+    # Relink when the builtins link is broken too: a toolchain linked by an
+    # earlier version of this script can hold clang but a dangling builtins link.
+    if [[ -z "${COAXIAL_CLANG:-}" && ( ! -x "$coaxial_tc/bin/clang" || ! -e "$builtins" ) ]]; then
       echo "toolchain.sh: linking the Wasm toolchain from nixpkgs into $coaxial_tc" >&2
       out() { nix build --no-link --print-out-paths "$@"; }
       clang="$(out nixpkgs#llvmPackages_21.clang-unwrapped)"
@@ -28,7 +31,13 @@ case "$(uname -s)" in
       ln -sfn "$libc_dev/include" "$coaxial_tc/sysroot/include"
       ln -sfn "$libc/lib/wasm32-wasip1" "$coaxial_tc/sysroot/lib/wasm32-wasip1"
       ln -sfn "$("$clang/bin/clang" -print-resource-dir)/include" "$coaxial_tc/resource/include"
-      ln -sfn "$rt/lib/wasi/libclang_rt.builtins-wasm32.a" "$coaxial_tc/resource/lib/wasm32-unknown-wasip1/libclang_rt.builtins.a"
+      # nixpkgs' compiler-rt has used lib/wasi and, since 21.1.8, lib/wasip1.
+      rt_lib=""
+      for d in wasip1 wasi; do
+        [[ -e "$rt/lib/$d/libclang_rt.builtins-wasm32.a" ]] && { rt_lib="$rt/lib/$d/libclang_rt.builtins-wasm32.a"; break; }
+      done
+      [[ -n "$rt_lib" ]] || { echo "toolchain.sh: no libclang_rt.builtins-wasm32.a under $rt/lib" >&2; exit 2; }
+      ln -sfn "$rt_lib" "$builtins"
     fi
     # wasm-opt (binaryen), which wasm.sh runs on a release module as the Mac's
     # Homebrew one does: without it a Linux module was about 6% larger and over
