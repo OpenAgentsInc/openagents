@@ -173,3 +173,19 @@ preserved. No active dead journal can stall scheduled time through these paths.
 The next acceptance work is real world rest/activity/settled/wake controls,
 optional choice/simultaneous ordering, source loss/nutrition producers and
 rejoin/persistence binding. [Event evidence](../verification/srd-rest-events-2026-11-08/README.md).
+
+## Experimental controls and activity consumer
+
+Experimental now enables scheduling, derives exertion/watch transitions from
+actual admitted controller movement, and exposes Short/Sleep/Watch/Hit Die/End
+controls from observed settled downtime. Movement attempts and passive pushes
+do not manufacture exertion; stopping never manufactures sleep. End retains
+completion history and refuses unconsumed earned boundaries. Desktop and phone
+headless checks confirm actual Sleep pointer input and the displayed state.
+Borrowed panel views also fix the prior main build's browser startup trap.
+[Control and browser evidence](../verification/srd-rest-controls-2026-11-08/README.md).
+
+Remaining acceptance includes precise Short Rest clock migration (its current
+deadline is f32), Everglade II/room controls and activity, persistent timeline
+binding, full optional recovery/simultaneous ordering, source loss/nutrition
+producers, complete inventory dropping and sleep/Prone presentation.

@@ -7196,3 +7196,17 @@ Earlier earned damage-interruption recovery remains valid. Nonterminal
 Exhaustion does not interrupt rest. World observations, optional ordering and
 persistent epoch binding remain required. Evidence:
 `docs/verification/srd-rest-events-2026-11-08/README.md`.
+
+## Experimental rest uses observed activity and settled owner controls
+
+The shared rest-control policy admits only scheduled validated owners. Actual
+walking/jumping selects exertion before frame credit; settled stopping selects
+watch, never automatic sleep. Motion closes Short Rest choices, while passive
+translation/blocked attempts cannot invent walking. End preserves completion
+history and refuses unconsumed earned boundaries. Experimental derives start
+admission from the actual grounded/still body, released controls and no pending
+strike/dash/automatic walk. Its panel uses these operations and shared HP/condition
+state; room migration and persistence remain separate. Layout helpers borrow
+combat views instead of copying the entire battle for a few dimensions. The
+existing Wasm stack, memory and size budgets remain unchanged. Evidence:
+`docs/verification/srd-rest-controls-2026-11-08/README.md`.

@@ -2069,7 +2069,11 @@ lab_rest_motion :: (s:[]Lab,origin:EgBody,body:EgBody,walking:bool,jumping:bool)
   walked:=walking && (body.x!=origin.x || body.z!=origin.z);
   jumped:=jumping && origin.ground && !body.ground && body.y>origin.y;
   if s[0].creator[0].experimental {
-    if s[0].xc[0].started { rs_rest_motion(s[0].xc[0].b[0].c[0..<1],walked,jumped); }
+    if s[0].xc[0].started {
+      settled:=body.ground && abs(body.vx)<0.01 && abs(body.vz)<0.01;
+      s[0].xc[0].rest_seen=true; s[0].xc[0].rest_settled=settled && !walking && !jumping;
+      observed:=rs_rest_observe_motion(s[0].xc[0].b[..],0,walked,jumped,settled);
+    }
     return;
   }
   if !s[0].started || !s[0].player { return; }

@@ -66,6 +66,7 @@ XcWave :: struct { x: f32; z: f32; y: f32; fx: f32; fz: f32; left: f32; right: f
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XcCombat :: struct {
   started: bool; klass: int = 11; level: int = 1;
+  rest_seen:bool; rest_settled:bool; rest_refused:bool;
   dash_until: f32 = -1; dash_face: f32;
   wave: XcWave; wave_until: f32 = -1;
   bar: [XC_SLOTS] FbAb; bar_n: int;
@@ -186,6 +187,7 @@ xc_start :: (x: [] XcCombat, klass: int) {
   b[0].w = XC_SIDE; b[0].h = XC_SIDE;
   timing_selected := rs_set_timing(b,RS_ACTION_TIMING);
   areas_selected := rs_set_areas(b,RS_SPARE_CASTER_AREAS);   // house rule: no caster in its own blast
+  rest_scheduled := rs_rest_schedule_enable(b);
   b[0].dice[0].state = cast(u64) 13025 * 7919 + 3;
   _ := rs_add(b, fb_cl_hero(klass, "You", 0, 1), XC_MID, XC_MID);
   for i: 0..<XC_FOES { _ = rs_add(b, xc_foe(hostile.hostile_kind(i)), XC_AWAY, XC_AWAY); }
@@ -411,7 +413,7 @@ xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
   next:=proposed;
   if !rs_can_move(b[0].c[foe+1]) || rs_walk_speed(b,foe+1)<=0 { next.x=old.x; next.z=old.z; next.moving=false; }
   h[0].enemies[foe]=next;
-  rs_rest_motion(b[0].c[foe+1..<foe+2],moving && (next.x!=old.x || next.z!=old.z),false);
+  observed:=rs_rest_observe_motion(b,foe+1,moving && (next.x!=old.x || next.z!=old.z),false,!moving);
   xc_sync_permission(s,foe); xc_sync_vitals(s);
 }
 xc_hostile_tick :: (s:[] Lab,dt:f32) {
@@ -856,11 +858,36 @@ xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
   return XcAt.{x = u[23] + u[19] * r / z, y = u[27] - u[19] * up / z, ok = true};
 }
 // The column's height, CSS px: its header, and when open its twelve rows.
-xc_class_height :: (x: XcCombat) -> f32 { return ifx x.open then f32(XC_ROWS_TOP) + 12 * f32(XC_ROW) + 8 else f32(XC_HEAD); }
-xc_column :: (x: XcCombat) -> f32 { return xc_class_height(x) + 34; }
+xc_class_height :: (x:[]XcCombat) -> f32 { return ifx x[0].open then f32(XC_ROWS_TOP) + 12 * f32(XC_ROW) + 8 else f32(XC_HEAD); }
+xc_column :: (x:[]XcCombat) -> f32 { return xc_class_height(x) + 110; }
+xc_rest_box :: (x:[]XcCombat,i:int)->cc.Box {
+  left:=(32+f32(i%3)*106)*x[0].k; top:=x[0].top+(xc_class_height(x)+58+f32(i/3)*23)*x[0].k;
+  return cc.Box.{x0=left,y0=top,x1=left+96*x[0].k,y1=top+21*x[0].k};
+}
+xc_rest_request :: (s:[]Lab,request:int)->bool {
+  x:=s[0].xc[..]; cr:=s[0].creator[..];
+  if !cr[0].experimental || !x[0].started { return false; }
+  settled:=x[0].rest_seen && x[0].rest_settled && !cr[0].airborne && !cr[0].moving && !cr[0].walk.on &&
+    x[0].pend<0 && cr[0].clock>=x[0].dash_until && (s[0].held & (HOLD_W|HOLD_A|HOLD_S|HOLD_D|HOLD_JUMP))==0 && !s[0].stick_on;
+  ok:=rs_rest_control(x[0].b[..],0,request,settled);
+  x[0].rest_refused=!ok; xc_sync_permissions(s); xc_sync_vitals(s); return ok;
+}
+xc_rest_label :: (c:RsCreature)->string {
+  if c.long_rest.phase==2 { return "REST INTERRUPTED"; }
+  if c.long_rest.phase==1 {
+    if c.long_rest.mode==1 { return "REST: SLEEPING"; }
+    if c.long_rest.mode==3 { return "REST: EXERTION"; }
+    return "REST: WATCHING";
+  }
+  if c.rest.phase==1 { return "SHORT REST"; }
+  if c.rest.phase==2 { return "SHORT REST: CHOOSE HIT DICE"; }
+  return "REST";
+}
+XC_REST_LABELS :: [5]string.["SHORT","SLEEP","WATCH","HIT DIE","END REST"];
+XC_REST_REQUESTS :: [5]int.[RS_REST_SHORT,RS_REST_SLEEP,RS_REST_WATCH,RS_REST_DIE,RS_REST_END];
 // The bar's slot i, device px.
-xc_slot_box :: (x: XcCombat, i: int) -> cc.Box {
-  r := xc_slot_at(x.bar_n, i, x.w, x.h, x.k);
+xc_slot_box :: (x:[]XcCombat, i: int) -> cc.Box {
+  r := xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k);
   return cc.Box.{x0 = r[0], y0 = r[1], x1 = r[2], y1 = r[3]};
 }
 xc_in :: (r: cc.Box, px: f32, py: f32) -> bool { return px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1; }
@@ -917,7 +944,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // Refresh both permissions after shared expiry, independently of body hit stop.
   xc_sync_permissions(s);
   // the column: under ANIMATIONS (its rows give it room: cc dev_visible), at the top without it
-  col := xc_column(x[0]);
+  col := xc_column(x);
   cr[0].dev_below = col + f32(XC_GAP);
   x[0].top = ifx !cr[0].dev_animations then 20 * k else ifx cr[0].preview_collapsed then (52 + f32(XC_GAP)) * k else h - (20 + col) * k;
   bottom := x[0].top + col * k;
@@ -935,12 +962,18 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       n = cc.text(out, n, XC_CL_UP[c], 40 * k, y, 10 * k, ink_col(k, 0.91, 0.93, 0.88));
     }
   }
-  level_y := x[0].top + (xc_class_height(x[0]) + 23) * k;
+  level_y := x[0].top + (xc_class_height(x) + 23) * k;
   n = cc.text(out, n, "LEVEL", 32 * k, level_y, 10 * k, head);
   for level: 1..<7 {
     digit: [1] u8; digit[0] = cast(u8) (48 + level);
     n = cc.text(out, n, cast(string) digit[..], (100 + f32(level - 1) * 34) * k, level_y, 10 * k,
       ifx level == x[0].level then ink_col(k, 1, 0.75, 0.3) else ink_col(k, 0.91, 0.93, 0.88));
+  }
+  n=cc.text(out,n,ifx x[0].rest_refused then "REST UNAVAILABLE" else xc_rest_label(x[0].b[0].c[0]),32*k,
+    x[0].top+(xc_class_height(x)+49)*k,8*k,head);
+  for i:0..<5 {
+    r:=xc_rest_box(x,i);
+    n=cc.text(out,n,XC_REST_LABELS[i],r.x0,r.y0+16*k,8*k,ink_col(k,0.91,0.93,0.88));
   }
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
@@ -983,7 +1016,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // the bar: each slot's key over its picture; your class and your target over it
   m := 0;
   for i: 0..<x[0].bar_n {
-    r := xc_slot_box(x[0], i);
+    r := xc_slot_box(x, i);
     a := x[0].bar[i]; art := xc_art(a, i);
     m = put(x[0].media[..], m, "image "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
     m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
@@ -1011,19 +1044,19 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   }
   // a spell that found no one ahead: its icon flashes red a moment (no words)
   if x[0].fizzle >= 0 && x[0].fizzle < x[0].bar_n && now - x[0].fizzle_at < 0.45 {
-    r := xc_slot_box(x[0], x[0].fizzle); g := 1 - (now - x[0].fizzle_at) / 0.45; wd := 2.5 * k;
+    r := xc_slot_box(x, x[0].fizzle); g := 1 - (now - x[0].fizzle_at) / 0.45; wd := 2.5 * k;
     n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
     n = xc_line(out, n, r.x0, r.y0, r.x0, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x1, r.y0, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
     n = xc_line(out, n, r.x0 + 8 * k, r.y0 + 8 * k, r.x1 - 8 * k, r.y1 - 8 * k, wd, 0.95 * g, 0.2 * g, 0.15 * g);
   }
   if x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n {
-    r := xc_slot_box(x[0], x[0].hover);
+    r := xc_slot_box(x, x[0].hover);
     n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, 3 * k, 1, 0.8, 0.4);
     n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, 3 * k, 1, 0.8, 0.4);
   }
   if !x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n {
     a := x[0].bar[x[0].hover];
-    r := xc_slot_box(x[0], x[0].hover);
+    r := xc_slot_box(x, x[0].hover);
     cw := 358 * k; ch := 171 * k; cx := (r.x0 + r.x1) / 2;
     if cx - cw / 2 < 12 * k { cx = 12 * k + cw / 2; }
     if cx + cw / 2 > w - 12 * k { cx = w - 12 * k - cw / 2; }
@@ -1033,7 +1066,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   }
   x[0].media_n = m;
   if x[0].bar_n > 0 {
-    r0 := xc_slot_box(x[0], 0);
+    r0 := xc_slot_box(x, 0);
     line: [64] u8; ln := put(line[..], 0, XC_CL_UP[x[0].klass]);
     t := x[0].target;
     if t >= 0 && !hs[0].enemies[t].dead {
@@ -1076,9 +1109,9 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   if !x[0].seen || cr[0].walk.on { return false; }
   k := x[0].k;
   over := -1;
-  for i: 0..<x[0].bar_n { if xc_in(xc_slot_box(x[0], i), px, py) { over = i; } }
+  for i: 0..<x[0].bar_n { if xc_in(xc_slot_box(x, i), px, py) { over = i; } }
   x[0].hover = over;
-  in_col := px >= 12 * k && px <= 370 * k && py >= x[0].top && py <= x[0].top + xc_column(x[0]) * k;
+  in_col := px >= 12 * k && px <= 370 * k && py >= x[0].top && py <= x[0].top + xc_column(x) * k;
   if phase == 0 {
     x[0].down = -100; x[0].down_x = px; x[0].down_y = py; x[0].down_id = id;
     if over >= 0 { x[0].down = over; x[0].arranging = s[0].shift; x[0].drag_x = px; x[0].drag_y = py; return true; }
@@ -1095,7 +1128,10 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     }
     if d == -2 {
       if in_col {
-        if py >= x[0].top + xc_class_height(x[0]) * k {
+        if py >= x[0].top + (xc_class_height(x)+34) * k {
+          for i:0..<5 { if xc_in(xc_rest_box(x,i),px,py) { accepted:=xc_rest_request(s,XC_REST_REQUESTS[i]); } }
+        }
+        else if py >= x[0].top + xc_class_height(x) * k {
           level := cast(int) floor((px / k - 94) / 34) + 1;
           if level >= 1 && level <= 6 { xc_set_level(x, level); }
         }
@@ -1145,8 +1181,8 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   }
   if f >= 940 && f < 946 { return ifx hs[0].enemies[f - 940].dead then 1 else 0; }
   if f >= 950 && f < 962 { return cast(int) (x[0].top + (f32(XC_ROWS_TOP) + f32(f - 950) * f32(XC_ROW) + 12) * x[0].k); }
-  if f >= 970 && f < 976 { r := xc_slot_box(x[0], f - 970); return cast(int) ((r.x0 + r.x1) / 2); }
-  if f == 976 { r := xc_slot_box(x[0], 0); return cast(int) ((r.y0 + r.y1) / 2); }
+  if f >= 970 && f < 976 { r := xc_slot_box(x, f - 970); return cast(int) ((r.x0 + r.x1) / 2); }
+  if f == 976 { r := xc_slot_box(x, 0); return cast(int) ((r.y0 + r.y1) / 2); }
   if f >= 980 && f < 986 { return cast(int) (x[0].bar[f - 980].sp); }
   return -1;
 }
@@ -1340,14 +1376,14 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 #test "experimental combat level selector and multirow hotbar" {
   s: [1] Lab; xc_start(s[0].xc[..], FB_CL_WIZARD);
   x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800; x[0].top = 60;
-  y := x[0].top + xc_class_height(x[0]) + 15;
+  y := x[0].top + xc_class_height(x) + 15;
   #assert xc_pointer(s[..], 174, y, 0, 1);
   #assert xc_pointer(s[..], 174, y, 2, 1);
   #assert x[0].level == 3 && x[0].b[0].c[0].level == 3;
   x[0].bar_n = 12;
-  a := xc_slot_box(x[0], 0); b := xc_slot_box(x[0], 9);
+  a := xc_slot_box(x, 0); b := xc_slot_box(x, 9);
   #assert a.y0 < b.y0 && a.x0 >= 0 && b.x1 <= x[0].w;
-  x[0].open = false; y = x[0].top + xc_class_height(x[0]) + 15;
+  x[0].open = false; y = x[0].top + xc_class_height(x) + 15;
   #assert xc_pointer(s[..], 276, y, 0, 1);
   #assert xc_pointer(s[..], 276, y, 2, 1);
   #assert x[0].level == 6;
@@ -1356,7 +1392,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 #test "experimental combat shift drag swaps keys without casting and cancels safely" {
   s: [1] Lab; s[0].creator[0].experimental = true; xc_start(s[0].xc[..], FB_CL_WIZARD);
   x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
-  a := xc_slot_box(x[0], 0); b := xc_slot_box(x[0], 1); first := x[0].bar[0].sp; second := x[0].bar[1].sp;
+  a := xc_slot_box(x, 0); b := xc_slot_box(x, 1); first := x[0].bar[0].sp; second := x[0].bar[1].sp;
   s[0].shift = true;
   #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 7);
   #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 1, 7);
@@ -1836,4 +1872,57 @@ xc_check_ai_rate :: (speed:int)->bool {
   xc_monster_move(s[..],0,proposed); #assert b[0].c[1].rest.phase==1;
   proposed.x+=1; proposed.moving=true;
   xc_monster_move(s[..],0,proposed); #assert b[0].c[1].rest.phase==0;
+}
+
+#test "Experimental accepted player motion accounts Long Rest exertion and settled stopping returns to watch" #steps 2000000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..];
+  #assert rs_rest_schedule_enable(b) && rs_long_rest_start_owned(b,0,2,true);
+  rs_tick(b,3600);
+  origin:=EgBody.{ground=true}; body:=origin; body.z=1;
+  lab_rest_motion(s[..],origin,body,true,false);
+  #assert b[0].c[0].long_rest.mode==3 && b[0].c[0].long_rest.phase==1;
+  rs_tick(b,20);
+  // A blocked held key does not keep crediting walking after actual motion stops.
+  lab_rest_motion(s[..],body,body,true,false);
+  #assert b[0].c[0].long_rest.mode==2 && b[0].c[0].long_rest.exertion==20000000;
+  #assert b[0].c[0].long_rest.interruptions==0;
+}
+
+#test "Experimental rest controls require actual settled observations and refuse active movement or strikes" #steps 2000000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0); x:=s[0].xc[..]; b:=x[0].b[..];
+  #assert b[0].rest_auto && !xc_rest_request(s[..],RS_REST_SLEEP);
+  body:=EgBody.{ground=true}; lab_rest_motion(s[..],body,body,false,false);
+  for busy:0..<7 {
+    if busy==0 { s[0].held=HOLD_W; } if busy==1 { s[0].stick_on=true; }
+    if busy==2 { s[0].creator[0].airborne=true; } if busy==3 { s[0].creator[0].moving=true; }
+    if busy==4 { s[0].creator[0].walk.on=true; } if busy==5 { x[0].pend=0; }
+    if busy==6 { x[0].dash_until=s[0].creator[0].clock+1; }
+    #assert !xc_rest_request(s[..],RS_REST_SLEEP) && b[0].c[0].long_rest.phase==0;
+    s[0].held=0; s[0].stick_on=false; s[0].creator[0].airborne=false; s[0].creator[0].moving=false;
+    s[0].creator[0].walk.on=false; x[0].pend = -1; x[0].dash_until = -1;
+  }
+  #assert xc_rest_request(s[..],RS_REST_SLEEP) && rs_sleeping(b[0].c[0]) && lab_move_scale(s[..])==0;
+  #assert xc_rest_request(s[..],RS_REST_WATCH) && !rs_sleeping(b[0].c[0]) && b[0].c[0].long_rest.mode==2;
+  s[0].held=HOLD_W;
+  #assert xc_rest_request(s[..],RS_REST_END) && b[0].c[0].long_rest.phase==0;
+}
+#test "Experimental rest pointer controls preserve class selection and let Short Rest choices spend one Hit Die" #steps 2000000000 {
+  for collapsed:0..<2 {
+    s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); x:=s[0].xc[..]; b:=x[0].b[..];
+    x[0].seen=true; x[0].k=1; x[0].top=20; x[0].open=collapsed==0;
+    body:=EgBody.{ground=true}; lab_rest_motion(s[..],body,body,false,false);
+    b[0].c[0].hp=1; b[0].dice[0].fixed=true;
+    short:=xc_rest_box(x,0);
+    #assert xc_pointer(s[..],short.x0+10,short.y0+10,0,1) && xc_pointer(s[..],short.x0+10,short.y0+10,2,1);
+    #assert b[0].c[0].rest.phase==1 && x[0].klass==FB_CL_FIGHTER && x[0].level==1;
+    rs_tick(b,3600); #assert b[0].c[0].rest.phase==2;
+    die:=xc_rest_box(x,3);
+    #assert xc_pointer(s[..],die.x0+10,die.y0+10,0,1) && xc_pointer(s[..],die.x0+10,die.y0+10,2,1);
+    #assert b[0].c[0].hp>1 && b[0].c[0].rest.dice==0 && !x[0].rest_refused;
+    #assert xc_rest_request(s[..],RS_REST_END);
+    sleep:=xc_rest_box(x,1);
+    #assert xc_pointer(s[..],sleep.x0+10,sleep.y0+10,0,1) && xc_pointer(s[..],sleep.x0+10,sleep.y0+10,2,1);
+    #assert rs_sleeping(b[0].c[0]) && x[0].klass==FB_CL_FIGHTER && x[0].level==1;
+    #assert xc_rest_label(b[0].c[0])=="REST: SLEEPING";
+  }
 }

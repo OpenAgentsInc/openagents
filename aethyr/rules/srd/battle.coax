@@ -60,6 +60,7 @@
 #load "rest-damage.coax";
 #load "rest-casting.coax";
 #load "rest-events.coax";
+#load "rest-control.coax";
 #load "damage-protection.coax";
 #load "short-rest.coax";
 #load "rest-sleep.coax";
