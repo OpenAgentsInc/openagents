@@ -10,7 +10,7 @@ rs_rite_due_now :: (b: [] RsBattle, i: int, sp: int) -> bool {
 rs_ritual_begin :: (b: [] RsBattle, i: int, sp: int) -> bool {
   if !rs_executable_spell(sp) || i < 0 || i >= b[0].n || b[0].who != i { return false; }
   c := b[0].c[i];
-  if !rs_can_act(c) || c.raging || c.rite >= 0 { return false; }
+  if !rs_can_act(c) || rs_casting_barred(c) || c.rite >= 0 { return false; }
   s := rs_spell(sp);
   if s.part_of >= 0 { return false; }
   ready := rs_spell_ready(c, sp);

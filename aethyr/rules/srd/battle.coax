@@ -26,6 +26,7 @@
 #load "wizard-features.coax";
 #load "warlock-features.coax";
 #load "sorcerer-features.coax";
+#load "wild-shape.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -449,7 +450,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
 rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   if by < 0 || by >= b[0].n || by == j { return false; }
   c := b[0].c[j];
-  if !c.rebuke || c.reacted || !rs_capable(c) || c.raging || !rs_spell_ready(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
+  if !c.rebuke || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
   if !rs_cast_sees(b, j, by, SP_HELLISH_REBUKE) { return false; }   // a creature that you can see
   slot := 0;
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
@@ -493,7 +494,7 @@ rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + rs_shield_bonus
 // turn and with none after it.
 rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> bool {
   if !rs_executable_spell(sp) { return false; }
-  if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || b[0].c[i].raging { return false; }
+  if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || rs_casting_barred(b[0].c[i]) { return false; }
   s := rs_spell(sp);
   if !rs_cast_slot_shape(s.level, slot) { return false; }
   // a Ritual's final Magic action: its normal casting time, slot 0, read from a Wizard's book if need be
@@ -722,7 +723,7 @@ rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) {
 // turn, including against the triggering attack; its lowest free slot.
 rs_shield :: (b: [] RsBattle, j: int) -> bool {
   c := b[0].c[j];
-  if !c.shield_spell || c.reacted || !rs_capable(c) || c.raging || !rs_spell_ready(c, SP_SHIELD) { return false; }
+  if !c.shield_spell || c.reacted || !rs_capable(c) || rs_casting_barred(c) || !rs_spell_ready(c, SP_SHIELD) { return false; }
   slot := 0;
   for k: 1..<10 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
@@ -1385,6 +1386,7 @@ rs_tick_raw :: (b: [] RsBattle, dt: f32) {
     concentration_lost := rs_sync_concentration(b,i);
     if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
+    rs_wild_shape_lapse(b, i);
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
     for k: 0..<RS_EFFECTS { if rs_effect_uses_clock(b[0].c[i].eff[k].kind) && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
     _ := rs_stable_recover(b,i);
@@ -1678,6 +1680,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
 // a second creature within 5 feet of j and of the attacker (-1 none).
 rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) -> bool {
   if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) { return false; }
+  if b[0].c[i].wild_form != 0 { return rs_stat_multiattack(b, i, j, rs_monster_action(b[0].c[i].wild_form)); }   // Wild Shape: the Beast's Action
   if j < 0 || j >= b[0].n || b[0].c[j].dead || j == i || rs_feet_to(b, i, j) > 5 || rs_charmed_by(b[0].c[i],j) { return false; }
   if !rs_strikes_fit(b,i,j,b[0].c[i].weapon,1+b[0].c[i].extra_attack,true) { return false; }
   b[0].turn.action = true;

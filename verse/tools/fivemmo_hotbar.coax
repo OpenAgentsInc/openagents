@@ -106,7 +106,10 @@ fm_features :: (s: [] HbSlot) -> int {
   s[18] = HbSlot.{name = "cunning-dash", svg = "lorc/cloak-dagger.svg", tint = [3] f64.[0.7, 0.66, 0.78], key = "", title = "Cunning Action: Dash",
     body = "Your quick thinking and agility let you take the Dash action as a Bonus Action.",
     n = 1, dt = [6] string.["Bonus Action", "", "", "", "", ""], dc = [6] int.[3, 0, 0, 0, 0, 0]};
-  return 19;
+  s[19] = HbSlot.{name = "wild-shape", svg = "lorc/wolf-howl.svg", tint = [3] f64.[0.45, 0.95, 0.4], key = "", title = "Wild Shape",
+    body = "Shape-shift into a Beast form you know, with Temporary Hit Points equal to your Druid level. You can't cast spells while in the form. Press again to return to your own form.",
+    n = 3, dt = [6] string.["Bonus Action", "Wild Shape", "Back 9 s after it is spent", "", "", ""], dc = [6] int.[3, 3, 1, 0, 0, 0]};
+  return 20;
 }
 
 // ---- the engine's spells (spells.coax's RsSpell records)

@@ -115,6 +115,8 @@
 rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
   level := c[0].level;
   if c[0].klass == RS_DRUID {
+    // Druidic, p.42: Speak with Animals always prepared.
+    { _ := rs_grant_class_spell(c, SP_SPEAK_WITH_ANIMALS); }
     // Circle of the Land polar spells, p.46. Base-list entries are included
     // because always-prepared grants do not consume ordinary selections.
     if level >= 3 { _ := rs_grant_class_spell(c, SP_RAY_OF_FROST); }
@@ -193,4 +195,8 @@ rs_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
 rs_spell_root :: (sp: int) -> int #effects(all) {
   helper := rs_spell(sp).part_of;
   return ifx helper >= 0 then helper else sp;
+}
+#test "Druidic: a Druid preset always has Speak with Animals prepared (p.42)" {
+  c: [1] RsCreature; c[0].klass = RS_DRUID; c[0].level = 1;
+  rs_preset_spell_grants(c[..]); #assert rs_class_spell_granted(c[0], SP_SPEAK_WITH_ANIMALS) && !rs_class_spell_granted(c[0], SP_HOLD_PERSON);
 }

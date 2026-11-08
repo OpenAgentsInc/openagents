@@ -195,6 +195,8 @@ RS_EFFECTS :: 6;
 RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save: int; dc: int; }
 
 RS_NAME :: 24;
+// What Wild Shape replaces with a Beast's stat block (SRD 5.2.1 p. 42) and gives back after.
+RsWildKeep :: struct { str: int; dex: int; con: int; ac: int; speed: int; climb: int; form: int; weapon: int; ranged: int; }
 RsCreature :: struct {
   name: [RS_NAME] u8; name_n: int;
   team: int;
@@ -327,6 +329,9 @@ RsCreature :: struct {
   rebuke: bool;             // it knows Hellish Rebuke (a Warlock's Reaction to damage)
   vigor: bool;              // Fiendish Vigor (a Warlock's invocation, level 2+): False Life on itself with no slot, its die at its highest
   eldritch_mind: bool;      // Eldritch Mind (a Warlock's invocation): Advantage on Constitution saves to keep Concentration
+  wild_form: int;           // Wild Shape: the Beast form it is in (monsters.coax MON_*, 0 none), wild-shape.coax
+  wild_until: f32;          // when the form's hours (half its Druid level) are up
+  wild_keep: RsWildKeep;    // its own numbers the form replaced, back when it leaves the form
   // its size (RS_TINY..RS_GARGANTUAN, the low 3 bits) and a stat block's traits (RS_TRAIT_*:
   // Pack Tactics, Magic Resistance, Nimble Escape), monster-traits.coax
   form: int = RS_MEDIUM;
@@ -381,9 +386,10 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 5 { c[0].slots_max[3] = ifx level >= 6 then 3 else 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
-  // Wild Companion at 2 (p. 43), Wild Resurgence at 5 (p. 43), Call Lightning with its 3rd-level
-  // slots; Natural Recovery at 6 (p. 46): one circle spell (Hold Person) without a slot. Its level 5
-  // polar circle spells (Sleet Storm, Slow) aren't records yet.
+  // Primal Order: Warden (p. 42). Wild Companion at 2 (p. 43), Wild Resurgence at 5 (p. 43), Call
+  // Lightning with its 3rd-level slots; Natural Recovery at 6 (p. 46): one circle spell (Hold Person)
+  // without a slot.
+  c[0].order = RS_ORDER_WARDEN;
   c[0].companion = level >= 2; c[0].resurgence = level >= 5;
   if level >= 6 { c[0].free_spell = SP_HOLD_PERSON; c[0].natural_recovery=true; rs_use_set(c[..], RS_USE_FREE, 1); }
   // Wild Shape's two uses from level 2 (p. 42), spent here on the Circle of the Land's Land's Aid at 3
@@ -871,7 +877,7 @@ RS_FT_CUNNING_DASH :: 5; RS_FT_FLURRY :: 6; RS_FT_STUNNING_STRIKE :: 7; RS_FT_PA
 RS_FT_WHOLENESS :: 10; RS_FT_LAY_ON_HANDS :: 11; RS_FT_SACRED_WEAPON :: 12; RS_FT_TURN_UNDEAD :: 13; RS_FT_PRESERVE_LIFE :: 14;
 RS_FT_LANDS_AID :: 15; RS_FT_INSPIRATION :: 16; RS_FT_FONT :: 17; RS_FT_CUTTING_WORDS :: 18; RS_FT_INNATE_SORCERY :: 19;
 RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22; RS_FT_METABOLISM :: 23; RS_FT_DIVINE_SENSE :: 24;
-RS_FT_DIVINE_SPARK :: 25; RS_FT_BLESSED_HEALER :: 26; RS_FT_MEMORIZE :: 27; RS_FT_MAGICAL_CUNNING :: 28; RS_FT_FONT_OF_MAGIC :: 29;
+RS_FT_DIVINE_SPARK :: 25; RS_FT_BLESSED_HEALER :: 26; RS_FT_MEMORIZE :: 27; RS_FT_MAGICAL_CUNNING :: 28; RS_FT_FONT_OF_MAGIC :: 29; RS_FT_WILD_SHAPE :: 30;
 RsEvent :: struct {
   kind: int; spell: int; by: int; to: int;
   feat: int;                  // the class feature it tells of (RS_FT_*, 0 none)

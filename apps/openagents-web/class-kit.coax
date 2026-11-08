@@ -85,6 +85,10 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
     for j: 0..<n { if out[j].kind == a.kind && (a.kind != FB_SPELL || out[j].sp == a.sp) { duplicate = true; } }
     if !duplicate && n < out.count { out[n] = a; n += 1; }
   }
+  // Wild Shape from level 2 (p. 42), with an Attack for the Beast's own Action
+  if klass == FB_CL_DRUID && hero.uses_max[RS_USE_WILD] > 0 && n + 2 <= out.count {
+    out[n] = fb_feature(FB_WILD, "Wild Shape", "wild-shape"); out[n].tg = FB_SELF; out[n + 1] = xc_attack(); n += 2;
+  }
   // The preset's selected spells, not slot availability alone, determine the
   // playable bar. Stable ability identities preserve saved ordering/sounds.
   selected := 0;
@@ -262,7 +266,7 @@ xc_sound :: (a: FbAb, klass: int) -> XcSnd {
   if a.kind == FB_AIM { return xs("hold", "", "", "", 1.3); }
   if a.kind == FB_CDASH { return xs("teleport", "", "", "", 1.2); }
   if a.kind == FB_DASH { return xs("dash", "", "", "", 1); }
-  if a.kind == FB_RESURGE { return xs("rage-roar", "", "", "", 1.25); }   // Wild Shape's beast
+  if a.kind == FB_RESURGE || a.kind == FB_WILD { return xs("rage-roar", "", "", "", 1.25); }   // Wild Shape's beast
   return xs("arcane-cast", "", "", "", 1);
 }
 
@@ -310,4 +314,22 @@ xk_entry :: (c: int, slot: int) -> XkEntry {
 #test "class kits: every ability has a cast sound" #steps 400000000 {
   bar: [XC_SLOTS] FbAb;
   for c: 0..<FB_CL_N { n := xk_bar(c, bar[..]); for i: 0..<n { #assert xc_sound(bar[i], c).start.count > 0; } }
+}
+#test "the Druid's kit: Wild Shape and an Attack from level 2; in a form its spells wait and Attack is the Beast's" #steps 400000000 {
+  for level: 1..<7 {
+    bar: [XC_SLOTS] FbAb; n := xc_bar_level(FB_CL_DRUID, level, bar[..]);
+    w := -1; at := -1; spell := -1;
+    for k: 0..<n { if bar[k].kind == FB_WILD { w = k; } if bar[k].kind == FB_ATTACK { at = k; } if bar[k].kind == FB_SPELL && bar[k].lvl > 0 { spell = k; } }
+    #assert (w >= 0) == (level >= 2) && (at >= 0) == (level >= 2) && spell >= 0;
+    if w < 0 { continue; }
+    #assert bar[w].art == "wild-shape" && xc_aim_for(bar[w], 0).kind == XC_AIM_SELF && xc_url(bar[w].art) == XC_MMO_URL;
+    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+    _ := rs_add(b[..], fb_cl_hero(FB_CL_DRUID, "You", 0, level), 1, 1); _ = rs_add(b[..], rs_fighter("Foe", 1, 3), 2, 1);
+    b[0].c[1].ac = 10; rs_fresh(b[..], 0);
+    #assert fb_ready(b[..], 0, bar[w]) && fb_left(b[..], 0, bar[w]) == b[0].c[0].uses_max[RS_USE_WILD] && fb_ready(b[..], 0, bar[spell]);
+    #assert fb_use(b[..], 0, bar[w], -1, 0, 0, -1) && b[0].c[0].wild_form == (ifx level >= 4 then MON_BLACK_BEAR else MON_WOLF) && !fb_ready(b[..], 0, bar[spell]);
+    hp := b[0].c[1].hp; #assert fb_use(b[..], 0, bar[at], 1, 0, 0, -1) && b[0].c[1].hp < hp;
+    rs_fresh(b[..], 0); #assert fb_ready(b[..], 0, bar[w]) && fb_use(b[..], 0, bar[w], -1, 0, 0, -1) && b[0].c[0].wild_form == 0 && fb_ready(b[..], 0, bar[spell]);
+    b[0].c[0].uses[RS_USE_WILD] = 0; #assert !fb_ready(b[..], 0, bar[w]);
+  }
 }
