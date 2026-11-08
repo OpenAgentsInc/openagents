@@ -236,6 +236,18 @@ including a standing cost based on that grant. Selection seals before play;
 reset returns to strict. TIMING-PROFILE adds a native witness. General profiles,
 free casting/material/grant overrides and full world migration remain open.
 
+The [condition-roll change](../verification/srd-condition-rolls-2026-11-08/README.md)
+adds Petrified attack Advantage, automatic Strength/Dexterity save failure and
+all-damage resistance. Nearby ranged weapon hits against Paralyzed/Unconscious
+targets become criticals. Shared spell/Cunning Strike save resolution skips all
+dice and rescue resources on automatic failure; normal saves include named boon
+dice and existing rescue policy. Immunity/resistance/vulnerability ordering and
+nonstacking resistance are checked across all 13 damage types. The new core
+authority has zero mutation survivors; native scenarios, one sanitized native
+condition property and hotbar integration have scoped receipts. Prone remains
+owned by the independently landed movement policy. General checks, other
+conditions, lifecycle/concentration and remaining save producers keep #13039 open.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

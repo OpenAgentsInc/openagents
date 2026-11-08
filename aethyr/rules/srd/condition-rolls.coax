@@ -1,0 +1,57 @@
+// SRD 5.2.1 pp.17, 177, 186, 189, 191. Roll-local consequences of
+// the supplied condition state. Geometry, sight and lifecycle remain callers.
+#authority;
+
+RsConditionEdges :: struct { advantage: bool; disadvantage: bool; }
+// Range-independent sources only. Prone's range-dependent sources stay in
+// prone-movement.coax and are combined by rs_attack_edge.
+rs_condition_edges :: (actor: RsCreature, target: RsCreature) -> RsConditionEdges #effects(all) {
+  r: RsConditionEdges;
+  r.disadvantage = rs_has(actor,RS_BLINDED|RS_POISONED|RS_RESTRAINED);
+  r.advantage = rs_has(target,RS_BLINDED|RS_PARALYZED|RS_PETRIFIED|RS_RESTRAINED|RS_STUNNED|RS_UNCONSCIOUS);
+  return r;
+}
+
+// Paralyzed and Unconscious grant automatic critical hits at five feet;
+// Stunned and Petrified grant attack Advantage but do not grant these crits.
+rs_condition_critical :: (target: RsCreature, feet: int) -> bool #effects(all) {
+  return feet <= 5 && rs_has(target,RS_PARALYZED|RS_UNCONSCIOUS);
+}
+
+// These four conditions automatically fail Strength and Dexterity saves.
+// Callers restrict the ability; this says nothing about Constitution saves.
+rs_helpless :: (c: RsCreature) -> bool #effects(all) {
+  return rs_has(c,RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS);
+}
+rs_auto_fails :: (c: RsCreature, ability: int) -> bool #effects(all) {
+  return (ability == RS_STR || ability == RS_DEX) && rs_helpless(c);
+}
+
+// One admitted saving throw, including the existing optional rescue policies.
+// An automatic failure neither samples dice nor spends Inspiration/Own Luck.
+RsSavingThrow :: struct { total: int; passed: bool; automatic: bool; inspiration: int; luck: int; }
+rs_saving_throw :: (b: [] RsBattle, j: int, ability: int, dc: int) -> RsSavingThrow #effects(all) {
+  r: RsSavingThrow;
+  r.automatic = rs_auto_fails(b[0].c[j],ability);
+  if r.automatic { return r; }
+  d := rs_d20(b[0].dice[..],rs_save_edge(b,j,ability));
+  r.total = d.roll + rs_save_in(b,j,ability) + rs_boon_roll(b,j);
+  r.inspiration = rs_inspired_roll(b,j,r.total,dc);
+  r.total += r.inspiration;
+  r.luck = rs_own_luck(b,j,r.total,dc);
+  r.total += r.luck;
+  r.passed = r.total >= dc;
+  return r;
+}
+
+// Modifiers precede this helper; then immunity, one resistance, vulnerability.
+// Petrified and Rage do not multiply another resistance to the same damage.
+rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int #effects(all) {
+  c := b[0].c[j];
+  bit := 1 << kind;
+  if (c.immune & bit) != 0 { return 0; }
+  a := amount;
+  if (c.resist & bit) != 0 || rs_has(c,RS_PETRIFIED) || (c.raging && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING)) { a = a/2; }
+  if (c.vulnerable & bit) != 0 { a = a*2; }
+  return a;
+}

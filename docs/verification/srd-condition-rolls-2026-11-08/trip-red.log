@@ -1,0 +1,7 @@
+FAIL #test Cunning Strike Trip cannot save or spend rescue dice through an automatic Dexterity failure (3 ms)
+aethyr/rules/srd/condition-roll-checks.coax:44:5: error[E0406]: assertion failed
+      #assert rs_has(b[0].c[1],RS_PRONE) && b[0].c[1].inspired == 12 && b[0].c[1].uses[RS_USE_LUCK] == 1;
+      ^
+  note: in #test Cunning Strike Trip cannot save or spend rescue dice through an automatic Dexterity failure
+1 of 146 checks (--only 'Cunning Strike Trip cannot'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

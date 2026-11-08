@@ -1,0 +1,5 @@
+4212a511a319c005b1b6f43fb121245be5c305e8181f9bad18e63087a6264507  aethyr/rules/srd/battle.coax
+b71f216c85dcf38db5782c75757f2bbecde057a2ff48c4fe41cbe199df7d4598  aethyr/rules/srd/condition-rolls.coax
+118bce9908d55b725e41df65366408fbe0257698eb79360ca14d419cb24e12f0  aethyr/rules/srd/condition-roll-checks.coax
+203d6fd49134d1b3e99a560d8a1dc79ccd5bb23da23ba73c96be5a5506137057  apps/openagents-web/fivebar-test.coax
+3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9  coax/bin/coax

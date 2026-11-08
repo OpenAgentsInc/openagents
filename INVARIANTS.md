@@ -6574,6 +6574,25 @@ the changed payment, standing and edge policies. Evidence and the remaining
 world controls/timing/movement requirements are in
 `docs/verification/srd-prone-2026-11-08/README.md`.
 
+## Condition roll consequences share one admitted save result
+
+`aethyr/rules/srd/condition-rolls.coax` owns range-independent condition attack
+sources, five-foot Paralyzed/Unconscious hit criticals, automatic Strength and
+Dexterity save failures and damage defenses. Petrified grants attack Advantage,
+automatically fails those two saves and resists all damage. Immunity applies
+before one resistance and then vulnerability; overlapping resistance never
+halves twice. Nearby ranged weapon hits receive condition criticals too, while
+misses and Stunned/Petrified targets do not receive an automatic critical.
+
+Spell save programs and Cunning Strike share `rs_saving_throw`. An automatic
+failure consumes neither dice nor Inspiration/Own Luck. Normal saves retain
+named boon dice and the existing optional rescue order. Prone's separate
+range-dependent attack sources remain owned by `prone-movement.coax`.
+
+Source, core/native/hotbar evidence and remaining #13039 requirements:
+`docs/verification/srd-condition-rolls-2026-11-08/README.md`. This does not qualify
+every legacy save producer, condition lifecycle, immunity or concentration rule.
+
 ## Combat timing is a declared profile selected before the clock starts
 
 `RsBattle.timing` defaults to `RS_STRICT_TIMING`: six-second turns, exact feet

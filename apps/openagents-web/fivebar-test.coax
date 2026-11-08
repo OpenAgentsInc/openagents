@@ -25,6 +25,34 @@
   #assert !fb_seat_stand(b[..],s[..]);
 }
 
+#test "hotbar ranged spell hits use condition criticals and Petrified resistance at five feet" {
+  for mode: 0..<4 {
+    b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],101+mode);
+    b[0].c[FT_HERO] = rs_wizard("You",0,3); rs_place(b[..],FT_HERO,10,10);
+    rs_place(b[..],FT_FOE,10,11); b[0].c[FT_FOE].ac = 1;
+    conditions := [4] int.[RS_PARALYZED,RS_UNCONSCIOUS,RS_STUNNED,RS_PETRIFIED];
+    damage := [4] int.[10,10,5,2]; b[0].c[FT_FOE].cond = conditions[mode];
+    b[0].dice[0].fixed = true;
+    #assert fb_seat_use(b[..],s[..],fb_spell(SP_FIRE_BOLT,0,FB_FOE),FT_FOE,10,11,FT_ALLY);
+    #assert b[0].c[FT_FOE].hp == 400-damage[mode] && s[0].turn.action && !s[0].turn.slot_spent;
+    e := rs_recent_at(b[0].book[..],0);
+    #assert e.kind == RS_EV_DAMAGE && e.spell == SP_FIRE_BOLT && e.amount == damage[mode];
+  }
+}
+
+#test "a hotbar Rogue's Cunning Trip respects automatic saves and leaves rescue resources held" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],111);
+  b[0].c[FT_HERO] = rs_rogue("You",0,5); rs_place(b[..],FT_HERO,10,10);
+  b[0].c[FT_HERO].strike_plan = CS_TRIP;
+  rs_place(b[..],FT_FOE,10,11); b[0].c[FT_FOE].ac = 1;
+  b[0].c[FT_FOE].cond = RS_PARALYZED; b[0].c[FT_FOE].score[RS_DEX] = 30;
+  b[0].c[FT_FOE].inspired = 12; b[0].c[FT_FOE].own_luck = true; b[0].c[FT_FOE].uses[RS_USE_LUCK] = 1;
+  b[0].dice[0].fixed = true;
+  #assert fb_seat_use(b[..],s[..],fb_feature(FB_ATTACK,"ATTACK","attack"),FT_FOE,10,11,FT_ALLY);
+  #assert s[0].turn.action && s[0].turn.sneaked && rs_has(b[0].c[FT_FOE],RS_PRONE);
+  #assert b[0].c[FT_FOE].inspired == 12 && b[0].c[FT_FOE].uses[RS_USE_LUCK] == 1;
+}
+
 #test "hotbar Healing Word recovers a dying ally without erasing an independent Unconscious source" {
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].dice[0].fixed = true;

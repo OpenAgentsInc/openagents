@@ -1,0 +1,204 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/condition-roll-checks.coax",
+      "source_sha256": "118bce9908d55b725e41df65366408fbe0257698eb79360ca14d419cb24e12f0",
+      "checks": [
+        {
+          "name": "a Prone attacker has Disadvantage without another source masking it",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a nearby ranged attack against Prone cancels close-enemy Disadvantage rather than doubling it",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a nearby ranged weapon hit on Paralyzed or Unconscious is critical and a more distant hit is ordinary",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Petrified gives attack Advantage automatic Strength Dexterity failures and resistance to all damage",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Cunning Strike Trip cannot save or spend rescue dice through an automatic Dexterity failure",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "the shared Prone policy and condition criticals keep the exact five-foot boundary",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "damage defenses apply immunity once resistance once then vulnerability for all thirteen damage types",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "saving-throw resolution skips automatic failures before every roll and rescue resource",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "normal saving throws apply named boon dice then Inspiration and Own Luck only while needed",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "normal saving throws pass on an exact DC and fail one below it without inventing a rescue",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "spell programs automatically fail Petrified Dexterity saves but still resolve Constitution normally",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "condition criticals require a hit and do not turn Stunned into Paralyzed",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "6a68e80238523ce5a95de71bc8b57e781b9b4a2a38cf948c7c0905a6922daeff",
+            "binary_sha256": "896ad73ab2bcd0cf29775c683b54aeca7727e49d8048334994fb1ed07015404d"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "85e8cf787ea96f21496893d7f2c47bd3ea48c558e278833f50188da0f513ecd0",
+            "binary_sha256": "749b96739858291937e69555e05b3620ed1fab162a09c09bbe06f8e5de897445"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 12
+  },
+  "outcome": "passed"
+}

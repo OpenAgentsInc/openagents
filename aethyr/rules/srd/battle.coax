@@ -22,6 +22,7 @@
 #load "effect-admission.coax";
 #load "reaction-slot.coax";
 #load "effect-rolls.coax";
+#load "condition-rolls.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -771,15 +772,11 @@ rs_add_roll :: (l: [] RsLine, r: RsAttackRoll, bonus: int) {
 // Advantage (1), Disadvantage (-1) or neither on i's attack roll against j: every source the SRD
 // names for what the battle tracks, cancelling as the SRD says. Uses up a pending EF_WEAK.
 rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) -> int {
-  ups := 0; downs := 0;
+  conditions := rs_condition_edges(b[0].c[i],b[0].c[j]);
+  ups := ifx conditions.advantage then 1 else 0;
+  downs := ifx conditions.disadvantage then 1 else 0;
   t := b[0].clock;
   if b[0].c[j].outlined_by >= 0 && b[0].c[j].outlined_until > t { ups += 1; }
-  if rs_has(b[0].c[j], RS_RESTRAINED) { ups += 1; }
-  if rs_has(b[0].c[i], RS_RESTRAINED) { downs += 1; }
-  if rs_has(b[0].c[i], RS_POISONED) { downs += 1; }
-  if rs_has(b[0].c[i], RS_BLINDED) { downs += 1; }
-  if rs_has(b[0].c[j], RS_BLINDED) { ups += 1; }
-  if rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS) || rs_has(b[0].c[j], RS_STUNNED) { ups += 1; }
   if rs_take_weak(b, i) { downs += 1; }
   if !melee && rs_threatened(b, i) { downs += 1; }
   ups += rs_prone_ups(rs_has(b[0].c[j],RS_PRONE),rs_feet_to(b,i,j));
@@ -796,18 +793,6 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if rs_take_pending(b, i, EF_VEX, j) { ups += 1; }
   if b[0].who == i && b[0].turn.aimed { b[0].turn.aimed = false; ups += 1; }
   return rs_edge(ups, downs);
-}
-// Rage's Resistance to Bludgeoning, Piercing and Slashing: half the damage, rounded down.
-// Damage after Immunity (none), Resistance (half, rounded down) and Vulnerability (double):
-// Rage gives Resistance to Bludgeoning, Piercing and Slashing.
-rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int {
-  c := b[0].c[j];
-  bit := 1 << kind;
-  if (c.immune & bit) != 0 { return 0; }
-  a := amount;
-  if (c.resist & bit) != 0 || (c.raging && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING)) { a = a / 2; }
-  if (c.vulnerable & bit) != 0 { a = a * 2; }
-  return a;
 }
 
 // Advantage or Disadvantage on j's saving throw of an ability.
@@ -838,7 +823,6 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
     if potent_miss && st.kind != RS_S_DAMAGE { continue; }
     if st.kind == RS_S_ATTACK {
       melee := st.a == 1;
-      helpless := rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS);
       edge := rs_attack_edge(b, i, j, melee, false);
       // Innate Sorcery: Advantage on the attack rolls of its spells (any Disadvantage cancels it)
       if b[0].c[i].innate_until > b[0].clock { edge = ifx edge < 0 then 0 else 1; }
@@ -847,7 +831,7 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
       crit = r.crit;
       hit := r.hit;
       // a hit on a Paralyzed or Unconscious creature from within 5 feet is a Critical Hit
-      if hit && helpless && rs_feet_to(b, i, j) <= 5 { crit = true; }
+      if hit && rs_condition_critical(b[0].c[j],rs_feet_to(b,i,j)) { crit = true; }
       attack_hit = hit;
       l: [1] RsLine;
       rs_add_text(l[..], "  attack "); rs_add_roll(l[..], r, bonus);
@@ -859,17 +843,13 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
     } else if st.kind == RS_S_SAVE {
       ran_save = true;
       dc := rs_dc(b, i);
-      fails := rs_helpless(b[0].c[j]) && (st.a == RS_STR || st.a == RS_DEX);
-      d := rs_d20(b[0].dice[..], rs_save_edge(b, j, st.a));
-      total := d.roll + rs_save_in(b, j, st.a) + rs_boon_roll(b, j);
-      insp := ifx fails then 0 else rs_inspired_roll(b, j, total, dc);
-      total += insp;
-      if !fails { total += rs_own_luck(b, j, total, dc); }
-      saved = !fails && total >= dc;
+      saving := rs_saving_throw(b,j,st.a,dc);
+      fails := saving.automatic; total := saving.total; insp := saving.inspiration;
+      saved = saving.passed;
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " ");
       rs_add_text(l[..], RS_ABBR[st.a]); rs_add_text(l[..], " save ");
-      if fails { rs_add_text(l[..], ifx rs_has(b[0].c[j], RS_PARALYZED) then "fails (Paralyzed)" else ifx rs_has(b[0].c[j], RS_STUNNED) then "fails (Stunned)" else "fails (Unconscious)"); }
+      if fails { rs_add_text(l[..], ifx rs_has(b[0].c[j], RS_PARALYZED) then "fails (Paralyzed)" else ifx rs_has(b[0].c[j], RS_PETRIFIED) then "fails (Petrified)" else ifx rs_has(b[0].c[j], RS_STUNNED) then "fails (Stunned)" else "fails (Unconscious)"); }
       else {
         rs_add_int(l[..], total); if insp > 0 { rs_add_text(l[..], " ("); rs_add_int(l[..], insp); rs_add_text(l[..], " Inspiration)"); }
         rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ifx saved then ": success" else ": failure");
@@ -1454,7 +1434,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
   }
   crit := r.crit;
   hit := r.hit;
-  if hit && melee && (rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS)) { crit = true; }
+  if hit && rs_condition_critical(b[0].c[j],rs_feet_to(b,i,j)) { crit = true; }
   // Divine Smite follows a hit with a Melee weapon or an Unarmed Strike
   b[0].turn.last_hit = ifx hit && melee then j + 1 else 0;
   b[0].turn.last_crit = crit;
@@ -1649,8 +1629,6 @@ rs_aura :: (b: [] RsBattle, j: int) -> int {
   return best;
 }
 rs_save_in :: (b: [] RsBattle, j: int, ability: int) -> int { return rs_save_bonus(b[0].c[j], ability) + rs_aura(b, j); }
-// Whether a creature fails Strength and Dexterity saves outright: Paralyzed, Stunned or Unconscious.
-rs_helpless :: (c: RsCreature) -> bool { return rs_has(c, RS_UNCONSCIOUS) || rs_has(c, RS_PARALYZED) || rs_has(c, RS_STUNNED); }
 // Stunning Strike (p. 51): once a turn, on a hit with an Unarmed Strike or a Monk weapon, 1 Focus
 // Point; a Con save against its Focus DC or Stunned until the start of the Monk's next turn; on a
 // success, half Speed and Advantage on the next attack roll against it until then.
@@ -1702,15 +1680,14 @@ rs_cunning_effect :: (b: [] RsBattle, i: int, j: int, plan: int) {
   if plan == CS_TRIP && rs_has(b[0].c[j], RS_PRONE) { return; }
   ability := ifx plan == CS_TRIP then RS_DEX else RS_CON;
   dc := 8 + rs_mod(me.score[RS_DEX]) + rs_proficiency(me.level);
-  d := rs_d20(b[0].dice[..], rs_save_edge(b, j, ability));
-  total := d.roll + rs_save_in(b, j, ability);
-  total += rs_inspired_roll(b, j, total, dc);
-  total += rs_own_luck(b, j, total, dc);
-  ok := total >= dc;
+  saving := rs_saving_throw(b,j,ability,dc);
+  total := saving.total;
+  ok := saving.passed;
   if plan == CS_POISON && (b[0].c[j].immune_cond & RS_POISONED) != 0 { ok = true; }
   l: [1] RsLine;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], ifx plan == CS_TRIP then " Cunning Strike, Trip: DEX save " else " Cunning Strike, Poison: CON save ");
-  rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+  if saving.automatic { rs_add_text(l[..], "automatic failure"); }
+  else { rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); }
   rs_add_text(l[..], ifx ok then ": success" else ifx plan == CS_TRIP then ": failure, Prone" else ": failure, Poisoned");
   rs_tell(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, l[..]);
   if ok { return; }

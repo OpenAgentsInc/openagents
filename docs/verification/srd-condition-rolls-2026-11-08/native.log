@@ -1,0 +1,14 @@
+passed               aethyr/rules/srd/condition-roll-checks.coax
+  passed             a Prone attacker has Disadvantage without another source masking it
+  passed             a nearby ranged attack against Prone cancels close-enemy Disadvantage rather than doubling it
+  passed             a nearby ranged weapon hit on Paralyzed or Unconscious is critical and a more distant hit is ordinary
+  passed             Petrified gives attack Advantage automatic Strength Dexterity failures and resistance to all damage
+  passed             Cunning Strike Trip cannot save or spend rescue dice through an automatic Dexterity failure
+  passed             the shared Prone policy and condition criticals keep the exact five-foot boundary
+  passed             damage defenses apply immunity once resistance once then vulnerability for all thirteen damage types
+  passed             saving-throw resolution skips automatic failures before every roll and rescue resource
+  passed             normal saving throws apply named boon dice then Inspiration and Own Luck only while needed
+  passed             normal saving throws pass on an exact DC and fail one below it without inventing a rescue
+  passed             spell programs automatically fail Petrified Dexterity saves but still resolve Constitution normally
+  passed             condition criticals require a hit and do not turn Stunned into Paralyzed
+native checks: passed {"passed": 12}

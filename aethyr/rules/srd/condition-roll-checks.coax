@@ -1,0 +1,170 @@
+// Source-derived roll/damage fixtures: SRD 5.2.1 pp.17, 177, 186, 189, 191.
+#load "battle.coax";
+
+#test "a Prone attacker has Disadvantage without another source masking it" {
+  b: [1] RsBattle; co_field(b[..]); b[0].c[0].cond = RS_PRONE;
+  #assert rs_attack_edge(b[..],0,1,true,true) == -1;
+  rs_place(b[..],1,3,1);
+  #assert rs_attack_edge(b[..],0,1,false,false) == -1;
+}
+
+#test "a nearby ranged attack against Prone cancels close-enemy Disadvantage rather than doubling it" {
+  b: [1] RsBattle; co_field(b[..]); b[0].c[1].cond = RS_PRONE;
+  #assert rs_attack_edge(b[..],0,1,false,false) == 0;
+  #assert rs_shoot(b[..],0,1);
+  #assert b[0].dice[0].rolled == 2 && b[0].c[1].hp == 94;
+}
+
+#test "a nearby ranged weapon hit on Paralyzed or Unconscious is critical and a more distant hit is ordinary" {
+  for condition: [2] int.[RS_PARALYZED,RS_UNCONSCIOUS] {
+    for near: 0..<2 {
+      b: [1] RsBattle; co_field(b[..]); b[0].c[1].cond = condition;
+      if near == 0 { rs_place(b[..],1,3,1); }
+      #assert rs_shoot(b[..],0,1);
+      #assert b[0].c[1].hp == (ifx near == 1 then 91 else 94);
+      e := rs_recent_at(b[0].book[..],1);
+      #assert e.kind == RS_EV_ATTACK && e.damage == near;
+    }
+  }
+}
+
+#test "Petrified gives attack Advantage automatic Strength Dexterity failures and resistance to all damage" {
+  b: [1] RsBattle; co_field(b[..]); b[0].c[1].cond = RS_PETRIFIED;
+  #assert rs_attack_edge(b[..],0,1,true,true) == 1 && rs_helpless(b[0].c[1]);
+  for kind: 1..<14 { #assert rs_resisted(b[..],1,5,kind) == 2; }
+}
+
+#test "Cunning Strike Trip cannot save or spend rescue dice through an automatic Dexterity failure" {
+  for condition: [4] int.[RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
+    b: [1] RsBattle; co_field(b[..]);
+    b[0].c[0] = rs_rogue("Rogue",0,5); rs_place(b[..],0,1,1);
+    b[0].c[1].cond = condition; b[0].c[1].score[RS_DEX] = 30;
+    b[0].c[1].inspired = 12; b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1;
+    rs_cunning_effect(b[..],0,1,CS_TRIP);
+    #assert rs_has(b[0].c[1],RS_PRONE) && b[0].c[1].inspired == 12 && b[0].c[1].uses[RS_USE_LUCK] == 1;
+    #assert b[0].dice[0].rolled == 0;
+  }
+}
+
+#forall "each condition contributes only its range-independent roll and critical consequences" bit: 0..<15 {
+  down := [15] bool.[true,false,false,false,false,false,false,false,false,false,true,false,true,false,false];
+  up := [15] bool.[true,false,false,false,false,false,false,false,true,true,false,false,true,true,true];
+  automatic := [15] bool.[false,false,false,false,false,false,false,false,true,true,false,false,false,true,true];
+  critical := [15] bool.[false,false,false,false,false,false,false,false,true,false,false,false,false,false,true];
+  a: RsCreature; t: RsCreature;
+  a.cond = 1 << bit;
+  r := rs_condition_edges(a,t);
+  #assert r.disadvantage == down[bit] && !r.advantage;
+  a.cond = 0; t.cond = 1 << bit;
+  r = rs_condition_edges(a,t);
+  #assert r.advantage == up[bit] && !r.disadvantage;
+  #assert rs_helpless(t) == automatic[bit];
+  for ability: 0..<6 { #assert rs_auto_fails(t,ability) == (automatic[bit] && ability < 2); }
+  #assert rs_condition_critical(t,5) == critical[bit] && !rs_condition_critical(t,6);
+}
+
+#test "the shared Prone policy and condition criticals keep the exact five-foot boundary" {
+  for feet: [6] int.[0,1,4,5,6,10] {
+    #assert rs_prone_ups(true,feet) == (ifx feet <= 5 then 1 else 0);
+    #assert rs_prone_downs(false,true,feet) == (ifx feet > 5 then 1 else 0);
+  }
+  #assert rs_prone_downs(true,true,6) == 2;
+  t: RsCreature;
+  t.cond = RS_UNCONSCIOUS;
+  #assert rs_condition_critical(t,0) && rs_condition_critical(t,5) && !rs_condition_critical(t,6);
+}
+
+#test "damage defenses apply immunity once resistance once then vulnerability for all thirteen damage types" {
+  b: [1] RsBattle; co_field(b[..]);
+  physical := [14] bool.[false,false,true,false,false,false,false,false,true,false,false,false,true,false];
+  for kind: 1..<14 { for flags: 0..<32 { for amount: [4] int.[0,1,5,28] {
+    b[0].c[1].immune = ifx (flags & 1) != 0 then 1 << kind else 0;
+    b[0].c[1].resist = ifx (flags & 2) != 0 then 1 << kind else 0;
+    b[0].c[1].vulnerable = ifx (flags & 4) != 0 then 1 << kind else 0;
+    b[0].c[1].cond = ifx (flags & 8) != 0 then RS_PETRIFIED else RS_BLINDED;
+    b[0].c[1].raging = (flags & 16) != 0;
+    expected := amount;
+    if (flags & 2) != 0 || (flags & 8) != 0 || ((flags & 16) != 0 && physical[kind]) { expected = expected/2; }
+    if (flags & 4) != 0 { expected *= 2; }
+    if (flags & 1) != 0 { expected = 0; }
+    #assert rs_resisted(b[..],1,amount,kind) == expected;
+  } } }
+  b[0].c[1].cond = 0; b[0].c[1].raging = false;
+  b[0].c[1].immune = 1 << RS_COLD; b[0].c[1].resist = 1 << RS_FIRE; b[0].c[1].vulnerable = 1 << RS_ACID;
+  #assert rs_resisted(b[..],1,7,RS_COLD) == 0 && rs_resisted(b[..],1,7,RS_FIRE) == 3;
+  #assert rs_resisted(b[..],1,7,RS_ACID) == 14 && rs_resisted(b[..],1,7,RS_THUNDER) == 7;
+}
+
+#test "saving-throw resolution skips automatic failures before every roll and rescue resource" {
+  for condition: [4] int.[RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
+    for ability: 0..<6 {
+      b: [1] RsBattle; co_field(b[..]); b[0].c[1].cond = condition;
+      b[0].c[1].score = [6] int.[30,30,30,30,30,30];
+      b[0].c[1].inspired = 12; b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1;
+      #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_BLESS,spell=SP_BLESS,until=20});
+      r := rs_saving_throw(b[..],1,ability,10);
+      #assert r.automatic == (ability < 2) && r.passed == (ability >= 2);
+      #assert r.total == (ifx ability < 2 then 0 else 22) && b[0].dice[0].rolled == (ifx ability < 2 then 0 else 2);
+      #assert b[0].c[1].inspired == 12 && b[0].c[1].uses[RS_USE_LUCK] == 1 && b[0].book[0].seq == 0;
+    }
+  }
+}
+
+#test "normal saving throws apply named boon dice then Inspiration and Own Luck only while needed" {
+  for mode: 0..<4 {
+    b: [1] RsBattle; co_field(b[..]);
+    b[0].c[1].score = [6] int.[10,10,10,10,10,10];
+    b[0].c[1].inspired = 6; b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1;
+    if mode == 1 || mode == 3 { #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_BLESS,spell=SP_BLESS,until=20}); }
+    if mode == 2 || mode == 3 { #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_BANE,spell=SP_BANE,until=20}); }
+    r := rs_saving_throw(b[..],1,RS_DEX,14);
+    expected := [4] int.[18,15,16,18]; draws := [4] int.[3,3,4,5];
+    #assert r.passed && !r.automatic && r.total == expected[mode] && b[0].dice[0].rolled == draws[mode];
+    #assert r.inspiration == 3 && r.luck == (ifx mode == 1 then 0 else 5);
+    #assert b[0].c[1].inspired == 0 && b[0].c[1].uses[RS_USE_LUCK] == (ifx mode == 1 then 1 else 0);
+  }
+}
+
+#test "normal saving throws pass on an exact DC and fail one below it without inventing a rescue" {
+  for dc: 10..<12 {
+    b: [1] RsBattle; co_field(b[..]); b[0].c[1].score[RS_DEX] = 10;
+    r := rs_saving_throw(b[..],1,RS_DEX,dc);
+    #assert r.total == 10 && r.passed == (dc == 10) && !r.automatic && r.inspiration == 0 && r.luck == 0;
+    #assert b[0].dice[0].rolled == 1 && b[0].book[0].seq == 0;
+  }
+}
+
+#test "spell programs automatically fail Petrified Dexterity saves but still resolve Constitution normally" {
+  b: [1] RsBattle; co_field(b[..]); b[0].c[1].cond = RS_PETRIFIED;
+  b[0].c[1].score[RS_DEX] = 30; b[0].c[1].score[RS_CON] = 30;
+  b[0].c[1].inspired = 12; b[0].c[1].own_luck = true; b[0].c[1].uses[RS_USE_LUCK] = 1;
+  rs_affect(b[..],0,1,SP_LIGHTNING_BOLT,3,-1);
+  #assert b[0].c[1].hp == 88 && b[0].dice[0].rolled == 8;
+  #assert b[0].c[1].inspired == 12 && b[0].c[1].uses[RS_USE_LUCK] == 1;
+  e := rs_recent_at(b[0].book[..],1);
+  #assert e.kind == RS_EV_SAVE && e.amount == 0 && e.damage == 0;
+  #assert cast(string)e.text[0..<e.text_n] == "  Target DEX save fails (Petrified)";
+  b[0].dice[0].rolled = 0;
+  rs_affect(b[..],0,1,SP_THUNDERWAVE,1,-1);
+  #assert b[0].c[1].hp == 86 && b[0].dice[0].rolled == 3;
+  e = rs_recent_at(b[0].book[..],1);
+  #assert e.kind == RS_EV_SAVE && e.amount == 20 && e.damage == 1;
+}
+
+#test "condition criticals require a hit and do not turn Stunned into Paralyzed" {
+  b: [1] RsBattle; co_field(b[..]); b[0].c[1].cond = RS_PARALYZED; b[0].c[1].ac = 100;
+  #assert rs_shoot(b[..],0,1) && b[0].c[1].hp == 100;
+  e := rs_recent_at(b[0].book[..],0); #assert e.kind == RS_EV_MISS && e.damage == 0;
+  b[0].turn.action = false; b[0].c[1].cond = RS_STUNNED; b[0].c[1].ac = 1;
+  #assert rs_shoot(b[..],0,1) && b[0].c[1].hp == 94;
+  e = rs_recent_at(b[0].book[..],1); #assert e.kind == RS_EV_ATTACK && e.damage == 0;
+}
+
+co_field :: (b: [] RsBattle) {
+  b[0].w = 16; b[0].h = 8; b[0].dice[0].fixed = true;
+  _ := rs_add(b,rs_skeleton("Attacker",0),1,1);
+  _ = rs_add(b,rs_skeleton("Target",1),2,1);
+  b[0].c[1].hp = 100; b[0].c[1].hp_max = 100; b[0].c[1].ac = 1;
+  b[0].c[1].immune = 0; b[0].c[1].resist = 0; b[0].c[1].vulnerable = 0;
+  b[0].who = 0; b[0].dice[0].rolled = 0;
+}
