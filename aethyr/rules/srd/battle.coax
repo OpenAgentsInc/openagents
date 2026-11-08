@@ -1386,7 +1386,7 @@ rs_tick_raw :: (b: [] RsBattle, dt: f32) {
     concentration_lost := rs_sync_concentration(b,i);
     if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
-    rs_wild_shape_lapse(b, i);
+    if b[0].c[i].wild_form != 0 { rs_wild_shape_lapse(b, i); }
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
     for k: 0..<RS_EFFECTS { if rs_effect_uses_clock(b[0].c[i].eff[k].kind) && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
     _ := rs_stable_recover(b,i);
