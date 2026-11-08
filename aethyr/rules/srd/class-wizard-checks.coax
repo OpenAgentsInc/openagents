@@ -31,6 +31,9 @@ cw_evocations :: (c: RsCreature) -> int {
   for level: [2] int.[1, 5] {
     c := rs_wizard("W", 0, level); #assert rs_rest_slot_budget(c, true) == (level + 1) / 2 && rs_rest_slot_budget(c, false) == 0;
   }
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1);   // a spellbook Ritual, unprepared (ritual-cast.coax)
+  #assert rs_spellbook_add(b[0].c[0..<1], RS_EXEC_SOURCE[SP_WATER_BREATHING]) && !rs_spell_ready(b[0].c[0], SP_WATER_BREATHING);
+  rs_start_turn(b[..], 0); #assert rs_ritual_begin(b[..], 0, SP_WATER_BREATHING) && b[0].c[0].slots[3] == 2;
 }
 
 #test "Scholar p.78: from level 2, Expertise in Arcana" {
