@@ -57,7 +57,7 @@ HUD_VERTS :: 150000; LABEL_VERTS :: 900;   // the HUD's text is most of it: the 
 SCENE_VERTS :: 100000;   // MAX_VERTICES - HUD_VERTS
 U_FRAME_FLOATS :: 104;   // 26 vec4s: the camera, the grid, the zones (gpu/fivelab.coax FivelabU)
 U_ENV :: 208;            // the camera's resolved environment, 27 vec4s (aethyr/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
-U_ENV_WORDS :: 108;      // envf.ENV_FRAME_FLOATS
+U_ENV_WORDS :: envf.ENV_FRAME_FLOATS;   // the record's words, from its owner (#13067: no second copy of the layout)
 UNIFORM_FLOATS :: 316;   // 79 vec4s (gpu/fivelab.bindings, gpu/charactercreator.bindings)
 // The frame store (a read-only storage buffer, group 0 binding 1: coax/web/host.js frame store),
 // the tokens and squares bg_fs reads, too many for a uniform block's 64 KB: every creature's token

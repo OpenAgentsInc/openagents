@@ -326,6 +326,8 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
  indirect:=mul3(albedo,scale3(cg_hemisphere(u,n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
  colour:=add3(indirect,mul3(albedo,cg_irradiance(u,n,direct,0,visibility)));
+ // the developer's light views (?light=ambient|direct, everglade2.coax e2_light_view; u[51], 0 off): one term, no albedo
+ lv:=u[51];if (lv>0.5f32 && lv<2.5f32) {lt:=ifx lv<1.5f32 then scale3(cg_hemisphere(u,n),ao*fill) else scale3(cg_sun_colour(u),direct*visibility);return v4(lt.x,lt.y,lt.z,0);}
  if (foliage) {
   // Thin leaves transmit rear sunlight; volume normals and ambient mask stay separate.
   back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);scatter:=(0.15f32+0.60f32*back)*(1.0f32-abs(ndl)*0.65f32)*visibility;
@@ -379,6 +381,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  if (film && kind==CM_SKIN) {key=scale3(mul3(cm_skin(diffuse,f0,r,n,g,sun,view),sunc),visibility);}
  else {key=add3(key,scale3(mul3(cm_ggx(f0,r,n,sun,view),sunc),visibility));}
  colour:=add3(key,indirect);
+ lv:=u[51];if (lv>0.5f32 && lv<2.5f32) {lt:=ifx lv<1.5f32 then scale3(add3(cg_hemisphere(u,n),scale3(v3(0.85f32,0.72f32,0.52f32),fill)),ao) else scale3(sunc,direct);return v4(lt.x,lt.y,lt.z,0);}   // the light views, as the world's
  if (metal>0.0f32) {
   // a rough metal reflects what reaches it from every side: the sky, the camera-side fill and the sun
   around:=add3(scale3(add3(cg_hemisphere(u,n),scale3(v3(0.85f32,0.72f32,0.52f32),fill)),ao),scale3(sunc,direct));
@@ -395,7 +398,8 @@ everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
  tex:=render_sample_layer8_bias(sheets,sheet,uv,cast(s32)s.slice,1);
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
-  sky:=mix3(cg_decode(cg_sky(u,normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
+  // the painted plate follows the frame's resolved sky (#13067): the glade's record tints it by 1
+  rd:=normalize3(ray);sky:=mix3(cg_decode(cg_sky(u,rd,wg_at3(u,32),u[2])),mul3(v3(tex.x,tex.y,tex.z),cg_sky_tint(u,rd)),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
  }
  if (tex.w<0.35f32) {gpu_demote_helper();}
  if (s.dye.w>11.5f32 && !e2_dither_keep(v2(s.pos.x,s.pos.y),s.dye.x)) {gpu_demote_helper();}
@@ -493,7 +497,7 @@ everglade2_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_e
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(u,add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=fmax(cg_panel_opacity(pixel,u[0],u[1],u[4]),e2_pane_cover(pixel,u));fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(u,cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),fmax(cg_panel_edge(pixel,u[0],u[1],u[4]),e2_pane_edge(pixel,u))*0.55f32*fade);}}result=cg_walk_veil(result,u);result=e2_arrival(result,pixel,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else ifx u[51]>2.5f32 then cg_encode(add3(c,cg_sun_veil(uv))) else cg_output(u,add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=fmax(cg_panel_opacity(pixel,u[0],u[1],u[4]),e2_pane_cover(pixel,u));fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(u,cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),fmax(cg_panel_edge(pixel,u[0],u[1],u[4]),e2_pane_edge(pixel,u))*0.55f32*fade);}}result=cg_walk_veil(result,u);result=e2_arrival(result,pixel,u);return v4(result.x,result.y,result.z,1);
 }
 everglade2_fx_vs_in :: struct {a:V4;b:V4;c:V4;d:V4;}
 everglade2_fx_vs :: (id:u32,instance:u32,in_:everglade2_fx_vs_in,u:[]f32)->FivelabV {return fivelab_fx_vs(id,instance,fivelab_fx_vs_in.{a=in_.a,b=in_.b,c=in_.c,d=in_.d},u);}

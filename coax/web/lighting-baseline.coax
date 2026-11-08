@@ -39,6 +39,7 @@
 #load "../lib/image/jpeg.coax";
 #load "../lib/image/jpeg_enc.coax";
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the glade's noon, as a page writes it (#13066)
+#load "../../verse/style-preset.coax";   // painterly's compatibility night, for e2-night (#13067)
 
 // ---- the bounds of the identity check (declared before any later step runs it) --------------
 // An image differs when more than LB_BLOCKS_PPM parts per million of its 8 px blocks moved (a
@@ -70,23 +71,55 @@ LB_SETTLE_MS :: 120000;
 // move, up at CSS pixels), cX,Y (a click), wDYxN (N wheel turns of DY), kKEY (a key press),
 // Csuffix (capture NAME-suffix, or NAME when the suffix is empty), P (the GPU probes), E (the
 // environment the page wrote every frame so far, into env.tsv).
-LB_LOADS :: 7;
-LB_NAMES :: [7] string.["cc", "cc-phone", "handover", "e2-arrival", "e2-sunlit-path", "e2-deep-canopy", "exp-combat"];
-LB_PATHS :: [7] string.["/worlds/character-creator", "/worlds/character-creator", "/worlds/character-creator",
-  "/worlds/everglade2?at=1", "/worlds/everglade2?at=60", "/worlds/everglade2?at=300", "/worlds/everglade-experimental"];
-LB_WIDE :: [7] int.[1920, 390, 1920, 1920, 1920, 1920, 1920];
-LB_TALL :: [7] int.[1080, 844, 1080, 1080, 1080, 1080, 1080];
+// made-glade (#13067): a made painterly realm that authors no light (/worlds/built#SLUG, myrealm.coax),
+// its spec answered in the page (LB_STUBS: the static server has no realm API), rendered under the
+// glade; its plan's G reads its style block back (myrealm.coax realm_probe 5998, 6000 + i).
+// e2-night (#13067): Everglade II's arrival with painterly's compatibility midnight in place of the
+// record the page writes (LB_STUBS "night": the setup script's uniform hook puts those words at the
+// record's place in every frame block the page sends), so the real renderer draws the whole frame,
+// its painted sky plate included, from a night record.
+// e2-view-* (#13067): the developer's light views (?light=VIEW, aethyr/render/environment-debug.coax).
+// Loads after exp-combat are new in #13067: the P1.1 baseline has no image of them (LB_FRESH).
+LB_LOADS :: 13;
+LB_FRESH :: 7;   // loads from here on are new captures
+LB_NAMES :: [13] string.["cc", "cc-phone", "handover", "e2-arrival", "e2-sunlit-path", "e2-deep-canopy", "exp-combat", "made-glade",
+  "e2-night", "e2-view-ambient", "e2-view-direct", "e2-view-pregrade", "e2-view-regions"];
+LB_PATHS :: [13] string.["/worlds/character-creator", "/worlds/character-creator", "/worlds/character-creator",
+  "/worlds/everglade2?at=1", "/worlds/everglade2?at=60", "/worlds/everglade2?at=300", "/worlds/everglade-experimental", "/worlds/built#quiet-glade",
+  "/worlds/everglade2?at=1", "/worlds/everglade2?at=60&light=ambient", "/worlds/everglade2?at=60&light=direct", "/worlds/everglade2?at=60&light=pregrade",
+  "/worlds/everglade2?at=300&light=regions"];
+LB_WIDE :: [13] int.[1920, 390, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920];
+LB_TALL :: [13] int.[1080, 844, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080];
+// The made realm's spec: painterly, a meadow, a few trees and rocks, no time of day and no mist.
+LB_MADE_SPEC :: "realm quiet-glade\nname Quiet Glade\nstyle painterly\nground meadow\nowner 0\ntool jump 1\nfeature trees round 9\nfeature rocks 6\nfeature plants 10\n";
+// A page script answering GET /api/playtest/realms/quiet-glade with that spec; other requests go on.
+LB_MADE_STUB :: "{const f=globalThis.fetch;globalThis.fetch=function(u,o){const s=String(u&&u.url||u);if(s.includes('/api/playtest/realms/quiet-glade')&&!(o&&o.method==='POST'))return Promise.resolve(new Response(LB_SPEC,{status:200,headers:{'content-type':'text/plain'}}));return f.apply(this,arguments)}}";
+LB_STUBS :: [13] string.["", "", "", "", "", "", "", "made", "night", "", "", "", ""];
+// painterly's compatibility profile at midnight, as the page would pack it
+lb_night_words :: () -> [envf.ENV_FRAME_FLOATS] f32 #effects(all) {
+  e := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP));
+  return env_gpu_pack(env_profile_sample(e.profile, 0.0));
+}
+#test "the night record is painterly's midnight: a moon, a dark sky, the glade's film" {
+  w := lb_night_words(); g := envf.env_frame_glade_words();
+  #assert w[0] == g[0] && w[3] == 0;   // the layout, at midnight
+  z := ENV_GPU_CHANNELS + ENV_C_SKY_ZENITH; #assert w[z] < g[z] && w[z + 1] < g[z + 1];
+  #assert w[ENV_GPU_DIRECT] < g[ENV_GPU_DIRECT] && w[ENV_GPU_CHANNELS + ENV_C_EXPOSURE] == g[ENV_GPU_CHANNELS + ENV_C_EXPOSURE];
+}
 // Everglade II's own readiness: planted, its kits in, its ground's tiles published and baked live
 LB_E2_READY :: "coaxial.fieldProbe(3)>0&&coaxial.fieldProbe(4)>0&&coaxial.fieldProbe(92)>0&&coaxial.fieldProbe(9)===0";
-LB_READY :: [7] string.[LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, "true"];
-LB_PLANS :: [7] string.[
+LB_READY :: [13] string.[LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, "true", "coaxial.guardProbe(0)===1&&coaxial.guardProbe(5998)===1",
+  LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY];
+LB_PLANS :: [13] string.[
   "s60;C-glade;P;w-200x4;s30;C-closeup;w200x4;s30;d1400,560;s10;C-turn-0;m1520,560;s10;C-turn-1;m1640,560;s10;C-turn-2;m1760,560;s10;C-turn-3;u1760,560;E",
   "s60;C-glade;E",
   "s60;c260,697;s15;C-0;s45;C-1;s90;C-2;s240;C-3;s315;C-4;E",
   "s60;C;E",
   "s60;C;E",
   "s60;C;E",
-  "d960,600;m1260,600;m1560,600;u1560,600;s30;k1;s4;C;P;E"];
+  "d960,600;m1260,600;m1560,600;u1560,600;s30;k1;s4;C;P;E",
+  "s60;C;G",
+  "s60;C;P;E", "s60;C;E", "s60;C;E", "s60;C;E", "s60;C;E"];
 
 // ---- the GPU probes: one line of the measurement entry each, writing lb_out[i] ---------------
 LB_PROBE_NAMES :: [LB_PROBES] string.[
@@ -127,7 +160,7 @@ LB_PIX_R :: 4;   // a 9x9 mean
 // ---- browser glue, injected before the page's own scripts ------------------------------------
 // clip mode, the render target read back, the tier held, no visit counted, console errors kept,
 // and the shader modules the page compiles kept (with their device) for the GPU probes.
-LB_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialClipRoom=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';try{localStorage.setItem('verse.quality','high')}catch{}Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});globalThis.lbErrors=[];{const ce=console.error;console.error=(...a)=>{lbErrors.push(a.map(String).join(' ').slice(0,300));ce(...a)}}globalThis.__lbU={};globalThis.__lbEnv={frames:0,distinct:0,step:0,span:0,t0:-1,t1:-1,first:null,last:null};if(globalThis.GPUQueue){const wb=GPUQueue.prototype.writeBuffer;globalThis.__lbWB=wb;GPUQueue.prototype.writeBuffer=function(b,o,d,doff,sz){try{if(o===0&&b&&(b.usage&GPUBufferUsage.UNIFORM)&&d&&d.BYTES_PER_ELEMENT===4){const at=doff||0;const a=new Float32Array(d.buffer,d.byteOffset+at*4,sz!==undefined?sz:d.length-at).slice();__lbU[a.length]=a;if(a.length===316){const e=a.slice(208,316),L=__lbEnv;L.frames++;if(L.t0<0)L.t0=e[3];L.t1=e[3];if(!L.last){L.distinct=1;L.first=e}else{let m=0,diff=false;for(let i=4;i<108;i++){const q=Math.abs(e[i]-L.last[i]);if(q>m)m=q;if(e[i]!==L.last[i])diff=true}if(diff)L.distinct++;if(m>L.step)L.step=m;for(let i=4;i<108;i++){const q=Math.abs(e[i]-L.first[i]);if(q>L.span)L.span=q}}L.last=e}}}catch(_){}return wb.apply(this,arguments)}}globalThis.__lbShaders=[];if(globalThis.GPUDevice){const f=GPUDevice.prototype.createShaderModule;GPUDevice.prototype.createShaderModule=function(d){if(d&&typeof d.code==='string'&&__lbShaders.length<64)__lbShaders.push({code:d.code,device:this});return f.call(this,d)}}";
+LB_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialClipRoom=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';try{localStorage.setItem('verse.quality','high')}catch{}Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});globalThis.lbErrors=[];{const ce=console.error;console.error=(...a)=>{lbErrors.push(a.map(String).join(' ').slice(0,300));ce(...a)}}globalThis.__lbU={};globalThis.__lbEnv={frames:0,distinct:0,step:0,span:0,t0:-1,t1:-1,first:null,last:null};if(globalThis.GPUQueue){const wb=GPUQueue.prototype.writeBuffer;globalThis.__lbWB=wb;GPUQueue.prototype.writeBuffer=function(b,o,d,doff,sz){try{if(o===0&&b&&(b.usage&GPUBufferUsage.UNIFORM)&&d&&d.BYTES_PER_ELEMENT===4){const at=doff||0;if(globalThis.__lbEnvSet&&(sz!==undefined?sz:d.length-at)===316)new Float32Array(d.buffer,d.byteOffset+at*4,316).set(__lbEnvSet,208);const a=new Float32Array(d.buffer,d.byteOffset+at*4,sz!==undefined?sz:d.length-at).slice();__lbU[a.length]=a;if(a.length===316){const e=a.slice(208,316),L=__lbEnv;L.frames++;if(L.t0<0)L.t0=e[3];L.t1=e[3];if(!L.last){L.distinct=1;L.first=e}else{let m=0,diff=false;for(let i=4;i<108;i++){const q=Math.abs(e[i]-L.last[i]);if(q>m)m=q;if(e[i]!==L.last[i])diff=true}if(diff)L.distinct++;if(m>L.step)L.step=m;for(let i=4;i<108;i++){const q=Math.abs(e[i]-L.first[i]);if(q>L.span)L.span=q}}L.last=e}}}catch(_){}return wb.apply(this,arguments)}}globalThis.__lbShaders=[];if(globalThis.GPUDevice){const f=GPUDevice.prototype.createShaderModule;GPUDevice.prototype.createShaderModule=function(d){if(d&&typeof d.code==='string'&&__lbShaders.length<64)__lbShaders.push({code:d.code,device:this});return f.call(this,d)}}";
 // The GPU probes: the page's module that has every glade function, plus one compute entry (BODY,
 // built by lb_probe_js) writing N vec4s at a binding no page entry uses; dispatched once on the
 // page's device and read back. Returns "SHA256 v0 v1 ..." (the module's SHA-256), "none" or "error ...".
@@ -270,11 +303,12 @@ lb_capture_name :: (load: string, suffix: string, o: [] LbBuf) -> string { o[0].
   seen: [64] LbBuf; n := 0; nb: [1] LbBuf;
   for l: 0..<LB_LOADS {
     plan := LB_PLANS[l]; k := lb_fields(plan, ';');
-    #assert lb_field(plan, ';', k - 1) == "E";   // every load ends by reading back the environment it wrote
+    last := lb_field(plan, ';', k - 1);   // every load ends by reading back the light it wrote: E, or G for the made realm's style block
+    #assert last == "E" || (last == "G" && LB_NAMES[l] == "made-glade");
     for i: 0..<k {
       op := lb_field(plan, ';', i); #assert op.count > 0;
       c := op[0];
-      #assert c == 's' || c == 'd' || c == 'm' || c == 'u' || c == 'c' || c == 'w' || c == 'k' || c == 'C' || c == 'P' || c == 'E';
+      #assert c == 's' || c == 'd' || c == 'm' || c == 'u' || c == 'c' || c == 'w' || c == 'k' || c == 'C' || c == 'P' || c == 'E' || c == 'G';
       if c == 's' { #assert args_number(op[1..<op.count]).ok; }
       if c == 'd' || c == 'm' || c == 'u' || c == 'c' { #assert lb_xy(op[1..<op.count]).ok; }
       if c == 'C' {
@@ -284,7 +318,7 @@ lb_capture_name :: (load: string, suffix: string, o: [] LbBuf) -> string { o[0].
       }
     }
   }
-  #assert n <= LB_CAPTURES && n == 16;
+  #assert n <= LB_CAPTURES && n == 22;
 }
 
 // ---- the browser -----------------------------------------------------------------------------
@@ -328,7 +362,7 @@ Lb :: struct {
   probes: [1] LbBuf;       // probes.tsv
   env: [1] LbBuf;          // env.tsv
   run: [1] LbBuf;          // run.tsv
-  names: [LB_CAPTURES] LbBuf; widths: [LB_CAPTURES] int; heights: [LB_CAPTURES] int; n: int;
+  names: [LB_CAPTURES] LbBuf; widths: [LB_CAPTURES] int; heights: [LB_CAPTURES] int; n: int; fresh: [LB_CAPTURES] bool; load: int;
   thumbs: [LB_CAPTURES * LB_THUMB_W * LB_THUMB_H * 4] u8;
   failed: int;
 }
@@ -391,7 +425,7 @@ lb_capture :: (c: [] Cdp, s: [] Lb, name: string, px: [] u8, jpg: [] u8) -> bool
   lb_pixel_probes(s, name, px, w, h);
   r := s[0].run[..]; lb_put(r, name); lb_put(r, "\tframe\t"); lb_int(r, w); lb_put(r, "x"); lb_int(r, h); lb_put(r, "\t"); lb_put(r, lb_field(t, ' ', 3)); lb_put(r, "\n");
   if s[0].n < LB_CAPTURES {
-    k := s[0].n; s[0].names[k].n = 0; lb_put(s[0].names[k..<k + 1], name); s[0].widths[k] = w; s[0].heights[k] = h; lb_thumb(s, k, px, w, h); s[0].n += 1;
+    k := s[0].n; s[0].names[k].n = 0; lb_put(s[0].names[k..<k + 1], name); s[0].widths[k] = w; s[0].heights[k] = h; lb_thumb(s, k, px, w, h); s[0].fresh[k] = s[0].load >= LB_FRESH; s[0].n += 1;
   }
   print("  % %x% %\n", name, w, h, lb_field(t, ' ', 3));
   return true;
@@ -435,9 +469,48 @@ lb_env :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
   return args_number(frames).value > 0;
 }
 
+// The made realm's style block against the glade's resolved noon, word by word (G, into env.tsv): the
+// words the made realm's shader reads as light (verse/style-preset.coax SU_*: the key's colour, its
+// direction, the sky and ground ambient, the haze's air and sun tint, the zenith, the horizon and the
+// saturation), read back from the page (myrealm.coax realm_probe 6000 + i, millionths) and computed
+// here from env_glade_profile independently of the page's own verse_style_glade_env.
+LB_SU :: [9] int.[0, 4, 20, 24, 40, 44, 48, 52, 73];   // SU_KEY, SU_KEY_DIR, SU_SKY_AMB, SU_GROUND_AMB, SU_HAZE_COLOUR, SU_HAZE_KEY, SU_ZENITH, SU_HORIZON, SU_TONE + 1
+lb_glade_style :: (o: [] f32) #effects(all) {
+  r := env_profile_sample(env_glade_profile(), 0.5); c := r.channels; d := r.direct;
+  m := d.r; if d.g > m { m = d.g; } if d.b > m { m = d.b; }
+  w := [25] f32.[d.r / m, d.g / m, d.b / m, r.dir.x, r.dir.y, r.dir.z, c.ambient.upper.r, c.ambient.upper.g, c.ambient.upper.b,
+    c.ambient.lower.r, c.ambient.lower.g, c.ambient.lower.b, c.fog.air.r, c.fog.air.g, c.fog.air.b, c.fog.sun_tint.r, c.fog.sun_tint.g, c.fog.sun_tint.b,
+    c.sky.zenith.r, c.sky.zenith.g, c.sky.zenith.b, c.sky.horizon.r, c.sky.horizon.g, c.sky.horizon.b, c.presentation.saturation];
+  for i: 0..<25 { o[i] = w[i]; }
+}
+// the 25 words' places in the style block
+lb_glade_word :: (i: int) -> int { return ifx i < 24 then LB_SU[i / 3] + i % 3 else LB_SU[8]; }
+#test "the made realm's light words are the glade's key, ambient, haze, sky and saturation" {
+  o: [25] f32; lb_glade_style(o[..]);
+  #assert abs(o[0] - 1) < 0.000001 && abs(o[3] + 0.426) < 0.001 && o[6] == 0.49f32 && o[11] == 0.16f32 && o[24] == 1.16f32;
+  #assert lb_glade_word(0) == 0 && lb_glade_word(5) == 6 && lb_glade_word(23) == 54 && lb_glade_word(24) == 73;
+}
+LB_GLADE_PPM :: 2;   // a word read back in millionths, rounded: within 2 millionths of the glade's
+lb_made_glade :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
+  want: [25] f32; lb_glade_style(want[..]); js: [1] LbBuf; lb_put(js[..], "[coaxial.guardProbe(5998)");
+  for i: 0..<25 { lb_put(js[..], ",coaxial.guardProbe("); lb_int(js[..], 6000 + lb_glade_word(i)); lb_put(js[..], ")"); }
+  lb_put(js[..], "].join(' ')");
+  out: [1] LbBuf; t := lb_eval_text(c, lb_text(js[..]), out[0].b[..]);
+  if lb_fields(t, ' ') != 26 { print("FAIL % style readback: %\n", name, ifx t.count > 0 then t else cdp_error(c)); return false; }
+  off := 0; worst := 0.0;
+  for i: 0..<25 {
+    got := args_number(lb_field(t, ' ', 1 + i)).value; ref := floor(f64(want[i]) * 1000000.0 + 0.5);
+    dd := abs(got - ref); if dd > worst { worst = dd; } if dd > f64(LB_GLADE_PPM) { off += 1; }
+  }
+  glade := lb_field(t, ' ', 0) == "1";
+  o := s[0].env[..]; lb_put(o, name); lb_put(o, "\tstyle\tglade="); lb_put(o, ifx glade then "1" else "0"); lb_put(o, "\t25 words\tworst_ppm="); lb_fixed(o, worst, 0); lb_put(o, "\t-\t-\t"); lb_int(o, off); lb_put(o, "\n");
+  print("  % style block: glade %, % of 25 light words off the glade's noon (worst % millionths)\n", name, ifx glade then "yes" else "NO", off, worst);
+  return glade && off == 0;
+}
+
 // One page load: a new Chrome, the page pinned, ready and settled, then its plan.
 lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
-  w := LB_WIDE[l]; h := LB_TALL[l]; name := LB_NAMES[l];
+  w := LB_WIDE[l]; h := LB_TALL[l]; name := LB_NAMES[l]; s[0].load = l;
   print("% (% %x%)\n", name, LB_PATHS[l], w, h);
   c: [1] Cdp;
   if !cdp_launch(c[..], w, h, "lighting-baseline-") { print("FAIL %: Chrome: %\n", name, cdp_error(c[..])); return false; }
@@ -448,6 +521,16 @@ lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
   clock: [4096] u8; cn := fs_read("coax/web/clip-clock.js", clock[..]);
   if cn < 1 { print("FAIL: run from the repository root (coax/web/clip-clock.js)\n"); return false; }
   if !lb_script(c[..], LB_SETUP) || !lb_script(c[..], cast(string) clock[0..<cn]) || !lb_script(c[..], LB_PROBE_FN) { print("FAIL %: the setup scripts\n", name); return false; }
+  if LB_STUBS[l] == "made" {
+    st: [1] LbBuf; lb_put(st[..], "globalThis.LB_SPEC="); q: [4096] u8; j: [1] Jo; jo_start(j[..], q[..]); jo_str(j[..], LB_MADE_SPEC); lb_put(st[..], jo_text(j[..])); lb_put(st[..], ";"); lb_put(st[..], LB_MADE_STUB);
+    if !lb_script(c[..], lb_text(st[..])) { print("FAIL %: the realm spec's page script\n", name); return false; }
+  }
+  if LB_STUBS[l] == "night" {
+    st: [1] LbBuf; lb_put(st[..], "globalThis.__lbEnvSet=new Float32Array(["); nw := lb_night_words();
+    for i: 0..<envf.ENV_FRAME_FLOATS { if i > 0 { lb_put(st[..], ","); } lb_fixed(st[..], f64(nw[i]), 9); }
+    lb_put(st[..], "]);");
+    if !lb_script(c[..], lb_text(st[..])) { print("FAIL %: the night record's page script\n", name); return false; }
+  }
   url: [1] LbBuf; lb_put(url[..], base); lb_put(url[..], LB_PATHS[l]);
   p: [4096] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], lb_text(url[..])); jo_end(j[..]);
   if cdp_call(c[..], "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { print("FAIL %: navigate: %\n", name, cdp_error(c[..])); return false; }
@@ -486,6 +569,7 @@ lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
     else if op[0] == 'C' { ok = lb_capture(c[..], s, lb_capture_name(name, arg, nb[..]), px, jpg); }
     else if op[0] == 'P' { ok = lb_gpu_probes(c[..], s, name); }
     else if op[0] == 'E' { ok = lb_env(c[..], s, name); }
+    else if op[0] == 'G' { ok = lb_made_glade(c[..], s, name); }
     if !ok { print("FAIL %: step %\n", name, op); return false; }
   }
   errors := lb_eval_text(c[..], "JSON.stringify(lbErrors)", word[..]);
@@ -502,6 +586,8 @@ lb_compare :: (s: [] Lb, baseline: string, px: [] u8, other: [] u8, jpg: [] u8, 
     file[0].n = 0; lb_put(file[..], name); lb_put(file[..], ".jpg");
     nb := fs_read(fs_join(baseline, lb_text(file[..]), path[..]), jpg);
     na := fs_read(fs_join(s[0].out, lb_text(file[..]), path[..]), jpg[LB_JPG / 2..<LB_JPG]);
+    if nb <= 0 && s[0].fresh[k] { print("  % is new in #13067: no baseline image\n", name); lb_put(cmp[..], name); lb_put(cmp[..], "\t-\t-\t-\t-\t-\tnew\n"); continue; }
+    if nb <= 0 || na <= 0 { print("FAIL % has no matching baseline image\n", name); lb_put(cmp[..], name); lb_put(cmp[..], "\t-\t-\t-\t-\t-\tmissing\n"); ok = false; continue; }
     ia := jpg_info(jpg[0..<nb]); ib := jpg_info(jpg[LB_JPG / 2..<LB_JPG / 2 + na]);
     if nb <= 0 || na <= 0 || ia.status != JPG_OK || ib.status != JPG_OK || ia.w != w || ia.h != h || ib.w != w || ib.h != h ||
        jpg_decode(jpg[0..<nb], work, other) != JPG_OK || jpg_decode(jpg[LB_JPG / 2..<LB_JPG / 2 + na], work, px) != JPG_OK {
@@ -554,7 +640,7 @@ lb_compare :: (s: [] Lb, baseline: string, px: [] u8, other: [] u8, jpg: [] u8, 
 // ---- --build: the units these pages need, and nothing else (never the whole site's build.sh) ---
 // Each runs in one of the machine's heavy-build slots when ~/.openagents/build-slots/heavy.sh exists.
 // Fields: the command and its arguments, '|' between them; ROOT is the repository's absolute path.
-LB_BUILDS :: [10] string.[
+LB_BUILDS :: [11] string.[
   "coax/web/tool.sh|ROOT/coax/web/build-audio.coax|ROOT|ROOT/apps/openagents-web/build/host-audio.wasm|ROOT/apps/openagents-web/build/host-audio-timeline.wasm",
   "coax/web/tool.sh|ROOT/coax/web/build-layers.coax|ROOT|ROOT/apps/openagents-web/build/host-layers.wasm",
   "coax/web/tool.sh|ROOT/coax/web/build-media.coax|ROOT|ROOT/apps/openagents-web/build/host-media.wasm",
@@ -564,7 +650,8 @@ LB_BUILDS :: [10] string.[
   "coax/web/tool.sh|ROOT/coax/web/build-latency.coax|ROOT|ROOT/apps/openagents-web/build/latency-client.wasm",
   "coax/web/tool.sh|ROOT/aethyr/tools/page-pack.coax|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.pack|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.vpk3",
   "coax/web/wasm.sh|ROOT/apps/openagents-web/everglade2.coax|ROOT/apps/openagents-web/everglade2-face.c|ROOT/apps/openagents-web/build/everglade2.wasm|ROOT/apps/openagents-web/everglade-step.coax|ROOT/aethyr/sticks.coax",
-  "coax/web/wasm.sh|ROOT/apps/openagents-web/fivelab.coax|ROOT/apps/openagents-web/fivelab-face.c|ROOT/apps/openagents-web/build/fivelab.wasm|ROOT/apps/openagents-web/everglade-step.coax|ROOT/aethyr/sticks.coax"];
+  "coax/web/wasm.sh|ROOT/apps/openagents-web/fivelab.coax|ROOT/apps/openagents-web/fivelab-face.c|ROOT/apps/openagents-web/build/fivelab.wasm|ROOT/apps/openagents-web/everglade-step.coax|ROOT/aethyr/sticks.coax",
+  "/usr/bin/env|COAXIAL_RUN_STEPS=250000000|ROOT/coax/web/wasm.sh|ROOT/apps/openagents-web/myrealm.coax|ROOT/apps/openagents-web/myrealm-face.c|ROOT/apps/openagents-web/build/myrealm.wasm|ROOT/verse/edit/computer-wire.coax|ROOT/coax/lib/crypto/entropy.coax"];
 LB_BUILD_MS :: 900000;
 // a build line's field i with ROOT replaced by root
 lb_build_arg :: (line: string, i: int, root: string, o: [] LbBuf) -> string {
@@ -575,7 +662,8 @@ lb_build_arg :: (line: string, i: int, root: string, o: [] LbBuf) -> string {
 #test "build lines name only these pages' units, rooted" {
   o: [1] LbBuf;
   #assert lb_build_arg(LB_BUILDS[8], 0, "/r", o[..]) == "coax/web/wasm.sh" && lb_build_arg(LB_BUILDS[8], 3, "/r", o[..]) == "/r/apps/openagents-web/build/everglade2.wasm";
-  for i: 0..<LB_BUILDS.count { #assert lb_fields(LB_BUILDS[i], '|') >= 3 && lb_fields(LB_BUILDS[i], '|') <= 6; }
+  for i: 0..<LB_BUILDS.count { #assert lb_fields(LB_BUILDS[i], '|') >= 3 && lb_fields(LB_BUILDS[i], '|') <= 8; }
+  #assert lb_build_arg(LB_BUILDS[10], 2, "/r", o[..]) == "/r/coax/web/wasm.sh";
 }
 lb_build :: () -> bool {
   rb: [4096] u8; root := fs_realpath(".", rb[..]);
@@ -584,11 +672,13 @@ lb_build :: () -> bool {
   out: [65536] u8; err: [65536] u8;
   for b: 0..<LB_BUILDS.count {
     line := LB_BUILDS[b]; n := lb_fields(line, '|');
-    args: [8] LbBuf; argv: [8] string; k := 0;
+    args: [10] LbBuf; argv: [10] string; k := 0;
     if slotted { argv[0] = lb_text(slot[..]); k = 1; }
     for i: 0..<n {
       a := args[i..<i + 1]; a[0].n = 0;
-      if i == 0 { lb_put(a, root); lb_put(a, "/"); lb_put(a, lb_field(line, '|', 0)); } else { t: [1] LbBuf; lb_put(a, lb_build_arg(line, i, root, t[..])); }
+      f0 := lb_field(line, '|', 0);
+      if i == 0 && f0.count > 0 && f0[0] == '/' { lb_put(a, f0); }   // an absolute program (/usr/bin/env for a build's step budget)
+      else if i == 0 { lb_put(a, root); lb_put(a, "/"); lb_put(a, f0); } else { t: [1] LbBuf; lb_put(a, lb_build_arg(line, i, root, t[..])); }
       argv[k] = lb_text(a); k += 1;
     }
     print("build: %\n", lb_field(lb_field(line, '|', 1), '/', lb_fields(lb_field(line, '|', 1), '/') - 1));

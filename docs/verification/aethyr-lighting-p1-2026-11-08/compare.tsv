@@ -1,0 +1,44 @@
+capture	blocks	moved	moved_ppm	mae	peak	result
+cc-glade	32400	1618	49938	1.1532	103.750	FAIL
+cc-closeup	32400	1675	51697	1.3545	116.125	FAIL
+cc-turn-0	32400	1619	49969	1.1530	103.750	FAIL
+cc-turn-1	32400	1616	49876	1.1531	103.750	FAIL
+cc-turn-2	32400	1615	49845	1.1533	103.875	FAIL
+cc-turn-3	32400	1613	49783	1.1518	104.031	FAIL
+cc-phone-glade	5194	21	4043	0.0740	67.063	FAIL
+handover-0	32400	70	2160	0.0352	20.297	FAIL
+handover-1	32400	0	0	0.0000	2.000	pass
+handover-2	32400	0	0	0.0000	2.000	pass
+handover-3	32400	0	0	0.2854	5.328	pass
+handover-4	32400	125	3858	1.7710	13.000	FAIL
+e2-arrival	32400	0	0	0.0000	0.109	pass
+e2-sunlit-path	32400	111	3425	1.7607	12.813	FAIL
+e2-deep-canopy	32400	29466	909444	9.3226	50.328	FAIL
+exp-combat	32400	93	2870	0.0437	70.828	FAIL
+made-glade	-	-	-	-	-	new
+e2-night	-	-	-	-	-	new
+e2-view-ambient	-	-	-	-	-	new
+e2-view-direct	-	-	-	-	-	new
+e2-view-pregrade	-	-	-	-	-	new
+e2-view-regions	-	-	-	-	-	new
+
+probe	kind	baseline	now	delta	result
+handover-4:p50_25	pixel	166.519	167.988	4.235000	FAIL
+handover-4:p25_50	pixel	121.704	122.975	4.716000	FAIL
+handover-4:p50_50	pixel	143.469	146.741	4.544000	FAIL
+handover-4:p25_75	pixel	156.864	153.605	3.259000	FAIL
+handover-4:p50_75	pixel	180.284	176.926	3.358000	FAIL
+e2-sunlit-path:p25_25	pixel	226.494	224.049	3.889000	FAIL
+e2-sunlit-path:p50_25	pixel	227.753	226.877	4.543000	FAIL
+e2-sunlit-path:p25_75	pixel	146.383	143.284	3.099000	FAIL
+e2-sunlit-path:p50_75	pixel	179.926	176.864	3.062000	FAIL
+e2-deep-canopy:p25_25	pixel	65.506	66.284	8.296000	FAIL
+e2-deep-canopy:p50_25	pixel	130.753	125.642	7.889000	FAIL
+e2-deep-canopy:p75_25	pixel	147.123	135.395	11.728000	FAIL
+e2-deep-canopy:p25_50	pixel	88.938	79.235	9.703000	FAIL
+e2-deep-canopy:p50_50	pixel	148.136	141.802	6.334000	FAIL
+e2-deep-canopy:p75_50	pixel	98.173	87.679	13.408000	FAIL
+e2-deep-canopy:p25_75	pixel	145.765	125.358	20.407000	FAIL
+e2-deep-canopy:p50_75	pixel	186.802	166.420	20.382000	FAIL
+e2-deep-canopy:p75_75	pixel	118.667	100.531	18.136000	FAIL
+probes	192	outside	18

@@ -1,0 +1,38 @@
+cc	load	/worlds/character-creator	1920x1080	ready_ms=2708	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+cc-glade	frame	1920x1080	4a566f8048d5c97786a1567dc2574f7c777fbf9cec67e1f4f0eaa00657885097
+cc	shader	74545194c529e69eed9514d50cb367cbceddaae9eed0e743972ac7577e1fb6b5
+cc-closeup	frame	1920x1080	94971f0aa08932fe1fca312c27e27a465564e562a9542ed5b1e88f33710623b3
+cc-turn-0	frame	1920x1080	f17a914145a082c597b5f4d2d87a708695e5be2df0e83ef9fa33bcc8e02a4f2c
+cc-turn-1	frame	1920x1080	5877b08f38a5fe067fd048968f6790c979a1cb21d8c57a6fe1cb480bfa68e43d
+cc-turn-2	frame	1920x1080	dd7a7f6709f681b9ca7dba878e5dc1f02ad8a9cb6e383429be548f45cb7eb2b5
+cc-turn-3	frame	1920x1080	2ef73d827b6d05cf54b85118c237fb48600f43249c77f5cc6979a04c9f7acb0e
+cc-phone	load	/worlds/character-creator	390x844	ready_ms=1846	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+cc-phone-glade	frame	390x844	421318fd08e201c4249e660fd7212e0bdc6dcc4993074d9fe8aa3e410d042b65
+handover	load	/worlds/character-creator	1920x1080	ready_ms=2670	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+handover-0	frame	1920x1080	015936971d5df2ae0f3242789752554c8e6ff422a1090ddcdf50a02e621d1536
+handover-1	frame	1920x1080	2efddfe4c6feeeb01357ef5ce785e02826b38b3f3b06199ad9ab13df17711384
+handover-2	frame	1920x1080	d08e22cd50109d508bdba99266025cfd7d7e223a17197aad3d9c2d5f71010508
+handover-3	frame	1920x1080	d42044d097ef5c88193d405c95467f27f31244a255d9725eb4ca50a0b929af62
+handover-4	frame	1920x1080	799c1b44a14b31dd84aeabaecbb21d838fc46dda009029de4709a086c95d8d08
+e2-arrival	load	/worlds/everglade2?at=1	1920x1080	ready_ms=2646	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":629,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-arrival	frame	1920x1080	297c80eaea02dc77dc1f5ec390a482fe0b4f321fe4bad011048500a7f96d8d9c
+e2-sunlit-path	load	/worlds/everglade2?at=60	1920x1080	ready_ms=2706	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-sunlit-path	frame	1920x1080	71a29f4870eb086c98dd04a2a8ffa6b344e663c1b93fe664cb288b79a7d88e31
+e2-deep-canopy	load	/worlds/everglade2?at=300	1920x1080	ready_ms=2828	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-deep-canopy	frame	1920x1080	65fd33c7555fa665a75b3e7cbfdb9db1ebf4f644647f59bd102cbc2351e62eb5
+exp-combat	load	/worlds/everglade-experimental	1920x1080	ready_ms=2491	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"fivelab","clock":"fixed:0.5","field10":null,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+exp-combat	frame	1920x1080	1ecc4a0884c5976935b309e69cfe7d84aa7f783f4c9de290369fe4788ed8e09d
+exp-combat	shader	9e362abeae01df924024e010f719c9a2a3c1f54aba91ee0399cef04f9e964764
+made-glade	load	/worlds/built#quiet-glade	1920x1080	ready_ms=654	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"myrealm","clock":"fixed:0.5","field10":null,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+made-glade	frame	1920x1080	caa3b10bc27ce40304b0c4411f3e24102e464d984fdae91c0fe452d8d94ee065
+e2-night	load	/worlds/everglade2?at=1	1920x1080	ready_ms=2626	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":629,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-night	frame	1920x1080	796f193a4ea1eb996dbbd5043f12577d4157acd33ab382d08c1dfb0d1c69f853
+e2-night	shader	74545194c529e69eed9514d50cb367cbceddaae9eed0e743972ac7577e1fb6b5
+e2-view-ambient	load	/worlds/everglade2?at=60&light=ambient	1920x1080	ready_ms=2620	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-view-ambient	frame	1920x1080	6f7e462311feddbf84946e2fcae9fe5bdf73786669ac0df9ce0db1466fe6232d
+e2-view-direct	load	/worlds/everglade2?at=60&light=direct	1920x1080	ready_ms=2648	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-view-direct	frame	1920x1080	077cc4efab6fd60adb990c1b3110e58cfbc538a666cf114add93760b9e6ff030
+e2-view-pregrade	load	/worlds/everglade2?at=60&light=pregrade	1920x1080	ready_ms=2594	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-view-pregrade	frame	1920x1080	a087096c3967655c590fa15ae87dfadab1fac20ad554df943e4c488401f74bdf
+e2-view-regions	load	/worlds/everglade2?at=300&light=regions	1920x1080	ready_ms=2623	still_frames=4	settled=yes	webgpu=hardware apple metal-3	{"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+e2-view-regions	frame	1920x1080	a459e55a29bdf1a9449d9863e93bc92554f07e872160dd3775677d32469eb933

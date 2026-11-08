@@ -7448,3 +7448,15 @@ exactly the constants"), the `every frame writes the camera's environment` check
 ("a made painterly realm with nothing authored is the glade's resolved light"), and
 `docs/verification/aethyr-lighting-p1-6-2026-11-08/`.
 
+Since #13067 this is the ordinary default, with no switch back to the old constants. Everglade II's
+painted sky plate follows the record too: the plate's colour is scaled by the record's sky gradient
+over the glade's at the same height (`paint_env_sky_tint`, through `cg_sky_tint`), so the glade's
+record leaves the plate as painted and a night or dusk record darkens it with the land. The
+developer's light views (`?light=ambient|direct|pregrade|postgrade|regions`,
+`aethyr/render/environment-debug.coax`) are off without the query; they write uniform word 51 (0 is
+the ordinary frame) and a readout of the camera's region weights, ambient, key and grade, and they
+never change the record the passes read. Checks: `coax test aethyr/render/painterly.coax` ("the sky
+plate's tint is 1 under the glade"), `coax test aethyr/render/environment-debug.coax`, the `?light=`
+check in `apps/openagents-web/everglade2.coax`, and the Phase 1 receipt
+`docs/verification/aethyr-lighting-p1-2026-11-08/`.
+

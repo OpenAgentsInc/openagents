@@ -2,11 +2,14 @@
 
 Date: 2026-11-08. Source baseline: `7fab57cd75`. Revised 2026-11-08 (owner
 direction: the Character Create glade is the look).
-Status: Phase 1 in progress. Done: step 0, the glade lifted into the shared painterly default
-(#13060; identity receipt `docs/verification/aethyr-lighting-p1-0-2026-11-08/`), step 1, the baseline
-(#13061), step 2, the records (#13062), step 3, the regions (#13063), step 4, day and weather
-(#13064), and step 6, the realms routed through the resolved environment (#13066; receipt
-`docs/verification/aethyr-lighting-p1-6-2026-11-08/`). No phase is qualified yet.
+Status: Phase 1 qualified for the browser (#13067; receipt
+`docs/verification/aethyr-lighting-p1-2026-11-08/`). Done: step 0, the glade lifted into the shared
+painterly default (#13060), step 1, the baseline (#13061), step 2, the records (#13062), step 3, the
+regions (#13063), step 4, day and weather (#13064), step 5, Everglade II's environment set and compatibility profiles (#13065), step 6, the realms
+routed through the resolved environment (#13066), and step 7, the ordinary default, the light views
+and the exit (#13067). Primitives: done. Everglade adoption: done. Browser qualification: done.
+Native qualification: not qualified (no native consumer reads the resolved record yet). Phase 2 has
+not started.
 
 Build one shared lighting system for Coax Aethyr, with Everglade as its first
 complete production consumer. It must support authored environmental character,
@@ -216,6 +219,18 @@ receive the expected resolved values. Walking a pinned route through forest,
 town, a doorway and river shows continuous transitions. The compatibility profile
 meets a declared numerical/image bound; authored profile changes have separately
 reviewed images. A malformed replacement cannot partially replace the active set.
+
+**Remaining non-Everglade consumers** (recorded by #13067 for their own adoption; none reads the
+resolved record yet, and Phase 1 does not change them):
+
+| Consumer | Where its light comes from now | Adoption |
+| --- | --- | --- |
+| Everglade v1 (`/worlds/everglade`, `apps/openagents-web/everglade.coax`, `verse/everglade/gpu.coax`, `gpu-glade.coax`, `glade-zone.coax`) | its own frozen key, ambient, weather and lamp path (`everglade.wgsl`, 633 vec4s) | an adapter in a later phase; v1 stays frozen |
+| Everglade 5E (`everglade5e.coax`) | Everglade v1's shader (`everglade5e.wgsl`) | with v1's adapter |
+| The fixture (`fixture.coax`, `gpu/fixture.coax`) | `verse/style.coax` presets at its own clock (`fixture.wgsl`, 71 vec4s) | the style-preset compatibility profile, once its shader reads the record |
+| One-shot's Table Display glade (`oneshot.coax`, `oneshot-table.coax`) | its own shader constants (`oneshot.wgsl`, 442 vec4s) | the painterly default, as 5E Lab |
+| Made realms that pick low poly or flat, or author a time of day or mist (`myrealm.coax`) | `verse_style_at` at the spec's time | a made realm's authored profile (painterly with nothing authored already gets the glade, #13066) |
+| The Aethyr examples (`aethyr/examples/light-a-frame.coax`, `shade-a-material.coax`) and `verse/experimental-terrain.coax` | their own constants or the style presets | book chapters: they read the record when the light chapter does |
 
 ## Phase 2 — Shared surface inputs and a consistent linear pipeline
 

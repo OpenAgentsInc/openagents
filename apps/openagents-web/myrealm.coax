@@ -211,6 +211,7 @@ MyRealm :: struct {
   trees: int; tree_kind: int; rocks: int; plants: int;
   mist: bool;              // mist over the land (0092): the haze thick and near, pale
   timed: bool;             // the spec names a time of day: it authors its light (#13066)
+  style_seen: [STYLE_FLOATS] f32; style_glade: bool;   // the style block the last frame wrote, and whether it was the glade's (realm_probe PROBE_GLADE, PROBE_STYLE + i, #13067)
   lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
   birds: int; bats: bool; owls: bool;
   great: bool; great_kind: int; great_x: f32; great_z: f32;
@@ -2213,6 +2214,7 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
 //   thing e's place (cm), 1200 + 2e and 1201 + 2e where it is on the screen (CSS pixels, -1 out of
 //   view), 1400 + e its kind (EK_*, -1 none); 1500 + 4c..1503 + 4c the BUILD pane's cell c.
 PROBE_NONE :: -99999;
+PROBE_GLADE :: 5998; PROBE_STYLE :: 6000;   // the light's readback (#13067)
 realm_probe :: (s: [] MyRealm, f: int) -> int #export_c #effects(all) {
   if f == 0 { return ifx s[0].spec_ready then 1 else 0; }
   if f == 1 { return ifx s[0].owner then 1 else 0; }
@@ -2238,6 +2240,10 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c #effects(all) {
   if f == 19 { return cast(int) (s[0].pitch * 18000.0f32 / pc.PI + (ifx s[0].pitch < 0 then -0.5f32 else 0.5f32)); }
   if f >= 2400 && f < 2500 { return redit_probe(s[0].ed[..], f - 2400); }   // the edit layer (verse/edit/edit.coax)
   if f == 64 { return ifx s[0].laid then s[0].ent_n else 0; }
+  // the light a browser check reads back (#13067): PROBE_GLADE is 1 when the last frame wrote the
+  // glade's style block (a painterly realm that authors no light), PROBE_STYLE + i the block's word i in millionths
+  if f == PROBE_GLADE { return ifx s[0].style_glade then 1 else 0; }
+  if f >= PROBE_STYLE && f < PROBE_STYLE + STYLE_FLOATS { v := s[0].style_seen[f - PROBE_STYLE] * 1000000.0f32; return cast(int) (v + (ifx v < 0 then -0.5f32 else 0.5f32)); }
   if f == 65 { return s[0].people; }
   if f == 66 { return s[0].talk_p; }
   if f == 67 { return ifx s[0].talk_wait || s[0].ask_due then 1 else 0; }
@@ -2694,6 +2700,20 @@ realm_glade_style :: (p: StylePreset, o: [] f32) -> bool {
   // a flat preset has no glade
   #assert !realm_glade_style(verse_style_preset(STYLE_FLAT, STYLE_DESKTOP), o[..]);
 }
+#test "a browser check reads the glade's style block back from a made realm's frame" {
+  s: [1] MyRealm; t: [1] Track; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s[0].facts = true; s[0].slug_n = copy_into(s[0].slug[..], "quiet-glade");
+  #assert read_spec(s[..], "realm built\nname Quiet\nstyle painterly\nground meadow\n");
+  s[0].spec_ready = true;
+  _ := realm_frame(s[..], t[..], out[..], u[..], 1280, 720, 1, 0, true);
+  #assert realm_probe(s[..], PROBE_GLADE) == 1;
+  g: [STYLE_FLOATS] f32; #assert realm_glade_style(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), g[..]);
+  for i: 0..<STYLE_FLOATS { v := g[i] * 1000000.0f32; #assert realm_probe(s[..], PROBE_STYLE + i) == cast(int) (v + (ifx v < 0 then -0.5f32 else 0.5f32)); }
+  #assert realm_probe(s[..], PROBE_STYLE + SU_TONE + 1) == 1160000 && PROBE_STYLE >= 3000 + TALK_LINE;
+  // a timed realm is not the glade's
+  #assert read_spec(s[..], "realm built\nname Dusk\nstyle painterly\ntime dusk\n");
+  _ = realm_frame(s[..], t[..], out[..], u[..], 1280, 720, 1, 0, true); #assert realm_probe(s[..], PROBE_GLADE) == 0;
+}
 realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   begin(s);
@@ -2775,6 +2795,8 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
       else verse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
     if snow_paint && (tod == 1 || tod == 2) { snow_low_sky(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
     if s[0].mist { mist_style(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
+    s[0].style_glade = done && style == "painterly" && realm_unlit(s);
+    for i: 0..<STYLE_FLOATS { s[0].style_seen[i] = uniforms[STYLE_AT + i]; }
   }
   uniforms[HORIZON_AT + 3] = STARS[tod];
   uniforms[GROUND_AT + 3] = LAMP_SHARE[tod];

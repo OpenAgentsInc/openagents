@@ -276,3 +276,28 @@ paint_env_sky :: (u:[]f32,rd:V3,sun:V3,time:f32)->V3 {
  col=mix3(col,paint_env_c3(u,ENV_C_SKY_WISP),wisps);
  halo:=pow(saturate(dot3(normalize3(rd),normalize3(sun))),paint_env_c(u,ENV_C_SKY_HALO_POWER));return mix3(col,paint_env_c3(u,ENV_C_SKY_HALO),halo*paint_env_c(u,ENV_C_SKY_HALO_STRENGTH));
 }
+// A sky plate (a realm's painted sky texture, as Everglade II's backdrop) follows the resolved
+// environment by this tint (lighting plan Phase 1 step 7, GitHub #13067): the record's sky gradient
+// over the glade's at the same height, both decoded to linear. The glade's own record tints by 1, so
+// the plate looks as it was painted; a night or dusk record darkens or warms the plate as it does the
+// procedural sky. A colour channel whose glade value is 0 keeps its plate value.
+#test "the sky plate's tint is 1 under the glade and follows another record's sky" {
+ u:=paint_env_glade_u();
+ for k:0..<12 {r:=normalize3(v3(f32(k%4)-1.5,f32(k)*0.15-0.4,-1));t:=paint_env_sky_tint(u[..],r);#assert abs(t.x-1)<0.000001 && abs(t.y-1)<0.000001 && abs(t.z-1)<0.000001;}
+ // a night record: zenith and horizon a fifth of the glade's, bluer at the top
+ n:=env_profile_sample(env_glade_profile(),0.5);z:=n.channels.sky.zenith;h:=n.channels.sky.horizon;
+ n.channels.sky.zenith=env_rgb(z.r*0.2,z.g*0.2,z.b*0.3);n.channels.sky.horizon=env_rgb(h.r*0.2,h.g*0.2,h.b*0.2);
+ w:=env_gpu_pack(n);for i:0..<ENV_GPU_FLOATS {u[PAINT_ENV_U+i]=w[i];}
+ up:=paint_env_sky_tint(u[..],v3(0,1,0));low:=paint_env_sky_tint(u[..],normalize3(v3(1,-0.2,0)));
+ // an independent evaluation at straight up (height weight sqrt(1.58), clamped to 1: the zenith alone)
+ #assert abs(up.x-transfer_linear(z.r*0.2)/transfer_linear(z.r))<0.00001 && abs(up.z-transfer_linear(z.b*0.3)/transfer_linear(z.b))<0.00001;
+ #assert up.x<0.06 && up.z>up.x && low.x<0.06 && abs(low.x-low.y)<0.01;
+ // the tint scales a plate's linear colour: a bright plate texel goes dark under the night
+ p:=mul3(v3(0.6,0.8,0.9),up);#assert p.x<0.04 && p.y<0.05;
+}
+paint_env_sky_tint :: (u:[]f32,rd:V3)->V3 {
+ w:=sqrt(saturate(saturate(rd.y)*1.5f32+0.08f32));
+ now:=transfer_decode(mix3(paint_env_c3(u,ENV_C_SKY_HORIZON),paint_env_c3(u,ENV_C_SKY_ZENITH),w));
+ glade:=transfer_decode(mix3(v3(ENV_GLADE_SKYLINE_R,ENV_GLADE_SKYLINE_G,ENV_GLADE_SKYLINE_B),v3(ENV_GLADE_ZENITH_R,ENV_GLADE_ZENITH_G,ENV_GLADE_ZENITH_B),w));
+ return v3(ifx glade.x>0 then now.x/glade.x else 1.0f32,ifx glade.y>0 then now.y/glade.y else 1.0f32,ifx glade.z>0 then now.z/glade.z else 1.0f32);
+}
