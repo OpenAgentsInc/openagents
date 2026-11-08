@@ -11,6 +11,9 @@
 
 const zones = new Map();   // pathname: { frame, to, state, pct, paused, report, timer }
 const FADE_MS = 900;       // the cross-fade (charactercreator-walk.coax CC_WALK_FADE)
+// A page whose script says data-zone-fade="MS" hands over faster: the unlisted lander's portal,
+// whose light Character Create draws at the same clock, so the two need only a short blend.
+const fadeMs = () => { const v = Number(document.querySelector("script[data-app]")?.dataset.zoneFade); return v >= 0 && v <= 5000 ? v : FADE_MS; };
 
 // A frame is up when its world drew and its loading screen has gone, and, for a page with a room
 // seat (data-slot on its script), its room (host.js coaxial.room, everglade-net.coax net_probe 0)
@@ -25,7 +28,8 @@ function look(z) {
   if (z.loaded && !tag) return [2, 0];
   const pct = load && !load.classList.contains("gone") ? Number(load.getAttribute("aria-valuenow")) || 0 : 100;
   const c = win.coaxial, drawn = !!c?.sceneReady && pct >= 100, room = c?.room?.() ?? -1;
-  if (drawn && (!tag?.dataset.slot || room === 2 || room === 3)) return [1, 100];
+  // (-1: the page's engine has no room at all, so there is no seat to wait for)
+  if (drawn && (!tag?.dataset.slot || room === -1 || room === 2 || room === 3)) return [1, 100];
   return [0, Math.min(pct, 99)];
 }
 function poll(z) {
@@ -78,6 +82,7 @@ export function enterPage(path, stop) {
   zones.delete(to.pathname);
   const frame = z.frame;
   try { if (z.paused) win.coaxial.setWorldPaused(false); } catch {}
+  try { win.coaxial.shown?.(); } catch {}
   frame.inert = false;
   frame.removeAttribute("aria-hidden");
   frame.tabIndex = 0;
@@ -100,10 +105,11 @@ export function enterPage(path, stop) {
   };
   requestAnimationFrame(() => requestAnimationFrame(() => {
     if (still) { frame.style.opacity = "1"; over(); return; } // zone frame
-    frame.style.transition = `opacity ${FADE_MS}ms ease-in-out`; // zone frame
+    const ms = fadeMs();
+    frame.style.transition = `opacity ${ms}ms ease-in-out`; // zone frame
     frame.style.opacity = "1"; // zone frame
     frame.addEventListener("transitionend", over, { once: true });
-    setTimeout(over, FADE_MS + 200);
+    setTimeout(over, ms + 200);
   }));
   return true;
 }

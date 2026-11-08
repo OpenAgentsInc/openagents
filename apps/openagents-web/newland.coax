@@ -94,6 +94,7 @@ land_capture_age :: (s:[]LandState)->int {
 coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c #effects(all) {
   if s.count==1 && kind==LOCAL_KIND && text.count<=4096 {local_message(s[0].local[..],text);return;}
   if s.count==1 && kind==LOCAL_DESK_KIND {s[0].local[0].desk=text.count>=6 && text[0..<6]=="desk=1";return;}
+  if s.count==1 && kind==ZONE_KIND {portal_zone_said(s,text);return;}   // Character Create loading in place under the lander (newland-portal.coax)
   if s.count!=1 || kind!=600 || text.count>4096 {return;}
   boot_facts(s[0].boot[..],text);
   from:=0;

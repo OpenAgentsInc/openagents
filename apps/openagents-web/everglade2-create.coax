@@ -33,7 +33,7 @@ E2C_PANEL_BOTTOM :: 730.0;   // the glass panel's foot on a desktop (gpu/charact
 // the glade opens through it from the middle, the camera comes round and in to the studio's
 // framing, your character pops up, and the wardrobe fades in. A key, click or scroll skips to the end.
 E2C_ARRIVE_FRAMES :: 2;
-E2C_ARRIVE_OPEN :: 0.15;     // s: the glade starts to open through the light
+E2C_ARRIVE_OPEN :: 0.05;     // s: the glade starts to open through the light
 E2C_ARRIVE_OPENED :: 1.5;    // s: and has opened to the corners
 E2C_ARRIVE_CAMERA :: 2.8;    // s: the camera has come round to the studio's framing
 E2C_ARRIVE_POP :: 1.25;      // s: your character pops up
@@ -62,6 +62,7 @@ E2Create :: struct {
   drawn: int;          // the glade's frames drawn
   wall: f32; wall_clock: f32; clocked: bool;   // the wall clock's s (mod E2C_PORTAL_WALL) at the facts, and the page's clock then
   fig0: int; fig1: int;  // your character's records, for the pop
+  hidden: bool;        // out of sight: the arrival waits (opened in place under the lander, or a hidden tab)
 }
 
 e2c_creating :: (s: [] E2) -> bool { return s[0].cz[0].on && !s[0].cz[0].walking; }
@@ -82,6 +83,15 @@ e2c_facts :: (s: [] E2, t: string) {
   if e2c_fact_has(t, "via=portal") && c[0].arrive_t < 0 { c[0].arriving = true; }
   ms := e2c_fact_int(t, "now=");
   if ms >= 0 { c[0].wall = f32(ms % E2C_PORTAL_WALL) / 1000; c[0].wall_clock = s[0].clock; c[0].clocked = true; }
+}
+// Out of sight and shown again (messages 601 and 602): the arrival waits while hidden, and the
+// shimmer's clock takes the wall clock again when shown (handed over in place, the lander's light
+// is at that same clock).
+e2c_seen :: (s: [] E2, shown: bool, t: string) {
+  c := s[0].cz[..];
+  c[0].hidden = !shown;
+  ms := e2c_fact_int(t, "now=");
+  if shown && ms >= 0 { c[0].wall = f32(ms % E2C_PORTAL_WALL) / 1000; c[0].wall_clock = s[0].clock; c[0].clocked = true; }
 }
 // The url fact's query holds `key` (as ?key or &key), and the integer fact `key` (-1 if none).
 e2c_fact_has :: (t: string, key: string) -> bool {
@@ -110,6 +120,7 @@ e2c_arrive_at :: (s: [] E2) -> f32 { c := s[0].cz[0]; if !c.arriving { return E2
 e2c_arrive_step :: (s: [] E2, dt: f32) {
   c := s[0].cz[..];
   if !c[0].arriving { return; }
+  if c[0].hidden { return; }   // it plays where it is seen
   if c[0].arrive_t < 0 { if c[0].drawn >= E2C_ARRIVE_FRAMES { c[0].arrive_t = 0; } return; }
   c[0].arrive_t += dt;
   if c[0].arrive_t >= f32(E2C_ARRIVE_END) { c[0].arriving = false; c[0].arrive_t = f32(E2C_ARRIVE_END); }
@@ -168,7 +179,7 @@ e2c_arrive_uniforms :: (s: [] E2, u: [] f32) {
   while c[0].arriving {
     e2c_arrive_step(s[..], 1.0f32 / 60); t += 1.0f32 / 60;
     for i: 0..<104 { u[i] = 0; } e2c_arrive_uniforms(s[..], u[..]);
-    if c[0].arriving { #assert u[100] >= last_open; last_open = u[100]; }
+    if c[0].arriving { #assert u[100] >= last_open - 0.00001; last_open = u[100]; }   // (f32 rounding near 1)
     #assert e2c_shown(s[..]) >= last_ui; last_ui = e2c_shown(s[..]);
     if popped_at < 0 && u[99] < 0.5 { popped_at = t; }
     if shown_at < 0 && last_ui > 0.5 { shown_at = t; }
@@ -183,6 +194,16 @@ e2c_arrive_uniforms :: (s: [] E2, u: [] f32) {
   for i: 0..<104 { u[i] = 0; } e2c_arrive_uniforms(s[..], u[..]); #assert u[96] == 0 && u[99] == 0;
   // a plain visit has no arrival
   p: [1] E2; e2_message(p[..], E2_HOST_PAGE, "url=/worlds/character-creator\n"); #assert !p[0].cz[0].arriving && e2c_shown(p[..]) == 1;
+}
+#test "create: opened in place under the lander, the arrival waits until the page is shown" #steps 400000000 {
+  // opened in place under the lander: drawn, but the arrival waits until the page is shown
+  z: [1] E2; e2_message(z[..], E2_HOST_PAGE, "url=http://x/worlds/character-creator?via=portal\nnow=1700000123456\n");
+  e2_message(z[..], E2_HOST_HIDDEN, ""); z[0].cz[0].drawn = 40;
+  for i: 0..<120 { e2c_arrive_step(z[..], 1.0f32 / 60); }
+  #assert z[0].cz[0].arrive_t < 0 && z[0].cz[0].arriving;
+  e2_message(z[..], E2_HOST_SHOWN, "now=1700000200000\n");
+  #assert abs(z[0].cz[0].wall - 400.0) < 0.01;
+  e2c_arrive_step(z[..], 1.0f32 / 60); #assert z[0].cz[0].arrive_t == 0;
 }
 
 // ---- the wardrobe: Character Create's fields and values, and the CLASS row

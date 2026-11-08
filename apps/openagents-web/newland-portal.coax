@@ -15,6 +15,9 @@
 // Checks: coax test apps/openagents-web/newland.coax --steps 400000000 --only portal.
 
 PORTAL_URL :: "/worlds/character-creator?via=portal";
+ACT_ZONE :: 18;            // host.js: open the page in place, out of sight, until action 1 goes to it (zone-host.js)
+ZONE_KIND :: 18;           // and its progress back: "STATE LOADED TOTAL", state 0 under way, 1 up, 2 failed
+PORTAL_ZONE_AFTER :: 45;   // frames: the lander has drawn itself before Character Create starts loading under it
 PORTAL_LABEL :: "Create your character";
 ACT_WARM :: 21;          // host.js: fetch this page and what its engine loads into the HTTP cache
 MODE_PORTAL :: -1.0;     // gpu/newland.coax newland_portal
@@ -22,7 +25,7 @@ PORTAL_R :: 1.9;         // grid units: the ring's radius
 PORTAL_LIFT :: 0.4;      // its foot over the floor
 PORTAL_DAIS :: 2.5;      // the dais's radius
 PORTAL_FLY :: 2.1;       // s: the camera flies to the portal and into it
-PORTAL_HOLD :: 0.2;      // s: its light holds the view, swelling, before the page goes on
+PORTAL_HOLD :: 0.1;      // s: its light holds the view, swelling, before the page goes on
 PORTAL_THROUGH :: 3.0;   // the face's radius at the hand-over, in half view diagonals (gpu/portal.coax PORTAL_HANDOFF)
 PORTAL_WALL :: 600000;   // the shimmer's clock: the wall clock's ms modulo this, in seconds (everglade2-create.coax)
 PORTAL_MOTES :: 18;
@@ -35,6 +38,7 @@ Portal :: struct {
   sx: f32; sy: f32; rx: f32; ry: f32; on: bool;   // the face on screen this frame
   fill: f32;                                   // how much of the view its light has taken (1: all)
   shown: bool;                                 // this page has the portal: data-page 3, an unlisted lander (`/` has none)
+  frames: int; zone_asked: bool; zone: int = -1;   // Character Create loading in place under the page: -1 not asked, 0 under way, 1 up, 2 failed
 }
 
 // The page's wall clock (its facts' now=, in ms): the shimmer's clock starts from it.
@@ -66,10 +70,27 @@ portal_go :: (s: [] LandState) {
   q[0].going = true; q[0].t = 0; q[0].went = false; q[0].taken = false;
   if s[0].card != CARD_NONE { close_card(s); }
   s[0].vel_x = 0; s[0].vel_z = 0;
-  // the page and its loads into the cache while the camera flies (host.js action 21)
+  // Character Create has been loading in place under the page since it opened (portal_zone); if
+  // that failed, its page and first loads go into the cache while the camera flies (action 21)
+  if q[0].zone == 2 || !q[0].zone_asked { portal_out(s, ACT_WARM); }
+}
+portal_out :: (s: [] LandState, act: int) {
   n := lo_int(PORTAL_URL.count, s[0].outbox.count);
   for i: 0..<n { s[0].outbox[i] = PORTAL_URL[i]; }
-  s[0].out_n = n; s[0].action = ACT_WARM;
+  s[0].out_n = n; s[0].action = act;
+}
+// Each frame of the lander: once it has drawn itself for PORTAL_ZONE_AFTER frames, Character Create
+// opens in place under it (host.js action 18, zone-host.js): its engine, shaders, pack, textures and
+// first frame, all before the press, so the flight's end hands over to a world already drawn.
+portal_zone :: (s: [] LandState) {
+  q := s[0].portal[..];
+  if !q[0].shown || q[0].zone_asked { return; }
+  q[0].frames += 1;
+  if q[0].frames >= PORTAL_ZONE_AFTER && s[0].action == 0 && !q[0].going { portal_out(s, ACT_ZONE); q[0].zone_asked = true; q[0].zone = 0; }
+}
+// Its progress (message 18): the first number is the state.
+portal_zone_said :: (s: [] LandState, text: string) {
+  if text.count > 0 && text[0] >= '0' && text[0] <= '2' { s[0].portal[0].zone = cast(int)(text[0] - '0'); }
 }
 // smoothstep, not smootherstep: the flight is under way within a few frames of the press
 portal_ease :: (u: f32) -> f32 { t := clamp(u, 0, 1); return t * t * (3 - 2 * t); }
@@ -256,6 +277,7 @@ portal_button :: (out: [] f32, at: int, s: [] LandState, uniforms: [] f32, l: La
 // once the light has held it, the page goes on.
 portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniforms: [] f32) {
   q := s[0].portal[..];
+  portal_zone(s);
   if !q[0].going { return; }
   out_k := 1 - smooth01(q[0].t / 0.35);
   for k: hud_from..<hud_to { out[k * VERTEX_FLOATS + 6] *= out_k; }
@@ -276,7 +298,8 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
   // the press: the cache is warmed with the page it goes to, nothing navigates yet
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 0, 1);
   #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 0, 1);
-  #assert s[0].portal[0].going && s[0].action == ACT_WARM && cast(string) s[0].outbox[0..<s[0].out_n] == PORTAL_URL;
+  #assert s[0].portal[0].going && cast(string) s[0].outbox[0..<s[0].out_n] == PORTAL_URL;
+  #assert s[0].action == ACT_WARM || s[0].action == ACT_ZONE;
   coaxial_land_action_done(s[..]);
   // the face grows on screen every frame, and in the end covers the whole view (the flight's own
   // steps, without the rest of the page, which the other checks draw)
@@ -315,6 +338,26 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
     #assert abs(nx.cx - last.cx) < 12 && abs(nx.cy - last.cy) < 12;
     last = nx;
   }
+}
+#test "portal: the lander opens Character Create in place under itself once it has drawn, and the press then only flies" #steps 300000000 {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9; coaxial_land_page(s[..], 3);
+  for i: 0..<PORTAL_ZONE_AFTER - 1 { portal_zone(s[..]); }
+  #assert s[0].action == 0;
+  portal_zone(s[..]);
+  #assert s[0].action == ACT_ZONE && cast(string) s[0].outbox[0..<s[0].out_n] == PORTAL_URL;
+  coaxial_land_action_done(s[..]);
+  for i: 0..<100 { portal_zone(s[..]); } #assert s[0].action == 0;   // once
+  coaxial_land_message(s[..], ZONE_KIND, "1 100 100");
+  #assert s[0].portal[0].zone == 1;
+  portal_go(s[..]); #assert s[0].portal[0].going && s[0].action == 0;   // up: nothing to fetch
+  // failed: the press falls back to warming the cache
+  f: [1] LandState; coaxial_land_page(f[..], 3);
+  for i: 0..<PORTAL_ZONE_AFTER { portal_zone(f[..]); } coaxial_land_action_done(f[..]);
+  coaxial_land_message(f[..], ZONE_KIND, "2 0 0"); portal_go(f[..]); #assert f[0].action == ACT_WARM;
+  // the homepage never asks
+  h: [1] LandState; for i: 0..<200 { portal_zone(h[..]); } #assert h[0].action == 0;
 }
 #test "portal: the homepage itself has no portal and no button; only the lander's page (3) does" #steps 300000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;

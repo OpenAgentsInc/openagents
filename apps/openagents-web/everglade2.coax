@@ -92,6 +92,8 @@ e2_layers_side :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].wi
 // Your saved character (message 16, the browser's own copy) or a kept appearance (4); the page's
 // facts (600): ?at=METRES starts you that far down the path (a shot's or a test's way in).
 E2_HOST_PAGE :: 600;
+E2_HOST_HIDDEN :: 601;   // the page out of sight (a hidden tab, or opened in place under another page: zone-host.js)
+E2_HOST_SHOWN :: 602;    // and shown again (with now= when handed over in place)
 // The characters' shading quality from the page's facts: ?film draws them at the film quality
 // (gpu/everglade2.coax cc_player_fs: cloth sheen, skin's wrapped light, hair's highlight), and
 // ?maps=0 without their normal and ORM maps, for before/after captures.
@@ -107,6 +109,7 @@ e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   if kind == 16 { cc.load_player(s[0].creator[..], t); return; }
   if kind == 4 { ok := cc.restore(s[0].creator[..], t); return; }
   if kind == E2C_KEPT { e2c_reply(s, t); return; }
+  if kind == E2_HOST_HIDDEN || kind == E2_HOST_SHOWN { e2c_seen(s, kind == E2_HOST_SHOWN, t); return; }
   if kind == E2_HOST_PAGE { e2_material_facts(s, t); e2c_facts(s, t); if s[0].cz[0].on { return; } at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
 }
 #test "a page's ?at= says how far down the path you start" {

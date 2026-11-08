@@ -21,10 +21,14 @@ added to the record (`CC3`). The glade is Everglade II's own
 
 An unlisted lander, the homepage's module with `data-page="3"` (`newland.coax`,
 `newland-portal.coax`), has one Everglade portal in the Grid and one button,
-CREATE YOUR CHARACTER. The homepage itself has neither. A press warms Character
-Create's page, engine, shaders and pack into the HTTP cache (host action 21),
-fades the lander's panels, and flies the camera into the portal until its
-light fills the view. The lander then opens `/worlds/character-creator?via=portal`.
+CREATE YOUR CHARACTER. The homepage itself has neither. Once the lander has drawn itself for 45 frames, it opens Character Create in place under its own
+canvas (host action 18, `coax/web/zone-host.js`): the engine, shaders, pack, textures and the
+glade's first frame all load while you look at the lander, and the world then waits, paused. A
+press fades the lander's panels and flies the camera into the portal until its light fills the
+view. Then the lander hands over in place (a 200 ms blend, `data-zone-fade`), with no page load:
+the address becomes `/worlds/character-creator?via=portal`, and Character Create hears it is
+shown (message 602) and starts its arrival at once. If the in-place load failed, the press warms
+the HTTP cache instead (action 21) and the lander opens the page as usual.
 
 The light is one function, `portal_field` in `apps/openagents-web/gpu/portal.coax`,
 drawn by both pages at the same scale (`PORTAL_HANDOFF`) and on the same clock
@@ -33,7 +37,7 @@ Create's engine draws, its loading screen is the light, moving: a CSS swirl and
 rings in the light's colours, run by the compositor while the engine compiles,
 with the bar hidden (`"arrival": "portal"` in `realms.json`). A failure still shows the loading screen's message. The engine
 then draws the light (`e2_arrival` in `gpu/everglade2.coax`) and holds it until
-the glade has drawn 2 frames. Over the next 2.9 s the glade opens through the
+the glade has drawn 2 frames and the page is in sight (not hidden, message 601). Over the next 2.9 s the glade opens through the
 light from the middle, the camera comes round and in to the studio's framing,
 your character pops up from its feet, and the wardrobe fades in. A key, click
 or scroll skips to the end. A plain visit to `/worlds/character-creator` has no

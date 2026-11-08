@@ -515,6 +515,9 @@ async function loadEngine(bytes, generation) {
   if (x.coaxial_player_appearance_v1?.() === 1) {const appearance=local("aethyr.player.appearance.v1");if (appearance) send(16,appearance);}
   globalThis.coaxial.ready = true;
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
+  // A page opening in place under another (zone-host.js) is out of sight until it is shown: its app
+  // hears so (message 601), then 602 with the wall clock (now=) when the page is handed over.
+  if (x.coaxial_message && (() => { try { return window.top !== window && window.frameElement?.dataset.zone === "1"; } catch { return false; } })()) send(HIDDEN_KIND);
   if (makerName) send(MAKER_KIND, makerName);
   // Where the player was in this realm (action 11), before the first frame: a reload never waits on the network.
   const place = golden ? "" : local(placeKey);
@@ -3181,7 +3184,9 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   // a page's read-only facts for headless checks, where its face exports them (project-face.c)
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1,
   // The room's state for a page opening this one in place (zone-host.js): -1 none, 0 off, 1 opening, 2 open, 3 down.
-  room: () => engine?.exports.coaxial_net_probe?.(arena.state, 0) ?? -1 };
+  room: () => engine?.exports.coaxial_net_probe?.(arena.state, 0) ?? -1,
+  // zone-host.js: this page, opened in place, is shown now
+  shown: () => send(SHOWN_KIND, `now=${Date.now()}\n`) };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
   globalThis.coaxial.character=()=>characters.info();
