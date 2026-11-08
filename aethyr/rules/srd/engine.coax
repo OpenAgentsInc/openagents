@@ -165,7 +165,10 @@ RS_CLASS :: [13] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk", "Mon
 // Wild Shape (spent on Land's Aid), and the Lay On Hands pool (Hit Points).
 RS_USE_CHANNEL :: 0; RS_USE_INSPIRE :: 1; RS_USE_WIND :: 2; RS_USE_SURGE :: 3; RS_USE_FREE :: 4;
 RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8; RS_USE_WHOLE :: 9; RS_USE_LUCK :: 10;
-RS_USES :: 11;
+// once a Long Rest each: Uncanny Metabolism (Monk), Magical Cunning (Warlock), Faithful Steed's
+// free Find Steed (Paladin)
+RS_USE_METABOLISM :: 11; RS_USE_CUNNING :: 12; RS_USE_STEED :: 13;
+RS_USES :: 14;
 
 // Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
 // Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
@@ -544,6 +547,7 @@ rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   c[0].metabolism = level >= 2; c[0].slow_fall = level >= 4; c[0].stunning = level >= 5; c[0].empowered = level >= 6;
   if level >= 5 { c[0].extra_attack = 1; }
   if level >= 6 { rs_use_set(c[..], RS_USE_WHOLE, rs_max(rs_mod(c[0].score[RS_WIS]), 1)); }
+  if level >= 2 { rs_use_set(c[..], RS_USE_METABOLISM, 1); }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
@@ -848,7 +852,7 @@ RS_FT_NONE :: 0; RS_FT_SECOND_WIND :: 1; RS_FT_ACTION_SURGE :: 2; RS_FT_SNEAK_AT
 RS_FT_CUNNING_DASH :: 5; RS_FT_FLURRY :: 6; RS_FT_STUNNING_STRIKE :: 7; RS_FT_PATIENT_DEFENSE :: 8; RS_FT_STEP_OF_THE_WIND :: 9;
 RS_FT_WHOLENESS :: 10; RS_FT_LAY_ON_HANDS :: 11; RS_FT_SACRED_WEAPON :: 12; RS_FT_TURN_UNDEAD :: 13; RS_FT_PRESERVE_LIFE :: 14;
 RS_FT_LANDS_AID :: 15; RS_FT_INSPIRATION :: 16; RS_FT_FONT :: 17; RS_FT_CUTTING_WORDS :: 18; RS_FT_INNATE_SORCERY :: 19;
-RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22;
+RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22; RS_FT_METABOLISM :: 23;
 RsEvent :: struct {
   kind: int; spell: int; by: int; to: int;
   feat: int;                  // the class feature it tells of (RS_FT_*, 0 none)

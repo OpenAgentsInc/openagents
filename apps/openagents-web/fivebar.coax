@@ -357,7 +357,7 @@ fb_use :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: in
   if a.kind == FB_ATTACK { if at >= 0 { return rs_attack(b, i, at, false, -1); } return false; }
   if a.kind == FB_DASH { return rs_dash(b, i); }
   if a.kind == FB_CDASH { return rs_cunning_dash(b, i); }
-  if a.kind == FB_WIND { return rs_step_of_the_wind(b, i); }
+  if a.kind == FB_WIND { return rs_step_of_the_wind_focus(b, i); }   // its Focus Point: Disengage and Dash (p. 50)
   if a.kind == FB_RECKLESS { if at >= 0 { return rs_attack(b, i, at, true, -1); } return false; }
   if a.kind == FB_RAGE { return rs_rage(b, i); }
   if a.kind == FB_FLURRY {

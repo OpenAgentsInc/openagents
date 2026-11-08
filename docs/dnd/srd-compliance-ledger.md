@@ -607,6 +607,8 @@ Each feature then resolves against its text with fixed dice in
 | --- | --- | --- |
 | Barbarian (Berserker) | Rage, Unarmored Defense, Weapon Mastery (2, 3 at 4), Danger Sense, Reckless Attack, Primal Knowledge, Frenzy, ASI, Extra Attack, Fast Movement, Mindless Rage | Done |
 | Fighter (Champion) | Fighting Style (Defense), Second Wind (2, 3 at 4), Weapon Mastery (3, 4 at 4), Action Surge, Tactical Mind, Improved Critical, Remarkable Athlete, ASI at 4 and 6, Extra Attack, Tactical Shift | Done |
+| Rogue (Thief) | Expertise, Sneak Attack, Thieves' Cant, Weapon Mastery (Vex, Nick), Cunning Action (Dash, Disengage, Hide), Steady Aim, Fast Hands, Second-Story Work (climb Speed), ASI, Cunning Strike (Trip, Withdraw), Uncanny Dodge; the Hide action and Fast Hands in `hide.coax` | Done; Second-Story Work's jump needs a jump model, and Hide is not on the Experimental bar until the world supplies concealment |
+| Monk (Open Hand) | Martial Arts, Unarmored Defense, Monk's Focus (Flurry, Patient Defense, Step of the Wind), Unarmored Movement, Uncanny Metabolism, Deflect Attacks, Open Hand Technique, ASI, Slow Fall, Extra Attack, Stunning Strike, Empowered Strikes, Wholeness of Body; `monk-features.coax` | Done; Step of the Wind's doubled jump needs a jump model |
 
 ### Used-monster stat blocks (2026-11-08)
 

@@ -1,0 +1,87 @@
+// The Monk's features that spend its own banks outside the strike path (SRD 5.2.1 p. 50-51):
+// Uncanny Metabolism on rolling Initiative, Slow Fall's Reaction to a fall, and Step of the Wind
+// with a Focus Point (Disengage and Dash). The world says when a creature falls and how far.
+//   coax/bin/coax test --library aethyr/rules/srd/class-monk-checks.coax
+#authority;
+
+// Uncanny Metabolism (p. 51): when it rolls Initiative, all expended Focus Points back and Martial
+// Arts die + Monk level Hit Points, once a Long Rest. It is a choice: taken only when it gains something.
+rs_uncanny_metabolism :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if i < 0 || i >= b[0].n { return false; }
+  c := b[0].c[i];
+  if !c.metabolism || c.uses[RS_USE_METABOLISM] <= 0 || c.dead || c.hp <= 0 { return false; }
+  if c.focus >= c.focus_max && c.hp >= c.hp_max { return false; }
+  b[0].c[i].uses[RS_USE_METABOLISM] -= 1;
+  b[0].c[i].focus = c.focus_max;
+  got := rs_feature_heal(b, i, i, rs_roll(b[0].dice[..], c.martial_die) + c.level, "Uncanny Metabolism", RS_FT_METABOLISM);
+  return true;
+}
+// Slow Fall (p. 51): from level 4, its Reaction when it falls cuts the falling damage by five times
+// its Monk level. Returns the damage it takes; the Reaction is spent only when there is any to cut.
+rs_slow_fall :: (b: [] RsBattle, i: int, damage: int) -> int #effects(all) {
+  if i < 0 || i >= b[0].n || damage <= 0 { return rs_max(damage, 0); }
+  c := b[0].c[i];
+  if !c.slow_fall || c.reacted || !rs_capable(c) { return damage; }
+  b[0].c[i].reacted = true;
+  return rs_max(damage - 5 * c.level, 0);
+}
+// Step of the Wind with a Focus Point (p. 50): Disengage and Dash as one Bonus Action. (Its doubled
+// jump distance needs a jump the battle doesn't model.)
+rs_step_of_the_wind_focus :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if i < 0 || i >= b[0].c.count || b[0].c[i].focus <= 0 { return false; }   // the rest, in rs_dash_use
+  if !rs_dash_use(b, i, RS_DASH_WIND) { return false; }
+  b[0].c[i].focus -= 1; b[0].turn.disengaged = true;
+  return true;
+}
+
+// Each check seats a Monk at (1,1) beside a foe, its turn begun; a copy of the Monk past the two
+// counted creatures is out of every feature's reach.
+#test "Uncanny Metabolism takes only a living Monk's unspent use, and only when Focus or Hit Points are down" {
+  for mode: 0..<10 {
+    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+    _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
+    b[0].c[0].focus = 0; b[0].c[0].hp = 3;
+    if mode == 1 { b[0].c[0].metabolism = false; } else if mode == 2 { b[0].c[0].uses[RS_USE_METABOLISM] = 0; }
+    else if mode == 3 { b[0].c[0].dead = true; } else if mode == 4 { b[0].c[0].hp = 0; } else if mode == 5 { b[0].c[0].hp = 1; }
+    else if mode == 6 { b[0].c[0].focus = 2; b[0].c[0].hp = b[0].c[0].hp_max; }
+    else if mode == 7 { b[0].c[0].hp = b[0].c[0].hp_max; } else if mode == 8 { b[0].c[0].focus = 2; }
+    else if mode == 9 { b[0].c[0].uses[RS_USE_METABOLISM] = 2; }
+    hp := b[0].c[0].hp; focus := b[0].c[0].focus; uses := b[0].c[0].uses[RS_USE_METABOLISM];
+    ok := mode != 1 && mode != 2 && mode != 3 && mode != 4 && mode != 6;
+    #assert rs_uncanny_metabolism(b[..], 0) == ok && b[0].c[0].uses[RS_USE_METABOLISM] == (ifx ok then uses - 1 else uses);
+    #assert b[0].c[0].focus == (ifx ok then 2 else focus) && b[0].c[0].hp == (ifx ok then rs_min(hp + 3 + 2, b[0].c[0].hp_max) else hp);
+    if ok { e := rs_recent(b[0].book[0], 0); #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_METABOLISM && e.to == 0; }
+  }
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+  _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
+  b[0].c[0].focus = 0; b[0].c[2] = b[0].c[0];
+  #assert !rs_uncanny_metabolism(b[..], -1) && !rs_uncanny_metabolism(b[..], 2) && b[0].c[2].focus == 0;
+}
+#test "Slow Fall cuts five times the level with a capable Monk's unspent Reaction, never below 0" {
+  for mode: 0..<7 {
+    b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+    _ := rs_add(b[..], rs_monk("Sen", 0, 4), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
+    if mode == 1 { b[0].c[0].slow_fall = false; } else if mode == 2 { b[0].c[0].reacted = true; } else if mode == 3 { b[0].c[0].cond = RS_STUNNED; }
+    fall := ifx mode == 4 then 0 else ifx mode == 5 then 20 else ifx mode == 6 then 1 else 21;
+    ok := mode == 0 || mode == 5 || mode == 6;
+    #assert rs_slow_fall(b[..], 0, fall) == (ifx ok then rs_max(fall - 20, 0) else fall) && b[0].c[0].reacted == (ok || mode == 2);
+  }
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+  _ := rs_add(b[..], rs_monk("Sen", 0, 4), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
+  b[0].c[2] = b[0].c[0];
+  #assert rs_slow_fall(b[..], 0, -4) == 0 && rs_slow_fall(b[..], -1, 9) == 9 && rs_slow_fall(b[..], 2, 30) == 30 && !b[0].c[0].reacted && !b[0].c[2].reacted;
+}
+#test "Step of the Wind with Focus: one Focus Point, a Bonus Action Dash, and Disengage" {
+  for mode: 0..<4 {
+    b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+    _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
+    if mode == 1 { b[0].c[0].focus = 0; } else if mode == 2 { b[0].turn.bonus = true; } else if mode == 3 { b[0].c[0].focus = 1; }
+    focus := b[0].c[0].focus; ok := mode != 1 && mode != 2;
+    #assert rs_step_of_the_wind_focus(b[..], 0) == ok && b[0].c[0].focus == (ifx ok then focus - 1 else focus);
+    #assert b[0].turn.disengaged == ok && b[0].turn.move_left == (ifx ok then 6 + 8 else 6);
+  }
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+  _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
+  b[0].c[2] = b[0].c[0]; b[0].who = 2;
+  #assert !rs_step_of_the_wind_focus(b[..], -1) && !rs_step_of_the_wind_focus(b[..], 2) && !rs_step_of_the_wind_focus(b[..], b[0].c.count) && b[0].c[2].focus == 2;
+}

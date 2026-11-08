@@ -34,10 +34,27 @@ rs_cf_table :: (out: [] RsCf) -> int {
   n = cf(out, n, RS_FIGHTER, 4, 48, "Second Wind (3)"); n = cf(out, n, RS_FIGHTER, 4, 48, "Weapon Mastery (4)");
   n = cf(out, n, RS_FIGHTER, 5, 48, "Extra Attack"); n = cf(out, n, RS_FIGHTER, 5, 48, "Tactical Shift");
   n = cf(out, n, RS_FIGHTER, 6, 48, "Ability Score Improvement (6)");
+  // Rogue (p. 61-64), Thief
+  n = cf(out, n, RS_ROGUE, 1, 61, "Expertise"); n = cf(out, n, RS_ROGUE, 1, 61, "Sneak Attack");
+  n = cf(out, n, RS_ROGUE, 1, 62, "Thieves' Cant"); n = cf(out, n, RS_ROGUE, 1, 62, "Weapon Mastery");
+  n = cf(out, n, RS_ROGUE, 2, 62, "Cunning Action"); n = cf(out, n, RS_ROGUE, 3, 62, "Steady Aim");
+  n = cf(out, n, RS_ROGUE, 3, 64, "Fast Hands"); n = cf(out, n, RS_ROGUE, 3, 64, "Second-Story Work");
+  n = cf(out, n, RS_ROGUE, 3, 61, "Sneak Attack (2d6)"); n = cf(out, n, RS_ROGUE, 4, 63, "Ability Score Improvement");
+  n = cf(out, n, RS_ROGUE, 5, 63, "Cunning Strike"); n = cf(out, n, RS_ROGUE, 5, 63, "Uncanny Dodge");
+  n = cf(out, n, RS_ROGUE, 5, 61, "Sneak Attack (3d6)"); n = cf(out, n, RS_ROGUE, 6, 63, "Expertise (6)");
+  // Monk (p. 49-52), Warrior of the Open Hand
+  n = cf(out, n, RS_MONK, 1, 50, "Martial Arts"); n = cf(out, n, RS_MONK, 1, 50, "Unarmored Defense");
+  n = cf(out, n, RS_MONK, 2, 50, "Monk's Focus"); n = cf(out, n, RS_MONK, 2, 51, "Unarmored Movement");
+  n = cf(out, n, RS_MONK, 2, 51, "Uncanny Metabolism"); n = cf(out, n, RS_MONK, 3, 51, "Deflect Attacks");
+  n = cf(out, n, RS_MONK, 3, 52, "Open Hand Technique"); n = cf(out, n, RS_MONK, 4, 51, "Ability Score Improvement");
+  n = cf(out, n, RS_MONK, 4, 51, "Slow Fall"); n = cf(out, n, RS_MONK, 5, 51, "Extra Attack");
+  n = cf(out, n, RS_MONK, 5, 51, "Stunning Strike"); n = cf(out, n, RS_MONK, 5, 50, "Martial Arts (d8)");
+  n = cf(out, n, RS_MONK, 6, 51, "Empowered Strikes"); n = cf(out, n, RS_MONK, 6, 52, "Wholeness of Body");
+  n = cf(out, n, RS_MONK, 6, 51, "Unarmored Movement (+15)");
   return n;
 }
 // The classes whose rows are complete and held to the presets.
-RS_CF_DONE :: [2] int.[RS_BARBARIAN, RS_FIGHTER];
+RS_CF_DONE :: [4] int.[RS_BARBARIAN, RS_FIGHTER, RS_ROGUE, RS_MONK];
 
 // A dice state whose first roll of a `sides` die lands on `face` (for a check of one exact roll, a 19).
 cf_seed :: (sides: int, face: int) -> u64 {
@@ -53,6 +70,8 @@ cf_field :: (b: [] RsBattle, hero: RsCreature, ac: int) {
   b[0].c[t].hp = 200; b[0].c[t].hp_max = 300; b[0].c[t].ac = ac; b[0].c[t].shield_spell = false; b[0].c[t].deflect = false;
   rs_fresh(b, 0);
 }
+
+rs_cf_bits :: (v: int) -> int { n := 0; x := v; while x > 0 { n += x & 1; x = x >> 1; } return n; }
 
 rs_cf_hero :: (klass: int, level: int) -> RsCreature {
   if klass == RS_BARBARIAN { return rs_barbarian("Hero", 0, level); }
@@ -99,6 +118,39 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
     if f == "Extra Attack" { return c.extra_attack == 1; }
     if f == "Tactical Shift" { return c.shift; }
     if f == "Ability Score Improvement (6)" { return c.score[RS_STR] == 20; }
+  }
+  if c.klass == RS_ROGUE {
+    if f == "Expertise" { return rs_cf_bits(c.checks.expert) >= 2; }
+    if f == "Sneak Attack" { return c.sneak_dice >= 1; }
+    if f == "Thieves' Cant" { return c.cant; }
+    if f == "Weapon Mastery" { return c.mastery_n == 2 && (c.masteries & (1 << M_VEX)) != 0 && (c.masteries & (1 << M_NICK)) != 0; }
+    if f == "Cunning Action" { return c.cunning; }
+    if f == "Steady Aim" { return c.steady_aim; }
+    if f == "Fast Hands" { return c.fast_hands; }
+    if f == "Second-Story Work" { return c.climb == c.speed && c.climb > 0; }
+    if f == "Sneak Attack (2d6)" { return c.sneak_dice >= 2; }
+    if f == "Ability Score Improvement" { return c.score[RS_DEX] == 18; }
+    if f == "Cunning Strike" { return c.cunning_strike; }
+    if f == "Uncanny Dodge" { return c.uncanny; }
+    if f == "Sneak Attack (3d6)" { return c.sneak_dice == 3; }
+    if f == "Expertise (6)" { return rs_cf_bits(c.checks.expert) == 4; }
+  }
+  if c.klass == RS_MONK {
+    if f == "Martial Arts" { return c.martial_die >= 6 && c.weapon == W_UNARMED; }
+    if f == "Unarmored Defense" { return c.ac == 10 + dex + rs_mod(c.score[RS_WIS]); }
+    if f == "Monk's Focus" { return c.focus_max == c.level && c.focus_max >= 2; }
+    if f == "Unarmored Movement" { return c.speed >= 40; }
+    if f == "Uncanny Metabolism" { return c.metabolism && c.uses_max[RS_USE_METABOLISM] == 1; }
+    if f == "Deflect Attacks" { return c.deflect; }
+    if f == "Open Hand Technique" { return c.open_hand; }
+    if f == "Ability Score Improvement" { return c.score[RS_DEX] == 18; }
+    if f == "Slow Fall" { return c.slow_fall; }
+    if f == "Extra Attack" { return c.extra_attack == 1; }
+    if f == "Stunning Strike" { return c.stunning; }
+    if f == "Martial Arts (d8)" { return c.martial_die == 8; }
+    if f == "Empowered Strikes" { return c.empowered; }
+    if f == "Wholeness of Body" { return c.uses_max[RS_USE_WHOLE] == rs_max(rs_mod(c.score[RS_WIS]), 1); }
+    if f == "Unarmored Movement (+15)" { return c.speed == 45; }
   }
   return false;
 }

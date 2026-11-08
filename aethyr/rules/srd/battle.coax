@@ -16,6 +16,8 @@
 #load "timing-profile.coax";
 #load "component-reaction.coax";
 #load "concentration.coax";
+#load "hide.coax";
+#load "monk-features.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -316,6 +318,7 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
   b[0].n += 1;
   rs_rest_retire_dead(b,i);
   rolled:=rs_roll_initiative(b,i);
+  if rolled { _ := rs_uncanny_metabolism(b,i); }
   _ := rs_stable_arm(b,i);
   return i;
 }
@@ -555,6 +558,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
   rs_rest_cast_before(b,i,s.level);
   if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
+  if s.components.count > 0 && s.components[0] == 86 { rs_unhide(b,i); }   // a Verbal component ends hiding (p. 183)
   // spend
   b[0].aff_used = false;
   if s.cast_time == RS_T_ACTION && !quick { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
@@ -1467,6 +1471,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   me := b[0].c[i];
   strength := ab == RS_STR;
   rs_rest_interrupt_at(b[0].c,i);
+  rs_unhide(b,i);   // an attack roll ends hiding (p. 183)
   b[0].turn.struck = true;
   melee := wp.range_ft <= 5 || (wp.both && rs_feet_to(b, i, j) <= 5);   // Arcane Burst: melee from 5 feet
   far := 0;
