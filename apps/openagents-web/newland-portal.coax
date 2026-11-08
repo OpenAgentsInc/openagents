@@ -26,6 +26,7 @@ PORTAL_LIFT :: 0.4;      // its foot over the floor
 PORTAL_DAIS :: 2.5;      // the dais's radius
 PORTAL_FLY :: 2.1;       // s: the camera flies to the portal and into it
 PORTAL_HOLD :: 0.1;      // s: its light holds the view, swelling, before the page goes on
+PORTAL_WAIT :: 20.0;     // s: past the flight, the most the light waits for a Character Create still loading
 PORTAL_THROUGH :: 3.0;   // the face's radius at the hand-over, in half view diagonals (gpu/portal.coax PORTAL_HANDOFF)
 PORTAL_WALL :: 600000;   // the shimmer's clock: the wall clock's ms modulo this, in seconds (everglade2-create.coax)
 PORTAL_MOTES :: 18;
@@ -70,9 +71,11 @@ portal_go :: (s: [] LandState) {
   q[0].going = true; q[0].t = 0; q[0].went = false; q[0].taken = false;
   if s[0].card != CARD_NONE { close_card(s); }
   s[0].vel_x = 0; s[0].vel_z = 0;
-  // Character Create has been loading in place under the page since it opened (portal_zone); if
-  // that failed, its page and first loads go into the cache while the camera flies (action 21)
-  if q[0].zone == 2 || !q[0].zone_asked { portal_out(s, ACT_WARM); }
+  // Character Create has been loading in place under the page since it opened (portal_zone); a
+  // press before that starts it now, under the flight. Only if that failed do its page and first
+  // loads go into the cache while the camera flies (action 21), for a plain navigation.
+  if q[0].shown && !q[0].zone_asked { portal_out(s, ACT_ZONE); q[0].zone_asked = true; q[0].zone = 0; }
+  else if q[0].zone == 2 || !q[0].zone_asked { portal_out(s, ACT_WARM); }
 }
 portal_out :: (s: [] LandState, act: int) {
   n := lo_int(PORTAL_URL.count, s[0].outbox.count);
@@ -283,7 +286,10 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
   for k: hud_from..<hud_to { out[k * VERTEX_FLOATS + 6] *= out_k; }
   for g: 0..<PANELS + 1 { uniforms[8 + g * 8 + 5] *= out_k; }
   uniforms[3] *= 1 - q[0].fill;
-  if q[0].t >= PORTAL_FLY + PORTAL_HOLD && !q[0].went && s[0].action == 0 { go(s, PORTAL_URL); q[0].went = true; }
+  // the light holds while Character Create is still loading under it (zone 0), so the hand-over
+  // is to a drawn world, never to its loading screen
+  ready := q[0].zone != 0 || q[0].t >= PORTAL_FLY + PORTAL_HOLD + PORTAL_WAIT;
+  if q[0].t >= PORTAL_FLY + PORTAL_HOLD && ready && !q[0].went && s[0].action == 0 { go(s, PORTAL_URL); q[0].went = true; }
 }
 
 #test "portal: the button warms Character Create, the flight fills the view with the portal's light, then the page goes on" #steps 300000000 {
@@ -315,6 +321,13 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
     frames += 1;
   }
   #assert frames >= 120 && s[0].portal[0].fill > 0.99 && u[3] < 0.01;
+  // pressed before the lander asked: Character Create started loading at the press, and the light
+  // holds until it is up
+  if s[0].portal[0].zone == 0 {
+    for i: 0..<40 { c := portal_view(s[..], home, 1.0 / 60.0, 1440, 900); portal_end(s[..], out[..], 0, 0, u[..]); }
+    #assert s[0].action == 0;
+    coaxial_land_message(s[..], ZONE_KIND, "1 100 100");
+  }
   // the light holds, then the page goes on, once
   for i: 0..<40 { c := portal_view(s[..], home, 1.0 / 60.0, 1440, 900); n := portal_face(out[..], portal_scene(out[..], 0, s[..], c, pen, 9), s[..], 1440, 900, pen, 9); portal_end(s[..], out[..], 0, 0, u[..]); }
   #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == PORTAL_URL;
@@ -358,6 +371,23 @@ portal_end :: (s: [] LandState, out: [] f32, hud_from: int, hud_to: int, uniform
   coaxial_land_message(f[..], ZONE_KIND, "2 0 0"); portal_go(f[..]); #assert f[0].action == ACT_WARM;
   // the homepage never asks
   h: [1] LandState; for i: 0..<200 { portal_zone(h[..]); } #assert h[0].action == 0;
+}
+#test "portal: a press before the lander asked starts Character Create loading at once, and the light waits for it, failing over to a plain navigation" #steps 300000000 {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9; coaxial_land_page(s[..], 3);
+  portal_go(s[..]);
+  #assert s[0].action == ACT_ZONE && s[0].portal[0].zone_asked && s[0].portal[0].zone == 0;
+  coaxial_land_action_done(s[..]);
+  for i: 0..<200 { portal_zone(s[..]); } #assert s[0].action == 0;   // asked once
+  s[0].portal[0].t = PORTAL_FLY + PORTAL_HOLD + 1;
+  portal_end(s[..], out[..], 0, 0, u[..]); #assert s[0].action == 0 && !s[0].portal[0].went;   // still loading: the light holds
+  coaxial_land_message(s[..], ZONE_KIND, "2 0 0");
+  portal_end(s[..], out[..], 0, 0, u[..]); #assert s[0].action == ACT_NAVIGATE;   // failed: the page goes on as a navigation
+  // and a load that never says is waited for only so long
+  w: [1] LandState; coaxial_land_page(w[..], 3); portal_go(w[..]); coaxial_land_action_done(w[..]);
+  w[0].portal[0].t = PORTAL_FLY + PORTAL_HOLD + PORTAL_WAIT;
+  portal_end(w[..], out[..], 0, 0, u[..]); #assert w[0].action == ACT_NAVIGATE;
 }
 #test "portal: the homepage itself has no portal and no button; only the lander's page (3) does" #steps 300000000 {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
