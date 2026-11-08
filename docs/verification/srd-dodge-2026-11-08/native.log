@@ -1,0 +1,12 @@
+passed               aethyr/rules/srd/dodge-checks.coax
+  passed             a retained zero-Speed condition ends Dodge permanently even when the condition ends before another roll
+  passed             Dodge persists through clock advancement and another actors turn then ends at its own actual turn start
+  passed             Dodge cannot provide Dexterity Advantage or cancel attack Advantage while the creature has Speed zero
+  passed             immune and refused effects cannot end Dodge and unrelated conditions preserve it
+  passed             the Dodge action pays its action budget only on admission including a zero-Speed actor
+  passed             Halt and movement spent are distinct from Speed zero while Steady Aim and Dazed end Dodge
+  passed             another actors anchored turn does not give the Dodge targets Speed zero
+  passed             a real Slow mastery hit immediately ends Dodge when it reduces walking Speed to zero
+  passed             Blinded and a positive one-foot Speed do not themselves end Dodge
+  passed             Dodge retirement supports exactly one borrowed creature and returns false on first observing Speed zero
+native checks: passed {"passed": 10}

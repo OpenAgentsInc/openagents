@@ -2721,7 +2721,7 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if cr.sacred_until > b[0].clock { m = put(l[..], m, "  SACRED WEAPON"); }
       if cr.raging { m = put(l[..], m, "  RAGING"); }
       if cr.reckless_until > b[0].clock { m = put(l[..], m, "  RECKLESS"); }
-      if cr.dodge_until > b[0].clock { m = put(l[..], m, "  DODGING"); }
+      if cr.dodging { m = put(l[..], m, "  DODGING"); }
       if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }
     // after the name: 54 px in, or past a long name (a siege's "Cultist Fanatic 10")

@@ -1,0 +1,122 @@
+// SRD 5.2.1 p.10 Dodge: next turn, Dexterity Advantage, loss on incapacity/Speed 0.
+#load "effect-lifecycle-checks.coax";
+#load "concentration-checks.coax";
+
+#test "a retained zero-Speed condition ends Dodge permanently even when the condition ends before another roll" {
+  for condition: [7] int.[RS_GRAPPLED,RS_RESTRAINED,RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
+    b: [1] RsBattle; dg_field(b[..]);
+    #assert rs_patient_defense(b[..],0);
+    #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=condition,by=1,spell=-1,until=20,save=-1});
+    #assert !b[0].c[0].dodging;
+    rs_drop_effect(b[..],0,0);
+    #assert rs_save_edge(b[..],0,RS_DEX) == 0 && rs_attack_edge(b[..],1,0,true,false) == 0;
+  }
+}
+
+#test "Dodge persists through clock advancement and another actors turn then ends at its own actual turn start" {
+  b: [1] RsBattle; dg_field(b[..]); #assert rs_patient_defense(b[..],0);
+  rs_tick(b[..],10);
+  #assert rs_save_edge(b[..],0,RS_DEX) == 1 && rs_attack_edge(b[..],1,0,true,false) == -1;
+  rs_start_turn(b[..],1);
+  #assert rs_save_edge(b[..],0,RS_DEX) == 1 && rs_attack_edge(b[..],1,0,true,false) == -1;
+  rs_start_turn(b[..],0);
+  #assert !b[0].c[0].dodging && rs_save_edge(b[..],0,RS_DEX) == 0 && rs_attack_edge(b[..],1,0,true,false) == 0;
+}
+
+#test "Dodge cannot provide Dexterity Advantage or cancel attack Advantage while the creature has Speed zero" {
+  for mode: 0..<3 {
+    b: [1] RsBattle; dg_field(b[..]); #assert rs_patient_defense(b[..],0);
+    if mode == 0 { b[0].c[0].speed = 0; }
+    else if mode == 1 { b[0].c[0].speed = 10; b[0].c[0].slowed_until = 20; }
+    else { b[0].c[0].speed = 1; b[0].c[0].halved_until = 20; }
+    #assert rs_save_edge(b[..],0,RS_DEX) == 0 && !b[0].c[0].dodging;
+    b[0].c[0].speed = 30; b[0].c[0].slowed_until = 0; b[0].c[0].halved_until = 0;
+    #assert rs_attack_edge(b[..],1,0,true,false) == 0;
+  }
+}
+
+#test "immune and refused effects cannot end Dodge and unrelated conditions preserve it" {
+  for mode: 0..<3 {
+    b: [1] RsBattle; dg_field(b[..]); #assert rs_patient_defense(b[..],0);
+    if mode == 0 { b[0].c[0].immune_cond = RS_RESTRAINED; }
+    else if mode == 1 { for k: 0..<RS_EFFECTS { #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_HEX,by=1,spell=-1,until=20,save=-1}); } }
+    mask := ifx mode == 2 then RS_POISONED else RS_RESTRAINED;
+    #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=mask,by=1,spell=-1,until=20,save=-1}) == (mode != 1);
+    #assert rs_save_edge(b[..],0,RS_DEX) == 1;
+  }
+}
+
+#test "the Dodge action pays its action budget only on admission including a zero-Speed actor" {
+  for mode: 0..<5 {
+    b: [1] RsBattle; dg_field(b[..]);
+    if mode == 1 { b[0].turn.action = true; }
+    else if mode == 2 { b[0].who = 1; }
+    else if mode == 3 { b[0].c[0].cond = RS_INCAPACITATED; }
+    else if mode == 4 { b[0].c[0].speed = 0; }
+    seq := b[0].book[0].seq; focus := b[0].c[0].focus;
+    #assert rs_dodge(b[..],0) == (mode == 0 || mode == 4);
+    #assert b[0].c[0].dodging == (mode == 0) && b[0].c[0].focus == focus;
+    #assert b[0].book[0].seq == seq + (ifx mode == 0 || mode == 4 then 1 else 0);
+    #assert b[0].turn.action == (mode == 0 || mode == 1 || mode == 4);
+    if mode == 0 || mode == 4 {
+      e := rs_recent_at(b[0].book[..],0);
+      #assert e.kind == RS_EV_CONDITION && e.by == 0 && e.to == 0 && e.spell == -1 && e.amount == 0;
+      #assert cast(string)e.text[0..<e.text_n] == "Monk takes the Dodge action";
+    }
+  }
+}
+
+#test "Halt and movement spent are distinct from Speed zero while Steady Aim and Dazed end Dodge" {
+  for mode: 0..<4 {
+    b: [1] RsBattle; dg_field(b[..]); #assert rs_dodge(b[..],0);
+    if mode == 0 { b[0].turn.move_left = 0; }
+    else if mode == 1 { #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_HALT,by=1,spell=SP_COMMAND,until=20,save=-1}); }
+    else if mode == 2 {
+      b[0].c[0].steady_aim = true;
+      #assert rs_steady_aim(b[..],0);
+    } else { #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_DAZED,cond=RS_BLINDED,by=1,spell=-1,until=20,save=-1}); }
+    #assert rs_dodge_live(b[..],0) == (mode < 2) && b[0].c[0].dodging == (mode < 2);
+  }
+}
+
+#test "another actors anchored turn does not give the Dodge targets Speed zero" {
+  b: [1] RsBattle; dg_field(b[..]); #assert rs_dodge(b[..],0);
+  b[0].who = 1; b[0].turn.anchored = true;
+  #assert rs_dodge_live(b[..],0);
+  b[0].c[0].dodging = false;
+  #assert !rs_dodge_live(b[..],0);
+}
+
+#test "a real Slow mastery hit immediately ends Dodge when it reduces walking Speed to zero" {
+  b: [1] RsBattle; dg_field(b[..]); #assert rs_dodge(b[..],0);
+  b[0].c[0].speed = 10; b[0].c[0].ac = 1; b[0].c[0].deflect = false;
+  b[0].c[1].masteries = 1 << M_SLOW;
+  #assert rs_strike(b[..],1,0,W_LONGBOW,false);
+  #assert b[0].c[0].slowed_until > 0 && !b[0].c[0].dodging;
+  b[0].c[0].slowed_until = 0;
+  #assert !rs_dodge_live(b[..],0);
+}
+
+#test "Blinded and a positive one-foot Speed do not themselves end Dodge" {
+  b: [1] RsBattle; dg_field(b[..]); #assert rs_dodge(b[..],0);
+  b[0].c[0].speed = 1;
+  #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=1,spell=-1,until=20,save=-1});
+  #assert rs_dodge_live(b[..],0) && rs_save_edge(b[..],0,RS_DEX) == 1;
+}
+
+#test "Dodge retirement supports exactly one borrowed creature and returns false on first observing Speed zero" {
+  for mode: 0..<2 {
+    b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+    c[0].hp = 1; c[0].hp_max = 1; c[0].speed = ifx mode == 0 then 0 else 30;
+    c[0].dodging = true;
+    if mode == 1 { c[0].eff[0] = RsEffect.{kind=EF_DAZED}; }
+    #assert !rs_dodge_live(b[..],0) && !c[0].dodging;
+  }
+}
+
+dg_field :: (b: [] RsBattle) {
+  b[0].w = 16; b[0].h = 8; b[0].dice[0].fixed = true;
+  _ := rs_add(b,rs_monk("Monk",0,3),1,1);
+  _ = rs_add(b,rs_skeleton("Enemy",1),2,1);
+  b[0].who = 0; b[0].dice[0].rolled = 0;
+}

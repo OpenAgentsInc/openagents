@@ -293,6 +293,14 @@ outside a saved seat's turn. CONCENTRATION-LIFECYCLE adds a native witness.
 Raw state-writer integration, overlapping outline provenance, complete feature
 lifecycles and full casting workflows remain open; #13039 stays open.
 
+The [Dodge change](../verification/srd-dodge-2026-11-08/README.md) replaces timer
+expiry with actual next-turn retirement and irreversible loss on tracked
+incapacity/Speed-zero transitions. A normal Dodge Action and Patient Defense
+share the benefit; roll consumers and the Lab read the shared state. Core
+Dodge/lifecycle authorities have zero mutation survivors and ten native root
+scenarios pass. This does not complete either #13039 or #13040; broader movement,
+condition and recovery work and ordinary Dodge player controls remain open.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

@@ -12,6 +12,17 @@
 #load "fivemmo-hotbar.coax";   // 5E MMO's hotbar pictures, by name
 #load "everglade-hotbar.coax";  // Everglade's
 
+#test "saved-seat Patient Defense loses Dodge when Restrained even if freed before another roll" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b[0].c[FT_HERO] = rs_monk("You",0,3); rs_place(b[..],FT_HERO,10,10);
+  #assert fb_seat_use(b[..],s[..],fb_feature(FB_PATIENT,"PATIENT DEFENSE","patient-defense"),FT_FOE,10,10,FT_ALLY);
+  #assert b[0].c[FT_HERO].dodging && b[0].c[FT_HERO].focus == 2 && s[0].turn.bonus;
+  #assert rs_put_effect(b[..],FT_HERO,RsEffect.{kind=EF_COND,cond=RS_RESTRAINED,by=FT_FOE,spell=-1,until=b[0].clock+20,save=-1});
+  #assert !b[0].c[FT_HERO].dodging;
+  rs_drop_effect(b[..],FT_HERO,0);
+  #assert rs_save_edge(b[..],FT_HERO,RS_DEX) == 0 && !b[0].c[FT_HERO].dodging && s[0].turn.bonus;
+}
+
 #test "a dying saved seat receives Bane and rescues on its six-second death save without disturbing another actors turn" {
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].dice[0].fixed = true;

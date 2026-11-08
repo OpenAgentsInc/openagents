@@ -1,0 +1,178 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/dodge-checks.coax",
+      "source_sha256": "b6b04a4765f409236891eb997aea3f693b229b7c4ebb80eb715cc3d37973dbb2",
+      "checks": [
+        {
+          "name": "a retained zero-Speed condition ends Dodge permanently even when the condition ends before another roll",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Dodge persists through clock advancement and another actors turn then ends at its own actual turn start",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Dodge cannot provide Dexterity Advantage or cancel attack Advantage while the creature has Speed zero",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "immune and refused effects cannot end Dodge and unrelated conditions preserve it",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "the Dodge action pays its action budget only on admission including a zero-Speed actor",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Halt and movement spent are distinct from Speed zero while Steady Aim and Dazed end Dodge",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "another actors anchored turn does not give the Dodge targets Speed zero",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a real Slow mastery hit immediately ends Dodge when it reduces walking Speed to zero",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Blinded and a positive one-foot Speed do not themselves end Dodge",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Dodge retirement supports exactly one borrowed creature and returns false on first observing Speed zero",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "fb26085c4aac07d61e72f4c9a3dec7b0c0c53f9800ca28b0d05c128e7aabae60",
+            "binary_sha256": "9ec2874ab083bb3f6e218c5388829e7eabf6ab0487acc6169e23e8edf89750e4"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "4320ec31bb6052ae618287708b5cb1effd1aa2d477143b293c97e3a7fdc24974",
+            "binary_sha256": "eff558ac5ab386b5dccfd27f99f4cfd7b2d4cdfa6ca9290994eab14e54653bba"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 10
+  },
+  "outcome": "passed"
+}

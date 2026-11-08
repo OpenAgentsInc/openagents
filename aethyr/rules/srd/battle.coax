@@ -27,6 +27,7 @@
 #load "condition-rolls.coax";
 #load "effect-lifecycle.coax";
 #load "death-save-roll.coax";
+#load "dodge.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -762,7 +763,7 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if b[0].c[j].reckless_until > t { ups += 1; }
   if strength && b[0].c[i].reckless_until > t { ups += 1; }
   // the Dodge action
-  if b[0].c[j].dodge_until > t && rs_capable(b[0].c[j]) { downs += 1; }
+  if rs_dodge_live(b,j) { downs += 1; }
   // Frightened: Disadvantage on attack rolls (the source of its fear is always in sight here)
   if rs_has(b[0].c[i], RS_FRIGHTENED) { downs += 1; }
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
@@ -780,7 +781,7 @@ rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int {
   if ability == RS_STR && rs_effect(c, EF_ENFEEBLED) { downs += 1; }
   if ability == RS_STR && c.raging { ups += 1; }
   if ability == RS_DEX && c.danger_sense && !rs_has(c, RS_INCAPACITATED) && rs_capable(c) { ups += 1; }
-  if ability == RS_DEX && c.dodge_until > b[0].clock && rs_capable(c) { ups += 1; }
+  if ability == RS_DEX && rs_dodge_live(b,j) { ups += 1; }
   return rs_edge(ups, downs);
 }
 
@@ -1187,6 +1188,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   concentration_lost := rs_sync_concentration(b,i);
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
+  rs_dodge_end(b[0].c[i..<i+1]);
   rs_halt_begin(b[0].c[i..<i+1],b[0].clock+rs_beat(b));
   // The profile declares the movement grant: exact feet in strict mode, or
   // the legacy proportional whole-square grant in action combat.
@@ -1527,7 +1529,7 @@ rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
     if rs_mastery(b, i, w, M_VEX) && dealt > 0 {
       _ := rs_put_effect(b, i, RsEffect.{kind = EF_VEX, cond = j, by = i, spell = -1, until = rs_after_next_turn(b, i), save = -1, dc = 0});
     }
-    if rs_mastery(b, i, w, M_SLOW) && dealt > 0 { b[0].c[j].slowed_until = rs_before_next_turn(b, i) + 0.01; }
+    if rs_mastery(b, i, w, M_SLOW) && dealt > 0 { b[0].c[j].slowed_until = rs_before_next_turn(b, i) + 0.01; _ := rs_dodge_live(b,j); }
   }
   // all damage cut away: the Monk may spend a Focus Point to send the force back at a melee attacker
   if cut > 0 && amount - cut <= 0 && b[0].c[j].focus > 0 && rs_up(b[0].c[j]) && rs_up(b[0].c[i]) {
@@ -1618,6 +1620,7 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   rs_tell_ft(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, RS_FT_STUNNING_STRIKE, l[..]);
   if ok {
     b[0].c[j].halved_until = until;
+    still_dodging := rs_dodge_live(b,j);
     _ := rs_put_effect(b, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = -1, until = until, save = -1, dc = 0});
   } else {
     _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = i, spell = -1, until = until, save = -1, dc = 0});
@@ -1748,7 +1751,7 @@ rs_flurry :: (b: [] RsBattle, i: int, j: int, how: int) -> bool {
 rs_patient_defense :: (b: [] RsBattle, i: int) -> bool {
   if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].focus <= 0 { return false; }
   b[0].turn.bonus = true; b[0].c[i].focus -= 1;
-  b[0].c[i].dodge_until = rs_before_next_turn(b, i);
+  rs_dodge_begin(b,i);
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on Patient Defense: Disengage and Dodge");
   rs_tell_ft(b, RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_PATIENT_DEFENSE, l[..]);
   return true;
@@ -1942,6 +1945,7 @@ rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
 rs_steady_aim :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || !b[0].c[i].steady_aim || b[0].turn.moved { return false; }
   b[0].turn.bonus = true; b[0].turn.aimed = true; b[0].turn.anchored = true; b[0].turn.move_left = 0;
+  _ := rs_dodge_live(b,i);
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_STEADY_AIM, " takes Steady Aim");
   return true;
 }
@@ -2432,6 +2436,8 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   #assert rs_attack_edge(b[..], a, m, true, true) == -1 && rs_save_edge(b[..], m, RS_DEX) == 1;
   rs_end_turn(b[..], m);
   rs_tick(b[..], b[0].c[m].turn_at - b[0].clock);
+  #assert rs_attack_edge(b[..], a, m, true, true) == -1;
+  rs_start_turn(b[..], m);
   #assert rs_attack_edge(b[..], a, m, true, true) == 0;
 }
 #test "the action adapter: a turn every 1.5 seconds, slots back after the cooldown, saves still on 6-second rounds" {

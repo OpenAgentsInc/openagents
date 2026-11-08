@@ -2,6 +2,15 @@
 // do not automatically fail through Unconscious's Strength/Dexterity rule.
 #authority;
 
+#test "an admitted battle death save is abilityless and preserves an unneeded rescue" {
+  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+  c[0].hp_max = 12; c[0].cond = RS_UNCONSCIOUS; c[0].inspired = 6;
+  b[0].dice[0].fixed = true;
+  #assert rs_battle_death_save(b[..],0) == RS_DS_OK;
+  #assert c[0].hp == 0 && c[0].death_ok == 1 && c[0].death_fail == 0 && c[0].inspired == 6;
+  #assert b[0].dice[0].rolled == 1;
+}
+
 rs_battle_death_save :: (b: [] RsBattle, j: int) -> int #effects(all) {
   if !rs_death_eligible(b[0].c[j]) { return RS_DS_NONE; }
   face := rs_roll(b[0].dice[..],20);

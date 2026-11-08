@@ -6620,6 +6620,18 @@ die and spend nothing. The standalone dice/creature primitive is unmodified.
 Evidence, native scope and remaining work:
 `docs/verification/srd-death-saves-2026-11-08/README.md`.
 
+## Dodge is a retained benefit retired by actual turn and state transitions
+
+`dodge.coax` owns Dodge's Action admission and benefit. Internal `RsCreature.dodging`
+is cleared by its actual next turn start, incapacitating/zero-Speed condition
+insertion and tracked speed-loss transitions. Freed creatures do not resume it.
+Clock advancement and other actors' turns do not retire it. Attack/save consumers
+reconcile before using it. Command Halt and exhausted movement are not Speed zero.
+Patient Defense uses the same benefit; the Lab reads its flag. No protocol field
+changes, but the old timestamp is replaced by a bool in the internal creature
+layout. Scope, native limitation and remaining action/condition requirements:
+`docs/verification/srd-dodge-2026-11-08/README.md`.
+
 ## Combat timing is a declared profile selected before the clock starts
 
 `RsBattle.timing` defaults to `RS_STRICT_TIMING`: six-second turns, exact feet

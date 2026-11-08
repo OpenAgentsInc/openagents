@@ -1,0 +1,4 @@
+/home/christopherdavid/oa-open-issues/aethyr/rules/srd/dodge-checks.coax:108:48: error[E0413]: a reachable unsupported borrow or escape is outside checked native-check emission
+      b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+                                                 ^
+1 error

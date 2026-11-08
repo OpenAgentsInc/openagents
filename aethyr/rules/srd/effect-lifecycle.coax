@@ -4,6 +4,7 @@
 #authority;
 
 rs_interrupt_incapacitated :: (b: [] RsBattle, j: int) #effects(all) {
+  _ := rs_dodge_live(b,j);
   if rs_capable(b[0].c[j]) { return; }
   rs_end_concentration(b,j," (Incapacitated)");
   rs_release_turned(b,j);
