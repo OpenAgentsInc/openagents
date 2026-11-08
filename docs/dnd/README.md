@@ -13,6 +13,14 @@ maps this specification to code and records the known failing regression probes.
 The completeness requirements below remain the target, not a claim of current
 qualification.
 
+Owner delivery direction, 2026-11-08: [#13030](https://github.com/OpenAgentsInc/openagents/issues/13030)
+now targets Everglade Experimental/Everglade II at levels 1–6: core combat,
+cantrips/spells through 3rd level and class features through level 6, used
+monsters, then Everglade migration. The full specification below remains the
+long-term target, not a prerequisite to that slice. See the roadmap's active
+order and parked issues. Zero-survivor mutation gates are retained for the core
+rules engine; non-core catalogs/tools/presentation use focused lean checks.
+
 This document covers what the system is, where it lives, how a world uses it,
 what "compliant" means and how it is checked, and the work to get there from
 what exists today.

@@ -7,6 +7,17 @@ of all the PDF's individual entries or mechanical clauses. Spells and base class
 spell tables are now inventoried; the other catalogs and mechanical clauses remain
 open. The [roadmap](srd-compliance-roadmap.md) defines all eight milestones.
 
+Priority update, 2026-11-08: [#13030](https://github.com/OpenAgentsInc/openagents/issues/13030)
+is now the Everglade levels 1–6 slice. Core combat (#13038–#13041) comes first,
+then spells through 3rd level and class features through level 6 (#13043/#13044),
+the used-monster subset (#13034), and Everglade migration (#13046). The minimal
+profile boundary is #13045. Broad catalogs, multiclassing, magic items, toolbox,
+general voice/agent/maker interfaces and full qualification remain parked and
+open. Polymorph's recorded failure is outside the active spell-level limit;
+Wild Shape needed by a level 1–6 class remains active. Core rules retain
+zero-survivor mutation gates; non-core work uses focused lean checks. The full
+requirements inventory below is not the active delivery sequence.
+
 ## Source identity
 
 | Field | Pin |
@@ -156,9 +167,9 @@ source and qualifying their mechanics remain open.
 
 ## Next implementation slice
 
-M2: extend the source importer to the remaining catalogs and mechanical-clause
-ledger. M3: add legal casting state and transactional storage admission, preserving the
-p.106 invalid-target distinction. M4: introduce chosen-form transformations and
-replace Polymorph's approximation. Keep these probe IDs and extend their source
-fixtures as each prerequisite lands. Source access is available; no owner action
-is required for this milestone.
+Active next: add slice casting state, actions/conditions/damage/death and
+transactional storage admission, preserving the p.106 invalid-target distinction.
+Then complete the 0–3rd-level spells/features through character level 6, used
+monsters and shared Everglade integration. Keep these probe IDs and extend source
+fixtures as prerequisites land. Full catalog expansion and Polymorph are parked.
+Source access is available; no owner action is required for this work.

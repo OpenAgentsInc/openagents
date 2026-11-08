@@ -1,10 +1,78 @@
 # SRD 5.2.1 compliance roadmap
 
-Status: implementation plan, 2026-11-07. The governing specification is
+Status: reordered by owner direction, 2026-11-08. The governing specification is
 [README.md](README.md). Full compliance requires complete source content,
 faithful execution of every mechanical rule, and independent evidence for both.
 The existing combat engine is a foundation, not a qualified implementation of
 the entire SRD. World-specific changes remain supported through declared profiles.
+
+## Active delivery Everglade levels 1 to 6
+
+The current epic is [#13030](https://github.com/OpenAgentsInc/openagents/issues/13030).
+Its bounded player-facing slice supersedes the full-SRD ordering below. The
+339-description/875-class-entry source catalog at `2c3ce41059` is available;
+the existing executor supports only a subset. Catalog presence does not make
+every spell castable.
+
+1. **Combat foundations now:** [casting #13038](https://github.com/OpenAgentsInc/openagents/issues/13038),
+   [conditions/damage/death #13039](https://github.com/OpenAgentsInc/openagents/issues/13039),
+   [actions/movement/reactions #13040](https://github.com/OpenAgentsInc/openagents/issues/13040),
+   with [transactional capacity #13041](https://github.com/OpenAgentsInc/openagents/issues/13041).
+   Integrate checks with Experimental/Everglade II as each change lands.
+2. **Playable levels 1–6:** [spells #13043](https://github.com/OpenAgentsInc/openagents/issues/13043)
+   is limited to cantrips and spells through 3rd level for the 12 class loadouts;
+   [features #13044](https://github.com/OpenAgentsInc/openagents/issues/13044)
+   covers class/subclass features through level 6. Match the level selector and
+   per-spell sound work. Pull in only needed origin-feat/equipment/grant data.
+   [Profiles #13045](https://github.com/OpenAgentsInc/openagents/issues/13045)
+   supplies only the timing/override boundary these worlds need.
+3. **Used creatures:** [#13034](https://github.com/OpenAgentsInc/openagents/issues/13034)
+   inventories Everglade's actual bestiary/dungeon monsters, roughly CR 5 and
+   below. Higher-CR exceptions require a named existing consumer; the full
+   monster catalog is not a prerequisite.
+4. **Everglade migration immediately next:** [#13046](https://github.com/OpenAgentsInc/openagents/issues/13046)
+   moves Experimental/Everglade II onto the shared slice. It does not wait for
+   old milestone 7, all worlds, or Hold the Stair.
+
+Close the epic after its active issues and world acceptance are met. Existing
+higher-level play is not silently removed, but qualifying levels 7–20, spell
+levels 4–9 and the complete SRD is outside this delivery.
+
+## Lean verification for the active slice
+
+Owner direction, 2026-11-08: zero-survivor mutation gates apply to the **core
+rules engine and core admission/resource/timing policies**. Do not mark mutants
+equivalent to get those core gates green. Catalogs, import tooling, presentation
+and world integration use focused source/generation/boundary/interaction/native
+or headless-muted checks appropriate to the change; a blanket mutation gate or
+full qualification framework is not required for every non-core piece. Keep
+commands under 15 minutes and reuse unchanged passing evidence by commit.
+This replaces the earlier blanket mutation requirement for this SRD work.
+
+## Parked follow-ups
+
+These issues remain open outside the active epic's acceptance; parking is not
+completion. Full class source import [#13031](https://github.com/OpenAgentsInc/openagents/issues/13031)
+is paused except for a needed narrow source prerequisite. Full origins/feats
+[#13032](https://github.com/OpenAgentsInc/openagents/issues/13032), equipment
+[#13033](https://github.com/OpenAgentsInc/openagents/issues/13033), magic items
+[#13035](https://github.com/OpenAgentsInc/openagents/issues/13035), toolbox
+[#13036](https://github.com/OpenAgentsInc/openagents/issues/13036), whole-SRD
+traceability [#13037](https://github.com/OpenAgentsInc/openagents/issues/13037),
+Polymorph/Shapechange [#13042](https://github.com/OpenAgentsInc/openagents/issues/13042),
+general voice/agent/presentation interfaces
+[#13047](https://github.com/OpenAgentsInc/openagents/issues/13047), maker authoring
+[#13048](https://github.com/OpenAgentsInc/openagents/issues/13048) and full qualification
+[#13049](https://github.com/OpenAgentsInc/openagents/issues/13049) are parked.
+Multiclassing, full creation UI and cross-world progression are also nonblocking.
+Wild Shape needed by a class through level 6 belongs to the active feature slice;
+it does not require completing 4th-level Polymorph first.
+
+## Long term reference
+
+The eight milestones below describe the eventual full system. Their original
+numbering is retained for existing documentation; they are not the active
+sequence or a requirement to finish all catalogs before Everglade can ship.
 
 ## Scope and completion criteria
 
@@ -147,8 +215,9 @@ replacement forms, reaction windows, rests, interrupts and capacity exhaustion.
 Golden answers come from the pinned SRD, never implementation output alone.
 
 Exit: zero missing required content or unimplemented mechanics, zero unexplained
-deviations, every qualification fixture passing, and required authority mutations
-with zero survivors. Preserve qualified evidence by commit; never repeat an
+deviations, every qualification fixture passing, and core rules authority mutations
+with zero survivors. Use focused risk-appropriate checks for non-core work.
+Preserve qualified evidence by commit; never repeat an
 unchanged passing check merely for confirmation.
 
 ## Execution and product decisions
@@ -167,7 +236,9 @@ inventories and the first interpreter slices establish the workload.
 
 ## Current work
 
-Milestone 1 established the baseline ledger and strict witnesses. Milestone 2
+The active work is the Everglade levels 1–6 slice above, starting with casting
+and core combat. Full class catalog work is parked. Milestone 1 established the
+baseline ledger and strict witnesses. Milestone 2
 now has a Coax importer and canonical source catalog for all 339 spell
 descriptions and the eight base class tables (875 memberships), with nine
 preserved source discrepancies. See [the data pipeline](../../aethyr/rules/srd/data/README.md)
