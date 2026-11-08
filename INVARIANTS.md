@@ -6731,3 +6731,15 @@ Recovery cannot revive and clears only Exhaustion at level zero. Producers must
 use cumulative APIs, not set a raw flag or create a timed condition record.
 Long Rest admission and complete mid-turn movement-credit reconciliation remain
 separate requirements. Evidence: `docs/verification/srd-exhaustion-2026-11-08/README.md`.
+
+## Walking movement reprices current Speed without refilling spent movement
+
+`movement-credit.coax` keeps the previous ordinary-plus-Dash allowance and
+overspending debt in the internal turn. Speed loss and restoration preserve
+feet already spent; each walking Dash follows current Speed. New turns reset
+credit/debt/Dash count. Step and stand publish repriced credit only after
+successful payment; explicit movement queries reconcile the current actor.
+Legacy untracked turns bind their pre-Dash basis before gaining a Dash.
+Grid walking loops use that query; saved seats retain debt with the full turn.
+Special speeds and feature-specific free movement remain separate requirements.
+Evidence: `docs/verification/srd-movement-credit-2026-11-08/README.md`.

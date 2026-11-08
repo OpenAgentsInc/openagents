@@ -5,6 +5,7 @@
   for mode: 0..<3 {
     b: [1] RsBattle; dh_field(b[..]);
     b[0].c[0].speed=37; b[0].c[0].slowed_until=10; b[0].c[0].halved_until=10;
+    rs_start_turn(b[..],0);
     b[0].turn.move_left=1; b[0].turn.move_feet=3;
     ok := ifx mode==0 then rs_dash(b[..],0) else ifx mode==1 then rs_cunning_dash(b[..],0) else rs_step_of_the_wind(b[..],0);
     #assert ok;
@@ -31,7 +32,7 @@
 }
 
 #test "Dash action and bonus feature share movement but pay separate budgets" {
-  b: [1] RsBattle; dh_field(b[..]); b[0].c[0].speed=31;
+  b: [1] RsBattle; dh_field(b[..]); b[0].c[0].speed=31; rs_start_turn(b[..],0);
   b[0].turn.move_left=0; b[0].turn.move_feet=0;
   #assert rs_dash(b[..],0) && rs_cunning_dash(b[..],0);
   #assert b[0].turn.move_left==12 && b[0].turn.move_feet==2;
@@ -89,12 +90,13 @@ dh_field :: (b: [] RsBattle) {
 dh_native :: () -> bool {
   b: [1] RsBattle; dh_field(b[..]);
   b[0].c[0].speed=37; b[0].c[0].slowed_until=10; b[0].c[0].halved_until=10;
+  rs_start_turn(b[..],0);
   b[0].turn.move_left=1; b[0].turn.move_feet=3;
   if !rs_dash(b[..],0) || !rs_step_of_the_wind(b[..],0) { return false; }
   if b[0].turn.move_left!=6 || b[0].turn.move_feet!=4 || !b[0].turn.action || !b[0].turn.bonus { return false; }
   if rs_cunning_dash(b[..],0) || b[0].dice[0].rolled!=0 || b[0].c[0].focus!=2 { return false; }
   rs_start_turn(b[..],0); b[0].c[0].cond=RS_RESTRAINED;
   before := b[0].turn.move_left*5+b[0].turn.move_feet;
-  if !rs_cunning_dash(b[..],0) || b[0].turn.move_left*5+b[0].turn.move_feet!=before { return false; }
+  if !rs_cunning_dash(b[..],0) || b[0].turn.move_left*5+b[0].turn.move_feet!=0 { return false; }
   return true;
 }

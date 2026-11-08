@@ -443,7 +443,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   s[0].turn.move_left=1; s[0].turn.move_feet=3;
   b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.move_left=7; b[0].turn.move_feet=2;
   #assert fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
-  #assert s[0].turn.action && s[0].turn.move_left==4 && s[0].turn.move_feet==1;
+  #assert s[0].turn.action && s[0].turn.move_left==3 && s[0].turn.move_feet==1;
   #assert b[0].who==FT_FOE && b[0].turn.action && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
   #assert !fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
 }
@@ -454,5 +454,19 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   #assert rs_gain_exhaustion(b[..],FT_HERO) && rs_gain_exhaustion(b[..],FT_HERO);
   before := s[0].turn.move_left*5+s[0].turn.move_feet;
   #assert fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
-  #assert s[0].turn.move_left*5+s[0].turn.move_feet==before+20;
+  #assert s[0].turn.move_left*5+s[0].turn.move_feet==before+15; // five fewer feet in the base action-profile grant, twenty from Dash
+}
+
+#test "saved seats retain movement debt across Speed loss without changing another actors turn" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  #assert fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
+  s[0].turn.move_left=1; s[0].turn.move_feet=0; // 35 of the 40 granted feet spent
+  b[0].who=FT_FOE; b[0].turn.move_left=7; b[0].turn.move_feet=2;
+  b[0].c[FT_HERO].speed=10;
+  fb_seat_in(b[..],s[..]); #assert rs_movement_left(b[..],FT_HERO)==0; fb_seat_out(b[..],s[..]);
+  #assert s[0].turn.move_debt==20;
+  b[0].c[FT_HERO].speed=30;
+  fb_seat_in(b[..],s[..]); #assert rs_movement_left(b[..],FT_HERO)==5; fb_seat_out(b[..],s[..]);
+  #assert s[0].turn.move_debt==0 && s[0].turn.move_left==1;
+  #assert b[0].who==FT_FOE && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
 }

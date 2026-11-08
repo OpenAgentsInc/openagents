@@ -1,0 +1,7 @@
+// Focused native movement-credit witness, not whole-SRD qualification.
+#load "movement-credit-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  if !mv_native() { tool_errln("FAIL MOVEMENT-CREDIT"); return 1; }
+  tool_errln("PASS MOVEMENT-CREDIT"); return 0;
+}

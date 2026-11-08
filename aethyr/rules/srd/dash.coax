@@ -5,7 +5,7 @@ RS_DASH_CUNNING :: 1;
 RS_DASH_WIND :: 2;
 
 rs_dash_speed :: (b: [] RsBattle, i: int) -> int #effects(all) {
-  if b[0].turn.anchored || rs_has(b[0].c[i],RS_GRAPPLED|RS_RESTRAINED) { return 0; }
+  if b[0].turn.anchored || rs_has(b[0].c[i],RS_GRAPPLED|RS_RESTRAINED|RS_PARALYZED|RS_PETRIFIED|RS_UNCONSCIOUS) { return 0; }
   for e: b[0].c[i].eff { if e.kind==EF_DAZED { return 0; } }
   return rs_walk_speed(b,i);
 }
@@ -21,8 +21,11 @@ rs_dash_use :: (b: [] RsBattle, i: int, mode: int) -> bool #effects(all) {
     else { return false; }
     b[0].turn.bonus=true;
   }
-  feet := b[0].turn.move_left*5+b[0].turn.move_feet+rs_dash_speed(b,i);
-  b[0].turn.move_left=feet/5; b[0].turn.move_feet=feet%5;
+  t: [1] RsTurn; t[0]=b[0].turn;
+  rs_reprice_movement(t[..],rs_movement_allowance(b,i));
+  b[0].turn=t[0]; b[0].turn.dash_n+=1;
+  t[0]=b[0].turn;
+  rs_reprice_movement(t[..],rs_movement_allowance(b,i)); b[0].turn=t[0];
   if mode==RS_DASH_CUNNING { rs_quiet_ft(b,i,RS_FT_CUNNING_DASH); }
   if mode==RS_DASH_WIND { rs_quiet_ft(b,i,RS_FT_STEP_OF_THE_WIND); }
   return true;

@@ -1019,7 +1019,7 @@ free_slot :: (s: [] Lab, i: int, level: int) -> int {
 // Walk square by square: toward the foe to `want` feet, or away when closer than `least`.
 walk :: (s: [] Lab, i: int, foe: int, least: int, want: int) {
   guard := 0;
-  while s[0].battle[0].turn.move_left > 0 && guard < 12 {
+  while rs_movement_left(bt(s),i) >= RS_SQUARE && guard < 12 {
     guard += 1;
     d := rs_feet_to(bt(s), i, foe);
     if d >= least && d <= want { return; }
@@ -1692,7 +1692,7 @@ player_turn :: (s: [] Lab, i: int) {
   if s[0].you_on {
     gx := you_square_x(s); gy := you_square_y(s);
     guard := 0;
-    while b[0].turn.move_left > 0 && guard < 16 {
+    while rs_movement_left(b,i) >= RS_SQUARE && guard < 16 {
       guard += 1;
       x := b[0].c[i].x; y := b[0].c[i].y;
       ox := rs_sign(gx - x); oy := rs_sign(gy - y);

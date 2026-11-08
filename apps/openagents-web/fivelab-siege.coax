@@ -139,7 +139,7 @@ siege_strong :: (s: [] Lab, i: int, feet: int) -> int {
 walk_sq :: (s: [] Lab, i: int, tx: int, ty: int) {
   b := bt(s);
   guard := 0;
-  while b[0].turn.move_left > 0 && guard < 12 {
+  while rs_movement_left(b,i) >= RS_SQUARE && guard < 12 {
     guard += 1;
     x := b[0].c[i].x; y := b[0].c[i].y;
     if x == tx && y == ty { return; }

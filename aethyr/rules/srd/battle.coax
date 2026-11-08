@@ -30,6 +30,7 @@
 #load "death-save-roll.coax";
 #load "dodge.coax";
 #load "dash.coax";
+#load "movement-credit.coax";
 #load "exhaustion-lifecycle.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
@@ -49,7 +50,7 @@ RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1:
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
 // attack hit, 0 none: Divine Smite follows it) and last_crit, the once-a-turn Sneak Attack and
 // Colossus Slayer, leveled (a level 1+ spell cast) and quickened (Quickened Spell used).
-RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
+RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; move_basis: int; move_debt: int; move_tracked: bool; dash_n: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
                    leveled: bool; quickened: bool; stunned: bool; resurged: bool; }
 RsBattle :: struct {
@@ -1136,6 +1137,7 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   if x < 0 || y < 0 || x >= b[0].w || y >= b[0].h || rs_at(b, x, y) >= 0 { return false; }
   cost := rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,x,y));
   turn: [1] RsTurn; turn[0] = b[0].turn;
+  rs_reprice_movement(turn[..],rs_movement_allowance(b,i));
   if !rs_pay_move(turn[..],cost) { return false; }
   b[0].turn = turn[0];
   b[0].turn.moved = true;
@@ -1190,6 +1192,7 @@ rs_walk_speed :: (b: [] RsBattle, i: int) -> int {
 rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
   if i < 0 || i >= b[0].n { return false; }
   turn: [1] RsTurn; turn[0] = b[0].turn;
+  if b[0].who==i { rs_reprice_movement(turn[..],rs_movement_allowance(b,i)); }
   ok := rs_prone_stand(b[0].c[i..<i+1],turn[..],rs_timing_stand_speed(b[0].timing,rs_walk_speed(b,i)),b[0].who == i);
   if ok { b[0].turn = turn[0]; }
   return ok;
@@ -1206,10 +1209,11 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   // The profile declares the movement grant: exact feet in strict mode, or
   // the legacy proportional whole-square grant in action combat.
   // the Slow mastery: 10 feet less
-  speed := rs_walk_speed(b,i);
+  b[0].turn = RsTurn.{};
+  speed := rs_dash_speed(b,i);
   b[0].turn_no += 1;
   feet := rs_timing_move(b[0].timing,speed);
-  b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = feet/5, move_feet=feet%5};
+  b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = feet/5, move_feet=feet%5, move_basis=feet, move_tracked=true};
   b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
   if b[0].turn.new_round { b[0].c[i].round_at += f32(RS_ROUND); }
   b[0].c[i].reacted = false;
@@ -1949,7 +1953,7 @@ rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
 // attack roll this turn, and its Speed is 0 until the turn ends.
 rs_steady_aim :: (b: [] RsBattle, i: int) -> bool {
   if !rs_bonus_free(b, i) || !b[0].c[i].steady_aim || b[0].turn.moved { return false; }
-  b[0].turn.bonus = true; b[0].turn.aimed = true; b[0].turn.anchored = true; b[0].turn.move_left = 0;
+  b[0].turn.bonus = true; b[0].turn.aimed = true; b[0].turn.anchored = true; b[0].turn.move_left = 0; b[0].turn.move_feet = 0;
   _ := rs_dodge_live(b,i);
   rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_STEADY_AIM, " takes Steady Aim");
   return true;

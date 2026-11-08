@@ -1,0 +1,43 @@
+aethyr/rules/srd/movement-credit-checks.coax:8:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==0;
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:10:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==10;
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:13:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==0;
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:15:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==0 && !rs_step_to(b[..],0,8,1);
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:23:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==15; // 20 + 20 - 25
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:24:39: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_cunning_dash(b[..],0) && rs_movement_left(b[..],0)==35;
+                                        ^
+aethyr/rules/srd/movement-credit-checks.coax:26:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==5; // 10 + 10 + 10 - 25
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:28:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==65;
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:33:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==10 && rs_dash(b[..],0);
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:36:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==10; // 5 proportional + 20 Dash - 15 spent
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:43:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==0;
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:45:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==0;
+            ^
+aethyr/rules/srd/movement-credit-checks.coax:47:11: error[E0315]: procedure 'rs_movement_left' is not declared
+    #assert rs_movement_left(b[..],0)==5;
+            ^
+13 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

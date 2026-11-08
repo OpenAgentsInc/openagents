@@ -366,3 +366,15 @@ save twenties remain special; recovery cannot revive. Five changed authority
 units kill 26/49/66/27/59 mutants with zero survivors. Rest admission, mid-turn
 movement-credit recalculation and producer/world migration are not complete;
 #13039 remains open. [Evidence](../verification/srd-exhaustion-2026-11-08/README.md).
+
+### Mid-turn walking credit progress, 2026-11-08
+
+Current-turn ordinary and Dash allowances now reprice tracked walking Speed
+while retaining feet already spent, including overspending debt. Speed loss,
+Exhaustion recovery and restoration cannot refill a spent turn. Step/stand
+payment remains transactional; grid loops and saved seats consume the shared
+accounting. Core policy/Dash mutation gates kill 57/82 mutants with zero
+survivors; 241 core, 181 Prone, 206 hotbar and 21 selected Experimental checks
+pass, as do native movement and Dash witnesses. Special speeds, feature-specific
+movement and other action/condition requirements remain; #13040/#13039 stay open.
+[Evidence](../verification/srd-movement-credit-2026-11-08/README.md).

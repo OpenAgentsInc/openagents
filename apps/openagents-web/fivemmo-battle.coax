@@ -141,7 +141,7 @@ free_slot :: (s: [] Mb, i: int, level: int) -> int {
 // Walk square by square: toward the foe to `want` feet, or away when closer than `least`.
 walk :: (s: [] Mb, i: int, foe: int, least: int, want: int) {
   guard := 0;
-  while s[0].battle[0].turn.move_left > 0 && guard < 12 {
+  while rs_movement_left(bt(s),i) >= RS_SQUARE && guard < 12 {
     guard += 1;
     d := rs_feet_to(bt(s), i, foe);
     if d >= least && d <= want { return; }
@@ -802,7 +802,7 @@ mmo_turn :: (s: [] Mb, i: int) {
   if a.kind == AB_CDASH { ok = rs_cunning_dash(b, i); }
   if a.kind == AB_WIND { ok = rs_step_of_the_wind(b, i); }
   guard := 0;
-  while b[0].turn.move_left > 0 && guard < 16 && s[0].want_x >= 0 {
+  while rs_movement_left(b,i) >= RS_SQUARE && guard < 16 && s[0].want_x >= 0 {
     guard += 1;
     x := b[0].c[i].x; y := b[0].c[i].y;
     if x == s[0].want_x && y == s[0].want_y { break; }

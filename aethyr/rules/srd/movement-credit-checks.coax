@@ -1,0 +1,94 @@
+// SRD 5.2.1 pp.24, 180: movement spends Speed, and Dash follows modified Speed.
+#load "battle.coax";
+#load "dash-checks.coax";
+#load "exhaustion-checks.coax";
+
+#test "Speed loss retains overspent movement as debt so restoration cannot refill the turn" {
+  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  for x: 2..<6 { #assert rs_step_to(b[..],0,x,1); } // twenty feet
+  b[0].c[0].speed=15;
+  #assert rs_movement_left(b[..],0)==0;
+  b[0].c[0].speed=30;
+  #assert rs_movement_left(b[..],0)==10;
+  #assert rs_step_to(b[..],0,6,1) && rs_step_to(b[..],0,7,1);
+  b[0].c[0].cond|=RS_GRAPPLED;
+  #assert rs_movement_left(b[..],0)==0;
+  b[0].c[0].cond=0;
+  #assert rs_movement_left(b[..],0)==0 && !rs_step_to(b[..],0,8,1);
+}
+
+#test "each Dash is repriced with current Speed while distance already spent remains spent" {
+  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  #assert rs_dash(b[..],0);
+  for x: 2..<7 { #assert rs_step_to(b[..],0,x,1); } // twenty-five feet
+  b[0].c[0].slowed_until=20;
+  #assert rs_movement_left(b[..],0)==15; // 20 + 20 - 25
+  #assert rs_cunning_dash(b[..],0) && rs_movement_left(b[..],0)==35;
+  b[0].c[0].halved_until=20;
+  #assert rs_movement_left(b[..],0)==5; // 10 + 10 + 10 - 25
+  b[0].c[0].slowed_until=0; b[0].c[0].halved_until=0;
+  #assert rs_movement_left(b[..],0)==65;
+}
+
+#test "action timing reprices its ordinary grant and keeps its declared full-Speed Dash" {
+  b: [1] RsBattle; mv_field(b[..],RS_ACTION_TIMING,30);
+  #assert rs_movement_left(b[..],0)==10 && rs_dash(b[..],0);
+  for x: 2..<5 { #assert rs_step_to(b[..],0,x,1); }
+  b[0].c[0].speed=20;
+  #assert rs_movement_left(b[..],0)==10; // 5 proportional + 20 Dash - 15 spent
+}
+
+#test "Exhaustion loss and recovery update current-turn credit without resurrecting spent feet" {
+  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  for x: 2..<7 { #assert rs_step_to(b[..],0,x,1); }
+  #assert rs_gain_exhaustion(b[..],0) && rs_gain_exhaustion(b[..],0);
+  #assert rs_movement_left(b[..],0)==0;
+  #assert rs_remove_exhaustion(b[0].c[0..<1]);
+  #assert rs_movement_left(b[..],0)==0;
+  #assert rs_remove_exhaustion(b[0].c[0..<1]);
+  #assert rs_movement_left(b[..],0)==5;
+}
+
+mv_field :: (b: [] RsBattle, profile: RsTimingProfile, speed: int) {
+  b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
+  #assert rs_set_timing(b,profile);
+  _ := rs_add(b,rs_rogue("Runner",0,3),1,1);
+  b[0].c[0].speed=speed;
+  rs_start_turn(b,0);
+}
+
+#test "a legacy caller-supplied turn binds its pre-Dash basis before adding a Dash" {
+  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  b[0].turn=RsTurn.{move_left=6};
+  #assert rs_dash(b[..],0) && rs_movement_left(b[..],0)==60;
+  #assert b[0].turn.move_tracked && b[0].turn.move_basis==60 && b[0].turn.dash_n==1;
+}
+
+#test "temporary zero-Speed conditions preserve movement spent and unrelated conditions do not erase credit" {
+  for condition: [5] int.[RS_GRAPPLED,RS_RESTRAINED,RS_PARALYZED,RS_PETRIFIED,RS_UNCONSCIOUS] {
+    b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+    #assert rs_step_to(b[..],0,2,1);
+    b[0].c[0].cond=condition;
+    #assert rs_movement_left(b[..],0)==0;
+    b[0].c[0].cond=RS_BLINDED;
+    #assert rs_movement_left(b[..],0)==25;
+  }
+}
+
+#test "native movement witness preserves debt and standing costs across Speed restoration" {
+  #assert mv_native();
+}
+mv_native :: () -> bool {
+  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  if !rs_dash(b[..],0) { return false; }
+  for x: 2..<7 { if !rs_step_to(b[..],0,x,1) { return false; } }
+  b[0].c[0].speed=10;
+  if rs_movement_left(b[..],0)!=0 { return false; }
+  b[0].c[0].cond=RS_PRONE;
+  if rs_stand_up(b[..],0) { return false; }
+  b[0].c[0].speed=30;
+  if !rs_stand_up(b[..],0) || rs_movement_left(b[..],0)!=20 { return false; }
+  if !rs_cunning_dash(b[..],0) || rs_movement_left(b[..],0)!=50 { return false; }
+  rs_start_turn(b[..],0);
+  return rs_movement_left(b[..],0)==30 && b[0].turn.dash_n==0 && b[0].turn.move_debt==0;
+}
