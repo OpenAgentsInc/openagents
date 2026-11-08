@@ -106,6 +106,7 @@ XcCombat :: struct {
   shown: int; suppressed: int;      // numbers shown and suppressed (lab_creator_probe 934, 935)
   shields: int;                     // Shield Reactions cast for you (their sound and barrier played)
   guard_in: [XC_FOES] bool;         // each monster inside your Spirit Guardians' Emanation last frame
+  hit_at: f32 = -100; hit_x: f32; hit_z: f32;   // when a monster's blow or shot last struck you, and where it stood (xc_hit_mark)
 }
 XC_TICK :: 64.0;           // aethyr/loop.coax: ticks a second
 XC_BLADE_R :: 0.12;        // m: a blade's sensor radius
@@ -535,11 +536,74 @@ xc_hostile_result :: (s:[] Lab,foe:int,before:int,seq:int,accepted:bool) {
         shield := fb_spell(SP_SHIELD,1,FB_SELF); xc_cast_sound(s,shield); xc_look(s,shield,-1,cr[0].player_x,cr[0].player_z); x[0].shields+=1;
       }
     }
-    if accepted && landed { h[0].hits+=1; h[0].last=foe; xc_stop_striker(s,foe); x[0].seen_hits=h[0].hits; }
+    if accepted && landed { h[0].hits+=1; h[0].last=foe; xc_stop_striker(s,foe); x[0].seen_hits=h[0].hits;
+      x[0].hit_at=cr[0].clock; x[0].hit_x=h[0].enemies[foe].x; x[0].hit_z=h[0].enemies[foe].z; }
     if accepted && lost>0 {
       h[0].pops[h[0].pop_next]=hostile.DamagePop.{amount=lost,x=cr[0].player_x,y=cr[0].player_y+2.1,z=cr[0].player_z,born=h[0].time};
       h[0].pop_next=(h[0].pop_next+1)%8;
     }
+}
+// The monsters' shots as you see and hear them (#13066): each flies from the hand that loosed it
+// (FXR_SHAFT, an arrow, for a Goblin's Shortbow; FXR_STONE, a rock, for the Ogre and the Hill Giant)
+// to where you stood, arriving when hostile_fly resolves it, with a release sound at the shooter.
+// One that hits strikes you with an impact; one that misses flies on past and away.
+xc_shots_step :: (s: [] Lab) {
+  cr := s[0].creator[..]; h := cr[0].hostiles[..]; now := cr[0].clock;
+  for k: 0..<hostile.HS_SHOTS {
+    q := h[0].shots[k..<k+1];
+    if q[0].state == hostile.HS_FREE { continue; }
+    arrow := q[0].kind == xdungeon.DG_KIND_GREMLIN;
+    recipe := ifx arrow then FXR_SHAFT else FXR_STONE;
+    big := ifx arrow then 1.0f32 else ifx q[0].kind == xdungeon.DG_KIND_BOSS then 1.8f32 else 1.2f32;
+    from := fxp_v(q[0].fx, q[0].fy, q[0].fz); to := fxp_v(q[0].tx, q[0].ty, q[0].tz);
+    if !q[0].shown {
+      q[0].shown = true;
+      left := q[0].fly - (h[0].time - q[0].t0); if left < 0.05 { left = 0.05; }
+      fx_start_at(s, recipe, now, from, to, fxp_v(1, 1, 1), big, left);
+      xc_cue(s, ifx arrow then "bow-release" else "hurl", 0.6, q[0].fx, q[0].fz, ifx arrow then 1.0f32 else 1 / sqrt(big));
+    }
+    if q[0].state != hostile.HS_LANDED || q[0].ended { continue; }
+    q[0].ended = true;
+    if q[0].hit {
+      fx_start_at(s, ifx arrow then FXR_HIT else FXR_DUST, now, from, to, fxp_v(0.8, 0.7, 0.55), ifx arrow then 0.7f32 else big, 1);
+      xc_cue(s, ifx arrow then "arrow-hit" else "rock-hit", 0.7, q[0].tx, q[0].tz, 1);
+      continue;
+    }
+    // a miss: on past you the way it flew, down to the ground (an arrow 12 m on, a rock 4)
+    dx := q[0].tx - q[0].fx; dz := q[0].tz - q[0].fz; d := sqrt(dx * dx + dz * dz); if d < 0.01 { d = 0.01; }
+    on := ifx arrow then 12.0f32 else 4.0f32;
+    ex := q[0].tx + dx / d * on; ez := q[0].tz + dz / d * on; ey := meadow_y(ex, ez) + 0.1;
+    sx := ex - q[0].tx; sy := ey - q[0].ty; sz := ez - q[0].tz;
+    fly := sqrt(sx * sx + sy * sy + sz * sz) / hostile.hostile_shot_speed(q[0].kind);
+    fx_start_at(s, recipe, now, to, fxp_v(ex, ey, ez), fxp_v(1, 1, 1), big, fly);
+    xc_cue(s, ifx arrow then "arrow-whiz" else "rock-hit", ifx arrow then 0.55f32 else 0.4f32, ifx arrow then q[0].tx else ex, ifx arrow then q[0].tz else ez, 1);
+  }
+}
+// Where a blow that struck you came from, when it came from off the screen: a red wedge at the
+// edge of a ring round the screen's middle, toward the monster that struck, fading over XC_MARK s.
+XC_MARK :: 1.2;
+xc_hit_mark :: (x: [] XcCombat, cr: cc.Creator, out: [] f32, at: int, w: f32, h: f32, k: f32, now: f32) -> int {
+  age := now - x[0].hit_at;
+  if age < 0 || age > f32(XC_MARK) || !x[0].seen { return at; }
+  p := xc_proj(x, x[0].hit_x, meadow_y(x[0].hit_x, x[0].hit_z) + 1.0, x[0].hit_z);
+  if p.ok && p.x > 0 && p.x < w && p.y > 0 && p.y < h { return at; }   // on screen: you see who struck
+  u := x[0].u[..];
+  dx := x[0].hit_x - cr.player_x; dz := x[0].hit_z - cr.player_z;
+  side := dx * u[24] + dz * u[26]; ahead := dx * u[20] + dz * u[22];
+  if side * side + ahead * ahead < 0.0001 { return at; }
+  a := atan2(side, ahead);   // 0 ahead (the top of the screen), clockwise
+  fade := ifx age < 0.1 then age / 0.1 else 1 - (age - 0.1) / (f32(XC_MARK) - 0.1);
+  if fade <= 0 { return at; }
+  cx := w * 0.5; cy := h * 0.5; ring := (ifx w < h then w else h) * 0.36;
+  n := at;
+  // a wedge of three strokes, widest in the middle, pointing out toward the monster
+  for j: 0..<3 {
+    spread := 0.16 - f32(j) * 0.045; r := ring + f32(j) * 7 * k;
+    ax := cx + sin(a - spread) * r; ay := cy - cos(a - spread) * r;
+    bx := cx + sin(a + spread) * r; by := cy - cos(a + spread) * r;
+    if cc.lit(out, n, ax, ay, bx, by, (4 - f32(j)) * k, fade * 0.9, 0, 0.95, 0.18, 0.12, 0) { n += 6; }
+  }
+  return n;
 }
 xc_hostile_contacts :: (s: [] Lab) {
   x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
@@ -548,12 +612,14 @@ xc_hostile_contacts :: (s: [] Lab) {
   for i: 0..<XC_FOES { fb_seat_step(b,x[0].npc_seat[i..<i+1]); }
   while h[0].contacts[0].count>0 {
     foe := hostile.hc_take(h[0].contacts[..]);
-    if foe<0 || foe>=XC_FOES || !rs_up(b[0].c[0]) || h[0].enemies[foe].dead || !x[0].npc_seat[foe].open { continue; }
-    before := b[0].c[0].hp+b[0].c[0].temp; seq := b[0].book[0].seq;
+    // a shot that arrives with no Action to spend, or at no one, flies on past (hostile_shot_result)
+    if foe<0 || foe>=XC_FOES || !rs_up(b[0].c[0]) || h[0].enemies[foe].dead || !x[0].npc_seat[foe].open { if foe>=0 && foe<XC_FOES { hostile.hostile_shot_result(h,foe,false); } continue; }
+    before := b[0].c[0].hp+b[0].c[0].temp; seq := b[0].book[0].seq; hits := h[0].hits;
     fb_seat_in(b,x[0].npc_seat[foe..<foe+1]);
     accepted := rs_stat_multiattack(b,foe+1,0,xc_hostile_action(h[0].enemies[foe].kind));
     fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
     xc_hostile_result(s,foe,before,seq,accepted);
+    hostile.hostile_shot_result(h,foe,h[0].hits>hits);
   }
   xc_sync_vitals(s);
 }
@@ -1026,7 +1092,9 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   x[0].present = react.react_present_drain(x[0].present);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   xc_hostile_contacts(s);
+  xc_shots_step(s);
   n=cc.combat_hud(cr[0],out,u,n,w,k);
+  n=xc_hit_mark(x,cr[0],out,n,w,h,k,now);
   xc_strike_due(s);
   xc_lock_step(s);
   xc_stops_step(s);
@@ -1358,7 +1426,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
 xc_test_lab :: (s: [] Lab, c: int, face: f32) {
   lab_message(s, 600, "url=http://localhost/worlds/everglade-experimental\n");
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
-  h[0].ready = true; h[0].hp = XC_PLAYER_MAX;
+  h[0].ready = true; h[0].hp = XC_PLAYER_MAX; h[0].safe_r = 0; h[0].calm_until = -1;   // the checks place you and the monsters themselves
   for i: 0..<XC_FOES { h[0].enemies[i].swing = -1; h[0].enemies[i].x = 70 + f32(i) * 3; h[0].enemies[i].z = -70; }
   xc_start(s[0].xc[..], c); xc_set_class(s[0].xc[..], c);
   cr[0].player_x = 0; cr[0].player_z = 0; cr[0].player_face = face;
@@ -1763,10 +1831,17 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   xc_sync_vitals(s[..]);
   hostile.hostile_tick(h,0,0,0,0.05);
   #assert h[0].enemies[g].shot && h[0].enemies[g].swing==0 && !h[0].enemies[g].moving;
+  // its draw is its tell: the arrow leaves the bow at HS_DRAW and flies 30 m/s, so the hit waits for it
+  for k: 0..<12 { hostile.hostile_tick(h,0,0,0,0.05); }
+  #assert h[0].contacts[0].count==0 && h[0].shots[0].state==hostile.HS_FLYING;
+  xc_shots_step(s[..]); #assert h[0].shots[0].shown && fxp_live(s[0].puffs[..])==1;
   for k: 0..<8 { hostile.hostile_tick(h,0,0,0,0.05); }
-  #assert h[0].contacts[0].count==1;
+  #assert h[0].contacts[0].count==1 && h[0].shots[0].state==hostile.HS_LANDING;
   xc_hostile_contacts(s[..]);
   #assert b[0].c[0].hp==95 && h[0].hits==1;   // 1d6 + 2 Piercing
+  #assert h[0].shots[0].state==hostile.HS_LANDED && h[0].shots[0].hit;
+  xc_shots_step(s[..]); #assert h[0].shots[0].ended && fxp_live(s[0].puffs[..])==2;
+  hostile.hostile_tick(h,0,0,0,0.05); #assert h[0].shots[0].state==hostile.HS_FREE;
   // the Hill Giant 2 m off: Tree Club twice, and you are knocked Prone
   boss := -1; for i: 0..<XC_FOES { if hostile.hostile_kind(i)==xdungeon.DG_KIND_BOSS { boss=i; } }
   #assert boss>=0;

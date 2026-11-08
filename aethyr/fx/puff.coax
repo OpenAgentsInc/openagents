@@ -83,7 +83,11 @@ FXR_BLIGHT :: 45;       // Blight: the life drawn out of `to`, ash falling off i
 FXR_SOULFIRE :: 46;     // Finger of Death: a black-green ray from → to, soul-fire burning up off it
 FXR_RISE :: 47;         // a Zombie rising at `to`: soul-fire out of the corpse
 FXR_PORTAL :: 48;       // Dimension Door: a tear closing at `from`, a puff at `to`
-FXR_KINDS :: 49;
+// A monster's missiles (verse/experimental-hostiles.coax shots, #13066): `reach` is the flight's
+// seconds, so the puffs arrive exactly when the attack resolves.
+FXR_SHAFT :: 49;        // an arrow flying from → to: its shaft, its head's glint and a faint trail; it fades out on arrival
+FXR_STONE :: 50;        // a thrown rock arcing from → to, tumbling, dust trailing; it fades out on arrival
+FXR_KINDS :: 51;
 
 FxV :: struct { x: f32; y: f32; z: f32; }
 FxCause :: struct { recipe: int; seed: f32; t0: f32; from: FxV; to: FxV; col: FxV; big: f32 = 1; reach: f32 = 1; }
@@ -193,6 +197,8 @@ fxp_life :: (c: FxCause) -> f32 {
   if r == FXR_HALO { return 1.3; }
   if r == FXR_MARK { return 1.5; }
   if r == FXR_DUST { return 1.0; }
+  if r == FXR_SHAFT { return fxp_max(c.reach, 0.05) + FXP_MISSILE_FADE; }
+  if r == FXR_STONE { return fxp_max(c.reach, 0.05) + FXP_MISSILE_FADE; }
   if r >= FXR_ELDRITCH { return fxw_life(c); }
   if r >= FXR_SURGE { return fxa_life(c); }
   return 0;
@@ -304,6 +310,8 @@ fxp_emit :: (p: [] FxPuffs, c: FxCause, age: f32) {
   if r == FXR_HALO { fxp_halo(p, c, age); }
   if r == FXR_MARK { fxp_mark(p, c, age); }
   if r == FXR_DUST { fxp_dust(p, c, age); }
+  if r == FXR_SHAFT { fxp_shaft(p, c, age); return; }
+  if r == FXR_STONE { fxp_stone(p, c, age); return; }
   if r >= FXR_ELDRITCH { fxw_emit(p, c, age); } else if r >= FXR_SURGE { fxa_emit(p, c, age); }
 }
 
@@ -656,6 +664,65 @@ fxp_arrow :: (p: [] FxPuffs, c: FxCause, t: f32) {
   fxp_rise_smoke(p, c, at, c.to, 1, 0.2, 0.15, 0.4, fxp_v(0.5, 0.45, 0.36), 0.35, 20);
 }
 
+// A missile's last moment: it fades over FXP_MISSILE_FADE seconds where it arrived, and fades in
+// over the first FXP_MISSILE_FADE / 2 as it leaves the hand, so nothing pops.
+FXP_MISSILE_FADE :: 0.15;
+fxp_missile_light :: (c: FxCause, t: f32) -> f32 {
+  fl := fxp_max(c.reach, 0.05);
+  if t < 0 { return 0; }
+  if t > fl { return fxp_clamp(1 - (t - fl) / FXP_MISSILE_FADE, 0, 1); }
+  return fxp_clamp(t / (FXP_MISSILE_FADE * 0.5), 0, 1);
+}
+fxp_shaft :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_max(c.reach, 0.05); a := fxp_missile_light(c, t);
+  if a <= 0 { return; }
+  u := fxp_clamp(t / fl, 0, 1);
+  head := fxp_path(c, u);
+  span := fxp_max(fxp_len(fxp_sub(c.to, c.from)), 0.1);
+  // it points the way it flies: along its path here, or along the whole flight once it has landed
+  run := fxp_sub(fxp_path(c, fxp_clamp(u + 0.02, 0, 1)), fxp_path(c, fxp_clamp(u - 0.02, 0, 1)));
+  if u >= 1 || fxp_len(run) < 0.0001 { run = fxp_sub(c.to, c.from); }
+  dir := fxp_mul(run, 1 / fxp_max(fxp_len(run), 0.0001));
+  // the shaft, 0.9 m drawn a little long so it reads at range; its head's glint; the fletching
+  mid := fxp_sub(head, fxp_mul(dir, 0.42));
+  ok := fxp_spark(p, mid, 0.045 * a * c.big, fxp_mul(fxp_v(0.95, 0.82, 0.55), a), fxp_mul(dir, 0.45), c.seed);
+  ok = fxp_glow(p, head, 0.1 * a * c.big, fxp_mul(fxp_v(1.0, 0.95, 0.85), a), 0.8, c.seed + 0.3);
+  ok = fxp_glow(p, fxp_sub(head, fxp_mul(dir, 0.85)), 0.07 * a * c.big, fxp_mul(fxp_v(0.9, 0.35, 0.25), a), 0.4, c.seed + 0.6);
+  // the air it cuts: a faint streak behind, shorter as it leaves the hand
+  if t < fl {
+    back := fxp_min(2.4, span * u);
+    ok = fxp_spark(p, fxp_sub(head, fxp_mul(dir, 0.85 + back * 0.5)), 0.025 * a, fxp_mul(fxp_v(0.55, 0.55, 0.6), a * 0.5), fxp_mul(dir, back * 0.5), c.seed + 0.9);
+  }
+}
+// Where a thrown rock is u of the way: a higher arc than a bolt's.
+fxp_lob :: (c: FxCause, u: f32) -> FxV {
+  q := fxp_lerp(c.from, c.to, u);
+  q.y += sin(fxp_clamp(u, 0, 1) * FX_PI) * fxp_min(fxp_len(fxp_sub(c.to, c.from)) * 0.12, 2.5);
+  return q;
+}
+fxp_stone :: (p: [] FxPuffs, c: FxCause, t: f32) {
+  fl := fxp_max(c.reach, 0.05); a := fxp_missile_light(c, t);
+  if a <= 0 { return; }
+  u := fxp_clamp(t / fl, 0, 1);
+  at := fxp_lob(c, u);
+  r := 0.2 * c.big;
+  // the rock: a dark lump, two lobes turning about each other as it tumbles
+  spin := t * 9 + c.seed;
+  off := fxp_v(cos(spin) * r * 0.35, sin(spin) * r * 0.35, sin(spin * 0.7) * r * 0.2);
+  ok := fxp_smoke(p, fxp_add(at, off), r * a, fxp_v(0.32, 0.28, 0.24), 0.97 * a, c.seed);
+  ok = fxp_smoke(p, fxp_sub(at, off), r * 0.8 * a, fxp_v(0.42, 0.37, 0.31), 0.97 * a, c.seed + 0.2);
+  // dust shed along its path, thinning as it goes
+  if t < fl {
+    for j: 1..<5 {
+      w := u - f32(j) * 0.05;
+      if w <= 0 { break; }
+      d := fxp_lob(c, w);
+      fade := a * (1 - f32(j) / 5);
+      ok = fxp_smoke(p, d, r * (0.5 + 0.15 * f32(j)) * fade, fxp_v(0.55, 0.5, 0.42), 0.35 * fade, c.seed + f32(j));
+    }
+  }
+}
+
 fxp_bones :: (p: [] FxPuffs, c: FxCause, t: f32) {
   bone := fxp_v(0.86, 0.83, 0.74);
   fxp_rise_smoke(p, c, t, fxp_v(c.to.x, 0.5, c.to.z), 9, 0.8, 0.35, 1.3, bone, 0.6, 0);
@@ -816,4 +883,25 @@ fxp_test_cause :: (recipe: int, seed: f32) -> FxCause {
   rep := fxp_close(p[..]);
   #assert rep.puffs == 4;
   #assert p[0].out[2] == 60 && p[0].out[14] == 20 && p[0].out[26] == 3 && floor(p[0].out[47]) == f32(PF_GLOW);
+}
+
+#test "a monster's arrow and rock arrive when their flight says, fade in and out, and point the way they fly" #steps 400000000 {
+  p: [1] FxPuffs;
+  for r: FXR_SHAFT..<FXR_STONE + 1 {
+    c := FxCause.{recipe = r, seed = 2.5, t0 = 0, from = fxp_v(0, 1.2, 0), to = fxp_v(0, 1.2, 20), col = fxp_v(1, 1, 1), big = 1, reach = 0.8};
+    #assert abs(fxp_life(c) - (0.8 + FXP_MISSILE_FADE)) < 0.001;
+    // half way, it is half way; on arrival, at its target; faded out after
+    fxp_begin(p[..], 0, fxp_v(0, 10, -20)); fxp_emit(p[..], c, 0.4);
+    #assert p[0].n >= 2 && abs(p[0].stage[2] - 10) < 1.2;
+    fxp_begin(p[..], 0, fxp_v(0, 10, -20)); fxp_emit(p[..], c, 0.8);
+    #assert p[0].n >= 2 && abs(p[0].stage[2] - 20) < 1;
+    fxp_begin(p[..], 0, fxp_v(0, 10, -20)); fxp_emit(p[..], c, 0.8 + FXP_MISSILE_FADE + 0.01);
+    #assert p[0].n == 0;
+    #assert fxp_missile_light(c, 0) == 0 && fxp_missile_light(c, 0.02) > 0 && fxp_missile_light(c, 0.02) < 1 && fxp_missile_light(c, 0.5) == 1;
+    #assert fxp_missile_light(c, 0.8 + FXP_MISSILE_FADE * 0.5) > 0.4 && fxp_missile_light(c, 0.8 + FXP_MISSILE_FADE * 0.5) < 0.6;
+  }
+  // the shaft is drawn along the flight (+z): its streak's axis points that way
+  c := FxCause.{recipe = FXR_SHAFT, seed = 2.5, t0 = 0, from = fxp_v(0, 1.2, 0), to = fxp_v(0, 1.2, 20), col = fxp_v(1, 1, 1), big = 1, reach = 0.8};
+  fxp_begin(p[..], 0, fxp_v(0, 10, -20)); fxp_emit(p[..], c, 0.4);
+  #assert p[0].stage[10] > 0.4 && abs(p[0].stage[8]) < 0.05;
 }

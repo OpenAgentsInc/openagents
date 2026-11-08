@@ -12,12 +12,16 @@ XSFX_PSYCHIC_CAST :: 0; XSFX_PSYCHIC_HIT :: 1; XSFX_CHOIR :: 2; XSFX_RAGE_ROAR :
 XSFX_SWING_HEAVY :: 5; XSFX_FIZZLE :: 6; XSFX_SECOND_WIND :: 7; XSFX_SURGE :: 8; XSFX_DASH :: 9;
 XSFX_FLURRY :: 10; XSFX_ENTANGLE :: 11; XSFX_IMP_HURT :: 12; XSFX_IMP_DEATH :: 13;
 XSFX_GREMLIN_HURT :: 14; XSFX_GREMLIN_DEATH :: 15;
-XSFX_COUNT :: 16;
+// the monsters' ranged attacks (experimental-combat.coax xc_shots_step): the release, the flight
+// past you and the impact, for an arrow and for a thrown rock
+XSFX_BOW :: 16; XSFX_ARROW_WHIZ :: 17; XSFX_ARROW_HIT :: 18; XSFX_HURL :: 19; XSFX_ROCK_HIT :: 20;
+XSFX_COUNT :: 21;
 XSFX_NAMES :: [XSFX_COUNT] string.[
   "psychic-cast", "psychic-hit", "choir", "rage-roar", "grunt",
   "swing-heavy", "fizzle", "second-wind", "surge", "dash",
   "flurry", "entangle", "imp-hurt", "imp-death",
-  "gremlin-hurt", "gremlin-death"];
+  "gremlin-hurt", "gremlin-death",
+  "bow-release", "arrow-whiz", "arrow-hit", "hurl", "rock-hit"];
 XSFX_MAX_MS :: 1400;
 
 xsfx_id :: (name: string) -> int {
@@ -94,6 +98,23 @@ xsfx_recipe :: (id: int) -> Sfx {
     s = sfx_add(s, sl(SFX_SAW, 0, 850, 20, 140, 60, 800, 250, 0, 500));
     s = sfx_add(s, sl_curve(sl(SFX_NOISE, 800, 300, 2, 0, 0, 600, 150, 30, 900), 3));
     s = sfx_add(s, sl(SFX_SINE, 800, 280, 2, 70, 35, 0, 0, 0, 700));
+  } else if id == XSFX_BOW {            // a shortbow loosed: the string's twang and the arrow leaving
+    s = sfx_add(s, sl(SFX_SAW, 0, 180, 2, 210, 150, 2400, 600, 0, 700));
+    s = sfx_add(s, sl(SFX_SINE, 0, 220, 2, 420, 300, 0, 0, 0, 400));
+    s = sfx_add(s, sl(SFX_NOISE, 20, 260, 30, 0, 0, 2200, 4200, 900, 500));
+  } else if id == XSFX_ARROW_WHIZ {     // an arrow flying past: a thin rising-falling whistle of air
+    s = sfx_add(s, sl(SFX_NOISE, 0, 420, 180, 0, 0, 3000, 6000, 1800, 800));
+    s = sfx_add(s, sl(SFX_SINE, 0, 380, 160, 1500, 1100, 0, 0, 0, 160));
+  } else if id == XSFX_ARROW_HIT {      // an arrow striking: a short thunk and a quiver
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 140, 1, 0, 0, 2200, 500, 150, 900), 3));
+    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 260, 2, 190, 160, 0, 0, 0, 500), 40, 28));
+  } else if id == XSFX_HURL {           // a rock heaved: a grunt and a low heavy whoosh
+    s = sfx_add(s, sl_vib(sl(SFX_SAW, 0, 300, 15, 150, 95, 800, 350, 0, 600), 50, 8));
+    s = sfx_add(s, sl(SFX_NOISE, 80, 520, 260, 0, 0, 300, 1100, 90, 1000));
+  } else if id == XSFX_ROCK_HIT {       // a rock landing: a heavy crunch, then rubble
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 320, 2, 0, 0, 1400, 250, 40, 1000), 3));
+    s = sfx_add(s, sl(SFX_SINE, 0, 300, 2, 75, 38, 0, 0, 0, 800));
+    s = sfx_add(s, sl(SFX_CRACKLE, 40, 650, 10, 140, 30, 4000, 1500, 400, 500));
   }
   return s;
 }

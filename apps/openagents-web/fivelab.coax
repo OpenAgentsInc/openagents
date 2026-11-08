@@ -3392,7 +3392,7 @@ lab_respawn :: (s:[]Lab)->bool {
  if s[0].xc[0].started {if s[0].xc[0].b[0].c[0].hp>0 {return false;}} else if h[0].hp>0 {return false;}
  xc_start(s[0].xc[..],s[0].xc[0].klass);
  xc_set_class(s[0].xc[..],s[0].xc[0].klass);
- h[0].contacts[0]=hostile.HcContacts.{};
+ h[0].contacts[0]=hostile.HcContacts.{};hostile.hostile_calm(h);   // nothing engages you for a moment, and no shot is in the air
  xc_sync_vitals(s);xc_sync_permissions(s);
  h[0].died_at=0;h[0].pop_next=0;for i:0..<8 {h[0].pops[i].amount=0;}
  for i:0..<hostile.HS_N {e:=h[0].enemies[i..<i+1];if !e[0].dead {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].swing= -1;e[0].moving=false;e[0].cool=1;if e[0].sleeper {e[0].awake=false;}}}
