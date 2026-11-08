@@ -31,6 +31,13 @@ film_curve :: (x:f32)->f32 {
  line:=slope*(value+straight);dark:=ifx value<low then 2*toe/(1+exp(-2*slope/toe*(value-low))) else line;bright:=ifx value>high then 1.04-2*shoulder/(1+exp(2*slope/shoulder*(value-high))) else line;
  blend:=film_sat((value-low)/(high-low));if high<low {blend=1-blend;}blend=blend*blend*(3-2*blend);return dark+(bright-dark)*blend;
 }
+#test "an exposed film response is the response of the scaled light" {
+ c:=film_exposed(film_rgb(0.18f32/1.18f32,0.5,2),1.18);d:=film_rec709(film_rgb(0.18f32/1.18f32*1.18f32,0.5f32*1.18f32,2.0f32*1.18f32));
+ #assert c.r==d.r && c.g==d.g && c.b==d.b && abs(c.r-film_rec709(film_rgb(0.18,0.18,0.18)).r)<0.3;
+ e:=film_exposed(film_rgb(0.18,0.18,0.18),1);f:=film_rec709(film_rgb(0.18,0.18,0.18));#assert e.r==f.r && e.g==f.g && e.b==f.b;
+}
+// The film response after one exposure gain (the painterly default's presentation, aethyr/render/painterly.coax).
+film_exposed :: (linear:FilmRGB,exposure:f32)->FilmRGB {return film_rec709(film_scale(linear,exposure));}
 film_rec709 :: (linear:FilmRGB)->FilmRGB {
  c:=film_ap0(film_in(linear));lo:=film_min(c.r,film_min(c.g,c.b));hi:=film_max(c.r,film_max(c.g,c.b));saturation:=(film_max(hi,0.0000000001)-film_max(lo,0.0000000001))/film_max(hi,0.01);
  chroma:=sqrt(film_max(0,c.b*(c.b-c.g)+c.g*(c.g-c.r)+c.r*(c.r-c.b)));brightness:=(c.r+c.g+c.b+1.75*chroma)/3;

@@ -15,6 +15,7 @@
 //
 //   coax/bin/coax test verse/style-preset.coax
 #load "style.coax";
+#load "../aethyr/world/environment.coax";   // the painterly default: the glade profile (#13060)
 
 STYLE_LOWPOLY :: 0;
 STYLE_PAINTERLY :: 1;
@@ -126,6 +127,10 @@ StylePreset :: struct {
   // anime: its variant (ANIME_*, -1 for the other styles), the ink line's width near (px), the ink's share of
   // its albedo, the distance (m) it thins to a quarter by, and the vignette's strength
   variant: int; ink_width: f32; ink_dark: f32; ink_far: f32; vignette: f32;
+  // the environment a realm in this style gets when it authors none (aethyr/world/environment.coax):
+  // painterly's is the Character Create glade (ENV_GLADE_ID), and the bands, rim, dab and shadow_cool
+  // above are its material response on top; 0 for the styles that keep their own keys
+  environment: u32;
 }
 
 sk_light :: (kr: f32, kg: f32, kb: f32, ks: f32, rr: f32, rg: f32, rb: f32, rs: f32) -> StyleKey {
@@ -458,6 +463,7 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
   p.sun_azimuth = 0.6; p.sun_low = -20 * DEG; p.sun_high = 60 * DEG; p.moon_below = -6 * DEG;
   p.rim_start = 0.38; p.rim_full = 0.12;
   if paint {
+    p.environment = ENV_GLADE_ID;
     p.band_e0 = 0.20; p.band_e1 = 0.58; p.band_soft = 0.06; p.band_mid = 0.55;
     p.char_edge = 0.40; p.char_soft = 0.08; p.dab_cut = 0.92; p.dab_strength = 0.35;
     p.rim_world = 0.30; p.rim_char = 0.45; p.blob = 0.35;
@@ -489,6 +495,41 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
     p.shadow_size = 0; p.shadow_cool = 0; p.outline_max = 1;
   }
   return p;
+}
+
+/** The environment profile a realm drawn in preset `p` gets when it authors none: for painterly,
+ *  the glade (env_glade_profile, the lighting plan's painterly default, #13060). ok is false for a
+ *  style with no default profile (lowpoly, flat, anime and photoreal keep their own keys). */
+StyleEnvironment :: struct { ok: bool; profile: EnvironmentProfile; }
+verse_style_environment :: (p: StylePreset) -> StyleEnvironment {
+  e: StyleEnvironment;
+  if p.ok && p.environment == ENV_GLADE_ID { e.ok = true; e.profile = env_glade_profile(); }
+  return e;
+}
+#test "the painterly preset's default environment resolves to the glade profile" {
+  for tier: 0..<2 {
+    p := verse_style_preset(STYLE_PAINTERLY, tier);
+    e := verse_style_environment(p);
+    #assert p.environment == ENV_GLADE_ID && e.ok && env_profile_check(e.profile).refusal == EnvRefusal.none;
+    // Resolved at any time of day it is the glade's constant noon, exactly.
+    glade := env_profile_sample(env_glade_profile(), 0.5);
+    for i: 0..<4 {
+      r := env_profile_sample(e.profile, [4] f64.[0, 0.25, 0.5, 0.75][i]);
+      #assert env_resolved_same(r, glade, false) && r.profile == ENV_GLADE_ID;
+    }
+    // The material response on top stays the painterly preset's own.
+    #assert p.shadow_cool == 1.5 && p.band_e0 == 0.20f32 && p.band_e1 == 0.58f32 && p.rim_world == 0.30f32 && p.dab_strength == 0.35f32;
+    // The glade light keeps the same default, and so does a realm with no outlines.
+    #assert verse_style_glade_light(p).environment == ENV_GLADE_ID && verse_style_no_outlines(p).environment == ENV_GLADE_ID;
+  }
+  // The other styles keep their own presets and get no glade.
+  for style: 0..<5 {
+    if style == STYLE_PAINTERLY { continue; }
+    q := verse_style_preset(style, STYLE_DESKTOP);
+    #assert q.environment == 0 && !verse_style_environment(q).ok;
+  }
+  for v: 0..<ANIME_VARIANTS { #assert !verse_style_environment(verse_style_anime(v, STYLE_DESKTOP)).ok; }
+  for f: 0..<3 { #assert !verse_style_environment(verse_style_flat(f, STYLE_DESKTOP)).ok; }
 }
 
 /** `p` lit as Character Create's glade (docs/verse/character-glade-lighting.md, the owner,

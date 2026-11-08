@@ -1,0 +1,53 @@
+serving apps/openagents-web on http://127.0.0.1:8987 (pid 49754)
+cc (/worlds/character-creator 1920x1080)
+  ready in 4154 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  cc-glade 1920x1080 77d735f2d075f4ed82b2f08ad3dfe4ab7e71d8903161665c47f18f40c274932a
+  cc GPU probes: module 3e18d54100bc10b7ecd3d5d2c4bbd0a76de32d95f20fbc424292aabaa96ed516
+  cc-closeup 1920x1080 bca62c8f0180495b38b0092315dba43e046f794680ac274a0999bd7762b95aa2
+  cc-turn-0 1920x1080 442d9f0cd10b57ce232d3ceb6da5015a28052e3f9ee177ccc95c24aec38e1c6d
+  cc-turn-1 1920x1080 0f1620035cc2b086cdd026b2ee69bae2e09d3d1f27b966f5faab4e3d29f70f1c
+  cc-turn-2 1920x1080 0c011b87dbdb7c034c29edef9e223d8a3a2970c26ab495dfc2d5c4fd8c9ac93f
+  cc-turn-3 1920x1080 3bb24bc56e5715614ee0e56a0be8dcab9d574d1fbabb295d2ed58cc488d6c27b
+cc-phone (/worlds/character-creator 390x844)
+  ready in 2923 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  cc-phone-glade 390x844 9848caa7ccd2c9531d727b557b460d2864f4093105861293486374c4ae59a296
+handover (/worlds/character-creator 1920x1080)
+  ready in 4246 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":657,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  handover-0 1920x1080 bd25af5c7c65aa844b202a61e0bf3e05d1f097ea4709e63eb26b73372d3ba2ec
+  handover-1 1920x1080 e9e72e603fece48a9c75ea2627154fa497dfcce7ffaba13fc08b9422aba07fe0
+  handover-2 1920x1080 2179ed6ffec9f1cd9aee4e0a14c6957b7442f607d993aeaad5d9c8b6b300fd01
+  handover-3 1920x1080 350624ac59690fa98e4303015c5fe1a75e01c47e57aa762cce1f37d887408b12
+  handover-4 1920x1080 2346ae52e9745e9604fdbd571f4e3ed313184168163b23d385f21415cd1642a9
+e2-arrival (/worlds/everglade2?at=1 1920x1080)
+  ready in 4224 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":629,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  e2-arrival 1920x1080 794af705d1c46cecf07df49fef8450002af28dd70796726d1fd1147462dca6d9
+e2-sunlit-path (/worlds/everglade2?at=60 1920x1080)
+  ready in 4231 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  e2-sunlit-path 1920x1080 7c90b49c43d0ed6c302484f15fcd33a6ae9c33706f95e972f52a15a8f35a6c4b
+e2-deep-canopy (/worlds/everglade2?at=300 1920x1080)
+  ready in 4181 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"everglade2","clock":"fixed:0.5","field10":1000,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  e2-deep-canopy 1920x1080 31f8b65b8ada501e4ded6cad3c0c618858736d42ff339f5a1c40d02421670644
+exp-combat (/worlds/everglade-experimental 1920x1080)
+  ready in 3716 ms; 4 still frames, settled; WebGPU hardware apple metal-3; {"chrome":"Chrome/157.0.0.0","wasm":"","app":"fivelab","clock":"fixed:0.5","field10":null,"date":1794009600000,"quality":"high","dpr":1,"errors":0}
+  exp-combat 1920x1080 732a36c30c1b971fe66bd86c41aef10da9dd406f30f110a5bdb7f5a48ea2af57
+  exp-combat GPU probes: module 64ef4678044b2ca54d77f4957bf5e960bf65f8e573c1990e27a1b2c10aa79dd2
+16 captures in OUT
+identity check against docs/verification/aethyr-lighting-p1-baseline-2026-11-08
+  cc-glade image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  cc-closeup image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  cc-turn-0 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  cc-turn-1 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  cc-turn-2 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  cc-turn-3 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  cc-phone-glade image: 0 of 5194 blocks moved, mean shift 0.0, peak block 0.0 pass
+  handover-0 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  handover-1 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  handover-2 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  handover-3 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  handover-4 image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  e2-arrival image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  e2-sunlit-path image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  e2-deep-canopy image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  exp-combat image: 0 of 32400 blocks moved, mean shift 0.0, peak block 0.0 pass
+  192 probes, 0 outside their bounds
+PASS: every capture and probe is inside the declared bounds

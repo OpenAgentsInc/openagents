@@ -597,19 +597,48 @@ EnvResolve :: struct { refusal: EnvRefusal; env: ResolvedEnvironment; }
 
 // ---- the glade and the fixtures
 
-// The painterly default: Character Create's glade (apps/openagents-web/gpu/character-glade-light.coax
-// and character-glade.coax). A constant noon: one knot. Every number is the glade's own.
+// The painterly default: Character Create's glade, every number of it once (#13060). The profile
+// below is built from these, and the GPU evaluation of the default (aethyr/render/painterly.coax,
+// which Character Create, Everglade II and Experimental draw with) reads the same constants, so a
+// shader and this record can never disagree. A constant noon: one knot.
+ENV_GLADE_SUN_X :: -0.40f32;  ENV_GLADE_SUN_Y :: 0.58f32;  ENV_GLADE_SUN_Z :: -0.62f32;   // toward the sun
+ENV_GLADE_KELVIN :: 4500.0f32; ENV_GLADE_WHITE :: 6500.0f32; ENV_GLADE_INTENSITY :: 2.15f32;  // Ore's noon
+ENV_GLADE_UPPER_R :: 0.49f32;   ENV_GLADE_UPPER_G :: 0.55f32;   ENV_GLADE_UPPER_B :: 0.62f32;    // cool sky fill
+ENV_GLADE_HORIZON_R :: 0.405f32; ENV_GLADE_HORIZON_G :: 0.445f32; ENV_GLADE_HORIZON_B :: 0.39f32; // their midpoint
+ENV_GLADE_LOWER_R :: 0.32f32;   ENV_GLADE_LOWER_G :: 0.34f32;   ENV_GLADE_LOWER_B :: 0.16f32;    // warm ground bounce
+ENV_GLADE_ZENITH_R :: 0.52f32;  ENV_GLADE_ZENITH_G :: 0.86f32;  ENV_GLADE_ZENITH_B :: 0.94f32;
+ENV_GLADE_SKYLINE_R :: 0.84f32; ENV_GLADE_SKYLINE_G :: 0.95f32; ENV_GLADE_SKYLINE_B :: 0.96f32;  // the sky's horizon
+ENV_GLADE_CLOUD_DARK_R :: 0.76f32; ENV_GLADE_CLOUD_DARK_G :: 0.85f32; ENV_GLADE_CLOUD_DARK_B :: 0.90f32;
+ENV_GLADE_CLOUD_LIT_R :: 1.0f32;   ENV_GLADE_CLOUD_LIT_G :: 0.995f32; ENV_GLADE_CLOUD_LIT_B :: 0.98f32;
+ENV_GLADE_HALO_R :: 1.0f32;     ENV_GLADE_HALO_G :: 0.97f32;    ENV_GLADE_HALO_B :: 0.81f32;
+ENV_GLADE_WISP_R :: 0.98f32;    ENV_GLADE_WISP_G :: 0.99f32;    ENV_GLADE_WISP_B :: 0.99f32;
+ENV_GLADE_CLOUD_COVER :: 0.95f32; ENV_GLADE_HALO_STRENGTH :: 0.16f32; ENV_GLADE_HALO_POWER :: 8.0f32; ENV_GLADE_WISP_STRENGTH :: 0.85f32;
+ENV_GLADE_FOG_DENSITY :: 0.0055f32; ENV_GLADE_FOG_FALLOFF :: 8.0f32; ENV_GLADE_FOG_START :: 6.0f32;
+ENV_GLADE_FOG_NEAR :: 30.0f32; ENV_GLADE_FOG_FAR :: 65.0f32; ENV_GLADE_FOG_FAR_GAIN :: 0.6f32;   // 30 m clear, thicker to 65 m
+ENV_GLADE_FOG_PHASE_G :: 0.62f32; ENV_GLADE_FOG_PHASE_CAP :: 6.0f32; ENV_GLADE_FOG_SUN_STRENGTH :: 0.40f32;
+ENV_GLADE_AIR_R :: 0.50f32;     ENV_GLADE_AIR_G :: 0.70f32;     ENV_GLADE_AIR_B :: 0.88f32;
+ENV_GLADE_SUN_TINT_R :: 0.78f32; ENV_GLADE_SUN_TINT_G :: 0.58f32; ENV_GLADE_SUN_TINT_B :: 0.22f32;
+ENV_GLADE_CLOUD_SHADE :: 0.45f32;   // sunlight in a cloud's shadow
+ENV_GLADE_CLOUD_SCALE :: 0.10f32; ENV_GLADE_CLOUD_DETAIL_SCALE :: 0.27f32; ENV_GLADE_CLOUD_EDGE_LO :: 0.44f32; ENV_GLADE_CLOUD_EDGE_HI :: 0.60f32;
+ENV_GLADE_EXPOSURE :: 1.18f32; ENV_GLADE_SATURATION :: 1.16f32;
 env_glade_profile :: () -> EnvironmentProfile #effects(all) {
-  k := EnvironmentKnot.{time = 0.5, body = EnvBody.sun, dir = EnvDir.{x = -0.40, y = 0.58, z = -0.62},
-    kelvin = 4500, white = 6500, intensity = 2.15, film = EnvFilm.source, flags = ENV_FLAG_CLOUD_SHADOW};
-  k.channels.ambient = EnvAmbient.{upper = env_rgb(0.49, 0.55, 0.62), horizon = env_rgb(0.405, 0.445, 0.39), lower = env_rgb(0.32, 0.34, 0.16)};
-  k.channels.sky = EnvSky.{zenith = env_rgb(0.52, 0.86, 0.94), horizon = env_rgb(0.84, 0.95, 0.96), cloud_shade = env_rgb(0.76, 0.85, 0.90),
-    cloud_light = env_rgb(1, 0.995, 0.98), halo = env_rgb(1, 0.97, 0.81), wisp = env_rgb(0.98, 0.99, 0.99),
-    cloud_cover = 0.95, halo_strength = 0.16, halo_power = 8, wisp_strength = 0.85};
-  k.channels.fog = EnvFog.{density = 0.0055, height_falloff = 8, start = 6, near = 30, far = 65, far_gain = 0.6, phase_g = 0.62, phase_cap = 6,
-    air = env_rgb(0.50, 0.70, 0.88), sun_tint = env_rgb(0.78, 0.58, 0.22), sun_strength = 0.40};
-  k.channels.cloud = EnvCloud.{shade = 0.45, scale = 0.10, detail_scale = 0.27, edge_lo = 0.44, edge_hi = 0.60};
-  k.channels.presentation = EnvPresentation.{exposure = 1.18, saturation = 1.16};
+  k := EnvironmentKnot.{time = 0.5, body = EnvBody.sun, dir = EnvDir.{x = ENV_GLADE_SUN_X, y = ENV_GLADE_SUN_Y, z = ENV_GLADE_SUN_Z},
+    kelvin = ENV_GLADE_KELVIN, white = ENV_GLADE_WHITE, intensity = ENV_GLADE_INTENSITY, film = EnvFilm.source, flags = ENV_FLAG_CLOUD_SHADOW};
+  k.channels.ambient = EnvAmbient.{upper = env_rgb(ENV_GLADE_UPPER_R, ENV_GLADE_UPPER_G, ENV_GLADE_UPPER_B),
+    horizon = env_rgb(ENV_GLADE_HORIZON_R, ENV_GLADE_HORIZON_G, ENV_GLADE_HORIZON_B), lower = env_rgb(ENV_GLADE_LOWER_R, ENV_GLADE_LOWER_G, ENV_GLADE_LOWER_B)};
+  k.channels.sky = EnvSky.{zenith = env_rgb(ENV_GLADE_ZENITH_R, ENV_GLADE_ZENITH_G, ENV_GLADE_ZENITH_B),
+    horizon = env_rgb(ENV_GLADE_SKYLINE_R, ENV_GLADE_SKYLINE_G, ENV_GLADE_SKYLINE_B),
+    cloud_shade = env_rgb(ENV_GLADE_CLOUD_DARK_R, ENV_GLADE_CLOUD_DARK_G, ENV_GLADE_CLOUD_DARK_B),
+    cloud_light = env_rgb(ENV_GLADE_CLOUD_LIT_R, ENV_GLADE_CLOUD_LIT_G, ENV_GLADE_CLOUD_LIT_B),
+    halo = env_rgb(ENV_GLADE_HALO_R, ENV_GLADE_HALO_G, ENV_GLADE_HALO_B), wisp = env_rgb(ENV_GLADE_WISP_R, ENV_GLADE_WISP_G, ENV_GLADE_WISP_B),
+    cloud_cover = ENV_GLADE_CLOUD_COVER, halo_strength = ENV_GLADE_HALO_STRENGTH, halo_power = ENV_GLADE_HALO_POWER, wisp_strength = ENV_GLADE_WISP_STRENGTH};
+  k.channels.fog = EnvFog.{density = ENV_GLADE_FOG_DENSITY, height_falloff = ENV_GLADE_FOG_FALLOFF, start = ENV_GLADE_FOG_START,
+    near = ENV_GLADE_FOG_NEAR, far = ENV_GLADE_FOG_FAR, far_gain = ENV_GLADE_FOG_FAR_GAIN, phase_g = ENV_GLADE_FOG_PHASE_G, phase_cap = ENV_GLADE_FOG_PHASE_CAP,
+    air = env_rgb(ENV_GLADE_AIR_R, ENV_GLADE_AIR_G, ENV_GLADE_AIR_B), sun_tint = env_rgb(ENV_GLADE_SUN_TINT_R, ENV_GLADE_SUN_TINT_G, ENV_GLADE_SUN_TINT_B),
+    sun_strength = ENV_GLADE_FOG_SUN_STRENGTH};
+  k.channels.cloud = EnvCloud.{shade = ENV_GLADE_CLOUD_SHADE, scale = ENV_GLADE_CLOUD_SCALE, detail_scale = ENV_GLADE_CLOUD_DETAIL_SCALE,
+    edge_lo = ENV_GLADE_CLOUD_EDGE_LO, edge_hi = ENV_GLADE_CLOUD_EDGE_HI};
+  k.channels.presentation = EnvPresentation.{exposure = ENV_GLADE_EXPOSURE, saturation = ENV_GLADE_SATURATION};
   p := EnvironmentProfile.{version = ENV_VERSION, id = ENV_GLADE_ID}; p.track.count = 1; p.track.knots[0] = k;
   return p;
 }

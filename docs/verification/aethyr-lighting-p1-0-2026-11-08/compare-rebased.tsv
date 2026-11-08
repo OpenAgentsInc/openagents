@@ -1,0 +1,20 @@
+capture	blocks	moved	moved_ppm	mae	peak	result
+cc-glade	32400	0	0	0.0000	0.000	pass
+cc-closeup	32400	0	0	0.0000	0.000	pass
+cc-turn-0	32400	0	0	0.0000	0.000	pass
+cc-turn-1	32400	0	0	0.0000	0.000	pass
+cc-turn-2	32400	0	0	0.0000	0.000	pass
+cc-turn-3	32400	0	0	0.0000	0.000	pass
+cc-phone-glade	5194	0	0	0.0000	0.000	pass
+handover-0	32400	0	0	0.0000	0.000	pass
+handover-1	32400	0	0	0.0000	0.000	pass
+handover-2	32400	0	0	0.0000	0.000	pass
+handover-3	32400	0	0	0.0000	0.000	pass
+handover-4	32400	0	0	0.0000	0.000	pass
+e2-arrival	32400	0	0	0.0000	0.000	pass
+e2-sunlit-path	32400	0	0	0.0000	0.000	pass
+e2-deep-canopy	32400	0	0	0.0000	0.000	pass
+exp-combat	32400	0	0	0.0000	0.000	pass
+
+probe	kind	baseline	now	delta	result
+probes	192	outside	0

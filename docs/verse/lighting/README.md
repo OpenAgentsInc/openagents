@@ -2,7 +2,10 @@
 
 Date: 2026-11-08. Source baseline: `7fab57cd75`. Revised 2026-11-08 (owner
 direction: the Character Create glade is the look).
-Status: proposed implementation sequence; no phase is qualified by this document.
+Status: Phase 1 in progress. Done: step 0, the glade lifted into the shared painterly default
+(#13060; identity receipt `docs/verification/aethyr-lighting-p1-0-2026-11-08/`), step 1, the baseline
+(#13061), step 2, the records (#13062), step 3, the regions (#13063) and step 4, day and weather
+(#13064). No phase is qualified yet.
 
 Build one shared lighting system for Coax Aethyr, with Everglade as its first
 complete production consumer. It must support authored environmental character,
@@ -34,6 +37,13 @@ What the glade is today, and what becomes the painterly default:
 | Film response at exposure 1.18, saturation lift 1.16 | `cg_film`, `cg_output` over `aethyr/render/filmic.coax` | Default painterly presentation (Phase 9's identity grade) |
 | Octahedral normals with room for an indirect-light weight; normal/depth contact shading | `cg_normal_pack`, the glade's contact pass | Default contact/AO path (Phase 5) |
 | Painterly bands, rim, dab, cool shadow band | `verse/style-preset.coax` (`painterly_key`, `shadow_cool` 1.5) | Kept as the painterly material response; the glade defaults sit under it |
+
+Since #13060 these functions and numbers live in Aethyr: the numbers once, as
+`aethyr/world/environment.coax`'s `ENV_GLADE_*` (`env_glade_profile` is built from them), their
+evaluation in `aethyr/render/painterly.coax`, the transfer helpers in `aethyr/render/transfer.coax`,
+the normal packing and contact taps in `aethyr/render/contact-shade.coax`, and the exposed film
+response in `aethyr/render/filmic.coax`. The `cg_*` names in the app files are thin delegates, and
+`verse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default environment.
 
 Everglade II already reads part of this (`apps/openagents-web/gpu/everglade2.coax`
 calls `cg_decode`, `cg_hemisphere`, `cg_sun_dir`, `cg_sky`, `cg_output` and

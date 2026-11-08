@@ -21,7 +21,8 @@ constants. Although the host allocated HDR targets, that shader did not maintain
 an actual linear-light pipeline. Constant ambient and a uniform warm distance
 blend further flattened the materials.
 
-`gpu/character-glade-light.coax` now defines an explicit scene-private contract:
+`gpu/character-glade-light.coax` defined an explicit contract, now the shared painterly default
+(see "The shared painterly default" below):
 
 - Texture RGB stays in the linear domain supplied by the sRGB GPU sampler.
   Authored display palette values use the standard piecewise sRGB decode once.
@@ -153,3 +154,27 @@ young leaves on a red tree toward a dark crimson and turns only old leaves orang
 darker than the orange, because a bright red clips its red channel and reads as orange again. The
 foreground plants beside the near rock use deeper red-orange tints. Comparison:
 `docs/verification/character-glade-reference-light-2026-11-07/crimson-crowns.png`.
+
+## The shared painterly default (November 8)
+
+The owner's direction: this glade is the most beautiful thing we render, and its lighting is the
+default for every painterly realm (lighting plan Phase 1 step 0, GitHub #13060). Its functions and
+numbers moved out of the app into Aethyr:
+
+| What | Now in |
+| --- | --- |
+| Every number: the key (4500 K under 6500 K, x2.15, direction), hemisphere colours, sky and cloud colours, air, haze window, cloud shade, exposure and saturation | `aethyr/world/environment.coax` `ENV_GLADE_*`, which `env_glade_profile` is built from |
+| `cg_linear`, `cg_srgb`, `cg_decode`, `cg_encode`, `cg_shoulder` | `aethyr/render/transfer.coax` (`transfer_*`) |
+| `cg_sun_dir`, `cg_sun_colour`, `cg_hemisphere`, `cg_irradiance`, `cg_air_depth`, `cg_phase`, `cg_haze_window`, `cg_atmosphere`, `cg_film`, `cg_output`, `cg_sky`, `cg_cloud`, `cg_cloud_fbm`, `cg_soil`, `cg_noise` | `aethyr/render/painterly.coax` (`paint_*`); the film after exposure is `aethyr/render/filmic.coax` `film_exposed` |
+| `cg_sign`, `cg_normal_pack`, `cg_normal_unpack`, the view-point reconstruction and contact taps | `aethyr/render/contact-shade.coax` (`shade_*`) |
+
+The `cg_*` names stay as thin delegates, so Everglade II, Experimental and the lighting probes
+compile unchanged until their consumers read the resolver (#13066). `verse/character-glade.coax`
+holds the glade's composition (terrain, path, planting, town) and no lighting, so nothing moved from
+it. `verse/style-preset.coax`'s painterly preset names the glade profile as its default environment
+(`environment = ENV_GLADE_ID`, `verse_style_environment`); its bands, rim, dab and `shadow_cool`
+stay as the material response on top, and the other styles name none.
+
+Character Create renders exactly as before: against the P1.1 baseline every one of the 16 captures
+moved 0 blocks, every frame SHA-256 and all 192 probes (48 GPU probes) are identical, with the pages
+running the regenerated shaders. Receipt: `docs/verification/aethyr-lighting-p1-0-2026-11-08/`.

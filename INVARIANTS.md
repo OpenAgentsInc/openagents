@@ -7391,3 +7391,21 @@ generation. Checks: `coax test aethyr/world/environment-region.coax` ("band
 weights are continuous and monotone across every shape's edge, sampled
 densely", "overlapping regions normalize by priority", "a pinned route walk
 changes continuously"), with zero `coax mutate --root-only` survivors.
+
+## The painterly default is the glade profile, and its numbers exist once
+
+Character Create's glade lighting numbers are held once, as `ENV_GLADE_*` in
+`aethyr/world/environment.coax`; `env_glade_profile` is built from them, and the
+painterly default's GPU evaluation (`aethyr/render/painterly.coax`, with
+`transfer.coax`, `contact-shade.coax` and `filmic.coax` `film_exposed`) reads the
+same constants. The app's `cg_*` lighting names are delegates and hold no numbers.
+`verse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default
+environment (`environment = ENV_GLADE_ID`); lowpoly, flat, anime and photoreal
+name none. Character Create's glade stays identical to the P1.1 baseline within
+its declared bounds (GitHub #13060). Checks: `coax test aethyr/render/painterly.coax`
+("the default's evaluation reads the glade profile's resolved values"),
+`coax test verse/style-preset.coax` ("the painterly preset's default environment
+resolves to the glade profile"), the delegate checks in
+`apps/openagents-web/gpu/character-glade-light.coax` and `character-glade.coax`,
+and `docs/verification/aethyr-lighting-p1-0-2026-11-08/`.
+
