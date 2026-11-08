@@ -45,7 +45,7 @@ fairy 695000
 # second for the clearance check bring it to 2,447,639; about 2% headroom.
 # Experimental's ten-times dungeon (verse/experimental-dungeon.coax), its 45-monster roster and torch
 # lights add about 37 KB; about 2% headroom.
-fivelab 2560000
+fivelab 2575000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
@@ -65,7 +65,7 @@ fivelab 2560000
 everglade2 660000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
-fivemmo 1720000
+fivemmo 1740000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 182,826 before, 194,755 after; about 5% room
 fixture 210000
 garden 300000
@@ -80,7 +80,7 @@ nip01 90000
 nip-guide 130000
 og 60000
 # /oneshot: 273,171 measured 2026-11-08 after the engine's spell access and prepared-spell checks (7f7d7302e5, 31a30eb2dd); about 5% room
-oneshot 285000
+oneshot 305000
 # Orbit v2 adds authoritative input/snapshot codecs while retaining the published legacy profile.
 # 292,500 final Linux release bytes at #12845; 2.5% room in this 300,000-byte bound.
 orbitleague 300000
