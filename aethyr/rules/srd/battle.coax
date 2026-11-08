@@ -34,6 +34,7 @@
 #load "dodge.coax";
 #load "dash.coax";
 #load "disengage.coax";
+#load "opportunity-trigger.coax";
 #load "movement-credit.coax";
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
@@ -1200,6 +1201,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
   rs_dodge_end(b[0].c[i..<i+1]);
+  rs_opportunity_begin(b[0].c[i..<i+1]);
   rs_halt_begin(b[0].c[i..<i+1],b[0].clock+rs_beat(b));
   // The profile declares the movement grant: exact feet in strict mode, or
   // the legacy proportional whole-square grant in action combat.
@@ -1724,6 +1726,7 @@ rs_open_hand :: (b: [] RsBattle, i: int, j: int, how: int) {
   if !b[0].c[i].open_hand || b[0].c[j].dead || b[0].c[j].hp == 0 { return; }
   l: [1] RsLine;
   if how == OH_ADDLE {
+    rs_opportunity_suppress(b[0].c[j..<j+1]);
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is addled: no Opportunity Attacks until its next turn");
     rs_tell(b, RS_EV_CONDITION, -1, i, j, 0, 0, l[..]);
     return;

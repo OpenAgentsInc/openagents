@@ -1,0 +1,51 @@
+aethyr/rules/srd/opportunity-checks.coax:8:8: error[E0302]: 'RsOpportunityMove' is not a struct
+      q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=seen==1,teleport=teleport==1,
+         ^
+aethyr/rules/srd/opportunity-checks.coax:10:13: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+      #assert rs_opportunity_trigger(b[..],0,1,q)==(flags!=0 && teleport==0 && seen==1);
+              ^
+aethyr/rules/srd/opportunity-checks.coax:12:6: error[E0302]: 'RsOpportunityMove' is not a struct
+    q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};
+       ^
+aethyr/rules/srd/opportunity-checks.coax:13:11: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+    #assert rs_opportunity_trigger(b[..],0,1,q) && !b[0].c[0].reacted;
+            ^
+aethyr/rules/srd/opportunity-checks.coax:14:37: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+    #assert rs_disengage(b[..],1) && !rs_opportunity_trigger(b[..],0,1,q);
+                                      ^
+aethyr/rules/srd/opportunity-checks.coax:20:6: error[E0302]: 'RsOpportunityMove' is not a struct
+    q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};
+       ^
+aethyr/rules/srd/opportunity-checks.coax:22:28: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+      q.reach=reach; #assert rs_opportunity_trigger(b[..],0,1,q)==(reach>=5 && reach<10);
+                             ^
+aethyr/rules/srd/opportunity-checks.coax:24:24: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+    q.reach=-1; #assert !rs_opportunity_trigger(b[..],0,1,q);
+                         ^
+aethyr/rules/srd/opportunity-checks.coax:25:30: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+    q.reach=5; q.x=4; #assert !rs_opportunity_trigger(b[..],0,1,q);
+                               ^
+aethyr/rules/srd/opportunity-checks.coax:26:34: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+    q.x=5; q.melee=false; #assert !rs_opportunity_trigger(b[..],0,1,q);
+                                   ^
+aethyr/rules/srd/opportunity-checks.coax:34:6: error[E0302]: 'RsOpportunityMove' is not a struct
+    q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};
+       ^
+aethyr/rules/srd/opportunity-checks.coax:35:11: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+    #assert rs_opportunity_trigger(b[..],1,0,q);
+            ^
+aethyr/rules/srd/opportunity-checks.coax:37:12: error[E0315]: procedure 'rs_opportunity_trigger' is not declared
+    #assert !rs_opportunity_trigger(b[..],1,0,q) && !b[0].c[1].reacted;
+             ^
+aethyr/rules/srd/opportunity-checks.coax:38:40: error[E0351]: struct 'RsCreature' has no field 'opportunity_blocked'
+    rs_tick(b[..],100); #assert b[0].c[1].opportunity_blocked;
+                                         ^
+  fix: its fields are: name name_n team level score save_prof checks ac hp hp_max temp speech_blocked gesture_hand material_hand focus_held focus_worn component_pouch focus_class class_spell_grants materials eff speed spell_ability slots slots_max spell_grants spells exhaustion cond conc conc_until flame_until outlined_until outlined_by wisp_until restrained_by agonizing repelling dark_blessing hex_free hex_free_after klass humanoid resist vulnerable immune immune_cond floor weapon ranged masteries reacted dodging rages rages_max rage_bonus raging rage_kept struck_round reckless_until danger_sense frenzy martial_die focus focus_max deflect open_hand uses uses_max uses_back free_spell undead insp_die inspired cutting turn_undead preserve_life disciple crit_range athlete archery extra_attack tactical shift primal mindless expertise cant fast_hands climb cunning_strike strike_plan poison_kit uncanny explorer lore swim ritual arcane_recovery scholar savant memorize sculpt cunning_rite own_luck jack font discoveries companion resurgence resurged_slot sear blessed_healer restoration affinity guard_slot guard_turn aura steed metabolism slow_fall stunning stun_ready empowered halved_until sacred_until colossus sneak_dice cunning steady_aim innate_until quickened seeking shield_spell shield_until potent lands_aid slowed_until slot_back rage_back focus_back round_at death_ok death_fail stable dead stable_due x y initiative turn_at rise_by rise_at fortitude npc parry rebuke vigor
+aethyr/rules/srd/opportunity-checks.coax:39:45: error[E0351]: struct 'RsCreature' has no field 'opportunity_blocked'
+    rs_start_turn(b[..],1); #assert !b[0].c[1].opportunity_blocked;
+                                              ^
+  fix: its fields are: name name_n team level score save_prof checks ac hp hp_max temp speech_blocked gesture_hand material_hand focus_held focus_worn component_pouch focus_class class_spell_grants materials eff speed spell_ability slots slots_max spell_grants spells exhaustion cond conc conc_until flame_until outlined_until outlined_by wisp_until restrained_by agonizing repelling dark_blessing hex_free hex_free_after klass humanoid resist vulnerable immune immune_cond floor weapon ranged masteries reacted dodging rages rages_max rage_bonus raging rage_kept struck_round reckless_until danger_sense frenzy martial_die focus focus_max deflect open_hand uses uses_max uses_back free_spell undead insp_die inspired cutting turn_undead preserve_life disciple crit_range athlete archery extra_attack tactical shift primal mindless expertise cant fast_hands climb cunning_strike strike_plan poison_kit uncanny explorer lore swim ritual arcane_recovery scholar savant memorize sculpt cunning_rite own_luck jack font discoveries companion resurgence resurged_slot sear blessed_healer restoration affinity guard_slot guard_turn aura steed metabolism slow_fall stunning stun_ready empowered halved_until sacred_until colossus sneak_dice cunning steady_aim innate_until quickened seeking shield_spell shield_until potent lands_aid slowed_until slot_back rage_back focus_back round_at death_ok death_fail stable dead stable_due x y initiative turn_at rise_by rise_at fortitude npc parry rebuke vigor
+15 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

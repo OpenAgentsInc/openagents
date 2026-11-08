@@ -1,0 +1,15 @@
+#load "opportunity-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],rs_guard("Guard",1),3,3); _=rs_add(b[..],rs_monk("Monk",0,3),4,3);
+  rs_start_turn(b[..],1);
+  q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};
+  if !rs_opportunity_trigger(b[..],0,1,q) { return 1; }
+  q.teleport=true; if rs_opportunity_trigger(b[..],0,1,q) { return 2; } q.teleport=false;
+  rs_open_hand(b[..],1,0,OH_ADDLE); if rs_opportunity_trigger(b[..],0,1,q) || b[0].c[0].reacted { return 3; }
+  rs_start_turn(b[..],0); if !rs_opportunity_trigger(b[..],0,1,q) { return 4; }
+  rs_start_turn(b[..],1);
+  if !rs_disengage(b[..],1) || rs_opportunity_trigger(b[..],0,1,q) { return 5; }
+  tool_errln("PASS OPPORTUNITY-TRIGGER"); return 0;
+}

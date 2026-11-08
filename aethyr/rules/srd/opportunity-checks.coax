@@ -1,0 +1,83 @@
+#load "battle.coax";
+
+#test "opportunity trigger requires visible departure using the mover's own resources" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],rs_guard("Guard",1),3,3); _=rs_add(b[..],rs_fighter("Mover",0,1),4,3);
+  rs_start_turn(b[..],1);
+  for flags:0..<16 { for teleport:0..<2 { for seen:0..<2 {
+    q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=seen==1,teleport=teleport==1,
+      movement=(flags&1)!=0,action=(flags&2)!=0,bonus=(flags&4)!=0,reaction=(flags&8)!=0};
+    #assert rs_opportunity_trigger(b[..],0,1,q)==(flags!=0 && teleport==0 && seen==1);
+  } } }
+  q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};
+  #assert rs_opportunity_trigger(b[..],0,1,q) && !b[0].c[0].reacted;
+  #assert rs_disengage(b[..],1) && !rs_opportunity_trigger(b[..],0,1,q);
+}
+
+#test "opportunity reach uses the exact before and after boundary without choosing or moving a creature" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],rs_guard("Guard",1),3,3); _=rs_add(b[..],rs_fighter("Mover",0,1),4,3);
+  q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};
+  for reach:0..<16 {
+    q.reach=reach; #assert rs_opportunity_trigger(b[..],0,1,q)==(reach>=5 && reach<10);
+  }
+  q.reach=-1; #assert !rs_opportunity_trigger(b[..],0,1,q);
+  q.reach=5; q.x=4; #assert !rs_opportunity_trigger(b[..],0,1,q);
+  q.x=5; q.melee=false; #assert !rs_opportunity_trigger(b[..],0,1,q);
+  #assert b[0].c[1].x==4 && b[0].c[1].hp==b[0].c[1].hp_max;
+}
+
+#test "Addle blocks opportunity triggers until the recipient's actual next turn" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],rs_monk("Monk",0,3),4,3); _=rs_add(b[..],rs_guard("Guard",1),3,3);
+  rs_start_turn(b[..],0);
+  q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};
+  #assert rs_opportunity_trigger(b[..],1,0,q);
+  rs_open_hand(b[..],0,1,OH_ADDLE);
+  #assert !rs_opportunity_trigger(b[..],1,0,q) && !b[0].c[1].reacted;
+  rs_tick(b[..],100); #assert b[0].c[1].opportunity_blocked;
+  rs_start_turn(b[..],1); #assert !b[0].c[1].opportunity_blocked;
+}
+
+#test "opportunity queries reject logical and physical span edges and unavailable Reactions" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_guard("Guard",1),2,2); _=rs_add(b[..],rs_fighter("Mover",0,1),3,2);
+  q:=RsOpportunityMove.{x=4,y=2,reach=5,melee=true,seen=true,movement=true};
+  for idx:[3]int.[-1,2,3] {
+    b[0].c[2]=rs_guard("Unused",1); b[0].c[2].x=2; b[0].c[2].y=2;
+    #assert !rs_opportunity_trigger(b[..],idx,1,q);
+    b[0].c[2].x=3;
+    #assert !rs_opportunity_trigger(b[..],0,idx,q);
+  }
+  #assert !rs_opportunity_trigger(b[..],0,0,q);
+  b[0].c[0].reacted=true; #assert !rs_opportunity_trigger(b[..],0,1,q);
+  b[0].c[0].reacted=false; b[0].c[0].cond=RS_STUNNED;
+  #assert !rs_opportunity_trigger(b[..],0,1,q); b[0].c[0].cond=0;
+  b[0].c[1].dead=true; #assert !rs_opportunity_trigger(b[..],0,1,q); b[0].c[1].dead=false;
+  b[0].who=0; b[0].turn.disengaged=true;
+  #assert rs_opportunity_trigger(b[..],0,1,q);
+  for axis:0..<2 { for field:0..<3 { for upper:0..<2 {
+    r:=2; m:=3; to:=4;
+    if field==0 { r=ifx upper==1 then 8 else -1; m=ifx upper==1 then 7 else 0; to=ifx upper==1 then 6 else 1; }
+    if field==1 { r=ifx upper==1 then 7 else 0; m=ifx upper==1 then 8 else -1; to=ifx upper==1 then 5 else 2; }
+    if field==2 { r=ifx upper==1 then 6 else 1; m=ifx upper==1 then 5 else 2; to=ifx upper==1 then 8 else -1; }
+    b[0].c[0].x=ifx axis==0 then r else 2; b[0].c[0].y=ifx axis==1 then r else 2;
+    b[0].c[1].x=ifx axis==0 then m else 2; b[0].c[1].y=ifx axis==1 then m else 2;
+    q.x=ifx axis==0 then to else 2; q.y=ifx axis==1 then to else 2;
+    #assert !rs_opportunity_trigger(b[..],0,1,q);
+  } } }
+}
+
+#test "zero coordinate is a valid reach boundary for reactor mover and destination on each axis" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_guard("Guard",1),2,2); _=rs_add(b[..],rs_fighter("Mover",0,1),3,2);
+  for axis:0..<2 { for field:0..<3 {
+    rx:=ifx field==0 then 0 else ifx field==1 then 1 else 2;
+    mx:=ifx field==0 then 1 else ifx field==1 then 0 else 3;
+    tx:=ifx field==0 then 2 else ifx field==1 then 3 else 0;
+    b[0].c[0].x=ifx axis==0 then rx else 2; b[0].c[0].y=ifx axis==1 then rx else 2;
+    b[0].c[1].x=ifx axis==0 then mx else 2; b[0].c[1].y=ifx axis==1 then mx else 2;
+    q:=RsOpportunityMove.{x=ifx axis==0 then tx else 2,y=ifx axis==1 then tx else 2,reach=5,melee=true,seen=true,movement=true};
+    #assert rs_opportunity_trigger(b[..],0,1,q);
+  } }
+}

@@ -6931,3 +6931,15 @@ Zero Speed alone does not prohibit this Action; incapacity and illegal budgets
 refuse. Opportunity attacks still require implementation before the defensive
 consequence is qualified. Evidence and remaining scope:
 `docs/verification/srd-disengage-2026-11-08/README.md`.
+
+## Opportunity triggers are queried without spending or changing movement
+
+`opportunity-trigger.coax` requires explicit authoritative melee reach,
+visibility and own-resource movement facts and reads logical/grid actor state,
+Reaction availability, Addle and the active mover's Disengage. Teleportation
+and unpowered forced displacement do not trigger; reach departure is exact.
+Addle now retains its opportunity-only suppression until actual turn start,
+not clock expiry, without consuming unrelated Reactions. This is a trigger
+query, not Reaction strike execution or movement integration. The pending
+executor must preserve true mover-turn spell budgets and strike-local state.
+Evidence: `docs/verification/srd-opportunity-trigger-2026-11-08/README.md`.
