@@ -211,12 +211,12 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.steps[0] = rs_step(RS_S_TELEPORT, 0, 0, 0, 0); s.step_n = 1;
   } else if i == SP_BLESS {
     s = rs_more("bless", "Bless", 1, "Enchantment", "Cleric, Paladin", RS_T_ACTION, 30, "Concentration, up to 1 minute", 60, true, RS_A_NONE, 0);
-    s.components = "V, S, M (a Holy Symbol worth 5+ GP)"; s.targets = 3;
+    s.components = "V, S, M (a Holy Symbol worth 5+ GP)"; s.targets = 3; s.target_growth = 1; s.targets_optional = true;
     s.text = "You bless up to three creatures within range. Whenever a target makes an attack roll or a saving throw before the spell ends, the target adds 1d4 to the attack roll or save. Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.";
     s.steps[0] = rs_step(RS_S_BOON, EF_BLESS, 0, 0, 0); s.step_n = 1;
   } else if i == SP_BANE {
     s = rs_more("bane", "Bane", 1, "Enchantment", "Bard, Cleric, Warlock", RS_T_ACTION, 30, "Concentration, up to 1 minute", 60, true, RS_A_NONE, 0);
-    s.components = "V, S, M (a drop of blood)"; s.targets = 3;
+    s.components = "V, S, M (a drop of blood)"; s.targets = 3; s.target_growth = 1; s.targets_optional = true;
     s.text = "Up to three creatures of your choice that you can see within range must each make a Charisma saving throw. Whenever a target that fails this save makes an attack roll or a saving throw before the spell ends, the target must subtract 1d4 from the attack roll or save. Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1.";
     s.steps[0] = rs_step(RS_S_SAVE, RS_CHA, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_BOON, EF_BANE, 0, 0, 0); s.step_n = 2;
   } else if i == SP_SHIELD_OF_FAITH {
@@ -227,7 +227,7 @@ rs_more_spell :: (i: int) -> RsSpell {
   } else if i == SP_COMMAND {
     // the command is Halt (the record holds that one: the raid's, to stop a foe where it stands)
     s = rs_more("command", "Command", 1, "Enchantment", "Bard, Cleric, Paladin", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
-    s.components = "V"; s.targets = 1;
+    s.components = "V"; s.targets = 1; s.target_growth = 1;
     s.text = "You speak a one-word command to a creature you can see within range. The target must succeed on a Wisdom saving throw or follow the command on its next turn. Choose the command from these options: Approach. The target moves toward you by the shortest and most direct route, ending its turn if it moves within 5 feet of you. Drop. The target drops whatever it is holding and then ends its turn. Flee. The target spends its turn moving away from you by the fastest available means. Grovel. The target has the Prone condition and then ends its turn. Halt. On its turn, the target doesn't move and takes no action or Bonus Action. Using a Higher-Level Spell Slot. You can affect one additional creature for each spell slot level above 1.";
     s.steps[0] = rs_step(RS_S_SAVE, RS_WIS, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_HALT, 0, 0, 0, 0); s.step_n = 2;
   }

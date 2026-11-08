@@ -77,11 +77,11 @@ named below are selected evidence only, not exhaustive qualification.
 | CORE-REST | Rules Glossary, class recovery rules | Partial | Uses/maxima and selected recovery features | Short/long rests, Hit Dice, limits and recovery effects, M3/M5 |
 | CAST-ACCESS | Classes and Gaining Spells pp.104-105 | Partial | Shared class eligibility/grants plus canonical cantrip/prepared selections, class limits and Wizard spellbook membership; CAST-CLASS and CAST-PREPARED pass ([selection evidence](../verification/srd-spell-selection-2026-11-08/README.md)) | Full source-feature/origin grant provenance and legal rest/level-up/copying workflows, #13038/#13044 |
 | CAST-COMPONENTS | Casting Spells pp.104-106 | Missing | Display strings, no complete component state | V/S/M, focus/pouch, cost, consumption, rituals/long casts, M2/M3 |
-| CAST-TARGETS | Casting Spells pp.105-106 | Partial | Shared target policy separates malformed/dead/out-of-range refusal from spent, unaffected invalid-type casts; canonical Self requests enforce the caster while preserving originating effects/helpers; CAST-INVALID-TARGET and CAST-SELF pass | Explicit upcast/multiple target selections and full slice casting admission remain in #13038 |
+| CAST-TARGETS | Casting Spells pp.105-106 | Partial | Shared target/Self policy plus explicit creature recipients, base-one upcasts and per-ray assignments with whole-list preflight; CAST-CHOSEN-TARGETS passes | Object/visibility/point workflows and world request adoption remain under #13038/#13043/#13046 |
 | CAST-RESOURCES | Spell slots/casting rules pp.104-106 | Partial | Slot checks and turn budgets; unknown executable IDs and malformed cantrip slots now refuse atomically ([evidence](../verification/srd-casting-request-2026-11-08/README.md)); four admission probes pass | Preparation, full free-cast restrictions, transactional preflight, M3 |
 | CAST-CONCENTRATION | Rules Glossary Concentration | Partial | Concentration saves, replacement and expiration | Full interruption, overlapping effects and duration fixtures, M3/M4 |
 | FX-EXECUTOR | Spec typed effect program | Partial | Closed step set with specialized handlers | Transform, summon, sense, general modify/terrain/light/narrative, M4 |
-| FX-TARGETING | Spec target step | Partial | Single target plus automatic nearest-side selection; same target per ray | Explicit legal multiple targets, filters and geometry, M3/M4 |
+| FX-TARGETING | Spec target step | Partial | Explicit recipient/ray API shares the existing executor; legacy convenience auto-selection remains during migration | Full filters/geometry, source effect options and world choice surfaces, #13038/#13043/#13046 |
 | FX-ZONES | Spec zone triggers and shapes | Partial | Eight zones; Lines/Spheres and rectangular approximations | True shapes, enter/start/end timing, movement and multi-area spells, M4 |
 | FX-CAP-EFFECT | Spec lasting effects; deterministic complete results | Partial | Six owned records; explicit refusal, whole-operation preflight and independent restraint leases; `CAP-EFFECT` passes | Full source stacking/condition qualification remains under #13039; bounded capacity is qualified separately under #13041 |
 | FX-CAP-ZONE | Spec lasting areas; admitted cast results | Partial | Eight owned slots with preflight, concentration release/reuse and deadline expiry; CAP-ZONE passes | Complete independent effect/zone-restraint ownership and related effect admission, #13041/#13039 |
@@ -126,6 +126,7 @@ predicate to PASS without deleting an expected-failure exemption.
 | CAST-ACTOR | Missing/negative actor refuses without spending | PASS | Request index validity |
 | CAST-SLOT | Unavailable slot refuses without spending | PASS | One selected slot boundary |
 | CAST-REACTION-SLOT | Own-turn reaction casting respects the slot limit and records its cost before later casting | PASS | Shield/Rebuke budgets share ordinary casting's turn flags; another actor's flags do not leak into a reaction |
+| CAST-CHOSEN-TARGETS | A chosen recipient set, including the caster, admits as one complete operation or refuses before spending | PASS | Native chosen Bless excludes an unchosen nearby creature and preserves state at full recipient storage |
 | CAST-TARGET-INDEX | Missing/negative target index refuses without spending | PASS | Malformed request, not SRD invalid-target rule |
 | CAST-RANGE | Out-of-touch-range Cure Wounds refuses without spending | PASS | Range admission |
 | CAST-CLASS | Unmodified preset Druid cannot cast Guiding Bolt | PASS | Class eligibility and explicit extra-list grants enforced in shared admission; separate selected-state admission is covered by CAST-PREPARED |
@@ -183,6 +184,16 @@ Vex rider, including a missed or canceled-edge roll; Vex for another target stay
 Actual casts, concentration release/expiry, seeded dice and the hotbar path are
 checked. This is partial #13039 progress, not qualification of all same-spell
 combination rules, conditions, damage or death.
+
+The [chosen-target change](../verification/srd-chosen-targets-2026-11-08/README.md)
+adds CAST-CHOSEN-TARGETS: twelve of thirteen witnesses pass, with only parked
+Polymorph failing. Explicit casts choose distinct recipients, including the
+caster, or assign individual rays. Source upcast counts for Bless, Bane,
+Command, Hold Person and Blindness/Deafness are represented. Invalid types and
+successful saves do not cancel other recipients' concentration effects, and
+all requested effect storage is checked before costs. Existing worlds still
+have their legacy convenience picker during migration; this is an engine API
+slice, not a claim that all player/wire choice surfaces have been adopted.
 
 ## Canonical source inventory
 

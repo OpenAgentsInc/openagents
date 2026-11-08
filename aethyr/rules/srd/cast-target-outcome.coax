@@ -68,13 +68,16 @@
 
 // Caller has already validated a live, in-range creature and spent the cast.
 // A successful apparent save has no fabricated die roll (amount 0, success 1).
-// The current humanoid-only record is the single-target Hold Person program;
-// explicit upcast target selection remains part of the active casting work.
+// The legacy single-target wrapper ends an inapplicable concentration cast;
+// a chosen batch retains its concentration while checking other recipients.
 rs_unaffected_target :: (b: [] RsBattle, i: int, j: int, sp: int) -> bool #effects(all) {
+  return rs_unaffected_target_kept(b,i,j,sp,false);
+}
+rs_unaffected_target_kept :: (b: [] RsBattle, i: int, j: int, sp: int, keep_concentration: bool) -> bool #effects(all) {
   s := rs_spell(sp);
   if rs_target_decision(true, false, true, s.humanoid_only, b[0].c[j].humanoid) != RS_TARGET_UNAFFECTED { return false; }
   l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " save: success");
   rs_tell(b, RS_EV_SAVE, sp, i, j, 0, 1, l[..]);
-  if b[0].c[i].conc == sp { b[0].c[i].conc = -1; b[0].c[i].conc_until = 0; }
+  if !keep_concentration && b[0].c[i].conc == sp { b[0].c[i].conc = -1; b[0].c[i].conc_until = 0; }
   return true;
 }

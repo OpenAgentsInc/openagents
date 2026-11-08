@@ -9,6 +9,22 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "battle.coax";
 
+#test "compliance admission: chosen recipients retain a complete cast and capacity refusal spends nothing" {
+  #assert sc_chosen_recipients();
+}
+sc_chosen_recipients :: () -> bool {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Chosen",1),3,1);
+  u := rs_add(b[..],rs_skeleton("Unchosen",0),2,1);
+  for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100,save=-1}; }
+  rs_start_turn(b[..],a); picks := [2] int.[a,t]; before := sc_before(b[..]);
+  if rs_cast_creatures(b[..],a,SP_BLESS,1,picks[..],false) || !sc_unchanged(b[..],before) { return false; }
+  b[0].c[t].eff[RS_EFFECTS-1].kind = EF_NONE;
+  if !rs_cast_creatures(b[..],a,SP_BLESS,1,picks[..],false) { return false; }
+  return rs_effect(b[0].c[a],EF_BLESS) && rs_effect(b[0].c[t],EF_BLESS) && !rs_effect(b[0].c[u],EF_BLESS) && b[0].c[a].slots[1] == before.slots[1]-1;
+}
+
 #test "compliance admission: reaction slots belong to their caster's current turn" {
   #assert sc_reaction_slot();
 }

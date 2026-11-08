@@ -3,6 +3,110 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "a chosen self Hold Person cannot leave orphaned effects after concentration breaks" {
+  for self_first: 0..<2 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1); b[0].c[a].score[RS_WIS] = 1;
+    t := rs_add(b[..],rs_skeleton("Other",1),3,1); b[0].c[t].humanoid = true; b[0].c[t].score[RS_WIS] = 1;
+    keys := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+    rs_start_turn(b[..],a); picks := [2] int.[ifx self_first == 1 then a else t,ifx self_first == 1 then t else a];
+    #assert rs_cast_creatures(b[..],a,SP_HOLD_PERSON,3,picks[..],false);
+    #assert b[0].c[a].conc == -1 && !rs_has(b[0].c[a],RS_PARALYZED) && !rs_has(b[0].c[t],RS_PARALYZED);
+  }
+}
+
+#test "chosen rays resolve separate assignments in their declared order" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("First",1),3,1);
+  u := rs_add(b[..],rs_skeleton("Second",1),4,1);
+  for j: [2] int.[t,u] { b[0].c[j].hp = 500; b[0].c[j].hp_max = 500; b[0].c[j].ac = 1; }
+  keys := [1] int.[RS_EXEC_SOURCE[SP_SCORCHING_RAY]];
+  #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+  rs_start_turn(b[..],a); picks := [3] int.[u,t,t];
+  #assert rs_cast_creatures(b[..],a,SP_SCORCHING_RAY,2,picks[..],false);
+  #assert b[0].c[t].hp == 488 && b[0].c[u].hp == 494;
+  reverse := [3] int.[t,t,u]; found := 0;
+  for k: 0..<b[0].book[0].count {
+    e := rs_recent(b[0].book[0],k);
+    if e.kind == RS_EV_ATTACK { #assert found < 3 && e.to == reverse[found]; found += 1; }
+  }
+  #assert found == 3;
+}
+#test "chosen batches refuse a later full recipient before ordinary and Quickened costs" {
+  for quick: 0..<2 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1);
+    t := rs_add(b[..],rs_skeleton("First",1),3,1); b[0].c[t].humanoid = true;
+    u := rs_add(b[..],rs_skeleton("Last",1),4,1); b[0].c[u].humanoid = true;
+    for k: 0..<RS_EFFECTS { b[0].c[u].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }
+    keys := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+    rs_start_turn(b[..],a); b[0].c[a].conc = SP_HEX; b[0].c[a].conc_until = 100; b[0].aff_used = true;
+    slots := b[0].c[a].slots[3]; points := b[0].c[a].uses[RS_USE_SORCERY]; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+    picks := [2] int.[t,u];
+    #assert !rs_cast_creatures(b[..],a,SP_HOLD_PERSON,3,picks[..],quick == 1);
+    #assert b[0].c[a].slots[3] == slots && b[0].c[a].uses[RS_USE_SORCERY] == points && b[0].c[a].conc == SP_HEX && b[0].c[a].conc_until == 100;
+    #assert !b[0].turn.action && !b[0].turn.bonus && !b[0].turn.slot_spent && b[0].aff_used;
+    #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && !rs_has(b[0].c[t],RS_PARALYZED);
+    for k: 0..<RS_EFFECTS { #assert b[0].c[u].eff[k].by == 99; }
+    b[0].c[u].eff[RS_EFFECTS-1].kind = EF_NONE;
+    #assert rs_cast_creatures(b[..],a,SP_HOLD_PERSON,3,picks[..],quick == 1);
+    #assert b[0].c[a].slots[3] == slots-1 && b[0].c[a].uses[RS_USE_SORCERY] == points-(ifx quick == 1 then 2 else 0);
+    #assert b[0].turn.action == (quick == 0) && b[0].turn.bonus == (quick == 1) && b[0].turn.quickened == (quick == 1) && !b[0].aff_used;
+    for k: 0..<RS_EFFECTS-1 { #assert b[0].c[u].eff[k].by == 99; }
+  }
+}
+#test "one chosen Hold Person save does not cancel another recipient's concentration effect" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..],rs_druid("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Saves",1),3,1); b[0].c[t].humanoid = true; b[0].c[t].score[RS_WIS] = 30;
+  u := rs_add(b[..],rs_skeleton("Fails",1),4,1); b[0].c[u].humanoid = true;
+  keys := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+  rs_start_turn(b[..],a); picks := [2] int.[t,u];
+  #assert rs_cast_creatures(b[..],a,SP_HOLD_PERSON,3,picks[..],false);
+  #assert !rs_has(b[0].c[t],RS_PARALYZED) && rs_has(b[0].c[u],RS_PARALYZED) && b[0].c[a].conc == SP_HOLD_PERSON;
+  rs_end_concentration(b[..],a,""); #assert !rs_has(b[0].c[u],RS_PARALYZED);
+}
+#test "chosen empty optional casts spend normally and Self casts retain shared feature hooks" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..],rs_cleric("Cleric",0,6),1,1);
+  t := rs_add(b[..],rs_skeleton("Patient",0),2,1);
+  rs_start_turn(b[..],a); empty: [1] int; slots := b[0].c[a].slots[1];
+  #assert rs_cast_creatures(b[..],a,SP_BLESS,1,empty[0..<0],false) && b[0].c[a].slots[1] == slots-1 && b[0].turn.action;
+  #assert !rs_effect(b[0].c[a],EF_BLESS) && !rs_effect(b[0].c[t],EF_BLESS);
+  rs_end_turn(b[..],a); rs_start_turn(b[..],a);
+  b[0].c[a].hp = 10; b[0].c[t].hp = 1; picks := [1] int.[t];
+  #assert rs_cast_creatures(b[..],a,SP_CURE_WOUNDS,1,picks[..],false) && b[0].c[a].hp == 13 && b[0].c[t].hp > 1;
+  rs_end_turn(b[..],a); rs_start_turn(b[..],a); picks[0] = a;
+  #assert rs_cast_creatures(b[..],a,SP_SPIRIT_GUARDIANS,3,picks[..],false);
+  #assert b[0].guards == 1 && b[0].c[a].guard_slot == 3 && b[0].c[a].conc == SP_SPIRIT_GUARDIANS;
+}
+
+#test "chosen Bless recipients include the caster and do not fill unchosen creatures" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Chosen",1),3,1);
+  u := rs_add(b[..],rs_skeleton("Unchosen",0),2,1);
+  for k: 0..<RS_EFFECTS { b[0].c[u].eff[k] = RsEffect.{kind=EF_HEX}; }
+  rs_start_turn(b[..],a); picks := [2] int.[t,a]; slots := b[0].c[a].slots[1];
+  #assert rs_cast_creatures(b[..],a,SP_BLESS,1,picks[..],false);
+  #assert rs_effect(b[0].c[a],EF_BLESS) && rs_effect(b[0].c[t],EF_BLESS) && !rs_effect(b[0].c[u],EF_BLESS);
+  #assert b[0].c[a].slots[1] == slots-1 && b[0].turn.action;
+}
+#test "chosen upcast Hold Person retains valid targets when another target is invalid or saves" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_druid("Caster",0,5),1,1);
+  x := rs_add(b[..],rs_skeleton("Invalid",1),3,1);
+  t := rs_add(b[..],rs_skeleton("Humanoid",1),4,1); b[0].c[t].humanoid = true;
+  keys := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]];
+  #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
+  b[0].dice[0].fixed = true;
+  rs_start_turn(b[..],a); picks := [2] int.[x,t]; rolls := b[0].dice[0].rolled;
+  #assert rs_cast_creatures(b[..],a,SP_HOLD_PERSON,3,picks[..],false);
+  #assert b[0].c[a].conc == SP_HOLD_PERSON && !rs_has(b[0].c[x],RS_PARALYZED) && rs_has(b[0].c[t],RS_PARALYZED);
+  #assert b[0].dice[0].rolled == rolls+1;
+}
+
 #test "Mage Protective Magic spends a daily use rather than the turn's spell slot" {
   for mode: 0..<3 {
     b: [1] RsBattle; b[0].w = 20; b[0].h = 8;

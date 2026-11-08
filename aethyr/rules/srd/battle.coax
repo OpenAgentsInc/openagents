@@ -20,6 +20,7 @@
 #load "effect-admission.coax";
 #load "reaction-slot.coax";
 #load "effect-rolls.coax";
+#load "cast-choices.coax";
 
 // Creatures a battle holds of its own. A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
@@ -493,12 +494,23 @@ rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target
 // The same with Quickened Spell: an action spell as a Bonus Action, for 2 Sorcery Points.
 rs_cast_quick :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool { return rs_cast_as(b, i, sp, slot, tx, ty, target, true); }
 rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool) -> bool {
+  empty: [1] int;
+  return rs_cast_request_as(b,i,sp,slot,tx,ty,target,quick,empty[0..<0],false);
+}
+// Explicit recipients for distinct-target spells, or one ordered assignment
+// for each beam/ray. Area and destination-point spells use rs_cast instead.
+rs_cast_creatures :: (b: [] RsBattle, i: int, sp: int, slot: int, picks: [] const int, quick: bool) -> bool {
+  target := ifx picks.count > 0 then picks[0] else -1;
+  return rs_cast_request_as(b,i,sp,slot,0,0,target,quick,picks,true);
+}
+rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int, quick: bool, picks: [] const int, chosen: bool) -> bool {
   if !rs_can_cast_as(b, i, sp, slot, quick) { return false; }
   s := rs_spell(sp);
   me := b[0].c[i];
   smite := rs_is_smite(s);
-  if !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
-  if s.area == RS_A_NONE {
+  if chosen && !rs_creature_choices(b,i,s,sp,slot,picks) { return false; }
+  if !chosen && !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
+  if s.area == RS_A_NONE && !chosen {
     exists := target >= 0 && target < b[0].n;
     dead := ifx exists then b[0].c[target].dead else false;
     humanoid := ifx exists then b[0].c[target].humanoid else false;
@@ -506,9 +518,10 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     if rs_target_decision(exists, dead, in_range, s.humanoid_only, humanoid) == RS_TARGET_REFUSE { return false; }
     // Divine Smite: right after a melee weapon hit on this target
     if smite && b[0].turn.last_hit != target + 1 { return false; }
-  } else if s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
+  } else if s.area != RS_A_NONE && s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
     if rs_feet(me.x, me.y, tx, ty) > s.range_ft { return false; }
   }
+  if chosen && smite && b[0].turn.last_hit != target+1 { return false; }
   // Serialized preflight: ending this cast's old concentration is the only
   // release before zone publication. Nothing is spent if no slot will exist.
   zone_required := rs_zone_required(s);
@@ -517,7 +530,9 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
     zone_at = rs_zone_slot(b[0].zone[..], s.concentration, i, me.conc);
     if zone_at < 0 { return false; }
   }
-  if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
+  if chosen {
+    if !rs_chosen_effect_room(b,i,s,sp,picks) { return false; }
+  } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
   // spend
   b[0].aff_used = false;
   if s.cast_time == RS_T_ACTION && !quick { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
@@ -536,9 +551,9 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   if s.level > 0 && slot > 0 { rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot)"); }
   if s.level > 0 && slot == 0 { rs_add_text(l[..], " (without a slot)"); }
   if quick { rs_add_text(l[..], ", Quickened"); }
-  if s.area == RS_A_NONE && target != i && (s.range_ft > 0 || smite) { rs_add_text(l[..], ifx smite then " on " else " at "); rs_add_name(l[..], b, target); }
+  if s.area == RS_A_NONE && target >= 0 && target != i && (s.range_ft > 0 || smite) { rs_add_text(l[..], ifx smite then " on " else " at "); rs_add_name(l[..], b, target); }
   rs_tell(b, RS_EV_CAST, sp, i, ifx s.area == RS_A_NONE then target else -1, slot, 0, l[..]);
-  if s.area == RS_A_NONE && rs_unaffected_target(b, i, target, sp) { return true; }
+  if !chosen && s.area == RS_A_NONE && rs_unaffected_target(b, i, target, sp) { return true; }
   // the area, and what lasts in it
   area: RsZone;
   if s.area != RS_A_NONE {
@@ -552,34 +567,45 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + s.duration_s; } }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
-  // rays and beams: the program runs once for each, at the one target
-  reps := 1;
-  for k: 0..<s.step_n {
-    st := s.steps[k];
-    if st.kind == RS_S_REPEAT { reps = st.a + st.b * rs_max(slot - s.level, 0); if st.c == 1 { reps = st.a * rs_cantrip_tier(me.level); } }
-  }
-  if s.area == RS_A_NONE && reps > 1 {
-    for r: 0..<reps { if !b[0].c[target].dead { rs_affect(b, i, target, sp, slot, zone_at); } }
-    return true;
-  }
-  // each creature it affects
-  sculpted := 0;
   if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
-  // more than one target (Bless, Bane, Command): the target, then the nearest to it of its side within range
-  more: [RS_TARGETS_MAX] int; more_n := 0;
-  if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b, i, target, rs_min(s.targets + rs_max(slot - s.level, 0), RS_TARGETS_MAX) - 1, s.range_ft, more[..]); }
-  for j: 0..<b[0].n {
-    if s.area == RS_A_NONE {
-      also := false;
-      for m: 0..<more_n { if more[m] == j { also = true; } }
-      if j != target && !also { continue; }
-    } else {
-      if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
-      if j == i { continue; }   // "each creature (other than you)"; a cube from you starts beside you
-      // Sculpt Spells (Evoker, p. 82): up to 1 + the spell's level allies are spared an Evocation
-      if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1 + s.level { sculpted += 1; continue; }
+  if chosen {
+    for j: picks {
+      if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
+      if b[0].c[j].dead { continue; }
+      if rs_unaffected_target_kept(b,i,j,sp,true) { continue; }
+      rs_affect_as(b,i,j,sp,slot,zone_at,true);
     }
-    rs_affect(b, i, j, sp, slot, zone_at);
+  }
+  if !chosen {
+    // Legacy world convenience: every ray at the primary target, otherwise
+    // fill nearby same-team recipients. Explicit choices above do not use it.
+    reps := 1;
+    for k: 0..<s.step_n {
+      st := s.steps[k];
+      if st.kind == RS_S_REPEAT { reps = st.a + st.b * rs_max(slot - s.level, 0); if st.c == 1 { reps = st.a * rs_cantrip_tier(me.level); } }
+    }
+    if s.area == RS_A_NONE && reps > 1 {
+      for r: 0..<reps { if !b[0].c[target].dead { rs_affect(b, i, target, sp, slot, zone_at); } }
+      return true;
+    }
+    // each creature it affects
+    sculpted := 0;
+    // more than one target (Bless, Bane, Command): the target, then the nearest to it of its side within range
+    more: [RS_TARGETS_MAX] int; more_n := 0;
+    if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b, i, target, rs_min(s.targets + rs_max(slot - s.level, 0), RS_TARGETS_MAX) - 1, s.range_ft, more[..]); }
+    for j: 0..<b[0].n {
+      if s.area == RS_A_NONE {
+        also := false;
+        for m: 0..<more_n { if more[m] == j { also = true; } }
+        if j != target && !also { continue; }
+      } else {
+        if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
+        if j == i { continue; }   // "each creature (other than you)"; a cube from you starts beside you
+        // Sculpt Spells (Evoker, p. 82): up to 1 + the spell's level allies are spared an Evocation
+        if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1 + s.level { sculpted += 1; continue; }
+      }
+      rs_affect(b, i, j, sp, slot, zone_at);
+    }
   }
   // Blessed Healer (Life Domain, p. 40): a slot spell that heals another heals the Cleric 2 + its level
   if b[0].c[i].blessed_healer && slot > 0 && (s.area != RS_A_NONE || target != i) {
@@ -783,6 +809,9 @@ rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int {
 
 // The effect program on one creature.
 rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) {
+  rs_affect_as(b,i,j,sp,slot,zone_at,false);
+}
+rs_affect_as :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool) {
   s := rs_spell(sp);
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
   ran_save := false; saved := false; crit := false; attack_hit := false; tier_dice := true; potent_miss := false; bane := 0;
@@ -943,7 +972,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       _ := rs_put_effect(b, j, RsEffect.{kind = EF_NOHEAL, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0});
     } else if st.kind == RS_S_TIMED {
       // saved: a one-target concentration spell has nothing to hold, and ends
-      if ran_save && saved { if s.concentration && s.area == RS_A_NONE && b[0].c[i].conc == sp { b[0].c[i].conc = -1; } continue; }
+      if ran_save && saved { if !keep_concentration && s.concentration && s.area == RS_A_NONE && b[0].c[i].conc == sp { b[0].c[i].conc = -1; } continue; }
       e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0};
       if st.b == 2 { e.until = b[0].clock + s.duration_s; e.save = st.c; e.dc = rs_dc(b, i); }
       _ := rs_put_effect(b, j, e);
@@ -964,7 +993,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
         _ := rs_put_effect(b, j, RsEffect.{kind = EF_WEAK, by = i, spell = sp, until = rs_before_next_turn(b, i), save = -1, dc = 0});
         rs_add_text(l[..], " shrugs it off: Disadvantage on its next attack roll");
         // nothing to hold: the spell ends
-        if b[0].c[i].conc == sp { b[0].c[i].conc = -1; }
+        if !keep_concentration && b[0].c[i].conc == sp { b[0].c[i].conc = -1; }
       } else {
         _ := rs_put_effect(b, j, RsEffect.{kind = EF_ENFEEBLED, by = i, spell = sp, until = b[0].clock + s.duration_s, save = RS_CON, dc = rs_dc(b, i)});
         rs_add_text(l[..], " is enfeebled: 1d8 off its damage, Disadvantage on Strength");

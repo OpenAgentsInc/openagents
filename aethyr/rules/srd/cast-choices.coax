@@ -1,0 +1,130 @@
+// Explicit creature recipients and per-ray assignments. These are mechanical
+// choices, independent from the world's nearest-neighbour convenience picker.
+#authority;
+RS_CAST_CHOICES :: 16;
+
+#test "chosen requests refuse malformed, dead, distant, duplicate, Self and point-shaped targets" {
+  b: [1] RsBattle; b[0].w = 50; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",1),2,1);
+  s := rs_spell(SP_CURE_WOUNDS); picks := [2] int.[t,t];
+  #assert rs_creature_choices(b[..],a,s,SP_CURE_WOUNDS,1,picks[0..<1]);
+  b[0].c[t].x = 3; #assert !rs_creature_choices(b[..],a,s,SP_CURE_WOUNDS,1,picks[0..<1]);
+  b[0].c[t].x = 2; b[0].c[t].dead = true;
+  #assert !rs_creature_choices(b[..],a,s,SP_CURE_WOUNDS,1,picks[0..<1]);
+  b[0].c[t].dead = false;
+  for bad: [3] int.[-1,2,3] { picks[0] = bad; #assert !rs_creature_choices(b[..],a,s,SP_CURE_WOUNDS,1,picks[0..<1]); }
+  picks[0] = t; s = rs_spell(SP_BLESS);
+  #assert !rs_creature_choices(b[..],a,s,SP_BLESS,1,picks[..]);
+  #assert rs_creature_choices(b[..],a,s,SP_BLESS,1,picks[0..<0]);
+  s = rs_spell(SP_CURE_WOUNDS); #assert !rs_creature_choices(b[..],a,s,SP_CURE_WOUNDS,1,picks[0..<0]);
+  s = rs_spell(SP_FALSE_LIFE); #assert !rs_creature_choices(b[..],a,s,SP_FALSE_LIFE,1,picks[0..<1]);
+  picks[0] = a; #assert rs_creature_choices(b[..],a,s,SP_FALSE_LIFE,1,picks[0..<1]);
+  picks[0] = t; s = rs_spell(SP_DIVINE_SMITE); #assert rs_creature_choices(b[..],a,s,SP_DIVINE_SMITE,1,picks[0..<1]);
+  s = rs_spell(SP_CURE_WOUNDS); s.range_ft = 1; #assert !rs_creature_choices(b[..],a,s,SP_CURE_WOUNDS,1,picks[0..<1]);
+  s = rs_spell(SP_FIREBALL); #assert !rs_creature_choices(b[..],a,s,SP_FIREBALL,3,picks[0..<1]);
+  s = rs_spell(SP_DIMENSION_DOOR); #assert !rs_creature_choices(b[..],a,s,SP_DIMENSION_DOOR,4,picks[0..<1]);
+  s = rs_spell(SP_SCORCHING_RAY);
+  #assert rs_choice_rays(s) && !rs_choice_rays(rs_spell(SP_HEX));
+  rays := [3] int.[t,t,t];
+  #assert rs_creature_choices(b[..],a,s,SP_SCORCHING_RAY,2,rays[..]);
+  #assert !rs_creature_choices(b[..],a,s,SP_SCORCHING_RAY,2,rays[0..<2]);
+}
+#test "chosen effect preflight aggregates every ray and distinguishes release, immunity and unrelated records" {
+  b: [1] RsBattle;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",1),2,1);
+  s := rs_spell(SP_BLESS); s.concentration = false; s.step_n = 2;
+  s.steps[1] = RsStep.{kind=RS_S_BOON,a=EF_FAITH};
+  rays := [3] int.[t,t,t];
+  for free: 0..<7 {
+    for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=ifx k < RS_EFFECTS-free then EF_HEX else EF_NONE,by=a,spell=SP_HEX}; }
+    #assert rs_chosen_effect_room(b[..],a,s,SP_BLESS,rays[..]) == (free == 6);
+  }
+  for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX,by=a,spell=SP_HEX}; }
+  #assert !rs_chosen_effect_room(b[..],a,s,SP_BLESS,rays[0..<1]);
+  s.concentration = true; b[0].c[a].conc = SP_HEX;
+  #assert rs_chosen_effect_room(b[..],a,s,SP_BLESS,rays[..]);
+  s = rs_spell(SP_HOLD_PERSON); #assert rs_chosen_effect_room(b[..],a,s,SP_HOLD_PERSON,rays[0..<1]);
+  b[0].c[t].humanoid = true; b[0].c[a].conc = -1;
+  #assert !rs_chosen_effect_room(b[..],a,s,SP_HOLD_PERSON,rays[0..<1]);
+  b[0].c[t].immune_cond = RS_PARALYZED; #assert rs_chosen_effect_room(b[..],a,s,SP_HOLD_PERSON,rays[0..<1]);
+  s = rs_spell(SP_BLESS); s.concentration = false; s.steps[0] = RsStep.{kind=RS_S_CONDITION,a=RS_RESTRAINED};
+  b[0].c[t].eff[0] = RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=a,spell=SP_BLESS};
+  #assert !rs_chosen_effect_room(b[..],a,s,SP_BLESS,rays[0..<1]);
+}
+
+#test "source distinct-target limits include base-one upcasts and optional Bless and Bane" {
+  for slot: 0..<10 {
+    for id: [5] int.[SP_BLESS,SP_BANE,SP_COMMAND,SP_HOLD_PERSON,SP_BLINDNESS] {
+      s := rs_spell(id);
+      expected := ifx id == SP_BLESS || id == SP_BANE then 3+rs_max(slot-1,0) else ifx id == SP_COMMAND then 1+rs_max(slot-1,0) else 1+rs_max(slot-2,0);
+      #assert rs_choice_limit(s,slot,5) == expected && !rs_choice_rays(s);
+      #assert s.targets_optional == (id == SP_BLESS || id == SP_BANE);
+    }
+    #assert rs_choice_limit(rs_spell(SP_CURE_WOUNDS),slot,5) == 1;
+  }
+  #assert rs_choice_limit(rs_spell(SP_ELDRITCH_BLAST),0,1) == 1;
+  #assert rs_choice_limit(rs_spell(SP_ELDRITCH_BLAST),0,5) == 2;
+  #assert rs_choice_limit(rs_spell(SP_SCORCHING_RAY),2,5) == 3;
+  #assert rs_choice_limit(rs_spell(SP_SCORCHING_RAY),3,5) == 4;
+}
+#test "chosen count bounds distinguish distinct up-to targets from every assigned ray" {
+  for count: -1..<18 { for limit: 1..<18 { for rays: 0..<2 { for optional: 0..<2 {
+    expected := count >= 0 && count <= 16 && count <= limit && (ifx rays == 1 then count == limit else optional == 1 || count >= 1);
+    #assert rs_choice_count(count,limit,rays == 1,optional == 1) == expected;
+  } } } }
+}
+#test "chosen concentration programs stop when their caster no longer holds the spell" {
+  s: RsSpell;
+  for active: [3] int.[-1,0,1] {
+    #assert rs_choice_continue(s,active,0);
+    s.concentration = true; #assert rs_choice_continue(s,active,0) == (active == 0);
+    s.concentration = false;
+  }
+}
+rs_choice_continue :: (s: RsSpell, concentration: int, sp: int) -> bool #effects(all) {
+  return !s.concentration || concentration == sp;
+}
+rs_choice_rays :: (s: RsSpell) -> bool #effects(all) {
+  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_REPEAT { return true; } }
+  return false;
+}
+rs_choice_limit :: (s: RsSpell, slot: int, level: int) -> int #effects(all) {
+  for k: 0..<s.step_n {
+    st := s.steps[k];
+    if st.kind == RS_S_REPEAT {
+      if st.c == 1 { return st.a*rs_cantrip_tier(level); }
+      return st.a+st.b*rs_max(slot-s.level,0);
+    }
+  }
+  return rs_max(s.targets,1)+s.target_growth*rs_max(slot-s.level,0);
+}
+rs_choice_count :: (count: int, limit: int, rays: bool, optional: bool) -> bool #effects(all) {
+  if count < 0 || count > RS_CAST_CHOICES || count > limit { return false; }
+  return ifx rays then count == limit else optional || count >= 1;
+}
+rs_creature_choices :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, picks: [] const int) -> bool #effects(all) {
+  rays := rs_choice_rays(s);
+  if s.area != RS_A_NONE || !rs_choice_count(picks.count,rs_choice_limit(s,slot,b[0].c[i].level),rays,s.targets_optional) { return false; }
+  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { return false; } }
+  for k: 0..<picks.count {
+    j := picks[k];
+    if j < 0 || j >= b[0].n || b[0].c[j].dead { return false; }
+    if !rs_self_request(rs_spell_self_range(sp),true,rs_is_smite(s),i == j) { return false; }
+    if s.range_ft > 0 && rs_feet_to(b,i,j) > s.range_ft { return false; }
+    if !rays { for previous: 0..<k { if picks[previous] == j { return false; } } }
+  }
+  return true;
+}
+rs_chosen_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, picks: [] const int) -> bool #effects(all) {
+  for k: 0..<picks.count {
+    j := picks[k];
+    if s.humanoid_only && !b[0].c[j].humanoid { continue; }
+    count := 0;
+    for target: picks { if target == j { count += 1; } }
+    need := rs_effect_demand(b[0].c[j],s,-1,i,sp)*count;
+    if rs_effect_room(b[0].c[j],s.concentration,i,b[0].c[i].conc) < need { return false; }
+  }
+  return true;
+}
