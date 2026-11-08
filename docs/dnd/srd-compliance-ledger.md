@@ -402,3 +402,18 @@ movement respects held/stopped/dead bodies. All 198 hostile/geometry checks,
 resolves the combined-held adapter gap from the preceding condition receipt,
 but legacy hostile rolls/player HP and the rest of #13046 remain unqualified.
 [Evidence](../verification/srd-hostile-permissions-2026-11-08/README.md).
+
+### Ability-check training and resolution progress, 2026-11-08
+
+Shared checks now use explicit selected skill/Expertise/tool masks, one
+proficiency bonus, tool/skill Advantage, Jack/Primal Knowledge and applicable
+condition edges. Sensory automatic failures and malformed requests spend no
+dice/resources. Entangle escape and Initiative consume the shared plan;
+Exhaustion penalties survive integration. Passive Perception is a score, and
+Tactical Mind preserves its use on a failed attempt. Class-only presets name
+their selections through level six. Gates kill 129/125/83 mutants with zero
+survivors; native, sanitized pure-property and actual MMO AI escape checks pass.
+Initiative preserves Invisible/Athlete and incapacitation sources through the
+shared permission helpers; their updated 17-mutant gate also has zero survivors.
+Geometry, full grant/build legality, other class/order bonuses and the remaining
+#13039/#13044 requirements stay open. [Evidence](../verification/srd-ability-checks-2026-11-08/README.md).

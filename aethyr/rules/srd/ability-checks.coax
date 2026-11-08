@@ -1,0 +1,48 @@
+// One admitted ability check. This is not an Action admission boundary: saves,
+// forced checks and out-of-turn checks have different activity requirements.
+#authority;
+
+RsAbilityResult :: struct {
+  accepted: bool; automatic: bool; ability: int; total: int; passed: bool; edge: int;
+  inspiration: int; luck: int; mind: int; mind_spent: bool;
+}
+rs_ability_check :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbilityResult #effects(all) {
+  r: RsAbilityResult;
+  if j < 0 || j >= b[0].n { return r; }
+  p := rs_check_plan(b[0].c[j],q);
+  r.accepted = p.accepted; r.automatic = p.automatic; r.ability = p.ability; r.edge = p.edge;
+  if !p.accepted || p.automatic { return r; }
+  d := rs_d20(b[0].dice[..],p.edge);
+  r.total = d.roll+p.bonus-p.penalty;
+  r.inspiration = rs_inspired_roll(b,j,r.total,q.dc); r.total += r.inspiration;
+  r.luck = rs_own_luck(b,j,r.total,q.dc); r.total += r.luck;
+  if r.total < q.dc && b[0].c[j].tactical && b[0].c[j].uses[RS_USE_WIND] > 0 {
+    r.mind = rs_roll(b[0].dice[..],10); r.total += r.mind;
+    if r.total >= q.dc { b[0].c[j].uses[RS_USE_WIND] -= 1; r.mind_spent = true; }
+  }
+  r.passed = r.total >= q.dc;
+  return r;
+}
+
+// The SRD's passive score is specifically Wisdom (Perception), not a passive
+// roll of every skill. It samples no die and cannot spend failed-roll rescues.
+rs_passive_perception :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbilityResult #effects(all) {
+  r: RsAbilityResult;
+  if j < 0 || j >= b[0].n || q.ability != RS_WIS || q.skill != SK_PERCEPTION || q.tool != -1 || q.primal { return r; }
+  p := rs_check_plan(b[0].c[j],q);
+  r.accepted = p.accepted; r.automatic = p.automatic; r.ability = p.ability; r.edge = p.edge;
+  if p.automatic { return r; }
+  r.total = 10+p.bonus+ifx p.edge > 0 then 5 else ifx p.edge < 0 then -5 else 0;
+  r.passed = r.total >= q.dc;
+  return r;
+}
+
+#test "ability checks and Passive Perception accept untrained requests without saving-throw bonuses" {
+  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+  c[0].level = 1; c[0].score = [6] int.[10,10,10,10,10,10];
+  b[0].dice[0].fixed = true;
+  r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,dc=10});
+  #assert r.accepted && r.passed && r.total == 10 && b[0].dice[0].rolled == 1;
+  r = rs_passive_perception(b[..],0,RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=10});
+  #assert r.accepted && r.passed && r.total == 10 && b[0].dice[0].rolled == 1;
+}

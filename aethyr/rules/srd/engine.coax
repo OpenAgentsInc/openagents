@@ -24,6 +24,7 @@
 #load "exhaustion.coax";
 #load "command-halt.coax";
 #load "cast-components.coax";
+#load "check-training.coax";
 
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
@@ -186,6 +187,7 @@ RsCreature :: struct {
   level: int;
   score: [6] int;
   save_prof: [6] bool;
+  checks: RsCheckTraining;
   ac: int; hp: int; hp_max: int;
   temp: int;                // Temporary Hit Points
   speech_blocked: bool;     // gagged or inside magical silence
@@ -247,8 +249,8 @@ RsCreature :: struct {
   extra_attack: int;               // Extra Attack: more attacks with the Attack action
   tactical: bool; shift: bool;     // Tactical Mind, Tactical Shift (Fighter)
   primal: bool; mindless: bool;    // Primal Knowledge (skills only), Mindless Rage (Berserker)
-  // the Rogue's: Expertise (skills), Thieves' Cant, Fast Hands and Second-Story Work (a climb Speed)
-  // are out of a battle's reach and carried in the record; Cunning Strike's planned effect
+  // Expertise selections live in checks; expertise below retains the display count.
+  // Thieves' Cant, Fast Hands and Second-Story Work (a climb Speed), Cunning Strike's planned effect
   // (CS_*, the deciding routine sets it) and a Poisoner's Kit for its Poison; Uncanny Dodge
   expertise: int; cant: bool; fast_hands: bool; climb: int;
   cunning_strike: bool; strike_plan: int; poison_kit: bool; uncanny: bool;
@@ -257,7 +259,7 @@ RsCreature :: struct {
   // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
   // Strike saved against halves Speed until (halved_until)
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
-  ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool;   // the Wizard's, out of a battle's reach
+  ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool; // Scholar's selected Expertise is in checks
   sculpt: bool;                    // Sculpt Spells (Evoker)
   cunning_rite: bool; own_luck: bool;   // Magical Cunning (a 1-minute rite, not in a battle), Dark One's Own Luck
   jack: bool; font: bool; discoveries: [2] int;   // Jack of All Trades (checks only), Font of Inspiration, Magical Discoveries
@@ -325,6 +327,7 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_DRUID; c[0].humanoid = true; c[0].ranged = -1;
+  c[0].checks = rs_preset_checks(RS_DRUID,level);
   rs_component_preset(c[..]);
   c[0].score = [6] int.[10, 14, 13, 12, 16, 8];
   // an Ability Score Improvement at 4 (the feat, p. 87): Wisdom +2
@@ -366,6 +369,7 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_WIZARD; c[0].humanoid = true; c[0].ranged = -1;
+  c[0].checks = rs_preset_checks(RS_WIZARD,level);
   rs_component_preset(c[..]);
   c[0].score = [6] int.[8, 14, 13, 16, 12, 10];
   // an Ability Score Improvement at 4 (the feat, p. 87): Intelligence +2
@@ -389,7 +393,7 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   // Potent Cantrip begins at level 3 (p.82).
   c[0].shield_spell = true; c[0].potent = level >= 3; c[0].weapon = W_DAGGER;
   // Ritual Adept and Arcane Recovery at 1, Scholar at 2, Evocation Savant at 3, Memorize Spell at 5
-  // (p. 79-82: rituals, rests, skills and spellbook copying, none of which a battle reaches); Sculpt
+  // (p. 79-82: rituals, rests and spellbook copying); Scholar's skill choice is in checks. Sculpt
   // Spells at 6 (p. 82); Fireball prepared from 5
   c[0].ritual = true; c[0].arcane_recovery = true; c[0].scholar = level >= 2; c[0].savant = level >= 3; c[0].memorize = level >= 5;
   c[0].sculpt = level >= 6;
@@ -409,6 +413,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_WARLOCK; c[0].humanoid = true; c[0].ranged = -1;
+  c[0].checks = rs_preset_checks(RS_WARLOCK,level);
   rs_component_preset(c[..]);
   c[0].score = [6] int.[8, 14, 13, 10, 12, 16];
   // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
@@ -462,6 +467,7 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level; c[0].klass = RS_BARBARIAN; c[0].humanoid = true; c[0].ranged = -1;
+  c[0].checks = rs_preset_checks(RS_BARBARIAN,level);
   c[0].score = [6] int.[16, 13, 14, 8, 12, 10];
   c[0].save_prof[RS_STR] = true; c[0].save_prof[RS_CON] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -475,7 +481,7 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c[0].rages = rages[rs_min(rs_max(level, 1), 20)]; c[0].rages_max = c[0].rages;
   c[0].rage_bonus = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
   c[0].danger_sense = level >= 2; c[0].frenzy = level >= 3;
-  // Primal Knowledge at 3 (p. 29; skill checks only, none in a battle), an Ability Score Improvement
+  // Primal Knowledge at 3 (p. 29; the shared check API), an Ability Score Improvement
   // at 4 (the feat, p. 87: Strength +2), Extra Attack and Fast Movement (+10 feet without Heavy
   // armor) at 5, the Berserker's Mindless Rage at 6 (p. 30)
   c[0].primal = level >= 3; c[0].mindless = level >= 6;
@@ -494,6 +500,7 @@ rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level; c[0].klass = RS_MONK; c[0].humanoid = true; c[0].ranged = -1;
+  c[0].checks = rs_preset_checks(RS_MONK,level);
   c[0].score = [6] int.[12, 16, 13, 10, 14, 8];
   // an Ability Score Improvement at 4 (the feat, p. 87): Dexterity +2
   if level >= 4 { c[0].score[RS_DEX] = rs_min(c[0].score[RS_DEX] + 2, 20); }
@@ -592,6 +599,7 @@ rs_hero :: (name: string, team: int, level: int, klass: int, score: [6] int, sav
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level; c[0].klass = klass; c[0].humanoid = true; c[0].ranged = -1;
+  c[0].checks = rs_preset_checks(klass,level);
   rs_component_preset(c[..]);
   c[0].score = score;
   c[0].save_prof[save_a] = true; c[0].save_prof[save_b] = true;
@@ -638,8 +646,8 @@ rs_bard :: (name: string, team: int, level: int) -> RsCreature {
   rs_use_set(c[..], RS_USE_INSPIRE, rs_max(rs_mod(c[0].score[RS_CHA]), 1));
   c[0].insp_die = ifx level >= 15 then 12 else ifx level >= 10 then 10 else ifx level >= 5 then 8 else 6;
   c[0].cutting = level >= 3;
-  // Expertise and Jack of All Trades at 2 (p. 32) bear on ability checks, which a battle here
-  // doesn't roll; Font of Inspiration at 5 (p. 32): a slot for a use, no action; the College of
+  // Expertise and Jack of All Trades at 2 (p. 32) use the shared check selections/resolver.
+  // Font of Inspiration at 5 (p. 32): a slot for a use, no action; the College of
   // Lore's Magical Discoveries at 6 (p. 35): Fireball (Wizard) and Spirit Guardians (Cleric).
   c[0].expertise = ifx level >= 9 then 4 else ifx level >= 2 then 2 else 0; c[0].jack = level >= 2;
   c[0].font = level >= 5;
@@ -728,8 +736,8 @@ rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
   c[0].free_spell = SP_HUNTERS_MARK;
   rs_use_set(c[..], RS_USE_FREE, ifx level >= 17 then 6 else ifx level >= 13 then 5 else ifx level >= 9 then 4 else ifx level >= 5 then 3 else 2);
   c[0].archery = level >= 2; c[0].colossus = level >= 3;
-  // Deft Explorer at 2 (Expertise, languages) and Hunter's Lore at 3 are out of a battle's reach (p.
-  // 59, 61); Extra Attack at 5; Roving at 6: +10 feet, and climb and swim Speeds equal to it
+  // Deft Explorer at 2 chooses Survival Expertise in checks; languages and Hunter's Lore
+  // retain their separate behavior (p.59,61). Extra Attack at 5; Roving at 6: +10 feet, climb/swim
   c[0].explorer = level >= 2; c[0].lore = level >= 3;
   if level >= 5 { c[0].extra_attack = 1; }
   if level >= 6 { c[0].speed += 10; c[0].climb = c[0].speed; c[0].swim = c[0].speed; }

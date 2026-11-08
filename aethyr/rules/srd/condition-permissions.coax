@@ -38,9 +38,11 @@ rs_can_move :: (c: RsCreature) -> bool #effects(all) {
   for e: c.eff { if e.kind==EF_DAZED || e.kind==EF_HALT { return false; } }
   return rs_up(c) && !rs_has(c,RS_PARALYZED|RS_PETRIFIED|RS_UNCONSCIOUS|RS_GRAPPLED|RS_RESTRAINED);
 }
+rs_initiative_up :: (c: RsCreature) -> bool #effects(all) { return c.athlete || rs_has(c,RS_INVISIBLE); }
+rs_initiative_down :: (c: RsCreature) -> bool #effects(all) { return rs_has(c,RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS); }
 rs_initiative_edge :: (c: RsCreature) -> int #effects(all) {
-  up := c.athlete || rs_has(c,RS_INVISIBLE);
-  down := rs_has(c,RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS);
+  up := rs_initiative_up(c);
+  down := rs_initiative_down(c);
   if up==down { return 0; }
   return ifx up then 1 else -1;
 }

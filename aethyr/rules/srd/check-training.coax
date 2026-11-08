@@ -1,0 +1,77 @@
+// SRD 5.2.1 pp.8-9, 93-94 and the twelve core class skill choices.
+// Selections are explicit; these masks do not infer background or item grants.
+#authority;
+
+SK_ACROBATICS :: 0; SK_ANIMAL :: 1; SK_ARCANA :: 2; SK_ATHLETICS :: 3;
+SK_DECEPTION :: 4; SK_HISTORY :: 5; SK_INSIGHT :: 6; SK_INTIMIDATION :: 7;
+SK_INVESTIGATION :: 8; SK_MEDICINE :: 9; SK_NATURE :: 10; SK_PERCEPTION :: 11;
+SK_PERFORMANCE :: 12; SK_PERSUASION :: 13; SK_RELIGION :: 14; SK_SLEIGHT :: 15;
+SK_STEALTH :: 16; SK_SURVIVAL :: 17; RS_SKILLS :: 18;
+RS_SKILL_MASK :: 262143;
+TO_ALCHEMIST :: 0; TO_BREWER :: 1; TO_CALLIGRAPHER :: 2; TO_CARPENTER :: 3;
+TO_CARTOGRAPHER :: 4; TO_COBBLER :: 5; TO_COOK :: 6; TO_GLASSBLOWER :: 7;
+TO_JEWELER :: 8; TO_LEATHERWORKER :: 9; TO_MASON :: 10; TO_PAINTER :: 11;
+TO_POTTER :: 12; TO_SMITH :: 13; TO_TINKER :: 14; TO_WEAVER :: 15; TO_WOODCARVER :: 16;
+TO_DISGUISE :: 17; TO_FORGERY :: 18; TO_DICE :: 19; TO_DRAGONCHESS :: 20;
+TO_CARDS :: 21; TO_ANTE :: 22; TO_HERBALISM :: 23; TO_BAGPIPES :: 24;
+TO_DRUM :: 25; TO_DULCIMER :: 26; TO_FLUTE :: 27; TO_HORN :: 28; TO_LUTE :: 29;
+TO_LYRE :: 30; TO_PAN_FLUTE :: 31; TO_SHAWM :: 32; TO_VIOL :: 33;
+TO_NAVIGATOR :: 34; TO_POISONER :: 35; TO_THIEVES :: 36; RS_TOOLS :: 37;
+RsCheckTraining :: struct { skills: int; expert: int; tools: u64; }
+rs_tool_bit :: (tool: int) -> u64 #effects(all) { return cast(u64)1 << tool; }
+
+rs_set_check_training :: (c: [] RsCreature, skills: int, expert: int, tools: u64) -> bool #effects(all) {
+  if skills < 0 || skills > RS_SKILL_MASK || (expert & skills) != expert || tools >= (cast(u64)1 << RS_TOOLS) { return false; }
+  c[0].checks = RsCheckTraining.{skills=skills,expert=expert,tools=tools};
+  return true;
+}
+
+// Deliberate legal class-only choices for existing presets. Origins remain
+// separate. Scholar, Deft Explorer, Lore and Primal Knowledge choices are named.
+rs_preset_checks :: (klass: int, level: int) -> RsCheckTraining #effects(all) {
+  r: RsCheckTraining;
+  if klass == RS_DRUID {
+    r.skills = (1<<SK_ANIMAL)|(1<<SK_NATURE); r.tools = rs_tool_bit(TO_HERBALISM);
+  } else if klass == RS_WIZARD {
+    r.skills = (1<<SK_ARCANA)|(1<<SK_HISTORY);
+    if level >= 2 { r.expert = 1<<SK_ARCANA; }
+  } else if klass == RS_WARLOCK {
+    r.skills = (1<<SK_ARCANA)|(1<<SK_RELIGION);
+  } else if klass == RS_BARBARIAN {
+    r.skills = (1<<SK_ATHLETICS)|(1<<SK_PERCEPTION);
+    if level >= 3 { r.skills |= 1<<SK_SURVIVAL; }
+  } else if klass == RS_MONK {
+    r.skills = (1<<SK_ACROBATICS)|(1<<SK_ATHLETICS); r.tools = rs_tool_bit(TO_WEAVER);
+  } else if klass == RS_BARD {
+    r.skills = (1<<SK_ACROBATICS)|(1<<SK_PERFORMANCE)|(1<<SK_PERSUASION);
+    r.tools = rs_tool_bit(TO_FLUTE)|rs_tool_bit(TO_LUTE)|rs_tool_bit(TO_LYRE);
+    if level >= 2 { r.expert = (1<<SK_PERFORMANCE)|(1<<SK_PERSUASION); }
+    if level >= 3 { r.skills = (1<<SK_ACROBATICS)|(1<<SK_PERFORMANCE)|(1<<SK_PERSUASION)|(1<<SK_ARCANA)|(1<<SK_HISTORY)|(1<<SK_INSIGHT); }
+    if level >= 9 { r.expert |= (1<<SK_ACROBATICS)|(1<<SK_ARCANA); }
+  } else if klass == RS_CLERIC {
+    r.skills = (1<<SK_INSIGHT)|(1<<SK_MEDICINE);
+  } else if klass == RS_FIGHTER {
+    r.skills = (1<<SK_ATHLETICS)|(1<<SK_PERCEPTION);
+  } else if klass == RS_PALADIN {
+    r.skills = (1<<SK_ATHLETICS)|(1<<SK_PERSUASION);
+  } else if klass == RS_RANGER {
+    r.skills = (1<<SK_PERCEPTION)|(1<<SK_STEALTH)|(1<<SK_SURVIVAL);
+    if level >= 2 { r.expert = 1<<SK_SURVIVAL; }
+  } else if klass == RS_ROGUE {
+    r.skills = (1<<SK_ACROBATICS)|(1<<SK_ATHLETICS)|(1<<SK_PERCEPTION)|(1<<SK_STEALTH);
+    r.tools = rs_tool_bit(TO_THIEVES);
+    r.expert = (1<<SK_ATHLETICS)|(1<<SK_STEALTH);
+    if level >= 6 { r.expert |= (1<<SK_ACROBATICS)|(1<<SK_PERCEPTION); }
+  } else if klass == RS_SORCERER {
+    r.skills = (1<<SK_ARCANA)|(1<<SK_PERSUASION);
+  }
+  return r;
+}
+
+#test "selected check training is atomic and Expertise must be trained" {
+  c: [1] RsCreature;
+  #assert rs_set_check_training(c[..],1<<SK_ATHLETICS,1<<SK_ATHLETICS,rs_tool_bit(TO_THIEVES));
+  #assert !rs_set_check_training(c[..],0,1<<SK_ATHLETICS,0);
+  #assert c[0].checks.skills == 8 && c[0].checks.expert == 8 && c[0].checks.tools == 68719476736;
+  #assert rs_preset_checks(RS_MONSTER,1).skills == 0;
+}

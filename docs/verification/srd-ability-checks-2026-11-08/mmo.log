@@ -1,0 +1,3 @@
+ok   #test 5E MMO: trained Monk AI escapes Entangle through the shared Athletics check (1 case, 74154 steps, 17 ms)
+1 of 186 checks (--only '5E MMO: trained Monk AI'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

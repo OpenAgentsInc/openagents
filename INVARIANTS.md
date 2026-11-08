@@ -6764,3 +6764,20 @@ action permission retires a pending swing immediately and before physical hit
 stop; recovery starts a new swing. Return-home movement respects held, stopped
 and dead bodies. The legacy hostile damage/HP path still needs shared migration.
 Evidence: `docs/verification/srd-hostile-permissions-2026-11-08/README.md`.
+
+## Ability checks use selected training and an explicit task context
+
+`check-training.coax` owns skill/tool identities, atomic mask selection and
+declared class-only preset choices. Expertise must be trained. `ability-check-math.coax`
+and `ability-checks.coax` combine the requested ability, one proficiency bonus,
+Expertise/Jack, task senses, circumstance/condition edges and existing rescue
+policies. Automatic sensory failures and malformed requests consume no dice or
+resources. Tactical Mind spends a Second Wind use only if its added die succeeds.
+Entangle escape and Initiative use the shared plan; rolled results preserve
+Exhaustion. Passive Perception uses a score without dice/rescues. The internal
+creature stores explicit masks; a display count cannot grant Expertise.
+
+Task geometry, usable tools and source grant provenance remain caller facts.
+Legacy open-grid fear visibility, the passive Exhaustion interpretation, exact
+native/sanitizer scope and remaining #13039/#13044 acceptance are recorded in
+`docs/verification/srd-ability-checks-2026-11-08/README.md`.

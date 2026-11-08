@@ -1,0 +1,308 @@
+// SRD 5.2.1 skill proficiency, Expertise, Jack of All Trades and Entangle.
+#load "battle.coax";
+
+#test "Entangle escape uses the preset Fighters Athletics proficiency instead of the bare ability modifier" {
+  b: [1] RsBattle; ac_field(b[..],rs_fighter("Fighter",1,3),14);
+  b[0].c[1].score[RS_STR] = 10;
+  #assert rs_escape(b[..],1) && !rs_has(b[0].c[1],RS_RESTRAINED);
+  #assert b[0].turn.action && b[0].dice[0].rolled == 2;
+}
+
+#test "Entangle escape uses Jack of All Trades on the preset Bards untrained Athletics check" {
+  b: [1] RsBattle; ac_field(b[..],rs_bard("Bard",1,2),12);
+  b[0].c[1].score[RS_STR] = 10;
+  #assert rs_escape(b[..],1) && !rs_has(b[0].c[1],RS_RESTRAINED);
+  #assert b[0].turn.action && b[0].dice[0].rolled == 1;
+}
+
+#test "Entangle escape doubles the proficiency bonus for the preset Rogues chosen Athletics Expertise" {
+  b: [1] RsBattle; ac_field(b[..],rs_rogue("Rogue",1,3),18);
+  b[0].c[1].score[RS_STR] = 10;
+  #assert rs_escape(b[..],1) && !rs_has(b[0].c[1],RS_RESTRAINED);
+  #assert b[0].turn.action && b[0].dice[0].rolled == 1;
+}
+
+#forall "preset class skills tools and Expertise choices have exact source identities and level boundaries" klass: -1..<14 {
+  for level: 1..<11 {
+    r := rs_preset_checks(klass,level);
+    skills := [13] int.[1026,36,16388,2056,9,0,12289,576,2056,8200,198656,67593,8196];
+    expected := ifx klass >= 0 && klass < 13 then skills[klass] else 0;
+    expert := 0; tools: u64 = 0;
+    if klass == 0 { tools = 8388608; }
+    if klass == 1 && level >= 2 { expert = 4; }
+    if klass == 3 && level >= 3 { expected += 131072; }
+    if klass == 4 { tools = 32768; }
+    if klass == 6 {
+      tools = 1744830464;
+      if level >= 2 { expert = 12288; }
+      if level >= 3 { expected += 100; }
+      if level >= 9 { expert += 5; }
+    }
+    if klass == 10 && level >= 2 { expert = 131072; }
+    if klass == 11 { tools = 68719476736; expert = ifx level >= 6 then 67593 else 65544; }
+    #assert r.skills == expected && r.expert == expert && r.tools == tools && (r.expert & r.skills) == r.expert;
+  }
+}
+
+#test "every class constructor carries its declared selected training through levels one to six" {
+  for level: 1..<7 {
+    heroes := [12] RsCreature.[rs_druid("D",0,level),rs_wizard("W",0,level),rs_warlock("L",0,level,SP_ELDRITCH_BLAST),
+      rs_barbarian("B",0,level),rs_monk("M",0,level),rs_bard("B",0,level),rs_cleric("C",0,level),
+      rs_fighter("F",0,level),rs_paladin("P",0,level),rs_ranger("R",0,level),rs_rogue("R",0,level),rs_sorcerer("S",0,level)];
+    for c: heroes {
+      expected := rs_preset_checks(c.klass,level);
+      #assert c.checks.skills == expected.skills && c.checks.expert == expected.expert && c.checks.tools == expected.tools;
+    }
+  }
+}
+
+#test "training selection refuses malformed masks atomically and accepts both exact mask boundaries" {
+  c: [1] RsCreature; #assert rs_set_check_training(c[..],8,8,1);
+  for mode: 0..<6 {
+    skills := ifx mode == 0 then -1 else ifx mode == 1 then 262144 else 8;
+    expert := ifx mode == 2 then -1 else ifx mode == 3 then 262144 else ifx mode == 4 then 1 else 8;
+    tools: u64 = ifx mode == 5 then 137438953472 else 1;
+    #assert !rs_set_check_training(c[..],skills,expert,tools);
+    #assert c[0].checks.skills == 8 && c[0].checks.expert == 8 && c[0].checks.tools == 1;
+  }
+  #assert rs_set_check_training(c[..],262143,262143,137438953471);
+  #assert c[0].checks.skills == 262143 && c[0].checks.expert == 262143 && c[0].checks.tools == 137438953471;
+  #assert rs_set_check_training(c[..],0,0,0) && c[0].checks.skills == 0 && c[0].checks.expert == 0 && c[0].checks.tools == 0;
+  #assert !rs_set_check_training(c[..],262144,0,0);
+}
+
+#forall "skill training bonus ranks do not stack with tools or Jack and use the requested ability" skill: 0..<18 {
+  for level: [2] int.[1,6] { for mode: 0..<6 { for jack: 0..<2 {
+    c: RsCreature; c.level = level; c.jack = jack == 1;
+    c.score = [6] int.[10,12,8,14,6,16];
+    if mode == 1 || mode == 2 || mode == 4 || mode == 5 { c.checks.skills = 1<<skill; }
+    if mode == 2 || mode == 5 { c.checks.expert = 1<<skill; }
+    if mode >= 3 { c.checks.tools = 1; }
+    p := rs_check_plan(c,RsAbilityRequest.{ability=skill%6,skill=skill,tool=0});
+    rank := [6] int.[0,1,2,1,1,2]; mods := [6] int.[0,1,-1,2,-2,3]; pb := ifx level == 1 then 2 else 3;
+    trained := ifx mode == 0 && jack == 1 then pb/2 else rank[mode]*pb;
+    #assert p.accepted && !p.automatic && p.ability == skill%6 && p.bonus == mods[skill%6]+trained;
+    #assert p.edge == (ifx mode == 4 || mode == 5 then 1 else 0);
+  } } }
+}
+
+#test "all thirty seven distinct tool proficiencies use exactly one bonus and unknown grants confer nothing" {
+  for tool: 0..<37 {
+    c: RsCreature; c.level = 5; c.score[RS_INT] = 14;
+    q := RsAbilityRequest.{ability=RS_INT,tool=tool};
+    #assert rs_check_plan(c,q).bonus == 2;
+    c.checks.tools = cast(u64)1 << tool;
+    #assert rs_tool_bit(tool) == c.checks.tools && rs_check_plan(c,q).bonus == 5;
+    q.tool = (tool+1)%37; #assert rs_check_plan(c,q).bonus == 2;
+  }
+  c: RsCreature; c.score[RS_STR] = 10; c.level = 5; c.jack = true;
+  #assert rs_check_plan(c,RsAbilityRequest.{ability=RS_STR}).bonus == 0;
+  c.checks.expert = 8;
+  #assert rs_check_plan(c,RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS}).bonus == 1;
+}
+
+#test "malformed check requests and actor identities refuse without dice resource or event changes" {
+  for mode: 0..<9 {
+    b: [1] RsBattle; ac_roll_field(b[..]); b[0].c[0].inspired = 6;
+    b[0].c[0].own_luck = true; b[0].c[0].uses[RS_USE_LUCK] = 1;
+    q := RsAbilityRequest.{ability=RS_STR,dc=30}; j := 0;
+    if mode == 0 { j = -1; } else if mode == 1 { j = 1; }
+    else if mode == 2 { q.ability = -1; } else if mode == 3 { q.ability = 6; }
+    else if mode == 4 { q.skill = -2; } else if mode == 5 { q.skill = 18; }
+    else if mode == 6 { q.tool = -2; } else if mode == 7 { q.tool = 37; } else { q.primal = true; }
+    before := b[0].dice[0]; seq := b[0].book[0].seq;
+    r := rs_ability_check(b[..],j,q);
+    #assert !r.accepted && !r.passed && b[0].dice[0].rolled == before.rolled && b[0].dice[0].state == before.state;
+    #assert b[0].c[0].inspired == 6 && b[0].c[0].uses[RS_USE_LUCK] == 1 && b[0].book[0].seq == seq;
+  }
+}
+
+#test "sight and hearing dependent checks automatically fail only for their corresponding missing sense" {
+  for condition: [3] int.[0,RS_BLINDED,RS_DEAFENED] { for required: 0..<4 {
+    b: [1] RsBattle; ac_roll_field(b[..]); b[0].c[0].cond = condition;
+    b[0].c[0].inspired = 6; b[0].c[0].own_luck = true; b[0].c[0].uses[RS_USE_LUCK] = 1;
+    b[0].c[0].tactical = true; b[0].c[0].uses[RS_USE_WIND] = 1;
+    r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=10,sight=(required&1)!=0,hearing=(required&2)!=0});
+    automatic := (condition == RS_BLINDED && (required&1)!=0) || (condition == RS_DEAFENED && (required&2)!=0);
+    #assert r.accepted && r.automatic == automatic && r.passed == !automatic;
+    #assert r.ability == RS_WIS;
+    #assert r.total == (ifx automatic then 0 else 10) && b[0].dice[0].rolled == (ifx automatic then 0 else 1);
+    #assert b[0].c[0].inspired == 6 && b[0].c[0].uses[RS_USE_LUCK] == 1 && b[0].c[0].uses[RS_USE_WIND] == 1;
+  } }
+}
+
+#test "check edges combine Rage Athlete tool training Poisoned Hex and visible fear without stacking" {
+  for mode: 0..<10 {
+    c: RsCreature; c.level = 1; c.score[RS_STR] = 10;
+    q := RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS};
+    if mode == 0 { c.raging = true; } else if mode == 1 { c.athlete = true; }
+    else if mode == 2 { c.cond = RS_POISONED; }
+    else if mode == 3 { c.cond = RS_FRIGHTENED; q.fear_visible = true; }
+    else if mode == 4 { c.cond = RS_FRIGHTENED; }
+    else if mode == 5 { c.eff[0] = RsEffect.{kind=EF_ENFEEBLED}; }
+    else if mode == 6 { c.eff[0] = RsEffect.{kind=EF_HEX,cond=RS_STR}; }
+    else if mode == 7 { c.eff[0] = RsEffect.{kind=EF_HEX,cond=RS_WIS}; }
+    else if mode == 8 { c.raging=true; c.athlete=true; c.cond=RS_POISONED; q.advantage=true; }
+    else { q.advantage=true; q.disadvantage=true; }
+    expected := [10] int.[1,1,-1,-1,0,-1,-1,0,0,0];
+    #assert rs_check_plan(c,q).edge == expected[mode];
+    if mode == 0 || mode == 1 || mode == 5 { q.ability=RS_DEX; #assert rs_check_plan(c,q).edge == 0; }
+    if mode == 1 { q.ability=RS_STR; q.skill=SK_SURVIVAL; #assert rs_check_plan(c,q).edge == 0; }
+  }
+}
+
+#test "Primal Knowledge substitutes Strength only for its five skills while the feature and Rage are active" {
+  for skill: 0..<18 { for mode: 0..<3 {
+    c: RsCreature; c.level=3; c.primal=mode!=0; c.raging=mode!=1; c.score[RS_STR]=18; c.score[RS_WIS]=8;
+    p := rs_check_plan(c,RsAbilityRequest.{ability=RS_WIS,skill=skill,primal=true});
+    permitted := [18] bool.[true,false,false,false,false,false,false,true,false,false,false,true,false,false,false,false,true,true];
+    allowed := permitted[skill] && mode==2;
+    #assert p.accepted == allowed;
+    if allowed { #assert p.ability==RS_STR && p.bonus==4 && p.edge==1; }
+  } }
+}
+
+#test "ability checks ignore save boons and Aura then spend Inspiration Own Luck and Tactical Mind in order" {
+  b: [1] RsBattle; ac_roll_field(b[..]);
+  b[0].c[0].inspired=6; b[0].c[0].own_luck=true; b[0].c[0].uses[RS_USE_LUCK]=1;
+  b[0].c[0].tactical=true; b[0].c[0].uses[RS_USE_WIND]=1;
+  #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BLESS,by=0,spell=-1,until=60,save=-1});
+  #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BANE,by=0,spell=-1,until=60,save=-1});
+  b[0].c[0].aura=true; b[0].c[0].score[RS_CHA]=30;
+  r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,dc=20});
+  #assert r.accepted && r.passed && r.total==23 && r.inspiration==3 && r.luck==5 && r.mind==5 && r.mind_spent;
+  #assert b[0].dice[0].rolled==4 && b[0].c[0].inspired==0 && b[0].c[0].uses[RS_USE_LUCK]==0 && b[0].c[0].uses[RS_USE_WIND]==0;
+}
+
+#test "a failed Tactical Mind attempt reports its added roll but preserves the Second Wind use" {
+  b: [1] RsBattle; ac_roll_field(b[..]); b[0].c[0].tactical=true; b[0].c[0].uses[RS_USE_WIND]=1;
+  r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,dc=16});
+  #assert r.accepted && !r.passed && r.total==15 && r.mind==5 && !r.mind_spent;
+  #assert b[0].c[0].uses[RS_USE_WIND]==1 && b[0].dice[0].rolled==2;
+}
+
+#test "Passive Perception uses ten plus its bonus and net edge without dice or rescue spending" {
+  for edge: -1..<2 {
+    b: [1] RsBattle; ac_roll_field(b[..]); b[0].c[0].score[RS_WIS]=15; b[0].c[0].checks.skills=1<<SK_PERCEPTION;
+    b[0].c[0].inspired=6; b[0].c[0].own_luck=true; b[0].c[0].uses[RS_USE_LUCK]=1;
+    r := rs_passive_perception(b[..],0,RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=14,advantage=edge>0,disadvantage=edge<0});
+    #assert r.accepted && r.total==14+5*edge && r.passed==(edge>=0) && b[0].dice[0].rolled==0;
+    #assert r.ability==RS_WIS && r.edge==edge;
+    #assert b[0].c[0].inspired==6 && b[0].c[0].uses[RS_USE_LUCK]==1;
+  }
+}
+
+#test "Passive Perception refuses another skill ability tool primal choice or actor and cannot see while Blinded" {
+  for mode: 0..<8 {
+    b: [1] RsBattle; ac_roll_field(b[..]);
+    q := RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=1}; j:=0;
+    if mode==0 { j=-1; } else if mode==1 { j=1; } else if mode==2 { q.ability=RS_INT; }
+    else if mode==3 { q.skill=SK_INSIGHT; } else if mode==4 { q.tool=TO_THIEVES; }
+    else if mode==5 { q.primal=true; } else { b[0].c[0].cond=RS_BLINDED; q.sight=mode==6; }
+    r := rs_passive_perception(b[..],j,q);
+    #assert r.accepted==(mode>=6) && r.automatic==(mode==6) && r.passed==(mode==7);
+    #assert b[0].dice[0].rolled==0;
+  }
+}
+
+#test "single condition bits affect check edges only through Poisoned or visible Frightened" {
+  for bit: 0..<15 {
+    c: RsCreature; c.cond=1<<bit;
+    p := rs_check_plan(c,RsAbilityRequest.{ability=RS_STR,fear_visible=true});
+    #assert p.accepted && !p.automatic && p.edge==(ifx bit==4 || bit==10 then -1 else 0);
+  }
+}
+
+#test "rolled check results retain their requested ability and net edge" {
+  for edge: [2] int.[-1,1] {
+    b: [1] RsBattle; ac_roll_field(b[..]); b[0].c[0].score[RS_INT]=14;
+    r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_INT,dc=12,advantage=edge>0,disadvantage=edge<0});
+    #assert r.accepted && r.passed && r.ability==RS_INT && r.edge==edge && r.total==12 && b[0].dice[0].rolled==2;
+  }
+}
+
+#test "Tactical Mind uses a d10 and refuses an empty Second Wind bank" {
+  b: [1] RsBattle; ac_roll_field(b[..]); b[0].dice[0].fixed=false; b[0].dice[0].state=5;
+  b[0].c[0].tactical=true; b[0].c[0].uses[RS_USE_WIND]=1;
+  // Independent SplitMix64 fixture: seed 5 gives d20 9, then d10 10 (d11 3).
+  r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,dc=19});
+  #assert r.passed && r.total==19 && r.mind==10 && r.mind_spent && b[0].c[0].uses[RS_USE_WIND]==0 && b[0].dice[0].rolled==2;
+  b[0].dice[0].fixed=true;
+  r = rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,dc=11});
+  #assert !r.passed && r.total==10 && r.mind==0 && !r.mind_spent && b[0].dice[0].rolled==3 && b[0].c[0].uses[RS_USE_WIND]==0;
+}
+
+#test "natural one and twenty have no automatic ability-check outcome" {
+  for face: [2] int.[1,20] {
+    b: [1] RsBattle; ac_roll_field(b[..]); b[0].dice[0].fixed=false;
+    for seed: 1..<4096 {
+      d: [1] RsDice; d[0].state=cast(u64)seed;
+      if rs_roll(d[..],20)==face { b[0].dice[0].state=cast(u64)seed; break; }
+    }
+    b[0].c[0].score[RS_STR]=ifx face==1 then 30 else 1;
+    r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,dc=ifx face==1 then 11 else 16});
+    #assert r.accepted && r.passed==(face==1) && r.total==(ifx face==1 then 11 else 15) && b[0].dice[0].rolled==1;
+  }
+}
+
+#test "Initiative applies condition and Athlete edges without skill Jack save proficiency or failed-check rescue bonuses" {
+  for condition: [12] int.[0,RS_POISONED,RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS,RS_FRIGHTENED,RS_BLINDED,RS_DEAFENED,RS_FRIGHTENED|RS_BLINDED,RS_FRIGHTENED|RS_CHARMED] { for athlete: 0..<2 {
+    b: [1] RsBattle; b[0].dice[0].fixed=true;
+    c: RsCreature; c.level=6; c.hp=10; c.hp_max=10; c.score[RS_DEX]=14; c.cond=condition;
+    c.jack=true; c.athlete=athlete==1; c.checks.skills=262143; c.checks.expert=262143; c.save_prof[RS_DEX]=true;
+    c.inspired=6; c.own_luck=true; c.uses[RS_USE_LUCK]=1; c.tactical=true; c.uses[RS_USE_WIND]=1;
+    i := rs_add(b[..],c,1,1);
+    down := condition!=0 && condition!=RS_BLINDED && condition!=RS_DEAFENED && condition!=(RS_FRIGHTENED|RS_BLINDED);
+    edge := ifx !down then (ifx athlete==1 then 1 else 0) else (ifx athlete==1 then 0 else -1);
+    #assert b[0].c[i].initiative==12 && b[0].dice[0].rolled==(ifx edge==0 then 1 else 2);
+    #assert b[0].c[i].inspired==6 && b[0].c[i].uses[RS_USE_LUCK]==1 && b[0].c[i].uses[RS_USE_WIND]==1;
+  } }
+}
+
+#test "rolled checks and Initiative apply Exhaustion once while Passive Perception is not a D20 roll" {
+  for level: 0..<6 {
+    b: [1] RsBattle; ac_roll_field(b[..]); b[0].c[0].exhaustion=level;
+    b[0].c[0].score[RS_WIS]=14; b[0].c[0].score[RS_DEX]=14; b[0].c[0].checks.skills=1<<SK_PERCEPTION;
+    q := RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=14};
+    p := rs_check_plan(b[0].c[0],q);
+    #assert p.bonus==4 && p.penalty==2*level;
+    r := rs_ability_check(b[..],0,q);
+    #assert r.total==14-2*level && r.passed==(level==0) && b[0].dice[0].rolled==1;
+    passive := rs_passive_perception(b[..],0,q);
+    #assert passive.accepted && passive.total==14 && passive.passed && b[0].dice[0].rolled==1;
+    i := rs_add(b[..],b[0].c[0],2,1);
+    #assert b[0].c[i].initiative==12-2*level && b[0].dice[0].rolled==2;
+  }
+}
+
+#test "Invisible Athlete and condition Initiative sources cancel together before the check is rolled" {
+  for condition: [4] int.[0,RS_POISONED,RS_INCAPACITATED,RS_INCAPACITATED|RS_POISONED] {
+    for invisible: 0..<2 { for athlete: 0..<2 {
+      b: [1] RsBattle; b[0].dice[0].fixed=true;
+      c: RsCreature; c.hp=10; c.hp_max=10; c.level=1; c.score[RS_DEX]=14;
+      c.cond=condition|(ifx invisible==1 then RS_INVISIBLE else 0); c.athlete=athlete==1;
+      up := invisible==1 || athlete==1; down:=condition!=0;
+      expected := ifx up==down then 0 else ifx up then 1 else -1;
+      p := rs_initiative_plan(c);
+      #assert p.edge==expected && p.bonus==2 && p.penalty==0;
+      i := rs_add(b[..],c,1,1);
+      #assert b[0].c[i].initiative==12 && b[0].dice[0].rolled==(ifx expected==0 then 1 else 2);
+    } }
+  }
+}
+
+ac_roll_field :: (b: [] RsBattle) {
+  c: RsCreature; c.klass=RS_MONSTER; c.level=1; c.hp=10; c.hp_max=10; c.speed=30;
+  c.score=[6] int.[10,10,10,10,10,10]; c.conc=-1;
+  _ := rs_add(b,c,1,1); b[0].dice[0].fixed=true; b[0].dice[0].rolled=0;
+}
+
+ac_field :: (b: [] RsBattle, actor: RsCreature, wisdom: int) {
+  b[0].w = 16; b[0].h = 8; b[0].dice[0].fixed = true;
+  _ := rs_add(b,rs_druid("Caster",0,3),1,1);
+  _ = rs_add(b,actor,2,1);
+  b[0].c[0].score[RS_WIS] = wisdom; b[0].c[0].conc = SP_ENTANGLE;
+  b[0].zone[0] = RsZone.{on=true,spell=SP_ENTANGLE,by=0,until=60};
+  #assert rs_put_effect(b,1,RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=0,spell=SP_ENTANGLE,until=60,save=-1});
+  b[0].who = 1; b[0].dice[0].rolled = 0;
+}

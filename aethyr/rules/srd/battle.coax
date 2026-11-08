@@ -33,6 +33,8 @@
 #load "dash.coax";
 #load "movement-credit.coax";
 #load "exhaustion-lifecycle.coax";
+#load "ability-check-math.coax";
+#load "ability-checks.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -273,8 +275,9 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
   i := b[0].n;
   b[0].c[i] = c; b[0].c[i].x = -1; b[0].c[i].y = -1;
   rs_place(b, i, x, y);
-  // Remarkable Athlete / Invisible Advantage cancels incapacitation Disadvantage
-  b[0].c[i].initiative = rs_d20(b[0].dice[..], rs_initiative_edge(c)).roll + rs_mod(c.score[RS_DEX]) - rs_exhaustion_penalty(c);
+  // Initiative uses the shared ability-check plan, including condition edges.
+  initiative := rs_initiative_plan(c);
+  b[0].c[i].initiative = rs_d20(b[0].dice[..],initiative.edge).roll + initiative.bonus - initiative.penalty;
   b[0].n += 1;
   return i;
 }
@@ -1094,20 +1097,8 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   if z < 0 || !b[0].zone[z].on { return false; }
   b[0].turn.action = true;
   dc := rs_spell_dc(b[0].c[b[0].zone[z].by]);
-  downs := ifx rs_has(b[0].c[i], RS_POISONED) || rs_effect(b[0].c[i], EF_ENFEEBLED) then 1 else 0;
-  for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_HEX && b[0].c[i].eff[k].cond == RS_STR { downs += 1; } }
-  // Rage and Remarkable Athlete (p. 49) give Advantage on Strength (Athletics) checks
-  d := rs_d20(b[0].dice[..], rs_edge(ifx b[0].c[i].raging || b[0].c[i].athlete then 1 else 0, downs));
-  total := d.roll + rs_mod(b[0].c[i].score[RS_STR]) - rs_exhaustion_penalty(b[0].c[i]);
-  total += rs_inspired_roll(b, i, total, dc);
-  total += rs_own_luck(b, i, total, dc);
-  // Tactical Mind (p. 48): a failed check takes 1d10 from a Second Wind use, spent only if it succeeds
-  mind := 0;
-  if total < dc && b[0].c[i].tactical && b[0].c[i].uses[RS_USE_WIND] > 0 {
-    mind = rs_roll(b[0].dice[..], 10);
-    if total + mind >= dc { total += mind; b[0].c[i].uses[RS_USE_WIND] -= 1; } else { mind = 0; }
-  }
-  ok := total >= dc;
+  checked := rs_ability_check(b,i,RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS,dc=dc,fear_visible=!rs_has(b[0].c[i],RS_BLINDED)});
+  total := checked.total; mind := checked.mind; ok := checked.passed;
   if ok {
     for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_ZONE_RESTRAIN && b[0].c[i].eff[k].cond == z { rs_drop_effect(b,i,k); } }
     // Compatibility for an older caller's raw zone binding.
@@ -2875,7 +2866,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
     rs_fresh(b[..], f); seq := b[0].book[0].seq;
     was := b[0].c[f].uses[RS_USE_WIND];
     freed := rs_escape(b[..], f);
-    if rs_saw(b[..], seq, "Tactical Mind") { mind = true; #assert freed && b[0].c[f].uses[RS_USE_WIND] == was - 1; }
+    if rs_saw(b[..], seq, "Tactical Mind") { mind = true; #assert b[0].c[f].uses[RS_USE_WIND] == was - (ifx freed then 1 else 0); }
     else { #assert b[0].c[f].uses[RS_USE_WIND] == was; }
     if b[0].c[f].uses[RS_USE_WIND] == 0 { b[0].c[f].uses[RS_USE_WIND] = 3; }
   }

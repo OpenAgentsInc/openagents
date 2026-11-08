@@ -1,0 +1,23 @@
+passed               aethyr/rules/srd/ability-check-tests.coax
+  passed             Entangle escape uses the preset Fighters Athletics proficiency instead of the bare ability modifier
+  passed             Entangle escape uses Jack of All Trades on the preset Bards untrained Athletics check
+  passed             Entangle escape doubles the proficiency bonus for the preset Rogues chosen Athletics Expertise
+  passed             every class constructor carries its declared selected training through levels one to six
+  passed             training selection refuses malformed masks atomically and accepts both exact mask boundaries
+  passed             all thirty seven distinct tool proficiencies use exactly one bonus and unknown grants confer nothing
+  passed             malformed check requests and actor identities refuse without dice resource or event changes
+  passed             sight and hearing dependent checks automatically fail only for their corresponding missing sense
+  passed             check edges combine Rage Athlete tool training Poisoned Hex and visible fear without stacking
+  passed             Primal Knowledge substitutes Strength only for its five skills while the feature and Rage are active
+  passed             ability checks ignore save boons and Aura then spend Inspiration Own Luck and Tactical Mind in order
+  passed             a failed Tactical Mind attempt reports its added roll but preserves the Second Wind use
+  passed             Passive Perception uses ten plus its bonus and net edge without dice or rescue spending
+  passed             Passive Perception refuses another skill ability tool primal choice or actor and cannot see while Blinded
+  passed             single condition bits affect check edges only through Poisoned or visible Frightened
+  passed             rolled check results retain their requested ability and net edge
+  passed             Tactical Mind uses a d10 and refuses an empty Second Wind bank
+  passed             natural one and twenty have no automatic ability-check outcome
+  passed             Initiative applies condition and Athlete edges without skill Jack save proficiency or failed-check rescue bonuses
+  passed             rolled checks and Initiative apply Exhaustion once while Passive Perception is not a D20 roll
+  passed             Invisible Athlete and condition Initiative sources cancel together before the check is rolled
+native checks: passed {"passed": 21}

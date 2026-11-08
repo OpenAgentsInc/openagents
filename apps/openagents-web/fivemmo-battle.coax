@@ -1027,6 +1027,19 @@ mb_class_of :: (pick: int) -> int #export_c #effects(all) { return ROSTER[rs_max
 
 // ---- checks (small battles: the interpreter's traversal is bounded)
 
+#test "5E MMO: trained Monk AI escapes Entangle through the shared Athletics check" {
+  m: [1] Mb; b := bt(m[..]); b[0].w=16; b[0].h=8; b[0].dice[0].fixed=true;
+  caster := rs_add(b,rs_druid("Druid",0,3),1,1);
+  monk := rs_add(b,rs_monk("Monk",1,3),2,1);
+  b[0].c[caster].conc=SP_ENTANGLE;
+  b[0].zone[0]=RsZone.{on=true,by=caster,spell=SP_ENTANGLE,until=60};
+  #assert rs_put_effect(b,monk,RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=caster,spell=SP_ENTANGLE,until=60,save=-1});
+  rs_start_turn(b,monk); seq:=b[0].book[0].seq;
+  monk_turn(m[..],monk);
+  #assert !rs_has(b[0].c[monk],RS_RESTRAINED) && b[0].turn.action;
+  #assert rs_saw(b,seq,"STR (Athletics) 13 vs DC 13: free");
+}
+
 #test "5E MMO: a party of four and a wave of six, on the action clock" #steps 400000000 {
   m: [1] Mb;
   mb_new(m[..], 6, 3);

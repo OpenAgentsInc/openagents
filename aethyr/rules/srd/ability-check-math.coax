@@ -1,0 +1,49 @@
+// SRD 5.2.1 pp.6-9, 29, 32, 49, 177, 181-183, 186.
+// Geometry, task requirements and circumstantial edges are admitted caller facts.
+#authority;
+
+RsAbilityRequest :: struct {
+  ability: int; skill: int = -1; tool: int = -1; dc: int;
+  primal: bool; sight: bool; hearing: bool; fear_visible: bool;
+  advantage: bool; disadvantage: bool;
+}
+RsCheckPlan :: struct { accepted: bool; automatic: bool; ability: int; bonus: int; penalty: int; edge: int; }
+
+rs_check_plan :: (c: RsCreature, q: RsAbilityRequest) -> RsCheckPlan #effects(all) {
+  r: RsCheckPlan;
+  if q.ability < 0 || q.ability >= 6 || q.skill < -1 || q.skill >= RS_SKILLS || q.tool < -1 || q.tool >= RS_TOOLS { return r; }
+  if q.primal && (!c.primal || !c.raging || !(q.skill == SK_ACROBATICS || q.skill == SK_INTIMIDATION || q.skill == SK_PERCEPTION || q.skill == SK_STEALTH || q.skill == SK_SURVIVAL)) { return r; }
+  r.accepted = true;
+  r.ability = ifx q.primal then RS_STR else q.ability;
+  r.automatic = (q.sight && rs_has(c,RS_BLINDED)) || (q.hearing && rs_has(c,RS_DEAFENED));
+  if r.automatic { return r; }
+  skill := q.skill >= 0 && (c.checks.skills & (1<<q.skill)) != 0;
+  tool := q.tool >= 0 && (c.checks.tools & rs_tool_bit(q.tool)) != 0;
+  pb := rs_proficiency(c.level);
+  trained := 0;
+  if skill || tool { trained = pb; }
+  if skill && (c.checks.expert & (1<<q.skill)) != 0 { trained = 2*pb; }
+  if c.jack && q.skill >= 0 && !skill && !tool { trained = pb/2; }
+  r.bonus = rs_mod(c.score[r.ability]) + trained;
+  r.penalty = rs_exhaustion_penalty(c);
+  up := q.advantage || (skill && tool) || (r.ability == RS_STR && c.raging) || (r.ability == RS_STR && q.skill == SK_ATHLETICS && c.athlete);
+  down := q.disadvantage || rs_has(c,RS_POISONED) || (rs_has(c,RS_FRIGHTENED) && q.fear_visible) || (r.ability == RS_STR && rs_effect(c,EF_ENFEEBLED));
+  for e: c.eff { if e.kind == EF_HEX && e.cond == r.ability { down = true; } }
+  r.edge = ifx up && !down then 1 else ifx down && !up then -1 else 0;
+  return r;
+}
+
+// Initiative is a Dexterity check without a skill or a failure DC. Incapacitated
+// adds Disadvantage specifically here; optional failed-check rescues do not run.
+rs_initiative_plan :: (c: RsCreature) -> RsCheckPlan #effects(all) {
+  return rs_check_plan(c,RsAbilityRequest.{ability=RS_DEX,advantage=rs_initiative_up(c),
+    disadvantage=rs_initiative_down(c),fear_visible=!rs_has(c,RS_BLINDED)});
+}
+
+#test "trained skill and tool bonuses never stack and Expertise doubles only the skill proficiency" {
+  c: RsCreature; c.level = 1; c.score[RS_STR] = 10;
+  c.checks.skills = 1<<SK_ATHLETICS; c.checks.expert = 1<<SK_ATHLETICS;
+  c.checks.tools = rs_tool_bit(TO_CARPENTER);
+  p := rs_check_plan(c,RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS,tool=TO_CARPENTER});
+  #assert p.accepted && !p.automatic && p.bonus == 4 && p.edge == 1;
+}

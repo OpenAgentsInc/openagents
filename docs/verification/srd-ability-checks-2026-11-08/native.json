@@ -1,0 +1,321 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/ability-check-tests.coax",
+      "source_sha256": "d4e9fa35038e9ada14c4f6c7f16e0cbcc094cc901eb941ea271bca09c55da285",
+      "checks": [
+        {
+          "name": "Entangle escape uses the preset Fighters Athletics proficiency instead of the bare ability modifier",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Entangle escape uses Jack of All Trades on the preset Bards untrained Athletics check",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Entangle escape doubles the proficiency bonus for the preset Rogues chosen Athletics Expertise",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "every class constructor carries its declared selected training through levels one to six",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "training selection refuses malformed masks atomically and accepts both exact mask boundaries",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "all thirty seven distinct tool proficiencies use exactly one bonus and unknown grants confer nothing",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "malformed check requests and actor identities refuse without dice resource or event changes",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "sight and hearing dependent checks automatically fail only for their corresponding missing sense",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "check edges combine Rage Athlete tool training Poisoned Hex and visible fear without stacking",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Primal Knowledge substitutes Strength only for its five skills while the feature and Rage are active",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "ability checks ignore save boons and Aura then spend Inspiration Own Luck and Tactical Mind in order",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a failed Tactical Mind attempt reports its added roll but preserves the Second Wind use",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Passive Perception uses ten plus its bonus and net edge without dice or rescue spending",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Passive Perception refuses another skill ability tool primal choice or actor and cannot see while Blinded",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "single condition bits affect check edges only through Poisoned or visible Frightened",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "rolled check results retain their requested ability and net edge",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Tactical Mind uses a d10 and refuses an empty Second Wind bank",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "natural one and twenty have no automatic ability-check outcome",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Initiative applies condition and Athlete edges without skill Jack save proficiency or failed-check rescue bonuses",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "rolled checks and Initiative apply Exhaustion once while Passive Perception is not a D20 roll",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Invisible Athlete and condition Initiative sources cancel together before the check is rolled",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "1b6ff5ed89942d6905283f60b9e66f1ca17e274a9e21e3c786d83d4cf11e14c5",
+            "binary_sha256": "f60d28be23e256f52c430f98945d4ea2d6831bd8cbdf2868d79c49ab64273e37"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "9950b22194e9c55bf38fbe5d08e4cd00d489079e91ab517340a53d91701e9c1f",
+            "binary_sha256": "4c0099a3d94fdd0a8f9b944ae6bff9351823ea041af2c275312a6f7bd7573cfb"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 21
+  },
+  "outcome": "passed"
+}
