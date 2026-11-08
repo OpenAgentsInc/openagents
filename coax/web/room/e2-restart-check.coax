@@ -24,6 +24,12 @@
 // held against where the others are: within IM_ENTER less 6 m it must have them, past IM_EXIT and 6 m
 // it must not. It prints the pairs held near and culled far, the misses, and the farthest a player came
 // into another's view and the nearest it left it; holds with no far one held and under 1% near missed.
+// With --levels (#13046) three players sit at the levels their hellos say, as Character Create's record
+// makes them: a level 5 Fighter, a level 1 Fighter and a level 3 Barbarian. Each must hear its own
+// level's bar (b N ...). The level 5 Fighter's Action Surge is taken and its count drops; the same slot
+// from the level 1 Fighter is refused (r SEQ slot); the level 5 Fighter's weapon Attack is taken; the
+// Barbarian's Rage is taken and its slot is said to hold (ON), and a second Rage while raging is refused.
+//   coax/web/tool.sh coax/web/room/e2-restart-check.coax --levels [--port P] [--room BIN]
 // --external PORT --code CODE seats the players in a room already running (local.coax's), so a page in
 // the same room (everglade2-crowd --room CODE) draws them: 10 and more near, with their casts (C).
 //   coax/web/tool.sh coax/web/room/e2-restart-check.coax --interest [--players N] [--near N] [--seconds S] [--external PORT --code CODE]
@@ -46,6 +52,9 @@ RxBot :: struct {
   claim: bool;                      // say A as it sits again
   down_at: int; retry_at: int; back: bool; back_ms: int; err_mm: int; first_seen: bool;
   lo: f32; hi: f32; dir: f32 = -1; next_c: int;  // --interest: the stretch of the path it runs up and down (z), and which way
+  kind: [24] u8; kind_n: int;       // its hello's CLASS (none: srd-druid)
+  kit: WireKit; kits: int;          // --levels: the room's last b, and how many it has said
+  any_cast: bool;                   // --levels: count a cast of any slot, not just the druid fixture's
   go: bool; rest_code: int = -1; rest_dice: int = -1; rest_heard: int; rest_refused: int; rest_asked: int;   // --rest (#13046)
 }
 rx_body_field :: (t: string, key: string, out: [] u8) -> string {
@@ -109,7 +118,8 @@ rx_said :: (b: [] RxBot) {
   m: [128] u8;
   ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
   if b[0].claim { ok = relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].kx, z = b[0].kz, yaw = b[0].own.yaw})]) && ok; }
-  ok = relay_conn_send(b[0].conn[..], "H 5 ranger.0.0.0 srd-druid 0 -") && ok;
+  h: [64] u8; hn := rs_put(h[..], 0, "H 5 ranger.0.0.0 "); hn = rs_put(h[..], hn, ifx b[0].kind_n > 0 then cast(string) b[0].kind[0..<b[0].kind_n] else "srd-druid"); hn = rs_put(h[..], hn, " 0 -");
+  ok = relay_conn_send(b[0].conn[..], cast(string) h[0..<hn]) && ok;
 }
 rx_pump :: (b: [] RxBot, now: int, walk: bool) {
   if !b[0].open { return; }
@@ -126,6 +136,7 @@ rx_pump :: (b: [] RxBot, now: int, walk: bool) {
     t := cast(string) b[0].conn[0].text[0..<b[0].conn[0].text_n];
     if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); rx_said(b); }
     rx_cast_record(b,t); rx_rest_record(b, t);
+    if rs_starts(t, "b ") { r: [1] WireRd; r[0] = wire_rd(t, 1); w := wire_read_kit(t, r[..]); if r[0].ok { b[0].kit = w; b[0].kits += 1; } }
     if rs_starts(t, "D ") {
       r:[1] WireRd; r[0]=wire_rd(t,1); _:=wire_read_d(t,r[..]);
       for q:0..<wire_entries(t,r[0].at) { rx_cast_entry(b,wire_entry(t,r[0].at,q)); }
@@ -294,13 +305,14 @@ rx_interest_main :: (n: int, near: int, seconds: int, port: int, code: string) -
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
   n := 4; walk := 7; port := 0; bin := "coax/web/room/bin/room"; drain := false;
-  interest := false; rest := false; near := 10; seconds := 90; external := 0; code := ""; given_n := false;
+  interest := false; rest := false; levels := false; near := 10; seconds := 90; external := 0; code := ""; given_n := false;
   i := 0;
   while i < args_count(a[..]) {
     x := args_at(a[..], i);
     if x == "--drain" { drain = true; i += 1; continue; }
     if x == "--interest" { interest = true; i += 1; continue; }
     if x == "--rest" { rest = true; i += 1; continue; }
+    if x == "--levels" { levels = true; i += 1; continue; }
     if i + 1 >= args_count(a[..]) { tool_errln("usage: e2-restart-check.coax [--drain] [--players N] [--walk S] [--port P] [--room BIN]"); return 2; }
     y := args_at(a[..], i + 1);
     if x == "--players" { n = rs_num(y); given_n = true; } else if x == "--near" { near = rs_num(y); } else if x == "--seconds" { seconds = rs_num(y); }
@@ -310,6 +322,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   if interest && !given_n { n = 14; }
   if rest && !given_n { n = 2; }
+  if levels { n = 3; }
   if rest && n < 2 { return 2; }
   if n < 1 || n > RX_MAX || walk < 1 || (!interest && n > 8) { return 2; }
   if interest && external > 0 { return rx_interest_main(n, near, seconds, external, code); }
@@ -331,6 +344,7 @@ tool_main :: () -> int #export_c #effects(all) {
   dbuf: [64] u8; dl := rs_put(dbuf[..], 0, cast(string) cbuf[0..<cl]); dl = rs_put(dbuf[..], dl, "-b");
   codes := [2] string.[cast(string) cbuf[0..<cl], cast(string) dbuf[0..<dl]];
   bots: [RX_MAX] RxBot; ab: [1024] u8; kb: [96] u8;
+  if levels { for q: 0..<3 { bots[q].any_cast = true; bots[q].kind_n = rs_put(bots[q].kind[..], 0, ifx q == 0 then "srd-fighter-5" else ifx q == 1 then "srd-fighter" else "srd-barbarian-3"); } }
   for q: 0..<n {
     key := rx_body_field(rx_post(ports[0], "/api/playtest/player", "", ab[..]), "key", kb[..]);
     bots[q].key_n = rs_put(bots[q].key[..], 0, key); bots[q].theta = (q * 9000) % 62832 - 31416;
@@ -341,6 +355,9 @@ tool_main :: () -> int #export_c #effects(all) {
     rx_bands(bots[..], n, near);
     print("e2-restart-check: % players in % on 127.0.0.1:%, % near, the rest far up the path\n", n, codes[0], ports[0], near);
     ok = rx_interest(bots[..], n, seconds, false);
+  } else if levels {
+    print("e2-restart-check: % players in % on 127.0.0.1:%: levels 1 to 6 over real sockets\n", n, codes[0], ports[0]);
+    ok = rx_levels(bots[..], n);
   } else if rest {
     print("e2-restart-check: % players in % on 127.0.0.1:%: the room's rest over real sockets, then a kill\n", n, codes[0], ports[0]);
     ok = rx_rest(bots[..], n, bin, ports[..], dir, store, codes[..], rooms[..]);
@@ -382,7 +399,7 @@ rx_cast_record :: (b:[] RxBot,t:string) {
 rx_cast_entry :: (b:[] RxBot,t:string) {
   if !wire_is(t,"e cast") { return; }
   r:[1] WireRd; r[0]=wire_rd(t,6); e:=wire_read_cast_e(t,r[..]);
-  if !r[0].ok || e.slot!=RX_DRUID_CAST { return; }
+  if !r[0].ok || (e.slot!=RX_DRUID_CAST && !b[0].any_cast) { return; }
   if e.ss==b[0].seat { b[0].cast_mine+=1; } else { b[0].cast_others+=1; }
 }
 
@@ -452,5 +469,54 @@ rx_rest :: (bots: [] RxBot, n: int, bin: string, ports: [] int, dir: string, sto
   ok = rx_rest_step("and player 1 has no rest", rx_until(bots, n, 1, 0, 3000), bots[1]) && ok;
   x = bots[0].own.x; z = bots[0].own.z; bots[0].go = true; rx_run(bots, n, 1000); bots[0].go = false;
   ok = rx_rest_step("still asleep, it cannot move", abs(bots[0].own.x - x) < 0.01 && abs(bots[0].own.z - z) < 0.01 && bots[0].rest_code == 3, bots[0]) && ok;
+  return ok;
+}
+
+// --levels (#13046)
+rx_cast_slot :: (b: [] RxBot, slot: int, ahead: f32) {
+  b[0].seq += 1; b[0].last_c_seq = b[0].seq; b[0].cast_sent += 1; m: [128] u8;
+  k := wire_put_cast(m[..], 0, WireCast.{seq = b[0].last_c_seq, slot = slot, ax = b[0].own.x, ay = b[0].own.y + 1, az = b[0].own.z - ahead, tgt = -1});
+  _ := relay_conn_send(b[0].conn[..], cast(string) m[0..<k]);
+}
+// The wire slots and bar places the class kits give (class-kit.coax's "the restart check's --levels
+// fixtures" test pins them): a level 5 Fighter's bar is Second Wind, Attack, Action Surge, Rest (4) with
+// Attack on 225 and Action Surge on 227; a level 1 Fighter's has 3 and no Surge; a level 3 Barbarian's
+// Rage is on 128, first of 4.
+RX_F5_BAR :: 4; RX_F1_BAR :: 3; RX_B3_BAR :: 4;
+RX_F_ATTACK :: 225; RX_F_SURGE :: 227; RX_F5_SURGE_AT :: 2; RX_B_RAGE :: 128; RX_B3_RAGE_AT :: 0;
+// Pump until bot i heard `mine` of its casts taken or `refused` refused, or ms pass.
+rx_cast_until :: (bots: [] RxBot, n: int, i: int, mine: int, refused: int, ms: int) -> bool {
+  until := rs_now() + ms;
+  while rs_now() < until { if bots[i].cast_mine >= mine || bots[i].cast_refused >= refused { break; } rx_run(bots, n, 20); }
+  return bots[i].cast_mine >= mine && bots[i].cast_refused < refused;
+}
+rx_level_step :: (name: string, held: bool, b: RxBot) -> bool {
+  print("  % %: % b heard (% slots), % casts sent, % taken, % refused\n", ifx held then "ok  " else "FAIL", name, b.kits, b.kit.n, b.cast_sent, b.cast_mine, b.cast_refused);
+  return held;
+}
+rx_levels :: (bots: [] RxBot, n: int) -> bool {
+  for i: 0..<n { bots[i].go = false; }
+  rx_run(bots, n, 5000);   // seated, landed, each told its bar
+  ok := rx_level_step("each player hears its own level's bar", bots[0].kit.n == RX_F5_BAR && bots[1].kit.n == RX_F1_BAR && bots[2].kit.n == RX_B3_BAR, bots[0]);
+  surge := RX_F_SURGE; si := RX_F5_SURGE_AT;
+  before := bots[0].kit.v[si] / 2 - 1;
+  rx_cast_slot(bots[0..<1], surge, 0);
+  ok = rx_level_step("the level 5 Fighter's Action Surge is taken", rx_cast_until(bots, n, 0, 1, 1, 3000), bots[0]) && ok;
+  rx_run(bots, n, 400);
+  ok = rx_level_step("and its count drops by one", bots[0].kit.v[si] / 2 - 1 == before - 1, bots[0]) && ok;
+  rx_cast_slot(bots[1..<2], surge, 0);
+  ok = rx_level_step("the level 1 Fighter's same slot is refused", rx_cast_until(bots, n, 1, 1, 1, 3000) == false && bots[1].cast_refused == 1 && bots[1].cast_mine == 0, bots[1]) && ok;
+  rx_run(bots, n, 1000);   // past the room's gap between casts
+  sword := RX_F_ATTACK;
+  rx_cast_slot(bots[0..<1], sword, 1.5);
+  ok = rx_level_step("the level 5 Fighter's weapon Attack is taken", rx_cast_until(bots, n, 0, 2, 1, 3000), bots[0]) && ok;
+  rage := RX_B_RAGE; ri := RX_B3_RAGE_AT;
+  rx_cast_slot(bots[2..<3], rage, 0);
+  ok = rx_level_step("the level 3 Barbarian's Rage is taken", rx_cast_until(bots, n, 2, 1, 1, 3000), bots[2]) && ok;
+  rx_run(bots, n, 400);
+  ok = rx_level_step("and the room says its Rage holds", bots[2].kit.v[ri] % 2 == 1, bots[2]) && ok;
+  rx_run(bots, n, 1000);
+  rx_cast_slot(bots[2..<3], rage, 0);
+  ok = rx_level_step("a second Rage while raging is refused", !rx_cast_until(bots, n, 2, 2, 1, 3000) && bots[2].cast_refused == 1, bots[2]) && ok;
   return ok;
 }

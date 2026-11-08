@@ -1,7 +1,7 @@
 // Everglade II's crowd check (#13057): N headless Chromes (2 to 3: the machine's cap) take the whole
 // journey into one Everglade II room of their own, as players do, and say what each saw and how
 // smooth the others were.
-//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest]
+//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest] [--levels]
 // URL is the Character Create page (…/worlds/character-creator), with ?relay=ws://localhost:PORT for a
 // local room (coax/web/room/local.coax); the room is a fresh pair-e2-<hex> (?room=), which the rooms
 // list leaves out, unless --room names one (a load run's pair-e2-load-STAMP-1, to stand among its
@@ -28,6 +28,11 @@
 //      30, the z code): LONG REST puts you asleep (3), and W then moves you nothing; WATCH (4); END REST,
 //      then END REST again if the rest is broken (6), leaves no rest (0); SHORT REST (1), and walking
 //      breaks it (0 again). With --shot, DIR/rest-asleep-K.jpg and DIR/rest-short-K.jpg.
+//   --levels (#13046): in Character Create page 0 picks FIGHTER at LEVEL 5 and page 1 BARBARIAN at
+//      LEVEL 3 by mouse (e2_probe 100 to 104); after the run each hears its level's bar from the room
+//      (105, 106, 110 + i); page 0's Action Surge (key 3) is taken and its count drops; page 1's Rage
+//      (key 1) is taken and holds (120), and a second Rage is refused by the room, and its predicted
+//      sound and puffs are undone and fade (107, 108). With --shot, DIR/levels-K.jpg.
 // Nothing opens on screen and no sound plays. Each Chrome this starts is closed before it exits.
 #import "Basic";
 #load "../lib/net/cdp.coax";
@@ -233,10 +238,10 @@ tool_main :: () -> int #export_c #effects(all) {
   wh := args_size(args_value(a[..], "--size", "1280x720"));
   room := args_value(a[..], "--room", "");
   shot := args_value(a[..], "--shot", "");
-  casts := args_has(a[..], "--cast"); rests := args_has(a[..], "--rest");
+  casts := args_has(a[..], "--cast"); rests := args_has(a[..], "--rest"); levels := args_has(a[..], "--levels");
   origin := ec_origin(url);
   if !ok || url.count == 0 || url[0] == '-' || origin.count == 0 || !players.ok || !seconds.ok || !wh.ok || players.value < (ifx room.count > 0 then 1.0 else 2.0) || players.value > f64(E2C_MAX) || seconds.value < 3 {
-    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3, or 1 with --room] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest] (from the repository's root)"); return 2;
+    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3, or 1 with --room] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest] [--levels] (from the repository's root)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade2-crowd.js", js[..]);
@@ -256,17 +261,17 @@ tool_main :: () -> int #export_c #effects(all) {
     if !cdp_launch(c[i..<i + 1], wh.w, wh.h, "coax-e2crowd-") { tool_err("everglade2-crowd: "); tool_errln(cdp_error(c[i..<i + 1])); break; }
     up += 1;
   }
-  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value, shot, casts, rests) else 1;
+  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value, shot, casts, rests, levels) else 1;
   for i: 0..<up { cdp_close(c[i..<i + 1]); }
   return status;
 }
 
-ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int, shot: string, casts: bool, rests: bool) -> int {
+ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int, shot: string, casts: bool, rests: bool, levels: bool) -> int {
   n := c.count;
   for i: 0..<n { if !ec_open(c[i..<i + 1], url, origin, mark, w, h, script) { tool_errln("everglade2-crowd: can't open a page"); print("fails\n"); return 1; } }
   print("room %, % players, mark %\n", url, n, mark);
   // 1. Character Create, then USE IN EVERGLADE on each
-  pressed: [E2C_MAX] bool; t_press: [E2C_MAX] int; named_ok: [E2C_MAX] bool; refused_said := false;
+  picked: [E2C_MAX] bool; pressed: [E2C_MAX] bool; t_press: [E2C_MAX] int; named_ok: [E2C_MAX] bool; refused_said := false;
   deadline := proc_now_ms() + 60000;
   left := n;
   while left > 0 && proc_now_ms() < deadline {
@@ -286,6 +291,7 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
         if i == 0 { _ := ec_name(p, "http x"); refused_said = ec_probe(p, 64) > 0 && ec_probe(p, 65) == 0; }
         named_ok[i] = ec_name(p, EC_NAMES[i]) && ec_probe(p, 64) == 0;
       }
+      if levels && i < 2 && !picked[i] { picked[i] = ec_pick(p, EC_LV_CLASS[i], EC_LV_LEVEL[i]); }
       _ := ec_click(p, bx, by);
       proc_sleep(400);
       if ec_probe(p, 21) == 1 || ec_probe(p, 25) == 1 { pressed[i] = true; t_press[i] = proc_now_ms(); left -= 1; }
@@ -295,6 +301,7 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   names_taken := true; for i: 0..<n { if !named_ok[i] { names_taken = false; } }
   all = ec_check(refused_said, "a refused name (an address) is said, and nothing is sent") && all;
   all = ec_check(names_taken, "every page took its name in Character Create (NAME, the API's player/name)") && all;
+  if levels { all = ec_check(picked[0] && picked[1], "page 0 picked FIGHTER at LEVEL 5 and page 1 BARBARIAN at LEVEL 3 with the mouse") && all; }
   if left > 0 {
     for i: 0..<n { p := c[i..<i + 1]; print("  page %: studio % button (%, %) walking % kept % frames %\n", i, ec_probe(p, 20), ec_probe(p, 56), ec_probe(p, 57), ec_probe(p, 21), ec_probe(p, 25), ec_int(p, "__e2.fr.length", -1)); }
     print("fails\n"); return 1;
@@ -343,6 +350,7 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   }
   if casts { all = ec_casts(c, shot) && all; }
   if rests { all = ec_rests(c, shot) && all; }
+  if levels { all = ec_levels(c, shot) && all; }
   // 4. all walk on together (W), then stand
   for i: 0..<n { _ := ec_int(c[i..<i + 1], "__e2.mark()", 0); pressed_w := ec_key(c[i..<i + 1], true); }
   proc_sleep(seconds * 1000);
@@ -374,4 +382,44 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   }
   print("]}\n%\n", ifx all then "holds" else "fails");
   return ifx all then 0 else 1;
+}
+
+// --levels (#13046): the classes and levels pages 0 and 1 pick (E2C_CLASS_NAMES: BARBARIAN 0, FIGHTER 4)
+EC_LV_CLASS :: [2] int.[4, 0]; EC_LV_LEVEL :: [2] int.[5, 3];
+// CLASS, then LEVEL, pressed on their right halves until they say klass and level.
+ec_pick :: (p: [] Cdp, klass: int, level: int) -> bool {
+  for q: 0..<12 { if ec_probe(p, 28) == klass { break; } _ := ec_click(p, ec_probe(p, 102), ec_probe(p, 103)); proc_sleep(200); }
+  for q: 0..<6 { if ec_probe(p, 104) == level { break; } _ := ec_click(p, ec_probe(p, 100), ec_probe(p, 101)); proc_sleep(200); }
+  print("  page: class % level % picked\n", ec_probe(p, 28), ec_probe(p, 104));
+  return ec_probe(p, 28) == klass && ec_probe(p, 104) == level;
+}
+// Waits until probe f is want (or ms pass); its last value.
+ec_until :: (p: [] Cdp, f: int, want: int, ms: int) -> int {
+  deadline := proc_now_ms() + ms;
+  while proc_now_ms() < deadline { v := ec_probe(p, f); if v == want { return v; } proc_sleep(100); }
+  return ec_probe(p, f);
+}
+ec_levels :: (c: [] Cdp, shot: string) -> bool {
+  f := c[0..<1]; b := c[1..<2];
+  known := ec_until(f, 106, 1, 8000) == 1 && ec_until(b, 106, 1, 8000) == 1;
+  print("  page 0: bar % slots, room's word %, Action Surge left %; page 1: bar % slots, Rage left %\n", ec_probe(f, 105), ec_probe(f, 106), ec_probe(f, 112), ec_probe(b, 105), ec_probe(b, 110));
+  ok := ec_check(known && ec_probe(f, 105) == 4 && ec_probe(b, 105) == 4, "each page hears its own level's bar from the room (b), 4 slots each");
+  surge := ec_probe(f, 112); back := ec_probe(f, 88);
+  k1 := ec_digit(f, 3);
+  took := ec_until(f, 88, back + 1, 3000) == back + 1; proc_sleep(600);
+  print("  page 0: Action Surge taken %, left % then %\n", took, surge, ec_probe(f, 112));
+  ok = ec_check(took && ec_probe(f, 112) == surge - 1, "the level 5 Fighter's Action Surge is taken and its on-icon count drops by one") && ok;
+  back = ec_probe(b, 88); undone := ec_probe(b, 107);
+  k2 := ec_digit(b, 1);
+  raged := ec_until(b, 88, back + 1, 3000) == back + 1 && ec_until(b, 120, 1, 2000) == 1;
+  ec_shot(b, shot, "levels", 1); ec_shot(f, shot, "levels", 0);
+  proc_sleep(1200);
+  k3 := ec_digit(b, 1);
+  faded := 0; deadline := proc_now_ms() + 3000;
+  while proc_now_ms() < deadline && ec_probe(b, 107) == undone { proc_sleep(20); }
+  faded = ec_probe(b, 108); proc_sleep(500);
+  print("  page 1: Rage taken and holds %, second Rage undone % (fades going %, then %), casts back %\n", raged, ec_probe(b, 107) - undone, faded, ec_probe(b, 108), ec_probe(b, 88) - back);
+  ok = ec_check(raged, "the level 3 Barbarian's Rage is taken and its icon says it holds") && ok;
+  ok = ec_check(ec_probe(b, 107) == undone + 1 && ec_probe(b, 88) == back + 1 && ec_probe(b, 108) == 0, "a second Rage is refused by the room; its predicted sound and puffs are undone and faded out") && ok;
+  return ok;
 }
