@@ -30,6 +30,7 @@
 #load "font.coax";
 #load "charactercreator.coax" as cc;
 #load "../../verse/experimental-village.coax" as village;
+#load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../aethyr/loop.coax";
 #load "../../aethyr/rules/srd/battle.coax";
 #load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
@@ -1964,7 +1965,7 @@ lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental {village.ev_near(s[0].village_near[..],x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;return w;}
+  if s[0].creator[0].experimental {village.ev_near(s[0].village_near[..],x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=hostile.hostile_bodies(s[0].creator[0].hostiles[..],x,z,s[0].move_bodies[..]);return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }

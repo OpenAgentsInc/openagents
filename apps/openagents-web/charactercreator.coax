@@ -564,7 +564,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
  }
 }
 #test "experimental camera stays close as it eases back into open space" {
- s:[1]Creator;s[0].experimental=true;s[0].camera_room=0.8;s[0].dist=4;s[0].yaw=0;s[0].pitch=0.1;
+ s:[1]Creator;s[0].experimental=true;s[0].camera_room=0.8;s[0].dist=4;s[0].yaw=0;s[0].pitch=0.1;s[0].player_x=70;s[0].player_z=0;
  u:[40]f32;camera(s[0],u[..],1280,720,1);
  dx:=u[16]-s[0].player_x;dy:=u[17]-meadow.exp_height(s[0].player_x,s[0].player_z)-1.2;dz:=u[18]-s[0].player_z;
  #assert abs(sqrt(dx*dx+dy*dy+dz*dz)-0.8)<0.001;

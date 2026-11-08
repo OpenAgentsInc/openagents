@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "f0e88cec8acbf2ac4d4d3f7680c974f419b5a7f7159f7857e2ecee4835ae6f0f",
+    "sha256": "5fb7f5e85c3ec46813025c4a54dd5b17c8af7ac3322a984583a1b33e4e020559",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2458,7 +2458,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "43dae61106925b54a6f7c9afe8d1894877c1c76263b0ffa636a817d2e89a2a76"
+        "sha256": "ad70bcb4c14020f774d49e0b0c86859ef3e9a573a1117007a72df5989d33f929"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2552,7 +2552,7 @@
     "behavior": "Pursue the player and make timed SRD melee attacks",
     "source": {
       "path": "verse/experimental-hostiles.coax",
-      "sha256": "f3ce66099d128c6ea92cc1c3d419715d512638d4d81bd981955103407e9fef65"
+      "sha256": "211c08021d4ac3ef69352e0c213de53a6086f60d4778eae18819677b822435ea"
     }
   },
   "dungeon": {
@@ -2571,5 +2571,11 @@
     ],
     "collision": "Solid perimeter and interior walls with open arched passages and solid columns",
     "source": "verse/tools/assets/character_glade_pack.coax"
+  },
+  "scene_asset_collision": {
+    "path": "verse/experimental-scene-colliders.coax",
+    "sha256": "12ddcb56e389d72628ecf957c054288bee05d57a8bca9a87855003e045d5c419",
+    "placed_assets": 584,
+    "source": "Generated from transformed scene vertices during pack compilation; living enemies use moving capsules."
   }
 }

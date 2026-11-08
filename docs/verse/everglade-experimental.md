@@ -119,7 +119,8 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   assets/registry/scenes/everglade-experimental-showcase.layout "$HOME/.openagents/assets/objects" \
   "$food_root" "$rpg_root" "$dungeon_root" "$animal_root" "$animal_frames" \
   "$monster_root" "$monster_frames" assets/registry/scenes/everglade-experimental-extra-props.layout \
-  assets/registry/scenes/everglade-experimental-extra-nature.layout
+  assets/registry/scenes/everglade-experimental-extra-nature.layout \
+  verse/experimental-scene-colliders.coax
 gzip -n -6 -c apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
   > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
@@ -128,3 +129,5 @@ python3 verse/tools/assets/character_glade_oracle.py \
   apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase --animal-run --bestiary --extra-props --extra-nature
 ```
+
+The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.

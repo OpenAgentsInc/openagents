@@ -45,3 +45,7 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  p:=walk.walk_place(-18.2,0,27.0,0);for i:0..<80 {p=village_walk(p,1);}
  #assert p.pos.z>25.8;
 }
+#test "display-row anvil stops the player" #steps 200000000 {
+ p:=walk.walk_place(-77,0,-73,0);for i:0..<80 {p=village_walk(p,1);}
+ #assert p.pos.z> -74.8 && p.pos.z< -73.2;
+}

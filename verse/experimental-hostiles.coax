@@ -40,12 +40,20 @@ Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at
  hostile_tick(s[..],-42,0,-53,0.016);#assert s[0].enemies[2].awake && !s[0].enemies[5].awake;
  hostile_tick(s[..],-36,0,-60,0.016);#assert s[0].enemies[5].awake;
 }
+#test "living enemies supply moving body colliders" {
+ s:[1]Hostiles;hostile_start(s[..]);for i:0..<6 {s[0].enemies[i].dead=true;}s[0].enemies[0].dead=false;s[0].enemies[0].x=2;s[0].enemies[0].z=3;b:[42]f32;
+ n:=hostile_bodies(s[..],2,3,b[..]);#assert n==1 && b[0]==2 && b[2]==3 && b[6]>0;
+ s[0].enemies[0].x=4;n=hostile_bodies(s[..],4,3,b[..]);#assert n==1 && b[0]==4;
+}
+hostile_bodies :: (s:[]Hostiles,x:f32,z:f32,out:[]f32)->int {
+ if !s[0].ready {return 0;}n:=0;ground:=terrain.exp_height(x,z);for i:0..<6 {e:=s[0].enemies[i];if e.dead || abs(e.x-x)>8 || abs(e.z-z)>8 {continue;}if n*7+7>out.count {break;}o:=n*7;y:=terrain.exp_height(e.x,e.z)-ground;out[o]=e.x;out[o+1]=y+0.25;out[o+2]=e.z;out[o+3]=e.x;out[o+4]=y+1.25;out[o+5]=e.z;out[o+6]=0.35;n+=1;}return n;
+}
 hostile_start :: (s:[]Hostiles) {
  if s[0].ready {return;}s[0].ready=true;s[0].hp=44;s[0].dice[0]=srd_dice(27);
  for i:0..<6 {x:=ifx i==2 then -42.0f32 else ifx i==5 then -36.0f32 else ifx i%2==0 then -10.0f32 else 10.0f32;z:=ifx i==2 then -54.0f32 else ifx i==5 then -61.0f32 else -15+f32(i/2)*12;s[0].enemies[i]=Enemy.{x=x,z=z,home_x=x,home_z=z,swing= -1,cool=f32(i)*0.15};}
 }
 hostile_blocked :: (x:f32,z:f32)->bool {
- near:[1]village.EvNear;village.ev_near(near[..],x,z);
+ near:[1]village.EvNear;village.ev_hostile_near(near[..],x,z);
  for i:0..<near[0].wall_n {o:=i*6;if near[0].walls[o+1]>1.5 || near[0].walls[o+4]<0.2 {continue;}if x>near[0].walls[o]-0.3 && x<near[0].walls[o+3]+0.3 && z>near[0].walls[o+2]-0.3 && z<near[0].walls[o+5]+0.3 {return true;}}
  return false;
 }

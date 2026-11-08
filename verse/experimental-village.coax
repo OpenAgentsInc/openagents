@@ -4,13 +4,14 @@
 #load "experimental-terrain.coax" as terrain;
 #load "experimental-props.coax" as props;
 #load "experimental-village-data.coax";
+#load "experimental-scene-colliders.coax";
 #load "../aethyr/stand.coax" as stand;
 
 EV_WALLS :: 1024;
 EV_FLOORS :: 16;
 EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floor_n:int;overflow:bool;}
 #test "village collision supplies nearby walls and ignores the empty spawn" {
- a:[1]EvNear;ev_near(a[..],0,0);#assert a[0].wall_n==0 && a[0].floor_n==0 && !a[0].overflow;
+ a:[1]EvNear;ev_near(a[..],0,0);#assert a[0].floor_n==0 && !a[0].overflow;for i:0..<a[0].wall_n {o:=i*6;#assert !(a[0].walls[o]<0 && a[0].walls[o+3]>0 && a[0].walls[o+2]<0 && a[0].walls[o+5]>0 && a[0].walls[o+1]<0.5 && a[0].walls[o+4]>0.5);}
  ev_near(a[..],-18,-23);#assert a[0].wall_n>0 && !a[0].overflow;
 }
 #test "camera gathering includes walls beyond walker reach" {
@@ -68,6 +69,15 @@ ev_prop_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
   y:=terrain.exp_height(px,pz)-ground+p.y;ev_house_box(out,site,0,[6]f32.[p.x-hx,y,p.z-hz,p.x+hx,y+sz[1],p.z+hz]);
  }}
 }
+#test "all captured scene assets are gathered where placed" #steps 500000000 {
+ a:[1]EvNear;for box:EXPERIMENTAL_SCENE_BOXES {x:=f32(box[0]+box[3])*0.0005;z:=f32(box[2]+box[5])*0.0005;ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if abs(a[0].walls[o]-f32(box[0])*0.001)<0.001 && abs(a[0].walls[o+2]-f32(box[2])*0.001)<0.001 && abs(a[0].walls[o+3]-f32(box[3])*0.001)<0.001 && abs(a[0].walls[o+5]-f32(box[5])*0.001)<0.001 {found=true;}}#assert found && !a[0].overflow;}
+}
+ev_scene_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
+ for b:EXPERIMENTAL_SCENE_BOXES {x0:=f32(b[0])*0.001;z0:=f32(b[2])*0.001;x1:=f32(b[3])*0.001;z1:=f32(b[5])*0.001;
+  if x<x0-reach || x>x1+reach || z<z0-reach || z>z1+reach {continue;}
+  if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;out[0].walls[o]=x0;out[0].walls[o+1]=f32(b[1])*0.001-ground;out[0].walls[o+2]=z0;out[0].walls[o+3]=x1;out[0].walls[o+4]=f32(b[4])*0.001-ground;out[0].walls[o+5]=z1;out[0].wall_n+=1;
+ }
+}
 ev_point :: (m:[13]int,x:f32,y:f32,z:f32)->[3]f32 {
  return [3]f32.[f32(m[10])*0.001+f32(m[1])*0.001*x+f32(m[2])*0.001*y+f32(m[3])*0.001*z,
  f32(m[11])*0.001+f32(m[4])*0.001*x+f32(m[5])*0.001*y+f32(m[6])*0.001*z,
@@ -77,10 +87,11 @@ ev_house_box :: (out:[]EvNear,site:terrain.ExpSite,dy:f32,box:[6]f32) {
  if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;
  out[0].walls[o]=site.x+box[0];out[0].walls[o+1]=dy+box[1];out[0].walls[o+2]=site.z+box[2];out[0].walls[o+3]=site.x+box[3];out[0].walls[o+4]=dy+box[4];out[0].walls[o+5]=site.z+box[5];out[0].wall_n+=1;
 }
-ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4);}
-ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9);}
-ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32) {
- out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);ev_prop_near(out,x,z,reach,ground);
+ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,true);}
+ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9,true);}
+ev_hostile_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,false);}
+ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
+ out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);if scene {ev_scene_near(out,x,z,reach,ground);}else {ev_prop_near(out,x,z,reach,ground);}
  for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
   if si==18 {
    // Three large rooms with an offset entrance and two archways per partition.

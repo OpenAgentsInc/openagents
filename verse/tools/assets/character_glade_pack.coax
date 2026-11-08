@@ -70,8 +70,28 @@ gp_village_tile :: (material:string)->int {
  if material=="MI_RoundTiles" {return 6;}if material=="MI_UnevenBrick" {return 7;}if material=="MI_Vine" {return 8;}
  if material=="MI_WoodTrim" || material=="MI_WoodTrim_Wear" {return 9;}if material=="MI_WindowGlass" {return 10;}return -1;
 }
+#test "scene collider capture encloses placed vertices" {
+ b:[64]u8;gp_vertex(b[..],0,[3]f32.[2,1,-3],[3]f32.[0,1,0],[2]f32.[0,0],[3]f32.[1,1,1],0,4);gp_vertex(b[..],32,[3]f32.[3,2,-2],[3]f32.[0,1,0],[2]f32.[0,0],[3]f32.[1,1,1],0,4);
+ box:=gp_vertex_bounds(b[..],0,2,false);#assert box[0]<=2000 && box[3]>=3000 && box[2]<= -3000 && box[5]>= -2000;
+}
 GP_VERTS :: 8000000;
-Gp :: struct {v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
+Gp :: struct {colliders:[1024][6]int;collider_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
+// Capture exactly the world-space vertices emitted for one placed asset.
+// Tree trunks use their bark geometry so a broad canopy does not become a wall.
+gp_vertex_bounds :: (vertices:[]u8,first:int,last:int,bark:bool)->[6]int {
+ lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];n:=0;
+ for v:first..<last {if bark && (gl_u32(vertices,v*32+12)>>24)!=6 {continue;}n+=1;for k:0..<3 {x:=f32_from_bits(cast(u32)gl_u32(vertices,v*32+k*4));if x<lo[k] {lo[k]=x;}if x>hi[k] {hi[k]=x;}}}
+ if n==0 && bark {return gp_vertex_bounds(vertices,first,last,false);}if n==0 {return [6]int.[0,0,0,0,0,0];}
+ box:[6]int;for k:0..<3 {box[k]=int(lo[k]*1000)-1;box[k+3]=int(hi[k]*1000)+1;}return box;
+}
+gp_capture :: (w:[]Gp,first:int,bark:bool) {
+ if first==w[0].nv {return;}if w[0].collider_n>=1024 {ph_die("scene collider capture overflow");}
+ w[0].colliders[w[0].collider_n]=gp_vertex_bounds(w[0].v[..],first,w[0].nv,bark);w[0].collider_n+=1;
+}
+gp_write_colliders :: (w:[]Gp,path:string)->bool {
+ b:[262144]u8;s:[1]Sb;s[0]=sb(b[..]);sb_put(s[..],"// Generated from the scene pack's placed vertices; millimetres in world space.\nEXPERIMENTAL_SCENE_BOXES :: [");sb_int(s[..],w[0].collider_n);sb_put(s[..],"][6]int.[\n");
+ for i:0..<w[0].collider_n {sb_put(s[..]," [6]int.[");for k:0..<6 {if k>0 {sb_byte(s[..],',');}sb_int(s[..],w[0].colliders[i][k]);}sb_put(s[..],"],\n");}sb_put(s[..],"];\n");return fs_write(path,sb_text(s[..]));
+}
 gp_word :: (b:[]u8,at:int,v:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(v>>cast(u32)(k*8));}}
 gp_clamp :: (x:f32,a:f32,b:f32)->f32 {return ifx x<a then a else ifx x>b then b else x;}
 gp_byte :: (v:f32)->u32 {return cast(u32)int(gp_clamp(v*255+0.5,0,255));}
@@ -94,7 +114,7 @@ gp_texture :: (w:[]Gp,path:string,iw:[]ImgWork)->int {
 gp_mesh :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:f32,scale:f32,yaw:f32,tint:[3]f32) {gp_mesh_lift(w,g,iw,root,name,x,z,scale,yaw,tint,0);}
 gp_mesh_lift :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:f32,scale:f32,yaw:f32,tint:[3]f32,lift:f32) {gp_mesh_scaled(w,g,iw,root,name,x,z,scale,scale,yaw,tint,lift);}
 gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:f32,scale:f32,vertical:f32,yaw:f32,tint:[3]f32,lift:f32) {
- path:=txt_cat3(w[0].txt[..],root,"/glTF/",txt_cat(w[0].txt[..],name,".gltf"));gl_load(g,path);
+ capture_first:=w[0].nv;path:=txt_cat3(w[0].txt[..],root,"/glTF/",txt_cat(w[0].txt[..],name,".gltf"));gl_load(g,path);
  cs:=cos(yaw);sn:=sin(yaw);y:=cg_height(x,z)+lift;
  for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {
   pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;idx:[262144]f64;
@@ -126,6 +146,7 @@ gp_mesh_scaled :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,name:string,x:f32,z:
   }
   for t:0..<ni/3 {gp_tri(w,first+int(idx[t*3]),first+int(idx[t*3+1]),first+int(idx[t*3+2]));}
  }}
+ if !(starts(name,"Grass_") && x==0 && z==0 && scale==1) {gp_capture(w,capture_first,starts(name,"Birch_") || starts(name,"CommonTree_"));}
 }
 // One shared atlas preserves the source colour maps while staying under the
 // renderer's 64-layer ceiling. Two-pixel edge padding keeps samples in tile.
@@ -204,7 +225,7 @@ gp_showcase_bounds :: (g:[]Gltf)->[3]f32 {
  return [3]f32.[(lo[0]+hi[0])*0.5,lo[1],(lo[2]+hi[2])*0.5];
 }
 gp_showcase_mesh :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,slot:int,atlas:int) {
- gp_showcase_at(w,g,object_path,source,name,gp_showcase_position(slot),atlas,ifx slot>=257 then 0.4f32 else 1.0f32,0,0,115.25);
+ first:=w[0].nv;gp_showcase_at(w,g,object_path,source,name,gp_showcase_position(slot),atlas,ifx slot>=257 then 0.4f32 else 1.0f32,0,0,115.25);gp_capture(w,first,false);
 }
 gp_showcase_at :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,place:[2]f32,atlas:int,model_scale:f32,yaw:f32,lift:f32,marker:f32) {
  gl_load(g,object_path);anchor:=gp_showcase_bounds(g);base:=meadow.exp_height(place[0],place[1])+lift;cs:=cos(yaw);sn:=sin(yaw);
@@ -257,10 +278,11 @@ gp_animal_frames :: (w:[]Gp,root:string) {
  for frame:0..<10 {w[0].animalfirst[frame]=w[0].ni;
   for animal:0..<12 {pb:[4096]u8;s:[1]Sb;s[0]=sb(pb[..]);sb_put(s[..],root);sb_byte(s[..],'/');sb_put(s[..],GP_ANIMALS[animal]);sb_byte(s[..],'-');sb_int(s[..],frame);sb_put(s[..],".bin");b:[524288]u8;n:=fs_read(sb_text(s[..]),b[..]);if n<8 {ph_die("missing baked animal frame");}count:=gl_u32(b[..],0);if count<=0 || count%3!=0 || n!=8+count*28 {ph_die("invalid baked animal frame");}
    if frame==0 {lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];for v:0..<count {for k:0..<3 {x:=f32_from_bits(cast(u32)gl_u32(b[..],8+v*28+k*4));if x<lo[k] {lo[k]=x;}if x>hi[k] {hi[k]=x;}}}w[0].animal_anchor[animal]=[3]f32.[(lo[0]+hi[0])*0.5,lo[1],(lo[2]+hi[2])*0.5];}
-   place:=gp_showcase_position(257+animal);anchor:=w[0].animal_anchor[animal];base:=meadow.exp_height(place[0],place[1]);seen:[32768]int;mapped:[16384]int;if count>mapped.count {ph_die("animal frame has too many corners");}
+   capture_first:=w[0].nv;place:=gp_showcase_position(257+animal);anchor:=w[0].animal_anchor[animal];base:=meadow.exp_height(place[0],place[1]);seen:[32768]int;mapped:[16384]int;if count>mapped.count {ph_die("animal frame has too many corners");}
    for v:0..<count {at:=8+v*28;hash:=0;for k:0..<28 {hash=(hash*33+int(b[at+k]))%32768;}while seen[hash]!=0 {other:=8+(seen[hash]-1)*28;same:=true;for k:0..<28 {if b[at+k]!=b[other+k] {same=false;break;}}if same {break;}hash=(hash+1)%32768;}
     if seen[hash]!=0 {mapped[v]=mapped[seen[hash]-1];}else {seen[hash]=v+1;p:[3]f32;normal:[3]f32;colour:[3]f32;for k:0..<3 {p[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+k*4));normal[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));colour[k]=f32(b[at+24+k])/255;}id:=gp_v(w,[3]f32.[place[0]+0.4*(p[0]-anchor[0]),base+0.4*(p[1]-anchor[1]),place[1]+0.4*(p[2]-anchor[2])],normal,[2]f32.[0.5,0.5],colour,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(115.375));mapped[v]=id;}
     if v%3==2 {gp_tri(w,mapped[v-2],mapped[v-1],mapped[v]);}}
+   if frame==0 {gp_capture(w,capture_first,false);}
   }w[0].animalcount[frame]=w[0].ni-w[0].animalfirst[frame];
  }
 }
@@ -281,7 +303,7 @@ gp_bestiary_frames :: (w:[]Gp,frames:string) {
  for frame:0..<48 {w[0].monsterfirst[frame]=w[0].ni;for i:0..<2 {w[0].monsterpartfirst[frame][i]=w[0].ni;pb:[4096]u8;builder:[1]Sb;builder[0]=sb(pb[..]);sb_put(builder[..],frames);sb_byte(builder[..],'/');sb_put(builder[..],names[i]);sb_byte(builder[..],'-');sb_int(builder[..],frame);sb_put(builder[..],".bin");path:=sb_text(builder[..]);b:[2097152]u8;n:=fs_read(path,b[..]);if n<8 {ph_die("missing baked bestiary model");}nv:=gl_u32(b[..],0);ni:=gl_u32(b[..],4);if nv<=0 || ni<=0 || ni%3!=0 || n!=8+nv*32+ni*4 {ph_die("invalid baked bestiary model");}lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];for v:0..<nv {for k:0..<3 {x:=f32_from_bits(cast(u32)gl_u32(b[..],8+v*32+k*4));if x<lo[k] {lo[k]=x;}if x>hi[k] {hi[k]=x;}}}place:=gp_bestiary_position(i);base:=meadow.exp_height(place[0],place[1]);if frame==0 {w[0].monster_anchor[i]=[3]f32.[(lo[0]+hi[0])*0.5,lo[1],(lo[2]+hi[2])*0.5];}anchor:=w[0].monster_anchor[i];first:=w[0].nv;
   for v:0..<nv {at:=8+v*32;p:[3]f32;normal:[3]f32;for k:0..<3 {p[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+k*4));normal[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));}u:=f32_from_bits(cast(u32)gl_u32(b[..],at+24));v0:=f32_from_bits(cast(u32)gl_u32(b[..],at+28));id:=gp_v(w,[3]f32.[place[0]+p[0]-anchor[0],base+p[1]-anchor[1],place[1]+p[2]-anchor[2]],normal,[2]f32.[(u+4)/8,(v0+4)/8],[3]f32.[1,1,1],atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.125+f32(i)));}
   for k:0..<ni/3 {a:=gl_u32(b[..],8+nv*32+k*12);c:=gl_u32(b[..],8+nv*32+k*12+4);d:=gl_u32(b[..],8+nv*32+k*12+8);if a>=nv || c>=nv || d>=nv {ph_die("invalid bestiary triangle");}gp_tri(w,first+a,first+c,first+d);}
- w[0].monsterpartcount[frame][i]=w[0].ni-w[0].monsterpartfirst[frame][i];}w[0].monstercount[frame]=w[0].ni-w[0].monsterfirst[frame];}
+ if frame==0 {gp_capture(w,first,false);}w[0].monsterpartcount[frame][i]=w[0].ni-w[0].monsterpartfirst[frame][i];}w[0].monstercount[frame]=w[0].ni-w[0].monsterfirst[frame];}
 }
 gp_village_mesh :: (w:[]Gp,g:[]Gltf,root:string,part:VillagePart,atlas:int,site_id:int,mark:f32) {
  path:=txt_cat3(w[0].txt[..],root,"/glTF/",txt_cat(w[0].txt[..],part.name,".gltf"));gl_load(g,path);site:=meadow.exp_site(site_id);base:=meadow.exp_height(site.x,site.z);t:=part.m;
@@ -363,12 +385,12 @@ gp_extra_clear :: (x:f32,z:f32)->bool {for i:0..<74 {p:=gp_extra_prop_position(i
 gp_extra_props :: (w:[]Gp,g:[]Gltf,root:string,layout:string) {
  w[0].extra_props=true;
  data:[32768]u8;n:=fs_read(layout,data[..]);if n<0 {ph_die("missing extra prop layout");}lines:[1]Lines;lines[0].text=cast(string)data[0..<n];slot:=0;
- while !lines_done(lines[0]) {row:=lines_next(lines[..]);if row.count==0 {continue;}a:=0;while a<row.count && row[a]!='|' {a+=1;}if a==0 || row.count-a-1!=64 || slot>=74 {ph_die("invalid extra prop layout");}name:=row[0..<a];path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],name,".gltf"));gl_load(g,path);anchor:=gp_showcase_bounds(g);place:=gp_extra_prop_position(slot);base:=meadow.exp_height(place[0],place[1]);sc:=[3]f64.[1,1,1];r:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=f32(sc[0]);sy:=f32(sc[1]);sz:=f32(sc[2]);rot:=[4]f64.[0,0,0,1];r=gl_nums(g,gl_at(g,GA_NODE,0),"rotation",rot[..]);q:=[4]f32.[f32(rot[0]),f32(rot[1]),f32(rot[2]),f32(rot[3])];
+ while !lines_done(lines[0]) {row:=lines_next(lines[..]);if row.count==0 {continue;}a:=0;while a<row.count && row[a]!='|' {a+=1;}if a==0 || row.count-a-1!=64 || slot>=74 {ph_die("invalid extra prop layout");}name:=row[0..<a];capture_first:=w[0].nv;path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],name,".gltf"));gl_load(g,path);anchor:=gp_showcase_bounds(g);place:=gp_extra_prop_position(slot);base:=meadow.exp_height(place[0],place[1]);sc:=[3]f64.[1,1,1];r:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=f32(sc[0]);sy:=f32(sc[1]);sz:=f32(sc[2]);rot:=[4]f64.[0,0,0,1];r=gl_nums(g,gl_at(g,GA_NODE,0),"rotation",rot[..]);q:=[4]f32.[f32(rot[0]),f32(rot[1]),f32(rot[2]),f32(rot[3])];
   for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;colors:[262144]f64;idx:[262144]f64;nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;acc:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);acc=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;ci:=gl_int(g,attr,"COLOR_0",-1);channels:=0;if ci>=0 {col:=gl_acc(g,ci,colors[..]);channels=col.comps;if col.count!=nv || (channels!=3 && channels!=4) {ph_die("invalid prop vertex colors");}}
    mat:=gl_at(g,GA_MAT,gl_int(g,pr,"material",0));material:=gl_str(g,mat,"name");tile:=ifx material=="MI_Page_Empty" then 15 else gp_prop_tile(material);if tile<0 {ph_die2("unknown prop material: ",material);}first:=w[0].nv;
    for v:0..<nv {x:=f32(pos[v*3])*sx;y:=f32(pos[v*3+1])*sy;z:=f32(pos[v*3+2])*sz;local:=gp_showcase_rotate([3]f32.[x,y,z],q);normal:=gp_showcase_rotate(cg_canopy_normal(f32(nor[v*3])/sx,f32(nor[v*3+1])/sy,f32(nor[v*3+2])/sz),q);uu:=f32(uv[v*2]);vv:=f32(uv[v*2+1]);if abs(uu)>4 || abs(vv)>4 {ph_die("prop UV exceeds admitted range");}colour:=ifx tile==15 then [3]f32.[0.87,0.79,0.59] else [3]f32.[1,1,1];if channels>0 && tile!=15 {for j:0..<3 {colour[j]=f32(colors[v*channels+j]);}}id:=gp_v(w,[3]f32.[place[0]+local[0]-anchor[0],base+local[1]-anchor[1],place[1]+local[2]-anchor[2]],normal,[2]f32.[(uu+4)/8,(vv+4)/8],colour,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.125+f32(tile)));}
    for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
-  }}slot+=1;
+  }}gp_capture(w,capture_first,false);slot+=1;
  }if slot!=74 {ph_die("incomplete extra prop layout");}
 }
 #test "nature display stays within the meadow and clear of village sites" {
@@ -404,7 +426,7 @@ gp_workshop_clock :: (w:[]Gp) {
 }
 gp_props :: (w:[]Gp,g:[]Gltf,root:string) {
  for site_id:0..<9 {site:=meadow.exp_site(site_id);group:=meadow.exp_site_group(site_id);
-  for i:0..<props.exp_prop_count(site_id) {p:=props.exp_prop_at(site_id,i);path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],p.name,".gltf"));gl_load(g,path);sc:[16]f64;has_scale:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=ifx has_scale==3 then f32(sc[0]) else 1.0f32;sy:=ifx has_scale==3 then f32(sc[1]) else 1.0f32;sz:=ifx has_scale==3 then f32(sc[2]) else 1.0f32;
+  for i:0..<props.exp_prop_count(site_id) {p:=props.exp_prop_at(site_id,i);capture_first:=w[0].nv;path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],p.name,".gltf"));gl_load(g,path);sc:[16]f64;has_scale:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=ifx has_scale==3 then f32(sc[0]) else 1.0f32;sy:=ifx has_scale==3 then f32(sc[1]) else 1.0f32;sz:=ifx has_scale==3 then f32(sc[2]) else 1.0f32;
    x:=site.x+p.x;z:=site.z+p.z;y:=meadow.exp_height(x,z)+p.y;cs:=cos(p.yaw);sn:=sin(p.yaw);
    for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;colors:[262144]f64;idx:[262144]f64;
     nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;r:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);r=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;ci:=gl_int(g,attr,"COLOR_0",-1);channels:=0;if ci>=0 {col:=gl_acc(g,ci,colors[..]);channels=col.comps;if col.count!=nv || (channels!=3 && channels!=4) {ph_die("invalid prop vertex colors");}}
@@ -412,7 +434,7 @@ gp_props :: (w:[]Gp,g:[]Gltf,root:string) {
     for v:0..<nv {a:=f32(pos[v*3])*sx;b:=f32(pos[v*3+1])*sy;c:=f32(pos[v*3+2])*sz;nx:=f32(nor[v*3])/sx;ny:=f32(nor[v*3+1])/sy;nz:=f32(nor[v*3+2])/sz;normal:=cg_canopy_normal(nx*cs+nz*sn,ny,-nx*sn+nz*cs);uu:=f32(uv[v*2]);vv:=f32(uv[v*2+1]);if abs(uu)>4 || abs(vv)>4 {ph_die("prop UV exceeds admitted range");}colour:=[3]f32.[1,1,1];if channels>0 {for j:0..<3 {colour[j]=f32(colors[v*channels+j]);}}
      id:=gp_v(w,[3]f32.[x+a*cs+c*sn,y+b,z-a*sn+c*cs],normal,[2]f32.[(uu+4)/8,(vv+4)/8],colour,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.0+f32(tile)));}
     for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
-   }}
+   }}gp_capture(w,capture_first,false);
   }
  }
 }
@@ -562,7 +584,7 @@ gp_entry :: (out:[]u8,row:int,kind:int,license:int,name:string,offset:int,size:i
  out[row]=cast(u8)kind;out[row+1]=cast(u8)license;put_u32(out,row+4,offset);put_u32(out,row+8,size);for i:0..<name.count {if i<31 {out[row+16+i]=name[i];}}
 }
 tool_main :: ()->int #export_c #effects(all) {
- args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=3 && args_count(args[..])!=4 && args_count(args[..])!=6 && args_count(args[..])!=7 && args_count(args[..])!=14 && args_count(args[..])!=16 && args_count(args[..])!=17 && args_count(args[..])!=18) {tool_errln("glade pack: SOURCE_ROOT BASE.pack OUTPUT.pack [--experimental|zone]");return 2;}
+ args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=3 && args_count(args[..])!=4 && args_count(args[..])!=6 && args_count(args[..])!=7 && args_count(args[..])!=14 && args_count(args[..])!=16 && args_count(args[..])!=17 && args_count(args[..])!=18 && args_count(args[..])!=19) {tool_errln("glade pack: SOURCE_ROOT BASE.pack OUTPUT.pack [--experimental|zone]");return 2;}
  experimental:=args_count(args[..])>=4 && args_at(args[..],3)=="--experimental";zone:=args_count(args[..])==4 && args_at(args[..],3)=="zone";if args_count(args[..])>=4 && !experimental && !zone {return 2;}buildings:=args_count(args[..])>=6;
  w:[1]Gp;g:[1]Gltf;iw:[1]ImgWork;root:=args_at(args[..],0);w[0].oldn=fs_read(args_at(args[..],1),w[0].old[..]);if w[0].oldn<32 {return 1;}
  old:=w[0].old[..];ne:=gl_u32(old,4);table:=gl_u32(old,16);vo:=0;vn:=0;io:=0;in:=0;cat:="";
@@ -600,7 +622,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if buildings {props_root:=ifx args_count(args[..])>=7 then args_at(args[..],6) else "";gp_village(w[..],g[..],iw[..],args_at(args[..],4),args_at(args[..],5),props_root);if props_root!="" {gp_props(w[..],g[..],props_root);gp_workshop_clock(w[..]);}if args_count(args[..])>=14 {gp_showcase(w[..],g[..],args_at(args[..],7),args_at(args[..],8),args_at(args[..],9),args_at(args[..],10),args_at(args[..],11),args_at(args[..],12));}}
  if args_count(args[..])>=17 {gp_extra_props(w[..],g[..],args_at(args[..],6),args_at(args[..],16));}
  if args_count(args[..])>=16 {atlas:=gp_bestiary_atlas(w[..],iw[..],args_at(args[..],14));}
- if args_count(args[..])==18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
+ if args_count(args[..])>=18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
  if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11));}
  w[0].envni=w[0].ni;if args_count(args[..])>=16 {gp_bestiary_frames(w[..],args_at(args[..],15));}if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));}
  for group:0..<3 {
@@ -625,5 +647,5 @@ tool_main :: ()->int #export_c #effects(all) {
  // Patch the fixed-width catalog size without changing any payload offsets. In the zone pack
  // pack_read takes no leading zero, so the digits lead and spaces end the line.
  if zone {cat_start:=gl_u32(w[0].out[..],36);cat_size:=gl_u32(w[0].out[..],40);for k:cat_start..<cat_start+cat_size-16 {if cast(string)w[0].out[k..<k+6]=="bytes " {digits:=1;value:=at;while value>=10 {value/=10;digits+=1;}value=at;for j:0..<10 {w[0].out[k+6+j]=' ';}for j:0..<digits {w[0].out[k+5+digits-j]=cast(u8)(48+value%10);value/=10;}break;}}}else {cat_start:=gl_u32(w[0].out[..],36);cat_size:=gl_u32(w[0].out[..],40);for k:cat_start..<cat_start+cat_size-16 {if cast(string)w[0].out[k..<k+6]=="bytes " {value:=at;for j:0..<10 {w[0].out[k+15-j]=cast(u8)(48+value%10);value/=10;}break;}}}
- put_u32(w[0].out[..],8,at);if at>budget {print("Glade requires % bytes (% vertices, % triangles)\n",at,w[0].nv,w[0].ni/3);ph_die("glade pack exceeds its bounded budget");}if !fs_write(args_at(args[..],2),cast(string)w[0].out[0..<at]) {return 1;}print("Glade: % vertices, % triangles, % textures, % bytes\n",w[0].nv,w[0].ni/3,w[0].nt,at);return 0;
+ if args_count(args[..])==19 && !gp_write_colliders(w[..],args_at(args[..],18)) {return 1;}put_u32(w[0].out[..],8,at);if at>budget {print("Glade requires % bytes (% vertices, % triangles)\n",at,w[0].nv,w[0].ni/3);ph_die("glade pack exceeds its bounded budget");}if !fs_write(args_at(args[..],2),cast(string)w[0].out[0..<at]) {return 1;}print("Glade: % vertices, % triangles, % textures, % bytes\n",w[0].nv,w[0].ni/3,w[0].nt,at);return 0;
 }
