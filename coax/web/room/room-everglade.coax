@@ -150,6 +150,11 @@ EgSeat :: struct {
   claim: bool; claim_x: f32; claim_z: f32; claim_yaw: f32; hello: bool; joined_ms: int;
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
+  // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
+  // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
+  // the rest state the page last heard (z; -1 none since this socket)
+  step_kx: int; step_ky: int; step_px: int; step_py: int; step_b: int;
+  rest_seen: bool; rest_settled: bool; rest_told: int = -1; rest_told_dice: int = -1;
   checkpoint_hello: bool;        // a schema 2 character is built/restored once, not reset by repeated H
   repaired: int = -100000;       // the tick of its last Repair (CR_REPAIR_EVERY from one to the next)
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
@@ -352,6 +357,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
+    if v[0].eg[q].e2 { e2_rest_start(v, q); }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
     v[0].eg[q].initialized=true;
@@ -501,7 +507,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
   if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
   if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
@@ -553,7 +559,8 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     eg_end_now(v, k, seat_id, u.seq, u.id);
     return;
   }
-  if c == 'L' { eg_heard_rest(v, k, seat_id, text); return; }   // a Long Rest (room-events.coax ev_rest_ok)
+  if c == 'L' { if v[0].eg[k].e2 { e2_heard_old_rest(v, k, seat_id, text); return; } eg_heard_rest(v, k, seat_id, text); return; }
+  if c == 'Z' { if v[0].eg[k].e2 { e2_heard_rest(v, k, seat_id, text); } return; }   // an Everglade II rest (room-e2-rest.coax)   // a Long Rest (room-events.coax ev_rest_ok)
   if c == 'R' {
     // a room's town is rebuilt by the room (the aftermath's ev_rebuild) or by an admin, never a player's R (#12801)
     if !eg_ticket(v, k, seat_id).admin { rr0: [1] WireRd; rr0[0] = wire_rd(text, 1); eg_refuse(v, k, seat_id, wire_num(text, rr0[..]), "admin"); return; }
@@ -890,6 +897,9 @@ rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #expo
   for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
   st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
   st[0].step_at = i.at;
+  // Everglade II: a body the rules hold still (asleep, held) takes no walk or jump from its keys
+  if v[0].eg[k].e2 && v[0].eg[k].rules[0].live[s] && rs_locomotion_scale(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s) <= 0 { i.kx = 0; i.ky = 0; i.px = 0; i.py = 0; i.b = i.b & (255 - WB_JUMP); }
+  st[0].step_kx = i.kx; st[0].step_ky = i.ky; st[0].step_px = i.px; st[0].step_py = i.py; st[0].step_b = i.b;
   out[0] = i.seq; out[1] = i.kx; out[2] = i.ky; out[3] = i.px; out[4] = i.py; out[5] = i.theta; out[6] = i.b;
   return true;
 }
@@ -897,7 +907,9 @@ rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #expo
 rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c #effects(all) { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
   st := v[0].eg[k].seat[s..<s + 1];
+  was := st[0].pose; was_placed := st[0].placed;
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
+  if v[0].eg[k].e2 { e2_rest_step(v, k, s_id, seq, was, was_placed); }
   accepted:=net_accepted_result(st[0].ack,seq);
   if accepted.advanced { st[0].ack=accepted.seq;st[0].ack_at=st[0].step_at; }
   if !st[0].placed && st[0].checkpoint_hello { v[0].ck.force=true; }
@@ -1007,6 +1019,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   rc_tick_first(v, k);
   fg_sync(v,k);
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
+  if v[0].eg[k].e2 { e2_rest_tell_all(v, k); }
   fg_hits(v,k);
   rc_tick_last(v, k);
   eg_engine_events(v, k);

@@ -184,7 +184,15 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   b0 := e2k_box(k, 0, w, h, kk);
   health:[80] u8; hn:=e2k_health_text(s,health[..]);
   if hn>0 { n=cc.text(out,n,cast(string)health[0..<hn],(w-f32(hn)*8*kk*0.78)/2,b0[1]-48*kk,8*kk,cc.ink(kk,0.95,0.9,0.75)); }
+  reqs: [4] int; rn := e2k_rest_choices(s, reqs[..]);
+  for j: 0..<rn {
+    r := e2k_rest_box(s, j, rn); lab := e2k_rest_label(s, reqs[j]); ink := cc.ink(kk, 0.95, 0.9, 0.75);
+    n = e2k_line(out, n, r[0], r[1], r[2], r[1], 1.2 * kk, 0.95, 0.9, 0.75); n = e2k_line(out, n, r[0], r[3], r[2], r[3], 1.2 * kk, 0.95, 0.9, 0.75);
+    n = e2k_line(out, n, r[0], r[1], r[0], r[3], 1.2 * kk, 0.95, 0.9, 0.75); n = e2k_line(out, n, r[2], r[1], r[2], r[3], 1.2 * kk, 0.95, 0.9, 0.75);
+    n = cc.text(out, n, lab, (r[0] + r[2] - f32(lab.count) * 8 * kk * 0.78) / 2, r[1] + 14 * kk, 8 * kk, ink);
+  }
   refused:=e2n_cast_message(s[0].net[..]);
+  if refused.count == 0 { refused = e2n_rest_message(s[0].net[..]); }
   if refused.count>0 {
     n=cc.text(out,n,refused,(w-f32(refused.count)*8*kk*0.78)/2,b0[1]-30*kk,8*kk,cc.ink(kk,1,0.55,0.4));
   }
@@ -208,6 +216,11 @@ e2k_slot_at :: (s: [] E2, x: f32, y: f32) -> int {
 }
 e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
   if !e2k_on(s) { return false; }
+  reqs: [4] int; rn := e2k_rest_choices(s, reqs[..]);
+  for j: 0..<rn {
+    r := e2k_rest_box(s, j, rn);
+    if x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3] { if phase == 0 { _ := e2n_rest(s[0].net[..], reqs[j]); } return true; }
+  }
   i := e2k_slot_at(s, x, y);
   s[0].casts[0].hover = i;
   if i < 0 || phase != 0 { return false; }   // a move over it shows its card and leaves the look's drag be
@@ -221,5 +234,47 @@ e2k_health_text :: (s:[] E2,out:[] u8)->int {
   n:=e2k_put(out,0,"HP "); n=e2k_int(out,n,row.hp); n=e2k_put(out,n,"/"); n=e2k_int(out,n,row.max);
   if row.temp>0 { n=e2k_put(out,n," · TEMP "); n=e2k_int(out,n,row.temp); }
   if row.hp==0 { n=e2k_put(out,n,ifx (row.g&WG_DEAD)!=0 then " · DEAD" else " · UNCONSCIOUS"); }
+  net:=s[0].net[..];
+  if row.hp>0 && net[0].rest_known {
+    code:=net[0].rest_code;
+    if code==WIRE_REST_SHORT { n=e2k_put(out,n," · SHORT REST"); }
+    if code==WIRE_REST_CHOOSE { n=e2k_put(out,n," · HIT DICE "); n=e2k_int(out,n,net[0].rest_dice); }
+    if code==WIRE_REST_SLEEP { n=e2k_put(out,n," · ASLEEP"); }
+    if code==WIRE_REST_WATCH { n=e2k_put(out,n," · ON WATCH"); }
+    if code==WIRE_REST_EXERT { n=e2k_put(out,n," · ON THE MOVE"); }
+    if code==WIRE_REST_BROKEN { n=e2k_put(out,n," · REST BROKEN"); }
+  }
   return n;
+}
+
+// ---- rest (#13046): the controls the room's rest allows now, over the bar; the room decides each
+E2K_REST_W :: 78; E2K_REST_H :: 20; E2K_REST_GAP :: 6; E2K_REST_UP :: 66;
+// The rest requests (RS_REST_*) shown now, into out: none until the room has said your rest.
+e2k_rest_choices :: (s: [] E2, out: [] int) -> int {
+  n := s[0].net[..];
+  if !e2k_on(s) || !e2n_open(n) || !n[0].rest_known || out.count < 4 { return 0; }
+  row := e2n_vitals(n); if row.id < 0 || row.hp <= 0 { return 0; }
+  c := n[0].rest_code;
+  if c == WIRE_REST_NONE { out[0] = RS_REST_SHORT; out[1] = RS_REST_SLEEP; return 2; }
+  if c == WIRE_REST_SHORT { out[0] = RS_REST_END; return 1; }
+  if c == WIRE_REST_CHOOSE { if n[0].rest_dice > 0 { out[0] = RS_REST_DIE; out[1] = RS_REST_END; return 2; } out[0] = RS_REST_END; return 1; }
+  if c == WIRE_REST_SLEEP { out[0] = RS_REST_WATCH; out[1] = RS_REST_END; return 2; }
+  if c == WIRE_REST_WATCH || c == WIRE_REST_EXERT { out[0] = RS_REST_SLEEP; out[1] = RS_REST_END; return 2; }
+  if c == WIRE_REST_BROKEN { out[0] = RS_REST_SLEEP; out[1] = RS_REST_WATCH; out[2] = RS_REST_END; return 3; }
+  return 0;
+}
+e2k_rest_label :: (s: [] E2, req: int) -> string {
+  if req == RS_REST_SHORT { return "SHORT REST"; }
+  if req == RS_REST_SLEEP { return ifx s[0].net[0].rest_code == WIRE_REST_NONE then "LONG REST" else "SLEEP"; }
+  if req == RS_REST_WATCH { return "WATCH"; }
+  if req == RS_REST_DIE { return "HIT DIE"; }
+  return "END REST";
+}
+// Control j of count, centred over the bar.
+e2k_rest_box :: (s: [] E2, j: int, count: int) -> [4] f32 {
+  kk := s[0].k; b0 := e2k_box(s[0].casts[..], 0, s[0].width, s[0].height, kk);
+  wide := (f32(count) * f32(E2K_REST_W) + f32(count - 1) * f32(E2K_REST_GAP)) * kk;
+  x0 := (s[0].width - wide) / 2 + f32(j) * f32(E2K_REST_W + E2K_REST_GAP) * kk;
+  y1 := b0[1] - f32(E2K_REST_UP) * kk;
+  return [4] f32.[x0, y1 - f32(E2K_REST_H) * kk, x0 + f32(E2K_REST_W) * kk, y1];
 }

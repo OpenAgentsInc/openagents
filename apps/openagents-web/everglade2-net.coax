@@ -70,6 +70,9 @@ E2Net :: struct {
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
+  // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
+  // only once this socket's room has said it; your last rest request's number and when it was refused
+  rest_known: bool; rest_code: int; rest_dice: int; rest_seq: int; rest_sent: int; rest_refused: int; rest_refused_at: int = -100000;
 }
 
 e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >= 0; }
@@ -250,7 +253,7 @@ e2n_opened :: (n: [] E2Net, id: int) { if id < 0 { e2n_down(n); return; } n[0].s
 // again after a wait that doubles to a minute, 75% to 125% of it, so a restarted room's pages spread.
 e2n_down :: (n: [] E2Net) {
   if n[0].seat >= 0 && n[0].lost_at == 0 { n[0].lost_at = ifx n[0].mono > 0 then n[0].mono else 1; }
-  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1;
+  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].rest_known = false;
   n[0].tries += 1;
   wait := 1000;
   for q: 0..<nc_lo(n[0].tries - 1, 6) { wait *= 2; }
@@ -298,7 +301,7 @@ e2n_record :: (n: [] E2Net, t: string) {
   if c == 'y' {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
-    n[0].seat = seat; n[0].sat = true;
+    n[0].seat = seat; n[0].sat = true; n[0].rest_known = false;
     n[0].again = n[0].sat_before; n[0].sat_before = true; n[0].back_pending = n[0].again;
     wire_mirror_forget(n[0].mir[..]);
     for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
@@ -344,6 +347,13 @@ e2n_record :: (n: [] E2Net, t: string) {
     }
     return;
   }
+  if c == 'z' {   // your rest, as the room's rules hold it
+    z := wire_read_rest_state(t, r[..]);
+    if !r[0].ok || n[0].seat < 0 || z.seq < 0 || z.code < 0 || z.code >= WIRE_REST_CODES || z.dice < 0 || z.dice > 20 { return; }
+    n[0].rest_known = true; n[0].rest_code = z.code; n[0].rest_dice = z.dice;
+    if z.seq > 0 && z.seq == n[0].rest_seq { n[0].rest_refused_at = -100000; }
+    return;
+  }
   if c == 'r' {
     seq := wire_num(t, r[..]);
     why := wire_word(t, r[..]);
@@ -354,6 +364,7 @@ e2n_record :: (n: [] E2Net, t: string) {
       e2n_tell(n, "RESTARTING · BACK IN A MOMENT"); n[0].ticket_n = 0; n[0].tries = 0; e2n_down(n);
       return;
     }
+    if r[0].ok && why.count>0 && seq > 0 && seq == n[0].rest_seq { n[0].rest_refused += 1; n[0].rest_refused_at = n[0].mono; return; }
     if r[0].ok && why.count>0 && seq > 0 && seq == n[0].cast_seq {
       n[0].cast_refused += 1; n[0].cast_said=e2n_cast_reason(why); n[0].cast_said_at=n[0].mono;
     }   // your last cast, turned down (slot, cooldown, range, aim)
@@ -544,6 +555,36 @@ e2n_cast :: (n: [] E2Net, slot: int, ax: f32, ay: f32, az: f32) -> bool {
   n[0].cast_sent += 1;
   e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az}));
   return true;
+}
+// A rest request (Z SEQ REQ: RS_REST_*): the room decides it from the body it steps.
+e2n_rest :: (n: [] E2Net, req: int) -> bool {
+  if !e2n_open(n) || req < 1 || req > 5 { return false; }
+  n[0].rest_seq = n[0].seq + 2000000 + n[0].rest_sent;   // apart from the inputs' and the casts' numbers
+  n[0].rest_sent += 1; n[0].rest_refused_at = -100000;
+  e2n_send(n, wire_put_rest_ask(n[0].out[..], 0, WireRestAsk.{seq = n[0].rest_seq, req = req}));
+  return true;
+}
+// The refusal of your latest rest request, for four seconds.
+e2n_rest_message :: (n: [] E2Net) -> string {
+  age := n[0].mono - n[0].rest_refused_at;
+  return ifx age >= 0 && age < 4000 then "YOU CAN'T REST RIGHT NOW" else "";
+}
+// Whether the room holds you asleep (your keys move nothing until you wake).
+e2n_asleep :: (n: [] E2Net) -> bool { return e2n_open(n) && n[0].rest_known && n[0].rest_code == WIRE_REST_SLEEP; }
+#test "rest: z sets the rest the room holds, a matching refusal shows for four seconds, and a new socket forgets it" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 0; n[0].mono = 100;
+  #assert e2n_rest(n[..], 2) && !e2n_rest(n[..], 6);
+  p := n[0].pipe[0]; last := p.n - 1; sent := cast(string) p.buf[p.from[last]..<p.from[last] + p.len[last]];
+  #assert sent[0] == 'Z' && n[0].rest_seq >= 2000000;
+  m: [64] u8; c := wire_put_rest_state(m[..], 0, WireRestState.{seq = n[0].rest_seq, code = WIRE_REST_SLEEP, dice = 2});
+  e2n_record(n[..], cast(string) m[0..<c]);
+  #assert n[0].rest_known && e2n_asleep(n[..]) && n[0].rest_dice == 2;
+  e2n_record(n[..], "z 0 9 2"); e2n_record(n[..], "z 0 4 -1"); #assert n[0].rest_code == WIRE_REST_SLEEP;
+  #assert e2n_rest(n[..], 3);
+  c = wire_put_refused(m[..], 0, n[0].rest_seq, "rest"); e2n_record(n[..], cast(string) m[0..<c]);
+  #assert e2n_rest_message(n[..]).count > 0 && n[0].cast_refused == 0;
+  n[0].mono = 4100; #assert e2n_rest_message(n[..]).count == 0;
+  e2n_down(n[..]); #assert !n[0].rest_known && !e2n_asleep(n[..]);
 }
 // The next of the others' casts whose tick the picture has reached (rt): taken, so it plays once.
 e2n_cast_due :: (n: [] E2Net, rt: int) -> E2nCast {

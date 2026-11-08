@@ -1,0 +1,204 @@
+// Everglade II's rests (#13046): the room's shared rules decide them, from the body the room steps.
+// A page asks (Z SEQ REQ: Short Rest, sleep, watch, one Hit Die, end; everglade-wire.coax); the room
+// admits a start only when its own last step of that seat showed it grounded and still with its keys
+// released and nothing of its input is still queued, then calls the shared rest control
+// (aethyr/rules/srd/rest-control.coax rs_rest_control). Each accepted step reports the walking and
+// jumping it actually moved (rs_rest_observe_motion), so moving interrupts a Short Rest and turns a
+// Long Rest's watch into exertion; stopping returns it to watch, never to sleep. Time is the rules'
+// clock (rm_eg_rules: e5rr_step), so recovery comes once, at the rules' boundary, never from a page.
+// The seat hears its rest (z SEQ CODE DICE) when it asks, whenever the rules change it, and again on
+// every new socket, so a page that rejoins shows the rest the room kept.
+//   coax test coax/web/room/room.coax --only "e2 rest"
+
+// An Everglade II room's battle schedules rests from its first tick.
+e2_rest_start :: (v: [] RmServer, k: int) {
+  _ := rs_rest_schedule_enable(v[0].eg[k].rules[0].b[..]);
+}
+// What the step of input seq showed of seat s (moved from was): the walking and jumping it actually
+// did, for the rules, and whether it now stands settled. A place (seq 0) or a cut is no observation.
+e2_rest_step :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, was: EgPose, was_placed: bool) { s := s_id.value;
+  st := v[0].eg[k].seat[s..<s + 1];
+  if seq <= 0 || !was_placed { st[0].rest_seen = false; st[0].rest_settled = false; return; }
+  p := st[0].pose;
+  keys := st[0].step_kx != 0 || st[0].step_ky != 0 || st[0].step_px != 0 || st[0].step_py != 0;
+  jump := (st[0].step_b & WB_JUMP) != 0;
+  dx := p.x - was.x; dz := p.z - was.z;
+  walked := keys && dx * dx + dz * dz > 0.000001;
+  jumped := jump && (was.g & WG_GROUND) != 0 && (p.g & WG_GROUND) == 0 && p.y > was.y;
+  still := (p.g & WG_GROUND) != 0 && abs(p.vx) < 0.01 && abs(p.vz) < 0.01 && abs(p.vy) < 0.01;
+  st[0].rest_seen = true; st[0].rest_settled = still && !keys && !jump;
+  _ := rs_rest_observe_motion(v[0].eg[k].rules[0].b[..], E5RR_SEAT + s, walked, jumped, still);
+}
+// Whether the room's own observation of seat s admits starting or changing a rest now.
+e2_rest_settled :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value;
+  st := v[0].eg[k].seat[s];
+  return st.live && st.placed && st.rest_seen && st.rest_settled && st.q_n == 0 && v[0].eg[k].rules[0].live[s];
+}
+// Z SEQ REQ.
+e2_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  a := wire_read_rest_ask(text, r[..]);
+  if !r[0].ok || eg_fields(text) != 3 || a.seq <= 0 { return; }
+  if a.req < RS_REST_SHORT || a.req > RS_REST_DIE || !v[0].eg[k].rules[0].live[seat] { eg_refuse(v, k, seat_id, a.seq, "rest"); return; }
+  b := v[0].eg[k].rules[0].b[..];
+  if !rs_rest_control(b, E5RR_SEAT + seat, a.req, e2_rest_settled(v, k, seat_id)) { eg_refuse(v, k, seat_id, a.seq, "rest"); return; }
+  e2_rest_tell(v, k, seat_id, a.seq);
+}
+// Everglade's whole-heal Long Rest (L) is not Everglade II's: its rests are the shared rules'.
+e2_heard_old_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  seq := wire_num(text, r[..]);
+  if r[0].ok { eg_refuse(v, k, seat_id, seq, "rest"); }
+}
+// A creature's rest as the wire says it (WIRE_REST_*), and its Hit Dice left.
+e2_rest_code :: (c: RsCreature) -> int {
+  if c.long_rest.phase == 1 { return ifx c.long_rest.mode == 1 then WIRE_REST_SLEEP else ifx c.long_rest.mode == 3 then WIRE_REST_EXERT else WIRE_REST_WATCH; }
+  if c.long_rest.phase == 2 { return WIRE_REST_BROKEN; }
+  if c.long_rest.phase == 3 { return WIRE_REST_DUE; }
+  if c.rest.phase == 1 { return WIRE_REST_SHORT; }
+  if c.rest.phase == 2 { return WIRE_REST_CHOOSE; }
+  return WIRE_REST_NONE;
+}
+e2_rest_dice :: (c: RsCreature) -> int {
+  if c.rest.seeded { return c.rest.dice; }
+  return ifx rs_class_hit_die(c.klass) > 0 && c.level >= 1 && c.level <= 20 then c.level else 0;
+}
+// Seat s hears its rest now (seq: the request it answers, 0 none).
+e2_rest_tell :: (v: [] RmServer, k: int, s_id: SeatId, seq: int) { s := s_id.value;
+  st := v[0].eg[k].seat[s..<s + 1];
+  if !st[0].live || st[0].conn < 0 { return; }
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
+  z := WireRestState.{seq = seq, code = e2_rest_code(c), dice = e2_rest_dice(c)};
+  b: [48] u8;
+  n := wire_put_rest_state(b[..], 0, z);
+  rl_queue(v, v[0].eg[k].relay, st[0].conn, -1, cast(string) b[0..<n], "");
+  st[0].rest_told = z.code; st[0].rest_told_dice = z.dice;
+}
+// After the rules' tick: each seat whose rest changed (or whose socket is new) hears it.
+e2_rest_tell_all :: (v: [] RmServer, k: int) {
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s];
+    if !st.live || st.conn < 0 || !v[0].eg[k].rules[0].live[s] { continue; }
+    c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
+    if e2_rest_code(c) != st.rest_told || e2_rest_dice(c) != st.rest_told_dice { e2_rest_tell(v, k, SeatId.{value = s}, 0); }
+  }
+}
+
+// ---- checks
+e2rt_room :: (v: [] RmServer, kind: string) -> int {
+  rm_init(v); rm_clock(v, 0, 1762190000000);
+  path := "GET /api/room/relay/everglade/pair-e2-rest HTTP/1.1\r\n\r\n";
+  if rm_join(v, 0, path) != 0 { return -1; }
+  k := eg_room_at(v, v[0].conns[0].relay);
+  h: [96] u8; n := put(h[..], 0, "H 5 ranger.0.0.0 "); n = put(h[..], n, kind); n = put(h[..], n, " 0 -");
+  rm_heard(v, 0, cast(string) h[0..<n]);
+  for q: 0..<3 { eg_test_tick(v, k); }
+  return k;
+}
+// One input from conn c (its pad's forward push: 0 still) and the room's tick that steps it.
+e2rt_step :: (v: [] RmServer, k: int, c: int, seq: int, push: int) {
+  m: [64] u8; q := put(m[..], 0, "I "); q = put_int(m[..], q, seq); q = put(m[..], q, " 0 0 "); q = put_int(m[..], q, push); q = put(m[..], q, " 0 0 0 0");
+  rm_heard(v, c, cast(string) m[0..<q]); eg_test_tick(v, k);
+}
+e2rt_ask :: (v: [] RmServer, c: int, seq: int, req: int) {
+  b: [32] u8; rm_heard(v, c, cast(string) b[0..<wire_put_rest_ask(b[..], 0, WireRestAsk.{seq = seq, req = req})]);
+}
+// The rules' clock on by `seconds` in one room tick (as hours of play would, in a check's time).
+e2rt_wait :: (v: [] RmServer, k: int, seconds: int) { v[0].eg[k].tick += seconds * EG_HZ; eg_test_tick(v, k); }
+e2rt_heard :: (v: [] RmServer, c: int, box: [] u8) -> string { return rl_heard_by(v, c, box); }
+
+#test "e2 rest: the room starts a Long Rest only from its own settled step; sleep holds the body, movement is exertion, and recovery comes once" #steps 4000000000 {
+  v: [1] RmServer; k := e2rt_room(v[..], "srd-fighter"); #assert k >= 0 && v[0].eg[k].e2;
+  b := v[0].eg[k].rules[0].b[..]; c := b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; box: [16384] u8;
+  #assert b[0].rest_auto;
+  // nothing stepped since its place: the room has not seen it still, so it may not rest
+  _ := e2rt_heard(v[..], 0, box[..]);
+  e2rt_ask(v[..], 0, 1, RS_REST_SLEEP);
+  #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 1 rest") && c[0].long_rest.phase == 0;
+  // walking: still not settled; then a still step: asleep
+  e2rt_step(v[..], k, 0, 1, 100); e2rt_ask(v[..], 0, 2, RS_REST_SLEEP);
+  #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 2 rest") && c[0].long_rest.phase == 0;
+  e2rt_step(v[..], k, 0, 2, 0); e2rt_ask(v[..], 0, 3, RS_REST_SLEEP);
+  #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 3 3 1") && rs_sleeping(c[0]);
+  // malformed or unknown requests are refused and change nothing; the old whole-heal L is not this room's
+  e2rt_ask(v[..], 0, 4, 9); rm_heard(v[..], 0, "L 5"); rm_heard(v[..], 0, "Z 6");
+  a := e2rt_heard(v[..], 0, box[..]); #assert eg_test_has(a, "r 4 rest") && eg_test_has(a, "r 5 rest") && !eg_test_has(a, "r 6") && rs_sleeping(c[0]);
+  // asleep, the keys move nothing; awake on watch, walking is exertion and stopping is watch again
+  x := v[0].eg[k].seat[0].pose.x;
+  e2rt_step(v[..], k, 0, 3, 100); #assert v[0].eg[k].seat[0].pose.x == x && c[0].long_rest.mode == 1;
+  e2rt_ask(v[..], 0, 7, RS_REST_WATCH); #assert !rs_sleeping(c[0]) && c[0].long_rest.mode == 2;
+  e2rt_step(v[..], k, 0, 4, 100); #assert v[0].eg[k].seat[0].pose.x > x && c[0].long_rest.mode == 3;
+  #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 0 5 1");
+  e2rt_step(v[..], k, 0, 5, 0); #assert c[0].long_rest.mode == 2 && c[0].long_rest.phase == 1;
+  // back to sleep, then the night: whole once, at the rules' boundary
+  e2rt_ask(v[..], 0, 8, RS_REST_SLEEP); c[0].hp = 3; c[0].slots[1] = 0;
+  e2rt_wait(v[..], k, 8 * 3600 + 60);
+  #assert c[0].long_rest.completed && c[0].long_rest.phase == 0 && c[0].hp == c[0].hp_max && !rs_sleeping(c[0]);
+  #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 0 0 1");
+  c[0].hp = 2; e2rt_wait(v[..], k, 3600); #assert c[0].hp == 2;
+  #assert !eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 0");
+  // a second Long Rest within the day is the rules' to refuse
+  e2rt_step(v[..], k, 0, 6, 0); e2rt_ask(v[..], 0, 9, RS_REST_SLEEP);
+  #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 9 rest") && c[0].long_rest.phase == 0;
+}
+#test "e2 rest: a Short Rest broken by walking starts over, and its Hit Die choice heals once" #steps 4000000000 {
+  v: [1] RmServer; k := e2rt_room(v[..], "srd-wizard"); #assert k >= 0;
+  b := v[0].eg[k].rules[0].b[..]; c := b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; box: [16384] u8;
+  b[0].dice[0].fixed = true; c[0].hp = 1;
+  e2rt_step(v[..], k, 0, 1, 0); e2rt_ask(v[..], 0, 1, RS_REST_SHORT);
+  #assert c[0].rest.phase == 1 && eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 1 1 1");
+  e2rt_wait(v[..], k, 1800); e2rt_step(v[..], k, 0, 2, 100);
+  #assert c[0].rest.phase == 0 && eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 0 0 1");
+  e2rt_ask(v[..], 0, 2, RS_REST_DIE); #assert eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 2 rest") && c[0].hp == 1;
+  e2rt_step(v[..], k, 0, 3, 0); e2rt_ask(v[..], 0, 3, RS_REST_SHORT);
+  e2rt_wait(v[..], k, 3600 + 1);
+  #assert c[0].rest.phase == 2 && eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 0 2 1");
+  e2rt_ask(v[..], 0, 4, RS_REST_DIE); hp := c[0].hp;
+  #assert hp > 1 && c[0].rest.dice == 0 && eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 4 2 0");
+  e2rt_ask(v[..], 0, 5, RS_REST_DIE); #assert c[0].hp == hp && eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 5 rest");
+  e2rt_ask(v[..], 0, 6, RS_REST_END); #assert c[0].rest.phase == 0 && eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 6 0 0");
+}
+#test "e2 rest: an hour of walking interrupts a Long Rest, which resumes on sleep and completes once" #steps 4000000000 {
+  v: [1] RmServer; k := e2rt_room(v[..], "srd-cleric"); #assert k >= 0;
+  b := v[0].eg[k].rules[0].b[..]; c := b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; box: [16384] u8;
+  e2rt_step(v[..], k, 0, 1, 0); e2rt_ask(v[..], 0, 1, RS_REST_WATCH);
+  e2rt_step(v[..], k, 0, 2, 100); #assert c[0].long_rest.mode == 3;
+  e2rt_wait(v[..], k, 3601);
+  #assert c[0].long_rest.phase == 2 && c[0].long_rest.interruptions == 1 && eg_test_has(e2rt_heard(v[..], 0, box[..]), "z 0 6 1");
+  c[0].hp = 4;
+  // still interrupted: no sleep before the room sees the body settle again
+  e2rt_ask(v[..], 0, 2, RS_REST_SLEEP); #assert c[0].long_rest.phase == 2 && eg_test_has(e2rt_heard(v[..], 0, box[..]), "r 2 rest");
+  e2rt_step(v[..], k, 0, 3, 0); e2rt_ask(v[..], 0, 3, RS_REST_SLEEP); #assert c[0].long_rest.phase == 1 && rs_sleeping(c[0]) && c[0].hp == 4;
+  e2rt_wait(v[..], k, 9 * 3600);
+  #assert c[0].long_rest.completed && c[0].hp == c[0].hp_max;
+  c[0].hp = 4; e2rt_wait(v[..], k, 600); #assert c[0].hp == 4;
+}
+#test "e2 rest: a socket rejoin within the grace keeps the rest, its time and casts, and the new page hears it" #steps 4000000000 {
+  v: [1] RmServer; rm_init(v[..]); now := 1762190000000; rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  t: [256] u8; r: [512] u8; box: [16384] u8;
+  n := tk_sign(key, "p-0011223344556677", false, "", "pair-e2-rest", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-rest")) == 0;
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 A");
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT..<E5RR_SEAT + 1];
+  e2rt_step(v[..], k, 0, 1, 0); e2rt_ask(v[..], 0, 1, RS_REST_SLEEP);
+  wire: [128] u8; c[0].hp = 3;
+  e2rt_wait(v[..], k, 3600);
+  _ := e2rt_heard(v[..], 0, box[..]);
+  sleep := c[0].long_rest.sleep; last := v[0].eg[k].seat[0].last_cast;
+  rm_left(v[..], 0); #assert eg_held(v[..], k, SeatId.{value = 0});
+  v[0].eg_test_t0 += 3000; eg_test_tick(v[..], k);
+  #assert c[0].long_rest.phase == 1 && rs_sleeping(c[0]) && c[0].long_rest.sleep > sleep;
+  n = tk_sign(key, "p-0011223344556677", false, "", "pair-e2-rest", now + 600000, -1, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-rest")) == 0;
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 A");
+  eg_test_tick(v[..], k);
+  #assert c[0].long_rest.phase == 1 && rs_sleeping(c[0]) && c[0].hp == 3 && v[0].eg[k].seat[0].last_cast == last;
+  #assert eg_test_has(e2rt_heard(v[..], 1, box[..]), "z 0 3 1");
+  // the new page must be seen still again before it changes the rest
+  e2rt_ask(v[..], 1, 2, RS_REST_WATCH); #assert eg_test_has(e2rt_heard(v[..], 1, box[..]), "r 2 rest") && rs_sleeping(c[0]);
+  e2rt_step(v[..], k, 1, 1, 0); e2rt_ask(v[..], 1, 3, RS_REST_WATCH); #assert !rs_sleeping(c[0]) && c[0].long_rest.mode == 2;
+}

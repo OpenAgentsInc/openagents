@@ -47,3 +47,21 @@ coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/eve
 The independently written tree fixture checks every forest field through
 the ordinary row writer and reader. Room and page suites cover burn-down,
 starter attribution, snapshots, delayed delivery, rebuild and record reuse.
+
+## Everglade II rest messages (#13046)
+
+Two additive messages run only in Everglade II rooms; older pages ignore `z`
+and older rooms ignore `Z`, so the version and pins are unchanged.
+
+- `Z SEQ REQ` (page): a rest request. REQ is 1 Short Rest, 2 sleep (starts or
+  resumes a Long Rest), 3 watch, 4 spend one Hit Die, 5 end. The room admits a
+  start only from its own last stepped input of that seat: grounded, still,
+  keys released, no queued input. Refusal is `r SEQ rest`.
+- `z SEQ CODE DICE` (server, to that seat only): the rest the room's shared
+  rules hold. SEQ is the request it answers, 0 for a change the rules' clock
+  made. CODE is 0 none, 1 Short Rest, 2 Hit Dice choice, 3 asleep, 4 watch,
+  5 exertion, 6 interrupted, 7 completion pending; DICE is the Hit Dice left.
+  It is sent on each change and again on each new socket.
+
+Everglade's whole-heal `L SEQ` is refused (`r SEQ rest`) in Everglade II
+rooms. Asleep, the room zeroes the seat's walk and jump input.

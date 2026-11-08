@@ -31,6 +31,7 @@
     {"dir": "page", "head": "E", "read": true, "fields": ["seq", "kind", "id"], "values": [4, 2, 17], "text": "E 4 2 17"},
     {"dir": "page", "head": "R", "fields": ["seq"], "values": [5], "text": "R 5"},
     {"dir": "page", "head": "L", "fields": ["seq"], "values": [6], "text": "L 6"},
+    {"dir": "page", "head": "Z", "read": true, "fields": ["seq", "req"], "values": [9, 2], "text": "Z 9 2"},
     {"dir": "page", "head": "T", "fields": ["seq", "code"], "values": [8, "everglade-2"], "text": "T 8 everglade-2"},
     {"dir": "page", "head": "O", "fields": ["outcomes"], "values": [5], "text": "O 5"},
     {"dir": "page", "head": "K", "fields": ["pid", "pid"], "values": ["p-00000000000000aa", "p-00000000000000bb"], "text": "K p-00000000000000aa p-00000000000000bb"},
@@ -51,6 +52,7 @@
     {"dir": "server", "head": "e stop", "fields": ["ss", "slot", "why"], "values": [0, 0, "left"], "text": "e stop 0 0 left"},
     {"dir": "server", "head": "w", "fields": ["ss", "level"], "values": [2, 3], "text": "w 2 3"},
     {"dir": "server", "head": "r", "fields": ["seq", "reason"], "values": [8, "full"], "text": "r 8 full"},
+    {"dir": "server", "head": "z", "read": true, "fields": ["seq", "code", "dice"], "values": [9, 3, 2], "text": "z 9 3 2"},
     {"dir": "server", "head": "g", "fields": ["code"], "values": ["everglade-2"], "text": "g everglade-2"},
     {"dir": "server", "head": "o", "fields": ["outcomes"], "values": [7], "text": "o 7"},
     {"dir": "server", "head": "e town", "fields": [], "values": [], "text": "e town"}

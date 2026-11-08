@@ -115,6 +115,8 @@ wp_write :: (head: string, f: WpVals, out: [] u8) -> int {
   if head == "E" { return wire_put_use(out, 0, WireUse.{seq = wp_int(f.v[0]), kind = wp_int(f.v[1]), id = wp_int(f.v[2])}); }
   if head == "R" { return wire_put_rebuild(out, 0, wp_int(f.v[0])); }
   if head == "L" { return wire_put_rest(out, 0, wp_int(f.v[0])); }
+  if head == "Z" { return wire_put_rest_ask(out, 0, WireRestAsk.{seq = wp_int(f.v[0]), req = wp_int(f.v[1])}); }   // (#13046)
+  if head == "z" { return wire_put_rest_state(out, 0, WireRestState.{seq = wp_int(f.v[0]), code = wp_int(f.v[1]), dice = wp_int(f.v[2])}); }
   if head == "T" { return wire_put_travel(out, 0, wp_int(f.v[0]), f.v[1]); }
   if head == "W" { return wire_put_world(out, 0, WireWorld.{tick = wp_int(f.v[0]), hz = wp_int(f.v[1]), seed = wp_int(f.v[2]), day = wp_int(f.v[3]), weather = wp_int(f.v[4]), budget = wp_int(f.v[5])}); }
   if head == "D" { return wire_put_d(out, 0, WireD.{tick = wp_int(f.v[0]), ack = wp_int(f.v[1]), f = wp_int(f.v[2]), part = wp_int(f.v[3])}); }
@@ -157,6 +159,8 @@ wp_read :: (head: string, t: string, got: [] WpVals, num: [] u8) -> bool {
   else if head == "D" { d := wire_read_d(t, r[..]); wp_n(got, num, at[..], d.tick); wp_n(got, num, at[..], d.ack); wp_n(got, num, at[..], d.f); wp_n(got, num, at[..], d.part); }
   else if head == "e cast" { c := wire_read_cast_e(t, r[..]); wp_n(got, num, at[..], c.ss); wp_n(got, num, at[..], c.slot); wp_n(got, num, at[..], wire_cm(c.ax)); wp_n(got, num, at[..], wire_cm(c.ay)); wp_n(got, num, at[..], wire_cm(c.az)); wp_n(got, num, at[..], c.seed); if c.mode != 0 { wp_n(got, num, at[..], c.mode); } }
   else if head == "e hit" { h := wire_read_hit(t, r[..]); wp_n(got, num, at[..], h.who); wp_n(got, num, at[..], h.by); wp_n(got, num, at[..], h.amt); wp_n(got, num, at[..], h.kind); }
+  else if head == "Z" { a := wire_read_rest_ask(t, r[..]); wp_n(got, num, at[..], a.seq); wp_n(got, num, at[..], a.req); }
+  else if head == "z" { z := wire_read_rest_state(t, r[..]); wp_n(got, num, at[..], z.seq); wp_n(got, num, at[..], z.code); wp_n(got, num, at[..], z.dice); }
   else if head == "n" { w := wire_read_n(t, r[..]); wp_n(got, num, at[..], w.ss); wp_s(got, w.id); wp_s(got, w.look); wp_s(got, w.kind); wp_n(got, num, at[..], w.flags); wp_s(got, w.name); }
   else { return false; }
   return r[0].ok;

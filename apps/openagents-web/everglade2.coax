@@ -262,6 +262,8 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
     return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
   }
   if h != 0 { s[0].autowalk = false; }
+  // asleep, as the room's rules hold you: your keys move nothing until you wake (WATCH, END)
+  if e2n_asleep(s[0].net[..]) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
                    theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
 }
@@ -1365,4 +1367,37 @@ e2_test_cast_state :: (s: [] E2, c: int) {
     else { #assert count==0; }
   }
   e2n_down(n); #assert e2k_health_text(s[..],label[..])==0;
+}
+
+#test "Everglade II rest controls follow the room's rest: a click asks it, sleep holds the keys, and the label says it (#13046)" #steps 1000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_FIGHTER); n:=s[0].net[..]; n[0].mono=100;
+  label:[80] u8; frame:[1024] u8; row:[WIRE_SF] s32; zero:[WIRE_SF] s32; reqs:[4] int;
+  wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=5,max=12},row[..]);
+  count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1}); count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
+  e2n_record(n,cast(string)frame[0..<count]);
+  // until the room says your rest: no controls
+  #assert e2k_rest_choices(s[..],reqs[..])==0;
+  geometry:[8192] f32; plain:=e2k_hud(s[..],geometry[..],0);
+  e2n_record(n,"z 0 0 1");
+  #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_SHORT && reqs[1]==RS_REST_SLEEP && e2k_rest_label(s[..],reqs[1])=="LONG REST";
+  #assert e2k_hud(s[..],geometry[..],0)>plain;
+  // the controls sit over the bar, inside the page, apart from the slots
+  b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k); a:=e2k_rest_box(s[..],0,2); z:=e2k_rest_box(s[..],1,2);
+  #assert a[3]<b0[1]-40 && a[0]>=0 && z[2]<=s[0].width && a[2]<z[0];
+  #assert e2k_slot_at(s[..],(a[0]+a[2])/2,(a[1]+a[3])/2)<0;
+  sent:=n[0].pipe[0].n;
+  #assert e2_pointer(s[..],(z[0]+z[2])/2,(z[1]+z[3])/2,0,0,1) && n[0].pipe[0].n==sent+1 && s[0].casts[0].pressed==0;
+  p:=n[0].pipe[0]; last:=p.n-1; ask:=cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]];
+  r:[1] WireRd; r[0]=wire_rd(ask,1); w:=wire_read_rest_ask(ask,r[..]); #assert ask[0]=='Z' && w.req==RS_REST_SLEEP && w.seq==n[0].rest_seq;
+  // the room's answer: asleep; your keys move nothing, and the label says so
+  m:[64] u8; c:=wire_put_rest_state(m[..],0,WireRestState.{seq=w.seq,code=WIRE_REST_SLEEP,dice=1}); e2n_record(n,cast(string)m[0..<c]);
+  s[0].held=HOLD_W; mv:=e2_move_in(s[..]); #assert mv.key_y==0 && mv.key_x==0 && !mv.jump; s[0].held=0;
+  count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · ASLEEP";
+  #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_WATCH && reqs[1]==RS_REST_END;
+  // a refusal shows briefly over the bar in the cast feedback's place
+  #assert e2n_rest(n,RS_REST_WATCH); c=wire_put_refused(m[..],0,n[0].rest_seq,"rest"); e2n_record(n,cast(string)m[0..<c]);
+  #assert e2n_rest_message(n).count>0;
+  e2n_record(n,"z 0 2 1"); #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_DIE;
+  count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · HIT DICE 1";
+  e2n_down(n); #assert e2k_rest_choices(s[..],reqs[..])==0;
 }

@@ -276,6 +276,26 @@ wire_put_use :: (out: [] u8, at: int, u: WireUse) -> int {
 wire_put_rebuild :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "R"), seq); }
 // L SEQ: a Long Rest, in a room only between raids and out of combat (coax/web/room/room-everglade.coax eg_heard_rest).
 wire_put_rest :: (out: [] u8, at: int, seq: int) -> int { return wire_int(out, wire_put(out, at, "L"), seq); }
+// Z SEQ REQ: an Everglade II rest request (#13046, coax/web/room/room-e2-rest.coax): REQ 1 Short Rest,
+// 2 sleep, 3 watch, 4 spend one Hit Die, 5 end (aethyr/rules/srd/rest-control.coax RS_REST_*). The room
+// decides from the body it steps; the page's word that it stands still is never asked for.
+WireRestAsk :: struct { seq: int; req: int; }
+wire_put_rest_ask :: (out: [] u8, at: int, a: WireRestAsk) -> int { return wire_int(out, wire_int(out, wire_put(out, at, "Z"), a.seq), a.req); }
+wire_read_rest_ask :: (t: string, r: [] WireRd) -> WireRestAsk { a: WireRestAsk; a.seq = wire_num(t, r); a.req = wire_num(t, r); return a; }
+// z SEQ CODE DICE: your rest as the room's rules hold it, to your seat only: SEQ the request it answers
+// (0 a change the rules' clock made), CODE (WIRE_REST_*) and the Hit Dice left.
+WIRE_REST_NONE :: 0; WIRE_REST_SHORT :: 1; WIRE_REST_CHOOSE :: 2; WIRE_REST_SLEEP :: 3; WIRE_REST_WATCH :: 4;
+WIRE_REST_EXERT :: 5; WIRE_REST_BROKEN :: 6; WIRE_REST_DUE :: 7; WIRE_REST_CODES :: 8;
+WireRestState :: struct { seq: int; code: int; dice: int; }
+wire_put_rest_state :: (out: [] u8, at: int, z: WireRestState) -> int { return wire_int(out, wire_int(out, wire_int(out, wire_put(out, at, "z"), z.seq), z.code), z.dice); }
+wire_read_rest_state :: (t: string, r: [] WireRd) -> WireRestState { z: WireRestState; z.seq = wire_num(t, r); z.code = wire_num(t, r); z.dice = wire_num(t, r); return z; }
+#test "Z asks the room for a rest and z answers with the rules' state" {
+  b: [64] u8; n := wire_put_rest_ask(b[..], 0, WireRestAsk.{seq = 41, req = 2}); #assert cast(string) b[0..<n] == "Z 41 2";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 1); a := wire_read_rest_ask(cast(string) b[0..<n], r[..]); #assert r[0].ok && a.seq == 41 && a.req == 2;
+  n = wire_put_rest_state(b[..], 0, WireRestState.{seq = 0, code = WIRE_REST_SLEEP, dice = 3}); #assert cast(string) b[0..<n] == "z 0 3 3";
+  r[0] = wire_rd(cast(string) b[0..<n], 1); z := wire_read_rest_state(cast(string) b[0..<n], r[..]); #assert r[0].ok && z.code == 3 && z.dice == 3;
+  r[0] = wire_rd("z 4 1", 1); short := wire_read_rest_state("z 4 1", r[..]); #assert !r[0].ok;
+}
 // K PID PID ...: the players you block, the whole list each time ("K -": none). The room never sends
 // you them (coax/web/room/room-interest.coax, #12789). Start with wire_put_blocks, then a wire_text per id.
 WIRE_BLOCKS :: 32;
