@@ -7062,3 +7062,14 @@ post-completion choices close while Hit Dice and daily recovery history remain.
 Rest must begin from actual settled downtime; controls, network movement and
 other producers remain separate. Evidence:
 `docs/verification/srd-rest-activity-2026-11-08/README.md`.
+
+## Long Rest bank recovery is separate from timing admission
+
+`long-rest-resources.coax` preflights represented counters/provenance before
+resetting slots/uses/Focus/Rage/Hit Dice, daily recovery history, Temporary Hit
+Points and cooldown bookkeeping. Remaining created slots are explicit; recovery
+does not infer them from class or erase unrelated excess banks. Turn/Reaction
+and HP state are not granted by this primitive. It has no world completion
+caller yet: sleep/activity/interruption/16-hour admission and other completion
+benefits remain separate required work. Evidence:
+`docs/verification/srd-long-rest-resources-2026-11-08/README.md`.

@@ -1,0 +1,19 @@
+#load "long-rest-resources-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
+    c:[1]RsCreature; c[0]=rt_class(klass,level);
+    for u:0..<RS_USES { c[0].uses[u]=0; }
+    for slot:1..<10 { c[0].slots[slot]=0; }
+    c[0].focus=0; c[0].rages=0; c[0].reacted=true; c[0].temp=7;
+    if !rs_long_rest_resources(c[..]) || c[0].rest.dice!=level || !c[0].reacted || c[0].temp!=0 { return 1; }
+    if c[0].focus!=c[0].focus_max || c[0].rages!=c[0].rages_max { return 6; }
+    for u:0..<RS_USES { if c[0].uses[u]!=c[0].uses_max[u] { return 2; } }
+    for slot:1..<10 { if c[0].slots[slot]!=c[0].slots_max[slot] { return 3; } }
+  } }
+  c:[1]RsCreature; c[0]=rs_sorcerer("Sorcerer",0,6); c[0].slots[1]=10; c[0].created_slots[1]=6;
+  if !rs_long_rest_resources(c[..]) || c[0].slots[1]!=4 || c[0].created_slots[1]!=0 { return 4; }
+  c[0].created_slots[1]=5; c[0].temp=7;
+  if rs_long_rest_resources(c[..]) || c[0].slots[1]!=4 || c[0].temp!=7 { return 5; }
+  tool_errln("PASS LONG-REST-RESOURCES"); return 0;
+}

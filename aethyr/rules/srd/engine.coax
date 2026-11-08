@@ -203,6 +203,7 @@ RsCreature :: struct {
   eff: [RS_EFFECTS] RsEffect;
   speed: int;               // feet a turn
   spell_ability: int;       // the spellcasting ability (-1: none)
+  created_slots: [10] int; // remaining Font of Magic slots; vanish at Long Rest
   slots: [10] int; slots_max: [10] int;   // spell slots by level (0 unused)
   spell_grants: [2] u64;     // explicit feature/stat-block/world extra-list grants, by executable ID
   spells: RsSpellSelection;  // canonical-source cantrips/preparation and Wizard spellbook

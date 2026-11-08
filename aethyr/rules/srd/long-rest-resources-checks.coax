@@ -1,0 +1,62 @@
+#load "short-rest-checks.coax";
+
+#test "completed Long Rest recovery restores every represented level one to six class bank and Hit Die" {
+  for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
+    b:[1]RsBattle; rt_field(b[..],klass,level);
+    for u:0..<RS_USES { b[0].c[0].uses[u]=0; b[0].c[0].uses_back[u]=99; }
+    for slot:1..<10 { b[0].c[0].slots[slot]=0; b[0].c[0].slot_back[slot]=99; }
+    b[0].c[0].focus=0; b[0].c[0].rages=0; b[0].c[0].temp=9; b[0].c[0].rest.dice=0;
+    b[0].c[0].rest.recovery_used=true; b[0].c[0].rest.restoration_used=true; b[0].c[0].resurged_slot=true;
+    b[0].c[0].reacted=true; b[0].c[0].rage_back=99; b[0].c[0].focus_back=99;
+    hp:=b[0].c[0].hp; b[0].turn.action=true; b[0].turn.bonus=true;
+    #assert rs_long_rest_resources(b[0].c[0..<1]);
+    for u:0..<RS_USES { #assert b[0].c[0].uses[u]==b[0].c[0].uses_max[u] && b[0].c[0].uses_back[u]==0; }
+    for slot:1..<10 { #assert b[0].c[0].slots[slot]==b[0].c[0].slots_max[slot] && b[0].c[0].slot_back[slot]==0; }
+    #assert b[0].c[0].focus==b[0].c[0].focus_max && b[0].c[0].rages==b[0].c[0].rages_max;
+    #assert b[0].c[0].rest.dice==level && !b[0].c[0].rest.recovery_used && !b[0].c[0].rest.restoration_used && !b[0].c[0].resurged_slot;
+    #assert b[0].c[0].temp==0 && b[0].c[0].hp==hp && b[0].c[0].reacted && b[0].turn.action && b[0].turn.bonus;
+    #assert b[0].c[0].rage_back==0 && b[0].c[0].focus_back==0;
+  } }
+}
+#test "Long Rest expires Sorcerer created slots without deleting unrelated over-capacity banks" {
+  c:[1]RsCreature; c[0]=rs_sorcerer("Sorcerer",0,6); c[0].slots[1]=10; c[0].created_slots[1]=6;
+  #assert rs_long_rest_resources(c[..]); #assert c[0].slots[1]==4 && c[0].created_slots[1]==0;
+  c[0]=rs_wizard("Wizard",0,3); c[0].slots[1]=10; c[0].uses[0]=9; c[0].uses_max[0]=1;
+  #assert rs_long_rest_resources(c[..]); #assert c[0].slots[1]==10 && c[0].uses[0]==9;
+}
+
+#test "Long Rest bank refusal preserves all state for independent malformed counters" {
+  for field:0..<4 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0; c[0].temp=7;
+    if field==0 { c[0].rages = -1; } if field==1 { c[0].rages_max = -1; }
+    if field==2 { c[0].focus = -1; } if field==3 { c[0].focus_max = -1; }
+    #assert !rs_long_rest_resources(c[..]) && !c[0].rest.seeded && c[0].slots[1]==0 && c[0].temp==7;
+  }
+  for u:0..<RS_USES { for maximum:0..<2 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0; c[0].temp=7;
+    if maximum==0 { c[0].uses[u] = -1; } else { c[0].uses_max[u] = -1; }
+    #assert !rs_long_rest_resources(c[..]) && !c[0].rest.seeded && c[0].slots[1]==0 && c[0].temp==7;
+  } }
+  for slot:1..<10 { for field:0..<4 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].temp=7;
+    if field==0 { c[0].slots[slot] = -1; } if field==1 { c[0].slots_max[slot] = -1; }
+    if field==2 { c[0].created_slots[slot] = -1; } if field==3 { c[0].created_slots[slot]=c[0].slots[slot]+1; }
+    #assert !rs_long_rest_resources(c[..]) && !c[0].rest.seeded && c[0].temp==7;
+  } }
+}
+#test "Long Rest validates seeded dice but accepts exact capacity zero capacity and unseeded metadata" {
+  for field:0..<4 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3);
+    c[0].rest.seeded=true; c[0].rest.die=6; c[0].rest.dice=1; c[0].rest.dice_max=3;
+    if field==0 { c[0].rest.dice = -1; } if field==1 { c[0].rest.dice_max = -1; }
+    if field==2 { c[0].rest.dice=4; } if field==3 { c[0].rest.die=5; c[0].rest.dice=0; c[0].rest.dice_max=1; }
+    #assert !rs_long_rest_resources(c[..]);
+  }
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3);
+  c[0].rest.seeded=true; c[0].rest.die=0; c[0].rest.dice=0; c[0].rest.dice_max=0;
+  #assert rs_long_rest_resources(c[..]) && c[0].rest.dice==0;
+  c[0].rest.die=6; c[0].rest.dice=3; c[0].rest.dice_max=3;
+  #assert rs_long_rest_resources(c[..]) && c[0].rest.dice==3;
+  c[0].rest.seeded=false; c[0].rest.die=5; c[0].rest.dice = -1; c[0].rest.dice_max = -1;
+  #assert rs_long_rest_resources(c[..]) && c[0].rest.die==6 && c[0].rest.dice==3;
+}

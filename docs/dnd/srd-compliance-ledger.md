@@ -543,3 +543,16 @@ Dice and recovery history are unchanged. [Evidence](../verification/srd-rest-act
 rest-state mutation kills 95, zero survivors/no exemptions. Long Rest,
 rest-start controls/settled-downtime admission, network/other interruption
 producers and world reconnect qualification remain open.
+
+### Long Rest resource-bank layer (2026-11-08)
+
+The trusted completed-rest bank operation now restores represented class banks
+and all spent Hit Dice, resets daily recovery flags and cooldown bookkeeping,
+and clears Temporary Hit Points. Remaining created slots have explicit
+provenance; unrelated excess banks are preserved and malformed bank state
+refuses before partial mutation. [Evidence](../verification/srd-long-rest-resources-2026-11-08/README.md):
+264 composed checks, 104 killed mutants/zero survivors, actual native class
+matrix and the checked Lab Wasm build pass. This is not a rest admission or
+completion API: sleep/activity/interruption/cooldown, HP/ability restoration,
+Exhaustion and world controls remain required. The [remaining contract](long-rest-implementation.md)
+records the implementation sequence. No issue closes on this layer.

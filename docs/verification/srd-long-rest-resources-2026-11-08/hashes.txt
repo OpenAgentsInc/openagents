@@ -1,0 +1,7 @@
+a7c98166f32af97b82f2b75a3a7fb7273e0b0714cd6f39a143ac0a3442cd8454  aethyr/rules/srd/long-rest-resources.coax
+9fea72d6de7216f29cce53bca7428e1a21d4c557e66d383b0a050961709e30c9  aethyr/rules/srd/long-rest-resources-checks.coax
+f3cb65ededacc5dbd678484f6e9b9521d8d52f95b3e91fadb0ef4dc2c5854b71  aethyr/rules/srd/long-rest-resources-native.coax
+dba0605139801bd635ae67abe9eee3ba97de960f936d855d424092742365bc23  aethyr/rules/srd/engine.coax
+dda32bb622e1555da350c2253d6c18c5863bffcde5565aed20368b2687258967  aethyr/rules/srd/battle.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax
+9fb9333d25eaddc598e7b4c0d9086881c878c59b91ca0331d5c7a89bfcf39f14  /tmp/srd-long-rest-resources-fivelab.wasm

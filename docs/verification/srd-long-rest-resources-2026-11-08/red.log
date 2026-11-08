@@ -1,0 +1,13 @@
+aethyr/rules/srd/long-rest-resources-checks.coax:12:5: error[E0315]: procedure 'rs_long_rest_resources' is not declared
+      rs_long_rest_resources(b[0].c[0..<1]);
+      ^
+aethyr/rules/srd/long-rest-resources-checks.coax:23:3: error[E0315]: procedure 'rs_long_rest_resources' is not declared
+    rs_long_rest_resources(c[..]); #assert c[0].slots[1]==4;
+    ^
+aethyr/rules/srd/long-rest-resources-checks.coax:25:3: error[E0315]: procedure 'rs_long_rest_resources' is not declared
+    rs_long_rest_resources(c[..]); #assert c[0].slots[1]==10 && c[0].uses[0]==9;
+    ^
+3 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

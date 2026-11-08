@@ -1,0 +1,34 @@
+// Benefit primitive only: its caller must have admitted/completed a source
+// Long Rest. This does not start a timer, grant sleep or admit rest completion.
+#authority;
+rs_long_rest_banks_valid :: (c:RsCreature)->bool #effects(all) {
+  if c.rages<0 || c.rages_max<0 || c.focus<0 || c.focus_max<0 { return false; }
+  for u:0..<RS_USES { if c.uses[u]<0 || c.uses_max[u]<0 { return false; } }
+  for slot:1..<10 {
+    if c.slots[slot]<0 || c.slots_max[slot]<0 || c.created_slots[slot]<0 || c.created_slots[slot]>c.slots[slot] { return false; }
+  }
+  if c.rest.seeded && (c.rest.dice<0 || c.rest.dice_max<0 || c.rest.dice>c.rest.dice_max || (c.rest.dice_max>0 && !rs_rest_die_valid(c.rest.die))) { return false; }
+  return true;
+}
+rs_long_rest_resources :: (c:[]RsCreature)->bool #effects(all) {
+  if !rs_long_rest_banks_valid(c[0]) { return false; }
+  rs_rest_seed(c);
+  for slot:1..<10 {
+    c[0].slots[slot]=rs_rest_all(c[0].slots[slot]-c[0].created_slots[slot],c[0].slots_max[slot]);
+    c[0].created_slots[slot]=0; c[0].slot_back[slot]=0;
+  }
+  for u:0..<RS_USES { c[0].uses[u]=rs_rest_all(c[0].uses[u],c[0].uses_max[u]); c[0].uses_back[u]=0; }
+  c[0].focus=rs_rest_all(c[0].focus,c[0].focus_max); c[0].focus_back=0;
+  c[0].rages=rs_rest_all(c[0].rages,c[0].rages_max); c[0].rage_back=0;
+  c[0].rest.dice=c[0].rest.dice_max;
+  c[0].rest.recovery_used=false; c[0].rest.restoration_used=false; c[0].resurged_slot=false;
+  c[0].temp=0;
+  return true;
+}
+#test "Long Rest bank recovery preflights before seeding or resetting resources" {
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0;
+  #assert rs_long_rest_banks_valid(c[0]) && rs_long_rest_resources(c[..]);
+  #assert c[0].slots[1]==4 && c[0].rest.dice==3;
+  c[0].focus = -1; c[0].slots[1]=0;
+  #assert !rs_long_rest_resources(c[..]) && c[0].slots[1]==0;
+}

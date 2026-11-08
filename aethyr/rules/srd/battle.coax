@@ -49,6 +49,7 @@
 #load "ability-checks.coax";
 #load "stabilization.coax";
 #load "short-rest-resources.coax";
+#load "long-rest-resources.coax";
 #load "short-rest.coax";
 #load "help.coax";
 #load "cast-choices.coax";
