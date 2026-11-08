@@ -1,7 +1,7 @@
 // 5E Lab, openagents.com/worlds/5e-lab (unlisted): a bare grid of 5-foot squares where
 // characters play the SRD 5e rules against each other, so the shared engine
 // (aethyr/rules/srd/, docs/dnd/README.md) can be watched at work. Two sides, each
-// with two of every one of the twelve SRD 5e classes at level 3, and an army of
+// with two of every one of the twelve SRD 5e classes at level 6 (LEVEL), and an army of
 // Skeletons fight on the real-time clock: every creature's turn comes round on
 // the beat, staggered by initiative, and the log shows each roll. Each class
 // decides with a small routine here; the rules are all the engine's.
@@ -83,7 +83,7 @@ KEY_SHIFT :: -13; KEY_TAB :: -15; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT ::
 COLS :: 40; ROWS :: 20; ROWS_MAX :: 192;
 LAB_SQUARES :: 73728;   // 2 * ROWS_MAX * ROWS_MAX: the squares' index the lab gives the battle
 FAST :: 4.0;
-// Three sides. Twenty-four a side, all level 3, two of each of the twelve SRD 5e classes (the Circle
+// Three sides. Twenty-four a side, all level 6 (LEVEL), two of each of the twelve SRD 5e classes (the Circle
 // of Moss against the Ember Pact), and an army of 160 Skeletons (the SRD's stat block) in the middle
 // from the start as the Restless Dead, against everyone.
 // The army-size sliders (and ?heroes=N&skeletons=M&dead=K) change the numbers: heroes come in
@@ -530,7 +530,7 @@ fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
       if sp == SP_VICIOUS_MOCKERY { fx_cause(s, FXR_MOCKERY, seed, t0, hand, fx_spot(s, e.to, 1.7), MOCK_FX, 1, 1); return; }
       if sp == SP_FALSE_LIFE && e.to == e.by { fx_cause(s, FXR_DRAIN, seed, t0, hand, feet, col, 1, 1); return; }
       if sp == SP_PRODUCE_FLAME && e.to == e.by { fx_cause(s, FXR_KINDLE, seed, t0, hand, hand, col, 1, 1); return; }
-      if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD || e.to == e.by { return; }   // the healing shows on its HEAL
+      if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD || sp == SP_MASS_HEALING_WORD || e.to == e.by { return; }   // the healing shows on its HEAL
       fx_cause(s, FXR_STREAK, seed, t0, hand, at, col, 0.8, 1);
     }
     return;
@@ -1751,20 +1751,22 @@ abilities :: (kl: int, out: [] Ab) -> int {
     out[6] = spell_ab(SP_CALL_LIGHTNING, 3, TG_POINT); out[7] = mk_ab(AB_LANDS, "LAND'S AID"); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
   } else if kl == RS_WIZARD {
     out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_RAY_OF_SICKNESS, 1, TG_FOE);
-    out[3] = spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = spell_ab(SP_BLINDNESS, 2, TG_FOE);
-    out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
+    out[3] = spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = spell_ab(SP_MAGIC_MISSILE, 1, TG_FOE); out[5] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE);
+    out[6] = spell_ab(SP_BLINDNESS, 2, TG_FOE); out[7] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
   } else if kl == RS_WARLOCK {
     n = lw_abilities(out);   // the Warlock you play is level 17 (fivelab-warlock.coax)
   } else if kl == RS_SORCERER {
-    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[2] = spell_ab(SP_FIREBALL, 3, TG_POINT);
-    out[3] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[4] = mk_ab(AB_DASH, "DASH"); n = 5;
+    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_ACID_SPLASH, 0, TG_POINT); out[2] = spell_ab(SP_MAGIC_MISSILE, 1, TG_FOE);
+    out[3] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[4] = spell_ab(SP_SHATTER, 2, TG_POINT); out[5] = spell_ab(SP_FIREBALL, 3, TG_POINT);
+    out[6] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
   } else if kl == RS_BARD {
     out[0] = spell_ab(SP_VICIOUS_MOCKERY, 0, TG_FOE); out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = mk_ab(AB_INSPIRE, "BARDIC INSPIRATION");
-    out[3] = spell_ab(SP_HYPNOTIC_PATTERN, 3, TG_POINT); out[4] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
+    out[3] = spell_ab(SP_SHATTER, 2, TG_POINT); out[4] = spell_ab(SP_HYPNOTIC_PATTERN, 3, TG_POINT); out[5] = spell_ab(SP_MASS_HEALING_WORD, 3, TG_ALLY);
+    out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
   } else if kl == RS_CLERIC {
     out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[2] = spell_ab(SP_GUIDING_BOLT, 1, TG_FOE);
-    out[3] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[4] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF); out[5] = mk_ab(AB_TURN, "TURN UNDEAD");
-    out[6] = mk_ab(AB_PRESERVE, "PRESERVE LIFE"); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
+    out[3] = spell_ab(SP_INFLICT_WOUNDS, 1, TG_FOE); out[4] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[5] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF);
+    out[6] = mk_ab(AB_TURN, "TURN UNDEAD"); out[7] = mk_ab(AB_PRESERVE, "PRESERVE LIFE"); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
   } else if kl == RS_FIGHTER {
     out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_SECOND, "SECOND WIND"); out[2] = mk_ab(AB_SURGE, "ACTION SURGE"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
   } else if kl == RS_PALADIN {
@@ -1878,7 +1880,8 @@ use_ab :: (s: [] Lab, i: int, a: Ab, foe: int) {
     else if a.tg == TG_ALLY { w := most_hurt(s, i, 60, 0.99); ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx w >= 0 then w else i); }
     else if foe >= 0 && a.tg == TG_POINT { ok = rs_cast(b, i, a.sp, sl, b[0].c[foe].x, b[0].c[foe].y, -1); }
     else if foe >= 0 && a.tg == TG_BESIDE { e := free_near(s, b[0].c[foe].x, b[0].c[foe].y); ok = rs_cast(b, i, a.sp, sl, e % s[0].cols, e / s[0].cols, i); }   // Dimension Door: you, to the point
-    else if foe >= 0 { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx a.sp == SP_DIVINE_SMITE && at >= 0 then at else foe); }
+    // a touch spell (Inflict Wounds, Chill Touch) or Divine Smite lands on a foe within reach when there is one
+    else if foe >= 0 { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx (a.sp == SP_DIVINE_SMITE || rs_spell(a.sp).range_ft == 5) && at >= 0 then at else foe); }
   }
   else if a.kind == AB_RECKLESS { if at >= 0 { ok = rs_attack(b, i, at, true, -1); } }
   else if a.kind == AB_RAGE { ok = rs_rage(b, i); }
@@ -1899,13 +1902,36 @@ use_ab :: (s: [] Lab, i: int, a: Ab, foe: int) {
   // Action Surge gives a second action: attack with it too
   if a.kind == AB_SURGE && !b[0].turn.action { default_attack(s, i, foe); }
 }
+// The hero you play prepares its hotbar (SRD 5.2.1: a caster chooses its prepared spells): the
+// bar's spells first, then the class's usual choices while room remains (spell-loadouts.coax).
+// Every choice goes through the shared selection rules, so a bar that broke a class's limits,
+// list or spellbook would not be prepared (the check below would fail). Granted spells (a
+// subclass's, Magical Discoveries') need no choice. AI heroes keep their presets.
+lab_prepare_bar :: (c: [] RsCreature) {
+  if c[0].klass == RS_WARLOCK { return; }   // the level 17 Warlock you play has its own kit (lw_raise)
+  list: [SLOTS] Ab; n := abilities(c[0].klass, list[..]);
+  keys: [SLOTS + 2] int; m := 0;
+  for k: 0..<n {
+    a := list[k];
+    if a.kind != AB_SPELL || rs_spell_granted(c[0], a.sp) { continue; }
+    key := RS_EXEC_SOURCE[a.sp]; seen := false;
+    for q: 0..<m { if keys[q] == key { seen = true; } }
+    if !seen { keys[m] = key; m += 1; }
+  }
+  if c[0].shield_spell { keys[m] = RS_EXEC_SOURCE[SP_SHIELD]; m += 1; }   // its Reaction
+  if m == 0 || !rs_set_spells(c, keys[0..<m]) { return; }
+  if c[0].klass == RS_WIZARD { _ := rs_select_spell(c, RS_KEY_MAGE_ARMOR); }
+  for sp: rs_profile_spells(c[0].klass) {
+    if !rs_spell_grant_has(c[0].klass,c[0].level,c[0].vigor,c[0].spell_grants,sp) { _ := rs_select_spell(c, RS_EXEC_SOURCE[sp]); }
+  }
+}
 // The hero you play: the first of the Living's heroes of the picked class still up, or -1.
 pick_hero :: (s: [] Lab) {
   if s[0].siege { siege_pick_hero(s); return; }
   b := bt(s);
   s[0].me = -1; s[0].target = -1;
   for i: 0..<rs_min(b[0].n, s[0].heroes) {
-    if b[0].c[i].team == 0 && b[0].c[i].klass == ROSTER[s[0].pick] && rs_up(b[0].c[i]) { s[0].me = i; lw_raise(s); return; }
+    if b[0].c[i].team == 0 && b[0].c[i].klass == ROSTER[s[0].pick] && rs_up(b[0].c[i]) { s[0].me = i; lab_prepare_bar(b[0].c[i..<i+1]); lw_raise(s); return; }
   }
 }
 set_player :: (s: [] Lab, on: bool) {
@@ -3696,7 +3722,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for r: 0..<12 { #assert (spent & (1 << ROSTER[r])) != 0; }
 }
 
-#test "each side fields two of every SRD 5e class at level 3, the casters behind" #steps 2000000000 {
+#test "each side fields two of every SRD 5e class at the Lab's LEVEL, the casters behind" #steps 2000000000 {
   s: [1] Lab; s[0].skeletons = 0; s[0].horde = false;
   lab_start(s[..]);
   for team: 0..<2 {
@@ -3851,7 +3877,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   }
   list: [SLOTS] Ab;
   #assert abilities(RS_BARBARIAN, list[..]) == 4 && list[2].kind == AB_RAGE;
-  #assert abilities(RS_WIZARD, list[..]) == 8 && list[6].sp == SP_FIREBALL;
+  #assert abilities(RS_WIZARD, list[..]) == 9 && list[4].sp == SP_MAGIC_MISSILE && list[7].sp == SP_FIREBALL;
   ok = lab_key(s[..], 'p', 0); #assert !s[0].player && s[0].me < 0;
 }
 
@@ -4231,4 +4257,58 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
     hp:=b[0].c[1].hp;
     #assert lab_step(s[..],1,5,3) && !b[0].c[0].reacted && b[0].c[1].hp==hp;
   }
+}
+
+// Player mode offers each class's hotbar (abilities) on a LEVEL hero built as the Lab builds it
+// (hero_for, then lab_prepare_bar). Every displayed spell must be one that hero can cast under the shared
+// rules: accessible, selected or granted, and with its components supplied. (The level 17
+// Warlock's bar is checked in fivelab-warlock.coax.)
+#test "Player mode's displayed spells are castable by the hero the Lab builds for each class" #steps 2000000000 {
+  for kl: 0..<13 {
+    if kl == RS_MONSTER || kl == RS_WARLOCK { continue; }
+    built := hero_for(kl, "You", 0, LEVEL);
+    h: [1] RsCreature; h[0] = built; lab_prepare_bar(h[..]); hero := h[0];
+    list: [SLOTS] Ab; n := abilities(kl, list[..]);
+    #assert n > 0 && n <= SLOTS;
+    for k: 0..<n {
+      if list[k].kind != AB_SPELL { continue; }
+      #assert rs_spell_ready(hero, list[k].sp) && rs_cast_components_ready(hero, list[k].sp);
+      #assert list[k].lvl == 0 || hero.slots_max[list[k].lvl] > 0 || list[k].sp == SP_DIVINE_SMITE;
+    }
+  }
+}
+
+// Each spell the engine newly executes is playable from Player mode's hotbar in round mode: the
+// Lab picks your hero, prepares its bar, and a press of the slot (use_ab) casts it, spending a
+// slot for a leveled spell. Touch spells land on a foe within reach; heals find the hurt friend.
+#test "Player mode casts Inflict Wounds, Acid Splash, Magic Missile, Mass Healing Word and Shatter from the hotbar" #steps 4000000000 {
+  played := 0;
+  for kl: [4] int.[RS_WIZARD, RS_SORCERER, RS_BARD, RS_CLERIC] {
+    s: [1] Lab; s[0].skeletons = 0; s[0].horde = false;
+    lab_start(s[..]);
+    b := bt(s[..]);
+    for p: 0..<12 { if ROSTER[p] == kl { s[0].pick = p; } }
+    s[0].player = true; pick_hero(s[..]);
+    me := s[0].me; #assert me >= 0 && b[0].c[me].klass == kl;
+    list: [SLOTS] Ab; n := abilities(kl, list[..]);
+    for k: 0..<n {
+      a := list[k];
+      if a.kind != AB_SPELL || a.sp < SP_INFLICT_WOUNDS || a.sp > SP_SHATTER { continue; }
+      foe := nearest_foe(s[..], me); #assert foe >= 0;
+      e := free_near(s[..], b[0].c[me].x + (ifx rs_spell(a.sp).range_ft == 5 then 1 else 3), b[0].c[me].y);
+      rs_place(b, foe, e % s[0].cols, e / s[0].cols);
+      b[0].c[foe].hp = b[0].c[foe].hp_max; b[0].c[me].hp = b[0].c[me].hp_max;
+      if a.tg == TG_ALLY { w := nearest_friend(s[..], me); #assert w >= 0; b[0].c[w].hp = 1; }
+      rs_start_turn(b, me);
+      seq := b[0].book[0].seq; slots := ifx a.lvl > 0 then b[0].c[me].slots[a.lvl] else 0;
+      use_ab(s[..], me, a, foe);
+      was_cast := false;
+      for q: 0..<rs_min(b[0].book[0].count, b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], q); if ev.kind == RS_EV_CAST && ev.spell == a.sp && ev.by == me { was_cast = true; } }
+      #assert was_cast;
+      if a.lvl > 0 { #assert b[0].c[me].slots[a.lvl] == slots - 1; }
+      rs_end_turn(b, me);
+      played += 1;
+    }
+  }
+  #assert played == 7;   // Magic Missile twice (Wizard, Sorcerer), Shatter twice (Sorcerer, Bard), and one each of the rest
 }

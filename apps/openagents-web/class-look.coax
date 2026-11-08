@@ -35,6 +35,11 @@ xc_spell_rgb :: (sp: int) -> FxV {
   if sp == SP_FIRE_BOLT { return xc_rgb(1.0, 0.48, 0.1); }
   if sp == SP_SHIELD { return xc_rgb(0.35, 0.9, 1.0); }
   if sp == SP_FIREBALL { return xc_rgb(1.0, 0.5, 0.12); }
+  if sp == SP_ACID_SPLASH { return xc_rgb(0.55, 1.0, 0.25); }
+  if sp == SP_MAGIC_MISSILE { return xc_rgb(0.8, 0.7, 1.0); }
+  if sp == SP_INFLICT_WOUNDS { return xc_rgb(0.45, 0.2, 0.4); }
+  if sp == SP_SHATTER { return xc_rgb(0.75, 0.85, 1.0); }
+  if sp == SP_MASS_HEALING_WORD { return xc_rgb(0.4, 1.0, 0.5); }
   if sp == SP_SPIRIT_GUARDIANS { return xc_rgb(1.0, 0.95, 0.7); }
   if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { return xc_rgb(0.7, 0.85, 1.0); }
   if sp == SP_HYPNOTIC_PATTERN { return xc_rgb(0.95, 0.5, 1.0); }
