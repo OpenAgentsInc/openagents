@@ -204,10 +204,13 @@ gp_showcase_bounds :: (g:[]Gltf)->[3]f32 {
  return [3]f32.[(lo[0]+hi[0])*0.5,lo[1],(lo[2]+hi[2])*0.5];
 }
 gp_showcase_mesh :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,slot:int,atlas:int) {
- gl_load(g,object_path);place:=gp_showcase_position(slot);anchor:=gp_showcase_bounds(g);base:=meadow.exp_height(place[0],place[1]);model_scale:=ifx slot>=257 then 0.4f32 else 1.0f32;
+ gp_showcase_at(w,g,object_path,source,name,gp_showcase_position(slot),atlas,ifx slot>=257 then 0.4f32 else 1.0f32,0,0,115.25);
+}
+gp_showcase_at :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,place:[2]f32,atlas:int,model_scale:f32,yaw:f32,lift:f32,marker:f32) {
+ gl_load(g,object_path);anchor:=gp_showcase_bounds(g);base:=meadow.exp_height(place[0],place[1])+lift;cs:=cos(yaw);sn:=sin(yaw);
  for node_i:0..<g[0].nx[GA_NODE] {node:=gl_at(g,GA_NODE,node_i);mesh_i:=gl_int(g,node,"mesh",-1);if mesh_i<0 {continue;}translation:[3]f64;rotation:=[4]f64.[0,0,0,1];scale:=[3]f64.[1,1,1];unused:=gl_nums(g,node,"translation",translation[..]);unused=gl_nums(g,node,"rotation",rotation[..]);unused=gl_nums(g,node,"scale",scale[..]);q:=[4]f32.[f32(rotation[0]),f32(rotation[1]),f32(rotation[2]),f32(rotation[3])];
   mesh:=gl_at(g,GA_MESH,mesh_i);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;idx:[262144]f64;nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;unused_acc:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;mat:=gl_at(g,GA_MAT,gl_int(g,pr,"material",0));colour:=gp_showcase_colour(source,name,gl_str(g,mat,"name"),w[0].txt[..]);first:=w[0].nv;
-   for v:0..<nv {p:=gp_showcase_rotate([3]f32.[f32(pos[v*3]*scale[0]),f32(pos[v*3+1]*scale[1]),f32(pos[v*3+2]*scale[2])],q);n:=gp_showcase_rotate([3]f32.[f32(nor[v*3]/scale[0]),f32(nor[v*3+1]/scale[1]),f32(nor[v*3+2]/scale[2])],q);length:=sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);if length>0 {for k:0..<3 {n[k]/=length;}}id:=gp_v(w,[3]f32.[place[0]+model_scale*(p[0]+f32(translation[0])-anchor[0]),base+model_scale*(p[1]+f32(translation[1])-anchor[1]),place[1]+model_scale*(p[2]+f32(translation[2])-anchor[2])],n,[2]f32.[0.5,0.5],colour,atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(115.25));}
+   for v:0..<nv {p:=gp_showcase_rotate([3]f32.[f32(pos[v*3]*scale[0]),f32(pos[v*3+1]*scale[1]),f32(pos[v*3+2]*scale[2])],q);n:=gp_showcase_rotate([3]f32.[f32(nor[v*3]/scale[0]),f32(nor[v*3+1]/scale[1]),f32(nor[v*3+2]/scale[2])],q);length:=sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);if length>0 {for k:0..<3 {n[k]/=length;}}lx:=p[0]+f32(translation[0])-anchor[0];lz:=p[2]+f32(translation[2])-anchor[2];normal:=[3]f32.[n[0]*cs+n[2]*sn,n[1],-n[0]*sn+n[2]*cs];id:=gp_v(w,[3]f32.[place[0]+model_scale*(lx*cs+lz*sn),base+model_scale*(p[1]+f32(translation[1])-anchor[1]),place[1]+model_scale*(-lx*sn+lz*cs)],normal,[2]f32.[0.5,0.5],colour,atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(marker));}
    for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
   }
  }
@@ -217,6 +220,26 @@ gp_showcase :: (w:[]Gp,g:[]Gltf,layout:string,objects:string,food:string,rpg:str
  while !lines_done(lines[0]) {row:=lines_next(lines[..]);if row.count==0 {continue;}a:=0;while a<row.count && row[a]!='|' {a+=1;}c:=a+1;while c<row.count && row[c]!='|' {c+=1;}if a==0 || c>=row.count || row.count-c-1!=64 {ph_die("invalid showcase layout");}pack:=row[0..<a];name:=row[a+1..<c];sha:=row[c+1..<row.count];source:=ifx pack=="ultimate-food" then food else ifx pack=="ultimate-rpg" then rpg else ifx pack=="dungeon" then dungeon else ifx pack=="ultimate-animals-static" then animals else "";if source=="" {ph_die("unknown showcase package");}if slot>=269 {ph_die("too many showcase items");}w[0].showcase_keep[slot]=gp_fantasy_showcase(pack,name);if slot<257 && w[0].showcase_keep[slot] {path:=txt_cat3(w[0].txt[..],objects,"/",sha);gp_showcase_mesh(w,g,path,source,name,slot,w[0].village_layer);}slot+=1;
  }
  if slot!=269 {ph_die("incomplete showcase layout");}
+}
+// A compact, open-roof dungeon, assembled from the registry's pinned models.
+gp_dungeon_part :: (w:[]Gp,g:[]Gltf,objects:string,root:string,name:string,hash:string,x:f32,z:f32,y:f32,turn:bool) {
+ path:=txt_cat3(w[0].txt[..],objects,"/",hash);gp_showcase_at(w,g,path,root,name,[2]f32.[x,z],w[0].village_layer,1,ifx turn then 1.5707963f32 else 0.0f32,y,115.0625);
+}
+gp_dungeon :: (w:[]Gp,g:[]Gltf,objects:string,root:string) {
+ floor_id:="4cadcb92f4538d9bebe6c2ad1d6b54a94370e5bb7e86c4958a39f33f4f655577";wall_id:="40680100e4999642549ebbb677066194ddb044c2190b53242d091e525ac3efb0";
+ for a:0..<4 {for b:0..<4 {gp_dungeon_part(w,g,objects,root,"Floor_Modular",floor_id,-35+f32(a)*2,-51+f32(b)*2,-0.24,false);}}
+ for level:0..<2 {y:=f32(level)*2;for i:0..<4 {v:= -3+f32(i)*2;
+  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-32+v,-52,y,false);
+  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-36,-48+v,y,true);
+  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-28,-48+v,y,true);
+  if i==0 || i==3 {gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-32+v,-44,y,false);gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-32+v,-48,y,false);}
+ }}
+ gp_dungeon_part(w,g,objects,root,"Arch","10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f",-32,-44,0,false);
+ gp_dungeon_part(w,g,objects,root,"Arch","10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f",-32,-48,0,false);
+ for i:0..<2 {x:= -34.8+f32(i)*5.6;gp_dungeon_part(w,g,objects,root,"Column","90600e8ea169657ca958c4c776c2c201d5c6ddd6b7a9b14693a561ec5a4b5cf1",x,-50.6,0,false);gp_dungeon_part(w,g,objects,root,"Torch","a3e1794a7b4ff6024f50396c37f79f7e460d125658dec7fde44a0cfca48e4e34",x,-51.6,1.4,false);}
+ gp_dungeon_part(w,g,objects,root,"Chest","82cd0a7814783ec8c08ba4fe272c3fdf0ce73dc0963f393aa5256b0b1329d79f",-32,-50.8,0,false);
+ gp_dungeon_part(w,g,objects,root,"Skull","b51223745e4dafdf6b40f9987eaf49c70f932510fc8dab46cdc40e749a71b575",-34,-46,0,false);
+ gp_dungeon_part(w,g,objects,root,"Cobweb","dc675621a1c656b2aa7a2412ee1349cbefa5ceafc3e191d50f07d1ddd82e7794",-35.5,-51.5,2.5,false);
 }
 GP_ANIMALS :: [12]string.["Alpaca","Bull","Cow","Deer","Donkey","Fox","Horse","Horse_White","Husky","ShibaInu","Stag","Wolf"];
 gp_animal_frames :: (w:[]Gp,root:string) {
@@ -567,7 +590,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=17 {gp_extra_props(w[..],g[..],args_at(args[..],6),args_at(args[..],16));}
  if args_count(args[..])>=16 {atlas:=gp_bestiary_atlas(w[..],iw[..],args_at(args[..],14));}
  if args_count(args[..])==18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
- if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));}
+ if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11));}
  w[0].envni=w[0].ni;if args_count(args[..])>=16 {gp_bestiary_frames(w[..],args_at(args[..],15));}if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));}
  for group:0..<3 {
   w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";

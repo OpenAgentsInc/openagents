@@ -32,3 +32,9 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  p:=walk.walk_place(47,0,46.5,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z<44.3 && p.pos.z>41;
  p=walk.walk_place(49,0,46.5,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z>45;
 }
+#test "dungeon entrance admits the walker and its walls stop them" #steps 200000000 {
+ p:=walk.walk_place(-32,0,-42,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z< -44.2 && p.pos.z> -51.5;
+ p=walk.walk_place(-32,0,-46,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z< -48.2 && p.pos.z> -52;
+ p=walk.walk_place(-35,0,-42,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -44;
+ p=walk.walk_place(-35,0,-46,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -48;
+}

@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "12211be79dd266867a3a9547ef84a821d02ec694c589ef86ed292e101119da85",
+    "sha256": "83b042c91024bfdb240f8f0cb0f15de1f243322c928029e62cdf92dc12a81b9f",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2298,10 +2298,10 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "1b76129d5ad302aa07e3f8f912c078b146580949fa0269d714eb1e53302b533d",
+    "sha256": "1be0363b7efd71939d893e1584d26e48e19336d7b1a08dbc71d1200f67600172",
     "budget_bytes": 536870912,
-    "decoded_sha256": "059287cfe6f9b8a0f9f0c09a506a5e945fa411754f8ef9426c53b02ae9a40f0a",
-    "decoded_bytes": 153972748,
+    "decoded_sha256": "e864ce86ea85d6ecf192a0df86abddbf6de97ee6b759a5712889fb64b1eba6e7",
+    "decoded_bytes": 160271356,
     "encoding": "gzip"
   },
   "terrain": {
@@ -2321,7 +2321,7 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "caab4eb48a2d73d7e33eca3e2c3063b9a1e1d8250c9e13051f2557cf5b53018e"
+      "sha256": "a1cf22cd48f3696c417bf6f141e2b36b2803af7cb736885851f1ad763191df47"
     }
   },
   "scope": "Nature meadow, source-authored Medieval Village layouts, and a furnished multi-level watchmaker workshop; Character Create wardrobe remains unchanged.",
@@ -2458,7 +2458,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "35dbd0e243ba815fd00b4fdcbb45270f16f5ceffb89525b9ea831d4ed0fb11c4"
+        "sha256": "785d96971080af807c11c147b5a15a1bb65ffdfe7223b3cfc966fade425e9569"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2466,7 +2466,7 @@
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "5ca3cea9bf0fd5b66d1ab81f377a016abebee49ca5ea6e2d8b72fce118d71b29",
+    "sha256": "dd1f9f587837dad9935271ff00f00247447b0967181a4b9128d856c0d06a35b4",
     "artifact": "apps/openagents-web/charactercreator.wgsl",
     "artifact_sha256": "b86812dce24643f190f77c167fc0ce97fa7767a05be211253269d4253b4bc27d"
   },
@@ -2552,7 +2552,24 @@
     "behavior": "Pursue the player and make timed SRD melee attacks",
     "source": {
       "path": "verse/experimental-hostiles.coax",
-      "sha256": "5a156147bf2a486ea2a4d90b893806badca389aa2ed6c7541848494749283c70"
+      "sha256": "2ccfd95f990db6b055a29d3feac0e81f70c289ae17a70ee2528694503d78619a"
     }
+  },
+  "dungeon": {
+    "center": [
+      -32,
+      -48
+    ],
+    "size_metres": [
+      8,
+      8
+    ],
+    "layout": "Two connected open-roof stone rooms with arched entrance, columns, torches, chest, skull and cobweb.",
+    "monsters": [
+      "Imp",
+      "Gremlin"
+    ],
+    "collision": "Solid exterior walls with open south entrance",
+    "source": "verse/tools/assets/character_glade_pack.coax"
   }
 }
