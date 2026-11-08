@@ -1,27 +1,27 @@
 // Native observations for the independent flattened-archetype oracle.
 #import "Basic";
-#load "../definitions.coax" as actors;
+#load "../definitions.coax";
 #load "../../state/declarations.coax" as state;
 main :: () #effects(all) {
  for sample:0..<64 {
-  m:=[1]actors.ResourceManifest.[actors.actor_definition_manifest()];defs:=actors.actor_definition_sources(m[0]);
-  services:=actors.actor_definition_services();schema:=actors.actor_definition_schema();refs:state.StateRefs;
+  m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);
+  services:=actor_definition_services();schema:=actor_definition_schema();refs:state.StateRefs;
   defs[0].parameter_count=5;
-  defs[0].parameters[0]=actors.ActorParameter.{id=5,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%33),0,0]}};
-  defs[0].parameters[1]=actors.ActorParameter.{id=6,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%21),0,0]}};
-  defs[0].parameters[2]=actors.ActorParameter.{id=1,value=state.state_int(sample%3)};
-  defs[0].parameters[3]=actors.ActorParameter.{id=9,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%3-1),0,0]}};
-  defs[0].parameters[4]=actors.ActorParameter.{id=4,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[0.1+cast(f64)(sample%40)/10,0,0]}};
+  defs[0].parameters[0]=ActorParameter.{id=5,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%33),0,0]}};
+  defs[0].parameters[1]=ActorParameter.{id=6,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%21),0,0]}};
+  defs[0].parameters[2]=ActorParameter.{id=1,value=state.state_int(sample%3)};
+  defs[0].parameters[3]=ActorParameter.{id=9,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%3-1),0,0]}};
+  defs[0].parameters[4]=ActorParameter.{id=4,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[0.1+cast(f64)(sample%40)/10,0,0]}};
   mode:=sample%16;
   if mode==8 {defs[1].parent=30;}
-  if mode==9 {defs[0].parameters[3]=actors.ActorParameter.{id=8,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[10,0,0]}};}
+  if mode==9 {defs[0].parameters[3]=ActorParameter.{id=8,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[10,0,0]}};}
   if mode==10 {defs[1].roots[0].content.words[0]^=1;}
   if mode==11 {defs[1].fields[0].owner=8;}
   if mode==12 {defs[0].parameters[4].id=99;}
   if mode==13 {defs[1].bindings[3].service=999;}
   if mode==14 {m[0].identity.words[7]^=1;}
-  if mode==15 {defs[0].parameter_count=6;defs[0].parameters[5]=actors.ActorParameter.{id=3,value=state.state_int(1)};}
-  r:=actors.actor_definition_compile(defs[..],30,services[..],schema,refs,m[..]);a:=r.archetype;
+  if mode==15 {defs[0].parameter_count=6;defs[0].parameters[5]=ActorParameter.{id=3,value=state.state_int(1)};}
+  r:=actor_definition_compile(defs[..],30,services[..],schema,refs,m[..]);a:=r.archetype;
   print("% % % % % % % % % % %",sample,cast(int)r.status,ifx a.valid then 1 else 0,a.id,a.revision,a.lineage_n,
    ifx a.plan.valid then 1 else 0,a.plan.n,a.field_count,a.root_count,a.resource_count);
   if a.valid {

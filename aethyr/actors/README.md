@@ -4,7 +4,15 @@
 compiles their service graph into an immutable execution plan. The definition
 and phase compilers are implemented. `behavior-plan.coax` compiles bounded
 native intent programs and `behavior.coax` selects their commands on paid
-fixed steps. Physical execution and playable adoption remain.
+fixed steps. `resources.coax` and `instances.coax` add root claims, bounded
+instance admission and an entity lifecycle. Physical execution and playable
+adoption remain.
+
+Load these as **source parts**, without `as`: `#load "instances.coax";`.
+They share the consumer's logical owner with the existing state/stream source
+parts, so a host can compose actors with State Lab. The independent phase
+compiler remains a named module. The former actor module aliases were internal
+to these fixtures; their removal changes no saved/protocol/asset format or C ABI.
 
 ## Compiled definitions
 
@@ -69,6 +77,56 @@ writes 6. Ready resources are read-only throughout this plan. These masks
 describe execution dependencies, not a language effect proof. Native task
 implementations and their actual effects still need qualification.
 
+## Instance admission and lifetime
+
+`actor_pool_open` owns 16 fixed slots with a configured capacity of 1–16.
+`actor_pool_request` reserves pending-instance capacity, per-archetype capacity
+across revisions, and aggregate declared sense/search/action work. Pending,
+born, live and retiring slots all retain their quotas until removal. Admission
+checks placement bounds, program/archetype/schema linkage and program identity
+before taking every resource root as one atomic set. A failed claim spends no
+stream serial or partial reference. Existing stream budgets still govern actual
+decode/upload allocations; actor work reservations are not GPU-memory grants.
+
+An actor has an authored durable ID and archetype revision, a runtime key
+(pool slot, actor ID, generation, owner, world epoch), a placement, a behavior
+cursor and bounded sensed memory. The entity store separately supplies its
+session-local `EntityId` and checked handle. No durable document stores a handle.
+Duplicate actor IDs refuse, including IDs still loading or retiring. Generations
+and owner counters refuse at their caps instead of wrapping. Pool/stream and
+entity storage belong to one world lifetime; a replacement world must receive
+a new epoch, retaining the old stream until its effects/borrowers retire.
+
+`actor_pool_begin` runs once per paid step. A loading actor queues an entity
+only after its full retained root set is ready. It becomes available to actor
+systems on the step after `entity_flush`, with its cursor, placement and memory
+already initialized. Birth, activation, retirement, removal and pressure are
+typed lifecycle events, at most one per configured slot per step. Entity-capacity
+pressure keeps the actor loading, counts the refusal and permits a later retry.
+The realm still flushes its common entity store at the end of each paid step.
+
+`actor_pool_current` checks the complete key, live phase, actual entity handle
+and ID, and current root readiness. `actor_pool_select` uses it before committing
+any behavior cursor. Stop immediately revokes actor admission and queues the
+shared despawn. Quotas/claims release only after that entity is gone. Corrupt
+retained receipts produce counted pressure without releasing another claim.
+Whole-stream retirement revokes all claims atomically; after entity retirement
+the pool can then free its quotas, while concrete resource owners retain their
+allocations until physical destruction and final borrower release.
+
+`actor_pool_transfer` rotates the owner key, cancels an active action into its
+cooldown and preserves random counters and sensed memory. It records a control
+source (AI or human); controller adapters must route that source. This boundary
+does not yet implement rider input, human/AI routing, attachment or dismount.
+Nav/model callbacks must use the current-instance gate in their eventual
+adapters; this checkpoint gates behavior commands, not those callbacks yet.
+
+Pools, archetypes and resource receipts are owned runtime records, not public
+decoded wire structs. This unit initializes the common cursor/memory/placement
+columns; movement, physics, animation, sensors and actual service-hook dispatch
+still need the adopted execution path. Per-instance parameter/fact overrides
+and persistence remain part of that integration.
+
 Use only a successful compiler result (`status == ok` and `plan.valid`). A
 refusal returns an empty invalid plan and identifies the relevant authored
 task/dependency where available. A typed `ActorPlan` copied from an untrusted
@@ -131,6 +189,11 @@ coax/bin/coax mutate aethyr/actors/behavior-plan.coax --library --root-only --jo
 coax/bin/coax mutate aethyr/actors/behavior.coax --library --root-only --shard 1/2 --jobs 8 > /tmp/behavior-1.rec
 coax/bin/coax mutate aethyr/actors/behavior.coax --library --root-only --shard 2/2 --jobs 8 > /tmp/behavior-2.rec
 coax/bin/coax mutate aethyr/actors/behavior.coax --library --root-only --merge /tmp/behavior-1.rec --merge /tmp/behavior-2.rec
+coax/bin/coax test aethyr/actors/instances.coax --library
+coax/bin/coax mutate aethyr/actors/resources.coax --library --root-only --jobs 8
+coax/bin/coax mutate aethyr/actors/instances.coax --library --root-only --shard 1/2 --jobs 8 > /tmp/instances-1.rec
+coax/bin/coax mutate aethyr/actors/instances.coax --library --root-only --shard 2/2 --jobs 8 > /tmp/instances-2.rec
+coax/bin/coax mutate aethyr/actors/instances.coax --library --root-only --merge /tmp/instances-1.rec --merge /tmp/instances-2.rec
 ```
 
 The [phase qualification record](../../docs/verification/aethyr-actors-12992/phases.md)
@@ -138,10 +201,14 @@ and [definition record](../../docs/verification/aethyr-actors-12992/definitions.
 plus the [behavior record](../../docs/verification/aethyr-actors-12992/behavior.md),
 retain the exact tested scopes. The behavior trial checks selection from
 scripted observations/body outcomes at 30/60/144 FPS and uneven frames in
-native C and actual browser Wasm. It does not draw or move live actors.
+native C and actual browser Wasm. The
+[instance record](../../docs/verification/aethyr-actors-12992/instances.md)
+qualifies bounded admission, the actual shared entity/stream lifecycle and
+native/browser lifecycle-selection replay. Neither trial draws or moves actors.
 
-Remaining issue work includes aggregate pool/resource admission and instance
-lifecycle hooks; actual perception/query integration with discover/alert/track,
+Remaining issue work includes actual native service-hook dispatch, per-instance
+overrides/persistence and physical pool allocation traces; perception/query
+integration with discover/alert/track,
 culling and lost-target counters; current-owner navigation/model admission and
 failure/retry modes; common player/AI rider input; guard and villager playable
 adoption plus a mount-like fixture; resource retirement; actual adopted

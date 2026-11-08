@@ -6380,9 +6380,22 @@ parameter slots and phase order require no runtime name or parent lookup.
 Canonical RCM1 metadata must match its complete retained pin; payload decoding
 and physical resource admission still belong to the shared stream.
 
-A compiled definition is not a spawn grant. Entity lifecycle, current-owner
-fencing, aggregate pools, resource reservations and physical execution remain
-the actor execution boundary's responsibility.
+A compiled definition is not a spawn grant. The actor pool reserves pending
+instance/work quotas and every root claim atomically. No entity queues until
+all its roots are ready, and it takes part only after the shared entity flush.
+Commands require the full current actor/generation/owner/world key, the live
+entity handle and ID, and ready retained roots. Stop revokes actor admission
+immediately; quotas and claims remain until the entity is gone. A globally
+retired stream may already have revoked those claims, but concrete resources
+still retain allocations through physical destruction and final borrower
+release. An old callback cannot use a replaced actor slot's key. World
+replacement requires a new epoch; old streams retain their outstanding effects.
+
+The pool's common cursor, memory and placement initialization is implemented;
+physical bodies, actual service-hook dispatch and nav/model callback adapters
+remain separate integration requirements. Control transfer rotates ownership
+and cancels the old action without erasing sensed memory; adapters still route
+human/AI input. Pools and receipts are owned records, not decoded wire grants.
 
 Behavior programs bind complete schema and program identities. Selection runs
 once on the exact next paid realm step; refusal preserves the complete cursor

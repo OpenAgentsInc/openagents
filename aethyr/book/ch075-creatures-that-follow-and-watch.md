@@ -440,7 +440,9 @@ would change Everglade's companion, so it is left as it is (see below).
 
 - [aethyr/actors/](../actors/README.md): compiled typed archetypes, dependency
   phases and bounded native intent selection with schedules, cooldowns,
-  interruption and seeded weighted choice. Its
+  interruption and seeded weighted choice. Instance/work admission and root
+  claims now use the shared entity/stream lifecycle, and these source parts
+  compile alongside State Lab. Its
   [qualification record](../../docs/verification/aethyr-actors-12992/behavior.md)
   covers scripted observations/body feedback on native and browser Wasm.
   Live perception, body execution and guard/villager adoption through these

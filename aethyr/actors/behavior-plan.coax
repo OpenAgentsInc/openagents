@@ -1,7 +1,6 @@
 // Bounded native behavior definitions; no scripts or display-text dispatch.
-#module "aethyr.actors.behavior_plan";
 #authority;
-#load "definitions.coax" as archetypes;
+#load "definitions.coax";
 #load "../state/declarations.coax";
 #load "../assets.coax" as assets;
 BEHAVIOR_SEQUENCES :: 8; BEHAVIOR_GUARDS :: 4; BEHAVIOR_ACTIONS :: 4;
@@ -19,7 +18,7 @@ BehaviorSchedule :: struct {phase:int;anchor:int;anchor_slot:int= -1;day_period:
 BehaviorDefinition :: struct {version:int=1;id:int;revision:int=1;n:int;sequences:[BEHAVIOR_SEQUENCES]BehaviorSequence;schedule_n:int;schedules:[BEHAVIOR_SCHEDULES]BehaviorSchedule;}
 BehaviorPlan :: struct {
  valid:bool;id:int;revision:int;archetype:int;archetype_revision:int;identity:assets.AssetId;schema:assets.AssetId;day_ticks:int;work:int;skip_last:bool;
- field_count:int;fields:[archetypes.ACTOR_FIELD_REFS]archetypes.ActorCompiledField;
+ field_count:int;fields:[ACTOR_FIELD_REFS]ActorCompiledField;
  anchor_n:int;anchors:[BEHAVIOR_ANCHORS]int;
  n:int;sequences:[BEHAVIOR_SEQUENCES]BehaviorSequence;schedule_n:int;schedules:[BEHAVIOR_SCHEDULES]BehaviorSchedule;
 }
@@ -31,7 +30,7 @@ BehaviorGuardResult :: struct {valid:bool;guard:BehaviorGuard;}
 behavior_anchor :: (anchors:[]const int,id:int)->int #effects(all) {
  for anchor,i:anchors {if anchor==id {return i;}}return -1;
 }
-behavior_guard_compile :: (a:archetypes.ActorArchetype,s:StateSchema,refs:StateRefs,g:BehaviorGuard,scheduled:bool)->BehaviorGuardResult #effects(all) {
+behavior_guard_compile :: (a:ActorArchetype,s:StateSchema,refs:StateRefs,g:BehaviorGuard,scheduled:bool)->BehaviorGuardResult #effects(all) {
  if g.slot!= -1 {return BehaviorGuardResult.{};}
  // The shared value gate admits finite bounded active values and canonical
  // zero inactive lanes before the policy fingerprint is written.
@@ -59,23 +58,23 @@ behavior_plan_identity :: (p:BehaviorPlan)->assets.AssetId #effects(all) {
  for i:0..<p.n {
   row:=p.sequences[i];for v:[6]int.[row.id,row.priority,row.weight,row.cooldown,row.guard_n,row.action_n] {words[at]=v;at+=1;}
   for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
-   archetypes.state_value_words(words[..],at,g.value);at+=15;}
+   state_value_words(words[..],at,g.value);at+=15;}
   for k:0..<row.action_n {act:=row.actions[k];for v:[5]int.[act.verb,act.argument,act.anchor_slot,act.duration,ifx act.interruptible then 1 else 0] {words[at]=v;at+=1;}}
  }
  for i:0..<p.schedule_n {
   row:=p.schedules[i];for v:[6]int.[row.phase,row.anchor,row.anchor_slot,row.day_period,row.day_remainder,row.guard_n] {words[at]=v;at+=1;}
   for k:0..<row.guard_n {g:=row.guards[k];for v:[5]int.[g.kind,g.field,g.slot,g.signal,ifx g.expected then 1 else 0] {words[at]=v;at+=1;}
-   archetypes.state_value_words(words[..],at,g.value);at+=15;}
+   state_value_words(words[..],at,g.value);at+=15;}
  }
- return archetypes.state_words_id(words[0..<at]);
+ return state_words_id(words[0..<at]);
 }
-behavior_compile :: (a:archetypes.ActorArchetype,s:StateSchema,refs:StateRefs,d:BehaviorDefinition,anchors:[]const int)->BehaviorCompiled #effects(all) {
+behavior_compile :: (a:ActorArchetype,s:StateSchema,refs:StateRefs,d:BehaviorDefinition,anchors:[]const int)->BehaviorCompiled #effects(all) {
  if d.version!=1 {return BehaviorCompiled.{status=BehaviorPlanStatus.version};}
  if !a.valid || a.version!=1 || a.id<1 || a.revision<1 || d.id<1 || d.revision<1 {return BehaviorCompiled.{status=BehaviorPlanStatus.identity};}
- if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>archetypes.ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
- work:=a.parameters[archetypes.ACTOR_ACTION_WORK];repeat:=a.parameters[archetypes.ACTOR_REPEAT];controller:=a.parameters[archetypes.ACTOR_CONTROLLER];
+ if d.n<1 || d.n>BEHAVIOR_SEQUENCES || d.schedule_n<0 || d.schedule_n>BEHAVIOR_SCHEDULES || anchors.count>BEHAVIOR_ANCHORS || a.field_count<0 || a.field_count>ACTOR_FIELD_REFS {return BehaviorCompiled.{status=BehaviorPlanStatus.capacity};}
+ work:=a.parameters[ACTOR_ACTION_WORK];repeat:=a.parameters[ACTOR_REPEAT];controller:=a.parameters[ACTOR_CONTROLLER];
  if work.kind!=STATE_INT || work.integer<1 || work.integer>32 || repeat.kind!=STATE_INT || repeat.integer<0 || repeat.integer>1 || controller.kind!=STATE_INT || controller.integer<0 || controller.integer>2 || d.n>work.integer {return BehaviorCompiled.{status=BehaviorPlanStatus.profile};}
- if !state_schema_ok(s,refs) || !assets.asset_same(a.schema,archetypes.state_schema_id(s)) {return BehaviorCompiled.{status=BehaviorPlanStatus.schema};}
+ if !state_schema_ok(s,refs) || !assets.asset_same(a.schema,state_schema_id(s)) {return BehaviorCompiled.{status=BehaviorPlanStatus.schema};}
  for i:0..<a.field_count {
   f:=a.fields[i];if f.slot<0 || f.slot>=s.n {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}actual:=s.fields[f.slot];
   if f.reference.id!=actual.id || f.reference.kind!=actual.kind || f.reference.scope!=actual.scope || f.reference.owner!=actual.owner {return BehaviorCompiled.{status=BehaviorPlanStatus.field};}

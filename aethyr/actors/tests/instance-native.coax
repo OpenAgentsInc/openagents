@@ -1,0 +1,8 @@
+// Call the same ABI as Chrome. The scenario stays in instance-trial.coax.
+#import "Basic";
+actor_instance_trial :: (fps:s32)->s32 #foreign #effects(foreign);
+actor_instance_word :: (row:s32,word:s32)->s64 #foreign #effects(foreign);
+main :: () #effects(all) {
+ for fps:[4]int.[30,60,144,0] {#assert actor_instance_trial(cast(s32)fps)==64;
+  for row:0..<64 {print("% %",fps,row);for word:0..<104 {print(" %",actor_instance_word(cast(s32)row,cast(s32)word));}print("\n");}}
+}

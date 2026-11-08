@@ -1,7 +1,7 @@
-behavior_fixture_schema :: ()->StateSchema #effects(all) {s:=archetypes.actor_definition_schema();s.day_ticks=8;return s;}
-behavior_fixture_archetype :: ()->archetypes.ActorArchetype #effects(all) {
- m:=[1]archetypes.ResourceManifest.[archetypes.actor_definition_manifest()];defs:=archetypes.actor_definition_sources(m[0]);services:=archetypes.actor_definition_services();refs:StateRefs;
- r:=archetypes.actor_definition_compile(defs[..],30,services[..],behavior_fixture_schema(),refs,m[..]);#assert r.status==archetypes.ActorCompileStatus.ok;return r.archetype;
+behavior_fixture_schema :: ()->StateSchema #effects(all) {s:=actor_definition_schema();s.day_ticks=8;return s;}
+behavior_fixture_archetype :: ()->ActorArchetype #effects(all) {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);services:=actor_definition_services();refs:StateRefs;
+ r:=actor_definition_compile(defs[..],30,services[..],behavior_fixture_schema(),refs,m[..]);#assert r.status==ActorCompileStatus.ok;return r.archetype;
 }
 behavior_fixture_definition :: ()->BehaviorDefinition #effects(all) {
  d:=BehaviorDefinition.{id=12992004,n=2,schedule_n=2};
@@ -74,7 +74,7 @@ behavior_fixture_definition :: ()->BehaviorDefinition #effects(all) {
 }
 #test "behavior compilation admits every exact table limit and refuses invalid headers and counts" #steps 120000000 {
  a:=behavior_fixture_archetype();s:=behavior_fixture_schema();refs:StateRefs;anchors:[17]int;for i:0..<17 {anchors[i]=100+i;}
- a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(2);a.parameters[archetypes.ACTOR_ACTION_WORK]=state_int(32);
+ a.parameters[ACTOR_CONTROLLER]=state_int(2);a.parameters[ACTOR_ACTION_WORK]=state_int(32);
  d:=BehaviorDefinition.{id=1,n=8,schedule_n=8};
  for i:0..<8 {
   row:=BehaviorSequence.{id=8-i,priority=255,weight=65535,cooldown=BEHAVIOR_TICKS,guard_n=4,action_n=4};
@@ -104,17 +104,17 @@ behavior_fixture_definition :: ()->BehaviorDefinition #effects(all) {
   r:=behavior_compile(bad,s,refs,source,anchors[..]);#assert r.status==(ifx which<6 then BehaviorPlanStatus.identity else BehaviorPlanStatus.capacity);
  }
  small:=d;small.n=1;small.schedule_n=0;small.sequences[0]=BehaviorSequence.{id=1};one:=[1]int.[1];
- a.id=1;a.revision=1;small.id=1;a.field_count=0;a.parameters[archetypes.ACTOR_ACTION_WORK]=state_int(1);
- a.parameters[archetypes.ACTOR_REPEAT]=state_int(0);a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(0);
+ a.id=1;a.revision=1;small.id=1;a.field_count=0;a.parameters[ACTOR_ACTION_WORK]=state_int(1);
+ a.parameters[ACTOR_REPEAT]=state_int(0);a.parameters[ACTOR_CONTROLLER]=state_int(0);
  #assert behavior_compile(a,s,refs,small,one[..]).status==BehaviorPlanStatus.ok;
- a=behavior_fixture_archetype();a.parameters[archetypes.ACTOR_ACTION_WORK]=state_int(2);
+ a=behavior_fixture_archetype();a.parameters[ACTOR_ACTION_WORK]=state_int(2);
  #assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.ok;
  for which:0..<10 {bad:=a;
-  if which==0 {bad.parameters[archetypes.ACTOR_ACTION_WORK].kind=STATE_SCALAR;}if which==1 {bad.parameters[archetypes.ACTOR_ACTION_WORK].integer=0;}
-  if which==2 {bad.parameters[archetypes.ACTOR_ACTION_WORK].integer=33;}if which==3 {bad.parameters[archetypes.ACTOR_REPEAT].kind=STATE_SCALAR;}
-  if which==4 {bad.parameters[archetypes.ACTOR_REPEAT].integer= -1;}if which==5 {bad.parameters[archetypes.ACTOR_REPEAT].integer=2;}
-  if which==6 {bad.parameters[archetypes.ACTOR_CONTROLLER].kind=STATE_SCALAR;}if which==7 {bad.parameters[archetypes.ACTOR_CONTROLLER].integer= -1;}
-  if which==8 {bad.parameters[archetypes.ACTOR_CONTROLLER].integer=3;}if which==9 {bad.parameters[archetypes.ACTOR_ACTION_WORK].integer=1;}
+  if which==0 {bad.parameters[ACTOR_ACTION_WORK].kind=STATE_SCALAR;}if which==1 {bad.parameters[ACTOR_ACTION_WORK].integer=0;}
+  if which==2 {bad.parameters[ACTOR_ACTION_WORK].integer=33;}if which==3 {bad.parameters[ACTOR_REPEAT].kind=STATE_SCALAR;}
+  if which==4 {bad.parameters[ACTOR_REPEAT].integer= -1;}if which==5 {bad.parameters[ACTOR_REPEAT].integer=2;}
+  if which==6 {bad.parameters[ACTOR_CONTROLLER].kind=STATE_SCALAR;}if which==7 {bad.parameters[ACTOR_CONTROLLER].integer= -1;}
+  if which==8 {bad.parameters[ACTOR_CONTROLLER].integer=3;}if which==9 {bad.parameters[ACTOR_ACTION_WORK].integer=1;}
   #assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.profile;
  }
  a=behavior_fixture_archetype();for which:0..<7 {bad:=a;
@@ -124,10 +124,10 @@ behavior_fixture_definition :: ()->BehaviorDefinition #effects(all) {
   #assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.field;
  }
  bad:=a;bad.schema.words[0]^=1;#assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.schema;
- bad=a;bad.fields[0]=archetypes.ActorCompiledField.{slot=s.n,reference=archetypes.ActorFieldRef.{kind=STATE_INT}};
+ bad=a;bad.fields[0]=ActorCompiledField.{slot=s.n,reference=ActorFieldRef.{kind=STATE_INT}};
  #assert behavior_compile(bad,s,refs,d,anchors[..]).status==BehaviorPlanStatus.field;
  broken:=s;broken.id=0;#assert behavior_compile(a,broken,refs,d,anchors[..]).status==BehaviorPlanStatus.schema;
- bad=a;bad.schema=archetypes.state_schema_id(broken);#assert behavior_compile(bad,broken,refs,d,anchors[..]).status==BehaviorPlanStatus.schema;
+ bad=a;bad.schema=state_schema_id(broken);#assert behavior_compile(bad,broken,refs,d,anchors[..]).status==BehaviorPlanStatus.schema;
  dup:=[2]int.[100,100];#assert behavior_compile(a,s,refs,d,dup[..]).status==BehaviorPlanStatus.anchor;
  dup[0]=0;#assert behavior_compile(a,s,refs,d,dup[..]).status==BehaviorPlanStatus.anchor;
  for which:0..<7 {source:=d;
@@ -162,8 +162,8 @@ behavior_fixture_definition :: ()->BehaviorDefinition #effects(all) {
  old:=r.plan.identity;d.schedules[0].guards[0].expected=false;r=behavior_compile(a,s,refs,d,anchors[..]);#assert !assets.asset_same(old,r.plan.identity);
  d.schedules[0].guards[0].expected=true;d.schedules[0].guards[0].value=state_bool(true);r=behavior_compile(a,s,refs,d,anchors[..]);#assert !assets.asset_same(old,r.plan.identity);
  s.n=8;names:=[8]string.["a","b","c","d","e","f","g","h"];a.field_count=8;
- for i:0..<8 {s.fields[i]=StateField.{id=i+1,name=names[i]};a.fields[i]=archetypes.ActorCompiledField.{slot=i,reference=archetypes.ActorFieldRef.{id=i+1,kind=STATE_INT}};}
- s.fields[0].kind=STATE_SCALAR;s.fields[0].minimum= -1000000000000.0;s.fields[0].maximum=1000000000000.0;s.fields[0].initial=StateValue.{kind=STATE_SCALAR};a.fields[0].reference.kind=STATE_SCALAR;a.schema=archetypes.state_schema_id(s);
+ for i:0..<8 {s.fields[i]=StateField.{id=i+1,name=names[i]};a.fields[i]=ActorCompiledField.{slot=i,reference=ActorFieldRef.{id=i+1,kind=STATE_INT}};}
+ s.fields[0].kind=STATE_SCALAR;s.fields[0].minimum= -1000000000000.0;s.fields[0].maximum=1000000000000.0;s.fields[0].initial=StateValue.{kind=STATE_SCALAR};a.fields[0].reference.kind=STATE_SCALAR;a.schema=state_schema_id(s);
  source:=BehaviorDefinition.{id=3,n=1};source.sequences[0]=BehaviorSequence.{id=1,guard_n=1};
  for edge:[2]f64.[-1000000000000.0,1000000000000.0] {source.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_LESS,field=1,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[edge,0,0]}};#assert behavior_compile(a,s,refs,source,anchors[..]).status==BehaviorPlanStatus.ok;}
  source.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL};
@@ -172,7 +172,7 @@ behavior_fixture_definition :: ()->BehaviorDefinition #effects(all) {
  }
 }
 #test "behavior stationary controllers cannot admit movement verbs" #steps 30000000 {
- a:=behavior_fixture_archetype();a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(0);s:=behavior_fixture_schema();refs:StateRefs;anchors:=[1]int.[100];
+ a:=behavior_fixture_archetype();a.parameters[ACTOR_CONTROLLER]=state_int(0);s:=behavior_fixture_schema();refs:StateRefs;anchors:=[1]int.[100];
  for verb:1..<4 {d:=BehaviorDefinition.{id=8,n=1};d.sequences[0]=BehaviorSequence.{id=1};
   d.sequences[0].actions[0]=BehaviorAction.{verb=verb,argument=ifx verb==BEHAVIOR_GO then 100 else 0};
   #assert behavior_compile(a,s,refs,d,anchors[..]).status==BehaviorPlanStatus.action;

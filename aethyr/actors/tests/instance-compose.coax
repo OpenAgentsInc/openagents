@@ -1,0 +1,9 @@
+// The playable State Lab and actor execution must share their state/stream
+// declarations in one consumer, without taking duplicate logical ownership.
+#import "Basic";
+#load "../../state/fixture.coax";
+#load "../instances.coax";
+main :: () #effects(all) {
+ pool:=actor_pool_open(7,0,3,[3]int.[24,384,24]);#assert pool.valid;
+ print("State Lab and actors compose\n");
+}

@@ -1,9 +1,9 @@
-behavior_test_plan :: ()->policy.BehaviorPlan #effects(all) {
- a:=policy.behavior_fixture_archetype();d:=policy.behavior_fixture_definition();s:=policy.behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
- r:=policy.behavior_compile(a,s,refs,d,anchors[..]);#assert r.status==policy.BehaviorPlanStatus.ok;return r.plan;
+behavior_test_plan :: ()->BehaviorPlan #effects(all) {
+ a:=behavior_fixture_archetype();d:=behavior_fixture_definition();s:=behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
+ r:=behavior_compile(a,s,refs,d,anchors[..]);#assert r.status==BehaviorPlanStatus.ok;return r.plan;
 }
-behavior_test_facts :: (p:policy.BehaviorPlan)->BehaviorFacts #effects(all) {
- s:=policy.behavior_fixture_schema();refs:StateRefs;store:=archetypes.state_construct(s,refs,1);
+behavior_test_facts :: (p:BehaviorPlan)->BehaviorFacts #effects(all) {
+ s:=behavior_fixture_schema();refs:StateRefs;store:=state_construct(s,refs,1);
  f:=behavior_project(p,s,store,refs,1);#assert f.valid;return f;
 }
 behavior_test_clock :: (tick:int)->clock.FrameClock #effects(all) {return clock.loop_frame(clock.FrameClock.{ticks=tick-1,frames=tick-1},1.0/64.0).clock;}
@@ -11,12 +11,12 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
 #test "behavior consumes paid ticks once and times actions without a second clock" #steps 30000000 {
  p:=behavior_test_plan();f:=behavior_test_facts(p);opened:=behavior_open(p,7,2,3,1,2026,0);#assert opened.ready;
  c:=behavior_test_context();r:=behavior_step(p,opened,behavior_test_clock(1),f,c);
- #assert r.status==BehaviorStatus.ok && r.state.tick==1 && r.command.active && r.command.started && r.command.sequence==20 && r.command.verb==policy.BEHAVIOR_HOLD;
+ #assert r.status==BehaviorStatus.ok && r.state.tick==1 && r.command.active && r.command.started && r.command.sequence==20 && r.command.verb==BEHAVIOR_HOLD;
  #assert r.state.serial==1 && r.state.draws==1 && r.work.draws==1 && r.work.actions==1 && r.work.sequences==2 && r.work.guards==1;
  again:=behavior_step(p,r.state,behavior_test_clock(1),f,c);#assert again.status==BehaviorStatus.clock && again.state.serial==1 && again.state.tick==1 && !again.command.active;
  r=behavior_step(p,r.state,behavior_test_clock(2),f,c);#assert r.status==BehaviorStatus.ok && r.state.successes==1 && r.state.serial==2 && r.event_n==1 && r.events[0].outcome==BEHAVIOR_SUCCESS;
  c.signals=3;c.target=99;c.target_generation=4;r=behavior_step(p,r.state,behavior_test_clock(3),f,c);
- #assert r.status==BehaviorStatus.ok && r.command.sequence==10 && r.command.verb==policy.BEHAVIOR_SAY && r.state.serial==3;
+ #assert r.status==BehaviorStatus.ok && r.command.sequence==10 && r.command.verb==BEHAVIOR_SAY && r.state.serial==3;
  r=behavior_step(p,r.state,behavior_test_clock(4),f,c);#assert r.status==BehaviorStatus.ok && !r.command.started && r.state.serial==3 && r.work.draws==0;
  r=behavior_step(p,r.state,behavior_test_clock(5),f,c);#assert r.state.successes==3 && r.command.sequence==20;
 }
@@ -33,10 +33,10 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
  #assert behavior_step(p,r.state,behavior_test_clock(3),f,c).status==BehaviorStatus.feedback;
 }
 #test "behavior jumps choose only the current anchor and interrupt scheduled movement once" #steps 30000000 {
- a:=policy.behavior_fixture_archetype();d:=policy.behavior_fixture_definition();s:=policy.behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
- d.sequences[0].guard_n=1;d.sequences[0].guards[0]=policy.BehaviorGuard.{kind=policy.BEHAVIOR_SCHEDULE};d.sequences[0].cooldown=64;
- d.sequences[0].actions[0]=policy.BehaviorAction.{verb=policy.BEHAVIOR_GO,duration=128};
- compiled:=policy.behavior_compile(a,s,refs,d,anchors[..]);#assert compiled.status==policy.BehaviorPlanStatus.ok;p:=compiled.plan;
+ a:=behavior_fixture_archetype();d:=behavior_fixture_definition();s:=behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
+ d.sequences[0].guard_n=1;d.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SCHEDULE};d.sequences[0].cooldown=64;
+ d.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_GO,duration=128};
+ compiled:=behavior_compile(a,s,refs,d,anchors[..]);#assert compiled.status==BehaviorPlanStatus.ok;p:=compiled.plan;
  f:=behavior_test_facts(p);c:=behavior_test_context();opened:=behavior_open(p,7,2,3,1,2026,0);
  r:=behavior_step(p,opened,behavior_test_clock(1),f,c);#assert r.command.argument==100 && r.command.anchor_slot==0 && r.state.serial==1;
  f.day=100;f.phase=7;r=behavior_step(p,r.state,behavior_test_clock(2),f,c);
@@ -46,21 +46,21 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
  r=behavior_step(p,r.state,behavior_test_clock(3),f,c);#assert !r.command.started && r.state.serial==2 && r.state.interrupts==1;
 }
 #test "behavior weighted choices match an independent stream oracle with and without repeat suppression" #steps 60000000 {
- a:=policy.behavior_fixture_archetype();schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:[1]int;
+ a:=behavior_fixture_archetype();schema:=behavior_fixture_schema();refs:StateRefs;anchors:[1]int;
  expected:=[2][24]int.[[24]int.[20,30,20,30,10,20,30,20,10,30,10,30,10,30,20,30,20,30,20,30,20,30,20,30],
   [24]int.[20,20,30,30,10,20,30,30,20,30,10,30,10,30,20,30,20,30,30,20,20,30,30,30]];
  for mode:0..<2 {
-  a.parameters[archetypes.ACTOR_REPEAT]=state_int(1-mode);d:=policy.BehaviorDefinition.{id=2,n=3};
-  for i:0..<3 {d.sequences[i]=policy.BehaviorSequence.{id=(3-i)*10,weight=3-i};}
-  compiled:=policy.behavior_compile(a,schema,refs,d,anchors[0..<0]);#assert compiled.status==policy.BehaviorPlanStatus.ok;p:=compiled.plan;
+  a.parameters[ACTOR_REPEAT]=state_int(1-mode);d:=BehaviorDefinition.{id=2,n=3};
+  for i:0..<3 {d.sequences[i]=BehaviorSequence.{id=(3-i)*10,weight=3-i};}
+  compiled:=behavior_compile(a,schema,refs,d,anchors[0..<0]);#assert compiled.status==BehaviorPlanStatus.ok;p:=compiled.plan;
   state:=behavior_open(p,7,2,3,1,2026,0);f:=behavior_test_facts(p);c:=behavior_test_context();
   for tick:1..<25 {r:=behavior_step(p,state,behavior_test_clock(tick),f,c);#assert r.status==BehaviorStatus.ok && r.command.sequence==expected[mode][tick-1] && r.state.draws==tick && r.state.serial==tick && r.state.successes==tick-1;state=r.state;}
  }
 }
 #test "behavior sequences advance once retain noninterruptible actions and cool down at the exact boundary" #steps 30000000 {
- a:=policy.behavior_fixture_archetype();d:=policy.behavior_fixture_definition();schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
- d.sequences[0].actions[0].interruptible=false;d.sequences[0].action_n=2;d.sequences[0].actions[1]=policy.BehaviorAction.{duration=2};d.sequences[1].actions[0].duration=20;
- p:=policy.behavior_compile(a,schema,refs,d,anchors[..]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();c.signals=3;c.target=99;c.target_generation=4;
+ a:=behavior_fixture_archetype();d:=behavior_fixture_definition();schema:=behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
+ d.sequences[0].actions[0].interruptible=false;d.sequences[0].action_n=2;d.sequences[0].actions[1]=BehaviorAction.{duration=2};d.sequences[1].actions[0].duration=20;
+ p:=behavior_compile(a,schema,refs,d,anchors[..]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();c.signals=3;c.target=99;c.target_generation=4;
  opened:=behavior_open(p,7,2,3,1,2026,0);r:=behavior_step(p,opened,behavior_test_clock(1),f,c);#assert r.command.sequence==10 && r.command.attributes==BEHAVIOR_INTERACTING;
  c.signals=0;c.target=0;c.target_generation=0;r=behavior_step(p,r.state,behavior_test_clock(2),f,c);#assert !r.command.started && r.command.sequence==10 && r.state.draws==1;
  r=behavior_step(p,r.state,behavior_test_clock(3),f,c);#assert r.event_n==2 && r.events[0].outcome==BEHAVIOR_SUCCESS && !r.events[0].finished && r.events[1].serial==0 && r.events[1].outcome==BEHAVIOR_INTERRUPTED;
@@ -95,10 +95,10 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
  s.draws=0;s.serial=1000000000;#assert behavior_step(p,s,behavior_test_clock(1),f,c).status==BehaviorStatus.exhausted;
 }
 #test "behavior fact guards read only projected typed values and compare complete reference identities" #steps 30000000 {
- a:=policy.behavior_fixture_archetype();d:=policy.behavior_fixture_definition();schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
- d.sequences[0].guards[0]=policy.BehaviorGuard.{field=102,value=state_bool(false)};
- d.sequences[1].guard_n=1;d.sequences[1].guards[0]=policy.BehaviorGuard.{kind=policy.BEHAVIOR_LESS,field=101,value=state_int(2)};
- p:=policy.behavior_compile(a,schema,refs,d,anchors[..]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
+ a:=behavior_fixture_archetype();d:=behavior_fixture_definition();schema:=behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
+ d.sequences[0].guards[0]=BehaviorGuard.{field=102,value=state_bool(false)};
+ d.sequences[1].guard_n=1;d.sequences[1].guards[0]=BehaviorGuard.{kind=BEHAVIOR_LESS,field=101,value=state_int(2)};
+ p:=behavior_compile(a,schema,refs,d,anchors[..]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
  r:=behavior_step(p,s,behavior_test_clock(1),f,c);#assert r.command.sequence==10;
  f.values[1]=state_bool(true);r=behavior_step(p,r.state,behavior_test_clock(2),f,c);#assert r.command.sequence==20 && r.state.interrupts==1;
  f.values[0]=state_int(2);r=behavior_step(p,r.state,behavior_test_clock(3),f,c);#assert r.status==BehaviorStatus.ok && !r.command.active && r.state.selected== -1;
@@ -108,7 +108,7 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
   if which==5 {other.entity=1;}if which==6 {other.generation=1;}if which==7 {other.content.words[7]=1;}
   #assert !behavior_value_equal(v,other);
  }
- g:=policy.BehaviorGuard.{kind=policy.BEHAVIOR_LESS,slot=0,expected=false,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[0.5,0,0]}};
+ g:=BehaviorGuard.{kind=BEHAVIOR_LESS,slot=0,expected=false,value=StateValue.{kind=STATE_SCALAR,number=[3]f64.[0.5,0,0]}};
  f.values[0]=StateValue.{kind=STATE_SCALAR,number=[3]f64.[0.5,0,0]};#assert behavior_guard(g,f,c,false);
  f.values[0].number[0]=0.25;#assert !behavior_guard(g,f,c,false);
 }
@@ -164,11 +164,11 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
  }
 }
 #test "behavior commands expose every native verb and fence targets independently of interruption permission" #steps 150000000 {
- a:=policy.behavior_fixture_archetype();a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(2);schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
+ a:=behavior_fixture_archetype();a.parameters[ACTOR_CONTROLLER]=state_int(2);schema:=behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
  for verb:0..<7 {for mode:0..<2 {
-  d:=policy.BehaviorDefinition.{id=6,n=1};d.sequences[0]=policy.BehaviorSequence.{id=1};
-  d.sequences[0].actions[0]=policy.BehaviorAction.{verb=verb,argument=ifx verb==policy.BEHAVIOR_GO then 100 else ifx verb==policy.BEHAVIOR_SAY then 8 else 0,duration=3,interruptible=mode==1};
-  compiled:=policy.behavior_compile(a,schema,refs,d,anchors[..]);#assert compiled.status==policy.BehaviorPlanStatus.ok;p:=compiled.plan;
+  d:=BehaviorDefinition.{id=6,n=1};d.sequences[0]=BehaviorSequence.{id=1};
+  d.sequences[0].actions[0]=BehaviorAction.{verb=verb,argument=ifx verb==BEHAVIOR_GO then 100 else ifx verb==BEHAVIOR_SAY then 8 else 0,duration=3,interruptible=mode==1};
+  compiled:=behavior_compile(a,schema,refs,d,anchors[..]);#assert compiled.status==BehaviorPlanStatus.ok;p:=compiled.plan;
   f:=behavior_test_facts(p);c:=behavior_test_context();c.signals=1;c.target=99;c.target_generation=4;s:=behavior_open(p,7,2,3,1,2026,0);
   r:=behavior_step(p,s,behavior_test_clock(1),f,c);moving:=verb==1 || verb==2 || verb==3 || verb==6;interacting:=verb==4 || verb==5;targeted:=verb==2 || verb==3 || verb==4;
   #assert r.status==BehaviorStatus.ok && r.command.verb==verb && r.command.attributes==(ifx moving then 1 else 0)+(ifx interacting then 2 else 0)+mode*4;
@@ -183,14 +183,14 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
    for invalid:0..<4 {bad:=r.state;if invalid==0 {bad.target=0;}if invalid==1 {bad.target=7;}if invalid==2 {bad.target_generation=0;}if invalid==3 {bad.target_generation=1000000001;}#assert !behavior_state_ok(p,bad);}
    c.signals=0;c.target=0;c.target_generation=0;r=behavior_step(p,r.state,behavior_test_clock(6),f,c);#assert !r.command.active && r.state.interrupts==2 && behavior_state_ok(p,r.state);
   }
-  if verb==policy.BEHAVIOR_GO {for invalid:0..<3 {bad:=r.state;
+  if verb==BEHAVIOR_GO {for invalid:0..<3 {bad:=r.state;
    if invalid==0 {bad.anchor_slot= -1;}if invalid==1 {bad.anchor_slot=2;}if invalid==2 {bad.argument=200;bad.anchor_slot=1;}
    #assert !behavior_state_ok(p,bad);
   }}
  }}
 }
 #test "behavior projected worlds copied facts and schedule filters retain their full admission boundary" #steps 60000000 {
- p:=behavior_test_plan();schema:=policy.behavior_fixture_schema();refs:StateRefs;store:=archetypes.state_construct(schema,refs,1);
+ p:=behavior_test_plan();schema:=behavior_fixture_schema();refs:StateRefs;store:=state_construct(schema,refs,1);
  f:=behavior_project(p,schema,store,refs,1);store.values[0]=state_int(2);#assert f.values[0].integer==0;
  for which:0..<5 {bad:=store;
   if which==0 {bad.ready=false;}if which==1 {bad.schema=0;}if which==2 {bad.epoch=2;}if which==3 {bad.values[0]=state_int(3);}if which==4 {bad.phase=8;}
@@ -198,14 +198,14 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
  }
  bad_schema:=schema;bad_schema.id=0;#assert !behavior_project(p,bad_schema,store,refs,1).valid;
  bad_plan:=p;bad_plan.valid=false;#assert !behavior_project(bad_plan,schema,store,refs,1).valid;
- bad_plan=p;bad_plan.schema=archetypes.state_schema_id(bad_schema);bad_store:=store;bad_store.schema=0;#assert !behavior_project(bad_plan,bad_schema,bad_store,refs,1).valid;
+ bad_plan=p;bad_plan.schema=state_schema_id(bad_schema);bad_store:=store;bad_store.schema=0;#assert !behavior_project(bad_plan,bad_schema,bad_store,refs,1).valid;
  for which:0..<3 {bad:=p;if which==0 {bad.fields[0].slot= -1;}if which==1 {bad.fields[0].slot=2;}if which==2 {bad.fields[0].reference.id=999;}
   #assert !behavior_project(bad,schema,store,refs,1).valid;
  }
- bad_plan=p;bad_plan.fields[0]=archetypes.ActorCompiledField.{slot=schema.n,reference=archetypes.ActorFieldRef.{kind=STATE_INT}};#assert !behavior_project(bad_plan,schema,store,refs,1).valid;
- a:=policy.behavior_fixture_archetype();d:=policy.behavior_fixture_definition();anchors:=[2]int.[100,200];d.schedules[0].day_period=2;d.schedules[0].day_remainder=1;d.schedules[0].guard_n=1;
- d.schedules[0].guards[0]=policy.BehaviorGuard.{field=102,value=state_bool(true)};d.schedules[1].anchor=0;
- p=policy.behavior_compile(a,schema,refs,d,anchors[..]).plan;f=behavior_test_facts(p);c:=behavior_test_context();f.day=1;f.phase=3;f.values[1]=state_bool(true);
+ bad_plan=p;bad_plan.fields[0]=ActorCompiledField.{slot=schema.n,reference=ActorFieldRef.{kind=STATE_INT}};#assert !behavior_project(bad_plan,schema,store,refs,1).valid;
+ a:=behavior_fixture_archetype();d:=behavior_fixture_definition();anchors:=[2]int.[100,200];d.schedules[0].day_period=2;d.schedules[0].day_remainder=1;d.schedules[0].guard_n=1;
+ d.schedules[0].guards[0]=BehaviorGuard.{field=102,value=state_bool(true)};d.schedules[1].anchor=0;
+ p=behavior_compile(a,schema,refs,d,anchors[..]).plan;f=behavior_test_facts(p);c:=behavior_test_context();f.day=1;f.phase=3;f.values[1]=state_bool(true);
  schedule:=behavior_schedule(p,f,c);#assert schedule.active && schedule.anchor==100 && schedule.guards==1;
  f.day=2;#assert !behavior_schedule(p,f,c).active;f.day=1;f.values[1]=state_bool(false);#assert !behavior_schedule(p,f,c).active;
  f.phase=4;schedule=behavior_schedule(p,f,c);#assert !schedule.active && schedule.row==1;
@@ -238,35 +238,35 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
  cursor:=behavior_open(p,7,2,3,1,2026,1);#assert owed.counted_ns==0 && behavior_step(p,cursor,owed,f,c).status==BehaviorStatus.ok;
 }
 #test "behavior weighted groups exclude ineligible peers and retain the first eligible alternate" #steps 60000000 {
- a:=policy.behavior_fixture_archetype();schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:[1]int;
- d:=policy.BehaviorDefinition.{id=9,n=2};d.sequences[0]=policy.BehaviorSequence.{id=10,guard_n=1,weight=65535};
- d.sequences[0].guards[0]=policy.BehaviorGuard.{kind=policy.BEHAVIOR_SIGNAL,signal=policy.BEHAVIOR_VISIBLE};d.sequences[1]=policy.BehaviorSequence.{id=20};
- p:=policy.behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
+ a:=behavior_fixture_archetype();schema:=behavior_fixture_schema();refs:StateRefs;anchors:[1]int;
+ d:=BehaviorDefinition.{id=9,n=2};d.sequences[0]=BehaviorSequence.{id=10,guard_n=1,weight=65535};
+ d.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,signal=BEHAVIOR_VISIBLE};d.sequences[1]=BehaviorSequence.{id=20};
+ p:=behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
  r:=behavior_step(p,s,behavior_test_clock(1),f,c);#assert r.status==BehaviorStatus.ok && r.command.sequence==20;
  d.sequences[0].guard_n=0;d.sequences[0].weight=1;d.sequences[1].weight=65535;
- p=policy.behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f=behavior_test_facts(p);s=behavior_open(p,7,2,3,1,2026,0);
+ p=behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f=behavior_test_facts(p);s=behavior_open(p,7,2,3,1,2026,0);
  r=behavior_step(p,s,behavior_test_clock(1),f,c);#assert r.command.sequence==20;
  r=behavior_step(p,r.state,behavior_test_clock(2),f,c);#assert r.status==BehaviorStatus.ok && r.command.sequence==10;
 }
 #test "behavior target replacement recomputes both eligibility and top priority after cooling the old sequence" #steps 30000000 {
- a:=policy.behavior_fixture_archetype();schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:[1]int;d:=policy.behavior_fixture_definition();d.schedule_n=0;
- d.sequences[0].guard_n=0;d.sequences[0].cooldown=3;d.sequences[0].actions[0]=policy.BehaviorAction.{verb=policy.BEHAVIOR_CHASE,duration=64};
- p:=policy.behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();c.signals=1;c.target=99;c.target_generation=4;
+ a:=behavior_fixture_archetype();schema:=behavior_fixture_schema();refs:StateRefs;anchors:[1]int;d:=behavior_fixture_definition();d.schedule_n=0;
+ d.sequences[0].guard_n=0;d.sequences[0].cooldown=3;d.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_CHASE,duration=64};
+ p:=behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();c.signals=1;c.target=99;c.target_generation=4;
  s:=behavior_open(p,7,2,3,1,2026,0);r:=behavior_step(p,s,behavior_test_clock(1),f,c);#assert r.command.sequence==10;
  c.target_generation=5;r=behavior_step(p,r.state,behavior_test_clock(2),f,c);#assert r.status==BehaviorStatus.ok && r.command.sequence==20 && r.state.cooling[0] && r.state.completed[0]==2 && r.state.interrupts==1;
 }
 #test "behavior unavailable scheduled movement emits no null anchor while fixed anchor one stays available" #steps 30000000 {
- a:=policy.behavior_fixture_archetype();schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:=[1]int.[1];
- d:=policy.BehaviorDefinition.{id=10,n=1,schedule_n=1};d.sequences[0]=policy.BehaviorSequence.{id=1};d.sequences[0].actions[0]=policy.BehaviorAction.{verb=policy.BEHAVIOR_GO,duration=64};
- p:=policy.behavior_compile(a,schema,refs,d,anchors[..]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
+ a:=behavior_fixture_archetype();schema:=behavior_fixture_schema();refs:StateRefs;anchors:=[1]int.[1];
+ d:=BehaviorDefinition.{id=10,n=1,schedule_n=1};d.sequences[0]=BehaviorSequence.{id=1};d.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_GO,duration=64};
+ p:=behavior_compile(a,schema,refs,d,anchors[..]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
  r:=behavior_step(p,s,behavior_test_clock(1),f,c);#assert r.status==BehaviorStatus.ok && !r.command.active && r.state.draws==0 && r.state.serial==0;
- d.schedule_n=0;d.sequences[0].actions[0].argument=1;p=policy.behavior_compile(a,schema,refs,d,anchors[..]).plan;f=behavior_test_facts(p);s=behavior_open(p,7,2,3,1,2026,0);
+ d.schedule_n=0;d.sequences[0].actions[0].argument=1;p=behavior_compile(a,schema,refs,d,anchors[..]).plan;f=behavior_test_facts(p);s=behavior_open(p,7,2,3,1,2026,0);
  r=behavior_step(p,s,behavior_test_clock(1),f,c);#assert r.status==BehaviorStatus.ok && r.command.active && r.command.argument==1 && r.command.anchor_slot==0;
 }
 #test "behavior unavailable next actions fail the sequence without minting an action serial" #steps 30000000 {
- a:=policy.behavior_fixture_archetype();schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:[1]int;
- d:=policy.BehaviorDefinition.{id=11,n=1};d.sequences[0]=policy.BehaviorSequence.{id=1,action_n=2,cooldown=3};d.sequences[0].actions[1]=policy.BehaviorAction.{verb=policy.BEHAVIOR_CHASE,duration=64};
- p:=policy.behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
+ a:=behavior_fixture_archetype();schema:=behavior_fixture_schema();refs:StateRefs;anchors:[1]int;
+ d:=BehaviorDefinition.{id=11,n=1};d.sequences[0]=BehaviorSequence.{id=1,action_n=2,cooldown=3};d.sequences[0].actions[1]=BehaviorAction.{verb=BEHAVIOR_CHASE,duration=64};
+ p:=behavior_compile(a,schema,refs,d,anchors[0..<0]).plan;f:=behavior_test_facts(p);c:=behavior_test_context();s:=behavior_open(p,7,2,3,1,2026,0);
  r:=behavior_step(p,s,behavior_test_clock(1),f,c);#assert r.command.active && r.state.serial==1;
  r=behavior_step(p,r.state,behavior_test_clock(2),f,c);
  #assert r.status==BehaviorStatus.ok && !r.command.active && r.state.serial==1 && r.state.draws==1 && r.state.failures==1 && r.state.interrupts==0 && r.event_n==2;
@@ -274,16 +274,16 @@ behavior_test_context :: ()->BehaviorContext #effects(all) {return BehaviorConte
  #assert behavior_state_ok(p,r.state);
 }
 #forall "behavior action pairs clear old command arguments anchors and targets before the next body action" first:0..<7,next:0..<7 #steps 200000000 {
- a:=policy.behavior_fixture_archetype();a.parameters[archetypes.ACTOR_CONTROLLER]=state_int(2);schema:=policy.behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
- d:=policy.BehaviorDefinition.{id=7,n=1};d.sequences[0]=policy.BehaviorSequence.{id=1,cooldown=2,action_n=2};
- for verb,k:[2]int.[first,next] {d.sequences[0].actions[k]=policy.BehaviorAction.{verb=verb,argument=ifx verb==policy.BEHAVIOR_GO then 100 else ifx verb==policy.BEHAVIOR_SAY then 8 else 0};}
- compiled:=policy.behavior_compile(a,schema,refs,d,anchors[..]);#assert compiled.status==policy.BehaviorPlanStatus.ok;p:=compiled.plan;
+ a:=behavior_fixture_archetype();a.parameters[ACTOR_CONTROLLER]=state_int(2);schema:=behavior_fixture_schema();refs:StateRefs;anchors:=[2]int.[100,200];
+ d:=BehaviorDefinition.{id=7,n=1};d.sequences[0]=BehaviorSequence.{id=1,cooldown=2,action_n=2};
+ for verb,k:[2]int.[first,next] {d.sequences[0].actions[k]=BehaviorAction.{verb=verb,argument=ifx verb==BEHAVIOR_GO then 100 else ifx verb==BEHAVIOR_SAY then 8 else 0};}
+ compiled:=behavior_compile(a,schema,refs,d,anchors[..]);#assert compiled.status==BehaviorPlanStatus.ok;p:=compiled.plan;
  f:=behavior_test_facts(p);c:=behavior_test_context();c.signals=1;c.target=99;c.target_generation=4;
  s:=behavior_open(p,7,2,3,1,2026,0);r:=behavior_step(p,s,behavior_test_clock(1),f,c);
  c.feedback=BehaviorFeedback.{key=r.command.key,outcome=BEHAVIOR_SUCCESS};r=behavior_step(p,r.state,behavior_test_clock(2),f,c);
  #assert r.status==BehaviorStatus.ok && r.command.verb==next && r.command.started && r.command.step==1 && r.state.serial==2 && r.event_n==1 && !r.events[0].finished;
- #assert r.command.argument==(ifx next==policy.BEHAVIOR_GO then 100 else ifx next==policy.BEHAVIOR_SAY then 8 else 0) && r.command.anchor_slot==(ifx next==policy.BEHAVIOR_GO then 0 else -1);
- targeted:=next==policy.BEHAVIOR_CHASE || next==policy.BEHAVIOR_FLEE || next==policy.BEHAVIOR_INTERACT;
+ #assert r.command.argument==(ifx next==BEHAVIOR_GO then 100 else ifx next==BEHAVIOR_SAY then 8 else 0) && r.command.anchor_slot==(ifx next==BEHAVIOR_GO then 0 else -1);
+ targeted:=next==BEHAVIOR_CHASE || next==BEHAVIOR_FLEE || next==BEHAVIOR_INTERACT;
  #assert r.command.target==(ifx targeted then 99 else 0) && r.command.target_generation==(ifx targeted then 4 else 0) && behavior_state_ok(p,r.state);
  c.feedback=BehaviorFeedback.{key=r.command.key,outcome=BEHAVIOR_SUCCESS};r=behavior_step(p,r.state,behavior_test_clock(3),f,c);
  #assert r.status==BehaviorStatus.ok && !r.command.active && r.state.selected== -1 && r.state.successes==1 && r.state.serial==2 && r.state.draws==1 && r.events[0].finished && behavior_state_ok(p,r.state);

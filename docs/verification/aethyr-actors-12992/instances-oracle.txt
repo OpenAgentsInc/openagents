@@ -1,0 +1,5 @@
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/instances-v2/sanitized.txt: 256 exact lifecycle/selection rows, [0, 30, 60, 144]; sha256=0bfb7f6f38a6bc2b2446a293f297327068693282b75f40df1c5aa2c4d9cb29a7
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/instances-v2/browser-0.txt: 64 exact lifecycle/selection rows, [0]; sha256=69433254e54ad60d72b7773f60f1f34d889af771be2e34a1cb53c83c5c72ef74
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/instances-v2/browser-144.txt: 64 exact lifecycle/selection rows, [144]; sha256=c7c3577cbfba0f84b3cb45e385c32ccb6d45e7b6d279ff19156d88aaeae3be71
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/instances-v2/browser-30.txt: 64 exact lifecycle/selection rows, [30]; sha256=28072941984e5b00e1b5c72113e826e8ca632b6e0b0b6e60182198a918047559
+PASS: /home/christopherdavid/.openagents/aethyrforge/actors-12992/instances-v2/browser-60.txt: 64 exact lifecycle/selection rows, [60]; sha256=0ae7697083285a8738946de6fdf6de1f124a84c7c0fa0f6a09eaa7cb50aef802

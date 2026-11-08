@@ -1,0 +1,72 @@
+actor_resources_fixture :: (m:[]ResourceManifest)->ActorArchetype #effects(all) {
+ defs:=actor_definition_sources(m[0]);services:=actor_definition_services();refs:StateRefs;
+ r:=actor_definition_compile(defs[..],30,services[..],actor_definition_schema(),refs,m);#assert r.status==ActorCompileStatus.ok;return r.archetype;
+}
+#test "actor root claims are atomic and retain shared dependency owners until their final claim" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];s:=[1]ResourceStream.[rs_fixture_stream(m[..])];a:=actor_resources_fixture(m[..]);
+ first:=[1]ActorResources.[actor_resources_hold(a,s[..],m[..])];second:=[1]ActorResources.[actor_resources_hold(a,s[..],m[..])];
+ #assert first[0].valid && first[0].n==2 && first[0].roots[0]==1 && first[0].roots[1]==2;
+ #assert second[0].valid && s[0].owners[1].refs==2 && s[0].owners[2].refs==2 && s[0].owners[0].refs==2;
+ #assert !actor_resources_ready(first[0],s[..],m[..]);
+ duplicate:=first;#assert actor_resources_drop(first[..],s[..],m[..]) && !first[0].valid;
+ #assert !actor_resources_drop(duplicate[..],s[..],m[..]) && s[0].owners[1].refs==1 && s[0].owners[0].refs==2;
+ #assert actor_resources_drop(second[..],s[..],m[..]) && s[0].owners[0].refs==0 && !s[0].owners[0].active;
+}
+#test "an actor cannot publish a prefix of its resource closure and destruction stays with the stream" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];s:=[1]ResourceStream.[rs_fixture_stream(m[..])];a:=actor_resources_fixture(m[..]);
+ lease:=[1]ActorResources.[actor_resources_hold(a,s[..],m[..])];q:=[1]HostInboxQueue.[hiq_open(HOST_INBOX_CAPACITY)];r:[1]gpu.RenderRegistry;
+ #assert gpu.rr_open(r[..],gpu.RrLimits.{slots=8,words=1000})==gpu.RrStatus.ok;
+ source:=[4]u8.[1,0,0,0];keys:[3]ResourceLoadKey;
+ for i:0..<3 {load:=resource_stream_request(s[..],m[..],q[..],r[..],i);#assert load.status==ResourceStreamStatus.ok;keys[i]=load.key;}
+ for i:[2]int.[0,2] {source[0]=cast(u8)(i+1);#assert resource_stream_complete(s[..],m[..],q[..],keys[i],source[..],ResourceCostStatus.ok)==ResourceStreamStatus.ok;}
+ events:[3]ResourceAccepted;#assert resource_stream_publish(s[..],m[..],0,events[0..<1])== -1 && !actor_resources_ready(lease[0],s[..],m[..]);
+ #assert resource_stream_publish(s[..],m[..],0,events[..])==2 && !actor_resources_ready(lease[0],s[..],m[..]);
+ source[0]=2;#assert resource_stream_complete(s[..],m[..],q[..],keys[1],source[..],ResourceCostStatus.ok)==ResourceStreamStatus.ok;
+ #assert resource_stream_publish(s[..],m[..],1,events[..])==1 && actor_resources_ready(lease[0],s[..],m[..]);
+ borrow:=resource_stream_borrow(s[..],1);before:=s[0].budget[0].total;
+ #assert actor_resources_drop(lease[..],s[..],m[..]) && s[0].budget[0].total==before && r[0].live==3;
+ #assert !resource_stream_destroyed(s[..],m[..],q[..],r[..],keys[1]);
+ #assert resource_stream_return(s[..],m[..],borrow) && resource_stream_destroyed(s[..],m[..],q[..],r[..],keys[1]);
+ #assert resource_stream_destroyed(s[..],m[..],q[..],r[..],keys[2]) && resource_stream_destroyed(s[..],m[..],q[..],r[..],keys[0]);
+ #assert s[0].budget[0].total==0 && q[0].bytes==0 && r[0].live==0;
+}
+#test "actor claim failures spend no stream serial slots or root references" #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];base:=[1]ResourceStream.[rs_fixture_stream(m[..])];a:=actor_resources_fixture(m[..]);
+ for i:0..<63 {#assert resource_stream_hold(base[..],m[..],0).slot==i;}
+ serial:=base[0].serial;refs:=base[0].owners[0].refs;
+ #assert !actor_resources_hold(a,base[..],m[..]).valid && base[0].serial==serial && base[0].owners[0].refs==refs && !base[0].claims[63].live;
+ for which:0..<7 {s:=[1]ResourceStream.[rs_fixture_stream(m[..])];bad:=a;
+  if which==0 {bad.valid=false;}if which==1 {bad.manifest.words[0]^=1;}if which==2 {bad.root_count= -1;}
+  if which==3 {bad.root_count=9;}if which==4 {bad.roots[0]=3;}if which==5 {bad.roots[0]= -1;}if which==6 {s[0].closing=true;}
+  #assert !actor_resources_hold(bad,s[..],m[..]).valid && s[0].serial==0;
+ }
+ empty:=a;empty.root_count=0;s:=[1]ResourceStream.[rs_fixture_stream(m[..])];none:=[1]ActorResources.[actor_resources_hold(empty,s[..],m[..])];
+ #assert none[0].valid && none[0].n==0 && actor_resources_ready(none[0],s[..],m[..]) && actor_resources_drop(none[..],s[..],m[..]);
+}
+#forall "actor resource leases fence all identity lanes before readiness or release" which:0..<10 #steps 30000000 {
+ m:=[1]ResourceManifest.[actor_definition_manifest()];s:=[1]ResourceStream.[rs_fixture_stream(m[..])];a:=actor_resources_fixture(m[..]);
+ lease:=[1]ActorResources.[actor_resources_hold(a,s[..],m[..])];bad:=lease;
+ if which==0 {bad[0].valid=false;}if which==1 {bad[0].epoch+=1;}if which==2 {bad[0].manifest.words[7]^=1;}
+ if which==3 {bad[0].n= -1;}if which==4 {bad[0].n=9;}if which==5 {bad[0].claims[1].slot= -1;}
+ if which==6 {bad[0].claims[1].slot=64;}if which==7 {bad[0].claims[1].serial+=1;}if which==8 {bad[0].claims[1].epoch+=1;}if which==9 {bad[0].roots[1]=0;}
+ #assert !actor_resources_bound(bad[0],s[..],m[..]) && !actor_resources_ready(bad[0],s[..],m[..]) && !actor_resources_drop(bad[..],s[..],m[..]);
+ #assert s[0].claims[lease[0].claims[0].slot].live && s[0].claims[lease[0].claims[1].slot].live;
+ #assert actor_resources_drop(lease[..],s[..],m[..]);
+}
+#test "actor root limit admits eight independent compiled roots and fences a forged free or duplicate claim" #steps 30000000 {
+ bytes:[8][4]u8;sources:[8][]u8;specs:[8]ResourceSpec;deps:[8]ResourceDependencies;
+ for i:0..<8 {bytes[i][0]=cast(u8)(i+1);sources[i]=bytes[i][..];specs[i]=ResourceSpec.{format=ResourceFormat.indices};}
+ encoded:[3568]u8;#assert resource_manifest_build(sources[..],specs[..],deps[..],encoded[..])==ResourceManifestStatus.ok;
+ m:[1]ResourceManifest;#assert resource_manifest_read(encoded[..],assets.asset_id(cast(string)encoded[..]),m[..])==ResourceManifestStatus.ok;
+ defs:=actor_definition_sources(m[0]);defs[1].root_count=8;
+ for i:0..<8 {defs[1].roots[i]=ActorResourceRef.{content=m[0].entries[i].plan.content,spec=specs[i]};}
+ services:=actor_definition_services();refs:StateRefs;a:=actor_definition_compile(defs[..],30,services[..],actor_definition_schema(),refs,m[..]).archetype;
+ #assert a.valid && a.root_count==8;s:=[1]ResourceStream.[rs_fixture_stream(m[..])];lease:=[1]ActorResources.[actor_resources_hold(a,s[..],m[..])];
+ #assert lease[0].valid && lease[0].n==8 && actor_resources_bound(lease[0],s[..],m[..]);
+ bad:=lease;bad[0].claims[0].slot=63;bad[0].claims[0].serial=0;#assert !actor_resources_bound(bad[0],s[..],m[..]);
+ bad=lease;bad[0].claims[0].serial+=1;#assert !actor_resources_bound(bad[0],s[..],m[..]);
+ bad=lease;bad[0].n=9;#assert !actor_resources_bound(bad[0],s[..],m[..]);
+ bad=lease;bad[0].claims[1]=bad[0].claims[0];bad[0].roots[1]=bad[0].roots[0];
+ #assert !actor_resources_drop(bad[..],s[..],m[..]) && s[0].claims[0].live && s[0].claims[1].live;
+ #assert actor_resources_drop(lease[..],s[..],m[..]);
+}

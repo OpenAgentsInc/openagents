@@ -1,63 +1,63 @@
 // Actual fixed-step behavior observations. All schedules and inputs are Coax.
 #module "aethyr.actors.behavior_trial";
 #import "Basic";
-#load "../behavior.coax" as engine;
-#load "../behavior-plan.coax" as policy;
-#load "../definitions.coax" as archetypes;
+#load "../behavior.coax";
+#load "../behavior-plan.coax";
+#load "../definitions.coax";
 #load "../../state/declarations.coax" as state;
 #load "../../loop.coax" as clock;
 BehaviorTrial :: struct {rows:[256][64]int;count:int;}
-behavior_trial_plan :: ()->policy.BehaviorPlan #effects(all) {
- a:=policy.behavior_fixture_archetype();schema:=policy.behavior_fixture_schema();refs:state.StateRefs;anchors:=[2]int.[100,200];
- d:=policy.BehaviorDefinition.{id=12992005,n=4,schedule_n=2};
- d.sequences[0]=policy.BehaviorSequence.{id=10,cooldown=5,guard_n=1,action_n=2};
- d.sequences[0].guards[0]=policy.BehaviorGuard.{kind=policy.BEHAVIOR_SIGNAL,signal=policy.BEHAVIOR_VISIBLE};
- d.sequences[0].actions[0]=policy.BehaviorAction.{verb=policy.BEHAVIOR_SAY,argument=4,duration=3,interruptible=false};
- d.sequences[0].actions[1]=policy.BehaviorAction.{duration=2};
- d.sequences[1]=policy.BehaviorSequence.{id=20,priority=1,weight=2,cooldown=2,guard_n=2};
- d.sequences[1].guards[0]=policy.BehaviorGuard.{kind=policy.BEHAVIOR_SCHEDULE};
- d.sequences[1].guards[1]=policy.BehaviorGuard.{kind=policy.BEHAVIOR_LESS,field=101,value=state.state_int(2)};
- d.sequences[1].actions[0]=policy.BehaviorAction.{verb=policy.BEHAVIOR_GO,duration=6};
- d.sequences[2]=policy.BehaviorSequence.{id=30,priority=2};
- d.sequences[3]=policy.BehaviorSequence.{id=40,priority=2,weight=3,guard_n=1};
- d.sequences[3].guards[0]=policy.BehaviorGuard.{field=102,value=state.state_bool(true)};
- d.sequences[3].actions[0]=policy.BehaviorAction.{verb=policy.BEHAVIOR_SAY,argument=7,duration=2};
- d.schedules[0]=policy.BehaviorSchedule.{anchor=100,day_period=2};
- d.schedules[1]=policy.BehaviorSchedule.{phase=4,anchor=200,guard_n=1};
- d.schedules[1].guards[0]=policy.BehaviorGuard.{field=102,value=state.state_bool(false)};
- compiled:=policy.behavior_compile(a,schema,refs,d,anchors[..]);#assert compiled.status==policy.BehaviorPlanStatus.ok;return compiled.plan;
+behavior_trial_plan :: ()->BehaviorPlan #effects(all) {
+ a:=behavior_fixture_archetype();schema:=behavior_fixture_schema();refs:state.StateRefs;anchors:=[2]int.[100,200];
+ d:=BehaviorDefinition.{id=12992005,n=4,schedule_n=2};
+ d.sequences[0]=BehaviorSequence.{id=10,cooldown=5,guard_n=1,action_n=2};
+ d.sequences[0].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SIGNAL,signal=BEHAVIOR_VISIBLE};
+ d.sequences[0].actions[0]=BehaviorAction.{verb=BEHAVIOR_SAY,argument=4,duration=3,interruptible=false};
+ d.sequences[0].actions[1]=BehaviorAction.{duration=2};
+ d.sequences[1]=BehaviorSequence.{id=20,priority=1,weight=2,cooldown=2,guard_n=2};
+ d.sequences[1].guards[0]=BehaviorGuard.{kind=BEHAVIOR_SCHEDULE};
+ d.sequences[1].guards[1]=BehaviorGuard.{kind=BEHAVIOR_LESS,field=101,value=state.state_int(2)};
+ d.sequences[1].actions[0]=BehaviorAction.{verb=BEHAVIOR_GO,duration=6};
+ d.sequences[2]=BehaviorSequence.{id=30,priority=2};
+ d.sequences[3]=BehaviorSequence.{id=40,priority=2,weight=3,guard_n=1};
+ d.sequences[3].guards[0]=BehaviorGuard.{field=102,value=state.state_bool(true)};
+ d.sequences[3].actions[0]=BehaviorAction.{verb=BEHAVIOR_SAY,argument=7,duration=2};
+ d.schedules[0]=BehaviorSchedule.{anchor=100,day_period=2};
+ d.schedules[1]=BehaviorSchedule.{phase=4,anchor=200,guard_n=1};
+ d.schedules[1].guards[0]=BehaviorGuard.{field=102,value=state.state_bool(false)};
+ compiled:=behavior_compile(a,schema,refs,d,anchors[..]);#assert compiled.status==BehaviorPlanStatus.ok;return compiled.plan;
 }
 behavior_trial_run :: (trial:[]BehaviorTrial,fps:int)->int #export_c #effects(all) {
  trial[0].count=0;if fps!=30 && fps!=60 && fps!=144 && fps!=0 {return -1;}
- p:=behavior_trial_plan();schema:=policy.behavior_fixture_schema();refs:state.StateRefs;store:=archetypes.state_construct(schema,refs,1);
- live:=engine.behavior_open(p,7,2,3,1,2026,0);c:clock.FrameClock;
+ p:=behavior_trial_plan();schema:=behavior_fixture_schema();refs:state.StateRefs;store:=state_construct(schema,refs,1);
+ live:=behavior_open(p,7,2,3,1,2026,0);c:clock.FrameClock;
  uneven:=[4]int.[5000000,27000000,14000000,31000000];
  for frame:0..<4096 {
   ns:=ifx fps==0 then uneven[frame%4] else ((frame+1)*clock.LOOP_SECOND)/fps-(frame*clock.LOOP_SECOND)/fps;
   scheduled:=clock.loop_accept_ns(c,ns);count:=clock.loop_due(scheduled);if count>256-c.ticks {count=256-c.ticks;}
   for i:0..<count {
    paid:=clock.loop_ran_some(scheduled,i+1);tick:=paid.ticks;
-   command:=archetypes.StateCommand.{epoch=1,revision=store.revision,tick=store.tick+1};
-   if tick%13==0 {command.patches[command.n]=archetypes.StatePatch.{id=101,value=state.state_int((tick/13)%3)};command.n+=1;}
-   if tick%17==0 {command.patches[command.n]=archetypes.StatePatch.{id=102,value=state.state_bool(store.values[1].integer==0)};command.n+=1;}
+   command:=StateCommand.{epoch=1,revision=store.revision,tick=store.tick+1};
+   if tick%13==0 {command.patches[command.n]=StatePatch.{id=101,value=state.state_int((tick/13)%3)};command.n+=1;}
+   if tick%17==0 {command.patches[command.n]=StatePatch.{id=102,value=state.state_bool(store.values[1].integer==0)};command.n+=1;}
    if tick==73 || tick==129 {command.jump=true;command.day=ifx tick==73 then 15 else 2;command.phase=ifx tick==73 then 7 else 2;}
    if command.n>0 || command.jump {command.sequence=add_sat(store.sequence,1);}
-   prepared:=archetypes.state_prepare(schema,store,refs,1,command);if prepared.status!=archetypes.STATE_OK {return -10-prepared.status;}store=prepared.state;
-   facts:=engine.behavior_project(p,schema,store,refs,1);context:=engine.BehaviorContext.{actor=7,generation=2,owner=3};known:=tick%48<32;
+   prepared:=state_prepare(schema,store,refs,1,command);if prepared.status!=STATE_OK {return -10-prepared.status;}store=prepared.state;
+   facts:=behavior_project(p,schema,store,refs,1);context:=BehaviorContext.{actor=7,generation=2,owner=3};known:=tick%48<32;
    if known {context.signals|=1;context.target=99;context.target_generation=5;}
    if known && tick%24<12 {context.signals|=2;}if known && tick%16>=8 {context.signals|=4;}
    context.signals|=ifx tick%8==0 then 16 else 8;
    if tick%37==0 {context.signals|=32;}if tick%41==0 {context.signals|=64;}if tick%43==0 {context.signals|=128;}
-   if live.selected>=0 && p.sequences[live.selected].actions[live.step].verb==policy.BEHAVIOR_GO && tick-live.started>=2 {
-    context.feedback=engine.BehaviorFeedback.{key=engine.behavior_key(live),outcome=ifx tick%7==0 then engine.BEHAVIOR_FAILURE else engine.BEHAVIOR_SUCCESS};
+   if live.selected>=0 && p.sequences[live.selected].actions[live.step].verb==BEHAVIOR_GO && tick-live.started>=2 {
+    context.feedback=BehaviorFeedback.{key=behavior_key(live),outcome=ifx tick%7==0 then BEHAVIOR_FAILURE else BEHAVIOR_SUCCESS};
    }
    refused:= -1;
    if tick%11==0 {
-    bad:=context;bad.feedback=engine.BehaviorFeedback.{key=engine.behavior_key(live),outcome=engine.BEHAVIOR_SUCCESS};bad.feedback.key.generation+=1;
-    probe:=engine.behavior_step(p,live,paid,facts,bad);refused=cast(int)probe.status;
-    if probe.status!=engine.BehaviorStatus.feedback || probe.state.tick!=live.tick || probe.state.serial!=live.serial || probe.event_n!=0 {return -90;}
+    bad:=context;bad.feedback=BehaviorFeedback.{key=behavior_key(live),outcome=BEHAVIOR_SUCCESS};bad.feedback.key.generation+=1;
+    probe:=behavior_step(p,live,paid,facts,bad);refused=cast(int)probe.status;
+    if probe.status!=BehaviorStatus.feedback || probe.state.tick!=live.tick || probe.state.serial!=live.serial || probe.event_n!=0 {return -90;}
    }
-   result:=engine.behavior_step(p,live,paid,facts,context);if result.status!=engine.BehaviorStatus.ok {return -100-cast(int)result.status;}live=result.state;
+   result:=behavior_step(p,live,paid,facts,context);if result.status!=BehaviorStatus.ok {return -100-cast(int)result.status;}live=result.state;
    out:=[34]int.[tick,store.tick,store.day,store.phase,store.values[0].integer,store.values[1].integer,store.sequence,cast(int)context.signals,
     result.schedule,result.anchor,cast(int)result.status,live.selected,result.command.sequence,live.step,live.serial,live.draws,live.started,live.argument,live.anchor_slot,live.last,
     live.successes,live.failures,live.interrupts,ifx result.command.active then 1 else 0,ifx result.command.started then 1 else 0,result.command.verb,result.command.attributes,
