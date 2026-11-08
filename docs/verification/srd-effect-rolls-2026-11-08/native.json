@@ -1,0 +1,139 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/effect-roll-checks.coax",
+      "source_sha256": "7870bc2f213e6c656ed7be9e4e43a1a13e47e22ee17499c2711b8ed0ad11d512",
+      "checks": [
+        {
+          "name": "overlapping Bless and Bane retain their owners but roll one die per spell",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a single next attack consumes all weakness riders and preserves unrelated effects",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "all pending Vex and Guiding Bolt riders bind one roll and Vex keeps its other target",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "opposing next-roll sources cancel once and are all consumed even on the canceled roll",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "two actual Bless casts keep independent concentration and expiry without stacking dice",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a real missed weapon roll consumes all its riders even when opposing sources cancel",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "seeded named-boon rolls use exactly one d4 per named spell in a stable order",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "7d90e8298cec34fee932e7bae5220cfeba6f9bf31718eed7ce660ead53acd2d5",
+            "binary_sha256": "5758c27840f1fbe2bc9ae7a7cdab7e0e34132eac46d623f306da58dae9f71832"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "eb9a4ee8b6201e58b9d6471e6ae182e5e25eb1f6b1fb81d18b2a9d2ff6fc4a64",
+            "binary_sha256": "dc364c2c6cc0a2f5ef2097bc9dfc31bc78f73cfe398f620bcf80660e3d198d3e"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 7
+  },
+  "outcome": "passed"
+}

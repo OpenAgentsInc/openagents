@@ -1,0 +1,9 @@
+passed               aethyr/rules/srd/effect-roll-checks.coax
+  passed             overlapping Bless and Bane retain their owners but roll one die per spell
+  passed             a single next attack consumes all weakness riders and preserves unrelated effects
+  passed             all pending Vex and Guiding Bolt riders bind one roll and Vex keeps its other target
+  passed             opposing next-roll sources cancel once and are all consumed even on the canceled roll
+  passed             two actual Bless casts keep independent concentration and expiry without stacking dice
+  passed             a real missed weapon roll consumes all its riders even when opposing sources cancel
+  passed             seeded named-boon rolls use exactly one d4 per named spell in a stable order
+native checks: passed {"passed": 7}

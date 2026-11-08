@@ -19,6 +19,7 @@
 #load "zone-lifetime.coax";
 #load "effect-admission.coax";
 #load "reaction-slot.coax";
+#load "effect-rolls.coax";
 
 // Creatures a battle holds of its own. A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
@@ -312,11 +313,6 @@ rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) -> bool {
   b[0].c[j] = c[0];
   return retained;
 }
-// Uses up EF_WEAK on i (its next attack roll has Disadvantage); true when there was one.
-rs_take_weak :: (b: [] RsBattle, i: int) -> bool {
-  for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_WEAK { rs_drop_effect(b, i, k); return true; } }
-  return false;
-}
 // When the caster's next turn ends, and when it starts (its turns are instants on the clock).
 rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) + 0.05; }
 rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) - 0.01; }
@@ -460,15 +456,6 @@ rs_is_smite :: (s: RsSpell) -> bool {
 rs_dc :: (b: [] RsBattle, i: int) -> int { return rs_spell_dc(b[0].c[i]) + (ifx b[0].c[i].innate_until > b[0].clock then 1 else 0); }
 // Armor Class now: Shield's +5 until the start of its next turn, Shield of Faith's +2.
 rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + (ifx b[0].c[j].shield_until > b[0].clock then 5 else 0) + (ifx rs_effect(b[0].c[j], EF_FAITH) then 2 else 0); }
-// Bless and Bane on j's attack roll or saving throw: 1d4 more for Bless, 1d4 less for Bane (0 with neither).
-rs_boon_roll :: (b: [] RsBattle, j: int) -> int {
-  n := 0;
-  for k: 0..<RS_EFFECTS {   // read in place: every attack roll and save asks
-    if b[0].c[j].eff[k].kind == EF_BLESS { n += rs_roll(b[0].dice[..], 4); }
-    if b[0].c[j].eff[k].kind == EF_BANE { n -= rs_roll(b[0].dice[..], 4); }
-  }
-  return n;
-}
 // Whether creature i can cast spell sp with a slot of level `slot` now (0 for a cantrip, or for the
 // spell its feature casts without a slot: Paladin's Smite, Favored Enemy). `quick` casts an action
 // spell as a Bonus Action with Quickened Spell (2 Sorcery Points), not after a level 1+ spell this
@@ -764,12 +751,8 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   // Frightened: Disadvantage on attack rolls (the source of its fear is always in sight here)
   if rs_has(b[0].c[i], RS_FRIGHTENED) { downs += 1; }
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
-  for k: 0..<RS_EFFECTS {
-    if b[0].c[j].eff[k].kind == EF_EXPOSED { rs_drop_effect(b, j, k); ups += 1; break; }
-  }
-  for k: 0..<RS_EFFECTS {
-    if b[0].c[i].eff[k].kind == EF_VEX && b[0].c[i].eff[k].cond == j { rs_drop_effect(b, i, k); ups += 1; break; }
-  }
+  if rs_take_pending(b, j, EF_EXPOSED, -1) { ups += 1; }
+  if rs_take_pending(b, i, EF_VEX, j) { ups += 1; }
   if b[0].who == i && b[0].turn.aimed { b[0].turn.aimed = false; ups += 1; }
   return rs_edge(ups, downs);
 }

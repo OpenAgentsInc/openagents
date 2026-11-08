@@ -1,0 +1,6 @@
+57efc54faadc5d15bfdfb496e150918c05c00928775bc717c77d26854a9e4819  aethyr/rules/srd/effect-rolls.coax
+bc949108adca8685d8779e8321bc015c080f17cbc434594b7337717fb9d5dea9  aethyr/rules/srd/effect-roll-checks.coax
+cfb50ee1eecbecc8d6bfff75d0e0c73f24d128ec6d2e90ce95b8e3fc451889c0  aethyr/rules/srd/battle.coax
+69b888856c38a7cee263997aaf5defb073dce5466c209bd2e7dc4135489a794c  aethyr/rules/srd/reaction-slot.coax
+847ba89c10c9de2dad1685dfdd440e6db517213364d89981cf9423c8dba82c95  apps/openagents-web/fivebar-test.coax
+3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9  coax/bin/coax

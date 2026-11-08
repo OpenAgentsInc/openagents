@@ -6499,3 +6499,18 @@ against the other ...", `verse/everglade2/ground.coax` "the table draws the
 pack's ground colours ...", `apps/openagents-web/gpu/everglade2.coax` "the
 ground reads its table's material, the litter's share of the layers under it,
 and the bake's AO".
+
+## Shared combat rolls retain owners without multiplying named benefits
+
+`aethyr/rules/srd/effect-rolls.coax` supplies one Bless d4 and one Bane d4 per
+attack/save, in that order, regardless of independent retained record count.
+Each record keeps its caster and deadline; retiring one leaves other owners.
+A next attack consumes all weakness and Guiding Bolt riders and all Vex riders
+for that target, even on a miss or when Advantage and Disadvantage cancel.
+Other-target Vex remains pending. The existing battle lifecycle retires timed
+records; the roll policy does not invent a second expiry clock.
+
+Checks: `aethyr/rules/srd/effect-roll-checks.coax`, the hotbar regression in
+`apps/openagents-web/fivebar-test.coax`, and the scoped zero-survivor authority
+gate. Exact native/evaluator scope and remaining #13039 requirements are in
+`docs/verification/srd-effect-rolls-2026-11-08/README.md`.

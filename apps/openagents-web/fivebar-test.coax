@@ -12,6 +12,30 @@
 #load "fivemmo-hotbar.coax";   // 5E MMO's hotbar pictures, by name
 #load "everglade-hotbar.coax";  // Everglade's
 
+#test "a hotbar weapon attack gets one Bless die and retires all next-roll weaknesses on its missed roll" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],71);
+  b[0].dice[0].fixed = true;
+  b[0].c[FT_FOE].ac = 100;
+  rs_place(b[..],FT_FOE,10,11);
+  for k: 0..<3 {
+    #assert rs_put_effect(b[..],FT_HERO,RsEffect.{kind=EF_WEAK,by=k,until=b[0].clock+20});
+    #assert rs_put_effect(b[..],FT_HERO,RsEffect.{kind=EF_BLESS,by=k,spell=SP_BLESS,until=b[0].clock+20});
+  }
+  rolled := b[0].dice[0].rolled;
+  hp := b[0].c[FT_FOE].hp;
+  #assert fb_seat_use(b[..],s[..],fb_feature(FB_ATTACK,"ATTACK","attack"),FT_FOE,10,11,FT_ALLY);
+  #assert b[0].dice[0].rolled == rolled+3 && b[0].c[FT_FOE].hp == hp;
+  #assert s[0].turn.action;
+  blessings := 0;
+  for e: b[0].c[FT_HERO].eff {
+    #assert e.kind != EF_WEAK;
+    if e.kind == EF_BLESS { blessings += 1; }
+  }
+  #assert blessings == 3;
+  event := rs_recent_at(b[0].book[..],0);
+  #assert event.kind == RS_EV_MISS && event.by == FT_HERO && event.to == FT_FOE;
+}
+
 #test "Everglade extra-list and house grants are exactly its declared spell bar and stay off ordinary Druids" {
   world := fb_everglade_hero("World", 0); ordinary := rs_druid("Druid", 0, 9);
   bar: [FB_EG_SLOTS] FbAb; n := fb_everglade(bar[..]);

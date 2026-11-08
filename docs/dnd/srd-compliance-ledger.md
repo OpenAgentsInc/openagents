@@ -176,6 +176,14 @@ casting. Off-turn reactions preserve the active actor's history. Mage's
 Protective Magic daily use is distinguished from a real spell slot. This does
 not qualify every reaction trigger, line of sight or NPC resource workflow.
 
+The [effect-roll overlap change](../verification/srd-effect-rolls-2026-11-08/README.md)
+applies one Bless d4 and one Bane d4 while retaining each independent owner and
+deadline. One attack consumes every pending weakness, Guiding Bolt and matching
+Vex rider, including a missed or canceled-edge roll; Vex for another target stays.
+Actual casts, concentration release/expiry, seeded dice and the hotbar path are
+checked. This is partial #13039 progress, not qualification of all same-spell
+combination rules, conditions, damage or death.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry
