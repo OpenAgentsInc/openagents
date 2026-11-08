@@ -6479,3 +6479,23 @@ every vertex the kit stage places, any way round and in any wind" and "a piece
 behind nearer depth is kept by the first phase and drawn by the second only once
 the pyramid shows it"; `coax/web/everglade2-cull-check.coax` (headless: the
 glade, the woods and the clearing, the same pixels with the cull on and off).
+
+## Everglade II's ground draws from its admitted material table and bake (#13052)
+
+The drawn ground's albedo in `/worlds/everglade2` is the admitted material
+table's (`verse/everglade2/ground.coax` `e2g_table`), evaluated per pixel by
+`aethyr/render/terrain-shade.coax`'s equations with the weights the tile's
+converter uses (`verse/everglade2/forest.coax` `e2_ground_layer`). The ground's
+indirect light takes `E2G_GROUND_AO_SHARE` of the published canopy bake, and
+AO 1 before the bake publishes and off the tile. The pack's vertex colours are
+not a second source. A material table entry may take part of its blend from a
+layer share, one named material's weight against another's at the point. Such
+a share names two other known materials, the shares add to one, and any share
+makes the table's identity "ATM2". A table without shares keeps its "ATM1"
+identity unchanged.
+Checks: `aethyr/terrain-tile.coax` "a layer share names two other known
+materials ...", `aethyr/render/terrain-shade.coax` "a layer share is one weight
+against the other ...", `verse/everglade2/ground.coax` "the table draws the
+pack's ground colours ...", `apps/openagents-web/gpu/everglade2.coax` "the
+ground reads its table's material, the litter's share of the layers under it,
+and the bake's AO".

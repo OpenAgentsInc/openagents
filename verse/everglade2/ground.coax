@@ -11,10 +11,20 @@
 // lower, a declared decorative offset; the walk stands on the admitted triangles, so the feet and
 // the drawn ground agree at every sample and along every triangle (e2g_y).
 //
-// Materials: meadow, autumn meadow, forest litter and path dirt (the pack's colours, display
-// encoded). A sample's weights are the pack's layers in order with aethyr_terrain_over: autumn over
-// the meadow by e2_gold, litter over both by 0.6 e2_forest, the path over all by e2_path; each
-// quantized to a byte.
+// Materials: meadow, autumn meadow, forest litter and path dirt: the pack's colours (sRGB, as the
+// ground shader decoded them) re-encoded for the table's 2.2 power, so each decodes to the same
+// linear colour. A sample's weights are the pack's layers in order with aethyr_terrain_over: autumn
+// over the meadow by e2_gold, litter over both by 0.6 e2_forest, the path over all by e2_path
+// (forest.coax e2_ground_layer); each quantized to a byte. The pack's litter takes the autumn under
+// it (red 0.25 to 0.45): the litter's blend is a layer share, autumn's weight against the meadow's,
+// which gives back e2_gold wherever any meadow is left (the litter covers at most 0.6). The pack's
+// per-vertex hash grain on the litter's green and the dirt is the table's value noise at the glade
+// grid's 1.5 per metre: the dirt's as its two colours, the litter's as a 4% gain.
+//
+// The ground shader (gpu/everglade2.coax e2_ground_albedo) draws from this table and the bake: the
+// page uploads both as one store (e2g_gpu, E2G_GPU_FLOATS) and the shader takes the same weights at
+// each pixel, evaluates aethyr/render/terrain-shade.coax's equations, and shades the ground's
+// indirect light by E2G_GROUND_AO_SHARE of the bake's AO, eased out over E2G_EDGE inside the tile's edge.
 //
 // Baked light: AO on the tile's samples from the woods' and the glade's tree crowns as sphere
 // proxies (centre and radius per kit, E2G_CROWN). A sphere of radius r whose centre is D away along
@@ -43,6 +53,15 @@ E2G_AO_FLOOR :: 0.6;          // the darkest the canopy makes it
 E2G_EDGE :: 6.0;              // m: inside the tile's edge the bake eases to the fallback, so leaving it is no step
 E2G_REACH :: 12.0;            // m: crowns this far past the tile still shade its edge
 E2G_CROWNS :: 4096;
+// How much of the bake the drawn ground takes. Its look was tuned with its own darkening under the
+// woods (gpu/everglade2.coax e2_environment_fs), so the full bake on top doubles the shade: 15 to 30%
+// darker on the woods' path, measured. A quarter keeps the canopy's shade without darkening the look.
+E2G_GROUND_AO_SHARE :: 0.25;
+E2G_GRAIN :: 1.5;             // 1/m: the table's grain, the glade grid's (0.65 m) per-vertex hash as value noise
+// The ground store the shader reads (vec4s): 2 header, 5 a material, then the AO 4 to a vec4.
+E2G_GPU_HEAD :: 2; E2G_GPU_MATERIAL :: 5;
+E2G_GPU_AO :: 88;             // (E2G_GPU_HEAD + 4 E2G_GPU_MATERIAL) 4: where the AO starts (floats)
+E2G_GPU_FLOATS :: 10292;      // E2G_GPU_AO + E2G_POINTS, rounded up to whole vec4s
 
 E2Ground :: struct {
   table: [4] e2tt.TerrainMaterial;
@@ -57,26 +76,48 @@ E2Ground :: struct {
   ao: [E2G_POINTS] f32; bounce: [E2G_POINTS * 3] f32;
   live_ao: [E2G_POINTS] f32; live_bounce: [E2G_POINTS * 3] f32;
   baked: int;                                    // the bake's publish status (e2bk.BAKE_OK when live), -1 not yet
+  gpu: [E2G_GPU_FLOATS] f32; gpu_v: int;         // the table and the live AO as the ground shader reads them (e2g_gpu)
   outside: int;                                  // queries outside the tile (answered by e2_height)
 }
 
-// The table: one constant colour each (albedo_a = albedo_b, no noise, gain 1).
-e2g_material :: (id: int, c: [3] f32) -> e2tt.TerrainMaterial {
-  m: e2tt.TerrainMaterial; m.id = id; m.albedo_a = c; m.albedo_b = c; m.blend_weight = [2] f32.[1, 0]; m.gain = [2] f32.[1, 0];
+// An sRGB colour (the pack's) re-encoded for the table's 2.2 power: the same linear colour.
+e2g_srgb_linear :: (c: f32) -> f32 { return ifx c <= 0.04045 then c / 12.92 else pow((c + 0.055) / 1.055, 2.4f32); }
+e2g_enc :: (c: [3] f32) -> [3] f32 { o: [3] f32; for k: 0..<3 { o[k] = pow(e2g_srgb_linear(c[k]), 1.0f32 / 2.2f32); } return o; }
+// A material between two pack colours a and b (b = a for a constant one), gain 1.
+e2g_material :: (id: int, a: [3] f32, b: [3] f32) -> e2tt.TerrainMaterial {
+  m: e2tt.TerrainMaterial; m.id = id; m.albedo_a = e2g_enc(a); m.albedo_b = e2g_enc(b); m.blend_weight = [2] f32.[1, 0]; m.gain = [2] f32.[1, 0];
+  m.blend_scale[0] = E2G_GRAIN;
   return m;
 }
+// The pack's colours (verse/tools/assets/everglade2_pack.coax gp_colour): the meadow and its autumn
+// constant; the litter's red follows the autumn under it, its green the grain; the dirt's grain.
 e2g_table :: (t: [] e2tt.TerrainMaterial) {
-  t[0] = e2g_material(E2G_MEADOW, [3] f32.[0.32, 0.53, 0.055]);
-  t[1] = e2g_material(E2G_AUTUMN, [3] f32.[0.56, 0.50, 0.055]);
-  t[2] = e2g_material(E2G_LITTER, [3] f32.[0.25, 0.36, 0.07]);
-  t[3] = e2g_material(E2G_PATH, [3] f32.[0.67, 0.60, 0.35]);
+  t[0] = e2g_material(E2G_MEADOW, [3] f32.[0.32, 0.53, 0.055], [3] f32.[0.32, 0.53, 0.055]);
+  t[1] = e2g_material(E2G_AUTUMN, [3] f32.[0.56, 0.50, 0.055], [3] f32.[0.56, 0.50, 0.055]);
+  t[2] = e2g_material(E2G_LITTER, [3] f32.[0.25, 0.375, 0.07], [3] f32.[0.45, 0.375, 0.07]);
+  t[2].blend_weight = [2] f32.[0, 0]; t[2].share_of = E2G_AUTUMN; t[2].share_against = E2G_MEADOW; t[2].share_weight = 1;
+  t[2].gain = [2] f32.[0.96, 0.08]; t[2].gain_scale = E2G_GRAIN; t[2].gain_offset = 7;
+  t[3] = e2g_material(E2G_PATH, [3] f32.[0.67, 0.60, 0.35], [3] f32.[0.685, 0.615, 0.35]);
+}
+// The linear albedo at (x, z) with weights w (the table's IDs in order): aethyr/render/terrain-shade.coax's
+// equations, as the ground shader evaluates them (gpu/everglade2.coax e2_ground_albedo).
+e2g_albedo :: (t: [] e2tt.TerrainMaterial, w: [4] f32, x: f32, z: f32) -> [3] f32 {
+  out := [3] f32.[0, 0, 0];
+  for k: 0..<4 {
+    if w[k] <= 0 { continue; }
+    m := t[k];
+    tt := e2bk.aethyr_terrain_blend_t(x, z, m.blend_scale[0], m.blend_weight[0], m.blend_offset[0], m.blend_scale[1], m.blend_weight[1], m.blend_offset[1]);
+    if m.share_weight > 0 { tt += m.share_weight * e2bk.aethyr_terrain_share(w[m.share_of], w[m.share_against]); }
+    gain := e2bk.aethyr_terrain_gain(x, z, m.gain[0], m.gain[1], m.gain_scale, m.gain_offset);
+    for c: 0..<3 { out[c] += w[k] * e2bk.aethyr_terrain_decode(m.albedo_a[c], m.albedo_b[c], tt, gain); }
+  }
+  return out;
 }
 e2g_byte :: (w: f32) -> u8 { v := floor(w * 255 + 0.5); return cast(u8)(ifx v < 0 then 0.0f32 else ifx v > 255 then 255.0f32 else v); }
 // A sample's four weights from the land: the pack's layers, in its order.
 e2g_weights :: (x: f32, z: f32) -> [4] f32 {
   w := [4] f32.[1, 0, 0, 0];
-  layer := [3] f32.[e2_gold(x, z), e2_forest(x, z) * 0.6, e2_path(x, z)];
-  for l: 0..<3 { c := layer[l]; for k: 0..<4 { w[k] = e2bk.aethyr_terrain_over(w[k], c, ifx k == l + 1 then 1.0f32 else 0.0f32); } }
+  for l: 0..<3 { c := e2_ground_layer(x, z, l); for k: 0..<4 { w[k] = e2bk.aethyr_terrain_over(w[k], c, ifx k == l + 1 then 1.0f32 else 0.0f32); } }
   return w;
 }
 // The sample (i, j)'s world point: rows south to north (+z), west to east.
@@ -106,6 +147,7 @@ e2g_build :: (g: [] E2Ground) -> bool {
   if !g[0].ok { return false; }
   g[0].tile = t; g[0].frame = e2tt.terrain_tile_ground(t, 0, 0);
   g[0].baked = -1;
+  e2g_gpu(g);
   return true;
 }
 
@@ -186,7 +228,27 @@ e2g_bake :: (g: [] E2Ground, items: [] f32, kinds: [] u8, planted: int) -> int {
   grid.key.tile = g[0].receipt.output; grid.key.content = e2g_content(g);
   g[0].key = grid.key;
   g[0].baked = e2bk.bake_publish(g[0].bake[..], grid, g[0].tile, g[0].key, g[0].ao[..], g[0].bounce[..], g[0].live_ao[..], g[0].live_bounce[..]);
+  e2g_gpu(g);
   return g[0].baked;
+}
+// The store the ground shader reads: the grid's frame, the admitted table, and the live AO (1 until the
+// bake publishes; its bounce is 0 everywhere, so only the AO goes up). A new version on every change.
+e2g_gpu :: (g: [] E2Ground) {
+  o := g[0].gpu[..];
+  for k: 0..<E2G_GPU_FLOATS { o[k] = 0; }
+  o[0] = f32(E2G_CELLS); o[1] = E2G_SPACING; o[2] = E2G_WEST; o[3] = E2G_SOUTH;
+  live := g[0].ok && g[0].bake[0].live && g[0].baked == e2bk.BAKE_OK;
+  o[4] = E2G_RISE; o[5] = E2G_EDGE; o[6] = ifx live then 1.0f32 else 0.0f32; o[7] = E2G_GROUND_AO_SHARE;
+  for m: 0..<4 {
+    t := g[0].table[m]; b := (E2G_GPU_HEAD + m * E2G_GPU_MATERIAL) * 4;
+    for c: 0..<3 { o[b + c] = t.albedo_a[c]; o[b + 4 + c] = t.albedo_b[c]; }
+    o[b + 3] = t.share_weight; o[b + 7] = f32(t.share_of);
+    o[b + 8] = t.blend_scale[0]; o[b + 9] = t.blend_weight[0]; o[b + 10] = t.blend_offset[0]; o[b + 11] = t.blend_scale[1];
+    o[b + 12] = t.blend_weight[1]; o[b + 13] = t.blend_offset[1]; o[b + 14] = t.gain[0]; o[b + 15] = t.gain[1];
+    o[b + 16] = t.gain_scale; o[b + 17] = t.gain_offset; o[b + 18] = f32(t.share_against);
+  }
+  for k: 0..<E2G_POINTS { o[E2G_GPU_AO + k] = ifx live then g[0].live_ao[k] else 1.0f32; }
+  g[0].gpu_v += 1;
 }
 e2g_least :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
 // The baked AO at (x, z), `above` metres over the ground; the fallback (1, counted) before it publishes
@@ -276,4 +338,45 @@ e2g_ao :: (g: [] E2Ground, x: f32, z: f32, above: f32) -> f32 {
   grid.key = g[0].key; grid.key.content[0] += 1;
   #assert e2bk.bake_publish(g[0].bake[..], grid, g[0].tile, g[0].key, g[0].ao[..], g[0].bounce[..], g[0].live_ao[..], g[0].live_bounce[..]) == e2bk.BAKE_STALE;
   #assert e2tt.terrain_tile_same(before, g[0].bake[0].revision) && e2g_ao(g[..], 0, -10, 0) == under;
+}
+
+// The pack's ground colour (verse/tools/assets/everglade2_pack.coax gp_colour), sRGB: the look the table keeps.
+e2g_pack_colour :: (x: f32, z: f32) -> [3] f32 {
+  path := e2_path(x, z); noise := cg_hash(x, z); autumn := e2_gold(x, z); c := [3] f32.[0.32 + autumn * 0.24, 0.53 - autumn * 0.03, 0.055];
+  litter := [3] f32.[0.25 + autumn * 0.20, 0.36 + noise * 0.03, 0.07]; f := e2_forest(x, z) * 0.6; for k: 0..<3 { c[k] = c[k] * (1 - f) + litter[k] * f; }
+  dirt := [3] f32.[0.67 + noise * 0.015, 0.60 + noise * 0.015, 0.35]; for k: 0..<3 { c[k] = c[k] * (1 - path) + dirt[k] * path; }
+  return c;
+}
+e2g_srgb :: (x: f32) -> f32 { return ifx x <= 0.0031308 then 12.92 * x else 1.055 * pow(x, 1.0f32 / 2.4f32) - 0.055; }
+#test "the table draws the pack's ground colours: the same linear colour each, the litter's autumn, the grain" #steps 4000000000 {
+  t: [4] e2tt.TerrainMaterial; e2g_table(t[..]);
+  #assert e2tt.terrain_materials_check(t[..]).code == e2tt.TERRAIN_TILE_OK;
+  // each constant decodes to the pack's sRGB colour exactly
+  for c: 0..<3 { #assert abs(pow(t[0].albedo_a[c], 2.2f32) - e2g_srgb_linear([3] f32.[0.32, 0.53, 0.055][c])) < 0.00001; }
+  // all over the valley the table's colour, back in sRGB, is the pack's within its grain and the
+  // blend: the table sums linear colours where the pack mixed sRGB ones, so a layer's edge (the path's
+  // blue-grey dirt into the meadow, the autumn's gold) comes out up to 0.06 brighter; on average
+  // within 0.012
+  worst := 0.0f32; sum := [3] f32.[0, 0, 0]; n := 0;
+  for j: 0..<60 { for i: 0..<40 {
+    x := -60.0f32 + f32(i) * 3.1; z := 10.0f32 - f32(j) * 4.7;
+    got := e2g_albedo(t[..], e2g_weights(x, z), x, z); want := e2g_pack_colour(x, z);
+    for c: 0..<3 { d := e2g_srgb(got[c]) - want[c]; sum[c] += d; if abs(d) > worst { worst = abs(d); } }
+    n += 1;
+  } }
+  #assert worst < 0.065;
+  for c: 0..<3 { #assert abs(sum[c] / f32(n)) < 0.012; }
+  // the litter under full autumn takes the pack's red, and with none the plain litter's
+  w := [4] f32.[0, 0.4, 0.6, 0];
+  a := e2g_albedo(t[..], w, 3, 4);
+  #assert abs(e2g_srgb((a[0] - 0.4 * pow(t[1].albedo_a[0], 2.2f32)) / 0.6) - 0.45) < 0.03;
+  w = [4] f32.[0.4, 0, 0.6, 0]; a = e2g_albedo(t[..], w, 3, 4);
+  #assert abs(e2g_srgb((a[0] - 0.4 * pow(t[0].albedo_a[0], 2.2f32)) / 0.6) - 0.25) < 0.02;
+  // the store the shader reads: the frame, the table, then AO 1 before the bake
+  g: [1] E2Ground; #assert e2g_build(g[..]);
+  #assert g[0].gpu[0] == 100 && g[0].gpu[1] == f32(E2G_SPACING) && g[0].gpu[6] == 0 && g[0].gpu[7] == f32(E2G_GROUND_AO_SHARE) && g[0].gpu_v == 1;
+  b := (E2G_GPU_HEAD + 2 * E2G_GPU_MATERIAL) * 4;
+  #assert g[0].gpu[b] == g[0].table[2].albedo_a[0] && g[0].gpu[b + 3] == 1 && g[0].gpu[b + 7] == f32(E2G_AUTUMN) && g[0].gpu[b + 18] == f32(E2G_MEADOW);
+  #assert g[0].gpu[E2G_GPU_AO] == 1 && g[0].gpu[E2G_GPU_AO + E2G_POINTS - 1] == 1 && E2G_GPU_FLOATS % 4 == 0 && E2G_GPU_FLOATS >= E2G_GPU_AO + E2G_POINTS;
+  #assert E2G_GPU_AO == (E2G_GPU_HEAD + 4 * E2G_GPU_MATERIAL) * 4;
 }

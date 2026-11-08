@@ -33,7 +33,11 @@
 // selector and an encoding) and carries the procedural albedo every slot-less consumer draws: two
 // display-encoded colours (decoded to linear with the 2.2 power once, before blending), a value
 // noise blend between them, a brightness noise, and a fluid-depth darkening the realm's fluid query
-// drives. Colour slots are sRGB and decode to linear before filtering; data slots read one stated
+// drives. A blend may also follow a share of the point's own layers: with share_weight above zero,
+// share_weight w_of / (w_of + w_against) joins the noise terms, where w_of and w_against are the
+// point's weights of the materials named share_of and share_against (0 when both are 0). So a forest
+// litter can take the meadow's autumn under it (autumn's weight against the meadow's) without a
+// fifth material. Colour slots are sRGB and decode to linear before filtering; data slots read one stated
 // channel linearly; a normal slot reads two. A slot left empty falls back to the constant.
 //
 // Names (locals too) start with `terrain_tile_` or `tt_`: every declaration is visible to every
@@ -121,6 +125,8 @@ TerrainMaterial :: struct {
   blend_offset: [2] f32;                  // added to both coordinates before each noise
   gain: [2] f32;                          // brightness: gain[0] + gain[1] * noise
   gain_scale: f32; gain_offset: f32;
+  share_of: int = -1; share_against: int = -1;   // material IDs whose weights at the point give the share
+  share_weight: f32;                             // the share's part of the blend (with blend_weight, adds to 1)
   depth_darken: f32; depth_from: f32; depth_to: f32;   // under fluid: 1 - darken * smoothstep(from, to, depth)
   roughness: f32 = 1;
   slots: [TERRAIN_MATERIAL_SLOTS] TerrainSlot;
@@ -562,6 +568,53 @@ TerrainBlend :: struct { ok: bool; count: int; ids: [4] int; weights: [4] f32; }
   #assert (terrain_materials_check(one[..]).code == TERRAIN_TILE_OK) == (edge < 2);
 }
 
+#test "a layer share names two other known materials and takes its part of the blend, and only then changes the identity" {
+  m := [2] TerrainMaterial.[TerrainMaterial.{id = 0, blend_weight = [2] f32.[1, 0], gain = [2] f32.[1, 0]}, TerrainMaterial.{id = 1, blend_weight = [2] f32.[1, 0], gain = [2] f32.[1, 0]}];
+  plain := terrain_materials_revision(m[..]);
+  #assert terrain_materials_check(m[..]).code == TERRAIN_TILE_OK;
+  // the litter's autumn: all of its blend from material 1's weight against material 0's
+  l := [3] TerrainMaterial.[m[0], m[1], TerrainMaterial.{id = 2, blend_weight = [2] f32.[0, 0], gain = [2] f32.[1, 0], share_of = 1, share_against = 0, share_weight = 1}];
+  #assert terrain_materials_check(l[..]).code == TERRAIN_TILE_OK;
+  // shares with the noise: the parts add to one
+  l[2].blend_weight = [2] f32.[0.25, 0]; l[2].share_weight = 0.75;
+  #assert terrain_materials_check(l[..]).code == TERRAIN_TILE_OK;
+  l[2].share_weight = 0.8;
+  #assert terrain_materials_check(l[..]).code == TERRAIN_TILE_BAD_VALUE;
+  l[2].share_weight = 0.75;
+  // an unknown, a repeated or a missing material, or names with no part, are refused
+  l[2].share_of = 7;
+  r := terrain_materials_check(l[..]); #assert r.code == TERRAIN_TILE_BAD_VALUE && r.at == 2;
+  l[2].share_of = 0;
+  #assert terrain_materials_check(l[..]).code == TERRAIN_TILE_BAD_VALUE;
+  l[2].share_of = -1;
+  #assert terrain_materials_check(l[..]).code == TERRAIN_TILE_BAD_VALUE;
+  l[2].share_of = 1; l[2].share_weight = 0; l[2].blend_weight = [2] f32.[1, 0];
+  #assert terrain_materials_check(l[..]).code == TERRAIN_TILE_BAD_VALUE;
+  l[2].share_of = -1; l[2].share_against = -1;
+  #assert terrain_materials_check(l[..]).code == TERRAIN_TILE_OK;
+  // with no share the identity is the old "ATM1" one; a share makes it "ATM2", and its fields count
+  #assert terrain_tile_same(terrain_materials_revision(m[..]), plain);
+  l[2].share_of = 1; l[2].share_against = 0; l[2].share_weight = 1; l[2].blend_weight = [2] f32.[0, 0];
+  a := terrain_materials_revision(l[..]);
+  l[2].share_of = 0; l[2].share_against = 1;
+  #assert !terrain_tile_same(terrain_materials_revision(l[..]), a);
+  l[2].share_against = 1; l[2].share_of = 0;
+  d := [1] TerrainTileDigest.[terrain_tile_digest()];
+  terrain_tile_digest_u32(d[..], 0x41544d32); terrain_tile_digest_int(d[..], 3);
+  for k: 0..<3 {
+    e := l[k];
+    terrain_tile_digest_int(d[..], e.id);
+    for c: 0..<3 { terrain_tile_digest_f32(d[..], e.albedo_a[c]); terrain_tile_digest_f32(d[..], e.albedo_b[c]); }
+    for c: 0..<2 { terrain_tile_digest_f32(d[..], e.blend_scale[c]); terrain_tile_digest_f32(d[..], e.blend_weight[c]); terrain_tile_digest_f32(d[..], e.blend_offset[c]); terrain_tile_digest_f32(d[..], e.gain[c]); }
+    terrain_tile_digest_f32(d[..], e.gain_scale); terrain_tile_digest_f32(d[..], e.gain_offset);
+    terrain_tile_digest_f32(d[..], e.depth_darken); terrain_tile_digest_f32(d[..], e.depth_from); terrain_tile_digest_f32(d[..], e.depth_to);
+    terrain_tile_digest_f32(d[..], e.roughness);
+    terrain_tile_digest_int(d[..], e.share_of + 1); terrain_tile_digest_int(d[..], e.share_against + 1); terrain_tile_digest_f32(d[..], e.share_weight);
+    for sl: 0..<TERRAIN_MATERIAL_SLOTS { terrain_tile_digest_words(d[..], e.slots[sl].asset); terrain_tile_digest_int(d[..], e.slots[sl].encoding); terrain_tile_digest_int(d[..], e.slots[sl].component); terrain_tile_digest_int(d[..], e.slots[sl].wrap); }
+  }
+  #assert terrain_tile_same(terrain_materials_revision(l[..]), terrain_tile_digest_end(d[..]));
+}
+
 #test "blend shares add to exactly one, and depths run in order from zero" {
   m := TerrainMaterial.{id = 0, blend_weight = [2] f32.[0.25, 0.75], gain = [2] f32.[1, 0]};
   one := [1] TerrainMaterial.[m];
@@ -847,15 +900,18 @@ terrain_slot_ok :: (slot: int, s: TerrainSlot) -> bool #effects(all) {
 }
 
 // Every constant finite and in its declared range: colours 0..1, frequencies 0..1000 per metre,
-// offsets within a million metres, blend shares 0..1 adding to exactly 1, gains 0..2, darkening
-// 0..1 between depths 0..1000 m in order, and roughness 0..1.
+// offsets within a million metres, blend shares 0..1 adding to exactly 1 (with the layer share's
+// part), gains 0..2, darkening 0..1 between depths 0..1000 m in order, and roughness 0..1. A layer
+// share names two different material IDs; with no part it names none (-1, -1).
 terrain_material_values_ok :: (m: TerrainMaterial) -> bool #effects(all) {
   for tt_c: 0..<3 { if !tt_range(m.albedo_a[tt_c], 0, 1) || !tt_range(m.albedo_b[tt_c], 0, 1) { return false; } }
   for tt_c: 0..<2 {
     if !tt_range(m.blend_scale[tt_c], 0, 1000) || !tt_range(m.blend_weight[tt_c], 0, 1) { return false; }
     if !tt_range(m.blend_offset[tt_c], -1000000, 1000000) || !tt_range(m.gain[tt_c], 0, 2) { return false; }
   }
-  if m.blend_weight[0] + m.blend_weight[1] != 1 { return false; }
+  if !tt_range(m.share_weight, 0, 1) || m.blend_weight[0] + m.blend_weight[1] + m.share_weight != 1 { return false; }
+  if m.share_weight == 0 { if m.share_of != -1 || m.share_against != -1 { return false; } }
+  else if m.share_of < 0 || m.share_of >= TERRAIN_TILE_NO_MATERIAL || m.share_against < 0 || m.share_against >= TERRAIN_TILE_NO_MATERIAL || m.share_of == m.share_against { return false; }
   if !tt_range(m.gain_scale, 0, 1000) || !tt_range(m.gain_offset, -1000000, 1000000) { return false; }
   if !tt_range(m.depth_darken, 0, 1) || !tt_range(m.depth_from, 0, m.depth_to) || !tt_range(m.depth_to, m.depth_from, 1000) { return false; }
   return tt_range(m.roughness, 0, 1);
@@ -868,15 +924,19 @@ terrain_materials_check :: (table: [] TerrainMaterial) -> TerrainAdmission #effe
     if tt_m.id < 0 || tt_m.id >= TERRAIN_TILE_NO_MATERIAL { return TerrainAdmission.{code = TERRAIN_TILE_BAD_TABLE, at = tt_k}; }
     for tt_j: 0..<tt_k { if table[tt_j].id == tt_m.id { return TerrainAdmission.{code = TERRAIN_TILE_BAD_TABLE, at = tt_k}; } }
     if !terrain_material_values_ok(tt_m) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_VALUE, at = tt_k}; }
+    if tt_m.share_weight > 0 && (!tt_known(table, tt_m.share_of) || !tt_known(table, tt_m.share_against)) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_VALUE, at = tt_k}; }
     for tt_s: 0..<TERRAIN_MATERIAL_SLOTS { if !terrain_slot_ok(tt_s, tt_m.slots[tt_s]) { return TerrainAdmission.{code = TERRAIN_TILE_BAD_SLOT, at = tt_k}; } }
   }
   return TerrainAdmission.{};
 }
 
-// The table's identity: every field of every entry, in order.
+// The table's identity: every field of every entry, in order. A table with no layer share is "ATM1"
+// as before; one where any entry has a share is "ATM2", and every entry then carries its share
+// (of + 1, against + 1, part) after its roughness.
 terrain_materials_revision :: (table: [] TerrainMaterial) -> [8] u32 #effects(all) {
   d := [1] TerrainTileDigest.[terrain_tile_digest()];
-  terrain_tile_digest_u32(d[..], 0x41544d31);   // "ATM1"
+  tt_shares := false; for tt_k: 0..<table.count { if table[tt_k].share_weight != 0 { tt_shares = true; } }
+  terrain_tile_digest_u32(d[..], ifx tt_shares then 0x41544d32 else 0x41544d31);   // "ATM2" / "ATM1"
   terrain_tile_digest_int(d[..], table.count);
   for tt_k: 0..<table.count {
     tt_m := table[tt_k];
@@ -889,6 +949,7 @@ terrain_materials_revision :: (table: [] TerrainMaterial) -> [8] u32 #effects(al
     terrain_tile_digest_f32(d[..], tt_m.gain_scale); terrain_tile_digest_f32(d[..], tt_m.gain_offset);
     terrain_tile_digest_f32(d[..], tt_m.depth_darken); terrain_tile_digest_f32(d[..], tt_m.depth_from); terrain_tile_digest_f32(d[..], tt_m.depth_to);
     terrain_tile_digest_f32(d[..], tt_m.roughness);
+    if tt_shares { terrain_tile_digest_int(d[..], tt_m.share_of + 1); terrain_tile_digest_int(d[..], tt_m.share_against + 1); terrain_tile_digest_f32(d[..], tt_m.share_weight); }
     for tt_s: 0..<TERRAIN_MATERIAL_SLOTS {
       terrain_tile_digest_words(d[..], tt_m.slots[tt_s].asset);
       terrain_tile_digest_int(d[..], tt_m.slots[tt_s].encoding); terrain_tile_digest_int(d[..], tt_m.slots[tt_s].component);

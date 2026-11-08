@@ -4,6 +4,7 @@
 //
 // Materials (aethyr/terrain-tile.coax, `aethyr.terrain.materials.v1`): a procedural albedo is
 //   t      = w1 noise(f1 p + o1) + w2 noise(f2 p + o2)        (p the world x, z in metres)
+//            + ws w_of / (w_of + w_against)                    (a share of the point's layers, 0 if none)
 //   gain   = g0 + g1 noise(f3 p + o3)
 //   depth  = 1 - darken smoothstep(from, to, fluid depth)
 //   albedo = (mix(a, b, t) gain depth)^2.2                     (display colours decoded once)
@@ -62,6 +63,16 @@
   #assert aethyr_terrain_decode(0.0, 0.6, -1, 1) == 0;   // a colour below black decodes to black
 }
 
+#test "a layer share is one weight against the other, and nothing where neither is" {
+  #assert aethyr_terrain_share(0.3, 0.1) == 0.75 && aethyr_terrain_share(0, 0.4) == 0 && aethyr_terrain_share(0.2, 0) == 1;
+  #assert aethyr_terrain_share(0, 0) == 0;
+  // the autumn under a litter: with coverage a over the meadow, then the litter over both, the share
+  // gives back a wherever any meadow or autumn is left
+  a := 0.35f32; f := 0.6f32;
+  m := aethyr_terrain_over(aethyr_terrain_over(1, a, 0), f, 0); au := aethyr_terrain_over(aethyr_terrain_over(0, a, 1), f, 0);
+  #assert abs(aethyr_terrain_share(au, m) - a) < 0.000001;
+}
+
 #test "layered coverage becomes weights that add to one, as sequential mixing does" {
   // meadow, then paving 0.6, then a path edge 0.5, then wet 0.25
   w0 := 1.0f32; w1 := 0.0f32; w2 := 0.0f32; w3 := 0.0f32;
@@ -111,6 +122,13 @@ aethyr_terrain_blend_t :: (x:f32,z:f32,f1:f32,w1:f32,o1:f32,f2:f32,w2:f32,o2:f32
  t:=aethyr_terrain_noise(x*f1+o1,z*f1+o1)*w1;
  if w2>0.0f32 {t=t+aethyr_terrain_noise(x*f2+o2,z*f2+o2)*w2;}
  return t;
+}
+// A layer share: the point's weight of one material against another's, w_of / (w_of + w_against),
+// 0 where neither is there.
+aethyr_terrain_share :: (w_of:f32,w_against:f32)->f32 #export_c #effects(all) {
+ total:=w_of+w_against;
+ if total>0.0f32 {return w_of/total;}
+ return 0.0f32;
 }
 // Its brightness: g0 + g1 noise(f3 p + o3).
 aethyr_terrain_gain :: (x:f32,z:f32,g0:f32,g1:f32,f3:f32,o3:f32)->f32 #export_c #effects(all) {

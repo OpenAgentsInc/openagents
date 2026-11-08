@@ -125,6 +125,14 @@ e2_gold :: (x:f32,z:f32)->f32 {
  o:=e2_woods_share(x,z);patch:=e2_smooth(0.40,0.62,e2_noise(x/60+3.1,z/60-1.7));
  return cg_autumn(x,z)*(1-o)+patch*o*0.3;
 }
+// The ground's layers in the order they cover each other (verse/everglade2/ground.coax e2g_weights,
+// gpu/everglade2.coax e2_ground_albedo): 0 the autumn over the meadow, 1 the forest litter over
+// both, 2 the path's dirt over all.
+e2_ground_layer :: (x:f32,z:f32,l:int)->f32 {
+ if l==0 {return e2_gold(x,z);}
+ if l==1 {return e2_forest(x,z)*0.6;}
+ return e2_path(x,z);
+}
 // How thick the woods stand: dense on both sides of the path, crowding it, thinning only in
 // small dells; none in the glade or the clearing.
 e2_forest :: (x:f32,z:f32)->f32 {

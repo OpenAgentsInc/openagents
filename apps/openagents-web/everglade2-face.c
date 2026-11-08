@@ -224,7 +224,8 @@ EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(uint32_t stat
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(uint32_t state, int32_t field) { return (int32_t)e2_shadow_field(at(state), field); }
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(uint32_t state, int32_t kind, int32_t arg) { e2_shadow_event(at(state), kind, arg); }
 EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(uint32_t state) { return (uint32_t)e2_layers_side(at(state)); }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
+/* store 4: the ground's material table and baked AO (verse/everglade2/ground.coax e2g_gpu, #13052) */
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 5; }
 /* the pack's data layers (normal and ORM maps) bound after the colour layers' sampler (host.js) */
 EXPORT("coaxial_data_layers_v1") uint32_t coaxial_data_layers_v1(void) { return 1; }
 EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
@@ -233,6 +234,7 @@ EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(uint32_t 
 /* the kit store is three regions on the GPU: the page's picked pieces, then the cull's two
    phases' survivors (gpu/everglade2-cull.coax E2Q_OUT1, E2Q_OUT2) */
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
+  if (k == 4) return (uint32_t)sizeof(((coax_t_E2 *)0)->eg.e[0].gpu.e);
   return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : k == 3 ? (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e) : 3u * (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
 }
 /* The instance cull's block (host.js "Instance culling"): field 0 the runs this frame, 1 the
@@ -254,15 +256,17 @@ EXPORT("coaxial_cull_v1") int32_t coaxial_cull_v1(uint32_t state, int32_t field)
   return -1;
 }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
+  if (k == 4) return (uint32_t)(uintptr_t)e2_at(state)->eg.e[0].gpu.e;
   return k == 0 ? (uint32_t)(uintptr_t)e2_at(state)->records.e : k == 1 ? (uint32_t)(uintptr_t)e2_at(state)->bake.e : k == 3 ? (uint32_t)(uintptr_t)e2_at(state)->mats.e : (uint32_t)(uintptr_t)e2_at(state)->inst.e;
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
   if (k == 0) return (uint32_t)e2_record_bytes(at(state));
   if (k == 1) return (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e);
   if (k == 3) return (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e);
+  if (k == 4) return (uint32_t)sizeof(((coax_t_E2 *)0)->eg.e[0].gpu.e);
   uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 32u;
 }
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { return k == 1 ? baked : k == 3 ? (uint32_t)e2_at(state)->mats_v : frames; }
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { return k == 1 ? baked : k == 3 ? (uint32_t)e2_at(state)->mats_v : k == 4 ? (uint32_t)e2_at(state)->eg.e[0].gpu_v : frames; }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return e2_key(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return e2_key_up(at(state), key, mods) ? 1u : 0u; }

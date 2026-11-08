@@ -63,12 +63,22 @@ offset. Past the tile (the path's ribbon, the coarse ground) the walk still read
 The woods' and the glade's tree crowns (sphere proxies per kit) are then baked onto the tile as
 ambient occlusion (`aethyr/render/bake.coax`, keyed by the tile's revision and the crowns' digest).
 A crown of radius r whose centre is D away along d hides (r / D)^2 max(0, n . d) of the
-cosine-weighted sky; AO = clamp(1 - sum, 0.6, 1), with no bounce, eased to open sky over the last 6 m inside the tile's edge so leaving it is no step in light. Its one consumer is your
-character: the AO at your middle (u[62]) shades your indirect light only, never the sun, so you
-darken under the canopy. `e2_probe` 9 is the bake's status, 10 the AO at you, 11 its crowns.
+cosine-weighted sky; AO = clamp(1 - sum, 0.6, 1), with no bounce, eased to open sky over the last 6 m inside the tile's edge so leaving it is no step in light. Your character
+takes the AO at your middle (u[62]) on your indirect light only, never the sun, so you darken under
+the canopy; the ground takes a quarter of it (below). `e2_probe` 9 is the bake's status, 10 the AO at you, 11 its crowns.
 
-The ground's drawn colours still come from the pack (`gp_colour`) and the ground shader, not the
-table, and the ground itself does not read the bake yet.
+The ground draws from the table and the bake (#13052). The page uploads both as one store
+(`e2g_gpu`: the grid, the four materials, the live AO), and the ground shader
+(`gpu/everglade2.coax` `e2_ground_albedo`, `e2_ground_ao`) takes the same weights at each pixel
+(`forest.coax` `e2_ground_layer`) and evaluates `aethyr/render/terrain-shade.coax`'s equations.
+The pack's vertex colours are no longer read. The table holds the pack's colours re-encoded for
+its 2.2 power, so each decodes to the same linear colour. The litter's autumn tint is a layer share
+(a new material-table term: autumn's weight against the meadow's under it, `aethyr.terrain.materials`
+"ATM2"). The pack's grain is the table's value noise. Mixing in linear light brightens a layer's
+edge by up to 0.06 (sRGB) against the pack's sRGB mix. The ground's sky light takes a quarter of
+the bake's AO (`E2G_GROUND_AO_SHARE`): the realm's own darkening under the woods stays, and the full
+bake on top made the woods' path 15 to 30% darker. Measured against the frames before: within 4% at
+the darkest spots under the crowns, within 2% elsewhere, unchanged off the tile.
 
 ## The planting
 

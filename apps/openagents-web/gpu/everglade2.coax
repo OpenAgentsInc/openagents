@@ -5,6 +5,7 @@
 #load "fivelab.coax";
 #load "../../../verse/everglade2/field.coax";
 #load "portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
+#load "../../../aethyr/render/terrain-shade.coax";   // the ground's material table and baked AO (#13052)
 #load "../../../aethyr/render/character-material.coax";   // the characters' material record's shading (#13012)
 Everglade2Bg :: struct {c:V4;aux:V4;depth:f32 #depth;}
 Everglade2Lit :: struct {c:V4;aux:V4;}
@@ -189,14 +190,87 @@ e2_shadow_visibility :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare)->f32
  d:=e2_casc_try(p,n,u,map,cmp,3);if (d>=0) {return d;}
  return 1;
 }
-e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
+// ---- the ground: drawn from the admitted material table and the canopy's bake (#13052)
+// The page's ground store (verse/everglade2/ground.coax e2g_gpu): vec4 0 the bake grid (cells, spacing,
+// west, south), vec4 1 (rise, edge ease, live, the ground's share of the AO), then E2_GROUND_MATERIAL vec4s a material
+// in the table's order, then the AO four to a vec4 from E2_GROUND_AO.
+E2_GROUND_HEAD :: 2; E2_GROUND_MATERIAL :: 5; E2_GROUND_AO :: 22;   // ground.coax E2G_GPU_HEAD, E2G_GPU_MATERIAL, E2G_GPU_AO / 4
+e2_ground_pick :: (w:V4,k:f32)->f32 {return ifx k<0.5f32 then w.x else ifx k<1.5f32 then w.y else ifx k<2.5f32 then w.z else w.w;}
+// One material's linear albedo at (x, z) with the point's weights w (aethyr/render/terrain-shade.coax).
+e2_ground_material :: (x:f32,z:f32,ground:[]V4,m:int,w:V4)->V3 {
+ b:=E2_GROUND_HEAD+m*E2_GROUND_MATERIAL;a:=ground[b];c:=ground[b+1];f:=ground[b+2];g:=ground[b+3];h:=ground[b+4];
+ t:=aethyr_terrain_blend_t(x,z,f.x,f.y,f.z,f.w,g.x,g.y);
+ if (a.w>0.0f32) {t=t+a.w*aethyr_terrain_share(e2_ground_pick(w,c.w),e2_ground_pick(w,h.z));}
+ gain:=aethyr_terrain_gain(x,z,g.z,g.w,h.x,h.y);
+ return v3(aethyr_terrain_decode(a.x,c.x,t,gain),aethyr_terrain_decode(a.y,c.y,t,gain),aethyr_terrain_decode(a.z,c.z,t,gain));
+}
+// The ground's weights at (x, z): its layers over the meadow in order (forest.coax e2_ground_layer),
+// as the tile's converter takes them (ground.coax e2g_weights).
+e2_ground_weights :: (x:f32,z:f32)->V4 {
+ w:=v4(1,0,0,0);
+ c:=e2_ground_layer(x,z,0);w=v4(aethyr_terrain_over(w.x,c,0),aethyr_terrain_over(w.y,c,1),aethyr_terrain_over(w.z,c,0),aethyr_terrain_over(w.w,c,0));
+ c=e2_ground_layer(x,z,1);w=v4(aethyr_terrain_over(w.x,c,0),aethyr_terrain_over(w.y,c,0),aethyr_terrain_over(w.z,c,1),aethyr_terrain_over(w.w,c,0));
+ c=e2_ground_layer(x,z,2);w=v4(aethyr_terrain_over(w.x,c,0),aethyr_terrain_over(w.y,c,0),aethyr_terrain_over(w.z,c,0),aethyr_terrain_over(w.w,c,1));
+ return w;
+}
+e2_ground_albedo :: (x:f32,z:f32,ground:[]V4)->V3 {
+ w:=e2_ground_weights(x,z);out:=v3(0,0,0);
+ if (w.x>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,0,w),w.x));}
+ if (w.y>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,1,w),w.y));}
+ if (w.z>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,2,w),w.z));}
+ if (w.w>0.0f32) {out=add3(out,scale3(e2_ground_material(x,z,ground,3,w),w.w));}
+ return out;
+}
+e2_ground_at :: (ground:[]V4,k:int)->f32 {v:=ground[E2_GROUND_AO+k/4];r:=k%4;return ifx r==0 then v.x else ifx r==1 then v.y else ifx r==2 then v.z else v.w;}
+// The canopy's AO on the ground at (x, z) (aethyr/render/bake.coax bake_sample at no height), eased to 1
+// over the last metres inside the tile's edge as ground.coax e2g_ao; 1 off the tile or before the bake.
+e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
+ grid:=ground[0];head:=ground[1];
+ if (head.z<0.5f32) {return 1.0f32;}
+ n:=grid.x;span:=n*grid.y;
+ if (aethyr_bake_inside(x,grid.z,span)*aethyr_bake_inside(z,grid.w,span)<0.5f32) {return 1.0f32;}
+ gx:=(x-grid.z)/grid.y;gz:=(z-grid.w)/grid.y;ix:=aethyr_bake_index(gx,n);iz:=aethyr_bake_index(gz,n);
+ fx:=aethyr_bake_fraction(gx,ix);fz:=aethyr_bake_fraction(gz,iz);
+ side:=cast(int)n+1;q:=cast(int)iz*side+cast(int)ix;
+ ao:=aethyr_bake_ao(aethyr_bake_bilerp(e2_ground_at(ground,q),e2_ground_at(ground,q+1),e2_ground_at(ground,q+side),e2_ground_at(ground,q+side+1),fx,fz),aethyr_bake_rise(0,head.x));
+ edge:=fmin(fmin(x-grid.z,grid.z+span-x),fmin(z-grid.w,grid.w+span-z));t:=saturate(edge/head.y);
+ return 1.0f32+(ao-1.0f32)*t*t*(3.0f32-2.0f32*t);
+}
+#test "the ground reads its table's material, the litter's share of the layers under it, and the bake's AO" {
+ g:[40]V4;
+ for i:0..<40 {g[i]=v4(1,1,1,1);}
+ g[0]=v4(2,1,0,-2);g[1]=v4(6,0.5,1,4);
+ // material 2 (the litter): its colours, all of its blend the autumn (1) against the meadow (0), a gain
+ b:=E2_GROUND_HEAD+2*E2_GROUND_MATERIAL;
+ g[b]=v4(0.2,0.3,0.1,1);g[b+1]=v4(0.6,0.3,0.1,1);g[b+2]=v4(0,0,0,0);g[b+3]=v4(0,0,0.9,0.2);g[b+4]=v4(1.5,7,0,0);
+ w:=v4(0.1,0.3,0.6,0);
+ got:=e2_ground_material(3,4,g[..],2,w);
+ gain:=aethyr_terrain_gain(3,4,0.9,0.2,1.5,7);
+ #assert abs(got.x-aethyr_terrain_decode(0.2,0.6,0.75,gain))<0.000001 && abs(got.y-aethyr_terrain_decode(0.3,0.3,0.75,gain))<0.000001;
+ // the weights are the layers over the meadow, adding to one
+ ww:=e2_ground_weights(-4.2,-8.8);
+ #assert abs(ww.x+ww.y+ww.z+ww.w-1)<0.00001;
+ // the AO: bilinear on its 3 by 3 samples, 1 off the grid, eased to 1 at the edge, 1 before the bake
+ for k:0..<9 {v:=g[E2_GROUND_AO+k/4];r:=k%4;val:=0.6f32+0.04f32*f32(k);
+  if r==0 {v.x=val;} else if r==1 {v.y=val;} else if r==2 {v.z=val;} else {v.w=val;} g[E2_GROUND_AO+k/4]=v;}
+ // (1, -1) is sample 4, the middle, 0.5 from the edge: fully the bake
+ #assert abs(e2_ground_ao(1,-1,g[..])-0.76)<0.00001;
+ #assert abs(e2_ground_ao(0.5,-1,g[..])-mix(0.72f32,0.76f32,0.5f32))<0.00001;
+ #assert e2_ground_ao(0,-1,g[..])==1 && e2_ground_ao(3,-1,g[..])==1 && e2_ground_ao(1,-3,g[..])==1;
+ g[1]=v4(6,0.5,0,4);
+ #assert e2_ground_ao(1,-1,g[..])==1;
+}
+e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4)->V4 {
  if (s.local.x<0.5f32) {return v4(pow(tex.x,0.62f32),pow(tex.y,0.75f32),tex.z*0.965f32,1);}
  kind:=s.local.x;n:=normalize3(add3(s.normal,v3(0,0.0001f32,0)));
  foliage:=kind>0.5f32 && kind<2.5f32;grass:=kind>1.5f32 && kind<2.5f32;leaves:=kind>0.5f32 && kind<1.5f32;ground:=kind>4.5f32 && kind<5.5f32;
  if (!front && !foliage) {n=scale3(n,-1);}
  sun:=cg_sun_dir();eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
- if (foliage || ground) {albedo=cg_decode(s.tint);}
+ if (foliage) {albedo=cg_decode(s.tint);}
+ // the ground's colour is the admitted material table's at this point (the pack's vertex colours
+ // are no longer read); the hand-set gold, woods and trail below are this realm's look on top
+ if (ground) {albedo=e2_ground_albedo(s.world.x,s.world.z,table);}
  if (ground) {trail:=e2_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
   steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
   // inside the ridge cut on the walk to Everglade (past the main shot's view) the banks stay a grassy olive
@@ -235,6 +309,9 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (leaves) {direct=saturate((ndl+0.65f32)/1.65f32);ao=clampf(s.local.y,0.5f32,1.0f32);}
  if (grass) {green:=saturate((s.tint.y-s.tint.x)*4.0f32);albedo=mul3(albedo,mix3(v3(0.88f32,0.80f32,0.08f32),v3(0.60f32,0.86f32,0.10f32),green));direct=(0.22f32+0.56f32*s.local.y)*(0.85f32+0.15f32*abs(ndl));ao=0.36f32+0.64f32*s.local.y;}
  if (kind>2.5f32 && kind<3.5f32) {direct=0.35f32+0.45f32*abs(ndl);}
+ // the canopy's baked AO darkens the ground's sky light only, as it does your character's (u[62]), by
+ // the share the page gives it (ground.coax E2G_GROUND_AO_SHARE)
+ if (ground) {ao=1.0f32+(e2_ground_ao(s.world.x,s.world.z,table)-1.0f32)*table[1].w;}
  fill:=ifx leaves then (ifx s.tint.x>s.tint.y*1.2f32 then 2.1f32 else 1.15f32) else ifx kind>5.5f32 && kind<6.5f32 then 1.5f32 else ifx kind>3.5f32 && kind<4.5f32 && town<0 then 0.78f32 else 1.0f32;
  indirect:=mul3(albedo,scale3(cg_hemisphere(n),ao*fill));
  if (leaves && s.tint.x>s.tint.y*1.2f32) {indirect=mul3(indirect,v3(1.12f32,0.90f32,0.75f32));}
@@ -302,7 +379,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
  colour=cg_atmosphere(colour,eye,s.world);return v4(colour.x,colour.y,colour.z,share);
 }
-everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:[]V4,sheets:Tex2DArray,sheet:Sampler,data:Tex2DArray,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->Everglade2Lit {
+everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:[]V4,ground:[]V4,sheets:Tex2DArray,sheet:Sampler,data:Tex2DArray,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->Everglade2Lit {
  deriv:=CcDeriv.{px=v3(gpu_dpdx_fine(s.world.x),gpu_dpdx_fine(s.world.y),gpu_dpdx_fine(s.world.z)),py=v3(gpu_dpdy_fine(s.world.x),gpu_dpdy_fine(s.world.y),gpu_dpdy_fine(s.world.z)),ux=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y)),uy=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y))};
  uv:=s.uv;ray:=add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(s.pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-s.pos.y)/u[19])));plate:=cg_sky_uv(ray);
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {uv=v2(clampf(plate.x,0.001f32,0.999f32),clampf(plate.y,0.001f32,0.999f32));}
@@ -313,7 +390,7 @@ everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:
  if (tex.w<0.35f32) {gpu_demote_helper();}
  if (s.dye.w>11.5f32 && !e2_dither_keep(v2(s.pos.x,s.pos.y),s.dye.x)) {gpu_demote_helper();}
  c:V4;
- if (s.dye.w>11.5f32) {c=e2_environment_fs(s,tex,front,u,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
+ if (s.dye.w>11.5f32) {c=e2_environment_fs(s,tex,front,u,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),ground);}
  else {c=cc_player_fs(s,tex,front,u,objects,e2_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp),mats,data,sheet,deriv);}
  n:=normalize3(s.normal);z:=dot3(sub3(s.world,wg_at3(u,16)),wg_at3(u,20));
  sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;

@@ -129,10 +129,11 @@ fn coax_at_u(i: i32) -> f32 {
 @group(1) @binding(2) var<storage, read> bake: array<vec4f>;
 @group(1) @binding(3) var<storage, read> inst: array<vec4f>;
 @group(0) @binding(1) var<storage, read> frame: array<f32>;
-@group(1) @binding(5) var sheets: texture_2d_array<f32>;
-@group(1) @binding(6) var sheet: sampler;
+@group(1) @binding(6) var sheets: texture_2d_array<f32>;
+@group(1) @binding(7) var sheet: sampler;
 @group(1) @binding(4) var<storage, read> mats: array<vec4f>;
-@group(1) @binding(7) var data: texture_2d_array<f32>;
+@group(1) @binding(5) var<storage, read> ground: array<vec4f>;
+@group(1) @binding(8) var data: texture_2d_array<f32>;
 @group(2) @binding(0) var shadow_map: texture_depth_2d;
 @group(2) @binding(1) var shadow_cmp: sampler_comparison;
 @group(1) @binding(0) var bloom_src: texture_2d<f32>;
@@ -247,7 +248,7 @@ fn coax_p_scene_fs(p_s: coax_t15, p_front: bool) -> coax_t25 {
   var l_c: vec4f;
   var l_n: vec3f;
   var l_z: f32;
-  var l_sky_19: bool;
+  var l_sky_20: bool;
   var l_foliage: bool;
   var l_indirect: f32;
   var l_packed: vec2f;
@@ -284,12 +285,12 @@ fn coax_p_scene_fs(p_s: coax_t15, p_front: bool) -> coax_t25 {
   }
   l_n = coax_p_normalize3(l_s.z);
   l_z = dot(coax_p_sub3(l_s.y, coax_p_wg_at3(16i)), coax_p_wg_at3(20i));
-  l_sky_19 = ((l_s.f6.w > 0x1.700000p3f) && (l_s.f7.x < 0x1.000000p-1f));
+  l_sky_20 = ((l_s.f6.w > 0x1.700000p3f) && (l_s.f7.x < 0x1.000000p-1f));
   l_foliage = (((l_s.f6.w > 0x1.700000p3f) && (l_s.f7.x > 0x1.000000p-1f)) && (l_s.f7.x < 0x1.400000p1f));
   l_indirect = l_c.w;
   l_packed = coax_p_cg_normal_pack(l_n);
-  l_c.w = select(select(0x1.eb851ep-4f, 0x1.99999ap-2f, l_foliage), 0.0f, l_sky_19);
-  return coax_t25(l_c, coax_p_v4(l_packed.x, l_packed.y, l_indirect, select(select(l_z, (-l_z), l_foliage), 0.0f, l_sky_19)));
+  l_c.w = select(select(0x1.eb851ep-4f, 0x1.99999ap-2f, l_foliage), 0.0f, l_sky_20);
+  return coax_t25(l_c, coax_p_v4(l_packed.x, l_packed.y, l_indirect, select(select(l_z, (-l_z), l_foliage), 0.0f, l_sky_20)));
 }
 fn coax_p_bloom_fs(p_pos: vec4f) -> vec4f {
   var l_pos: vec4f = p_pos;
@@ -847,9 +848,13 @@ fn coax_p_e2_environment_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_shadow
   l_eye = coax_p_wg_at3(16i);
   l_view = coax_p_normalize3(coax_p_sub3(l_eye, l_s.y));
   l_albedo = coax_p_mul3(coax_p_v3(l_tex.x, l_tex.y, l_tex.z), coax_p_cg_decode(l_s.f5));
-  if ((l_foliage || l_ground))
+  if (l_foliage)
   {
     l_albedo = coax_p_cg_decode(l_s.f5);
+  }
+  if (l_ground)
+  {
+    l_albedo = coax_p_e2_ground_albedo(l_s.y.x, l_s.y.z);
   }
   if (l_ground)
   {
@@ -914,6 +919,10 @@ fn coax_p_e2_environment_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_shadow
   if (((l_kind > 0x1.400000p1f) && (l_kind < 0x1.c00000p1f)))
   {
     l_direct = (0x1.666666p-2f + (0x1.ccccccp-2f * abs(l_ndl)));
+  }
+  if (l_ground)
+  {
+    l_ao = (0x1.000000p0f + ((coax_p_e2_ground_ao(l_s.y.x, l_s.y.z) - 0x1.000000p0f) * ground[1i].w));
   }
   l_fill = select(select(select(0x1.000000p0f, 0x1.8f5c28p-1f, (((l_kind > 0x1.c00000p1f) && (l_kind < 0x1.200000p2f)) && (l_town < 0.0f))), 0x1.800000p0f, ((l_kind > 0x1.600000p2f) && (l_kind < 0x1.a00000p2f))), select(0x1.266666p0f, 0x1.0cccccp1f, (l_s.f5.x > (l_s.f5.y * 0x1.333334p0f))), l_leaves);
   l_indirect = coax_p_mul3(l_albedo, coax_p_scale3(coax_p_cg_hemisphere(l_n), (l_ao * l_fill)));
@@ -2101,6 +2110,31 @@ fn coax_p_mul3(p_a: vec3f, p_b: vec3f) -> vec3f {
   var l_b: vec3f = p_b;
   return vec3f((l_a.x * l_b.x), (l_a.y * l_b.y), (l_a.z * l_b.z));
 }
+fn coax_p_e2_ground_albedo(p_x: f32, p_z: f32) -> vec3f {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_w: vec4f;
+  var l_out: vec3f;
+  l_w = coax_p_e2_ground_weights(l_x, l_z);
+  l_out = coax_p_v3(0.0f, 0.0f, 0.0f);
+  if ((l_w.x > 0.0f))
+  {
+    l_out = coax_p_add3(l_out, coax_p_scale3(coax_p_e2_ground_material(l_x, l_z, 0i, l_w), l_w.x));
+  }
+  if ((l_w.y > 0.0f))
+  {
+    l_out = coax_p_add3(l_out, coax_p_scale3(coax_p_e2_ground_material(l_x, l_z, 1i, l_w), l_w.y));
+  }
+  if ((l_w.z > 0.0f))
+  {
+    l_out = coax_p_add3(l_out, coax_p_scale3(coax_p_e2_ground_material(l_x, l_z, 2i, l_w), l_w.z));
+  }
+  if ((l_w.w > 0.0f))
+  {
+    l_out = coax_p_add3(l_out, coax_p_scale3(coax_p_e2_ground_material(l_x, l_z, 3i, l_w), l_w.w));
+  }
+  return l_out;
+}
 fn coax_p_e2_road_x(p_z: f32) -> f32 {
   var l_z: f32 = p_z;
   var l_b: f32;
@@ -2149,6 +2183,49 @@ fn coax_p_cg_cloud(p_x: f32, p_z: f32) -> f32 {
   var l_c: f32;
   l_c = ((coax_p_cg_noise(coax_p_v2(((l_x * 0x1.99999ap-4f) + 0x1.9cccccp3f), ((l_z * 0x1.99999ap-4f) - 0x1.b33334p0f))) * 0x1.666666p-1f) + (coax_p_cg_noise(coax_p_v2((l_x * 0x1.147ae2p-2f), (l_z * 0x1.147ae2p-2f))) * 0x1.333334p-2f));
   return (0x1.000000p0f - (0x1.19999ap-1f * coax_p_smoothstep(0x1.c28f5cp-2f, 0x1.333334p-1f, l_c)));
+}
+fn coax_p_e2_ground_ao(p_x: f32, p_z: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_grid: vec4f;
+  var l_head: vec4f;
+  var l_n: f32;
+  var l_span: f32;
+  var l_gx: f32;
+  var l_gz: f32;
+  var l_ix: f32;
+  var l_iz: f32;
+  var l_fx: f32;
+  var l_fz: f32;
+  var l_side: i32;
+  var l_q: i32;
+  var l_ao: f32;
+  var l_edge: f32;
+  var l_t: f32;
+  l_grid = ground[0i];
+  l_head = ground[1i];
+  if ((l_head.z < 0x1.000000p-1f))
+  {
+    return 0x1.000000p0f;
+  }
+  l_n = l_grid.x;
+  l_span = (l_n * l_grid.y);
+  if (((coax_p_aethyr_bake_inside(l_x, l_grid.z, l_span) * coax_p_aethyr_bake_inside(l_z, l_grid.w, l_span)) < 0x1.000000p-1f))
+  {
+    return 0x1.000000p0f;
+  }
+  l_gx = ((l_x - l_grid.z) / l_grid.y);
+  l_gz = ((l_z - l_grid.w) / l_grid.y);
+  l_ix = coax_p_aethyr_bake_index(l_gx, l_n);
+  l_iz = coax_p_aethyr_bake_index(l_gz, l_n);
+  l_fx = coax_p_aethyr_bake_fraction(l_gx, l_ix);
+  l_fz = coax_p_aethyr_bake_fraction(l_gz, l_iz);
+  l_side = (i32(l_n) + 1i);
+  l_q = ((i32(l_iz) * l_side) + i32(l_ix));
+  l_ao = coax_p_aethyr_bake_ao(coax_p_aethyr_bake_bilerp(coax_p_e2_ground_at(l_q), coax_p_e2_ground_at((l_q + 1i)), coax_p_e2_ground_at((l_q + l_side)), coax_p_e2_ground_at(((l_q + l_side) + 1i)), l_fx, l_fz), coax_p_aethyr_bake_rise(0.0f, l_head.x));
+  l_edge = coax_p_fmin(coax_p_fmin((l_x - l_grid.z), ((l_grid.z + l_span) - l_x)), coax_p_fmin((l_z - l_grid.w), ((l_grid.w + l_span) - l_z)));
+  l_t = coax_p_saturate((l_edge / l_head.y));
+  return (0x1.000000p0f + ((((l_ao - 0x1.000000p0f) * l_t) * l_t) * (0x1.800000p1f - (0x1.000000p1f * l_t))));
 }
 fn coax_p_cg_hemisphere(p_n: vec3f) -> vec3f {
   var l_n: vec3f = p_n;
@@ -2949,11 +3026,99 @@ fn coax_p_render_filter_layer8_grad(p_uv: vec2f, p_layer: i32, p_dx: vec2f, p_dy
   }
   return coax_t33(true, coax_p_scale4(l_rs_sum, (0x1.000000p0f / f32(l_rs_f.y))));
 }
+fn coax_p_e2_ground_weights(p_x: f32, p_z: f32) -> vec4f {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_w: vec4f;
+  var l_c: f32;
+  l_w = coax_p_v4(0x1.000000p0f, 0.0f, 0.0f, 0.0f);
+  l_c = coax_p_e2_ground_layer(l_x, l_z, 0i);
+  l_w = coax_p_v4(coax_p_aethyr_terrain_over(l_w.x, l_c, 0.0f), coax_p_aethyr_terrain_over(l_w.y, l_c, 0x1.000000p0f), coax_p_aethyr_terrain_over(l_w.z, l_c, 0.0f), coax_p_aethyr_terrain_over(l_w.w, l_c, 0.0f));
+  l_c = coax_p_e2_ground_layer(l_x, l_z, 1i);
+  l_w = coax_p_v4(coax_p_aethyr_terrain_over(l_w.x, l_c, 0.0f), coax_p_aethyr_terrain_over(l_w.y, l_c, 0.0f), coax_p_aethyr_terrain_over(l_w.z, l_c, 0x1.000000p0f), coax_p_aethyr_terrain_over(l_w.w, l_c, 0.0f));
+  l_c = coax_p_e2_ground_layer(l_x, l_z, 2i);
+  l_w = coax_p_v4(coax_p_aethyr_terrain_over(l_w.x, l_c, 0.0f), coax_p_aethyr_terrain_over(l_w.y, l_c, 0.0f), coax_p_aethyr_terrain_over(l_w.z, l_c, 0.0f), coax_p_aethyr_terrain_over(l_w.w, l_c, 0x1.000000p0f));
+  return l_w;
+}
+fn coax_p_e2_ground_material(p_x: f32, p_z: f32, p_m: i32, p_w: vec4f) -> vec3f {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_m: i32 = p_m;
+  var l_w: vec4f = p_w;
+  var l_b: i32;
+  var l_a: vec4f;
+  var l_c: vec4f;
+  var l_f: vec4f;
+  var l_g: vec4f;
+  var l_h: vec4f;
+  var l_t: f32;
+  var l_gain: f32;
+  l_b = (2i + (l_m * 5i));
+  l_a = ground[l_b];
+  l_c = ground[(l_b + 1i)];
+  l_f = ground[(l_b + 2i)];
+  l_g = ground[(l_b + 3i)];
+  l_h = ground[(l_b + 4i)];
+  l_t = coax_p_aethyr_terrain_blend_t(l_x, l_z, l_f.x, l_f.y, l_f.z, l_f.w, l_g.x, l_g.y);
+  if ((l_a.w > 0.0f))
+  {
+    l_t = (l_t + (l_a.w * coax_p_aethyr_terrain_share(coax_p_e2_ground_pick(l_w, l_c.w), coax_p_e2_ground_pick(l_w, l_h.z))));
+  }
+  l_gain = coax_p_aethyr_terrain_gain(l_x, l_z, l_g.z, l_g.w, l_h.x, l_h.y);
+  return coax_p_v3(coax_p_aethyr_terrain_decode(l_a.x, l_c.x, l_t, l_gain), coax_p_aethyr_terrain_decode(l_a.y, l_c.y, l_t, l_gain), coax_p_aethyr_terrain_decode(l_a.z, l_c.z, l_t, l_gain));
+}
 fn coax_p_cg_road_x(p_z: f32) -> f32 {
   var l_z: f32 = p_z;
   var l_b: f32;
   l_b = coax_p_cg_ramp((-0x1.a00000p3f), (-0x1.300000p4f), l_z);
   return ((coax_p_cg_path_x(l_z) * (0x1.000000p0f - l_b)) + ((0x1.a66666p1f + (0x1.333334p-2f * sin(((l_z + 0x1.500000p4f) * 0x1.000000p-2f)))) * l_b));
+}
+fn coax_p_aethyr_bake_inside(p_x: f32, p_edge: f32, p_span: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_edge: f32 = p_edge;
+  var l_span: f32 = p_span;
+  if (((l_x < l_edge) || (l_x > (l_edge + l_span))))
+  {
+    return 0.0f;
+  }
+  return 0x1.000000p0f;
+}
+fn coax_p_aethyr_bake_index(p_g: f32, p_n: f32) -> f32 {
+  var l_g: f32 = p_g;
+  var l_n: f32 = p_n;
+  return coax_p_clampf(floor(l_g), 0.0f, (l_n - 0x1.000000p0f));
+}
+fn coax_p_aethyr_bake_fraction(p_g: f32, p_i: f32) -> f32 {
+  var l_g: f32 = p_g;
+  var l_i: f32 = p_i;
+  return coax_p_clampf((l_g - l_i), 0.0f, 0x1.000000p0f);
+}
+fn coax_p_e2_ground_at(p_k: i32) -> f32 {
+  var l_k: i32 = p_k;
+  var l_v: vec4f;
+  var l_r: i32;
+  l_v = ground[(22i + (l_k / 4i))];
+  l_r = (l_k % 4i);
+  return select(select(select(l_v.w, l_v.z, (l_r == 2i)), l_v.y, (l_r == 1i)), l_v.x, (l_r == 0i));
+}
+fn coax_p_aethyr_bake_bilerp(p_a: f32, p_b: f32, p_c: f32, p_d: f32, p_fx: f32, p_fz: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_c: f32 = p_c;
+  var l_d: f32 = p_d;
+  var l_fx: f32 = p_fx;
+  var l_fz: f32 = p_fz;
+  return coax_p_aethyr_terrain_mix(coax_p_aethyr_terrain_mix(l_a, l_b, l_fx), coax_p_aethyr_terrain_mix(l_c, l_d, l_fx), l_fz);
+}
+fn coax_p_aethyr_bake_rise(p_h: f32, p_rise: f32) -> f32 {
+  var l_h: f32 = p_h;
+  var l_rise: f32 = p_rise;
+  return coax_p_smoothstep(0.0f, l_rise, l_h);
+}
+fn coax_p_aethyr_bake_ao(p_ao: f32, p_s: f32) -> f32 {
+  var l_ao: f32 = p_ao;
+  var l_s: f32 = p_s;
+  return coax_p_aethyr_terrain_mix(l_ao, 0x1.000000p0f, l_s);
 }
 fn coax_p_cg_phase(p_cos_t: f32, p_g: f32) -> f32 {
   var l_cos_t: f32 = p_cos_t;
@@ -3242,9 +3407,88 @@ fn coax_p_scale4(p_a: vec4f, p_k: f32) -> vec4f {
   var l_k: f32 = p_k;
   return vec4f((l_a.x * l_k), (l_a.y * l_k), (l_a.z * l_k), (l_a.w * l_k));
 }
+fn coax_p_e2_ground_layer(p_x: f32, p_z: f32, p_l: i32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_l: i32 = p_l;
+  if ((l_l == 0i))
+  {
+    return coax_p_e2_gold(l_x, l_z);
+  }
+  if ((l_l == 1i))
+  {
+    return (coax_p_e2_forest(l_x, l_z) * 0x1.333334p-1f);
+  }
+  return coax_p_e2_path(l_x, l_z);
+}
+fn coax_p_aethyr_terrain_over(p_w: f32, p_c: f32, p_is: f32) -> f32 {
+  var l_w: f32 = p_w;
+  var l_c: f32 = p_c;
+  var l_is: f32 = p_is;
+  return ((l_w * (0x1.000000p0f - l_c)) + (l_c * l_is));
+}
+fn coax_p_aethyr_terrain_blend_t(p_x: f32, p_z: f32, p_f1: f32, p_w1: f32, p_o1: f32, p_f2: f32, p_w2: f32, p_o2: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_f1: f32 = p_f1;
+  var l_w1: f32 = p_w1;
+  var l_o1: f32 = p_o1;
+  var l_f2: f32 = p_f2;
+  var l_w2: f32 = p_w2;
+  var l_o2: f32 = p_o2;
+  var l_t: f32;
+  l_t = (coax_p_aethyr_terrain_noise(((l_x * l_f1) + l_o1), ((l_z * l_f1) + l_o1)) * l_w1);
+  if ((l_w2 > 0.0f))
+  {
+    l_t = (l_t + (coax_p_aethyr_terrain_noise(((l_x * l_f2) + l_o2), ((l_z * l_f2) + l_o2)) * l_w2));
+  }
+  return l_t;
+}
+fn coax_p_e2_ground_pick(p_w: vec4f, p_k: f32) -> f32 {
+  var l_w: vec4f = p_w;
+  var l_k: f32 = p_k;
+  return select(select(select(l_w.w, l_w.z, (l_k < 0x1.400000p1f)), l_w.y, (l_k < 0x1.800000p0f)), l_w.x, (l_k < 0x1.000000p-1f));
+}
+fn coax_p_aethyr_terrain_share(p_w_of: f32, p_w_against: f32) -> f32 {
+  var l_w_of: f32 = p_w_of;
+  var l_w_against: f32 = p_w_against;
+  var l_total: f32;
+  l_total = (l_w_of + l_w_against);
+  if ((l_total > 0.0f))
+  {
+    return (l_w_of / l_total);
+  }
+  return 0.0f;
+}
+fn coax_p_aethyr_terrain_gain(p_x: f32, p_z: f32, p_g0: f32, p_g1: f32, p_f3: f32, p_o3: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_g0: f32 = p_g0;
+  var l_g1: f32 = p_g1;
+  var l_f3: f32 = p_f3;
+  var l_o3: f32 = p_o3;
+  if ((l_g1 > 0.0f))
+  {
+    return (l_g0 + (l_g1 * coax_p_aethyr_terrain_noise(((l_x * l_f3) + l_o3), ((l_z * l_f3) + l_o3))));
+  }
+  return l_g0;
+}
+fn coax_p_aethyr_terrain_decode(p_a: f32, p_b: f32, p_t: f32, p_scale: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_t: f32 = p_t;
+  var l_scale: f32 = p_scale;
+  return coax_pow_bg_vs(coax_p_fmax((coax_p_aethyr_terrain_mix(l_a, l_b, l_t) * l_scale), 0.0f), 0x1.19999ap1f);
+}
 fn coax_p_cg_path_x(p_z: f32) -> f32 {
   var l_z: f32 = p_z;
   return (((0x1.0cccccp1f * sin((l_z * 0x1.147ae2p-2f))) + 0x1.ccccccp-1f) - select(0.0f, (l_z * 0x1.19999ap-1f), (l_z > 0.0f)));
+}
+fn coax_p_aethyr_terrain_mix(p_a: f32, p_b: f32, p_t: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_t: f32 = p_t;
+  return (l_a + ((l_b - l_a) * l_t));
 }
 fn coax_p_verse_style_haze_phase(p_vdl: f32, p_g: f32) -> f32 {
   var l_vdl: f32 = p_vdl;
@@ -3436,6 +3680,23 @@ fn coax_p_render_footprint_max(p_a: f32, p_b: f32) -> f32 {
   var l_a: f32 = p_a;
   var l_b: f32 = p_b;
   return (((l_a + l_b) + abs((l_a - l_b))) * 0x1.000000p-1f);
+}
+fn coax_p_aethyr_terrain_noise(p_x: f32, p_z: f32) -> f32 {
+  var l_x: f32 = p_x;
+  var l_z: f32 = p_z;
+  var l_ix: f32;
+  var l_iz: f32;
+  var l_fx: f32;
+  var l_fz: f32;
+  var l_sx: f32;
+  var l_sz: f32;
+  l_ix = floor(l_x);
+  l_iz = floor(l_z);
+  l_fx = (l_x - l_ix);
+  l_fz = (l_z - l_iz);
+  l_sx = ((l_fx * l_fx) * (0x1.800000p1f - (0x1.000000p1f * l_fx)));
+  l_sz = ((l_fz * l_fz) * (0x1.800000p1f - (0x1.000000p1f * l_fz)));
+  return coax_p_aethyr_terrain_mix(coax_p_aethyr_terrain_mix(coax_p_render_noise2(l_ix, l_iz), coax_p_render_noise2((l_ix + 0x1.000000p0f), l_iz), l_sx), coax_p_aethyr_terrain_mix(coax_p_render_noise2(l_ix, (l_iz + 0x1.000000p0f)), coax_p_render_noise2((l_ix + 0x1.000000p0f), (l_iz + 0x1.000000p0f)), l_sx), l_sz);
 }
 fn coax_p_verse_style_soft_step(p_e: f32, p_s: f32, p_x: f32) -> f32 {
   var l_e: f32 = p_e;
