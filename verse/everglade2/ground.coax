@@ -1,0 +1,279 @@
+// Everglade II's admitted ground (GitHub #12995, book chapters 8, 12 and 13): the glade's land as an
+// Aethyr terrain tile (aethyr/terrain-tile.coax, `aethyr.terrain.tile.v1`) against Everglade II's
+// ground material table, and the canopy's ambient occlusion baked on that tile
+// (aethyr/render/bake.coax, `aethyr.bake.grid.v1`). The realm supplies content and this adapter; the
+// engine admits, samples and publishes.
+//
+// The tile is the pack's glade grid exactly (verse/tools/assets/everglade2_pack.coax gp_ground): 100
+// cells a side, 0.65 m each, from (-32.5, -60) to (32.5, 5), every cell split on its south-west /
+// north-east diagonal as the pack's triangles are. Heights are e2_height at the samples, in metres
+// (converted once, unit metre, converter E2G_CONVERTER). The pack draws that surface E2G_DRAW_DROP
+// lower, a declared decorative offset; the walk stands on the admitted triangles, so the feet and
+// the drawn ground agree at every sample and along every triangle (e2g_y).
+//
+// Materials: meadow, autumn meadow, forest litter and path dirt (the pack's colours, display
+// encoded). A sample's weights are the pack's layers in order with aethyr_terrain_over: autumn over
+// the meadow by e2_gold, litter over both by 0.6 e2_forest, the path over all by e2_path; each
+// quantized to a byte.
+//
+// Baked light: AO on the tile's samples from the woods' and the glade's tree crowns as sphere
+// proxies (centre and radius per kit, E2G_CROWN). A sphere of radius r whose centre is D away along
+// the unit direction d, wholly above the ground's tangent plane, hides (r / D)^2 max(0, n . d) of
+// the cosine-weighted sky; crowns are summed and AO = clamp(1 - sum, E2G_AO_FLOOR, 1), eased to the fallback over the last E2G_EDGE metres inside the tile's edge. A point
+// inside a crown takes the floor. No bounce (0 in every channel). The bake is keyed by the tile's
+// revision and the crowns' content digest; until it publishes, a sample is the fallback (AO 1),
+// counted. Its one consumer so far is your character's indirect light (u[62], gpu/everglade2.coax
+// cc_player_fs).
+//
+//   coax/bin/coax test verse/everglade2/ground.coax --library
+#load "plant.coax";
+#load "../../aethyr/terrain-tile.coax" as e2tt;
+#load "../../aethyr/render/bake.coax" as e2bk;
+
+E2G_CELLS :: 100;
+E2G_SPACING :: 0.65;
+E2G_WEST :: -32.5;
+E2G_SOUTH :: -60.0;
+E2G_POINTS :: 10201;          // (E2G_CELLS + 1)^2
+E2G_DRAW_DROP :: 0.035;       // the pack draws the glade's ground this far below the admitted surface
+E2G_CONVERTER :: 1;           // this converter's revision
+E2G_MEADOW :: 0; E2G_AUTUMN :: 1; E2G_LITTER :: 2; E2G_PATH :: 3;
+E2G_RISE :: 6.0;              // m: the bake fades to open sky over this height above the ground
+E2G_AO_FLOOR :: 0.6;          // the darkest the canopy makes it
+E2G_EDGE :: 6.0;              // m: inside the tile's edge the bake eases to the fallback, so leaving it is no step
+E2G_REACH :: 12.0;            // m: crowns this far past the tile still shade its edge
+E2G_CROWNS :: 4096;
+
+E2Ground :: struct {
+  table: [4] e2tt.TerrainMaterial;
+  tile: e2tt.TerrainTile;
+  frame: Ground;
+  receipt: e2tt.TerrainTileReceipt;
+  ok: bool;
+  source: [E2G_POINTS] f32; heights: [E2G_POINTS] f32;
+  holes: [E2G_CELLS * E2G_CELLS] u8; ids: [E2G_POINTS * 4] u8; weights: [E2G_POINTS * 4] u8;
+  crowns: [E2G_CROWNS * 4] f32; crown_n: int;   // x, y, z, r
+  bake: [1] e2bk.BakeSet; key: e2bk.BakeKey;
+  ao: [E2G_POINTS] f32; bounce: [E2G_POINTS * 3] f32;
+  live_ao: [E2G_POINTS] f32; live_bounce: [E2G_POINTS * 3] f32;
+  baked: int;                                    // the bake's publish status (e2bk.BAKE_OK when live), -1 not yet
+  outside: int;                                  // queries outside the tile (answered by e2_height)
+}
+
+// The table: one constant colour each (albedo_a = albedo_b, no noise, gain 1).
+e2g_material :: (id: int, c: [3] f32) -> e2tt.TerrainMaterial {
+  m: e2tt.TerrainMaterial; m.id = id; m.albedo_a = c; m.albedo_b = c; m.blend_weight = [2] f32.[1, 0]; m.gain = [2] f32.[1, 0];
+  return m;
+}
+e2g_table :: (t: [] e2tt.TerrainMaterial) {
+  t[0] = e2g_material(E2G_MEADOW, [3] f32.[0.32, 0.53, 0.055]);
+  t[1] = e2g_material(E2G_AUTUMN, [3] f32.[0.56, 0.50, 0.055]);
+  t[2] = e2g_material(E2G_LITTER, [3] f32.[0.25, 0.36, 0.07]);
+  t[3] = e2g_material(E2G_PATH, [3] f32.[0.67, 0.60, 0.35]);
+}
+e2g_byte :: (w: f32) -> u8 { v := floor(w * 255 + 0.5); return cast(u8)(ifx v < 0 then 0.0f32 else ifx v > 255 then 255.0f32 else v); }
+// A sample's four weights from the land: the pack's layers, in its order.
+e2g_weights :: (x: f32, z: f32) -> [4] f32 {
+  w := [4] f32.[1, 0, 0, 0];
+  layer := [3] f32.[e2_gold(x, z), e2_forest(x, z) * 0.6, e2_path(x, z)];
+  for l: 0..<3 { c := layer[l]; for k: 0..<4 { w[k] = e2bk.aethyr_terrain_over(w[k], c, ifx k == l + 1 then 1.0f32 else 0.0f32); } }
+  return w;
+}
+// The sample (i, j)'s world point: rows south to north (+z), west to east.
+e2g_x :: (i: int) -> f32 { return f32(E2G_WEST) + f32(i) * f32(E2G_SPACING); }
+e2g_z :: (j: int) -> f32 { return f32(E2G_SOUTH) + f32(j) * f32(E2G_SPACING); }
+
+// Convert the land into the tile and admit it. True when admitted.
+e2g_build :: (g: [] E2Ground) -> bool {
+  e2g_table(g[0].table[..]);
+  t: e2tt.TerrainTile; t.cells = E2G_CELLS; t.spacing = E2G_SPACING; t.origin_x = E2G_WEST; t.origin_z = E2G_SOUTH;
+  t.table = e2tt.terrain_materials_revision(g[0].table[..]);
+  n := E2G_CELLS + 1;
+  for j: 0..<n { for i: 0..<n {
+    k := j * n + i; x := e2g_x(i); z := e2g_z(j);
+    g[0].source[k] = e2_height(x, z);
+    w := e2g_weights(x, z);
+    for q: 0..<4 { b := e2g_byte(w[q]); g[0].ids[k * 4 + q] = ifx b == 0 then cast(u8) e2tt.TERRAIN_TILE_NO_MATERIAL else cast(u8) q; g[0].weights[k * 4 + q] = b; }
+  } }
+  for c: 0..<E2G_CELLS * E2G_CELLS { g[0].holes[c] = 0; }
+  // the source's identity: the land function's name and this converter's revision
+  d := [1] e2tt.TerrainTileDigest.[e2tt.terrain_tile_digest()];
+  for ch: "verse/everglade2/forest.coax e2_height" { e2tt.terrain_tile_digest_byte(d[..], ch); }
+  e2tt.terrain_tile_digest_int(d[..], E2G_CONVERTER);
+  g[0].receipt = e2tt.terrain_tile_convert(t, g[0].table[..], e2tt.terrain_tile_digest_end(d[..]), e2tt.TERRAIN_UNIT_METRE, E2G_CONVERTER,
+    g[0].source[..], g[0].heights[..], g[0].holes[..], g[0].ids[..], g[0].weights[..]);
+  g[0].ok = g[0].receipt.code == e2tt.TERRAIN_TILE_OK;
+  if !g[0].ok { return false; }
+  g[0].tile = t; g[0].frame = e2tt.terrain_tile_ground(t, 0, 0);
+  g[0].baked = -1;
+  return true;
+}
+
+// Where you stand at (x, z): the admitted tile's triangle inside it, e2_height past it (the ribbon and
+// the coarse ground are not tiles yet).
+e2g_y :: (g: [] E2Ground, x: f32, z: f32) -> f32 {
+  span := f32(E2G_CELLS) * f32(E2G_SPACING);
+  inside := x >= f32(E2G_WEST) && x <= f32(E2G_WEST) + span && z >= f32(E2G_SOUTH) && z <= f32(E2G_SOUTH) + span;   // the sampler clamps past its edges
+  if g[0].ok && inside {
+    q := e2tt.terrain_tile_sample(g[0].frame, g[0].heights[..], g[0].holes[..], x, z);
+    if q.ok { return q.height; }
+  }
+  g[0].outside += 1;
+  return e2_height(x, z);
+}
+
+// ---- the bake
+// A crown proxy for kit k at scales (sv, sh): centre height and radius.
+E2G_CROWN :: [3][2] f32.[[2] f32.[5.0, 2.6], [2] f32.[5.5, 1.8], [2] f32.[4.0, 2.0]];   // common, birch, pine
+e2g_crown :: (k: int) -> [2] f32 { return E2G_CROWN[ifx k < 5 then 0 else ifx k < 10 then 1 else 2]; }
+e2g_near :: (x: f32, z: f32) -> bool {
+  r := f32(E2G_REACH); span := f32(E2G_CELLS) * f32(E2G_SPACING);
+  return x > f32(E2G_WEST) - r && x < f32(E2G_WEST) + span + r && z > f32(E2G_SOUTH) - r && z < f32(E2G_SOUTH) + span + r;
+}
+e2g_add_crown :: (g: [] E2Ground, x: f32, y: f32, z: f32, r: f32) {
+  if g[0].crown_n >= E2G_CROWNS || !e2g_near(x, z) { return; }
+  o := g[0].crown_n * 4; g[0].crowns[o] = x; g[0].crowns[o + 1] = y; g[0].crowns[o + 2] = z; g[0].crowns[o + 3] = r; g[0].crown_n += 1;
+}
+// The crowns: the glade's own trees and the planted woods' near the tile.
+e2g_crowns :: (g: [] E2Ground, items: [] f32, kinds: [] u8, planted: int) {
+  g[0].crown_n = 0;
+  for i: 0..<CG_ITEMS {
+    gi := cg_item(i);
+    if gi.kind != 1 || !e2_glade_kept(gi) { continue; }
+    e2g_add_crown(g, gi.x, e2_height(gi.x, gi.z) + 10 * gi.scale * gi.vertical, gi.z, 5 * gi.scale);
+  }
+  for i: 0..<planted {
+    k := cast(int) kinds[i];
+    if k >= E2_TREES { continue; }
+    o := i * E2_ITEM_FLOATS; c := e2g_crown(k);
+    e2g_add_crown(g, items[o], items[o + 1] + c[0] * items[o + 4], items[o + 2], c[1] * items[o + 5]);
+  }
+}
+// The occluded share of the cosine-weighted sky at p with normal n (unit), by the crowns.
+e2g_occluded :: (crowns: [] f32, count: int, px: f32, py: f32, pz: f32, nx: f32, ny: f32, nz: f32) -> f32 {
+  sum := 0.0f32;
+  for c: 0..<count {
+    dx := crowns[c * 4] - px; dy := crowns[c * 4 + 1] - py; dz := crowns[c * 4 + 2] - pz; r := crowns[c * 4 + 3];
+    dd := dx * dx + dy * dy + dz * dz;
+    if dd <= r * r { return 1; }
+    cosine := (dx * nx + dy * ny + dz * nz) / sqrt(dd);
+    if cosine > 0 { sum += r * r / dd * cosine; }
+  }
+  return sum;
+}
+e2g_ao_of :: (occluded: f32) -> f32 { a := 1 - occluded; return ifx a < f32(E2G_AO_FLOOR) then f32(E2G_AO_FLOOR) else ifx a > 1 then 1.0f32 else a; }
+// The crowns' content identity.
+e2g_content :: (g: [] E2Ground) -> [8] u32 {
+  d := [1] e2tt.TerrainTileDigest.[e2tt.terrain_tile_digest()];
+  e2tt.terrain_tile_digest_u32(d[..], 0x45324331);   // "E2C1"
+  e2tt.terrain_tile_digest_int(d[..], g[0].crown_n);
+  for k: 0..<g[0].crown_n * 4 { e2tt.terrain_tile_digest_f32(d[..], g[0].crowns[k]); }
+  return e2tt.terrain_tile_digest_end(d[..]);
+}
+// Bake the canopy's AO on the tile and publish it onto the current key. The publish status.
+e2g_bake :: (g: [] E2Ground, items: [] f32, kinds: [] u8, planted: int) -> int {
+  if !g[0].ok { return -1; }
+  e2g_crowns(g, items, kinds, planted);
+  n := E2G_CELLS + 1;
+  for j: 0..<n { for i: 0..<n {
+    k := j * n + i; x := e2g_x(i); z := e2g_z(j);
+    q := e2tt.terrain_tile_sample(g[0].frame, g[0].heights[..], g[0].holes[..], x, z);
+    nl := sqrt(q.gx * q.gx + 1 + q.gz * q.gz);
+    g[0].ao[k] = e2g_ao_of(e2g_occluded(g[0].crowns[..], g[0].crown_n, x, g[0].heights[k], z, -q.gx / nl, 1 / nl, -q.gz / nl));
+    for c: 0..<3 { g[0].bounce[k * 3 + c] = 0; }
+  } }
+  grid: e2bk.BakeGrid; grid.cells = E2G_CELLS; grid.spacing = E2G_SPACING; grid.origin_x = E2G_WEST; grid.origin_z = E2G_SOUTH; grid.rise = E2G_RISE;
+  grid.key.tile = g[0].receipt.output; grid.key.content = e2g_content(g);
+  g[0].key = grid.key;
+  g[0].baked = e2bk.bake_publish(g[0].bake[..], grid, g[0].tile, g[0].key, g[0].ao[..], g[0].bounce[..], g[0].live_ao[..], g[0].live_bounce[..]);
+  return g[0].baked;
+}
+e2g_least :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+// The baked AO at (x, z), `above` metres over the ground; the fallback (1, counted) before it publishes
+// and past the tile. Within E2G_EDGE of the tile's edge it eases to the fallback (smoothstep on the
+// distance to the edge), so walking off the tile under the woods is no sudden step in light.
+e2g_ao :: (g: [] E2Ground, x: f32, z: f32, above: f32) -> f32 {
+  if !g[0].ok { return 1; }
+  s := e2bk.bake_sample(g[0].bake[..], g[0].key, g[0].frame, g[0].live_ao[..], g[0].live_bounce[..], x, z, above);
+  if !s.ok || s.fallback { return 1; }
+  span := f32(E2G_CELLS) * f32(E2G_SPACING);
+  edge := e2g_least(e2g_least(x - f32(E2G_WEST), f32(E2G_WEST) + span - x), e2g_least(z - f32(E2G_SOUTH), f32(E2G_SOUTH) + span - z));
+  t := edge / f32(E2G_EDGE); t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
+  return 1 + (s.ao - 1) * t * t * (3 - 2 * t);
+}
+
+// ---- checks
+#test "the glade's tile is the pack's grid: admitted, its samples the land, its weights the pack's layers" #steps 2000000000 {
+  g: [1] E2Ground;
+  #assert e2g_build(g[..]);
+  r := g[0].receipt;
+  #assert r.units == e2tt.TERRAIN_UNIT_METRE && r.rescale == 1 && r.converter == E2G_CONVERTER && r.samples == E2G_POINTS && r.holes == 0 && r.materials == 4;
+  // the pack's vertices (gp_ground: x = (ix - 50) 0.65, z = 5 - iz 0.65) are the tile's samples
+  for t: 0..<40 {
+    ix := (t * 37) % 101; iz := (t * 53) % 101;
+    x := (f32(ix) - 50) * 0.65; z := 5 - f32(iz) * 0.65;
+    #assert abs(e2g_y(g[..], x, z) - e2_height(x, z)) < 0.002;
+  }
+  // between samples the walk stands on the pack's triangle: (a, a + 1, a + side) and (a + 1, a + side + 1, a + side)
+  for t: 0..<40 {
+    ix := (t * 29) % 100; iz := (t * 41) % 100;
+    x0 := (f32(ix) - 50) * 0.65; z0 := 5 - f32(iz) * 0.65;
+    ha := e2_height(x0, z0); hb := e2_height(x0 + 0.65, z0); hc := e2_height(x0, z0 - 0.65); hd := e2_height(x0 + 0.65, z0 - 0.65);
+    u := 0.2f32 + f32(t % 5) * 0.12; v := 0.15f32 + f32(t % 3) * 0.1;   // u east, v south, inside (a, a + 1, a + side): u + v < 1
+    want := ha + (hb - ha) * u + (hc - ha) * v;
+    #assert abs(e2g_y(g[..], x0 + 0.65 * u, z0 - 0.65 * v) - want) < 0.003;
+    u2 := 1 - v; v2 := 1 - u + 0.0001;   // the other triangle: u + v > 1
+    want2 := hd + (hc - hd) * (1 - u2) + (hb - hd) * (1 - v2);
+    #assert abs(e2g_y(g[..], x0 + 0.65 * u2, z0 - 0.65 * v2) - want2) < 0.003;
+  }
+  // past the tile: the land itself, counted
+  was := g[0].outside;
+  #assert e2g_y(g[..], 0, -200) == e2_height(0, -200) && g[0].outside == was + 1;
+  #assert e2g_y(g[..], 32.5, 5) == e2_height(32.5, 5);   // the far corner too
+  // the weights: the meadow at the glade's middle, the path on the path
+  k0 := (int(floor((0 - f32(E2G_SOUTH)) / f32(E2G_SPACING) + 0.5))) * 101 + 50;
+  pz := -30.0f32; j := int(floor((pz - f32(E2G_SOUTH)) / f32(E2G_SPACING) + 0.5)); px := e2_road_x(e2g_z(j)); i := int(floor((px - f32(E2G_WEST)) / f32(E2G_SPACING) + 0.5));
+  w := e2g_weights(e2g_x(i), e2g_z(j));
+  #assert w[3] > 0.8 && abs(w[0] + w[1] + w[2] + w[3] - 1) < 0.0001;
+  b := e2tt.terrain_tile_blend(g[0].frame, g[0].ids[..], g[0].weights[..], e2g_x(i), e2g_z(j));
+  path := 0.0f32; for q: 0..<b.count { if b.ids[q] == E2G_PATH { path = b.weights[q]; } }
+  #assert b.ok && abs(path - w[3]) < 0.01;
+  #assert k0 > 0;
+}
+
+#test "the canopy AO matches an independent sampling of the sky, and the bake publishes onto its key only" #steps 2000000000 {
+  // one crown straight up and one off to the side, both wholly above the ground
+  crowns := [8] f32.[0, 6, 0, 2, 7, 3, 1, 1.5];
+  got := e2g_occluded(crowns[..], 2, 0, 0, 0, 0, 1, 0);
+  // the oracle: a cosine-weighted grid over the hemisphere (Malley), each ray tested against both spheres
+  hit := 0; total := 0; m := 200;
+  for a: 0..<m { for b: 0..<m {
+    r := sqrt((f32(a) + 0.5) / f32(m)); phi := 6.2831853 * (f32(b) + 0.5) / f32(m);
+    dx := r * cos(phi); dz := r * sin(phi); rest := 1 - r * r; dy := sqrt(ifx rest > 0 then rest else 0.0f32);
+    blocked := false;
+    for c: 0..<2 {
+      cx := crowns[c * 4]; cy := crowns[c * 4 + 1]; cz := crowns[c * 4 + 2]; cr := crowns[c * 4 + 3];
+      t := cx * dx + cy * dy + cz * dz; if t <= 0 { continue; }
+      qq := cx * cx + cy * cy + cz * cz - t * t; if qq <= cr * cr { blocked = true; }
+    }
+    if blocked { hit += 1; } total += 1;
+  } }
+  #assert abs(got - f32(hit) / f32(total)) < 0.01;
+  #assert e2g_ao_of(got) == 1 - got && e2g_ao_of(5) == f32(E2G_AO_FLOOR) && e2g_occluded(crowns[..], 2, 0, 5.5, 0, 0, 1, 0) == 1;
+  // the bake on the tile with no woods: open sky; with a crown over the glade's middle, darker under it
+  g: [1] E2Ground; #assert e2g_build(g[..]);
+  #assert e2g_ao(g[..], 0, -10, 0) == 1;   // the fallback before it publishes
+  items: [E2_ITEM_FLOATS] f32; kinds: [1] u8;
+  items[0] = 0; items[1] = e2_height(0, -10); items[2] = -10; items[4] = 1; items[5] = 1; kinds[0] = 0;
+  #assert e2g_bake(g[..], items[..], kinds[..], 1) == e2bk.BAKE_OK && g[0].bake[0].live;
+  under := e2g_ao(g[..], 0, -10, 0); open := e2g_ao(g[..], 0, -40, 0);
+  #assert under < 0.85 && open > under && e2g_ao(g[..], 0, -10, 20) > 0.999;   // high above, open sky
+  // the edge eases to the fallback: at the edge and past it, 1; small steps on the way
+  #assert e2g_ao(g[..], 0, f32(E2G_SOUTH), 0) == 1 && e2g_ao(g[..], 0, f32(E2G_SOUTH) - 1, 0) == 1;
+  // a stale key (other crowns) refuses and the live bake stays
+  before := g[0].bake[0].revision;
+  grid: e2bk.BakeGrid; grid.cells = E2G_CELLS; grid.spacing = E2G_SPACING; grid.origin_x = E2G_WEST; grid.origin_z = E2G_SOUTH; grid.rise = E2G_RISE;
+  grid.key = g[0].key; grid.key.content[0] += 1;
+  #assert e2bk.bake_publish(g[0].bake[..], grid, g[0].tile, g[0].key, g[0].ao[..], g[0].bounce[..], g[0].live_ao[..], g[0].live_bounce[..]) == e2bk.BAKE_STALE;
+  #assert e2tt.terrain_tile_same(before, g[0].bake[0].revision) && e2g_ao(g[..], 0, -10, 0) == under;
+}

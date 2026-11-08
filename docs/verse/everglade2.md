@@ -49,6 +49,27 @@ share:
   gold inside it, and a gentle share outside it, so the woods' floor and the clearing stay
   green.
 
+### The admitted ground and its baked light (#12995)
+
+`verse/everglade2/ground.coax` turns the glade's land into an Aethyr terrain tile
+(`aethyr/terrain-tile.coax`) once the woods are planted: the pack's glade grid exactly (100 cells
+of 0.65 m from (-32.5, -60) to (32.5, 5), each split on the same diagonal as the pack's
+triangles), with Everglade II's ground material table (meadow, autumn meadow, forest litter,
+path dirt) and four weights a sample from `e2_gold`, `e2_forest` and `e2_path`. Inside it the walk
+stands on the admitted triangles (`e2g_y`), so your feet and the drawn ground agree at every
+sample and along every triangle; the pack draws that surface 0.035 m lower, a declared decorative
+offset. Past the tile (the path's ribbon, the coarse ground) the walk still reads `e2_height`.
+
+The woods' and the glade's tree crowns (sphere proxies per kit) are then baked onto the tile as
+ambient occlusion (`aethyr/render/bake.coax`, keyed by the tile's revision and the crowns' digest).
+A crown of radius r whose centre is D away along d hides (r / D)^2 max(0, n . d) of the
+cosine-weighted sky; AO = clamp(1 - sum, 0.6, 1), with no bounce, eased to open sky over the last 6 m inside the tile's edge so leaving it is no step in light. Its one consumer is your
+character: the AO at your middle (u[62]) shades your indirect light only, never the sun, so you
+darken under the canopy. `e2_probe` 9 is the bake's status, 10 the AO at you, 11 its crowns.
+
+The ground's drawn colours still come from the pack (`gp_colour`) and the ground shader, not the
+table, and the ground itself does not read the bake yet.
+
 ## The planting
 
 `verse/everglade2/plant.coax` places every kit piece as a pure function of the land, cell by

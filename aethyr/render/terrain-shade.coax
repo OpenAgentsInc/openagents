@@ -28,11 +28,11 @@
   #assert aethyr_terrain_noise(-3, 5) == render_noise2(-3, 5);
   a := render_noise2(1, 2); b := render_noise2(2, 2); c := render_noise2(1, 3); d := render_noise2(2, 3);
   // at (1.5, 2.25): s = (0.5, 0.15625)
-  want := mix(mix(a, b, 0.5), mix(c, d, 0.5), 0.15625);
+  want := aethyr_terrain_mix(aethyr_terrain_mix(a, b, 0.5), aethyr_terrain_mix(c, d, 0.5), 0.15625);
   #assert aethyr_terrain_noise(1.5, 2.25) == want;
   e := render_noise2(-2, -1); f := render_noise2(-1, -1); g := render_noise2(-2, 0); h := render_noise2(-1, 0);
   // at (-1.75, -0.5): i = (-2, -1), f = (0.25, 0.5), s = (0.15625, 0.5)
-  #assert aethyr_terrain_noise(-1.75, -0.5) == mix(mix(e, f, 0.15625), mix(g, h, 0.15625), 0.5);
+  #assert aethyr_terrain_noise(-1.75, -0.5) == aethyr_terrain_mix(aethyr_terrain_mix(e, f, 0.15625), aethyr_terrain_mix(g, h, 0.15625), 0.5);
 }
 
 #test "a material's blend, gain, depth and decode follow the written equations" {
@@ -75,7 +75,7 @@
   #assert abs(w0 + w1 + w2 + w3 - 1) < 0.000001;
   // the same result as mixing the colours in turn
   a := 0.1f32; b := 0.4f32; cc := 0.7f32; d := 0.9f32;
-  seq := mix(mix(mix(a, b, 0.6), cc, 0.5), d, 0.25);
+  seq := aethyr_terrain_mix(aethyr_terrain_mix(aethyr_terrain_mix(a, b, 0.6), cc, 0.5), d, 0.25);
   #assert abs(seq - (w0 * a + w1 * b + w2 * cc + w3 * d)) < 0.000001;
   #assert aethyr_terrain_over(0.8, 0, 1) == 0.8 && aethyr_terrain_over(0.8, 1, 0) == 0;
 }
@@ -97,11 +97,14 @@
 // ---- materials
 
 // Value noise on the integer lattice: render_noise2 at the four corners, smoothed (3t^2 - 2t^3).
+// a + (b - a) t, as verse/gpu/shader.coax's mix, under its own name: a realm that loads this beside
+// another `mix` (aethyr/points.coax's) reads one meaning.
+aethyr_terrain_mix :: (a:f32,b:f32,t:f32)->f32 #export_c #effects(all) {return a+(b-a)*t;}
 aethyr_terrain_noise :: (x:f32,z:f32)->f32 #export_c #effects(all) {
  ix:=floor(x);iz:=floor(z);
  fx:=x-ix;fz:=z-iz;
  sx:=fx*fx*(3.0f32-2.0f32*fx);sz:=fz*fz*(3.0f32-2.0f32*fz);
- return mix(mix(render_noise2(ix,iz),render_noise2(ix+1.0f32,iz),sx),mix(render_noise2(ix,iz+1.0f32),render_noise2(ix+1.0f32,iz+1.0f32),sx),sz);
+ return aethyr_terrain_mix(aethyr_terrain_mix(render_noise2(ix,iz),render_noise2(ix+1.0f32,iz),sx),aethyr_terrain_mix(render_noise2(ix,iz+1.0f32),render_noise2(ix+1.0f32,iz+1.0f32),sx),sz);
 }
 // The blend between a material's two colours at (x, z): w1 noise(f1 p + o1) + w2 noise(f2 p + o2).
 aethyr_terrain_blend_t :: (x:f32,z:f32,f1:f32,w1:f32,o1:f32,f2:f32,w2:f32,o2:f32)->f32 #export_c #effects(all) {
@@ -121,7 +124,7 @@ aethyr_terrain_depth_gain :: (depth:f32,darken:f32,from:f32,to:f32)->f32 #export
 }
 // One channel, decoded to linear: (mix(a, b, t) scale)^2.2, black below zero.
 aethyr_terrain_decode :: (a:f32,b:f32,t:f32,scale:f32)->f32 #export_c #effects(all) {
- return pow(fmax(mix(a,b,t)*scale,0.0f32),2.2f32);
+ return pow(fmax(aethyr_terrain_mix(a,b,t)*scale,0.0f32),2.2f32);
 }
 // A weight under a new layer of coverage c: scaled by 1 - c, plus c when it is the layer's slot (is 1).
 aethyr_terrain_over :: (w:f32,c:f32,is:f32)->f32 #export_c #effects(all) {
@@ -131,7 +134,7 @@ aethyr_terrain_over :: (w:f32,c:f32,is:f32)->f32 #export_c #effects(all) {
 // ---- baked light
 
 aethyr_bake_bilerp :: (a:f32,b:f32,c:f32,d:f32,fx:f32,fz:f32)->f32 #export_c #effects(all) {
- return mix(mix(a,b,fx),mix(c,d,fx),fz);
+ return aethyr_terrain_mix(aethyr_terrain_mix(a,b,fx),aethyr_terrain_mix(c,d,fx),fz);
 }
 // The cell a grid coordinate g (in samples from the west or south edge) falls in, of n, clamped.
 aethyr_bake_index :: (g:f32,n:f32)->f32 #export_c #effects(all) {
@@ -149,7 +152,7 @@ aethyr_bake_rise :: (h:f32,rise:f32)->f32 #export_c #effects(all) {
  return smoothstep(0.0f32,rise,h);
 }
 aethyr_bake_ao :: (ao:f32,s:f32)->f32 #export_c #effects(all) {
- return mix(ao,1.0f32,s);
+ return aethyr_terrain_mix(ao,1.0f32,s);
 }
 aethyr_bake_bounce :: (b:f32,s:f32)->f32 #export_c #effects(all) {
  return b*(1.0f32-s);

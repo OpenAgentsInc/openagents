@@ -47,7 +47,9 @@ fivelab 2500000
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
 # main reached 342,695 bytes; the two-handed blend rules add 8: 342,703 measured; about 2% headroom.
-everglade2 350000
+# The glade's admitted terrain tile, material table and canopy bake (aethyr/terrain-tile.coax with its
+# SHA-256 identity, aethyr/render/bake.coax, #12995): 359,019 measured; about 4% headroom.
+everglade2 375000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1720000

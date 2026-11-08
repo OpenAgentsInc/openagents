@@ -959,7 +959,7 @@ fn coax_p_cc_player_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_visibility:
   l_maps = (coax_at_u(i32(61i)) < 0x1.000000p-1f);
   l_rough = l_mb.x;
   l_metal = l_mb.y;
-  l_ao = 0x1.000000p0f;
+  l_ao = coax_p_clampf(coax_at_u(i32(62i)), 0.0f, 0x1.000000p0f);
   l_n = l_g;
   l_flags = i32((l_mc.w + 0x1.000000p-1f));
   if ((l_maps && (l_mb.z > (-0x1.000000p-1f))))
@@ -977,7 +977,7 @@ fn coax_p_cc_player_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_visibility:
     }
     if (((l_flags & 1i) != 0i))
     {
-      l_ao = l_o.x;
+      l_ao = (l_ao * l_o.x);
     }
   }
   l_eye = coax_p_wg_at3(16i);
