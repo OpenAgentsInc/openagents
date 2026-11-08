@@ -162,13 +162,35 @@ you were last drawn, while the room measured from where the step began. Walking 
 edge, the room and the page disagreed by up to 2.4 m a re-run. The page now keeps you from the
 step's start, as the room does (`e2_keep_from`); the largest re-run fell to 130 mm.
 
-### Not measured yet
+### Qualification, 2026-11-08
 
-- **Frame time with 10 or more remotes.** These headless pages didn't render: the local static
-  server lacked the host modules the range pack loads through, so the scene never drew (each Coax
-  frame took 0.08 ms). Issue C carries the measurement with the scene drawing.
-- **The nameplates drawn.** Same cause: names arrive, but the drawn plates need the scene. Issue D.
-- **Soak and drain.** Issue E.
+All of this ran on this Mac against a local room, in headless Chrome with the scene drawing. Real Chrome, a phone and the staging path are still to do.
+
+**The journey and names (3 pages).** Each page presses SURPRISE ME, so each is someone different, and takes a name in NAME. The first page's "http x" is said and not sent. Every page draws the other two during the run and has their chosen names when it first draws them. Names show over heads (as many as 2 in a frame). The others run at 4.0–4.1 m/s with 0 stalls. Re-runs are at most 44 mm.
+
+**13 others in the room** (2 pages among 12 bots):
+- 60 FPS: frame gap p50 16.7 ms, p99 17.6–18.6 ms, 0 frames over 25 ms.
+- Coax frame p50 1.1–1.3 ms, p99 1.8 ms.
+
+**Soaks:**
+- 12 bots for 11 minutes, with 2 pages joining partway: 0 state frames dropped, no ACK going back, state gap p99 35 ms (max 61 ms), 0 stalls. Room memory went from 203.7 MB to 204.9 MB.
+- 16 bots for 10 minutes, beside a second room of 14 bots and 2 pages (16 players): 0 dropped, no ACK going back, gap p99 39 ms, 14.2 kB/s. There were 70 stalls of 100 ms or more (max 218 ms) while the Mac was loaded by other builds; the 12-bot soak on a quieter machine had none. Memory went from 203.2 MB to 205.2 MB.
+
+**Simulated network.** Through `net-proxy.coax` at 100 ms, 20 ms jitter, 1% loss:
+- The others: 0–3 one-frame stalls in about 1,100 moving frames per page.
+- Re-runs at most 43 mm.
+
+At 300 ms, 20 ms jitter, 1% loss:
+- The others: 0–1 stalls.
+- Re-runs at most 92 mm.
+
+**A room killed mid-walk and started again.** Every page rejoined and drew the others again. Without a checkpoint store (none locally), the restarted room put everyone back at the spawn, a 127 m snap. Issue E carries this.
+
+**Still to do:**
+- a drain to another shard;
+- position across a room restart;
+- the staging path with real Chrome on two machines, and a phone;
+- casts and interest along the path (F).
 
 ## Risks
 
