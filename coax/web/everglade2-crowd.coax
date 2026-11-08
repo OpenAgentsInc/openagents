@@ -5,7 +5,7 @@
 // URL is the Character Create page (…/worlds/character-creator), with ?relay=ws://localhost:PORT for a
 // local room (coax/web/room/local.coax); the room is a fresh pair-e2-<hex> (?room=), which the rooms
 // list leaves out, unless --room names one (a load run's pair-e2-load-STAMP-1, to stand among its
-// bots). Every session carries the automation mark pair-check-<hex> (the verse-automation cookie), so
+// bots; then one page is enough). Every session carries the automation mark pair-check-<hex> (the verse-automation cookie), so
 // analytics and the usage counts leave them out.
 // The journey, each step a line, then one JSON line per page with every number, then holds/fails:
 //   1. each page opens Character Create, page K presses SURPRISE ME K times (e2_probe 60, 61), so each is
@@ -137,8 +137,8 @@ tool_main :: () -> int #export_c #effects(all) {
   room := args_value(a[..], "--room", "");
   shot := args_value(a[..], "--shot", "");
   origin := ec_origin(url);
-  if !ok || url.count == 0 || url[0] == '-' || origin.count == 0 || !players.ok || !seconds.ok || !wh.ok || players.value < 2 || players.value > f64(E2C_MAX) || seconds.value < 3 {
-    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] (from the repository's root)"); return 2;
+  if !ok || url.count == 0 || url[0] == '-' || origin.count == 0 || !players.ok || !seconds.ok || !wh.ok || players.value < (ifx room.count > 0 then 1.0 else 2.0) || players.value > f64(E2C_MAX) || seconds.value < 3 {
+    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3, or 1 with --room] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] (from the repository's root)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade2-crowd.js", js[..]);
@@ -258,6 +258,11 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   // and ahead of its camera: a name behind you is rightly not drawn, so this is the journey's most)
   named := 0; for i: 0..<n { if ec_probe(c[i..<i + 1], 53) >= n - 1 && ec_int(c[i..<i + 1], "__e2.namesMax", 0) > 0 { named += 1; } }
   for i: 0..<n { p := c[i..<i + 1]; print("  page %: named others %, bodies for names %, names drawn now %, most in a frame %, draws %\n", i, ec_probe(p, 53), ec_probe(p, 17), ec_probe(p, 16), ec_int(p, "__e2.namesMax", 0), ec_probe(p, 0)); }
+  // interest (#13058): the others in view, how many came into it and faded in, any pop (a body cut off
+  // while more than a quarter showed) and those fading out now (e2_probe 42, 18, 19, 87)
+  pops := 0;
+  for i: 0..<n { p := c[i..<i + 1]; pops += ec_probe(p, 19); print("  page %: others drawn %, came into view and faded in %, pops %, fading out now %\n", i, ec_probe(p, 42), ec_probe(p, 18), ec_probe(p, 19), ec_probe(p, 87)); }
+  all = ec_check(pops == 0, "nobody popped in or out (each faded)") && all;
   for i: 0..<n { ec_shot(c[i..<i + 1], shot, "walk", i); }
   all = ec_check(plates, "every page still draws every other player after the walk") && all;
   all = ec_check(named == n, "every page has every other's name and draws names over their heads") && all;
