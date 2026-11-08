@@ -1,0 +1,183 @@
+// Everglade II's GPU instance cull (GitHub #13050): the kit pieces the page picked (its LOD,
+// thinning and fades stay the page's, everglade2.coax e2_pieces) tested on the GPU against the
+// frustum and the depth pyramid in two phases, learned from Solstice's shaders/vg/cull.wgsl
+// (docs/verse/2026-11-07-solstice-comparison.md) and built on aethyr/render/geometry/cull.coax.
+// `coax wgsl` writes these entries as apps/openagents-web/everglade2-cull.wgsl; coax/web/host.js
+// runs them for a page that names a `cull:` asset (its header's "Instance culling"):
+//   1. e2q_bounds, once: each kit piece's box in its own space, from the pack's own vertices.
+//   2. e2q_cull_one, a thread per piece the page picked: the piece's box in the world, then the
+//      frustum, then last frame's pyramid. A piece that passes is copied to its run's first
+//      region and counted into that run's first indirect draw; one the pyramid hides is kept
+//      for the retest.
+//   3. The scene's opaque draws, with each run drawn by its first indirect draw.
+//   4. cl_hiz_depth and cl_hiz_down: the pyramid of that depth.
+//   5. e2q_cull_two over the kept pieces against the new pyramid: what it no longer hides goes
+//      to the run's second region and second indirect draw, drawn after the first.
+// A piece is hidden only when this frame's own depth (what was drawn before it) is nearer than
+// all of its box, so a piece in view is always drawn: culling never makes one pop.
+//   coax/bin/coax test apps/openagents-web/gpu/everglade2-cull.coax --library
+#load "../../../aethyr/render/geometry/cull.coax";
+
+// The uniform block: cull.coax's 92 floats, then these (25 vec4s in all).
+E2Q_RUNS :: 92;       // runs the page drew
+E2Q_TOTAL :: 93;      // pieces in them
+E2Q_OUT1 :: 94;       // the first region's first piece (pieces past the base instance)
+E2Q_OUT2 :: 95;       // the second's
+E2Q_WORD :: 96;       // the kit vertices' first word in the pack's vertices (8 words a vertex)
+E2Q_BUCKETS :: 97;    // kit pieces and levels (e2q_bounds)
+E2Q_FLOATS :: 100;
+E2Q_CHUNKS :: 1024;   // e2q_bounds threads a kit piece
+// A run's words in runs: its first piece (past the base instance), its pieces, the pieces of the
+// runs before it, its kit piece and level.
+ER_START :: 0; ER_COUNT :: 1; ER_PREFIX :: 2; ER_BUCKET :: 3; ER_WORDS :: 4;
+// A run's words in args: the first indirect draw (drawIndexedIndirect's five), then the second.
+EA_FIRST :: 0; EA_SECOND :: 5; EA_WORDS :: 10;
+// A box in bounds and boxes: the lowest and highest y and the reach round the y axis, fixed point.
+EB_LOW :: 0; EB_HIGH :: 1; EB_REACH :: 2; EB_WORDS :: 4;
+EB_SCALE :: 256.0;    // a box's units a metre
+EB_ZERO :: 1073741824; // the fixed point's zero (2^30), so u32 order is the number's
+// The tally: pieces the frustum dropped, the first phase kept for the retest, the retest hid.
+ET_FRUSTUM :: 0; ET_RETEST :: 1; ET_HIDDEN :: 2; ET_WORDS :: 4;
+// A piece's flag: outside, drawn first, kept, drawn second, hidden.
+EF_OUT :: 0; EF_DRAW1 :: 1; EF_RETEST :: 2; EF_DRAW2 :: 3; EF_HIDDEN :: 4;
+// The wind's reach (e2_kit_place: a leaf sways at most 1.35 x 0.05 m times the vertical scale).
+E2Q_SWAY :: 0.07;
+
+e2q_low :: (x:f32)->u32 {return cast(u32)(cast(s32)floor(x*f32(EB_SCALE))+cast(s32)EB_ZERO);}
+e2q_high :: (x:f32)->u32 {return cast(u32)(-cast(s32)floor(-x*f32(EB_SCALE))+cast(s32)EB_ZERO);}
+e2q_value :: (e:u32)->f32 {return cast(f32)(cast(s32)e-cast(s32)EB_ZERO)/f32(EB_SCALE);}
+
+// Bounds, thread i: kit piece i / E2Q_CHUNKS, every E2Q_CHUNKS-th of its indices from i's place.
+// buckets holds each piece's first index and index count; bounds starts as (max, 0, 0) a piece.
+e2q_bounds :: (i:u32,u:[]f32,buckets:[]u32,indices:[]u32,vertices:[]u32,bounds:[]u32) {
+  b:=cast(int)(i/cast(u32)E2Q_CHUNKS);j:=i-cast(u32)b*cast(u32)E2Q_CHUNKS;
+  if b>=cast(int)u[E2Q_BUCKETS] {return;}
+  first:=buckets[b*2];count:=buckets[b*2+1];word:=cast(u32)u[E2Q_WORD];
+  while j<count {
+    w:=cast(int)(word+indices[cast(int)(first+j)]*cast(u32)8);
+    x:=f32_from_bits(vertices[w]);y:=f32_from_bits(vertices[w+1]);z:=f32_from_bits(vertices[w+2]);
+    _:=gpu_atomic_min(bounds,b*EB_WORDS+EB_LOW,e2q_low(y));
+    _=gpu_atomic_max(bounds,b*EB_WORDS+EB_HIGH,e2q_high(y));
+    _=gpu_atomic_max(bounds,b*EB_WORDS+EB_REACH,e2q_high(sqrt(x*x+z*z)));
+    j=j+cast(u32)E2Q_CHUNKS;
+  }
+}
+// The run piece t is in: the last whose prefix is at most t.
+e2q_run :: (t:u32,u:[]f32,runs:[]u32)->int {
+  lo:=0;hi:=cast(int)u[E2Q_RUNS]-1;
+  while lo<hi {mid:=(lo+hi+1)/2;if runs[mid*ER_WORDS+ER_PREFIX]<=t {lo=mid;} else {hi=mid-1;}}
+  return lo;
+}
+// A placed piece's box in the world: its kit box turned any way round the y axis (the reach),
+// scaled as cg_instance_point scales it (a's x y z yaw, c's vertical and horizontal scale), and
+// widened by the wind.
+E2Box :: struct {low:V4;high:V4;}
+e2q_box :: (a:V4,c:V4,box:[]u32,b:int)->E2Box {
+  y0:=e2q_value(box[b*EB_WORDS+EB_LOW])*c.x;y1:=e2q_value(box[b*EB_WORDS+EB_HIGH])*c.x;
+  r:=e2q_value(box[b*EB_WORDS+EB_REACH])*fabs(c.y)+f32(E2Q_SWAY)*fabs(c.x)+0.01f32;
+  return E2Box.{low=v4(a.x-r,a.y+fmin(y0,y1)-0.01f32,a.z-r,1.0f32),high=v4(a.x+r,a.y+fmax(y0,y1)+0.01f32,a.z+r,1.0f32)};
+}
+// Puts piece k into its run's region `region` (E2Q_OUT1 or E2Q_OUT2), counted by the indirect
+// draw at args word `draw`.
+e2q_put :: (k:int,run:int,region:int,draw:int,u:[]f32,inst:[]V4,runs:[]u32,args:[]u32) {
+  slot:=gpu_atomic_add(args,run*EA_WORDS+draw+1,1);
+  o:=cast(int)u[region]+cast(int)runs[run*ER_WORDS+ER_START]+cast(int)slot;
+  inst[o*2]=inst[k*2];inst[o*2+1]=inst[k*2+1];
+}
+// Phase 1, thread t: piece t of the runs against the frustum and last frame's pyramid.
+e2q_cull_one :: (t:u32,u:[]f32,inst:[]V4,runs:[]u32,boxes:[]u32,args:[]u32,flags:[]u32,tally:[]u32,hiz:[]f32) {
+  if cast(int)t>=cast(int)u[E2Q_TOTAL] {return;}
+  run:=e2q_run(t,u,runs);k:=cast(int)(runs[run*ER_WORDS+ER_START]+t-runs[run*ER_WORDS+ER_PREFIX]);
+  e:=e2q_box(inst[k*2],inst[k*2+1],boxes,cast(int)runs[run*ER_WORDS+ER_BUCKET]);
+  if cl_outside(e.low,e.high,u) {flags[cast(int)t]=EF_OUT;_:=gpu_atomic_add(tally,ET_FRUSTUM,1);return;}
+  if u[CL_HIZ]>0.5f32 && cl_hidden(e.low,e.high,u,hiz) {flags[cast(int)t]=EF_RETEST;_:=gpu_atomic_add(tally,ET_RETEST,1);return;}
+  flags[cast(int)t]=EF_DRAW1;e2q_put(k,run,E2Q_OUT1,EA_FIRST,u,inst,runs,args);
+}
+// Phase 2, thread t: a piece the first phase kept, against this frame's pyramid.
+e2q_cull_two :: (t:u32,u:[]f32,inst:[]V4,runs:[]u32,boxes:[]u32,args:[]u32,flags:[]u32,tally:[]u32,hiz:[]f32) {
+  if cast(int)t>=cast(int)u[E2Q_TOTAL] || flags[cast(int)t]!=EF_RETEST {return;}
+  run:=e2q_run(t,u,runs);k:=cast(int)(runs[run*ER_WORDS+ER_START]+t-runs[run*ER_WORDS+ER_PREFIX]);
+  e:=e2q_box(inst[k*2],inst[k*2+1],boxes,cast(int)runs[run*ER_WORDS+ER_BUCKET]);
+  if cl_hidden(e.low,e.high,u,hiz) {flags[cast(int)t]=EF_HIDDEN;_:=gpu_atomic_add(tally,ET_HIDDEN,1);return;}
+  flags[cast(int)t]=EF_DRAW2;e2q_put(k,run,E2Q_OUT2,EA_SECOND,u,inst,runs,args);
+}
+
+// ---- checks: the CPU runs the entries one thread at a time
+// cg_instance_point (gpu/character-glade.coax) and e2_kit_place's sway, as the kit stage places
+// a template vertex p.
+e2q_place :: (p:V3,a:V4,c:V4,wind:f32)->V3 {
+  cs:=cos(a.w);sn:=sin(a.w);
+  x:=a.x+(p.x*cs+p.z*sn)*c.y+wind*0.05f32*saturate(p.y*0.18f32)*c.x;
+  return v3(x,a.y+p.y*c.x,a.z+(-p.x*sn+p.z*cs)*c.y);
+}
+e2q_noise :: (k:int)->f32 {return fract(sin(cast(f32)k*12.9898f32)*43758.547f32);}
+#test "a placed piece's box holds every vertex the kit stage places, any way round and in any wind" #steps 400000000 {
+  u:[E2Q_FLOATS]f32;u[E2Q_BUCKETS]=2;u[E2Q_WORD]=16;
+  vertices:[16+8*40]u32;indices:[80]u32;buckets:=[4]u32.[0,40,40,40];
+  for v:0..<40 {
+    w:=16+v*8;vertices[w]=f32_bits(e2q_noise(v)*6.0f32-3.0f32);vertices[w+1]=f32_bits(e2q_noise(v+50)*9.0f32-0.5f32);vertices[w+2]=f32_bits(e2q_noise(v+90)*4.0f32-1.0f32);
+    indices[v]=cast(u32)v;indices[40+v]=cast(u32)(39-v)/2;
+  }
+  bounds:[8]u32;for b:0..<2 {bounds[b*EB_WORDS+EB_LOW]=0xFFFFFFFF;}
+  for i:0..<2*E2Q_CHUNKS {e2q_bounds(cast(u32)i,u[..],buckets[..],indices[..],vertices[..],bounds[..]);}
+  #assert e2q_value(bounds[EB_LOW])<e2q_value(bounds[EB_HIGH]) && e2q_value(bounds[EB_REACH])>1.0f32 && bounds[EB_WORDS+EB_LOW]>=bounds[EB_LOW];
+  for trial:0..<60 {
+    a:=v4(e2q_noise(trial)*100.0f32-50.0f32,e2q_noise(trial+7)*10.0f32,e2q_noise(trial+3)*-300.0f32,e2q_noise(trial+11)*6.3f32);
+    c:=v4(0.5f32+e2q_noise(trial+5)*1.5f32,0.5f32+e2q_noise(trial+13)*1.5f32,0,0);
+    b:=trial%2;box:=e2q_box(a,c,bounds[..],b);
+    for q:0..<40 {
+      id:=cast(int)indices[b*40+q];w:=16+id*8;p:=v3(f32_from_bits(vertices[w]),f32_from_bits(vertices[w+1]),f32_from_bits(vertices[w+2]));
+      for wind:0..<3 {
+        o:=e2q_place(p,a,c,cast(f32)(wind-1)*1.35f32);
+        #assert o.x>=box.low.x && o.x<=box.high.x && o.y>=box.low.y && o.y<=box.high.y && o.z>=box.low.z && o.z<=box.high.z;
+      }
+    }
+  }
+}
+#test "a fixed-point box value keeps its order and rounds outward" {
+  #assert e2q_low(-1.3f32)<e2q_low(-1.2f32) && e2q_high(0.001f32)>e2q_low(0.001f32);
+  #assert e2q_value(e2q_low(-1.3f32))<= -1.3f32 && e2q_value(e2q_high(2.71f32))>=2.71f32 && e2q_value(e2q_low(5.0f32))==5.0f32;
+}
+#test "each piece finds its run" {
+  u:[E2Q_FLOATS]f32;u[E2Q_RUNS]=3;runs:=[12]u32.[100,5,0,1, 200,1,5,2, 300,4,6,3];
+  #assert e2q_run(0,u[..],runs[..])==0 && e2q_run(4,u[..],runs[..])==0 && e2q_run(5,u[..],runs[..])==1 && e2q_run(6,u[..],runs[..])==2 && e2q_run(9,u[..],runs[..])==2;
+}
+// A view down -z from the origin (cl_fixture's identity frame moved: clip x y = world x y, w the
+// distance), a pyramid of one 1x1 level, and one run of three pieces of a 1 m box at z -10, -20
+// and 50 (behind the eye).
+e2q_fixture :: (u:[]f32,inst:[]V4,runs:[]u32,boxes:[]u32,args:[]u32,hiz:[]f32) {
+  for k:0..<E2Q_FLOATS {u[k]=0.0f32;}
+  // clip = (x, y, z' , -z): depth z' / w grows with the distance
+  u[CL_M]=1;u[CL_M+5]=1;u[CL_M+10]= -1.001f32;u[CL_M+11]= -1;u[CL_M+14]= -0.1f32;
+  planes:=[24]f32.[1,0,-1,0, -1,0,-1,0, 0,1,-1,0, 0,-1,-1,0, 0,0,-1,-0.1, 0,0,1,900];
+  for k:0..<24 {u[CL_PLANES+k]=planes[k];}
+  u[CL_LEVELS]=1;u[CL_W0]=1;u[CL_W0+1]=1;u[CL_WIDTH]=1;u[CL_HEIGHT]=1;u[CL_OFFSET]=0;
+  u[E2Q_RUNS]=1;u[E2Q_TOTAL]=3;u[E2Q_OUT1]=10;u[E2Q_OUT2]=20;
+  runs[ER_START]=0;runs[ER_COUNT]=3;runs[ER_PREFIX]=0;runs[ER_BUCKET]=0;
+  boxes[EB_LOW]=e2q_low(0);boxes[EB_HIGH]=e2q_high(1);boxes[EB_REACH]=e2q_high(0.5f32);
+  inst[0]=v4(0,0,-10,0);inst[1]=v4(1,1,0,0);inst[2]=v4(0,0,-20,0);inst[3]=v4(1,1,0,0);inst[4]=v4(0,0,50,0);inst[5]=v4(1,1,0,0);
+  for k:0..<EA_WORDS {args[k]=0;}
+  hiz[0]=1;
+}
+#test "the frustum drops what is behind; with no pyramid the rest is drawn first, copied to its region" {
+  u:[E2Q_FLOATS]f32;inst:[60]V4;runs:[4]u32;boxes:[4]u32;args:[EA_WORDS]u32;flags:[3]u32;tally:[ET_WORDS]u32;hiz:[1]f32;
+  e2q_fixture(u[..],inst[..],runs[..],boxes[..],args[..],hiz[..]);
+  for t:0..<4 {e2q_cull_one(cast(u32)t,u[..],inst[..],runs[..],boxes[..],args[..],flags[..],tally[..],hiz[..]);}
+  #assert flags[0]==EF_DRAW1 && flags[1]==EF_DRAW1 && flags[2]==EF_OUT && tally[ET_FRUSTUM]==1 && args[EA_FIRST+1]==2 && args[EA_SECOND+1]==0;
+  near:=ifx inst[20].z== -10.0f32 then 20 else 22;#assert inst[near].z== -10.0f32 && inst[42-near].z== -20.0f32;
+}
+#test "a piece behind nearer depth is kept by the first phase and drawn by the second only once the pyramid shows it" {
+  u:[E2Q_FLOATS]f32;inst:[60]V4;runs:[4]u32;boxes:[4]u32;args:[EA_WORDS]u32;flags:[3]u32;tally:[ET_WORDS]u32;hiz:[1]f32;
+  e2q_fixture(u[..],inst[..],runs[..],boxes[..],args[..],hiz[..]);
+  // last frame's depth: something at 15 m covers the view
+  u[CL_HIZ]=1;hiz[0]=(1.001f32*15.0f32-0.1f32)/15.0f32;
+  for t:0..<3 {e2q_cull_one(cast(u32)t,u[..],inst[..],runs[..],boxes[..],args[..],flags[..],tally[..],hiz[..]);}
+  #assert flags[0]==EF_DRAW1 && flags[1]==EF_RETEST && args[EA_FIRST+1]==1 && tally[ET_RETEST]==1;
+  // still there this frame: hidden
+  for t:0..<3 {e2q_cull_two(cast(u32)t,u[..],inst[..],runs[..],boxes[..],args[..],flags[..],tally[..],hiz[..]);}
+  #assert flags[1]==EF_HIDDEN && args[EA_SECOND+1]==0 && tally[ET_HIDDEN]==1;
+  // gone this frame (the pyramid far): the retest draws it in the second region
+  flags[1]=EF_RETEST;hiz[0]=1;
+  for t:0..<3 {e2q_cull_two(cast(u32)t,u[..],inst[..],runs[..],boxes[..],args[..],flags[..],tally[..],hiz[..]);}
+  #assert flags[1]==EF_DRAW2 && args[EA_SECOND+1]==1 && inst[40].z== -20.0f32 && flags[0]==EF_DRAW1;
+}

@@ -189,9 +189,33 @@ sheen and hair highlights.
   draws, and the far tiles only the trees at their third level and the big rocks. The shader
   reads the finest tile that covers a point.
 
+- The GPU leaves out the kit pieces nothing shows (#13050). The page still picks the pieces and
+  their levels and fades; `everglade2-cull.coax` hands the host each frame's camera and runs, and
+  `gpu/everglade2-cull.coax` tests each picked piece's box against the frustum and the depth
+  pyramid in two phases (`coax/web/instance-cull.js`). The first phase tests against last
+  frame's pyramid and draws what passes. The pyramid is then built from that depth, and the
+  second phase retests what the first hid and draws what is no longer hidden. A piece is left
+  out only when depth this frame really drew is nearer than all of its box, so culling never
+  makes a piece pop. Each run draws by two indirect draws, so it needs the adapter's
+  `indirect-first-instance`; without it, and with `?cull=0`, the page draws every piece it
+  picked. The shadow tiles' pieces aren't culled.
+
 Read the counter in your own browser for the frame rate. Headless measurements on a busy Mac
 put GPU time at 2400 by 1400 at about 16 ms at the glade (31 ms before the glade grass was
-dropped) and 17 ms at the clearing.
+dropped) and 17 ms at the clearing, before the trees and grass only faded (#13023).
+
+GPU culling, measured by `coax/web/everglade2-cull-check.coax` at 2400 by 1400 (dpr 1, every
+device pixel, the view held still), each mode's median of six 2.5 s turns on a busy Mac (Apple
+Metal 3, 2026-11-08). The image with the cull on is the image with it off, pixel for pixel, at
+every view:
+
+| View | Pieces picked | Frustum | Drawn first | Hidden | GPU off | GPU on |
+|---|---:|---:|---:|---:|---:|---:|
+| The glade | 4229 | 465 | 1162 | 2602 | 8.6 ms | 7.6 ms (-11%) |
+| The woods (`?at=200`) | 4555 | 511 | 2091 | 1953 | 11.0 ms | 9.2 ms (-17%) |
+| The clearing (`?at=470`) | 4160 | 489 | 2783 | 888 | 8.5 ms | 8.2 ms (-4%) |
+
+The receipt is `docs/verification/gpu-cull-everglade2-13050/`.
 
 `gpu/everglade2.coax` holds the passes. It uses Character Create's glade light, sky, fog, and
 materials, adds the kit pieces' vertex stage and the grass tufts' shading, and gives the woods'

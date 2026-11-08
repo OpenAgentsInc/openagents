@@ -1,0 +1,146 @@
+// Everglade II's GPU instance cull, checked and timed in headless Chrome (GitHub #13050): at the
+// glade, deep in the woods and at the clearing, the page held still (prefers-reduced-motion: its
+// clock stops), drawn at every device pixel (?golden), with the cull on and off in turn
+// (coaxial.cull, coax/web/instance-cull.js). For each view it
+//   - compares the two images: the cull may only leave out pieces nothing shows, so they must
+//     be the same, pixel for pixel (shots on, off, on, compared once the two with it on match);
+//   - times the GPU with the host's pass timer (coaxialPassTimer: the first pass's start to the
+//     last one's end, compute passes between them included), the median of 2.5 s of frames,
+//     off and on in turn six times each, and keeps each mode's median;
+//   - reads the cull's counts: pieces the page picked, the frustum dropped, the first phase drew,
+//     the second drew, and the second hid.
+//   coax/web/tool.sh coax/web/everglade2-cull-check.coax http://127.0.0.1:PORT [OUT.tsv] [--size WxH]
+// Serve the app first: coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:PORT.
+// --size defaults to 2400x1400 at dpr 1. OUT.tsv keeps one line a view:
+//   VIEW DIFFERING_PIXELS GPU_OFF_US GPU_ON_US PIECES FRUSTUM DRAWN1 DRAWN2 HIDDEN KEPT PICKED
+// Exit 0 when every view's images match and the cull ran, 1 when not, 2 on bad usage or a
+// headless Chrome with no hardware WebGPU adapter.
+#import "Basic";
+#load "../lib/media/media.coax";      // MEDIA_READY_JS, media_ready_step; it loads cdp.coax
+#load "../lib/image/png.coax";
+#load "../lib/sys/fs.coax";
+
+EC_VIEWS :: 3;
+EC_ROUNDS :: 6;
+EC_NAMES :: [3] string.["glade", "woods", "clearing"];
+EC_QUERY :: [3] string.["golden", "golden&at=200", "golden&at=470"];
+EC_PNG :: 16777216;          // a screenshot's PNG bytes at most
+EC_PIXELS :: 2400 * 1400 * 4;
+EC_WORK :: 2400 * 1400 * 4 + 1400 + 16777216;
+// Timing in the page: the mode, then the median GPU span of the frames over ms.
+EC_TIME_JS :: "(async(on,ms)=>{const c=globalThis.coaxial;c.cull(on);await new Promise(r=>setTimeout(r,1500));c.takePassTimes();await new Promise(r=>setTimeout(r,ms));const t=c.takePassTimes().map(r=>r[0]).filter(x=>x>0).sort((a,b)=>a-b);return t.length?t[t.length>>1]:-1;})";
+EC_STATS_JS :: "(async()=>{const c=globalThis.coaxial;c.cull(true);await new Promise(r=>setTimeout(r,1500));const s=c.cullStats();return s?[s.pieces,s.frustum,s.drawn1,s.drawn2,s.hidden,s.kept,s.picked].join(' '):'none';})()";
+
+EcBuf :: struct { b: [8192] u8; n: int; }
+ec_put :: (o: [] EcBuf, s: string) { for ch: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = ch; o[0].n += 1; } } }
+ec_byte :: (o: [] EcBuf, ch: u8) { if o[0].n < o[0].b.count { o[0].b[o[0].n] = ch; o[0].n += 1; } }
+ec_int :: (o: [] EcBuf, value: int) { v := value; if v < 0 { ec_put(o, "-"); v = -v; } d: [24] u8; k := 0; while true { d[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } } while k > 0 { k -= 1; ec_put(o, cast(string) d[k..<k + 1]); } }
+ec_median :: (v: [] int) -> int {
+  s: [16] int; n := v.count; for i: 0..<n { s[i] = v[i]; }
+  for i: 1..<n { j := i; while j > 0 && s[j - 1] > s[j] { t := s[j]; s[j] = s[j - 1]; s[j - 1] = t; j -= 1; } }
+  return (s[(n - 1) / 2] + s[n / 2]) / 2;
+}
+ec_text :: (o: [] EcBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+ec_call :: (c: [] Cdp, method: string, params: string) -> bool { return cdp_call(c, method, params, 30000) >= 0; }
+// A screenshot with the cull on or off, 1.5 s after it was set.
+ec_shot :: (c: [] Cdp, on: bool, out: [] u8) -> int {
+  _w := ec_number(c, ifx on then "(async()=>{globalThis.coaxial.cull(true);await new Promise(r=>setTimeout(r,1500));return 1;})()"
+                          else "(async()=>{globalThis.coaxial.cull(false);await new Promise(r=>setTimeout(r,1500));return 1;})()");
+  return cdp_screenshot(c, out);
+}
+ec_number :: (c: [] Cdp, js: string) -> int {
+  n := cdp_evaluate(c, js);
+  if n < 0 { return -1; }
+  return jv_int(c[0].doc[0], n, -1);
+}
+// Waits for the scene (realm-perf's rule: drawn and the loading card gone).
+ec_ready :: (c: [] Cdp) -> bool {
+  t0 := proc_now_ms(); idle_from := -1;
+  while true {
+    word: [512] u8; wn := media_value(c, MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - t0, ifx idle_from < 0 then 0 else now - idle_from, 90000);
+    if step == MEDIA_READY { return true; }
+    if step == MEDIA_TIMEOUT || step == MEDIA_FAILED { return false; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  return false;
+}
+// The pixels that differ between two screenshots (PNG): 0 when their bytes are the same.
+ec_differ :: (a: [] u8, an: int, b: [] u8, bn: int, work: [] u8, pa: [] u8, pb: [] u8) -> int {
+  if an == bn { same := true; for i: 0..<an { if a[i] != b[i] { same = false; break; } } if same { return 0; } }
+  ia := png_info(a[0..<an]); ib := png_info(b[0..<bn]);
+  if ia.status != PNG_OK || ib.status != PNG_OK || ia.w != ib.w || ia.h != ib.h { return -1; }
+  if png_decode(a[0..<an], work, pa) != PNG_OK || png_decode(b[0..<bn], work, pb) != PNG_OK { return -1; }
+  n := 0;
+  for p: 0..<ia.w * ia.h { o := p * 4; if pa[o] != pb[o] || pa[o + 1] != pb[o + 1] || pa[o + 2] != pb[o + 2] { n += 1; } }
+  return n;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: everglade2-cull-check BASE_URL [OUT.tsv] [--size WxH]\n"); return 2; }
+  base := args_at(a[..], 0); out := ifx args_count(a[..]) >= 2 && args_at(a[..], 1)[0] != '-' then args_at(a[..], 1) else "";
+  size := args_value(a[..], "--size", "2400x1400");
+  w := 0; h := 0; at := 0;
+  while at < size.count && size[at] >= '0' && size[at] <= '9' { w = w * 10 + cast(int) (size[at] - '0'); at += 1; }
+  at += 1; while at < size.count && size[at] >= '0' && size[at] <= '9' { h = h * 10 + cast(int) (size[at] - '0'); at += 1; }
+  if w < 64 || h < 64 || w * h * 4 > EC_PIXELS { print("everglade2-cull-check: --size WxH, at most 2400x1400\n"); return 2; }
+  ec_png_a: [EC_PNG] u8; ec_png_b: [EC_PNG] u8; ec_png_c: [EC_PNG] u8; ec_work: [EC_WORK] u8; ec_pa: [EC_PIXELS] u8; ec_pb: [EC_PIXELS] u8;
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], w, h, "e2-cull-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer { cdp_close(c[..]); }
+  vp: [1] EcBuf; ec_put(vp[..], "{\"width\":"); ec_int(vp[..], w); ec_put(vp[..], ",\"height\":"); ec_int(vp[..], h); ec_put(vp[..], ",\"deviceScaleFactor\":1,\"mobile\":false}");
+  if !ec_call(c[..], "Page.enable", "") || !ec_call(c[..], "Emulation.setDeviceMetricsOverride", ec_text(vp[..]))
+     || !ec_call(c[..], "Emulation.setEmulatedMedia", "{\"features\":[{\"name\":\"prefers-reduced-motion\",\"value\":\"reduce\"}]}")
+     || !ec_call(c[..], "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialPassTimer = true;\"}") {
+    tool_errln(cdp_error(c[..])); return 1;
+  }
+  report: [1] EcBuf; ok := true; hardware := false;
+  for v: 0..<EC_VIEWS {
+    u: [1] EcBuf; ec_put(u[..], base); ec_put(u[..], "/worlds/everglade2?"); ec_put(u[..], EC_QUERY[v]);
+    nav: [4096] u8; jo: [1] Jo; jo_start(jo[..], nav[..]); jo_obj(jo[..]); jo_key(jo[..], "url"); jo_str(jo[..], ec_text(u[..])); jo_end(jo[..]);
+    if !ec_call(c[..], "Page.navigate", jo_text(jo[..])) || !ec_ready(c[..]) { print("FAIL %: the scene didn't draw\n", EC_NAMES[v]); ok = false; continue; }
+    if v == 0 {
+      gb: [256] u8; line := cdp_adapter(c[..], gb[..]); print("everglade2-cull-check: WebGPU adapter: %\n", line);
+      hardware = cdp_adapter_hardware(line);
+      if !hardware { tool_errln("everglade2-cull-check: no hardware WebGPU adapter"); return 2; }
+    }
+    proc_sleep(4000);
+    if ec_number(c[..], "globalThis.coaxial.cull(true)?1:0") != 1 { print("FAIL %: the page has no instance cull\n", EC_NAMES[v]); ok = false; continue; }
+    // the images: on, off, on, each after the pyramid has settled; compared once the two with
+    // the cull on match (textures and shadow tiles may still be arriving), at most 6 times
+    differ := -1; settled := false;
+    for attempt: 0..<6 {
+      an := ec_shot(c[..], true, ec_png_a[..]); bn := ec_shot(c[..], false, ec_png_b[..]); cn := ec_shot(c[..], true, ec_png_c[..]);
+      if an <= 0 || bn <= 0 || cn <= 0 { break; }
+      if ec_differ(ec_png_a[..], an, ec_png_c[..], cn, ec_work[..], ec_pa[..], ec_pb[..]) != 0 { continue; }
+      settled = true; differ = ec_differ(ec_png_a[..], an, ec_png_b[..], bn, ec_work[..], ec_pa[..], ec_pb[..]);
+      break;
+    }
+    if !settled { print("FAIL %: the view never held still\n", EC_NAMES[v]); }
+    // the GPU: off and on in turn, six times each; each mode's median
+    offs: [EC_ROUNDS] int; ons: [EC_ROUNDS] int;
+    for k: 0..<2 * EC_ROUNDS {
+      js: [1] EcBuf; ec_put(js[..], EC_TIME_JS); ec_put(js[..], ifx k % 2 == 1 then "(true,2500)" else "(false,2500)");
+      t := ec_number(c[..], ec_text(js[..]));
+      if k % 2 == 1 { ons[k / 2] = t; } else { offs[k / 2] = t; }
+    }
+    off := ec_median(offs[..]); on := ec_median(ons[..]);
+    sn := cdp_evaluate(c[..], EC_STATS_JS);
+    stats := ifx sn >= 0 then jv_raw(c[0].doc[0], sn) else "\"none\"";
+    if stats.count >= 2 && stats[0] == '"' { stats = stats[1..<stats.count - 1]; }
+    pass := differ == 0 && stats != "none";
+    if !pass { ok = false; }
+    print("% %: % pixels differ; GPU % us off, % us on; pieces frustum drawn1 drawn2 hidden: %\n", ifx pass then "ok  " else "FAIL", EC_NAMES[v], differ, off, on, stats);
+    ec_put(report[..], EC_NAMES[v]); ec_put(report[..], "\t"); ec_int(report[..], differ); ec_put(report[..], "\t"); ec_int(report[..], off);
+    ec_put(report[..], "\t"); ec_int(report[..], on); ec_put(report[..], "\t");
+    for ch: stats { ec_byte(report[..], ifx ch == ' ' then cast(u8) '\t' else ch); }
+    ec_put(report[..], "\n");
+  }
+  if out.count > 0 && !fs_write(out, ec_text(report[..])) { print("FAIL: can't write %\n", out); return 1; }
+  print("% everglade2 cull\n", ifx ok then "PASS" else "FAIL");
+  return ifx ok then 0 else 1;
+}

@@ -1,0 +1,16 @@
+# Everglade II's instance cull for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS | rw | atomic]), as coax/web/host.js lays them out
+# (its header's "Instance culling"): one group, each entry using its own part of it.
+u 0 0 uniform 25
+inst 0 1 rw
+runs 0 2
+boxes 0 3
+args 0 4 atomic
+flags 0 5 rw
+tally 0 6 atomic
+hiz 0 7 rw
+depth 0 8
+hz 0 9 uniform 1
+buckets 0 10
+indices 0 11
+vertices 0 12
+bounds 0 13 atomic

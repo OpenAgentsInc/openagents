@@ -6464,3 +6464,18 @@ as you walk, and come back the same", "Everglade II's shadow tiles: ...";
 `apps/openagents-web/gpu/everglade2.coax` "a grass tuft stands in one place at
 one size wherever the eye is, and only fades" and "a shadow tile places a
 point by its rows and draws it inside its own rect".
+
+## Everglade II's GPU cull never hides a piece in view (#13050)
+
+The GPU instance cull (`apps/openagents-web/gpu/everglade2-cull.coax`,
+`coax/web/instance-cull.js`) only leaves out pieces the page picked. It never
+changes their level, fade, place or size. A piece is left out only when its
+whole box, conservative for every vertex the kit stage places (any turn, scale
+and wind), is outside the frustum or behind depth this frame really drew. The
+second phase retests every piece the first phase hid against the pyramid of this
+frame's depth, so the image is the image without culling.
+Checks: `apps/openagents-web/gpu/everglade2-cull.coax` "a placed piece's box holds
+every vertex the kit stage places, any way round and in any wind" and "a piece
+behind nearer depth is kept by the first phase and drawn by the second only once
+the pyramid shows it"; `coax/web/everglade2-cull-check.coax` (headless: the
+glade, the woods and the clearing, the same pixels with the cull on and off).

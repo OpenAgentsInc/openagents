@@ -147,6 +147,9 @@
 //   coaxial_draws(state), coaxial_draw_count(state)   u32 [first, count, base instance, instances] each,
 //                             indexed draws over the index buffer (a base instance with its top bit
 //                             set: that many vertices from first, in order, no index buffer)
+//   coaxial_cull_v1(state, field)   optional, with a cull:URL asset: the GPU instance cull's block
+//                             (instance-cull.js has its fields); its runs draw only what the
+//                             frustum and the frame's own depth leave in view
 //   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
 //                             memory copied each frame to storage buffers; an app with
 //   coaxial_store_version(state, k)  has store k copied only when that number changes (a
@@ -233,6 +236,7 @@ import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
 import {openPackHost} from "./pack-host.js";
 import { characterPass } from "./character-host.js";
+import { instanceCull } from "./instance-cull.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
 import { openHostServices, openPcmMemory } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio, renderClipAudio } from "./audio-host.js";
@@ -305,7 +309,7 @@ function wantsDataLayers() { return !gpu?.renderer && engine?.exports.coaxial_da
 let soundDir = "";   // a sounds:/DIR/ asset: sounds played by name from DIR/NAME.ogg
 const assets = parseAssets((script && script.dataset.assets) || "");
 // What main() loads once the GPU is up (sounds wait to be played; fonts and icons are gpui.js's).
-const LATER = ["sound", "loop", "particles", "font", "icons", "licence"];
+const LATER = ["sound", "loop", "particles", "cull", "font", "icons", "licence"];
 let firstAssets = assets.filter((a) => !a.pack && !LATER.includes(a.kind)), firstPacks = new Set(assets.filter((a) => a.pack).map((a) => a.pack));
 // A realm's loading screen (loader.js): told what really loads, gone on the world's first frame.
 const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
@@ -948,7 +952,10 @@ async function openDevice(made = () => {}) {
   // a headless benchmark (coax/web/flyover.coax) asks for each pass's GPU time (globalThis.coaxialPassTimer)
   const passTiming = globalThis.coaxialPassTimer === true && adapter.features.has("timestamp-query");
   // every block-compression format the adapter has, so Coax can pick one for the layers (GitHub #13014)
-  const features = [...(timing || passTiming ? ["timestamp-query"] : []),
+  // a page with a cull: module culls its pieces on the GPU (instance-cull.js), drawn by indirect draws
+  // that start at their run's first piece
+  const culling = assets.some((a) => a.kind === "cull") && adapter.features.has("indirect-first-instance");
+  const features = [...(timing || passTiming ? ["timestamp-query"] : []), ...(culling ? ["indirect-first-instance"] : []),
     ...["texture-compression-bc", "texture-compression-astc", "texture-compression-etc2"].filter((f) => adapter.features.has(f))];
   const options = features.length ? { requiredFeatures: features } : {};
   if (storage) options.requiredLimits = { maxStorageBufferBindingSize: storage };
@@ -1349,6 +1356,7 @@ async function loadShadersOnce() {
   if (sc) bindScene();
   gpu.waterCopy = post && /var\s+water_scene\b/.test(code);
   gpu.particles = sc ? await particlePipeline(post, true) : await particlePipeline(post, !!surfaced);
+  gpu.cull = sc ? await cullPipelines() : null;
   const waterGroups = gpu.waterCopy ? [...sceneGroups, ...(sceneGroups.length < 3 ? [emptyLayout()] : []), waterCopyLayout()] : sceneGroups;
   [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, waterGroups, post) : [null, null];
   return true;
@@ -1389,6 +1397,19 @@ function waterCopyLayout() {
   return gpu.waterCopyLayout;
 }
 
+// The instance cull (instance-cull.js): a page with a cull: module and coaxial_cull_v1; ?cull=0 (or
+// coaxial.cull(false)) draws every piece the page picked, to compare.
+const wantsCull = () => assets.some((a) => a.kind === "cull") && !!engine?.exports.coaxial_cull_v1;
+async function cullPipelines() {
+  const a = assets.find((s) => s.kind === "cull");
+  if (!a || !wantsCull()) return null;
+  try {
+    const code = await (await fetch(a.url, { cache: dev ? "no-store" : "default" })).text();
+    const cull = await instanceCull(gpu.device, code, (text) => say(text, true));
+    if (cull) cull.off = new URLSearchParams(location.search).get("cull") === "0";
+    return cull;
+  } catch (e) { say(`${app}: cull: ${e.message}`, true); return null; }
+}
 // The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
 async function particlePipeline(post, depth) {
   const a = assets.find((s) => s.kind === "particles"), x = engine?.exports;
@@ -1624,7 +1645,7 @@ async function loadPack(pack) {
       // padding needs staging; do not duplicate a full groom on device recovery.
       const whole = e.bytes.length > 0 && e.bytes.length % 4 === 0 ? e.bytes : new Uint8Array(align(Math.max(e.bytes.length, 4), 4));
       if (whole !== e.bytes) whole.set(e.bytes);
-      a.buffer = device.createBuffer({ size: whole.length, usage: (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
+      a.buffer = device.createBuffer({ size: whole.length, usage: (a.kind === "index" ? GPUBufferUsage.INDEX | (wantsCull() ? GPUBufferUsage.STORAGE : 0) : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
       device.queue.writeBuffer(a.buffer, 0, whole); a.size = e.bytes.length;
     }
     loading.textures(0, 2 * of(PACK_LAYER).length);   // each layer decoded, then on the GPU
@@ -1680,7 +1701,7 @@ async function loadPackV1(pack){
       catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;
       for(const [row,entry]of [[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
         if(gpu.renderer){row.bytes=entry.bytes;row.size=entry.bytes.length;gpu.renderer.acceptAsset(row);}
-        else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX:GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
+        else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX|(wantsCull()?GPUBufferUsage.STORAGE:0):GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
       }
       layers.texture=texture;layers.dataTexture=dataTexture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;
       for(const entry of of(PACK_SOUND))if((!result.ready||result.ready(entry))&&!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
@@ -1811,7 +1832,7 @@ async function loadAsset(a) {
       if (a.kind === "data") a.bytes = bytes;
       else if (gpu.renderer) { a.bytes = bytes;gpu.renderer.acceptAsset(a); }
       else {
-        const usage = (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST | (x.coaxial_asset_index_v1?.(a.i) ? GPUBufferUsage.INDEX : 0);
+        const usage = (a.kind === "index" ? GPUBufferUsage.INDEX | (wantsCull() ? GPUBufferUsage.STORAGE : 0) : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST | (x.coaxial_asset_index_v1?.(a.i) ? GPUBufferUsage.INDEX : 0);
         const whole = gated && bytes.length % 4 === 0 ? bytes : new Uint8Array(align(bytes.length, 4));
         if (whole !== bytes) whole.set(bytes);   // v1 immutable aligned pages need no second upload copy
         const priorBuffer = a.buffer;a.buffer = device.createBuffer({ size: whole.length, usage });
@@ -2815,12 +2836,15 @@ function draw(now) {
     if (gpu.post) postTargets(w, h);
     else {
       gpu.depth?.destroy(); gpu.postGroup = null;
-      gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT });
+      gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | (gpu.cull ? GPUTextureUsage.TEXTURE_BINDING : 0) });
     }
   }
   const post = gpu.post && gpu.postGroup;
   const encoder = device.createCommandEncoder();
   const passTimer = passTimerFor(device);
+  // the instance cull's first phase (instance-cull.js), before every pass; null when it culls nothing
+  const culled = gpu.cull && draws && gpu.depth && x.coaxial_cull_v1 ? gpu.cull.frame(encoder, x, arena.state, memory,
+    { index: gpu.index, vertices: assets.find((a) => a.kind === "storage")?.buffer, store: gpu.stores?.[x.coaxial_cull_v1(arena.state, 5)] }, gpu.depth, w, h) : null;
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
   const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
@@ -2830,6 +2854,7 @@ function draw(now) {
     const [first, count, base, instances] = [source[i * 4], source[i * 4 + 1], source[i * 4 + 2], source[i * 4 + 3]];
     if (!count || !instances) return;
     if (!shadow) observedWorldDraws++;
+    if (culled && !shadow && source === list && gpu.cull.draw(pass, i)) return;
     if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
     else pass.drawIndexed(count, instances, x.coaxial_draw_index_v1 ? x.coaxial_draw_index_v1(arena.state, i, shadow ? 1 : 0, 1) : first, 0, base);
   };
@@ -2895,7 +2920,7 @@ function draw(now) {
   const texture = context.getCurrentTexture();
   const screen = () => target(texture.createView());
   let pass = timedPass(encoder, passTimer, { colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
-    ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}),
+    ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post || culled ? "store" : "discard" } } : {}),
     ...(timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
   if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
@@ -2920,6 +2945,20 @@ function draw(now) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
     drawScene(pass, true);
+    if (culled) {
+      // the cull's second phase: the pyramid of what was just drawn, then the pieces it no longer
+      // hides, drawn on in a pass that keeps the light and depth
+      pass.end();
+      gpu.cull.late(encoder);
+      const keep = (view) => ({ view, loadOp: "load", storeOp: "store" });
+      pass = timedPass(encoder, passTimer, { colorAttachments: post ? [keep(gpu.light.createView()), keep(gpu.aux.createView())] : [keep(texture.createView())],
+        depthStencilAttachment: { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: post ? "store" : "discard" } });
+      pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.sceneGroup);
+      if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
+      if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");
+      pass.setPipeline(gpu.scene);
+      gpu.cull.second(pass);
+    }
     if (opaqueGrass) drawGrass();
     if (hero) {
       // after the world's opaque geometry, before its water and particles; then the world's groups again
@@ -2991,6 +3030,7 @@ function draw(now) {
   passTimerResolve(encoder, passTimer);
   const readback = captureRequested && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;
   device.queue.submit([encoder.finish()]);
+  if (culled) gpu.cull.submitted();
   roomTraceSubmitted(device.queue);
   globalThis.__evergladeBenchmark?.submitted(device.queue);
   worldSubmissions++;
@@ -3177,6 +3217,9 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
   setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [], takePassTimes: () => passTimes?.splice(0) ?? [],
+  // the instance cull (instance-cull.js): on or off for this page, and its latest counts when the pass timer is on
+  cull: (on) => { if (gpu?.cull) gpu.cull.off = !on; return !!gpu?.cull && !gpu.cull.off; },
+  cullStats: () => gpu?.cull?.stats() ?? null,
   frameQueue: () => ({pending:gpu?.device.__coaxialFrames||0,bounded:typeof engine?.exports.coaxial_frame_admit==="function"}),
   quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },

@@ -17,6 +17,7 @@
 #load "../../aethyr/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "everglade2-create.coax";   // Character Create, in this world: /worlds/character-creator
 #load "../../aethyr/character/material.coax" as cmat;   // the characters' material table (#13012)
+#load "everglade2-cull.coax";   // what the host's instance cull reads each frame (#13050)
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 16384;     // strokes: the frame rate in the bottom right corner

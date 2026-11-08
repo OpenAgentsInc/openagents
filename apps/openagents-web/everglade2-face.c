@@ -43,6 +43,11 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   return px > 0 ? (uint32_t)px : 6400000u;
 }
 
+/* The host's instance cull (host.js "Instance culling", gpu/everglade2-cull.coax): the block
+   everglade2-cull.coax fills after each frame's scene. */
+static float cull_u[100];
+static uint32_t cull_buckets[2 * 36 * 3], cull_runs[4 * 384], cull_draws[384];
+static int64_t cull_n;
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   width = w; height = h; dpr = scale; now += dt;
@@ -75,6 +80,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     if (!baked) { e2_bake(at(state), (coax_v_t_People){&rig, 1}); baked = 1; }
     draw_n = e2_scene(at(state));
   }
+  cull_n = draw_n > 0 ? e2_cull_fill(at(state), u, (coax_v_f32){cull_u, 100}, (coax_v_u32){cull_buckets, sizeof cull_buckets / 4},
+                                     (coax_v_u32){cull_runs, sizeof cull_runs / 4}, (coax_v_u32){cull_draws, sizeof cull_draws / 4}) : 0;
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -102,8 +109,28 @@ EXPORT("coaxial_data_layers_v1") uint32_t coaxial_data_layers_v1(void) { return 
 EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
 EXPORT("coaxial_frame_store") uint32_t coaxial_frame_store(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->frame.e; }
 EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(uint32_t state) { (void)state; return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
+/* the kit store is three regions on the GPU: the page's picked pieces, then the cull's two
+   phases' survivors (gpu/everglade2-cull.coax E2Q_OUT1, E2Q_OUT2) */
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
-  return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : k == 3 ? (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e) : (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
+  return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : k == 3 ? (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e) : 3u * (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
+}
+/* The instance cull's block (host.js "Instance culling"): field 0 the runs this frame, 1 the
+   uniforms (100 floats), 2 the runs' words (4 each), 3 each kit piece's first index and index
+   count, 4 the kit pieces, 5 the store the pieces are in, 6 their base instance, 7 each run's
+   index in the draw list. */
+EXPORT("coaxial_cull_v1") int32_t coaxial_cull_v1(uint32_t state, int32_t field) {
+  (void)state;
+  switch (field) {
+    case 0: return (int32_t)cull_n;
+    case 1: return (int32_t)(uintptr_t)cull_u;
+    case 2: return (int32_t)(uintptr_t)cull_runs;
+    case 3: return (int32_t)(uintptr_t)cull_buckets;
+    case 4: return (int32_t)cull_u[97];   /* E2Q_BUCKETS */
+    case 5: return 2;
+    case 6: return 1048576;   /* everglade2.coax E2_KIT_BASE */
+    case 7: return (int32_t)(uintptr_t)cull_draws;
+  }
+  return -1;
 }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
   return k == 0 ? (uint32_t)(uintptr_t)e2_at(state)->records.e : k == 1 ? (uint32_t)(uintptr_t)e2_at(state)->bake.e : k == 3 ? (uint32_t)(uintptr_t)e2_at(state)->mats.e : (uint32_t)(uintptr_t)e2_at(state)->inst.e;
