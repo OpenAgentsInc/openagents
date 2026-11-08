@@ -3770,6 +3770,8 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert s[0].battle[0].c[s[0].me].klass == ROSTER[7];
   ok = lab_key(s[..], '3', 0); #assert s[0].act == 2;
   ok = lab_key(s[..], '1', 0); #assert s[0].act == ACT_ATTACK;
+  // Tab picks a foe, here while there are foes: the fight can be over before the walk below is
+  ok = lab_key(s[..], KEY_TAB, 0); #assert s[0].target >= 0 && s[0].battle[0].c[s[0].target].team != 0;
   me := s[0].me; x0 := s[0].battle[0].c[me].x;
   // the face puts your body on your token, and Everglade's step walks it (the face's half, here by hand)
   w := lab_walk(s[..]);
@@ -3793,8 +3795,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   // the follow camera swings in behind you; the play keys show under the hotbar
   for i: 0..<12 { n = frame_at(s[..], 1600, 1000, 1, 0.1); }
   #assert s[0].blend == 1 && s[0].eye.y < 4 && abs(s[0].eye.x - s[0].you_x) < 8;
-  // Tab picks a foe; a key that would start the battle again does nothing while you play
-  ok = lab_key(s[..], KEY_TAB, 0); #assert s[0].target >= 0 && s[0].battle[0].c[s[0].target].team != 0;
+  // a key that would start the battle again does nothing while you play
   r := s[0].round; #assert !lab_key(s[..], 'r', 0) && s[0].round == r;
   #assert n > 300 && s[0].slots[0].x1 > s[0].slots[0].x0;
   // every class's hotbar holds its own abilities, Attack or a cantrip first and Dash last
