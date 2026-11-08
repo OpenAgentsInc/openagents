@@ -507,6 +507,20 @@ This verifies fresh preset supply for displayed spell choices, not effect
 execution, complete SRD choice coverage, nonspell feature behavior, physical
 inventory acquisition or world state projection. No issue closes on this audit.
 
+### Enabled class-kit spell manifest (2026-11-08)
+
+The slice's enabled spell manifest is the 24 spells the twelve class kits
+enable at levels 1–6: 23 shown on the bars plus the Sorcerer and Wizard's
+Shield Reaction (`apps/openagents-web/class-kit-spells-checks.coax`, held
+equal to the kits). All 24 are executable and each has an SRD resolution check
+(`kit-cantrips-checks`, `kit-spells-checks`, `kit-spells-high-checks`), its
+canonical metadata, its own sound and its own look. The checks found and fixed
+Hypnotic Pattern dazing on a successful save, Entangle restraining its own
+caster, Divine Smite ignoring Fiends, Spirit Guardians' first-turn save, and
+eleven wrong source pages. 24 of 24 manifest spells checked; 0 left.
+[Evidence](../verification/srd-kit-spells-2026-11-08/README.md). Spells the
+presets prepare but no kit shows remain outside the manifest.
+
 ### Room-library baseline restored (2026-11-08)
 
 The original 1,400-frame horde cast-distribution check now passes at its

@@ -7134,6 +7134,12 @@ profile `RS_SPARE_CASTER_AREAS` are `aethyr/rules/srd/area-origin.coax`
 New battles are strict; the profile is chosen before the clock is sealed and
 `rs_reset` restores strict. Worlds that use action timing declare the house
 rule explicitly. See `docs/verification/srd-area-origin-2026-11-08/README.md`.
+A spell whose text says "each creature (other than you)" (`RsSpell.others`,
+Entangle p.128) leaves its caster out of any area, and a spell that affects
+only a creature that can see it (`RsSpell.sight`, Hypnotic Pattern p.141)
+leaves out a Blinded creature; both are decided in `area-origin.coax` for the
+cast loop and the preflight alike, so a left-out creature needs no effect room.
+See `docs/verification/srd-kit-spells-2026-11-08/README.md`.
 
 ## Rest boundaries precede later time
 

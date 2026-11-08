@@ -65,6 +65,14 @@ xc_look_of :: (a: FbAb, px: f32, py: f32, pz: f32, face: f32, at: FxV) -> XcLook
     else if sp == SP_FALSE_LIFE { r = FXR_DRAIN; to = me; }
     else if sp == SP_THUNDERWAVE { r = FXR_SHOCK; to = fxp_v(px + sin(face) * 2.286, py + 1.0, pz + cos(face) * 2.286); reach = 2.286; }
     else if sp == SP_ENTANGLE { r = FXR_BLOOM; reach = 3; }
+    // the 5E Lab's own looks (fivelab.coax fx_event), sized to the SRD areas
+    else if sp == SP_FIREBALL { r = FXR_FIREBALL; reach = 6.096; }                // a 20-foot radius
+    else if sp == SP_HYPNOTIC_PATTERN { r = FXR_SHIMMER; reach = 4.572; }         // a 30-foot Cube
+    else if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { r = FXR_LIGHTNING; reach = 1.524; }   // within 5 feet of the point
+    else if sp == SP_SPIRIT_GUARDIANS { r = FXR_ORBIT; to = fxp_v(px, py, pz); reach = 4.572; }   // a 15-foot Emanation
+    else if sp == SP_HOLD_PERSON { r = FXR_BIND; }
+    else if sp == SP_BLINDNESS { r = FXR_VEIL; }
+    else if sp == SP_SHIELD { r = FXR_BARRIER; to = fxp_v(px, py, pz); }
     else { r = FXR_STREAK; }   // Chill Touch, Ray of Sickness, Guiding Bolt
   }
   else if a.kind == FB_RAGE { r = FXR_EMBERS; to = me; }
@@ -101,6 +109,14 @@ xc_slot_at :: (bar_n: int, i: int, w: f32, h: f32, k: f32) -> [4] f32 {
   h := xc_look_of(fb_spell(SP_HEALING_WORD, 1, FB_ALLY), 2, 0, 3, 0, at); #assert h.recipe == FXR_HEAL && h.to.x == 2 && h.to.z == 3;
   t := xc_look_of(fb_spell(SP_THUNDERWAVE, 1, FB_POINT), 0, 0, 0, 1.5707963, at); #assert t.recipe == FXR_SHOCK && abs(t.to.x - 2.286) < 0.01 && t.reach > 2;
   g := xc_look_of(fb_spell(SP_GUIDING_BOLT, 1, FB_FOE), 0, 0, 0, 0, at); #assert g.glimmer && g.recipe == FXR_STREAK;
+  // every kit spell with a look of its own in the 5E Lab keeps it here
+  #assert xc_look_of(fb_spell(SP_FIREBALL, 3, FB_POINT), 0, 0, 0, 0, at).recipe == FXR_FIREBALL;
+  #assert xc_look_of(fb_spell(SP_HYPNOTIC_PATTERN, 3, FB_POINT), 0, 0, 0, 0, at).recipe == FXR_SHIMMER;
+  #assert xc_look_of(fb_spell(SP_CALL_LIGHTNING, 3, FB_POINT), 0, 0, 0, 0, at).recipe == FXR_LIGHTNING;
+  sg := xc_look_of(fb_spell(SP_SPIRIT_GUARDIANS, 3, FB_SELF), 2, 0, 3, 0, at); #assert sg.recipe == FXR_ORBIT && sg.to.x == 2 && sg.to.z == 3;
+  #assert xc_look_of(fb_spell(SP_HOLD_PERSON, 2, FB_FOE), 0, 0, 0, 0, at).recipe == FXR_BIND;
+  #assert xc_look_of(fb_spell(SP_BLINDNESS, 2, FB_FOE), 0, 0, 0, 0, at).recipe == FXR_VEIL;
+  #assert xc_look_of(fb_spell(SP_SHIELD, 1, FB_SELF), 0, 0, 0, 0, at).recipe == FXR_BARRIER;
   p: [1] FxPuffs; #assert xc_look_start(p[..], g, 1, 7) == 2 && p[0].started == 2;
   s := xc_slot_at(5, 0, 1280, 720, 1); #assert s[2] - s[0] == 52 && s[3] == 720 - 30 && s[0] == (1280 - 292) / 2;
 }

@@ -1,0 +1,87 @@
+// The enabled spell manifest of the levels 1-6 slice (#13030, #13043): every spell the twelve class
+// kits show at a selector level 1 to 6 (xc_bar_level, which Experimental and Everglade II play), and
+// the Reaction spells their heroes cast for themselves (Shield). Each entry's SRD resolution check
+// is named beside it; those checks run the shared battle with fixed dice against the pinned text.
+// These checks hold the manifest equal to the kits, every record to its canonical source entry, and
+// every spell to its own sound and look.
+//   coax/bin/coax test apps/openagents-web/class-kit-spells-checks.coax --library
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "class-kit.coax";
+#load "class-look.coax";
+#load "../../aethyr/rules/srd/catalog.coax";
+#load "../../aethyr/audio/experimental-sfx.coax";
+#load "../../aethyr/audio/everglade-bank.coax";
+
+// Spell, and the check that resolves it (aethyr/rules/srd/):
+//   C kit-cantrips-checks.coax, 1 kit-spells-checks.coax, H kit-spells-high-checks.coax
+XK_MANIFEST :: [24] int.[
+  SP_FIRE_BOLT,          // C  Sorcerer, Wizard
+  SP_CHILL_TOUCH,        // C  Sorcerer, Warlock, Wizard
+  SP_ELDRITCH_BLAST,     // C  Warlock
+  SP_STARRY_WISP,        // C  Druid
+  SP_FLAME_HURL,         // C  Druid (Produce Flame: the flame, then the hurl, on one slot)
+  SP_VICIOUS_MOCKERY,    // C  Bard
+  SP_SACRED_FLAME,       // C  Cleric, Paladin from level 3
+  SP_HEALING_WORD,       // 1  Bard, Cleric, Druid
+  SP_THUNDERWAVE,        // 1  Bard, Druid, Sorcerer, Wizard
+  SP_ENTANGLE,           // 1  Druid, Ranger
+  SP_RAY_OF_SICKNESS,    // 1  Sorcerer, Wizard
+  SP_FALSE_LIFE,         // 1  Wizard
+  SP_HEX,                // 1  Warlock
+  SP_GUIDING_BOLT,       // 1  Cleric
+  SP_DIVINE_SMITE,       // 1  Paladin
+  SP_HUNTERS_MARK,       // 1  Ranger
+  SP_SHIELD,             // 1  Sorcerer, Wizard: their Reaction to a hit
+  SP_BLINDNESS,          // H  Wizard from level 4
+  SP_HOLD_PERSON,        // H  Warlock from level 3
+  SP_SCORCHING_RAY,      // H  Sorcerer, Warlock, Wizard from level 3
+  SP_FIREBALL,           // H  Bard 6, Sorcerer, Warlock, Wizard from level 5
+  SP_SPIRIT_GUARDIANS,   // H  Cleric from level 5
+  SP_CALL_LIGHTNING,     // H  Druid from level 5
+  SP_HYPNOTIC_PATTERN    // H  Bard from level 5
+];
+xk_in_manifest :: (sp: int) -> bool { for m: XK_MANIFEST { if m == sp { return true; } } return false; }
+// Every spell a class's hero at `level` can use: its displayed kit and the Reactions it casts itself.
+xk_enabled :: (c: int, level: int, seen: [] bool) {
+  bar: [XC_SLOTS] FbAb; n := xc_bar_level(c, level, bar[..]);
+  for i: 0..<n { if bar[i].kind == FB_SPELL { seen[bar[i].sp] = true; } }
+  hero := fb_cl_hero(c, "You", 0, level);
+  if hero.shield_spell && rs_spell_ready(hero, SP_SHIELD) { seen[SP_SHIELD] = true; }
+  if hero.rebuke && rs_spell_ready(hero, SP_HELLISH_REBUKE) { seen[SP_HELLISH_REBUKE] = true; }
+}
+
+#test "the manifest is exactly the spells the twelve class kits enable at levels 1-6" #steps 2000000000 {
+  seen: [RS_MORE_END] bool;
+  for c: 0..<FB_CL_N { for level: 1..<7 { xk_enabled(c, level, seen[..]); } }
+  for sp: 0..<RS_MORE_END { #assert seen[sp] == xk_in_manifest(sp); }
+  for i: 0..<XK_MANIFEST.count { for j: i + 1..<XK_MANIFEST.count { #assert XK_MANIFEST[i] != XK_MANIFEST[j]; } }
+}
+#test "every manifest spell is an executable cantrip or 1st-3rd level record matching its canonical source entry" #steps 400000000 {
+  for sp: XK_MANIFEST {
+    s := rs_spell(sp); root := rs_spell_root(sp); r := rs_spell(root); src := srd_source_lookup(r.id);
+    #assert s.srd && s.step_n > 0 && rs_executable_spell(sp) && r.level <= 3 && src.id == r.id;
+    #assert RS_SPELL_KEYS[RS_EXEC_SOURCE[sp]].id == r.id;
+    #assert r.level == src.level && r.page == src.page && r.components == src.components && r.concentration == src.concentration;
+    #assert r.range_ft == (ifx src.range_kind == SRD_RANGE_SELF then 0 else ifx src.range_kind == SRD_RANGE_TOUCH then 5 else src.range_value);
+    #assert r.cast_time == src.cast_kind || (src.cast_kind == SRD_CAST_SPECIAL && r.cast_time == RS_T_BONUS && src.cast_text[0..<12] == "Bonus Action");
+    #assert (r.duration_s == f32(src.duration_seconds)) || src.duration_seconds <= 0;
+  }
+}
+#test "every manifest spell has its own sound and its own colour" #steps 400000000 {
+  for i: 0..<XK_MANIFEST.count {
+    a := xc_spell_sound(XK_MANIFEST[i]);
+    #assert a.start.count > 0 && exsound_known(a.start);
+    c := xc_spell_rgb(XK_MANIFEST[i]); grey := xc_spell_rgb(1000);
+    #assert !(c.x == grey.x && c.y == grey.y && c.z == grey.z);
+    for j: i + 1..<XK_MANIFEST.count {
+      b := xc_spell_sound(XK_MANIFEST[j]);
+      #assert !(a.start == b.start && a.layer == b.layer && a.rate == b.rate);
+    }
+  }
+}
+// A sound name the Experimental bank can play: Everglade's or Experimental's own.
+exsound_known :: (name: string) -> bool { return sfx_id(name) >= 0 || xsfx_id(name) >= 0; }

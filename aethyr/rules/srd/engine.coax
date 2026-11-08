@@ -250,6 +250,7 @@ RsCreature :: struct {
   uses: [RS_USES] int; uses_max: [RS_USES] int; uses_back: [RS_USES] f32;
   free_spell: int;
   undead: bool;             // its creature type is Undead (Turn Undead, Divine Smite)
+  fiend: bool;              // its creature type is Fiend (Divine Smite)
   construct: bool;          // its creature type is Construct (Shatter's save Disadvantage)
   // Bard: the Bardic Inspiration die it gives, the one it holds (0 none), the College of Lore's Cutting Words
   insp_die: int; inspired: int; cutting: bool;
@@ -278,7 +279,7 @@ RsCreature :: struct {
   companion: bool; resurgence: bool; resurged_slot: bool;   // Wild Companion (a familiar, not modeled), Wild Resurgence and its once-a-rest slot
   sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
-  guard_slot: int; guard_turn: int;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one
+  guard_slot: int; guard_turn: int = -1;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one (-1 none yet)
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
   metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: f32;
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer

@@ -1,0 +1,130 @@
+// The 1st-level spells the twelve class kits show or cast at levels 1-6 (#13043;
+// manifest: apps/openagents-web/class-kit-spells-checks.coax), each resolved
+// through the shared battle against its SRD 5.2.1 text with fixed dice (d4 2,
+// d6 3, d8 4, d10 5, d20 10), so each number is read off the page.
+//   coax/bin/coax test --library aethyr/rules/srd/kit-spells-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "kit-spell-cases.coax";
+
+#test "Healing Word p.139: a Bonus Action, 60 feet, 2d4 + the spellcasting modifier, 2d4 more a slot level" {
+  for slot: [2] int.[1,2] {
+    b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,3),SP_HEALING_WORD,10,10);
+    #assert rs_cast(b[..],0,SP_HEALING_WORD,slot,0,0,1) && b[0].turn.bonus && !b[0].turn.action;
+    #assert b[0].c[1].hp == 200 + 2 * 2 * slot + rs_mod(b[0].c[0].score[RS_WIS]);
+  }
+  far: [1] RsBattle; kc_case(far[..],rs_druid("Druid",0,3),SP_HEALING_WORD,14,10);   // 65 feet
+  #assert !rs_cast(far[..],0,SP_HEALING_WORD,1,0,0,1) && far[0].c[1].hp == 200 && !far[0].turn.bonus;
+}
+
+#test "Thunderwave p.169: a 15-foot Cube from the caster, a Con save, 2d8 Thunder and a 10-foot push on a failure, half and no push on a success" {
+  for slot: [2] int.[1,2] { for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_wizard("Wizard",0,3),SP_THUNDERWAVE,2,ifx strong == 1 then 30 else 1);
+    #assert rs_cast(b[..],0,SP_THUNDERWAVE,slot,3,1,-1);
+    full := 4 * (2 + slot - 1);
+    #assert 200 - b[0].c[1].hp == (ifx strong == 1 then full / 2 else full) && b[0].c[1].x == (ifx strong == 1 then 2 else 4);
+    #assert b[0].c[0].hp == b[0].c[0].hp_max;   // the Cube starts at its caster and leaves it out
+  } }
+}
+
+#test "Entangle p.128: Difficult Terrain, a Str save or Restrained for each creature other than the caster, and a Str (Athletics) action to break free" {
+  for strong: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_druid("Druid",0,1),SP_ENTANGLE,2,ifx strong == 1 then 30 else 1);
+    b[0].c[0].score[RS_STR] = 1;   // the caster would fail too, were it affected
+    #assert rs_cast(b[..],0,SP_ENTANGLE,1,1,1,-1);   // centred on its own square
+    #assert rs_has(b[0].c[1],RS_RESTRAINED) == (strong == 0);
+    #assert !rs_has(b[0].c[0],RS_RESTRAINED);
+    #assert rs_difficult(b[..],1,1) && rs_difficult(b[..],2,1) && b[0].c[0].conc == SP_ENTANGLE;
+    if strong == 0 {
+      // On its turn the target strains with Strength (Athletics) against the spell save DC.
+      rs_end_turn(b[..],0); b[0].c[1].score[RS_STR] = 30; rs_start_turn(b[..],1);
+      #assert rs_escape(b[..],1) && !rs_has(b[0].c[1],RS_RESTRAINED) && b[0].turn.action;
+      #assert !rs_escape(b[..],1);   // free now, and its action is spent
+    }
+  }
+}
+
+#test "Ray of Sickness p.158: a ranged spell attack, 2d8 Poison and Poisoned until the end of the caster's next turn, 1d8 more a slot level" {
+  for slot: [2] int.[1,2] { for hit: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,3),SP_RAY_OF_SICKNESS,10,10);
+    b[0].c[1].ac = kc_ac(b[..],hit == 1);
+    #assert rs_cast(b[..],0,SP_RAY_OF_SICKNESS,slot,0,0,1);
+    #assert 200 - b[0].c[1].hp == (ifx hit == 1 then 4 * (2 + slot - 1) else 0) && rs_has(b[0].c[1],RS_POISONED) == (hit == 1);
+    for e: b[0].c[1].eff { if e.kind == EF_COND && e.cond == RS_POISONED { #assert e.until == rs_after_next_turn(b[..],0); } }
+  } }
+}
+
+#test "False Life p.129: 2d4 + 4 Temporary Hit Points, 5 more a slot level, the larger of two grants kept" {
+  for slot: [2] int.[1,2] {
+    b: [1] RsBattle; kc_case(b[..],rs_wizard("Wizard",0,3),SP_FALSE_LIFE,10,10);
+    #assert rs_cast(b[..],0,SP_FALSE_LIFE,slot,0,0,0) && b[0].c[0].temp == 4 + 4 + 5 * (slot - 1);
+  }
+  b: [1] RsBattle; kc_case(b[..],rs_wizard("Wizard",0,3),SP_FALSE_LIFE,10,10); b[0].c[0].temp = 20;
+  #assert rs_cast(b[..],0,SP_FALSE_LIFE,1,0,0,0) && b[0].c[0].temp == 20;
+}
+
+#test "Hex p.140: a Bonus Action curse, 1d6 Necrotic more on each of the caster's attack hits, Disadvantage on the chosen ability's checks" {
+  b: [1] RsBattle; kc_case(b[..],rs_warlock("Warlock",0,1,SP_ELDRITCH_BLAST),SP_HEX,10,10);
+  keys := [2] int.[RS_EXEC_SOURCE[SP_HEX],RS_EXEC_SOURCE[SP_ELDRITCH_BLAST]]; #assert rs_set_spells(b[0].c[0..<1],keys[..]);
+  #assert rs_cast(b[..],0,SP_HEX,1,0,0,1) && b[0].turn.bonus && !b[0].turn.action && b[0].c[0].conc == SP_HEX;
+  hexed := false; for e: b[0].c[1].eff { if e.kind == EF_HEX && e.by == 0 && e.cond == RS_STR { hexed = true; } }
+  #assert hexed && b[0].c[0].conc_until == b[0].clock + 3600;
+  b[0].c[1].ac = 1; seq := b[0].book[0].seq;
+  #assert rs_cast(b[..],0,SP_ELDRITCH_BLAST,0,0,0,1);
+  #assert 200 - b[0].c[1].hp == 5 + 3 && ks_dealt(b[..],seq,SP_HEX,RS_NECROTIC) == 3;
+  // a missed attack adds nothing
+  b[0].turn.action = false; b[0].c[1].ac = 30; hp := b[0].c[1].hp;
+  #assert rs_cast(b[..],0,SP_ELDRITCH_BLAST,0,0,0,1) && b[0].c[1].hp == hp;
+}
+
+#test "Guiding Bolt p.138: a ranged spell attack, 4d6 Radiant, 1d6 more a slot level, and Advantage on the next attack roll against the target" {
+  for slot: [2] int.[1,2] { for hit: 0..<2 {
+    b: [1] RsBattle; kc_case(b[..],rs_cleric("Cleric",0,3),SP_GUIDING_BOLT,10,10);
+    b[0].c[1].ac = kc_ac(b[..],hit == 1);
+    #assert rs_cast(b[..],0,SP_GUIDING_BOLT,slot,0,0,1);
+    #assert 200 - b[0].c[1].hp == (ifx hit == 1 then 3 * (4 + slot - 1) else 0) && rs_effect(b[0].c[1],EF_EXPOSED) == (hit == 1);
+    #assert rs_attack_edge(b[..],0,1,false,false) == (ifx hit == 1 then 1 else 0);
+  } }
+}
+
+#test "Divine Smite p.125: after a melee weapon hit, 2d8 Radiant more, 1d8 more against a Fiend or an Undead and a slot level" {
+  for slot: [2] int.[1,2] { for kind: 0..<3 {
+    b: [1] RsBattle; kc_case(b[..],rs_paladin("Paladin",0,5),SP_DIVINE_SMITE,2,10);
+    b[0].c[1].ac = 1; b[0].c[1].undead = kind == 1; b[0].c[1].fiend = kind == 2;
+    #assert rs_attack(b[..],0,1,false,-1);
+    seq := b[0].book[0].seq;
+    #assert rs_cast(b[..],0,SP_DIVINE_SMITE,slot,0,0,1) && b[0].turn.bonus;
+    #assert ks_dealt(b[..],seq,SP_DIVINE_SMITE,RS_RADIANT) == 4 * (2 + slot - 1 + (ifx kind > 0 then 1 else 0));
+  } }
+  // Without a melee hit this turn there is nothing to smite.
+  b: [1] RsBattle; kc_case(b[..],rs_paladin("Paladin",0,5),SP_DIVINE_SMITE,2,10);
+  slots := b[0].c[0].slots[1];
+  #assert !rs_cast(b[..],0,SP_DIVINE_SMITE,1,0,0,1) && b[0].c[0].slots[1] == slots && b[0].c[1].hp == 200;
+}
+
+#test "Hunter's Mark p.141: a Bonus Action mark, 1d6 Force more whenever the caster hits it with an attack roll" {
+  b: [1] RsBattle; kc_case(b[..],rs_ranger("Ranger",0,1),SP_HUNTERS_MARK,2,10);
+  #assert rs_cast(b[..],0,SP_HUNTERS_MARK,1,0,0,1) && b[0].turn.bonus && rs_effect(b[0].c[1],EF_MARK) && b[0].c[0].conc == SP_HUNTERS_MARK;
+  #assert b[0].c[0].conc_until == b[0].clock + 3600;
+  b[0].c[1].ac = 1; seq := b[0].book[0].seq;
+  #assert rs_attack(b[..],0,1,false,-1) && ks_dealt(b[..],seq,SP_HUNTERS_MARK,RS_FORCE) == 3;
+}
+
+#test "Shield p.161: a Reaction to a hit, +5 AC against it and until the start of the caster's next turn, from its lowest slot" {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  w := rs_add(b[..],rs_wizard("Wizard",0,1),1,1); m := rs_add(b[..],rs_rogue("Rogue",1,3),2,1);   // no damage on a miss
+  kc_learn(b[..],w,SP_SHIELD); b[0].c[w].shield_spell = true; b[0].c[w].hp = 200; b[0].c[w].hp_max = 200;
+  rs_start_turn(b[..],m);
+  bonus := rs_weapon_attack(b[0].c[m],b[0].c[m].weapon);
+  b[0].c[w].ac = 10 + bonus - 2;   // hit by 2: Shield turns it
+  slots := b[0].c[w].slots[1];
+  #assert rs_attack(b[..],m,w,false,-1);
+  #assert b[0].c[w].hp == 200;
+  #assert b[0].c[w].reacted && b[0].c[w].slots[1] == slots - 1;
+  #assert rs_ac(b[..],w) == 10 + bonus + 3 && b[0].c[w].shield_active;
+  rs_end_turn(b[..],m); rs_start_turn(b[..],w);
+  #assert !b[0].c[w].shield_active && rs_ac(b[..],w) == 10 + bonus - 2;
+}

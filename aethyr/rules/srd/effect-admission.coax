@@ -234,7 +234,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
       for m: 0..<more_n { if more[m] == j { chosen = true; } }
       if !chosen { continue; }
     } else {
-      if !rs_inside(area,b[0].c[j].x,b[0].c[j].y) || b[0].c[j].dead || (j == i && rs_area_spares_caster(s.area,b[0].areas)) { continue; }
+      if !rs_inside(area,b[0].c[j].x,b[0].c[j].y) || b[0].c[j].dead || (j == i && rs_area_spares_caster(s.area,s.others,b[0].areas)) || rs_area_unseen(s.sight,rs_has(b[0].c[j],RS_BLINDED)) { continue; }
       if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1+s.level { sculpted += 1; continue; }
     }
     if s.humanoid_only && !b[0].c[j].humanoid { continue; }

@@ -4,7 +4,10 @@
 // A Sphere, Cylinder or Cube centered on a chosen point includes every creature
 // inside it, the caster too ("Each creature in a 20-foot-radius Sphere centered
 // on that point", Fireball p.131). Evocation's Sculpt Spells still lets an
-// Evoker choose to spare creatures, the caster among them.
+// Evoker choose to spare creatures, the caster among them. A spell whose text
+// names "each creature (other than you)" (Entangle p.128) leaves its caster out
+// of any area. A spell that affects only a creature "who can see" it (Hypnotic
+// Pattern p.141) leaves out a Blinded creature in its area.
 //
 // A world may declare the house rule RS_SPARE_CASTER_AREAS instead (Everglade's
 // destruction bar: a caster is never caught in its own blast). Like the timing
@@ -18,11 +21,14 @@ RsAreaProfile :: struct { kind: int; }
 RS_STRICT_AREAS :: RsAreaProfile.{};
 RS_SPARE_CASTER_AREAS :: RsAreaProfile.{kind=RS_AREA_SPARE_CASTER};
 
-#test "strict areas leave out only a caster at an origin; the declared house rule spares it everywhere" {
-  for area: 0..<8 {
-    #assert rs_area_spares_caster(area,RS_STRICT_AREAS) == (area == RS_A_CUBE_SELF || area == RS_A_LINE);
-    #assert rs_area_spares_caster(area,RS_SPARE_CASTER_AREAS);
-  }
+#test "strict areas leave out only a caster at an origin or named 'other than you'; the declared house rule spares it everywhere" {
+  for area: 0..<8 { for others: 0..<2 {
+    #assert rs_area_spares_caster(area,others == 1,RS_STRICT_AREAS) == (area == RS_A_CUBE_SELF || area == RS_A_LINE || others == 1);
+    #assert rs_area_spares_caster(area,others == 1,RS_SPARE_CASTER_AREAS);
+  } }
+}
+#test "a spell seen to work leaves out exactly a Blinded creature" {
+  for sight: 0..<2 { for blind: 0..<2 { #assert rs_area_unseen(sight == 1,blind == 1) == (sight == 1 && blind == 1); } }
 }
 #test "area profile admission accepts exactly the two declared profiles before the clock is sealed" {
   for kind: -2..<4 { for sealed: 0..<2 {
@@ -39,9 +45,10 @@ RS_SPARE_CASTER_AREAS :: RsAreaProfile.{kind=RS_AREA_SPARE_CASTER};
   rs_reset_areas(b[..]); #assert b[0].areas.kind == RS_AREA_STRICT;
 }
 
-rs_area_spares_caster :: (area: int, p: RsAreaProfile) -> bool #effects(all) {
-  return area == RS_A_CUBE_SELF || area == RS_A_LINE || p.kind == RS_AREA_SPARE_CASTER;
+rs_area_spares_caster :: (area: int, others: bool, p: RsAreaProfile) -> bool #effects(all) {
+  return area == RS_A_CUBE_SELF || area == RS_A_LINE || others || p.kind == RS_AREA_SPARE_CASTER;
 }
+rs_area_unseen :: (sight: bool, blinded: bool) -> bool #effects(all) { return sight && blinded; }
 rs_area_allowed :: (p: RsAreaProfile, sealed: bool) -> bool #effects(all) {
   return !sealed && (p.kind == RS_AREA_STRICT || p.kind == RS_AREA_SPARE_CASTER);
 }

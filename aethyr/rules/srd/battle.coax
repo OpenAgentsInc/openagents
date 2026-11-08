@@ -628,7 +628,9 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
       } else {
         if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
         // A Cube or Line from you starts at you and leaves you out; an area at a point includes you (area-origin.coax)
-        if j == i && rs_area_spares_caster(s.area,b[0].areas) { continue; }
+        if j == i && rs_area_spares_caster(s.area,s.others,b[0].areas) { continue; }
+        // only a creature that can see the pattern (Hypnotic Pattern)
+        if rs_area_unseen(s.sight,rs_has(b[0].c[j],RS_BLINDED)) { continue; }
         // Sculpt Spells (Evoker, p. 82): up to 1 + the spell's level allies are spared an Evocation
         if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1 + s.level { sculpted += 1; continue; }
       }
@@ -1053,8 +1055,9 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_SMITE {
       crit = b[0].turn.last_crit;
-      if b[0].c[j].undead { bane = st.a; }
+      if b[0].c[j].undead || b[0].c[j].fiend { bane = st.a; }
     } else if st.kind == RS_S_DAZE {
+      if ran_save && saved { continue; }   // only on a failed save (p.141)
       if rs_effect_condition_mask(b[0].c[j],st.a)==0 { continue; }
       l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is Charmed and Incapacitated, Speed 0");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
@@ -1153,6 +1156,21 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ifx ok then ": free" else ": still held");
   rs_tell(b, RS_EV_CONDITION, -1, i, i, total, 0, l[..]);
   return ok;
+}
+
+// Hypnotic Pattern (p.141): someone else uses an action to shake a creature out of its stupor.
+// The SRD names no range; shaking is taken as within 5 feet (a reach), an interpretation.
+rs_shake :: (b: [] RsBattle, i: int, j: int) -> bool {
+  if i < 0 || j < 0 || i >= b[0].n || j >= b[0].n || i == j { return false; }
+  if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) || rs_feet_to(b, i, j) > 5 { return false; }
+  found := false;
+  for k: 0..<RS_EFFECTS { if b[0].c[j].eff[k].kind == EF_DAZED { rs_drop_effect(b, j, k); found = true; } }
+  if !found { return false; }
+  b[0].turn.action = true;
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " shakes "); rs_add_name(l[..], b, j); rs_add_text(l[..], " out of its stupor");
+  rs_tell(b, RS_EV_END, SP_HYPNOTIC_PATTERN, i, j, 0, 0, l[..]);
+  return true;
 }
 
 // One square of movement: 5 feet, 10 into Difficult Terrain; none while Restrained or at 0, or

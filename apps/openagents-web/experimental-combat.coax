@@ -98,18 +98,21 @@ XcCombat :: struct {
   npc_seat: [XC_FOES] FbSeat;
   seen_hits: int;                   // the monsters' landed blows already given their hit stop
   shown: int; suppressed: int;      // numbers shown and suppressed (lab_creator_probe 934, 935)
+  shields: int;                     // Shield Reactions cast for you (their sound and barrier played)
+  guard_in: [XC_FOES] bool;         // each monster inside your Spirit Guardians' Emanation last frame
 }
 XC_TICK :: 64.0;           // aethyr/loop.coax: ticks a second
 XC_BLADE_R :: 0.12;        // m: a blade's sensor radius
 XC_BLADE_TIP :: [4]f32.[1.0,1.25,0.9,0.6];   // m from the weapon's origin to its tip (CC_KITS order)
 XC_WINDOW :: 6;            // ticks the sensor is open either side of the swing's impact
 
-xc_imp :: () -> RsCreature { return fb_folk("Imp", 1, 13, 10, [6] int.[6, 17, 13, 11, 12, 14]); }
+// The SRD's Imp is a Fiend (Divine Smite's 1d8 more); the Gremlin and Puglins are not SRD creatures.
+xc_imp :: () -> RsCreature { c := fb_folk("Imp", 1, 13, 10, [6] int.[6, 17, 13, 11, 12, 14]); c.fiend = true; return c; }
 xc_gremlin :: () -> RsCreature { return fb_folk("Gremlin", 1, 12, 13, [6] int.[12, 14, 12, 8, 10, 6]); }
 // The dungeon's bigger monsters (verse/experimental-dungeon.coax DG_KIND_*): their AC and Hit
 // Points are experimental-hostiles.coax's HS_FIEND, HS_BRUTE and HS_BOSS.
 xc_foe :: (kind: int) -> RsCreature {
-  if kind == xdungeon.DG_KIND_FIEND { return fb_folk("Imp Fiend", 1, hostile.HS_FIEND.ac, hostile.HS_FIEND.hp, [6] int.[8, 17, 14, 11, 12, 14]); }
+  if kind == xdungeon.DG_KIND_FIEND { c := fb_folk("Imp Fiend", 1, hostile.HS_FIEND.ac, hostile.HS_FIEND.hp, [6] int.[8, 17, 14, 11, 12, 14]); c.fiend = true; return c; }
   if kind == xdungeon.DG_KIND_BRUTE { return fb_folk("Puglin Brute", 1, hostile.HS_BRUTE.ac, hostile.HS_BRUTE.hp, [6] int.[17, 11, 15, 6, 10, 7]); }
   if kind == xdungeon.DG_KIND_BOSS { return fb_folk("Puglin Warlord", 1, hostile.HS_BOSS.ac, hostile.HS_BOSS.hp, [6] int.[19, 12, 17, 10, 12, 15]); }
   return ifx kind == xdungeon.DG_KIND_IMP then xc_imp() else xc_gremlin();
@@ -416,6 +419,31 @@ xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
   observed:=rs_rest_observe_motion(b,foe+1,moving && (next.x!=old.x || next.z!=old.z),false,!moving);
   xc_sync_permission(s,foe); xc_sync_vitals(s);
 }
+// Spirit Guardians (p.164): a monster saves when it enters your Emanation or the Emanation enters its
+// space, whoever moved (its end-of-turn save comes from its own turn, fb_seat_step). Once a turn.
+xc_guardians_step :: (s:[] Lab) {
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
+  if !x[0].started { return; }
+  on:=b[0].c[0].conc==SP_SPIRIT_GUARDIANS;
+  for foe:0..<XC_FOES {
+    e:=h[0].enemies[foe];
+    dx:=e.x-cr[0].player_x; dz:=e.z-cr[0].player_z;
+    inside:=on && !e.dead && sqrt(dx*dx+dz*dz)/f32(XC_SQ)*5<=15;
+    if inside && !x[0].guard_in[foe] {
+      xc_sync_world(s);
+      before:=b[0].c[foe+1].hp;
+      fb_seat_in(b,x[0].npc_seat[foe..<foe+1]); rs_guardians(b,foe+1); fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
+      lost:=before-rs_max(b[0].c[foe+1].hp,0);
+      if lost>0 {
+        snd:=xc_spell_sound(SP_SPIRIT_GUARDIANS); x[0].landed+=1; x[0].last_dmg=lost;
+        xc_float_int(x,e.x,1.9,e.z,cr[0].clock,lost,false); xc_cue(s,snd.hit,0.55,e.x,e.z,snd.rate);
+        xc_voice(s,foe,!rs_up(b[0].c[foe+1]));
+      }
+      xc_sync_permission(s,foe);
+    }
+    x[0].guard_in[foe]=inside;
+  }
+}
 xc_hostile_tick :: (s:[] Lab,dt:f32) {
   h:=s[0].creator[0].hostiles[..]; cr:=s[0].creator[..];
   xc_sync_world(s);
@@ -425,7 +453,7 @@ xc_hostile_tick :: (s:[] Lab,dt:f32) {
     radius:=h[0].enemies[i].scale; if radius>0 && radius<1 && radius*f32(0.15)<limit { limit=radius*f32(0.15); }
   }
   parts:=xtravel.walk_travel_parts(fastest*f32(2.4),dt,limit);
-  if parts==0 { return; }
+  if parts==0 { xc_guardians_step(s); return; }
   time:=h[0].time;
   for part:0..<parts {
     proposed:[1]hostile.Hostiles; proposed[0]=h[0];
@@ -435,6 +463,7 @@ xc_hostile_tick :: (s:[] Lab,dt:f32) {
     for foe:0..<XC_FOES { xc_monster_move(s,foe,proposed[0].enemies[foe]); }
   }
   h[0].time=time+dt;
+  xc_guardians_step(s);
 }
 // Controller locomotion proposes a physical position; current creature/body
 // positions remain authoritative until this returns. Teleports synchronize their
@@ -493,6 +522,13 @@ xc_hostile_result :: (s:[] Lab,foe:int,before:int,seq:int,accepted:bool) {
     for k: 0..<rs_min(b[0].book[0].seq-seq,RS_EVENTS) {
       event := rs_recent(b[0].book[0],k);
       if event.kind==RS_EV_ATTACK && event.by==foe+1 && event.to==0 { landed=true; }
+    }
+    // Shield (p.161), cast as your Reaction to the blow: its own sound and barrier
+    for k: 0..<rs_min(b[0].book[0].seq-seq,RS_EVENTS) {
+      event := rs_recent(b[0].book[0],k);
+      if event.kind==RS_EV_CAST && event.spell==SP_SHIELD && event.by==0 {
+        shield := fb_spell(SP_SHIELD,1,FB_SELF); xc_cast_sound(s,shield); xc_look(s,shield,-1,cr[0].player_x,cr[0].player_z); x[0].shields+=1;
+      }
     }
     if accepted && landed { h[0].hits+=1; h[0].last=foe; xc_stop_striker(s,foe); x[0].seen_hits=h[0].hits; }
     if accepted && lost>0 {
@@ -1641,6 +1677,36 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   b[0].clock=4.5; b[0].c[0].ac=10; b[0].c[0].immune=1<<RS_SLASHING;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
   #assert b[0].c[0].hp==18 && h[0].hits==3;
+}
+
+#test "experimental combat: the Imp is a Fiend for Divine Smite; the Gremlin and Puglins are not" {
+  #assert xc_foe(xdungeon.DG_KIND_IMP).fiend && xc_foe(xdungeon.DG_KIND_FIEND).fiend;
+  #assert !xc_foe(xdungeon.DG_KIND_GREMLIN).fiend && !xc_foe(xdungeon.DG_KIND_BRUTE).fiend && !xc_foe(xdungeon.DG_KIND_BOSS).fiend;
+}
+#test "experimental combat: a Wizard's Shield answers a blow with its own sound and barrier" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0); xc_set_level(s[0].xc[..],3);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  #assert rs_spell_ready(b[0].c[0],SP_SHIELD) && b[0].c[0].shield_spell;
+  b[0].dice[0].fixed=true; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=0;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].kind=xdungeon.DG_KIND_IMP; b[0].c[1].turn_at=0;
+  b[0].c[0].ac = 10 + hostile.hostile_blow(xdungeon.DG_KIND_IMP).attack - 1;   // hit by 1: Shield turns it
+  xc_sync_vitals(s[..]); s[0].experimental_audio[0].n = 0;
+  #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
+  #assert s[0].xc[0].shields == 1 && b[0].c[0].hp == 20 && b[0].c[0].shield_active && s[0].experimental_audio[0].n > 0;
+}
+#test "experimental combat: a monster that walks into a Cleric's Spirit Guardians saves once as it enters" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_CLERIC,0); xc_set_level(s[0].xc[..],5);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..]; x := s[0].xc[..];
+  b[0].dice[0].fixed=true;
+  k := -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_SPELL && x[0].bar[i].sp == SP_SPIRIT_GUARDIANS { k = i; } }
+  #assert k >= 0 && xc_use(s[..],k) && b[0].c[0].conc == SP_SPIRIT_GUARDIANS;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=9; h[0].enemies[0].kind=xdungeon.DG_KIND_BRUTE;   // 30 feet off
+  b[0].c[1].hp = 60; b[0].c[1].hp_max = 60;
+  xc_guardians_step(s[..]); #assert b[0].c[1].hp == 60 && !x[0].guard_in[0];
+  h[0].enemies[0].z=3;   // about 10 feet: inside the 15-foot Emanation
+  xc_guardians_step(s[..]); lost := 60 - b[0].c[1].hp;
+  #assert x[0].guard_in[0] && (lost == 12 || lost == 6);   // 3d8 Radiant, or half on a success
+  xc_guardians_step(s[..]); #assert 60 - b[0].c[1].hp == lost;   // still inside: no second save
 }
 
 #test "experimental combat: accepted and refused casts preserve actual HP and temporary HP rather than synthetic healing" {

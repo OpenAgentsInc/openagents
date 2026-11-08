@@ -1,0 +1,35 @@
+// Shared fixtures for the class-kit spell checks (kit-cantrips-checks.coax,
+// kit-spells-checks.coax,
+// kit-spells-high-checks.coax): one caster at (1, 1), plain targets, fixed dice.
+#load "battle.coax";
+#load "executable-source-ids.coax";
+
+kc_learn :: (b: [] RsBattle, i: int, sp: int) {
+  keys := [1] int.[RS_EXEC_SOURCE[sp]];
+  if b[0].c[i].klass == RS_WIZARD { _ := rs_spellbook_add(b[0].c[i..<i+1],keys[0]); }
+  #assert rs_set_spells(b[0].c[i..<i+1],keys[..]);
+}
+// A plain target at 200 of 300 HP whose every ability score is `score` (1: fails every save, 30: passes).
+kc_target :: (b: [] RsBattle, x: int, y: int, score: int) -> int {
+  t := rs_add(b,rs_sorcerer("Target",1,3),x,y);
+  b[0].c[t].hp = 200; b[0].c[t].hp_max = 300; b[0].c[t].shield_spell = false;   // room to heal; no Shield
+  for k: 0..<6 { b[0].c[t].score[k] = score; }
+  return t;
+}
+kc_case :: (b: [] RsBattle, caster: RsCreature, sp: int, x: int, score: int) {
+  b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b,caster,1,1); _ := kc_target(b,x,1,score);
+  kc_learn(b,a,sp); b[0].c[a].agonizing = -1;
+  rs_start_turn(b,a);
+}
+// The target's AC that the caster's fixed 10 just hits (hit) or just misses.
+kc_ac :: (b: [] RsBattle, hit: bool) -> int { return 10 + rs_spell_attack(b[0].c[0]) + (ifx hit then 0 else 1); }
+// The amount of damage of type `kind` spell sp dealt since seq.
+ks_dealt :: (b: [] RsBattle, seq: int, sp: int, kind: int) -> int {
+  total := 0;
+  for k: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
+    e := rs_recent(b[0].book[0], k);
+    if e.kind == RS_EV_DAMAGE && e.spell == sp && e.damage == kind { total += e.amount; }
+  }
+  return total;
+}
