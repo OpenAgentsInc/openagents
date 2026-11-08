@@ -6819,5 +6819,6 @@ Legacy damage refuses in shared mode. Landed events drive each striker's hit
 stop; positive loss alone drives damage pops. Respawn resets the shared preset,
 clears pending contacts and preserves defeated foes. Named body attack profiles
 are still house data, and the per-press resource adapter remains unqualified.
-The wider release build has three reproduced baseline blockers; no Wasm/browser
-qualification is claimed. Evidence: `docs/verification/srd-contact-health-2026-11-08/README.md`.
+The subsequent checked Lab Wasm build clears the three reproduced baseline
+check failures; browser/runtime qualification remains separate. See
+`docs/verification/srd-siege-build-2026-11-08/README.md`. Contact evidence: `docs/verification/srd-contact-health-2026-11-08/README.md`.

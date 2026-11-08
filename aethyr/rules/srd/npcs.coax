@@ -251,6 +251,9 @@ rs_siege_arch :: (name: string, team: int, blast: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_warlock(name, team, RS_ARCH_LEVEL, blast);
   c[0].npc = RS_NPC_ARCH; c[0].rebuke = true;
+  // Declared Siege kit, not a Warlock class benefit: reusable crushed black
+  // pearl powder worth 500+ GP for Circle of Death (SRD 5.2.1 p.115).
+  c[0].materials[0]=RsMaterialStock.{key=RS_KEY_CIRCLE_OF_DEATH,count=1};
   return c[0];
 }
 

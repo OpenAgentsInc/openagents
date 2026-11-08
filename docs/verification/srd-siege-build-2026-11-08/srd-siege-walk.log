@@ -1,0 +1,3 @@
+ok   #test a Siege Cultist spends its walking and Dash movement to reach the watch (1 case, 3863924 steps, 379 ms)
+1 of 750 checks (--only 'a Siege Cultist spends'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

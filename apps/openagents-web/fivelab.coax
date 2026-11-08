@@ -4036,6 +4036,10 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   lab_start(s[..]);
   b := bt(s[..]);
   arch := -1; for i: 0..<b[0].n { if b[0].c[i].npc == RS_NPC_ARCH { arch = i; } }
+  // Start the swarm within one action-beat Dash of the line. The default
+  // 60-foot approach can be wiped out by ranged fire before engagement;
+  // this fixture exercises the tactics after a successful approach.
+  for i:0..<b[0].n { if b[0].c[i].team==1 && i!=arch { rs_place(b,i,b[0].c[i].x-6,b[0].c[i].y); } }
   spent := 0; met := false; back := true; held := 0; looked := 0;
   for f: 0..<5000 {
     step(s[..], f32(STEP));

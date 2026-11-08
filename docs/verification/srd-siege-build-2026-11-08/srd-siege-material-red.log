@@ -1,0 +1,10 @@
+FAIL #test the Siege leader supplies the priced material for its declared Arcanum (1 ms)
+apps/openagents-web/fivelab-siege.coax:461:3: error[E0406]: assertion failed
+    #assert rs_cast_components_ready(c,SP_CIRCLE_OF_DEATH);
+    ^
+  note: in #test the Siege leader supplies the priced material for its declared Arcanum
+1 of 751 checks (--only 'the Siege leader supplies'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

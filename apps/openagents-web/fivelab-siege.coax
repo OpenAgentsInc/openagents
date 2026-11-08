@@ -440,3 +440,33 @@ siege_fx :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
   }
   return false;
 }
+
+#test "a Siege Cultist spends its walking and Dash movement to reach the watch" #steps 400000000 {
+  s: [1] Lab; s[0].siege=true; s[0].horde=false; s[0].town=20; s[0].cult=14;
+  lab_start(s[..]); b:=bt(s[..]);
+  cult:=-1; for i:0..<b[0].n { if b[0].c[i].npc==RS_NPC_CULTIST { cult=i; break; } }
+  #assert cult>=0;
+  foe:=nearest_foe(s[..],cult); #assert foe>=0;
+  before:=rs_feet_to(b,cult,foe);
+  rs_start_turn(b,cult); #assert rs_movement_left(b,cult)==rs_timing_move(b[0].timing,30);
+  cultist_turn(s[..],cult);
+  #assert rs_feet_to(b,cult,foe)<before;
+  rs_end_turn(b,cult); rs_start_turn(b,cult); cultist_turn(s[..],cult);
+  #assert rs_feet_to(b,cult,foe)<=5;
+}
+
+#test "the Siege leader supplies the priced material for its declared Arcanum" {
+  c:=rs_siege_arch(SIEGE_ARCH_NAME,1,SP_ELDRITCH_BLAST);
+  #assert rs_spell_ready(c,SP_CIRCLE_OF_DEATH);
+  #assert rs_cast_components_ready(c,SP_CIRCLE_OF_DEATH);
+}
+
+#test "the default Siege approach can end at range before the swarm engages" #steps 4000000000 {
+  s: [1] Lab; s[0].siege=true; s[0].horde=false; s[0].town=20; s[0].cult=14;
+  lab_start(s[..]);
+  for f:0..<5000 { step(s[..],f32(STEP)); if s[0].over { break; } }
+  // This seeded battle is won by ranged damage, not a melee engagement.
+  // Keep the normal 60-foot map covered separately from the contact fixture.
+  #assert s[0].over && s[0].winner==1;
+  #assert rs_team_up(bt(s[..]),0)==0 && !s[0].stormed;
+}
