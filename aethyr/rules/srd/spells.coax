@@ -79,6 +79,7 @@ RsSpell :: struct {
   turn_save: bool;            // a creature that ends its turn in its lasting area makes its save again (Gust of Wind)
   steps: [RS_STEPS] RsStep; step_n: int;
   part_of: int;               // a part of another spell (Produce Flame's hurl), -1 none
+  ritual: bool;               // the source's Ritual tag (ritual.coax)
   humanoid_only: bool;        // its target must be a Humanoid
   burst: bool;                // an area that is there only as it's cast, though the spell lasts (Call Lightning)
   plus: int;                  // a flat number added to its damage roll (Finger of Death's 7d8 + 30)

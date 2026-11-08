@@ -6681,6 +6681,32 @@ system. Current declared presets supply their kits; world input/gear/waiver
 integration remains open. Contract and limits: `docs/dnd/casting-components.md`.
 Evidence: `docs/verification/srd-components-2026-11-08/README.md`.
 
+## A Ritual spends no slot, holds Concentration and fails without cost
+
+`ritual.coax` decides Ritual admission: the source Ritual tag (carried on every
+executable record and compared with the pinned catalog), a prepared spell or a
+Wizard's Ritual Adept spellbook entry, and an unused Magic action with no
+Quickened spell this turn. `ritual-cast.coax` applies it: beginning ends earlier
+Concentration and holds the caster's Concentration under the spell's own ID for
+the ten extra minutes; each later turn owes one Magic action. A missed turn,
+failed Concentration save, incapacitation, Rage or a new Concentration spell
+fails the Ritual with no slot or free use spent, and never ends an earlier
+copy's effects. The final turn's action is the ordinary cast at slot 0, so the
+same target, component and capacity preflight applies; a refused completion
+keeps the rite. No executable spell has a timed casting time, which the
+catalog comparison enforces; adding one requires its long-cast wiring.
+
+## A you-can-see choice refuses an unseen creature or point before costs
+
+`cast-sight.coax` lists the executable spells whose descriptions choose a
+creature or point "you can see" (compared with every canonical description and
+Reaction trigger), and Vicious Mockery's see-or-hear. A Blinded caster or an
+Invisible target refuses such a request before any cost, in single, chosen and
+area-point casts and Hellish Rebuke. This is a malformed request, not a p.106
+invalid target. Sight is the open-grid flag model; Total Cover, obscurement
+and alternate senses remain world facts to admit. Evidence:
+`docs/verification/srd-casting-workflows-2026-11-08/README.md`.
+
 ## Accepted incapacitating effects interrupt concentration immediately
 
 `effect-lifecycle.coax` owns accepted effect insertion and its shared

@@ -1,0 +1,61 @@
+// SRD 5.2.1 pp.104-105 Rituals and Longer Casting Times, p.78 Ritual Adept,
+// p.179 Concentration. A Ritual takes 10 minutes longer than normal and
+// expends no slot; the caster must have it prepared (a Wizard may instead read
+// it from the spellbook). While casting for 1 minute or more the caster takes
+// the Magic action on each of its turns and maintains Concentration; broken
+// Concentration fails the spell, expending nothing. The rite holds the
+// caster's Concentration under the spell's own ID, so damage saves,
+// incapacitation, Rage and a new Concentration spell end it through the shared
+// concentration lifecycle; ending a rite never ends an earlier copy's effects.
+// The final turn's Magic action is the spell's normal casting time: the world
+// calls rs_cast (slot 0) then, choosing targets as for any cast. The decisions
+// are here; ritual-cast.coax applies them to a battle.
+#authority;
+RS_RITE_SECONDS :: 600.0;
+
+#test "rite admission requires the Ritual tag, preparation or Ritual Adept spellbook access, and a free Magic action" {
+  for tag: 0..<2 { for ready: 0..<2 { for book: 0..<2 { for adept: 0..<2 { for action: 0..<2 { for quick: 0..<2 {
+    expected := tag == 1 && (ready == 1 || (book == 1 && adept == 1)) && action == 0 && quick == 0;
+    #assert rs_rite_admits(tag == 1, ready == 1, book == 1, adept == 1, action == 1, quick == 1) == expected;
+  } } } } } }
+}
+#test "spellbook membership reads exactly one canonical key bit" {
+  for key: 0..<RS_SPELL_KEYS.count {
+    known: [6] u64; known[key / 64] = cast(u64) 1 << (key % 64);
+    for other: [3] int.[key - 1, key, key + 1] {
+      if other < 0 || other >= RS_SPELL_KEYS.count { continue; }
+      #assert rs_rite_book_has(known, other) == (other == key);
+    }
+  }
+}
+#test "a rite is due only for its own spell on an owed turn at or after its ten extra minutes" {
+  #assert RS_RITE_SECONDS == 600;
+  until := 600.0f32; edge := until - 0.01;
+  for sp: -1..<2 { for rite: -1..<2 { for owed: 0..<2 {
+    expected := rite == sp && owed == 1;
+    #assert rs_rite_due(rite, owed == 1, until, sp, edge) == expected;
+    #assert rs_rite_due(rite, owed == 1, until, sp, until + 9) == expected;
+    #assert !rs_rite_due(rite, owed == 1, until, sp, edge - 0.01);
+  } } }
+}
+#test "a rite continues only while owed, before its end, with the action, no Quickened spell and its components" {
+  until := 600.0f32; edge := until - 0.01;
+  for owed: 0..<2 { for late: 0..<3 { for action: 0..<2 { for quick: 0..<2 { for parts: 0..<2 {
+    clock := ifx late == 0 then edge - 0.01 else ifx late == 1 then edge else until;
+    expected := owed == 1 && late == 0 && action == 0 && quick == 0 && parts == 1;
+    #assert rs_rite_continues(owed == 1, until, clock, action == 1, quick == 1, parts == 1) == expected;
+  } } } } }
+}
+
+rs_rite_admits :: (tagged: bool, ready: bool, in_book: bool, adept: bool, action_used: bool, quickened: bool) -> bool #effects(all) {
+  return tagged && (ready || (in_book && adept)) && !action_used && !quickened;
+}
+rs_rite_book_has :: (known: [6] u64, key: int) -> bool #effects(all) {
+  return (known[key / 64] & (cast(u64) 1 << (key % 64))) != 0;
+}
+rs_rite_due :: (rite: int, owed: bool, until: f32, sp: int, clock: f32) -> bool #effects(all) {
+  return rite == sp && owed && clock >= until - 0.01;
+}
+rs_rite_continues :: (owed: bool, until: f32, clock: f32, action_used: bool, quickened: bool, components: bool) -> bool #effects(all) {
+  return owed && clock < until - 0.01 && !action_used && !quickened && components;
+}

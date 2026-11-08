@@ -1,0 +1,57 @@
+// Applies ritual.coax's decisions to a battle (SRD 5.2.1 pp.104-105): begin,
+// continue each turn, fail at a missed turn or lost Concentration, complete.
+// Checks: cast-workflow-checks.coax.
+
+rs_rite_due_now :: (b: [] RsBattle, i: int, sp: int) -> bool {
+  c := b[0].c[i]; return c.rite >= 0 && rs_rite_due(c.rite, c.rite_owed, c.rite_until, sp, b[0].clock);
+}
+// Begin casting executable sp as a Ritual this turn: the first Magic action.
+// False, and nothing changed, when refused.
+rs_ritual_begin :: (b: [] RsBattle, i: int, sp: int) -> bool {
+  if !rs_executable_spell(sp) || i < 0 || i >= b[0].n || b[0].who != i { return false; }
+  c := b[0].c[i];
+  if !rs_can_act(c) || c.raging || c.rite >= 0 { return false; }
+  s := rs_spell(sp);
+  if s.part_of >= 0 { return false; }
+  ready := rs_spell_ready(c, sp);
+  book := c.klass == RS_WIZARD && rs_spell_access(c, sp) && rs_rite_book_has(c.spells.known, RS_EXEC_SOURCE[sp]);
+  if !rs_rite_admits(s.ritual, ready, book, c.ritual, b[0].turn.action, b[0].turn.quickened) { return false; }
+  if !rs_cast_components_ready(c, sp) { return false; }
+  rs_rest_cast_before(b, i, s.level);
+  rs_end_concentration(b, i, "");
+  b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + RS_RITE_SECONDS + 3600;
+  b[0].c[i].rite = sp; b[0].c[i].rite_until = b[0].clock + RS_RITE_SECONDS; b[0].c[i].rite_owed = false;
+  b[0].turn.action = true; b[0].turn.leveled = true;
+  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " begins "); rs_add_text(l[..], s.name); rs_add_text(l[..], " as a Ritual");
+  rs_tell(b, RS_EV_TEXT, sp, i, -1, 0, 0, l[..]);
+  return true;
+}
+// This turn's Magic action keeps an unfinished rite going.
+rs_ritual_continue :: (b: [] RsBattle, i: int) -> bool {
+  if i < 0 || i >= b[0].n || b[0].who != i { return false; }
+  c := b[0].c[i];
+  if c.rite < 0 || !rs_can_act(c) { return false; }
+  if !rs_rite_continues(c.rite_owed, c.rite_until, b[0].clock, b[0].turn.action, b[0].turn.quickened, rs_cast_components_ready(c, c.rite)) { return false; }
+  b[0].turn.action = true; b[0].turn.leveled = true; b[0].c[i].rite_owed = false;
+  return true;
+}
+// At the start of i's turn: a rite whose last turn passed without its Magic
+// action fails; otherwise this turn owes one.
+rs_rite_turn :: (b: [] RsBattle, i: int) {
+  if i < 0 || i >= b[0].n || b[0].c[i].rite < 0 { return; }
+  if b[0].c[i].rite_owed { rs_rite_fail(b, i, " (no Magic action)"); return; }
+  b[0].c[i].rite_owed = true;
+}
+// The rite's Concentration is lost: the spell fails and nothing is expended.
+rs_rite_fail :: (b: [] RsBattle, i: int, why: string) {
+  sp := b[0].c[i].rite;
+  b[0].c[i].rite = -1; b[0].c[i].rite_owed = false; b[0].c[i].rite_until = 0;
+  if b[0].c[i].conc == sp { b[0].c[i].conc = -1; b[0].c[i].conc_until = 0; }
+  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " Ritual fails"); rs_add_text(l[..], why);
+  rs_tell(b, RS_EV_END, sp, i, -1, 0, 0, l[..]);
+}
+// Accepted completion: the rite's Concentration hand-off is silent.
+rs_rite_complete :: (c: [] RsCreature) {
+  if c[0].conc == c[0].rite { c[0].conc = -1; c[0].conc_until = 0; }
+  c[0].rite = -1; c[0].rite_owed = false; c[0].rite_until = 0;
+}

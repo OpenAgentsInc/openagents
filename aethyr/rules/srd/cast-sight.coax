@@ -1,0 +1,71 @@
+// SRD 5.2.1 p.106 targets, p.177 Blinded, p.178 Deafened, p.184 Invisible.
+// A spell whose description chooses "a creature (or point) you can see"
+// refuses an unseen choice before any cost: the caster cannot make that
+// choice, so this is a malformed request rather than a p.106 invalid target.
+// Vicious Mockery accepts a creature the caster can see or hear. Sight is the
+// open-grid flag model of attack-sight.coax; Total Cover, obscurement and
+// alternate senses are world facts not yet admitted here.
+#authority;
+RS_SIGHT_NONE :: 0; RS_SIGHT_SEE :: 1; RS_SIGHT_SEE_OR_HEAR :: 2;
+// Reviewed against each canonical description; cast-workflow-checks.coax compares them.
+RS_SIGHT_SPELLS :: [22] int.[SP_HELLISH_REBUKE,SP_HEALING_WORD,SP_BLINDNESS,SP_HEX,SP_HOLD_PERSON,SP_SACRED_FLAME,SP_HUNTERS_MARK,
+  SP_CALL_LIGHTNING,SP_CALL_BOLT,SP_CONJURE_ANIMALS,SP_POLYMORPH,SP_MASS_CURE_WOUNDS,SP_LEVITATE,SP_TELEKINESIS,
+  SP_BLACK_TENTACLES,SP_METEOR_SWARM,SP_BLIGHT,SP_FINGER_OF_DEATH,SP_BANE,SP_COMMAND,SP_MAGIC_MISSILE,SP_MASS_HEALING_WORD];
+
+#test "sight forms admit seen choices, and see-or-hear also admits a heard one" {
+  for form: 0..<3 { for blind: 0..<2 { for deaf: 0..<2 { for hidden: 0..<2 {
+    sees := blind == 0 && hidden == 0;
+    expected := form == 0 || sees || (form == 2 && deaf == 0);
+    #assert rs_sight_admits(form, blind == 1, deaf == 1, hidden == 1) == expected;
+  } } } }
+}
+#test "only the reviewed descriptions require sight; Vicious Mockery accepts hearing" {
+  for sp: -1..<RS_MORE_END + 1 {
+    listed := false; for s: RS_SIGHT_SPELLS { if s == sp { listed = true; } }
+    expected := ifx sp == SP_VICIOUS_MOCKERY then RS_SIGHT_SEE_OR_HEAR else ifx listed then RS_SIGHT_SEE else RS_SIGHT_NONE;
+    #assert rs_spell_sight(sp) == expected;
+  }
+}
+#test "unseen creature and point choices refuse; the caster is never hidden from itself" #steps 100000000 {
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Cleric",0,5),1,1); t := rs_add(b[..],rs_fighter("Target",1,1),3,1);
+  for blind: 0..<2 { for hidden: 0..<2 { for deaf: 0..<2 {
+    b[0].c[a].cond = (ifx blind == 1 then RS_BLINDED else 0) | (ifx deaf == 1 then RS_DEAFENED else 0);
+    b[0].c[t].cond = ifx hidden == 1 then RS_INVISIBLE else 0;
+    sees := blind == 0 && hidden == 0;
+    #assert rs_cast_sees(b[..],a,t,SP_HOLD_PERSON) == sees;
+    #assert rs_cast_sees(b[..],a,t,SP_VICIOUS_MOCKERY) == (sees || deaf == 0);
+    #assert rs_cast_sees(b[..],a,t,SP_FIRE_BOLT);
+    b[0].c[a].cond |= ifx hidden == 1 then RS_INVISIBLE else 0;
+    #assert rs_cast_sees(b[..],a,a,SP_HEALING_WORD) == (blind == 0);
+    #assert rs_point_sees(b[..],a,SP_MASS_CURE_WOUNDS) == (blind == 0) && rs_point_sees(b[..],a,SP_FIREBALL);
+  } } }
+  // a point is never heard; a Blinded target is still seen
+  b[0].c[a].cond = RS_BLINDED; #assert !rs_point_sees(b[..],a,SP_VICIOUS_MOCKERY);
+  b[0].c[a].cond = 0; b[0].c[t].cond = RS_BLINDED; #assert rs_cast_sees(b[..],a,t,SP_HEX);
+  n := b[0].n;
+  #assert !rs_cast_sees(b[..],a,-1,SP_HEX) && !rs_cast_sees(b[..],a,n,SP_HEX) && !rs_cast_sees(b[..],-1,t,SP_HEX) && !rs_cast_sees(b[..],n,t,SP_HEX);
+  #assert !rs_point_sees(b[..],n,SP_HEX) && !rs_point_sees(b[..],-1,SP_HEX);
+}
+
+rs_sight_admits :: (form: int, blind: bool, deaf: bool, hidden: bool) -> bool #effects(all) {
+  if form == RS_SIGHT_NONE { return true; }
+  if !blind && !hidden { return true; }
+  return form == RS_SIGHT_SEE_OR_HEAR && !deaf;
+}
+rs_spell_sight :: (sp: int) -> int #effects(all) {
+  if sp == SP_VICIOUS_MOCKERY { return RS_SIGHT_SEE_OR_HEAR; }
+  for s: RS_SIGHT_SPELLS { if s == sp { return RS_SIGHT_SEE; } }
+  return RS_SIGHT_NONE;
+}
+// Whether caster i can choose creature j for spell sp.
+rs_cast_sees :: (b: [] RsBattle, i: int, j: int, sp: int) -> bool #effects(all) {
+  if i < 0 || i >= b[0].n || j < 0 || j >= b[0].n { return false; }
+  hidden := j != i && rs_has(b[0].c[j], RS_INVISIBLE);
+  return rs_sight_admits(rs_spell_sight(sp), rs_has(b[0].c[i], RS_BLINDED), rs_has(b[0].c[i], RS_DEAFENED), hidden);
+}
+// Whether caster i can choose a point for spell sp ("a point you can see").
+rs_point_sees :: (b: [] RsBattle, i: int, sp: int) -> bool #effects(all) {
+  if i < 0 || i >= b[0].n { return false; }
+  return rs_sight_admits(rs_spell_sight(sp), rs_has(b[0].c[i], RS_BLINDED), true, false);
+}

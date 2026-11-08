@@ -16,6 +16,8 @@
 #load "timing-profile.coax";
 #load "component-reaction.coax";
 #load "concentration.coax";
+#load "ritual.coax";
+#load "ritual-cast.coax";
 #load "hide.coax";
 #load "monk-features.coax";
 #load "paladin-features.coax";
@@ -33,6 +35,7 @@
 #load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
 #load "attack-sight.coax";
+#load "cast-sight.coax";
 #load "magic-missile-ward.coax";
 #load "area-origin.coax";
 #load "strike-features.coax";
@@ -444,6 +447,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   if by < 0 || by >= b[0].n || by == j { return false; }
   c := b[0].c[j];
   if !c.rebuke || c.reacted || !rs_capable(c) || c.raging || !rs_spell_ready(c, SP_HELLISH_REBUKE) || b[0].c[by].dead || b[0].c[by].team == c.team || rs_feet_to(b, j, by) > 60 { return false; }
+  if !rs_cast_sees(b, j, by, SP_HELLISH_REBUKE) { return false; }   // a creature that you can see
   slot := 0;
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
@@ -489,7 +493,9 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || b[0].c[i].raging { return false; }
   s := rs_spell(sp);
   if !rs_cast_slot_shape(s.level, slot) { return false; }
-  if !rs_spell_ready(b[0].c[i], sp) { return false; }
+  // a Ritual's final Magic action: its normal casting time, slot 0, read from a Wizard's book if need be
+  rite := slot == 0 && !quick && rs_rite_due_now(b, i, sp);
+  if !rite && !rs_spell_ready(b[0].c[i], sp) { return false; }
   if !rs_cast_components_ready(b[0].c[i],sp) { return false; }
   if s.cast_time == RS_T_REACTION { return false; }
   t := s.cast_time;
@@ -505,7 +511,7 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
     if b[0].turn.quickened { return false; }
     if slot == 0 {
       vigor := sp == SP_FALSE_LIFE && b[0].c[i].vigor;
-      if !vigor && (b[0].c[i].free_spell != sp || b[0].c[i].uses[RS_USE_FREE] <= 0) { return false; }
+      if !vigor && !rite && (b[0].c[i].free_spell != sp || b[0].c[i].uses[RS_USE_FREE] <= 0) { return false; }
     } else if slot < s.level || slot > 9 || b[0].c[i].slots[slot] <= 0 || b[0].turn.slot_spent { return false; }
   }
   return true;
@@ -540,6 +546,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   me := b[0].c[i];
   smite := rs_is_smite(s);
   if chosen && !rs_creature_choices(b,i,s,sp,slot,picks) { return false; }
+  for j: picks { if chosen && !rs_cast_sees(b,i,j,sp) { return false; } }
   if !rs_options_valid(sp,picks.count,options) { return false; }
   if !chosen && !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
   if s.area == RS_A_NONE && !chosen {
@@ -548,10 +555,11 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
     humanoid := ifx exists then b[0].c[target].humanoid else false;
     in_range := exists && (s.range_ft <= 0 || rs_feet_to(b, i, target) <= s.range_ft);
     if rs_target_decision(exists, dead, in_range, s.humanoid_only, humanoid) == RS_TARGET_REFUSE { return false; }
+    if !rs_cast_sees(b, i, target, sp) { return false; }   // "a creature you can see" (cast-sight.coax)
     // Divine Smite: right after a melee weapon hit on this target
     if smite && b[0].turn.last_hit != target + 1 { return false; }
   } else if s.area != RS_A_NONE && s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
-    if rs_feet(me.x, me.y, tx, ty) > s.range_ft { return false; }
+    if rs_feet(me.x, me.y, tx, ty) > s.range_ft || !rs_point_sees(b, i, sp) { return false; }
   }
   if chosen && smite && b[0].turn.last_hit != target+1 { return false; }
   // Serialized preflight: ending this cast's old concentration is the only
@@ -565,8 +573,10 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   if chosen {
     if !rs_options_effect_room(b,i,s,sp,slot,picks,options) { return false; }
   } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
+  rite := slot == 0 && !quick && rs_rite_due_now(b, i, sp);
   rs_rest_cast_before(b,i,s.level);
   if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
+  if rite { rs_rite_complete(b[0].c[i..<i+1]); }
   if s.components.count > 0 && s.components[0] == 86 { rs_unhide(b,i); }   // a Verbal component ends hiding (p. 183)
   // spend
   b[0].aff_used = false;
@@ -575,7 +585,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   if s.level > 0 {
     b[0].turn.leveled = true;
     if slot > 0 { b[0].c[i].slots[slot] -= 1; b[0].turn.slot_spent = true; }
-    else if !(sp == SP_FALSE_LIFE && b[0].c[i].vigor) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
+    else if !rite && !(sp == SP_FALSE_LIFE && b[0].c[i].vigor) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
   }
   if smite { b[0].turn.last_hit = 0; }
   if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + s.duration_s; }
@@ -584,7 +594,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   rs_add_text(l[..], ifx s.part_of >= 0 then " hurls Produce Flame" else " casts ");
   if s.part_of < 0 { rs_add_text(l[..], s.name); }
   if s.level > 0 && slot > 0 { rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot)"); }
-  if s.level > 0 && slot == 0 { rs_add_text(l[..], " (without a slot)"); }
+  if s.level > 0 && slot == 0 { rs_add_text(l[..], ifx rite then " (as a Ritual)" else " (without a slot)"); }
   if quick { rs_add_text(l[..], ", Quickened"); }
   if s.area == RS_A_NONE && target >= 0 && target != i && (s.range_ft > 0 || smite) { rs_add_text(l[..], ifx smite then " on " else " at "); rs_add_name(l[..], b, target); }
   rs_tell(b, RS_EV_CAST, sp, i, ifx s.area == RS_A_NONE then target else -1, slot, 0, l[..]);
@@ -1284,6 +1294,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
   if b[0].turn.new_round { b[0].c[i].round_at += f32(RS_ROUND); }
   b[0].c[i].reacted = false;
+  rs_rite_turn(b,i);
   if b[0].c[i].raging && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
     if b[0].c[i].stable || !b[0].turn.new_round { return; }

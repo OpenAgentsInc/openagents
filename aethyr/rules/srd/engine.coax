@@ -226,6 +226,8 @@ RsCreature :: struct {
   // effects that last
   conc: int;                // the spell held by concentration (-1 none)
   conc_until: f32;          // when it ends, on the world's clock
+  rite: int = -1;           // the spell it is casting as a Ritual (ritual.coax), -1 none
+  rite_until: f32; rite_owed: bool;   // when its extra minutes end; this turn's Magic action still owed
   flame_until: f32;         // Produce Flame in hand until (0: none)
   outlined_until: f32;      // Faerie Fire: attacks against it have Advantage, it can't be Invisible
   outlined_by: int;         // whose spell (a creature index)

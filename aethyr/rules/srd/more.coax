@@ -123,7 +123,7 @@ rs_more_spell :: (i: int) -> RsSpell {
   } else if i == SP_SHAPECHANGE {
     s = rs_more("shapechange", "Shapechange", 9, "Transmutation", "Druid, Wizard", RS_T_ACTION, 0, "Concentration, up to 1 hour", 3600, true, RS_A_NONE, 0);
   } else if i == SP_SPEAK_WITH_ANIMALS {
-    s = rs_more("speak-with-animals", "Speak with Animals", 1, "Divination", "Bard, Druid, Ranger, Warlock", RS_T_ACTION, 0, "10 minutes", 600, false, RS_A_NONE, 0);
+    s = rs_more("speak-with-animals", "Speak with Animals", 1, "Divination", "Bard, Druid, Ranger, Warlock", RS_T_ACTION, 0, "10 minutes", 600, false, RS_A_NONE, 0); s.ritual = true;
   } else if i == SP_RAY_OF_FROST {
     s = rs_more("ray-of-frost", "Ray of Frost", 0, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
     s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 8, RS_COLD, 0); s.step_n = 2;
@@ -160,7 +160,7 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.steps[2] = rs_step(RS_S_CONDITION, RS_RESTRAINED, 0, 0, 0); s.steps[3] = rs_step(RS_S_ESCAPE, RS_STR, 0, 0, 0);
     s.steps[4] = rs_step(RS_S_TERRAIN, 0, 0, 0, 0); s.step_n = 5;
   } else if i == SP_WATER_WALK {
-    s = rs_more("water-walk", "Water Walk", 3, "Transmutation", "Cleric, Druid, Ranger, Sorcerer", RS_T_ACTION, 30, "1 hour", 3600, false, RS_A_NONE, 0);
+    s = rs_more("water-walk", "Water Walk", 3, "Transmutation", "Cleric, Druid, Ranger, Sorcerer", RS_T_ACTION, 30, "1 hour", 3600, false, RS_A_NONE, 0); s.ritual = true;
   } else if i == SP_CONTROL_WATER {
     // its whirlpool: a creature in the water makes a Strength save or takes 2d8 Bludgeoning
     s = rs_more("control-water", "Control Water", 4, "Transmutation", "Cleric, Druid, Wizard", RS_T_ACTION, 300, "Concentration, up to 10 minutes", 600, true, RS_A_SPHERE, 25);
@@ -168,7 +168,7 @@ rs_more_spell :: (i: int) -> RsSpell {
   } else if i == SP_CREATE_WATER {
     s = rs_more("create-or-destroy-water", "Create or Destroy Water", 1, "Transmutation", "Cleric, Druid", RS_T_ACTION, 30, "Instantaneous", 0, false, RS_A_NONE, 0);
   } else if i == SP_WATER_BREATHING {
-    s = rs_more("water-breathing", "Water Breathing", 3, "Transmutation", "Druid, Ranger, Sorcerer, Wizard", RS_T_ACTION, 30, "24 hours", 86400, false, RS_A_NONE, 0);
+    s = rs_more("water-breathing", "Water Breathing", 3, "Transmutation", "Druid, Ranger, Sorcerer, Wizard", RS_T_ACTION, 30, "24 hours", 86400, false, RS_A_NONE, 0); s.ritual = true;
   } else if i == SP_METEOR_SWARM {
     s = rs_more("meteor-swarm", "Meteor Swarm", 9, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 5280, "Instantaneous", 0, false, RS_A_SPHERE, 40);
     s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 20, 6, RS_FIRE, 0);
