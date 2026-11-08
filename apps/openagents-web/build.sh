@@ -135,6 +135,8 @@ animelab=$!
 animationlab=$!
 "$here/../../coax/web/wasm.sh" "$here/ocarinalab.coax" "$here/ocarinalab-face.c" "$here/build/ocarinalab.wasm" &
 ocarinalab=$!
+"$here/../../coax/web/wasm.sh" "$here/nights.coax" "$here/nights-face.c" "$here/build/nights.wasm" &
+nights=$!
 # /worlds/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
@@ -330,6 +332,7 @@ wait "$valleycanyon"
 wait "$characterhost"
 wait "$animationlab"
 wait "$ocarinalab"
+wait "$nights"
 wait "$valleyworld"
 wait "$animelab"
 wait "$droprealm"

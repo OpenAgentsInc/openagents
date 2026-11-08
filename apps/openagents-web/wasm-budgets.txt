@@ -163,3 +163,6 @@ state-lab 170000
 actor-lab 400000
 # The GPU cull lab's streaming and residency (#13008, #13051: inflate and SHA-256 for page admission).
 cullstream 40000
+
+# Standalone NWN world: shared controller, procedural HUD; private media excluded.
+nights 180000

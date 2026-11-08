@@ -1,0 +1,17 @@
+// End-to-end owner-local NWN creator check: input, storage, navigation and reload.
+// Headless Chrome stays muted. Asset payloads and captures remain outside Git.
+#import "Basic";
+#load "../lib/media/media.coax";
+NIGHTS_SAVE_JS :: "(async()=>{for(const key of ['g','h','o','j','k','l']) {window.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));window.dispatchEvent(new KeyboardEvent('keyup',{key,bubbles:true}));}await new Promise(r=>setTimeout(r,500));const db=await new Promise((ok,bad)=>{const q=indexedDB.open('coaxial',1);q.onsuccess=()=>ok(q.result);q.onerror=()=>bad(q.error);});const saved=await new Promise((ok,bad)=>{const q=db.transaction('kept').objectStore('kept').get('everglade-nights-experimental');q.onsuccess=()=>ok(q.result);q.onerror=()=>bad(q.error);});db.close();return saved==='NWN11613'&&coaxial.fieldProbe(1)===16&&coaxial.fieldProbe(2)===13;})()";
+NIGHTS_RESTORE_JS :: "(coaxial.sceneReady&&coaxial.fieldProbe(1)===16&&coaxial.fieldProbe(2)===13)";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}url:=args_at(a[..],0);saved:=args_at(a[..],1);restored:=args_at(a[..],2);
+ if url.count==0 || saved.count==0 || restored.count==0 {tool_errln("usage: nights-check URL SAVED.png RESTORED.png");return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],1600,1000,"nights-verify-") {tool_errln(cdp_error(c[..]));return 1;}
+ o:MediaShotOptions;o.wait=500;o.guard=CDP_HARDWARE_JS;o.script=NIGHTS_SAVE_JS;value:[1048576]u8;build:[256]u8;wh:=args_size("1600x1000");
+ first:=media_shot(c[..],url,saved,wh,o,value[..],build[..]);
+ if first.status!=0 || first.value_n<0 || cast(string)value[0..<first.value_n]!="true" {tool_errln("Nights save/input check failed");cdp_close(c[..]);return 1;}
+ o.script=NIGHTS_RESTORE_JS;second:=media_shot(c[..],url,restored,wh,o,value[..],build[..]);
+ if second.status!=0 || second.value_n<0 || cast(string)value[0..<second.value_n]!="true" {tool_errln("Nights fresh navigation did not restore its own appearance");cdp_close(c[..]);return 1;}
+ cdp_close(c[..]);print("Nights: native gender/head/outfit and three color channels saved; fresh page restored actor16/palette13.\n");return 0;
+}

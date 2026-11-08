@@ -1,0 +1,202 @@
+// Everglade Nights Experimental: independent, owner-local NWN scene and actors.
+// All scene media arrive in the private pack. Product state and controls are Coax.
+#load "font.coax";
+#load "../../aethyr/walk.coax" as pc;
+#load "../../aethyr/sticks.coax";
+VERTEX_FLOATS ::16;
+NIGHT_HEROES ::32;
+NFrame ::struct {first:int;count:int;word:int;}
+NClip ::struct {first:int;count:int;ms:int;name:[32]u8;name_n:int;}
+NHero ::struct {frames:[128]NFrame;clips:[8]NClip;clip_n:int;frame_n:int;name:[32]u8;name_n:int;gender:int;head:int;outfit:int;ready:bool;}
+NZone ::struct {name:[32]u8;name_n:int;x0:f32;z0:f32;x1:f32;z1:f32;y:f32;x:f32;z:f32;}
+NBox ::struct {x0:f32;z0:f32;x1:f32;z1:f32;}
+Nights ::struct {
+ heroes:[32]NHero;hero_n:int;hero:int;zone:int;zones:[3]NZone;zone_n:int;boxes:[1024]NBox;walls:[6144]f32;box_n:int;
+ env:NFrame;bad:bool;ready:bool;loaded:[4]int;choosing:bool=true;started:bool;you:pc.Player;keys:int;thumbs:Sticks;
+ palette:int;skin_n:int=1;hair_n:int=1;dye_n:int=1;palette_n:int=1;palette_stride:int=1;saved_hero:int= -1;saved_palette:int;dirty:bool;outbox:[8]u8;out_n:int;
+ clock:f32;clip_clock:f32;clip:int;forced:int= -1;width:f32=1280;height:f32=800;d:f32=1;drag:bool;drag_id:int;px:f32;py:f32;look_x:f32;look_y:f32;
+ records:[48]f32;draws:[8]u32;draw_n:int;revision:int;
+}
+night_num :: (t:string)->int {if t.count==0 {return -1;}v:=0;for i:0..<t.count {if t[i]<'0' || t[i]>'9' {return -1;}d:=int(t[i]-'0');if v>(134217728-d)/10 {return -1;}v=v*10+d;}return v;}
+night_real :: (t:string)->f32 {if t.count==0 {return 0;}sign:=1.0f32;p:=0;if t[0]=='-' {sign= -1;p=1;}v:=0.0f32;share:=0.0f32;for i:p..<t.count {if t[i]=='.' && share==0 {share=0.1;continue;}if t[i]<'0' || t[i]>'9' {return 0;}d:=f32(t[i]-'0');if share>0 {v+=d*share;share*=0.1;}else {v=v*10+d;}if v>100000 {return 0;}}return sign*v;}
+night_copy :: (out:[]u8,t:string)->int {n:=ifx t.count<out.count then t.count else out.count;for i:0..<n {out[i]=ifx t[i]=='_' then ' ' else t[i];}return n;}
+night_catalog :: (s:[]Nights,t:string) #export_c #effects(all) {
+ for h:0..<32 {s[0].heroes[h]=NHero.{};}s[0].env=NFrame.{};s[0].hero_n=0;s[0].palette_n=1;s[0].palette_stride=1;s[0].skin_n=1;s[0].hair_n=1;s[0].dye_n=1;s[0].zone_n=0;s[0].box_n=0;s[0].ready=false;s[0].bad=false;
+ at:=0;while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;}row:=t[at..<e];at=e+1;w:[12]string;wn:=0;p:=0;
+ while p<row.count {while p<row.count && (row[p]==' ' || row[p]=='\t' || row[p]=='\r') {p+=1;}if p>=row.count {break;}q:=p;while p<row.count && row[p]!=' ' && row[p]!='\t' && row[p]!='\r' {p+=1;}if wn<12 {w[wn]=row[q..<p];wn+=1;}else {s[0].bad=true;}}
+ if wn<2 {continue;}
+ if w[0]=="C" && w[1]=="nights/environment" {if wn!=8 {s[0].bad=true;continue;}f:=night_num(w[2]);c:=night_num(w[3]);o:=night_num(w[5]);if f<0 || c<3 || c%3!=0 || f>134217728-c || o<0 || s[0].env.count>0 {s[0].bad=true;continue;}s[0].env=NFrame.{first=f,count=c,word=o};}
+ if w[0]=="C" && w[1].count>18 && w[1][0..<11]=="nights/hero" {
+  name:=w[1];sep:=11;while sep<name.count && name[sep]!='/' {sep+=1;}if sep+6>name.count || name[sep..<sep+6]!="/frame" || wn!=8 {s[0].bad=true;continue;}
+  h:=night_num(name[11..<sep]);f:=night_num(name[sep+6..<name.count]);a:=night_num(w[2]);c:=night_num(w[3]);o:=night_num(w[5]);
+  if h<0 || h>=32 || f<0 || f>=128 || a<0 || c<3 || c%3!=0 || a>134217728-c || o<0 {s[0].bad=true;continue;}if s[0].heroes[h].frames[f].count>0 {s[0].bad=true;continue;}
+  s[0].heroes[h].frames[f]=NFrame.{first=a,count=c,word=o};s[0].heroes[h].frame_n+=1;
+ }
+ if w[1]!="nights" {continue;}
+ if w[0]=="Q" {if wn!=5 {s[0].bad=true;continue;}a:=night_num(w[2]);b:=night_num(w[3]);c:=night_num(w[4]);if a<1 || b<1 || c<1 || a>32 || b>32 || c>32 || a*b*c>32 {s[0].bad=true;continue;}s[0].skin_n=a;s[0].hair_n=b;s[0].dye_n=c;}
+ if w[0]=="V" {if wn!=4 {s[0].bad=true;continue;}n:=night_num(w[2]);stride:=night_num(w[3]);if n<1 || n>32 || stride<1 || stride>32 {s[0].bad=true;continue;}s[0].palette_n=n;s[0].palette_stride=stride;}
+ if w[0]=="P" {if wn!=6 {s[0].bad=true;continue;}hi:=night_num(w[2]);g:=night_num(w[3]);he:=night_num(w[4]);o:=night_num(w[5]);if hi<0 || hi>=32 || g<0 || g>1 || he<0 || he>31 || o<0 || o>31 {s[0].bad=true;continue;}s[0].heroes[hi].gender=g;s[0].heroes[hi].head=he;s[0].heroes[hi].outfit=o;}
+ if w[0]=="H" {if wn!=4 {s[0].bad=true;continue;}h:=night_num(w[2]);if h<0 || h>=32 || w[3].count>31 {s[0].bad=true;continue;}s[0].heroes[h].name_n=night_copy(s[0].heroes[h].name[..],w[3]);}
+ if w[0]=="A" {if wn!=7 {s[0].bad=true;continue;}h:=night_num(w[2]);f:=night_num(w[4]);c:=night_num(w[5]);ms:=night_num(w[6]);if h<0 || h>=32 || f<0 || c<1 || f>128-c || ms<1 || ms>60000 || w[3].count>31 {s[0].bad=true;continue;}ci:=s[0].heroes[h].clip_n;if ci>=8 {s[0].bad=true;continue;}s[0].heroes[h].clips[ci]=NClip.{first=f,count=c,ms=ms};s[0].heroes[h].clips[ci].name_n=night_copy(s[0].heroes[h].clips[ci].name[..],w[3]);s[0].heroes[h].clip_n+=1;}
+ if w[0]=="Z" {if wn!=10 || s[0].zone_n>=3 {s[0].bad=true;continue;}zi:=s[0].zone_n;z:=NZone.{x0=night_real(w[3]),z0=night_real(w[4]),x1=night_real(w[5]),z1=night_real(w[6]),y=night_real(w[7]),x=night_real(w[8]),z=night_real(w[9])};z.name_n=night_copy(z.name[..],w[2]);if z.x1<=z.x0 || z.z1<=z.z0 || z.x<z.x0 || z.x>z.x1 || z.z<z.z0 || z.z>z.z1 {s[0].bad=true;continue;}s[0].zones[zi]=z;s[0].zone_n+=1;}
+ if w[0]=="B" {if wn!=6 || s[0].box_n>=1024 {s[0].bad=true;continue;}b:=NBox.{x0=night_real(w[2]),z0=night_real(w[3]),x1=night_real(w[4]),z1=night_real(w[5])};if b.x1<=b.x0 || b.z1<=b.z0 {s[0].bad=true;continue;}bi:=s[0].box_n;s[0].boxes[bi]=b;s[0].walls[bi*6]=b.x0;s[0].walls[bi*6+1]=0;s[0].walls[bi*6+2]=b.z0;s[0].walls[bi*6+3]=b.x1;s[0].walls[bi*6+4]=8;s[0].walls[bi*6+5]=b.z1;s[0].box_n+=1;}
+ }
+ for h:0..<32 {next:=0;hero:=s[0].heroes[h];if hero.frame_n==0 && hero.clip_n==0 && hero.name_n==0 {continue;}ok:=hero.name_n>0 && hero.clip_n>0;for c:0..<hero.clip_n {if hero.clips[c].first!=next {ok=false;}next+=hero.clips[c].count;}if next>128 || next!=hero.frame_n {ok=false;}for f:0..<(ifx next<128 then next else 128) {if hero.frames[f].count==0 {ok=false;}}s[0].heroes[h].ready=ok;if !ok || h!=s[0].hero_n {s[0].bad=true;}s[0].hero_n+=1;}
+ s[0].ready= !s[0].bad && s[0].env.count>0 && s[0].hero_n>0 && s[0].zone_n==3;s[0].hero=ifx s[0].saved_hero>=0 && s[0].saved_hero<s[0].hero_n then s[0].saved_hero else night_default_hero(s);s[0].palette=ifx s[0].saved_palette>=0 && s[0].saved_palette<s[0].palette_n then s[0].saved_palette else 0;s[0].zone=0;s[0].started=false;s[0].choosing=true;s[0].clip=0;s[0].forced= -1;s[0].clip_clock=0;
+}
+night_default_hero :: (s:[]Nights)->int {
+ for i:0..<s[0].hero_n {h:=s[0].heroes[i];if h.ready && h.gender==0 && h.head==0 && h.outfit==1 {return i;}}return 0;
+}
+night_start :: (s:[]Nights) {if s[0].started || !s[0].ready {return;}z:=s[0].zones[s[0].zone];s[0].you=pc.walk_place(z.x,z.y,z.z,0);s[0].you.dist=5;s[0].you.max_dist=3.5;s[0].started=true;}
+night_label :: (s:[]Nights,which:int)->string {if which==0 {return cast(string)s[0].heroes[s[0].hero].name[0..<s[0].heroes[s[0].hero].name_n];}if which==1 {return cast(string)s[0].zones[s[0].zone].name[0..<s[0].zones[s[0].zone].name_n];}c:=s[0].clip;return cast(string)s[0].heroes[s[0].hero].clips[c].name[0..<s[0].heroes[s[0].hero].clips[c].name_n];}
+night_clip_find :: (s:[]Nights,name:string)->int {for i:0..<s[0].heroes[s[0].hero].clip_n {c:=s[0].heroes[s[0].hero].clips[i];if cast(string)c.name[0..<c.name_n]==name {return i;}}return 0;}
+night_blur :: (s:[]Nights) #export_c #effects(all) {s[0].keys=0;s[0].thumbs=verse_sticks_reset();s[0].drag=false;s[0].look_x=0;s[0].look_y=0;}
+night_key :: (s:[]Nights,key:int,down:bool)->bool #export_c #effects(all) {
+ k:=ifx key>=97 && key<=122 then key-32 else key;bit:=ifx k==87 then 1 else ifx k==83 then 2 else ifx k==65 then 4 else ifx k==68 then 8 else ifx k== -13 then 16 else ifx k==32 then 32 else 0;
+ if bit!=0 {if down {s[0].keys=s[0].keys|bit;}else {s[0].keys=s[0].keys&(63-bit);}return true;}if !down {return false;}if k== -1 {s[0].choosing= !s[0].choosing;night_blur(s);return true;}if !s[0].ready {return false;}
+ if k== -2 {s[0].choosing=false;night_start(s);return true;}
+ if k==74 || k==75 || k==76 {a:=s[0].palette/(s[0].hair_n*s[0].dye_n);b:=(s[0].palette/s[0].dye_n)%s[0].hair_n;c:=s[0].palette%s[0].dye_n;if k==74 {a=(a+1)%s[0].skin_n;}if k==75 {b=(b+1)%s[0].hair_n;}if k==76 {c=(c+1)%s[0].dye_n;}next:=(a*s[0].hair_n+b)*s[0].dye_n+c;if next<s[0].palette_n {s[0].palette=next;s[0].dirty=true;}return true;}
+ if k==86 {s[0].palette=(s[0].palette+1)%s[0].palette_n;s[0].dirty=true;return true;}
+ if k==71 || k==72 || k==79 {night_choice(s,ifx k==71 then 0 else ifx k==72 then 1 else 2);return true;}
+ if k==67 || k== -4 || k== -5 {s[0].hero=(s[0].hero+(ifx k== -4 then s[0].hero_n-1 else 1))%s[0].hero_n;s[0].forced= -1;s[0].clip=0;s[0].clip_clock=0;s[0].dirty=true;return true;}
+ if k>=49 && k<=51 {s[0].zone=k-49;s[0].started=false;night_start(s);return true;}
+ if k==82 {s[0].forced= -1;return true;}
+ if k==70 {s[0].forced=(s[0].forced+1)%s[0].heroes[s[0].hero].clip_n;s[0].clip_clock=0;return true;}return false;
+}
+night_choice :: (s:[]Nights,field:int) {
+ a:=s[0].heroes[s[0].hero];for offset:1..<s[0].hero_n+1 {i:=(s[0].hero+offset)%s[0].hero_n;b:=s[0].heroes[i];match:=ifx field==0 then b.gender!=a.gender && b.head==a.head && b.outfit==a.outfit else ifx field==1 then b.gender==a.gender && b.head!=a.head && b.outfit==a.outfit else b.gender==a.gender && b.head==a.head && b.outfit!=a.outfit;if match {s[0].hero=i;s[0].forced= -1;s[0].clip=0;s[0].clip_clock=0;s[0].dirty=true;return;}}
+}
+night_message :: (s:[]Nights,kind:int,t:string) #export_c #effects(all) {
+ if kind!=4 || t.count!=8 || t[0..<4]!="NWN1" {return;}h:=night_num(t[4..<6]);p:=night_num(t[6..<8]);if h<0 || h>=32 || p<0 || p>=32 {return;}s[0].saved_hero=h;s[0].saved_palette=p;if s[0].ready && h<s[0].hero_n && p<s[0].palette_n {s[0].hero=h;s[0].palette=p;}
+}
+night_action :: (s:[]Nights)->int #export_c #effects(all) {if !s[0].dirty {return 0;}s[0].dirty=false;prefix:="NWN1";for i:0..<4 {s[0].outbox[i]=prefix[i];}s[0].outbox[4]=u8(48+s[0].hero/10);s[0].outbox[5]=u8(48+s[0].hero%10);s[0].outbox[6]=u8(48+s[0].palette/10);s[0].outbox[7]=u8(48+s[0].palette%10);s[0].out_n=8;return 4;}
+night_wheel :: (s:[]Nights,dy:f32) #export_c #effects(all) {s[0].you=pc.walk_zoom(s[0].you,dy*0.01);}
+night_pointer :: (s:[]Nights,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
+ if phase==0 && y<64*s[0].d {third:=s[0].width/3;if x<third {return night_key(s,67,true);}if x<third*2 {return night_key(s,-2,true);}s[0].zone=(s[0].zone+1)%3;s[0].started=false;night_start(s);return true;}
+ if phase==0 && s[0].choosing && y>=150*s[0].d && y<230*s[0].d {col:=int(x/(s[0].width/3));if col<0 || col>2 {return true;}return night_key(s,ifx y<190*s[0].d then [3]int.[71,72,79][col] else [3]int.[74,75,76][col],true);}
+ if kind!=0 {s[0].thumbs=verse_sticks_world_touch(s[0].thumbs,id,phase,x,y,s[0].width,s[0].height,s[0].d,f64(s[0].clock));return true;}
+ if phase==0 {s[0].drag=true;s[0].drag_id=id;s[0].px=x;s[0].py=y;}else if phase==1 && s[0].drag && id==s[0].drag_id {s[0].look_x-=(x-s[0].px)*0.005;s[0].look_y-=(y-s[0].py)*0.005;s[0].px=x;s[0].py=y;}else if phase>=2 {s[0].drag=false;}return true;
+}
+night_step :: (s:[]Nights,dt:f32,still:bool) #export_c #effects(all) {
+ night_start(s);if !s[0].ready || still || !(dt>0 && dt<1) {return;}s[0].clock+=dt;s[0].clip_clock+=dt;t:=s[0].thumbs;k:=s[0].keys;p:=s[0].you;
+ if s[0].choosing {p=pc.walk_input(p,0,0,0,0,false,false,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);s[0].you=p;}
+ if !s[0].choosing {p=pc.walk_input(p,f32((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),f32((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&16)!=0,t.run,t.pad_x,t.pad_y),(k&32)!=0 || t.jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);world:pc.World;world.ground=s[0].zones[s[0].zone].y;world.walls=s[0].walls[0..<s[0].box_n*6];p=pc.advance_in(world,p,dt);z:=s[0].zones[s[0].zone];x:=p.pos.x;zz:=p.pos.z;if !night_inside_union(s,x,zz) {x=s[0].you.pos.x;zz=s[0].you.pos.z;}for zi:0..<s[0].zone_n {nz:=s[0].zones[zi];if x>=nz.x0 && x<=nz.x1 && zz>=nz.z0 && zz<=nz.z1 {s[0].zone=zi;}}for i:0..<s[0].box_n {b:=s[0].boxes[i];if x>b.x0-0.3 && x<b.x1+0.3 && zz>b.z0-0.3 && zz<b.z1+0.3 {x=s[0].you.pos.x;zz=s[0].you.pos.z;}}p=pc.walk_constrain(p,x,zz);s[0].you=p;}
+ next:=ifx s[0].forced>=0 then s[0].forced else night_clip_find(s,ifx !s[0].choosing && abs(p.vel.x)+abs(p.vel.z)>0.05 then (ifx p.run then "run" else "walk") else "pause1");if next!=s[0].clip {s[0].clip=next;s[0].clip_clock=0;}s[0].look_x=0;s[0].look_y=0;s[0].thumbs=verse_sticks_used(t);
+}
+night_inside_union :: (s:[]Nights,x:f32,z:f32)->bool {
+ for corner:0..<4 {cx:=x+(ifx corner%2==0 then -0.3f32 else 0.3f32);cz:=z+(ifx corner<2 then -0.3f32 else 0.3f32);inside:=false;for i:0..<s[0].zone_n {r:=s[0].zones[i];if cx>=r.x0 && cx<=r.x1 && cz>=r.z0 && cz<=r.z1 {inside=true;}}if !inside {return false;}}
+ return true;
+}
+night_camera_room :: (s:[]Nights,x:f32,z:f32,dx:f32,dz:f32)->f32 {
+ room:=1.0f32;for i:0..<s[0].box_n {b:=s[0].boxes[i];lo:=0.0f32;hi:=1.0f32;hit:=true;
+ for axis:0..<2 {v:=ifx axis==0 then dx else dz;o:=ifx axis==0 then x else z;a:=(ifx axis==0 then b.x0 else b.z0)-0.2;c:=(ifx axis==0 then b.x1 else b.z1)+0.2;if abs(v)<0.00001 {if o<a || o>c {hit=false;}}else {t0:=(a-o)/v;t1:=(c-o)/v;if t0>t1 {swap:=t0;t0=t1;t1=swap;}if t0>lo {lo=t0;}if t1<hi {hi=t1;}}}
+ if hit && lo<hi && lo>=0 && lo<room {room=ifx lo>0.03 then lo-0.03 else 0.03;}}
+ return room;
+}
+night_frame :: (s:[]Nights,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
+ s[0].width=w;s[0].height=h;s[0].d=d;for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=d;u[10]=2;u[11]=1;u[42]=1;
+ p:=s[0].you;yaw:=p.theta;pitch:=p.phi-1.5707963;dist:=ifx s[0].choosing then p.max_dist else p.dist;cy:=cos(pitch);sy:=sin(pitch);sx:=sin(yaw);cz:=cos(yaw);target:=p.pos.y+1.2;
+ room:=night_camera_room(s,p.pos.x,p.pos.z,sx*cy*dist,cz*cy*dist);dist*=room;
+ u[16]=p.pos.x+sx*cy*dist;u[17]=target-sy*dist;u[18]=p.pos.z+cz*cy*dist;u[19]=h*0.89;u[20]= -sx*cy;u[21]=sy;u[22]= -cz*cy;u[23]=w*0.5;u[24]=cz;u[26]= -sx;u[27]=h*0.52;u[28]=sx*sy;u[29]=cy;u[30]=cz*sy;u[32]= -0.45;u[33]=0.78;u[34]= -0.42;
+ n:=0;ink:=Ink.{core=0.6*d,light=1,glow=0.2*d,red=0.95,green=0.88,blue=0.7,scale=d};n=draw_text(out,n,"EVERGLADE NIGHTS EXPERIMENTAL",22*d,90*d,15*d,0.2,0.5,ink,false,false);
+ n=draw_text(out,n,"< CHARACTER >             ENTER WORLD             NEXT REGION",22*d,38*d,10*d,0.2,0.5,ink,false,false);
+ if !s[0].ready {return draw_text(out,n,"INSTALL OWNER LOCAL NWN SOURCE PACK",22*d,130*d,13*d,0.2,0.5,ink,false,false);}
+ n=draw_text(out,n,night_label(s,0),22*d,120*d,16*d,0.2,0.5,ink,false,false);n=draw_text(out,n,night_label(s,1),22*d,145*d,12*d,0.2,0.5,ink,false,false);
+ if s[0].choosing {n=draw_text(out,n,"G: GENDER             H: HEAD             O: OUTFIT",22*d,178*d,10*d,0.2,0.5,ink,false,false);n=draw_text(out,n,"J: SKIN               K: HAIR             L: CLOTH",22*d,214*d,10*d,0.2,0.5,ink,false,false);}
+ n=draw_text(out,n,night_label(s,2),22*d,244*d,10*d,0.2,0.5,ink,false,false);
+ n=draw_text(out,n,ifx s[0].choosing then "C / ARROWS: CHOOSE   ENTER: EXPLORE" else "WASD: MOVE   SHIFT: WALK   SPACE: JUMP   DRAG: LOOK",22*d,h-52*d,10*d,0.2,0.5,ink,false,false);
+ return draw_text(out,n,"1 / 2 / 3: REGION   F: NATIVE CLIP   ESC: CHARACTER",22*d,h-28*d,10*d,0.2,0.5,ink,false,false);
+}
+night_clip_frame :: (c:NClip,clock:f32)->int {
+ if c.count<1 || c.ms<1 || !(clock>=0 && clock<=1.0e12) {return c.first;}
+ elapsed:=f64(clock)*1000;tick:=elapsed-f64(int(elapsed/f64(c.ms)))*f64(c.ms);
+ local:=int(tick*f64(c.count)/f64(c.ms)+0.00001);if local>=c.count {local=c.count-1;}return c.first+local;
+}
+night_scene :: (s:[]Nights) #export_c #effects(all) {
+ s[0].draw_n=0;if !s[0].ready {return;}for i:0..<48 {s[0].records[i]=0;}f:=s[0].env;s[0].records[7]=f32(f.word);s[0].records[15]=16;s[0].draws[0]=u32(f.first);s[0].draws[1]=u32(f.count);s[0].draws[2]=0;s[0].draws[3]=1;
+ c:=s[0].heroes[s[0].hero].clips[s[0].clip];fi:=night_clip_frame(c,s[0].clip_clock);f=s[0].heroes[s[0].hero].frames[fi];p:=s[0].you;
+ s[0].records[24]=p.pos.x;s[0].records[25]=p.pos.y;s[0].records[26]=p.pos.z;s[0].records[31]=f32(f.word);face:=p.face+(ifx s[0].choosing then 0.0f32 else 3.141592653589793f32);s[0].records[32]=sin(face);s[0].records[33]=cos(face);s[0].records[34]=1;s[0].records[37]=f32(s[0].palette*s[0].palette_stride);s[0].records[39]=18;
+ s[0].draws[4]=u32(f.first);s[0].draws[5]=u32(f.count);s[0].draws[6]=1;s[0].draws[7]=1;s[0].draw_n=2;s[0].revision+=1;
+}
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { size = 0.01; dx = 0.01; dy = 0; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    for e: 12..<16 { out[o + e] = 0; }
+  }
+  return true;
+}
+
+main :: () {}
+night_fixture :: (s:[]Nights) {
+ night_catalog(s,"C nights/environment 0 3 250 0 3 0\nC nights/hero0/frame0 3 3 248 0 3 0\nH nights 0 Female_Cloth\nP nights 0 1 0 0\nA nights 0 pause1 0 1 1000\nV nights 18 1\nQ nights 2 3 3\nZ nights FOREST -30 -30 30 30 0 0 0\nZ nights RURAL 29 -20 70 20 0 40 0\nZ nights CITY 69 -20 110 20 0 80 0\nB nights 10 10 12 12\n");
+}
+#test "Nights source catalog admission resets and rejects incomplete actors" {
+ s:[1]Nights;night_fixture(s[..]);#assert s[0].ready && s[0].hero_n==1 && s[0].heroes[0].gender==1;
+ night_scene(s[..]);#assert s[0].draw_n==2 && s[0].draws[4]==3 && s[0].records[39]==18;
+ night_catalog(s[..],"C nights/environment 0 3 250 0 3 0\nH nights 0 Lost\n");#assert !s[0].ready && s[0].hero_n==1;
+ night_scene(s[..]);#assert s[0].draw_n==0;
+}
+#test "Nights native palette controls persist only an independent versioned choice" {
+ s:[1]Nights;night_fixture(s[..]);ignored1:=night_key(s[..],74,true);ignored2:=night_key(s[..],75,true);ignored3:=night_key(s[..],76,true);
+ #assert s[0].palette==13 && night_action(s[..])==4;#assert cast(string)s[0].outbox[..]=="NWN10013";
+ t:[1]Nights;night_message(t[..],4,cast(string)s[0].outbox[..]);night_fixture(t[..]);#assert t[0].palette==13;
+ night_message(t[..],4,"CC2 wrong");#assert t[0].palette==13;
+}
+#test "Nights controller walks jumps changes region and releases controls" #steps 10000000 {
+ s:[1]Nights;night_fixture(s[..]);ignored4:=night_key(s[..],-2,true);ignored5:=night_key(s[..],87,true);for i:0..<30 {night_step(s[..],1.0/64,false);}#assert abs(s[0].you.pos.x)+abs(s[0].you.pos.z)>0.1;
+ ignored6:=night_key(s[..],32,true);night_step(s[..],1.0/64,false);#assert s[0].you.vel.y>0;
+ night_blur(s[..]);#assert s[0].keys==0 && !s[0].drag;ignored7:=night_key(s[..],50,true);#assert s[0].zone==1 && s[0].you.pos.x==40;
+}
+
+#test "Nights capsule crosses shared area edges but respects union outer boundary" {
+ s:[1]Nights;night_fixture(s[..]);s[0].zones[0].x1=30;s[0].zones[1].x0=30;
+ #assert night_inside_union(s[..],29.9,0) && night_inside_union(s[..],30,0) && night_inside_union(s[..],30.1,0);
+ #assert !night_inside_union(s[..],-29.9,0);
+ #assert night_camera_room(s[..],9,11,5,0)<0.3;
+}
+
+#test "Nights native source prop boxes feed swept fixed-step controller collision" #steps 10000000 {
+ s:[1]Nights;night_fixture(s[..]);s[0].choosing=false;s[0].started=true;s[0].you=pc.walk_place(11,0,9,0);s[0].keys=1;
+ for i:0..<120 {night_step(s[..],1.0/64,false);}#assert s[0].you.pos.z<9.71;
+}
+#test "Nights admits 1024 source collision boxes and refuses a 1025th without overflow" {
+ bytes:[32768]u8;row:="B nights 1 2 3 4\n";n:=0;limit:=0;
+ for i:0..<1025 {for j:0..<row.count {bytes[n]=row[j];n+=1;}if i==1023 {limit=n;}}
+ s:[1]Nights;night_catalog(s[..],cast(string)bytes[0..<limit]);
+ #assert !s[0].bad && s[0].box_n==1024 && s[0].walls[6143]==4;
+ night_catalog(s[..],cast(string)bytes[0..<n]);#assert s[0].bad && !s[0].ready && s[0].box_n==1024;
+}
+
+#test "Nights defaults to actual native armor bank with a small-catalog fallback" {
+ s:[1]Nights;night_fixture(s[..]);#assert night_default_hero(s[..])==0;
+ s[0].hero_n=4;for i:0..<4 {s[0].heroes[i].ready=true;s[0].heroes[i].gender=0;s[0].heroes[i].head=0;s[0].heroes[i].outfit=0;}s[0].heroes[3].outfit=1;
+ #assert night_default_hero(s[..])==3;s[0].heroes[3].ready=false;#assert night_default_hero(s[..])==0;
+}
+
+#test "Nights native 24-frame two-second clips preserve fractional-millisecond cadence" {
+ c:=NClip.{first=10,count=24,ms=2000};for i:0..<24 {#assert night_clip_frame(c,f32(i)/12)==10+i;}
+ #assert night_clip_frame(c,2)==10 && night_clip_frame(c,1.999)==33;
+ #assert night_clip_frame(c,-1)==10;
+}
+
+#test "Nights native minus-Z actors face the camera in picker and movement in exploration" {
+ s:[1]Nights;night_fixture(s[..]);s[0].you.face=0;night_scene(s[..]);
+ #assert abs(s[0].records[32])<0.00001 && abs(s[0].records[33]-1)<0.00001;
+ s[0].choosing=false;night_scene(s[..]);#assert abs(s[0].records[32])<0.00001 && abs(s[0].records[33]+1)<0.00001 && s[0].you.face==0;
+ s[0].you.face=1.570796326794897;night_scene(s[..]);#assert abs(s[0].records[32]+1)<0.00001 && abs(s[0].records[33])<0.00001;
+}
