@@ -225,3 +225,7 @@ existing Quaternius counterparts in the local specimen pack.
 [Three private NWN terrain sections](everglade-experimental-biomes.md) compare
 native campaign forest, farmland and desert tiles in small patches at
 the northern meadow edge, retaining the rest of the existing grass and scenery.
+
+[Aribeth's four native animations](everglade-experimental-aribeth-animations.md)
+now cycle in the local specimen scene, with an on-character clip label and a
+close local view. The biome sections and comparison gallery remain present.

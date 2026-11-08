@@ -44,6 +44,7 @@
 #load "experimental-sound.coax" as exsound;
 #load "../../verse/experimental-comparison.coax" as compare;
 #load "../../verse/experimental-biomes.coax" as biomes;
+#load "../../verse/experimental-aribeth.coax" as nwna;
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 
 VERTEX_FLOATS :: 16;
@@ -137,6 +138,7 @@ Lab :: struct {
   respawn_id:int = -1;
   xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
   creator: [1] cc.Creator;
+  aribeth_state:[1]nwna.Aribeth;
   started: bool;
   battle: [1] RsBattle;
   seen: int;                       // the battle log's events already shown
@@ -433,7 +435,7 @@ has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
   return false;
 }
 // The pack's catalog arrived (fivelab-face.c): the figures' parts.
-lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); }
+lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { figs.bd_catalog(s[0].bodies[..], text); s[0].creator[0].aribeth=s[0].aribeth_state[..];cc.catalog(s[0].creator[..], text); }
 // The clips baked into the bake store, once (fivelab-face.c).
 lab_bake :: (s: [] Lab, d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out, s[0].creator[0].dev_animations); figs.bd_bake_owned(out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
 // Existing optional layer-size hook: Character Create owns its quality choice.
@@ -3056,6 +3058,19 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   return n;
 }
 
+#test "Aribeth local view and absent animation label are bounded" {
+ s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?aribeth=1\n");#assert s[0].put_on && s[0].put_x==0 && s[0].put_z== -1.5 && s[0].creator[0].dist==4.5;
+ b:[16]f32;#assert lab_aribeth_label(s[..],b[..],0,1600,1000,1)==0;
+ lab_catalog(s[..],"C glade/aribeth0 0 3 248 0 3 0\nA aribeth pause1 0 1 2000\n");#assert s[0].aribeth_state[0].ready && s[0].creator[0].aribeth.count==1;
+ lab_catalog(s[..],"C glade/environment 3 6 250 20 3 0\n");#assert !s[0].aribeth_state[0].ready;
+}
+lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
+ if s[0].creator[0].aribeth.count==0 {return at;}a:=s[0].creator[0].aribeth[0];pose:=nwna.arb_sample(a,s[0].creator[0].clock);
+ if !pose.valid {return at;}p:=xc_proj(s[0].xc[..],1.8,2.15,-2);
+ if !p.ok || p.x<60*k || p.x>w-60*k || p.y<45*k || p.y>h-90*k || at+4000>MAX_VERTICES {return at;}
+ label:[32]u8;name:=nwna.arb_clip_label(a,pose.clip,label[..]);n:=cc.text(out,at,"ARIBETH",p.x-24*k,p.y-12*k,10*k,ink_col(k,1,0.95,0.8));
+ return cc.text(out,n,name,p.x-f32(name.count)*2.7*k,p.y+3*k,9*k,ink_col(k,0.75,0.9,1));
+}
 // Labels belong to the loaded private comparison pack, not the public scene.
 #test "biome labels are absent without the private terrain catalog marker" {
  s:[1]Lab;b:[16]f32;#assert lab_biome_labels(s[..],b[..],0,1600,1000,1)==0;
@@ -3095,6 +3110,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
       n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
       n = lab_comparison_labels(s,out,n,width,height,hi(dpr,0.5));
       n = lab_biome_labels(s,out,n,width,height,hi(dpr,0.5));
+      n = lab_aribeth_label(s,out,n,width,height,hi(dpr,0.5));
     }
     cr:=s[0].creator[0];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr.experimental && !cr.walk.on,cr.player_x,cr.player_z,cr.airborne,cr.hostiles[0].hp,cr.hostiles[0].hits,ifx still then 0.0f32 else dt);
     return n;
@@ -3337,6 +3353,7 @@ url_number :: (q: string, key: string) -> int {
 lab_dev_cell :: (s: [] Lab, facts: string) {
  i:=0;while i<facts.count {e:=i;while e<facts.count && facts[e]!='\n' {e+=1;}line:=facts[i..<e];i=e+1;
   if line.count<4 || line[0..<4]!="url=" {continue;}q:=line[4..<line.count];
+  if url_number(q,"aribeth")==1 {s[0].put_on=true;s[0].put_x=0;s[0].put_y=0;s[0].put_z= -1.5;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.25;s[0].creator[0].dist=4.5;s[0].xc[0].open=false;}
   bio:=url_number(q,"biome");if bio>=0 && bio<=biomes.BIO_N {
    p:=biomes.bio_site(ifx bio==0 then 1 else bio-1);s[0].put_on=true;s[0].put_x=ifx bio==0 then 35 else p.x;s[0].put_y=0.025;s[0].put_z=ifx bio==0 then 73 else p.z+3;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx bio==0 then 1.15 else ifx bio==1 then 0.85 else 0.65;s[0].creator[0].dist=ifx bio==0 then 75 else ifx bio==1 then 24 else 15;s[0].xc[0].open=false;
   }

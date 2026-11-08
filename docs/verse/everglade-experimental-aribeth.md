@@ -86,3 +86,11 @@ build was used; no gate was relaxed and no public deployment was made.
 Upstream subsequently raised that size budget to 2,602,000 in `b0651d5bac`.
 The size observation above records the original capture checkout; this experiment
 did not change the budget.
+
+## Subsequent native animation preview
+
+The local specimen now [cycles four original NWN animations](everglade-experimental-aribeth-animations.md):
+idle, walk, bow and casting. The static capture and qualification notes above
+remain the record of the original extraction. The newer bounded pose bank uses
+native inherited controller tracks, preserves the same geometry and replaces
+only the old static Aribeth draw span in the retained private scene.

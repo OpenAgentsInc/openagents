@@ -1,0 +1,78 @@
+// Optional private NWN baked frames. Catalog metadata owns the native clip
+// schedule; this module owns bounded playback, independent of skin palettes.
+#module "verse.experimentalaribeth";
+
+#test "aribeth schedule boundaries and cycle wrap" {
+ s:[1]Aribeth;arb_catalog(s[..],"C glade/aribeth0 10 3 248 20 0 0\nC glade/aribeth1 13 3 248 28 0 0\nA aribeth pause1 0 1 2000\nA aribeth bow 1 1 1000\n");
+ #assert s[0].ready;#assert arb_sample(s[0],0).frame==0;
+ #assert arb_sample(s[0],1.999).frame==0;#assert arb_sample(s[0],2).frame==1;
+ #assert arb_sample(s[0],3).frame==0;#assert arb_sample(s[0],5).clip==1;
+ b:[32]u8;#assert arb_clip_label(s[0],1,b[..])=="bow";
+ #assert !arb_sample(s[0],-1).valid;
+}
+#test "aribeth missing invalid duplicate and reload frames fail closed" {
+ s:[1]Aribeth;arb_catalog(s[..],"C glade/aribeth0 10 3 248 20 0 0\nA aribeth idle 0 2 1000\n");#assert !s[0].ready;
+ arb_catalog(s[..],"C glade/aribeth128 10 3 248 20 0 0\nA aribeth idle 0 1 1000\n");#assert !s[0].ready;
+ arb_catalog(s[..],"C glade/aribeth0 10 3 248 20 0 0\nC glade/aribeth0 10 3 248 20 0 0\nA aribeth idle 0 1 1000\n");#assert !s[0].ready;
+ arb_catalog(s[..],"C glade/aribeth0 10 3 248 20 0 0\nA aribeth idle 0 1 1000\n");#assert s[0].ready;
+ arb_catalog(s[..],"C glade/environment 0 3 1 0 0 0\n");#assert !s[0].ready && s[0].frame_n==0;
+ #assert arb_number("999999999999999999999")== -1 && arb_number("-1")== -1;
+}
+#test "aribeth frame timing and malformed schedules remain bounded" {
+ s:[1]Aribeth;arb_catalog(s[..],"C glade/aribeth0 10 3 248 20 0 0\nC glade/aribeth1 13 3 248 28 0 0\nA aribeth walk 0 2 1000\n");
+ #assert arb_sample(s[0],0.499).frame==0 && arb_sample(s[0],0.5).frame==1;
+ #assert arb_sample(s[0],1).frame==0 && arb_sample(s[0],0.5).word==28;
+ arb_catalog(s[..],"A aribeth a 0 128 1000\nA aribeth b 0 128 1000\n");#assert !s[0].ready;
+ arb_catalog(s[..],"C glade/aribeth0 10 3 247 20 0 0\nA aribeth idle 0 1 1000\n");#assert !s[0].ready;
+}
+#test "aribeth fractional native frame boundaries retain their cadence" {
+ s:Aribeth;s.ready=true;s.total_ms=2000;s.clip_n=1;s.clips[0]=ArClip.{first=0,count=24,ms=2000};
+ for i:0..<24 {s.frames[i]=ArFrame.{first=i*3,count=3,word=20};}
+ for i:0..<24 {#assert arb_sample(s,f32(i)/12).frame==i;}
+}
+AR_MAX_FRAMES ::128;
+AR_MAX_CLIPS ::16;
+ArFrame :: struct {first:int;count:int;word:int;}
+ArClip :: struct {first:int;count:int;ms:int;name:[4]u64;name_n:int;}
+Aribeth :: struct {frames:[128]ArFrame;clips:[16]ArClip;clip_n:int;frame_n:int;total_ms:int;ready:bool;bad:bool;}
+ArSample :: struct {valid:bool;frame:int;clip:int;first:int;count:int;word:int;}
+arb_number :: (t:string)->int {
+ if t.count==0 {return -1;}n:=0;for i:0..<t.count {if t[i]<'0' || t[i]>'9' {return -1;}d:=int(t[i]-'0');if n>(134217728-d)/10 {return -1;}n=n*10+d;}return n;
+}
+arb_catalog :: (s:[]Aribeth,t:string) {
+ s[0]=Aribeth.{};at:=0;
+ while at<t.count {
+  e:=at;while e<t.count && t[e]!='\n' {e+=1;}row:=t[at..<e];at=e+1;
+  words:[8]string;wn:=0;p:=0;overflow:=false;
+  while p<row.count {while p<row.count && (row[p]==' ' || row[p]=='\t' || row[p]=='\r') {p+=1;}if p>=row.count {break;}q:=p;while p<row.count && row[p]!=' ' && row[p]!='\t' && row[p]!='\r' {p+=1;}if wn<8 {words[wn]=row[q..<p];wn+=1;}else {overflow=true;}}
+  if wn<2 {continue;}
+  if words[0]=="C" && words[1].count>=13 && words[1][0..<13]=="glade/aribeth" {
+   if overflow || wn!=8 {s[0].bad=true;continue;}
+   f:=arb_number(words[1][13..<words[1].count]);first:=arb_number(words[2]);count:=arb_number(words[3]);src:=arb_number(words[4]);word:=arb_number(words[5]);nv:=arb_number(words[6]);flags:=arb_number(words[7]);
+   if f<0 || f>=128 || first<0 || count<3 || count%3!=0 || first>134217728-count || src!=248 || word<0 || nv<0 || flags!=0 {s[0].bad=true;continue;}
+   if s[0].frames[f].count>0 {s[0].bad=true;continue;}
+   s[0].frames[f]=ArFrame.{first=first,count=count,word=word};s[0].frame_n+=1;
+  }
+  if words[0]=="A" && words[1]=="aribeth" {
+   if overflow || wn!=6 || s[0].clip_n>=16 {s[0].bad=true;continue;}
+   name:=words[2];first:=arb_number(words[3]);count:=arb_number(words[4]);ms:=arb_number(words[5]);ok:=name.count>0 && name.count<32;
+   for j:0..<name.count {c:=name[j];if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_' || c=='-') {ok=false;}}
+   if !ok || first<0 || count<1 || first>128-count || ms<1 || ms>60000 {s[0].bad=true;continue;}
+   ci:=s[0].clip_n;s[0].clips[ci].first=first;s[0].clips[ci].count=count;s[0].clips[ci].ms=ms;s[0].clips[ci].name_n=name.count;
+   for j:0..<name.count {s[0].clips[ci].name[j/8]=s[0].clips[ci].name[j/8]|(u64(name[j])<<((j%8)*8));}s[0].clip_n+=1;s[0].total_ms+=ms;
+  }
+ }
+ next:=0;for i:0..<s[0].clip_n {c:=s[0].clips[i];if c.first!=next {s[0].bad=true;}next+=c.count;}
+ if next>128 || next!=s[0].frame_n {s[0].bad=true;}
+ for i:0..<(ifx next<128 then next else 128) {if s[0].frames[i].count==0 {s[0].bad=true;}}
+ s[0].ready= !s[0].bad && s[0].clip_n>0 && next>0;
+}
+arb_sample :: (s:Aribeth,clock:f32)->ArSample {
+ if !s.ready || !(clock>=0 && clock<=1.0e12) {return ArSample.{};}
+ elapsed:=f64(clock)*1000;tick:=elapsed-f64(int(elapsed/f64(s.total_ms)))*f64(s.total_ms);
+ for i:0..<s.clip_n {c:=s.clips[i];if tick<f64(c.ms) {local:=int(tick*f64(c.count)/f64(c.ms)+0.00001);if local>=c.count {local=c.count-1;}fi:=c.first+local;f:=s.frames[fi];return ArSample.{valid=true,frame=fi,clip=i,first=f.first,count=f.count,word=f.word};}tick-=f64(c.ms);}
+ return ArSample.{};
+}
+arb_clip_label :: (s:Aribeth,clip:int,out:[]u8)->string {
+ if !s.ready || clip<0 || clip>=s.clip_n {return "";}c:=s.clips[clip];if out.count<c.name_n {return "";}for i:0..<c.name_n {out[i]=u8((c.name[i/8]>>((i%8)*8))&255);}return cast(string)out[0..<c.name_n];
+}
