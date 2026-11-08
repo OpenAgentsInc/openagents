@@ -42,6 +42,7 @@
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
 #load "fivelab-siege.coax";
 #load "experimental-sound.coax" as exsound;
+#load "../../verse/experimental-comparison.coax" as compare;
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 
 VERTEX_FLOATS :: 16;
@@ -3054,6 +3055,20 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   return n;
 }
 
+// Labels belong to the loaded private comparison pack, not the public scene.
+lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
+ if !s[0].creator[0].comparison_present {return at;}n:=at;x:=s[0].xc[..];
+ for i:0..<compare.CMP_N {p:=compare.cmp_site(i);a:=xc_proj(x,p.x,0.35+p.span,p.z);
+  if !a.ok || a.x<40*k || a.x>w-40*k || a.y<45*k || a.y>h-90*k {continue;}
+  if n+4000>MAX_VERTICES {break;}
+  n=cc.text(out,n,p.title,a.x-f32(p.title.count)*2.7*k,a.y,9*k,ink_col(k,1,0.95,0.8));
+  l:=xc_proj(x,p.left_x,0.5,p.z+1.15);r:=xc_proj(x,p.right_x,0.5,p.z+1.15);
+  if l.ok {n=cc.text(out,n,"NWN",l.x-10*k,l.y,8*k,ink_col(k,0.75,0.9,1));}
+  if r.ok {n=cc.text(out,n,"QUATERNIUS",r.x-33*k,r.y,8*k,ink_col(k,0.75,1,0.8));}
+ }
+ return n;
+}
+
 lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s[0].creator[0].on {
     s[0].creator[0].hostile_external=s[0].creator[0].experimental && !s[0].creator[0].walk.on;
@@ -3065,6 +3080,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
     if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
       if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
       n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
+      n = lab_comparison_labels(s,out,n,width,height,hi(dpr,0.5));
     }
     cr:=s[0].creator[0];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr.experimental && !cr.walk.on,cr.player_x,cr.player_z,cr.airborne,cr.hostiles[0].hp,cr.hostiles[0].hits,ifx still then 0.0f32 else dt);
     return n;
@@ -3307,10 +3323,20 @@ url_number :: (q: string, key: string) -> int {
 lab_dev_cell :: (s: [] Lab, facts: string) {
  i:=0;while i<facts.count {e:=i;while e<facts.count && facts[e]!='\n' {e+=1;}line:=facts[i..<e];i=e+1;
   if line.count<4 || line[0..<4]!="url=" {continue;}q:=line[4..<line.count];
+  cmp:=url_number(q,"compare");if cmp>=0 && cmp<=compare.CMP_N {
+   p:=compare.cmp_site(ifx cmp==0 then 2 else cmp-1);s[0].put_on=true;s[0].put_x=ifx cmp==0 then 31 else p.x;s[0].put_y=0.2;s[0].put_z=ifx cmp==0 then 12 else p.z+1;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx cmp==0 then 1.2 else 0.4;s[0].creator[0].dist=ifx cmp==0 then 28 else 5;s[0].xc[0].open=false;
+  }
   n:=url_number(q,"cell");if n<0 || n>=xdungeon.DG_COLS*xdungeon.DG_ROWS {continue;}
   yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;
   s[0].put_on=true;s[0].put_x=xdungeon.dg_x(n%xdungeon.DG_COLS)+f32(xdungeon.DG_CELL)*0.5;s[0].put_y=0;s[0].put_z=xdungeon.dg_z(n/xdungeon.DG_COLS)-f32(xdungeon.DG_CELL)*0.5;s[0].put_face=a;s[0].creator[0].yaw=a;
  }
+}
+#test "a local comparison view can frame all ten pairs or one station" {
+ s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?compare=0\n");
+ #assert s[0].put_on && s[0].put_z==12 && s[0].creator[0].dist==28 && s[0].put_x==31 && !s[0].xc[0].open;
+ t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?compare=10\n");p:=compare.cmp_site(9);
+ #assert t[0].put_on && t[0].put_x==p.x && t[0].put_z==p.z+1 && t[0].creator[0].dist==5;
+ b:[16]f32;#assert lab_comparison_labels(t[..],b[..],0,1600,1000,1)==0;
 }
 #test "a local page can start you in a dungeon cell" {
  s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1:1/worlds/everglade-experimental?cell=200&yaw=90\n");

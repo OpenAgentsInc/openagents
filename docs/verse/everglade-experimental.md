@@ -217,3 +217,7 @@ Enemies yield when the player pushes through them. If the player becomes trapped
 rendered in a private local copy of this world's scene pack. The note records
 its original model/texture identities, conversion tools, actual headless render
 and limitations. The public scene pack does not include the NWN payloads.
+
+[Ten private NWN comparison pairs](everglade-experimental-comparison.md) add
+labeled props, furniture, vegetation, a weapon and a creature beside this realm's
+existing Quaternius counterparts in the local specimen pack.

@@ -41,7 +41,7 @@ GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
   hostile_external:bool; // owner stages AI through shared combat before publication
   experimental:bool; fps:[1]FpsCounter; dev_animations:bool; preview_collapsed:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
-  on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;zero_ad_first:int;zero_ad_count:int;animal_first:[10]int;animal_count:[10]int;animal_n:int;monster_first:[48]int;monster_count:[48]int;monster_n:int;dungeon_first:[8]int;dungeon_count:[8]int;dungeon_n:int;torches:[540]f32;torch_n:int;npc_first:[2][48]int;npc_count:[2][48]int;npc_n:[2]int;hostiles:[1]hostile.Hostiles;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
+  on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;zero_ad_first:int;zero_ad_count:int;comparison_present:bool;animal_first:[10]int;animal_count:[10]int;animal_n:int;monster_first:[48]int;monster_count:[48]int;monster_n:int;dungeon_first:[8]int;dungeon_count:[8]int;dungeon_n:int;torches:[540]f32;torch_n:int;npc_first:[2][48]int;npc_count:[2][48]int;npc_n:[2]int;hostiles:[1]hostile.Hostiles;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1; camera_room:f32 = -1;
   clock:f32; surprise_seed:int; pose_at:f32; revision:int; saved:int; focused:int;
@@ -640,6 +640,12 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
  s:[1]Creator;catalog(s[..],"C glade/animal0 80 6 253 20 0 0\nC glade/animal9 200 9 253 20 0 0\n");
  #assert s[0].animal_n==2 && s[0].animal_first[0]==80 && s[0].animal_count[9]==9;
 }
+#test "comparison labels require their loaded catalog marker and reset on replacement" {
+ s:[1]Creator;catalog(s[..],"C glade/environment 3 6 250 20 3 0\n");#assert !s[0].comparison_present;
+ catalog(s[..],"C glade/nwn-comparison 9 60 247 20 12 0\n");#assert s[0].comparison_present;
+ catalog(s[..],"C glade/nwn-comparison 9 0 247 20 0 0\n");#assert !s[0].comparison_present;
+ catalog(s[..],"C glade/environment 3 6 250 20 3 0\n");#assert !s[0].comparison_present;
+}
 #test "npc catalog keeps imp and gremlin draws distinct" {
  s:[1]Creator;catalog(s[..],"C glade/imp0 80 6 254 20 0 0\nC glade/gremlin0 86 9 254 20 0 0\n");
  #assert s[0].npc_n[0]==1 && s[0].npc_n[1]==1 && s[0].npc_first[0][0]==80 && s[0].npc_first[1][0]==86;
@@ -992,7 +998,7 @@ preset :: (s:[]Creator,family:int) {
 ensure :: (s:[]Creator) {if !s[0].configured {preset(s,s[0].outfit);}}
 reset :: (s:[]Creator) { s[0].pan_x=0;s[0].pan_y=0;s[0].pan_mode=false;s[0].piece=18;s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].eye_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
 catalog :: (s:[]Creator,t:string) {
-  s[0].source_n=0;s[0].glade_count=0;s[0].zero_ad_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].dungeon_n=0;for i:0..<8 {s[0].dungeon_count[i]=0;}s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<4 {s[0].weapon_count[i]=0;}
+  s[0].comparison_present=false;s[0].source_n=0;s[0].glade_count=0;s[0].zero_ad_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].dungeon_n=0;for i:0..<8 {s[0].dungeon_count[i]=0;}s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<4 {s[0].weapon_count[i]=0;}
   for i:0..<80 {s[0].source_count[i]=0;}
   at:=0;
   while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;} row:=t[at..<e];at=e+1;
@@ -1001,6 +1007,7 @@ catalog :: (s:[]Creator,t:string) {
     if name=="glade/environment" {
       p:=ne;s[0].glade_first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].glade_count=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);s[0].glade_word=figs.bd_whole_at(row,p);
     }
+    if name=="glade/nwn-comparison" {p:=figs.bd_word_end(row,ne+1);s[0].comparison_present=figs.bd_whole_at(row,p)>0;}
     if name=="glade/0ad" {p:=ne;s[0].zero_ad_first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].zero_ad_count=figs.bd_whole_at(row,p);}
     if name.count>12 && name[0..<12]=="glade/animal" {
       i:=figs.bd_whole_at(name,12);if i>=0 && i<10 {p:=ne;s[0].animal_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].animal_count[i]=figs.bd_whole_at(row,p);if s[0].animal_count[i]>0 {s[0].animal_n+=1;}}
