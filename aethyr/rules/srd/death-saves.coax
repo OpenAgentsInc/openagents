@@ -30,5 +30,5 @@ rs_death_apply :: (c: [] RsCreature, face: int, total: int) -> int #effects(all)
 rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int #effects(all) {
   if !rs_death_eligible(c[0]) { return RS_DS_NONE; }
   face := rs_roll(d,20);
-  return rs_death_apply(c,face,face);
+  return rs_death_apply(c,face,face-rs_exhaustion_penalty(c[0]));
 }

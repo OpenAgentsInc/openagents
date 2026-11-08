@@ -21,6 +21,7 @@
 #load "spell-loadouts.coax";
 #load "effect-storage.coax";
 #load "hit-points.coax";
+#load "exhaustion.coax";
 #load "command-halt.coax";
 #load "cast-components.coax";
 
@@ -199,6 +200,7 @@ RsCreature :: struct {
   slots: [10] int; slots_max: [10] int;   // spell slots by level (0 unused)
   spell_grants: [2] u64;     // explicit feature/stat-block/world extra-list grants, by executable ID
   spells: RsSpellSelection;  // canonical-source cantrips/preparation and Wizard spellbook
+  exhaustion: int;          // cumulative levels 0..6, independent of expiring records
   cond: int;                // conditions, bits
   // effects that last
   conc: int;                // the spell held by concentration (-1 none)

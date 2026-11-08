@@ -1,0 +1,49 @@
+aethyr/rules/srd/exhaustion-checks.coax:9:13: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+      #assert rs_gain_exhaustion(b[..],0);
+              ^
+aethyr/rules/srd/exhaustion-checks.coax:10:22: error[E0351]: struct 'RsCreature' has no field 'exhaustion'
+      #assert b[0].c[0].exhaustion==level && rs_has(b[0].c[0],RS_EXHAUSTION);
+                       ^
+  fix: its fields are: name name_n team level score save_prof ac hp hp_max temp speech_blocked gesture_hand material_hand focus_held focus_worn component_pouch focus_class class_spell_grants materials eff speed spell_ability slots slots_max spell_grants spells cond conc conc_until flame_until outlined_until outlined_by wisp_until restrained_by agonizing repelling dark_blessing hex_free hex_free_after klass humanoid resist vulnerable immune immune_cond floor weapon ranged masteries reacted dodging rages rages_max rage_bonus raging rage_kept struck_round reckless_until danger_sense frenzy martial_die focus focus_max deflect open_hand uses uses_max uses_back free_spell undead insp_die inspired cutting turn_undead preserve_life disciple crit_range athlete archery extra_attack tactical shift primal mindless expertise cant fast_hands climb cunning_strike strike_plan poison_kit uncanny explorer lore swim ritual arcane_recovery scholar savant memorize sculpt cunning_rite own_luck jack font discoveries companion resurgence resurged_slot sear blessed_healer restoration affinity guard_slot guard_turn aura steed metabolism slow_fall stunning stun_ready empowered halved_until sacred_until colossus sneak_dice cunning steady_aim innate_until quickened seeking shield_spell shield_until potent lands_aid slowed_until slot_back rage_back focus_back round_at death_ok death_fail stable dead x y initiative turn_at rise_by rise_at fortitude npc parry rebuke vigor
+aethyr/rules/srd/exhaustion-checks.coax:16:12: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+    #assert !rs_gain_exhaustion(b[..],0) && !rs_remove_exhaustion(b[0].c[0..<1]);
+             ^
+aethyr/rules/srd/exhaustion-checks.coax:16:44: error[E0315]: procedure 'rs_remove_exhaustion' is not declared
+    #assert !rs_gain_exhaustion(b[..],0) && !rs_remove_exhaustion(b[0].c[0..<1]);
+                                             ^
+aethyr/rules/srd/exhaustion-checks.coax:22:32: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+      for k: 0..<level { #assert rs_gain_exhaustion(b[..],0); }
+                                 ^
+aethyr/rules/srd/exhaustion-checks.coax:35:13: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+      #assert rs_gain_exhaustion(b[..],0);
+              ^
+aethyr/rules/srd/exhaustion-checks.coax:40:13: error[E0315]: procedure 'rs_remove_exhaustion' is not declared
+      #assert rs_remove_exhaustion(b[0].c[0..<1]);
+              ^
+aethyr/rules/srd/exhaustion-checks.coax:41:22: error[E0351]: struct 'RsCreature' has no field 'exhaustion'
+      #assert b[0].c[0].exhaustion==left && rs_has(b[0].c[0],RS_EXHAUSTION)==(left>0);
+                       ^
+  fix: its fields are: name name_n team level score save_prof ac hp hp_max temp speech_blocked gesture_hand material_hand focus_held focus_worn component_pouch focus_class class_spell_grants materials eff speed spell_ability slots slots_max spell_grants spells cond conc conc_until flame_until outlined_until outlined_by wisp_until restrained_by agonizing repelling dark_blessing hex_free hex_free_after klass humanoid resist vulnerable immune immune_cond floor weapon ranged masteries reacted dodging rages rages_max rage_bonus raging rage_kept struck_round reckless_until danger_sense frenzy martial_die focus focus_max deflect open_hand uses uses_max uses_back free_spell undead insp_die inspired cutting turn_undead preserve_life disciple crit_range athlete archery extra_attack tactical shift primal mindless expertise cant fast_hands climb cunning_strike strike_plan poison_kit uncanny explorer lore swim ritual arcane_recovery scholar savant memorize sculpt cunning_rite own_luck jack font discoveries companion resurgence resurged_slot sear blessed_healer restoration affinity guard_slot guard_turn aura steed metabolism slow_fall stunning stun_ready empowered halved_until sacred_until colossus sneak_dice cunning steady_aim innate_until quickened seeking shield_spell shield_until potent lands_aid slowed_until slot_back rage_back focus_back round_at death_ok death_fail stable dead x y initiative turn_at rise_by rise_at fortitude npc parry rebuke vigor
+aethyr/rules/srd/exhaustion-checks.coax:44:12: error[E0315]: procedure 'rs_remove_exhaustion' is not declared
+    #assert !rs_remove_exhaustion(b[0].c[0..<1]);
+             ^
+aethyr/rules/srd/exhaustion-checks.coax:50:11: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+    #assert rs_gain_exhaustion(b[..],0);
+            ^
+aethyr/rules/srd/exhaustion-checks.coax:51:12: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+    #assert !rs_gain_exhaustion(b[..],-1) && !rs_gain_exhaustion(b[..],b[0].n);
+             ^
+aethyr/rules/srd/exhaustion-checks.coax:51:45: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+    #assert !rs_gain_exhaustion(b[..],-1) && !rs_gain_exhaustion(b[..],b[0].n);
+                                              ^
+aethyr/rules/srd/exhaustion-checks.coax:52:20: error[E0351]: struct 'RsCreature' has no field 'exhaustion'
+    #assert b[0].c[0].exhaustion==0 && !rs_has(b[0].c[0],RS_EXHAUSTION);
+                     ^
+  fix: its fields are: name name_n team level score save_prof ac hp hp_max temp speech_blocked gesture_hand material_hand focus_held focus_worn component_pouch focus_class class_spell_grants materials eff speed spell_ability slots slots_max spell_grants spells cond conc conc_until flame_until outlined_until outlined_by wisp_until restrained_by agonizing repelling dark_blessing hex_free hex_free_after klass humanoid resist vulnerable immune immune_cond floor weapon ranged masteries reacted dodging rages rages_max rage_bonus raging rage_kept struck_round reckless_until danger_sense frenzy martial_die focus focus_max deflect open_hand uses uses_max uses_back free_spell undead insp_die inspired cutting turn_undead preserve_life disciple crit_range athlete archery extra_attack tactical shift primal mindless expertise cant fast_hands climb cunning_strike strike_plan poison_kit uncanny explorer lore swim ritual arcane_recovery scholar savant memorize sculpt cunning_rite own_luck jack font discoveries companion resurgence resurged_slot sear blessed_healer restoration affinity guard_slot guard_turn aura steed metabolism slow_fall stunning stun_ready empowered halved_until sacred_until colossus sneak_dice cunning steady_aim innate_until quickened seeking shield_spell shield_until potent lands_aid slowed_until slot_back rage_back focus_back round_at death_ok death_fail stable dead x y initiative turn_at rise_by rise_at fortitude npc parry rebuke vigor
+aethyr/rules/srd/exhaustion-checks.coax:58:11: error[E0315]: procedure 'rs_gain_exhaustion' is not declared
+    #assert rs_gain_exhaustion(b[..],0);
+            ^
+14 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

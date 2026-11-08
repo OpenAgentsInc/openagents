@@ -1,0 +1,7 @@
+// Focused native Exhaustion witness, not whole-SRD qualification.
+#load "exhaustion-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  if !ex_native() { tool_errln("FAIL CONDITION-EXHAUSTION"); return 1; }
+  tool_errln("PASS CONDITION-EXHAUSTION"); return 0;
+}

@@ -14,10 +14,10 @@
 rs_battle_death_save :: (b: [] RsBattle, j: int) -> int #effects(all) {
   if !rs_death_eligible(b[0].c[j]) { return RS_DS_NONE; }
   face := rs_roll(b[0].dice[..],20);
-  total := face + rs_aura(b,j) + rs_boon_roll(b,j);
+  total := face + rs_aura(b,j) + rs_boon_roll(b,j) - rs_exhaustion_penalty(b[0].c[j]);
   // A natural 1 imposes two failures regardless of the total. A natural 20's
-  // total cannot need rescuing with the currently supported modifiers.
-  if face != 1 {
+  // healing is independent of modifiers, so it never spends a rescue.
+  if face != 1 && face != 20 {
     total += rs_inspired_roll(b,j,total,10);
     total += rs_own_luck(b,j,total,10);
   }

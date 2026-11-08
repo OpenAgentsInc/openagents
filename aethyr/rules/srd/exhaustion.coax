@@ -1,0 +1,30 @@
+// SRD 5.2.1 p.181: levels, D20 Test penalty, Speed reduction and recovery.
+#authority;
+rs_exhaustion_penalty :: (c: RsCreature) -> int #effects(all) { return 2*c.exhaustion; }
+rs_exhaustion_speed :: (c: RsCreature, speed: int) -> int #effects(all) { return rs_max(speed-5*c.exhaustion,0); }
+
+// One completed source-authorized recovery removes one level. This does not
+// itself admit/complete a Long Rest or revive a dead creature.
+rs_remove_exhaustion :: (c: [] RsCreature) -> bool #effects(all) {
+  if c[0].dead || c[0].exhaustion<=0 { return false; }
+  c[0].exhaustion-=1;
+  if c[0].exhaustion==0 { c[0].cond=rs_clear(c[0].cond,RS_EXHAUSTION); }
+  return true;
+}
+
+#test "Exhaustion scalar consequences saturate Speed and preserve zero-level no-penalty behavior" {
+  for level: 0..<7 { for speed: 0..<43 {
+    c: RsCreature; c.exhaustion=level;
+    #assert rs_exhaustion_penalty(c)==level*2;
+    #assert rs_exhaustion_speed(c,speed)==(ifx speed>5*level then speed-5*level else 0);
+  } }
+}
+
+#test "one Exhaustion recovery keeps unrelated conditions and cannot revive the dead" {
+  c: [1] RsCreature; c[0].hp=10; c[0].exhaustion=2; c[0].cond=RS_EXHAUSTION|RS_BLINDED;
+  #assert rs_remove_exhaustion(c[..]) && c[0].exhaustion==1 && c[0].cond==(RS_EXHAUSTION|RS_BLINDED);
+  #assert rs_remove_exhaustion(c[..]) && c[0].exhaustion==0 && c[0].cond==RS_BLINDED;
+  #assert !rs_remove_exhaustion(c[..]);
+  c[0].exhaustion=6; c[0].dead=true;
+  #assert !rs_remove_exhaustion(c[..]) && c[0].exhaustion==6 && c[0].dead;
+}

@@ -35,7 +35,7 @@ rs_saving_throw :: (b: [] RsBattle, j: int, ability: int, dc: int) -> RsSavingTh
   r.automatic = rs_auto_fails(b[0].c[j],ability);
   if r.automatic { return r; }
   d := rs_d20(b[0].dice[..],rs_save_edge(b,j,ability));
-  r.total = d.roll + rs_save_in(b,j,ability) + rs_boon_roll(b,j);
+  r.total = d.roll + rs_save_in(b,j,ability) + rs_boon_roll(b,j) - rs_exhaustion_penalty(b[0].c[j]);
   r.inspiration = rs_inspired_roll(b,j,r.total,dc);
   r.total += r.inspiration;
   r.luck = rs_own_luck(b,j,r.total,dc);

@@ -1,0 +1,27 @@
+// Exhaustion is cumulative scalar state, not an expiring ordinary effect.
+#authority;
+rs_gain_exhaustion :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].c[i].dead { return false; }
+  if (b[0].c[i].immune_cond & RS_EXHAUSTION)!=0 { return true; }
+  b[0].c[i].exhaustion+=1; b[0].c[i].cond|=RS_EXHAUSTION;
+  if b[0].c[i].exhaustion>=6 {
+    b[0].c[i].dead=true; b[0].c[i].hp=0; b[0].c[i].stable=false;
+    rs_interrupt_incapacitated(b,i);
+  } else { _ := rs_dodge_live(b,i); }
+  l: [1] RsLine; rs_add_name(l[..],b,i);
+  rs_add_text(l[..],ifx b[0].c[i].dead then " dies from Exhaustion" else " gains an Exhaustion level");
+  rs_tell(b,ifx b[0].c[i].dead then RS_EV_DEATH else RS_EV_CONDITION,-1,-1,i,b[0].c[i].exhaustion,RS_EXHAUSTION,l[..]);
+  return true;
+}
+
+#test "Exhaustion gains ignore unrelated immunity, set only their own flag and end stabilization on death" {
+  b: [1] RsBattle; b[0].w=8; b[0].h=8;
+  _ := rs_add(b[..],rs_cleric("Caster",0,3),1,1);
+  b[0].c[0].immune_cond=RS_BLINDED;
+  for level: 1..<7 {
+    b[0].c[0].stable=true;
+    #assert rs_gain_exhaustion(b[..],0);
+    #assert b[0].c[0].cond==RS_EXHAUSTION && b[0].c[0].exhaustion==level;
+    #assert b[0].c[0].stable==(level<6);
+  }
+}

@@ -6719,3 +6719,15 @@ exact. Action/Bonus Action budgets and feature events stay distinct; refusal
 changes no budget, movement, dice or events. The declared action profile retains
 its existing full-Speed Dash grant. Scope and remaining mid-turn/special-speed
 work: `docs/verification/srd-dash-2026-11-08/README.md`.
+
+## Exhaustion levels are cumulative state, not expiring condition records
+
+`exhaustion.coax` owns D20 penalties, Speed reduction and one-level recovery;
+`exhaustion-lifecycle.coax` admits one gain with immunity/logical-actor checks.
+Six levels kill without damage and notify the shared interruption lifecycle.
+Attack/save/initiative/escape and standalone/battle death-save paths apply the
+penalty; natural criticals and death-save twenties retain their source meaning.
+Recovery cannot revive and clears only Exhaustion at level zero. Producers must
+use cumulative APIs, not set a raw flag or create a timed condition record.
+Long Rest admission and complete mid-turn movement-credit reconciliation remain
+separate requirements. Evidence: `docs/verification/srd-exhaustion-2026-11-08/README.md`.

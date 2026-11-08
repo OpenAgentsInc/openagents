@@ -447,3 +447,12 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   #assert b[0].who==FT_FOE && b[0].turn.action && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
   #assert !fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
 }
+
+#test "saved-seat Dash credits Exhaustion-adjusted Speed through the shared world adapter" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b[0].c[FT_HERO].speed=30;
+  #assert rs_gain_exhaustion(b[..],FT_HERO) && rs_gain_exhaustion(b[..],FT_HERO);
+  before := s[0].turn.move_left*5+s[0].turn.move_feet;
+  #assert fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
+  #assert s[0].turn.move_left*5+s[0].turn.move_feet==before+20;
+}

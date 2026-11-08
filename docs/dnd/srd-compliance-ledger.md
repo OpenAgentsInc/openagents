@@ -355,3 +355,14 @@ and the separate Action/Bonus Action costs remain. Policy gate kills all 78
 mutants; native Dash, 198 hotbar and 21 selected Experimental checks pass.
 #13040 remains open for special speeds, mid-turn credit reconciliation and other
 action/reaction rules. [Evidence](../verification/srd-dash-2026-11-08/README.md).
+
+### Exhaustion level progress, 2026-11-08
+
+Exhaustion now has cumulative scalar state and gain/recovery APIs. D20 penalties
+reach attacks, saves, initiative, Athletics escape and both death-save paths;
+walking Speed subtracts five feet per level. Six levels kill without damage and
+end owned concentration through the shared lifecycle. Natural criticals/death
+save twenties remain special; recovery cannot revive. Five changed authority
+units kill 26/49/66/27/59 mutants with zero survivors. Rest admission, mid-turn
+movement-credit recalculation and producer/world migration are not complete;
+#13039 remains open. [Evidence](../verification/srd-exhaustion-2026-11-08/README.md).

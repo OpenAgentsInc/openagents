@@ -30,6 +30,7 @@
 #load "death-save-roll.coax";
 #load "dodge.coax";
 #load "dash.coax";
+#load "exhaustion-lifecycle.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -271,7 +272,7 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
   b[0].c[i] = c; b[0].c[i].x = -1; b[0].c[i].y = -1;
   rs_place(b, i, x, y);
   // Remarkable Athlete: Advantage on Initiative rolls
-  b[0].c[i].initiative = rs_d20(b[0].dice[..], ifx c.athlete then 1 else 0).roll + rs_mod(c.score[RS_DEX]);
+  b[0].c[i].initiative = rs_d20(b[0].dice[..], ifx c.athlete then 1 else 0).roll + rs_mod(c.score[RS_DEX]) - rs_exhaustion_penalty(c);
   b[0].n += 1;
   return i;
 }
@@ -713,20 +714,21 @@ rs_inspired_roll :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
 // One attack roll by i at j: the d20 with `edge`, `bonus`, a Critical Hit from `crit_min` up. A
 // missed spell attack can reroll with Seeking Spell (a Sorcery Point); a miss adds a held Bardic
 // Inspiration die; a hit can be cut by an enemy Bard's Cutting Words, or turned by Shield.
-RsAttackRoll :: struct { roll: int; edge: int; total: int; hit: bool; crit: bool; insp: int; seek: bool; cut: int; shield: bool; ac: int; parry: bool; boon: int; }
+RsAttackRoll :: struct { roll: int; edge: int; total: int; hit: bool; crit: bool; insp: int; seek: bool; cut: int; exhaustion: int; shield: bool; ac: int; parry: bool; boon: int; }
 rs_roll_attack :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, crit_min: int, spell: bool) -> RsAttackRoll {
   r: RsAttackRoll;
   d := rs_d20(b[0].dice[..], edge);
   r.roll = d.roll; r.edge = d.edge;
   r.ac = rs_ac(b, j);
-  if spell && b[0].c[i].seeking && b[0].c[i].uses[RS_USE_SORCERY] > 0 && r.roll < crit_min && (r.roll == 1 || r.roll + bonus < r.ac) {
+  r.exhaustion = rs_exhaustion_penalty(b[0].c[i]);
+  if spell && b[0].c[i].seeking && b[0].c[i].uses[RS_USE_SORCERY] > 0 && r.roll < crit_min && (r.roll == 1 || r.roll + bonus - r.exhaustion < r.ac) {
     b[0].c[i].uses[RS_USE_SORCERY] -= 1; r.seek = true;
     r.roll = rs_roll(b[0].dice[..], 20);
   }
   r.crit = r.roll >= crit_min;
   // Bless's 1d4 more, Bane's 1d4 less
   r.boon = rs_boon_roll(b, i);
-  r.total = r.roll + bonus + r.boon;
+  r.total = r.roll + bonus + r.boon - r.exhaustion;
   r.hit = r.roll != 1 && (r.crit || r.total >= r.ac);
   if !r.hit && r.roll != 1 { r.insp = rs_inspired_roll(b, i, r.total, r.ac); r.total += r.insp; r.hit = r.total >= r.ac; }
   if r.hit && !r.crit { r.cut = rs_cutting_words(b, i, r.total - r.ac); r.total -= r.cut; r.hit = r.total >= r.ac; }
@@ -740,6 +742,7 @@ rs_add_roll :: (l: [] RsLine, r: RsAttackRoll, bonus: int) {
   if r.edge < 0 { rs_add_text(l, " (Disadvantage)"); }
   if r.seek { rs_add_text(l, " (Seeking Spell)"); }
   rs_add_text(l, " + "); rs_add_int(l, bonus);
+  if r.exhaustion > 0 { rs_add_text(l, " - "); rs_add_int(l,r.exhaustion); rs_add_text(l," Exhaustion"); }
   if r.boon > 0 { rs_add_text(l, " + "); rs_add_int(l, r.boon); rs_add_text(l, " Bless"); }
   if r.boon < 0 { rs_add_text(l, " - "); rs_add_int(l, -r.boon); rs_add_text(l, " Bane"); }
   if r.insp > 0 { rs_add_text(l, " + "); rs_add_int(l, r.insp); rs_add_text(l, " Inspiration"); }
@@ -1093,7 +1096,7 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_HEX && b[0].c[i].eff[k].cond == RS_STR { downs += 1; } }
   // Rage and Remarkable Athlete (p. 49) give Advantage on Strength (Athletics) checks
   d := rs_d20(b[0].dice[..], rs_edge(ifx b[0].c[i].raging || b[0].c[i].athlete then 1 else 0, downs));
-  total := d.roll + rs_mod(b[0].c[i].score[RS_STR]);
+  total := d.roll + rs_mod(b[0].c[i].score[RS_STR]) - rs_exhaustion_penalty(b[0].c[i]);
   total += rs_inspired_roll(b, i, total, dc);
   total += rs_own_luck(b, i, total, dc);
   // Tactical Mind (p. 48): a failed check takes 1d10 from a Second Wind use, spent only if it succeeds
@@ -1128,7 +1131,7 @@ rs_can_move :: (c: RsCreature) -> bool {
 // One square of movement: 5 feet, 10 into Difficult Terrain; none while Restrained or at 0, or
 // after Steady Aim.
 rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
-  if b[0].who != i || !rs_can_move(b[0].c[i]) || b[0].turn.anchored { return false; }
+  if b[0].who != i || !rs_can_move(b[0].c[i]) || b[0].turn.anchored || rs_walk_speed(b,i)<=0 { return false; }
   if rs_feet(b[0].c[i].x, b[0].c[i].y, x, y) != RS_SQUARE { return false; }
   if x < 0 || y < 0 || x >= b[0].w || y >= b[0].h || rs_at(b, x, y) >= 0 { return false; }
   cost := rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,x,y));
@@ -1178,7 +1181,7 @@ rs_guarded :: (b: [] RsBattle, i: int) -> bool {
 
 // Current walking Speed, including the existing tracked Slow and halving effects.
 rs_walk_speed :: (b: [] RsBattle, i: int) -> int {
-  speed := rs_max(b[0].c[i].speed - (ifx b[0].c[i].slowed_until > b[0].clock then 10 else 0),0);
+  speed := rs_exhaustion_speed(b[0].c[i],b[0].c[i].speed - (ifx b[0].c[i].slowed_until > b[0].clock then 10 else 0));
   if b[0].c[i].halved_until > b[0].clock { speed = speed/2; }
   if rs_guarded(b,i) { speed = speed/2; }
   return speed;
