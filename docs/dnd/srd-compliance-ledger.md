@@ -482,3 +482,13 @@ pass. [Evidence](../verification/srd-kit-admission-2026-11-08/README.md).
 This verifies fresh preset supply for displayed spell choices, not effect
 execution, complete SRD choice coverage, nonspell feature behavior, physical
 inventory acquisition or world state projection. No issue closes on this audit.
+
+### Room-library baseline restored (2026-11-08)
+
+The original 1,400-frame horde cast-distribution check now passes at its
+unchanged traversal budget after replacing a whole-creature copy with a view
+in the raid's presence query. All assertions and AI decisions remain. The
+complete room library passes 325/325 checks. Together with the preceding
+leave-is-not-death fix this clears both retained room-library baseline failures.
+[Evidence](../verification/srd-room-traversal-2026-11-08/README.md). This is
+integration/build evidence, not full SRD or #13046 world qualification.

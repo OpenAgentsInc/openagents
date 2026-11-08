@@ -1,0 +1,11 @@
+ok   #test room raid: the horde acts apart: at any moment some move and some hold to cast, its casts spread over the beat (#12771) (1 case, 497539070 steps, 4009 ms)
+1 of 325 checks (--only 'the horde acts apart'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time traversal work: 110552287 of 134217728 used (82%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    17240575 visits  aethyr/rules/srd/command-halt.coax:51:10  copying arguments into 'rs_up' (48565 calls)
+    16198650 visits  aethyr/rules/srd/battle.coax:200:54  copying arguments into 'rs_capable' (45630 calls)
+    9746064 visits  aethyr/rules/srd/help.coax:66:1  in 'rs_help_start_turn' (1277 times)
+    9656710 visits  aethyr/rules/srd/effect-admission.coax:251:71  copying arguments into 'rs_up' (27202 calls)
+    3776192 visits  aethyr/rules/srd/battle.coax:603:11  copying arguments into 'rs_choice_continue' (59003 calls)
+  fix: pass a view, an index or only the fields it needs instead of copying arguments into 'rs_up' by value; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)

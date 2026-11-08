@@ -191,8 +191,8 @@ e5rd_mz :: (r: [] E5rRoom, i: int) -> f32 {
 }
 // Whether creature i is up and here: a player at their seat, a person out of doors.
 e5rd_up :: (r: [] E5rRoom, i: int) -> bool {
-  c := r[0].b[0].c[i];
-  if c.dead || c.hp <= 0 || c.x == E5R_AWAY { return false; }
+  c := r[0].b[0].c[i..<i+1];
+  if c[0].dead || c[0].hp <= 0 || c[0].x == E5R_AWAY { return false; }
   if i >= E5RR_SEAT && i < E5RR_SEAT + E5RR_SEATS { return r[0].live[i - E5RR_SEAT]; }
   if i >= E5RR_BEAST0 && i < E5RR_BEAST0 + E5RR_BEASTS { return e5rd_is(r[0].beasts[i - E5RR_BEAST0]) && r[0].raid[0].slot[i - E5RR_BEAST0].stage != E5RD_FLEE; }   // the siege's (#12860)
   return i >= E5RR_FOLK0 && i < E5RR_FOLK0 + E5R_FOLK;

@@ -1,0 +1,43 @@
+coax: note[E0400]: compile-time steps: 159406371 of 200000000 used (79%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    24133040 steps  aethyr/rigid.coax:61:1  in 'd3_dot' (1270160 times)
+    21062652 steps  aethyr/rigid.coax:50:1  in 'd3' (3510442 times)
+    20487078 steps  aethyr/rigid.coax:55:1  in 'd3_add' (1138171 times)
+    18211200 steps  aethyr/rigid.coax:57:1  in 'd3_scale' (1214080 times)
+    14929308 steps  aethyr/rigid.coax:62:1  in 'd3_cross' (414703 times)
+  fix: do less work in 'd3_dot', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 114193057 of 134217728 used (85%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    32948168 visits  coax/web/room/room.coax:543:1  #test 'QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match)' itself
+    21062652 visits  aethyr/rigid.coax:50:1  in 'd3' (3510442 times)
+    5740921 visits  coax/web/room/room.coax:226:1  in 'rm_quick_profile' (4 times)
+    4488848 visits  coax/web/room/room.coax:130:1  in 'rm_init'
+    3173760 visits  aethyr/contact.coax:49:1  in 'rigid_force_at' (41760 times)
+  fix: copy fewer whole arrays and structs #test 'QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match)' itself (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time value slots: 30672241 of 33554432 used (91%), above three quarters of the limit; more than 33554432 fails with E0400
+coax: note[E0400]: compile-time steps: 1669568590 of 1700000000 used (98%), above three quarters of the limit; more than 1700000000 fails with E0400
+  top users of compile-time steps:
+    924693016 steps  verse/everglade/plan.coax:621:1  in 'everglade_in_woods' (373648 times)
+    491843584 steps  aethyr/terrain.coax:114:1  in 'shaped' (125316 times)
+    65070800 steps  apps/openagents-web/everglade-sky.coax:34:1  in 'sky_bake' (4 times)
+    35199588 steps  apps/openagents-web/everglade.coax:622:1  in 'water_grid_build' (4 times)
+    22039368 steps  apps/openagents-web/everglade-sky.coax:26:1  in 'sky_ball' (847668 times)
+  fix: do less work in 'everglade_in_woods', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 117615478 of 134217728 used (87%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    40147254 visits  aethyr/rigid.coax:50:1  in 'd3' (6691209 times)
+    8323332 visits  verse/demolish.coax:1831:1  in 'demo_apart' (570578 times)
+    5909515 visits  verse/demolish.coax:1595:1  in 'demo_pair' (31491 times)
+    4554664 visits  aethyr/rigid.coax:125:9  copying arguments into 'd3_dot' (569333 calls)
+    4554664 visits  aethyr/rigid.coax:126:65  copying arguments into 'd3_dot' (569333 calls)
+  fix: copy fewer whole arrays and structs in 'd3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time steps: 21889806 of 28000000 used (78%), above three quarters of the limit; more than 28000000 fails with E0400
+  top users of compile-time steps:
+    3325140 steps  aethyr/query.coax:81:1  in 'query_finite' (255780 times)
+    2930966 steps  aethyr/walk.coax:399:1  in 'step' (8820 times)
+    2143260 steps  aethyr/locomotion.coax:72:1  in 'locomotion_profile_ok' (8820 times)
+    1852200 steps  aethyr/locomotion.coax:69:1  in 'locomotion_finite' (132300 times)
+    1058400 steps  aethyr/collide.coax:164:1  in 'collide_move' (8820 times)
+  fix: do less work in 'query_finite', split the check, or give it a larger budget with a larger #steps N on the check
+room: start check: 0 fields off their defaults, the same from any memory
+built /tmp/srd-room-traversal-server

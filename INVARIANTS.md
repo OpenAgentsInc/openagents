@@ -6860,7 +6860,8 @@ rollback. An accepted press preserves spent Reactions and every other seat's
 budgets; only a real turn renews a Reaction. The explicit override now includes
 Focus/Rage along with slots/ordinary uses. Raid-hero/custom-summon paths and
 Everglade II's visible state/prediction still need migration work.
-Full-room qualification still has two independently reproduced baseline failures.
+The formerly retained room-library failures are resolved; see
+`docs/verification/srd-room-traversal-2026-11-08/README.md`.
 Evidence: `docs/verification/srd-room-press-2026-11-08/README.md`.
 
 ## Everglade II broadcasts accepted casts only after shared execution
@@ -6904,6 +6905,6 @@ changing actual HP/death. The retained owner permits the room's declared
 summon/zone persistence across disconnect (multiplayer spec 6.3). Shared
 concentration still ends on actual zero HP/death or duration; a new player
 replaces the owner and retires old effects. Leave neither heals nor revives,
-and existing HP rejoin persistence remains. The Conjure Animals baseline
-failure is fixed; the horde traversal baseline remains. Evidence and scope:
+and existing HP rejoin persistence remains. The Conjure Animals and horde traversal baseline
+failures are fixed; all 325 room-library checks pass. Evidence and scope:
 `docs/verification/srd-room-leave-2026-11-08/README.md`.
