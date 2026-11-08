@@ -88,6 +88,10 @@ ev_house_box :: (out:[]EvNear,site:terrain.ExpSite,dy:f32,box:[6]f32) {
  if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;
  out[0].walls[o]=site.x+box[0];out[0].walls[o+1]=dy+box[1];out[0].walls[o+2]=site.z+box[2];out[0].walls[o+3]=site.x+box[3];out[0].walls[o+4]=dy+box[4];out[0].walls[o+5]=site.z+box[5];out[0].wall_n+=1;
 }
+#test "all castle gates stay open through the curtain walls" {
+ a:[1]EvNear;for gate:castle.CASTLE_GATES {a[0].wall_n=0;ev_castle_near(a[..],gate[0],gate[1],4,terrain.exp_height(gate[0],gate[1]));#assert a[0].wall_n>0 && !a[0].overflow;
+  for j:0..<a[0].wall_n {o:=j*6;#assert !(gate[0]>a[0].walls[o] && gate[0]<a[0].walls[o+3] && gate[1]>a[0].walls[o+2] && gate[1]<a[0].walls[o+5]);}}
+}
 ev_castle_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
  for i:0..<castle.CASTLE_SEGMENTS {p:=castle.castle_segment(i);hx:=ifx p[2]==0 then 1.02f32 else 0.23f32;hz:=ifx p[2]==0 then 0.23f32 else 1.02f32;
   if abs(x-p[0])>reach+hx || abs(z-p[1])>reach+hz {continue;}site:=terrain.ExpSite.{x=p[0],z=p[1]};y:=terrain.exp_height(p[0],p[1])-ground;ev_house_box(out,site,0,[6]f32.[-hx,y-0.15,-hz,hx,y+6.1,hz]);

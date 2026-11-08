@@ -1,15 +1,29 @@
-// Castle courtyard: the existing tower anchors three matching towers and stone walls.
+// A nine-tower castle with four linked courtyards and a central keep.
 #module "verse.experimentalcastle";
 #test "castle walls connect four towers and leave a broad entrance" {
- #assert CASTLE_SEGMENTS==54;
+ #assert CASTLE_SEGMENTS==133;
  for i:0..<CASTLE_SEGMENTS {p:=castle_segment(i);#assert p[2]==0 || p[2]==1;#assert !(p[2]==0 && p[1]== -20 && p[0]>31 && p[0]<37);}
  #assert castle_segment(0)[0]==21 && castle_segment(CASTLE_SEGMENTS-1)[2]==1;
 }
-CASTLE_SEGMENTS :: 54;
+#test "expanded castle spans four connected courtyards" {
+ #assert CASTLE_SEGMENTS==133;
+ found_north:=false;found_south:=false;found_east:=false;
+ for i:0..<CASTLE_SEGMENTS {p:=castle_segment(i);if p[1]== -74 {found_south=true;}if p[0]==74 {found_east=true;}if p[1]== -20 && p[0]>50 {found_north=true;}}
+ #assert found_north && found_south && found_east;
+}
+CASTLE_SEGMENTS :: 133;
 // World-space segment centres and orientation: 0 along X, 1 along Z.
 castle_segment :: (i:int)->[3]f32 {
  if i<12 {j:=ifx i<6 then i else i+2;return [3]f32.[21+f32(j)*2,-20,0];}
- if i<26 {return [3]f32.[21+f32(i-12)*2,-52,0];}
- if i<40 {return [3]f32.[18,-23-f32(i-26)*2,1];}
- return [3]f32.[50,-23-f32(i-40)*2,1];
+ if i<24 {j:=i-12;j=ifx j<6 then j else j+2;return [3]f32.[21+f32(j)*2,-52,0];}
+ if i<38 {return [3]f32.[18,-23-f32(i-24)*2,1];}
+ if i<50 {j:=i-38;j=ifx j<6 then j else j+2;return [3]f32.[50,-23-f32(j)*2,1];}
+ if i<60 {return [3]f32.[53+f32(i-50)*2,-20,0];}
+ if i<74 {return [3]f32.[74,-23-f32(i-60)*2,1];}
+ if i<83 {return [3]f32.[74,-55-f32(i-74)*2,1];}
+ if i<109 {return [3]f32.[21+f32(i-83)*2,-74,0];}
+ if i<117 {j:=i-109;j=ifx j<4 then j else j+2;return [3]f32.[53+f32(j)*2,-52,0];}
+ if i<126 {return [3]f32.[18,-55-f32(i-117)*2,1];}
+ j:=i-126;j=ifx j<4 then j else j+2;return [3]f32.[50,-55-f32(j)*2,1];
 }
+CASTLE_GATES :: [5][3]f32.[[3]f32.[34,-20,0],[3]f32.[34,-52,0],[3]f32.[50,-36,1],[3]f32.[62,-52,0],[3]f32.[50,-64,1]];

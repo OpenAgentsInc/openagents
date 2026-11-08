@@ -193,7 +193,7 @@ gp_village_normal :: (t:[12]f32,n:[3]f32)->[3]f32 {
 #test "showcase coordinates stay inside the meadow" {
  p:=gp_showcase_position(0);q:=gp_showcase_position(256);
  #assert p[0]>= -82 && p[1]>= -82 && q[0]<=82 && q[1]<=82;
- for i:209..<257 {r:=gp_showcase_position(i);#assert r[0]>=56 && r[0]<=76 && r[1]>= -74 && r[1]<= -39;}
+ for i:209..<257 {r:=gp_showcase_position(i);#assert r[0]>=56 && r[0]<=76 && r[1]>= -5 && r[1]<=23;}
  mask:[269]bool;mask[0]=true;#assert gp_showcase_clear(mask[..],p[0],p[1]) && !gp_showcase_clear(mask[..],0,0);
  a:=gp_showcase_position(257);mask[257]=true;#assert a[0]< -10 && a[1]>0 && gp_showcase_clear(mask[..],a[0],a[1]);
  mask[0]=false;#assert !gp_showcase_clear(mask[..],p[0],p[1]);
@@ -208,7 +208,7 @@ gp_fantasy_showcase :: (pack:string,name:string)->bool {
  for prefix:[22]string.["Burger","Cheeseburger","DoubleCheeseburger","Cheese_Singles","ChocolateBar","Chopsticks","Corndog","Cupcake","Donut","Fries","Hotdog","IceCream","Ketchup","MayoBottle","MustardBottle","PeanutButter","Pizza","Popsicle","Sashimi","Soda","SoySauce","Sushi"] {if starts(name,prefix) {return false;}}
  return true;
 }
-gp_showcase_position :: (i:int)->[2]f32 {if i>=257 {j:=i-257;return [2]f32.[-26.0+f32(j%6)*3.0,8.0+f32(j/6)*4.0];}if i<209 {return [2]f32.[-10.0+f32(i%11)*2.0,8.0+f32(i/11)*2.8];}j:=i-209;return [2]f32.[56.0+f32(j%6)*4.0,-74.0+f32(j/6)*5.0];}
+gp_showcase_position :: (i:int)->[2]f32 {if i>=257 {j:=i-257;return [2]f32.[-26.0+f32(j%6)*3.0,8.0+f32(j/6)*4.0];}if i<209 {return [2]f32.[-10.0+f32(i%11)*2.0,8.0+f32(i/11)*2.8];}j:=i-209;return [2]f32.[56.0+f32(j%6)*4.0,-5.0+f32(j/6)*4.0];}
 gp_showcase_clear :: (mask:[]bool,x:f32,z:f32)->bool {for i:0..<269 {if !mask[i] {continue;}p:=gp_showcase_position(i);r:=ifx i<209 then 0.8f32 else ifx i<257 then 1.8f32 else 1.6f32;dx:=x-p[0];dz:=z-p[1];if dx*dx+dz*dz<r*r {return true;}}return false;}
 gp_showcase_colour :: (root:string,name:string,material:string,t:[]Txt)->[3]f32 {
  path:=txt_cat3(t,root,"/OBJ/",txt_cat(t,name,".mtl"));b:[262144]u8;n:=fs_read(path,b[..]);if n<0 {ph_die2("missing source material: ",path);}lines:[1]Lines;lines[0].text=cast(string)b[0..<n];selected:=false;
@@ -380,7 +380,7 @@ gp_castle :: (w:[]Gp,g:[]Gltf,root:string,objects:string,dungeon:string) {
   x:=v[0]-site.x;z:=v[1]-site.z;y:=meadow.exp_height(v[0],v[1])-base;
   for level:0..<2 {p.m=ifx v[2]==0 then [12]f32.[1,0,0,0,1,0,0,0,1,x,y+f32(level)*3,z] else [12]f32.[0,0,-1,0,1,0,1,0,0,x,y+f32(level)*3,z];gp_village_mesh(w,g,root,p,w[0].village_layer,1,0.375);}
  }
- arch:="10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f";path:=txt_cat3(w[0].txt[..],objects,"/",arch);gp_showcase_at(w,g,path,dungeon,"Arch",[2]f32.[34,-20],w[0].village_layer,1,0,0,115.3125);
+ arch:="10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f";path:=txt_cat3(w[0].txt[..],objects,"/",arch);for gate:castle.CASTLE_GATES {gp_showcase_at(w,g,path,dungeon,"Arch",[2]f32.[gate[0],gate[1]],w[0].village_layer,1,ifx gate[2]==1 then 1.5707963f32 else 0.0f32,0,115.3125);}
 }
 gp_prop_tile :: (name:string)->int {
  if name=="MI_Trim_Furniture" {return 11;}if name=="MI_Trim_Metal" || name=="MI_Trim_Metal_Vertex" {return 12;}

@@ -54,3 +54,6 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  p=walk.walk_place(28,0,-16,0);for i:0..<100 {p=village_walk(p,1);}#assert p.pos.z> -20;
  p=walk.walk_place(28,0,-48,0);for i:0..<100 {p=village_walk(p,1);}#assert p.pos.z> -52;
 }
+#test "castle internal arch connects the southern courtyard" #steps 200000000 {
+ p:=walk.walk_place(34,0,-48,0);for i:0..<100 {p=village_walk(p,1);}#assert p.pos.z< -52.5 && p.pos.z> -74;
+}

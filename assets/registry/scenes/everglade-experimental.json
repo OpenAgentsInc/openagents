@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "f8e6dc8302e9b2a92d2ced770c82d358173f8ff8865c94e760deae5a40e44898",
+    "sha256": "c30e05e07831384b7ff827eb1899ea7d11f32369aed252b89dfc3e44aae22db5",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2298,10 +2298,10 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "90c42ef94b84681126e79ad45ce68734773bfd76a46edb94ac9646a323bd2854",
+    "sha256": "c392f2919a0de6a8634957264d76a9a716f63e9b1e71e2c220bb3393c970de7d",
     "budget_bytes": 536870912,
-    "decoded_sha256": "c81da2305c564dddac92d7cd8a8bdaeae5d38485fdaf36e3b384811cd5c32f89",
-    "decoded_bytes": 188817676,
+    "decoded_sha256": "2dec9e72b80d7a86ebc889f495a86aa77152f723b29bb47ded812e20d82bd628",
+    "decoded_bytes": 207646016,
     "encoding": "gzip"
   },
   "terrain": {
@@ -2321,7 +2321,7 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "26bea27ea249091f397f0bf5f0f71bede7bc41adbe83af6a910e7f5ac38ae119"
+      "sha256": "bb044a050a4185a12e3ab6d75523e71989ec86fcc407c9c25ab0804d308d6cf5"
     }
   },
   "scope": "Nature meadow, source-authored Medieval Village layouts, castle courtyard and furnished watchmaker workshop; Character Create wardrobe remains unchanged.",
@@ -2468,6 +2468,54 @@
           -52
         ],
         "purpose": "castle courtyard"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          74,
+          -20
+        ],
+        "purpose": "castle courtyard"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          74,
+          -52
+        ],
+        "purpose": "castle courtyard"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          18,
+          -74
+        ],
+        "purpose": "castle courtyard"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          50,
+          -74
+        ],
+        "purpose": "castle courtyard"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          74,
+          -74
+        ],
+        "purpose": "castle courtyard"
+      },
+      {
+        "source": "House C",
+        "origin": [
+          36,
+          -34
+        ],
+        "purpose": "castle keep"
       }
     ],
     "collision": {
@@ -2482,7 +2530,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "bf2ac0afeb5dd35da9dc52075d5c916ba8540d4ae9e19ce02f3ace0e63e19fb4"
+        "sha256": "707b1c750b55e46c54edbf653fd79fda9edd850e54ff8ba59653ab3ec73f0436"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2598,7 +2646,7 @@
   },
   "scene_asset_collision": {
     "path": "verse/experimental-scene-colliders.coax",
-    "sha256": "a10b14c88717225ea838763278056343c97fd119f3d6d0355efa17d0d33681d5",
+    "sha256": "29c9b0219956eee983877242eefa46f38a3ebaa00e415c242407de130a5f01b8",
     "placed_assets": 584,
     "source": "Generated from transformed scene vertices during pack compilation; living enemies use moving capsules."
   },
@@ -2619,17 +2667,69 @@
       [
         50,
         -52
+      ],
+      [
+        74,
+        -20
+      ],
+      [
+        74,
+        -52
+      ],
+      [
+        18,
+        -74
+      ],
+      [
+        50,
+        -74
+      ],
+      [
+        74,
+        -74
       ]
     ],
     "entrance": [
       34,
       -20
     ],
-    "wall_segments": 54,
+    "wall_segments": 133,
     "wall_height_metres": 6,
     "source": {
       "path": "verse/experimental-castle.coax",
-      "sha256": "bef3b7e18805e165ff261f79b5d78f5767f486c32bd146df2c97ea58a33b285c"
-    }
+      "sha256": "2f187044cf925c8ac22fae3dce66e24d88ad70886c2c186ac57e5dfc78ca5d86"
+    },
+    "keep": [
+      36,
+      -34
+    ],
+    "size_metres": [
+      56,
+      54
+    ],
+    "courtyards": 4,
+    "gates": [
+      [
+        34,
+        -20
+      ],
+      [
+        34,
+        -52
+      ],
+      [
+        50,
+        -36
+      ],
+      [
+        62,
+        -52
+      ],
+      [
+        50,
+        -64
+      ]
+    ],
+    "foundation": "Level shared castle platform with a smooth terrain transition"
   }
 }

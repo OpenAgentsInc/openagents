@@ -8,8 +8,8 @@ edge.
 
 The world contains the four distinct layouts from Quaternius's Medieval Village
 Godot sample scene: House C, Tower, Houses A, and Houses D. House C2 is an exact
-local-layout duplicate of House C and is not duplicated. Twelve placements combine
-these layouts into larger settlements, using 1,631 source-authored pieces with
+local-layout duplicate of House C and is not duplicated. Eighteen placements combine
+these layouts into larger settlements, using 2,183 source-authored pieces with
 their original transforms, meshes and base-color textures. Buildings supply
 nearby collision shapes to the Everglade walker: the source
 collision meshes become individual axis-aligned boxes, and the interior stairs
@@ -134,4 +134,4 @@ The scene packer also writes the placed assets’ world-space collision bounds t
 
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
 
-The castle courtyard spans the original tower at (18, -20) and matching towers at (50, -20), (18, -52), and (50, -52). Two-storey stone curtain walls link them, with an arched entrance at (34, -20); the wall and tower colliders stop the player and camera.
+The castle spans 56 by 54 metres, with nine towers surrounding four connected courtyards and a central keep. Its main arched entrance is at (34, -20). The walls and towers share a level foundation, with a smooth transition to the surrounding meadow. The walls and towers supply colliders to the player and camera.
