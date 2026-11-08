@@ -1,0 +1,13 @@
+aethyr/rules/srd/stat-opportunity-checks.coax:9:6: error[E0315]: procedure 'rs_stat_opportunity' is not declared
+    r:=rs_stat_opportunity(b[..],0,1,a,q);
+       ^
+aethyr/rules/srd/stat-opportunity-checks.coax:12:12: error[E0315]: procedure 'rs_stat_opportunity' is not declared
+    #assert !rs_stat_opportunity(b[..],0,1,a,q).admitted;
+             ^
+aethyr/rules/srd/stat-opportunity-checks.coax:19:8: error[E0315]: procedure 'rs_stat_opportunity' is not declared
+      r:=rs_stat_opportunity(b[..],0,1,a,q);
+         ^
+3 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

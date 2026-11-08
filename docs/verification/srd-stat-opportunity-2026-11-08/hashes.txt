@@ -1,0 +1,2 @@
+221f913d9e5da670ec27121a862f5ae4b6b0db845b543395de747351ce7e215b  aethyr/rules/srd/stat-opportunity.coax
+c00fa1de173748acf0fbcaedaa31c849d669180ecad9694b8d1c19783bb38852  aethyr/rules/srd/stat-opportunity-checks.coax

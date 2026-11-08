@@ -37,6 +37,7 @@
 #load "disengage.coax";
 #load "opportunity-trigger.coax";
 #load "opportunity-attack.coax";
+#load "stat-opportunity.coax";
 #load "opportunity-movement.coax";
 #load "movement-credit.coax";
 #load "exhaustion-lifecycle.coax";

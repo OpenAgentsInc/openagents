@@ -6967,3 +6967,14 @@ Lab grid/player-token/Siege walks select nearby visible foes through this
 boundary. This does not wire Experimental's separate continuous controller or
 Everglade II's network movement. Evidence and remaining scope:
 `docs/verification/srd-opportunity-movement-2026-11-08/README.md`.
+
+## Typed monster opportunities use declared melee numbers and reach
+
+`stat-opportunity.coax` resolves exactly one trusted typed melee stat-block
+attack through the shared strike executor and retained Reaction frame. Printed
+numbers/reach replace weapon-bank guesses; owned Charmed prohibition, Reaction
+spending on miss, true mover-turn spell budgets and refusal atomicity remain.
+The record has no mastery/Finesse retained rider. The physical controller is
+still a separate integration requirement; this does not alter E2's social
+no-bystander-harm profile. Evidence and limits:
+`docs/verification/srd-stat-opportunity-2026-11-08/README.md`.
