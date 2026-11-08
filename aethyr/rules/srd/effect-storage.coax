@@ -67,6 +67,7 @@
 }
 rs_effect_conditions :: (e: RsEffect) -> int #effects(all) {
   if e.kind == EF_ZONE_RESTRAIN { return RS_RESTRAINED; }
+  if e.kind == EF_REST_SLEEP { return RS_UNCONSCIOUS; }
   return ifx e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED then e.cond else 0;
 }
 rs_effect_room :: (c: RsCreature, replacing: bool, by: int, spell: int) -> int #effects(all) {
@@ -104,7 +105,7 @@ rs_effect_end :: (c: [] RsCreature, k: int) #effects(all) {
     for other: c[0].eff { if other.kind == EF_ZONE_RESTRAIN { c[0].restrained_by = other.cond; break; } }
   }
   mask := rs_effect_conditions(e); if mask == 0 { return; }
-  held := 0;
+  held := ifx e.kind==EF_REST_SLEEP then e.cond else 0;
   for other: c[0].eff { held |= rs_effect_conditions(other); }
   if c[0].restrained_by >= 0 { held |= RS_RESTRAINED; }
   if c[0].hp == 0 && !c[0].dead { held |= RS_UNCONSCIOUS; }

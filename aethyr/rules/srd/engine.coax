@@ -148,6 +148,7 @@ EF_BLESS :: 11; EF_BANE :: 12; EF_FAITH :: 13; EF_HALT :: 15;
 EF_ZONE_RESTRAIN :: 16; // cond is the owned zone index, not a condition mask
 EF_HALT_PENDING :: 17;
 EF_HELP_CHECK :: 18; // cond encodes a skill, or RS_SKILLS + a tool
+EF_REST_SLEEP :: 20; // natural sleep, owned by sleep/wake events
 EF_HELP_ATTACK :: 19; // distraction on this enemy, eligible helper allies consume it
 
 // The classes a creature can be built as (-1 for a stat block).

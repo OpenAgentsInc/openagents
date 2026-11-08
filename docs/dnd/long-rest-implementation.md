@@ -81,3 +81,13 @@ pending until the owner applies benefits and acknowledges its exact timestamp;
 that timestamp controls subsequent sixteen-hour admission. Actual world sleep,
 clock conversion, causal producer hooks, benefits and persistence remain the
 next integration work. [State/native evidence](../verification/srd-long-rest-state-2026-11-08/README.md).
+
+## Owned sleep condition
+
+`rest-sleep.coax` now provides capacity-safe sleep/wake primitives through the
+shared battle engine. Natural sleep owns a nonexpiring Unconscious effect;
+waking preserves independent raw, recorded and zero-HP sources, and leaves
+Prone. Admission uses the existing incapacitation lifecycle and updates the
+represented held-focus state. The retained journal and actual world producers
+still need to call these in causal order. Full inventory dropping remains
+separate from the existing focus representation. [Sleep/native evidence](../verification/srd-rest-sleep-2026-11-08/README.md).

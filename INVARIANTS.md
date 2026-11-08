@@ -7081,3 +7081,10 @@ later. Pending completion grants no benefits until its owner applies and
 acknowledges them. Its private integer-second state has no world caller yet;
 condition ownership, causal event hooks, full benefits and persistence remain
 required. See `docs/verification/srd-long-rest-state-2026-11-08/README.md`.
+
+Natural sleep has its own event-owned effect record. Admission retains capacity
+before incapacitation consequences; full storage cannot end concentration or
+evict an effect. Waking retires only sleep ownership, preserving independent
+raw/recorded/zero-HP Unconscious sources and leaving Prone. Ordinary clock
+expiry cannot wake it. World/journal transitions and full inventory dropping
+remain separate. See `docs/verification/srd-rest-sleep-2026-11-08/README.md`.

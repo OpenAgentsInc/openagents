@@ -51,6 +51,7 @@
 #load "short-rest-resources.coax";
 #load "long-rest-resources.coax";
 #load "short-rest.coax";
+#load "rest-sleep.coax";
 #load "help.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";

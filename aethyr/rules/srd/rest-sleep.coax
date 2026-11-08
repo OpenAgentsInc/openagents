@@ -1,0 +1,95 @@
+// SRD 5.2.1 Long Rest p185 and Unconscious p191. Natural sleep is an
+// event-owned condition source, separate from spell and zero-HP sources.
+#authority;
+
+#test "sleep owns Unconscious and waking preserves independent effects and Prone" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].focus_held=true; c[0].immune_cond=RS_BLINDED;
+  c[0].reacted=true; c[0].rest.dice=1; c[0].rest.recovery_used=true;
+  #assert !rs_sleeping(c[0]);
+  #assert rs_sleep_begin(b[..],0) && rs_sleeping(c[0]);
+  #assert rs_has(c[0],RS_UNCONSCIOUS|RS_PRONE) && !rs_can_act(c[0]);
+  #assert c[0].eff[0].kind==EF_REST_SLEEP && c[0].eff[0].cond==0 && c[0].eff[0].by == -1 && c[0].eff[0].spell == -1 && c[0].eff[0].save == -1 && c[0].eff[0].until==0;
+  #assert !c[0].focus_held && rs_dash_speed(b[..],0)==0 && rs_locomotion_scale(b[..],0)==0;
+  #assert !rs_effect_uses_clock(EF_REST_SLEEP);
+  before:=rs_effect_free(c[0]);
+  #assert rs_sleep_begin(b[..],0) && rs_effect_free(c[0])==before;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,by=1,spell=SP_BLESS,until=90000,save=-1});
+  rs_sleep_end(c[..]);
+  #assert !rs_sleeping(c[0]) && rs_has(c[0],RS_UNCONSCIOUS) && rs_has(c[0],RS_PRONE);
+  rs_effect_end(c[..],1);
+  #assert !rs_has(c[0],RS_UNCONSCIOUS) && rs_has(c[0],RS_PRONE);
+  #assert c[0].reacted && c[0].rest.dice==1 && c[0].rest.recovery_used;
+  rs_sleep_end(c[..]); #assert c[0].cond==RS_PRONE;
+}
+
+#test "sleep admission refuses without evicting records or ending concentration" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3); c[0].focus_held=true;
+  c[0].conc=SP_BLESS; c[0].conc_until=900;
+  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=f32(k+1)}; }
+  #assert !rs_sleep_begin(b[..],0) && c[0].conc==SP_BLESS && c[0].focus_held && c[0].cond==0;
+  for k:0..<RS_EFFECTS { #assert c[0].eff[k].kind==EF_HEX && c[0].eff[k].by==k && c[0].eff[k].until==f32(k+1); }
+  c[0].eff[0].kind=EF_NONE;
+  c[0].immune_cond=RS_UNCONSCIOUS;
+  #assert !rs_sleep_begin(b[..],0) && c[0].conc==SP_BLESS;
+  c[0].immune_cond=0;
+  #assert !rs_sleep_begin(b[..],-1) && !rs_sleep_begin(b[..],1);
+  b[0].reaction_frame.on=true; #assert !rs_sleep_begin(b[..],0);
+  b[0].reaction_frame.on=false;
+  c[0].hp=0; #assert !rs_sleep_begin(b[..],0);
+  c[0].hp=1; c[0].dead=true; #assert !rs_sleep_begin(b[..],0);
+  c[0].dead=false;
+  #assert rs_sleep_begin(b[..],0) && c[0].conc == -1;
+  #assert c[0].eff[1].kind==EF_HEX && c[0].eff[RS_EFFECTS-1].kind==EF_HEX;
+}
+
+#test "waking preserves raw and zero-HP Unconscious ownership and never stands up" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].cond=RS_UNCONSCIOUS|RS_BLINDED;
+  #assert rs_sleep_begin(b[..],0);
+  #assert c[0].eff[0].cond==RS_UNCONSCIOUS;
+  rs_sleep_end(c[..]);
+  #assert c[0].cond==(RS_UNCONSCIOUS|RS_BLINDED|RS_PRONE);
+  c[0].cond=0;
+  #assert rs_sleep_begin(b[..],0);
+  c[0].hp=0;
+  rs_sleep_end(c[..]);
+  #assert c[0].cond==(RS_UNCONSCIOUS|RS_PRONE);
+  c[0].hp=1; c[0].cond=0;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,save=-1});
+  #assert rs_sleep_begin(b[..],0);
+  rs_effect_end(c[..],0);
+  #assert rs_has(c[0],RS_UNCONSCIOUS);
+  rs_sleep_end(c[..]);
+  #assert c[0].cond==RS_PRONE;
+}
+
+#test "sleep does not override immunity to Prone or drop a worn focus" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Sleeper",0,3); c[0].immune_cond=RS_PRONE; c[0].focus_worn=true;
+  #assert rs_sleep_begin(b[..],0);
+  #assert c[0].cond==RS_UNCONSCIOUS && c[0].focus_worn;
+  rs_sleep_end(c[..]); #assert c[0].cond==0 && c[0].focus_worn;
+}
+
+rs_sleeping :: (c:RsCreature)->bool #effects(all) {
+  for e:c.eff { if e.kind==EF_REST_SLEEP { return true; } }
+  return false;
+}
+rs_sleep_begin :: (b:[]RsBattle,i:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].reaction_frame.on { return false; }
+  if b[0].c[i].dead || b[0].c[i].hp<1 || (b[0].c[i].immune_cond & RS_UNCONSCIOUS)!=0 { return false; }
+  if rs_sleeping(b[0].c[i]) { return true; }
+  // Preserve an already-present raw source; recorded sources retain themselves
+  // and must not become an immortal raw source when their record later ends.
+  raw:=b[0].c[i].cond & RS_UNCONSCIOUS;
+  for e:b[0].c[i].eff { raw=rs_clear(raw,rs_effect_conditions(e)); }
+  if !rs_put_effect(b,i,RsEffect.{kind=EF_REST_SLEEP,cond=raw,by=-1,spell=-1,save=-1}) { return false; }
+  b[0].c[i].cond |= rs_effect_condition_mask(b[0].c[i],RS_PRONE);
+  b[0].c[i].focus_held=false;
+  return true;
+}
+rs_sleep_end :: (c:[]RsCreature) #effects(all) {
+  for k:0..<RS_EFFECTS { if c[0].eff[k].kind==EF_REST_SLEEP { rs_effect_end(c,k); } }
+}
