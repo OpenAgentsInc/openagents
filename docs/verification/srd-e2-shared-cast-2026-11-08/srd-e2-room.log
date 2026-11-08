@@ -1,0 +1,5 @@
+ok   #test everglade II room: a seat casts its Character Create class's kit, every page near hears e cast, and other slots, too soon or too far are refused (#13058) (1 case, 21728373 steps, 854 ms)
+ok   #test everglade II room executes self healing and refuses a speech-blocked spell before publishing (1 case, 6259399 steps, 563 ms)
+2 of 887 checks (--only 'everglade II room'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 30672239 of 33554432 used (91%), above three quarters of the limit; more than 33554432 fails with E0400

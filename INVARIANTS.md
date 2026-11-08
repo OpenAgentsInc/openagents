@@ -6859,6 +6859,19 @@ cost policy as Experimental. Its public transaction retains complete refusal
 rollback. An accepted press preserves spent Reactions and every other seat's
 budgets; only a real turn renews a Reaction. The explicit override now includes
 Focus/Rage along with slots/ordinary uses. Raid-hero/custom-summon paths and
-Everglade II's separate presentation-only cast broadcast remain migration work.
+Everglade II's visible state/prediction still need migration work.
 Full-room qualification still has two independently reproduced baseline failures.
 Evidence: `docs/verification/srd-room-press-2026-11-08/README.md`.
+
+## Everglade II broadcasts accepted casts only after shared execution
+
+`eg_e2_cast` retains class-slot/aim/range/network-cooldown validation and calls
+the transactional `everglade2-rules.coax` executor before publishing acceptance.
+Self/ally entries affect the caster through shared rules. The declared social
+profile sends offensive spells through shared empty-target costs/lifecycle
+without damage or a harmful zone; empty swings spend an Action without a hit.
+Unlimited press preparation does not renew Reactions or movement, and refusal
+restores its budgets, seat and dice. Other actors' turns stay intact. The page
+still predicts presentation; visible state, acknowledgement and broader world
+qualification remain work. Evidence:
+`docs/verification/srd-e2-shared-cast-2026-11-08/README.md`.

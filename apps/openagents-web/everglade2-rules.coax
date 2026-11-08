@@ -1,0 +1,51 @@
+// Everglade II's declared social combat profile: shared self effects and paid
+// empty offensive casts. No creature is selected for harm and no area damages
+// bystanders. The room owns the class/slot and real creature/turn state.
+#load "class-kit.coax";
+#load "../../aethyr/rules/srd/press-budget.coax";
+#authority;
+
+e2r_use :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool #effects(all) {
+  switch e2r_atomic(b,seats,klass,slot) { case none { return false; } case some(ok) { return ok; } }
+}
+e2r_atomic :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool? #effects(all) {
+  #transaction {
+    if !e2r_apply(b,seats,klass,slot) { return null; }
+  }
+  return some(true);
+}
+e2r_apply :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool #effects(all) {
+  i:=seats[0].me;
+  if i<0 || i>=b[0].n { return false; }
+  e:=xk_entry(klass,slot);
+  if !e.ok || !rs_can_act(b[0].c[i]) { return false; }
+  turn:[1] RsTurn; turn[0]=seats[0].turn;
+  _:=rs_press_prepare(b[0].c[i..<b[0].n],turn[..],RS_UNLIMITED_PRESS);
+  seats[0].turn=turn[0]; seats[0].open=true;
+  fb_seat_in(b,seats);
+  ok:=e2r_dispatch(b,i,e.ab);
+  fb_seat_out(b,seats);
+  return ok;
+}
+e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) {
+  if a.tg==FB_SELF || a.tg==FB_ALLY {
+    return fb_use(b,i,a,i,b[0].c[i].x,b[0].c[i].y,i);
+  }
+  if a.kind==FB_SPELL {
+    sl:=ifx a.lvl>0 then fb_free_slot(b,i,a.lvl) else a.lvl;
+    return fb_cast_at_nothing(b,i,a.sp,sl);
+  }
+  if a.kind==FB_ATTACK && !b[0].turn.action {
+    // Empty swing: no invented target, hit roll, damage or on-hit benefit.
+    b[0].turn.action=true; return true;
+  }
+  return false;
+}
+
+#test "Everglade II uses the shared self feature rather than a presentation-only Rage" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_BARBARIAN,"Barbarian",0,1),2,2);
+  seats:[1] FbSeat; seats[0].me=0;
+  #assert e2r_use(b[..],seats[..],FB_CL_BARBARIAN,xk_slot(FB_CL_BARBARIAN,0));
+  #assert b[0].c[0].raging && seats[0].turn.bonus;
+}

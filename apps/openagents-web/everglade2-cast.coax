@@ -3,7 +3,8 @@
 // It aims as Experimental's does, ahead of you and never at anyone for you (xc_aim_for, xc_aim_point),
 // and looks and sounds as it does (class-look.coax xc_look_of, class-kit.coax xc_sound,
 // experimental-sound.coax). Everglade II has no monsters and its players can't harm each other: a cast
-// is seen and heard, nothing more. A bolt flies to its range and fizzles, a blow swings at the air,
+// has no harmful target. The server now resolves self effects and cast costs through
+// shared rules; this page predicts presentation. A bolt flies to its range and fizzles, a blow swings at the air,
 // an area opens ahead.
 //
 // A press plays at once here and goes to the room (everglade2-net.coax e2n_cast: C SEQ SLOT AX AY AZ

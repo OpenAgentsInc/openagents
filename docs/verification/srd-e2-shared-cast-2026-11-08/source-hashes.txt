@@ -1,0 +1,5 @@
+7fbe4d738d0e1be6dbff70ee0898ed1d07439f16589eebb0f8b694fa4c7d2718  apps/openagents-web/everglade2-rules.coax
+7b77bbe887f3c8dc8ccbad5b8f3de3cc0523023a36b65110dd0667f86020aaf9  apps/openagents-web/everglade2-rules-checks.coax
+f92807972ba89fab6f40e624383d8938916bfdce97390828620ebf3eccabd0f8  apps/openagents-web/everglade2-rules-native.coax
+7972fa474dacdb748573666b34a39c32164d8491321cbbfe8c312d43e6832370  coax/web/room/room-everglade.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax

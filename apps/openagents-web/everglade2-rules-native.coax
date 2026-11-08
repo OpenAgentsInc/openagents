@@ -1,0 +1,15 @@
+#load "everglade2-rules-checks.coax";
+#load "../../coax/lib/sys/tool.coax";
+
+tool_main :: ()->int #export_c #effects(all) {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3);
+  _=rs_add(b[..],fb_cl_hero(FB_CL_BARD,"Bard",0,1),5,3);
+  s:[1] FbSeat; s[0].me=0; b[0].c[0].hp=1; b[0].c[0].reacted=true;
+  if !e2r_use(b[..],s[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,0)) || b[0].c[0].hp<=1 || !b[0].c[0].reacted { return 1; }
+  hp:=b[0].c[0].hp; s[0]=FbSeat.{me=1}; b[0].c[1].speech_blocked=true; b[0].c[1].slots[1]=0;
+  if e2r_use(b[..],s[..],FB_CL_BARD,xk_slot(FB_CL_BARD,2)) || b[0].c[1].slots[1]!=0 || s[0].open { return 2; }
+  b[0].c[1].speech_blocked=false;
+  if !e2r_use(b[..],s[..],FB_CL_BARD,xk_slot(FB_CL_BARD,2)) || b[0].c[0].hp!=hp || !s[0].turn.action { return 3; }
+  tool_errln("PASS E2-SHARED-CAST"); return 0;
+}

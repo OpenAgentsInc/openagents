@@ -1,7 +1,8 @@
 #load "../../../apps/openagents-web/everglade-link-wire.coax";
 #load "../../../aethyr/ids.coax";
 #load "../../../apps/openagents-web/everglade2-move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
-#load "../../../apps/openagents-web/class-kit.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
+#load "../../../apps/openagents-web/class-kit.coax";
+#load "../../../apps/openagents-web/everglade2-rules.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
 // The room server's Everglade rooms: the server is the authority (spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
 // An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are
@@ -790,7 +791,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
   wc := wire_read_cast(text, r[..]);
   nf := eg_fields(text);
   if !r[0].ok || (nf != 7 && nf != 8) { return; }   // (a mode last, or none)
-  if v[0].eg[k].e2 { eg_e2_cast(v, k, seat_id, wc); return; }   // Everglade II's: its class kit, seen and heard, no harm (#13058)
+  if v[0].eg[k].e2 { eg_e2_cast(v, k, seat_id, wc); return; }   // Everglade II: shared rules under its harmless social profile
   seq := wc.seq;
   mode := eg_clamp(wc.mode, 0, RA_MODES);
   slot := wc.slot;
@@ -805,11 +806,11 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
   if !cr_repair(slot) { ev_fought(v, k, seat_id); }   // casting is fighting (a Repair isn't): no Long Rest for EV_CALM_S
 }
 // Everglade II's casts (#13058). Its world has no monsters and players can't harm each other: a cast
-// is shown and heard, nothing more. The room takes one when the slot is on the seat's class's kit
+// uses shared self effects and harmless empty offensive casts. The room takes one when the slot is on the seat's class's kit
 // (class-kit.coax: XK_SLOT0 + class * XK_PER + i, the class its hello said, srd-*), it comes at least
 // EG_E2_GAP ticks after the seat's last (its page waits XC_COOL), and its aim is a number within the
 // ability's reach of where the room has the seat (EG_E2_CAST_SLACK m more, for the steps not yet stepped).
-// Then every page within EG_VIEW of the caster hears e cast SS SLOT AX AY AZ SEED, the caster's too,
+// Shared execution must commit before every page within EG_VIEW hears e cast SS SLOT AX AY AZ SEED, the caster's too,
 // at once (the casts' own queue is v1's: its rules roll against the town and the seats).
 EG_E2_GAP :: 24;      // ticks (0.8 s at EG_HZ 30)
 EG_E2_CAST_SLACK :: 3.0;   // m
@@ -823,6 +824,9 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   me := st[0].pose; dx := wc.ax - me.x; dz := wc.az - me.z;
   reach := ifx e.aim.kind == XC_AIM_SELF then 0.0f32 else e.aim.reach;
   if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
+  if !e2r_use(v[0].eg[k].rules[0].b[..],v[0].eg[k].rules[0].seat[seat..<seat+1],v[0].eg[k].rules[0].klass[seat]-E5R_CL0,wc.slot) {
+    eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return;
+  }
   st[0].last_cast = t;
   v[0].eg[k].e2_casts += 1;
   b: [128] u8;
@@ -2381,6 +2385,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   eg_test_drain(v[..], box[..]);
   bolt := xk_slot(FB_CL_WIZARD, 0); wind := xk_slot(FB_CL_FIGHTER, 0); sword := xk_slot(FB_CL_FIGHTER, 1);
   b: [128] u8;
+  v[0].eg[k].rules[0].b[0].c[1].hp=1;   // Second Wind has actual damage to heal
   // the Wizard's Fire Bolt 30 m ahead (seat 0 stands at x 0), and the Fighter's Second Wind where it stands
   rm_heard(v[..], 0, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 1, slot = bolt, ax = 0, ay = 1, az = 30})]);
   rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 2, slot = wind, ax = 1, ay = 0, az = 0})]);
@@ -2672,4 +2677,23 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 0, 0, -300, 0, 0, 0, 0, 1, 0, 0);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "e wm 3 7 1 30000 145 0 0 100 500 300 500") && !eg_test_has(eg_test_of(box[..], 0), "e wm");
+}
+
+#test "everglade II room executes self healing and refuses a speech-blocked spell before publishing" #steps 2000000000 {
+  v:[1] RmServer; rm_init(v[..]); rm_clock(v[..],0,1762190000000);
+  path:="GET /api/room/relay/everglade/pair-e2-rules HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..],0,path)==0 && rm_join(v[..],1,path)==1;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-wizard 0 -");
+  for q:0..<3 { eg_test_tick(v[..],k); }
+  b:=v[0].eg[k].rules[0].b[..]; b[0].c[0].hp=1; b[0].c[0].reacted=true;
+  b[0].c[1].speech_blocked=true; b[0].c[1].slots[1]=0;
+  before:=v[0].eg[k].seat[1].last_cast;
+  wire:[128] u8;
+  rm_heard(v[..],0,cast(string)wire[0..<wire_put_cast(wire[..],0,WireCast.{seq=1,slot=xk_slot(FB_CL_FIGHTER,0),ax=0,ay=0,az=0})]);
+  #assert b[0].c[0].hp>1 && b[0].c[0].reacted;
+  rm_heard(v[..],1,cast(string)wire[0..<wire_put_cast(wire[..],0,WireCast.{seq=2,slot=xk_slot(FB_CL_WIZARD,0),ax=0,ay=1,az=30})]);
+  #assert v[0].eg[k].e2_casts==1 && v[0].eg[k].seat[1].last_cast==before;
+  #assert b[0].c[1].slots[1]==0;
 }

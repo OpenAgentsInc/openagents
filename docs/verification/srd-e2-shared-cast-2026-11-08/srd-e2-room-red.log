@@ -1,0 +1,11 @@
+FAIL #test everglade II room executes self healing and refuses a speech-blocked spell before publishing (633 ms)
+coax/web/room/room-everglade.coax:2690:3: error[E0406]: assertion failed
+    #assert b[0].c[0].hp>1 && b[0].c[0].reacted;
+    ^
+  note: in #test everglade II room executes self healing and refuses a speech-blocked spell before publishing
+1 of 886 checks (--only 'everglade II room executes'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 30672239 of 33554432 used (91%), above three quarters of the limit; more than 33554432 fails with E0400
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

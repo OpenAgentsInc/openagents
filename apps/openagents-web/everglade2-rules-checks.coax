@@ -1,0 +1,84 @@
+#load "everglade2-rules.coax";
+
+#test "Everglade II shared casting heals and retains real class resources and spent Reactions" {
+  b:[1] RsBattle; b[0].w=16; b[0].h=16;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),4,4);
+  seats:[1] FbSeat; seats[0].me=0; b[0].c[0].hp=1; b[0].c[0].reacted=true;
+  #assert e2r_use(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,0));
+  #assert b[0].c[0].hp>1 && b[0].c[0].reacted && seats[0].turn.bonus;
+}
+
+#test "Everglade II shared casting refuses speech incapacity and foreign slots without refilling budgets" {
+  b:[1] RsBattle; b[0].w=16; b[0].h=16;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,1),4,4);
+  seats:[1] FbSeat; seats[0].me=0; seats[0].turn.action=true;
+  b[0].c[0].slots[1]=0; b[0].c[0].speech_blocked=true;
+  #assert !e2r_use(b[..],seats[..],FB_CL_WIZARD,xk_slot(FB_CL_WIZARD,0));
+  #assert b[0].c[0].slots[1]==0 && seats[0].turn.action && !seats[0].open;
+  b[0].c[0].speech_blocked=false; b[0].c[0].hp=0;
+  #assert !e2r_use(b[..],seats[..],FB_CL_WIZARD,xk_slot(FB_CL_WIZARD,0));
+  b[0].c[0].hp=1;
+  #assert !e2r_use(b[..],seats[..],FB_CL_WIZARD,xk_slot(FB_CL_FIGHTER,0));
+  #assert !e2r_use(b[..],seats[..],-1,0);
+  seats[0].me=-1; #assert !e2r_use(b[..],seats[..],FB_CL_WIZARD,xk_slot(FB_CL_WIZARD,0));
+}
+
+#test "Everglade II offensive casts pay shared costs but do not affect another creature" {
+  b:[1] RsBattle; b[0].w=16; b[0].h=16;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_BARD,"Bard",0,1),4,4);
+  _=rs_add(b[..],rs_guard("Bystander",1),5,4);
+  seats:[1] FbSeat; seats[0].me=0;
+  #assert e2r_use(b[..],seats[..],FB_CL_BARD,xk_slot(FB_CL_BARD,2));
+  #assert b[0].c[0].slots[1]==b[0].c[0].slots_max[1]-1 && seats[0].turn.action;
+  #assert b[0].c[1].hp==b[0].c[1].hp_max && b[0].c[0].hp==b[0].c[0].hp_max;
+  #assert b[0].who==0 && !b[0].turn.action;
+}
+
+#test "Everglade II empty attacks spend one Action while saving another actor and movement history" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3);
+  _=rs_add(b[..],rs_guard("Other",1),4,3);
+  b[0].who=1; b[0].turn.bonus=true;
+  seats:[1] FbSeat; seats[0].me=0; seats[0].turn.action=true;
+  seats[0].turn.move_left=3; seats[0].turn.move_debt=2; seats[0].turn.quickened=true;
+  #assert e2r_use(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1));
+  #assert seats[0].open && seats[0].turn.action && seats[0].turn.move_left==3;
+  #assert seats[0].turn.move_debt==2 && seats[0].turn.quickened;
+  #assert b[0].who==1 && b[0].turn.bonus && !b[0].turn.action;
+  #assert b[0].c[1].hp==b[0].c[1].hp_max;
+  seats[0].me=b[0].n;
+  #assert !e2r_use(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1));
+}
+
+#test "Everglade II shared spells include real self healing and cantrips with zero slot cost" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_BARD,"Bard",0,1),3,3);
+  seats:[1] FbSeat; seats[0].me=0; b[0].c[0].hp=1;
+  #assert e2r_use(b[..],seats[..],FB_CL_BARD,xk_slot(FB_CL_BARD,1));
+  #assert b[0].c[0].hp>1 && seats[0].turn.bonus && seats[0].open;
+  slots:=b[0].c[0].slots_max[1];
+  #assert e2r_use(b[..],seats[..],FB_CL_BARD,xk_slot(FB_CL_BARD,0));
+  #assert b[0].c[0].slots[1]==slots && seats[0].turn.action && !seats[0].turn.slot_spent;
+}
+
+#test "Everglade II dispatch refuses unknown features and a second empty swing without a profile refill" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3); rs_start_turn(b[..],0);
+  #assert !e2r_dispatch(b[..],0,FbAb.{kind=-1});
+  a:=fb_feature(FB_ATTACK,"Attack","attack");
+  #assert e2r_dispatch(b[..],0,a) && b[0].turn.action;
+  #assert !e2r_dispatch(b[..],0,a);
+}
+
+#test "Everglade II refuses an unregistered live backing record and uses the first available legal slot" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_BARD,"Bard",0,3),3,3);
+  // The backing span is larger than logical n. A live unused record is not
+  // an admitted actor, regardless of what remains in reusable storage.
+  b[0].c[1]=fb_cl_hero(FB_CL_FIGHTER,"Unused",0,1);
+  seats:[1] FbSeat; seats[0].me=b[0].n;
+  #assert !e2r_use(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,0));
+  seats[0].me=0; b[0].c[0].slots_max[1]=0;
+  #assert e2r_use(b[..],seats[..],FB_CL_BARD,xk_slot(FB_CL_BARD,2));
+  #assert b[0].c[0].slots[1]==0 && b[0].c[0].slots[2]==b[0].c[0].slots_max[2]-1;
+}

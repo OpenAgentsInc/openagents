@@ -66,3 +66,12 @@ class-feature budget now includes the same Focus/Rage refill as Experimental.
 This is not Everglade II's currently presentation-only cast broadcast path.
 Evidence and full-room failures:
 [room press verification](../verification/srd-room-press-2026-11-08/README.md).
+
+Everglade II's server now commits shared execution under its explicit social
+profile: self/ally entries affect the caster, offensive spells pay shared
+empty-target costs without harming anyone or creating harmful areas, and empty
+swings spend an Action. Unlimited press budgets do not renew Reactions or
+movement; failed execution rolls back before cooldown/publication. This is a
+named world deviation, not strict target semantics. Page prediction and complete
+state/runtime qualification remain open. See
+[Everglade II evidence](../verification/srd-e2-shared-cast-2026-11-08/README.md).
