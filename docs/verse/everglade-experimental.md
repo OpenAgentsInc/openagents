@@ -162,3 +162,5 @@ The castle spans 56 by 54 metres, with nine towers surrounding four connected co
 Bushes use walk-through foliage volumes at 80% of normal movement pace; their bounds do not block the player or camera. Movement returns to normal outside the foliage.
 
 Nearby solid scene objects with gaps narrower than the player are grouped where a bounded collision footprint fits, reducing the chance of being squeezed between opposing item boxes.
+
+Enemies yield when the player pushes through them. If the player becomes trapped in intersecting props, the walker temporarily releases overlapping props while retaining structural walls; an unresolved structural trap returns the player to the last clear position, or the spawn if none is available.

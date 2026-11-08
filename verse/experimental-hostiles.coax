@@ -45,6 +45,21 @@ Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at
  n:=hostile_bodies(s[..],2,3,b[..]);#assert n==1 && b[0]==2 && b[2]==3 && b[6]>0;
  s[0].enemies[0].x=4;n=hostile_bodies(s[..],4,3,b[..]);#assert n==1 && b[0]==4;
 }
+#test "a surrounded player pushes living enemies aside" {
+ s:[1]Hostiles;hostile_start(s[..]);for i:0..<6 {s[0].enemies[i].x=0;s[0].enemies[i].z=0;}
+ hostile_push(s[..],0,0,0,0,-0.1);for i:0..<6 {e:=s[0].enemies[i];#assert e.x*e.x+e.z*e.z>0.01;}
+}
+// Hostiles are yieldable: the player's accepted movement displaces them when
+// there is room, but the player is never caged by a ring of immovable bodies.
+hostile_push :: (s:[]Hostiles,x:f32,y:f32,z:f32,old_x:f32,old_z:f32) {
+ if !s[0].ready {return;}for i:0..<6 {e:=s[0].enemies[i..<i+1];if e[0].dead {continue;}
+  if abs(terrain.exp_height(x,z)+y-terrain.exp_height(e[0].x,e[0].z))>1.5 {continue;}
+  dx:=e[0].x-x;dz:=e[0].z-z;distance:=sqrt(dx*dx+dz*dz);if distance>=0.85 {continue;}
+  gap:=distance;if distance<0.001 {dx=x-old_x;dz=z-old_z;distance=sqrt(dx*dx+dz*dz);if distance<0.001 {dx=ifx i%2==0 then 1.0f32 else -1.0f32;dz=0;distance=1;}}
+  ux:=dx/distance;uz:=dz/distance;push:=0.85-gap;if push<=0 {continue;}if push>0.15 {push=0.15;}
+  nx:=e[0].x+ux*push;nz:=e[0].z+uz*push;if !hostile_blocked(nx,e[0].z) {e[0].x=nx;}if !hostile_blocked(e[0].x,nz) {e[0].z=nz;}
+ }
+}
 hostile_bodies :: (s:[]Hostiles,x:f32,z:f32,out:[]f32)->int {
  if !s[0].ready {return 0;}n:=0;ground:=terrain.exp_height(x,z);for i:0..<6 {e:=s[0].enemies[i];if e.dead || abs(e.x-x)>8 || abs(e.z-z)>8 {continue;}if n*7+7>out.count {break;}o:=n*7;y:=terrain.exp_height(e.x,e.z)-ground;out[o]=e.x;out[o+1]=y+0.25;out[o+2]=e.z;out[o+3]=e.x;out[o+4]=y+1.25;out[o+5]=e.z;out[o+6]=0.35;n+=1;}return n;
 }

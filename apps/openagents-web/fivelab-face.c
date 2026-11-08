@@ -58,7 +58,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   width = w; height = h; dpr = scale; now += dt;
   // Player mode: your body's step on Everglade's controller, in everglade-face.c's order
   coax_t_LabWalk walk = lab_walk(at(state));
-  if (walk.put) player = verse_player_place(walk.x, 0, walk.z, walk.face);
+  if (walk.put) player = verse_player_place(walk.x, walk.y, walk.z, walk.face);
   if (walk.on) {
     float frame = dt;
     float step = verse_player_counts(player, frame);

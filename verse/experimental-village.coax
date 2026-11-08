@@ -7,10 +7,13 @@
 #load "experimental-village-data.coax";
 #load "experimental-scene-colliders.coax";
 #load "../aethyr/stand.coax" as stand;
+#load "../aethyr/collide.coax" as collision;
+#load "../aethyr/query.coax" as query;
+#load "../aethyr/space.coax" as space;
 
 EV_WALLS :: 1024;
 EV_FLOORS :: 16;
-EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floor_n:int;overflow:bool;}
+EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floor_n:int;scene_begin:int;scene_end:int;overflow:bool;}
 #test "village collision supplies nearby walls and ignores the empty spawn" {
  a:[1]EvNear;ev_near(a[..],0,0);#assert a[0].floor_n==0 && !a[0].overflow;for i:0..<a[0].wall_n {o:=i*6;#assert !(a[0].walls[o]<0 && a[0].walls[o+3]>0 && a[0].walls[o+2]<0 && a[0].walls[o+5]>0 && a[0].walls[o+1]<0.5 && a[0].walls[o+4]>0.5);}
  ev_near(a[..],-18,-23);#assert a[0].wall_n>0 && !a[0].overflow;
@@ -94,6 +97,39 @@ ev_bush_pace_in :: (boxes:[][6]int,x:f32,y:f32,z:f32)->f32 {
  for b:boxes {if x>=f32(b[0])*0.001 && x<=f32(b[3])*0.001 && z>=f32(b[2])*0.001 && z<=f32(b[5])*0.001 && y>=f32(b[1])*0.001-0.15 && y<f32(b[4])*0.001 {return 0.8;}}return 1;
 }
 ev_bush_pace :: (x:f32,y:f32,z:f32)->f32 {boxes:=EXPERIMENTAL_BUSH_BOXES;return ev_bush_pace_in(boxes[..],x,terrain.exp_height(x,z)+y,z);}
+#test "a trapped player can escape large scene objects without dropping structural walls" {
+ a:[1]EvNear;a[0].wall_n=3;a[0].scene_begin=0;a[0].scene_end=2;
+ boxes:=[18]f32.[-10,0,-2,-0.2,2,2,0.2,0,-2,10,2,2,-20,0,-5,20,3,-4];for i:0..<18 {a[0].walls[i]=boxes[i];}
+ r:=ev_release_trap(a[..],0,0,0);#assert r==1 && a[0].wall_n==1 && a[0].walls[2]== -5 && a[0].walls[5]== -4;
+}
+#test "escape does not discard solid walls when there is no trap" {
+ a:[1]EvNear;a[0].wall_n=2;a[0].scene_begin=0;a[0].scene_end=1;
+ boxes:=[12]f32.[1,0,-2,2,2,2,-2,0,-3,2,3,-2];for i:0..<12 {a[0].walls[i]=boxes[i];}
+ r:=ev_release_trap(a[..],0,0,0);#assert r==0 && a[0].wall_n==2;
+}
+// A rescue is limited to scene props already intersecting the player. Castle
+// and building walls remain in the query, and ordinary contacts stay solid.
+#test "opposing structural walls are never dropped for escape" {
+ a:[1]EvNear;a[0].wall_n=2;a[0].scene_begin=0;a[0].scene_end=0;
+ boxes:=[12]f32.[-10,0,-2,-0.2,2,2,0.2,0,-2,10,2,2];for i:0..<12 {a[0].walls[i]=boxes[i];}
+ r:=ev_release_trap(a[..],0,0,0);#assert r==2 && a[0].wall_n==2;
+}
+ev_overlap :: (a:[]f32,i:int,x:f32,y:f32,z:f32)->bool {
+ o:=i*6;if a[o+4]<=y+0.55 || a[o+1]>=y+1.8 {return false;}
+ dx:=ifx x<a[o] then a[o]-x else ifx x>a[o+3] then x-a[o+3] else 0.0f32;
+ dz:=ifx z<a[o+2] then a[o+2]-z else ifx z>a[o+5] then z-a[o+5] else 0.0f32;return dx*dx+dz*dz<0.090001;
+}
+ev_state :: (a:[]EvNear,x:f32,y:f32,z:f32)->collision.CollideResult {
+ c:=query.Colliders.{boxes=a[0].walls[0..<a[0].wall_n*6],floors=a[0].floors[0..<a[0].floor_n*10]};
+ s:=collision.CollideState.{feet=space.world_point(x,y,z)};return collision.collide_move(c,collision.CollideProfile.{},s,0,0);
+}
+ev_release_trap :: (a:[]EvNear,x:f32,y:f32,z:f32)->int {
+ before:=ev_state(a,x,y,z);if before.status!=collision.CollideStatus.unresolved {if before.status==collision.CollideStatus.ok && abs(before.state.feet.x-x)<0.0001 && abs(before.state.feet.z-z)<0.0001 {return 0;}return 3;}if before.floor_cut {return 2;}
+ next:[1]EvNear;next[0]=a[0];n:=0;for i:0..<a[0].wall_n {if i>=a[0].scene_begin && i<a[0].scene_end && ev_overlap(a[0].walls[..],i,x,y,z) {continue;}
+  for k:0..<6 {next[0].walls[n*6+k]=a[0].walls[i*6+k];}n+=1;}
+ next[0].wall_n=n;after:=ev_state(next[..],x,y,z);if after.status==collision.CollideStatus.ok {a[0]=next[0];return 1;}return 2;
+}
+ev_player_near :: (a:[]EvNear,x:f32,y:f32,z:f32)->int {ev_near(a,x,z);return ev_release_trap(a,x,y,z);}
 ev_scene_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
  for b:EXPERIMENTAL_SCENE_BOXES {x0:=f32(b[0])*0.001;z0:=f32(b[2])*0.001;x1:=f32(b[3])*0.001;z1:=f32(b[5])*0.001;
   if x<x0-reach || x>x1+reach || z<z0-reach || z>z1+reach {continue;}
@@ -122,7 +158,7 @@ ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,true);}
 ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9,true);}
 ev_hostile_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,false);}
 ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
- out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);ev_castle_near(out,x,z,reach,ground);if scene {ev_scene_near(out,x,z,reach,ground);}else {ev_prop_near(out,x,z,reach,ground);}
+ out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);ev_castle_near(out,x,z,reach,ground);out[0].scene_begin=out[0].wall_n;if scene {ev_scene_near(out,x,z,reach,ground);}else {ev_prop_near(out,x,z,reach,ground);}out[0].scene_end=out[0].wall_n;
  for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
   if si==18 {
    // Three large rooms with an offset entrance and two archways per partition.

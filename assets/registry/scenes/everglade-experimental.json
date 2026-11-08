@@ -2530,7 +2530,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "32a8ddf04d7207f8970a28f78b3c5c8fcfc234a05d714698dd425586e0400ef9"
+        "sha256": "1ede2be63baf06cd025e254cfc54cd8d8bd859f47e979fc6dde23c402d0a1000"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2624,7 +2624,7 @@
     "behavior": "Pursue the player and make timed SRD melee attacks",
     "source": {
       "path": "verse/experimental-hostiles.coax",
-      "sha256": "211c08021d4ac3ef69352e0c213de53a6086f60d4778eae18819677b822435ea"
+      "sha256": "793f4ce91275345e8dca83fe688547dedf5a257332daa593aed744e41bc7cd99"
     }
   },
   "dungeon": {
@@ -2648,7 +2648,7 @@
     "path": "verse/experimental-scene-colliders.coax",
     "sha256": "e71e3f9c1dfa905152b7db3186f22d0cb10a2ddf6e040395d1db7c086d18b7b8",
     "placed_assets": 570,
-    "source": "Generated from transformed scene vertices; small nearby solid items with narrow gaps are grouped into bounded footprints, bushes are walk-through volumes at 80% pace, and living enemies use moving capsules.",
+    "source": "Generated from transformed scene vertices; narrow item gaps use bounded grouped footprints, bushes slow movement, enemies yield to the player, and trapped players recover to a clear position.",
     "bush_volumes": 14,
     "solid_footprints": 528
   },
