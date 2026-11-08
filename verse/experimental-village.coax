@@ -2,6 +2,7 @@
 // collision meshes and supplied to the same walker as Everglade's buildings.
 #module "verse.experimentalvillage";
 #load "experimental-terrain.coax" as terrain;
+#load "experimental-props.coax" as props;
 #load "experimental-village-data.coax";
 #load "../aethyr/stand.coax" as stand;
 
@@ -33,6 +34,40 @@ EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floo
   for ix:0..<5 {for iz:0..<5 {x:=s.x-s.left+(s.left+s.right)*f32(ix)/4;z:=s.z-s.back+(s.back+s.front)*f32(iz)/4;
    ev_near(a[..],x,z);#assert !a[0].overflow && a[0].wall_n>0;}}}
 }
+#test "furniture colliders follow the placed table chairs and upper floor" {
+ a:[1]EvNear;site:=terrain.exp_site(0);p:=props.exp_prop_at(0,0);x:=site.x+p.x;z:=site.z+p.z;
+ ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if a[0].walls[o]<x && a[0].walls[o+3]>x && a[0].walls[o+2]<z && a[0].walls[o+5]>z && a[0].walls[o+4]>0.8 && a[0].walls[o+4]<1.0 {found=true;}}#assert found;
+ #assert ev_prop_size("Chair_1")[1]>1 && ev_prop_size("Workbench")[0]>1 && ev_prop_size("Bed_Twin1")[2]>1;
+}
+ev_prop_size :: (name:string)->[3]f32 {
+ if name=="Table_Large" {return [3]f32.[1.425,0.815,0.555];}
+ if name=="Chair_1" {return [3]f32.[0.291,1.121,0.292];}
+ if name=="Bed_Twin1" {return [3]f32.[0.938,0.806,1.206];}
+ if name=="Workbench" || name=="Workbench_Drawers" {return [3]f32.[1.01,0.9,0.515];}
+ if name=="Barrel_Apples" {return [3]f32.[0.35,0.902,0.35];}
+ if name=="Crate_Wooden" {return [3]f32.[0.426,0.88,0.455];}
+ if name=="Bucket_Wooden_1" {return [3]f32.[0.218,0.294,0.2];}
+ if name=="Stall_Empty" {return [3]f32.[0.923,2.623,0.472];}
+ if name=="Bench" {return [3]f32.[1.389,0.526,0.273];}
+ if name=="Stool" {return [3]f32.[0.238,0.583,0.238];}
+ if name=="Bookcase_2" {return [3]f32.[0.731,2.528,0.215];}
+ if name=="BookStand" {return [3]f32.[0.254,1.445,0.256];}
+ if name=="Whetstone" {return [3]f32.[0.579,1.173,0.527];}
+ if name=="Mug" {return [3]f32.[0.122,0.18,0.075];}
+ if name=="Book_Stack_1" {return [3]f32.[0.146,0.215,0.12];}
+ if name=="CandleStick" {return [3]f32.[0.177,0.157,0.09];}
+ if name=="Key_Metal" {return [3]f32.[0.025,0.007,0.059];}
+ if name=="Coin_Pile" {return [3]f32.[0.1,0.071,0.079];}
+ if name=="SmallBottles_1" {return [3]f32.[0.113,0.147,0.028];}
+ return [3]f32.[0,0,0];
+}
+ev_prop_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
+ for si:0..<9 {site:=terrain.exp_site(si);for i:0..<props.exp_prop_count(si) {p:=props.exp_prop_at(si,i);sz:=ev_prop_size(p.name);if sz[1]<=0 {continue;}
+  px:=site.x+p.x;pz:=site.z+p.z;c:=abs(cos(p.yaw));s:=abs(sin(p.yaw));hx:=sz[0]*c+sz[2]*s;hz:=sz[0]*s+sz[2]*c;
+  if abs(x-px)>reach+hx || abs(z-pz)>reach+hz {continue;}
+  y:=terrain.exp_height(px,pz)-ground+p.y;ev_house_box(out,site,0,[6]f32.[p.x-hx,y,p.z-hz,p.x+hx,y+sz[1],p.z+hz]);
+ }}
+}
 ev_point :: (m:[13]int,x:f32,y:f32,z:f32)->[3]f32 {
  return [3]f32.[f32(m[10])*0.001+f32(m[1])*0.001*x+f32(m[2])*0.001*y+f32(m[3])*0.001*z,
  f32(m[11])*0.001+f32(m[4])*0.001*x+f32(m[5])*0.001*y+f32(m[6])*0.001*z,
@@ -45,7 +80,7 @@ ev_house_box :: (out:[]EvNear,site:terrain.ExpSite,dy:f32,box:[6]f32) {
 ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4);}
 ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9);}
 ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32) {
- out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);
+ out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);ev_prop_near(out,x,z,reach,ground);
  for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
   if si==18 {
    // Three large rooms with an offset entrance and two archways per partition.
@@ -54,7 +89,9 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32) {
     [6]f32.[-10.22,0,-10.22,10.22,4,-9.78],[6]f32.[-10.22,0,-10.22,-9.78,4,10.22],[6]f32.[9.78,0,-10.22,10.22,4,10.22],
     [6]f32.[-10.22,0,3.78,-6,4,4.22],[6]f32.[-2,0,3.78,4,4,4.22],[6]f32.[8,0,3.78,10.22,4,4.22],
     [6]f32.[-10.22,0,-4.22,-6,4,-3.78],[6]f32.[-2,0,-4.22,0,4,-3.78],[6]f32.[4,0,-4.22,10.22,4,-3.78]] {ev_house_box(out,site,dy,box);}
-   for side:0..<2 {for row:0..<2 {cx:= -8+f32(side)*16;cz:= -8+f32(row)*8;ev_house_box(out,site,dy,[6]f32.[cx-0.65,0,cz-0.65,cx+0.65,4,cz+0.65]);}}continue;
+   for side:0..<2 {for row:0..<2 {cx:= -8+f32(side)*16;cz:= -8+f32(row)*8;ev_house_box(out,site,dy,[6]f32.[cx-0.65,0,cz-0.65,cx+0.65,4,cz+0.65]);}}
+   // Solid furnishings inside the dungeon, in the same site-local coordinates.
+   for box:[6][6]f32.[[6]f32.[-0.8,0,-9,0.8,1.2,-7.8],[6]f32.[-8.2,0,7.4,-6.8,1.1,8.6],[6]f32.[-8.2,0,1.3,-7.2,1.3,2.7],[6]f32.[-6.6,0,1.4,-5.4,1.2,2.6],[6]f32.[5.1,0,-1,6.9,1.1,1],[6]f32.[-7.7,0,-7.7,-6.3,2.2,-6.3]] {ev_house_box(out,site,dy,box);}continue;
   }
   if si>=9 {
    // 4 m square house: front opening is centered in the left front module.

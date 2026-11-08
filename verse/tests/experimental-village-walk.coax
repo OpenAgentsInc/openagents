@@ -7,9 +7,9 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  near:[1]village.EvNear;village.ev_near(near[..],p.pos.x,p.pos.z);
  none:[1]f32;return walk.walk_advance_in_realm(p,1.0f32/60,none[0..<0],near[0].walls[0..<near[0].wall_n*6],near[0].floors[0..<near[0].floor_n*10],"everglade");
 }
-#test "village walker is stopped by a real house wall" #steps 200000000 {
+#test "village walker is stopped by an interior obstruction" #steps 200000000 {
  p:=walk.walk_place(-18,0,-21,0);for i:0..<90 {p=village_walk(p,1);}
- #assert p.pos.z> -23 && p.pos.z< -21.5;
+ #assert p.pos.z> -23 && p.pos.z< -20.8;
 }
 #test "village walker climbs the authored interior stairs" #steps 200000000 {
  p:=walk.walk_place(-50,0,21.4,0);for i:0..<100 {p=village_walk(p,-1);}
@@ -39,4 +39,9 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  p=walk.walk_place(-35,0,-42,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -44;
  p=walk.walk_place(-35,0,-47,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -50;
  p=walk.walk_place(-39,0,-55,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -58;
+}
+
+#test "village walker cannot walk through dining furniture" #steps 200000000 {
+ p:=walk.walk_place(-18.2,0,27.0,0);for i:0..<80 {p=village_walk(p,1);}
+ #assert p.pos.z>25.8;
 }
