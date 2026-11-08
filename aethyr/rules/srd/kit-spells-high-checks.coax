@@ -166,3 +166,24 @@ kh_cond_save :: (c: RsCreature, cond: int) -> int {
   #assert c[0].turn_no == 0 && rs_cast(c[..],g,SP_SPIRIT_GUARDIANS,3,0,0,g);
   rs_guardians(c[..],t); #assert c[0].c[t].hp == 188;
 }
+#test "kit spells respect damage and condition immunity, and their concentration's end ends what they hold" {
+  // Fire Bolt at a creature immune to Fire (the SRD's Imp) deals nothing; Starry Wisp at one resistant to Radiant, half
+  b: [1] RsBattle; kc_case(b[..],rs_sorcerer("Sorcerer",0,1),SP_FIRE_BOLT,10,10); b[0].c[1].ac = 1; b[0].c[1].immune = 1 << RS_FIRE;
+  #assert rs_cast(b[..],0,SP_FIRE_BOLT,0,0,0,1) && b[0].c[1].hp == 200;
+  w: [1] RsBattle; kc_case(w[..],rs_druid("Druid",0,5),SP_STARRY_WISP,10,10); w[0].c[1].ac = 1; w[0].c[1].resist = 1 << RS_RADIANT;
+  #assert rs_cast(w[..],0,SP_STARRY_WISP,0,0,0,1) && w[0].c[1].hp == 196;
+  // Hold Person on a creature immune to Paralyzed, Hypnotic Pattern on one immune to Charmed: nothing held
+  h: [1] RsBattle; kc_case(h[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),SP_HOLD_PERSON,10,1); h[0].c[1].immune_cond = RS_PARALYZED;
+  #assert rs_cast(h[..],0,SP_HOLD_PERSON,2,0,0,1) && !rs_has(h[0].c[1],RS_PARALYZED);
+  p: [1] RsBattle; kc_case(p[..],rs_wizard("Wizard",0,5),SP_HYPNOTIC_PATTERN,10,1); u := kc_target(p[..],10,3,1);
+  p[0].c[u].immune_cond = RS_CHARMED;
+  #assert rs_cast(p[..],0,SP_HYPNOTIC_PATTERN,3,10,1,-1) && rs_has(p[0].c[1],RS_CHARMED) && !rs_has(p[0].c[u],RS_CHARMED);
+  // the caster's concentration ends: the stupor, the hold and the plants let go
+  rs_end_concentration(p[..],0,""); #assert !rs_has(p[0].c[1],RS_CHARMED) && rs_can_move(p[0].c[1]);
+  q: [1] RsBattle; kc_case(q[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),SP_HOLD_PERSON,10,1);
+  #assert rs_cast(q[..],0,SP_HOLD_PERSON,2,0,0,1) && rs_has(q[0].c[1],RS_PARALYZED);
+  rs_end_concentration(q[..],0,""); #assert !rs_has(q[0].c[1],RS_PARALYZED);
+  e: [1] RsBattle; kc_case(e[..],rs_druid("Druid",0,1),SP_ENTANGLE,2,1);
+  #assert rs_cast(e[..],0,SP_ENTANGLE,1,1,1,-1) && rs_has(e[0].c[1],RS_RESTRAINED);
+  rs_end_concentration(e[..],0,""); #assert !rs_has(e[0].c[1],RS_RESTRAINED) && !rs_difficult(e[..],2,1);
+}

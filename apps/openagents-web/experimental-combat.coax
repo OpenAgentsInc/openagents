@@ -1709,6 +1709,34 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   xc_guardians_step(s[..]); #assert 60 - b[0].c[1].hp == lost;   // still inside: no second save
 }
 
+// Every spell on class c's bar at every selector level 1-6, used at a monster just ahead: it resolves
+// through the shared engine and plays its own cast sound. Divine Smite needs a melee hit first.
+xc_play_kit :: (c: int) {
+  s: [1] Lab; xc_test_lab(s[..],c,0);
+  for level: 1..<7 {
+    xc_set_level(s[0].xc[..],level);
+    x := s[0].xc[..]; b := x[0].b[..]; h := s[0].creator[0].hostiles[..];
+    for k: 0..<x[0].bar_n {
+      a := x[0].bar[k]; if a.kind != FB_SPELL { continue; }
+      h[0].enemies[0].x=0; h[0].enemies[0].z=1.2; h[0].enemies[0].dead=false; b[0].c[1].dead=false; b[0].c[1].hp=500; b[0].c[1].hp_max=500;
+      // a fresh monster and caster each press: the last spell's records and slots do not carry over
+      rs_end_concentration(b,0,""); for q: 0..<RS_EFFECTS { b[0].c[1].eff[q] = RsEffect.{}; } b[0].c[1].cond = 0;
+      for q: 0..<10 { b[0].c[0].slots[q] = b[0].c[0].slots_max[q]; }
+      s[0].creator[0].clock += 2; s[0].experimental_audio[0].n = 0;
+      ok := xc_use(s[..],k);
+      #assert ok == (a.sp != SP_DIVINE_SMITE);
+      if ok {
+        want := xc_spell_sound(a.sp).start; text := exsound.xs_text(s[0].experimental_audio[..]);
+        #assert text.count >= want.count && text[0..<want.count] == want;
+      }
+    }
+  }
+}
+#test "experimental combat: Bard and Cleric kits' spells resolve and sound at levels 1-6" #steps 4000000000 { xc_play_kit(FB_CL_BARD); xc_play_kit(FB_CL_CLERIC); }
+#test "experimental combat: Druid and Paladin kits' spells resolve and sound at levels 1-6" #steps 4000000000 { xc_play_kit(FB_CL_DRUID); xc_play_kit(FB_CL_PALADIN); }
+#test "experimental combat: Ranger and Sorcerer kits' spells resolve and sound at levels 1-6" #steps 4000000000 { xc_play_kit(FB_CL_RANGER); xc_play_kit(FB_CL_SORCERER); }
+#test "experimental combat: Warlock and Wizard kits' spells resolve and sound at levels 1-6" #steps 4000000000 { xc_play_kit(FB_CL_WARLOCK); xc_play_kit(FB_CL_WIZARD); }
+
 #test "experimental combat: accepted and refused casts preserve actual HP and temporary HP rather than synthetic healing" {
   s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
