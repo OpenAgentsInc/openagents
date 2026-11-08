@@ -1,0 +1,12 @@
+verse/experimental-hostiles.coax:145:45: error[E0351]: struct 'Enemy' has no field 'inactive'
+   e:=s[0].enemies[0..<1];e[0].dead=false;e[0].inactive=true;e[0].x=4;e[0].z=0;
+                                              ^
+  fix: its fields are: x z home_x home_z face_x face_z cool swing struck moving awake dead died held stopped kind scale sleeper
+verse/experimental-hostiles.coax:152:6: error[E0351]: struct 'Enemy' has no field 'inactive'
+   e[0].inactive=false;e[0].cool=0;
+       ^
+  fix: its fields are: x z home_x home_z face_x face_z cool swing struck moving awake dead died held stopped kind scale sleeper
+2 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

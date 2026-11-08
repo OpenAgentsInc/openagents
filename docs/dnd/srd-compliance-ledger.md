@@ -390,3 +390,15 @@ selected Experimental checks and an actual native witness pass. The saved-seat
 path separates movement from refused actions, but Experimental's combined
 hostile-AI held flag still needs #13046 migration. #13039/#13040 remain open.
 [Evidence](../verification/srd-condition-permissions-2026-11-08/README.md).
+
+### Experimental hostile permission migration, 2026-11-08
+
+Experimental now projects shared movement and action permissions independently
+into hostile bodies. Stunned can pursue but cannot strike; Restrained stays put
+without losing action permission. Pending swings cancel immediately on action
+loss, including during hit stop, and cannot resume on recovery. Return-home
+movement respects held/stopped/dead bodies. All 198 hostile/geometry checks,
+22 selected Experimental checks and an actual native body witness pass. This
+resolves the combined-held adapter gap from the preceding condition receipt,
+but legacy hostile rolls/player HP and the rest of #13046 remain unqualified.
+[Evidence](../verification/srd-hostile-permissions-2026-11-08/README.md).

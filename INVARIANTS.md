@@ -6754,3 +6754,13 @@ Invisible Advantage with normal cancellation. Consumers must not use action
 capability as a blanket movement predicate. The separate hostile-AI held adapter
 remains migration work. Scope and evidence:
 `docs/verification/srd-condition-permissions-2026-11-08/README.md`.
+
+## Experimental hostile action and movement projections are independent
+
+The physical Enemy's `held` blocks movement; `inactive` blocks starting or
+continuing attacks. Experimental derives them from shared movement/current-Speed
+and action permissions separately after accepted effects and expiry. Loss of
+action permission retires a pending swing immediately and before physical hit
+stop; recovery starts a new swing. Return-home movement respects held, stopped
+and dead bodies. The legacy hostile damage/HP path still needs shared migration.
+Evidence: `docs/verification/srd-hostile-permissions-2026-11-08/README.md`.

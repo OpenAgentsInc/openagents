@@ -6,9 +6,10 @@
 #load "rules/srd5-combat.coax";
 
 // dead: felled (apps/openagents-web/experimental-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move;
+// inactive: cannot begin or continue an attack, independently of movement
 // stopped: a scoped hit stop holds this one for the frame (its owner's react_held, aethyr/action/react.coax); the rest of the world goes on
 // kind: experimental-dungeon.coax's DG_KIND_*, scale its size; a sleeper waits where it stands until it sees you near
-Enemy :: struct {x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;}
+Enemy :: struct {x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;}
 // the village's six (two of them, 2 and 5, in the dungeon's entrance hall) and the dungeon's own
 HS_N :: 45;
 DamagePop :: struct {amount:int;x:f32;y:f32;z:f32;born:f32;}
@@ -123,19 +124,47 @@ hostile_damage :: (s:[]Hostiles,amount:int,x:f32,y:f32,z:f32) {
 }
 hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
  hostile_start(s);if dt<=0 || dt>0.25 {return;}s[0].time+=dt;
- if s[0].hp<=0 {for i:0..<HS_N {e:=s[0].enemies[i..<i+1];e[0].swing= -1;e[0].moving=false;dx:=e[0].home_x-e[0].x;dz:=e[0].home_z-e[0].z;gap:=sqrt(dx*dx+dz*dz);if gap<0.1 {continue;}e[0].face_x=dx/gap;e[0].face_z=dz/gap;step:=ifx gap<dt*1.5 then gap else dt*1.5;nx:=e[0].x+dx/gap*step;nz:=e[0].z+dz/gap*step;pad:=0.3*e[0].scale;if !hostile_blocked_pad(nx,e[0].z,pad) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked_pad(e[0].x,nz,pad) {e[0].z=nz;e[0].moving=true;}}return;}
+ if s[0].hp<=0 {for i:0..<HS_N {e:=s[0].enemies[i..<i+1];e[0].swing= -1;e[0].moving=false;if e[0].dead || e[0].held || e[0].stopped {continue;}dx:=e[0].home_x-e[0].x;dz:=e[0].home_z-e[0].z;gap:=sqrt(dx*dx+dz*dz);if gap<0.1 {continue;}e[0].face_x=dx/gap;e[0].face_z=dz/gap;step:=ifx gap<dt*1.5 then gap else dt*1.5;nx:=e[0].x+dx/gap*step;nz:=e[0].z+dz/gap*step;pad:=0.3*e[0].scale;if !hostile_blocked_pad(nx,e[0].z,pad) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked_pad(e[0].x,nz,pad) {e[0].z=nz;e[0].moving=true;}}return;}
  ox:=[6]f32.[0,1.1,1.1,0,-1.1,-1.1];oz:=[6]f32.[-1.2,-0.6,0.6,1.2,0.6,-0.6];
  for i:0..<HS_N {if s[0].hp<=0 {break;}e:=s[0].enemies[i..<i+1];if e[0].dead {e[0].moving=false;e[0].swing= -1;continue;}dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;
+  if e[0].inactive {e[0].swing= -1;e[0].struck=false;}
   if e[0].stopped {continue;}
   if e[0].sleeper && !e[0].awake {if gap>dungeon.dg_kind_wake(e[0].kind) || !hostile_sees(e[0],px,pz) {continue;}e[0].awake=true;}e[0].cool-=dt;
   if gap>0.001 {e[0].face_x=dx/gap;e[0].face_z=dz/gap;}
   // a bigger body reaches further: it stops and swings from further off
   reach:=1.45+0.45*(e[0].scale-1);
   if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<reach+0.35 && abs(py)<2 && !hostile_blocked((e[0].x+px)*0.5,(e[0].z+pz)*0.5) {hit:=srd_attack(s[0].dice[..],hostile_blow(e[0].kind),15);if hit.hit {s[0].last=i;hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
-  if gap<reach {if e[0].cool<=0 {e[0].swing=0;e[0].struck=false;}continue;}
+  if gap<reach {if !e[0].inactive && e[0].cool<=0 {e[0].swing=0;e[0].struck=false;}continue;}
   if e[0].held {continue;}
   gx:=px+ox[i%6]*e[0].scale-e[0].x;gz:=pz+oz[i%6]*e[0].scale-e[0].z;distance:=sqrt(gx*gx+gz*gz);if distance<0.01 {continue;}
   step:=ifx distance<dt*2.4 then distance else dt*2.4;nx:=e[0].x+gx/distance*step;nz:=e[0].z+gz/distance*step;
   pad:=0.3*e[0].scale;if !hostile_blocked_pad(nx,e[0].z,pad) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked_pad(e[0].x,nz,pad) {e[0].z=nz;e[0].moving=true;}
  }
+}
+
+#test "an inactive enemy can pursue but cancels an unlanded swing and cannot start another" {
+ s:[1]Hostiles;hostile_start(s[..]);for i:0..<HS_N {s[0].enemies[i].dead=true;}
+ e:=s[0].enemies[0..<1];e[0].dead=false;e[0].inactive=true;e[0].x=4;e[0].z=0;
+ hostile_tick(s[..],0,0,0,0.05);#assert e[0].moving && e[0].x<4;
+ e[0].x=0;e[0].z=-1;e[0].swing=0.34;e[0].struck=false;e[0].stopped=true;
+ hostile_tick(s[..],0,0,0,0.05);#assert e[0].swing<0 && !e[0].struck && s[0].hp==44;
+ e[0].stopped=false;
+ for i:0..<100 {hostile_tick(s[..],0,0,0,0.05);}
+ #assert s[0].hits==0 && s[0].hp==44 && e[0].swing<0;
+ e[0].inactive=false;e[0].cool=0;
+ hostile_tick(s[..],0,0,0,0.05);#assert e[0].swing==0 && !e[0].struck;
+}
+
+#test "a held but active enemy can strike while held and stopped bodies cannot return home through a movement block" {
+ s:[1]Hostiles;hostile_start(s[..]);for i:0..<HS_N {s[0].enemies[i].dead=true;}
+ e:=s[0].enemies[0..<1];e[0].dead=false;e[0].held=true;e[0].x=0;e[0].z=-1;e[0].cool=0;
+ hostile_tick(s[..],0,0,0,0.05);#assert e[0].swing==0;
+ for i:0..<100 {hostile_tick(s[..],0,0,0,0.05);}
+ #assert s[0].hits>0 && e[0].x==0 && e[0].z==-1;
+ s[0].hp=0;e[0].x=0;e[0].z=0;
+ hostile_tick(s[..],0,0,0,0.05);#assert e[0].x==0 && e[0].z==0 && !e[0].moving;
+ e[0].held=false;e[0].stopped=true;
+ hostile_tick(s[..],0,0,0,0.05);#assert e[0].x==0 && e[0].z==0;
+ e[0].stopped=false;e[0].dead=true;
+ hostile_tick(s[..],0,0,0,0.05);#assert e[0].x==0 && e[0].z==0;
 }

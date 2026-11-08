@@ -367,6 +367,19 @@ xc_sync_world :: (s: [] Lab) {
     rs_place(b, i+1, qx, qz);
   }
 }
+// Project shared movement/action permissions independently into the body AI.
+// A Stunned actor can move; a Restrained actor can still take an action.
+xc_sync_permissions :: (s: [] Lab) {
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  for i: 0..<XC_FOES {
+    if i+1>=b[0].n { break; }
+    c := b[0].c[i+1];
+    h[0].enemies[i].held = !rs_can_move(c) || rs_walk_speed(b,i+1)<=0;
+    h[0].enemies[i].inactive = !rs_can_act(c);
+    // Retire a pending attack immediately, including between body ticks.
+    if h[0].enemies[i].inactive { h[0].enemies[i].swing = -1; h[0].enemies[i].struck = false; }
+  }
+}
 // Press slot k: the engine resolves it at what it aims at (xc_aim). True when it was used. Sets what the
 // world shows: the look (xc_look), the numbers and the fallen.
 xc_press :: (s: [] Lab, k: int) -> bool {
@@ -644,7 +657,6 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
       if !c.dead && c.hp > 0 { xc_stop_hit(s, i, ifx swung then react.DMG_SLASH else cast(u32) 0); }
       xc_cue(s, snd.hit, 0.55, e[0].x, e[0].z, snd.rate);
       if !c.dead && c.hp > 0 { xc_voice(s, i, false); } }
-    e[0].held = !c.dead && (c.restrained_by >= 0 || !rs_can_act(c));
     if !e[0].dead && (c.dead || c.hp <= 0) {
       e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
       x[0].kills += 1; xc_voice(s, i, true);
@@ -652,6 +664,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
       fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
     }
   }
+  xc_sync_permissions(s);
   if facing_cube { xc_sync_world(s); }
   if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
   return true;
@@ -739,8 +752,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   xc_lock_step(s);
   xc_stops_step(s);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
-  // a restrained monster frees itself when the engine's area ends
-  for i: 0..<XC_FOES { c := x[0].b[0].c[1 + i]; if hs[0].enemies[i].held && c.restrained_by < 0 && rs_can_act(c) { hs[0].enemies[i].held = false; } }
+  // Refresh both permissions after shared expiry, independently of body hit stop.
+  xc_sync_permissions(s);
   // the column: under ANIMATIONS (its rows give it room: cc dev_visible), at the top without it
   col := xc_column(x[0]);
   cr[0].dev_below = col + f32(XC_GAP);
@@ -1382,4 +1395,23 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   xc_float_from(x, 4, 0, 1.9, 0, 1, "MISS", false); #assert x[0].shown == XC_FLOATS + 1;
   x[0].present = react.react_present_drain(x[0].present);
   xc_float_int(x, 0, 1.9, 0, 2, 7, false); #assert x[0].shown == XC_FLOATS + 2 && x[0].suppressed == 2;
+}
+
+#test "experimental combat: Stunned hostiles can move but cannot attack and restraint preserves separate action permission" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  h[0].enemies[0].swing=0.34;
+  #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=0,spell=-1,until=60,save=-1});
+  xc_sync_permissions(s[..]);
+  #assert !h[0].enemies[0].held && h[0].enemies[0].inactive && h[0].enemies[0].swing<0;
+  for i: 1..<XC_FOES { h[0].enemies[i].dead=true; }
+  h[0].enemies[0].x=4; h[0].enemies[0].z=0;
+  hostile.hostile_tick(h,0,0,0,0.05);
+  #assert h[0].enemies[0].moving && h[0].enemies[0].x<4 && h[0].hits==0;
+  rs_drop_effect(b,1,0);
+  #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_RESTRAINED,by=0,spell=-1,until=60,save=-1});
+  xc_sync_permissions(s[..]);
+  #assert h[0].enemies[0].held && !h[0].enemies[0].inactive && h[0].enemies[0].swing<0;
+  rs_drop_effect(b,1,0); xc_sync_permissions(s[..]);
+  #assert !h[0].enemies[0].held && !h[0].enemies[0].inactive;
 }
