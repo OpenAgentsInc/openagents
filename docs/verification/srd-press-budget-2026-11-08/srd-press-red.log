@@ -1,0 +1,6 @@
+aethyr/rules/srd/press-budget-checks.coax:3:1: error[E0601]: cannot read source unit 'aethyr/rules/srd/press-budget.coax'
+  #load "press-budget.coax";
+  ^
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

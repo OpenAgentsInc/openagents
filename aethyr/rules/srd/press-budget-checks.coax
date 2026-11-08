@@ -1,0 +1,46 @@
+// Declared world cost override; strict rules retain ordinary paid resources.
+#load "battle.coax";
+#load "press-budget.coax";
+
+#test "press budgets require a declared supported profile and preserve strict state" {
+  c:[1] RsCreature; t:[1] RsTurn;
+  c[0]=rs_monk("Monk",0,6); c[0].focus=0; c[0].hp=1; c[0].reacted=true;
+  t[0].action=true; t[0].bonus=true; t[0].slot_spent=true; t[0].move_left=2;
+  for kind:-2..<4 {
+    before:=rs_press_budget(c[0],t[0]);
+    ok:=rs_press_prepare(c[..],t[..],RsPressProfile.{kind=kind});
+    #assert ok==(kind==0 || kind==1);
+    if kind!=1 { after:=rs_press_budget(c[0],t[0]);
+    for i:0..<10 { #assert after.slots[i]==before.slots[i]; }
+    for i:0..<RS_USES { #assert after.uses[i]==before.uses[i]; }
+    #assert after.focus==before.focus && after.rages==before.rages;
+    #assert after.action==before.action && after.bonus==before.bonus && after.slot_spent==before.slot_spent; }
+    else { #assert c[0].focus==c[0].focus_max && !t[0].action && !t[0].bonus && !t[0].slot_spent; }
+    #assert c[0].hp==1 && c[0].reacted && t[0].move_left==2;
+    rs_press_restore(c[..],t[..],before);
+  }
+}
+
+#test "unlimited press preparation restores exact resource words on refusal and leaves unrelated state alone" {
+  c:[1] RsCreature; t:[1] RsTurn;
+  for i:0..<10 { c[0].slots[i]=i; c[0].slots_max[i]=i+10; }
+  for i:0..<RS_USES { c[0].uses[i]=i+1; c[0].uses_max[i]=i+20; }
+  c[0].focus=2; c[0].focus_max=8; c[0].rages=1; c[0].rages_max=4;
+  c[0].temp=7; c[0].reacted=true; c[0].speech_blocked=true;
+  t[0].action=true; t[0].bonus=true; t[0].slot_spent=true; t[0].quickened=true;
+  t[0].move_debt=3; t[0].dash_n=2;
+  before:=rs_press_budget(c[0],t[0]);
+  #assert rs_press_prepare(c[..],t[..],RS_UNLIMITED_PRESS);
+  for i:0..<10 { #assert c[0].slots[i]==i+10; }
+  for i:0..<RS_USES { #assert c[0].uses[i]==i+20; }
+  #assert c[0].focus==8 && c[0].rages==4;
+  #assert !t[0].action && !t[0].bonus && !t[0].slot_spent;
+  #assert c[0].temp==7 && c[0].reacted && c[0].speech_blocked;
+  #assert t[0].quickened && t[0].move_debt==3 && t[0].dash_n==2;
+  rs_press_restore(c[..],t[..],before);
+  after:=rs_press_budget(c[0],t[0]);
+    for i:0..<10 { #assert after.slots[i]==before.slots[i]; }
+    for i:0..<RS_USES { #assert after.uses[i]==before.uses[i]; }
+    #assert after.focus==before.focus && after.rages==before.rages;
+    #assert after.action==before.action && after.bonus==before.bonus && after.slot_spent==before.slot_spent;
+}

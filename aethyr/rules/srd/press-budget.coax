@@ -1,0 +1,37 @@
+// Explicit house cost policy. It grants neither spell access nor components,
+// health, reactions, movement, concentration or a new logical turn.
+#authority;
+RsPressProfile :: struct { kind:int; }
+RS_PAID_PRESS :: RsPressProfile.{};
+RS_UNLIMITED_PRESS :: RsPressProfile.{kind=1};
+RsPressBudget :: struct {
+  slots:[10] int; uses:[RS_USES] int; focus:int; rages:int;
+  action:bool; bonus:bool; slot_spent:bool;
+}
+rs_press_budget :: (c:RsCreature,t:RsTurn)->RsPressBudget #effects(all) {
+  return RsPressBudget.{slots=c.slots,uses=c.uses,focus=c.focus,rages=c.rages,
+    action=t.action,bonus=t.bonus,slot_spent=t.slot_spent};
+}
+rs_press_prepare :: (c:[] RsCreature,t:[] RsTurn,p:RsPressProfile)->bool #effects(all) {
+  if p.kind!=0 && p.kind!=1 { return false; }
+  if p.kind==0 { return true; }
+  for i:0..<10 { c[0].slots[i]=c[0].slots_max[i]; }
+  for i:0..<RS_USES { c[0].uses[i]=c[0].uses_max[i]; }
+  c[0].focus=c[0].focus_max; c[0].rages=c[0].rages_max;
+  t[0].action=false; t[0].bonus=false; t[0].slot_spent=false;
+  return true;
+}
+rs_press_restore :: (c:[] RsCreature,t:[] RsTurn,v:RsPressBudget) #effects(all) {
+  c[0].slots=v.slots; c[0].uses=v.uses; c[0].focus=v.focus; c[0].rages=v.rages;
+  t[0].action=v.action; t[0].bonus=v.bonus; t[0].slot_spent=v.slot_spent;
+}
+
+#test "paid press preparation is a no-op and unlimited is explicit" {
+  c:[1] RsCreature; t:[1] RsTurn;
+  t[0].action=true; c[0].focus_max=4;
+  before:=rs_press_budget(c[0],t[0]);
+  #assert rs_press_prepare(c[..],t[..],RS_PAID_PRESS) && t[0].action && c[0].focus==0;
+  #assert rs_press_prepare(c[..],t[..],RS_UNLIMITED_PRESS) && !t[0].action && c[0].focus==4;
+  rs_press_restore(c[..],t[..],before);
+  #assert t[0].action && c[0].focus==0;
+}

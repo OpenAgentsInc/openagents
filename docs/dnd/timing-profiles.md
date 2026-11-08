@@ -50,3 +50,11 @@ Everglade II adoption and visible standing/input choices remain #13046 work.
 No world-profile editor or general profile text parser ships here.
 
 Evidence: [timing verification](../verification/srd-timing-2026-11-08/README.md).
+
+Experimental now applies the separate shared `press-budget.coax` cost policy:
+`RS_PAID_PRESS` preserves paid state; `RS_UNLIMITED_PRESS` explicitly restores
+slots/ordinary uses/Focus/Rage and clears Action/Bonus Action/slot-spent budgets
+for a press. Refused execution rolls those fields back. This does not advance
+a turn, refresh Reactions, grant access or waive components. It is separate
+from clock timing, and does not qualify the remaining room/world reset paths.
+Evidence: [press-budget verification](../verification/srd-press-budget-2026-11-08/README.md).

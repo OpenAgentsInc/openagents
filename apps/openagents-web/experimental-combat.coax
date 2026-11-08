@@ -41,6 +41,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "fivebar.coax";
+#load "../../aethyr/rules/srd/press-budget.coax";
 #load "class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
 #load "../../verse/experimental-terrain.coax" as xmeadow;
@@ -657,14 +658,15 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     if qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
     rs_place(b, j, qx, qz);
   }
-  // nothing on the bar runs out: a fresh turn, every slot and use back (Everglade 5E's rule)
+  // Explicit world cost profile, not a new turn or component/access waiver.
   me := b[0].c[0..<1];
-  for l: 0..<10 { me[0].slots[l] = me[0].slots_max[l]; }
-  for q: 0..<RS_USES { me[0].uses[q] = me[0].uses_max[q]; }
-  me[0].focus = me[0].focus_max; me[0].rages = me[0].rages_max;
+  saved_budget:=rs_press_budget(me[0],x[0].seat[0].turn);
+  was_open:=x[0].seat[0].open;
+  press_turn:[1] RsTurn; press_turn[0]=x[0].seat[0].turn;
+  prepared:=rs_press_prepare(me,press_turn[..],RS_UNLIMITED_PRESS);
+  x[0].seat[0].turn=press_turn[0];
   hp_before := me[0].hp; temp_before := me[0].temp;
   x[0].seat[0].open = true;
-  x[0].seat[0].turn.action = false; x[0].seat[0].turn.bonus = false; x[0].seat[0].turn.slot_spent = false;
   before: [XC_FOES] int; bx: [XC_FOES] int; bz: [XC_FOES] int;
   for i: 0..<XC_FOES { before[i] = b[0].c[1 + i].hp; bx[i] = b[0].c[1+i].x; bz[i] = b[0].c[1+i].y; }
   tx := XC_MID; ty := XC_MID;
@@ -675,7 +677,11 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   gain := rs_max(b[0].c[0].hp-hp_before,0);
   temp_gain := rs_max(b[0].c[0].temp-temp_before,0);
   xc_sync_vitals(s);
-  if !ok { if facing_cube { xc_sync_world(s); } x[0].refused += 1; return false; }
+  if !ok {
+    press_turn[0]=x[0].seat[0].turn; rs_press_restore(me,press_turn[..],saved_budget);
+    x[0].seat[0].turn=press_turn[0]; x[0].seat[0].open=was_open;
+    if facing_cube { xc_sync_world(s); } x[0].refused += 1; return false;
+  }
   if a.kind == FB_SPELL && a.sp == SP_THUNDERWAVE {
     x[0].wave = xc_wave_make(x, px, pz, cr[0].player_face); x[0].wave.y = cr[0].player_y; x[0].wave_until = now + 1.4;
   }
@@ -1563,4 +1569,16 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert hostile.hc_offer(h[0].contacts[..],0) && hostile.hc_offer(h[0].contacts[..],1);
   xc_hostile_contacts(s[..]);
   #assert h[0].hits==2 && react.react_held(s[0].xc[0].stops,1,0) && react.react_held(s[0].xc[0].stops,2,0);
+}
+
+#test "experimental combat: refused press restores spent budgets while explicit unlimited casting preserves reactions" {
+  s:[1] Lab; xc_test_lab(s[..],FB_CL_CLERIC,0);
+  x:=s[0].xc[..]; b:=x[0].b[..]; b[0].c[0].hp=1;
+  b[0].c[0].slots[1]=0; b[0].c[0].reacted=true; b[0].c[0].speech_blocked=true;
+  x[0].seat[0].open=true; x[0].seat[0].turn.bonus=true; x[0].seat[0].turn.slot_spent=true;
+  #assert !xc_use_on(s[..],2,-2);
+  #assert b[0].c[0].slots[1]==0 && x[0].seat[0].turn.bonus && x[0].seat[0].turn.slot_spent;
+  b[0].c[0].speech_blocked=false;
+  #assert xc_use_on(s[..],2,-2) && b[0].c[0].hp>1 && b[0].c[0].reacted;
+  #assert b[0].c[0].slots[1]==b[0].c[0].slots_max[1]-1;
 }

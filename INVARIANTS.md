@@ -6840,3 +6840,14 @@ its unused records; clock expiry never substitutes for that event. Saved-seat
 adapters preserve the other actor's turn. Caller facts, native scope, world input
 and remaining action/recovery boundaries:
 `docs/verification/srd-help-2026-11-08/README.md`.
+
+## Experimental's unlimited presses use an explicit shared cost policy
+
+`press-budget.coax` separates paid no-op preparation from the declared
+unlimited slot/use/Focus/Rage and Action/Bonus Action/slot-spent override.
+Unknown profiles refuse before writes. Experimental retains a narrow receipt
+and restores overridden budgets and seat openness after refused execution.
+The policy cannot refill health, Reactions, movement or components, and does
+not manufacture a logical turn or spell grant. Other world reset paths remain
+migration work. Evidence and exact limits:
+`docs/verification/srd-press-budget-2026-11-08/README.md`.
