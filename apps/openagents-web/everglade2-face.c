@@ -92,22 +92,25 @@ EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { (void
 EXPORT("coaxial_shadow_draws_v1") uint32_t coaxial_shadow_draws_v1(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->shadow.e; }
 EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(uint32_t state) { return draw_n > 0 ? (uint32_t)e2_at(state)->shadow_n : 0u; }
 EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(uint32_t state) { return (uint32_t)e2_layers_side(at(state)); }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 3; }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
+/* the pack's data layers (normal and ORM maps) bound after the colour layers' sampler (host.js) */
+EXPORT("coaxial_data_layers_v1") uint32_t coaxial_data_layers_v1(void) { return 1; }
 EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
 EXPORT("coaxial_frame_store") uint32_t coaxial_frame_store(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->frame.e; }
 EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(uint32_t state) { (void)state; return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
-  return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
+  return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : k == 3 ? (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e) : (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
 }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
-  return k == 0 ? (uint32_t)(uintptr_t)e2_at(state)->records.e : k == 1 ? (uint32_t)(uintptr_t)e2_at(state)->bake.e : (uint32_t)(uintptr_t)e2_at(state)->inst.e;
+  return k == 0 ? (uint32_t)(uintptr_t)e2_at(state)->records.e : k == 1 ? (uint32_t)(uintptr_t)e2_at(state)->bake.e : k == 3 ? (uint32_t)(uintptr_t)e2_at(state)->mats.e : (uint32_t)(uintptr_t)e2_at(state)->inst.e;
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
   if (k == 0) return (uint32_t)e2_record_bytes(at(state));
   if (k == 1) return (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e);
+  if (k == 3) return (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e);
   uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 32u;
 }
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { (void)state; return k == 1 ? baked : frames; }
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { return k == 1 ? baked : k == 3 ? (uint32_t)e2_at(state)->mats_v : frames; }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return e2_key(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return e2_key_up(at(state), key, mods) ? 1u : 0u; }

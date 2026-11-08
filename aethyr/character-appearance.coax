@@ -25,7 +25,14 @@ CaLook :: struct {head:int;hair:int=-1;extra:int=-1;skin:[3]f32;hair_rgb:[3]f32;
  b[56]='a';b[2]='2';#assert !ca_restore(c[..],cast(string)b[0..<n]);
  a[0].klass= -1;n=ca_save(a[0],b[..]);#assert n==56 && ca_restore(c[..],cast(string)b[0..<n]) && c[0].klass== -1;
 }
+// The dyes are display-space colours. Both Character Create and the film apply them in display
+// space, through one shared cc_albedo (apps/openagents-web/gpu/everglade2.coax), so a dye looks the
+// same in both. The last dye is white: no dye.
 CA_DYES :: [9][3]f32.[[3]f32.[0.06,0.22,0.18],[3]f32.[0.38,0.04,0.065],[3]f32.[0.06,0.12,0.38],[3]f32.[0.72,0.65,0.48],[3]f32.[0.29,0.08,0.34],[3]f32.[0.055,0.055,0.07],[3]f32.[0.65,0.29,0.05],[3]f32.[0.22,0.36,0.46],[3]f32.[1,1,1]];
+#test "dyes are display-space colours in range and the last is no dye" {
+ for d:CA_DYES {for c:d {#assert c>=0 && c<=1;}}
+ #assert CA_DYES[8][0]==1 && CA_DYES[8][1]==1 && CA_DYES[8][2]==1;
+}
 CA_SKINS :: [6][3]f32.[[3]f32.[1,0.94,0.87],[3]f32.[0.91,0.79,0.67],[3]f32.[0.76,0.6,0.46],[3]f32.[0.61,0.43,0.31],[3]f32.[0.43,0.28,0.2],[3]f32.[0.28,0.17,0.13]];
 CA_HAIRS :: [6][3]f32.[[3]f32.[0.08,0.05,0.035],[3]f32.[0.29,0.13,0.055],[3]f32.[0.65,0.42,0.15],[3]f32.[0.48,0.085,0.035],[3]f32.[0.62,0.65,0.69],[3]f32.[0.23,0.075,0.3]];
 CA_EYES :: [6][3]f32.[[3]f32.[0.24,0.1,0.035],[3]f32.[0.08,0.35,0.75],[3]f32.[0.06,0.48,0.23],[3]f32.[0.8,0.48,0.06],[3]f32.[0.45,0.5,0.56],[3]f32.[0.45,0.12,0.65]];

@@ -59,11 +59,12 @@ import work below remains unfinished.
 
 A pack is a header, a table of entries (kind, licence, offset, bytes, name)
 and their data on 4-byte boundaries. There is one catalog, one vertex buffer
-and one index buffer, then the texture layers, then the sounds. The catalog
+and one index buffer, then the texture layers, then the linear data layers
+(normal and ORM maps), then the sounds. The catalog
 is text: it states the pack's budget and size again, declares each licensed
 source (`L K NAME|LICENCE|URL`), names every mesh's index range, source and
-bounds in metres (`M`), and says which source each layer (`T`) and sound
-(`S`) comes from. A realm draws a mesh as `[first, count, instance, 1]`
+bounds in metres (`M`), and says which source each layer (`T`), data layer
+(`D`) and sound (`S`) comes from. A realm draws a mesh as `[first, count, instance, 1]`
 without parsing geometry.
 
 <!-- source: aethyr/forge/pack.coax format -->
@@ -80,6 +81,7 @@ PACK_VERTICES :: 2;
 PACK_INDICES :: 3;
 PACK_LAYER :: 4;
 PACK_SOUND :: 5;
+PACK_DATA :: 6;       // linear data layers (normal, ORM): between the texture layers and the sounds
 PACK_MANY :: 255;      // the licence of the catalog, vertices and indices: every source's
 
 // One entry as the table has it: its bytes are p[at..<at + n] of the pack read.

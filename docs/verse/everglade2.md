@@ -87,6 +87,25 @@ coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
   apps/openagents-web/realms/everglade2/assets/everglade2.pack
 ```
 
+Then add the characters' material maps (#13012). The tool appends the Fantasy Source's normal and
+ORM maps for each outfit family, and the base bodies' normal and roughness maps, as 14 linear
+data layers at 512 px, between the colour layers and the sounds. That brings the pack to 47 MB.
+`build.sh` then writes the range-loaded `everglade2.vpk3` from it:
+
+```sh
+coax/web/tool.sh verse/tools/humans/pack_material_layers.coax \
+  "$(coax/web/tool.sh verse/tools/assets/registry.coax source fantasy "$HOME/.openagents/assets")" \
+  apps/openagents-web/realms/everglade2/assets/everglade2.pack /tmp/everglade2-data.pack
+mv /tmp/everglade2-data.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack
+```
+
+`aethyr/character/material.coax` holds each colour layer's material record: its kind (skin,
+cloth, hair, eye or metal), roughness, metalness, sheen and the data layers it reads. The page
+stores the table (store 3) and `cc_player_fs` in `gpu/everglade2.coax` samples the maps and
+shades with `aethyr/render/character-material.coax`. Roughness never goes below 0.55, or 0.7 on
+metal, so characters stay matte. `?maps=0` turns the maps off, and `?film` adds skin wrap, cloth
+sheen and hair highlights.
+
 ## The page
 
 `apps/openagents-web/everglade2.coax` and `everglade2-face.c` run the page:

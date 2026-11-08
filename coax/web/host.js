@@ -297,6 +297,11 @@ let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, ver
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
 const PACK_PARTS = ["data", "storage", "index", "layers"], PACK_KIND = 605;
 const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PACK_SOUND = 5;
+// A pack's data layers (normal and ORM maps, verse/tools/humans/pack_material_layers.coax): their
+// own rgba8unorm array, never sRGB-decoded, bound after the colour layers' sampler for a realm that
+// asks for them (coaxial_data_layers_v1). The realm's catalog names them ("D i NAME lic").
+const PACK_DATA_LAYER = 6;
+function wantsDataLayers() { return !gpu?.renderer && engine?.exports.coaxial_data_layers_v1?.() === 1; }
 let soundDir = "";   // a sounds:/DIR/ asset: sounds played by name from DIR/NAME.ogg
 const assets = parseAssets((script && script.dataset.assets) || "");
 // What main() loads once the GPU is up (sounds wait to be played; fonts and icons are gpui.js's).
@@ -1625,6 +1630,9 @@ async function loadPack(pack) {
       : await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
     if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
+    if (wantsDataLayers()) loading.textures(0, 2 * of(PACK_DATA_LAYER).length);
+    layers.dataTexture = wantsDataLayers() && of(PACK_DATA_LAYER).length ? await layerTexture(of(PACK_DATA_LAYER).map((e) => e.bytes), "rgba8unorm") : null;
+    if (!parts.every(currentAsset)) return;
     for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
     if (!pack.broker && typeof WeakRef === "function" && engine === owner && wanted === generation && parts.every(a => !a.failed))
       pack.retainedSource = { owner: new WeakRef(owner), generation, bytes };
@@ -1663,12 +1671,15 @@ async function loadPackV1(pack){
       await rendererReady();
       const texture=images.length?await layerTexture(images):null;
       await rendererReady();
+      if(wantsDataLayers())loading.textures(0,2*of(PACK_DATA_LAYER).length);
+      const dataTexture=wantsDataLayers()&&of(PACK_DATA_LAYER).length?await layerTexture(of(PACK_DATA_LAYER).map(entry=>entry.bytes),"rgba8unorm"):null;
+      await rendererReady();
       catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;
       for(const [row,entry]of [[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
         if(gpu.renderer){row.bytes=entry.bytes;row.size=entry.bytes.length;gpu.renderer.acceptAsset(row);}
         else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX:GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
       }
-      layers.texture=texture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;
+      layers.texture=texture;layers.dataTexture=dataTexture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;
       for(const entry of of(PACK_SOUND))if((!result.ready||result.ready(entry))&&!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
         const sound={i:assets.length,kind:"sound",name:entry.name,bytes:entry.bytes,done:true,sourcePack:pack};group.sounds.push(sound);assets.push(sound);
       }
@@ -1830,12 +1841,13 @@ function fetchedOnce(url) {
   })());
   return fetches.get(url);
 }
-// A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size).
+// A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size). Data
+// layers (format "rgba8unorm") are linear and keep their own size, under the same phone policy.
 async function layerBitmap(bytes, options) {
   // WebCodecs exposes an explicit decoder lifetime. Close it before the next
   // large atlas, instead of leaving encoded-image decoder caches to GC.
   if (globalThis.ImageDecoder && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) {
-    const decoder = new ImageDecoder({ data: bytes, type: "image/png" });
+    const decoder = new ImageDecoder({ data: bytes, type: "image/png", ...(options?.colorSpaceConversion === "none" ? { colorSpaceConversion: "none", premultiplyAlpha: "none" } : {}) });
     try {
       const { image } = await decoder.decode({ frameIndex: 0 });
       try { return await createImageBitmap(image, options); }
@@ -1844,19 +1856,20 @@ async function layerBitmap(bytes, options) {
   }
   return createImageBitmap(new Blob([bytes]), options);
 }
-async function layerTexture(images) {   // the loading screen counts each layer as it goes up
+async function layerTexture(images, dataFormat = "") {   // the loading screen counts each layer as it goes up
   if (gpu.renderer) { const renderer=gpu.renderer,texture = await renderer.makeLayers(images);loading.textures(images.length*(renderer.canonicalLayers?2:1), 0);return texture; }
   // Pipeline two original atlases at most, overlapping decode with upload/mips.
   // Never retain the complete decoded array or all resized mipmaps.
   const encoded = images[0] instanceof Uint8Array;
-  const first = encoded ? await layerBitmap(images[0]) : images[0];
+  const raw = dataFormat ? { colorSpaceConversion: "none", premultiplyAlpha: "none" } : {};
+  const first = encoded ? await layerBitmap(images[0], dataFormat ? raw : undefined) : images[0];
   if (encoded) loading.textures(1, 0);
-  const { device } = gpu, declaredSide = engine?.exports.coaxial_layers_side_v1?.(arena.state) || 0,
+  const { device } = gpu, declaredSide = dataFormat ? 0 : engine?.exports.coaxial_layers_side_v1?.(arena.state) || 0,
     [dw, dh] = declaredSide ? [declaredSide, declaredSide] : [first.width, first.height];
   // Coax picks the format and the size tier (aethyr/render/texture-format.coax): no pack carries
   // block-encoded layers yet, so it is RGBA8, at most 512 a side on a phone. Without the reactor
   // the layers go up as they always have.
-  const format = "rgba8unorm-srgb"; let w = dw, h = dh;
+  const format = dataFormat || "rgba8unorm-srgb"; let w = dw, h = dh;
   try {
     const policy = await layerPolicy(layerFeatures(device.features), 0, matchMedia("(pointer: coarse)").matches, 0, Math.max(dw, dh));
     if (policy.block === 1 && policy.name === "rgba8unorm-srgb" && policy.side > 0 && policy.side < Math.max(dw, dh)) {
@@ -1872,14 +1885,14 @@ async function layerTexture(images) {   // the loading screen counts each layer 
       while (nextLayer < images.length && !failure) {
         const layer = nextLayer++;
         let image;
-        try { image = layer === 0 ? first : encoded ? await layerBitmap(images[layer], { resizeWidth: w, resizeHeight: h, resizeQuality: "high" }) : images[layer]; }
+        try { image = layer === 0 ? first : encoded ? await layerBitmap(images[layer], { ...raw, resizeWidth: w, resizeHeight: h, resizeQuality: "high" }) : images[layer]; }
         catch (error) { failure ||= new Error(`texture layer ${layer}: ${error.message}`);return; }
         if (encoded && layer !== 0) loading.textures(1, 0);
         try {
           for (let level = 0; level < levels && !failure; level++) {
             const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
             const source = level === 0 && image.width === w && image.height === h ? image
-              : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
+              : await createImageBitmap(image, { ...raw, resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
             try { device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]); }
             finally { if (source !== image) source.close(); }
           }
@@ -1894,6 +1907,12 @@ async function layerTexture(images) {   // the loading screen counts each layer 
   } catch (error) { first.close();texture.destroy();throw error; }
   return texture;
 }
+function flatDataTexture(device) {
+  if (gpu.flatData) return gpu.flatData;
+  const texture = device.createTexture({ size: [1, 1, 1], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+  device.queue.writeTexture({ texture }, new Uint8Array([128, 128, 255, 255]), { bytesPerRow: 4 }, [1, 1, 1]);
+  return (gpu.flatData = texture);
+}
 function sceneLayout() {
   if (gpu.sceneLayout) return gpu.sceneLayout;
   const x = engine.exports, entries = [];
@@ -1903,6 +1922,7 @@ function sceneLayout() {
   if (assets.some((a) => a.kind === "layers")) {
     entries.push({ binding: entries.length, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: "2d-array" } });
     entries.push({ binding: entries.length, visibility: GPUShaderStage.FRAGMENT, sampler: {} });
+    if (wantsDataLayers()) entries.push({ binding: entries.length, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: "2d-array" } });
   }
   return (gpu.sceneLayout = gpu.device.createBindGroupLayout({ entries }));
 }
@@ -2024,6 +2044,8 @@ function bindScene() {
   if (layers) {
     resources.push(layers.texture.createView({ dimension: "2d-array" }));
     resources.push(device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", addressModeU: "repeat", addressModeV: "repeat", maxAnisotropy: 8 }));
+    // a pack without data layers binds one flat-normal texel; the realm's table then names no maps
+    if (wantsDataLayers()) resources.push((layers.dataTexture || flatDataTexture(device)).createView({ dimension: "2d-array" }));
   }
   gpu.index = assets.find((a) => a.kind === "index")?.buffer;
   gpu.sceneGroup = device.createBindGroup({ layout: sceneLayout(), entries: resources.map((resource, binding) => ({ binding, resource })) });

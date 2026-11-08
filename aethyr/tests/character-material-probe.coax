@@ -1,0 +1,28 @@
+// The GPU half of the character material agreement check (#13012): every shading function of
+// aethyr/render/character-material.coax evaluated on the GPU, one pixel a case and one row a
+// function, from the same cases the CPU evaluates (character-material-gpu.coax). wgsl-module writes
+// this file's WGSL with character-material-probe.module and .bindings.
+#load "../render/character-material.coax";
+
+CMP_CASE :: 8;    // vec4s a case
+CMP_ROWS :: 8;    // functions
+cmp_vs :: (id:u32,instance:u32)->V4 {
+ x:f32=-1;y:f32=-1;if id==1 {x=3;}if id==2 {y=3;}return v4(x,y,0,1);
+}
+// Function `row` on case `i` (cases: CMP_CASE vec4s each).
+cmp_eval :: (row:int,cases:[]V4,i:int)->V4 {
+ a:=cases[i*CMP_CASE];b:=cases[i*CMP_CASE+1];c:=cases[i*CMP_CASE+2];d:=cases[i*CMP_CASE+3];t:=cases[i*CMP_CASE+4];e:=cases[i*CMP_CASE+5];f:=cases[i*CMP_CASE+6];gg:=cases[i*CMP_CASE+7];
+ n:=v3(a.x,a.y,a.z);l:=v3(b.x,b.y,b.z);v:=v3(c.x,c.y,c.z);albedo:=v3(d.x,d.y,d.z);px:=v3(e.x,e.y,e.z);py:=v3(f.x,f.y,f.z);g:=v3(gg.x,gg.y,gg.z);
+ ux:=v2(e.w,f.w);uy:=v2(gg.w,d.w);rough:=a.w;metal:=b.w;strength:=c.w;
+ r:=cm_rough(rough,metal);f0:=cm_f0(albedo,metal);out:=v3(0,0,0);
+ if row==0 {out=cm_normal(t,strength,n,px,py,ux,uy);}
+ if row==1 {out=cm_ggx(f0,r,n,l,v);}
+ if row==2 {out=cm_sheen(scale3(albedo,0.3f32),r,n,l,v);}
+ if row==3 {out=cm_skin(albedo,f0,r,n,g,l,v);}
+ if row==4 {out=cm_hair(albedo,r,cm_strand(n,px,py,ux,uy),n,l,v);}
+ if row==5 {out=cm_metal_sky(cm_metal_env(albedo,scale3(l,2.0f32),r),f0,r,saturate(dot3(n,v)),metal);}
+ if row==6 {out=cm_strand(n,px,py,ux,uy);}
+ if row==7 {return v4(r,f0.x,f0.y,f0.z);}
+ return v4(out.x,out.y,out.z,1);
+}
+cmp_fs :: (pos:V4,cases:[]V4)->V4 {return cmp_eval(cast(int)pos.y,cases,cast(int)pos.x);}
