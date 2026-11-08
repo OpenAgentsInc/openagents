@@ -1,9 +1,57 @@
 # Shared combat timing profiles
 
-Implemented subset of #13045, 2026-11-08. This is the engine's current typed
+Implemented for #13045, 2026-11-08. This is the engine's current typed
 timing boundary, not the complete world-profile format proposed in README.md.
-The policy lives in `aethyr/rules/srd/timing-profile.coax`; worlds select it with
-`rs_set_timing` before play. No public wire format is introduced.
+The timing policy lives in `aethyr/rules/srd/timing-profile.coax`. No public
+wire format is introduced.
+
+## One declaration per world
+
+A world selects its whole rules profile with one `rs_set_world` call before
+play (`aethyr/rules/srd/world-profile.coax`). The profile carries the timing,
+area-origin, press-budget and walking choices below; it applies all four or
+none, the clock seals it, and `rs_reset` restores strict. Shared rules read the
+battle's applied fields. No world passes a literal profile any more.
+
+| Profile | Worlds | Named deviations (`rs_world_deviations`) |
+| --- | --- | --- |
+| `RS_STRICT_WORLD` (default) | Strict tests, the one-shot table, 5E Lab's SRD rounds | None |
+| `RS_ACTION_WORLD` | Everglade 5E single play, 5E MMO, 5E Lab action mode | 1.5-second turns; cooldown recovery; caster spared by its own areas |
+| `RS_EVERGLADE_WORLD` | Everglade Experimental, the Everglade 5E room, Everglade II | The above, plus unlimited presses and unpaid continuous walking |
+
+Everglade II's harmless social targeting (`everglade2-rules.coax`) is a
+targeting rule, not a timing deviation, and stays named in its own file.
+
+## Continuous walking pays the turn's feet
+
+Under `RS_WALK_PAID` (strict, and `RS_ACTION_WORLD`), a physical walker pays
+from the same budget as grid steps (`walk-budget.coax`; SRD 5.2.1 p.14
+Difficult Terrain, p.179 Crawling, p.180 Dash, p.188 Speed). Each foot walked costs one foot of movement, two in
+Difficult Terrain or while crawling, three for both; Dash adds current Speed;
+Speed loss keeps spent feet spent. `rs_walk_take` cuts the walker's step where
+the turn's movement runs out, so it can't overspend; the carried part of a foot
+resets at the next turn. Strict Speed 30 walks exactly 9.144 m a turn;
+action timing pays its 10-foot beat. `RS_WALK_RATE` (Everglade) walks unpaid at
+the Speed-proportional rate described below; that is the declared deviation.
+No current world drives a paid physical walker; the actual walker is checked
+against a strict turn in `walk-budget-walker-checks.coax`.
+
+## Turn boundaries and durations
+
+Turns are instants on the clock. Start-of-turn triggers (Dodge and Shield end,
+the Reaction returns, death saves on a new round) fire only at the creature's
+own turn start; repeated saves are end-of-turn rolls. "Until the end of your
+next turn" holds through that turn and ends before any later creature's turn.
+Durations are world-clock seconds in both profiles: a one-minute effect lasts
+ten rounds of the creature's turns (40 action beats), an hour 3,600 seconds,
+and every executable spell's timed duration and Concentration match the pinned
+source. SRD p.187 lets the turn's owner order simultaneous effects; the engine
+resolves them in a fixed order (effect slot order), which is checked to give
+the same result in either order for the covered saves. No order chooser ships.
+Checks: `turn-order-checks.coax`.
+
+## Timing profiles
+
 
 | Decision | `RS_STRICT_TIMING` (default) | `RS_ACTION_TIMING` (house rule) |
 | --- | --- | --- |

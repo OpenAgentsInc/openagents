@@ -6658,6 +6658,30 @@ strict/native witnesses, saved-seat and selected world/mode regressions.
 Scope and outstanding #13045 acceptance:
 `docs/verification/srd-timing-2026-11-08/README.md`.
 
+## A world declares all of its rules deviations in one profile
+
+`aethyr/rules/srd/world-profile.coax` (`#authority`) is the one place a world
+says how its combat departs from SRD 5.2.1: `RsWorldProfile` carries the timing
+profile, area origin, press budget and continuous walking mode, and
+`rs_world_deviations` names each departure. Worlds call `rs_set_world` once,
+before the clock is sealed; it applies all four fields or none. Shared rules
+read only the battle's applied fields (`timing`, `areas`, `press`, `walk`); no
+world passes a literal timing, area or press profile. `RS_STRICT_WORLD` (and
+`rs_reset`) gives strict results. `RS_ACTION_WORLD` is the grid action worlds
+(single 5E, MMO, Lab action); `RS_EVERGLADE_WORLD` adds unlimited presses and
+unpaid rate walking for Experimental, the 5E room and Everglade II.
+
+Under `RS_WALK_PAID`, continuous walking pays from the same turn budget as
+grid steps (`walk-budget.coax`, `#authority`): one foot of movement per foot
+walked, two in Difficult Terrain or crawling, three for both, plus Dash. The
+walker asks `rs_walk_pay`/`rs_walk_take` before it moves and moves at most what
+is granted, so it never spends past `rs_movement_left`. The part of a foot
+walked carries in `RsTurn.walk_ft` and resets each turn.
+
+Checks: `world-timing-checks.coax`, `walk-budget-walker-checks.coax` (the
+actual walker), `turn-order-checks.coax` and the two zero-survivor mutation
+gates. See `docs/verification/srd-world-profile-2026-11-08/README.md`.
+
 ## Casting components precede all costs and distinguish class from world grants
 
 The compact canonical spell index retains V/S/M, priced and consumed flags
