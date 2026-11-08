@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "175733247af94237b328c334921315a69dc47b6330b8ed942fa54b9b18338b3d",
+    "sha256": "9486f45fb9c4373ae009d38dd80ef39adcea61d1312753bccac54b010417ea70",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2298,10 +2298,10 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "c392f2919a0de6a8634957264d76a9a716f63e9b1e71e2c220bb3393c970de7d",
+    "sha256": "6e6f8789f16dbdd83e36a7e2f72314de304ee1c36aea746424e99c90594828c6",
     "budget_bytes": 536870912,
-    "decoded_sha256": "2dec9e72b80d7a86ebc889f495a86aa77152f723b29bb47ded812e20d82bd628",
-    "decoded_bytes": 207646016,
+    "decoded_sha256": "18dc45e3abbbf787bded298cb4dbcb07b9f3cdf804ae0bc6d3c47633a0ef1c2c",
+    "decoded_bytes": 207849852,
     "encoding": "gzip"
   },
   "terrain": {
@@ -2538,9 +2538,9 @@
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "dd1f9f587837dad9935271ff00f00247447b0967181a4b9128d856c0d06a35b4",
+    "sha256": "43a17edfffec440ddad5fb41b7e50216a4ed4cb350d4fe93f8743560e8b0a988",
     "artifact": "apps/openagents-web/charactercreator.wgsl",
-    "artifact_sha256": "b86812dce24643f190f77c167fc0ce97fa7767a05be211253269d4253b4bc27d"
+    "artifact_sha256": "a8fd1e7895043cf92743e3df2e8ae3c20303aa8ca336cb94b6e4ae1dfbbc0e8a"
   },
   "props": {
     "package": "fantasy-props",

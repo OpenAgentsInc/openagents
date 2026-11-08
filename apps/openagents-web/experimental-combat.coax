@@ -19,6 +19,10 @@
 // you, and nothing behind or beside you is picked for you. A heal is yours: what it heals is added
 // to your Hit Points (verse/experimental-hostiles.coax hp).
 //
+// Weapons: a melee class holds its weapon in the right hand (xc_kit; charactercreator.coax
+// held_weapon). A blow with it swings first (the slash, or the chop for the greataxe) and lands at the
+// swing's impact (xc_strike_due), not at the press.
+//
 // A monster at 0 Hit Points dies: it stops, a puff of dust rises, and it sinks into the ground over
 // XC_SINK seconds (charactercreator.coax scene).
 //
@@ -70,6 +74,7 @@ XcCombat :: struct {
   whiffs: int;                      // bolts that flew to their range and blows that met no one
   fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
   seeded: bool;                     // the dice mixed with the clock at the first press, so each visit rolls its own
+  pend: int = -1; pend_at: f32;     // a blow swung and not yet landed: its slot, and its impact's time (xc_strike_due)
 }
 
 xc_imp :: () -> RsCreature { return fb_folk("Imp", 1, 13, 10, [6] int.[6, 17, 13, 11, 12, 14]); }
@@ -133,7 +138,7 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   x[0].seat[0] = FbSeat.{me = 0};
   x[0].klass = c;
   x[0].bar_n = xc_bar(c, x[0].bar[..]);
-  x[0].used = -1; x[0].hover = -1;
+  x[0].used = -1; x[0].hover = -1; x[0].pend = -1;
 }
 // A monster's square round you: the nearest whole square to where it stands, off the grid when far.
 xc_square :: (d: f32) -> int {
@@ -224,9 +229,44 @@ xc_press :: (s: [] Lab, k: int) -> bool {
   if !cr[0].experimental || cr[0].walk.on || !x[0].started || k < 0 || k >= x[0].bar_n { return false; }
   now := cr[0].clock;
   if now - x[0].cool_at < f32(XC_COOL) || h[0].hp <= 0 { x[0].refused += 1; return false; }
+  xc_strike_due(s);
   a := x[0].bar[k];
   b := x[0].b[..];
   if !x[0].seeded { x[0].seeded = true; b[0].dice[0].state = b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
+  // a blow with a weapon in hand swings first and lands at the swing's impact (xc_swing)
+  kit := xc_kit(x[0].klass);
+  if kit >= 0 && xc_aim_kind(s, a).kind == XC_AIM_MELEE {
+    clip := ifx cc.CC_KIT_TWO[kit] then figs.BD_CLIPS + figs.BD_CHOP else figs.BD_SLASH;
+    cr[0].weapon = kit; cr[0].swing_clip = clip; cr[0].swing_at = now;
+    x[0].pend = k; x[0].pend_at = now + figs.bd_blow(s[0].bodies[..], cr[0].female, clip) * figs.bd_seconds(clip);
+    x[0].cool_at = now; x[0].used = k;
+    return true;
+  }
+  return xc_use(s, k);
+}
+// The blow pressed earlier lands when its swing reaches the impact (each frame, and before a press).
+xc_strike_due :: (s: [] Lab) {
+  x := s[0].xc[..];
+  if x[0].pend < 0 || s[0].creator[0].clock < x[0].pend_at { return; }
+  k := x[0].pend; x[0].pend = -1;
+  if s[0].creator[0].hostiles[0].hp > 0 { _ := xc_use(s, k); }
+}
+// The weapon a class holds (charactercreator.coax CC_KITS), as close to its SRD starting weapon as the
+// Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's and Paladin's longswords, the Ranger's
+// and Rogue's shortswords. The Monk fights unarmed and the casters hold none: -1.
+xc_kit :: (c: int) -> int {
+  if c == FB_CL_BARBARIAN { return 0; }
+  if c == FB_CL_FIGHTER { return 1; }
+  if c == FB_CL_PALADIN { return 2; }
+  if c == FB_CL_RANGER || c == FB_CL_ROGUE { return 3; }
+  return -1;
+}
+// Slot k used now: the engine resolves it at what it aims at (xc_aim). True when it was used.
+xc_use :: (s: [] Lab, k: int) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  now := cr[0].clock;
+  a := x[0].bar[k];
+  b := x[0].b[..];
   px := cr[0].player_x; pz := cr[0].player_z;
   // what it aims at: ahead of you, by its kind (xc_aim); nothing is picked for you behind or beside you
   aim := xc_aim(s, a);
@@ -366,6 +406,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   for i: 0..<36 { x[0].u[i] = ifx i < u.count then u[i] else 0; }
   x[0].w = w; x[0].h = h; x[0].k = k; x[0].seen = true;
   now := cr[0].clock;
+  cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
+  xc_strike_due(s);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   // a restrained monster frees itself when the engine's area ends
   for i: 0..<XC_FOES { c := x[0].b[0].c[1 + i]; if hs[0].enemies[i].held && c.restrained_by < 0 && rs_can_act(c) { hs[0].enemies[i].held = false; } }
@@ -540,6 +582,8 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   if f == 905 { return x[0].target; }
   if f == 906 { return x[0].refused; }
   if f == 909 { return x[0].whiffs; }
+  if f == 916 { return s[0].creator[0].weapon; }
+  if f == 917 { return x[0].pend; }
   if f == 907 { return x[0].last_dmg; }
   if f == 908 { return hs[0].hp; }
   if f >= 910 && f < 916 { return ifx x[0].started then x[0].b[0].c[1 + f - 910].hp else -1; }
@@ -663,4 +707,30 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 1.5707963);
   tw := xc_aim(w[..], w[0].xc[0].bar[4]); #assert tw.kind == XC_AIM_AREA && tw.fx > 0.99 && abs(tw.reach - 4.572) < 0.01;
   #assert xc_aim_kind(s[..], s[0].xc[0].bar[0]).kind == XC_AIM_SELF;
+}
+#test "experimental combat: a melee class holds its weapon, and a blow lands at its swing's impact, not at the press" #steps 2000000000 {
+  #assert xc_kit(FB_CL_BARBARIAN) == 0 && cc.CC_KIT_TWO[0] && xc_kit(FB_CL_FIGHTER) == 1 && xc_kit(FB_CL_PALADIN) == 2;
+  #assert xc_kit(FB_CL_RANGER) == 3 && xc_kit(FB_CL_ROGUE) == 3 && xc_kit(FB_CL_MONK) == -1 && xc_kit(FB_CL_WIZARD) == -1 && xc_kit(FB_CL_CLERIC) == -1;
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2;   // just ahead, in reach
+  hp := xc_hp_sum(s[..]);
+  tries := 0;
+  while s[0].xc[0].landed == 0 && tries < 40 {
+    s[0].creator[0].clock += 1.1;
+    #assert xc_press(s[..], 1);
+    // the swing has begun (the slash clip), the blow not yet landed: no one is hurt at the press
+    #assert s[0].xc[0].pend == 1 && s[0].creator[0].swing_clip == figs.BD_SLASH && s[0].creator[0].swing_at == s[0].creator[0].clock;
+    #assert xc_hp_sum(s[..]) == hp;
+    // at the impact it lands
+    s[0].creator[0].clock = s[0].xc[0].pend_at; xc_strike_due(s[..]);
+    #assert s[0].xc[0].pend == -1;
+    tries += 1;
+  }
+  #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp;
+  // the Barbarian's greataxe swings the two-handed chop
+  t: [1] Lab; xc_test_lab(t[..], FB_CL_BARBARIAN, 0); t[0].creator[0].clock = 5;
+  #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_CLIPS + figs.BD_CHOP && t[0].creator[0].weapon == 0;
+  // a caster's spell resolves at once, with no swing
+  w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 0); w[0].creator[0].clock = 5;
+  #assert xc_press(w[..], 0) && w[0].xc[0].pend == -1 && w[0].creator[0].swing_clip == -1;
 }

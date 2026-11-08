@@ -68,6 +68,16 @@ You fight the monsters with your class's level 1 kit
 - CLASSES, a column under ANIMATIONS on the left (or at the top when ANIMATIONS is hidden), lists
   the twelve SRD classes. Click one to become that class at level 1. The bar reloads with its
   kit. Click CLASSES to fold the column.
+- Melee classes hold a weapon from the Ultimate RPG kit in the right hand: the Barbarian a
+  greataxe (Axe_Double), the Fighter a longsword (Sword), the Paladin a golden longsword
+  (Sword_Golden), and the Ranger and Rogue a shortsword (Sword, smaller). The Monk fights
+  unarmed, and casters hold nothing. The weapon is fixed to the right hand's bone, so it follows
+  every animation. Changing class in CLASSES swaps it.
+- A blow with a weapon (Attack, Sneak Attack, Divine Smite) plays a swing over what you're doing,
+  blended like the jump: the Universal Animation Library 1 sword attack, or the Library 2 chop
+  for the greataxe. The blow lands at the swing's impact, the frame where the hand moves fastest
+  forward or down, not at the key press.
+
 Thirty-six additional flower, plant, fern, clover, mushroom, bush and grass variants grow in
 the eastern meadow. The remaining sixty nature models, including trees, rocks and paths,
 stand in display rows in the northwestern meadow. The experimental pack budget is 512 MiB

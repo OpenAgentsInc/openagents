@@ -44,6 +44,9 @@ BD_BASE_TOTAL :: 502;
 BD_TOTAL :: PREVIEW_TOTAL;          // frames a body
 BD_ROWS :: 195;           // rows a frame: 65 joints, three each
 BD_BAKE_FLOATS :: 5996640; // 2 bodies * PREVIEW_TOTAL frames * 195 rows * 4
+BD_HAND :: 34;            // the right hand's joint (the weapon's bone)
+BD_HAND_FLOATS :: 92256;  // 2 bodies * PREVIEW_TOTAL frames * 12: its three rows a frame
+BD_CHOP :: 80;            // the preview clip a two-handed blow plays (ual2_treechopping_loop), baked always
 BD_FADE :: 0.18;          // seconds a change of clip blends
 BD_WALK_FROM :: 0.35;     // m/s: slower stands
 BD_RUN_FROM :: 2.2;       // and faster runs
@@ -190,6 +193,8 @@ Bodies :: struct {
   draws: [176] u32; draw_n: int;  // a draw a part worn, and one of the blocks
   shown: int;               // figures drawn this frame
   blocks: int;              // of them, drawn as blocks
+  hand: [BD_HAND_FLOATS] f32;  // the right hand's skinning rows, every baked frame (bd_keep_hands)
+  hand_at: [6] f32;            // where the right hand is in each body's bind pose (male, female)
 }
 
 // ---- the pack's catalog (verse/tools/pack_realm.py): "C NAME FIRST COUNT K WORD VERTICES JOINTS" a part
@@ -249,10 +254,9 @@ bd_bake_clip :: (d: [] People, body: int, c: int, out: [] f32) {
 bd_bake :: (d: [] People, out: [] f32, previews:bool) {
   if out.count < BD_BAKE_FLOATS { return; }
   for body: 0..<2 { for c: 0..<BD_CLIPS { bd_bake_clip(d, body, c, out); } }
-  if !previews {return;}
   data:[1]Preview;preview_load(data[..]);
   for body:0..<2 {rig:=preview_rig(data[..],body==1);sk:[1]Skin;
-    for c:0..<PREVIEW_BAKED {n:=PREVIEW_FRAMES[c];for f:0..<n {
+    for c:0..<PREVIEW_BAKED {if !previews && c!=BD_CHOP {continue;}n:=PREVIEW_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);
       for j:0..<PEOPLE_JOINTS {sk[0].now[j]=skin_sample(rig,c,j,t);}
       at:=bd_row(body==1,BD_CLIPS+c,f)*4;skin_palette(rig,sk[..],out[at..<at+BD_ROWS*4]);
@@ -396,6 +400,50 @@ bd_seen :: (c: BdCam, x: f32, z: f32) -> f32 {
   return tall;
 }
 // One instance of part `word` worn by a, into out at record r (gpu/fivelab.coax FivelabObj).
+// The right hand's rows of every baked frame, kept from the bake (which the face owns) for the
+// weapon it holds.
+bd_keep_hands :: (b: [] Bodies, d: [] People, bake: [] f32) {
+  if bake.count < BD_BAKE_FLOATS { return; }
+  for f: 0..<2 * BD_TOTAL { for k: 0..<12 { b[0].hand[f * 12 + k] = bake[(f * BD_ROWS + BD_HAND * 3) * 4 + k]; } }
+  // the inverse bind is [A | t]: the joint stands at -A^-1 t
+  for body: 0..<2 {
+    rig := people_rig(d, body == 1); m := rig.bind[BD_HAND * 12..<BD_HAND * 12 + 12];
+    a0 := m[0]; a1 := m[1]; a2 := m[2]; b0 := m[4]; b1 := m[5]; b2 := m[6]; c0 := m[8]; c1 := m[9]; c2 := m[10];
+    det := a0 * (b1 * c2 - b2 * c1) - a1 * (b0 * c2 - b2 * c0) + a2 * (b0 * c1 - b1 * c0);
+    if abs(det) < 0.000001 { continue; }
+    t0 := -m[3]; t1 := -m[7]; t2 := -m[11];
+    b[0].hand_at[body * 3] = ((b1 * c2 - b2 * c1) * t0 - (a1 * c2 - a2 * c1) * t1 + (a1 * b2 - a2 * b1) * t2) / det;
+    b[0].hand_at[body * 3 + 1] = (-(b0 * c2 - b2 * c0) * t0 + (a0 * c2 - a2 * c0) * t1 - (a0 * b2 - a2 * b0) * t2) / det;
+    b[0].hand_at[body * 3 + 2] = ((b0 * c1 - b1 * c0) * t0 - (a0 * c1 - a1 * c0) * t1 + (a0 * b1 - a1 * b0) * t2) / det;
+  }
+}
+// Where the hand is at kept frame h (hand[h..h+12]): its rows applied to its bind position.
+bd_hand_point :: (b: [] Bodies, female: bool, h: int) -> [3] f32 {
+  o := ifx female then 3 else 0; x := b[0].hand_at[o]; y := b[0].hand_at[o + 1]; z := b[0].hand_at[o + 2];
+  r: [3] f32;
+  for k: 0..<3 { r[k] = b[0].hand[h + k * 4] * x + b[0].hand[h + k * 4 + 1] * y + b[0].hand[h + k * 4 + 2] * z + b[0].hand[h + k * 4 + 3]; }
+  return r;
+}
+// The frame of the blow in clip c (0 to 1 of its length): when the right hand moves fastest forward or down.
+bd_blow :: (b: [] Bodies, female: bool, c: int) -> f32 {
+  n := ifx c >= BD_CLIPS then PREVIEW_FRAMES[c - BD_CLIPS] else BD_FRAMES[c];
+  best := -1.0f32; at := 0.5f32;
+  for f: 1..<n {
+    p := bd_row(female, c, f - 1) / BD_ROWS * 12; q := bd_row(female, c, f) / BD_ROWS * 12;
+    u := bd_hand_point(b, female, p); w := bd_hand_point(b, female, q);
+    dx := w[0] - u[0]; dy := w[1] - u[1]; dz := w[2] - u[2];
+    v := dx * dx + dy * dy + dz * dz;
+    if dz - dy > 0 && v > best { best = v; at = (f32(f) - 0.5) / f32(n); }
+  }
+  return at;
+}
+// The hand's pose (three rows of four) between bake rows ra and rb (bd_record's out[4], out[5]) at mix.
+bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix: f32) -> [12] f32 {
+  fa := clamp_int(int(ra) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 12; fb := clamp_int(int(rb) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 12;
+  h: [12] f32;
+  for k: 0..<12 { h[k] = b[0].hand[fa + k] * (1 - mix) + b[0].hand[fb + k] * mix; }
+  return h;
+}
 bd_record :: (a: BdAnim, l: BdLook, word: int, far: bool, now: f32, out: [] f32, r: int) {
   o := r * BD_REC_FLOATS;
   whole := bd_whole(a, now);

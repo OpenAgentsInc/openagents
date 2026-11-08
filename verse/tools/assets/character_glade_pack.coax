@@ -76,7 +76,7 @@ gp_village_tile :: (material:string)->int {
  box:=gp_vertex_bounds(b[..],0,2,false);#assert box[0]<=2000 && box[3]>=3000 && box[2]<= -3000 && box[5]>= -2000;
 }
 GP_VERTS :: 8000000;
-Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
+Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;weaponfirst:[3]int;weaponcount:[3]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
 // Capture exactly the world-space vertices emitted for one placed asset.
 // Tree trunks use their bark geometry so a broad canopy does not become a wall.
 gp_vertex_bounds :: (vertices:[]u8,first:int,last:int,bark:bool)->[6]int {
@@ -240,6 +240,20 @@ gp_showcase_at :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,
    for v:0..<nv {p:=gp_showcase_rotate([3]f32.[f32(pos[v*3]*scale[0]),f32(pos[v*3+1]*scale[1]),f32(pos[v*3+2]*scale[2])],q);n:=gp_showcase_rotate([3]f32.[f32(nor[v*3]/scale[0]),f32(nor[v*3+1]/scale[1]),f32(nor[v*3+2]/scale[2])],q);length:=sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);if length>0 {for k:0..<3 {n[k]/=length;}}lx:=p[0]+f32(translation[0])-anchor[0];lz:=p[2]+f32(translation[2])-anchor[2];normal:=[3]f32.[n[0]*cs+n[2]*sn,n[1],-n[0]*sn+n[2]*cs];id:=gp_v(w,[3]f32.[place[0]+model_scale*(lx*cs+lz*sn),base+model_scale*(p[1]+f32(translation[1])-anchor[1]),place[1]+model_scale*(-lx*sn+lz*cs)],normal,[2]f32.[0.5,0.5],colour,atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(marker));}
    for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
   }
+ }
+}
+// The weapons the Experimental hero holds (#13025): Axe_Double (a Barbarian's greataxe), Sword (a
+// Fighter's longsword, and a Ranger's or Rogue's shortsword smaller) and Sword_Golden (a Paladin's),
+// from the showcase's Ultimate RPG rows. Each is meshed in its own space, the blade up +Y and centred
+// on X and Z, at its source size, marked 115.4375: the runtime sets its grip, scale and the hand's pose (flag 19).
+GP_WEAPONS :: [3]string.["Axe_Double","Sword","Sword_Golden"];
+gp_weapons :: (w:[]Gp,g:[]Gltf,layout:string,objects:string,rpg:string) {
+ b:[65536]u8;n:=fs_read(layout,b[..]);if n<0 {ph_die("missing showcase layout");}
+ for k:0..<3 {lines:[1]Lines;lines[0].text=cast(string)b[0..<n];found:=false;
+  while !lines_done(lines[0]) {row:=lines_next(lines[..]);a:=0;while a<row.count && row[a]!='|' {a+=1;}c:=a+1;while c<row.count && row[c]!='|' {c+=1;}if c>=row.count || row[0..<a]!="ultimate-rpg" || row[a+1..<c]!=GP_WEAPONS[k] {continue;}
+   path:=txt_cat3(w[0].txt[..],objects,"/",row[c+1..<row.count]);gl_load(g,path);anchor:=gp_showcase_bounds(g);
+   w[0].weaponfirst[k]=w[0].ni;gp_showcase_at(w,g,path,rpg,GP_WEAPONS[k],[2]f32.[0,0],w[0].village_layer,1,0,-meadow.exp_height(0,0)+anchor[1],115.4375);w[0].weaponcount[k]=w[0].ni-w[0].weaponfirst[k];found=true;break;}
+  if !found {ph_die("missing weapon in the showcase layout");}
  }
 }
 gp_showcase :: (w:[]Gp,g:[]Gltf,layout:string,objects:string,food:string,rpg:string,dungeon:string,animals:string) {
@@ -640,7 +654,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=16 {atlas:=gp_bestiary_atlas(w[..],iw[..],args_at(args[..],14));}
  if args_count(args[..])>=18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
  if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11));gp_castle(w[..],g[..],args_at(args[..],4),args_at(args[..],8),args_at(args[..],11));}
- w[0].envni=w[0].ni;if args_count(args[..])>=16 {gp_bestiary_frames(w[..],args_at(args[..],15));}if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));}
+ w[0].envni=w[0].ni;if args_count(args[..])>=16 {gp_bestiary_frames(w[..],args_at(args[..],15));}if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));gp_weapons(w[..],g[..],args_at(args[..],7),args_at(args[..],8),args_at(args[..],10));}
  for group:0..<3 {
   w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";
   gp_mesh(w[..],g[..],iw[..],root,name,0,0,1,0,[3]f32.[1,1,1]);w[0].grasscount[group]=w[0].ni-w[0].grassfirst[group];
@@ -650,7 +664,8 @@ tool_main :: ()->int #export_c #effects(all) {
  src:=0;cb:[262144]u8;c:[1]Sb;c[0]=sb(cb[..]);lines_at:=0;while lines_at<cat.count {e:=lines_at;while e<cat.count && cat[e]!='\n' {e+=1;}line:=cat[lines_at..<e];lines_at=e+1;if starts(line,"L ") {src+=1;}if starts(line,"budget ") && args_count(args[..])>=14 {sb_put(c[..],"budget 536870912\n");}else if starts(line,"bytes ") {sb_put(c[..],"bytes 0000000000\n");}else {sb_put(c[..],line);sb_byte(c[..],'\n');}}lic:=ifx zone then src else 250;if zone {sb_put(c[..],"L ");sb_int(c[..],src);sb_put(c[..]," Quaternius Stylized Nature MegaKit Source|CC0 1.0 Universal|https://quaternius.com/\n");}else {sb_put(c[..],"\nL 250 Quaternius Stylized Nature MegaKit Source|CC0 1.0 Universal|https://quaternius.com/\n");if buildings {sb_put(c[..],"L 251 Quaternius Medieval Village MegaKit Source|CC0 1.0 Universal|https://quaternius.com/\n");if args_count(args[..])>=7 {sb_put(c[..],"L 252 Quaternius Fantasy Props MegaKit Standard|CC0 1.0 Universal|https://quaternius.com/\n");}if args_count(args[..])>=14 {sb_put(c[..],"L 253 Quaternius Ultimate Food, Ultimate RPG, Modular Dungeon and Ultimate Animated Animals|CC0 1.0 Universal|https://quaternius.com/\n");}if args_count(args[..])>=16 {sb_put(c[..],"L 254 Quaternius Bestiary Dungeon Monsters|Quaternius Asset License v1.0|https://quaternius.com/license.html\n");}}}sb_put(c[..],"C glade/environment ");sb_int(c[..],in/4);sb_byte(c[..],' ');sb_int(c[..],w[0].envni);sb_byte(c[..],' ');sb_int(c[..],lic);sb_byte(c[..],' ');sb_int(c[..],vn/4);sb_byte(c[..],' ');sb_int(c[..],w[0].nv);sb_put(c[..]," 0\n");
  if args_count(args[..])>=16 {for i:0..<48 {sb_put(c[..],"C glade/monster");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].monsterfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].monstercount[i]);sb_put(c[..]," 254 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
  if args_count(args[..])>=16 {for i:0..<48 {for kind:0..<2 {sb_put(c[..],ifx kind==0 then "C glade/imp" else "C glade/gremlin");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].monsterpartfirst[i][kind]);sb_byte(c[..],' ');sb_int(c[..],w[0].monsterpartcount[i][kind]);sb_put(c[..]," 254 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}}
- if args_count(args[..])>=14 {for i:0..<10 {sb_put(c[..],"C glade/animal");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].animalfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].animalcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
+ if args_count(args[..])>=14 {for i:0..<3 {sb_put(c[..],"C glade/weapon");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].weaponfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].weaponcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
+  if args_count(args[..])>=14 {for i:0..<10 {sb_put(c[..],"C glade/animal");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].animalfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].animalcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
  for group:0..<3 {sb_put(c[..],"C glade/grass");sb_int(c[..],group);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].grassfirst[group]);sb_byte(c[..],' ');sb_int(c[..],w[0].grasscount[group]);sb_byte(c[..],' ');sb_int(c[..],lic);sb_byte(c[..],' ');sb_int(c[..],vn/4+w[0].seedfirst[group]*8);sb_byte(c[..],' ');sb_int(c[..],w[0].seedn[group]);sb_put(c[..]," 0\n");}
  for i:0..<w[0].nt {sb_put(c[..],"T ");sb_int(c[..],w[0].layers+i);sb_put(c[..]," glade/");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],ifx w[0].layers+i==w[0].village_layer then 251 else ifx w[0].layers+i==w[0].bestiary_layer then 254 else lic);sb_byte(c[..],'\n');}
  count:=ne+w[0].nt;at:=32+count*48;gp_word(w[0].out[..],0,ifx zone && count>48 then 0x324b5056 else 0x314b5056);put_u32(w[0].out[..],4,count);budget:=ifx args_count(args[..])>=14 then 536870912 else ifx buildings then 67108864 else 33554432;put_u32(w[0].out[..],12,budget);put_u32(w[0].out[..],16,32);put_u32(w[0].out[..],20,at);

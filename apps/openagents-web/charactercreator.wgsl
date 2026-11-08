@@ -1204,13 +1204,21 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t1
   }
   l_nw = coax_p_wg_unpack4x8snorm(l_normal);
   l_normal3 = coax_p_v3(l_nw.x, l_nw.y, l_nw.z);
-  if ((l_m.w.w > 0x1.180000p4f))
+  if ((l_m.w.w > 0x1.280000p4f))
   {
-    l_local = coax_p_sub3(l_p, coax_p_v3(l_m.y.x, l_m.y.y, l_m.y.z));
-    l_cs = l_m.z.y;
-    l_sn = l_m.z.x;
-    l_p = coax_p_add3(coax_p_v3(l_m.x.x, l_m.x.y, l_m.x.z), coax_p_v3(((l_local.x * l_cs) + (l_local.z * l_sn)), l_local.y, (((-l_local.x) * l_sn) + (l_local.z * l_cs))));
-    l_normal3 = coax_p_v3(((l_normal3.x * l_cs) + (l_normal3.z * l_sn)), l_normal3.y, (((-l_normal3.x) * l_sn) + (l_normal3.z * l_cs)));
+    l_p = coax_p_add3(coax_p_v3(l_m.x.x, l_m.x.y, l_m.x.z), coax_p_add3(coax_p_add3(coax_p_scale3(coax_p_v3(l_m.z.x, l_m.z.y, l_m.z.z), l_p.x), coax_p_scale3(coax_p_v3(l_m.f4.x, l_m.f4.y, l_m.f4.z), l_p.y)), coax_p_scale3(coax_p_v3(l_m.f5.x, l_m.f5.y, l_m.f5.z), l_p.z)));
+    l_normal3 = coax_p_normalize3(coax_p_add3(coax_p_add3(coax_p_scale3(coax_p_v3(l_m.z.x, l_m.z.y, l_m.z.z), l_normal3.x), coax_p_scale3(coax_p_v3(l_m.f4.x, l_m.f4.y, l_m.f4.z), l_normal3.y)), coax_p_scale3(coax_p_v3(l_m.f5.x, l_m.f5.y, l_m.f5.z), l_normal3.z)));
+  }
+  else
+  {
+    if ((l_m.w.w > 0x1.180000p4f))
+    {
+      l_local = coax_p_sub3(l_p, coax_p_v3(l_m.y.x, l_m.y.y, l_m.y.z));
+      l_cs = l_m.z.y;
+      l_sn = l_m.z.x;
+      l_p = coax_p_add3(coax_p_v3(l_m.x.x, l_m.x.y, l_m.x.z), coax_p_v3(((l_local.x * l_cs) + (l_local.z * l_sn)), l_local.y, (((-l_local.x) * l_sn) + (l_local.z * l_cs))));
+      l_normal3 = coax_p_v3(((l_normal3.x * l_cs) + (l_normal3.z * l_sn)), l_normal3.y, (((-l_normal3.x) * l_sn) + (l_normal3.z * l_cs)));
+    }
   }
   l_o = coax_t15();
   l_o.x = select(coax_p_fivelab_project(l_p), l_sky_clip, (l_kind == 0u));

@@ -46,7 +46,7 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=(128 if experimental else 64)
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]; new_house_vertices=[]; dungeon_vertices=[]; castle_vertices=[]
+weapon_vertices=[]; pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]; new_house_vertices=[]; dungeon_vertices=[]; castle_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -64,6 +64,7 @@ for i in range(verts):
         elif marker==115: clock_vertices.append(i)
         elif marker==115.25: showcase_vertices.append(i)
         elif marker==115.375: animal_vertices.append(i)
+        elif marker==115.4375: weapon_vertices.append(i)
         else: rock_vertices+=1
     if kind==1:
         ao=struct.unpack_from('<f',vb,at+28)[0]; assert .49<=ao<=1.01
@@ -301,6 +302,17 @@ if animal_run:
         next_index+=ac
     assert any(frame_positions[0]!=x for x in frame_positions[1:]), 'animal frames are static'
 else: assert not animal_vertices
+# The hero's held weapons (Axe_Double, Sword, Sword_Golden), after the animal frames: each in its own space, blade up +Y.
+weapons=[l.split() for l in cat.splitlines() if l.startswith('C glade/weapon')]
+if animal_run:
+    assert len(weapons)==3 and weapon_vertices==list(range(weapon_vertices[0],weapon_vertices[-1]+1))
+    for i,draw in enumerate(weapons):
+        assert draw[1]==f'glade/weapon{i}'
+        wf,wc,wl,ww,wn,wj=map(int,draw[2:]);assert wf==next_index and wc>0 and wl==253 and ww==word and wn==0 and wj==0
+        indices=struct.unpack_from('<'+str(wc)+'I',ib,wf*4);assert all(weapon_vertices[0]<=x<=weapon_vertices[-1] for x in indices)
+        ys=[pos[x][1] for x in indices];assert max(ys)>1.4 and min(ys)<-0.2 and all(abs(pos[x][0])<0.5 and abs(pos[x][2])<0.2 for x in indices)
+        next_index+=wc
+else: assert not weapons and not weapon_vertices
 for group,(grow,name) in enumerate(zip(grows,names)):
     assert grow[1]==f'glade/grass{group}'
     gf,gc,gl,gw,gn,gj=map(int,grow[2:]); assert gf==next_index and gl==license and gj==0 and 1<=gn<=65535

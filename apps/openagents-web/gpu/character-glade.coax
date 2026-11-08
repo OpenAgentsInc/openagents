@@ -78,7 +78,9 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  wind:f32=sin(p.x*1.8f32+p.z*0.7f32+u[2]*1.6f32)+sin(p.z*2.7f32+u[2]*0.9f32)*0.35f32;
  if ((kind==1)||(kind==2)) {p.x=p.x+wind*(ifx kind==2 then 0.025f32 else 0.035f32)*(ifx kind==2 then wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]).y else saturate(p.y*0.7f32));}
  nw:V4=wg_unpack4x8snorm(normal);normal3:=v3(nw.x,nw.y,nw.z);
- if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
+ // 19: a held weapon, its whole matrix (columns c, e, f; translation a): the hand's pose times the grip.
+ if (m.d.w>18.5f32) {p=add3(v3(m.a.x,m.a.y,m.a.z),add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),p.x),scale3(v3(m.e.x,m.e.y,m.e.z),p.y)),scale3(v3(m.f.x,m.f.y,m.f.z),p.z)));normal3=normalize3(add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),normal3.x),scale3(v3(m.e.x,m.e.y,m.e.z),normal3.y)),scale3(v3(m.f.x,m.f.y,m.f.z),normal3.z)));}
+ else if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
  o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;return o;
 }
 #test "glade source mesh instances retain source shape and independent scale" {
