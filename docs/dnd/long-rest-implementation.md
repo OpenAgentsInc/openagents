@@ -114,3 +114,14 @@ its unit cannot change under completed history. Native execution runs all
 completion and sixteen-hour readmission. World admission/mode transitions and
 automatic journal synchronization are still next; legacy f32 assignments do
 not migrate this timeline. [Clock evidence](../verification/srd-rest-clock-2026-11-08/README.md).
+
+## Clock-bound actor operations
+
+`long-rest-owned.coax` now admits settled sleep/watch, observes progress on the
+battle's validated microsecond timeline, and changes/resumes actual activity
+with sleep-capacity checks. A late light-activity report abandons the old period
+instead of retroactively crediting sleep; an earlier valid completion wins.
+Results preserve observed boundaries separately from requested activity
+admission. Automatic world scheduling, causal interruption producers and
+consumption of Short Rest fallback/choices remain next, followed by controls
+and rejoin persistence. [Owned-operation evidence](../verification/srd-long-rest-owned-2026-11-08/README.md).

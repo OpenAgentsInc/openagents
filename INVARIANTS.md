@@ -7104,3 +7104,12 @@ or microsecond unit across completion history and cannot reinterpret that
 history by changing units. Old f32 clock assignments do not migrate the rest
 timeline. Actor synchronization, causal event hooks, world controls and rejoin
 binding remain required. See `docs/verification/srd-rest-clock-2026-11-08/README.md`.
+
+Clock-bound Long Rest actor operations observe the previous activity before
+changing mode. Admission preserves sleep capacity and settled-owner proof;
+observed boundaries survive a refused mode request. Exact light-limit changes
+can select sleep, while a report beyond that limit abandons the old period
+without inventing intervening sleep or a source interruption penalty. Earlier
+completion remains pending for ordered consumption. Automatic scheduling and
+causal producers remain required. See
+`docs/verification/srd-long-rest-owned-2026-11-08/README.md`.

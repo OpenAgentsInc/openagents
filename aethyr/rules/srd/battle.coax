@@ -53,6 +53,7 @@
 #load "long-rest-benefits.coax";
 #load "long-rest-completion.coax";
 #load "rest-clock.coax";
+#load "long-rest-owned.coax";
 #load "short-rest.coax";
 #load "rest-sleep.coax";
 #load "help.coax";

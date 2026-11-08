@@ -11,7 +11,7 @@ RsLongRest :: struct {
   interruptions:int; quiet:int; fallback:bool;
   completed:bool; finished:int;
 }
-RsLongRestBoundary :: struct { accepted:bool; short_rest:bool; ready:bool; light_limit:bool; }
+RsLongRestBoundary :: struct { accepted:bool; short_rest:bool; ready:bool; light_limit:bool; abandoned:bool; }
 
 #test "retained sleep and watch finish at the actual boundary before a late event" {
   s:[1]RsLongRest;

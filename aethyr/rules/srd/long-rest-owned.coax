@@ -1,0 +1,166 @@
+// Clock-bound actor rest operations. `settled` is an authoritative world
+// observation, never a client-provided permission. The scheduler consumes each
+// reported boundary before applying later events or permitting resumption.
+#authority;
+RsRestActivity :: struct { admitted:bool; boundary:RsLongRestBoundary; }
+
+#test "owned rest admits actual sleep and watch and binds the actor to the precise clock" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3); c[0].focus_held=true;
+  rs_tick(b[..],1.0/64);
+  #assert !rs_long_rest_start_owned(b[..],0,1,false);
+  #assert !rs_long_rest_start_owned(b[..],0,0,true) && !rs_long_rest_start_owned(b[..],0,3,true);
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  #assert c[0].long_rest.rate==1000000 && c[0].long_rest.stamp==15625 && rs_sleeping(c[0]);
+  #assert !rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],3600);
+  change:=rs_long_rest_activity_owned(b[..],0,2);
+  #assert change.admitted && change.boundary.accepted && !change.boundary.ready;
+  #assert !rs_sleeping(c[0]) && c[0].long_rest.sleep==3600000000 && c[0].long_rest.mode==2;
+  rs_tick(b[..],7200);
+  change=rs_long_rest_activity_owned(b[..],0,1);
+  #assert change.admitted && change.boundary.light_limit && rs_sleeping(c[0]);
+  rs_tick(b[..],18000);
+  r:=rs_long_rest_sync_owned(b[..],0);
+  #assert r.ready && c[0].long_rest.phase==3 && !c[0].long_rest.completed;
+  #assert c[0].long_rest.stamp==28800015625;
+  #assert !rs_long_rest_activity_owned(b[..],0,2).admitted;
+  #assert rs_long_rest_apply(b[..],0);
+  #assert c[0].long_rest.finished==28800015625;
+}
+
+#test "late light reports abandon the old period rather than backfilling sleep" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3);
+  #assert rs_long_rest_start_owned(b[..],0,2,true) && !rs_sleeping(c[0]);
+  rs_tick(b[..],7201);
+  change:=rs_long_rest_activity_owned(b[..],0,1);
+  #assert !change.admitted && change.boundary.accepted && change.boundary.light_limit && change.boundary.abandoned;
+  #assert c[0].long_rest.phase==0 && c[0].long_rest.sleep==0 && c[0].long_rest.stamp==7200000000;
+  #assert !rs_sleeping(c[0]) && !c[0].long_rest.completed;
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  #assert c[0].long_rest.stamp==7201000000 && c[0].long_rest.elapsed==0;
+}
+
+#test "earlier valid completion wins over a later light limit or activity request" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3);
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],25000);
+  #assert rs_long_rest_activity_owned(b[..],0,2).admitted;
+  rs_tick(b[..],10000);
+  change:=rs_long_rest_activity_owned(b[..],0,1);
+  #assert !change.admitted && change.boundary.ready && !change.boundary.abandoned;
+  #assert c[0].long_rest.phase==3 && c[0].long_rest.stamp==28800000000 && !rs_sleeping(c[0]);
+}
+
+#test "exertion reports a single boundary and settled resumption cannot credit the gap" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3);
+  #assert !rs_long_rest_resume_owned(b[..],0,1,true);
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],3600);
+  #assert rs_long_rest_activity_owned(b[..],0,3).admitted && !rs_sleeping(c[0]);
+  rs_tick(b[..],7200);
+  r:=rs_long_rest_sync_owned(b[..],0);
+  #assert r.short_rest && c[0].long_rest.phase==2 && c[0].long_rest.stamp==7200000000;
+  #assert !rs_long_rest_sync_owned(b[..],0).accepted;
+  #assert !rs_long_rest_resume_owned(b[..],0,1,false);
+  #assert !rs_long_rest_resume_owned(b[..],0,0,true) && !rs_long_rest_resume_owned(b[..],0,3,true);
+  #assert rs_long_rest_resume_owned(b[..],0,2,true);
+  #assert c[0].long_rest.stamp==10800000000 && c[0].long_rest.elapsed==7200000000;
+  #assert c[0].long_rest.interruptions==1 && c[0].long_rest.mode==2 && !rs_sleeping(c[0]);
+}
+
+#test "owner validation and sleep capacity refuse without granting a mode or inventing sleep" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3);
+  #assert !rs_long_rest_owner_valid(b[..],-1) && !rs_long_rest_owner_valid(b[..],1);
+  b[0].reaction_frame.on=true; #assert !rs_long_rest_owner_valid(b[..],0);
+  b[0].reaction_frame.on=false; b[0].clock = -1; #assert !rs_long_rest_owner_valid(b[..],0);
+  b[0].clock=0; b[0].rest_clock.fraction=1; #assert !rs_long_rest_owner_valid(b[..],0);
+  b[0].rest_clock.fraction=0; c[0].hp=0; #assert !rs_long_rest_owner_valid(b[..],0);
+  c[0].hp=1; c[0].dead=true; #assert !rs_long_rest_owner_valid(b[..],0);
+  c[0].dead=false;
+  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=0,until=90000}; }
+  #assert !rs_long_rest_start_owned(b[..],0,1,true) && c[0].long_rest.phase==0;
+  #assert rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],10);
+  change:=rs_long_rest_activity_owned(b[..],0,1);
+  #assert !change.admitted && change.boundary.accepted && c[0].long_rest.mode==2 && !rs_sleeping(c[0]);
+  #assert c[0].long_rest.light==10000000;
+  #assert !rs_long_rest_activity_owned(b[..],0,0).admitted && !rs_long_rest_activity_owned(b[..],0,4).admitted;
+  c[0].long_rest.rate=1; #assert !rs_long_rest_sync_owned(b[..],0).accepted;
+  c[0].long_rest.rate=1000000; c[0].long_rest.mode=1;
+  #assert !rs_long_rest_sync_owned(b[..],0).accepted;
+}
+
+#test "watch admission and resumption wake natural sleep and capacity failure preserves interruption" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3);
+  #assert rs_sleep_begin(b[..],0);
+  #assert rs_long_rest_start_owned(b[..],0,2,true) && !rs_sleeping(c[0]);
+  c[0].long_rest.phase=2; c[0].long_rest.interruptions=1;
+  c[0].long_rest.stamp=1;
+  #assert !rs_long_rest_resume_owned(b[..],0,1,true);
+  c[0].long_rest.stamp=0;
+  for k:0..<RS_EFFECTS { c[0].eff[k]=RsEffect.{kind=EF_HEX,by=k,spell=0,until=90000}; }
+  #assert !rs_long_rest_resume_owned(b[..],0,1,true);
+  #assert c[0].long_rest.phase==2 && !rs_sleeping(c[0]);
+  c[0].eff[0].kind=EF_NONE;
+  #assert rs_long_rest_resume_owned(b[..],0,1,true) && rs_sleeping(c[0]);
+  #assert c[0].long_rest.mode==1 && c[0].long_rest.phase==1;
+  c[0].long_rest.phase=2;
+  #assert rs_long_rest_resume_owned(b[..],0,2,true) && !rs_sleeping(c[0]);
+}
+
+rs_long_rest_owner_valid :: (b:[]RsBattle,i:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) { return false; }
+  if b[0].c[i].dead || b[0].c[i].hp<1 { return false; }
+  clock:[1]RsRestClock; clock[0]=b[0].rest_clock;
+  return rs_rest_clock_step(clock[..],0);
+}
+rs_long_rest_start_owned :: (b:[]RsBattle,i:int,mode:int,settled:bool)->bool #effects(all) {
+  if !rs_long_rest_owner_valid(b,i) || !settled || mode<1 || mode>2 { return false; }
+  journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
+  if !rs_long_rest_begin_rate(journal[..],b[0].c[i].hp,b[0].rest_clock.ticks,mode,1000000) { return false; }
+  if mode==1 {
+    if !rs_sleep_begin(b,i) { return false; }
+  } else { rs_sleep_end(b[0].c[i..<i+1]); }
+  b[0].c[i].long_rest=journal[0]; return true;
+}
+rs_long_rest_sync_owned :: (b:[]RsBattle,i:int)->RsLongRestBoundary #effects(all) {
+  r:RsLongRestBoundary;
+  if !rs_long_rest_owner_valid(b,i) { return r; }
+  if b[0].c[i].long_rest.rate!=1000000 { return r; }
+  if b[0].c[i].long_rest.mode==1 && !rs_sleeping(b[0].c[i]) { return r; }
+  journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
+  r=rs_long_rest_advance(journal[..],b[0].rest_clock.ticks);
+  if !r.accepted { return r; }
+  if r.light_limit && !r.ready && journal[0].stamp<b[0].rest_clock.ticks {
+    journal[0].phase=0; r.abandoned=true;
+  }
+  b[0].c[i].long_rest=journal[0]; return r;
+}
+rs_long_rest_activity_owned :: (b:[]RsBattle,i:int,mode:int)->RsRestActivity #effects(all) {
+  r:RsRestActivity;
+  if mode<1 || mode>3 { return r; }
+  r.boundary=rs_long_rest_sync_owned(b,i);
+  if !r.boundary.accepted || b[0].c[i].long_rest.phase!=1 { return r; }
+  if mode==1 {
+    if !rs_sleep_begin(b,i) { return r; }
+  } else { rs_sleep_end(b[0].c[i..<i+1]); }
+  journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
+  selected:=rs_long_rest_mode(journal[..],mode);
+  b[0].c[i].long_rest=journal[0]; r.admitted=true; return r;
+}
+rs_long_rest_resume_owned :: (b:[]RsBattle,i:int,mode:int,settled:bool)->bool #effects(all) {
+  if !rs_long_rest_owner_valid(b,i) || !settled || mode<1 || mode>2 { return false; }
+  if b[0].c[i].long_rest.rate!=1000000 { return false; }
+  journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
+  if !rs_long_rest_resume(journal[..],b[0].rest_clock.ticks,mode) { return false; }
+  if mode==1 {
+    if !rs_sleep_begin(b,i) { return false; }
+  } else { rs_sleep_end(b[0].c[i..<i+1]); }
+  b[0].c[i].long_rest=journal[0]; return true;
+}
