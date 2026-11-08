@@ -160,6 +160,10 @@ EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint3
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)lab_at(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { lab_action_done(at(state)); }
 
+// Experimental's bar: its pictures, cards and cooldowns for the host to draw (coax/web/host.js coaxial_media; experimental-combat.coax xc_frame).
+EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->xc.e[0].media.e; }
+EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { coax_t_Lab *l = lab_at(state); return l->creator.e[0].experimental && !l->creator.e[0].walk.on ? (uint32_t)l->xc.e[0].media_n : 0u; }
+
 // Read-only observations for headless wardrobe checks.
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state,int32_t field) {return (int32_t)lab_creator_probe(at(state),field);}
 

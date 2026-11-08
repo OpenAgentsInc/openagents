@@ -45,7 +45,8 @@ Creator :: struct {
   clock:f32; surprise_seed:int; pose_at:f32; revision:int; saved:int; focused:int;
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
-  klass:int = -1;   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
+  klass:int = -1;
+  dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
   shadow:[1]CcShadow;   // the key light's two shadow tiles (shadow_frame)
 }
@@ -218,14 +219,15 @@ look :: (s:Creator)->figs.BdLook {
 }
 // One preview, using the existing instance format and actual Quaternius skinned parts.
 // The local-only animation browser uses the Character Create font atlas.
-dev_visible :: (s:Creator)->int {n:=cast(int)((s.height/s.scale-116)/24);if n<1 {return 1;}if n>figs.PREVIEW_BAKED {return figs.PREVIEW_BAKED;}return n;}
+// dev_below: CSS px kept free under the browser (Experimental's CLASSES column, experimental-combat.coax)
+dev_visible :: (s:Creator)->int {n:=cast(int)((s.height/s.scale-116-s.dev_below)/24);if n<1 {return 1;}if n>figs.PREVIEW_BAKED {return figs.PREVIEW_BAKED;}return n;}
 dev_scroll :: (s:[]Creator,dy:f32) {
  n:=s[0].preview_scroll+cast(int)(dy/32);if n==s[0].preview_scroll && dy!=0 {n+=ifx dy>0 then 1 else -1;}
  limit:=figs.PREVIEW_BAKED-dev_visible(s[0]);if n<0 {n=0;}if n>limit {n=limit;}s[0].preview_scroll=n;
 }
 dev_pointer :: (s:[]Creator,x:f32,y:f32,phase:int)->bool {
  if !s[0].dev_animations {return false;}k:=s[0].scale;
- bottom:=ifx s[0].preview_collapsed then 52*k else s[0].height-20*k;inside_panel:=x>=12*k && x<=370*k && y>=20*k && y<=bottom;
+ bottom:=ifx s[0].preview_collapsed then 52*k else s[0].height-(20+s[0].dev_below)*k;inside_panel:=x>=12*k && x<=370*k && y>=20*k && y<=bottom;
  s[0].preview_hover=inside_panel && !s[0].preview_collapsed;
  if phase==0 {s[0].preview_down= -1;if !inside_panel {return false;}
   if y<52*k {s[0].preview_down= -3;return true;}
@@ -408,8 +410,8 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
     out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s.monster_first[take];b[0].draws[n*4+1]=cast(u32)s.monster_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s.experimental && s.npc_n[0]==48 && s.npc_n[1]==48 {for i:0..<6 {if n>=41 {break;}e:=s.hostiles[0].enemies[i];kind:=ifx i<3 then 0 else 1;take:=(ifx e.swing>=0 then 32 else ifx e.moving then 16 else 0)+int(floor(s.clock*8))%8;
-    for k:0..<24 {out[n*24+k]=0;}out[n*24]=e.x;out[n*24+1]=meadow.exp_height(e.x,e.z);out[n*24+2]=e.z;out[n*24+8]=e.face_x;out[n*24+9]=e.face_z;
+  if s.experimental && s.npc_n[0]==48 && s.npc_n[1]==48 {for i:0..<6 {if n>=41 {break;}e:=s.hostiles[0].enemies[i];sink:=ifx e.dead then (s.clock-e.died)*0.9 else 0.0f32;if e.dead && s.clock-e.died>2.4 {continue;}kind:=ifx i<3 then 0 else 1;take:=(ifx e.swing>=0 then 32 else ifx e.moving then 16 else 0)+int(floor(s.clock*8))%8;
+    for k:0..<24 {out[n*24+k]=0;}out[n*24]=e.x;out[n*24+1]=meadow.exp_height(e.x,e.z)-sink;out[n*24+2]=e.z;out[n*24+8]=e.face_x;out[n*24+9]=e.face_z;
     out[n*24+4]=ifx kind==0 then 6 else 9;out[n*24+5]=meadow.exp_height(out[n*24+4],-7);out[n*24+6]= -7;out[n*24+7]=f32(s.glade_word);out[n*24+15]=18;
     b[0].draws[n*4]=cast(u32)s.npc_first[kind][take];b[0].draws[n*4+1]=cast(u32)s.npc_count[kind][take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}

@@ -38,7 +38,8 @@
 #load "fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "everglade-move-types.coax";   // what fivelab-face.c hands Everglade's movement step (everglade-step.coax)
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
-#load "fivelab-siege.coax";     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
+#load "fivelab-siege.coax";
+#load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD, the log, labels near the camera (the tokens are bg_fs's)
@@ -127,6 +128,7 @@ Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
 Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [24] u8; n: int; }
 
 Lab :: struct {
+  xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
   creator: [1] cc.Creator;
   started: bool;
   battle: [1] RsBattle;
@@ -2951,7 +2953,11 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
 }
 
 lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
-  if s[0].creator[0].on { return cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still); }
+  if s[0].creator[0].on {
+    n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
+    if s[0].creator[0].experimental && !s[0].creator[0].walk.on { n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt); }
+    return n;
+  }
   lab_start(s);
   if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
@@ -3242,7 +3248,7 @@ switch_mode :: (s: [] Lab) {
   new_battle(s);
 }
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
-  if s[0].creator[0].experimental {if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
+  if s[0].creator[0].experimental {if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
   if s[0].creator[0].on {return cc.key(s[0].creator[..],key);}
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)
@@ -3381,7 +3387,7 @@ lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
   return true;
 }
 lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
-  if s[0].creator[0].on {return cc.pointer(s[0].creator[..],x,y,phase,id);}
+  if s[0].creator[0].on {if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
   lab_start(s);
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
@@ -4040,7 +4046,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert hit == 8 && gold == 1 && nums == 4;   // the 3 biggest, and your target's
 }
 
-lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {return cc.probe(s[0].creator[0],f);}
+lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {if f>=900 {return xc_probe(s,f);}return cc.probe(s[0].creator[0],f);}
 
 #test "creator restores a kept appearance before the host identifies its page" #steps 20000000 {
   s:[1]Lab;appearance:[1]cc.Creator;cc.ensure(appearance[..]);cc.change(appearance[..],1,1);
@@ -4053,6 +4059,6 @@ lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {return cc.pro
 
 // Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
 lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int)->bool #export_c #effects(all) {
-  if s[0].creator[0].on && kind==0 {return cc.mouse_pointer(s[0].creator[..],x,y,phase,id,button);}
+  if s[0].creator[0].on && kind==0 {if s[0].creator[0].experimental && button!=1 && button!=2 && xc_pointer(s,x,y,phase,id) {return true;}return cc.mouse_pointer(s[0].creator[..],x,y,phase,id,button);}
   return lab_pointer(s,x,y,phase,kind,id);
 }

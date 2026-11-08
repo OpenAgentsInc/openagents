@@ -4,7 +4,8 @@
 #load "experimental-terrain.coax" as terrain;
 #load "rules/srd5-combat.coax";
 
-Enemy :: struct {x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;}
+// dead: felled (apps/openagents-web/experimental-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move
+Enemy :: struct {x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;dead:bool;died:f32;held:bool;}
 DamagePop :: struct {amount:int;x:f32;y:f32;z:f32;born:f32;}
 Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at:f32;pops:[8]DamagePop;pop_next:int;dice:[1]SrdDice;}
 #test "six enemies pursue and inflict real melee damage" #steps 200000000 {
@@ -12,6 +13,14 @@ Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at
  before:=abs(s[0].enemies[0].x)+abs(s[0].enemies[0].z);
  for i:0..<600 {hostile_tick(s[..],0,0,0,0.016);}
  #assert abs(s[0].enemies[0].x)+abs(s[0].enemies[0].z)<before && s[0].hits>0 && s[0].hp<44;
+}
+#test "a felled enemy stands still and strikes no one; a held one stays put" #steps 200000000 {
+ s:[1]Hostiles;hostile_start(s[..]);for i:0..<6 {s[0].enemies[i].dead=true;}s[0].enemies[0].x=0.5;s[0].enemies[0].z=0;
+ for i:0..<600 {hostile_tick(s[..],0,0,0,0.016);}
+ #assert s[0].hits==0 && s[0].hp==44 && s[0].enemies[0].x==0.5 && !s[0].enemies[0].moving;
+ s[0].enemies[1].dead=false;s[0].enemies[1].held=true;s[0].enemies[1].x= -10;s[0].enemies[1].z= -15;
+ for i:0..<300 {hostile_tick(s[..],0,0,0,0.016);}
+ #assert s[0].enemies[1].x== -10 && s[0].enemies[1].z== -15;
 }
 #test "enemies cannot pass through village walls" #steps 200000000 {
  s:[1]Hostiles;hostile_start(s[..]);s[0].enemies[0].x=49;s[0].enemies[0].z=46;
@@ -41,10 +50,11 @@ hostile_damage :: (s:[]Hostiles,amount:int,x:f32,y:f32,z:f32) {
 hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
  hostile_start(s);if dt<=0 || dt>0.25 {return;}s[0].time+=dt;
  if s[0].hp<=0 {for i:0..<6 {e:=s[0].enemies[i..<i+1];e[0].swing= -1;e[0].moving=false;dx:=e[0].home_x-e[0].x;dz:=e[0].home_z-e[0].z;gap:=sqrt(dx*dx+dz*dz);if gap<0.1 {continue;}e[0].face_x=dx/gap;e[0].face_z=dz/gap;step:=ifx gap<dt*1.5 then gap else dt*1.5;nx:=e[0].x+dx/gap*step;nz:=e[0].z+dz/gap*step;if !hostile_blocked(nx,e[0].z) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked(e[0].x,nz) {e[0].z=nz;e[0].moving=true;}}return;}
- for i:0..<6 {if s[0].hp<=0 {break;}e:=s[0].enemies[i..<i+1];dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;e[0].cool-=dt;
+ for i:0..<6 {if s[0].hp<=0 {break;}e:=s[0].enemies[i..<i+1];if e[0].dead {e[0].moving=false;e[0].swing= -1;continue;}dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;e[0].cool-=dt;
   if gap>0.001 {e[0].face_x=dx/gap;e[0].face_z=dz/gap;}
   if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<1.8 && abs(py)<2 {hit:=srd_attack(s[0].dice[..],SRD_GUARD,15);if hit.hit {hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
   if gap<1.45 {if e[0].cool<=0 {e[0].swing=0;e[0].struck=false;}continue;}
+  if e[0].held {continue;}
   ox:=[6]f32.[0,1.1,1.1,0,-1.1,-1.1];oz:=[6]f32.[-1.2,-0.6,0.6,1.2,0.6,-0.6];gx:=px+ox[i]-e[0].x;gz:=pz+oz[i]-e[0].z;distance:=sqrt(gx*gx+gz*gz);if distance<0.01 {continue;}
   step:=ifx distance<dt*2.4 then distance else dt*2.4;nx:=e[0].x+gx/distance*step;nz:=e[0].z+gz/distance*step;
   if !hostile_blocked(nx,e[0].z) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked(e[0].x,nz) {e[0].z=nz;e[0].moving=true;}

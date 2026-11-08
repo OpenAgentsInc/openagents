@@ -36,6 +36,27 @@ western meadow. The Imp and Gremlin (the Puglin model) from the Bestiary Dungeon
 pack stand near spawn. Their source pack contains no animations, so they cycle
 through six compatible Universal Animation Library 1 motions every three seconds. Three additional imps and three gremlins pursue the player and make timed melee attacks using the SRD combat rules. Player health is shown on a bar, hits raise damage numbers, and after the death animation the enemies return toward their starting places. Their original
 Quaternius Asset License v1.0 is retained in the registry and scene catalog.
+
+## Fight back
+
+You fight the monsters with your class's level 1 kit
+(`apps/openagents-web/experimental-combat.coax`, #13025).
+
+- The bar at the bottom holds your class's level 1 abilities, on keys 1 to N. Slot 1 is the
+  ability from Character Create's CLASS row. The others are the class's cantrips, 1st-level
+  spells, and features that work with no ally present. For example, a Wizard has Fire Bolt,
+  Chill Touch, Ray of Sickness, False Life, and Thunderwave, and a Fighter has Second Wind and
+  Attack. Hover over a slot to see its card. You can also click a slot.
+- An attack or spell goes at your target: the monster you clicked, or else the nearest living
+  one. A heal adds to your Hit Points. One second passes between uses.
+- The SRD 5e engine (`aethyr/rules/srd/`, through `fivebar.coax`) rolls every attack, save, and
+  damage roll offline. The Imp has AC 13 and 10 Hit Points. The Gremlin has AC 12 and 13 Hit
+  Points. Each monster shows its name and Hit Points, and damage numbers rise off it.
+- A monster at 0 Hit Points dies. It stops, a puff of dust rises, and it sinks into the ground
+  over 2.4 seconds.
+- CLASSES, a column under ANIMATIONS on the left (or at the top when ANIMATIONS is hidden), lists
+  the twelve SRD classes. Click one to become that class at level 1. The bar reloads with its
+  kit. Click CLASSES to fold the column.
 Thirty-six additional flower, plant, fern, clover, mushroom, bush and grass variants grow in
 the eastern meadow. The remaining sixty nature models, including trees, rocks and paths,
 stand in display rows in the northwestern meadow. The experimental pack budget is 512 MiB

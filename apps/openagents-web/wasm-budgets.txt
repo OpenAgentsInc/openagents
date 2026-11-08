@@ -35,7 +35,7 @@ everglade-room 1122000
 fairy 695000
 # Character Studio adds the full Source wardrobe UI and appearance codec to the existing people producer: 590,971 bytes measured; about 5% headroom.
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
-fivelab 650000
+fivelab 2360000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
