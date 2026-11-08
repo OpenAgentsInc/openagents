@@ -1,0 +1,32 @@
+mutation scope: unit aethyr/rules/srd/cover.coax (its procedures; every check retained), entry aethyr/rules/srd/actions-checks.coax
+222 mutants, 222 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/grapple.coax (its procedures; every check retained), entry aethyr/rules/srd/actions-checks.coax
+333 mutants, 333 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/movement-modes.coax (its procedures; every check retained), entry aethyr/rules/srd/actions-checks.coax
+132 mutants, 132 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/ready.coax (its procedures; every check retained), entry aethyr/rules/srd/actions-checks.coax
+264 mutants, 264 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/actions.coax (its procedures; every check retained), entry aethyr/rules/srd/actions-checks.coax
+217 mutants, 217 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/rest-queue.coax (its procedures; every check retained), entry aethyr/rules/srd/actions-checks.coax
+139 mutants, 139 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/strike-admission.coax (its procedures; every check retained), entry aethyr/rules/srd/strike-reaction-checks.coax
+57 mutants, 57 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/stat-attack.coax (its procedures; every check retained), entry aethyr/rules/srd/monster-checks.coax
+206 mutants, 206 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/condition-rolls.coax (its procedures; every check retained), entry aethyr/rules/srd/condition-roll-checks.coax
+93 mutants, 93 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/opportunity-movement.coax (its procedures; every check retained), entry aethyr/rules/srd/opportunity-movement-checks.coax
+51 mutants, 51 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/monk-features.coax (its procedures; every check retained), entry aethyr/rules/srd/class-monk-checks.coax
+80 mutants, 80 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/command-halt.coax (its procedures; every check retained), entry aethyr/rules/srd/help-checks.coax
+46 mutants, 46 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/effect-lifecycle.coax (its procedures; every check retained), entry aethyr/rules/srd/effect-lifecycle-checks.coax
+40 mutants, 40 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/rest-damage.coax (its procedures; every check retained), entry aethyr/rules/srd/long-rest-resources-checks.coax
+74 mutants, 74 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/short-rest.coax (its procedures; every check retained), entry aethyr/rules/srd/long-rest-resources-checks.coax
+236 mutants, 236 killed, 0 survived
+mutation scope: unit aethyr/rules/srd/walk-budget.coax (its procedures; every check retained), entry aethyr/rules/srd/world-timing-checks.coax
+78 mutants, 78 killed, 0 survived
