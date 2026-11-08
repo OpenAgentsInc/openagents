@@ -296,3 +296,21 @@ register the locally held source and derived artifacts with immutable identities
 For example, the index says Megascans are claimed through Fab, and does not
 contain those assets. The upstream optimizer is untrusted downloaded code; it is
 not run or installed by this adapter, and its output is not qualified for Aethyr.
+
+### Selected 0 A.D. art
+
+`0ad-selected` pins nine models from the 0 A.D. GLB dataset, revision
+`051e4649defa445799f4cb89a8681e4e7908e61d`. The imported source snapshot
+includes the dataset metadata, its README and Wildfire Games' license. The art
+is attributed to Wildfire Games and licensed CC BY-SA 3.0; it is not CC0.
+The collection contains Gaul and Briton buildings, rocks and mushrooms used in
+Everglade Experimental. Its immutable source is available with:
+
+```sh
+coax/web/tool.sh verse/tools/assets/registry.coax source 0ad-selected ~/.openagents/assets
+```
+
+`verse/tools/assets/zero_ad_gltf.py` uses Blender's Python API to convert the
+pinned engine GLBs to separate glTF files for the experimental scene packer.
+These are derived files: retain the original snapshot and attribution when
+rebuilding or sharing them.

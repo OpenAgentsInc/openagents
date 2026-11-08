@@ -17,3 +17,10 @@ This work includes material from the System Reference Document 5.2.1
 https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
 Creative Commons Attribution 4.0 International License, available at
 https://creativecommons.org/licenses/by/4.0/legalcode.
+
+The western hamlet includes modified 0 A.D. art by Wildfire Games, distributed
+under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). The
+models were converted from the [0 A.D. GLB dataset](https://huggingface.co/datasets/codepawl/0ad-art-glb)
+(revision `051e4649defa445799f4cb89a8681e4e7908e61d`) and placed, scaled,
+and combined with the scene. Source and license records are pinned in the
+shared `0ad-selected` asset collection.
