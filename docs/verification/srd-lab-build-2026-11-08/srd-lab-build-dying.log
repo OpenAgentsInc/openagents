@@ -1,0 +1,3 @@
+ok   #test Finger of Death does not raise a dying Humanoid that the spell did not kill (1 case, 102714 steps, 5 ms)
+1 of 749 checks (--only 'Finger of Death does not'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -39,6 +39,9 @@ lw_raise :: (s: [] Lab) {
   o := b[0].c[i];
   n: [1] RsCreature;
   n[0] = rs_warlock("Warlock", o.team, LW_LEVEL, SP_ELDRITCH_BLAST);
+  // This declared high-level world kit includes Circle of Death's reusable
+  // powder of a crushed black pearl worth 500+ GP (SRD 5.2.1 p.115).
+  n[0].materials[0]=RsMaterialStock.{key=RS_KEY_CIRCLE_OF_DEATH,count=1};
   n[0].name = o.name; n[0].name_n = o.name_n;
   n[0].x = o.x; n[0].y = o.y; n[0].turn_at = o.turn_at; n[0].round_at = o.round_at;
   n[0].hp = rs_max(1, n[0].hp_max - (o.hp_max - o.hp));
@@ -155,6 +158,8 @@ lw_test_turn :: (s: [] Lab, me: int, foe: int, a: Ab) -> bool {
   b[0].c[me].slots[5] = 0;
   #assert free_slot(s[..], me, 5) == 0 && !ab_ready(s[..], me, list[2]) && ab_ready(s[..], me, list[4]);
   b[0].c[me].slots[5] = 4;
+  // A declared bar must supply legal components as well as slots and access.
+  for k: 0..<nab { if list[k].kind==AB_SPELL { #assert rs_spell_ready(b[0].c[me],list[k].sp); #assert rs_cast_components_ready(b[0].c[me],list[k].sp); } }
   // each slot in turn on the nearest foe; Hex, Fireball, Blight and Dimension Door take the four Pact slots
   order := [6] int.[0, 1, 2, 3, 4, 6];
   for q: 0..<6 {
@@ -166,12 +171,18 @@ lw_test_turn :: (s: [] Lab, me: int, foe: int, a: Ab) -> bool {
     if k == 6 { #assert rs_feet_to(b, me, foe) <= 5; }   // Dimension Door: beside the foe
   }
   #assert b[0].c[me].slots[5] == 0 && b[0].c[me].slots[6] == 0;
-  // Finger of Death on a foe it kills: the Humanoid rises as a Zombie on your side
+  #assert b[0].c[me].materials[0].key==RS_KEY_CIRCLE_OF_DEATH && b[0].c[me].materials[0].count==1;
+  // An NPC Humanoid killed by the spell rises. A player Humanoid merely
+  // dropping to zero is not necessarily dead (tested independently below).
   foe := nearest_foe(s[..], me);
-  b[0].c[foe].hp = 1;
+  old := b[0].c[foe]; b[0].c[foe]=rs_guard("Doomed Guard",old.team);
+  rs_place(b,foe,old.x,old.y); b[0].c[foe].hp=1;
   #assert lw_test_turn(s[..], me, foe, list[5]);
   take_events(s[..]);
-  #assert b[0].c[me].slots[7] == 0 && b[0].c[foe].dead && b[0].c[foe].rise_by == me && s[0].lw_n == 1;
+  #assert b[0].c[me].slots[7] == 0;
+  #assert b[0].c[foe].dead;
+  #assert b[0].c[foe].rise_by == me;
+  #assert s[0].lw_n == 1;
   #assert b[0].c[foe].rise_at < b[0].clock + 3;
   for q: 0..<400 { if s[0].lw_n == 0 { break; } step(s[..], f32(STEP)); }
   #assert s[0].lw_n == 0;
@@ -179,4 +190,17 @@ lw_test_turn :: (s: [] Lab, me: int, foe: int, a: Ab) -> bool {
   #assert !b[0].c[foe].dead;
   #assert b[0].c[foe].team == b[0].c[me].team;
   #assert b[0].c[foe].hp_max == 15 && b[0].c[foe].weapon == W_SLAM;
+}
+
+
+#test "Finger of Death does not raise a dying Humanoid that the spell did not kill" {
+  b: [1] RsBattle; b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
+  _ := rs_add(b[..],rs_warlock("Caster",0,17,SP_ELDRITCH_BLAST),1,1);
+  target := rs_add(b[..],rs_barbarian("Living victim",1,6),3,1);
+  // Legal level-six Barbarian maximum is 59. At one HP the fixed 58 damage
+  // leaves 57, less than that maximum: dying, not instant death.
+  #assert b[0].c[target].hp_max==59;
+  b[0].c[target].hp=1; rs_start_turn(b[..],0);
+  #assert rs_cast(b[..],0,SP_FINGER_OF_DEATH,7,0,0,target);
+  #assert b[0].c[target].hp==0 && !b[0].c[target].dead && b[0].c[target].rise_by == -1;
 }

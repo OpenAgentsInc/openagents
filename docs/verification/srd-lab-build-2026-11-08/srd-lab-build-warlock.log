@@ -1,0 +1,3 @@
+ok   #test Player mode's Warlock: level 17, every spell on its bar cast from its slots, and Finger of Death's dead rise (1 case, 35203728 steps, 742 ms)
+1 of 749 checks (--only 'Player mode's Warlock'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

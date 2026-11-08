@@ -1,0 +1,25 @@
+// Projection fixtures: class, level, invocation and grant words are sufficient
+// for these decisions. None of a creature's mutable combat state grants access.
+#load "battle.coax";
+
+#test "compact source eligibility retains class, level and key boundaries" {
+  wisp := RS_EXEC_SOURCE[SP_STARRY_WISP]; fireball := RS_EXEC_SOURCE[SP_FIREBALL];
+  #assert rs_key_eligible_fields(RS_DRUID,1,wisp) && !rs_key_eligible_fields(RS_WIZARD,1,wisp);
+  #assert !rs_key_eligible_fields(RS_SORCERER,4,fireball) && rs_key_eligible_fields(RS_SORCERER,5,fireball);
+  #assert !rs_key_eligible_fields(RS_DRUID,0,wisp) && !rs_key_eligible_fields(RS_DRUID,21,wisp);
+  #assert !rs_key_eligible_fields(RS_DRUID,1,-1) && !rs_key_eligible_fields(RS_DRUID,1,RS_SPELL_KEYS.count);
+  #assert !rs_key_eligible_fields(RS_MONSTER,1,wisp);
+}
+
+#test "compact grant projection retains parent roots, explicit world grants and invocation requirements" {
+  grants: [2] u64;
+  #assert !rs_spell_grant_has(RS_WARLOCK,1,true,grants,SP_FALSE_LIFE);
+  #assert rs_spell_grant_has(RS_WARLOCK,2,true,grants,SP_FALSE_LIFE);
+  #assert !rs_spell_grant_has(RS_WARLOCK,2,false,grants,SP_FALSE_LIFE);
+  #assert !rs_spell_grant_has(RS_DRUID,2,true,grants,SP_FALSE_LIFE);
+  grants[SP_PRODUCE_FLAME/64] |= cast(u64)1<<(SP_PRODUCE_FLAME%64);
+  #assert rs_spell_grant_has(RS_MONSTER,1,false,grants,SP_FLAME_HURL);
+  grants[RS_HOUSE/64] |= cast(u64)1<<(RS_HOUSE%64);
+  #assert rs_spell_grant_has(RS_DRUID,1,false,grants,RS_HOUSE);
+  #assert !rs_spell_grant_has(RS_DRUID,1,false,grants,-1) && !rs_spell_grant_has(RS_DRUID,1,false,grants,RS_HOUSE_END);
+}

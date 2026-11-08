@@ -3,6 +3,7 @@
 // Loaded with engine.coax; spell records are supplied by the containing entry.
 #authority;
 #load "cast-request.coax";
+#load "spell-state-policy.coax";
 
 #test "class membership compares whole comma-separated class names" {
   #assert rs_class_spell("Bard, Druid", RS_BARD) && rs_class_spell("Bard, Druid", RS_DRUID);
@@ -182,11 +183,7 @@ rs_class_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
   return (c.class_spell_grants[parent/64] & (cast(u64) 1 << (parent%64)))!=0 || (parent==SP_FALSE_LIFE && c.klass==RS_WARLOCK && c.level>=2 && c.vigor);
 }
 rs_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
-  if !rs_executable_spell(sp) { return false; }
-  parent := rs_spell_root(sp);
-  if (c.spell_grants[parent / 64] & (cast(u64) 1 << (parent % 64))) != 0 { return true; }
-  // Fiendish Vigor is an explicitly selected invocation in creature state.
-  return parent == SP_FALSE_LIFE && c.klass == RS_WARLOCK && c.level >= 2 && c.vigor;
+  return rs_spell_grant_has(c.klass,c.level,c.vigor,c.spell_grants,sp);
 }
 rs_spell_root :: (sp: int) -> int #effects(all) {
   helper := rs_spell(sp).part_of;

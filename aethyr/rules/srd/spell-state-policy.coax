@@ -1,0 +1,24 @@
+// Access decisions need only source class/level and the explicit grant state,
+// not a copy of all combat/equipment/effect fields of a creature.
+#authority;
+
+rs_key_eligible_fields :: (klass: int, level: int, key: int) -> bool #effects(all) {
+  if key<0 || key>=RS_SPELL_KEYS.count || level<1 || level>20 { return false; }
+  source := rs_source_class(klass); if source<0 { return false; }
+  s := RS_SPELL_KEYS[key];
+  return (s.classes & (1<<source))!=0 && s.level<=rs_prepare_level(klass,level);
+}
+rs_spell_grant_has :: (klass: int, level: int, vigor: bool, grants: [2] u64, sp: int) -> bool #effects(all) {
+  if !rs_executable_spell(sp) { return false; }
+  parent := rs_spell_root(sp);
+  if (grants[parent/64] & (cast(u64)1<<(parent%64)))!=0 { return true; }
+  return parent==SP_FALSE_LIFE && klass==RS_WARLOCK && level>=2 && vigor;
+}
+
+#test "compact spell policy keeps source level and invocation gates without consulting unrelated creature state" {
+  key := RS_EXEC_SOURCE[SP_FIREBALL];
+  #assert rs_key_eligible_fields(RS_WIZARD,5,key) && !rs_key_eligible_fields(RS_WIZARD,4,key);
+  grants: [2] u64;
+  #assert rs_spell_grant_has(RS_WARLOCK,2,true,grants,SP_FALSE_LIFE);
+  #assert !rs_spell_grant_has(RS_WARLOCK,1,true,grants,SP_FALSE_LIFE);
+}

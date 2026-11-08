@@ -124,18 +124,15 @@ rs_cantrip_limit :: (klass: int, level: int) -> int #effects(all) {
   return base + (ifx level >= 4 then 1 else 0) + (ifx level >= 10 then 1 else 0);
 }
 rs_key_eligible :: (c: RsCreature, key: int) -> bool #effects(all) {
-  if key < 0 || key >= RS_SPELL_KEYS.count || c.level < 1 || c.level > 20 { return false; }
-  klass := rs_source_class(c.klass); if klass < 0 { return false; }
-  s := RS_SPELL_KEYS[key];
-  return (s.classes & (1 << klass)) != 0 && s.level <= rs_prepare_level(c.klass, c.level);
+  return rs_key_eligible_fields(c.klass,c.level,key);
 }
 rs_spellbook_add :: (c: [] RsCreature, key: int) -> bool #effects(all) {
-  if c[0].klass != RS_WIZARD || !rs_key_eligible(c[0], key) || RS_SPELL_KEYS[key].level == 0 { return false; }
+  if c[0].klass != RS_WIZARD || !rs_key_eligible_fields(c[0].klass,c[0].level,key) || RS_SPELL_KEYS[key].level == 0 { return false; }
   c[0].spells.known[key / 64] |= cast(u64) 1 << (key % 64);
   return true;
 }
 rs_select_spell :: (c: [] RsCreature, key: int) -> bool #effects(all) {
-  if !rs_key_eligible(c[0], key) { return false; }
+  if !rs_key_eligible_fields(c[0].klass,c[0].level,key) { return false; }
   mask := cast(u64) 1 << (key % 64); word := key / 64;
   if (c[0].spells.selected[word] & mask) != 0 { return true; }
   cantrip := RS_SPELL_KEYS[key].level == 0;

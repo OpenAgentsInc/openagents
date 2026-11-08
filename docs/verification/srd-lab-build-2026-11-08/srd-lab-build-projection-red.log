@@ -1,0 +1,55 @@
+aethyr/rules/srd/spell-state-checks.coax:7:11: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert rs_key_eligible_fields(RS_DRUID,1,wisp) && !rs_key_eligible_fields(RS_WIZARD,1,wisp);
+            ^
+aethyr/rules/srd/spell-state-checks.coax:7:55: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert rs_key_eligible_fields(RS_DRUID,1,wisp) && !rs_key_eligible_fields(RS_WIZARD,1,wisp);
+                                                        ^
+aethyr/rules/srd/spell-state-checks.coax:8:12: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert !rs_key_eligible_fields(RS_SORCERER,4,fireball) && rs_key_eligible_fields(RS_SORCERER,5,fireball);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:8:62: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert !rs_key_eligible_fields(RS_SORCERER,4,fireball) && rs_key_eligible_fields(RS_SORCERER,5,fireball);
+                                                               ^
+aethyr/rules/srd/spell-state-checks.coax:9:12: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert !rs_key_eligible_fields(RS_DRUID,0,wisp) && !rs_key_eligible_fields(RS_DRUID,21,wisp);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:9:56: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert !rs_key_eligible_fields(RS_DRUID,0,wisp) && !rs_key_eligible_fields(RS_DRUID,21,wisp);
+                                                         ^
+aethyr/rules/srd/spell-state-checks.coax:10:12: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert !rs_key_eligible_fields(RS_DRUID,1,-1) && !rs_key_eligible_fields(RS_DRUID,1,RS_SPELL_KEYS.count);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:10:54: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert !rs_key_eligible_fields(RS_DRUID,1,-1) && !rs_key_eligible_fields(RS_DRUID,1,RS_SPELL_KEYS.count);
+                                                       ^
+aethyr/rules/srd/spell-state-checks.coax:11:12: error[E0315]: procedure 'rs_key_eligible_fields' is not declared
+    #assert !rs_key_eligible_fields(RS_MONSTER,1,wisp);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:16:12: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert !rs_spell_grant_has(RS_WARLOCK,1,true,grants,SP_FALSE_LIFE);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:17:11: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert rs_spell_grant_has(RS_WARLOCK,2,true,grants,SP_FALSE_LIFE);
+            ^
+aethyr/rules/srd/spell-state-checks.coax:18:12: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert !rs_spell_grant_has(RS_WARLOCK,2,false,grants,SP_FALSE_LIFE);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:19:12: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert !rs_spell_grant_has(RS_DRUID,2,true,grants,SP_FALSE_LIFE);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:21:11: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert rs_spell_grant_has(RS_MONSTER,1,false,grants,SP_FLAME_HURL);
+            ^
+aethyr/rules/srd/spell-state-checks.coax:23:11: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert rs_spell_grant_has(RS_DRUID,1,false,grants,RS_HOUSE);
+            ^
+aethyr/rules/srd/spell-state-checks.coax:24:12: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert !rs_spell_grant_has(RS_DRUID,1,false,grants,-1) && !rs_spell_grant_has(RS_DRUID,1,false,grants,RS_HOUSE_END);
+             ^
+aethyr/rules/srd/spell-state-checks.coax:24:63: error[E0315]: procedure 'rs_spell_grant_has' is not declared
+    #assert !rs_spell_grant_has(RS_DRUID,1,false,grants,-1) && !rs_spell_grant_has(RS_DRUID,1,false,grants,RS_HOUSE_END);
+                                                                ^
+17 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh
