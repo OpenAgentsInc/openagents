@@ -6663,3 +6663,27 @@ proof of item acquisition, actual held-object ownership or a complete inventory
 system. Current declared presets supply their kits; world input/gear/waiver
 integration remains open. Contract and limits: `docs/dnd/casting-components.md`.
 Evidence: `docs/verification/srd-components-2026-11-08/README.md`.
+
+## Accepted incapacitating effects interrupt concentration immediately
+
+`effect-lifecycle.coax` owns accepted effect insertion and its shared
+incapacitation hook; `concentration.coax` owns reconciliation, dismissal and
+teardown. A retained Incapacitated/Paralyzed/Petrified/Stunned/
+Unconscious condition ends an active concentration spell immediately; death
+and zero HP are also reconciled at clock/turn boundaries. Immune/empty condition
+outcomes and storage refusal do not manufacture an interruption. All cleanup
+uses exact owner/spell identities, resets the concentration deadline, preserves
+other owners and unrelated effects, and decrements Spirit Guardians once.
+
+Concentrating programs stop before later recipients or steps once ownership
+ends. Spell condition messages precede the resulting concentration-end event.
+Dismissal needs no action or component, may happen outside the actor's turn,
+and refuses while Incapacitated. Halt alone does not interrupt concentration
+or prevent dismissal. Unknown executor identities and out-of-span actors refuse
+without treating a fallback spell record as an active effect.
+
+Authoritative raw condition/death writers must notify the shared interruption
+hook; clock/start-turn reconciliation is a fallback, not permission to defer a
+known immediate consequence. Other condition/feature lifecycles, targeting and
+world controls remain open. Evidence and exact limits:
+`docs/verification/srd-concentration-2026-11-08/README.md`.

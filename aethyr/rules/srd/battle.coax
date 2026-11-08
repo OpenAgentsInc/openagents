@@ -15,6 +15,7 @@
 #load "prone-movement.coax";
 #load "timing-profile.coax";
 #load "component-reaction.coax";
+#load "concentration.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -311,27 +312,6 @@ rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
 rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) + 0.05; }
 rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) - 0.01; }
 
-// Concentration ends: its areas go, and what they held is let go.
-rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
-  sp := b[0].c[i].conc;
-  if sp < 0 { return; }
-  for k: 0..<RS_ZONES {
-    if b[0].zone[k].on && b[0].zone[k].by == i && b[0].zone[k].spell == sp {
-      _ := rs_release_zone(b,k);
-    }
-  }
-  for j: 0..<b[0].n {
-    if b[0].c[j].outlined_by == i { b[0].c[j].outlined_by = -1; b[0].c[j].outlined_until = 0; }
-    for k: 0..<RS_EFFECTS {
-      if b[0].c[j].eff[k].kind != EF_NONE && b[0].c[j].eff[k].by == i && b[0].c[j].eff[k].spell == sp { rs_drop_effect(b, j, k); }
-    }
-  }
-  if sp == SP_SPIRIT_GUARDIANS { b[0].guards = rs_max(b[0].guards - 1, 0); }
-  b[0].c[i].conc = -1;
-  l: [1] RsLine;
-  rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " ends"); rs_add_text(l[..], why);
-  rs_tell(b, RS_EV_END, sp, i, -1, 0, 0, l[..]);
-}
 // What follows a creature dropping to 0: a Hex on it can move on a later turn, and a Fiend
 // Warlock who dropped it, or stands within 10 feet of it, has Dark One's Blessing.
 rs_dropped :: (b: [] RsBattle, by: int, j: int) {
@@ -593,7 +573,10 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
       if st.kind == RS_S_REPEAT { reps = st.a + st.b * rs_max(slot - s.level, 0); if st.c == 1 { reps = st.a * rs_cantrip_tier(me.level); } }
     }
     if s.area == RS_A_NONE && reps > 1 {
-      for r: 0..<reps { if !b[0].c[target].dead { rs_affect(b, i, target, sp, slot, zone_at); } }
+      for r: 0..<reps {
+        if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
+        if !b[0].c[target].dead { rs_affect(b, i, target, sp, slot, zone_at); }
+      }
       return true;
     }
     // each creature it affects
@@ -602,6 +585,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
     more: [RS_TARGETS_MAX] int; more_n := 0;
     if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b, i, target, rs_min(s.targets + rs_max(slot - s.level, 0), RS_TARGETS_MAX) - 1, s.range_ft, more[..]); }
     for j: 0..<b[0].n {
+      if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
       if s.area == RS_A_NONE {
         also := false;
         for m: 0..<more_n { if more[m] == j { also = true; } }
@@ -808,10 +792,12 @@ rs_affect_as :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: in
   rs_affect_program(b,i,j,sp,slot,zone_at,keep_concentration,rs_spell(sp));
 }
 rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell) {
+  if !rs_choice_continue(s,b[0].c[i].conc,sp) { return; }
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
   ran_save := false; saved := false; crit := false; attack_hit := false; tier_dice := true; potent_miss := false; bane := 0;
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_REPEAT && s.steps[k].c == 1 { tier_dice = false; } }
   for k: 0..<s.step_n {
+    if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
     st := s.steps[k];
     if potent_miss && st.kind != RS_S_DAMAGE { continue; }
     if st.kind == RS_S_ATTACK {
@@ -919,14 +905,14 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
       if ran_save && saved { continue; }
       if (b[0].c[j].immune_cond & st.a) != 0 { continue; }
       if st.a == RS_PRONE { b[0].c[j].cond |= st.a; }
-      else {
-        _ := rs_put_effect(b,j,RsEffect.{kind=ifx st.a == RS_RESTRAINED && zone_at >= 0 then EF_ZONE_RESTRAIN else EF_COND,
-          cond=ifx st.a == RS_RESTRAINED && zone_at >= 0 then zone_at else st.a,by=i,spell=sp,until=b[0].clock+s.duration_s,save=-1,dc=rs_dc(b,i)});
-      }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is ");
       rs_add_text(l[..], rs_condition_name(st.a));
       rs_tell(b, RS_EV_CONDITION, sp, i, j, st.a, 0, l[..]);
+      if st.a != RS_PRONE {
+        _ := rs_put_effect(b,j,RsEffect.{kind=ifx st.a == RS_RESTRAINED && zone_at >= 0 then EF_ZONE_RESTRAIN else EF_COND,
+          cond=ifx st.a == RS_RESTRAINED && zone_at >= 0 then zone_at else st.a,by=i,spell=sp,until=b[0].clock+s.duration_s,save=-1,dc=rs_dc(b,i)});
+      }
     } else if st.kind == RS_S_PUSH {
       if ran_save && saved { continue; }
       if !rs_up(b[0].c[j]) && b[0].c[j].dead { continue; }
@@ -966,12 +952,12 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
       if rs_effect_condition_mask(b[0].c[j],st.a) == 0 { continue; }
       e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0};
       if st.b == 2 { e.until = b[0].clock + s.duration_s; e.save = st.c; e.dc = rs_dc(b, i); }
-      _ := rs_put_effect(b, j, e);
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is "); rs_add_text(l[..], rs_condition_name(st.a));
       rs_add_text(l[..], ifx st.b == 1 then " until the end of " else " for up to a minute");
       if st.b == 1 { rs_add_name(l[..], b, i); rs_add_text(l[..], "'s next turn"); }
       rs_tell(b, RS_EV_CONDITION, sp, i, j, st.a, 0, l[..]);
+      _ := rs_put_effect(b,j,e);
     } else if st.kind == RS_S_ENFEEBLE {
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j);
@@ -1010,9 +996,10 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
       crit = b[0].turn.last_crit;
       if b[0].c[j].undead { bane = st.a; }
     } else if st.kind == RS_S_DAZE {
-      _ := rs_put_effect(b, j, RsEffect.{kind = EF_DAZED, cond = st.a, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
+      if rs_effect_condition_mask(b[0].c[j],st.a)==0 { continue; }
       l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is Charmed and Incapacitated, Speed 0");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_DAZED, cond = st.a, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
     } else if st.kind == RS_S_GUARD {
       b[0].c[i].guard_slot = slot;
       l: [1] RsLine; rs_add_text(l[..], "  spirits circle "); rs_add_name(l[..], b, i); rs_add_text(l[..], " 15 feet round");
@@ -1197,6 +1184,7 @@ rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
 // death saving throw. A Prone creature chooses later whether to stand or crawl.
 rs_start_turn :: (b: [] RsBattle, i: int) {
   rs_seal_timing(b);
+  concentration_lost := rs_sync_concentration(b,i);
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
   rs_halt_begin(b[0].c[i..<i+1],b[0].clock+rs_beat(b));
@@ -1292,6 +1280,7 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
   b[0].clock += dt;
   t := b[0].clock;
   for i: 0..<b[0].n {
+    concentration_lost := rs_sync_concentration(b,i);
     if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }

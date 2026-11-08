@@ -284,6 +284,15 @@ outcome properties pass under ASan/UBSan and real turn/saved-seat scenarios pass
 General death-save Advantage, Exhaustion, condition/recovery and wider #13039
 acceptance remain open.
 
+The [concentration lifecycle change](../verification/srd-concentration-2026-11-08/README.md)
+interrupts concentration on accepted incapacitating effects, including Hypnotic
+Pattern and Stunning Strike, rather than selected spell branches alone.
+Teardown preserves other owners/records and clears deadlines; concentrating
+programs cannot attach later effects after ownership ends. Free dismissal works
+outside a saved seat's turn. CONCENTRATION-LIFECYCLE adds a native witness.
+Raw state-writer integration, overlapping outline provenance, complete feature
+lifecycles and full casting workflows remain open; #13039 stays open.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

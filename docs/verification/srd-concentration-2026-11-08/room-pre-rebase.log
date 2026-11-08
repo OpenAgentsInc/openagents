@@ -1,0 +1,3 @@
+ok   #test room raid: Cult Priests bless the cult and command the player: the player halts, and the seat's conditions say so, with the spell and the time left (#12771) (1 case, 104537524 steps, 1108 ms)
+1 of 299 checks (--only 'Cult Priests'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

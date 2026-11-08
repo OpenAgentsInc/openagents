@@ -1,0 +1,108 @@
+// SRD 5.2.1 p.179: concentration ends on Incapacitated/death; dismissal
+// requires no action but is unavailable while Incapacitated.
+#authority;
+
+#test "raw zero HP ends self-owned Bless before the next battle death save" {
+  b: [1] RsBattle; a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
+  b[0].c[a].conc=SP_BLESS; b[0].c[a].conc_until=60;
+  #assert rs_put_effect(b[..],a,RsEffect.{kind=EF_BLESS,by=a,spell=SP_BLESS,until=60});
+  b[0].c[a].hp=0; b[0].c[a].cond=RS_UNCONSCIOUS|RS_PRONE;
+  b[0].dice[0].fixed=true; before := b[0].dice[0].rolled;
+  rs_start_turn(b[..],a);
+  #assert b[0].c[a].conc==-1 && !rs_effect(b[0].c[a],EF_BLESS);
+  #assert b[0].c[a].death_ok==1 && b[0].dice[0].rolled==before+1;
+}
+
+
+#test "concentration interruption distinguishes incapacitating conditions from movement and action restrictions" {
+  for condition: [13] int.[0,RS_BLINDED,RS_CHARMED,RS_DEAFENED,RS_FRIGHTENED,RS_PRONE,RS_GRAPPLED,RS_RESTRAINED,RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
+    b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=60; b[0].c[a].cond=condition;
+    lost := condition==RS_INCAPACITATED || condition==RS_PARALYZED || condition==RS_PETRIFIED || condition==RS_STUNNED || condition==RS_UNCONSCIOUS;
+    #assert rs_sync_concentration(b[..],a)==lost;
+    #assert b[0].c[a].conc==(ifx lost then -1 else SP_ENTANGLE);
+    #assert b[0].c[a].conc_until==(ifx lost then 0.0f32 else 60.0f32);
+    seq := b[0].book[0].seq;
+    #assert !rs_sync_concentration(b[..],a) && b[0].book[0].seq==seq;
+  }
+}
+#test "dismissal is free during Halt but invalid or incapacitated dismissal refuses without costs" {
+  b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+  b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=60;
+  b[0].c[a].cond=RS_INCAPACITATED;
+  seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+  #assert !rs_dismiss_concentration(b[..],a) && b[0].c[a].conc==SP_ENTANGLE && b[0].book[0].seq==seq;
+  b[0].c[a].cond=0; b[0].c[a].eff[0].kind=EF_HALT;
+  b[0].turn.action=true; b[0].turn.bonus=true; b[0].turn.slot_spent=true; b[0].c[a].reacted=true;
+  #assert rs_dismiss_concentration(b[..],a) && b[0].c[a].conc==-1 && b[0].c[a].conc_until==0;
+  ended := rs_recent_at(b[0].book[..],0);
+  #assert cast(string)ended.text[0..<ended.text_n]=="Caster's Entangle ends";
+  #assert b[0].turn.action && b[0].turn.bonus && b[0].turn.slot_spent && b[0].c[a].reacted && b[0].dice[0].rolled==rolls;
+  seq=b[0].book[0].seq;
+  #assert !rs_dismiss_concentration(b[..],a) && b[0].book[0].seq==seq;
+  b[0].c[1]=rs_druid("Stale",0,3); b[0].c[1].conc=SP_ENTANGLE;
+  for i: [3] int.[-1,1,2] {
+    #assert !rs_dismiss_concentration(b[..],i);
+    b[0].c[1].cond=RS_STUNNED;
+    #assert !rs_sync_concentration(b[..],i);
+    rs_end_concentration(b[..],i,""); #assert b[0].book[0].seq==seq;
+    #assert b[0].c[1].conc==SP_ENTANGLE; b[0].c[1].cond=0;
+  }
+}
+#test "death and zero HP stop concentration while Halt alone does not" {
+  for state: 0..<3 {
+    b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=60;
+    b[0].c[a].eff[0].kind=EF_HALT;
+    if state==0 { b[0].c[a].dead=true; }
+    if state==1 { b[0].c[a].hp=0; }
+    #assert rs_sync_concentration(b[..],a)==(state<2);
+    if state<2 {
+      e := rs_recent_at(b[0].book[..],0);
+      #assert e.kind==RS_EV_END && e.spell==SP_ENTANGLE && e.by==a && e.to==-1 && e.amount==0 && e.damage==0;
+      #assert cast(string)e.text[0..<e.text_n]=="Caster's Entangle ends (Incapacitated)";
+    }
+  }
+}
+
+#test "unknown concentration identities are refused rather than ended as a fallback spell" {
+  for sp: [5] int.[-2,-1,78,99,104] {
+    b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    b[0].c[a].conc=sp; b[0].c[a].conc_until=60; b[0].c[a].cond=RS_STUNNED;
+    seq := b[0].book[0].seq;
+    #assert !rs_sync_concentration(b[..],a);
+    b[0].c[a].cond=0; #assert !rs_dismiss_concentration(b[..],a);
+    rs_end_concentration(b[..],a,"");
+    #assert b[0].c[a].conc==sp && b[0].c[a].conc_until==60 && b[0].book[0].seq==seq;
+  }
+}
+
+rs_sync_concentration :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if i<0 || i>=b[0].n || !rs_executable_spell(b[0].c[i].conc) || rs_capable(b[0].c[i]) { return false; }
+  rs_interrupt_incapacitated(b,i);
+  return true;
+}
+rs_dismiss_concentration :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if i<0 || i>=b[0].n || !rs_executable_spell(b[0].c[i].conc) || !rs_capable(b[0].c[i]) { return false; }
+  rs_end_concentration(b,i,""); return true;
+}
+// Shared by dismissal, replacement, expiry, damage and condition interruption.
+rs_end_concentration :: (b: [] RsBattle, i: int, why: string) #effects(all) {
+  if i<0 || i>=b[0].n { return; }
+  sp := b[0].c[i].conc;
+  if !rs_executable_spell(sp) { return; }
+  b[0].c[i].conc=-1; b[0].c[i].conc_until=0;
+  for k: 0..<RS_ZONES {
+    if b[0].zone[k].by==i && b[0].zone[k].spell==sp { _ := rs_release_zone(b,k); }
+  }
+  for j: 0..<b[0].n {
+    if b[0].c[j].outlined_by==i { b[0].c[j].outlined_by=-1; b[0].c[j].outlined_until=0; }
+    for k: 0..<RS_EFFECTS {
+      if b[0].c[j].eff[k].by==i && b[0].c[j].eff[k].spell==sp { rs_drop_effect(b,j,k); }
+    }
+  }
+  if sp==SP_SPIRIT_GUARDIANS { b[0].guards=rs_max(b[0].guards-1,0); }
+  l: [1] RsLine;
+  rs_add_name(l[..],b,i); rs_add_text(l[..],"'s "); rs_add_text(l[..],rs_spell(sp).name); rs_add_text(l[..]," ends"); rs_add_text(l[..],why);
+  rs_tell(b,RS_EV_END,sp,i,-1,0,0,l[..]);
+}

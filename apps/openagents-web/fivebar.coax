@@ -468,6 +468,8 @@ fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
 // ---- a player in real time: its own turn, open through its beat
 
 FbSeat :: struct { me: int = -1; turn: RsTurn; open: bool; who: int; kept: RsTurn; }
+// Dismissal requires no action and may occur outside this seat's turn.
+fb_seat_dismiss :: (b: [] RsBattle, s: [] FbSeat) -> bool { return rs_dismiss_concentration(b,s[0].me); }
 // Into the seat's turn (the battle's own, if any, kept aside) and out again.
 fb_seat_in :: (b: [] RsBattle, s: [] FbSeat) { s[0].who = b[0].who; s[0].kept = b[0].turn; b[0].who = s[0].me; b[0].turn = s[0].turn; }
 fb_seat_out :: (b: [] RsBattle, s: [] FbSeat) { s[0].turn = b[0].turn; b[0].who = s[0].who; b[0].turn = s[0].kept; }
