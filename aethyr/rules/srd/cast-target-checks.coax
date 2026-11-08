@@ -501,7 +501,7 @@
 }
 
 #test "malformed casting IDs and cantrip slots refuse before changing any battle state" {
-  ids := [6] int.[-1, 78, 99, 104, SP_STARRY_WISP, SP_STARRY_WISP];
+  ids := [6] int.[-1, RS_MORE_END, 99, 104, SP_STARRY_WISP, SP_STARRY_WISP];
   slots := [6] int.[0, 0, 0, 0, -1, 1];
   for k: 0..<6 {
     b: [1] RsBattle; b[0].w = 20; b[0].h = 8;

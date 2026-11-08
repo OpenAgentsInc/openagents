@@ -24,7 +24,7 @@ sc_inventory :: () {
   tool_errln("record_id\tparent_id\tkind\ttext_present\tpage\teffect_steps");
   canonical := 0; helper := 0; house := 0;
   for i: 0..<RS_HOUSE_END {
-    // Unassigned IDs 78..99 are not content and must not enter the inventory.
+    // Unassigned IDs RS_MORE_END..99 are not content and must not enter the inventory.
     if i >= RS_MORE_END && i < RS_HOUSE { continue; }
     s := rs_spell(i);
     tool_err(s.id); tool_err("\t");

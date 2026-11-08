@@ -17,7 +17,7 @@
 }
 #test "explicit grants are bounded, creature-local and inherit through spell helpers" {
   c: [1] RsCreature; c[0].klass = RS_MONSTER; c[0].spell_ability = -1;
-  #assert !rs_spell_access(c[0], SP_CALL_BOLT) && !rs_grant_spell(c[..], -1) && !rs_grant_spell(c[..], 78);
+  #assert !rs_spell_access(c[0], SP_CALL_BOLT) && !rs_grant_spell(c[..], -1) && !rs_grant_spell(c[..], RS_MORE_END);
   #assert !rs_grant_spell(c[..], 104) && !rs_spell_access(c[0], -1);
   #assert !rs_grant_spell(c[..], SP_CALL_BOLT);
   #assert !rs_grant_spell(c[..], SP_FLAME_HURL);
@@ -92,7 +92,7 @@
 
 #test "class-owned grants remain distinct from world grants including helper aliases and malformed requests" {
   c: [1] RsCreature; c[0].klass=RS_DRUID;
-  for sp: [6] int.[-1,78,99,104,1000,1] {
+  for sp: [6] int.[-1,RS_MORE_END,99,104,1000,1] {
     #assert !rs_grant_class_spell(c[..],sp);
     for word: c[0].class_spell_grants { #assert word==0; }
   }
@@ -100,7 +100,7 @@
   #assert rs_grant_class_spell(c[..],SP_PRODUCE_FLAME) && rs_class_spell_granted(c[0],1);
   #assert rs_grant_class_spell(c[..],SP_COMMAND) && rs_class_spell_granted(c[0],SP_COMMAND);
   #assert rs_grant_class_spell(c[..],64) && rs_class_spell_granted(c[0],64) && !rs_class_spell_granted(c[0],65);
-  #assert !rs_class_spell_granted(c[0],-1) && !rs_class_spell_granted(c[0],78);
+  #assert !rs_class_spell_granted(c[0],-1) && !rs_class_spell_granted(c[0],RS_MORE_END);
   for level: 1..<3 { for klass: [2] int.[RS_DRUID,RS_WARLOCK] {
     v: RsCreature; v.klass=klass; v.level=level; v.vigor=true;
     #assert rs_class_spell_granted(v,SP_FALSE_LIFE)==(level==2 && klass==RS_WARLOCK);

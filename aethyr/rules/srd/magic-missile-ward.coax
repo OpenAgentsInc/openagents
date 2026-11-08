@@ -1,0 +1,21 @@
+// Shield against Magic Missile (SRD 5.2.1 p.161). Shield's Reaction triggers
+// when its caster is hit by an attack roll or targeted by Magic Missile, and
+// until the start of the caster's next turn it takes no damage from Magic
+// Missile. The darts strike simultaneously, so a target reacts once, before
+// any dart deals damage; with Shield up every dart at it deals none.
+#authority;
+
+#test "only Magic Missile at an unwarded target offers the Shield reaction" {
+  #assert rs_missile_shield_trigger(true, false);
+  #assert !rs_missile_shield_trigger(true, true);
+  #assert !rs_missile_shield_trigger(false, false) && !rs_missile_shield_trigger(false, true);
+}
+#test "Shield blocks Magic Missile damage and nothing else" {
+  #assert rs_missile_blocked(true, true);
+  #assert !rs_missile_blocked(true, false);
+  #assert !rs_missile_blocked(false, true) && !rs_missile_blocked(false, false);
+}
+
+// missile: the effect is Magic Missile's. warded: the target's Shield is up.
+rs_missile_shield_trigger :: (missile: bool, warded: bool) -> bool #effects(all) { return missile && !warded; }
+rs_missile_blocked :: (missile: bool, warded: bool) -> bool #effects(all) { return missile && warded; }

@@ -28,6 +28,7 @@
 #load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
 #load "attack-sight.coax";
+#load "magic-missile-ward.coax";
 #load "strike-features.coax";
 #load "condition-permissions.coax";
 #load "stat-attack.coax";
@@ -848,6 +849,14 @@ rs_affect_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at
 rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope) {
   if !rs_choice_continue(s,b[0].c[i].conc,sp) { return; }
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
+  // Shield (p.161): a target of Magic Missile may react before the darts strike; warded, it takes none
+  missile := sp == SP_MAGIC_MISSILE;
+  if rs_missile_shield_trigger(missile, b[0].c[j].shield_active) { _ := rs_shield(b, j); }
+  if rs_missile_blocked(missile, b[0].c[j].shield_active) {
+    l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes no damage from Magic Missile (Shield)");
+    rs_tell(b, RS_EV_DAMAGE, sp, i, j, 0, RS_FORCE, l[..]);
+    return;
+  }
   ran_attack := false; ran_save := false; saved := false; crit := false; attack_hit := false; tier_dice := true; potent_miss := false; bane := 0;
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_REPEAT && s.steps[k].c == 1 { tier_dice = false; } }
   for k: 0..<s.step_n {

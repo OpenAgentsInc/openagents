@@ -34,7 +34,9 @@ SP_HELLISH_REBUKE :: 71;
 SP_BURNING_HANDS :: 72; SP_LIGHTNING_BOLT :: 73;
 // the cult's buffs and debuffs in a raid (#12771): the Cult Priests' (Clerics'), the Warlocks' and the Fanatics'
 SP_BLESS :: 74; SP_BANE :: 75; SP_SHIELD_OF_FAITH :: 76; SP_COMMAND :: 77;
-RS_MORE_END :: 78;
+// the levels 1-6 slice's (#13043): spells the closed step set already expresses
+SP_INFLICT_WOUNDS :: 78; SP_ACID_SPLASH :: 79; SP_MAGIC_MISSILE :: 80; SP_MASS_HEALING_WORD :: 81;
+RS_MORE_END :: 82;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -209,6 +211,28 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.components = "V"; s.page = 123;
     s.text = "You teleport to a location within range. You arrive at exactly the spot desired. It can be a place you can see, one you can visualize, or one you can describe by stating distance and direction, such as \"200 feet straight downward\" or \"300 feet upward to the northwest at a 45-degree angle.\" You can also teleport one willing creature. The creature must be within 5 feet of you when you teleport, and it teleports to a space within 5 feet of your destination space. If you, the other creature, or both would arrive in a space occupied by a creature or completely filled by one or more objects, you and any creature traveling with you each take 4d6 Force damage, and the teleportation fails.";
     s.steps[0] = rs_step(RS_S_TELEPORT, 0, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_INFLICT_WOUNDS {
+    s = rs_more("inflict-wounds", "Inflict Wounds", 1, "Necromancy", "Cleric", RS_T_ACTION, 5, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S"; s.page = 143;
+    s.text = "A creature you touch makes a Constitution saving throw, taking 2d10 Necrotic damage on a failed save or half as much damage on a successful one. Using a Higher-Level Spell Slot. The damage increases by 1d10 for each spell slot level above 1.";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 10, RS_NECROTIC, 1); s.step_n = 2;
+  } else if i == SP_ACID_SPLASH {
+    s = rs_more("acid-splash", "Acid Splash", 0, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 60, "Instantaneous", 0, false, RS_A_SPHERE, 5);
+    s.components = "V, S"; s.page = 107;
+    s.text = "You create an acidic bubble at a point within range, where it explodes in a 5-foot-radius Sphere. Each creature in that Sphere must succeed on a Dexterity saving throw or take 1d6 Acid damage. Cantrip Upgrade. The damage increases by 1d6 when you reach levels 5 (2d6), 11 (3d6), and 17 (4d6).";
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 6, RS_ACID, 0); s.step_n = 2;
+  } else if i == SP_MAGIC_MISSILE {
+    // Each dart is its own damage roll of 1d4 + 1 (plus); no attack roll, so every dart strikes.
+    // A target with Shield up takes none of it (magic-missile-ward.coax).
+    s = rs_more("magic-missile", "Magic Missile", 1, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 120, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S"; s.page = 146; s.plus = 1;
+    s.text = "You create three glowing darts of magical force. Each dart strikes a creature of your choice that you can see within range. A dart deals 1d4 + 1 Force damage to its target. The darts all strike simultaneously, and you can direct them to hit one creature or several. Using a Higher-Level Spell Slot. The spell creates one more dart for each spell slot level above 1.";
+    s.steps[0] = rs_step(RS_S_REPEAT, 3, 1, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 4, RS_FORCE, 0); s.step_n = 2;
+  } else if i == SP_MASS_HEALING_WORD {
+    s = rs_more("mass-healing-word", "Mass Healing Word", 3, "Abjuration", "Bard, Cleric", RS_T_BONUS, 60, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V"; s.page = 148; s.targets = 6; s.targets_optional = true;
+    s.text = "Up to six creatures of your choice that you can see within range regain Hit Points equal to 2d4 plus your spellcasting ability modifier. Using a Higher-Level Spell Slot. The healing increases by 1d4 for each spell slot level above 3.";
+    s.steps[0] = rs_step(RS_S_HEAL, 2, 4, 1, 1); s.step_n = 1;
   } else if i == SP_BLESS {
     s = rs_more("bless", "Bless", 1, "Enchantment", "Cleric, Paladin", RS_T_ACTION, 30, "Concentration, up to 1 minute", 60, true, RS_A_NONE, 0);
     s.components = "V, S, M (a Holy Symbol worth 5+ GP)"; s.targets = 3; s.target_growth = 1; s.targets_optional = true;

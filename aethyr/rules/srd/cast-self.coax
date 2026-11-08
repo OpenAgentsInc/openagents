@@ -14,7 +14,7 @@
   #assert rs_spell_self_range(SP_DIVINE_SMITE) && rs_spell_self_range(SP_THUNDERWAVE);
   #assert !rs_spell_self_range(SP_FLAME_HURL) && !rs_spell_self_range(SP_CALL_BOLT);
   #assert !rs_spell_self_range(SP_WATER_WALK) && !rs_spell_self_range(SP_COMMAND);
-  #assert !rs_spell_self_range(-1) && !rs_spell_self_range(78) && !rs_spell_self_range(SP_WATER_ORB);
+  #assert !rs_spell_self_range(-1) && !rs_spell_self_range(RS_MORE_END) && !rs_spell_self_range(SP_WATER_ORB);
 }
 rs_self_request :: (self_range: bool, creature_request: bool, smite: bool, same: bool) -> bool #effects(all) {
   return !self_range || !creature_request || smite || same;

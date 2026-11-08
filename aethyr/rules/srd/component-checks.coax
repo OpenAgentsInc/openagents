@@ -65,7 +65,7 @@
   c: [1] RsCreature; c[0]=rs_druid("Druid",0,3); c[0].speech_blocked=true; c[0].gesture_hand=false; c[0].material_hand=false; c[0].focus_held=false;
   #assert !rs_cast_components_ready(c[0],SP_PRODUCE_FLAME);
   #assert rs_component_mask(1)==0 && rs_cast_components_ready(c[0],1);
-  for sp: [6] int.[-1,78,99,104,105,1000] {
+  for sp: [6] int.[-1,RS_MORE_END,99,104,105,1000] {
     #assert rs_component_key(sp)==-1 && rs_component_mask(sp)==-1 && !rs_cast_components_ready(c[0],sp);
     #assert !rs_cast_components_pay(c[..],sp);
   }

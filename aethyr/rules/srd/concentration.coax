@@ -66,7 +66,7 @@
 }
 
 #test "unknown concentration identities are refused rather than ended as a fallback spell" {
-  for sp: [5] int.[-2,-1,78,99,104] {
+  for sp: [5] int.[-2,-1,RS_MORE_END,99,104] {
     b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
     b[0].c[a].conc=sp; b[0].c[a].conc_until=60; b[0].c[a].cond=RS_STUNNED;
     seq := b[0].book[0].seq;

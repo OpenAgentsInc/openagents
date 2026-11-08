@@ -7113,3 +7113,14 @@ without inventing intervening sleep or a source interruption penalty. Earlier
 completion remains pending for ordered consumption. Automatic scheduling and
 causal producers remain required. See
 `docs/verification/srd-long-rest-owned-2026-11-08/README.md`.
+
+## Shield answers Magic Missile before any dart strikes
+
+A Magic Missile target without Shield up is offered the existing Shield Reaction
+once, before its first dart; a target with Shield up takes no damage from any
+dart (SRD 5.2.1 p.161). The decision is `aethyr/rules/srd/magic-missile-ward.coax`
+(`#authority`); slot/Reaction admission stays in `rs_shield`. Inflict Wounds,
+Acid Splash, Magic Missile and Mass Healing Word execute through the existing
+closed step set. Checks naming "the first unassigned spell ID" use
+`RS_MORE_END`. See `docs/verification/srd-slice-spells-2026-11-08/README.md`.
+

@@ -130,9 +130,11 @@ The measured count is tallied from the reports, so adding a probe needs only its
 For the active spell slice (#13043), `coax/web/tool.sh aethyr/rules/srd/spell-coverage.coax`
 counts, per base class table, the cantrips and 1st-3rd level spells that have
 an executable effect program mapped to their canonical entry (`--list` prints
-one row per spell; `--max-level N` widens it). Baseline at this change: 43 of
-the 183 distinct spells at levels 0-3 have an executor and 140 are source text
-only (Wizard 19/109, Sorcerer 18/83, Druid 17/63, Bard 11/72, Cleric 11/58,
+one row per spell; `--max-level N` widens it). Baseline when the report landed: 43 of
+the 183 distinct spells at levels 0-3 had an executor. After the
+[slice spells](../verification/srd-slice-spells-2026-11-08/README.md) (Inflict
+Wounds, Acid Splash, Magic Missile, Mass Healing Word): 47 of 183, 136 source
+text only (Wizard 21/109, Sorcerer 20/83, Druid 17/63, Cleric 13/58, Bard 12/72,
 Warlock 9/40, Ranger 7/40, Paladin 5/30). An executor is not qualification:
 it does not show that every mechanical clause of the spell is implemented. These are executable regression predicates,
 not `#test` assertions that bugs should remain. The first command's ordinary
