@@ -1,0 +1,34 @@
+// SRD 5.2.1 pp.17-18. The natural face owns the special 1/20 outcomes;
+// the modified total owns ordinary success. Outcome callers admit eligibility
+// first, and provide a face in 1..20 and preterminal success/failure counts.
+#authority;
+
+RS_DS_FAIL :: 0; RS_DS_OK :: 1; RS_DS_STABLE :: 2; RS_DS_DEAD :: 3; RS_DS_UP :: 4;
+RS_DS_BLOCKED :: 5; // a natural 20 whose actual healing was prevented
+RS_DS_NONE :: 6;    // this creature does not currently make a death saving throw
+
+rs_death_eligible :: (c: RsCreature) -> bool #effects(all) {
+  return !c.dead && c.hp == 0 && !c.stable;
+}
+rs_death_apply :: (c: [] RsCreature, face: int, total: int) -> int #effects(all) {
+  if face == 20 { return ifx rs_heal(c,1) > 0 then RS_DS_UP else RS_DS_BLOCKED; }
+  if face != 1 && total >= 10 {
+    c[0].death_ok += 1;
+    if c[0].death_ok >= 3 {
+      c[0].stable = true; c[0].death_ok = 0; c[0].death_fail = 0;
+      return RS_DS_STABLE;
+    }
+    return RS_DS_OK;
+  }
+  c[0].death_fail += ifx face == 1 then 2 else 1;
+  if c[0].death_fail >= 3 { c[0].dead = true; return RS_DS_DEAD; }
+  return RS_DS_FAIL;
+}
+
+// Standalone unmodified roll primitive, for callers without a battle. Battle
+// turns use rs_battle_death_save so battle-wide save modifiers are included.
+rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int #effects(all) {
+  if !rs_death_eligible(c[0]) { return RS_DS_NONE; }
+  face := rs_roll(d,20);
+  return rs_death_apply(c,face,face);
+}

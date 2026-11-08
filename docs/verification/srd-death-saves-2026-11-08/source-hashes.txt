@@ -1,0 +1,7 @@
+729d2a475f0beedd2ccb53c76702cbafc49689000a0f8e588973bab6bde7b23c  aethyr/rules/srd/battle.coax
+db5d065385a164eaf165c4a6274b2e96f9738c9140ab812b8f044947e0655fb9  aethyr/rules/srd/hit-points.coax
+9d590a2d26a5e8f4dbe3541b3036f566fd954c72fd612a3f2ed96293c271c0ae  aethyr/rules/srd/death-saves.coax
+33a9ddc44f58f5e7360560552b23c395b2978bdc0aae90eb776019878370daff  aethyr/rules/srd/death-save-roll.coax
+57ab334372bfe1353278dcfc14b3dd96479d775f02e4648b999755f79ebedb04  aethyr/rules/srd/death-save-checks.coax
+d7466cb0983ecf1b0153a33d4967f1f095ae857e4e88414670b696ac79be3105  apps/openagents-web/fivebar-test.coax
+3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9  coax/bin/coax

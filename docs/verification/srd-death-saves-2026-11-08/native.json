@@ -1,0 +1,152 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/death-save-checks.coax",
+      "source_sha256": "57ab334372bfe1353278dcfc14b3dd96479d775f02e4648b999755f79ebedb04",
+      "checks": [
+        {
+          "name": "death saves receive one Bless or Bane die despite being Unconscious and not tied to an ability",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "death saves use only an eligible nearby ally aura and ignore ability scores and save proficiencies",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a failed death save can use held Inspiration or Own Luck without the later creature write restoring it",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a modified total of twenty is an ordinary success and never a natural-twenty recovery",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "natural death-save faces retain their special outcome after mandatory boon dice and spend no useless rescues",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a natural one with a low modified total cannot spend rescue dice to evade its two failures",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "ineligible battle death saves preserve dice resources events and counters",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "death saving throw boons precede rescue spending and an exact ten succeeds",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "667d5cba7485aafd6a9c04fd65f813ca7ed4281994937267c2c742c082dc355e",
+            "binary_sha256": "c688a84ab4ff1d1a9f342a0f184733d8b7fa2a03fb43d1bfdeae98244fbfc1b9"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "1b45ea6f7fe668d7721226cf5c24b94a17aa964f82f247f249b161155024febf",
+            "binary_sha256": "8eed26e207849e6abcc0fe2f768c7b2e864286aae91652ddb382042ab4c4b2af"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 8
+  },
+  "outcome": "passed"
+}

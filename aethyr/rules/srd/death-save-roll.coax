@@ -1,0 +1,20 @@
+// Death saves are saving throws, but have no ability modifier/proficiency and
+// do not automatically fail through Unconscious's Strength/Dexterity rule.
+#authority;
+
+rs_battle_death_save :: (b: [] RsBattle, j: int) -> int #effects(all) {
+  if !rs_death_eligible(b[0].c[j]) { return RS_DS_NONE; }
+  face := rs_roll(b[0].dice[..],20);
+  total := face + rs_aura(b,j) + rs_boon_roll(b,j);
+  // A natural 1 imposes two failures regardless of the total. A natural 20's
+  // total cannot need rescuing with the currently supported modifiers.
+  if face != 1 {
+    total += rs_inspired_roll(b,j,total,10);
+    total += rs_own_luck(b,j,total,10);
+  }
+  // Optional rescue rolls spend creature state; copy only after those rolls.
+  c: [1] RsCreature; c[0] = b[0].c[j];
+  r := rs_death_apply(c[..],face,total);
+  b[0].c[j] = c[0];
+  return r;
+}

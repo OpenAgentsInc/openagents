@@ -57,22 +57,4 @@ rs_heal :: (c: [] RsCreature, amount: int) -> int #effects(all) {
   return gain;
 }
 
-RS_DS_FAIL :: 0; RS_DS_OK :: 1; RS_DS_STABLE :: 2; RS_DS_DEAD :: 3; RS_DS_UP :: 4;
-RS_DS_BLOCKED :: 5; // a natural 20 whose actual healing was prevented
-RS_DS_NONE :: 6;    // this creature does not currently make a death saving throw
-rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int #effects(all) {
-  if c[0].dead || c[0].hp != 0 || c[0].stable { return RS_DS_NONE; }
-  r := rs_roll(d,20);
-  if r == 20 { return ifx rs_heal(c,1) > 0 then RS_DS_UP else RS_DS_BLOCKED; }
-  if r >= 10 {
-    c[0].death_ok += 1;
-    if c[0].death_ok >= 3 {
-      c[0].stable = true; c[0].death_ok = 0; c[0].death_fail = 0;
-      return RS_DS_STABLE;
-    }
-    return RS_DS_OK;
-  }
-  c[0].death_fail += ifx r == 1 then 2 else 1;
-  if c[0].death_fail >= 3 { c[0].dead = true; return RS_DS_DEAD; }
-  return RS_DS_FAIL;
-}
+#load "death-saves.coax";

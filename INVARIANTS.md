@@ -6610,6 +6610,16 @@ boundary so Rage ends immediately. Condition removal never resumes concentration
 Evidence and remaining condition clauses:
 `docs/verification/srd-effect-lifecycle-2026-11-08/README.md`.
 
+Battle death saves use `death-save-roll.coax`: eligible allied Aura, one
+Bless/Bane die each and existing rescue policy apply without an ability modifier
+or save proficiency. `death-saves.coax` separates the natural face from the
+modified total: ten succeeds ordinarily, a natural one imposes two failures,
+and a natural twenty attempts one-HP healing. A modified twenty never heals.
+Rescue spending survives the final creature update; ineligible calls sample no
+die and spend nothing. The standalone dice/creature primitive is unmodified.
+Evidence, native scope and remaining work:
+`docs/verification/srd-death-saves-2026-11-08/README.md`.
+
 ## Combat timing is a declared profile selected before the clock starts
 
 `RsBattle.timing` defaults to `RS_STRICT_TIMING`: six-second turns, exact feet

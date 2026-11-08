@@ -25,6 +25,7 @@
 #load "effect-rolls.coax";
 #load "condition-rolls.coax";
 #load "effect-lifecycle.coax";
+#load "death-save-roll.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -1212,9 +1213,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   if b[0].c[i].raging && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
     if b[0].c[i].stable || !b[0].turn.new_round { return; }
-    c: [1] RsCreature; c[0] = b[0].c[i];
-    r := rs_death_save(b[0].dice[..], c[..]);
-    b[0].c[i] = c[0];
+    r := rs_battle_death_save(b,i);
     l: [1] RsLine;
     rs_add_name(l[..], b, i);
     if r == RS_DS_UP { rs_add_text(l[..], " rolls a 20 on a death save and regains 1 Hit Point"); }

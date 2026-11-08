@@ -1,0 +1,10 @@
+passed               aethyr/rules/srd/death-save-checks.coax
+  passed             death saves receive one Bless or Bane die despite being Unconscious and not tied to an ability
+  passed             death saves use only an eligible nearby ally aura and ignore ability scores and save proficiencies
+  passed             a failed death save can use held Inspiration or Own Luck without the later creature write restoring it
+  passed             a modified total of twenty is an ordinary success and never a natural-twenty recovery
+  passed             natural death-save faces retain their special outcome after mandatory boon dice and spend no useless rescues
+  passed             a natural one with a low modified total cannot spend rescue dice to evade its two failures
+  passed             ineligible battle death saves preserve dice resources events and counters
+  passed             death saving throw boons precede rescue spending and an exact ten succeeds
+native checks: passed {"passed": 8}

@@ -275,6 +275,15 @@ also ends Rage immediately. The new authority kills all 50 mutants, and scoped
 native/hotbar/component checks pass. Condition lifecycle and other #13039 clauses
 remain incomplete.
 
+The [death-save change](../verification/srd-death-saves-2026-11-08/README.md)
+adds existing boon/Aura/rescue modifiers to actual battle death saves without
+an ability modifier/proficiency. Natural one/twenty outcomes use the raw face,
+ordinary success uses the modified total, and consumed rescue resources stay
+consumed. Both new authority gates have zero survivors; original-source native
+outcome properties pass under ASan/UBSan and real turn/saved-seat scenarios pass.
+General death-save Advantage, Exhaustion, condition/recovery and wider #13039
+acceptance remain open.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry
