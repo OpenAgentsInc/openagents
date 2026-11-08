@@ -228,7 +228,9 @@ there is an idle, a run and a cleave. The package snapshot holds the Blender sou
 (`two-hand-clips.blend`), the exported GLB, the authoring script, `report.json` and
 `provenance.json`. Each record names its parent Universal Animation Library 1 clips by
 revision: Idle_Loop or Jog_Fwd_Loop for the body, and Driving_Loop for the closed fingers.
-`recipe_sha256` pins the script. To rebuild the source, run:
+`recipe_sha256` pins the script. The script keys the clips at 60 frames a second and fails if
+the weapon's mesh comes within 8 cm of the head or neck, enters the torso, or leaves either
+fist; `report.json` records the closest approach for each clip. To rebuild the source, run:
 
 ```sh
 Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \

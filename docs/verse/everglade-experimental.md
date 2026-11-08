@@ -75,18 +75,33 @@ You fight the monsters with your class's level 1 kit
 - One-handed weapons are fixed to the right hand's bone, so they follow every animation.
 - The greataxe and greatsword are held in both hands. No Universal Animation Library clip holds
   a weapon in two hands, so OpenAgents authored its own: a two-handed ready stance, the same
-  hold over the run, and an overhead cleave, one set for each weapon. While you hold a
-  two-hander, these replace the idle and run, so the legs still run. The right fist is low on
-  the grip and the left fist is up the haft (about 40 cm for the greataxe, 16 cm for the
-  greatsword). The weapon runs from the right fist through the left, so both hands stay on it.
+  hold over the run, and a diagonal cleave, one set for each weapon. While you hold a
+  two-hander, these replace the idle and run, so the legs still run. The hold and run carry
+  the weapon low across the body, its head out to your left. The right fist is low on the grip
+  and the left fist is up the haft (about 40 cm for the greataxe, 16 cm for the greatsword).
+  The weapon runs from the right fist through the left, so both hands stay on it.
+- The cleave lifts the weapon up and back over your right shoulder, with the head behind and
+  above your head and your arms clear of your face. It then cuts from high right to low left
+  across the front of your body, follows through low on your left and returns to the hold. On
+  the greataxe's downswing, your left hand slides down the haft toward your right.
 - A blow with a weapon (Attack, Sneak Attack, Divine Smite) plays a swing over what you're
   doing, blended like the jump. One-handers use the Universal Animation Library 1 sword
   attack, and the blow lands at the frame where the hand moves fastest forward or down.
   Two-handers use the authored cleave, and the blow lands at its impact, 0.55 s into the
-  1.2 s swing. In both cases the blow lands then, not at the key press.
+  1.2 s swing. In both cases the blow lands then, not at the key press. A two-hander's blow
+  takes the whole body, even on the run, and is blended over the two-handed hold, never over
+  the jump. A jump with a two-hander blends in a tenth of the jump pose, not the usual 45%,
+  because the jump's free arms would swing the weapon into you.
 - The two-handed clips are authored in Blender by `verse/tools/assets/two_hand_clips.py` over
   the Universal Animation Library 1 rig: the haft is keyed in the chest's space, each wrist is
-  pinned to it with IK, and the result is baked to plain keys. The `.blend` source, the GLB and
+  pinned to it with IK, and the result is baked to plain keys at 60 frames a second.
+- The weapon keeps clear of your body. The head is a 12 cm sphere and the neck a capsule,
+  and the weapon's real mesh boxes must stay at least 8 cm from both and outside a 15 cm
+  torso capsule. The Blender script checks this every 1/120 s on the library rig and fails
+  the bake if the weapon comes closer. Tests in `apps/openagents-web/charactercreator.coax`
+  check it again every 1/60 s after retargeting onto both game bodies, through every clip and
+  through the blends into and out of the cleave, the jump and the idle-to-run change.
+- The `.blend` source, the GLB and
   their provenance are the registered package `openagents-two-hand-clips` (see
   `assets/registry/README.md`). `verse/tools/clip_rig.py` retargets them from
   `verse/packs/everglade-two-hand.json` into `verse/everglade/two-hand-rig.coax`.

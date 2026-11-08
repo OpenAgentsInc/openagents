@@ -2,7 +2,7 @@
   "pack": "everglade-two-hand",
   "libraries": {
     "ual1": "~/.openagents/assets/originals/e2adadc59702bc88770e299949d1f4c6790db1852133fd1ce374d2a0815537cd/source/Unreal-Godot/UAL1_Standard.glb",
-    "two-hand": "~/.openagents/assets/originals/0c5de453e3110d333b802a63d0b38387f6031db136abb30e009957b9eb113e9a/source/two-hand-clips.glb"
+    "two-hand": "~/.openagents/assets/originals/cb01cf46755423a861572f23cd20536fb5f963b50efd6ee526e53738e5b65dae/source/two-hand-clips.glb"
   },
   "clips": [
     {

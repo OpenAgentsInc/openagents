@@ -324,9 +324,12 @@ experimental_hold :: (s:Creator)->int {
 }
 // Blend the authored jump over the locomotion pose, easing in during takeoff and
 // back out shortly after landing. The jump never fully replaces the arms.
+// With a two-hander only a little of the jump: its arms are free, and more would swing the weapon into you.
+CC_TWO_JUMP :: 0.1;
 experimental_jump_weight :: (s:Creator)->f32 {
- if s.airborne {return 0.45*cc_clamp((s.clock-s.air_at)/0.12,0,1);}
- return 0.45*(1-cc_clamp((s.clock-s.land_at)/0.18,0,1));
+ w:=ifx experimental_hold(s)>=0 then CC_TWO_JUMP else 0.45f32;
+ if s.airborne {return w*cc_clamp((s.clock-s.air_at)/0.12,0,1);}
+ return w*(1-cc_clamp((s.clock-s.land_at)/0.18,0,1));
 }
 experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
  a:=a0;a.x=s.player_x;a.z=s.player_z;a.y=meadow.exp_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;
@@ -341,6 +344,8 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
  if !(s.dev_animations && s.preview_clip>=0) && s.swing_clip>=0 && s.clock-s.swing_at<figs.bd_seconds(s.swing_clip) {
   // a blow: its clip over what you were doing, the way the jump blends (experimental_swing_weight)
   a.prev=a.clip;a.pt0=a.t0;a.pphase=a.phase;
+  // a two-hander's blow is over its hold, never over the jump's free arms (they'd carry the weapon into you)
+  if experimental_hold(s)>=0 {a.prev=experimental_stance(s);a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);}
   a.clip=s.swing_clip;a.t0=s.swing_at;a.phase=(s.clock-s.swing_at)/figs.bd_seconds(s.swing_clip);
   a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_swing_weight(s);
  }
@@ -350,7 +355,8 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
 // keep a little of the run.
 experimental_swing_weight :: (s:Creator)->f32 {
  t:=s.clock-s.swing_at;d:=figs.bd_seconds(s.swing_clip);
- top:=ifx s.moving then 0.8f32 else 1.0f32;
+ // (a two-hander's blow takes the whole body: a fifth of the run's arms would pull the weapon into you)
+ top:=ifx s.moving && experimental_hold(s)<0 then 0.8f32 else 1.0f32;
  return top*cc_clamp(t/0.1,0,1)*cc_clamp((d-t)/0.25,0,1);
 }
 // ---- the weapon in your hand (#13025): a melee class's kit, on the right hand's bone, its grip in the fist.
@@ -424,6 +430,115 @@ cc_pose_point :: (h:[12]f32,p:[3]f32)->[3]f32 {
 cc_unit :: (v:[3]f32)->[3]f32 {
  m:=sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);if m<0.000001 {return [3]f32.[0,1,0];}
  return [3]f32.[v[0]/m,v[1]/m,v[2]/m];
+}
+// ---- a two-hander's room (#13025): the weapon's mesh as boxes, kept 8 cm off the head and neck and out of
+// the torso in every pose the game shows (verse/tools/assets/two_hand_clips.py checks the same in Blender).
+// Each kit's boxes in source units: y0, y1 (up the haft), x0, x1 (the edge), z0, z1, from Axe_Double and Sword_big.
+CC_KIT_BOXES :: [2][24]f32.[
+ [24]f32.[-0.664,0.462,-0.06,0.152,-0.064,0.064, 0.462,0.62,-0.30,0.325,-0.066,0.066, 0.62,1.30,-0.423,0.448,-0.068,0.068, 1.30,1.487,-0.30,0.325,-0.068,0.068],
+ [24]f32.[-0.151,0.475,-0.073,0.073,-0.051,0.051, 0.475,0.80,-0.217,0.217,-0.051,0.051, 0.80,2.30,-0.153,0.153,-0.014,0.014, 2.30,2.584,-0.093,0.093,-0.014,0.014]];
+CC_CLEAR :: 0.08;            // metres the weapon keeps from the head and neck
+// The body's capsules from the rig's joints (Head 6, neck_01 5, spine_01 2, spine_03 4): the skull from 8 to 18 cm
+// up the head joint, 12 cm round; the neck to the head joint, 7 cm; the torso from spine_01 to 8 cm above
+// spine_03, 15 cm.
+CC_J_HEAD :: 6; CC_J_NECK :: 5; CC_J_SPINE1 :: 2; CC_J_SPINE3 :: 4;
+// Joint j's place under palette pal (three rows of four a joint), from its bind position at.
+cc_joint_at :: (pal:[]f32,j:int,at:[3]f32)->[3]f32 {
+ h:[12]f32;for k:0..<12 {h[k]=pal[j*12+k];}
+ return cc_pose_point(h,at);
+}
+// Joint j's up (the bind pose's +Y) under pal.
+cc_joint_up :: (pal:[]f32,j:int)->[3]f32 { return cc_unit([3]f32.[pal[j*12+1],pal[j*12+5],pal[j*12+9]]); }
+// The weapon's (two-hand matrix w, kit k) room to the capsule from a to b of radius r: metres past r.
+cc_capsule_room :: (w:[12]f32,k:int,a:[3]f32,b:[3]f32,r:f32)->f32 {
+ sc:=CC_KIT_SCALE[k];s2:=sc*sc;best:=9.0f32;
+ span:=sqrt((b[0]-a[0])*(b[0]-a[0])+(b[1]-a[1])*(b[1]-a[1])+(b[2]-a[2])*(b[2]-a[2]));
+ n:=cast(int)(span/0.01)+2;
+ for i:0..<n {
+  u:=f32(i)/f32(n-1);p:=[3]f32.[a[0]+(b[0]-a[0])*u-w[0],a[1]+(b[1]-a[1])*u-w[1],a[2]+(b[2]-a[2])*u-w[2]];
+  qx:=(p[0]*w[3]+p[1]*w[4]+p[2]*w[5])/s2;qy:=(p[0]*w[6]+p[1]*w[7]+p[2]*w[8])/s2;qz:=(p[0]*w[9]+p[1]*w[10]+p[2]*w[11])/s2;
+  for q:0..<4 {
+   o:=q*6;
+   dy:=cc_out(qy,CC_KIT_BOXES[k][o],CC_KIT_BOXES[k][o+1]);dx:=cc_out(qx,CC_KIT_BOXES[k][o+2],CC_KIT_BOXES[k][o+3]);dz:=cc_out(qz,CC_KIT_BOXES[k][o+4],CC_KIT_BOXES[k][o+5]);
+   d:=sc*sqrt(dx*dx+dy*dy+dz*dz)-r;if d<best {best=d;}
+  }
+ }
+ return best;
+}
+cc_out :: (v:f32,lo:f32,hi:f32)->f32 { if v<lo {return lo-v;} if v>hi {return v-hi;} return 0; }
+// A two-hander's room to the head, neck and torso (metres past each capsule) in the pose pal, the weapon
+// placed from the fists as held_weapon places it. bind holds the bind positions of the right and left hands,
+// the head, neck_01, spine_01 and spine_03.
+two_hand_room :: (pal:[]f32,bind:[6][3]f32,k:int)->[3]f32 {
+ hr:[12]f32;hl:[12]f32;for i:0..<12 {hr[i]=pal[figs.BD_HAND*12+i];hl[i]=pal[figs.BD_HAND_L*12+i];}
+ w:=two_hand_matrix(hr,hl,bind[0],bind[1],k,0,[3]f32.[0,0,0]);
+ h:=cc_joint_at(pal,CC_J_HEAD,bind[2]);hu:=cc_joint_up(pal,CC_J_HEAD);
+ nk:=cc_joint_at(pal,CC_J_NECK,bind[3]);s1:=cc_joint_at(pal,CC_J_SPINE1,bind[4]);s3:=cc_joint_at(pal,CC_J_SPINE3,bind[5]);su:=cc_joint_up(pal,CC_J_SPINE3);
+ head:=cc_capsule_room(w,k,[3]f32.[h[0]+hu[0]*0.08,h[1]+hu[1]*0.08,h[2]+hu[2]*0.08],[3]f32.[h[0]+hu[0]*0.18,h[1]+hu[1]*0.18,h[2]+hu[2]*0.18],0.12);
+ neck:=cc_capsule_room(w,k,nk,h,0.07);
+ torso:=cc_capsule_room(w,k,s1,[3]f32.[s3[0]+su[0]*0.08,s3[1]+su[1]*0.08,s3[2]+su[2]*0.08],0.15);
+ return [3]f32.[head,neck,torso];
+}
+// The baked pose (palette rows) of clip c at frame f, sampled from its rig as fivelab-bodies.coax bakes it.
+cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,female:bool,c:int,f:int,out:[]f32) {
+ sk:[1]figs.Skin;
+ if c>=figs.BD_OWN {rig:=figs.twohand_rig(own,female);t:=f32(f)*rig.duration[c-figs.BD_OWN]/f32(figs.BD_OWN_FRAMES[c-figs.BD_OWN]);
+  for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,c-figs.BD_OWN,j,t);}figs.skin_palette(rig,sk[..],out);return;}
+ rig:=figs.people_rig(ppl,female);cl:=figs.BD_CLIP[c];t:=f32(f)*rig.duration[cl]/f32(figs.BD_FRAMES[c]);
+ for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,cl,j,t);}figs.skin_palette(rig,sk[..],out);
+}
+// The least room, over every pose a two-hander shows, into room (three a row: head, neck, torso): rows 0 to 5
+// the six owned clips played alone at 60 a second on both bodies; then the blends a frame of the game shows
+// (experimental_figure, mixed as fivelab-bodies.coax bd_record and the shader mix them), each kit's rows 6 to 11:
+// the cleave from standing, the cleave on the run, a standing jump, a running jump, a cleave in the air, and
+// the hold's idle to run and back.
+CC_ROOM_ROWS :: 18;
+two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int) {
+ own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
+ pa:[figs.BD_ROWS*4]f32;pb:[figs.BD_ROWS*4]f32;
+ {
+  female:=body==1;
+  bind:[6][3]f32;br:=figs.twohand_rig(own[..],female);js:=[6]int.[figs.BD_HAND,figs.BD_HAND_L,CC_J_HEAD,CC_J_NECK,CC_J_SPINE1,CC_J_SPINE3];
+  for i:0..<6 {bind[i]=figs.bd_bind_at(br.bind[js[i]*12..<js[i]*12+12]);}
+  // the clips alone, between their keys too
+  if !blends {for c:0..<figs.TWOHAND_CLIPS {
+   rig:=figs.twohand_rig(own[..],female);sk:[1]figs.Skin;n:=cast(int)(rig.duration[c]*60)+1;
+   for i:0..<n {t:=f32(i)/60;for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,c,j,t);}figs.skin_palette(rig,sk[..],pa[..]);
+    cc_room_min(room,c,two_hand_room(pa[..],bind,c/3));}
+  }}
+  // the blends, as the game plays them
+  if blends {k:=kit;for take:0..<6 {
+   s:[1]Creator;s[0].weapon=k;s[0].female=female;s[0].clock=0;
+   s[0].moving=take==1 || take==3;
+   for i:0..<150 {
+    now:=f32(i)/60;s[0].clock=now;
+    if take==0 || take==1 || take==4 {if i==30 {s[0].swing_clip=figs.BD_OWN+CC_KIT_HOLD[k]+2;s[0].swing_at=now;}}
+    if take==2 || take==3 || take==4 {experimental_air(s[..],i>=24 && i<70);}
+    if take==5 {s[0].moving=(i/40)%2==1;}
+    a:=experimental_figure(s[0],figs.BdAnim.{});
+    fa:=figs.bd_frame_of(a.clip,a.t0,a.phase,now);cc_pose(own[..],ppl[..],female,a.clip,fa,pa[..]);
+    fade:=cc_clamp((now-a.fade_at)/f32(figs.BD_FADE),0,1);fade=fade*fade*(3-2*fade);
+    if fade<1 && a.prev>=0 {
+     fb:=figs.bd_frame_of(a.prev,a.pt0,a.pphase,now);cc_pose(own[..],ppl[..],female,a.prev,fb,pb[..]);
+     m:=1-fade;for q:0..<figs.BD_ROWS*4 {pa[q]=pa[q]*(1-m)+pb[q]*m;}
+    }
+    cc_room_min(room,6+k*6+take,two_hand_room(pa[..],bind,k));
+   }
+  }}
+ }
+}
+cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i] {room[row*3+i]=r[i];}} }
+#test "a two-hander keeps 8 cm off the head and neck and out of the torso in its clips, on both bodies" #steps 2000000000 {
+ room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,false,0);two_hand_rooms(room[..],1,false,0);
+ for r:0..<6 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
+}
+#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greataxe's blends" #steps 2000000000 {
+ room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,0);two_hand_rooms(room[..],1,true,0);
+ for r:6..<12 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
+}
+#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends" #steps 2000000000 {
+ room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,1);two_hand_rooms(room[..],1,true,1);
+ for r:12..<18 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
 #test "a two-hander's haft runs from the right fist through the left" {
  id:=[12]f32.[1,0,0,0, 0,1,0,0, 0,0,1,0];hand:=[3]f32.[-0.1,1.0,0.3];hl:=[3]f32.[-0.1-0.075-0.075,1.0+0.4,0.3];

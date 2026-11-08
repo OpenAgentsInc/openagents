@@ -47,6 +47,7 @@ BD_FIRST :: [10] int.[0, 75, 115, 143, 189, 252, 277, 349, 389, 464];
 BD_BASE_TOTAL :: 502;
 // The owned two-handed clips (verse/everglade/two-hand-rig.coax), baked always after the previews, at
 // 30 a second: clip BD_OWN + k is TWOHAND clip k.
+BD_GAP_SLACK :: 0.10;      // metres the gap between a two-hander's fists may stray from its authored spacing on the game's bodies
 BD_OWN_IMPACT :: 0.46;    // the share of an owned cleave at its impact (two_hand_clips.py IMPACT: 0.55 s of 1.2)
 BD_OWN :: 96;             // BD_CLIPS + PREVIEW_BAKED
 BD_OWN_FRAMES :: [6] int.[75, 28, 36, 75, 28, 36];
@@ -616,7 +617,8 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
 
 #test "the owned two-handed clips keep both fists on the haft, the left its grip's spacing up from the right" #steps 2000000000 {
   own: [1] Twohand; twohand_load(own[..]);
-  spacing := [6] f32.[0.40, 0.40, 0.40, 0.16, 0.16, 0.16];
+  // the metres between the fists, least and most: the axe's left hand slides down its haft in the cleave
+  lo := [6] f32.[0.40, 0.40, 0.12, 0.16, 0.16, 0.16]; up := [6] f32.[0.40, 0.40, 0.40, 0.16, 0.16, 0.16];
   out: [BD_ROWS * 4] f32; worst: [6] f32;
   for body: 0..<2 {
     rig := twohand_rig(own[..], body == 1); sk: [1] Skin;
@@ -633,12 +635,12 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
         l[k] = out[hl] * bl[0] + out[hl + 1] * bl[1] + out[hl + 2] * bl[2] + out[hl + 3];
       }
       gap := sqrt((l[0] - r[0]) * (l[0] - r[0]) + (l[1] - r[1]) * (l[1] - r[1]) + (l[2] - r[2]) * (l[2] - r[2]));
-      worst[c] = hi(worst[c], abs(gap - spacing[c]));
+      worst[c] = hi(worst[c], hi(lo[c] - gap, gap - up[c]));
     } }
   }
-  // the gap between the fists, against the grip's spacing: within 9 cm in the hold and run, 35 cm and 16 cm
-  // in the axe's and sword's cleaves (the arms' reach in the wind-up); the weapon runs through both fists
-  #assert worst[0] < 0.09 && worst[1] < 0.09 && worst[3] < 0.09 && worst[4] < 0.09 && worst[2] < 0.35 && worst[5] < 0.16;
+  // on the game's bodies (the clips retargeted from the library's rig, whose arms differ) the gap stays
+  // within BD_GAP_SLACK of the authored spacing; the weapon runs through both fists either way
+  for c: 0..<TWOHAND_CLIPS { #assert worst[c] < BD_GAP_SLACK; }
 }
 #test "the catalog names the sixteen parts; without them nothing draws" {
   b: [1] Bodies;
