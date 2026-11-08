@@ -226,20 +226,31 @@ gp_dungeon_part :: (w:[]Gp,g:[]Gltf,objects:string,root:string,name:string,hash:
  path:=txt_cat3(w[0].txt[..],objects,"/",hash);gp_showcase_at(w,g,path,root,name,[2]f32.[x,z],w[0].village_layer,1,ifx turn then 1.5707963f32 else 0.0f32,y,115.0625);
 }
 gp_dungeon :: (w:[]Gp,g:[]Gltf,objects:string,root:string) {
- floor_id:="4cadcb92f4538d9bebe6c2ad1d6b54a94370e5bb7e86c4958a39f33f4f655577";wall_id:="40680100e4999642549ebbb677066194ddb044c2190b53242d091e525ac3efb0";
- for a:0..<4 {for b:0..<4 {gp_dungeon_part(w,g,objects,root,"Floor_Modular",floor_id,-35+f32(a)*2,-51+f32(b)*2,-0.24,false);}}
- for level:0..<2 {y:=f32(level)*2;for i:0..<4 {v:= -3+f32(i)*2;
-  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-32+v,-52,y,false);
-  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-36,-48+v,y,true);
-  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-28,-48+v,y,true);
-  if i==0 || i==3 {gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-32+v,-44,y,false);gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-32+v,-48,y,false);}
+ floor_id:="4cadcb92f4538d9bebe6c2ad1d6b54a94370e5bb7e86c4958a39f33f4f655577";wall_id:="40680100e4999642549ebbb677066194ddb044c2190b53242d091e525ac3efb0";arch_id:="10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f";
+ for a:0..<10 {for b:0..<10 {gp_dungeon_part(w,g,objects,root,"Floor_Modular",floor_id,-47+f32(a)*2,-63+f32(b)*2,-0.24,false);}}
+ for level:0..<2 {y:=f32(level)*2;for i:0..<10 {x:= -47+f32(i)*2;z:= -63+f32(i)*2;
+  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,x,-64,y,false);
+  gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-48,z,y,true);gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,-28,z,y,true);
+  if i!=7 && i!=8 {gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,x,-44,y,false);}
+  if i!=2 && i!=3 && i!=7 && i!=8 {gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,x,-50,y,false);}
+  if i!=2 && i!=3 && i!=5 && i!=6 {gp_dungeon_part(w,g,objects,root,"Wall_Modular",wall_id,x,-58,y,false);}
  }}
- gp_dungeon_part(w,g,objects,root,"Arch","10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f",-32,-44,0,false);
- gp_dungeon_part(w,g,objects,root,"Arch","10a211e5847be978c8bbcfa633e93f7edbdee203531f373660e27525f059453f",-32,-48,0,false);
- for i:0..<2 {x:= -34.8+f32(i)*5.6;gp_dungeon_part(w,g,objects,root,"Column","90600e8ea169657ca958c4c776c2c201d5c6ddd6b7a9b14693a561ec5a4b5cf1",x,-50.6,0,false);gp_dungeon_part(w,g,objects,root,"Torch","a3e1794a7b4ff6024f50396c37f79f7e460d125658dec7fde44a0cfca48e4e34",x,-51.6,1.4,false);}
- gp_dungeon_part(w,g,objects,root,"Chest","82cd0a7814783ec8c08ba4fe272c3fdf0ce73dc0963f393aa5256b0b1329d79f",-32,-50.8,0,false);
- gp_dungeon_part(w,g,objects,root,"Skull","b51223745e4dafdf6b40f9987eaf49c70f932510fc8dab46cdc40e749a71b575",-34,-46,0,false);
- gp_dungeon_part(w,g,objects,root,"Cobweb","dc675621a1c656b2aa7a2412ee1349cbefa5ceafc3e191d50f07d1ddd82e7794",-35.5,-51.5,2.5,false);
+ gp_dungeon_part(w,g,objects,root,"Arch",arch_id,-32,-44,0,false);
+ gp_dungeon_part(w,g,objects,root,"Arch",arch_id,-42,-50,0,false);gp_dungeon_part(w,g,objects,root,"Arch",arch_id,-32,-50,0,false);
+ gp_dungeon_part(w,g,objects,root,"Arch",arch_id,-42,-58,0,false);gp_dungeon_part(w,g,objects,root,"Arch",arch_id,-36,-58,0,false);
+ for side:0..<2 {x:= -46+f32(side)*16;for row:0..<2 {z:= -62+f32(row)*8;
+  gp_dungeon_part(w,g,objects,root,"Column","90600e8ea169657ca958c4c776c2c201d5c6ddd6b7a9b14693a561ec5a4b5cf1",x,z,0,false);
+  gp_dungeon_part(w,g,objects,root,"Torch","a3e1794a7b4ff6024f50396c37f79f7e460d125658dec7fde44a0cfca48e4e34",ifx side==0 then -47.5 else -28.5,z,1.5,true);
+ }}
+ gp_dungeon_part(w,g,objects,root,"Chest_Gold","eeab5d3d85cf200c42f4c1a9a5af1aed9add1884954d1901f8675c2ccff9950d",-38,-62.4,0,false);
+ gp_dungeon_part(w,g,objects,root,"Chest","82cd0a7814783ec8c08ba4fe272c3fdf0ce73dc0963f393aa5256b0b1329d79f",-45.5,-46,0,false);
+ gp_dungeon_part(w,g,objects,root,"Barrel","56b58d46960f9fd5bfd422a76521d0f9522ebffa88424fa6095f5b412610cf87",-45.7,-52,0,false);
+ gp_dungeon_part(w,g,objects,root,"Crate","86b2e97676daf06242c0ec17764d58acd21fadfb73e658893ac8e73232dd9802",-44,-52,0,false);
+ gp_dungeon_part(w,g,objects,root,"Table_Small","d04d14797fdd92bca8b489723b84257c36af501f06c6ae9000156aa57e45eb91",-32,-54,0,false);
+ gp_dungeon_part(w,g,objects,root,"Pedestal","49ef4060350deb7607b3e066911f3406a47cdd7b0e7903efd9958ddaf3574fba",-45,-61,0,false);
+ gp_dungeon_part(w,g,objects,root,"Skull","b51223745e4dafdf6b40f9987eaf49c70f932510fc8dab46cdc40e749a71b575",-45,-61,2.19,false);
+ gp_dungeon_part(w,g,objects,root,"Cobweb","dc675621a1c656b2aa7a2412ee1349cbefa5ceafc3e191d50f07d1ddd82e7794",-47,-63,2.5,false);
+ gp_dungeon_part(w,g,objects,root,"Banner_wall","4293455710daee65f3ecb5522bbdb398e4162c50b00e68e429226d953fae4183",-34,-63.7,1.8,false);
 }
 GP_ANIMALS :: [12]string.["Alpaca","Bull","Cow","Deer","Donkey","Fox","Horse","Horse_White","Husky","ShibaInu","Stag","Wolf"];
 gp_animal_frames :: (w:[]Gp,root:string) {

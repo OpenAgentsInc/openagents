@@ -48,8 +48,13 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32) {
  out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);
  for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
   if si==18 {
-   // Two connected stone rooms, open to the sky, with a south entrance.
-   for box:[7][6]f32.[[6]f32.[-4.22,0,3.78,-2,4,4.22],[6]f32.[2,0,3.78,4.22,4,4.22],[6]f32.[-4.22,0,-4.22,4.22,4,-3.78],[6]f32.[-4.22,0,-4.22,-3.78,4,4.22],[6]f32.[3.78,0,-4.22,4.22,4,4.22],[6]f32.[-4.22,0,-0.22,-2,4,0.22],[6]f32.[2,0,-0.22,4.22,4,0.22]] {ev_house_box(out,site,dy,box);}continue;
+   // Three large rooms with an offset entrance and two archways per partition.
+   for box:[11][6]f32.[
+    [6]f32.[-10.22,0,9.78,4,4,10.22],[6]f32.[8,0,9.78,10.22,4,10.22],
+    [6]f32.[-10.22,0,-10.22,10.22,4,-9.78],[6]f32.[-10.22,0,-10.22,-9.78,4,10.22],[6]f32.[9.78,0,-10.22,10.22,4,10.22],
+    [6]f32.[-10.22,0,3.78,-6,4,4.22],[6]f32.[-2,0,3.78,4,4,4.22],[6]f32.[8,0,3.78,10.22,4,4.22],
+    [6]f32.[-10.22,0,-4.22,-6,4,-3.78],[6]f32.[-2,0,-4.22,0,4,-3.78],[6]f32.[4,0,-4.22,10.22,4,-3.78]] {ev_house_box(out,site,dy,box);}
+   for side:0..<2 {for row:0..<2 {cx:= -8+f32(side)*16;cz:= -8+f32(row)*8;ev_house_box(out,site,dy,[6]f32.[cx-0.65,0,cz-0.65,cx+0.65,4,cz+0.65]);}}continue;
   }
   if si>=9 {
    // 4 m square house: front opening is centered in the left front module.

@@ -35,7 +35,7 @@ exp_site :: (i:int)->ExpSite {
  if i==6 {return ExpSite.{x= -19,z=45,left=4.2,right=3.8,back=4.1,front=3.9};}
  if i==7 {return ExpSite.{x= -5,z= -23,left=2.9,right=6.2,back=7,front=5.2};}
  if i==8 {return ExpSite.{x=15,z= -5,left=2.9,right=6.2,back=7,front=5.2};}
- if i==18 {return ExpSite.{x= -32,z= -48,left=4.5,right=4.5,back=4.5,front=4.5};}
+ if i==18 {return ExpSite.{x= -38,z= -54,left=10.5,right=10.5,back=10.5,front=10.5};}
  j:=i-9;return ExpSite.{x=48+f32(j%4)*10,z=43+f32(j/4)*10,left=2.5,right=2.5,back=2.5,front=2.5};
 }
 exp_site_group :: (i:int)->int {if i==18 {return -2;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}

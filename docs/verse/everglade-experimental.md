@@ -63,7 +63,7 @@ stand in display rows in the northwestern meadow. The experimental pack budget i
 and accommodates up to 128 texture layers. Its deterministic gzip transport is
 tracked in Git, and the browser decompresses it before reading the pack.
 
-A small open-roof stone dungeon stands northwest of spawn at (-32, -48). Its arched entrance leads to two connected rooms with torches, columns, a chest, and an imp and a gremlin; the monsters wait until a visitor comes near. Its walls stop the player and the camera.
+A 20-by-20-metre open-roof stone dungeon stands northwest of spawn, with its entrance at (-32, -44). Five arches connect three halls furnished with columns, torches, treasure and dungeon decorations. An imp and a gremlin wait until a visitor comes near. The walls and columns stop the player and the camera.
 
 The follow camera checks the village's nearby building collision boxes along
 the full boom, including the shoulder offset. It pulls in immediately when a

@@ -35,13 +35,14 @@ Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at
  #assert s[0].enemies[0].swing<0 && s[0].enemies[0].moving && s[0].enemies[0].x<0 && s[0].hits==2 && e.home_x<0;
 }
 #test "dungeon monsters remain inside until the player approaches" #steps 200000000 {
- s:[1]Hostiles;hostile_start(s[..]);a:=s[0].enemies[2];b:=s[0].enemies[5];#assert a.x== -34 && b.x== -30 && a.z== -49 && b.z== -49;
+ s:[1]Hostiles;hostile_start(s[..]);a:=s[0].enemies[2];b:=s[0].enemies[5];#assert a.x== -42 && b.x== -36 && a.z== -54 && b.z== -61;
  for i:0..<30 {hostile_tick(s[..],0,0,0,0.016);}#assert s[0].enemies[2].x==a.x && !s[0].enemies[2].awake;
- hostile_tick(s[..],-32,0,-46,0.016);#assert s[0].enemies[2].awake && s[0].enemies[5].awake;
+ hostile_tick(s[..],-42,0,-53,0.016);#assert s[0].enemies[2].awake && !s[0].enemies[5].awake;
+ hostile_tick(s[..],-36,0,-60,0.016);#assert s[0].enemies[5].awake;
 }
 hostile_start :: (s:[]Hostiles) {
  if s[0].ready {return;}s[0].ready=true;s[0].hp=44;s[0].dice[0]=srd_dice(27);
- for i:0..<6 {x:=ifx i==2 then -34.0f32 else ifx i==5 then -30.0f32 else ifx i%2==0 then -10.0f32 else 10.0f32;z:=ifx i==2 || i==5 then -49.0f32 else -15+f32(i/2)*12;s[0].enemies[i]=Enemy.{x=x,z=z,home_x=x,home_z=z,swing= -1,cool=f32(i)*0.15};}
+ for i:0..<6 {x:=ifx i==2 then -42.0f32 else ifx i==5 then -36.0f32 else ifx i%2==0 then -10.0f32 else 10.0f32;z:=ifx i==2 then -54.0f32 else ifx i==5 then -61.0f32 else -15+f32(i/2)*12;s[0].enemies[i]=Enemy.{x=x,z=z,home_x=x,home_z=z,swing= -1,cool=f32(i)*0.15};}
 }
 hostile_blocked :: (x:f32,z:f32)->bool {
  near:[1]village.EvNear;village.ev_near(near[..],x,z);

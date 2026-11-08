@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "83b042c91024bfdb240f8f0cb0f15de1f243322c928029e62cdf92dc12a81b9f",
+    "sha256": "f0e88cec8acbf2ac4d4d3f7680c974f419b5a7f7159f7857e2ecee4835ae6f0f",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2298,10 +2298,10 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "1be0363b7efd71939d893e1584d26e48e19336d7b1a08dbc71d1200f67600172",
+    "sha256": "042f695a97ede619e4b8d54f7091e95df7597fd6812b2736e0a269772f35e940",
     "budget_bytes": 536870912,
-    "decoded_sha256": "e864ce86ea85d6ecf192a0df86abddbf6de97ee6b759a5712889fb64b1eba6e7",
-    "decoded_bytes": 160271356,
+    "decoded_sha256": "7009ae049e8be3464040347417b753a853a0b7fd79d65ab9feea4e0cac4007c2",
+    "decoded_bytes": 178538344,
     "encoding": "gzip"
   },
   "terrain": {
@@ -2321,7 +2321,7 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "a1cf22cd48f3696c417bf6f141e2b36b2803af7cb736885851f1ad763191df47"
+      "sha256": "4a01c02e06b8ee111ea14a3860efc724ebda74ffcd07de7f0fe9abf6b26768fb"
     }
   },
   "scope": "Nature meadow, source-authored Medieval Village layouts, and a furnished multi-level watchmaker workshop; Character Create wardrobe remains unchanged.",
@@ -2458,7 +2458,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "785d96971080af807c11c147b5a15a1bb65ffdfe7223b3cfc966fade425e9569"
+        "sha256": "a810146ae6c308e181fcca3558f456a23eef765041d7915b19b67ac4b1694811"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2552,24 +2552,24 @@
     "behavior": "Pursue the player and make timed SRD melee attacks",
     "source": {
       "path": "verse/experimental-hostiles.coax",
-      "sha256": "2ccfd95f990db6b055a29d3feac0e81f70c289ae17a70ee2528694503d78619a"
+      "sha256": "f3ce66099d128c6ea92cc1c3d419715d512638d4d81bd981955103407e9fef65"
     }
   },
   "dungeon": {
     "center": [
-      -32,
-      -48
+      -38,
+      -54
     ],
     "size_metres": [
-      8,
-      8
+      20,
+      20
     ],
-    "layout": "Two connected open-roof stone rooms with arched entrance, columns, torches, chest, skull and cobweb.",
+    "layout": "Three connected open-roof stone halls with five arches, columns, torches, treasure, furnishings and dungeon decorations.",
     "monsters": [
       "Imp",
       "Gremlin"
     ],
-    "collision": "Solid exterior walls with open south entrance",
+    "collision": "Solid perimeter and interior walls with open arched passages and solid columns",
     "source": "verse/tools/assets/character_glade_pack.coax"
   }
 }
