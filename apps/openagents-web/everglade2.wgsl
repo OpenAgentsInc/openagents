@@ -1115,7 +1115,7 @@ fn coax_p_e2_arrival(p_c: vec3f, p_pixel: vec2f) -> vec3f {
   l_p = coax_p_v2((l_x / l_big), (l_y / l_big));
   l_light = coax_p_portal_field(l_p, coax_at_u(i32(97i)), coax_at_u(i32(98i)));
   l_rn = (sqrt(((l_x * l_x) + (l_y * l_y))) / l_half);
-  l_edge = ((((coax_at_u(i32(100i)) * 0x1.800000p0f) - 0x1.000000p-2f) - l_rn) + ((coax_p_portal_noise(coax_p_v2(((l_p.x * 0x1.e00000p4f) + (coax_at_u(i32(97i)) * 0x1.333334p-1f)), ((l_p.y * 0x1.e00000p4f) - (coax_at_u(i32(97i)) * 0x1.99999ap-2f)))) - 0x1.000000p-1f) * 0x1.47ae14p-3f));
+  l_edge = ((((coax_at_u(i32(100i)) * 0x1.800000p0f) - 0x1.99999ap-4f) - l_rn) + ((coax_p_portal_noise(coax_p_v2(((l_p.x * 0x1.e00000p4f) + (coax_at_u(i32(97i)) * 0x1.333334p-1f)), ((l_p.y * 0x1.e00000p4f) - (coax_at_u(i32(97i)) * 0x1.99999ap-2f)))) - 0x1.000000p-1f) * 0x1.47ae14p-3f));
   l_hold = coax_p_saturate((coax_at_u(i32(96i)) * (0x1.000000p0f - coax_p_smoothstep((-0x1.47ae14p-6f), 0x1.c28f5cp-3f, l_edge))));
   l_rim = (((exp(((-(l_edge * l_edge)) / 0x1.0624dep-8f)) * coax_at_u(i32(96i))) * (0x1.000000p0f - (coax_at_u(i32(96i)) * 0x1.000000p-1f))) * 0x1.19999ap-1f);
   l_o = coax_p_mix3(l_c, l_light, l_hold);

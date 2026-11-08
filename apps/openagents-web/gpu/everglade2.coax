@@ -291,7 +291,7 @@ e2_arrival :: (c:V3,pixel:V2,u:[]f32)->V3 {
  half:=0.5f32*sqrt(u[0]*u[0]+u[1]*u[1]);x:=pixel.x-0.5f32*u[0];y:=pixel.y-0.5f32*u[1];big:=PORTAL_HANDOFF*half;
  p:=v2(x/big,y/big);light:=portal_field(p,u[97],u[98]);
  rn:=sqrt(x*x+y*y)/half;
- edge:=u[100]*1.5f32-0.25f32-rn+(portal_noise(v2(p.x*30.0f32+u[97]*0.6f32,p.y*30.0f32-u[97]*0.4f32))-0.5f32)*0.16f32;
+ edge:=u[100]*1.5f32-0.1f32-rn+(portal_noise(v2(p.x*30.0f32+u[97]*0.6f32,p.y*30.0f32-u[97]*0.4f32))-0.5f32)*0.16f32;
  hold:=saturate(u[96]*(1.0f32-smoothstep(-0.02f32,0.22f32,edge)));
  rim:=exp(-(edge*edge)/0.004f32)*u[96]*(1.0f32-u[96]*0.5f32)*0.55f32;
  o:=mix3(c,light,hold);

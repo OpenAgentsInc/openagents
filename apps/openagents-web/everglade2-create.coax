@@ -156,7 +156,9 @@ e2c_arrive_uniforms :: (s: [] E2, u: [] f32) {
   if !c.on || u.count < 104 { return; }
   t := e2c_arrive_at(s);
   if t >= f32(E2C_ARRIVE_END) { return; }
-  open := ifx t < 0 then 0.0f32 else e2c_smoother(e2c_span(t, f32(E2C_ARRIVE_OPEN), f32(E2C_ARRIVE_OPENED)));
+  // ease out: the glade shows through the light within a frame or two of the start, then opens wide
+  ou := e2c_span(ifx t < 0 then 0.0f32 else t, f32(E2C_ARRIVE_OPEN), f32(E2C_ARRIVE_OPENED)); ov := 1 - ou;
+  open := ifx t < 0 then 0.0f32 else 1 - ov * ov * ov;
   u[96] = 1 - e2c_ease(e2c_span(t, f32(E2C_ARRIVE_OPENED) - 0.5, f32(E2C_ARRIVE_OPENED) + 0.3));
   if t < 0 { u[96] = 1; }
   u[97] = ifx c.clocked then c.wall + (s[0].clock - c.wall_clock) else s[0].clock;
