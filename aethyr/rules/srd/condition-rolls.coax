@@ -48,6 +48,34 @@ rs_charmed_by :: (actor: RsCreature, j: int) -> bool #effects(all) {
   for e: actor.eff { if e.by==j && (rs_effect_conditions(e)&RS_CHARMED)!=0 { return true; } }
   return false;
 }
+// Frightened (p.182): the source of fear is the record's creator. Its Disadvantage holds while a
+// source is within line of sight: alive, not behind Total Cover either way, and the creature not
+// Blinded. A raw bit, or a record with no creator, names no source and is always in sight.
+rs_fear_sourced :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if !rs_has(b[0].c[i], RS_FRIGHTENED) { return false; }
+  for e: b[0].c[i].eff { if (rs_effect_conditions(e) & RS_FRIGHTENED) != 0 && (e.by < 0 || e.by >= b[0].n) { return false; } }
+  for e: b[0].c[i].eff { if (rs_effect_conditions(e) & RS_FRIGHTENED) != 0 { return true; } }
+  return false;
+}
+rs_fear_sighted :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  if !rs_has(b[0].c[i], RS_FRIGHTENED) { return false; }
+  if !rs_fear_sourced(b, i) { return true; }
+  if rs_has(b[0].c[i], RS_BLINDED) { return false; }
+  for e: b[0].c[i].eff {
+    src := e.by;
+    if (rs_effect_conditions(e) & RS_FRIGHTENED) != 0 && !b[0].c[src].dead && rs_cover_fact(b, src, i) != RS_COVER_TOTAL && rs_cover_fact(b, i, src) != RS_COVER_TOTAL { return true; }
+  }
+  return false;
+}
+// Can't Approach: i may not willingly move to (x, y) when that is closer to a living source of fear.
+rs_fear_approach :: (b: [] RsBattle, i: int, x: int, y: int) -> bool #effects(all) {
+  if !rs_fear_sourced(b, i) { return false; }
+  for e: b[0].c[i].eff {
+    src := e.by;
+    if (rs_effect_conditions(e) & RS_FRIGHTENED) != 0 && !b[0].c[src].dead && rs_feet(x, y, b[0].c[src].x, b[0].c[src].y) < rs_feet_to(b, i, src) { return true; }
+  }
+  return false;
+}
 rs_grapple_down :: (actor: RsCreature, j: int) -> bool #effects(all) {
   other := false;
   for e: actor.eff {

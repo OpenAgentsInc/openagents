@@ -18,6 +18,10 @@ rs_reaction_frame_end :: (b:[] RsBattle) #effects(all) {
   } else { b[0].turn=b[0].reaction_frame.turn; }
   b[0].who=b[0].reaction_frame.who;
   b[0].reaction_frame=RsReactionFrame.{};
+  // a knockout the Reaction dealt starts its Short Rest now (knockout.coax, p.17)
+  for k: 0..<b[0].n {
+    if b[0].c[k].ko_rest_due { b[0].c[k].ko_rest_due=false; if rs_knocked_out(b[0].c[k]) { _ := rs_short_rest_begin(b,k); } }
+  }
 }
 
 #test "reaction frame refuses nested loans and restores the original actor" {

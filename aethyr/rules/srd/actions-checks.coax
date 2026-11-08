@@ -41,7 +41,8 @@ ac_struck :: (cover: int, ac: int) -> bool {
     b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
     _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 1, 4);
     for k: 0..<3 { _ = rs_add(b[..], rs_fighter("Foe", 1, 1), 9, 3 + k); b[0].c[1 + k].hp = 200; b[0].c[1 + k].hp_max = 200; b[0].c[1 + k].score[RS_DEX] = dex; }
-    #assert rs_cover_put(b[..], 0, 2, RS_COVER_THREE) && rs_cover_put(b[..], 0, 3, RS_COVER_TOTAL);
+    #assert rs_cover_put(b[..], RS_COVER_ORIGIN, 2, RS_COVER_THREE) && rs_cover_put(b[..], RS_COVER_ORIGIN, 3, RS_COVER_TOTAL);
+    #assert rs_cover_put(b[..], 0, 1, RS_COVER_TOTAL);   // from the caster: not the Fireball's origin
     rs_fresh(b[..], 0);
     #assert rs_cast(b[..], 0, SP_FIREBALL, 3, 9, 4, -1);
     open := 200 - b[0].c[1].hp; covered := 200 - b[0].c[2].hp;
@@ -49,6 +50,20 @@ ac_struck :: (cover: int, ac: int) -> bool {
     if covered < open { flipped = true; }
   }
   #assert flipped;
+}
+#test "an area's cover is read from its point of origin: the point for a Sphere at range, the caster for a Self cube (p.15)" {
+  #assert rs_area_from_point(rs_spell(SP_FIREBALL)) && !rs_area_from_point(rs_spell(SP_THUNDERWAVE)) && !rs_area_from_point(rs_spell(SP_SPIRIT_GUARDIANS)) && !rs_area_from_point(rs_spell(SP_FIRE_BOLT));
+  for from: [3] int.[RS_COVER_ORIGIN, -1, 0] {
+    for sp: [2] int.[SP_FIREBALL, SP_THUNDERWAVE] {
+      b: [1] RsBattle; b[0].w = 20; b[0].h = 10;
+      _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 4, 4); _ = rs_add(b[..], rs_fighter("Foe", 1, 1), 5, 4);
+      #assert rs_cover_put(b[..], from, 1, RS_COVER_TOTAL);
+      covered := from == -1 || (from == RS_COVER_ORIGIN) == (sp == SP_FIREBALL);
+      #assert (rs_cover_area(b[..], 0, 1, rs_spell(sp)) == RS_COVER_TOTAL) == covered;
+    }
+  }
+  b: [1] RsBattle; b[0].w = 4; _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 0, 0);
+  #assert !rs_cover_put(b[..], -3, 0, RS_COVER_TOTAL) && !rs_cover_put(b[..], RS_COVER_ORIGIN, 1, RS_COVER_TOTAL);
 }
 
 #test "a hidden attacker rolls with Advantage and gives itself away after the roll" {

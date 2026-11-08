@@ -12,6 +12,7 @@ TR_DIFFICULT :: 1; TR_CLIMB :: 2; TR_SWIM :: 4; TR_LIGHT :: 8; TR_HEAVY :: 16;
 RS_TERRAINS :: 8; RS_COVERS :: 16;
 RsTerrain :: struct { kind: int; x0: int; y0: int; x1: int; y1: int; }   // kind 0: an unused entry
 RsCover :: struct { from: int = -1; to: int = -1; degree: int; }        // from -1: from every origin
+RS_COVER_ORIGIN :: -2;   // a fact's `from`: the point of origin of the area being resolved (p.15)
 
 // The terrain bits on square (x, y).
 rs_terrain_at :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
@@ -30,7 +31,7 @@ rs_terrain_put :: (b: [] RsBattle, kind: int, x0: int, y0: int, x1: int, y1: int
 // The world's cover fact from creature `from` (-1 any origin) to `to`; degree 0 removes it.
 // False, and nothing kept, when malformed or there is no room.
 rs_cover_put :: (b: [] RsBattle, from: int, to: int, degree: int) -> bool #effects(all) {
-  if from < -1 || from >= b[0].n || to < 0 || to >= b[0].n || from == to || degree < 0 || degree > RS_COVER_TOTAL { return false; }
+  if from < RS_COVER_ORIGIN || from >= b[0].n || to < 0 || to >= b[0].n || from == to || degree < 0 || degree > RS_COVER_TOTAL { return false; }
   k := rs_cover_slot(b, from, to);
   if k < 0 { return degree == 0; }
   b[0].covers[k] = ifx degree == 0 then RsCover.{} else RsCover.{from = from, to = to, degree = degree};
@@ -68,6 +69,20 @@ rs_cover :: (b: [] RsBattle, i: int, j: int) -> int #effects(all) {
 rs_cover_fact :: (b: [] RsBattle, i: int, j: int) -> int #effects(all) {
   best := RS_COVER_NONE;
   for e: b[0].covers { if e.to == j && (e.from == i || e.from == -1) { best = rs_max(best, e.degree); } }
+  return best;
+}
+// Whether an area's point of origin is a point it was cast at (a Sphere, Cube or square at range),
+// not the caster (a Cone, Line, Self cube or Emanation).
+rs_area_from_point :: (s: RsSpell) -> bool #effects(all) {
+  return (s.area == RS_A_SQUARE || s.area == RS_A_CUBE || s.area == RS_A_SPHERE) && s.range_ft > 0;
+}
+// The degree j has against spell s's area cast by i: "a target has cover if there's an obstruction
+// between the target and the area's point of origin" (p.15). From a point, the world's facts from
+// RS_COVER_ORIGIN (or from every origin); from the caster, its facts from i.
+rs_cover_area :: (b: [] RsBattle, i: int, j: int, s: RsSpell) -> int #effects(all) {
+  if !rs_area_from_point(s) { return rs_cover_fact(b, i, j); }
+  best := RS_COVER_NONE;
+  for e: b[0].covers { if e.to == j && (e.from == RS_COVER_ORIGIN || e.from == -1) { best = rs_max(best, e.degree); } }
   return best;
 }
 // The bonus to AC and Dexterity saves: +2 Half, +5 Three-Quarters. Total Cover can't be targeted.
@@ -140,7 +155,7 @@ rs_hide_concealed :: (b: [] RsBattle, i: int, unseen: bool) -> bool #effects(all
   #assert rs_cover_put(b[..], a, t, RS_COVER_TOTAL) && rs_cover(b[..], a, t) == RS_COVER_TOTAL && !rs_cover_targetable(b[..], a, t) && rs_cover_targetable(b[..], m, t);
   #assert rs_cover_put(b[..], a, t, 0) && rs_cover(b[..], a, t) == RS_COVER_HALF;
   #assert rs_cover_put(b[..], a, t, 0) && rs_cover(b[..], a, a) == RS_COVER_NONE && rs_cover(b[..], -1, t) == RS_COVER_NONE && rs_cover(b[..], a, 9) == RS_COVER_NONE && rs_cover(b[..], 9, t) == RS_COVER_NONE;
-  #assert !rs_cover_put(b[..], a, a, 1) && !rs_cover_put(b[..], -2, t, 1) && !rs_cover_put(b[..], 3, t, 1) && !rs_cover_put(b[..], a, 3, 1) && !rs_cover_put(b[..], a, -1, 1);
+  #assert !rs_cover_put(b[..], a, a, 1) && !rs_cover_put(b[..], -3, t, 1) && !rs_cover_put(b[..], 3, t, 1) && !rs_cover_put(b[..], a, 3, 1) && !rs_cover_put(b[..], a, -1, 1);
   #assert !rs_cover_put(b[..], a, t, 4) && !rs_cover_put(b[..], a, t, -1);
   rs_cover_clear(b[..]); #assert rs_cover(b[..], m, t) == RS_COVER_NONE;
   _ := rs_add(b[..], rs_fighter("Four", 1, 3), 8, 1); _ = rs_add(b[..], rs_fighter("Five", 1, 3), 9, 1);

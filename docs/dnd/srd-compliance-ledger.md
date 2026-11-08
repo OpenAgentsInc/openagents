@@ -719,3 +719,17 @@ Speak with Animals) gets a RITUAL slot: begun with a press, kept going
 each turn, its ten minutes filling the icon's edge, then cast with no slot
 (pp.104-105). Checks: five new Experimental checks; 91 Experimental, 448
 fivebar and 414 class-kit checks pass.
+
+### Area origin cover, Charmed and Frightened limits, knockouts in Reactions (2026-11-08, #13030)
+
+An area cast at a point (a Sphere, Cube or square at range) reads its cover
+from that point, not the caster: the world states cover from
+`RS_COVER_ORIGIN`, and Experimental draws it from the walls between the point
+and each monster (p.15). Cones, Lines, Self cubes and Emanations still read it
+from the caster. A Charmed creature can't target its charmer with a spell or a
+stat-block attack, though an area still reaches it (p.177). Frightened gives
+Disadvantage on attacks and ability checks only while a living source is in
+line of sight, and refuses a willing step closer to it; a raw bit with no
+source keeps the old always-in-sight reading (p.182). A knockout an Opportunity
+Attack deals starts its Short Rest when the Reaction ends (p.17). Checks:
+actions 416, condition-roll 427, knockout 419.

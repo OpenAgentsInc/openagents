@@ -251,6 +251,7 @@ RsCreature :: struct {
   immune_cond: int;         // conditions it can't have
   floor: int;               // Hit Points damage can't take it below (0: none): a story's foe who can't be killed
   knockout: bool;           // its melee attacks knock out rather than drop to 0 HP (knockout.coax)
+  ko_rest_due: bool;        // knocked out inside a Reaction: its Short Rest starts when the Reaction ends
   healer_kit: int;          // Healer's Kit uses left (stabilization.coax)
   weapon: int;              // what it attacks with (W_*)
   ranged: int;              // a ranged weapon it can shoot instead (-1 none)

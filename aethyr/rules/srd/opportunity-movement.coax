@@ -7,6 +7,7 @@ rs_step_ready :: (b:[] RsBattle,i:int,x:int,y:int)->bool #effects(all) {
   if b[0].who!=i || !rs_can_move(b[0].c[i]) || b[0].turn.anchored || rs_walk_speed(b,i)<=0 { return false; }
   if x<0 || y<0 || x>=b[0].w || y>=b[0].h || rs_at(b,x,y)>=0 { return false; }
   if rs_feet(b[0].c[i].x,b[0].c[i].y,x,y)!=RS_SQUARE { return false; }
+  if rs_fear_approach(b,i,x,y) { return false; }   // Frightened: can't willingly move closer (p.182)
   t:[1]RsTurn; t[0]=b[0].turn;
   rs_reprice_movement(t[..],rs_movement_allowance(b,i));
   return rs_pay_move(t[..],rs_step_cost(b,i,x,y));

@@ -566,7 +566,8 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   me := b[0].c[i];
   smite := rs_is_smite(s);
   if chosen && !rs_creature_choices(b,i,s,sp,slot,picks) { return false; }
-  for j: picks { if chosen && (!rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j)) { return false; } }
+  // Charmed (p.177): no damaging ability or magical effect targets the charmer
+  for j: picks { if chosen && (!rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j) || rs_charmed_by(me,j)) { return false; } }
   if !rs_options_valid(sp,picks.count,options) { return false; }
   if !chosen && !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
   if s.area == RS_A_NONE && !chosen {
@@ -577,6 +578,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
     if rs_target_decision(exists, dead, in_range, s.humanoid_only, humanoid) == RS_TARGET_REFUSE { return false; }
     if !rs_cast_sees(b, i, target, sp) { return false; }   // "a creature you can see" (cast-sight.coax)
     if !rs_cover_targetable(b, i, target) { return false; }   // Total Cover (p.15)
+    if rs_charmed_by(me, target) { return false; }   // Charmed: not the charmer (p.177)
     // Divine Smite: right after a melee weapon hit on this target
     if smite && b[0].turn.last_hit != target + 1 { return false; }
   } else if s.area != RS_A_NONE && s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
@@ -852,8 +854,8 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if strength && b[0].c[i].reckless_until > t { ups += 1; }
   // the Dodge action
   if rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) && rs_obscured(b,i) != 2 { downs += 1; }
-  // Frightened: Disadvantage on attack rolls (the source of its fear is always in sight here)
-  if rs_has(b[0].c[i], RS_FRIGHTENED) { downs += 1; }
+  // Frightened: Disadvantage on attack rolls while a source of its fear is in line of sight (p.182)
+  if rs_fear_sighted(b, i) { downs += 1; }
   if rs_grapple_down(b[0].c[i],j) { downs += 1; }
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
   if rs_take_pending(b, j, EF_EXPOSED, -1) { ups += 1; }
@@ -897,8 +899,8 @@ rs_affect_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at
 }
 rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope) {
   if !rs_choice_continue(s,b[0].c[i].conc,sp) { return; }
-  // Total Cover from the caster keeps an area's effect off (the origin is taken as the caster; cover.coax)
-  if s.area != RS_A_NONE && rs_cover_fact(b, i, j) == RS_COVER_TOTAL { return; }
+  // Total Cover from the area's point of origin keeps its effect off (p.15; cover.coax)
+  if s.area != RS_A_NONE && rs_cover_area(b, i, j, s) == RS_COVER_TOTAL { return; }
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
   // Shield (p.161): a target of Magic Missile may react before the darts strike; warded, it takes none
   missile := sp == SP_MAGIC_MISSILE;
@@ -937,7 +939,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     } else if st.kind == RS_S_SAVE {
       ran_save = true;
       dc := rs_dc(b, i);
-      saving := rs_saving_throw_magic_plus(b,j,st.a,dc,rs_save_rider_downs(st.c,b[0].c[j].construct),ifx st.a == RS_DEX then rs_cover_bonus(rs_cover_fact(b,i,j)) else 0);
+      saving := rs_saving_throw_magic_plus(b,j,st.a,dc,rs_save_rider_downs(st.c,b[0].c[j].construct),ifx st.a == RS_DEX then rs_cover_bonus(ifx s.area != RS_A_NONE then rs_cover_area(b,i,j,s) else rs_cover_fact(b,i,j)) else 0);
       fails := saving.automatic; total := saving.total; insp := saving.inspiration;
       saved = saving.passed;
       l: [1] RsLine;

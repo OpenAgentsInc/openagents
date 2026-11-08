@@ -11,6 +11,7 @@ rs_ability_check :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbilityRe
   if j < 0 || j >= b[0].n { return r; }
   request:=q;
   request.advantage=q.advantage || rs_help_check(b,j,q,false);
+  if rs_fear_sourced(b,j) { request.fear_visible=rs_fear_sighted(b,j); }   // Frightened by a known source (p.182)
   p := rs_check_plan(b[0].c[j],request);
   r.accepted = p.accepted; r.automatic = p.automatic; r.ability = p.ability; r.edge = p.edge;
   if !p.accepted { return r; }

@@ -48,7 +48,8 @@ rs_knock_out :: (b: [] RsBattle, by: int, j: int) #effects(all) {
   b[0].c[j].cond |= rs_effect_condition_mask(b[0].c[j],RS_PRONE);
   b[0].c[j].focus_held=false;
   rs_say(b,RS_EV_CONDITION,j,j,1," is knocked out: 1 Hit Point, Unconscious");
-  _ := rs_short_rest_begin(b,j);
+  // an Opportunity Attack's knockout: rests can't start inside the Reaction, so it starts at its end
+  if b[0].reaction_frame.on { b[0].c[j].ko_rest_due=true; } else { _ := rs_short_rest_begin(b,j); }
 }
 rs_knockout_end :: (c: [] RsCreature) #effects(all) {
   for k: 0..<RS_EFFECTS { if c[0].eff[k].kind==EF_KNOCKOUT { rs_effect_end(c,k); } }

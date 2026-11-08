@@ -105,19 +105,15 @@ in a sight-required area); a new check kills it.
 
 ## Not done
 
-- Charmed's "target the charmer with damaging abilities or magical effects":
-  spells and stat attacks don't refuse the charmer. In the slice the only Charmed
-  source, Hypnotic Pattern, also imposes Incapacitated, so no charmed creature
-  can act. Social Advantage for the charmer has no producer.
-- Frightened's "while the source is within line of sight" is always true here,
-  and "can't willingly move closer" is not enforced; Turn Undead's turned undead
-  is also Incapacitated except for its move away.
+- Done later (#13030): targeted spells and stat attacks refuse the charmer, and
+  Frightened reads line of sight to its source and refuses a willing step closer
+  (`condition-roll-checks.coax`). Social Advantage for the charmer has no
+  producer in the slice.
 - Unconscious "drop whatever you're holding": the engine models only a held
   focus. Sleep and the knockout drop it; dropping to 0 HP doesn't, and no weapon
   is dropped.
-- A knockout through an Opportunity Attack can't start the Short Rest (rest
-  admission refuses inside a Reaction frame), so that creature stays Unconscious
-  until healed or given first aid. An interrupted Short Rest likewise leaves it
+- Done later (#13030): a knockout through an Opportunity Attack starts its Short
+  Rest when the Reaction ends (`knockout-checks.coax`). An interrupted Short Rest likewise leaves it
   Unconscious until healed or first aid, which the glossary text allows.
 - A creature immune to Unconscious, or with all six effect records in use,
   can't be knocked out; the damage applies as dealt.

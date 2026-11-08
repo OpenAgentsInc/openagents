@@ -136,10 +136,9 @@ Every new or changed `#authority` unit kills every mutant, with no equivalent-mu
 - Climbing, swimming and jumping costs run on the grid and in continuous walking,
   but Experimental marks no climbing or swimming surface, and its jump stays the
   world's own (not the Long or High Jump distances).
-- Shove's push doesn't happen in Experimental (only Prone); the grid engine
-  pushes. A readied move and a readied spell have no Experimental control.
-- An area's cover is read from the caster, not the area's point of origin, and
-  creatures between never give cover against a spell's save.
+- Done later (#13030): Experimental pushes with Shove and readies moves and
+  spells, and an area cast at a point reads its cover from that point. Creatures
+  between still never give cover against a spell's save.
 - Light and obscurement come only from terrain rectangles the world admits; no
   world places them yet.
 - Readied triggers are creatures (or any creature); a world reports the deed.

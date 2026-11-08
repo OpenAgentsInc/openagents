@@ -1007,6 +1007,11 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && hostile.hostile_sees(h[0].enemies[i], px, pz) { unseen = false; } }
   if unseen { _ := rs_cover_put(b, -1, 0, RS_COVER_TOTAL); }
   for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && !hostile.hostile_sees(h[0].enemies[i], px, pz) { _ := rs_cover_put(b, 0, 1 + i, RS_COVER_TOTAL); } }
+  // an area cast at a point reads its cover from that point (p.15): a wall between it and a monster
+  if a.kind == FB_SPELL && rs_area_from_point(rs_spell(a.sp)) {
+    ox := px + f32(tx - XC_MID) * f32(XC_SQ); oz := pz + f32(ty - XC_MID) * f32(XC_SQ);
+    for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && !hostile.hostile_sees(h[0].enemies[i], ox, oz) { _ := rs_cover_put(b, RS_COVER_ORIGIN, 1 + i, RS_COVER_TOTAL); } }
+  }
   ok := false;
   if a.kind == FB_SKILL {
     lore := ifx foe >= 0 then XC_FOE_LORE[rs_min(hostile.hostile_kind(foe), 4)] else SK_ARCANA;
