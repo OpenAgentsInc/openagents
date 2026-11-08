@@ -13,6 +13,9 @@
 // exposure and shaft weight, the clouds' lit top away from noon) are
 // between its day and night numbers and marked "between" below.
 //
+// verse_style_compat_profile gives the four keys as an aethyr/world/environment.coax profile
+// (lighting plan Phase 1 step 5, #13065): painterly's noon is the glade, its other keys deltas on it.
+//
 //   coax/bin/coax test verse/style-preset.coax
 #load "style.coax";
 #load "../aethyr/world/environment.coax";   // the painterly default: the glade profile (#13060)
@@ -530,6 +533,228 @@ verse_style_environment :: (p: StylePreset) -> StyleEnvironment {
   }
   for v: 0..<ANIME_VARIANTS { #assert !verse_style_environment(verse_style_anime(v, STYLE_DESKTOP)).ok; }
   for f: 0..<3 { #assert !verse_style_environment(verse_style_flat(f, STYLE_DESKTOP)).ok; }
+}
+
+// ---- compatibility profile checks (written before the code below)
+
+// Two knots resolve to the same values, bit for bit.
+style_env_knot_same :: (a: EnvironmentKnot, b: EnvironmentKnot) -> bool { return env_resolved_same(env_knot_resolve(a), env_knot_resolve(b), true); }
+style_env_rgb_is :: (c: EnvRgb, r: f32, g: f32, b: f32) -> bool { return c.r == r && c.g == g && c.b == b; }
+style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722; }
+#test "painterly's compatibility profile: four keys, and noon is the glade exactly" {
+  for tier: 0..<2 {
+    e := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, tier));
+    #assert e.ok && env_profile_check(e.profile).refusal == EnvRefusal.none;
+    #assert e.profile.id == STYLE_ENV_PAINTERLY && e.profile.version == ENV_VERSION && e.profile.track.count == 4;
+    for i: 0..<4 { #assert e.profile.track.knots[i].time == [4] f32.[0, 0.25, 0.5, 0.75][i]; }
+    // The identity bound, numerically: at noon the profile resolves to env_glade_profile() bit for
+    // bit in every field but its own id (and the segment it came from).
+    glade := env_profile_sample(env_glade_profile(), 0.5);
+    noon := env_profile_sample(e.profile, 0.5);
+    #assert noon.weight == 0 && noon.from == 2 && noon.profile == STYLE_ENV_PAINTERLY;
+    noon.profile = ENV_GLADE_ID;
+    #assert env_resolved_same(noon, glade, false);
+    #assert style_env_knot_same(e.profile.track.knots[2], env_glade_profile().track.knots[0]);
+  }
+}
+#test "painterly's dawn, dusk and night are deltas on the glade: its film, saturation, exposure and shapes kept" {
+  e := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP));
+  g := env_glade_profile().track.knots[0];
+  for n: 0..<3 {
+    i := [3] int.[0, 1, 3][n];
+    k := e.profile.track.knots[i]; c := k.channels; gc := g.channels;
+    #assert k.film == g.film && k.flags == g.flags && k.white == g.white && k.resources[0] == g.resources[0] && k.resources[1] == g.resources[1];
+    #assert c.presentation.exposure == gc.presentation.exposure && c.presentation.saturation == gc.presentation.saturation;
+    #assert env_channels_same(EnvChannels.{cloud = c.cloud, water = c.water}, EnvChannels.{cloud = gc.cloud, water = gc.water});
+    #assert c.fog.near == gc.fog.near && c.fog.far == gc.fog.far && c.fog.far_gain == gc.fog.far_gain && c.fog.start == gc.fog.start;
+    #assert c.fog.height_falloff == gc.fog.height_falloff && c.fog.phase_g == gc.fog.phase_g && c.fog.phase_cap == gc.fog.phase_cap;
+    #assert c.sky.cloud_cover == gc.sky.cloud_cover && c.sky.halo_power == gc.sky.halo_power && c.sky.wisp_strength == gc.sky.wisp_strength;
+    // the horizon ambient stays the hemisphere's midpoint
+    #assert abs(c.ambient.horizon.g - (c.ambient.upper.g + c.ambient.lower.g) * 0.5) < 0.0000001;
+    // the key is a little above the horizon, always dimmer than noon's, and so is the ambient
+    r := env_knot_resolve(k); noon := env_knot_resolve(g);
+    #assert r.dir.y > 0.15 && style_env_luma(r.direct) < style_env_luma(noon.direct) && style_env_luma(c.ambient.upper) < style_env_luma(gc.ambient.upper);
+  }
+  // The authored numbers.
+  night := e.profile.track.knots[0]; nc := night.channels;
+  #assert night.body == EnvBody.moon && night.kelvin == 10000 && night.intensity == ENV_GLADE_INTENSITY * 0.16f32;
+  #assert style_env_rgb_is(nc.ambient.upper, 0.065, 0.084, 0.16) && style_env_rgb_is(nc.ambient.lower, 0.026, 0.031, 0.029);
+  #assert style_env_rgb_is(nc.sky.zenith, 0.006, 0.010, 0.030) && style_env_rgb_is(nc.sky.horizon, 0.030, 0.050, 0.100);
+  #assert style_env_rgb_is(nc.sky.cloud_shade, 0.050, 0.060, 0.090) && style_env_rgb_is(nc.sky.cloud_light, 0.14, 0.16, 0.24);
+  #assert style_env_rgb_is(nc.sky.halo, 0.55, 0.62, 0.80) && style_env_rgb_is(nc.sky.wisp, 0.10, 0.12, 0.18) && nc.sky.halo_strength == 0.08f32;
+  #assert style_env_rgb_is(nc.fog.air, 0.025, 0.040, 0.090) && style_env_rgb_is(nc.fog.sun_tint, 0.30, 0.36, 0.55);
+  #assert nc.fog.sun_strength == 0.25f32 && nc.fog.density == 0.0065f32;
+  for n: 0..<2 {
+    k := e.profile.track.knots[ifx n == 0 then 1 else 3]; c := k.channels;
+    #assert k.body == EnvBody.sun && k.kelvin == (ifx n == 0 then 2800.0f32 else 2600.0f32) && k.intensity == ENV_GLADE_INTENSITY * 0.85f32;
+    #assert style_env_rgb_is(c.ambient.upper, 0.40, 0.46, 0.54) && style_env_rgb_is(c.ambient.lower, 0.32, 0.27, 0.14);
+    #assert style_env_rgb_is(c.sky.zenith, 0.10, 0.36, 0.50) && style_env_rgb_is(c.sky.horizon, 0.98, 0.72, 0.52);
+    #assert style_env_rgb_is(c.sky.cloud_shade, 0.62, 0.52, 0.58) && style_env_rgb_is(c.sky.cloud_light, 1.0, 0.80, 0.62);
+    #assert style_env_rgb_is(c.sky.halo, 1.0, 0.62, 0.32) && style_env_rgb_is(c.sky.wisp, 1.0, 0.82, 0.70) && c.sky.halo_strength == ENV_GLADE_HALO_STRENGTH;
+    #assert style_env_rgb_is(c.fog.air, 0.56, 0.56, 0.84) && style_env_rgb_is(c.fog.sun_tint, 0.95, 0.42, 0.12) && c.fog.sun_strength == 0.55f32;
+    #assert c.fog.density == (ifx n == 0 then 0.0065f32 else 0.0055f32);
+    // warm light on the lit faces (blue well under red), a cool-teal shade (blue over red)
+    r := env_knot_resolve(k);
+    #assert r.direct.b < 0.3f32 * r.direct.r && c.ambient.upper.b > c.ambient.upper.r;
+  }
+  // The sun and moon: dawn and dusk mirror the glade's bearing at 10 degrees, the moon opposite it at 40.
+  dawn := env_dir_unit(e.profile.track.knots[1].dir); dusk := env_dir_unit(e.profile.track.knots[3].dir);
+  moon := env_dir_unit(night.dir); sun := env_dir_unit(g.dir);
+  low: f32 = 10 * DEG; high: f32 = 40 * DEG;
+  #assert abs(dawn.y - sin(low)) < 0.00001 && abs(dusk.y - dawn.y) < 0.00001 && abs(moon.y - sin(high)) < 0.00001;
+  hs := EnvDir.{x = sun.x, z = sun.z}; hd := EnvDir.{x = dawn.x, z = dawn.z}; hk := EnvDir.{x = dusk.x, z = dusk.z}; hm := EnvDir.{x = moon.x, z = moon.z};
+  #assert abs(env_dot(env_dir_unit(hd), env_dir_unit(hs)) - 0.5) < 0.0001 && abs(env_dot(env_dir_unit(hk), env_dir_unit(hs)) - 0.5) < 0.0001;
+  #assert env_dot(env_dir_unit(hd), env_dir_unit(hk)) < -0.49 && abs(env_dot(env_dir_unit(hm), env_dir_unit(hs)) + 1) < 0.0001;
+}
+#test "painterly's day runs through its keys: halfway is the mean, and midnight wraps" {
+  p := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP)).profile;
+  for s: 0..<4 {
+    a := env_knot_resolve(p.track.knots[s]); b := env_knot_resolve(p.track.knots[(s + 1) % 4]);
+    m := env_profile_sample(p, cast(f64) s * 0.25 + 0.125);
+    #assert m.from == s && m.to == (s + 1) % 4 && abs(m.weight - 0.5) < 0.0001 && m.body == a.body;
+    #assert abs(m.channels.ambient.upper.b - (a.channels.ambient.upper.b + b.channels.ambient.upper.b) * 0.5) < 0.00001;
+    #assert abs(m.direct.r - (a.direct.r + b.direct.r) * 0.5) < 0.00001;
+  }
+  #assert env_resolved_same(env_profile_sample(p, 1.5), env_profile_sample(p, 0.5), true);
+}
+#test "lowpoly keeps its own profile: its key's numbers, its direction through the day, no film" {
+  q := verse_style_preset(STYLE_LOWPOLY, STYLE_DESKTOP);
+  e := verse_style_compat_profile(q);
+  #assert e.ok && e.profile.id == STYLE_ENV_LOWPOLY && env_profile_check(e.profile).refusal == EnvRefusal.none && e.profile.track.count == 4;
+  o: [STYLE_FLOATS] f32;
+  for i: 0..<4 {
+    k := e.profile.track.knots[i]; s := lowpoly_key(); c := k.channels;
+    #assert verse_style_at(q, k.time, o[..]);
+    #assert k.dir.x == o[SU_KEY_DIR] && k.dir.y == o[SU_KEY_DIR + 1] && k.dir.z == o[SU_KEY_DIR + 2];
+    #assert (k.body == EnvBody.moon) == (o[SU_KEY_DIR + 3] == 1) && (k.body == EnvBody.moon) == (i == 0);
+    r := env_knot_resolve(k);
+    #assert r.direct.r == s.key_strength && r.direct.g == s.key_strength && r.direct.b == s.key_strength && k.film == EnvFilm.none && k.flags == 0;
+    #assert c.ambient.upper.r == s.sky_r * s.ambient && c.ambient.lower.g == s.ground_g * s.ambient;
+    #assert c.fog.density == s.haze_density && c.fog.start == s.haze_start && c.fog.height_falloff == s.haze_falloff && c.fog.far_gain == 0;
+    #assert style_env_rgb_is(c.fog.air, s.haze_r, s.haze_g, s.haze_b) && style_env_rgb_is(c.sky.zenith, s.zenith_r, s.zenith_g, s.zenith_b);
+    #assert c.cloud.shade == 1 && c.sky.cloud_cover == 0 && c.presentation.exposure == s.exposure && c.presentation.saturation == 1;
+  }
+}
+#test "the style response stays apart from the environment: material changes keep the profile, other styles have none" {
+  for style: 0..<2 {
+    sty := [2] int.[STYLE_PAINTERLY, STYLE_LOWPOLY][style];
+    a := verse_style_compat_profile(verse_style_preset(sty, STYLE_DESKTOP)).profile;
+    p := verse_style_preset(sty, STYLE_PHONE);
+    // (the glade light is a material change for painterly, whose light is the glade's; lowpoly's
+    // light is its own keys', which the glade light rewrites at noon, so it is not a lowpoly material)
+    variants := [4] StylePreset.[p, verse_style_no_outlines(p), ifx sty == STYLE_PAINTERLY then verse_style_glade_light(p) else p, p];
+    variants[3].band_e0 = 0.4; variants[3].shadow_cool = 0; variants[3].saturation = 1.3; variants[3].dab_strength = 0;
+    for v: 0..<4 {
+      b := verse_style_compat_profile(variants[v]).profile;
+      #assert b.id == a.id && b.track.count == a.track.count;
+      for i: 0..<4 { #assert style_env_knot_same(a.track.knots[i], b.track.knots[i]); }
+    }
+  }
+  for v: 0..<ANIME_VARIANTS { #assert !verse_style_compat_profile(verse_style_anime(v, STYLE_DESKTOP)).ok; }
+  for f: 0..<3 { #assert !verse_style_compat_profile(verse_style_flat(f, STYLE_DESKTOP)).ok; }
+  #assert !verse_style_compat_profile(verse_style_preset(STYLE_PHOTOREAL, STYLE_DESKTOP)).ok;
+}
+
+// ---- the compatibility profiles (lighting plan Phase 1 step 5, GitHub #13065)
+// A preset's four clock keys as an aethyr/world/environment.coax profile: four knots at midnight
+// (0), dawn (0.25), noon (0.5) and dusk (0.75), so a realm on a day clock resolves its light through
+// the environment records. Only the light is here (the key, ambient, sky, haze, cloud shadow and
+// presentation); the material response (bands, rim, dab, shadow_cool, outlines) stays the preset's,
+// so changing the palette or the material never changes the profile, and the reverse.
+//   painterly  noon is the glade's own knot, exactly (env_glade_profile), and dawn, dusk and night
+//              are authored deltas on it: each starts from the glade's knot and changes only the key,
+//              ambient, sky colours and haze, keeping its film, saturation, exposure, cloud and
+//              phase shapes. Their direction of change is the painterly keys' own (painterly_key):
+//              dawn and dusk a low warm sun, teal-cool shade, a rose horizon and peach haze glow;
+//              night the moon, a deep blue-black sky and a low ambient.
+//   lowpoly    its own profile from lowpoly_key: white light at the key's strength, its flat grey
+//              ambient, its light distance fog, no clouds, no film; the key's direction moves
+//              through the day as verse_style_at moves it.
+// Flat, anime and photoreal keep their keys (ok is false).
+STYLE_ENV_PAINTERLY :: 2;   // the painterly day's profile id (its noon is the glade, ENV_GLADE_ID)
+STYLE_ENV_LOWPOLY :: 3;
+STYLE_ENV_TIMES :: [STYLE_KEYS] f32.[0, 0.25, 0.5, 0.75];
+
+// Toward a body at `elevation` (rad) whose bearing is the glade sun's turned by `turn` (rad about +y).
+style_env_dir :: (turn: f32, elevation: f32) -> EnvDir {
+  hx := ENV_GLADE_SUN_X; hz := ENV_GLADE_SUN_Z; n := sqrt(hx * hx + hz * hz); hx = hx / n; hz = hz / n;
+  c := cos(turn); s := sin(turn);
+  return EnvDir.{x = (hx * c - hz * s) * cos(elevation), y = sin(elevation), z = (hx * s + hz * c) * cos(elevation)};
+}
+// Painterly's knot at key i: the glade's knot, with the deltas below.
+painterly_env_knot :: (i: int) -> EnvironmentKnot {
+  k := env_glade_profile().track.knots[0];
+  k.time = STYLE_ENV_TIMES[i];
+  if i == 2 { return k; }   // noon: the glade, every field
+  c := k.channels;
+  if i == 0 {
+    // night: the moon is the key, a blue 10000 K light at 0.16 of the glade's strength (painterly's
+    // night key); the ambient and sky a deep blue-black (the owner, October 29: night truly dark)
+    k.body = EnvBody.moon; k.dir = style_env_dir(3.14159265, 40 * DEG);
+    k.kelvin = 10000; k.intensity = ENV_GLADE_INTENSITY * 0.16;
+    c.ambient.upper = env_rgb(0.065, 0.084, 0.16); c.ambient.lower = env_rgb(0.026, 0.031, 0.029);
+    c.sky.zenith = env_rgb(0.006, 0.010, 0.030); c.sky.horizon = env_rgb(0.030, 0.050, 0.100);
+    c.sky.cloud_shade = env_rgb(0.050, 0.060, 0.090); c.sky.cloud_light = env_rgb(0.14, 0.16, 0.24);
+    c.sky.halo = env_rgb(0.55, 0.62, 0.80); c.sky.wisp = env_rgb(0.10, 0.12, 0.18); c.sky.halo_strength = 0.08;
+    c.fog.air = env_rgb(0.025, 0.040, 0.090); c.fog.sun_tint = env_rgb(0.30, 0.36, 0.55); c.fog.sun_strength = 0.25;
+    c.fog.density = 0.0065;
+  } else {
+    // dawn and dusk: a low sun a sixth of a turn east (dawn) or west (dusk) of the glade's, warm at
+    // 0.85 of its strength (painterly's dawn/dusk key); teal-cool shade under a warmer ground
+    // bounce, a teal zenith over a rose-peach horizon, deep orange round the sun; the haze a
+    // blue-violet with an orange forward glow (the warm light on near faces, the distance cool)
+    dawn := i == 1;
+    k.dir = style_env_dir(ifx dawn then -1.0471976 else 1.0471976, 10 * DEG);
+    k.kelvin = ifx dawn then 2800 else 2600; k.intensity = ENV_GLADE_INTENSITY * 0.85;
+    c.ambient.upper = env_rgb(0.40, 0.46, 0.54); c.ambient.lower = env_rgb(0.32, 0.27, 0.14);
+    c.sky.zenith = env_rgb(0.10, 0.36, 0.50); c.sky.horizon = env_rgb(0.98, 0.72, 0.52);
+    c.sky.cloud_shade = env_rgb(0.62, 0.52, 0.58); c.sky.cloud_light = env_rgb(1.0, 0.80, 0.62);
+    c.sky.halo = env_rgb(1.0, 0.62, 0.32); c.sky.wisp = env_rgb(1.0, 0.82, 0.70);
+    c.fog.air = env_rgb(0.56, 0.56, 0.84); c.fog.sun_tint = env_rgb(0.95, 0.42, 0.12); c.fog.sun_strength = 0.55;
+    c.fog.density = ifx dawn then 0.0065 else 0.0055;   // dawn's morning mist
+  }
+  // the horizon ambient stays the hemisphere's midpoint, as the glade's
+  c.ambient.horizon = env_rgb((c.ambient.upper.r + c.ambient.lower.r) * 0.5, (c.ambient.upper.g + c.ambient.lower.g) * 0.5, (c.ambient.upper.b + c.ambient.lower.b) * 0.5);
+  k.channels = c;
+  return k;
+}
+// The key light's direction at `clock` as verse_style_at puts it (SU_KEY_DIR), and whether it is the moon.
+style_key_dir :: (p: StylePreset, clock: f32) -> EnvDir {
+  e := verse_style_sun_elevation(p, clock);
+  az := p.sun_azimuth + (clock - floor(clock) - 0.5) * 3.14159265;
+  d := EnvDir.{x = cos(e) * sin(az), y = sin(e), z = cos(e) * cos(az)};
+  if e < p.moon_below { d = EnvDir.{x = -d.x, y = -d.y, z = -d.z}; }
+  return d;
+}
+// Lowpoly's knot at key i: its own key's numbers as channels.
+lowpoly_env_knot :: (p: StylePreset, i: int) -> EnvironmentKnot {
+  s := p.keys[i]; t := STYLE_ENV_TIMES[i];
+  k := EnvironmentKnot.{time = t, dir = style_key_dir(p, t), kelvin = 6500, white = 6500, intensity = s.key_strength, film = EnvFilm.none};
+  k.body = ifx verse_style_sun_elevation(p, t) < p.moon_below then EnvBody.moon else EnvBody.sun;
+  c: EnvChannels;
+  up := env_rgb(s.sky_r * s.ambient, s.sky_g * s.ambient, s.sky_b * s.ambient);
+  down := env_rgb(s.ground_r * s.ambient, s.ground_g * s.ambient, s.ground_b * s.ambient);
+  c.ambient = EnvAmbient.{upper = up, lower = down, horizon = env_rgb((up.r + down.r) * 0.5, (up.g + down.g) * 0.5, (up.b + down.b) * 0.5)};
+  c.sky.zenith = env_rgb(s.zenith_r, s.zenith_g, s.zenith_b); c.sky.horizon = env_rgb(s.horizon_r, s.horizon_g, s.horizon_b);
+  c.sky.cloud_shade = env_rgb(s.cloud_r, s.cloud_g, s.cloud_b); c.sky.cloud_light = c.sky.cloud_shade;
+  c.sky.halo = env_rgb(1, 1, 1); c.sky.wisp = env_rgb(1, 1, 1); c.sky.halo_power = 1;   // no cloud, halo or wisp
+  c.fog = EnvFog.{density = s.haze_density, height_falloff = s.haze_falloff, start = s.haze_start, near = s.haze_start, far = s.haze_start + 1,
+    phase_cap = 1, air = env_rgb(s.haze_r, s.haze_g, s.haze_b), sun_tint = env_rgb(s.hkey_r, s.hkey_g, s.hkey_b)};
+  c.cloud = EnvCloud.{shade = 1, scale = ENV_GLADE_CLOUD_SCALE, detail_scale = ENV_GLADE_CLOUD_DETAIL_SCALE, edge_lo = ENV_GLADE_CLOUD_EDGE_LO, edge_hi = ENV_GLADE_CLOUD_EDGE_HI};
+  c.presentation = EnvPresentation.{exposure = s.exposure, saturation = 1};
+  k.channels = c;
+  return k;
+}
+/** Preset `p`'s four clock keys as its compatibility profile (painterly: the glade at noon and its
+ *  deltas; lowpoly: its own). ok is false for the styles that keep their keys. */
+verse_style_compat_profile :: (p: StylePreset) -> StyleEnvironment {
+  e: StyleEnvironment;
+  if !p.ok || (p.style != STYLE_PAINTERLY && p.style != STYLE_LOWPOLY) { return e; }
+  paint := p.style == STYLE_PAINTERLY;
+  e.ok = true; e.profile = EnvironmentProfile.{version = ENV_VERSION, id = ifx paint then cast(u32) STYLE_ENV_PAINTERLY else cast(u32) STYLE_ENV_LOWPOLY};
+  e.profile.track.count = STYLE_KEYS;
+  for i: 0..<STYLE_KEYS { e.profile.track.knots[i] = ifx paint then painterly_env_knot(i) else lowpoly_env_knot(p, i); }
+  return e;
 }
 
 /** `p` lit as Character Create's glade (docs/verse/character-glade-lighting.md, the owner,

@@ -1,33 +1,210 @@
 // Everglade II's environment set (lighting plan Phase 1 step 5, GitHub #13065;
 // docs/verse/lighting/README.md). The realm's light, as aethyr/world/environment.coax records that
-// aethyr/world/environment-region.coax admits whole (env_region_index_replace) and resolves by place.
-// The map default is the glade profile itself (env_glade_profile, the painterly default), so
-// Character Create's glade and Everglade II's arrival are one light and the hand-over has no seam.
+// aethyr/world/environment-region.coax admits whole (env_region_index_replace) and resolves by
+// place. Every profile here is the glade's (env_glade_profile, the painterly default) or a small
+// delta on it: the film, exposure, saturation, sky, clouds and the haze's shape stay the glade's.
 //
-// First version: the open glade only. The sunlit path and the deep canopy follow as deltas.
+// The places, from the land (verse/everglade2/forest.coax) and the route (e2_road_x):
+//   the open glade   the map default, the glade profile itself, so Character Create's glade and the
+//                    arrival are one light and the hand-over has no seam. It holds wherever no
+//                    region reaches: the glade's open ground (17 m round its middle, the woods
+//                    closing by 24 m), the clearing at the path's end (E2_CLEAR_Z, its woods' edge
+//                    some 30 to 39 m out), and the far ridges' sunlit crowns.
+//   the sunlit path  the first stretch out of the glade, where the woods (e2_forest 0.8 to 1 beside
+//                    the path from z -20) still open to the glade's sky behind: a subtle delta, the
+//                    sky light a little greener through the leaves, the ground bounce a little less,
+//                    the sun a touch weaker and the air a touch thicker. From z -42 (none north of
+//                    -20, so the glade's open ground and the arrival are the glade) to z -250; full
+//                    from -64 to -228.
+//   the deep canopy  the long middle of the path, more than 200 m from any open ground, where the
+//                    woods stand thickest (1.0 at z -280 to -300): a cooler, dimmer sky light and
+//                    ground bounce, less direct sun, and a denser haze held lower to the ground.
+//                    From z -235 to -395; full from -265 to -365, and gone by -425, before the
+//                    clearing's woods' edge, so the clearing is the open glade's light again.
+// Both regions are prisms that follow the path: four samples of e2_road_x on each side, E2_ENV_HALF
+// metres out, from below the valley floor to well above the ridges. The bands are 44 and 60 m wide
+// along the path (the steepest change a region makes is 1.5 / band per metre, about 2.5% of the
+// delta per metre walked), and the canopy outranks the sunlit path where the two overlap.
+// Town, interior and river deltas wait until Everglade II has those places.
 //   coax/bin/coax test verse/everglade2/environment.coax
 #load "forest.coax";
 #load "../../aethyr/world/environment-region.coax";
 
 E2_ENV_GENERATION :: 0;
+E2_ENV_SUNLIT :: 11;          // profile ids
+E2_ENV_CANOPY :: 12;
+E2_ENV_SUNLIT_REGION :: 21;   // region ids
+E2_ENV_CANOPY_REGION :: 22;
+E2_ENV_HALF :: 70.0;          // metres either side of the path a region's polygon reaches
+E2_ENV_FLOOR :: -40.0; E2_ENV_CEILING :: 120.0;
+// The stretches along the path (z, north is -z) and their bands (metres).
+E2_ENV_SUNLIT_FROM :: -42.0; E2_ENV_SUNLIT_TO :: -250.0; E2_ENV_SUNLIT_INNER :: 22.0; E2_ENV_SUNLIT_OUTER :: 22.0;
+E2_ENV_CANOPY_FROM :: -235.0; E2_ENV_CANOPY_TO :: -395.0; E2_ENV_CANOPY_INNER :: 30.0; E2_ENV_CANOPY_OUTER :: 30.0;
 
-/** Everglade II's environment set: the glade as the map default. */
-e2_environment_set :: () -> EnvironmentSet {
-  s := EnvironmentSet.{version = ENV_VERSION, generation = E2_ENV_GENERATION, default_profile = ENV_GLADE_ID, profile_count = 1, region_count = 0};
-  s.profiles[0] = env_glade_profile();
-  return s;
+// ---- checks (written before the code below)
+
+e2_env_state :: () -> EnvironmentState { return EnvironmentState.{version = ENV_VERSION, day = 0.5}; }
+e2_env_admit :: (active: [] EnvironmentSet, index: [] EnvRegionIndex) -> bool {
+  next: [1] EnvironmentSet; next[0] = e2_environment_set(); active[0] = e2_environment_set();
+  return env_region_index_replace(active, index, next[..]).refusal == EnvRefusal.none;
+}
+// A point on the path z metres along (z <= 0), `up` metres over the ground.
+e2_env_on_path :: (z: f32, up: f32) -> EnvDir { x := ifx z < 0 then e2_road_x(z) else 0.0f32; return EnvDir.{x = x, y = e2_height(x, z) + up, z = z}; }
+e2_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722; }
+
+#test "Everglade II's set is admitted whole: the glade the default, the path's two deltas" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex;
+  #assert e2_env_admit(active[..], index[..]);
+  s := active[0];
+  #assert s.default_profile == ENV_GLADE_ID && s.profile_count == 3 && s.region_count == 2;
+  #assert s.profiles[0].id == ENV_GLADE_ID && s.profiles[1].id == E2_ENV_SUNLIT && s.profiles[2].id == E2_ENV_CANOPY;
+  for i: 0..<3 { #assert env_profile_check(s.profiles[i]).refusal == EnvRefusal.none && s.profiles[i].track.count == 1; }
+  #assert s.regions[0].profile == E2_ENV_SUNLIT && s.regions[1].profile == E2_ENV_CANOPY && s.regions[1].priority > s.regions[0].priority;
+  #assert env_resolved_same(env_profile_sample(s.profiles[0], 0.5), env_profile_sample(env_glade_profile(), 0.5), true);
+  // a malformed replacement leaves the active set as it was
+  bad: [1] EnvironmentSet; bad[0] = e2_environment_set(); bad[0].regions[1].inner = 0; bad[0].regions[1].outer = 0;
+  #assert env_region_index_replace(active[..], index[..], bad[..]).refusal != EnvRefusal.none && env_set_same(active[0], s);
+}
+#test "the arrival is Character Create's glade exactly, and so is the clearing" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; #assert e2_env_admit(active[..], index[..]);
+  glade := env_profile_sample(env_glade_profile(), 0.5);
+  // the glade's open ground, the arrival camera's reach behind you, and the path's first metres
+  for i: 0..<48 {
+    a := f32(i) * 0.3927; r := f32(i % 4) * 5;
+    p := EnvDir.{x = cos(a) * r, y = 1.6, z = sin(a) * r};
+    #assert env_resolved_same(env_resolve_camera(active[..], index[..], e2_env_state(), p).env, glade, true);
+  }
+  for i: 0..<10 { #assert env_resolved_same(env_resolve_camera(active[..], index[..], e2_env_state(), e2_env_on_path(4 - f32(i) * 1.5, 1.6)).env, glade, true); }
+  // the clearing's open meadow at the path's end
+  for i: 0..<9 {
+    p := EnvDir.{x = e2_clear_x() + f32(i % 3 - 1) * 15, y = e2_height(e2_clear_x(), E2_CLEAR_Z) + 1.6, z = E2_CLEAR_Z + f32(i / 3 - 1) * 15};
+    #assert env_resolved_same(env_resolve_camera(active[..], index[..], e2_env_state(), p).env, glade, true);
+  }
+}
+#test "the baseline's path shots: the sunlit path at 60 m, the deep canopy at 300 m" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; #assert e2_env_admit(active[..], index[..]);
+  sun := env_resolve_camera(active[..], index[..], e2_env_state(), e2_env_on_path(-60, 1.6));
+  #assert sun.refusal == EnvRefusal.none && sun.env.profile == E2_ENV_SUNLIT && sun.weights.weights[1] > 0.95;
+  for i: 0..<20 {
+    z := -66 - f32(i) * 7;     // -66 to -199: the sunlit path whole, before the canopy's band
+    r := env_resolve_camera(active[..], index[..], e2_env_state(), e2_env_on_path(z, 1.6));
+    #assert env_resolved_same(r.env, env_profile_sample(e2_env_sunlit_profile(), 0.5), true);
+  }
+  for i: 0..<20 {
+    z := -270 - f32(i) * 4.5;  // -270 to -355.5: the deep canopy whole, the baseline's -300 among them
+    r := env_resolve_camera(active[..], index[..], e2_env_state(), e2_env_on_path(z, 1.6));
+    #assert env_resolved_same(r.env, env_profile_sample(e2_env_canopy_profile(), 0.5), true);
+  }
+}
+#test "the deltas are the glade's look: only the key's strength, the ambient and the haze change" {
+  g := env_glade_profile().track.knots[0];
+  for n: 0..<2 {
+    k := ifx n == 0 then e2_env_sunlit_profile().track.knots[0] else e2_env_canopy_profile().track.knots[0];
+    c := k.channels; gc := g.channels;
+    #assert k.time == g.time && k.body == g.body && k.dir.x == g.dir.x && k.dir.y == g.dir.y && k.dir.z == g.dir.z;
+    #assert k.kelvin == g.kelvin && k.white == g.white && k.film == g.film && k.flags == g.flags;
+    #assert env_channels_same(EnvChannels.{sky = c.sky, cloud = c.cloud, water = c.water, presentation = c.presentation},
+      EnvChannels.{sky = gc.sky, cloud = gc.cloud, water = gc.water, presentation = gc.presentation});
+    #assert c.fog.phase_g == gc.fog.phase_g && c.fog.phase_cap == gc.fog.phase_cap && c.fog.far_gain == gc.fog.far_gain;
+    #assert abs(c.ambient.horizon.b - (c.ambient.upper.b + c.ambient.lower.b) * 0.5) < 0.0000001;
+  }
+  s := e2_env_sunlit_profile().track.knots[0]; sc := s.channels;
+  #assert s.intensity == 2.05f32 && sc.ambient.upper.r == 0.47f32 && sc.ambient.upper.g == 0.54f32 && sc.ambient.upper.b == 0.60f32;
+  #assert sc.ambient.lower.r == 0.30f32 && sc.ambient.lower.g == 0.34f32 && sc.ambient.lower.b == 0.15f32;
+  #assert sc.fog.density == 0.0060f32 && sc.fog.near == 28 && sc.fog.far == ENV_GLADE_FOG_FAR && sc.fog.start == ENV_GLADE_FOG_START && sc.fog.height_falloff == ENV_GLADE_FOG_FALLOFF;
+  #assert sc.fog.air.r == ENV_GLADE_AIR_R && sc.fog.sun_strength == ENV_GLADE_FOG_SUN_STRENGTH;
+  d := e2_env_canopy_profile().track.knots[0]; dc := d.channels;
+  #assert d.intensity == 1.60f32 && dc.ambient.upper.r == 0.38f32 && dc.ambient.upper.g == 0.46f32 && dc.ambient.upper.b == 0.54f32;
+  #assert dc.ambient.lower.r == 0.22f32 && dc.ambient.lower.g == 0.26f32 && dc.ambient.lower.b == 0.13f32;
+  #assert dc.fog.density == 0.0085f32 && dc.fog.height_falloff == 5 && dc.fog.start == 4 && dc.fog.near == 22 && dc.fog.far == 55 && dc.fog.sun_strength == 0.30f32;
+  #assert dc.fog.air.r == 0.47f32 && dc.fog.air.g == 0.68f32 && dc.fog.air.b == 0.86f32;
+  // the sunlit path is subtle: every changed number within 10% of the glade's
+  gc := g.channels;
+  #assert abs(s.intensity / g.intensity - 1) < 0.1 && abs(sc.ambient.upper.b / gc.ambient.upper.b - 1) < 0.1 && abs(sc.fog.density / gc.fog.density - 1) < 0.1;
+  // the canopy: dimmer and cooler sky light (blue kept most), less sun, denser and lower haze
+  #assert e2_env_luma(dc.ambient.upper) < 0.85 * e2_env_luma(gc.ambient.upper) && e2_env_luma(dc.ambient.lower) < 0.8 * e2_env_luma(gc.ambient.lower);
+  #assert dc.ambient.upper.b / dc.ambient.upper.r > gc.ambient.upper.b / gc.ambient.upper.r;
+  #assert d.intensity < 0.8 * g.intensity && d.intensity > 0.6 * g.intensity;
+  #assert dc.fog.density > gc.fog.density && dc.fog.height_falloff < gc.fog.height_falloff && dc.fog.near < gc.fog.near;
+}
+#test "walking the whole path, the light changes continuously: nothing steps" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; #assert e2_env_admit(active[..], index[..]);
+  last := env_resolve_camera(active[..], index[..], e2_env_state(), e2_env_on_path(6, 1.6));
+  most_key: f32 = 0; most_up: f32 = 0; most_fog: f32 = 0; seen_canopy := false; seen_sunlit := false;
+  for i: 1..<960 {
+    p := e2_env_on_path(6 - f32(i) * 0.5, 1.6);   // 0.5 m steps from behind the arrival into the clearing
+    r := env_resolve_camera(active[..], index[..], e2_env_state(), p);
+    #assert r.refusal == EnvRefusal.none;
+    w := r.weights.weights[0] + r.weights.weights[1] + r.weights.weights[2];
+    #assert abs(w - 1) < 0.00001;
+    most_key = env_max(most_key, abs(e2_env_luma(r.env.direct) - e2_env_luma(last.env.direct)));
+    most_up = env_max(most_up, abs(e2_env_luma(r.env.channels.ambient.upper) - e2_env_luma(last.env.channels.ambient.upper)));
+    most_fog = env_max(most_fog, abs(r.env.channels.fog.density - last.env.channels.fog.density));
+    if r.env.profile == E2_ENV_CANOPY { seen_canopy = true; }
+    if r.env.profile == E2_ENV_SUNLIT { seen_sunlit = true; }
+    last = r;
+  }
+  // per half metre: under 1% of the key's luminance, the sky light's and the haze's
+  #assert seen_canopy && seen_sunlit && most_key < 0.01 && most_up < 0.002 && most_fog < 0.00005;
+  // and the clearing at the end is the glade again
+  #assert env_resolved_same(last.env, env_profile_sample(env_glade_profile(), 0.5), true);
+  // across the path too: from its middle out over the ridges, the canopy fades to the glade's sun
+  near := env_resolve_camera(active[..], index[..], e2_env_state(), e2_env_on_path(-300, 1.6));
+  out := e2_env_on_path(-300, 1.6); out.x = out.x + 120; out.y = e2_height(out.x, out.z) + 1.6;
+  #assert env_resolved_same(env_resolve_camera(active[..], index[..], e2_env_state(), out).env, env_profile_sample(env_glade_profile(), 0.5), true);
+  #assert near.env.profile == E2_ENV_CANOPY;
 }
 
-#test "Everglade II's set is admitted whole and its glade is Character Create's, exactly" {
-  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next: [1] EnvironmentSet;
-  active[0] = e2_environment_set(); next[0] = e2_environment_set();
-  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
-  glade := env_profile_sample(env_glade_profile(), 0.5);
-  state := EnvironmentState.{version = ENV_VERSION, day = 0.5};
-  for i: 0..<3 {
-    z := [3] f32.[1, 60, 300][i];
-    eye := EnvDir.{x = ifx z > 0 then e2_road_x(-z) else 0, y = 2, z = -z};
-    r := env_resolve_camera(active[..], index[..], state, eye);
-    #assert r.refusal == EnvRefusal.none && env_resolved_same(r.env, glade, true);
+// ---- the profiles
+
+/** The sunlit path: the glade, a little greener and dimmer under the first trees. */
+e2_env_sunlit_profile :: () -> EnvironmentProfile {
+  p := env_glade_profile(); p.id = E2_ENV_SUNLIT; k := p.track.knots[0];
+  k.intensity = 2.05;
+  k.channels.ambient.upper = env_rgb(0.47, 0.54, 0.60); k.channels.ambient.lower = env_rgb(0.30, 0.34, 0.15);
+  k.channels.fog.density = 0.0060; k.channels.fog.near = 28;
+  p.track.knots[0] = e2_env_midpoint(k);
+  return p;
+}
+/** The deep canopy: the glade under thick woods, cooler and dimmer, its haze denser and lower. */
+e2_env_canopy_profile :: () -> EnvironmentProfile {
+  p := env_glade_profile(); p.id = E2_ENV_CANOPY; k := p.track.knots[0];
+  k.intensity = 1.60;
+  k.channels.ambient.upper = env_rgb(0.38, 0.46, 0.54); k.channels.ambient.lower = env_rgb(0.22, 0.26, 0.13);
+  f := k.channels.fog;
+  f.density = 0.0085; f.height_falloff = 5; f.start = 4; f.near = 22; f.far = 55; f.sun_strength = 0.30; f.air = env_rgb(0.47, 0.68, 0.86);
+  k.channels.fog = f;
+  p.track.knots[0] = e2_env_midpoint(k);
+  return p;
+}
+// The horizon ambient stays the hemisphere's midpoint, as the glade's.
+e2_env_midpoint :: (k: EnvironmentKnot) -> EnvironmentKnot {
+  q := k; a := k.channels.ambient;
+  q.channels.ambient.horizon = env_rgb((a.upper.r + a.lower.r) * 0.5, (a.upper.g + a.lower.g) * 0.5, (a.upper.b + a.lower.b) * 0.5);
+  return q;
+}
+
+// ---- the regions
+
+// A prism over the path from z `from` to z `to` (to < from): four samples of the path's middle on
+// each side, E2_ENV_HALF out, west side south to north then east side north to south.
+e2_env_path_region :: (id: u32, profile: u32, priority: s32, from: f32, to: f32, inner: f32, outer: f32) -> EnvironmentRegion {
+  r := EnvironmentRegion.{id = id, profile = profile, priority = priority, shape = EnvShape.prism, count = 8,
+    floor = E2_ENV_FLOOR, ceiling = E2_ENV_CEILING, inner = inner, outer = outer};
+  for i: 0..<4 {
+    z := from + (to - from) * f32(i) / 3; x := e2_road_x(z);
+    r.points[i] = EnvXZ.{x = x - E2_ENV_HALF, z = z};
+    r.points[7 - i] = EnvXZ.{x = x + E2_ENV_HALF, z = z};
   }
+  return r;
+}
+
+/** Everglade II's environment set, for env_region_index_replace: the glade the map default, the
+ *  sunlit path and the deep canopy its two deltas. */
+e2_environment_set :: () -> EnvironmentSet {
+  s := EnvironmentSet.{version = ENV_VERSION, generation = E2_ENV_GENERATION, default_profile = ENV_GLADE_ID, profile_count = 3, region_count = 2};
+  s.profiles[0] = env_glade_profile(); s.profiles[1] = e2_env_sunlit_profile(); s.profiles[2] = e2_env_canopy_profile();
+  s.regions[0] = e2_env_path_region(E2_ENV_SUNLIT_REGION, E2_ENV_SUNLIT, 1, E2_ENV_SUNLIT_FROM, E2_ENV_SUNLIT_TO, E2_ENV_SUNLIT_INNER, E2_ENV_SUNLIT_OUTER);
+  s.regions[1] = e2_env_path_region(E2_ENV_CANOPY_REGION, E2_ENV_CANOPY, 2, E2_ENV_CANOPY_FROM, E2_ENV_CANOPY_TO, E2_ENV_CANOPY_INNER, E2_ENV_CANOPY_OUTER);
+  return s;
 }
