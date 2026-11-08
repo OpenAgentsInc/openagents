@@ -257,8 +257,9 @@ ev_kit_has :: (kit: EvKit, slot: int) -> bool {
   return slot >= 0 && slot < 62 && (kit.lo & (1 << slot)) != 0;
 }
 // Seat s's character as the levels switch says: the SRD class at its XP's level, or Everglade's own
-// (level 0). Its Hit Points carry over (full stays full; a level gained adds its Hit Points).
+// (level 0). Not Everglade II's, whose seats sit at their hello's level (room-everglade.coax). Its Hit Points carry over (full stays full; a level gained adds its Hit Points).
 ev_build :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  if v[0].eg[k].e2 { return; }   // Everglade II: the level its Character Create record chose (its hello's, #13046), never XP's
   demo := v[0].ev[k].demo[s] && eg_ticket(v, k, s_id).admin;
   want := ifx v[0].evc.d.levels && !demo then ev_level(v, v[0].ev[k].xp[s]) else 0;
   if want == v[0].ev[k].level[s] { return; }

@@ -5,6 +5,7 @@ CharacterAppearance :: struct {
  configured:bool;female:bool;worn:[40]bool;piece:int=18;outfit:int=2;hood:bool;hair:int;beard:bool;
  dye:int=8;skin:int=1;hair_color:int;eye_color:int;variant:int;pose:int;
  klass:int= -1;   // the SRD 5.2.1 class chosen (0 Barbarian ... 11 Wizard, apps/openagents-web/fivebar.coax FB_CL_*), -1 none: a CC1 or CC2 record
+ level:int=1;     // its level, 1 to CA_LEVELS (CC4; a CC3 record is level 1)
  source_first:[80]int;source_count:[80]int;source_word:[80]int;source_n:int;
 }
 CaLook :: struct {head:int;hair:int=-1;extra:int=-1;skin:[3]f32;hair_rgb:[3]f32;dye:[4]f32;variant:int;}
@@ -25,6 +26,19 @@ CaLook :: struct {head:int;hair:int=-1;extra:int=-1;skin:[3]f32;hair_rgb:[3]f32;
  b[56]='a';b[2]='2';#assert !ca_restore(c[..],cast(string)b[0..<n]);
  a[0].klass= -1;n=ca_save(a[0],b[..]);#assert n==56 && ca_restore(c[..],cast(string)b[0..<n]) && c[0].klass== -1;
 }
+#test "appearance codec: a level past 1 makes the record CC4; CC3 restores at level 1 (#13046)" {
+ a:[1]CharacterAppearance;ca_preset(a[..],1);a[0].klass=4;b:[64]u8;c:[1]CharacterAppearance;
+ #assert ca_save(a[0],b[..])==57 && b[2]=='3' && ca_restore(c[..],cast(string)b[0..<57]) && c[0].level==1;
+ for l:2..<CA_LEVELS+1 {
+  a[0].level=l;n:=ca_save(a[0],b[..]);
+  #assert n==58 && b[2]=='4' && b[57]==cast(u8)('0'+l) && ca_restore(c[..],cast(string)b[0..<n]) && c[0].klass==4 && c[0].level==l;
+ }
+ n:=ca_save(a[0],b[..]);
+ for bad:[4]u8.['1','7','0','a'] {b[57]=bad;c[0].level=3;#assert !ca_restore(c[..],cast(string)b[0..<n]) && c[0].level==3;}
+ b[57]='5';b[2]='3';#assert !ca_restore(c[..],cast(string)b[0..<n]);
+ // no class keeps no level: CC2
+ a[0].klass= -1;#assert ca_save(a[0],b[..])==56;
+}
 // The dyes are display-space colours. Both Character Create and the film apply them in display
 // space, through one shared cc_albedo (apps/openagents-web/gpu/everglade2.coax), so a dye looks the
 // same in both. The last dye is white: no dye.
@@ -37,25 +51,30 @@ CA_SKINS :: [6][3]f32.[[3]f32.[1,0.94,0.87],[3]f32.[0.91,0.79,0.67],[3]f32.[0.76
 CA_HAIRS :: [6][3]f32.[[3]f32.[0.08,0.05,0.035],[3]f32.[0.29,0.13,0.055],[3]f32.[0.65,0.42,0.15],[3]f32.[0.48,0.085,0.035],[3]f32.[0.62,0.65,0.69],[3]f32.[0.23,0.075,0.3]];
 CA_EYES :: [6][3]f32.[[3]f32.[0.24,0.1,0.035],[3]f32.[0.08,0.35,0.75],[3]f32.[0.06,0.48,0.23],[3]f32.[0.8,0.48,0.06],[3]f32.[0.45,0.5,0.56],[3]f32.[0.45,0.12,0.65]];
 // CC3 (#13024) is CC2 with the class after it: 57 bytes, the class a letter ('a' Barbarian to 'l'
-// Wizard). A record with no class is written as CC2, 56 bytes, as before.
+// Wizard). A record with no class is written as CC2, 56 bytes, as before. CC4 (#13046) is CC3 with
+// the class's level after it, a digit '2' to '6': 58 bytes. Level 1 is written as CC3, as before.
 CA_CLASSES :: 12;
-ca_size :: (s:CharacterAppearance)->int {return ifx s.klass>=0 && s.klass<CA_CLASSES then 57 else 56;}
+CA_LEVELS :: 6;
+ca_size :: (s:CharacterAppearance)->int {return ifx s.klass>=0 && s.klass<CA_CLASSES then (ifx s.level>1 && s.level<=CA_LEVELS then 58 else 57) else 56;}
 ca_save :: (s:CharacterAppearance,out:[]u8)->int {
   n:=ca_size(s);
   if out.count<n {return 0;}
-  out[0]='C';out[1]='C';out[2]=ifx n==57 then '3' else '2';
+  out[0]='C';out[1]='C';out[2]=ifx n==58 then '4' else ifx n==57 then '3' else '2';
   v:=[10]int.[ifx s.female then 1 else 0,s.outfit,ifx s.hood then 1 else 0,s.hair,ifx s.beard then 1 else 0,s.dye,s.skin,s.hair_color,s.variant,s.pose];
   for i:0..<10 {out[3+i]=cast(u8)('0'+v[i]);}
   out[13]=cast(u8)('0'+s.piece/10);out[14]=cast(u8)('0'+s.piece%10);
   for i:0..<40 {out[15+i]=ifx s.worn[i] then '1' else '0';}
   out[55]=cast(u8)(48+s.eye_color);
-  if n==57 {out[56]=cast(u8)('a'+s.klass);}
+  if n>=57 {out[56]=cast(u8)('a'+s.klass);}
+  if n==58 {out[57]=cast(u8)('0'+s.level);}
   return n;
 }
 ca_restore :: (s:[]CharacterAppearance,t:string)->bool {
   legacy:=t.count==54 && t[0..<3]=="CC1";
-  three:=t.count==57 && t[0..<3]=="CC3";
+  four:=t.count==58 && t[0..<3]=="CC4";
+  three:=four || (t.count==57 && t[0..<3]=="CC3");
   if three && (t[56]<'a' || int(t[56])>='a'+CA_CLASSES) {return false;}
+  if four && (t[57]<'2' || int(t[57])>48+CA_LEVELS) {return false;}
   if !legacy && !three && (t.count!=56 || t[0..<3]!="CC2") {return false;}
   if !legacy && (t[55]<'0' || t[55]>'5') {return false;}
   limits:=[12]int.[1,4,1,3,1,8,5,5,2,3,3,9];
@@ -68,6 +87,7 @@ ca_restore :: (s:[]CharacterAppearance,t:string)->bool {
   for i:0..<40 {next.worn[i]=i<(ifx legacy then 39 else 40) && t[15+i]=='1' && ca_available(next,i);}
   next.eye_color=ifx legacy then 0 else int(t[55]-'0');
   next.klass=ifx three then int(t[56]-'a') else -1;
+  next.level=ifx four then int(t[57]-'0') else 1;
   if legacy {if next.outfit==3 {for i:0..<40 {next.worn[i]=i>=18 && i<=21;}next.hood=false;next.outfit=0;}else if next.outfit==4 {next.outfit=3;}}
   if !legacy && (next.outfit==4 || t[54]=='1') {for i:0..<40 {next.worn[i]=i==28 || i==29 || i==30 || i==31 || i==37 || i==38;}next.outfit=2;next.hood=false;}
   if !ca_available(next,next.piece) {next.piece=18;}

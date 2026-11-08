@@ -66,6 +66,7 @@ E2Net :: struct {
   frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
   said: [E2N_SAY] u8; said_n: int; said_at: int;
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
+  level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
   casts: [E2N_CASTS] E2nCast;   // the others' casts, waiting for their tick to be drawn
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
@@ -73,6 +74,8 @@ E2Net :: struct {
   // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
   // only once this socket's room has said it; your last rest request's number and when it was refused
   rest_known: bool; rest_code: int; rest_dice: int; rest_seq: int; rest_sent: int; rest_refused: int; rest_refused_at: int = -100000;
+  // your bar as the room's rules hold it (b N V ..., #13046): known once this socket's room has said it
+  kit_known: bool; kit: [1] WireKit;
 }
 
 e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >= 0; }
@@ -253,7 +256,7 @@ e2n_opened :: (n: [] E2Net, id: int) { if id < 0 { e2n_down(n); return; } n[0].s
 // again after a wait that doubles to a minute, 75% to 125% of it, so a restarted room's pages spread.
 e2n_down :: (n: [] E2Net) {
   if n[0].seat >= 0 && n[0].lost_at == 0 { n[0].lost_at = ifx n[0].mono > 0 then n[0].mono else 1; }
-  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].rest_known = false;
+  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].rest_known = false; n[0].kit_known = false;
   n[0].tries += 1;
   wait := 1000;
   for q: 0..<nc_lo(n[0].tries - 1, 6) { wait *= 2; }
@@ -301,7 +304,7 @@ e2n_record :: (n: [] E2Net, t: string) {
   if c == 'y' {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
-    n[0].seat = seat; n[0].sat = true; n[0].rest_known = false;
+    n[0].seat = seat; n[0].sat = true; n[0].rest_known = false; n[0].kit_known = false;
     n[0].again = n[0].sat_before; n[0].sat_before = true; n[0].back_pending = n[0].again;
     wire_mirror_forget(n[0].mir[..]);
     for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
@@ -345,6 +348,12 @@ e2n_record :: (n: [] E2Net, t: string) {
       // a whole snapshot: whoever it doesn't hold has gone
       for e: 0..<E2N_ENTS { if n[0].ents[e].live && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
     }
+    return;
+  }
+  if c == 'b' {   // your bar's counts and effects, as the room's rules hold them
+    w := wire_read_kit(t, r[..]);
+    if !r[0].ok || n[0].seat < 0 { return; }
+    n[0].kit[0] = w; n[0].kit_known = true;
     return;
   }
   if c == 'z' {   // your rest, as the room's rules hold it
@@ -537,13 +546,15 @@ e2n_hello :: (n: [] E2Net) {
   e2n_send(n, wire_put_pins(n[0].out[..], 0, WirePins.{}));
   if n[0].again && n[0].at_known { e2n_send(n, wire_put_at(n[0].out[..], 0, WireAt.{x = n[0].at_x, z = n[0].at_z, yaw = n[0].at_yaw})); n[0].agains += 1; }
   n[0].again = false;
-  e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = FB_CL_KIND[e2n_class(n)], flags = ifx n[0].account then 2 else 0, name = ""})));
+  kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
+  e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = cast(string) kind[0..<kn], flags = ifx n[0].account then 2 else 0, name = ""})));
 }
 // Your class for the hello (srd-*: the room's kit for your casts), said again if seated and changed.
 e2n_class :: (n: [] E2Net) -> int { return ifx n[0].klass >= 0 && n[0].klass < FB_CL_N then n[0].klass else 3; }
-e2n_set_class :: (n: [] E2Net, c: int) {
-  if c < 0 || c >= FB_CL_N || c == n[0].klass { return; }
-  n[0].klass = c;
+e2n_set_class :: (n: [] E2Net, c: int, level: int) {
+  l := xk_level(level);
+  if c < 0 || c >= FB_CL_N || (c == n[0].klass && l == n[0].level) { return; }
+  n[0].klass = c; n[0].level = l; n[0].kit_known = false;   // the room says the new bar's
   if e2n_open(n) { n[0].hello_due = true; }
 }
 // A cast (C SEQ SLOT AX AY AZ -1): the slot (class-kit.coax xk_slot) at the point it aims at. False
@@ -570,6 +581,25 @@ e2n_rest_message :: (n: [] E2Net) -> string {
   return ifx age >= 0 && age < 4000 then "YOU CAN'T REST RIGHT NOW" else "";
 }
 // Whether the room holds you asleep (your keys move nothing until you wake).
+// Your bar's slot i as the room holds it: what it has left (-1 nothing to count) and whether its
+// effect holds; ok false until the room has said a bar of `count` slots.
+E2nKit :: struct { ok: bool; left: int = -1; on: bool; }
+e2n_kit :: (n: [] E2Net, i: int, count: int) -> E2nKit {
+  if !e2n_open(n) || !n[0].kit_known || n[0].kit[0].n != count || i < 0 || i >= count { return E2nKit.{}; }
+  v := n[0].kit[0].v[i];
+  return E2nKit.{ok = true, left = v / 2 - 1, on = v % 2 == 1};
+}
+#test "b: the room's word on your bar, slot by slot, until the socket goes or your bar changes (#13046)" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
+  #assert !e2n_kit(n[..], 0, 3).ok;
+  e2n_record(n[..], "b 3 0 7 4");
+  a := e2n_kit(n[..], 1, 3); #assert a.ok && a.left == 2 && a.on && e2n_kit(n[..], 0, 3).left == -1 && e2n_kit(n[..], 2, 3).left == 1 && !e2n_kit(n[..], 2, 3).on;
+  #assert !e2n_kit(n[..], 1, 4).ok;   // a bar of another size: not this one
+  e2n_record(n[..], "b 2 4"); #assert e2n_kit(n[..], 1, 3).ok;   // a malformed b changes nothing
+  e2n_set_class(n[..], FB_CL_MONK, 3); #assert !e2n_kit(n[..], 1, 3).ok;
+  e2n_record(n[..], "b 1 5"); #assert e2n_kit(n[..], 0, 1).ok;
+  e2n_down(n[..]); #assert !e2n_kit(n[..], 0, 1).ok;
+}
 e2n_asleep :: (n: [] E2Net) -> bool { return e2n_open(n) && n[0].rest_known && n[0].rest_code == WIRE_REST_SLEEP; }
 #test "rest: z sets the rest the room holds, a matching refusal shows for four seconds, and a new socket forgets it" {
   n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 0; n[0].mono = 100;
@@ -666,7 +696,7 @@ e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1
 }
 #test "your class goes with the hello, your casts go as C, and the others' e cast wait for their tick (#13058)" {
   n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].mono = 1000;
-  e2n_set_class(n[..], FB_CL_WIZARD);
+  e2n_set_class(n[..], FB_CL_WIZARD, 1);
   e2n_record(n[..], "y 1 0 1000");
   e2n_step(n[..], 1000);
   pipe := cast(string) n[0].pipe[0].buf[0..<n[0].pipe[0].used];

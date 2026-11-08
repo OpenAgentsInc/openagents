@@ -49,7 +49,7 @@ Creator :: struct {
   clock:f32; surprise_seed:int; pose_at:f32; revision:int; saved:int; focused:int;
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
-  klass:int = -1;
+  klass:int = -1; level:int = 1;   // and its level (CC4, #13046)
   weapon_first:[4]int; weapon_count:[4]int;   // the pack's held weapons (glade/weapon0..3)
   weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (experimental-combat.coax)
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
@@ -1085,9 +1085,9 @@ append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}re
 }
 
 // Versioned appearance only: no asset offsets, clocks or borrowed renderer state are persisted.
-to_appearance :: (s:Creator)->appearance.CharacterAppearance {a:appearance.CharacterAppearance;a.configured=s.configured;a.female=s.female;a.worn=s.worn;a.piece=s.piece;a.outfit=s.outfit;a.hood=s.hood;a.hair=s.hair;a.beard=s.beard;a.dye=s.dye;a.skin=s.skin;a.hair_color=s.hair_color;a.eye_color=s.eye_color;a.variant=s.variant;a.pose=s.pose;a.source_first=s.source_first;a.source_count=s.source_count;a.source_word=s.source_word;a.source_n=s.source_n;a.klass=s.klass;return a;}
+to_appearance :: (s:Creator)->appearance.CharacterAppearance {a:appearance.CharacterAppearance;a.configured=s.configured;a.female=s.female;a.worn=s.worn;a.piece=s.piece;a.outfit=s.outfit;a.hood=s.hood;a.hair=s.hair;a.beard=s.beard;a.dye=s.dye;a.skin=s.skin;a.hair_color=s.hair_color;a.eye_color=s.eye_color;a.variant=s.variant;a.pose=s.pose;a.source_first=s.source_first;a.source_count=s.source_count;a.source_word=s.source_word;a.source_n=s.source_n;a.klass=s.klass;a.level=s.level;return a;}
 save :: (s:Creator,out:[]u8)->int {return appearance.ca_save(to_appearance(s),out);}
-restore :: (s:[]Creator,t:string)->bool {a:[1]appearance.CharacterAppearance;a[0]=to_appearance(s[0]);if !appearance.ca_restore(a[..],t) {return false;}s[0].configured=a[0].configured;s[0].female=a[0].female;s[0].worn=a[0].worn;s[0].piece=a[0].piece;s[0].outfit=a[0].outfit;s[0].hood=a[0].hood;s[0].hair=a[0].hair;s[0].beard=a[0].beard;s[0].dye=a[0].dye;s[0].skin=a[0].skin;s[0].hair_color=a[0].hair_color;s[0].eye_color=a[0].eye_color;s[0].variant=a[0].variant;s[0].pose=a[0].pose;s[0].source_first=a[0].source_first;s[0].source_count=a[0].source_count;s[0].source_word=a[0].source_word;s[0].source_n=a[0].source_n;s[0].klass=a[0].klass;s[0].pose_at=s[0].clock;s[0].revision+=1;s[0].saved=s[0].revision;return true;}
+restore :: (s:[]Creator,t:string)->bool {a:[1]appearance.CharacterAppearance;a[0]=to_appearance(s[0]);if !appearance.ca_restore(a[..],t) {return false;}s[0].configured=a[0].configured;s[0].female=a[0].female;s[0].worn=a[0].worn;s[0].piece=a[0].piece;s[0].outfit=a[0].outfit;s[0].hood=a[0].hood;s[0].hair=a[0].hair;s[0].beard=a[0].beard;s[0].dye=a[0].dye;s[0].skin=a[0].skin;s[0].hair_color=a[0].hair_color;s[0].eye_color=a[0].eye_color;s[0].variant=a[0].variant;s[0].pose=a[0].pose;s[0].source_first=a[0].source_first;s[0].source_count=a[0].source_count;s[0].source_word=a[0].source_word;s[0].source_n=a[0].source_n;s[0].klass=a[0].klass;s[0].level=a[0].level;s[0].pose_at=s[0].clock;s[0].revision+=1;s[0].saved=s[0].revision;return true;}
 #test "creator appearance save round trips and malformed saves preserve the live choices" {
   a:[1]Creator;ensure(a[..]);change(a[..],1,1);change(a[..],3,2);change(a[..],4,3);a[0].piece=38;change(a[..],11,1);
   out:[64]u8;n:=save(a[0],out[..]);b:[1]Creator;ok:=restore(b[..],cast(string)out[0..<n]);#assert ok && b[0].outfit==a[0].outfit && b[0].variant==2 && b[0].piece==38 && b[0].worn[38]==a[0].worn[38];

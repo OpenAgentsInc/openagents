@@ -136,15 +136,17 @@ e5rr_start :: (r: [] E5rRoom, seed: int) #export_c #effects(reads,writes,traps) 
 // A player sits at seat s: a fresh caster, full Hit Points, at (x, z).
 e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c #effects(reads,writes,traps) { e5rr_join_as(r, s, x, z, 0); }
 // The same, as class klass (the H frame's CLASS): 0 Everglade's druid, 1 the level 17 Warlock,
-// E5R_CL0 + c Character Create's class c at level 1 (fivebar.coax fb_cl_hero).
-e5rr_join_as :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int) #export_c #effects(reads,writes,traps) {
+// E5R_CL0 + c Character Create's class c at level 1 (fivebar.coax fb_cl_hero; e5rr_join_level: another).
+e5rr_join_as :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int) #export_c #effects(reads,writes,traps) { e5rr_join_level(r, s, x, z, klass, 0); }
+// The same at `level` (a Character Create class: 1 to 6, its hello's srd-CLASS-LEVEL, #13046).
+e5rr_join_level :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int, level: int) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS { return; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
   t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
   r[0].klass[s] = e5r_klass_ok(klass);
   r[0].last_foe[s] = -1;
-  b[0].c[i] = e5rr_hero_of(r[0].klass[s], 0);
+  b[0].c[i] = e5rr_hero_of(r[0].klass[s], ifx r[0].klass[s] >= E5R_CL0 then level else 0);
   // the seat's last player's Zombies go with it
   for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id != 0 && r[0].beasts[q].by == s && r[0].beasts[q].form == E5RR_FORM_ZOMBIE { b[0].c[E5RR_BEAST0 + q].dead = true; } }
   b[0].c[i].turn_at = hi_r(t, b[0].clock); b[0].c[i].round_at = ro;

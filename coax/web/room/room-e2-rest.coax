@@ -92,6 +92,46 @@ e2_rest_tell_all :: (v: [] RmServer, k: int) {
   }
 }
 
+// ---- the bar (#13046): each seat hears what its bar has left (b N V ..., everglade-wire.coax), its
+// level's bar in its order, whenever that changes: what a cast spent, a rest restored, a Rage ending.
+// The page draws the counts on the icons; the room's rules are the only source of them.
+e2_kit :: (v: [] RmServer, k: int, s: int) -> WireKit {
+  w: WireKit;
+  r := v[0].eg[k].rules[..];
+  if !r[0].live[s] || r[0].klass[s] < E5R_CL0 { return w; }
+  i := E5RR_SEAT + s; b := r[0].b[..]; c := b[0].c[i];
+  bar: [XC_SLOTS] FbAb; n := xk_bar_at(r[0].klass[s] - E5R_CL0, c.level, bar[..]);
+  w.n = ifx n > WIRE_KIT then WIRE_KIT else n;
+  for q: 0..<w.n {
+    a := bar[q];
+    on := (a.kind == FB_RAGE && c.raging) || (a.kind == FB_WILD && c.wild_form != 0);
+    w.v[q] = wire_kit_v(fb_left(b, i, a), on);
+  }
+  return w;
+}
+e2_kit_hash :: (w: WireKit) -> int { h := w.n + 1; for q: 0..<w.n { h = (h * 131 + w.v[q] + 1) % 1000000007; } return h; }
+// Seat s hears its bar now, if it changed since it last heard (or `always`).
+e2_kit_tell :: (v: [] RmServer, k: int, s_id: SeatId, always: bool) { s := s_id.value;
+  st := v[0].eg[k].seat[s..<s + 1];
+  if !st[0].live || st[0].conn < 0 { return; }
+  w := e2_kit(v, k, s);
+  h := e2_kit_hash(w);
+  if w.n == 0 || (!always && h == st[0].kit_told) { return; }
+  b: [WIRE_KIT * 5 + 16] u8;
+  n := wire_put_kit(b[..], 0, w);
+  rl_queue(v, v[0].eg[k].relay, st[0].conn, -1, cast(string) b[0..<n], "");
+  st[0].kit_told = h;
+}
+// After the rules' tick: a sixth of the seats each tick, so each is looked at five times a second.
+e2_kit_tell_all :: (v: [] RmServer, k: int) {
+  for s: 0..<EG_SEATS {
+    if (v[0].eg[k].tick + s) % 6 != 0 && v[0].eg[k].seat[s].kit_told != -1 { continue; }
+    st := v[0].eg[k].seat[s];
+    if !st.live || st.conn < 0 || !v[0].eg[k].rules[0].live[s] { continue; }
+    e2_kit_tell(v, k, SeatId.{value = s}, false);
+  }
+}
+
 // ---- checks
 e2rt_room :: (v: [] RmServer, kind: string) -> int {
   rm_init(v); rm_clock(v, 0, 1762190000000);

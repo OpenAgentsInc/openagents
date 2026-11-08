@@ -296,6 +296,34 @@ wire_read_rest_state :: (t: string, r: [] WireRd) -> WireRestState { z: WireRest
   r[0] = wire_rd(cast(string) b[0..<n], 1); z := wire_read_rest_state(cast(string) b[0..<n], r[..]); #assert r[0].ok && z.code == 3 && z.dice == 3;
   r[0] = wire_rd("z 4 1", 1); short := wire_read_rest_state("z 4 1", r[..]); #assert !r[0].ok;
 }
+// b N V ...: your bar as the room's rules hold it, to your seat only (#13046, Everglade II): for each
+// of the N slots of your class's bar at your level, in its order (class-kit.coax xk_bar_at), V is
+// (LEFT + 1) * 2 + ON: LEFT what it has left to count (fivebar.coax fb_left: slots at its level,
+// uses, Rages, Focus; -1 nothing), at most WIRE_KIT_MOST; ON 1 while its own effect holds (a Rage,
+// Wild Shape's form). Sent when it changes, and on every new socket.
+WIRE_KIT :: 24; WIRE_KIT_MOST :: 99;
+WireKit :: struct { n: int; v: [WIRE_KIT] int; }
+wire_kit_v :: (left: int, on: bool) -> int { l := ifx left < -1 then -1 else ifx left > WIRE_KIT_MOST then WIRE_KIT_MOST else left; return (l + 1) * 2 + (ifx on then 1 else 0); }
+wire_put_kit :: (out: [] u8, at: int, k: WireKit) -> int {
+  n := wire_int(out, wire_put(out, at, "b"), k.n);
+  for i: 0..<k.n { n = wire_int(out, n, k.v[i]); }
+  return n;
+}
+wire_read_kit :: (t: string, r: [] WireRd) -> WireKit {
+  k: WireKit; k.n = wire_num(t, r);
+  if k.n < 0 || k.n > WIRE_KIT { r[0].ok = false; k.n = 0; return k; }
+  for i: 0..<k.n { k.v[i] = wire_num(t, r); if k.v[i] < 0 || k.v[i] > (WIRE_KIT_MOST + 1) * 2 + 1 { r[0].ok = false; } }
+  return k;
+}
+#test "b says your bar's counts and effects, slot by slot" {
+  k: WireKit; k.n = 3; k.v[0] = wire_kit_v(-1, false); k.v[1] = wire_kit_v(2, true); k.v[2] = wire_kit_v(500, false);
+  b: [128] u8; n := wire_put_kit(b[..], 0, k); #assert cast(string) b[0..<n] == "b 3 0 7 200";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 1); back := wire_read_kit(cast(string) b[0..<n], r[..]);
+  #assert r[0].ok && back.n == 3 && back.v[1] == 7 && back.v[2] == 200;
+  r[0] = wire_rd("b 2 4", 1); _x := wire_read_kit("b 2 4", r[..]); #assert !r[0].ok;
+  r[0] = wire_rd("b 30 1", 1); _y := wire_read_kit("b 30 1", r[..]); #assert !r[0].ok;
+  r[0] = wire_rd("b 1 202", 1); _z := wire_read_kit("b 1 202", r[..]); #assert !r[0].ok;
+}
 // K PID PID ...: the players you block, the whole list each time ("K -": none). The room never sends
 // you them (coax/web/room/room-interest.coax, #12789). Start with wire_put_blocks, then a wire_text per id.
 WIRE_BLOCKS :: 32;

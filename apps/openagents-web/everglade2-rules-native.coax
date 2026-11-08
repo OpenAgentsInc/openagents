@@ -11,5 +11,19 @@ tool_main :: ()->int #export_c #effects(all) {
   if e2r_use(b[..],s[..],FB_CL_BARD,xk_slot(FB_CL_BARD,2)) || b[0].c[1].slots[1]!=0 || s[0].open { return 2; }
   b[0].c[1].speech_blocked=false;
   if !e2r_use(b[..],s[..],FB_CL_BARD,xk_slot(FB_CL_BARD,2)) || b[0].c[0].hp!=hp || !s[0].turn.action { return 3; }
-  tool_errln("PASS E2-SHARED-CAST"); return 0;
+  tool_errln("PASS E2-SHARED-CAST");
+  // every class's bar at every level 1 to 6 (#13046): each slot executes for a hurt seat of that level
+  presses:=0;
+  for c:0..<FB_CL_N { for level:1..<XK_LEVELS+1 {
+    bar:[XC_SLOTS] FbAb; n:=xk_bar_at(c,level,bar[..]);
+    for i:0..<n {
+      w:[1] RsBattle; w[0].w=16; w[0].h=16;
+      _=rs_add(w[..],fb_cl_hero(c,"Player",0,level),4,4); w[0].c[0].hp=1;
+      q:[1] FbSeat; q[0].me=0;
+      if !e2r_use(w[..],q[..],c,xk_wire(c,bar[i])) { tool_err("refused: "); tool_err(FB_CL_NAME[c]); tool_err(" "); tool_errln(bar[i].name); return 4; }
+      presses+=1;
+    }
+  } }
+  if presses<200 { return 5; }
+  tool_errln("PASS E2-LEVELS: every slot of every class's bar at levels 1 to 6 executes"); return 0;
 }

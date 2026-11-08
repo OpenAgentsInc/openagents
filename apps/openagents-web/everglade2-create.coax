@@ -11,15 +11,19 @@
 // Loaded into everglade2.coax, so it shares its E2, its glade, its path and figs.
 
 E2C_FIELDS :: 13;        // the wardrobe's fields (charactercreator.coax change and value, 0 to 12)
-E2C_BOXES :: 20;
+E2C_BOXES :: 21;
 E2C_CLASS :: 13;         // the CLASS row's field number
 E2C_CLASS_BOX :: 18;     // and its box (0 to 12 the fields, 13 RESET, 14 SURPRISE ME, 15 a phone's drag mode, 16 SAVE, 17 USE)
 E2C_NAME_BOX :: 19;      // NAME: your name over your head, for everyone (player-name.coax, the API's player/name)
+E2C_LEVEL :: 14;         // the LEVEL row's field number: your class's level, 1 to E2C_LEVELS (#13046)
+E2C_LEVEL_BOX :: 20;     // and its box
+E2C_LEVELS :: 6;
+E2C_LEVEL_NAMES :: [6] string.["1", "2", "3", "4", "5", "6"];
 E2C_SWING :: 3.0;        // s: the controls fade and the camera swings round behind you
 E2C_RUN :: 20.0;         // s: the run out of the glade and down the path, on its own
 E2C_EASE :: 1.5;         // s: the camera eases into the follow camera, then the keys are yours
 E2C_FADE :: 0.8;         // s: the controls fade out
-E2C_RECORD :: 57;        // the longest record (CC3)
+E2C_RECORD :: 58;        // the longest record (CC4: a class past level 1)
 E2C_SAVE :: 16;          // host.js: keep the outbox as the shared character record; message 17 says it was kept
 E2C_KEPT :: 17;
 E2C_ADDRESS :: 19;       // host.js: this same-origin path in the address bar (history.replaceState), nothing loaded
@@ -217,10 +221,12 @@ e2c_arrive_uniforms :: (s: [] E2, u: [] f32) {
 e2c_change :: (s: [] E2, f: int, delta: int) {
   cr := s[0].creator[..];
   if f == E2C_CLASS { cr[0].klass = e2c_wrap((ifx cr[0].klass < 0 then 0 else cr[0].klass) + delta, E2C_CLASSES); cr[0].focused = E2C_CLASS; cr[0].revision += 1; return; }
+  if f == E2C_LEVEL { cr[0].level = 1 + e2c_wrap(e2c_level_of(s) - 1 + delta, E2C_LEVELS); cr[0].focused = E2C_LEVEL; cr[0].revision += 1; return; }
   cc.change(cr, f, delta);
 }
 e2c_value :: (s: [] E2, f: int) -> string {
   if f == E2C_CLASS { k := s[0].creator[0].klass; return E2C_CLASS_NAMES[ifx k < 0 then 0 else ifx k >= E2C_CLASSES then E2C_CLASSES - 1 else k]; }
+  if f == E2C_LEVEL { return E2C_LEVEL_NAMES[e2c_level_of(s) - 1]; }
   return cc.value(s[0].creator[0], f);
 }
 
@@ -279,10 +285,10 @@ e2c_action :: (s: [] E2) {
   // the studio holds you still: no keys reach the walk
   #assert e2_key(s[..], 'w', 0) && s[0].held == 0;
   e2c_request(s[..], true); e2c_action(s[..]);
-  #assert s[0].action == E2C_SAVE && s[0].out_n == E2C_RECORD && s[0].outbox[2] == '3';
-  b: [E2C_RECORD] u8; for i: 0..<E2C_RECORD { b[i] = s[0].outbox[i]; }
+  #assert s[0].action == E2C_SAVE && s[0].out_n == 57 && s[0].outbox[2] == '3';
+  b: [E2C_RECORD] u8; for i: 0..<57 { b[i] = s[0].outbox[i]; }
   s[0].action = 0;
-  e2_message(s[..], E2C_KEPT, cast(string) b[0..<E2C_RECORD]);
+  e2_message(s[..], E2C_KEPT, cast(string) b[0..<57]);
   #assert !e2c_creating(s[..]) && e2c_running(s[..]) && s[0].reseat;
   e2c_action(s[..]);
   #assert s[0].action == E2C_ADDRESS && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/everglade2";
@@ -290,9 +296,22 @@ e2c_action :: (s: [] E2) {
 #test "create: the record kept is the one Everglade II restores on its own page, class and all" #steps 1000000000 {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
   e2c_change(s[..], 0, 1); e2c_change(s[..], 12, 3); e2c_change(s[..], E2C_CLASS, -1);
-  b: [E2C_RECORD] u8; n := cc.save(s[0].creator[0], b[..]); #assert n == E2C_RECORD;
+  b: [E2C_RECORD] u8; n := cc.save(s[0].creator[0], b[..]); #assert n == 57;
   t: [1] E2; e2_message(t[..], 16, cast(string) b[0..<n]);
-  #assert t[0].creator[0].female && t[0].creator[0].eye_color == 3 && t[0].creator[0].klass == 2;
+  #assert t[0].creator[0].female && t[0].creator[0].eye_color == 3 && t[0].creator[0].klass == 2 && e2c_level_of(t[..]) == 1;
+}
+#test "create: the LEVEL row steps 1 to 6 round, and the record keeps it for Everglade II (#13046)" #steps 1000000000 {
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
+  #assert e2c_value(s[..], E2C_LEVEL) == "1";
+  e2c_change(s[..], E2C_LEVEL, -1); #assert e2c_value(s[..], E2C_LEVEL) == "6" && s[0].creator[0].focused == E2C_LEVEL;
+  e2c_change(s[..], E2C_LEVEL, 1); e2c_change(s[..], E2C_LEVEL, 1); e2c_change(s[..], E2C_LEVEL, 1); #assert e2c_level_of(s[..]) == 3;
+  // a click on its right half steps it up
+  e2c_layout(s[..], 1440, 900, 1); b := s[0].cz[0].boxes[E2C_LEVEL_BOX];
+  #assert e2_pointer(s[..], b.x1 - 10, b.y0 + 10, 0, 0, 7) && e2_pointer(s[..], b.x1 - 10, b.y0 + 10, 2, 0, 7) && e2c_level_of(s[..]) == 4;
+  // Tab: CLASS, then LEVEL, then the wardrobe
+  s[0].creator[0].focused = E2C_CLASS; #assert e2c_key(s[..], -15) && s[0].creator[0].focused == E2C_LEVEL && e2c_key(s[..], -15) && s[0].creator[0].focused == 0;
+  r: [E2C_RECORD] u8; n := cc.save(s[0].creator[0], r[..]); #assert n == 58 && r[2] == '4' && r[57] == '4';
+  t: [1] E2; e2_message(t[..], 16, cast(string) r[0..<n]); #assert e2c_level_of(t[..]) == 4 && t[0].creator[0].klass == E2C_DRUID;
 }
 #test "create: a refused keep stays in the studio, and Everglade II's own page is not the studio" #steps 1000000000 {
   u: [1] E2; e2_message(u[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
@@ -323,7 +342,8 @@ e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   if c[0].mobile {
     bw := (w - 36 * k) / 2;
     // NAME across the bottom band's top, then the fields two to a row
-    c[0].boxes[E2C_NAME_BOX] = cc.Box.{x0 = 12 * k, y0 = h - 484 * k, x1 = w - 12 * k, y1 = h - 442 * k};
+    c[0].boxes[E2C_NAME_BOX] = cc.Box.{x0 = 12 * k, y0 = h - 484 * k, x1 = w - 116 * k, y1 = h - 442 * k};
+    c[0].boxes[E2C_LEVEL_BOX] = cc.Box.{x0 = w - 104 * k, y0 = h - 484 * k, x1 = w - 12 * k, y1 = h - 442 * k};   // LEVEL beside it
     for i: 0..<E2C_FIELDS + 1 {
       col := i % 2; row := i / 2; x := 12 * k + f32(col) * (bw + 12 * k); y := h - 430 * k + f32(row) * 54 * k;
       c[0].boxes[ifx i == E2C_FIELDS then E2C_CLASS_BOX else i] = cc.Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + 42 * k};
@@ -340,8 +360,9 @@ e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   }
   // a desktop: NAME and CLASS first in the sidebar, then the wardrobe's fields, then the buttons, all on the glass
   c[0].boxes[E2C_NAME_BOX] = cc.Box.{x0 = 28 * k, y0 = 90 * k, x1 = 332 * k, y1 = 124 * k};
-  c[0].boxes[E2C_CLASS_BOX] = cc.Box.{x0 = 28 * k, y0 = 128 * k, x1 = 332 * k, y1 = 162 * k};
-  for i: 0..<E2C_FIELDS { y := (166 + f32(i) * 36) * k; c[0].boxes[i] = cc.Box.{x0 = 28 * k, y0 = y, x1 = 332 * k, y1 = y + 32 * k}; }
+  c[0].boxes[E2C_CLASS_BOX] = cc.Box.{x0 = 28 * k, y0 = 128 * k, x1 = 332 * k, y1 = 158 * k};
+  c[0].boxes[E2C_LEVEL_BOX] = cc.Box.{x0 = 28 * k, y0 = 162 * k, x1 = 332 * k, y1 = 192 * k};
+  for i: 0..<E2C_FIELDS { y := (196 + f32(i) * 34) * k; c[0].boxes[i] = cc.Box.{x0 = 28 * k, y0 = y, x1 = 332 * k, y1 = y + 30 * k}; }
   c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = 640 * k, x1 = 172 * k, y1 = 674 * k};
   c[0].boxes[14] = cc.Box.{x0 = 188 * k, y0 = 640 * k, x1 = 332 * k, y1 = 674 * k};
   c[0].boxes[15] = cc.Box.{};
@@ -358,7 +379,7 @@ e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   {d := s[0].cz[0].boxes[15]; #assert 24 + e2c_text_w("Character Create", e2c_title_cap(s[..], 1)) + 8 <= d.x0 && d.x0 + 10 + e2c_text_w("DRAG: ROTATE", 10) <= d.x1 && e2c_title_cap(s[..], 1) >= 14; }
   e2c_layout(s[..], 1440, 900, 1);
   for i: 0..<E2C_BOXES { if i == 15 { continue; } b := s[0].cz[0].boxes[i]; #assert b.x0 >= 16 && b.x1 <= 350 && b.y0 >= 82 && b.y1 <= f32(E2C_PANEL_BOTTOM); }
-  #assert s[0].cz[0].boxes[E2C_CLASS_BOX].y1 + 4 <= s[0].cz[0].boxes[0].y0;
+  #assert s[0].cz[0].boxes[E2C_CLASS_BOX].y1 + 4 <= s[0].cz[0].boxes[E2C_LEVEL_BOX].y0 && s[0].cz[0].boxes[E2C_LEVEL_BOX].y1 + 4 <= s[0].cz[0].boxes[0].y0;
   for i: 1..<E2C_FIELDS { #assert s[0].cz[0].boxes[i].y0 >= s[0].cz[0].boxes[i - 1].y1 + 4; }
   #assert s[0].cz[0].boxes[12].y1 + 4 <= s[0].cz[0].boxes[13].y0 && s[0].cz[0].boxes[13].y1 + 4 <= s[0].cz[0].boxes[16].y0;
 }
@@ -394,10 +415,10 @@ e2c_hud :: (s: [] E2, out: [] f32) -> int {
       n = cc.text(out, n, ifx m == 0 && !c.editing then "TYPE A NAME" else cast(string) v[0..<m], vx, vy, cap * k, ifx m == 0 then dim else ink);
     }
   }
-  for row: 0..<E2C_FIELDS + 1 {
-    i := ifx row == 0 then E2C_CLASS else row - 1;
-    b := c.boxes[ifx row == 0 then E2C_CLASS_BOX else i]; cap := 10.0f32;
-    name := ifx row == 0 then "CLASS" else cc.FIELD_NAMES[i];
+  for row: 0..<E2C_FIELDS + 2 {
+    i := ifx row == 0 then E2C_CLASS else ifx row == 1 then E2C_LEVEL else row - 2;
+    b := c.boxes[ifx row == 0 then E2C_CLASS_BOX else ifx row == 1 then E2C_LEVEL_BOX else i]; cap := 10.0f32;
+    name := ifx row == 0 then "CLASS" else ifx row == 1 then "LEVEL" else cc.FIELD_NAMES[i];
     if c.mobile { n = cc.text(out, n, name, b.x0, b.y0 - 7 * k, 8 * k, dim); }
     else { n = cc.text(out, n, ifx i == 11 then "WEAR PART" else name, b.x0, b.y0 + 21 * k, 7.4 * k, label); }
     col := ifx cr.focused == i then gold else dim;
@@ -546,6 +567,7 @@ e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
       if i == E2C_NAME_BOX { e2c_name_edit(s); }
       else if i < E2C_FIELDS { e2c_change(s, i, ifx left then -1 else 1); }
       else if i == E2C_CLASS_BOX { e2c_change(s, E2C_CLASS, ifx left then -1 else 1); }
+      else if i == E2C_LEVEL_BOX { e2c_change(s, E2C_LEVEL, ifx left then -1 else 1); }
       else if i == 13 { cc.reset(cr); }
       else if i == 14 { cc.surprise(cr); }
       else if i == 15 { cr[0].pan_mode = !cr[0].pan_mode; }
@@ -563,7 +585,7 @@ e2c_key :: (s: [] E2, key: int) -> bool {
   cr := s[0].creator[..];
   if key == 'p' || key == 'P' { cr[0].pan_mode = !cr[0].pan_mode; return true; }
   // Tab: the CLASS row, then the wardrobe's fields in turn
-  if key == -15 { f := cr[0].focused; cr[0].focused = ifx f == E2C_CLASS then 0 else ifx f + 1 >= E2C_FIELDS then E2C_CLASS else f + 1; return true; }
+  if key == -15 { f := cr[0].focused; cr[0].focused = ifx f == E2C_CLASS then E2C_LEVEL else ifx f == E2C_LEVEL then 0 else ifx f + 1 >= E2C_FIELDS then E2C_CLASS else f + 1; return true; }
   if key == KEY_LEFT || key == KEY_RIGHT { e2c_change(s, cr[0].focused, ifx key == KEY_LEFT then -1 else 1); return true; }
   if key == ' ' { e2c_change(s, 9, 1); return true; }
   return true;
@@ -781,6 +803,7 @@ E2C_PAD :: 14.0;
 E2cLines :: struct { n: int; lines: int; }
 E2cPane :: struct { a: cc.Box; b: cc.Box; }   // a desktop's one panel (a), or a phone's two columns (a left, b right)
 
+e2c_level_of :: (s: [] E2) -> int { l := s[0].creator[0].level; return ifx l < 1 then 1 else ifx l > E2C_LEVELS then E2C_LEVELS else l; }
 e2c_class_of :: (s: [] E2) -> int { k := s[0].creator[0].klass; return ifx k < 0 then E2C_DRUID else ifx k >= E2C_CLASSES then E2C_CLASSES - 1 else k; }
 // The width of t at cap, as cc.text sets it.
 e2c_width :: (t: string, cap: f32) -> f32 {

@@ -270,24 +270,58 @@ xc_sound :: (a: FbAb, klass: int) -> XcSnd {
   return xs("arcane-cast", "", "", "", 1);
 }
 
-// ---- the wire: class c's bar slot i
+// ---- the wire: class c's ability i
+// A wire slot names an ability of class c whatever its level (#13046): slot i is the i-th of the class's
+// catalog, every ability its bars at levels 1 to XK_LEVELS hold, in the order they first appear. Level
+// 1's bar is the catalog's start, so its slots are the bar's own order. A seat's level says which of
+// them its bar holds (xk_entry_at); a page plays another's cast from the catalog, its level unknown.
 XK_SLOT0 :: 128;   // past Everglade's bars (fivebar.coax: its own 0 on, the Warlock's FB_WL0, Character Create's one ability FB_CL0)
 XK_PER :: XC_SLOTS;
-XK_LEVEL :: 1;     // Everglade II's kit: each class's cantrips and level 1 abilities
+XK_LEVEL :: 1;     // a seat that has said no level
+XK_LEVELS :: 6;    // Everglade II's levels: 1 to 6, as Character Create offers
+xk_level :: (level: int) -> int { return ifx level < 1 then 1 else ifx level > XK_LEVELS then XK_LEVELS else level; }
 xk_slot :: (c: int, i: int) -> int { return XK_SLOT0 + c * XK_PER + i; }
 xk_slot_class :: (slot: int) -> int { return ifx slot >= XK_SLOT0 && slot < XK_SLOT0 + FB_CL_N * XK_PER then (slot - XK_SLOT0) / XK_PER else -1; }
 xk_slot_index :: (slot: int) -> int { return ifx xk_slot_class(slot) >= 0 then (slot - XK_SLOT0) % XK_PER else -1; }
-// Class c's bar at Everglade II's level, in its own order: how many.
-xk_bar :: (c: int, out: [] FbAb) -> int { return ifx c >= 0 && c < FB_CL_N then xc_bar_level(c, XK_LEVEL, out) else 0; }
+// Class c's bar at `level`, in its own order: how many.
+xk_bar_at :: (c: int, level: int, out: [] FbAb) -> int { return ifx c >= 0 && c < FB_CL_N then xc_bar_level(c, xk_level(level), out) else 0; }
+xk_bar :: (c: int, out: [] FbAb) -> int { return xk_bar_at(c, XK_LEVEL, out); }
+// Class c's catalog: how many.
+xk_catalog :: (c: int, out: [] FbAb) -> int {
+  n := 0;
+  for level: 1..<XK_LEVELS + 1 {
+    bar: [XC_SLOTS] FbAb; m := xk_bar_at(c, level, bar[..]);
+    for i: 0..<m {
+      seen := false;
+      for j: 0..<n { if xc_id(out[j]) == xc_id(bar[i]) { seen = true; } }
+      if !seen && n < out.count { out[n] = bar[i]; n += 1; }
+    }
+  }
+  return n;
+}
+// The wire slot of class c's ability a (-1: not in its catalog).
+xk_wire :: (c: int, a: FbAb) -> int {
+  cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]);
+  for i: 0..<n { if xc_id(cat[i]) == xc_id(a) { return xk_slot(c, i); } }
+  return -1;
+}
 // The weapon class c's hero holds (its Attack's reach).
 xk_weapon :: (c: int) -> int { return ifx c >= 0 && c < FB_CL_N then fb_cl_hero(c, "", 0, XK_LEVEL).weapon else 0; }
-// Wire slot `slot` for class c: its ability, how it aims; ok false when it is not on c's bar.
+// Wire slot `slot` for class c: its ability, how it aims; ok false when it is not in c's catalog.
 XkEntry :: struct { ok: bool; ab: FbAb; aim: XcAim; }
 xk_entry :: (c: int, slot: int) -> XkEntry {
   if xk_slot_class(slot) != c { return XkEntry.{}; }
-  bar: [XC_SLOTS] FbAb; n := xk_bar(c, bar[..]); i := xk_slot_index(slot);
+  cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]); i := xk_slot_index(slot);
   if i < 0 || i >= n { return XkEntry.{}; }
-  return XkEntry.{ok = true, ab = bar[i], aim = xc_aim_for(bar[i], xk_weapon(c))};
+  return XkEntry.{ok = true, ab = cat[i], aim = xc_aim_for(cat[i], xk_weapon(c))};
+}
+// The same, for a seat of class c at `level`: ok only when that level's bar holds it.
+xk_entry_at :: (c: int, level: int, slot: int) -> XkEntry {
+  e := xk_entry(c, slot);
+  if !e.ok { return e; }
+  bar: [XC_SLOTS] FbAb; n := xk_bar_at(c, level, bar[..]);
+  for i: 0..<n { if xc_id(bar[i]) == xc_id(e.ab) { return XkEntry.{ok = true, ab = bar[i], aim = xc_aim_for(bar[i], xk_weapon(c))}; } }
+  return XkEntry.{};
 }
 
 #test "class kits: every class's bar holds its Character Create ability first, each slot with its picture, and its wire slots" #steps 400000000 {
@@ -301,7 +335,7 @@ xk_entry :: (c: int, slot: int) -> XkEntry {
       #assert xk_slot_class(s) == c && xk_slot_index(s) == i && xk_entry(c, s).ok && xk_entry(c, s).ab.name == bar[i].name;
       #assert !xk_entry((c + 1) % FB_CL_N, s).ok;   // another class's slot
     }
-    #assert !xk_entry(c, xk_slot(c, n)).ok && !xk_entry(c, FB_CL0 + c).ok && !xk_entry(c, 1).ok;
+    #assert !xk_entry_at(c, 1, xk_slot(c, n)).ok && !xk_entry(c, FB_CL0 + c).ok && !xk_entry(c, 1).ok;
   }
   #assert xk_slot_class(XK_SLOT0 - 1) == -1 && xk_slot_class(XK_SLOT0 + FB_CL_N * XK_PER) == -1;
   // a Wizard's Fire Bolt is a bolt of 120 feet; a Fighter's sword a blow; Second Wind its own
@@ -311,9 +345,28 @@ xk_entry :: (c: int, slot: int) -> XkEntry {
   p := xc_aim_point(w.ab, w.aim, 1, 2, 0, 1); #assert p[0] == 1 && abs(p[1] - 38.576) < 0.01;
   q := xc_aim_point(f.ab, XcAim.{kind = XC_AIM_SELF}, 1, 2, 0, 1); #assert q[0] == 1 && q[1] == 2;
 }
+#test "class kits: a slot names one ability at every level; a level's bar holds only its own" #steps 4000000000 {
+  for c: 0..<FB_CL_N {
+    cat: [XC_SLOTS] FbAb; cn := xk_catalog(c, cat[..]);
+    #assert cn <= XC_SLOTS;
+    for level: 1..<XK_LEVELS + 1 {
+      bar: [XC_SLOTS] FbAb; n := xk_bar_at(c, level, bar[..]);
+      for i: 0..<n {
+        at := -1; for j: 0..<cn { if xc_id(cat[j]) == xc_id(bar[i]) { at = j; } }
+        #assert at >= 0 && (level > 1 || at == i);   // level 1's slots as before
+      }
+    }
+  }
+  // a Fighter's Action Surge comes at level 2: its slot is refused at level 1 and taken at 6
+  f2: [XC_SLOTS] FbAb; f2n := xk_bar_at(FB_CL_FIGHTER, 2, f2[..]); surge := -1;
+  for i: 0..<f2n { if f2[i].kind == FB_SURGE { surge = xk_wire(FB_CL_FIGHTER, f2[i]); } }
+  #assert surge >= 0 && !xk_entry_at(FB_CL_FIGHTER, 1, surge).ok && xk_entry_at(FB_CL_FIGHTER, 6, surge).ok && xk_entry(FB_CL_FIGHTER, surge).ab.kind == FB_SURGE;
+  #assert xk_entry_at(FB_CL_FIGHTER, 1, xk_slot(FB_CL_FIGHTER, 1)).ab.kind == FB_ATTACK;
+  #assert xk_level(0) == 1 && xk_level(9) == 6 && xk_level(4) == 4;
+}
 #test "class kits: every ability has a cast sound" #steps 400000000 {
   bar: [XC_SLOTS] FbAb;
-  for c: 0..<FB_CL_N { n := xk_bar(c, bar[..]); for i: 0..<n { #assert xc_sound(bar[i], c).start.count > 0; } }
+  for c: 0..<FB_CL_N { n := xk_catalog(c, bar[..]); for i: 0..<n { #assert xc_sound(bar[i], c).start.count > 0; } }
 }
 #test "the Druid's kit: Wild Shape and an Attack from level 2; in a form its spells wait and Attack is the Beast's" #steps 400000000 {
   for level: 1..<7 {
@@ -332,4 +385,14 @@ xk_entry :: (c: int, slot: int) -> XkEntry {
     rs_fresh(b[..], 0); #assert fb_ready(b[..], 0, bar[w]) && fb_use(b[..], 0, bar[w], -1, 0, 0, -1) && b[0].c[0].wild_form == 0 && fb_ready(b[..], 0, bar[spell]);
     b[0].c[0].uses[RS_USE_WILD] = 0; #assert !fb_ready(b[..], 0, bar[w]);
   }
+}
+
+#test "class kits: the restart check's --levels fixtures name the slots the kits give" {
+  // coax/web/room/e2-restart-check.coax's RX_F_* and RX_B_* constants
+  f5: [XC_SLOTS] FbAb; f1: [XC_SLOTS] FbAb; b3: [XC_SLOTS] FbAb;
+  #assert xk_bar_at(FB_CL_FIGHTER, 5, f5[..]) == 4; #assert xk_bar_at(FB_CL_FIGHTER, 1, f1[..]) == 3; #assert xk_bar_at(FB_CL_BARBARIAN, 3, b3[..]) == 4;
+  #assert f5[2].kind == FB_SURGE; #assert xk_wire(FB_CL_FIGHTER, f5[2]) == 227;
+  #assert f5[1].kind == FB_ATTACK; #assert xk_wire(FB_CL_FIGHTER, f5[1]) == 225;
+  #assert b3[0].kind == FB_RAGE; #assert xk_wire(FB_CL_BARBARIAN, b3[0]) == 128;
+  for i: 0..<3 { #assert f1[i].kind != FB_SURGE; }
 }

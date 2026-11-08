@@ -200,10 +200,36 @@ FB_CL_NAME :: [12] string.["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "M
 // "druid" and "warlock"
 FB_CL_KIND :: [12] string.["srd-barbarian", "srd-bard", "srd-cleric", "srd-druid", "srd-fighter", "srd-monk", "srd-paladin", "srd-ranger", "srd-rogue", "srd-sorcerer", "srd-warlock", "srd-wizard"];
 FB_CL_ENGINE :: [12] int.[RS_BARBARIAN, RS_BARD, RS_CLERIC, RS_DRUID, RS_FIGHTER, RS_MONK, RS_PALADIN, RS_RANGER, RS_ROGUE, RS_SORCERER, RS_WARLOCK, RS_WIZARD];
-// The class whose hello word is `kind`, -1 none.
+// The class whose hello word is `kind`, -1 none. Past level 1 the word ends -LEVEL (#13046:
+// "srd-fighter-3"), a digit 2 to FB_CL_LEVELS.
+FB_CL_LEVELS :: 6;
 fb_cl_of_kind :: (kind: string) -> int {
-  for c: 0..<FB_CL_N { if FB_CL_KIND[c] == kind { return c; } }
+  t := ifx fb_cl_level_of_kind(kind) > 1 then kind[0..<kind.count - 2] else kind;
+  for c: 0..<FB_CL_N { if FB_CL_KIND[c] == t { return c; } }
   return -1;
+}
+// The level a hello word says: 1 when it says none (or is no class's).
+fb_cl_level_of_kind :: (kind: string) -> int {
+  n := kind.count;
+  if n < 3 || kind[n - 2] != '-' || kind[n - 1] < '2' || int(kind[n - 1]) > 48 + FB_CL_LEVELS { return 1; }
+  return int(kind[n - 1] - '0');
+}
+// Class c's hello word at `level` into out: how many bytes.
+fb_cl_kind_at :: (c: int, level: int, out: [] u8) -> int {
+  if c < 0 || c >= FB_CL_N { return 0; }
+  w := FB_CL_KIND[c]; n := 0;
+  for ch: w { if n < out.count { out[n] = ch; n += 1; } }
+  if level > 1 && level <= FB_CL_LEVELS && n + 2 <= out.count { out[n] = '-'; out[n + 1] = cast(u8)('0' + level); n += 2; }
+  return n;
+}
+#test "a hello word says a class and, past level 1, its level" {
+  b: [24] u8;
+  for c: 0..<FB_CL_N { for l: 1..<FB_CL_LEVELS + 1 {
+    n := fb_cl_kind_at(c, l, b[..]); w := cast(string) b[0..<n];
+    #assert fb_cl_of_kind(w) == c && fb_cl_level_of_kind(w) == l && (l > 1 || w == FB_CL_KIND[c]);
+  } }
+  #assert fb_cl_of_kind("srd-fighter-7") == -1 && fb_cl_level_of_kind("srd-fighter-7") == 1 && fb_cl_of_kind("srd-fighter-1") == -1;
+  #assert fb_cl_of_kind("druid") == -1 && fb_cl_level_of_kind("-2") == 1 && fb_cl_of_kind("srd-x-3") == -1;
 }
 // Class c at `level`, as the engine builds it.
 fb_cl_hero :: (c: int, name: string, team: int, level: int) -> RsCreature {

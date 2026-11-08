@@ -82,3 +82,47 @@
   #assert e2r_use(b[..],seats[..],FB_CL_BARD,xk_slot(FB_CL_BARD,2));
   #assert b[0].c[0].slots[1]==0 && b[0].c[0].slots[2]==b[0].c[0].slots_max[2]-1;
 }
+
+#test "Everglade II takes a slot only from the seat's own level's bar" #steps 2000000000 {
+  bar:[XC_SLOTS] FbAb; n:=xk_bar_at(FB_CL_FIGHTER,2,bar[..]); surge:=-1;
+  for i:0..<n { if bar[i].kind==FB_SURGE { surge=xk_wire(FB_CL_FIGHTER,bar[i]); } }
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3);
+  seats:[1] FbSeat; seats[0].me=0;
+  #assert surge>=0 && !e2r_use(b[..],seats[..],FB_CL_FIGHTER,surge) && !seats[0].open;
+  b[0].c[0]=fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,2); b[0].c[0].x=3; b[0].c[0].y=3;
+  left:=b[0].c[0].uses[RS_USE_SURGE];
+  #assert left>0 && e2r_use(b[..],seats[..],FB_CL_FIGHTER,surge) && b[0].c[0].uses[RS_USE_SURGE]==left-1;
+}
+
+#test "Everglade II's level 2 to 6 features that pick no creature go through the shared rules" #steps 2000000000 {
+  // Action Surge gives the Action back; a Monk's Flurry at the air spends Focus and the Bonus Action
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,2),3,3); rs_start_turn(b[..],0);
+  #assert e2r_dispatch(b[..],0,fb_feature(FB_ATTACK,"Attack","attack")) && b[0].turn.action;
+  surge:=b[0].c[0].uses[RS_USE_SURGE];
+  #assert e2r_dispatch(b[..],0,fb_feature(FB_SURGE,"ACTION SURGE","action-surge")) && b[0].c[0].uses[RS_USE_SURGE]==surge-1 && !b[0].turn.action;
+  // with the Action free, the Surge's is that one; with no use left, refused and nothing spent
+  b[0].c[0].uses[RS_USE_SURGE]=1;
+  #assert e2r_dispatch(b[..],0,fb_feature(FB_SURGE,"ACTION SURGE","action-surge")) && !b[0].turn.action && b[0].c[0].uses[RS_USE_SURGE]==0;
+  b[0].c[0].uses[RS_USE_SURGE]=0; #assert !e2r_dispatch(b[..],0,fb_feature(FB_SURGE,"ACTION SURGE","action-surge")) && !b[0].turn.action;
+  m:[1] RsBattle; m[0].w=12; m[0].h=12;
+  _=rs_add(m[..],fb_cl_hero(FB_CL_MONK,"Monk",0,3),3,3); rs_start_turn(m[..],0);
+  f:=m[0].c[0].focus; #assert f>0;
+  #assert e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].focus==f-1 && m[0].turn.bonus;
+  #assert !e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows")) && m[0].c[0].focus==f-1;
+  m[0].turn.bonus=false; m[0].c[0].focus=0;
+  #assert !e2r_dispatch(m[..],0,fb_feature(FB_FLURRY,"FLURRY OF BLOWS","flurry-of-blows"));
+  // a Reckless Attack swings at the air as an Attack does; Bardic Inspiration needs someone else
+  r:[1] RsBattle; r[0].w=12; r[0].h=12;
+  _=rs_add(r[..],fb_cl_hero(FB_CL_BARBARIAN,"Barbarian",0,2),3,3); rs_start_turn(r[..],0);
+  #assert e2r_dispatch(r[..],0,fb_feature(FB_RECKLESS,"RECKLESS ATTACK","reckless-attack")) && r[0].turn.action;
+  #assert !e2r_dispatch(r[..],0,fb_feature(FB_RECKLESS,"RECKLESS ATTACK","reckless-attack"));
+  #assert !e2r_dispatch(r[..],0,fb_feature(FB_INSPIRE,"BARDIC INSPIRATION","bardic-inspiration"));
+  // Land's Aid round a level 3 Druid harms no player (one team) and heals the Druid
+  d:[1] RsBattle; d[0].w=12; d[0].h=12; d[0].dice[0].fixed=true;
+  _=rs_add(d[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,3),3,3); _=rs_add(d[..],fb_cl_hero(FB_CL_FIGHTER,"Other",0,1),4,3); rs_start_turn(d[..],0);
+  d[0].c[0].hp=2; other:=d[0].c[1].hp; wild:=d[0].c[0].uses[RS_USE_WILD];
+  #assert d[0].c[0].lands_aid && e2r_dispatch(d[..],0,fb_feature(FB_LANDS,"LAND'S AID","lands-aid"));
+  #assert d[0].c[0].hp>2 && d[0].c[1].hp==other && d[0].c[0].uses[RS_USE_WILD]==wild-1;
+}

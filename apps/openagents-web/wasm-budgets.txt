@@ -66,7 +66,10 @@ fivelab 2602000
 # kits at level 1 on the SRD engine's spell and feature tables (class-kit.coax, fivebar.coax), their
 # effects (aethyr/fx/puff.coax and its looks) and Experimental's sounds (experimental-sound.coax: the
 # Everglade bank's names and the synthesized effects' recipes): 632,261 measured; about 4% headroom.
-everglade2 660000
+# Levels 1 to 6 (#13046): each class's level 1 to 6 bars and catalog (class-kit.coax xk_bar_at), the
+# LEVEL row, the room's word on the bar (b frames: on-icon counts and held frames) and a refused
+# cast's fades, on top of the shared world profile (#13045): 660,903 measured; about 3% headroom.
+everglade2 680000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1740000

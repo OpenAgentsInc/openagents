@@ -155,6 +155,7 @@ EgSeat :: struct {
   // the rest state the page last heard (z; -1 none since this socket)
   step_kx: int; step_ky: int; step_px: int; step_py: int; step_b: int;
   rest_seen: bool; rest_settled: bool; rest_told: int = -1; rest_told_dice: int = -1;
+  kit_told: int = -1;   // Everglade II: the hash of the bar state it last heard (b, room-e2-rest.coax e2_kit_tell)
   checkpoint_hello: bool;        // a schema 2 character is built/restored once, not reset by repeated H
   repaired: int = -100000;       // the tick of its last Repair (CR_REPAIR_EVERY from one to the next)
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
@@ -738,9 +739,10 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   if tk.schema == 2 && tk.capture.ok && fb_cl_of_kind(kind) < 0 { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
   st[0].klass_n = eg_word(kind, st[0].klass[..]);
   // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero); srd-*: that
-  // SRD class at level 1 (fb_cl_hero); else the druid
+  // SRD class at level 1, srd-*-L at level L (fb_cl_hero, #13046); else the druid
   wl := e5rr_klass_of(cast(string) st[0].klass[0..<st[0].klass_n]);
-  if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); ev_class(v, k, seat_id); }
+  lv := fb_cl_level_of_kind(cast(string) st[0].klass[0..<st[0].klass_n]);
+  if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= E5R_CL0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level != lv) { e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv); ev_class(v, k, seat_id); }
   st[0].flags = eg_clamp(h.flags, 0, 255);
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
@@ -823,7 +825,7 @@ EG_E2_GAP :: 24;      // ticks (0.8 s at EG_HZ 30)
 EG_E2_CAST_SLACK :: 3.0;   // m
 eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
-  e := xk_entry(v[0].eg[k].rules[0].klass[seat] - E5R_CL0, wc.slot);
+  e := xk_entry_at(v[0].eg[k].rules[0].klass[seat] - E5R_CL0, v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level, wc.slot);   // its level's bar (#13046)
   if !e.ok { eg_refuse(v, k, seat_id, wc.seq, "slot"); return; }
   if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) || abs(wc.ay) > 1000 { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_AIM)); return; }
   t := v[0].eg[k].tick;
@@ -836,6 +838,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   }
   st[0].last_cast = t;
   v[0].eg[k].e2_casts += 1;
+  e2_kit_tell(v, k, seat_id, false);   // what the cast spent, at once
   b: [128] u8;
   n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
   eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
@@ -1019,7 +1022,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   rc_tick_first(v, k);
   fg_sync(v,k);
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
-  if v[0].eg[k].e2 { e2_rest_tell_all(v, k); }
+  if v[0].eg[k].e2 { e2_rest_tell_all(v, k); e2_kit_tell_all(v, k); }
   fg_hits(v,k);
   rc_tick_last(v, k);
   eg_engine_events(v, k);
@@ -2429,6 +2432,43 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   eg_test_drain(v[..], box[..]);
   s: [64] u8; sn := wire_put_cast_e(s[..], 0, WireCastE.{ss = 1, slot = sword, ax = 1, ay = 0, az = 2}) - 2;
   #assert eg_test_has(eg_test_of(box[..], 0), cast(string) s[0..<sn]) && v[0].eg[k].e2_casts == 3;
+}
+#test "everglade II room: a seat sits at the level its hello says, casts that level's kit, and hears its bar's counts (#13046)" #steps 4000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-e2-levels HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-5 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  r := v[0].eg[k].rules[..];
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_FIGHTER;
+  #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
+  #assert r[0].b[0].c[E5RR_SEAT].level == 5;
+  #assert r[0].b[0].c[E5RR_SEAT].extra_attack > 0 && r[0].b[0].c[E5RR_SEAT + 1].level == 1;
+  // each seat heard its own bar: the level 5 Fighter's is longer
+  eg_test_drain(v[..], box[..]);
+  five: [XC_SLOTS] FbAb; fn := xk_bar_at(FB_CL_FIGHTER, 5, five[..]); one: [XC_SLOTS] FbAb; on := xk_bar(FB_CL_FIGHTER, one[..]);
+  h5: [16] u8; n5 := wire_int(h5[..], wire_put(h5[..], 0, "b"), fn); h1: [16] u8; n1 := wire_int(h1[..], wire_put(h1[..], 0, "b"), on);
+  #assert fn > on && eg_test_has(eg_test_of(box[..], 0), cast(string) h5[0..<n5]) && eg_test_has(eg_test_of(box[..], 1), cast(string) h1[0..<n1]);
+  surge := -1; for i: 0..<fn { if five[i].kind == FB_SURGE { surge = xk_wire(FB_CL_FIGHTER, five[i]); } }
+  b: [128] u8;
+  uses := r[0].b[0].c[E5RR_SEAT].uses_max[RS_USE_SURGE];
+  rm_heard(v[..], 0, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 1, slot = surge, ax = 0, ay = 0, az = 0})]);
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 2, slot = surge, ax = 1, ay = 0, az = 0})]);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  #assert v[0].eg[k].e2_casts == 1 && r[0].b[0].c[E5RR_SEAT].uses[RS_USE_SURGE] == uses - 1 && eg_test_has(eg_test_of(box[..], 1), "r 2 slot");
+  // its bar's count for Action Surge went down with it, at once
+  w := e2_kit(v[..], k, 0); at := -1; for i: 0..<fn { if five[i].kind == FB_SURGE { at = i; } }
+  #assert w.n == fn && w.v[at] == wire_kit_v(uses - 1, false) && v[0].eg[k].seat[0].kit_told == e2_kit_hash(w);
+  // a hello at another level sits it again at that level
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-2 0 -");
+  eg_test_tick(v[..], k);
+  #assert r[0].b[0].c[E5RR_SEAT].level == 2;
 }
 #test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {
   v: [1] RmServer;

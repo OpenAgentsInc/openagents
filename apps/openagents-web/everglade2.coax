@@ -554,7 +554,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2c_arrive_uniforms(s, u);
   e2_material_uniforms(s, u);
   e2_shadows(s, u);
-  e2k_set_class(s[0].casts[..], e2c_class_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s));
+  e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s));
   e2k_step(s);
   return e2_fps(s, out, e2_plates(s, out, e2k_hud(s, out, e2c_hud(s, out))), dt);
 }
@@ -942,6 +942,18 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 82 { return s[0].net[0].cast_sent; } if field == 83 { return s[0].casts[0].others; }
   if field == 88 { return s[0].net[0].cast_mine; } if field == 89 { return s[0].casts[0].audio[0].played; }
   if (field >= 40 && field < 66 + E2_REMOTES) || (field >= 84 && field <= 86) { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
+  // levels (#13046): 100 to 103 the right halves of Character Create's LEVEL and CLASS boxes (canvas
+  // px: x, y, x, y), 104 its level, 105 your bar's slots, 106 the room's word on it known (1), 107
+  // refused casts undone, 108 their fades still going, 110 + i what slot i has left (-1 unknown) and
+  // 120 + i whether it holds (1)
+  if field >= 100 && field < 130 { k := s[0].casts[0];
+    if field < 104 { b := s[0].cz[0].boxes[ifx field < 102 then E2C_LEVEL_BOX else E2C_CLASS_BOX];
+      return cast(int)(ifx field % 2 == 0 then b.x0 + (b.x1 - b.x0) * 0.8 else (b.y0 + b.y1) / 2); }
+    if field == 104 { return e2c_level_of(s); } if field == 105 { return k.bar_n; }
+    if field == 106 { return ifx e2n_kit(s[0].net[..], 0, k.bar_n).ok then 1 else 0; } if field == 107 { return k.undone; }
+    if field == 108 { m := 0; for f: 0..<E2K_FADES { if k.fades[f].slot >= 0 && s[0].clock - k.fades[f].at <= f32(E2K_FADE) { m += 1; } } return m; }
+    w := e2n_kit(s[0].net[..], field % 10, k.bar_n); if field >= 110 && field < 120 { return w.left; } if field >= 120 { return ifx w.on then 1 else 0; }
+    return -1; }
   // the ground (#13059): 90 its route (1 the pack's record, 2 converted here), 91 its tiles, 92 sets
   // published, 93 refusals, 94 the first refusal's code, 95 KiB resident, 96 and 97 the set's and the
   // glade tile's revision (first word, as a signed int), 98 queries off the tiles
@@ -1259,7 +1271,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   s[0].you_x = 0; s[0].you_z = -10; s[0].you_y = e2_height(0, -10); s[0].you_face = 3.14159265;   // facing -z
   s[0].right = [3] f32.[1, 0, 0];
   n := s[0].net[..]; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 1;
-  e2k_set_class(s[0].casts[..], c); e2n_set_class(n, c);
+  e2k_set_class(s[0].casts[..], c, 1); e2n_set_class(n, c, 1);
 }
 #test "Everglade II's bar holds your class's kit, its keys press it at what is ahead, it cools down, and it goes to the room (#13058)" #steps 1000000000 {
   s: [1] E2; e2_test_cast_state(s[..], FB_CL_WIZARD);
@@ -1346,6 +1358,69 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2k_press(s[..],0) && n[0].cast_sent==sent+1 && n[0].cast_seq!=first;
   // the new cast cools down again, and reconciling once more changes nothing
   e2k_step(s[..]); #assert !e2k_press(s[..],0) && s[0].casts[0].refused_seen==n[0].cast_refused;
+}
+
+#test "Everglade II's refused cast fades its look and sound and drops its fizzle; nothing is cut (#13046)" #steps 2000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD); n:=s[0].net[..]; n[0].mono=100;
+  k:=s[0].casts[..];
+  fb:=-1; for i:0..<k[0].bar_n { if k[0].bar[i].kind==FB_SPELL && k[0].bar[i].sp==SP_FIRE_BOLT { fb=i; } }
+  #assert fb>=0 && e2k_press(s[..],fb) && k[0].mine_n>=1 && k[0].voice1>k[0].voice0;
+  first:=k[0].voice0+1; slot:=k[0].mine[0]; t0:=k[0].mine_t0[0];
+  waiting:=0; for i:0..<E2K_LATER { if k[0].later[i].on && k[0].later[i].mine { waiting+=1; } } #assert waiting==1;
+  k[0].audio[0].n=0;
+  // the room refuses it: the cooldown lifts, the voices it started fade, the fizzle is dropped
+  message:[64] u8; count:=wire_put(message[..],0,"r "); count=wire_int(message[..],count,n[0].cast_seq); count=wire_put(message[..],count," no");
+  e2n_record(n,cast(string)message[0..<count]);
+  s[0].clock+=0.02; e2k_step(s[..]);
+  heard:=cast(string)k[0].audio[0].lines[0..<k[0].audio[0].n];
+  want:[16] u8; wn:=e2k_put(want[..],0,"-x"); wn=e2k_int(want[..],wn,first);
+  has:=false; for i:0..<heard.count-wn+1 { if heard[i..<i+wn]==cast(string)want[0..<wn] { has=true; } }
+  #assert has && k[0].undone==1 && k[0].mine_n==0;
+  for i:0..<E2K_LATER { #assert !(k[0].later[i].on && k[0].later[i].mine); }
+  // its effect dims a little each frame, never jumps, and is gone once faded
+  last:=1.0f32;
+  for f:0..<20 {
+    if !k[0].puffs[0].on[slot] { break; }
+    shown:=e2k_shown(k,slot,t0,s[0].clock); #assert shown<=last && shown>=0 && last-shown<0.25; last=shown;
+    s[0].clock+=1.0f32/60; e2k_step(s[..]);
+  }
+  #assert !k[0].puffs[0].on[slot] || k[0].puffs[0].live[slot].t0!=t0;
+  // another's cast is never faded by your refusal
+  #assert e2k_shown(k,slot,t0+5,s[0].clock)==1;
+}
+
+#test "Everglade II's bar is your class's at your level: a level 5 Fighter's Action Surge goes by its own wire slot (#13046)" #steps 2000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_FIGHTER);
+  k:=s[0].casts[..]; n:=s[0].net[..];
+  e2k_set_class(k,FB_CL_FIGHTER,5); e2n_set_class(n,FB_CL_FIGHTER,5);
+  want:[XC_SLOTS] FbAb; wn:=xk_bar_at(FB_CL_FIGHTER,5,want[..]);
+  #assert k[0].level==5 && k[0].bar_n==wn && wn>xk_bar(FB_CL_FIGHTER,want[..]);
+  surge:=-1; for i:0..<k[0].bar_n { if k[0].bar[i].kind==FB_SURGE { surge=i; } }
+  #assert surge>=0 && e2k_press(s[..],surge);
+  last:=n[0].pipe[0].n-1; p:=n[0].pipe[0]; cw:=cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]];
+  r:[1] WireRd; r[0]=wire_rd(cw,1); wc:=wire_read_cast(cw,r[..]);
+  #assert wc.slot==xk_wire(FB_CL_FIGHTER,k[0].bar[surge]) && xk_entry_at(FB_CL_FIGHTER,5,wc.slot).ab.kind==FB_SURGE && !xk_entry_at(FB_CL_FIGHTER,1,wc.slot).ok;
+  // the hello says the level
+  n[0].pipe[0].n=0; n[0].pipe[0].used=0; e2n_hello(n);
+  pipe:=cast(string)n[0].pipe[0].buf[0..<n[0].pipe[0].used];
+  has:=false; for i:0..<pipe.count-13 { if pipe[i..<i+13]=="srd-fighter-5" { has=true; } } #assert has;
+}
+
+#test "Everglade II draws the room's counts on the bar's icons and frames a Rage while it holds (#13046)" #steps 1000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_BARBARIAN);
+  k:=s[0].casts[..]; n:=s[0].net[..];
+  out:[8192] f32; plain:=e2k_hud(s[..],out[..],0);
+  // Rage (slot 1): 1 left, raging; the rest nothing to count
+  m:[128] u8; c:=wire_put(m[..],0,"b"); c=wire_int(m[..],c,k[0].bar_n);
+  for i:0..<k[0].bar_n { c=wire_int(m[..],c,ifx i==0 then wire_kit_v(1,true) else wire_kit_v(-1,false)); }
+  e2n_record(n,cast(string)m[0..<c]);
+  #assert e2n_kit(n,0,k[0].bar_n).ok && e2n_kit(n,0,k[0].bar_n).left==1 && e2n_kit(n,0,k[0].bar_n).on;
+  drawn:=e2k_hud(s[..],out[..],0); #assert drawn>plain+4*6;   // a count and four frame lines
+  // no longer raging, none left: the count only
+  c=wire_put(m[..],0,"b"); c=wire_int(m[..],c,k[0].bar_n);
+  for i:0..<k[0].bar_n { c=wire_int(m[..],c,ifx i==0 then wire_kit_v(0,false) else wire_kit_v(-1,false)); }
+  e2n_record(n,cast(string)m[0..<c]);
+  calm:=e2k_hud(s[..],out[..],0); #assert calm>plain && calm<drawn;
 }
 
 #test "Everglade II health label uses its server row including temporary HP and snapshot removal" #steps 1000000000 {
