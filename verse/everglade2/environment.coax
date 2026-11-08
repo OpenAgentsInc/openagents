@@ -1,0 +1,33 @@
+// Everglade II's environment set (lighting plan Phase 1 step 5, GitHub #13065;
+// docs/verse/lighting/README.md). The realm's light, as aethyr/world/environment.coax records that
+// aethyr/world/environment-region.coax admits whole (env_region_index_replace) and resolves by place.
+// The map default is the glade profile itself (env_glade_profile, the painterly default), so
+// Character Create's glade and Everglade II's arrival are one light and the hand-over has no seam.
+//
+// First version: the open glade only. The sunlit path and the deep canopy follow as deltas.
+//   coax/bin/coax test verse/everglade2/environment.coax
+#load "forest.coax";
+#load "../../aethyr/world/environment-region.coax";
+
+E2_ENV_GENERATION :: 0;
+
+/** Everglade II's environment set: the glade as the map default. */
+e2_environment_set :: () -> EnvironmentSet {
+  s := EnvironmentSet.{version = ENV_VERSION, generation = E2_ENV_GENERATION, default_profile = ENV_GLADE_ID, profile_count = 1, region_count = 0};
+  s.profiles[0] = env_glade_profile();
+  return s;
+}
+
+#test "Everglade II's set is admitted whole and its glade is Character Create's, exactly" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next: [1] EnvironmentSet;
+  active[0] = e2_environment_set(); next[0] = e2_environment_set();
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  glade := env_profile_sample(env_glade_profile(), 0.5);
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.5};
+  for i: 0..<3 {
+    z := [3] f32.[1, 60, 300][i];
+    eye := EnvDir.{x = ifx z > 0 then e2_road_x(-z) else 0, y = 2, z = -z};
+    r := env_resolve_camera(active[..], index[..], state, eye);
+    #assert r.refusal == EnvRefusal.none && env_resolved_same(r.env, glade, true);
+  }
+}
