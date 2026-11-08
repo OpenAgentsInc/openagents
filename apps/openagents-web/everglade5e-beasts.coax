@@ -20,14 +20,10 @@ E5RR_BEAST_TEAM :: 2;                        // neither the players' (0) nor the
 E5RR_RUN :: 9.0;                             // m/s a beast runs (everglade-circle.coax CI_CA_SPEED)
 E5RR_REACH :: 1.8;                           // m: a bite's 5 feet, from middle to middle
 E5RR_CHASE :: 30.0;                          // m: past it a beast lets its quarry go
-// Wolf (SRD 5.2.1): Medium Beast, AC 12, HP 11 (2d8 + 2), Speed 40 ft., Str 14 Dex 15 Con 12 Int 3
-// Wis 12 Cha 6, Pack Tactics (Advantage on an attack roll at a creature with an ally of the wolf
-// within 5 feet of it); Bite: +4, reach 5 ft., 5 (1d6 + 2) Piercing, and a Large or smaller target
-// has the Prone condition.
-E5RR_WOLF_AC :: 12; E5RR_WOLF_HP :: 11; E5RR_WOLF_HIT :: 4; E5RR_WOLF_SIDES :: 6; E5RR_WOLF_PLUS :: 2;
-E5RR_WOLF_SCORES :: [6] int.[14, 15, 12, 3, 12, 6];
-// Zombie (SRD 5.2.1 p. 343): Slam +3, reach 5 ft., 5 (1d8 + 1) Bludgeoning.
-E5RR_ZOMBIE_HIT :: 3; E5RR_ZOMBIE_PLUS :: 1;
+// A Wolf and a Zombie are their SRD 5.2.1 stat blocks (aethyr/rules/srd/monsters.coax MON_WOLF,
+// MON_ZOMBIE): the Wolf's Bite (+4, 1d6 + 2 Piercing, Prone on a Medium or smaller target) with Pack
+// Tactics, the Zombie's Slam (+3, 1d8 + 1 Bludgeoning) with Undead Fortitude, through the shared
+// stat-attack strike (stat-attack.coax rs_stat_strike).
 
 // A summoned creature: its id while on (0 off; the zones' ids, so 2000 + id names it), the seat that
 // summoned it, the spell, its form, where it is (metres; y the ground's, the host's), where it is
@@ -135,36 +131,14 @@ e5b_step :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, folk0: int, folk_
     }
   }
 }
-// Wolf q bites creature j: +4, 1d6 + 2 Piercing (the dice twice on a Critical Hit), Prone on a hit;
-// Advantage with another of the battle's beasts within 5 feet of j (Pack Tactics).
-e5b_bite :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, q: int, j: int) {
+// Beast q's attack at creature j, once a beat on the room's clock rather than in a turn of its own:
+// its block's record through the shared strike (Pack Tactics, riders, the target's reactions and
+// defenses). Whoever's turn is running keeps its own turn state.
+e5b_strike :: (b: [] RsBattle, beast0: int, q: int, j: int, m: int) {
   i := beast0 + q;
-  pack := false;
-  for o: 0..<beasts.count {
-    k := beast0 + o;
-    if o != q && beasts[o].id != 0 && !b[0].c[k].dead && rs_feet_to(b, k, j) <= 5 { pack = true; }
-  }
-  edge := rs_attack_edge(b, i, j, true, true);
-  edge = rs_edge((ifx edge > 0 then 1 else 0) + (ifx pack then 1 else 0), ifx edge < 0 then 1 else 0);
-  roll := rs_roll_attack(b, i, j, edge, E5RR_WOLF_HIT, 20, false);
-  l: [1] RsLine;
-  rs_add_name(l[..], b, i); rs_add_text(l[..], " bites "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": "); rs_add_roll(l[..], roll, E5RR_WOLF_HIT);
-  if !roll.hit { rs_add_text(l[..], ": miss"); rs_tell(b, RS_EV_MISS, -1, i, j, 0, 0, l[..]); return; }
-  amount := rs_roll(b[0].dice[..], E5RR_WOLF_SIDES) + (ifx roll.crit then rs_roll(b[0].dice[..], E5RR_WOLF_SIDES) else 0) + E5RR_WOLF_PLUS;
-  rs_add_text(l[..], ifx roll.crit then ": critical hit, " else ": hit, "); rs_add_int(l[..], amount); rs_add_text(l[..], " Piercing");
-  rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_PIERCING, l[..]);
-  rs_damage(b, i, j, amount, RS_PIERCING, roll.crit, -1);
-  if !b[0].c[j].dead { b[0].c[j].cond = b[0].c[j].cond | RS_PRONE; }
+  kept := b[0].turn;
+  hit := rs_stat_strike(b, i, j, rs_monster_action(m).attacks[0], 1);
+  b[0].turn = kept;
 }
-// Zombie q slams creature j: +3, 1d8 + 1 Bludgeoning (the dice twice on a Critical Hit).
-e5b_slam :: (b: [] RsBattle, beast0: int, q: int, j: int) {
-  i := beast0 + q;
-  roll := rs_roll_attack(b, i, j, rs_attack_edge(b, i, j, true, true), E5RR_ZOMBIE_HIT, 20, false);
-  l: [1] RsLine;
-  rs_add_name(l[..], b, i); rs_add_text(l[..], " slams "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": "); rs_add_roll(l[..], roll, E5RR_ZOMBIE_HIT);
-  if !roll.hit { rs_add_text(l[..], ": miss"); rs_tell(b, RS_EV_MISS, -1, i, j, 0, 0, l[..]); return; }
-  amount := rs_roll(b[0].dice[..], 8) + (ifx roll.crit then rs_roll(b[0].dice[..], 8) else 0) + E5RR_ZOMBIE_PLUS;
-  rs_add_text(l[..], ifx roll.crit then ": critical hit, " else ": hit, "); rs_add_int(l[..], amount); rs_add_text(l[..], " Bludgeoning");
-  rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_BLUDGEONING, l[..]);
-  rs_damage(b, i, j, amount, RS_BLUDGEONING, roll.crit, -1);
-}
+e5b_bite :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, q: int, j: int) { e5b_strike(b, beast0, q, j, MON_WOLF); }
+e5b_slam :: (b: [] RsBattle, beast0: int, q: int, j: int) { e5b_strike(b, beast0, q, j, MON_ZOMBIE); }

@@ -32,8 +32,12 @@
 // A monster at 0 Hit Points dies: it stops, a puff of dust rises, and it sinks into the ground over
 // XC_SINK seconds (charactercreator.coax scene).
 //
-// The monsters' stat blocks are the world's own (fb_folk), so a level 1 caster can fell one: Imp,
-// AC 13 and 10 Hit Points (the SRD's Imp is immune to fire); Gremlin, AC 12 and 13 Hit Points.
+// The monsters are SRD 5.2.1 stat blocks (aethyr/rules/srd/monsters.coax, #13034), under the
+// Bestiary's names: the imp is an Imp, the gremlin (the Puglin) a Goblin Warrior, the Puglin Brute
+// an Ogre, the Imp Fiend a Quasit and the Puglin Warlord a Hill Giant. A body's contact is its
+// block's attack Action (stat-multiattack.coax): the Hill Giant's two attacks, the Goblin's Shortbow,
+// the Ogre's Javelin and the Giant's Trash Lob when you stand past melee reach; a Goblin leaving your
+// reach takes Nimble Escape's Disengage.
 //   coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
@@ -106,16 +110,12 @@ XC_BLADE_R :: 0.12;        // m: a blade's sensor radius
 XC_BLADE_TIP :: [4]f32.[1.0,1.25,0.9,0.6];   // m from the weapon's origin to its tip (CC_KITS order)
 XC_WINDOW :: 6;            // ticks the sensor is open either side of the swing's impact
 
-// The SRD's Imp is a Fiend (Divine Smite's 1d8 more); the Gremlin and Puglins are not SRD creatures.
-xc_imp :: () -> RsCreature { c := fb_folk("Imp", 1, 13, 10, [6] int.[6, 17, 13, 11, 12, 14]); c.fiend = true; return c; }
-xc_gremlin :: () -> RsCreature { return fb_folk("Gremlin", 1, 12, 13, [6] int.[12, 14, 12, 8, 10, 6]); }
-// The dungeon's bigger monsters (verse/experimental-dungeon.coax DG_KIND_*): their AC and Hit
-// Points are experimental-hostiles.coax's HS_FIEND, HS_BRUTE and HS_BOSS.
+// Each body kind's block (verse/experimental-dungeon.coax DG_KIND_* order) and the world's name for it.
+XC_FOE_BLOCK :: [5] int.[MON_IMP, MON_GOBLIN_WARRIOR, MON_OGRE, MON_QUASIT, MON_HILL_GIANT];
+XC_FOE_TITLE :: [5] string.["Imp", "Gremlin", "Puglin Brute", "Imp Fiend", "Puglin Warlord"];
 xc_foe :: (kind: int) -> RsCreature {
-  if kind == xdungeon.DG_KIND_FIEND { c := fb_folk("Imp Fiend", 1, hostile.HS_FIEND.ac, hostile.HS_FIEND.hp, [6] int.[8, 17, 14, 11, 12, 14]); c.fiend = true; return c; }
-  if kind == xdungeon.DG_KIND_BRUTE { return fb_folk("Puglin Brute", 1, hostile.HS_BRUTE.ac, hostile.HS_BRUTE.hp, [6] int.[17, 11, 15, 6, 10, 7]); }
-  if kind == xdungeon.DG_KIND_BOSS { return fb_folk("Puglin Warlord", 1, hostile.HS_BOSS.ac, hostile.HS_BOSS.hp, [6] int.[19, 12, 17, 10, 12, 15]); }
-  return ifx kind == xdungeon.DG_KIND_IMP then xc_imp() else xc_gremlin();
+  k := ifx kind >= 0 && kind < XC_FOE_BLOCK.count then kind else xdungeon.DG_KIND_GREMLIN;
+  return rs_monster(XC_FOE_BLOCK[k], XC_FOE_TITLE[k], 1);
 }
 XC_FOE_NAMES :: [5] string.["IMP", "GREMLIN", "PUGLIN BRUTE", "IMP FIEND", "PUGLIN WARLORD"];
 xc_set_level :: (x: [] XcCombat, level: int) {
@@ -401,6 +401,8 @@ xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
     q:=RsOpportunityMove.{measured=true,from_feet=sqrt(dx*dx+dy*dy+dz*dz)/f32(XC_SQ)*5,to_feet=sqrt(tx*tx+ty*ty+tz*tz)/f32(XC_SQ)*5,
       reach=wp.reach_ft,melee=true,movement=true,seen=!rs_has(b[0].c[0],RS_BLINDED) && !rs_has(b[0].c[foe+1],RS_INVISIBLE) && hostile.hostile_sees(old,cr[0].player_x,cr[0].player_z)};
     fb_seat_in(b,x[0].npc_seat[foe..<foe+1]);
+    // a Goblin leaving your reach takes Nimble Escape's Disengage, its Bonus Action
+    if rs_opportunity_trigger(b,0,foe+1,q) && rs_trait(b[0].c[foe+1],RS_TRAIT_NIMBLE) { _ := rs_disengage_use(b,foe+1,RS_DISENGAGE_NIMBLE); }
     if rs_opportunity_trigger(b,0,foe+1,q) {
       before:=b[0].c[foe+1].hp;
       result:=rs_opportunity_attack(b,0,foe+1,weapon,q);
@@ -486,7 +488,7 @@ xc_depart :: (s:[] Lab,origin:EgBody,proposed:EgBody)->bool {
     before:=sqrt(dx*dx+dy*dy+dz*dz)/f32(XC_SQ)*5;
     after:=sqrt(tx*tx+ty*ty+tz*tz)/f32(XC_SQ)*5;
     seen:=!rs_has(b[0].c[foe+1],RS_BLINDED) && !rs_has(b[0].c[0],RS_INVISIBLE) && hostile.hostile_sees(e,cr[0].player_x,cr[0].player_z);
-    q:=RsOpportunityMove.{measured=true,from_feet=before,to_feet=after,reach=a.reach,melee=true,seen=seen,movement=true};
+    q:=RsOpportunityMove.{measured=true,from_feet=before,to_feet=after,reach=a.reach+rs_space_feet(b[0].c[foe+1]),melee=true,seen=seen,movement=true};
     if !rs_stat_attack_valid(a) || !rs_opportunity_trigger(b,foe+1,0,q) { continue; }
     hp_before:=b[0].c[0].hp+b[0].c[0].temp; seq:=b[0].book[0].seq;
     result:=rs_stat_opportunity(b,foe+1,0,a,q);
@@ -498,13 +500,15 @@ xc_depart :: (s:[] Lab,origin:EgBody,proposed:EgBody)->bool {
   xc_sync_vitals(s); xc_sync_permissions(s);
   return rs_can_move(b[0].c[0]) && rs_walk_speed(b,0)>0;
 }
-// The bodies publish contact intent; the shared battle owns all outcomes.
+// The bodies publish contact intent; the shared battle owns all outcomes. A kind's attack Action is
+// its block's; its Opportunity Attack the block's first melee record.
+xc_hostile_action :: (kind: int) -> RsStatAction {
+  if kind<0 || kind>=XC_FOE_BLOCK.count { return RsStatAction.{}; }
+  return rs_monster_action(XC_FOE_BLOCK[kind]);
+}
 xc_hostile_attack :: (kind: int) -> RsStatAttack {
-  if kind<0 || kind>=XC_FOE_NAMES.count { return RsStatAttack.{}; }
-  old := hostile.hostile_blow(kind);
-  names := [5] string.["experimental-imp","experimental-gremlin","experimental-brute","experimental-fiend","experimental-warlord"];
-  return RsStatAttack.{id=names[kind],name=XC_FOE_NAMES[kind],bonus=old.attack,dice=old.dice,sides=old.sides,flat=old.bonus,kind=old.kind,
-    ability=ifx kind==xdungeon.DG_KIND_FIEND then RS_DEX else RS_STR,reach=ifx kind==xdungeon.DG_KIND_BRUTE || kind==xdungeon.DG_KIND_BOSS then 10 else 5};
+  m := xc_hostile_action(kind); k := rs_stat_melee_pick(m);
+  return ifx k >= 0 then m.attacks[k] else RsStatAttack.{};
 }
 xc_sync_vitals :: (s: [] Lab) {
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
@@ -546,7 +550,7 @@ xc_hostile_contacts :: (s: [] Lab) {
     if foe<0 || foe>=XC_FOES || !rs_up(b[0].c[0]) || h[0].enemies[foe].dead || !x[0].npc_seat[foe].open { continue; }
     before := b[0].c[0].hp+b[0].c[0].temp; seq := b[0].book[0].seq;
     fb_seat_in(b,x[0].npc_seat[foe..<foe+1]);
-    accepted := rs_stat_attack(b,foe+1,0,xc_hostile_attack(h[0].enemies[foe].kind));
+    accepted := rs_stat_multiattack(b,foe+1,0,xc_hostile_action(h[0].enemies[foe].kind));
     fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
     xc_hostile_result(s,foe,before,seq,accepted);
   }
@@ -1247,21 +1251,21 @@ xc_probe :: (s: [] Lab, f: int) -> int {
     x := s[0].xc[..];
     xc_start(x, ifx pass == 0 then FB_CL_WIZARD else FB_CL_FIGHTER);
     xc_set_class(x, ifx pass == 0 then FB_CL_WIZARD else FB_CL_FIGHTER);
-    // one imp just ahead of you (in reach of a sword), the rest far off
+    // one gremlin (a Goblin Warrior; the Imp is immune to Fire) just ahead of you (in reach of a sword), the rest far off
     cr[0].player_x = 0; cr[0].player_z = 0;
     for i: 0..<XC_FOES { h[0].enemies[i].x = 60; h[0].enemies[i].z = 60 + f32(i) * 3; }
-    h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2; cr[0].player_face = 0;   // ahead of you (you face +z)
+    h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.2; cr[0].player_face = 0;   // ahead of you (you face +z)
     slot := ifx pass == 0 then 0 else 1;   // Fire Bolt is slot 1; the Fighter's Attack slot 2
     #assert (pass == 0 && x[0].bar[0].sp == SP_FIRE_BOLT) || (pass == 1 && x[0].bar[1].kind == FB_ATTACK);
     tries := 0;
-    while !h[0].enemies[0].dead && tries < 60 {
+    while !h[0].enemies[3].dead && tries < 60 {
       cr[0].clock += 1.1; h[0].hp = XC_PLAYER_MAX;
       _ := xc_press(s[..], slot); tries += 1;
     }
-    #assert h[0].enemies[0].dead && x[0].kills == 1 && x[0].landed >= 1 && x[0].casts >= 1;
-    #assert x[0].b[0].c[1].hp <= 0 && x[0].target == -1;
-    // the felled imp is out of the fight: the next press finds no one in reach for a sword, and no one is hurt
-    for i: 1..<XC_FOES { #assert x[0].b[0].c[1 + i].hp == x[0].b[0].c[1 + i].hp_max; }
+    #assert h[0].enemies[3].dead && x[0].kills == 1 && x[0].landed >= 1 && x[0].casts >= 1;
+    #assert x[0].b[0].c[4].hp <= 0 && x[0].target == -1;
+    // the felled gremlin is out of the fight: the next press finds no one in reach for a sword, and no one is hurt
+    for i: 0..<XC_FOES { if i == 3 { continue; } #assert x[0].b[0].c[1 + i].hp == x[0].b[0].c[1 + i].hp_max; }
   }
 }
 
@@ -1300,9 +1304,11 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   h[0].enemies[1].x = 0; h[0].enemies[1].z = -4;
   m = xc_aim(s[..], s[0].xc[0].bar[0]); #assert m.foe == 1;
   h[0].enemies[1].z = -70;
+  // the Imp is immune to Fire: the gremlin (a Goblin Warrior) takes the bolt that lands
+  h[0].enemies[0].z = -70; h[0].enemies[3].x = 0; h[0].enemies[3].z = -8;
   landed := 0; tries := 0;
   while s[0].xc[0].landed == 0 && tries < 40 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); tries += 1; }
-  #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].target == 0;
+  #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].target == 3;
 }
 #test "experimental combat: a blow strikes ahead within reach and nothing behind is picked" #steps 2000000000 {
   s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
@@ -1650,33 +1656,69 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert !h[0].enemies[0].held && !h[0].enemies[0].inactive;
 }
 
+#test "experimental combat: each body kind fights as its SRD stat block" {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  b := s[0].xc[0].b[..];
+  for i: 0..<XC_FOES {
+    k := hostile.hostile_kind(i); c := b[0].c[i+1]; blk := rs_monster_block(XC_FOE_BLOCK[k]);
+    #assert c.ac==blk.ac && c.hp_max==blk.hp && rs_size(c)==blk.size && c.klass==RS_MONSTER && c.immune==blk.immune && c.speed==blk.speed;
+    #assert cast(string)c.name[0..<c.name_n]==XC_FOE_TITLE[k] && hostile.hostile_blow(k).hp==blk.hp && hostile.hostile_blow(k).ac==blk.ac;
+  }
+  #assert xc_hostile_action(xdungeon.DG_KIND_BOSS).count==2 && !rs_stat_action_valid(xc_hostile_action(5)) && !rs_stat_action_valid(xc_hostile_action(-1));
+  #assert xc_hostile_attack(xdungeon.DG_KIND_GREMLIN).name=="Scimitar" && xc_hostile_attack(xdungeon.DG_KIND_BOSS).name=="Tree Club";
+  #assert xc_foe(9).ac==15 && hostile.hostile_shot(xdungeon.DG_KIND_IMP)==0 && hostile.hostile_shot(xdungeon.DG_KIND_GREMLIN)>24;
+}
+
+#test "experimental combat: a Goblin shoots from past its reach and a Hill Giant's contact is two attacks" #steps 400000000 {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=100; b[0].c[0].hp_max=100; b[0].c[0].temp=0;
+  // the gremlin (enemy 3) 10 m off, awake and in sight: its swing is a Shortbow shot
+  g := 3; h[0].enemies[g].kind=xdungeon.DG_KIND_GREMLIN; h[0].enemies[g].x=0; h[0].enemies[g].z=10;
+  h[0].enemies[g].awake=true; h[0].enemies[g].cool=0; b[0].c[g+1].turn_at=0;
+  xc_sync_vitals(s[..]);
+  hostile.hostile_tick(h,0,0,0,0.05);
+  #assert h[0].enemies[g].shot && h[0].enemies[g].swing==0 && !h[0].enemies[g].moving;
+  for k: 0..<8 { hostile.hostile_tick(h,0,0,0,0.05); }
+  #assert h[0].contacts[0].count==1;
+  xc_hostile_contacts(s[..]);
+  #assert b[0].c[0].hp==95 && h[0].hits==1;   // 1d6 + 2 Piercing
+  // the Hill Giant 2 m off: Tree Club twice, and you are knocked Prone
+  boss := -1; for i: 0..<XC_FOES { if hostile.hostile_kind(i)==xdungeon.DG_KIND_BOSS { boss=i; } }
+  #assert boss>=0;
+  h[0].enemies[g].z= -70; h[0].enemies[boss].kind=xdungeon.DG_KIND_BOSS; h[0].enemies[boss].x=0; h[0].enemies[boss].z=2;
+  b[0].c[boss+1].turn_at=0;
+  #assert hostile.hc_offer(h[0].contacts[..],boss); xc_hostile_contacts(s[..]);
+  #assert b[0].c[0].hp==61 && rs_has(b[0].c[0],RS_PRONE) && h[0].hits==2;   // 3d8 + 5 twice
+}
+
 #test "experimental combat: physical contact uses shared class AC, defenses, temporary HP and the saved player turn" {
   s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
-  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=10;
+  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=14;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].kind=xdungeon.DG_KIND_IMP;
   b[0].c[1].turn_at=0;
   xc_sync_vitals(s[..]);
   #assert h[0].shared && hostile.hc_offer(h[0].contacts[..],0);
   kept := b[0].turn; seat := s[0].xc[0].seat[0].turn;
   xc_hostile_contacts(s[..]);
-  #assert b[0].c[0].hp==20 && b[0].c[0].temp==6 && h[0].hp==20 && h[0].temp==6;
+  #assert b[0].c[0].hp==20 && b[0].c[0].temp==2 && h[0].hp==20 && h[0].temp==2;   // Sting: 6 Piercing + 6 Poison
   #assert h[0].contacts[0].count==0 && h[0].hits==1;
   #assert b[0].turn.action==kept.action && s[0].xc[0].seat[0].turn.action==seat.action;
   // A second contact before the actor's next turn cannot obtain another Action.
   rolls := b[0].dice[0].rolled;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
   #assert b[0].dice[0].rolled==rolls && h[0].hits==1;
-  b[0].clock=1.5; b[0].c[0].temp=0; b[0].c[0].resist=1<<RS_SLASHING;
+  b[0].clock=1.5; b[0].c[0].temp=0; b[0].c[0].resist=1<<RS_PIERCING;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
-  #assert b[0].c[0].hp==18 && h[0].hp==18 && h[0].hits==2;
+  #assert b[0].c[0].hp==11 && h[0].hp==11 && h[0].hits==2;   // 3 Piercing + 6 Poison
   b[0].clock=3; b[0].c[0].ac=30; rolls=b[0].dice[0].rolled;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
-  #assert b[0].c[0].hp==18 && b[0].dice[0].rolled==rolls+1 && h[0].hits==2;
+  #assert b[0].c[0].hp==11 && b[0].dice[0].rolled==rolls+1 && h[0].hits==2;
   #assert !rs_stat_attack_valid(xc_hostile_attack(-1)) && !rs_stat_attack_valid(xc_hostile_attack(5));
-  b[0].clock=4.5; b[0].c[0].ac=10; b[0].c[0].immune=1<<RS_SLASHING;
+  b[0].clock=4.5; b[0].c[0].ac=10; b[0].c[0].immune=1<<RS_POISON;
   #assert hostile.hc_offer(h[0].contacts[..],0); xc_hostile_contacts(s[..]);
-  #assert b[0].c[0].hp==18 && h[0].hits==3;
+  #assert b[0].c[0].hp==8 && h[0].hits==3;   // 3 Piercing, no Poison
 }
 
 #test "experimental combat: the Imp is a Fiend for Divine Smite; the Gremlin and Puglins are not" {
@@ -1776,13 +1818,13 @@ xc_play_kit :: (c: int) {
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   for i: 1..<XC_FOES { h[0].enemies[i].dead=true; }
   h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].swing=0.34;
-  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=10;
+  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=14;
   b[0].c[0].turn_at=0; b[0].c[1].turn_at=0;
   before := h[0].dice[0].state;
   u: [104] f32; out: [1] f32;
   _ := lab_frame(s[..],out[..],u[..],1280,720,1,0.05,false);
   #assert h[0].shared && h[0].contacts[0].count==0 && h[0].dice[0].state==before;
-  #assert b[0].c[0].hp==20 && b[0].c[0].temp==6 && h[0].hp==20 && h[0].temp==6;
+  #assert b[0].c[0].hp==20 && b[0].c[0].temp==2 && h[0].hp==20 && h[0].temp==2;
 }
 
 #test "experimental combat: simultaneous shared hits stop each striker even when temporary HP absorb them" {
@@ -1826,7 +1868,7 @@ xc_play_kit :: (c: int) {
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
   s[0].xc[0].seat[0].turn.action=true; s[0].xc[0].seat[0].turn.slot_spent=true;
   body:=lab_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
-  #assert body.z==f32(-0.1) && b[0].c[0].hp==96 && b[0].c[1].reacted;
+  #assert body.z==f32(-0.1) && b[0].c[0].hp==88 && b[0].c[1].reacted;
   #assert s[0].xc[0].seat[0].turn.action && s[0].xc[0].seat[0].turn.slot_spent;
   #assert !s[0].xc[0].npc_seat[0].turn.action;
 }
@@ -1852,7 +1894,7 @@ xc_play_kit :: (c: int) {
   b[0].dice[0].fixed=true; b[0].c[0].hp=100; b[0].c[0].ac=10; cr[0].player_z=4;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
   body:=lab_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
-  #assert body.z==f32(-0.1) && b[0].c[0].hp==96 && cr[0].player_z==4;
+  #assert body.z==f32(-0.1) && b[0].c[0].hp==88 && cr[0].player_z==4;
 }
 #test "experimental teleport publishes a new origin without provoking for the teleport displacement" {
   s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);

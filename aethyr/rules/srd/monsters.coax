@@ -30,7 +30,7 @@ RsMonsterBlock :: struct {
   size: int; ac: int; hp: int; speed: int;
   score: [6] int; saves: int;               // save proficiencies, bits of 1 << RS_STR...
   resist: int; immune: int; immune_cond: int;
-  undead: bool; pack: bool; magic: bool; nimble: bool; fortitude: bool;
+  undead: bool; fiend: bool; pack: bool; magic: bool; nimble: bool; fortitude: bool;
   action: RsStatAction;
 }
 rs_mon_attack :: (id: string, name: string, bonus: int, dice: int, sides: int, flat: int, kind: int, ability: int, reach: int) -> RsStatAttack {
@@ -44,7 +44,7 @@ rs_monster_block :: (m: int) -> RsMonsterBlock {
     // 200; PB +2). Magic Resistance. Sting: +5, reach 5 ft., 6 (1d6 + 3) Piercing plus 7 (2d6) Poison.
     k = RsMonsterBlock.{id = "monster/imp", name = "Imp", page = 300, xp = 200, pb = 2, size = RS_TINY, ac = 13, hp = 21, speed = 20,
                         score = [6] int.[6, 17, 13, 11, 12, 14], resist = 1 << RS_COLD, immune = (1 << RS_FIRE) | (1 << RS_POISON),
-                        immune_cond = RS_POISONED, magic = true};
+                        immune_cond = RS_POISONED, fiend = true, magic = true};
     a[0] = rs_mon_attack("monster/imp/sting", "Sting", 5, 1, 6, 3, RS_PIERCING, RS_DEX, 5);
     a[0].plus_dice = 2; a[0].plus_sides = 6; a[0].plus_kind = RS_POISON;
     k.action = RsStatAction.{attacks = a, n = 1, count = 1};
@@ -55,7 +55,7 @@ rs_monster_block :: (m: int) -> RsMonsterBlock {
     // the Poisoned condition until the start of the quasit's next turn.
     k = RsMonsterBlock.{id = "monster/quasit", name = "Quasit", page = 317, xp = 200, pb = 2, size = RS_TINY, ac = 13, hp = 25, speed = 40,
                         score = [6] int.[5, 17, 10, 7, 10, 10], resist = (1 << RS_COLD) | (1 << RS_FIRE) | (1 << RS_LIGHTNING),
-                        immune = 1 << RS_POISON, immune_cond = RS_POISONED, magic = true};
+                        immune = 1 << RS_POISON, immune_cond = RS_POISONED, fiend = true, magic = true};
     a[0] = rs_mon_attack("monster/quasit/rend", "Rend", 5, 1, 4, 3, RS_SLASHING, RS_DEX, 5);
     a[0].ride = RS_RIDE_POISON_TO_START;
     k.action = RsStatAction.{attacks = a, n = 1, count = 1};
@@ -130,7 +130,7 @@ rs_monster :: (m: int, name: string, team: int) -> RsCreature {
   c[0].ac = k.ac; c[0].hp_max = k.hp; c[0].hp = k.hp; c[0].speed = k.speed;
   c[0].form = rs_form(k.size, (ifx k.pack then RS_TRAIT_PACK else 0) | (ifx k.magic then RS_TRAIT_MAGIC else 0) | (ifx k.nimble then RS_TRAIT_NIMBLE else 0));
   c[0].resist = k.resist; c[0].immune = k.immune; c[0].immune_cond = k.immune_cond;
-  c[0].undead = k.undead; c[0].fortitude = k.fortitude;
+  c[0].undead = k.undead; c[0].fiend = k.fiend; c[0].fortitude = k.fortitude;
   c[0].spell_ability = -1; c[0].weapon = W_UNARMED; c[0].ranged = -1;
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];

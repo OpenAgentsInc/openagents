@@ -10,7 +10,7 @@
 // inactive: cannot begin or continue an attack, independently of movement
 // stopped: a scoped hit stop holds this one for the frame (its owner's react_held, aethyr/action/react.coax); the rest of the world goes on
 // kind: experimental-dungeon.coax's DG_KIND_*, scale its size; a sleeper waits where it stands until it sees you near
-Enemy :: struct {walk_scale:f32=1;x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;}
+Enemy :: struct {walk_scale:f32=1;x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;shot:bool;}   // shot: its swing is a ranged attack
 // the village's six (two of them, 2 and 5, in the dungeon's entrance hall) and the dungeon's own
 HS_N :: HC_MAX;
 DamagePop :: struct {amount:int;x:f32;y:f32;z:f32;born:f32;}
@@ -93,14 +93,20 @@ hostile_bodies :: (s:[]Hostiles,x:f32,z:f32,out:[]f32)->int {
  if !s[0].ready {return 0;}n:=0;ground:=terrain.exp_height(x,z);for i:0..<HS_N {e:=s[0].enemies[i];if e.dead || abs(e.x-x)>8 || abs(e.z-z)>8 {continue;}if n*7+7>out.count {break;}o:=n*7;y:=terrain.exp_height(e.x,e.z)-ground;out[o]=e.x;out[o+1]=y+0.25*e.scale;out[o+2]=e.z;out[o+3]=e.x;out[o+4]=y+1.25*e.scale;out[o+5]=e.z;out[o+6]=0.35*e.scale;n+=1;}return n;
 }
 // Monster i's kind: the village's three imps and three gremlins, then the dungeon's (DG_SPAWN).
+// Each kind is an SRD 5.2.1 stat block (aethyr/rules/srd/monsters.coax): the imp an Imp, the
+// gremlin a Goblin Warrior, the brute an Ogre, the fiend a Quasit and the boss a Hill Giant.
 hostile_kind :: (i:int)->int {if i<6 {return ifx i<3 then dungeon.DG_KIND_IMP else dungeon.DG_KIND_GREMLIN;}return cast(int)dungeon.DG_SPAWN[i-6][2];}
-// What a kind's blow is: the imps and gremlins strike as the SRD Guard always has here; the
-// dungeon's bigger kinds hit harder (a fiend's claws 2d4+3, a brute's club 2d8+3, the
-// Warlord's axe 3d8+4).
-HS_FIEND :: SrdCreature.{name = "Imp Fiend", ac = 14, hp = 22, dex = 3, attack = 5, dice = 2, sides = 4, bonus = 3, kind = DMG_PIERCING};
-HS_BRUTE :: SrdCreature.{name = "Puglin Brute", ac = 14, hp = 30, dex = 0, attack = 5, dice = 2, sides = 8, bonus = 3, kind = DMG_BLUDGEONING};
-HS_BOSS :: SrdCreature.{name = "Puglin Warlord", ac = 16, hp = 110, dex = 1, attack = 7, dice = 3, sides = 8, bonus = 4, kind = DMG_SLASHING};
-hostile_blow :: (kind:int)->SrdCreature {return ifx kind==dungeon.DG_KIND_FIEND then HS_FIEND else ifx kind==dungeon.DG_KIND_BRUTE then HS_BRUTE else ifx kind==dungeon.DG_KIND_BOSS then HS_BOSS else SRD_GUARD;}
+// What a kind's blow is when no shared battle runs (the body's own fixtures): its block's first
+// melee attack, the shared battle's (experimental-combat.coax) being the full Action.
+HS_IMP :: SrdCreature.{name = "Imp", ac = 13, hp = 21, dex = 3, attack = 5, dice = 1, sides = 6, bonus = 3, kind = DMG_PIERCING};
+HS_GOBLIN :: SrdCreature.{name = "Goblin Warrior", ac = 15, hp = 10, dex = 2, attack = 4, dice = 1, sides = 6, bonus = 2, kind = DMG_SLASHING};
+HS_FIEND :: SrdCreature.{name = "Quasit", ac = 13, hp = 25, dex = 3, attack = 5, dice = 1, sides = 4, bonus = 3, kind = DMG_SLASHING};
+HS_BRUTE :: SrdCreature.{name = "Ogre", ac = 11, hp = 68, dex = -1, attack = 6, dice = 2, sides = 8, bonus = 4, kind = DMG_BLUDGEONING};
+HS_BOSS :: SrdCreature.{name = "Hill Giant", ac = 13, hp = 105, dex = -1, attack = 8, dice = 3, sides = 8, bonus = 5, kind = DMG_BLUDGEONING};
+hostile_blow :: (kind:int)->SrdCreature {return ifx kind==dungeon.DG_KIND_FIEND then HS_FIEND else ifx kind==dungeon.DG_KIND_BRUTE then HS_BRUTE else ifx kind==dungeon.DG_KIND_BOSS then HS_BOSS else ifx kind==dungeon.DG_KIND_IMP then HS_IMP else HS_GOBLIN;}
+// How far a kind shoots, metres: its block's ranged attack's normal range (the Goblin's Shortbow 80
+// feet, the Ogre's Javelin 30, the Hill Giant's Trash Lob 60); 0 none.
+hostile_shot :: (kind:int)->f32 {return ifx kind==dungeon.DG_KIND_GREMLIN then 24.38f32 else ifx kind==dungeon.DG_KIND_BRUTE then 9.14f32 else ifx kind==dungeon.DG_KIND_BOSS then 18.29f32 else 0;}
 hostile_start :: (s:[]Hostiles) {
  if s[0].ready {return;}s[0].ready=true;s[0].hp=44;s[0].dice[0]=srd_dice(27);
  for i:0..<HS_N {x:f32;z:f32;
@@ -134,8 +140,13 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
   if gap>0.001 {e[0].face_x=dx/gap;e[0].face_z=dz/gap;}
   // a bigger body reaches further: it stops and swings from further off
   reach:=1.45+0.45*(e[0].scale-1);
-  if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<reach+0.35 && abs(py)<2 && !hostile_blocked((e[0].x+px)*0.5,(e[0].z+pz)*0.5) {if s[0].shared {accepted:=hc_offer(s[0].contacts[..],i);} else {hit:=srd_attack(s[0].dice[..],hostile_blow(e[0].kind),15);if hit.hit {s[0].last=i;hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
-  if gap<reach {if !e[0].inactive && e[0].cool<=0 {e[0].swing=0;e[0].struck=false;}continue;}
+  if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;
+    lands:=ifx e[0].shot then gap<=hostile_shot(e[0].kind) && hostile_sees(e[0],px,pz) else gap<reach+0.35 && !hostile_blocked((e[0].x+px)*0.5,(e[0].z+pz)*0.5);
+    if lands && abs(py)<2 && (s[0].shared || !e[0].shot) {if s[0].shared {accepted:=hc_offer(s[0].contacts[..],i);} else {hit:=srd_attack(s[0].dice[..],hostile_blow(e[0].kind),15);if hit.hit {s[0].last=i;hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
+  if gap<reach {if !e[0].inactive && e[0].cool<=0 {e[0].swing=0;e[0].struck=false;e[0].shot=false;}continue;}
+  // with the shared battle, a kind with a ranged attack shoots while you stand well past its reach
+  // and within its range, then closes while it readies the next
+  if s[0].shared && !e[0].inactive && e[0].cool<=0 && gap>reach+3 && gap<=hostile_shot(e[0].kind) && abs(py)<2 && hostile_sees(e[0],px,pz) {e[0].swing=0;e[0].struck=false;e[0].shot=true;continue;}
   if e[0].held {continue;}
   gx:=px+ox[i%6]*e[0].scale-e[0].x;gz:=pz+oz[i%6]*e[0].scale-e[0].z;distance:=sqrt(gx*gx+gz*gz);if distance<0.01 {continue;}
   step:=ifx distance<dt*2.4*e[0].walk_scale then distance else dt*2.4*e[0].walk_scale;nx:=e[0].x+gx/distance*step;nz:=e[0].z+gz/distance*step;

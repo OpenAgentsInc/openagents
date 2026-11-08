@@ -32,12 +32,12 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 #test "the used blocks hold the SRD's numbers" {
   im := rs_monster(MON_IMP,"",0);
   #assert cast(string)im.name[0..<im.name_n]=="Imp" && im.ac==13 && im.hp_max==21 && im.speed==20 && rs_size(im)==RS_TINY && rs_proficiency(im.level)==2;
-  #assert im.score[RS_DEX]==17 && im.score[RS_CHA]==14 && rs_trait(im,RS_TRAIT_MAGIC) && im.resist==1<<RS_COLD && im.immune==(1<<RS_FIRE)|(1<<RS_POISON) && im.immune_cond==RS_POISONED;
+  #assert im.score[RS_DEX]==17 && im.score[RS_CHA]==14 && rs_trait(im,RS_TRAIT_MAGIC) && im.resist==1<<RS_COLD && im.immune==(1<<RS_FIRE)|(1<<RS_POISON) && im.immune_cond==RS_POISONED && im.fiend;
   qu := rs_monster(MON_QUASIT,"Imp Fiend",0);
   #assert cast(string)qu.name[0..<qu.name_n]=="Imp Fiend" && qu.ac==13 && qu.hp_max==25 && qu.speed==40 && rs_trait(qu,RS_TRAIT_MAGIC) && qu.immune_cond==RS_POISONED;
-  #assert qu.resist==(1<<RS_COLD)|(1<<RS_FIRE)|(1<<RS_LIGHTNING) && qu.immune==1<<RS_POISON;
+  #assert qu.resist==(1<<RS_COLD)|(1<<RS_FIRE)|(1<<RS_LIGHTNING) && qu.immune==1<<RS_POISON && qu.fiend;
   go := rs_monster(MON_GOBLIN_WARRIOR,"",0);
-  #assert go.ac==15 && go.hp_max==10 && rs_size(go)==RS_SMALL && rs_trait(go,RS_TRAIT_NIMBLE) && !go.humanoid && go.score[RS_DEX]==15;
+  #assert go.ac==15 && go.hp_max==10 && rs_size(go)==RS_SMALL && rs_trait(go,RS_TRAIT_NIMBLE) && !go.fiend && !go.humanoid && go.score[RS_DEX]==15;
   og := rs_monster(MON_OGRE,"",0);
   #assert og.ac==11 && og.hp_max==68 && og.speed==40 && rs_size(og)==RS_LARGE && og.score[RS_STR]==19;
   hg := rs_monster(MON_HILL_GIANT,"",0);

@@ -423,8 +423,7 @@ e5rr_damage_many :: (b:[]RsBattle,hits:[]const E5rrDamage)->bool? #effects(reads
 
 e5rr_wolf :: () -> RsCreature {
   c: [1] RsCreature;
-  c[0] = fb_folk("Wolf", E5RR_BEAST_TEAM, E5RR_WOLF_AC, E5RR_WOLF_HP, E5RR_WOLF_SCORES);
-  c[0].humanoid = false; c[0].speed = 40;
+  c[0] = rs_monster(MON_WOLF, "Wolf", E5RR_BEAST_TEAM);
   return c[0];
 }
 // Finger of Death (SRD 5.2.1 p. 131): a Humanoid it kills rises at the start of the caster's next turn
