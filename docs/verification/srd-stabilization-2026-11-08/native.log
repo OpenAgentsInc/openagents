@@ -1,0 +1,17 @@
+passed               aethyr/rules/srd/stabilization-checks.coax
+  passed             a creature stabilized by three death saves regains one HP after its fixed two-hour recovery
+  passed             first aid spends an Action on a trained Wisdom Medicine check and stabilizes without healing or waking
+  passed             failed first aid spends its Action but leaves the death-save track and recovery unmodified
+  passed             first aid refusal preserves budgets dice resources events and patient state
+  passed             first aid admits patient index zero and refuses an invalid logical actor even when it owns the turn
+  passed             first aid uses shared conditions Exhaustion sense failures and circumstance cancellation
+  passed             first aid retains optional rescue spending and failed Tactical Mind keeps Second Wind
+  passed             recovery arms only eligible stable actors once and preserves existing deadlines
+  passed             recovery samples a d4 once per episode with every hour face and exact replay state
+  passed             first aid restarts recovery after damage and never uses a former stable episode deadline
+  passed             expiry respects no-healing and another Unconscious owner then recovers once after both effects expire
+  passed             death damage healing and inactive raw timers cannot revive or publish a false recovery
+  passed             death-save stabilization restarts the deadline after a damaged stable episode
+  passed             admitting a standalone stable creature arms its recovery and preserves a restored deadline
+  passed             actual turn start checks an elapsed stable deadline before deciding whether to roll a death save
+native checks: passed {"passed": 15}

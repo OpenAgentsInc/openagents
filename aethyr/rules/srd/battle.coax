@@ -37,6 +37,7 @@
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
 #load "ability-checks.coax";
+#load "stabilization.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -281,6 +282,7 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
   initiative := rs_initiative_plan(c);
   b[0].c[i].initiative = rs_d20(b[0].dice[..],initiative.edge).roll + initiative.bonus - initiative.penalty;
   b[0].n += 1;
+  _ := rs_stable_arm(b,i);
   return i;
 }
 // The turns begin: the highest initiative first, the rest spread over the 6-second round.
@@ -1189,6 +1191,7 @@ rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
 // death saving throw. A Prone creature chooses later whether to stand or crawl.
 rs_start_turn :: (b: [] RsBattle, i: int) {
   rs_seal_timing(b);
+  _ := rs_stable_recover(b,i);
   concentration_lost := rs_sync_concentration(b,i);
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
@@ -1292,6 +1295,7 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
     if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
     if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
     for k: 0..<RS_EFFECTS { if rs_effect_uses_clock(b[0].c[i].eff[k].kind) && b[0].c[i].eff[k].until <= t { rs_drop_effect(b, i, k); } }
+    _ := rs_stable_recover(b,i);
     // the action adapter: spent slots and uses come back on a cooldown, one at a time
     if rs_timing_recharge(b[0].timing) > 0 && !b[0].c[i].dead {
       r := rs_timing_recharge(b[0].timing);

@@ -1,0 +1,59 @@
+// SRD 5.2.1 pp.17-18. First aid is Help, not healing. Contact and the task's
+// sense/circumstance facts come from the authoritative world/adjudicator.
+#authority;
+
+RsFirstAidContext :: struct {
+  contact: bool; sight: bool; hearing: bool; fear_visible: bool;
+  advantage: bool; disadvantage: bool;
+}
+
+rs_first_aid :: (b: [] RsBattle, i: int, j: int, q: RsFirstAidContext) -> RsAbilityResult #effects(all) {
+  r: RsAbilityResult;
+  if i<0 || i>=b[0].n || j<0 || j>=b[0].n || !q.contact || !rs_action_free(b,i) || !rs_death_eligible(b[0].c[j]) { return r; }
+  b[0].turn.action=true;
+  r=rs_ability_check(b,i,RsAbilityRequest.{ability=RS_WIS,skill=SK_MEDICINE,dc=10,
+    sight=q.sight,hearing=q.hearing,fear_visible=q.fear_visible,advantage=q.advantage,disadvantage=q.disadvantage});
+  if r.passed {
+    b[0].c[j].stable=true; b[0].c[j].death_ok=0; b[0].c[j].death_fail=0;
+    // A previous stable episode may have ended through damage since the last
+    // clock reconciliation. Its retained inactive deadline cannot be reused.
+    b[0].c[j].stable_due=0;
+    _ := rs_stable_arm(b,j);
+  }
+  l: [1] RsLine; rs_add_name(l[..],b,i); rs_add_text(l[..]," gives first aid to "); rs_add_name(l[..],b,j);
+  rs_add_text(l[..],": WIS (Medicine) ");
+  if r.automatic { rs_add_text(l[..],"automatic failure"); }
+  else { rs_add_int(l[..],r.total); rs_add_text(l[..]," vs DC 10"); }
+  rs_add_text(l[..],ifx r.passed then ": Stable" else ": not stabilized");
+  rs_tell(b,ifx r.passed then RS_EV_STABLE else RS_EV_CONDITION,-1,i,j,r.total,0,l[..]);
+  return r;
+}
+
+// Arm once per stable episode. A restored deadline is preserved. Callers that
+// create stable state without a battle clock must arm when admitting it here.
+rs_stable_arm :: (b: [] RsBattle, j: int) -> bool #effects(all) {
+  if j<0 || j>=b[0].n || !b[0].c[j].stable || b[0].c[j].dead || b[0].c[j].hp!=0 || b[0].c[j].stable_due>0 { return false; }
+  b[0].c[j].stable_due=b[0].clock+f32(rs_roll(b[0].dice[..],4))*3600;
+  return true;
+}
+
+rs_stable_recover :: (b: [] RsBattle, j: int) -> bool #effects(all) {
+  if j<0 || j>=b[0].n { return false; }
+  if !b[0].c[j].stable || b[0].c[j].dead || b[0].c[j].hp!=0 { b[0].c[j].stable_due=0; return false; }
+  _ := rs_stable_arm(b,j);
+  if b[0].c[j].stable_due>b[0].clock { return false; }
+  if rs_heal(b[0].c[j..<j+1],1)==0 { return false; }
+  b[0].c[j].stable_due=0;
+  rs_say(b,RS_EV_UP,j,j,1," regains 1 Hit Point after stabilizing");
+  return true;
+}
+
+#test "first aid and stable recovery execute the shared entry points" {
+  b: [1] RsBattle; c: [2] RsCreature; b[0].c=c[..]; b[0].n=2;
+  c[0].hp=1; c[0].score[RS_WIS]=10; c[1].hp_max=12; c[1].cond=RS_UNCONSCIOUS;
+  b[0].dice[0].fixed=true;
+  #assert rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true}).passed;
+  #assert c[1].stable_due==7200 && !rs_stable_arm(b[..],1);
+  b[0].clock=7200;
+  #assert rs_stable_recover(b[..],1) && c[1].hp==1;
+}

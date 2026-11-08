@@ -1,0 +1,243 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/stabilization-checks.coax",
+      "source_sha256": "5125ffb65b697b00197b8d87b5d5c8a0a3f087c2b524f1515fc016b3fd0e40ef",
+      "checks": [
+        {
+          "name": "a creature stabilized by three death saves regains one HP after its fixed two-hour recovery",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "first aid spends an Action on a trained Wisdom Medicine check and stabilizes without healing or waking",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "failed first aid spends its Action but leaves the death-save track and recovery unmodified",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "first aid refusal preserves budgets dice resources events and patient state",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "first aid admits patient index zero and refuses an invalid logical actor even when it owns the turn",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "first aid uses shared conditions Exhaustion sense failures and circumstance cancellation",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "first aid retains optional rescue spending and failed Tactical Mind keeps Second Wind",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "recovery arms only eligible stable actors once and preserves existing deadlines",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "recovery samples a d4 once per episode with every hour face and exact replay state",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "first aid restarts recovery after damage and never uses a former stable episode deadline",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "expiry respects no-healing and another Unconscious owner then recovers once after both effects expire",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "death damage healing and inactive raw timers cannot revive or publish a false recovery",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "death-save stabilization restarts the deadline after a damaged stable episode",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "admitting a standalone stable creature arms its recovery and preserves a restored deadline",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "actual turn start checks an elapsed stable deadline before deciding whether to roll a death save",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "2286cd482b6a6bef5a0abd390c824682b19c34678637e8c7729f00df93425f6c",
+            "binary_sha256": "cbfa85f864c0207dc9ec808ef75f76147e7ab4e8332f4f64158286fa6724a268"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "69dcde07c5018f0f85d274c40d3f838ff740f5f56f59db7e460acb4b155645c5",
+            "binary_sha256": "8b551998bd87a1c92814c8aa8554a9b4242cd66e6f6f8df9a246d94b6776ba11"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 15
+  },
+  "outcome": "passed"
+}

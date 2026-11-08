@@ -484,3 +484,20 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   #assert s[0].turn.move_left==0 && rs_has(b[0].c[FT_HERO],RS_STUNNED);
   #assert b[0].who==FT_FOE && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
 }
+
+#test "saved-seat first aid stabilizes through Medicine and spends only that seats Action" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b[0].c[FT_HERO].score[RS_WIS]=10;
+  b[0].c[FT_FOE].hp=0; b[0].c[FT_FOE].cond=RS_UNCONSCIOUS|RS_PRONE;
+  b[0].dice[0].fixed=true; rolls:=b[0].dice[0].rolled;
+  b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.bonus=true; b[0].turn.move_left=7; b[0].turn.move_feet=2;
+  r:=fb_seat_first_aid(b[..],s[..],FT_FOE,RsFirstAidContext.{contact=true});
+  #assert r.accepted && r.passed && s[0].turn.action && !s[0].turn.bonus && b[0].c[FT_FOE].stable;
+  #assert b[0].who==FT_FOE && b[0].turn.action && b[0].turn.bonus && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
+  #assert b[0].dice[0].rolled==rolls+2 && b[0].c[FT_FOE].stable_due==b[0].clock+7200;
+  r=fb_seat_first_aid(b[..],s[..],FT_FOE,RsFirstAidContext.{contact=true});
+  #assert !r.accepted && b[0].dice[0].rolled==rolls+2;
+  s[0].open=false;
+  r=fb_seat_first_aid(b[..],s[..],-1,RsFirstAidContext.{contact=true});
+  #assert !r.accepted && b[0].who==FT_FOE && b[0].turn.move_left==7;
+}

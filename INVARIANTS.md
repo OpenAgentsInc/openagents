@@ -6792,3 +6792,18 @@ zero-dice damage has no Unarmed Strike base and cannot gain Sacred Weapon.
 This simple entry has no retained rider; ordinary weapon preflight remains.
 Physical hostile wiring and canonical monster records remain migration work.
 Evidence: `docs/verification/srd-stat-attacks-2026-11-08/README.md`.
+
+## Stabilization records one recovery deadline per actual stable episode
+
+`stabilization.coax` admits Help first aid through the shared Wisdom (Medicine)
+check. An admitted attempt spends its Action even on failure; refusal is
+transactional. Success and a third battle death-save success reset both save
+counts without healing/waking, then arm one 1d4-hour logical-clock deadline.
+Admission arms a standalone stable creature and preserves restored deadlines.
+Clock and turn boundaries recover one HP only while living, stable and at zero;
+blocked healing retains the deadline, and independent Unconscious owners remain.
+New stabilization replaces an inactive prior episode's deadline after damage.
+Raw borrowed-state producers must report the transition when clock ownership
+begins. Saved-seat first aid spends only that player's Action. Exact native,
+world/control and remaining recovery scope:
+`docs/verification/srd-stabilization-2026-11-08/README.md`.

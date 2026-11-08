@@ -1,0 +1,7 @@
+FAIL #test admitting a standalone stable creature arms its recovery and preserves a restored deadline (8 ms)
+aethyr/rules/srd/stabilization-checks.coax:202:3: error[E0406]: assertion failed
+    #assert rs_add(b[..],patient[0],1,1)==0 && b[0].c[0].stable_due==7300;
+    ^
+  note: in #test admitting a standalone stable creature arms its recovery and preserves a restored deadline
+1 of 249 checks (--only 'admitting a standalone'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

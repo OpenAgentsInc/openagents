@@ -428,3 +428,18 @@ mutation gates kill 80/8 mutants, zero survive. The rebased tree passes 210 core
 214 hotbar and 22 selected Experimental checks and an actual native witness.
 Physical contact wiring, player HP migration and used-monster data remain;
 #13034/#13046 stay open. [Evidence](../verification/srd-stat-attacks-2026-11-08/README.md).
+
+## First aid and stable recovery — 2026-11-08
+
+Shared Help first aid now spends an Action on the actual Wisdom (Medicine)
+check, stabilizes without healing/waking, and resets both death-save counts.
+New stable episodes from first aid/three battle successes arm one 1d4-hour
+logical-clock recovery; admission handles standalone stable creatures and
+preserves restored deadlines. Damage/death/earlier healing suppress stale
+recovery; no-healing blocks actual recovery without rerolling; other Unconscious
+owners remain. A saved-seat adapter preserves the other actor's turn.
+Evidence: [stabilization](../verification/srd-stabilization-2026-11-08/README.md):
+251 composed core checks, 216 hotbar checks, fifteen root native O0/O2 scenarios;
+112 stabilization and 32 battle death-save mutants killed, zero survivors.
+Healer's Kit, knockout/Short Rest, general Help, world inputs and remaining
+#13039/#13040 acceptance are still open. This is not full recovery qualification.

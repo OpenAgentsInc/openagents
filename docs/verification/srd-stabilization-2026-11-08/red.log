@@ -1,0 +1,7 @@
+FAIL #test a creature stabilized by three death saves regains one HP after its fixed two-hour recovery (6 ms)
+aethyr/rules/srd/stabilization-checks.coax:13:3: error[E0406]: assertion failed
+    #assert c[0].hp==1 && !c[0].stable && !rs_has(c[0],RS_UNCONSCIOUS) && rs_has(c[0],RS_PRONE);
+    ^
+  note: in #test a creature stabilized by three death saves regains one HP after its fixed two-hour recovery
+1 of 182 checks (--only 'two-hour recovery'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
