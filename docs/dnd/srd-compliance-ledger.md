@@ -95,7 +95,7 @@ named below are selected evidence only, not exhaustive qualification.
 | CONTENT-EQUIPMENT | Equipment pp.89-103 | Partial | Selected weapons/masteries and fixed armor | Complete weapons/armor/tools/gear/mounts/services/crafting, M2/M5 |
 | CONTENT-TOOLBOX | Gameplay Toolbox pp.192-203 | Missing | No complete shared catalog/executor identified | Travel, curses/contagions, environment, stress, poisons, traps and encounter rules, M2/M5 |
 | CONTENT-ITEMS | Magic Items pp.204-253 | Missing | No complete shared catalog/executor identified | All items, attunement, charges, activation and effects, M2/M5 |
-| CONTENT-MONSTERS | Monsters p.254 onward, Animals p.344 onward | Partial | Selected NPCs, Skeleton and Zombie; siege mixes aren't source catalog entries | All stat blocks, traits/actions/reactions and source IDs, M2/M5 |
+| CONTENT-MONSTERS | Monsters p.254 onward, Animals p.344 onward | Partial | Every block the worlds field (#13034): Imp, Quasit, Goblin Warrior, Ogre, Hill Giant, Wolf, Zombie, Skeleton and the npcs.coax NPCs, with a checked used-monster manifest; siege mixes aren't source catalog entries | All other stat blocks, and unused parts of the used ones (Fly, senses, Invisibility, Shape-Shift, Scare, Hide), M2/M5 |
 | TIME-ADAPTERS | Spec one ruleset two clocks | Partial | Declared `RS_STRICT_TIMING` and `RS_ACTION_TIMING`, sealed at first use; durations such as Shield and Dodge retire on the actual turn ([timing profiles](timing-profiles.md), [evidence](../verification/srd-timing-2026-11-08/README.md)) | Explicit turn controller and matched-logical-turn fixtures, M6 |
 | WORLD-PROFILES | Spec World tweaks | Partial | `house` records; declared timing profiles, `RS_STRICT_AREAS`/`RS_SPARE_CASTER_AREAS` area-origin profiles ([evidence](../verification/srd-area-origin-2026-11-08/README.md)) and `RS_PAID_PRESS`/`RS_UNLIMITED_PRESS` press costs; Everglade II's named social profile ([timing profiles](timing-profiles.md)) | Profile format/validation, remaining cost/material/grant/damage tweaks, shared application and strict-default isolation, #13045/M6 |
 | WORLD-MIGRATION | Spec engine home and record consumers | Partial | Everglade/5E Lab load `battle`; Stair loads old combat rules | Remove duplicate rules/numbers; migrate Stair; preserve declared play, M7 |
@@ -606,3 +606,17 @@ Each feature then resolves against its text with fixed dice in
 | Class (subclass) | Features checked | Status |
 | --- | --- | --- |
 | Barbarian (Berserker) | Rage, Unarmored Defense, Weapon Mastery (2, 3 at 4), Danger Sense, Reckless Attack, Primal Knowledge, Frenzy, ASI, Extra Attack, Fast Movement, Mindless Rage | Done |
+
+### Used-monster stat blocks (2026-11-08)
+
+Every monster the worlds field now fights as its SRD 5.2.1 block. Experimental's
+imp, gremlin, Puglin Brute, Imp Fiend and Puglin Warlord are the Imp, Goblin
+Warrior, Ogre, Quasit and Hill Giant. Everglade 5E's Conjure Animals wolves and
+Finger of Death's risen are the Wolf and the Zombie. The raid and watch use the
+npcs.coax blocks, and Everglade II fields no monsters. The shared engine now
+runs size and Large reach, Pack Tactics, Magic Resistance, Nimble Escape,
+ranged and thrown stat attacks, second damage, the Goblin's Advantage rider,
+Prone and Poisoned riders, and Multiattack. Six authority scopes kill
+54/204/85/45/70/86 mutants with zero survivors and no exemptions.
+[Evidence](../verification/srd-used-monsters-2026-11-08/README.md) lists the
+block parts no world uses and the house mappings that remain.

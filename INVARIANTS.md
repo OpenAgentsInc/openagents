@@ -6795,9 +6795,16 @@ Action admission before spending. Printed attack/damage modifiers are supplied
 explicitly, without rewriting scores or inventing catalog weapons. Normal weapon
 and typed stat attacks share the resolved strike/target-defense/HP path. Natural
 zero-dice damage has no Unarmed Strike base and cannot gain Sacred Weapon.
-This simple entry has no retained rider; ordinary weapon preflight remains.
-Physical hostile wiring and canonical monster records remain migration work.
-Evidence: `docs/verification/srd-stat-attacks-2026-11-08/README.md`.
+Ordinary weapon preflight remains. A record may also be ranged or thrown and
+carry second damage, an Advantage rider and a Prone or Poisoned rider. Admission
+(single attack, Multiattack and Opportunity Attack) refuses before spending
+anything when the target has no effect room for every rider it could receive.
+Multiattack picks each attack's record again from where the creatures stand and
+stops once the target is down or the attacker can't act. Monster numbers come
+from `monsters.coax`, the canonical catalog, and every world role in its
+used-monster manifest names a block the engine builds.
+Evidence: `docs/verification/srd-stat-attacks-2026-11-08/README.md`,
+`docs/verification/srd-used-monsters-2026-11-08/README.md`.
 
 ## Stabilization records one recovery deadline per actual stable episode
 

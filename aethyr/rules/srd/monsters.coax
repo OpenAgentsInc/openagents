@@ -33,87 +33,84 @@ RsMonsterBlock :: struct {
   undead: bool; fiend: bool; pack: bool; magic: bool; nimble: bool; fortitude: bool;
   action: RsStatAction;
 }
-rs_mon_attack :: (id: string, name: string, bonus: int, dice: int, sides: int, flat: int, kind: int, ability: int, reach: int) -> RsStatAttack {
-  return RsStatAttack.{id = id, name = name, bonus = bonus, dice = dice, sides = sides, flat = flat, kind = kind, ability = ability, reach = reach};
+// The blocks' numbers, as printed (page, then the Monsters chapter's order of entries):
+//   Imp (p. 300): Tiny Fiend (Devil), AC 13, HP 21 (6d4 + 6), Speed 20 ft., Fly 40 ft., Str 6 Dex 17
+//     Con 13 Int 11 Wis 12 Cha 14; Resistances Cold; Immunities Fire, Poison; Poisoned; CR 1 (XP 200;
+//     PB +2). Magic Resistance. Sting: +5, reach 5 ft., 6 (1d6 + 3) Piercing plus 7 (2d6) Poison.
+//   Quasit (p. 317): Tiny Fiend (Demon), AC 13, HP 25 (10d4), Speed 40 ft., Str 5 Dex 17 Con 10 Int 7
+//     Wis 10 Cha 10; Resistances Cold, Fire, Lightning; Immunities Poison; Poisoned; CR 1 (XP 200; PB
+//     +2). Magic Resistance. Rend: +5, reach 5 ft., 5 (1d4 + 3) Slashing, and the target has the
+//     Poisoned condition until the start of the quasit's next turn.
+//   Goblin Warrior (p. 290): Small Fey (Goblinoid), AC 15, HP 10 (3d6), Speed 30 ft., Str 8 Dex 15
+//     Con 10 Int 10 Wis 8 Cha 8; CR 1/4 (XP 50; PB +2). Scimitar: +4, reach 5 ft., 5 (1d6 + 2)
+//     Slashing, plus 2 (1d4) Slashing if the attack roll had Advantage. Shortbow: +4, range 80/320
+//     ft., 5 (1d6 + 2) Piercing, plus 2 (1d4) Piercing if the attack roll had Advantage. Nimble
+//     Escape: a Bonus Action Disengage or Hide.
+//   Ogre (p. 312): Large Giant, AC 11, HP 68 (8d10 + 24), Speed 40 ft., Str 19 Dex 8 Con 16 Int 5
+//     Wis 7 Cha 7; CR 2 (XP 450; PB +2). Greatclub: +6, reach 5 ft., 13 (2d8 + 4) Bludgeoning.
+//     Javelin: +6, reach 5 ft. or range 30/120 ft., 11 (2d6 + 4) Piercing.
+//   Hill Giant (p. 298): Huge Giant, AC 13, HP 105 (10d12 + 40), Speed 40 ft., Str 21 Dex 8 Con 19
+//     Int 5 Wis 9 Cha 6; CR 5 (XP 1,800; PB +3). Multiattack: two attacks, Tree Club or Trash Lob in
+//     any combination. Tree Club: +8, reach 10 ft., 18 (3d8 + 5) Bludgeoning; a Large or smaller
+//     target has the Prone condition. Trash Lob: +8, range 60/240 ft., 16 (2d10 + 5) Bludgeoning,
+//     and the target has the Poisoned condition until the end of its next turn.
+//   Wolf (p. 364): Medium Beast, AC 12, HP 11 (2d8 + 2), Speed 40 ft., Str 14 Dex 15 Con 12 Int 3
+//     Wis 12 Cha 6; CR 1/4 (XP 50; PB +2). Pack Tactics. Bite: +4, reach 5 ft., 5 (1d6 + 2)
+//     Piercing; a Medium or smaller target has the Prone condition.
+//   Zombie (p. 343): Medium Undead, AC 8, HP 15 (2d8 + 6), Speed 20 ft., Str 13 Dex 6 Con 16 Int 3
+//     Wis 6 (save +0) Cha 5; Immunities Poison; Exhaustion, Poisoned; CR 1/4 (XP 50; PB +2). Undead
+//     Fortitude. Slam: +3, reach 5 ft., 5 (1d8 + 1) Bludgeoning.
+// They are kept as compact rows (the Lab's Wasm budget): a block's row is page, XP, PB, size, AC,
+// HP, Speed, the six scores, save bits, resistance, immunity and condition-immunity bits, MF_*
+// flags, its first attack row, the Action's records and Multiattack's count. An attack's row is
+// bonus, dice, sides, flat, damage kind, ability, reach, range, long range, second damage's dice,
+// sides and kind, the Advantage dice and sides, its RS_RIDE_* rider and the largest size it holds.
+MF_UNDEAD :: 1; MF_FIEND :: 2; MF_PACK :: 4; MF_MAGIC :: 8; MF_NIMBLE :: 16; MF_FORTITUDE :: 32;
+RS_MON_ROW :: 21; RS_MON_ATTACK_ROW :: 16;
+RS_MON_ID :: [7] string.["monster/imp", "monster/quasit", "monster/goblin-warrior", "monster/ogre", "monster/hill-giant", "monster/wolf", "monster/zombie"];
+RS_MON_NAME :: [7] string.["Imp", "Quasit", "Goblin Warrior", "Ogre", "Hill Giant", "Wolf", "Zombie"];
+RS_MON_ROWS :: [147] u16.[
+  300, 200, 2, 1, 13, 21, 20,   6, 17, 13, 11, 12, 14,   0, 8, 528, 1024, 10,   0, 1, 1,
+  317, 200, 2, 1, 13, 25, 40,   5, 17, 10, 7, 10, 10,    0, 88, 512, 1024, 10,  1, 1, 1,
+  290, 50, 2, 2, 15, 10, 30,    8, 15, 10, 10, 8, 8,     0, 0, 0, 0, 16,        2, 2, 1,
+  312, 450, 2, 4, 11, 68, 40,   19, 8, 16, 5, 7, 7,      0, 0, 0, 0, 0,         4, 2, 1,
+  298, 1800, 3, 5, 13, 105, 40, 21, 8, 19, 5, 9, 6,      0, 0, 0, 0, 0,         6, 2, 2,
+  364, 50, 2, 3, 12, 11, 40,    14, 15, 12, 3, 12, 6,    0, 0, 0, 0, 4,         8, 1, 1,
+  343, 50, 2, 3, 8, 15, 20,     13, 6, 16, 3, 6, 5,      16, 0, 512, 1032, 33,  9, 1, 1];
+RS_MON_ATTACK_ID :: [10] string.["monster/imp/sting", "monster/quasit/rend", "monster/goblin-warrior/scimitar", "monster/goblin-warrior/shortbow",
+  "monster/ogre/greatclub", "monster/ogre/javelin", "monster/hill-giant/tree-club", "monster/hill-giant/trash-lob", "monster/wolf/bite", "monster/zombie/slam"];
+RS_MON_ATTACK_NAME :: [10] string.["Sting", "Rend", "Scimitar", "Shortbow", "Greatclub", "Javelin", "Tree Club", "Trash Lob", "Bite", "Slam"];
+RS_MON_ATTACKS :: [160] u16.[
+  5, 1, 6, 3, 8, 1, 5,    0, 0,    2, 6, 9,  0, 0,  0, 0,   // Sting
+  5, 1, 4, 3, 12, 1, 5,   0, 0,    0, 0, 0,  0, 0,  2, 0,   // Rend
+  4, 1, 6, 2, 12, 1, 5,   0, 0,    0, 0, 0,  1, 4,  0, 0,   // Scimitar
+  4, 1, 6, 2, 8, 1, 0,    80, 320, 0, 0, 0,  1, 4,  0, 0,   // Shortbow
+  6, 2, 8, 4, 2, 0, 5,    0, 0,    0, 0, 0,  0, 0,  0, 0,   // Greatclub
+  6, 2, 6, 4, 8, 0, 5,    30, 120, 0, 0, 0,  0, 0,  0, 0,   // Javelin
+  8, 3, 8, 5, 2, 0, 10,   0, 0,    0, 0, 0,  0, 0,  1, 4,   // Tree Club
+  8, 2, 10, 5, 2, 0, 0,   60, 240, 0, 0, 0,  0, 0,  3, 0,   // Trash Lob
+  4, 1, 6, 2, 8, 0, 5,    0, 0,    0, 0, 0,  0, 0,  1, 3,   // Bite
+  3, 1, 8, 1, 2, 0, 5,    0, 0,    0, 0, 0,  0, 0,  0, 0];  // Slam
+rs_mon_attack :: (q: int) -> RsStatAttack {
+  t := q * RS_MON_ATTACK_ROW; v: [RS_MON_ATTACK_ROW] int;
+  for f: 0..<RS_MON_ATTACK_ROW { v[f] = cast(int) RS_MON_ATTACKS[t + f]; }
+  return RsStatAttack.{id = RS_MON_ATTACK_ID[q], name = RS_MON_ATTACK_NAME[q], bonus = v[0], dice = v[1], sides = v[2], flat = v[3], kind = v[4],
+                       ability = v[5], reach = v[6], range_ft = v[7], long_ft = v[8], plus_dice = v[9], plus_sides = v[10], plus_kind = v[11],
+                       adv_dice = v[12], adv_sides = v[13], ride = v[14], ride_size = v[15]};
 }
 rs_monster_block :: (m: int) -> RsMonsterBlock {
-  k: RsMonsterBlock; a: [RS_MULTI] RsStatAttack;
-  if m == MON_IMP {
-    // Imp (p. 300): Tiny Fiend (Devil), AC 13, HP 21 (6d4 + 6), Speed 20 ft., Fly 40 ft., Str 6 Dex
-    // 17 Con 13 Int 11 Wis 12 Cha 14; Resistances Cold; Immunities Fire, Poison; Poisoned; CR 1 (XP
-    // 200; PB +2). Magic Resistance. Sting: +5, reach 5 ft., 6 (1d6 + 3) Piercing plus 7 (2d6) Poison.
-    k = RsMonsterBlock.{id = "monster/imp", name = "Imp", page = 300, xp = 200, pb = 2, size = RS_TINY, ac = 13, hp = 21, speed = 20,
-                        score = [6] int.[6, 17, 13, 11, 12, 14], resist = 1 << RS_COLD, immune = (1 << RS_FIRE) | (1 << RS_POISON),
-                        immune_cond = RS_POISONED, fiend = true, magic = true};
-    a[0] = rs_mon_attack("monster/imp/sting", "Sting", 5, 1, 6, 3, RS_PIERCING, RS_DEX, 5);
-    a[0].plus_dice = 2; a[0].plus_sides = 6; a[0].plus_kind = RS_POISON;
-    k.action = RsStatAction.{attacks = a, n = 1, count = 1};
-  } else if m == MON_QUASIT {
-    // Quasit (p. 317): Tiny Fiend (Demon), AC 13, HP 25 (10d4), Speed 40 ft., Str 5 Dex 17 Con 10
-    // Int 7 Wis 10 Cha 10; Resistances Cold, Fire, Lightning; Immunities Poison; Poisoned; CR 1 (XP
-    // 200; PB +2). Magic Resistance. Rend: +5, reach 5 ft., 5 (1d4 + 3) Slashing, and the target has
-    // the Poisoned condition until the start of the quasit's next turn.
-    k = RsMonsterBlock.{id = "monster/quasit", name = "Quasit", page = 317, xp = 200, pb = 2, size = RS_TINY, ac = 13, hp = 25, speed = 40,
-                        score = [6] int.[5, 17, 10, 7, 10, 10], resist = (1 << RS_COLD) | (1 << RS_FIRE) | (1 << RS_LIGHTNING),
-                        immune = 1 << RS_POISON, immune_cond = RS_POISONED, fiend = true, magic = true};
-    a[0] = rs_mon_attack("monster/quasit/rend", "Rend", 5, 1, 4, 3, RS_SLASHING, RS_DEX, 5);
-    a[0].ride = RS_RIDE_POISON_TO_START;
-    k.action = RsStatAction.{attacks = a, n = 1, count = 1};
-  } else if m == MON_GOBLIN_WARRIOR {
-    // Goblin Warrior (p. 290): Small Fey (Goblinoid), AC 15, HP 10 (3d6), Speed 30 ft., Str 8 Dex 15
-    // Con 10 Int 10 Wis 8 Cha 8; CR 1/4 (XP 50; PB +2). Scimitar: +4, reach 5 ft., 5 (1d6 + 2)
-    // Slashing, plus 2 (1d4) Slashing if the attack roll had Advantage. Shortbow: +4, range 80/320
-    // ft., 5 (1d6 + 2) Piercing, plus 2 (1d4) Piercing if the attack roll had Advantage. Nimble
-    // Escape: a Bonus Action Disengage or Hide.
-    k = RsMonsterBlock.{id = "monster/goblin-warrior", name = "Goblin Warrior", page = 290, xp = 50, pb = 2, size = RS_SMALL, ac = 15, hp = 10, speed = 30,
-                        score = [6] int.[8, 15, 10, 10, 8, 8], nimble = true};
-    a[0] = rs_mon_attack("monster/goblin-warrior/scimitar", "Scimitar", 4, 1, 6, 2, RS_SLASHING, RS_DEX, 5);
-    a[0].adv_dice = 1; a[0].adv_sides = 4;
-    a[1] = rs_mon_attack("monster/goblin-warrior/shortbow", "Shortbow", 4, 1, 6, 2, RS_PIERCING, RS_DEX, 0);
-    a[1].range_ft = 80; a[1].long_ft = 320; a[1].adv_dice = 1; a[1].adv_sides = 4;
-    k.action = RsStatAction.{attacks = a, n = 2, count = 1};
-  } else if m == MON_OGRE {
-    // Ogre (p. 312): Large Giant, AC 11, HP 68 (8d10 + 24), Speed 40 ft., Str 19 Dex 8 Con 16 Int 5
-    // Wis 7 Cha 7; CR 2 (XP 450; PB +2). Greatclub: +6, reach 5 ft., 13 (2d8 + 4) Bludgeoning.
-    // Javelin: +6, reach 5 ft. or range 30/120 ft., 11 (2d6 + 4) Piercing.
-    k = RsMonsterBlock.{id = "monster/ogre", name = "Ogre", page = 312, xp = 450, pb = 2, size = RS_LARGE, ac = 11, hp = 68, speed = 40,
-                        score = [6] int.[19, 8, 16, 5, 7, 7]};
-    a[0] = rs_mon_attack("monster/ogre/greatclub", "Greatclub", 6, 2, 8, 4, RS_BLUDGEONING, RS_STR, 5);
-    a[1] = rs_mon_attack("monster/ogre/javelin", "Javelin", 6, 2, 6, 4, RS_PIERCING, RS_STR, 5);
-    a[1].range_ft = 30; a[1].long_ft = 120;
-    k.action = RsStatAction.{attacks = a, n = 2, count = 1};
-  } else if m == MON_HILL_GIANT {
-    // Hill Giant (p. 298): Huge Giant, AC 13, HP 105 (10d12 + 40), Speed 40 ft., Str 21 Dex 8 Con 19
-    // Int 5 Wis 9 Cha 6; CR 5 (XP 1,800; PB +3). Multiattack: two attacks, Tree Club or Trash Lob in
-    // any combination. Tree Club: +8, reach 10 ft., 18 (3d8 + 5) Bludgeoning; a Large or smaller
-    // target has the Prone condition. Trash Lob: +8, range 60/240 ft., 16 (2d10 + 5) Bludgeoning,
-    // and the target has the Poisoned condition until the end of its next turn.
-    k = RsMonsterBlock.{id = "monster/hill-giant", name = "Hill Giant", page = 298, xp = 1800, pb = 3, size = RS_HUGE, ac = 13, hp = 105, speed = 40,
-                        score = [6] int.[21, 8, 19, 5, 9, 6]};
-    a[0] = rs_mon_attack("monster/hill-giant/tree-club", "Tree Club", 8, 3, 8, 5, RS_BLUDGEONING, RS_STR, 10);
-    a[0].ride = RS_RIDE_PRONE; a[0].ride_size = RS_LARGE;
-    a[1] = rs_mon_attack("monster/hill-giant/trash-lob", "Trash Lob", 8, 2, 10, 5, RS_BLUDGEONING, RS_STR, 0);
-    a[1].range_ft = 60; a[1].long_ft = 240; a[1].ride = RS_RIDE_POISON_TO_END;
-    k.action = RsStatAction.{attacks = a, n = 2, count = 2};
-  } else if m == MON_WOLF {
-    // Wolf (p. 364): Medium Beast, AC 12, HP 11 (2d8 + 2), Speed 40 ft., Str 14 Dex 15 Con 12 Int 3
-    // Wis 12 Cha 6; CR 1/4 (XP 50; PB +2). Pack Tactics. Bite: +4, reach 5 ft., 5 (1d6 + 2)
-    // Piercing; a Medium or smaller target has the Prone condition.
-    k = RsMonsterBlock.{id = "monster/wolf", name = "Wolf", page = 364, xp = 50, pb = 2, size = RS_MEDIUM, ac = 12, hp = 11, speed = 40,
-                        score = [6] int.[14, 15, 12, 3, 12, 6], pack = true};
-    a[0] = rs_mon_attack("monster/wolf/bite", "Bite", 4, 1, 6, 2, RS_PIERCING, RS_STR, 5);
-    a[0].ride = RS_RIDE_PRONE; a[0].ride_size = RS_MEDIUM;
-    k.action = RsStatAction.{attacks = a, n = 1, count = 1};
-  } else if m == MON_ZOMBIE {
-    // Zombie (p. 343): Medium Undead, AC 8, HP 15 (2d8 + 6), Speed 20 ft., Str 13 Dex 6 Con 16 Int 3
-    // Wis 6 (save +0) Cha 5; Immunities Poison; Exhaustion, Poisoned; CR 1/4 (XP 50; PB +2). Undead
-    // Fortitude. Slam: +3, reach 5 ft., 5 (1d8 + 1) Bludgeoning.
-    k = RsMonsterBlock.{id = "monster/zombie", name = "Zombie", page = 343, xp = 50, pb = 2, size = RS_MEDIUM, ac = 8, hp = 15, speed = 20,
-                        score = [6] int.[13, 6, 16, 3, 6, 5], saves = 1 << RS_WIS, immune = 1 << RS_POISON,
-                        immune_cond = RS_POISONED | RS_EXHAUSTION, undead = true, fortitude = true};
-    a[0] = rs_mon_attack("monster/zombie/slam", "Slam", 3, 1, 8, 1, RS_BLUDGEONING, RS_STR, 5);
-    k.action = RsStatAction.{attacks = a, n = 1, count = 1};
-  }
+  k: RsMonsterBlock;
+  if m < 1 || m >= MON_N { return k; }
+  t := (m - 1) * RS_MON_ROW; v: [RS_MON_ROW] int;
+  for f: 0..<RS_MON_ROW { v[f] = cast(int) RS_MON_ROWS[t + f]; }
+  k.id = RS_MON_ID[m - 1]; k.name = RS_MON_NAME[m - 1];
+  k.page = v[0]; k.xp = v[1]; k.pb = v[2]; k.size = v[3]; k.ac = v[4]; k.hp = v[5]; k.speed = v[6];
+  for ab: 0..<6 { k.score[ab] = v[7 + ab]; }
+  k.saves = v[13]; k.resist = v[14]; k.immune = v[15]; k.immune_cond = v[16];
+  k.undead = (v[17] & MF_UNDEAD) != 0; k.fiend = (v[17] & MF_FIEND) != 0; k.pack = (v[17] & MF_PACK) != 0;
+  k.magic = (v[17] & MF_MAGIC) != 0; k.nimble = (v[17] & MF_NIMBLE) != 0; k.fortitude = (v[17] & MF_FORTITUDE) != 0;
+  k.action.n = v[19]; k.action.count = v[20];
+  for q: 0..<k.action.n { k.action.attacks[q] = rs_mon_attack(v[18] + q); }
   return k;
 }
 rs_monster_action :: (m: int) -> RsStatAction { return rs_monster_block(m).action; }
