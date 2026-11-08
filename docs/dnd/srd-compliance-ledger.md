@@ -83,7 +83,7 @@ named below are selected evidence only, not exhaustive qualification.
 | FX-EXECUTOR | Spec typed effect program | Partial | Closed step set with specialized handlers | Transform, summon, sense, general modify/terrain/light/narrative, M4 |
 | FX-TARGETING | Spec target step | Partial | Single target plus automatic nearest-side selection; same target per ray | Explicit legal multiple targets, filters and geometry, M3/M4 |
 | FX-ZONES | Spec zone triggers and shapes | Partial | Eight zones; Lines/Spheres and rectangular approximations | True shapes, enter/start/end timing, movement and multi-area spells, M4 |
-| FX-CAP-EFFECT | Spec lasting effects; deterministic complete results | Partial | Six effect slots; `CAP-EFFECT` fails | No silent replacement/loss, explicit capacity outcome and stacking, M3 |
+| FX-CAP-EFFECT | Spec lasting effects; deterministic complete results | Partial | Six owned records; explicit refusal, whole-operation preflight and independent restraint leases; `CAP-EFFECT` passes | Full source stacking/condition qualification remains under #13039; bounded capacity is qualified separately under #13041 |
 | FX-CAP-ZONE | Spec lasting areas; admitted cast results | Partial | Eight owned slots with preflight, concentration release/reuse and deadline expiry; CAP-ZONE passes | Complete independent effect/zone-restraint ownership and related effect admission, #13041/#13039 |
 | CONTENT-SPELLS | Spell Descriptions pp.107-175 | Partial | All 339 descriptions imported; eight class tables independently reconciled with nine source differences; executable subset unchanged | Implement/qualify every mechanical clause and explicitly resolve gameplay interpretations of source differences, M3/M4 |
 | SPELL-POLYMORPH | Polymorph pp.153-154 | Partial | `more` uses Incapacitated; `SPELL-POLYMORPH` fails | Beast choice/CR, replaced stats, retained identity/HP/type, form temp HP, anatomy/gear and reversion, M4 |
@@ -116,7 +116,7 @@ coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --inventory
 ```
 
 The third command is intentionally strict: it currently exits **1** because
-two desired outcomes are unmet. These are executable regression predicates,
+the parked Polymorph outcome is unmet. These are executable regression predicates,
 not `#test` assertions that bugs should remain. The first command's ordinary
 checks guard working boundaries and free-capacity controls. Fixes change a
 predicate to PASS without deleting an expected-failure exemption.
@@ -132,7 +132,7 @@ predicate to PASS without deleting an expected-failure exemption.
 | CAST-SELF | False Life cannot name another primary creature | PASS | Structural request refusal preserves resources; source Self range is distinguished from originating effects and later helper actions |
 | CAST-INVALID-TARGET | Hold Person on a Skeleton spends its used slot without affecting it or rolling a save | PASS | Corrected shared target policy/outcome; apparent save succeeds with no invented roll, SRD p.106 and p.141 |
 | SPELL-POLYMORPH | Failed save grants form temp HP, retains HP/type, does not merely Incapacitate | FAIL | Necessary witness only; current API cannot select a Beast, so even a future PASS would not qualify the full spell |
-| CAP-EFFECT | Adding another effect never silently removes independent existing effects | FAIL | Direct storage boundary, not an alternative SRD stacking rule |
+| CAP-EFFECT | Adding another effect never silently removes independent existing effects | PASS | Explicit insertion refusal preserves every existing record; native full-cast refusal preserves budgets/dice/events and freeing one record admits the complete cast |
 | CAP-ZONE | Full unrelated zones refuse before resources, concentration or effects change | PASS | Preflight chooses an available or concentration-released slot before spending; accepted zones are retained and expired storage is released; the limit is an implementation capacity, not an SRD rule |
 
 Refusal snapshots check slots, action/bonus/slot/leveled budgets, dice, event-log
@@ -158,6 +158,14 @@ The [zone admission/lifetime change](../verification/srd-zone-storage-2026-11-08
 turns CAP-ZONE to PASS: nine of eleven witnesses pass. CAP-EFFECT remains active;
 Polymorph remains parked. Full effect storage and independent zone-restraint
 bindings are not qualified by passing this selected zone witness.
+
+The [effect admission and ownership change](../verification/srd-effect-storage-2026-11-08/README.md)
+turns CAP-EFFECT to PASS: ten of eleven witnesses pass; only parked Polymorph
+fails. Whole-operation preflight covers normal/Quickened and multi-target casts,
+attack batches and requested hit riders, Turn Undead and curse transfer. Each
+zone restraint owns a record; release and escape preserve other owners. Capacity
+refusal precedes costs, dice and events. These bounded-storage guarantees do not
+qualify every condition, duration or same-spell stacking rule.
 
 ## Canonical source inventory
 

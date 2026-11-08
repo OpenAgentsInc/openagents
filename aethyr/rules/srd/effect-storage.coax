@@ -1,0 +1,111 @@
+// Owned effect records. Insertion either retains the record or refuses without
+// changing anything; it never evicts an independent active effect.
+#authority;
+
+#test "zone lease identity compares kind, slot, caster and spell independently" {
+  for changed: 0..<4 {
+    c: [1] RsCreature; c[0].restrained_by = -1;
+    a := RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=0,spell=0};
+    #assert rs_effect_add(c[..],a) && c[0].cond == RS_RESTRAINED;
+    if changed == 0 { a.kind = EF_HEX; }
+    else if changed == 1 { a.cond = 1; }
+    else if changed == 2 { a.by = 1; }
+    else { a.spell = 1; }
+    #assert rs_effect_add(c[..],a) && c[0].eff[1].kind == a.kind && c[0].eff[1].cond == a.cond && c[0].eff[1].by == a.by && c[0].eff[1].spell == a.spell;
+  }
+}
+#test "effect retirement preserves an independent raw zone binding including slot zero" {
+  c: [1] RsCreature; c[0].restrained_by = 0; c[0].cond = RS_RESTRAINED|RS_BLINDED;
+  c[0].eff[0] = RsEffect.{kind=EF_COND,cond=RS_RESTRAINED|RS_BLINDED};
+  rs_effect_end(c[..],0);
+  #assert c[0].cond == RS_RESTRAINED && c[0].restrained_by == 0;
+  c[0].eff[0] = RsEffect.{kind=EF_ZONE_RESTRAIN,cond=1};
+  rs_effect_end(c[..],0);
+  #assert c[0].cond == RS_RESTRAINED && c[0].restrained_by == 0;
+}
+
+#test "full effect storage refuses explicitly and retains every record and condition" {
+  c: [1] RsCreature;
+  for k: 0..<RS_EFFECTS { #assert rs_effect_add(c[..],RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=f32(10+k)}); }
+  before := c[0].eff; flags := c[0].cond;
+  #assert !rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_POISONED,by=99,until=50});
+  #assert !rs_effect_add(c[..],RsEffect.{});
+  #assert c[0].cond == flags;
+  for k: 0..<RS_EFFECTS { #assert c[0].eff[k].kind == before[k].kind && c[0].eff[k].by == before[k].by && c[0].eff[k].spell == before[k].spell && c[0].eff[k].until == before[k].until; }
+  rs_effect_end(c[..],RS_EFFECTS-1);
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_POISONED,by=99,until=50}) && c[0].eff[RS_EFFECTS-1].by == 99;
+}
+#test "zone restraints retain independent sources and retry only the same live zone lease" {
+  c: [1] RsCreature; c[0].restrained_by = -1;
+  a := RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=0,spell=SP_ENTANGLE,until=60};
+  #assert rs_effect_add(c[..],a) && rs_effect_add(c[..],a);
+  #assert c[0].eff[0].kind == EF_ZONE_RESTRAIN && c[0].eff[1].kind == EF_NONE;
+  a.cond = 1; a.by = 1;
+  #assert rs_effect_add(c[..],a) && c[0].restrained_by == 1 && (c[0].cond & RS_RESTRAINED) != 0;
+  rs_effect_end(c[..],1);
+  #assert c[0].restrained_by == 0 && (c[0].cond & RS_RESTRAINED) != 0;
+  rs_effect_end(c[..],0);
+  #assert c[0].restrained_by == -1 && (c[0].cond & RS_RESTRAINED) == 0;
+}
+#test "ending compound conditions clears only the bits no remaining record imposes" {
+  c: [1] RsCreature; c[0].restrained_by = -1; c[0].cond = RS_PRONE;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_DAZED,cond=RS_CHARMED|RS_INCAPACITATED});
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_CHARMED});
+  rs_effect_end(c[..],0);
+  #assert c[0].cond == (RS_PRONE|RS_CHARMED);
+  rs_effect_end(c[..],1); #assert c[0].cond == RS_PRONE;
+  rs_effect_end(c[..],-1); rs_effect_end(c[..],RS_EFFECTS);
+  #assert c[0].cond == RS_PRONE;
+}
+#test "effect room predicts only free records and actual concentration release" {
+  c: RsCreature;
+  #assert rs_effect_room(c,false,0,-1) == RS_EFFECTS;
+  for k: 0..<RS_EFFECTS { c.eff[k] = RsEffect.{kind=EF_HEX,by=0,spell=0}; }
+  #assert rs_effect_room(c,false,0,0) == 0 && rs_effect_room(c,true,0,0) == RS_EFFECTS;
+  #assert rs_effect_room(c,true,1,0) == 0 && rs_effect_room(c,true,0,1) == 0;
+  #assert rs_effect_room(c,true,0,-1) == 0;
+}
+rs_effect_conditions :: (e: RsEffect) -> int #effects(all) {
+  if e.kind == EF_ZONE_RESTRAIN { return RS_RESTRAINED; }
+  return ifx e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED then e.cond else 0;
+}
+rs_effect_room :: (c: RsCreature, replacing: bool, by: int, spell: int) -> int #effects(all) {
+  n := 0;
+  for e: c.eff {
+    if e.kind == EF_NONE || (replacing && spell >= 0 && e.by == by && e.spell == spell) { n += 1; }
+  }
+  return n;
+}
+rs_effect_free :: (c: RsCreature) -> int #effects(all) {
+  n := 0;
+  for e: c.eff { if e.kind == EF_NONE { n += 1; } }
+  return n;
+}
+rs_effect_add :: (c: [] RsCreature, e: RsEffect) -> bool #effects(all) {
+  if e.kind == EF_NONE { return false; }
+  if e.kind == EF_ZONE_RESTRAIN {
+    for old: c[0].eff {
+      if old.kind == EF_ZONE_RESTRAIN && old.cond == e.cond && old.by == e.by && old.spell == e.spell { return true; }
+    }
+  }
+  for k: 0..<RS_EFFECTS {
+    if c[0].eff[k].kind != EF_NONE { continue; }
+    c[0].eff[k] = e; c[0].cond |= rs_effect_conditions(e);
+    if e.kind == EF_ZONE_RESTRAIN { c[0].restrained_by = e.cond; }
+    return true;
+  }
+  return false;
+}
+rs_effect_end :: (c: [] RsCreature, k: int) #effects(all) {
+  if k < 0 || k >= RS_EFFECTS { return; }
+  e := c[0].eff[k]; c[0].eff[k].kind = EF_NONE;
+  if e.kind == EF_ZONE_RESTRAIN && c[0].restrained_by == e.cond {
+    c[0].restrained_by = -1;
+    for other: c[0].eff { if other.kind == EF_ZONE_RESTRAIN { c[0].restrained_by = other.cond; break; } }
+  }
+  mask := rs_effect_conditions(e); if mask == 0 { return; }
+  held := 0;
+  for other: c[0].eff { held |= rs_effect_conditions(other); }
+  if c[0].restrained_by >= 0 { held |= RS_RESTRAINED; }
+  c[0].cond = rs_clear(c[0].cond,mask & (32767-held));
+}

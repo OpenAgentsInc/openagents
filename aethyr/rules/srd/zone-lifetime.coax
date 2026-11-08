@@ -41,11 +41,14 @@ rs_release_zone :: (b: [] RsBattle, k: int) -> bool #effects(all) {
   if k < 0 || k >= RS_ZONES || !b[0].zone[k].on { return false; }
   b[0].zone[k].on = false;
   for j: 0..<b[0].n {
+    for e: 0..<RS_EFFECTS {
+      if b[0].c[j].eff[e].kind == EF_ZONE_RESTRAIN && b[0].c[j].eff[e].cond == k { rs_drop_effect(b,j,e); }
+    }
     if b[0].c[j].restrained_by != k { continue; }
     b[0].c[j].restrained_by = -1;
     held := false;
     for e: b[0].c[j].eff {
-      if (e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED) && (e.cond & RS_RESTRAINED) != 0 { held = true; }
+      if (rs_effect_conditions(e) & RS_RESTRAINED) != 0 { held = true; }
     }
     if !held { b[0].c[j].cond = rs_clear(b[0].c[j].cond,RS_RESTRAINED); }
   }

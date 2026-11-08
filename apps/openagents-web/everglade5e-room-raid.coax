@@ -603,6 +603,7 @@ e5rd_town_turn :: (r: [] E5rRoom, q: int) {
   if fd <= 5 { _ := rs_attack(b, i, foe, false, -1); return; }
   if ranged { _ := rs_shoot(b, i, foe); return; }
   if fd > E5RD_WATCH_THROW || b[0].turn.action { return; }
+  if !rs_strikes_fit(b,i,foe,c.weapon,1,false) { return; }
   b[0].turn.action = true;
   _ := rs_strike(b, i, foe, c.weapon, false);
   rs_after_blow(b, i);
@@ -793,6 +794,7 @@ e5rd_folk_turn :: (r: [] E5rRoom, j: int) {
   if b[0].c[i].ranged >= 0 { _ := rs_shoot(b, i, foe); return; }
   // a Guard throws its Spear
   if b[0].turn.action { return; }
+  if !rs_strikes_fit(b,i,foe,b[0].c[i].weapon,1,false) { return; }
   b[0].turn.action = true;
   _ := rs_strike(b, i, foe, b[0].c[i].weapon, false);
   rs_after_blow(b, i);

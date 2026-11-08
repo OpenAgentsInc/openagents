@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time traversal work: 117075951 of 134217728 used (87%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    29632808 visits  apps/openagents-web/everglade5e-room-raid.coax:193:1  in 'e5rd_up' (94372 times)
+    14866958 visits  aethyr/rules/srd/engine.coax:304:10  copying arguments into 'rs_up' (47347 calls)
+    14327820 visits  aethyr/rules/srd/battle.coax:177:54  copying arguments into 'rs_can_act' (45630 calls)
+    8541428 visits  aethyr/rules/srd/effect-admission.coax:237:71  copying arguments into 'rs_up' (27202 calls)
+    3501400 visits  apps/openagents-web/everglade5e-room-raid.coax:919:1  in 'e5rd_step' (1400 times)
+  fix: copy fewer whole arrays and structs in 'e5rd_up' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+39 mutants, 39 killed, 0 survived

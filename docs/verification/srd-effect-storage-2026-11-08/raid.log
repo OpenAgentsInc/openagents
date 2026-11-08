@@ -1,0 +1,3 @@
+ok   #test room raid: the watch fights: a Guard with its Spear strikes a raider at hand and throws at one in reach; a commoner doesn't (1 case, 39249447 steps, 345 ms)
+1 of 262 checks (--only 'room raid: the watch fights'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

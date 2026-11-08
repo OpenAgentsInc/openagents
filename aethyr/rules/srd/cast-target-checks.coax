@@ -3,6 +3,93 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "multi-target casts refuse the whole batch if a later target has no effect room" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("First",0),3,1);
+  u := rs_add(b[..],rs_skeleton("Second",0),4,1);
+  for k: 0..<RS_EFFECTS { b[0].c[u].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }
+  rs_start_turn(b[..],a); slots := b[0].c[a].slots[1]; rolled := b[0].dice[0].rolled; seq := b[0].book[0].seq;
+  #assert !rs_cast(b[..],a,SP_BLESS,1,3,1,t);
+  #assert b[0].c[a].slots[1] == slots && b[0].c[a].conc == -1 && !b[0].turn.action;
+  #assert b[0].dice[0].rolled == rolled && b[0].book[0].seq == seq && !rs_effect(b[0].c[t],EF_BLESS);
+  b[0].c[u].eff[RS_EFFECTS-1].kind = EF_NONE;
+  #assert rs_cast(b[..],a,SP_BLESS,1,3,1,t) && rs_effect(b[0].c[t],EF_BLESS) && rs_effect(b[0].c[u],EF_BLESS);
+}
+#test "concentration release pays for its replacement, immunity and invalid types need no record" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",0),3,1);
+  for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_BLESS,by=a,spell=SP_BLESS,until=100,save=-1}; }
+  b[0].c[a].conc = SP_BLESS; b[0].c[a].conc_until = 100;
+  rs_start_turn(b[..],a);
+  #assert rs_cast(b[..],a,SP_BLESS,1,3,1,t) && rs_effect(b[0].c[t],EF_BLESS);
+  for k: 1..<RS_EFFECTS { #assert b[0].c[t].eff[k].kind == EF_NONE; }
+  rs_end_turn(b[..],a); rs_start_turn(b[..],a);
+  for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }
+  choices := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]]; #assert rs_set_spells(b[0].c[a..<a+1],choices[..]);
+  // An invalid creature type still spends under p.106, even with no storage.
+  #assert rs_cast(b[..],a,SP_HOLD_PERSON,2,3,1,t);
+  rs_end_turn(b[..],a); rs_start_turn(b[..],a);
+  b[0].c[t].humanoid = true; b[0].c[t].immune_cond |= RS_PARALYZED;
+  #assert rs_cast(b[..],a,SP_HOLD_PERSON,2,3,1,t) && !rs_has(b[0].c[t],RS_PARALYZED);
+}
+#test "weapon and Channel Divinity capacity refusal precedes action, focus and dice" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_monk("Monk",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",1),2,1);
+  b[0].c[a].stun_ready = true;
+  for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }
+  rs_start_turn(b[..],a); focus := b[0].c[a].focus; rolled := b[0].dice[0].rolled; seq := b[0].book[0].seq;
+  #assert !rs_attack(b[..],a,t,false,-1) && !rs_bonus_strike(b[..],a,t) && !rs_flurry(b[..],a,t,OH_TOPPLE);
+  #assert !b[0].turn.action && !b[0].turn.bonus && !b[0].turn.struck && b[0].c[a].focus == focus;
+  #assert b[0].dice[0].rolled == rolled && b[0].book[0].seq == seq;
+  b[0].c[a] = rs_cleric("Cleric",0,5); b[0].c[a].x = 1; b[0].c[a].y = 1;
+  uses := b[0].c[a].uses[RS_USE_CHANNEL];
+  #assert !rs_turn_undead(b[..],a) && !b[0].turn.action && b[0].c[a].uses[RS_USE_CHANNEL] == uses;
+  #assert b[0].dice[0].rolled == rolled && b[0].book[0].seq == seq;
+}
+#test "escaping a zone frees only that lease and preserves another restraint" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_druid("Druid",0,3),1,1);
+  t := rs_add(b[..],rs_barbarian("Strong",1,3),3,1);
+  b[0].c[t].score[RS_STR] = 30; b[0].c[a].score[RS_WIS] = 1;
+  for k: 0..<2 {
+    b[0].zone[k] = RsZone.{on=true,by=a,spell=SP_ENTANGLE,until=60};
+    #assert rs_effect_add(b[0].c[t..<t+1],RsEffect.{kind=EF_ZONE_RESTRAIN,cond=k,by=a,spell=SP_ENTANGLE,until=60,save=-1});
+  }
+  rs_start_turn(b[..],t);
+  #assert rs_escape(b[..],t) && b[0].c[t].restrained_by == 0 && rs_has(b[0].c[t],RS_RESTRAINED);
+  #assert b[0].c[t].eff[0].kind == EF_ZONE_RESTRAIN && b[0].c[t].eff[1].kind == EF_NONE;
+}
+
+#test "full effect storage refuses ordinary and Quickened casts before any cost or roll" {
+  for quick: 0..<2 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1);
+    t := rs_add(b[..],rs_skeleton("Target",1),3,1); b[0].c[t].humanoid = true;
+    choices := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]];
+    #assert rs_set_spells(b[0].c[a..<a+1],choices[..]);
+    for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }
+    rs_start_turn(b[..],a);
+    slots := b[0].c[a].slots[2]; points := b[0].c[a].uses[RS_USE_SORCERY]; dice := b[0].dice[0].rolled; seq := b[0].book[0].seq;
+    #assert !rs_cast_as(b[..],a,SP_HOLD_PERSON,2,3,1,t,quick == 1);
+    #assert !b[0].turn.action && !b[0].turn.bonus && !b[0].turn.quickened && !b[0].turn.slot_spent;
+    #assert b[0].c[a].slots[2] == slots && b[0].c[a].uses[RS_USE_SORCERY] == points && b[0].c[a].conc == -1;
+    #assert b[0].dice[0].rolled == dice && b[0].book[0].seq == seq;
+    for k: 0..<RS_EFFECTS { #assert b[0].c[t].eff[k].by == 99; }
+  }
+}
+#test "overlapping zone restraints release only their own lease" {
+  b: [1] RsBattle; _ := rs_add(b[..],rs_druid("Druid",0,3),1,1);
+  for k: 0..<2 {
+    b[0].zone[k] = RsZone.{on=true,by=0,spell=SP_ENTANGLE,until=60};
+    #assert rs_effect_add(b[0].c[0..<1],RsEffect.{kind=EF_ZONE_RESTRAIN,cond=k,by=0,spell=SP_ENTANGLE,until=60,save=-1});
+  }
+  #assert rs_release_zone(b[..],1) && b[0].c[0].restrained_by == 0 && rs_has(b[0].c[0],RS_RESTRAINED);
+  #assert rs_release_zone(b[..],0) && b[0].c[0].restrained_by == -1 && !rs_has(b[0].c[0],RS_RESTRAINED);
+}
+
 #test "a full zone array can reuse the concentration being replaced and releases its old restraint" {
   b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_druid("Druid",0,3),1,1);

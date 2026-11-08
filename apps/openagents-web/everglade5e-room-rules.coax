@@ -510,7 +510,7 @@ e5rr_hold_folk :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int #export_c #
   i := e5rr_folk_near(r, x, z, reach);
   if i < 0 { return -1; }
   b := r[0].b[..];
-  rs_put_effect(b, i, RsEffect.{kind = EF_COND, cond = RS_PARALYZED, by = -1, spell = SP_HOLD_PERSON, until = b[0].clock + E5RR_HOLD_S, save = -1, dc = 0});
+  if !rs_put_effect(b, i, RsEffect.{kind = EF_COND, cond = RS_PARALYZED, by = -1, spell = SP_HOLD_PERSON, until = b[0].clock + E5RR_HOLD_S, save = -1, dc = 0}) { return -1; }
   return i;
 }
 // Each summoned creature's dt seconds (everglade5e-beasts.coax e5b_step).
@@ -678,6 +678,13 @@ e5rr_test_people :: (r: [] E5rRoom) {
   t := r[0].b[0].clock;
   e5rr_step(r[..], t + 5.5); e5rr_folk_out(r[..], 2, out[..]); #assert (cast(int) out[3] & RS_PARALYZED) != 0;
   e5rr_step(r[..], t + 6.5); e5rr_folk_out(r[..], 2, out[..]); #assert (cast(int) out[3] & RS_PARALYZED) == 0;
+}
+#test "Everglade 5E room: scripted hold reports full effect storage without evicting another owner" #steps 2000000000 {
+  r: [1] E5rRoom; e5rr_start(r[..],7); e5rr_test_people(r[..]);
+  i := e5rr_folk_near(r[..],29,0,30);
+  for k: 0..<RS_EFFECTS { r[0].b[0].c[i].eff[k] = RsEffect.{kind=EF_HEX,by=100+k,until=100}; }
+  #assert e5rr_hold_folk(r[..],29,0,30) == -1 && !rs_has(r[0].b[0].c[i],RS_PARALYZED);
+  for k: 0..<RS_EFFECTS { #assert r[0].b[0].c[i].eff[k].kind == EF_HEX && r[0].b[0].c[i].eff[k].by == 100+k; }
 }
 #test "Everglade 5E room: sixteen players, each its own caster; a blast hurts the town, never another player" #steps 2000000000 {
   r: [1] E5rRoom;

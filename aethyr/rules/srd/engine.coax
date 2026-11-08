@@ -18,6 +18,7 @@
 #load "spell-access.coax";
 #load "spell-selection.coax";
 #load "spell-loadouts.coax";
+#load "effect-storage.coax";
 
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
@@ -137,6 +138,7 @@ EF_DAZED :: 10;
 // of Faith (EF_FAITH: +2 AC) and Command's Halt (EF_HALT: no move, action or Bonus Action until the
 // end of its next turn; here no Reaction either, as rs_can_act has it)
 EF_BLESS :: 11; EF_BANE :: 12; EF_FAITH :: 13; EF_HALT :: 15;
+EF_ZONE_RESTRAIN :: 16; // cond is the owned zone index, not a condition mask
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -774,22 +776,6 @@ rs_effect :: (c: RsCreature, kind: int) -> bool {
   for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind { return true; } }
   return false;
 }
-// Puts an effect on c (in the first free place; the oldest of its kind is replaced when full).
-rs_effect_add :: (c: [] RsCreature, e: RsEffect) {
-  at := -1;
-  for k: 0..<RS_EFFECTS { if at < 0 && c[0].eff[k].kind == EF_NONE { at = k; } }
-  if at < 0 { at = 0; }
-  c[0].eff[at] = e;
-  if e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED { c[0].cond = c[0].cond | e.cond; }
-}
-// Ends effect k on c; a condition it imposed goes unless another effect still imposes it.
-rs_effect_end :: (c: [] RsCreature, k: int) {
-  e := c[0].eff[k];
-  c[0].eff[k].kind = EF_NONE;
-  if e.kind != EF_COND && e.kind != EF_TURNED && e.kind != EF_DAZED { return; }
-  for j: 0..<RS_EFFECTS { if (c[0].eff[j].kind == EF_COND || c[0].eff[j].kind == EF_TURNED || c[0].eff[j].kind == EF_DAZED) && (c[0].eff[j].cond & e.cond) != 0 { return; } }
-  c[0].cond = rs_clear(c[0].cond, e.cond);
-}
 // The name of a condition bit.
 rs_condition_name :: (bit: int) -> string {
   for i: 0..<RS_CONDITIONS { if (1 << i) == bit { return RS_CONDITION[i]; } }
@@ -980,10 +966,10 @@ rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
   #assert c[0].temp == 3 && c[0].hp == 17;
   r = rs_hurt(c[..], 6, false);
   #assert c[0].temp == 0 && c[0].hp == 14;
-  rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 0, spell = 0, until = 10, save = -1, dc = 0});
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 0, spell = 0, until = 10, save = -1, dc = 0});
   #assert rs_heal(c[..], 5) == 0 && c[0].hp == 14;
-  rs_effect_add(c[..], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 0, spell = 0, until = 10, save = -1, dc = 0});
-  rs_effect_add(c[..], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 1, spell = 0, until = 20, save = -1, dc = 0});
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 0, spell = 0, until = 10, save = -1, dc = 0});
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = 1, spell = 0, until = 20, save = -1, dc = 0});
   #assert rs_has(c[0], RS_POISONED);
   for k: 0..<RS_EFFECTS { if c[0].eff[k].kind == EF_COND && c[0].eff[k].by == 0 { rs_effect_end(c[..], k); } }
   #assert rs_has(c[0], RS_POISONED);   // the other Poisoned still holds

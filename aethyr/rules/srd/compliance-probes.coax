@@ -23,10 +23,13 @@
 }
 #test "compliance effects: adding into free storage retains existing independent effects" {
   c: [1] RsCreature;
-  rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 1, until = 60});
-  rs_effect_add(c[..], RsEffect.{kind = EF_HEX, by = 2, until = 90});
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 1, until = 60});
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_HEX, by = 2, until = 90});
   #assert c[0].eff[0].kind == EF_NOHEAL && c[0].eff[0].by == 1 && c[0].eff[0].until == 60;
   #assert c[0].eff[1].kind == EF_HEX && c[0].eff[1].by == 2 && c[0].eff[1].until == 90;
+}
+#test "compliance effects: full storage reports refusal and a later free record admits the complete cast" {
+  #assert sc_effect_capacity();
 }
 #test "compliance zones: an available zone retains a lasting cast and spends exactly one slot" {
   b: [1] RsBattle; sc_setup(b[..]);
@@ -135,14 +138,13 @@ sc_polymorph :: () -> bool {
 }
 // Storage exhaustion is an implementation contract, not a new SRD stacking rule.
 // Independent effects must not silently disappear when another effect is added.
-// This void API cannot report refusal: silently dropping the new effect also
-// fails. A future explicit-refusal API must expose that outcome to this witness.
+// Full storage now reports refusal explicitly; every old record must survive.
 sc_effect_capacity :: () -> bool {
   c: [1] RsCreature;
   for i: 0..<RS_EFFECTS {
-    rs_effect_add(c[..], RsEffect.{kind = EF_HEX + i, by = i + 1, until = f32(60 + i)});
+    if !rs_effect_add(c[..], RsEffect.{kind = EF_HEX + i, by = i + 1, until = f32(60 + i)}) { return false; }
   }
-  rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 100, until = 120});
+  if rs_effect_add(c[..], RsEffect.{kind = EF_NOHEAL, by = 100, until = 120}) { return false; }
   for i: 0..<RS_EFFECTS {
     found := false;
     for j: 0..<RS_EFFECTS {
@@ -150,7 +152,17 @@ sc_effect_capacity :: () -> bool {
     }
     if !found { return false; }
   }
-  return rs_effect(c[0], EF_NOHEAL);
+  if rs_effect(c[0], EF_NOHEAL) { return false; }
+  b: [1] RsBattle; sc_setup(b[..]);
+  for k: 0..<RS_EFFECTS { b[0].c[1].eff[k] = RsEffect.{kind=EF_HEX,by=100+k,spell=-1,until=100,save=-1}; }
+  before := sc_before(b[..]);
+  if rs_cast(b[..],0,SP_ENTANGLE,1,3,1,1) || !sc_unchanged(b[..],before) { return false; }
+  for k: 0..<RS_EFFECTS { if b[0].c[1].eff[k].kind != EF_HEX || b[0].c[1].eff[k].by != 100+k { return false; } }
+  b[0].c[1].eff[RS_EFFECTS-1].kind = EF_NONE;
+  if !rs_cast(b[..],0,SP_ENTANGLE,1,3,1,1) || !b[0].turn.action || b[0].c[0].slots[1] != before.slots[1]-1 { return false; }
+  for k: 0..<RS_EFFECTS-1 { if b[0].c[1].eff[k].kind != EF_HEX || b[0].c[1].eff[k].by != 100+k { return false; } }
+  e := b[0].c[1].eff[RS_EFFECTS-1];
+  return e.kind == EF_ZONE_RESTRAIN && e.cond == 0 && e.by == 0 && e.spell == SP_ENTANGLE && rs_has(b[0].c[1],RS_RESTRAINED);
 }
 // Every zone belongs to a different caster than this cast; ending the caster's
 // existing concentration cannot free one. Full capacity must refuse before spend.

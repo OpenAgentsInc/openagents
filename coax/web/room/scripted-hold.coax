@@ -34,8 +34,14 @@ rc_script_hold_exact :: (r:[]E5rRoom,person:int,x:f32,z:f32,reach:f32)->bool #ef
   if b[0].c[i].dead || b[0].c[i].x==E5R_AWAY {return false;}
   dx:=r[0].folk_x[person]-x;dz:=r[0].folk_z[person]-z;
   if !(dx*dx+dz*dz<=reach*reach) {return false;}
-  rs_put_effect(b,i,RsEffect.{kind=EF_COND,cond=RS_PARALYZED,by= -1,spell=SP_HOLD_PERSON,until=b[0].clock+E5RR_HOLD_S,save= -1,dc=0});
-  return true;
+  return rs_put_effect(b,i,RsEffect.{kind=EF_COND,cond=RS_PARALYZED,by= -1,spell=SP_HOLD_PERSON,until=b[0].clock+E5RR_HOLD_S,save= -1,dc=0});
+}
+#test "named scripted hold propagates full effect storage refusal without changing owners" #steps 2000000000 {
+  r:[1]E5rRoom;e5rr_start(r[..],7);e5rr_test_people(r[..]);
+  i:=e5rr_folk(0);
+  for k:0..<RS_EFFECTS {r[0].b[0].c[i].eff[k]=RsEffect.{kind=EF_HEX,by=100+k,until=100};}
+  #assert !rc_script_hold_exact(r[..],0,3,0,0) && !rs_has(r[0].b[0].c[i],RS_PARALYZED);
+  for k:0..<RS_EFFECTS {#assert r[0].b[0].c[i].eff[k].kind==EF_HEX && r[0].b[0].c[i].eff[k].by==100+k;}
 }
 #test "named holds preserve exact effect metadata and refuse across the folk span and reach boundary" #steps 2000000000 {
   r:[1]E5rRoom;e5rr_start(r[..],7);e5rr_test_people(r[..]);

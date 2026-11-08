@@ -1,0 +1,7 @@
+ok   #test paired scripted holds keep one target when the nearest people differ (1 case, 1894988 steps, 80 ms)
+ok   #test named scripted holds refuse invalid absent dead and distant people without a fallback (1 case, 788185 steps, 31 ms)
+ok   #test named scripted hold propagates full effect storage refusal without changing owners (1 case, 788077 steps, 30 ms)
+ok   #test Everglade 5E room: a scripted hold paralyzes the person nearest for 6 s with no save, and no one out of reach (#12886) (1 case, 991867 steps, 32 ms)
+ok   #test Everglade 5E room: scripted hold reports full effect storage without evicting another owner (1 case, 790974 steps, 34 ms)
+5 of 266 checks (--only 'scripted hold'), 5 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
