@@ -109,6 +109,29 @@ at 2.7 kHz, with none of a real step's 100 to 800 Hz body). Add `?sfx=synth` to 
 | `step-1`, `step-2`, `step-3` | footfalls on packed earth | `egs_frame`, `egs_others` |
 | `ambient` | the town's bed: wind in the leaves and two birds, looped | `everglade_sound_lines` |
 
+## Everglade Experimental's synthesized effects
+
+Source: synthesized by Aethyr from the recipes in
+[`experimental-sfx.coax`](experimental-sfx.coax) (`xsfx_recipe`), in the same layer format as
+[`sfx.coax`](sfx.coax) and with its renderer's level. Experimental plays them for the sounds
+Everglade's bank has no fitting file for; everything else it plays is the bank's picks above.
+The page renders them when its audio starts (`fivelab-face.c` `coaxial_sound_bank`), so none is
+downloaded.
+
+Licence: CC0 1.0 (made by OpenAgents for this repository).
+
+| Name | What it is |
+| --- | --- |
+| `psychic-cast`, `psychic-hit` | Vicious Mockery: a voice-like warble, and a dissonant shudder where it lands |
+| `choir` | Sacred Flame and Bless: four voices on a held "ah" |
+| `rage-roar` | Rage (and a beast's roar) |
+| `grunt` | Reckless Attack's grunt of effort |
+| `swing-heavy` | a greataxe's or greatsword's slower, lower whoosh |
+| `fizzle` | a spell that meets no one |
+| `second-wind`, `surge`, `dash`, `flurry` | Second Wind and Preserve Life, Action Surge, Dash, Flurry of Blows |
+| `entangle` | creaking vines |
+| `imp-hurt`, `imp-death`, `gremlin-hurt`, `gremlin-death` | the monsters' own voices |
+
 ## Earlier sounds
 
 - The haunted house's `haunt-*.mp3` sounds: CC0, listed in

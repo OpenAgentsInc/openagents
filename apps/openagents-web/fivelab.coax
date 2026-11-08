@@ -2983,7 +2983,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   if s[0].creator[0].on {
     n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
     if s[0].creator[0].experimental && !s[0].creator[0].walk.on { n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt); }
-    cr:=s[0].creator[0];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr.experimental && !cr.walk.on,cr.player_x,cr.player_z,cr.airborne,cr.hostiles[0].hp,cr.hostiles[0].hits,s[0].xc[0].casts,ifx still then 0.0f32 else dt);
+    cr:=s[0].creator[0];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr.experimental && !cr.walk.on,cr.player_x,cr.player_z,cr.airborne,cr.hostiles[0].hp,cr.hostiles[0].hits,ifx still then 0.0f32 else dt);
     return n;
   }
   lab_start(s);

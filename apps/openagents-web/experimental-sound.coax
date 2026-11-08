@@ -1,36 +1,116 @@
-// Experimental's audio cues use the same named Everglade sound bank and host protocol.
+// Experimental's audio: Everglade's named sound bank (its ElevenLabs and Kenney picks, played from
+// /realms/everglade/sfx/NAME-CAND.ogg) and Experimental's own synthesized effects
+// (aethyr/audio/experimental-sfx.coax, rendered by the face when audio starts), as host lines.
+//
+// Every effect is a mixed voice line, NAME GAIN PAN DELAY LOWPASS RATE WET ID (coax/web/host.js
+// playSoundText). Each play takes one of the sound's picks at random and a small random pitch
+// (rate 0.93 to 1.07) and level (0.85 to 1.0), so a repeated sound never plays identically. The
+// bed is a looping ~NAME line. The host drains the lines once a frame (fivelab-face.c
+// coaxial_sounds_len); what combat plays comes from experimental-combat.coax (xc_cue).
 #module "verse.experimentalsound";
-#test "experimental audio starts ambience and follows actual footsteps" {
- s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.016);
- #assert cast(string)s[0].lines[0..<s[0].n]=="~ambient-e1 0.112 0.000\n";
- experimental_sound_tick(s[..],true,0.4,0,false,44,0,0,0.016);#assert s[0].n==0;
- experimental_sound_tick(s[..],true,1.3,0,false,44,0,0,0.016);#assert cast(string)s[0].lines[0..<s[0].n]=="step-1-e1 0.120 0.000\n";
-}
-#test "experimental audio reacts once to combat and never to paused frames" {
- s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.016);
- experimental_sound_tick(s[..],true,0,0,false,39,1,1,0.016);
- #assert cast(string)s[0].lines[0..<s[0].n]=="swing-e1 0.350 0.000\nhit-e1 0.400 0.000\n";
- experimental_sound_tick(s[..],true,0,0,false,0,1,1,0.016);#assert cast(string)s[0].lines[0..<s[0].n]=="death-e1 0.450 0.000\n";
- experimental_sound_tick(s[..],true,0,0,false,0,1,1,0);#assert s[0].n==0;
-}
-ExperimentalSound :: struct {lines:[256]u8;n:int;ready:bool;x:f32;z:f32;distance:f32;steps:int;bed_at:f32 = -3;time:f32;hp:int;hits:int;casts:int;}
+#load "../../aethyr/audio/experimental-sfx.coax";
+#load "../../aethyr/audio/everglade-bank.coax";
+
+ExperimentalSound :: struct {lines:[4096]u8;n:int;ready:bool;x:f32;z:f32;distance:f32;steps:int;bed_at:f32 = -3;time:f32;hp:int;hits:int;seed:u64 = 0x9e3779b97f4a7c15;voice:int;played:int;}
+
 experimental_sound_add :: (s:[]ExperimentalSound,line:string) {
  if s[0].n+line.count>s[0].lines.count {return;}for c:line {s[0].lines[s[0].n]=c;s[0].n+=1;}
 }
-experimental_sound_tick :: (s:[]ExperimentalSound,on:bool,x:f32,z:f32,air:bool,hp:int,hits:int,casts:int,dt:f32) {
- s[0].n=0;if !on {s[0].ready=false;return;}if dt<=0 {return;}s[0].time+=ifx dt>0.25 then 0.25f32 else dt;
+// A uniform number in [0, 1) from the sound's own generator (xorshift64).
+experimental_sound_random :: (s:[]ExperimentalSound)->f32 {
+ x:=s[0].seed;x=x^(x>>12);x=x^(x<<25);x=x^(x>>27);s[0].seed=x;
+ return f32(x>>40)/16777216.0;
+}
+xs_put :: (b:[]u8,at:int,t:string)->int {n:=at;for c:t {if n<b.count {b[n]=c;n+=1;}}return n;}
+xs_int :: (b:[]u8,at:int,v:int)->int {
+ n:=at;if v<0 {n=xs_put(b,n,"-");return xs_int(b,n,-v);}
+ d:[20]u8;k:=0;w:=v;while true {d[k]=cast(u8)(48+w%10);k+=1;w/=10;if w==0 {break;}}
+ while k>0 {k-=1;if n<b.count {b[n]=d[k];n+=1;}}return n;
+}
+// v with three decimals.
+xs_fixed :: (b:[]u8,at:int,v:f32)->int {
+ n:=at;m:=cast(int)floor(abs(v)*1000+0.5);if v<0 && m>0 {n=xs_put(b,n,"-");}
+ n=xs_int(b,n,m/1000);n=xs_put(b,n,".");f:=m%1000;
+ if f<100 {n=xs_put(b,n,"0");}if f<10 {n=xs_put(b,n,"0");}return xs_int(b,n,f);
+}
+// The file a sound's name plays this time: one of an Everglade sound's picks (NAME-CAND), at
+// random, or an Experimental effect by its own name (the face's bank). "" when there is none.
+experimental_sound_file :: (s:[]ExperimentalSound,name:string,out:[]u8)->int {
+ id:=sfx_id(name);
+ if id<0 {return ifx xsfx_id(name)>=0 then xs_put(out,0,name) else 0;}
+ n:=0;for v:0..<SFXB_VARIANTS {if SFXB_PICK[id*SFXB_VARIANTS+v]>=0 {n+=1;}}
+ if n==0 {return 0;}
+ pick:=cast(int)floor(experimental_sound_random(s)*f32(n));if pick>=n {pick=n-1;}
+ for v:0..<SFXB_VARIANTS {q:=SFXB_PICK[id*SFXB_VARIANTS+v];if q<0 {continue;}
+  if pick==0 {k:=xs_put(out,0,name);k=xs_put(out,k,"-");return xs_put(out,k,SFXB[q].cand);}pick-=1;}
+ return 0;
+}
+// Plays `name` now at about `gain`, `pan` (-1 left .. 1 right) and `rate` (pitch), varied a little.
+experimental_sound_play :: (s:[]ExperimentalSound,name:string,gain:f32,pan:f32,rate:f32) {
+ f:[48]u8;fn:=experimental_sound_file(s,name,f[..]);if fn==0 {return;}
+ r:=rate*(0.93+0.14*experimental_sound_random(s));g:=gain*(0.85+0.15*experimental_sound_random(s));
+ if r<0.5 {r=0.5;}if r>2 {r=2;}
+ p:=ifx pan< -1 then -1.0f32 else ifx pan>1 then 1.0f32 else pan;
+ s[0].voice+=1;s[0].played+=1;
+ b:[128]u8;n:=xs_put(b[..],0,cast(string)f[0..<fn]);n=xs_put(b[..],n," ");n=xs_fixed(b[..],n,g);n=xs_put(b[..],n," ");n=xs_fixed(b[..],n,p);
+ n=xs_put(b[..],n," 0 0 ");n=xs_fixed(b[..],n,r);n=xs_put(b[..],n," 0 x");n=xs_int(b[..],n,s[0].voice);n=xs_put(b[..],n,"\n");
+ experimental_sound_add(s,cast(string)b[0..<n]);
+}
+// Ambience, your footsteps, the blows you take, your fall and standing back up. The host drains
+// the lines (coaxial_sounds_len), so combat's cues from earlier in the frame are kept.
+experimental_sound_tick :: (s:[]ExperimentalSound,on:bool,x:f32,z:f32,air:bool,hp:int,hits:int,dt:f32) {
+ if !on {s[0].ready=false;return;}if dt<=0 {return;}s[0].time+=ifx dt>0.25 then 0.25f32 else dt;
  if s[0].time-s[0].bed_at>=2 {experimental_sound_add(s,"~ambient-e1 0.112 0.000\n");s[0].bed_at=s[0].time;}
- if !s[0].ready {s[0].ready=true;s[0].x=x;s[0].z=z;s[0].hp=hp;s[0].hits=hits;s[0].casts=casts;return;}
+ if !s[0].ready {s[0].ready=true;s[0].x=x;s[0].z=z;s[0].hp=hp;s[0].hits=hits;return;}
  dx:=x-s[0].x;dz:=z-s[0].z;move:=sqrt(dx*dx+dz*dz);s[0].x=x;s[0].z=z;
- if !air && hp>0 && move<3 {s[0].distance+=move;if s[0].distance>=1.25 {s[0].distance-=1.25;which:=s[0].steps%3;s[0].steps+=1;experimental_sound_add(s,ifx which==0 then "step-1-e1 0.120 0.000\n" else ifx which==1 then "step-2-e1 0.120 0.000\n" else "step-3-e1 0.120 0.000\n");}}
- if casts>s[0].casts && hp>0 {experimental_sound_add(s,"swing-e1 0.350 0.000\n");}
- if hits>s[0].hits && hp>0 {experimental_sound_add(s,"hit-e1 0.400 0.000\n");}
- if hp<=0 && s[0].hp>0 {experimental_sound_add(s,"death-e1 0.450 0.000\n");}else if hp>0 && s[0].hp<=0 {experimental_sound_add(s,"stand-e1 0.350 0.000\n");}
- s[0].hp=hp;s[0].hits=hits;s[0].casts=casts;
+ if !air && hp>0 && move<3 {s[0].distance+=move;if s[0].distance>=1.25 {s[0].distance-=1.25;which:=s[0].steps%3;s[0].steps+=1;experimental_sound_play(s,ifx which==0 then "step-1" else ifx which==1 then "step-2" else "step-3",0.12,0,1);}}
+ if hits>s[0].hits && hp>0 {experimental_sound_play(s,"hit",0.4,0,1);}
+ if hp<=0 && s[0].hp>0 {experimental_sound_play(s,"death",0.45,0,1);}else if hp>0 && s[0].hp<=0 {experimental_sound_play(s,"stand",0.35,0,1);}
+ s[0].hp=hp;s[0].hits=hits;
+}
+// The face's bank: Experimental's own effects, rendered once when the host starts audio.
+experimental_sound_count :: ()->int #export_c #effects(all) {return XSFX_COUNT;}
+experimental_sound_name :: (i:int,out:[]u8)->int #export_c #effects(all) {return ifx i>=0 && i<XSFX_COUNT then xs_put(out,0,XSFX_NAMES[i]) else -1;}
+experimental_sound_render :: (i:int,mix:[]int,out:[]u8)->int #export_c #effects(all) {r:=xsfx_render(i,SFX_RATE,mix,out);return ifx r.ok then r.bytes else -1;}
+experimental_sound_scratch :: ()->int #export_c #effects(all) {return XSFX_MAX_FRAMES;}
+experimental_sound_bytes :: ()->int #export_c #effects(all) {return xsfx_bytes();}
+
+xs_text :: (s:[]ExperimentalSound)->string {return cast(string)s[0].lines[0..<s[0].n];}
+xs_word :: (t:string,k:int)->string {w:=0;a:=0;for i:0..<t.count+1 {if i==t.count || t[i]==' ' || t[i]=='\n' {if w==k {return t[a..<i];}w+=1;a=i+1;}}return "";}
+#test "experimental audio starts ambience and follows actual footsteps" {
+ s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0.016);
+ #assert xs_text(s[..])=="~ambient-e1 0.112 0.000\n";s[0].n=0;
+ experimental_sound_tick(s[..],true,0.4,0,false,44,0,0.016);#assert s[0].n==0;
+ experimental_sound_tick(s[..],true,1.3,0,false,44,0,0.016);
+ f:=xs_word(xs_text(s[..]),0);#assert f.count>7 && f[0..<7]=="step-1-";
+}
+#test "experimental audio reacts once to blows and falls and never to paused frames" {
+ s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0.016);s[0].n=0;
+ experimental_sound_tick(s[..],true,0,0,false,39,1,0.016);#assert xs_word(xs_text(s[..]),0)[0..<4]=="hit-";s[0].n=0;
+ experimental_sound_tick(s[..],true,0,0,false,0,1,0.016);#assert xs_word(xs_text(s[..]),0)[0..<6]=="death-";s[0].n=0;
+ experimental_sound_tick(s[..],true,0,0,false,0,1,0);#assert s[0].n==0;
 }
 #test "ambience retries for a late audio gesture and teleports do not make footsteps" {
- s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.25);
- for i:0..<7 {experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.25);#assert s[0].n==0;}
- experimental_sound_tick(s[..],true,10,0,false,44,0,0,0.25);#assert cast(string)s[0].lines[0..<s[0].n]=="~ambient-e1 0.112 0.000\n";
- experimental_sound_tick(s[..],true,10,0,false,44,0,0,0.25);#assert s[0].n==0;
+ s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0.25);s[0].n=0;
+ for i:0..<7 {experimental_sound_tick(s[..],true,0,0,false,44,0,0.25);#assert s[0].n==0;}
+ experimental_sound_tick(s[..],true,10,0,false,44,0,0.25);#assert xs_text(s[..])=="~ambient-e1 0.112 0.000\n";s[0].n=0;
+ experimental_sound_tick(s[..],true,10,0,false,44,0,0.25);#assert s[0].n==0;
+}
+#test "a sound plays one of its picks, and repeats vary in pitch and level within bounds" {
+ s:[1]ExperimentalSound;rates:[40]f32;names:[2]bool;
+ for i:0..<40 {s[0].n=0;experimental_sound_play(s[..],"fire-cast",0.5,0.25,1);t:=xs_text(s[..]);
+  name:=xs_word(t,0);#assert name=="fire-cast-e2" || name=="fire-cast-e3";if name=="fire-cast-e2" {names[0]=true;}else {names[1]=true;}
+  #assert xs_word(t,2)=="0.250" && xs_word(t,3)=="0" && xs_word(t,4)=="0" && xs_word(t,6)=="0";
+  r:=xs_word(t,5);#assert r.count==5;
+  g:=xs_word(t,1);#assert g[0..<3]=="0.4" || g[0..<3]=="0.5";}
+ #assert names[0] && names[1];
+ // the pitch varies: forty plays are not all one rate
+ s[0].n=0;experimental_sound_play(s[..],"hit",0.5,0,1);w:=xs_word(xs_text(s[..]),5);a:[8]u8;an:=xs_put(a[..],0,w);same:=true;
+ for i:0..<10 {s[0].n=0;experimental_sound_play(s[..],"hit",0.5,0,1);if xs_word(xs_text(s[..]),5)!=cast(string)a[0..<an] {same=false;}}#assert !same;
+ // an Experimental effect plays by its own name; an unknown one plays nothing
+ s[0].n=0;experimental_sound_play(s[..],"psychic-cast",0.5,0,1);#assert xs_word(xs_text(s[..]),0)=="psychic-cast";
+ s[0].n=0;experimental_sound_play(s[..],"nothing",0.5,0,1);#assert s[0].n==0;
+ // each voice has its own id
+ s[0].n=0;experimental_sound_play(s[..],"hit",0.5,0,1);experimental_sound_play(s[..],"hit",0.5,0,1);t:=xs_text(s[..]);
+ #assert xs_word(t,7)!=xs_word(t,15);
 }

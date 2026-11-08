@@ -377,6 +377,7 @@ xc_press :: (s: [] Lab, k: int) -> bool {
     x[0].swing_next += 1; x[0].swing_tick = tick - 1; x[0].swing_struck = false;
     x[0].pend = k;
     x[0].cool_at = now; x[0].used = k;
+    xc_cast_sound(s, a);   // the whoosh as the swing starts; the blow's hit when it lands (xc_use)
     return true;
   }
   return xc_use(s, k);
@@ -518,6 +519,122 @@ xc_kit :: (c: int) -> int {
   if c == FB_CL_RANGER || c == FB_CL_ROGUE { return 3; }
   return -1;
 }
+// ---- sound: every ability its own (experimental-sound.coax plays them, varied each time)
+// start: as you use it (a blow's whoosh as the swing starts); layer: under the cast; hit: where it
+// lands on a monster; miss: where a spell meets no one or a monster dodges it. Names are Everglade's
+// bank (aethyr/audio/everglade-sfx.txt) or Experimental's own (aethyr/audio/experimental-sfx.coax).
+XcSnd :: struct { start: string; layer: string; hit: string; miss: string; rate: f32 = 1; }
+xs :: (start: string, layer: string, hit: string, miss: string, rate: f32) -> XcSnd {
+  return XcSnd.{start = start, layer = layer, hit = hit, miss = miss, rate = rate};
+}
+// The kind of damage a spell's first damage roll deals, RS_DMG_NONE when it rolls none.
+xc_damage_type :: (sp: int) -> int {
+  r := rs_spell(sp);
+  for q: 0..<r.step_n { if r.steps[q].kind == RS_S_DAMAGE { return r.steps[q].c; } }
+  return RS_DMG_NONE;
+}
+// A spell's sound: its own when it has one, else its damage type's, else its school's.
+xc_spell_sound :: (sp: int) -> XcSnd {
+  if sp == SP_FIRE_BOLT { return xs("fire-cast", "fire-travel", "fire-hit", "fizzle", 1); }
+  if sp == SP_FLAME_HURL || sp == SP_PRODUCE_FLAME { return xs("fire-cast", "", "fire-hit", "fizzle", 1.12); }
+  if sp == SP_SCORCHING_RAY { return xs("cone", "fire-travel", "fire-hit", "fizzle", 1.1); }
+  if sp == SP_FIREBALL { return xs("fire-travel", "fire-cast", "fireball", "fizzle", 0.9); }
+  if sp == SP_BURNING_HANDS { return xs("cone", "", "fire-hit", "fizzle", 1); }
+  if sp == SP_RAY_OF_FROST { return xs("frost-cast", "frost-travel", "frost-hit", "fizzle", 1); }
+  if sp == SP_ICE_KNIFE { return xs("frost-travel", "", "ice", "fizzle", 1.1); }
+  if sp == SP_ELDRITCH_BLAST { return xs("eldritch-cast", "eldritch-travel", "eldritch-hit", "fizzle", 0.82); }
+  if sp == SP_CHILL_TOUCH { return xs("necro-cast", "", "necro-hit", "fizzle", 1); }
+  if sp == SP_RAY_OF_SICKNESS { return xs("blight", "necro-travel", "necro-hit", "fizzle", 1.15); }
+  if sp == SP_FALSE_LIFE { return xs("shield", "necro-cast", "", "", 0.8); }
+  if sp == SP_BLINDNESS { return xs("hex", "necro-travel", "necro-hit", "fizzle", 0.8); }
+  if sp == SP_HEX { return xs("hex", "", "", "fizzle", 1); }
+  if sp == SP_HUNTERS_MARK { return xs("hex", "", "", "fizzle", 1.25); }
+  if sp == SP_HOLD_PERSON { return xs("hold", "", "", "fizzle", 1); }
+  if sp == SP_HYPNOTIC_PATTERN { return xs("levitate", "hold", "", "", 1.15); }
+  if sp == SP_VICIOUS_MOCKERY { return xs("psychic-cast", "", "psychic-hit", "fizzle", 1); }
+  if sp == SP_SACRED_FLAME { return xs("choir", "", "radiant", "fizzle", 1); }
+  if sp == SP_GUIDING_BOLT { return xs("radiant", "missile", "arcane-hit", "fizzle", 1); }
+  if sp == SP_SPIRIT_GUARDIANS { return xs("levitate", "choir", "radiant", "", 0.85); }
+  if sp == SP_DIVINE_SMITE { return xs("radiant", "", "hit-heavy", "", 0.9); }
+  if sp == SP_STARRY_WISP { return xs("arcane-cast", "missile", "arcane-hit", "fizzle", 1); }
+  if sp == SP_HEALING_WORD || sp == SP_CURE_WOUNDS { return xs("heal", "", "", "", 1); }
+  if sp == SP_THUNDERWAVE { return xs("thunderwave", "thunder", "hit-heavy", "", 1); }
+  if sp == SP_ENTANGLE { return xs("entangle", "", "", "", 1); }
+  if sp == SP_CALL_LIGHTNING { return xs("bolt-cast", "thunder", "bolt-travel", "fizzle", 1); }
+  if sp == SP_LIGHTNING_BOLT { return xs("bolt-travel", "bolt-cast", "thunder", "fizzle", 1); }
+  if sp == SP_SHIELD || sp == SP_SHIELD_OF_FAITH { return xs("shield", "", "", "", 1); }
+  if sp == SP_BLESS { return xs("choir", "", "", "", 1.2); }
+  if sp == SP_MOONBEAM { return xs("radiant", "levitate", "radiant", "", 0.7); }
+  t := xc_damage_type(sp);
+  if t == RS_FIRE { return xs("fire-cast", "", "fire-hit", "fizzle", 1); }
+  if t == RS_COLD { return xs("frost-cast", "", "frost-hit", "fizzle", 1); }
+  if t == RS_LIGHTNING { return xs("bolt-cast", "", "bolt-travel", "fizzle", 1); }
+  if t == RS_THUNDER { return xs("thunderwave", "", "thunder", "", 1); }
+  if t == RS_NECROTIC { return xs("necro-cast", "", "necro-hit", "fizzle", 1); }
+  if t == RS_RADIANT { return xs("radiant", "", "radiant", "fizzle", 1); }
+  if t == RS_PSYCHIC { return xs("psychic-cast", "", "psychic-hit", "fizzle", 1); }
+  if t == RS_FORCE { return xs("eldritch-cast", "", "eldritch-hit", "fizzle", 1.1); }
+  if t == RS_ACID || t == RS_POISON { return xs("blight", "", "necro-hit", "fizzle", 1.2); }
+  sc := rs_spell(sp).school;
+  if sc == "Abjuration" { return xs("shield", "", "", "", 1); }
+  if sc == "Conjuration" { return xs("teleport", "", "", "", 1); }
+  if sc == "Enchantment" { return xs("hold", "", "", "fizzle", 1); }
+  if sc == "Illusion" || sc == "Transmutation" { return xs("levitate", "", "", "", 1); }
+  if sc == "Necromancy" { return xs("necro-cast", "", "necro-hit", "fizzle", 1); }
+  return xs("arcane-cast", "", "arcane-hit", "fizzle", 1);
+}
+// Ability a's sound for class klass (whose weapon its blows use).
+xc_sound :: (a: FbAb, klass: int) -> XcSnd {
+  if a.kind == FB_SPELL { return xc_spell_sound(a.sp); }
+  kit := xc_kit(klass); heavy := kit == 0 || kit == 1;
+  if a.kind == FB_ATTACK {
+    if a.name == "Sneak Attack" { return xs("swing", "necro-travel", "hit-heavy", "", 1.15); }
+    if a.name == "Martial Arts" || kit < 0 { return xs("swing", "", "hit", "", 1.3); }   // a fist, or a caster's staff
+    if heavy { return xs("swing-heavy", "", "hit-heavy", "", ifx kit == 0 then 0.88 else 1.0); }   // the greataxe is the heavier
+    return xs("swing", "", "hit", "", ifx kit == 3 then 1.1 else 1.0);
+  }
+  if a.kind == FB_RECKLESS { return xs("grunt", "swing-heavy", "hit-heavy", "", 0.9); }
+  if a.kind == FB_RAGE { return xs("rage-roar", "", "", "", 1); }
+  if a.kind == FB_FLURRY { return xs("flurry", "", "hit", "", 1); }
+  if a.kind == FB_PATIENT { return xs("hold", "", "", "", 0.8); }
+  if a.kind == FB_WIND { return xs("levitate", "dash", "", "", 1.1); }
+  if a.kind == FB_WHOLE { return xs("heal", "", "", "", 0.85); }
+  if a.kind == FB_SECOND { return xs("second-wind", "", "", "", 1); }
+  if a.kind == FB_SURGE { return xs("surge", "", "", "", 1); }
+  if a.kind == FB_LAY { return xs("heal", "choir", "", "", 0.9); }
+  if a.kind == FB_SACRED { return xs("shield", "choir", "", "", 1); }
+  if a.kind == FB_INNATE { return xs("arcane-cast", "levitate", "", "", 0.9); }
+  if a.kind == FB_INSPIRE { return xs("raid-won", "", "", "", 1.2); }
+  if a.kind == FB_TURN { return xs("rebuke", "choir", "radiant", "", 1); }
+  if a.kind == FB_PRESERVE { return xs("second-wind", "heal", "", "", 1.15); }
+  if a.kind == FB_LANDS { return xs("shield", "entangle", "", "", 1.1); }
+  if a.kind == FB_AIM { return xs("hold", "", "", "", 1.3); }
+  if a.kind == FB_CDASH { return xs("teleport", "", "", "", 1.2); }
+  if a.kind == FB_DASH { return xs("dash", "", "", "", 1); }
+  if a.kind == FB_RESURGE { return xs("rage-roar", "", "", "", 1.25); }   // Wild Shape's beast
+  return xs("arcane-cast", "", "", "", 1);
+}
+// One cue heard where it happens: softer the farther it is, panned the way the camera faces.
+xc_cue :: (s: [] Lab, name: string, gain: f32, x: f32, z: f32, rate: f32) {
+  if name.count == 0 { return; }
+  cr := s[0].creator[0];
+  dx := x - cr.player_x; dz := z - cr.player_z; d := sqrt(dx * dx + dz * dz);
+  pan := 0.0f32;
+  if d > 0.5 { pan = (dx * cos(cr.yaw) - dz * sin(cr.yaw)) / d * 0.7; }
+  exsound.experimental_sound_play(s[0].experimental_audio[..], name, gain / (1 + d / 10), pan, rate);
+}
+// A monster's voice when it is hurt or dies: the imp shrieks, the gremlin snarls.
+xc_voice :: (s: [] Lab, i: int, died: bool) {
+  e := s[0].creator[0].hostiles[0].enemies[i];
+  imp := i < 3;
+  name := ifx imp then (ifx died then "imp-death" else "imp-hurt") else (ifx died then "gremlin-death" else "gremlin-hurt");
+  xc_cue(s, name, ifx died then 0.6f32 else 0.5f32, e.x, e.z, 1);
+}
+xc_cast_sound :: (s: [] Lab, a: FbAb) {
+  cr := s[0].creator[0]; d := xc_sound(a, s[0].xc[0].klass);
+  xc_cue(s, d.start, 0.55, cr.player_x, cr.player_z, d.rate);
+  xc_cue(s, d.layer, 0.32, cr.player_x, cr.player_z, d.rate);
+}
 // Slot k used now: the engine resolves it at what it aims at (xc_aim). True when it was used.
 xc_use :: (s: [] Lab, k: int) -> bool { return xc_use_on(s, k, -2); }
 // Slot k used now against monster on (a blade's contact), or at what it aims at when on is -2.
@@ -531,11 +648,15 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   aim := xc_aim(s, a);
   if on >= -1 { aim.foe = on; }
   foe := aim.foe;
-  if aim.kind == XC_AIM_CONE && foe < 0 { x[0].fizzle = k; x[0].fizzle_at = now; x[0].refused += 1; return false; }   // no one ahead: the icon fizzles
+  snd := xc_sound(a, x[0].klass);
+  swung := xc_kit(x[0].klass) >= 0 && aim.kind == XC_AIM_MELEE;   // its whoosh played at the press (xc_press)
+  if aim.kind == XC_AIM_CONE && foe < 0 { x[0].fizzle = k; x[0].fizzle_at = now; x[0].refused += 1; xc_cue(s, snd.miss, 0.35, px, pz, 1); return false; }   // no one ahead: the icon fizzles
   if (aim.kind == XC_AIM_BOLT || aim.kind == XC_AIM_MELEE) && foe < 0 {
     // the bolt flies on to its range and fizzles; the blow swings at the air. No roll, no damage.
     x[0].cool_at = now; x[0].used = k; x[0].casts += 1; x[0].whiffs += 1;
     xc_look(s, a, -1, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
+    if !swung { xc_cast_sound(s, a); }
+    if aim.kind == XC_AIM_BOLT { xc_cue(s, snd.miss, 0.45, px + aim.fx * aim.reach, pz + aim.fz * aim.reach, 1); }
     return true;
   }
   // the monsters on the engine's squares round you
@@ -576,22 +697,25 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     xc_float_int(x, px, cr[0].player_y + 2.1, pz, now, gain, true);
   }
   xc_look(s, a, foe, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
+  if !swung { xc_cast_sound(s, a); }
   // what it did to each monster: the numbers, and the fallen
   struck := false;
   for i: 0..<XC_FOES {
     c := b[0].c[1 + i];
     e := h[0].enemies[i..<i + 1];
     lost := before[i] - rs_max(c.hp, 0);
-    if lost > 0 { struck = true; x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false); }
+    if lost > 0 { struck = true; x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
+      xc_cue(s, snd.hit, 0.55, e[0].x, e[0].z, snd.rate);
+      if !c.dead && c.hp > 0 { xc_voice(s, i, false); } }
     e[0].held = !c.dead && (c.restrained_by >= 0 || !rs_can_act(c));
     if !e[0].dead && (c.dead || c.hp <= 0) {
       e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
-      x[0].kills += 1;
+      x[0].kills += 1; xc_voice(s, i, true);
       if x[0].target == i { x[0].target = -1; }
       fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
     }
   }
-  if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
+  if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
   return true;
 }
 // One of the glade's effects (aethyr/fx/puff.coax), on the creator's clock.
@@ -1166,4 +1290,31 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   input = lab_move_in(s[..]); #assert input.link_flags & 512 == 0 && input.key_y == 0;
   s[0].creator[0].clock += 1; #assert xc_press(s[..], dash);
   s[0].creator[0].hostiles[0].hp = 0; input = lab_move_in(s[..]); #assert input.link_flags & 512 == 0;
+}
+
+#test "no two abilities a class has at once share a cast sound, at every level 1 to 6, and every sound exists" {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N {
+    for level: 1..<7 {
+      n := xc_bar_level(c, level, bar[..]);
+      for i: 0..<n {
+        d := xc_sound(bar[i], c);
+        #assert d.start.count > 0 && d.rate >= 0.5 && d.rate <= 2;
+        for name: [4] string.[d.start, d.layer, d.hit, d.miss] {
+          if name.count > 0 { #assert exsound.sfx_id(name) >= 0 || exsound.xsfx_id(name) >= 0; }
+        }
+        for j: 0..<i { #assert xc_sound(bar[j], c).start != d.start; }
+      }
+    }
+  }
+  // the ones the owner named sound as asked
+  #assert xc_spell_sound(SP_FIRE_BOLT).start == "fire-cast" && xc_spell_sound(SP_FIRE_BOLT).hit == "fire-hit";
+  #assert xc_spell_sound(SP_RAY_OF_FROST).start == "frost-cast" && xc_spell_sound(SP_ELDRITCH_BLAST).rate < 1;
+  #assert xc_spell_sound(SP_SACRED_FLAME).start == "choir" && xc_spell_sound(SP_GUIDING_BOLT).start == "radiant";
+  #assert xc_spell_sound(SP_THUNDERWAVE).layer == "thunder" && xc_spell_sound(SP_VICIOUS_MOCKERY).start == "psychic-cast";
+  #assert xc_spell_sound(SP_CURE_WOUNDS).start == "heal" && xc_spell_sound(SP_FIRE_BOLT).miss == "fizzle";
+  axe := xc_sound(xc_attack(), FB_CL_BARBARIAN); sword := xc_sound(xc_attack(), FB_CL_PALADIN); great := xc_sound(xc_attack(), FB_CL_FIGHTER);
+  #assert axe.start == "swing-heavy" && axe.hit == "hit-heavy" && axe.rate < great.rate && sword.start == "swing" && sword.hit == "hit";
+  rage: FbAb; rage.kind = FB_RAGE; second: FbAb; second.kind = FB_SECOND;
+  #assert xc_sound(rage, FB_CL_BARBARIAN).start == "rage-roar" && xc_sound(second, FB_CL_FIGHTER).start == "second-wind";
 }
