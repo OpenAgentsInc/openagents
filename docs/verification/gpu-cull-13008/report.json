@@ -1,0 +1,1083 @@
+{
+ "adapter": "apple metal-3",
+ "lod": [
+  {
+   "scene": 0,
+   "view": 0,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 1,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 2,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 3,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 4,
+   "chosen": 29,
+   "expected": 29,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 5,
+   "chosen": 46,
+   "expected": 46,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 6,
+   "chosen": 52,
+   "expected": 52,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 7,
+   "chosen": 46,
+   "expected": 46,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 1,
+   "view": 0,
+   "chosen": 71,
+   "expected": 71,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 1,
+   "view": 1,
+   "chosen": 63,
+   "expected": 63,
+   "near": 0,
+   "mismatched": 0
+  }
+ ],
+ "coverage": [
+  {
+   "view": 0,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 0,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 0,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 1,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 26,
+   "hidden1": 0,
+   "drawn1": 28,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 1,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 26,
+   "hidden1": 0,
+   "drawn1": 28,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 1,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 26,
+   "hidden1": 0,
+   "drawn1": 28,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 2,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 38,
+   "hidden1": 0,
+   "drawn1": 16,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 2,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 38,
+   "hidden1": 0,
+   "drawn1": 16,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 2,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 38,
+   "hidden1": 0,
+   "drawn1": 16,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 6,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 52,
+   "frustum": 27,
+   "hidden1": 0,
+   "drawn1": 25,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 6,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 52,
+   "frustum": 27,
+   "hidden1": 0,
+   "drawn1": 25,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 6,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 52,
+   "frustum": 27,
+   "hidden1": 0,
+   "drawn1": 25,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 7,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 46,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 23,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 7,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 46,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 23,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 7,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 46,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 23,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  }
+ ],
+ "residency": {
+  "pages": 30,
+  "slots": 30,
+  "frames": [
+   {
+    "view": 0,
+    "frame": 0,
+    "installed": 0,
+    "installsNow": 0,
+    "drawn": 0,
+    "lod": 0,
+    "mismatched": 54,
+    "uncovered": null
+   },
+   {
+    "view": 0,
+    "frame": 1,
+    "installed": 0,
+    "installsNow": 1,
+    "drawn": 0,
+    "lod": 0,
+    "mismatched": 54,
+    "uncovered": null
+   },
+   {
+    "view": 0,
+    "frame": 2,
+    "installed": 1,
+    "installsNow": 0,
+    "drawn": 1,
+    "lod": 1,
+    "mismatched": 55,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 3,
+    "installed": 1,
+    "installsNow": 1,
+    "drawn": 1,
+    "lod": 1,
+    "mismatched": 55,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 4,
+    "installed": 2,
+    "installsNow": 0,
+    "drawn": 2,
+    "lod": 2,
+    "mismatched": 56,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 5,
+    "installed": 2,
+    "installsNow": 1,
+    "drawn": 2,
+    "lod": 2,
+    "mismatched": 56,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 6,
+    "installed": 3,
+    "installsNow": 0,
+    "drawn": 4,
+    "lod": 4,
+    "mismatched": 58,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 7,
+    "installed": 3,
+    "installsNow": 2,
+    "drawn": 4,
+    "lod": 4,
+    "mismatched": 58,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 8,
+    "installed": 5,
+    "installsNow": 0,
+    "drawn": 7,
+    "lod": 7,
+    "mismatched": 61,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 9,
+    "installed": 5,
+    "installsNow": 4,
+    "drawn": 7,
+    "lod": 7,
+    "mismatched": 61,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 10,
+    "installed": 9,
+    "installsNow": 0,
+    "drawn": 14,
+    "lod": 14,
+    "mismatched": 68,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 11,
+    "installed": 9,
+    "installsNow": 4,
+    "drawn": 14,
+    "lod": 14,
+    "mismatched": 68,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 12,
+    "installed": 13,
+    "installsNow": 3,
+    "drawn": 20,
+    "lod": 22,
+    "mismatched": 76,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 13,
+    "installed": 16,
+    "installsNow": 4,
+    "drawn": 24,
+    "lod": 27,
+    "mismatched": 81,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 14,
+    "installed": 20,
+    "installsNow": 4,
+    "drawn": 24,
+    "lod": 35,
+    "mismatched": 57,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 15,
+    "installed": 24,
+    "installsNow": 4,
+    "drawn": 26,
+    "lod": 43,
+    "mismatched": 33,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 16,
+    "installed": 28,
+    "installsNow": 2,
+    "drawn": 29,
+    "lod": 50,
+    "mismatched": 12,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 17,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 18,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 19,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 20,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 21,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 22,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 0,
+    "frame": 23,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 0,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 1,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 2,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 3,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 4,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 5,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 6,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 7,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 8,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 9,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 10,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 11,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 12,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 13,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 14,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 15,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 16,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 17,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 18,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 19,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 20,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 21,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 22,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 6,
+    "frame": 23,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0
+   },
+   {
+    "view": 3,
+    "frame": 0,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 54,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 1,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 2,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 3,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 4,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 5,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 6,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 7,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 8,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 9,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 10,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 11,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 12,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 13,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 14,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 15,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 16,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 17,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 18,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 19,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 20,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 21,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 22,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   },
+   {
+    "view": 3,
+    "frame": 23,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540
+   }
+  ],
+  "converged": {
+   "0": 17,
+   "3": 0,
+   "6": 0
+  },
+  "installs": 30,
+  "evictions": 0
+ },
+ "occlusion": [
+  {
+   "view": 0,
+   "lod": 71,
+   "frustum": 0,
+   "hidden1": 40,
+   "drawn1": 31,
+   "retest": 40,
+   "hidden2": 40,
+   "drawn2": 0,
+   "differing": 0,
+   "plainDrawn": 71
+  },
+  {
+   "view": 1,
+   "lod": 63,
+   "frustum": 0,
+   "hidden1": 40,
+   "drawn1": 23,
+   "retest": 40,
+   "hidden2": 40,
+   "drawn2": 0,
+   "differing": 0,
+   "plainDrawn": 63
+  }
+ ],
+ "timing": {
+  "occlusionMs": 0.5184999999900659,
+  "plainMs": 0.484833333392938,
+  "note": "wall time a frame, readback included"
+ },
+ "errors": []
+}

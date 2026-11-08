@@ -401,6 +401,10 @@ mesh, the way Solstice does (see
 - A group that keeps more than 85% stays as it is and is grouped again next
   round. A group of loose islands (foliage cards) is thinned instead: every
   other island is dropped and the rest grow to keep the area.
+- A group's error is its members' largest error plus how far their surface
+  lies from the simplified one. It is measured at each member vertex and
+  triangle centre, against the simplified triangles around the vertex each one
+  collapsed into. A 3 m sphere's first round reads 2 to 5 cm, its sag.
 - Errors and spheres only grow toward the roots, so a cut is a threshold.
 - Pages are sibling sets, written from the last round to the first with the
   roots on page 0. A page's parents are always on lower pages, which is the
@@ -418,6 +422,41 @@ keeps its area within 15%.
 Run `coax/bin/coax test aethyr/render/geometry/dag.coax --library` to check
 it. It doesn't reuse `clusters.coax`: those leaves hold 124 triangles and 64
 vertices, sized for Valley Lab's narrow simplifiers.
+
+## Landed: GPU cut, requests and two-phase Hi-Z (#13008)
+
+`aethyr/render/geometry/cull.coax` holds the GPU cull's procedures, with CPU
+tests. `coax wgsl --computes` emits them as compute entries in
+`apps/openagents-web/cull.wgsl`, and the cluster draw goes to `cull-draw.wgsl`.
+Atomics are Coax procedures (`gpu_atomic_add`, `gpu_atomic_max`,
+`gpu_atomic_min` in `verse/gpu/shader.coax`) over a binding marked `atomic`.
+No WGSL is written by hand.
+
+- One thread a cluster applies `dag_draw`'s rule: the cluster is fine enough
+  and its parent isn't. Every cluster is tested in one dispatch, because errors
+  only grow toward the roots. A cluster whose page isn't installed is never
+  drawn. A cluster the cut reaches asks for its own page. When it is itself
+  too coarse for the view, it also asks for the page of the finer clusters it
+  was made from.
+- Requests are one `u32` a page. Each LOD-passing cluster does `atomicMax` with
+  its projected error. A frustum-culled or occluded one writes `KEEP = 1`.
+  `apps/openagents-web/cullstream.coax` passes them to `residency.coax` every
+  frame, and the installed flags go back to the GPU.
+- Phase 1 tests each chosen cluster's box against last frame's depth pyramid
+  and draws the visible ones with `drawIndirect`. The pyramid is then rebuilt
+  from this frame's depth (farthest of each 2 x 2). Phase 2 retests what phase 1
+  hid and draws what is no longer hidden.
+
+`/worlds/valley-lab/cull` runs it headless, and `coax/web/cull-check.coax`
+passes it. The GPU's cut matches `dag_draw` on every view. Nothing is missing
+from inside a closed sphere, including cuts that mix levels and while
+residency loads the pages from nothing. Behind a wall, occlusion skips 40 of 71
+clusters, and the image doesn't change by a pixel. The receipt is
+[gpu-cull-13008](../verification/gpu-cull-13008/README.md).
+
+Not yet done: pages' bytes aren't streamed into GPU slots (every page is
+resident, and the installed flags gate drawing). Texture demand and
+shadow-view requests are also missing.
 
 ## What the book gives us
 

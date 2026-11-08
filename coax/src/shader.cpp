@@ -106,7 +106,8 @@ struct ShaderTree {
     static const char *names[] = {"", "gpu_discard", "gpu_sample", "gpu_sample_level", "gpu_sample_layer", "gpu_sample_layer_level",
                                   "gpu_sample_layer_bias", "gpu_load", "gpu_load_depth", "gpu_compare", "gpu_width", "gpu_height",
                                   "gpu_dpdx", "gpu_dpdy", "gpu_fwidth",
-                                  "gpu_dpdx_fine", "gpu_dpdy_fine", "gpu_fwidth_fine", "gpu_demote_helper"};
+                                  "gpu_dpdx_fine", "gpu_dpdy_fine", "gpu_fwidth_fine", "gpu_demote_helper",
+                                  "gpu_atomic_add", "gpu_atomic_max", "gpu_atomic_min"};
     for (uint32_t i = 1; i < sizeof names / sizeof names[0]; i++) if (n == names[i]) return i;
     // A depth texture's size is the same instruction as a 2D texture's.
     if (n == "gpu_depth_width" || n == "gpu_layer_width") return 10;
@@ -442,10 +443,10 @@ bool emit_shader(const File *file, const std::string &vertex, const std::string 
 // `coax wgsl FILE --functions A,B`: the procedures named, and what they call, as WGSL
 // functions (lib/compiler/wgsl.coax), each a stage-2 entry of the same tree code. With
 // `tree`, *out is the tree as decimal words, then the names' lines.
-// `coax wgsl FILE --vertices A,B --fragments C,D --bindings F [--strip P]`: a whole module
-// (WG_module), each vertex and fragment entry with its resources bound as F's lines
-// (`NAME GROUP BINDING [uniform COUNT]`) say; an entry's WGSL name is its procedure's
-// without the prefix P.
+// `coax wgsl FILE --vertices A,B --fragments C,D --computes E,F --bindings F [--strip P]`: a whole
+// module (WG_module), each vertex, fragment and compute entry (stages 0, 1 and 3) with its
+// resources bound as F's lines (`NAME GROUP BINDING [uniform COUNT | rw | atomic]`) say; an
+// entry's WGSL name is its procedure's without the prefix P.
 #ifndef COAX_BOOTSTRAP_IMPORTER
 static std::vector<std::string> wgsl_list(const std::string &list) {
   std::vector<std::string> r;
@@ -460,9 +461,10 @@ static std::vector<std::string> wgsl_list(const std::string &list) {
 }
 #endif
 bool emit_wgsl_module(const File *file, const std::string &vertices, const std::string &fragments, const std::string &bindings,
-                      const std::string &strip, bool tree_text, std::string *out, bool metal = false, std::string *report = nullptr) {
+                      const std::string &strip, bool tree_text, std::string *out, bool metal = false, std::string *report = nullptr,
+                      const std::string &computes = "") {
 #ifdef COAX_BOOTSTRAP_IMPORTER
-  (void)file; (void)vertices; (void)fragments; (void)bindings; (void)strip; (void)tree_text; (void)out;
+  (void)file; (void)vertices; (void)fragments; (void)bindings; (void)strip; (void)tree_text; (void)out; (void)computes;
   (void)metal; (void)report;
   fprintf(stderr, "coax: coax wgsl requires the final compiler, not build-only stage0\n");
   return false;
@@ -470,20 +472,22 @@ bool emit_wgsl_module(const File *file, const std::string &vertices, const std::
   ShaderTree t{file};
   for (Type s : {(Type)&T_VOID, (Type)&T_BOOL, (Type)&T_F32, (Type)&T_S32, (Type)&T_U32, (Type)&T_S64}) t.type(s, {1, 1, 0});
   std::vector<std::pair<uint32_t, uint32_t>> entries;
-  for (int stage = 0; stage < 2; stage++) {
-    for (const std::string &want : wgsl_list(stage == 0 ? vertices : fragments)) {
+  // vertices are stage 0, fragments 1 and computes 3 (2 is a function's, of --functions)
+  for (int stage = 0; stage < 4; stage++) {
+    if (stage == 2) continue;
+    for (const std::string &want : wgsl_list(stage == 0 ? vertices : stage == 1 ? fragments : computes)) {
       const ProcDecl *found = nullptr;
       for (const ProcDecl *p : file->procs) if (ShaderTree::name(p->name) == want) found = p;
       if (!found) {
         error_at(file->src, {1, 1, 0}, "E0705", "there is no procedure " + want + " to make an entry point",
-                 "--vertices and --fragments name procedures of the file or what it loads");
+                 "--vertices, --fragments and --computes name procedures of the file or what it loads");
         return false;
       }
       entries.emplace_back(stage, t.proc_index(found));
     }
   }
   if (entries.empty()) {
-    error_at(file->src, {1, 1, 0}, "E0705", "coax wgsl needs --functions, or --vertices and --fragments", "name the procedures to write as WGSL");
+    error_at(file->src, {1, 1, 0}, "E0705", "coax wgsl needs --functions, or --vertices, --fragments or --computes", "name the procedures to write as WGSL");
     return false;
   }
   std::vector<std::vector<uint32_t>> bodies;

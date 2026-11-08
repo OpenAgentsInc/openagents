@@ -1,0 +1,39 @@
+// The GPU cull's headless check (GitHub #13008): open the Valley Lab GPU cull page in headless
+// Chrome, wait for its report (coax/web/cull-lab.js), print it, and pass when it found nothing
+// wrong: the GPU's choice is dag.coax's on every view, every pixel is covered from inside the
+// closed sphere (also while residency loads it from nothing), occlusion skips clusters and the
+// image is the image without it.
+//   coax/web/tool.sh coax/web/cull-check.coax http://127.0.0.1:PORT/worlds/valley-lab/cull [OUT.json]
+// Start the server first: coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:PORT
+// (after aethyr/tools/cull-fixture.coax and the cullstream.wasm build). OUT.json keeps the report.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+#load "../lib/sys/fs.coax";
+
+CC_WAIT_MS :: 180000;
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 { print("usage: cull-check URL [OUT.json]\n"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], 1280, 800, "cull-check-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer { cdp_close(c[..]); }
+  b: [8192] u8; j: [1] Jo;
+  jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], args_at(a[..], 0)); jo_end(j[..]);
+  if cdp_call(c[..], "Page.enable", "", 30000) < 0 || cdp_call(c[..], "Page.navigate", jo_text(j[..]), 30000) < 0 { tool_errln(cdp_error(c[..])); return 1; }
+  waited := 0; done := false;
+  while waited < CC_WAIT_MS && !done {
+    n := cdp_evaluate(c[..], "(async()=>{await new Promise(r=>setTimeout(r,500));return !!(window.cullLab&&window.cullLab.done)})()");
+    done = n >= 0 && jv_raw(c[0].doc[0], n) == "true";
+    waited += 500;
+  }
+  if !done { print("FAIL: no report in % ms\n", CC_WAIT_MS); return 1; }
+  n := cdp_evaluate(c[..], "window.cullLab.report");   // by value: the node is the report itself
+  if n < 0 { print("FAIL: the report can't be read\n"); return 1; }
+  report := jv_raw(c[0].doc[0], n);
+  print("%\n", report);
+  if args_count(a[..]) == 2 && !fs_write(args_at(a[..], 1), report) { print("FAIL: can't write %\n", args_at(a[..], 1)); return 1; }
+  k := cdp_evaluate(c[..], "window.cullLab.ok");
+  ok := k >= 0 && jv_raw(c[0].doc[0], k) == "true";
+  print("% cull\n", ifx ok then "PASS" else "FAIL");
+  return ifx ok then 0 else 1;
+}

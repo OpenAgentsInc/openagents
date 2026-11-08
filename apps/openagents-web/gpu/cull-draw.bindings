@@ -1,0 +1,6 @@
+# The GPU cull's draw bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/cull-lab.js lays them out.
+du 0 0 uniform 5
+lists 0 1
+info 0 2
+tris 0 3
+verts 0 4

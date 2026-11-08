@@ -46,7 +46,7 @@ WgState :: struct {
 WG_reason_text :: (reason:u32)->string #export_c #effects(all) {
   texts:=[10] string.["","a malformed tree","WGSL larger than its buffer","more types, procedures, entries, variants or locals than it holds",
     "a type or operation WGSL does not take here yet","an entry of a stage this mode does not write","a procedure without its names",
-    "a resource without its group and binding","an entry whose parameters or result are not a vertex's or a fragment's",
+    "a resource without its group and binding","an entry whose parameters or result are not a vertex's, a fragment's or a compute's",
     "a storage buffer whose layout WGSL does not keep"];
   if reason>=10 {return "this reason";}
   return texts[cast(int)reason];
@@ -230,6 +230,16 @@ wg_uniform :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->bool #effects
   id:=wg_bound(s,tree,w,i);
   return id<WG_PTR && wg_word(wg_binding(s,names,id),3)=="uniform"; // mutant: equivalent (no pointer is to type 0, void)
 }
+// How local i's storage buffer may be used: 0 it is not one (a uniform block, a local array, a
+// value), 1 read, 2 read and written (bound `rw`), 3 only through atomics (bound `atomic`).
+wg_access :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->int #effects(all) {
+  if !s[0].whole || !wg_has_local(s,tree,w,i) || wg_tk(tree,w,wg_local_type(tree,w,s[0].proc,i))!=9 || w[WG_W_ALIAS+i]!=0 {return 0;}
+  id:=wg_bound(s,tree,w,i);
+  if id>=WG_PTR {return 0;}
+  word:=wg_word(wg_binding(s,names,id),3);
+  if word=="uniform" {return 0;}
+  return ifx word=="rw" then 2 else (ifx word=="atomic" then 3 else 1);
+}
 // A local as an expression or a place: in a module a resource is its binding's variable,
 // named as the binding, a view of a local array is that array, and a view given as a
 // pointer is what it points to.
@@ -245,7 +255,9 @@ wg_ref_local :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,i:int) #ef
 }
 // A place: a local; in a module also a field of a place and an element of a place, where
 // a uniform block's float i is its vector i/4's component i%4, read by its helper
-// (wg_global) so the index is reckoned once. A uniform block is not stored to.
+// (wg_global) so the index is reckoned once. A uniform block is not stored to, nor a
+// storage buffer bound read; one bound `atomic` is read by atomicLoad (and stored by
+// wg_stmt's atomicStore).
 wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,store:bool) #effects(all) {
   c:=wg_next(s,tree);
   if c==40 {wg_ref_local(s,tree,names,w,out,cast(int)wg_next(s,tree));return;}
@@ -257,6 +269,12 @@ wg_place :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,store:bool) #e
       if wg_uniform(s,tree,names,w,i) {
         if store {wg_fail(s,4);return;}
         wg_put(s,out,"coax_at_");wg_ref_local(s,tree,names,w,out,i);wg_put(s,out,"(i32(");wg_expr(s,tree,names,w,out);wg_put(s,out,"))");
+        return;
+      }
+      acc:=wg_access(s,tree,names,w,i);
+      if (acc==1 || acc==3) && store {wg_fail(s,4);return;}
+      if acc==3 {
+        wg_put(s,out,"atomicLoad(&");wg_ref_local(s,tree,names,w,out,i);wg_put(s,out,"[");wg_expr(s,tree,names,w,out);wg_put(s,out,"])");
         return;
       }
     }
@@ -337,12 +355,24 @@ wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int #effects(all
 // The GPU procedures (verse/gpu/shader.coax) as WGSL's: discard, the samples, loads, the
 // depth compare (at level 0, as SPIR-V's explicit-level compare), a texture's size and
 // a fragment's derivatives.
-WG_GPU :: [19] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
-  "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions(","dpdx(","dpdy(","fwidth(","dpdxFine(","dpdyFine(","fwidthFine(","discard"];
-WG_GPU_ARGS :: [19] int.[0,0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0];
+// In a module, the atomics (19 to 21) of a storage buffer bound `atomic`: its element at an index,
+// changed by a value, and the old value the result.
+WG_GPU :: [22] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
+  "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions(","dpdx(","dpdy(","fwidth(","dpdxFine(","dpdyFine(","fwidthFine(","discard",
+  "atomicAdd(&","atomicMax(&","atomicMin(&"];
+WG_GPU_ARGS :: [22] int.[0,0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0,3,3,3];
 wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) {
   g:=cast(int)wg_next(s,tree);t:=wg_next(s,tree);n:=cast(int)wg_next(s,tree);
-  if g<1 || g>18 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
+  if g<1 || g>21 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
+  if g>=19 {
+    // an atomic's buffer is a resource local bound `atomic`, its element a u32
+    if t!=4 || wg_next(s,tree)!=18 {wg_fail(s,4);return;}
+    i:=cast(int)wg_next(s,tree);
+    if wg_access(s,tree,names,w,i)!=3 {wg_fail(s,4);return;}
+    wg_put(s,out,WG_GPU[g]);wg_ref_local(s,tree,names,w,out,i);wg_put(s,out,"[");wg_expr(s,tree,names,w,out);
+    wg_put(s,out,"], ");wg_expr(s,tree,names,w,out);wg_put(s,out,")");
+    return;
+  }
   if g>=15 && s[0].tree_version!=3 {wg_fail(s,1);return;}
   if (g>=15 && g<=17 && t!=2) || (g==18 && t!=0) {wg_fail(s,1);return;}
   wg_put(s,out,WG_GPU[g]);
@@ -495,7 +525,17 @@ wg_stmt :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) #effects(all) 
     wg_expr_from(s,tree,names,w,out,at);wg_put(s,out,";\n");
     return;
   }
-  if k==3 {wg_tab(s,out);wg_place(s,tree,names,w,out,true);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
+  if k==3 {
+    // an element of a buffer bound `atomic` is stored by atomicStore
+    at:=s[0].at;
+    if at+2<tree.count && tree[at]==42 && tree[at+1]==40 && wg_access(s,tree,names,w,cast(int)tree[at+2])==3 {
+      s[0].at=at+3;
+      wg_tab(s,out);wg_put(s,out,"atomicStore(&");wg_ref_local(s,tree,names,w,out,cast(int)tree[at+2]);wg_put(s,out,"[");
+      wg_expr(s,tree,names,w,out);wg_put(s,out,"], ");wg_expr(s,tree,names,w,out);wg_put(s,out,");\n");
+      return;
+    }
+    wg_tab(s,out);wg_place(s,tree,names,w,out,true);wg_put(s,out," = ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;
+  }
   if k==4 {wg_tab(s,out);wg_put(s,out,"return ");wg_expr(s,tree,names,w,out);wg_put(s,out,";\n");return;}
   if k==5 {wg_tab(s,out);wg_put(s,out,"return;\n");return;}
   if k==6 {
@@ -679,8 +719,11 @@ WG_emit :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c #effects
 }
 
 
-// ---- modules: `coax wgsl FILE --vertices A,B --fragments C,D --bindings F`, the tree's
-// entries of stages 0 and 1 with their binding name ids. names: a line a procedure (an
+// ---- modules: `coax wgsl FILE --vertices A,B --fragments C,D --computes E,F --bindings F`, the
+// tree's entries of stages 0, 1 and 3 with their binding name ids. A compute entry takes its
+// invocation index (a u32) and resources, returns nothing, and runs 64 to a workgroup. A storage
+// buffer is read only, unless its binding line ends `rw` (read and written) or `atomic` (a
+// buffer of u32 used through atomicLoad, atomicStore and gpu_atomic_add/max/min). names: a line a procedure (an
 // entry's first word is its WGSL name), then a line a name id: the name, then for a
 // resource its group and binding (`NAME GROUP BINDING`), and `uniform COUNT` after them for
 // a []f32 read as a uniform block of COUNT vec4fs. Each struct but a vector is a WGSL
@@ -800,6 +843,8 @@ wg_mark :: (w:[]u32,t:u32,io:u32) #effects(all) {w[WG_W_IO+cast(int)t]|=io;}
 wg_shape :: (s:[]WgState,tree:[]u32,w:[]u32,e:int)->bool #effects(all) {
   stage:=tree[wg_entry_at(w,e)];p:=wg_entry_proc(tree,w,e);
   sig:=wg_sig(w,p);ret:=wg_ret(tree,w,p);plain:=wg_plain(s,tree,w,p);
+  // a compute's invocation index (global_invocation_id.x), and no result
+  if stage==3 {return plain==1 && tree[sig+2]==4 && ret==WG_VOID;}
   if stage==0 {
     // the vertex and instance indices, then perhaps a struct of attributes
     if plain<2 || plain>3 || tree[sig+2]!=4 || tree[sig+3]!=4 {return false;}
@@ -852,7 +897,14 @@ wg_global :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,id:u32,t:u32)
   }
   if k==9 {
     if !wg_stored(tree,w,cast(u32)d) {wg_fail(s,9);return;}
-    wg_put(s,out,"<storage, read> ");wg_put(s,out,name);wg_put(s,out,": array<");wg_type(s,tree,w,out,cast(u32)d);wg_put(s,out,">;\n");
+    access:=wg_word(line,3);
+    if access=="atomic" {
+      if wg_tk(tree,w,cast(u32)d)!=4 {wg_fail(s,9);return;}
+      wg_put(s,out,"<storage, read_write> ");wg_put(s,out,name);wg_put(s,out,": array<atomic<u32>>;\n");
+      return;
+    }
+    wg_put(s,out,ifx access=="rw" then "<storage, read_write> " else "<storage, read> ");
+    wg_put(s,out,name);wg_put(s,out,": array<");wg_type(s,tree,w,out,cast(u32)d);wg_put(s,out,">;\n");
     return;
   }
   wg_put(s,out," ");wg_put(s,out,name);wg_put(s,out,": ");
@@ -889,6 +941,12 @@ wg_wrapper :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8,e:int) #effe
   sig:=wg_sig(w,p);ret:=wg_ret(tree,w,p);plain:=wg_plain(s,tree,w,p);
   v:=wg_entry_variant(s,tree,w,e);
   i0:=tree[sig+2];
+  if stage==3 {
+    // 64 invocations a workgroup; the host dispatches enough of them, and the procedure bounds its index
+    wg_put(s,out,"@compute @workgroup_size(64)\nfn ");wg_put(s,out,wg_word(wg_line(names,p),0));
+    wg_put(s,out,"(@builtin(global_invocation_id) coax_gid: vec3u) {\n  ");wg_variant_name(s,names,w,out,v);wg_put(s,out,"(coax_gid.x);\n}\n");
+    return;
+  }
   wg_put(s,out,ifx stage==0 then "@vertex\nfn " else "@fragment\nfn ");wg_put(s,out,wg_word(wg_line(names,p),0));
   if stage==0 {
     wg_put(s,out,"(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32");
@@ -939,7 +997,7 @@ WG_module :: (tree:[]u32,names:string,out:[]u8,work:[]u32)->int #export_c #effec
     w[WG_W_ENTRY+e]=cast(u32)s[0].at;
     stage:=wg_next(s,tree);p:=cast(int)wg_next(s,tree);
     if p>=s[0].procs {return -1;}
-    if stage>1 {return -5;}
+    if stage==2 || stage>3 {return -5;}
     if e==0 {w[WG_W_FIRST]=cast(u32)p;}
     s[0].at+=wg_params(tree,w,p);
   }
@@ -1013,7 +1071,7 @@ WG_WGSL_K :: "fn k(p_x: f32, p_n: i32) -> f32 {\n  var l_x: f32 = p_x;\n  var l_
   #assert WG_reason_text(0)=="" && WG_reason_text(1)=="a malformed tree" && WG_reason_text(2)=="WGSL larger than its buffer";
   #assert WG_reason_text(3)=="more types, procedures, entries, variants or locals than it holds" && WG_reason_text(4)=="a type or operation WGSL does not take here yet";
   #assert WG_reason_text(5)=="an entry of a stage this mode does not write" && WG_reason_text(6)=="a procedure without its names";
-  #assert WG_reason_text(7)=="a resource without its group and binding" && WG_reason_text(8)=="an entry whose parameters or result are not a vertex's or a fragment's" && WG_reason_text(9)=="a storage buffer whose layout WGSL does not keep" && WG_reason_text(10)=="this reason" && WG_reason_text(4000000000)=="this reason";
+  #assert WG_reason_text(7)=="a resource without its group and binding" && WG_reason_text(8)=="an entry whose parameters or result are not a vertex's, a fragment's or a compute's" && WG_reason_text(9)=="a storage buffer whose layout WGSL does not keep" && WG_reason_text(10)=="this reason" && WG_reason_text(4000000000)=="this reason";
   #assert WG_work_words()==12353 && WG_W_POOL+WG_POOL==WG_W_WORDS && WG_out_bytes()==4194304;
 }
 #test "a malformed tree, a type or code it does not write, and a missing name are refused" {
@@ -1285,6 +1343,16 @@ WG_WGSL_DEPTH :: "struct coax_t7 {\n  x: vec4f,\n  y: f32,\n  z: vec4f,\n}\nstru
   #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 9 6 0 2 16 2 20 2 24 2 28 2 32 2 36 2 40 2 1073741868 48 2 7 2 4 4 3 4 4 7 30 1 3 3 40 2 17 7 3 41 40 2 0 22 1 4 16 2 0 16 2 0 16 2 0 16 2 1065353216 4 18 2 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 1 0 0 0 1","vs vid iid o\nv4 x y z w\nvid\niid\n",out[..])==-8 && wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 9 6 0 2 16 2 20 2 24 2 28 2 32 2 36 2 40 2 44 48 2 7 2 4 4 3 4 4 7 30 1 3 3 40 2 17 7 3 41 40 2 0 22 1 4 16 2 0 16 2 0 16 2 0 16 2 1065353216 4 18 2 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 1 0 0 0 1","vs vid iid o\nv4 x y z w\nvid\niid\n",out[..])>0;
   // a vertex's varying written #depth
   #assert wg_mtry("2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 2 6 0 6 1073741840 32 2 7 2 4 4 2 4 4 36 1 1 4 31 7 2 22 1 4 16 2 0 16 2 0 16 2 0 16 2 1065353216 22 1 4 16 2 0 16 2 0 16 2 0 16 2 1065353216 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 1 0 0 0 1","vs vid iid\nv4 x y z w\nvid\niid\n",out[..])==-8;
+}
+// A compute entry: a u32 index from global_invocation_id.x, a read buffer, an atomic buffer
+// (atomicAdd and atomicMax give their old value, a load is atomicLoad and a store atomicStore)
+// and a read-write one, beside a vertex and a fragment entry.
+WG_SAMPLE_COMPUTE :: "2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 4 6 2 4 4 2 4 4 18 1 1 4 22 3 4 16 2 0 16 2 0 16 2 0 16 2 1065353216 6 1 6 1 6 5 1 1 4 18 0 0 4 4 7 7 7 6 4 7 7 7 4 4 68 1 4 3 40 4 33 19 4 3 18 2 16 5 0 0 27 42 40 1 29 5 18 0 3 40 5 33 20 4 3 18 2 16 5 1 0 18 4 3 42 40 3 29 5 18 0 19 1 27 42 40 2 16 5 2 0 18 5 3 42 40 2 16 5 3 0 18 4 6 4 2 2 2 2 4 2 2 2 2 14 1 1 4 31 6 4 18 0 18 1 18 2 18 3 3 0 0 0 1 1 1 2 3 2 3 4 5 6";
+WG_NAMES_COMPUTE :: "vs vid iid\nfs p\ngo i a c o k m\nv4 x y z w\nvid\niid\np\ni\na 0 0\nc 0 1 atomic\no 0 2 rw\n";
+WG_WGSL_COMPUTE :: "@group(0) @binding(0) var<storage, read> a: array<u32>;\n@group(0) @binding(1) var<storage, read_write> c: array<atomic<u32>>;\n@group(0) @binding(2) var<storage, read_write> o: array<u32>;\nfn coax_p_vs(p_vid: u32, p_iid: u32) -> vec4f {\n  var l_vid: u32 = p_vid;\n  var l_iid: u32 = p_iid;\n  return coax_p_v4(0.0f, 0.0f, 0.0f, 0x1.000000p0f);\n}\nfn coax_p_fs(p_p: vec4f) -> vec4f {\n  var l_p: vec4f = p_p;\n  return l_p;\n}\nfn coax_p_go(p_i: u32) {\n  var l_i: u32 = p_i;\n  var l_k: u32;\n  var l_m: u32;\n  l_k = atomicAdd(&c[0i], a[i32(l_i)]);\n  l_m = atomicMax(&c[1i], l_k);\n  o[i32(l_i)] = (atomicLoad(&c[2i]) + l_m);\n  atomicStore(&c[3i], l_k);\n}\nfn coax_p_v4(p_x: f32, p_y: f32, p_z: f32, p_w: f32) -> vec4f {\n  var l_x: f32 = p_x;\n  var l_y: f32 = p_y;\n  var l_z: f32 = p_z;\n  var l_w: f32 = p_w;\n  return vec4f(l_x, l_y, l_z, l_w);\n}\n@vertex\nfn vs(@builtin(vertex_index) coax_vid: u32, @builtin(instance_index) coax_iid: u32) -> @builtin(position) vec4f {\n  let coax_r = coax_p_vs(coax_vid, coax_iid);\n  return coax_r;\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n@compute @workgroup_size(64)\nfn go(@builtin(global_invocation_id) coax_gid: vec3u) {\n  coax_p_go(coax_gid.x);\n}\n";
+#test "a compute entry: atomic, read and read-write buffers, as Chrome's WebGPU compiles it" {
+  out:[8192] u8;
+  #assert wg_mtext(WG_SAMPLE_COMPUTE,WG_NAMES_COMPUTE,out[..])==WG_WGSL_COMPUTE;
 }
 #test "a module: interface structs, bindings, variants and entries, as Chrome's WebGPU compiles it" {
   out:[65536] u8;

@@ -1,0 +1,138 @@
+// The GPU cull's fixture (GitHub #13008): two cluster DAGs built by
+// aethyr/render/geometry/dag.coax, with views and, for each view, the clusters dag.coax's draw
+// rule (dag_draw) draws with every page installed, so coax/web/cull-host.js can check that the
+// GPU chooses the same.
+//   coax/web/tool.sh aethyr/tools/cull-fixture.coax OUT.bin
+// Scene 0, "shell": a sphere from six separately built faces (its seams welded), 6,912
+// triangles, for coverage from inside (views 6 and 7 coarse enough to mix levels) and residency. Scene 1, "occlusion": a wall with sixteen
+// spheres behind it and four beside it, for occlusion counts.
+//
+// The file is little-endian 32-bit words: "CUL1", 1, the scene count; then each scene:
+// vertices V, triangles T, clusters N, pages P, links L, views K; V vertices (x, y, z, 1);
+// the DAG's T triangles (3 vertex indices); N clusters' data (aethyr/render/geometry/cull.coax's
+// CD_ layout: 4 vec4s) and info (its CI_ layout: 8 words); L links (page, the page it needs);
+// then K views, each eye (3), target (3), the vertical field of view in radians, the tolerance,
+// and two bit sets of ceil(N / 32) words: the clusters dag_draw draws, and those within 0.1% of
+// the tolerance, where f32 on the GPU may choose otherwise.
+// tool.sh: release
+#import "Basic";
+#load "../render/geometry/dag.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+CF_BYTES :: 16777216;
+CF_VIEWS :: 8;
+CfView :: struct { eye: Point; target: Point; fov: f32; t: f32; }
+CfOut :: struct { b: [CF_BYTES] u8; n: int; bad: bool; }
+
+cf_u32 :: (o: [] CfOut, v: u32) #effects(all) {
+  if o[0].n + 4 > CF_BYTES { o[0].bad = true; return; }
+  for k: 0..<4 { o[0].b[o[0].n + k] = cast,trunc(u8) (v >> cast(u32) (8 * k)); }
+  o[0].n += 4;
+}
+cf_int :: (o: [] CfOut, v: int) #effects(all) { cf_u32(o, cast(u32) v); }
+cf_f32 :: (o: [] CfOut, v: f32) #effects(all) { cf_u32(o, f32_bits(v)); }
+cf_point :: (o: [] CfOut, p: Point, w: f32) #effects(all) { cf_f32(o, p.x); cf_f32(o, p.y); cf_f32(o, p.z); cf_f32(o, w); }
+
+// A sphere of n x n quads a face, radius r about c, after the ones already in p.
+cf_sphere :: (n: int, c: Point, r: f32, p: [] Point, nv: int, idx: [] u32, ni: int, sp: [] Point, si: [] u32) -> [2] int #effects(all) {
+  k := dag_cube_sphere(n, sp, si);
+  vs := 6 * (n + 1) * (n + 1);
+  for v: 0..<vs { p[nv + v] = add(c, times(sp[v], r / 3)); }
+  for i: 0..<k { idx[ni + i] = si[i] + cast(u32) nv; }
+  return [2] int.[nv + vs, ni + k];
+}
+// A wall of n x m quads in the plane z = z0, from (x0, y0) to (x1, y1), facing -z.
+cf_wall :: (n: int, m: int, x0: f32, y0: f32, x1: f32, y1: f32, z0: f32, p: [] Point, nv: int, idx: [] u32, ni: int) -> [2] int #effects(all) {
+  for j: 0..<m + 1 { for i: 0..<n + 1 { p[nv + j * (n + 1) + i] = v3(x0 + (x1 - x0) * cast(f32) i / cast(f32) n, y0 + (y1 - y0) * cast(f32) j / cast(f32) m, z0); } }
+  at := ni;
+  for j: 0..<m { for i: 0..<n {
+    a := cast(u32) (nv + j * (n + 1) + i); b := a + 1; c := a + cast(u32) (n + 1); e := c + 1;
+    idx[at] = a; idx[at + 1] = c; idx[at + 2] = e; idx[at + 3] = a; idx[at + 4] = e; idx[at + 5] = b; at += 6;
+  } }
+  return [2] int.[nv + (n + 1) * (m + 1), at];
+}
+
+// One scene: its DAG and views, written.
+cf_scene :: (o: [] CfOut, d: [] Dag, views: [] CfView) -> bool #effects(all) {
+  n := d[0].clusters;
+  links: [512] int; nl := dag_links(d, links[..]);
+  if nl < 0 || d[0].pages > 64 { tool_errln("cull-fixture: more pages or links than the residency holds"); return false; }
+  cf_int(o, d[0].vertices); cf_int(o, d[0].tris); cf_int(o, n); cf_int(o, d[0].pages); cf_int(o, nl / 2); cf_int(o, views.count);
+  for v: 0..<d[0].vertices { cf_point(o, d[0].p[v], 1); }
+  for k: 0..<d[0].tris * 3 { cf_int(o, d[0].tri[k]); }
+  for c: 0..<n {
+    cl := d[0].cluster[c];
+    low := d[0].p[d[0].tri[cl.first * 3]]; high := low;
+    for t: 0..<cl.count { for j: 0..<3 { q := d[0].p[d[0].tri[(cl.first + t) * 3 + j]]; low = dag_min3(low, q); high = dag_max3(high, q); } }
+    cf_point(o, cl.c, cl.r);
+    if cl.group < 0 { cf_point(o, v3(0, 0, 0), 0); } else { cf_point(o, cl.pc, cl.pr); }
+    cf_point(o, low, 1); cf_point(o, high, 1);
+  }
+  for c: 0..<n {
+    cl := d[0].cluster[c];
+    cf_int(o, dag_page(d, c));
+    if cl.made_by < 0 { cf_u32(o, 0xFFFFFFFF); } else { cf_int(o, dag_page(d, d[0].group[cl.made_by].member[0])); }
+    cf_int(o, cl.first); cf_int(o, cl.count); cf_f32(o, cl.error); cf_f32(o, cl.parent_error);
+    cf_int(o, ifx cl.made_by < 0 then 0 else d[0].group[cl.made_by].round); cf_int(o, ifx cl.group < 0 then 1 else 0);
+  }
+  for k: 0..<nl { cf_int(o, links[k]); }
+  installed: [DAG_GROUPS + 1] bool; for k: 0..<d[0].pages { installed[k] = true; }
+  drawn: [DAG_CLUSTERS] bool; words := (n + 31) / 32;
+  for v: views {
+    cf_point(o, v.eye, 0); o[0].n -= 4; cf_point(o, v.target, 0); o[0].n -= 4; cf_f32(o, v.fov); cf_f32(o, v.t);
+    if dag_draw(d, v.eye, cast(f64) v.t, installed[..], drawn[..]) == 0 { tool_errln("cull-fixture: a view that draws nothing"); return false; }
+    bits: [DAG_CLUSTERS / 32] u32; near: [DAG_CLUSTERS / 32] u32;
+    for c: 0..<n {
+      cl := d[0].cluster[c];
+      if drawn[c] { bits[c / 32] |= cast(u32) 1 << cast(u32) (c % 32); }
+      a := dag_seen(cl.error, cl.c, cl.r, v.eye); b := dag_seen(cl.parent_error, cl.pc, cl.pr, v.eye); t := cast(f64) v.t;
+      if (a < 1e299 && a > t * 0.999 && a < t * 1.001) || (b < 1e299 && b > t * 0.999 && b < t * 1.001) { near[c / 32] |= cast(u32) 1 << cast(u32) (c % 32); }
+    }
+    for k: 0..<words { cf_u32(o, bits[k]); }
+    for k: 0..<words { cf_u32(o, near[k]); }
+  }
+  return true;
+}
+
+// The tolerance of p pixels, for a view of field fov over h pixels: error over distance.
+cf_t :: (pixels: f32, fov: f32, h: f32) -> f32 #effects(all) { return pixels * 2 * tan(fov / 2) / h; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: cull-fixture OUT.bin"); return 2; }
+  o: [1] CfOut; d: [1] Dag; w: [1] DagWork;
+  p: [DAG_VERTS] Point; idx: [DAG_SOURCE * 3] u32; sp: [6 * 25 * 25] Point; si: [6 * 24 * 24 * 6] u32;
+  cf_u32(o[..], 0x314c5543); cf_int(o[..], 1); cf_int(o[..], 2);
+  fov: f32 = 1.0471976; h: f32 = 540;
+  // the shell
+  r := cf_sphere(24, v3(0, 0, 0), 3, p[..], 0, idx[..], 0, sp[..], si[..]);
+  if !dag_build(d[..], w[..], p[0..<r[0]], idx[0..<r[1]]) { tool_errln(d[0].refused); return 1; }
+  shell := [8] CfView.[
+    CfView.{eye = v3(0.4, 0.3, -1.6), target = v3(0, 0, 3), fov = fov, t = cf_t(1, fov, h)},
+    CfView.{eye = v3(-1.2, 0.5, 0.9), target = v3(3, -1, -2), fov = fov, t = cf_t(2, fov, h)},
+    CfView.{eye = v3(0, 0, 0), target = v3(0, 3, 0.1), fov = fov, t = cf_t(1, fov, h)},
+    CfView.{eye = v3(0, 1, -7), target = v3(0, 0, 0), fov = fov, t = cf_t(1, fov, h)},
+    CfView.{eye = v3(9, 4, -12), target = v3(0, 0, 0), fov = fov, t = cf_t(2, fov, h)},
+    CfView.{eye = v3(2.2, 2.2, -4), target = v3(-2, 0, 3), fov = fov, t = cf_t(4, fov, h)},
+    // inside, coarse enough that the cut mixes levels (inside a 3 m shell every cluster is near, so
+    // only a tolerance of some 16 pixels and up chooses a coarser one): coverage across their seams
+    CfView.{eye = v3(0.6, -0.4, 0.8), target = v3(-2, 1, -3), fov = fov, t = cf_t(24, fov, h)},
+    CfView.{eye = v3(-0.5, 0.9, -0.3), target = v3(3, -1, 1), fov = fov, t = cf_t(48, fov, h)}];
+  if !cf_scene(o[..], d[..], shell[..]) { return 1; }
+  print("shell: % vertices, % clusters in % rounds, % pages\n", d[0].vertices, d[0].clusters, d[0].rounds, d[0].pages);
+  // the occlusion scene: a wall at z = 0, sixteen spheres behind it, four beside it
+  r = cf_wall(16, 12, -8, -1, 8, 7, 0, p[..], 0, idx[..], 0);
+  for j: 0..<4 { for i: 0..<4 { r = cf_sphere(6, v3(-4.5 + cast(f32) i * 3, 0.5 + cast(f32) j * 1.6, 4 + cast(f32) ((i + j) % 3) * 2), 0.7, p[..], r[0], idx[..], r[1], sp[..], si[..]); } }
+  for i: 0..<4 { r = cf_sphere(6, v3(ifx i < 2 then -11 + cast(f32) i * 1.6 else 9.4 + cast(f32) (i - 2) * 1.6, 1.5, 2), 0.7, p[..], r[0], idx[..], r[1], sp[..], si[..]); }
+  if !dag_build(d[..], w[..], p[0..<r[0]], idx[0..<r[1]]) { tool_errln(d[0].refused); return 1; }
+  occlusion := [2] CfView.[
+    CfView.{eye = v3(0, 3, -14), target = v3(0, 3, 0), fov = fov, t = cf_t(1, fov, h)},
+    CfView.{eye = v3(2, 4, -9), target = v3(0, 2, 4), fov = fov, t = cf_t(2, fov, h)}];
+  if !cf_scene(o[..], d[..], occlusion[..]) { return 1; }
+  print("occlusion: % vertices, % clusters in % rounds, % pages\n", d[0].vertices, d[0].clusters, d[0].rounds, d[0].pages);
+  if o[0].bad || !fs_write(args_at(a[..], 0), cast(string) o[0].b[0..<o[0].n]) { tool_errln("cull-fixture: can't write it"); return 1; }
+  print("%: % bytes\n", args_at(a[..], 0), o[0].n);
+  return 0;
+}

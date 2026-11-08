@@ -1940,7 +1940,7 @@ static int usage() {
           "       coax cuda    file.coax [--release]\n"
           "       coax metal-compute file.coax [--release]\n"
           "       coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME | --vertex V --fragment F [--tree]] [-o out.spv]\n"
-          "       coax wgsl    file.coax (--functions A,B | --vertices A,B --fragments C,D --bindings F [--strip P]) [--tree] [-o out.wgsl]\n"
+          "       coax wgsl    file.coax (--functions A,B | --vertices A,B --fragments C,D [--computes E,F] --bindings F [--strip P]) [--tree] [-o out.wgsl]\n"
           "       coax check   file.coax [--slots N]  (--slots also on run, build, lib, header, c: a smaller slot limit for #authority checks)\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
@@ -2189,7 +2189,7 @@ static int main_impl(int argc, char **argv) {
     return usage();
 
   const char *input = nullptr;
-  std::string out, header, proto_prefix, kernel, fill, stroke, vertex, fragment, functions, vertices, fragments, bindings, strip;
+  std::string out, header, proto_prefix, kernel, fill, stroke, vertex, fragment, functions, vertices, fragments, computes, bindings, strip;
   bool shader_tree = false;
   EmitOptions opts;
   coax_t_CP_Request request{};request.debug_info=-1;
@@ -2281,6 +2281,7 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--functions" && i + 1 < argc && cmd == "wgsl" && functions.empty()) functions = argv[++i];
     else if (a == "--vertices" && i + 1 < argc && cmd == "wgsl" && vertices.empty()) vertices = argv[++i];
     else if (a == "--fragments" && i + 1 < argc && cmd == "wgsl" && fragments.empty()) fragments = argv[++i];
+    else if (a == "--computes" && i + 1 < argc && cmd == "wgsl" && computes.empty()) computes = argv[++i];
     else if (a == "--bindings" && i + 1 < argc && cmd == "wgsl" && bindings.empty()) bindings = argv[++i];
     else if (a == "--strip" && i + 1 < argc && cmd == "wgsl" && strip.empty()) strip = argv[++i];
     else if (a == "--fragment" && i + 1 < argc && (cmd == "spirv" || cmd == "metal") && kernel.empty() && fill.empty() && stroke.empty() && fragment.empty()) fragment = argv[++i];
@@ -2478,7 +2479,7 @@ static int main_impl(int argc, char **argv) {
     Arena arena;
     File file;
     std::string text;
-    if (!front_end(input, &src, &arena, &file, opts, 1) || !(functions.empty() ? emit_wgsl_module(&file, vertices, fragments, bindings, strip, shader_tree, &text)
+    if (!front_end(input, &src, &arena, &file, opts, 1) || !(functions.empty() ? emit_wgsl_module(&file, vertices, fragments, bindings, strip, shader_tree, &text, false, nullptr, computes)
                                                                       : emit_wgsl(&file, functions, shader_tree, &text))) {
       if (g_error_count && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
       return 1;

@@ -1,0 +1,5 @@
+// The Valley Lab GPU cull's cluster draw (GitHub #13008): build.sh writes
+// apps/openagents-web/cull-draw.wgsl from this with coax/web/wgsl-module.coax (cull-draw.module
+// and cull-draw.bindings beside it). It is separate from cull.wgsl because a vertex stage reads
+// its storage read-only. The procedures are in aethyr/render/geometry/cull.coax.
+#load "../../../aethyr/render/geometry/cull.coax";

@@ -1,0 +1,49 @@
+// The GPU cull lab's residency (GitHub #13008): the request array the cull pass writes each
+// frame (aethyr/render/geometry/cull.coax), read back by coax/web/cull-host.js, plans fetches,
+// and arrived pages install through aethyr/render/geometry/residency.coax. The installed flags
+// go back to the GPU, whose draw rule draws only installed pages. Every page's geometry is
+// already on the GPU in this lab, so a fetch arrives one frame after it starts; streaming the
+// bytes themselves is the range-addressable pack's (VPK3, #13001).
+#load "../../aethyr/render/geometry/residency.coax";
+
+CullStream :: struct {
+  c: [1] PageResidency; pages: int; frame: int; ok: bool;
+  links: [256] int; nlinks: int;
+  requests: [RES_PAGES] int; installed: [RES_PAGES] u32;
+  out: [8] int; fetching: int; installs: int; evictions: int;
+}
+// Open with `pages` pages, `slots` slots and the first nlinks pairs of links; page 0 is pinned.
+cs_open :: (s: [] CullStream, pages: int, slots: int, nlinks: int) -> bool #export_c #effects(all) {
+  s[0].frame = 0; s[0].nlinks = nlinks;
+  s[0].ok = nlinks >= 0 && nlinks * 2 <= s[0].links.count && res_open(s[0].c[..], pages, slots, 1, 2, 8, 4, s[0].links[0..<nlinks * 2]);
+  s[0].pages = ifx s[0].ok then pages else 0;
+  for p: 0..<RES_PAGES { s[0].installed[p] = 0; s[0].requests[p] = 0; }
+  return s[0].ok;
+}
+// A frame: last frame's fetches arrive, ready pages install, then the requests plan new fetches.
+// The installed flags are then current. The pages installed this frame, or -1 when not open.
+cs_frame :: (s: [] CullStream) -> int #export_c #effects(all) {
+  if !s[0].ok { return -1; }
+  s[0].frame += 1; n := 0;
+  for p: 0..<s[0].pages { if s[0].c[0].state[p] == PageState.fetching { ok := res_arrived(s[0].c[..], p); } }
+  while res_install(s[0].c[..], s[0].frame).page != -1 { n += 1; }
+  s[0].fetching = res_plan(s[0].c[..], s[0].frame, s[0].requests[0..<s[0].pages], s[0].out[..]);
+  for p: 0..<s[0].pages { s[0].installed[p] = ifx s[0].c[0].state[p] == PageState.installed then 1 else 0; }
+  s[0].installs = s[0].c[0].installs; s[0].evictions = s[0].c[0].evictions;
+  return n;
+}
+
+// The residency's own invariants (res_valid) hold.
+cs_valid :: (s: [] CullStream) -> bool #export_c #effects(all) { return res_valid(s[0].c[0]); }
+
+#test "requests load a chain of pages, one level a frame, and their installed flags follow" {
+  s: [1] CullStream;
+  s[0].links[0] = 1; s[0].links[1] = 0; s[0].links[2] = 2; s[0].links[3] = 1;
+  #assert cs_open(s[..], 3, 4, 2) && !cs_open(s[..], 3, 99, 2) && cs_open(s[..], 3, 4, 2);
+  #assert cs_frame(s[..]) == 0 && s[0].installed[0] == 0;      // the pinned root starts fetching
+  #assert cs_frame(s[..]) == 1 && s[0].installed[0] == 1;
+  s[0].requests[2] = 5;
+  #assert cs_frame(s[..]) == 0;                                 // page 2 asks for page 1 first
+  #assert cs_frame(s[..]) >= 1 && s[0].installed[1] == 1;
+  #assert cs_frame(s[..]) >= 0 && cs_frame(s[..]) >= 0 && s[0].installed[2] == 1 && res_valid(s[0].c[0]);
+}

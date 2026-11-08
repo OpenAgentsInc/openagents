@@ -258,13 +258,14 @@ before/after table for each change, and states what was *not* measured.
    request sequences and zero mutation survivors. The delayed-child install fix
    and 464-mutant gate are recorded in
    [the verification](../verification/geometry-residency-12999/README.md).
-   Valley Lab adoption and the draw rule remain in #13008.
+   The GPU draw rule and the request array that feeds it landed in #13008.
 2. **Range and throttle in `coax serve`** (landed, #13000), with time to first image measured
    for Everglade before anything else changes.
 3. **Range-addressable packs** with a SHA-256 per page, Range fetches in
    `host.js` and the whole-file fallback (landed, #13001).
 4. **Valley Lab step 6:** the request array, frustum culling and two-phase
-   Hi-Z in Coax-emitted WGSL, and the draw rule in the cull pass.
+   Hi-Z in Coax-emitted WGSL, and the draw rule in the cull pass (landed,
+   #13008: `aethyr/render/geometry/cull.coax`, `/worlds/valley-lab/cull`).
 5. **Texture memory audit, then ASTC/BC** with tiers.
 6. **The general DAG builder,** with Solstice's watertight properties as
    `#forall` checks (landed, #13015: `aethyr/render/geometry/dag.coax`).

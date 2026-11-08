@@ -1,0 +1,2 @@
+--computes cl_cull_one,cl_cull_two,cl_hiz_depth,cl_hiz_down
+--bindings apps/openagents-web/gpu/cull.bindings --strip cl_

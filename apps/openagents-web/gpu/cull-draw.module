@@ -1,0 +1,3 @@
+--vertices cl_cluster_vs
+--fragments cl_cluster_fs
+--bindings apps/openagents-web/gpu/cull-draw.bindings --strip cl_

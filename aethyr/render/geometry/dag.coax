@@ -67,6 +67,25 @@ dag_refuse :: (d: [] Dag, why: string) -> bool #effects(all) { d[0].refused = wh
 dag_min3 :: (a: Point, b: Point) -> Point #effects(all) { return v3(lo(a.x, b.x), lo(a.y, b.y), lo(a.z, b.z)); }
 dag_max3 :: (a: Point, b: Point) -> Point #effects(all) { return v3(hi(a.x, b.x), hi(a.y, b.y), hi(a.z, b.z)); }
 dag_dist :: (a: Point, b: Point) -> f32 #effects(all) { e := sub(a, b); return sqrt(dot(e, e)); }
+// The distance from x to triangle abc (the closest point by its region: a vertex, an edge or the face).
+dag_point_tri :: (x: Point, a: Point, b: Point, c: Point) -> f32 #effects(all) {
+  ab := sub(b, a); ac := sub(c, a); ap := sub(x, a);
+  d1 := dot(ab, ap); d2 := dot(ac, ap);
+  if d1 <= 0 && d2 <= 0 { return dag_dist(x, a); }
+  bp := sub(x, b); d3 := dot(ab, bp); d4 := dot(ac, bp);
+  if d3 >= 0 && d4 <= d3 { return dag_dist(x, b); }
+  vc := d1 * d4 - d3 * d2;
+  if vc <= 0 && d1 >= 0 && d3 <= 0 { return dag_dist(x, add(a, times(ab, d1 / (d1 - d3)))); }
+  cp := sub(x, c); d5 := dot(ab, cp); d6 := dot(ac, cp);
+  if d6 >= 0 && d5 <= d6 { return dag_dist(x, c); }
+  vb := d5 * d2 - d1 * d6;
+  if vb <= 0 && d2 >= 0 && d6 <= 0 { return dag_dist(x, add(a, times(ac, d2 / (d2 - d6)))); }
+  va := d3 * d6 - d5 * d4;
+  if va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0 { return dag_dist(x, add(b, times(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))))); }
+  den := va + vb + vc;
+  if den <= 0 { return lo(lo(dag_dist(x, a), dag_dist(x, b)), dag_dist(x, c)); }
+  return dag_dist(x, add(a, add(times(ab, vb / den), times(ac, vc / den))));
+}
 
 // Sort keys[0..<n] ascending, carrying order[] along (merge sort, stable).
 dag_sort :: (keys: [] int, order: [] int, tk: [] int, to: [] int) #effects(all) {
@@ -272,6 +291,8 @@ dag_simplify :: (d: [] Dag, w: [] DagWork, g: int, round: int, outside: [] int) 
   for k: 0..<nt * 3 { v := lt[k]; if w[0].stamp[v] != m { w[0].stamp[v] = m; w[0].local[v] = nv; lv[nv] = v; nv += 1; } lt[k] = w[0].local[v]; }
   pos: [DAG_LV] Point; for k: 0..<nv { pos[k] = d[0].p[lv[k]]; }
   uses: [DAG_LV] int; for k: 0..<nt * 3 { uses[lt[k]] += 1; }
+  lt0: [DAG_GT * 3] int; for k: 0..<nt * 3 { lt0[k] = lt[k]; }
+  dest: [DAG_LV] int; for k: 0..<nv { dest[k] = -1; }
   locked: [DAG_LV] bool;
   for k: 0..<nv { if uses[k] != outside[lv[k]] { locked[k] = true; } }
   st: [DAG_LV + 1] int; inc: [DAG_GT * 3] int;
@@ -283,7 +304,7 @@ dag_simplify :: (d: [] Dag, w: [] DagWork, g: int, round: int, outside: [] int) 
   } }
   q: [DAG_LV * 10] f64;
   for t: 0..<nt { a := pos[lt[t * 3]]; b := pos[lt[t * 3 + 1]]; c := pos[lt[t * 3 + 2]]; for j: 0..<3 { dag_quadric_add(q[..], lt[t * 3 + j], a, b, c); } }
-  err: [DAG_LV] f32; live := nt; target := (nt + 1) / 2;
+  live := nt; target := (nt + 1) / 2;
   touched: [DAG_LV] int; seen: [DAG_LV] int; pass := 0; tick := 0;
   cu: [DAG_LV] int; cv: [DAG_LV] int; key: [DAG_LV] int; order: [DAG_LV] int; tk: [DAG_LV] int; to: [DAG_LV] int;
   while live > target {
@@ -332,12 +353,26 @@ dag_simplify :: (d: [] Dag, w: [] DagWork, g: int, round: int, outside: [] int) 
         else { for j: 0..<3 { if lt[t * 3 + j] == u { lt[t * 3 + j] = v; } } }
       }
       for i: 0..<10 { q[v * 10 + i] += q[u * 10 + i]; }
-      err[v] = hi(err[v], err[u] + dag_dist(pos[u], pos[v]));
+      dest[u] = v;
       did += 1;
     }
     if did == 0 { break; }
   }
-  own: f32 = 0; for k: 0..<nv { own = hi(own, err[k]); }
+  // the error: how far the members' surface lies from the simplified one, measured at each of
+  // their vertices and triangle centres against the simplified triangles round the vertices they
+  // collapsed into (a nearest among some is never nearer than the nearest, so it bounds the error)
+  dag_local_inc(lt[..], nt, nv, dead[..], st[..], inc[..]);
+  own: f32 = 0;
+  for k: 0..<nv + nt {
+    x: Point; near: f32 = -1;
+    if k < nv { x = pos[k]; } else { t0 := (k - nv) * 3; x = times(add(add(pos[lt0[t0]], pos[lt0[t0 + 1]]), pos[lt0[t0 + 2]]), 0.33333334); }
+    for j: 0..<(ifx k < nv then 1 else 3) {
+      r := ifx k < nv then k else lt0[(k - nv) * 3 + j];
+      while dest[r] >= 0 { r = dest[r]; }
+      for s2: st[r]..<st[r + 1] { t := inc[s2]; e := dag_point_tri(x, pos[lt[t * 3]], pos[lt[t * 3 + 1]], pos[lt[t * 3 + 2]]); if near < 0 || e < near { near = e; } }
+    }
+    if near > own { own = near; }
+  }
   thinned := false; extra := 0; base := d[0].vertices;
   if live * 100 > nt * 85 {
     // loose islands: thin them instead
@@ -683,7 +718,7 @@ dag_uniform_cuts :: (d: [] Dag) -> int #effects(all) {
   }
   #assert found;
 }
-#forall "pages keep the residency rule and any installed set draws watertight" seed: 0..<4 #steps 4000000000 {
+#forall "pages keep the residency rule and any installed set draws watertight" seed: 0..<4 #steps 4000000000 #traversal 600000000 {
   p: [6 * 13 * 13] Point; idx: [6 * 12 * 12 * 6] u32; n := dag_cube_sphere(12, p[..], idx[..]);
   d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]);
   links: [256] int; nl := dag_links(d[..], links[..]); #assert nl >= 0 && d[0].pages <= RES_PAGES;
@@ -705,7 +740,7 @@ dag_uniform_cuts :: (d: [] Dag) -> int #effects(all) {
   }
   #assert partial >= 10;
 }
-#test "foliage thins with distance and keeps its coverage" #steps 4000000000 {
+#test "foliage thins with distance and keeps its coverage" #steps 4000000000 #traversal 600000000 {
   p: [400 * 4] Point; idx: [400 * 6] u32; n := dag_cards(400, p[..], idx[..]);
   d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]) && dag_monotonic(d[..]);
   thinned := 0; for g: 0..<d[0].groups { if d[0].group[g].thinned { thinned += 1; } } #assert thinned > 0;
@@ -716,6 +751,20 @@ dag_uniform_cuts :: (d: [] Dag) -> int #effects(all) {
   #assert dag_draw(d[..], v3(0, 20, -400), 0.01, installed[..], drawn[..]) > 0;
   far := dag_drawn_tris(d[..], drawn[..]); area := dag_drawn_area(d[..], drawn[..]);
   #assert far * 2 <= close && area > source * 0.85 && area < source * 1.15;
+}
+#test "a point's distance to a triangle: over the face, past an edge and past a corner" {
+  a := v3(0, 0, 0); b := v3(2, 0, 0); c := v3(0, 2, 0);
+  #assert abs(dag_point_tri(v3(0.5, 0.5, 3), a, b, c) - 3) < 0.0001;
+  #assert abs(dag_point_tri(v3(1, -2, 0), a, b, c) - 2) < 0.0001;
+  #assert abs(dag_point_tri(v3(-3, -4, 0), a, b, c) - 5) < 0.0001;
+  #assert abs(dag_point_tri(v3(2, 2, 0), a, b, c) - sqrt(2.0f32)) < 0.0001;
+  #assert dag_point_tri(v3(0.3, 0.3, 0), a, b, c) < 0.0001;
+}
+#test "a sphere's error is its sag, far under the edge length" #steps 4000000000 #traversal 600000000 {
+  p: [6 * 13 * 13] Point; idx: [6 * 12 * 12 * 6] u32; n := dag_cube_sphere(12, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]);
+  // radius 3, about 0.5 m edges: the first round's error is centimetres, not the edge
+  for c: 0..<d[0].clusters { cl := d[0].cluster[c]; if cl.made_by >= 0 && d[0].group[cl.made_by].round == 1 { #assert cl.error > 0 && cl.error < 0.15; } }
 }
 #test "the builder refuses what it can't hold, and a lone triangle is its own root" {
   p := [3] Point.[v3(0, 0, 0), v3(1, 0, 0), v3(0, 1, 0)]; i := [3] u32.[0, 1, 2]; d: [1] Dag; w: [1] DagWork;

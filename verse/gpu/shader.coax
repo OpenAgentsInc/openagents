@@ -148,6 +148,18 @@ gpu_fwidth_fine :: (v:f32)->f32 {return 0.0f32;}
 // invocation continues to supply derivatives while suppressing publication.
 // A scalar CPU call has no publication mask; the quad profile owns it.
 gpu_demote_helper :: () {}
+// Atomics on a storage buffer of u32 bound `atomic` (compute entries, lib/compiler/wgsl.coax):
+// element i changed by v, the old value returned. The CPU runs one invocation at a time, so
+// these are plain reads and writes there; an add wraps, as the GPU's does.
+gpu_atomic_add :: (b:[]u32,i:int,v:u32)->u32 {old:=b[i];b[i]=add_wrap(old,v);return old;}
+gpu_atomic_max :: (b:[]u32,i:int,v:u32)->u32 {old:=b[i];if v>old {b[i]=v;}return old;}
+gpu_atomic_min :: (b:[]u32,i:int,v:u32)->u32 {old:=b[i];if v<old {b[i]=v;}return old;}
+#test "atomics change an element and return what it held" {
+  b:=[2] u32.[5,0xFFFFFFFF];
+  #assert gpu_atomic_add(b[..],0,3)==5 && b[0]==8 && gpu_atomic_add(b[..],1,2)==0xFFFFFFFF && b[1]==1;
+  #assert gpu_atomic_max(b[..],0,4)==8 && b[0]==8 && gpu_atomic_max(b[..],0,9)==8 && b[0]==9;
+  #assert gpu_atomic_min(b[..],0,10)==9 && b[0]==9 && gpu_atomic_min(b[..],0,2)==9 && b[0]==2;
+}
 
 #test "vectors are their components' arithmetic" {
   a:=v3(1,2,3);b:=v3(4,5,6);
