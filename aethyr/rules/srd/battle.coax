@@ -50,6 +50,8 @@
 #load "stabilization.coax";
 #load "short-rest-resources.coax";
 #load "long-rest-resources.coax";
+#load "long-rest-benefits.coax";
+#load "long-rest-completion.coax";
 #load "short-rest.coax";
 #load "rest-sleep.coax";
 #load "help.coax";

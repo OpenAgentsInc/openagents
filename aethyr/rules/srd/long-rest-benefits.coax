@@ -1,0 +1,158 @@
+// SRD 5.2.1 p185. Completion benefits only; the caller must own a legitimately
+// completed rest and synchronize it before subsequent damage/casting events.
+#authority;
+RsRestReduction :: struct { admitted:bool; lost:int; }
+
+#test "Long Rest restores owned reductions without erasing later lasting increases" {
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3);
+  maximum:=c[0].hp_max; strength:=c[0].score[RS_STR];
+  #assert rs_rest_reduce_max(c[..],5).lost==5;
+  #assert rs_rest_reduce_max(c[..],2).lost==2;
+  #assert rs_rest_reduce_score(c[..],RS_STR,2).lost==2;
+  #assert rs_rest_reduce_score(c[..],RS_STR,1).lost==1;
+  c[0].hp_max+=4; c[0].score[RS_STR]+=1;
+  c[0].hp=1; c[0].exhaustion=2; c[0].cond=RS_EXHAUSTION|RS_BLINDED;
+  c[0].reacted=true; c[0].rest.phase=2; c[0].slots[1]=0;
+  #assert rs_long_rest_benefits(c[..]);
+  #assert c[0].hp_max==maximum+4 && c[0].hp==maximum+4 && c[0].hp_max_lost==0;
+  #assert c[0].score[RS_STR]==strength+1 && c[0].score_lost[RS_STR]==0;
+  #assert c[0].exhaustion==1 && c[0].cond==(RS_EXHAUSTION|RS_BLINDED);
+  #assert c[0].slots[1]==4 && c[0].reacted && c[0].rest.phase==2;
+}
+
+#test "Long Rest cannot remove nutrition-locked Exhaustion or bypass a healing prohibition" {
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].hp=1;
+  c[0].exhaustion=3; c[0].exhaustion_food=1; c[0].exhaustion_water=1; c[0].cond=RS_EXHAUSTION;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_NOHEAL,by=-1,spell=-1});
+  #assert rs_long_rest_benefits(c[..]) && c[0].exhaustion==2 && c[0].hp==1;
+  #assert rs_long_rest_benefits(c[..]) && c[0].exhaustion==2;
+  #assert c[0].exhaustion_food==1 && c[0].exhaustion_water==1;
+  // The world releases only the cause whose full daily nourishment was met.
+  c[0].exhaustion_food=0;
+  #assert rs_long_rest_benefits(c[..]) && c[0].exhaustion==1;
+  #assert rs_long_rest_benefits(c[..]) && c[0].exhaustion==1;
+  c[0].exhaustion_water=0;
+  #assert rs_long_rest_benefits(c[..]) && c[0].exhaustion==0 && c[0].cond==0;
+}
+
+#test "rest reductions saturate at zero and reject invalid requests without inventing provenance" {
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); maximum:=c[0].hp_max;
+  #assert !rs_rest_reduce_max(c[..],0).admitted && !rs_rest_reduce_max(c[..],-1).admitted;
+  #assert !rs_rest_reduce_score(c[..],-1,1).admitted && !rs_rest_reduce_score(c[..],6,1).admitted;
+  #assert !rs_rest_reduce_score(c[..],0,0).admitted && !rs_rest_reduce_score(c[..],0,-1).admitted;
+  #assert c[0].hp_max_lost==0 && c[0].score_lost[0]==0;
+  strength:=c[0].score[0];
+  #assert rs_rest_reduce_score(c[..],0,9223372036854775807).lost==strength;
+  #assert c[0].score[0]==0 && c[0].score_lost[0]==strength;
+  #assert rs_rest_reduce_max(c[..],9223372036854775807).lost==maximum;
+  #assert c[0].hp_max==0 && c[0].hp==0 && c[0].hp_max_lost==maximum;
+  #assert !c[0].dead; // A source such as Life Drain decides its own lethal rule.
+  c[0]=rs_wizard("Reader",0,3); c[0].dead=true;
+  #assert rs_rest_reduce_max(c[..],1).lost==0 && rs_rest_reduce_score(c[..],0,1).lost==0;
+}
+
+#test "Long Rest benefits preflight every body counter before mutating resources" {
+  for field:0..<15 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].hp=1;
+    c[0].temp=7; c[0].slots[1]=0; c[0].score_lost[0]=2;
+    if field==0 { c[0].dead=true; }
+    if field==1 { c[0].hp_max=0; c[0].hp=0; }
+    if field==2 { c[0].hp = -1; }
+    if field==3 { c[0].hp=c[0].hp_max+1; }
+    if field==4 { c[0].hp_max_lost = -1; }
+    if field==5 { c[0].hp_max_lost=9223372036854775807; }
+    if field==6 { c[0].exhaustion = -1; }
+    if field==7 { c[0].exhaustion=6; }
+    if field==8 { c[0].exhaustion_food = -1; }
+    if field==9 { c[0].exhaustion_water = -1; }
+    if field==10 { c[0].exhaustion_food=1; }
+    if field==11 { c[0].exhaustion_water=1; }
+    if field==12 { c[0].slots[2] = -1; }
+    if field==13 { c[0].hp_max = -1; }
+    if field==14 { c[0].exhaustion=1; c[0].exhaustion_food=1; c[0].exhaustion_water=1; }
+    before:=c[0];
+    #assert !rs_long_rest_benefits(c[..]);
+    #assert c[0].temp==7 && c[0].slots[1]==0 && !c[0].rest.seeded;
+    #assert c[0].hp==before.hp && c[0].hp_max==before.hp_max && c[0].score[0]==before.score[0] && c[0].score_lost[0]==2;
+  }
+  for ability:0..<6 { for field:0..<3 {
+    c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0;
+    if field==0 { c[0].score[ability] = -1; }
+    if field==1 { c[0].score_lost[ability] = -1; }
+    if field==2 { c[0].score_lost[ability]=9223372036854775807; }
+    #assert !rs_long_rest_benefits(c[..]) && c[0].slots[1]==0 && !c[0].rest.seeded;
+  } }
+}
+
+#test "restoration arithmetic accepts exact capacity and reduction admission rejects overflow" {
+  c:[1]RsCreature; c[0]=rs_wizard("Reader",0,3); c[0].hp=0; c[0].hp_max=1;
+  c[0].hp_max_lost=9223372036854775806;
+  for ability:0..<6 { c[0].score_lost[ability]=9223372036854775807-c[0].score[ability]; }
+  #assert rs_long_rest_body_valid(c[0]) && rs_long_rest_benefits(c[..]);
+  #assert c[0].hp==9223372036854775807 && c[0].hp_max==9223372036854775807;
+  for ability:0..<6 { #assert c[0].score[ability]==9223372036854775807 && c[0].score_lost[ability]==0; }
+  c[0]=rs_wizard("Reader",0,3); c[0].hp=c[0].hp_max; c[0].exhaustion=5;
+  for ability:0..<6 { c[0].score[ability]=0; }
+  #assert rs_long_rest_benefits(c[..]) && c[0].exhaustion==4;
+  c[0]=rs_wizard("Reader",0,3); c[0].hp_max_lost=9223372036854775807;
+  #assert !rs_rest_reduce_max(c[..],1).admitted;
+  c[0].hp_max_lost=9223372036854775807-c[0].hp_max;
+  #assert rs_rest_reduce_max(c[..],1).admitted && c[0].hp_max_lost+c[0].hp_max==9223372036854775807;
+  for ability:0..<6 {
+    c[0].score_lost[ability]=9223372036854775807;
+    #assert !rs_rest_reduce_score(c[..],ability,1).admitted;
+    c[0].score_lost[ability]=9223372036854775807-c[0].score[ability];
+    #assert rs_rest_reduce_score(c[..],ability,1).admitted && c[0].score_lost[ability]+c[0].score[ability]==9223372036854775807;
+  }
+  c[0]=rs_wizard("Reader",0,3); c[0].hp_max = -1;
+  #assert !rs_rest_reduce_max(c[..],1).admitted;
+  c[0].hp_max=0; c[0].hp_max_lost = -1;
+  #assert !rs_rest_reduce_max(c[..],1).admitted;
+  c[0].hp_max_lost=0;
+  #assert rs_rest_reduce_max(c[..],1).admitted;
+  for ability:0..<6 {
+    c[0].score[ability] = -1;
+    #assert !rs_rest_reduce_score(c[..],ability,1).admitted;
+    c[0].score[ability]=0; c[0].score_lost[ability] = -1;
+    #assert !rs_rest_reduce_score(c[..],ability,1).admitted;
+    c[0].score_lost[ability]=0;
+    #assert rs_rest_reduce_score(c[..],ability,1).admitted;
+  }
+}
+
+rs_rest_reduce_max :: (c:[]RsCreature,amount:int)->RsRestReduction #effects(all) {
+  r:RsRestReduction;
+  if c[0].dead || amount<=0 || c[0].hp_max<0 || c[0].hp_max_lost<0 { return r; }
+  if c[0].hp_max_lost>9223372036854775807-c[0].hp_max { return r; }
+  loss:=rs_min(amount,c[0].hp_max);
+  c[0].hp_max-=loss; c[0].hp_max_lost+=loss;
+  c[0].hp=rs_min(c[0].hp,c[0].hp_max);
+  r.admitted=true; r.lost=loss; return r;
+}
+rs_rest_reduce_score :: (c:[]RsCreature,ability:int,amount:int)->RsRestReduction #effects(all) {
+  r:RsRestReduction;
+  if ability<0 || ability>=6 || c[0].dead || amount<=0 { return r; }
+  if c[0].score[ability]<0 || c[0].score_lost[ability]<0 { return r; }
+  if c[0].score_lost[ability]>9223372036854775807-c[0].score[ability] { return r; }
+  loss:=rs_min(amount,c[0].score[ability]);
+  c[0].score[ability]-=loss; c[0].score_lost[ability]+=loss;
+  r.admitted=true; r.lost=loss; return r;
+}
+rs_long_rest_body_valid :: (c:RsCreature)->bool #effects(all) {
+  if c.dead || c.hp_max<1 || c.hp<0 || c.hp>c.hp_max || c.hp_max_lost<0 || c.hp_max_lost>9223372036854775807-c.hp_max { return false; }
+  for ability:0..<6 {
+    if c.score[ability]<0 || c.score_lost[ability]<0 || c.score_lost[ability]>9223372036854775807-c.score[ability] { return false; }
+  }
+  if c.exhaustion>5 || !rs_exhaustion_causes_valid(c) { return false; }
+  return true;
+}
+rs_long_rest_benefits :: (c:[]RsCreature)->bool #effects(all) {
+  if !rs_long_rest_body_valid(c[0]) || !rs_long_rest_banks_valid(c[0]) { return false; }
+  // All refusal precedes mutation, including the existing bank preflight.
+  banks_recovered := rs_long_rest_resources(c);
+  c[0].hp_max+=c[0].hp_max_lost; c[0].hp_max_lost=0;
+  for ability:0..<6 { c[0].score[ability]+=c[0].score_lost[ability]; c[0].score_lost[ability]=0; }
+  healed := rs_heal(c,c[0].hp_max);
+  exhaustion_removed := rs_remove_exhaustion(c);
+  return true;
+}

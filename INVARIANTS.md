@@ -7088,3 +7088,11 @@ evict an effect. Waking retires only sleep ownership, preserving independent
 raw/recorded/zero-HP Unconscious sources and leaving Prone. Ordinary clock
 expiry cannot wake it. World/journal transitions and full inventory dropping
 remain separate. See `docs/verification/srd-rest-sleep-2026-11-08/README.md`.
+
+Long Rest completion consumes an owned pending creature journal boundary once.
+It preflights body/resource counters, restores source-authorized recorded losses
+without erasing later increases, respects shared healing and food/water
+Exhaustion restrictions, wakes only natural sleep, closes old Short Rest choices
+and commits the actual completion timestamp. It grants no turn/Reaction budget.
+World causal scheduling, source loss/nutrition producers and persistence remain
+required. See `docs/verification/srd-long-rest-completion-2026-11-08/README.md`.

@@ -5,8 +5,13 @@ rs_exhaustion_speed :: (c: RsCreature, speed: int) -> int #effects(all) { return
 
 // One completed source-authorized recovery removes one level. This does not
 // itself admit/complete a Long Rest or revive a dead creature.
+rs_exhaustion_causes_valid :: (c:RsCreature)->bool #effects(all) {
+  if c.exhaustion_food<0 || c.exhaustion_water<0 || c.exhaustion_food>c.exhaustion { return false; }
+  return c.exhaustion_water<=c.exhaustion-c.exhaustion_food;
+}
 rs_remove_exhaustion :: (c: [] RsCreature) -> bool #effects(all) {
-  if c[0].dead || c[0].exhaustion<=0 { return false; }
+  if c[0].dead || !rs_exhaustion_causes_valid(c[0]) { return false; }
+  if c[0].exhaustion==c[0].exhaustion_food+c[0].exhaustion_water { return false; }
   c[0].exhaustion-=1;
   if c[0].exhaustion==0 { c[0].cond=rs_clear(c[0].cond,RS_EXHAUSTION); }
   return true;
@@ -27,4 +32,20 @@ rs_remove_exhaustion :: (c: [] RsCreature) -> bool #effects(all) {
   #assert !rs_remove_exhaustion(c[..]);
   c[0].exhaustion=6; c[0].dead=true;
   #assert !rs_remove_exhaustion(c[..]) && c[0].exhaustion==6 && c[0].dead;
+}
+
+#test "Exhaustion recovery removes only unlocked levels and refuses malformed cause floors" {
+  for level:0..<6 { for food:0..<7 { for water:0..<7 {
+    c:[1]RsCreature; c[0].hp=1; c[0].exhaustion=level;
+    c[0].exhaustion_food=food; c[0].exhaustion_water=water;
+    #assert rs_exhaustion_causes_valid(c[0])==(food+water<=level);
+    removed:=rs_remove_exhaustion(c[..]);
+    #assert removed==(food+water<level);
+    #assert c[0].exhaustion==(ifx removed then level-1 else level);
+    #assert c[0].exhaustion_food==food && c[0].exhaustion_water==water;
+  } } }
+  c:[1]RsCreature; c[0].exhaustion=2; c[0].exhaustion_food = -1;
+  #assert !rs_exhaustion_causes_valid(c[0]) && !rs_remove_exhaustion(c[..]) && c[0].exhaustion==2;
+  c[0].exhaustion_food=0; c[0].exhaustion_water = -1;
+  #assert !rs_exhaustion_causes_valid(c[0]) && !rs_remove_exhaustion(c[..]) && c[0].exhaustion==2;
 }

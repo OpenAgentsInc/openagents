@@ -91,3 +91,15 @@ Prone. Admission uses the existing incapacitation lifecycle and updates the
 represented held-focus state. The retained journal and actual world producers
 still need to call these in causal order. Full inventory dropping remains
 separate from the existing focus representation. [Sleep/native evidence](../verification/srd-rest-sleep-2026-11-08/README.md).
+
+## Body benefits and pending-completion consumer
+
+`long-rest-benefits.coax` now restores explicitly recorded, source-authorized
+HP-maximum and ability-score losses while preserving subsequent increases,
+uses shared healing restrictions, recharges represented banks, and removes
+one unlocked Exhaustion level. Separate food/water counts retain their source
+restrictions. `long-rest-completion.coax` consumes an owned pending boundary
+once, wakes natural sleep and commits its actual timestamp without granting a
+turn or Reaction. The journal now lives on the creature. Source-specific loss
+and nutrition producers, derived-stat consequences, world clock/activity
+synchronization, controls and rejoin persistence remain required. [Completion evidence](../verification/srd-long-rest-completion-2026-11-08/README.md).

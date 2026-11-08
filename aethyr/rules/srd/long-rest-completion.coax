@@ -1,0 +1,58 @@
+// Atomic consumer of a pending Long Rest boundary. The world still owns the
+// clock/activity scheduler and must invoke this before any later causal event.
+#authority;
+
+#test "pending Long Rest applies once wakes only natural sleep and records the causal finish" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3); maximum:=c[0].hp_max;
+  #assert rs_sleep_begin(b[..],0);
+  journal:[1]RsLongRest;
+  #assert rs_long_rest_begin(journal[..],c[0].hp,10,1);
+  #assert rs_long_rest_advance(journal[..],40000).ready;
+  c[0].long_rest=journal[0]; c[0].hp=1;
+  #assert rs_rest_reduce_max(c[..],2).admitted;
+  c[0].slots[1]=0; c[0].temp=7; c[0].exhaustion=2; c[0].cond|=RS_EXHAUSTION;
+  c[0].reacted=true; c[0].rest.phase=2; c[0].rest.recovery_used=true;
+  b[0].turn.action=true; b[0].turn.bonus=true; b[0].clock=40000;
+  #assert rs_long_rest_apply(b[..],0);
+  #assert c[0].hp==maximum && c[0].hp_max==maximum && c[0].hp_max_lost==0;
+  #assert !rs_sleeping(c[0]) && !rs_has(c[0],RS_UNCONSCIOUS) && rs_has(c[0],RS_PRONE);
+  #assert c[0].long_rest.completed && c[0].long_rest.finished==28810 && c[0].long_rest.phase==0;
+  #assert c[0].exhaustion==1 && c[0].temp==0 && c[0].slots[1]==4;
+  #assert c[0].reacted && b[0].turn.action && b[0].turn.bonus;
+  #assert c[0].rest.phase==0 && !c[0].rest.recovery_used;
+  #assert !rs_long_rest_apply(b[..],0) && c[0].exhaustion==1;
+}
+
+#test "completion refuses before benefits waking or history when admission or late bank fails" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0; c[0].temp=7;
+  #assert rs_sleep_begin(b[..],0);
+  #assert !rs_long_rest_apply(b[..],-1) && !rs_long_rest_apply(b[..],1);
+  #assert !rs_long_rest_apply(b[..],0);
+  c[0].long_rest.phase=3; c[0].long_rest.stamp=28800;
+  b[0].reaction_frame.on=true;
+  #assert !rs_long_rest_apply(b[..],0);
+  b[0].reaction_frame.on=false;
+  c[0].score_lost[5] = -1;
+  #assert !rs_long_rest_apply(b[..],0);
+  c[0].score_lost[5]=0; c[0].slots[9] = -1;
+  #assert !rs_long_rest_apply(b[..],0);
+  #assert rs_sleeping(c[0]) && c[0].slots[1]==0 && c[0].temp==7 && !c[0].rest.seeded;
+  #assert c[0].long_rest.phase==3 && !c[0].long_rest.completed;
+  c[0].slots[9]=0;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,by=1,spell=0,save=-1,until=90000});
+  #assert rs_long_rest_apply(b[..],0) && rs_has(c[0],RS_UNCONSCIOUS) && !rs_sleeping(c[0]);
+}
+
+rs_long_rest_apply :: (b:[]RsBattle,i:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].reaction_frame.on { return false; }
+  if b[0].c[i].long_rest.phase!=3 { return false; }
+  if !rs_long_rest_benefits(b[0].c[i..<i+1]) { return false; }
+  rs_sleep_end(b[0].c[i..<i+1]);
+  b[0].c[i].rest.phase=0;
+  journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
+  committed:=rs_long_rest_commit(journal[..]);
+  b[0].c[i].long_rest=journal[0];
+  return true;
+}

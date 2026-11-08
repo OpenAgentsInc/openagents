@@ -20,6 +20,7 @@
 #load "spell-selection.coax";
 #load "spell-loadouts.coax";
 #load "rest-state.coax";
+#load "long-rest-state.coax";
 #load "effect-storage.coax";
 #load "hit-points.coax";
 #load "exhaustion.coax";
@@ -193,7 +194,10 @@ RsCreature :: struct {
   save_prof: [6] bool;
   checks: RsCheckTraining;
   ac: int; hp: int; hp_max: int;
+  hp_max_lost:int; score_lost:[6]int; // reductions authorized to end at Long Rest
+  exhaustion_food:int; exhaustion_water:int; // locked until full daily nourishment
   rest: RsRestState;
+  long_rest:RsLongRest;
   temp: int;                // Temporary Hit Points
   speech_blocked: bool;     // gagged or inside magical silence
   gesture_hand: bool = true; material_hand: bool = true;
