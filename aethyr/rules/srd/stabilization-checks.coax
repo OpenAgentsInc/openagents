@@ -217,3 +217,11 @@ sa_field :: (b: [] RsBattle, c: [] RsCreature) {
   c[0]=rs_druid("Healer",0,3); c[0].score[RS_WIS]=10; c[0].x=1; c[0].y=1;
   c[1]=rs_druid("Patient",1,3); c[1].hp=0; c[1].cond=RS_UNCONSCIOUS|RS_PRONE; c[1].x=2; c[1].y=1;
 }
+
+#test "a new death-save stabilization replaces an inactive retained recovery deadline" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=100; b[0].dice[0].fixed=true;
+  c[0]=rs_wizard("Restored patient",0,3); c[0].hp=0; c[0].stable=false;
+  c[0].death_ok=2; c[0].stable_due=9999;
+  #assert rs_battle_death_save(b[..],0)==RS_DS_STABLE;
+  #assert c[0].stable && c[0].stable_due==7300 && b[0].dice[0].rolled==2;
+}

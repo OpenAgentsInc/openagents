@@ -161,3 +161,15 @@ now pay their source feature rather than slot zero. Initiative and non-damage
 death remain next, followed by real world controls/activity and persistent
 binding. Optional choices/simultaneous ordering remain separate required work.
 [Casting evidence](../verification/srd-rest-casting-2026-11-08/README.md).
+
+## Initiative and terminal producers
+
+All shared Initiative rolling now passes through `rs_roll_initiative`, including
+actor admission. It interrupts only that body, preserves natural sleep and its
+Initiative Disadvantage, and does not treat scheduling retained Initiative as a
+new roll. Shared damage/death-save/Exhaustion deaths and dead admission retire
+rest without inventing recovery or revival; earlier earned damage recovery is
+preserved. No active dead journal can stall scheduled time through these paths.
+The next acceptance work is real world rest/activity/settled/wake controls,
+optional choice/simultaneous ordering, source loss/nutrition producers and
+rejoin/persistence binding. [Event evidence](../verification/srd-rest-events-2026-11-08/README.md).

@@ -121,6 +121,9 @@ rs_rest_damage_before :: (b:[]RsBattle,i:int,amount:int) #effects(all) {
 }
 // Called only for an admitted interruption on an already synchronized owner.
 rs_rest_cause_before :: (b:[]RsBattle,i:int) #effects(all) {
+  rs_rest_interrupt_before(b,i,true);
+}
+rs_rest_interrupt_before :: (b:[]RsBattle,i:int,wake:bool) #effects(all) {
   if i<0 || i>=b[0].n || b[0].c[i].dead { return; }
   if b[0].c[i].long_rest.phase==1 {
     journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
@@ -138,5 +141,5 @@ rs_rest_cause_before :: (b:[]RsBattle,i:int) #effects(all) {
   // this boundary; queued choices and simultaneous ordering are owned by the
   // caller, not by a later untimed claim to this completed period.
   rs_rest_interrupt(b[0].c[i..<i+1]);
-  rs_sleep_end(b[0].c[i..<i+1]);
+  if wake { rs_sleep_end(b[0].c[i..<i+1]); }
 }

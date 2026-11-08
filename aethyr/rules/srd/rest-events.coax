@@ -1,0 +1,118 @@
+// Source Long Rest interruption (p185) and terminal lifecycle cleanup. Initiative
+// interrupts rest; it is not itself a source that removes Unconscious (p191).
+#authority;
+
+#test "Exhaustion death retires active rest without recovery and cannot freeze scheduled time" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_warlock("Sleeper",0,3,SP_ELDRITCH_BLAST); c[0].exhaustion=5; c[0].slots[2]=0; c[0].temp=7;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+  rs_tick(b[..],3600);
+  #assert rs_gain_exhaustion(b[..],0);
+  #assert c[0].dead && c[0].hp==0 && c[0].temp==7 && c[0].long_rest.phase==0 && c[0].rest.phase==0;
+  #assert !c[0].rest.seeded && c[0].slots[2]==0 && !c[0].long_rest.short_due && !rs_sleeping(c[0]);
+  rs_tick(b[..],1); #assert b[0].rest_clock.ticks==3601000000 && !c[0].long_rest.completed;
+}
+#test "Initiative admission interrupts only the admitted body while preserving sleep and prior-turn budgets" {
+  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  a:=rs_add(b[..],rs_barbarian("Sleeper",0,3),1,1); b[0].c[a].rages=0; b[0].who = -1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],a,1,true);
+  rs_tick(b[..],3600); b[0].c[a].reacted=true;
+  b[0].turn.action=true; b[0].turn.bonus=true; b[0].dice[0].fixed=true;
+  rolls:=b[0].dice[0].rolled;
+  // A same-epoch copy exercises actor admission; this is not foreign-clock rejoin.
+  j:=rs_add(b[..],b[0].c[a],3,1);
+  #assert j==1 && b[0].n==2 && b[0].c[j].long_rest.phase==2 && b[0].c[j].long_rest.interruptions==1;
+  #assert b[0].c[j].rages==1 && b[0].c[j].rest.phase==0 && rs_sleeping(b[0].c[j]) && rs_has(b[0].c[j],RS_UNCONSCIOUS);
+  #assert b[0].dice[0].rolled==rolls+2;
+  #assert b[0].c[a].long_rest.phase==1 && b[0].c[a].rages==0 && rs_sleeping(b[0].c[a]);
+  #assert b[0].who == -1 && b[0].turn.action && b[0].turn.bonus && b[0].c[j].reacted;
+}
+
+rs_rest_retire_dead :: (b:[]RsBattle,i:int) #effects(all) {
+  if i<0 || i>=b[0].n || !b[0].c[i].dead { return; }
+  b[0].c[i].long_rest.phase=0; b[0].c[i].long_rest.short_due=false;
+  rs_rest_interrupt(b[0].c[i..<i+1]); rs_sleep_end(b[0].c[i..<i+1]);
+}
+// Callers synchronize the actor and consume earlier rest boundaries first.
+// Rolling is distinct from scheduling already retained Initiative in rs_begin.
+rs_roll_initiative :: (b:[]RsBattle,i:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].reaction_frame.on || b[0].c[i].dead { return false; }
+  rs_rest_interrupt_before(b,i,false);
+  plan:=rs_initiative_plan(b[0].c[i]);
+  b[0].c[i].initiative=rs_d20(b[0].dice[..],plan.edge).roll+plan.bonus-plan.penalty;
+  return true;
+}
+
+#test "Initiative roll uses retained modifiers and rejects invalid dead or borrowed actors without a cause" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+  c[0]=rs_wizard("Watcher",0,3); c[0].score[RS_DEX]=16; c[0].exhaustion=1;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],3599); c[0].initiative = -99;
+  #assert !rs_roll_initiative(b[..],-1) && !rs_roll_initiative(b[..],1);
+  b[0].reaction_frame.on=true; #assert !rs_roll_initiative(b[..],0); b[0].reaction_frame.on=false;
+  c[0].dead=true; #assert !rs_roll_initiative(b[..],0); c[0].dead=false;
+  #assert c[0].long_rest.phase==1 && c[0].initiative == -99 && b[0].dice[0].rolled==0;
+  #assert rs_roll_initiative(b[..],0) && c[0].initiative==11 && b[0].dice[0].rolled==1;
+  #assert c[0].long_rest.phase==2 && !c[0].rest.seeded;
+}
+#test "scheduling retained Initiative and refused capacity admission do not interrupt other rests" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Watcher",0,3);
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  rs_tick(b[..],3600); rolls:=b[0].dice[0].rolled;
+  rs_begin(b[..]);
+  #assert c[0].long_rest.phase==1 && b[0].dice[0].rolled==rolls;
+  #assert rs_add(b[..],rs_guard("No room",1),0,0) == -1;
+  #assert c[0].long_rest.phase==1 && b[0].dice[0].rolled==rolls && b[0].n==1;
+}
+#test "terminal retirement preserves completion history and spent banks and removes only natural sleep" {
+  for phase:0..<4 {
+    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    c[0]=rs_wizard("Body",0,3); c[0].slots[1]=0; c[0].rest.dice=1; c[0].rest.recovery_used=true;
+    #assert rs_sleep_begin(b[..],0);
+    #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,by=-1,spell=-1,until=90000});
+    c[0].long_rest=RsLongRest.{phase=phase,completed=true,finished=123,short_due=true,interruptions=2};
+    c[0].rest.phase=2; c[0].dead=true; c[0].hp=0;
+    rs_rest_retire_dead(b[..],0); rs_rest_retire_dead(b[..],0);
+    #assert c[0].long_rest.phase==0 && !c[0].long_rest.short_due && c[0].rest.phase==0 && !rs_sleeping(c[0]);
+    #assert c[0].long_rest.completed && c[0].long_rest.finished==123 && c[0].long_rest.interruptions==2;
+    #assert c[0].rest.dice==1 && c[0].rest.recovery_used && c[0].slots[1]==0 && c[0].dead && c[0].hp==0;
+    #assert rs_has(c[0],RS_UNCONSCIOUS) && rs_effect(c[0],EF_COND);
+  }
+}
+#test "terminal cleanup refuses living or out-of-span bodies without changing rest or sleep" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Living",0,3); c[1]=rs_wizard("Unused storage",0,3); c[1].dead=true; c[1].long_rest.phase=3;
+  #assert rs_long_rest_start_owned(b[..],0,1,true);
+  c[0].long_rest.short_due=true; c[0].rest.phase=2;
+  rs_rest_retire_dead(b[..],-1); rs_rest_retire_dead(b[..],1); rs_rest_retire_dead(b[..],0);
+  #assert c[0].long_rest.phase==1 && c[0].long_rest.short_due && c[0].rest.phase==2 && rs_sleeping(c[0]);
+  #assert c[1].long_rest.phase==3;
+}
+#test "damage death retains earned interruption banks while terminal death saves retire paused rest" {
+  for fatal:0..<2 {
+    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+    c[0]=rs_warlock("Sleeper",0,3,SP_ELDRITCH_BLAST); c[0].hp=1; c[0].slots[2]=0;
+    #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
+    rs_tick(b[..],3600);
+    rs_damage(b[..],-1,0,ifx fatal==1 then 999 else 1,RS_FIRE,false,-1);
+    if fatal==0 {
+      #assert !c[0].dead && c[0].long_rest.phase==2;
+      c[0].exhaustion=1; c[0].death_fail=2;
+      #assert rs_battle_death_save(b[..],0)==RS_DS_DEAD;
+    }
+    #assert c[0].dead && c[0].long_rest.phase==0 && !c[0].long_rest.short_due && c[0].rest.phase==0;
+    #assert c[0].slots[2]==2 && c[0].rest.dice==3 && !rs_sleeping(c[0]);
+    rs_tick(b[..],1); #assert b[0].rest_clock.ticks==3601000000;
+  }
+}
+#test "nonterminal Exhaustion does not interrupt a Long Rest and dead admission rolls no Initiative" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_wizard("Watcher",0,3);
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
+  for level:1..<6 { #assert rs_gain_exhaustion(b[..],0) && c[0].exhaustion==level && c[0].long_rest.phase==1; }
+  body:=c[0]; body.dead=true; body.hp=0; body.long_rest.phase=3; body.long_rest.short_due=true;
+  rolls:=b[0].dice[0].rolled;
+  #assert rs_add(b[..],body,1,1)==1;
+  #assert c[1].long_rest.phase==0 && !c[1].long_rest.short_due && b[0].dice[0].rolled==rolls && c[0].long_rest.phase==1;
+}

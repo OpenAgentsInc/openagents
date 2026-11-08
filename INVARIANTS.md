@@ -7181,3 +7181,18 @@ free casts consume their source use where required, preserve unlimited Vigor
 and never spend slot zero. Owners still synchronize journals before admission;
 world activation, Initiative and optional ordering remain required. Evidence:
 `docs/verification/srd-rest-casting-2026-11-08/README.md`.
+
+## Initiative interrupts only its actor and terminal rest cannot stall time
+
+`rs_roll_initiative` owns actual shared rolls; `rs_add` calls it only after
+logical actor admission. Other actors' rests remain intact. `rs_begin` merely
+schedules retained Initiative. Rolling interrupts the actor's synchronized rest
+without itself waking natural sleep, so Incapacitated Initiative Disadvantage
+and ordinary cancellation remain. Dead/borrowed/invalid rolls refuse.
+Shared battle damage, death-save and Exhaustion terminal paths retire all rest
+phases and pending fallback without revival/recovery, preserving completion
+history and spent banks. Dead admission does the same without rolling a die.
+Earlier earned damage-interruption recovery remains valid. Nonterminal
+Exhaustion does not interrupt rest. World observations, optional ordering and
+persistent epoch binding remain required. Evidence:
+`docs/verification/srd-rest-events-2026-11-08/README.md`.

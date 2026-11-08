@@ -25,6 +25,7 @@ rs_battle_death_save :: (b: [] RsBattle, j: int) -> int #effects(all) {
   c: [1] RsCreature; c[0] = b[0].c[j];
   r := rs_death_apply(c[..],face,total);
   b[0].c[j] = c[0];
+  rs_rest_retire_dead(b,j);
   if r == RS_DS_STABLE {
     b[0].c[j].stable_due=0;
     _ := rs_stable_arm(b,j);

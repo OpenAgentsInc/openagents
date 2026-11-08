@@ -6,6 +6,7 @@ rs_gain_exhaustion :: (b: [] RsBattle, i: int) -> bool #effects(all) {
   b[0].c[i].exhaustion+=1; b[0].c[i].cond|=RS_EXHAUSTION;
   if b[0].c[i].exhaustion>=6 {
     b[0].c[i].dead=true; b[0].c[i].hp=0; b[0].c[i].stable=false;
+    rs_rest_retire_dead(b,i);
     rs_interrupt_incapacitated(b,i);
   } else { _ := rs_dodge_live(b,i); }
   l: [1] RsLine; rs_add_name(l[..],b,i);
