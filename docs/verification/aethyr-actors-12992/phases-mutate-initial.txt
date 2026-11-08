@@ -1,0 +1,14 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/actors/phases.coax:34:48: mutant survived: '>' became '>='
+    if t.dependency_count<0 || t.dependency_count>ACTOR_TASKS {return ActorPlanResult.{status=ActorPlanStatus.dependency,task=t.id};}
+                                                 ^
+aethyr/actors/phases.coax:34:49: mutant survived: 16 became 17
+    if t.dependency_count<0 || t.dependency_count>ACTOR_TASKS {return ActorPlanResult.{status=ActorPlanStatus.dependency,task=t.id};}
+                                                  ^
+aethyr/actors/phases.coax:38:31: mutant survived: -1 became 0
+     id:=t.dependencies[k];at:= -1;
+                                ^
+aethyr/actors/phases.coax:63:21: mutant survived: '<' became '<='
+     if best<0 || t.id<tasks[best].id {best=i;}
+                      ^
+129 mutants, 125 killed, 4 survived
