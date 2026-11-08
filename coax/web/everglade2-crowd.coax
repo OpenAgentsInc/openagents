@@ -1,7 +1,7 @@
 // Everglade II's crowd check (#13057): N headless Chromes (2 to 3: the machine's cap) take the whole
 // journey into one Everglade II room of their own, as players do, and say what each saw and how
 // smooth the others were.
-//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE]
+//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE] [--shot DIR]
 // URL is the Character Create page (…/worlds/character-creator), with ?relay=ws://localhost:PORT for a
 // local room (coax/web/room/local.coax); the room is a fresh pair-e2-<hex> (?room=), which the rooms
 // list leaves out, unless --room names one (a load run's pair-e2-load-STAMP-1, to stand among its
@@ -14,7 +14,8 @@
 //   4. after the run each holds W for S seconds, then stands; the window's numbers (everglade2-crowd.js:
 //      frame spacing and Coax time, the first other's drawn speed, its stalls and lurches, the re-runs
 //      and their largest move, names drawn) are reported per page. The checks: everyone seated and
-//      seen, and names drawn over the others (e2_probe 53) while they stand near.
+//      seen, every other's name known (e2_probe 53), and names drawn over heads on the way (e2_probe 16's
+//      most in a frame, everglade2-crowd.js namesMax).
 // Nothing opens on screen and no sound plays. Each Chrome this starts is closed before it exits.
 #import "Basic";
 #load "../lib/net/cdp.coax";
@@ -85,6 +86,18 @@ ec_open :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int
   jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
   return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
 }
+// --shot DIR: each page's picture (JPEG) as it draws the others: DIR/run-K.jpg while the runs play and
+// DIR/walk-K.jpg once all stand after the walk, to look at the bodies and the names over them.
+ec_shot :: (c: [] Cdp, dir: string, what: string, k: int) {
+  if dir.count == 0 { return; }
+  r := cdp_call(c, "Page.captureScreenshot", "{\"format\":\"jpeg\",\"quality\":85}", CDP_CALL_MS);
+  dd := cdp_doc(c); data := jv_get(dd, r, "data");
+  if r < 0 || jv_kind(dd, data) != JV_STRING { print("  no picture from page %: %\n", k, cdp_error(c)); return; }
+  pic: [4194304] u8;
+  n := b64_decode(jv_raw(dd, data), pic[..]);
+  q: [1] Buf; bput(q[..], dir); bput(q[..], "/"); bput(q[..], what); bput(q[..], "-"); bint(q[..], k); bput(q[..], ".jpg");
+  if n > 0 && fs_write(btext(q[..]), cast(string) pic[0..<n]) { print("  picture %\n", btext(q[..])); }
+}
 ec_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -95,9 +108,10 @@ tool_main :: () -> int #export_c #effects(all) {
   seconds := args_number(args_value(a[..], "--seconds", "20"));
   wh := args_size(args_value(a[..], "--size", "1280x720"));
   room := args_value(a[..], "--room", "");
+  shot := args_value(a[..], "--shot", "");
   origin := ec_origin(url);
   if !ok || url.count == 0 || url[0] == '-' || origin.count == 0 || !players.ok || !seconds.ok || !wh.ok || players.value < 2 || players.value > f64(E2C_MAX) || seconds.value < 3 {
-    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3] [--seconds S >= 3] [--size WxH] [--room CODE] (from the repository's root)"); return 2;
+    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] (from the repository's root)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade2-crowd.js", js[..]);
@@ -117,12 +131,12 @@ tool_main :: () -> int #export_c #effects(all) {
     if !cdp_launch(c[i..<i + 1], wh.w, wh.h, "coax-e2crowd-") { tool_err("everglade2-crowd: "); tool_errln(cdp_error(c[i..<i + 1])); break; }
     up += 1;
   }
-  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value) else 1;
+  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value, shot) else 1;
   for i: 0..<up { cdp_close(c[i..<i + 1]); }
   return status;
 }
 
-ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int) -> int {
+ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int, shot: string) -> int {
   n := c.count;
   for i: 0..<n { if !ec_open(c[i..<i + 1], url, origin, mark, w, h, script) { tool_errln("everglade2-crowd: can't open a page"); print("fails\n"); return 1; } }
   print("room %, % players, mark %\n", url, n, mark);
@@ -169,6 +183,7 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   }
   all = ec_check(seen, "every page draws every other player") && all;
   print("  seen while a run played: %\n", ifx during then "yes" else "no (the runs had ended)");
+  for i: 0..<n { ec_shot(c[i..<i + 1], shot, "run", i); }
   // the runs end (they hand the walk to you)
   deadline = proc_now_ms() + 40000;
   done := false;
@@ -188,9 +203,11 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
     t := ec_str(c[i..<i + 1], "__e2.report()", walk_report[i * 2048..<(i + 1) * 2048]); wn[i] = t.count;
     if ec_probe(c[i..<i + 1], 42) < n - 1 { plates = false; }
   }
-  // names: every page draws at least one name while all stand close (they walked the same way)
-  named := 0; for i: 0..<n { if ec_probe(c[i..<i + 1], 53) >= n - 1 && ec_probe(c[i..<i + 1], 16) > 0 { named += 1; } }
-  for i: 0..<n { p := c[i..<i + 1]; print("  page %: named others %, bodies for names %, names drawn %, draws %\n", i, ec_probe(p, 53), ec_probe(p, 17), ec_probe(p, 16), ec_probe(p, 0)); }
+  // names: every page has every other's name, and drew names over heads on the way (an other near
+  // and ahead of its camera: a name behind you is rightly not drawn, so this is the journey's most)
+  named := 0; for i: 0..<n { if ec_probe(c[i..<i + 1], 53) >= n - 1 && ec_int(c[i..<i + 1], "__e2.namesMax", 0) > 0 { named += 1; } }
+  for i: 0..<n { p := c[i..<i + 1]; print("  page %: named others %, bodies for names %, names drawn now %, most in a frame %, draws %\n", i, ec_probe(p, 53), ec_probe(p, 17), ec_probe(p, 16), ec_int(p, "__e2.namesMax", 0), ec_probe(p, 0)); }
+  for i: 0..<n { ec_shot(c[i..<i + 1], shot, "walk", i); }
   all = ec_check(plates, "every page still draws every other player after the walk") && all;
   all = ec_check(named == n, "every page has every other's name and draws names over their heads") && all;
   print("{\"players\":%,\"pages\":[", n);
