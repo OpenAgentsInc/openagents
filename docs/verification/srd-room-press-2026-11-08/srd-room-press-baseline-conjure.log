@@ -1,0 +1,10 @@
+FAIL #test Everglade 5E room: Conjure Animals brings four Wolves that bite the town; another player can kill one; they go with Concentration (519 ms)
+apps/openagents-web/everglade5e-room-rules.coax:983:3: error[E0406]: assertion failed
+    #assert left == E5RR_PACK;
+    ^
+  note: in #test Everglade 5E room: Conjure Animals brings four Wolves that bite the town; another player can kill one; they go with Concentration
+1 of 321 checks (--only 'Conjure Animals brings'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

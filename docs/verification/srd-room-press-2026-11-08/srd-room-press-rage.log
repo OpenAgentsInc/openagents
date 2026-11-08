@@ -1,0 +1,3 @@
+ok   #test Everglade room declares unlimited Rage uses without refreshing its Reaction (1 case, 1156374 steps, 39 ms)
+1 of 324 checks (--only 'Everglade room declares'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

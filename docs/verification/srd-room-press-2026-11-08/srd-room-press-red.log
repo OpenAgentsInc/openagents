@@ -1,0 +1,10 @@
+FAIL #test Everglade room unlimited presses preserve spent Reactions and other seats (43 ms)
+apps/openagents-web/everglade5e-room-rules.coax:1075:3: error[E0406]: assertion failed
+    #assert b[0].c[0].reacted;
+    ^
+  note: in #test Everglade room unlimited presses preserve spent Reactions and other seats
+1 of 322 checks (--only 'Everglade room unlimited'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

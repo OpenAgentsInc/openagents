@@ -1,0 +1,18 @@
+FAIL #test room raid: the horde acts apart: at any moment some move and some hold to cast, its casts spread over the beat (#12771) (4209 ms)
+aethyr/rules/srd/command-halt.coax:51:16: error[E0400]: compile-time aggregate traversal limit exceeded: 134217729 value and field visits needed, the limit is 134217728
+    return rs_up(c) && (c.cond & (RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS)) == 0;
+                 ^
+  compile-time traversal work: 134217729 visits needed, the limit is 134217728
+  top users of compile-time traversal work:
+    31209115 visits  apps/openagents-web/everglade5e-room-raid.coax:193:1  in 'e5rd_up' (87913 times)
+    15892577 visits  aethyr/rules/srd/command-halt.coax:51:10  copying arguments into 'rs_up' (44768 calls)
+    14924910 visits  aethyr/rules/srd/battle.coax:200:54  copying arguments into 'rs_capable' (42042 calls)
+    9135504 visits  aethyr/rules/srd/help.coax:66:1  in 'rs_help_start_turn' (1197 times)
+    8848020 visits  aethyr/rules/srd/effect-admission.coax:251:71  copying arguments into 'rs_up' (24924 calls)
+  fix: copy fewer whole arrays and structs in 'e5rd_up' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+  note: in #test room raid: the horde acts apart: at any moment some move and some hold to cast, its casts spread over the beat (#12771)
+1 of 321 checks (--only 'the horde acts apart'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

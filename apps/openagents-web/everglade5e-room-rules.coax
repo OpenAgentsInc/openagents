@@ -22,6 +22,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
 #load "everglade5e-rules.coax";
+#load "../../aethyr/rules/srd/press-budget.coax";
 #load "everglade-raid-tactics.coax";   // how the cult fights a siege
 #load "everglade-raid-spells.coax";    // what the cult casts (#12747)
 #load "everglade-raid-front.coax";     // the standing siege's front (#12860)
@@ -304,13 +305,12 @@ e5rr_use_apply :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> b
   if !rs_capable(b[0].c[me]) { return false; }
   if !rs_can_act(b[0].c[me]) && !(a.kind == FB_SPELL && rs_spell(a.sp).cast_time == RS_T_REACTION) { return false; }
   if a.kind == FB_SPELL && a.sp == SP_CONJURE_ANIMALS { return e5rr_conjure(r, s, x, z); }
-  // nothing on the bar runs out: a fresh turn, every slot back
+  // The room declares the same unlimited cost profile as Experimental.
+  // The enclosing transaction restores it on refusal; Reactions stay spent.
   c := b[0].c[me..<me + 1];
-  for l: 0..<10 { c[0].slots[l] = c[0].slots_max[l]; }
-  for u: 0..<RS_USES { c[0].uses[u] = c[0].uses_max[u]; }
-  c[0].reacted = false;
-  r[0].seat[s].open = true;
-  r[0].seat[s].turn.action = false; r[0].seat[s].turn.bonus = false; r[0].seat[s].turn.slot_spent = false;
+  press_turn:[1] RsTurn; press_turn[0]=r[0].seat[s].turn;
+  prepared:=rs_press_prepare(c,press_turn[..],RS_UNLIMITED_PRESS);
+  r[0].seat[s].turn=press_turn[0]; r[0].seat[s].open=true;
   tx := e5r_sq(x); ty := e5r_sq(z);
   foe := ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else e5rr_of_tgt(tgt);
   if foe >= 0 && foe < E5RR_FOLK0 && !e5rr_helps(a) && !r[0].pvp { foe = -1; }   // PvP off: no harm aimed at a player
@@ -1064,4 +1064,30 @@ e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
   #assert !e5rr_use(r[..], 0, FB_CL0 + FB_CL_BARBARIAN, 0, 0, -1);  // nor another class's
   #assert e5rr_use(r[..], 0, FB_CL0 + FB_CL_BARD, 3, 0, 0);         // Vicious Mockery at guard 0
   #assert e5rr_use(r[..], 1, FB_CL0 + FB_CL_BARBARIAN, 1, 0, -1) && r[0].b[0].c[1].raging;   // Rage
+}
+
+#test "Everglade room unlimited presses preserve spent Reactions and other seats" #steps 2000000000 {
+  r:[1] E5rRoom; e5rr_start(r[..],9); e5rr_test_people(r[..]);
+  e5rr_join_as(r[..],0,0,0,E5R_CL0+FB_CL_BARD); e5rr_join_as(r[..],1,1,0,E5R_CL0+FB_CL_BARD);
+  b:=r[0].b[..]; b[0].c[0].reacted=true; b[0].c[1].reacted=true; b[0].c[1].slots[1]=0;
+  r[0].seat[1].turn.action=true; r[0].seat[1].turn.bonus=true;
+  #assert e5rr_use(r[..],0,FB_CL0+FB_CL_BARD,3,0,0);
+  #assert b[0].c[0].reacted;
+  #assert b[0].c[1].reacted && b[0].c[1].slots[1]==0;
+  #assert r[0].seat[1].turn.action && r[0].seat[1].turn.bonus;
+  // Public transaction still restores the press override when speech refuses.
+  b[0].c[0].speech_blocked=true; b[0].c[0].slots[1]=0;
+  r[0].seat[0].turn.action=true; r[0].seat[0].turn.bonus=true;
+  #assert !e5rr_use(r[..],0,FB_CL0+FB_CL_BARD,3,0,0);
+  #assert b[0].c[0].reacted && b[0].c[0].slots[1]==0;
+  #assert r[0].seat[0].turn.action && r[0].seat[0].turn.bonus;
+}
+
+#test "Everglade room declares unlimited Rage uses without refreshing its Reaction" #steps 2000000000 {
+  r:[1] E5rRoom; e5rr_start(r[..],9); e5rr_test_people(r[..]);
+  e5rr_join_as(r[..],0,0,0,E5R_CL0+FB_CL_BARBARIAN);
+  b:=r[0].b[..]; b[0].c[0].rages=0; b[0].c[0].reacted=true;
+  #assert e5rr_use(r[..],0,FB_CL0+FB_CL_BARBARIAN,0,0,-1);
+  #assert b[0].c[0].raging && b[0].c[0].rages==b[0].c[0].rages_max-1;
+  #assert b[0].c[0].reacted;
 }

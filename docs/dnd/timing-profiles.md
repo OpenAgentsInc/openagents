@@ -58,3 +58,11 @@ for a press. Refused execution rolls those fields back. This does not advance
 a turn, refresh Reactions, grant access or waive components. It is separate
 from clock timing, and does not qualify the remaining room/world reset paths.
 Evidence: [press-budget verification](../verification/srd-press-budget-2026-11-08/README.md).
+
+The legacy Everglade 5E multiplayer room also declares `RS_UNLIMITED_PRESS`
+through its existing public transaction. Presses preserve Reactions and other
+seats; refusal restores the override with the rest of the transaction. Its
+class-feature budget now includes the same Focus/Rage refill as Experimental.
+This is not Everglade II's currently presentation-only cast broadcast path.
+Evidence and full-room failures:
+[room press verification](../verification/srd-room-press-2026-11-08/README.md).

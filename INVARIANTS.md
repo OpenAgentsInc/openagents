@@ -6851,3 +6851,14 @@ The policy cannot refill health, Reactions, movement or components, and does
 not manufacture a logical turn or spell grant. Other world reset paths remain
 migration work. Evidence and exact limits:
 `docs/verification/srd-press-budget-2026-11-08/README.md`.
+
+## Legacy room presses do not renew a Reaction
+
+The room's ordinary `e5rr_use_apply` entry declares the same unlimited press
+cost policy as Experimental. Its public transaction retains complete refusal
+rollback. An accepted press preserves spent Reactions and every other seat's
+budgets; only a real turn renews a Reaction. The explicit override now includes
+Focus/Rage along with slots/ordinary uses. Raid-hero/custom-summon paths and
+Everglade II's separate presentation-only cast broadcast remain migration work.
+Full-room qualification still has two independently reproduced baseline failures.
+Evidence: `docs/verification/srd-room-press-2026-11-08/README.md`.

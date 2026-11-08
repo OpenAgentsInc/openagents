@@ -1,0 +1,3 @@
+ok   #test Everglade room unlimited presses preserve spent Reactions and other seats (1 case, 1542443 steps, 45 ms)
+1 of 323 checks (--only 'Everglade room unlimited'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
