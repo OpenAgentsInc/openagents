@@ -1,0 +1,5 @@
+9487679fa3d2894d62f85054cbca7a2e321c975e62e26d94e6e6518ddb49e8fc  /tmp/srd-e2-refusal.wasm
+1251e3b98d927f286e0f5f4ef01938001814305b92d9f2695a27149b3c5f0a21  apps/openagents-web/everglade2-net.coax
+93489fdaa2a6b0be3ab6692530276a2b2acfd829d460d19fc7d5418b4dcbd800  apps/openagents-web/everglade2-cast.coax
+1b10f7ee6fa966ee761215850175cd38fddd07fde068e8ae82ada07ec172495c  apps/openagents-web/everglade2.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax

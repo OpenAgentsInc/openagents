@@ -1,0 +1,10 @@
+apps/openagents-web/everglade2.coax:1321:11: error[E0315]: procedure 'e2n_cast_message' is not declared
+    #assert e2n_cast_message(n)=="CAST NOT ALLOWED";
+            ^
+apps/openagents-web/everglade2.coax:1323:27: error[E0315]: procedure 'e2n_cast_message' is not declared
+    n[0].mono=4100; #assert e2n_cast_message(n).count==0;
+                            ^
+2 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

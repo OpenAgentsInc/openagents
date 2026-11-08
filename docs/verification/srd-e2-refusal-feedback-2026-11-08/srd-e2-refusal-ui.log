@@ -1,0 +1,3 @@
+ok   #test Everglade II shows a matching cast refusal over the hotbar and retires it after four seconds (1 case, 9202537 steps, 257 ms)
+1 of 857 checks (--only 'shows a matching cast refusal'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

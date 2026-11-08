@@ -6875,3 +6875,13 @@ restores its budgets, seat and dice. Other actors' turns stay intact. The page
 still predicts presentation; visible state, acknowledgement and broader world
 qualification remain work. Evidence:
 `docs/verification/srd-e2-shared-cast-2026-11-08/README.md`.
+
+## Everglade II renders shared-rule refusals as bounded cast feedback
+
+Only a well-formed positive sequence matching the latest local cast updates
+cast feedback. Fixed messages replace server reason words; raw server text is
+never drawn. The hotbar shows the message for four seconds, hides negative
+clock ages and clears it on a new locally admitted press. Connection-version,
+elsewhere and restart handling retain priority. Already predicted sound/effects
+are not undone; shared state projection and broader runtime qualification remain
+separate. Evidence: `docs/verification/srd-e2-refusal-feedback-2026-11-08/README.md`.

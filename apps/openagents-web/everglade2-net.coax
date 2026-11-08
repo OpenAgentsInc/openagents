@@ -68,6 +68,7 @@ E2Net :: struct {
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   casts: [E2N_CASTS] E2nCast;   // the others' casts, waiting for their tick to be drawn
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
+  cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
 }
 
@@ -353,7 +354,9 @@ e2n_record :: (n: [] E2Net, t: string) {
       e2n_tell(n, "RESTARTING · BACK IN A MOMENT"); n[0].ticket_n = 0; n[0].tries = 0; e2n_down(n);
       return;
     }
-    if seq > 0 && seq == n[0].cast_seq { n[0].cast_refused += 1; }   // your last cast, turned down (slot, cooldown, range, aim)
+    if r[0].ok && why.count>0 && seq > 0 && seq == n[0].cast_seq {
+      n[0].cast_refused += 1; n[0].cast_said=e2n_cast_reason(why); n[0].cast_said_at=n[0].mono;
+    }   // your last cast, turned down (slot, cooldown, range, aim)
     return;
   }
 }
@@ -536,6 +539,7 @@ e2n_set_class :: (n: [] E2Net, c: int) {
 // with no seat; the room then says e cast to everyone near, you too, or r SEQ WHY.
 e2n_cast :: (n: [] E2Net, slot: int, ax: f32, ay: f32, az: f32) -> bool {
   if !e2n_open(n) { return false; }
+  n[0].cast_said="";
   n[0].cast_seq = n[0].seq + 1000000 + n[0].cast_sent;   // apart from the inputs' numbers
   n[0].cast_sent += 1;
   e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az}));
@@ -647,4 +651,38 @@ e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1
   #assert !e2n_cast_due(n[..], 3000).live;   // once
   rb: [64] u8; rn := wire_put(rb[..], 0, "r"); rn = wire_int(rb[..], rn, n[0].cast_seq); rn = wire_put(rb[..], rn, " cooldown");
   e2n_record(n[..], cast(string) rb[0..<rn]); #assert n[0].cast_refused == 1;
+}
+
+// Only fixed player-facing text is retained; a server word is never drawn raw.
+e2n_cast_reason :: (why:string)->string {
+  if why=="cooldown" { return "CAST NOT READY"; }
+  if why=="range" { return "OUT OF RANGE"; }
+  if why=="slot" { return "ABILITY UNAVAILABLE"; }
+  if why=="aim" { return "CANNOT AIM THERE"; }
+  return "CAST NOT ALLOWED";
+}
+e2n_cast_message :: (n:[] E2Net)->string {
+  age:=n[0].mono-n[0].cast_said_at;
+  if age<0 || age>=4000 { return ""; }
+  return n[0].cast_said;
+}
+
+#test "cast refusal feedback matches the latest request never raw server text and clears on a new press" {
+  n:[1] E2Net; n[0].state=E2N_OPEN; n[0].seat=0; n[0].sock=1;
+  #assert e2n_cast(n[..],xk_slot(FB_CL_WIZARD,0),0,1,20);
+  seq:=n[0].cast_seq; msg:[128] u8;
+  count:=wire_put(msg[..],0,"r "); count=wire_int(msg[..],count,seq-1); count=wire_put(msg[..],count," no");
+  e2n_record(n[..],cast(string)msg[0..<count]); #assert n[0].cast_refused==0 && e2n_cast_message(n[..]).count==0;
+  e2n_record(n[..],"r malformed no"); e2n_record(n[..],"r 0 no");
+  #assert n[0].cast_refused==0;
+  count=wire_put(msg[..],0,"r "); count=wire_int(msg[..],count,seq); count=wire_put(msg[..],count," unknown-server-detail");
+  e2n_record(n[..],cast(string)msg[0..<count]);
+  #assert e2n_cast_message(n[..])=="CAST NOT ALLOWED" && n[0].cast_refused==1;
+  n[0].mono=-1; #assert e2n_cast_message(n[..]).count==0;
+  n[0].mono=3999; #assert e2n_cast_message(n[..]).count>0;
+  n[0].mono=4000; #assert e2n_cast_message(n[..]).count==0;
+  #assert e2n_cast(n[..],xk_slot(FB_CL_WIZARD,0),0,1,20);
+  #assert n[0].cast_said.count==0;
+  #assert e2n_cast_reason("cooldown")=="CAST NOT READY" && e2n_cast_reason("range")=="OUT OF RANGE";
+  #assert e2n_cast_reason("slot")=="ABILITY UNAVAILABLE" && e2n_cast_reason("aim")=="CANNOT AIM THERE";
 }

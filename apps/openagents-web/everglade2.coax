@@ -1310,3 +1310,16 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   a := e2k_figure(g, k[0].them[r.slot], s[0].clock + 0.3); #assert a.clip == figs.BD_SLASH && a.prev == figs.BD_IDLE;
   #assert e2k_figure(g, k[0].them[r.slot], s[0].clock + 5).clip == figs.BD_IDLE;
 }
+
+#test "Everglade II shows a matching cast refusal over the hotbar and retires it after four seconds" #steps 1000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
+  n:=s[0].net[..]; n[0].mono=100;
+  #assert e2k_press(s[..],0);
+  out:[8192] f32; plain:=e2k_hud(s[..],out[..],0);
+  message:[64] u8; count:=wire_put(message[..],0,"r "); count=wire_int(message[..],count,n[0].cast_seq); count=wire_put(message[..],count," no");
+  e2n_record(n,cast(string)message[0..<count]);
+  #assert e2n_cast_message(n)=="CAST NOT ALLOWED";
+  #assert e2k_hud(s[..],out[..],0)>plain;
+  n[0].mono=4100; #assert e2n_cast_message(n).count==0;
+  #assert e2k_hud(s[..],out[..],0)==plain;
+}
