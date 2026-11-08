@@ -78,10 +78,28 @@ rs_cf_table :: (out: [] RsCf) -> int {
   n = cf(out, n, RS_BARD, 3, 35, "Bonus Proficiencies"); n = cf(out, n, RS_BARD, 3, 35, "Cutting Words");
   n = cf(out, n, RS_BARD, 4, 32, "Ability Score Improvement"); n = cf(out, n, RS_BARD, 5, 32, "Font of Inspiration");
   n = cf(out, n, RS_BARD, 5, 31, "Bardic Inspiration (d8)"); n = cf(out, n, RS_BARD, 6, 35, "Magical Discoveries");
+  // Wizard (p. 77-82), Evoker
+  n = cf(out, n, RS_WIZARD, 1, 77, "Spellcasting"); n = cf(out, n, RS_WIZARD, 1, 78, "Ritual Adept");
+  n = cf(out, n, RS_WIZARD, 1, 78, "Arcane Recovery"); n = cf(out, n, RS_WIZARD, 2, 78, "Scholar");
+  n = cf(out, n, RS_WIZARD, 3, 82, "Evocation Savant"); n = cf(out, n, RS_WIZARD, 3, 82, "Potent Cantrip");
+  n = cf(out, n, RS_WIZARD, 4, 79, "Ability Score Improvement"); n = cf(out, n, RS_WIZARD, 5, 79, "Memorize Spell");
+  n = cf(out, n, RS_WIZARD, 6, 82, "Sculpt Spells");
+  // Warlock (p. 70-76), Fiend Patron
+  n = cf(out, n, RS_WARLOCK, 1, 70, "Eldritch Invocations"); n = cf(out, n, RS_WARLOCK, 1, 71, "Pact Magic");
+  n = cf(out, n, RS_WARLOCK, 2, 72, "Magical Cunning"); n = cf(out, n, RS_WARLOCK, 2, 70, "Eldritch Invocations (3)");
+  n = cf(out, n, RS_WARLOCK, 3, 76, "Dark One's Blessing"); n = cf(out, n, RS_WARLOCK, 3, 76, "Fiend Spells");
+  n = cf(out, n, RS_WARLOCK, 4, 72, "Ability Score Improvement"); n = cf(out, n, RS_WARLOCK, 5, 70, "Eldritch Invocations (5)");
+  n = cf(out, n, RS_WARLOCK, 6, 76, "Dark One's Own Luck");
+  // Sorcerer (p. 64-70), Draconic Sorcery
+  n = cf(out, n, RS_SORCERER, 1, 64, "Spellcasting"); n = cf(out, n, RS_SORCERER, 1, 65, "Innate Sorcery");
+  n = cf(out, n, RS_SORCERER, 2, 66, "Font of Magic"); n = cf(out, n, RS_SORCERER, 2, 66, "Metamagic");
+  n = cf(out, n, RS_SORCERER, 3, 69, "Draconic Resilience"); n = cf(out, n, RS_SORCERER, 3, 70, "Draconic Spells");
+  n = cf(out, n, RS_SORCERER, 4, 66, "Ability Score Improvement"); n = cf(out, n, RS_SORCERER, 5, 66, "Sorcerous Restoration");
+  n = cf(out, n, RS_SORCERER, 6, 70, "Elemental Affinity");
   return n;
 }
 // The classes whose rows are complete and held to the presets.
-RS_CF_DONE :: [8] int.[RS_BARBARIAN, RS_FIGHTER, RS_ROGUE, RS_MONK, RS_PALADIN, RS_RANGER, RS_CLERIC, RS_BARD];
+RS_CF_DONE :: [11] int.[RS_BARBARIAN, RS_FIGHTER, RS_ROGUE, RS_MONK, RS_PALADIN, RS_RANGER, RS_CLERIC, RS_BARD, RS_WIZARD, RS_WARLOCK, RS_SORCERER];
 
 // A dice state whose first roll of a `sides` die lands on `face` (for a check of one exact roll, a 19).
 cf_seed :: (sides: int, face: int) -> u64 {
@@ -230,6 +248,39 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
     if f == "Font of Inspiration" { return c.font; }
     if f == "Bardic Inspiration (d8)" { return c.insp_die == 8; }
     if f == "Magical Discoveries" { return c.discoveries[0] == SP_FIREBALL && c.discoveries[1] == SP_SPIRIT_GUARDIANS; }
+  }
+  if c.klass == RS_WIZARD {
+    if f == "Spellcasting" { return c.spell_ability == RS_INT && c.slots_max[1] >= 2; }
+    if f == "Ritual Adept" { return c.ritual; }
+    if f == "Arcane Recovery" { return c.arcane_recovery && rs_rest_slot_budget(c, true) >= 1; }
+    if f == "Scholar" { return c.scholar && (c.checks.expert & (1 << SK_ARCANA)) != 0; }
+    if f == "Evocation Savant" { return c.savant; }
+    if f == "Potent Cantrip" { return c.potent; }
+    if f == "Ability Score Improvement" { return c.score[RS_INT] == 18; }
+    if f == "Memorize Spell" { return c.memorize; }
+    if f == "Sculpt Spells" { return c.sculpt; }
+  }
+  if c.klass == RS_WARLOCK {
+    if f == "Eldritch Invocations" { return c.ac == 13 + dex; }   // Armor of Shadows
+    if f == "Pact Magic" { return c.spell_ability == RS_CHA && rs_pact_level(c) >= 1; }
+    if f == "Magical Cunning" { return c.cunning_rite && c.uses_max[RS_USE_CUNNING] == 1; }
+    if f == "Eldritch Invocations (3)" { return c.agonizing == SP_ELDRITCH_BLAST && c.repelling == SP_ELDRITCH_BLAST; }
+    if f == "Dark One's Blessing" { return c.dark_blessing; }
+    if f == "Fiend Spells" { return rs_class_spell_granted(c, SP_BURNING_HANDS) && rs_class_spell_granted(c, SP_COMMAND) && rs_class_spell_granted(c, SP_SCORCHING_RAY); }
+    if f == "Ability Score Improvement" { return c.score[RS_CHA] == 18; }
+    if f == "Eldritch Invocations (5)" { return c.vigor && c.eldritch_mind && rs_class_spell_granted(c, SP_FIREBALL); }
+    if f == "Dark One's Own Luck" { return c.own_luck && c.uses_max[RS_USE_LUCK] == rs_max(rs_mod(c.score[RS_CHA]), 1); }
+  }
+  if c.klass == RS_SORCERER {
+    if f == "Spellcasting" { return c.spell_ability == RS_CHA && c.slots_max[1] >= 2; }
+    if f == "Innate Sorcery" { return c.uses_max[RS_USE_INNATE] == 2; }
+    if f == "Font of Magic" { return c.uses_max[RS_USE_SORCERY] == c.level && rs_font_of_magic_ready(c); }
+    if f == "Metamagic" { return c.quickened && c.seeking; }
+    if f == "Draconic Resilience" { return c.ac == 10 + dex + rs_mod(c.score[RS_CHA]); }
+    if f == "Draconic Spells" { return rs_class_spell_granted(c, SP_COMMAND); }
+    if f == "Ability Score Improvement" { return c.score[RS_CHA] == 18; }
+    if f == "Sorcerous Restoration" { return c.restoration; }
+    if f == "Elemental Affinity" { return c.affinity == RS_FIRE && (c.resist & (1 << RS_FIRE)) != 0; }
   }
   return false;
 }

@@ -23,6 +23,9 @@
 #load "paladin-features.coax";
 #load "ranger-features.coax";
 #load "cleric-features.coax";
+#load "wizard-features.coax";
+#load "warlock-features.coax";
+#load "sorcerer-features.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -429,7 +432,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     return;
   }
   if r.conc_dc > 0 && b[0].c[j].conc >= 0 {
-    saving := rs_saving_throw(b,j,RS_CON,r.conc_dc);
+    saving := rs_saving_throw_edges(b,j,RS_CON,r.conc_dc,ifx b[0].c[j].eldritch_mind then 1 else 0,0);   // Eldritch Mind (p. 72)
     total := saving.total;
     if !saving.passed {
       l: [1] RsLine;

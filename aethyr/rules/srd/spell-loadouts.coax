@@ -20,6 +20,7 @@ rs_profile_spells :: (klass: int) -> [] const int {
   if klass == RS_RANGER { return RS_PROFILE_RANGER[..]; }
   return RS_PROFILE_NONE[0..<0];
 }
+rs_wizard_book_has :: (c: RsCreature, key: int) -> bool { return (c.spells.known[key / 64] & (cast(u64) 1 << (key % 64))) != 0; }
 rs_preset_spells :: (c: [] RsCreature) {
   learned := 0;
   if c[0].klass == RS_WIZARD {
@@ -27,9 +28,20 @@ rs_preset_spells :: (c: [] RsCreature) {
     _ = rs_select_spell(c, RS_KEY_MAGE_ARMOR);
     learned = 2;
   }
+  // Evocation Savant (p. 82): from level 3, two Evocation spells of level 2 or lower in the book
+  // free, and one more, of a level it has slots for, each time a new spell level opens (3 at 5)
+  if c[0].klass == RS_WIZARD && c[0].savant {
+    free := 0; more := ifx c[0].level >= 5 then 1 else 0;
+    for sp: rs_profile_spells(c[0].klass) {
+      s := rs_spell(sp); key := RS_EXEC_SOURCE[sp];
+      if s.school != "Evocation" || s.level < 1 || rs_wizard_book_has(c[0], key) { continue; }
+      if free < 2 && s.level <= 2 { if rs_spellbook_add(c, key) { free += 1; } }
+      else if more > 0 && s.level <= 3 && c[0].slots_max[s.level] > 0 { if rs_spellbook_add(c, key) { more -= 1; } }
+    }
+  }
   for sp: rs_profile_spells(c[0].klass) {
     key := RS_EXEC_SOURCE[sp];
-    if c[0].klass == RS_WIZARD && learned < 6 + 2 * (c[0].level - 1) {
+    if c[0].klass == RS_WIZARD && learned < 6 + 2 * (c[0].level - 1) && !rs_wizard_book_has(c[0], key) {
       if rs_spellbook_add(c, key) { learned += 1; }
     }
     if !rs_spell_grant_has(c[0].klass,c[0].level,c[0].vigor,c[0].spell_grants,sp) { _ := rs_select_spell(c, key); }

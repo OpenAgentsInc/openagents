@@ -31,7 +31,8 @@ RsSpellSelection :: struct { selected: [6] u64; known: [6] u64; cantrips: int; p
       }
       #assert cantrips == c.spells.cantrips && prepared == c.spells.prepared;
       #assert cantrips == rs_cantrip_limit(c.klass, level) && prepared == rs_prepared_limit(c.klass, level);
-      if c.klass == RS_WIZARD { #assert known == 6 + 2 * (level - 1); #assert (c.spells.selected[RS_KEY_MAGE_ARMOR / 64] & (cast(u64) 1 << (RS_KEY_MAGE_ARMOR % 64))) != 0; }
+      if c.klass == RS_WIZARD { #assert known == 6 + 2 * (level - 1) + (ifx level >= 3 then 2 else 0) + (ifx level >= 5 then 1 else 0);   // and Evocation Savant's (p. 82)
+ #assert (c.spells.selected[RS_KEY_MAGE_ARMOR / 64] & (cast(u64) 1 << (RS_KEY_MAGE_ARMOR % 64))) != 0; }
     }
   }
 }

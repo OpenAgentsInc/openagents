@@ -1,0 +1,90 @@
+// The Warlock's levels 1-6 features (#13044; class-features.coax lists them), each resolved through
+// the shared battle against its SRD 5.2.1 text (p. 70-76), with fixed dice (d10 5, d20 10). The
+// preset is a Fiend Warlock with Eldritch Blast, Charisma 16, Dexterity 14; its invocations are
+// Armor of Shadows (1), Agonizing Blast and Repelling Blast (2), Fiendish Vigor and Eldritch Mind (5).
+//   coax/bin/coax test --library aethyr/rules/srd/class-warlock-checks.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "class-features.coax";
+
+ck_hero :: (level: int) -> RsCreature { return rs_warlock("Kel", 0, level, SP_ELDRITCH_BLAST); }
+
+#test "Eldritch Invocations p.70-73: one at level 1, three at 2, five at 5" {
+  for level: 1..<7 {
+    c := ck_hero(level);
+    n := 1 + (ifx c.agonizing == SP_ELDRITCH_BLAST then 1 else 0) + (ifx c.repelling == SP_ELDRITCH_BLAST then 1 else 0) + (ifx c.vigor then 1 else 0) + (ifx c.eldritch_mind then 1 else 0);
+    #assert c.ac == 13 + rs_mod(c.score[RS_DEX]) && n == (ifx level >= 5 then 5 else ifx level >= 2 then 3 else 1);   // Armor of Shadows: Mage Armor on itself
+  }
+}
+
+#test "Agonizing Blast and Repelling Blast p.72-74: from level 2, Charisma on Eldritch Blast's damage and a 10-foot push" {
+  for level: [2] int.[1, 2] {
+    b: [1] RsBattle; cf_field(b[..], ck_hero(level), 10);
+    #assert rs_cast(b[..], 0, SP_ELDRITCH_BLAST, 0, 0, 0, 1);
+    #assert b[0].c[1].hp == 200 - 5 - (ifx level == 2 then 3 else 0) && b[0].c[1].x == (ifx level == 2 then 4 else 2);
+  }
+}
+
+#test "Fiendish Vigor p.73: from level 5, False Life on itself without a slot, its die at its highest" {
+  b: [1] RsBattle; cf_field(b[..], ck_hero(5), 10);
+  slots := b[0].c[0].slots[3];
+  #assert rs_cast(b[..], 0, SP_FALSE_LIFE, 0, 0, 0, 0) && b[0].c[0].temp == 2 * 4 + 4 && b[0].c[0].slots[3] == slots;
+  four: [1] RsBattle; cf_field(four[..], ck_hero(4), 10); #assert !rs_cast(four[..], 0, SP_FALSE_LIFE, 0, 0, 0, 0);
+}
+
+#test "Eldritch Mind p.72: from level 5, Advantage on Constitution saves to keep Concentration" {
+  for level: [2] int.[4, 5] {
+    b: [1] RsBattle; cf_field(b[..], ck_hero(level), 10);
+    b[0].dice[0].fixed = false; b[0].dice[0].state = 7;   // d20s of 1, then 16
+    b[0].c[0].conc = SP_HEX; b[0].c[0].conc_until = 1e9; b[0].c[0].score[RS_CON] = 1;   // -5: only Advantage's 16 holds DC 10
+    rs_damage(b[..], 1, 0, 2, RS_FIRE, false, -1);
+    #assert (b[0].c[0].conc == SP_HEX) == (level == 5);
+  }
+}
+
+#test "Pact Magic p.71: the Warlock table's slots, all of one level, back on a Short Rest" {
+  count := [7] int.[0, 1, 2, 2, 2, 2, 2]; at := [7] int.[0, 1, 1, 2, 2, 3, 3];
+  for level: 1..<7 {
+    c: [1] RsCreature; c[0] = ck_hero(level);
+    #assert c[0].spell_ability == RS_CHA && rs_pact_level(c[0]) == at[level] && c[0].slots_max[at[level]] == count[level];
+    for l: 1..<10 { if l != at[level] { #assert c[0].slots_max[l] == 0; } }
+    c[0].slots[at[level]] = 0; rs_short_rest_resources(c[..]); #assert c[0].slots[at[level]] == count[level];
+  }
+}
+
+#test "Magical Cunning p.72: from level 2, a rite's end regains half the Pact Magic slots, rounded up, once a Long Rest" {
+  #assert ck_hero(1).uses_max[RS_USE_CUNNING] == 0 && ck_hero(2).uses_max[RS_USE_CUNNING] == 1;
+  b: [1] RsBattle; cf_field(b[..], ck_hero(2), 10); b[0].c[0].slots[1] = 0;
+  #assert rs_magical_cunning(b[..], 0) && b[0].c[0].slots[1] == 1 && !rs_magical_cunning(b[..], 0);
+  #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_CUNNING] == 1;
+}
+
+#test "Dark One's Blessing p.76: from level 3, reducing an enemy to 0 Hit Points gives Charisma + Warlock level Temporary Hit Points" {
+  for level: [2] int.[2, 3] {
+    b: [1] RsBattle; cf_field(b[..], ck_hero(level), 10); b[0].c[1].hp = 1;
+    #assert rs_cast(b[..], 0, SP_ELDRITCH_BLAST, 0, 0, 0, 1) && b[0].c[1].hp == 0;
+    #assert b[0].c[0].temp == (ifx level == 3 then 3 + 3 else 0);
+  }
+}
+
+#test "Fiend Spells p.76: Burning Hands, Command and Scorching Ray from level 3, Fireball from 5" {
+  for level: 2..<6 {
+    c := ck_hero(level);
+    #assert rs_class_spell_granted(c, SP_BURNING_HANDS) == (level >= 3) && rs_class_spell_granted(c, SP_COMMAND) == (level >= 3);
+    #assert rs_class_spell_granted(c, SP_SCORCHING_RAY) == (level >= 3) && rs_class_spell_granted(c, SP_FIREBALL) == (level >= 5);
+  }
+}
+
+#test "Ability Score Improvement p.72: Charisma 16 to 18 at level 4" {
+  #assert ck_hero(3).score[RS_CHA] == 16 && ck_hero(4).score[RS_CHA] == 18;
+}
+
+#test "Dark One's Own Luck p.76: from level 6, Charisma-modifier uses of a d10 on a failed save or check it can turn" {
+  #assert ck_hero(5).uses_max[RS_USE_LUCK] == 0 && ck_hero(6).uses_max[RS_USE_LUCK] == 4;
+  b: [1] RsBattle; cf_field(b[..], ck_hero(6), 10);
+  #assert rs_own_luck(b[..], 0, 12, 12) == 0 && rs_own_luck(b[..], 0, 1, 12) == 0 && b[0].c[0].uses[RS_USE_LUCK] == 4;   // passed, or past reach
+  #assert rs_own_luck(b[..], 0, 9, 12) == 5 && b[0].c[0].uses[RS_USE_LUCK] == 3;
+}

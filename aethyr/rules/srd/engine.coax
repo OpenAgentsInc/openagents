@@ -326,6 +326,7 @@ RsCreature :: struct {
   parry: bool;              // Parry (the Knight's and the Warrior Veteran's Reaction): +2 AC against a melee hit
   rebuke: bool;             // it knows Hellish Rebuke (a Warlock's Reaction to damage)
   vigor: bool;              // Fiendish Vigor (a Warlock's invocation, level 2+): False Life on itself with no slot, its die at its highest
+  eldritch_mind: bool;      // Eldritch Mind (a Warlock's invocation): Advantage on Constitution saves to keep Concentration
   // its size (RS_TINY..RS_GARGANTUAN, the low 3 bits) and a stat block's traits (RS_TRAIT_*:
   // Pack Tactics, Magic Resistance, Nimble Escape), monster-traits.coax
   form: int = RS_MEDIUM;
@@ -483,9 +484,12 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   c[0].dark_blessing = level >= 3;
   // Magical Cunning at 2 (p. 72) is a 1-minute rite, longer than a fight here; the Fiend Spells at 5
   // (p. 75) bring Fireball (Stinking Cloud isn't a record yet); Dark One's Own Luck at 6 (p. 75):
-  // 1d10 on a failed save or check, Cha modifier uses. The invocations it gains at 5 past Agonizing
-  // and Repelling Blast aren't modeled.
+  // 1d10 on a failed save or check, Cha modifier uses.
   c[0].cunning_rite = level >= 2; c[0].own_luck = level >= 6;
+  // Magical Cunning's once-a-Long-Rest use; the fourth and fifth invocations at 5 (p. 70): Fiendish
+  // Vigor and Eldritch Mind
+  if level >= 2 { rs_use_set(c[..], RS_USE_CUNNING, 1); }
+  c[0].vigor = level >= 5; c[0].eldritch_mind = level >= 5;
   rs_preset_spell_grants(c[..]);
   if level >= 6 { rs_use_set(c[..], RS_USE_LUCK, rs_max(rs_mod(c[0].score[RS_CHA]), 1)); }
   return c[0];
@@ -867,7 +871,7 @@ RS_FT_CUNNING_DASH :: 5; RS_FT_FLURRY :: 6; RS_FT_STUNNING_STRIKE :: 7; RS_FT_PA
 RS_FT_WHOLENESS :: 10; RS_FT_LAY_ON_HANDS :: 11; RS_FT_SACRED_WEAPON :: 12; RS_FT_TURN_UNDEAD :: 13; RS_FT_PRESERVE_LIFE :: 14;
 RS_FT_LANDS_AID :: 15; RS_FT_INSPIRATION :: 16; RS_FT_FONT :: 17; RS_FT_CUTTING_WORDS :: 18; RS_FT_INNATE_SORCERY :: 19;
 RS_FT_DARK_BLESSING :: 20; RS_FT_OWN_LUCK :: 21; RS_FT_WILD_RESURGENCE :: 22; RS_FT_METABOLISM :: 23; RS_FT_DIVINE_SENSE :: 24;
-RS_FT_DIVINE_SPARK :: 25; RS_FT_BLESSED_HEALER :: 26;
+RS_FT_DIVINE_SPARK :: 25; RS_FT_BLESSED_HEALER :: 26; RS_FT_MEMORIZE :: 27; RS_FT_MAGICAL_CUNNING :: 28; RS_FT_FONT_OF_MAGIC :: 29;
 RsEvent :: struct {
   kind: int; spell: int; by: int; to: int;
   feat: int;                  // the class feature it tells of (RS_FT_*, 0 none)
