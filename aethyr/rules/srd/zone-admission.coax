@@ -1,0 +1,45 @@
+// Capacity is an implementation contract, not an SRD limit on simultaneous
+// zones. Plan one owned slot without changing state, before a cast spends.
+#authority;
+
+#test "persistent area storage distinguishes instantaneous, burst and non-area effects" {
+  for area: 0..<2 {
+    for duration: [3] f32.[-1,0,0.5] {
+      for burst: 0..<2 {
+        s := RsSpell.{area=area,duration_s=duration,burst=burst == 1};
+        #assert rs_zone_required(s) == (area == 1 && duration == 0.5 && burst == 0);
+      }
+    }
+  }
+}
+#test "zone slots choose the first free or actually released owner, never an unrelated zone" {
+  z: [3] RsZone;
+  for k: 0..<3 { z[k] = RsZone.{on=true,by=1,spell=SP_ENTANGLE}; }
+  #assert rs_zone_slot(z[..],false,1,SP_ENTANGLE) == -1;
+  #assert rs_zone_slot(z[..],true,0,SP_ENTANGLE) == -1;
+  #assert rs_zone_slot(z[..],true,1,SP_FOG_CLOUD) == -1;
+  #assert rs_zone_slot(z[..],true,1,SP_ENTANGLE) == 0;
+  z[0].on = false; z[1].on = false;
+  #assert rs_zone_slot(z[..],false,0,-1) == 0;
+  z[0].on = true;
+  #assert rs_zone_slot(z[..],false,0,-1) == 1;
+  #assert rs_zone_slot(z[0..<0],true,1,SP_ENTANGLE) == -1;
+  z[0].by = -1; z[0].spell = -1; z[1].on = true;
+  #assert rs_zone_slot(z[..],true,-1,-1) == -1;
+  z[0].by = 1; #assert rs_zone_slot(z[..],true,1,-1) == -1;
+  z[0].by = 0; z[0].spell = 0;
+  #assert rs_zone_slot(z[..],true,0,0) == 0;
+  z[0].by = -1; #assert rs_zone_slot(z[..],true,-1,0) == -1;
+  z[0].by = 0; z[0].spell = -1; #assert rs_zone_slot(z[..],true,0,-1) == -1;
+  z[2].on = false; #assert rs_zone_slot(z[..],false,0,-1) == 2;
+}
+rs_zone_required :: (s: RsSpell) -> bool #effects(all) {
+  return s.area != RS_A_NONE && s.duration_s > 0 && !s.burst;
+}
+rs_zone_slot :: (zones: [] const RsZone, replacing: bool, caster: int, spell: int) -> int #effects(all) {
+  for k: 0..<zones.count {
+    z := zones[k];
+    if !z.on || (replacing && caster >= 0 && spell >= 0 && z.by == caster && z.spell == spell) { return k; }
+  }
+  return -1;
+}

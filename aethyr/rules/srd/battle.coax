@@ -15,6 +15,8 @@
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
+#load "zone-admission.coax";
+#load "zone-lifetime.coax";
 
 // Creatures a battle holds of its own. A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
@@ -320,10 +322,7 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
   if sp < 0 { return; }
   for k: 0..<RS_ZONES {
     if b[0].zone[k].on && b[0].zone[k].by == i && b[0].zone[k].spell == sp {
-      b[0].zone[k].on = false;
-      for j: 0..<b[0].n {
-        if b[0].c[j].restrained_by == k { b[0].c[j].restrained_by = -1; b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_RESTRAINED); }
-      }
+      _ := rs_release_zone(b,k);
     }
   }
   for j: 0..<b[0].n {
@@ -518,6 +517,14 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   } else if s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
     if rs_feet(me.x, me.y, tx, ty) > s.range_ft { return false; }
   }
+  // Serialized preflight: ending this cast's old concentration is the only
+  // release before zone publication. Nothing is spent if no slot will exist.
+  zone_required := rs_zone_required(s);
+  zone_at := -1;
+  if zone_required {
+    zone_at = rs_zone_slot(b[0].zone[..], s.concentration, i, me.conc);
+    if zone_at < 0 { return false; }
+  }
   // spend
   b[0].aff_used = false;
   if s.cast_time == RS_T_ACTION && !quick { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
@@ -541,16 +548,12 @@ rs_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, tar
   if s.area == RS_A_NONE && rs_unaffected_target(b, i, target, sp) { return true; }
   // the area, and what lasts in it
   area: RsZone;
-  zone_at := -1;
   if s.area != RS_A_NONE {
     area = rs_area(b, i, s, tx, ty);
     area.spell = sp;
     area.until = b[0].clock + s.duration_s;
     for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TERRAIN { area.difficult = true; } }
-    if s.duration_s > 0 && !s.burst {
-      for k: 0..<RS_ZONES { if zone_at < 0 && !b[0].zone[k].on { zone_at = k; } }
-      if zone_at >= 0 { b[0].zone[zone_at] = area; }
-    }
+    if zone_required { b[0].zone[zone_at] = area; }
     e: RsEvent; e.kind = RS_EV_ZONE; e.spell = sp; e.by = i; e.to = -1; e.x = area.x0; e.y = area.y0; e.amount = area.x1 - area.x0 + 1; e.at = b[0].clock;
     k := rs_emit(b[0].book[..], e);
   }
@@ -1296,6 +1299,7 @@ rs_tick :: (b: [] RsBattle, dt: f32) {
       }
     }
   }
+  rs_expire_zones(b);
 }
 rs_team_up :: (b: [] RsBattle, team: int) -> int {
   n := 0;

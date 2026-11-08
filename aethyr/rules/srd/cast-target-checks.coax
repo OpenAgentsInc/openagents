@@ -3,6 +3,70 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "a full zone array can reuse the concentration being replaced and releases its old restraint" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_druid("Druid",0,3),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",1),3,1);
+  rs_start_turn(b[..],a);
+  for k: 0..<RS_ZONES { b[0].zone[k] = RsZone.{on=true,by=t,spell=SP_FOG_CLOUD,x0=k,x1=k+1,until=100}; }
+  b[0].zone[3].by = a; b[0].zone[3].spell = SP_ENTANGLE;
+  b[0].c[a].conc = SP_ENTANGLE; b[0].c[a].conc_until = 100;
+  b[0].c[t].restrained_by = 3; b[0].c[t].cond = RS_RESTRAINED;
+  before := b[0].zone; slots := b[0].c[a].slots[1];
+  #assert rs_cast(b[..],a,SP_ENTANGLE,1,10,1,t);
+  #assert b[0].c[a].slots[1] == slots - 1 && b[0].c[a].conc == SP_ENTANGLE;
+  #assert b[0].zone[3].on && b[0].zone[3].by == a && b[0].zone[3].spell == SP_ENTANGLE && b[0].zone[3].x0 == 9 && b[0].zone[3].x1 == 12;
+  #assert b[0].c[t].restrained_by == -1 && !rs_has(b[0].c[t],RS_RESTRAINED);
+  for k: 0..<RS_ZONES {
+    if k == 3 { continue; }
+    #assert b[0].zone[k].on == before[k].on && b[0].zone[k].by == before[k].by && b[0].zone[k].spell == before[k].spell;
+    #assert b[0].zone[k].x0 == before[k].x0 && b[0].zone[k].x1 == before[k].x1 && b[0].zone[k].until == before[k].until;
+  }
+}
+#test "instantaneous casts need no zone slot and a last free slot retains an accepted lasting cast" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_wizard("Wizard",0,5),1,1);
+  #assert rs_spellbook_add(b[0].c[a..<a+1],RS_EXEC_SOURCE[SP_FOG_CLOUD]);
+  choices := [3] int.[RS_KEY_MAGE_ARMOR,RS_EXEC_SOURCE[SP_FIREBALL],RS_EXEC_SOURCE[SP_FOG_CLOUD]];
+  #assert rs_set_spells(b[0].c[a..<a+1],choices[..]);
+  t := rs_add(b[..],rs_skeleton("Target",1),10,1); b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
+  for k: 0..<RS_ZONES { b[0].zone[k] = RsZone.{on=true,by=t,spell=SP_FOG_CLOUD,x0=k,x1=k+1,until=100}; }
+  rs_start_turn(b[..],a); slots := b[0].c[a].slots[3];
+  #assert rs_cast(b[..],a,SP_FIREBALL,3,10,1,t) && b[0].c[a].slots[3] == slots - 1 && b[0].c[t].hp < 500;
+  for k: 0..<RS_ZONES { #assert b[0].zone[k].on && b[0].zone[k].by == t && b[0].zone[k].spell == SP_FOG_CLOUD && b[0].zone[k].x0 == k; }
+  rs_end_turn(b[..],a); rs_start_turn(b[..],a);
+  b[0].zone[RS_ZONES-1].on = false;
+  slots = b[0].c[a].slots[1];
+  #assert rs_cast(b[..],a,SP_FOG_CLOUD,1,10,1,t) && b[0].c[a].slots[1] == slots - 1;
+  #assert b[0].zone[RS_ZONES-1].on && b[0].zone[RS_ZONES-1].by == a && b[0].zone[RS_ZONES-1].spell == SP_FOG_CLOUD;
+}
+
+#test "full unrelated zones refuse before ordinary and Quickened cast state changes" {
+  for quick: 0..<2 {
+    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    caster := ifx quick == 0 then rs_druid("Druid",0,3) else rs_sorcerer("Sorcerer",0,5);
+    a := rs_add(b[..], caster,1,1);
+    t := rs_add(b[..], rs_skeleton("Target",1),3,1);
+    sp := ifx quick == 0 then SP_ENTANGLE else SP_SLEET_STORM;
+    slot := ifx quick == 0 then 1 else 3;
+    if quick == 1 { choices := [1] int.[RS_EXEC_SOURCE[SP_SLEET_STORM]]; #assert rs_set_spells(b[0].c[a..<a+1], choices[..]); }
+    rs_start_turn(b[..],a);
+    b[0].c[a].uses[RS_USE_SORCERY] = 3;
+    b[0].c[a].conc = SP_HOLD_PERSON; b[0].c[a].conc_until = 90; b[0].aff_used = true;
+    for k: 0..<RS_ZONES { b[0].zone[k] = RsZone.{on=true,by=t,spell=SP_FOG_CLOUD,x0=k,x1=k+1,until=100}; }
+    before := b[0].zone; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled; slots := b[0].c[a].slots[slot];
+    #assert !rs_cast_as(b[..],a,sp,slot,10,1,t,quick == 1);
+    #assert b[0].c[a].slots[slot] == slots && b[0].c[a].uses[RS_USE_SORCERY] == 3;
+    #assert b[0].c[a].conc == SP_HOLD_PERSON && b[0].c[a].conc_until == 90 && b[0].aff_used;
+    #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls;
+    #assert !b[0].turn.action && !b[0].turn.bonus && !b[0].turn.slot_spent && !b[0].turn.quickened;
+    for k: 0..<RS_ZONES {
+      #assert b[0].zone[k].on == before[k].on && b[0].zone[k].by == before[k].by && b[0].zone[k].spell == before[k].spell;
+      #assert b[0].zone[k].x0 == before[k].x0 && b[0].zone[k].x1 == before[k].x1 && b[0].zone[k].until == before[k].until;
+    }
+  }
+}
+
 #test "Self spells refuse another creature before ordinary or Quickened costs" {
   for quick: 0..<2 {
     b: [1] RsBattle; b[0].w = 20; b[0].h = 8;

@@ -1,0 +1,10 @@
+FAIL #test full unrelated zones refuse before ordinary and Quickened cast state changes (5 ms)
+aethyr/rules/srd/cast-target-checks.coax:16:5: error[E0406]: assertion failed
+      #assert !rs_cast_as(b[..],a,SP_ENTANGLE,1,10,1,t,quick == 1);
+      ^
+  note: in #test full unrelated zones refuse before ordinary and Quickened cast state changes
+1 of 116 checks (--only 'full unrelated zones'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

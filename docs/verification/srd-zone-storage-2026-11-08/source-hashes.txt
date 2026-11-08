@@ -1,0 +1,4 @@
+996cc9df37333f32bcfedbef7d4c976f22d1c47f8279b565ddd9931f34e5823c  aethyr/rules/srd/battle.coax
+d205609bd308cf123ab8b42255536e5c13f2b37924a2aa3ea6e942773c12103d  aethyr/rules/srd/cast-target-checks.coax
+ef7cc2b2e59cd0182f1928efdcd7cfef27aaa283b08b8a95a32e37f84faec61f  aethyr/rules/srd/zone-admission.coax
+0f8b23efdd660c82957c1221e30f4071ffa496219b3a4ea64ce18ea1e34b5cec  aethyr/rules/srd/zone-lifetime.coax
