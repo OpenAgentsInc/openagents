@@ -1,0 +1,2 @@
+ok   #test focused regression evidence never reports failures or malformed counts as success (1 case, 199 steps, 0 ms)
+1 check, 1 passed, 0 failed

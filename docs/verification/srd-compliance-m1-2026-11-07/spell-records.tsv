@@ -1,0 +1,84 @@
+record_id	parent_id	kind	text_present	page	effect_steps
+produce-flame		canonical-candidate	yes	157	1
+produce-flame-hurl	produce-flame	helper	yes	157	2
+starry-wisp		canonical-candidate	yes	166	3
+poison-spray		canonical-candidate	yes	154	2
+cure-wounds		canonical-candidate	yes	122	1
+healing-word		canonical-candidate	yes	140	1
+thunderwave		canonical-candidate	yes	170	3
+entangle		canonical-candidate	yes	129	4
+faerie-fire		canonical-candidate	yes	130	2
+chill-touch		canonical-candidate	yes	116	3
+ray-of-sickness		canonical-candidate	yes	159	3
+false-life		canonical-candidate	yes	130	1
+ray-of-enfeeblement		canonical-candidate	yes	158	2
+blindness-deafness		canonical-candidate	yes	114	2
+eldritch-blast		canonical-candidate	yes	128	3
+hex		canonical-candidate	yes	141	1
+hold-person		canonical-candidate	yes	142	2
+scorching-ray		canonical-candidate	yes	160	3
+vicious-mockery		canonical-candidate	yes	171	3
+sacred-flame		canonical-candidate	yes	159	2
+guiding-bolt		canonical-candidate	yes	138	3
+divine-smite		canonical-candidate	yes	125	2
+hunters-mark		canonical-candidate	yes	141	1
+fire-bolt		canonical-candidate	yes	132	2
+shield		canonical-candidate	yes	161	1
+fireball		canonical-candidate	yes	131	2
+spirit-guardians		canonical-candidate	yes	164	1
+call-lightning		canonical-candidate	yes	114	2
+call-lightning-bolt	call-lightning	helper	yes	114	2
+hypnotic-pattern		canonical-candidate	yes	141	2
+ice-knife		canonical-candidate	no	0	2
+ice-knife-burst	ice-knife	helper	no	0	2
+ice-storm		canonical-candidate	no	0	4
+sleet-storm		canonical-candidate	no	0	3
+moonbeam		canonical-candidate	no	0	2
+shillelagh		canonical-candidate	no	0	0
+elementalism		canonical-candidate	no	0	0
+spike-growth		canonical-candidate	no	0	1
+spike-growth-step	spike-growth	helper	no	0	1
+wall-of-fire		canonical-candidate	no	0	2
+conjure-animals		canonical-candidate	no	0	2
+polymorph		canonical-candidate	no	0	2
+mass-cure-wounds		canonical-candidate	no	0	1
+sunbeam		canonical-candidate	no	0	3
+wall-of-thorns		canonical-candidate	no	0	2
+fire-storm		canonical-candidate	no	0	2
+sunburst		canonical-candidate	no	0	3
+storm-of-vengeance		canonical-candidate	no	0	3
+storm-of-vengeance-bolt	storm-of-vengeance	helper	no	0	2
+shapechange		canonical-candidate	no	0	0
+speak-with-animals		canonical-candidate	no	0	0
+ray-of-frost		canonical-candidate	no	0	2
+fog-cloud		canonical-candidate	no	0	0
+cone-of-cold		canonical-candidate	no	0	2
+reverse-gravity		canonical-candidate	no	0	1
+wind-wall		canonical-candidate	no	0	2
+levitate		canonical-candidate	no	0	0
+feather-fall		canonical-candidate	no	0	0
+gust-of-wind		canonical-candidate	no	0	2
+wall-of-stone		canonical-candidate	no	0	0
+telekinesis		canonical-candidate	no	0	2
+black-tentacles		canonical-candidate	no	0	5
+water-walk		canonical-candidate	no	0	0
+control-water		canonical-candidate	no	0	2
+create-or-destroy-water		canonical-candidate	no	0	0
+water-breathing		canonical-candidate	no	0	0
+meteor-swarm		canonical-candidate	no	0	3
+blight		canonical-candidate	yes	113	2
+circle-of-death		canonical-candidate	yes	115	2
+finger-of-death		canonical-candidate	yes	131	3
+dimension-door		canonical-candidate	yes	123	1
+hellish-rebuke		canonical-candidate	yes	140	2
+burning-hands		canonical-candidate	yes	0	2
+lightning-bolt		canonical-candidate	yes	0	2
+bless		canonical-candidate	yes	0	1
+bane		canonical-candidate	yes	0	2
+shield-of-faith		canonical-candidate	yes	0	1
+command		canonical-candidate	yes	0	2
+everglade-meteor-swarm		house	yes	0	3
+thunderbolt		house	yes	0	2
+mega-thunderbolt		house	yes	0	2
+water-orb		house	yes	0	3
+# canonical-candidates=73 helpers=5 house=4; source inventory unreconciled; no count is a compliance denominator

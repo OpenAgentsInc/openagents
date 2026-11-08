@@ -6,6 +6,13 @@ MMO world) and Hold the Stair (a tower defense) play by the same underlying
 system. Each world can tweak the rules and draw the abilities its own way, on
 shared infrastructure.
 
+Implementation tracking, 2026-11-07: the system is **partially implemented**.
+The [compliance roadmap](srd-compliance-roadmap.md) gives the eight delivery
+milestones; the [compliance ledger](srd-compliance-ledger.md) pins the source,
+maps this specification to code and records the known failing regression probes.
+The completeness requirements below remain the target, not a claim of current
+qualification.
+
 This document covers what the system is, where it lives, how a world uses it,
 what "compliant" means and how it is checked, and the work to get there from
 what exists today.
@@ -269,21 +276,21 @@ up:
 
 ## What exists today
 
+Updated 2026-11-07. Counts below describe implementation records, not verified
+source coverage. The ledger is the current gap inventory.
+
 | Where | What | Keep, move, replace |
 |---|---|---|
-| `verse/rules/srd5.coax` (305 lines) | Dice, saving throws, spell save DC, 14 damage types, the Prone condition, objects by material and size, 7 spell records (4 SRD, 3 Everglade's own) | Move into `aethyr/rules/srd/`; its spell table becomes generated data plus Everglade's `srd: false` records |
-| `verse/rules/srd5-combat.coax` (103 lines) | 8 creature stat blocks (Guard, Commoner, Veteran, Mage, Knight, Priest, Archmage, Gladiator) and a Ranger 5; the attack roll | Stat blocks become generated data; the attack roll moves into the engine |
-| Everglade (`apps/openagents-web/everglade-*.coax`, about 10 files) | 47 bar spells, each hand-coded with its numbers in the file, real-time, with its own art | Numbers come from the records; the files keep only the look and the world's physics (debris, water, the watch) |
-| Hold the Stair (`stair.coax`, `stair-tables.coax`) | 7 SRD classes at levels 1–5 with their subclasses, original bubble-beasts as SRD stat blocks, Wall of Stone and Wall of Fire, a real d20 | Classes and spells come from the records; the beasts stay as the world's own creatures in the SRD's shape |
-| `coax/web/realms.ts` | `ruleset` in `realms.json`, the `data-ruleset` page attribute | Kept; gains the profile file |
+| `aethyr/rules/srd/engine.coax`, `battle.coax`, `npcs.coax` | Shared deterministic combat, selected class/subclass features and stat blocks, real-time turn clocks | Complete rules and progression; qualify each mechanical clause |
+| `aethyr/rules/srd/spells.coax`, `more.coax`, `house.coax` | 78 assigned SRD-marked spell/effect records including helpers, plus four house records; several effects are approximate or empty | Import canonical source content and complete typed programs; count parent spells separately from helpers |
+| `verse/rules/srd5*.coax` | Older dice, object and combat implementation still used by consumers including Hold the Stair | Migrate consumers and remove duplicated rule ownership |
+| Everglade (`everglade5e-rules.coax`, room rules and `fivebar.coax`), 5E Lab | Shared engine consumers with world adapters, hotbars and effects | Centralize declared profiles; retain presentation and world physics |
+| Hold the Stair (`stair.coax`, `stair-tables.coax`) | Own class tables and older combat dependency | Use canonical class/spell data and shared execution |
+| Realm page metadata | `ruleset` and `data-ruleset` selection | Add validated profiles and per-world coverage |
 
-Of the SRD druid list's 124 spells, Everglade has 37 today. The other 87
-include Druidcraft, Guidance, Cure Wounds, Goodberry, Barkskin, Flame Blade,
-Pass without Trace, Plant Growth, Dispel Magic and Heal. Its bar also carries
-spells from other classes' lists (Meteor Swarm, Ray of Frost, Feather Fall,
-Levitate, Telekinesis, Black Tentacles). Under this system those become a
-declared `grant` in Everglade's profile; Ray of Frost already fits the Circle
-of the Land's polar list.
+Earlier Druid-list and bar counts were planning estimates, not source-reconciled
+coverage. Use the ledger's runtime inventory for current record presence; the
+pinned PDF's complete class/spell lists still need independent reconciliation.
 
 ## Work, in order
 

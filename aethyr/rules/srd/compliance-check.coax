@@ -1,0 +1,53 @@
+// Focused milestone 1 regression command. No expected-failure suppression:
+// FAIL always contributes to exit 1. Exit 0 means only these witnesses passed.
+// Usage: coax/web/tool.sh aethyr/rules/srd/compliance-check.coax
+//        coax/web/tool.sh aethyr/rules/srd/compliance-check.coax --inventory
+#load "compliance-probes.coax";
+#load "compliance-policy.coax";
+#load "../../../coax/lib/sys/tool.coax";
+
+sc_print_int :: (n: int) { buf: [32] u8; used := rs_put_int(buf[..], 0, n); tool_err(cast(string) buf[0..<used]); }
+sc_report :: (id: string, passed: bool) -> int {
+  tool_err(ifx passed then "PASS\t" else "FAIL\t"); tool_errln(id);
+  return ifx passed then 0 else 1;
+}
+sc_inventory :: () {
+  tool_errln("record_id\tparent_id\tkind\ttext_present\tpage\teffect_steps");
+  canonical := 0; helper := 0; house := 0;
+  for i: 0..<RS_HOUSE_END {
+    // Unassigned IDs 78..99 are not content and must not enter the inventory.
+    if i >= RS_MORE_END && i < RS_HOUSE { continue; }
+    s := rs_spell(i);
+    tool_err(s.id); tool_err("\t");
+    if s.part_of >= 0 { tool_err(rs_spell(s.part_of).id); }
+    tool_err("\t");
+    if !s.srd { tool_err("house"); house += 1; }
+    else if s.part_of >= 0 { tool_err("helper"); helper += 1; }
+    else { tool_err("canonical-candidate"); canonical += 1; }
+    tool_err(ifx s.text.count > 0 then "\tyes\t" else "\tno\t");
+    sc_print_int(s.page); tool_err("\t"); sc_print_int(s.step_n); tool_err("\n");
+  }
+  tool_err("# canonical-candidates="); sc_print_int(canonical);
+  tool_err(" helpers="); sc_print_int(helper); tool_err(" house="); sc_print_int(house);
+  tool_errln("; source inventory unreconciled; no count is a compliance denominator");
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { return 2; }
+  if args[0].n == 1 && args_at(args[..], 0) == "--inventory" { sc_inventory(); return 0; }
+  if args[0].n != 0 { tool_errln("usage: compliance-check [--inventory]"); return 2; }
+  tool_errln("Focused SRD regression witnesses; NOT whole-SRD qualification");
+  failed := 0;
+  failed += sc_report("CAST-ACTOR", sc_admission_actor());
+  failed += sc_report("CAST-SLOT", sc_admission_slot());
+  failed += sc_report("CAST-TARGET-INDEX", sc_admission_target());
+  failed += sc_report("CAST-RANGE", sc_admission_range());
+  failed += sc_report("CAST-CLASS", sc_admission_class());
+  failed += sc_report("CAST-INVALID-TARGET", sc_invalid_target_spends());
+  failed += sc_report("SPELL-POLYMORPH", sc_polymorph());
+  failed += sc_report("CAP-EFFECT", sc_effect_capacity());
+  failed += sc_report("CAP-ZONE", sc_zone_capacity());
+  tool_err("measured=9 failed="); sc_print_int(failed);
+  tool_errln("; complete SRD content and rules remain unmeasured");
+  return sc_check_exit(9, failed);
+}

@@ -1,0 +1,14 @@
+// Exit policy for focused regression evidence, not whole-SRD certification.
+#authority;
+
+#test "focused regression evidence never reports failures or malformed counts as success" {
+  #assert sc_check_exit(9, 0) == 0;
+  #assert sc_check_exit(1, 0) == 0 && sc_check_exit(1, 1) == 1;
+  #assert sc_check_exit(9, 1) == 1 && sc_check_exit(9, 9) == 1;
+  #assert sc_check_exit(0, 0) == 2 && sc_check_exit(-1, 0) == 2;
+  #assert sc_check_exit(9, -1) == 2 && sc_check_exit(9, 10) == 2;
+}
+sc_check_exit :: (measured: int, failed: int) -> int #effects(all) {
+  if measured <= 0 || failed < 0 || failed > measured { return 2; }
+  return ifx failed > 0 then 1 else 0;
+}
