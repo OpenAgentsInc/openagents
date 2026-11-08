@@ -1,0 +1,28 @@
+// SRD 5.2.1 Concentration, Rage and Turn Undead end on incapacitation.
+// Effects interrupt these only after actual retention, never on refusal or
+// an immune outcome. This is battle lifecycle; storage itself has no battle.
+#authority;
+
+rs_interrupt_incapacitated :: (b: [] RsBattle, j: int) #effects(all) {
+  if rs_capable(b[0].c[j]) { return; }
+  rs_end_concentration(b,j," (Incapacitated)");
+  rs_release_turned(b,j);
+  rs_rage_end(b,j," (Incapacitated)");
+}
+
+// Admitted executors have prepaid room. Other callers receive explicit
+// refusal; immunity is a completed no-record outcome rather than exhaustion.
+rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) -> bool #effects(all) {
+  if (e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED) && (b[0].c[j].immune_cond & e.cond) != 0 { return true; }
+  f := e;
+  // Mindless Rage (p.30) blocks Charmed/Frightened while raging.
+  if (f.kind == EF_COND || f.kind == EF_TURNED || f.kind == EF_DAZED) && b[0].c[j].raging && b[0].c[j].mindless {
+    f.cond = f.cond & (32767 - RS_CHARMED - RS_FRIGHTENED);
+    if f.cond == 0 { return true; }
+  }
+  c: [1] RsCreature; c[0] = b[0].c[j];
+  if !rs_effect_add(c[..],f) { return false; }
+  b[0].c[j] = c[0];
+  rs_interrupt_incapacitated(b,j);
+  return true;
+}

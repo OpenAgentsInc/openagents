@@ -267,6 +267,14 @@ equipment/held-object state, target-dependent material quantities, feature
 waivers and world control integration remain open; this does not complete
 #13038, #13044, #13045 or #13046.
 
+The [effect lifecycle change](../verification/srd-effect-lifecycle-2026-11-08/README.md)
+ends concentration, Rage and the recipient's Turn Undead ownership immediately
+when a retained condition incapacitates it. Immune/refused effects preserve that
+state; Stunning Strike no longer ends Rage on an immune target. Zero-HP damage
+also ends Rage immediately. The new authority kills all 50 mutants, and scoped
+native/hotbar/component checks pass. Condition lifecycle and other #13039 clauses
+remain incomplete.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

@@ -6600,6 +6600,16 @@ so its HP update cannot restore spent rescue resources. Death saves retain
 their separate natural-face path. Integration evidence and remaining scope:
 `docs/verification/srd-saving-throws-2026-11-08/README.md`.
 
+Battle effect insertion in `effect-lifecycle.coax` applies immediate
+incapacitation consequences only after actual retention. Concentration, Rage
+and that creature's Turn Undead ownership end then, across all five
+incapacitating conditions; other owners remain. Immune no-record outcomes and
+full-storage refusal do not interrupt anything. Noncondition payload bits and
+Command Halt do not imply Incapacitated. Zero-HP damage uses the same interruption
+boundary so Rage ends immediately. Condition removal never resumes concentration.
+Evidence and remaining condition clauses:
+`docs/verification/srd-effect-lifecycle-2026-11-08/README.md`.
+
 ## Combat timing is a declared profile selected before the clock starts
 
 `RsBattle.timing` defaults to `RS_STRICT_TIMING`: six-second turns, exact feet

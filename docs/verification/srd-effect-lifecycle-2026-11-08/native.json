@@ -1,0 +1,139 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/effect-lifecycle-checks.coax",
+      "source_sha256": "d75fa215d49c2e631adcafde713daf79cd0ae6e975b87f76fdacc575fd491380",
+      "checks": [
+        {
+          "name": "incapacitation ends Rage and only that clerics Turn Undead ownership immediately",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "refused full storage and immune condition outcomes do not interrupt concentration",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "noncondition carriers and Command Halt do not infer incapacity from their payload bits",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Mindless Rage filters only condition carriers and preserves every other retained field",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Stunning Strike breaks an actual Bless cast immediately and ending Stunned does not resume it",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Stunning Strike against condition immunity does not end Rage without inflicting Stunned",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "dropping to zero HP ends Rage immediately rather than at the next turn",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "e23c8e33f964ce4407fc24055ab4ed725c8fa9bd8f2fcf9534796de2a051bc29",
+            "binary_sha256": "aee86ae6566b0c6b9cd3d2cfe6f8afd477910c229e838b03f79447df96c06f61"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "50bc6fc89bcb8fac924199f01027a0afae829945af63a74bbcff5778bc202a69",
+            "binary_sha256": "0ad7a950999c802c43aa4197cc84a36f1428f561790ca09290cbeed6238b8ef5"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 7
+  },
+  "outcome": "passed"
+}

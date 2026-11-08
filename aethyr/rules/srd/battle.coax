@@ -24,6 +24,7 @@
 #load "reaction-slot.coax";
 #load "effect-rolls.coax";
 #load "condition-rolls.coax";
+#load "effect-lifecycle.coax";
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
@@ -305,21 +306,6 @@ rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
   rs_effect_end(c[..], k);
   b[0].c[j] = c[0];
 }
-// Admitted executors below have prepaid room. Other callers receive explicit
-// refusal; immunity is a completed no-record outcome rather than exhaustion.
-rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) -> bool {
-  if (e.kind == EF_COND || e.kind == EF_TURNED || e.kind == EF_DAZED) && (b[0].c[j].immune_cond & e.cond) != 0 { return true; }
-  f := e;
-  // Mindless Rage (p. 30): Immunity to Charmed and Frightened while raging
-  if (f.kind == EF_COND || f.kind == EF_TURNED || f.kind == EF_DAZED) && b[0].c[j].raging && b[0].c[j].mindless {
-    f.cond = f.cond & (32767 - RS_CHARMED - RS_FRIGHTENED);
-    if f.cond == 0 { return true; }
-  }
-  c: [1] RsCreature; c[0] = b[0].c[j];
-  retained := rs_effect_add(c[..], f);
-  b[0].c[j] = c[0];
-  return retained;
-}
 // When the caster's next turn ends, and when it starts (its turns are instants on the clock).
 rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) + 0.05; }
 rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) - 0.01; }
@@ -407,8 +393,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     l: [1] RsLine;
     rs_add_name(l[..], b, j); rs_add_text(l[..], ifx r.killed then " dies" else " drops to 0 Hit Points");
     rs_tell(b, ifx r.killed then RS_EV_DEATH else RS_EV_DOWN, spell, by, j, 0, 0, l[..]);
-    rs_end_concentration(b, j, " (Unconscious)");
-    rs_release_turned(b, j);
+    rs_interrupt_incapacitated(b,j);
     if r.dropped { rs_dropped(b, by, j); }
     return;
   }
@@ -981,11 +966,6 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
       e := RsEffect.{kind = EF_COND, cond = st.a, by = i, spell = sp, until = rs_after_next_turn(b, i), save = -1, dc = 0};
       if st.b == 2 { e.until = b[0].clock + s.duration_s; e.save = st.c; e.dc = rs_dc(b, i); }
       _ := rs_put_effect(b, j, e);
-      // Paralyzed (and so Incapacitated) breaks the target's own concentration, and lets go what it turned
-      if (st.a & (RS_PARALYZED | RS_INCAPACITATED | RS_STUNNED)) != 0 {
-        if b[0].c[j].conc >= 0 { rs_end_concentration(b, j, " (Incapacitated)"); }
-        rs_release_turned(b, j);
-      }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is "); rs_add_text(l[..], rs_condition_name(st.a));
       rs_add_text(l[..], ifx st.b == 1 then " until the end of " else " for up to a minute");
@@ -1652,7 +1632,6 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
     b[0].c[j].halved_until = until;
     _ := rs_put_effect(b, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = -1, until = until, save = -1, dc = 0});
   } else {
-    if b[0].c[j].raging { rs_rage_end(b, j, " (Stunned)"); }
     _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = i, spell = -1, until = until, save = -1, dc = 0});
   }
 }

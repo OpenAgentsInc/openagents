@@ -1,0 +1,9 @@
+passed               aethyr/rules/srd/effect-lifecycle-checks.coax
+  passed             incapacitation ends Rage and only that clerics Turn Undead ownership immediately
+  passed             refused full storage and immune condition outcomes do not interrupt concentration
+  passed             noncondition carriers and Command Halt do not infer incapacity from their payload bits
+  passed             Mindless Rage filters only condition carriers and preserves every other retained field
+  passed             Stunning Strike breaks an actual Bless cast immediately and ending Stunned does not resume it
+  passed             Stunning Strike against condition immunity does not end Rage without inflicting Stunned
+  passed             dropping to zero HP ends Rage immediately rather than at the next turn
+native checks: passed {"passed": 7}

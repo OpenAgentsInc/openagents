@@ -1,0 +1,6 @@
+5c9df128235a82f8f0807e94e9eb5546fd49e097bf7c4429ea0e1444559e381e  aethyr/rules/srd/battle.coax
+1675faf37cfad38b606b379897951686576a18c8578c605d423f3d66d8df443c  aethyr/rules/srd/effect-lifecycle.coax
+d75fa215d49c2e631adcafde713daf79cd0ae6e975b87f76fdacc575fd491380  aethyr/rules/srd/effect-lifecycle-checks.coax
+04c20fee1025741877f6a7771ba5e55a05dfff80453e56055d424ff090b7e8eb  aethyr/rules/srd/command-halt.coax
+e72bb912b41ad5f07d70c910b2ee75b7bf4dfe20ff646a9310152b479038de11  aethyr/rules/srd/effect-storage.coax
+3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9  coax/bin/coax
