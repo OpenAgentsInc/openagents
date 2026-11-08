@@ -15,6 +15,11 @@
 #load "../space.coax" as space;
 #load "../query-scene.coax" as scene;
 #load "../query-filter.coax" as filters;
+#load "../action/action.coax" as act;
+#load "../action/sensor.coax" as sense;
+#load "../action/react.coax" as react;
+#load "../action/break.coax" as breaks;
+#load "../ai/stimulus.coax" as ai;
 #load "../../apps/openagents-web/save.coax";
 #load "../../coax/lib/net/ws.coax";
 
@@ -32,6 +37,7 @@ StateLab :: struct {
  key_x:f32;key_y:f32;keys:[18]input.InputPress;script:bool;visual:bool;fail_role:int= -1;next_fault:int;failed_roles:u32;
  nav_owner:int= -1;walk:[128]bool;cost:[128]f32;heap:[128]s32;slot:[128]s32;order:[128]s32;nav_reached:bool;
  rects:[128]StateLabRect;rect_n:int;info:[512]u8;info_n:int;width:f32=960;height:f32=640;
+ strike:StateStrike;
  observe:bool;trace_n:int;trace_metrics:[19][28]f64;trace_ids:[19]assets.AssetId;
 }
 #load "tests/fixture.coax";
@@ -40,3 +46,4 @@ StateLab :: struct {
 #load "fixture-view.coax";
 #load "fixture-metrics.coax";
 #load "fixture-trial.coax";
+#load "fixture-strike.coax";

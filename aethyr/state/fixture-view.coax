@@ -1,5 +1,5 @@
 // Pixel and text records for a thin Canvas2D SDK surface.
-STATE_LAB_LABELS :: [15]string.["BREAK GATE [B]","WATER [T]","NPC SCHEDULE [N]","SAVE [P]","LOAD [L]","RETRY POINT [C]","RETRY [R]","NEXT DAY [J]","FAULT NEXT [F]","BAD SAVE [X]","STALE OWNER [O]","NEW GAME [G]","EDITOR RESET [E]","VISUAL TIME [V]","Declared State  |  move with WASD / arrows"];
+STATE_LAB_LABELS :: [15]string.["SWING [B]","WATER [T]","NPC SCHEDULE [N]","SAVE [P]","LOAD [L]","RETRY POINT [C]","RETRY [R]","NEXT DAY [J]","FAULT NEXT [F]","BAD SAVE [X]","STALE OWNER [O]","NEW GAME [G]","EDITOR RESET [E]","VISUAL TIME [V]","Declared State  |  move with WASD / arrows"];
 state_lab_text :: (s:[]StateLab,index:int)->string #export_c #effects(all) {
  if index==14 && s[0].width<800 {return "Declared State | WASD / arrows";}if index==15 {return cast(string)s[0].info[0..<s[0].info_n];}if index<0 || index>=15 {return "";}return STATE_LAB_LABELS[index];
 }

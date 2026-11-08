@@ -36,8 +36,8 @@ state_lab_action :: (s:[]StateLab,action:int) #export_c #effects(all) {
  if action==8 {s[0].fail_role=s[0].next_fault;s[0].next_fault=(s[0].next_fault+1)%6;return;}
  if action==13 {s[0].visual=!s[0].visual;return;}
  f:=s[0].world[0].facts;c:=StateCommand.{epoch=f.epoch,revision=f.revision,tick=f.tick+1,sequence=add_sat(f.sequence,1)};
- if action==0 {c.n=1;c.patches[0]=StatePatch.{id=10,value=state_bool(true)};}
- else if action==1 {c.n=1;c.patches[0]=StatePatch.{id=30,value=state_int(1-f.values[2].integer)};}
+ if action==0 {state_lab_swing(s,s[0].clock.ticks+1);return;}   // a swing: the gate breaks only by its contact (fixture-strike.coax)
+ if action==1 {c.n=1;c.patches[0]=StatePatch.{id=30,value=state_int(1-f.values[2].integer)};}
  else if action==2 {c.n=1;c.patches[0]=StatePatch.{id=20,value=state_int((f.values[1].integer+1)%3)};}
  else if action==4 || action==9 {
   if !state_lab_read_save(s) {s[0].last_status=STATE_SCHEMA;s[0].refused+=1;return;}c.event=STATE_LOAD;if action==9 {s[0].words[0]=0;}
@@ -90,22 +90,23 @@ state_lab_walls :: (s:[]StateLab) #effects(all) {
  for v,i:fixed {s[0].walls[i]=v;}owner:=s[0].variants.items[s[0].world[0].variant].owners[1];for i:0..<6 {s[0].walls[36+i]=s[0].boxes[owner][i];}
 }
 state_lab_script :: (s:[]StateLab,tick:int) #effects(all) {
- s[0].key_x=ifx tick<224 then 1 else 0;s[0].key_y=0;
+ s[0].key_x=ifx tick<224 then 1 else ifx tick>=488 && tick<560 then -1 else 0;s[0].key_y=0;   // to the gate, through it once broken, and back to it after the editor reset
  if tick==16 {state_lab_action(s,5);}else if tick==128 {state_lab_action(s,0);}else if tick==160 {state_lab_action(s,1);}else if tick==192 {state_lab_action(s,2);}else if tick==224 {state_lab_action(s,3);}
- else if tick==256 {state_lab_action(s,6);}else if tick==288 {state_lab_action(s,4);}else if tick==320 {state_lab_action(s,0);s[0].command.sequence=s[0].world[0].facts.sequence;}
+ else if tick==256 {state_lab_action(s,6);}else if tick==288 {state_lab_action(s,4);}else if tick==320 {state_lab_action(s,0);}
  else if tick==352 {state_lab_action(s,7);}else if tick==384 {state_lab_action(s,9);}else if tick==416 {state_lab_action(s,10);}
- else if tick==448 {state_lab_action(s,8);state_lab_action(s,1);}else if tick==480 {state_lab_action(s,12);}else if tick==512 {state_lab_action(s,0);}
+ else if tick==448 {state_lab_action(s,8);state_lab_action(s,1);}else if tick==480 {state_lab_action(s,12);}else if tick==576 {state_lab_action(s,0);}
 }
 state_lab_step :: (s:[]StateLab,tick:int) #effects(all) {
  state_lab_pump(s,tick);if s[0].script {state_lab_script(s,tick);}
  else {for i:0..<18 {take:=input.input_take(s[0].keys[i]);s[0].keys[i]=take.edge;if i>=4 && take.pressed {state_lab_action(s,i-4);}}
   s[0].key_x=(ifx s[0].keys[1].held then 1.0f32 else 0.0f32)-(ifx s[0].keys[0].held then 1.0f32 else 0.0f32);
   s[0].key_y=(ifx s[0].keys[2].held then 1.0f32 else 0.0f32)-(ifx s[0].keys[3].held then 1.0f32 else 0.0f32);
- }accepted:=false;
+ }accepted:=false;state_lab_strike_step(s,tick);
  if s[0].intent>=0 {status:=state_lab_attempt(s,tick);s[0].last_status=status;if status==STATE_OK {accepted=true;s[0].intent= -1;}
   else if status==STATE_WAITING {s[0].waiting+=1;}else {s[0].refused+=1;s[0].intent= -1;}
  }
- if !accepted && !state_lab_idle(s) {s[0].ready=false;return;}state_lab_nav(s);state_lab_walls(s);
+ if !accepted && !state_lab_idle(s) {s[0].ready=false;return;}state_lab_nav(s);state_lab_walls(s);state_lab_strike_sync(s);
+ if state_lab_held(s,tick) {s[0].strike.held+=1;return;}   // the swing's hit stop holds only you
  p:=s[0].player;p.pace=ifx state_lab_fluid(s,p.pos.x,p.pos.z)>0 then 0.5 else 1;
  p=walking.walk_input(p,s[0].key_x,s[0].key_y,0,0,false,false,0,0);
  s[0].player=walking.step(walking.World.{walls=s[0].walls[..]},p,1.0f32/64.0f32);

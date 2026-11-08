@@ -1,18 +1,23 @@
+// Stand at the gate facing it and swing: the gate breaks only through the blade's contact.
+state_lab_test_break :: (s:[]StateLab)->int #effects(all) {
+ s[0].player=walking.walk_place(6.9,0,4,1.5707964);state_lab_action(s,0);
+ for i:0..<64 {state_lab_frame(s,15625000);if s[0].world[0].facts.values[0].integer==1 {return i+1;}}return -1;
+}
 #test "playable fixture adopts real decoded roots and rebuilds navigation only from the published cut" #steps 200000000 #traversal 2000000000 {
  s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});
  #assert s[0].world[0].variant==0 && s[0].world[0].facts.phase==0 && !s[0].nav_reached && s[0].credit.credits==0;
- state_lab_action(s[..],0);for i:0..<6 {state_lab_frame(s[..],15625000);}
+ #assert state_lab_test_break(s[..])>0;state_lab_frame(s[..],15625000);
  #assert s[0].world[0].facts.values[0].integer==1 && s[0].nav_reached && s[0].credit.credits==1;
- #assert s[0].clock.ticks==6 && s[0].world[0].facts.tick==6 && s[0].pool[0].loading==0;
+ #assert s[0].clock.ticks==s[0].world[0].facts.tick && s[0].pool[0].loading==0;
 }
 #test "each stale subsystem receipt refuses the entire publication before a clean retry" #steps 300000000 #traversal 3000000000 {
- for role:0..<6 {s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});s[0].fail_role=role;state_lab_action(s[..],0);observed:=false;
-  for i:0..<6 {state_lab_frame(s[..],15625000);if s[0].failed_roles!=0 && s[0].last_status==STATE_WAITING {observed=true;#assert s[0].world[0].variant==0 && s[0].world[0].facts.values[0].integer==0 && s[0].credit.credits==0;}}
+ for role:0..<6 {s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});s[0].fail_role=role;s[0].player=walking.walk_place(6.9,0,4,1.5707964);state_lab_action(s[..],0);observed:=false;
+  for i:0..<40 {state_lab_frame(s[..],15625000);if s[0].failed_roles!=0 && s[0].last_status==STATE_WAITING {observed=true;#assert s[0].world[0].variant==0 && s[0].world[0].facts.values[0].integer==0 && s[0].credit.credits==0;}}
   #assert observed && s[0].failed_roles==(cast(u32)1<<cast(u32)role) && s[0].world[0].facts.values[0].integer==1 && s[0].credit.credits==1;
  }
 }
 #test "cold restore needs only declared facts the content sources and the separate credit domain" #steps 200000000 #traversal 2000000000 {
- s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});state_lab_action(s[..],0);for i:0..<6 {state_lab_frame(s[..],15625000);}state_lab_action(s[..],3);
+ s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});#assert state_lab_test_break(s[..])>0;state_lab_frame(s[..],15625000);state_lab_action(s[..],3);
  bytes:=s[0].saved;n:=s[0].saved_n;credit:=s[0].credit;#assert state_lab_open(s[..],credit) && !s[0].nav_reached && s[0].world[0].facts.values[0].integer==0;
  #assert state_lab_import(s[..],bytes[0..<n]);state_lab_action(s[..],4);for i:0..<6 {state_lab_frame(s[..],15625000);}
  #assert s[0].world[0].facts.values[0].integer==1 && s[0].nav_reached && s[0].credit.credits==1;
@@ -21,9 +26,49 @@
 #test "the fluid volume and scheduled actor follow restored facts while credit is outside retry" #steps 300000000 #traversal 3000000000 {
  s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});#assert state_lab_fluid(s[..],3,3)==0;
  state_lab_action(s[..],1);for i:0..<6 {state_lab_frame(s[..],15625000);}#assert state_lab_fluid(s[..],3,3)>0.9;
- state_lab_action(s[..],0);for i:0..<6 {state_lab_frame(s[..],15625000);}#assert s[0].credit.credits==1;
+ #assert state_lab_test_break(s[..])>0;state_lab_frame(s[..],15625000);#assert s[0].credit.credits==1;
  state_lab_action(s[..],3);#assert s[0].saved_n>0;
  state_lab_action(s[..],6);for i:0..<6 {state_lab_frame(s[..],15625000);}
  #assert s[0].world[0].facts.values[0].integer==0 && s[0].world[0].facts.values[2].integer==1 && s[0].credit.credits==1;
  state_lab_action(s[..],4);for i:0..<6 {state_lab_frame(s[..],15625000);}#assert s[0].world[0].facts.values[0].integer==1 && s[0].credit.credits==1;
+}
+#test "a sword contact breaks the gate once: collision, navigation, the NPC hears it, bounded debris, and a hit stop that holds only you" #steps 300000000 #traversal 3000000000 {
+ s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});
+ // a swing in the open meets nothing: no contact, no fact
+ state_lab_action(s[..],0);for i:0..<40 {state_lab_frame(s[..],15625000);}
+ #assert s[0].strike.swings==1 && s[0].strike.contacts==0 && s[0].world[0].facts.values[0].integer==0 && s[0].walls[36]==7.5;
+ // at the gate: one contact, one break, the fact published with its collision and navigation
+ frames:=state_lab_test_break(s[..]);#assert frames>8 && frames<30;state_lab_frame(s[..],15625000);
+ #assert s[0].strike.contacts==1 && s[0].strike.breaks==1 && s[0].strike.debris.n==12 && s[0].strike.debris.clipped==0;
+ #assert s[0].walls[36]==20 && s[0].nav_reached && s[0].credit.credits==1;
+ #assert s[0].strike.heard.count==1 && s[0].strike.heard.items[0].kind==ai.StimulusKind.sound && s[0].strike.heard.items[0].source==STATE_LAB_GATE;
+ // a second swing through the empty gateway: the gate is no target, nothing breaks again
+ state_lab_action(s[..],0);for i:0..<40 {state_lab_frame(s[..],15625000);}
+ #assert s[0].strike.breaks==1 && s[0].strike.contacts==1 && s[0].credit.credits==1 && s[0].strike.held==4;
+ // the debris fades on its own lifetime and never collides
+ for i:0..<100 {state_lab_frame(s[..],15625000);}#assert s[0].strike.debris.n==0;
+}
+#test "save, unload and reload keep one break: no duplicate debris or credit, and the editor reset makes the gate breakable again" #steps 400000000 #traversal 4000000000 {
+ s:[1]StateLab;#assert state_lab_open(s[..],StateCredit.{});#assert state_lab_test_break(s[..])>0;state_lab_frame(s[..],15625000);
+ state_lab_action(s[..],3);bytes:=s[0].saved;n:=s[0].saved_n;credit:=s[0].credit;
+ #assert state_lab_open(s[..],credit) && s[0].world[0].facts.values[0].integer==0;
+ #assert state_lab_import(s[..],bytes[0..<n]);state_lab_action(s[..],4);for i:0..<6 {state_lab_frame(s[..],15625000);}
+ #assert s[0].world[0].facts.values[0].integer==1 && s[0].strike.gate.broken && s[0].strike.debris.n==0 && s[0].credit.credits==1;
+ // a blow where the loaded gate stood: no contact (it is gone), no debris, the credit unchanged
+ s[0].player=walking.walk_place(6.9,0,4,1.5707964);state_lab_action(s[..],0);for i:0..<40 {state_lab_frame(s[..],15625000);}
+ #assert s[0].strike.breaks==0 && s[0].strike.debris.n==0 && s[0].credit.credits==1;
+ // the gate's breakable refuses a second break from the fact alone
+ r:=react.Reaction.{kind=react.ReactionKind.struck};#assert breaks.break_hit(state_lab_breakable(),s[0].strike.gate,r,1,true).status==breaks.BreakStatus.already;
+ // the editor reset stands the gate up again, and a swing breaks it again
+ state_lab_action(s[..],12);for i:0..<6 {state_lab_frame(s[..],15625000);}
+ #assert s[0].world[0].facts.values[0].integer==0 && !s[0].strike.gate.broken;
+ #assert state_lab_test_break(s[..])>0 && s[0].strike.breaks==1 && s[0].credit.credits==1;
+}
+#test "the recorded script breaks the gate by contact at 30, 60, 144 FPS and uneven frames with the same trace" #steps 2000000000 #traversal 8000000000 {
+ first:assets.AssetId;
+ for fps:[4]int.[0,30,60,144] {
+  s:[1]StateLab;#assert state_lab_trial(s[..],fps,false,true) && s[0].trace_n==19;
+  #assert s[0].trace_metrics[2][1]==1 && s[0].trace_metrics[17][1]==1 && s[0].strike.breaks==2 && s[0].strike.contacts==2;
+  if fps==0 {first=s[0].trace_ids[18];}else {#assert assets.asset_same(first,s[0].trace_ids[18]);}
+ }
 }

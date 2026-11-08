@@ -34,6 +34,23 @@ Interpolated drawing never senses.
   SRD Attack resolves once against the first accepted contact. The former
   press-time arc pick and pending impact time are removed.
 
+- **State Lab** (`aethyr/state/fixture-strike.coax`, #13027): [B] swings a
+  32-tick action whose blade sweeps an arc ahead of you through its window. A
+  contact with the gate's hurt capsule is the only way the gate breaks:
+  `react_decide` names the reaction (a slash with a 4-tick hit stop that holds
+  only you) and `break_hit` breaks it once, handing back the `gate.broken` patch
+  (published through the ordinary command, so the collision box and navigation
+  owner swap with the fact), a sound stimulus the NPC notes through
+  `aethyr/ai/stimulus.coax` when it is there, and 12 pieces of cosmetic debris.
+  A loaded broken gate breaks nothing and drops nothing; the credit stays at one.
+  The recorded script breaks it by contact twice (before and after the editor
+  reset) with the same trace at 30, 60, 144 FPS and uneven frames.
+- **Everglade Experimental**: a landed blow holds the struck monster for a
+  5-tick hit stop and a monster whose blow lands on you holds itself for 4
+  (`xc_stops_step`, `Enemy.stopped`); nothing else pauses. Floating numbers go
+  through `react_present` (at most 8 a source a frame; the rest counted,
+  `lab_creator_probe 934/935`).
+
 ## Residual adapters and profile limits
 
 - The blade sensor samples the swing clip's pose, not the drawn blend with the
@@ -42,14 +59,17 @@ Interpolated drawing never senses.
   fallback arc; each such tick is counted (`lab_creator_probe 919`).
 - Experimental's line of action has no colliders (the meadow fight has no walls
   between you and a monster in reach).
-- Breakables, reflection, hit stop and attachments are checked here; their
-  playable adoption (State Lab gate, a reflecting target, monster hit stop) is
-  tracked in the follow-up issue named on #12993.
+- Guard, reflection, immunity and weakness have no playable consumer: none of
+  Experimental's SRD monsters (the world's Imp and Gremlin stat blocks) guards,
+  reflects or carries an immunity, and the ruleset already applies its own.
+- Root motion and attachments are checked here only (`attach_*`); no realm
+  plays a root-motion action under collision-resolved movement.
 
 ```sh
 coax/bin/coax test aethyr/action/action.coax --library
 coax/bin/coax test aethyr/action/sensor.coax --library
 coax/bin/coax test aethyr/action/react.coax --library
 coax/bin/coax test aethyr/action/break.coax --library
+coax/bin/coax test aethyr/state/fixture.coax --library
 coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"
 ```

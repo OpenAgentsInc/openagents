@@ -14,7 +14,7 @@ state_lab_metric :: (s:[]StateLab,index:int)->f64 #export_c #effects(all) {
  if index==23 {return ifx s[0].ready then 1 else 0;}if index==24 {return f64(s[0].clock.frames);}if index==25 {return f64(s[0].clock.dropped_ns);}if index==26 {return f64(s[0].pool[0].budget[0].actor_peak);}if index==27 {return f64(s[0].saved_n);}return 0;
 }
 state_lab_hash :: (s:[]StateLab,out:[]u8)->bool #export_c #effects(all) {return assets.asset_hex(state_lab_digest(s),out);}
-STATE_LAB_TRACE_TICKS :: [19]int.[120,128,129,160,161,192,193,224,256,288,320,352,384,416,448,449,480,512,640];
+STATE_LAB_TRACE_TICKS :: [19]int.[120,128,144,160,161,192,193,224,256,288,320,352,384,416,448,449,480,600,640];
 state_lab_observe :: (s:[]StateLab) #effects(all) {
  if !s[0].observe || s[0].trace_n>=19 {return;}row:=s[0].trace_n;if s[0].clock.ticks!=STATE_LAB_TRACE_TICKS[row] {return;}
  for i:0..<STATE_LAB_METRICS {s[0].trace_metrics[row][i]=state_lab_metric(s,i);}s[0].trace_ids[row]=state_lab_digest(s);s[0].trace_n+=1;

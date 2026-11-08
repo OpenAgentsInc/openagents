@@ -1,0 +1,86 @@
+// The State Lab gate broken by a sword (GitHub #13027). [B] swings: a tick-timed action
+// (aethyr/action/action.coax) whose blade sweeps an arc ahead of you through its sensor window
+// (sensor.coax). A contact with the gate's hurt capsule is an accepted hit; react_decide names the
+// reaction (a slash, a short hit stop that holds only you) and break_hit (break.coax) breaks the
+// breakable once. The break hands back the declared fact patch (gate.broken), which goes through the
+// ordinary command and variant publication, so the collision box and the navigation owner swap with
+// the fact; a sound stimulus the NPC hears through aethyr/ai/stimulus.coax; and a bounded cosmetic
+// debris burst. A gate whose fact is already true (loaded from a save, or broken twice) breaks
+// nothing and drops nothing, and the credit's own idempotent key keeps it at one.
+STATE_LAB_GATE :: 900;             // the gate's entity number
+STATE_LAB_SWING_TICKS :: 32;       // half a second
+STATE_LAB_BLADE :: 1.3;            // metres from the shoulder to the tip
+STATE_LAB_BLADE_R :: 0.12;
+StateStrike :: struct {
+ def:act.ActionDef;inst:act.ActionInstance;next:int=1;ledger:sense.HitLedger;
+ gate:breaks.BreakState;debris:breaks.Debris;stops:react.Stops;
+ heard:ai.Memory;contacts:int;breaks:int;already:int;swings:int;held:int;
+}
+state_lab_swing_def :: ()->act.ActionDef #effects(all) {
+ d:act.ActionDef;d.id=1;d.version=1;d.length=STATE_LAB_SWING_TICKS;
+ d.events[0]=act.ActionEvent.{kind=act.ActionEventKind.window_open,tick=8};
+ d.events[1]=act.ActionEvent.{kind=act.ActionEventKind.impact,tick=14};
+ d.events[2]=act.ActionEvent.{kind=act.ActionEventKind.window_close,tick=20};d.event_n=3;return d;
+}
+state_lab_breakable :: ()->breaks.Breakable #effects(all) {
+ return breaks.Breakable.{fact=10,integrity=1,profile=breaks.BreakProfile.debris,pieces=12,life=96,hear=30,at=space.world_point(8,1,4)};
+}
+// The blade at local time u (ticks, may be fractional): from the shoulder, sweeping one radian either
+// side of where you face across the window.
+state_lab_blade :: (s:[]StateLab,u:f32)->sense.SensorPose #effects(all) {
+ d:=s[0].strike.def;open:=f32(d.events[0].tick);shut:=f32(d.events[2].tick);
+ f:=(u-open)/(shut-open);f=ifx f<0 then 0 else ifx f>1 then 1 else f;
+ p:=s[0].player.pos;ang:=s[0].player.face+1.0-2.0*f;
+ return sense.SensorPose.{a=space.world_point(p.x+sin(ang)*0.2,p.y+1.2,p.z+cos(ang)*0.2),b=space.world_point(p.x+sin(ang)*STATE_LAB_BLADE,p.y+1.2,p.z+cos(ang)*STATE_LAB_BLADE)};
+}
+// [B]: a swing, unless one is playing.
+state_lab_swing :: (s:[]StateLab,tick:int) #effects(all) {
+ if s[0].strike.inst.phase==act.ActionPhase.running {return;}
+ if s[0].strike.def.length==0 {s[0].strike.def=state_lab_swing_def();}
+ s[0].strike.inst=act.action_begin(s[0].strike.def,0,s[0].strike.next,1,1,tick,1,1);s[0].strike.next+=1;s[0].strike.swings+=1;
+}
+// One paid step of the swing: its events, and in the window the blade swept against the gate.
+state_lab_strike_step :: (s:[]StateLab,tick:int) #effects(all) {
+ k:=s[0].strike;k.debris=breaks.break_debris_expire(k.debris,tick);k.stops=react.react_stop_expire(k.stops,tick);
+ k.heard=ai.memory_forget(k.heard,ai.Senses.{},tick);s[0].strike=k;
+ if k.inst.phase!=act.ActionPhase.running {return;}
+ st:=act.action_advance(k.def,k.inst,tick);s[0].strike.inst=st.inst;
+ if st.sensing {
+  local:=f32(tick-k.inst.start);sw:sense.SensorSweep;sw.n=6;
+  for i:0..<6 {sw.poses[i]=state_lab_blade(s,local+f32(i)/5);}
+  broken:=s[0].world[0].facts.values[0].integer==1;
+  hurt:=[1]sense.HurtCapsule.[sense.HurtCapsule.{id=STATE_LAB_GATE,gen=1,team=2,feet=space.world_point(8,0,4),height=3,radius=0.5,alive=!broken}];
+  p:=s[0].player.pos;open:queries.Colliders;open.ground_enabled=false;
+  r:=sense.sensor_resolve(k.def,s[0].strike.inst,tick,1,1,space.world_point(p.x,p.y+1.2,p.z),sw,STATE_LAB_BLADE_R,hurt[..],open,s[0].strike.ledger);
+  if r.status==sense.SensorStatus.ok {s[0].strike.ledger=r.ledger;}
+  for c:0..<r.n {if r.contacts[c].status==sense.ContactStatus.hit {state_lab_gate_hit(s,tick);}}
+ }
+ if st.finished || s[0].strike.inst.phase!=act.ActionPhase.running {s[0].strike.ledger=sense.sensor_ledger_retire(s[0].strike.ledger,k.inst.id);}
+}
+// An accepted contact on the gate: the reaction, the break, and what the break hands back.
+state_lab_gate_hit :: (s:[]StateLab,tick:int) #effects(all) {
+ s[0].strike.contacts+=1;
+ sword:=react.AttackAttrs.{kinds=react.DMG_SLASH,stop=react.HitStop.{ticks=4,scope=react.StopScope.source}};
+ p:=s[0].player.pos;dx:=p.x-8;dz:=p.z-4;l:=sqrt(dx*dx+dz*dz);toward:=ifx l>0.0001 then space.world_point(dx/l,0,dz/l) else space.world_point(-1,0,0);
+ r:=react.react_decide(sword,react.TargetResponse.{},space.world_point(-1,0,0),toward,1);
+ s[0].strike.stops=react.react_stop_add(s[0].strike.stops,r,1,STATE_LAB_GATE,tick);
+ b:=breaks.break_hit(state_lab_breakable(),s[0].strike.gate,r,react.react_scaled(r,1),s[0].world[0].facts.values[0].integer==1);
+ s[0].strike.gate=b.state;
+ if b.status==breaks.BreakStatus.already {s[0].strike.already+=1;return;}
+ if b.status!=breaks.BreakStatus.broke {return;}
+ s[0].strike.breaks+=1;s[0].strike.debris=breaks.break_debris(s[0].strike.debris,b,tick,32);
+ // the sound: the NPC hears it through its own senses when it is here
+ if state_lab_npc(s) {
+  person:=s[0].bodies[s[0].variants.items[s[0].world[0].variant].owners[0]];
+  heard:=ai.sense_sound(ai.Senses.{},space.world_point(f32(person.x),0,f32(person.z)),b.heard_at,b.heard,STATE_LAB_GATE,tick);
+  if heard.status==ai.SenseStatus.sensed {s[0].strike.heard=ai.memory_note(s[0].strike.heard,ai.Senses.{},heard.stimulus).memory;}
+ }
+ // the fact, published with its collision and navigation by the ordinary command
+ f:=s[0].world[0].facts;c:=StateCommand.{epoch=f.epoch,revision=f.revision,tick=f.tick+1,sequence=add_sat(f.sequence,1)};
+ c.n=1;c.patches[0]=StatePatch.{id=b.fact,value=state_bool(true)};s[0].intent=0;s[0].command=c;
+}
+// After a published load, retry, new game or editor reset the gate's break state follows the fact.
+state_lab_strike_sync :: (s:[]StateLab) #effects(all) {
+ broken:=s[0].world[0].facts.values[0].integer==1;if s[0].strike.gate.broken!=broken {s[0].strike.gate=breaks.BreakState.{broken=broken,breaks=s[0].strike.gate.breaks};}
+}
+state_lab_held :: (s:[]StateLab,tick:int)->bool #effects(all) {return react.react_held(s[0].strike.stops,1,tick);}

@@ -33,12 +33,12 @@ SensorSweep :: struct { poses: [SENSOR_SAMPLES] SensorPose; n: int; }
 HurtCapsule :: struct { id: int; gen: int; team: int; feet: WorldPoint; height: f32; radius: f32; alive: bool = true; }
 
 ContactStatus :: enum u8 { hit; repeat; own; team; stale; blocked; full; }
-SenseStatus :: enum u8 { ok; inactive; stale_source; exhausted; invalid; }
+SensorStatus :: enum u8 { ok; inactive; stale_source; exhausted; invalid; }
 Contact :: struct { target: int; gen: int; tick: int; sample: int; at: WorldPoint; status: ContactStatus; }
 HitKey :: struct { instance: int; target: int; gen: int; tick: int; }
 HitLedger :: struct { keys: [SENSOR_LEDGER] HitKey; n: int; refused: int; }
 SensorResult :: struct {
-  status: SenseStatus;
+  status: SensorStatus;
   contacts: [SENSOR_CONTACTS] Contact; n: int;   // accepted hits first by sample then target, then the refused
   hits: int;
   ledger: HitLedger;
@@ -127,15 +127,15 @@ sensor_ledger_retire :: (l: HitLedger, instance: int) -> HitLedger {
 sensor_resolve :: (d: ActionDef, a: ActionInstance, now: int, owner_gen_now: int, team: int, origin: WorldPoint,
                    s: SensorSweep, r: f32, targets: [] HurtCapsule, c: Colliders, ledger: HitLedger) -> SensorResult {
   out: SensorResult; out.ledger = ledger;
-  if a.phase != ActionPhase.running || !(r > 0) || s.n < 1 || !sensor_finite(origin) { out.status = SenseStatus.invalid; return out; }
-  if a.owner_gen != owner_gen_now { out.status = SenseStatus.stale_source; return out; }
+  if a.phase != ActionPhase.running || !(r > 0) || s.n < 1 || !sensor_finite(origin) { out.status = SensorStatus.invalid; return out; }
+  if a.owner_gen != owner_gen_now { out.status = SensorStatus.stale_source; return out; }
   t := action_local(a, now);
-  if t < 0 || t > d.length || !action_window_open(d, t) { out.status = SenseStatus.inactive; return out; }
-  if s.n > SENSOR_SAMPLES || targets.count > SENSOR_TARGETS { out.status = SenseStatus.exhausted; return out; }
+  if t < 0 || t > d.length || !action_window_open(d, t) { out.status = SensorStatus.inactive; return out; }
+  if s.n > SENSOR_SAMPLES || targets.count > SENSOR_TARGETS { out.status = SensorStatus.exhausted; return out; }
   for i: 1..<s.n {
-    if sensor_len(s.poses[i - 1].a, s.poses[i].a) > r * 1.0001 || sensor_len(s.poses[i - 1].b, s.poses[i].b) > r * 1.0001 { out.status = SenseStatus.exhausted; return out; }
+    if sensor_len(s.poses[i - 1].a, s.poses[i].a) > r * 1.0001 || sensor_len(s.poses[i - 1].b, s.poses[i].b) > r * 1.0001 { out.status = SensorStatus.exhausted; return out; }
   }
-  for i: 0..<s.n { if !sensor_finite(s.poses[i].a) || !sensor_finite(s.poses[i].b) { out.status = SenseStatus.invalid; return out; } }
+  for i: 0..<s.n { if !sensor_finite(s.poses[i].a) || !sensor_finite(s.poses[i].b) { out.status = SensorStatus.invalid; return out; } }
   // every touch this tick, then sorted by (sample, target id): the merge is deterministic
   found: [SENSOR_TARGETS] Contact; fn := 0;
   for j: 0..<targets.count {
@@ -172,7 +172,7 @@ sensor_resolve :: (d: ActionDef, a: ActionInstance, now: int, owner_gen_now: int
     if out.n < SENSOR_CONTACTS { out.contacts[out.n] = ct; out.n += 1; if ct.status == ContactStatus.hit { out.hits += 1; } }
     else if ct.status == ContactStatus.hit { out.ledger.refused += 1; }
   }
-  out.status = SenseStatus.ok;
+  out.status = SensorStatus.ok;
   return out;
 }
 // book:end resolve
@@ -259,7 +259,7 @@ sensor_test_swing :: () -> ActionDef {
   d := sensor_test_swing(); a := action_begin(d, 0, 9, 1, 0, 0, 1, 1);
   c: Colliders; c.ground = -10;
   ts := [1] HurtCapsule.[h];
-  #assert sensor_resolve(d, a, 12, 0, 1, pivot, ends, 0.05, ts[..], c, HitLedger.{}).status == SenseStatus.exhausted;
+  #assert sensor_resolve(d, a, 12, 0, 1, pivot, ends, 0.05, ts[..], c, HitLedger.{}).status == SensorStatus.exhausted;
   #assert sensor_resolve(d, a, 12, 0, 1, pivot, full, 0.12, ts[..], c, HitLedger.{}).hits == 1;
 }
 
@@ -277,11 +277,11 @@ sensor_test_swing :: () -> ActionDef {
   s := sensor_test_sweep(pivot, 1.2, -0.4, 0.4, 0.1);
   l: HitLedger;
   // before the window: nothing
-  #assert sensor_resolve(d, a, 109, 4, 1, pivot, s, 0.1, ts[..], c, l).status == SenseStatus.inactive;
+  #assert sensor_resolve(d, a, 109, 4, 1, pivot, s, 0.1, ts[..], c, l).status == SensorStatus.inactive;
   hits := 0;
   for tick: 110..<125 {
     r := sensor_resolve(d, a, tick, 4, 1, pivot, s, 0.1, ts[..], c, l);
-    if tick < 120 { #assert r.status == SenseStatus.ok; } else { #assert r.status == SenseStatus.inactive; }
+    if tick < 120 { #assert r.status == SensorStatus.ok; } else { #assert r.status == SensorStatus.inactive; }
     if tick == 110 {
       #assert r.n == 5 && r.hits == 2 && r.contacts[0].status == ContactStatus.own;
       // the hits in sample then id order: id 5 (left, first sample) before id 7
@@ -295,13 +295,13 @@ sensor_test_swing :: () -> ActionDef {
   ts[1].gen = 3;
   #assert sensor_resolve(d, a, 112, 4, 1, pivot, s, 0.1, ts[..], c, l).hits == 1;
   // the owner was replaced (stale source): nothing
-  #assert sensor_resolve(d, a, 112, 5, 1, pivot, s, 0.1, ts[..], c, HitLedger.{}).status == SenseStatus.stale_source;
+  #assert sensor_resolve(d, a, 112, 5, 1, pivot, s, 0.1, ts[..], c, HitLedger.{}).status == SensorStatus.stale_source;
   // a wall between the owner and the targets blocks the line of action
   wall := [6] f32.[-2, 0, 0.45, 2, 3, 0.5]; c.boxes = wall[..];
   w := sensor_resolve(d, a, 112, 4, 1, pivot, s, 0.1, ts[..], c, HitLedger.{});
-  #assert w.hits == 0 && w.status == SenseStatus.ok;
+  #assert w.hits == 0 && w.status == SensorStatus.ok;
   // a cancelled instance senses nothing; the ledger retires its keys
-  #assert sensor_resolve(d, action_cancel(d, a, 105), 112, 4, 1, pivot, s, 0.1, ts[..], c, HitLedger.{}).status == SenseStatus.invalid;
+  #assert sensor_resolve(d, action_cancel(d, a, 105), 112, 4, 1, pivot, s, 0.1, ts[..], c, HitLedger.{}).status == SensorStatus.invalid;
   #assert sensor_ledger_retire(l, 41).n == 0 && sensor_ledger_retire(l, 40).n == 2;
 }
 
