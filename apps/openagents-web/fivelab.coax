@@ -3911,7 +3911,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert figs.BD_RECORDS == SKELETONS_MAX * 3 + (HEROES_MAX + figs.BD_CORPSES) * figs.BD_PARTS_MAX;
 }
 
-#test "the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them" #steps 2000000000 {
+#test "the sliders: a drag shows the number and lets go into a new battle; the keys nudge; the address sets them" #steps 2000000000 #traversal 268435456 {
   s: [1] Lab; s[0].heroes = 4; s[0].skeletons = 4; ok: bool; n: int;
   n = frame_at(s[..], 1600, 1000, 1, 0.016);
   #assert sl_count(s[..]) == 3 && s[0].sliders[SL_HEROES].x1 > s[0].sliders[SL_HEROES].x0;
@@ -3979,7 +3979,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert bt(s[..])[0].clock > 4 * 24 * f32(STEP) * 0.99 || s[0].round > r0;
 }
 
-#test "the Siege: H plays it after the Armies; 50 of the watch on their line, 50 of the cult 60 feet off, its leader on the far edge" #steps 2000000000 {
+#test "the Siege: H plays it after the Armies; 50 of the watch on their line, 50 of the cult 60 feet off, its leader on the far edge" #steps 2000000000 #traversal 1073741824 {
   s: [1] Lab;
   lab_start(s[..]);
   #assert s[0].horde && !s[0].siege && scenario_name(s[..]) == "HORDE";
