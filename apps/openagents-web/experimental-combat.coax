@@ -175,7 +175,7 @@ xc_order_load :: (x: [] XcCombat, text: string) -> bool {
       if digits >= 6 { return false; }
       id = id * 10 + cast(int) text[at] - '0'; digits += 1; at += 1;
     }
-    if digits == 0 || at >= text.count || text[at] != ' ' || id >= 220000 || counts[c] >= XC_SLOTS { return false; }
+    if digits == 0 || at >= text.count || text[at] != ' ' || id >= (FB_READY + 1) * 10000 || counts[c] >= XC_SLOTS { return false; }
     for i: 0..<counts[c] { if order[c][i] == id { return false; } }
     order[c][counts[c]] = id; counts[c] += 1; at += 1;
   }
@@ -214,9 +214,18 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   rs_place(b, 0, XC_MID, XC_MID);
   x[0].seat[0] = FbSeat.{me = 0};
   x[0].klass = c;
-  x[0].bar_n = xc_bar_level(c, x[0].level, x[0].bar[..]);
+  x[0].bar_n = xc_actions(x[0].bar[..], xc_bar_level(c, x[0].level, x[0].bar[..]));
   xc_order_bar(x); x[0].arranging = false;
   x[0].used = -1; x[0].hover = -1; x[0].pend = -1;
+}
+// The actions every creature has (#13040), after the class kit: Hide, Grapple, Shove and Ready.
+XC_ACTIONS :: [4] int.[FB_HIDE, FB_GRAPPLE, FB_SHOVE, FB_READY];
+XC_ACTION_NAME :: [4] string.["Hide", "Grapple", "Shove", "Ready"];
+XC_ACTION_ART :: [4] string.["hide", "grapple", "shove", "ready"];
+xc_actions :: (bar: [] FbAb, n: int) -> int {
+  m := n;
+  for q: 0..<4 { if m < bar.count { bar[m] = fb_feature(XC_ACTIONS[q], XC_ACTION_NAME[q], XC_ACTION_ART[q]); if q != 1 && q != 2 { bar[m].tg = FB_SELF; } m += 1; } }
+  return m;
 }
 // A monster's square round you: the nearest whole square to where it stands, off the grid when far.
 xc_square :: (d: f32) -> int {
@@ -413,6 +422,15 @@ xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
         x[0].landed+=1; x[0].last_dmg=lost; xc_float_int(x,old.x,1.9,old.z,cr[0].clock,lost,false);
         snd:=xc_sound(xc_attack(),x[0].klass); xc_cue(s,snd.hit,0.55,old.x,old.z,snd.rate);
         if rs_up(b[0].c[foe+1]) { xc_stop_hit(s,foe,react.DMG_SLASH); xc_voice(s,foe,false); } else { xc_voice(s,foe,true); }
+      }
+    }
+    // a readied attack (#13040) answers the first monster that moves
+    if rs_ready_triggered(b,0,foe+1) {
+      before:=b[0].c[foe+1].hp;
+      if rs_ready_attack(b,0,foe+1) {
+        lost:=before-rs_max(b[0].c[foe+1].hp,0);
+        if lost>0 { x[0].landed+=1; x[0].last_dmg=lost; xc_float_int(x,old.x,1.9,old.z,cr[0].clock,lost,false); xc_voice(s,foe,!rs_up(b[0].c[foe+1])); }
+        else { xc_float(x,old.x,1.9,old.z,cr[0].clock,"MISS",false); }
       }
     }
     fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
@@ -639,6 +657,21 @@ xc_sync_permission :: (s:[] Lab,i:int) {
     h[0].enemies[i].inactive = !rs_can_act(c);
     // Retire a pending attack immediately, including between body ticks.
     if h[0].enemies[i].inactive { h[0].enemies[i].swing = -1; h[0].enemies[i].struck = false; }
+}
+// Grappled (p.181): the monster you hold comes along as you walk, kept within your reach. A wall
+// it can't be dragged through parts you, and the grapple lapses (grapple.coax), as it does when
+// you are Incapacitated.
+xc_grapple_step :: (s: [] Lab) {
+  x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  g := b[0].c[0].grappling;
+  if !x[0].started || g < 1 || g > XC_FOES { return; }
+  e := h[0].enemies[g - 1..<g];
+  dx := e[0].x - cr[0].player_x; dz := e[0].z - cr[0].player_z; d := sqrt(dx * dx + dz * dz); keep := f32(XC_REACH) * 0.8;
+  if d > keep {
+    nx := cr[0].player_x + dx * keep / d; nz := cr[0].player_z + dz * keep / d;
+    if !hostile.hostile_blocked(nx, nz) { e[0].x = nx; e[0].z = nz; }
+  }
+  xc_sync_world(s); rs_grapple_lapse(b, 0); xc_sync_permission(s, g - 1);
 }
 xc_sync_permissions :: (s: [] Lab) {
   for i:0..<XC_FOES { xc_sync_permission(s,i); }
@@ -924,14 +957,23 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   if facing_cube { ty = XC_MID + 3; }
   else if foe >= 0 { tx = b[0].c[1 + foe].x; ty = b[0].c[1 + foe].y; }
   else if aim.kind == XC_AIM_AREA { tx = XC_MID + cast(int) floor(aim.fx * aim.reach / f32(XC_SQ) + 0.5); ty = XC_MID + cast(int) floor(aim.fz * aim.reach / f32(XC_SQ) + 0.5); }
+  // the walls as cover facts for this press only (aethyr/rules/srd/cover.coax): a monster on the grid
+  // with no line to you is behind Total Cover; with none seeing you, you are behind it from all (Hide)
+  rs_cover_clear(b); unseen := true;
+  for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && hostile.hostile_sees(h[0].enemies[i], px, pz) { unseen = false; } }
+  if unseen { _ := rs_cover_put(b, -1, 0, RS_COVER_TOTAL); }
+  for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && !hostile.hostile_sees(h[0].enemies[i], px, pz) { _ := rs_cover_put(b, 0, 1 + i, RS_COVER_TOTAL); } }
   ok := fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, 0);
+  rs_cover_clear(b);
   gain := rs_max(b[0].c[0].hp-hp_before,0);
   temp_gain := rs_max(b[0].c[0].temp-temp_before,0);
   xc_sync_vitals(s);
   if !ok {
     press_turn[0]=x[0].seat[0].turn; rs_press_restore(me,press_turn[..],saved_budget);
     x[0].seat[0].turn=press_turn[0]; x[0].seat[0].open=was_open;
-    if facing_cube { xc_sync_world(s); } x[0].refused += 1; return false;
+    if facing_cube { xc_sync_world(s); } x[0].refused += 1;
+    if a.kind == FB_HIDE { xc_float(x, px, cr[0].player_y + 2.1, pz, now, ifx unseen then "ALREADY HIDDEN" else "IN SIGHT", false); }
+    return false;
   }
   if a.kind == FB_SPELL && a.sp == SP_THUNDERWAVE {
     x[0].wave = xc_wave_make(x, px, pz, cr[0].player_face); x[0].wave.y = cr[0].player_y; x[0].wave_until = now + 1.4;
@@ -947,6 +989,13 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   if temp_gain>0 { l: [1] RsLine; rs_add_int(l[..],temp_gain); rs_add_text(l[..]," TEMP HP"); xc_float(x,px,cr[0].player_y+2.1,pz,now,cast(string)l[0].buf[0..<l[0].n],true); }
   xc_look(s, a, foe, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
   if !swung { xc_cast_sound(s, a); }
+  if a.kind == FB_HIDE || a.kind == FB_READY {
+    xc_float(x, px, cr[0].player_y + 2.1, pz, now, ifx a.kind == FB_READY then "READY" else ifx rs_hidden_at(b[0].c[0]) >= 0 then "HIDDEN" else "SPOTTED", true);
+  }
+  if (a.kind == FB_GRAPPLE || a.kind == FB_SHOVE) && foe >= 0 {
+    held := ifx a.kind == FB_GRAPPLE then b[0].c[0].grappling == 1 + foe else rs_has(b[0].c[1 + foe], RS_PRONE);
+    xc_float(x, h[0].enemies[foe].x, 2.4, h[0].enemies[foe].z, now, ifx !held then "RESISTS" else ifx a.kind == FB_GRAPPLE then "GRAPPLED" else "PRONE", false);
+  }
   // what it did to each monster: the numbers, and the fallen
   struck := false;
   for i: 0..<XC_FOES {
@@ -1100,6 +1149,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   xc_stops_step(s);
   // Refresh both permissions after shared expiry, independently of body hit stop.
   xc_sync_permissions(s);
+  xc_grapple_step(s);
   // the column: under ANIMATIONS (its rows give it room: cc dev_visible), at the top without it
   col := xc_column(x);
   cr[0].dev_below = col + f32(XC_GAP);
@@ -1417,6 +1467,36 @@ xc_probe :: (s: [] Lab, f: int) -> int {
       #assert h[0].enemies[3].held && h[0].enemies[3].inactive && x[0].target == 3;
     } else {
       #assert c.dead && h[0].enemies[3].dead && x[0].kills == 1;
+    }
+  }
+}
+
+#test "experimental combat: Hide needs cover, Grapple holds and drags, Shove knocks Prone, Ready answers a move" #steps 2000000000 {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N { for level: 1..<7 { #assert xc_actions(bar[..], xc_bar_level(c, level, bar[..])) == xc_bar_level(c, level, bar[..]) + 4; } }
+  for pass: 0..<3 {
+    s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+    cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
+    b[0].dice[0].fixed = true; b[0].c[4].ac = 5; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
+    slot: [4] int;
+    for q: 0..<4 { slot[q] = -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == XC_ACTIONS[q] { slot[q] = i; } } #assert slot[q] >= 0 && x[0].bar[slot[q]].art == XC_ACTION_ART[q]; }
+    h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.5;   // a gremlin (a Goblin Warrior) just ahead
+    cr[0].clock += 1.1;
+    if pass == 0 {
+      #assert !xc_press(s[..], slot[0]) && rs_hidden_at(b[0].c[0]) < 0 && !x[0].seat[0].turn.action;   // it sees you
+      #assert xc_press(s[..], slot[1]) && b[0].c[0].grappling == 4 && rs_has(b[0].c[4], RS_GRAPPLED);
+      xc_sync_permissions(s[..]); #assert h[0].enemies[3].held;
+      cr[0].player_z = -3; xc_grapple_step(s[..]);
+      #assert h[0].enemies[3].z < 0 && h[0].enemies[3].z > -3 && b[0].c[0].grappling == 4;   // dragged along
+      b[0].c[0].cond |= RS_STUNNED;
+      xc_grapple_step(s[..]); #assert b[0].c[0].grappling == -1 && !rs_has(b[0].c[4], RS_GRAPPLED) && !h[0].enemies[3].held;
+    } else if pass == 1 {
+      #assert xc_press(s[..], slot[2]) && rs_has(b[0].c[4], RS_PRONE) && b[0].c[0].grappling == -1;
+    } else {
+      #assert xc_press(s[..], slot[3]) && rs_ready_at(b[0].c[0]) >= 0 && !b[0].c[0].reacted;
+      proposed := h[0].enemies[3]; proposed.z = 1.4; proposed.moving = true;
+      xc_monster_move(s[..], 3, proposed);
+      #assert b[0].c[0].reacted && b[0].c[4].hp < 100 && rs_ready_at(b[0].c[0]) < 0;
     }
   }
 }

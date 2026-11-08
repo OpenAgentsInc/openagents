@@ -2039,7 +2039,8 @@ lab_queue_escape :: (s:[]Lab,x:f32,y:f32,z:f32) {
 lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
   if !s[0].creator[0].experimental || !s[0].xc[0].started { return 1; }
   xc_sync_world(s);
-  return rs_walk_scale(s[0].xc[0].b[..],0);
+  // dragging what you grapple costs a foot more each foot (grapple.coax rs_drag_feet): half the pace
+  return rs_walk_scale(s[0].xc[0].b[..],0) / f32(1 + rs_drag_feet(s[0].xc[0].b[..],0,XC_AWAY,XC_AWAY)/5);
 }
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;

@@ -32,6 +32,9 @@ FB_AIM :: 14; FB_INNATE :: 15; FB_INSPIRE :: 16; FB_TURN :: 17; FB_PRESERVE :: 1
 FB_RESURGE :: 20;   // Wild Resurgence: a slot for a use of Wild Shape, taken at once
 FB_WORLD :: 21;     // the world's own (Rebuild, the phone's row switcher): no rules
 FB_WILD :: 22;      // Wild Shape (aethyr/rules/srd/wild-shape.coax): into the best Beast form known, or back
+// the actions every creature has (#13040, aethyr/rules/srd/ hide, grapple, ready): Hide (p.183) where
+// the world admits cover; an Unarmed Strike's Grapple or Shove (Prone) at your target; Ready an attack
+FB_HIDE :: 23; FB_GRAPPLE :: 24; FB_SHOVE :: 25; FB_READY :: 26;
 // how it is aimed: your target, a point (the ground under your target, or where you point), you,
 // the friend most hurt, the friends round a point (up to six)
 FB_FOE :: 0; FB_POINT :: 1; FB_SELF :: 2; FB_ALLY :: 3; FB_ALLIES :: 4;
@@ -409,6 +412,10 @@ fb_use :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: in
   if a.kind == FB_LANDS { if foe >= 0 { return rs_lands_aid(b, i, b[0].c[foe].x, b[0].c[foe].y, ally); } return rs_lands_aid(b, i, tx, ty, ally); }
   if a.kind == FB_RESURGE { return fb_wild_shape(b, i); }
   if a.kind == FB_WILD { if b[0].c[i].wild_form != 0 { return rs_wild_shape_leave(b, i); } return rs_wild_shape(b, i, fb_wild_form(b[0].c[i])); }
+  // Hide: concealed when the world's cover facts hide you from every enemy (cover.coax)
+  if a.kind == FB_HIDE { return rs_hide(b, i, rs_hide_concealed(b, i, true), false).accepted; }
+  if a.kind == FB_GRAPPLE || a.kind == FB_SHOVE { return at >= 0 && rs_attack_unarmed(b, i, at, ifx a.kind == FB_GRAPPLE then UO_GRAPPLE else UO_PRONE); }
+  if a.kind == FB_READY { return rs_ready(b, i, RD_ATTACK, -1, -1, 0); }   // an attack at the next creature that moves
   return false;
 }
 // The form a class kit's Wild Shape slot takes: the Black Bear's two Rends once it is known (level
