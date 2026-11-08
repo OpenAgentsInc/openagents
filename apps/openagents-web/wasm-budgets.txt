@@ -29,8 +29,8 @@ droprealm 190000
 # everglade.coax (the base world everglade5e and fivemmo build on): 1,813,705 measured 2026-11-04 after the day's room work (#12794, #12862, #12877, #12887); about 5% room
 # The jump clips in verse/everglade/people-rig.coax (da98ab3915): 1,909,780 bytes measured 2026-11-07; about 5% headroom.
 everglade 2000000
-# /worlds/everglade (everglade5e.coax): 2,032,230 measured 2026-11-04 after #12887; 2,166,756 on 2026-11-05 before the PARTY pane, 2,175,433 with it (#12852); 2,181,339 before the page's own raid battle and rules battle went (#12908), 2,041,247 after; about 5% room
-everglade5e 2150000
+# /worlds/everglade (everglade5e.coax): 2,032,230 measured 2026-11-04 after #12887; 2,166,756 on 2026-11-05 before the PARTY pane, 2,175,433 with it (#12852); 2,181,339 before the page's own raid battle and rules battle went (#12908), 2,041,247 after; about 5% room; 2,165,018 on 2026-11-08 after the engine's spell access and prepared-spell checks (7f7d7302e5, 31a30eb2dd)
+everglade5e 2250000
 # the room server's simulation for offline play's local host (coax/web/room/worker.coax, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131); 1,257,728 after #12837; 1,002,703 once the rigs' clips load at the first pose (the room poses no one); about 5% room
 # Shared Ocarina movement profile and versioned J1 input: 1,067,794 measured 2026-11-06; about 5% room.
 everglade-room 1122000
@@ -70,7 +70,8 @@ newland 1150000
 nip01 90000
 nip-guide 130000
 og 60000
-oneshot 270000
+# /oneshot: 273,171 measured 2026-11-08 after the engine's spell access and prepared-spell checks (7f7d7302e5, 31a30eb2dd); about 5% room
+oneshot 285000
 # Orbit v2 adds authoritative input/snapshot codecs while retaining the published legacy profile.
 # 292,500 final Linux release bytes at #12845; 2.5% room in this 300,000-byte bound.
 orbitleague 300000
