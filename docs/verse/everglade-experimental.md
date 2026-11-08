@@ -131,3 +131,5 @@ python3 verse/tools/assets/character_glade_oracle.py \
 ```
 
 The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
+
+Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.

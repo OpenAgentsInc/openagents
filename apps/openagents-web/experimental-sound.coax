@@ -1,0 +1,36 @@
+// Experimental's audio cues use the same named Everglade sound bank and host protocol.
+#module "verse.experimentalsound";
+#test "experimental audio starts ambience and follows actual footsteps" {
+ s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.016);
+ #assert cast(string)s[0].lines[0..<s[0].n]=="~ambient-e1 0.112 0.000\n";
+ experimental_sound_tick(s[..],true,0.4,0,false,44,0,0,0.016);#assert s[0].n==0;
+ experimental_sound_tick(s[..],true,1.3,0,false,44,0,0,0.016);#assert cast(string)s[0].lines[0..<s[0].n]=="step-1-e1 0.120 0.000\n";
+}
+#test "experimental audio reacts once to combat and never to paused frames" {
+ s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.016);
+ experimental_sound_tick(s[..],true,0,0,false,39,1,1,0.016);
+ #assert cast(string)s[0].lines[0..<s[0].n]=="swing-e1 0.350 0.000\nhit-e1 0.400 0.000\n";
+ experimental_sound_tick(s[..],true,0,0,false,0,1,1,0.016);#assert cast(string)s[0].lines[0..<s[0].n]=="death-e1 0.450 0.000\n";
+ experimental_sound_tick(s[..],true,0,0,false,0,1,1,0);#assert s[0].n==0;
+}
+ExperimentalSound :: struct {lines:[256]u8;n:int;ready:bool;x:f32;z:f32;distance:f32;steps:int;bed_at:f32 = -3;time:f32;hp:int;hits:int;casts:int;}
+experimental_sound_add :: (s:[]ExperimentalSound,line:string) {
+ if s[0].n+line.count>s[0].lines.count {return;}for c:line {s[0].lines[s[0].n]=c;s[0].n+=1;}
+}
+experimental_sound_tick :: (s:[]ExperimentalSound,on:bool,x:f32,z:f32,air:bool,hp:int,hits:int,casts:int,dt:f32) {
+ s[0].n=0;if !on {s[0].ready=false;return;}if dt<=0 {return;}s[0].time+=ifx dt>0.25 then 0.25f32 else dt;
+ if s[0].time-s[0].bed_at>=2 {experimental_sound_add(s,"~ambient-e1 0.112 0.000\n");s[0].bed_at=s[0].time;}
+ if !s[0].ready {s[0].ready=true;s[0].x=x;s[0].z=z;s[0].hp=hp;s[0].hits=hits;s[0].casts=casts;return;}
+ dx:=x-s[0].x;dz:=z-s[0].z;move:=sqrt(dx*dx+dz*dz);s[0].x=x;s[0].z=z;
+ if !air && hp>0 && move<3 {s[0].distance+=move;if s[0].distance>=1.25 {s[0].distance-=1.25;which:=s[0].steps%3;s[0].steps+=1;experimental_sound_add(s,ifx which==0 then "step-1-e1 0.120 0.000\n" else ifx which==1 then "step-2-e1 0.120 0.000\n" else "step-3-e1 0.120 0.000\n");}}
+ if casts>s[0].casts && hp>0 {experimental_sound_add(s,"swing-e1 0.350 0.000\n");}
+ if hits>s[0].hits && hp>0 {experimental_sound_add(s,"hit-e1 0.400 0.000\n");}
+ if hp<=0 && s[0].hp>0 {experimental_sound_add(s,"death-e1 0.450 0.000\n");}else if hp>0 && s[0].hp<=0 {experimental_sound_add(s,"stand-e1 0.350 0.000\n");}
+ s[0].hp=hp;s[0].hits=hits;s[0].casts=casts;
+}
+#test "ambience retries for a late audio gesture and teleports do not make footsteps" {
+ s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.25);
+ for i:0..<7 {experimental_sound_tick(s[..],true,0,0,false,44,0,0,0.25);#assert s[0].n==0;}
+ experimental_sound_tick(s[..],true,10,0,false,44,0,0,0.25);#assert cast(string)s[0].lines[0..<s[0].n]=="~ambient-e1 0.112 0.000\n";
+ experimental_sound_tick(s[..],true,10,0,false,44,0,0,0.25);#assert s[0].n==0;
+}

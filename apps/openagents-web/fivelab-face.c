@@ -168,3 +168,8 @@ EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { coax_t_
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state,int32_t field) {return (int32_t)lab_creator_probe(at(state),field);}
 
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }
+
+// Experimental's per-frame audio commands, consumed once by the shared host.
+EXPORT("coaxial_sounds") uint32_t coaxial_sounds(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->experimental_audio.e[0].lines.e; }
+EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(uint32_t state) { return sizeof lab_at(state)->experimental_audio.e[0].lines.e; }
+EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { coax_t_ExperimentalSound *audio = &lab_at(state)->experimental_audio.e[0]; uint32_t n = (uint32_t)audio->n; audio->n = 0; return n; }
