@@ -6620,3 +6620,26 @@ Checks: `timing-checks.coax`, the new policy's zero-survivor mutation gate,
 strict/native witnesses, saved-seat and selected world/mode regressions.
 Scope and outstanding #13045 acceptance:
 `docs/verification/srd-timing-2026-11-08/README.md`.
+
+## Casting components precede all costs and distinguish class from world grants
+
+The compact canonical spell index retains V/S/M, priced and consumed flags
+from the pinned catalog. `cast-components.coax` decides component admission
+from authoritative speech, hand, focus and exact-material facts. A pouch or
+authorized focus substitutes only for unpriced, unconsumed materials. A held
+focus can share a Somatic gesture only on an M spell; a non-held focus exception
+does not itself provide a gesture hand. A reusable priced material remains;
+consumption removes exactly one complete matching material set, never generic
+gold or another actor's stock. Ordinary casts pay after storage/target preflight;
+Reaction and empty-target paths share the component policy.
+
+Class-feature extra-list grants have separate provenance from world grants.
+Both preserve spell access, but only the former extend the class focus's spell
+eligibility. A world grant alone does not make a spell part of that class.
+Operational spell helpers do not recast or repay their parent components.
+
+These facts must come from authoritative equipment/effect state. They are not
+proof of item acquisition, actual held-object ownership or a complete inventory
+system. Current declared presets supply their kits; world input/gear/waiver
+integration remains open. Contract and limits: `docs/dnd/casting-components.md`.
+Evidence: `docs/verification/srd-components-2026-11-08/README.md`.

@@ -46,6 +46,7 @@ tool_main :: () -> int #export_c #effects(all) {
   failed += sc_report("COMMAND-HALT-TURN", sc_halt_turn());
   failed += sc_report("CONDITION-PRONE", sc_prone());
   failed += sc_report("TIMING-PROFILE", sc_timing());
+  failed += sc_report("CAST-COMPONENTS", sc_components());
   failed += sc_report("CAST-TARGET-INDEX", sc_admission_target());
   failed += sc_report("CAST-RANGE", sc_admission_range());
   failed += sc_report("CAST-CLASS", sc_admission_class());
@@ -55,7 +56,7 @@ tool_main :: () -> int #export_c #effects(all) {
   failed += sc_report("SPELL-POLYMORPH", sc_polymorph());
   failed += sc_report("CAP-EFFECT", sc_effect_capacity());
   failed += sc_report("CAP-ZONE", sc_zone_capacity());
-  tool_err("measured=17 failed="); sc_print_int(failed);
+  tool_err("measured=18 failed="); sc_print_int(failed);
   tool_errln("; complete SRD content and rules remain unmeasured");
-  return sc_check_exit(17, failed);
+  return sc_check_exit(18, failed);
 }

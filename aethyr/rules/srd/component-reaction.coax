@@ -1,0 +1,8 @@
+// Reaction component preflight shares the ordinary casting policy. Slot
+// spending changes no speech, hand, focus or material-stock field.
+#authority;
+rs_cast_reaction_slot :: (b: [] RsBattle, actor: int, sp: int, slot: int, costs_slot: bool) -> bool #effects(all) {
+  if actor<0 || actor>=b[0].n || !rs_cast_components_ready(b[0].c[actor],sp) { return false; }
+  if !rs_reaction_slot(b,actor,slot,costs_slot) { return false; }
+  return rs_cast_components_pay_at(b[0].c,sp,actor);
+}

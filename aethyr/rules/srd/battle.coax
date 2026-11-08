@@ -14,6 +14,7 @@
 #load "spells.coax";
 #load "prone-movement.coax";
 #load "timing-profile.coax";
+#load "component-reaction.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -433,7 +434,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   slot := 0;
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
-  if !rs_reaction_slot(b,j,slot,true) { return false; }
+  if !rs_cast_reaction_slot(b,j,SP_HELLISH_REBUKE,slot,true) { return false; }
   dc := rs_dc(b, j);
   saving := rs_saving_throw(b,by,RS_DEX,dc);
   st := saving.total;
@@ -476,6 +477,7 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   s := rs_spell(sp);
   if !rs_cast_slot_shape(s.level, slot) { return false; }
   if !rs_spell_ready(b[0].c[i], sp) { return false; }
+  if !rs_cast_components_ready(b[0].c[i],sp) { return false; }
   if s.cast_time == RS_T_REACTION { return false; }
   t := s.cast_time;
   if quick {
@@ -550,6 +552,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   if chosen {
     if !rs_options_effect_room(b,i,s,sp,slot,picks,options) { return false; }
   } else if !rs_cast_effect_room(b,i,s,sp,slot,tx,ty,target) { return false; }
+  if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
   // spend
   b[0].aff_used = false;
   if s.cast_time == RS_T_ACTION && !quick { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
@@ -689,7 +692,7 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
   // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
   if c.npc != RS_NPC_NONE && slot != 1 { return false; }
   if slot == 0 { return false; }
-  if !rs_reaction_slot(b,j,slot,c.npc != RS_NPC_MAGE) { return false; }
+  if !rs_cast_reaction_slot(b,j,SP_SHIELD,slot,c.npc != RS_NPC_MAGE) { return false; }
   b[0].c[j].shield_until = ifx b[0].who == j then c.turn_at + rs_beat(b) else c.turn_at;
   l: [1] RsLine;
   rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Shield ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot): AC ");
@@ -3290,6 +3293,7 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
   #assert cd.level == 6 && cd.range_ft == 150 && cd.area == RS_A_SPHERE && cd.area_ft == 60 && cd.steps[0].a == RS_CON && cd.steps[1].a == 8 && cd.steps[1].b == 8 && cd.steps[1].c == RS_NECROTIC && cd.steps[1].d == 2;
   b: [1] RsBattle; b[0].w = 60; b[0].h = 30; b[0].dice[0].state = 5;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST), 1, 15);
+  b[0].c[a].materials[0]=RsMaterialStock.{key=RS_KEY_CIRCLE_OF_DEATH,count=1};
   near := rs_add(b[..], rs_skeleton("A", 2), 20, 15); edge := rs_add(b[..], rs_skeleton("B", 2), 31, 15); out := rs_add(b[..], rs_skeleton("C", 2), 34, 15);
   for q: 0..<3 { b[0].c[q + 1].hp_max = 300; b[0].c[q + 1].hp = 300; }
   rs_start_turn(b[..], a);

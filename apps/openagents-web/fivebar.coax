@@ -255,6 +255,12 @@ FB_EG_SLOTS_MAX :: [10] int.[0, 4, 3, 3, 3, 2, 1, 1, 1, 1];
 fb_everglade_hero :: (name: string, team: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, FB_EG_LEVEL, RS_DRUID, [6] int.[10, 14, 13, 12, 16, 8], RS_INT, RS_WIS, 8);
+  // This realm's explicit casting kit includes a pouch for its extra-list
+  // grants, a Holy Symbol, Circle of Death's pearl and Shapechange's circlet.
+  c[0].component_pouch=true;
+  c[0].materials[0]=RsMaterialStock.{key=RS_KEY_BLESS,count=1};
+  c[0].materials[1]=RsMaterialStock.{key=RS_KEY_CIRCLE_OF_DEATH,count=1};
+  c[0].materials[2]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_SHAPECHANGE],count=1};
   c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]) + 2;
   c[0].spell_ability = RS_WIS;
   for l: 0..<10 { c[0].slots_max[l] = FB_EG_SLOTS_MAX[l]; c[0].slots[l] = FB_EG_SLOTS_MAX[l]; }
@@ -296,6 +302,7 @@ fb_ready :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
   c := b[0].c[i];
   if a.kind == FB_WORLD { return true; }
   if a.kind == FB_SPELL {
+    if !rs_cast_components_ready(c,a.sp) { return false; }
     if rs_spell(a.sp).cast_time == RS_T_REACTION && c.reacted { return false; }
     return a.lvl == 0 || fb_free_slot(b, i, a.lvl) > 0;
   }
@@ -392,7 +399,7 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   // a Reaction (Feather Fall): its own Reaction and a slot, not the turn's action
   if s.cast_time == RS_T_REACTION {
     if !rs_capable(b[0].c[i]) || b[0].c[i].raging || !rs_spell_ready(b[0].c[i],a.sp) { return false; }
-    if !rs_reaction_slot(b,i,sl,true) { return false; }
+    if !rs_cast_reaction_slot(b,i,a.sp,sl,true) { return false; }
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " casts "); rs_add_text(l[..], s.name); rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[sl]); rs_add_text(l[..], "-level slot, Reaction)");
     rs_tell(b, RS_EV_CAST, a.sp, i, i, sl, 0, l[..]);
@@ -445,6 +452,7 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
 // Action, its slot and its concentration are spent as rs_cast spends them, and nothing is affected.
 fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
   if !rs_can_cast(b, i, sp, sl) { return false; }
+  if !rs_cast_components_pay(b[0].c[i..<i+1],sp) { return false; }
   s := rs_spell(sp);
   if s.cast_time == RS_T_ACTION { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
   if s.level > 0 { b[0].turn.leveled = true; b[0].c[i].slots[sl] -= 1; b[0].turn.slot_spent = true; }

@@ -89,6 +89,26 @@
   #assert !rs_spell_granted(w, SP_HUNTERS_MARK) && !rs_spell_granted(w, -1);
 }
 
+#test "class-owned grants remain distinct from world grants including helper aliases and malformed requests" {
+  c: [1] RsCreature; c[0].klass=RS_DRUID;
+  for sp: [6] int.[-1,78,99,104,1000,1] {
+    #assert !rs_grant_class_spell(c[..],sp);
+    for word: c[0].class_spell_grants { #assert word==0; }
+  }
+  #assert rs_grant_spell(c[..],SP_FIREBALL) && !rs_class_spell_granted(c[0],SP_FIREBALL);
+  #assert rs_grant_class_spell(c[..],SP_PRODUCE_FLAME) && rs_class_spell_granted(c[0],1);
+  #assert rs_grant_class_spell(c[..],SP_COMMAND) && rs_class_spell_granted(c[0],SP_COMMAND);
+  #assert rs_grant_class_spell(c[..],64) && rs_class_spell_granted(c[0],64) && !rs_class_spell_granted(c[0],65);
+  #assert !rs_class_spell_granted(c[0],-1) && !rs_class_spell_granted(c[0],78);
+  for level: 1..<3 { for klass: [2] int.[RS_DRUID,RS_WARLOCK] {
+    v: RsCreature; v.klass=klass; v.level=level; v.vigor=true;
+    #assert rs_class_spell_granted(v,SP_FALSE_LIFE)==(level==2 && klass==RS_WARLOCK);
+  } }
+  edge: [1] RsCreature;
+  #assert rs_grant_class_spell(edge[..],64) && edge[0].class_spell_grants[0]==0 && edge[0].class_spell_grants[1]==1;
+  #assert rs_class_spell_granted(edge[0],64) && !rs_class_spell_granted(edge[0],65);
+}
+
 // Only these constructors' declared subclass/style/discovery selections use
 // this helper. Raw rs_hero and world-defined characters gain no preset choices.
 rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
@@ -96,34 +116,34 @@ rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
   if c[0].klass == RS_DRUID {
     // Circle of the Land polar spells, p.46. Base-list entries are included
     // because always-prepared grants do not consume ordinary selections.
-    if level >= 3 { _ := rs_grant_spell(c, SP_RAY_OF_FROST); }
-    if level >= 3 { _ := rs_grant_spell(c, SP_FOG_CLOUD); _ = rs_grant_spell(c, SP_HOLD_PERSON); }
-    if level >= 5 { _ := rs_grant_spell(c, SP_SLEET_STORM); }
+    if level >= 3 { _ := rs_grant_class_spell(c, SP_RAY_OF_FROST); }
+    if level >= 3 { _ := rs_grant_class_spell(c, SP_FOG_CLOUD); _ = rs_grant_class_spell(c, SP_HOLD_PERSON); }
+    if level >= 5 { _ := rs_grant_class_spell(c, SP_SLEET_STORM); }
   } else if c[0].klass == RS_WARLOCK {
     // Fiend Spells, p.75. Unimplemented source spells are not granted IDs.
     if level >= 3 {
-      _ := rs_grant_spell(c, SP_BURNING_HANDS); _ = rs_grant_spell(c, SP_SCORCHING_RAY); _ = rs_grant_spell(c, SP_COMMAND);
+      _ := rs_grant_class_spell(c, SP_BURNING_HANDS); _ = rs_grant_class_spell(c, SP_SCORCHING_RAY); _ = rs_grant_class_spell(c, SP_COMMAND);
     }
-    if level >= 5 { _ := rs_grant_spell(c, SP_FIREBALL); }
-    if level >= 7 { _ := rs_grant_spell(c, SP_WALL_OF_FIRE); }
+    if level >= 5 { _ := rs_grant_class_spell(c, SP_FIREBALL); }
+    if level >= 7 { _ := rs_grant_class_spell(c, SP_WALL_OF_FIRE); }
     // The existing high-level preset chooses these Mystic Arcanum spells.
-    if level >= 11 { _ := rs_grant_spell(c, SP_CIRCLE_OF_DEATH); }
-    if level >= 13 { _ := rs_grant_spell(c, SP_FINGER_OF_DEATH); }
+    if level >= 11 { _ := rs_grant_class_spell(c, SP_CIRCLE_OF_DEATH); }
+    if level >= 13 { _ := rs_grant_class_spell(c, SP_FINGER_OF_DEATH); }
   } else if c[0].klass == RS_BARD {
     // This Lore Bard chooses Fireball and Spirit Guardians at level 6, p.35.
-    if level >= 6 { _ := rs_grant_spell(c, SP_FIREBALL); _ = rs_grant_spell(c, SP_SPIRIT_GUARDIANS); }
+    if level >= 6 { _ := rs_grant_class_spell(c, SP_FIREBALL); _ = rs_grant_class_spell(c, SP_SPIRIT_GUARDIANS); }
   } else if c[0].klass == RS_PALADIN {
     // Blessed Warrior's chosen Sacred Flame, p.54.
-    if level >= 2 { _ := rs_grant_spell(c, SP_SACRED_FLAME); }
-    if level >= 2 { _ := rs_grant_spell(c, SP_DIVINE_SMITE); }
-    if level >= 3 { _ := rs_grant_spell(c, SP_SHIELD_OF_FAITH); }
+    if level >= 2 { _ := rs_grant_class_spell(c, SP_SACRED_FLAME); }
+    if level >= 2 { _ := rs_grant_class_spell(c, SP_DIVINE_SMITE); }
+    if level >= 3 { _ := rs_grant_class_spell(c, SP_SHIELD_OF_FAITH); }
   } else if c[0].klass == RS_SORCERER {
     // Draconic Spells, p.70.
-    if level >= 3 { _ := rs_grant_spell(c, SP_COMMAND); }
+    if level >= 3 { _ := rs_grant_class_spell(c, SP_COMMAND); }
   } else if c[0].klass == RS_CLERIC {
-    if level >= 3 { _ := rs_grant_spell(c, SP_BLESS); _ = rs_grant_spell(c, SP_CURE_WOUNDS); }
+    if level >= 3 { _ := rs_grant_class_spell(c, SP_BLESS); _ = rs_grant_class_spell(c, SP_CURE_WOUNDS); }
   } else if c[0].klass == RS_RANGER {
-    _ := rs_grant_spell(c, SP_HUNTERS_MARK);
+    _ := rs_grant_class_spell(c, SP_HUNTERS_MARK);
   }
   rs_preset_spells(c);
 }
@@ -150,6 +170,16 @@ rs_spell_access :: (c: RsCreature, sp: int) -> bool #effects(all) {
   if rs_spell_granted(c, sp) { return true; }
   s := rs_spell(rs_spell_root(sp));
   return s.srd && c.spell_ability >= 0 && rs_class_spell(s.classes, c.klass);
+}
+rs_grant_class_spell :: (c: [] RsCreature, sp: int) -> bool #effects(all) {
+  if !rs_grant_spell(c,sp) { return false; }
+  c[0].class_spell_grants[sp/64] |= cast(u64) 1 << (sp%64);
+  return true;
+}
+rs_class_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
+  if !rs_executable_spell(sp) { return false; }
+  parent := rs_spell_root(sp);
+  return (c.class_spell_grants[parent/64] & (cast(u64) 1 << (parent%64)))!=0 || (parent==SP_FALSE_LIFE && c.klass==RS_WARLOCK && c.level>=2 && c.vigor);
 }
 rs_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
   if !rs_executable_spell(sp) { return false; }

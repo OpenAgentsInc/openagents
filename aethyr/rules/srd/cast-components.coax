@@ -1,0 +1,153 @@
+// SRD 5.2.1 pp.105-106: component facts and exact material-set inventory.
+#authority;
+RS_C_V :: 1; RS_C_S :: 2; RS_C_M :: 4; RS_C_PRICE :: 8; RS_C_CONSUME :: 16;
+RS_MATERIAL_STOCK :: 8;
+RsMaterialStock :: struct { key: int = -1; count: int; }
+
+#test "Verbal and Somatic components depend on speech and a gesture hand" {
+  c: [1] RsCreature;
+  #assert rs_components_allow(c[0],0,-1,false);
+  #assert rs_components_allow(c[0],RS_C_V,0,false);
+  c[0].speech_blocked=true;
+  #assert !rs_components_allow(c[0],RS_C_V,0,false) && rs_components_allow(c[0],RS_C_S,0,false);
+  c[0].gesture_hand=false; c[0].focus_held=true;
+  #assert !rs_components_allow(c[0],RS_C_S,0,true);
+  #assert !rs_components_allow(c[0],RS_C_V|RS_C_S,0,true);
+}
+#test "ordinary materials allow an accessible exact set pouch or authorized focus" {
+  c: [1] RsCreature; c[0].gesture_hand=false; c[0].material_hand=false;
+  #assert !rs_components_allow(c[0],4,0,false);
+  c[0].focus_held=true;
+  #assert !rs_components_allow(c[0],4,0,false) && rs_components_allow(c[0],6,0,true);
+  c[0].focus_held=false; c[0].focus_worn=true;
+  #assert !rs_components_allow(c[0],4,0,false);
+  #assert rs_components_allow(c[0],4,0,true) && !rs_components_allow(c[0],6,0,true);
+  c[0].gesture_hand=true; #assert rs_components_allow(c[0],6,0,true);
+  c[0].focus_worn=false; c[0].gesture_hand=false;
+  c[0].component_pouch=true; #assert !rs_components_allow(c[0],6,0,false);
+  c[0].material_hand=true; #assert rs_components_allow(c[0],6,0,false);
+  c[0].component_pouch=false;
+  c[0].materials[RS_MATERIAL_STOCK-1]=RsMaterialStock.{key=0,count=1};
+  #assert rs_components_allow(c[0],6,0,false) && !rs_components_allow(c[0],6,1,false);
+}
+#test "priced and consumed materials require exact accessible stock even with focus and pouch" {
+  for mask: [4] int.[12,14,20,30] {
+    c: [1] RsCreature; c[0].component_pouch=true; c[0].focus_held=true;
+    c[0].focus_worn=true;
+    #assert !rs_components_allow(c[0],mask,0,true);
+    c[0].materials[0]=RsMaterialStock.{key=0,count=0};
+    #assert !rs_components_allow(c[0],mask,0,true);
+    c[0].materials[0].count=-1; #assert !rs_components_allow(c[0],mask,0,true);
+    c[0].materials[0].count=1; #assert rs_components_allow(c[0],mask,0,true);
+    c[0].material_hand=false; #assert !rs_components_allow(c[0],mask,0,true);
+  }
+}
+#test "material payment consumes one exact set once while reusable materials and other stock remain" {
+  for consume: 0..<2 { for count: 0..<3 { for at: [2] int.[0,RS_MATERIAL_STOCK-1] {
+    c: [1] RsCreature; c[0].materials[at]=RsMaterialStock.{key=0,count=count};
+    c[0].materials[1]=RsMaterialStock.{key=1,count=8};
+    mask := 12+(ifx consume==1 then 16 else 0);
+    #assert rs_components_pay(c[..],mask,0,false) == (count>0);
+    #assert c[0].materials[at].count == count-(ifx count>0 && consume==1 then 1 else 0);
+    #assert c[0].materials[1].key==1 && c[0].materials[1].count==8;
+  } } }
+  c: [1] RsCreature; c[0].materials[0]=RsMaterialStock.{key=0,count=1}; c[0].speech_blocked=true;
+  #assert !rs_components_pay(c[..],29,0,false) && c[0].materials[0].count==1;
+  #assert rs_components_pay(c[..],0,-1,false) && c[0].materials[0].count==1;
+  c[0].speech_blocked=false;
+  c[0].materials[7]=RsMaterialStock.{key=0,count=1};
+  #assert rs_components_pay(c[..],28,0,false) && c[0].materials[0].count==0 && c[0].materials[7].count==1;
+  #assert rs_components_pay(c[..],28,0,false) && c[0].materials[7].count==0;
+}
+#test "component requests reject malformed masks and material identities" {
+  c: RsCreature; c.component_pouch=true;
+  for mask: [6] int.[-1,32,8,16,24,27] { #assert !rs_components_allow(c,mask,0,true); }
+  #assert !rs_components_allow(c,4,-1,true) && !rs_components_allow(c,4,RS_SPELL_KEYS.count,true);
+}
+
+#test "fresh class presets equip their own focus and the divine presets retain a reusable Holy Symbol" {
+  for klass: -1..<14 {
+    c: [1] RsCreature; c[0].klass=klass;
+    rs_component_preset(c[..]);
+    caster := klass==RS_DRUID || klass==RS_WIZARD || klass==RS_WARLOCK || klass==RS_BARD || klass==RS_CLERIC || klass==RS_PALADIN || klass==RS_RANGER || klass==RS_SORCERER;
+    #assert c[0].focus_held==caster && c[0].focus_class==(ifx caster then klass else -1);
+    divine := klass==RS_CLERIC || klass==RS_PALADIN;
+    #assert c[0].materials[0].count==(ifx divine then 1 else 0);
+    if divine { #assert c[0].materials[0].key==RS_KEY_BLESS; }
+  }
+}
+
+#test "component wrappers use canonical metadata and remain usable without battle state" {
+  c: [1] RsCreature; c[0]=rs_druid("Druid",0,3);
+  #assert rs_component_mask(SP_PRODUCE_FLAME)==3 && rs_component_mask(1)==0;
+  #assert rs_component_key(0)==RS_EXEC_SOURCE[0] && rs_component_focus(c[0],SP_ENTANGLE);
+  #assert rs_cast_components_ready(c[0],SP_ENTANGLE) && rs_cast_components_pay(c[..],SP_ENTANGLE);
+  #assert rs_cast_components_pay_at(c[..],SP_HEALING_WORD,0);
+}
+
+rs_components_allow :: (c: RsCreature, mask: int, key: int, focus: bool) -> bool #effects(all) {
+  if mask<0 || mask>31 || ((mask & 24)!=0 && (mask & RS_C_M)==0) { return false; }
+  if (mask & RS_C_V)!=0 && c.speech_blocked { return false; }
+  material_gesture := false;
+  if (mask & RS_C_M)!=0 {
+    if key<0 || key>=RS_SPELL_KEYS.count { return false; }
+    exact := rs_material_slot(c,key)>=0;
+    ordinary := (mask & 24)==0;
+    hand := c.material_hand && (exact || (ordinary && c.component_pouch));
+    held := ordinary && focus && c.focus_held;
+    worn := ordinary && focus && c.focus_worn;
+    if !hand && !held && !worn { return false; }
+    material_gesture = hand || held;
+  }
+  return (mask & RS_C_S)==0 || c.gesture_hand || material_gesture;
+}
+rs_components_pay :: (c: [] RsCreature, mask: int, key: int, focus: bool) -> bool #effects(all) {
+  return rs_components_pay_at(c,0,mask,key,focus);
+}
+rs_components_pay_at :: (c: [] RsCreature, actor: int, mask: int, key: int, focus: bool) -> bool #effects(all) {
+  if actor<0 || actor>=c.count || !rs_components_allow(c[actor],mask,key,focus) { return false; }
+  if (mask & RS_C_CONSUME)!=0 {
+    at := rs_material_slot(c[actor],key);
+    c[actor].materials[at].count-=1;
+  }
+  return true;
+}
+rs_material_slot :: (c: RsCreature, key: int) -> int #effects(all) {
+  for k: 0..<c.materials.count { if c.materials[k].key==key && c.materials[k].count>0 { return k; } }
+  return -1;
+}
+
+rs_component_key :: (sp: int) -> int #effects(all) {
+  return ifx sp>=0 && sp<RS_EXEC_SOURCE.count then RS_EXEC_SOURCE[sp] else -1;
+}
+rs_component_mask :: (sp: int) -> int #effects(all) {
+  if !rs_executable_spell(sp) { return -1; }
+  // Current house records declare no components. Operational helpers (hurl a
+  // held flame, call an existing bolt) are not a second casting of the parent.
+  if sp>=RS_HOUSE || rs_spell(sp).part_of>=0 { return 0; }
+  return RS_SPELL_KEYS[RS_EXEC_SOURCE[sp]].component_mask;
+}
+rs_component_focus :: (c: RsCreature, sp: int) -> bool #effects(all) {
+  key := rs_component_key(sp); klass := rs_source_class(c.focus_class);
+  if key == -1 { return false; }
+  return klass>=0 && ((RS_SPELL_KEYS[key].classes & (1<<klass))!=0 || (c.focus_class==c.klass && rs_class_spell_granted(c,sp)));
+}
+rs_cast_components_ready :: (c: RsCreature, sp: int) -> bool #effects(all) {
+  return rs_components_allow(c,rs_component_mask(sp),rs_component_key(sp),rs_component_focus(c,sp));
+}
+rs_cast_components_pay :: (c: [] RsCreature, sp: int) -> bool #effects(all) {
+  return rs_cast_components_pay_at(c,sp,0);
+}
+rs_cast_components_pay_at :: (c: [] RsCreature, sp: int, actor: int) -> bool #effects(all) {
+  if actor<0 || actor>=c.count { return false; }
+  return rs_components_pay_at(c,actor,rs_component_mask(sp),rs_component_key(sp),rs_component_focus(c[actor],sp));
+}
+// Fresh preset equipment only, before the actor enters a battle. Each material
+// receipt means the complete canonical material requirement, not generic gold.
+rs_component_preset :: (c: [] RsCreature) #effects(all) {
+  caster := rs_source_class(c[0].klass)>=0;
+  c[0].focus_held=caster; c[0].focus_class=ifx caster then c[0].klass else -1;
+  if c[0].klass==RS_CLERIC || c[0].klass==RS_PALADIN {
+    c[0].materials[0]=RsMaterialStock.{key=RS_KEY_BLESS,count=1};
+  }
+}

@@ -133,6 +133,7 @@ rs_priest :: (name: string, team: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_npc(name, team, RS_NPC_PRIEST, 1, [6] int.[16, 10, 12, 13, 16, 13], 13, 38);
   c[0].weapon = W_PRIEST_MACE; c[0].ranged = W_RADIANT_FLAME; c[0].extra_attack = 1;
+  c[0].focus_class=RS_CLERIC; c[0].focus_held=true; // stat block Gear: Holy Symbol
   c[0].spell_ability = RS_WIS;
   rs_npc_slots(c[..], 3, 1); rs_npc_slots(c[..], 1, 3);
   _ := rs_grant_spell(c[..], SP_SPIRIT_GUARDIANS); _ = rs_grant_spell(c[..], SP_HEALING_WORD);
@@ -148,6 +149,7 @@ rs_mage :: (name: string, team: int) -> RsCreature {
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
   c[0].weapon = W_ARCANE_BURST; c[0].ranged = W_ARCANE_BURST; c[0].extra_attack = 2;
   c[0].spell_ability = RS_INT; c[0].shield_spell = true;
+  c[0].focus_class=RS_WIZARD; c[0].focus_held=true; // stat block Gear: Wand
   rs_npc_slots(c[..], 4, 2); rs_npc_slots(c[..], 5, 1); rs_npc_slots(c[..], 1, 3);
   _ := rs_grant_spell(c[..], SP_FIREBALL); _ = rs_grant_spell(c[..], SP_CONE_OF_COLD); _ = rs_grant_spell(c[..], SP_SHIELD);
   return c[0];
@@ -169,6 +171,7 @@ rs_fanatic :: (name: string, team: int) -> RsCreature {
   c[0] = rs_npc(name, team, RS_NPC_FANATIC, 1, [6] int.[11, 14, 12, 10, 14, 13], 13, 44);
   c[0].save_prof[RS_WIS] = true;
   c[0].weapon = W_PACT_BLADE; c[0].spell_ability = RS_WIS;
+  c[0].focus_class=RS_CLERIC; c[0].focus_held=true; // stat block Gear: Holy Symbol
   rs_npc_slots(c[..], 2, 1); rs_npc_slots(c[..], 1, 2);
   _ := rs_grant_spell(c[..], SP_COMMAND); _ = rs_grant_spell(c[..], SP_HOLD_PERSON);
   return c[0];

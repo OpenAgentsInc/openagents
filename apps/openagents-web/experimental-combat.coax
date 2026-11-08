@@ -1320,7 +1320,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   while s[0].xc[0].landed == 0 && tries < 40 { s[0].creator[0].clock += 1.1; _ := xc_press(s[..], 0); tries += 1; }
   #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].target == 0;
 }
-#test "experimental combat: a blow strikes ahead within reach, a save spell takes the cone ahead, and nothing behind is picked" #steps 2000000000 {
+#test "experimental combat: a blow strikes ahead within reach and nothing behind is picked" #steps 2000000000 {
   s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
   h := s[0].creator[0].hostiles[..]; bar := s[0].xc[0].bar[1];   // Attack (a longsword: a blow)
   #assert xc_aim_kind(s[..], bar).kind == XC_AIM_MELEE;
@@ -1332,6 +1332,9 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   #assert xc_aim(s[..], bar).foe == 0;
   h[0].enemies[0].x = 0; h[0].enemies[0].z = 3.5;     // ahead but out of reach
   #assert xc_aim(s[..], bar).foe == -1;
+  #assert xc_aim_kind(s[..], s[0].xc[0].bar[0]).kind == XC_AIM_SELF;
+}
+#test "experimental combat: a save spell takes the cone ahead and nothing outside is picked" #steps 2000000000 {
   // Sacred Flame: the nearest in range within 30 degrees ahead, or nothing (its icon fizzles, no turn spent)
   c: [1] Lab; xc_test_lab(c[..], FB_CL_CLERIC, 0);
   g := c[0].creator[0].hostiles[..]; flame := c[0].xc[0].bar[0];
@@ -1341,10 +1344,11 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   #assert !xc_press(c[..], 0) && c[0].xc[0].fizzle == 0 && c[0].xc[0].casts == 0;
   g[0].enemies[0].x = 1; g[0].enemies[0].z = 8;      // 7 degrees off: inside
   #assert xc_aim(c[..], flame).foe == 0;
+}
+#test "experimental combat: Thunderwave's cube follows the facing direction" #steps 2000000000 {
   // Thunderwave's cube is set ahead of you; Second Wind is yours
   w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 1.5707963);
   tw := xc_aim(w[..], w[0].xc[0].bar[4]); #assert tw.kind == XC_AIM_AREA && tw.fx > 0.99 && abs(tw.reach - 4.572) < 0.01;
-  #assert xc_aim_kind(s[..], s[0].xc[0].bar[0]).kind == XC_AIM_SELF;
 }
 #test "experimental combat: a melee class holds its weapon, and a blow lands where its blade meets a monster, not at the press" #steps 2000000000 {
   #assert xc_kit(FB_CL_BARBARIAN) == 0 && cc.CC_KIT_TWO[0] && xc_kit(FB_CL_FIGHTER) == 1 && xc_kit(FB_CL_PALADIN) == 2;
@@ -1368,6 +1372,8 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
     tries += 1;
   }
   #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].fallbacks > 0;
+}
+#test "experimental combat: two-handed weapons use the owned cleave's impact timing" #steps 2000000000 {
   // the Barbarian's greataxe and the Fighter's greatsword swing the owned two-handed cleave, its impact the action's
   t: [1] Lab; xc_test_lab(t[..], FB_CL_BARBARIAN, 0); t[0].creator[0].clock = 5;
   #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_OWN + figs.TWOHAND_AXE_CLEAVE && t[0].creator[0].weapon == 0;
@@ -1376,6 +1382,8 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   #assert d.length == act.action_ticks_of_seconds(f64(figs.bd_seconds(figs.BD_OWN + figs.TWOHAND_AXE_CLEAVE)));
   xc_test_lab(t[..], FB_CL_FIGHTER, 0); t[0].creator[0].clock = 9; t[0].xc[0].pend = -1;
   #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_OWN + figs.TWOHAND_SWORD_CLEAVE && t[0].creator[0].weapon == 1;
+}
+#test "experimental combat: a caster's spell resolves without a weapon swing" #steps 2000000000 {
   // a caster's spell resolves at once, with no swing
   w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 0); w[0].creator[0].clock = 5;
   #assert xc_press(w[..], 0) && w[0].xc[0].pend == -1 && w[0].creator[0].swing_clip == -1;

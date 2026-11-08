@@ -256,6 +256,17 @@ preserves rescue resources consumed by its save. Eleven new evaluator/native
 scenarios cover the migrated paths. Death saves, condition lifecycle and wider
 combat acceptance remain open; #13039 is not complete.
 
+The [component admission change](../verification/srd-components-2026-11-08/README.md)
+projects canonical V/S/M, price and consumption flags for all 339 records.
+Ordinary, Reaction and empty-target paths check speech, hands, eligible focus
+or pouch, and exact material receipts before casting costs. Reusable materials
+remain; component payment tests consume one matching set at a time. Separate
+class-feature grants preserve class-focus eligibility without treating arbitrary
+world grants as class spells. CAST-COMPONENTS adds a native witness. Actual
+equipment/held-object state, target-dependent material quantities, feature
+waivers and world control integration remain open; this does not complete
+#13038, #13044, #13045 or #13046.
+
 ## Canonical source inventory
 
 [data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry

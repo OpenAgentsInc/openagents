@@ -12,6 +12,18 @@
 #load "fivemmo-hotbar.coax";   // 5E MMO's hotbar pictures, by name
 #load "everglade-hotbar.coax";  // Everglade's
 
+#test "component refusal reaches hotbar readiness, saved-seat casting and empty-target casts" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  me := s[0].me; b[0].c[me].speech_blocked=true;
+  a := fb_spell(SP_HEALING_WORD,1,FB_ALLY);
+  slots := b[0].c[me].slots[1]; seq := b[0].book[0].seq;
+  #assert !fb_ready(b[..],me,a) && !fb_seat_can(b[..],s[..],a);
+  #assert !fb_seat_use(b[..],s[..],a,-1,0,0,me);
+  fb_seat_in(b[..],s[..]); #assert !fb_cast_at_nothing(b[..],me,SP_HEALING_WORD,1); fb_seat_out(b[..],s[..]);
+  #assert b[0].c[me].slots[1]==slots && b[0].book[0].seq==seq && !s[0].turn.bonus;
+  b[0].c[me].speech_blocked=false; #assert fb_ready(b[..],me,a) && fb_seat_can(b[..],s[..],a);
+}
+
 #test "a real-time seat retains Prone until it explicitly pays to stand in its own turn" {
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO].cond |= RS_PRONE;

@@ -9,6 +9,30 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "battle.coax";
 
+#test "compliance components: voice hand and priced-material refusal precede casting costs" { #assert sc_components(); }
+sc_components :: () -> bool {
+  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
+  rs_start_turn(b[..],a); b[0].c[a].speech_blocked=true;
+  slots := b[0].c[a].slots[1]; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+  if rs_cast(b[..],a,SP_HEALING_WORD,1,0,0,a) || b[0].c[a].slots[1]!=slots || b[0].book[0].seq!=seq || b[0].dice[0].rolled!=rolls { return false; }
+  b[0].c[a].speech_blocked=false; b[0].c[a].materials[0].count=0; b[0].c[a].component_pouch=true;
+  if rs_cast(b[..],a,SP_BLESS,1,0,0,a) || b[0].c[a].slots[1]!=slots || b[0].turn.action { return false; }
+  b[0].c[a].materials[0].count=1;
+  if !rs_cast(b[..],a,SP_BLESS,1,0,0,a) || b[0].c[a].materials[0].count!=1 { return false; }
+  rs_end_turn(b[..],a); rs_start_turn(b[..],a);
+  b[0].c[a].gesture_hand=false; b[0].c[a].material_hand=false; b[0].c[a].focus_held=false; b[0].c[a].hp=1;
+  if !rs_cast(b[..],a,SP_HEALING_WORD,1,0,0,a) || b[0].c[a].hp<=1 { return false; }
+  s := rs_add(b[..],rs_sorcerer("Sorcerer",1,3),2,1);
+  selected := [1] int.[RS_EXEC_SOURCE[SP_SHIELD]];
+  if !rs_set_spells(b[0].c[s..<s+1],selected[..]) { return false; }
+  b[0].c[s].shield_spell=true; b[0].c[s].gesture_hand=false;
+  slots=b[0].c[s].slots[1];
+  if rs_shield(b[..],s) || b[0].c[s].slots[1]!=slots || b[0].c[s].reacted { return false; }
+  b[0].c[s].gesture_hand=true;
+  return rs_shield(b[..],s);
+}
+
 #test "compliance timing: declared action movement and recharge cannot leak into reset strict mode" { #assert sc_timing(); }
 sc_timing :: () -> bool {
   b: [1] RsBattle; b[0].w=12; b[0].h=8;

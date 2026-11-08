@@ -22,6 +22,7 @@
 #load "effect-storage.coax";
 #load "hit-points.coax";
 #load "command-halt.coax";
+#load "cast-components.coax";
 
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
@@ -186,6 +187,12 @@ RsCreature :: struct {
   save_prof: [6] bool;
   ac: int; hp: int; hp_max: int;
   temp: int;                // Temporary Hit Points
+  speech_blocked: bool;     // gagged or inside magical silence
+  gesture_hand: bool = true; material_hand: bool = true;
+  focus_held: bool; focus_worn: bool; component_pouch: bool;
+  focus_class: int = -1;    // the feature authorizing this focus, not a spell grant
+  class_spell_grants: [2] u64; // extra-list spells supplied by this class's features
+  materials: [RS_MATERIAL_STOCK] RsMaterialStock;
   eff: [RS_EFFECTS] RsEffect;
   speed: int;               // feet a turn
   spell_ability: int;       // the spellcasting ability (-1: none)
@@ -316,6 +323,7 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_DRUID; c[0].humanoid = true; c[0].ranged = -1;
+  rs_component_preset(c[..]);
   c[0].score = [6] int.[10, 14, 13, 12, 16, 8];
   // an Ability Score Improvement at 4 (the feat, p. 87): Wisdom +2
   if level >= 4 { c[0].score[RS_WIS] = rs_min(c[0].score[RS_WIS] + 2, 20); }
@@ -356,6 +364,7 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_WIZARD; c[0].humanoid = true; c[0].ranged = -1;
+  rs_component_preset(c[..]);
   c[0].score = [6] int.[8, 14, 13, 16, 12, 10];
   // an Ability Score Improvement at 4 (the feat, p. 87): Intelligence +2
   if level >= 4 { c[0].score[RS_INT] = rs_min(c[0].score[RS_INT] + 2, 20); }
@@ -398,6 +407,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_WARLOCK; c[0].humanoid = true; c[0].ranged = -1;
+  rs_component_preset(c[..]);
   c[0].score = [6] int.[8, 14, 13, 10, 12, 16];
   // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
   if level >= 4 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
@@ -580,6 +590,7 @@ rs_hero :: (name: string, team: int, level: int, klass: int, score: [6] int, sav
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level; c[0].klass = klass; c[0].humanoid = true; c[0].ranged = -1;
+  rs_component_preset(c[..]);
   c[0].score = score;
   c[0].save_prof[save_a] = true; c[0].save_prof[save_b] = true;
   con := rs_mod(score[RS_CON]);
