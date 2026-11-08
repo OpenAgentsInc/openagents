@@ -1,0 +1,60 @@
+#load "battle.coax";
+
+#test "borrowed reaction strike retains the true turn's slot and Quickened restrictions" {
+  for quick:0..<2 { for spent:0..<2 {
+    b:[1] RsBattle; b[0].w=8; b[0].h=8;
+    _:=rs_add(b[..],rs_wizard("Mover",0,3),2,2); _=rs_add(b[..],rs_guard("Reactor",1),3,2);
+    rs_start_turn(b[..],0); b[0].turn.quickened=quick==1; b[0].turn.slot_spent=spent==1;
+    b[0].turn.action=true; b[0].turn.move_left=3; b[0].turn.disengaged=true;
+    #assert rs_reaction_frame_begin(b[..],1) && b[0].who==1 && !b[0].turn.action;
+    slots:=b[0].c[0].slots[1]; allowed:=quick==0 && spent==0;
+    #assert rs_reaction_slot(b[..],0,1,true)==allowed;
+    #assert b[0].c[0].slots[1]==slots-(ifx allowed then 1 else 0);
+    #assert b[0].c[0].reacted==allowed;
+    b[0].turn.struck=true; b[0].turn.sneaked=true; b[0].turn.move_left=99;
+    rs_reaction_frame_end(b[..]);
+    #assert b[0].who==0 && b[0].turn.action && b[0].turn.move_left==3 && b[0].turn.disengaged;
+    #assert b[0].turn.slot_spent==(spent==1 || allowed) && b[0].turn.quickened==(quick==1);
+    #assert !b[0].turn.struck && !b[0].turn.sneaked && !b[0].reaction_frame.on;
+  } }
+}
+
+#test "reaction frame on the true actor retains strike state and commits spell payment" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_wizard("Actor",0,3),2,2); rs_start_turn(b[..],0);
+  b[0].turn.sneaked=true; b[0].turn.move_left=2;
+  #assert rs_reaction_frame_begin(b[..],0) && b[0].turn.sneaked;
+  #assert rs_reaction_slot(b[..],0,1,true);
+  b[0].turn.struck=true; rs_reaction_frame_end(b[..]);
+  #assert b[0].who==0 && b[0].turn.sneaked && b[0].turn.struck && b[0].turn.move_left==2;
+  #assert b[0].turn.slot_spent && b[0].turn.leveled && !b[0].reaction_frame.on;
+}
+
+#test "a borrowed reactor's off-turn spell does not inherit the true actor's spent or Quickened budget" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_wizard("Mover",0,3),2,2); _=rs_add(b[..],rs_wizard("Reactor",1,3),3,2);
+  rs_start_turn(b[..],0); b[0].turn.quickened=true; b[0].turn.slot_spent=true;
+  #assert rs_reaction_frame_begin(b[..],1);
+  #assert rs_reaction_slot(b[..],1,1,true) && !b[0].turn.slot_spent && !b[0].turn.leveled;
+  #assert b[0].reaction_frame.turn.quickened && b[0].reaction_frame.turn.slot_spent;
+  rs_reaction_frame_end(b[..]); #assert b[0].who==0 && b[0].turn.quickened && b[0].turn.slot_spent;
+}
+
+#test "non-slot NPC Reaction uses preserve true slot-spent state but mark leveled casting" {
+  for spent:0..<2 {
+    b:[1] RsBattle; b[0].w=8; b[0].h=8;
+    _:=rs_add(b[..],rs_mage("Mage",0),2,2); _=rs_add(b[..],rs_guard("Reactor",1),3,2);
+    rs_start_turn(b[..],0); b[0].turn.slot_spent=spent==1;
+    #assert rs_reaction_frame_begin(b[..],1) && rs_reaction_slot(b[..],0,1,false);
+    rs_reaction_frame_end(b[..]);
+    #assert b[0].turn.slot_spent==(spent==1) && b[0].turn.leveled;
+  }
+}
+
+#test "reaction context refuses invalid actors and reset retires a retained frame" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_fighter("Actor",0,1),2,2); rs_start_turn(b[..],0); b[0].turn.action=true;
+  for actor:[3]int.[-1,1,2] { #assert !rs_reaction_frame_begin(b[..],actor) && b[0].who==0 && b[0].turn.action && !b[0].reaction_frame.on; }
+  rs_reaction_frame_end(b[..]); #assert b[0].who==0 && b[0].turn.action;
+  #assert rs_reaction_frame_begin(b[..],0); rs_reset(b[..]); #assert !b[0].reaction_frame.on && b[0].n==0;
+}

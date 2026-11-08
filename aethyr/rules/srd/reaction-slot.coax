@@ -53,9 +53,17 @@ rs_reaction_slot_allowed :: (own_turn: bool, spent: bool, quickened: bool, costs
 rs_reaction_slot :: (b: [] RsBattle, actor: int, slot: int, costs_slot: bool) -> bool #effects(all) {
   if actor < 0 || actor >= b[0].n || slot < 1 || slot > 9 { return false; }
   if b[0].c[actor].reacted || b[0].c[actor].slots[slot] <= 0 { return false; }
-  own := b[0].who == actor;
-  if !rs_reaction_slot_allowed(own,b[0].turn.slot_spent,b[0].turn.quickened,costs_slot) { return false; }
+  owner:=rs_turn_owner(b);
+  spent:=ifx b[0].reaction_frame.on then b[0].reaction_frame.turn.slot_spent else b[0].turn.slot_spent;
+  quick:=ifx b[0].reaction_frame.on then b[0].reaction_frame.turn.quickened else b[0].turn.quickened;
+  own := owner == actor;
+  if !rs_reaction_slot_allowed(own,spent,quick,costs_slot) { return false; }
   b[0].c[actor].slots[slot] -= 1; b[0].c[actor].reacted = true;
-  if own { if costs_slot { b[0].turn.slot_spent = true; } b[0].turn.leveled = true; }
+  if own {
+    if b[0].reaction_frame.on {
+      if costs_slot { b[0].reaction_frame.turn.slot_spent=true; }
+      b[0].reaction_frame.turn.leveled=true;
+    } else { if costs_slot { b[0].turn.slot_spent = true; } b[0].turn.leveled = true; }
+  }
   return true;
 }

@@ -6943,3 +6943,15 @@ not clock expiry, without consuming unrelated Reactions. This is a trigger
 query, not Reaction strike execution or movement integration. The pending
 executor must preserve true mover-turn spell budgets and strike-local state.
 Evidence: `docs/verification/srd-opportunity-trigger-2026-11-08/README.md`.
+
+## Opportunity strikes preserve the actual turn while borrowing attack state
+
+The shared opportunity executor admits exactly one represented melee weapon
+attack/Unarmed Strike, spends its Reaction on a hit or miss, and rolls back
+all state on refusal. It resolves before movement; ordinary movement adapters
+are not yet wired. A retained reaction frame keeps true owner spell budgets
+and Shield duration separate from strike-local marks, and off-turn rider
+deadlines use the upcoming reactor turn. Returned strike state carries optional
+follow-up credit without changing the mover's budget. This supersedes the
+pending-executor statements above, not their movement-integration limitation.
+Evidence: `docs/verification/srd-opportunity-attack-2026-11-08/README.md`.

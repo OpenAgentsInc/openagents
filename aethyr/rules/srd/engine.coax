@@ -169,7 +169,7 @@ RS_USES :: 11;
 // rule), leave the modifier off its damage (`bare`), add damage of a second type on a hit (`plus_*`:
 // dice and a flat part, doubled dice on a Critical Hit), and be a melee or a ranged attack as it is
 // made (`both`: no Disadvantage from 5 feet).
-RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int;
+RsWeapon :: struct { reach_ft:int = 5; id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int;
                      ability: int = -1; bare: bool; plus_dice: int; plus_sides: int; plus_flat: int; plus_kind: int; both: bool; }
 W_UNARMED :: 0; W_GREATAXE :: 1; W_SHORTSWORD :: 2; W_SHORTBOW :: 3;
 W_GREATSWORD :: 4; W_LONGSWORD :: 5; W_MACE :: 6; W_LONGBOW :: 7; W_DAGGER :: 8;

@@ -1,0 +1,45 @@
+// A single borrowed melee-strike context. The saved frame remains the true
+// active turn for Reaction spell budgets; it is not another logical turn.
+#authority;
+rs_reaction_frame_begin :: (b:[] RsBattle,actor:int)->bool #effects(all) {
+  if actor<0 || actor>=b[0].n || b[0].reaction_frame.on { return false; }
+  b[0].reaction_frame=RsReactionFrame.{on=true,who=b[0].who,turn=b[0].turn};
+  if b[0].who!=actor { b[0].turn=RsTurn.{}; }
+  b[0].who=actor;
+  return true;
+}
+rs_reaction_frame_end :: (b:[] RsBattle) #effects(all) {
+  if !b[0].reaction_frame.on { return; }
+  if b[0].reaction_frame.who==b[0].who {
+    // Own-turn strikes retain their per-turn marks, but spell payment was
+    // committed through the true budget frame, not the scratch context.
+    b[0].turn.slot_spent=b[0].reaction_frame.turn.slot_spent;
+    b[0].turn.leveled=b[0].reaction_frame.turn.leveled;
+  } else { b[0].turn=b[0].reaction_frame.turn; }
+  b[0].who=b[0].reaction_frame.who;
+  b[0].reaction_frame=RsReactionFrame.{};
+}
+
+#test "reaction frame refuses nested loans and restores the original actor" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_fighter("Actor",0,1),2,2); b[0].who=-1; b[0].turn.action=true;
+  #assert rs_reaction_frame_begin(b[..],0) && b[0].who==0 && !b[0].turn.action;
+  #assert !rs_reaction_frame_begin(b[..],0) && b[0].reaction_frame.who == -1;
+  rs_reaction_frame_end(b[..]); #assert b[0].who == -1 && b[0].turn.action && !b[0].reaction_frame.on;
+}
+
+// Timing and slot policies observe the actual turn, not the borrowed striker.
+rs_turn_owner :: (b:[] RsBattle)->int #effects(all) { return ifx b[0].reaction_frame.on then b[0].reaction_frame.who else b[0].who; }
+rs_feature_next_turn_at :: (b:[] RsBattle,i:int)->f32 #effects(all) {
+  if b[0].reaction_frame.on && b[0].reaction_frame.who!=i { return b[0].c[i].turn_at; }
+  return b[0].c[i].turn_at+rs_beat(b);
+}
+#test "reaction timing distinguishes actual owner and the off-turn reactor" {
+  b:[1] RsBattle; _:=rs_add(b[..],rs_fighter("Owner",0,3),2,2); _=rs_add(b[..],rs_guard("Reactor",1),3,2);
+  b[0].who=0; b[0].c[0].turn_at=4; b[0].c[1].turn_at=9;
+  #assert rs_turn_owner(b[..])==0 && rs_feature_next_turn_at(b[..],1)==f32(9)+rs_beat(b[..]);
+  #assert rs_reaction_frame_begin(b[..],1);
+  #assert rs_turn_owner(b[..])==0 && rs_feature_next_turn_at(b[..],1)==9;
+  #assert rs_feature_next_turn_at(b[..],0)==f32(4)+rs_beat(b[..]);
+  rs_reaction_frame_end(b[..]); #assert rs_turn_owner(b[..])==0;
+}

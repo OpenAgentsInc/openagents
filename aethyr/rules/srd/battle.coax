@@ -23,6 +23,7 @@
 #load "zone-lifetime.coax";
 #load "effect-admission.coax";
 #load "reaction-slot.coax";
+#load "reaction-frame.coax";
 #load "effect-rolls.coax";
 #load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
@@ -35,6 +36,7 @@
 #load "dash.coax";
 #load "disengage.coax";
 #load "opportunity-trigger.coax";
+#load "opportunity-attack.coax";
 #load "movement-credit.coax";
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
@@ -62,6 +64,7 @@ RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1:
 RsTurn :: struct { disengaged: bool; action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; move_basis: int; move_debt: int; move_tracked: bool; dash_n: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
                    leveled: bool; quickened: bool; stunned: bool; resurged: bool; }
+RsReactionFrame :: struct { on:bool; who:int = -1; turn:RsTurn; }
 RsBattle :: struct {
   c: [] RsCreature; n: int;   // the creatures: own's room (rs_room), or a world's (rs_use)
   zone: [RS_ZONES] RsZone;
@@ -74,6 +77,7 @@ RsBattle :: struct {
   aff_used: bool;             // Elemental Affinity's one roll spent in this casting
   who: int;                   // whose turn is running (-1 none)
   turn: RsTurn;
+  reaction_frame: RsReactionFrame; // true turn while a Reaction strike borrows acting state
   // Strict timing is the default: six-second turns and no automatic recovery.
   // The declared action profile gives 1.5-second turns, proportional rounded
   // movement, slot/Rage/ordinary-use recharge at 9 seconds, Focus and the
@@ -160,7 +164,7 @@ rs_reset :: (b: [] RsBattle) {
   b[0].dice[0] = RsDice.{};
   b[0].book[0] = RsLog.{};
   b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
-  b[0].turn = RsTurn.{}; rs_reset_timing(b);
+  b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_timing(b);
   for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
 }
 rs_inside :: (z: RsZone, x: int, y: int) -> bool {
@@ -325,8 +329,8 @@ rs_drop_effect :: (b: [] RsBattle, j: int, k: int) {
   b[0].c[j] = c[0];
 }
 // When the caster's next turn ends, and when it starts (its turns are instants on the clock).
-rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) + 0.05; }
-rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return b[0].c[i].turn_at + rs_beat(b) - 0.01; }
+rs_after_next_turn :: (b: [] RsBattle, i: int) -> f32 { return rs_feature_next_turn_at(b,i) + 0.05; }
+rs_before_next_turn :: (b: [] RsBattle, i: int) -> f32 { return rs_feature_next_turn_at(b,i) - 0.01; }
 
 // What follows a creature dropping to 0: a Hex on it can move on a later turn, and a Fiend
 // Warlock who dropped it, or stands within 10 feet of it, has Dark One's Blessing.
@@ -340,7 +344,7 @@ rs_dropped :: (b: [] RsBattle, by: int, j: int) {
       ek := b[0].c[j].eff[e].kind;
       if b[0].c[j].eff[e].by == k && ((ek == EF_HEX && c.conc == SP_HEX) || (ek == EF_MARK && c.conc == SP_HUNTERS_MARK)) {
         b[0].c[k].hex_free = true;
-        b[0].c[k].hex_free_after = ifx b[0].who == k then c.turn_at else c.turn_at - rs_beat(b);
+        b[0].c[k].hex_free_after = ifx rs_turn_owner(b) == k then c.turn_at else c.turn_at - rs_beat(b);
       }
     }
     if !c.dark_blessing || !rs_up(c) || c.team == b[0].c[j].team { continue; }
@@ -680,7 +684,7 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
   if c.npc != RS_NPC_NONE && slot != 1 { return false; }
   if slot == 0 { return false; }
   if !rs_cast_reaction_slot(b,j,SP_SHIELD,slot,c.npc != RS_NPC_MAGE) { return false; }
-  b[0].c[j].shield_until = ifx b[0].who == j then c.turn_at + rs_beat(b) else c.turn_at;
+  b[0].c[j].shield_until = ifx rs_turn_owner(b) == j then c.turn_at + rs_beat(b) else c.turn_at;
   l: [1] RsLine;
   rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Shield ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot): AC ");
   rs_add_int(l[..], c.ac + 5);
@@ -906,7 +910,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       // follows the caster's verbal orders (the world raises it: rise_by, rise_at)
       if !b[0].c[j].dead || !b[0].c[j].humanoid || b[0].c[j].rise_by >= 0 { continue; }
       b[0].c[j].rise_by = i;
-      b[0].c[j].rise_at = ifx b[0].who == i then b[0].c[i].turn_at + rs_beat(b) else b[0].c[i].turn_at;
+      b[0].c[j].rise_at = ifx rs_turn_owner(b) == i then b[0].c[i].turn_at + rs_beat(b) else b[0].c[i].turn_at;
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " will rise as a Zombie at the start of ");
       rs_add_name(l[..], b, i); rs_add_text(l[..], "'s next turn");
@@ -1388,7 +1392,7 @@ rs_curse_damage :: (b: [] RsBattle, i: int, j: int, crit: bool) {
 }
 // The end of creature j's own next turn: the one running, or the one coming.
 rs_own_turn_end :: (b: [] RsBattle, j: int) -> f32 {
-  return ifx b[0].who == j then b[0].c[j].turn_at + rs_beat(b) + 0.05 else b[0].c[j].turn_at + 0.05;
+  return ifx rs_turn_owner(b) == j then b[0].c[j].turn_at + rs_beat(b) + 0.05 else b[0].c[j].turn_at + 0.05;
 }
 // Whether i can use weapon w's mastery property m (Weapon Mastery).
 rs_mastery :: (b: [] RsBattle, i: int, w: int, m: int) -> bool { return rs_weapon(w).mastery == m && (b[0].c[i].masteries & (1 << m)) != 0; }

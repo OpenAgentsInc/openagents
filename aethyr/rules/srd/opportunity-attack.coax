@@ -1,0 +1,42 @@
+// SRD 5.2.1 p.15: one melee weapon attack/Unarmed Strike, as a Reaction,
+// immediately before leaving reach. This API resolves the boundary, not movement.
+#authority;
+RsOpportunityResult :: struct { admitted:bool; hit:bool; strike:RsTurn; }
+rs_opportunity_attack :: (b:[] RsBattle,reactor:int,mover:int,w:int,q:RsOpportunityMove)->RsOpportunityResult #effects(all) {
+  switch rs_opportunity_attack_atomic(b,reactor,mover,w,q) { case none { return RsOpportunityResult.{}; } case some(r) { return r; } }
+}
+rs_opportunity_attack_atomic :: (b:[] RsBattle,reactor:int,mover:int,w:int,q:RsOpportunityMove)->RsOpportunityResult? #effects(all) {
+  r:RsOpportunityResult;
+  #transaction {
+    r=rs_opportunity_attack_apply(b,reactor,mover,w,q);
+    if !r.admitted { return null; }
+  }
+  return some(r);
+}
+rs_opportunity_attack_apply :: (b:[] RsBattle,reactor:int,mover:int,w:int,q:RsOpportunityMove)->RsOpportunityResult #effects(all) {
+  r:RsOpportunityResult;
+  // The represented weapon bank, not a fallback unknown weapon or spell attack.
+  if w<0 || w>=W_ARCANE_BURST { return r; }
+  wp:=rs_weapon(w); move:=q; move.melee=wp.range_ft<=wp.reach_ft || wp.both; move.reach=wp.reach_ft;
+  if !rs_opportunity_trigger(b,reactor,mover,move) { return r; }
+  if w!=W_UNARMED && w!=b[0].c[reactor].weapon { return r; }
+  for effect:b[0].c[reactor].eff {
+    if effect.by==mover && (rs_effect_conditions(effect)&RS_CHARMED)!=0 { return r; }
+  }
+  if !rs_reaction_frame_begin(b,reactor) { return r; }
+  if !rs_strikes_fit(b,reactor,mover,w,1,false) { return r; }
+  b[0].c[reactor].reacted=true;
+  r.hit=rs_strike(b,reactor,mover,w,false);
+  rs_after_blow(b,reactor);
+  r.admitted=true; r.strike=b[0].turn;
+  rs_reaction_frame_end(b);
+  return r;
+}
+
+#test "opportunity entry resolves one strike and leaves the movement proposal uncommitted" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  _:=rs_add(b[..],rs_guard("Reactor",1),2,2); _=rs_add(b[..],rs_barbarian("Mover",0,6),3,2); rs_start_turn(b[..],1);
+  q:=RsOpportunityMove.{x=4,y=2,seen=true,movement=true};
+  r:=rs_opportunity_attack(b[..],0,1,W_SPEAR,q);
+  #assert r.admitted && b[0].c[0].reacted && b[0].c[1].x==3 && b[0].who==1;
+}
