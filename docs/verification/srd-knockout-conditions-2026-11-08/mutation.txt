@@ -1,0 +1,8 @@
+knockout: mutation scope: unit aethyr/rules/srd/knockout.coax (its procedures; every check retained) -> 73 mutants, 73 killed, 0 survived
+stabilization: mutation scope: unit aethyr/rules/srd/stabilization.coax (its procedures; every check retained) -> 175 mutants, 175 killed, 0 survived
+hit-points: mutation scope: unit aethyr/rules/srd/hit-points.coax (its procedures; every check retained) -> 137 mutants, 137 killed, 0 survived
+effect-storage: mutation scope: unit aethyr/rules/srd/effect-storage.coax (its procedures; every check retained) -> 133 mutants, 133 killed, 0 survived
+command-halt: mutation scope: unit aethyr/rules/srd/command-halt.coax (its procedures; every check retained) -> 43 mutants, 43 killed, 0 survived
+short-rest: mutation scope: unit aethyr/rules/srd/short-rest.coax (its procedures; every check retained) -> 235 mutants, 235 killed, 0 survived
+condition-rolls: mutation scope: unit aethyr/rules/srd/condition-rolls.coax (its procedures; every check retained) -> 90 mutants, 90 killed, 0 survived
+effect-admission: mutation scope: unit aethyr/rules/srd/effect-admission.coax (its procedures; every check retained) -> 170 mutants, 170 killed, 0 survived
