@@ -17,6 +17,7 @@
   #assert sc_active_exit(19, 1, 0) == 0;
   #assert sc_active_exit(19, 1, 1) == 1 && sc_active_exit(19, 1, 18) == 1;
   #assert sc_active_exit(2, 1, 0) == 0 && sc_active_exit(2, 1, 1) == 1;
+  #assert sc_active_exit(1, 0, 0) == 0 && sc_active_exit(1, 0, 1) == 1;
   #assert sc_active_exit(19, 0, 0) == 0 && sc_active_exit(19, 0, 19) == 1;
   // Too many active failures for the active count, or negative counts.
   #assert sc_active_exit(19, 1, 19) == 2 && sc_active_exit(19, 0, 20) == 2;
@@ -39,7 +40,8 @@ sc_parked :: (id: string) -> bool #effects(all) {
 }
 // `failed` counts failing probes that are not parked.
 sc_active_exit :: (measured: int, parked: int, failed: int) -> int #effects(all) {
-  if measured <= 0 || parked < 0 || parked >= measured { return 2; }
+  // parked >= 0 and parked < measured also require measured >= 1.
+  if parked < 0 || parked >= measured { return 2; }
   if failed < 0 || failed > measured - parked { return 2; }
   return ifx failed > 0 then 1 else 0;
 }
