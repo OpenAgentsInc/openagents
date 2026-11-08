@@ -422,3 +422,17 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   }
   #assert fb_cl_of_kind("druid") == -1 && fb_cl_of_kind("warlock") == -1;
 }
+
+
+#test "each Moonbeam pulse shares damage across its simultaneous saves and renews next round" {
+  b: [1] RsBattle; s: [1] FbSeat; z: [FB_ZONES] FbZone;
+  ft_field(b[..],s[..],13); b[0].dice[0].fixed=true;
+  bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
+  #assert ft_try(b[..],s[..],20).ok;
+  fb_zone_add(z[..],b[..],FT_HERO,bar[20],2,b[0].c[FT_FOE].x,b[0].c[FT_FOE].y);
+  for round: 0..<2 {
+    b[0].clock+=6.1f32; before := b[0].dice[0].rolled;
+    #assert fb_zones_round(z[..],b[..])==2;
+    #assert b[0].dice[0].rolled==before+4; // two saves and one 2d10 roll
+  }
+}

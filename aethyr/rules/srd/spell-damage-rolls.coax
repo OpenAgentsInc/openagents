@@ -1,0 +1,51 @@
+// SRD 5.2.1 p.16. One scope belongs to one simultaneous save batch.
+#authority;
+
+#test "save damage shares each instruction, while attacks and new batches roll independently" {
+  d: [1] RsDice; d[0].fixed=true;
+  scope: [1] RsDamageScope;
+  first := rs_damage_roll(d[..],scope[..],0,true,3,6,2,3,true);
+  #assert first.amount==10 && first.weak==4 && d[0].rolled==4;
+  again := rs_damage_roll(d[..],scope[..],0,true,3,6,2,3,true);
+  #assert again.amount==10 && again.weak==4 && d[0].rolled==4;
+  other := rs_damage_roll(d[..],scope[..],1,true,2,8,0,0,false);
+  #assert other.amount==8 && d[0].rolled==6;
+  attack := rs_damage_roll(d[..],scope[..],0,false,2,6,0,0,false);
+  #assert attack.amount==6 && d[0].rolled==8;
+  attack2 := rs_damage_roll(d[..],scope[..],0,false,2,6,0,0,false);
+  #assert attack2.amount==6 && d[0].rolled==10;
+  fresh: [1] RsDamageScope;
+  next := rs_damage_roll(d[..],fresh[..],0,true,1,4,-9,0,false);
+  #assert next.amount==0 && next.weak==0 && d[0].rolled==11;
+  #assert scope[0].roll[0].amount==10;
+}
+
+RsDamageRoll :: struct { amount: int; weak: int; }
+RsDamageScope :: struct { ready: [RS_STEPS] bool; roll: [RS_STEPS] RsDamageRoll; }
+
+// Only save-driven damage shares. Attack rays, including criticals, sample
+// independently. Callers allocate a fresh scope for every cast or zone pulse.
+rs_damage_roll :: (d: [] RsDice, scope: [] RsDamageScope, step: int, share: bool, count: int, sides: int, flat: int, agony: int, enfeebled: bool) -> RsDamageRoll #effects(all) {
+  if share && scope[0].ready[step] { return scope[0].roll[step]; }
+  r: RsDamageRoll;
+  r.amount = rs_sum(d,count,sides)+flat+agony;
+  if enfeebled { r.weak=rs_roll(d,8); r.amount-=r.weak; }
+  r.amount=rs_max(r.amount,0);
+  if share { scope[0].ready[step]=true; scope[0].roll[step]=r; }
+  return r;
+}
+
+#test "Enfeeblement uses a d8 over changing random streams and retains its first draw" {
+  for seed: 1..<40 {
+    d: [1] RsDice; oracle: [1] RsDice;
+    d[0].state=cast(u64)seed; oracle[0]=d[0];
+    expected := rs_sum(oracle[..],2,6)+7;
+    weak := rs_roll(oracle[..],8);
+    scope: [1] RsDamageScope;
+    r := rs_damage_roll(d[..],scope[..],2,true,2,6,5,2,true);
+    #assert r.amount==rs_max(expected-weak,0) && r.weak==weak;
+    #assert d[0].state==oracle[0].state && d[0].rolled==3;
+    again := rs_damage_roll(d[..],scope[..],2,true,2,6,5,2,true);
+    #assert again.amount==r.amount && again.weak==r.weak && d[0].rolled==3;
+  }
+}

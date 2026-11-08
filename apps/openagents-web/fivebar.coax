@@ -440,9 +440,10 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   // what follows: Ice Knife's shard bursts round its target, hit or miss
   if a.part >= 0 && foe >= 0 {
     p := rs_spell(a.part);
+    scope: [1] RsDamageScope;
     for j: 0..<b[0].n {
       if j == i || b[0].c[j].dead || rs_feet_to(b, foe, j) > p.area_ft { continue; }
-      rs_affect(b, i, j, a.part, sl, -1);
+      rs_affect_scoped(b, i, j, a.part, sl, -1,scope[..]);
     }
   }
   return true;
@@ -537,6 +538,7 @@ fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
     if by < 0 || by >= b[0].n || b[0].c[by].conc != z[q].spell { z[q].on = false; continue; }
     if b[0].clock < z[q].next { continue; }
     z[q].next += f32(RS_ROUND);
+    scope: [1] RsDamageScope;
     // Storm of Vengeance's bolts: six, each on a different creature under the cloud (the nearest its
     // middle first). Every other part, Call Lightning's bolt among them, on each creature in the area
     // (the bolt's: within 5 feet of its point), one save each (SRD 5.2.1 pp. 114, 165).
@@ -555,7 +557,7 @@ fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
         }
         if best < 0 { break; }
         took[tn] = best; tn += 1;
-        rs_affect(b, by, best, z[q].part, z[q].slot, -1); ran += 1;
+        rs_affect_scoped(b, by, best, z[q].part, z[q].slot, -1,scope[..]); ran += 1;
       }
       continue;
     }
@@ -563,7 +565,7 @@ fb_zones_round :: (z: [] FbZone, b: [] RsBattle) -> int {
       c := b[0].c[j];
       if j == by || c.dead || c.team == b[0].c[by].team { continue; }
       if rs_feet(z[q].cx, z[q].cy, c.x, c.y) > z[q].r_ft { continue; }
-      rs_affect(b, by, j, z[q].part, z[q].slot, -1); ran += 1;
+      rs_affect_scoped(b, by, j, z[q].part, z[q].slot, -1,scope[..]); ran += 1;
     }
   }
   return ran;

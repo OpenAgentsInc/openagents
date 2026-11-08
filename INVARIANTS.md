@@ -6699,3 +6699,13 @@ hook; clock/start-turn reconciliation is a fallback, not permission to defer a
 known immediate consequence. Other condition/feature lifecycles, targeting and
 world controls remain open. Evidence and exact limits:
 `docs/verification/srd-concentration-2026-11-08/README.md`.
+
+## Simultaneous spell saves share damage before individual defenses
+
+`spell-damage-rolls.coax` retains one pre-save damage roll per instruction in
+an explicitly local cast/burst/pulse scope. Each recipient rolls its own save
+and applies its own defenses. Roll modifiers precede save halving. Attacks and
+separate trigger invocations do not share; a new pulse gets a fresh scope.
+World batch callers must pass one scope across simultaneous recipients rather
+than repeatedly invoke the single-recipient convenience wrapper. Evidence and
+remaining qualification: `docs/verification/srd-shared-damage-2026-11-08/README.md`.

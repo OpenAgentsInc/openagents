@@ -24,6 +24,7 @@
 #load "effect-admission.coax";
 #load "reaction-slot.coax";
 #load "effect-rolls.coax";
+#load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
 #load "effect-lifecycle.coax";
 #load "death-save-roll.coax";
@@ -555,6 +556,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + s.duration_s; } }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
   if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
+  damage_scope: [1] RsDamageScope;
   if chosen {
     for pick: 0..<picks.count {
       j := picks[pick];
@@ -562,7 +564,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
       if b[0].c[j].dead { continue; }
       if rs_unaffected_target_kept(b,i,j,sp,true) { continue; }
       variant := rs_spell_variant(s,sp,slot,rs_option_at(options,pick));
-      rs_affect_program(b,i,j,sp,slot,zone_at,true,variant);
+      rs_affect_program_scoped(b,i,j,sp,slot,zone_at,true,variant,damage_scope[..]);
     }
   }
   if !chosen {
@@ -576,7 +578,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
     if s.area == RS_A_NONE && reps > 1 {
       for r: 0..<reps {
         if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
-        if !b[0].c[target].dead { rs_affect(b, i, target, sp, slot, zone_at); }
+        if !b[0].c[target].dead { rs_affect_scoped(b, i, target, sp, slot, zone_at,damage_scope[..]); }
       }
       return true;
     }
@@ -597,7 +599,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
         // Sculpt Spells (Evoker, p. 82): up to 1 + the spell's level allies are spared an Evocation
         if me.sculpt && s.school == "Evocation" && b[0].c[j].team == me.team && sculpted < 1 + s.level { sculpted += 1; continue; }
       }
-      rs_affect(b, i, j, sp, slot, zone_at);
+      rs_affect_scoped(b, i, j, sp, slot, zone_at,damage_scope[..]);
     }
   }
   // Blessed Healer (Life Domain, p. 40): a slot spell that heals another heals the Cleric 2 + its level
@@ -793,15 +795,23 @@ rs_affect_as :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: in
   rs_affect_program(b,i,j,sp,slot,zone_at,keep_concentration,rs_spell(sp));
 }
 rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell) {
+  scope: [1] RsDamageScope;
+  rs_affect_program_scoped(b,i,j,sp,slot,zone_at,keep_concentration,s,scope[..]);
+}
+rs_affect_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, scope: [] RsDamageScope) {
+  rs_affect_program_scoped(b,i,j,sp,slot,zone_at,false,rs_spell(sp),scope);
+}
+rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope) {
   if !rs_choice_continue(s,b[0].c[i].conc,sp) { return; }
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
-  ran_save := false; saved := false; crit := false; attack_hit := false; tier_dice := true; potent_miss := false; bane := 0;
+  ran_attack := false; ran_save := false; saved := false; crit := false; attack_hit := false; tier_dice := true; potent_miss := false; bane := 0;
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_REPEAT && s.steps[k].c == 1 { tier_dice = false; } }
   for k: 0..<s.step_n {
     if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
     st := s.steps[k];
     if potent_miss && st.kind != RS_S_DAMAGE { continue; }
     if st.kind == RS_S_ATTACK {
+      ran_attack = true;
       melee := st.a == 1;
       edge := rs_attack_edge(b, i, j, melee, false);
       // Innate Sorcery: Advantage on the attack rolls of its spells (any Disadvantage cancels it)
@@ -841,23 +851,22 @@ rs_affect_program :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_a
       else { count += st.d * rs_max(slot - s.level, 0); }
       count += bane;
       if crit { count *= 2; }
-      amount := rs_sum(b[0].dice[..], count, st.b) + s.plus;
+      affinity := 0;
       // Elemental Affinity: the Charisma modifier on one damage roll (an area's one roll is every target's)
       if b[0].c[i].affinity > 0 && b[0].c[i].affinity == st.c && (s.area != RS_A_NONE || !b[0].aff_used) {
-        amount += rs_mod(b[0].c[i].score[RS_CHA]);
+        affinity = rs_mod(b[0].c[i].score[RS_CHA]);
         if s.area == RS_A_NONE { b[0].aff_used = true; }
       }
-      // a save halves or stops the damage; for an Evoker's cantrip (Potent Cantrip) it halves it
+      // All damage-roll modifiers precede each recipient's save and defenses.
+      agony := 0;
+      if s.level == 0 && b[0].c[i].agonizing == sp && sp != SP_PRODUCE_FLAME { agony = rs_mod(b[0].c[i].score[RS_CHA]); }
+      roll := rs_damage_roll(b[0].dice[..],scope,k,ran_save && !ran_attack,count,st.b,s.plus+affinity,agony,rs_effect(b[0].c[i],EF_ENFEEBLED));
+      amount := roll.amount; weak := roll.weak;
       if ran_save && saved {
         half := (s.steps[0].kind == RS_S_SAVE && s.steps[0].b == RS_ON_SAVE_HALF) || (b[0].c[i].potent && s.level == 0);
         amount = ifx half then amount / 2 else 0;
       }
       if potent_miss { amount = amount / 2; }
-      // Agonizing Blast: the Charisma modifier on the chosen cantrip's damage
-      agony := 0;
-      if s.level == 0 && b[0].c[i].agonizing == sp && sp != SP_PRODUCE_FLAME { agony = rs_mod(b[0].c[i].score[RS_CHA]); amount += agony; }
-      weak := 0;
-      if rs_effect(b[0].c[i], EF_ENFEEBLED) { weak = rs_roll(b[0].dice[..], 8); amount = rs_max(amount - weak, 0); }
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount);
       rs_add_text(l[..], " "); rs_add_text(l[..], RS_DAMAGE[st.c]);

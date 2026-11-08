@@ -1,0 +1,6 @@
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax
+02ef7bac99d3d50543ccf6a86b0a5f12f1ec5a0d8aef1f6ce7a262edf845701c  aethyr/rules/srd/spell-damage-rolls.coax
+122a2961062e35b24a7f39141b103912aa01ca26cd7a1f82c969ed38a09bac7e  aethyr/rules/srd/shared-damage-checks.coax
+5c13485d4236cc48f0a489e76bffa1b2ab3ef031a99bb1be2a9fa661029e4bf4  aethyr/rules/srd/battle.coax
+4ffb69a491d60476471d207a5ad7105c985558637e5bc0232f7dfaa70c97fbce  apps/openagents-web/fivebar.coax
+ebc27f88a9b272e9c73ae4f695eb8bbd56ee9bc0ab614642b569aaaacd1cb1ca  apps/openagents-web/fivebar-test.coax

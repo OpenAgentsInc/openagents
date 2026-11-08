@@ -336,3 +336,12 @@ Then complete the 0–3rd-level spells/features through character level 6, used
 monsters and shared Everglade integration. Keep these probe IDs and extend source
 fixtures as prerequisites land. Full catalog expansion and Polymorph are parked.
 Source access is available; no owner action is required for this work.
+
+### Shared damage-roll progress, 2026-11-08
+
+SRD p.16 simultaneous saving-throw damage now shares one roll per instruction
+across cast, Ice Knife burst and hotbar zone-pulse recipients. Saves and defenses
+remain individual; separate attacks/triggers/pulses remain independent. Roll
+modifiers precede save halving. Policy mutation kills all 20 mutants; Fireball,
+Enfeeblement/affinity/resistance and renewed Moonbeam pulse regressions pass.
+This does not complete #13039/#13043; see [scoped evidence](../verification/srd-shared-damage-2026-11-08/README.md).

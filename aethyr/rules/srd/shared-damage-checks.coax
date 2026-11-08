@@ -1,0 +1,36 @@
+// SRD 5.2.1 p.16: a damaging effect forcing simultaneous saving throws
+// rolls damage once for all its targets. Saves and defenses remain individual.
+#load "cast-target-checks.coax";
+
+#test "Fireball shares one damage roll while each recipient makes its own save" {
+  b: [1] RsBattle; b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
+  a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,3);
+  first := rs_add(b[..],rs_fighter("Fail",1,1),10,3);
+  second := rs_add(b[..],rs_fighter("Save",1,1),11,3);
+  b[0].c[first].score[RS_DEX]=8; b[0].c[second].score[RS_DEX]=30;
+  b[0].c[first].hp=400; b[0].c[first].hp_max=400;
+  b[0].c[second].hp=400; b[0].c[second].hp_max=400;
+  rs_start_turn(b[..],a); rolls := b[0].dice[0].rolled;
+  #assert rs_cast(b[..],a,SP_FIREBALL,3,10,3,-1);
+  #assert b[0].c[first].hp==376 && b[0].c[second].hp==388;
+  #assert b[0].dice[0].rolled==rolls+10; // two d20 saves, one 8d6 roll
+}
+
+#test "shared damage includes one Enfeeblement die before each save and resistance" {
+  b: [1] RsBattle; b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
+  a := rs_add(b[..],rs_sorcerer("Caster",0,6),1,3);
+  first := rs_add(b[..],rs_fighter("Fail",1,1),10,3);
+  second := rs_add(b[..],rs_fighter("Save",1,1),11,3);
+  b[0].c[first].score[RS_DEX]=8; b[0].c[second].score[RS_DEX]=30;
+  b[0].c[first].hp=400; b[0].c[first].hp_max=400;
+  b[0].c[second].hp=400; b[0].c[second].hp_max=400;
+  b[0].c[second].resist=1<<RS_FIRE;
+  rs_start_turn(b[..],a);
+  e: RsEffect; e.kind=EF_ENFEEBLED; e.by=first; e.until=60.0f32;
+  #assert rs_put_effect(b[..],a,e);
+  rolls := b[0].dice[0].rolled;
+  #assert rs_cast(b[..],a,SP_FIREBALL,3,10,3,-1);
+  // 8d6 + 4 Charisma (draconic affinity) - 1d8 = 24; save then resistance = 6.
+  #assert b[0].c[first].hp==376 && b[0].c[second].hp==394;
+  #assert b[0].dice[0].rolled==rolls+11;
+}
