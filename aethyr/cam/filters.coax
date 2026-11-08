@@ -1,0 +1,124 @@
+// Camera and sight query classes (GitHub #13026). One realm world, admitted once
+// (aethyr/query-scene.coax), answers walking, the camera and sight. What blocks each is a query
+// property, never a collision-pair permission, so a realm tags each collider with the classes below
+// (QueryCollider.categories) and each purpose selects through its own filter:
+//
+// | Class | Walk | Camera | Sight (attention, look-at) |
+// | --- | --- | --- | --- |
+// | solid (walls, trunks, rock) | blocks | blocks | blocks |
+// | camera-only (a ceiling lip, a blocker that keeps the eye out of a room) | no | blocks | no |
+// | sight-only (a hedge, tall reeds, a curtain) | no | no | blocks |
+// | water (a fluid volume) | no | no | no |
+// | decorative debris (cosmetic pieces) | no | no | no |
+// | self (the receiver's own body colliders) | no | no | no |
+//
+// The camera's room along its line is the first camera-class hit swept by the eye's clearance; it
+// adds to cam_centred's ground and body-sphere room. Attention takes the sight-class selection as its
+// one collider set.
+//
+//   coax/bin/coax test aethyr/cam/filters.coax --library
+
+#module "aethyr.cam.filters";
+#load "../query-scene.coax";
+#load "../entity.coax" as ents;
+#load "attention.coax" as attn;
+
+CAM_CLASS_SOLID :: cast(u32) 1;
+CAM_CLASS_CAMERA :: cast(u32) 2;
+CAM_CLASS_SIGHT :: cast(u32) 4;
+CAM_CLASS_WATER :: cast(u32) 8;
+CAM_CLASS_DEBRIS :: cast(u32) 16;
+
+CamPurpose :: enum u8 { walk; camera; sight; }
+
+// The filter for one purpose; self is the receiver's own entity (its body colliders are never hits).
+cam_filter :: (purpose: CamPurpose, self: Handle(ents.Entity)) -> QueryFilter {
+  f := QueryFilter.{sensors = false, ignore_entity = self};
+  never := CAM_CLASS_WATER | CAM_CLASS_DEBRIS;
+  if purpose == CamPurpose.walk { f.include = CAM_CLASS_SOLID; f.exclude = never | CAM_CLASS_CAMERA | CAM_CLASS_SIGHT; }
+  else if purpose == CamPurpose.camera { f.include = CAM_CLASS_SOLID | CAM_CLASS_CAMERA; f.exclude = never | CAM_CLASS_SIGHT; }
+  else { f.include = CAM_CLASS_SOLID | CAM_CLASS_SIGHT; f.exclude = never | CAM_CLASS_CAMERA; }
+  return f;
+}
+// The colliders for one purpose: the admitted world selected through its filter. The ground stays.
+cam_select_world :: (w: QueryWorld, purpose: CamPurpose, self: Handle(ents.Entity), scratch: [] QueryScratch) -> SelectedWorld {
+  return query_select_world(w, cam_filter(purpose, self), scratch);
+}
+// How far the eye may go back from `from` along unit `dir` (at most far) keeping `clear` metres off
+// every collider in c: the swept sphere's first contact.
+cam_wall_room :: (c: Colliders, from: WorldPoint, dir: WorldPoint, far: f32, clear: f32) -> f32 {
+  if !(far > 0) { return 0; }
+  h := query_sweep(c, from, clear, world_point(dir.x * far, dir.y * far, dir.z * far));
+  if !h.hit || h.status != QueryStatus.ok { return far; }
+  room := h.t * far;
+  return ifx room < 0 then 0.0f32 else room;
+}
+
+// ---- checks: one world with one box of each class straddling the line from (0, 1.6, 0) to +z
+CamClassFixture :: struct { boxes: [36] f32; metadata: [6] QueryCollider; surfaces: [2] PhysicalSurface; epoch: [1] int; backing: [1] ents.OracleBacking; me: Handle(ents.Entity); you: Handle(ents.Entity); }
+cam_class_fixture :: (b: [] CamClassFixture, only: int) -> QueryWorld {
+  store := ents.oracle_store(b[0].backing[..]);
+  b[0].me = ents.entity_spawn(store).handle; b[0].you = ents.entity_spawn(store).handle; ents.entity_flush(store);
+  classes := [6] u32.[CAM_CLASS_SOLID, CAM_CLASS_CAMERA, CAM_CLASS_SIGHT, CAM_CLASS_WATER, CAM_CLASS_DEBRIS, CAM_CLASS_SOLID];
+  n := 0;
+  for i: 0..<6 {
+    if only >= 0 && i != only { continue; }
+    z := 3.0f32 + f32(i);
+    box := [6] f32.[-1, 0, z, 1, 3, z + 0.25];
+    for k: 0..<6 { b[0].boxes[n * 6 + k] = box[k]; }
+    m := QueryCollider.{ref = ColliderRef.{id = 10 + i, generation = 1}, shape = QueryShape.box, index = n, surface = 1, categories = classes[i]};
+    if i == 3 { m.role = QueryRole.fluid; m.surface = 2; }
+    if i == 5 { m.entity = b[0].me; }   // the receiver's own collider
+    b[0].metadata[n] = m; n += 1;
+  }
+  b[0].surfaces = [2] PhysicalSurface.[PhysicalSurface.{id = 1}, PhysicalSurface.{id = 2, fluid_kind = 1, density = 1000, buoyancy = 1, drag = 1}];
+  b[0].epoch[0] = 1;
+  return QueryWorld.{geometry = Colliders.{ground_enabled = false, boxes = b[0].boxes[0..<n * 6]}, metadata = b[0].metadata[0..<n], surfaces = b[0].surfaces[..],
+    entity_store = store, current_epoch = b[0].epoch[..], epoch = 1};
+}
+
+#test "each class blocks exactly its purposes: camera room, sight for attention and walking" {
+  // [solid, camera-only, sight-only, water, debris, self] each alone between the eye and a target 9 m ahead
+  camera_blocks := [6] bool.[true, true, false, false, false, false];
+  sight_blocks := [6] bool.[true, false, true, false, false, false];
+  walk_blocks := [6] bool.[true, false, false, false, false, false];
+  eye := world_point(0, 1.6, 0); back := world_point(0, 0, 1);
+  for i: 0..<6 {
+    b: [1] CamClassFixture; w := cam_class_fixture(b[..], i);
+    #assert query_world_status(w) == QueryStatus.ok;
+    sc: [1] QueryScratch; sv: [1] QueryScratch; sk: [1] QueryScratch;
+    cam := cam_select_world(w, CamPurpose.camera, b[0].me, sc[..]);
+    sight := cam_select_world(w, CamPurpose.sight, b[0].me, sv[..]);
+    walk := cam_select_world(w, CamPurpose.walk, b[0].me, sk[..]);
+    #assert cam.status == QueryStatus.ok && sight.status == QueryStatus.ok && walk.status == QueryStatus.ok;
+    room := cam_wall_room(cam.geometry, eye, back, 12, 0.2);
+    #assert (room < 12) == camera_blocks[i];
+    if camera_blocks[i] { #assert abs(room - (3.0 + f32(i) - 0.2)) < 0.01; }
+    t := [1] attn.AttnTarget.[attn.AttnTarget.{id = 7, gen = 1, caps = attn.ATTN_TALK, at = world_point(0, 1.6, 9.5)}];
+    q := attn.AttnQuery.{origin = eye, forward = back, need = attn.ATTN_TALK};
+    got := attn.attn_step(attn.AttnState.{}, q, t[..], sight.geometry, 0, false, false);
+    #assert (got.target == -1) == sight_blocks[i];
+    #assert (!query_clear(walk.geometry, eye, world_point(0, 0, 9.5), 1).clear) == walk_blocks[i];
+  }
+  // all six together: the camera stops at the solid, sight at the solid, and with the solid gone the
+  // camera stops at the camera-only wall while sight passes it to the sight-only hedge
+  b: [1] CamClassFixture; w := cam_class_fixture(b[..], -1);
+  sc: [1] QueryScratch; cam := cam_select_world(w, CamPurpose.camera, b[0].me, sc[..]);
+  #assert abs(cam_wall_room(cam.geometry, eye, back, 12, 0.2) - 2.8) < 0.01;
+  b[0].metadata[0].categories = CAM_CLASS_DEBRIS;
+  sc2: [1] QueryScratch; cam2 := cam_select_world(w, CamPurpose.camera, b[0].me, sc2[..]);
+  #assert abs(cam_wall_room(cam2.geometry, eye, back, 12, 0.2) - 3.8) < 0.01;
+  sv: [1] QueryScratch; sight := cam_select_world(w, CamPurpose.sight, b[0].me, sv[..]);
+  #assert query_clear(sight.geometry, eye, world_point(0, 0, 4.5), 1).clear;   // past the camera-only wall
+  #assert !query_clear(sight.geometry, eye, world_point(0, 0, 5.5), 1).clear;            // the sight-only hedge hides
+  // a different receiver's body is solid to everyone else
+  b3: [1] CamClassFixture; w3 := cam_class_fixture(b3[..], 5);
+  s3: [1] QueryScratch; c3 := cam_select_world(w3, CamPurpose.camera, b3[0].you, s3[..]);
+  #assert cam_wall_room(c3.geometry, eye, back, 12, 0.2) < 12;
+}
+#test "the filters are admitted ones and never include sensors" {
+  b: [1] CamClassFixture; _ := cam_class_fixture(b[..], -1);
+  for p: 0..<3 { f := cam_filter(cast(CamPurpose) p, b[0].me); #assert query_filter_ok(f) && !f.sensors && (f.include & f.exclude) == 0; }
+  #assert cam_wall_room(Colliders.{ground_enabled = false}, world_point(0, 1, 0), world_point(0, 0, 1), 0, 0.2) == 0;
+  #assert cam_wall_room(Colliders.{ground_enabled = false}, world_point(0, 1, 0), world_point(0, 0, 1), 6, 0.2) == 6;
+}

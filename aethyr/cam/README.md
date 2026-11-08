@@ -9,6 +9,8 @@ colliders.
 | `modes.coax` | `CamMode` records (pitch range, ground clearance, aim ahead, press lift, shoulder, near/far, field of view, yaw rate) with parent inheritance by set mask (`cam_modes_resolve`) and volume/input selection (`cam_select`); a world-anchored ground ring (`CamGround`, 0.5 m cells) the realm fills from its own height function; the centred follow (`cam_centred`): the look up past the horizon, the eye held above the land with the view tilting on up, pulled in before body spheres; sight fade, a seeded shake that never moves the listener, and the listener pose |
 | `attention.coax` | One answer to "what am I attending to": targets publish capabilities (lock-on, talk, look, action), generation, anchor, radius, validity and priority; a step ranks at most 32 by priority, angle-weighted distance and id inside range, cone, vertical band, filtered line of sight and an optional on-screen flag; a held target keeps through larger retention bands for `hold` ticks and `grace` ticks lost; switch, release, stale generation and despawn say why |
 | `frame.coax` | Two-subject framing inside a normalized screen rectangle for a lens, nearest distance by bisection, yaw rate limit, and a declared fallback (the first subject alone at far) |
+| `filters.coax` | The query classes each purpose selects from one admitted world (`aethyr/query-scene.coax`): solid blocks walking, the camera and sight; camera-only walls block only the camera; sight-only obstruction (hedges, reeds) only sight; water, decorative debris and the receiver's own colliders block none. `cam_filter`/`cam_select_world` give each purpose its colliders, `cam_wall_room` the camera's room along its line (the swept eye's first camera-class hit, added to `cam_centred`'s room), and attention takes the sight selection |
+| `parity.coax` | Frame-rate parity: one recorded input played through `aethyr/loop.coax` at 30, 60 and 144 FPS and over uneven frames with a stall gives the same actor and attention state tick for tick, and evaluating the camera on each frame leaves the actor simulation digest unchanged |
 | `handback.coax` | A cinematic that starts on the live shot and hands back by one outcome (resume the saved orbit, reset behind the subject, retain the track's look), easing to the follow camera's own shot; cancel hands back from where it is; a teleport or lost target cuts with no sweep |
 
 ## Adoption
@@ -26,7 +28,11 @@ colliders.
   camera over 1.5 s.
 - **Everglade Experimental** (`experimental-combat.coax`): a single-target save
   spell's monster is the attention query (action capability, 30 degree cone,
-  its range).
+  its range). Your target (its Hit Points over the bar and its gold name) is a
+  lock-on held by `attn_step` (`xc_lock_step`): set only by a strike, never
+  acquired for you (acquire 0), kept within 24 m all round you for at least the
+  hold, kept through a second of grace when it is out of reach, and dropped at
+  once when it falls.
 
 `modes.coax` and `handback.coax` load `aethyr/camera.coax` and have no module of
 their own, so they join the module that loads them (Everglade's figures load
@@ -34,8 +40,11 @@ them beside the orbit).
 
 ## Residual and not yet adopted
 
-- Lock-on, talk and look-at consumers still to move onto `attention.coax`;
-  `frame.coax` has no playable consumer yet.
+- Talk and look-at consumers still to move onto `attention.coax` (no playable
+  world has an NPC you talk to through a prompt yet); `frame.coax` has no
+  playable consumer (Experimental's camera does not frame you with your target).
+- No realm tags its colliders with the filter classes yet: Everglade II's camera
+  room is its ground ring and trunk spheres, Experimental's meadow has no walls.
 - Sight fade and shake are checked here but no realm draws with them yet.
 
 ```sh
@@ -43,5 +52,7 @@ coax/bin/coax test aethyr/cam/modes.coax --library
 coax/bin/coax test aethyr/cam/attention.coax --library
 coax/bin/coax test aethyr/cam/frame.coax --library
 coax/bin/coax test aethyr/cam/handback.coax --library
+coax/bin/coax test aethyr/cam/filters.coax --library
+coax/bin/coax test aethyr/cam/parity.coax --library
 coax/bin/coax test --library apps/openagents-web/everglade2.coax
 ```
