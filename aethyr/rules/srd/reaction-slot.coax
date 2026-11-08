@@ -1,0 +1,61 @@
+// SRD 5.2.1 p.104: one spell slot on a turn. Quickened Spell (p.68)
+// additionally forbids a later level 1+ spell, including a Reaction on that
+// same turn. Another creature's active turn does not inherit these flags.
+#authority;
+
+#test "reaction slot policy distinguishes the owner's turn from another actor's turn" {
+  for own: 0..<2 { for spent: 0..<2 { for quick: 0..<2 { for costs_slot: 0..<2 {
+    #assert rs_reaction_slot_allowed(own == 1,spent == 1,quick == 1,costs_slot == 1) == (own == 0 || (quick == 0 && (costs_slot == 0 || spent == 0)));
+  } } } }
+}
+#test "reaction slot spending is atomic and marks only the reacting actor's own active turn" {
+  for actor: 0..<2 { for owner: 0..<2 { for spent: 0..<2 { for quick: 0..<2 { for costs_slot: 0..<2 {
+    b: [1] RsBattle;
+    _ := rs_add(b[..],rs_druid("First",0,3),1,1);
+    _ = rs_add(b[..],rs_druid("Second",1,3),3,1);
+    b[0].who = owner; b[0].turn.slot_spent = spent == 1; b[0].turn.quickened = quick == 1;
+    b[0].c[actor].slots[1] = 1;
+    rolls := b[0].dice[0].rolled; seq := b[0].book[0].seq;
+    allowed := actor != owner || (quick == 0 && (costs_slot == 0 || spent == 0));
+    #assert rs_reaction_slot(b[..],actor,1,costs_slot == 1) == allowed;
+    #assert b[0].c[actor].slots[1] == (ifx allowed then 0 else 1) && b[0].c[actor].reacted == allowed;
+    #assert !b[0].c[1-actor].reacted && b[0].c[1-actor].slots[1] == 4;
+    #assert b[0].turn.slot_spent == (spent == 1 || (allowed && actor == owner && costs_slot == 1));
+    #assert b[0].turn.leveled == (allowed && actor == owner) && b[0].turn.quickened == (quick == 1);
+    #assert !b[0].turn.action && !b[0].turn.bonus && b[0].dice[0].rolled == rolls && b[0].book[0].seq == seq;
+    #assert !rs_reaction_slot(b[..],actor,1,costs_slot == 1);
+  } } } } }
+}
+#test "reaction slot spending rejects malformed requests, empty slots and spent reactions" {
+  b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+  b[0].who = -1;
+  // Backing storage beyond the logical creature span can retain old values.
+  b[0].c[1].slots[1] = 2;
+  for actor: [3] int.[-1,1,2] { #assert !rs_reaction_slot(b[..],actor,1,true); }
+  for slot: [4] int.[-1,0,10,11] { #assert !rs_reaction_slot(b[..],a,slot,true); }
+  for slot: 1..<10 {
+    for amount: [2] int.[-1,0] { b[0].c[a].slots[slot] = amount; #assert !rs_reaction_slot(b[..],a,slot,true) && b[0].c[a].slots[slot] == amount; }
+    b[0].c[a].slots[slot] = 2; b[0].c[a].reacted = true;
+    #assert !rs_reaction_slot(b[..],a,slot,true) && b[0].c[a].slots[slot] == 2;
+    b[0].c[a].reacted = false;
+    #assert rs_reaction_slot(b[..],a,slot,true) && b[0].c[a].slots[slot] == 1;
+    b[0].c[a].reacted = false;
+  }
+  #assert !b[0].turn.slot_spent && !b[0].turn.leveled;
+}
+rs_reaction_slot_allowed :: (own_turn: bool, spent: bool, quickened: bool, costs_slot: bool) -> bool #effects(all) {
+  return !own_turn || (!quickened && (!costs_slot || !spent));
+}
+// Called after spell-specific readiness and trigger checks. It grants no
+// spell access and emits no event; refusal changes no state.
+// The legacy NPC bank shares the slots array; costs_slot distinguishes a real
+// slot from Mage's Protective Magic 3/Day (p.305), which casts without one.
+rs_reaction_slot :: (b: [] RsBattle, actor: int, slot: int, costs_slot: bool) -> bool #effects(all) {
+  if actor < 0 || actor >= b[0].n || slot < 1 || slot > 9 { return false; }
+  if b[0].c[actor].reacted || b[0].c[actor].slots[slot] <= 0 { return false; }
+  own := b[0].who == actor;
+  if !rs_reaction_slot_allowed(own,b[0].turn.slot_spent,b[0].turn.quickened,costs_slot) { return false; }
+  b[0].c[actor].slots[slot] -= 1; b[0].c[actor].reacted = true;
+  if own { if costs_slot { b[0].turn.slot_spent = true; } b[0].turn.leveled = true; }
+  return true;
+}

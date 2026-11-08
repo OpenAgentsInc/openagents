@@ -18,6 +18,7 @@
 #load "zone-admission.coax";
 #load "zone-lifetime.coax";
 #load "effect-admission.coax";
+#load "reaction-slot.coax";
 
 // Creatures a battle holds of its own. A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
@@ -425,7 +426,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   slot := 0;
   for k: 1..<6 { if slot == 0 && c.slots[k] > 0 { slot = k; } }
   if slot == 0 { return false; }
-  b[0].c[j].slots[slot] -= 1; b[0].c[j].reacted = true;
+  if !rs_reaction_slot(b,j,slot,true) { return false; }
   dc := rs_dc(b, j);
   sd := rs_d20(b[0].dice[..], rs_save_edge(b, by, RS_DEX));
   st := sd.roll + rs_save_in(b, by, RS_DEX);
@@ -656,7 +657,7 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
   // a stat block casts it with Protective Magic's own uses (npcs.coax: its 1st-level slots), never a Fireball's
   if c.npc != RS_NPC_NONE && slot != 1 { return false; }
   if slot == 0 { return false; }
-  b[0].c[j].slots[slot] -= 1; b[0].c[j].reacted = true;
+  if !rs_reaction_slot(b,j,slot,c.npc != RS_NPC_MAGE) { return false; }
   b[0].c[j].shield_until = ifx b[0].who == j then c.turn_at + rs_beat(b) else c.turn_at;
   l: [1] RsLine;
   rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Shield ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot): AC ");

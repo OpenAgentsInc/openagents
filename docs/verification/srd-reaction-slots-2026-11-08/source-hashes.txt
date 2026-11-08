@@ -1,0 +1,6 @@
+0d8653d4c411a2f416e859100d13419c224943bf676e958b6d98302d6099f73a  aethyr/rules/srd/battle.coax
+4534b0cc7de158e45a8ad8af33b252c196d45812e1a0fcbdd6eac2cba3ffb892  aethyr/rules/srd/cast-target-checks.coax
+69b888856c38a7cee263997aaf5defb073dce5466c209bd2e7dc4135489a794c  aethyr/rules/srd/reaction-slot.coax
+4cef320b11aa6aeec5576d8c979d3478be8fe65d94c7c86771f3ca0f4320ccca  aethyr/rules/srd/compliance-check.coax
+fa02160380e0741141c9c4277276b3d2a87784fc790ee88997872cf5bb1319c9  aethyr/rules/srd/compliance-probes.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax

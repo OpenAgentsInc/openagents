@@ -1,0 +1,15 @@
+FAIL #test own-turn reaction spells refuse after a slot spell or Quickened cantrip without changing state (4 ms)
+aethyr/rules/srd/cast-target-checks.coax:16:5: error[E0406]: assertion failed
+      #assert !rs_shield(b[..],a) && !rs_hellish_rebuke(b[..],a,t);
+      ^
+  note: in #test own-turn reaction spells refuse after a slot spell or Quickened cantrip without changing state
+FAIL #test own-turn reactions spend the turn slot and count as leveled before later spell admission (3 ms)
+aethyr/rules/srd/cast-target-checks.coax:34:5: error[E0406]: assertion failed
+      #assert b[0].turn.slot_spent && b[0].turn.leveled && !b[0].turn.action && !b[0].turn.bonus;
+      ^
+  note: in #test own-turn reactions spend the turn slot and count as leveled before later spell admission
+2 of 148 checks (--only 'own-turn reaction'), 0 passed, 2 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

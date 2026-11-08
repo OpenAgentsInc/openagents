@@ -3,6 +3,68 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "Mage Protective Magic spends a daily use rather than the turn's spell slot" {
+  for mode: 0..<3 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    a := rs_add(b[..],rs_mage("Mage",0),1,1);
+    rs_start_turn(b[..],a); b[0].turn.slot_spent = mode == 0; b[0].turn.quickened = mode == 2;
+    uses := b[0].c[a].slots[1]; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+    #assert rs_shield(b[..],a) == (mode != 2);
+    #assert b[0].c[a].slots[1] == uses-(ifx mode == 2 then 0 else 1) && b[0].c[a].reacted == (mode != 2);
+    #assert b[0].turn.slot_spent == (mode == 0) && b[0].turn.leveled == (mode != 2);
+    if mode == 1 { #assert rs_can_cast(b[..],a,SP_FIREBALL,4); }
+    if mode == 2 { #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls; }
+  }
+}
+
+#test "own-turn reaction spells refuse after a slot spell or Quickened cantrip without changing state" {
+  for mode: 0..<2 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    t := rs_add(b[..],rs_skeleton("Enemy",1),3,1);
+    #assert rs_grant_spell(b[0].c[a..<a+1],SP_SHIELD) && rs_grant_spell(b[0].c[a..<a+1],SP_HELLISH_REBUKE);
+    b[0].c[a].shield_spell = true; b[0].c[a].rebuke = true;
+    rs_start_turn(b[..],a);
+    b[0].turn.slot_spent = mode == 0; b[0].turn.quickened = mode == 1;
+    slots := b[0].c[a].slots; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled; hp := b[0].c[t].hp;
+    #assert !rs_shield(b[..],a) && !rs_hellish_rebuke(b[..],a,t);
+    for k: 0..<10 { #assert b[0].c[a].slots[k] == slots[k]; }
+    #assert !b[0].c[a].reacted && b[0].c[a].shield_until == 0 && b[0].c[t].hp == hp;
+    #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && !b[0].turn.leveled;
+  }
+}
+#test "own-turn reactions spend the turn slot and count as leveled before later spell admission" {
+  for kind: 0..<2 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    a := rs_add(b[..],rs_sorcerer("Caster",0,3),1,1);
+    t := rs_add(b[..],rs_skeleton("Enemy",1),3,1);
+    #assert rs_grant_spell(b[0].c[a..<a+1],SP_SHIELD) && rs_grant_spell(b[0].c[a..<a+1],SP_HELLISH_REBUKE);
+    b[0].c[a].shield_spell = true; b[0].c[a].rebuke = true;
+    choices := [2] int.[RS_EXEC_SOURCE[SP_FIRE_BOLT],RS_EXEC_SOURCE[SP_FALSE_LIFE]];
+    #assert rs_set_spells(b[0].c[a..<a+1],choices[..]);
+    rs_start_turn(b[..],a); slots := b[0].c[a].slots[1];
+    accepted := ifx kind == 0 then rs_shield(b[..],a) else rs_hellish_rebuke(b[..],a,t);
+    #assert accepted && b[0].c[a].slots[1] == slots-1 && b[0].c[a].reacted;
+    #assert b[0].turn.slot_spent && b[0].turn.leveled && !b[0].turn.action && !b[0].turn.bonus;
+    #assert !rs_can_cast(b[..],a,SP_FALSE_LIFE,1) && !rs_can_cast_as(b[..],a,SP_FIRE_BOLT,0,true);
+    #assert rs_can_cast(b[..],a,SP_FIRE_BOLT,0);
+  }
+}
+#test "off-turn reactions do not inherit or mutate another actor's slot and Quickened restrictions" {
+  for kind: 0..<2 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    t := rs_add(b[..],rs_skeleton("Enemy",1),3,1);
+    #assert rs_grant_spell(b[0].c[a..<a+1],SP_SHIELD) && rs_grant_spell(b[0].c[a..<a+1],SP_HELLISH_REBUKE);
+    b[0].c[a].shield_spell = true; b[0].c[a].rebuke = true;
+    rs_start_turn(b[..],t); b[0].turn.slot_spent = true; b[0].turn.quickened = true;
+    slots := b[0].c[a].slots[1];
+    accepted := ifx kind == 0 then rs_shield(b[..],a) else rs_hellish_rebuke(b[..],a,t);
+    #assert accepted && b[0].c[a].slots[1] == slots-1 && b[0].c[a].reacted;
+    #assert b[0].turn.slot_spent && b[0].turn.quickened && !b[0].turn.leveled && !b[0].turn.action && !b[0].turn.bonus;
+  }
+}
+
 #test "multi-target casts refuse the whole batch if a later target has no effect room" {
   b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Cleric",0,5),1,1);

@@ -40,6 +40,7 @@ tool_main :: () -> int #export_c #effects(all) {
   failed := 0;
   failed += sc_report("CAST-ACTOR", sc_admission_actor());
   failed += sc_report("CAST-SLOT", sc_admission_slot());
+  failed += sc_report("CAST-REACTION-SLOT", sc_reaction_slot());
   failed += sc_report("CAST-TARGET-INDEX", sc_admission_target());
   failed += sc_report("CAST-RANGE", sc_admission_range());
   failed += sc_report("CAST-CLASS", sc_admission_class());
@@ -49,7 +50,7 @@ tool_main :: () -> int #export_c #effects(all) {
   failed += sc_report("SPELL-POLYMORPH", sc_polymorph());
   failed += sc_report("CAP-EFFECT", sc_effect_capacity());
   failed += sc_report("CAP-ZONE", sc_zone_capacity());
-  tool_err("measured=11 failed="); sc_print_int(failed);
+  tool_err("measured=12 failed="); sc_print_int(failed);
   tool_errln("; complete SRD content and rules remain unmeasured");
-  return sc_check_exit(11, failed);
+  return sc_check_exit(12, failed);
 }

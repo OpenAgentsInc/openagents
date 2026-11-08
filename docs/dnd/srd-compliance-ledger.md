@@ -125,6 +125,7 @@ predicate to PASS without deleting an expected-failure exemption.
 | --- | --- | --- | --- |
 | CAST-ACTOR | Missing/negative actor refuses without spending | PASS | Request index validity |
 | CAST-SLOT | Unavailable slot refuses without spending | PASS | One selected slot boundary |
+| CAST-REACTION-SLOT | Own-turn reaction casting respects the slot limit and records its cost before later casting | PASS | Shield/Rebuke budgets share ordinary casting's turn flags; another actor's flags do not leak into a reaction |
 | CAST-TARGET-INDEX | Missing/negative target index refuses without spending | PASS | Malformed request, not SRD invalid-target rule |
 | CAST-RANGE | Out-of-touch-range Cure Wounds refuses without spending | PASS | Range admission |
 | CAST-CLASS | Unmodified preset Druid cannot cast Guiding Bolt | PASS | Class eligibility and explicit extra-list grants enforced in shared admission; separate selected-state admission is covered by CAST-PREPARED |
@@ -166,6 +167,14 @@ attack batches and requested hit riders, Turn Undead and curse transfer. Each
 zone restraint owns a record; release and escape preserve other owners. Capacity
 refusal precedes costs, dice and events. These bounded-storage guarantees do not
 qualify every condition, duration or same-spell stacking rule.
+
+The [reaction slot change](../verification/srd-reaction-slots-2026-11-08/README.md)
+adds CAST-REACTION-SLOT: eleven of twelve witnesses pass, only parked Polymorph
+fails. Own-turn Shield/Hellish Rebuke refuse a second slot or a level 1+ cast
+after Quickened Spell; an accepted reaction marks slot/level history for later
+casting. Off-turn reactions preserve the active actor's history. Mage's
+Protective Magic daily use is distinguished from a real spell slot. This does
+not qualify every reaction trigger, line of sight or NPC resource workflow.
 
 ## Canonical source inventory
 
