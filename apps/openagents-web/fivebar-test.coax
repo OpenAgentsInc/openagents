@@ -470,3 +470,17 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   #assert s[0].turn.move_debt==0 && s[0].turn.move_left==1;
   #assert b[0].who==FT_FOE && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
 }
+
+#test "a Stunned saved seat can stand and walk while its hotbar actions remain unavailable" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  #assert rs_put_effect(b[..],FT_HERO,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=FT_FOE,spell=-1,until=60,save=-1});
+  b[0].c[FT_HERO].cond|=RS_PRONE;
+  b[0].who=FT_FOE; b[0].turn.move_left=7; b[0].turn.move_feet=2;
+  #assert fb_seat_stand(b[..],s[..]) && s[0].turn.move_left==1;
+  dash := fb_feature(FB_DASH,"DASH","dash");
+  #assert !fb_seat_can(b[..],s[..],dash) && !fb_seat_use(b[..],s[..],dash,-1,0,0,FT_HERO);
+  #assert !s[0].turn.action && !s[0].turn.bonus;
+  fb_seat_in(b[..],s[..]); #assert rs_step_to(b[..],FT_HERO,10,11); fb_seat_out(b[..],s[..]);
+  #assert s[0].turn.move_left==0 && rs_has(b[0].c[FT_HERO],RS_STUNNED);
+  #assert b[0].who==FT_FOE && b[0].turn.move_left==7 && b[0].turn.move_feet==2;
+}

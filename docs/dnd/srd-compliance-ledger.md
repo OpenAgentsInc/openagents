@@ -378,3 +378,15 @@ survivors; 241 core, 181 Prone, 206 hotbar and 21 selected Experimental checks
 pass, as do native movement and Dash witnesses. Special speeds, feature-specific
 movement and other action/condition requirements remain; #13040/#13039 stay open.
 [Evidence](../verification/srd-movement-credit-2026-11-08/README.md).
+
+### Condition movement and initiative progress, 2026-11-08
+
+Stunned no longer incorrectly prevents walking or standing. Shared movement
+permission is distinct from action capability; independent Speed/condition
+blockers still apply. Initiative now applies Incapacitated Disadvantage (including
+implied conditions) and Invisible/Athlete Advantage with ordinary cancellation.
+Seventeen policy mutants are killed, zero survive; 205 core, 209 hotbar and 21
+selected Experimental checks and an actual native witness pass. The saved-seat
+path separates movement from refused actions, but Experimental's combined
+hostile-AI held flag still needs #13046 migration. #13039/#13040 remain open.
+[Evidence](../verification/srd-condition-permissions-2026-11-08/README.md).

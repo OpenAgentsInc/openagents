@@ -6743,3 +6743,14 @@ Legacy untracked turns bind their pre-Dash basis before gaining a Dash.
 Grid walking loops use that query; saved seats retain debt with the full turn.
 Special speeds and feature-specific free movement remain separate requirements.
 Evidence: `docs/verification/srd-movement-credit-2026-11-08/README.md`.
+
+## Stunned movement is separate from incapacitated action and initiative effects
+
+`condition-permissions.coax` allows a Stunned or Incapacitated creature to move
+and stand, subject to independent movement blockers, Speed and payment. Stunned
+still forbids actions/reactions and retains its shared save, attack and lifecycle
+consequences. Initiative resolves incapacitation Disadvantage against Athlete or
+Invisible Advantage with normal cancellation. Consumers must not use action
+capability as a blanket movement predicate. The separate hostile-AI held adapter
+remains migration work. Scope and evidence:
+`docs/verification/srd-condition-permissions-2026-11-08/README.md`.

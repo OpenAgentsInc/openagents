@@ -1,0 +1,7 @@
+// Focused native condition-permission witness, not whole-SRD qualification.
+#load "condition-permission-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  if !cp_native() { tool_errln("FAIL CONDITION-PERMISSIONS"); return 1; }
+  tool_errln("PASS CONDITION-PERMISSIONS"); return 0;
+}

@@ -1,0 +1,97 @@
+// SRD 5.2.1 pp.183,185: Incapacitated and Stunned are not Speed-zero conditions.
+#load "battle.coax";
+#load "condition-roll-checks.coax";
+#load "effect-lifecycle-checks.coax";
+
+#test "accepted Stunned ends concentration and Dodge but allows walking and standing without actions" {
+  b: [1] RsBattle; cp_field(b[..]);
+  #assert rs_cast(b[..],0,SP_BLESS,1,0,0,0);
+  rs_dodge_begin(b[..],0); b[0].c[0].cond|=RS_PRONE;
+  #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1});
+  #assert b[0].c[0].conc == -1 && !b[0].c[0].dodging && !rs_can_act(b[0].c[0]);
+  rs_start_turn(b[..],0); // the condition outlasts this turn; budgets are fresh
+  #assert !b[0].turn.action && !b[0].turn.bonus;
+  #assert rs_can_move(b[0].c[0]) && rs_movement_left(b[..],0)==30;
+  #assert rs_step_to(b[..],0,2,1) && rs_movement_left(b[..],0)==20; // crawling
+  #assert rs_stand_up(b[..],0) && rs_movement_left(b[..],0)==5;
+  #assert rs_has(b[0].c[0],RS_STUNNED) && !rs_has(b[0].c[0],RS_PRONE);
+  action := b[0].turn.action; bonus := b[0].turn.bonus; rolls := b[0].dice[0].rolled;
+  #assert !rs_dash(b[..],0) && !rs_cunning_dash(b[..],0) && !rs_attack(b[..],0,1,false,-1);
+  #assert b[0].turn.action==action && b[0].turn.bonus==bonus && b[0].dice[0].rolled==rolls;
+}
+
+#test "Stunned retains its save and attack consequences while another condition can still prevent movement" {
+  b: [1] RsBattle; cp_field(b[..]);
+  #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1});
+  rolls := b[0].dice[0].rolled;
+  str := rs_saving_throw(b[..],0,RS_STR,1); dex := rs_saving_throw(b[..],0,RS_DEX,1);
+  #assert str.automatic && !str.passed && dex.automatic && !dex.passed && b[0].dice[0].rolled==rolls;
+  con := rs_saving_throw(b[..],0,RS_CON,1);
+  #assert !con.automatic && con.passed && b[0].dice[0].rolled==rolls+1;
+  #assert rs_attack_edge(b[..],1,0,true,false)==1 && !rs_condition_critical(b[0].c[0],5);
+  b[0].c[0].cond|=RS_GRAPPLED;
+  #assert !rs_step_to(b[..],0,2,1);
+  b[0].c[0].cond=RS_STUNNED|RS_PRONE;
+  rs_start_turn(b[..],0);
+  #assert rs_movement_left(b[..],0)==30 && rs_stand_up(b[..],0) && !rs_can_act(b[0].c[0]);
+}
+
+#test "Stunned refuses Reaction spells without spending their slot or reaction" {
+  b: [1] RsBattle; cp_field(b[..]);
+  b[0].c[0]=rs_sorcerer("Stunned",0,3);
+  #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1});
+  slots := b[0].c[0].slots[1];
+  #assert !rs_shield(b[..],0) && !b[0].c[0].reacted && b[0].c[0].slots[1]==slots;
+}
+
+#test "initiative rolls apply incapacitation Disadvantage and Invisible Advantage with ordinary cancellation" {
+  for condition: [6] int.[RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS,0] {
+    for athlete: 0..<2 { for invisible: 0..<2 {
+      b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+      c := rs_fighter("Initiative",0,1); c.cond=condition|(ifx invisible==1 then RS_INVISIBLE else 0); c.athlete=athlete==1;
+      _ := rs_add(b[..],c,1,1);
+      up := athlete==1 || invisible==1;
+      #assert b[0].dice[0].rolled==(ifx up==(condition!=0) then 1 else 2);
+      #assert b[0].c[0].initiative==10+rs_mod(c.score[RS_DEX]);
+    } }
+  }
+}
+
+cp_field :: (b: [] RsBattle) {
+  b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
+  _ := rs_add(b,rs_cleric("Caster",0,3),1,1);
+  other := rs_add(b,rs_fighter("Other",1,1),4,1);
+  rs_start_turn(b,0); b[0].dice[0].rolled=0;
+}
+
+
+#test "native condition-permission witness separates movement from actions and initiative" {
+  #assert cp_native();
+}
+cp_native :: () -> bool {
+  b: [1] RsBattle; cp_field(b[..]);
+  if !rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1}) { return false; }
+  b[0].c[0].cond|=RS_PRONE;
+  if !rs_stand_up(b[..],0) || !rs_step_to(b[..],0,2,1) || rs_movement_left(b[..],0)!=10 { return false; }
+  if rs_dash(b[..],0) || rs_can_act(b[0].c[0]) || b[0].turn.action { return false; }
+  c := b[0].c[0];
+  if rs_initiative_edge(c)!=-1 { return false; }
+  c.athlete=true;
+  if rs_initiative_edge(c)!=0 { return false; }
+  c.cond=RS_INVISIBLE;
+  return rs_initiative_edge(c)==1;
+}
+
+#test "initiative chooses the source-required lower or higher face and rolls only once after cancellation" {
+  for kind: 0..<3 { for seed: 1..<20 {
+    b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=cast(u64)seed;
+    oracle: [1] RsDice; oracle[0].state=cast(u64)seed;
+    first := rs_roll(oracle[..],20); expected := first;
+    if kind!=2 { second := rs_roll(oracle[..],20); expected=ifx kind==0 then rs_min(first,second) else rs_max(first,second); }
+    c := rs_fighter("Initiative",0,1);
+    c.cond=ifx kind==0 then RS_STUNNED else ifx kind==1 then RS_INVISIBLE else RS_STUNNED|RS_INVISIBLE;
+    _ := rs_add(b[..],c,1,1);
+    #assert b[0].c[0].initiative==expected+rs_mod(c.score[RS_DEX]);
+    #assert b[0].dice[0].state==oracle[0].state && b[0].dice[0].rolled==(ifx kind==2 then 1 else 2);
+  } }
+}

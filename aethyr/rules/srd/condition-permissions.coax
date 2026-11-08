@@ -1,0 +1,46 @@
+// SRD 5.2.1 pp.182-183,185-186,191. Movement permission is distinct
+// from action capability and Speed. Stunned imposes Incapacitated, not Speed 0.
+#authority;
+
+#test "movement permission preserves Stunned and Incapacitated while respecting separate blockers" {
+  for hp: 0..<2 { for dead: 0..<2 {
+    for condition: [16] int.[0,RS_BLINDED,RS_CHARMED,RS_DEAFENED,RS_EXHAUSTION,RS_FRIGHTENED,RS_GRAPPLED,RS_INCAPACITATED,RS_INVISIBLE,RS_PARALYZED,RS_PETRIFIED,RS_POISONED,RS_PRONE,RS_RESTRAINED,RS_STUNNED,RS_UNCONSCIOUS] {
+      c: RsCreature; c.hp=hp; c.dead=dead==1; c.cond=condition;
+      blocked := condition==RS_GRAPPLED || condition==RS_PARALYZED || condition==RS_PETRIFIED || condition==RS_RESTRAINED || condition==RS_UNCONSCIOUS;
+      #assert rs_can_move(c)==(hp==1 && dead==0 && !blocked);
+      c.cond|=RS_STUNNED;
+      #assert rs_can_move(c)==(hp==1 && dead==0 && !blocked);
+    }
+  } }
+  for slot: 0..<RS_EFFECTS {
+    c: RsCreature; c.hp=1; c.cond=RS_STUNNED;
+    for kind: [4] int.[EF_HALT,EF_DAZED,EF_HALT_PENDING,EF_HEX] {
+      c.eff[slot].kind=kind;
+      #assert rs_can_move(c)==(kind==EF_HALT_PENDING || kind==EF_HEX);
+    }
+  }
+}
+
+#test "initiative condition edges cancel Advantage and Disadvantage rather than stacking sources" {
+  for condition: [6] int.[0,RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
+    for athlete: 0..<2 { for invisible: 0..<2 {
+      c: RsCreature; c.hp=10; c.cond=condition|(ifx invisible==1 then RS_INVISIBLE else 0); c.athlete=athlete==1;
+      up := athlete==1 || invisible==1;
+      expected := ifx condition!=0 then (ifx up then 0 else -1) else (ifx up then 1 else 0);
+      #assert rs_initiative_edge(c)==expected;
+    } }
+  }
+  c: RsCreature; c.hp=10; c.cond=RS_BLINDED|RS_PRONE|RS_POISONED;
+  #assert rs_initiative_edge(c)==0;
+}
+
+rs_can_move :: (c: RsCreature) -> bool #effects(all) {
+  for e: c.eff { if e.kind==EF_DAZED || e.kind==EF_HALT { return false; } }
+  return rs_up(c) && !rs_has(c,RS_PARALYZED|RS_PETRIFIED|RS_UNCONSCIOUS|RS_GRAPPLED|RS_RESTRAINED);
+}
+rs_initiative_edge :: (c: RsCreature) -> int #effects(all) {
+  up := c.athlete || rs_has(c,RS_INVISIBLE);
+  down := rs_has(c,RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS);
+  if up==down { return 0; }
+  return ifx up then 1 else -1;
+}

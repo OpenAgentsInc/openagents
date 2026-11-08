@@ -26,6 +26,7 @@
 #load "effect-rolls.coax";
 #load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
+#load "condition-permissions.coax";
 #load "effect-lifecycle.coax";
 #load "death-save-roll.coax";
 #load "dodge.coax";
@@ -272,8 +273,8 @@ rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
   i := b[0].n;
   b[0].c[i] = c; b[0].c[i].x = -1; b[0].c[i].y = -1;
   rs_place(b, i, x, y);
-  // Remarkable Athlete: Advantage on Initiative rolls
-  b[0].c[i].initiative = rs_d20(b[0].dice[..], ifx c.athlete then 1 else 0).roll + rs_mod(c.score[RS_DEX]) - rs_exhaustion_penalty(c);
+  // Remarkable Athlete / Invisible Advantage cancels incapacitation Disadvantage
+  b[0].c[i].initiative = rs_d20(b[0].dice[..], rs_initiative_edge(c)).roll + rs_mod(c.score[RS_DEX]) - rs_exhaustion_penalty(c);
   b[0].n += 1;
   return i;
 }
@@ -1123,12 +1124,6 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   return ok;
 }
 
-// Whether a creature can move: up, and not Paralyzed, Petrified, Stunned, Unconscious, Grappled or
-// Restrained (an Incapacitated creature, a turned Undead, still moves).
-rs_can_move :: (c: RsCreature) -> bool {
-  for k: 0..<RS_EFFECTS { if c.eff[k].kind == EF_DAZED || c.eff[k].kind == EF_HALT { return false; } }
-  return rs_up(c) && (c.cond & (RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS | RS_GRAPPLED | RS_RESTRAINED)) == 0;
-}
 // One square of movement: 5 feet, 10 into Difficult Terrain; none while Restrained or at 0, or
 // after Steady Aim.
 rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {

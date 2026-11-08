@@ -42,7 +42,7 @@
     if state == 6 { c[0].cond |= RS_RESTRAINED; }
     if state == 7 { c[0].cond |= RS_PARALYZED; }
     if state == 8 { c[0].cond |= RS_PETRIFIED; }
-    if state == 9 { c[0].cond |= RS_STUNNED; }
+    if state == 9 { c[0].cond |= RS_STUNNED|RS_GRAPPLED; }
     if state == 10 { c[0].cond |= RS_UNCONSCIOUS; }
     if state == 11 { c[0].eff[0].kind = EF_HALT; }
     if state == 12 { t[0].move_left = 2; }
