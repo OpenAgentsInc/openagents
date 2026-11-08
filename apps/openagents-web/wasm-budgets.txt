@@ -42,7 +42,9 @@ fairy 695000
 # The owned two-handed weapon clips (verse/everglade/two-hand-rig.coax) and two-handed grip: 2,360,897 bytes measured; about 3% headroom.
 # main reached 2,440,994 bytes (ability sounds and more); the two-handed clips keyed at 60 frames a
 # second for the clearance check bring it to 2,447,639; about 2% headroom.
-fivelab 2500000
+# Experimental's ten-times dungeon (verse/experimental-dungeon.coax), its 45-monster roster and torch
+# lights add about 37 KB; about 2% headroom.
+fivelab 2560000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.

@@ -3,6 +3,7 @@
 #module "verse.experimentalvillage";
 #load "experimental-terrain.coax" as terrain;
 #load "experimental-castle.coax" as castle;
+#load "experimental-dungeon.coax" as dungeon;
 #load "experimental-props.coax" as props;
 #load "experimental-village-data.coax";
 #load "experimental-scene-colliders.coax";
@@ -161,15 +162,9 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
  out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);ev_castle_near(out,x,z,reach,ground);out[0].scene_begin=out[0].wall_n;if scene {ev_scene_near(out,x,z,reach,ground);}else {ev_prop_near(out,x,z,reach,ground);}out[0].scene_end=out[0].wall_n;
  for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
   if si==18 {
-   // Three large rooms with an offset entrance and two archways per partition.
-   for box:[11][6]f32.[
-    [6]f32.[-10.22,0,9.78,4,4,10.22],[6]f32.[8,0,9.78,10.22,4,10.22],
-    [6]f32.[-10.22,0,-10.22,10.22,4,-9.78],[6]f32.[-10.22,0,-10.22,-9.78,4,10.22],[6]f32.[9.78,0,-10.22,10.22,4,10.22],
-    [6]f32.[-10.22,0,3.78,-6,4,4.22],[6]f32.[-2,0,3.78,4,4,4.22],[6]f32.[8,0,3.78,10.22,4,4.22],
-    [6]f32.[-10.22,0,-4.22,-6,4,-3.78],[6]f32.[-2,0,-4.22,0,4,-3.78],[6]f32.[4,0,-4.22,10.22,4,-3.78]] {ev_house_box(out,site,dy,box);}
-   for side:0..<2 {for row:0..<2 {cx:= -8+f32(side)*16;cz:= -8+f32(row)*8;ev_house_box(out,site,dy,[6]f32.[cx-0.65,0,cz-0.65,cx+0.65,4,cz+0.65]);}}
-   // Solid furnishings inside the dungeon, in the same site-local coordinates.
-   for box:[6][6]f32.[[6]f32.[-0.8,0,-9,0.8,1.2,-7.8],[6]f32.[-8.2,0,7.4,-6.8,1.1,8.6],[6]f32.[-8.2,0,1.3,-7.2,1.3,2.7],[6]f32.[-6.6,0,1.4,-5.4,1.2,2.6],[6]f32.[5.1,0,-1,6.9,1.1,1],[6]f32.[-7.7,0,-7.7,-6.3,2.2,-6.3]] {ev_house_box(out,site,dy,box);}continue;
+   // the dungeon's walls, arches, furnishings and roof (experimental-dungeon.coax)
+   b:[3000]f32;n:=dungeon.dg_boxes(x,z,reach,b[..],0,false);
+   for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}continue;
   }
   if si>=9 && si<18 {
    // 4 m square house: front opening is centered in the left front module.

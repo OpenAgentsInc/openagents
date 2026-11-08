@@ -1,6 +1,7 @@
 // Integration checks for the same Aethyr walker used by Everglade Experimental.
 #load "../../aethyr/walk.coax" as walk;
 #load "../experimental-village.coax" as village;
+#load "../experimental-dungeon.coax" as dungeon;
 
 village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  p:=walk.walk_input(p0,0,forward,0,0,false,false,0,0);p.theta=0;
@@ -33,12 +34,35 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  p=walk.walk_place(49,0,46.5,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z>45;
 }
 #test "dungeon entrance admits the walker and its walls stop them" #steps 200000000 {
- p:=walk.walk_place(-32,0,-42,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z< -44.2 && p.pos.z> -51.5;
- p=walk.walk_place(-32,0,-47,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z< -50.2 && p.pos.z> -58;
- p=walk.walk_place(-36,0,-55,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z< -58.2 && p.pos.z> -64;
+ p:=walk.walk_place(-30.5,0,-42,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z< -44.6 && p.pos.z> -51.5;
  p=walk.walk_place(-35,0,-42,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -44;
- p=walk.walk_place(-35,0,-47,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -50;
- p=walk.walk_place(-39,0,-55,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -58;
+ p=walk.walk_place(-36,0,-60,0);for i:0..<60 {p=village_walk(p,1);}#assert p.pos.z> -63.45 && p.pos.z< -62;
+}
+// Steps toward (tx, tz) at a run.
+dungeon_walk :: (p0:walk.Player,tx:f32,tz:f32)->walk.Player {
+ dx:=tx-p0.pos.x;dz:=tz-p0.pos.z;d:=sqrt(dx*dx+dz*dz);if d<0.001 {d=1;}
+ p:=walk.walk_input(p0,dx/d,-dz/d,0,0,false,false,0,0);p.theta=0;
+ near:[1]village.EvNear;_:=village.ev_player_near(near[..],p.pos.x,p.pos.y,p.pos.z);
+ none:[1]f32;return walk.walk_advance_in_realm(p,1.0f32/60,none[0..<0],near[0].walls[0..<near[0].wall_n*6],near[0].floors[0..<near[0].floor_n*10],"everglade");
+}
+#test "the walker crosses the dungeon from its entrance to the boss's hall" #steps 4000000000 {
+ // in at the entrance, through the hall, the west passage, the barracks, the passage south and the
+ // antechamber, to the boss's hall at the far end (experimental-dungeon.coax DG_MAP)
+ route:=[13][2]f32.[[2]f32.[-30.5,-46],[2]f32.[-40.5,-60],[2]f32.[-40.5,-66],[2]f32.[-40.5,-86],[2]f32.[-32.5,-90],[2]f32.[-32.5,-101],
+  [2]f32.[-30.5,-104],[2]f32.[-30.5,-124],[2]f32.[-27,-126],[2]f32.[-17,-126.5],[2]f32.[-15.5,-131],[2]f32.[-15.5,-136],[2]f32.[-20.5,-141]];
+ p:=walk.walk_place(-30.5,0,-38,0);k:=0;stuck:=0;
+ for i:0..<3600 {if k>=route.count {break;}t:=route[k];x:=p.pos.x;z:=p.pos.z;p=dungeon_walk(p,t[0],t[1]);
+  dx:=t[0]-p.pos.x;dz:=t[1]-p.pos.z;if dx*dx+dz*dz<0.36 {k+=1;}
+  moved:=abs(p.pos.x-x)+abs(p.pos.z-z);if moved<0.002 {stuck+=1;}}
+ #assert k==route.count && stuck<20;
+ #assert dungeon.dg_at(dungeon.dg_col(p.pos.x),dungeon.dg_row(p.pos.z))=='N' && abs(p.pos.y)<0.2;
+}
+#test "the dungeon's walls stop the walker where they stand" #steps 400000000 {
+ // the barracks' north wall (z -84, its face at -84.55) between the west passage's door and the corner
+ p:=walk.walk_place(-46,0,-88,0);for i:0..<90 {p=dungeon_walk(p,-46,-80);}#assert p.pos.z< -84.55 && p.pos.z> -85.2;
+ // a doorway's arch post narrows it: you pass its middle, not its post
+ p=walk.walk_place(-40.5+1.9,0,-62,0);for i:0..<90 {p=dungeon_walk(p,-40.5+1.9,-68);}#assert p.pos.z> -63.4;
+ p=walk.walk_place(-40.5,0,-62,0);for i:0..<90 {p=dungeon_walk(p,-40.5,-68);}#assert p.pos.z< -66;
 }
 
 #test "village walker cannot walk through dining furniture" #steps 200000000 {

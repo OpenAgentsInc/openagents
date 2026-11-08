@@ -1748,6 +1748,10 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t1
     if ((l_m.w.w > 0x1.180000p4f))
     {
       l_local = coax_p_sub3(l_p, coax_p_v3(l_m.y.x, l_m.y.y, l_m.y.z));
+      if ((l_m.z.z > 0.0f))
+      {
+        l_local = coax_p_scale3(l_local, l_m.z.z);
+      }
       l_cs = l_m.z.y;
       l_sn = l_m.z.x;
       l_p = coax_p_add3(coax_p_v3(l_m.x.x, l_m.x.y, l_m.x.z), coax_p_v3(((l_local.x * l_cs) + (l_local.z * l_sn)), l_local.y, (((-l_local.x) * l_sn) + (l_local.z * l_cs))));

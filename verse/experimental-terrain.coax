@@ -2,11 +2,13 @@
 // height function, leaving the original Character Create glade untouched.
 #module "verse.experimentalterrain";
 #load "character-glade.coax" as glade;
+#load "experimental-dungeon.coax" as dungeon;
 
 ExpSite :: struct {x:f32;z:f32;left:f32;right:f32;back:f32;front:f32;}
 EXP_SITES :: 28;
 #test "experimental building sites are distinct, walkable and inside the meadow" {
- for i:0..<EXP_SITES {a:=exp_site(i);#assert abs(a.x)+a.left<82 && abs(a.x)+a.right<82 && abs(a.z)+a.back<82 && abs(a.z)+a.front<82;
+ // the dungeon (site 18) alone runs on south past the meadow, walled and roofed (experimental-dungeon.coax)
+ for i:0..<EXP_SITES {a:=exp_site(i);#assert a.x-a.left> -82 && a.x+a.right<82 && (i==18 || a.z-a.back> -82) && a.z+a.front<82;
   #assert exp_clear(a.x,a.z);if i!=1 && i<19 {#assert exp_height(a.x,a.z)==glade.cg_height(a.x,a.z);}
   for j:0..<i {b:=exp_site(j);#assert a.x+a.right+4<b.x-b.left || b.x+b.right+4<a.x-a.left || a.z+a.front+4<b.z-b.back || b.z+b.front+4<a.z-a.back;}}
  #assert !exp_clear(0,0);
@@ -35,7 +37,8 @@ exp_site :: (i:int)->ExpSite {
  if i==6 {return ExpSite.{x= -19,z=45,left=4.2,right=3.8,back=4.1,front=3.9};}
  if i==7 {return ExpSite.{x= -5,z= -23,left=2.9,right=6.2,back=7,front=5.2};}
  if i==8 {return ExpSite.{x=15,z= -5,left=2.9,right=6.2,back=7,front=5.2};}
- if i==18 {return ExpSite.{x= -38,z= -54,left=10.5,right=10.5,back=10.5,front=10.5};}
+ // the dungeon's block and its outer walls' thickness, levelled at the old dungeon's height (-38, -54)
+ if i==18 {h:=f32(dungeon.DG_HALF);return ExpSite.{x= -38,z= -54,left= -38-f32(dungeon.DG_X0)+h,right=dungeon.dg_east()+38+h,back= -54-dungeon.dg_south()+h,front=f32(dungeon.DG_Z0)+54+h};}
  if i==19 {return ExpSite.{x=50,z= -20,left=4.2,right=3.8,back=4.1,front=3.9};}
  if i==20 {return ExpSite.{x=18,z= -52,left=4.2,right=3.8,back=4.1,front=3.9};}
  if i==21 {return ExpSite.{x=50,z= -52,left=4.2,right=3.8,back=4.1,front=3.9};}

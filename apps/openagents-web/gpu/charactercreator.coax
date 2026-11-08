@@ -37,8 +37,12 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  half_vector:=normalize3(add3(sun,view));spec:=pow(saturate(dot3(n,half_vector)),24.0f32)*saturate(dot3(n,sun))*visibility*0.12f32;
  colour=add3(colour,scale3(cg_sun_colour(),spec));
  indirect:=mul3(albedo,add3(cg_hemisphere(n),scale3(v3(0.85f32,0.72f32,0.52f32),saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0))))))));
+ dark:=cg_dungeon_in(s.world,u);
+ if (dark) {colour=cg_dungeon_light(albedo,n,s.world,u);indirect=scale3(albedo,0.04f32);}
  share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
- colour=cg_atmosphere(colour,eye,s.world);return v4(colour.x,colour.y,colour.z,share);
+ // the dungeon's air carries no sky haze
+ if (!dark) {colour=cg_atmosphere(colour,eye,s.world);}
+ return v4(colour.x,colour.y,colour.z,share);
 }
 charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {
  uv:=s.uv;ray:=add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(s.pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-s.pos.y)/u[19])));plate:=cg_sky_uv(ray);

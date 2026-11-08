@@ -80,7 +80,8 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  nw:V4=wg_unpack4x8snorm(normal);normal3:=v3(nw.x,nw.y,nw.z);
  // 19: a held weapon, its whole matrix (columns c, e, f; translation a): the hand's pose times the grip.
  if (m.d.w>18.5f32) {p=add3(v3(m.a.x,m.a.y,m.a.z),add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),p.x),scale3(v3(m.e.x,m.e.y,m.e.z),p.y)),scale3(v3(m.f.x,m.f.y,m.f.z),p.z)));normal3=normalize3(add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),normal3.x),scale3(v3(m.e.x,m.e.y,m.e.z),normal3.y)),scale3(v3(m.f.x,m.f.y,m.f.z),normal3.z)));}
- else if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
+ // 18: a monster's frame, turned to face c.x, c.y and scaled by c.z (0 is its baked size; experimental-dungeon.coax dg_kind_scale)
+ else if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));if (m.c.z>0.0f32) {local=scale3(local,m.c.z);}cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
  o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;return o;
 }
 #test "glade source mesh instances retain source shape and independent scale" {
@@ -214,7 +215,37 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   colour=add3(colour,mul3(albedo,scale3(v3(1.35f32,1.16f32,0.62f32),scatter*(ifx grass then s.local.y else 1.0f32))));
  }
  if (ground) {mottle:=cg_noise(v2(s.world.x*2,s.world.z*2));meadow:=1.0f32-cg_path(s.world.x,s.world.z);grain:=cg_noise(v2(s.world.x*14,s.world.z*14));surface:=(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1,meadow);colour=scale3(colour,surface);indirect=scale3(indirect,surface);}
+ dark:=cg_dungeon_in(s.world,u);
+ if (dark) {
+  // the dungeon's air carries no sky haze
+  colour=cg_dungeon_light(albedo,n,s.world,u);indirect=scale3(albedo,0.04f32);
+  inner:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,inner);
+ }
  colour=cg_atmosphere(colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
+}
+// Everglade Experimental's dungeon (verse/experimental-dungeon.coax), lit by its torches alone:
+// u[60..63] its block (west, south, east, north), u[64] its ceiling's height (0 when there is none
+// in the scene), u[68..103] the nine torches nearest you, each x, y, z and brightness
+// (charactercreator.coax dungeon_light). Its outer walls' faces and its roof stand outside.
+#test "inside the dungeon only its torches light a face, warmest at the flame" {
+ u:[104]f32;u[60]= -48;u[61]= -154;u[62]=7;u[63]= -44;u[64]=5.1;u[68]= -40;u[69]=3;u[70]= -50;u[71]=1;
+ #assert cg_dungeon_in(v3(-40,1,-50),u[..]) && !cg_dungeon_in(v3(-40,5.2,-50),u[..]) && !cg_dungeon_in(v3(-48.5,1,-50),u[..]) && !cg_dungeon_in(v3(0,1,0),u[..]);
+ near:=cg_dungeon_light(v3(1,1,1),v3(0,1,0),v3(-40,0,-50),u[..]);far:=cg_dungeon_light(v3(1,1,1),v3(0,1,0),v3(-40,0,-70),u[..]);
+ #assert near.x>far.x*4 && near.x>near.z && far.x<0.06;
+ u[64]=0;#assert !cg_dungeon_in(v3(-40,1,-50),u[..]);
+}
+cg_dungeon_in :: (p:V3,u:[]f32)->bool {return u[64]>0.0f32 && p.x>u[60] && p.x<u[62] && p.z>u[61] && p.z<u[63] && p.y<u[64];}
+cg_dungeon_light :: (albedo:V3,n:V3,p:V3,u:[]f32)->V3 {
+ light:V3=v3(0.030f32,0.034f32,0.046f32);
+ for k:0..<9 {
+  o:int=68+(k*4);bright:f32=u[o+3];
+  if (bright>0.0f32) {
+   to:V3=sub3(v3(u[o],u[o+1],u[o+2]),p);d:f32=fmax(sqrt(dot3(to,to)),0.05f32);fall:f32=saturate(1.0f32-d/12.0f32);
+   facing:f32=saturate(dot3(n,scale3(to,1.0f32/d)))*0.8f32+0.2f32;
+   light=add3(light,scale3(v3(1.0f32,0.56f32,0.24f32),bright*fall*fall*facing*2.2f32/(1.0f32+0.05f32*d*d)));
+  }
+ }
+ return mul3(albedo,light);
 }
 
 #test "glade controls use one light frosted left panel that also holds the title" {
@@ -373,7 +404,7 @@ charactercreator_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,
   for i:0..<4 {angle:=cast(f32)i*1.5707963f32;at:=v2(uv.x+cos(angle)*2.0f32/u[0],uv.y+sin(angle)*2.0f32/u[1]);soft=add3(soft,cg_post_sample(post_light,post_lin,at));}
   c=mix3(c,scale3(soft,0.25f32),0.55f32);
  }
- c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,cg_sun_veil(uv)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}if (u[11]>1.5f32 && cg_dev_panel(pixel,u[1]-u[52],u[4],u[11]>2.5f32)) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[54]>u[53] && cg_column(pixel,u[53],u[54],u[4])) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[42]>0.5f32 && cg_health_panel(pixel,u[0],u[4])) {result=mix3(result,v3(0.025f32,0.035f32,0.03f32),0.88f32);}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
+ c=add3(c,glow);result:=ifx abs(a.w)<0.001f32 then cg_encode(c) else cg_output(add3(c,scale3(cg_sun_veil(uv),ifx cg_dungeon_in(v3(u[16],u[17],u[18]),u) then 0.0f32 else 1.0f32)));if (u[11]<0.5f32) {glass:=cg_panel_opacity(pixel,u[0],u[1],u[4]);fade:=1.0f32-u[40];if (glass*fade>0) {panel:=mix3(cg_output(cg_glass(uv,u,post_light,post_lin)),v3(0.09f32,0.12f32,0.11f32),glass);result=mix3(result,panel,fade);result=mix3(result,v3(0.93f32,0.86f32,0.66f32),cg_panel_edge(pixel,u[0],u[1],u[4])*0.55f32*fade);}}if (u[11]>1.5f32 && cg_dev_panel(pixel,u[1]-u[52],u[4],u[11]>2.5f32)) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[54]>u[53] && cg_column(pixel,u[53],u[54],u[4])) {result=mix3(result,v3(0.025f32,0.04f32,0.035f32),0.83f32);}if (u[42]>0.5f32 && cg_health_panel(pixel,u[0],u[4])) {result=mix3(result,v3(0.025f32,0.035f32,0.03f32),0.88f32);}result=cg_walk_veil(result,u);return v4(result.x,result.y,result.z,1);
 }
 #test "glade contact reconstruction preserves camera-forward depth" {
  u:[104]f32;u[16]=2;u[17]=1;u[18]=3;u[22]= -1;u[24]=1;u[29]=1;u[19]=100;u[23]=50;u[27]=40;

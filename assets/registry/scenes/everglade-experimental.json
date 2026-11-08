@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "313ae0683dc01eb85a371c53b56c2c1540907df6f98dffaeafe6cb51f17f61b2",
+    "sha256": "341f60e6f761bf93847a119b89759c4e149cd69bc14f8acf6a30cb67dfaddd6e",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2298,10 +2298,10 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "44cc601b532ebc0e648961b6088cfe598dc3a6763fa78a7c9b30534c66cbf0a5",
+    "sha256": "b0aa8371d62fc07d7aed2f95fcec216ee767c97b0789b69812bed0039ec25284",
     "budget_bytes": 536870912,
-    "decoded_sha256": "2d4538214445e1173525561aea8301f588a141f524fda29ecfdb2a711ba5e78f",
-    "decoded_bytes": 207906064,
+    "decoded_sha256": "071fe154ba0d0e3694d9b7c0b22efbdc8dd2b8b89828a339f87236faceff8800",
+    "decoded_bytes": 243035744,
     "encoding": "gzip"
   },
   "terrain": {
@@ -2321,7 +2321,7 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "bb044a050a4185a12e3ab6d75523e71989ec86fcc407c9c25ab0804d308d6cf5"
+      "sha256": "b9584edbb5f2b0135a55b7b9d08b5966270fd32258661eee9e1d34f5662d25f6"
     }
   },
   "scope": "Nature meadow, source-authored Medieval Village layouts, castle courtyard and furnished watchmaker workshop; Character Create wardrobe remains unchanged.",
@@ -2530,7 +2530,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "1ede2be63baf06cd025e254cfc54cd8d8bd859f47e979fc6dde23c402d0a1000"
+        "sha256": "0df68cd84e7e5522bb63b4a502de606468f234c0a7d66ce97feab05d52567cdb"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2538,7 +2538,7 @@
   },
   "shader": {
     "path": "apps/openagents-web/gpu/character-glade.coax",
-    "sha256": "43a17edfffec440ddad5fb41b7e50216a4ed4cb350d4fe93f8743560e8b0a988",
+    "sha256": "fdb49bb93d72f85cc61991ab9bd5f268fe8866d4d59477842ba97ad74dce0003",
     "artifact": "apps/openagents-web/charactercreator.wgsl",
     "artifact_sha256": "a8fd1e7895043cf92743e3df2e8ae3c20303aa8ca336cb94b6e4ae1dfbbc0e8a"
   },
@@ -2624,7 +2624,7 @@
     "behavior": "Pursue the player and make timed SRD melee attacks",
     "source": {
       "path": "verse/experimental-hostiles.coax",
-      "sha256": "793f4ce91275345e8dca83fe688547dedf5a257332daa593aed744e41bc7cd99"
+      "sha256": "ffcbfab23ae0029aa320cfe285a20638857b04106257fb9095150c5079e5363e"
     }
   },
   "dungeon": {
@@ -2646,7 +2646,7 @@
   },
   "scene_asset_collision": {
     "path": "verse/experimental-scene-colliders.coax",
-    "sha256": "e71e3f9c1dfa905152b7db3186f22d0cb10a2ddf6e040395d1db7c086d18b7b8",
+    "sha256": "32ed7c8d5b231e4e2c2e246bfe2eb61a09297044d28c2dafcfad892604b51f59",
     "placed_assets": 570,
     "source": "Generated from transformed scene vertices; narrow item gaps use bounded grouped footprints, bushes slow movement, enemies yield to the player, and trapped players recover to a clear position.",
     "bush_volumes": 14,

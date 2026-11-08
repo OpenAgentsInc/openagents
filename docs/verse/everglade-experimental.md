@@ -112,7 +112,36 @@ stand in display rows in the northwestern meadow. The experimental pack budget i
 and accommodates up to 128 texture layers. Its deterministic gzip transport is
 tracked in Git, and the browser decompresses it before reading the pack.
 
-A 20-by-20-metre open-roof stone dungeon stands northwest of spawn, with its entrance at (-32, -44). Five arches connect three halls furnished with columns, torches, treasure and dungeon decorations. An imp and a gremlin wait until a visitor comes near. The walls and columns stop the player and the camera.
+A walled and roofed stone dungeon stands southwest of spawn. Its entrance is at (-30.5, -44), on the side that faces the village. The dungeon is 55 by 110 metres on a 5-metre grid and runs south past the meadow's edge to z = -154. It has 166 cells of floor, 4,150 square metres in all. The old 20-by-20-metre dungeon, 400 square metres, is now its entrance hall. Sixteen rooms and passages meet at 17 arched doorways:
+
+- The entrance hall.
+- An east passage to the guard room.
+- A west passage to the barracks.
+- A 20-by-40-metre great hall with columns, which both routes reach.
+- Three dead ends: a crypt, a storeroom and a treasure nook.
+- An antechamber.
+- The Warlord's hall at the far end.
+
+`verse/experimental-dungeon.coax` holds the layout. The scene packer builds the Modular Dungeon pieces from it, and the walker, the camera and the monsters collide with boxes computed from the same layout:
+
+- Floor_Modular and Wall_Modular are placed at 2.5 times, with walls 5 metres tall. The walls meet at corners and doorway jambs without gaps or overlapping faces.
+- Each doorway is an Arch. Its posts and lintel are also colliders.
+- Furniture stops you where it stands: tables, chairs, barrels, crates, chests, pedestals, statues, columns and braziers.
+- The roof is ten-metre slabs of Floor_Modular.
+
+Torches and the fire bowls are the only light inside. The glade shader darkens everything under the roof and lights it from the nine lights nearest you, which flicker. Inside, the sky's haze and the sun's veil are off. The outer walls' faces and the roof keep the daylight. The walls stand 0.3 metres into the floor and slabs lie under it, so no seam shows the sky.
+
+On a local page, `?cell=N&yaw=D` starts you in dungeon cell N (row × 11 + column) turned D degrees, for headless screenshots. For example, `?cell=203` is the Warlord's hall.
+
+The outer walls, the walls between rooms, the roof and the entrance are drawn with the village. The rest of the inside is eight parts by room, and each part is drawn only while you can see into one of its rooms. A test checks every line of sight between cells. Monsters inside are drawn only in those parts.
+
+Monsters fill the dungeon: the imp and gremlin that were in the entrance hall, plus 39 more, for 41 in all. They wait in groups by room and get tougher deeper in:
+
+- Imps and gremlins near the entrance.
+- Imp fiends (big imps) and Puglin brutes (big gremlins) in the hall, crypt and antechamber.
+- The Puglin Warlord: 2.4 times a gremlin's size, AC 16, 110 Hit Points, a 3d8+4 axe.
+
+A monster wakes when it sees you within 8 metres, or 13 for the Warlord, and never through a wall. It then pursues you with the same SRD melee as the village's. Nameplates and aimed abilities also need a line of sight. The player and camera are stopped by every wall, arch, column and solid piece of furniture.
 
 The follow camera checks the village's nearby building collision boxes along
 the full boom, including the shoulder offset. It pulls in immediately when a
