@@ -1,0 +1,10 @@
+e2-restart-check: 3 players in pair-e2-rs-36527 on 127.0.0.1:65094: levels 1 to 6 over real sockets
+  ok   each player hears its own level's bar: 1 b heard (4 slots), 0 casts sent, 0 taken, 0 refused
+  ok   the level 5 Fighter's Action Surge is taken: 2 b heard (4 slots), 1 casts sent, 1 taken, 0 refused
+  ok   and its count drops by one: 2 b heard (4 slots), 1 casts sent, 1 taken, 0 refused
+  ok   the level 1 Fighter's same slot is refused: 1 b heard (3 slots), 1 casts sent, 0 taken, 1 refused
+  ok   the level 5 Fighter's weapon Attack is taken: 3 b heard (4 slots), 2 casts sent, 2 taken, 0 refused
+  ok   the level 3 Barbarian's Rage is taken: 2 b heard (4 slots), 1 casts sent, 1 taken, 0 refused
+  ok   and the room says its Rage holds: 2 b heard (4 slots), 1 casts sent, 1 taken, 0 refused
+  ok   a second Rage while raging is refused: 2 b heard (4 slots), 2 casts sent, 1 taken, 1 refused
+holds

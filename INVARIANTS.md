@@ -7331,6 +7331,24 @@ rest. Pre-v5 `L` rest requests are refused in Everglade II rooms. Evidence:
 `coax/web/room/room-e2-rest.coax` checks and
 `docs/protocol/everglade-session-v5.md`.
 
+## An Everglade II seat plays at the level its hello names, and the room says its bar
+
+Character Create's LEVEL (1 to 6) is kept in the appearance record (CC4 past
+level 1; CC3 reads as level 1), and the hello's KIND says it as `srd-CLASS-L`.
+The room seats the creature at that level through the shared rules
+(`e5rr_join_level`), rejoins a seat whose level changes, and never rebuilds an
+Everglade II seat with Everglade's XP levels. A wire slot is the ability's place
+in its class's level 1 to 6 catalog (`xk_wire`), so level 1 slots keep their
+numbers; `eg_e2_cast` and `e2r_apply` take a slot only from the seat's own
+level's bar (`xk_entry_at`). Weapon swings, Flurry and Action Surge pay their real
+Action, Bonus Action, Focus and uses; nothing picks a creature. The room is the
+only source of the bar's counts and held features: it sends `b N V...` per seat
+after an accepted cast and on change, and the page draws only what it said. A
+cast the room refuses is undone on the page: its predicted voice fades out and
+its puffs fade to nothing, never cut. Reactions and Opportunity Attacks need a
+hostile creature, and Everglade II has none until the owner decides its social
+profile. Evidence: `docs/verification/srd-e2-levels-2026-11-08/README.md`.
+
 ## A carried rest earns nothing offline and keeps the Long Rest gate
 
 Character checkpoint profile 3 carries a seat's rest as 19 bounded integers

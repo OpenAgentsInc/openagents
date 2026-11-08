@@ -1,0 +1,2 @@
+wasm.sh: everglade2.wasm: 50.0 s: Coax to C 46.3 s (2/3 cached), clang 2.1 s (3/4 cached), link 0.7 s, wasm-opt 0.6 s; 660903 bytes; report apps/openagents-web/build/.c/everglade2.timings.json
+wasm.sh: fivelab.wasm: 79.3 s: Coax to C 74.3 s (2/3 cached), clang 2.7 s (2/4 cached), link 1.2 s, wasm-opt 0.8 s; 2583227 bytes; report apps/openagents-web/build/.c/fivelab.timings.json

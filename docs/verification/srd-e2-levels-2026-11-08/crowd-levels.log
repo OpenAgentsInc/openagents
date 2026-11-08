@@ -1,0 +1,35 @@
+room http://localhost:9148/worlds/character-creator?relay=ws://localhost:9147&room=pair-e2-8d287d25b3f1-1, 2 players, mark pair-check-8d287d25b3f1
+  page: class 4 level 5 picked
+  page: class 0 level 3 picked
+ok   every page pressed USE IN EVERGLADE and its run began
+ok   a refused name (an address) is said, and nothing is sent
+ok   every page took its name in Character Create (NAME, the API's player/name)
+ok   page 0 picked FIGHTER at LEVEL 5 and page 1 BARBARIAN at LEVEL 3 with the mouse
+ok   every page is seated in the room while its run plays
+  page 0 seat 0 after 3774 ms, running 1; room state 2 want 1 joined 1 look 58 tries 0 frames in 117
+  page 1 seat 1 after 106 ms, running 1; room state 2 want 1 joined 1 look 58 tries 0 frames in 18
+ok   every page draws every other player
+ok   every page has every other's chosen name
+  names in 0 ms after every page drew every other
+  seen while a run played: yes
+  picture docs/verification/srd-e2-levels-2026-11-08/run-0.jpg
+  picture docs/verification/srd-e2-levels-2026-11-08/run-1.jpg
+  page 0: bar 4 slots, room's word 1, Action Surge left 1; page 1: bar 4 slots, Rage left 3
+ok   each page hears its own level's bar from the room (b), 4 slots each
+  page 0: Action Surge taken true, left 1 then 0
+ok   the level 5 Fighter's Action Surge is taken and its on-icon count drops by one
+  picture docs/verification/srd-e2-levels-2026-11-08/levels-1.jpg
+  picture docs/verification/srd-e2-levels-2026-11-08/levels-0.jpg
+  page 1: Rage taken and holds true, second Rage undone 1 (fades going 1, then 0), casts back 1
+ok   the level 3 Barbarian's Rage is taken and its icon says it holds
+ok   a second Rage is refused by the room; its predicted sound and puffs are undone and faded out
+  page 0: named others 1, bodies for names 1, names drawn now 1, most in a frame 1, draws 137
+  page 1: named others 1, bodies for names 1, names drawn now 1, most in a frame 1, draws 138
+  page 0: others drawn 1, came into view and faded in 1, pops 0, fading out now 0
+  page 1: others drawn 1, came into view and faded in 1, pops 0, fading out now 0
+ok   nobody popped in or out (each faded)
+  picture docs/verification/srd-e2-levels-2026-11-08/walk-0.jpg
+  picture docs/verification/srd-e2-levels-2026-11-08/walk-1.jpg
+ok   every page still draws every other player after the walk
+ok   every page has every other's name and draws names over their heads
+holds
