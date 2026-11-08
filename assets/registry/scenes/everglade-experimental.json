@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "9486f45fb9c4373ae009d38dd80ef39adcea61d1312753bccac54b010417ea70",
+    "sha256": "eba335bca6018d4c73f8aee15f6112cdf91060b06159f95ab4807cfe94a8e1d6",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2530,7 +2530,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "93f97ddea141de6c46ad7b912aa7d175abeb1e7dd7fc46a9bd82e49ab2a97f9e"
+        "sha256": "32a8ddf04d7207f8970a28f78b3c5c8fcfc234a05d714698dd425586e0400ef9"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2646,10 +2646,11 @@
   },
   "scene_asset_collision": {
     "path": "verse/experimental-scene-colliders.coax",
-    "sha256": "bcb3a58440791cddf62a0658126f035f69a23864215b2cadef2908ef08b174c8",
+    "sha256": "e71e3f9c1dfa905152b7db3186f22d0cb10a2ddf6e040395d1db7c086d18b7b8",
     "placed_assets": 570,
-    "source": "Generated from transformed scene vertices; bushes are walk-through volumes at 80% pace and living enemies use moving capsules.",
-    "bush_volumes": 14
+    "source": "Generated from transformed scene vertices; small nearby solid items with narrow gaps are grouped into bounded footprints, bushes are walk-through volumes at 80% pace, and living enemies use moving capsules.",
+    "bush_volumes": 14,
+    "solid_footprints": 528
   },
   "castle": {
     "towers": [

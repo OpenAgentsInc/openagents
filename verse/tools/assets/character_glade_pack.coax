@@ -85,6 +85,27 @@ gp_vertex_bounds :: (vertices:[]u8,first:int,last:int,bark:bool)->[6]int {
  if n==0 && bark {return gp_vertex_bounds(vertices,first,last,false);}if n==0 {return [6]int.[0,0,0,0,0,0];}
  box:[6]int;for k:0..<3 {box[k]=int(lo[k]*1000)-1;box[k+3]=int(hi[k]*1000)+1;}return box;
 }
+#test "display collision closes gaps too narrow for the player" {
+ a:=[6]int.[3283,-1,32819,4716,943,33580];b:=[6]int.[5229,-1,32819,6770,1100,33580];
+ #assert gp_crowded(a,b);b[0]=5500;#assert !gp_crowded(a,b);b[0]=5229;b[1]=3000;#assert !gp_crowded(a,b);
+}
+// Join impassable gaps into a single solid footprint: the capsule must never
+// be squeezed between two opposing display colliders and refuse every step.
+gp_crowded :: (a:[6]int,b:[6]int)->bool {
+ if a[4]-a[1]<=550 || b[4]-b[1]<=550 || a[4]<=b[1] || b[4]<=a[1] {return false;}
+ minx:=ifx a[0]<b[0] then a[0] else b[0];maxx:=ifx a[3]>b[3] then a[3] else b[3];minz:=ifx a[2]<b[2] then a[2] else b[2];maxz:=ifx a[5]>b[5] then a[5] else b[5];
+ if maxx-minx>6000 || maxz-minz>6000 {return false;}
+ dx:=ifx a[0]>b[3] then a[0]-b[3] else ifx b[0]>a[3] then b[0]-a[3] else 0;
+ dz:=ifx a[2]>b[5] then a[2]-b[5] else ifx b[2]>a[5] then b[2]-a[5] else 0;
+ return dx*dx+dz*dz<650*650;
+}
+gp_merge_display :: (w:[]Gp,start:int) {
+ changed:=true;while changed {changed=false;i:=start;while i<w[0].collider_n {j:=i+1;while j<w[0].collider_n {
+  a:=w[0].colliders[i];b:=w[0].colliders[j];if !gp_crowded(a,b) {j+=1;continue;}
+  for k:0..<3 {if b[k]<a[k] {a[k]=b[k];}if b[k+3]>a[k+3] {a[k+3]=b[k+3];}}w[0].colliders[i]=a;
+  for k:j..<w[0].collider_n-1 {w[0].colliders[k]=w[0].colliders[k+1];}w[0].collider_n-=1;changed=true;
+ }i+=1;}}
+}
 gp_capture :: (w:[]Gp,first:int,bark:bool) {
  if first==w[0].nv {return;}if w[0].collider_n>=1024 {ph_die("scene collider capture overflow");}
  w[0].colliders[w[0].collider_n]=gp_vertex_bounds(w[0].v[..],first,w[0].nv,bark);w[0].collider_n+=1;
@@ -257,10 +278,10 @@ gp_weapons :: (w:[]Gp,g:[]Gltf,layout:string,objects:string,rpg:string) {
  }
 }
 gp_showcase :: (w:[]Gp,g:[]Gltf,layout:string,objects:string,food:string,rpg:string,dungeon:string,animals:string) {
- b:[65536]u8;n:=fs_read(layout,b[..]);if n<0 {ph_die("missing showcase layout");}lines:[1]Lines;lines[0].text=cast(string)b[0..<n];slot:=0;
+ first_collider:=w[0].collider_n;b:[65536]u8;n:=fs_read(layout,b[..]);if n<0 {ph_die("missing showcase layout");}lines:[1]Lines;lines[0].text=cast(string)b[0..<n];slot:=0;
  while !lines_done(lines[0]) {row:=lines_next(lines[..]);if row.count==0 {continue;}a:=0;while a<row.count && row[a]!='|' {a+=1;}c:=a+1;while c<row.count && row[c]!='|' {c+=1;}if a==0 || c>=row.count || row.count-c-1!=64 {ph_die("invalid showcase layout");}pack:=row[0..<a];name:=row[a+1..<c];sha:=row[c+1..<row.count];source:=ifx pack=="ultimate-food" then food else ifx pack=="ultimate-rpg" then rpg else ifx pack=="dungeon" then dungeon else ifx pack=="ultimate-animals-static" then animals else "";if source=="" {ph_die("unknown showcase package");}if slot>=269 {ph_die("too many showcase items");}w[0].showcase_keep[slot]=gp_fantasy_showcase(pack,name);if slot<257 && w[0].showcase_keep[slot] {path:=txt_cat3(w[0].txt[..],objects,"/",sha);gp_showcase_mesh(w,g,path,source,name,slot,w[0].village_layer);}slot+=1;
  }
- if slot!=269 {ph_die("incomplete showcase layout");}
+ if slot!=269 {ph_die("incomplete showcase layout");}gp_merge_display(w,first_collider);
 }
 // A compact, open-roof dungeon, assembled from the registry's pinned models.
 gp_dungeon_part :: (w:[]Gp,g:[]Gltf,objects:string,root:string,name:string,hash:string,x:f32,z:f32,y:f32,turn:bool) {
@@ -295,7 +316,7 @@ gp_dungeon :: (w:[]Gp,g:[]Gltf,objects:string,root:string) {
 }
 GP_ANIMALS :: [12]string.["Alpaca","Bull","Cow","Deer","Donkey","Fox","Horse","Horse_White","Husky","ShibaInu","Stag","Wolf"];
 gp_animal_frames :: (w:[]Gp,root:string) {
- for frame:0..<10 {w[0].animalfirst[frame]=w[0].ni;
+ first_collider:=w[0].collider_n;for frame:0..<10 {w[0].animalfirst[frame]=w[0].ni;
   for animal:0..<12 {pb:[4096]u8;s:[1]Sb;s[0]=sb(pb[..]);sb_put(s[..],root);sb_byte(s[..],'/');sb_put(s[..],GP_ANIMALS[animal]);sb_byte(s[..],'-');sb_int(s[..],frame);sb_put(s[..],".bin");b:[524288]u8;n:=fs_read(sb_text(s[..]),b[..]);if n<8 {ph_die("missing baked animal frame");}count:=gl_u32(b[..],0);if count<=0 || count%3!=0 || n!=8+count*28 {ph_die("invalid baked animal frame");}
    if frame==0 {lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];for v:0..<count {for k:0..<3 {x:=f32_from_bits(cast(u32)gl_u32(b[..],8+v*28+k*4));if x<lo[k] {lo[k]=x;}if x>hi[k] {hi[k]=x;}}}w[0].animal_anchor[animal]=[3]f32.[(lo[0]+hi[0])*0.5,lo[1],(lo[2]+hi[2])*0.5];}
    capture_first:=w[0].nv;place:=gp_showcase_position(257+animal);anchor:=w[0].animal_anchor[animal];base:=meadow.exp_height(place[0],place[1]);seen:[32768]int;mapped:[16384]int;if count>mapped.count {ph_die("animal frame has too many corners");}
@@ -303,7 +324,7 @@ gp_animal_frames :: (w:[]Gp,root:string) {
     if seen[hash]!=0 {mapped[v]=mapped[seen[hash]-1];}else {seen[hash]=v+1;p:[3]f32;normal:[3]f32;colour:[3]f32;for k:0..<3 {p[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+k*4));normal[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));colour[k]=f32(b[at+24+k])/255;}id:=gp_v(w,[3]f32.[place[0]+0.4*(p[0]-anchor[0]),base+0.4*(p[1]-anchor[1]),place[1]+0.4*(p[2]-anchor[2])],normal,[2]f32.[0.5,0.5],colour,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(115.375));mapped[v]=id;}
     if v%3==2 {gp_tri(w,mapped[v-2],mapped[v-1],mapped[v]);}}
    if frame==0 {gp_capture(w,capture_first,false);}
-  }w[0].animalcount[frame]=w[0].ni-w[0].animalfirst[frame];
+  }if frame==0 {gp_merge_display(w,first_collider);}w[0].animalcount[frame]=w[0].ni-w[0].animalfirst[frame];
  }
 }
 #test "bestiary placements are separate and in the open meadow" {
@@ -413,7 +434,7 @@ gp_prop_tile :: (name:string)->int {
 gp_extra_prop_position :: (i:int)->[2]f32 {return [2]f32.[-77.0+f32(i%8)*3.5,-75.0+f32(i/8)*5.5];}
 gp_extra_clear :: (x:f32,z:f32)->bool {for i:0..<74 {p:=gp_extra_prop_position(i);dx:=x-p[0];dz:=z-p[1];if dx*dx+dz*dz<1.0 {return true;}}return false;}
 gp_extra_props :: (w:[]Gp,g:[]Gltf,root:string,layout:string) {
- w[0].extra_props=true;
+ first_collider:=w[0].collider_n;w[0].extra_props=true;
  data:[32768]u8;n:=fs_read(layout,data[..]);if n<0 {ph_die("missing extra prop layout");}lines:[1]Lines;lines[0].text=cast(string)data[0..<n];slot:=0;
  while !lines_done(lines[0]) {row:=lines_next(lines[..]);if row.count==0 {continue;}a:=0;while a<row.count && row[a]!='|' {a+=1;}if a==0 || row.count-a-1!=64 || slot>=74 {ph_die("invalid extra prop layout");}name:=row[0..<a];capture_first:=w[0].nv;path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],name,".gltf"));gl_load(g,path);anchor:=gp_showcase_bounds(g);place:=gp_extra_prop_position(slot);base:=meadow.exp_height(place[0],place[1]);sc:=[3]f64.[1,1,1];r:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=f32(sc[0]);sy:=f32(sc[1]);sz:=f32(sc[2]);rot:=[4]f64.[0,0,0,1];r=gl_nums(g,gl_at(g,GA_NODE,0),"rotation",rot[..]);q:=[4]f32.[f32(rot[0]),f32(rot[1]),f32(rot[2]),f32(rot[3])];
   for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;colors:[262144]f64;idx:[262144]f64;nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;acc:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);acc=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;ci:=gl_int(g,attr,"COLOR_0",-1);channels:=0;if ci>=0 {col:=gl_acc(g,ci,colors[..]);channels=col.comps;if col.count!=nv || (channels!=3 && channels!=4) {ph_die("invalid prop vertex colors");}}
@@ -421,7 +442,7 @@ gp_extra_props :: (w:[]Gp,g:[]Gltf,root:string,layout:string) {
    for v:0..<nv {x:=f32(pos[v*3])*sx;y:=f32(pos[v*3+1])*sy;z:=f32(pos[v*3+2])*sz;local:=gp_showcase_rotate([3]f32.[x,y,z],q);normal:=gp_showcase_rotate(cg_canopy_normal(f32(nor[v*3])/sx,f32(nor[v*3+1])/sy,f32(nor[v*3+2])/sz),q);uu:=f32(uv[v*2]);vv:=f32(uv[v*2+1]);if abs(uu)>4 || abs(vv)>4 {ph_die("prop UV exceeds admitted range");}colour:=ifx tile==15 then [3]f32.[0.87,0.79,0.59] else [3]f32.[1,1,1];if channels>0 && tile!=15 {for j:0..<3 {colour[j]=f32(colors[v*channels+j]);}}id:=gp_v(w,[3]f32.[place[0]+local[0]-anchor[0],base+local[1]-anchor[1],place[1]+local[2]-anchor[2]],normal,[2]f32.[(uu+4)/8,(vv+4)/8],colour,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.125+f32(tile)));}
    for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
   }}gp_capture(w,capture_first,false);slot+=1;
- }if slot!=74 {ph_die("incomplete extra prop layout");}
+ }if slot!=74 {ph_die("incomplete extra prop layout");}gp_merge_display(w,first_collider);
 }
 #test "nature display stays within the meadow and clear of village sites" {
  for i:36..<96 {p:=gp_extra_nature_position(i);#assert p[0]>= -79 && p[0]<= -24 && p[1]>=56 && p[1]<=80 && !meadow.exp_clear(p[0],p[1]);}
@@ -431,9 +452,9 @@ gp_extra_nature_position :: (slot:int)->[2]f32 {
  return [2]f32.[-79+f32((slot-36)%12)*5,56+f32((slot-36)/12)*6];
 }
 gp_extra_nature :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string,layout:string) {
- data:[8192]u8;n:=fs_read(layout,data[..]);if n<0 {ph_die("missing extra nature layout");}lines:[1]Lines;lines[0].text=cast(string)data[0..<n];slot:=0;
+ first_collider:=w[0].collider_n;data:[8192]u8;n:=fs_read(layout,data[..]);if n<0 {ph_die("missing extra nature layout");}lines:[1]Lines;lines[0].text=cast(string)data[0..<n];slot:=0;
  while !lines_done(lines[0]) {row:=lines_next(lines[..]);if row.count==0 {continue;}a:=0;while a<row.count && row[a]!='|' {a+=1;}if a==0 || row.count-a-1!=64 || slot>=96 {ph_die("invalid extra nature layout");}name:=row[0..<a];place:=gp_extra_nature_position(slot);x:=place[0];z:=place[1];sc:=ifx slot<36 then 0.6f32 else 0.35f32;gp_mesh_scaled(w,g,iw,root,name,x,z,sc,sc,f32(slot)*0.7,[3]f32.[0.36,0.80,0.08],0);slot+=1;
- }if slot!=96 {ph_die("incomplete extra nature layout");}
+ }if slot!=96 {ph_die("incomplete extra nature layout");}gp_merge_display(w,first_collider);
 }
 // A fixed clock on the workshop's front gable. White atlas tile 15 lets the
 // ink, brass and ivory use the same bounded texture array as the village.
@@ -678,5 +699,5 @@ tool_main :: ()->int #export_c #effects(all) {
  // Patch the fixed-width catalog size without changing any payload offsets. In the zone pack
  // pack_read takes no leading zero, so the digits lead and spaces end the line.
  if zone {cat_start:=gl_u32(w[0].out[..],36);cat_size:=gl_u32(w[0].out[..],40);for k:cat_start..<cat_start+cat_size-16 {if cast(string)w[0].out[k..<k+6]=="bytes " {digits:=1;value:=at;while value>=10 {value/=10;digits+=1;}value=at;for j:0..<10 {w[0].out[k+6+j]=' ';}for j:0..<digits {w[0].out[k+5+digits-j]=cast(u8)(48+value%10);value/=10;}break;}}}else {cat_start:=gl_u32(w[0].out[..],36);cat_size:=gl_u32(w[0].out[..],40);for k:cat_start..<cat_start+cat_size-16 {if cast(string)w[0].out[k..<k+6]=="bytes " {value:=at;for j:0..<10 {w[0].out[k+15-j]=cast(u8)(48+value%10);value/=10;}break;}}}
- if args_count(args[..])==19 && !gp_write_colliders(w[..],args_at(args[..],18)) {return 1;}put_u32(w[0].out[..],8,at);if at>budget {print("Glade requires % bytes (% vertices, % triangles)\n",at,w[0].nv,w[0].ni/3);ph_die("glade pack exceeds its bounded budget");}if !fs_write(args_at(args[..],2),cast(string)w[0].out[0..<at]) {return 1;}print("Glade: % vertices, % triangles, % textures, % bytes\n",w[0].nv,w[0].ni/3,w[0].nt,at);return 0;
+ if args_count(args[..])==19 {gp_merge_display(w[..],0);if !gp_write_colliders(w[..],args_at(args[..],18)) {return 1;}}put_u32(w[0].out[..],8,at);if at>budget {print("Glade requires % bytes (% vertices, % triangles)\n",at,w[0].nv,w[0].ni/3);ph_die("glade pack exceeds its bounded budget");}if !fs_write(args_at(args[..],2),cast(string)w[0].out[0..<at]) {return 1;}print("Glade: % vertices, % triangles, % textures, % bytes\n",w[0].nv,w[0].ni/3,w[0].nt,at);return 0;
 }

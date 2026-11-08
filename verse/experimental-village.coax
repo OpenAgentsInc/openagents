@@ -38,7 +38,7 @@ EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floo
 }
 #test "furniture colliders follow the placed table chairs and upper floor" {
  a:[1]EvNear;site:=terrain.exp_site(0);p:=props.exp_prop_at(0,0);x:=site.x+p.x;z:=site.z+p.z;
- ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if a[0].walls[o]<x && a[0].walls[o+3]>x && a[0].walls[o+2]<z && a[0].walls[o+5]>z && a[0].walls[o+4]>0.8 && a[0].walls[o+4]<1.0 {found=true;}}#assert found;
+ ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if a[0].walls[o]<x && a[0].walls[o+3]>x && a[0].walls[o+2]<z && a[0].walls[o+5]>z && a[0].walls[o+4]>0.8 {found=true;}}#assert found;
  #assert ev_prop_size("Chair_1")[1]>1 && ev_prop_size("Workbench")[0]>1 && ev_prop_size("Bed_Twin1")[2]>1;
 }
 ev_prop_size :: (name:string)->[3]f32 {
@@ -72,6 +72,12 @@ ev_prop_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
 }
 #test "all captured scene assets are gathered where placed" #steps 500000000 {
  a:[1]EvNear;for box:EXPERIMENTAL_SCENE_BOXES {x:=f32(box[0]+box[3])*0.0005;z:=f32(box[2]+box[5])*0.0005;ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if abs(a[0].walls[o]-f32(box[0])*0.001)<0.001 && abs(a[0].walls[o+2]-f32(box[2])*0.001)<0.001 && abs(a[0].walls[o+3]-f32(box[3])*0.001)<0.001 && abs(a[0].walls[o+5]-f32(box[5])*0.001)<0.001 {found=true;}}#assert found && !a[0].overflow;}
+}
+#test "nearby small scene objects have no impassable capsule-width gaps" #steps 500000000 {
+ a:=EXPERIMENTAL_SCENE_BOXES;for i:0..<a.count {for j:0..<i {p:=a[i];q:=a[j];if p[4]-p[1]<=550 || q[4]-q[1]<=550 || p[4]<=q[1] || q[4]<=p[1] {continue;}
+ minx:=ifx p[0]<q[0] then p[0] else q[0];maxx:=ifx p[3]>q[3] then p[3] else q[3];minz:=ifx p[2]<q[2] then p[2] else q[2];maxz:=ifx p[5]>q[5] then p[5] else q[5];if maxx-minx>6000 || maxz-minz>6000 {continue;}
+ dx:=ifx p[0]>q[3] then p[0]-q[3] else ifx q[0]>p[3] then q[0]-p[3] else 0;dz:=ifx p[2]>q[5] then p[2]-q[5] else ifx q[2]>p[5] then q[2]-p[5] else 0;#assert dx*dx+dz*dz>=650*650;
+ }}
 }
 #test "bush volume slows walking without affecting open space or air above it" {
  boxes:=[2][6]int.[[6]int.[1000,0,2000,3000,1500,4000],[6]int.[5000,0,5000,6000,900,6000]];

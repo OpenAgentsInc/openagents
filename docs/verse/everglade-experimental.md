@@ -147,3 +147,5 @@ Experimental uses Everglade’s shared sound bank for ambience, footsteps and co
 The castle spans 56 by 54 metres, with nine towers surrounding four connected courtyards and a central keep. Its main arched entrance is at (34, -20). The walls and towers share a level foundation, with a smooth transition to the surrounding meadow. The walls and towers supply colliders to the player and camera.
 
 Bushes use walk-through foliage volumes at 80% of normal movement pace; their bounds do not block the player or camera. Movement returns to normal outside the foliage.
+
+Nearby solid scene objects with gaps narrower than the player are grouped where a bounded collision footprint fits, reducing the chance of being squeezed between opposing item boxes.

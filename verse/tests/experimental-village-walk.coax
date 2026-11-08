@@ -63,3 +63,7 @@ village_walk :: (p0:walk.Player,forward:f32)->walk.Player {
  #assert touched;#assert slow.pos.z<55;#assert normal.pos.z+0.05<slow.pos.z;
  #assert village.ev_bush_pace(slow.pos.x,slow.pos.y,slow.pos.z)==1;
 }
+#test "walker escapes the crowded display objects at the reported position" #steps 200000000 {
+ p:=walk.walk_place(5,0,32.7,0);for i:0..<45 {p=village_walk(p,-1);}before:=p.pos.z;
+ for i:0..<90 {p=village_walk(p,1);}#assert p.pos.z<before-0.8;
+}
