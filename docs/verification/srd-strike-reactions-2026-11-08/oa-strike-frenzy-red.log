@@ -1,0 +1,7 @@
+FAIL #test a borrowed opportunity frame cannot turn off-turn Rage damage into Frenzy (11 ms)
+aethyr/rules/srd/strike-reaction-checks.coax:13:5: error[E0406]: assertion failed
+      #assert r.admitted && r.hit && b[0].c[1].hp==hp-(ifx own==1 then 17 else 11);
+      ^
+  note: in #test a borrowed opportunity frame cannot turn off-turn Rage damage into Frenzy
+1 of 278 checks (--only 'borrowed opportunity'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

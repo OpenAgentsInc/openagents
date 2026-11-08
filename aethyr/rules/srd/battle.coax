@@ -27,6 +27,8 @@
 #load "effect-rolls.coax";
 #load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
+#load "attack-sight.coax";
+#load "strike-features.coax";
 #load "condition-permissions.coax";
 #load "stat-attack.coax";
 #load "strike-policy.coax";
@@ -777,6 +779,9 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   conditions := rs_condition_edges(b[0].c[i],b[0].c[j]);
   ups := ifx conditions.advantage then 1 else 0;
   downs := ifx conditions.disadvantage then 1 else 0;
+  sight:=rs_basic_attack_sight(b[0].c[i],b[0].c[j]);
+  if !sight.target_sees { ups+=1; }
+  if !sight.actor_sees { downs+=1; }
   t := b[0].clock;
   if b[0].c[j].outlined_by >= 0 && b[0].c[j].outlined_until > t { ups += 1; }
   if rs_take_weak(b, i) { downs += 1; }
@@ -787,7 +792,7 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if b[0].c[j].reckless_until > t { ups += 1; }
   if strength && b[0].c[i].reckless_until > t { ups += 1; }
   // the Dodge action
-  if rs_dodge_live(b,j) { downs += 1; }
+  if rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) { downs += 1; }
   // Frightened: Disadvantage on attack rolls (the source of its fear is always in sight here)
   if rs_has(b[0].c[i], RS_FRIGHTENED) { downs += 1; }
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
@@ -1465,7 +1470,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   rage := 0;
   if me.raging && strength { rage = me.rage_bonus; amount += rage; }
   frenzy := 0;
-  if me.frenzy && me.raging && strength && me.reckless_until > b[0].clock && !b[0].turn.frenzied {
+  if rs_frenzy_turn(me,strength,b[0].clock,rs_turn_owner(b)==i,b[0].turn.frenzied) {
     b[0].turn.frenzied = true;
     frenzy = rs_sum(b[0].dice[..], me.rage_bonus * mult, 6); amount += frenzy;
   }
@@ -1543,7 +1548,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   // Hex and Hunter's Mark hold for any attack roll their caster hits with
   rs_curse_damage(b, i, j, crit);
   if plan != CS_NONE { rs_cunning_effect(b, i, j, plan); }
-  if w == W_UNARMED { rs_stunning_strike(b, i, j); }
+  if rs_stun_weapon(w) { rs_stunning_strike(b, i, j); }
   // the masteries that follow a hit: Sap (Disadvantage on its next attack roll before the start of
   // the attacker's next turn), Vex (Advantage on the attacker's next attack roll against it before
   // the end of its next turn), Slow (10 feet less Speed until the start of the attacker's next turn)
@@ -1630,7 +1635,7 @@ rs_save_in :: (b: [] RsBattle, j: int, ability: int) -> int { return rs_save_bon
 // success, half Speed and Advantage on the next attack roll against it until then.
 rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   me := b[0].c[i];
-  if !me.stunning || !me.stun_ready || me.focus <= 0 || b[0].turn.stunned || b[0].who != i { return; }
+  if !rs_stun_ready(me,b[0].turn.stunned) { return; }
   if b[0].c[j].dead || b[0].c[j].hp == 0 || rs_has(b[0].c[j], RS_STUNNED) { return; }
   if rs_effect_free(b[0].c[j]) < 1 { return; }
   b[0].turn.stunned = true; b[0].c[i].focus -= 1;

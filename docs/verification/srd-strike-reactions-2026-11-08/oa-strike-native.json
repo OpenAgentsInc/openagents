@@ -1,0 +1,126 @@
+{
+  "schema": "coax.native-checks.v1",
+  "compiler": "/home/christopherdavid/oa-open-issues/coax/bin/coax",
+  "compiler_sha256": "3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9",
+  "target": "Linux-x86_64",
+  "profiles": {
+    "arithmetic": "checked",
+    "c": [
+      "-O0",
+      "-O2"
+    ],
+    "cc": [
+      "cc"
+    ],
+    "c_flags": [
+      "-std=c11",
+      "-ffp-contract=off"
+    ]
+  },
+  "seed": null,
+  "files": [
+    {
+      "file": "aethyr/rules/srd/strike-reaction-checks.coax",
+      "source_sha256": "19aea5bbb8bca5a9881c4553fda847395bb88955aeccc25c69470d595e7f4946",
+      "checks": [
+        {
+          "name": "a borrowed opportunity frame cannot turn off-turn Rage damage into Frenzy",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Monk weapon and Unarmed opportunity hits support Stunning Strike off turn",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a Monk weapons Stunning Strike reserves the targets retained slot before spending its Reaction",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "a successful Stunning Strike save can make an admitted grid departure unaffordable",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "Dodge requires seeing the attacker but its Dexterity save benefit does not",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        },
+        {
+          "name": "shared attack edges apply both sight directions across every Blinded Invisible pair",
+          "evaluator": [
+            "passed"
+          ],
+          "-O0": [
+            "passed"
+          ],
+          "-O2": [
+            "passed"
+          ],
+          "outcome": "passed"
+        }
+      ],
+      "outcome": "passed",
+      "native_identities": {
+        "-O0": [
+          {
+            "c_sha256": "521c8ef3fef36c0e80f858f552d4e731fa8bcf78c338df1fd9aaee08607ed924",
+            "binary_sha256": "791818a45a369c9dc0c4e857d8f36637ed7d5326ce470087489b157a81aa89a1"
+          }
+        ],
+        "-O2": [
+          {
+            "c_sha256": "317c331ba5f7109632563d59ccb10b0066de469710de1b3a409dcf862c5f00eb",
+            "binary_sha256": "f539d70fd44d3f480eea14f414b7cbcea4c90acabdcac3e4dca9791f0e576d5b"
+          }
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passed": 6
+  },
+  "outcome": "passed"
+}

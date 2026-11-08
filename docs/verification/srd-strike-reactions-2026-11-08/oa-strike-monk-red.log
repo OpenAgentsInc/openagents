@@ -1,0 +1,7 @@
+FAIL #test Monk weapon and Unarmed opportunity hits support Stunning Strike off turn (22 ms)
+aethyr/rules/srd/strike-reaction-checks.coax:25:5: error[E0406]: assertion failed
+      #assert r.admitted && r.hit && rs_has(b[0].c[1],RS_STUNNED);
+      ^
+  note: in #test Monk weapon and Unarmed opportunity hits support Stunning Strike off turn
+1 of 278 checks (--only 'Monk weapon and'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,6 @@
+ok   #test experimental physical opportunity interrupts the admitted body before leaving exact reach (1 case, 2537340 steps, 983 ms)
+ok   #test experimental physical opportunity keeps the accepted move and saved budgets after nonlethal damage (1 case, 2757449 steps, 641 ms)
+ok   #test experimental physical opportunity respects Disengage ordinary sight and Addle (1 case, 9902781 steps, 2759 ms)
+ok   #test experimental physical opportunity uses controller origin rather than interpolated render position (1 case, 2757370 steps, 1844 ms)
+4 of 774 checks (--only 'experimental physical opportunity'), 4 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

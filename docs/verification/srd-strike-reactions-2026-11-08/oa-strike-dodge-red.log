@@ -1,0 +1,7 @@
+FAIL #test Dodge requires seeing the attacker but its Dexterity save benefit does not (6 ms)
+aethyr/rules/srd/strike-reaction-checks.coax:60:5: error[E0406]: assertion failed
+      #assert rs_attack_edge(b[..],0,1,true,false)==1;
+      ^
+  note: in #test Dodge requires seeing the attacker but its Dexterity save benefit does not
+1 of 278 checks (--only 'Dodge requires seeing'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

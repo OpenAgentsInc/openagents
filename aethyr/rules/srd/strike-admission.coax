@@ -1,0 +1,17 @@
+// Rider-capacity preflight shared by on-turn and off-turn weapon attacks.
+// Attack-local marks are supplied by the active strike context, not its budget.
+#authority;
+
+rs_strikes_fit :: (b: [] RsBattle, i: int, j: int, w: int, attacks: int, retarget: bool) -> bool #effects(all) {
+  me := b[0].c[i];
+  own := ifx rs_mastery(b,i,w,M_VEX) then attacks else 0;
+  if rs_effect_free(me) < own { return false; }
+  for t: 0..<b[0].n {
+    if t != j && !(retarget && t != i && b[0].c[t].team != me.team && rs_up(b[0].c[t]) && rs_feet_to(b,i,t) < 2*RS_SQUARE) { continue; }
+    need := ifx rs_mastery(b,i,w,M_SAP) then attacks else 0;
+    if rs_stun_weapon(w) && rs_stun_ready(me,b[0].turn.stunned) && !rs_has(b[0].c[t],RS_STUNNED) { need += 1; }
+    if me.cunning_strike && me.strike_plan == CS_POISON && me.poison_kit && !b[0].turn.sneaked && rs_effect_condition_mask(b[0].c[t],RS_POISONED) != 0 { need += 1; }
+    if rs_effect_free(b[0].c[t]) < need+ifx t == i then own else 0 { return false; }
+  }
+  return true;
+}

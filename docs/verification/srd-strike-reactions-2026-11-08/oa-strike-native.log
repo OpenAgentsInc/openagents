@@ -1,0 +1,8 @@
+passed               aethyr/rules/srd/strike-reaction-checks.coax
+  passed             a borrowed opportunity frame cannot turn off-turn Rage damage into Frenzy
+  passed             Monk weapon and Unarmed opportunity hits support Stunning Strike off turn
+  passed             a Monk weapons Stunning Strike reserves the targets retained slot before spending its Reaction
+  passed             a successful Stunning Strike save can make an admitted grid departure unaffordable
+  passed             Dodge requires seeing the attacker but its Dexterity save benefit does not
+  passed             shared attack edges apply both sight directions across every Blinded Invisible pair
+native checks: passed {"passed": 6}

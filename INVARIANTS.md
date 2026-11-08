@@ -6631,6 +6631,11 @@ Patient Defense uses the same benefit; the Lab reads its flag. No protocol field
 changes, but the old timestamp is replaced by a bool in the internal creature
 layout. Scope, native limitation and remaining action/condition requirements:
 `docs/verification/srd-dodge-2026-11-08/README.md`.
+Its attack-roll benefit requires sight of the attacker; Dexterity-save
+Advantage does not. Shared attack edges apply both Blinded/Invisible sight
+directions in the current flag model. Alternate senses and world occlusion
+still require authoritative producers. See
+`docs/verification/srd-strike-reactions-2026-11-08/README.md`.
 
 ## Combat timing is a declared profile selected before the clock starts
 
@@ -6991,3 +6996,18 @@ uses the same result path as physical Action contacts. This wires incoming
 monster opportunities on player locomotion; monster AI departure/player
 Reactions and broader physical distance/timing qualification remain separate.
 Evidence: `docs/verification/srd-physical-opportunity-2026-11-08/README.md`.
+
+## Strike features observe the true turn and reserve their retained riders
+
+`strike-features.coax` requires the actual turn owner for Berserker Frenzy;
+borrowing a reaction frame cannot turn an off-turn attack into that feature.
+Represented Unarmed/simple melee/Light martial Monk weapons support Stunning
+Strike, including reactions. Spell/natural proxies and an unspecified Pact
+Blade identity do not establish that weapon category. The same eligibility
+feeds strike execution and `strike-admission.coax`'s retained-slot preflight.
+Full storage refuses before Reaction/Focus/dice/event spending; one available
+slot admits the rider. Its existing per-turn mark belongs to the borrowed
+strike frame, while the mover's marks and slot history remain intact. Successful
+save Speed loss can interrupt departure without refunding an accepted attack.
+Evidence and remaining source/class/world scope:
+`docs/verification/srd-strike-reactions-2026-11-08/README.md`.

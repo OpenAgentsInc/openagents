@@ -492,3 +492,18 @@ complete room library passes 325/325 checks. Together with the preceding
 leave-is-not-death fix this clears both retained room-library baseline failures.
 [Evidence](../verification/srd-room-traversal-2026-11-08/README.md). This is
 integration/build evidence, not full SRD or #13046 world qualification.
+
+### Actual-turn strike features and sight (2026-11-08)
+
+On the published opportunity-frame/movement APIs, Frenzy now observes the true
+turn owner, and Stunning Strike admits represented Monk weapons as well as
+Unarmed Strike, with the same retained-slot reservation before Reaction/Focus
+spending. A successful save can reduce Speed enough to interrupt departure
+without refunding the attack. Shared attack edges include Blinded/Invisible
+sight; Dodge requires seeing the attacker while retaining Dexterity-save
+Advantage. [Evidence](../verification/srd-strike-reactions-2026-11-08/README.md):
+282 rebased core, 232 hotbar and six actual O0/O2 native scenarios pass;
+four core scopes kill 31/55/6/47 mutants, zero survivors/no exemptions. The
+ordinary checked Lab Wasm build passes without budget overrides. Full legal
+equipment/grants, special senses/geometry, class/recovery and physical/network
+world migration remain open; no issue closes on this progress.

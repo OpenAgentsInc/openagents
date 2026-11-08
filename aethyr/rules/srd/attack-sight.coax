@@ -1,0 +1,20 @@
+// SRD 5.2.1 p.16 unseen attackers/targets, p.177 Blinded, p.184 Invisible.
+// This is the current open-grid flag model, not an occlusion/alternate-sense oracle.
+#authority;
+
+RsAttackSight :: struct { actor_sees: bool; target_sees: bool; }
+
+#test "basic attack sight keeps the two directions distinct across Blinded and Invisible" {
+  flags: [4] int=[4] int.[0,1,128,129];
+  actor: [16] bool=[16] bool.[true,true,false,false,false,false,false,false,true,true,false,false,false,false,false,false];
+  target: [16] bool=[16] bool.[true,false,true,false,true,false,true,false,false,false,false,false,false,false,false,false];
+  for a: 0..<4 { for t: 0..<4 {
+    c: RsCreature; d: RsCreature; c.cond=flags[a]; d.cond=flags[t];
+    r:=rs_basic_attack_sight(c,d);
+    #assert r.actor_sees==actor[a*4+t] && r.target_sees==target[a*4+t];
+  } }
+}
+rs_basic_attack_sight :: (actor: RsCreature, target: RsCreature) -> RsAttackSight #effects(all) {
+  return RsAttackSight.{actor_sees=!rs_has(actor,RS_BLINDED) && !rs_has(target,RS_INVISIBLE),
+    target_sees=!rs_has(target,RS_BLINDED) && !rs_has(actor,RS_INVISIBLE)};
+}
