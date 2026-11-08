@@ -2,7 +2,8 @@
 // reset a recovery feature's once-per-Long-Rest use.
 #authority;
 RsRestState :: struct {
-  phase:int; started:f32; // 0 idle, 1 resting, 2 completed Short Rest choices
+  phase:int; // 0 idle, 1 resting, 2 completed Short Rest choices
+  started:int; // owned microsecond start
   seeded:bool; die:int; dice:int; dice_max:int;
   recovery_used:bool; restoration_used:bool;
 }

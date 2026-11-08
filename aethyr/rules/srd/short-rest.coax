@@ -10,7 +10,7 @@ RsRestSlots :: struct { levels:[]const int; spellbook:bool; }
   c[0]=rs_wizard("Reader",0,3); c[1]=rs_sorcerer("Sorcerer",0,5);
   c[0].hp=1; c[0].slots[1]=0; c[1].uses[RS_USE_SORCERY]=0;
   #assert rs_short_rest_begin(b[..],0) && rs_short_rest_begin(b[..],1);
-  b[0].clock=3600;
+  b[0].clock=3600; b[0].rest_clock.ticks=3600000000;
   #assert rs_short_rest_finish(b[..],0) && rs_short_rest_finish(b[..],1);
   #assert rs_short_rest_hit_die(b[..],0).healed>0;
   pick:=[2]int.[1,1];
@@ -20,20 +20,19 @@ RsRestSlots :: struct { levels:[]const int; spellbook:bool; }
 
 rs_rest_clock :: (t:f32)->bool #effects(all) { return t>=0 && t-t==0; }
 rs_short_rest_begin :: (b:[]RsBattle,i:int)->bool #effects(all) {
-  if i<0 || i>=b[0].n || b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) { return false; }
-  if b[0].c[i].dead || b[0].c[i].hp<1 || b[0].c[i].rest.phase==1 { return false; }
+  if !rs_long_rest_owner_valid(b,i) { return false; }
+  if b[0].c[i].rest.phase==1 || rs_short_rest_deadline(b[0].rest_clock.ticks) == -1 { return false; }
   if b[0].c[i].long_rest.phase==1 && b[0].c[i].long_rest.mode==3 { return false; }
   rs_rest_seed(b[0].c[i..<b[0].c.count]);
-  b[0].c[i].rest.phase=1; b[0].c[i].rest.started=b[0].clock;
+  b[0].c[i].rest.phase=1; b[0].c[i].rest.started=b[0].rest_clock.ticks;
   rs_say(b,RS_EV_CONDITION,i,i,0," starts a Short Rest");
   return true;
 }
 // Polling grants the base benefits once, at the first boundary at/after one
 // hour. Optional Hit Dice, spell slots and Sorcery Points are separate choices.
 rs_short_rest_finish :: (b:[]RsBattle,i:int)->bool #effects(all) {
-  if i<0 || i>=b[0].n || b[0].c[i].rest.phase!=1 { return false; }
-  if b[0].reaction_frame.on || !rs_rest_clock(b[0].clock) || !(b[0].clock>=b[0].c[i].rest.started+3600) { return false; }
-  if b[0].c[i].dead || b[0].c[i].hp<1 { return false; }
+  if !rs_long_rest_owner_valid(b,i) { return false; }
+  if !rs_short_rest_ready(b[0].c[i].rest,b[0].rest_clock.ticks) { return false; }
   b[0].c[i].rest.phase=2;
   if b[0].rest_auto && b[0].c[i].long_rest.phase==1 { b[0].c[i].long_rest.quiet=0; }
   rs_short_rest_resources(b[0].c[i..<b[0].c.count]);

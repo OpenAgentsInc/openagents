@@ -185,7 +185,16 @@ headless checks confirm actual Sleep pointer input and the displayed state.
 Borrowed panel views also fix the prior main build's browser startup trap.
 [Control and browser evidence](../verification/srd-rest-controls-2026-11-08/README.md).
 
-Remaining acceptance includes precise Short Rest clock migration (its current
-deadline is f32), Everglade II/room controls and activity, persistent timeline
+Remaining acceptance includes Everglade II/room controls and activity, persistent timeline
 binding, full optional recovery/simultaneous ordering, source loss/nutrition
 producers, complete inventory dropping and sleep/Prone presentation.
+
+## Short Rest clock migration
+
+Short Rest now retains an integer-microsecond start and completes only at its
+owned one-hour boundary. Every tick splits at that boundary even with manual
+Long Rest ownership; later quiet credit is preserved. The frame witness covers
+1,722,982 actual ticks, large epochs and all twelve classes through level 6.
+Display-clock assignments cannot complete rest. Other f32 spell/display/log
+timers and foreign-epoch rejoin are not migrated by this work.
+[Timing evidence](../verification/srd-short-rest-time-2026-11-08/README.md).

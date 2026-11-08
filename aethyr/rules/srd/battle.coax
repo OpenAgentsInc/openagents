@@ -63,6 +63,7 @@
 #load "rest-control.coax";
 #load "damage-protection.coax";
 #load "short-rest.coax";
+#load "short-rest-time.coax";
 #load "rest-sleep.coax";
 #load "help.coax";
 #load "cast-choices.coax";

@@ -7210,3 +7210,15 @@ state; room migration and persistence remain separate. Layout helpers borrow
 combat views instead of copying the entire battle for a few dimensions. The
 existing Wasm stack, memory and size budgets remain unchanged. Evidence:
 `docs/verification/srd-rest-controls-2026-11-08/README.md`.
+
+## Short Rest deadlines belong to the integer rest timeline
+
+Short Rest retains an owned microsecond start; only that clock can satisfy its
+one-hour deadline. Display-clock assignments cannot grant recovery. Admission
+refuses an unrepresentable hour before seeding/mutation, and malformed active
+rest metadata refuses time atomically. All ticks split at Short Rest boundaries,
+including fractional/overdue observations, without duplicate recovery or lost
+later Long Rest quiet credit. Long Rest journal scheduling remains opt-in;
+manual journals are not advanced by this change. Internal f32 rest anchors are
+not reinterpreted as integer anchors; persistent epoch migration remains open.
+Evidence: `docs/verification/srd-short-rest-time-2026-11-08/README.md`.

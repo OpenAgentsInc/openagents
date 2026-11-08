@@ -1,4 +1,5 @@
-// Opt-in battle-owned rest scheduling. Every distinct actor boundary is
+// Short Rest always splits admitted ticks; Long Rest scheduling is opt-in.
+// Every distinct actor boundary is
 // processed before advancing to the next; an actor contributes at most one
 // boundary per step (completion, exertion interruption, or abandoned light).
 #authority;
@@ -225,6 +226,8 @@ rs_rest_schedule_valid :: (b:[]RsBattle,through:int)->bool #effects(all) {
 rs_rest_schedule_next :: (b:[]RsBattle,target:RsRestClock)->RsRestClock #effects(all) {
   next:=target.ticks;
   for i:0..<b[0].n {
+    if b[0].c[i].rest.phase==1 { next=rs_min(next,rs_max(b[0].rest_clock.ticks,rs_short_rest_deadline(b[0].c[i].rest.started))); }
+    if !b[0].rest_auto { continue; }
     if b[0].c[i].long_rest.phase==3 { next=rs_min(next,b[0].rest_clock.ticks); }
     if b[0].c[i].long_rest.phase!=1 { continue; }
     plan:=rs_long_rest_plan(b[0].c[i].long_rest,target.ticks);
@@ -232,6 +235,8 @@ rs_rest_schedule_next :: (b:[]RsBattle,target:RsRestClock)->RsRestClock #effects
   }
   event:=false;
   for i:0..<b[0].n {
+    if b[0].c[i].rest.phase==1 && rs_short_rest_deadline(b[0].c[i].rest.started)<=next { event=true; }
+    if !b[0].rest_auto { continue; }
     if b[0].c[i].long_rest.phase==3 { event=true; }
     if b[0].c[i].long_rest.phase!=1 { continue; }
     plan:=rs_long_rest_plan(b[0].c[i].long_rest,target.ticks);
@@ -262,21 +267,18 @@ rs_rest_schedule_consume :: (b:[]RsBattle) #effects(all) {
   }
 }
 rs_rest_tick :: (b:[]RsBattle,dt:f32)->bool #effects(all) {
-  if !b[0].rest_auto {
-    if !rs_tick_admit(b,dt) { return false; }
-    rs_tick_raw(b,dt); return true;
-  }
   target:[1]RsRestClock; target[0]=b[0].rest_clock;
-  if !rs_rest_clock_step(target[..],f64(dt)) || !rs_rest_schedule_valid(b,target[0].ticks) { return false; }
+  if !rs_rest_clock(b[0].clock) || !rs_rest_clock_step(target[..],f64(dt)) || !rs_short_rest_schedule_valid(b) { return false; }
+  if b[0].rest_auto && !rs_rest_schedule_valid(b,target[0].ticks) { return false; }
   running:=true;
   while running {
     stop:=rs_rest_schedule_next(b,target[0]);
     cursor:=stop.ticks;
     segment:=f32((f64(stop.ticks-b[0].rest_clock.ticks)+stop.fraction-b[0].rest_clock.fraction)/1000000);
-    rs_rest_schedule_credit(b,cursor,target[0].ticks);
+    if b[0].rest_auto { rs_rest_schedule_credit(b,cursor,target[0].ticks); }
     b[0].rest_clock=stop;
     rs_tick_raw(b,segment);
-    rs_rest_schedule_consume(b);
+    if b[0].rest_auto { rs_rest_schedule_consume(b); }
     running=stop.ticks!=target[0].ticks || stop.fraction!=target[0].fraction;
   }
   return true;

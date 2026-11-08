@@ -1,0 +1,126 @@
+// SRD 5.2.1 p187: at least one uninterrupted hour. Rest timing uses the
+// owned integer-microsecond timeline, never a display/spell f32 deadline.
+#authority;
+
+#test "display clock assignments cannot complete Short Rest or replace its owned timeline" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  #assert rs_short_rest_begin(b[..],0);
+  b[0].clock=3600;
+  #assert !rs_short_rest_finish(b[..],0) && c[0].rest.phase==1 && c[0].focus==0;
+}
+#test "Short Rest does not finish early at large display epochs and completes at its own exact hour" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  b[0].clock=16777216; b[0].rest_clock.ticks=16777216000000;
+  #assert rs_short_rest_begin(b[..],0);
+  rs_tick(b[..],3599);
+  #assert c[0].rest.phase==1 && c[0].focus==0;
+  rs_tick(b[..],1);
+  #assert c[0].rest.phase==2 && c[0].focus==3 && b[0].rest_clock.ticks==16780816000000;
+}
+#test "a late tick consumes Short Rest at its boundary and keeps later Long Rest quiet credit" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_barbarian("Sleeper",0,3); c[0].rages=0;
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true) && rs_short_rest_begin(b[..],0);
+  rs_tick(b[..],4000);
+  #assert c[0].rest.phase==2 && c[0].rages==1 && c[0].long_rest.quiet==400000000;
+  e:=rs_recent_at(b[0].book[..],0);
+  #assert e.kind==RS_EV_END && e.at==3600;
+}
+
+rs_short_rest_deadline :: (started:int)->int #effects(all) {
+  if started<0 || started>9223372033254775807 { return -1; }
+  return started+3600000000;
+}
+rs_short_rest_ready :: (rest:RsRestState,now:int)->bool #effects(all) {
+  deadline:=rs_short_rest_deadline(rest.started);
+  return rest.phase==1 && deadline != -1 && now>=deadline;
+}
+rs_short_rest_schedule_valid :: (b:[]RsBattle)->bool #effects(all) {
+  for i:0..<b[0].n {
+    if b[0].c[i].rest.phase!=1 { continue; }
+    if b[0].reaction_frame.on || b[0].c[i].dead || b[0].c[i].hp<1 { return false; }
+    if rs_short_rest_deadline(b[0].c[i].rest.started) == -1 || b[0].c[i].rest.started>b[0].rest_clock.ticks { return false; }
+  }
+  return true;
+}
+
+#test "Short Rest deadlines preserve exact integer boundaries including maximum representable completion" {
+  #assert rs_short_rest_deadline(-1) == -1 && rs_short_rest_deadline(0)==3600000000 && rs_short_rest_deadline(1)==3600000001;
+  #assert rs_short_rest_deadline(9223372033254775807)==9223372036854775807;
+  #assert rs_short_rest_deadline(9223372033254775808) == -1 && rs_short_rest_deadline(9223372036854775807) == -1;
+  for started:[3]int.[0,1,9223372033254775807] { for phase:0..<4 {
+    rest:=RsRestState.{phase=phase,started=started}; end:=rs_short_rest_deadline(started);
+    #assert !rs_short_rest_ready(rest,end-1) && rs_short_rest_ready(rest,end)==(phase==1);
+    #assert rs_short_rest_ready(rest,9223372036854775807)==(phase==1);
+    #assert !rs_short_rest_ready(rest,-1);
+  } }
+  #assert !rs_short_rest_ready(RsRestState.{phase=1,started=-1},9223372036854775807);
+}
+#test "malformed Short Rest metadata refuses time atomically without freezing a valid inactive actor" {
+  for bad:0..<6 {
+    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+    #assert rs_short_rest_begin(b[..],0);
+    if bad==0 { c[0].rest.started = -1; }
+    if bad==1 { c[0].rest.started=1; }
+    if bad==2 { c[0].rest.started=9223372033254775808; b[0].rest_clock.ticks=c[0].rest.started; }
+    if bad==3 { c[0].dead=true; }
+    if bad==4 { c[0].hp=0; }
+    if bad==5 { b[0].reaction_frame.on=true; }
+    ticks:=b[0].rest_clock.ticks; seq:=b[0].book[0].seq;
+    #assert !rs_rest_tick(b[..],3600) && b[0].rest_clock.ticks==ticks && b[0].clock==0;
+    #assert c[0].rest.phase==1 && c[0].focus==0 && b[0].book[0].seq==seq;
+    c[0].rest.phase=0; b[0].reaction_frame.on=false;
+    #assert rs_rest_tick(b[..],1) && b[0].rest_clock.ticks==ticks+1000000;
+  }
+}
+#test "Short Rest start and completion refuse malformed or unrepresentable private clocks before recovery" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  b[0].rest_clock.fraction=1;
+  #assert !rs_short_rest_begin(b[..],0) && !c[0].rest.seeded;
+  b[0].rest_clock.fraction=0; b[0].rest_clock.ticks=9223372033254775808;
+  #assert !rs_short_rest_begin(b[..],0) && !c[0].rest.seeded && b[0].book[0].seq==0;
+  b[0].rest_clock.ticks=9223372033254775807;
+  #assert rs_short_rest_begin(b[..],0) && c[0].rest.started==9223372033254775807;
+  b[0].rest_clock.ticks=9223372036854775806;
+  #assert !rs_short_rest_finish(b[..],0) && c[0].focus==0;
+  b[0].rest_clock.ticks=9223372036854775807;
+  #assert rs_short_rest_finish(b[..],0) && c[0].focus==3;
+}
+#test "unscheduled Short Rest boundaries also precede later time without observing manual Long Rest" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  #assert rs_long_rest_start_owned(b[..],0,2,true) && rs_short_rest_begin(b[..],0);
+  #assert !b[0].rest_auto;
+  rs_tick(b[..],4000);
+  #assert c[0].rest.phase==2 && c[0].focus==3 && c[0].long_rest.elapsed==0;
+  e:=rs_recent_at(b[0].book[..],0); #assert e.at==3600 && e.kind==RS_EV_END;
+  #assert b[0].rest_clock.ticks==4000000000 && b[0].clock==4000;
+}
+#test "overdue Short Rest and fractional boundary ticks progress once without a rewind or duplicate grant" {
+  for overdue:0..<2 {
+    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+    #assert rs_short_rest_begin(b[..],0);
+    b[0].rest_clock.ticks=3600000000+overdue; b[0].rest_clock.fraction=0.5;
+    #assert rs_rest_tick(b[..],1.0/1048576) && c[0].rest.phase==2 && c[0].focus==3;
+    #assert b[0].rest_clock.ticks==3600000001+overdue && b[0].rest_clock.fraction==0.45367431640625;
+    seq:=b[0].book[0].seq; c[0].focus=0;
+    #assert rs_rest_tick(b[..],0) && c[0].focus==0 && b[0].book[0].seq==seq;
+  }
+}
+
+#test "Short Rest at a fractional target finishes before the remaining fraction instead of at the poll end" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  c[0]=rs_monk("Patient",0,3); c[0].focus=0;
+  #assert rs_short_rest_begin(b[..],0);
+  b[0].rest_clock.ticks=3599999999; b[0].rest_clock.fraction=0.5;
+  #assert rs_rest_tick(b[..],1.0/1048576);
+  #assert c[0].rest.phase==2 && c[0].focus==3;
+  #assert b[0].rest_clock.ticks==3600000000 && b[0].rest_clock.fraction==0.45367431640625;
+  e:=rs_recent_at(b[0].book[..],0);
+  #assert e.kind==RS_EV_END && e.at==f32(0.0000005);
+}
