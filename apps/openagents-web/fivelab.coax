@@ -72,7 +72,7 @@ ACTION_BEAT :: 1.5; ACTION_RECHARGE :: 9.0;
 STEP :: 0.0166666667;
 LAB_STEP_NS :: 16666667;
 LAB_FRAME_NS :: 100000000;
-OUTBOX_CAP :: 64;
+OUTBOX_CAP :: 4096;
 ACT_NAVIGATE :: 1;
 ACT_PREFETCH :: 18;   // host.js (zone-host.js): open a page out of sight, up to its first drawn frame; its progress comes back as message 18, and action 1 to it then hands over in place
 KEY_SHIFT :: -13; KEY_TAB :: -15; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
@@ -3350,7 +3350,7 @@ target_next :: (s: [] Lab) {
   }
   s[0].target = ifx best >= 0 then best else first;
 }
-lab_blur :: (s: [] Lab) #export_c #effects(all) { s[0].creator[0].dragging=false;s[0].creator[0].down=-1; s[0].stick_on = false; s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; }
+lab_blur :: (s: [] Lab) #export_c #effects(all) { s[0].creator[0].dragging=false;s[0].creator[0].down=-1; s[0].stick_on = false; s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; s[0].xc[0].arranging=false; s[0].xc[0].down= -100; }
 // The keys that fly the camera while they are held.
 hold_bit :: (key: int) -> int {
   if key == 'w' || key == 'W' { return HOLD_W; }
@@ -3527,6 +3527,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
 lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
 HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
 lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
+  if kind==12 { _ := xc_order_load(s[0].xc[..], t); return; }
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
@@ -3540,6 +3541,7 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
 lab_golden :: (s: [] Lab, on: bool) #export_c #effects(all) { lab_start(s); s[0].golden = on; }
 lab_action :: (s: [] Lab) -> int #export_c #effects(all) {
  if s[0].creator[0].on && s[0].creator[0].profile_request {for i:0..<56 {s[0].outbox[i]=s[0].creator[0].profile_bytes[i];}s[0].out_n=56;s[0].creator[0].profile_request=false;return 16;}
+ if s[0].creator[0].experimental && s[0].xc[0].order_dirty {s[0].out_n=xc_order_save(s[0].xc[..],s[0].outbox[..]);s[0].xc[0].order_dirty=false;if s[0].out_n>0 {return 12;}}
  // USE IN EVERGLADE: open Everglade out of sight while the character walks there, then hand over in place (charactercreator-walk.coax).
  if s[0].creator[0].on && cc.walk_ask(s[0].creator[..]) {s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_PREFETCH;}
  if s[0].creator[0].on && cc.walk_leave(s[0].creator[..]) {s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_NAVIGATE;}

@@ -59,6 +59,8 @@ XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n:
 XcCombat :: struct {
   started: bool; klass: int = 11; level: int = 1;
   bar: [XC_SLOTS] FbAb; bar_n: int;
+  order: [12] [XC_SLOTS] int; order_n: [12] int;
+  arranging: bool; order_dirty: bool; drag_x: f32; drag_y: f32;
   b: [1] RsBattle; seat: [1] FbSeat;
   target: int = -1;                 // the monster struck at last (0 to 5), -1 none: its Hit Points over the bar
   cool_at: f32 = -100;              // when the last press was
@@ -148,6 +150,77 @@ xc_set_level :: (x: [] XcCombat, level: int) {
   x[0].level = level;
   xc_set_class(x, x[0].klass);
 }
+// A stable identity for a class ability, independent of its icon and position.
+xc_id :: (a: FbAb) -> int { return a.kind * 10000 + a.sp + 1; }
+xc_order_bar :: (x: [] XcCombat) {
+  c := x[0].klass;
+  for i: 0..<x[0].bar_n {
+    id := xc_id(x[0].bar[i]); found := false;
+    for j: 0..<x[0].order_n[c] { if x[0].order[c][j] == id { found = true; } }
+    if !found && x[0].order_n[c] < XC_SLOTS { x[0].order[c][x[0].order_n[c]] = id; x[0].order_n[c] += 1; }
+  }
+  // Sort visible abilities by the full remembered order, including unavailable levels.
+  for i: 0..<x[0].bar_n {
+    for j: i + 1..<x[0].bar_n {
+      pi := XC_SLOTS; pj := XC_SLOTS;
+      for q: 0..<x[0].order_n[c] {
+        if x[0].order[c][q] == xc_id(x[0].bar[i]) { pi = q; }
+        if x[0].order[c][q] == xc_id(x[0].bar[j]) { pj = q; }
+      }
+      if pj < pi { a := x[0].bar[i]; x[0].bar[i] = x[0].bar[j]; x[0].bar[j] = a; }
+    }
+  }
+}
+xc_swap :: (x: [] XcCombat, from: int, to: int) {
+  if from < 0 || to < 0 || from >= x[0].bar_n || to >= x[0].bar_n || from == to { return; }
+  c := x[0].klass; a := x[0].bar[from]; b := x[0].bar[to];
+  for j: 0..<x[0].order_n[c] {
+    if x[0].order[c][j] == xc_id(a) { x[0].order[c][j] = xc_id(b); }
+    else if x[0].order[c][j] == xc_id(b) { x[0].order[c][j] = xc_id(a); }
+  }
+  x[0].bar[from] = b; x[0].bar[to] = a; x[0].order_dirty = true;
+  x[0].used = -1; x[0].fizzle = -1;
+}
+// The host's realm-specific hotbar save (action/message 12).
+xc_order_save :: (x: [] XcCombat, out: [] u8) -> int {
+  n := put(out, 0, "xc-bar 1\n");
+  for c: 0..<FB_CL_N {
+    for j: 0..<x[0].order_n[c] { n = put_int(out, n, x[0].order[c][j]); n = put(out, n, " "); }
+    n = put(out, n, "\n");
+  }
+  return ifx n < out.count then n else 0;
+}
+xc_order_load :: (x: [] XcCombat, text: string) -> bool {
+  head := "xc-bar 1\n";
+  if text.count < head.count || text[0..<head.count] != head { return false; }
+  order: [12] [XC_SLOTS] int; counts: [12] int; c := 0; at := head.count;
+  while at < text.count && c < FB_CL_N {
+    if text[at] == '\n' { c += 1; at += 1; continue; }
+    id := 0; digits := 0;
+    while at < text.count && text[at] >= '0' && text[at] <= '9' {
+      if digits >= 6 { return false; }
+      id = id * 10 + cast(int) text[at] - '0'; digits += 1; at += 1;
+    }
+    if digits == 0 || at >= text.count || text[at] != ' ' || id >= 220000 || counts[c] >= XC_SLOTS { return false; }
+    for i: 0..<counts[c] { if order[c][i] == id { return false; } }
+    order[c][counts[c]] = id; counts[c] += 1; at += 1;
+  }
+  if c != FB_CL_N || at != text.count { return false; }
+  x[0].order = order; x[0].order_n = counts; x[0].order_dirty = false;
+  if x[0].started { xc_order_bar(x); }
+  return true;
+}
+// Character Create's images have a baked-in 1. When moved, use the corresponding
+// unnumbered combat icon so the key label always belongs to the position.
+xc_art :: (a: FbAb, slot: int) -> string {
+  if slot == 0 || xc_url(a.art) != XC_EG_URL { return a.art; }
+  if a.kind == FB_SPELL { return rs_spell(a.sp).id; }
+  if a.kind == FB_ATTACK { return "attack"; }
+  if a.kind == FB_RAGE { return "rage"; }
+  if a.kind == FB_SECOND { return "second-wind"; }
+  if a.kind == FB_LAY { return "lay-on-hands"; }
+  return a.art;
+}
 // A slot's picture: the class's own (cl-*) are Everglade's, the rest 5E MMO's.
 xc_url :: (art: string) -> string { return ifx art.count > 3 && art[0] == 'c' && art[1] == 'l' && art[2] == '-' then XC_EG_URL else XC_MMO_URL; }
 // Character Create class icons already have their slot 1 key baked into the art.
@@ -178,6 +251,7 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   x[0].seat[0] = FbSeat.{me = 0};
   x[0].klass = c;
   x[0].bar_n = xc_bar_level(c, x[0].level, x[0].bar[..]);
+  xc_order_bar(x); x[0].arranging = false;
   x[0].used = -1; x[0].hover = -1; x[0].pend = -1;
 }
 // A monster's square round you: the nearest whole square to where it stands, off the grid when far.
@@ -517,21 +591,30 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   m := 0;
   for i: 0..<x[0].bar_n {
     r := xc_slot_box(x[0], i);
-    a := x[0].bar[i];
-    m = put(x[0].media[..], m, "image "); m = put(x[0].media[..], m, xc_url(a.art)); m = put(x[0].media[..], m, a.art);
+    a := x[0].bar[i]; art := xc_art(a, i);
+    m = put(x[0].media[..], m, "image "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
     m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
     m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, "\n");
     left := f32(XC_COOL) - (now - x[0].cool_at);
     if left > 0 {
       share := left / f32(XC_COOL);
       dim := cc.Box.{x0 = r.x0, y0 = r.y0, x1 = r.x1, y1 = r.y0 + (r.y1 - r.y0) * share};
-      m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(a.art)); m = put(x[0].media[..], m, a.art);
+      m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
       m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
       m = xc_box_text(x[0].media[..], m, dim); m = put(x[0].media[..], m, " 35 0 "); m = put_int(x[0].media[..], m, cast(int) (share * 1000)); m = put(x[0].media[..], m, "\n");
     }
-    if i < 9 && xc_draw_slot_key(i,a.art) {key: [2] u8; key[0] = cast(u8) (49 + i);
+    if i < 9 && xc_draw_slot_key(i,art) {key: [2] u8; key[0] = cast(u8) (49 + i);
      n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));}
     if i == x[0].used && left > 0 { n = xc_line(out, n, r.x0, r.y1 + 4 * k, r.x1, r.y1 + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
+  }
+  // The picked-up icon follows the pointer, as in the original Everglade bar.
+  if x[0].arranging && x[0].down >= 0 && x[0].down < x[0].bar_n {
+    a := x[0].bar[x[0].down]; art := xc_art(a, 1);
+    r := cc.Box.{x0 = x[0].drag_x - 26 * k, y0 = x[0].drag_y - 26 * k,
+                x1 = x[0].drag_x + 26 * k, y1 = x[0].drag_y + 26 * k};
+    m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
+    m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
+    m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, "\n");
   }
   // a spell that found no one ahead: its icon flashes red a moment (no words)
   if x[0].fizzle >= 0 && x[0].fizzle < x[0].bar_n && now - x[0].fizzle_at < 0.45 {
@@ -540,7 +623,12 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     n = xc_line(out, n, r.x0, r.y0, r.x0, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x1, r.y0, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
     n = xc_line(out, n, r.x0 + 8 * k, r.y0 + 8 * k, r.x1 - 8 * k, r.y1 - 8 * k, wd, 0.95 * g, 0.2 * g, 0.15 * g);
   }
-  if x[0].hover >= 0 && x[0].hover < x[0].bar_n {
+  if x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n {
+    r := xc_slot_box(x[0], x[0].hover);
+    n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, 3 * k, 1, 0.8, 0.4);
+    n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, 3 * k, 1, 0.8, 0.4);
+  }
+  if !x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n {
     a := x[0].bar[x[0].hover];
     r := xc_slot_box(x[0], x[0].hover);
     cw := 358 * k; ch := 171 * k; cx := (r.x0 + r.x1) / 2;
@@ -600,14 +688,18 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   in_col := px >= 12 * k && px <= 370 * k && py >= x[0].top && py <= x[0].top + xc_column(x[0]) * k;
   if phase == 0 {
     x[0].down = -100; x[0].down_x = px; x[0].down_y = py; x[0].down_id = id;
-    if over >= 0 { x[0].down = over; return true; }
+    if over >= 0 { x[0].down = over; x[0].arranging = s[0].shift; x[0].drag_x = px; x[0].drag_y = py; return true; }
     if in_col { x[0].down = -2; return true; }
     x[0].down = -3;   // the world: a click or the camera's drag
     return false;
   }
   if phase == 2 && id == x[0].down_id {
     d := x[0].down; x[0].down = -100;
-    if d >= 0 { if d == over { _ := xc_press(s, d); } return true; }
+    if d >= 0 {
+      if x[0].arranging { xc_swap(x, d, over); x[0].arranging = false; }
+      else if d == over { _ := xc_press(s, d); }
+      return true;
+    }
     if d == -2 {
       if in_col {
         if py >= x[0].top + xc_class_height(x[0]) * k {
@@ -624,7 +716,8 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     }
     return false;
   }
-  if phase == 3 { x[0].down = -100; }
+  if phase == 3 && id == x[0].down_id { x[0].down = -100; x[0].arranging = false; return true; }
+  if phase == 1 && x[0].arranging && id == x[0].down_id { x[0].drag_x = px; x[0].drag_y = py; }
   return x[0].down >= 0 || x[0].down == -2;
 }
 // What the checks read (lab_creator_probe 900 on).
@@ -842,4 +935,44 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   #assert xc_pointer(s[..], 276, y, 0, 1);
   #assert xc_pointer(s[..], 276, y, 2, 1);
   #assert x[0].level == 6;
+}
+
+#test "experimental combat shift drag swaps keys without casting and cancels safely" {
+  s: [1] Lab; s[0].creator[0].experimental = true; xc_start(s[0].xc[..], FB_CL_WIZARD);
+  x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
+  a := xc_slot_box(x[0], 0); b := xc_slot_box(x[0], 1); first := x[0].bar[0].sp; second := x[0].bar[1].sp;
+  s[0].shift = true;
+  #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 7);
+  #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 1, 7);
+  #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 2, 7);
+  #assert x[0].bar[0].sp == second && x[0].bar[1].sp == first && x[0].casts == 0;
+  #assert xc_art(x[0].bar[1], 1) == rs_spell(first).id && xc_draw_slot_key(1, xc_art(x[0].bar[1], 1));
+  #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 8);
+  #assert xc_pointer(s[..], 600, 200, 2, 8);
+  #assert x[0].bar[0].sp == second && x[0].casts == 0;
+  #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 9);
+  #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 3, 9);
+  #assert x[0].bar[0].sp == second && x[0].casts == 0;
+  xc_set_level(x, 5); xc_set_level(x, 1);
+  #assert x[0].bar[0].sp == second && x[0].bar[1].sp == first;
+}
+
+#test "experimental combat hotbar arrangement survives a reload" {
+  x: [1] XcCombat; xc_start(x[..], FB_CL_WIZARD); xc_swap(x[..], 0, 1);
+  first := x[0].bar[0].sp; second := x[0].bar[1].sp;
+  text: [4096] u8; n := xc_order_save(x[..], text[..]); #assert n > 0;
+  y: [1] XcCombat; #assert xc_order_load(y[..], cast(string) text[0..<n]);
+  xc_start(y[..], FB_CL_WIZARD);
+  #assert y[0].bar[0].sp == first && y[0].bar[1].sp == second;
+  #assert !xc_order_load(y[..], "xc-bar 1\n999999\n");
+  #assert y[0].bar[0].sp == first;
+}
+
+#test "experimental combat stores swaps through the host" {
+  s: [1] Lab; s[0].creator[0].on = true; s[0].creator[0].experimental = true;
+  xc_start(s[0].xc[..], FB_CL_WIZARD); xc_swap(s[0].xc[..], 0, 1);
+  #assert lab_action(s[..]) == 12 && s[0].out_n > 0;
+  t: [1] Lab; lab_message(t[..], 12, cast(string) s[0].outbox[0..<s[0].out_n]);
+  xc_start(t[0].xc[..], FB_CL_WIZARD);
+  #assert t[0].xc[0].bar[0].sp == s[0].xc[0].bar[0].sp;
 }
