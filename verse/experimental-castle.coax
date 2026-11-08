@@ -1,0 +1,15 @@
+// Castle courtyard: the existing tower anchors three matching towers and stone walls.
+#module "verse.experimentalcastle";
+#test "castle walls connect four towers and leave a broad entrance" {
+ #assert CASTLE_SEGMENTS==54;
+ for i:0..<CASTLE_SEGMENTS {p:=castle_segment(i);#assert p[2]==0 || p[2]==1;#assert !(p[2]==0 && p[1]== -20 && p[0]>31 && p[0]<37);}
+ #assert castle_segment(0)[0]==21 && castle_segment(CASTLE_SEGMENTS-1)[2]==1;
+}
+CASTLE_SEGMENTS :: 54;
+// World-space segment centres and orientation: 0 along X, 1 along Z.
+castle_segment :: (i:int)->[3]f32 {
+ if i<12 {j:=ifx i<6 then i else i+2;return [3]f32.[21+f32(j)*2,-20,0];}
+ if i<26 {return [3]f32.[21+f32(i-12)*2,-52,0];}
+ if i<40 {return [3]f32.[18,-23-f32(i-26)*2,1];}
+ return [3]f32.[50,-23-f32(i-40)*2,1];
+}

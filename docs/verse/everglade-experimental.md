@@ -8,15 +8,15 @@ edge.
 
 The world contains the four distinct layouts from Quaternius's Medieval Village
 Godot sample scene: House C, Tower, Houses A, and Houses D. House C2 is an exact
-local-layout duplicate of House C and is not duplicated. Nine placements combine
-these layouts into larger settlements, using 1,400 source-authored pieces with
+local-layout duplicate of House C and is not duplicated. Twelve placements combine
+these layouts into larger settlements, using 1,631 source-authored pieces with
 their original transforms, meshes and base-color textures. Buildings supply
 nearby collision shapes to the Everglade walker: the source
 collision meshes become individual axis-aligned boxes, and the interior stairs
 become sloped walkable surfaces. Non-box hulls are approximated by their bounds;
 interactive doors have not yet been authored. The homes and their surroundings
 are furnished with 112 placements of 20 Fantasy Props Standard models; these props
-are visual and do not yet have separate collision shapes. The terrain is levelled under the
+have colliders derived from their placed geometry. The terrain is levelled under the
 sites and blends back into the meadow. The extra geometry uses a single padded
 texture atlas; the original Character Create pack retains its 32 MiB budget.
 
@@ -133,3 +133,5 @@ python3 verse/tools/assets/character_glade_oracle.py \
 The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
 
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
+
+The castle courtyard spans the original tower at (18, -20) and matching towers at (50, -20), (18, -52), and (50, -52). Two-storey stone curtain walls link them, with an arched entrance at (34, -20); the wall and tower colliders stop the player and camera.

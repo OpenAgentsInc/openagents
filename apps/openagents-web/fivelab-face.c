@@ -48,6 +48,8 @@ EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 
 // bg_fs traces the glade's ground, trees and sky per pixel (the figures are drawn, not traced):
 // drawn at most 6.4 million pixels (3200 by 2000; the host scales the canvas up past that).
 EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) { return 6400000u; }
+// The experimental meadow and castle share one large geometry storage buffer.
+EXPORT("coaxial_character_storage_v1") uint32_t coaxial_character_storage_v1(void) { return 256u * 1024u * 1024u; }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 
 EXPORT("coaxial_frame")

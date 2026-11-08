@@ -46,7 +46,7 @@ assert vb[:len(oldvb)]==oldvb and ib[:len(oldib)]==oldib
 assert word*4==len(oldvb) and first*4==len(oldib) and word*4+verts*32==len(vb)
 ids=struct.unpack_from('<'+str(count)+'I',ib,first*4); assert min(ids)>=0 and max(ids)<verts
 layers=sum(v[0]==4 for v in new.values()); assert layers<=(128 if experimental else 64)
-pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]; new_house_vertices=[]; dungeon_vertices=[]
+pos=[]; leaves=[]; bark_v=[]; rock_vertices=0; village_vertices=[]; prop_vertices=[]; clock_vertices=[]; showcase_vertices=[]; animal_vertices=[]; bestiary_vertices=[]; extra_prop_vertices=[]; new_house_vertices=[]; dungeon_vertices=[]; castle_vertices=[]
 for i in range(verts):
     at=word*4+i*32
     xyz=struct.unpack_from('<3f',vb,at); assert all(math.isfinite(x) and abs(x)<100 for x in xyz)
@@ -55,6 +55,7 @@ for i in range(verts):
     if kind==4:
         marker=struct.unpack_from('<f',vb,at+28)[0]
         if marker==115.0625: dungeon_vertices.append(i)
+        elif marker==115.3125 or (100<=marker<=110.375 and abs(marker-math.floor(marker)-.375)<.001): castle_vertices.append(i)
         elif 100<=marker<=110.25 and abs(marker-math.floor(marker)-.25)<.001: new_house_vertices.append(i)
         elif marker in (100.125,101.125): bestiary_vertices.append(i)
         elif marker in (111.125,112.125,113.125,114.125,115.125): extra_prop_vertices.append(i)
@@ -117,14 +118,14 @@ if village:
     assert actual==expected and [sum(r[0]==i for r in actual) for i in range(4)]==[167,77,308,151]
     assert 'L 251 Quaternius Medieval Village MegaKit Source|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
     assert sum(1 for kind,license,_,offset,size,_,name in (struct.unpack_from('<BBHIII32s',raw,32+i*48) for i in range(struct.unpack_from('<I',raw,4)[0])) if kind==4 and license==251)==1
-    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23),(15,-5)]
-    site_groups=[0,1,2,3,3,0,1,3,3]
+    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23),(15,-5)]+[(0,0)]*10+[(50,-20),(18,-52),(50,-52)]
+    site_groups=[0,1,2,3,3,0,1,3,3]+[-1]*10+[1,1,1]
     tiles={'MI_Brick':0,'MI_FlatTiles':1,'MI_MetalOrnaments':2,'MI_Plaster':3,'MI_RockTrim':4,
            'MI_RoundRocks':5,'MI_RoundTiles':6,'MI_UnevenBrick':7,'MI_Vine':8,'MI_WoodTrim':9,
            'MI_WoodTrim_Wear':9,'MI_WindowGlass':10}
     cache={};vstart=village_vertices[0];vi=vstart;ii=next(k for k,x in enumerate(ids) if x>=vstart)
     placements=[(site,name,t) for group,name,t in actual for site,kind in enumerate(site_groups) if kind==group]
-    assert len(placements)==2*167+2*77+308+4*151
+    assert len(placements)==2*167+5*77+308+4*151
     for group,name,t in placements:
         if name not in cache:
             gltf=json.loads((village_root/'glTF'/f'{name}.gltf').read_text())
@@ -163,7 +164,7 @@ if village:
         workshop=[('Workbench_Drawers',3.7,0,-3.8,0),('Stool',3.6,0,-2.8,0),('CandleStick',3.2,.9,-3.8,0),('Key_Metal',3.8,.9,-3.8,0),('Coin_Pile',4.3,.9,-3.8,0),('Bookcase_2',4.3,0,-.6,math.pi/2),('SmallBottles_1',3.3,.9,-3.8,0),('Crate_Wooden',4.4,0,1.8,0),('Workbench',3.8,3,-3.7,0),('Stool',3.5,3,-2.7,0),('Bookcase_2',4.5,3,0,math.pi/2),('BookStand',2,3,1.7,math.pi),('Book_Stack_1',3.3,3.89,-3.7,0),('CandleStick',4.2,3.89,-3.7,0),('Whetstone',2.8,3,1.7,0),('Bench',1.5,0,6,0)]
         prop_tiles={'MI_Trim_Furniture':11,'MI_Trim_Metal':12,'MI_Trim_Metal_Vertex':12,'MI_Trim_Props':13,'MI_Trim_Props_Vertex':13,'MI_Trim_Cloth':14,'MI_Banner':14}
         prop_cache={}
-        for site,(sx,sz) in enumerate(starts):
+        for site,(sx,sz) in enumerate(starts[:9]):
             kind=site_groups[site];shift=-4 if kind==0 else -1 if kind==1 else 0
             for name,px,py,pz,yaw in (workshop if site==8 else specs):
                 if name not in prop_cache:
@@ -244,7 +245,10 @@ if village:
         vi=new_house_vertices[-1]+1
     if dungeon_vertices:
         assert dungeon_vertices==list(range(vi,dungeon_vertices[-1]+1))
-        assert all(dungeon_vertices[0]<=x<=dungeon_vertices[-1] for x in ids[ii:])
+        while ii<len(ids) and dungeon_vertices[0]<=ids[ii]<=dungeon_vertices[-1]: ii+=1
+        assert castle_vertices and castle_vertices==list(range(dungeon_vertices[-1]+1,castle_vertices[-1]+1))
+        assert all(castle_vertices[0]<=x<=castle_vertices[-1] for x in ids[ii:])
+        assert min(pos[i][0] for i in castle_vertices)<20 and max(pos[i][0] for i in castle_vertices)>48
         assert min(pos[i][0] for i in dungeon_vertices)<-35 and max(pos[i][0] for i in dungeon_vertices)>-29
         ii=len(ids)
     assert ii==len(ids)

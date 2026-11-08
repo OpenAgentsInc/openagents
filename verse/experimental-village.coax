@@ -2,6 +2,7 @@
 // collision meshes and supplied to the same walker as Everglade's buildings.
 #module "verse.experimentalvillage";
 #load "experimental-terrain.coax" as terrain;
+#load "experimental-castle.coax" as castle;
 #load "experimental-props.coax" as props;
 #load "experimental-village-data.coax";
 #load "experimental-scene-colliders.coax";
@@ -87,11 +88,16 @@ ev_house_box :: (out:[]EvNear,site:terrain.ExpSite,dy:f32,box:[6]f32) {
  if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;
  out[0].walls[o]=site.x+box[0];out[0].walls[o+1]=dy+box[1];out[0].walls[o+2]=site.z+box[2];out[0].walls[o+3]=site.x+box[3];out[0].walls[o+4]=dy+box[4];out[0].walls[o+5]=site.z+box[5];out[0].wall_n+=1;
 }
+ev_castle_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
+ for i:0..<castle.CASTLE_SEGMENTS {p:=castle.castle_segment(i);hx:=ifx p[2]==0 then 1.02f32 else 0.23f32;hz:=ifx p[2]==0 then 0.23f32 else 1.02f32;
+  if abs(x-p[0])>reach+hx || abs(z-p[1])>reach+hz {continue;}site:=terrain.ExpSite.{x=p[0],z=p[1]};y:=terrain.exp_height(p[0],p[1])-ground;ev_house_box(out,site,0,[6]f32.[-hx,y-0.15,-hz,hx,y+6.1,hz]);
+ }
+}
 ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,true);}
 ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9,true);}
 ev_hostile_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,false);}
 ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
- out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);if scene {ev_scene_near(out,x,z,reach,ground);}else {ev_prop_near(out,x,z,reach,ground);}
+ out[0].wall_n=0;out[0].floor_n=0;out[0].overflow=false;ground:=terrain.exp_height(x,z);ev_castle_near(out,x,z,reach,ground);if scene {ev_scene_near(out,x,z,reach,ground);}else {ev_prop_near(out,x,z,reach,ground);}
  for si:0..<terrain.EXP_SITES {site:=terrain.exp_site(si);if terrain.exp_distance(site,x,z)>reach+1 {continue;}kind:=terrain.exp_site_group(si);dy:=terrain.exp_height(site.x,site.z)-ground;
   if si==18 {
    // Three large rooms with an offset entrance and two archways per partition.
@@ -104,7 +110,7 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
    // Solid furnishings inside the dungeon, in the same site-local coordinates.
    for box:[6][6]f32.[[6]f32.[-0.8,0,-9,0.8,1.2,-7.8],[6]f32.[-8.2,0,7.4,-6.8,1.1,8.6],[6]f32.[-8.2,0,1.3,-7.2,1.3,2.7],[6]f32.[-6.6,0,1.4,-5.4,1.2,2.6],[6]f32.[5.1,0,-1,6.9,1.1,1],[6]f32.[-7.7,0,-7.7,-6.3,2.2,-6.3]] {ev_house_box(out,site,dy,box);}continue;
   }
-  if si>=9 {
+  if si>=9 && si<18 {
    // 4 m square house: front opening is centered in the left front module.
    for box:[6][6]f32.[[6]f32.[-2.2,0,1.8,-1.78,3.1,2.2],[6]f32.[-0.22,0,1.8,2.2,3.1,2.2],[6]f32.[-2.2,0,-2.2,2.2,3.1,-1.8],[6]f32.[-2.2,0,-2.2,-1.8,3.1,2.2],[6]f32.[1.8,0,-2.2,2.2,3.1,2.2],[6]f32.[-2.2,3.05,-2.2,2.2,3.25,2.2]] {ev_house_box(out,site,dy,box);}
    continue;

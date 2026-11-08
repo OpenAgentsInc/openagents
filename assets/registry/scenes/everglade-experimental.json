@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "5fb7f5e85c3ec46813025c4a54dd5b17c8af7ac3322a984583a1b33e4e020559",
+    "sha256": "f8e6dc8302e9b2a92d2ced770c82d358173f8ff8865c94e760deae5a40e44898",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2298,10 +2298,10 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "042f695a97ede619e4b8d54f7091e95df7597fd6812b2736e0a269772f35e940",
+    "sha256": "90c42ef94b84681126e79ad45ce68734773bfd76a46edb94ac9646a323bd2854",
     "budget_bytes": 536870912,
-    "decoded_sha256": "7009ae049e8be3464040347417b753a853a0b7fd79d65ab9feea4e0cac4007c2",
-    "decoded_bytes": 178538344,
+    "decoded_sha256": "c81da2305c564dddac92d7cd8a8bdaeae5d38485fdaf36e3b384811cd5c32f89",
+    "decoded_bytes": 188817676,
     "encoding": "gzip"
   },
   "terrain": {
@@ -2321,10 +2321,10 @@
     "rock_vertices": 0,
     "source": {
       "path": "verse/experimental-terrain.coax",
-      "sha256": "4a01c02e06b8ee111ea14a3860efc724ebda74ffcd07de7f0fe9abf6b26768fb"
+      "sha256": "26bea27ea249091f397f0bf5f0f71bede7bc41adbe83af6a910e7f5ac38ae119"
     }
   },
-  "scope": "Nature meadow, source-authored Medieval Village layouts, and a furnished multi-level watchmaker workshop; Character Create wardrobe remains unchanged.",
+  "scope": "Nature meadow, source-authored Medieval Village layouts, castle courtyard and furnished watchmaker workshop; Character Create wardrobe remains unchanged.",
   "village": {
     "package": "village",
     "revision": "b7e482187ae8533fea743014248b3c6b029f49f7bb6d3494f2fe217e62a66447",
@@ -2444,6 +2444,30 @@
           -5
         ],
         "purpose": "watchmaker workshop"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          50,
+          -20
+        ],
+        "purpose": "castle courtyard"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          18,
+          -52
+        ],
+        "purpose": "castle courtyard"
+      },
+      {
+        "source": "Tower",
+        "origin": [
+          50,
+          -52
+        ],
+        "purpose": "castle courtyard"
       }
     ],
     "collision": {
@@ -2458,7 +2482,7 @@
       },
       "runtime": {
         "path": "verse/experimental-village.coax",
-        "sha256": "ad70bcb4c14020f774d49e0b0c86859ef3e9a573a1117007a72df5989d33f929"
+        "sha256": "bf2ac0afeb5dd35da9dc52075d5c916ba8540d4ae9e19ce02f3ace0e63e19fb4"
       },
       "source_boxes": 1567,
       "source_stairs": 3
@@ -2574,8 +2598,38 @@
   },
   "scene_asset_collision": {
     "path": "verse/experimental-scene-colliders.coax",
-    "sha256": "12ddcb56e389d72628ecf957c054288bee05d57a8bca9a87855003e045d5c419",
+    "sha256": "a10b14c88717225ea838763278056343c97fd119f3d6d0355efa17d0d33681d5",
     "placed_assets": 584,
     "source": "Generated from transformed scene vertices during pack compilation; living enemies use moving capsules."
+  },
+  "castle": {
+    "towers": [
+      [
+        18,
+        -20
+      ],
+      [
+        50,
+        -20
+      ],
+      [
+        18,
+        -52
+      ],
+      [
+        50,
+        -52
+      ]
+    ],
+    "entrance": [
+      34,
+      -20
+    ],
+    "wall_segments": 54,
+    "wall_height_metres": 6,
+    "source": {
+      "path": "verse/experimental-castle.coax",
+      "sha256": "bef3b7e18805e165ff261f79b5d78f5767f486c32bd146df2c97ea58a33b285c"
+    }
   }
 }
