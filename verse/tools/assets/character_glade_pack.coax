@@ -151,6 +151,7 @@ gp_0ad_name :: (i:int)->string {
 }
 // Each glTF was exported from the immutable, uncompressed GLB through Blender's
 // SDK with object transforms baked; its images remain separate source textures.
+gp_0ad_kind :: ()->int {return 6;}
 gp_0ad :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string) {
  for item:0..<9 {
   name:=gp_0ad_name(item);dir:=txt_cat3(w[0].txt[..],root,"/",name);path:=txt_cat(w[0].txt[..],dir,"/model.gltf");gl_load(g,path);
@@ -161,7 +162,7 @@ gp_0ad :: (w:[]Gp,g:[]Gltf,iw:[]ImgWork,root:string) {
     pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;idx:[262144]f64;
     nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;r:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);r=gl_acc(g,gl_int(g,attr,"TEXCOORD_0",0),uv[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;
     mat:=gl_at(g,GA_MAT,gl_int(g,pr,"material",0));tex:=gl_get(g,gl_get(g,mat,"pbrMetallicRoughness"),"baseColorTexture");im:=gl_at(g,GA_IMG,gl_int(g,gl_at(g,GA_TEX,gl_int(g,tex,"index",0)),"source",0));image:=txt_cat3(w[0].txt[..],dir,"/",gl_str(g,im,"uri"));layer:=gp_texture(w,image,iw);first:=w[0].nv;
-    for v:0..<nv {id:=gp_v(w,[3]f32.[p[0]+f32(pos[v*3])*scale,base+(f32(pos[v*3+1])-miny)*scale,p[1]+f32(pos[v*3+2])*scale],[3]f32.[f32(nor[v*3]),f32(nor[v*3+1]),f32(nor[v*3+2])],[2]f32.[f32(uv[v*2]),f32(uv[v*2+1])],[3]f32.[1,1,1],layer,4);}
+    for v:0..<nv {id:=gp_v(w,[3]f32.[p[0]+f32(pos[v*3])*scale,base+(f32(pos[v*3+1])-miny)*scale,p[1]+f32(pos[v*3+2])*scale],[3]f32.[f32(nor[v*3]),f32(nor[v*3+1]),f32(nor[v*3+2])],[2]f32.[f32(uv[v*2]),f32(uv[v*2+1])],[3]f32.[1,1,1],layer,gp_0ad_kind());}
     for t:0..<ni/3 {gp_tri(w,first+int(idx[t*3]),first+int(idx[t*3+1]),first+int(idx[t*3+2]));}
   }}
   gp_capture(w,first_asset,false);
@@ -748,4 +749,10 @@ tool_main :: ()->int #export_c #effects(all) {
 
 #test "0 A.D. hamlet locations stay within the meadow and avoid existing building sites" {
  for i:0..<9 {p:=gp_0ad_position(i);#assert abs(p[0])<80 && abs(p[1])<80 && !meadow.exp_clear(p[0],p[1]);}
+}
+
+#test "0 A.D. textures use the unmodified textured material rather than rock recoloring" {
+ #assert gp_0ad_kind()==6;
+ b:[32]u8;gp_vertex(b[..],0,[3]f32.[0,0,0],[3]f32.[0,1,0],[2]f32.[0.25,0.75],[3]f32.[1,1,1],3,gp_0ad_kind());
+ #assert gl_u32(b[..],12)>>24==6 && gl_u32(b[..],24)==3;
 }
