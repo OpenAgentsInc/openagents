@@ -1,0 +1,616 @@
+// Lighting Phase 1 baseline (GitHub #13061, docs/verse/lighting/README.md Phase 1): pinned frames
+// and numerical probes of Character Create's glade, Everglade II and Everglade Experimental, and
+// the identity check every later lighting step runs against them.
+//   coax/web/tool.sh coax/web/lighting-baseline.coax OUTDIR [--base URL | --serve PORT] [--only NAME,...]
+//     records: OUTDIR/NAME.jpg for each capture, OUTDIR/probes.tsv, OUTDIR/run.tsv and
+//     OUTDIR/contact-sheet.jpg
+//   coax/web/tool.sh coax/web/lighting-baseline.coax OUTDIR --compare BASELINE [--build] [--serve PORT]
+//     records the same into OUTDIR, then checks every capture and probe against BASELINE's within
+//     the bounds below; writes OUTDIR/compare.tsv; exit 0 when all are inside, 1 when one is not
+// --build first builds the units these pages need (LB_BUILDS: the host modules, Everglade II's
+// pack, everglade2.wasm and fivelab.wasm; never the whole site); later lighting steps pass it.
+// --serve PORT starts the static page server on 127.0.0.1:PORT for the run (coax/web/serve.sh
+// apps/openagents-web --static) and stops it after;
+// --base URL uses a server already running. The default is --serve 8977.
+//
+// What is pinned: each page loads in a new headless, muted Chrome with a fresh profile, in clip
+// mode (host.js coaxialClip: the page draws only when stepped, one fixed step of game time each)
+// with Date.now frozen (coax/web/clip-clock.js), the graphics tier held at HIGH (verse.quality),
+// device pixel ratio 1 and the realm's own fixed clock (data-clock fixed:0.5). The page loads
+// with steps of 1 ns of game time until it is ready and its frame stops changing, then runs its
+// plan in 1/30 s steps. A frame is read back from the GPU target the page draws into
+// (host.js coaxialRenderCapture, rgba8unorm), never from a screenshot of the window.
+// Probes: "pixel" probes are 9x9 means of the read-back frame at nine fixed points (sRGB bytes and
+// their linear values); "gpu" probes evaluate the page's own compiled shader module's glade
+// functions (cg_sun_colour, cg_hemisphere, cg_sky, cg_atmosphere, cg_cloud, cg_output ...) on the
+// page's GPU device at fixed world points and directions, with one measurement entry point added
+// to that module: key, ambient, sky, haze, cloud shade and output, in linear light.
+// Headless only; one Chrome at a time; it kills only the Chrome and server it started.
+//   coax/bin/coax test coax/web/lighting-baseline.coax      # its own checks
+#import "Basic";
+#load "../lib/media/media.coax";   // cdp, json, fs, proc, args; media_size, media_value
+#load "../lib/image/jpeg.coax";
+#load "../lib/image/jpeg_enc.coax";
+
+// ---- the bounds of the identity check (declared before any later step runs it) --------------
+// An image differs when more than LB_BLOCKS_PPM parts per million of its 8 px blocks moved (a
+// block moved when one channel's mean moved more than LB_BLOCK_SHADE of 255, as the goldens
+// compare), or when the mean over all blocks of the channels' mean shift exceeds LB_MAE (of 255).
+// A pixel probe differs when a channel's 9x9 mean moved more than LB_PIXEL of 255; a GPU probe
+// when a channel moved more than LB_GPU_REL of its size (at least LB_GPU_ABS).
+LB_BLOCK :: 8;
+LB_BLOCK_SHADE :: 8.0;
+LB_BLOCKS_PPM :: 2000;     // 0.2% of blocks
+LB_MAE :: 1.0;
+LB_PIXEL :: 3.0;
+LB_GPU_REL :: 0.0001;
+LB_GPU_ABS :: 0.00001;
+
+LB_W :: 1920; LB_H :: 1080;
+LB_PX :: LB_W * LB_H * 4;
+LB_JPG :: 8388608;
+LB_QUALITY :: 70;          // 4:4:4, optimized tables
+LB_CAPTURES :: 24;
+LB_THUMB_W :: 384; LB_THUMB_H :: 216;
+LB_SHEET_COLS :: 4;
+LB_PROBES :: 24;           // GPU probes
+LB_READY_MS :: 240000;
+LB_SETTLE_MS :: 120000;
+
+// ---- the capture set: one page load each, its raster, what makes it ready, and its plan -------
+// A plan is steps separated by ';': sN (N steps of 1/30 s), dX,Y / mX,Y / uX,Y (pointer down,
+// move, up at CSS pixels), cX,Y (a click), wDYxN (N wheel turns of DY), kKEY (a key press),
+// Csuffix (capture NAME-suffix, or NAME when the suffix is empty), P (the GPU probes).
+LB_LOADS :: 7;
+LB_NAMES :: [7] string.["cc", "cc-phone", "handover", "e2-arrival", "e2-sunlit-path", "e2-deep-canopy", "exp-combat"];
+LB_PATHS :: [7] string.["/worlds/character-creator", "/worlds/character-creator", "/worlds/character-creator",
+  "/worlds/everglade2?at=1", "/worlds/everglade2?at=60", "/worlds/everglade2?at=300", "/worlds/everglade-experimental"];
+LB_WIDE :: [7] int.[1920, 390, 1920, 1920, 1920, 1920, 1920];
+LB_TALL :: [7] int.[1080, 844, 1080, 1080, 1080, 1080, 1080];
+// Everglade II's own readiness: planted, its kits in, its ground's tiles published and baked live
+LB_E2_READY :: "coaxial.fieldProbe(3)>0&&coaxial.fieldProbe(4)>0&&coaxial.fieldProbe(92)>0&&coaxial.fieldProbe(9)===0";
+LB_READY :: [7] string.[LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, LB_E2_READY, "true"];
+LB_PLANS :: [7] string.[
+  "s60;C-glade;P;w-200x4;s30;C-closeup;w200x4;s30;d1400,560;s10;C-turn-0;m1520,560;s10;C-turn-1;m1640,560;s10;C-turn-2;m1760,560;s10;C-turn-3;u1760,560",
+  "s60;C-glade",
+  "s60;c260,697;s15;C-0;s45;C-1;s90;C-2;s240;C-3;s315;C-4",
+  "s60;C",
+  "s60;C",
+  "s60;C",
+  "d960,600;m1260,600;m1560,600;u1560,600;s30;k1;s4;C;P"];
+
+// ---- the GPU probes: one line of the measurement entry each, writing lb_out[i] ---------------
+LB_PROBE_NAMES :: [LB_PROBES] string.[
+  "key.sun_colour", "key.sun_dir",
+  "ambient.up", "ambient.side", "ambient.down", "irradiance.up_lit", "irradiance.up_shaded",
+  "sky.zenith", "sky.toward_sun", "sky.away", "sky.up45_north",
+  "haze.10m", "haze.40m", "haze.80m", "haze.toward_sun_60m", "haze.away_60m",
+  "cloud.0_0", "cloud.12_-20", "cloud.-30_10",
+  "output.grey18", "output.white1", "output.hdr_orange", "output.sky_zenith", "output.black"];
+LB_PROBE_EXPRS :: [LB_PROBES] string.[
+  "vec4f(coax_p_cg_sun_colour(), 0.0)", "vec4f(coax_p_cg_sun_dir(), 0.0)",
+  "vec4f(coax_p_cg_hemisphere(vec3f(0.0, 1.0, 0.0)), 0.0)", "vec4f(coax_p_cg_hemisphere(vec3f(1.0, 0.0, 0.0)), 0.0)",
+  "vec4f(coax_p_cg_hemisphere(vec3f(0.0, -1.0, 0.0)), 0.0)",
+  "vec4f(coax_p_cg_irradiance(vec3f(0.0, 1.0, 0.0), max(s.y, 0.0), 1.0, 1.0), 0.0)",
+  "vec4f(coax_p_cg_irradiance(vec3f(0.0, 1.0, 0.0), max(s.y, 0.0), 0.5, 0.0), 0.0)",
+  "vec4f(coax_p_cg_decode(coax_p_cg_sky(vec3f(0.0, 1.0, 0.0), s, 0.0)), 0.0)",
+  "vec4f(coax_p_cg_decode(coax_p_cg_sky(normalize(vec3f(s.x, 0.17, s.z)), s, 0.0)), 0.0)",
+  "vec4f(coax_p_cg_decode(coax_p_cg_sky(normalize(vec3f(-s.x, 0.17, -s.z)), s, 0.0)), 0.0)",
+  "vec4f(coax_p_cg_decode(coax_p_cg_sky(normalize(vec3f(0.0, 1.0, -1.0)), s, 0.0)), 0.0)",
+  "vec4f(coax_p_cg_atmosphere(vec3f(0.18), eye, eye + vec3f(0.0, 0.0, -10.0)), 0.0)",
+  "vec4f(coax_p_cg_atmosphere(vec3f(0.18), eye, eye + vec3f(0.0, 0.0, -40.0)), 0.0)",
+  "vec4f(coax_p_cg_atmosphere(vec3f(0.18), eye, eye + vec3f(0.0, 0.0, -80.0)), 0.0)",
+  "vec4f(coax_p_cg_atmosphere(vec3f(0.18), eye, eye + normalize(vec3f(s.x, 0.0, s.z)) * 60.0), 0.0)",
+  "vec4f(coax_p_cg_atmosphere(vec3f(0.18), eye, eye - normalize(vec3f(s.x, 0.0, s.z)) * 60.0), 0.0)",
+  "vec4f(vec3f(coax_p_cg_cloud(0.0, 0.0)), 0.0)", "vec4f(vec3f(coax_p_cg_cloud(12.0, -20.0)), 0.0)",
+  "vec4f(vec3f(coax_p_cg_cloud(-30.0, 10.0)), 0.0)",
+  "vec4f(coax_p_cg_output(vec3f(0.18)), 0.0)", "vec4f(coax_p_cg_output(vec3f(1.0)), 0.0)",
+  "vec4f(coax_p_cg_output(vec3f(4.0, 1.0, 0.25)), 0.0)",
+  "vec4f(coax_p_cg_output(coax_p_cg_decode(coax_p_cg_sky(vec3f(0.0, 1.0, 0.0), s, 0.0))), 0.0)",
+  "vec4f(coax_p_cg_output(vec3f(0.0)), 0.0)"];
+// the eye the haze probes look from (the glade's middle, standing height) and the sun
+LB_PROBE_HEAD :: "let s = coax_p_cg_sun_dir(); let eye = vec3f(0.0, 1.6, 4.0);";
+// The nine pixel probes: fractions of the width and height.
+LB_PIX_FX :: [9] f64.[0.25, 0.5, 0.75, 0.25, 0.5, 0.75, 0.25, 0.5, 0.75];
+LB_PIX_FY :: [9] f64.[0.25, 0.25, 0.25, 0.5, 0.5, 0.5, 0.75, 0.75, 0.75];
+LB_PIX_R :: 4;   // a 9x9 mean
+
+// ---- browser glue, injected before the page's own scripts ------------------------------------
+// clip mode, the render target read back, the tier held, no visit counted, console errors kept,
+// and the shader modules the page compiles kept (with their device) for the GPU probes.
+LB_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialClipRoom=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';try{localStorage.setItem('verse.quality','high')}catch{}Object.defineProperty(Navigator.prototype,'sendBeacon',{value:()=>false});globalThis.lbErrors=[];{const ce=console.error;console.error=(...a)=>{lbErrors.push(a.map(String).join(' ').slice(0,300));ce(...a)}}globalThis.__lbShaders=[];if(globalThis.GPUDevice){const f=GPUDevice.prototype.createShaderModule;GPUDevice.prototype.createShaderModule=function(d){if(d&&typeof d.code==='string'&&__lbShaders.length<64)__lbShaders.push({code:d.code,device:this});return f.call(this,d)}}";
+// The GPU probes: the page's module that has every glade function, plus one compute entry (BODY,
+// built by lb_probe_js) writing N vec4s at a binding no page entry uses; dispatched once on the
+// page's device and read back. Returns "SHA256 v0 v1 ..." (the module's SHA-256), "none" or "error ...".
+LB_PROBE_FN :: "globalThis.__lbProbe=async(body,n)=>{const need=['cg_sun_colour','cg_sun_dir','cg_hemisphere','cg_irradiance','cg_sky','cg_decode','cg_atmosphere','cg_cloud','cg_output'];const m=__lbShaders.find(x=>need.every(f=>x.code.includes('fn coax_p_'+f+'(')));if(!m)return 'none';const code=m.code+'\\n@group(0) @binding(15) var<storage, read_write> lb_out: array<vec4f, '+n+'>;\\n@compute @workgroup_size(1) fn lb_probe() {\\n'+body+'\\n}\\n';const d=m.device;d.pushErrorScope('validation');const mod=d.createShaderModule({code});const p=d.createComputePipeline({layout:'auto',compute:{module:mod,entryPoint:'lb_probe'}});const out=d.createBuffer({size:n*16,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});const rd=d.createBuffer({size:n*16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});const bg=d.createBindGroup({layout:p.getBindGroupLayout(0),entries:[{binding:15,resource:{buffer:out}}]});const e=d.createCommandEncoder();const pass=e.beginComputePass();pass.setPipeline(p);pass.setBindGroup(0,bg);pass.dispatchWorkgroups(1);pass.end();e.copyBufferToBuffer(out,0,rd,0,n*16);d.queue.submit([e.finish()]);await rd.mapAsync(GPUMapMode.READ);const v=Array.from(new Float32Array(rd.getMappedRange().slice(0)));rd.unmap();out.destroy();rd.destroy();const err=await d.popErrorScope();if(err)return 'error '+err.message;const h=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(m.code))),x=>x.toString(16).padStart(2,'0')).join('');return h+' '+v.map(x=>x.toPrecision(9)).join(' ')};true";
+// Ready: the host's scene drawn, its loading card gone, nothing failed.
+LB_HOST_READY :: "(()=>{const c=globalThis.coaxial,card=document.getElementById('coaxial-load');if(card&&card.dataset.state==='fail')return 'failed';return !!c&&c.ready===true&&c.sceneReady===true&&(!card||card.classList.contains('gone'))?'ready':'loading'})()";
+// One step of (almost) no game time and its frame's SHA-256: the page settles on these.
+LB_STILL :: "(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();if((await coaxialClipStep(1,1e9))!==1)return 'step';for(let i=0;i<500&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));return coaxial.renderCapture?.sha256??'none'})()";
+// The frame: a capture step of 1 ns, its bytes as "W H FORMAT SHA256 BASE64".
+LB_FRAME :: "(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();if((await coaxialClipStep(1,1e9))!==1)return 'step';for(let i=0;i<500&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));const r=coaxial.renderCapture;if(!r?.bytes)return 'none';const b=Uint8Array.from(r.bytes);let s='';for(let i=0;i<b.length;i+=32768)s+=String.fromCharCode.apply(null,b.subarray(i,i+32768));return r.width+' '+r.height+' '+r.format+' '+r.sha256+' '+btoa(s)})()";
+LB_FACTS :: "JSON.stringify({chrome:navigator.userAgent.match(/Chrome\\/[0-9.]+/)?.[0],wasm:document.querySelector('script[data-wasm]')?.dataset.wasm||'',app:document.querySelector('script[data-app]')?.dataset.app||'',clock:document.querySelector('script[data-clock]')?.dataset.clock||'',field10:document.querySelector('script[data-app]')?.dataset.app==='everglade2'?coaxial.fieldProbe(10):null,date:Date.now(),quality:localStorage.getItem('verse.quality'),dpr:devicePixelRatio,errors:lbErrors.length})";
+
+// ---- text ------------------------------------------------------------------------------------
+LbBuf :: struct { b: [65536] u8; n: int; }
+lb_put :: (o: [] LbBuf, s: string) { for c: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = c; o[0].n += 1; } } }
+lb_text :: (o: [] LbBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+lb_int :: (o: [] LbBuf, value: int) {
+  v := value; if v < 0 { lb_put(o, "-"); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast(u8) (48 + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  while k > 0 { k -= 1; lb_put(o, cast(string) d[k..<k + 1]); }
+}
+// v with `places` decimals, rounded half away from zero
+lb_fixed :: (o: [] LbBuf, value: f64, places: int) {
+  scale := 1.0; for i: 0..<places { scale *= 10.0; }
+  neg := value < 0; m := ifx neg then -value else value;
+  q := cast(int) floor(m * scale + 0.5);
+  if neg && q > 0 { lb_put(o, "-"); }
+  whole := 1; for i: 0..<places { whole *= 10; }
+  lb_int(o, q / whole);
+  if places > 0 {
+    lb_put(o, "."); f := q % whole; div := whole / 10;
+    for i: 0..<places { lb_int(o, (f / div) % 10); div = ifx div > 1 then div / 10 else 1; }
+  }
+}
+#test "numbers are written with fixed decimals" {
+  o: [1] LbBuf;
+  lb_fixed(o[..], 1.5, 3); lb_put(o[..], " "); lb_fixed(o[..], -0.25, 2); lb_put(o[..], " "); lb_fixed(o[..], 0.0004, 3);
+  lb_put(o[..], " "); lb_fixed(o[..], 12.0, 0); lb_put(o[..], " "); lb_fixed(o[..], 0.10049, 4); lb_put(o[..], " "); lb_fixed(o[..], -0.00001, 3);
+  #assert lb_text(o[..]) == "1.500 -0.25 0.000 12 0.1005 0.000";
+}
+// the i-th field of a line split on `sep`
+lb_field :: (line: string, sep: u8, i: int) -> string {
+  k := 0; at := 0;
+  for j: 0..<line.count + 1 {
+    if j == line.count || line[j] == sep { if k == i { return line[at..<j]; } k += 1; at = j + 1; }
+  }
+  return "";
+}
+lb_fields :: (line: string, sep: u8) -> int { n := 1; for c: line { if c == sep { n += 1; } } return ifx line.count == 0 then 0 else n; }
+#test "fields split on a separator" {
+  #assert lb_field("a\tbb\t\tc", '\t', 1) == "bb" && lb_field("a\tbb\t\tc", '\t', 2) == "" && lb_field("a\tbb\t\tc", '\t', 3) == "c";
+  #assert lb_field("a b", ' ', 5) == "" && lb_fields("a b c", ' ') == 3 && lb_fields("", ' ') == 0;
+}
+// "X,Y" as two whole numbers
+LbXY :: struct { ok: bool; x: int; y: int; }
+lb_xy :: (t: string) -> LbXY {
+  a := args_number(lb_field(t, ',', 0)); b := args_number(lb_field(t, ',', 1));
+  return LbXY.{ok = a.ok && b.ok && lb_fields(t, ',') == 2, x = cast(int) a.value, y = cast(int) b.value};
+}
+#test "a plan's pointer places and wheel turns parse" {
+  p := lb_xy("1400,560"); #assert p.ok && p.x == 1400 && p.y == 560;
+  #assert !lb_xy("1400").ok && !lb_xy("a,2").ok && !lb_xy("1,2,3").ok;
+}
+
+// ---- the image metric (pure) ----------------------------------------------------------------
+LbDiff :: struct { blocks: int; moved: int; mae: f64; peak: f64; }
+// a and b are RGBA w x h; blocks of LB_BLOCK px (edge blocks smaller)
+lb_diff :: (a: [] u8, b: [] u8, w: int, h: int) -> LbDiff {
+  d: LbDiff; sum := 0.0;
+  by := 0;
+  while by < h {
+    bx := 0;
+    while bx < w {
+      x1 := ifx bx + LB_BLOCK < w then bx + LB_BLOCK else w; y1 := ifx by + LB_BLOCK < h then by + LB_BLOCK else h;
+      sa: [3] int; sb: [3] int;
+      for y: by..<y1 { for x: bx..<x1 { at := (y * w + x) * 4; for c: 0..<3 { sa[c] += cast(int) a[at + c]; sb[c] += cast(int) b[at + c]; } } }
+      n := f64((x1 - bx) * (y1 - by)); worst := 0.0; mean := 0.0;
+      for c: 0..<3 { m := abs(f64(sa[c] - sb[c])) / n; mean += m / 3.0; if m > worst { worst = m; } }
+      d.blocks += 1; sum += mean;
+      if worst > LB_BLOCK_SHADE { d.moved += 1; }
+      if worst > d.peak { d.peak = worst; }
+      bx += LB_BLOCK;
+    }
+    by += LB_BLOCK;
+  }
+  d.mae = ifx d.blocks > 0 then sum / f64(d.blocks) else 0.0;
+  return d;
+}
+lb_diff_ok :: (d: LbDiff) -> bool { return d.blocks > 0 && d.moved * 1000000 <= d.blocks * LB_BLOCKS_PPM && d.mae <= LB_MAE; }
+#test "the image metric counts moved blocks and holds the declared bound" {
+  a: [16 * 16 * 4] u8; b: [16 * 16 * 4] u8;
+  for i: 0..<16 * 16 { a[i * 4] = 100; b[i * 4] = 100; a[i * 4 + 3] = 255; b[i * 4 + 3] = 255; }
+  same := lb_diff(a[..], b[..], 16, 16); #assert same.blocks == 4 && same.moved == 0 && same.mae == 0 && lb_diff_ok(same);
+  // one pixel 200 levels off: its block's red mean moves 200/64 (not moved), the mean shift is small
+  b[0] = 255; one := lb_diff(a[..], b[..], 16, 16); #assert one.moved == 0 && one.peak > 2.4 && one.peak < 2.5;
+  // a whole block 9 levels off moves it: 1 of 4 blocks is far over 0.2%
+  for y: 0..<8 { for x: 8..<16 { b[(y * 16 + x) * 4 + 1] = 9; } }
+  m := lb_diff(a[..], b[..], 16, 16); #assert m.moved == 1 && !lb_diff_ok(m);
+  // odd sizes keep their edge blocks
+  #assert lb_diff(a[..], b[..], 9, 9).blocks == 4;
+}
+#test "the declared bounds are the ones the receipt states" {
+  #assert LB_BLOCK == 8 && LB_BLOCK_SHADE == 8.0 && LB_BLOCKS_PPM == 2000 && LB_MAE == 1.0 && LB_PIXEL == 3.0 && LB_GPU_REL == 0.0001;
+}
+lb_srgb_linear :: (v: f64) -> f64 { x := v / 255.0; return ifx x <= 0.04045 then x / 12.92 else pow((x + 0.055) / 1.055, 2.4); }
+#test "pixel probes decode sRGB as the glade does" {
+  #assert abs(lb_srgb_linear(127.5) - 0.214041) < 0.00001 && lb_srgb_linear(0) == 0 && abs(lb_srgb_linear(255) - 1) < 0.0000001;
+}
+// The mean of one probe's 9x9 square, as sRGB bytes (c 0..2)
+lb_pixel_mean :: (px: [] u8, w: int, h: int, fx: f64, fy: f64, c: int) -> f64 {
+  cx := cast(int) floor(fx * f64(w)); cy := cast(int) floor(fy * f64(h)); s := 0; n := 0;
+  for y: cy - LB_PIX_R..<cy + LB_PIX_R + 1 { for x: cx - LB_PIX_R..<cx + LB_PIX_R + 1 {
+    if x >= 0 && y >= 0 && x < w && y < h { s += cast(int) px[(y * w + x) * 4 + c]; n += 1; } } }
+  return ifx n > 0 then f64(s) / f64(n) else 0;
+}
+#test "a pixel probe is its square's mean" {
+  px: [20 * 20 * 4] u8; for i: 0..<400 { px[i * 4] = cast(u8) (i % 20); }
+  #assert lb_pixel_mean(px[..], 20, 20, 0.5, 0.5, 0) == 10 && lb_pixel_mean(px[..], 20, 20, 0.5, 0.5, 1) == 0;
+  #assert lb_pixel_mean(px[..], 20, 20, 0.0, 0.0, 0) == 2;   // the corner keeps only its inside
+}
+lb_gpu_ok :: (a: f64, b: f64) -> bool { m := ifx abs(a) > abs(b) then abs(a) else abs(b); lim := m * LB_GPU_REL; if lim < LB_GPU_ABS { lim = LB_GPU_ABS; } return abs(a - b) <= lim; }
+#test "a GPU probe is equal within its relative bound" {
+  #assert lb_gpu_ok(1.0, 1.00009) && !lb_gpu_ok(1.0, 1.0002) && lb_gpu_ok(0.0, 0.000009) && !lb_gpu_ok(0.0, 0.00002);
+}
+// The measurement entry's body: the head, then lb_out[i] = EXPR for every probe.
+lb_probe_body :: (o: [] LbBuf) {
+  lb_put(o, LB_PROBE_HEAD);
+  for i: 0..<LB_PROBES { lb_put(o, " lb_out["); lb_int(o, i); lb_put(o, "] = "); lb_put(o, LB_PROBE_EXPRS[i]); lb_put(o, ";"); }
+}
+#test "every GPU probe has a name and one line of the entry" {
+  o: [1] LbBuf; lb_probe_body(o[..]); t := lb_text(o[..]); lines := 0;
+  for i: 0..<t.count - 7 { if t[i..<i + 7] == "lb_out[" { lines += 1; } }
+  #assert lines == LB_PROBES && LB_PROBE_NAMES.count == LB_PROBES && LB_PROBE_EXPRS.count == LB_PROBES;
+  for i: 0..<LB_PROBES { #assert LB_PROBE_NAMES[i].count > 0 && LB_PROBE_EXPRS[i].count > 8; }
+}
+// A capture's name: the load's name, then the suffix ("" or "-glade")
+lb_capture_name :: (load: string, suffix: string, o: [] LbBuf) -> string { o[0].n = 0; lb_put(o, load); lb_put(o, suffix); return lb_text(o); }
+#test "the plans parse: each op is known and names unique captures" {
+  seen: [64] LbBuf; n := 0; nb: [1] LbBuf;
+  for l: 0..<LB_LOADS {
+    plan := LB_PLANS[l]; k := lb_fields(plan, ';');
+    for i: 0..<k {
+      op := lb_field(plan, ';', i); #assert op.count > 0;
+      c := op[0];
+      #assert c == 's' || c == 'd' || c == 'm' || c == 'u' || c == 'c' || c == 'w' || c == 'k' || c == 'C' || c == 'P';
+      if c == 's' { #assert args_number(op[1..<op.count]).ok; }
+      if c == 'd' || c == 'm' || c == 'u' || c == 'c' { #assert lb_xy(op[1..<op.count]).ok; }
+      if c == 'C' {
+        name := lb_capture_name(LB_NAMES[l], op[1..<op.count], nb[..]);
+        for j: 0..<n { #assert lb_text(seen[j..<j + 1]) != name; }
+        seen[n].n = 0; lb_put(seen[n..<n + 1], name); n += 1;
+      }
+    }
+  }
+  #assert n <= LB_CAPTURES && n == 16;
+}
+
+// ---- the browser -----------------------------------------------------------------------------
+lb_eval_text :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js); if v < 0 { return ""; }
+  d := cdp_doc(c); if jv_kind(d, v) != JV_STRING { t := jv_raw(d, v); k := 0; for ch: t { if k < out.count { out[k] = ch; k += 1; } } return cast(string) out[0..<k]; }
+  n := jv_str(d, v, out); return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+lb_true :: (c: [] Cdp, js: string) -> bool { v := cdp_evaluate(c, js); return v >= 0 && jv_kind(cdp_doc(c), v) == JV_TRUE; }
+lb_script :: (c: [] Cdp, js: string) -> bool {
+  p: [1] LbBuf; j: [1] Jo; jo_start(j[..], p[0].b[..]); jo_obj(j[..]); jo_key(j[..], "source"); jo_str(j[..], js); jo_end(j[..]);
+  return !j[0].bad && cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
+lb_steps :: (c: [] Cdp, n: int) -> bool {
+  o: [1] LbBuf; lb_put(o[..], "(async()=>{for(let i=0;i<"); lb_int(o[..], n); lb_put(o[..], ";i++)if((await coaxialClipStep(1,30))!==1)return false;return true})()");
+  return lb_true(c, lb_text(o[..]));
+}
+lb_pointer :: (c: [] Cdp, kind: string, x: int, y: int) -> bool {
+  o: [1] LbBuf; lb_put(o[..], "(()=>{const c=document.getElementById('coaxial');c.dispatchEvent(new PointerEvent('"); lb_put(o[..], kind);
+  lb_put(o[..], "',{clientX:"); lb_int(o[..], x); lb_put(o[..], ",clientY:"); lb_int(o[..], y); lb_put(o[..], ",pointerId:31,pointerType:'mouse',button:0,buttons:1,isPrimary:true,bubbles:true}));return true})()");
+  return lb_true(c, lb_text(o[..]));
+}
+lb_wheel :: (c: [] Cdp, dy: int, n: int) -> bool {
+  o: [1] LbBuf; lb_put(o[..], "(()=>{const c=document.getElementById('coaxial');for(let i=0;i<"); lb_int(o[..], n);
+  lb_put(o[..], ";i++)c.dispatchEvent(new WheelEvent('wheel',{deltaY:"); lb_int(o[..], dy); lb_put(o[..], ",clientX:960,clientY:540,bubbles:true,cancelable:true}));return true})()");
+  return lb_true(c, lb_text(o[..]));
+}
+lb_key :: (c: [] Cdp, key: string) -> bool {
+  for phase: [2] string.["keyDown", "keyUp"] {
+    p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]); jo_key(j[..], "type"); jo_str(j[..], phase); jo_key(j[..], "key"); jo_str(j[..], key);
+    if key.count == 1 && key[0] >= '0' && key[0] <= '9' { jo_key(j[..], "code"); jo_str(j[..], ifx key == "1" then "Digit1" else "Digit2"); jo_key(j[..], "windowsVirtualKeyCode"); jo_int(j[..], cast(int) key[0]); jo_key(j[..], "text"); jo_str(j[..], key); }
+    jo_end(j[..]);
+    if cdp_call(c, "Input.dispatchKeyEvent", jo_text(j[..]), CDP_CALL_MS) < 0 { return false; }
+  }
+  return true;
+}
+
+// ---- a run's records --------------------------------------------------------------------------
+Lb :: struct {
+  out: string;
+  probes: [1] LbBuf;       // probes.tsv
+  run: [1] LbBuf;          // run.tsv
+  names: [LB_CAPTURES] LbBuf; widths: [LB_CAPTURES] int; heights: [LB_CAPTURES] int; n: int;
+  thumbs: [LB_CAPTURES * LB_THUMB_W * LB_THUMB_H * 4] u8;
+  failed: int;
+}
+// A box-filtered thumbnail of px (w x h) into the thumbnail k, kept in the middle of its cell.
+lb_thumb :: (s: [] Lb, k: int, px: [] u8, w: int, h: int) {
+  t := s[0].thumbs[k * LB_THUMB_W * LB_THUMB_H * 4..<(k + 1) * LB_THUMB_W * LB_THUMB_H * 4];
+  for i: 0..<t.count { t[i] = 24; }
+  scale := ifx f64(w) / f64(LB_THUMB_W) > f64(h) / f64(LB_THUMB_H) then f64(w) / f64(LB_THUMB_W) else f64(h) / f64(LB_THUMB_H);
+  tw := cast(int) (f64(w) / scale); th := cast(int) (f64(h) / scale); ox := (LB_THUMB_W - tw) / 2; oy := (LB_THUMB_H - th) / 2;
+  for ty: 0..<th { for tx: 0..<tw {
+    x0 := cast(int) (f64(tx) * scale); x1 := cast(int) (f64(tx + 1) * scale); y0 := cast(int) (f64(ty) * scale); y1 := cast(int) (f64(ty + 1) * scale);
+    if x1 <= x0 { x1 = x0 + 1; } if y1 <= y0 { y1 = y0 + 1; }
+    sum: [3] int; n := 0;
+    for y: y0..<y1 { for x: x0..<x1 { if x < w && y < h { at := (y * w + x) * 4; for c: 0..<3 { sum[c] += cast(int) px[at + c]; } n += 1; } } }
+    o := ((oy + ty) * LB_THUMB_W + ox + tx) * 4;
+    for c: 0..<3 { t[o + c] = cast(u8) (ifx n > 0 then sum[c] / n else 0); } t[o + 3] = 255;
+  } }
+}
+lb_sheet :: (s: [] Lb, jpg: [] u8, sheet: [] u8) -> bool {
+  rows := (s[0].n + LB_SHEET_COLS - 1) / LB_SHEET_COLS; w := LB_SHEET_COLS * LB_THUMB_W; h := rows * LB_THUMB_H;
+  if rows == 0 || w * h * 4 > sheet.count { return false; }
+  for i: 0..<w * h * 4 { sheet[i] = 24; }
+  for k: 0..<s[0].n {
+    cx := (k % LB_SHEET_COLS) * LB_THUMB_W; cy := (k / LB_SHEET_COLS) * LB_THUMB_H;
+    t := s[0].thumbs[k * LB_THUMB_W * LB_THUMB_H * 4..<(k + 1) * LB_THUMB_W * LB_THUMB_H * 4];
+    for y: 0..<LB_THUMB_H { for x: 0..<LB_THUMB_W { for c: 0..<4 {
+      sheet[((cy + y) * w + cx + x) * 4 + c] = ifx x == 0 || y == 0 then 255 else t[(y * LB_THUMB_W + x) * 4 + c]; } } }
+  }
+  n := jpe_encode(sheet[0..<w * h * 4], w, h, 4, 75, false, true, jpg);
+  path: [4096] u8;
+  return n > 0 && fs_write(fs_join(s[0].out, "contact-sheet.jpg", path[..]), cast(string) jpg[0..<n]);
+}
+// The pixel probes of one capture into probes.tsv
+lb_pixel_probes :: (s: [] Lb, name: string, px: [] u8, w: int, h: int) {
+  o := s[0].probes[..];
+  for i: 0..<9 {
+    lb_put(o, name); lb_put(o, "\tpixel\tp"); lb_int(o, cast(int) floor(LB_PIX_FX[i] * 100.0 + 0.5)); lb_put(o, "_"); lb_int(o, cast(int) floor(LB_PIX_FY[i] * 100.0 + 0.5));
+    for c: 0..<3 { lb_put(o, "\t"); lb_fixed(o, lb_pixel_mean(px, w, h, LB_PIX_FX[i], LB_PIX_FY[i], c), 3); }
+    for c: 0..<3 { lb_put(o, "\t"); lb_fixed(o, lb_srgb_linear(lb_pixel_mean(px, w, h, LB_PIX_FX[i], LB_PIX_FY[i], c)), 6); }
+    lb_put(o, "\n");
+  }
+}
+
+// A capture: the frame read back, written as NAME.jpg, its pixel probes and its run line.
+lb_capture :: (c: [] Cdp, s: [] Lb, name: string, px: [] u8, jpg: [] u8) -> bool {
+  v := cdp_evaluate(c, LB_FRAME);
+  d := cdp_doc(c);
+  if v < 0 || jv_kind(d, v) != JV_STRING { print("FAIL %: no frame (%)\n", name, cdp_error(c)); return false; }
+  t := jv_raw(d, v);
+  if lb_fields(t, ' ') != 5 { print("FAIL %: the frame came back as %\n", name, t[0..<ifx t.count < 80 then t.count else 80]); return false; }
+  w := cast(int) args_number(lb_field(t, ' ', 0)).value; h := cast(int) args_number(lb_field(t, ' ', 1)).value; fmt := lb_field(t, ' ', 2);
+  if w < 1 || h < 1 || w * h * 4 > px.count || (fmt != "rgba8unorm" && fmt != "bgra8unorm") { print("FAIL %: a % x % % frame\n", name, w, h, fmt); return false; }
+  n := b64_decode(lb_field(t, ' ', 4), px);
+  if n != w * h * 4 { print("FAIL %: % bytes for % x %\n", name, n, w, h); return false; }
+  if fmt == "bgra8unorm" { for i: 0..<w * h { b := px[i * 4]; px[i * 4] = px[i * 4 + 2]; px[i * 4 + 2] = b; } }
+  for i: 0..<w * h { px[i * 4 + 3] = 255; }
+  j := jpe_encode(px[0..<w * h * 4], w, h, 4, LB_QUALITY, false, true, jpg);
+  file: [1] LbBuf; lb_put(file[..], name); lb_put(file[..], ".jpg"); path: [4096] u8;
+  if j <= 0 || !fs_write(fs_join(s[0].out, lb_text(file[..]), path[..]), cast(string) jpg[0..<j]) { print("FAIL %: could not write its JPEG\n", name); return false; }
+  lb_pixel_probes(s, name, px, w, h);
+  r := s[0].run[..]; lb_put(r, name); lb_put(r, "\tframe\t"); lb_int(r, w); lb_put(r, "x"); lb_int(r, h); lb_put(r, "\t"); lb_put(r, lb_field(t, ' ', 3)); lb_put(r, "\n");
+  if s[0].n < LB_CAPTURES {
+    k := s[0].n; s[0].names[k].n = 0; lb_put(s[0].names[k..<k + 1], name); s[0].widths[k] = w; s[0].heights[k] = h; lb_thumb(s, k, px, w, h); s[0].n += 1;
+  }
+  print("  % %x% %\n", name, w, h, lb_field(t, ' ', 3));
+  return true;
+}
+// The GPU probes on this page into probes.tsv
+lb_gpu_probes :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
+  body: [1] LbBuf; lb_probe_body(body[..]);
+  js: [1] LbBuf; lb_put(js[..], "__lbProbe("); j: [1] Jo; q: [65536] u8; jo_start(j[..], q[..]); jo_str(j[..], lb_text(body[..])); lb_put(js[..], jo_text(j[..]));
+  lb_put(js[..], ","); lb_int(js[..], LB_PROBES); lb_put(js[..], ")");
+  out: [1] LbBuf; t := lb_eval_text(c, lb_text(js[..]), out[0].b[..]);
+  if lb_fields(t, ' ') != 1 + LB_PROBES * 4 { print("FAIL % GPU probes: %\n", name, ifx t.count > 0 then t else cdp_error(c)); return false; }
+  o := s[0].probes[..];
+  for i: 0..<LB_PROBES {
+    lb_put(o, name); lb_put(o, "\tgpu\t"); lb_put(o, LB_PROBE_NAMES[i]);
+    for k: 0..<3 { lb_put(o, "\t"); lb_fixed(o, args_number(lb_field(t, ' ', 1 + i * 4 + k)).value, 7); }
+    lb_put(o, "\n");
+  }
+  r := s[0].run[..]; lb_put(r, name); lb_put(r, "\tshader\t"); lb_put(r, lb_field(t, ' ', 0)); lb_put(r, "\n");
+  print("  % GPU probes: module %\n", name, lb_field(t, ' ', 0));
+  return true;
+}
+
+// One page load: a new Chrome, the page pinned, ready and settled, then its plan.
+lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
+  w := LB_WIDE[l]; h := LB_TALL[l]; name := LB_NAMES[l];
+  print("% (% %x%)\n", name, LB_PATHS[l], w, h);
+  c: [1] Cdp;
+  if !cdp_launch(c[..], w, h, "lighting-baseline-") { print("FAIL %: Chrome: %\n", name, cdp_error(c[..])); return false; }
+  defer cdp_close(c[..]);
+  wh := ArgsSize.{ok = true, w = w, h = h};
+  if !media_size(c[..], wh) || !media_scheme(c[..], false) { print("FAIL %: %\n", name, cdp_error(c[..])); return false; }
+  if cdp_call(c[..], "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 || cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
+  clock: [4096] u8; cn := fs_read("coax/web/clip-clock.js", clock[..]);
+  if cn < 1 { print("FAIL: run from the repository root (coax/web/clip-clock.js)\n"); return false; }
+  if !lb_script(c[..], LB_SETUP) || !lb_script(c[..], cast(string) clock[0..<cn]) || !lb_script(c[..], LB_PROBE_FN) { print("FAIL %: the setup scripts\n", name); return false; }
+  url: [1] LbBuf; lb_put(url[..], base); lb_put(url[..], LB_PATHS[l]);
+  p: [4096] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], lb_text(url[..])); jo_end(j[..]);
+  if cdp_call(c[..], "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { print("FAIL %: navigate: %\n", name, cdp_error(c[..])); return false; }
+  // ready: the host's scene, the realm's own, then the same frame three times running
+  start := proc_now_ms(); word: [512] u8; ready := false;
+  while proc_now_ms() - start < LB_READY_MS {
+    proc_sleep(100);
+    st := lb_eval_text(c[..], LB_HOST_READY, word[..]);
+    if st == "failed" { print("FAIL %: the page failed to load\n", name); return false; }
+    if st == "ready" && lb_true(c[..], LB_READY[l]) { ready = true; break; }
+    _ := lb_eval_text(c[..], "typeof coaxialClipStep==='function'?coaxialClipStep(1,1e9).then(String):'0'", word[..]);
+  }
+  if !ready { print("FAIL %: never ready in % s\n", name, LB_READY_MS / 1000); return false; }
+  loaded := proc_now_ms() - start;
+  last: [128] u8; last_n := 0; same := 0; settle := proc_now_ms(); stills := 0;
+  while same < 3 && proc_now_ms() - settle < LB_SETTLE_MS {
+    hash := lb_eval_text(c[..], LB_STILL, word[..]); stills += 1;
+    if hash.count == 64 && last_n == 64 && cast(string) last[0..<64] == hash { same += 1; } else { same = 0; }
+    for i: 0..<hash.count { if i < last.count { last[i] = hash[i]; } } last_n = hash.count;
+    proc_sleep(700);
+  }
+  facts := lb_eval_text(c[..], LB_FACTS, word[..]);
+  gpu: [256] u8; adapter := cdp_adapter(c[..], gpu[..]);
+  r := s[0].run[..]; lb_put(r, name); lb_put(r, "\tload\t"); lb_put(r, LB_PATHS[l]); lb_put(r, "\t"); lb_int(r, w); lb_put(r, "x"); lb_int(r, h);
+  lb_put(r, "\tready_ms="); lb_int(r, loaded); lb_put(r, "\tstill_frames="); lb_int(r, stills); lb_put(r, "\tsettled="); lb_put(r, ifx same >= 3 then "yes" else "no"); lb_put(r, "\twebgpu="); lb_put(r, adapter); lb_put(r, "\t"); lb_put(r, facts); lb_put(r, "\n");
+  print("  ready in % ms; % still frames, %; WebGPU %; %\n", loaded, stills, ifx same >= 3 then "settled" else "NOT SETTLED", adapter, facts);
+  if same < 3 { print("FAIL %: the frame never stopped changing at a still clock\n", name); return false; }
+  plan := LB_PLANS[l]; k := lb_fields(plan, ';'); nb: [1] LbBuf;
+  for i: 0..<k {
+    op := lb_field(plan, ';', i); arg := op[1..<op.count]; ok := true;
+    if op[0] == 's' { ok = lb_steps(c[..], cast(int) args_number(arg).value); }
+    else if op[0] == 'd' || op[0] == 'm' || op[0] == 'u' { xy := lb_xy(arg); ok = lb_pointer(c[..], ifx op[0] == 'd' then "pointerdown" else ifx op[0] == 'm' then "pointermove" else "pointerup", xy.x, xy.y); }
+    else if op[0] == 'c' { xy := lb_xy(arg); ok = lb_pointer(c[..], "pointerdown", xy.x, xy.y) && lb_pointer(c[..], "pointerup", xy.x, xy.y); }
+    else if op[0] == 'w' { ok = lb_wheel(c[..], cast(int) args_number(lb_field(arg, 'x', 0)).value, cast(int) args_number(lb_field(arg, 'x', 1)).value); }
+    else if op[0] == 'k' { ok = lb_key(c[..], arg); }
+    else if op[0] == 'C' { ok = lb_capture(c[..], s, lb_capture_name(name, arg, nb[..]), px, jpg); }
+    else if op[0] == 'P' { ok = lb_gpu_probes(c[..], s, name); }
+    if !ok { print("FAIL %: step %\n", name, op); return false; }
+  }
+  errors := lb_eval_text(c[..], "JSON.stringify(lbErrors)", word[..]);
+  if errors != "[]" { print("  console errors: %\n", errors); lb_put(r, name); lb_put(r, "\terrors\t"); lb_put(r, errors); lb_put(r, "\n"); }
+  return true;
+}
+
+// ---- the identity check ------------------------------------------------------------------------
+lb_compare :: (s: [] Lb, baseline: string, px: [] u8, other: [] u8, jpg: [] u8, work: [] u8) -> bool {
+  cmp: [1] LbBuf; ok := true; path: [4096] u8; file: [1] LbBuf;
+  lb_put(cmp[..], "capture\tblocks\tmoved\tmoved_ppm\tmae\tpeak\tresult\n");
+  for k: 0..<s[0].n {
+    name := lb_text(s[0].names[k..<k + 1]); w := s[0].widths[k]; h := s[0].heights[k];
+    file[0].n = 0; lb_put(file[..], name); lb_put(file[..], ".jpg");
+    nb := fs_read(fs_join(baseline, lb_text(file[..]), path[..]), jpg);
+    na := fs_read(fs_join(s[0].out, lb_text(file[..]), path[..]), jpg[LB_JPG / 2..<LB_JPG]);
+    ia := jpg_info(jpg[0..<nb]); ib := jpg_info(jpg[LB_JPG / 2..<LB_JPG / 2 + na]);
+    if nb <= 0 || na <= 0 || ia.status != JPG_OK || ib.status != JPG_OK || ia.w != w || ia.h != h || ib.w != w || ib.h != h ||
+       jpg_decode(jpg[0..<nb], work, other) != JPG_OK || jpg_decode(jpg[LB_JPG / 2..<LB_JPG / 2 + na], work, px) != JPG_OK {
+      print("FAIL % has no matching baseline image\n", name); lb_put(cmp[..], name); lb_put(cmp[..], "\t-\t-\t-\t-\t-\tmissing\n"); ok = false; continue;
+    }
+    d := lb_diff(px, other, w, h); good := lb_diff_ok(d); ok = ok && good;
+    lb_put(cmp[..], name); lb_put(cmp[..], "\t"); lb_int(cmp[..], d.blocks); lb_put(cmp[..], "\t"); lb_int(cmp[..], d.moved); lb_put(cmp[..], "\t");
+    lb_int(cmp[..], d.moved * 1000000 / d.blocks); lb_put(cmp[..], "\t"); lb_fixed(cmp[..], d.mae, 4); lb_put(cmp[..], "\t"); lb_fixed(cmp[..], d.peak, 3);
+    lb_put(cmp[..], ifx good then "\tpass\n" else "\tFAIL\n");
+    print("  % image: % of % blocks moved, mean shift %, peak block % %\n", name, d.moved, d.blocks, d.mae, d.peak, ifx good then "pass" else "FAIL");
+  }
+  // the probes: every baseline probe must be here and within its bound
+  text: [1] LbBuf; bn := fs_read(fs_join(baseline, "probes.tsv", path[..]), text[0].b[..]);
+  if bn <= 0 { print("FAIL the baseline has no probes.tsv\n"); return false; }
+  bt := cast(string) text[0].b[0..<bn]; cur := lb_text(s[0].probes[..]);
+  lb_put(cmp[..], "\nprobe\tkind\tbaseline\tnow\tdelta\tresult\n");
+  at := 0; probes := 0; bad := 0;
+  while at < bt.count {
+    e := at; while e < bt.count && bt[e] != '\n' { e += 1; }
+    line := bt[at..<e]; at = e + 1;
+    if lb_fields(line, '\t') < 6 { continue; }
+    probes += 1; kind := lb_field(line, '\t', 1);
+    // the same capture and probe now
+    found := ""; ca := 0;
+    while ca < cur.count {
+      ce := ca; while ce < cur.count && cur[ce] != '\n' { ce += 1; }
+      cl := cur[ca..<ce]; ca = ce + 1;
+      if lb_field(cl, '\t', 0) == lb_field(line, '\t', 0) && lb_field(cl, '\t', 1) == kind && lb_field(cl, '\t', 2) == lb_field(line, '\t', 2) { found = cl; break; }
+    }
+    worst := 0.0; good := found.count > 0;
+    if good { for ch: 0..<3 {
+      a := args_number(lb_field(line, '\t', 3 + ch)).value; b := args_number(lb_field(found, '\t', 3 + ch)).value;
+      dd := abs(a - b); if dd > worst { worst = dd; }
+      if kind == "pixel" { good = good && dd <= LB_PIXEL; } else { good = good && lb_gpu_ok(a, b); }
+    } }
+    if !good { bad += 1; ok = false;
+      lb_put(cmp[..], lb_field(line, '\t', 0)); lb_put(cmp[..], ":"); lb_put(cmp[..], lb_field(line, '\t', 2)); lb_put(cmp[..], "\t"); lb_put(cmp[..], kind);
+      lb_put(cmp[..], "\t"); lb_put(cmp[..], lb_field(line, '\t', 3)); lb_put(cmp[..], "\t"); lb_put(cmp[..], ifx found.count > 0 then lb_field(found, '\t', 3) else "missing");
+      lb_put(cmp[..], "\t"); lb_fixed(cmp[..], worst, 6); lb_put(cmp[..], "\tFAIL\n");
+      print("  probe %:% % moved % FAIL\n", lb_field(line, '\t', 0), lb_field(line, '\t', 2), kind, worst);
+    }
+  }
+  lb_put(cmp[..], "probes\t"); lb_int(cmp[..], probes); lb_put(cmp[..], "\toutside\t"); lb_int(cmp[..], bad); lb_put(cmp[..], "\n");
+  print("  % probes, % outside their bounds\n", probes, bad);
+  _ := fs_write(fs_join(s[0].out, "compare.tsv", path[..]), lb_text(cmp[..]));
+  return ok && probes > 0;
+}
+
+
+// ---- --build: the units these pages need, and nothing else (never the whole site's build.sh) ---
+// Each runs in one of the machine's heavy-build slots when ~/.openagents/build-slots/heavy.sh exists.
+// Fields: the command and its arguments, '|' between them; ROOT is the repository's absolute path.
+LB_BUILDS :: [10] string.[
+  "coax/web/tool.sh|ROOT/coax/web/build-audio.coax|ROOT|ROOT/apps/openagents-web/build/host-audio.wasm|ROOT/apps/openagents-web/build/host-audio-timeline.wasm",
+  "coax/web/tool.sh|ROOT/coax/web/build-layers.coax|ROOT|ROOT/apps/openagents-web/build/host-layers.wasm",
+  "coax/web/tool.sh|ROOT/coax/web/build-media.coax|ROOT|ROOT/apps/openagents-web/build/host-media.wasm",
+  "coax/web/tool.sh|ROOT/coax/web/build-services.coax|ROOT|ROOT/apps/openagents-web/build/host-services.wasm",
+  "coax/web/tool.sh|ROOT/coax/web/build-sockets.coax|ROOT|ROOT/apps/openagents-web/build/host-sockets.wasm",
+  "coax/web/tool.sh|ROOT/coax/web/build-packs.coax|ROOT|ROOT/apps/openagents-web/build/host-packs.wasm",
+  "coax/web/tool.sh|ROOT/coax/web/build-latency.coax|ROOT|ROOT/apps/openagents-web/build/latency-client.wasm",
+  "coax/web/tool.sh|ROOT/aethyr/tools/page-pack.coax|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.pack|ROOT/apps/openagents-web/realms/everglade2/assets/everglade2.vpk3",
+  "coax/web/wasm.sh|ROOT/apps/openagents-web/everglade2.coax|ROOT/apps/openagents-web/everglade2-face.c|ROOT/apps/openagents-web/build/everglade2.wasm|ROOT/apps/openagents-web/everglade-step.coax|ROOT/aethyr/sticks.coax",
+  "coax/web/wasm.sh|ROOT/apps/openagents-web/fivelab.coax|ROOT/apps/openagents-web/fivelab-face.c|ROOT/apps/openagents-web/build/fivelab.wasm|ROOT/apps/openagents-web/everglade-step.coax|ROOT/aethyr/sticks.coax"];
+LB_BUILD_MS :: 900000;
+// a build line's field i with ROOT replaced by root
+lb_build_arg :: (line: string, i: int, root: string, o: [] LbBuf) -> string {
+  f := lb_field(line, '|', i); o[0].n = 0; k := 0;
+  while k < f.count { if k + 4 <= f.count && f[k..<k + 4] == "ROOT" { lb_put(o, root); k += 4; } else { lb_put(o, f[k..<k + 1]); k += 1; } }
+  return lb_text(o);
+}
+#test "build lines name only these pages' units, rooted" {
+  o: [1] LbBuf;
+  #assert lb_build_arg(LB_BUILDS[8], 0, "/r", o[..]) == "coax/web/wasm.sh" && lb_build_arg(LB_BUILDS[8], 3, "/r", o[..]) == "/r/apps/openagents-web/build/everglade2.wasm";
+  for i: 0..<LB_BUILDS.count { #assert lb_fields(LB_BUILDS[i], '|') >= 3 && lb_fields(LB_BUILDS[i], '|') <= 6; }
+}
+lb_build :: () -> bool {
+  rb: [4096] u8; root := fs_realpath(".", rb[..]);
+  hb: [4096] u8; home := proc_getenv("HOME", hb[..]);
+  slot: [1] LbBuf; lb_put(slot[..], home); lb_put(slot[..], "/.openagents/build-slots/heavy.sh"); slotted := home.count > 0 && fs_exists(lb_text(slot[..]));
+  out: [65536] u8; err: [65536] u8;
+  for b: 0..<LB_BUILDS.count {
+    line := LB_BUILDS[b]; n := lb_fields(line, '|');
+    args: [8] LbBuf; argv: [8] string; k := 0;
+    if slotted { argv[0] = lb_text(slot[..]); k = 1; }
+    for i: 0..<n {
+      a := args[i..<i + 1]; a[0].n = 0;
+      if i == 0 { lb_put(a, root); lb_put(a, "/"); lb_put(a, lb_field(line, '|', 0)); } else { t: [1] LbBuf; lb_put(a, lb_build_arg(line, i, root, t[..])); }
+      argv[k] = lb_text(a); k += 1;
+    }
+    print("build: %\n", lb_field(lb_field(line, '|', 1), '/', lb_fields(lb_field(line, '|', 1), '/') - 1));
+    r := proc_run(argv[0..<k], LB_BUILD_MS, out[..], err[..]);
+    if r.started != 0 || r.status != 0 || r.timed_out { print("FAIL build %: %\n", lb_field(line, '|', 1), cast(string) err[0..<r.err_n]); return false; }
+  }
+  return true;
+}
+
+lb_selected :: (only: string, name: string) -> bool {
+  if only.count == 0 { return true; }
+  for i: 0..<lb_fields(only, ',') { if lb_field(only, ',', i) == name { return true; } }
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_at(a[..], 0).count == 0 || args_at(a[..], 0)[0] == '-' {
+    tool_errln("usage: coax/web/tool.sh coax/web/lighting-baseline.coax OUTDIR [--compare BASELINE] [--build] [--base URL | --serve PORT] [--only NAME,...]");
+    return 2;
+  }
+  out := args_at(a[..], 0); compare := args_value(a[..], "--compare", ""); only := args_value(a[..], "--only", "");
+  base := args_value(a[..], "--base", ""); port := args_value(a[..], "--serve", "8977");
+  if !fs_exists(out) && !fs_mkdir(out) { tool_err("lighting-baseline: cannot make "); tool_errln(out); return 1; }
+  if args_has(a[..], "--build") && !lb_build() { return 1; }
+  // the big buffers, in tool_main's frame (tool.sh gives it a 1 GiB stack)
+  lb_state: [1] Lb; lb_px: [LB_PX] u8; lb_other: [LB_PX] u8; lb_jpg_buf: [LB_JPG] u8; lb_work: [LB_PX * 2] u8;
+  s := lb_state[..]; s[0].out = out;
+  server := -1; addr: [1] LbBuf; ub: [1] LbBuf;
+  if base.count == 0 {
+    lb_put(addr[..], "127.0.0.1:"); lb_put(addr[..], port); lb_put(ub[..], "http://"); lb_put(ub[..], lb_text(addr[..])); base = lb_text(ub[..]);
+    server = proc_new(); argv := [5] string.["coax/web/serve.sh", "apps/openagents-web", "--static", "--listen", lb_text(addr[..])];
+    started := true; for x: argv { started = started && proc_arg(server, x); }
+    started = started && proc_quiet(server) && proc_start(server) == 0;
+    if !started { tool_errln("lighting-baseline: could not start coax/web/serve.sh"); return 1; }
+    proc_sleep(800);
+    print("serving apps/openagents-web on % (pid %)\n", base, proc_pid(server));
+  }
+  ok := true;
+  for l: 0..<LB_LOADS {
+    if !lb_selected(only, LB_NAMES[l]) { continue; }
+    if !lb_load(s, base, l, lb_px[..], lb_jpg_buf[..]) { ok = false; s[0].failed += 1; }
+  }
+  if server >= 0 { k1 := proc_kill(server, PROC_SIGKILL); k2 := proc_wait(server, 5000); k3 := proc_release(server); }
+  path: [4096] u8;
+  ok = fs_write(fs_join(out, "probes.tsv", path[..]), lb_text(s[0].probes[..])) && ok;
+  ok = fs_write(fs_join(out, "run.tsv", path[..]), lb_text(s[0].run[..])) && ok;
+  if s[0].n > 0 && !lb_sheet(s, lb_jpg_buf[..], lb_work[..]) { print("FAIL the contact sheet\n"); ok = false; }
+  print("% captures in %\n", s[0].n, out);
+  if compare.count > 0 {
+    print("identity check against %\n", compare);
+    same := lb_compare(s, compare, lb_px[..], lb_other[..], lb_jpg_buf[..], lb_work[..]);
+    print("%\n", ifx same && ok then "PASS: every capture and probe is inside the declared bounds" else "FAIL: outside the declared bounds (see compare.tsv)");
+    return ifx same && ok then 0 else 1;
+  }
+  print("%\n", ifx ok then "PASS" else "FAIL");
+  return ifx ok then 0 else 1;
+}
