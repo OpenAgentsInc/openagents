@@ -355,6 +355,17 @@ xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
   return m;
 }
 
+// Restore the world's coordinate frame after a facing-relative cube, so other
+// ongoing areas and later combat steps continue to use world-aligned squares.
+xc_sync_world :: (s: [] Lab) {
+  b := s[0].xc[0].b[..]; cr := s[0].creator[0];
+  for i: 0..<XC_FOES {
+    e := cr.hostiles[0].enemies[i];
+    qx := xc_square(e.x-cr.player_x); qz := xc_square(e.z-cr.player_z);
+    if e.dead || qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
+    rs_place(b, i+1, qx, qz);
+  }
+}
 // Press slot k: the engine resolves it at what it aims at (xc_aim). True when it was used. Sets what the
 // world shows: the look (xc_look), the numbers and the fallen.
 xc_press :: (s: [] Lab, k: int) -> bool {
@@ -659,13 +670,18 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     if aim.kind == XC_AIM_BOLT { xc_cue(s, snd.miss, 0.45, px + aim.fx * aim.reach, pz + aim.fz * aim.reach, 1); }
     return true;
   }
+  // Self-originating cubes use a grid aligned with your facing, so diagonal
+  // casts cover the same width on both sides as casts along a world axis.
+  facing_cube := a.kind == FB_SPELL && rs_spell(a.sp).area == RS_A_CUBE_SELF;
   // the monsters on the engine's squares round you
   rs_place(b, 0, XC_MID, XC_MID);
   for i: 0..<XC_FOES {
     e := h[0].enemies[i];
     j := 1 + i;
     if e.dead { rs_place(b, j, XC_AWAY, XC_AWAY); continue; }
-    qx := xc_square(e.x - px); qz := xc_square(e.z - pz);
+    dx := e.x - px; dz := e.z - pz;
+    qx := xc_square(ifx facing_cube then dx * aim.fz - dz * aim.fx else dx);
+    qz := xc_square(ifx facing_cube then dx * aim.fx + dz * aim.fz else dz);
     if qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
     rs_place(b, j, qx, qz);
   }
@@ -678,15 +694,16 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   me[0].hp = 1; me[0].temp = 0;   // so a heal's whole roll shows (added to your Hit Points below)
   x[0].seat[0].open = true;
   x[0].seat[0].turn.action = false; x[0].seat[0].turn.bonus = false; x[0].seat[0].turn.slot_spent = false;
-  before: [XC_FOES] int;
-  for i: 0..<XC_FOES { before[i] = b[0].c[1 + i].hp; }
+  before: [XC_FOES] int; bx: [XC_FOES] int; bz: [XC_FOES] int;
+  for i: 0..<XC_FOES { before[i] = b[0].c[1 + i].hp; bx[i] = b[0].c[1+i].x; bz[i] = b[0].c[1+i].y; }
   tx := XC_MID; ty := XC_MID;
-  if foe >= 0 { tx = b[0].c[1 + foe].x; ty = b[0].c[1 + foe].y; }
+  if facing_cube { ty = XC_MID + 3; }
+  else if foe >= 0 { tx = b[0].c[1 + foe].x; ty = b[0].c[1 + foe].y; }
   else if aim.kind == XC_AIM_AREA { tx = XC_MID + cast(int) floor(aim.fx * aim.reach / f32(XC_SQ) + 0.5); ty = XC_MID + cast(int) floor(aim.fz * aim.reach / f32(XC_SQ) + 0.5); }
   ok := fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, 0);
   gain := b[0].c[0].hp - 1 + b[0].c[0].temp;
   b[0].c[0].hp = b[0].c[0].hp_max; b[0].c[0].temp = 0; b[0].c[0].dead = false;
-  if !ok { x[0].refused += 1; return false; }
+  if !ok { if facing_cube { xc_sync_world(s); } x[0].refused += 1; return false; }
   if a.kind == FB_DASH || a.kind == FB_CDASH || a.kind == FB_WIND {
     x[0].dash_face = cr[0].player_face; x[0].dash_until = now + 0.9;
   }
@@ -703,6 +720,22 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   for i: 0..<XC_FOES {
     c := b[0].c[1 + i];
     e := h[0].enemies[i..<i + 1];
+    // Copy a successful Thunderwave push back out of the battle grid. Sweep
+    // small increments against the world's obstacles instead of teleporting.
+    if facing_cube && !c.dead && !e[0].dead {
+      gx := c.x - bx[i]; gz := c.y - bz[i];
+      dist := hi(abs(f32(gx)), abs(f32(gz))) * f32(XC_SQ);
+      if dist > 0 {
+        lx := f32(gx); lz := f32(gz); length := sqrt(lx*lx + lz*lz);
+        dx := (lx*aim.fz + lz*aim.fx) / length * dist / 20;
+        dz := (-lx*aim.fx + lz*aim.fz) / length * dist / 20;
+        for step: 0..<20 {
+          nx := e[0].x + dx; nz := e[0].z + dz;
+          if hostile.hostile_blocked(nx, nz) { break; }
+          e[0].x = nx; e[0].z = nz;
+        }
+      }
+    }
     lost := before[i] - rs_max(c.hp, 0);
     if lost > 0 { struck = true; x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
       xc_cue(s, snd.hit, 0.55, e[0].x, e[0].z, snd.rate);
@@ -715,6 +748,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
       fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
     }
   }
+  if facing_cube { xc_sync_world(s); }
   if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
   return true;
 }
@@ -1317,4 +1351,34 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert axe.start == "swing-heavy" && axe.hit == "hit-heavy" && axe.rate < great.rate && sword.start == "swing" && sword.hit == "hit";
   rage: FbAb; rage.kind = FB_RAGE; second: FbAb; second.kind = FB_SECOND;
   #assert xc_sound(rage, FB_CL_BARBARIAN).start == "rage-roar" && xc_sound(second, FB_CL_FIGHTER).start == "second-wind";
+}
+
+#test "experimental Thunderwave hits the whole forward cube at diagonal facings" #steps 2000000000 {
+  for turn: 0..<4 {
+    s: [1] Lab; face := 0.78539816 + f32(turn)*1.5707963; xc_test_lab(s[..], FB_CL_WIZARD, face);
+    h := s[0].creator[0].hostiles[..]; fx := sin(face); fz := cos(face); rx := fz; rz := -fx;
+    // Three creatures in a broad fan ahead, one at the shoulder, and one safely behind.
+    h[0].enemies[0].x = fx*2; h[0].enemies[0].z = fz*2;
+    h[0].enemies[1].x = fx*2+rx*1.2; h[0].enemies[1].z = fz*2+rz*1.2;
+    h[0].enemies[2].x = fx*2-rx*1.2; h[0].enemies[2].z = fz*2-rz*1.2;
+    h[0].enemies[3].x = rx*1.2; h[0].enemies[3].z = rz*1.2;
+    h[0].enemies[4].x = -fx*2; h[0].enemies[4].z = -fz*2;
+    s[0].creator[0].clock = 10; #assert xc_press(s[..], 4);
+    for i: 0..<4 { #assert s[0].xc[0].b[0].c[i+1].hp < s[0].xc[0].b[0].c[i+1].hp_max; }
+    #assert s[0].xc[0].b[0].c[5].hp == s[0].xc[0].b[0].c[5].hp_max;
+    #assert s[0].xc[0].b[0].c[5].x == xc_square(h[0].enemies[4].x) && s[0].xc[0].b[0].c[5].y == xc_square(h[0].enemies[4].z);
+  }
+}
+
+#test "experimental Thunderwave pushes a creature that fails its save in the scene" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  h := s[0].creator[0].hostiles[..]; b := s[0].xc[0].b[..];
+  b[0].c[1].score[RS_CON] = 1; pushed := false;
+  for attempt: 0..<12 {
+    h[0].enemies[0].x = 0; h[0].enemies[0].z = 2; h[0].enemies[0].dead = false;
+    b[0].c[1].hp = b[0].c[1].hp_max; b[0].c[1].dead = false;
+    s[0].creator[0].clock += 1.1; #assert xc_press(s[..], 4);
+    if h[0].enemies[0].z > 2.1 { pushed = true; break; }
+  }
+  #assert pushed;
 }
