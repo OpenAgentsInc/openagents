@@ -9,7 +9,7 @@ rs_step_ready :: (b:[] RsBattle,i:int,x:int,y:int)->bool #effects(all) {
   if rs_feet(b[0].c[i].x,b[0].c[i].y,x,y)!=RS_SQUARE { return false; }
   t:[1]RsTurn; t[0]=b[0].turn;
   rs_reprice_movement(t[..],rs_movement_allowance(b,i));
-  return rs_pay_move(t[..],rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,x,y)));
+  return rs_pay_move(t[..],rs_step_cost(b,i,x,y));
 }
 rs_step_reactions :: (b:[] RsBattle,i:int,x:int,y:int,choices:[]RsOpportunityChoice)->bool #effects(all) {
   if !rs_step_ready(b,i,x,y) { return false; }

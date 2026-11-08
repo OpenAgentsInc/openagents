@@ -1,0 +1,59 @@
+// Test fixtures for the action, movement and cover checks (grapple.coax, movement-modes.coax,
+// ready.coax, actions.coax). Not authority: only the checks call these.
+
+// A level 5 Fighter (Str 16, +3 PB: DC 14) at (2,2) beside a Goblin-sized Wizard at (3,2), fixed dice.
+grapple_field :: (b: [] RsBattle) {
+  b[0].w = 10; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b, rs_fighter("Holder", 0, 5), 2, 2); _ = rs_add(b, rs_wizard("Held", 1, 3), 3, 2);
+  b[0].c[0].score[RS_STR] = 16; b[0].c[1].score[RS_STR] = 10; b[0].c[1].score[RS_DEX] = 10; b[0].c[1].save_prof = [6] bool.[false,false,false,false,false,false];
+  rs_fresh(b, 0);
+}
+
+// A level 3 Rogue (Str 12, Dex 16, Speed 30) at (1,1), its turn begun with its Speed in feet.
+jump_field :: (b: [] RsBattle) {
+  b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b, rs_rogue("Leaper", 0, 3), 1, 1); _ = rs_add(b, rs_fighter("Foe", 1, 1), 10, 5);
+  b[0].c[0].score[RS_STR] = 12; b[0].c[0].score[RS_DEX] = 16; b[0].c[0].jumper = false; b[0].c[0].climb = 0; b[0].c[0].swim = 0;
+  rs_start_turn(b, 0);
+}
+
+// A level 5 Fighter at (2,2) and a Wizard at (5,2), each 1st-level-ready; fixed dice (d20 10).
+ready_field :: (b: [] RsBattle) {
+  b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b, rs_fighter("Guard", 0, 5), 2, 2); _ = rs_add(b, rs_wizard("Mage", 0, 5), 2, 4); _ = rs_add(b, rs_fighter("Raider", 1, 3), 5, 2);
+  b[0].c[2].ac = 5; b[0].c[2].hp = 60; b[0].c[2].hp_max = 60; b[0].c[0].ranged = -1;
+}
+
+// A level 3 Rogue (Wis 12, Int 10, Cha 14; no skills) at (1,1), a Wizard foe at (5,1); d20 10.
+act_field :: (b: [] RsBattle) {
+  b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b, rs_rogue("Seeker", 0, 3), 1, 1); _ = rs_add(b, rs_wizard("Quarry", 1, 3), 5, 1); _ = rs_add(b, rs_rogue("Friend", 0, 3), 1, 3);
+  b[0].c[0].score = [6] int.[10, 14, 10, 10, 12, 14]; b[0].c[0].checks.skills = 0; b[0].c[0].checks.expert = 0; b[0].c[0].jack = false;
+  b[0].c[1].score[RS_INT] = 12;
+  rs_fresh(b, 0);
+}
+
+act_hide :: (b: [] RsBattle, k: int, dc: int) {
+  _ := rs_put_effect(b, k, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = k, spell = RS_HIDE_SPELL, until = 1e9, save = -1, dc = dc});
+}
+
+// The battle's latest event.
+act_last :: (b: [] RsBattle) -> RsEvent { return b[0].book[0].ev[(b[0].book[0].head + b[0].book[0].count - 1) % RS_EVENTS]; }
+// Whether the latest event's line reads t.
+act_said :: (b: [] RsBattle, t: string) -> bool {
+  e := act_last(b);
+  if e.text_n != t.count { return false; }
+  for k: 0..<t.count { if e.text[k] != t[k] { return false; } }
+  return true;
+}
+// A Fighter at (2,3) kept just past the battle's count: a creature an out-of-range index would reach.
+grapple_past :: (b: [] RsBattle) -> int {
+  k := rs_add(b, rs_fighter("Past", 0, 5), 2, 3);
+  b[0].n -= 1;
+  return k;
+}
+// Holder i grapples j directly: the record and the hand.
+grapple_hold :: (b: [] RsBattle, i: int, j: int, dc: int) {
+  _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = i, spell = RS_GRAPPLE_SPELL, until = 1e9, save = -1, dc = dc});
+  b[0].c[i].grappling = j;
+}

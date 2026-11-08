@@ -111,6 +111,7 @@ rs_rest_short_grant :: (b:[]RsBattle,i:int) #effects(all) {
   rs_rage_end(b,i," (Short Rest)");
   b[0].c[i].rest.phase=2; b[0].c[i].long_rest.short_due=false;
   rs_say(b,RS_EV_END,i,i,0," gains a Short Rest after interruption");
+  rs_rest_queue_apply(b,i);
 }
 rs_rest_damage_before :: (b:[]RsBattle,i:int,amount:int) #effects(all) {
   if i<0 || i>=b[0].n || b[0].c[i].dead { return; }
@@ -137,9 +138,9 @@ rs_rest_interrupt_before :: (b:[]RsBattle,i:int,wake:bool) #effects(all) {
     if event.short_rest { b[0].c[i].long_rest.short_due=true; }
     rs_rest_short_grant(b,i);
   }
-  // This producer has no configured optional choices. Close their window at
-  // this boundary; queued choices and simultaneous ordering are owned by the
-  // caller, not by a later untimed claim to this completed period.
+  // The controller's queued choices (rest-queue.coax) applied at the grant, in
+  // its order. Close the window at this boundary: no later untimed claim to
+  // this completed period.
   rs_rest_interrupt(b[0].c[i..<i+1]);
   if wake { rs_sleep_end(b[0].c[i..<i+1]); }
 }

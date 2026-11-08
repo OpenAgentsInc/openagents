@@ -39,6 +39,12 @@
 #load "spell-damage-rolls.coax";
 #load "condition-rolls.coax";
 #load "attack-sight.coax";
+#load "cover.coax";
+#load "grapple.coax";
+#load "movement-modes.coax";
+#load "ready.coax";
+#load "actions.coax";
+#load "action-fixtures.coax";
 #load "cast-sight.coax";
 #load "magic-missile-ward.coax";
 #load "area-origin.coax";
@@ -80,6 +86,7 @@
 #load "rest-control.coax";
 #load "damage-protection.coax";
 #load "short-rest.coax";
+#load "rest-queue.coax";
 #load "short-rest-time.coax";
 #load "rest-sleep.coax";
 #load "rest-carry.coax";
@@ -104,7 +111,8 @@ RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1:
 // Colossus Slayer, leveled (a level 1+ spell cast) and quickened (Quickened Spell used).
 RsTurn :: struct { disengaged: bool; action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; move_basis: int; move_debt: int; move_tracked: bool; dash_n: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
-                   leveled: bool; quickened: bool; stunned: bool; resurged: bool; walk_ft: f32; }
+                   leveled: bool; quickened: bool; stunned: bool; resurged: bool; walk_ft: f32;
+                   run_ft: int; jumps_doubled: bool; }   // feet walked on foot just before a jump; Step of the Wind's doubled jumps
 RsReactionFrame :: struct { on:bool; who:int = -1; turn:RsTurn; }
 RsBattle :: struct {
   c: [] RsCreature; n: int;   // the creatures: own's room (rs_room), or a world's (rs_use)
@@ -135,6 +143,7 @@ RsBattle :: struct {
   // of every creature: kept by rs_add, rs_place, rs_step_to and the pushes, and rebuilt at each
   // turn's start (rs_index) for whatever a world moved by hand.
   occ: [] int;
+  terrain: [RS_TERRAINS] RsTerrain; covers: [RS_COVERS] RsCover;   // the world's admitted geometry (cover.coax)
   // The world moves creatures only through rs_add, rs_place and the engine's own steps and pushes, so
   // the index stays right and a turn's start needn't rebuild it (5E Lab's crowds: 70,000 squares).
   kept: bool;
@@ -207,6 +216,8 @@ rs_reset :: (b: [] RsBattle) {
   for i: 0..<b[0].n { b[0].c[i] = blank; }
   b[0].n = 0;
   for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  for t: 0..<RS_TERRAINS { b[0].terrain[t] = RsTerrain.{}; }
+  rs_cover_clear(b);
   b[0].dice[0] = RsDice.{};
   b[0].book[0] = RsLog.{};
   b[0].rest_clock=RsRestClock.{}; rs_rest_schedule_reset(b);
@@ -229,7 +240,7 @@ rs_inside :: (z: RsZone, x: int, y: int) -> bool {
 }
 rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
   for k: 0..<RS_ZONES { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
-  return false;
+  return (rs_terrain_at(b, x, y) & TR_DIFFICULT) != 0;
 }
 // A hostile creature within 5 feet that can act: ranged attacks have Disadvantage then.
 rs_threatened :: (b: [] RsBattle, i: int) -> bool {
@@ -555,7 +566,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
   me := b[0].c[i];
   smite := rs_is_smite(s);
   if chosen && !rs_creature_choices(b,i,s,sp,slot,picks) { return false; }
-  for j: picks { if chosen && !rs_cast_sees(b,i,j,sp) { return false; } }
+  for j: picks { if chosen && (!rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j)) { return false; } }
   if !rs_options_valid(sp,picks.count,options) { return false; }
   if !chosen && !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
   if s.area == RS_A_NONE && !chosen {
@@ -565,6 +576,7 @@ rs_cast_request_as :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: 
     in_range := exists && (s.range_ft <= 0 || rs_feet_to(b, i, target) <= s.range_ft);
     if rs_target_decision(exists, dead, in_range, s.humanoid_only, humanoid) == RS_TARGET_REFUSE { return false; }
     if !rs_cast_sees(b, i, target, sp) { return false; }   // "a creature you can see" (cast-sight.coax)
+    if !rs_cover_targetable(b, i, target) { return false; }   // Total Cover (p.15)
     // Divine Smite: right after a melee weapon hit on this target
     if smite && b[0].turn.last_hit != target + 1 { return false; }
   } else if s.area != RS_A_NONE && s.area != RS_A_CUBE_SELF && s.area != RS_A_LINE {
@@ -786,7 +798,7 @@ rs_roll_attack :: (b: [] RsBattle, i: int, j: int, edge: int, bonus: int, crit_m
   r: RsAttackRoll;
   d := rs_d20(b[0].dice[..], edge);
   r.roll = d.roll; r.edge = d.edge;
-  r.ac = rs_ac(b, j);
+  r.ac = rs_ac(b, j) + rs_cover_bonus(rs_cover(b, i, j));   // Half and Three-Quarters Cover (p.15)
   r.exhaustion = rs_exhaustion_penalty(b[0].c[i]);
   if spell && b[0].c[i].seeking && b[0].c[i].uses[RS_USE_SORCERY] > 0 && r.roll < crit_min && (r.roll == 1 || r.roll + bonus - r.exhaustion < r.ac) {
     b[0].c[i].uses[RS_USE_SORCERY] -= 1; r.seek = true;
@@ -826,7 +838,7 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   conditions := rs_condition_edges(b[0].c[i],b[0].c[j]);
   ups := ifx conditions.advantage then 1 else 0;
   downs := ifx conditions.disadvantage then 1 else 0;
-  sight:=rs_basic_attack_sight(b[0].c[i],b[0].c[j]);
+  sight:=rs_attack_sight(b,i,j);
   if !sight.target_sees { ups+=1; }
   if !sight.actor_sees { downs+=1; }
   t := b[0].clock;
@@ -839,7 +851,7 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if b[0].c[j].reckless_until > t { ups += 1; }
   if strength && b[0].c[i].reckless_until > t { ups += 1; }
   // the Dodge action
-  if rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) { downs += 1; }
+  if rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) && rs_obscured(b,i) != 2 { downs += 1; }
   // Frightened: Disadvantage on attack rolls (the source of its fear is always in sight here)
   if rs_has(b[0].c[i], RS_FRIGHTENED) { downs += 1; }
   if rs_grapple_down(b[0].c[i],j) { downs += 1; }
@@ -885,6 +897,8 @@ rs_affect_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at
 }
 rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope) {
   if !rs_choice_continue(s,b[0].c[i].conc,sp) { return; }
+  // Total Cover from the caster keeps an area's effect off (the origin is taken as the caster; cover.coax)
+  if s.area != RS_A_NONE && rs_cover_fact(b, i, j) == RS_COVER_TOTAL { return; }
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
   // Shield (p.161): a target of Magic Missile may react before the darts strike; warded, it takes none
   missile := sp == SP_MAGIC_MISSILE;
@@ -923,7 +937,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     } else if st.kind == RS_S_SAVE {
       ran_save = true;
       dc := rs_dc(b, i);
-      saving := rs_saving_throw_magic(b,j,st.a,dc,rs_save_rider_downs(st.c,b[0].c[j].construct));
+      saving := rs_saving_throw_magic_plus(b,j,st.a,dc,rs_save_rider_downs(st.c,b[0].c[j].construct),ifx st.a == RS_DEX then rs_cover_bonus(rs_cover_fact(b,i,j)) else 0);
       fails := saving.automatic; total := saving.total; insp := saving.inspiration;
       saved = saving.passed;
       l: [1] RsLine;
@@ -1216,14 +1230,17 @@ rs_shake :: (b: [] RsBattle, i: int, j: int) -> bool {
 // after Steady Aim.
 rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   if !rs_step_ready(b,i,x,y) { return false; }
-  cost := rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,x,y));
+  cost := rs_step_cost(b,i,x,y);
+  ox := b[0].c[i].x; oy := b[0].c[i].y;
   turn: [1] RsTurn; turn[0] = b[0].turn;
   rs_reprice_movement(turn[..],rs_movement_allowance(b,i));
   if !rs_pay_move(turn[..],cost) { return false; }
   b[0].turn = turn[0];
   b[0].turn.moved = true;
   rs_rest_motion(b[0].c[i..<i+1],true,false);
+  rs_run_up(b,i,RS_SQUARE);
   rs_place(b, i, x, y);
+  rs_drag_follow(b,i,ox,oy);
   if b[0].guards > 0 {
     // into someone's Spirit Guardians, or its own Emanation onto someone
     rs_guardians(b, i);
@@ -1284,6 +1301,8 @@ rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
 rs_start_turn :: (b: [] RsBattle, i: int) {
   rs_seal_timing(b);
   rs_help_start_turn(b,i);
+  rs_ready_start_turn(b,i);
+  rs_grapple_lapse(b,i);
   _ := rs_stable_recover(b,i);
   concentration_lost := rs_sync_concentration(b,i);
   if !b[0].kept { rs_index(b); }
@@ -1502,7 +1521,6 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   me := b[0].c[i];
   strength := ab == RS_STR;
   rs_rest_interrupt_at(b[0].c,i);
-  rs_unhide(b,i);   // an attack roll ends hiding (p. 183)
   b[0].turn.struck = true;
   melee := wp.range_ft <= 5 || (wp.both && rs_feet_to(b, i, j) <= 5);   // Arcane Burst: melee from 5 feet
   // Knocking Out (p.17): only this melee attack's own damage, never a Reaction it provokes
@@ -1517,6 +1535,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
   if sacred { bonus += rs_max(rs_mod(me.score[RS_CHA]), 1); }
   // Improved Critical: weapons and Unarmed Strikes score a Critical Hit on 20 - crit_range or higher
   r := rs_roll_attack(b, i, j, edge, bonus, 20 - me.crit_range, false);
+  rs_unhide(b,i);   // a hidden attacker gives itself away once the roll hits or misses (p.16, p.183)
   // Parry (a Knight's or a Warrior Veteran's Reaction, holding a weapon): +2 AC against a melee hit
   if r.hit && !r.crit && melee && b[0].c[j].parry && !b[0].c[j].reacted && rs_capable(b[0].c[j]) && r.total < r.ac + 2 {
     b[0].c[j].reacted = true; r.hit = false; r.ac += 2; r.parry = true;

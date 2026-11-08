@@ -11,6 +11,7 @@ rs_interrupt_incapacitated :: (b: [] RsBattle, j: int) #effects(all) {
   rs_rage_end(b,j," (Incapacitated)");
   rs_divine_sense_end(b,j);
   rs_wild_shape_lapse(b,j);
+  rs_grapple_lapse(b,j);   // an Incapacitated grappler lets go (Grappling)
 }
 
 // Admitted executors have prepaid room. Other callers receive explicit
@@ -27,4 +28,12 @@ rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) -> bool #effects(all) {
   b[0].c[j] = c[0];
   rs_interrupt_incapacitated(b,j);
   return true;
+}
+
+#test "an Incapacitated grappler lets go when its sustained effects are interrupted" {
+  b: [1] RsBattle; grapple_field(b[..]);
+  #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[0].grappling == 1;
+  rs_interrupt_incapacitated(b[..], 0); #assert b[0].c[0].grappling == 1;   // still able: it holds on
+  b[0].c[0].cond |= RS_STUNNED;
+  rs_interrupt_incapacitated(b[..], 0); #assert b[0].c[0].grappling == -1 && !rs_has(b[0].c[1], RS_GRAPPLED);
 }

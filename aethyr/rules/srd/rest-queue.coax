@@ -1,0 +1,131 @@
+// SRD 5.2.1 Short Rest (p.187), Simultaneous Effects (p.188) and the represented recovery
+// choices: Hit Dice, Arcane/Natural Recovery and Sorcerous Restoration. A controller may queue its
+// choices ahead, in its own order, for a Short Rest that ends when it is not there to choose: one
+// granted by an interruption or finished on the clock. Each applies once, through the same
+// choice APIs a present controller uses; a choice those refuse is skipped.
+#authority;
+
+RQ_DICE :: 1; RQ_SLOTS :: 2; RQ_SORCERY :: 3;
+RQ_LEVELS :: 3;   // slot levels a queue holds
+
+// Queue i's choices: up to `dice` Hit Dice while it is hurt, the slot levels to recover (q.slots: an
+// octal digit each, 1 to 5, the first 0 ending them), Sorcery Points to restore, and the order of
+// the three kinds (q.order: two bits each, each kind at most once, the first 0 ending them).
+// False, and the queue unchanged, when malformed.
+rs_rest_queue_set :: (b: [] RsBattle, i: int, q: RsRestQueue) -> bool #effects(all) {
+  if i < 0 || i >= b[0].n || q.dice < 0 || q.dice > 20 || q.sorcery < 0 || q.sorcery > 10 || q.slots < 0 || q.order < 0 { return false; }
+  s := q.slots; levels := 0;
+  while s != 0 {
+    l := s & 7;
+    if l == 0 || l > 5 || levels == RQ_LEVELS { return false; }   // a gap, a level past 5, a fourth level
+    s = s >> 3; levels += 1;
+  }
+  o := q.order; seen := 0;
+  while o != 0 {
+    kind := o & 3;
+    if kind == 0 || (seen & (1 << (kind - 1))) != 0 { return false; }   // a gap or a kind twice
+    seen |= 1 << (kind - 1); o = o >> 2;
+  }
+  b[0].c[i].rq_on = true; b[0].c[i].rq_dice = q.dice; b[0].c[i].rq_slots = q.slots; b[0].c[i].rq_sorcery = q.sorcery; b[0].c[i].rq_order = q.order;
+  return true;
+}
+// i's queue, as set.
+rs_rest_queue :: (c: RsCreature) -> RsRestQueue #effects(all) {
+  return RsRestQueue.{on = c.rq_on, dice = c.rq_dice, slots = c.rq_slots, sorcery = c.rq_sorcery, order = c.rq_order};
+}
+// Apply and clear i's queue, if its Short Rest choices are open.
+rs_rest_queue_apply :: (b: [] RsBattle, i: int) #effects(all) {
+  if i < 0 || i >= b[0].n || !b[0].c[i].rq_on || !rs_short_rest_choices(b, i) { return; }
+  q := rs_rest_queue(b[0].c[i]);
+  b[0].c[i].rq_on = false;
+  levels: [RQ_LEVELS] int; n := 0;
+  s := q.slots;
+  while s != 0 { levels[n] = s & 7; n += 1; s = s >> 3; }
+  o := q.order;
+  while o != 0 {
+    kind := o & 3; o = o >> 2;
+    if kind == RQ_DICE {
+      for d: 0..<q.dice { if b[0].c[i].hp >= b[0].c[i].hp_max || !rs_short_rest_hit_die(b, i).admitted { break; } }
+    } else if kind == RQ_SLOTS {   // an empty list or no Sorcery Points is refused there
+      _ := rs_short_rest_slots(b, i, RsRestSlots.{levels = levels[0..<n], spellbook = true});
+    } else {
+      _ := rs_short_rest_sorcery(b, i, q.sorcery);
+    }
+  }
+}
+// A queue order from up to three kinds, first to last (0 for none).
+rs_rest_order :: (a: int, b: int, c: int) -> int #effects(all) { return a + 4 * b + 16 * c; }
+
+#test "a queue admits bounded choices and an order naming each kind once" {
+  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+  ok := RsRestQueue.{dice = 2, slots = 1 + 8 * 2, sorcery = 1, order = rs_rest_order(RQ_SLOTS, RQ_DICE, 0)};
+  #assert rs_rest_queue_set(b[..], 0, ok) && c[0].rq_on && rs_rest_queue(c[0]).on && rs_rest_queue(c[0]).dice == 2 && rs_rest_queue(c[0]).order == RQ_SLOTS + 4 * RQ_DICE;
+  #assert rs_rest_queue(c[0]).slots == 17 && rs_rest_queue(c[0]).sorcery == 1;
+  for mode: 0..<20 {
+    q := ok;
+    if mode == 0 { q.dice = -1; } else if mode == 1 { q.dice = 21; } else if mode == 2 { q.sorcery = -1; } else if mode == 3 { q.sorcery = 11; }
+    else if mode == 4 { q.slots = -1; } else if mode == 5 { q.slots = 512; } else if mode == 6 { q.slots = 1 + 64 * 2; } else if mode == 7 { q.slots = 6; }
+    else if mode == 8 { q.order = rs_rest_order(RQ_DICE, RQ_DICE, 0); } else if mode == 9 { q.order = rs_rest_order(0, RQ_DICE, 0); } else if mode == 10 { q.order = 64; }
+    else if mode == 11 { q.order = -1; } else if mode == 12 { q.order = rs_rest_order(RQ_DICE, 0, RQ_DICE); } else if mode == 13 { q.slots = 7 * 8 + 1; }
+    else if mode == 17 { q.slots = 1 + 8 + 64 + 512; } else if mode == 18 { q.order = rs_rest_order(RQ_SORCERY, RQ_SORCERY, 0); } else if mode == 19 { q.order = rs_rest_order(RQ_SLOTS, RQ_SLOTS, 0); }
+    c[0].rq_on = false;
+    accepted := mode >= 14 && mode <= 16;
+    if mode == 14 { q.dice = 20; q.sorcery = 10; q.slots = 5 + 8 * 1 + 64 * 3; q.order = rs_rest_order(RQ_SORCERY, RQ_SLOTS, RQ_DICE); }
+    if mode == 15 { q.slots = 0; q.order = 0; }
+    if mode == 16 { q.slots = 5; q.order = RQ_SLOTS; }
+    #assert rs_rest_queue_set(b[..], 0, q) == accepted && c[0].rq_on == accepted;
+  }
+  #assert !rs_rest_queue_set(b[..], -1, ok) && !rs_rest_queue_set(b[..], 1, ok);
+}
+#test "queued choices apply once, in the controller's order, when a Short Rest's choices open" {
+  for order: 0..<2 {
+    b: [1] RsBattle; c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].dice[0].fixed = true;
+    c[0] = rs_wizard("Reader", 0, 6); c[1] = rs_sorcerer("Sorcerer", 0, 5);
+    c[0].hp = 5; c[0].slots[1] = 0; c[0].slots[2] = 0; c[1].uses[RS_USE_SORCERY] = 0;
+    q := RsRestQueue.{dice = 3, slots = 1 + 8 * 2, order = rs_rest_order(RQ_DICE, RQ_SLOTS, 0)};
+    if order == 1 { q.order = RQ_SLOTS; }
+    #assert rs_rest_queue_set(b[..], 0, q);
+    #assert rs_rest_queue_set(b[..], 1, RsRestQueue.{sorcery = 2, order = RQ_SORCERY});
+    rs_rest_queue_apply(b[..], 0); #assert c[0].rq_on && c[0].hp == 5;   // closed: kept for later
+    c[0].rest.phase = 2; c[1].rest.phase = 2; rs_rest_seed(c[0..<1]);
+    dice := c[0].rest.dice;
+    rs_rest_queue_apply(b[..], 0); rs_rest_queue_apply(b[..], 1);
+    spent := ifx order == 0 then 3 else 0;
+    #assert !c[0].rq_on && c[0].rest.dice == dice - spent && c[0].slots[1] == 1 && c[0].slots[2] == 1 && c[0].rest.recovery_used;
+    #assert (c[0].hp > 5) == (order == 0) && c[1].uses[RS_USE_SORCERY] == 2 && c[1].rest.restoration_used && !c[1].rq_on;
+    rs_rest_queue_apply(b[..], 0); #assert c[0].rest.dice == dice - spent;   // once
+  }
+  h: [1] RsBattle; c: [1] RsCreature; h[0].c = c[..]; h[0].n = 1; h[0].dice[0].fixed = true;
+  c[0] = rs_fighter("Nearly whole", 0, 5); c[0].hp = c[0].hp_max - 1; c[0].rest.phase = 2; rs_rest_seed(c[..]);
+  #assert rs_rest_queue_set(h[..], 0, RsRestQueue.{dice = 4, slots = 1, sorcery = 3, order = rs_rest_order(RQ_DICE, RQ_SLOTS, RQ_SORCERY)});
+  rs_rest_queue_apply(h[..], 0); #assert c[0].rest.dice == 4 && c[0].hp == c[0].hp_max && !c[0].rq_on;   // one die heals it; refused kinds skip
+  rs_rest_queue_apply(h[..], -1); rs_rest_queue_apply(h[..], 1);
+}
+#test "an interruption's Short Rest benefits apply the queue before the damage lands" {
+  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].dice[0].fixed = true;
+  c[0] = rs_barbarian("Sleeper", 0, 3); c[0].hp = 5;
+  #assert rs_rest_queue_set(b[..], 0, RsRestQueue.{dice = 1, order = RQ_DICE});
+  #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..], 0, 1, true);
+  rs_tick(b[..], 3600);
+  rs_damage(b[..], -1, 0, 1, RS_FIRE, false, -1);
+  #assert !c[0].rq_on && c[0].rest.dice == 2 && c[0].hp > 5;
+}
+#test "a Short Rest finished on its hour applies the queue at once" {
+  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].dice[0].fixed = true;
+  c[0] = rs_wizard("Reader", 0, 3); c[0].hp = 1; c[0].slots[1] = 0;
+  #assert rs_rest_queue_set(b[..], 0, RsRestQueue.{dice = 1, slots = 1, order = rs_rest_order(RQ_SLOTS, RQ_DICE, 0)});
+  #assert rs_short_rest_begin(b[..], 0);
+  b[0].clock = 3600; b[0].rest_clock.ticks = 3600000000;
+  #assert rs_short_rest_finish(b[..], 0) && !c[0].rq_on && c[0].hp > 1 && c[0].slots[1] == 1;
+}
+#test "a queue's kinds apply only where its order names them" {
+  b: [1] RsBattle; c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].dice[0].fixed = true;
+  c[0] = rs_wizard("Reader", 0, 6); c[1] = rs_sorcerer("Sorcerer", 0, 5); c[0].slots[1] = 0; c[1].uses[RS_USE_SORCERY] = 0;
+  #assert rs_rest_queue_set(b[..], 0, RsRestQueue.{dice = 1, slots = 1, sorcery = 1, order = RQ_DICE});
+  #assert rs_rest_queue_set(b[..], 1, RsRestQueue.{dice = 1, slots = 1, sorcery = 2, order = RQ_DICE});
+  c[0].rest.phase = 2; c[1].rest.phase = 2; rs_rest_seed(c[..]);
+  rs_rest_queue_apply(b[..], 0); rs_rest_queue_apply(b[..], 1);
+  #assert c[0].slots[1] == 0 && !c[0].rest.recovery_used && c[1].uses[RS_USE_SORCERY] == 0 && !c[1].rest.restoration_used;
+  #assert rs_rest_queue_set(b[..], 1, RsRestQueue.{slots = 1, sorcery = 2, order = RQ_SORCERY});
+  rs_rest_queue_apply(b[..], 1); #assert c[1].uses[RS_USE_SORCERY] == 2 && c[1].rest.restoration_used;
+}

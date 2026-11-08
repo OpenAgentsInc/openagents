@@ -1,0 +1,187 @@
+// SRD 5.2.1 p.15 Cover, p.11 Obscured Areas and Hiding, p.16 Unseen Attackers and
+// Targets; Rules Glossary Cover, Heavily/Lightly Obscured, Climbing, Swimming.
+// The world admits its geometry as explicit facts: terrain rectangles on the
+// grid (difficult, climbing and swimming surfaces, light and heavy obscurement)
+// and a cover degree from one creature to another (walls, trees). Creatures
+// standing between attacker and target give Half Cover from the battle's own
+// grid line. The rule decisions are here.
+#authority;
+
+RS_COVER_NONE :: 0; RS_COVER_HALF :: 1; RS_COVER_THREE :: 2; RS_COVER_TOTAL :: 3;
+TR_DIFFICULT :: 1; TR_CLIMB :: 2; TR_SWIM :: 4; TR_LIGHT :: 8; TR_HEAVY :: 16;
+RS_TERRAINS :: 8; RS_COVERS :: 16;
+RsTerrain :: struct { kind: int; x0: int; y0: int; x1: int; y1: int; }   // kind 0: an unused entry
+RsCover :: struct { from: int = -1; to: int = -1; degree: int; }        // from -1: from every origin
+
+// The terrain bits on square (x, y).
+rs_terrain_at :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
+  bits := 0;
+  for t: b[0].terrain { if t.kind != 0 && x >= t.x0 && x <= t.x1 && y >= t.y0 && y <= t.y1 { bits |= t.kind; } }
+  return bits;
+}
+// The world admits a rectangle; false, and nothing kept, when it is malformed or there is no room.
+rs_terrain_put :: (b: [] RsBattle, kind: int, x0: int, y0: int, x1: int, y1: int) -> bool #effects(all) {
+  if kind <= 0 || kind >= 32 || x1 < x0 || y1 < y0 { return false; }
+  for k: 0..<RS_TERRAINS {
+    if b[0].terrain[k].kind == 0 { b[0].terrain[k] = RsTerrain.{kind = kind, x0 = x0, y0 = y0, x1 = x1, y1 = y1}; return true; }
+  }
+  return false;
+}
+// The world's cover fact from creature `from` (-1 any origin) to `to`; degree 0 removes it.
+// False, and nothing kept, when malformed or there is no room.
+rs_cover_put :: (b: [] RsBattle, from: int, to: int, degree: int) -> bool #effects(all) {
+  if from < -1 || from >= b[0].n || to < 0 || to >= b[0].n || from == to || degree < 0 || degree > RS_COVER_TOTAL { return false; }
+  k := rs_cover_slot(b, from, to);
+  if k < 0 { return degree == 0; }
+  b[0].covers[k] = ifx degree == 0 then RsCover.{} else RsCover.{from = from, to = to, degree = degree};
+  return true;
+}
+// The entry holding from -> to, else the first unused one (an unused entry's `to` is -1), else -1.
+rs_cover_slot :: (b: [] RsBattle, from: int, to: int) -> int #effects(all) {
+  for k: 0..<RS_COVERS { if b[0].covers[k].from == from && b[0].covers[k].to == to { return k; } }
+  for k: 0..<RS_COVERS { if b[0].covers[k].to < 0 { return k; } }
+  return -1;
+}
+rs_cover_clear :: (b: [] RsBattle) #effects(all) { for k: 0..<RS_COVERS { b[0].covers[k] = RsCover.{}; } }
+
+// Half Cover from another creature on a square strictly between i and j along the grid's line.
+// A dead creature is an object here; it gives none.
+rs_creature_cover :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) {
+  x0 := b[0].c[i].x; y0 := b[0].c[i].y; x1 := b[0].c[j].x; y1 := b[0].c[j].y;
+  dx := rs_abs(x1 - x0); dy := rs_abs(y1 - y0); sx := rs_sign(x1 - x0); sy := rs_sign(y1 - y0);
+  n := rs_max(dx, dy);
+  for s: 1..<n {
+    // the square whose centre the line passes nearest at step s
+    x := x0 + sx * ((dx * s * 2 + n) / (2 * n)); y := y0 + sy * ((dy * s * 2 + n) / (2 * n));
+    k := rs_at(b, x, y);
+    if k >= 0 && k != i && k != j && !b[0].c[k].dead { return true; }
+  }
+  return false;
+}
+// The most protective degree j has against i's attack: degrees never add (p.15).
+rs_cover :: (b: [] RsBattle, i: int, j: int) -> int #effects(all) {
+  if i < 0 || j < 0 || i >= b[0].n || j >= b[0].n || i == j { return RS_COVER_NONE; }
+  return rs_max(ifx rs_creature_cover(b, i, j) then RS_COVER_HALF else RS_COVER_NONE, rs_cover_fact(b, i, j));
+}
+// The degree the world's facts give j against i (walls, trees): what a spell's save and area read,
+// the origin taken as the caster; creatures between give cover only against attacks here.
+rs_cover_fact :: (b: [] RsBattle, i: int, j: int) -> int #effects(all) {
+  best := RS_COVER_NONE;
+  for e: b[0].covers { if e.to == j && (e.from == i || e.from == -1) { best = rs_max(best, e.degree); } }
+  return best;
+}
+// The bonus to AC and Dexterity saves: +2 Half, +5 Three-Quarters. Total Cover can't be targeted.
+rs_cover_bonus :: (degree: int) -> int #effects(all) {
+  if degree == RS_COVER_HALF { return 2; }
+  if degree == RS_COVER_THREE { return 5; }
+  return 0;
+}
+// Whether i may target j directly: never behind Total Cover.
+rs_cover_targetable :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) { return rs_cover(b, i, j) != RS_COVER_TOTAL; }
+
+// 2 when j's square is Heavily Obscured, 1 Lightly, 0 neither.
+rs_obscured :: (b: [] RsBattle, j: int) -> int #effects(all) {
+  if j < 0 || j >= b[0].n { return 0; }
+  bits := rs_terrain_at(b, b[0].c[j].x, b[0].c[j].y);
+  if (bits & TR_HEAVY) != 0 { return 2; }
+  if (bits & TR_LIGHT) != 0 { return 1; }
+  return 0;
+}
+// Attack sight with the world's obscurement: trying to see into a Heavily Obscured space is being
+// Blinded for it (Rules Glossary), so neither direction sees a creature standing in one.
+rs_attack_sight :: (b: [] RsBattle, i: int, j: int) -> RsAttackSight #effects(all) {
+  s := rs_basic_attack_sight(b[0].c[i], b[0].c[j]);
+  if rs_obscured(b, j) == 2 { s.actor_sees = false; }
+  if rs_obscured(b, i) == 2 { s.target_sees = false; }
+  return s;
+}
+// Whether i may hide (p.183): Heavily Obscured, or behind Three-Quarters or Total Cover from
+// every enemy that is up, and out of each one's line of sight (`unseen`, the world's fact).
+rs_hide_concealed :: (b: [] RsBattle, i: int, unseen: bool) -> bool #effects(all) {
+  if i < 0 || i >= b[0].n || !unseen { return false; }
+  if rs_obscured(b, i) == 2 { return true; }
+  for j: 0..<b[0].n {
+    if j != i && b[0].c[j].team != b[0].c[i].team && rs_up(b[0].c[j]) && rs_cover(b, j, i) < RS_COVER_THREE { return false; }
+  }
+  return true;
+}
+
+#test "terrain rectangles admit bounded kinds, combine their bits and refuse with no room" {
+  b: [1] RsBattle;
+  #assert !rs_terrain_put(b[..], 0, 0, 0, 1, 1) && !rs_terrain_put(b[..], 32, 0, 0, 1, 1) && !rs_terrain_put(b[..], -1, 0, 0, 1, 1);
+  #assert !rs_terrain_put(b[..], TR_CLIMB, 2, 0, 1, 1) && !rs_terrain_put(b[..], TR_CLIMB, 0, 2, 1, 1);
+  #assert rs_terrain_put(b[..], TR_CLIMB, 1, 1, 2, 3) && rs_terrain_put(b[..], TR_HEAVY, 2, 3, 2, 3) && rs_terrain_put(b[..], 31, 9, 9, 9, 9);
+  #assert rs_terrain_at(b[..], 1, 1) == TR_CLIMB && rs_terrain_at(b[..], 2, 3) == TR_CLIMB | TR_HEAVY && rs_terrain_at(b[..], 0, 1) == 0;
+  #assert rs_terrain_at(b[..], 3, 3) == 0 && rs_terrain_at(b[..], 1, 4) == 0 && rs_terrain_at(b[..], 1, 0) == 0 && rs_terrain_at(b[..], 9, 9) == 31;
+  for k: 3..<RS_TERRAINS { #assert rs_terrain_put(b[..], TR_SWIM, 5, 5, 5, 5); }
+  #assert !rs_terrain_put(b[..], TR_SWIM, 6, 6, 6, 6) && rs_terrain_at(b[..], 6, 6) == 0;
+}
+#test "cover facts keep the most protective degree, never a sum, and creatures between give Half" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..], rs_fighter("Archer", 0, 3), 1, 1); t := rs_add(b[..], rs_fighter("Target", 1, 3), 5, 1); m := rs_add(b[..], rs_fighter("Between", 1, 3), 3, 1);
+  #assert rs_cover(b[..], a, t) == RS_COVER_HALF && rs_cover(b[..], t, a) == RS_COVER_HALF;
+  b[0].c[m].dead = true; #assert rs_cover(b[..], a, t) == RS_COVER_NONE; b[0].c[m].dead = false;
+  rs_place(b[..], m, 3, 4); #assert rs_cover(b[..], a, t) == RS_COVER_NONE && !rs_creature_cover(b[..], a, m);
+  rs_place(b[..], m, 3, 2); rs_place(b[..], t, 5, 3); #assert rs_cover(b[..], a, t) == RS_COVER_HALF;   // the diagonal line's middle square
+  rs_place(b[..], m, 2, 1); #assert rs_cover(b[..], a, t) == RS_COVER_NONE; rs_place(b[..], m, 4, 3); #assert rs_cover(b[..], a, t) == RS_COVER_HALF;
+  rs_place(b[..], t, 2, 1); rs_place(b[..], m, 3, 1); #assert rs_cover(b[..], a, t) == RS_COVER_NONE;   // adjacent: nothing between
+  // the first square along the line, a line running up the grid, and creature 0 between
+  rs_place(b[..], t, 5, 1); rs_place(b[..], m, 2, 1); #assert rs_cover(b[..], a, t) == RS_COVER_HALF;
+  rs_place(b[..], a, 1, 5); rs_place(b[..], m, 3, 3); #assert rs_cover(b[..], a, t) == RS_COVER_HALF; rs_place(b[..], m, 3, 4); #assert rs_cover(b[..], a, t) == RS_COVER_NONE;
+  rs_place(b[..], a, 3, 1); rs_place(b[..], m, 1, 1); #assert rs_cover(b[..], m, t) == RS_COVER_HALF && rs_cover(b[..], t, m) == RS_COVER_HALF;
+  rs_place(b[..], a, 1, 1); rs_place(b[..], m, 3, 1);
+  // past the creatures: the default square (0, 0) with someone between counts for nothing
+  rs_place(b[..], m, 1, 0); rs_place(b[..], t, 2, 0); #assert rs_cover(b[..], b[0].n, t) == RS_COVER_NONE && rs_cover(b[..], t, b[0].n) == RS_COVER_NONE;
+  rs_place(b[..], t, 5, 1); rs_place(b[..], m, 3, 1);
+  rs_place(b[..], t, 5, 1);
+  #assert rs_cover_fact(b[..], a, t) == RS_COVER_NONE && rs_cover(b[..], a, t) == RS_COVER_HALF;   // a creature between: attacks only
+  #assert rs_cover_put(b[..], a, t, RS_COVER_THREE) && rs_cover(b[..], a, t) == RS_COVER_THREE && rs_cover(b[..], m, t) == RS_COVER_NONE && rs_cover_fact(b[..], a, t) == RS_COVER_THREE;
+  #assert rs_cover_put(b[..], -1, t, RS_COVER_HALF) && rs_cover(b[..], m, t) == RS_COVER_HALF && rs_cover(b[..], a, t) == RS_COVER_THREE;
+  #assert rs_cover_put(b[..], a, t, RS_COVER_TOTAL) && rs_cover(b[..], a, t) == RS_COVER_TOTAL && !rs_cover_targetable(b[..], a, t) && rs_cover_targetable(b[..], m, t);
+  #assert rs_cover_put(b[..], a, t, 0) && rs_cover(b[..], a, t) == RS_COVER_HALF;
+  #assert rs_cover_put(b[..], a, t, 0) && rs_cover(b[..], a, a) == RS_COVER_NONE && rs_cover(b[..], -1, t) == RS_COVER_NONE && rs_cover(b[..], a, 9) == RS_COVER_NONE && rs_cover(b[..], 9, t) == RS_COVER_NONE;
+  #assert !rs_cover_put(b[..], a, a, 1) && !rs_cover_put(b[..], -2, t, 1) && !rs_cover_put(b[..], 3, t, 1) && !rs_cover_put(b[..], a, 3, 1) && !rs_cover_put(b[..], a, -1, 1);
+  #assert !rs_cover_put(b[..], a, t, 4) && !rs_cover_put(b[..], a, t, -1);
+  rs_cover_clear(b[..]); #assert rs_cover(b[..], m, t) == RS_COVER_NONE;
+  _ := rs_add(b[..], rs_fighter("Four", 1, 3), 8, 1); _ = rs_add(b[..], rs_fighter("Five", 1, 3), 9, 1);
+  filled := 0;
+  for from: 0..<5 { for to: 0..<5 { if from != to && filled < RS_COVERS { #assert rs_cover_put(b[..], from, to, 1 + filled % 2); filled += 1; } } }
+  #assert filled == RS_COVERS && !rs_cover_put(b[..], 4, 3, RS_COVER_TOTAL) && rs_cover_put(b[..], 4, 3, 0);
+  #assert rs_cover_put(b[..], a, t, RS_COVER_TOTAL) && rs_cover(b[..], a, t) == RS_COVER_TOTAL;
+  rs_cover_clear(b[..]); #assert rs_cover_put(b[..], a, t, RS_COVER_TOTAL) && b[0].covers[0].to == t;
+  rs_cover_clear(b[..]); #assert rs_cover(b[..], a, t) == RS_COVER_HALF && rs_cover_fact(b[..], a, t) == RS_COVER_NONE && b[0].covers[0].to == -1;
+  // an entry to creature 0 is never taken for an unused one
+  #assert rs_cover_put(b[..], t, 0, RS_COVER_HALF) && rs_cover_put(b[..], m, t, RS_COVER_THREE) && rs_cover_fact(b[..], t, 0) == RS_COVER_HALF && rs_cover_fact(b[..], m, t) == RS_COVER_THREE;
+  #assert rs_cover_bonus(RS_COVER_NONE) == 0 && rs_cover_bonus(RS_COVER_HALF) == 2 && rs_cover_bonus(RS_COVER_THREE) == 5 && rs_cover_bonus(RS_COVER_TOTAL) == 0;
+}
+#test "a Heavily Obscured square blinds sight into it both ways; light obscurement does not" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  a := rs_add(b[..], rs_fighter("A", 0, 3), 1, 1); t := rs_add(b[..], rs_fighter("T", 1, 3), 4, 1);
+  #assert rs_obscured(b[..], -1) == 0 && rs_obscured(b[..], 2) == 0;
+  _ := rs_terrain_put(b[..], TR_HEAVY, 0, 0, 0, 0); #assert rs_obscured(b[..], 2) == 0;   // past the creatures
+  _ = rs_terrain_put(b[..], TR_DIFFICULT | TR_CLIMB | TR_SWIM, 4, 1, 4, 1); #assert rs_obscured(b[..], t) == 0;
+  _ = rs_terrain_put(b[..], TR_LIGHT, 4, 1, 4, 1);
+  s := rs_attack_sight(b[..], a, t); #assert s.actor_sees && s.target_sees && rs_obscured(b[..], t) == 1;
+  _ = rs_terrain_put(b[..], TR_HEAVY, 4, 1, 4, 1);
+  s = rs_attack_sight(b[..], a, t); #assert !s.actor_sees && s.target_sees && rs_obscured(b[..], t) == 2;
+  s = rs_attack_sight(b[..], t, a); #assert s.actor_sees && !s.target_sees;
+  #assert rs_attack_edge(b[..], a, t, true, true) == -1 && rs_attack_edge(b[..], t, a, true, true) == 1;
+}
+#test "hiding needs heavy obscurement or Three-Quarters Cover from every enemy that is up, and no sight" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  h := rs_add(b[..], rs_rogue("Hider", 0, 3), 1, 1); e := rs_add(b[..], rs_fighter("E1", 1, 3), 6, 1); f := rs_add(b[..], rs_fighter("E2", 1, 3), 6, 5); g := rs_add(b[..], rs_fighter("Ally", 0, 3), 1, 5);
+  #assert !rs_hide_concealed(b[..], h, true) && !rs_hide_concealed(b[..], -1, true) && !rs_hide_concealed(b[..], 4, true);
+  _ := rs_cover_put(b[..], e, h, RS_COVER_THREE);
+  #assert !rs_hide_concealed(b[..], h, true);
+  _ = rs_cover_put(b[..], f, h, RS_COVER_HALF); #assert !rs_hide_concealed(b[..], h, true);
+  _ = rs_cover_put(b[..], f, h, RS_COVER_TOTAL); #assert rs_hide_concealed(b[..], h, true) && !rs_hide_concealed(b[..], h, false);
+  _ = rs_cover_put(b[..], f, h, 0); b[0].c[f].hp = 0; #assert rs_hide_concealed(b[..], h, true);
+  b[0].c[f].hp = 10; _ = rs_terrain_put(b[..], TR_HEAVY, 1, 1, 1, 1); #assert rs_hide_concealed(b[..], h, true) && !rs_hide_concealed(b[..], h, false);
+  #assert g == 3;
+  // an enemy listed first counts too; with no enemy at all, a creature past the list still can't
+  o: [1] RsBattle; o[0].w = 12; o[0].h = 8;
+  first := rs_add(o[..], rs_fighter("First", 1, 3), 6, 1); k := rs_add(o[..], rs_rogue("Hider", 0, 3), 1, 1);
+  #assert !rs_hide_concealed(o[..], k, true) && rs_cover_put(o[..], first, k, RS_COVER_TOTAL) && rs_hide_concealed(o[..], k, true);
+  p: [1] RsBattle; p[0].w = 12; p[0].h = 8; alone := rs_add(p[..], rs_rogue("Alone", 0, 3), 1, 1);
+  #assert first == 0 && rs_hide_concealed(p[..], alone, true) && !rs_hide_concealed(p[..], 1, true);
+}

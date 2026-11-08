@@ -75,15 +75,21 @@ rs_saving_throw :: (b: [] RsBattle, j: int, ability: int, dc: int) -> RsSavingTh
 rs_saving_throw_with :: (b: [] RsBattle, j: int, ability: int, dc: int, downs: int) -> RsSavingThrow #effects(all) { return rs_saving_throw_edges(b,j,ability,dc,0,downs); }
 // A save against a spell or another magical effect: Magic Resistance's Advantage (monster-traits.coax).
 rs_saving_throw_magic :: (b: [] RsBattle, j: int, ability: int, dc: int, downs: int) -> RsSavingThrow #effects(all) {
-  return rs_saving_throw_edges(b,j,ability,dc,rs_magic_save_ups(b[0].c[j],true),downs);
+  return rs_saving_throw_magic_plus(b,j,ability,dc,downs,0);
+}
+// `plus` a bonus the situation gives the save (cover's +2 or +5 to Dexterity saves, p.15),
+// counted before any rescue decides whether it is needed.
+rs_saving_throw_magic_plus :: (b: [] RsBattle, j: int, ability: int, dc: int, downs: int, plus: int) -> RsSavingThrow #effects(all) {
+  return rs_saving_throw_full(b,j,ability,dc,rs_magic_save_ups(b[0].c[j],true),downs,plus);
 }
 // `ups` more Advantage sources from the effect itself.
-rs_saving_throw_edges :: (b: [] RsBattle, j: int, ability: int, dc: int, ups: int, downs: int) -> RsSavingThrow #effects(all) {
+rs_saving_throw_edges :: (b: [] RsBattle, j: int, ability: int, dc: int, ups: int, downs: int) -> RsSavingThrow #effects(all) { return rs_saving_throw_full(b,j,ability,dc,ups,downs,0); }
+rs_saving_throw_full :: (b: [] RsBattle, j: int, ability: int, dc: int, ups: int, downs: int, plus: int) -> RsSavingThrow #effects(all) {
   r: RsSavingThrow;
   r.automatic = rs_auto_fails(b[0].c[j],ability);
   if r.automatic { return r; }
   d := rs_d20(b[0].dice[..],rs_save_edge_from(b,j,ability,ups,downs));
-  r.total = d.roll + rs_save_in(b,j,ability) + rs_boon_roll(b,j) - rs_exhaustion_penalty(b[0].c[j]);
+  r.total = d.roll + rs_save_in(b,j,ability) + rs_boon_roll(b,j) - rs_exhaustion_penalty(b[0].c[j]) + plus;
   r.inspiration = rs_inspired_roll(b,j,r.total,dc);
   r.total += r.inspiration;
   r.luck = rs_own_luck(b,j,r.total,dc);
@@ -102,4 +108,14 @@ rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int #effects(
   if (c.resist & bit) != 0 || rs_has(c,RS_PETRIFIED) || (c.raging && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING)) { a = a/2; }
   if (c.vulnerable & bit) != 0 { a = a*2; }
   return a;
+}
+
+#test "a situational bonus (cover's +2 or +5) adds to the save before rescues are weighed" {
+  for plus: 0..<6 {
+    b: [1] RsBattle; grapple_field(b[..]);
+    plain := rs_saving_throw_magic(b[..], 1, RS_DEX, 30, 0).total;
+    #assert rs_saving_throw_magic_plus(b[..], 1, RS_DEX, 30, 0, plus).total == plain + plus;
+    #assert rs_saving_throw_full(b[..], 1, RS_DEX, 30, 0, 0, plus).total == plain + plus;
+    #assert rs_saving_throw_magic_plus(b[..], 1, RS_DEX, plain + plus, 0, plus).passed && !rs_saving_throw_magic_plus(b[..], 1, RS_DEX, plain + plus + 1, 0, plus).passed;
+  }
 }

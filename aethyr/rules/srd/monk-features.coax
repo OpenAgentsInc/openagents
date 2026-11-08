@@ -25,12 +25,12 @@ rs_slow_fall :: (b: [] RsBattle, i: int, damage: int) -> int #effects(all) {
   b[0].c[i].reacted = true;
   return rs_max(damage - 5 * c.level, 0);
 }
-// Step of the Wind with a Focus Point (p. 50): Disengage and Dash as one Bonus Action. (Its doubled
-// jump distance needs a jump the battle doesn't model.)
+// Step of the Wind with a Focus Point (p. 50): Disengage and Dash as one Bonus Action, and its jump
+// distance doubled for the turn (movement-modes.coax).
 rs_step_of_the_wind_focus :: (b: [] RsBattle, i: int) -> bool #effects(all) {
   if i < 0 || i >= b[0].c.count || b[0].c[i].focus <= 0 { return false; }   // the rest, in rs_dash_use
   if !rs_dash_use(b, i, RS_DASH_WIND) { return false; }
-  b[0].c[i].focus -= 1; b[0].turn.disengaged = true;
+  b[0].c[i].focus -= 1; b[0].turn.disengaged = true; b[0].turn.jumps_doubled = true;
   return true;
 }
 
@@ -78,7 +78,7 @@ rs_step_of_the_wind_focus :: (b: [] RsBattle, i: int) -> bool #effects(all) {
     if mode == 1 { b[0].c[0].focus = 0; } else if mode == 2 { b[0].turn.bonus = true; } else if mode == 3 { b[0].c[0].focus = 1; }
     focus := b[0].c[0].focus; ok := mode != 1 && mode != 2;
     #assert rs_step_of_the_wind_focus(b[..], 0) == ok && b[0].c[0].focus == (ifx ok then focus - 1 else focus);
-    #assert b[0].turn.disengaged == ok && b[0].turn.move_left == (ifx ok then 6 + 8 else 6);
+    #assert b[0].turn.disengaged == ok && b[0].turn.jumps_doubled == ok && b[0].turn.move_left == (ifx ok then 6 + 8 else 6);
   }
   b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
   _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);

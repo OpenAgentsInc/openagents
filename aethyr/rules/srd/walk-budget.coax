@@ -11,9 +11,10 @@ RS_FOOT_M :: 0.3048f32;      // metres in a foot
 RS_WALK_MAX_M :: 1000.0f32;    // one request's bound, far above any turn's Speed
 RsWalkTo :: struct { x: f32; z: f32; metres: f32; }
 
-// Feet of movement one foot of walking costs where the creature stands: 1, 2 or 3.
+// Feet of movement one foot of walking costs where the creature stands: the grid step's price
+// (movement-modes.coax: crawling, Difficult Terrain, climbing, swimming, dragging) per foot.
 rs_walk_cost :: (b: [] RsBattle, i: int) -> int #effects(all) {
-  return rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,b[0].c[i].x,b[0].c[i].y))/RS_SQUARE;
+  return rs_step_cost(b,i,b[0].c[i].x,b[0].c[i].y)/RS_SQUARE;
 }
 // Feet of movement left for continuous walking. Only a creature that can move,
 // in its own turn, has any; the carried part of a foot is less than one.

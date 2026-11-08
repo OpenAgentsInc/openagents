@@ -154,6 +154,8 @@ EF_HELP_CHECK :: 18; // cond encodes a skill, or RS_SKILLS + a tool
 EF_REST_SLEEP :: 20; // natural sleep, owned by sleep/wake events
 EF_HELP_ATTACK :: 19; // distraction on this enemy, eligible helper allies consume it
 EF_KNOCKOUT :: 21; // knocked out at 1 HP (knockout.coax): Unconscious until its Short Rest ends, healing or first aid
+EF_READY :: 23; // the Ready action (ready.coax): cond the response and slot, dc the trigger creature (-1 any)
+EF_INFLUENCED :: 24; // a failed Influence (actions.coax): by the urger, cond the check's skill, until the 24-hour wait ends
 EF_SENSE :: 22; // Divine Sense (p. 54), on the Paladin: Celestials, Fiends and Undead within 60 feet known
 
 // The classes a creature can be built as (-1 for a stat block).
@@ -209,6 +211,7 @@ RsCreature :: struct {
   hp_max_lost:int; score_lost:[6]int; // reductions authorized to end at Long Rest
   exhaustion_food:int; exhaustion_water:int; // locked until full daily nourishment
   rest: RsRestState;
+  rq_on: bool; rq_dice: int; rq_slots: int; rq_sorcery: int; rq_order: int;   // the queued Short Rest choices (rest-queue.coax), flat: no aggregate a creature
   long_rest:RsLongRest;
   temp: int;                // Temporary Hit Points
   speech_blocked: bool;     // gagged or inside magical silence
@@ -336,6 +339,8 @@ RsCreature :: struct {
   // its size (RS_TINY..RS_GARGANTUAN, the low 3 bits) and a stat block's traits (RS_TRAIT_*:
   // Pack Tactics, Magic Resistance, Nimble Escape), monster-traits.coax
   form: int = RS_MEDIUM;
+  grappling: int = -1;      // the creature it holds with an Unarmed Strike's Grapple (grapple.coax), -1 none
+  jumper: bool;             // Jumper (Second-Story Work): its jump distance from Dexterity rather than Strength
 }
 rs_name :: (c: [] RsCreature) -> string { return cast(string) c[0].name[0..<c[0].name_n]; }
 rs_set_name :: (c: [] RsCreature, name: string) {
@@ -816,7 +821,7 @@ rs_rogue :: (name: string, team: int, level: int) -> RsCreature {
   // and Second-Story Work at 3 (p. 64); Cunning Strike and Uncanny Dodge at 5 (p. 63). Its starting
   // gear has Thieves' Tools, not a Poisoner's Kit, so no Poison effect.
   c[0].expertise = ifx level >= 6 then 4 else 2; c[0].cant = true;
-  c[0].fast_hands = level >= 3; c[0].climb = ifx level >= 3 then c[0].speed else 0;
+  c[0].fast_hands = level >= 3; c[0].climb = ifx level >= 3 then c[0].speed else 0; c[0].jumper = level >= 3;
   c[0].cunning_strike = level >= 5; c[0].uncanny = level >= 5;
   return c[0];
 }

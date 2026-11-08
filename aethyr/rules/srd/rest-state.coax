@@ -7,6 +7,11 @@ RsRestState :: struct {
   seeded:bool; die:int; dice:int; dice_max:int;
   recovery_used:bool; restoration_used:bool;
 }
+// Recovery choices its controller queued for a Short Rest it isn't there to choose at (one granted
+// by an interruption, or finished on the clock): rest-queue.coax applies them once, in `order`.
+// slots: up to three slot levels, an octal digit each from the lowest (0 ends); order: the three
+// kinds, two bits each from the lowest (rest-queue.coax). A creature keeps it as flat rq_ fields.
+RsRestQueue :: struct { on:bool; dice:int; slots:int; sorcery:int; order:int; }
 rs_rest_die_valid :: (sides:int)->bool #effects(all) {
   return sides==4 || sides==6 || sides==8 || sides==10 || sides==12 || sides==20;
 }

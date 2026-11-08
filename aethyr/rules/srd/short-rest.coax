@@ -41,6 +41,7 @@ rs_short_rest_finish :: (b:[]RsBattle,i:int)->bool #effects(all) {
   rs_say(b,RS_EV_END,i,i,0," finishes a Short Rest");
   // Knocking Out (p.17): the Unconscious condition ends at the end of that rest.
   if rs_knocked_out(b[0].c[i]) { rs_knockout_end(b[0].c[i..<b[0].c.count]); rs_say(b,RS_EV_END,i,i,0," wakes from the knockout"); }
+  rs_rest_queue_apply(b,i);
   return true;
 }
 rs_short_rest_choices :: (b:[]RsBattle,i:int)->bool #effects(all) {

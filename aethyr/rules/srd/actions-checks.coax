@@ -1,0 +1,93 @@
+// SRD 5.2.1 Cover (p.15), Hide (p.183), Grappled and Unarmed Strike (pp.181, 190), Climbing (p.177)
+// and Speed, resolved through the shared battle: each fact the action, cover and movement units
+// keep reaches the attack, the cast, the save and the step that read it (#13040). Fixed dice (d20 10).
+//   coax/bin/coax test --library aethyr/rules/srd/actions-checks.coax
+#load "battle.coax";
+
+ac_struck :: (cover: int, ac: int) -> bool {
+  b: [1] RsBattle; grapple_field(b[..]);
+  b[0].c[1].ac = ac; b[0].c[1].hp = 200; b[0].c[1].hp_max = 200;
+  if cover > 0 { _ := rs_cover_put(b[..], 0, 1, cover); }
+  _ := rs_attack(b[..], 0, 1, false, -1);
+  return b[0].c[1].hp < 194;   // more than two Greatsword Grazes (Str 3 each, on a miss)
+}
+
+#test "Half Cover adds 2 and Three-Quarters 5 to the AC an attack must reach" {
+  hits := 0;
+  for ac: 5..<30 {
+    if ac_struck(0, ac) { hits += 1; }
+    #assert ac_struck(RS_COVER_HALF, ac) == ac_struck(0, ac + 2);
+    #assert ac_struck(RS_COVER_THREE, ac) == ac_struck(0, ac + 5);
+  }
+  #assert hits > 5 && hits < 25;
+}
+
+#test "Total Cover refuses an attack and a targeted spell, spending nothing" {
+  b: [1] RsBattle; grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200;
+  _ := rs_cover_put(b[..], 0, 1, RS_COVER_TOTAL);
+  #assert !rs_attack(b[..], 0, 1, false, -1) && !b[0].turn.action && b[0].c[1].hp == 200;
+  _ = rs_cover_put(b[..], 0, 1, 0);
+  #assert rs_attack(b[..], 0, 1, false, -1) && b[0].turn.action;
+  w: [1] RsBattle; grapple_field(w[..]); rs_fresh(w[..], 1); w[0].c[0].hp = 200; w[0].c[0].hp_max = 200;
+  _ = rs_cover_put(w[..], 1, 0, RS_COVER_TOTAL);
+  #assert !rs_cast(w[..], 1, SP_FIRE_BOLT, 0, 2, 2, 0) && !w[0].turn.action;
+  _ = rs_cover_put(w[..], 1, 0, RS_COVER_HALF);
+  #assert rs_cast(w[..], 1, SP_FIRE_BOLT, 0, 2, 2, 0) && w[0].turn.action;
+}
+
+#test "an area spares a creature behind Total Cover from its origin and adds cover to Dexterity saves" {
+  flipped := false;
+  for dex: 1..<31 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
+    _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 1, 4);
+    for k: 0..<3 { _ = rs_add(b[..], rs_fighter("Foe", 1, 1), 9, 3 + k); b[0].c[1 + k].hp = 200; b[0].c[1 + k].hp_max = 200; b[0].c[1 + k].score[RS_DEX] = dex; }
+    #assert rs_cover_put(b[..], 0, 2, RS_COVER_THREE) && rs_cover_put(b[..], 0, 3, RS_COVER_TOTAL);
+    rs_fresh(b[..], 0);
+    #assert rs_cast(b[..], 0, SP_FIREBALL, 3, 9, 4, -1);
+    open := 200 - b[0].c[1].hp; covered := 200 - b[0].c[2].hp;
+    #assert open > 0 && covered > 0 && covered <= open && b[0].c[3].hp == 200;
+    if covered < open { flipped = true; }
+  }
+  #assert flipped;
+}
+
+#test "a hidden attacker rolls with Advantage and gives itself away after the roll" {
+  rolls := [2] int.[0, 0];
+  for hidden: 0..<2 {
+    b: [1] RsBattle; grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200; b[0].c[1].ac = 5;
+    b[0].c[0] = rs_fighter("Lurker", 0, 1); b[0].c[0].x = 2; b[0].c[0].y = 2;
+    if hidden == 1 { act_hide(b[..], 0, 15); #assert rs_has(b[0].c[0], RS_INVISIBLE) && rs_attack_edge(b[..], 0, 1, true, true) == 1; }
+    before := b[0].dice[0].rolled;
+    #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp < 200 && !rs_has(b[0].c[0], RS_INVISIBLE);
+    rolls[hidden] = b[0].dice[0].rolled - before;
+  }
+  #assert rolls[1] == rolls[0] + 1;
+}
+
+#test "a grappler's step drags what it holds into the square it left, paying 5 extra feet" {
+  b: [1] RsBattle; grapple_field(b[..]);
+  #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[0].grappling == 1;
+  left := rs_movement_left(b[..], 0);
+  #assert rs_step_to(b[..], 0, 2, 3) && rs_movement_left(b[..], 0) == left - 5 && b[0].c[1].x == 3 && b[0].c[1].y == 2;   // still within reach
+  #assert rs_step_to(b[..], 0, 1, 3) && rs_movement_left(b[..], 0) == left - 15 && b[0].c[1].x == 2 && b[0].c[1].y == 3;
+  #assert b[0].c[0].grappling == 1 && rs_has(b[0].c[1], RS_GRAPPLED);
+}
+
+#test "a grapple ends when the grappler is Incapacitated or the two are parted" {
+  b: [1] RsBattle; grapple_field(b[..]);
+  #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE);
+  #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, spell = -1, until = 1e9, save = -1});
+  rs_start_turn(b[..], 1);
+  #assert b[0].c[0].grappling == -1 && !rs_has(b[0].c[1], RS_GRAPPLED) && rs_can_move(b[0].c[1]);
+  p: [1] RsBattle; grapple_field(p[..]);
+  #assert rs_attack_unarmed(p[..], 0, 1, UO_GRAPPLE);
+  rs_place(p[..], 1, 6, 2); rs_start_turn(p[..], 1);
+  #assert p[0].c[0].grappling == -1 && !rs_has(p[0].c[1], RS_GRAPPLED);
+}
+
+#test "continuous walking on a climbing surface pays double without a Climb Speed" {
+  b: [1] RsBattle; jump_field(b[..]);
+  #assert rs_walk_cost(b[..], 0) == 1;
+  #assert rs_terrain_put(b[..], TR_CLIMB, 0, 0, 3, 3) && rs_walk_cost(b[..], 0) == 2;
+  b[0].c[0].climb = 30; #assert rs_walk_cost(b[..], 0) == 1;
+}
