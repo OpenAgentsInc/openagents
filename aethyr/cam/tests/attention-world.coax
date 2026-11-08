@@ -1,0 +1,52 @@
+#load "../../query-scene.coax" as scene;
+#load "../../query-filter.coax" as filters;
+#load "../../query.coax" as queries;
+#load "../../space.coax";
+#load "world.coax" as fixture;
+#load "../../entity.coax" as entities;
+#load "../../ground.coax" as terrain;
+
+#test "checked attention obeys camera sight water debris and self query classes" {
+ b:[1]fixture.CamWorldBacking; scratch:[1]scene.QueryScratch;
+ ts:=[1]AttnTarget.[AttnTarget.{id=2,gen=1,caps=ATTN_LOCK,at=world_point(0,1.6,4)}];
+ q:=attn_q();
+ for category:0..<5 {
+  w:=fixture.cam_world(b[..],cast(u32)(1<<category));
+  view:=scene.query_select_world(w,filters.QueryFilter.{include=2},scratch[..]);
+  r:=attn_step_selected(AttnState.{},q,ts[..],view,10,false,false);
+  #assert r.query_status==queries.QueryStatus.ok && r.target==(ifx category==1 then -1 else 2);
+ }
+ w:=fixture.cam_world(b[..],2); spawned:=entities.entity_spawn(w.entity_store); entities.entity_flush(w.entity_store);
+ b[0].metadata[0].entity=spawned.handle;
+ view:=scene.query_select_world(w,filters.QueryFilter.{include=2,ignore_entity=spawned.handle},scratch[..]);
+ r:=attn_step_selected(AttnState.{},q,ts[..],view,10,false,false);#assert r.target==2;
+ view=scene.query_select_world(w,filters.QueryFilter.{include=2},scratch[..]);
+ entities.entity_despawn(w.entity_store,spawned.handle);entities.entity_flush(w.entity_store);
+ r=attn_step_selected(AttnState.{target=2,gen=1,seen=9},q,ts[..],view,10,false,false);
+ #assert r.target== -1 && r.runner== -1 && r.reason==AttnReason.invalid && r.query_status==queries.QueryStatus.invalid;
+}
+#test "attention query errors discard prefix choices and bypass hidden grace" {
+ heights:[9]f32;fields:=[1]queries.QueryHeightfield.[queries.QueryHeightfield.{ground=terrain.Ground.{n=2,cell=1,west=0,south=0},heights=heights[..]}];
+ c:=queries.Colliders.{ground_enabled=false,heightfields=fields[..],heightfield_budget=1};
+ q:=attn_q();q.origin=world_point(0.5,1.6,0.5);q.forward=world_point(1,0,0);
+ // The coincident candidate has qualified, then a longer ray exhausts work.
+ ts:=[2]AttnTarget.[AttnTarget.{id=1,gen=2,caps=ATTN_LOCK,at=q.origin},AttnTarget.{id=2,gen=3,caps=ATTN_LOCK,at=world_point(3.5,0.85,0.5)}];
+ r:=attn_step(AttnState.{},q,ts[..],c,10,false,false);
+ #assert r.query_status==queries.QueryStatus.exhausted && r.target== -1 && r.runner== -1 && r.gen==0 && r.since==0 && r.seen==0 && r.reason==AttnReason.invalid && !r.exhausted;
+ fit:=attn_fit(q,ts[1],c,q.acquire,q.acquire_cos);#assert !fit.ok && fit.status==queries.QueryStatus.exhausted && fit.why==AttnReason.invalid;
+ r=attn_step(AttnState.{target=2,gen=3,seen=9,since=1},q,ts[..],c,10,false,false);
+ #assert r.query_status==queries.QueryStatus.exhausted && r.target== -1;
+ c.heightfield_budget=100;fields[0].heights=heights[0..<0];
+ r=attn_step(AttnState.{},q,ts[..],c,10,false,false);#assert r.query_status==queries.QueryStatus.terrain && r.target== -1;
+ c=queries.Colliders.{ground_enabled=false};s:=AttnState.{query_status=queries.QueryStatus.invalid};
+ r=attn_step(s,q,ts[..],c,10,false,false);#assert r.query_status==queries.QueryStatus.ok && r.target==1;
+}
+#test "checked attention invalid selections release through grace without publishing a prefix choice" {
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;
+ view:=scene.query_select_world(w,filters.QueryFilter.{include=2},scratch[..]);q:=attn_q();
+ ts:=[1]AttnTarget.[AttnTarget.{id=2,gen=1,caps=ATTN_LOCK,at=world_point(0,1.6,4)}];
+ held:=attn_step_selected(AttnState.{},q,ts[..],view,1,false,false);#assert held.target==2;
+ b[0].epoch[0]=2;
+ r:=attn_step_selected(held,q,ts[..],view,2,false,false);#assert r.target== -1 && r.query_status==queries.QueryStatus.invalid;
+ for status:1..<5 {view.status=cast(queries.QueryStatus)status;r=attn_step_selected(held,q,ts[..],view,2,false,false);#assert r.target== -1 && r.query_status==cast(queries.QueryStatus)status;}
+}

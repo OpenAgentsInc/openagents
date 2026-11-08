@@ -12,6 +12,30 @@ colliders.
 | `filters.coax` | The query classes each purpose selects from one admitted world (`aethyr/query-scene.coax`): solid blocks walking, the camera and sight; camera-only walls block only the camera; sight-only obstruction (hedges, reeds) only sight; water, decorative debris and the receiver's own colliders block none. `cam_filter`/`cam_select_world` give each purpose its colliders, `cam_wall_room` the camera's room along its line (the swept eye's first camera-class hit, added to `cam_centred`'s room), and attention takes the sight selection |
 | `parity.coax` | Frame-rate parity: one recorded input played through `aethyr/loop.coax` at 30, 60 and 144 FPS and over uneven frames with a stall gives the same actor and attention state tick for tick, and evaluating the camera on each frame leaves the actor simulation digest unchanged |
 | `handback.coax` | A cinematic that starts on the live shot and hands back by one outcome (resume the saved orbit, reset behind the subject, retain the track's look), easing to the follow camera's own shot; cancel hands back from where it is; a teleport or lost target cuts with no sweep |
+| `eye.coax` | Checked head-to-eye sphere sweep over a semantic selection: body categories, roles and ignored self identities come from the owner; stale selections and query failures report their exact status, and an embedded start cannot claim a safe view |
+| `semantic.coax` | Source-part adapters `cam_centred_selected` and `cam_shake_selected` for the existing follow/shot owner; collision tests the displaced shake segment, and the accepted eye displacement moves the aim while the listener retains the unshaken base |
+
+`attn_step_selected` consumes a sight selection from `query-scene.coax`. It
+rechecks its epoch and referenced entities before running the same bounded
+attention policy. `AttnState.query_status` distinguishes a query refusal from
+ordinary hidden-target grace. A refused ray discards any prefix ranking and
+clears the held target and runner; a later successful step clears the status.
+The legacy `attn_step` still accepts already-selected `Colliders`.
+
+`cam_eye_clip` permits a segment up to 200 m and a radius in (0, 2] m. It
+sweeps with an additional 1 mm radius for rounding clearance. `safe=false`
+means no view has qualified, including a head inside the clearance skin; a
+consumer must cut or hold a separately qualified shot. An unsafe previous
+shot is never implicitly blessed. Both adapters read finished world poses and
+leave the selected geometry untouched. Callers retain immutable geometry and
+selection scratch, choose body/sight filters independently and supply valid
+owned mode/ground records. These typed APIs are not untrusted wire decoders.
+
+The [#13026 query record](../../docs/verification/camera-13026-query/README.md)
+qualifies this boundary in a numerical fixture: 264 production mutants killed,
+native/Wasm and sanitized replay at four frame cadences, and an independent
+state/clearance oracle. This does not yet establish a new playable consumer,
+whole-mode/cinematic mutation coverage or complete camera frame-rate parity.
 
 ## Adoption
 

@@ -1,0 +1,6 @@
+aethyr chapter registry: 14 implemented, 54 partly implemented, 33 design draft, 0 planned, 0 moved, 0 written
+bitcoin chapter registry: 100 implemented, 3 partly implemented, 0 design draft, 22 planned, 0 moved, 0 written
+coax chapter registry: 21 implemented, 10 partly implemented, 0 design draft, 16 planned, 0 moved, 0 written
+coder chapter registry: 8 implemented, 18 partly implemented, 0 design draft, 0 planned, 0 moved, 12 written
+nostr chapter registry: 88 implemented, 1 partly implemented, 0 design draft, 0 planned, 15 moved, 0 written
+psionic chapter registry: 134 implemented, 104 partly implemented, 0 design draft, 0 planned, 17 moved, 0 written

@@ -1,0 +1,24 @@
+// Composition with the purpose classes delivered concurrently in 5c59eb8f5d.
+#load "../filters.coax" as purpose;
+#load "../eye.coax" as body;
+#load "../attention.coax" as attention;
+#load "../../query-scene.coax" as scene;
+#load "../../query.coax" as queries;
+#load "../../space.coax";
+
+#test "checked eye and attention compose with the shared purpose filters and exact ignored self" {
+ camera_blocks:=[6]bool.[true,true,false,false,false,false];sight_blocks:=[6]bool.[true,false,true,false,false,false];
+ for i:0..<6 {
+  b:[1]purpose.CamClassFixture;w:=purpose.cam_class_fixture(b[..],i);camera_scratch:[1]scene.QueryScratch;sight_scratch:[1]scene.QueryScratch;
+  camera:=purpose.cam_select_world(w,purpose.CamPurpose.camera,b[0].me,camera_scratch[..]);
+  sight:=purpose.cam_select_world(w,purpose.CamPurpose.sight,b[0].me,sight_scratch[..]);
+  origin:=world_point(0,1.6,0);target:=world_point(0,1.6,9.5);
+  eye:=body.cam_eye_clip(camera,origin,target,0.2);
+  #assert eye.safe && eye.status==queries.QueryStatus.ok && eye.blocked==camera_blocks[i];
+  if camera_blocks[i] {#assert abs(eye.room-(3+f32(i)-0.201))<0.00001;}
+  ts:=[1]attention.AttnTarget.[attention.AttnTarget.{id=7,gen=1,caps=attention.ATTN_TALK,at=target}];
+  q:=attention.AttnQuery.{origin=origin,forward=world_point(0,0,1),need=attention.ATTN_TALK};
+  got:=attention.attn_step_selected(attention.AttnState.{},q,ts[..],sight,1,false,false);
+  #assert got.query_status==queries.QueryStatus.ok && (got.target== -1)==sight_blocks[i];
+ }
+}

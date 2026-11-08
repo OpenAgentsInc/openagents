@@ -1,0 +1,49 @@
+// Shared numerical trace for the checked camera boundary. No frame drives
+// attention or geometry outside the paid fixed-step loop.
+#load "../semantic.coax";
+#load "../attention.coax" as attention;
+#load "../../loop.coax" as clock;
+#load "../../query-filter.coax" as filters;
+#load "../../entity.coax" as entities;
+#load "world.coax" as fixture;
+
+CameraTrial :: struct {rows:[64][28]int;count:int;}
+camera_trial_run :: (out:[]CameraTrial,fps:int)->int #export_c #effects(all) {
+ out[0].count=0;if fps!=0 && fps!=30 && fps!=60 && fps!=144 {return -1;}
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);body_scratch:[1]scene.QueryScratch;sight_scratch:[1]scene.QueryScratch;ground:[1]CamGround;
+ self:=entities.entity_spawn(w.entity_store);entities.entity_flush(w.entity_store);
+ state:attention.AttnState;c:clock.FrameClock;uneven:=[4]int.[5000000,27000000,14000000,31000000];
+ for frame:0..<1024 {
+  ns:=ifx fps==0 then uneven[frame%4] else ((frame+1)*clock.LOOP_SECOND)/fps-(frame*clock.LOOP_SECOND)/fps;
+  schedule:=clock.loop_accept_ns(c,ns);count:=clock.loop_due(schedule);if count>64-c.ticks {count=64-c.ticks;}
+  for part:0..<count {
+   paid:=clock.loop_ran_some(schedule,part+1);tick:=paid.ticks;
+   category:=ifx tick<=8 then 1 else ifx tick<=16 then 2 else ifx tick<=24 then 4 else ifx tick<=32 then 8 else ifx tick<=40 then 16 else 3;
+   head:=v3(0,1.6,0);if tick>=49 {head=v3(10,6,10);}
+   b[0].box=[6]f32.[head.x-1,head.y-1.6,head.z-2.5,head.x+1,head.y+1.4,head.z-2];
+   if tick>=49 {b[0].box[0]+=10;b[0].box[3]+=10;}
+   b[0].metadata[0].categories=cast(u32)category;b[0].metadata[0].entity=ifx category==16 then self.handle else Handle(entities.Entity).{};
+   b[0].metadata[0].role=ifx category==4 then filters.QueryRole.fluid else ifx category==8 then filters.QueryRole.sensor else filters.QueryRole.solid;
+   b[0].epoch[0]=tick;w.epoch=tick;w.tick=tick;
+   body_view:=scene.query_select_world(w,filters.QueryFilter.{include=17,sensors=false,ignore_entity=self.handle},body_scratch[..]);
+   sight_view:=scene.query_select_world(w,filters.QueryFilter.{include=18,sensors=false,ignore_entity=self.handle},sight_scratch[..]);
+   if tick==57 {b[0].epoch[0]+=1;}
+   q:=attention.AttnQuery.{origin=cam_semantic_point(head),forward=spatial.world_point(0,0,-1),hold=4,grace=5};
+   ts:=[1]attention.AttnTarget.[attention.AttnTarget.{id=2,gen=ifx tick<33 then 1 else 2,caps=attention.ATTN_LOCK|attention.ATTN_TALK,at=spatial.world_point(head.x,head.y,head.z-4)}];
+   before:=b[0].box;
+   state=attention.attn_step_selected(state,q,ts[..],sight_view,tick,false,false);
+   base:=Shot.{eye=v3(head.x,head.y,head.z-4),at=v3(head.x,head.y,head.z+1)};
+   shaken:=cam_shake_selected(base,head,v3(0.25,0.125,0),body_view,0.2);
+   centred:=cam_centred_selected(CamMode.{},ground[..],Orbit.{pivot=head,pitch=0,yaw=0,zoom=4,shown=4},body_view);
+   unchanged:=true;for i:0..<6 {if before[i]!=b[0].box[i] {unchanged=false;}}
+   eye:=shaken.eye;row:=[28]int.[tick,category,state.target,state.gen,state.since,state.seen,cast(int)state.reason,state.runner,state.rejected,ifx state.exhausted then 1 else 0,cast(int)state.query_status,
+    ifx eye.safe then 1 else 0,ifx eye.blocked then 1 else 0,cast(int)eye.status,cast(int)f32_bits(eye.room),cast(int)f32_bits(eye.eye.x),cast(int)f32_bits(eye.eye.y),cast(int)f32_bits(eye.eye.z),eye.collider.id,eye.collider.generation,
+    cast(int)f32_bits(shaken.shot.at.x),cast(int)f32_bits(shaken.shot.at.y),cast(int)f32_bits(shaken.shot.at.z),cast(int)f32_bits(centred.value.room),cast(int)centred.eye.status,ifx centred.eye.safe then 1 else 0,ifx centred.eye.blocked then 1 else 0,ifx unchanged then 1 else 0];
+   out[0].rows[tick-1]=row;out[0].count+=1;
+  }
+  c=clock.loop_ran_some(schedule,count);if c.ticks==64 {return out[0].count;}
+ }return -2;
+}
+camera_trial_word :: (out:[]CameraTrial,row:int,word:int)->int #export_c #effects(all) {
+ if row<0 || row>=out[0].count || word<0 || word>=28 {return -1;}return out[0].rows[row][word];
+}

@@ -1,0 +1,72 @@
+// ---- checks: an independent brute-force ranking over the same filters
+attn_oracle_best :: (q: AttnQuery, ts: [] AttnTarget, c: Colliders) -> int #effects(all) {
+  best := -1; bp := -1000; bk := 1e9f32;
+  for i: 0..<ts.count {
+    t := ts[i];
+    if t.id == q.self || !t.valid || (t.caps & q.need) == 0 { continue; }
+    dx := t.at.x - q.origin.x; dz := t.at.z - q.origin.z; d := sqrt(dx * dx + dz * dz);
+    if d - t.radius > q.acquire || abs(t.at.y - q.origin.y) > q.rise { continue; }
+    a := 1.0f32; if d > 0.0001 { a = (dx * q.forward.x + dz * q.forward.z) / d; }
+    if a < q.acquire_cos { continue; }
+    if !query_clear(c, q.origin, world_sub(t.at, q.origin), 0.99999994).clear { continue; }
+    k := ifx d > 0.0001 then d * (2 - a) else 0.0f32;
+    if t.priority > bp || (t.priority == bp && (k < bk || (k == bk && t.id < ts[best].id))) { best = i; bp = t.priority; bk = k; }
+  }
+  return ifx best >= 0 then ts[best].id else -1;
+}
+attn_q :: () -> AttnQuery #effects(all) { return AttnQuery.{origin = world_point(0, 1.6, 0), forward = world_point(0, 0, 1)}; }
+
+#forall "attention ranks like an independent brute-force oracle" k: 0..<200 #steps 400000000 {
+  c: Colliders; c.ground = -10;
+  ts: [6] AttnTarget;
+  for i: 0..<6 {
+    h := (k * 7919 + i * 104729) % 1000;
+    ts[i] = AttnTarget.{id = 10 + i, gen = 1, caps = ifx h % 5 == 0 then ATTN_TALK else ATTN_LOCK, at = world_point(f32(h % 31) - 15, 1.6 + f32(h % 3) - 1, f32((h / 31) % 25) - 5), priority = (h / 7) % 2};
+  }
+  ts[k % 6].valid = k % 4 != 0;
+  wall := [6] f32.[-2, 0, 3, 2, 4, 3.5];
+  if k % 3 == 0 { c.boxes = wall[..]; }
+  s := attn_step(AttnState.{}, attn_q(), ts[..], c, 100, false, false);
+  #assert s.target == attn_oracle_best(attn_q(), ts[..], c);
+}
+
+#test "acquire, retain in the larger band, hold, grace, explicit switch, despawn and release" {
+  c: Colliders; c.ground = -10; q := attn_q();
+  ts := [2] AttnTarget.[AttnTarget.{id = 1, gen = 1, caps = ATTN_LOCK | ATTN_TALK, at = world_point(0, 1.6, 5)},
+                        AttnTarget.{id = 2, gen = 1, caps = ATTN_LOCK, at = world_point(1, 1.6, 8)}];
+  s := attn_step(AttnState.{}, q, ts[..], c, 0, false, false);
+  #assert s.target == 1 && s.reason == AttnReason.acquired && s.runner == 2;
+  // it walks out of the acquire band (12 m) but stays in the retain band (16 m): kept
+  ts[0].at = world_point(0, 1.6, 14);
+  s = attn_step(s, q, ts[..], c, 5, false, false);
+  #assert s.target == 1 && s.reason == AttnReason.kept;
+  // beside you (outside the acquire cone, inside the retain half-plane): kept
+  ts[0].at = world_point(5, 1.6, 0.5);
+  s = attn_step(s, q, ts[..], c, 6, false, false);
+  #assert s.target == 1;
+  // a switch before the hold is refused, after it taken
+  s = attn_step(s, q, ts[..], c, 10, true, false); #assert s.target == 1;
+  s = attn_step(s, q, ts[..], c, 16, true, false); #assert s.target == 2 && s.reason == AttnReason.switched && s.runner == 1;
+  // lost behind a wall: held through the grace, then given up for the best other
+  wall := [6] f32.[-3, 0, 4, 3, 4, 4.5]; c.boxes = wall[..];
+  ts[0].at = world_point(0, 1.6, 2);
+  s = attn_step(s, q, ts[..], c, 20, false, false); #assert s.target == 2 && s.reason == AttnReason.hidden;
+  s = attn_step(s, q, ts[..], c, 47, false, false); #assert s.target == 2;
+  s = attn_step(s, q, ts[..], c, 48, false, false); #assert s.target == 1 && s.reason == AttnReason.switched;
+  // a despawned and respawned target (new generation) is stale at once
+  ts[0].gen = 2;
+  s = attn_step(s, q, ts[..], c, 49, false, false); #assert s.target == 1 && s.gen == 2;   // re-acquired as the new one
+  // release
+  s = attn_step(s, q, ts[..], c, 50, false, true); #assert s.target == -1 && s.reason == AttnReason.released;
+  // talk asks only targets that can talk; self is never one
+  tq := q; tq.need = ATTN_TALK;
+  c.boxes = wall[0..<0];
+  #assert attn_step(AttnState.{}, tq, ts[..], c, 60, false, false).target == 1;
+  tq.self = 1;
+  #assert attn_step(AttnState.{}, tq, ts[..], c, 60, false, false).target == -1;
+  // more than the candidate budget: flagged, and only the first ATTN_CANDIDATES considered
+  many: [40] AttnTarget;
+  for i: 0..<40 { many[i] = AttnTarget.{id = 100 + i, gen = 1, caps = ATTN_LOCK, at = world_point(0, 1.6, 20 - f32(i) * 0.5)}; }
+  m := attn_step(AttnState.{}, q, many[..], c, 70, false, false);
+  #assert m.exhausted && m.target == 100 + 31;
+}

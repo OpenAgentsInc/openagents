@@ -1905,6 +1905,18 @@ the same whether its camera steps every step, never, or twice a step", "each
 view mode is its own shot of the frame drawn"), `aethyr/shot.coax` and
 `aethyr/follow.coax` (mutation 0 survivors).
 
+The checked `cam/` query companion reads separate semantic body/sight views.
+Attention rechecks the retained selection's epoch and entities; a query refusal
+clears all targets rather than consuming hidden-target grace or publishing a
+partial rank. The eye sweep tests the actual displaced segment with an extra
+1 mm radius, including sideways shake beside corners. A start inside that skin
+or a refused query returns no qualified view. A caller must not draw its fallback
+as safe without another successful check. The adapters change no actor or query
+geometry and leave the listener on the accepted unshaken shot. This boundary's
+numerical fixture and remaining playable adoption are recorded in
+`docs/verification/camera-13026-query/README.md`; it is not a claim that every
+realm already uses these adapters.
+
 An engine module that two libraries a page links both load
 (`aethyr/space.coax` and `aethyr/shot.coax`, which a realm's engine and the
 player both reach) declares no `#export_c` procedure: each library would

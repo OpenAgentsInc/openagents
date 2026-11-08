@@ -1,0 +1,4 @@
+ok   #test experimental combat: a blow strikes ahead within reach, a save spell takes the cone ahead, and nothing behind is picked (1 case, 34093707 steps, 3456 ms)
+1 of 623 checks (--only 'a blow strikes ahead'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 32645881 of 33554432 used (97%), above three quarters of the limit; more than 33554432 fails with E0400

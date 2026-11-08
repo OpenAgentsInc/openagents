@@ -1,0 +1,71 @@
+attn_state_words :: (s:AttnState)->[10]int #effects(all) {
+ return [10]int.[s.target,s.gen,s.since,s.seen,s.runner,cast(int)s.reason,s.rejected,ifx s.exhausted then 1 else 0,cast(int)s.query_status,0];
+}
+attn_state_equal :: (s:AttnState,want:AttnState)->bool #effects(all) {
+ a:=attn_state_words(s);b:=attn_state_words(want);for i:0..<10 {if a[i]!=b[i] {return false;}}return true;
+}
+#test "attention fit has inclusive bands and cone and distinct rejection reasons at translated origins" {
+ c:=Colliders.{ground_enabled=false};q:=attn_q();q.origin=world_point(2,3,5);q.forward=world_point(0.8,0,0.6);
+ t:=AttnTarget.{id=0,gen=1,caps=ATTN_LOCK,at=world_point(5,5,9)};
+ f:=attn_fit(q,t,c,10,0);#assert f.ok && abs(f.key-5.2)<0.00001;
+ for why:0..<3 {bad:=t;if why==0 {bad.id=q.self;}if why==1 {bad.valid=false;}if why==2 {bad.caps=ATTN_TALK;}f=attn_fit(q,bad,c,10,0);#assert !f.ok && f.why==AttnReason.invalid;}
+ for screen:0..<2 {for shown:0..<2 {q.screen=screen==1;t.on_screen=shown==1;f=attn_fit(q,t,c,10,0);#assert f.ok==(screen==0 || shown==1);if !f.ok {#assert f.why==AttnReason.hidden;}}}
+ q=attn_q();q.forward=world_point(1,0,0);t=AttnTarget.{id=0,gen=1,caps=ATTN_LOCK,at=world_point(4,5.6,0),radius=0.5};
+ f=attn_fit(q,t,c,3.5,1);#assert f.ok && f.key==4;
+ f=attn_fit(q,t,c,3.49,1);#assert !f.ok && f.why==AttnReason.out_of_range;
+ t.at.y=5.601;f=attn_fit(q,t,c,10,1);#assert !f.ok && f.why==AttnReason.out_of_range;
+ t.at=world_point(0,1.6,4);f=attn_fit(q,t,c,10,0.001);#assert !f.ok && f.why==AttnReason.out_of_range;
+ // Exactly the coincident tolerance is deliberately unranked and needs no ray.
+ t.at=world_point(0,1.6,-0.0001);f=attn_fit(q,t,c,10,1);#assert f.ok && f.key==0;
+}
+#test "attention comparator is a strict order over priority distance and complete target id" {
+ ts:=[6]AttnTarget.[AttnTarget.{id=3,priority=2},AttnTarget.{id=5,priority=2},AttnTarget.{id=1,priority=2},AttnTarget.{id=0,priority=1},AttnTarget.{id=2,priority=1},AttnTarget.{id=6,priority=0}];
+ keys:=[6]f32.[1,1,2,0,3,0];for i:0..<6 {for j:0..<6 {#assert attn_better(ts[i],keys[i],ts[j],keys[j])==(i<j);}}
+}
+#test "attention ranks both winners over every permutation and publishes every state lane" {
+ c:=Colliders.{ground_enabled=false};q:=attn_q();
+ source:=[3]AttnTarget.[AttnTarget.{id=0,gen=2,caps=ATTN_LOCK,at=world_point(0,1.6,2)},AttnTarget.{id=1,gen=3,caps=ATTN_LOCK,at=world_point(0,1.6,4),priority=1},AttnTarget.{id=2,gen=4,caps=ATTN_LOCK,at=world_point(0,1.6,3),priority=1}];
+ permutations:=[6][3]int.[[3]int.[0,1,2],[3]int.[0,2,1],[3]int.[1,0,2],[3]int.[1,2,0],[3]int.[2,0,1],[3]int.[2,1,0]];
+ for order:permutations {
+  ts:=[3]AttnTarget.[source[order[0]],source[order[1]],source[order[2]]];
+  r:=attn_step(AttnState.{rejected=9,runner=99,exhausted=true},q,ts[..],c,5,false,false);
+  #assert attn_state_equal(r,AttnState.{target=2,gen=4,since=5,seen=5,runner=1,reason=AttnReason.acquired});
+  s:=AttnState.{target=0,gen=2,since=5,seen=5,runner=99,rejected=8,exhausted=true};q.hold=3;
+  r=attn_step(s,q,ts[..],c,7,true,false);#assert attn_state_equal(r,AttnState.{target=0,gen=2,since=5,seen=7,runner=2,reason=AttnReason.kept});
+  r=attn_step(s,q,ts[..],c,8,true,false);#assert attn_state_equal(r,AttnState.{target=2,gen=4,since=8,seen=8,runner=0,reason=AttnReason.switched});
+  r=attn_step(s,q,ts[..],c,8,false,false);#assert attn_state_equal(r,AttnState.{target=0,gen=2,since=5,seen=8,runner=2,reason=AttnReason.kept});
+ }
+}
+#test "attention has exact candidate and refusal counts at capacity and resets all temporary fields" {
+ c:=Colliders.{ground_enabled=false};q:=attn_q();ts:[33]AttnTarget;for i:0..<33 {ts[i]=AttnTarget.{id=i,gen=1,caps=0};}
+ ts[32]=AttnTarget.{id=32,gen=1,caps=ATTN_LOCK,at=world_point(0,1.6,1),priority=10};
+ for n:[3]int.[0,32,33] {
+  r:=attn_step(AttnState.{runner=10,rejected=99,exhausted=true},q,ts[0..<n],c,10,false,false);
+  #assert attn_state_equal(r,AttnState.{rejected=ifx n==0 then 0 else 32,exhausted=n==33});
+  r=attn_step_selected(AttnState.{target=0,gen=1,seen=9},q,ts[0..<n],scene.SelectedWorld.{status=QueryStatus.capacity},10,false,false);
+  #assert attn_state_equal(r,AttnState.{query_status=QueryStatus.capacity,reason=AttnReason.invalid,exhausted=n==33});
+ }
+ r:=attn_query_refusal(QueryStatus.exhausted,7,true);#assert attn_state_equal(r,AttnState.{reason=AttnReason.invalid,query_status=QueryStatus.exhausted,rejected=7,exhausted=true});
+}
+#test "attention releases zero ids rejects unloaded owners and reports retained-range and grace transitions" {
+ c:=Colliders.{ground_enabled=false};q:=attn_q();q.grace=5;
+ ts:=[2]AttnTarget.[AttnTarget.{id=2,gen=3,caps=ATTN_LOCK,at=world_point(0,1.6,2)},AttnTarget.{id=0,gen=2,caps=ATTN_LOCK,at=world_point(0,1.6,20)}];
+ s:=AttnState.{target=0,gen=2,since=5,seen=7,runner=99,rejected=9};
+ r:=attn_step(s,q,ts[..],c,10,false,true);#assert attn_state_equal(r,AttnState.{gen=2,since=5,seen=7,reason=AttnReason.released});
+ r=attn_step(s,q,ts[..],c,10,false,false);#assert attn_state_equal(r,AttnState.{target=0,gen=2,since=5,seen=7,reason=AttnReason.out_of_range,runner=2,rejected=1});
+ r=attn_step(s,q,ts[1..<2],c,10,false,false);#assert attn_state_equal(r,AttnState.{target=0,gen=2,since=5,seen=7,reason=AttnReason.out_of_range,rejected=1});
+ r=attn_step(s,q,ts[..],c,12,false,false);#assert attn_state_equal(r,AttnState.{target=2,gen=3,since=12,seen=12,reason=AttnReason.switched,rejected=1});
+ // An unloaded zero-id owner never receives hidden grace.
+ r=attn_step(s,q,ts[0..<0],c,8,false,false);#assert attn_state_equal(r,AttnState.{gen=2,since=5,seen=7,reason=AttnReason.invalid});
+ ts[1].valid=false;r=attn_step(s,q,ts[1..<2],c,8,false,false);#assert attn_state_equal(r,AttnState.{gen=2,since=5,seen=7,reason=AttnReason.invalid,rejected=1});
+ ts[1].valid=true;ts[1].at.z=14;r=attn_step(s,q,ts[1..<2],c,10,true,false);#assert attn_state_equal(r,AttnState.{target=0,gen=2,since=5,seen=10,reason=AttnReason.kept,rejected=1});
+ ts[1].at.z=2;ts[1].gen=4;r=attn_step(s,q,ts[1..<2],c,10,false,false);#assert attn_state_equal(r,AttnState.{target=0,gen=4,since=10,seen=10,reason=AttnReason.switched});
+}
+#test "attention carries the second rank's distance when the best and runners change independently" {
+ c:=Colliders.{ground_enabled=false};q:=attn_q();
+ for positions:[2][4]f32.[[4]f32.[8,4,6,10],[4]f32.[2,8,6,7]] {
+  ts:[4]AttnTarget;for i:0..<4 {ts[i]=AttnTarget.{id=int(positions[i]),gen=1,caps=ATTN_LOCK,at=world_point(0,1.6,positions[i])};}
+  r:=attn_step(AttnState.{},q,ts[..],c,10,false,false);
+  #assert r.target==(ifx positions[0]==8 then 4 else 2) && r.runner==6;
+ }
+}

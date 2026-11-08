@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/christopherdavid/oa-open-issues/psionic/tests/book.py", line 420, in <module>
+    main()
+    ~~~~^^
+  File "/home/christopherdavid/oa-open-issues/psionic/tests/book.py", line 414, in main
+    examples = check(args.book)
+  File "/home/christopherdavid/oa-open-issues/psionic/tests/book.py", line 111, in check
+    assert not errors, "reviewed capability claims: " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: reviewed capability claims: psionic.language.current: evidence changed; review coax/lib/compiler/wgsl.coax; coax.wgsl.current: evidence changed; review coax/lib/compiler/wgsl.coax; coax.wgsl.current: evidence changed; review coax/src/shader.cpp; coax.wgsl.current: evidence changed; review verse/everglade/gpu.bindings

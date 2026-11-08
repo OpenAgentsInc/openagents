@@ -1,0 +1,6 @@
+native LP64 fixed record bytes
+CameraTrial 14344
+QueryScratch 38784
+CamGround 86032
+CamEye 40
+AttnState 64

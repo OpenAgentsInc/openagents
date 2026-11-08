@@ -1,0 +1,22 @@
+// Muted headless Wasm transport; JavaScript only projects Coax trace words.
+// tool.sh: stack-gib 2
+#load "../../../coax/web/wasm-chrome.coax";
+#load "../../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {return 2;}
+ bytes:[4194304]u8;n:=fs_read(args_at(args[..],0),bytes[..]);if n<1 {return 1;}
+ c:[1]Cdp;if !wc_open(c[..]) {tool_errln(cdp_error(c[..]));return 1;}defer {cdp_close(c[..]);}
+ if !wc_file(c[..],"camera",cast(string)bytes[0..<n]) || wc_load(c[..],"camera",1024,"{}",WC_THROW)!="ok" {tool_errln(cdp_error(c[..]));return 1;}
+ prefix:=args_at(args[..],1);path:[4096]u8;script:[2048]u8;out:[131072]u8;o:[1]Jo;
+ for fps:[4]int.[30,60,144,0] {
+  decimal:[24]u8;argument:=wc_dec(decimal[..],fps);
+  if wc_int(c[..],"trial",argument)!=64 {tool_errln(cdp_error(c[..]));return 1;}
+  jo_start(o[..],script[..]);jo_put(o[..],"(()=>{let out='';for(let row=0;row<64;row++){out+='");jo_int(o[..],fps);
+  jo_put(o[..]," '+row;for(let word=0;word<28;word++)out+=' '+String(W.x.word(row,word));out+='\\n';}return out})()");
+  value:=cdp_evaluate(c[..],jo_text(o[..]));if value<0 {tool_errln(cdp_error(c[..]));return 1;}
+  used:=jv_str(cdp_doc(c[..]),value,out[..]);if used<1 {return 1;}
+  at:=ws_put(path[..],0,prefix);at=ws_put(path[..],at,"-");at=ws_digits(path[..],at,fps);at=ws_put(path[..],at,".txt");
+  if at<0 || !fs_write(cast(string)path[0..<at],cast(string)out[0..<used]) {return 1;}
+  print("Wasm %: 64 camera rows written\n",fps);
+ }return 0;
+}

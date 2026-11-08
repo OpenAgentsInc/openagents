@@ -1,0 +1,64 @@
+#load "world.coax" as fixture;
+#load "../../query-filter.coax" as filters;
+#load "../../entity.coax" as entities;
+#load "../../ground.coax" as terrain;
+
+#test "camera eye selection separates body walls sight water debris and ignored self" {
+ b:[1]fixture.CamWorldBacking;scratch:[1]scene.QueryScratch;
+ from:=world_point(0,1.6,0);want:=world_point(0,1.6,4);
+ for category:0..<5 {
+  w:=fixture.cam_world(b[..],cast(u32)(1<<category));view:=scene.query_select_world(w,filters.QueryFilter.{include=1},scratch[..]);
+  r:=cam_eye_clip(view,from,want,0.2);
+  #assert r.status==queries.QueryStatus.ok && r.safe && r.blocked==(category==0);
+  #assert abs(r.room-(ifx category==0 then 1.799f32 else 4.0f32))<0.00001 && r.eye.x==0 && r.eye.y==1.6 && abs(r.eye.z-r.room)<0.00001;
+  #assert r.collider.id==(ifx category==0 then 77 else 0) && r.collider.generation==(ifx category==0 then 3 else 0);
+ }
+ w:=fixture.cam_world(b[..],1);self:=entities.entity_spawn(w.entity_store);entities.entity_flush(w.entity_store);b[0].metadata[0].entity=self.handle;
+ view:=scene.query_select_world(w,filters.QueryFilter.{include=1,ignore_entity=self.handle},scratch[..]);
+ r:=cam_eye_clip(view,from,want,0.2);#assert r.safe && !r.blocked && r.room==4;
+ view=scene.query_select_world(w,filters.QueryFilter.{include=1},scratch[..]);entities.entity_despawn(w.entity_store,self.handle);entities.entity_flush(w.entity_store);
+ r=cam_eye_clip(view,from,want,0.2);#assert !r.safe && r.status==queries.QueryStatus.invalid && r.eye.z==from.z && r.room==0;
+}
+#test "camera contact skin handles a sub-millimetre gap and terrain work refusals retain their status" {
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;
+ view:=scene.query_select_world(w,filters.QueryFilter.{},scratch[..]);head:=world_point(0,1.6,1.7995);
+ r:=cam_eye_clip(view,head,world_point(0,1.6,4),0.2);#assert !r.safe && r.blocked && r.room==0 && r.eye.z==head.z;
+ heights:[9]f32;fields:=[1]queries.QueryHeightfield.[queries.QueryHeightfield.{ground=terrain.Ground.{n=2,cell=1,west=0,south=0},heights=heights[..]}];
+ b[0].metadata[0].shape=queries.QueryShape.heightfield;
+ w.geometry=queries.Colliders.{ground_enabled=false,heightfields=fields[..],heightfield_budget=1};view=scene.query_select_world(w,filters.QueryFilter.{},scratch[..]);
+ head=world_point(0.5,1.6,0.5);r=cam_eye_clip(view,head,world_point(3.5,0.85,0.5),0.2);
+ #assert !r.safe && r.status==queries.QueryStatus.exhausted && r.room==0 && r.eye.x==head.x && r.eye.y==head.y && r.eye.z==head.z;
+}
+#test "camera corner shake clips the actual displaced segment instead of its original ray room" {
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;
+ // Thin side wall: the original backward ray has room, its sideways shake does not.
+ b[0].box=[6]f32.[0.3,0,-5,0.5,3,-1];view:=scene.query_select_world(w,filters.QueryFilter.{include=1},scratch[..]);
+ head:=world_point(0,1.6,0);base:=world_point(0,1.6,-4);plain:=cam_eye_clip(view,head,base,0.2);#assert plain.safe && !plain.blocked;
+ // Rounded corner contact solves 16.25*t*t - 8.3*t +
+ // (0.3*0.3 + 1 - 0.201*0.201)=0, including the radius skin.
+ shaken:=cam_eye_clip(view,head,world_point(0.5,1.7,-4),0.2);
+ fraction:f32=(8.3-sqrt(0.666065))/32.5;
+ #assert shaken.safe && shaken.blocked && abs(shaken.eye.x-0.5*fraction)<0.00001 && abs(shaken.eye.y-(1.6+0.1*fraction))<0.00001 && abs(shaken.eye.z+4*fraction)<0.00001;
+ // A subject on a moving platform passes its finished world-space head; no second platform delta.
+ b[0].box=[6]f32.[9,4,12,11,8,12.5];head=world_point(10,6,10);want:=world_point(10,6,14);
+ view=scene.query_select_world(w,filters.QueryFilter.{include=1},scratch[..]);r:=cam_eye_clip(view,head,want,0.2);
+ #assert r.safe && r.blocked && r.eye.x==10 && r.eye.y==6 && abs(r.eye.z-11.799)<0.00001;
+ // Starting inside an obstruction has no qualified clear segment.
+ r=cam_eye_clip(view,world_point(10,6,12.25),want,0.2);#assert !r.safe && r.blocked && r.room==0 && r.eye.z==12.25 && r.status==queries.QueryStatus.ok;
+}
+#test "camera eye refuses stale selections malformed coordinates and radius and admits exact work bounds" {
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;
+ view:=scene.query_select_world(w,filters.QueryFilter.{include=0},scratch[..]);head:=world_point(1,2,3);want:=world_point(1,2,3);
+ r:=cam_eye_clip(view,head,want,0.2);#assert r.safe && !r.blocked && r.room==0 && r.eye.x==1 && r.eye.y==2 && r.eye.z==3;
+ for bad:0..<10 {h:=head;e:=want;radius:f32=0.2;
+  if bad==0 {radius=0;}if bad==1 {radius= -0.1;}if bad==2 {radius=2.001;}if bad==3 {radius=0.0/0.0;}
+  if bad==4 {h.x=1000000;}if bad==5 {h.y= -1000000;}if bad==6 {h.z=0.0/0.0;}
+  if bad==7 {e.x=1000000;}if bad==8 {e.y= -1000000;}if bad==9 {e.z=0.0/0.0;}
+  r=cam_eye_clip(view,h,e,radius);#assert !r.safe && r.status==queries.QueryStatus.invalid && r.room==0;
+ }
+ want=world_point(1,2,203);r=cam_eye_clip(view,head,want,2);#assert r.safe && r.room==200;
+ want.z=203.001;r=cam_eye_clip(view,head,want,0.2);#assert !r.safe && r.status==queries.QueryStatus.invalid;
+ b[0].epoch[0]=2;r=cam_eye_clip(view,head,head,0.2);#assert !r.safe && r.status==queries.QueryStatus.invalid;
+ for status:1..<5 {view.status=cast(queries.QueryStatus)status;r=cam_eye_clip(view,head,head,0.2);#assert !r.safe && r.status==cast(queries.QueryStatus)status && r.room==0;}
+ view.status=queries.QueryStatus.capacity;r=cam_eye_clip(view,head,head,0);#assert !r.safe && r.status==queries.QueryStatus.capacity;
+}

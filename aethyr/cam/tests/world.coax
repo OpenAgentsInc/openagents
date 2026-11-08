@@ -1,0 +1,21 @@
+// Shared owned semantic scene for camera boundary checks, not a realm's geometry.
+#module "aethyr.cam.tests.world";
+#load "../../query-scene.coax" as scene;
+#load "../../query-filter.coax" as filters;
+#load "../../query.coax" as queries;
+#load "../../entity.coax" as entities;
+
+CamWorldBacking :: struct {
+ box: [6] f32;
+ metadata: [1] filters.QueryCollider;
+ surfaces: [1] filters.PhysicalSurface;
+ epoch: [1] int;
+ entities: [1] entities.OracleBacking;
+}
+cam_world :: (b: [] CamWorldBacking, category: u32) -> scene.QueryWorld #effects(all) {
+ b[0].box = [6] f32.[-1, 0, 2, 1, 3, 2.5];
+ b[0].metadata[0] = filters.QueryCollider.{ref=filters.ColliderRef.{id=77,generation=3},shape=queries.QueryShape.box,surface=1,categories=category};
+ b[0].surfaces[0] = filters.PhysicalSurface.{id=1}; b[0].epoch[0]=1;
+ store := entities.oracle_store(b[0].entities[..]); entities.entity_clear(store);
+ return scene.QueryWorld.{geometry=queries.Colliders.{ground_enabled=false,boxes=b[0].box[..]},metadata=b[0].metadata[..],surfaces=b[0].surfaces[..],entity_store=store,current_epoch=b[0].epoch[..],epoch=1};
+}

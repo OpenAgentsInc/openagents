@@ -1,0 +1,7 @@
+PASS docs/verification/camera-13026-query/receipts/native.txt: 256 complete independent rows
+PASS docs/verification/camera-13026-query/receipts/sanitized.txt: 256 complete independent rows
+PASS docs/verification/camera-13026-query/receipts/browser-0.txt: 64 complete independent rows
+PASS docs/verification/camera-13026-query/receipts/browser-30.txt: 64 complete independent rows
+PASS docs/verification/camera-13026-query/receipts/browser-60.txt: 64 complete independent rows
+PASS docs/verification/camera-13026-query/receipts/browser-144.txt: 64 complete independent rows
+PASS 768 rows; cross-cadence/platform words identical; 28 negative controls rejected

@@ -793,6 +793,15 @@ comparison sees each of the 21 fields it names.
 
 ## Still to do
 
+The [checked semantic camera companion](../cam/README.md) adds separate body
+and sight selections with shared category/role/self filters. Attention exposes
+query refusal separately from hidden grace; follow and shake sweep the actual
+head-to-eye segment. An embedded start has no qualified fallback view. Its
+[numerical native/Wasm record](../../docs/verification/camera-13026-query/README.md)
+covers four frame cadences, a translated pose and a stale selection. Playable
+lock-on/talk adoption, final shake/fade drawing and broader camera qualification
+remain #13026 work; this companion does not expand this chapter's native profile.
+
 The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
 moves the rest of the realms' cameras onto `CameraShot`:
 

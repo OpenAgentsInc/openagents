@@ -1,0 +1,34 @@
+// Checked adapters for the existing centred follow and cosmetic shake.
+// Source part: it shares the consumer's Orbit/Shot owner, as modes.coax does.
+#authority;
+#load "modes.coax";
+#load "eye.coax" as body;
+#load "../query-scene.coax" as scene;
+#load "../query.coax" as queries;
+#load "../space.coax" as spatial;
+
+CamCentredSelected :: struct {value:CamCentred;eye:body.CamEye;}
+CamShotSelected :: struct {shot:Shot;eye:body.CamEye;}
+#load "tests/semantic.coax";
+
+cam_semantic_point :: (p:Point)->spatial.WorldPoint #effects(all) {return spatial.world_point(p.x,p.y,p.z);}
+cam_centred_selected :: (m:CamMode,g:[]CamGround,o:Orbit,w:scene.SelectedWorld)->CamCentredSelected #effects(all) {
+ out:=CamCentredSelected.{eye=body.CamEye.{status=queries.QueryStatus.invalid}};
+ if g.count!=1 || !(g[0].cell>0 && g[0].cell<=2) || !cam_mode_ok(m) ||
+    !queries.query_point_finite(cam_semantic_point(o.pivot)) || !queries.query_finite(o.yaw) || !queries.query_finite(o.pitch) || !(o.zoom>=0 && o.zoom<=100) {return out;}
+ empty:[]f32;out.value=cam_centred(m,g,o,empty);ray:=cam_ray(o,out.value.eye_pitch);
+ wanted:=v3(ray.from.x+ray.dir.x*out.value.room,ray.from.y+ray.dir.y*out.value.room,ray.from.z+ray.dir.z*out.value.room);
+ out.eye=body.cam_eye_clip(w,cam_semantic_point(ray.from),cam_semantic_point(wanted),f32(FREE_CLEAR));
+ out.value.room=out.eye.room;return out;
+}
+cam_shake_selected :: (s:Shot,head:Point,offset:Point,w:scene.SelectedWorld,radius:f32)->CamShotSelected #effects(all) {
+ out:=CamShotSelected.{shot=s,eye=body.CamEye.{status=queries.QueryStatus.invalid}};
+ if !queries.query_point_finite(cam_semantic_point(s.eye)) || !queries.query_point_finite(cam_semantic_point(s.at)) ||
+    !(offset.x>= -0.5 && offset.x<=0.5 && offset.y>= -0.5 && offset.y<=0.5 && offset.z>= -0.5 && offset.z<=0.5) {return out;}
+ out.eye=body.cam_eye_clip(w,cam_semantic_point(head),cam_semantic_point(add(s.eye,offset)),radius);
+ if !out.eye.safe {return out;}
+ eye:=v3(out.eye.eye.x,out.eye.eye.y,out.eye.eye.z);
+ // Preserve facing with the actual accepted displacement, including collision
+ // pull-in. The listener continues to use the unshaken accepted base shot.
+ out.shot=Shot.{eye=eye,at=add(s.at,sub(eye,s.eye))};return out;
+}

@@ -1,0 +1,50 @@
+#load "world.coax" as fixture;
+#load "../../query-filter.coax" as filters;
+#load "../../query.coax" as queries;
+
+#test "centred follow uses admitted body geometry and shake moves aim by the accepted eye delta" {
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;
+ b[0].box=[6]f32.[-1,0,-2.5,1,3,-2];view:=scene.query_select_world(w,filters.QueryFilter.{include=1},scratch[..]);
+ ground:[1]CamGround;o:=Orbit.{pivot=v3(0,1.6,0),pitch=0,yaw=0,zoom=4,shown=4};m:CamMode;
+ r:=cam_centred_selected(m,ground[..],o,view);
+ #assert r.eye.safe && r.eye.blocked && r.eye.collider.id==77 && abs(r.value.room-1.749)<0.00001 && r.value.eye_pitch==0 && r.value.press==0;
+ base:=Shot.{eye=v3(0,1.6,-4),at=v3(0,1.6,1)};
+ b[0].box=[6]f32.[0.3,0,-5,0.5,3,-1];view=scene.query_select_world(w,filters.QueryFilter.{include=1},scratch[..]);
+ shaken:=cam_shake_selected(base,v3(0,1.6,0),v3(0.5,0.1,0),view,0.2);
+ #assert shaken.eye.safe && shaken.eye.blocked && shaken.shot.eye.z> -1 && shaken.shot.eye.x<0.125;
+ #assert abs((shaken.shot.at.z-shaken.shot.eye.z)-5)<0.00001 && abs(shaken.shot.at.x-shaken.shot.eye.x)<0.00001 && abs(shaken.shot.at.y-shaken.shot.eye.y)<0.00001;
+ b[0].epoch[0]=2;failed:=cam_centred_selected(m,ground[..],o,view);#assert !failed.eye.safe && failed.value.room==0 && failed.eye.status==queries.QueryStatus.invalid;
+ failed=cam_centred_selected(m,ground[0..<0],o,view);#assert !failed.eye.safe && failed.eye.status==queries.QueryStatus.invalid;
+}
+#test "semantic follow validates its actual ground span mode and orbit before sampling" {
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;view:=scene.query_select_world(w,filters.QueryFilter.{include=0},scratch[..]);
+ ground:[2]CamGround;base:=Orbit.{pivot=v3(1,2,3),pitch=0,zoom=4,shown=4};m:CamMode;
+ #assert !cam_centred_selected(m,ground[..],base,view).eye.safe;
+ for which:0..<12 {o:=base;mode:=m;ground[0].cell=0.5;
+  if which==0 {ground[0].cell=0;}if which==1 {ground[0].cell=2.001;}if which==2 {mode.fov=3;}
+  if which==3 {o.pivot.x=1000000;}if which==4 {o.pivot.y=0.0/0.0;}if which==5 {o.pivot.z= -1000000;}
+  if which==6 {o.yaw=0.0/0.0;}if which==7 {o.pitch=0.0/0.0;}if which==8 {o.zoom= -0.001;}if which==9 {o.zoom=100.001;}if which==10 {o.zoom=0.0/0.0;}if which==11 {ground[0].cell=0.0/0.0;}
+  r:=cam_centred_selected(mode,ground[0..<1],o,view);#assert !r.eye.safe && r.eye.status==queries.QueryStatus.invalid && r.value.room==0;
+ }
+ ground[0].cell=2;for zoom:[2]f32.[0,100] {o:=base;o.zoom=zoom;r:=cam_centred_selected(m,ground[0..<1],o,view);#assert r.eye.safe && abs(r.value.room-zoom)<0.00001;}
+ o:=base;o.pivot=v3(10,20,30);o.yaw=1.5707963267948966;o.pitch=0.5235987755982988;
+ tilted:=cam_centred_selected(m,ground[0..<1],o,view);
+ #assert tilted.eye.safe && abs(tilted.eye.eye.x-6.5358984)<0.00001 && abs(tilted.eye.eye.y-22)<0.00001 && abs(tilted.eye.eye.z-30)<0.00001;
+}
+#test "semantic shake validates every offset axis and retains the base on an unqualified eye" {
+ b:[1]fixture.CamWorldBacking;w:=fixture.cam_world(b[..],1);scratch:[1]scene.QueryScratch;view:=scene.query_select_world(w,filters.QueryFilter.{include=0},scratch[..]);
+ base:=Shot.{eye=v3(1,2,3),at=v3(4,5,6)};head:=v3(1,2,0);
+ for which:0..<9 {s:=base;offset:=v3(0,0,0);
+  if which==0 {s.eye.x=1000000;}if which==1 {s.at.z=0.0/0.0;}
+  if which==2 {offset.x=0.501;}if which==3 {offset.y= -0.501;}if which==4 {offset.z=0.501;}
+  if which==5 {offset.x=0.0/0.0;}if which==6 {offset.y=0.0/0.0;}if which==7 {offset.z=0.0/0.0;}
+  if which==8 {view.status=queries.QueryStatus.capacity;}
+  r:=cam_shake_selected(s,head,offset,view,0.2);#assert !r.eye.safe;
+ }
+ view.status=queries.QueryStatus.ok;
+ for sign:[2]f32.[-1,1] {offset:=v3(0.5*sign,0.5*sign,0.5*sign);r:=cam_shake_selected(base,head,offset,view,0.2);
+  #assert r.eye.safe && r.shot.eye.x==base.eye.x+offset.x && r.shot.eye.y==base.eye.y+offset.y && r.shot.eye.z==base.eye.z+offset.z && r.shot.at.x==base.at.x+offset.x && r.shot.at.y==base.at.y+offset.y && r.shot.at.z==base.at.z+offset.z;
+ }
+ b[0].box=[6]f32.[0,-1,-1,2,3,1];view=scene.query_select_world(w,filters.QueryFilter.{},scratch[..]);r:=cam_shake_selected(base,head,v3(0,0,0),view,0.2);
+ #assert !r.eye.safe && r.eye.blocked && r.shot.eye.x==base.eye.x && r.shot.eye.y==base.eye.y && r.shot.eye.z==base.eye.z && r.shot.at.x==base.at.x && r.shot.at.y==base.at.y && r.shot.at.z==base.at.z;
+}

@@ -1,0 +1,10 @@
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "query-trial.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ out:[1]CameraTrial;
+ for fps:[4]int.[30,60,144,0] {
+  if camera_trial_run(out[..],fps)!=64 {return 1;}
+  for row:0..<64 {print("% %",fps,row);for word:0..<28 {print(" %",camera_trial_word(out[..],row,word));}print("\n");}
+ }return 0;
+}

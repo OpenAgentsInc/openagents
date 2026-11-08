@@ -1,0 +1,46 @@
+// Checked camera-body clearance over an owner-selected semantic world (#13026).
+// A camera ray and its cosmetic displacement use the same sphere sweep. The
+// admitted view decides membership and ignored identities, never render colour.
+#module "aethyr.cam.eye";
+#authority;
+#load "../query-scene.coax" as scene;
+#load "../query-filter.coax" as filters;
+#load "../query.coax" as queries;
+#load "../space.coax";
+
+CamEye :: struct {
+ eye: WorldPoint;
+ room: f32;
+ safe: bool;
+ blocked: bool;
+ status: queries.QueryStatus;
+ collider: filters.ColliderRef;
+}
+#load "tests/eye.coax";
+
+// One bounded sweep, at most 200 metres and a 2-metre eye radius. Safe means
+// the complete head-to-eye segment cleared that radius. A start inside a body
+// returns blocked with safe=false: the caller must cut/hold its last qualified
+// view, not label the embedded head a safe fallback. Query errors likewise
+// return no qualified view. Sweep with an extra one-millimetre radius so the
+// margin is measured from geometry, including rounded corners. A head inside
+// that skin is conservatively unqualified. Borrowed input remains unchanged.
+cam_eye_clip :: (w: scene.SelectedWorld, head: WorldPoint, wanted: WorldPoint, radius: f32) -> CamEye #effects(all) {
+ out := CamEye.{eye=head}; out.status=scene.query_selected_status(w);
+ if out.status!=queries.QueryStatus.ok {return out;}
+ if !queries.query_point_finite(head) || !queries.query_point_finite(wanted) || !(radius>0 && radius<=2) {
+  out.status=queries.QueryStatus.invalid;return out;
+ }
+ by:=world_sub(wanted,head);distance:=sqrt(world_dot(by,by));
+ if distance>200 {out.status=queries.QueryStatus.invalid;return out;}
+ hit:=scene.semantic_sweep(w,head,radius+0.001,by);
+ out.status=hit.geometry.status;if out.status!=queries.QueryStatus.ok {return out;}
+ out.blocked=hit.geometry.hit;
+ if !out.blocked {out.eye=wanted;out.room=distance;out.safe=true;return out;}
+ out.collider=hit.collider.ref;
+ if hit.geometry.t<=0 {return out;}
+ room:=distance*hit.geometry.t;
+ out.room=room;out.safe=true;
+ // A positive hit necessarily has a nonzero displacement.
+ out.eye=world_add(head,world_scale(by,room/distance));return out;
+}
