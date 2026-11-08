@@ -26,6 +26,7 @@ E2Cast :: struct {
   later: [E2K_LATER] E2kLater;
   me: [1] E2kAct; them: [E2N_ENTS] E2kAct;     // yours, and each other's by its slot in the room's list
   pressed: int; others: int; unseen: int; seed: u64 = 0x2545f4914f6cdd1d;
+  refused_seen: int;                       // the room's refusals of your casts this page has reconciled
 }
 
 // Your class's bar: once it changes (the druid until Character Create says).
@@ -92,6 +93,9 @@ e2k_press :: (s: [] E2, i: int) -> bool {
 e2k_step :: (s: [] E2) {
   k := s[0].casts[..]; n := s[0].net[..];
   now := s[0].clock;
+  // the room turned your last cast down before it spent anything (eg_e2_cast is all or nothing): the
+  // cooldown this page predicted for it is lifted, so the bar is yours again at once
+  if n[0].cast_refused != k[0].refused_seen { k[0].refused_seen = n[0].cast_refused; k[0].cool_at = -100; }
   while true {
     e := e2n_cast_due(n, n[0].rt);
     if !e.live { break; }

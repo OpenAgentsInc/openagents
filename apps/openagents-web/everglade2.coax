@@ -1335,6 +1335,19 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2k_hud(s[..],out[..],0)==plain;
 }
 
+#test "Everglade II lifts the cooldown it predicted for a cast the room refused; an older cast's refusal changes nothing (#13046)" #steps 1000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD); n:=s[0].net[..]; n[0].mono=100;
+  #assert e2k_press(s[..],0); first:=n[0].cast_seq; sent:=n[0].cast_sent;
+  #assert !e2k_press(s[..],0) && n[0].cast_sent==sent;   // predicted: cooling down
+  message:[64] u8; count:=wire_put(message[..],0,"r "); count=wire_int(message[..],count,first-1); count=wire_put(message[..],count," no");
+  e2n_record(n,cast(string)message[0..<count]); e2k_step(s[..]); #assert !e2k_press(s[..],0);   // not your last cast's number
+  count=wire_put(message[..],0,"r "); count=wire_int(message[..],count,first); count=wire_put(message[..],count," range");
+  e2n_record(n,cast(string)message[0..<count]); e2k_step(s[..]);
+  #assert e2k_press(s[..],0) && n[0].cast_sent==sent+1 && n[0].cast_seq!=first;
+  // the new cast cools down again, and reconciling once more changes nothing
+  e2k_step(s[..]); #assert !e2k_press(s[..],0) && s[0].casts[0].refused_seen==n[0].cast_refused;
+}
+
 #test "Everglade II health label uses its server row including temporary HP and snapshot removal" #steps 1000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
   n:=s[0].net[..]; label:[80] u8;
