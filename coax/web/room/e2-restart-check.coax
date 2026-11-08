@@ -27,7 +27,11 @@
 #load "../../lib/sys/fs.coax";
 
 RX_MAX :: 15;
+// Independent wire fixture: XK_SLOT0 128 + Druid class 3 * XK_PER 24.
+// Actual server acceptance, not this numeric fixture, qualifies the request.
+RX_DRUID_CAST :: 200;
 RxBot :: struct {
+  cast_sent:int; cast_mine:int; cast_others:int; cast_refused:int; last_c_seq:int;
   conn: [1] RelayConn; mirror: [1] WireMirror; open: bool;
   key: [96] u8; key_n: int;
   seat: int = -1; seq: int; next_i: int; theta: int;
@@ -98,7 +102,7 @@ rx_said :: (b: [] RxBot) {
   m: [128] u8;
   ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
   if b[0].claim { ok = relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].kx, z = b[0].kz, yaw = b[0].own.yaw})]) && ok; }
-  ok = relay_conn_send(b[0].conn[..], "H 5 ranger.0.0.0 druid 0 -") && ok;
+  ok = relay_conn_send(b[0].conn[..], "H 5 ranger.0.0.0 srd-druid 0 -") && ok;
 }
 rx_pump :: (b: [] RxBot, now: int, walk: bool) {
   if !b[0].open { return; }
@@ -114,7 +118,10 @@ rx_pump :: (b: [] RxBot, now: int, walk: bool) {
   while code == RC_TEXT {
     t := cast(string) b[0].conn[0].text[0..<b[0].conn[0].text_n];
     if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); rx_said(b); }
+    rx_cast_record(b,t);
     if rs_starts(t, "D ") {
+      r:[1] WireRd; r[0]=wire_rd(t,1); _:=wire_read_d(t,r[..]);
+      for q:0..<wire_entries(t,r[0].at) { rx_cast_entry(b,wire_entry(t,r[0].at,q)); }
       d := wire_mirror_frame(b[0].mirror[..], t);
       if d.tick >= 0 && b[0].seat >= 0 {
         o := wire_mirror_of(b[0].mirror[..], b[0].seat);
@@ -219,13 +226,11 @@ rx_interest :: (bots: [] RxBot, n: int, seconds: int, casts: bool) -> bool {
     now := rs_now();
     for i: 0..<n {
       rx_steer(bots[i..<i + 1]); rx_pump(bots[i..<i + 1], now, true);
-      // a near player's cast every 5 s (Thunderbolt 5 m ahead, as load.coax's), for a page drawing them
+      // A real level-one Druid kit spell; acceptance is part of the check.
       if casts && bots[i].hi > -100 && bots[i].open && bots[i].seat >= 0 && now >= bots[i].next_c {
-        m: [96] u8; bots[i].seq += 1;
-        k := rs_put(m[..], 0, "C "); k = rs_int(m[..], k, bots[i].seq); k = rs_put(m[..], k, " 1 ");
-        k = rs_int(m[..], k, cast(int) (bots[i].own.x * 100)); k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) (bots[i].own.z * 100) - 500); k = rs_put(m[..], k, " -1");
-        _ := relay_conn_send(bots[i].conn[..], cast(string) m[0..<k]);
-        bots[i].next_c = now + 5000;
+        m:[96] u8; count:=rx_cast_wire(bots[i..<i+1],m[..]);
+        _:=relay_conn_send(bots[i].conn[..],cast(string)m[0..<count]);
+        bots[i].next_c=now+5000;
       }
     }
     if now >= next {
@@ -252,7 +257,12 @@ rx_interest :: (bots: [] RxBot, n: int, seconds: int, casts: bool) -> bool {
   }
   print("interest over % s, % players: near pairs held %, missed %; far pairs culled %, held %\n", seconds, n, near_ok, near_miss, far_ok, far_held);
   print("  % came into a view (the farthest at % m), % left one (the nearest at % m); each held % to % others\n", arrivals, cast(int) in_far, leaves, ifx leaves > 0 then cast(int) out_near else -1, least_near, most_near);
-  return far_held == 0 && far_ok > 0 && near_ok > 0 && near_miss * 100 < near_ok + 1 && arrivals > 0 && leaves > 0;
+  cast_ok:=true; sent:=0; accepted:=0; refused:=0; peer:=0;
+  for i:0..<n { sent+=bots[i].cast_sent; accepted+=bots[i].cast_mine; refused+=bots[i].cast_refused; peer+=bots[i].cast_others;
+    if casts && bots[i].hi > -100 && bots[i].cast_mine==0 { cast_ok=false; }
+  }
+  if casts { print("  casts sent %, accepted %, refused %, peer events %\n",sent,accepted,refused,peer); }
+  return (!casts || (cast_ok && refused==0 && peer>0)) && far_held == 0 && far_ok > 0 && near_ok > 0 && near_miss * 100 < near_ok + 1 && arrivals > 0 && leaves > 0;
 }
 // --interest's stretches: the first `near` between z -60 and -5, the rest between -260 and -140.
 rx_bands :: (bots: [] RxBot, n: int, near: int) {
@@ -336,4 +346,29 @@ tool_main :: () -> int #export_c #effects(all) {
   gone := fs_remove(dir);
   print("%\n", ifx ok then "holds" else "fails");
   return ifx ok then 0 else 1;
+}
+
+#test "the E2 socket harness sends a real class-kit spell and observes acceptance or refusal" {
+  b:[1] RxBot; b[0].seat=2; b[0].own=WireS.{x=1,z=-10}; out:[128] u8;
+  count:=rx_cast_wire(b[..],out[..]); r:[1] WireRd; r[0]=wire_rd(cast(string)out[0..<count],1);
+  c:=wire_read_cast(cast(string)out[0..<count],r[..]);
+  #assert r[0].ok && c.slot==RX_DRUID_CAST && b[0].cast_sent==1;
+  rx_cast_record(b[..],"r 1 no"); #assert b[0].cast_refused==1;
+  rx_cast_entry(b[..],"e cast 2 200 1 0 -15 7"); #assert b[0].cast_mine==1;
+  rx_cast_entry(b[..],"e cast 3 200 1 0 -15 7"); #assert b[0].cast_others==1;
+}
+
+rx_cast_wire :: (b:[] RxBot,out:[] u8)->int {
+  b[0].seq+=1; b[0].last_c_seq=b[0].seq; b[0].cast_sent+=1;
+  return wire_put_cast(out,0,WireCast.{seq=b[0].last_c_seq,slot=RX_DRUID_CAST,ax=b[0].own.x,az=b[0].own.z-5,tgt=-1});
+}
+rx_cast_record :: (b:[] RxBot,t:string) {
+  if !rs_starts(t,"r ") { return; }
+  if b[0].last_c_seq>0 && rs_num(rs_field(t,1))==b[0].last_c_seq { b[0].cast_refused+=1; }
+}
+rx_cast_entry :: (b:[] RxBot,t:string) {
+  if !wire_is(t,"e cast") { return; }
+  r:[1] WireRd; r[0]=wire_rd(t,6); e:=wire_read_cast_e(t,r[..]);
+  if !r[0].ok || e.slot!=RX_DRUID_CAST { return; }
+  if e.ss==b[0].seat { b[0].cast_mine+=1; } else { b[0].cast_others+=1; }
 }

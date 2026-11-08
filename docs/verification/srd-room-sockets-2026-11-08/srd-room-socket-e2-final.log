@@ -1,0 +1,5 @@
+e2-restart-check: 4 players in pair-e2-srd-verified on 127.0.0.1:18983 for 90 s, 2 near (casting), the rest far up the path
+interest over 90 s, 4 players: near pairs held 2108, missed 0; far pairs culled 1376, held 0
+  12 came into a view (the farthest at 0 m), 8 left one (the nearest at 131 m); each held 1 to 3 others
+  casts sent 36, accepted 36, refused 0, peer events 72
+holds

@@ -1,0 +1,3 @@
+e313f21cff9d8298bd6c3d3320dd0e03b256e70915ce1986d8c44932c92c3e93  /tmp/srd-room-traversal-server
+3dd973d2d414436433124d8d9a794d87f44cd4cafede983a3d2da4b431a6b0fe  coax/web/room/e2-restart-check.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax

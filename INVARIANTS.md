@@ -6908,3 +6908,14 @@ replaces the owner and retires old effects. Leave neither heals nor revives,
 and existing HP rejoin persistence remains. The Conjure Animals and horde traversal baseline
 failures are fixed; all 325 room-library checks pass. Evidence and scope:
 `docs/verification/srd-room-leave-2026-11-08/README.md`.
+
+## Real local sockets retain health and acknowledge E2 class casts
+
+The checked native host passes actual WebSocket HP rejoin fixtures for both
+hurt and zero-HP players, with zero malformed rows and no reload heal. E2's
+interest harness now uses the real Druid class kit and observes acceptance,
+refusal and peer events rather than sending an unchecked legacy slot. Its
+four-client 90-second run accepts all 36 casts and retains/culls every sampled
+near/far pair correctly. These are bounded local socket receipts, not browser,
+restart/drain, every-class or production-scale qualification. Evidence:
+`docs/verification/srd-room-sockets-2026-11-08/README.md`.

@@ -1,0 +1,38 @@
+coax/web/room/e2-restart-check.coax:343:10: error[E0315]: procedure 'rx_cast_wire' is not declared
+    count:=rx_cast_wire(b[..],out[..]); r:[1] WireRd; r[0]=wire_rd(cast(string)out[0..<count],1);
+           ^
+coax/web/room/e2-restart-check.coax:345:30: error[E0315]: procedure 'xk_slot' is not declared
+    #assert r[0].ok && c.slot==xk_slot(FB_CL_DRUID,0) && b[0].cast_sent==1;
+                               ^
+coax/web/room/e2-restart-check.coax:345:38: error[E0306]: 'FB_CL_DRUID' is not declared
+    #assert r[0].ok && c.slot==xk_slot(FB_CL_DRUID,0) && b[0].cast_sent==1;
+                                       ^
+coax/web/room/e2-restart-check.coax:345:60: error[E0351]: struct 'RxBot' has no field 'cast_sent'
+    #assert r[0].ok && c.slot==xk_slot(FB_CL_DRUID,0) && b[0].cast_sent==1;
+                                                             ^
+  fix: its fields are: conn mirror open key key_n seat seq next_i theta own have kx kz claim down_at retry_at back back_ms err_mm first_seen lo hi dir next_c
+coax/web/room/e2-restart-check.coax:346:3: error[E0315]: procedure 'rx_cast_record' is not declared
+    rx_cast_record(b[..],"r 1 no"); #assert b[0].cast_refused==1;
+    ^
+coax/web/room/e2-restart-check.coax:346:47: error[E0351]: struct 'RxBot' has no field 'cast_refused'
+    rx_cast_record(b[..],"r 1 no"); #assert b[0].cast_refused==1;
+                                                ^
+  fix: its fields are: conn mirror open key key_n seat seq next_i theta own have kx kz claim down_at retry_at back back_ms err_mm first_seen lo hi dir next_c
+coax/web/room/e2-restart-check.coax:347:3: error[E0315]: procedure 'rx_cast_entry' is not declared
+    rx_cast_entry(b[..],"e cast 2 200 1 0 -15 7"); #assert b[0].cast_mine==1;
+    ^
+coax/web/room/e2-restart-check.coax:347:62: error[E0351]: struct 'RxBot' has no field 'cast_mine'
+    rx_cast_entry(b[..],"e cast 2 200 1 0 -15 7"); #assert b[0].cast_mine==1;
+                                                               ^
+  fix: its fields are: conn mirror open key key_n seat seq next_i theta own have kx kz claim down_at retry_at back back_ms err_mm first_seen lo hi dir next_c
+coax/web/room/e2-restart-check.coax:348:3: error[E0315]: procedure 'rx_cast_entry' is not declared
+    rx_cast_entry(b[..],"e cast 3 200 1 0 -15 7"); #assert b[0].cast_others==1;
+    ^
+coax/web/room/e2-restart-check.coax:348:62: error[E0351]: struct 'RxBot' has no field 'cast_others'
+    rx_cast_entry(b[..],"e cast 3 200 1 0 -15 7"); #assert b[0].cast_others==1;
+                                                               ^
+  fix: its fields are: conn mirror open key key_n seat seq next_i theta own have kx kz claim down_at retry_at back back_ms err_mm first_seen lo hi dir next_c
+10 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh
