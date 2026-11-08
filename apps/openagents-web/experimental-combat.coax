@@ -45,6 +45,7 @@
 #load "../../aethyr/action/sensor.coax" as sense;
 #load "../../aethyr/query.coax" as aq;
 #load "../../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
+#load "../../aethyr/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
 
 XC_FOES :: 6;
 XC_SLOTS :: 24;
@@ -93,6 +94,11 @@ XcCombat :: struct {
   swing_struck: bool; swing_next: int = 1; ledger: sense.HitLedger;
   contacts: int; fallbacks: int; exhausted: int;   // accepted blade contacts; ticks sensed on the fallback arc; ticks refused as too much work
   blade_step: f32;                  // the largest blade-end move in one tick so far, metres (lab_creator_probe 933, mm)
+  lock: attn.AttnState;             // your target, held through attention (xc_lock_step): target is its answer
+  stops: react.Stops;               // hit stops in force: a struck monster pauses, and a monster that strikes you
+  present: react.PresentQueue;      // this frame's numbers, through react_present's caps
+  seen_hits: int;                   // the monsters' landed blows already given their hit stop
+  shown: int; suppressed: int;      // numbers shown and suppressed (lab_creator_probe 934, 935)
 }
 XC_TICK :: 64.0;           // aethyr/loop.coax: ticks a second
 XC_BLADE_R :: 0.12;        // m: a blade's sensor radius
@@ -286,7 +292,16 @@ xc_square :: (d: f32) -> int {
   q := cast(int) floor(d / f32(XC_SQ) + 0.5);
   return ifx q <= -XC_MID || q >= XC_MID then XC_AWAY else XC_MID + q;
 }
-xc_float :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) {
+xc_float :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) { xc_float_from(x, 0, wx, wy, wz, t0, text, heal); }
+// A number rising off whoever took it, from source (0 you, 1 to 6 a monster): presentation of an accepted
+// result, queued through react_present (at most XC_FLOATS a source a frame, the rest suppressed and
+// counted). Nothing here changes what the ruleset applied.
+xc_float_from :: (x: [] XcCombat, source: int, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) {
+  x[0].present.per_source = XC_FLOATS;
+  before := x[0].present.suppressed;
+  x[0].present = react.react_present(x[0].present, react.PresentEvent.{kind = react.PresentKind.number, source = source, at = asp.world_point(wx, wy, wz), priority = ifx heal then 2 else 1});
+  if x[0].present.suppressed > before { x[0].suppressed += 1; return; }
+  x[0].shown += 1;
   q := 0; oldest := 1e9f32;
   for i: 0..<XC_FLOATS { if !x[0].fl[i].on { q = i; break; } if x[0].fl[i].t0 < oldest { oldest = x[0].fl[i].t0; q = i; } }
   f := x[0].fl[q..<q + 1];
@@ -351,6 +366,62 @@ xc_attend :: (s: [] Lab, fx: f32, fz: f32, reach: f32) -> int {
   q := attn.AttnQuery.{origin = asp.world_point(cr.player_x, y, cr.player_z), forward = asp.world_point(fx, 0, fz), need = attn.ATTN_ACTION, acquire = reach, acquire_cos = 0.9659};
   c: aq.Colliders; c.ground = -1000;   // the meadow fight has no walls between you and a monster
   return attn.attn_step(attn.AttnState.{}, q, ts[..], c, 0, false, false).target;
+}
+// Your target: the monster you struck at, held by Aethyr's attention (lock-on capability). Nothing is
+// acquired for you (acquire 0): it is set only by a strike, kept within 24 m all round you for at least
+// the hold, kept through a second of being out of reach (the grace), and released at once when it falls.
+XC_LOCK_HOLD :: 16; XC_LOCK_GRACE :: 64;
+xc_lock_query :: (s: [] Lab) -> attn.AttnQuery {
+  cr := s[0].creator[0]; y := xmeadow.exp_height(cr.player_x, cr.player_z) + 1.2;
+  return attn.AttnQuery.{origin = asp.world_point(cr.player_x, y, cr.player_z), forward = asp.world_point(sin(cr.player_face), 0, cos(cr.player_face)),
+    need = attn.ATTN_LOCK, acquire = 0, retain = 24, acquire_cos = 1, retain_cos = -1, rise = 6, hold = XC_LOCK_HOLD, grace = XC_LOCK_GRACE};
+}
+xc_lock_targets :: (s: [] Lab, out: [] attn.AttnTarget) {
+  cr := s[0].creator[0]; h := cr.hostiles[0];
+  for i: 0..<XC_FOES {
+    e := h.enemies[i];
+    out[i] = attn.AttnTarget.{id = i, gen = 1, caps = attn.ATTN_LOCK | attn.ATTN_ACTION, at = asp.world_point(e.x, xmeadow.exp_height(e.x, e.z) + 1.2, e.z), radius = 0.35, valid = !e.dead};
+  }
+}
+// Lock onto monster foe now (a strike at it).
+xc_lock_on :: (s: [] Lab, foe: int) {
+  x := s[0].xc[..]; now := xc_tick(s[0].creator[0].clock);
+  if foe < 0 || foe >= XC_FOES { return; }
+  if x[0].lock.target != foe { x[0].lock = attn.AttnState.{target = foe, gen = 1, since = now, seen = now, reason = attn.AttnReason.acquired}; }
+  else { x[0].lock.seen = now; }
+  x[0].target = foe;
+}
+// One step of the held target at the creator clock's tick.
+xc_lock_step :: (s: [] Lab) {
+  x := s[0].xc[..];
+  if x[0].lock.target < 0 { x[0].target = -1; return; }
+  ts: [XC_FOES] attn.AttnTarget; xc_lock_targets(s, ts[..]);
+  c: aq.Colliders; c.ground = -1000;   // the meadow fight has no walls between you and a monster
+  x[0].lock = attn.attn_step(x[0].lock, xc_lock_query(s), ts[..], c, xc_tick(s[0].creator[0].clock), false, false);
+  x[0].target = x[0].lock.target;
+}
+// Hit stops (aethyr/action/react.coax): a blow that lands pauses the struck monster for its profile's
+// ticks, and a monster whose blow lands on you pauses itself. Only those actors are held; the world, the
+// other monsters and you go on. Actor 0 is you, 1 to 6 the monsters.
+XC_STOP_STRUCK :: 5; XC_STOP_STRIKER :: 4;
+xc_stop_hit :: (s: [] Lab, foe: int, kinds: u32) {
+  x := s[0].xc[..]; cr := s[0].creator[0]; e := cr.hostiles[0].enemies[foe];
+  dx := cr.player_x - e.x; dz := cr.player_z - e.z; l := sqrt(dx * dx + dz * dz);
+  toward := ifx l > 0.0001 then asp.world_point(dx / l, 0, dz / l) else asp.world_point(0, 0, 1);
+  a := react.AttackAttrs.{kinds = kinds, stop = react.HitStop.{ticks = XC_STOP_STRUCK, scope = react.StopScope.target}};
+  r := react.react_decide(a, react.TargetResponse.{}, asp.world_point(e.face_x, 0, e.face_z), toward, 1);
+  x[0].stops = react.react_stop_add(x[0].stops, r, 0, 1 + foe, xc_tick(cr.clock));
+}
+xc_stops_step :: (s: [] Lab) {
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; now := xc_tick(cr[0].clock);
+  if h[0].hits > x[0].seen_hits && h[0].last >= 0 && h[0].last < XC_FOES {
+    claw := react.AttackAttrs.{kinds = react.DMG_SLASH, stop = react.HitStop.{ticks = XC_STOP_STRIKER, scope = react.StopScope.source}};
+    r := react.react_decide(claw, react.TargetResponse.{}, asp.world_point(sin(cr[0].player_face), 0, cos(cr[0].player_face)), asp.world_point(0, 0, 1), 1);
+    x[0].stops = react.react_stop_add(x[0].stops, r, 1 + h[0].last, 0, now);
+  }
+  x[0].seen_hits = h[0].hits;
+  x[0].stops = react.react_stop_expire(x[0].stops, now);
+  for i: 0..<XC_FOES { h[0].enemies[i].stopped = !h[0].enemies[i].dead && react.react_held(x[0].stops, 1 + i, now); }
 }
 // Ability a's aim from where you stand and face: its kind, its reach, your forward and its monster.
 xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
@@ -542,7 +613,7 @@ xc_sense :: (s: [] Lab, t: int) {
   origin := asp.world_point(cr[0].player_x, y + 1.2, cr[0].player_z);
   open: aq.Colliders; open.ground_enabled = false;
   r := sense.sensor_resolve(x[0].swing_def, x[0].swing, t, 1, 1, origin, sw, f32(XC_BLADE_R), hurt[..], open, x[0].ledger);
-  if r.status == sense.SenseStatus.exhausted { x[0].exhausted += 1; return; }
+  if r.status == sense.SensorStatus.exhausted { x[0].exhausted += 1; return; }
   x[0].ledger = r.ledger;
   for c: 0..<r.n {
     if r.contacts[c].status != sense.ContactStatus.hit || x[0].swing_struck { continue; }
@@ -750,7 +821,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     x[0].dash_face = cr[0].player_face; x[0].dash_until = now + 0.9;
   }
   x[0].cool_at = now; x[0].used = k; x[0].casts += 1;
-  if foe >= 0 { x[0].target = foe; }   // the one struck at: its Hit Points over the bar
+  if foe >= 0 { xc_lock_on(s, foe); }   // the one struck at: your target, its Hit Points over the bar
   if gain > 0 && h[0].hp < XC_PLAYER_MAX {
     h[0].hp = ifx h[0].hp + gain > XC_PLAYER_MAX then XC_PLAYER_MAX else h[0].hp + gain;
     xc_float_int(x, px, cr[0].player_y + 2.1, pz, now, gain, true);
@@ -780,13 +851,14 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     }
     lost := before[i] - rs_max(c.hp, 0);
     if lost > 0 { struck = true; x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
+      if !c.dead && c.hp > 0 { xc_stop_hit(s, i, ifx swung then react.DMG_SLASH else cast(u32) 0); }
       xc_cue(s, snd.hit, 0.55, e[0].x, e[0].z, snd.rate);
       if !c.dead && c.hp > 0 { xc_voice(s, i, false); } }
     e[0].held = !c.dead && (c.restrained_by >= 0 || !rs_can_act(c));
     if !e[0].dead && (c.dead || c.hp <= 0) {
       e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
       x[0].kills += 1; xc_voice(s, i, true);
-      if x[0].target == i { x[0].target = -1; }
+      if x[0].target == i { x[0].target = -1; x[0].lock = attn.AttnState.{}; }
       fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
     }
   }
@@ -901,7 +973,10 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   x[0].w = w; x[0].h = h; x[0].k = k; x[0].seen = true;
   now := cr[0].clock;
   cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
+  x[0].present = react.react_present_drain(x[0].present);
   xc_strike_due(s);
+  xc_lock_step(s);
+  xc_stops_step(s);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   // a restrained monster frees itself when the engine's area ends
   for i: 0..<XC_FOES { c := x[0].b[0].c[1 + i]; if hs[0].enemies[i].held && c.restrained_by < 0 && rs_can_act(c) { hs[0].enemies[i].held = false; } }
@@ -1119,6 +1194,10 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   if f == 919 { return x[0].fallbacks; }
   if f == 932 { return x[0].exhausted; }
   if f == 933 { return cast(int) (x[0].blade_step * 1000); }
+  if f == 934 { return x[0].shown; }
+  if f == 935 { return x[0].suppressed; }
+  if f == 936 { return x[0].stops.n; }
+  if f >= 990 && f < 996 { return ifx hs[0].enemies[f - 990].stopped then 1 else 0; }
   if f == 907 { return x[0].last_dmg; }
   if f == 908 { return hs[0].hp; }
   if f >= 910 && f < 916 { return ifx x[0].started then x[0].b[0].c[1 + f - 910].hp else -1; }
@@ -1481,4 +1560,57 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert s[0].xc[0].wave_until > 4 && s[0].xc[0].wave.x == 0 && s[0].xc[0].wave.z == 0;
   #assert abs(s[0].xc[0].wave.fx - sin(0.78539816f32)) < 0.001;
   s[0].creator[0].player_x = 10; #assert s[0].xc[0].wave.x == 0;
+}
+#test "experimental combat: your target is held by attention, never picked for you, kept through the grace and dropped when it falls" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6; h[0].enemies[1].x = 0.5; h[0].enemies[1].z = 3;
+  // a monster near and ahead is not your target until you strike at it
+  s[0].creator[0].clock = 2; xc_lock_step(s[..]); #assert s[0].xc[0].target == -1;
+  xc_lock_on(s[..], 0); xc_lock_step(s[..]);
+  #assert s[0].xc[0].target == 0 && s[0].xc[0].lock.reason == attn.AttnReason.kept && s[0].xc[0].lock.runner == -1;
+  // behind you and 20 m off: still yours
+  h[0].enemies[0].z = -20; s[0].creator[0].clock += 0.5; xc_lock_step(s[..]); #assert s[0].xc[0].target == 0;
+  // past 24 m: held through the second's grace, then let go, and the near one is not taken instead
+  h[0].enemies[0].z = -30; s[0].creator[0].clock += 0.5; xc_lock_step(s[..]);
+  #assert s[0].xc[0].target == 0 && s[0].xc[0].lock.reason == attn.AttnReason.out_of_range;
+  s[0].creator[0].clock += 0.3; xc_lock_step(s[..]); #assert s[0].xc[0].target == 0;    // 51 ticks lost: within the grace
+  s[0].creator[0].clock += 0.2; xc_lock_step(s[..]); #assert s[0].xc[0].target == -1;   // 64: let go
+  // back in reach after the release: nothing is acquired for you
+  h[0].enemies[0].z = 4; s[0].creator[0].clock += 0.1; xc_lock_step(s[..]); #assert s[0].xc[0].target == -1;
+  // a fallen target is dropped at once, with no grace
+  xc_lock_on(s[..], 1); xc_lock_step(s[..]); #assert s[0].xc[0].target == 1;
+  h[0].enemies[1].dead = true; s[0].creator[0].clock += 1.0 / 64; xc_lock_step(s[..]);
+  #assert s[0].xc[0].target == -1 && s[0].xc[0].lock.reason == attn.AttnReason.invalid;
+}
+#test "experimental combat: a landed blow holds the struck monster for its hit stop, a monster's landed blow holds it, and nothing else pauses" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2;
+  hp := xc_hp_sum(s[..]); tries := 0; stopped := false;
+  while xc_hp_sum(s[..]) == hp && tries < 40 {
+    s[0].creator[0].clock += 1.1; #assert xc_press(s[..], 1);
+    for f: 0..<60 { s[0].creator[0].clock += 1.0 / 60; xc_strike_due(s[..]); xc_stops_step(s[..]); if h[0].enemies[0].stopped { stopped = true; break; } }
+    tries += 1;
+  }
+  // struck and alive: it is held, for XC_STOP_STRUCK ticks, and the other monsters are not
+  if s[0].xc[0].b[0].c[1].hp > 0 {
+    #assert stopped && s[0].xc[0].stops.n == 1 && s[0].xc[0].target == 0;
+    for i: 1..<XC_FOES { #assert !h[0].enemies[i].stopped; }
+    s[0].creator[0].clock += f32(XC_STOP_STRUCK + 1) / 64; xc_stops_step(s[..]);
+    #assert !h[0].enemies[0].stopped && s[0].xc[0].stops.n == 0;
+  }
+  // a monster's blow that lands on you holds that monster (the striker) for XC_STOP_STRIKER ticks
+  h[0].last = 3; h[0].hits += 1; xc_stops_step(s[..]);
+  #assert h[0].enemies[3].stopped && !h[0].enemies[0].stopped;
+  s[0].creator[0].clock += f32(XC_STOP_STRIKER) / 64; xc_stops_step(s[..]); #assert !h[0].enemies[3].stopped;
+  // the same landed blow is given its stop once
+  xc_stops_step(s[..]); #assert !h[0].enemies[3].stopped && s[0].xc[0].stops.n == 0;
+}
+#test "experimental combat: numbers go through the presentation queue, capped a source a frame and counted" {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0); x := s[0].xc[..];
+  for i: 0..<10 { xc_float_int(x, f32(i), 1.9, 0, 1, 3 + i, false); }
+  #assert x[0].shown == XC_FLOATS && x[0].suppressed == 2;
+  // another source has its own share; the next frame starts empty
+  xc_float_from(x, 4, 0, 1.9, 0, 1, "MISS", false); #assert x[0].shown == XC_FLOATS + 1;
+  x[0].present = react.react_present_drain(x[0].present);
+  xc_float_int(x, 0, 1.9, 0, 2, 7, false); #assert x[0].shown == XC_FLOATS + 2 && x[0].suppressed == 2;
 }

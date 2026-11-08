@@ -5,9 +5,10 @@
 #load "rules/srd5-combat.coax";
 
 // dead: felled (apps/openagents-web/experimental-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move
-Enemy :: struct {x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;}
+// stopped: a scoped hit stop holds this one for the frame (its owner's react_held, aethyr/action/react.coax); the rest of the world goes on
+Enemy :: struct {x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;stopped:bool;}
 DamagePop :: struct {amount:int;x:f32;y:f32;z:f32;born:f32;}
-Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at:f32;pops:[8]DamagePop;pop_next:int;dice:[1]SrdDice;}
+Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at:f32;pops:[8]DamagePop;pop_next:int;dice:[1]SrdDice;last:int= -1;}   // last: the enemy whose blow landed last
 #test "six enemies pursue and inflict real melee damage" #steps 200000000 {
  s:[1]Hostiles;hostile_start(s[..]);#assert s[0].ready && s[0].hp==44;
  before:=abs(s[0].enemies[0].x)+abs(s[0].enemies[0].z);
@@ -26,6 +27,12 @@ Hostiles :: struct {ready:bool;enemies:[6]Enemy;hp:int;hits:int;time:f32;died_at
  s:[1]Hostiles;hostile_start(s[..]);s[0].enemies[0].x=49;s[0].enemies[0].z=46;
  for i:0..<120 {hostile_tick(s[..],49,0,43,0.016);}
  #assert s[0].enemies[0].z>45;
+}
+#test "a stopped enemy holds its place and its swing while the others go on" #steps 200000000 {
+ s:[1]Hostiles;hostile_start(s[..]);s[0].enemies[0].x=0;s[0].enemies[0].z=-1;s[0].enemies[0].swing=0.1;s[0].enemies[1].x=4;s[0].enemies[1].z=0;
+ s[0].enemies[0].stopped=true;a:=s[0].enemies[0];b:=s[0].enemies[1];hostile_tick(s[..],0,0,0,0.05);
+ #assert s[0].enemies[0].x==a.x && s[0].enemies[0].z==a.z && s[0].enemies[0].swing==a.swing && s[0].enemies[1].x!=b.x;
+ s[0].enemies[0].stopped=false;hostile_tick(s[..],0,0,0,0.05);#assert s[0].enemies[0].swing>a.swing;
 }
 #test "damage is recorded over the player and death sends attackers home" #steps 200000000 {
  s:[1]Hostiles;hostile_start(s[..]);hostile_damage(s[..],5,3,1,-2);#assert s[0].hp==39 && s[0].pops[0].amount==5 && s[0].pops[0].x==3;
@@ -80,9 +87,10 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
  hostile_start(s);if dt<=0 || dt>0.25 {return;}s[0].time+=dt;
  if s[0].hp<=0 {for i:0..<6 {e:=s[0].enemies[i..<i+1];e[0].swing= -1;e[0].moving=false;dx:=e[0].home_x-e[0].x;dz:=e[0].home_z-e[0].z;gap:=sqrt(dx*dx+dz*dz);if gap<0.1 {continue;}e[0].face_x=dx/gap;e[0].face_z=dz/gap;step:=ifx gap<dt*1.5 then gap else dt*1.5;nx:=e[0].x+dx/gap*step;nz:=e[0].z+dz/gap*step;if !hostile_blocked(nx,e[0].z) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked(e[0].x,nz) {e[0].z=nz;e[0].moving=true;}}return;}
  for i:0..<6 {if s[0].hp<=0 {break;}e:=s[0].enemies[i..<i+1];if e[0].dead {e[0].moving=false;e[0].swing= -1;continue;}dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;
+  if e[0].stopped {continue;}
   if (i==2 || i==5) && !e[0].awake {if gap>5.5 {continue;}e[0].awake=true;}e[0].cool-=dt;
   if gap>0.001 {e[0].face_x=dx/gap;e[0].face_z=dz/gap;}
-  if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<1.8 && abs(py)<2 && !hostile_blocked((e[0].x+px)*0.5,(e[0].z+pz)*0.5) {hit:=srd_attack(s[0].dice[..],SRD_GUARD,15);if hit.hit {hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
+  if e[0].swing>=0 {e[0].swing+=dt;if !e[0].struck && e[0].swing>=0.35 {e[0].struck=true;if gap<1.8 && abs(py)<2 && !hostile_blocked((e[0].x+px)*0.5,(e[0].z+pz)*0.5) {hit:=srd_attack(s[0].dice[..],SRD_GUARD,15);if hit.hit {s[0].last=i;hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}if e[0].swing>=0.8 {e[0].swing= -1;e[0].cool=1.1;}continue;}
   if gap<1.45 {if e[0].cool<=0 {e[0].swing=0;e[0].struck=false;}continue;}
   if e[0].held {continue;}
   ox:=[6]f32.[0,1.1,1.1,0,-1.1,-1.1];oz:=[6]f32.[-1.2,-0.6,0.6,1.2,0.6,-0.6];gx:=px+ox[i]-e[0].x;gz:=pz+oz[i]-e[0].z;distance:=sqrt(gx*gx+gz*gz);if distance<0.01 {continue;}
