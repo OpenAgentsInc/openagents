@@ -148,6 +148,19 @@ e2c_action :: (s: [] E2) {
 }
 
 // ---- the layout and the panel
+// The title's cap: 22 on a desktop; on a phone 18, or less so it ends 8 px before DRAG: ROTATE.
+e2c_title_cap :: (s: [] E2, k: f32) -> f32 {
+  c := s[0].cz[0];
+  if !c.mobile { return 22 * k; }
+  fit := (c.boxes[15].x0 - 32 * k) / e2c_text_w("Character Create", 1);
+  return ifx fit < 18 * k then fit else 18 * k;
+}
+// How wide cc.text sets t at cap (its advances: charactercreator.coax text).
+e2c_text_w :: (t: string, cap: f32) -> f32 {
+  em := cc.sans_em(cap); w := 0.0f32;
+  for ch: t { code := int(ch); a := ifx code >= 32 && code <= 126 then int(cc.CC_FONT_WIDTH[code - 32]) else int(cc.CC_FONT_WIDTH[31]); w += f32(a) / f32(cc.CC_FONT_UPM) * em; }
+  return w;
+}
 e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   c := s[0].cz[..];
   c[0].mobile = w < 840 * k || h < 760 * k;   // as the glass panel's (gpu/character-glade.coax cg_ui_cover)
@@ -160,7 +173,9 @@ e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
     by := h - 56 * k;
     c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = by, x1 = 172 * k, y1 = by + 36 * k};
     c[0].boxes[14] = cc.Box.{x0 = w - 174 * k, y0 = by, x1 = w - 24 * k, y1 = by + 36 * k};
-    c[0].boxes[15] = cc.Box.{x0 = w / 2 + 6 * k, y0 = 34 * k, x1 = w - 12 * k, y1 = 72 * k};
+    // DRAG: ROTATE at the right of the title's row, only as wide as its words (e2c_title_cap sets
+    // the title to end before it: from the middle it covered "Character Create" at phone width)
+    c[0].boxes[15] = cc.Box.{x0 = w - 32 * k - e2c_text_w("DRAG: ROTATE", 10 * k), y0 = 34 * k, x1 = w - 12 * k, y1 = 72 * k};
     c[0].boxes[16] = cc.Box.{x0 = 12 * k, y0 = 82 * k, x1 = w / 2 - 6 * k, y1 = 124 * k};
     c[0].boxes[17] = cc.Box.{x0 = w / 2 + 6 * k, y0 = 82 * k, x1 = w - 12 * k, y1 = 124 * k};
     return;
@@ -180,6 +195,8 @@ e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   for i: 0..<E2C_BOXES { b := s[0].cz[0].boxes[i]; #assert b.x0 >= 0 && b.x1 <= 390 && b.y1 <= 844 && b.y1 - b.y0 >= 34;
     // each control sits on one of the phone's two glass bands (top 26 to 124, bottom from h - 504)
     #assert (b.y0 >= 26 && b.y1 <= 124) || b.y0 >= 844 - 504; }
+  // DRAG: ROTATE holds its words and the title ("Character Create" from x 24) stays clear of it
+  {d := s[0].cz[0].boxes[15]; #assert 24 + e2c_text_w("Character Create", e2c_title_cap(s[..], 1)) + 8 <= d.x0 && d.x0 + 10 + e2c_text_w("DRAG: ROTATE", 10) <= d.x1 && e2c_title_cap(s[..], 1) >= 14; }
   e2c_layout(s[..], 1440, 900, 1);
   for i: 0..<E2C_BOXES { if i == 15 { continue; } b := s[0].cz[0].boxes[i]; #assert b.x0 >= 16 && b.x1 <= 350 && b.y0 >= 82 && b.y1 <= f32(E2C_PANEL_BOTTOM); }
   #assert s[0].cz[0].boxes[E2C_CLASS_BOX].y1 + 4 <= s[0].cz[0].boxes[0].y0;
@@ -201,7 +218,7 @@ e2c_hud :: (s: [] E2, out: [] f32) -> int {
   if f <= 0.003 { return 0; }
   c := s[0].cz[0]; cr := s[0].creator[0];
   white := e2c_ink(k, 0.91, 0.92, 0.9, f); dim := e2c_ink(k, 0.70, 0.76, 0.74, f); gold := e2c_ink(k, 0.83, 0.69, 0.43, f); label := e2c_ink(k, 0.93, 0.88, 0.72, f);
-  n := cc.text(out, 0, "Character Create", (ifx c.mobile then 24.0f32 else 30.0f32) * k, (ifx c.mobile then 58.0f32 else 60.0f32) * k, (ifx c.mobile then 18.0f32 else 22.0f32) * k, white);
+  n := cc.text(out, 0, "Character Create", (ifx c.mobile then 24.0f32 else 30.0f32) * k, (ifx c.mobile then 58.0f32 else 60.0f32) * k, e2c_title_cap(s, k), white);
   if !c.mobile { n = cc.line(out, n, 30 * k, 78 * k, 334 * k, 78 * k, k, gold.red * f, gold.green * f, gold.blue * f); }
   for row: 0..<E2C_FIELDS + 1 {
     i := ifx row == 0 then E2C_CLASS else row - 1;

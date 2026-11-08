@@ -26,7 +26,8 @@ deadgears 480000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 168,145 before, 180,101 after; about 5% room
 droprealm 190000
 # everglade.coax (the base world everglade5e and fivemmo build on): 1,813,705 measured 2026-11-04 after the day's room work (#12794, #12862, #12877, #12887); about 5% room
-everglade 1910000
+# The jump clips in verse/everglade/people-rig.coax (da98ab3915): 1,909,780 bytes measured 2026-11-07; about 5% headroom.
+everglade 2000000
 # /worlds/everglade (everglade5e.coax): 2,032,230 measured 2026-11-04 after #12887; 2,166,756 on 2026-11-05 before the PARTY pane, 2,175,433 with it (#12852); 2,181,339 before the page's own raid battle and rules battle went (#12908), 2,041,247 after; about 5% room
 everglade5e 2150000
 # the room server's simulation for offline play's local host (coax/web/room/worker.coax, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131); 1,257,728 after #12837; 1,002,703 once the rigs' clips load at the first pose (the room poses no one); about 5% room
@@ -35,20 +36,24 @@ everglade-room 1122000
 fairy 695000
 # Character Studio adds the full Source wardrobe UI and appearance codec to the existing people producer: 590,971 bytes measured; about 5% headroom.
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
+# The development animation browser's preview rig (verse/everglade/preview-rig.coax, 8a0af0b1ac) and
+# the jump clips (da98ab3915) bake into its body table: 2,220,945 bytes measured; 9f5a8c07ce (#13025) set 2,360,000.
 fivelab 2360000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
 everglade2 340000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
-fivemmo 1630000
+# The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
+fivemmo 1720000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 182,826 before, 194,755 after; about 5% room
 fixture 210000
 garden 300000
 gridcrowd 60000
 icecream 500000
 memorial 60000
-metahumanlab 250000
+# The jump clips in verse/everglade/people-rig.coax (da98ab3915): 273,378 bytes measured; about 5% headroom.
+metahumanlab 290000
 myrealm 660000
 newland 1150000
 nip01 90000
@@ -115,5 +120,6 @@ valleyworld 136000
 # Linux measured garden 286741, villa 524872, fairy 660104, realm 517429 bytes; about 5% room.
 # Optional socket-owned room timing and clock intervals; 21,910 release bytes.
 latency-client 26000
-animationlab 420000
+# The rig's jump clips (da98ab3915) and scene directions (7d153a7c14): 439,903 bytes measured 2026-11-07; about 5% headroom.
+animationlab 460000
 ocarinalab 190000

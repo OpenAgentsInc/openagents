@@ -571,7 +571,10 @@ e2_pixel_budget :: (s: [] E2, w: f32, h: f32, dpr: f32) -> int #export_c #effect
 // ---- the frame rate, bottom right, always shown: frames over the last half second or so
 e2_fps_count :: (s: [] E2, dt: f32) {cc.fps_count(s[0].fps_counter[..],dt);}
 e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
- e2_fps_count(s,dt);return cc.fps_draw(s[0].fps_counter[0],out,at,s[0].width,s[0].height,s[0].k);
+ e2_fps_count(s,dt);h:=s[0].height;k:=s[0].k;
+ // on a phone's studio it sits over the bottom buttons (RESET, SURPRISE ME), not on them
+ if s[0].cz[0].mobile && e2c_shown(s)>0.003 {h=s[0].cz[0].boxes[13].y0+10*k;}
+ return cc.fps_draw(s[0].fps_counter[0],out,at,s[0].width,h,k);
 }
 #test "the frame rate is the frames over the last half second" {
   s: [1] E2;
