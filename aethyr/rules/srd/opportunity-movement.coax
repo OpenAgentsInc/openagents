@@ -1,0 +1,29 @@
+// Caller-selected Reactions before one ordinary paid grid step. Visibility
+// and attack choice come from the authoritative world, not a team heuristic.
+#authority;
+RsOpportunityChoice :: struct { actor:int; weapon:int; seen:bool; }
+rs_step_ready :: (b:[] RsBattle,i:int,x:int,y:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].reaction_frame.on { return false; }
+  if b[0].who!=i || !rs_can_move(b[0].c[i]) || b[0].turn.anchored || rs_walk_speed(b,i)<=0 { return false; }
+  if x<0 || y<0 || x>=b[0].w || y>=b[0].h || rs_at(b,x,y)>=0 { return false; }
+  if rs_feet(b[0].c[i].x,b[0].c[i].y,x,y)!=RS_SQUARE { return false; }
+  t:[1]RsTurn; t[0]=b[0].turn;
+  rs_reprice_movement(t[..],rs_movement_allowance(b,i));
+  return rs_pay_move(t[..],rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,x,y)));
+}
+rs_step_reactions :: (b:[] RsBattle,i:int,x:int,y:int,choices:[]RsOpportunityChoice)->bool #effects(all) {
+  if !rs_step_ready(b,i,x,y) { return false; }
+  // No enclosing transaction: an accepted attack survives an interrupted move.
+  for choice:choices {
+    _:=rs_opportunity_attack(b,choice.actor,i,choice.weapon,RsOpportunityMove.{x=x,y=y,seen=choice.seen,movement=true});
+    if !rs_step_ready(b,i,x,y) { return false; }
+  }
+  return rs_step_to(b,i,x,y);
+}
+#test "an empty reaction selection uses ordinary movement admission and payment" {
+  b:[1]RsBattle; b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
+  choices:[1]RsOpportunityChoice;
+  #assert rs_step_ready(b[..],0,3,2) && !b[0].turn.moved;
+  #assert rs_step_reactions(b[..],0,3,2,choices[0..<0]) && b[0].c[0].x==3;
+  #assert !rs_step_ready(b[..],0,3,2);
+}

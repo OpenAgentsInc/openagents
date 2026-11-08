@@ -1016,6 +1016,25 @@ free_slot :: (s: [] Lab, i: int, level: int) -> int {
   for k: level..<10 { if s[0].battle[0].c[i].slots[k] > 0 && !lw_arcanum_only(s, i, k, level) { return k; } }
   return 0;
 }
+// The open grid's default choice is to take an ordinary opportunity against
+// a foe. Its normal sight excludes Blinded observers and Invisible movers;
+// special senses/obscured terrain are not invented by this adapter.
+lab_step :: (s:[] Lab,i:int,x:int,y:int)->bool {
+  b:=bt(s); if !rs_step_ready(b,i,x,y) { return false; }
+  choices:[8]RsOpportunityChoice; n:=0;
+  mx:=b[0].c[i].x; my:=b[0].c[i].y;
+  for dy:-1..<2 { for dx:-1..<2 {
+    if dx==0 && dy==0 { continue; }
+    actor:=rs_at(b,mx+dx,my+dy);
+    if actor<0 || b[0].c[actor].team==b[0].c[i].team { continue; }
+    seen:=!rs_has(b[0].c[actor],RS_BLINDED) && !rs_has(b[0].c[i],RS_INVISIBLE);
+    if !seen { continue; }
+    wp:=rs_weapon(b[0].c[actor].weapon);
+    if !rs_opportunity_trigger(b,actor,i,RsOpportunityMove.{x=x,y=y,seen=true,movement=true,melee=wp.range_ft<=wp.reach_ft || wp.both,reach=wp.reach_ft}) { continue; }
+    choices[n]=RsOpportunityChoice.{actor=actor,weapon=b[0].c[actor].weapon,seen=true}; n+=1;
+  } }
+  return rs_step_reactions(b,i,x,y,choices[0..<n]);
+}
 // Walk square by square: toward the foe to `want` feet, or away when closer than `least`.
 walk :: (s: [] Lab, i: int, foe: int, least: int, want: int) {
   guard := 0;
@@ -1040,7 +1059,7 @@ walk :: (s: [] Lab, i: int, foe: int, least: int, want: int) {
     }
     here := ifx away then d else -d;
     if bx < 0 || bs <= here { return; }
-    if !rs_step_to(bt(s), i, bx, by) { return; }
+    if !lab_step(s, i, bx, by) { return; }
   }
 }
 foes_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
@@ -1703,7 +1722,7 @@ player_turn :: (s: [] Lab, i: int) {
         if sx == 0 && sy == 0 { continue; }
         nx := x + sx; ny := y + sy;
         if nx < 0 || ny < 0 || nx >= s[0].cols || ny >= s[0].rows || rs_at(b, nx, ny) >= 0 { continue; }
-        if rs_step_to(b, i, nx, ny) { gone = true; break; }
+        if lab_step(s, i, nx, ny) { gone = true; break; }
       }
       if !gone { break; }
     }
@@ -4154,4 +4173,21 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
   s[0].creator[0].shadow[0].now = true; lab_shadow_select(s[..]);
   #assert s[0].shadow_n == 3 && s[0].shadow_draws[4] == 101 && s[0].shadow_draws[8] == 103;
   s[0].creator[0].on = false; lab_shadow_select(s[..]); #assert s[0].shadow_n == 4;
+}
+
+#test "experimental combat opportunity attacks precede the player's grid departure" {
+  s:[1]Lab; b:=bt(s[..]); b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
+  _:=rs_add(b,rs_fighter("Reactor",1,3),3,3); _=rs_add(b,rs_guard("Mover",0),4,3); rs_start_turn(b,1);
+  b[0].c[1].hp=1; b[0].c[1].ac=10;
+  #assert !lab_step(s[..],1,5,3) && b[0].c[1].x==4 && b[0].c[1].hp==0 && b[0].c[0].reacted;
+}
+#test "experimental combat opportunity selection respects allies and ordinary sight" {
+  for mode:0..<3 {
+    s:[1]Lab; b:=bt(s[..]); b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
+    _:=rs_add(b,rs_guard("Reactor",ifx mode==0 then 0 else 1),3,3); _=rs_add(b,rs_fighter("Mover",0,3),4,3); rs_start_turn(b,1);
+    if mode==1 { b[0].c[0].cond|=RS_BLINDED; }
+    if mode==2 { b[0].c[1].cond|=RS_INVISIBLE; }
+    hp:=b[0].c[1].hp;
+    #assert lab_step(s[..],1,5,3) && !b[0].c[0].reacted && b[0].c[1].hp==hp;
+  }
 }

@@ -1,0 +1,37 @@
+aethyr/rules/srd/opportunity-movement-checks.coax:6:33: error[E0302]: unknown type 'RsOpportunityChoice'
+    hp:=b[0].c[1].hp; choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_SPEAR,seen=true}];
+                                  ^
+aethyr/rules/srd/opportunity-movement-checks.coax:6:54: error[E0302]: 'RsOpportunityChoice' is not a struct
+    hp:=b[0].c[1].hp; choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_SPEAR,seen=true}];
+                                                       ^
+aethyr/rules/srd/opportunity-movement-checks.coax:7:11: error[E0315]: procedure 'rs_step_reactions' is not declared
+    #assert rs_step_reactions(b[..],1,5,3,choices[..]);
+            ^
+aethyr/rules/srd/opportunity-movement-checks.coax:15:15: error[E0302]: unknown type 'RsOpportunityChoice'
+    choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_UNARMED,seen=true}];
+                ^
+aethyr/rules/srd/opportunity-movement-checks.coax:15:36: error[E0302]: 'RsOpportunityChoice' is not a struct
+    choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_UNARMED,seen=true}];
+                                     ^
+aethyr/rules/srd/opportunity-movement-checks.coax:16:12: error[E0315]: procedure 'rs_step_reactions' is not declared
+    #assert !rs_step_reactions(b[..],1,5,3,choices[..]);
+             ^
+aethyr/rules/srd/opportunity-movement-checks.coax:23:15: error[E0302]: unknown type 'RsOpportunityChoice'
+    choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_SPEAR,seen=true}];
+                ^
+aethyr/rules/srd/opportunity-movement-checks.coax:23:36: error[E0302]: 'RsOpportunityChoice' is not a struct
+    choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_SPEAR,seen=true}];
+                                     ^
+aethyr/rules/srd/opportunity-movement-checks.coax:25:12: error[E0315]: procedure 'rs_step_reactions' is not declared
+    #assert !rs_step_reactions(b[..],-1,5,3,choices[..]);
+             ^
+aethyr/rules/srd/opportunity-movement-checks.coax:26:12: error[E0315]: procedure 'rs_step_reactions' is not declared
+    #assert !rs_step_reactions(b[..],1,7,3,choices[..]) && !b[0].c[0].reacted && b[0].dice[0].rolled==rolls;
+             ^
+aethyr/rules/srd/opportunity-movement-checks.coax:27:38: error[E0315]: procedure 'rs_step_reactions' is not declared
+    b[0].turn.disengaged=true; #assert rs_step_reactions(b[..],1,5,3,choices[..]);
+                                       ^
+11 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

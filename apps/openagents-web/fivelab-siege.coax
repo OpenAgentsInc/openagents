@@ -151,7 +151,7 @@ walk_sq :: (s: [] Lab, i: int, tx: int, ty: int) {
       d := rs_feet(nx, ny, tx, ty) + ifx rs_difficult(b, nx, ny) then 4 else 0;
       if d < bs { bs = d; bx = nx; by = ny; }
     } }
-    if bx < 0 || !rs_step_to(b, i, bx, by) { return; }
+    if bx < 0 || !lab_step(s, i, bx, by) { return; }
   }
 }
 // Whether any of the cult (not its leader) stands within 5 feet of the watch: the swarm has

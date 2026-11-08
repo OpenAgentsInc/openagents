@@ -1,0 +1,12 @@
+ok   #test experimental combat opportunity attacks precede the player's grid departure (1 case, 15449506 steps, 815 ms)
+ok   #test experimental combat opportunity selection respects allies and ordinary sight (1 case, 8141827 steps, 1200 ms)
+2 of 765 checks (--only 'experimental combat opportunity'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time steps: 15449506 of 20000000 used (77%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    12726637 steps  aethyr/rules/srd/opportunity-attack.coax:8:1  in 'rs_opportunity_attack_atomic'
+    2040746 steps  apps/openagents-web/fivelab.coax:4178:1  #test 'experimental combat opportunity attacks precede the player's grid departure' itself
+    664015 steps  aethyr/rules/srd/battle.coax:159:1  in 'rs_reset'
+    1833 steps  aethyr/rules/srd/battle.coax:271:1  in 'rs_tell_ft' (3 times)
+    1505 steps  aethyr/rules/srd/engine.coax:838:1  in 'rs_put' (21 times)
+  fix: do less work in 'rs_opportunity_attack_atomic', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)

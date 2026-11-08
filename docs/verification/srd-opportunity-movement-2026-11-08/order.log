@@ -1,0 +1,3 @@
+ok   #test an opportunity kill cancels departure without refunding its accepted Reaction (1 case, 296278 steps, 8 ms)
+1 of 200 checks (--only 'opportunity kill cancels'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -37,6 +37,7 @@
 #load "disengage.coax";
 #load "opportunity-trigger.coax";
 #load "opportunity-attack.coax";
+#load "opportunity-movement.coax";
 #load "movement-credit.coax";
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
@@ -1130,9 +1131,7 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
 // One square of movement: 5 feet, 10 into Difficult Terrain; none while Restrained or at 0, or
 // after Steady Aim.
 rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
-  if b[0].who != i || !rs_can_move(b[0].c[i]) || b[0].turn.anchored || rs_walk_speed(b,i)<=0 { return false; }
-  if rs_feet(b[0].c[i].x, b[0].c[i].y, x, y) != RS_SQUARE { return false; }
-  if x < 0 || y < 0 || x >= b[0].w || y >= b[0].h || rs_at(b, x, y) >= 0 { return false; }
+  if !rs_step_ready(b,i,x,y) { return false; }
   cost := rs_step_feet(rs_has(b[0].c[i],RS_PRONE),rs_difficult(b,x,y));
   turn: [1] RsTurn; turn[0] = b[0].turn;
   rs_reprice_movement(turn[..],rs_movement_allowance(b,i));

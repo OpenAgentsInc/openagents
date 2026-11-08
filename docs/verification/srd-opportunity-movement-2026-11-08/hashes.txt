@@ -1,0 +1,3 @@
+5b48dc759ca73a6e78ff7c4a75e57624531d801ca728a34ff54c885ad3c5429d  aethyr/rules/srd/opportunity-movement.coax
+b36f863e221c8cf4c445ab5a6466a346bc028d697d5d87e528aeb9c900e80fec  apps/openagents-web/fivelab.coax
+3187765950c5f62ccd67a75c9ba1a22a870beaaf3ac7530829434e2407b0c35c  /tmp/srd-opportunity-movement-fivelab.wasm

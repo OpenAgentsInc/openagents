@@ -6955,3 +6955,15 @@ deadlines use the upcoming reactor turn. Returned strike state carries optional
 follow-up credit without changing the mover's budget. This supersedes the
 pending-executor statements above, not their movement-integration limitation.
 Evidence: `docs/verification/srd-opportunity-attack-2026-11-08/README.md`.
+
+## Selected opportunity attacks precede paid grid steps without an outer rollback
+
+`opportunity-movement.coax` shares read-only ordinary step admission with
+`rs_step_to`, resolves explicit selected Reactions before departure, and
+rechecks movement after each accepted strike. An interrupted move retains
+accepted damage/Reaction spending, spends no movement and stops soliciting
+later reactors. A completed move uses normal payment and entry effects once.
+Lab grid/player-token/Siege walks select nearby visible foes through this
+boundary. This does not wire Experimental's separate continuous controller or
+Everglade II's network movement. Evidence and remaining scope:
+`docs/verification/srd-opportunity-movement-2026-11-08/README.md`.
