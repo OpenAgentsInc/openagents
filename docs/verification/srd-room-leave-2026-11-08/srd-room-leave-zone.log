@@ -1,0 +1,3 @@
+ok   #test Everglade 5E room: a lasting area is the room's, with an id; it outlasts its caster's leaving until its time is up (1 case, 2307942 steps, 56 ms)
+1 of 325 checks (--only 'a lasting area is the room'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -6896,3 +6896,14 @@ mirror reset and disconnection cannot leave invented health visible. Movement
 ACK and remote render-pool capacity are not prerequisites. Existing server rows
 already carry these fields; no wire/core policy changes. Evidence and remaining
 world scope: `docs/verification/srd-e2-vitals-2026-11-08/README.md`.
+
+## Room departure removes participation without manufacturing death
+
+`e5rr_leave` marks the seat inactive and moves its creature off-map without
+changing actual HP/death. The retained owner permits the room's declared
+summon/zone persistence across disconnect (multiplayer spec 6.3). Shared
+concentration still ends on actual zero HP/death or duration; a new player
+replaces the owner and retires old effects. Leave neither heals nor revives,
+and existing HP rejoin persistence remains. The Conjure Animals baseline
+failure is fixed; the horde traversal baseline remains. Evidence and scope:
+`docs/verification/srd-room-leave-2026-11-08/README.md`.

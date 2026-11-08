@@ -1,0 +1,2 @@
+55659b98ca2b64d4dcbfc5b2cf513ff8b2657c8275d1e996d2b0eab516ba8422  apps/openagents-web/everglade5e-room-rules.coax
+52402aa1520ff7f267ce7c44b3d3dfa8e9dacc868bf7d84d95cdf95a0586d7f1  coax/bin/coax

@@ -1,0 +1,3 @@
+ok   #test Everglade 5E room: Conjure Animals brings four Wolves that bite the town; another player can kill one; they go with Concentration (1 case, 67771275 steps, 515 ms)
+1 of 325 checks (--only 'Conjure Animals brings'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

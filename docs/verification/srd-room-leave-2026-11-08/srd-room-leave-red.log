@@ -1,0 +1,10 @@
+FAIL #test leaving the room is not death and retained summons still end on actual caster death (39 ms)
+apps/openagents-web/everglade5e-room-rules.coax:1100:3: error[E0406]: assertion failed
+    #assert !r[0].live[0] && !b[0].c[0].dead && b[0].c[0].hp==hp;
+    ^
+  note: in #test leaving the room is not death and retained summons still end on actual caster death
+1 of 325 checks (--only 'leaving the room is not death'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

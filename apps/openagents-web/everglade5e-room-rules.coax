@@ -161,7 +161,9 @@ e5rr_leave :: (r: [] E5rRoom, s: int) #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] { return; }
   b := r[0].b[..];
   i := E5RR_SEAT + s;
-  b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; b[0].c[i].dead = true; b[0].c[i].hp = 0;
+  // Leaving is a transport/participation transition, not lethal damage.
+  // Retain the off-map caster for owned effects until duration/death/replacement.
+  b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY;
   r[0].live[s] = false;
   e5rr_zones_check(r);
   e5rr_beasts_check(r);
@@ -1090,4 +1092,23 @@ e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
   #assert e5rr_use(r[..],0,FB_CL0+FB_CL_BARBARIAN,0,0,-1);
   #assert b[0].c[0].raging && b[0].c[0].rages==b[0].c[0].rages_max-1;
   #assert b[0].c[0].reacted;
+}
+
+#test "leaving the room is not death and retained summons still end on actual caster death" #steps 2000000000 {
+  r:[1] E5rRoom; e5rr_start(r[..],9); e5rr_test_people(r[..]); e5rr_join(r[..],0,0,0);
+  b:=r[0].b[..]; hp:=b[0].c[0].hp;
+  #assert e5rr_use(r[..],0,32,30,0,-1);
+  e5rr_leave(r[..],0);
+  #assert !r[0].live[0] && !b[0].c[0].dead && b[0].c[0].hp==hp;
+  #assert b[0].c[0].x==E5R_AWAY && b[0].c[0].y==E5R_AWAY;
+  e5rr_step(r[..],b[0].clock+1);
+  #assert b[0].c[0].conc==SP_CONJURE_ANIMALS;
+  alive:=0; for q:0..<E5RR_BEASTS { if r[0].beasts[q].id!=0 && !b[0].c[E5RR_BEAST0+q].dead { alive+=1; } }
+  #assert alive==E5RR_PACK;
+  // Actual lethal damage retains the shared zero-HP/concentration lifecycle.
+  rs_damage(b,1,0,hp+1000,RS_FORCE,false,-1);
+  e5rr_step(r[..],b[0].clock+1);
+  #assert b[0].c[0].dead && b[0].c[0].conc<0;
+  alive=0; for q:0..<E5RR_BEASTS { if r[0].beasts[q].id!=0 && !b[0].c[E5RR_BEAST0+q].dead { alive+=1; } }
+  #assert alive==0;
 }
