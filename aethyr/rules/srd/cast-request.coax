@@ -1,0 +1,29 @@
+// Structural request admission precedes record lookup and resource decisions.
+// Catalog metadata alone never grants an executable spell. Stable house IDs
+// remain separate from the SRD executor; the unused ID gap is not a cantrip.
+#authority;
+
+#test "casting IDs admit only the implemented record ranges including explicit house spells" {
+  for id: -2..<107 {
+    expected := (id >= 0 && id <= 77) || (id >= 100 && id <= 103);
+    #assert rs_executable_spell(id) == expected;
+  }
+}
+#test "cantrip requests use no slot and leveled requests use a sufficient slot or a feature" {
+  for level: 0..<10 {
+    for slot: -2..<12 {
+      expected := ifx level == 0 then slot == 0 else slot == 0 || (slot >= level && slot <= 9);
+      #assert rs_cast_slot_shape(level, slot) == expected;
+    }
+  }
+}
+
+rs_executable_spell :: (id: int) -> bool #effects(all) {
+  return (id >= 0 && id < RS_MORE_END) || (id >= RS_HOUSE && id < RS_HOUSE_END);
+}
+// Slot zero for a leveled spell only reaches feature-specific admission;
+// this predicate does not itself grant a free cast.
+rs_cast_slot_shape :: (level: int, slot: int) -> bool #effects(all) {
+  if level == 0 { return slot == 0; }
+  return slot == 0 || (slot >= level && slot <= 9);
+}

@@ -11,6 +11,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
+#load "cast-request.coax";
 #load "cast-target-outcome.coax";
 
 // Creatures a battle holds of its own (1464 bytes a creature). A world that fields more gives the
@@ -467,8 +468,10 @@ rs_boon_roll :: (b: [] RsBattle, j: int) -> int {
 // spell as a Bonus Action with Quickened Spell (2 Sorcery Points), not after a level 1+ spell this
 // turn and with none after it.
 rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> bool {
+  if !rs_executable_spell(sp) { return false; }
   if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || b[0].c[i].raging { return false; }
   s := rs_spell(sp);
+  if !rs_cast_slot_shape(s.level, slot) { return false; }
   if s.cast_time == RS_T_REACTION { return false; }
   t := s.cast_time;
   if quick {

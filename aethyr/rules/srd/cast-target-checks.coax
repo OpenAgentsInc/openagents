@@ -3,6 +3,26 @@
 // rather than exempted from the compiler's whole-entry execution coverage.
 #load "battle.coax";
 
+#test "malformed casting IDs and cantrip slots refuse before changing any battle state" {
+  ids := [6] int.[-1, 78, 99, 104, SP_STARRY_WISP, SP_STARRY_WISP];
+  slots := [6] int.[0, 0, 0, 0, -1, 1];
+  for k: 0..<6 {
+    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    a := rs_add(b[..], rs_druid("Caster", 0, 3), 1, 1);
+    t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
+    rs_start_turn(b[..], a);
+    b[0].aff_used = true; b[0].c[a].conc = SP_HEX; b[0].c[a].conc_until = 80;
+    seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
+    hp := b[0].c[t].hp; available := b[0].c[a].slots[1];
+    #assert !rs_can_cast(b[..], a, ids[k], slots[k]);
+    #assert !rs_cast(b[..], a, ids[k], slots[k], 0, 0, t);
+    #assert !rs_cast_quick(b[..], a, ids[k], slots[k], 0, 0, t);
+    #assert b[0].aff_used && b[0].c[a].conc == SP_HEX && b[0].c[a].conc_until == 80;
+    #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && b[0].c[t].hp == hp;
+    #assert b[0].c[a].slots[1] == available && !b[0].turn.action && !b[0].turn.bonus && !b[0].turn.slot_spent;
+  }
+}
+
 #test "caller-owned battles retain separate storage, due turns, casting budgets and diagnostics" {
   b: [1] RsBattle; other: [1] RsBattle;
   creatures: [4] RsCreature; squares: [64] int;

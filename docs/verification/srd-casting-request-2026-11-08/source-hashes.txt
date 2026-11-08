@@ -1,0 +1,3 @@
+8f07837894b320901d007ccae36ff2e2fa9f2db3d23c8b47925143c015264ca6  aethyr/rules/srd/cast-request.coax
+c1266ad86d3acac9b3e188d652bb500a7e89589f451b08d697fda0909d42ecf0  aethyr/rules/srd/cast-target-checks.coax
+fb8665d40fa2b06c0499a7745ba8cff88ca1764f3cfcbbbbe7f0645514a7aa1d  aethyr/rules/srd/battle.coax
