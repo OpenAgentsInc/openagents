@@ -12,7 +12,7 @@ tool_main :: ()->int #export_c #effects(all) {
     q:=RsOpportunityMove.{x=5,y=3,seen=true,movement=true}; r:=rs_opportunity_attack(b[..],0,1,W_UNARMED,q);
     if !r.admitted || r.hit!=(mode!=0) || !b[0].c[0].reacted { return 2; }
     if b[0].c[1].slots[1]!=slots-(ifx mode==0 then 1 else 0) || (b[0].c[1].hp==hp)!=(mode==0) { return 3; }
-    if mode==0 && b[0].c[1].shield_until!=b[0].c[1].turn_at+rs_beat(b[..]) { return 6; }
+    if mode==0 && !b[0].c[1].shield_active { return 6; }
     if b[0].who!=1 || b[0].reaction_frame.on || b[0].c[1].x!=4 { return 4; }
     if rs_opportunity_attack(b[..],0,1,W_UNARMED,q).admitted { return 5; }
   }

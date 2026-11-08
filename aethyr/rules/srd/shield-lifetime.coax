@@ -1,0 +1,12 @@
+// SRD 5.2.1 pp.161-162: Shield's AC benefit ends at the caster's next
+// actual turn start. Clock passage or borrowing attack state is not that hook.
+#authority;
+rs_shield_begin :: (c:[]RsCreature) #effects(all) { c[0].shield_active=true; }
+rs_shield_end :: (c:[]RsCreature) #effects(all) { c[0].shield_active=false; }
+rs_shield_bonus :: (active:bool)->int #effects(all) { return ifx active then 5 else 0; }
+#test "Shield retains a flat bonus until its explicit turn hook retires it" {
+  c:[1]RsCreature;
+  #assert rs_shield_bonus(c[0].shield_active)==0;
+  rs_shield_begin(c[..]); #assert rs_shield_bonus(c[0].shield_active)==5;
+  rs_shield_end(c[..]); #assert rs_shield_bonus(c[0].shield_active)==0;
+}

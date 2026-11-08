@@ -278,7 +278,7 @@ RsCreature :: struct {
   sneak_dice: int; cunning: bool; steady_aim: bool;
   // Sorcerer: Innate Sorcery until, the Metamagic it knows; Wizard and Sorcerer: Shield; the
   // Evoker's Potent Cantrip; the Circle of the Land's Land's Aid
-  innate_until: f32; quickened: bool; seeking: bool; shield_spell: bool; shield_until: f32;
+  innate_until: f32; quickened: bool; seeking: bool; shield_spell: bool; shield_active: bool;
   potent: bool; lands_aid: bool;
   slowed_until: f32;        // the Slow mastery: 10 feet less Speed until then
   // the declared action timing profile: when the next spent slot of each level, Rage or

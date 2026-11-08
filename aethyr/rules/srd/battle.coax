@@ -35,6 +35,7 @@
 #load "effect-lifecycle.coax";
 #load "death-save-roll.coax";
 #load "dodge.coax";
+#load "shield-lifetime.coax";
 #load "dash.coax";
 #load "disengage.coax";
 #load "opportunity-trigger.coax";
@@ -457,7 +458,7 @@ rs_is_smite :: (s: RsSpell) -> bool {
 // A creature's spell save DC now: Innate Sorcery adds 1 while it lasts.
 rs_dc :: (b: [] RsBattle, i: int) -> int { return rs_spell_dc(b[0].c[i]) + (ifx b[0].c[i].innate_until > b[0].clock then 1 else 0); }
 // Armor Class now: Shield's +5 until the start of its next turn, Shield of Faith's +2.
-rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + (ifx b[0].c[j].shield_until > b[0].clock then 5 else 0) + (ifx rs_effect(b[0].c[j], EF_FAITH) then 2 else 0); }
+rs_ac :: (b: [] RsBattle, j: int) -> int { return b[0].c[j].ac + rs_shield_bonus(b[0].c[j].shield_active) + (ifx rs_effect(b[0].c[j], EF_FAITH) then 2 else 0); }
 // Whether creature i can cast spell sp with a slot of level `slot` now (0 for a cantrip, or for the
 // spell its feature casts without a slot: Paladin's Smite, Favored Enemy). `quick` casts an action
 // spell as a Bonus Action with Quickened Spell (2 Sorcery Points), not after a level 1+ spell this
@@ -689,7 +690,7 @@ rs_shield :: (b: [] RsBattle, j: int) -> bool {
   if c.npc != RS_NPC_NONE && slot != 1 { return false; }
   if slot == 0 { return false; }
   if !rs_cast_reaction_slot(b,j,SP_SHIELD,slot,c.npc != RS_NPC_MAGE) { return false; }
-  b[0].c[j].shield_until = ifx rs_turn_owner(b) == j then c.turn_at + rs_beat(b) else c.turn_at;
+  rs_shield_begin(b[0].c[j..<j+1]);
   l: [1] RsLine;
   rs_add_name(l[..], b, j); rs_add_text(l[..], " casts Shield ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot): AC ");
   rs_add_int(l[..], c.ac + 5);
@@ -1211,6 +1212,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   if !b[0].kept { rs_index(b); }
   b[0].who = i;
   rs_dodge_end(b[0].c[i..<i+1]);
+  rs_shield_end(b[0].c[i..<i+1]);
   rs_opportunity_begin(b[0].c[i..<i+1]);
   rs_halt_begin(b[0].c[i..<i+1],b[0].clock+rs_beat(b));
   // The profile declares the movement grant: exact feet in strict mode, or
@@ -2798,14 +2800,15 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   rs_begin(b[..]);
   shielded := false;
   for k: 0..<30 {
-    b[0].c[w].hp = 17; b[0].c[w].reacted = false; b[0].c[w].shield_until = 0;
+    b[0].c[w].hp = 17; b[0].c[w].reacted = false; rs_shield_end(b[0].c[w..<w+1]);
     rs_fresh(b[..], f); seq := b[0].book[0].seq;
     #assert rs_attack(b[..], f, w, false, -1);
     if rs_saw(b[..], seq, "casts Shield") { shielded = true; break; }
   }
   #assert shielded && b[0].c[w].reacted && b[0].c[w].slots[1] == 2 && rs_ac(b[..], w) == 20 && b[0].c[w].hp == 17 - 3;   // turned to a miss, but Graze still deals its 3
   rs_tick(b[..], b[0].c[w].turn_at - b[0].clock);
-  #assert rs_ac(b[..], w) == 15;
+  #assert rs_ac(b[..], w) == 20;
+  rs_start_turn(b[..],w); #assert rs_ac(b[..], w) == 15;
 }
 #test "Potent Cantrip: an Evoker's missed Fire Bolt still deals half its damage" {
   b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 22;

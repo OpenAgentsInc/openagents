@@ -7039,3 +7039,14 @@ controller exports/replay remain unchanged. AI opportunities resolve between
 candidate subdivisions. This does not qualify strict continuous movement
 payments or every movement/effect/world mode. Evidence and explicit tuning:
 `docs/verification/srd-physical-scale-2026-11-08/README.md`.
+
+## Shield's AC benefit retires at the actual caster turn start
+
+`shield-lifetime.coax` retains the admitted spell's active state and provides
+its flat AC bonus. `rs_start_turn` retires it; clock-only advancement, another
+actor's turn and a borrowed strike frame do not. This removes the obsolete
+`shield_until` forecast, which double-counted a beat in already scheduled saved
+seats. The Lab label and AC use the same state. Earlier Shield forecast checks
+are superseded by real strict/action saved-seat trigger/retirement witnesses.
+Other numeric deadlines and general turn scheduling remain separate work.
+Evidence: `docs/verification/srd-shield-turn-2026-11-08/README.md`.

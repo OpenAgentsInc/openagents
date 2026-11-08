@@ -2727,7 +2727,7 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if cr.slowed_until > b[0].clock { m = put(l[..], m, "  SLOWED"); }
       if cr.inspired > 0 { m = put(l[..], m, "  INSPIRED"); }
       if cr.innate_until > b[0].clock { m = put(l[..], m, "  INNATE SORCERY"); }
-      if cr.shield_until > b[0].clock { m = put(l[..], m, "  SHIELD"); }
+      if cr.shield_active { m = put(l[..], m, "  SHIELD"); }
       if cr.sacred_until > b[0].clock { m = put(l[..], m, "  SACRED WEAPON"); }
       if cr.raging { m = put(l[..], m, "  RAGING"); }
       if cr.reckless_until > b[0].clock { m = put(l[..], m, "  RECKLESS"); }

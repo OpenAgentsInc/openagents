@@ -1,0 +1,10 @@
+#load "battle.coax";
+#test "Shield ends on an actual turn start rather than early clock expiry or a borrowed striker" {
+  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_wizard("Caster",0,3),2,2); _=rs_add(b[..],rs_guard("Other",1),3,2);
+  rs_start_turn(b[..],0); #assert rs_shield(b[..],0) && rs_ac(b[..],0)==20;
+  rs_tick(b[..],100); #assert rs_ac(b[..],0)==20;
+  rs_start_turn(b[..],1); #assert rs_ac(b[..],0)==20;
+  #assert rs_reaction_frame_begin(b[..],0); rs_reaction_frame_end(b[..]); #assert rs_ac(b[..],0)==20;
+  rs_start_turn(b[..],0); #assert rs_ac(b[..],0)==15;
+}

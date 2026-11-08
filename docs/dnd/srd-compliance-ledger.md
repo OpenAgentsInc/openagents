@@ -521,3 +521,14 @@ and actual slower/faster AI movement. Strict continuous feet-per-turn payment,
 special speeds/jumps, complete effect grants and world-zone/timing qualification
 remain open. Continuous action tuning is explicitly documented as a house
 profile, not strict movement compliance; no issue closes from this slice.
+
+### Shield retires on actual turn start (2026-11-08)
+
+Shield's +5 AC now uses admitted retained state retired by the caster's actual
+next turn start. This fixes an extra-beat saved-seat lifetime and avoids
+clock-only retirement; borrowed reaction frames do not consume it. AC and Lab
+presentation agree. [Evidence](../verification/srd-shield-turn-2026-11-08/README.md):
+201 core and 201 saved-seat checks, 210 opportunity checks, real strict/action
+native cast/retirement and the checked Lab Wasm build pass; 8 lifetime mutants
+killed, zero survivors/no exemptions. This supersedes earlier duration-forecast
+checks, not the remaining spell interactions or global timing qualification.

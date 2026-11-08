@@ -1,0 +1,10 @@
+FAIL #test Shield ends on an actual turn start rather than early clock expiry or a borrowed striker (4 ms)
+aethyr/rules/srd/shield-turn-checks.coax:6:23: error[E0406]: assertion failed
+    rs_tick(b[..],100); #assert rs_ac(b[..],0)==20;
+                        ^
+  note: in #test Shield ends on an actual turn start rather than early clock expiry or a borrowed striker
+1 of 200 checks (--only 'Shield ends on'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

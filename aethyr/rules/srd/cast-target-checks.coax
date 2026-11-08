@@ -234,7 +234,7 @@
     slots := b[0].c[a].slots; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled; hp := b[0].c[t].hp;
     #assert !rs_shield(b[..],a) && !rs_hellish_rebuke(b[..],a,t);
     for k: 0..<10 { #assert b[0].c[a].slots[k] == slots[k]; }
-    #assert !b[0].c[a].reacted && b[0].c[a].shield_until == 0 && b[0].c[t].hp == hp;
+    #assert !b[0].c[a].reacted && !b[0].c[a].shield_active && b[0].c[t].hp == hp;
     #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls && !b[0].turn.leveled;
   }
 }

@@ -1,0 +1,9 @@
+coax: note[E0400]: compile-time steps: 18743463 of 20000000 used (93%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    17267008 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/aethyr/rules/srd/stat-opportunity.coax:7:1  in 'rs_stat_opportunity_atomic' (64 times)
+    562652 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/aethyr/rules/srd/stat-opportunity-checks.coax:35:1  #test 'typed opportunity retains shared critical follow-up without giving the mover that movement' itself
+    130560 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/aethyr/rules/srd/battle.coax:141:1  in 'rs_index' (128 times)
+    85008 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/aethyr/rules/srd/battle.coax:276:1  in 'rs_tell_ft' (108 times)
+    75264 steps  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/aethyr/rules/srd/engine.coax:838:1  in 'rs_put' (1036 times)
+  fix: do less work in 'rs_stat_opportunity_atomic', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+PASS STAT-OPPORTUNITY
