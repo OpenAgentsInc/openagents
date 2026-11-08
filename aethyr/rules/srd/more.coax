@@ -2,8 +2,9 @@
 // casts (apps/openagents-web/fivebar.coax) that the first records didn't hold. Loaded by
 // spells.coax, which answers for them through rs_spell. Each holds the SRD's level, school, casting
 // time, range, duration, concentration and area, and an effect program in the same closed set of
-// steps battle.coax runs. The SRD's words and page numbers come with the import tool
-// (aethyr/rules/srd/import.coax, planned): `text` is empty and `page` 0 until then.
+// steps battle.coax runs. Canonical source words/page numbers are now in data/ through import.coax
+// and catalog.coax. This legacy executable view still has empty `text` and page 0 pending migration;
+// importing metadata alone does not qualify these effect programs.
 //
 // The grid has squares and spheres, and Lines from you (Lightning Bolt, Gust of Wind: RS_A_LINE),
 // not cones or Lines elsewhere, so: a line (Wind Wall, Wall of Fire, Wall of Thorns, Sunbeam) is the

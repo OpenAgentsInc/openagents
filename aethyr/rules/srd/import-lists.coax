@@ -1,0 +1,75 @@
+// Independently parse the eight base class spell tables, not spell headers.
+#load "import-text.coax";
+
+#test "class tables resolve multiline names, levels and flags against independent descriptions" {
+  b: [1] SiBook; a: [1] SiArena; l: [1] SiLines;
+  b[0].n = 2;
+  b[0].spell[0] = SrdSourceSpell.{name = "Aid", level = 2, school = 0};
+  b[0].spell[1] = SrdSourceSpell.{name = "Protection from Evil and Good", level = 1, school = 0};
+  si_lines("System Reference Document 5.2.1 55\nPaladin Spell List\nexplanation\nLevel 1 Paladin Spells\nSpell School Special\nProtection from Evil\nand Good Abjuration C, M\nLevel 2 Paladin Spells\nSpell School Special\nAid Abjuration —\nPaladin Subclass:\nOther prose\n", l[..]);
+  si_lists(l[..], a[..], b[..]);
+  #assert !b[0].error && b[0].lists == 2;
+  #assert b[0].list[0].klass == 3 && b[0].list[0].spell == 1 && b[0].list[0].level == 1;
+  #assert b[0].list[0].concentration && b[0].list[0].material_required && !b[0].list[0].ritual;
+  #assert b[0].list[1].spell == 0 && b[0].list[1].page == 55;
+}
+#test "class tables refuse unresolved or inconsistent rows rather than dropping content" {
+  b: [1] SiBook; a: [1] SiArena; l: [1] SiLines;
+  si_lines("System Reference Document 5.2.1 34\nLevel 1 Bard Spells\nMissing Evocation —\n", l[..]);
+  si_lists(l[..], a[..], b[..]); #assert b[0].error;
+  #assert si_school_at("Acid Arrow Evocation —") == 11 && si_school_at("no school") == -1;
+  #assert si_school_at("Minor Illusion Illusion —") == 15;
+  #assert si_list_level("Cantrips (Level 0 Bard Spells)", 0) == 0;
+  #assert si_list_level("Level 9 Wizard Spells", 7) == 9;
+  #assert si_list_level("Level 2: A feature", 7) == -1;
+  #assert si_table_flags("C, R, M") && si_table_flags("—") && si_table_flags("–") && !si_table_flags("") && !si_table_flags("C, Q") && !si_table_flags("⚠");
+}
+si_table_flags :: (s: string) -> bool {
+  return s == "—" || s == "–" || s == "C" || s == "R" || s == "M" || s == "C, R" || s == "C, M" || s == "R, M" || s == "C, R, M";
+}
+
+si_school_at :: (s: string) -> int {
+  found := -1;
+  for j: 0..<8 {
+    school := SRD_SCHOOLS[j];
+    for p: 1..<s.count {
+      if p + school.count <= s.count && s[p - 1] == 32 && s[p..<p + school.count] == school { if p > found { found = p; } }
+    }
+  }
+  return found;
+}
+si_list_level :: (s: string, klass: int) -> int {
+  if si_starts(s, "Cantrips (Level 0 ") && si_has(s, SRD_CLASSES[klass]) { return 0; }
+  if s.count > 8 && si_starts(s, "Level ") && s[6] >= '1' && s[6] <= '9' && s[7] == 32 && si_has(s, SRD_CLASSES[klass]) && si_has(s, " Spells") { return cast(int) s[6] - 48; }
+  return -1;
+}
+si_lists :: (l: [] SiLines, a: [] SiArena, b: [] SiBook) {
+  klass := -1; level := -1; pending := "";
+  for i: 0..<l[0].n {
+    line := l[0].v[i];
+    new_level := -1; new_class := -1;
+    for k: 0..<8 { v := si_list_level(line, k); if v >= 0 { new_level = v; new_class = k; } }
+    if new_level >= 0 { klass = new_class; level = new_level; pending = ""; continue; }
+    if si_has(line, "Subclass:") { klass = -1; level = -1; pending = ""; continue; }
+    if klass < 0 || level < 0 || line == "Spell School Special" { continue; }
+    if pending.count > 0 {
+      start := a[0].n; _ := si_store(pending, a); _ = si_store(" ", a); _ = si_store(line, a);
+      line = cast(string) a[0].bytes[start..<a[0].n]; pending = "";
+    }
+    p := si_school_at(line);
+    if p < 0 { pending = line; continue; }
+    name := si_trim(line[0..<p]); found := -1;
+    for j: 0..<b[0].n { if b[0].spell[j].name == name { found = j; } }
+    if found < 0 || b[0].lists >= b[0].list.count { b[0].error = true; b[0].diagnostic = line; return; }
+    school_id := -1;
+    for k: 0..<8 { if si_starts(line[p..<line.count], SRD_SCHOOLS[k]) { school_id = k; } }
+    if school_id < 0 { b[0].error = true; b[0].diagnostic = line; return; }
+    school := SRD_SCHOOLS[school_id];
+    flags := si_trim(line[p + school.count..<line.count]);
+    if !si_table_flags(flags) { b[0].error = true; b[0].diagnostic = line; return; }
+    b[0].list[b[0].lists] = SrdClassSpell.{klass = klass, spell = found, level = level, school = school_id, page = l[0].page[i],
+        concentration = si_has(flags, "C"), ritual = si_has(flags, "R"), material_required = si_has(flags, "M")};
+    b[0].lists += 1;
+  }
+  if a[0].error || l[0].error || pending.count > 0 { b[0].error = true; }
+}

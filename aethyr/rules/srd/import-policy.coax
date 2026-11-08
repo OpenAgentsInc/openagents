@@ -1,0 +1,64 @@
+// Sole publication policy for candidate source data. Parsing and reconciliation
+// collect evidence; they never authorize publication or claim mechanical coverage.
+#authority;
+SI_PDF_BYTES :: 6031375;
+SI_PDF_SHA256 :: "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87";
+SI_SPELL_COUNT :: 339; // independently counted Spell Descriptions headers, pp.107-175
+
+#test "source publication binds the whole PDF and complete reconciled inventories" {
+  #assert si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 339, 8, 0, 9);
+  #assert !si_publish("", SI_PDF_BYTES, 339, 8, 0, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES - 1, 339, 8, 0, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES + 1, 339, 8, 0, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 338, 8, 0, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 340, 8, 0, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 339, 7, 0, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 339, 9, 0, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 339, 8, 1, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 339, 8, -1, 9);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 339, 8, 0, 8);
+  #assert !si_publish(SI_PDF_SHA256, SI_PDF_BYTES, 339, 8, 0, 10);
+}
+si_publish :: (hash: string, bytes: int, spells: int, classes: int, errors: int, differences: int) -> bool #effects(all) {
+  return hash == SI_PDF_SHA256 && bytes == SI_PDF_BYTES && spells == SI_SPELL_COUNT && classes == 8 && errors == 0 && differences == 9;
+}
+
+// Explicit disagreements IN this pinned PDF. Both readings are retained. This
+// authorizes data preservation, not choosing a gameplay interpretation.
+SiSourceDifference :: struct { id: string; source_page: int; klass: int; table_page: int; field: int; source: int; table: int; }
+#test "only exact reviewed source disagreements may pass reconciliation" {
+  cases := [9] SiSourceDifference.[
+    SiSourceDifference.{id = "flaming-sphere", source_page = 132, klass = 2, table_page = 44, field = 0, source = 1, table = 4},
+    SiSourceDifference.{id = "flaming-sphere", source_page = 132, klass = 5, table_page = 68, field = 0, source = 1, table = 4},
+    SiSourceDifference.{id = "flaming-sphere", source_page = 132, klass = 7, table_page = 80, field = 0, source = 1, table = 4},
+    SiSourceDifference.{id = "true-strike", source_page = 171, klass = 0, table_page = 33, field = 1, source = 1, table = 0},
+    SiSourceDifference.{id = "true-strike", source_page = 171, klass = 5, table_page = 67, field = 1, source = 1, table = 0},
+    SiSourceDifference.{id = "true-strike", source_page = 171, klass = 6, table_page = 75, field = 1, source = 1, table = 0},
+    SiSourceDifference.{id = "true-strike", source_page = 171, klass = 7, table_page = 79, field = 1, source = 1, table = 0},
+    SiSourceDifference.{id = "mind-spike", source_page = 149, klass = -1, table_page = 0, field = 2, source = 224, table = 192},
+    SiSourceDifference.{id = "phantasmal-force", source_page = 151, klass = -1, table_page = 0, field = 2, source = 161, table = 0}
+  ];
+  for c: cases {
+    #assert si_source_difference(c);
+    bad := c; bad.id = "unknown"; #assert !si_source_difference(bad);
+    bad = c; bad.source_page += 1; #assert !si_source_difference(bad);
+    bad = c; bad.table_page += 1; #assert !si_source_difference(bad);
+    bad = c; bad.klass = 8; #assert !si_source_difference(bad);
+    bad = c; bad.field += 10; #assert !si_source_difference(bad);
+    bad = c; bad.source += 1; #assert !si_source_difference(bad);
+    bad = c; bad.table += 1; #assert !si_source_difference(bad);
+  }
+}
+si_source_difference :: (d: SiSourceDifference) -> bool #effects(all) {
+  if d.id == "flaming-sphere" && d.source_page == 132 && d.field == 0 && d.source == 1 && d.table == 4 {
+    return (d.klass == 2 && d.table_page == 44) || (d.klass == 5 && d.table_page == 68) || (d.klass == 7 && d.table_page == 80);
+  }
+  if d.id == "true-strike" && d.source_page == 171 && d.field == 1 && d.source == 1 && d.table == 0 {
+    return (d.klass == 0 && d.table_page == 33) || (d.klass == 5 && d.table_page == 67) || (d.klass == 6 && d.table_page == 75) || (d.klass == 7 && d.table_page == 79);
+  }
+  if d.klass == -1 && d.table_page == 0 && d.field == 2 {
+    return (d.id == "mind-spike" && d.source_page == 149 && d.source == 224 && d.table == 192) ||
+           (d.id == "phantasmal-force" && d.source_page == 151 && d.source == 161 && d.table == 0);
+  }
+  return false;
+}

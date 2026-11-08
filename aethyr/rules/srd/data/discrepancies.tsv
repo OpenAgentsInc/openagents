@@ -1,0 +1,11 @@
+# This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+spell_id	description_page	class	table_page	field	description_value	table_value	status
+flaming-sphere	132	Druid	44	school	1	4	reviewed-source-difference
+flaming-sphere	132	Sorcerer	68	school	1	4	reviewed-source-difference
+flaming-sphere	132	Wizard	80	school	1	4	reviewed-source-difference
+mind-spike	149		0	classes_mask	224	192	reviewed-source-difference
+phantasmal-force	151		0	classes_mask	161	0	reviewed-source-difference
+true-strike	171	Bard	33	material_required	1	0	reviewed-source-difference
+true-strike	171	Sorcerer	67	material_required	1	0	reviewed-source-difference
+true-strike	171	Warlock	75	material_required	1	0	reviewed-source-difference
+true-strike	171	Wizard	79	material_required	1	0	reviewed-source-difference

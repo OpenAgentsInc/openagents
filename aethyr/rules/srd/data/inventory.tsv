@@ -1,0 +1,341 @@
+# This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+ledger_id	spell_id	name	level	school	classes_mask	page	end_page	mechanics
+spell/acid-arrow	acid-arrow	Acid Arrow	2	Evocation	128	107	107	unqualified
+spell/acid-splash	acid-splash	Acid Splash	0	Evocation	160	107	107	unqualified
+spell/aid	aid	Aid	2	Abjuration	31	107	107	unqualified
+spell/alarm	alarm	Alarm	1	Abjuration	144	107	107	unqualified
+spell/alter-self	alter-self	Alter Self	2	Transmutation	160	107	107	unqualified
+spell/animal-friendship	animal-friendship	Animal Friendship	1	Enchantment	21	107	108	unqualified
+spell/animal-messenger	animal-messenger	Animal Messenger	2	Enchantment	21	108	108	unqualified
+spell/animal-shapes	animal-shapes	Animal Shapes	8	Transmutation	4	108	108	unqualified
+spell/animate-dead	animate-dead	Animate Dead	3	Necromancy	130	108	108	unqualified
+spell/animate-objects	animate-objects	Animate Objects	5	Transmutation	161	108	109	unqualified
+spell/antimagic-field	antimagic-field	Antimagic Field	8	Abjuration	130	109	109	unqualified
+spell/antipathy-sympathy	antipathy-sympathy	Antipathy/Sympathy	8	Enchantment	133	109	109	unqualified
+spell/antilife-shell	antilife-shell	Antilife Shell	5	Abjuration	4	109	110	unqualified
+spell/arcane-eye	arcane-eye	Arcane Eye	4	Divination	128	110	110	unqualified
+spell/arcane-hand	arcane-hand	Arcane Hand	5	Evocation	160	110	110	unqualified
+spell/arcane-lock	arcane-lock	Arcane Lock	2	Abjuration	128	110	110	unqualified
+spell/arcane-sword	arcane-sword	Arcane Sword	7	Evocation	129	110	110	unqualified
+spell/arcanists-magic-aura	arcanists-magic-aura	Arcanist’s Magic Aura	2	Illusion	128	110	111	unqualified
+spell/astral-projection	astral-projection	Astral Projection	9	Necromancy	194	111	111	unqualified
+spell/augury	augury	Augury	2	Divination	134	111	111	unqualified
+spell/aura-of-life	aura-of-life	Aura of Life	4	Abjuration	10	111	111	unqualified
+spell/awaken	awaken	Awaken	5	Transmutation	5	111	112	unqualified
+spell/bane	bane	Bane	1	Enchantment	67	112	112	unqualified
+spell/banishment	banishment	Banishment	4	Abjuration	234	112	112	unqualified
+spell/barkskin	barkskin	Barkskin	2	Transmutation	20	112	112	unqualified
+spell/beacon-of-hope	beacon-of-hope	Beacon of Hope	3	Abjuration	2	112	112	unqualified
+spell/befuddlement	befuddlement	Befuddlement	8	Enchantment	197	112	112	unqualified
+spell/bestow-curse	bestow-curse	Bestow Curse	3	Necromancy	131	112	113	unqualified
+spell/black-tentacles	black-tentacles	Black Tentacles	4	Conjuration	128	113	113	unqualified
+spell/blade-barrier	blade-barrier	Blade Barrier	6	Evocation	2	113	113	unqualified
+spell/bless	bless	Bless	1	Enchantment	10	113	113	unqualified
+spell/blight	blight	Blight	4	Necromancy	228	113	113	unqualified
+spell/blindness-deafness	blindness-deafness	Blindness/Deafness	2	Transmutation	163	113	113	unqualified
+spell/blink	blink	Blink	3	Transmutation	160	113	114	unqualified
+spell/blur	blur	Blur	2	Illusion	160	114	114	unqualified
+spell/burning-hands	burning-hands	Burning Hands	1	Evocation	160	114	114	unqualified
+spell/call-lightning	call-lightning	Call Lightning	3	Conjuration	4	114	114	unqualified
+spell/calm-emotions	calm-emotions	Calm Emotions	2	Enchantment	3	114	114	unqualified
+spell/chain-lightning	chain-lightning	Chain Lightning	6	Evocation	160	114	114	unqualified
+spell/charm-monster	charm-monster	Charm Monster	4	Enchantment	229	114	115	unqualified
+spell/charm-person	charm-person	Charm Person	1	Enchantment	229	115	115	unqualified
+spell/chill-touch	chill-touch	Chill Touch	0	Necromancy	224	115	115	unqualified
+spell/chromatic-orb	chromatic-orb	Chromatic Orb	1	Evocation	160	115	115	unqualified
+spell/circle-of-death	circle-of-death	Circle of Death	6	Necromancy	224	115	115	unqualified
+spell/clairvoyance	clairvoyance	Clairvoyance	3	Divination	163	115	115	unqualified
+spell/clone	clone	Clone	8	Necromancy	128	115	116	unqualified
+spell/cloudkill	cloudkill	Cloudkill	5	Conjuration	160	116	116	unqualified
+spell/color-spray	color-spray	Color Spray	1	Illusion	161	116	116	unqualified
+spell/command	command	Command	1	Enchantment	11	116	116	unqualified
+spell/commune	commune	Commune	5	Divination	2	116	116	unqualified
+spell/commune-with-nature	commune-with-nature	Commune with Nature	5	Divination	20	116	117	unqualified
+spell/comprehend-languages	comprehend-languages	Comprehend Languages	1	Divination	225	117	117	unqualified
+spell/compulsion	compulsion	Compulsion	4	Enchantment	1	117	117	unqualified
+spell/cone-of-cold	cone-of-cold	Cone of Cold	5	Evocation	164	117	117	unqualified
+spell/confusion	confusion	Confusion	4	Enchantment	165	117	117	unqualified
+spell/conjure-animals	conjure-animals	Conjure Animals	3	Conjuration	20	117	118	unqualified
+spell/conjure-celestial	conjure-celestial	Conjure Celestial	7	Conjuration	2	118	118	unqualified
+spell/conjure-elemental	conjure-elemental	Conjure Elemental	5	Conjuration	132	118	118	unqualified
+spell/conjure-fey	conjure-fey	Conjure Fey	6	Conjuration	4	118	118	unqualified
+spell/conjure-minor-elementals	conjure-minor-elementals	Conjure Minor Elementals	4	Conjuration	132	118	118	unqualified
+spell/conjure-woodland-beings	conjure-woodland-beings	Conjure Woodland Beings	4	Conjuration	20	118	119	unqualified
+spell/contact-other-plane	contact-other-plane	Contact Other Plane	5	Divination	192	119	119	unqualified
+spell/contagion	contagion	Contagion	5	Necromancy	6	119	119	unqualified
+spell/contingency	contingency	Contingency	6	Abjuration	128	119	119	unqualified
+spell/continual-flame	continual-flame	Continual Flame	2	Evocation	134	119	119	unqualified
+spell/control-water	control-water	Control Water	4	Transmutation	134	119	120	unqualified
+spell/control-weather	control-weather	Control Weather	8	Transmutation	134	120	120	unqualified
+spell/counterspell	counterspell	Counterspell	3	Abjuration	224	120	120	unqualified
+spell/create-food-and-water	create-food-and-water	Create Food and Water	3	Conjuration	10	120	120	unqualified
+spell/create-or-destroy-water	create-or-destroy-water	Create or Destroy Water	1	Transmutation	6	121	121	unqualified
+spell/create-undead	create-undead	Create Undead	6	Necromancy	194	121	121	unqualified
+spell/creation	creation	Creation	5	Illusion	160	121	121	unqualified
+spell/cure-wounds	cure-wounds	Cure Wounds	1	Abjuration	31	121	121	unqualified
+spell/dancing-lights	dancing-lights	Dancing Lights	0	Illusion	161	121	122	unqualified
+spell/darkness	darkness	Darkness	2	Evocation	224	122	122	unqualified
+spell/darkvision	darkvision	Darkvision	2	Transmutation	180	122	122	unqualified
+spell/daylight	daylight	Daylight	3	Evocation	62	122	122	unqualified
+spell/death-ward	death-ward	Death Ward	4	Abjuration	10	122	122	unqualified
+spell/delayed-blast-fireball	delayed-blast-fireball	Delayed Blast Fireball	7	Evocation	160	122	122	unqualified
+spell/demiplane	demiplane	Demiplane	8	Conjuration	224	122	123	unqualified
+spell/detect-evil-and-good	detect-evil-and-good	Detect Evil and Good	1	Divination	10	123	123	unqualified
+spell/detect-magic	detect-magic	Detect Magic	1	Divination	255	123	123	unqualified
+spell/detect-poison-and-disease	detect-poison-and-disease	Detect Poison and Disease	1	Divination	30	123	123	unqualified
+spell/detect-thoughts	detect-thoughts	Detect Thoughts	2	Divination	161	123	123	unqualified
+spell/dimension-door	dimension-door	Dimension Door	4	Conjuration	225	123	124	unqualified
+spell/disguise-self	disguise-self	Disguise Self	1	Illusion	161	124	124	unqualified
+spell/disintegrate	disintegrate	Disintegrate	6	Transmutation	160	124	124	unqualified
+spell/dispel-evil-and-good	dispel-evil-and-good	Dispel Evil and Good	5	Abjuration	10	124	124	unqualified
+spell/dispel-magic	dispel-magic	Dispel Magic	3	Abjuration	255	124	124	unqualified
+spell/dissonant-whispers	dissonant-whispers	Dissonant Whispers	1	Enchantment	1	124	124	unqualified
+spell/divination	divination	Divination	4	Divination	134	125	125	unqualified
+spell/divine-favor	divine-favor	Divine Favor	1	Transmutation	8	125	125	unqualified
+spell/divine-smite	divine-smite	Divine Smite	1	Evocation	8	125	125	unqualified
+spell/divine-word	divine-word	Divine Word	7	Evocation	2	125	125	unqualified
+spell/dominate-beast	dominate-beast	Dominate Beast	4	Enchantment	52	125	125	unqualified
+spell/dominate-monster	dominate-monster	Dominate Monster	8	Enchantment	225	125	126	unqualified
+spell/dominate-person	dominate-person	Dominate Person	5	Enchantment	161	126	126	unqualified
+spell/dragons-breath	dragons-breath	Dragon’s Breath	2	Transmutation	160	126	126	unqualified
+spell/dream	dream	Dream	5	Illusion	193	126	126	unqualified
+spell/druidcraft	druidcraft	Druidcraft	0	Transmutation	4	126	126	unqualified
+spell/earthquake	earthquake	Earthquake	8	Transmutation	38	127	127	unqualified
+spell/eldritch-blast	eldritch-blast	Eldritch Blast	0	Evocation	64	127	127	unqualified
+spell/elementalism	elementalism	Elementalism	0	Transmutation	164	127	127	unqualified
+spell/enhance-ability	enhance-ability	Enhance Ability	2	Transmutation	183	127	127	unqualified
+spell/enlarge-reduce	enlarge-reduce	Enlarge/Reduce	2	Transmutation	165	127	128	unqualified
+spell/ensnaring-strike	ensnaring-strike	Ensnaring Strike	1	Conjuration	16	128	128	unqualified
+spell/entangle	entangle	Entangle	1	Conjuration	20	128	128	unqualified
+spell/enthrall	enthrall	Enthrall	2	Enchantment	65	128	128	unqualified
+spell/etherealness	etherealness	Etherealness	7	Conjuration	227	128	128	unqualified
+spell/expeditious-retreat	expeditious-retreat	Expeditious Retreat	1	Transmutation	224	129	129	unqualified
+spell/eyebite	eyebite	Eyebite	6	Necromancy	225	129	129	unqualified
+spell/fabricate	fabricate	Fabricate	4	Transmutation	128	129	129	unqualified
+spell/faerie-fire	faerie-fire	Faerie Fire	1	Evocation	5	129	129	unqualified
+spell/faithful-hound	faithful-hound	Faithful Hound	4	Conjuration	128	129	129	unqualified
+spell/false-life	false-life	False Life	1	Necromancy	160	129	129	unqualified
+spell/fear	fear	Fear	3	Illusion	225	130	130	unqualified
+spell/feather-fall	feather-fall	Feather Fall	1	Transmutation	161	130	130	unqualified
+spell/find-familiar	find-familiar	Find Familiar	1	Conjuration	128	130	130	unqualified
+spell/find-steed	find-steed	Find Steed	2	Conjuration	8	130	131	unqualified
+spell/find-traps	find-traps	Find Traps	2	Divination	22	131	131	unqualified
+spell/finger-of-death	finger-of-death	Finger of Death	7	Necromancy	224	131	131	unqualified
+spell/fireball	fireball	Fireball	3	Evocation	160	131	131	unqualified
+spell/find-the-path	find-the-path	Find the Path	6	Divination	7	131	131	unqualified
+spell/fire-bolt	fire-bolt	Fire Bolt	0	Evocation	160	132	132	unqualified
+spell/fire-shield	fire-shield	Fire Shield	4	Evocation	164	132	132	unqualified
+spell/fire-storm	fire-storm	Fire Storm	7	Evocation	38	132	132	unqualified
+spell/flame-blade	flame-blade	Flame Blade	2	Evocation	36	132	132	unqualified
+spell/flame-strike	flame-strike	Flame Strike	5	Evocation	2	132	132	unqualified
+spell/flaming-sphere	flaming-sphere	Flaming Sphere	2	Conjuration	164	132	132	unqualified
+spell/flesh-to-stone	flesh-to-stone	Flesh to Stone	6	Transmutation	164	133	133	unqualified
+spell/floating-disk	floating-disk	Floating Disk	1	Conjuration	128	133	133	unqualified
+spell/fly	fly	Fly	3	Transmutation	224	133	133	unqualified
+spell/fog-cloud	fog-cloud	Fog Cloud	1	Conjuration	180	133	133	unqualified
+spell/forbiddance	forbiddance	Forbiddance	6	Abjuration	2	133	133	unqualified
+spell/forcecage	forcecage	Forcecage	7	Evocation	193	134	134	unqualified
+spell/foresight	foresight	Foresight	9	Divination	197	134	134	unqualified
+spell/freedom-of-movement	freedom-of-movement	Freedom of Movement	4	Abjuration	23	134	134	unqualified
+spell/freezing-sphere	freezing-sphere	Freezing Sphere	6	Evocation	160	134	134	unqualified
+spell/gaseous-form	gaseous-form	Gaseous Form	3	Transmutation	224	134	135	unqualified
+spell/gate	gate	Gate	9	Conjuration	226	135	135	unqualified
+spell/geas	geas	Geas	5	Enchantment	143	135	135	unqualified
+spell/gentle-repose	gentle-repose	Gentle Repose	2	Necromancy	138	135	135	unqualified
+spell/giant-insect	giant-insect	Giant Insect	4	Conjuration	4	135	136	unqualified
+spell/glibness	glibness	Glibness	8	Enchantment	65	136	136	unqualified
+spell/globe-of-invulnerability	globe-of-invulnerability	Globe of Invulnerability	6	Abjuration	160	136	136	unqualified
+spell/glyph-of-warding	glyph-of-warding	Glyph of Warding	3	Abjuration	131	136	137	unqualified
+spell/goodberry	goodberry	Goodberry	1	Conjuration	20	137	137	unqualified
+spell/grease	grease	Grease	1	Conjuration	160	137	137	unqualified
+spell/greater-invisibility	greater-invisibility	Greater Invisibility	4	Illusion	161	137	137	unqualified
+spell/greater-restoration	greater-restoration	Greater Restoration	5	Abjuration	31	137	137	unqualified
+spell/guardian-of-faith	guardian-of-faith	Guardian of Faith	4	Conjuration	2	137	137	unqualified
+spell/guards-and-wards	guards-and-wards	Guards and Wards	6	Abjuration	129	137	138	unqualified
+spell/guidance	guidance	Guidance	0	Divination	6	138	138	unqualified
+spell/guiding-bolt	guiding-bolt	Guiding Bolt	1	Evocation	2	138	138	unqualified
+spell/gust-of-wind	gust-of-wind	Gust of Wind	2	Evocation	180	138	138	unqualified
+spell/hallow	hallow	Hallow	5	Abjuration	2	138	139	unqualified
+spell/hallucinatory-terrain	hallucinatory-terrain	Hallucinatory Terrain	4	Illusion	197	139	139	unqualified
+spell/harm	harm	Harm	6	Necromancy	2	139	139	unqualified
+spell/haste	haste	Haste	3	Transmutation	160	139	139	unqualified
+spell/heal	heal	Heal	6	Abjuration	6	139	139	unqualified
+spell/healing-word	healing-word	Healing Word	1	Abjuration	7	139	139	unqualified
+spell/heat-metal	heat-metal	Heat Metal	2	Transmutation	5	139	140	unqualified
+spell/hellish-rebuke	hellish-rebuke	Hellish Rebuke	1	Evocation	64	140	140	unqualified
+spell/heroes-feast	heroes-feast	Heroes’ Feast	6	Conjuration	7	140	140	unqualified
+spell/heroism	heroism	Heroism	1	Enchantment	9	140	140	unqualified
+spell/hex	hex	Hex	1	Enchantment	64	140	140	unqualified
+spell/hideous-laughter	hideous-laughter	Hideous Laughter	1	Enchantment	193	140	140	unqualified
+spell/hold-monster	hold-monster	Hold Monster	5	Enchantment	225	140	141	unqualified
+spell/hold-person	hold-person	Hold Person	2	Enchantment	231	141	141	unqualified
+spell/holy-aura	holy-aura	Holy Aura	8	Abjuration	2	141	141	unqualified
+spell/hunters-mark	hunters-mark	Hunter’s Mark	1	Divination	16	141	141	unqualified
+spell/hypnotic-pattern	hypnotic-pattern	Hypnotic Pattern	3	Illusion	225	141	141	unqualified
+spell/ice-knife	ice-knife	Ice Knife	1	Conjuration	164	141	141	unqualified
+spell/ice-storm	ice-storm	Ice Storm	4	Evocation	164	141	142	unqualified
+spell/identify	identify	Identify	1	Divination	129	142	142	unqualified
+spell/illusory-script	illusory-script	Illusory Script	1	Illusion	193	142	142	unqualified
+spell/imprisonment	imprisonment	Imprisonment	9	Abjuration	192	142	142	unqualified
+spell/incendiary-cloud	incendiary-cloud	Incendiary Cloud	8	Conjuration	164	142	143	unqualified
+spell/inflict-wounds	inflict-wounds	Inflict Wounds	1	Necromancy	2	143	143	unqualified
+spell/insect-plague	insect-plague	Insect Plague	5	Conjuration	38	143	143	unqualified
+spell/instant-summons	instant-summons	Instant Summons	6	Conjuration	128	143	143	unqualified
+spell/irresistible-dance	irresistible-dance	Irresistible Dance	6	Enchantment	129	143	143	unqualified
+spell/invisibility	invisibility	Invisibility	2	Illusion	225	143	143	unqualified
+spell/jump	jump	Jump	1	Transmutation	180	143	143	unqualified
+spell/knock	knock	Knock	2	Transmutation	161	143	144	unqualified
+spell/legend-lore	legend-lore	Legend Lore	5	Divination	131	144	144	unqualified
+spell/lesser-restoration	lesser-restoration	Lesser Restoration	2	Abjuration	31	144	144	unqualified
+spell/levitate	levitate	Levitate	2	Transmutation	160	144	144	unqualified
+spell/light	light	Light	0	Evocation	163	144	144	unqualified
+spell/lightning-bolt	lightning-bolt	Lightning Bolt	3	Evocation	160	144	144	unqualified
+spell/locate-animals-or-plants	locate-animals-or-plants	Locate Animals or Plants	2	Divination	21	144	144	unqualified
+spell/locate-creature	locate-creature	Locate Creature	4	Divination	159	145	145	unqualified
+spell/locate-object	locate-object	Locate Object	2	Divination	159	145	145	unqualified
+spell/longstrider	longstrider	Longstrider	1	Transmutation	149	145	145	unqualified
+spell/mage-armor	mage-armor	Mage Armor	1	Abjuration	160	145	145	unqualified
+spell/mage-hand	mage-hand	Mage Hand	0	Conjuration	225	145	145	unqualified
+spell/magic-circle	magic-circle	Magic Circle	3	Abjuration	202	145	146	unqualified
+spell/magic-jar	magic-jar	Magic Jar	6	Necromancy	128	146	146	unqualified
+spell/magic-missile	magic-missile	Magic Missile	1	Evocation	160	146	146	unqualified
+spell/magic-mouth	magic-mouth	Magic Mouth	2	Illusion	129	146	146	unqualified
+spell/magic-weapon	magic-weapon	Magic Weapon	2	Transmutation	184	146	147	unqualified
+spell/magnificent-mansion	magnificent-mansion	Magnificent Mansion	7	Conjuration	129	147	147	unqualified
+spell/major-image	major-image	Major Image	3	Illusion	225	147	147	unqualified
+spell/mass-cure-wounds	mass-cure-wounds	Mass Cure Wounds	5	Abjuration	7	147	147	unqualified
+spell/mass-heal	mass-heal	Mass Heal	9	Abjuration	2	147	147	unqualified
+spell/mass-healing-word	mass-healing-word	Mass Healing Word	3	Abjuration	3	148	148	unqualified
+spell/mass-suggestion	mass-suggestion	Mass Suggestion	6	Enchantment	161	148	148	unqualified
+spell/maze	maze	Maze	8	Conjuration	128	148	148	unqualified
+spell/meld-into-stone	meld-into-stone	Meld into Stone	3	Transmutation	22	148	148	unqualified
+spell/mending	mending	Mending	0	Transmutation	167	148	148	unqualified
+spell/message	message	Message	0	Transmutation	165	148	149	unqualified
+spell/meteor-swarm	meteor-swarm	Meteor Swarm	9	Evocation	160	149	149	unqualified
+spell/mind-blank	mind-blank	Mind Blank	8	Abjuration	129	149	149	unqualified
+spell/mind-spike	mind-spike	Mind Spike	2	Divination	224	149	149	unqualified
+spell/minor-illusion	minor-illusion	Minor Illusion	0	Illusion	225	149	149	unqualified
+spell/mirage-arcane	mirage-arcane	Mirage Arcane	7	Illusion	133	149	150	unqualified
+spell/mirror-image	mirror-image	Mirror Image	2	Illusion	225	150	150	unqualified
+spell/mislead	mislead	Mislead	5	Illusion	193	150	150	unqualified
+spell/misty-step	misty-step	Misty Step	2	Conjuration	224	150	150	unqualified
+spell/modify-memory	modify-memory	Modify Memory	5	Enchantment	129	150	150	unqualified
+spell/moonbeam	moonbeam	Moonbeam	2	Evocation	4	150	151	unqualified
+spell/move-earth	move-earth	Move Earth	6	Transmutation	164	151	151	unqualified
+spell/nondetection	nondetection	Nondetection	3	Abjuration	145	151	151	unqualified
+spell/passwall	passwall	Passwall	5	Transmutation	128	151	151	unqualified
+spell/pass-without-trace	pass-without-trace	Pass without Trace	2	Abjuration	20	151	151	unqualified
+spell/phantasmal-force	phantasmal-force	Phantasmal Force	2	Illusion	161	151	152	unqualified
+spell/phantasmal-killer	phantasmal-killer	Phantasmal Killer	4	Illusion	129	152	152	unqualified
+spell/phantom-steed	phantom-steed	Phantom Steed	3	Illusion	128	152	152	unqualified
+spell/planar-ally	planar-ally	Planar Ally	6	Conjuration	2	152	152	unqualified
+spell/planar-binding	planar-binding	Planar Binding	5	Abjuration	199	152	153	unqualified
+spell/plane-shift	plane-shift	Plane Shift	7	Conjuration	230	153	153	unqualified
+spell/plant-growth	plant-growth	Plant Growth	3	Transmutation	21	153	153	unqualified
+spell/poison-spray	poison-spray	Poison Spray	0	Necromancy	228	153	153	unqualified
+spell/polymorph	polymorph	Polymorph	4	Transmutation	165	153	154	unqualified
+spell/power-word-heal	power-word-heal	Power Word Heal	9	Enchantment	3	154	154	unqualified
+spell/power-word-kill	power-word-kill	Power Word Kill	9	Enchantment	225	154	154	unqualified
+spell/power-word-stun	power-word-stun	Power Word Stun	8	Enchantment	225	154	154	unqualified
+spell/prayer-of-healing	prayer-of-healing	Prayer of Healing	2	Abjuration	10	154	154	unqualified
+spell/prestidigitation	prestidigitation	Prestidigitation	0	Transmutation	225	154	154	unqualified
+spell/prismatic-spray	prismatic-spray	Prismatic Spray	7	Evocation	161	154	155	unqualified
+spell/prismatic-wall	prismatic-wall	Prismatic Wall	9	Abjuration	129	155	155	unqualified
+spell/private-sanctum	private-sanctum	Private Sanctum	4	Abjuration	128	156	156	unqualified
+spell/produce-flame	produce-flame	Produce Flame	0	Conjuration	4	156	156	unqualified
+spell/programmed-illusion	programmed-illusion	Programmed Illusion	6	Illusion	129	156	156	unqualified
+spell/project-image	project-image	Project Image	7	Illusion	129	156	157	unqualified
+spell/protection-from-energy	protection-from-energy	Protection from Energy	3	Abjuration	182	157	157	unqualified
+spell/protection-from-evil-and-good	protection-from-evil-and-good	Protection from Evil and Good	1	Abjuration	206	157	157	unqualified
+spell/protection-from-poison	protection-from-poison	Protection from Poison	2	Abjuration	30	157	157	unqualified
+spell/purify-food-and-drink	purify-food-and-drink	Purify Food and Drink	1	Transmutation	14	157	157	unqualified
+spell/raise-dead	raise-dead	Raise Dead	5	Necromancy	11	157	157	unqualified
+spell/ray-of-enfeeblement	ray-of-enfeeblement	Ray of Enfeeblement	2	Necromancy	192	157	157	unqualified
+spell/ray-of-frost	ray-of-frost	Ray of Frost	0	Evocation	160	157	157	unqualified
+spell/regenerate	regenerate	Regenerate	7	Transmutation	7	158	158	unqualified
+spell/ray-of-sickness	ray-of-sickness	Ray of Sickness	1	Necromancy	160	158	158	unqualified
+spell/reincarnate	reincarnate	Reincarnate	5	Necromancy	4	158	158	unqualified
+spell/remove-curse	remove-curse	Remove Curse	3	Abjuration	202	158	158	unqualified
+spell/resilient-sphere	resilient-sphere	Resilient Sphere	4	Abjuration	128	158	158	unqualified
+spell/resistance	resistance	Resistance	0	Abjuration	6	158	158	unqualified
+spell/resurrection	resurrection	Resurrection	7	Necromancy	3	158	159	unqualified
+spell/reverse-gravity	reverse-gravity	Reverse Gravity	7	Transmutation	164	159	159	unqualified
+spell/revivify	revivify	Revivify	3	Necromancy	30	159	159	unqualified
+spell/rope-trick	rope-trick	Rope Trick	2	Transmutation	128	159	159	unqualified
+spell/sacred-flame	sacred-flame	Sacred Flame	0	Evocation	2	159	159	unqualified
+spell/sanctuary	sanctuary	Sanctuary	1	Abjuration	2	159	159	unqualified
+spell/scorching-ray	scorching-ray	Scorching Ray	2	Evocation	160	159	159	unqualified
+spell/scrying	scrying	Scrying	5	Divination	199	160	160	unqualified
+spell/searing-smite	searing-smite	Searing Smite	1	Evocation	8	160	160	unqualified
+spell/secret-chest	secret-chest	Secret Chest	4	Conjuration	128	160	160	unqualified
+spell/see-invisibility	see-invisibility	See Invisibility	2	Divination	161	160	160	unqualified
+spell/seeming	seeming	Seeming	5	Illusion	161	160	161	unqualified
+spell/sending	sending	Sending	3	Divination	131	161	161	unqualified
+spell/sequester	sequester	Sequester	7	Transmutation	128	161	161	unqualified
+spell/shapechange	shapechange	Shapechange	9	Transmutation	132	161	161	unqualified
+spell/shatter	shatter	Shatter	2	Evocation	161	161	161	unqualified
+spell/shield	shield	Shield	1	Abjuration	160	161	162	unqualified
+spell/shield-of-faith	shield-of-faith	Shield of Faith	1	Abjuration	10	162	162	unqualified
+spell/shillelagh	shillelagh	Shillelagh	0	Transmutation	4	162	162	unqualified
+spell/shining-smite	shining-smite	Shining Smite	2	Transmutation	8	162	162	unqualified
+spell/shocking-grasp	shocking-grasp	Shocking Grasp	0	Evocation	160	162	162	unqualified
+spell/silence	silence	Silence	2	Illusion	19	162	162	unqualified
+spell/silent-image	silent-image	Silent Image	1	Illusion	161	162	162	unqualified
+spell/simulacrum	simulacrum	Simulacrum	7	Illusion	128	162	163	unqualified
+spell/sleep	sleep	Sleep	1	Enchantment	161	163	163	unqualified
+spell/sleet-storm	sleet-storm	Sleet Storm	3	Conjuration	164	163	163	unqualified
+spell/slow	slow	Slow	3	Transmutation	161	163	163	unqualified
+spell/sorcerous-burst	sorcerous-burst	Sorcerous Burst	0	Evocation	32	163	163	unqualified
+spell/spare-the-dying	spare-the-dying	Spare the Dying	0	Necromancy	6	163	163	unqualified
+spell/speak-with-animals	speak-with-animals	Speak with Animals	1	Divination	85	164	164	unqualified
+spell/speak-with-dead	speak-with-dead	Speak with Dead	3	Necromancy	131	164	164	unqualified
+spell/speak-with-plants	speak-with-plants	Speak with Plants	3	Transmutation	21	164	164	unqualified
+spell/spider-climb	spider-climb	Spider Climb	2	Transmutation	224	164	164	unqualified
+spell/spike-growth	spike-growth	Spike Growth	2	Transmutation	20	164	164	unqualified
+spell/spirit-guardians	spirit-guardians	Spirit Guardians	3	Conjuration	2	164	165	unqualified
+spell/spiritual-weapon	spiritual-weapon	Spiritual Weapon	2	Evocation	2	165	165	unqualified
+spell/starry-wisp	starry-wisp	Starry Wisp	0	Evocation	5	165	165	unqualified
+spell/stinking-cloud	stinking-cloud	Stinking Cloud	3	Conjuration	161	165	165	unqualified
+spell/stone-shape	stone-shape	Stone Shape	4	Transmutation	134	165	165	unqualified
+spell/stoneskin	stoneskin	Stoneskin	4	Transmutation	180	165	165	unqualified
+spell/storm-of-vengeance	storm-of-vengeance	Storm of Vengeance	9	Conjuration	4	165	166	unqualified
+spell/suggestion	suggestion	Suggestion	2	Enchantment	225	166	166	unqualified
+spell/summon-dragon	summon-dragon	Summon Dragon	5	Conjuration	128	166	166	unqualified
+spell/sunbeam	sunbeam	Sunbeam	6	Evocation	166	166	166	unqualified
+spell/sunburst	sunburst	Sunburst	8	Evocation	166	167	167	unqualified
+spell/symbol	symbol	Symbol	7	Abjuration	135	167	167	unqualified
+spell/telekinesis	telekinesis	Telekinesis	5	Transmutation	160	167	168	unqualified
+spell/telepathic-bond	telepathic-bond	Telepathic Bond	5	Divination	129	168	168	unqualified
+spell/teleport	teleport	Teleport	7	Conjuration	161	168	168	unqualified
+spell/teleportation-circle	teleportation-circle	Teleportation Circle	5	Conjuration	225	168	169	unqualified
+spell/thaumaturgy	thaumaturgy	Thaumaturgy	0	Transmutation	2	169	169	unqualified
+spell/thunderwave	thunderwave	Thunderwave	1	Evocation	165	169	169	unqualified
+spell/time-stop	time-stop	Time Stop	9	Transmutation	160	169	169	unqualified
+spell/tiny-hut	tiny-hut	Tiny Hut	3	Evocation	129	169	169	unqualified
+spell/tongues	tongues	Tongues	3	Divination	227	169	170	unqualified
+spell/transport-via-plants	transport-via-plants	Transport via Plants	6	Conjuration	4	170	170	unqualified
+spell/tree-stride	tree-stride	Tree Stride	5	Conjuration	20	170	170	unqualified
+spell/true-polymorph	true-polymorph	True Polymorph	9	Transmutation	193	170	170	unqualified
+spell/true-resurrection	true-resurrection	True Resurrection	9	Necromancy	6	170	171	unqualified
+spell/true-seeing	true-seeing	True Seeing	6	Divination	227	171	171	unqualified
+spell/true-strike	true-strike	True Strike	0	Divination	225	171	171	unqualified
+spell/tsunami	tsunami	Tsunami	8	Conjuration	4	171	171	unqualified
+spell/unseen-servant	unseen-servant	Unseen Servant	1	Conjuration	193	171	171	unqualified
+spell/vampiric-touch	vampiric-touch	Vampiric Touch	3	Necromancy	224	171	171	unqualified
+spell/vicious-mockery	vicious-mockery	Vicious Mockery	0	Enchantment	1	171	172	unqualified
+spell/vitriolic-sphere	vitriolic-sphere	Vitriolic Sphere	4	Evocation	160	172	172	unqualified
+spell/wall-of-fire	wall-of-fire	Wall of Fire	4	Evocation	164	172	172	unqualified
+spell/wall-of-force	wall-of-force	Wall of Force	5	Evocation	128	172	172	unqualified
+spell/wall-of-ice	wall-of-ice	Wall of Ice	6	Evocation	128	172	173	unqualified
+spell/wall-of-stone	wall-of-stone	Wall of Stone	5	Evocation	164	173	173	unqualified
+spell/wall-of-thorns	wall-of-thorns	Wall of Thorns	6	Conjuration	4	173	173	unqualified
+spell/warding-bond	warding-bond	Warding Bond	2	Abjuration	10	173	173	unqualified
+spell/water-breathing	water-breathing	Water Breathing	3	Transmutation	180	173	173	unqualified
+spell/water-walk	water-walk	Water Walk	3	Transmutation	54	173	174	unqualified
+spell/web	web	Web	2	Conjuration	160	174	174	unqualified
+spell/weird	weird	Weird	9	Illusion	192	174	174	unqualified
+spell/wind-walk	wind-walk	Wind Walk	6	Transmutation	4	174	174	unqualified
+spell/wind-wall	wind-wall	Wind Wall	3	Evocation	20	174	174	unqualified
+spell/wish	wish	Wish	9	Conjuration	160	175	175	unqualified
+spell/word-of-recall	word-of-recall	Word of Recall	6	Conjuration	2	175	175	unqualified
+spell/zone-of-truth	zone-of-truth	Zone of Truth	2	Enchantment	11	175	175	unqualified

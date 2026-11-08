@@ -1,0 +1,22 @@
+// Canonical source metadata. Presence is NOT executable-mechanics qualification.
+// Class bit order is stable and independent of the combat engine's class enum.
+SRD_CLASSES :: [8] string.["Bard", "Cleric", "Druid", "Paladin", "Ranger", "Sorcerer", "Warlock", "Wizard"];
+SRD_SCHOOLS :: [8] string.["Abjuration", "Conjuration", "Divination", "Enchantment", "Evocation", "Illusion", "Necromancy", "Transmutation"];
+SRD_ATTRIBUTION :: "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.";
+SRD_CAST_ACTION :: 0; SRD_CAST_BONUS :: 1; SRD_CAST_REACTION :: 2; SRD_CAST_TIMED :: 3; SRD_CAST_SPECIAL :: 4;
+SRD_RANGE_SELF :: 0; SRD_RANGE_TOUCH :: 1; SRD_RANGE_FEET :: 2; SRD_RANGE_MILES :: 3;
+SRD_RANGE_SIGHT :: 4; SRD_RANGE_UNLIMITED :: 5; SRD_RANGE_SPECIAL :: 6;
+SRD_DURATION_INSTANT :: 0; SRD_DURATION_TIMED :: 1; SRD_DURATION_UNTIL :: 2; SRD_DURATION_SPECIAL :: 3;
+SrdSourceSpell :: struct {
+  id: string; name: string; level: int; school: int; classes: int;
+  page: int; end_page: int;
+  cast_text: string; cast_kind: int; cast_seconds: int; ritual: bool;
+  range_text: string; range_kind: int; range_value: int;
+  components: string; verbal: bool; somatic: bool; material: bool;
+  material_text: string; cost_text: string; consumed: bool;
+  duration_text: string; duration_kind: int; duration_seconds: int; concentration: bool;
+  // PDF extraction bytes, including line wrapping, lists and tables. No prose,
+  // target geometry, effect program or narrative designation is invented here.
+  text: string; higher_levels: string;
+}
+SrdClassSpell :: struct { klass: int; spell: int; level: int; school: int; page: int; concentration: bool; ritual: bool; material_required: bool; }

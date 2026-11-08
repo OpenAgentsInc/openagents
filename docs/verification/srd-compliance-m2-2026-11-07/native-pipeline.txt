@@ -1,0 +1,7 @@
+PASS committed files match regeneration
+PASS fresh generation is byte-identical
+PASS existing output refuses without changing files
+PASS stale generated data fails read-only check
+PASS same-size wrong PDF hash publishes nothing
+PASS truncated PDF publishes nothing
+6 native pipeline checks passed

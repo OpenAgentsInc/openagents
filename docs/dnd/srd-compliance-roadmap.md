@@ -167,5 +167,10 @@ inventories and the first interpreter slices establish the workload.
 
 ## Current work
 
-Milestone 1 is the active scope. See [the ledger](srd-compliance-ledger.md) for
-status and the verification record linked there for observed regression results.
+Milestone 1 established the baseline ledger and strict witnesses. Milestone 2
+now has a Coax importer and canonical source catalog for all 339 spell
+descriptions and the eight base class tables (875 memberships), with nine
+preserved source discrepancies. See [the data pipeline](../../aethyr/rules/srd/data/README.md)
+and [the ledger](srd-compliance-ledger.md). Other content catalogs, mechanical
+target/area interpretation and executable effect completion remain open; imported
+metadata does not close milestones 3-8.

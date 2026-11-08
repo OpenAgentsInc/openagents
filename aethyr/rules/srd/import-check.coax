@@ -1,0 +1,55 @@
+// Native end-to-end fixtures for the importer (all temporary outputs are owned).
+// Usage: coax/web/tool.sh aethyr/rules/srd/import-check.coax PDF DATA_DIRECTORY
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+IC_FILES :: [6] string.["spells.coax", "class-lists.coax", "inventory.tsv", "class-lists.tsv", "manifest.txt", "discrepancies.tsv"];
+ic_import :: (pdf: string, mode: string, dest: string) -> int {
+  argv := [6] string.["coax/web/tool.sh", "aethyr/rules/srd/import.coax", "--pdf", pdf, mode, dest];
+  out: [65536] u8; err: [65536] u8;
+  r := proc_run(argv[..], 120000, out[..], err[..]);
+  if r.started != 0 || r.timed_out || r.cut { tool_errln("fixture child failed to start, timed out or truncated"); return 99; }
+  return r.status;
+}
+ic_equal :: (left: string, right: string) -> bool {
+  a: [2097152] u8; b: [2097152] u8; pa: [4096] u8; pb: [4096] u8;
+  for file: IC_FILES {
+    n := fs_read(fs_join(left, file, pa[..]), a[..]); m := fs_read(fs_join(right, file, pb[..]), b[..]);
+    if n < 0 || n != m || cast(string) a[0..<n] != cast(string) b[0..<m] { return false; }
+  }
+  return true;
+}
+ic_case :: (name: string, passed: bool) -> int {
+  tool_err(ifx passed then "PASS " else "FAIL "); tool_errln(name); return ifx passed then 0 else 1;
+}
+ic_suite :: (pdf: string, data: string, root: string) -> int {
+  paths: [4] [4096] u8;
+  fresh := fs_join(root, "fresh output", paths[0][..]);
+  bad := fs_join(root, "wrong hash.pdf", paths[1][..]);
+  refused := fs_join(root, "must not exist", paths[2][..]);
+  tampered := fs_join(fresh, "spells.coax", paths[3][..]);
+  failed := ic_case("committed files match regeneration", ic_import(pdf, "--check", data) == 0);
+  failed += ic_case("fresh generation is byte-identical", ic_import(pdf, "--out", fresh) == 0 && ic_equal(data, fresh));
+  failed += ic_case("existing output refuses without changing files", ic_import(pdf, "--out", fresh) == 1 && ic_equal(data, fresh));
+  if !fs_append(tampered, "\n// deliberately corrupted fixture\n") { return failed + 1; }
+  size := fs_size(tampered);
+  failed += ic_case("stale generated data fails read-only check", ic_import(pdf, "--check", fresh) == 1 && fs_size(tampered) == size);
+  bytes: [6291456] u8; n := fs_read(pdf, bytes[..]);
+  if n < 1 { return failed + 1; }
+  bytes[0] = bytes[0] ^ 1;
+  if !fs_write(bad, cast(string) bytes[0..<n]) { return failed + 1; }
+  failed += ic_case("same-size wrong PDF hash publishes nothing", ic_import(bad, "--out", refused) == 1 && fs_kind(refused) == FS_NONE);
+  if !fs_write(bad, "truncated source") { return failed + 1; }
+  failed += ic_case("truncated PDF publishes nothing", ic_import(bad, "--out", refused) == 1 && fs_kind(refused) == FS_NONE);
+  return failed;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args[0].n != 2 { tool_errln("usage: import-check PDF DATA_DIRECTORY"); return 2; }
+  buf: [4096] u8; root := fs_temp("oa-srd-pipeline-check-", buf[..]); if root.count == 0 { return 1; }
+  failed := ic_suite(args_at(args[..], 0), args_at(args[..], 1), root);
+  if !fs_remove(root) { tool_errln("failed to remove owned fixture directory"); return 1; }
+  if failed != 0 { return 1; }
+  tool_errln("6 native pipeline checks passed"); return 0;
+}

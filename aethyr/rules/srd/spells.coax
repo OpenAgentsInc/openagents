@@ -1,8 +1,8 @@
 // SRD 5.2.1 spells as records (docs/dnd/README.md, "SRD content: data, not code"). Each holds the
 // SRD's fields and an effect program: a short list of typed steps from a closed set that
 // battle.coax runs for any world, so no world codes a spell's numbers. The first records are
-// low-level Druid, Wizard and Warlock spells; the import tool (aethyr/rules/srd/import.coax, planned) will generate
-// every spell from the PDF in this shape. Texts are the SRD's, word for word.
+// low-level Druid, Wizard and Warlock spells. import.coax now generates the complete source
+// metadata in data/ (catalog.coax); these partial executable programs migrate in milestones 4/7.
 //
 // This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
 // of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
@@ -11,7 +11,7 @@
 //   coax/bin/coax test --library aethyr/rules/srd/spells.coax
 #load "engine.coax";
 // More records past the first RS_SPELLS: SRD spells a world needed (more.coax) and house rules,
-// marked srd: false (house.coax). rs_spell answers for both.
+// marked srd: false (house.coax). rs_spell answers for both, not for the whole source catalog.
 #load "more.coax";
 #load "house.coax";
 

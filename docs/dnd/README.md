@@ -283,14 +283,16 @@ source coverage. The ledger is the current gap inventory.
 |---|---|---|
 | `aethyr/rules/srd/engine.coax`, `battle.coax`, `npcs.coax` | Shared deterministic combat, selected class/subclass features and stat blocks, real-time turn clocks | Complete rules and progression; qualify each mechanical clause |
 | `aethyr/rules/srd/spells.coax`, `more.coax`, `house.coax` | 78 assigned SRD-marked spell/effect records including helpers, plus four house records; several effects are approximate or empty | Import canonical source content and complete typed programs; count parent spells separately from helpers |
+| `aethyr/rules/srd/import.coax`, `catalog.coax`, `data/` | Pinned-source pipeline: 339 spell descriptions and 875 entries from eight independently parsed class tables, with nine preserved source differences | Expand to the other catalogs; interpret/qualify mechanics and migrate executable consumers |
 | `verse/rules/srd5*.coax` | Older dice, object and combat implementation still used by consumers including Hold the Stair | Migrate consumers and remove duplicated rule ownership |
 | Everglade (`everglade5e-rules.coax`, room rules and `fivebar.coax`), 5E Lab | Shared engine consumers with world adapters, hotbars and effects | Centralize declared profiles; retain presentation and world physics |
 | Hold the Stair (`stair.coax`, `stair-tables.coax`) | Own class tables and older combat dependency | Use canonical class/spell data and shared execution |
 | Realm page metadata | `ruleset` and `data-ruleset` selection | Add validated profiles and per-world coverage |
 
-Earlier Druid-list and bar counts were planning estimates, not source-reconciled
-coverage. Use the ledger's runtime inventory for current record presence; the
-pinned PDF's complete class/spell lists still need independent reconciliation.
+The Druid's base table is now source-reconciled at 124 entries. Earlier bar counts
+were not compliance measurements. Use the ledger's runtime inventory for current
+executable record presence and the [canonical source inventory](../../aethyr/rules/srd/data/README.md)
+for imported spell/list data. Source presence and executable coverage remain separate.
 
 ## Work, in order
 

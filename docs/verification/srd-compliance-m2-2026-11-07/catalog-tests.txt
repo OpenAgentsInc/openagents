@@ -1,0 +1,4 @@
+ok   #test the pinned source contains 339 unique complete descriptions and 875 base list entries (1 case, 33821780 steps, 292 ms)
+ok   #test independent source fixtures retain ritual timing, component costs, reactions and long durations (1 case, 599415 steps, 5 ms)
+ok   #test source contradictions stay visible without altering either source reading (1 case, 1306649 steps, 12 ms)
+3 checks, 3 passed, 0 failed

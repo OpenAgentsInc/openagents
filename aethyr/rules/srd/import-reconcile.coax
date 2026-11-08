@@ -1,0 +1,116 @@
+// Collect discrepancy evidence independently of the final publication gate.
+#load "import-lists.coax";
+#load "import-policy.coax";
+#authority;
+
+#test "reconciliation detects duplicate spell IDs, missing memberships and false table metadata" {
+  b: [1] SiBook;
+  b[0].n = 1;
+  b[0].spell[0] = SrdSourceSpell.{id = "aid", name = "Aid", level = 2, school = 0, classes = 1,
+       page = 107, end_page = 107, cast_text = "Action", range_text = "30 feet", components = "V, S", duration_text = "8 hours", text = "Effect."};
+  b[0].lists = 1; b[0].list[0] = SrdClassSpell.{klass = 0, spell = 0, level = 2, page = 34};
+  #assert si_reconcile(b[..]) == 0;
+  b[0].list[0].ritual = true; #assert si_reconcile(b[..]) == 1; b[0].list[0].ritual = false;
+  b[0].lists = 0; #assert si_reconcile(b[..]) == 1; b[0].lists = 1;
+  b[0].spell[1] = b[0].spell[0]; b[0].n = 2; #assert si_reconcile(b[..]) == 2;
+}
+#test "reconciliation refuses malformed candidate bounds and incomplete required source fields" {
+  b: [1] SiBook;
+  #assert si_reconcile(b[..]) == -1;
+  b[0].n = 401; #assert si_reconcile(b[..]) == -1;
+  b[0].n = 1; b[0].lists = 2049; #assert si_reconcile(b[..]) == -1;
+  b[0].lists = -1; #assert si_reconcile(b[..]) == -1;
+  b[0].n = -1; b[0].lists = 0; #assert si_reconcile(b[..]) == -1;
+  b[0].n = 1; b[0].lists = 1;
+  base := SrdSourceSpell.{id = "aid", name = "Aid", level = 2, school = 0, classes = 1, page = 107, end_page = 107,
+       cast_text = "Action", range_text = "30 feet", components = "V, S", duration_text = "8 hours", text = "Effect."};
+  row := SrdClassSpell.{klass = 0, spell = 0, level = 2, page = 34};
+  b[0].spell[0] = base; b[0].list[0] = row;
+  #assert si_reconcile(b[..]) == 0;
+  b[0].error = true; #assert si_reconcile(b[..]) == 1; b[0].error = false;
+  for field: 0..<9 {
+    bad := base;
+    if field == 0 { bad.id = ""; } if field == 1 { bad.name = ""; } if field == 2 { bad.text = ""; }
+    if field == 3 { bad.cast_text = ""; } if field == 4 { bad.range_text = ""; }
+    if field == 5 { bad.components = ""; } if field == 6 { bad.duration_text = ""; }
+    if field == 7 { bad.page = 106; } if field == 8 { bad.end_page = 176; }
+    b[0].spell[0] = bad; #assert si_reconcile(b[..]) == 1;
+  }
+  b[0].spell[0] = base;
+  for field: 0..<9 {
+    bad := row;
+    if field == 0 { bad.klass = -1; } if field == 1 { bad.klass = 8; }
+    if field == 2 { bad.spell = -1; } if field == 3 { bad.spell = 1; }
+    if field == 4 { bad.page = 27; } if field == 5 { bad.page = 83; }
+    if field == 6 { bad.level = 3; } if field == 7 { bad.school = 1; } if field == 8 { bad.material_required = true; }
+    b[0].list[0] = bad; #assert si_reconcile(b[..]) == ifx field < 6 then -1 else 1;
+  }
+  b[0].list[0] = row; b[0].lists = 2; b[0].list[1] = row; #assert si_reconcile(b[..]) == 1;
+}
+// Error counts are report data: -1 denotes malformed storage, positive counts
+// enumerate source discrepancies. Test source boundaries and reviewed exceptions
+// through the collector, not merely the exception predicate in isolation.
+#test "reconciliation preserves source boundaries and exact reviewed differences" {
+  b: [1] SiBook; b[0].n = 1; b[0].lists = 1;
+  base := SrdSourceSpell.{id = "aid", name = "Aid", level = 2, school = 0, classes = 1, page = 107, end_page = 175,
+       cast_text = "Action", range_text = "30 feet", components = "V, S", duration_text = "8 hours", text = "Effect."};
+  row := SrdClassSpell.{klass = 0, spell = 0, level = 2, page = 28};
+  b[0].spell[0] = base; b[0].list[0] = row; #assert si_reconcile(b[..]) == 0;
+  b[0].list[0].page = 82; #assert si_reconcile(b[..]) == 0;
+  b[0].spell[0].page = 108; b[0].spell[0].end_page = 107; #assert si_reconcile(b[..]) == 1;
+  b[0].spell[0] = base; b[0].lists = 0; b[0].spell[0].classes = 0; #assert si_reconcile(b[..]) == 1;
+  b[0].lists = 1; b[0].spell[0] = base; b[0].spell[0].classes = 128; b[0].list[0].klass = 7; #assert si_reconcile(b[..]) == 0;
+  b[0].spell[0] = base; b[0].list[0] = row;
+  b[0].spell[0].cost_text = "x"; b[0].list[0].material_required = true; #assert si_reconcile(b[..]) == 0;
+  b[0].spell[0].cost_text = ""; b[0].spell[0].consumed = true; #assert si_reconcile(b[..]) == 0;
+  b[0].spell[0] = base; b[0].list[0] = row;
+  b[0].spell[0].id = "true-strike"; b[0].spell[0].page = 171; b[0].spell[0].cost_text = "x"; b[0].list[0].page = 33;
+  #assert si_reconcile(b[..]) == 0;
+  b[0].spell[0] = base; b[0].list[0] = row;
+  b[0].spell[0].id = "flaming-sphere"; b[0].spell[0].page = 132; b[0].spell[0].school = 1; b[0].spell[0].classes = 4;
+  b[0].list[0].klass = 2; b[0].list[0].page = 44; b[0].list[0].school = 4; #assert si_reconcile(b[..]) == 0;
+  b[0].spell[0] = base; b[0].spell[0].id = "mind-spike"; b[0].spell[0].page = 149; b[0].spell[0].classes = 224;
+  b[0].lists = 2; b[0].list[0] = row; b[0].list[0].klass = 6; b[0].list[1] = row; b[0].list[1].klass = 7;
+  #assert si_reconcile(b[..]) == 0;
+  b[0].spell[0].id = "phantasmal-force"; b[0].spell[0].page = 151; b[0].spell[0].classes = 161; b[0].lists = 0;
+  #assert si_reconcile(b[..]) == 0;
+}
+#test "reconciliation counts missing memberships at exact candidate storage ceilings" #steps 200000000 {
+  b: [1] SiBook; a: [1] SiArena; b[0].n = 400;
+  for i: 0..<400 {
+    id := [3] u8.[cast(u8) (48 + i / 100), cast(u8) (48 + i / 10 % 10), cast(u8) (48 + i % 10)];
+    b[0].spell[i] = SrdSourceSpell.{id = si_store(cast(string) id[..], a[..]), name = "Fixture", classes = 1, page = 107, end_page = 107,
+       cast_text = "Action", range_text = "Self", components = "V", duration_text = "Instantaneous", text = "Effect."};
+  }
+  #assert si_reconcile(b[..]) == 400;
+  b[0].lists = 2048;
+  for i: 0..<256 { b[0].spell[i].classes = 255; }
+  for i: 0..<2048 { b[0].list[i] = SrdClassSpell.{klass = i % 8, spell = i / 8, page = 28}; }
+  #assert si_reconcile(b[..]) == 144;
+  b[0].lists = 2049; #assert si_reconcile(b[..]) == -1;
+}
+si_reconcile :: (b: [] SiBook) -> int #effects(all) {
+  if b[0].n < 1 || b[0].n > 400 || b[0].lists < 0 || b[0].lists > 2048 { return -1; }
+  errors := ifx b[0].error then 1 else 0;
+  for j: 0..<b[0].lists {
+    r := b[0].list[j];
+    if r.klass < 0 || r.klass >= 8 || r.spell < 0 || r.spell >= b[0].n || r.page < 28 || r.page > 82 { return -1; }
+  }
+  for i: 0..<b[0].n {
+    s := b[0].spell[i]; mask := 0;
+    if s.id.count == 0 || s.name.count == 0 || s.text.count == 0 || s.classes <= 0 || s.page < 107 || s.end_page > 175 || s.end_page < s.page ||
+       s.cast_text.count == 0 || s.range_text.count == 0 || s.components.count == 0 || s.duration_text.count == 0 { errors += 1; }
+    for j: 0..<i { if b[0].spell[j].id == s.id { errors += 1; } }
+    for j: 0..<b[0].lists {
+      r := b[0].list[j]; if r.spell != i { continue; }
+      bit := 1 << r.klass; if (mask & bit) != 0 { errors += 1; } mask = mask | bit;
+      if r.level != s.level || r.concentration != s.concentration || r.ritual != s.ritual { errors += 1; }
+      if r.school != s.school && !si_source_difference(SiSourceDifference.{id = s.id, source_page = s.page, klass = r.klass, table_page = r.page, field = 0, source = s.school, table = r.school}) { errors += 1; }
+      material := ifx s.cost_text.count > 0 || s.consumed then 1 else 0;
+      table_material := ifx r.material_required then 1 else 0;
+      if table_material != material && !si_source_difference(SiSourceDifference.{id = s.id, source_page = s.page, klass = r.klass, table_page = r.page, field = 1, source = material, table = table_material}) { errors += 1; }
+    }
+    if mask != s.classes && !si_source_difference(SiSourceDifference.{id = s.id, source_page = s.page, klass = -1, table_page = 0, field = 2, source = s.classes, table = mask}) { errors += 1; }
+  }
+  return errors;
+}

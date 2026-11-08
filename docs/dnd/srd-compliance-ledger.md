@@ -1,10 +1,11 @@
 # SRD 5.2.1 compliance ledger
 
-Status: milestone 1 baseline, 2026-11-07. **Not fully compliant.** This ledger
+Status: milestone 2 spell source slice, 2026-11-07. **Not fully compliant.** This ledger
 covers every area required by [the specification](README.md) and assigns stable
 requirement IDs. It is a requirements inventory, not yet an exhaustive inventory
-of the PDF's individual entries or mechanical clauses. That reconciliation is
-milestone 2. The [roadmap](srd-compliance-roadmap.md) defines all eight milestones.
+of all the PDF's individual entries or mechanical clauses. Spells and base class
+spell tables are now inventoried; the other catalogs and mechanical clauses remain
+open. The [roadmap](srd-compliance-roadmap.md) defines all eight milestones.
 
 ## Source identity
 
@@ -15,13 +16,15 @@ milestone 2. The [roadmap](srd-compliance-roadmap.md) defines all eight mileston
 | Bytes | 6,031,375 |
 | SHA-256 | `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87` |
 | Page references | Printed SRD page numbers; these match this PDF's page numbers |
-| Source inventory | Unreconciled; no total spell/monster/item compliance denominator yet |
-| Baseline code | `f7cab6d3a4ef98752ecb7d7cb834a90ea9af7bbc` |
-| Evidence | [Milestone 1 verification](../verification/srd-compliance-m1-2026-11-07/README.md) |
+| Source inventory | 339 descriptions and 875 base class-table entries reconciled; other catalogs unmeasured |
+| Milestone 1 baseline code | `f7cab6d3a4ef98752ecb7d7cb834a90ea9af7bbc` |
+| Milestone 2 baseline code | `593ceb26af8762425a7b83d8bc45b26e749f9546` |
+| Evidence | [Milestone 1 verification](../verification/srd-compliance-m1-2026-11-07/README.md), [milestone 2 verification](../verification/srd-compliance-m2-2026-11-07/README.md) |
 
 Changing the source hash is a deliberate source-version update, followed by
 inventory and golden-fixture review. This pin establishes identity, not correct
-extraction or implementation. No PDF or extracted full text is copied into Git.
+extraction or implementation. The PDF itself is not copied into Git. Generated
+spell records contain its licensed extracted descriptions and attribution.
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
@@ -49,10 +52,10 @@ named below are selected evidence only, not exhaustive qualification.
 
 | Stable ID | Source/spec requirement | Status | Existing implementation and evidence | Remaining work and next milestone |
 | --- | --- | --- | --- | --- |
-| SRC-PIN | Spec Legal and naming; SRD p.1 | Partial | Hash and attribution above | Tool-enforced identity and intentional version updates, M2 |
-| DATA-INVENTORY | Spec Import check | Missing | Runtime record inventory linked below | Independent PDF lists, stable source IDs, exact reconciliation, M2 |
-| DATA-IMPORT | Spec SRD content | Missing | Handwritten `spells`, `more`, `npcs` | Coax importer, generated tables, deterministic regeneration, M2 |
-| DATA-METADATA | Spec spell record shape | Partial | `RsSpell` fields; later records have empty text/components and page 0 | Structured complete metadata, full text, source references, M2 |
+| SRC-PIN | Spec Legal and naming; SRD p.1 | Partial | Importer enforces whole PDF size/hash and extracts an owned snapshot; attribution retained | Extend pinned provenance to remaining source catalogs, M2 |
+| DATA-INVENTORY | Spec Import check | Partial | `data/inventory.tsv`: 339 stable spell IDs; 875 independent base class rows; nine source differences preserved | Reconcile monsters/classes/origins/feats/equipment/items/toolbox and mechanical clauses, M2 |
+| DATA-IMPORT | Spec SRD content | Partial | Coax importer, generated spell/class tables, byte-identical native regeneration check | Extend importer beyond spells/lists, M2 |
+| DATA-METADATA | Spec spell record shape | Partial | `SrdSourceSpell`: full extracted text, source spans, casting/range/components/duration metadata; canonical catalog API | Review mechanical targets/areas and executable effects; preserve source layout limits, M3/M4 |
 | CORE-DICE | Playing the Game pp.5-8 | Partial | `engine` SplitMix64, checks, `dice are fair and repeatable` | Rule inventory and independent deterministic vectors, M3 |
 | CORE-CHECKS | D20 Tests, proficiency pp.6-9 | Partial | Abilities/save proficiency; selected skill flags | Full skill/tool checks, expertise, passive checks and interactions, M3 |
 | CORE-ACTIONS | Actions/combat pp.9-18 | Partial | `RsTurn`, budgets, attacks and selected reactions | Complete actions, triggers, ready/interrupt/order semantics, M3 |
@@ -71,7 +74,7 @@ named below are selected evidence only, not exhaustive qualification.
 | FX-ZONES | Spec zone triggers and shapes | Partial | Eight zones; Lines/Spheres and rectangular approximations | True shapes, enter/start/end timing, movement and multi-area spells, M4 |
 | FX-CAP-EFFECT | Spec lasting effects; deterministic complete results | Partial | Six effect slots; `CAP-EFFECT` fails | No silent replacement/loss, explicit capacity outcome and stacking, M3 |
 | FX-CAP-ZONE | Spec lasting areas; admitted cast results | Partial | Eight zones; `CAP-ZONE` fails | Reserve before spending, retain existing concentration/effects on refusal, M3 |
-| CONTENT-SPELLS | Spell Descriptions pp.107-175 | Partial | Handwritten candidates/helpers; selected execution tests | Reconciled all-spell inventory, complete text and every mechanical clause, M2/M4 |
+| CONTENT-SPELLS | Spell Descriptions pp.107-175 | Partial | All 339 descriptions imported; eight class tables independently reconciled with nine source differences; executable subset unchanged | Implement/qualify every mechanical clause and explicitly resolve gameplay interpretations of source differences, M3/M4 |
 | SPELL-POLYMORPH | Polymorph pp.153-154 | Partial | `more` uses Incapacitated; `SPELL-POLYMORPH` fails | Beast choice/CR, replaced stats, retained identity/HP/type, form temp HP, anatomy/gear and reversion, M4 |
 | CONTENT-CHARACTERS | Character Creation pp.19-27 | Partial | Preset ability arrays and fixed builds | Legal choices, levels/XP/proficiency progression, independent fixtures, M5 |
 | CONTENT-ORIGINS | Character Origins pp.83-86 | Missing | No complete origins catalog/model identified in shared engine | Species, backgrounds and origin choices, M2/M5 |
@@ -124,7 +127,23 @@ counters, concentration and target HP/temp/conditions. The zone probe also check
 existing zone identity/bounds/duration. These are selected observable projections,
 not a byte-for-byte proof of complete battle-state equivalence.
 
-## Runtime record inventory
+## Canonical source inventory
+
+[data/inventory.tsv](../../aethyr/rules/srd/data/inventory.tsv) is the source-entry
+ledger: one stable `spell/<id>` row per spell, with page span and unqualified
+mechanics status. [Class rows](../../aethyr/rules/srd/data/class-lists.tsv) preserve
+all eight base tables. [Discrepancies](../../aethyr/rules/srd/data/discrepancies.tsv)
+preserve nine differing assertions across Flaming Sphere, Mind Spike, Phantasmal
+Force and True Strike. They are exact pinned-source exceptions, not mutant
+exemptions or silent corrections. [The pipeline guide](../../aethyr/rules/srd/data/README.md)
+describes reproduction, schema, text fidelity limits and access from Coax.
+
+Class-table counts: Bard 129, Cleric 109, Druid 124, Paladin 38, Ranger 48,
+Sorcerer 138, Warlock 72, Wizard 217. Grants from subclasses, feats and profiles
+are separate. Other source catalogs and mechanical-clause inventories remain
+unmeasured. Imported metadata does not expand the executable `rs_spell` table.
+
+## Historical runtime record inventory
 
 [spell-records.tsv](../verification/srd-compliance-m1-2026-11-07/spell-records.tsv)
 lists every currently assigned record by stable textual ID, parent, kind, text
@@ -132,12 +151,13 @@ presence, page and effect-step count. `canonical-candidate` means a top-level
 record marked SRD in the code, not independent confirmation that it matches the
 source. Numeric holes are excluded. The report does not count helpers as spells
 or house content as SRD. It reports metadata presence, not metadata correctness
-or mechanical completeness. Source-level reconciliation remains open.
+or mechanical completeness. Mapping these executable records to the canonical
+source and qualifying their mechanics remain open.
 
 ## Next implementation slice
 
-M2: reconcile the pinned source inventory and generate structured metadata.
-M3: add legal casting state and transactional storage admission, preserving the
+M2: extend the source importer to the remaining catalogs and mechanical-clause
+ledger. M3: add legal casting state and transactional storage admission, preserving the
 p.106 invalid-target distinction. M4: introduce chosen-form transformations and
 replace Polymorph's approximation. Keep these probe IDs and extend their source
 fixtures as each prerequisite lands. Source access is available; no owner action

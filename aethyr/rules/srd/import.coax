@@ -1,0 +1,104 @@
+// Canonical source pipeline. Poppler extracts PDF text; Coax owns all parsing,
+// reconciliation, publication policy, serialization and checking. No shell eval.
+// Usage: coax/web/tool.sh aethyr/rules/srd/import.coax --pdf PDF --out NEW_DIRECTORY
+//        coax/web/tool.sh aethyr/rules/srd/import.coax --pdf PDF --check DIRECTORY
+#load "import-emit.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+
+SI_OUTPUTS :: [6] string.["spells.coax", "class-lists.coax", "inventory.tsv", "class-lists.tsv", "manifest.txt", "discrepancies.tsv"];
+si_print_number :: (v: int) { a: [1] SiArena; si_integer(v, a[..]); tool_err(cast(string) a[0].bytes[0..<a[0].n]); }
+si_hash :: (s: string, out: [] u8) -> string {
+  if !S_hex(S_hash(s), out) { return ""; } return cast(string) out[0..<64];
+}
+si_extract :: (pdf: string, first: string, last: string, out: [] u8) -> int {
+  argv := [13] string.["pdftotext", "-raw", "-enc", "UTF-8", "-eol", "unix", "-f", first, "-l", last, pdf, "-", ""];
+  err: [8192] u8;
+  result := proc_run(argv[0..<12], 60000, out, err[..]);
+  if result.started != 0 || result.status != 0 || result.timed_out || result.cut {
+    tool_errln("PDF extraction failed or exceeded its 60-second/output bound"); tool_err(cast(string) err[0..<result.err_n]); return -1;
+  }
+  return result.out_n;
+}
+si_manifest :: (b: [] SiBook, spells_hash: string, lists_hash: string, a: [] SiArena) {
+  _ := si_store("source_schema=1\npdf_sha256=", a); _ = si_store(SI_PDF_SHA256, a);
+  _ = si_store("\npdf_bytes=", a); si_integer(SI_PDF_BYTES, a);
+  _ = si_store("\nextractor=pdftotext -raw -enc UTF-8 -eol unix\nspell_pages=107-175\nclass_pages=28-82\nspell_extraction_sha256=", a); _ = si_store(spells_hash, a);
+  _ = si_store("\nclass_extraction_sha256=", a); _ = si_store(lists_hash, a);
+  _ = si_store("\nspells=", a); si_integer(b[0].n, a); _ = si_store("\nmemberships=", a); si_integer(b[0].lists, a);
+  for k: 0..<8 {
+    count := 0; for i: 0..<b[0].lists { if b[0].list[i].klass == k { count += 1; } }
+    _ = si_store("\n", a); _ = si_store(SRD_CLASSES[k], a); _ = si_store("=", a); si_integer(count, a);
+  }
+  _ = si_store("\nreviewed_source_differences=9\nreconciliation_errors=0\nmechanical_qualification=none\nattribution=", a); _ = si_store(SRD_ATTRIBUTION, a); _ = si_store("\n", a);
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args[0].n != 4 || args_at(args[..], 0) != "--pdf" ||
+     (args_at(args[..], 2) != "--out" && args_at(args[..], 2) != "--check") {
+    tool_errln("usage: import --pdf PDF (--out NEW_DIRECTORY | --check DIRECTORY)"); return 2;
+  }
+  pdf := args_at(args[..], 1); dest := args_at(args[..], 3); checking := args_at(args[..], 2) == "--check";
+  bytes: [SI_PDF_BYTES] u8; n := fs_read(pdf, bytes[..]); hex: [64] u8;
+  if n != SI_PDF_BYTES { tool_errln("refused: PDF size differs from pinned source"); return 1; }
+  hash := si_hash(cast(string) bytes[..], hex[..]);
+  if hash != SI_PDF_SHA256 { tool_errln("refused: PDF SHA-256 differs from pinned source"); return 1; }
+  if !checking && fs_kind(dest) != FS_NONE { tool_errln("refused: output path already exists; use --check or a new path"); return 1; }
+  // Extract the exact bytes that were hashed, never reopen a mutable caller path.
+  snapshotbuf: [4096] u8; snapshot := fs_temp("oa-srd-source-", snapshotbuf[..]);
+  if snapshot.count == 0 { return 1; }
+  sourcepathbuf: [4096] u8; sourcepath := fs_join(snapshot, "source.pdf", sourcepathbuf[..]);
+  if !fs_write(sourcepath, cast(string) bytes[..]) { _ := fs_remove(snapshot); return 1; }
+  spell_bytes: [2097152] u8; class_bytes: [2097152] u8;
+  sn := si_extract(sourcepath, "107", "175", spell_bytes[..]); cn := si_extract(sourcepath, "28", "82", class_bytes[..]);
+  removed := fs_remove(snapshot);
+  if !removed { tool_errln("failed to remove owned PDF extraction snapshot"); return 1; }
+  if sn < 0 || cn < 0 { return 1; }
+  lines: [1] SiLines; arena: [1] SiArena; book: [1] SiBook;
+  si_lines(cast(string) spell_bytes[0..<sn], lines[..]); si_spells(lines[..], arena[..], book[..]);
+  tool_err("description records="); si_print_number(book[0].n); tool_errln(ifx book[0].error then " parse-error" else "");
+  lines[0].n = 0; lines[0].error = false;
+  si_lines(cast(string) class_bytes[0..<cn], lines[..]); si_lists(lines[..], arena[..], book[..]);
+  if book[0].diagnostic.count > 0 { tool_err("class-table parse witness: "); tool_errln(book[0].diagnostic); }
+  errors := si_reconcile(book[..]); classes := 0;
+  for i: 0..<book[0].n {
+    s := book[0].spell[i]; mask := 0;
+    for j: 0..<book[0].lists {
+      r := book[0].list[j]; if r.spell != i { continue; } mask = mask | (1 << r.klass);
+      if r.school != s.school || r.level != s.level || r.concentration != s.concentration || r.ritual != s.ritual || r.material_required != (s.cost_text.count > 0 || s.consumed) {
+        tool_err("source difference: "); tool_err(s.id); tool_err(" / "); tool_err(SRD_CLASSES[r.klass]); tool_err(" page "); si_print_number(r.page);
+        tool_err(" table-school="); si_print_number(r.school); tool_err(" description-school="); si_print_number(s.school); tool_err(" flags(CRM)=");
+        si_print_number(ifx r.concentration then 1 else 0); si_print_number(ifx r.ritual then 1 else 0); si_print_number(ifx r.material_required then 1 else 0); tool_err("\n");
+      }
+    }
+    if mask != s.classes { tool_err("membership difference: "); tool_err(s.id); tool_err(" table="); si_print_number(mask); tool_err(" description="); si_print_number(s.classes); tool_err("\n"); }
+  }
+  for k: 0..<8 { found := false; for i: 0..<book[0].lists { if book[0].list[i].klass == k { found = true; } } if found { classes += 1; } }
+  tool_err("class-table rows="); si_print_number(book[0].lists); tool_err(" reconciliation-errors="); si_print_number(errors); tool_err("\n");
+  outputs: [6] SiArena;
+  differences := si_emit_differences(book[..], outputs[5..<6]);
+  if !si_publish(hash, n, book[0].n, classes, errors, differences) { tool_errln("refused: incomplete or inconsistent source inventory"); return 1; }
+  si_emit_spells(book[..], outputs[0..<1]); si_emit_lists(book[..], outputs[1..<2]);
+  si_emit_inventory(book[..], outputs[2..<3], false); si_emit_inventory(book[..], outputs[3..<4], true);
+  sh: [64] u8; ch: [64] u8;
+  si_manifest(book[..], si_hash(cast(string) spell_bytes[0..<sn], sh[..]), si_hash(cast(string) class_bytes[0..<cn], ch[..]), outputs[4..<5]);
+  for i: 0..<6 { if outputs[i].error { tool_errln("refused: generated output exceeds bounds"); return 1; } }
+  pathbuf: [4096] u8; existing: [2097152] u8;
+  if checking {
+    for i: 0..<6 {
+      path := fs_join(dest, SI_OUTPUTS[i], pathbuf[..]); size := fs_read(path, existing[..]);
+      if size != outputs[i].n || (size >= 0 && cast(string) existing[0..<size] != cast(string) outputs[i].bytes[0..<outputs[i].n]) {
+        tool_err("stale or missing: "); tool_errln(path); return 1;
+      }
+    }
+    tool_errln("canonical source files match regenerated bytes; mechanics remain unqualified"); return 0;
+  }
+  tmpbuf: [4096] u8; temp := fs_temp("oa-srd-import-", tmpbuf[..]); if temp.count == 0 { return 1; }
+  ok := true;
+  for i: 0..<6 { path := fs_join(temp, SI_OUTPUTS[i], pathbuf[..]); ok = ok && fs_write(path, cast(string) outputs[i].bytes[0..<outputs[i].n]); }
+  if ok && fs_kind(dest) == FS_NONE { ok = fs_rename(temp, dest); } else { ok = false; }
+  if !ok { _ := fs_remove(temp); tool_errln("failed to publish generated directory"); return 1; }
+  tool_errln("published canonical source data; mechanics remain unqualified"); return 0;
+}

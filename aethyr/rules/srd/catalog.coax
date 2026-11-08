@@ -1,0 +1,70 @@
+// Canonical SRD source catalog. Base class TABLE membership and description
+// class masks are deliberately separate: the pinned source disagrees in places.
+// This library grants no casting permission and executes no spell mechanics.
+#load "data/spells.coax";
+#load "data/class-lists.coax";
+
+#test "the pinned source contains 339 unique complete descriptions and 875 base list entries" #steps 100000000 {
+  #assert SRD_SOURCE_SPELLS == 339 && SRD_SOURCE_MEMBERSHIPS == 875;
+  for i: 0..<SRD_SOURCE_SPELLS {
+    s := srd_source_spell(i);
+    #assert s.id.count > 0 && s.name.count > 0 && s.text.count > 0;
+    #assert s.page >= 107 && s.end_page <= 175 && s.end_page >= s.page;
+    #assert s.level >= 0 && s.level <= 9 && s.school >= 0 && s.school < 8;
+    #assert s.classes > 0 && s.classes < 256;
+    #assert s.cast_text.count > 0 && s.range_text.count > 0 && s.components.count > 0 && s.duration_text.count > 0;
+    for j: 0..<i { #assert srd_source_spell(j).id != s.id; }
+  }
+  counts := [8] int.[129, 109, 124, 38, 48, 138, 72, 217];
+  for k: 0..<8 { #assert srd_source_class_count(k) == counts[k]; }
+  for r: SRD_SOURCE_CLASS_SPELLS {
+    #assert r.spell >= 0 && r.spell < 339 && r.klass >= 0 && r.klass < 8 && r.page >= 28 && r.page <= 82;
+  }
+  #assert srd_source_index("unknown") == -1 && srd_source_lookup("unknown").id == "";
+  #assert !srd_source_in_table(-1, 0) && !srd_source_in_table(8, 0) && !srd_source_in_table(0, -1);
+}
+#test "independent source fixtures retain ritual timing, component costs, reactions and long durations" {
+  alarm := srd_source_lookup("alarm");
+  #assert alarm.page == 107 && alarm.ritual && alarm.cast_seconds == 60 && alarm.duration_seconds == 28800;
+  revivify := srd_source_lookup("revivify");
+  #assert revivify.level == 3 && revivify.material && revivify.consumed && revivify.cost_text.count > 0;
+  shield := srd_source_lookup("shield");
+  #assert shield.cast_kind == SRD_CAST_REACTION && shield.duration_seconds == 6;
+  #assert shield.cast_text.count > 20 && shield.range_kind == SRD_RANGE_SELF;
+  imprisonment := srd_source_lookup("imprisonment");
+  #assert imprisonment.cast_seconds == 60 && imprisonment.duration_kind == SRD_DURATION_UNTIL;
+  polymorph := srd_source_lookup("polymorph");
+  #assert polymorph.page == 153 && polymorph.end_page == 154 && polymorph.concentration && polymorph.duration_seconds == 3600;
+  #assert polymorph.material_text == "a caterpillar cocoon";
+  create := srd_source_lookup("create-undead");
+  #assert create.cost_text == "one 150+ GP black onyx stone for each corpse" && !create.consumed;
+}
+#test "source contradictions stay visible without altering either source reading" {
+  flaming := srd_source_lookup("flaming-sphere");
+  #assert flaming.page == 132 && flaming.school == 1;
+  seen := 0;
+  for r: SRD_SOURCE_CLASS_SPELLS { if srd_source_spell(r.spell).id == "flaming-sphere" { #assert r.school == 4; seen += 1; } }
+  #assert seen == 3;
+  mind := srd_source_index("mind-spike");
+  #assert (srd_source_spell(mind).classes & 32) != 0 && !srd_source_in_table(5, mind);
+  phantom := srd_source_index("phantasmal-force");
+  #assert srd_source_spell(phantom).classes == 161;
+  for k: 0..<8 { #assert !srd_source_in_table(k, phantom); }
+  true_strike := srd_source_index("true-strike");
+  #assert srd_source_spell(true_strike).cost_text.count > 0;
+  for r: SRD_SOURCE_CLASS_SPELLS { if r.spell == true_strike { #assert !r.material_required; } }
+}
+
+srd_source_index :: (id: string) -> int {
+  for i: 0..<SRD_SOURCE_SPELLS { if srd_source_spell(i).id == id { return i; } }
+  return -1;
+}
+srd_source_lookup :: (id: string) -> SrdSourceSpell { return srd_source_spell(srd_source_index(id)); }
+srd_source_class_count :: (klass: int) -> int {
+  count := 0; for r: SRD_SOURCE_CLASS_SPELLS { if r.klass == klass { count += 1; } } return count;
+}
+srd_source_in_table :: (klass: int, spell: int) -> bool {
+  if klass < 0 || klass >= 8 || spell < 0 || spell >= SRD_SOURCE_SPELLS { return false; }
+  for r: SRD_SOURCE_CLASS_SPELLS { if r.klass == klass && r.spell == spell { return true; } }
+  return false;
+}
