@@ -87,6 +87,9 @@ for f in pages:
         # is: only a local address loads it, from a cache outside the repo (host.js), so it never ships.
         def asset(u):
             if u.group(1): return u.group(0)
+            # An asset under /private/ never ships (private-guard below): the page keeps its address,
+            # which only a local address with the owner's private build serves (Valley World's detail pages).
+            if u.group(3).startswith("/private/"): return u.group(0)
             stem = u.group(3)[1:]
             # A sounds:/DIR/ asset: the page names its files at run time (DIR/NAME.ogg), so they
             # keep their names, under the site at the same path (aethyr/audio/SOURCES.md).
