@@ -1,0 +1,312 @@
+// The class kits (#13025, #13058): a Character Create class's hotbar at a level, how each of its
+// abilities aims (the way you face, nothing picked for you), and how each sounds. Everglade
+// Experimental plays them against its monsters (experimental-combat.coax), Everglade II through its
+// room (everglade2-cast.coax), and the room takes Everglade II's casts by them
+// (coax/web/room/room-everglade.coax eg_e2_cast). Nothing here rolls or draws: the SRD 5e engine
+// (aethyr/rules/srd/, through fivebar.coax) says what each ability is.
+//
+// On the wire (everglade-wire.coax C and e cast) slot i of class c's bar is XK_SLOT0 + c * XK_PER +
+// i, the bar in its own order (xc_bar_level), never the order a page has arranged it in.
+//   coax/bin/coax test apps/openagents-web/class-kit.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#load "../../aethyr/rules/srd/battle.coax";
+#load "fivebar.coax";
+
+XC_SLOTS :: 24;
+XC_COOL :: 1.0;                // seconds between presses
+XC_DEFAULT :: 11;              // FB_CL_WIZARD
+XC_CL_UP :: [12] string.["BARBARIAN", "BARD", "CLERIC", "DRUID", "FIGHTER", "MONK", "PALADIN", "RANGER", "ROGUE", "SORCERER", "WARLOCK", "WIZARD"];
+XC_EG_URL :: "/worlds/everglade/hotbar/";
+XC_MMO_URL :: "/worlds/5e-mmo/hotbar/";
+xc_attack :: () -> FbAb { return fb_feature(FB_ATTACK, "Attack", "attack"); }
+
+// Class c's level 1 bar, in slot order: slot 1 its Character Create ability, then its cantrips,
+// 1st-level spells and features. Bardic Inspiration is left off: it is given to an ally, and
+// Experimental has none.
+xc_bar :: (c: int, out: [] FbAb) -> int {
+  out[0] = fb_cl_ability(c);
+  n := 1;
+  if c == FB_CL_BARBARIAN { out[1] = xc_attack(); n = 2; }
+  else if c == FB_CL_BARD { out[1] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); out[2] = fb_spell(SP_THUNDERWAVE, 1, FB_POINT); n = 3; }
+  else if c == FB_CL_CLERIC { out[1] = fb_spell(SP_GUIDING_BOLT, 1, FB_FOE); out[2] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); out[3] = xc_attack(); n = 4; }
+  else if c == FB_CL_DRUID {
+    out[1] = fb_art_spell(SP_FLAME_HURL, FB_FOE, "produce-flame"); out[1].conjure = true;
+    out[2] = fb_spell(SP_THUNDERWAVE, 1, FB_POINT); out[3] = fb_spell(SP_ENTANGLE, 1, FB_POINT); out[4] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); n = 5;
+  }
+  else if c == FB_CL_FIGHTER { out[1] = xc_attack(); n = 2; }
+  else if c == FB_CL_PALADIN { out[1] = xc_attack(); out[2] = fb_spell(SP_DIVINE_SMITE, 1, FB_FOE); n = 3; }
+  else if c == FB_CL_RANGER { out[1] = xc_attack(); out[2] = fb_spell(SP_ENTANGLE, 1, FB_POINT); n = 3; }
+  else if c == FB_CL_SORCERER {
+    out[1] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[2] = fb_spell(SP_RAY_OF_SICKNESS, 1, FB_FOE); out[3] = fb_spell(SP_THUNDERWAVE, 1, FB_POINT);
+    out[4] = fb_feature(FB_INNATE, "Innate Sorcery", "innate-sorcery"); out[4].tg = FB_SELF; n = 5;
+  }
+  else if c == FB_CL_WARLOCK { out[1] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[2] = fb_spell(SP_HEX, 1, FB_FOE); n = 3; }
+  else if c == FB_CL_WIZARD {
+    out[1] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[2] = fb_spell(SP_RAY_OF_SICKNESS, 1, FB_FOE); out[3] = fb_spell(SP_FALSE_LIFE, 1, FB_SELF);
+    out[4] = fb_spell(SP_THUNDERWAVE, 1, FB_POINT); n = 5;
+  }
+  return n;
+}
+// Add the shared level-six kit as its prerequisites become available. Preserve the
+// experimental level-one choices and the Character Create icon in the first slot.
+xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
+  n := xc_bar(klass, out);
+  hero := fb_cl_hero(klass, "You", 0, level);
+  extra: [FB_CLASS_SLOTS] FbAb;
+  count := fb_class_bar(FB_CL_ENGINE[klass], extra[..]);
+  for i: 0..<count {
+    a := extra[i];
+    if a.kind == FB_INSPIRE { continue; } // requires an ally, which this scene lacks
+    if a.kind == FB_SPELL && a.lvl > 0 {
+      available := false;
+      for slot: a.lvl..<10 { if hero.slots_max[slot] > 0 { available = true; } }
+      if !available && hero.free_spell != a.sp { continue; }
+      if klass == FB_CL_BARD && a.sp == SP_FIREBALL && level < 6 { continue; }
+    }
+    if a.kind == FB_RECKLESS && level < 2 { continue; }
+    if (a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND) && hero.focus_max == 0 { continue; }
+    if a.kind == FB_WHOLE && hero.uses_max[RS_USE_WHOLE] == 0 { continue; }
+    if a.kind == FB_SURGE && hero.uses_max[RS_USE_SURGE] == 0 { continue; }
+    if a.kind == FB_AIM && !hero.steady_aim { continue; }
+    if a.kind == FB_CDASH && level < 2 { continue; }
+    if a.kind == FB_SACRED && level < 3 { continue; }
+    if a.kind == FB_TURN && !hero.turn_undead { continue; }
+    if a.kind == FB_PRESERVE && !hero.preserve_life { continue; }
+    if a.kind == FB_LANDS && !hero.lands_aid { continue; }
+    if klass == FB_CL_PALADIN && a.kind == FB_SPELL && a.sp == SP_SACRED_FLAME && level < 3 { continue; }
+    // Produce Flame is already represented by the combined conjure-and-hurl slot.
+    if klass == FB_CL_DRUID && a.kind == FB_SPELL && a.sp == SP_PRODUCE_FLAME { continue; }
+    duplicate := false;
+    for j: 0..<n { if out[j].kind == a.kind && (a.kind != FB_SPELL || out[j].sp == a.sp) { duplicate = true; } }
+    if !duplicate && n < out.count { out[n] = a; n += 1; }
+  }
+  // The preset's selected spells, not slot availability alone, determine the
+  // playable bar. Stable ability identities preserve saved ordering/sounds.
+  selected := 0;
+  for i: 0..<n {
+    if out[i].kind == FB_SPELL && !rs_spell_ready(hero, out[i].sp) { continue; }
+    out[selected] = out[i]; selected += 1;
+  }
+  return selected;
+}
+// A stable identity for a class ability, independent of its icon and position.
+xc_id :: (a: FbAb) -> int { return a.kind * 10000 + a.sp + 1; }
+// Character Create's images have a baked-in 1. When moved, use the corresponding
+// unnumbered combat icon so the key label always belongs to the position.
+xc_art :: (a: FbAb, slot: int) -> string {
+  if slot == 0 || xc_url(a.art) != XC_EG_URL { return a.art; }
+  if a.kind == FB_SPELL { return rs_spell(a.sp).id; }
+  if a.kind == FB_ATTACK { return "attack"; }
+  if a.kind == FB_RAGE { return "rage"; }
+  if a.kind == FB_SECOND { return "second-wind"; }
+  if a.kind == FB_LAY { return "lay-on-hands"; }
+  return a.art;
+}
+// A slot's picture: the class's own (cl-*) are Everglade's, the rest 5E MMO's.
+xc_url :: (art: string) -> string { return ifx art.count > 3 && art[0] == 'c' && art[1] == 'l' && art[2] == '-' then XC_EG_URL else XC_MMO_URL; }
+// Character Create class icons already have their slot 1 key baked into the art.
+xc_draw_slot_key :: (slot:int,art:string)->bool {return slot!=0 || xc_url(art)!=XC_EG_URL;}
+// ---- aim: everything goes the way you face (#13025 owner feedback). Nothing picks a target for you.
+// - a bolt or ray (a ranged spell attack, or a ranged weapon's Attack) flies straight ahead to its SRD
+//   range and strikes the first monster whose body its line crosses, with about 5 degrees of help; if
+//   none, it flies on and fizzles at its range.
+// - a blow (a melee Attack, Sneak Attack, a touch spell) strikes the nearest monster within reach in a
+//   90 degree arc ahead, or swings at the air.
+// - a single-target spell with no projectile (a saving throw: Sacred Flame, Vicious Mockery, Hex) takes
+//   the nearest monster in range in a 30 degree cone ahead, or nothing: its icon fizzles, no words.
+// - yourself and areas (Second Wind, Rage, Thunderwave's cube, Entangle's square) work from where you
+//   stand, the area set the way you face (Entangle's square on the first monster in that cone, or 6 m on).
+XC_AIM_SELF :: 0; XC_AIM_BOLT :: 1; XC_AIM_MELEE :: 2; XC_AIM_CONE :: 3; XC_AIM_AREA :: 4;
+XC_BODY :: 0.55;        // m: a monster's body, as a bolt's line meets it
+XC_ASSIST :: 0.0875;    // tan 5 degrees: a bolt's aim help
+XC_REACH :: 2.3;        // m: 5 feet of reach from your middle to a monster's
+XcAim :: struct { kind: int; foe: int = -1; reach: f32; fx: f32; fz: f32; }
+XC_FT :: 0.3048;
+// What kind of aim ability a takes, and its reach in metres, for a hero holding weapon `weapon`
+// (rs_weapon: a ranged one makes Attack a bolt).
+xc_aim_for :: (a: FbAb, weapon: int) -> XcAim {
+  if a.tg == FB_SELF || a.tg == FB_ALLY { return XcAim.{kind = XC_AIM_SELF}; }
+  if a.kind == FB_SPELL {
+    sp := rs_spell(a.sp);
+    if sp.area != RS_A_NONE { return XcAim.{kind = XC_AIM_AREA, reach = f32(sp.range_ft) * f32(XC_FT)}; }
+    if sp.range_ft <= 5 { return XcAim.{kind = XC_AIM_MELEE, reach = f32(XC_REACH)}; }
+    ranged := false;
+    for q: 0..<sp.step_n { if sp.steps[q].kind == RS_S_ATTACK && sp.steps[q].a == 0 { ranged = true; } }
+    return XcAim.{kind = ifx ranged then XC_AIM_BOLT else XC_AIM_CONE, reach = f32(sp.range_ft) * f32(XC_FT)};
+  }
+  if a.kind == FB_FLURRY || a.kind == FB_RECKLESS { return XcAim.{kind = XC_AIM_MELEE, reach = f32(XC_REACH)}; }
+  if a.kind == FB_LANDS { return XcAim.{kind = XC_AIM_AREA, reach = 9}; }
+  if a.kind == FB_ATTACK {
+    w := rs_weapon(weapon);
+    if w.range_ft > 5 { return XcAim.{kind = XC_AIM_BOLT, reach = f32(w.range_ft) * f32(XC_FT)}; }
+    return XcAim.{kind = XC_AIM_MELEE, reach = f32(XC_REACH)};
+  }
+  return XcAim.{kind = XC_AIM_SELF};
+}
+// Where an ability aimed from (px, pz), facing (fx, fz), with nothing in its way lands: a bolt at its
+// range, a blow at its reach, a spell on someone at its range, an area at its middle (a cube from you
+// at its far side's middle, a placed one 6 m on at most), yourself where you stand.
+xc_aim_point :: (a: FbAb, m: XcAim, px: f32, pz: f32, fx: f32, fz: f32) -> [2] f32 {
+  d := m.reach;
+  if m.kind == XC_AIM_SELF { d = 0; }
+  else if m.kind == XC_AIM_AREA {
+    sp := rs_spell(a.sp);
+    d = ifx a.kind == FB_SPELL && sp.area == RS_A_CUBE_SELF then f32(sp.area_ft) * f32(XC_FT) else ifx m.reach < 6 then m.reach else 6.0f32;
+  }
+  return [2] f32.[px + fx * d, pz + fz * d];
+}
+// The weapon a class holds (charactercreator.coax CC_KITS), as close to its SRD starting weapon as the
+// Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's greatsword, the Paladin's longsword, the Ranger's
+// and Rogue's shortswords. The Monk fights unarmed and the casters hold none: -1.
+xc_kit :: (c: int) -> int {
+  if c == FB_CL_BARBARIAN { return 0; }
+  if c == FB_CL_FIGHTER { return 1; }
+  if c == FB_CL_PALADIN { return 2; }
+  if c == FB_CL_RANGER || c == FB_CL_ROGUE { return 3; }
+  return -1;
+}
+// ---- sound: every ability its own (experimental-sound.coax plays them, varied each time)
+// start: as you use it (a blow's whoosh as the swing starts); layer: under the cast; hit: where it
+// lands on a monster; miss: where a spell meets no one or a monster dodges it. Names are Everglade's
+// bank (aethyr/audio/everglade-sfx.txt) or Experimental's own (aethyr/audio/experimental-sfx.coax).
+XcSnd :: struct { start: string; layer: string; hit: string; miss: string; rate: f32 = 1; }
+xs :: (start: string, layer: string, hit: string, miss: string, rate: f32) -> XcSnd {
+  return XcSnd.{start = start, layer = layer, hit = hit, miss = miss, rate = rate};
+}
+// The kind of damage a spell's first damage roll deals, RS_DMG_NONE when it rolls none.
+xc_damage_type :: (sp: int) -> int {
+  r := rs_spell(sp);
+  for q: 0..<r.step_n { if r.steps[q].kind == RS_S_DAMAGE { return r.steps[q].c; } }
+  return RS_DMG_NONE;
+}
+// A spell's sound: its own when it has one, else its damage type's, else its school's.
+xc_spell_sound :: (sp: int) -> XcSnd {
+  if sp == SP_FIRE_BOLT { return xs("fire-cast", "fire-travel", "fire-hit", "fizzle", 1); }
+  if sp == SP_FLAME_HURL || sp == SP_PRODUCE_FLAME { return xs("fire-cast", "", "fire-hit", "fizzle", 1.12); }
+  if sp == SP_SCORCHING_RAY { return xs("cone", "fire-travel", "fire-hit", "fizzle", 1.1); }
+  if sp == SP_FIREBALL { return xs("fire-travel", "fire-cast", "fireball", "fizzle", 0.9); }
+  if sp == SP_BURNING_HANDS { return xs("cone", "", "fire-hit", "fizzle", 1); }
+  if sp == SP_RAY_OF_FROST { return xs("frost-cast", "frost-travel", "frost-hit", "fizzle", 1); }
+  if sp == SP_ICE_KNIFE { return xs("frost-travel", "", "ice", "fizzle", 1.1); }
+  if sp == SP_ELDRITCH_BLAST { return xs("eldritch-cast", "eldritch-travel", "eldritch-hit", "fizzle", 0.82); }
+  if sp == SP_CHILL_TOUCH { return xs("necro-cast", "", "necro-hit", "fizzle", 1); }
+  if sp == SP_RAY_OF_SICKNESS { return xs("blight", "necro-travel", "necro-hit", "fizzle", 1.15); }
+  if sp == SP_FALSE_LIFE { return xs("shield", "necro-cast", "", "", 0.8); }
+  if sp == SP_BLINDNESS { return xs("hex", "necro-travel", "necro-hit", "fizzle", 0.8); }
+  if sp == SP_HEX { return xs("hex", "", "", "fizzle", 1); }
+  if sp == SP_HUNTERS_MARK { return xs("hex", "", "", "fizzle", 1.25); }
+  if sp == SP_HOLD_PERSON { return xs("hold", "", "", "fizzle", 1); }
+  if sp == SP_HYPNOTIC_PATTERN { return xs("levitate", "hold", "", "", 1.15); }
+  if sp == SP_VICIOUS_MOCKERY { return xs("psychic-cast", "", "psychic-hit", "fizzle", 1); }
+  if sp == SP_SACRED_FLAME { return xs("choir", "", "radiant", "fizzle", 1); }
+  if sp == SP_GUIDING_BOLT { return xs("radiant", "missile", "arcane-hit", "fizzle", 1); }
+  if sp == SP_SPIRIT_GUARDIANS { return xs("levitate", "choir", "radiant", "", 0.85); }
+  if sp == SP_DIVINE_SMITE { return xs("radiant", "", "hit-heavy", "", 0.9); }
+  if sp == SP_STARRY_WISP { return xs("arcane-cast", "missile", "arcane-hit", "fizzle", 1); }
+  if sp == SP_HEALING_WORD || sp == SP_CURE_WOUNDS { return xs("heal", "", "", "", 1); }
+  if sp == SP_THUNDERWAVE { return xs("thunderwave", "thunder", "hit-heavy", "", 1); }
+  if sp == SP_ENTANGLE { return xs("entangle", "", "", "", 1); }
+  if sp == SP_CALL_LIGHTNING { return xs("bolt-cast", "thunder", "bolt-travel", "fizzle", 1); }
+  if sp == SP_LIGHTNING_BOLT { return xs("bolt-travel", "bolt-cast", "thunder", "fizzle", 1); }
+  if sp == SP_SHIELD || sp == SP_SHIELD_OF_FAITH { return xs("shield", "", "", "", 1); }
+  if sp == SP_BLESS { return xs("choir", "", "", "", 1.2); }
+  if sp == SP_MOONBEAM { return xs("radiant", "levitate", "radiant", "", 0.7); }
+  t := xc_damage_type(sp);
+  if t == RS_FIRE { return xs("fire-cast", "", "fire-hit", "fizzle", 1); }
+  if t == RS_COLD { return xs("frost-cast", "", "frost-hit", "fizzle", 1); }
+  if t == RS_LIGHTNING { return xs("bolt-cast", "", "bolt-travel", "fizzle", 1); }
+  if t == RS_THUNDER { return xs("thunderwave", "", "thunder", "", 1); }
+  if t == RS_NECROTIC { return xs("necro-cast", "", "necro-hit", "fizzle", 1); }
+  if t == RS_RADIANT { return xs("radiant", "", "radiant", "fizzle", 1); }
+  if t == RS_PSYCHIC { return xs("psychic-cast", "", "psychic-hit", "fizzle", 1); }
+  if t == RS_FORCE { return xs("eldritch-cast", "", "eldritch-hit", "fizzle", 1.1); }
+  if t == RS_ACID || t == RS_POISON { return xs("blight", "", "necro-hit", "fizzle", 1.2); }
+  sc := rs_spell(sp).school;
+  if sc == "Abjuration" { return xs("shield", "", "", "", 1); }
+  if sc == "Conjuration" { return xs("teleport", "", "", "", 1); }
+  if sc == "Enchantment" { return xs("hold", "", "", "fizzle", 1); }
+  if sc == "Illusion" || sc == "Transmutation" { return xs("levitate", "", "", "", 1); }
+  if sc == "Necromancy" { return xs("necro-cast", "", "necro-hit", "fizzle", 1); }
+  return xs("arcane-cast", "", "arcane-hit", "fizzle", 1);
+}
+// Ability a's sound for class klass (whose weapon its blows use).
+xc_sound :: (a: FbAb, klass: int) -> XcSnd {
+  if a.kind == FB_SPELL { return xc_spell_sound(a.sp); }
+  kit := xc_kit(klass); heavy := kit == 0 || kit == 1;
+  if a.kind == FB_ATTACK {
+    if a.name == "Sneak Attack" { return xs("swing", "necro-travel", "hit-heavy", "", 1.15); }
+    if a.name == "Martial Arts" || kit < 0 { return xs("swing", "", "hit", "", 1.3); }   // a fist, or a caster's staff
+    if heavy { return xs("swing-heavy", "", "hit-heavy", "", ifx kit == 0 then 0.88 else 1.0); }   // the greataxe is the heavier
+    return xs("swing", "", "hit", "", ifx kit == 3 then 1.1 else 1.0);
+  }
+  if a.kind == FB_RECKLESS { return xs("grunt", "swing-heavy", "hit-heavy", "", 0.9); }
+  if a.kind == FB_RAGE { return xs("rage-roar", "", "", "", 1); }
+  if a.kind == FB_FLURRY { return xs("flurry", "", "hit", "", 1); }
+  if a.kind == FB_PATIENT { return xs("hold", "", "", "", 0.8); }
+  if a.kind == FB_WIND { return xs("levitate", "dash", "", "", 1.1); }
+  if a.kind == FB_WHOLE { return xs("heal", "", "", "", 0.85); }
+  if a.kind == FB_SECOND { return xs("second-wind", "", "", "", 1); }
+  if a.kind == FB_SURGE { return xs("surge", "", "", "", 1); }
+  if a.kind == FB_LAY { return xs("heal", "choir", "", "", 0.9); }
+  if a.kind == FB_SACRED { return xs("shield", "choir", "", "", 1); }
+  if a.kind == FB_INNATE { return xs("arcane-cast", "levitate", "", "", 0.9); }
+  if a.kind == FB_INSPIRE { return xs("raid-won", "", "", "", 1.2); }
+  if a.kind == FB_TURN { return xs("rebuke", "choir", "radiant", "", 1); }
+  if a.kind == FB_PRESERVE { return xs("second-wind", "heal", "", "", 1.15); }
+  if a.kind == FB_LANDS { return xs("shield", "entangle", "", "", 1.1); }
+  if a.kind == FB_AIM { return xs("hold", "", "", "", 1.3); }
+  if a.kind == FB_CDASH { return xs("teleport", "", "", "", 1.2); }
+  if a.kind == FB_DASH { return xs("dash", "", "", "", 1); }
+  if a.kind == FB_RESURGE { return xs("rage-roar", "", "", "", 1.25); }   // Wild Shape's beast
+  return xs("arcane-cast", "", "", "", 1);
+}
+
+// ---- the wire: class c's bar slot i
+XK_SLOT0 :: 128;   // past Everglade's bars (fivebar.coax: its own 0 on, the Warlock's FB_WL0, Character Create's one ability FB_CL0)
+XK_PER :: XC_SLOTS;
+XK_LEVEL :: 1;     // Everglade II's kit: each class's cantrips and level 1 abilities
+xk_slot :: (c: int, i: int) -> int { return XK_SLOT0 + c * XK_PER + i; }
+xk_slot_class :: (slot: int) -> int { return ifx slot >= XK_SLOT0 && slot < XK_SLOT0 + FB_CL_N * XK_PER then (slot - XK_SLOT0) / XK_PER else -1; }
+xk_slot_index :: (slot: int) -> int { return ifx xk_slot_class(slot) >= 0 then (slot - XK_SLOT0) % XK_PER else -1; }
+// Class c's bar at Everglade II's level, in its own order: how many.
+xk_bar :: (c: int, out: [] FbAb) -> int { return ifx c >= 0 && c < FB_CL_N then xc_bar_level(c, XK_LEVEL, out) else 0; }
+// The weapon class c's hero holds (its Attack's reach).
+xk_weapon :: (c: int) -> int { return ifx c >= 0 && c < FB_CL_N then fb_cl_hero(c, "", 0, XK_LEVEL).weapon else 0; }
+// Wire slot `slot` for class c: its ability, how it aims; ok false when it is not on c's bar.
+XkEntry :: struct { ok: bool; ab: FbAb; aim: XcAim; }
+xk_entry :: (c: int, slot: int) -> XkEntry {
+  if xk_slot_class(slot) != c { return XkEntry.{}; }
+  bar: [XC_SLOTS] FbAb; n := xk_bar(c, bar[..]); i := xk_slot_index(slot);
+  if i < 0 || i >= n { return XkEntry.{}; }
+  return XkEntry.{ok = true, ab = bar[i], aim = xc_aim_for(bar[i], xk_weapon(c))};
+}
+
+#test "class kits: every class's bar holds its Character Create ability first, each slot with its picture, and its wire slots" #steps 400000000 {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N {
+    n := xk_bar(c, bar[..]);
+    #assert n >= 2 && n <= XC_SLOTS;
+    #assert bar[0].kind == fb_cl_ability(c).kind && bar[0].name == fb_cl_ability(c).name && xc_url(bar[0].art) == XC_EG_URL;
+    for i: 0..<n {
+      s := xk_slot(c, i);
+      #assert xk_slot_class(s) == c && xk_slot_index(s) == i && xk_entry(c, s).ok && xk_entry(c, s).ab.name == bar[i].name;
+      #assert !xk_entry((c + 1) % FB_CL_N, s).ok;   // another class's slot
+    }
+    #assert !xk_entry(c, xk_slot(c, n)).ok && !xk_entry(c, FB_CL0 + c).ok && !xk_entry(c, 1).ok;
+  }
+  #assert xk_slot_class(XK_SLOT0 - 1) == -1 && xk_slot_class(XK_SLOT0 + FB_CL_N * XK_PER) == -1;
+  // a Wizard's Fire Bolt is a bolt of 120 feet; a Fighter's sword a blow; Second Wind its own
+  w := xk_entry(FB_CL_WIZARD, xk_slot(FB_CL_WIZARD, 0)); #assert w.ab.sp == SP_FIRE_BOLT && w.aim.kind == XC_AIM_BOLT && abs(w.aim.reach - 36.576) < 0.01;
+  f := xk_entry(FB_CL_FIGHTER, xk_slot(FB_CL_FIGHTER, 1)); #assert f.ab.kind == FB_ATTACK && f.aim.kind == XC_AIM_MELEE;
+  #assert xk_entry(FB_CL_FIGHTER, xk_slot(FB_CL_FIGHTER, 0)).aim.kind == XC_AIM_SELF;
+  p := xc_aim_point(w.ab, w.aim, 1, 2, 0, 1); #assert p[0] == 1 && abs(p[1] - 38.576) < 0.01;
+  q := xc_aim_point(f.ab, XcAim.{kind = XC_AIM_SELF}, 1, 2, 0, 1); #assert q[0] == 1 && q[1] == 2;
+}
+#test "class kits: every ability has a cast sound" #steps 400000000 {
+  bar: [XC_SLOTS] FbAb;
+  for c: 0..<FB_CL_N { n := xk_bar(c, bar[..]); for i: 0..<n { #assert xc_sound(bar[i], c).start.count > 0; } }
+}

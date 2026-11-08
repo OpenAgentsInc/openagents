@@ -90,7 +90,11 @@ fxg_ground :: (px:V2,u:[]f32)->f32 {
 fxg_soft :: (p:EgfxP,u:[]f32)->f32 {
   return clampf((fxg_ground(v2(p.pos.x,p.pos.y),u)-p.depth.x)/p.depth.y,0.0f32,1.0f32);
 }
-fxg_particle_fs :: (p:EgfxP,u:[]f32)->V4 {
+fxg_particle_fs :: (p:EgfxP,u:[]f32)->V4 { return fxg_puff_fs(p,u,true); }
+fxg_particle_over_fs :: (p:EgfxP,u:[]f32)->V4 { return fxg_puff_over_fs(p,u,true); }
+// The two passes' colour; traced: fade where the traced ground is (fxg_soft), else the page's depth
+// buffer hides what is behind (a raster page's, Everglade II's: apps/openagents-web/gpu/everglade2-fx.coax).
+fxg_puff_fs :: (p:EgfxP,u:[]f32,traced:bool)->V4 {
   kind:f32=p.look.x;
   a:f32=0.0f32;
   c:V3=v3(p.colour.x,p.colour.y,p.colour.z);
@@ -117,23 +121,24 @@ fxg_particle_fs :: (p:EgfxP,u:[]f32)->V4 {
     c=wg_mul_f3f(egfx_fire(p,m,u),(0.08f32+(0.4f32*p.colour.w)));
     a=m;
   }
-  k:f32=(a*p.near)*(ifx kind==EGFX_RING then 1.0f32 else fxg_soft(p,u));
+  k:f32=(a*p.near)*(ifx (kind==EGFX_RING)||!traced then 1.0f32 else fxg_soft(p,u));
   return wg_make_f4_f3f(wg_mul_f3f(c,k),clampf(k*0.6f32,0.0f32,1.0f32));
 }
-fxg_particle_over_fs :: (p:EgfxP,u:[]f32)->V4 {
+fxg_puff_over_fs :: (p:EgfxP,u:[]f32,traced:bool)->V4 {
+  soft:f32=ifx traced then fxg_soft(p,u) else 1.0f32;
   if (p.look.x==EGFX_FIRE) {
     m:f32=egfx_billow(p.corner,p.look.y,0.6f32,0.08f32,p.look.z,u);
     if (m<=0.002f32) {
       gpu_demote_helper();
     }
-    a:f32=(clampf(m,0.0f32,1.0f32)*p.near)*fxg_soft(p,u);
+    a:f32=(clampf(m,0.0f32,1.0f32)*p.near)*soft;
     return wg_make_f4_f3f(wg_mul_f3f(egfx_fire(p,m,u),a),a);
   }
   m:f32=egfx_billow(p.corner,p.look.y,0.7f32,0.12f32,p.colour.w,u);
   if (m<=0.002f32) {
     gpu_demote_helper();
   }
-  a:f32=(clampf(m*fmin(p.colour.w*1.6f32,0.92f32),0.0f32,1.0f32)*p.near)*fxg_soft(p,u);
+  a:f32=(clampf(m*fmin(p.colour.w*1.6f32,0.92f32),0.0f32,1.0f32)*p.near)*soft;
   n:f32=egfx_churn(wg_add_f2f2(wg_mul_f2f(p.corner,1.1f32),v2(0.0f32,0.4f32)),p.look.y+3.0f32,u);
   r:f32=wg_length2(p.corner);
   bulge:f32=sqrt(fmax(1.0f32-(r*r),0.0f32));

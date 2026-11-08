@@ -1,0 +1,106 @@
+// How a class kit's ability looks and where its bar's slots sit (#13025, #13058): the effect a cast
+// starts (aethyr/fx/puff.coax recipes, Everglade's looks: everglade-classes.coax cl_look), each spell's
+// colour, and the bar's boxes along the bottom of the screen. Everglade Experimental
+// (experimental-combat.coax) and Everglade II (everglade2-cast.coax) draw the same; what each ability
+// is, how it aims and sounds is class-kit.coax's.
+//   coax/bin/coax test apps/openagents-web/class-look.coax
+#load "class-kit.coax";
+#load "../../aethyr/fx/puff.coax";
+
+xc_rgb :: (r: f32, g: f32, b: f32) -> FxV { return fxp_v(r, g, b); }
+// A spell's colour, linear light (the Warlock's level 17 spells have their own: fivelab-warlock.coax).
+xc_spell_rgb :: (sp: int) -> FxV {
+  if sp == SP_HELLISH_REBUKE { return xc_rgb(0.35, 1.0, 0.3); }   // its green flames
+  if sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL { return xc_rgb(1.0, 0.55, 0.15); }
+  if sp == SP_STARRY_WISP { return xc_rgb(1.0, 0.95, 0.6); }
+  if sp == SP_POISON_SPRAY { return xc_rgb(0.6, 1.0, 0.3); }
+  if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD { return xc_rgb(0.4, 1.0, 0.5); }
+  if sp == SP_THUNDERWAVE { return xc_rgb(0.55, 0.75, 1.0); }
+  if sp == SP_ENTANGLE { return xc_rgb(0.35, 0.85, 0.3); }
+  if sp == SP_FAERIE_FIRE { return xc_rgb(0.75, 0.48, 1.0); }
+  if sp == SP_CHILL_TOUCH { return xc_rgb(0.6, 0.92, 1.0); }
+  if sp == SP_RAY_OF_SICKNESS { return xc_rgb(0.75, 0.95, 0.2); }
+  if sp == SP_FALSE_LIFE { return xc_rgb(0.95, 0.25, 0.35); }
+  if sp == SP_RAY_OF_ENFEEBLEMENT { return xc_rgb(0.6, 0.55, 0.85); }
+  if sp == SP_BLINDNESS { return xc_rgb(0.4, 0.45, 1.0); }
+  if sp == SP_ELDRITCH_BLAST { return xc_rgb(0.85, 0.35, 1.0); }
+  if sp == SP_HEX { return xc_rgb(0.55, 0.2, 0.75); }
+  if sp == SP_HOLD_PERSON { return xc_rgb(1.0, 0.8, 0.35); }
+  if sp == SP_SCORCHING_RAY { return xc_rgb(1.0, 0.4, 0.12); }
+  if sp == SP_VICIOUS_MOCKERY { return xc_rgb(1.0, 0.5, 0.8); }
+  if sp == SP_SACRED_FLAME { return xc_rgb(1.0, 0.92, 0.6); }
+  if sp == SP_GUIDING_BOLT { return xc_rgb(0.95, 0.95, 1.0); }
+  if sp == SP_DIVINE_SMITE { return xc_rgb(1.0, 0.85, 0.4); }
+  if sp == SP_HUNTERS_MARK { return xc_rgb(0.55, 0.95, 0.35); }
+  if sp == SP_FIRE_BOLT { return xc_rgb(1.0, 0.48, 0.1); }
+  if sp == SP_SHIELD { return xc_rgb(0.35, 0.9, 1.0); }
+  if sp == SP_FIREBALL { return xc_rgb(1.0, 0.5, 0.12); }
+  if sp == SP_SPIRIT_GUARDIANS { return xc_rgb(1.0, 0.95, 0.7); }
+  if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { return xc_rgb(0.7, 0.85, 1.0); }
+  if sp == SP_HYPNOTIC_PATTERN { return xc_rgb(0.95, 0.5, 1.0); }
+  if sp < 0 { return xc_rgb(0.5, 0.9, 0.4); }
+  return xc_rgb(0.9, 0.92, 0.96);
+}
+// A cast's look: the recipe, from the hand to where it lands (or round you), its colour and its reach;
+// glimmer, a second cause on it (Guiding Bolt's glow).
+XcLook :: struct { recipe: int; from: FxV; to: FxV; col: FxV; reach: f32 = 1; glimmer: bool; }
+// Ability a's look for a caster whose feet are (px, py, pz), facing `face` (you face atan2(x, z)), at
+// `at`: where it lands, ahead of you (a bolt's full range when it meets no one) or on the one struck.
+xc_look_of :: (a: FbAb, px: f32, py: f32, pz: f32, face: f32, at: FxV) -> XcLook {
+  hand := fxp_v(px + cos(face) * 0.3, py + 1.3, pz - sin(face) * 0.3);
+  me := fxp_v(px, py + 1.0, pz);
+  gold := fxp_v(1.0, 0.78, 0.4);
+  col := ifx a.kind == FB_SPELL then xc_spell_rgb(a.sp) else gold;
+  r := FXR_HIT; to := at; reach := 1.0f32;
+  if a.kind == FB_SPELL {
+    sp := a.sp;
+    if sp == SP_FIRE_BOLT || sp == SP_FLAME_HURL { r = FXR_FIREBOLT; }
+    else if sp == SP_ELDRITCH_BLAST { r = FXR_ELDRITCH; }
+    else if sp == SP_STARRY_WISP { r = FXR_STAR; }
+    else if sp == SP_SACRED_FLAME { r = FXR_COLUMN; }
+    else if sp == SP_VICIOUS_MOCKERY { r = FXR_MOCKERY; }
+    else if sp == SP_HEX || sp == SP_HUNTERS_MARK { r = FXR_MARK; }
+    else if sp == SP_DIVINE_SMITE { r = FXR_SMITE; }
+    else if sp == SP_HEALING_WORD { r = FXR_HEAL; to = me; }
+    else if sp == SP_FALSE_LIFE { r = FXR_DRAIN; to = me; }
+    else if sp == SP_THUNDERWAVE { r = FXR_SHOCK; to = fxp_v(px + sin(face) * 2.286, py + 1.0, pz + cos(face) * 2.286); reach = 2.286; }
+    else if sp == SP_ENTANGLE { r = FXR_BLOOM; reach = 3; }
+    else { r = FXR_STREAK; }   // Chill Touch, Ray of Sickness, Guiding Bolt
+  }
+  else if a.kind == FB_RAGE { r = FXR_EMBERS; to = me; }
+  else if a.kind == FB_SECOND { r = FXR_BREATH; to = me; }
+  else if a.kind == FB_LAY { r = FXR_LAY; to = me; }
+  else if a.kind == FB_INNATE { r = FXR_ARCANE; to = me; }
+  else if a.name == "Sneak Attack" { r = FXR_SHADOW_SLASH; }
+  return XcLook.{recipe = r, from = hand, to = to, col = col, reach = reach, glimmer = a.kind == FB_SPELL && a.sp == SP_GUIDING_BOLT};
+}
+// Look l started at `now` into p, from `seed` (the wire's for another's cast, so every page draws it
+// alike). The causes started (0 when the effects' budget is full).
+xc_look_start :: (p: [] FxPuffs, l: XcLook, now: f32, seed: f32) -> int {
+  n := 0;
+  if fxp_start(p, FxCause.{recipe = l.recipe, seed = seed + f32(l.recipe), t0 = now, from = l.from, to = l.to, col = l.col, big = 1, reach = l.reach}, now) >= 0 { n += 1; }
+  if l.glimmer && fxp_start(p, FxCause.{recipe = FXR_GLIMMER, seed = seed + f32(FXR_GLIMMER), t0 = now, from = l.from, to = l.to, col = l.col, big = 1, reach = 1}, now) >= 0 { n += 1; }
+  return n;
+}
+
+// ---- the bar, CSS px: slots of XC_SLOT, XC_STEP apart, nine a row, XC_BOTTOM up from the bottom
+XC_SLOT :: 52.0; XC_STEP :: 60.0; XC_BOTTOM :: 30.0;
+// Slot i of a bar of bar_n on a w by h screen at scale k: x0, y0, x1, y1 in device px.
+xc_slot_at :: (bar_n: int, i: int, w: f32, h: f32, k: f32) -> [4] f32 {
+  rows := (bar_n + 8) / 9; row := i / 9; count := rs_min(9, bar_n - row * 9);
+  wide := f32(count) * f32(XC_STEP) - (f32(XC_STEP) - f32(XC_SLOT));
+  x0 := (w - wide * k) / 2 + f32(i % 9) * f32(XC_STEP) * k;
+  y0 := h - (f32(XC_SLOT) + f32(XC_BOTTOM) + f32(rows - row - 1) * f32(XC_STEP)) * k;
+  return [4] f32.[x0, y0, x0 + f32(XC_SLOT) * k, y0 + f32(XC_SLOT) * k];
+}
+
+#test "class looks: a bolt flies from the hand to where it lands, a heal rises round you, a cube is set ahead" #steps 400000000 {
+  at := fxp_v(0, 1, 30);
+  b := xc_look_of(fb_spell(SP_FIRE_BOLT, 0, FB_FOE), 0, 0, 0, 0, at);
+  #assert b.recipe == FXR_FIREBOLT && b.to.z == 30 && abs(b.from.y - 1.3) < 0.001 && b.col.x == 1.0;
+  h := xc_look_of(fb_spell(SP_HEALING_WORD, 1, FB_ALLY), 2, 0, 3, 0, at); #assert h.recipe == FXR_HEAL && h.to.x == 2 && h.to.z == 3;
+  t := xc_look_of(fb_spell(SP_THUNDERWAVE, 1, FB_POINT), 0, 0, 0, 1.5707963, at); #assert t.recipe == FXR_SHOCK && abs(t.to.x - 2.286) < 0.01 && t.reach > 2;
+  g := xc_look_of(fb_spell(SP_GUIDING_BOLT, 1, FB_FOE), 0, 0, 0, 0, at); #assert g.glimmer && g.recipe == FXR_STREAK;
+  p: [1] FxPuffs; #assert xc_look_start(p[..], g, 1, 7) == 2 && p[0].started == 2;
+  s := xc_slot_at(5, 0, 1280, 720, 1); #assert s[2] - s[0] == 52 && s[3] == 720 - 30 && s[0] == (1280 - 292) / 2;
+}

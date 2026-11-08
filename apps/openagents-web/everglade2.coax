@@ -12,6 +12,9 @@
 #load "everglade-move-types.coax";
 #load "everglade2-move.coax";   // where you may stand, the trunks and rocks, the pace: the room steps the same (#13053)
 #load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
+#load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)
+#load "experimental-sound.coax" as exsound;
+#load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
@@ -75,7 +78,8 @@ E2 :: struct {
   outbox: [1024] u8; out_n: int; action: int;   // the host action this frame (5 keep the player key, 16 keep the record, 19 the address)
   player_key: [1024] u8; player_key_n: int;      // a minted player key waiting for the host action (e2_keep_player)
   reseat: bool;                          // the controller to take you as the studio drew you (everglade2-face.c)
-  media: [2048] u8; media_n: int;        // the pictures this frame names for the host (the class pane's, everglade2-create.coax)
+  media: [6144] u8; media_n: int;        // the pictures this frame names for the host (the class pane's, everglade2-create.coax; the bar's, everglade2-cast.coax)
+  casts: [1] E2Cast;                      // your class's bar and everyone's casts (everglade2-cast.coax)
   // the room (everglade2-net.coax): the others, each with its own animation, its jump and its look
   net: [1] E2Net; staged: bool;          // staged: ?at= or ?walk, a shot that opens no room
   ranim: [E2N_ENTS] figs.BdAnim; rair: [E2N_ENTS] bool; rair_at: [E2N_ENTS] f32; rland_at: [E2N_ENTS] f32; rlife: [E2N_ENTS] int;
@@ -345,6 +349,7 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
 // ---- input
 e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   if e2c_key(s, key) { return true; }
+  if e2k_key(s, key) { return true; }
   if key == ' ' { s[0].held |= HOLD_JUMP; return true; }
   if key == KEY_SHIFT { s[0].shift = true; return true; }
   h := hold_bit(key); if h != 0 { s[0].held |= h; return true; }
@@ -359,6 +364,7 @@ e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = fals
 // A mouse drag looks round (a finger is the face's: aethyr/sticks.coax).
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if e2c_pointer(s, x, y, phase, id) { return true; }
+  if e2k_pointer(s, x, y, phase) { return true; }
   if kind != 0 { return false; }
   if phase == 0 { s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
   if phase == 1 && s[0].dragging {
@@ -546,7 +552,9 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2c_arrive_uniforms(s, u);
   e2_material_uniforms(s, u);
   e2_shadows(s, u);
-  return e2_fps(s, out, e2_plates(s, out, e2c_hud(s, out)), dt);
+  e2k_set_class(s[0].casts[..], e2c_class_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s));
+  e2k_step(s);
+  return e2_fps(s, out, e2_plates(s, out, e2k_hud(s, out, e2c_hud(s, out))), dt);
 }
 
 // ---- the key light's shadow tiles (aethyr/render/cascades.coax, #13016, as Everglade's)
@@ -866,7 +874,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   bdt := ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32;
   figs.bd_step(a, s[0].clock, bdt);
   b[0].now = s[0].clock;
-  fig := ifx e2c_creating(s) then e2c_figure(s) else e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at);
+  fig := ifx e2c_creating(s) then e2c_figure(s) else e2k_figure(e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at), s[0].casts[0].me[0], s[0].clock);
   s[0].cz[0].fig0 = rec;
   d := e2_body(s, c, fig, E2Drawn.{rec = rec, n = n, sn = sn});
   s[0].cz[0].fig1 = d.rec;
@@ -918,6 +926,10 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // shown), 87 the bodies thinning out this frame (e2_remotes_draw)
   if field == 18 { return s[0].fade_ins; } if field == 19 { return s[0].pops; } if field == 87 { return s[0].ghosts; }
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
+  // the casts (#13058): 82 yours sent to the room, 83 others' played here, 88 yours the room said
+  // back, 89 cast sounds played (everglade2-cast.coax)
+  if field == 82 { return s[0].net[0].cast_sent; } if field == 83 { return s[0].casts[0].others; }
+  if field == 88 { return s[0].net[0].cast_mine; } if field == 89 { return s[0].casts[0].audio[0].played; }
   if (field >= 40 && field < 66 + E2_REMOTES) || (field >= 84 && field <= 86) { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
   // the ground (#13059): 90 its route (1 the pack's record, 2 converted here), 91 its tiles, 92 sets
   // published, 93 refusals, 94 the first refusal's code, 95 KiB resident, 96 and 97 the set's and the
@@ -1016,7 +1028,7 @@ e2_name_hash :: (t: string) -> int { h := 2166136261; for ch: t { h = ((h ^ cast
 #test "the crowd check's probes: SURPRISE ME's and NAME's boxes, the name with the API, and the others' names" {
   s: [1] E2; e2c_layout(s[..], 1280, 720, 1);
   #assert e2_probe(s[..], 60) > 0 && e2_probe(s[..], 61) > 0 && e2_probe(s[..], 62) > 0 && e2_probe(s[..], 63) > 0;
-  #assert e2_probe(s[..], 64) == 0 && e2_probe(s[..], 65) == 0 && e2_probe(s[..], 66) == 0 && e2_probe(s[..], 66 + E2_REMOTES) == -1;
+  #assert e2_probe(s[..], 64) == 0 && e2_probe(s[..], 65) == 0 && e2_probe(s[..], 66) == 0 && e2_probe(s[..], 66 + E2_REMOTES) == 0;   // 82 on: the casts' (none sent)
 }
 #test "a name's probe hash is FNV-1a's, 31 bits" { #assert e2_name_hash("") == 2166136261 & 0x7fffffff && e2_name_hash("a") == 0x640c292c && e2_name_hash("Crowd Alpha") != e2_name_hash("Crowd Bravo"); }
 // A remote's look: your creator (its catalog, its parts) with that player's record restored. When the
@@ -1080,7 +1092,7 @@ e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
     s[0].rlast[slot] = r;
     ln := ifx en.look_n < NET_LOOK then en.look_n else NET_LOOK; s[0].rlook_n[slot] = ln; for i: 0..<ln { s[0].rlook[slot * NET_LOOK + i] = en.look[i]; }
     a := s[0].ranim[slot..<slot + 1];
-    if !a[0].on || s[0].rlife[slot] != en.born { a[0] = figs.BdAnim.{}; a[0].on = true; s[0].rair[slot] = false; s[0].rland_at[slot] = -100; s[0].rlife[slot] = en.born; }
+    if !a[0].on || s[0].rlife[slot] != en.born { a[0] = figs.BdAnim.{}; a[0].on = true; s[0].rair[slot] = false; s[0].rland_at[slot] = -100; s[0].rlife[slot] = en.born; s[0].casts[0].them[slot] = E2kAct.{}; }
     ground := e2_height(r.x, r.z);
     d = e2_remote_body(s, r, slot, d, bdt);
     if s[0].plate_n < E2_REMOTES && en.name_n > 0 {
@@ -1111,7 +1123,7 @@ e2_remote_body :: (s: [] E2, r: E2Remote, slot: int, at: E2Drawn, bdt: f32) -> E
   if air && !s[0].rair[slot] { s[0].rair_at[slot] = s[0].clock; }
   if !air && s[0].rair[slot] { s[0].rland_at[slot] = s[0].clock; }
   s[0].rair[slot] = air;
-  fig := e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[slot], s[0].rland_at[slot]);
+  fig := e2k_figure(e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[slot], s[0].rland_at[slot]), s[0].casts[0].them[slot], s[0].clock);
   look := cast(string) s[0].rlook[slot * NET_LOOK..<slot * NET_LOOK + s[0].rlook_n[slot]];
   _ := e2_remote_look(s, look); c := s[0].rtmp[0];
   from := at.rec;
@@ -1228,4 +1240,73 @@ e2_keep_player :: (s: [] E2, record: string) #export_c #effects(all) {
   if record.count > 1024 { return; }
   for i: 0..<record.count { s[0].player_key[i] = record[i]; }
   s[0].player_key_n = record.count;
+}
+
+// ---- the class bar (#13058)
+e2_test_cast_state :: (s: [] E2, c: int) {
+  s[0].placed = true; s[0].width = 1440; s[0].height = 900; s[0].k = 1; s[0].clock = 10;
+  s[0].you_x = 0; s[0].you_z = -10; s[0].you_y = e2_height(0, -10); s[0].you_face = 3.14159265;   // facing -z
+  s[0].right = [3] f32.[1, 0, 0];
+  n := s[0].net[..]; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 1;
+  e2k_set_class(s[0].casts[..], c); e2n_set_class(n, c);
+}
+#test "Everglade II's bar holds your class's kit, its keys press it at what is ahead, it cools down, and it goes to the room (#13058)" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_WIZARD);
+  k := s[0].casts[..];
+  bar: [XC_SLOTS] FbAb; want := xk_bar(FB_CL_WIZARD, bar[..]);
+  #assert k[0].bar_n == want && k[0].bar_n >= 2 && k[0].bar[0].name == bar[0].name;
+  // the bar's pictures for the host, one a slot, and a press on its first
+  out: [8192] f32;
+  s[0].media_n = 0; _ := e2k_hud(s[..], out[..], 0);
+  lines := 1; for i: 0..<s[0].media_n { if s[0].media[i] == 10 { lines += 1; } }
+  #assert s[0].media_n > 0 && lines == k[0].bar_n;
+  b := e2k_box(k, 0, 1440, 900, 1);
+  #assert e2k_slot_at(s[..], (b[0] + b[2]) / 2, (b[1] + b[3]) / 2) == 0 && e2k_slot_at(s[..], 10, 10) < 0;
+  // Fire Bolt (the Wizard's first? find it): flies ahead, to its range
+  fb := -1; for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_SPELL && k[0].bar[i].sp == SP_FIRE_BOLT { fb = i; } }
+  #assert fb >= 0 && fb < 9;
+  #assert e2_key(s[..], '1' + fb, 0) && k[0].pressed == 1 && s[0].net[0].cast_sent == 1;
+  #assert fxp_live(k[0].puffs[..]) >= 1 && k[0].audio[0].played >= 1 && k[0].me[0].clip == figs.BD_SPELL;
+  last := s[0].net[0].pipe[0].n - 1; p := s[0].net[0].pipe[0];
+  cw := cast(string) p.buf[p.from[last]..<p.from[last] + p.len[last]];
+  r: [1] WireRd; r[0] = wire_rd(cw, 1); wc := wire_read_cast(cw, r[..]);
+  #assert cw[0] == 'C' && wc.slot == xk_slot(FB_CL_WIZARD, fb) && abs(wc.ax) < 0.05 && abs(wc.az - (-10 - 36.576)) < 0.05;
+  // too soon: nothing; a second on, the next
+  #assert e2_key(s[..], '1', 0) && k[0].pressed == 1;
+  s[0].clock += 1.01; #assert e2_key(s[..], '1', 0) && k[0].pressed == 2;
+  // the bolt fizzles where it ends: its sound a moment later
+  heard := k[0].audio[0].played; s[0].clock += 1; e2k_step(s[..]); #assert k[0].audio[0].played > heard;
+  // a key past the bar is left alone; in the studio the bar is away
+  #assert !e2_key(s[..], '1' + k[0].bar_n, 0) || k[0].bar_n >= 9;
+  s[0].cz[0].on = true; #assert !e2k_on(s[..]);
+}
+#test "another's e cast plays when the picture reaches its tick, at it as drawn: a blow swings and sounds there (#13058)" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_WIZARD);
+  n := s[0].net[..]; n[0].mono = 1000;
+  // seat 3, a Fighter, stands 4 m ahead of you
+  for i: 0..<12 {
+    q := e2n_ent(n, 3, true); en := n[0].ents[q..<q + 1]; en[0].kind = WK_PLAYER; en[0].seat = 3; en[0].seen = i;
+    net_push(en, NetState.{t = 1000 + i * 33, x = 0, z = -14});
+  }
+  e2n_step(n, 1300);
+  #assert e2n_remote_seat(n, 3).ok;
+  fbar: [XC_SLOTS] FbAb; fn := xk_bar(FB_CL_FIGHTER, fbar[..]); fi := -1;
+  for i: 0..<fn { if fbar[i].kind == FB_ATTACK && fi < 0 { fi = i; } }
+  sword := xk_slot(FB_CL_FIGHTER, fi);
+  #assert xk_entry(FB_CL_FIGHTER, sword).aim.kind == XC_AIM_MELEE;
+  n[0].tick_t = n[0].rt + 500;   // a tick the picture hasn't reached
+  b: [128] u8; m := wire_put_cast_e(b[..], 0, WireCastE.{ss = 3, slot = sword, ax = 0, ay = 1, az = -16, seed = 77});
+  e2n_entry(n, cast(string) b[0..<m], WireD.{tick = 9});
+  k := s[0].casts[..];
+  e2k_step(s[..]); #assert k[0].others == 0 && n[0].cast_heard == 1;
+  n[0].casts[0].t = n[0].rt;     // now it has
+  heard := k[0].audio[0].played;
+  e2k_step(s[..]);
+  r := e2n_remote_seat(n, 3);
+  #assert k[0].others == 1 && k[0].them[r.slot].clip == figs.BD_SLASH && abs(k[0].them[r.slot].at - s[0].clock) < 0.001;
+  #assert fxp_live(k[0].puffs[..]) >= 1 && k[0].puffs[0].out_n > 0 && k[0].audio[0].played > heard;
+  // its body swings over its gait, eased in
+  g: figs.BdAnim; g.clip = figs.BD_IDLE;
+  a := e2k_figure(g, k[0].them[r.slot], s[0].clock + 0.3); #assert a.clip == figs.BD_SLASH && a.prev == figs.BD_IDLE;
+  #assert e2k_figure(g, k[0].them[r.slot], s[0].clock + 5).clip == figs.BD_IDLE;
 }

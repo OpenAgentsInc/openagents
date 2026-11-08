@@ -1,0 +1,209 @@
+// Everglade II's class bar (#13058): your Character Create class's cantrips and level 1 abilities
+// (class-kit.coax xk_bar, Everglade Experimental's bar at level 1), pressed with 1 to 9 or a click.
+// It aims as Experimental's does, ahead of you and never at anyone for you (xc_aim_for, xc_aim_point),
+// and looks and sounds as it does (class-look.coax xc_look_of, class-kit.coax xc_sound,
+// experimental-sound.coax). Everglade II has no monsters and its players can't harm each other: a cast
+// is seen and heard, nothing more. A bolt flies to its range and fizzles, a blow swings at the air,
+// an area opens ahead.
+//
+// A press plays at once here and goes to the room (everglade2-net.coax e2n_cast: C SEQ SLOT AX AY AZ
+// -1), which takes it when the slot is your class's and tells every page near (e cast SS SLOT AX AY
+// AZ SEED, coax/web/room/room-everglade.coax eg_e2_cast); another's plays here when the picture of it
+// reaches the tick it came with, from where it is drawn, at its seed.
+// everglade2.coax loads this beside class-look.coax and experimental-sound.coax (as exsound).
+
+E2K_LATER :: 8;      // sounds waiting a moment: a bolt's fizzle where it ends
+E2K_GAIN_START :: 0.55; E2K_GAIN_LAYER :: 0.32; E2K_GAIN_MISS :: 0.4;   // as Experimental's (xc_cast_sound)
+E2kLater :: struct { on: bool; t: f32; name: string; x: f32; z: f32; rate: f32 = 1; }
+// A body's cast: when it began and its clip (a blow's slash, a spell's cast), drawn over its gait.
+E2kAct :: struct { at: f32 = -100; clip: int = -1; }
+E2Cast :: struct {
+  klass: int = -1; bar: [XC_SLOTS] FbAb; bar_n: int;
+  cool_at: f32 = -100; used: int = -1; hover: int = -1;
+  puffs: [1] FxPuffs;                      // the casts' effects (aethyr/fx/puff.coax), drawn by gpu/everglade2-fx.coax
+  audio: [1] exsound.ExperimentalSound;    // their sounds, for the host (everglade2-face.c coaxial_sounds)
+  later: [E2K_LATER] E2kLater;
+  me: [1] E2kAct; them: [E2N_ENTS] E2kAct;     // yours, and each other's by its slot in the room's list
+  pressed: int; others: int; unseen: int; seed: u64 = 0x2545f4914f6cdd1d;
+}
+
+// Your class's bar: once it changes (the druid until Character Create says).
+e2k_set_class :: (k: [] E2Cast, c: int) {
+  if c < 0 || c >= FB_CL_N || c == k[0].klass { return; }
+  k[0].klass = c; k[0].bar_n = xk_bar(c, k[0].bar[..]); k[0].used = -1; k[0].hover = -1;
+}
+e2k_on :: (s: [] E2) -> bool { return s[0].placed && !e2c_creating(s) && s[0].casts[0].bar_n > 0; }
+
+// One sound where it happens: softer the farther from you, panned the way the camera faces.
+e2k_cue :: (s: [] E2, name: string, gain: f32, x: f32, z: f32, rate: f32) {
+  if name.count == 0 { return; }
+  dx := x - s[0].you_x; dz := z - s[0].you_z; d := sqrt(dx * dx + dz * dz);
+  pan := ifx d > 0.5 then (dx * s[0].right[0] + dz * s[0].right[2]) / d * 0.7 else 0.0f32;
+  exsound.experimental_sound_play(s[0].casts[0].audio[..], name, gain / (1 + d / 10), pan, rate);
+}
+e2k_later :: (k: [] E2Cast, t: f32, name: string, x: f32, z: f32, rate: f32) {
+  if name.count == 0 { return; }
+  for i: 0..<E2K_LATER { if !k[0].later[i].on { k[0].later[i] = E2kLater.{on = true, t = t, name = name, x = x, z = z, rate = rate}; return; } }
+}
+
+// Class c's slot i cast by someone whose feet are at (px, py, pz), facing `face`, at the point
+// (ax, ay, az), now: its look and its sound; a blow's or spell's clip on its body (act). The causes
+// started.
+e2k_play :: (s: [] E2, c: int, i: int, px: f32, py: f32, pz: f32, face: f32, ax: f32, ay: f32, az: f32, seed: int, act: [] E2kAct) -> int {
+  k := s[0].casts[..];
+  e := xk_entry(c, xk_slot(c, i));
+  if !e.ok { return 0; }
+  now := s[0].clock;
+  started := xc_look_start(k[0].puffs[..], xc_look_of(e.ab, px, py, pz, face, fxp_v(ax, ay, az)), now, f32(seed % 9973));
+  d := xc_sound(e.ab, c);
+  e2k_cue(s, d.start, f32(E2K_GAIN_START), px, pz, d.rate);
+  e2k_cue(s, d.layer, f32(E2K_GAIN_LAYER), px, pz, d.rate);
+  // a bolt meets no one: it fizzles where its range ends
+  if e.aim.kind == XC_AIM_BOLT {
+    dx := ax - px; dz := az - pz; fly := sqrt(dx * dx + dz * dz) / 22;
+    fly = ifx fly < 0.15 then 0.15f32 else ifx fly > 0.8 then 0.8f32 else fly;
+    e2k_later(k, now + fly, ifx d.miss.count > 0 then d.miss else "fizzle", ax, az, d.rate);
+  }
+  act[0].at = now; act[0].clip = ifx e.aim.kind == XC_AIM_MELEE then figs.BD_SLASH else figs.BD_SPELL;
+  return started;
+}
+
+// Slot i pressed: played here at once, then sent. False when it can't be (cooling down, no slot).
+e2k_press :: (s: [] E2, i: int) -> bool {
+  k := s[0].casts[..];
+  if !e2k_on(s) || i < 0 || i >= k[0].bar_n { return false; }
+  now := s[0].clock;
+  if now - k[0].cool_at < f32(XC_COOL) { return false; }
+  c := k[0].klass; a := k[0].bar[i];
+  m := xc_aim_for(a, xk_weapon(c));
+  face := s[0].you_face; fx := sin(face); fz := cos(face);
+  p := xc_aim_point(a, m, s[0].you_x, s[0].you_z, fx, fz);
+  ay := s[0].you_y + 1.0;
+  k[0].seed ^= k[0].seed << 13; k[0].seed ^= k[0].seed >> 7; k[0].seed ^= k[0].seed << 17;
+  shown := e2k_play(s, c, i, s[0].you_x, s[0].you_y, s[0].you_z, face, p[0], ay, p[1], cast(int)(k[0].seed % 999983), k[0].me[..]);
+  k[0].cool_at = now; k[0].used = i; k[0].pressed += 1;
+  sent := e2n_cast(s[0].net[..], xk_slot(c, i), p[0], ay, p[1]);
+  return true;
+}
+
+// The frame's casts: the others' the picture has reached, played where they are drawn; the sounds
+// waiting; then the effects for the host, round the eye.
+e2k_step :: (s: [] E2) {
+  k := s[0].casts[..]; n := s[0].net[..];
+  now := s[0].clock;
+  while true {
+    e := e2n_cast_due(n, n[0].rt);
+    if !e.live { break; }
+    r := e2n_remote_seat(n, e.ss);
+    if !r.ok { k[0].unseen += 1; continue; }   // not drawn here (gone, or beyond what this page holds)
+    c := xk_slot_class(e.slot);
+    y := e2_height(r.x, r.z) + r.y;
+    dx := e.ax - r.x; dz := e.az - r.z;
+    face := ifx dx * dx + dz * dz > 0.09 then figs.atan2(dx, dz) else r.yaw;
+    if e2k_play(s, c, xk_slot_index(e.slot), r.x, y, r.z, face, e.ax, e.ay, e.az, e.seed, k[0].them[r.slot..<r.slot + 1]) > 0 { k[0].others += 1; }
+  }
+  for i: 0..<E2K_LATER {
+    l := k[0].later[i];
+    if l.on && now >= l.t { k[0].later[i].on = false; e2k_cue(s, l.name, f32(E2K_GAIN_MISS), l.x, l.z, l.rate); }
+  }
+  pf := k[0].puffs[..];
+  fxp_begin(pf, now, fxp_v(s[0].eye[0], s[0].eye[1], s[0].eye[2]));
+  fxp_emit_all(pf, now);
+  _ := fxp_close(pf);
+}
+
+// A body's cast over its gait: it eases in over a tenth of a second and out over its last quarter,
+// as Experimental's blow does (charactercreator.coax experimental_swing_weight), so nothing pops.
+e2k_figure :: (a0: figs.BdAnim, act: E2kAct, clock: f32) -> figs.BdAnim {
+  if act.clip < 0 || a0.clip < 0 { return a0; }
+  d := figs.bd_seconds(act.clip); t := clock - act.at;
+  if t < 0 || t >= d { return a0; }
+  a := a0;
+  a.prev = a0.clip; a.pt0 = a0.t0; a.pphase = a0.phase;
+  a.clip = act.clip; a.t0 = act.at; a.phase = t / d;
+  w := e2_sat(t / 0.1) * e2_sat((d - t) / 0.25);
+  a.fade_at = clock - f32(figs.BD_FADE) * w;
+  return a;
+}
+
+// ---- the bar: each slot's picture, its key, its cooldown; a card over the slot the pointer is on
+e2k_box :: (k: [] E2Cast, i: int, w: f32, h: f32, kk: f32) -> [4] f32 { return xc_slot_at(k[0].bar_n, i, w, h, kk); }
+e2k_put :: (m: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < m.count { m[n] = ch; n += 1; } } return n; }
+e2k_int :: (m: [] u8, at: int, v: int) -> int {
+  n := at; x := v; if x < 0 { n = e2k_put(m, n, "-"); x = -x; }
+  d: [12] u8; c := 0; while true { d[c] = cast(u8)('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  while c > 0 { c -= 1; if n < m.count { m[n] = d[c]; n += 1; } }
+  return n;
+}
+// One media line, when it fits whole: WHAT URL X0 Y0 X1 Y1, then TAIL (an "over"'s fade and share).
+e2k_media :: (s: [] E2, what: string, url: string, art: string, size: string, b: [4] f32, tail: string) {
+  m := s[0].media[..]; n := s[0].media_n;
+  if n + what.count + url.count + art.count + size.count + tail.count + 64 > m.count { return; }
+  if n > 0 { m[n] = 10; n += 1; }
+  n = e2k_put(m, n, what); n = e2k_put(m, n, " "); n = e2k_put(m, n, url); n = e2k_put(m, n, art); n = e2k_put(m, n, size);
+  for q: 0..<4 { n = e2k_put(m, n, " "); n = e2k_int(m, n, cast(int) floor(b[q] + 0.5)); }
+  n = e2k_put(m, n, tail);
+  s[0].media_n = n;
+}
+e2k_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, r: f32, g: f32, b: f32) -> int {
+  if cc.lit(out, n, ax, ay, bx, by, wide, 1, 0, r, g, b, 0) { return n + 6; }
+  return n;
+}
+e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+  n := at;
+  if !e2k_on(s) { return n; }
+  k := s[0].casts[..]; w := s[0].width; h := s[0].height; kk := s[0].k;
+  now := s[0].clock;
+  size := ifx kk > 1.4 then "-128.jpg" else "-72.jpg";
+  left := f32(XC_COOL) - (now - k[0].cool_at);
+  for i: 0..<k[0].bar_n {
+    b := e2k_box(k, i, w, h, kk);
+    a := k[0].bar[i]; art := xc_art(a, i);
+    e2k_media(s, "image", xc_url(art), art, size, b, "");
+    if left > 0 {
+      share := left / f32(XC_COOL);
+      dim := [4] f32.[b[0], b[1], b[2], b[1] + (b[3] - b[1]) * share];
+      tail: [24] u8; tn := e2k_put(tail[..], 0, " 35 0 "); tn = e2k_int(tail[..], tn, cast(int)(share * 1000));
+      e2k_media(s, "over", xc_url(art), art, size, dim, cast(string) tail[0..<tn]);
+    }
+    if i < 9 && xc_draw_slot_key(i, art) {
+      key: [1] u8; key[0] = cast(u8)(49 + i);
+      n = cc.text(out, n, cast(string) key[..], b[0] + 4 * kk, b[1] + 13 * kk, 9 * kk, cc.ink(kk, 0.98, 0.95, 0.85));
+    }
+    if i == k[0].used && left > 0 { n = e2k_line(out, n, b[0], b[3] + 4 * kk, b[2], b[3] + 4 * kk, 1.5 * kk, 1, 0.8, 0.4); }
+  }
+  if k[0].hover >= 0 && k[0].hover < k[0].bar_n {
+    a := k[0].bar[k[0].hover]; b := e2k_box(k, k[0].hover, w, h, kk);
+    cw := 358 * kk; ch := 171 * kk; cx := (b[0] + b[2]) / 2;
+    if cx - cw / 2 < 12 * kk { cx = 12 * kk + cw / 2; }
+    if cx + cw / 2 > w - 12 * kk { cx = w - 12 * kk - cw / 2; }
+    e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", [4] f32.[cx - cw / 2, b[1] - 30 * kk - ch, cx + cw / 2, b[1] - 30 * kk], "");
+  }
+  // your class over the bar
+  b0 := e2k_box(k, 0, w, h, kk);
+  name := XC_CL_UP[k[0].klass]; cap := 10 * kk;
+  n = cc.text(out, n, name, (w - f32(name.count) * cap * 0.78) / 2, b0[1] - 12 * kk, cap, cc.ink(kk, 0.95, 0.9, 0.7));
+  return n;
+}
+
+// ---- input: 1 to 9 press the bar's slots; the pointer presses a slot or shows its card
+e2k_key :: (s: [] E2, key: int) -> bool {
+  if !e2k_on(s) || key < '1' || key > '9' { return false; }
+  i := key - '1';
+  if i >= s[0].casts[0].bar_n { return false; }
+  _ := e2k_press(s, i);
+  return true;
+}
+e2k_slot_at :: (s: [] E2, x: f32, y: f32) -> int {
+  k := s[0].casts[..];
+  for i: 0..<k[0].bar_n { b := e2k_box(k, i, s[0].width, s[0].height, s[0].k); if x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] { return i; } }
+  return -1;
+}
+e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
+  if !e2k_on(s) { return false; }
+  i := e2k_slot_at(s, x, y);
+  s[0].casts[0].hover = i;
+  if i < 0 || phase != 0 { return false; }   // a move over it shows its card and leaves the look's drag be
+  _ := e2k_press(s, i);
+  return true;
+}

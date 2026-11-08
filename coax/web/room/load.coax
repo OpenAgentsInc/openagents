@@ -14,7 +14,10 @@
 // input, and an input is acknowledged within 120 ms at the 95th percentile on this machine (a tick's
 // wait) or, through wss:// (the load balancer), within 50 ms past the ping's round trip at the 95th
 // percentile (#12731). The everglade2 mode is the same run in Everglade II's world (rooms pair-e2-load-STAMP-K,
-// room-everglade.coax eg_e2_code): the clearing's ground, no town.
+// room-everglade.coax eg_e2_code): the clearing's ground, no town. There each bot says a Character
+// Create class in its hello (srd-*, bot K the K-th of FB_CL_KIND round), casts its kit's first slot
+// (ld_xk_slot, class-kit.coax xk_slot) where it stands, and must hear its own e cast and, with company, the others'
+// (#13058).
 //   coax/web/tool.sh coax/web/room/load.coax everglade [ws://localhost:8830] [players=64] [seconds=20] [stamp] [pings a second=1] [shards=0]
 // shards 0: every room through /api/room/relay/ (shard 1, as before the directory); N: the rooms as
 // the directory packs them (#12717), two to a shard, shard 1 first, up to N shards, each room's
@@ -27,6 +30,12 @@
 // pair-* (left out of the rooms list), their seat tickets' player ids p-load-ROOM-K, their names
 // "Load K", so a usage count can leave them out.
 #load "room-socket.coax";
+// The everglade2 mode's classes and casts (#13058): fivebar.coax FB_CL_KIND and class-kit.coax xk_slot
+// (XK_SLOT0 + class * XK_PER), written here because the SRD engine's names clash with this tool's
+// (rs_put); room-everglade.coax's e2 cast check holds the room to the same slots.
+LD_CL_N :: 12;
+LD_CL_KIND :: [12] string.["srd-barbarian", "srd-bard", "srd-cleric", "srd-druid", "srd-fighter", "srd-monk", "srd-paladin", "srd-ranger", "srd-rogue", "srd-sorcerer", "srd-warlock", "srd-wizard"];
+ld_xk_slot :: (c: int, i: int) -> int { return 128 + c * 24 + i; }
 
 LD_MAX :: 16;                 // players at most
 LD_BALLS :: 64;               // recent ticks whose ball each player keeps
@@ -180,6 +189,7 @@ EgPlayer :: struct {
   d_at: int;                  // when the last new tick's D arrived (its gap to the next is a stall's length)
   next_i: int; next_c: int; next_t: int; steps: int;   // steps: the inputs sent (I), for their 30 Hz clock
   x: f32; z: f32;             // where the server has it
+  cast_own: int; cast_other: int;   // e cast heard: its own, the others' (the everglade2 mode)
   m: [1] WireMirror;          // the rows its D's left, as the page's (its I's HEARD)
 }
 // lat: input to ACK; rtt: the clock ping; gap: from one new tick's D to the next (33 ms at 30 Hz; a
@@ -233,6 +243,18 @@ eg_hear :: (p: [] EgPlayer, r: [] EgRun, t: string, now: int) {
     p[0].seen[en.id] = true;
   }
   if p[0].seat >= 0 { me := wire_mirror_of(p[0].m[..], p[0].seat); if me.id >= 0 { p[0].x = me.x; p[0].z = me.z; } }
+  // the casts it heard, as the page reads them (everglade2-net.coax e2n_entry)
+  rd: [1] WireRd; rd[0] = wire_rd(t, 1); d := wire_read_d(t, rd[..]);
+  if rd[0].ok {
+    from := rd[0].at;
+    for q: 0..<wire_entries(t, from) {
+      e := wire_entry(t, from, q);
+      if !wire_is(e, "e cast") { continue; }
+      rc: [1] WireRd; rc[0] = wire_rd(e, 6); ce := wire_read_cast_e(e, rc[..]);
+      if !rc[0].ok { continue; }
+      if ce.ss == p[0].seat { p[0].cast_own += 1; } else { p[0].cast_other += 1; }
+    }
+  }
 }
 // A step of the random walk, from the run's clock and the player (no shared state).
 eg_rand :: (i: int, t: int) -> int { x := (i * 7919 + t * 104729) % 2003; return x - 1001; }
@@ -321,7 +343,7 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   msg0: [96] u8; hello_failed := 0;
   for i: 0..<players {
     p[i].next_i = t0 + (i * 7) % 33; p[i].next_c = t0 + 500 + (i * 211) % 5000; p[i].next_t = t0 + (i * 31) % (1000 / hz);
-    k := rs_put(msg0[..], 0, "H 5 ranger.0.0.0 druid 64 Load "); k = rs_int(msg0[..], k, i);
+    k := rs_put(msg0[..], 0, "H 5 ranger.0.0.0 "); k = rs_put(msg0[..], k, ifx e2 then LD_CL_KIND[i % LD_CL_N] else "druid"); k = rs_put(msg0[..], k, " 64 Load "); k = rs_int(msg0[..], k, i);
     if c[i].h >= 0 && !relay_conn_send(c[i..<i + 1], cast(string) msg0[0..<k]) { hello_failed += 1; }
   }
   msg: [256] u8;
@@ -345,8 +367,14 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
         }
         if now >= p[i].next_c {
           p[i].seq += 1; p[i].sent[p[i].seq % EG_RING] = now;
-          k := rs_put(msg[..], 0, "C "); k = rs_int(msg[..], k, p[i].seq); k = rs_put(msg[..], k, " 1 ");
-          k = rs_int(msg[..], k, cast(int) (p[i].x * 100) + 500); k = rs_put(msg[..], k, " 0 "); k = rs_int(msg[..], k, cast(int) (p[i].z * 100)); k = rs_put(msg[..], k, " -1");
+          k := rs_put(msg[..], 0, "C "); k = rs_int(msg[..], k, p[i].seq);
+          if e2 {   // its class's first slot, where it stands: within any ability's reach (eg_e2_cast)
+            k = rs_put(msg[..], k, " "); k = rs_int(msg[..], k, ld_xk_slot(i % LD_CL_N, 0)); k = rs_put(msg[..], k, " ");
+            k = rs_int(msg[..], k, cast(int) (p[i].x * 100)); k = rs_put(msg[..], k, " 100 "); k = rs_int(msg[..], k, cast(int) (p[i].z * 100)); k = rs_put(msg[..], k, " -1");
+          } else {
+            k = rs_put(msg[..], k, " 1 ");
+            k = rs_int(msg[..], k, cast(int) (p[i].x * 100) + 500); k = rs_put(msg[..], k, " 0 "); k = rs_int(msg[..], k, cast(int) (p[i].z * 100)); k = rs_put(msg[..], k, " -1");
+          }
           if !relay_conn_send(c[i..<i + 1], cast(string) msg[0..<k]) { sends_failed += 1; }
           p[i].next_c += 5000;
         }
@@ -367,11 +395,14 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   // each player's state rate in tenths of a frame a second; who saw everyone; the ACKs
   window := run[0].m1 - run[0].m0;
   slowest := 1000000; alive := 0; blind := 0; back := 0; behind := 0; dropped := 0; refused := 0; bytes := 0;
+  own := 0; other := 0; own_min := 1000000; other_min := 1000000;
   for i: 0..<players {
     if c[i].h >= 0 { alive += 1; }
     r := p[i].d_counted * 10000 / window;
     if r < slowest { slowest = r; }
     back += p[i].back; dropped += p[i].dropped; refused += p[i].refused; bytes += p[i].bytes;
+    own += p[i].cast_own; other += p[i].cast_other;
+    if p[i].cast_own < own_min { own_min = p[i].cast_own; } if p[i].cast_other < other_min { other_min = p[i].cast_other; }
     // the last input was a step (I) or a cast (C): either way the ACK is the last I stepped, at most 1 short
     if p[i].ack < p[i].seq - 1 { behind += 1; }
     for j: 0..<players { if p[j].seat >= 0 && !p[i].seen[p[j].seat] { blind += 1; } }
@@ -408,6 +439,8 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   jo_key(o[..], "d_gap_max_ms"); jo_int(o[..], gap_max);
   jo_key(o[..], "d_stalls_100ms"); jo_int(o[..], stalls);
   jo_key(o[..], "refused"); jo_int(o[..], refused);
+  // e cast heard, all players: their own and the others' (the everglade2 mode's casts, #13058)
+  jo_key(o[..], "casts_own"); jo_int(o[..], own); jo_key(o[..], "casts_other"); jo_int(o[..], other);
   // what a player hears: the room's frames' bytes a second, each player's mean
   jo_key(o[..], "bytes_per_s"); jo_int(o[..], ifx window > 0 && players > 0 then bytes * 1000 / window / players else 0);
   jo_end(o[..]);
@@ -422,7 +455,9 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int, hz:
   local := rs_starts(base, "ws://localhost");
   timely := ifx local then p95 >= 0 && p95 < 120 else true;
   if !local { print("latency: input-to-ACK p95 % ms, ping p95 % ms, % ms past it (goal 50, reported only)\n", p95, rtt95, p95 - rtt95); }
-  ok := open == players && alive == players && sends_failed == 0 && blind == 0 && back == 0 && behind == 0 && slowest >= 280 && dropped == 0 && timely;
+  // the everglade2 mode: every bot heard its own casts and, with company, the others'
+  casts_ok := !e2 || (own_min > 0 && (players < 2 || other_min > 0));
+  ok := open == players && alive == players && sends_failed == 0 && blind == 0 && back == 0 && behind == 0 && slowest >= 280 && dropped == 0 && timely && casts_ok;
   print("%\n", ifx ok then "holds" else "fails");
   for i: 0..<players { if c[i].h >= 0 { r := relay_conn_close(c[i..<i + 1], 200); } }
   return ifx ok then 0 else 1;

@@ -1,0 +1,3 @@
+--vertices e2fx_particle_vs,e2fx_particle_over_vs
+--fragments e2fx_particle_fs,e2fx_particle_over_fs
+--bindings apps/openagents-web/gpu/everglade2-fx.bindings --strip e2fx_

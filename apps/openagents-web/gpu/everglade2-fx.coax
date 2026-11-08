@@ -1,0 +1,29 @@
+// Everglade II's cast effects (#13058: everglade2-cast.coax, aethyr/fx/puff.coax): build.sh writes
+// apps/openagents-web/everglade2-fx.wgsl from this with coax/web/wgsl-module.coax (everglade2-fx.module
+// and everglade2-fx.bindings beside it). The puffs are aethyr/fx/gpu-puff.coax's, through the same
+// pinhole (Everglade II's uniforms have it where 5E Lab's do), but on a raster page: the host draws
+// them after the scene, depth-tested against it, so each takes the scene's depth (fivelab_project's,
+// everglade2.coax's) and the trees and you hide it, and none fades into a traced ground.
+#load "../../../aethyr/fx/gpu-puff.coax";
+
+E2FX_NEAR :: 0.1f32;   // gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR: the scene's depth
+E2FX_FAR :: 900.0f32;
+e2fx_depth :: (o:EgfxP)->EgfxP {
+  r:EgfxP=o;
+  if (o.pos.z>o.pos.w) {
+    return r;   // egfx_gone's: clipped
+  }
+  r.pos.z=(E2FX_FAR*(o.pos.w-E2FX_NEAR))/(E2FX_FAR-E2FX_NEAR);
+  return r;
+}
+e2fx_particle_vs :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP { return e2fx_depth(fxg_particle_vs(v,n,u,puffs)); }
+e2fx_particle_over_vs :: (v:u32,n:u32,u:[]f32,puffs:[]EgfxPuff)->EgfxP { return e2fx_depth(fxg_particle_over_vs(v,n,u,puffs)); }
+e2fx_particle_fs :: (p:EgfxP,u:[]f32)->V4 { return fxg_puff_fs(p,u,false); }
+e2fx_particle_over_fs :: (p:EgfxP,u:[]f32)->V4 { return fxg_puff_over_fs(p,u,false); }
+#test "Everglade II's puffs take the scene's depth: in front of what is farther, behind what is nearer" {
+  u:[32]f32; fxg_test_camera(u[..]);
+  near:=e2fx_depth(EgfxP.{pos=v4(0.0f32,0.0f32,0.0f32,5.0f32)});
+  far:=e2fx_depth(EgfxP.{pos=v4(0.0f32,0.0f32,0.0f32,50.0f32)});
+  #assert near.pos.z/near.pos.w<far.pos.z/far.pos.w && far.pos.z/far.pos.w<1.0f32 && near.pos.z>0.0f32;
+  gone:=e2fx_depth(egfx_gone()); #assert gone.pos.z>gone.pos.w;
+}

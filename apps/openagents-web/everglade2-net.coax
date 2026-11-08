@@ -14,6 +14,7 @@
 #load "socket.coax";
 #load "everglade-net-core.coax";
 #load "player-name.coax";
+#load "class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -23,6 +24,11 @@ E2N_PIPE_TICKET :: 4;           // the pipe's ask for a seat ticket: the API pat
 E2N_PIPE_NAME :: 9;             // the pipe's POST of your name: /api/playtest/player/name, a newline, the body
 E2N_HOLD_MS :: 4000;            // the run waits this long at most for its seat before it walks on its own
 E2N_SAY :: 48;
+E2N_CASTS :: 16;                // the others' casts heard and not yet played (e2n_cast_due)
+
+// One cast the room said (e cast SS SLOT AX AY AZ SEED, #13058): another player's, played when the
+// drawn picture reaches the tick it came with (t, the room's clock), at that player as drawn.
+E2nCast :: struct { live: bool; ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; t: int; }
 
 E2Net :: struct {
   want: bool;                   // a room: the page facts named a host and this is not a staged shot
@@ -59,6 +65,10 @@ E2Net :: struct {
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
   said: [E2N_SAY] u8; said_n: int; said_at: int;
+  klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
+  casts: [E2N_CASTS] E2nCast;   // the others' casts, waiting for their tick to be drawn
+  cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
+  cast_seq: int;                // your last cast's number (the room's r SEQ names it)
 }
 
 e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >= 0; }
@@ -341,7 +351,9 @@ e2n_record :: (n: [] E2Net, t: string) {
     if why == WIRE_REFUSE_RESTARTING {
       if n[0].sock >= 0 { _ := pipe_close(n[0].pipe[..], n[0].sock); }
       e2n_tell(n, "RESTARTING · BACK IN A MOMENT"); n[0].ticket_n = 0; n[0].tries = 0; e2n_down(n);
+      return;
     }
+    if seq > 0 && seq == n[0].cast_seq { n[0].cast_refused += 1; }   // your last cast, turned down (slot, cooldown, range, aim)
     return;
   }
 }
@@ -368,6 +380,18 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     nm := 0;
     for ch: w.name { if nm >= NET_NAME { break; } if ch < 32 { continue; } en[0].name[nm] = ch; nm += 1; }
     en[0].name_n = nm;
+    return;
+  }
+  if c == 'e' && wire_is(t, "e cast") {
+    r[0] = wire_rd(t, 6);
+    ce := wire_read_cast_e(t, r[..]);
+    if !r[0].ok || ce.ss < 0 || !xk_entry(xk_slot_class(ce.slot), ce.slot).ok { return; }
+    if ce.ss == n[0].seat { n[0].cast_mine += 1; return; }   // yours: played as you pressed it
+    n[0].cast_heard += 1;
+    q := 0; old := 0;
+    for i: 0..<E2N_CASTS { if !n[0].casts[i].live { q = i; old = -1; break; } if n[0].casts[i].t < n[0].casts[old].t { old = i; } }
+    if old >= 0 { q = old; }   // all waiting: the oldest gives way
+    n[0].casts[q] = E2nCast.{live = true, ss = ce.ss, slot = ce.slot, ax = ce.ax, ay = ce.ay, az = ce.az, seed = ce.seed, t = n[0].tick_t};
     return;
   }
   if c == 'x' {
@@ -499,7 +523,38 @@ e2n_hello :: (n: [] E2Net) {
   e2n_send(n, wire_put_pins(n[0].out[..], 0, WirePins.{}));
   if n[0].again && n[0].at_known { e2n_send(n, wire_put_at(n[0].out[..], 0, WireAt.{x = n[0].at_x, z = n[0].at_z, yaw = n[0].at_yaw})); n[0].agains += 1; }
   n[0].again = false;
-  e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = "druid", flags = ifx n[0].account then 2 else 0, name = ""})));
+  e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = FB_CL_KIND[e2n_class(n)], flags = ifx n[0].account then 2 else 0, name = ""})));
+}
+// Your class for the hello (srd-*: the room's kit for your casts), said again if seated and changed.
+e2n_class :: (n: [] E2Net) -> int { return ifx n[0].klass >= 0 && n[0].klass < FB_CL_N then n[0].klass else 3; }
+e2n_set_class :: (n: [] E2Net, c: int) {
+  if c < 0 || c >= FB_CL_N || c == n[0].klass { return; }
+  n[0].klass = c;
+  if e2n_open(n) { n[0].hello_due = true; }
+}
+// A cast (C SEQ SLOT AX AY AZ -1): the slot (class-kit.coax xk_slot) at the point it aims at. False
+// with no seat; the room then says e cast to everyone near, you too, or r SEQ WHY.
+e2n_cast :: (n: [] E2Net, slot: int, ax: f32, ay: f32, az: f32) -> bool {
+  if !e2n_open(n) { return false; }
+  n[0].cast_seq = n[0].seq + 1000000 + n[0].cast_sent;   // apart from the inputs' numbers
+  n[0].cast_sent += 1;
+  e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az}));
+  return true;
+}
+// The next of the others' casts whose tick the picture has reached (rt): taken, so it plays once.
+e2n_cast_due :: (n: [] E2Net, rt: int) -> E2nCast {
+  b := -1;
+  for i: 0..<E2N_CASTS { c := n[0].casts[i]; if c.live && c.t <= rt && (b < 0 || c.t < n[0].casts[b].t) { b = i; } }
+  if b < 0 { return E2nCast.{}; }
+  c := n[0].casts[b];
+  n[0].casts[b].live = false;
+  return c;
+}
+// Where seat ss is drawn now (E2Remote; ok false when it isn't drawn).
+e2n_remote_seat :: (n: [] E2Net, ss: int) -> E2Remote {
+  k := 0;
+  while true { r := e2n_remote(n, k); if !r.ok || r.seat == ss { return r; } k += 1; }
+  return E2Remote.{};
 }
 // Where you stand this frame (the face's feet and facing), for a hello after a lost room (A).
 e2n_where :: (n: [] E2Net, x: f32, z: f32, yaw: f32) {
@@ -563,4 +618,33 @@ e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1
   #assert !e2n_remote(n[..], 1).ok && e2n_remotes(n[..]) == 1;
   // the socket goes: so does everyone
   e2n_down(n[..]); #assert e2n_remotes(n[..]) == 0 && n[0].state == E2N_DOWN;
+}
+#test "your class goes with the hello, your casts go as C, and the others' e cast wait for their tick (#13058)" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].mono = 1000;
+  e2n_set_class(n[..], FB_CL_WIZARD);
+  e2n_record(n[..], "y 1 0 1000");
+  e2n_step(n[..], 1000);
+  pipe := cast(string) n[0].pipe[0].buf[0..<n[0].pipe[0].used];
+  has := false; for i: 0..<pipe.count - 10 { if pipe[i..<i + 10] == "srd-wizard" { has = true; } }
+  #assert has;
+  // Fire Bolt, ahead
+  slot := xk_slot(FB_CL_WIZARD, 0);
+  #assert e2n_cast(n[..], slot, 0, 1, -20) && n[0].cast_sent == 1;
+  last := n[0].pipe[0].n - 1; c := cast(string) n[0].pipe[0].buf[n[0].pipe[0].from[last]..<n[0].pipe[0].from[last] + n[0].pipe[0].len[last]];
+  #assert c[0] == 'C';
+  // the room's word: yours (counted), another's (waits for the picture to reach its tick), a refusal
+  n[0].tick_t = 2000;
+  d := WireD.{tick = 5};
+  b: [128] u8; m := wire_put_cast_e(b[..], 0, WireCastE.{ss = 1, slot = slot, ax = 0, ay = 1, az = -20, seed = 7});
+  e2n_entry(n[..], cast(string) b[0..<m], d);
+  m = wire_put_cast_e(b[..], 0, WireCastE.{ss = 4, slot = xk_slot(FB_CL_FIGHTER, 0), ax = 3, ay = 1, az = 2, seed = 9});
+  e2n_entry(n[..], cast(string) b[0..<m], d);
+  m = wire_put_cast_e(b[..], 0, WireCastE.{ss = 4, slot = 7, ax = 3, ay = 1, az = 2, seed = 9});   // not a kit's: nothing
+  e2n_entry(n[..], cast(string) b[0..<m], d);
+  #assert n[0].cast_mine == 1 && n[0].cast_heard == 1;
+  #assert !e2n_cast_due(n[..], 1999).live;
+  e := e2n_cast_due(n[..], 2000); #assert e.live && e.ss == 4 && e.slot == xk_slot(FB_CL_FIGHTER, 0) && abs(e.ax - 3) < 0.01;
+  #assert !e2n_cast_due(n[..], 3000).live;   // once
+  rb: [64] u8; rn := wire_put(rb[..], 0, "r"); rn = wire_int(rb[..], rn, n[0].cast_seq); rn = wire_put(rb[..], rn, " cooldown");
+  e2n_record(n[..], cast(string) rb[0..<rn]); #assert n[0].cast_refused == 1;
 }

@@ -250,36 +250,8 @@ look_of :: (klass: int) -> int {
 }
 spell_col :: (sp: int) -> Col {
   if lw_col(sp) { return lw_spell_col(sp); }   // the Warlock's necrotic green and violet (fivelab-warlock.coax)
-  if sp == SP_HELLISH_REBUKE { return Col.{r = 0.35, g = 1.0, b = 0.3}; }   // its green flames
-  if sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL { return Col.{r = 1.0, g = 0.55, b = 0.15}; }
-  if sp == SP_STARRY_WISP { return Col.{r = 1.0, g = 0.95, b = 0.6}; }
-  if sp == SP_POISON_SPRAY { return Col.{r = 0.6, g = 1.0, b = 0.3}; }
-  if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD { return GREEN; }
-  if sp == SP_THUNDERWAVE { return Col.{r = 0.55, g = 0.75, b = 1.0}; }
-  if sp == SP_ENTANGLE { return Col.{r = 0.35, g = 0.85, b = 0.3}; }
-  if sp == SP_FAERIE_FIRE { return VIOLET; }
-  if sp == SP_CHILL_TOUCH { return Col.{r = 0.6, g = 0.92, b = 1.0}; }
-  if sp == SP_RAY_OF_SICKNESS { return Col.{r = 0.75, g = 0.95, b = 0.2}; }
-  if sp == SP_FALSE_LIFE { return Col.{r = 0.95, g = 0.25, b = 0.35}; }
-  if sp == SP_RAY_OF_ENFEEBLEMENT { return Col.{r = 0.6, g = 0.55, b = 0.85}; }
-  if sp == SP_BLINDNESS { return Col.{r = 0.4, g = 0.45, b = 1.0}; }
-  if sp == SP_ELDRITCH_BLAST { return Col.{r = 0.85, g = 0.35, b = 1.0}; }
-  if sp == SP_HEX { return Col.{r = 0.55, g = 0.2, b = 0.75}; }
-  if sp == SP_HOLD_PERSON { return GOLD; }
-  if sp == SP_SCORCHING_RAY { return Col.{r = 1.0, g = 0.4, b = 0.12}; }
-  if sp == SP_VICIOUS_MOCKERY { return Col.{r = 1.0, g = 0.5, b = 0.8}; }
-  if sp == SP_SACRED_FLAME { return Col.{r = 1.0, g = 0.92, b = 0.6}; }
-  if sp == SP_GUIDING_BOLT { return Col.{r = 0.95, g = 0.95, b = 1.0}; }
-  if sp == SP_DIVINE_SMITE { return Col.{r = 1.0, g = 0.85, b = 0.4}; }
-  if sp == SP_HUNTERS_MARK { return Col.{r = 0.55, g = 0.95, b = 0.35}; }
-  if sp == SP_FIRE_BOLT { return Col.{r = 1.0, g = 0.48, b = 0.1}; }
-  if sp == SP_SHIELD { return CYAN; }
-  if sp == SP_FIREBALL { return Col.{r = 1.0, g = 0.5, b = 0.12}; }
-  if sp == SP_SPIRIT_GUARDIANS { return Col.{r = 1.0, g = 0.95, b = 0.7}; }
-  if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { return Col.{r = 0.7, g = 0.85, b = 1.0}; }
-  if sp == SP_HYPNOTIC_PATTERN { return Col.{r = 0.95, g = 0.5, b = 1.0}; }
-  if sp < 0 { return Col.{r = 0.5, g = 0.9, b = 0.4}; }
-  return WHITE;
+  c := xc_spell_rgb(sp);   // every other spell's (class-look.coax), which Everglade II's casts share
+  return Col.{r = c.x, g = c.y, b = c.z};
 }
 
 // ---- the log

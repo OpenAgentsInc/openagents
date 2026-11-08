@@ -373,7 +373,7 @@
         "module": "everglade2", "slot": "everglade2", "arrival": "portal",
         "ui_font_src": "/realms/character-creator/assets/arkai_c.ttf", "ui_font_family": "CharacterCreateARKaiC",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3"]
+        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "everglade2", "name": "EVERGLADE II", "kind": "open", "listed": false, "orbit": { "r": 0.44, "a": 2.2, "size": 0.02 },
       "realm": {
@@ -382,7 +382,7 @@
         "share": "One path through the woods, from the glade to the clearing.", "alt": "A character on a dirt path through dense green and autumn woods under a cyan sky",
         "module": "everglade2", "slot": "everglade2",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3"]
+        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "fivelab", "name": "5E LAB", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 2.1, "size": 0.02 },
       "realm": {

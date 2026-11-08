@@ -1,6 +1,7 @@
 #load "../../../apps/openagents-web/everglade-link-wire.coax";
 #load "../../../aethyr/ids.coax";
 #load "../../../apps/openagents-web/everglade2-move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
+#load "../../../apps/openagents-web/class-kit.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
 // The room server's Everglade rooms: the server is the authority (spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
 // An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are
@@ -209,6 +210,7 @@ EgRoom :: struct {
   // Everglade II's room (#13053): its world is Everglade II's land, path and woods (apps/openagents-web/
   // everglade2-move.coax, room-world.c world2_*), with no town, river or watch
   e2: bool;
+  e2_casts: int;   // the casts its seats made, taken (eg_e2_cast)
   tick: int; seed: int;
   ev_dropped: int;               // events a tick had no room for (EG_EVENTS, EG_EV_BYTES), since the host last asked
   sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
@@ -788,6 +790,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
   wc := wire_read_cast(text, r[..]);
   nf := eg_fields(text);
   if !r[0].ok || (nf != 7 && nf != 8) { return; }   // (a mode last, or none)
+  if v[0].eg[k].e2 { eg_e2_cast(v, k, seat_id, wc); return; }   // Everglade II's: its class kit, seen and heard, no harm (#13058)
   seq := wc.seq;
   mode := eg_clamp(wc.mode, 0, RA_MODES);
   slot := wc.slot;
@@ -800,6 +803,31 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
   if !rm_work_admit(v,k){eg_refuse(v,k, seat_id,seq,"busy");return;}
   if !rc_hear(v, k, seat_id, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat_id, seq, "busy"); return; }
   if !cr_repair(slot) { ev_fought(v, k, seat_id); }   // casting is fighting (a Repair isn't): no Long Rest for EV_CALM_S
+}
+// Everglade II's casts (#13058). Its world has no monsters and players can't harm each other: a cast
+// is shown and heard, nothing more. The room takes one when the slot is on the seat's class's kit
+// (class-kit.coax: XK_SLOT0 + class * XK_PER + i, the class its hello said, srd-*), it comes at least
+// EG_E2_GAP ticks after the seat's last (its page waits XC_COOL), and its aim is a number within the
+// ability's reach of where the room has the seat (EG_E2_CAST_SLACK m more, for the steps not yet stepped).
+// Then every page within EG_VIEW of the caster hears e cast SS SLOT AX AY AZ SEED, the caster's too,
+// at once (the casts' own queue is v1's: its rules roll against the town and the seats).
+EG_E2_GAP :: 24;      // ticks (0.8 s at EG_HZ 30)
+EG_E2_CAST_SLACK :: 3.0;   // m
+eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  e := xk_entry(v[0].eg[k].rules[0].klass[seat] - E5R_CL0, wc.slot);
+  if !e.ok { eg_refuse(v, k, seat_id, wc.seq, "slot"); return; }
+  if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) || abs(wc.ay) > 1000 { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_AIM)); return; }
+  t := v[0].eg[k].tick;
+  if t - st[0].last_cast < EG_E2_GAP { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_COOLDOWN)); return; }
+  me := st[0].pose; dx := wc.ax - me.x; dz := wc.az - me.z;
+  reach := ifx e.aim.kind == XC_AIM_SELF then 0.0f32 else e.aim.reach;
+  if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
+  st[0].last_cast = t;
+  v[0].eg[k].e2_casts += 1;
+  b: [128] u8;
+  n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
+  eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
 }
 // L SEQ: a Long Rest. Between raids and out of combat only (room-events.coax ev_rest_ok); then the seat
 // is whole again and hears e rest SEAT, its page its own rest (everglade-rest.coax).
@@ -2337,6 +2365,52 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
     eg_test_drain(v[..], box[..]);
     #assert eg_test_has(eg_test_of(box[..], 0), "r 2 slot") && eg_test_has(eg_test_of(box[..], 0), "r 3 slot") && eg_test_has(eg_test_of(box[..], 1), "r 4 slot");
   }
+}
+#test "everglade II room: a seat casts its Character Create class's kit, every page near hears e cast, and other slots, too soon or too far are refused (#13058)" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-e2-casts HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert v[0].eg[k].e2;
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  eg_test_drain(v[..], box[..]);
+  bolt := xk_slot(FB_CL_WIZARD, 0); wind := xk_slot(FB_CL_FIGHTER, 0); sword := xk_slot(FB_CL_FIGHTER, 1);
+  b: [128] u8;
+  // the Wizard's Fire Bolt 30 m ahead (seat 0 stands at x 0), and the Fighter's Second Wind where it stands
+  rm_heard(v[..], 0, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 1, slot = bolt, ax = 0, ay = 1, az = 30})]);
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 2, slot = wind, ax = 1, ay = 0, az = 0})]);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  e0 := b[0..<wire_put_cast_e(b[..], 0, WireCastE.{ss = 0, slot = bolt, ax = 0, ay = 1, az = 30})];
+  head0: [64] u8; h0 := 0; for c: e0[0..<e0.count - 2] { head0[h0] = c; h0 += 1; }   // (less its seed)
+  w: [64] u8; wn := wire_put_cast_e(w[..], 0, WireCastE.{ss = 1, slot = wind, ax = 1, ay = 0, az = 0}) - 2;
+  for c: 0..<2 {
+    #assert eg_test_has(eg_test_of(box[..], c), cast(string) head0[0..<h0]) && eg_test_has(eg_test_of(box[..], c), cast(string) w[0..<wn]);
+  }
+  #assert v[0].eg[k].e2_casts == 2;
+  // at once again: too soon; the Fighter's sword at 30 m: too far; the Fighter with the Wizard's slot,
+  // Character Create's one-slot ability (FB_CL0 on) and Everglade's druid's: not its kit
+  rm_heard(v[..], 0, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 3, slot = bolt, ax = 0, ay = 1, az = 30})]);
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 4, slot = bolt, ax = 1, ay = 0, az = 30})]);
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 5, slot = FB_CL0 + FB_CL_FIGHTER, ax = 1, ay = 0, az = 0})]);
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 6, slot = 1, ax = 1, ay = 0, az = 2})]);
+  for q: 0..<EG_E2_GAP { eg_test_tick(v[..], k); }
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 7, slot = sword, ax = 1, ay = 0, az = 30})]);
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 0); f := eg_test_of(box[..], 1);
+  #assert eg_test_has(a, "r 3 cooldown") && eg_test_has(f, "r 4 slot") && eg_test_has(f, "r 5 slot") && eg_test_has(f, "r 6 slot") && eg_test_has(f, "r 7 range");
+  #assert !eg_test_has(f, "r 3") && !eg_test_has(a, "r 7") && v[0].eg[k].e2_casts == 2;
+  // after the gap, the sword's blow 2 m ahead goes
+  rm_heard(v[..], 1, cast(string) b[0..<wire_put_cast(b[..], 0, WireCast.{seq = 8, slot = sword, ax = 1, ay = 0, az = 2})]);
+  eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  s: [64] u8; sn := wire_put_cast_e(s[..], 0, WireCastE.{ss = 1, slot = sword, ax = 1, ay = 0, az = 2}) - 2;
+  #assert eg_test_has(eg_test_of(box[..], 0), cast(string) s[0..<sn]) && v[0].eg[k].e2_casts == 3;
 }
 #test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {
   v: [1] RmServer;

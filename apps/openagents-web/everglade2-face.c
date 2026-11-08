@@ -338,3 +338,15 @@ EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { e2_acti
 // Your saved character arrives as message 16 (the browser's own copy, from Character Create).
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_t field) { return (int32_t)e2_probe(at(state), field); }
+
+// ---- the casts (#13058, everglade2-cast.coax): their effects, drawn after the scene and depth-tested
+// against it (everglade2-fx.wgsl, host.js particles: puffs of 12 floats), and their sounds, the
+// host's to play once each (sounds:/realms/everglade/sfx/ and the bank Experimental renders).
+EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_E2 *)0)->casts.e[0].puffs.e[0].out); }
+EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->casts.e[0].puffs.e[0].out.e; }
+EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { return (uint32_t)(e2_at(state)->casts.e[0].puffs.e[0].out_n * 12 * sizeof(float)); }
+EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { return (uint32_t)e2_at(state)->casts.e[0].puffs.e[0].out_n; }
+EXPORT("coaxial_sounds") uint32_t coaxial_sounds(uint32_t state) { return (uint32_t)(uintptr_t)e2_at(state)->casts.e[0].audio.e[0].lines.e; }
+EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(uint32_t state) { return sizeof e2_at(state)->casts.e[0].audio.e[0].lines.e; }
+EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { coax_t_ExperimentalSound *audio = &e2_at(state)->casts.e[0].audio.e[0]; uint32_t n = (uint32_t)audio->n; audio->n = 0; return n; }
+#include "experimental-sound-bank.h"

@@ -58,7 +58,11 @@ fivelab 2560000
 # names, #13054): 399,063; Character Create's NAME and the names kept clear of each other (#13056): 407,698 measured; about 3% headroom.
 # The shared terrain set (verse/everglade2/ground.coax, #13059: 21 admitted tiles, the seam checks and the
 # catalog record reader): 425,803 measured; about 5% headroom.
-everglade2 448000
+# The class bar and everyone's casts through the room (everglade2-cast.coax, #13058): the twelve classes'
+# kits at level 1 on the SRD engine's spell and feature tables (class-kit.coax, fivebar.coax), their
+# effects (aethyr/fx/puff.coax and its looks) and Experimental's sounds (experimental-sound.coax: the
+# Everglade bank's names and the synthesized effects' recipes): 632,261 measured; about 4% headroom.
+everglade2 660000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1720000
