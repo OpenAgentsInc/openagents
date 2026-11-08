@@ -524,3 +524,18 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
     #assert !fb_seat_help_attack(b[..],s[..],-1,true) && !s[0].turn.action;
   }
 }
+
+#test "a saved seat retains Disengage without changing another actor's turn or Reaction" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],rs_rogue("Rogue",0,2),2,2);
+  _=rs_add(b[..],rs_guard("Other",1),4,2); rs_start_turn(b[..],1);
+  b[0].turn.action=true; b[0].c[0].reacted=true;
+  seat:[1] FbSeat; seat[0].me=0; seat[0].open=true;
+  fb_seat_in(b[..],seat[..]);
+  #assert rs_disengage_use(b[..],0,RS_DISENGAGE_CUNNING);
+  fb_seat_out(b[..],seat[..]);
+  #assert seat[0].turn.disengaged && seat[0].turn.bonus;
+  #assert b[0].who==1 && b[0].turn.action && !b[0].turn.disengaged && b[0].c[0].reacted;
+  fb_seat_in(b[..],seat[..]); rs_end_turn(b[..],0); fb_seat_out(b[..],seat[..]);
+  #assert !seat[0].turn.disengaged && b[0].who==1 && b[0].turn.action;
+}

@@ -1,0 +1,56 @@
+aethyr/rules/srd/disengage-checks.coax:7:11: error[E0315]: procedure 'rs_disengage' is not declared
+    #assert rs_disengage(b[..],0) && b[0].turn.disengaged && b[0].turn.action && !b[0].turn.bonus;
+            ^
+aethyr/rules/srd/disengage-checks.coax:7:45: error[E0351]: struct 'RsTurn' has no field 'disengaged'
+    #assert rs_disengage(b[..],0) && b[0].turn.disengaged && b[0].turn.action && !b[0].turn.bonus;
+                                              ^
+  fix: its fields are: action bonus slot_spent move_left move_feet move_basis move_debt move_tracked dash_n cleaved frenzied struck new_round moved aimed anchored last_hit last_crit sneaked colossus leveled quickened stunned resurged
+aethyr/rules/srd/disengage-checks.coax:8:68: error[E0351]: struct 'RsTurn' has no field 'disengaged'
+    #assert b[0].c[0].reacted && rs_step_to(b[..],0,4,3) && b[0].turn.disengaged;
+                                                                     ^
+  fix: its fields are: action bonus slot_spent move_left move_feet move_basis move_debt move_tracked dash_n cleaved frenzied struck new_round moved aimed anchored last_hit last_crit sneaked colossus leveled quickened stunned resurged
+aethyr/rules/srd/disengage-checks.coax:9:12: error[E0315]: procedure 'rs_disengage' is not declared
+    #assert !rs_disengage(b[..],0);
+             ^
+aethyr/rules/srd/disengage-checks.coax:10:43: error[E0351]: struct 'RsTurn' has no field 'disengaged'
+    rs_end_turn(b[..],0); #assert !b[0].turn.disengaged;
+                                            ^
+  fix: its fields are: action bonus slot_spent move_left move_feet move_basis move_debt move_tracked dash_n cleaved frenzied struck new_round moved aimed anchored last_hit last_crit sneaked colossus leveled quickened stunned resurged
+aethyr/rules/srd/disengage-checks.coax:11:45: error[E0351]: struct 'RsTurn' has no field 'disengaged'
+    rs_start_turn(b[..],0); #assert !b[0].turn.disengaged;
+                                              ^
+  fix: its fields are: action bonus slot_spent move_left move_feet move_basis move_debt move_tracked dash_n cleaved frenzied struck new_round moved aimed anchored last_hit last_crit sneaked colossus leveled quickened stunned resurged
+aethyr/rules/srd/disengage-checks.coax:20:13: error[E0315]: procedure 'rs_disengage_use' is not declared
+      #assert rs_disengage_use(b[..],0,mode) && b[0].turn.disengaged && b[0].turn.bonus && !b[0].turn.action;
+              ^
+aethyr/rules/srd/disengage-checks.coax:20:56: error[E0351]: struct 'RsTurn' has no field 'disengaged'
+      #assert rs_disengage_use(b[..],0,mode) && b[0].turn.disengaged && b[0].turn.bonus && !b[0].turn.action;
+                                                         ^
+  fix: its fields are: action bonus slot_spent move_left move_feet move_basis move_debt move_tracked dash_n cleaved frenzied struck new_round moved aimed anchored last_hit last_crit sneaked colossus leveled quickened stunned resurged
+aethyr/rules/srd/disengage-checks.coax:23:14: error[E0315]: procedure 'rs_disengage_use' is not declared
+      #assert !rs_disengage_use(b[..],0,mode);
+               ^
+aethyr/rules/srd/disengage-checks.coax:30:36: error[E0315]: procedure 'rs_disengage' is not declared
+    for i:[3]int.[-1,1,2] { #assert !rs_disengage(b[..],i); }
+                                     ^
+aethyr/rules/srd/disengage-checks.coax:31:43: error[E0315]: procedure 'rs_disengage_use' is not declared
+    for mode:[5]int.[-1,1,2,3,4] { #assert !rs_disengage_use(b[..],0,mode); }
+                                            ^
+aethyr/rules/srd/disengage-checks.coax:32:21: error[E0351]: struct 'RsTurn' has no field 'disengaged'
+    #assert !b[0].turn.disengaged && !b[0].turn.action && !b[0].turn.bonus;
+                      ^
+  fix: its fields are: action bonus slot_spent move_left move_feet move_basis move_debt move_tracked dash_n cleaved frenzied struck new_round moved aimed anchored last_hit last_crit sneaked colossus leveled quickened stunned resurged
+aethyr/rules/srd/disengage-checks.coax:34:12: error[E0315]: procedure 'rs_disengage_use' is not declared
+    #assert !rs_disengage_use(b[..],0,RS_DISENGAGE_PATIENT) && !rs_patient_defense(b[..],0);
+             ^
+aethyr/rules/srd/disengage-checks.coax:34:37: error[E0306]: 'RS_DISENGAGE_PATIENT' is not declared
+    #assert !rs_disengage_use(b[..],0,RS_DISENGAGE_PATIENT) && !rs_patient_defense(b[..],0);
+                                      ^
+aethyr/rules/srd/disengage-checks.coax:36:53: error[E0351]: struct 'RsTurn' has no field 'disengaged'
+    #assert !rs_patient_defense(b[..],0) && !b[0].turn.disengaged;
+                                                      ^
+  fix: its fields are: action bonus slot_spent move_left move_feet move_basis move_debt move_tracked dash_n cleaved frenzied struck new_round moved aimed anchored last_hit last_crit sneaked colossus leveled quickened stunned resurged
+15 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

@@ -33,6 +33,7 @@
 #load "death-save-roll.coax";
 #load "dodge.coax";
 #load "dash.coax";
+#load "disengage.coax";
 #load "movement-credit.coax";
 #load "exhaustion-lifecycle.coax";
 #load "ability-check-math.coax";
@@ -57,7 +58,7 @@ RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1:
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
 // attack hit, 0 none: Divine Smite follows it) and last_crit, the once-a-turn Sneak Attack and
 // Colossus Slayer, leveled (a level 1+ spell cast) and quickened (Quickened Spell used).
-RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; move_basis: int; move_debt: int; move_tracked: bool; dash_n: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
+RsTurn :: struct { disengaged: bool; action: bool; bonus: bool; slot_spent: bool; move_left: int; move_feet: int; move_basis: int; move_debt: int; move_tracked: bool; dash_n: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
                    leveled: bool; quickened: bool; stunned: bool; resurged: bool; }
 RsBattle :: struct {
@@ -1285,6 +1286,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   if b[0].turn.new_round { b[0].c[i].struck_round = false; }
   rs_halt_finish(b[0].c[i..<i+1]);
   b[0].c[i].turn_at += rs_beat(b);
+  rs_disengage_end(b,i);
   if b[0].who == i { b[0].who = -1; }
 }
 // The clock moves on: what lasts for a time ends when it runs out.
@@ -1766,9 +1768,7 @@ rs_flurry :: (b: [] RsBattle, i: int, j: int, how: int) -> bool {
 }
 // Patient Defense with a Focus Point: Disengage and Dodge as a Bonus Action.
 rs_patient_defense :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].focus <= 0 { return false; }
-  b[0].turn.bonus = true; b[0].c[i].focus -= 1;
-  rs_dodge_begin(b,i);
+  if !rs_disengage_use(b,i,RS_DISENGAGE_DODGE) { return false; }
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on Patient Defense: Disengage and Dodge");
   rs_tell_ft(b, RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_PATIENT_DEFENSE, l[..]);
   return true;

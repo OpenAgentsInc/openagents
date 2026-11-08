@@ -1,0 +1,3 @@
+ok   #test a saved seat retains Disengage without changing another actor's turn or Reaction (1 case, 14718 steps, 3 ms)
+1 of 222 checks (--only 'a saved seat retains Disengage'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

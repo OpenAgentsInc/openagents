@@ -1,0 +1,40 @@
+// SRD 5.2.1 Disengage p.180, Cunning Action p.62, Patient Defense pp.50–51.
+#authority;
+RS_DISENGAGE_ACTION :: 0;
+RS_DISENGAGE_CUNNING :: 1;
+RS_DISENGAGE_PATIENT :: 2;
+RS_DISENGAGE_DODGE :: 3;
+
+rs_disengage :: (b:[] RsBattle,i:int)->bool #effects(all) { return rs_disengage_use(b,i,RS_DISENGAGE_ACTION); }
+rs_disengage_use :: (b:[] RsBattle,i:int,mode:int)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].who!=i || !rs_can_act(b[0].c[i]) { return false; }
+  if mode==RS_DISENGAGE_ACTION {
+    if b[0].turn.action { return false; }
+  } else {
+    if b[0].turn.bonus { return false; }
+    if mode==RS_DISENGAGE_CUNNING { if !b[0].c[i].cunning { return false; } }
+    else if mode==RS_DISENGAGE_PATIENT || mode==RS_DISENGAGE_DODGE {
+      if b[0].c[i].klass!=RS_MONK || b[0].c[i].level<2 { return false; }
+      if mode==RS_DISENGAGE_DODGE && b[0].c[i].focus<=0 { return false; }
+    } else { return false; }
+  }
+  if mode==RS_DISENGAGE_ACTION { b[0].turn.action=true; } else { b[0].turn.bonus=true; }
+  b[0].turn.disengaged=true;
+  if mode==RS_DISENGAGE_DODGE { b[0].c[i].focus-=1; rs_dodge_begin(b,i); }
+  return true;
+}
+rs_disengage_end :: (b:[] RsBattle,i:int) #effects(all) {
+  if b[0].who==i { b[0].turn.disengaged=false; }
+}
+
+#test "Disengage retirement belongs to the running actor and does not spend another budget" {
+  b:[1] RsBattle; b[0].who=2; b[0].turn.disengaged=true; b[0].turn.bonus=true;
+  rs_disengage_end(b[..],1); #assert b[0].turn.disengaged && b[0].turn.bonus;
+  rs_disengage_end(b[..],2); #assert !b[0].turn.disengaged && b[0].turn.bonus;
+}
+
+#test "Disengage action entry is available in every engine consumer" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_fighter("Fighter",0,1),2,2); rs_start_turn(b[..],0);
+  #assert rs_disengage(b[..],0) && b[0].turn.disengaged && b[0].turn.action;
+}

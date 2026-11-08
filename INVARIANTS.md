@@ -6919,3 +6919,15 @@ four-client 90-second run accepts all 36 casts and retains/culls every sampled
 near/far pair correctly. These are bounded local socket receipts, not browser,
 restart/drain, every-class or production-scale qualification. Evidence:
 `docs/verification/srd-room-sockets-2026-11-08/README.md`.
+
+## Disengage belongs to the current turn and has distinct feature costs
+
+`disengage.coax` admits Action Disengage, Cunning Action and the free/paid
+level-two Patient Defense choices before spending. Free Patient Defense costs
+no Focus; paid adds Dodge for one Focus. The current turn retains Disengage
+through movement/saved seats and clears it on actual turn end; Dodge keeps its
+next-turn-start lifecycle. The existing paid feature preserves its event.
+Zero Speed alone does not prohibit this Action; incapacity and illegal budgets
+refuse. Opportunity attacks still require implementation before the defensive
+consequence is qualified. Evidence and remaining scope:
+`docs/verification/srd-disengage-2026-11-08/README.md`.

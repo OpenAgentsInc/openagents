@@ -1,0 +1,13 @@
+#load "disengage-checks.coax";
+#load "../../../coax/lib/sys/tool.coax";
+
+tool_main :: ()->int #export_c #effects(all) {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],rs_monk("Monk",0,2),2,2); rs_start_turn(b[..],0);
+  b[0].c[0].focus=1;
+  if !rs_patient_defense(b[..],0) || !b[0].turn.disengaged || !b[0].c[0].dodging || b[0].c[0].focus!=0 { return 1; }
+  rs_end_turn(b[..],0); if b[0].turn.disengaged || !b[0].c[0].dodging { return 2; }
+  rs_start_turn(b[..],0);
+  if !rs_disengage_use(b[..],0,RS_DISENGAGE_PATIENT) || !b[0].turn.disengaged || b[0].c[0].dodging || b[0].c[0].focus!=0 { return 3; }
+  tool_errln("PASS DISENGAGE-STATE"); return 0;
+}
