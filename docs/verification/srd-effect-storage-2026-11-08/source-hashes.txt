@@ -1,5 +1,5 @@
 5d74376ab242674acb24581790e3e919b19951f3a90f5e96eaf5ec7ffc36b379  aethyr/rules/srd/effect-storage.coax
-0ab7cde41f997193622f260d5c3a0c58f94e335d65e562370e942277cc30cea0  aethyr/rules/srd/effect-admission.coax
+25a54c63e26e3c695af3800cdd9f638bfc480381f5ac8dc1444b8c64614ae268  aethyr/rules/srd/effect-admission.coax
 b0ecb8e082c1b6129bd1fb5a7bb64b2708c2b0be1ce531bd6dd7f7762acae0f8  aethyr/rules/srd/zone-lifetime.coax
 a6be1bd5d63d420c67da546933bb7bf2f05ea05ecf4af59992ba6bb6ce7af687  aethyr/rules/srd/engine.coax
 72067e8aae27180c1bd9a10d5719fc3bd81277c909d94e525a4bcf6bc743204b  aethyr/rules/srd/battle.coax

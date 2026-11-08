@@ -2,6 +2,20 @@
 // demand but cannot be used to promise storage before their outcomes exist.
 #authority;
 
+#test "upcasting a single-target program does not prepay targets the executor will not select" {
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
+  t := rs_add(b[..],rs_skeleton("Target",1),2,1);
+  u := rs_add(b[..],rs_skeleton("Other",1),3,1);
+  for k: 0..<RS_EFFECTS { b[0].c[u].eff[k] = RsEffect.{kind=EF_HEX}; }
+  s := rs_spell(SP_BLESS); s.targets = 1;
+  #assert rs_cast_effect_room(b[..],a,s,SP_BLESS,3,0,0,t);
+  s.targets = 2; #assert !rs_cast_effect_room(b[..],a,s,SP_BLESS,1,0,0,t);
+  // Area requests have no required primary creature, even with target metadata.
+  s = rs_spell(SP_FIREBALL); s.targets = 3; s.step_n = 1; s.steps[0] = RsStep.{kind=RS_S_BOON,a=EF_BLESS};
+  #assert !rs_cast_effect_room(b[..],a,s,SP_FIREBALL,3,3,1,-1);
+}
+
 #test "optional hit riders reserve only while their choices and budgets are live" {
   for mode: 0..<9 {
     b: [1] RsBattle;
@@ -203,7 +217,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
   me := b[0].c[i];
   if s.area == RS_A_NONE && s.humanoid_only && !b[0].c[target].humanoid { return true; }
   more: [RS_TARGETS_MAX] int; more_n: int;
-  if s.area == RS_A_NONE { more_n = rs_more_targets(b,i,target,rs_min(s.targets+rs_max(slot-s.level,0),RS_TARGETS_MAX)-1,s.range_ft,more[..]); }
+  if s.area == RS_A_NONE && s.targets >= 2 { more_n = rs_more_targets(b,i,target,rs_min(s.targets+rs_max(slot-s.level,0),RS_TARGETS_MAX)-1,s.range_ft,more[..]); }
   area := rs_area(b,i,s,tx,ty);
   reps := 1;
   for k: 0..<s.step_n { st := s.steps[k]; if st.kind == RS_S_REPEAT { reps = st.a+st.b*rs_max(slot-s.level,0); if st.c == 1 { reps = st.a*rs_cantrip_tier(me.level); } } }

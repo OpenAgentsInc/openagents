@@ -79,3 +79,21 @@ Full same-spell stacking, every condition's consequences, spell duration
 qualification, source catalogs, timing profiles and world migration remain
 separate active issues. Polymorph remains parked. Passing these selected
 witnesses does not qualify the whole SRD.
+
+## Single-target upcast follow-up
+
+Final review after `c48701e90e` found that preflight could enumerate extra
+targets for upcast single-target programs while the executor enumerates extra
+targets only for programs whose base `targets` is at least two. Restoring that
+guard prevents a false refusal caused by an unrelated full creature. A focused
+regression also checks a two-target program and an area with no primary target.
+This preserves the current executor's selection behavior; qualifying all
+source upcast targeting remains under #13038/#13043.
+
+The follow-up passes 145 core checks and 144 hotbar checks. Admission kills
+227 mutants, zero survivors; the unchanged storage/lifetime/scripted authorities
+reuse their 113/58/39 passing receipts above. Experimental passes 17 of 671
+checks with the same value-slot peak. The fresh native report remains ten PASS,
+only parked Polymorph FAIL. `*-followup.log` and the current source hashes record
+this correction; preceding logs identify the first pushed change. The tools
+inventory and its passing tools-check inputs are unchanged from that push.
