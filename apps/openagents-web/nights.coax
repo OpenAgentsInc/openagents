@@ -3,8 +3,11 @@
 #load "font.coax";
 #load "../../aethyr/walk.coax" as pc;
 #load "../../aethyr/sticks.coax";
+#load "../../aethyr/render/environment-frame.coax" as envf;
 VERTEX_FLOATS ::16;
 NIGHT_HEROES ::32;
+NIGHT_ENV ::208;
+NIGHT_UNIFORMS ::316;
 NFrame ::struct {first:int;count:int;word:int;}
 NClip ::struct {first:int;count:int;ms:int;name:[32]u8;name_n:int;}
 NHero ::struct {frames:[128]NFrame;clips:[8]NClip;clip_n:int;frame_n:int;name:[32]u8;name_n:int;gender:int;head:int;outfit:int;ready:bool;}
@@ -15,6 +18,7 @@ Nights ::struct {
  env:NFrame;bad:bool;ready:bool;loaded:[4]int;choosing:bool=true;started:bool;you:pc.Player;keys:int;thumbs:Sticks;
  palette:int;skin_n:int=1;hair_n:int=1;dye_n:int=1;palette_n:int=1;palette_stride:int=1;saved_hero:int= -1;saved_palette:int;dirty:bool;outbox:[8]u8;out_n:int;
  clock:f32;clip_clock:f32;clip:int;forced:int= -1;width:f32=1280;height:f32=800;d:f32=1;drag:bool;drag_id:int;px:f32;py:f32;look_x:f32;look_y:f32;
+ light:[108]f32;light_n:int;
  records:[48]f32;draws:[8]u32;draw_n:int;revision:int;
 }
 night_num :: (t:string)->int {if t.count==0 {return -1;}v:=0;for i:0..<t.count {if t[i]<'0' || t[i]>'9' {return -1;}d:=int(t[i]-'0');if v>(134217728-d)/10 {return -1;}v=v*10+d;}return v;}
@@ -93,11 +97,16 @@ night_camera_room :: (s:[]Nights,x:f32,z:f32,dx:f32,dz:f32)->f32 {
  if hit && lo<hi && lo>=0 && lo<room {room=ifx lo>0.03 then lo-0.03 else 0.03;}}
  return room;
 }
+night_light :: (s:[]Nights,u:[]f32) {
+ if u.count<NIGHT_UNIFORMS {return;}if s[0].light_n==0 {words:=envf.env_frame_glade_words();for i:0..<envf.ENV_FRAME_FLOATS {s[0].light[i]=words[i];}s[0].light_n=envf.ENV_FRAME_FLOATS;}for i:0..<envf.ENV_FRAME_FLOATS {u[NIGHT_ENV+i]=s[0].light[i];}
+}
 night_frame :: (s:[]Nights,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
+ if u.count<NIGHT_UNIFORMS {return 0;}
  s[0].width=w;s[0].height=h;s[0].d=d;for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=d;u[10]=2;u[11]=1;u[42]=1;
  p:=s[0].you;yaw:=p.theta;pitch:=p.phi-1.5707963;dist:=ifx s[0].choosing then p.max_dist else p.dist;cy:=cos(pitch);sy:=sin(pitch);sx:=sin(yaw);cz:=cos(yaw);target:=p.pos.y+1.2;
  room:=night_camera_room(s,p.pos.x,p.pos.z,sx*cy*dist,cz*cy*dist);dist*=room;
  u[16]=p.pos.x+sx*cy*dist;u[17]=target-sy*dist;u[18]=p.pos.z+cz*cy*dist;u[19]=h*0.89;u[20]= -sx*cy;u[21]=sy;u[22]= -cz*cy;u[23]=w*0.5;u[24]=cz;u[26]= -sx;u[27]=h*0.52;u[28]=sx*sy;u[29]=cy;u[30]=cz*sy;u[32]= -0.45;u[33]=0.78;u[34]= -0.42;
+ night_light(s,u);
  n:=0;ink:=Ink.{core=0.6*d,light=1,glow=0.2*d,red=0.95,green=0.88,blue=0.7,scale=d};n=draw_text(out,n,"EVERGLADE NIGHTS EXPERIMENTAL",22*d,90*d,15*d,0.2,0.5,ink,false,false);
  n=draw_text(out,n,"< CHARACTER >             ENTER WORLD             NEXT REGION",22*d,38*d,10*d,0.2,0.5,ink,false,false);
  if !s[0].ready {return draw_text(out,n,"INSTALL OWNER LOCAL NWN SOURCE PACK",22*d,130*d,13*d,0.2,0.5,ink,false,false);}
@@ -199,4 +208,10 @@ night_fixture :: (s:[]Nights) {
  #assert abs(s[0].records[32])<0.00001 && abs(s[0].records[33]-1)<0.00001;
  s[0].choosing=false;night_scene(s[..]);#assert abs(s[0].records[32])<0.00001 && abs(s[0].records[33]+1)<0.00001 && s[0].you.face==0;
  s[0].you.face=1.570796326794897;night_scene(s[..]);#assert abs(s[0].records[32]+1)<0.00001 && abs(s[0].records[33])<0.00001;
+}
+
+#test "Nights writes the current shared fixed-noon environment in all 79 uniform vectors" {
+ s:[1]Nights;u:[NIGHT_UNIFORMS]f32;u[16]=1;u[17]=2;u[18]=3;night_light(s[..],u[..]);night_light(s[..],u[..]);words:=envf.env_frame_glade_words();
+ #assert NIGHT_ENV+envf.ENV_FRAME_FLOATS==NIGHT_UNIFORMS && s[0].light_n==envf.ENV_FRAME_FLOATS;
+ for i:0..<envf.ENV_FRAME_FLOATS {#assert u[NIGHT_ENV+i]==words[i];}#assert u[16]==1 && u[17]==2 && u[18]==3;
 }

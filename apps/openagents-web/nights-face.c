@@ -13,11 +13,11 @@ EXPORT("coaxial_state_size") uint32_t size(void){return sizeof(coax_t_Nights);}
 EXPORT("coaxial_state_init") void init(uint32_t p){coax_default_t_Nights(state(p));}
 EXPORT("coaxial_max_vertices") uint32_t vertices(void){return 32768;}
 EXPORT("coaxial_vertex_floats") uint32_t stride(void){return 16;}
-EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 104;}
+EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 316;}
 EXPORT("coaxial_pixel_budget") uint32_t pixels(void){return 6400000;}
 EXPORT("coaxial_character_storage_v1") uint32_t storage(void){return 268435456;}
 EXPORT("coaxial_layers_side_v1") uint32_t layers(uint32_t p){(void)p;return 1024;}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){night_step(view(p),dt,still!=0);uint32_t n=(uint32_t)night_frame(view(p),(coax_v_f32){(float*)(uintptr_t)v,32768*16},(coax_v_f32){(float*)(uintptr_t)u,104},w,h,d);night_scene(view(p));return n;}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){night_step(view(p),dt,still!=0);uint32_t n=(uint32_t)night_frame(view(p),(coax_v_f32){(float*)(uintptr_t)v,32768*16},(coax_v_f32){(float*)(uintptr_t)u,316},w,h,d);night_scene(view(p));return n;}
 EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t m){(void)m;return night_key(view(p),k,true);}
 EXPORT("coaxial_key_up") uint32_t key_up(uint32_t p,int32_t k,int32_t m){(void)m;return night_key(view(p),k,false);}
 EXPORT("coaxial_blur") void blur(uint32_t p){night_blur(view(p));}
