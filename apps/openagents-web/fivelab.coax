@@ -43,6 +43,7 @@
 #load "fivelab-siege.coax";
 #load "experimental-sound.coax" as exsound;
 #load "../../verse/experimental-comparison.coax" as compare;
+#load "../../verse/experimental-biomes.coax" as biomes;
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 
 VERTEX_FLOATS :: 16;
@@ -3056,6 +3057,18 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
 }
 
 // Labels belong to the loaded private comparison pack, not the public scene.
+#test "biome labels are absent without the private terrain catalog marker" {
+ s:[1]Lab;b:[16]f32;#assert lab_biome_labels(s[..],b[..],0,1600,1000,1)==0;
+}
+lab_biome_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
+ if !s[0].creator[0].biomes_present {return at;}n:=at;x:=s[0].xc[..];
+ for i:0..<biomes.BIO_N {p:=biomes.bio_site(i);a:=xc_proj(x,p.x,0.25,p.z+10.5);
+  if !a.ok || a.x<70*k || a.x>w-70*k || a.y<45*k || a.y>h-90*k {continue;}
+  if n+4000>MAX_VERTICES {break;}
+  n=cc.text(out,n,p.title,a.x-f32(p.title.count)*3*k,a.y,10*k,ink_col(k,1,0.95,0.8));
+ }
+ return n;
+}
 lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  if !s[0].creator[0].comparison_present {return at;}n:=at;x:=s[0].xc[..];
  for i:0..<compare.CMP_N {p:=compare.cmp_site(i);a:=xc_proj(x,p.x,0.35+p.span,p.z);
@@ -3081,6 +3094,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
       if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
       n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
       n = lab_comparison_labels(s,out,n,width,height,hi(dpr,0.5));
+      n = lab_biome_labels(s,out,n,width,height,hi(dpr,0.5));
     }
     cr:=s[0].creator[0];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr.experimental && !cr.walk.on,cr.player_x,cr.player_z,cr.airborne,cr.hostiles[0].hp,cr.hostiles[0].hits,ifx still then 0.0f32 else dt);
     return n;
@@ -3323,6 +3337,9 @@ url_number :: (q: string, key: string) -> int {
 lab_dev_cell :: (s: [] Lab, facts: string) {
  i:=0;while i<facts.count {e:=i;while e<facts.count && facts[e]!='\n' {e+=1;}line:=facts[i..<e];i=e+1;
   if line.count<4 || line[0..<4]!="url=" {continue;}q:=line[4..<line.count];
+  bio:=url_number(q,"biome");if bio>=0 && bio<=biomes.BIO_N {
+   p:=biomes.bio_site(ifx bio==0 then 1 else bio-1);s[0].put_on=true;s[0].put_x=ifx bio==0 then 35 else p.x;s[0].put_y=0.025;s[0].put_z=ifx bio==0 then 73 else p.z+3;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx bio==0 then 1.15 else ifx bio==1 then 0.85 else 0.65;s[0].creator[0].dist=ifx bio==0 then 75 else ifx bio==1 then 24 else 15;s[0].xc[0].open=false;
+  }
   cmp:=url_number(q,"compare");if cmp>=0 && cmp<=compare.CMP_N {
    p:=compare.cmp_site(ifx cmp==0 then 2 else cmp-1);s[0].put_on=true;s[0].put_x=ifx cmp==0 then 31 else p.x;s[0].put_y=0.2;s[0].put_z=ifx cmp==0 then 12 else p.z+1;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx cmp==0 then 1.2 else 0.4;s[0].creator[0].dist=ifx cmp==0 then 28 else 5;s[0].xc[0].open=false;
   }
@@ -3330,6 +3347,10 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
   yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;
   s[0].put_on=true;s[0].put_x=xdungeon.dg_x(n%xdungeon.DG_COLS)+f32(xdungeon.DG_CELL)*0.5;s[0].put_y=0;s[0].put_z=xdungeon.dg_z(n/xdungeon.DG_COLS)-f32(xdungeon.DG_CELL)*0.5;s[0].put_face=a;s[0].creator[0].yaw=a;
  }
+}
+#test "local biome views frame the three native terrain sections" {
+ s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?biome=0\n");#assert s[0].put_on && s[0].put_x==35 && s[0].put_z==73 && s[0].creator[0].dist==75;
+ t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?biome=1\n");p:=biomes.bio_site(0);#assert t[0].put_x==p.x && t[0].put_z==p.z+3 && t[0].creator[0].dist==24 && !t[0].xc[0].open;
 }
 #test "a local comparison view can frame all ten pairs or one station" {
  s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?compare=0\n");

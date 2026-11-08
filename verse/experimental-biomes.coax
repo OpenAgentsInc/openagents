@@ -1,0 +1,17 @@
+// Optional owner-installed NWN terrain patches. The private pack recipe in ore
+// owns source area grids; Coax owns their world positions, titles and views.
+#module "verse.experimentalbiomes";
+
+#test "native biome patches are small separated meadow sections" {
+ area:=0.0f32;
+ for i:0..<BIO_N {p:=bio_site(i);#assert p.x-10>= -90 && p.x+10<=90 && p.z-10>= -90 && p.z+10<=90;area+=400;
+  for j:0..<i {q:=bio_site(j);#assert abs(p.x-q.x)>21 || abs(p.z-q.z)>21;}}
+ #assert area/32400<0.04 && bio_site(0).title=="NWN FOREST";
+}
+BIO_N :: 3;
+BioSite :: struct {x:f32;z:f32;title:string;}
+bio_site :: (i:int)->BioSite {
+ if i<=0 {return BioSite.{x=0,z=73,title="NWN FOREST"};}
+ if i==1 {return BioSite.{x=30,z=74,title="NWN RURAL"};}
+ return BioSite.{x=71,z=72,title="NWN DESERT"};
+}
