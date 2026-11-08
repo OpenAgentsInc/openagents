@@ -39,6 +39,7 @@ fps_draw :: (f:FpsCounter,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
+  hostile_external:bool; // owner stages AI through shared combat before publication
   experimental:bool; fps:[1]FpsCounter; dev_animations:bool; preview_collapsed:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
   on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;animal_first:[10]int;animal_count:[10]int;animal_n:int;monster_first:[48]int;monster_count:[48]int;monster_n:int;dungeon_first:[8]int;dungeon_count:[8]int;dungeon_n:int;torches:[540]f32;torch_n:int;npc_first:[2][48]int;npc_count:[2][48]int;npc_n:[2]int;hostiles:[1]hostile.Hostiles;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
@@ -787,7 +788,7 @@ dungeon_light :: (s:[]Creator,u:[]f32) {
 frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->int {
   if s[0].walk.on || s[0].profile_go {ensure(s);layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
   if s[0].experimental {
-    ensure(s);layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);if !still && dt>0 && dt<1 {s[0].clock+=dt;hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}
+    ensure(s);layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
     for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=1;u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u);
     if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
     camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);n=coord_draw(s[0],out,n,w,h,k);return fps_draw(s[0].fps[0],out,n,w,h,k);

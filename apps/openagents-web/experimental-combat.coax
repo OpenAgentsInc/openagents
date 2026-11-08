@@ -378,6 +378,46 @@ xc_sync_world :: (s: [] Lab) {
     rs_place(b, i+1, qx, qz);
   }
 }
+// The AI produces candidate bodies locally. Publish each only after a selected
+// player opportunity has resolved; the real mover's seat is the active turn.
+xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
+  x:=s[0].xc[..]; if !x[0].started || foe<0 || foe>=XC_FOES { return; }
+  b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..]; old:=h[0].enemies[foe];
+  moving:=proposed.moving && (old.x!=proposed.x || old.z!=proposed.z);
+  if moving {
+    xc_sync_world(s);
+    weapon:=b[0].c[0].weapon; wp:=rs_weapon(weapon);
+    if wp.range_ft>wp.reach_ft && !wp.both { weapon=W_UNARMED; wp=rs_weapon(weapon); }
+    py:=xmeadow.exp_height(cr[0].player_x,cr[0].player_z)+cr[0].player_y;
+    dx:=old.x-cr[0].player_x; dz:=old.z-cr[0].player_z; dy:=xmeadow.exp_height(old.x,old.z)-py;
+    tx:=proposed.x-cr[0].player_x; tz:=proposed.z-cr[0].player_z; ty:=xmeadow.exp_height(proposed.x,proposed.z)-py;
+    q:=RsOpportunityMove.{measured=true,from_feet=sqrt(dx*dx+dy*dy+dz*dz)/f32(XC_SQ)*5,to_feet=sqrt(tx*tx+ty*ty+tz*tz)/f32(XC_SQ)*5,
+      reach=wp.reach_ft,melee=true,movement=true,seen=!rs_has(b[0].c[0],RS_BLINDED) && !rs_has(b[0].c[foe+1],RS_INVISIBLE) && hostile.hostile_sees(old,cr[0].player_x,cr[0].player_z)};
+    fb_seat_in(b,x[0].npc_seat[foe..<foe+1]);
+    if rs_opportunity_trigger(b,0,foe+1,q) {
+      before:=b[0].c[foe+1].hp;
+      result:=rs_opportunity_attack(b,0,foe+1,weapon,q);
+      lost:=before-rs_max(b[0].c[foe+1].hp,0);
+      if result.admitted && lost>0 {
+        x[0].landed+=1; x[0].last_dmg=lost; xc_float_int(x,old.x,1.9,old.z,cr[0].clock,lost,false);
+        snd:=xc_sound(xc_attack(),x[0].klass); xc_cue(s,snd.hit,0.55,old.x,old.z,snd.rate);
+        if rs_up(b[0].c[foe+1]) { xc_stop_hit(s,foe,react.DMG_SLASH); xc_voice(s,foe,false); } else { xc_voice(s,foe,true); }
+      }
+    }
+    fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
+  }
+  next:=proposed;
+  if !rs_can_move(b[0].c[foe+1]) || rs_walk_speed(b,foe+1)<=0 { next.x=old.x; next.z=old.z; next.moving=false; }
+  h[0].enemies[foe]=next;
+  xc_sync_permission(s,foe); xc_sync_vitals(s);
+}
+xc_hostile_tick :: (s:[] Lab,dt:f32) {
+  h:=s[0].creator[0].hostiles[..]; cr:=s[0].creator[..];
+  proposed:[1]hostile.Hostiles; proposed[0]=h[0];
+  hostile.hostile_tick(proposed[..],cr[0].player_x,cr[0].player_y,cr[0].player_z,dt);
+  h[0].time=proposed[0].time; h[0].contacts[0]=proposed[0].contacts[0];
+  for foe:0..<XC_FOES { xc_monster_move(s,foe,proposed[0].enemies[foe]); }
+}
 // Controller locomotion proposes a physical position; current creature/body
 // positions remain authoritative until this returns. Teleports synchronize their
 // origin separately in lab_walk and never pass their displacement here.
@@ -460,10 +500,9 @@ xc_hostile_contacts :: (s: [] Lab) {
 }
 // Project shared movement/action permissions independently into the body AI.
 // A Stunned actor can move; a Restrained actor can still take an action.
-xc_sync_permissions :: (s: [] Lab) {
-  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
-  for i: 0..<XC_FOES {
-    if i+1>=b[0].n { break; }
+xc_sync_permission :: (s:[] Lab,i:int) {
+  b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..];
+  if i<0 || i>=XC_FOES || i+1>=b[0].n { return; }
     c := b[0].c[i+1];
     if c.dead && !h[0].enemies[i].dead {
       h[0].enemies[i].dead=true; h[0].enemies[i].died=s[0].creator[0].clock;
@@ -475,7 +514,9 @@ xc_sync_permissions :: (s: [] Lab) {
     h[0].enemies[i].inactive = !rs_can_act(c);
     // Retire a pending attack immediately, including between body ticks.
     if h[0].enemies[i].inactive { h[0].enemies[i].swing = -1; h[0].enemies[i].struck = false; }
-  }
+}
+xc_sync_permissions :: (s: [] Lab) {
+  for i:0..<XC_FOES { xc_sync_permission(s,i); }
 }
 // Press slot k: the engine resolves it at what it aims at (xc_aim). True when it was used. Sets what the
 // world shows: the look (xc_look), the numbers and the fallen.
@@ -1676,4 +1717,67 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert w.put && cr[0].player_z==4;
   body:=lab_keep_body(s[..],EgBody.{z=4},EgBody.{z=4.1});
   #assert body.z==f32(4.1) && b[0].c[0].hp==100 && !b[0].c[1].reacted;
+}
+
+#test "experimental monster departure resolves one player Reaction before publishing a lethal move" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[1].hp=1; b[0].c[1].ac=10;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+  proposed:=h[0].enemies[0]; proposed.z=1.6; proposed.moving=true;
+  xc_monster_move(s[..],0,proposed);
+  #assert h[0].enemies[0].z==f32(1.5) && h[0].enemies[0].dead && b[0].c[1].hp==0 && b[0].c[0].reacted;
+  #assert !s[0].xc[0].seat[0].turn.action && !s[0].xc[0].npc_seat[0].turn.action;
+}
+#test "experimental monster departure survives a miss while a second mover cannot spend the player's Reaction again" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true;
+  for foe:0..<2 {
+    h[0].enemies[foe].x=0; h[0].enemies[foe].z=1.5; b[0].c[foe+1].ac=30;
+    proposed:=h[0].enemies[foe]; proposed.z=1.6; proposed.moving=true;
+    rolls:=b[0].dice[0].rolled; xc_monster_move(s[..],foe,proposed);
+    #assert h[0].enemies[foe].z==f32(1.6) && b[0].c[0].reacted;
+    #assert b[0].dice[0].rolled==rolls+(ifx foe==0 then 1 else 0);
+  }
+}
+
+#test "experimental monster departure reads the moving seat's Disengage and ordinary visibility" {
+  for mode:0..<4 {
+    s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+    b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true; b[0].c[1].ac=10;
+    h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+    if mode==0 { s[0].xc[0].npc_seat[0].turn.disengaged=true; }
+    if mode==1 { s[0].xc[0].seat[0].turn.disengaged=true; }
+    if mode==2 { b[0].c[0].cond|=RS_BLINDED; }
+    if mode==3 { b[0].c[1].cond|=RS_INVISIBLE; }
+    proposed:=h[0].enemies[0]; proposed.z=1.6; proposed.moving=true;
+    xc_monster_move(s[..],0,proposed);
+    #assert b[0].c[0].reacted==(mode==1) && h[0].enemies[0].z==f32(1.6);
+  }
+}
+#test "experimental monster departure can choose an Unarmed Strike while the player holds a ranged weapon" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true;
+  b[0].c[0].weapon=W_LONGBOW; b[0].c[1].ac=10; b[0].c[1].hp=100;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+  proposed:=h[0].enemies[0]; proposed.z=1.6; proposed.moving=true;
+  xc_monster_move(s[..],0,proposed);
+  #assert b[0].c[0].reacted && rs_saw(b,0,"Unarmed Strike") && b[0].c[1].hp<100;
+}
+#test "experimental staged monster AI advances once per actual Lab frame" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  h:=s[0].creator[0].hostiles[..]; h[0].enemies[0].x=4; h[0].enemies[0].z=0;
+  time:=h[0].time; clock:=s[0].creator[0].clock;
+  out:[1]f32; u:[128]f32; _:=lab_frame(s[..],out[..],u[..],960,600,1,0.05,false);
+  #assert s[0].creator[0].hostile_external && abs(h[0].time-time-f32(0.05))<f32(0.0001);
+  #assert abs(s[0].creator[0].clock-clock-f32(0.05))<f32(0.0001) && h[0].enemies[0].x<4;
+}
+
+#test "experimental monster departure does not label a non-locomotion placement as own movement" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true;
+  h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+  proposed:=h[0].enemies[0]; proposed.z=1.6; proposed.moving=false;
+  xc_monster_move(s[..],0,proposed);
+  #assert !b[0].c[0].reacted && h[0].enemies[0].z==f32(1.6);
 }

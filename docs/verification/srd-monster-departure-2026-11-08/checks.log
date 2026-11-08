@@ -1,0 +1,7 @@
+ok   #test experimental monster departure resolves one player Reaction before publishing a lethal move (1 case, 2531936 steps, 523 ms)
+ok   #test experimental monster departure survives a miss while a second mover cannot spend the player's Reaction again (1 case, 2550427 steps, 487 ms)
+ok   #test experimental monster departure reads the moving seat's Disengage and ordinary visibility (1 case, 9256575 steps, 1489 ms)
+ok   #test experimental monster departure can choose an Unarmed Strike while the player holds a ranged weapon (1 case, 2531216 steps, 380 ms)
+ok   #test experimental monster departure does not label a non-locomotion placement as own movement (1 case, 2220937 steps, 367 ms)
+5 of 780 checks (--only 'experimental monster departure'), 5 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

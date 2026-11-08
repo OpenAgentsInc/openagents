@@ -3005,12 +3005,16 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
 
 lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s[0].creator[0].on {
+    s[0].creator[0].hostile_external=s[0].creator[0].experimental && !s[0].creator[0].walk.on;
     if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
       hostile.hostile_start(s[0].creator[0].hostiles[..]);
       xc_start(s[0].xc[..],s[0].xc[0].klass); xc_sync_vitals(s); xc_sync_permissions(s);
     }
     n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
-    if s[0].creator[0].experimental && !s[0].creator[0].walk.on { n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt); }
+    if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
+      if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
+      n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
+    }
     cr:=s[0].creator[0];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr.experimental && !cr.walk.on,cr.player_x,cr.player_z,cr.airborne,cr.hostiles[0].hp,cr.hostiles[0].hits,ifx still then 0.0f32 else dt);
     return n;
   }

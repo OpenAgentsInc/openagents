@@ -7011,3 +7011,16 @@ strike frame, while the mover's marks and slot history remain intact. Successful
 save Speed loss can interrupt departure without refunding an accepted attack.
 Evidence and remaining source/class/world scope:
 `docs/verification/srd-strike-reactions-2026-11-08/README.md`.
+
+## Experimental monster locomotion stages player opportunities before publication
+
+The Lab advances shared-combat AI into local proposals; Character Create skips
+its own hostile tick only while the Lab explicitly owns it. Each actual mover
+keeps its prior physical position until the player's shared opportunity query
+and strike resolve under the mover's saved turn. A miss spends Reaction; a
+lethal hit retains damage and prevents departure. Later movers cannot reuse
+that Reaction. Nonmoving AI state/contact intents and once-per-frame clocks
+remain intact; per-enemy permission projection preserves shared death/action/
+movement state without repeated army scans. This completes the two locomotion
+producer boundaries, not all movement/timing/world qualification. Evidence:
+`docs/verification/srd-monster-departure-2026-11-08/README.md`.

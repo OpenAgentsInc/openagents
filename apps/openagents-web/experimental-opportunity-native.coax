@@ -14,5 +14,15 @@ tool_main :: ()->int #export_c #effects(all) {
     if b[0].c[0].slots[1]!=slots-(ifx mode==0 then 1 else 0) || b[0].reaction_frame.on { return 3; }
     if s[0].xc[0].seat[0].turn.slot_spent!=((mode&1)!=0 || mode==0) { return 4; }
   }
+  for down:0..<2 {
+    s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+    b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true;
+    b[0].c[1].hp=ifx down==1 then 1 else 100; b[0].c[1].ac=10;
+    h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
+    proposed:=h[0].enemies[0]; proposed.z=1.6; proposed.moving=true;
+    xc_monster_move(s[..],0,proposed);
+    if !b[0].c[0].reacted || h[0].enemies[0].dead!=(down==1) || h[0].enemies[0].z!=(ifx down==1 then f32(1.5) else f32(1.6)) { return 5; }
+    if s[0].xc[0].seat[0].turn.action || s[0].xc[0].npc_seat[0].turn.action || b[0].reaction_frame.on { return 6; }
+  }
   tool_errln("PASS PHYSICAL-OPPORTUNITY"); return 0;
 }

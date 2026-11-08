@@ -1,0 +1,10 @@
+apps/openagents-web/experimental-combat.coax:1687:3: error[E0315]: procedure 'xc_monster_move' is not declared
+    xc_monster_move(s[..],0,proposed);
+    ^
+apps/openagents-web/experimental-combat.coax:1697:33: error[E0315]: procedure 'xc_monster_move' is not declared
+      rolls:=b[0].dice[0].rolled; xc_monster_move(s[..],foe,proposed);
+                                  ^
+2 errors
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh
