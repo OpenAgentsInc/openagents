@@ -1,6 +1,7 @@
 # SRD 5.2.1 compliance ledger
 
-Status: milestone 2 spell source slice, 2026-11-07. **Not fully compliant.** This ledger
+Status: milestone 2 spell source slice, 2026-11-07; requirement rows refreshed
+2026-11-08 from the dated evidence below. **Not fully compliant.** This ledger
 covers every area required by [the specification](README.md) and assigns stable
 requirement IDs. It is a requirements inventory, not yet an exhaustive inventory
 of all the PDF's individual entries or mechanical clauses. Spells and base class
@@ -68,15 +69,15 @@ named below are selected evidence only, not exhaustive qualification.
 | DATA-IMPORT | Spec SRD content | Partial | Coax importer, generated spell/class tables, byte-identical native regeneration check | Extend importer beyond spells/lists, M2 |
 | DATA-METADATA | Spec spell record shape | Partial | `SrdSourceSpell`: full extracted text, source spans, casting/range/components/duration metadata; canonical catalog API | Review mechanical targets/areas and executable effects; preserve source layout limits, M3/M4 |
 | CORE-DICE | Playing the Game pp.5-8 | Partial | `engine` SplitMix64, checks, `dice are fair and repeatable` | Rule inventory and independent deterministic vectors, M3 |
-| CORE-CHECKS | D20 Tests, proficiency pp.6-9 | Partial | Abilities/save proficiency; selected skill flags | Full skill/tool checks, expertise, passive checks and interactions, M3 |
-| CORE-ACTIONS | Actions/combat pp.9-18 | Partial | `RsTurn`, budgets, attacks and selected reactions | Complete actions, triggers, ready/interrupt/order semantics, M3 |
-| CORE-MOVEMENT | Movement and Position pp.14-15 | Partial | Grid movement, difficult terrain, pushes | All movement modes, sizes, reach, grapple and geometry contracts, M3 |
+| CORE-CHECKS | D20 Tests, proficiency pp.6-9 | Partial | Shared saving throws across combat executors; ability checks from explicit skill/tool training, expertise and Passive Perception (`ability-checks`, `check-training`); Help assistance ([checks](../verification/srd-ability-checks-2026-11-08/README.md), [saves](../verification/srd-saving-throws-2026-11-08/README.md), [Help](../verification/srd-help-2026-11-08/README.md)) | Geometry, full grant/build legality and remaining class/order bonuses, #13039/#13044 |
+| CORE-ACTIONS | Actions/combat pp.9-18 | Partial | `RsTurn` budgets; shared Dash, Disengage, Dodge, Help; opportunity triggers/attacks with reach and departure order; typed stat-block melee attacks; reaction slots and frames on the true turn ([Dash](../verification/srd-dash-2026-11-08/README.md), [Disengage](../verification/srd-disengage-2026-11-08/README.md), [opportunity](../verification/srd-opportunity-attack-2026-11-08/README.md), [strike reactions](../verification/srd-strike-reactions-2026-11-08/README.md)) | Ready, other actions, full trigger ordering and world controls, #13040/#13046 |
+| CORE-MOVEMENT | Movement and Position pp.14-15 | Partial | Grid movement with current-Speed walking credit, difficult terrain, crawling/Prone standing, pushes; physical controller uses the same rates ([movement credit](../verification/srd-movement-credit-2026-11-08/README.md), [physical scale](../verification/srd-physical-scale-2026-11-08/README.md)) | Special speeds, jumps, sizes, grapple and geometry contracts, #13040 |
 | CORE-VISIBILITY | Playing the Game and Rules Glossary | Partial | Selected condition-based attack modifiers | Cover, hiding, obscuration, perception and targeting integration, M3 |
-| CORE-CONDITIONS | Rules Glossary pp.176-191 | Partial | All 15 named bits; selected enforced behaviors | Each condition's clauses, Exhaustion levels, stacking/lifecycle, M3 |
-| CORE-HP | Damage/healing/death pp.15-18 | Partial | `rs_hurt`, `rs_heal`, `rs_death_save`; embedded checks | Full interaction and source-clause fixtures, M3 |
-| CORE-REST | Rules Glossary, class recovery rules | Partial | Uses/maxima and selected recovery features | Short/long rests, Hit Dice, limits and recovery effects, M3/M5 |
+| CORE-CONDITIONS | Rules Glossary pp.176-191 | Partial | All 15 named bits; shared condition permissions (movement/action/initiative), attack/save/critical/damage outcomes, cumulative Exhaustion levels, incapacitation interrupting sustained effects ([permissions](../verification/srd-condition-permissions-2026-11-08/README.md), [rolls](../verification/srd-condition-rolls-2026-11-08/README.md), [Exhaustion](../verification/srd-exhaustion-2026-11-08/README.md)) | Remaining clauses, stacking/lifecycle qualification, #13039 |
+| CORE-HP | Damage/healing/death pp.15-18 | Partial | Shared hit points, simultaneous save damage, death saves with bonuses, first aid stabilization and timed stable recovery ([HP](../verification/srd-hit-points-2026-11-08/README.md), [death saves](../verification/srd-death-saves-2026-11-08/README.md), [stabilization](../verification/srd-stabilization-2026-11-08/README.md)) | Healer's Kit, knockout and full interaction fixtures, #13039 |
+| CORE-REST | Rules Glossary, class recovery rules | Partial | Short Rest with Hit Dice, class recovery and activity interruption; Long Rest resource bank, state and timing boundaries; natural sleep through the shared Unconscious lifecycle ([Short Rest](../verification/srd-short-rest-2026-11-08/README.md), [activity](../verification/srd-rest-activity-2026-11-08/README.md), [Long Rest](../verification/srd-long-rest-state-2026-11-08/README.md), [sleep](../verification/srd-rest-sleep-2026-11-08/README.md)) | Long Rest completion/HP restoration, rest-start controls, other interruption producers and world reconnect, #13040 ([remaining contract](long-rest-implementation.md)) |
 | CAST-ACCESS | Classes and Gaining Spells pp.104-105 | Partial | Shared class eligibility/grants plus canonical cantrip/prepared selections, class limits and Wizard spellbook membership; CAST-CLASS and CAST-PREPARED pass ([selection evidence](../verification/srd-spell-selection-2026-11-08/README.md)) | Full source-feature/origin grant provenance and legal rest/level-up/copying workflows, #13038/#13044 |
-| CAST-COMPONENTS | Casting Spells pp.104-106 | Missing | Display strings, no complete component state | V/S/M, focus/pouch, cost, consumption, rituals/long casts, M2/M3 |
+| CAST-COMPONENTS | Casting Spells pp.104-106 | Partial | V/S/M, price and consumption flags for all 339 records; ordinary, Reaction and empty-target casts check speech, hands, focus or pouch and exact material receipts before costs ([evidence](../verification/srd-components-2026-11-08/README.md)) | Equipment/held-object state, target-dependent quantities, feature waivers, rituals/long casts and world controls, #13038/#13044/#13045 |
 | CAST-TARGETS | Casting Spells pp.105-106 | Partial | Shared target/Self policy plus explicit creature recipients, base-one upcasts and per-ray assignments with whole-list preflight; CAST-CHOSEN-TARGETS passes | Object/visibility/point workflows and world request adoption remain under #13038/#13043/#13046 |
 | CAST-RESOURCES | Spell slots/casting rules pp.104-106 | Partial | Slot checks and turn budgets; unknown executable IDs and malformed cantrip slots now refuse atomically ([evidence](../verification/srd-casting-request-2026-11-08/README.md)); four admission probes pass | Preparation, full free-cast restrictions, transactional preflight, M3 |
 | CAST-CONCENTRATION | Rules Glossary Concentration | Partial | Concentration saves, replacement and expiration | Full interruption, overlapping effects and duration fixtures, M3/M4 |
@@ -95,8 +96,8 @@ named below are selected evidence only, not exhaustive qualification.
 | CONTENT-TOOLBOX | Gameplay Toolbox pp.192-203 | Missing | No complete shared catalog/executor identified | Travel, curses/contagions, environment, stress, poisons, traps and encounter rules, M2/M5 |
 | CONTENT-ITEMS | Magic Items pp.204-253 | Missing | No complete shared catalog/executor identified | All items, attunement, charges, activation and effects, M2/M5 |
 | CONTENT-MONSTERS | Monsters p.254 onward, Animals p.344 onward | Partial | Selected NPCs, Skeleton and Zombie; siege mixes aren't source catalog entries | All stat blocks, traits/actions/reactions and source IDs, M2/M5 |
-| TIME-ADAPTERS | Spec one ruleset two clocks | Partial | Staggered initiative, 6s rounds, faster beats/recharge | Explicit turn controller and matched-logical-turn fixtures, M6 |
-| WORLD-PROFILES | Spec World tweaks | Partial | `house` flags; adapter-level grants/free budgets | Profile parser/validation, shared application and strict-default isolation, M6 |
+| TIME-ADAPTERS | Spec one ruleset two clocks | Partial | Declared `RS_STRICT_TIMING` and `RS_ACTION_TIMING`, sealed at first use; durations such as Shield and Dodge retire on the actual turn ([timing profiles](timing-profiles.md), [evidence](../verification/srd-timing-2026-11-08/README.md)) | Explicit turn controller and matched-logical-turn fixtures, M6 |
+| WORLD-PROFILES | Spec World tweaks | Partial | `house` records; declared timing profiles and `RS_PAID_PRESS`/`RS_UNLIMITED_PRESS` press costs; Everglade II's named social profile ([timing profiles](timing-profiles.md)) | Profile format/validation, remaining cost/material/grant/damage tweaks, shared application and strict-default isolation, #13045/M6 |
 | WORLD-MIGRATION | Spec engine home and record consumers | Partial | Everglade/5E Lab load `battle`; Stair loads old combat rules | Remove duplicate rules/numbers; migrate Stair; preserve declared play, M7 |
 | SURFACE-LOOKS | Spec Presentation | Partial | World effect libraries and hotbars | Default look for every spell, per-world custom/default report, M7 |
 | SURFACE-RECORDS | Spec Formats | Partial | Cards and world text exist | All spellbook/cards/index/accessible/voice/agent surfaces from same records, M7 |
@@ -124,7 +125,16 @@ active witness fails, so a new regression is not hidden behind the known one.
 It refuses (exit 2) when every probe is parked. Parking is not completion and
 `--active` passing is not compliance; the strict command remains the record.
 The measured count is tallied from the reports, so adding a probe needs only its
-`sc_report` line. These are executable regression predicates,
+`sc_report` line.
+
+For the active spell slice (#13043), `coax/web/tool.sh aethyr/rules/srd/spell-coverage.coax`
+counts, per base class table, the cantrips and 1st-3rd level spells that have
+an executable effect program mapped to their canonical entry (`--list` prints
+one row per spell; `--max-level N` widens it). Baseline at this change: 43 of
+the 183 distinct spells at levels 0-3 have an executor and 140 are source text
+only (Wizard 19/109, Sorcerer 18/83, Druid 17/63, Bard 11/72, Cleric 11/58,
+Warlock 9/40, Ranger 7/40, Paladin 5/30). An executor is not qualification:
+it does not show that every mechanical clause of the spell is implemented. These are executable regression predicates,
 not `#test` assertions that bugs should remain. The first command's ordinary
 checks guard working boundaries and free-capacity controls. Fixes change a
 predicate to PASS without deleting an expected-failure exemption.
