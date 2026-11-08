@@ -16,6 +16,25 @@ rs_rest_die_valid :: (sides:int)->bool #effects(all) {
   for sides:0..<22 { #assert rs_rest_die_valid(sides)==expected[sides]; }
 }
 
+// Here as well as in short-rest-checks.coax: engine.coax loads this #authority
+// file, so every entry that loads the engine (spells.coax, its documented test
+// entry) needs these procedures exercised without the battle checks.
+#test "class Hit Dice follow the class tables and seed exactly once for legal levels" {
+  // SRD 5.2.1 class tables, indexed by RS_ class number (5 is RS_MONSTER).
+  sizes:=[13]int.[8,6,8,12,8,0,8,8,10,10,10,8,6];
+  #assert rs_class_hit_die(-1)==0 && rs_class_hit_die(13)==0;
+  for klass:0..<13 { #assert rs_class_hit_die(klass)==sizes[klass]; }
+  for klass:-1..<14 { for level:[6]int.[-1,0,1,2,20,21] {
+    c:[1]RsCreature; c[0].klass=klass; c[0].level=level; rs_rest_seed(c[..]);
+    valid:=klass>=0 && klass<13 && klass!=RS_MONSTER && level>=1 && level<=20;
+    #assert c[0].rest.seeded && c[0].rest.die==(ifx valid then sizes[klass] else 0);
+    #assert c[0].rest.dice==(ifx valid then level else 0) && c[0].rest.dice_max==c[0].rest.dice;
+    // Seeding again never refills spent dice or changes the maximum.
+    c[0].rest.dice=0; c[0].level=level+1; rs_rest_seed(c[..]);
+    #assert c[0].rest.dice==0 && c[0].rest.dice_max==(ifx valid then level else 0);
+  } }
+}
+
 rs_class_hit_die :: (klass:int)->int #effects(all) {
   if klass==RS_BARBARIAN { return 12; }
   if klass==RS_FIGHTER || klass==RS_PALADIN || klass==RS_RANGER { return 10; }
