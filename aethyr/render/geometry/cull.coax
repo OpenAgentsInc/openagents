@@ -1,9 +1,9 @@
 // Cluster culling on the GPU (GitHub #13008, Valley Lab step 6), learned from Solstice's
 // shaders/vg/cull.wgsl (docs/verse/2026-11-07-solstice-comparison.md). These procedures are the
-// compute and draw entries of apps/openagents-web/gpu/cull.coax and gpu/clusters.coax, which
+// compute and draw entries of apps/openagents-web/gpu/cull.coax and gpu/cull-draw.coax, which
 // `coax wgsl` writes as WGSL; here they run on the CPU, one invocation at a time, for the checks.
 //
-// A frame, as coax/web/cull-host.js runs it:
+// A frame, as coax/web/cull-lab.js runs it:
 //   1. cl_cull_one, one invocation per cluster: the draw rule of aethyr/render/geometry/dag.coax
 //      over the installed pages, then the frustum, then last frame's depth pyramid. A cluster
 //      that passes goes on the first draw list; one the pyramid hides goes on the retest list.
@@ -14,12 +14,14 @@
 //   4. cl_cull_two over the retest list against the new pyramid: what it no longer hides goes on
 //      the second draw list, drawn as 2 was.
 // Requests are read back without blocking and go to the residency module (residency.coax).
+// A shadow view runs cl_cull_shadow first: its casters' page requests, weighted by CL_WEIGHT.
+// Each drawn cluster also writes its texture's wanted mip after the page entries (cl_texture).
 // A pyramid built from part of the frame only hides less, so testing next frame's first phase
 // against it is conservative.
 //   coax/bin/coax test aethyr/render/geometry/cull.coax --library
 #load "../../../verse/gpu/shader.coax";
 
-// The uniform block, 88 floats (22 vec4s).
+// The uniform block, 92 floats (23 vec4s).
 CL_M :: 0;          // world to clip, 16 floats by columns (WebGPU depth: 0 near, 1 far)
 CL_EYE :: 16;       // the eye, 3 floats
 CL_T :: 19;         // the tolerance: error over distance (pixels times the view's radians a pixel)
@@ -33,14 +35,20 @@ CL_PLANES :: 28;    // six planes, each (normal, d): inside where dot(normal, p)
 CL_OFFSET :: 52;    // each level's first float in the pyramid
 CL_WIDTH :: 64;     // each level's width
 CL_HEIGHT :: 76;    // each level's height
-CL_FLOATS :: 88;
+CL_SHADOW_D :: 88;  // 0 for the camera; for a shadow view (orthographic), the distance its error is over
+CL_WEIGHT :: 89;    // how much this view's page requests count: 1 for the camera, less for a shadow view
+CL_PIXEL :: 90;     // the view's radians a pixel, for texture demand
+CL_MIPS :: 91;      // mip levels a texture has
+CL_FLOATS :: 92;
 CL_MAX_LEVELS :: 12;
 
 // A cluster's words in info.
 CI_PAGE :: 0; CI_CHILD :: 1; CI_FIRST :: 2; CI_COUNT :: 3; CI_ERROR :: 4; CI_PARENT_ERROR :: 5; CI_LEVEL :: 6; CI_ROOT :: 7;
 CI_WORDS :: 8;
 CL_NO_PAGE :: 0xFFFFFFFF;   // CI_CHILD of a finest cluster
-// A cluster's vec4s in data: its own sphere, its parent's, then its own box (min, max).
+// A cluster's vec4s in data: its own sphere, its parent's, then its own box (min, max). The box's
+// w words carry its texture: low.w its UV density (texels a metre at mip 0, in quarter octaves),
+// high.w its texture (-1: none).
 CD_SELF :: 0; CD_PARENT :: 1; CD_LOW :: 2; CD_HIGH :: 3; CD_WORDS :: 4;
 // The draws buffer: two drawIndirect argument sets, then counters.
 CW_DRAW1 :: 0; CW_DRAW2 :: 4; CW_RETEST :: 8; CW_LOD :: 9; CW_FRUSTUM :: 10; CW_HIDDEN1 :: 11; CW_HIDDEN2 :: 12; CW_WORDS :: 16;
@@ -58,6 +66,7 @@ CL_FAR :: 1.0e30;
 // a root's parent.
 cl_seen :: (error:f32,s:V4,u:[]f32)->f32 {
   if error>=CL_NONE {return CL_FAR;}
+  if u[CL_SHADOW_D]>0.0f32 {return error/u[CL_SHADOW_D];}
   dx:=u[CL_EYE]-s.x;dy:=u[CL_EYE+1]-s.y;dz:=u[CL_EYE+2]-s.z;
   d:=sqrt(dx*dx+dy*dy+dz*dz)-s.w;
   if d<=0.000001f32 {return CL_FAR;}
@@ -135,17 +144,43 @@ cl_cull_one :: (i:u32,u:[]f32,data:[]V4,info:[]u32,installed:[]u32,requests:[]u3
     lists[CL_FLAGS*n+c]=CF_LOD|CF_HIDDEN1;return;
   }
   k:=gpu_atomic_add(draws,CW_DRAW1+1,1);lists[CL_LIST1*n+cast(int)k]=cast(u32)c;
-  cl_want(c,u,data,info,requests);
+  cl_want(c,u,data,info,requests);cl_texture(c,u,data,requests);
   lists[CL_FLAGS*n+c]=CF_LOD|CF_DRAW1;
 }
+// A priority weighted by the view's CL_WEIGHT: still 2 and up, so it still loads.
+cl_weigh :: (p:u32,u:[]f32)->u32 {return 2+cast(u32)(cast(f32)(p-2)*u[CL_WEIGHT]);}
 // A drawn cluster's requests: its page, and the page under it when it is too coarse.
 cl_want :: (c:int,u:[]f32,data:[]V4,info:[]u32,requests:[]u32) {
   t:=u[CL_T];page:=cast(int)info[c*CI_WORDS+CI_PAGE];
-  _:=gpu_atomic_max(requests,page,cl_priority(cl_seen(f32_from_bits(info[c*CI_WORDS+CI_PARENT_ERROR]),data[c*CD_WORDS+CD_PARENT],u),t));
+  _:=gpu_atomic_max(requests,page,cl_weigh(cl_priority(cl_seen(f32_from_bits(info[c*CI_WORDS+CI_PARENT_ERROR]),data[c*CD_WORDS+CD_PARENT],u),t),u));
   child:=info[c*CI_WORDS+CI_CHILD];
   if child==CL_NO_PAGE {return;}
   seen:=cl_seen(f32_from_bits(info[c*CI_WORDS+CI_ERROR]),data[c*CD_WORDS+CD_SELF],u);
-  if seen>t {_=gpu_atomic_max(requests,cast(int)child,cl_priority(seen,t));}
+  if seen>t {_=gpu_atomic_max(requests,cast(int)child,cl_weigh(cl_priority(seen,t),u));}
+}
+// The mip a drawn cluster's texture needs: its texels a pixel at the nearest point of its sphere
+// are density x distance x the pixel's radians, and mip m holds 2^m of them. Written after the
+// page entries as CL_MIPS - mip (atomicMax keeps the finest wanted; 0: not drawn).
+cl_mip :: (c:int,u:[]f32,data:[]V4)->int {
+  s:=data[c*CD_WORDS+CD_SELF];
+  dx:=u[CL_EYE]-s.x;dy:=u[CL_EYE+1]-s.y;dz:=u[CL_EYE+2]-s.z;
+  d:=fmax(sqrt(dx*dx+dy*dy+dz*dz)-s.w,0.0001f32);
+  f:=data[c*CD_WORDS+CD_LOW].w*d*u[CL_PIXEL];mip:=0;mips:=cast(int)u[CL_MIPS];
+  while f>=2.0f32 && mip<mips-1 {f=f*0.5f32;mip+=1;}
+  return mip;
+}
+cl_texture :: (c:int,u:[]f32,data:[]V4,requests:[]u32) {
+  tex:=data[c*CD_WORDS+CD_HIGH].w;
+  if tex<0.0f32 || u[CL_MIPS]<1.0f32 {return;}
+  _:=gpu_atomic_max(requests,cast(int)u[CL_PAGES]+cast(int)tex,cast(u32)(cast(int)u[CL_MIPS]-cl_mip(c,u,data)));
+}
+// A shadow view, one invocation per cluster: the draw rule and the light's frustum, then the
+// page requests a drawn cluster makes, weighted by CL_WEIGHT. It draws nothing here and wants no
+// textures; pages it alone wants still load, after the camera's.
+cl_cull_shadow :: (i:u32,u:[]f32,data:[]V4,info:[]u32,installed:[]u32,requests:[]u32) {
+  c:=cast(int)i;
+  if c>=cast(int)u[CL_N] || !cl_lod(c,u,data,info,installed) || cl_outside(data[c*CD_WORDS+CD_LOW],data[c*CD_WORDS+CD_HIGH],u) {return;}
+  cl_want(c,u,data,info,requests);
 }
 // Phase 2: retest entry i against the pyramid of this frame's first draw.
 cl_cull_two :: (i:u32,u:[]f32,data:[]V4,info:[]u32,requests:[]u32,draws:[]u32,lists:[]u32,hiz:[]f32) {
@@ -156,7 +191,7 @@ cl_cull_two :: (i:u32,u:[]f32,data:[]V4,info:[]u32,requests:[]u32,draws:[]u32,li
     _:=gpu_atomic_add(draws,CW_HIDDEN2,1);lists[CL_FLAGS*n+c]=lists[CL_FLAGS*n+c]|CF_HIDDEN2;return;
   }
   j:=gpu_atomic_add(draws,CW_DRAW2+1,1);lists[CL_LIST2*n+cast(int)j]=cast(u32)c;
-  cl_want(c,u,data,info,requests);
+  cl_want(c,u,data,info,requests);cl_texture(c,u,data,requests);
   lists[CL_FLAGS*n+c]=lists[CL_FLAGS*n+c]|CF_DRAW2;
 }
 // Pyramid level 0, texel i: the farthest of the 2x2 depth texels under it.
@@ -205,6 +240,7 @@ cl_fixture :: (u:[]f32,data:[]V4,info:[]u32) {
   for k:0..<CL_FLOATS {u[k]=0.0f32;}
   u[CL_M]=1.0f32;u[CL_M+5]=1.0f32;u[CL_M+10]=1.0f32;u[CL_M+15]=1.0f32;
   u[CL_EYE+2]=-10.0f32;u[CL_T]=0.01f32;u[CL_N]=2.0f32;u[CL_PAGES]=2.0f32;
+  u[CL_WEIGHT]=1.0f32;   // the camera's; CL_MIPS 0: no texture demand
   for k:0..<6 {u[CL_PLANES+k*4+3]=1000.0f32;}
   // the root: made from page 1's clusters (its child page), error 0.5
   info[CI_PAGE]=0;info[CI_CHILD]=1;info[CI_FIRST]=0;info[CI_COUNT]=4;info[CI_ERROR]=f32_bits(0.5f32);info[CI_PARENT_ERROR]=f32_bits(1000000000.0f32);info[CI_LEVEL]=1;info[CI_ROOT]=1;
@@ -220,6 +256,35 @@ cl_run :: (u:[]f32,data:[]V4,info:[]u32,installed:[]u32,requests:[]u32,draws:[]u
   for k:0..<CW_WORDS {draws[k]=0;}
   draws[CW_DRAW1]=CL_VERTS;draws[CW_DRAW2]=CL_VERTS;
   for i:0..<cast(int)u[CL_N] {cl_cull_one(cast(u32)i,u,data,info,installed,requests,draws,lists,hiz);}
+}
+#test "texture demand: each drawn cluster's texture wants the mip its nearest texels a pixel give, the finest kept" {
+  u:[CL_FLOATS] f32;data:[8] V4;info:[16] u32;cl_fixture(u[..],data[..],info[..]);
+  // 256 texels a metre, 0.001 radians a pixel: from 10 m (9 from the sphere) 2.3 texels a pixel, mip 1
+  u[CL_PIXEL]=0.001f32;u[CL_MIPS]=8;data[CD_LOW].w=256;data[CD_HIGH].w=1;data[CD_WORDS+CD_LOW].w=256;data[CD_WORDS+CD_HIGH].w=0;
+  #assert cl_mip(0,u[..],data[..])==1;
+  u[CL_EYE+2]=-1.5f32;#assert cl_mip(0,u[..],data[..])==0;          // close: mip 0
+  u[CL_EYE+2]=-500.0f32;#assert cl_mip(0,u[..],data[..])==6;        // 127 texels a pixel
+  u[CL_EYE+2]=-100000.0f32;#assert cl_mip(0,u[..],data[..])==7;     // never past the last mip
+  installed:=[2] u32.[1,0];requests:[4] u32;draws:[CW_WORDS] u32;lists:[8] u32;hiz:[1] f32;
+  u[CL_EYE+2]=-10.0f32;cl_run(u[..],data[..],info[..],installed[..],requests[..],draws[..],lists[..],hiz[..]);
+  #assert requests[2]==0 && requests[3]==7;                          // the root's texture (1): 8 - mip 1; texture 0 undrawn
+  data[CD_HIGH].w=-1;cl_run(u[..],data[..],info[..],installed[..],requests[..],draws[..],lists[..],hiz[..]);
+  #assert requests[2]==0 && requests[3]==0;                          // no texture, no demand
+}
+#test "a shadow view asks for the pages its casters need, weighted, and nothing outside the light" {
+  u:[CL_FLOATS] f32;data:[8] V4;info:[16] u32;cl_fixture(u[..],data[..],info[..]);
+  installed:=[2] u32.[1,0];requests:[2] u32;
+  // orthographic: the error is over a fixed 1 m, the tolerance is a texel's 0.1 m: the root (0.5) is too coarse
+  u[CL_SHADOW_D]=1;u[CL_T]=0.1f32;
+  cl_cull_shadow(0,u[..],data[..],info[..],installed[..],requests[..]);
+  full:=requests[1];#assert requests[0]>=2 && full==cl_priority(0.5f32,0.1f32);
+  requests[0]=0;requests[1]=0;u[CL_WEIGHT]=0.25f32;cl_cull_shadow(0,u[..],data[..],info[..],installed[..],requests[..]);
+  #assert requests[1]==2+(full-2)/4 && requests[1]>=2;               // weighted, still a load
+  requests[1]=0;u[CL_EYE+2]=-100000.0f32;cl_cull_shadow(0,u[..],data[..],info[..],installed[..],requests[..]);
+  #assert requests[1]==2+(full-2)/4;                                // the light's choice doesn't move with the eye
+  requests[0]=0;requests[1]=0;u[CL_PLANES]=1;u[CL_PLANES+3]=-2;     // inside where x >= 2: the cluster isn't lit
+  cl_cull_shadow(0,u[..],data[..],info[..],installed[..],requests[..]);#assert requests[0]==0 && requests[1]==0;
+  cl_cull_shadow(5,u[..],data[..],info[..],installed[..],requests[..]);#assert requests[0]==0;   // past the clusters
 }
 #test "the draw rule: the root until its page's children are in and it is too coarse, then the children" {
   u:[CL_FLOATS] f32;data:[8] V4;info:[16] u32;cl_fixture(u[..],data[..],info[..]);

@@ -1,0 +1,3753 @@
+{
+ "adapter": "apple metal-3",
+ "load": {
+  "fetches": 72,
+  "bytes": 311411,
+  "refused": 0
+ },
+ "lod": [
+  {
+   "scene": 0,
+   "view": 0,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 1,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 2,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 3,
+   "chosen": 54,
+   "expected": 54,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 4,
+   "chosen": 29,
+   "expected": 29,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 5,
+   "chosen": 46,
+   "expected": 46,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 6,
+   "chosen": 52,
+   "expected": 52,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 0,
+   "view": 7,
+   "chosen": 46,
+   "expected": 46,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 1,
+   "view": 0,
+   "chosen": 71,
+   "expected": 71,
+   "near": 0,
+   "mismatched": 0
+  },
+  {
+   "scene": 1,
+   "view": 1,
+   "chosen": 63,
+   "expected": 63,
+   "near": 0,
+   "mismatched": 0
+  }
+ ],
+ "textures": [
+  {
+   "scene": 0,
+   "view": 0,
+   "wanted": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ],
+   "expected": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  {
+   "scene": 0,
+   "view": 1,
+   "wanted": [
+    10,
+    0,
+    0,
+    10,
+    10,
+    10
+   ],
+   "expected": [
+    10,
+    0,
+    0,
+    10,
+    10,
+    10
+   ]
+  },
+  {
+   "scene": 0,
+   "view": 2,
+   "wanted": [
+    10,
+    10,
+    10,
+    0,
+    10,
+    0
+   ],
+   "expected": [
+    10,
+    10,
+    10,
+    0,
+    10,
+    0
+   ]
+  },
+  {
+   "scene": 0,
+   "view": 3,
+   "wanted": [
+    10,
+    10,
+    10,
+    9,
+    9,
+    10
+   ],
+   "expected": [
+    10,
+    10,
+    10,
+    9,
+    9,
+    10
+   ]
+  },
+  {
+   "scene": 0,
+   "view": 4,
+   "wanted": [
+    9,
+    8,
+    8,
+    8,
+    8,
+    8
+   ],
+   "expected": [
+    9,
+    8,
+    8,
+    8,
+    8,
+    8
+   ]
+  },
+  {
+   "scene": 0,
+   "view": 5,
+   "wanted": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ],
+   "expected": [
+    10,
+    10,
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  {
+   "scene": 0,
+   "view": 6,
+   "wanted": [
+    10,
+    10,
+    10,
+    0,
+    10,
+    10
+   ],
+   "expected": [
+    10,
+    10,
+    10,
+    0,
+    10,
+    10
+   ]
+  },
+  {
+   "scene": 0,
+   "view": 7,
+   "wanted": [
+    10,
+    0,
+    10,
+    10,
+    10,
+    10
+   ],
+   "expected": [
+    10,
+    0,
+    10,
+    10,
+    10,
+    10
+   ]
+  },
+  {
+   "scene": 1,
+   "view": 0,
+   "wanted": [
+    9,
+    9
+   ],
+   "expected": [
+    9,
+    9
+   ]
+  },
+  {
+   "scene": 1,
+   "view": 1,
+   "wanted": [
+    10,
+    10
+   ],
+   "expected": [
+    10,
+    10
+   ]
+  }
+ ],
+ "coverage": [
+  {
+   "view": 0,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 0,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 0,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 1,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 26,
+   "hidden1": 0,
+   "drawn1": 28,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 1,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 26,
+   "hidden1": 0,
+   "drawn1": 28,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 1,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 26,
+   "hidden1": 0,
+   "drawn1": 28,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 2,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 38,
+   "hidden1": 0,
+   "drawn1": 16,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 2,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 38,
+   "hidden1": 0,
+   "drawn1": 16,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 2,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0
+   ],
+   "lod": 54,
+   "frustum": 38,
+   "hidden1": 0,
+   "drawn1": 16,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 6,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 52,
+   "frustum": 27,
+   "hidden1": 0,
+   "drawn1": 25,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 6,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 52,
+   "frustum": 27,
+   "hidden1": 0,
+   "drawn1": 25,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 6,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 52,
+   "frustum": 27,
+   "hidden1": 0,
+   "drawn1": 25,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 7,
+   "frame": 0,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 46,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 23,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 7,
+   "frame": 1,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 46,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 23,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  {
+   "view": 7,
+   "frame": 2,
+   "uncovered": 0,
+   "levels": [
+    0,
+    1
+   ],
+   "lod": 46,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 23,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  }
+ ],
+ "residency": {
+  "pages": 30,
+  "slots": 30,
+  "frames": [
+   {
+    "view": 0,
+    "frame": 0,
+    "installed": 0,
+    "installsNow": 0,
+    "drawn": 0,
+    "lod": 0,
+    "mismatched": 54,
+    "uncovered": null,
+    "counts": [
+     0,
+     1,
+     0,
+     0,
+     0,
+     30
+    ],
+    "wants": 0
+   },
+   {
+    "view": 0,
+    "frame": 1,
+    "installed": 0,
+    "installsNow": 1,
+    "drawn": 0,
+    "lod": 0,
+    "mismatched": 54,
+    "uncovered": null,
+    "counts": [
+     0,
+     0,
+     1,
+     0,
+     0,
+     29
+    ],
+    "wants": 0
+   },
+   {
+    "view": 0,
+    "frame": 2,
+    "installed": 1,
+    "installsNow": 0,
+    "drawn": 1,
+    "lod": 1,
+    "mismatched": 55,
+    "uncovered": 0,
+    "counts": [
+     0,
+     1,
+     1,
+     0,
+     0,
+     29
+    ],
+    "wants": 2
+   },
+   {
+    "view": 0,
+    "frame": 3,
+    "installed": 1,
+    "installsNow": 1,
+    "drawn": 1,
+    "lod": 1,
+    "mismatched": 55,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     2,
+     0,
+     0,
+     28
+    ],
+    "wants": 2
+   },
+   {
+    "view": 0,
+    "frame": 4,
+    "installed": 2,
+    "installsNow": 0,
+    "drawn": 2,
+    "lod": 2,
+    "mismatched": 56,
+    "uncovered": 0,
+    "counts": [
+     0,
+     1,
+     2,
+     0,
+     0,
+     28
+    ],
+    "wants": 2
+   },
+   {
+    "view": 0,
+    "frame": 5,
+    "installed": 2,
+    "installsNow": 1,
+    "drawn": 2,
+    "lod": 2,
+    "mismatched": 56,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     3,
+     0,
+     0,
+     27
+    ],
+    "wants": 2
+   },
+   {
+    "view": 0,
+    "frame": 6,
+    "installed": 3,
+    "installsNow": 0,
+    "drawn": 4,
+    "lod": 4,
+    "mismatched": 58,
+    "uncovered": 0,
+    "counts": [
+     0,
+     2,
+     3,
+     0,
+     0,
+     27
+    ],
+    "wants": 3
+   },
+   {
+    "view": 0,
+    "frame": 7,
+    "installed": 3,
+    "installsNow": 2,
+    "drawn": 4,
+    "lod": 4,
+    "mismatched": 58,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     5,
+     0,
+     0,
+     25
+    ],
+    "wants": 3
+   },
+   {
+    "view": 0,
+    "frame": 8,
+    "installed": 5,
+    "installsNow": 0,
+    "drawn": 7,
+    "lod": 7,
+    "mismatched": 61,
+    "uncovered": 0,
+    "counts": [
+     0,
+     4,
+     5,
+     0,
+     0,
+     25
+    ],
+    "wants": 6
+   },
+   {
+    "view": 0,
+    "frame": 9,
+    "installed": 5,
+    "installsNow": 4,
+    "drawn": 7,
+    "lod": 7,
+    "mismatched": 61,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     9,
+     0,
+     0,
+     21
+    ],
+    "wants": 6
+   },
+   {
+    "view": 0,
+    "frame": 10,
+    "installed": 9,
+    "installsNow": 0,
+    "drawn": 14,
+    "lod": 14,
+    "mismatched": 68,
+    "uncovered": 0,
+    "counts": [
+     0,
+     4,
+     9,
+     3,
+     0,
+     21
+    ],
+    "wants": 11
+   },
+   {
+    "view": 0,
+    "frame": 11,
+    "installed": 9,
+    "installsNow": 4,
+    "drawn": 14,
+    "lod": 14,
+    "mismatched": 68,
+    "uncovered": 0,
+    "counts": [
+     0,
+     3,
+     13,
+     0,
+     0,
+     17
+    ],
+    "wants": 11
+   },
+   {
+    "view": 0,
+    "frame": 12,
+    "installed": 13,
+    "installsNow": 3,
+    "drawn": 20,
+    "lod": 22,
+    "mismatched": 76,
+    "uncovered": 0,
+    "counts": [
+     0,
+     4,
+     16,
+     6,
+     0,
+     14
+    ],
+    "wants": 20
+   },
+   {
+    "view": 0,
+    "frame": 13,
+    "installed": 16,
+    "installsNow": 4,
+    "drawn": 24,
+    "lod": 27,
+    "mismatched": 81,
+    "uncovered": 0,
+    "counts": [
+     0,
+     4,
+     20,
+     6,
+     0,
+     10
+    ],
+    "wants": 21
+   },
+   {
+    "view": 0,
+    "frame": 14,
+    "installed": 20,
+    "installsNow": 4,
+    "drawn": 24,
+    "lod": 35,
+    "mismatched": 57,
+    "uncovered": 0,
+    "counts": [
+     0,
+     4,
+     24,
+     2,
+     0,
+     6
+    ],
+    "wants": 20
+   },
+   {
+    "view": 0,
+    "frame": 15,
+    "installed": 24,
+    "installsNow": 4,
+    "drawn": 26,
+    "lod": 43,
+    "mismatched": 33,
+    "uncovered": 0,
+    "counts": [
+     0,
+     2,
+     28,
+     0,
+     0,
+     2
+    ],
+    "wants": 18
+   },
+   {
+    "view": 0,
+    "frame": 16,
+    "installed": 28,
+    "installsNow": 2,
+    "drawn": 29,
+    "lod": 50,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 15
+   },
+   {
+    "view": 0,
+    "frame": 17,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 0,
+    "frame": 18,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 0,
+    "frame": 19,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 0,
+    "frame": 20,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 0,
+    "frame": 21,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 0,
+    "frame": 22,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 0,
+    "frame": 23,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 31,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 6,
+    "frame": 0,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 1,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 2,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 3,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 4,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 5,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 6,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 7,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 8,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 9,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 10,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 11,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 12,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 13,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 14,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 15,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 16,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 17,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 18,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 19,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 20,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 21,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 22,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 6,
+    "frame": 23,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 25,
+    "lod": 52,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     1
+    ],
+    "wants": 9
+   },
+   {
+    "view": 3,
+    "frame": 0,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 54,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 14
+   },
+   {
+    "view": 3,
+    "frame": 1,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 2,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 3,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 4,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 5,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 6,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 7,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 8,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 9,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 10,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 11,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 12,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 13,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 14,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 15,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 16,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 17,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 18,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 19,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 20,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 21,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 22,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 3,
+    "frame": 23,
+    "installed": 30,
+    "installsNow": 0,
+    "drawn": 47,
+    "lod": 54,
+    "mismatched": 0,
+    "uncovered": 366540,
+    "counts": [
+     0,
+     0,
+     30,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   }
+  ],
+  "views": [
+   {
+    "view": 0,
+    "stable": 17,
+    "differing": 0
+   },
+   {
+    "view": 6,
+    "stable": 0,
+    "differing": 0
+   },
+   {
+    "view": 3,
+    "stable": 0,
+    "differing": 0
+   }
+  ],
+  "installs": 30,
+  "evictions": 0,
+  "refused": 0,
+  "fetchedBytes": 147515
+ },
+ "eviction": {
+  "pages": 30,
+  "slots": 26,
+  "frames": [
+   {
+    "view": 5,
+    "frame": 0,
+    "installed": 0,
+    "installsNow": 0,
+    "drawn": 0,
+    "lod": 0,
+    "mismatched": 46,
+    "uncovered": null,
+    "counts": [
+     0,
+     1,
+     0,
+     0,
+     0,
+     26
+    ],
+    "wants": 0
+   },
+   {
+    "view": 5,
+    "frame": 1,
+    "installed": 0,
+    "installsNow": 1,
+    "drawn": 0,
+    "lod": 0,
+    "mismatched": 46,
+    "uncovered": null,
+    "counts": [
+     0,
+     0,
+     1,
+     0,
+     0,
+     25
+    ],
+    "wants": 0
+   },
+   {
+    "view": 5,
+    "frame": 2,
+    "installed": 1,
+    "installsNow": 0,
+    "drawn": 1,
+    "lod": 1,
+    "mismatched": 47,
+    "uncovered": 236266,
+    "counts": [
+     0,
+     1,
+     1,
+     0,
+     0,
+     25
+    ],
+    "wants": 2
+   },
+   {
+    "view": 5,
+    "frame": 3,
+    "installed": 1,
+    "installsNow": 1,
+    "drawn": 1,
+    "lod": 1,
+    "mismatched": 47,
+    "uncovered": 236266,
+    "counts": [
+     0,
+     0,
+     2,
+     0,
+     0,
+     24
+    ],
+    "wants": 2
+   },
+   {
+    "view": 5,
+    "frame": 4,
+    "installed": 2,
+    "installsNow": 0,
+    "drawn": 2,
+    "lod": 2,
+    "mismatched": 48,
+    "uncovered": 229163,
+    "counts": [
+     0,
+     1,
+     2,
+     0,
+     0,
+     24
+    ],
+    "wants": 2
+   },
+   {
+    "view": 5,
+    "frame": 5,
+    "installed": 2,
+    "installsNow": 1,
+    "drawn": 2,
+    "lod": 2,
+    "mismatched": 48,
+    "uncovered": 229163,
+    "counts": [
+     0,
+     0,
+     3,
+     0,
+     0,
+     23
+    ],
+    "wants": 2
+   },
+   {
+    "view": 5,
+    "frame": 6,
+    "installed": 3,
+    "installsNow": 0,
+    "drawn": 4,
+    "lod": 4,
+    "mismatched": 50,
+    "uncovered": 226874,
+    "counts": [
+     0,
+     2,
+     3,
+     0,
+     0,
+     23
+    ],
+    "wants": 3
+   },
+   {
+    "view": 5,
+    "frame": 7,
+    "installed": 3,
+    "installsNow": 2,
+    "drawn": 4,
+    "lod": 4,
+    "mismatched": 50,
+    "uncovered": 226874,
+    "counts": [
+     0,
+     0,
+     5,
+     0,
+     0,
+     21
+    ],
+    "wants": 3
+   },
+   {
+    "view": 5,
+    "frame": 8,
+    "installed": 5,
+    "installsNow": 0,
+    "drawn": 7,
+    "lod": 7,
+    "mismatched": 53,
+    "uncovered": 221739,
+    "counts": [
+     0,
+     4,
+     5,
+     0,
+     0,
+     21
+    ],
+    "wants": 6
+   },
+   {
+    "view": 5,
+    "frame": 9,
+    "installed": 5,
+    "installsNow": 4,
+    "drawn": 7,
+    "lod": 7,
+    "mismatched": 53,
+    "uncovered": 221739,
+    "counts": [
+     0,
+     0,
+     9,
+     0,
+     0,
+     17
+    ],
+    "wants": 6
+   },
+   {
+    "view": 5,
+    "frame": 10,
+    "installed": 9,
+    "installsNow": 0,
+    "drawn": 13,
+    "lod": 14,
+    "mismatched": 60,
+    "uncovered": 220639,
+    "counts": [
+     0,
+     4,
+     9,
+     3,
+     0,
+     17
+    ],
+    "wants": 11
+   },
+   {
+    "view": 5,
+    "frame": 11,
+    "installed": 9,
+    "installsNow": 4,
+    "drawn": 13,
+    "lod": 14,
+    "mismatched": 60,
+    "uncovered": 220639,
+    "counts": [
+     0,
+     3,
+     13,
+     0,
+     0,
+     13
+    ],
+    "wants": 11
+   },
+   {
+    "view": 5,
+    "frame": 12,
+    "installed": 13,
+    "installsNow": 3,
+    "drawn": 21,
+    "lod": 22,
+    "mismatched": 64,
+    "uncovered": 219408,
+    "counts": [
+     0,
+     4,
+     16,
+     5,
+     0,
+     10
+    ],
+    "wants": 19
+   },
+   {
+    "view": 5,
+    "frame": 13,
+    "installed": 16,
+    "installsNow": 4,
+    "drawn": 25,
+    "lod": 27,
+    "mismatched": 57,
+    "uncovered": 219408,
+    "counts": [
+     0,
+     4,
+     20,
+     2,
+     0,
+     6
+    ],
+    "wants": 17
+   },
+   {
+    "view": 5,
+    "frame": 14,
+    "installed": 20,
+    "installsNow": 4,
+    "drawn": 33,
+    "lod": 35,
+    "mismatched": 33,
+    "uncovered": 219074,
+    "counts": [
+     0,
+     2,
+     24,
+     0,
+     0,
+     2
+    ],
+    "wants": 17
+   },
+   {
+    "view": 5,
+    "frame": 15,
+    "installed": 24,
+    "installsNow": 2,
+    "drawn": 35,
+    "lod": 43,
+    "mismatched": 9,
+    "uncovered": 218874,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 15
+   },
+   {
+    "view": 5,
+    "frame": 16,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 17,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 18,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 19,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 7,
+    "frame": 0,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     2,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 1,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     2,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 2,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     2,
+     26,
+     0,
+     0,
+     2
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 3,
+    "installed": 26,
+    "installsNow": 2,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 4,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 5,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 6,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 7,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 8,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 9,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 10,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 11,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 12,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 13,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 14,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 15,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 16,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 17,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 18,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 19,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 4,
+    "frame": 0,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 1,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 2,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 3,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 4,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 5,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 6,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 7,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 8,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 9,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 10,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 4,
+    "frame": 11,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 29,
+    "lod": 29,
+    "mismatched": 0,
+    "uncovered": 491388,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     9
+    ],
+    "wants": 8
+   },
+   {
+    "view": 5,
+    "frame": 0,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 42,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 218839,
+    "counts": [
+     0,
+     2,
+     26,
+     0,
+     0,
+     2
+    ],
+    "wants": 15
+   },
+   {
+    "view": 5,
+    "frame": 1,
+    "installed": 26,
+    "installsNow": 2,
+    "drawn": 38,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 218839,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 15
+   },
+   {
+    "view": 5,
+    "frame": 2,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 3,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 4,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 5,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 6,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 7,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 8,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 9,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 10,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 11,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 12,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 13,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 14,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 15,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 16,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 17,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 18,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 5,
+    "frame": 19,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 37,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 218787,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 12
+   },
+   {
+    "view": 7,
+    "frame": 0,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     2,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 1,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     2,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 2,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     2,
+     26,
+     0,
+     0,
+     2
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 3,
+    "installed": 26,
+    "installsNow": 2,
+    "drawn": 23,
+    "lod": 42,
+    "mismatched": 12,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 13
+   },
+   {
+    "view": 7,
+    "frame": 4,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 5,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 6,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 7,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 8,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 9,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 10,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 11,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 12,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 13,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 14,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 15,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 16,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 17,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 18,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   },
+   {
+    "view": 7,
+    "frame": 19,
+    "installed": 26,
+    "installsNow": 0,
+    "drawn": 23,
+    "lod": 46,
+    "mismatched": 0,
+    "uncovered": 0,
+    "counts": [
+     0,
+     0,
+     26,
+     0,
+     0,
+     0
+    ],
+    "wants": 11
+   }
+  ],
+  "views": [
+   {
+    "view": 5,
+    "stable": 16,
+    "differing": 0
+   },
+   {
+    "view": 7,
+    "stable": 4,
+    "differing": 0
+   },
+   {
+    "view": 4,
+    "stable": 0,
+    "differing": 0
+   },
+   {
+    "view": 5,
+    "stable": 2,
+    "differing": 0
+   },
+   {
+    "view": 7,
+    "stable": 4,
+    "differing": 0
+   }
+  ],
+  "installs": 32,
+  "evictions": 6,
+  "refused": 0,
+  "fetchedBytes": 157216
+ },
+ "shadow": {
+  "only": 1,
+  "mixed": 0,
+  "weighed": 0,
+  "camera": {
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  "both": {
+   "lod": 54,
+   "frustum": 23,
+   "hidden1": 0,
+   "drawn1": 31,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  },
+  "lit": {
+   "lod": 0,
+   "frustum": 0,
+   "hidden1": 0,
+   "drawn1": 0,
+   "retest": 0,
+   "hidden2": 0,
+   "drawn2": 0
+  }
+ },
+ "occlusion": [
+  {
+   "view": 0,
+   "lod": 71,
+   "frustum": 0,
+   "hidden1": 40,
+   "drawn1": 31,
+   "retest": 40,
+   "hidden2": 40,
+   "drawn2": 0,
+   "differing": 0,
+   "plainDrawn": 71
+  },
+  {
+   "view": 1,
+   "lod": 63,
+   "frustum": 0,
+   "hidden1": 40,
+   "drawn1": 23,
+   "retest": 40,
+   "hidden2": 40,
+   "drawn2": 0,
+   "differing": 0,
+   "plainDrawn": 63
+  }
+ ],
+ "timing": {
+  "occlusionMs": 0.6925000001986822,
+  "plainMs": 0.5973333333929379,
+  "note": "wall time a frame, readback included"
+ },
+ "errors": []
+}

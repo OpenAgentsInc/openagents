@@ -189,7 +189,7 @@ fivelab=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
-(cd "$here/../.." && coax/web/tool.sh aethyr/tools/cull-fixture.coax "$here/build/cull-fixture.bin" > /dev/null) &
+(cd "$here/../.." && coax/web/tool.sh aethyr/tools/cull-fixture.coax "$here/build" > /dev/null) &
 cullfixture=$!
 # /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/verse/everglade2.md).
 "$here/../../coax/web/wasm.sh" "$here/everglade2.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \

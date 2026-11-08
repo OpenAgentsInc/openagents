@@ -1,49 +1,210 @@
-// The GPU cull lab's residency (GitHub #13008): the request array the cull pass writes each
-// frame (aethyr/render/geometry/cull.coax), read back by coax/web/cull-host.js, plans fetches,
-// and arrived pages install through aethyr/render/geometry/residency.coax. The installed flags
-// go back to the GPU, whose draw rule draws only installed pages. Every page's geometry is
-// already on the GPU in this lab, so a fetch arrives one frame after it starts; streaming the
-// bytes themselves is the range-addressable pack's (VPK3, #13001).
+// The GPU cull lab's streaming (GitHub #13008, #13051): the request array the cull pass writes each
+// frame (aethyr/render/geometry/cull.coax), read back by coax/web/cull-lab.js, plans fetches through
+// aethyr/render/geometry/residency.coax. Each fetch is one page of the scene's VPK3 file
+// (aethyr/forge/page-pack.coax), fetched by HTTP Range: it is inflated and admitted here by its
+// SHA-256, and only then has it arrived. A page that installs is placed in its GPU slot: its
+// triangles' vertex indices move by the slot's first vertex, and each of its clusters' first
+// triangle by the slot's first triangle, so the shaders never change. The host copies the placed
+// bytes to the slot and the clusters' new first triangles into their records, then the installed
+// flags go to the GPU, whose draw rule draws only installed pages.
+//
+// A page's bytes, little-endian 32-bit words (aethyr/tools/cull-fixture.coax writes them): the
+// page, its clusters C, triangles T and vertices V; C pairs (the cluster, its first triangle in the
+// page); V vertices (x, y, z, 1 as f32); T triangles (3 vertex indices in the page).
+//   coax/bin/coax test apps/openagents-web/cullstream.coax --library
 #load "../../aethyr/render/geometry/residency.coax";
+#load "../../aethyr/forge/page-pack.coax";
+
+CS_SLOT_TRIS :: 640;      // triangles a GPU slot holds
+CS_SLOT_VERTS :: 768;     // vertices a GPU slot holds
+CS_PAGE_CLUSTERS :: 16;   // clusters a page holds
+CS_PAGE_BYTES :: 20480;   // a page's bytes at most: 16 + 8 C + 16 V + 12 T for the limits above
+CS_IO :: 65536;           // the host's buffer: a manifest or a page's stored bytes
+CS_DONE :: 64;            // installs a frame records
 
 CullStream :: struct {
   c: [1] PageResidency; pages: int; frame: int; ok: bool;
   links: [256] int; nlinks: int;
   requests: [RES_PAGES] int; installed: [RES_PAGES] u32;
   out: [8] int; fetching: int; installs: int; evictions: int;
+  l: [1] PpkLoad; packed: bool;
+  io: [CS_IO] u8;
+  store: [RES_PAGES * CS_PAGE_BYTES] u8; held: [RES_PAGES] int;   // arrived pages' bytes, until placed again
+  done: [CS_DONE] ResInstall; ndone: int;
+  tri_out: [CS_SLOT_TRIS * 3] u32; vert_out: [CS_SLOT_VERTS * 4] f32; first_out: [CS_PAGE_CLUSTERS * 2] u32;
+  ntri: int; nvert: int; nfirst: int;
+  refused: int; fetched: int;   // pages refused, stored bytes admitted
 }
+
 // Open with `pages` pages, `slots` slots and the first nlinks pairs of links; page 0 is pinned.
 cs_open :: (s: [] CullStream, pages: int, slots: int, nlinks: int) -> bool #export_c #effects(all) {
-  s[0].frame = 0; s[0].nlinks = nlinks;
+  s[0].frame = 0; s[0].nlinks = nlinks; s[0].ndone = 0;
   s[0].ok = nlinks >= 0 && nlinks * 2 <= s[0].links.count && res_open(s[0].c[..], pages, slots, 1, 2, 8, 4, s[0].links[0..<nlinks * 2]);
   s[0].pages = ifx s[0].ok then pages else 0;
   for p: 0..<RES_PAGES { s[0].installed[p] = 0; s[0].requests[p] = 0; }
   return s[0].ok;
 }
-// A frame: last frame's fetches arrive, ready pages install, then the requests plan new fetches.
-// The installed flags are then current. The pages installed this frame, or -1 when not open.
+// The bytes of the file's start the manifest needs, from the first io[0..<n]; -1 when not VPK3.
+cs_need :: (s: [] CullStream, n: int) -> int #export_c #effects(all) {
+  if n < 0 || n > CS_IO { return -1; }
+  return ppk_need(cast(string) s[0].io[0..<n]);
+}
+// The scene's VPK3 manifest from io[0..<n]: one page a DAG page.
+cs_pack :: (s: [] CullStream, n: int) -> bool #export_c #effects(all) {
+  m: [1] PpkManifest;
+  s[0].packed = n >= 0 && n <= CS_IO && ppk_manifest(cast(string) s[0].io[0..<n], m[..]) && m[0].pages <= RES_PAGES && ppk_open(s[0].l[..], m[0]);
+  return s[0].packed;
+}
+cs_page_at :: (s: [] CullStream, k: int) -> int #export_c #effects(all) { return ifx s[0].packed && k >= 0 && k < s[0].l[0].m.pages then s[0].l[0].m.page[k].stored_at else -1; }
+cs_page_stored :: (s: [] CullStream, k: int) -> int #export_c #effects(all) { return ifx s[0].packed && k >= 0 && k < s[0].l[0].m.pages then s[0].l[0].m.page[k].stored else -1; }
+
+cs_word :: (b: string, k: int) -> int #effects(all) { return pack_u32(b, k * 4); }
+// Whether b holds page `page` within the slot's limits, every index inside it.
+cs_block_ok :: (b: string, page: int) -> bool #effects(all) {
+  if b.count < 16 || cs_word(b, 0) != page { return false; }
+  nc := cs_word(b, 1); nt := cs_word(b, 2); nv := cs_word(b, 3);
+  if nc < 1 || nc > CS_PAGE_CLUSTERS || nt < 1 || nt > CS_SLOT_TRIS || nv < 3 || nv > CS_SLOT_VERTS || b.count != 16 + 8 * nc + 16 * nv + 12 * nt { return false; }
+  for k: 0..<nc { if cs_word(b, 5 + 2 * k) >= nt { return false; } }
+  at := 4 + 2 * nc + 4 * nv;
+  for k: 0..<nt * 3 { if cs_word(b, at + k) >= nv { return false; } }
+  return true;
+}
+// Page `page`'s stored bytes are in io[0..<n]: inflated, admitted by their SHA-256 and checked as a
+// page. With track, the residency hears it arrived (or failed, to fetch again). Whether it was taken.
+cs_arrive :: (s: [] CullStream, page: int, n: int, track: bool) -> bool #export_c #effects(all) {
+  if !s[0].packed || page < 0 || page >= s[0].l[0].m.pages || n < 1 || n > CS_IO { s[0].refused += 1; return false; }
+  g := s[0].l[0].m.page[page];
+  live := track && s[0].ok && page < s[0].pages && s[0].c[0].state[page] == PageState.fetching;
+  ok := g.stored == n && g.decoded <= CS_PAGE_BYTES && (!track || live);
+  // a page fetched again (after it left, or was dropped unused) is admitted again
+  if ok && s[0].l[0].arrived[page] { s[0].l[0].arrived[page] = false; s[0].l[0].held -= 1; if g.root { s[0].l[0].roots_held -= 1; } }
+  dst := s[0].store[page * CS_PAGE_BYTES..<page * CS_PAGE_BYTES + g.decoded];
+  if ok {
+    if g.codec == PPK_DEFLATE { ok = inflate(s[0].io[0..<n], dst) == g.decoded; }
+    else { for j: 0..<n { dst[j] = s[0].io[j]; } }
+  }
+  ok = ok && ppk_admit(s[0].l[..], page, cast(string) dst) && cs_block_ok(cast(string) dst, page);
+  if !ok { s[0].refused += 1; if live { f := res_failed(s[0].c[..], page); } return false; }
+  s[0].held[page] = g.decoded; s[0].fetched += n;
+  if live { a := res_arrived(s[0].c[..], page); }
+  return true;
+}
+// A frame: ready pages install (each recorded, to be placed), then the requests plan new fetches,
+// which the host makes. The installed flags are then current. The installs, or -1 when not open.
 cs_frame :: (s: [] CullStream) -> int #export_c #effects(all) {
   if !s[0].ok { return -1; }
-  s[0].frame += 1; n := 0;
-  for p: 0..<s[0].pages { if s[0].c[0].state[p] == PageState.fetching { ok := res_arrived(s[0].c[..], p); } }
-  while res_install(s[0].c[..], s[0].frame).page != -1 { n += 1; }
+  s[0].frame += 1; s[0].ndone = 0;
+  while true {
+    r := res_install(s[0].c[..], s[0].frame);
+    if r.page == -1 { break; }
+    if s[0].ndone < CS_DONE { s[0].done[s[0].ndone] = r; s[0].ndone += 1; }
+  }
   s[0].fetching = res_plan(s[0].c[..], s[0].frame, s[0].requests[0..<s[0].pages], s[0].out[..]);
   for p: 0..<s[0].pages { s[0].installed[p] = ifx s[0].c[0].state[p] == PageState.installed then 1 else 0; }
   s[0].installs = s[0].c[0].installs; s[0].evictions = s[0].c[0].evictions;
-  return n;
+  return s[0].ndone;
 }
-
+cs_fetches :: (s: [] CullStream) -> int #export_c #effects(all) { return ifx s[0].fetching > 0 then s[0].fetching else 0; }
+cs_fetch :: (s: [] CullStream, i: int) -> int #export_c #effects(all) { return ifx i >= 0 && i < cs_fetches(s) && i < s[0].out.count then s[0].out[i] else -1; }
+cs_done_page :: (s: [] CullStream, i: int) -> int #export_c #effects(all) { return ifx i >= 0 && i < s[0].ndone then s[0].done[i].page else -1; }
+cs_done_slot :: (s: [] CullStream, i: int) -> int #export_c #effects(all) { return ifx i >= 0 && i < s[0].ndone then s[0].done[i].slot else -1; }
+cs_done_evicted :: (s: [] CullStream, i: int) -> int #export_c #effects(all) { return ifx i >= 0 && i < s[0].ndone then s[0].done[i].evicted else -1; }
+// Place page `page`'s arrived bytes for GPU slot `slot`: tri_out, vert_out and first_out (cluster,
+// its first triangle in the slot pool) for the host to copy. False when the page has no bytes here.
+cs_place_page :: (s: [] CullStream, page: int, slot: int) -> bool #export_c #effects(all) {
+  s[0].ntri = 0; s[0].nvert = 0; s[0].nfirst = 0;
+  if page < 0 || page >= RES_PAGES || slot < 0 || s[0].held[page] <= 0 { return false; }
+  b := cast(string) s[0].store[page * CS_PAGE_BYTES..<page * CS_PAGE_BYTES + s[0].held[page]];
+  if !cs_block_ok(b, page) { return false; }
+  nc := cs_word(b, 1); nt := cs_word(b, 2); nv := cs_word(b, 3);
+  for k: 0..<nc { s[0].first_out[2 * k] = cast(u32) cs_word(b, 4 + 2 * k); s[0].first_out[2 * k + 1] = cast(u32) (slot * CS_SLOT_TRIS + cs_word(b, 5 + 2 * k)); }
+  at := 4 + 2 * nc;
+  for k: 0..<nv * 4 { s[0].vert_out[k] = f32_from_bits(cast(u32) cs_word(b, at + k)); }
+  at += 4 * nv;
+  for k: 0..<nt * 3 { s[0].tri_out[k] = cast(u32) (slot * CS_SLOT_VERTS + cs_word(b, at + k)); }
+  s[0].ntri = nt; s[0].nvert = nv; s[0].nfirst = nc;
+  return true;
+}
+cs_place :: (s: [] CullStream, i: int) -> bool #export_c #effects(all) {
+  if i < 0 || i >= s[0].ndone { return false; }
+  return cs_place_page(s, s[0].done[i].page, s[0].done[i].slot);
+}
+// The residency's counters: 0 fetching, 1 arrived, 2 installed, 3 starved, 4 dropped, 5 reclaimable.
+cs_count :: (s: [] CullStream, k: int) -> int #export_c #effects(all) {
+  r := s[0].c[0];
+  return ifx k == 0 then r.fetching else ifx k == 1 then r.arrived else ifx k == 2 then r.installed else ifx k == 3 then r.starved else ifx k == 4 then r.dropped else ifx k == 5 then res_reclaimable(r, s[0].frame) else -1;
+}
 // The residency's own invariants (res_valid) hold.
 cs_valid :: (s: [] CullStream) -> bool #export_c #effects(all) { return res_valid(s[0].c[0]); }
 
-#test "requests load a chain of pages, one level a frame, and their installed flags follow" {
-  s: [1] CullStream;
+// ---- checks
+
+// A test page: `nc` clusters of one triangle each over three vertices.
+cs_put :: (out: [] u8, n: int, v: u32) -> int #effects(all) { pack_put32(out, n, cast(int) v); return n + 4; }
+cs_test_block :: (out: [] u8, at: int, page: int, nc: int) -> int #effects(all) {
+  n := at;
+  n = cs_put(out, n, cast(u32) page); n = cs_put(out, n, cast(u32) nc); n = cs_put(out, n, cast(u32) nc); n = cs_put(out, n, 3);
+  for k: 0..<nc { n = cs_put(out, n, cast(u32) (10 * page + k)); n = cs_put(out, n, cast(u32) k); }
+  for v: 0..<3 { for j: 0..<4 { n = cs_put(out, n, f32_bits(cast(f32) (page * 10 + v) + cast(f32) j * 0.25)); } }
+  for k: 0..<nc { n = cs_put(out, n, 0); n = cs_put(out, n, 1); n = cs_put(out, n, 2); }
+  return n;
+}
+// Three pages (each its own VPK3 page) as a file; the bytes written.
+cs_test_file :: (file: [] u8) -> int #effects(all) {
+  image: [1024] u8; starts: [3] int; roots: [3] bool; entries: [3] int; at := 0;
+  for p: 0..<3 { starts[p] = at; roots[p] = p == 0; entries[p] = p; at = cs_test_block(image[..], at, p, p + 1); }
+  scratch: [4096] u8; w: [1] DeflateWork;
+  return ppk_write(cast(string) image[0..<at], starts[..], roots[..], entries[..], file, scratch[..], w[..]);
+}
+// The host's part of a frame: every fetch planned is answered from file, page k's stored range.
+cs_test_deliver :: (s: [] CullStream, file: [] u8) #effects(all) {
+  for i: 0..<cs_fetches(s) {
+    k := cs_fetch(s, i); at := cs_page_at(s, k); n := cs_page_stored(s, k);
+    for j: 0..<n { s[0].io[j] = file[at + j]; }
+    #assert cs_arrive(s, k, n, true);
+  }
+}
+cs_test_open :: (s: [] CullStream, file: [] u8, n: int, slots: int) -> bool #effects(all) {
+  for j: 0..<n { s[0].io[j] = file[j]; }
   s[0].links[0] = 1; s[0].links[1] = 0; s[0].links[2] = 2; s[0].links[3] = 1;
-  #assert cs_open(s[..], 3, 4, 2) && !cs_open(s[..], 3, 99, 2) && cs_open(s[..], 3, 4, 2);
-  #assert cs_frame(s[..]) == 0 && s[0].installed[0] == 0;      // the pinned root starts fetching
-  #assert cs_frame(s[..]) == 1 && s[0].installed[0] == 1;
+  return cs_need(s, n) > 0 && cs_need(s, n) <= n && cs_pack(s, cs_need(s, n)) && cs_open(s, 3, slots, 2);
+}
+
+#test "requests load a chain of pages by their ranges, one level a frame, and their installed flags follow" #steps 400000000 {
+  file: [8192] u8; n := cs_test_file(file[..]); #assert n > 0;
+  s: [1] CullStream; #assert cs_test_open(s[..], file[..], n, 4);
+  #assert cs_frame(s[..]) == 0 && s[0].installed[0] == 0 && cs_fetches(s[..]) == 1 && cs_fetch(s[..], 0) == 0;   // the pinned root
+  cs_test_deliver(s[..], file[..]);
+  #assert cs_frame(s[..]) == 1 && s[0].installed[0] == 1 && cs_done_page(s[..], 0) == 0;
   s[0].requests[2] = 5;
-  #assert cs_frame(s[..]) == 0;                                 // page 2 asks for page 1 first
-  #assert cs_frame(s[..]) >= 1 && s[0].installed[1] == 1;
-  #assert cs_frame(s[..]) >= 0 && cs_frame(s[..]) >= 0 && s[0].installed[2] == 1 && res_valid(s[0].c[0]);
+  #assert cs_frame(s[..]) == 0; cs_test_deliver(s[..], file[..]);    // page 2 asks for page 1 first
+  #assert cs_frame(s[..]) >= 1 && s[0].installed[1] == 1; cs_test_deliver(s[..], file[..]);
+  #assert cs_frame(s[..]) >= 0; cs_test_deliver(s[..], file[..]);
+  #assert cs_frame(s[..]) >= 0 && s[0].installed[2] == 1 && cs_valid(s[..]) && s[0].refused == 0;
+}
+#test "an installed page is placed for its slot: indices and first triangles move by the slot's base" #steps 400000000 {
+  file: [8192] u8; n := cs_test_file(file[..]);
+  s: [1] CullStream; #assert cs_test_open(s[..], file[..], n, 4);
+  #assert !cs_place_page(s[..], 2, 1);                               // nothing arrived yet
+  for j: 0..<cs_page_stored(s[..], 2) { s[0].io[j] = file[cs_page_at(s[..], 2) + j]; }
+  #assert cs_arrive(s[..], 2, cs_page_stored(s[..], 2), false) && cs_place_page(s[..], 2, 3);
+  #assert s[0].nfirst == 3 && s[0].first_out[0] == 20 && s[0].first_out[1] == 3 * CS_SLOT_TRIS && s[0].first_out[5] == 3 * CS_SLOT_TRIS + 2;
+  #assert s[0].ntri == 3 && s[0].tri_out[0] == 3 * CS_SLOT_VERTS && s[0].tri_out[8] == 3 * CS_SLOT_VERTS + 2;
+  #assert s[0].nvert == 3 && s[0].vert_out[0] == 20 && s[0].vert_out[1] == 20.25 && s[0].vert_out[11] == 22.75;
+}
+#test "a damaged range is refused and fetched again, and a page that left is admitted when it comes back" #steps 400000000 {
+  file: [8192] u8; n := cs_test_file(file[..]);
+  s: [1] CullStream; #assert cs_test_open(s[..], file[..], n, 1);
+  #assert cs_frame(s[..]) == 0 && cs_fetch(s[..], 0) == 0;
+  k := cs_page_stored(s[..], 0); at := cs_page_at(s[..], 0);
+  for j: 0..<k { s[0].io[j] = file[at + j]; }
+  s[0].io[k / 2] = cast,trunc(u8) (cast(int) s[0].io[k / 2] + 1);
+  #assert !cs_arrive(s[..], 0, k, true) && s[0].refused == 1 && s[0].c[0].state[0] != PageState.fetching;
+  #assert !cs_arrive(s[..], 1, cs_page_stored(s[..], 1), true);       // a page nobody fetched
+  frames := 0;
+  while s[0].installed[0] == 0 && frames < 20 { r := cs_frame(s[..]); cs_test_deliver(s[..], file[..]); frames += 1; }
+  #assert s[0].installed[0] == 1 && cs_valid(s[..]);
+  // page 0's range again, as after an eviction: admitted again, not refused as a repeat
+  for j: 0..<k { s[0].io[j] = file[at + j]; }
+  #assert s[0].l[0].arrived[0] && cs_arrive(s[..], 0, k, false) && s[0].refused == 2;
 }

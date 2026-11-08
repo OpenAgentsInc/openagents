@@ -10,7 +10,10 @@ writes from `aethyr/render/geometry/cull.coax`:
   against this frame's,
 - indirect draws, one instance a cluster,
 - a request array the GPU fills each frame, read back to drive
-  `residency.coax`.
+  `residency.coax`, with a shadow view's requests weighted lower and each
+  texture's wanted mip after the page entries,
+- pages fetched by HTTP Range from each scene's VPK3 file, admitted by their
+  SHA-256 and copied into GPU slots on install (GitHub #13051).
 
 The page prints its report. `coax/web/tool.sh coax/web/cull-check.coax URL`
 runs it in headless Chrome and checks it.

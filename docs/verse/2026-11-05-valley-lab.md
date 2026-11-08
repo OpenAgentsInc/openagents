@@ -454,9 +454,20 @@ residency loads the pages from nothing. Behind a wall, occlusion skips 40 of 71
 clusters, and the image doesn't change by a pixel. The receipt is
 [gpu-cull-13008](../verification/gpu-cull-13008/README.md).
 
-Not yet done: pages' bytes aren't streamed into GPU slots (every page is
-resident, and the installed flags gate drawing). Texture demand and
-shadow-view requests are also missing.
+Since #13051, pages stream into a fixed pool of GPU slots. Each scene's
+geometry is a VPK3 file with one page per DAG page. The page fetches each
+page by HTTP Range, and `apps/openagents-web/cullstream.coax` inflates it and
+admits it by its SHA-256. On install, Coax rewrites the page's triangle indices
+and its clusters' first triangles for the slot, and the host copies the bytes
+in. The shaders don't change.
+
+- A shadow view (`cl_cull_shadow`, orthographic) writes its casters' page
+  requests, weighted lower than the camera's.
+- Each drawn cluster writes the mip its texture needs after the page entries.
+
+With 26 slots for views that need 28 pages, pages leave and come back into
+other slots, and each view still draws exactly what all-resident pages draw.
+The receipt is [gpu-stream-13051](../verification/gpu-stream-13051/README.md).
 
 ## What the book gives us
 

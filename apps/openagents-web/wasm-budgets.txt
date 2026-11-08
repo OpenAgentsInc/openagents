@@ -134,5 +134,5 @@ ocarinalab 190000
 # Declared facts, six-root variants and bounded runtime qualification (#12991).
 state-lab 170000
 actor-lab 400000
-# The GPU cull lab's residency (#13008).
-cullstream 26000
+# The GPU cull lab's streaming and residency (#13008, #13051: inflate and SHA-256 for page admission).
+cullstream 40000

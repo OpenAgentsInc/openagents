@@ -5,7 +5,7 @@ struct coax_t11 {
   z: vec4f,
   w: vec4f,
 }
-@group(0) @binding(0) var<uniform> u: array<vec4f, 22>;
+@group(0) @binding(0) var<uniform> u: array<vec4f, 23>;
 fn coax_at_u(i: i32) -> f32 {
   return u[i / 4][i % 4];
 }
@@ -65,6 +65,7 @@ fn coax_p_cull_one(p_i: u32) {
   l_k_16 = atomicAdd(&draws[1i], 1u);
   lists[((0i * l_n) + i32(l_k_16))] = u32(l_c);
   coax_p_cl_want(l_c);
+  coax_p_cl_texture(l_c);
   lists[((3i * l_n) + l_c)] = 9u;
 }
 fn coax_p_cull_two(p_i: u32) {
@@ -90,6 +91,7 @@ fn coax_p_cull_two(p_i: u32) {
   l_j = atomicAdd(&draws[5i], 1u);
   lists[((1i * l_n) + i32(l_j))] = u32(l_c);
   coax_p_cl_want(l_c);
+  coax_p_cl_texture(l_c);
   lists[((3i * l_n) + l_c)] = (lists[((3i * l_n) + l_c)] | 16u);
 }
 fn coax_p_hiz_depth(p_i: u32) {
@@ -177,6 +179,16 @@ fn coax_p_hiz_down(p_i: u32) {
     }
   }
   hiz[(i32(coax_at_u(i32((52i + l_l)))) + l_k)] = l_far;
+}
+fn coax_p_cull_shadow(p_i: u32) {
+  var l_i: u32 = p_i;
+  var l_c: i32;
+  l_c = i32(l_i);
+  if ((((l_c >= i32(coax_at_u(i32(20i)))) || (!coax_p_cl_lod(l_c))) || coax_p_cl_outside(data[((l_c * 4i) + 2i)], data[((l_c * 4i) + 3i)])))
+  {
+    return;
+  }
+  coax_p_cl_want(l_c);
 }
 fn coax_p_cl_lod(p_c: i32) -> bool {
   var l_c: i32 = p_c;
@@ -337,7 +349,7 @@ fn coax_p_cl_want(p_c: i32) {
   var l_seen: f32;
   l_t = coax_at_u(i32(19i));
   l_page = i32(info[((l_c * 8i) + 0i)]);
-  l__ = atomicMax(&requests[l_page], coax_p_cl_priority(coax_p_cl_seen(bitcast<f32>(info[((l_c * 8i) + 5i)]), data[((l_c * 4i) + 1i)]), l_t));
+  l__ = atomicMax(&requests[l_page], coax_p_cl_weigh(coax_p_cl_priority(coax_p_cl_seen(bitcast<f32>(info[((l_c * 8i) + 5i)]), data[((l_c * 4i) + 1i)]), l_t)));
   l_child = info[((l_c * 8i) + 1i)];
   if ((l_child == 4294967295u))
   {
@@ -346,8 +358,19 @@ fn coax_p_cl_want(p_c: i32) {
   l_seen = coax_p_cl_seen(bitcast<f32>(info[((l_c * 8i) + 4i)]), data[((l_c * 4i) + 0i)]);
   if ((l_seen > l_t))
   {
-    l__ = atomicMax(&requests[i32(l_child)], coax_p_cl_priority(l_seen, l_t));
+    l__ = atomicMax(&requests[i32(l_child)], coax_p_cl_weigh(coax_p_cl_priority(l_seen, l_t)));
   }
+}
+fn coax_p_cl_texture(p_c: i32) {
+  var l_c: i32 = p_c;
+  var l_tex: f32;
+  var l__: u32;
+  l_tex = data[((l_c * 4i) + 3i)].w;
+  if (((l_tex < 0.0f) || (coax_at_u(i32(91i)) < 0x1.000000p0f)))
+  {
+    return;
+  }
+  l__ = atomicMax(&requests[(i32(coax_at_u(i32(21i))) + i32(l_tex))], u32((i32(coax_at_u(i32(91i))) - coax_p_cl_mip(l_c))));
 }
 fn coax_p_cl_clampi(p_x: i32, p_low: i32, p_high: i32) -> i32 {
   var l_x: i32 = p_x;
@@ -382,6 +405,10 @@ fn coax_p_cl_seen(p_error: f32, p_s: vec4f) -> f32 {
   if ((l_error >= 0x1.dcd650p29f))
   {
     return 0x1.93e594p99f;
+  }
+  if ((coax_at_u(i32(88i)) > 0.0f))
+  {
+    return (l_error / coax_at_u(i32(88i)));
   }
   l_dx = (coax_at_u(i32(16i)) - l_s.x);
   l_dy = (coax_at_u(i32(17i)) - l_s.y);
@@ -429,6 +456,35 @@ fn coax_p_cl_priority(p_seen: f32, p_t: f32) -> u32 {
   }
   return (2u + u32(coax_p_fmax(l_r, 0.0f)));
 }
+fn coax_p_cl_weigh(p_p: u32) -> u32 {
+  var l_p: u32 = p_p;
+  return (2u + u32((f32((l_p - 2u)) * coax_at_u(i32(89i)))));
+}
+fn coax_p_cl_mip(p_c: i32) -> i32 {
+  var l_c: i32 = p_c;
+  var l_s: vec4f;
+  var l_dx: f32;
+  var l_dy: f32;
+  var l_dz: f32;
+  var l_d: f32;
+  var l_f: f32;
+  var l_mip: i32;
+  var l_mips: i32;
+  l_s = data[((l_c * 4i) + 0i)];
+  l_dx = (coax_at_u(i32(16i)) - l_s.x);
+  l_dy = (coax_at_u(i32(17i)) - l_s.y);
+  l_dz = (coax_at_u(i32(18i)) - l_s.z);
+  l_d = coax_p_fmax((sqrt((((l_dx * l_dx) + (l_dy * l_dy)) + (l_dz * l_dz))) - l_s.w), 0x1.a36e2ep-14f);
+  l_f = ((data[((l_c * 4i) + 2i)].w * l_d) * coax_at_u(i32(90i)));
+  l_mip = 0i;
+  l_mips = i32(coax_at_u(i32(91i)));
+  while (((l_f >= 0x1.000000p1f) && (l_mip < (l_mips - 1i))))
+  {
+    l_f = (l_f * 0x1.000000p-1f);
+    l_mip = (l_mip + 1i);
+  }
+  return l_mip;
+}
 fn coax_p_scale4(p_a: vec4f, p_k: f32) -> vec4f {
   var l_a: vec4f = p_a;
   var l_k: f32 = p_k;
@@ -454,4 +510,8 @@ fn hiz_depth(@builtin(global_invocation_id) coax_gid: vec3u) {
 @compute @workgroup_size(64)
 fn hiz_down(@builtin(global_invocation_id) coax_gid: vec3u) {
   coax_p_hiz_down(coax_gid.x);
+}
+@compute @workgroup_size(64)
+fn cull_shadow(@builtin(global_invocation_id) coax_gid: vec3u) {
+  coax_p_cull_shadow(coax_gid.x);
 }
