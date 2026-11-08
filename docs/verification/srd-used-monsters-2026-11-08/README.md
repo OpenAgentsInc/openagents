@@ -93,5 +93,5 @@ Approximations and house mappings:
 - Conjure Animals fielding Wolf stat blocks is a house mapping. The SRD spell
   is a pack of spirits that forces a Dexterity save.
 - The raid Cultists' world-granted cantrips are a house deviation.
-- The Cultist Fanatic's Spiritual Weapon 2/Day and Light/Thaumaturgy and the
-  Guard's thrown spear aren't in the engine yet.
+- The Guard's Spear is melee only; its 20/60 ft. throw isn't run. The Cultist
+  Fanatic's Command and Hold Person are its npcs.coax spells.
