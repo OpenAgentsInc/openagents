@@ -1,9 +1,10 @@
-// SRD 5.2.1 Disengage p.180, Cunning Action p.62, Patient Defense pp.50–51.
+// SRD 5.2.1 Disengage p.180, Cunning Action p.62, Patient Defense pp.50–51, Nimble Escape p.290.
 #authority;
 RS_DISENGAGE_ACTION :: 0;
 RS_DISENGAGE_CUNNING :: 1;
 RS_DISENGAGE_PATIENT :: 2;
 RS_DISENGAGE_DODGE :: 3;
+RS_DISENGAGE_NIMBLE :: 4;   // a Goblin's Nimble Escape (p.290), a Bonus Action
 
 rs_disengage :: (b:[] RsBattle,i:int)->bool #effects(all) { return rs_disengage_use(b,i,RS_DISENGAGE_ACTION); }
 rs_disengage_use :: (b:[] RsBattle,i:int,mode:int)->bool #effects(all) {
@@ -16,7 +17,8 @@ rs_disengage_use :: (b:[] RsBattle,i:int,mode:int)->bool #effects(all) {
     else if mode==RS_DISENGAGE_PATIENT || mode==RS_DISENGAGE_DODGE {
       if b[0].c[i].klass!=RS_MONK || b[0].c[i].level<2 { return false; }
       if mode==RS_DISENGAGE_DODGE && b[0].c[i].focus<=0 { return false; }
-    } else { return false; }
+    } else if mode==RS_DISENGAGE_NIMBLE { if !rs_trait(b[0].c[i],RS_TRAIT_NIMBLE) { return false; } }
+    else { return false; }
   }
   if mode==RS_DISENGAGE_ACTION { b[0].turn.action=true; } else { b[0].turn.bonus=true; }
   b[0].turn.disengaged=true;

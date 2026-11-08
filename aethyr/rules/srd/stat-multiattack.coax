@@ -1,0 +1,63 @@
+// A stat block's attack Action (Monsters p.254: "Multiattack. The giant makes two attacks, using
+// Tree Club or Trash Lob in any combination"): `count` attacks in one Action, each with the first of
+// its records that reaches the target from where they stand, melee before ranged. A block with no
+// Multiattack has count 1. Record numbers come from a trusted catalog (monsters.coax).
+#authority;
+RS_MULTI :: 3;   // attack records one Action chooses among
+RsStatAction :: struct { attacks: [RS_MULTI] RsStatAttack; n: int; count: int; }
+
+rs_stat_action_valid :: (m: RsStatAction) -> bool #effects(all) {
+  if m.n<1 || m.n>m.attacks.count || m.count<1 || m.count>4 { return false; }
+  for k: 0..<m.n { if !rs_stat_attack_valid(m.attacks[k]) { return false; } }
+  return true;
+}
+// The record action m uses at j now: the first in melee reach, else the first in range; -1 none.
+rs_stat_pick :: (b: [] RsBattle, i: int, j: int, m: RsStatAction) -> int #effects(all) {
+  for k: 0..<m.n { if rs_stat_mode(b,i,j,m.attacks[k])==1 { return k; } }
+  for k: 0..<m.n { if rs_stat_mode(b,i,j,m.attacks[k])==2 { return k; } }
+  return -1;
+}
+// The record a Reaction's single melee attack uses (Opportunity Attacks): the first with reach; -1 none.
+rs_stat_melee_pick :: (m: RsStatAction) -> int #effects(all) {
+  for k: 0..<m.n { if m.attacks[k].reach>0 { return k; } }
+  return -1;
+}
+// The Action: admitted only on i's own turn with its Action free and a record that reaches j; then
+// every attack, each picked again from where they stand, while i can act and j is up. True when
+// admitted (a miss still spends the Action).
+rs_stat_multiattack :: (b: [] RsBattle, i: int, j: int, m: RsStatAction) -> bool #effects(all) {
+  if !rs_stat_action_valid(m) || i<0 || j<0 || j>=b[0].n || i==j { return false; }
+  if b[0].who!=i || b[0].turn.action || b[0].c[i].klass!=RS_MONSTER || !rs_can_act(b[0].c[i]) || b[0].c[j].dead { return false; }
+  if rs_stat_pick(b,i,j,m)<0 { return false; }
+  room := 0;
+  for k: 0..<m.n { room = rs_max(room, rs_stat_rider_room(b,j,m.attacks[k])); }
+  if rs_effect_free(b[0].c[j])<room*m.count { return false; }
+  b[0].turn.action=true;
+  for n: 0..<m.count {
+    if n>0 && (!rs_up(b[0].c[j]) || !rs_can_act(b[0].c[i])) { break; }
+    k := rs_stat_pick(b,i,j,m);
+    if k<0 { break; }
+    hit := rs_stat_strike(b,i,j,m.attacks[k],rs_stat_mode(b,i,j,m.attacks[k]));
+    rs_after_blow(b,i);
+  }
+  return true;
+}
+
+#test "a stat Action checks every record, takes melee before ranged and makes each attack" {
+  b: [1] RsBattle; b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
+  _ := rs_add(b[..],rs_guard("Attacker",0),1,1);
+  j := rs_add(b[..],rs_fighter("Target",1,1),2,1);
+  b[0].c[j].hp=100; b[0].c[j].hp_max=100; b[0].c[j].ac=12;
+  rs_start_turn(b[..],0);
+  bow := RsStatAttack.{id="bow",name="Bow",bonus=5,dice=1,sides=6,flat=2,kind=RS_PIERCING,ability=RS_DEX,range_ft=80,long_ft=320};
+  claw := RsStatAttack.{id="claw",name="Claw",bonus=5,dice=1,sides=6,flat=2,kind=RS_SLASHING,ability=RS_STR,reach=5};
+  m: RsStatAction; m.attacks[0]=bow; m.attacks[1]=claw; m.n=2; m.count=2;
+  #assert rs_stat_action_valid(m) && rs_stat_pick(b[..],0,j,m)==1 && rs_stat_melee_pick(m)==1;
+  bad := m; bad.attacks[0].id=""; #assert !rs_stat_action_valid(bad);
+  bad = m; bad.attacks[1].id=""; #assert !rs_stat_action_valid(bad);
+  bad = m; bad.n=1; #assert rs_stat_melee_pick(bad)== -1;
+  bad = m; bad.attacks[1].reach=1; #assert rs_stat_melee_pick(bad)==1;
+  #assert rs_stat_multiattack(b[..],0,j,m) && b[0].turn.action && b[0].c[j].hp==90;   // Claw twice
+  rs_place(b[..],j,30,1);
+  #assert rs_stat_pick(b[..],0,j,m)==0;
+}

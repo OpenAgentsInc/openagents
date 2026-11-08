@@ -32,7 +32,9 @@
 #load "area-origin.coax";
 #load "strike-features.coax";
 #load "condition-permissions.coax";
+#load "monster-traits.coax";
 #load "stat-attack.coax";
+#load "stat-multiattack.coax";
 #load "strike-policy.coax";
 #load "effect-lifecycle.coax";
 #load "death-save-roll.coax";
@@ -435,7 +437,7 @@ rs_hellish_rebuke :: (b: [] RsBattle, j: int, by: int) -> bool {
   if slot == 0 { return false; }
   if !rs_cast_reaction_slot(b,j,SP_HELLISH_REBUKE,slot,true) { return false; }
   dc := rs_dc(b, j);
-  saving := rs_saving_throw(b,by,RS_DEX,dc);
+  saving := rs_saving_throw_magic(b,by,RS_DEX,dc,0);
   st := saving.total;
   n := 1 + slot;
   dmg := rs_sum(b[0].dice[..], n, 10);
@@ -813,14 +815,18 @@ rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) 
   if rs_take_pending(b, i, EF_VEX, j) { ups += 1; }
   if rs_take_help_attack(b,i,j) { ups += 1; }
   if b[0].who == i && b[0].turn.aimed { b[0].turn.aimed = false; ups += 1; }
+  // Pack Tactics (monster-traits.coax)
+  if rs_pack_tactics(b, i, j) { ups += 1; }
   return rs_edge(ups, downs);
 }
 
 // Advantage or Disadvantage on j's saving throw of an ability.
 rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int { return rs_save_edge_with(b,j,ability,0); }
 // `extra` more Disadvantage sources from the effect itself (a spell's save rider, save-riders.coax)
-rs_save_edge_with :: (b: [] RsBattle, j: int, ability: int, extra: int) -> int {
-  ups := 0; downs := extra;
+rs_save_edge_with :: (b: [] RsBattle, j: int, ability: int, extra: int) -> int { return rs_save_edge_from(b,j,ability,0,extra); }
+// and `more` Advantage sources from the effect (Magic Resistance against a magical one)
+rs_save_edge_from :: (b: [] RsBattle, j: int, ability: int, more: int, extra: int) -> int {
+  ups := more; downs := extra;
   c := b[0].c[j];
   if ability == RS_DEX && rs_has(c, RS_RESTRAINED) { downs += 1; }
   if ability == RS_STR && rs_effect(c, EF_ENFEEBLED) { downs += 1; }
@@ -884,7 +890,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     } else if st.kind == RS_S_SAVE {
       ran_save = true;
       dc := rs_dc(b, i);
-      saving := rs_saving_throw_with(b,j,st.a,dc,rs_save_rider_downs(st.c,b[0].c[j].construct));
+      saving := rs_saving_throw_magic(b,j,st.a,dc,rs_save_rider_downs(st.c,b[0].c[j].construct));
       fails := saving.automatic; total := saving.total; insp := saving.inspiration;
       saved = saving.passed;
       l: [1] RsLine;
@@ -1203,7 +1209,7 @@ rs_guardians :: (b: [] RsBattle, j: int) {
     if g.conc != SP_SPIRIT_GUARDIANS || g.team == b[0].c[j].team || rs_feet_to(b, k, j) > 15 { continue; }
     b[0].c[j].guard_turn = b[0].turn_no;
     dc := rs_dc(b, k);
-    saving := rs_saving_throw(b,j,RS_WIS,dc);
+    saving := rs_saving_throw_magic(b,j,RS_WIS,dc,0);
     total := saving.total; ok := saving.passed;
     amount := rs_sum(b[0].dice[..], 3 + rs_max(g.guard_slot - 3, 0), 8);
     if ok { amount = amount / 2; }
@@ -1309,7 +1315,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   for k: 0..<RS_EFFECTS {
     e := b[0].c[i].eff[k];
     if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead || !b[0].turn.new_round { continue; }
-    saving := rs_saving_throw(b,i,e.save,e.dc);
+    saving := ifx e.spell >= 0 then rs_saving_throw_magic(b,i,e.save,e.dc,0) else rs_saving_throw(b,i,e.save,e.dc);
     total := saving.total; ok := saving.passed;
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[e.save]); rs_add_text(l[..], " save against ");
@@ -1588,6 +1594,15 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
     rs_add_text(pl[..], ")");
     rs_tell(b, RS_EV_DAMAGE, -1, i, j, got, wp.plus_kind, pl[..]);
     rs_damage(b, i, j, got, wp.plus_kind, crit, -1);
+  }
+  // a stat block's damage only with Advantage (a Goblin's Scimitar and Shortbow, monster-traits.coax)
+  if rs_advantage_rider(r.edge, wp.adv_dice) && !b[0].c[j].dead {
+    extra := rs_resisted(b, j, rs_sum(b[0].dice[..], wp.adv_dice * mult, wp.adv_sides), kind);
+    al: [1] RsLine;
+    rs_add_text(al[..], "  "); rs_add_name(al[..], b, j); rs_add_text(al[..], " takes "); rs_add_int(al[..], extra); rs_add_text(al[..], " "); rs_add_text(al[..], RS_DAMAGE[kind]);
+    rs_add_text(al[..], " more (Advantage)");
+    rs_tell(b, RS_EV_DAMAGE, -1, i, j, extra, kind, al[..]);
+    rs_damage(b, i, j, extra, kind, crit, -1);
   }
   // Hex and Hunter's Mark hold for any attack roll their caster hits with
   rs_curse_damage(b, i, j, crit);
@@ -1912,7 +1927,7 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
     if !b[0].c[j].undead || rs_feet_to(b, i, j) > 30 { continue; }
     c := b[0].c[j];
     if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > 30 { continue; }
-    saving := rs_saving_throw(b,j,RS_WIS,dc);
+    saving := rs_saving_throw_magic(b,j,RS_WIS,dc,0);
     total := saving.total; ok := saving.passed;
     l: [1] RsLine;
     rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " WIS save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
@@ -2059,7 +2074,7 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
   for j: 0..<b[0].n {
     c := b[0].c[j];
     if c.team == b[0].c[i].team || !rs_up(c) || rs_feet(tx, ty, c.x, c.y) > 10 { continue; }
-    saving := rs_saving_throw(b,j,RS_CON,dc);
+    saving := rs_saving_throw_magic(b,j,RS_CON,dc,0);
     total := saving.total; ok := saving.passed;
     amount := rs_sum(b[0].dice[..], n6, 6);
     if ok { amount = amount / 2; }

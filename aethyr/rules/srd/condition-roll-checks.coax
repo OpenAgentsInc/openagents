@@ -178,3 +178,13 @@ co_field :: (b: [] RsBattle) {
     #assert base.total == 10 + rs_save_in(b[..],t,RS_CON) - 2 * level && !base.passed;
   } }
 }
+
+#test "a magical save gives a Magic Resistance creature Advantage that Disadvantage cancels" {
+  b: [1] RsBattle; b[0].w=10; b[0].h=8; b[0].dice[0].fixed=true;
+  i := rs_add(b[..],rs_monster(MON_IMP,"Imp",1),1,1); j := rs_add(b[..],rs_fighter("Fighter",0,1),3,1);
+  r := b[0].dice[0].rolled; _ := rs_saving_throw_magic(b[..],i,RS_DEX,30,0); #assert b[0].dice[0].rolled==r+2;
+  r = b[0].dice[0].rolled; _ = rs_saving_throw_with(b[..],i,RS_DEX,30,0); #assert b[0].dice[0].rolled==r+1;
+  r = b[0].dice[0].rolled; _ = rs_saving_throw_magic(b[..],i,RS_DEX,30,1); #assert b[0].dice[0].rolled==r+1;
+  r = b[0].dice[0].rolled; _ = rs_saving_throw_edges(b[..],j,RS_DEX,30,1,0); #assert b[0].dice[0].rolled==r+2;
+  r = b[0].dice[0].rolled; _ = rs_saving_throw_magic(b[..],j,RS_DEX,30,0); #assert b[0].dice[0].rolled==r+1;
+}

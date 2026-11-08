@@ -32,11 +32,17 @@ rs_auto_fails :: (c: RsCreature, ability: int) -> bool #effects(all) {
 RsSavingThrow :: struct { total: int; passed: bool; automatic: bool; inspiration: int; luck: int; }
 rs_saving_throw :: (b: [] RsBattle, j: int, ability: int, dc: int) -> RsSavingThrow #effects(all) { return rs_saving_throw_with(b,j,ability,dc,0); }
 // `downs` more Disadvantage sources from the effect itself, joined before cancellation.
-rs_saving_throw_with :: (b: [] RsBattle, j: int, ability: int, dc: int, downs: int) -> RsSavingThrow #effects(all) {
+rs_saving_throw_with :: (b: [] RsBattle, j: int, ability: int, dc: int, downs: int) -> RsSavingThrow #effects(all) { return rs_saving_throw_edges(b,j,ability,dc,0,downs); }
+// A save against a spell or another magical effect: Magic Resistance's Advantage (monster-traits.coax).
+rs_saving_throw_magic :: (b: [] RsBattle, j: int, ability: int, dc: int, downs: int) -> RsSavingThrow #effects(all) {
+  return rs_saving_throw_edges(b,j,ability,dc,rs_magic_save_ups(b[0].c[j],true),downs);
+}
+// `ups` more Advantage sources from the effect itself.
+rs_saving_throw_edges :: (b: [] RsBattle, j: int, ability: int, dc: int, ups: int, downs: int) -> RsSavingThrow #effects(all) {
   r: RsSavingThrow;
   r.automatic = rs_auto_fails(b[0].c[j],ability);
   if r.automatic { return r; }
-  d := rs_d20(b[0].dice[..],rs_save_edge_with(b,j,ability,downs));
+  d := rs_d20(b[0].dice[..],rs_save_edge_from(b,j,ability,ups,downs));
   r.total = d.roll + rs_save_in(b,j,ability) + rs_boon_roll(b,j) - rs_exhaustion_penalty(b[0].c[j]);
   r.inspiration = rs_inspired_roll(b,j,r.total,dc);
   r.total += r.inspiration;

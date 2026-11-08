@@ -1,19 +1,74 @@
-// A source/world-declared melee stat-block attack, executed by the shared strike path.
+// A source/world-declared stat-block attack, executed by the shared strike path: a melee attack
+// (reach), a ranged one (normal/long range) or one that is either as it is made (both set), its
+// second damage on a hit, more damage with Advantage, and a rider a hit applies (RS_RIDE_*).
 #authority;
 W_STAT_ATTACK :: -1; // resolved natural attack, not a weapon-catalog entry
-RsStatAttack :: struct { id: string; name: string; bonus: int; dice: int; sides: int; flat: int; kind: int; ability: int; reach: int; }
+// a hit's rider: the Prone condition (Tree Club, Bite); the Poisoned condition until the start of
+// the attacker's next turn (Rend) or until the end of the target's next turn (Trash Lob)
+RS_RIDE_NONE :: 0; RS_RIDE_PRONE :: 1; RS_RIDE_POISON_TO_START :: 2; RS_RIDE_POISON_TO_END :: 3;
+RsStatAttack :: struct { id: string; name: string; bonus: int; dice: int; sides: int; flat: int; kind: int; ability: int; reach: int;
+                         range_ft: int; long_ft: int;                   // a ranged form (0: none)
+                         plus_dice: int; plus_sides: int; plus_kind: int; // a hit's second damage
+                         adv_dice: int; adv_sides: int;                  // more of `kind` with Advantage
+                         ride: int; ride_size: int; }                    // RS_RIDE_*, the largest size it holds (0 any)
 
+rs_stat_dice_valid :: (dice: int, sides: int) -> bool #effects(all) { return dice>=0 && dice<=100 && sides>=0 && sides<=100 && (dice==0 || sides>0); }
 rs_stat_attack_valid :: (a: RsStatAttack) -> bool #effects(all) {
-  return a.id.count>0 && a.name.count>0 && a.dice>=0 && a.dice<=100 && a.sides>=0 && a.sides<=100 && (a.dice==0 || a.sides>0) && a.kind>0 && a.kind<RS_DAMAGE.count && a.ability>=0 && a.ability<6 && a.reach>=0 && a.reach<=1000;
+  return a.id.count>0 && a.name.count>0 && rs_stat_dice_valid(a.dice,a.sides) && a.kind>0 && a.kind<RS_DAMAGE.count && a.ability>=0 && a.ability<6 && a.reach>=0 && a.reach<=1000
+    && a.range_ft>=0 && a.long_ft>=a.range_ft && a.long_ft<=1000 && (a.long_ft==0 || a.range_ft>RS_SQUARE)
+    && rs_stat_dice_valid(a.plus_dice,a.plus_sides) && (a.plus_dice==0 || (a.plus_kind>0 && a.plus_kind<RS_DAMAGE.count))
+    && rs_stat_dice_valid(a.adv_dice,a.adv_sides) && a.ride>=RS_RIDE_NONE && a.ride<=RS_RIDE_POISON_TO_END && a.ride_size>=0 && a.ride_size<=RS_GARGANTUAN;
+}
+// How i can make attack a at j from where they stand: 1 melee, 2 ranged, 0 not at all. Melee
+// reach counts from i's space (monster-traits.coax rs_space_feet); a ranged form reaches its long range.
+rs_stat_mode :: (b: [] RsBattle, i: int, j: int, a: RsStatAttack) -> int #effects(all) {
+  feet := rs_feet_to(b,i,j);
+  if a.reach>0 && feet<=a.reach+rs_space_feet(b[0].c[i]) { return 1; }
+  return ifx a.long_ft>0 && feet<=a.long_ft then 2 else 0;
+}
+// The effect slot a hit's rider would fill on j (Poisoned it isn't immune to), so admission can
+// refuse before anything is spent.
+rs_stat_rider_room :: (b: [] RsBattle, j: int, a: RsStatAttack) -> int #effects(all) {
+  if a.ride!=RS_RIDE_POISON_TO_START && a.ride!=RS_RIDE_POISON_TO_END { return 0; }
+  return ifx rs_effect_condition_mask(b[0].c[j],RS_POISONED)!=0 then 1 else 0;
+}
+// One attack roll of a at j in the given mode, its damage and rider; true on a hit. Admission
+// (turn, Action, reach, room) is the caller's.
+rs_stat_strike :: (b: [] RsBattle, i: int, j: int, a: RsStatAttack, mode: int) -> bool #effects(all) {
+  melee := mode==1;
+  wp := RsWeapon.{id=a.id,name=a.name,dice=a.dice,sides=a.sides,damage=a.kind,range_ft=ifx melee then RS_SQUARE else a.range_ft,
+                  long_ft=a.long_ft,reach_ft=a.reach,plus_dice=a.plus_dice,plus_sides=a.plus_sides,plus_kind=a.plus_kind,
+                  adv_dice=a.adv_dice,adv_sides=a.adv_sides};
+  hit := rs_strike_resolved(b,i,j,W_STAT_ATTACK,false,wp,a.bonus,a.ability,a.flat);
+  if hit { rs_stat_ride(b,i,j,a); }
+  return hit;
+}
+// A hit's rider, on a target still alive and of a size it holds.
+rs_stat_ride :: (b: [] RsBattle, i: int, j: int, a: RsStatAttack) #effects(all) {
+  if a.ride==RS_RIDE_NONE || b[0].c[j].dead || !rs_size_holds(b[0].c[j],a.ride_size) { return; }
+  if a.ride==RS_RIDE_PRONE {
+    if rs_effect_condition_mask(b[0].c[j],RS_PRONE)==0 || rs_has(b[0].c[j],RS_PRONE) { return; }
+    b[0].c[j].cond = b[0].c[j].cond | RS_PRONE;
+    l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is knocked Prone");
+    rs_tell(b, RS_EV_CONDITION, -1, i, j, RS_PRONE, 0, l[..]);
+    return;
+  }
+  if rs_effect_condition_mask(b[0].c[j],RS_POISONED)==0 { return; }
+  until := ifx a.ride==RS_RIDE_POISON_TO_START then rs_before_next_turn(b,i) else rs_own_turn_end(b,j);
+  if rs_put_effect(b,j,RsEffect.{kind=EF_COND,cond=RS_POISONED,by=i,spell=-1,until=until,save=-1,dc=0}) {
+    l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is Poisoned");
+    rs_tell(b, RS_EV_CONDITION, -1, i, j, RS_POISONED, 0, l[..]);
+  }
 }
 // Numbers must come from trusted canonical records or an explicit world profile.
 // Bounds are an executor work contract, not a claim of a new SRD rule.
 rs_stat_attack :: (b: [] RsBattle, i: int, j: int, a: RsStatAttack) -> bool #effects(all) {
   if !rs_stat_attack_valid(a) || i<0 || i>=b[0].n || j<0 || j>=b[0].n || i==j { return false; }
-  if b[0].who!=i || b[0].turn.action || b[0].c[i].klass!=RS_MONSTER || !rs_can_act(b[0].c[i]) || b[0].c[j].dead || rs_feet_to(b,i,j)>a.reach { return false; }
-  wp := RsWeapon.{id=a.id,name=a.name,dice=a.dice,sides=a.sides,damage=a.kind,range_ft=5};
+  if b[0].who!=i || b[0].turn.action || b[0].c[i].klass!=RS_MONSTER || !rs_can_act(b[0].c[i]) || b[0].c[j].dead { return false; }
+  mode := rs_stat_mode(b,i,j,a);
+  if mode==0 || rs_effect_free(b[0].c[j])<rs_stat_rider_room(b,j,a) { return false; }
   b[0].turn.action=true;
-  hit := rs_strike_resolved(b,i,j,W_STAT_ATTACK,false,wp,a.bonus,a.ability,a.flat);
+  hit := rs_stat_strike(b,i,j,a,mode);
   rs_after_blow(b,i);
   return true;
 }

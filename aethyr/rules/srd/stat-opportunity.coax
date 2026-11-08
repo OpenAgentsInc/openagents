@@ -1,4 +1,4 @@
-// One declared melee stat-block attack as a Reaction, never a Multiattack.
+// One declared melee stat-block attack as a Reaction, never a Multiattack, with its riders.
 // Record provenance belongs to the source/world adapter, as for rs_stat_attack.
 #authority;
 rs_stat_opportunity :: (b:[]RsBattle,reactor:int,mover:int,a:RsStatAttack,q:RsOpportunityMove)->RsOpportunityResult #effects(all) {
@@ -14,18 +14,18 @@ rs_stat_opportunity_atomic :: (b:[]RsBattle,reactor:int,mover:int,a:RsStatAttack
 }
 rs_stat_opportunity_apply :: (b:[]RsBattle,reactor:int,mover:int,a:RsStatAttack,q:RsOpportunityMove)->RsOpportunityResult #effects(all) {
   r:RsOpportunityResult;
-  if !rs_stat_attack_valid(a) { return r; }
-  move:=q; move.melee=true; move.reach=a.reach;
+  if !rs_stat_attack_valid(a) || a.reach<=0 || reactor<0 || reactor>=b[0].c.count { return r; }
+  move:=q; move.melee=true; move.reach=a.reach+rs_space_feet(b[0].c[reactor]);
   if !rs_opportunity_trigger(b,reactor,mover,move) { return r; }
   if b[0].c[reactor].klass!=RS_MONSTER { return r; }
   for effect:b[0].c[reactor].eff {
     if effect.by==mover && (rs_effect_conditions(effect)&RS_CHARMED)!=0 { return r; }
   }
+  if rs_effect_free(b[0].c[mover])<rs_stat_rider_room(b,mover,a) { return r; }
   if !rs_reaction_frame_begin(b,reactor) { return r; }
-  // This resolved natural melee record has no mastery or Finesse rider to retain.
+  // A natural record has no mastery or Finesse rider; its own hit rider has prepaid room.
   b[0].c[reactor].reacted=true;
-  wp:=RsWeapon.{id=a.id,name=a.name,dice=a.dice,sides=a.sides,damage=a.kind,range_ft=5,reach_ft=a.reach};
-  r.hit=rs_strike_resolved(b,reactor,mover,W_STAT_ATTACK,false,wp,a.bonus,a.ability,a.flat);
+  r.hit=rs_stat_strike(b,reactor,mover,a,1);
   rs_after_blow(b,reactor);
   r.admitted=true; r.strike=b[0].turn;
   rs_reaction_frame_end(b);

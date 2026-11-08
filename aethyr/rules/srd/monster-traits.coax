@@ -1,0 +1,56 @@
+// SRD 5.2.1 stat-block traits the used monsters need (monsters.coax): Size (p.13, Monsters
+// p.254), Pack Tactics (Wolf p.364), Magic Resistance (Imp p.301, Quasit p.319) and the size
+// gates of attack riders ("a Large or smaller target", "a Medium or smaller creature").
+#authority;
+RS_TINY :: 1; RS_SMALL :: 2; RS_MEDIUM :: 3; RS_LARGE :: 4; RS_HUGE :: 5; RS_GARGANTUAN :: 6;
+// RsCreature.form: the size in its low 3 bits, then these traits
+RS_SIZE_BITS :: 7; RS_TRAIT_PACK :: 8; RS_TRAIT_MAGIC :: 16; RS_TRAIT_NIMBLE :: 32;
+rs_size :: (c: RsCreature) -> int #effects(all) { return c.form & RS_SIZE_BITS; }
+rs_trait :: (c: RsCreature, t: int) -> bool #effects(all) { return (c.form & t) != 0; }
+// The form of a creature of `size` with `traits`.
+rs_form :: (size: int, traits: int) -> int #effects(all) { return (size & RS_SIZE_BITS) | (traits - (traits & RS_SIZE_BITS)); }
+
+// Whether a rider that holds for creatures of size `largest` or smaller holds for this one.
+// 0 means the rider names no size.
+rs_size_holds :: (c: RsCreature, largest: int) -> bool #effects(all) { return largest == 0 || rs_size(c) <= largest; }
+
+// The battle keeps one square per creature. A Large or Huge creature's space reaches one square
+// further from its centre square, a Gargantuan one two (Size p.13: 10, 15 and 20 feet a side);
+// a melee stat attack's reach counts from the space's edge.
+rs_space_feet :: (c: RsCreature) -> int #effects(all) {
+  if rs_size(c) >= RS_GARGANTUAN { return 2 * RS_SQUARE; }
+  return ifx rs_size(c) >= RS_LARGE then RS_SQUARE else 0;
+}
+
+// Pack Tactics: Advantage on i's attack roll at j while an ally of i other than j is within 5 feet
+// of j and doesn't have the Incapacitated condition (nor one that includes it).
+rs_pack_tactics :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) {
+  if !rs_trait(b[0].c[i],RS_TRAIT_PACK) { return false; }
+  for k: 0..<b[0].n {
+    if k == i || k == j { continue; }
+    c := b[0].c[k];
+    if c.team == b[0].c[i].team && rs_capable(c) && rs_feet_to(b, k, j) / RS_SQUARE <= 1 { return true; }
+  }
+  return false;
+}
+
+// Magic Resistance: Advantage on saving throws against spells and other magical effects. The
+// caller says whether the save is magical.
+rs_magic_save_ups :: (c: RsCreature, magical: bool) -> int #effects(all) { return ifx magical && rs_trait(c,RS_TRAIT_MAGIC) then 1 else 0; }
+
+// The Goblin's "plus 2 (1d4) ... if the attack roll had Advantage".
+rs_advantage_rider :: (edge: int, dice: int) -> bool #effects(all) { return dice > 0 && edge > 0; }
+
+#test "size gates, spaces, forms, Magic Resistance and the Advantage rider" {
+  c: RsCreature;
+  #assert rs_size(c) == RS_MEDIUM && rs_size_holds(c, 0) && rs_size_holds(c, RS_MEDIUM) && !rs_size_holds(c, RS_SMALL) && rs_space_feet(c) == 0;
+  c.form = RS_LARGE; #assert rs_size_holds(c, RS_LARGE) && !rs_size_holds(c, RS_MEDIUM) && rs_space_feet(c) == 5;
+  c.form = RS_HUGE; #assert rs_space_feet(c) == 5 && !rs_size_holds(c, RS_LARGE);
+  c.form = RS_GARGANTUAN; #assert rs_space_feet(c) == 10;
+  c.form = RS_SMALL; #assert rs_space_feet(c) == 0;
+  #assert rs_magic_save_ups(c, true) == 0; c.form = rs_form(RS_SMALL, RS_TRAIT_MAGIC);
+  #assert rs_magic_save_ups(c, true) == 1 && rs_magic_save_ups(c, false) == 0 && rs_size(c) == RS_SMALL;
+  #assert rs_form(RS_HUGE, RS_TRAIT_PACK | RS_TRAIT_NIMBLE | 7) == RS_HUGE + RS_TRAIT_PACK + RS_TRAIT_NIMBLE && rs_form(9, 0) == 1;
+  #assert rs_trait(c, RS_TRAIT_MAGIC) && !rs_trait(c, RS_TRAIT_PACK) && !rs_trait(c, RS_TRAIT_NIMBLE);
+  #assert !rs_advantage_rider(1, 0) && !rs_advantage_rider(0, 1) && !rs_advantage_rider(-1, 1) && rs_advantage_rider(1, 1);
+}

@@ -55,3 +55,14 @@
   rs_end_turn(b[..],0); #assert !b[0].turn.disengaged && b[0].c[0].dodging;
   rs_start_turn(b[..],0); #assert !b[0].turn.disengaged && !b[0].c[0].dodging;
 }
+
+#test "Nimble Escape is a Bonus Action Disengage for a creature with the trait alone" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  _:=rs_add(b[..],rs_monster(MON_GOBLIN_WARRIOR,"",0),3,3); _=rs_add(b[..],rs_monster(MON_OGRE,"",1),5,5);
+  rs_start_turn(b[..],0); b[0].turn.action=true;
+  #assert rs_disengage_use(b[..],0,RS_DISENGAGE_NIMBLE) && b[0].turn.disengaged && b[0].turn.bonus;
+  #assert !rs_disengage_use(b[..],0,RS_DISENGAGE_NIMBLE);
+  rs_start_turn(b[..],1);
+  #assert !rs_disengage_use(b[..],1,RS_DISENGAGE_NIMBLE) && !b[0].turn.bonus && !b[0].turn.disengaged;
+  #assert !rs_disengage_use(b[..],1,RS_DISENGAGE_NIMBLE+1) && !rs_disengage_use(b[..],1,RS_DISENGAGE_PATIENT) && !b[0].turn.bonus;
+}
