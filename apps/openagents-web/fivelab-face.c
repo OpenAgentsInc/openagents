@@ -78,6 +78,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     coax_t_EgBody kept = lab_keep_body(at(state), origin, eg_step_body(player));
     if (kept.x != player.pos.x || kept.z != player.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
     player = eg_step_put(player, kept);
+    coax_t_EgMotionIntent intent = eg_step_motion_intent(input, mw);
+    lab_rest_motion(at(state), origin, kept, intent.walk, intent.jump);
     coax_t_Vec3 feet = verse_player_feet(player);
     lab_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player), !player.on_ground, touched, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   } else {

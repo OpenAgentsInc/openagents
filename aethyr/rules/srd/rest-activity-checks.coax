@@ -1,0 +1,8 @@
+#load "short-rest-checks.coax";
+#test "an accepted ordinary walking step interrupts rest while an invalid step preserves it" {
+  b:[1]RsBattle; b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Walker",0,3),2,2); rs_start_turn(b[..],0);
+  #assert rs_short_rest_begin(b[..],0);
+  #assert !rs_step_to(b[..],0,6,2) && b[0].c[0].rest.phase==1;
+  #assert rs_step_to(b[..],0,3,2) && b[0].c[0].rest.phase==0;
+  rs_tick(b[..],3600); #assert !rs_short_rest_finish(b[..],0);
+}

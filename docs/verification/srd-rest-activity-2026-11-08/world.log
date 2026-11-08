@@ -1,0 +1,4 @@
+ok   #test experimental rest activity uses admitted own motion rather than attempts or passive displacement (1 case, 2228352 steps, 377 ms)
+ok   #test experimental rest activity interrupts a monster only after its own candidate is accepted (1 case, 2252644 steps, 348 ms)
+2 of 795 checks (--only 'experimental rest activity'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

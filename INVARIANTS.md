@@ -7050,3 +7050,15 @@ seats. The Lab label and AC use the same state. Earlier Shield forecast checks
 are superseded by real strict/action saved-seat trigger/retirement witnesses.
 Other numeric deadlines and general turn scheduling remain separate work.
 Evidence: `docs/verification/srd-shield-turn-2026-11-08/README.md`.
+
+## Accepted locomotion reports Short Rest interruption without refilling history
+
+The grid step reports movement only after admission/payment. The player body
+path pairs actual admitted displacement with the controller's own dead-zone/
+world-gated intent, and reports actual requested jump rises. Attempts with no
+motion and passive displacement do not invent strenuous activity. Accepted
+monster AI locomotion uses the same rest-state transition. In-progress rest and
+post-completion choices close while Hit Dice and daily recovery history remain.
+Rest must begin from actual settled downtime; controls, network movement and
+other producers remain separate. Evidence:
+`docs/verification/srd-rest-activity-2026-11-08/README.md`.

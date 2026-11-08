@@ -1,0 +1,10 @@
+FAIL #test an accepted ordinary walking step interrupts rest while an invalid step preserves it (3 ms)
+aethyr/rules/srd/rest-activity-checks.coax:6:3: error[E0406]: assertion failed
+    #assert rs_step_to(b[..],0,3,2) && b[0].c[0].rest.phase==0;
+    ^
+  note: in #test an accepted ordinary walking step interrupts rest while an invalid step preserves it
+1 of 205 checks (--only 'ordinary walking step'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/.codex/worktrees/srd-compliance-ledger/openagents/coax/build.sh

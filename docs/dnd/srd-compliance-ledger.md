@@ -532,3 +532,14 @@ presentation agree. [Evidence](../verification/srd-shield-turn-2026-11-08/README
 native cast/retirement and the checked Lab Wasm build pass; 8 lifetime mutants
 killed, zero survivors/no exemptions. This supersedes earlier duration-forecast
 checks, not the remaining spell interactions or global timing qualification.
+
+### Rest activity producers (2026-11-08)
+
+Continuing Short Rest recovery at `9352b75109`, accepted grid/player/AI walking
+and requested admitted jumps now interrupt retained rest or its completed
+choice window. Denied attempts/passive displacement preserve it; seeded Hit
+Dice and recovery history are unchanged. [Evidence](../verification/srd-rest-activity-2026-11-08/README.md):
+260 composed rest/activity checks and focused world/controller checks pass;
+rest-state mutation kills 95, zero survivors/no exemptions. Long Rest,
+rest-start controls/settled-downtime admission, network/other interruption
+producers and world reconnect qualification remain open.

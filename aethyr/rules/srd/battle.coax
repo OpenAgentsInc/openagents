@@ -1153,6 +1153,7 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   if !rs_pay_move(turn[..],cost) { return false; }
   b[0].turn = turn[0];
   b[0].turn.moved = true;
+  rs_rest_motion(b[0].c[i..<i+1],true,false);
   rs_place(b, i, x, y);
   if b[0].guards > 0 {
     // into someone's Spirit Guardians, or its own Emanation onto someone

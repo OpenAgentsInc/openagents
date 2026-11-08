@@ -1,0 +1,3 @@
+ok   #test controller motion intent shares the analog dead zone and denied input gates (1 case, 434 steps, 0 ms)
+1 of 333 checks (--only 'controller motion intent'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

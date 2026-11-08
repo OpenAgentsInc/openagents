@@ -410,6 +410,7 @@ xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
   next:=proposed;
   if !rs_can_move(b[0].c[foe+1]) || rs_walk_speed(b,foe+1)<=0 { next.x=old.x; next.z=old.z; next.moving=false; }
   h[0].enemies[foe]=next;
+  rs_rest_motion(b[0].c[foe+1..<foe+2],moving && (next.x!=old.x || next.z!=old.z),false);
   xc_sync_permission(s,foe); xc_sync_vitals(s);
 }
 xc_hostile_tick :: (s:[] Lab,dt:f32) {
@@ -1815,3 +1816,23 @@ xc_check_ai_rate :: (speed:int)->bool {
 #test "experimental walking scale changes actual AI distance at half base Speed" { #assert xc_check_ai_rate(15); }
 #test "experimental walking scale retains actual AI distance at base Speed" { #assert xc_check_ai_rate(30); }
 #test "experimental walking scale changes actual AI distance at twice base Speed" { #assert xc_check_ai_rate(60); }
+
+#test "experimental rest activity uses admitted own motion rather than attempts or passive displacement" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..];
+  #assert rs_short_rest_begin(b,0);
+  origin:=EgBody.{ground=true}; body:=origin;
+  lab_rest_motion(s[..],origin,body,true,true); #assert b[0].c[0].rest.phase==1;
+  body.x=1; lab_rest_motion(s[..],origin,body,false,false); #assert b[0].c[0].rest.phase==1;
+  lab_rest_motion(s[..],origin,body,true,false); #assert b[0].c[0].rest.phase==0;
+  #assert rs_short_rest_begin(b,0); body=origin; body.y=1; body.ground=false;
+  lab_rest_motion(s[..],origin,body,false,false); #assert b[0].c[0].rest.phase==1;
+  lab_rest_motion(s[..],origin,body,false,true); #assert b[0].c[0].rest.phase==0;
+}
+#test "experimental rest activity interrupts a monster only after its own candidate is accepted" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..];
+  #assert rs_short_rest_begin(b,1);
+  proposed:=h[0].enemies[0]; proposed.x+=1; proposed.moving=false;
+  xc_monster_move(s[..],0,proposed); #assert b[0].c[1].rest.phase==1;
+  proposed.x+=1; proposed.moving=true;
+  xc_monster_move(s[..],0,proposed); #assert b[0].c[1].rest.phase==0;
+}

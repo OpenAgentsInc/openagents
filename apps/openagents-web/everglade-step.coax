@@ -328,3 +328,23 @@ eg_step_advance_scaled :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32
   w:=EgMoveWorld.{deck=true}; q:=eg_step_advance_scaled(p,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),0);
   #assert q.vel.z==0 && q.pos.z==p.pos.z && q.clock.ticks==1;
 }
+
+// Same dead zone and world input gates as the actual controller. Consumers
+// pair this intent with admitted body displacement; it is not movement itself.
+EgMotionIntent :: struct { walk:bool; jump:bool; }
+eg_step_motion_intent :: (input:EgMoveIn,w:EgMoveWorld)->EgMotionIntent #export_c #effects(reads,writes,traps) {
+  if w.busy || w.still || w.aboard { return EgMotionIntent.{}; }
+  pad:=sqrt(input.pad_x*input.pad_x+input.pad_y*input.pad_y);
+  return EgMotionIntent.{walk=input.key_x!=0 || input.key_y!=0 || pad>f32(walk.DEAD_ZONE) || (w.link_flags&512)!=0,jump=input.jump && w.jump_ok};
+}
+#test "controller motion intent shares the analog dead zone and denied input gates" {
+  w:EgMoveWorld; input:=EgMoveIn.{pad_y=0.1}; #assert !eg_step_motion_intent(input,w).walk;
+  input.pad_y=f32(walk.DEAD_ZONE); #assert !eg_step_motion_intent(input,w).walk;
+  input.pad_y=f32(walk.DEAD_ZONE)+f32(0.01); #assert eg_step_motion_intent(input,w).walk;
+  input=EgMoveIn.{jump=true}; #assert eg_step_motion_intent(input,w).jump;
+  w.jump_ok=false; #assert !eg_step_motion_intent(input,w).jump;
+  w.link_flags=512; #assert eg_step_motion_intent(input,w).walk;
+  w.busy=true; #assert !eg_step_motion_intent(input,w).walk && !eg_step_motion_intent(input,w).jump;
+  w.busy=false; w.still=true; #assert !eg_step_motion_intent(input,w).walk;
+  w.still=false; w.aboard=true; #assert !eg_step_motion_intent(input,w).walk;
+}

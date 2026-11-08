@@ -1,0 +1,17 @@
+#load "fivelab.coax";
+#load "everglade-step.coax" as controller;
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..];
+  if !rs_short_rest_begin(b,0) { return 1; }
+  from:=EgBody.{ground=true}; body:=from; w:EgMoveWorld;
+  intent:=controller.eg_step_motion_intent(EgMoveIn.{key_y=1,jump=true},w);
+  lab_rest_motion(s[..],from,body,intent.walk,intent.jump); if b[0].c[0].rest.phase!=1 { return 2; }
+  body.z=1; lab_rest_motion(s[..],from,body,false,false); if b[0].c[0].rest.phase!=1 { return 3; }
+  lab_rest_motion(s[..],from,body,intent.walk,false); if b[0].c[0].rest.phase!=0 { return 4; }
+  if !rs_short_rest_begin(b,0) { return 5; }
+  body=from; body.y=1; body.ground=false; lab_rest_motion(s[..],from,body,false,intent.jump);
+  if b[0].c[0].rest.phase!=0 { return 6; }
+  rs_tick(b,3600); if rs_short_rest_finish(b,0) { return 7; }
+  tool_errln("PASS REST-ACTIVITY"); return 0;
+}

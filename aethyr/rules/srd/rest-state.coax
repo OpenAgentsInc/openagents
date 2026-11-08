@@ -51,3 +51,17 @@ rs_rest_spell_at :: (c:[]RsCreature,actor:int,level:int) #effects(all) { rs_rest
   rs_rest_spell_at(other[..],1,1); #assert other[0].rest.phase==1 && other[1].rest.phase==0;
   other[1].rest.phase=2; rs_rest_interrupt_at(other[..],0); #assert other[0].rest.phase==0 && other[1].rest.phase==2;
 }
+
+// Producers report accepted locomotion, not held keys or passive displacement.
+rs_rest_motion :: (c:[]RsCreature,walked:bool,jumped:bool) #effects(all) {
+  if walked || jumped { rs_rest_interrupt(c); }
+}
+#test "accepted walking or jumping closes either rest phase without refilling history" {
+  for phase:0..<3 { for walked:0..<2 { for jumped:0..<2 {
+    c:[1]RsCreature; c[0].rest.phase=phase; c[0].rest.started=12;
+    c[0].rest.dice=1; c[0].rest.recovery_used=true; c[0].rest.restoration_used=true;
+    rs_rest_motion(c[..],walked==1,jumped==1);
+    #assert c[0].rest.phase==(ifx walked==1 || jumped==1 then 0 else phase);
+    #assert c[0].rest.started==12 && c[0].rest.dice==1 && c[0].rest.recovery_used && c[0].rest.restoration_used;
+  } } }
+}
