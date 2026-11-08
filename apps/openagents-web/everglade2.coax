@@ -928,6 +928,15 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // shown), 87 the bodies thinning out this frame (e2_remotes_draw)
   if field == 18 { return s[0].fade_ins; } if field == 19 { return s[0].pops; } if field == 87 { return s[0].ghosts; }
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
+  // rest (#13046), for a check that presses its controls: 30 the room's rest code (WIRE_REST_*, -1 not
+  // said yet), 31 the controls shown, 32 and 33 the first's and the last's requests (RS_REST_*), 34 to
+  // 37 their centres (canvas px: x, y, x, y), 38 your x (cm), 39 a rest refusal shown (1)
+  if field >= 30 && field < 40 { n := s[0].net[..]; reqs: [4] int; rn := e2k_rest_choices(s, reqs[..]);
+    if field == 30 { return ifx n[0].rest_known then n[0].rest_code else -1; } if field == 31 { return rn; }
+    if field == 38 { return cast(int)(s[0].you_x * 100); } if field == 39 { return ifx e2n_rest_message(n).count > 0 then 1 else 0; }
+    if rn == 0 { return -1; }
+    j := ifx field == 32 || field == 34 || field == 35 then 0 else rn - 1; if field < 34 { return reqs[j]; }
+    r := e2k_rest_box(s, j, rn); return cast(int)(ifx (field - 34) % 2 == 0 then (r[0] + r[2]) / 2 else (r[1] + r[3]) / 2); }
   // the casts (#13058): 82 yours sent to the room, 83 others' played here, 88 yours the room said
   // back, 89 cast sounds played (everglade2-cast.coax)
   if field == 82 { return s[0].net[0].cast_sent; } if field == 83 { return s[0].casts[0].others; }
@@ -1385,6 +1394,10 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k); a:=e2k_rest_box(s[..],0,2); z:=e2k_rest_box(s[..],1,2);
   #assert a[3]<b0[1]-40 && a[0]>=0 && z[2]<=s[0].width && a[2]<z[0];
   #assert e2k_slot_at(s[..],(a[0]+a[2])/2,(a[1]+a[3])/2)<0;
+  // the probes a browser check presses them by
+  #assert e2_probe(s[..],30)==WIRE_REST_NONE && e2_probe(s[..],31)==2 && e2_probe(s[..],32)==RS_REST_SHORT && e2_probe(s[..],33)==RS_REST_SLEEP;
+  #assert e2_probe(s[..],34)==cast(int)((a[0]+a[2])/2) && e2_probe(s[..],35)==cast(int)((a[1]+a[3])/2) && e2_probe(s[..],36)==cast(int)((z[0]+z[2])/2) && e2_probe(s[..],37)==cast(int)((z[1]+z[3])/2);
+  #assert e2_probe(s[..],38)==cast(int)(s[0].you_x*100) && e2_probe(s[..],39)==0;
   sent:=n[0].pipe[0].n;
   #assert e2_pointer(s[..],(z[0]+z[2])/2,(z[1]+z[3])/2,0,0,1) && n[0].pipe[0].n==sent+1 && s[0].casts[0].pressed==0;
   p:=n[0].pipe[0]; last:=p.n-1; ask:=cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]];
@@ -1396,8 +1409,8 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_WATCH && reqs[1]==RS_REST_END;
   // a refusal shows briefly over the bar in the cast feedback's place
   #assert e2n_rest(n,RS_REST_WATCH); c=wire_put_refused(m[..],0,n[0].rest_seq,"rest"); e2n_record(n,cast(string)m[0..<c]);
-  #assert e2n_rest_message(n).count>0;
+  #assert e2n_rest_message(n).count>0 && e2_probe(s[..],39)==1;
   e2n_record(n,"z 0 2 1"); #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_DIE;
   count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · HIT DICE 1";
-  e2n_down(n); #assert e2k_rest_choices(s[..],reqs[..])==0;
+  e2n_down(n); #assert e2k_rest_choices(s[..],reqs[..])==0 && e2_probe(s[..],30)== -1 && e2_probe(s[..],31)==0 && e2_probe(s[..],32)== -1 && e2_probe(s[..],34)== -1;
 }

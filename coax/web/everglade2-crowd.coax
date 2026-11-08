@@ -1,7 +1,7 @@
 // Everglade II's crowd check (#13057): N headless Chromes (2 to 3: the machine's cap) take the whole
 // journey into one Everglade II room of their own, as players do, and say what each saw and how
 // smooth the others were.
-//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE] [--shot DIR] [--cast]
+//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest]
 // URL is the Character Create page (…/worlds/character-creator), with ?relay=ws://localhost:PORT for a
 // local room (coax/web/room/local.coax); the room is a fresh pair-e2-<hex> (?room=), which the rooms
 // list leaves out, unless --room names one (a load run's pair-e2-load-STAMP-1, to stand among its
@@ -23,6 +23,11 @@
 //      (keys 1 and 2) in turn, EC_CASTS presses 1.2 s apart (#13058). The checks: every cast went to
 //      the room (e2_probe 82) and came back to its page (88), every page played every other's (83: as
 //      many as the others sent), and each cast played its sounds (89, the sound lines written).
+//   --rest, after --cast and before the walk: each page in turn presses its rest controls over the bar
+//      (#13046) by mouse, at the centres e2_probe 34 to 37 give, and the room says each answer (e2_probe
+//      30, the z code): LONG REST puts you asleep (3), and W then moves you nothing; WATCH (4); END REST,
+//      then END REST again if the rest is broken (6), leaves no rest (0); SHORT REST (1), and walking
+//      breaks it (0 again). With --shot, DIR/rest-asleep-K.jpg and DIR/rest-short-K.jpg.
 // Nothing opens on screen and no sound plays. Each Chrome this starts is closed before it exits.
 #import "Basic";
 #load "../lib/net/cdp.coax";
@@ -166,6 +171,57 @@ ec_casts :: (c: [] Cdp, shot: string) -> bool {
   ok = ec_check(all_heard, "every cast played its sound on every page") && ok;
   return ok;
 }
+// The rest controls (#13046): their codes and requests as the room and the rules have them
+// (everglade-wire.coax WIRE_REST_*, aethyr/rules/srd/rest-control.coax RS_REST_*).
+EC_NONE :: 0; EC_SHORT :: 1; EC_SLEEP :: 3; EC_WATCH :: 4; EC_BROKEN :: 6;
+EC_R_SHORT :: 1; EC_R_SLEEP :: 2; EC_R_WATCH :: 3; EC_R_END :: 4;
+// The room's rest code once it is one of want or other (-2 for none), within ms.
+ec_rest_wait :: (p: [] Cdp, want: int, other: int, ms: int) -> int {
+  deadline := proc_now_ms() + ms;
+  while proc_now_ms() < deadline { r := ec_probe(p, 30); if r == want || r == other { return r; } proc_sleep(100); }
+  r := ec_probe(p, 30); return ifx r == want || r == other then r else -2;
+}
+// Presses the first (last false) or the last rest control when it asks req; false when it doesn't.
+ec_rest_press :: (p: [] Cdp, req: int, last: bool) -> bool {
+  if ec_probe(p, ifx last then 33 else 32) != req { return false; }
+  x := ec_probe(p, ifx last then 36 else 34); y := ec_probe(p, ifx last then 37 else 35);
+  return x > 0 && y > 0 && ec_click(p, x, y);
+}
+ec_rest_page :: (p: [] Cdp, i: int, shot: string) -> bool {
+  ready := ec_rest_wait(p, EC_NONE, EC_NONE, 10000) == EC_NONE && ec_probe(p, 31) == 2;
+  print("  page %: rest code %, controls % (% and %)\n", i, ec_probe(p, 30), ec_probe(p, 31), ec_probe(p, 32), ec_probe(p, 33));
+  ok := ec_check(ready, "the room said this page's rest, and SHORT REST and LONG REST show over the bar");
+  if !ready { return false; }
+  slept := ec_rest_press(p, EC_R_SLEEP, true) && ec_rest_wait(p, EC_SLEEP, EC_SLEEP, 4000) == EC_SLEEP;
+  ok = ec_check(slept, "LONG REST: the room puts you asleep (z 3)") && ok;
+  x0 := ec_probe(p, 38); z0 := ec_probe(p, 5);
+  _ := ec_key(p, true); proc_sleep(1500); _ = ec_key(p, false); proc_sleep(500);
+  x1 := ec_probe(p, 38); z1 := ec_probe(p, 5);
+  print("  page %: W asleep moved you (% cm, % cm), code %\n", i, x1 - x0, z1 - z0, ec_probe(p, 30));
+  ec_shot(p, shot, "rest-asleep", i);
+  ok = ec_check(slept && x1 - x0 < 5 && x0 - x1 < 5 && z1 - z0 < 5 && z0 - z1 < 5 && ec_probe(p, 30) == EC_SLEEP, "asleep, W moves you nothing and you stay asleep") && ok;
+  watch := ec_rest_press(p, EC_R_WATCH, false) && ec_rest_wait(p, EC_WATCH, EC_WATCH, 4000) == EC_WATCH;
+  ok = ec_check(watch, "WATCH: the room has you on watch (z 4)") && ok;
+  ended := ifx ec_rest_press(p, EC_R_END, true) then ec_rest_wait(p, EC_NONE, EC_BROKEN, 4000) else -2;
+  broke := ended == EC_BROKEN;
+  if broke { ended = ifx ec_rest_press(p, EC_R_END, true) then ec_rest_wait(p, EC_NONE, EC_NONE, 4000) else -2; }
+  print("  page %: END REST %, then code %\n", i, ifx broke then "broke the rest, END REST again" else "ended it", ended);
+  ok = ec_check(ended == EC_NONE && ec_probe(p, 31) == 2, "END REST: no rest, and SHORT REST and LONG REST show again (z 0)") && ok;
+  short := ec_rest_press(p, EC_R_SHORT, false) && ec_rest_wait(p, EC_SHORT, EC_SHORT, 4000) == EC_SHORT;
+  ok = ec_check(short, "SHORT REST: the room has you resting (z 1)") && ok;
+  ec_shot(p, shot, "rest-short", i);
+  _ = ec_key(p, true); proc_sleep(1500); _ = ec_key(p, false);
+  walked := ec_rest_wait(p, EC_NONE, EC_BROKEN, 4000);
+  x2 := ec_probe(p, 38); z2 := ec_probe(p, 5);
+  print("  page %: walking in a Short Rest moved you (% cm, % cm), code %\n", i, x2 - x1, z2 - z1, walked);
+  ok = ec_check(walked == EC_NONE && (x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1) > 100 * 100, "walking breaks the Short Rest (z 0), and you walk") && ok;
+  return ok;
+}
+ec_rests :: (c: [] Cdp, shot: string) -> bool {
+  ok := true;
+  for i: 0..<c.count { ok = ec_rest_page(c[i..<i + 1], i, shot) && ok; }
+  return ok;
+}
 ec_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -177,10 +233,10 @@ tool_main :: () -> int #export_c #effects(all) {
   wh := args_size(args_value(a[..], "--size", "1280x720"));
   room := args_value(a[..], "--room", "");
   shot := args_value(a[..], "--shot", "");
-  casts := args_has(a[..], "--cast");
+  casts := args_has(a[..], "--cast"); rests := args_has(a[..], "--rest");
   origin := ec_origin(url);
   if !ok || url.count == 0 || url[0] == '-' || origin.count == 0 || !players.ok || !seconds.ok || !wh.ok || players.value < (ifx room.count > 0 then 1.0 else 2.0) || players.value > f64(E2C_MAX) || seconds.value < 3 {
-    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3, or 1 with --room] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] [--cast] (from the repository's root)"); return 2;
+    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3, or 1 with --room] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest] (from the repository's root)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade2-crowd.js", js[..]);
@@ -200,12 +256,12 @@ tool_main :: () -> int #export_c #effects(all) {
     if !cdp_launch(c[i..<i + 1], wh.w, wh.h, "coax-e2crowd-") { tool_err("everglade2-crowd: "); tool_errln(cdp_error(c[i..<i + 1])); break; }
     up += 1;
   }
-  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value, shot, casts) else 1;
+  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value, shot, casts, rests) else 1;
   for i: 0..<up { cdp_close(c[i..<i + 1]); }
   return status;
 }
 
-ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int, shot: string, casts: bool) -> int {
+ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int, shot: string, casts: bool, rests: bool) -> int {
   n := c.count;
   for i: 0..<n { if !ec_open(c[i..<i + 1], url, origin, mark, w, h, script) { tool_errln("everglade2-crowd: can't open a page"); print("fails\n"); return 1; } }
   print("room %, % players, mark %\n", url, n, mark);
@@ -286,6 +342,7 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
     t := ec_str(c[i..<i + 1], "__e2.report()", run_report[i * 2048..<(i + 1) * 2048]); ro[i] = i * 2048; rn[i] = t.count;
   }
   if casts { all = ec_casts(c, shot) && all; }
+  if rests { all = ec_rests(c, shot) && all; }
   // 4. all walk on together (W), then stand
   for i: 0..<n { _ := ec_int(c[i..<i + 1], "__e2.mark()", 0); pressed_w := ec_key(c[i..<i + 1], true); }
   proc_sleep(seconds * 1000);

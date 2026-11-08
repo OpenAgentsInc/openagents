@@ -1,0 +1,51 @@
+room http://localhost:8958/worlds/character-creator?relay=ws://localhost:8957&room=pair-e2-a7cbc2ab2703-1, 2 players, mark pair-check-a7cbc2ab2703
+ok   every page pressed USE IN EVERGLADE and its run began
+ok   a refused name (an address) is said, and nothing is sent
+ok   every page took its name in Character Create (NAME, the API's player/name)
+ok   every page is seated in the room while its run plays
+  page 0 seat 0 after 1501 ms, running 1; room state 2 want 1 joined 1 look 57 tries 0 frames in 47
+  page 1 seat 1 after 104 ms, running 1; room state 2 want 1 joined 1 look 57 tries 0 frames in 17
+ok   every page draws every other player
+ok   every page has every other's chosen name
+  names in 1 ms after every page drew every other
+  seen while a run played: yes
+  picture SCRATCH/shots/run-0.jpg
+  picture SCRATCH/shots/run-1.jpg
+  page 0: rest code 0, controls 2 (1 and 2)
+ok   the room said this page's rest, and SHORT REST and LONG REST show over the bar
+ok   LONG REST: the room puts you asleep (z 3)
+  page 0: W asleep moved you (0 cm, 0 cm), code 3
+  picture SCRATCH/shots/rest-asleep-0.jpg
+ok   asleep, W moves you nothing and you stay asleep
+ok   WATCH: the room has you on watch (z 4)
+  page 0: END REST ended it, then code 0
+ok   END REST: no rest, and SHORT REST and LONG REST show again (z 0)
+ok   SHORT REST: the room has you resting (z 1)
+  picture SCRATCH/shots/rest-short-0.jpg
+  page 0: walking in a Short Rest moved you (4 cm, -631 cm), code 0
+ok   walking breaks the Short Rest (z 0), and you walk
+  page 1: rest code 0, controls 2 (1 and 2)
+ok   the room said this page's rest, and SHORT REST and LONG REST show over the bar
+ok   LONG REST: the room puts you asleep (z 3)
+  page 1: W asleep moved you (0 cm, 0 cm), code 3
+  picture SCRATCH/shots/rest-asleep-1.jpg
+ok   asleep, W moves you nothing and you stay asleep
+ok   WATCH: the room has you on watch (z 4)
+  page 1: END REST ended it, then code 0
+ok   END REST: no rest, and SHORT REST and LONG REST show again (z 0)
+ok   SHORT REST: the room has you resting (z 1)
+  picture SCRATCH/shots/rest-short-1.jpg
+  page 1: walking in a Short Rest moved you (12 cm, -625 cm), code 0
+ok   walking breaks the Short Rest (z 0), and you walk
+  page 0: named others 1, bodies for names 1, names drawn now 1, most in a frame 1, draws 138
+  page 1: named others 1, bodies for names 1, names drawn now 0, most in a frame 1, draws 138
+  page 0: others drawn 1, came into view and faded in 1, pops 0, fading out now 0
+  page 1: others drawn 1, came into view and faded in 1, pops 0, fading out now 0
+ok   nobody popped in or out (each faded)
+  picture SCRATCH/shots/walk-0.jpg
+  picture SCRATCH/shots/walk-1.jpg
+ok   every page still draws every other player after the walk
+ok   every page has every other's name and draws names over their heads
+{"players":2,"pages":[{"seat":0,"seated_ms":1501,"run":{"frames":1376,"gap_p50":16.69482421875,"gap_p99":29.449951171875,"gap_max":46.375,"long_frames":58,"coax_p50":0.739990234375,"coax_p99":0.949951171875,"remotes":1,"plates":1,"named_frames":209,"other_speed_p50":4.139572268275731,"moving":1371,"stalls":0,"lurches":200,"fixes":673,"fix_max_mm":13},"walk":{"frames":346,"gap_p50":16.68505859375,"gap_p99":25.525146484375,"gap_max":27.670166015625,"long_frames":4,"coax_p50":0.93505859375,"coax_p99":1.110107421875,"remotes":1,"plates":1,"named_frames":322,"other_speed_p50":1.161096465118916,"moving":169,"stalls":0,"lurches":0,"fixes":180,"fix_max_mm":13}},{"seat":1,"seated_ms":104,"run":{"frames":1375,"gap_p50":16.77978515625,"gap_p99":28.794921875,"gap_max":38.85009765625,"long_frames":47,"coax_p50":0.739990234375,"coax_p99":0.93994140625,"remotes":1,"plates":1,"named_frames":1374,"other_speed_p50":4.050059105239479,"moving":1288,"stalls":0,"lurches":2,"fixes":692,"fix_max_mm":11},"walk":{"frames":352,"gap_p50":16.670166015625,"gap_p99":24.5400390625,"gap_max":33.630126953125,"long_frames":3,"coax_p50":0.93994140625,"coax_p99":1.125,"remotes":1,"plates":1,"named_frames":103,"other_speed_p50":0,"moving":157,"stalls":0,"lurches":0,"fixes":127,"fix_max_mm":10}}]}
+holds
+EXIT 0

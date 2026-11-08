@@ -1,0 +1,1 @@
+wasm.sh: everglade2.wasm: 95.9 s: Coax to C 92.0 s (2/3 cached), clang 1.7 s (2/4 cached), link 0.6 s, wasm-opt 0.5 s; 643835 bytes; report apps/openagents-web/build/.c/everglade2.timings.json
