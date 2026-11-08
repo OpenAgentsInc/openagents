@@ -7313,3 +7313,23 @@ profile 3 post is refused (400 or 5xx) sends profile 2 for the rest of its
 process. Evidence: the `rest carry` checks (zero mutation survivors in
 `rest-carry.coax`), the `character checkpoint` checks (zero root survivors),
 the `e2 rest` room checks and the `resume3` API checks.
+
+## Lighting reads the simulation's day and the shared weather, and changes neither
+
+The environment resolver's day comes only from `aethyr/world/day.coax`: a
+versioned `DayClock` with an explicit mode (fixed, cycle or real), source,
+rate and epoch tick, evaluated at the simulation tick. A shared (multiplayer)
+world refuses a cycle or real clock whose source is the visitor's own page
+(`DayRefusal.local_clock`); the room's clock is anchored at a midnight tick
+from its W header, so seats that joined at different ticks hold the same clock
+and resolve the same day. Its weather comes only from
+`aethyr/world/weather.coax`: a versioned `WeatherCondition` read from a copy
+of `verse/water-weather.coax`'s schedule and ground, with spell overlays a
+separate local condition that never enters the global one. Applying it is
+Everglade's existing weather light; nothing here pins the schedule or changes
+gameplay weather, room authority, combat or simulation. A resolved value is
+cached only under its whole key (versions, set generation, profile, tick,
+world, clock and condition), and a refusal is never cached. Checks: `coax test`
+on both files ("fixed-state replay and late-join evaluation agree", "the
+cache holds one value under its whole identity", "a shared world never uses a
+visitor's local wall clock"), with zero `coax mutate --root-only` survivors.
