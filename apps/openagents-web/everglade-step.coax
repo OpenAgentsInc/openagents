@@ -46,6 +46,7 @@ eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> 
   }
   if w.busy || w.still { p = walk.walk_input(p, 0, 0, 0, 0, false, false, 0, 0); }
   else { p = walk.walk_input(p, input.key_x, input.key_y, input.pad_x, input.pad_y, input.run, input.jump && w.jump_ok, 0, 0); }
+  if (w.link_flags & 512) != 0 && !w.busy && !w.still { p.key_x = 0; p.key_y = 1; p.pad_x = 0; p.pad_y = 0; p.run = true; }
   p.pace = w.pace; p.grip = w.grip;
   p.theta = input.theta;
   if (w.link_flags&32)!=0 {p.pace*=link_motion.ocl_input_pace(p.key_x,p.key_y,p.pad_x,p.pad_y);}
@@ -77,6 +78,13 @@ eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f
     if (w.link_flags&128)!=0 {p.face=w.link_yaw;if p.on_ground {p.vel.x=0;p.vel.z=0;}}
     if (w.link_flags&64)!=0 {p.face=w.link_yaw-walk.PI;}
     return p;
+  }
+  if (w.link_flags & 512) != 0 {
+    profile := link_collision.collision_profile_lookup("everglade");
+    world := walk.World.{bodies = bodies, walls = walls, floors = floors, collision = profile.profile};
+    // Stay within the realm's admitted maximum travel per fixed collision step.
+    world.locomotion.run_speed = 9.2;
+    return walk.advance_in(world, p, frame);
   }
   return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, "everglade");
 }
@@ -260,4 +268,19 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
  p:=walk.walk_place(0,0,0,0);i:=EgMoveIn.{key_y=1,jump=true,link_flags=160,theta=0.7};w:=eg_step_world(EgMoveWorld.{},i);p=eg_step_begin(p,i,w,1.0f32/64);
  #assert !p.on_ground && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)>6.79999 && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)<6.80001 && p.vel.y>2.9 && p.face==0.7;
  none:[1]f32;for k:0..<32 {p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);}#assert p.on_ground && p.face==0.7 && p.vel.x==0 && p.vel.z==0;
+}
+
+#test "experimental dash runs forward faster and cannot pass a wall" {
+  empty: [1] f32; walls := [6] f32.[-3, 0, 2, 3, 3, 2.2];
+  normal := walk.walk_place(0, 0, 0, 0); dash := normal;
+  i := EgMoveIn.{key_y = 1, run = true, theta = walk.PI}; di := EgMoveIn.{key_y = 1, run = true, theta = walk.PI, link_flags = 512};
+  w := eg_step_world(EgMoveWorld.{}, i); dw := eg_step_world(EgMoveWorld.{}, di);
+  for k: 0..<40 {
+    normal = eg_step_advance(eg_step_begin(normal, i, w, 1.0f32 / 64), w, empty[0..<0], empty[0..<0], empty[0..<0], 1.0f32 / 64);
+    dash = eg_step_advance(eg_step_begin(dash, di, dw, 1.0f32 / 64), dw, empty[0..<0], empty[0..<0], empty[0..<0], 1.0f32 / 64);
+  }
+  #assert dash.pos.z > normal.pos.z + 0.5;
+  dash = walk.walk_place(0, 0, 0, 0);
+  for k: 0..<64 { dash = eg_step_advance(eg_step_begin(dash, di, dw, 1.0f32 / 64), dw, empty[0..<0], walls[..], empty[0..<0], 1.0f32 / 64); }
+  #assert dash.pos.z > 1 && dash.pos.z < 2 && walk.walk_collision_refusals(dash) == 0;
 }

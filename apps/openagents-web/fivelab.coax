@@ -1959,6 +1959,9 @@ lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
 // is held: verse_runs), Space to jump. The face adds the thumb's stick.
 lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
+  if s[0].creator[0].experimental && s[0].creator[0].hostiles[0].hp > 0 && s[0].creator[0].clock < s[0].xc[0].dash_until {
+    return EgMoveIn.{key_y = 1, theta = s[0].xc[0].dash_face - 3.14159265, link_flags = 512};
+  }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
                    jump = h & HOLD_JUMP != 0, theta = ifx s[0].creator[0].experimental then s[0].creator[0].yaw else you_theta(s)};
 }
@@ -1987,7 +1990,7 @@ lab_queue_escape :: (s:[]Lab,x:f32,y:f32,z:f32) {
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z);return w;}
+  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z);if s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until {w.link_flags=512;}return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }
@@ -2030,7 +2033,7 @@ lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
-  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=face;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on;}
+  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=face;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || (s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until);}
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -3285,7 +3288,7 @@ lab_respawn :: (s:[]Lab)->bool {
  h[0].hp=44;h[0].died_at=0;h[0].pop_next=0;for i:0..<8 {h[0].pops[i].amount=0;}
  for i:0..<6 {e:=h[0].enemies[i..<i+1];if !e[0].dead {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].swing= -1;e[0].moving=false;e[0].cool=1;if i==2 || i==5 {e[0].awake=false;}}}
  c[0].player_x=0;c[0].player_y=0;c[0].player_z=0;c[0].airborne=false;c[0].land_at= -100;c[0].camera_room= -1;
- s[0].you_on=false;s[0].safe_on=false;s[0].put_on=false;s[0].held=0;s[0].shift=false;s[0].xc[0].target= -1;return true;
+ s[0].you_on=false;s[0].safe_on=false;s[0].put_on=false;s[0].held=0;s[0].shift=false;s[0].xc[0].target= -1;s[0].xc[0].dash_until= -1;return true;
 }
 lab_respawn_pointer :: (s:[]Lab,x:f32,y:f32,phase:int,id:int)->bool {
  c:=s[0].creator[0];if !c.experimental || !c.hostiles[0].ready || c.hostiles[0].hp>0 {s[0].respawn_id= -1;return false;}

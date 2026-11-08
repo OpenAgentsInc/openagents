@@ -66,6 +66,7 @@ XC_SLOT :: 52.0; XC_STEP :: 60.0; XC_BOTTOM :: 30.0;
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XcCombat :: struct {
   started: bool; klass: int = 11; level: int = 1;
+  dash_until: f32 = -1; dash_face: f32;
   bar: [XC_SLOTS] FbAb; bar_n: int;
   order: [12] [XC_SLOTS] int; order_n: [12] int;
   arranging: bool; order_dirty: bool; drag_x: f32; drag_y: f32;
@@ -565,6 +566,9 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   gain := b[0].c[0].hp - 1 + b[0].c[0].temp;
   b[0].c[0].hp = b[0].c[0].hp_max; b[0].c[0].temp = 0; b[0].c[0].dead = false;
   if !ok { x[0].refused += 1; return false; }
+  if a.kind == FB_DASH || a.kind == FB_CDASH || a.kind == FB_WIND {
+    x[0].dash_face = cr[0].player_face; x[0].dash_until = now + 0.9;
+  }
   x[0].cool_at = now; x[0].used = k; x[0].casts += 1;
   if foe >= 0 { x[0].target = foe; }   // the one struck at: its Hit Points over the bar
   if gain > 0 && h[0].hp < XC_PLAYER_MAX {
@@ -1147,4 +1151,19 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert xc_test_swing(0.004, 0.051, 1.2) == 100;
   #assert xc_test_swing(2.0, 2.0, 1.2) == 100;      // the whole swing in one frame: caught up tick by tick
   #assert xc_test_swing(1.0 / 60, 1.0 / 60, 3.5) == 1;   // out of the blade's reach: the air
+}
+
+#test "experimental combat dash propels the player forward and stops after its burst" {
+  s: [1] Lab; s[0].creator[0].experimental = true; s[0].creator[0].hostiles[0].ready = true; s[0].creator[0].hostiles[0].hp = 44;
+  s[0].creator[0].player_face = 0.5; xc_start(s[0].xc[..], FB_CL_BARBARIAN);
+  dash := -1; for i: 0..<s[0].xc[0].bar_n { if s[0].xc[0].bar[i].kind == FB_DASH { dash = i; } }
+  #assert dash >= 0 && xc_press(s[..], dash);
+  input := lab_move_in(s[..]);
+  #assert input.key_y == 1 && input.key_x == 0 && input.link_flags & 512 != 0;
+  #assert lab_move_world(s[..], 0, 0).link_flags & 512 != 0;
+  #assert abs(input.theta - (0.5 - 3.14159265)) < 0.001;
+  s[0].creator[0].clock += 2;
+  input = lab_move_in(s[..]); #assert input.link_flags & 512 == 0 && input.key_y == 0;
+  s[0].creator[0].clock += 1; #assert xc_press(s[..], dash);
+  s[0].creator[0].hostiles[0].hp = 0; input = lab_move_in(s[..]); #assert input.link_flags & 512 == 0;
 }
