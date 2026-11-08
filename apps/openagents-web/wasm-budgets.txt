@@ -33,7 +33,8 @@ everglade 2000000
 everglade5e 2250000
 # the room server's simulation for offline play's local host (coax/web/room/worker.coax, #12784): 1,191,635 measured; 1,206,472 after the WANTED ladder and the rules saves (45bcccd674, a1381c7131); 1,257,728 after #12837; 1,002,703 once the rigs' clips load at the first pose (the room poses no one); about 5% room
 # Shared Ocarina movement profile and versioned J1 input: 1,067,794 measured 2026-11-06; about 5% room.
-everglade-room 1122000
+# 1,123,731 on 2026-11-08 after the engine's spell access and prepared-spell checks; about 5% room.
+everglade-room 1180000
 fairy 695000
 # Character Studio adds the full Source wardrobe UI and appearance codec to the existing people producer: 590,971 bytes measured; about 5% headroom.
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
