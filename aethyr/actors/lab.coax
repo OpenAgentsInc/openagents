@@ -1,0 +1,138 @@
+// Engine-owned playable adoption. One existing State Lab clock pays every body.
+#module "aethyr.actors.lab";
+#run_steps 50000000;
+#load "runtime.coax";
+#load "content.coax";
+#load "compiled-archetypes.coax" as archetypes;
+#load "signals.coax";
+#load "../state/fixture.coax";
+#load "../loop.coax" as clock;
+#load "../entity.coax" as entities;
+#load "../query-scene.coax" as scene;
+#load "../query-filter.coax" as filters;
+#load "../query.coax" as queries;
+#load "../input.coax" as input;
+#load "../assets.coax" as assets;
+#load "../walk.coax" as walking;
+#load "../nav/grid.coax" as navigation;
+#load "../replay.coax" as replay;
+#load "../ai/decide.coax" as decisions;
+// Native archetypes supply resolved services, parameter slots and phase plans;
+// the execution profile adds bounded native behavior and schedule rows.
+ActorLabCompiled :: struct {status:int;n:int;items:[ACTOR_PROFILES]ActorProfile;native:[ACTOR_PROFILES]archetypes.ActorArchetype;}
+actor_lab_compile :: (alternate:int)->ActorLabCompiled #effects(all) {
+ s:[1]StateLab;if !state_lab_start(s[..],0) {return ActorLabCompiled.{status=ACTOR_INVALID};}schema:=state_lab_schema(s[0].identity[0]);refs:=state_lab_refs(s[..]);authors:=actor_lab_authors(alternate);profiles:=actor_compile(authors[..],schema,refs,4);out:=ActorLabCompiled.{status=profiles.status,n=profiles.n,items=profiles.items};
+ services:[6]archetypes.ActorService;reads:=[6]u32.[128,9,2,4,8,48];writes:=[6]u32.[15,2,4,8,48,64];
+ for i:0..<6 {services[i]=archetypes.ActorService.{id=10+i,kind=i,implementation=i,reads=reads[i],writes=writes[i],needs=ifx i==0 then 0 else cast(u32)(1<<(i-1))};}
+ types:=archetypes.actor_parameter_schema();
+ for i:0..<profiles.n {d:=profiles.items[i];p:=d.parameters;native:=[1]archetypes.ActorDefinition.[archetypes.ActorDefinition.{id=d.id,revision=d.revision,parameter_count=20,binding_count=6,field_count=0,root_count=1}];
+  // The generic vocabulary orders inner/acquisition/outer bands. The runtime
+  // names its inner band alert and its acquisition band discover.
+  values:=[20]f64.[ifx p.controller==1 then 2 else 1,1,0,f64(p.radius)/100,f64(p.speed)/100,f64(p.alert)/100,f64(p.discover)/100,f64(p.track)/100,-1,f64(p.vertical)/100,f64(p.cull)/100,f64(p.forget),f64(p.grace),0,f64(p.sense_work),f64(p.path_work),f64(4*p.n),16,1.6,ifx p.repeat then 1 else 0];
+  for k:0..<20 {v:=types.fields[k].initial;if v.kind==STATE_SCALAR {v.number[0]=values[k];}else {v.integer=cast(int)values[k];}native[0].parameters[k]=archetypes.ActorParameter.{id=k+1,value=v};}
+  for k:0..<6 {native[0].bindings[k]=archetypes.ActorBinding.{kind=k,service=10+k};}
+  native[0].roots[0]=archetypes.ActorResourceRef.{content=s[0].manifest[0].entries[0].plan.content,spec=s[0].manifest[0].entries[0].plan.spec};
+  for k:0..<p.rows {field:=p.schedule[k].field;if field==0 {continue;}found:=false;for j:0..<native[0].field_count {if native[0].fields[j].id==field {found=true;}}
+   if !found {at:=state_find(schema,field);f:=schema.fields[at];native[0].fields[native[0].field_count]=archetypes.ActorFieldRef.{id=field,kind=f.kind,scope=f.scope,owner=f.owner};native[0].field_count+=1;}
+  }
+  compiled:=archetypes.actor_definition_compile(native[..],d.id,services[..],schema,refs,s[0].manifest[..]);if compiled.status!=archetypes.ActorCompileStatus.ok {out.status=ACTOR_INVALID;return out;}base:=compiled.archetype;out.native[i]=base;
+  // Consume owned resolved slots and the compiled phase order, never authoring
+  // records or a per-frame dependency lookup.
+  d.id=base.id;d.revision=base.revision;d.schema=base.schema;
+  for k:0..<d.parameters.rows {field:=d.parameters.schedule[k].field;for j:0..<base.field_count {if base.fields[j].reference.id==field {d.parameters.schedule[k].index=base.fields[j].slot;}}}
+  d.parameters.controller=ifx base.parameters[archetypes.ACTOR_CONTROLLER].integer==2 then 1 else 0;
+  slots:=[7]int.[archetypes.ACTOR_RADIUS,archetypes.ACTOR_SPEED,archetypes.ACTOR_DISCOVER,archetypes.ACTOR_ALERT,archetypes.ACTOR_TRACK,archetypes.ACTOR_VERTICAL,archetypes.ACTOR_CULL];cm:[7]int;
+  for slot,k:slots {cm[k]=int(floor(base.parameters[slot].number[0]*100+0.5));}
+  d.parameters.radius=cm[0];d.parameters.speed=cm[1];d.parameters.alert=cm[2];d.parameters.discover=cm[3];d.parameters.track=cm[4];d.parameters.vertical=cm[5];d.parameters.cull=cm[6];
+  d.parameters.forget=base.parameters[archetypes.ACTOR_FORGET].integer;d.parameters.grace=base.parameters[archetypes.ACTOR_LOST].integer;d.parameters.sense_work=base.parameters[archetypes.ACTOR_SENSE_WORK].integer;d.parameters.path_work=base.parameters[archetypes.ACTOR_SEARCH_WORK].integer;d.parameters.repeat=base.parameters[archetypes.ACTOR_REPEAT].integer==1;
+  for phase:0..<6 {d.order[phase]=base.plan.steps[phase].phase;}
+  d.content=actor_definition_id(d);out.items[i]=d;
+ }return out;
+}
+ACTOR_LAB_NORMAL :: #run actor_lab_compile(0);
+ACTOR_LAB_GUARD :: #run actor_lab_compile(1);
+ACTOR_LAB_PATH :: #run actor_lab_compile(2);
+ACTOR_LAB_ANCHORS :: [4]ActorAnchor.[ActorAnchor.{id=1,x=650,z=350},ActorAnchor.{id=2,x=1150,z=200},ActorAnchor.{id=3,x=1250,z=650},ActorAnchor.{id=4,x=350,z=650}];
+ActorLabModel :: struct {events:[8]replay.ReplayEvent;marks:[1024]int;channels:[replay.REPLAY_SOURCES]replay.ReplayChannel;n:[replay.REPLAY_COUNTERS]int;}
+ActorLab :: struct {
+ ready:bool;world:[1]StateLab;actors:[1]ActorExecPool;player:Handle(entities.Entity);handles:[3]Handle(entities.Entity);
+ keys:[18]input.InputPress;queued:int= -1;script:bool;alternate:bool;revision:int=1;nav_revision:int=1;variant:int;
+ work:ActorWork;peaks:[5]int;observe:bool;trace_metrics:[32][66]f64;refused:int;invalidated:int;notices:int;trace_n:int;trace_ticks:[32]int;trace_ids:[32]assets.AssetId;
+ control_words:[256]int;control_n:int;ledger:[1]ActorLabModel;model_ticket:ActorModelTicket;model_event:replay.ReplayEvent;model_pending:bool;
+ width:f32=960;height:f32=640;last_status:int;stale:int;control_ai:bool;
+}
+actor_lab_session :: (s:[]ActorLab)->replay.ReplaySession #effects(all) {return replay.ReplaySession.{events=s[0].ledger[0].events[..],marks=s[0].ledger[0].marks[..],channels=s[0].ledger[0].channels[..],n=s[0].ledger[0].n[..]};}
+actor_lab_spawn :: (s:[]ActorLab,index:int,definition:ActorProfile,x:int,z:int)->bool #effects(all) {
+ w:=s[0].world[0];got:=actor_spawn_with(s[0].actors[..],definition,w.schema,state_lab_refs(s[0].world[..]),4,s[0].world[0].manifest[..],s[0].world[0].pool[..],w.world[0],x,z,s[0].actors[0].tick,ACTOR_LAB_OVERRIDES[index]);
+ s[0].last_status=got.status;if got.status!=ACTOR_OK {return false;}s[0].handles[index]=got.handle;return true;
+}
+actor_lab_open :: (s:[]ActorLab,profile:int)->bool #export_c #effects(all) {
+ if s.count!=1 || profile<0 || profile>1 || ACTOR_LAB_NORMAL.status!=ACTOR_OK || ACTOR_LAB_GUARD.status!=ACTOR_OK || ACTOR_LAB_PATH.status!=ACTOR_OK {return false;}
+ s[0]=ActorLab.{control_ai=profile==1};if !state_lab_start(s[0].world[..],0) || !actor_exec_pool_open(s[0].actors[..],ActorLimits.{}) {return false;}
+ s[0].actors[0].tick=0;replay.replay_record(actor_lab_session(s),0,2026);store:=actor_entity_store(s[0].actors[..]);player:=entities.entity_spawn(store);s[0].player=player.handle;entities.entity_flush(store);
+ if !actor_lab_spawn(s,0,ACTOR_LAB_NORMAL.items[0],700,350) || !actor_lab_spawn(s,1,ACTOR_LAB_NORMAL.items[1],1150,200) || !actor_lab_spawn(s,2,ACTOR_LAB_NORMAL.items[2],350,650) {return false;}
+ actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);s[0].ready=true;return true;
+}
+actor_lab_action :: (s:[]ActorLab,action:int) #export_c #effects(all) {if action>=0 && action<14 {s[0].queued=action;}}
+actor_lab_apply :: (s:[]ActorLab,action:int) #effects(all) {
+ if action==0 || action==1 || action==3 || action==4 {state_lab_action(s[0].world[..],action);}
+ else if action==2 {state_lab_action(s[0].world[..],7);}else if action==5 {state_lab_action(s[0].world[..],6);}
+ else if action==6 || action==9 {i:=ifx action==6 then 0 else 1;store:=actor_entity_store(s[0].actors[..]);h:=s[0].handles[i];x:=ifx i==0 then 700 else 1150;z:=ifx i==0 then 350 else 200;
+  if entities.entity_alive(store,h) {a:=s[0].actors[0].actors[entities.entity_slot(h)];x=actor_cm(a.body.pos.x);z=actor_cm(a.body.pos.z);removed:=actor_remove(s[0].actors[..],h);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);}
+  definition:=ifx action==6 then ACTOR_LAB_GUARD.items[0] else ACTOR_LAB_PATH.items[1];spawned:=actor_lab_spawn(s,i,definition,x,z);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);s[0].alternate=true;
+ }else if action==7 {removed:=actor_remove(s[0].actors[..],s[0].handles[0]);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);}
+ else if action==8 {store:=actor_entity_store(s[0].actors[..]);if !entities.entity_alive(store,s[0].handles[0]) {spawned:=actor_lab_spawn(s,0,ACTOR_LAB_NORMAL.items[0],700,350);actor_flush(s[0].actors[..],s[0].world[0].manifest[..],s[0].world[0].pool[..]);}}
+ else if action==10 {h:=s[0].handles[0];store:=actor_entity_store(s[0].actors[..]);if entities.entity_alive(store,h) {i:=entities.entity_slot(h);a:=s[0].actors[0].actors[i];session:=actor_lab_session(s);t:=actor_model_ask(s[0].actors[..],h,session,s[0].actors[0].tick,s[0].revision,s[0].nav_revision,4);
+  if t.status==ACTOR_OK {s[0].model_ticket=t;s[0].model_event=decisions.decide_answer(t.ask,i,s[0].actors[0].models[0].owner[i],t.context,decisions.DECIDE_HOLD,-1,0,0);s[0].model_pending=true;changed:=actor_handoff(s[0].actors[..],h,a.owner,0);}
+ }}else if action==11 {h:=s[0].handles[2];a:=s[0].actors[0].actors[entities.entity_slot(h)];changed:=actor_handoff(s[0].actors[..],h,a.owner,1-a.controller);}
+ else if action==12 {state_lab_action(s[0].world[..],12);store:=actor_entity_store(s[0].actors[..]);for h:s[0].handles {if entities.entity_alive(store,h) {a:=s[0].actors[0].actors[entities.entity_slot(h)];queued:=actor_editor_reset(s[0].actors[..],h,a.owner,add_sat(a.facts.sequence,1));}}}else if action==13 {state_lab_action(s[0].world[..],13);}
+}
+actor_lab_script :: (s:[]ActorLab,tick:int) #effects(all) {
+ s[0].world[0].keys[1].held=tick<224;
+ if tick==96 || tick==160 {actor_lab_apply(s,11);}if tick==128 {actor_lab_apply(s,0);}if tick==192 {actor_lab_apply(s,1);}if tick==224 {actor_lab_apply(s,3);}
+ if tick==256 {actor_lab_apply(s,5);}if tick==288 {actor_lab_apply(s,4);}if tick==320 {actor_lab_apply(s,6);}if tick==352 {actor_lab_apply(s,2);}if tick==416 {actor_lab_apply(s,7);}if tick==448 {actor_lab_apply(s,8);}if tick==480 {actor_lab_apply(s,9);}if tick==512 {actor_lab_apply(s,10);}
+ mount:=s[0].handles[2];a:=s[0].actors[0].actors[entities.entity_slot(mount)];if a.controller==1 {record:=ifx s[0].control_ai then actor_lab_ai_control(actor_cm(a.body.pos.x),actor_cm(a.body.pos.z),tick) else actor_lab_recorded_control(tick);accepted:=actor_control(s[0].actors[..],mount,a.owner,record);s[0].world[0].keys[1].held=false;
+  if accepted && s[0].control_n<64 {at:=s[0].control_n*4;s[0].control_words[at]=tick;s[0].control_words[at+1]=record.x;s[0].control_words[at+2]=record.z;s[0].control_words[at+3]=ifx record.jump then 1 else 0;s[0].control_n+=1;}
+ }
+}
+actor_lab_step :: (s:[]ActorLab,tick:int) #effects(all) {
+ if s[0].queued>=0 {actor_lab_apply(s,s[0].queued);s[0].queued= -1;}
+ if s[0].script {actor_lab_script(s,tick);}else {
+  for i:0..<18 {taken:=input.input_take(s[0].keys[i]);s[0].keys[i]=taken.edge;if i>=4 && taken.pressed {actor_lab_apply(s,i-4);}}
+  for i:0..<4 {s[0].world[0].keys[i].held=s[0].keys[i].held;}
+  a:=s[0].actors[0].actors[entities.entity_slot(s[0].handles[2])];if a.controller==1 {c:=ActorControl.{x=ifx s[0].keys[1].held then 100 else ifx s[0].keys[0].held then -100 else 0,z=ifx s[0].keys[2].held then -100 else ifx s[0].keys[3].held then 100 else 0};accepted:=actor_control(s[0].actors[..],a.handle,a.owner,c);for i:0..<4 {s[0].world[0].keys[i].held=false;}}
+ }
+ if s[0].model_pending {session:=actor_lab_session(s);offered:=replay.replay_offer(session,s[0].model_event);if offered==replay.REPLAY_ACCEPTED {taken:=replay.replay_take(session);verdict:=actor_model_admit(s[0].actors[..],s[0].model_ticket,taken,tick,s[0].revision,s[0].nav_revision);s[0].last_status=verdict;if verdict==ACTOR_STALE {s[0].stale+=1;}}s[0].model_pending=false;}
+ state_lab_step(s[0].world[..],tick);w:=s[0].world[0];if !w.ready {s[0].ready=false;return;}
+ if w.world[0].variant!=s[0].variant {s[0].revision+=1;s[0].variant=w.world[0].variant;}s[0].nav_revision=1+cast(int)w.world[0].facts.values[0].integer;
+ state_lab_walls(s[0].world[..]);metadata:[7]filters.QueryCollider;for i:0..<7 {metadata[i]=filters.QueryCollider.{ref=filters.ColliderRef.{id=1000+i,generation=1},shape=queries.QueryShape.box,index=i,surface=1};}
+ surfaces:=[1]filters.PhysicalSurface.[filters.PhysicalSurface.{id=1}];epoch:=[1]int.[s[0].revision];store:=actor_entity_store(s[0].actors[..]);
+ query:=scene.QueryWorld.{geometry=queries.Colliders.{ground_enabled=false,boxes=s[0].world[0].walls[..]},metadata=metadata[..],surfaces=surfaces[..],entity_store=store,current_epoch=epoch[..],epoch=epoch[0],tick=tick};
+ targets:=[1]ActorTarget.[ActorTarget.{handle=s[0].player,x=actor_cm(w.player.pos.x),y=actor_cm(w.player.pos.y),z=actor_cm(w.player.pos.z)}];
+ context:=ActorStepWorld.{tick=tick,revision=s[0].revision,nav_revision=s[0].nav_revision,schema=w.schema,refs=state_lab_refs(s[0].world[..]),facts=w.world[0].facts,anchors=ACTOR_LAB_ANCHORS[..],targets=targets[..],queries=query,bodies=walking.World.{walls=s[0].world[0].walls[..]},grid=navigation.NavGrid.{nx=16,nz=8,cell=1},walk=s[0].world[0].walk[..],focus_x=targets[0].x,focus_z=targets[0].z};
+ s[0].work=actor_runtime_step(s[0].actors[..],context);if !s[0].work.ok {s[0].ready=false;return;}s[0].refused+=s[0].work.refused;s[0].invalidated+=s[0].work.invalidated;for h:s[0].handles {notice:=actor_notice(s[0].actors[..],h,tick);if notice.kind!=0 {s[0].notices+=1;}}
+ replay.replay_stepped(actor_lab_session(s),entities.entity_digest(store));
+ peaks:=[5]int.[s[0].work.rays,s[0].work.settled,s[0].work.choices,s[0].work.search,s[0].work.scans];for v,i:peaks {if v>s[0].peaks[i] {s[0].peaks[i]=v;}}
+}
+actor_lab_frame :: (s:[]ActorLab,ns:int) #export_c #effects(all) {
+ if s.count!=1 || !s[0].ready {return;}schedule:=clock.loop_accept_ns(s[0].world[0].clock,ns);count:=clock.loop_due(schedule);s[0].world[0].clock=schedule;
+ for i:0..<count {actor_lab_step(s,schedule.ticks+i+1);s[0].world[0].clock=clock.loop_ran_some(schedule,i+1);if s[0].observe {actor_lab_observe(s);}}s[0].world[0].clock=clock.loop_ran(schedule);
+}
+#load "tests/lab.coax";
+#load "lab-metrics.coax";
+
+// Two different adapters, one admitted world-axis rider input contract.
+actor_lab_recorded_control :: (tick:int)->ActorControl #effects(all) {return ActorControl.{x=ifx tick>=96 && tick<160 then 100 else 0,jump=tick==120};}
+actor_lab_ai_control :: (x:int,z:int,tick:int)->ActorControl #effects(all) {return ActorControl.{x=ifx x<1500 then 100 else 0,z=ifx z<650 then 100 else ifx z>650 then -100 else 0,jump=tick==120};}
+#load "lab-view.coax";
+actor_lab_start :: (s:[]ActorLab,credits:int)->bool #export_c #effects(all) {
+ if credits<0 || credits>1 || !actor_lab_open(s,0) {return false;}s[0].world[0].credit=StateCredit.{operation=ifx credits==1 then state_credit_key() else 0,credits=credits};return true;
+}
+actor_lab_steps :: (s:[]ActorLab,n:int)->bool #export_c #effects(all) {if n<0 || n>1024 {return false;}for i:0..<n {actor_lab_frame(s,15625000);}return s[0].ready;}
+actor_lab_metric_count :: ()->int #export_c #effects(all) {return ACTOR_LAB_METRICS;}
+actor_lab_trace_hash :: (s:[]ActorLab,row:int,out:[]u8)->bool #export_c #effects(all) {if row<0 || row>=s[0].trace_n {return false;}return assets.asset_hex(s[0].trace_ids[row],out);}
+actor_lab_source :: (s:[]ActorLab,ai:bool)->bool #export_c #effects(all) {if s[0].world[0].clock.ticks!=0 {return false;}s[0].control_ai=ai;return true;}
+#load "probe.coax";
+
+actor_lab_control_count :: (s:[]ActorLab)->int #export_c #effects(all) {return s[0].control_n;}
+actor_lab_control_word :: (s:[]ActorLab,row:int,column:int)->int #export_c #effects(all) {if row<0 || row>=s[0].control_n || column<0 || column>=4 {return 0;}return s[0].control_words[row*4+column];}

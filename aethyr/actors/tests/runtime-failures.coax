@@ -1,0 +1,61 @@
+#load "../../entity.coax" as entities;
+#load "../../ai/decide.coax" as decisions;
+#load "../../walk.coax" as walking;
+#load "../../replay.coax" as replay;
+#load "../../nav/grid.coax" as navigation;
+#test "runtime movement keeps exact retry refusal and single-axis progress outcomes" #steps 500000000 #traversal 5000000000 {
+ base:[1]ActorRuntimeFixture;actor_runtime_fixture(base[..]);
+ for mode:0..<18 {f:=base;i:=entities.entity_slot(f[0].base.handle);a:=f[0].base.pool[0].actors[i];w:=actor_runtime_world(f[..],1);a.choice.verb=ACTOR_HOLD;a.goal_x=600;a.goal_z=600;
+ a.navigation=ActorNavigation.{key=ActorNavKey.{actor=a.id,generation=add_sat(entities.entity_generation(a.handle).value,1),owner=a.owner,world=1,nav=1,radius=30,request=1},status=ACTOR_NAV_SUCCESS,goal=102,asked=0,serial=1};
+ if mode==0 || mode==7 {w.revision=2;a.navigation.retry_at=99;if mode==7 {a.navigation.still=32;}}
+ else if mode==1 || mode==2 {a.facts.values[0]=state_bool(false);a.input=ActorControl.{x=100,jump=true};a.navigation.status=ifx mode==1 then ACTOR_NAV_PENDING else ACTOR_NAV_SUCCESS;}
+ else if mode==3 {a.choice.verb=ACTOR_GO;a.definition.parameters.radius=40;a.navigation=ActorNavigation.{};}
+ else if mode==4 {a.choice.verb=ACTOR_GO;a.navigation.key.request=0;a.navigation.serial=0;a.navigation.status=ACTOR_NAV_PENDING;}
+ else if mode==5 {a.choice.verb=ACTOR_GO;a.goal_x=1700;}
+ else if mode==6 {a.choice.verb=ACTOR_GO;a.navigation=ActorNavigation.{serial=1000000000};}
+ else if mode==8 {a.choice.verb=ACTOR_GO;a.body=walking.walk_place(0.5,0,0.5,0);a.body.theta=0;a.goal_x=150;a.goal_z=50;a.navigation.goal=1;for j:0..<128 {a.flow[j]=1000;}a.flow[0]=1;a.flow[1]=0;}
+ else if mode==9 || mode==13 {a.choice.verb=ACTOR_GO;w.grid.cell=0.16;a.body=walking.walk_place(ifx mode==9 then 0.16 else 0.3,0,0.08,0);a.body.theta=0;a.goal_x=8;a.goal_z=8;a.navigation.goal=0;a.navigation.still=31;for j:0..<128 {a.flow[j]=1000;}a.flow[1]=1;a.flow[0]=0;}
+ else if mode==10 || mode==11 {a.controller=1;a.definition.parameters.controller=1;a.input=ActorControl.{x=ifx mode==10 then 100 else 0,z=ifx mode==11 then 100 else 0};a.navigation.still=31;}
+ else if mode==12 {a.choice.verb=ACTOR_GO;a.navigation.goal=0;a.navigation.retry_at=99;}
+ else if mode==14 {a.choice.verb=ACTOR_GO;for j:0..<128 {a.flow[j]=1000;}a.flow[69]=0;}
+ else if mode==15 {a.choice.verb=ACTOR_GO;a.navigation.status=ACTOR_NAV_PENDING;f[0].walk[68]=false;}
+ else if mode==16 {a.choice.verb=ACTOR_GO;a.navigation.status=ACTOR_NAV_PENDING;a.navigation.asked=1;}
+ else {a.choice.verb=ACTOR_FLEE;a.navigation.status=ACTOR_NAV_UNREACHABLE;a.navigation.retry_at=1;}
+ f[0].base.pool[0].actors[i]=a;work:[1]ActorWork;actor_runtime_move(f[0].base.pool[..],i,w,work[..]);got:=f[0].base.pool[0].actors[i];
+ if mode==0 || mode==7 {#assert got.navigation.status==ACTOR_NAV_INVALIDATED && got.navigation.retry_at==1 && work[0].invalidated==1 && work[0].refused==(ifx mode==7 then 1 else 0);}
+ else if mode==1 || mode==2 {#assert got.navigation.status==ACTOR_NAV_INVALIDATED && got.navigation.retry_at==1 && work[0].invalidated==1 && got.input.x==0 && !got.input.jump;}
+ else if mode==3 {#assert got.navigation.status==ACTOR_NAV_INVALIDATED && got.navigation.retry_at==17 && work[0].refused==1;}
+ else if mode==4 {#assert got.navigation.status==ACTOR_NAV_PENDING && got.navigation.asked==1 && got.navigation.serial==1 && work[0].refused==1 && work[0].search==1 && work[0].settled>0;}
+ else if mode==5 {#assert got.navigation.status==ACTOR_NAV_UNREACHABLE && got.navigation.retry_at==17 && work[0].search==0;}
+ else if mode==6 {#assert got.navigation.status==ACTOR_NAV_NONE && got.navigation.serial==1000000000 && work[0].refused==1;}
+ else if mode==8 {#assert got.body.pos.x>0.5 && got.body.pos.z==0.5 && got.navigation.still==0;}
+ else if mode==9 {#assert got.body.pos.x==0.16 && got.navigation.still==0;}
+ else if mode==10 || mode==11 {#assert got.navigation.still==0 && got.navigation.status==ACTOR_NAV_SUCCESS && got.body.pos.x==(ifx mode==10 then got.body.pos.x else 4) && got.body.pos.z==(ifx mode==11 then got.body.pos.z else 4);}
+ else if mode==12 || mode==17 {#assert got.navigation.status==ACTOR_NAV_PENDING && got.navigation.asked==1;}
+ else if mode==13 {#assert got.body.pos.x<0.3;}
+ else if mode==14 {#assert got.body.pos.x==4 && got.body.pos.z==4;}
+ else if mode==15 {#assert got.navigation.status==ACTOR_NAV_UNREACHABLE && got.navigation.retry_at==17 && work[0].search==1 && work[0].settled==127;}
+ else {#assert got.navigation.status==ACTOR_NAV_PENDING && work[0].search==0;}
+ }
+}
+#test "paid phases expire another actor's ticket reset only declared hooks and roll a day once" #steps 300000000 #traversal 3000000000 {
+ f:[1]ActorRuntimeFixture;actor_runtime_fixture(f[..]);i:=entities.entity_slot(f[0].base.handle);a:=f[0].base.pool[0].actors[i];a.facts.phase=a.day_ticks-1;f[0].base.pool[0].actors[i]=a;w:=actor_runtime_world(f[..],1);w.facts.day=1;w.facts.phase=0;
+ #assert actor_runtime_step(f[0].base.pool[..],w).ok && f[0].base.pool[0].actors[i].facts.sequence==0 && f[0].base.pool[0].actors[i].facts.day==1;
+ for mask:0..<2 {g:=f;g[0].base.pool[0].actors[i].definition.parameters.hooks=cast(u32)mask;g[0].base.pool[0].actors[i].model=decisions.DecideIntent.{kind=decisions.DECIDE_HOLD};g[0].base.pool[0].actors[i].model_world=1;g[0].base.pool[0].actors[i].model_nav=1;
+ #assert actor_editor_reset(g[0].base.pool[..],g[0].base.handle,g[0].base.pool[0].actors[i].owner,1);next:=actor_runtime_world(g[..],2);#assert actor_runtime_step(g[0].base.pool[..],next).ok && g[0].base.pool[0].hooks[2]==0;
+ #assert g[0].base.pool[0].actors[i].model.kind==decisions.DECIDE_NONE && g[0].base.pool[0].actors[i].model_world==0 && g[0].base.pool[0].actors[i].model_nav==0;
+ }
+ g:[1]ActorRuntimeFixture;actor_runtime_fixture(g[..]);refs:StateRefs;first:=g[0].base.pool[0].actors[entities.entity_slot(g[0].base.handle)];other:=actor_spawn(g[0].base.pool[..],first.definition,g[0].base.resources.schema,refs,1,g[0].base.resources.m[..],g[0].base.resources.pool[..],g[0].base.resources.world[0],500,500,0);#assert other.status==ACTOR_OK;actor_flush(g[0].base.pool[..],g[0].base.resources.m[..],g[0].base.resources.pool[..]);
+ back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,1);ticket:=actor_model_ask(g[0].base.pool[..],other.handle,session,0,1,1,1);#assert ticket.status==ACTOR_OK;
+ for tick:1..<3 {#assert actor_runtime_step(g[0].base.pool[..],actor_runtime_world(g[..],tick)).ok;}
+ #assert g[0].base.pool[0].actors[entities.entity_slot(other.handle)].model.kind==decisions.DECIDE_HOLD && !decisions.decide_waiting(g[0].base.pool[0].models[..],entities.entity_slot(other.handle));
+}
+#test "choice refusal is counted before changing an invalid brain" #steps 200000000 #traversal 2000000000 {
+ f:[1]ActorRuntimeFixture;actor_runtime_fixture(f[..]);i:=entities.entity_slot(f[0].base.handle);f[0].base.pool[0].actors[i].brain.tick= -2;f[0].base.pool[0].actors[i].perception.tick=1;work:[1]ActorWork;actor_runtime_choose(f[0].base.pool[..],i,actor_runtime_world(f[..],1),work[..]);#assert work[0].refused==1 && work[0].choices==0 && f[0].base.pool[0].actors[i].brain.tick== -2;
+}
+#test "the actor body uses its authored capsule against actual shared collision geometry" #steps 300000000 #traversal 3000000000 {
+ f:[1]ActorRuntimeFixture;actor_runtime_fixture(f[..]);i:=entities.entity_slot(f[0].base.handle);a:=f[0].base.pool[0].actors[i];a.controller=1;a.definition.parameters.controller=1;a.definition.parameters.radius=40;a.definition.parameters.speed=300;a.input=ActorControl.{x=100};f[0].base.pool[0].actors[i]=a;
+ wall:=[6]f32.[4.6,0,3,5,3,5];expected:=a.body;world:=actor_runtime_world(f[..],1).bodies;world.walls=wall[..];world.collision.radius=0.4;world.collision.max_travel=0.2;world.locomotion.walk_speed=3;world.locomotion.run_speed=3;
+ for tick:1..<33 {body:=walking.walk_input(expected,1,0,0,0,false,false,0,0);body.theta=0;expected=walking.step(world,body,1.0f32/64.0f32);w:=actor_runtime_world(f[..],tick);w.bodies.walls=wall[..];work:[1]ActorWork;actor_runtime_move(f[0].base.pool[..],i,w,work[..]);got:=f[0].base.pool[0].actors[i].body;#assert got.pos.x==expected.pos.x && got.pos.z==expected.pos.z && got.vel.x==expected.vel.x;}
+ #assert expected.pos.x>4 && expected.pos.x<4.201;
+}

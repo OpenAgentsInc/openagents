@@ -1,0 +1,211 @@
+{
+  "identifier_renames": {
+    "ActorPool": "ActorExecPool",
+    "ActorInstance": "ActorExecInstance",
+    "ActorSpawn": "ActorSpawnResult",
+    "ACTOR_POOL_SLOTS": "ACTOR_EXEC_SLOTS",
+    "actor_pool_open": "actor_exec_pool_open"
+  },
+  "units": {
+    "aethyr/actors/choices.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "9747ee1f26c794aab4aaf3f054205a3037440a34affad7121a0f8fe46ffae173",
+      "qualified_source_sha256": "e93d07618b5bd79a9a5348e7e9648fdef180a2be82e945bc51cb7860062f7607"
+    },
+    "aethyr/actors/lab-view.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "77b1b3cefbde4b18030ac632214161f36ce49a5eced7a310c947cf5c57a29470",
+      "qualified_source_sha256": "77b1b3cefbde4b18030ac632214161f36ce49a5eced7a310c947cf5c57a29470"
+    },
+    "aethyr/actors/model.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "6ae2112d73c5cd994ef296092ae9b49dd5d6616018a5183e27c621fe14046233",
+      "qualified_source_sha256": "ae044c5e16952b000887a9978a2c1600a4eae3c2a84e4507d4c2e26dd5c68978"
+    },
+    "aethyr/actors/content.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "ff3dd78160eada6aabdd312ae66dc93826f8a5c0c7760b5272340face07be3f6",
+      "qualified_source_sha256": "ff3dd78160eada6aabdd312ae66dc93826f8a5c0c7760b5272340face07be3f6"
+    },
+    "aethyr/actors/navigation.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "633a846b0dfa79936d134069f528448383f680efbe97883f939eb514b34840fc",
+      "qualified_source_sha256": "633a846b0dfa79936d134069f528448383f680efbe97883f939eb514b34840fc"
+    },
+    "aethyr/actors/runtime.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "8e636be62f365f53a11754cee7ee728e559145893af833fbbd58566d774b0c9f",
+      "qualified_source_sha256": "b8974d509ea84fca28e97464ba19cdd1d28d06d193de6f0f232604b243110cb3"
+    },
+    "aethyr/actors/lab.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "100f091cce815a7f13f77a82bdf4abb96da9d3ee01e0d25c1153e787d9527daa",
+      "qualified_source_sha256": "3638c573f69c9711d8dc11eab266caaa14ba7779acf4c95d447a9540bdec7774"
+    },
+    "aethyr/actors/probe-data.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "c29a3d026f1ef1166682d5e06d7bf65c6ed54fa3d42953ded36c3c0c00b86f52",
+      "qualified_source_sha256": "c29a3d026f1ef1166682d5e06d7bf65c6ed54fa3d42953ded36c3c0c00b86f52"
+    },
+    "aethyr/actors/profile.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "5dc4f2bdef1b4dffeb36b8f9536601a5ffa07fdaaf0bc7b9c899a2977a9a5e2c",
+      "qualified_source_sha256": "5dc4f2bdef1b4dffeb36b8f9536601a5ffa07fdaaf0bc7b9c899a2977a9a5e2c"
+    },
+    "aethyr/actors/lab-metrics.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "db8886306f35485df7a84338d157786d66cdec766449f41dc443d2b4f4778eb8",
+      "qualified_source_sha256": "310579326d239608219aa1b9a1593381cd2e84bee3482499ab06fbbf94e75775"
+    },
+    "aethyr/actors/signals.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "518bb50bd5b9a5659de144c6b2bada560e79ccb7d1cbc9ccc47251a7ddeb3852",
+      "qualified_source_sha256": "01236d75c505f99bec486c930e513be9e59c35c87117f103ba633b5915d42625"
+    },
+    "aethyr/actors/perception.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "70def2582784b2e779c926c253074c3cc3847eab1516cbb4001cbb3d45075089",
+      "qualified_source_sha256": "55769864c1dcd8eb1d9b9d7fb8aabffef4bdc8893a0a00f3978ca6b412431d4e"
+    },
+    "aethyr/actors/pool.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "510b2625473ca0131a9544c1585db19eec0b95296c1d0b19d9ffb3bb88a52354",
+      "qualified_source_sha256": "e9cbb544e3af4ca799dba6b1efcc659286e9f6f588371553d0cf5955b41fbf0e"
+    },
+    "aethyr/actors/probe.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "30bec7533c23cc94d031178383ee5671729807d45085e6a674a858563275f8d3",
+      "qualified_source_sha256": "30bec7533c23cc94d031178383ee5671729807d45085e6a674a858563275f8d3"
+    },
+    "aethyr/actors/checks.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "01b12763342415ec6361114f13eb2d44a0ca24350c579c4f1777e9fe7342190e",
+      "qualified_source_sha256": "01b12763342415ec6361114f13eb2d44a0ca24350c579c4f1777e9fe7342190e"
+    },
+    "aethyr/actors/tests/runtime-route.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "a9f131187c169af2b86ec5ed50ff048fc425ee5041734a23dcc0cf4186bc59d6",
+      "qualified_source_sha256": "a9f131187c169af2b86ec5ed50ff048fc425ee5041734a23dcc0cf4186bc59d6"
+    },
+    "aethyr/actors/tests/runtime-sight.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "c7ef9c79207b037f24a27153a9cd6cf41760c8809bced35ffad9493785d9ee38",
+      "qualified_source_sha256": "c7ef9c79207b037f24a27153a9cd6cf41760c8809bced35ffad9493785d9ee38"
+    },
+    "aethyr/actors/tests/choices.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "94f049535a85a50fe8be59a0be88e234b0cc1dee5db58282a954484cbcc65d11",
+      "qualified_source_sha256": "94f049535a85a50fe8be59a0be88e234b0cc1dee5db58282a954484cbcc65d11"
+    },
+    "aethyr/actors/tests/actor-run.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "8c085e97564b455b2609de17c8850bb16c2a2fff3f2e7394bb1f472ea92bdf52",
+      "qualified_source_sha256": "8c085e97564b455b2609de17c8850bb16c2a2fff3f2e7394bb1f472ea92bdf52"
+    },
+    "aethyr/actors/tests/runtime-boundaries.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "8c900e9a9c6c478043b4d96982861732da26e907323677e8bddb6ed8d178851d",
+      "qualified_source_sha256": "1c99de1301fbc4d0ed4d78dba19bf3db92cc6a28f8f36eb4a5b616e780b79217"
+    },
+    "aethyr/actors/tests/runtime-failures.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "ab016abeb8af5d469f43b5e9867edd2f60c63b818dab9fa8b836fa7d83d56c6d",
+      "qualified_source_sha256": "ab016abeb8af5d469f43b5e9867edd2f60c63b818dab9fa8b836fa7d83d56c6d"
+    },
+    "aethyr/actors/tests/model.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "01ee7b27f45372c19252bf40167699f7c870a439518b5c01e8ae585067072e92",
+      "qualified_source_sha256": "1f2b03c2d50eaa26919c42e9fd12f3283baecd46ed3d52a7366ec3eda0aba7e6"
+    },
+    "aethyr/actors/tests/navigation.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "e88a6c3963d5977de1dd3d2db2ba88030d76dadf58d94ba50d61d9b5bd137445",
+      "qualified_source_sha256": "e88a6c3963d5977de1dd3d2db2ba88030d76dadf58d94ba50d61d9b5bd137445"
+    },
+    "aethyr/actors/tests/runtime.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "da7b2ee6813d752597bf3ef2a233d50239ef39582e3399826cac5a25670cf1e3",
+      "qualified_source_sha256": "da7b2ee6813d752597bf3ef2a233d50239ef39582e3399826cac5a25670cf1e3"
+    },
+    "aethyr/actors/tests/lab.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "3f9a3f3fc7808a0819b3a3f5a21eff0e61b000bdbc31ef408f5c4010333bd5c1",
+      "qualified_source_sha256": "3f9a3f3fc7808a0819b3a3f5a21eff0e61b000bdbc31ef408f5c4010333bd5c1"
+    },
+    "aethyr/actors/tests/actor-browser.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "a6f3ce3f24740f954c7125a5cb7a76c867f60445d29dd507f1d62277b2305151",
+      "qualified_source_sha256": "a6f3ce3f24740f954c7125a5cb7a76c867f60445d29dd507f1d62277b2305151"
+    },
+    "aethyr/actors/tests/perception-matrix.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "2ed7b2d3ce0e9e0dfb9532dd1a15ca3883a68482059e93f6061c0e994af4e911",
+      "qualified_source_sha256": "2ed7b2d3ce0e9e0dfb9532dd1a15ca3883a68482059e93f6061c0e994af4e911"
+    },
+    "aethyr/actors/tests/choices-matrix.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "d201350b15e83a372e79674889fa7da6694968b676fad31c9f58aea806961c94",
+      "qualified_source_sha256": "d201350b15e83a372e79674889fa7da6694968b676fad31c9f58aea806961c94"
+    },
+    "aethyr/actors/tests/runtime-edges.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "459da67dedb8c9050c783d41f486418e87a08d7b987a6fbda43ae3dc0a2538c9",
+      "qualified_source_sha256": "29245984113aa3fa3ee59f674513c75fd6b6b3e97055e5779853171f92e1838b"
+    },
+    "aethyr/actors/tests/actor-content.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "492050391cdc590b43f9ced8286db72a1b1798423d6fff075eea39c4f5ba2006",
+      "qualified_source_sha256": "492050391cdc590b43f9ced8286db72a1b1798423d6fff075eea39c4f5ba2006"
+    },
+    "aethyr/actors/tests/profile.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "360a9dbfb927ddbc8218b0fe14b7115e16a43fc36e48e05485789efc5515dda8",
+      "qualified_source_sha256": "360a9dbfb927ddbc8218b0fe14b7115e16a43fc36e48e05485789efc5515dda8"
+    },
+    "aethyr/actors/tests/navigation-matrix.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "242880f0e8abfb203456d74ad806384afa387ce25acb8fe853f2e0417f8b78da",
+      "qualified_source_sha256": "242880f0e8abfb203456d74ad806384afa387ce25acb8fe853f2e0417f8b78da"
+    },
+    "aethyr/actors/tests/pool-edges.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "5d2af1a67447d3553f444de209f7692d5a5ed015e2d51876a3584dd1e4269db1",
+      "qualified_source_sha256": "12d1414da91fb09ad8f568ec6424a85eecfd89431390bca211c52c32ce795a3d"
+    },
+    "aethyr/actors/tests/runtime-adapters.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "9889cb76bb3794c45fe5bb80e7b8fb70dff5590a31ddf6874f9b6e25088da99d",
+      "qualified_source_sha256": "4f9afe1733953ae9975c28f07680ed9bc912a8a37a953d9fb8511c7106562f64"
+    },
+    "aethyr/actors/tests/signals.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "8d9ab67a17d7085f5b3ce51bb710cb709db59aefd39013eef089c70275ecc678",
+      "qualified_source_sha256": "8d9ab67a17d7085f5b3ce51bb710cb709db59aefd39013eef089c70275ecc678"
+    },
+    "aethyr/actors/tests/profile-matrix.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "28e11a917260d961b13d76f4f37b2e8fa248a0406570330b4ac03999fb29ef76",
+      "qualified_source_sha256": "28e11a917260d961b13d76f4f37b2e8fa248a0406570330b4ac03999fb29ef76"
+    },
+    "aethyr/actors/tests/runtime-editor.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "c3ee7d23f7a0b05328feafd8440baf14a487bcdfb82427fa2b494707ce00967f",
+      "qualified_source_sha256": "c3ee7d23f7a0b05328feafd8440baf14a487bcdfb82427fa2b494707ce00967f"
+    },
+    "aethyr/actors/tests/perception.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "1d72c7ab28acf10cc553bfc0ccb7413b7c0cff9c2036636bf7a567f1329bfa47",
+      "qualified_source_sha256": "1d72c7ab28acf10cc553bfc0ccb7413b7c0cff9c2036636bf7a567f1329bfa47"
+    },
+    "aethyr/actors/tests/pool.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "59c5a940349c0d2200c7f79b049317b7e6868dc5f14b55827804fd4b7b3ca662",
+      "qualified_source_sha256": "0ee4ca92e74e6060047ac9df74c77414af571b809c5ecda46e13cbd8e70ad987"
+    },
+    "aethyr/actors/tests/journey.coax": {
+      "alpha_equivalent": true,
+      "source_sha256": "eae60dd10b1affa47fd27cccf8d9a72f20125247a9bf1fe303aca918d96c210b",
+      "qualified_source_sha256": "eae60dd10b1affa47fd27cccf8d9a72f20125247a9bf1fe303aca918d96c210b"
+    }
+  }
+}

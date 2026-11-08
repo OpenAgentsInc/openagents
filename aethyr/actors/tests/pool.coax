@@ -1,0 +1,113 @@
+#test "actor pool reserves fixed storage and all work ceilings before any instance" {
+ p:[1]ActorExecPool;#assert actor_exec_pool_open(p[..],ActorLimits.{}) && p[0].ready;
+ for which:0..<9 {limits:ActorLimits;if which==0 {limits.capacity=0;}else if which==1 {limits.capacity=17;}else if which==2 {limits.senses=0;}else if which==3 {limits.senses=257;}else if which==4 {limits.search=0;}else if which==5 {limits.search=2049;}else if which==6 {limits.choices=0;}else if which==7 {limits.choices=513;}else {limits.bytes=size_of(ActorExecPool)-1;}
+ q:[1]ActorExecPool;#assert !actor_exec_pool_open(q[..],limits);}
+ #assert !actor_exec_pool_open(p[0..<0],ActorLimits.{});
+}
+#test "instances own ready resource closures before deferred entity publication and fence controller handoff" #steps 200000000 #traversal 2000000000 {
+ f:=state_variant_fixture();refs:StateRefs;#assert state_variant_publish(f.schema,refs,f.m[..],f.pool[..],f.v,f.world[..],1,f.ticket)==STATE_OK;
+ authors:=[1]ActorAuthor.[ActorAuthor.{id=1}];authors[0].parameters.controller=1;c:=actor_compile(authors[..],f.schema,refs,2);#assert c.status==ACTOR_OK && actor_definition_admit(c.items[0],f.schema,refs,2);
+ p:[1]ActorExecPool;#assert actor_exec_pool_open(p[..],ActorLimits.{});
+ spawn:=actor_spawn(p[..],c.items[0],f.schema,refs,2,f.m[..],f.pool[..],f.world[0],400,400,0);#assert spawn.status==ACTOR_OK && spawn.id==1;
+ store:=actor_entity_store(p[..]);#assert entities.entity_waiting(store,spawn.handle) && !entities.entity_alive(store,spawn.handle);
+ actor_flush(p[..],f.m[..],f.pool[..]);#assert entities.entity_alive(store,spawn.handle) && p[0].sense_cap==4 && p[0].search_cap==128 && p[0].choice_cap==4;
+ #assert state_schema_ok(actor_instance_schema(spawn.id,1),refs) && p[0].actors[0].facts.values[0].integer==1;
+ #assert !actor_control(p[..],spawn.handle,1,ActorControl.{x=100});
+ #assert actor_handoff(p[..],spawn.handle,1,1) && p[0].actors[0].owner==2 && p[0].actors[0].navigation.status==ACTOR_NAV_INVALIDATED;
+ #assert !actor_control(p[..],spawn.handle,1,ActorControl.{x=100}) && actor_control(p[..],spawn.handle,2,ActorControl.{x=100,z= -100,jump=true});
+ #assert p[0].actors[0].input.x==100 && p[0].actors[0].input.z== -100 && p[0].actors[0].input.jump;
+ #assert actor_remove(p[..],spawn.handle);actor_flush(p[..],f.m[..],f.pool[..]);#assert !entities.entity_alive(store,spawn.handle) && p[0].sense_cap==0 && p[0].search_cap==0 && p[0].choice_cap==0;
+ #assert !actor_control(p[..],spawn.handle,2,ActorControl.{}) && !actor_handoff(p[..],spawn.handle,2,0) && !actor_remove(p[..],spawn.handle);
+}
+ActorTestPool :: struct {resources:StateVariantFixture;pool:[1]ActorExecPool;handle:Handle(entities.Entity);definition:ActorProfile;}
+actor_test_pool :: ()->ActorTestPool #effects(all) {
+ out:ActorTestPool;out.resources=state_variant_fixture();refs:StateRefs;f:=out.resources;
+ #assert state_variant_publish(f.schema,refs,out.resources.m[..],out.resources.pool[..],f.v,out.resources.world[..],1,f.ticket)==STATE_OK;
+ authors:=[1]ActorAuthor.[ActorAuthor.{id=1}];authors[0].parameters.controller=1;compiled:=actor_compile(authors[..],f.schema,refs,2);out.definition=compiled.items[0];
+ #assert actor_exec_pool_open(out.pool[..],ActorLimits.{});spawned:=actor_spawn(out.pool[..],out.definition,f.schema,refs,2,out.resources.m[..],out.resources.pool[..],out.resources.world[0],400,400,0);#assert spawned.status==ACTOR_OK;out.handle=spawned.handle;out.pool[0].tick=0;actor_flush(out.pool[..],out.resources.m[..],out.resources.pool[..]);return out;
+}
+#test "editor resets queue one declared operation and stale controllers cannot replace it" #steps 200000000 #traversal 2000000000 {
+ f:=actor_test_pool();#assert actor_editor_reset(f.pool[..],f.handle,1,1);#assert !actor_editor_reset(f.pool[..],f.handle,1,1) && !actor_editor_reset(f.pool[..],f.handle,1,2);
+ #assert f.pool[0].actors[0].reset_sequence==1 && f.pool[0].actors[0].facts.sequence==0;
+ #assert actor_handoff(f.pool[..],f.handle,1,1) && f.pool[0].actors[0].reset_sequence==0;
+ #assert !actor_editor_reset(f.pool[..],f.handle,1,2) && actor_editor_reset(f.pool[..],f.handle,2,2);
+}
+#test "per-instance overrides flatten before spawn and retain archetype provenance and declared reset defaults" #steps 300000000 #traversal 3000000000 {
+ f:=actor_test_pool();refs:StateRefs;o:=ActorOverrides.{mask=15,speed=300,radius=40,home=2,enabled=false};
+ got:=actor_spawn_with(f.pool[..],f.definition,f.resources.schema,refs,2,f.resources.m[..],f.resources.pool[..],f.resources.world[0],500,400,0,o);#assert got.status==ACTOR_OK;
+ a:=f.pool[0].actors[entities.entity_slot(got.handle)];#assert a.id==2 && a.definition.parameters.speed==300 && a.definition.parameters.radius==40 && a.scope_home==2 && !a.scope_enabled && a.facts.values[0].integer==0 && a.facts.values[1].integer==2 && assets.asset_same(a.archetype,f.definition.content) && !assets.asset_same(a.definition.content,a.archetype);
+ scope:=actor_scope_schema(a);#assert scope.fields[0].initial.integer==0 && scope.fields[1].initial.integer==2 && scope.fields[1].owner==a.id;
+ for which:0..<6 {bad:=o;d:=f.definition;if which==0 {bad.mask=16;}else if which==1 {bad.home=0;}else if which==2 {bad.home=3;}else if which==3 {bad.speed=0;}else if which==4 {bad.radius=9;}else {d.valid=false;}
+ #assert actor_spawn_with(f.pool[..],d,f.resources.schema,refs,2,f.resources.m[..],f.resources.pool[..],f.resources.world[0],500,400,0,bad).status==ACTOR_INVALID;
+ }
+ #assert !entities.entity_alive(actor_entity_store(f.pool[..]),got.handle);actor_flush(f.pool[..],f.resources.m[..],f.resources.pool[..]);#assert entities.entity_alive(actor_entity_store(f.pool[..]),got.handle);
+}
+actor_test_claims :: (s:[]ResourceStream)->int {n:=0;for c:s[0].claims {if c.live {n+=1;}}return n;}
+#test "spawn refusals validate identity schema resource liveness and work reservations before entity allocation" #steps 500000000 #traversal 5000000000 {
+ base:=actor_test_pool();for field:0..<28 {f:=base;refs:StateRefs;d:=f.definition;schema:=f.resources.schema;world:=f.resources.world[0];x:=400;z:=400;tick:=0;anchors:=2;
+  if field==0 {f.pool[0].ready=false;}else if field==1 {world.facts.ready=false;}else if field==2 {x= -1000001;}else if field==3 {z=1000001;}else if field==4 {tick= -1;}else if field==5 {tick=1000000001;}else if field==6 {d.valid=false;}else if field==7 {d.schema.words[0]+=1;}else if field==8 {d.content.words[0]+=1;}
+  else if field==9 {d.id=0;}else if field==10 {d.parameters.speed=0;}else if field==11 {d.order[0]=1;}else if field==12 {d.parameters.schedule[0].index=0;}
+  else if field==13 {f.resources.pool[0].valid=false;}else if field==14 {world.variant= -1;}else if field==15 {f.pool[0].limits.capacity=1;}else if field==16 {f.pool[0].limits.scans=31;}else if field==17 {f.pool[0].limits.senses=7;}else if field==18 {f.pool[0].limits.search=255;}else if field==19 {f.pool[0].limits.choices=7;}
+  else if field==20 {world.members[0].slot= -1;}else if field==21 {world.members[0].slot=64;}else if field==22 {world.members[0].epoch+=1;}else if field==23 {world.members[0].serial+=1;}else if field==24 {f.resources.pool[0].claims[world.members[0].slot].live=false;}else if field==25 {root:=f.resources.pool[0].claims[world.members[0].slot].root;f.resources.pool[0].owners[root].phase=ResourceOwnerPhase.absent;}else if field==26 {anchors=0;}else {anchors=17;}
+  claims:=actor_test_claims(f.resources.pool[..]);high:=f.pool[0].n[entities.ENTITY_HIGH];got:=actor_spawn(f.pool[..],d,schema,refs,anchors,f.resources.m[..],f.resources.pool[..],world,x,z,tick);
+  expected:=ifx field>=15 && field<=19 then ACTOR_CAPACITY else ifx field>=20 && field<=25 then ACTOR_RESOURCES else ACTOR_INVALID;
+  #assert got.status==expected && f.pool[0].n[entities.ENTITY_HIGH]==high && f.pool[0].n[entities.ENTITY_SPAWNS]==0 && actor_test_claims(f.resources.pool[..])==claims;
+ }
+}
+#test "partial resource acquisition rolls back only its own claims and cancelled births never become visible" #steps 300000000 #traversal 3000000000 {
+ f:=actor_test_pool();refs:StateRefs;root:=f.resources.pool[0].claims[f.resources.world[0].members[0].slot].root;
+ held:[64]ResourceReference;count:=0;while actor_test_claims(f.resources.pool[..])<59 {held[count]=resource_stream_hold(f.resources.pool[..],f.resources.m[..],root);#assert held[count].slot>=0;count+=1;}
+ before:=actor_test_claims(f.resources.pool[..]);next:=f.pool[0].n[entities.ENTITY_NEXT_ID];failed:=actor_spawn(f.pool[..],f.definition,f.resources.schema,refs,2,f.resources.m[..],f.resources.pool[..],f.resources.world[0],400,400,0);
+ #assert failed.status==ACTOR_CAPACITY && actor_test_claims(f.resources.pool[..])==before && f.pool[0].n[entities.ENTITY_NEXT_ID]==next;
+ for i:0..<count {dropped:=resource_stream_drop(f.resources.pool[..],f.resources.m[..],held[i]);}
+ born:=actor_spawn(f.pool[..],f.definition,f.resources.schema,refs,2,f.resources.m[..],f.resources.pool[..],f.resources.world[0],400,400,0);#assert born.status==ACTOR_OK && actor_remove(f.pool[..],born.handle);
+ actor_flush(f.pool[..],f.resources.m[..],f.resources.pool[..]);#assert !entities.entity_alive(actor_entity_store(f.pool[..]),born.handle) && f.pool[0].scan_cap==16 && f.pool[0].sense_cap==4 && f.pool[0].hooks[0]==2 && f.pool[0].hooks[1]==1;
+ #assert f.pool[0].actors[entities.entity_slot(born.handle)].id==0;
+}
+#test "pool boundary capacities and pristine decision catalogues are exact" {
+ for mode:0..<4 {p:[1]ActorExecPool;l:ActorLimits;
+ if mode==0 {l=ActorLimits.{capacity=1,scans=1,senses=1,search=1,choices=1,bytes=size_of(ActorExecPool)};}
+ else if mode==1 {l=ActorLimits.{capacity=16,scans=256,senses=256,search=2048,choices=512,bytes=16777216};}
+ else if mode==2 {l.scans=0;}else {l.scans=257;}
+ #assert actor_exec_pool_open(p[..],l)==(mode<2);if mode<2 {#assert !actor_exec_pool_open(p[..],l);for i:0..<16 {#assert p[0].models[0].catalogue[i]==decisions.DECIDE_ALL;}}
+ }
+ p:[1]ActorExecPool;#assert !actor_exec_pool_open(p[..],ActorLimits.{bytes=16777217});
+ s:=actor_instance_schema(19,16);#assert s.id==1299201 && s.n==2 && s.fields[0].scope==STATE_ACTOR && s.fields[0].resets==65 && s.fields[1].id==2 && s.fields[1].scope==STATE_ACTOR && s.fields[1].high==16 && s.fields[1].resets==65;
+}
+#test "all lifecycle views refuse absent or external actors and control is range and owner fenced" #steps 300000000 #traversal 3000000000 {
+ base:=actor_test_pool();
+ for field:0..<19 {f:=base;h:=f.handle;owner:=1;controller:=1;
+ if field==0 {f.pool[0].ready=false;}else if field==1 {h=entities.ENTITY_NONE;}else if field==2 {removed:=actor_remove(f.pool[..],h);}else if field==3 {f.pool[0].actors[0].id=0;}else if field==4 {owner=2;}else if field==5 {f.pool[0].actors[0].owner=1000000000;owner=1000000000;}else if field==6 {controller= -1;}else if field==7 {controller=2;}else if field==8 {f.pool[0].actors[0].definition.parameters.controller=0;}
+ if field<9 {#assert !actor_handoff(f.pool[..],h,owner,controller);}else {
+ #assert actor_handoff(f.pool[..],h,owner,1);owner=2;c:=ActorControl.{x= -100,z=100,jump=true};
+ if field==9 {c.x= -101;}else if field==10 {c.x=101;}else if field==11 {c.z= -101;}else if field==12 {c.z=101;}else if field==13 {f.pool[0].ready=false;}else if field==14 {removed:=actor_remove(f.pool[..],h);}else if field==15 {f.pool[0].actors[0].id=0;}else if field==16 {owner=1;}else if field==17 {f.pool[0].actors[0].controller=0;}else {f.pool[0].actors[0].facts.values[0]=state_bool(false);}
+ #assert !actor_control(f.pool[..],h,owner,c);
+ }
+ }
+ f:=base;f.pool[0].actors[0].brain.rule=0;f.pool[0].actors[0].model.kind=decisions.DECIDE_HOLD;f.pool[0].actors[0].input.x=100;
+ #assert actor_handoff(f.pool[..],f.handle,1,1);#assert f.pool[0].actors[0].brain.rule== -1 && f.pool[0].actors[0].model.kind==decisions.DECIDE_NONE && f.pool[0].actors[0].input.x==0 && f.pool[0].models[0].owner[0]==2;
+ #assert actor_control(f.pool[..],f.handle,2,ActorControl.{x= -100,z=100});#assert actor_handoff(f.pool[..],f.handle,2,0) && f.pool[0].actors[0].controller==0;
+ empty:[1]ActorExecPool;#assert !actor_remove(empty[0..<0],f.handle) && !actor_handoff(empty[0..<0],f.handle,1,1) && !actor_control(empty[0..<0],f.handle,1,ActorControl.{}) && !actor_editor_reset(empty[0..<0],f.handle,1,1);actor_flush(empty[0..<0],f.resources.m[..],f.resources.pool[..]);
+ for mode:0..<9 {g:=base;seq:=1;if mode==0 {g.pool[0].ready=false;}else if mode==1 {seq=0;}else if mode==2 {seq=1000000001;}else if mode==3 {h:=g.handle;removed:=actor_remove(g.pool[..],h);}else if mode==4 {g.pool[0].actors[0].id=0;}else if mode==5 {g.pool[0].actors[0].owner=2;}else if mode==6 {g.pool[0].actors[0].facts.sequence=1;}else if mode==7 {g.handle=entities.ENTITY_NONE;}else {seq=1000000000;}
+ #assert actor_editor_reset(g.pool[..],g.handle,1,seq)==(mode==8);if mode==8 {#assert g.pool[0].actors[0].reset_owner==1;}
+ }
+}
+#test "deferred components publish complete placement clocks overrides and exact reserved ceilings" #steps 500000000 #traversal 5000000000 {
+ base:=actor_test_pool();refs:StateRefs;
+ for mode:0..<12 {f:=base;d:=f.definition;o:ActorOverrides;
+ if mode<6 {d.parameters.resources=cast(u32)1<<cast(u32)mode;d.parameters.hooks=0;d.content=actor_definition_id(d);}
+ else {o.mask=cast(u32)1<<cast(u32)((mode-6)%4);o.speed=300;o.radius=40;o.home=2;o.enabled=false;}
+ f.resources.world[0].facts.day=3;f.resources.world[0].facts.phase=11;
+ f.pool[0].limits.capacity=2;f.pool[0].limits.scans=32;f.pool[0].limits.senses=8;f.pool[0].limits.search=256;f.pool[0].limits.choices=8;
+ before:=actor_test_claims(f.resources.pool[..]);got:=actor_spawn_with(f.pool[..],d,f.resources.schema,refs,2,f.resources.m[..],f.resources.pool[..],f.resources.world[0],500,700,17,o);#assert got.status==ACTOR_OK;
+ a:=f.pool[0].actors[entities.entity_slot(got.handle)];
+ #assert a.body.pos.x==5 && a.body.pos.z==7 && a.body.pos.y==0 && a.body.theta==0 && a.presentation_x==5 && a.presentation_z==7 && a.pose_tick== -1;
+ #assert a.facts.tick==17 && a.facts.day==3 && a.facts.phase==11 && a.brain.tick==17 && a.perception.tick==17 && a.day_ticks==f.resources.schema.day_ticks;
+ #assert a.overrides.mask==o.mask && a.overrides.speed==(ifx (o.mask&1)!=0 then 300 else 0) && a.overrides.radius==(ifx (o.mask&2)!=0 then 40 else 0);
+ #assert a.definition.parameters.speed==(ifx (o.mask&1)!=0 then 300 else 200) && a.definition.parameters.radius==(ifx (o.mask&2)!=0 then 40 else 30);
+ #assert a.scope_home==(ifx (o.mask&4)!=0 then 2 else 1) && a.overrides.home==a.scope_home && a.scope_enabled==((o.mask&8)==0) && a.overrides.enabled==a.scope_enabled;
+ #assert actor_test_claims(f.resources.pool[..])==before+(ifx mode<6 then 1 else 6);
+ #assert f.pool[0].hooks[0]==(ifx mode<6 then 1 else 2) && f.pool[0].models[0].owner[1]==1 && f.pool[0].models[0].catalogue[1]==decisions.DECIDE_ALL;
+ #assert actor_remove(f.pool[..],got.handle);actor_flush(f.pool[..],f.resources.m[..],f.resources.pool[..]);#assert actor_test_claims(f.resources.pool[..])==before && f.pool[0].hooks[1]==(ifx mode<6 then 0 else 1) && f.pool[0].models[0].owner[1]==2;
+ }
+}

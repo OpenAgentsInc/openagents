@@ -1,0 +1,8 @@
+#test "actor defaults and inheritance compile before publication with stable typed schedules" {
+ schema:=StateSchema.{id=1,n=1,day_ticks=512};schema.fields[0]=StateField.{id=10,name="gate"};refs:StateRefs;
+ a:=[2]ActorAuthor.[ActorAuthor.{id=1},ActorAuthor.{id=2,parent=1,overrides=1}];a[0].parameters.speed=300;a[1].parameters.speed=400;
+ c:=actor_compile(a[..],schema,refs,2);#assert c.status==ACTOR_OK && c.n==2 && c.items[0].valid && c.items[1].parameters.speed==400 && c.items[1].parameters.discover==600;
+ s:=state_construct(schema,refs,1);#assert actor_schedule(c.items[0],s)==1;
+ a[1].parent=2;#assert actor_compile(a[..],schema,refs,2).status==ACTOR_CYCLE;
+ a[1].parent=3;#assert actor_compile(a[..],schema,refs,2).status==ACTOR_INVALID;
+}

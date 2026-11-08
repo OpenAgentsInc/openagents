@@ -1,0 +1,35 @@
+// Optional model intents use the existing replay/expiring catalogue gate.
+#module "aethyr.actors.model";
+#load "pool.coax";
+#load "../ai/decide.coax" as decisions;
+#load "../ai/stimulus.coax" as senses;
+#load "../entity.coax" as entities;
+#load "../replay.coax" as replay;
+#authority;
+ActorModelTicket :: struct {status:int=ACTOR_INVALID;handle:Handle(entities.Entity);id:int;owner:int;world:int;nav:int;context:int;ask:decisions.DecideAsk;}
+#load "tests/model.coax";
+actor_model_ask :: (p:[]ActorExecPool,h:Handle(entities.Entity),session:replay.ReplaySession,now:int,world:int,nav:int,wait:int)->ActorModelTicket #effects(all) {
+ t:ActorModelTicket;if p.count!=1 || !p[0].ready || now<0 || now!=p[0].tick || wait<1 || now>1000000000-wait || world<1 || nav<1 {return t;}
+ store:=actor_entity_store(p);if !entities.entity_alive(store,h) || entities.entity_doomed(store,h) {t.status=ACTOR_STALE;return t;}
+ slot:=entities.entity_slot(h);a:=p[0].actors[slot];if a.id<1 || a.controller!=0 || a.facts.values[0].integer!=1 || !actor_memory_ok(a.perception.memory,a.perception.tick) {return t;}
+ context:=decisions.decide_context(a.perception.memory);ask:=decisions.decide_ask(p[0].models[..],session,slot,now,wait,context);if ask.status!=decisions.DECIDE_OK {return t;}
+ p[0].actors[slot].model_world=world;p[0].actors[slot].model_nav=nav;
+ return ActorModelTicket.{status=ACTOR_OK,handle=h,id=a.id,owner=a.owner,world=world,nav=nav,context=context,ask=ask};
+}
+// The caller supplies an event already taken from the existing ReplaySession.
+// A renderer/HTTP callback cannot apply it directly to a body or choose a verb.
+actor_model_admit :: (p:[]ActorExecPool,t:ActorModelTicket,taken:replay.ReplayTake,now:int,world:int,nav:int)->int #effects(all) {
+ if p.count!=1 || !p[0].ready || now<1 || p[0].tick!=now-1 || t.status!=ACTOR_OK || !taken.ok {return ACTOR_INVALID;}
+ store:=actor_entity_store(p);if !entities.entity_alive(store,t.handle) || entities.entity_doomed(store,t.handle) {return ACTOR_STALE;}
+ slot:=entities.entity_slot(t.handle);a:=p[0].actors[slot];e:=taken.event;
+ if a.id!=t.id || a.owner!=t.owner || a.controller!=0 || t.world!=world || t.nav!=nav || a.model_world!=world || a.model_nav!=nav || e.request!=t.ask.request || e.epoch!=t.ask.epoch {return ACTOR_STALE;}
+ if !actor_memory_ok(a.perception.memory,a.perception.tick) {return ACTOR_INVALID;}admitted:=decisions.decide_admit(p[0].models[..],e,now,a.perception.memory,senses.Senses.{forget=a.definition.parameters.forget});
+ if admitted.status!=decisions.DECIDE_OK {return ACTOR_INVALID;}
+ if admitted.intent.kind==decisions.DECIDE_CHASE || admitted.intent.kind==decisions.DECIDE_FLEE {
+  target:=entities.entity_find(store,EntityId.{value=admitted.intent.target});
+  if target==entities.ENTITY_NONE || entities.entity_doomed(store,target) || a.perception.target!=admitted.intent.target || a.perception.generation!=add_sat(entities.entity_generation(target).value,1) {return ACTOR_STALE;}
+ }p[0].actors[slot].model=admitted.intent;return ACTOR_OK;
+}
+actor_model_revoke :: (p:[]ActorExecPool,i:int,world:int,nav:int) #effects(all) {
+ a:=p[0].actors[i];if a.model_world>0 && (a.model_world!=world || a.model_nav!=nav) {decisions.decide_cancel(p[0].models[..],i);p[0].actors[i].model=decisions.DecideIntent.{};p[0].actors[i].model_world=0;p[0].actors[i].model_nav=0;}
+}

@@ -272,6 +272,9 @@ cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/..
 # Engine-owned declared-state adoption and host-conformance fixture (#12991).
 COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/../../aethyr/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
 state_lab=$!
+# Engine-owned compiled actor adoption (#12992).
+COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/../../aethyr/actors/lab.coax" "$here/actor-lab-face.c" "$here/build/actor-lab.wasm" &
+actor_lab=$!
 # /worlds: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
 "$here/../../coax/web/wasm.sh" "$here/realmlist.coax" "$here/realmlist-face.c" "$here/build/realmlist.wasm" &
 realmlist=$!
@@ -359,3 +362,4 @@ wait "$connectpylon"
 wait "$changelog"
 
 wait "$state_lab"
+wait "$actor_lab"

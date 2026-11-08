@@ -1,0 +1,50 @@
+#module "aethyr.actors.perception";
+// A snapshot of query outcomes enters here, not an unrestricted world handle.
+// The runtime adapter constructs these only from current filtered semantic rays.
+#load "choices.coax";
+#load "../ai/stimulus.coax" as senses;
+#load "../space.coax" as spatial;
+#load "../entity.coax" as entities;
+#authority;
+ActorCandidate :: struct {id:int;generation:int;x:int;y:int;z:int;eligible:bool=true;clear:bool;}
+ActorPerception :: struct {tick:int= -1;target:int;generation:int;last_seen:int= -1;lost:int;seen:bool;alert:bool;culled:bool;reason:int;memory:senses.Memory;}
+ActorSensed :: struct {status:int=ACTOR_INVALID;state:ActorPerception;flags:u32;work:int;}
+#load "tests/perception.coax";
+#load "tests/perception-matrix.coax";
+actor_point_ok :: (x:int,y:int,z:int)->bool #effects(all) {return x>= -1000000 && x<=1000000 && y>= -1000000 && y<=1000000 && z>= -1000000 && z<=1000000;}
+actor_perceive :: (p:ActorParameters,old:ActorPerception,tick:int,self:int,x:int,y:int,z:int,focus_x:int,focus_z:int,candidates:[]const ActorCandidate)->ActorSensed #effects(all) {
+ out:=ActorSensed.{state=old};if !actor_parameters_ok(p) || tick<0 || tick>1000000000 || old.tick!=tick-1 || self<1 || !actor_point_ok(x,y,z) || !actor_flat_point_ok(focus_x,focus_z) || old.last_seen< -1 || old.last_seen>old.tick || old.target<0 || old.generation<0 || old.generation>entities.ENTITY_GEN_MASK+1 || (old.target==0)!=(old.generation==0) || old.lost<0 || !actor_memory_ok(old.memory,old.tick) {return out;}
+ if candidates.count>p.sense_work {out.status=ACTOR_EXHAUSTED;return out;}
+ for c,i:candidates {if c.id<1 || c.generation<1 || c.generation>entities.ENTITY_GEN_MASK+1 || !actor_point_ok(c.x,c.y,c.z) {return out;}for j:0..<i {if candidates[j].id==c.id {return out;}}}
+ s:=old;s.tick=tick;s.reason=0;
+ config:=senses.Senses.{forget=p.forget};s.memory=senses.memory_forget(s.memory,config,tick);
+ found:= -1;for c,i:candidates {if c.id==old.target && c.generation==old.generation && c.eligible && c.id!=self {found=i;}}
+ if found<0 {if old.target>0 {s.reason=4;}s.target=0;s.generation=0;s.last_seen= -1;s.seen=false;s.alert=false;}
+ dx:=x-focus_x;dz:=z-focus_z;s.culled=dx*dx+dz*dz>p.cull*p.cull;
+ if s.culled {s.seen=false;s.alert=false;}best:= -1;gap:int;
+ if !s.culled && tick%p.period==0 {s.seen=false;s.alert=false;
+  for c,i:candidates {out.work+=1;if !c.eligible || c.id==self || !c.clear {continue;}dy:=c.y-y;dx=c.x-x;dz=c.z-z;distance:=dx*dx+dz*dz;
+   range:=ifx c.id==s.target then p.track else p.discover;
+   if dy< -p.vertical || dy>p.vertical || distance>range*range {continue;}
+   if best<0 || actor_rank_before(distance,c.id,gap,candidates[best].id) {best=i;gap=distance;}
+  }
+  if best>=0 {c:=candidates[best];if c.id!=old.target || c.generation!=old.generation {s.reason=1;}s.target=c.id;s.generation=c.generation;s.last_seen=tick;s.seen=true;s.alert=gap<=p.alert*p.alert;
+   note:=senses.memory_note(s.memory,config,senses.Stimulus.{kind=senses.StimulusKind.sight,source=c.id,at=spatial.world_point(f32(c.x)/100,f32(c.y)/100,f32(c.z)/100),tick=tick});s.memory=note.memory;if note.status==senses.NoteStatus.full {s.reason=6;}
+  }
+ }
+ s.lost=ifx s.last_seen<0 || s.seen then 0 else tick-s.last_seen;if s.target>0 && !s.seen {s.reason=2;}
+ if s.lost>p.grace {s.target=0;s.generation=0;s.lost=0;s.last_seen= -1;s.reason=3;}if s.culled {s.reason=5;}
+ if s.seen {out.flags=out.flags|ACTOR_SEEN;}if s.alert {out.flags=out.flags+ACTOR_ALERTED;}
+ if senses.memory_recall(s.memory,config,s.target,tick).known {out.flags=out.flags|ACTOR_KNOWN;}
+ if s.memory.refused>1000000000 || s.memory.forgotten>1000000000 {out.status=ACTOR_EXHAUSTED;return out;}out.status=ACTOR_OK;out.state=s;return out;
+}
+
+actor_memory_ok :: (m:senses.Memory,tick:int)->bool #effects(all) {
+ if m.count<0 || m.count>senses.SENSE_MEMORY || m.latest< -1 || m.latest>tick || m.refused<0 || m.refused>1000000000 || m.forgotten<0 || m.forgotten>1000000000 {return false;}
+ for i:0..<m.count {st:=m.items[i];if st.kind==senses.StimulusKind.none || st.source<1 || st.tick<0 || st.tick>m.latest || !senses.sense_point_ok(st.at) {return false;}for j:0..<i {if m.items[j].kind==st.kind && m.items[j].source==st.source {return false;}}}return true;
+}
+
+// Strict total ordering is also irreflexive for identical keys.
+actor_rank_before :: (distance:int,id:int,old_distance:int,old_id:int)->bool #effects(all) {return distance<old_distance || (distance==old_distance && id<old_id);}
+
+actor_flat_point_ok :: (x:int,z:int)->bool #effects(all) {return x>= -1000000 && x<=1000000 && z>= -1000000 && z<=1000000;}

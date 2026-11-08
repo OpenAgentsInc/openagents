@@ -128,3 +128,4 @@ ocarinalab 190000
 
 # Declared facts, six-root variants and bounded runtime qualification (#12991).
 state-lab 170000
+actor-lab 400000

@@ -507,3 +507,7 @@ up, with the shared layer in [verse/edit/edit.coax](../../verse/edit/edit.coax).
 ## Declared-state adoption (#12991)
 
 EDITOR is an explicit, fenced paid-step event applying only the declared reset masks. State Lab adopts it; the general forge editing/undo document remains its existing adapter. Editor previews cannot publish half of a selected resource cut. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.
+
+## Compiled actor adoption (#12992)
+
+The actor API queues an owner/sequence-fenced EDITOR operation for a paid step. Declared defaults reset through the shared state module; optional hooks clear bounded knowledge/choice/navigation, and old model replies lose ownership. Generic Forge undo/import remains separate. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

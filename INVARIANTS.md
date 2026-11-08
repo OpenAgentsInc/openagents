@@ -6409,3 +6409,26 @@ complete a refused step with admitted input before publishing that tick.
 Current qualification covers typed intent selection from supplied observations,
 not physical actor execution or playable adoption. Limits and remaining
 integrations are in `aethyr/actors/README.md`.
+
+## Compiled actors share lifecycle, knowledge and body authority (#12992)
+
+`aethyr/actors/` profile 1 compiles versioned stable archetype IDs, inheritance,
+typed field/anchor references and phase dependencies before spawn. Pin its full
+content identity and world schema. Admit complete ready resource closures and
+all instance/work reservations before publishing deferred entity components;
+rollback partial holds. Despawn releases its claims and model ownership once.
+
+Only the existing paid clock advances actors. Preflight scoped transitions for
+all actors before publishing the ordered lifecycle, sensing, choice, movement,
+final-pose and presentation phases. Choices read bounded sensed knowledge, never
+hidden target poses. Sampling, culling, grace, forgetting, weighted randomness,
+cooldowns, search work and retries are explicit bounded data. Navigation replies
+bind entity generation, controller owner, world/nav revision, radius and request.
+Control handoff cancels old navigation/model ownership and leaves one walker in
+charge. Model replies enter the existing replay/decision gate and cannot grant
+new verbs or bypass knowledge. Notices/attributes are observations, not permission.
+
+Actor Lab qualifies the procedural walking profile; it does not migrate
+Everglade's private logic, add seats/attachments, grant combat/dialogue authority
+or define a complete actor save archive. See `aethyr/actors/README.md` and
+`docs/verification/actors-12992/README.md` for the measured scope and residuals.

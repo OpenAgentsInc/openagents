@@ -1,0 +1,26 @@
+[
+  {
+    "fps": 30,
+    "cuts": 19,
+    "hash": "ef30283611cc952233a0e079c8f6579378c65f1f755bbae93aa597882f84f48d",
+    "contract": "0f5902dc17a0f51a7f04d150d3743494bd22718a0fb1c7850172eb633d34d54c"
+  },
+  {
+    "fps": 60,
+    "cuts": 19,
+    "hash": "ef30283611cc952233a0e079c8f6579378c65f1f755bbae93aa597882f84f48d",
+    "contract": "0f5902dc17a0f51a7f04d150d3743494bd22718a0fb1c7850172eb633d34d54c"
+  },
+  {
+    "fps": 144,
+    "cuts": 19,
+    "hash": "ef30283611cc952233a0e079c8f6579378c65f1f755bbae93aa597882f84f48d",
+    "contract": "0f5902dc17a0f51a7f04d150d3743494bd22718a0fb1c7850172eb633d34d54c"
+  },
+  {
+    "fps": 0,
+    "cuts": 19,
+    "hash": "ef30283611cc952233a0e079c8f6579378c65f1f755bbae93aa597882f84f48d",
+    "contract": "0f5902dc17a0f51a7f04d150d3743494bd22718a0fb1c7850172eb633d34d54c"
+  }
+]

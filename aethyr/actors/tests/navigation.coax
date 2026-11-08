@@ -1,0 +1,15 @@
+#test "navigation requests bind identity generation owner world nav profile radius and bounded serial" {
+ context:=ActorNavKey.{actor=7,generation=1,owner=1,world=1,nav=1,radius=30};old:ActorNavigation;r:=actor_nav_request(old,context,10,127);#assert r.status==ACTOR_OK && r.navigation.status==ACTOR_NAV_PENDING && r.navigation.serial==1;
+ key:=r.navigation.key;context.request=1;
+ for field:0..<9 {bad:=context;if field==0 {bad.actor=8;}else if field==1 {bad.generation=2;}else if field==2 {bad.owner=2;}else if field==3 {bad.world=2;}else if field==4 {bad.nav=2;}else if field==5 {bad.profile=1;}else if field==6 {bad.radius=31;}else if field==7 {bad.request=2;}else {bad.actor=0;}
+  #assert actor_nav_accept(r.navigation,key,bad,11,ACTOR_NAV_SUCCESS,16).status==ACTOR_STALE;
+ }
+ good:=actor_nav_accept(r.navigation,key,context,11,ACTOR_NAV_SUCCESS,16);#assert good.status==ACTOR_OK && good.navigation.status==ACTOR_NAV_SUCCESS;
+ #assert actor_nav_accept(good.navigation,key,context,12,ACTOR_NAV_SUCCESS,16).status==ACTOR_STALE;
+}
+#test "unreachable exhausted invalidated and stuck paths expose explicit retry boundaries" {
+ context:=ActorNavKey.{actor=7,generation=1,owner=1,world=1,nav=1,radius=30};old:ActorNavigation;r:=actor_nav_request(old,context,10,3);context.request=1;
+ for result:ACTOR_NAV_UNREACHABLE..<ACTOR_NAV_EXHAUSTED+1 {a:=actor_nav_accept(r.navigation,context,context,11,result,16);#assert a.status==ACTOR_OK && a.navigation.retry_at==27 && actor_nav_request(a.navigation,context,26,3).status==ACTOR_INVALID && actor_nav_request(a.navigation,context,27,3).status==ACTOR_OK;}
+ for tick:0..<3 {a:=actor_nav_progress(old,tick,false,true,3,16);#assert a.status==ACTOR_OK;old=a.navigation;}
+ #assert old.status==ACTOR_NAV_STUCK && old.retry_at==18 && old.still==0;
+}

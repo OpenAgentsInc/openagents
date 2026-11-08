@@ -1,0 +1,73 @@
+#load "../../space.coax" as spatial;
+#test "actor model wrappers refuse absent identities before touching the existing intent gate" {
+ p:[1]ActorExecPool;session:replay.ReplaySession;h:Handle(entities.Entity);t:ActorModelTicket;
+ #assert actor_model_ask(p[..],h,session,0,1,1,1).status==ACTOR_INVALID;
+ #assert actor_exec_pool_open(p[..],ActorLimits.{});p[0].tick=0;#assert actor_model_ask(p[..],h,session,0,1,1,1).status==ACTOR_STALE;
+ #assert actor_model_admit(p[..],t,replay.ReplayTake.{},0,1,1)==ACTOR_INVALID;
+ p[0].actors[0].model_world=1;p[0].actors[0].model_nav=1;actor_model_revoke(p[..],0,2,1);#assert p[0].actors[0].model_world==0 && p[0].actors[0].model_nav==0;
+}
+#test "accepted replay events enter the bounded catalogue once and old contexts never gain control" #steps 200000000 #traversal 2000000000 {
+ f:=actor_test_pool();back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,2026);
+ t:=actor_model_ask(f.pool[..],f.handle,session,0,1,1,4);#assert t.status==ACTOR_OK && t.id==1 && t.owner==1;
+ slot:=entities.entity_slot(f.handle);e:=decisions.decide_answer(t.ask,slot,f.pool[0].models[0].owner[slot],t.context,decisions.DECIDE_HOLD,-1,0,0);
+ #assert replay.replay_offer(session,e)==replay.REPLAY_ACCEPTED;take:=replay.replay_take(session);#assert take.ok && actor_model_admit(f.pool[..],t,take,1,1,1)==ACTOR_OK;
+ #assert f.pool[0].actors[slot].model.kind==decisions.DECIDE_HOLD && actor_model_admit(f.pool[..],t,take,1,1,1)==ACTOR_INVALID;
+ replay.replay_stepped(session,0);f.pool[0].tick=1;t=actor_model_ask(f.pool[..],f.handle,session,1,1,1,4);#assert t.status==ACTOR_OK;e=decisions.decide_answer(t.ask,slot,f.pool[0].models[0].owner[slot],t.context,decisions.DECIDE_GO,-1,100,0);#assert replay.replay_offer(session,e)==replay.REPLAY_ACCEPTED;take=replay.replay_take(session);
+ for field:0..<8 {bad:=t;event:=take;world:=1;nav:=1;
+  if field==0 {bad.id=2;}else if field==1 {bad.owner=2;}else if field==2 {bad.world=2;}else if field==3 {bad.nav=2;}else if field==4 {world=2;}else if field==5 {nav=2;}else if field==6 {event.event.request+=1;}else {event.event.epoch+=1;}
+  #assert actor_model_admit(f.pool[..],bad,event,2,world,nav)==ACTOR_STALE;
+ }
+ #assert actor_handoff(f.pool[..],f.handle,1,1);#assert actor_model_admit(f.pool[..],t,take,2,1,1)==ACTOR_STALE;
+ #assert actor_model_ask(f.pool[..],f.handle,session,2,1,1,4).status==ACTOR_INVALID;
+ #assert actor_remove(f.pool[..],f.handle);actor_flush(f.pool[..],f.resources.m[..],f.resources.pool[..]);#assert actor_model_admit(f.pool[..],t,take,2,1,1)==ACTOR_STALE;
+}
+#test "model request clock owner catalogue capacity and memory guards are admitted before allocating a request" #steps 500000000 #traversal 5000000000 {
+ base:=actor_test_pool();
+ for field:0..<18 {f:=base;back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,2026);h:=f.handle;now:=0;world:=1;nav:=1;wait:=4;
+  if field==0 {f.pool[0].ready=false;}else if field==1 {now= -1;}else if field==2 {now=1;}else if field==3 {wait=0;}else if field==4 {wait=641;now=0;}else if field==5 {now=999999999;f.pool[0].tick=now;wait=2;}else if field==6 {world=0;}else if field==7 {nav=0;}
+  else if field==8 {h=entities.ENTITY_NONE;}else if field==9 {h.value+=4294967296;}else if field==10 {removed:=actor_remove(f.pool[..],h);}else if field==11 {f.pool[0].actors[0].id=0;}else if field==12 {f.pool[0].actors[0].controller=1;}else if field==13 {f.pool[0].actors[0].facts.values[0]=state_bool(false);}else if field==14 {f.pool[0].actors[0].perception.memory.count=9;}
+  else if field==15 {busy:=actor_model_ask(f.pool[..],h,session,0,1,1,4);#assert busy.status==ACTOR_OK;}
+  else if field==16 {for i:1..<9 {ask:=decisions.decide_ask(f.pool[0].models[..],session,i,0,4,0);#assert ask.status==decisions.DECIDE_OK;}}
+  else {f.pool[0].tick= -1;}
+  got:=actor_model_ask(f.pool[..],h,session,now,world,nav,wait);#assert got.status==(ifx field>=8 && field<=10 then ACTOR_STALE else ACTOR_INVALID);
+ }
+ f:=base;back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,1);f.pool[0].tick=1000000000-640;
+ #assert actor_model_ask(f.pool[..],f.handle,session,f.pool[0].tick,1,1,640).status==ACTOR_OK;
+}
+#test "model events preserve all current fences before the existing deadline and typed intent gate" #steps 500000000 #traversal 5000000000 {
+ base:=actor_test_pool();
+ for field:0..<28 {f:=base;back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,2026);t:=actor_model_ask(f.pool[..],f.handle,session,0,1,1,4);#assert t.status==ACTOR_OK;
+  e:=decisions.decide_answer(t.ask,0,f.pool[0].models[0].owner[0],t.context,decisions.DECIDE_HOLD,-1,0,0);#assert replay.replay_offer(session,e)==replay.REPLAY_ACCEPTED;take:=replay.replay_take(session);now:=1;world:=1;nav:=1;expected:=ACTOR_STALE;
+  if field==0 {f.pool[0].ready=false;expected=ACTOR_INVALID;}else if field==1 {f.pool[0].tick= -1;expected=ACTOR_INVALID;}else if field==2 {f.pool[0].tick=1000000000;now=1000000001;expected=ACTOR_INVALID;}else if field==3 {now=0;expected=ACTOR_INVALID;}else if field==4 {now=2;expected=ACTOR_INVALID;}else if field==5 {t.status=ACTOR_INVALID;expected=ACTOR_INVALID;}else if field==6 {take.ok=false;expected=ACTOR_INVALID;}
+  else if field==7 {t.handle=entities.ENTITY_NONE;}else if field==8 {t.handle.value+=4294967296;}else if field==9 {removed:=actor_remove(f.pool[..],f.handle);}else if field==10 {t.id+=1;}else if field==11 {t.owner+=1;}else if field==12 {f.pool[0].actors[0].controller=1;}else if field==13 {t.world=2;}else if field==14 {t.nav=2;}else if field==15 {world=2;}else if field==16 {nav=2;}else if field==17 {f.pool[0].actors[0].model_world=2;}else if field==18 {f.pool[0].actors[0].model_nav=2;}else if field==19 {take.event.request+=1;}else if field==20 {take.event.epoch+=1;}
+  else if field==21 {f.pool[0].actors[0].perception.memory.count=9;expected=ACTOR_INVALID;}else if field==22 {take.event.words[decisions.DECIDE_W_KIND]=9;expected=ACTOR_INVALID;}
+  else if field==23 {take.event.words[decisions.DECIDE_W_OWNER]+=1;expected=ACTOR_INVALID;}else if field==24 {take.event.words[decisions.DECIDE_W_CONTEXT]+=1;expected=ACTOR_INVALID;}else if field==25 {take.event.source=replay.REPLAY_ACTIONS;expected=ACTOR_INVALID;}
+  else if field==26 {f.pool[0].tick=4;now=5;expected=ACTOR_INVALID;}else {f.pool[0].models[0].catalogue[0]=0;expected=ACTOR_INVALID;}
+  #assert actor_model_admit(f.pool[..],t,take,now,world,nav)==expected && f.pool[0].actors[0].model.kind==decisions.DECIDE_NONE;
+ }
+ f:=base;back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,1);t:=actor_model_ask(f.pool[..],f.handle,session,0,1,1,4);e:=decisions.decide_answer(t.ask,0,f.pool[0].models[0].owner[0],t.context,decisions.DECIDE_HOLD,-1,0,0);#assert replay.replay_offer(session,e)==replay.REPLAY_ACCEPTED;take:=replay.replay_take(session);f.pool[0].tick=3;#assert actor_model_admit(f.pool[..],t,take,4,1,1)==ACTOR_OK;
+}
+#test "chase and flee require the currently selected live target generation in addition to sensed memory" #steps 300000000 #traversal 3000000000 {
+ base:=actor_test_pool();
+ for field:0..<12 {f:=base;store:=actor_entity_store(f.pool[..]);target:=entities.entity_spawn(store);entities.entity_flush(store);
+  a:=f.pool[0].actors[0];a.perception.target=target.id.value;a.perception.generation=add_sat(entities.entity_generation(target.handle).value,1);a.perception.memory.count=1;a.perception.memory.latest=0;a.perception.memory.items[0]=senses.Stimulus.{kind=senses.StimulusKind.sight,source=target.id.value,tick=0,at=spatial.world_point(1,0,0)};f.pool[0].actors[0]=a;
+  back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,1);t:=actor_model_ask(f.pool[..],f.handle,session,0,1,1,4);#assert t.status==ACTOR_OK;
+  kind:=ifx field==0 || field>=7 then decisions.DECIDE_CHASE else decisions.DECIDE_FLEE;e:=decisions.decide_answer(t.ask,0,f.pool[0].models[0].owner[0],t.context,kind,target.id.value,0,0);#assert replay.replay_offer(session,e)==replay.REPLAY_ACCEPTED;take:=replay.replay_take(session);
+  if field==2 || field==7 {f.pool[0].actors[0].perception.generation+=1;}else if field==3 || field==8 {f.pool[0].actors[0].perception.target+=1;}else if field==4 || field==9 {entities.entity_despawn(store,target.handle);}else if field==5 || field==10 {entities.entity_despawn(store,target.handle);entities.entity_flush(store);}else if field==6 || field==11 {f.pool[0].actors[0].perception.memory.count=0;}
+  got:=actor_model_admit(f.pool[..],t,take,1,1,1);#assert got==(ifx field<2 then ACTOR_OK else ifx field==6 || field==11 then ACTOR_INVALID else ACTOR_STALE);
+ }
+}
+
+#test "context revocation cancels only bound tickets and clears admitted intents" #steps 200000000 #traversal 2000000000 {
+ base:=actor_test_pool();
+ for mode:0..<5 {f:=base;back:[1]replay.ReplayBacking;session:=replay.replay_backing(back[..]);replay.replay_record(session,0,1);
+ t:=actor_model_ask(f.pool[..],f.handle,session,0,1,1,4);#assert t.status==ACTOR_OK;
+ f.pool[0].actors[0].model=decisions.DecideIntent.{kind=decisions.DECIDE_HOLD};
+ if mode==3 {f.pool[0].actors[0].model_world=0;}else if mode==4 {f.pool[0].actors[0].model_world= -1;}
+ actor_model_revoke(f.pool[..],0,ifx mode==1 then 2 else 1,ifx mode==2 then 2 else 1);
+ changed:=mode==1 || mode==2;
+ #assert decisions.decide_waiting(f.pool[0].models[..],0)==!changed;
+ #assert f.pool[0].actors[0].model.kind==(ifx changed then decisions.DECIDE_NONE else decisions.DECIDE_HOLD);
+ #assert f.pool[0].actors[0].model_nav==(ifx changed then 0 else 1);
+ }
+}

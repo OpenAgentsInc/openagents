@@ -1,0 +1,20 @@
+#test "the playable actor lab reads three offline compiled definitions on its sole paid clock" #steps 500000000 #traversal 5000000000 {
+ s:[1]ActorLab;#assert actor_lab_open(s[..],0);s[0].script=true;
+ for tick:0..<12 {actor_lab_frame(s[..],15625000);}
+ #assert s[0].ready && s[0].actors[0].tick==12 && s[0].world[0].clock.ticks==12 && s[0].work.ok;
+ store:=actor_entity_store(s[0].actors[..]);#assert entities.entity_count(store)==4;
+ guard:=s[0].actors[0].actors[entities.entity_slot(s[0].handles[0])];villager:=s[0].actors[0].actors[entities.entity_slot(s[0].handles[1])];
+ #assert guard.definition.id==1001 && villager.definition.id==1002 && guard.perception.memory.count>0 && guard.pose_tick==12;
+ #assert s[0].peaks[0]<=12 && s[0].peaks[1]<=2048 && s[0].peaks[2]<=512;
+}
+#test "the playable execution profile consumes the general archetype compiler and owned phase plan" #steps 200000000 #traversal 2000000000 {
+ for i:0..<3 {base:=ACTOR_LAB_NORMAL.native[i];profile:=ACTOR_LAB_NORMAL.items[i];
+ #assert base.valid && base.id==profile.id && base.revision==profile.revision && assets.asset_same(base.schema,profile.schema) && base.plan.valid && base.plan.n==6;
+ #assert profile.parameters.speed==int(floor(base.parameters[archetypes.ACTOR_SPEED].number[0]*100+0.5));
+ #assert profile.parameters.radius==int(floor(base.parameters[archetypes.ACTOR_RADIUS].number[0]*100+0.5));
+ #assert base.root_count==1 && base.roots[0]==0 && base.closure[0] && base.parameters[archetypes.ACTOR_INSTANCES].integer==16;
+ for phase:0..<6 {#assert base.plan.steps[phase].phase==profile.order[phase] && base.services[phase].implementation==phase;}
+ }
+ #assert ACTOR_LAB_GUARD.items[0].parameters.speed==80 && ACTOR_LAB_NORMAL.items[0].parameters.speed==200 && ACTOR_LAB_PATH.items[1].parameters.path_work==1;
+ #assert ACTOR_LAB_GUARD.native[0].parameters[archetypes.ACTOR_SPEED].number[0]==0.8 && ACTOR_LAB_PATH.native[1].parameters[archetypes.ACTOR_SEARCH_WORK].integer==1;
+}

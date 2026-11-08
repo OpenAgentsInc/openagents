@@ -243,3 +243,7 @@ parameters (R20) and, for the batch dimension and layouts, R21.
 ## Declared-state adoption (#12991)
 
 A scene can publish declared facts together with the six resource roots its typed predicates select. Preparation owns references privately; stale or missing members preserve the complete previous world until a paid-step publication succeeds. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.
+
+## Compiled actor adoption (#12992)
+
+Actor Lab composes the existing State Lab clock with six compiled phases: lifecycle, sensing, choice, shared walking, finalized poses and presentation. All scoped transitions preflight before any phase publishes; reads and drawing add no clock. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

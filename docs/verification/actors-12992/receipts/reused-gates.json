@@ -1,0 +1,41 @@
+{
+  "basis_commit": "2a97ae4edb",
+  "type_and_constant_renames": {
+    "ActorDefinition": "ActorProfile",
+    "ACTOR_DEFINITIONS": "ACTOR_PROFILES",
+    "ACTOR_PHASES": "ACTOR_EXEC_PHASES",
+    "ACTOR_INSTANCES": "ACTOR_EXEC_SLOTS",
+    "ACTOR_ALERT": "ACTOR_ALERTED",
+    "ActorPool": "ActorExecPool",
+    "ActorInstance": "ActorExecInstance",
+    "ActorSpawn": "ActorSpawnResult",
+    "actor_pool_open": "actor_exec_pool_open"
+  },
+  "units": {
+    "behavior": {
+      "renamed_source_identical": true,
+      "source_sha256": "9747ee1f26c794aab4aaf3f054205a3037440a34affad7121a0f8fe46ffae173"
+    },
+    "perception": {
+      "renamed_source_identical": true,
+      "source_sha256": "70def2582784b2e779c926c253074c3cc3847eab1516cbb4001cbb3d45075089"
+    },
+    "navigation": {
+      "renamed_source_identical": true,
+      "source_sha256": "633a846b0dfa79936d134069f528448383f680efbe97883f939eb514b34840fc"
+    },
+    "model": {
+      "renamed_source_identical": true,
+      "source_sha256": "6ae2112d73c5cd994ef296092ae9b49dd5d6616018a5183e27c621fe14046233"
+    },
+    "signals": {
+      "renamed_source_identical": true,
+      "source_sha256": "518bb50bd5b9a5659de144c6b2bada560e79ccb7d1cbc9ccc47251a7ddeb3852"
+    },
+    "profile": {
+      "renamed_source_identical": true,
+      "source_sha256": "5dc4f2bdef1b4dffeb36b8f9536601a5ffa07fdaaf0bc7b9c899a2977a9a5e2c"
+    }
+  },
+  "final_alpha_equivalence": "final-integration.json"
+}

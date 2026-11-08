@@ -1,0 +1,12 @@
+#test "priority guards duration cooldown and interruption choose typed verbs on paid ticks" {
+ p:=ActorParameters.{n=2};p.rules[0]=ActorRule.{verb=ACTOR_GO,duration=2,cooldown=3};p.rules[1]=ActorRule.{verb=ACTOR_WATCH,require=ACTOR_SEEN,priority=1,duration=1};
+ b:ActorBrain;a:=actor_choose(p,b,ActorKnowledge.{},2026,1);#assert a.status==ACTOR_OK && a.verb==ACTOR_GO && a.brain.draws==1;
+ a=actor_choose(p,a.brain,ActorKnowledge.{tick=1,flags=ACTOR_SEEN},2026,1);#assert a.status==ACTOR_OK && a.verb==ACTOR_WATCH && a.reason==ACTOR_INTERRUPTED && a.brain.ready[0]==4;
+ a=actor_choose(p,a.brain,ActorKnowledge.{tick=2},2026,1);#assert a.status==ACTOR_OK && a.reason==ACTOR_COOLDOWN && a.brain.rule== -1;
+ a=actor_choose(p,a.brain,ActorKnowledge.{tick=3},2026,1);#assert a.brain.rule== -1;
+ a=actor_choose(p,a.brain,ActorKnowledge.{tick=4},2026,1);#assert a.verb==ACTOR_GO && a.brain.rule==0;
+}
+#test "weighted draws are counter based and repeat suppression keeps alternatives" {
+ p:=ActorParameters.{n=2,repeat=true};p.rules[0]=ActorRule.{verb=ACTOR_GO,duration=1};p.rules[1]=ActorRule.{verb=ACTOR_WATCH,duration=1,weight=3};b:ActorBrain;
+ for tick:0..<32 {a:=actor_choose(p,b,ActorKnowledge.{tick=tick},2026,7);#assert a.status==ACTOR_OK && a.brain.rule!=b.last && a.brain.draws==tick+1;b=a.brain;}
+}

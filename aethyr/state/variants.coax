@@ -1,3 +1,4 @@
+#module "aethyr.state.variants";
 // Atomic facts + six prepared subsystem roots, over the existing RCM1 owners.
 #load "lifecycle.coax";
 #load "../world/resource-stream.coax";

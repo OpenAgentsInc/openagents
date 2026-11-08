@@ -480,3 +480,7 @@ each pack's last lines are shown; the tool prints every entry.)
 [chapter 14](ch014-figures-and-animation.md) (rigs and clips),
 [chapter 16](ch016-budgets-that-refuse.md) (identities and budgets) and
 [chapter 51](ch051-a-realm-is-a-document.md) (what a document may name).
+
+## Compiled actor adoption (#12992)
+
+Each actor holds its own claims on the already admitted six-resource world closure. Failed acquisition drops only its partial claims; despawn releases all its holds. Animation/physics profiles beyond the procedural walking body are refused before spawn. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

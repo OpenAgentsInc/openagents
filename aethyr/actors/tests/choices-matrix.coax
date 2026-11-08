@@ -1,0 +1,46 @@
+#load "../probe-data.coax";
+#load "../../assets.coax" as assets;
+#test "all weighted priority duration cooldown and sleep transitions match the independent trace hash" #steps 200000000 #traversal 2000000000 {
+ p:=actor_probe_parameters();brain:ActorBrain;words:[4096]int;n:=0;
+ for tick:0..<128 {input:=actor_probe_input(tick);choice:=actor_choose(p,brain,ActorKnowledge.{tick=tick,flags=input.flags,culled=input.culled},2026,7);#assert choice.status==ACTOR_OK;brain=choice.brain;
+  record:=[11]int.[tick,cast(int)input.flags,choice.status,choice.verb,choice.goal,choice.reason,brain.rule,brain.until,brain.draws,choice.work,choice.weight];for v:record {words[n]=v;n+=1;}for v:brain.ready {words[n]=v;n+=1;}
+ }h:[64]u8;#assert assets.asset_hex(state_words_id(words[0..<n]),h[..]) && cast(string)h[..]=="232d4e3e80f673b6fe73e9e3f9129cf8ed6ce4d4677cd130db548b1a6365dabc";
+}
+#test "brain state input and guard bounds refuse before publishing an action or consuming a draw" {
+ p:ActorParameters;old:ActorBrain;k:ActorKnowledge;
+ for field:0..<21 {b:=old;input:=k;params:=p;
+  if field==0 {params.n=0;}else if field==1 {b.tick= -2;}else if field==2 {b.tick=1000000001;}else if field==3 {input.tick= -1;}else if field==4 {input.tick=1000000001;}else if field==5 {input.tick=1;}else if field==6 {input.flags=128;}
+  else if field==7 {b.rule= -2;}else if field==8 {b.rule=1;}else if field==9 {b.last= -2;}else if field==10 {b.last=1;}else if field==11 {b.until= -1;}else if field==12 {b.until=1000000001;}else if field==13 {b.draws= -1;}else if field==14 {b.draws=1000000000;}
+  else if field==15 {b.ready[0]= -1;}else if field==16 {b.ready[0]=1000000001;}else if field==17 {b.tick=1000000000;input.tick=1000000000;}else if field==18 {b.tick=0;input.tick=0;}else if field==19 {b.rule=0;b.until=3;b.ready[0]= -1;input.culled=true;}else {b.last=7;}
+  r:=actor_choose(params,b,input,2026,1);#assert r.status==ACTOR_INVALID && r.brain.tick==b.tick && r.brain.draws==b.draws && r.verb==ACTOR_HOLD;
+ }
+ r:=ActorRule.{require=1,forbid=2};#assert actor_guard(r,1) && !actor_guard(r,0) && !actor_guard(r,2) && !actor_guard(r,3);r=ActorRule.{};#assert actor_guard(r,127);
+ // Exact final counter/timer boundaries are safe; the next duration refuses.
+ b:=ActorBrain.{tick=999999998,draws=999999999};params:=ActorParameters.{};params.rules[0].duration=1;
+ a:=actor_choose(params,b,ActorKnowledge.{tick=999999999},1,1);#assert a.status==ACTOR_OK && a.brain.draws==1000000000 && a.brain.until==1000000000;
+ b=ActorBrain.{tick=999999999};a=actor_choose(params,b,ActorKnowledge.{tick=1000000000},1,1);#assert a.status==ACTOR_EXHAUSTED && a.brain.draws==0 && a.brain.tick==b.tick;
+ b=ActorBrain.{tick=999999999,rule=0,until=1000000000};params.rules[0].cooldown=1;a=actor_choose(params,b,ActorKnowledge.{tick=1000000000},1,1);#assert a.status==ACTOR_EXHAUSTED && a.brain.tick==b.tick;
+}
+#test "single alternatives full flag masks hold goals and terminal timers keep exact contracts" {
+ p:=ActorParameters.{repeat=true};p.rules[0]=ActorRule.{verb=ACTOR_GO,goal=ACTOR_MEMORY,duration=1};b:ActorBrain;
+ for tick:0..<8 {c:=actor_choose(p,b,ActorKnowledge.{tick=tick,flags=127},1,1);#assert c.status==ACTOR_OK && c.brain.rule==0 && c.weight==1 && c.brain.draws==tick+1;b=c.brain;}
+ b=ActorBrain.{};b.ready[0]=1000000000;c:=actor_choose(p,b,ActorKnowledge.{},1,1);#assert c.status==ACTOR_OK && c.reason==ACTOR_COOLDOWN;
+ b=ActorBrain.{tick=999999999};c=actor_choose(p,b,ActorKnowledge.{tick=1000000000,culled=true},1,1);#assert c.status==ACTOR_OK && c.reason==ACTOR_SLEEP;
+ b=ActorBrain.{tick=1000000000};c=actor_choose(p,b,ActorKnowledge.{tick=1000000001,culled=true},1,1);#assert c.status==ACTOR_INVALID;
+ p.rules[0].interruptible=false;p.rules[0].goal=ACTOR_AWAY;p.rules[0].verb=ACTOR_FLEE;b=ActorBrain.{tick=0,rule=0,until=3};c=actor_choose(p,b,ActorKnowledge.{tick=1},1,1);#assert c.status==ACTOR_OK && c.goal==ACTOR_AWAY && c.verb==ACTOR_FLEE && c.brain.tick==1;
+ p=ActorParameters.{};p.rules[0].cooldown=1;b=ActorBrain.{tick=999999998,rule=0,until=999999999};c=actor_choose(p,b,ActorKnowledge.{tick=999999999},1,1);#assert c.status==ACTOR_OK && c.brain.ready[0]==1000000000 && c.reason==ACTOR_COOLDOWN;
+ p=ActorParameters.{n=2};p.rules[0]=ActorRule.{require=ACTOR_KNOWN,priority=7};p.rules[1]=ActorRule.{verb=ACTOR_GO,goal=ACTOR_MEMORY};c=actor_choose(p,ActorBrain.{},ActorKnowledge.{},1,1);#assert c.status==ACTOR_OK && c.brain.rule==1 && c.verb==ACTOR_GO && c.goal==ACTOR_MEMORY;
+ p=ActorParameters.{n=2};p.rules[0].duration=1;p.rules[1]=ActorRule.{verb=ACTOR_INTERACT,duration=1};b=ActorBrain.{};
+ for tick:0..<32 {c=actor_choose(p,b,ActorKnowledge.{tick=tick},2026,7);#assert c.status==ACTOR_OK && c.weight==2 && c.brain.rule==random.rand_below(2026,7,tick,2);b=c.brain;}
+}
+#test "interrupting a live rule pays its own cooldown and bounded higher-priority duration" {
+ p:=ActorParameters.{n=2};p.rules[0]=ActorRule.{duration=4,cooldown=1};p.rules[1]=ActorRule.{verb=ACTOR_INTERACT,priority=1,duration=1};b:=ActorBrain.{tick=999999998,rule=0,until=1000000000};
+ c:=actor_choose(p,b,ActorKnowledge.{tick=999999999},1,1);#assert c.status==ACTOR_OK && c.brain.rule==1 && c.brain.ready[0]==1000000000 && c.brain.until==1000000000;
+ p.rules[0].cooldown=2;c=actor_choose(p,b,ActorKnowledge.{tick=999999999},1,1);#assert c.status==ACTOR_EXHAUSTED && c.brain.tick==b.tick;
+}
+#test "weighted traversal skips an ineligible middle row for both guards and cooldowns" {
+ for which:0..<2 {p:=ActorParameters.{n=3};p.rules[0]=ActorRule.{duration=1};p.rules[1]=ActorRule.{verb=ACTOR_INTERACT,weight=1000,duration=1};p.rules[2]=ActorRule.{verb=ACTOR_GO,weight=3,duration=1};b:ActorBrain;
+  if which==0 {p.rules[1].require=ACTOR_KNOWN;}else {b.ready[1]=1000000000;}
+  for tick:0..<32 {c:=actor_choose(p,b,ActorKnowledge.{tick=tick},2026,7);expected:=ifx random.rand_below(2026,7,tick,4)==0 then 0 else 2;#assert c.status==ACTOR_OK && c.weight==4 && c.brain.rule==expected;b=c.brain;}
+ }
+}

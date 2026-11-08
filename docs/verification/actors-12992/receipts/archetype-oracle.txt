@@ -1,0 +1,1 @@
+PASS: 64 exact archetypes/refusals (32 complete); full schema/RCM1 pins; sha256=da9a3d30080a4438d5646b9b1b5d461cb9b33abf06c10becfb0ed5427f33ddda

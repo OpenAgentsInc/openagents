@@ -325,3 +325,7 @@ that mapping; constructing the document does not require the physics engine.
 ## Declared-state adoption (#12991)
 
 A document adapter may declare persistent facts and compile typed variant predicates offline. Profile 1 pins placements, collision, navigation, fluid, lighting and rendering together. Existing forge document encoding remains unchanged; migrating arbitrary document fields is a residual adapter. See [the runtime guide](../state/README.md) and [qualification](../../docs/verification/declared-state-12991/README.md). This addition does not promote the chapter’s remaining teaching or qualification scope.
+
+## Compiled actor adoption (#12992)
+
+Authored Coax records compile stable versioned archetypes, inheritance, references, phase edges and budgets offline. Instance override records preserve the original archetype pin. Generic Forge document import remains an adapter; its wire format is unchanged. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

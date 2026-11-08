@@ -1,0 +1,36 @@
+#test "navigation key full bounds and every request precondition preserve old state on refusal" {
+ k:=ActorNavKey.{actor=1,generation=1,owner=1,world=1,nav=1,radius=30,request=1};#assert actor_nav_key_ok(k);
+ for field:0..<18 {bad:=k;if field==0 {bad.actor=0;}else if field==1 {bad.generation=0;}else if field==2 {bad.generation=4097;}else if field==3 {bad.owner=0;}else if field==4 {bad.owner=1000000001;}else if field==5 {bad.world=0;}else if field==6 {bad.world=1000000001;}else if field==7 {bad.nav=0;}else if field==8 {bad.nav=1000000001;}else if field==9 {bad.profile= -1;}else if field==10 {bad.profile=1;}else if field==11 {bad.radius=9;}else if field==12 {bad.radius=81;}else if field==13 {bad.request=0;}else if field==14 {bad.request=1000000001;}else if field==15 {bad.generation= -1;}else if field==16 {bad.radius= -1;}else {bad.actor= -1;}#assert !actor_nav_key_ok(bad);}
+ k.generation=4096;k.owner=1000000000;k.world=1000000000;k.nav=1000000000;k.radius=10;k.request=1000000000;#assert actor_nav_key_ok(k);k.radius=80;#assert actor_nav_key_ok(k);
+ context:=ActorNavKey.{actor=1,generation=1,owner=1,world=1,nav=1,radius=30};
+ for field:0..<14 {old:ActorNavigation;tick:=0;goal:=0;key:=context;
+  if field==0 {old.status= -1;}else if field==1 {old.status=7;}else if field==2 {old.retry_at= -1;}else if field==3 {old.retry_at=1000000001;}else if field==4 {old.serial= -1;}else if field==5 {old.serial=1000000000;}else if field==6 {tick= -1;}else if field==7 {tick=1000000001;}else if field==8 {goal= -1;}else if field==9 {goal=128;}else if field==10 {old.retry_at=1;}else if field==11 {key.actor=0;}else if field==12 {old.status=ACTOR_NAV_PENDING;}else {key.profile=1;}
+  r:=actor_nav_request(old,key,tick,goal);#assert r.status==ACTOR_INVALID && r.navigation.serial==old.serial && r.navigation.status==old.status;
+ }
+ old:=ActorNavigation.{serial=999999999,status=ACTOR_NAV_STUCK,retry_at=1000000000};r:=actor_nav_request(old,context,1000000000,127);#assert r.status==ACTOR_OK && r.navigation.key.request==1000000000 && r.navigation.serial==1000000000 && r.navigation.goal==127 && r.navigation.asked==1000000000;
+}
+#test "every navigation completion fence timing result and retry edge is exact" {
+ k:=ActorNavKey.{actor=1,generation=1,owner=1,world=1,nav=1,radius=30,request=1};r:=actor_nav_request(ActorNavigation.{},k,10,3);old:=r.navigation;
+ for field:0..<16 {state:=old;key:=k;context:=k;tick:=11;result:=ACTOR_NAV_SUCCESS;retry:=1;
+  if field==0 {key.actor=0;}else if field==1 {context.actor=0;}else if field==2 {state.key.actor=2;}else if field==3 {state.serial=0;}else if field==4 {context.request=2;}else if field==5 {state.status=0;}else if field==6 {state.asked= -1;}else if field==7 {tick=10;}else if field==8 {tick=9;}else if field==9 {retry=0;}else if field==10 {retry=641;}else if field==11 {tick=1000000000;}else if field==12 {result=ACTOR_NAV_PENDING;}else if field==13 {result=ACTOR_NAV_STUCK;}else if field==14 {state.key.radius=31;}else {state.key.generation=2;}
+  got:=actor_nav_accept(state,key,context,tick,result,retry);#assert got.status==(ifx field<=5 || field>=14 then ACTOR_STALE else ACTOR_INVALID) && got.navigation.status==state.status;
+ }
+ good:=actor_nav_accept(old,k,k,999999999,ACTOR_NAV_UNREACHABLE,1);#assert good.status==ACTOR_OK && good.navigation.retry_at==1000000000;
+ good=actor_nav_accept(old,k,k,1000000000-640,ACTOR_NAV_EXHAUSTED,640);#assert good.status==ACTOR_OK && good.navigation.retry_at==1000000000;
+ good=actor_nav_accept(old,k,k,11,ACTOR_NAV_SUCCESS,640);#assert good.status==ACTOR_OK && good.navigation.retry_at==0;
+}
+#test "stuck movement progress and all finite work limits preserve explicit terminal modes" {
+ for field:0..<15 {old:ActorNavigation;tick:=0;limit:=3;retry:=1;
+  if field==0 {old.status= -1;}else if field==1 {old.status=7;}else if field==2 {old.retry_at= -1;}else if field==3 {old.retry_at=1000000001;}else if field==4 {old.serial= -1;}else if field==5 {old.serial=1000000001;}else if field==6 {tick= -1;}else if field==7 {retry=0;}else if field==8 {retry=641;}else if field==9 {tick=1000000000;}else if field==10 {limit=0;}else if field==11 {limit=641;}else if field==12 {old.still= -1;}else if field==13 {old.still=3;}else {old.still=4;}
+  r:=actor_nav_progress(old,tick,false,true,limit,retry);#assert r.status==ACTOR_INVALID && r.navigation.still==old.still && r.navigation.status==old.status;
+ }
+ old:=ActorNavigation.{status=ACTOR_NAV_STUCK,retry_at=1000000000,serial=1000000000,still=639};r:=actor_nav_progress(old,1000000000-640,false,true,640,640);#assert r.status==ACTOR_OK && r.navigation.status==ACTOR_NAV_STUCK && r.navigation.still==0 && r.navigation.retry_at==1000000000;
+ old=ActorNavigation.{still=1};r=actor_nav_progress(old,0,true,true,3,1);#assert r.status==ACTOR_OK && r.navigation.still==0;
+ r=actor_nav_progress(old,0,false,false,3,1);#assert r.status==ACTOR_OK && r.navigation.still==0;
+ r=actor_nav_progress(ActorNavigation.{},0,false,true,1,1);#assert r.status==ACTOR_OK && r.navigation.retry_at==1 && r.navigation.still==0;
+}
+#test "the initial zero tick and zero cell remain valid and completion starts on the following tick" {
+ k:=ActorNavKey.{actor=1,generation=1,owner=1,world=1,nav=1,radius=30};r:=actor_nav_request(ActorNavigation.{},k,0,0);#assert r.status==ACTOR_OK && r.navigation.asked==0 && r.navigation.goal==0 && r.navigation.serial==1;
+ k.request=1;done:=actor_nav_accept(r.navigation,k,k,1,ACTOR_NAV_SUCCESS,1);#assert done.status==ACTOR_OK && done.navigation.status==ACTOR_NAV_SUCCESS;
+ bad:=r.navigation;bad.key.actor=0;key:=bad.key;#assert actor_nav_accept(bad,key,key,1,ACTOR_NAV_SUCCESS,1).status==ACTOR_STALE;
+}

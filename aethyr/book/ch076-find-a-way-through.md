@@ -10,12 +10,12 @@
 > ([aethyr/tests/nav-oracle.coax](../../aethyr/tests/nav-oracle.coax)), and
 > [aethyr/tests/nav-deadgears.coax](../../aethyr/tests/nav-deadgears.coax)
 > shows that on Dead Gears' deck it gives the same costs, bit for bit, and
-> the same next cells as `verse/deadgears/arena.coax`. No realm runs on the
-> module yet: Dead Gears keeps its own copy, Everglade's townsfolk keep their
+> the same next cells as `verse/deadgears/arena.coax`. Actor Lab adopts
+> the shared solver with fenced requests and bounded retries (below).
+> Everglade's townsfolk keep their
 > road graph and Hecate's Cemetery its garden paths
 > ([aethyr/terrain.coax](../../aethyr/terrain.coax)). Path graphs, following
-> and avoidance, replanning after edits and browser replay are still a
-> design. See [Still to do](#still-to-do).
+> and crowd avoidance retain their separate adapter work. See [Still to do](#still-to-do).
 
 A character that walks to a place needs a route that avoids what it can't
 cross, and a step each frame that follows the route without walking into
@@ -351,7 +351,8 @@ the costs a search lowers.
 
 ## Still to do
 
-- **Realms on the module.** Dead Gears' `nav_flow_to` and `nav_downhill` call
+- **Remaining realm adapters.** Actor Lab now uses the shared grid with fenced
+  requests, bounded search and the shared walker. Dead Gears' `nav_flow_to` and `nav_downhill` call
   it since #12854, and its private search is gone; `nav-deadgears.coax` keeps
   that search as the consumer's trace and holds the module to it. Everglade's townsfolk and guide, and Hecate's dog, use path
   graphs instead.
@@ -375,16 +376,19 @@ the costs a search lowers.
   spell's wall or rubble touches a route (`verse/everglade/guide-route.coax`).
   Marking the cells and links an edit covers, so only routes over them
   replan ([chapter 52](ch052-edit-a-realm-in-place.md)), is not built.
-- **Stuck characters.** A character that makes no progress for a stated time
-  replans once and then stops.
-- **Replay in the browser.** The module runs natively in debug and release;
-  a field built in Wasm and compared with native is not recorded.
+- **Stuck consumers.** The actor profile reports STUCK and retries on authored
+  tick deadlines. Other realms still need their explicit replan/stop policy.
+- **Broader browser qualification.** Actor Lab records native/Wasm route
+  outcomes and complete body/brain digests at 30 cuts across four frame schedules.
+  Full cell-by-cell browser oracles for arbitrary grid profiles remain separate.
 - **Other domains.** Swimming at half pace in water, as townsfolk do through
   `verse/water-wade.coax`, and flying routes over roofs, as made-realm owls
   do. Space navigation stays in [chapter 42](ch042-reach-a-moving-target.md).
 
 ## What exists today
 
+- [aethyr/actors/](../actors/README.md): owned bounded flow caches, typed
+  failure/retry, current-owner keys and the playable Actor Lab.
 - [aethyr/nav/grid.coax](../../aethyr/nav/grid.coax): walking grids and flow
   fields, with its oracle and the Dead Gears identity check.
 - [aethyr/terrain.coax](../../aethyr/terrain.coax): the path graph,
@@ -428,3 +432,7 @@ The chapter is done when:
 Chapters 1 (the clock), 6 (entities), 7 (queries), 8 (ground and
 collision), 9 (the walking rules characters share) and 52 (edits that
 invalidate routes). Coax R14 bounded control for fixed-size search state.
+
+## Compiled actor adoption (#12992)
+
+Actor Lab adopts the existing grid flow solver and downhill rule with owned bounded caches. Requests bind actor generation, control owner, world/nav revision, radius and request serial; exhaustion, unreachable goals, invalidation and stuck retries have typed outcomes. Graph routing and crowd avoidance remain adapters. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

@@ -1,0 +1,3 @@
+{"default_definition": "c3fdaea1cbf730ff5506b4cc8f91c0ddd1cf4c85a1322ac9bb91636d71098535", "rich_definition": "e004b927d0eb20ea955cb4e3ee61e0c182a4910f2a198629fb346ebdb81cbdfd"}
+{"brain_probe": "232d4e3e80f673b6fe73e9e3f9129cf8ed6ce4d4677cd130db548b1a6365dabc", "contract": "6f50c69f640eb1b3069e8c146ea61f838a2145895611835bd5c567cbeab7ebb3", "vision_probe": "5cf24be3a55cd5fc6d54d6f9cd076c22d6fe05e5f90fa9c039c8652e64875ddf"}
+{"controls_each": 64, "core_contract": "6f50c69f640eb1b3069e8c146ea61f838a2145895611835bd5c567cbeab7ebb3", "cuts_each": 30, "final_hash": "30b56953ec248f0502d612f8fe96d1e4e7c16337c4294be5a56b5042d74750a8", "host_replays": 8, "result": "pass"}

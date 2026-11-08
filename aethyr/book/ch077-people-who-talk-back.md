@@ -385,3 +385,7 @@ Chapter 15 owns display and focus, chapter 68 owns spoken playback, and
 [Coax chapter 18](../../coax/book/ch18-protocol.md) supplies the protocol
 boundary. Their complete application integrations remain separate from this
 native teaching profile.
+
+## Compiled actor adoption (#12992)
+
+Actor INTERACT and fear/interest notices are typed observations. They do not grant conversation, damage, inventory or service permissions. The existing talk request/response lifecycle retains its own admission and realm-adoption gates. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

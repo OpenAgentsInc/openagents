@@ -1,6 +1,8 @@
 // Firm reason: 1 (Canvas2D, WebAssembly memory, browser input and localStorage SDK effects)
 // Layout, controls, collision, navigation, fluids, clocks and state are Coax.
-const bytes = await (await fetch('/build/state-lab.wasm')).arrayBuffer();
+const config=document.querySelector('script[data-module]')?.dataset;
+const storage=config?.storage||'openagents.state-lab';
+const bytes = await (await fetch(config?.module||'/build/state-lab.wasm')).arrayBuffer();
 const decode = new TextDecoder(), encode = new TextEncoder();
 async function createLab(credits=0) {
   const memory=new WebAssembly.Memory({initial:256,maximum:1024});
@@ -24,13 +26,13 @@ async function createLab(credits=0) {
     key(key,down){const b=encode.encode(key);if(b.length>8192)throw Error('SDK key span');new Uint8Array(x.memory.buffer,x.lab_input_ptr(),b.length).set(b);x.lab_key(b.length,+down);},
     snapshot(){return new Uint8Array(x.memory.buffer,x.lab_saved_ptr(),x.lab_saved_len()).slice();},
     import(b){if(b.length>8192)throw Error('SDK save span');new Uint8Array(x.memory.buffer,x.lab_input_ptr(),b.length).set(b);return !!x.lab_import(b.length);},
-    receipt(){return {profile:'declared-state-1',memory_bytes:x.memory.buffer.byteLength,trace:Array.from({length:x.lab_trace_count()},(_,r)=>({hash:text(x.lab_trace_hash_ptr(r),64),metrics:Object.fromEntries(names.map((name,i)=>[name,x.lab_trace_metric(r,i)]))})),final:final()};}
+    receipt(){return {profile:config?.profile||'declared-state-1',memory_bytes:x.memory.buffer.byteLength,controls:x.lab_control_count?Array.from({length:x.lab_control_count()},(_,r)=>Array.from({length:4},(_,c)=>x.lab_control_word(r,c))):undefined,trace:Array.from({length:x.lab_trace_count()},(_,r)=>({hash:text(x.lab_trace_hash_ptr(r),64),metrics:Object.fromEntries(names.map((name,i)=>[name,x.lab_trace_metric(r,i)]))})),final:final()};}
   };
 }
 let credits=0;
-try{credits=Number(localStorage.getItem('openagents.state-lab.credit.v1')||0);}catch{}
+try{credits=Number(localStorage.getItem(`${storage}.credit.v1`)||0);}catch{}
 let current=await createLab(credits), savedVersion=0, running=true, last=null;
-try{const saved=localStorage.getItem('openagents.state-lab.save.v1');if(saved)current.import(Uint8Array.from(atob(saved),x=>x.charCodeAt(0)));}catch{}
+try{const saved=localStorage.getItem(`${storage}.save.v1`);if(saved)current.import(Uint8Array.from(atob(saved),x=>x.charCodeAt(0)));}catch{}
 const canvas=document.querySelector('canvas'), ctx=canvas.getContext('2d');
 function draw(){
   canvas.width=innerWidth;canvas.height=innerHeight;current.x.lab_view(canvas.width,canvas.height);
@@ -40,8 +42,8 @@ function draw(){
     if(kind===0)ctx.fillRect(x,y,w,h);else{ctx.font=`${h}px monospace`;ctx.fillText(current.text(current.x.lab_text_ptr(kind-1),current.x.lab_text_len(kind-1)),x,y);}}
 }
 function persist(){try{
-  localStorage.setItem('openagents.state-lab.credit.v1',String(current.metrics().credits));
-  const version=current.x.lab_saved_version();if(version!==savedVersion){savedVersion=version;const b=current.snapshot();if(b.length)localStorage.setItem('openagents.state-lab.save.v1',btoa(String.fromCharCode(...b)));}
+  localStorage.setItem(`${storage}.credit.v1`,String(current.metrics().credits));
+  const version=current.x.lab_saved_version();if(version!==savedVersion){savedVersion=version;const b=current.snapshot();if(b.length)localStorage.setItem(`${storage}.save.v1`,btoa(String.fromCharCode(...b)));}
 }catch{}}
 function frame(now){if(running){if(last!==null)current.frame(Math.round((now-last)*1e6));last=now;draw();persist();}else last=null;requestAnimationFrame(frame);}
 canvas.addEventListener('pointerdown',e=>current.x.lab_hit(e.clientX,e.clientY));

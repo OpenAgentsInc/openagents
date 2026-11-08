@@ -1,0 +1,4 @@
+// Named import for the general source-part compiler; resource/state ownership
+// stays with the existing shared variants module.
+#module "aethyr.actors.compiled";
+#load "definitions.coax";

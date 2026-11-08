@@ -1,0 +1,28 @@
+#module "aethyr.actors.navigation";
+// Generation/revision-fenced navigation requests. Search remains nav/grid.coax.
+#load "profile.coax";
+#authority;
+ACTOR_NAV_NONE :: 0; ACTOR_NAV_PENDING :: 1; ACTOR_NAV_SUCCESS :: 2; ACTOR_NAV_UNREACHABLE :: 3; ACTOR_NAV_INVALIDATED :: 4; ACTOR_NAV_EXHAUSTED :: 5; ACTOR_NAV_STUCK :: 6;
+ActorNavKey :: struct {actor:int;generation:int;owner:int;world:int;nav:int;profile:int;radius:int;request:int;}
+ActorNavigation :: struct {key:ActorNavKey;status:int;goal:int= -1;asked:int= -1;retry_at:int;still:int;serial:int #counter;}
+ActorNavResult :: struct {status:int=ACTOR_INVALID;navigation:ActorNavigation;}
+#load "tests/navigation.coax";
+#load "tests/navigation-matrix.coax";
+actor_nav_key_ok :: (k:ActorNavKey)->bool #effects(all) {return k.actor>0 && k.generation>0 && k.generation<=4096 && k.owner>0 && k.owner<=1000000000 && k.world>0 && k.world<=1000000000 && k.nav>0 && k.nav<=1000000000 && k.profile==0 && k.radius>=10 && k.radius<=80 && k.request>0 && k.request<=1000000000;}
+actor_nav_same :: (a:ActorNavKey,b:ActorNavKey)->bool #effects(all) {return a.actor==b.actor && a.generation==b.generation && a.owner==b.owner && a.world==b.world && a.nav==b.nav && a.profile==b.profile && a.radius==b.radius && a.request==b.request;}
+actor_nav_request :: (old:ActorNavigation,context:ActorNavKey,tick:int,goal:int)->ActorNavResult #effects(all) {
+ out:=ActorNavResult.{navigation=old};if old.status<ACTOR_NAV_NONE || old.status>ACTOR_NAV_STUCK || old.retry_at<0 || tick<0 || tick>1000000000 || goal<0 || goal>=128 || tick<old.retry_at {return out;}
+ key:=context;key.request=add_sat(old.serial,1);if !actor_nav_key_ok(key) {return out;}
+ if old.status==ACTOR_NAV_PENDING {return out;}
+ out.status=ACTOR_OK;out.navigation=ActorNavigation.{key=key,status=ACTOR_NAV_PENDING,goal=goal,asked=tick,serial=key.request};return out;
+}
+actor_nav_accept :: (old:ActorNavigation,key:ActorNavKey,context:ActorNavKey,tick:int,result:int,retry:int)->ActorNavResult #effects(all) {
+ out:=ActorNavResult.{navigation=old};if !actor_nav_key_ok(key) || !actor_nav_same(old.key,key) || old.serial!=key.request || !actor_nav_same(key,context) || old.status!=ACTOR_NAV_PENDING {out.status=ACTOR_STALE;return out;}
+ if old.asked<0 || tick<=old.asked || retry<1 || retry>640 || tick>1000000000-retry || result<ACTOR_NAV_SUCCESS || result>ACTOR_NAV_EXHAUSTED {return out;}
+ out.status=ACTOR_OK;out.navigation.status=result;if result!=ACTOR_NAV_SUCCESS {out.navigation.retry_at=tick+retry;}return out;
+}
+actor_nav_progress :: (old:ActorNavigation,tick:int,moved:bool,wants_move:bool,limit:int,retry:int)->ActorNavResult #effects(all) {
+ out:=ActorNavResult.{navigation=old};if old.status<ACTOR_NAV_NONE || old.status>ACTOR_NAV_STUCK || old.retry_at<0 || old.retry_at>1000000000 || old.serial<0 || old.serial>1000000000 || tick<0 || retry<1 || retry>640 || tick>1000000000-retry || limit<1 || limit>640 || old.still<0 || old.still>=limit {return out;}
+ out.status=ACTOR_OK;out.navigation.still=ifx moved || !wants_move then 0 else old.still+1;
+ if out.navigation.still==limit {out.navigation.status=ACTOR_NAV_STUCK;out.navigation.retry_at=tick+retry;out.navigation.still=0;}return out;
+}

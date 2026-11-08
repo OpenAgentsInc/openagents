@@ -478,3 +478,7 @@ Replay ([chapter 5](ch005-replay-a-session-exactly.md)) compares
 of entity identities and generations
 ([Coax roadmap](../../coax/ROADMAP.md)) come later. For background, see the
 [game-engine systems inventory, section 7](../../docs/research/game-engine-systems.md).
+
+## Compiled actor adoption (#12992)
+
+Actor instances reserve resource claims and work before deferred entity publication. Despawn cancels pending births, releases owned claims once and clears components before slot reuse. Controller and model ownership remain generation fenced. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

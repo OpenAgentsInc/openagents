@@ -1,0 +1,17 @@
+// Authored behavior data only. Realm orchestration has no guard/villager cases.
+#module "aethyr.actors.content";
+#load "profile.coax";
+actor_lab_authors :: (alternate:int)->[3]ActorAuthor #effects(all) {
+ a:=[3]ActorAuthor.[ActorAuthor.{id=1001},ActorAuthor.{id=1002,parent=1001,overrides=31},ActorAuthor.{id=1003,parent=1001,overrides=31}];
+ guard:=ActorParameters.{n=4};guard.rules[0]=ActorRule.{verb=ACTOR_WATCH,goal=ACTOR_MEMORY,require=ACTOR_ALERTED,priority=3,duration=8,cooldown=4};
+ guard.rules[1]=ActorRule.{verb=ACTOR_GO,goal=ACTOR_MEMORY,require=ACTOR_KNOWN,priority=2,duration=16,cooldown=2};
+ guard.rules[2]=ActorRule.{verb=ACTOR_GO,goal=ACTOR_ROUTINE,require=ACTOR_SCHEDULE,priority=1,duration=32};guard.rules[3]=ActorRule.{duration=4};
+ guard.schedule[0]=ActorSchedule.{anchor=1};if alternate==1 {guard.speed=80;guard.discover=50;guard.alert=30;guard.track=100;guard.grace=0;a[0].revision=2;}a[0].parameters=guard;
+ villager:=ActorParameters.{speed=100,discover=400,alert=100,track=600,n=3,rows=2,repeat=true};
+ villager.rules[0]=ActorRule.{verb=ACTOR_GO,goal=ACTOR_ROUTINE,require=ACTOR_SCHEDULE,priority=1,duration=32};villager.rules[1]=ActorRule.{duration=8};villager.rules[2]=ActorRule.{verb=ACTOR_INTERACT,weight=3,duration=8};
+ villager.schedule[0]=ActorSchedule.{anchor=2,field=10,equals=1};villager.schedule[1]=ActorSchedule.{phase=256,anchor=3};if alternate==2 {villager.path_work=1;a[1].revision=2;}a[1].parameters=villager;
+ mount:=ActorParameters.{controller=1,speed=250,n=3};mount.rules[0]=ActorRule.{verb=ACTOR_DRIVE,goal=ACTOR_RIDER,require=ACTOR_CONTROLLED,priority=7,duration=1};
+ mount.rules[1]=ActorRule.{verb=ACTOR_GO,goal=ACTOR_ROUTINE,require=ACTOR_SCHEDULE,forbid=ACTOR_CONTROLLED,priority=1,duration=16};mount.rules[2]=ActorRule.{duration=4};mount.schedule[0]=ActorSchedule.{anchor=4};a[2].parameters=mount;return a;
+}
+
+ACTOR_LAB_OVERRIDES :: [3]ActorOverrides.[ActorOverrides.{mask=4,home=1},ActorOverrides.{mask=5,speed=120,home=2},ActorOverrides.{mask=4,home=4}];

@@ -2,7 +2,8 @@
 #authority;
 #load "phases.coax" as phases;
 #load "../state/codec.coax";
-#load "../world/resource-stream.coax";
+#load "../state/variants.coax";
+#load "../assets.coax" as assets;
 
 ACTOR_DEFINITIONS :: 16; ACTOR_PARAMETERS :: 20; ACTOR_BINDINGS :: 6;
 ACTOR_FIELD_REFS :: 8; ACTOR_ROOTS :: 8; ACTOR_SERVICES :: 32;

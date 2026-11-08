@@ -1,0 +1,14 @@
+#test "discover alert track and lost grace are exact with stable ties and bounded knowledge" {
+ p:=ActorParameters.{period=1,grace=2};old:ActorPerception;c:=[2]ActorCandidate.[ActorCandidate.{id=2,generation=1,x=600,clear=true},ActorCandidate.{id=3,generation=1,x= -600,clear=true}];
+ r:=actor_perceive(p,old,0,1,0,0,0,0,0,c[..]);#assert r.status==ACTOR_OK && r.state.target==2 && r.state.seen && !r.state.alert && r.work==2 && r.flags==(ACTOR_SEEN|ACTOR_KNOWN);
+ c[0].x=800;c[1].eligible=false;r=actor_perceive(p,r.state,1,1,0,0,0,0,0,c[..]);#assert r.state.target==2 && r.state.seen;
+ c[0].clear=false;for tick:2..<4 {r=actor_perceive(p,r.state,tick,1,0,0,0,0,0,c[..]);#assert r.state.target==2 && !r.state.seen;}
+ r=actor_perceive(p,r.state,4,1,0,0,0,0,0,c[..]);#assert r.state.target==0 && r.state.lost==0 && r.state.reason==3;
+}
+#test "stale generation unload hidden eligibility culling and capacity never grant sensed knowledge" {
+ p:=ActorParameters.{period=1};old:ActorPerception;c:=[1]ActorCandidate.[ActorCandidate.{id=2,generation=1,x=200,clear=true}];r:=actor_perceive(p,old,0,1,0,0,0,0,0,c[..]);#assert r.state.alert;
+ c[0].generation=2;c[0].clear=false;r=actor_perceive(p,r.state,1,1,0,0,0,0,0,c[..]);#assert r.state.target==0 && r.flags==0;
+ c[0].eligible=false;r=actor_perceive(p,old,0,1,0,0,0,0,0,c[..]);#assert r.state.target==0;
+ c[0].eligible=true;r=actor_perceive(p,old,0,1,0,0,0,2001,0,c[..]);#assert r.state.culled && r.work==0;
+ p.sense_work=1;two:=[2]ActorCandidate.[c[0],ActorCandidate.{id=3,generation=1}];#assert actor_perceive(p,old,0,1,0,0,0,0,0,two[..]).status==ACTOR_EXHAUSTED;
+}

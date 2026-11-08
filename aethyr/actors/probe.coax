@@ -1,0 +1,22 @@
+// Host-conformance oracle input, isolated from the playable world. Not a clock.
+#module "aethyr.actors.probe";
+#load "perception.coax";
+#load "probe-data.coax";
+#load "../assets.coax" as assets;
+actor_probe :: ()->assets.AssetId #effects(all) {
+ p:=actor_probe_parameters();
+ brain:ActorBrain;words:[4096]int;n:=0;
+ for tick:0..<128 {
+  input:=actor_probe_input(tick);flags:=input.flags;
+  choice:=actor_choose(p,brain,ActorKnowledge.{tick=tick,flags=flags,culled=input.culled},2026,7);if choice.status!=ACTOR_OK {return assets.AssetId.{};}brain=choice.brain;
+  record:=[11]int.[tick,cast(int)flags,choice.status,choice.verb,choice.goal,choice.reason,brain.rule,brain.until,brain.draws,choice.work,choice.weight];for v:record {words[n]=v;n+=1;}for v:brain.ready {words[n]=v;n+=1;}
+ }brain_id:=state_words_id(words[0..<n]);
+ s:ActorPerception;par:=ActorParameters.{period=4,grace=6,forget=8};n=0;
+ for tick:0..<128 {
+  candidates:=[3]ActorCandidate.[ActorCandidate.{id=1,generation=1,clear=true},ActorCandidate.{id=2,generation=ifx tick>=80 then 2 else 1,x=100+tick*7,clear=tick%8<4,eligible=tick<48 || tick>=64},ActorCandidate.{id=3,generation=1,x= -600,clear=tick%16<12}];focus:=ifx tick>=112 then 2001 else 0;
+  got:=actor_perceive(par,s,tick,1,0,0,0,focus,0,candidates[..]);if got.status!=ACTOR_OK {return assets.AssetId.{};}s=got.state;
+  record:=[13]int.[tick,got.status,s.reason,s.target,s.generation,s.last_seen,s.lost,ifx s.seen then 1 else 0,ifx s.alert then 1 else 0,ifx s.culled then 1 else 0,cast(int)got.flags,got.work,s.memory.count];for v:record {words[n]=v;n+=1;}
+  for i:0..<s.memory.count {st:=s.memory.items[i];item:=[4]int.[st.source,st.tick,cast(int)f32_bits(st.at.x),cast(int)f32_bits(st.at.z)];for v:item {words[n]=v;n+=1;}}
+ }vision_id:=state_words_id(words[0..<n]);chain:[16]int;for i:0..<8 {chain[i]=cast(int)brain_id.words[i];chain[8+i]=cast(int)vision_id.words[i];}return state_words_id(chain[..]);
+}
+actor_contract_hex :: (fps:int,out:[]u8)->bool #export_c #effects(all) {if fps!=0 && fps!=30 && fps!=60 && fps!=144 {return false;}return assets.asset_hex(actor_probe(),out);}

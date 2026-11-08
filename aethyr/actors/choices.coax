@@ -1,0 +1,43 @@
+#module "aethyr.actors.choices";
+// Typed, bounded local brains. No body movement or unrestricted world reads.
+#load "profile.coax";
+#load "../rand.coax" as random;
+#authority;
+ACTOR_CHOSEN :: 0; ACTOR_HELD :: 1; ACTOR_COOLDOWN :: 2; ACTOR_INTERRUPTED :: 3; ACTOR_SLEEP :: 4;
+ActorBrain :: struct {tick:int= -1;rule:int= -1;until:int;ready:[ACTOR_RULES]int;last:int= -1;draws:int #counter;}
+ActorKnowledge :: struct {tick:int;flags:u32;culled:bool;}
+ActorChoice :: struct {status:int=ACTOR_INVALID;brain:ActorBrain;verb:int;goal:int;weight:int;work:int;reason:int=ACTOR_COOLDOWN;}
+#load "tests/choices.coax";
+#load "tests/choices-matrix.coax";
+actor_guard :: (r:ActorRule,flags:u32)->bool #effects(all) {return (flags&r.require)==r.require && (flags&r.forbid)==0;}
+actor_choose :: (p:ActorParameters,b:ActorBrain,k:ActorKnowledge,seed:int,stream:int)->ActorChoice #effects(all) {
+ out:=ActorChoice.{brain=b};if !actor_parameters_ok(p) || k.tick<0 || k.tick>1000000000 || b.tick!=k.tick-1 || k.flags>127 || b.rule< -1 || b.rule>=p.n || b.last< -1 || b.last>=p.n || b.until<0 || b.until>1000000000 || b.draws<0 || b.draws>=1000000000 {return out;}
+ for i:0..<p.n {if b.ready[i]<0 || b.ready[i]>1000000000 {return out;}}
+ next:=b;next.tick=k.tick;old:=b.rule;
+ if k.culled {next.rule= -1;out.status=ACTOR_OK;out.reason=ACTOR_SLEEP;out.brain=next;return out;}
+ running:=old>=0 && k.tick<b.until;
+ if running && !p.rules[old].interruptible {current:=p.rules[old];out.status=ACTOR_OK;out.reason=ACTOR_HELD;out.brain=next;out.verb=current.verb;out.goal=current.goal;return out;}
+ retaining:=running && actor_guard(p.rules[old],k.flags);
+ if old>=0 && !retaining {
+  if k.tick>1000000000-p.rules[old].cooldown {out.status=ACTOR_EXHAUSTED;return out;}
+  next.rule= -1;next.ready[old]=k.tick+p.rules[old].cooldown;
+ }
+ // First declared eligible rule at the highest priority. Beginning the weighted
+ // pool here makes that declaration-order tie break part of its actual traversal.
+ best:= -1;for i:0..<p.n {out.work+=1;r:=p.rules[i];if next.ready[i]<=k.tick && actor_guard(r,k.flags) {if best<0 || r.priority>p.rules[best].priority {best=i;}}}
+ if retaining && (best<0 || p.rules[old].priority>=p.rules[best].priority) {r:=p.rules[old];out.status=ACTOR_OK;out.reason=ACTOR_HELD;out.brain=next;out.verb=r.verb;out.goal=r.goal;return out;}
+ if retaining {
+  if k.tick>1000000000-p.rules[old].cooldown {out.status=ACTOR_EXHAUSTED;return out;}
+  next.ready[old]=k.tick+p.rules[old].cooldown;
+ }
+ out.status=ACTOR_OK;out.brain=next;if best<0 {return out;}
+ total:=0;alternative:=false;
+ for i:best..<p.n {out.work+=1;r:=p.rules[i];if r.priority==p.rules[best].priority && next.ready[i]<=k.tick && actor_guard(r,k.flags) {total+=r.weight;if i!=next.last {alternative=true;}}}
+ suppress:=p.repeat && alternative && next.last>=0;
+ if suppress {r:=p.rules[next.last];if r.priority==p.rules[best].priority && next.ready[next.last]<=k.tick && actor_guard(r,k.flags) {total-=r.weight;}}
+ out.weight=total;draw:=random.rand_below(seed,stream,next.draws,total);next.draws=add_sat(next.draws,1);chosen:=best;
+ for i:best..<p.n {out.work+=1;r:=p.rules[i];if r.priority!=p.rules[best].priority || next.ready[i]>k.tick || !actor_guard(r,k.flags) || (suppress && i==next.last) {continue;}if draw<r.weight {chosen=i;break;}draw-=r.weight;}
+ if k.tick>1000000000-p.rules[chosen].duration {out.status=ACTOR_EXHAUSTED;out.brain=b;return out;}
+ r:=p.rules[chosen];next.rule=chosen;next.last=chosen;next.until=k.tick+r.duration;
+ out.brain=next;out.verb=r.verb;out.goal=r.goal;out.reason=ifx running then ACTOR_INTERRUPTED else ACTOR_CHOSEN;return out;
+}

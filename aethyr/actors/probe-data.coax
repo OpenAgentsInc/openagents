@@ -1,0 +1,12 @@
+// Declared conformance inputs, shared by the native and Wasm drivers.
+#module "aethyr.actors.probe.data";
+#load "profile.coax";
+ActorProbeInput :: struct {flags:u32;culled:bool;}
+actor_probe_parameters :: ()->ActorParameters #effects(all) {
+ p:=ActorParameters.{n=4,repeat=true};p.rules[0]=ActorRule.{verb=ACTOR_GO,goal=ACTOR_MEMORY,require=ACTOR_KNOWN,priority=1,duration=8,cooldown=4};
+ p.rules[1]=ActorRule.{verb=ACTOR_WATCH,require=ACTOR_ALERTED,priority=2,duration=4,cooldown=2,interruptible=false};p.rules[2]=ActorRule.{duration=3};p.rules[3]=ActorRule.{verb=ACTOR_INTERACT,weight=3,duration=3};return p;
+}
+actor_probe_input :: (tick:int)->ActorProbeInput #effects(all) {
+ flags:u32=0;if (tick>=16 && tick<32) || (tick>=104 && tick<116) {flags=ACTOR_SEEN|ACTOR_KNOWN;}else if tick>=32 && tick<48 {flags=ACTOR_SEEN|ACTOR_KNOWN|ACTOR_ALERTED;}else if tick>=48 && tick<80 {flags=ACTOR_KNOWN;}
+ return ActorProbeInput.{flags=flags,culled=tick>=96 && tick<104};
+}

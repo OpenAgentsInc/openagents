@@ -1,3 +1,4 @@
+#module "aethyr.state.lifecycle";
 // One prepared fact batch per caller-owned paid step. No independent clock.
 #load "declarations.coax";
 #authority;

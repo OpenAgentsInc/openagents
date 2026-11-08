@@ -2,9 +2,10 @@
 #import "Basic";
 #load "../definitions.coax";
 #load "../../state/declarations.coax" as state;
+#load "../../state/variants.coax" as resources;
 main :: () #effects(all) {
  for sample:0..<64 {
-  m:=[1]ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);
+  m:=[1]resources.ResourceManifest.[actor_definition_manifest()];defs:=actor_definition_sources(m[0]);
   services:=actor_definition_services();schema:=actor_definition_schema();refs:state.StateRefs;
   defs[0].parameter_count=5;
   defs[0].parameters[0]=ActorParameter.{id=5,value=state.StateValue.{kind=state.STATE_SCALAR,number=[3]f64.[cast(f64)(sample%33),0,0]}};
