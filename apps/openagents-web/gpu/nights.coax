@@ -22,6 +22,26 @@ nights_ground_grass_colour :: (sample:V3)->V3 {
  #assert c.x/0.5f32<0.75 && c.y/0.5f32>1.15 && c.z/0.5f32<0.3;
  #assert nights_ground_grass_colour(v3(0,0,0)).y==0;
 }
+#test "Nights spring material grade is local bounded lighter and preserves flower hue" {
+ original:=v3(0.035,0.05,0.012);grass:=nights_spring_green(original,7002);earth:=nights_spring_earth(v3(0.06,0.045,0.02));
+ #assert verse_style_luma(grass.x,grass.y,grass.z)>0.075 && grass.y>grass.x && grass.z>original.z;
+ #assert earth.x>0.14 && earth.y>0.13 && earth.z>0.09;
+ #assert nights_flora_active(6,7004) && !nights_flora_active(6,0) && !nights_flora_active(5,7004) && !nights_flora_active(6,7001);
+ purple:=v3(0.6,0.2,0.9);flower:=nights_spring_flower(purple);#assert flower.z>flower.x && flower.x>flower.y && flower.z<=1;#assert abs(flower.x/flower.z-purple.x/purple.z)<0.00001;
+}
+nights_flora_active :: (kind:f32,marker:f32)->bool {return kind>5.5f32 && kind<6.5f32 && marker>7001.5f32 && marker<7005.5f32;}
+nights_spring_green :: (sample:V3,marker:f32)->V3 {
+ y:=fmax(verse_style_luma(sample.x,sample.y,sample.z),0.002f32);tone:=(ifx marker<7001.5f32 then 0.015f32 else 0.01f32)+0.36f32*sqrt(y);palette:=ifx marker>7003.5f32 then v3(0.72f32,1.20f32,0.35f32) else v3(0.60f32,1.24f32,0.40f32);palette=scale3(palette,1.0f32/verse_style_luma(palette.x,palette.y,palette.z));hue:=mix3(scale3(sample,1.0f32/y),palette,0.40f32);return v3(clampf(hue.x*tone,0,0.85),clampf(hue.y*tone,0,0.85),clampf(hue.z*tone,0,0.85));
+}
+nights_spring_earth :: (sample:V3)->V3 {
+ y:=fmax(verse_style_luma(sample.x,sample.y,sample.z),0.002f32);tone:=0.05f32+0.45f32*sqrt(y);cream:=v3(1.08f32,1.03f32,0.78f32);cream=scale3(cream,1.0f32/verse_style_luma(cream.x,cream.y,cream.z));return scale3(mix3(scale3(sample,1.0f32/y),cream,0.70f32),tone);
+}
+nights_spring_flower :: (sample:V3)->V3 {peak:=fmax(sample.x,fmax(sample.y,sample.z));gain:=ifx peak>0.6666667f32 then 1.0f32/peak else 1.5f32;return scale3(sample,gain);}
+#test "Nights spring native grass roots retain depth without shading flowers or fern" {
+ #assert abs(nights_grass_root_shade(7002,0)-0.65)<0.00001 && nights_grass_root_shade(7002,0.55)==1;
+ #assert nights_grass_root_shade(7003,0)==1 && nights_grass_root_shade(7005,0)==1;
+}
+nights_grass_root_shade :: (marker:f32,y:f32)->f32 {return ifx marker>7001.5f32 && marker<7002.5f32 then 0.65f32+0.35f32*smoothstep(0.03f32,0.55f32,y) else 1.0f32;}
 nights_ground_uv :: (x:f32,z:f32,metres:f32)->V2 {return v2(x/metres,z/metres);}
 nights_ground_earth :: (x:f32,z:f32)->f32 {
  center:=sin(z*0.13f32)*0.35f32+sin(z*0.043f32)*0.25f32;trail:=1.0f32-smoothstep(0.8f32,1.6f32,abs(x-center));clearing:=1.0f32-smoothstep(2.0f32,3.2f32,sqrt(x*x+(z+10.0f32)*(z+10.0f32)));path:=fmax(trail,clearing);quiet:=0.025f32+0.02f32*sin(x*0.37f32+z*0.23f32)*sin(z*0.31f32);return quiet+(0.85f32-quiet)*path;
@@ -42,13 +62,14 @@ nights_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Te
  dx:=v2(gpu_dpdx_fine(uv.x),gpu_dpdx_fine(uv.y));dy:=v2(gpu_dpdy_fine(uv.x),gpu_dpdy_fine(uv.y));repeat:=ifx u[106]>=0.5f32 then u[106] else 1.6f32;
  guv:=nights_ground_uv(s.world.x,s.world.z,repeat);gdx:=v2(gpu_dpdx_fine(guv.x),gpu_dpdx_fine(guv.y));gdy:=v2(gpu_dpdy_fine(guv.x),gpu_dpdy_fine(guv.y));ground:=nights_ground_active(s.local.x,s.local.y,u[107]);
  tex:=render_sample_layer8_grad(sheets,sheet,ifx ground then guv else uv,ifx ground then s32(u[104]) else s32(s.slice),ifx ground then gdx else dx,ifx ground then gdy else dy,ifx ground then 0.0f32 else 1.0f32);
- if ground {grass:=nights_ground_grass_colour(v3(tex.x,tex.y,tex.z));tex=v4(grass.x,grass.y,grass.z,tex.w);earth:=render_sample_layer8_grad(sheets,sheet,v2(guv.x+11.375f32,guv.y-7.125f32),s32(u[105]),gdx,gdy,0);share:=nights_ground_earth(s.world.x,s.world.z);tex=v4(tex.x+(earth.x-tex.x)*share,tex.y+(earth.y-tex.y)*share,tex.z+(earth.z-tex.z)*share,1);}
+ if ground {grass:=nights_spring_green(nights_ground_grass_colour(v3(tex.x,tex.y,tex.z)),7001);tex=v4(grass.x,grass.y,grass.z,tex.w);earth:=render_sample_layer8_grad(sheets,sheet,v2(guv.x+11.375f32,guv.y-7.125f32),s32(u[105]),gdx,gdy,0);earth_colour:=nights_spring_earth(v3(earth.x,earth.y,earth.z));earth=v4(earth_colour.x,earth_colour.y,earth_colour.z,earth.w);share:=nights_ground_earth(s.world.x,s.world.z);tex=v4(tex.x+(earth.x-tex.x)*share,tex.y+(earth.y-tex.y)*share,tex.z+(earth.z-tex.z)*share,1);}
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
   sky:=mix3(cg_decode(cg_sky(u,normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
  }
  if (tex.w<0.35f32) {gpu_demote_helper();}
+ graded:=s;if nights_flora_active(s.local.x,s.local.y) {tint:=cg_decode(s.tint);gain:=scale3(tint,1.0f32/fmax(verse_style_luma(tint.x,tint.y,tint.z),0.02f32));albedo:=mul3(v3(tex.x,tex.y,tex.z),gain);albedo=ifx s.local.y>7004.5f32 then nights_spring_flower(albedo) else nights_spring_green(albedo,s.local.y);albedo=scale3(albedo,nights_grass_root_shade(s.local.y,s.world.y));tex=v4(albedo.x,albedo.y,albedo.z,tex.w);graded.tint=v3(1,1,1);}
  c:V4;
- if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
+ if (s.dye.w>11.5f32) {c=cg_environment_fs(graded,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
  else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
  n:=normalize3(s.normal);z:=dot3(sub3(s.world,wg_at3(u,16)),wg_at3(u,20));
  sky:=s.dye.w>11.5f32 && s.local.x<0.5f32;foliage:=s.dye.w>11.5f32 && s.local.x>0.5f32 && s.local.x<2.5f32;

@@ -4,6 +4,7 @@
 #load "../../aethyr/walk.coax" as pc;
 #load "../../aethyr/sticks.coax";
 #load "../../aethyr/render/environment-frame.coax" as envf;
+#load "../../verse/nights/light.coax" as spring;
 VERTEX_FLOATS ::16;
 NIGHT_HEROES ::32;
 NIGHT_ENV ::208;
@@ -56,7 +57,7 @@ night_default_hero :: (s:[]Nights)->int {
  for i:0..<s[0].hero_n {h:=s[0].heroes[i];if h.ready && h.gender==0 && h.head==0 && h.outfit==1 {return i;}}return 0;
 }
 night_ready :: (s:[]Nights)->bool #export_c #effects(all) {return s[0].ready && s[0].ui[0].ready;}
-night_start :: (s:[]Nights) {if s[0].started || !s[0].ready {return;}z:=s[0].zones[s[0].zone];s[0].you=pc.walk_place(z.x,z.y,z.z,0);s[0].you.dist=5;s[0].you.max_dist=3.5;s[0].started=true;}
+night_start :: (s:[]Nights) {if s[0].started || !s[0].ready {return;}z:=s[0].zones[s[0].zone];s[0].you=pc.walk_place(z.x,z.y,z.z,0);s[0].you.phi=1.24;s[0].you.dist=5;s[0].you.max_dist=3.5;s[0].started=true;}
 night_label :: (s:[]Nights,which:int)->string {if which==0 {return cast(string)s[0].heroes[s[0].hero].name[0..<s[0].heroes[s[0].hero].name_n];}if which==1 {return cast(string)s[0].zones[s[0].zone].name[0..<s[0].zones[s[0].zone].name_n];}c:=s[0].clip;return cast(string)s[0].heroes[s[0].hero].clips[c].name[0..<s[0].heroes[s[0].hero].clips[c].name_n];}
 night_clip_find :: (s:[]Nights,name:string)->int {for i:0..<s[0].heroes[s[0].hero].clip_n {c:=s[0].heroes[s[0].hero].clips[i];if cast(string)c.name[0..<c.name_n]==name {return i;}}return 0;}
 night_blur :: (s:[]Nights) #export_c #effects(all) {s[0].keys=0;s[0].thumbs=verse_sticks_reset();s[0].drag=false;s[0].look_x=0;s[0].look_y=0;}
@@ -105,7 +106,7 @@ night_camera_room :: (s:[]Nights,x:f32,z:f32,dx:f32,dz:f32)->f32 {
  return room;
 }
 night_light :: (s:[]Nights,u:[]f32) {
- if u.count<NIGHT_UNIFORMS {return;}if s[0].light_n==0 {words:=envf.env_frame_glade_words();for i:0..<envf.ENV_FRAME_FLOATS {s[0].light[i]=words[i];}s[0].light_n=envf.ENV_FRAME_FLOATS;}for i:0..<envf.ENV_FRAME_FLOATS {u[NIGHT_ENV+i]=s[0].light[i];}
+ if u.count<NIGHT_UNIFORMS {return;}if s[0].light_n==0 {words:=spring.noon_words();for i:0..<envf.ENV_FRAME_FLOATS {s[0].light[i]=words[i];}s[0].light_n=envf.ENV_FRAME_FLOATS;}for i:0..<envf.ENV_FRAME_FLOATS {u[NIGHT_ENV+i]=s[0].light[i];}
 }
 night_frame :: (s:[]Nights,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
  if u.count<NIGHT_UNIFORMS {return 0;}
@@ -231,8 +232,8 @@ night_fixture :: (s:[]Nights) {
  s[0].you.face=1.570796326794897;night_scene(s[..]);#assert abs(s[0].records[32]+1)<0.00001 && abs(s[0].records[33])<0.00001;
 }
 
-#test "Nights writes the current shared fixed-noon environment in all 79 uniform vectors" {
- s:[1]Nights;u:[NIGHT_UNIFORMS]f32;u[16]=1;u[17]=2;u[18]=3;night_light(s[..],u[..]);night_light(s[..],u[..]);words:=envf.env_frame_glade_words();
+#test "Nights writes its admitted spring profile in all 79 uniform vectors" {
+ s:[1]Nights;u:[NIGHT_UNIFORMS]f32;u[16]=1;u[17]=2;u[18]=3;night_light(s[..],u[..]);night_light(s[..],u[..]);words:=spring.noon_words();
  #assert NIGHT_ENV+envf.ENV_FRAME_FLOATS==NIGHT_UNIFORMS && s[0].light_n==envf.ENV_FRAME_FLOATS;
  for i:0..<envf.ENV_FRAME_FLOATS {#assert u[NIGHT_ENV+i]==words[i];}#assert u[16]==1 && u[17]==2 && u[18]==3;
 }
@@ -247,4 +248,10 @@ night_fixture :: (s:[]Nights) {
  night_catalog(s[..],"R nights ground 124 121 1.6\n");#assert s[0].bad;
  night_catalog(s[..],"T 120 nwn/grass 240\nT 121 nwn/earth 240\nR nights ground 120 121 0.1\n");#assert s[0].bad;
  night_catalog(s[..],"");#assert !s[0].ground_ready && s[0].ground_grass== -1;
+}
+#test "Nights default view frames sky and keeps native hero clear of phone UI" {
+ s:[1]Nights;night_fixture(s[..]);night_start(s[..]);#assert s[0].you.phi>=1.2 && s[0].you.phi<=1.25;
+ for i:0..<2 {w:=ifx i==0 then 1440.0f32 else 430.0f32;h:=ifx i==0 then 900.0f32 else 932.0f32;u:[NIGHT_UNIFORMS]f32;out:[16]f32;n:=night_frame(s[..],out[..],u[..],w,h,1);
+ for point:0..<2 {x:=s[0].you.pos.x-u[16];y:=s[0].you.pos.y+(ifx point==0 then 0.0f32 else 1.8f32)-u[17];z:=s[0].you.pos.z-u[18];depth:=x*u[20]+y*u[21]+z*u[22];screen:=u[27]-(x*u[28]+y*u[29]+z*u[30])*u[19]/depth;if point==0 {#assert screen<(ifx i==1 then night_ui_panel_rect(s[..]).y-8 else h-20);}else {#assert screen>64;}}
+ }
 }
