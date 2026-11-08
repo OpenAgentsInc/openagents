@@ -19,6 +19,7 @@
 #load "spell-selection.coax";
 #load "spell-loadouts.coax";
 #load "effect-storage.coax";
+#load "hit-points.coax";
 
 RS_ROUND :: 6.0;        // seconds in a round
 RS_FOOT :: 0.3048;      // metres in a foot
@@ -839,64 +840,6 @@ rs_recent_at :: (book: [] RsLog, i: int) -> RsEvent {
   e: RsEvent;
   if i < 0 || i >= book[0].count { return e; }
   return book[0].ev[(book[0].head + book[0].count - 1 - i) % RS_EVENTS];
-}
-
-// ---- hit points
-
-// Damage to a creature, with the SRD's rules at 0: dropping to 0 knocks it Unconscious (and
-// Prone); damage at 0 is a failed death saving throw (two on a critical hit); damage that leaves
-// it at 0 with damage left over equal to its maximum kills it outright.
-RsHurt :: struct { taken: int; dropped: bool; killed: bool; conc_dc: int; }
-rs_hurt :: (c: [] RsCreature, dealt: int, crit: bool) -> RsHurt {
-  amount := dealt;
-  r: RsHurt;
-  if c[0].dead || amount <= 0 { return r; }
-  r.taken = amount;
-  // Temporary Hit Points go first; the damage was still taken, so concentration is still tested
-  if c[0].conc >= 0 { r.conc_dc = rs_min(rs_max(10, amount / 2), 30); }
-  soak := rs_min(c[0].temp, amount);
-  c[0].temp -= soak;
-  amount -= soak;
-  if amount <= 0 { return r; }
-  if c[0].hp <= 0 {
-    c[0].death_fail += ifx crit then 2 else 1;
-    c[0].stable = false;
-    if c[0].death_fail >= 3 || amount >= c[0].hp_max { c[0].dead = true; r.killed = true; }
-    return r;
-  }
-  left := amount - c[0].hp;
-  c[0].hp = rs_max(c[0].hp - amount, 0);
-  if c[0].hp == 0 {
-    r.dropped = true;
-    if left >= c[0].hp_max { c[0].dead = true; r.killed = true; }
-    // Monster Death: a monster dies the instant it drops to 0 Hit Points
-    if c[0].klass == RS_MONSTER { c[0].dead = true; r.killed = true; }
-    c[0].cond = c[0].cond | RS_UNCONSCIOUS | RS_PRONE;
-    c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
-  }
-  return r;
-}
-// Healing: back above 0 ends Unconscious (the creature stays Prone until it stands).
-rs_heal :: (c: [] RsCreature, amount: int) -> int {
-  if c[0].dead || amount <= 0 || rs_effect(c[0], EF_NOHEAL) { return 0; }
-  before := c[0].hp;
-  c[0].hp = rs_min(c[0].hp + amount, c[0].hp_max);
-  if before == 0 && c[0].hp > 0 {
-    c[0].cond = rs_clear(c[0].cond, RS_UNCONSCIOUS);
-    c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
-  }
-  return c[0].hp - before;
-}
-// A death saving throw at the start of its turn: 10 or higher succeeds, a 1 counts twice, a 20
-// brings it back with 1 Hit Point; three successes make it Stable, three failures kill it.
-RS_DS_FAIL :: 0; RS_DS_OK :: 1; RS_DS_STABLE :: 2; RS_DS_DEAD :: 3; RS_DS_UP :: 4;
-rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
-  r := rs_roll(d, 20);
-  if r == 20 { h := rs_heal(c, 1); return RS_DS_UP; }
-  if r >= 10 { c[0].death_ok += 1; if c[0].death_ok >= 3 { c[0].stable = true; return RS_DS_STABLE; } return RS_DS_OK; }
-  c[0].death_fail += ifx r == 1 then 2 else 1;
-  if c[0].death_fail >= 3 { c[0].dead = true; return RS_DS_DEAD; }
-  return RS_DS_FAIL;
 }
 
 #test "ability modifiers and proficiency follow the SRD's tables" {

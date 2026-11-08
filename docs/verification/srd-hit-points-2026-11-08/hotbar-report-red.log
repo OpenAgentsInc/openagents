@@ -1,0 +1,7 @@
+FAIL #test hotbar Healing Word recovers a dying ally without erasing an independent Unconscious source (8 ms)
+apps/openagents-web/fivebar-test.coax:29:3: error[E0406]: assertion failed
+    #assert text.count >= 11 && text[text.count-11..<text.count] == " Hit Points";
+    ^
+  note: in #test hotbar Healing Word recovers a dying ally without erasing an independent Unconscious source
+1 of 155 checks (--only 'hotbar Healing Word recovers'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

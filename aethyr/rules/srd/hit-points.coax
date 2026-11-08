@@ -1,0 +1,78 @@
+// SRD 5.2.1 pp.17-18. Ordinary HP and temporary HP are distinct stores.
+// Callers supply one creature with nonnegative HP/temp and legal save counts.
+#authority;
+
+#test "a third death-save success stabilizes and resets both counts immediately" {
+  c: [1] RsCreature;
+  c[0].hp_max = 12; c[0].cond = RS_UNCONSCIOUS|RS_PRONE;
+  c[0].death_ok = 2; c[0].death_fail = 2;
+  d: [1] RsDice; d[0].fixed = true;
+  #assert rs_death_save(d[..],c[..]) == RS_DS_STABLE;
+  #assert c[0].stable && c[0].death_ok == 0 && c[0].death_fail == 0 && c[0].hp == 0;
+  #assert rs_has(c[0],RS_UNCONSCIOUS) && d[0].rolled == 1;
+}
+
+RsHurt :: struct { taken: int; dropped: bool; killed: bool; conc_dc: int; }
+rs_hurt :: (c: [] RsCreature, dealt: int, crit: bool) -> RsHurt #effects(all) {
+  r: RsHurt;
+  if c[0].dead || dealt <= 0 { return r; }
+  r.taken = dealt;
+  // Taking damage still matters when temporary HP absorb it completely.
+  if c[0].conc >= 0 { r.conc_dc = rs_min(rs_max(10,dealt/2),30); }
+  soak := rs_min(c[0].temp,dealt);
+  c[0].temp -= soak;
+  remaining := dealt-soak;
+  if c[0].hp == 0 {
+    c[0].death_fail += ifx crit then 2 else 1;
+    c[0].stable = false;
+    if c[0].death_fail >= 3 || dealt >= c[0].hp_max { c[0].dead = true; r.killed = true; }
+    return r;
+  }
+  if remaining == 0 { return r; }
+  left := remaining-c[0].hp;
+  c[0].hp = rs_max(c[0].hp-remaining,0);
+  if c[0].hp == 0 {
+    r.dropped = true;
+    if left >= c[0].hp_max || c[0].klass == RS_MONSTER { c[0].dead = true; r.killed = true; }
+    c[0].cond |= RS_UNCONSCIOUS|RS_PRONE;
+    c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
+  }
+  return r;
+}
+
+// Healing ends the Unconscious source imposed by zero HP. It cannot retire
+// an independent recorded source of the same condition, or restore temp HP.
+rs_heal :: (c: [] RsCreature, amount: int) -> int #effects(all) {
+  if c[0].dead || rs_effect(c[0],EF_NOHEAL) { return 0; }
+  gain := rs_min(rs_max(amount,0),rs_max(c[0].hp_max-c[0].hp,0));
+  if gain == 0 { return 0; }
+  before := c[0].hp;
+  c[0].hp += gain;
+  if before == 0 {
+    held := false;
+    for e: c[0].eff { if (rs_effect_conditions(e) & RS_UNCONSCIOUS) != 0 { held = true; } }
+    if !held { c[0].cond = rs_clear(c[0].cond,RS_UNCONSCIOUS); }
+    c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
+  }
+  return gain;
+}
+
+RS_DS_FAIL :: 0; RS_DS_OK :: 1; RS_DS_STABLE :: 2; RS_DS_DEAD :: 3; RS_DS_UP :: 4;
+RS_DS_BLOCKED :: 5; // a natural 20 whose actual healing was prevented
+RS_DS_NONE :: 6;    // this creature does not currently make a death saving throw
+rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int #effects(all) {
+  if c[0].dead || c[0].hp != 0 || c[0].stable { return RS_DS_NONE; }
+  r := rs_roll(d,20);
+  if r == 20 { return ifx rs_heal(c,1) > 0 then RS_DS_UP else RS_DS_BLOCKED; }
+  if r >= 10 {
+    c[0].death_ok += 1;
+    if c[0].death_ok >= 3 {
+      c[0].stable = true; c[0].death_ok = 0; c[0].death_fail = 0;
+      return RS_DS_STABLE;
+    }
+    return RS_DS_OK;
+  }
+  c[0].death_fail += ifx r == 1 then 2 else 1;
+  if c[0].death_fail >= 3 { c[0].dead = true; return RS_DS_DEAD; }
+  return RS_DS_FAIL;
+}

@@ -1,0 +1,7 @@
+FAIL #test Lay On Hands reports waking only when healing actually removes Unconscious (15 ms)
+aethyr/rules/srd/hit-point-checks.coax:188:5: error[E0406]: assertion failed
+      #assert cast(string)e.text[0..<e.text_n] == expected;
+      ^
+  note: in #test Lay On Hands reports waking only when healing actually removes Unconscious
+1 of 157 checks (--only 'Lay On Hands reports'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

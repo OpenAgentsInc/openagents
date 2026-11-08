@@ -186,6 +186,15 @@ Actual casts, concentration release/expiry, seeded dice and the hotbar path are
 checked. This is partial #13039 progress, not qualification of all same-spell
 combination rules, conditions, damage or death.
 
+The [zero-HP transition change](../verification/srd-hit-points-2026-11-08/README.md)
+keeps death-save failures on damage absorbed by temporary HP, resets both save
+counts on stabilization, and reports natural-20 recovery only when healing
+actually restores HP. Healing and condition retirement preserve independent
+Unconscious sources, and saturating healing cannot overflow. Source-boundary,
+turn, native and hotbar fixtures cover these transitions; core HP/storage gates
+have zero survivors. This is partial #13039 progress, not complete HP/recovery,
+condition, damage-defense or concentration qualification.
+
 The [chosen-target change](../verification/srd-chosen-targets-2026-11-08/README.md)
 adds CAST-CHOSEN-TARGETS: twelve of thirteen witnesses pass, with only parked
 Polymorph failing. Explicit casts choose distinct recipients, including the

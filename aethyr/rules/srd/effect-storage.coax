@@ -107,5 +107,6 @@ rs_effect_end :: (c: [] RsCreature, k: int) #effects(all) {
   held := 0;
   for other: c[0].eff { held |= rs_effect_conditions(other); }
   if c[0].restrained_by >= 0 { held |= RS_RESTRAINED; }
+  if c[0].hp == 0 && !c[0].dead { held |= RS_UNCONSCIOUS; }
   c[0].cond = rs_clear(c[0].cond,mask & (32767-held));
 }

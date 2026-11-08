@@ -1,0 +1,7 @@
+FAIL #test natural-twenty healing reports regained HP while another Unconscious source still prevents acting (6 ms)
+aethyr/rules/srd/hit-point-checks.coax:156:3: error[E0406]: assertion failed
+    #assert e.kind == RS_EV_UP && cast(string)e.text[0..<e.text_n] == "Patient rolls a 20 on a death save and regains 1 Hit Point";
+    ^
+  note: in #test natural-twenty healing reports regained HP while another Unconscious source still prevents acting
+1 of 150 checks (--only 'natural-twenty healing reports'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

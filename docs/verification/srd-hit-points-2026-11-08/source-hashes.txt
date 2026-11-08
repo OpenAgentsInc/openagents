@@ -1,0 +1,7 @@
+1caaa77f492a9c70e2cf6aff318680b570939d742259b47c140244d557d0e70e  aethyr/rules/srd/hit-points.coax
+1a75d9db07f528004480c4b6bc1ecba25b01991ec6704405e819c1dd8d39317f  aethyr/rules/srd/hit-point-checks.coax
+e72bb912b41ad5f07d70c910b2ee75b7bf4dfe20ff646a9310152b479038de11  aethyr/rules/srd/effect-storage.coax
+1173dd1998575c7c1f5002b9353937a0505c1ceb725b68f6fb3be2363fa12c45  aethyr/rules/srd/engine.coax
+c049d4d90e40af0c363977e05d7a663bd522b07b28c6021a6ddea2e2ef1b41c2  aethyr/rules/srd/battle.coax
+7a3791b3ece43a93e7a8736711d8882284217c1808d6a510c8bc82fea668a1b6  apps/openagents-web/fivebar-test.coax
+3917d4c94c03cb731dc6a1742e78981288d63021d0783dfa67048c4a001122b9  coax/bin/coax

@@ -6514,3 +6514,21 @@ Checks: `aethyr/rules/srd/effect-roll-checks.coax`, the hotbar regression in
 `apps/openagents-web/fivebar-test.coax`, and the scoped zero-survivor authority
 gate. Exact native/evaluator scope and remaining #13039 requirements are in
 `docs/verification/srd-effect-rolls-2026-11-08/README.md`.
+
+## Damage and healing preserve the zero-HP lifecycle and condition owners
+
+`aethyr/rules/srd/hit-points.coax` owns HP loss, healing and death saves.
+Temporary HP absorb HP loss but do not prevent death-save failures from taking
+damage at zero HP. Stabilization resets both save counts. A natural 20 reports
+recovery only if its attempted healing restores HP; blocked healing leaves the
+creature dying and unable to act. Ineligible death saves consume no die.
+
+Healing ends only the Unconscious source imposed by zero HP. Recorded independent
+sources remain; ending such a record cannot wake a creature still at zero HP.
+Ordinary healing never restores temporary HP and saturates without addition
+overflow. The battle turn report describes actual HP recovery, including cases
+where another Unconscious source still prevents acting.
+
+Checks: `aethyr/rules/srd/hit-point-checks.coax`, its scoped HP/storage authority
+gates and the Healing Word hotbar regression. Exact source, native scope and
+remaining #13039 work: `docs/verification/srd-hit-points-2026-11-08/README.md`.

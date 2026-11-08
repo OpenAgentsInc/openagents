@@ -1,0 +1,19 @@
+passed               aethyr/rules/srd/hit-point-checks.coax
+  passed             damage at zero still fails death saves when temporary HP absorb the whole hit
+  passed             a natural twenty cannot report recovery while an active effect blocks healing
+  passed             healing zero HP removes only the zero-HP Unconscious source
+  passed             ending an independent Unconscious record cannot wake a creature still at zero HP
+  passed             only a living unstable creature at zero HP rolls a death saving throw
+  passed             zero and negative damage preserve dying stability and concentration without consuming temporary HP
+  passed             damage at zero applies exact massive damage and critical failure thresholds independently of temporary HP
+  passed             fresh dropping and real healing retire old death counters but retain unrelated state
+  passed             healing ends zero-HP Unconscious when the only independent condition is Blinded
+  passed             concentration identity zero is live and negative one means no concentration
+  passed             three real turn saves stabilize once and damage through temporary HP starts a fresh death-save track
+  passed             natural-twenty healing reports regained HP while another Unconscious source still prevents acting
+  passed             natural-one turn saves count two failures and publish one terminal death outcome
+  passed             Lay On Hands reports waking only when healing actually removes Unconscious
+  passed             healing refusal never changes HP counters conditions or temporary HP
+  passed             healing saturates at maximum HP without arithmetic overflow or changing temporary HP
+  passed             turn reporting never tells a player they recovered while Chill Touch holds them at zero
+native checks: passed {"passed": 17}

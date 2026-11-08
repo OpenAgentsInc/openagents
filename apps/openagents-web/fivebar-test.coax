@@ -12,6 +12,25 @@
 #load "fivemmo-hotbar.coax";   // 5E MMO's hotbar pictures, by name
 #load "everglade-hotbar.coax";  // Everglade's
 
+#test "hotbar Healing Word recovers a dying ally without erasing an independent Unconscious source" {
+  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b[0].dice[0].fixed = true;
+  b[0].c[FT_ALLY].hp = 0; b[0].c[FT_ALLY].temp = 7;
+  b[0].c[FT_ALLY].cond = RS_PRONE|RS_UNCONSCIOUS;
+  b[0].c[FT_ALLY].stable = true;
+  #assert rs_put_effect(b[..],FT_ALLY,RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,until=b[0].clock+20});
+  slots := b[0].c[FT_HERO].slots[1];
+  #assert fb_seat_use(b[..],s[..],fb_spell(SP_HEALING_WORD,1,FB_ALLY),FT_FOE,0,0,FT_ALLY);
+  #assert b[0].c[FT_ALLY].hp > 0 && b[0].c[FT_ALLY].temp == 7 && !b[0].c[FT_ALLY].stable;
+  #assert rs_has(b[0].c[FT_ALLY],RS_UNCONSCIOUS) && !rs_can_act(b[0].c[FT_ALLY]);
+  #assert b[0].c[FT_HERO].slots[1] == slots-1 && s[0].turn.bonus && s[0].turn.slot_spent;
+  event := rs_recent_at(b[0].book[..],0); text := cast(string)event.text[0..<event.text_n];
+  #assert event.kind == RS_EV_HEAL && event.to == FT_ALLY && event.amount == b[0].c[FT_ALLY].hp;
+  #assert text.count >= 11 && text[text.count-11..<text.count] == " Hit Points";
+  rs_drop_effect(b[..],FT_ALLY,0);
+  #assert !rs_has(b[0].c[FT_ALLY],RS_UNCONSCIOUS) && rs_has(b[0].c[FT_ALLY],RS_PRONE) && rs_can_act(b[0].c[FT_ALLY]);
+}
+
 #test "a hotbar weapon attack gets one Bless die and retires all next-roll weaknesses on its missed roll" {
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],71);
   b[0].dice[0].fixed = true;
