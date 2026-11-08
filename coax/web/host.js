@@ -1186,6 +1186,13 @@ function useSans() {
 // /chat); its vertices blend source-over, as GPUI's do. The atlas is built
 // for the device pixel ratio once the app's engine and the GPU are up, and
 // again when the ratio changes; the glyph cache is served after each frame.
+// Optional generic FX transport: the producer supplies textured canvas vertices;
+// the host binds the already-uploaded scene atlas and selects straight alpha.
+function fxSceneOptions(x, scene, gpui) {
+  return { scene: !!scene && x?.coaxial_fx_scene_v1?.() === 1,
+    alpha: !!gpui || x?.coaxial_fx_alpha_v1?.() === 1 };
+}
+
 function useGpui() {
   const { device } = gpu;
   gpu.gpuiOn = true;
@@ -1274,6 +1281,9 @@ async function loadShadersOnce() {
   const casters = scene && /fn\s+caster_vs\b/.test(code);
   const post = scene && /fn\s+post_fs\b/.test(code);
   const lit = post ? [{ format: "rgba16float" }, { format: "rgba16float" }] : [{ format }];
+  const fxOptions = fxSceneOptions(engine?.exports, scene, gpu.gpuiOn);
+  gpu.fxScene = fxOptions.scene;
+  const fxLayout = fxOptions.scene ? device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, sceneLayout()] }) : layout;
   const sceneGroups = scene ? [gpu.layout, sceneLayout(), ...(shadows ? [shadowLayout()] : [])] : [];
   const bgLayout = casters ? device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, emptyLayout(), shadowLayout()] }) : layout;
   // A traced scene whose bg_fs writes @builtin(frag_depth) puts its depth in the buffer, so what
@@ -1285,12 +1295,12 @@ async function loadShadersOnce() {
   const [bg, fx, sc, sh, bl, po, ca, gr, su, sa, st] = await Promise.all([
     device.createRenderPipelineAsync({ layout: bgLayout, ...bgDepth, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
     device.createRenderPipelineAsync({
-      layout, ...(post ? {} : flat),
+      layout: fxLayout, ...(post ? {} : flat),
       // one vec4f attribute per four floats of the app's vertex, in order
       vertex: { module, entryPoint: "fx_vs", buffers: [{ arrayStride: stride, attributes:
         Array.from({ length: Math.ceil(arena.floats / 4) }, (_, i) => ({ shaderLocation: i, offset: i * 16, format: "float32x4" })) }] },
       // max, not add: where strokes meet, their glow doesn't double (GPUI's straight alpha, source over)
-      fragment: { module, entryPoint: "fx_fs", targets: [{ format, blend: gpu.gpuiOn ? {
+      fragment: { module, entryPoint: "fx_fs", targets: [{ format, blend: fxOptions.alpha ? {
         color: { operation: "add", srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" }, alpha: { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" } } : {
         color: { operation: "max", srcFactor: "one", dstFactor: "one" }, alpha: { operation: "max", srcFactor: "one", dstFactor: "one" } } }] },
     }),
@@ -3020,7 +3030,7 @@ function draw(now) {
     pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.postGroup); pass.setPipeline(gpu.post); pass.draw(3);
   }
   if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post);
-  if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
+  if (n && (!gpu.fxScene || gpu.sceneGroup)) { if (gpu.fxScene) pass.setBindGroup(1, gpu.sceneGroup); pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post, true);
   pass.end();
   if (timed) {

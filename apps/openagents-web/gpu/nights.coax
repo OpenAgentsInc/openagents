@@ -8,20 +8,13 @@ nights_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fivelab
 nights_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->CharacterCreatorLit {return charactercreator_scene_fs(s,front,u,objects,sheets,sheet,shadow_map,shadow_cmp);}
 nights_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->CgShadow {s:=charactercreator_shadow_vs(id,instance,u,vertices,objects,bake);m:=objects[cast(int)instance];if (m.d.w>17.5f32 && m.d.w<18.5f32) {s.slice+=u32(m.d.y);}return s;}
 nights_shadow_fs :: (s:CgShadow,sheets:Tex2DArray,sheet:Sampler) {charactercreator_shadow_fs(s,sheets,sheet);}
-nights_fx_vs :: (id:u32,instance:u32,in_:charactercreator_fx_vs_in,u:[]f32)->FivelabV {return charactercreator_fx_vs(id,instance,in_,u);}
-nights_fx_fs :: (s:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {return charactercreator_fx_fs(s,u,sans_atlas,sans_sampler);}
+NightsUIIn ::struct {a:V4;b:V4;c:V4;d:V4;}
+NightsUIVertex ::struct {pos:V4;uv:V2;layer:u32 #flat;tint:V4;}
+nights_fx_vs :: (id:u32,instance:u32,in_:NightsUIIn,u:[]f32)->NightsUIVertex {
+ return NightsUIVertex.{pos=v4(in_.a.x/u[0]*2.0f32-1.0f32,1.0f32-in_.a.y/u[1]*2.0f32,0,1),uv=v2(in_.a.z,in_.a.w),layer=u32(in_.b.x),tint=in_.c};
+}
+nights_fx_fs :: (s:NightsUIVertex,sheets:Tex2DArray,sheet:Sampler)->V4 {
+ tex:=render_sample_layer8_bias(sheets,sheet,s.uv,s32(s.layer),0);rgb:=cg_encode(v3(tex.x,tex.y,tex.z));return v4(rgb.x*s.tint.x,rgb.y*s.tint.y,rgb.z*s.tint.z,tex.w*s.tint.w);
+}
 nights_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {return charactercreator_bloom_fs(pos,bloom_src,bloom_lin,bloom_step);}
-nights_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {c:=charactercreator_post_fs(pos,u,post_light,post_quarter,post_eighth,post_aux,post_depth,post_lin);if nights_ui_panel(pos.x,pos.y,u) {return v4(c.x*0.18f32+0.015f32,c.y*0.18f32+0.025f32,c.z*0.18f32+0.02f32,c.w);}return c;}
-
-// Panels darken the postprocessed scene before the procedural strokes are drawn.
-// The shared stroke pass uses max blending, so black stroke quads cannot shade it.
-nights_ui_panel :: (x:f32,y:f32,u:[]f32)->bool {
- d:=u[4];left:=fmin(u[0]-10.0f32*d,440.0f32*d);bottom:=fmin(u[0]-10.0f32*d,620.0f32*d);
- return (y<58.0f32*d) || (x>=10.0f32*d && x<left && y>=65.0f32*d && y<265.0f32*d) || (x>=10.0f32*d && x<bottom && y>=u[1]-78.0f32*d && y<u[1]-10.0f32*d);
-}
-#test "Nights procedural HUD panels shade text and leave the center scene open" {
- u:[104]f32;u[0]=1280;u[1]=800;u[4]=1;
- #assert nights_ui_panel(100,100,u[..]) && nights_ui_panel(700,30,u[..]);
- #assert nights_ui_panel(100,750,u[..]) && !nights_ui_panel(700,300,u[..]);
- u[0]=390;#assert nights_ui_panel(380,100,u[..])==false;
-}
+nights_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {return charactercreator_post_fs(pos,u,post_light,post_quarter,post_eighth,post_aux,post_depth,post_lin);}
