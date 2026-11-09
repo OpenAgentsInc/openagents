@@ -266,7 +266,7 @@ e2rt_ck_join :: (v: [] RmServer, conn: int, owner: int, capture: CharacterCaptur
 e2rt_ack :: (v: [] RmServer) { b: [256] u8; rm_checkpoint_answer(v, v[0].ck.request, 200, ck_test_receipt(v, "applied", b[..])); }
 e2rt_land :: (v: [] RmServer, k: int) { for q: 0..<90 { eg_test_tick(v, k); } }
 
-#test "e2 rest: a restarted room's checkpoint carries the rest, which the new process resumes without offline credit; an API without profile 3 gets profile 2 (#13046)" #steps 4000000000 {
+#test "e2 rest: a restarted room's checkpoint carries the rest, which the new process resumes without offline credit; an API without profile 3 gets profile 2 (#13046)" #steps 4000000000 #traversal 268435456 {
   v: [1] RmServer; ck_test_init(v[..]); k := e2rt_ck_join(v[..], 0, 7, CharacterCapture.{}, CharacterRest.{});
   #assert k >= 0 && v[0].eg[k].e2 && v[0].eg[k].rules[0].b[0].rest_clock.ticks >= RS_CARRY_EPOCH;
   #assert rm_checkpoint_due(v[..]) > 0; e2rt_ack(v[..]); #assert !rm_checkpoint_paused(v[..], k); e2rt_land(v[..], k);

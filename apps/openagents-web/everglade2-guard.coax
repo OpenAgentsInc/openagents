@@ -1,7 +1,7 @@
 // Everglade II's path guard on the page (coax/web/room/room-e2-guard.coax walks him; everglade2-net.coax
 // keeps the room's words on him). He is drawn as everyone is, a Character Create body (e2_body) dressed
 // in the Quaternius knight's armour this pack carries: the armet, the round pauldrons, the plate
-// cuirass, the armoured arms, the greaves and the sabatons. He is drawn a jitter buffer behind, where
+// cuirass, the armoured arms, the greaves and the sabatons, the Ultimate RPG Sword in his right hand. He is drawn a jitter buffer behind, where
 // the room had him; his gait comes from how far he goes (fivelab-bodies.coax bd_step), so his feet
 // keep to the ground; his feet stand on the land's admitted triangles (e2g_y) as yours do; he takes
 // the shared glade light every body takes. A new guard, and one coming into view, thins in; a fallen
@@ -111,7 +111,29 @@ e2gd_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   d := e2_body_of(s, s[0].rtmp[0], fig, at, true);   // the knight's pieces are no player's pick
   drop := e2_fade_drop(gl[0].fade);
   for i: from..<d.rec { s[0].records[i * 24 + 23] = 2 + drop; }
-  if d.rec > from { gl[0].drawn += 1; }
+  if d.rec > from { gl[0].drawn += 1; d = e2gd_sword(s, d, from, drop); }
+  return d;
+}
+
+// His Sword (the pack's glade/weapon1, the Ultimate RPG Sword) in his right fist, as Character Create's
+// held weapon is placed (charactercreator.coax weapon_matrix: the shortsword's grip, its blade out of
+// the thumb's side): from his first record's pose, a flag-19 record its whole matrix, thinned as he is.
+E2GD_SWORD :: 3;   // the shortsword's kit (charactercreator.coax CC_KIT_MESH 1, the Sword)
+e2gd_sword :: (s: [] E2, at: E2Drawn, from: int, drop: f32) -> E2Drawn {
+  c := s[0].creator[..]; b := s[0].bodies[..]; out := s[0].records[..]; d := at;
+  m := cc.CC_KIT_MESH[E2GD_SWORD];
+  if c[0].weapon_count[m] <= 0 || d.rec >= E2_RECORDS || d.n >= E2_DRAWS { return d; }
+  o := from * 24;
+  hr := figs.bd_hand(b, out[o + 4], out[o + 5], out[o + 6], false);
+  w := cc.weapon_matrix(hr, [3] f32.[b[0].hand_at[0], b[0].hand_at[1], b[0].hand_at[2]], E2GD_SWORD, out[o + 3], [3] f32.[out[o], out[o + 1], out[o + 2]]);
+  q := d.rec * 24;
+  for k: 0..<24 { out[q + k] = 0; }
+  put := [4] int.[0, 8, 16, 20];
+  for i: 0..<4 { for r: 0..<3 { out[q + put[i] + r] = w[i * 3 + r]; } }
+  out[q + 7] = f32(c[0].glade_word); out[q + 15] = 19; out[q + 23] = drop;
+  d.n = e2_draw(s[0].draws[..], d.n, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
+  d.sn = e2_draw(s[0].shadow[..], d.sn, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
+  d.rec += 1;
   return d;
 }
 
@@ -124,6 +146,8 @@ e2gd_hits :: (s: [] E2) {
     n[0].guard_hits[h].live = false;
     x := gl[0].x; z := gl[0].z; y := gl[0].y + 2.1;
     if e.kind == 2 {
+      // each of his attacks a swing of his Longsword, seen and heard, hit or miss
+      gl[0].act = E2kAct.{at = now, clip = figs.BD_SLASH}; e2k_cue(s, "swing-heavy", 0.55, gl[0].x, gl[0].z, 0.9);
       if e.seat == n[0].seat { x = s[0].you_x; z = s[0].you_z; y = s[0].you_y + 2.1; }
       else { rr := e2n_remote_seat(n, e.seat); if !rr.ok { continue; } x = rr.x; z = rr.z; y = e2_height(rr.x, rr.z) + rr.y + 2.1; }
     }

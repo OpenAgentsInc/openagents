@@ -36,7 +36,8 @@ everglade5e 2250000
 # 1,123,731 on 2026-11-08 after the engine's spell access and prepared-spell checks; about 5% room.
 # 1,199,435 on main 82961a04b8 (already over 1,180,000); 1,210,275 with cover, grappling, Ready and movement modes (#13040); about 2% room.
 # 1,244,296 on main 5f3aa40254 after the SRD familiar steps, lifecycle and borrowed Blindsight (#13030); about 5% room.
-everglade-room 1310000
+# 1,321,158 on main b089816462 with Everglade II's wolves, goblin camp and the path guard as a level 10 Fighter (room-e2-monsters.coax, room-e2-guard.coax); about 2% room.
+everglade-room 1345000
 fairy 695000
 # Character Studio adds the full Source wardrobe UI and appearance codec to the existing people producer: 590,971 bytes measured; about 5% headroom.
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
@@ -102,7 +103,10 @@ fivelab 2725000
 # The path's guard (everglade2-guard.coax: his armoured body, his walk and fall between the room's words,
 # the plate, the hit marks and his cues; everglade2-net.coax's g2/g3 words), on main at 758,899:
 # 765,129 bytes measured; about 2.6% headroom.
-everglade2 785000
+# The wolves and goblins (everglade2-monsters.coax: their frames, fades, arrows, plates, marks and wedge; the guard's
+# Sword and a swing for each of his attacks), on main with the mouse's cast and bow and admin mode (b089816462):
+# 793,466 bytes measured; about 2.7% headroom.
+everglade2 815000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1740000

@@ -1,0 +1,73 @@
+// Everglade II's goblin camp (coax/web/room/room-e2-monsters.coax): where it stands at the clearing's
+// near edge, beside the path's last stretch, and its props. The pack tool
+// (verse/tools/assets/everglade2_pack.coax) places each prop's mesh from this list, and the movement
+// world (apps/openagents-web/everglade2-move.coax e2m_world, which the page and the room both step by)
+// gives each one a collider shaped as its mesh's own bounds, so no prop is walked through and nothing
+// stops you where no prop is drawn. Plain numbers only: no drawing.
+#load "forest.coax";
+
+// The camp's middle (the fire): 14 m across from the path, 20 m short of the clearing's middle.
+e2_camp_x :: () -> f32 { return e2_clear_x() + 14; }
+E2_CAMP_Z :: -450.0;
+// A prop: its kit (E2_CAMP_KIT), where it stands from the fire (m), its turn and scale.
+E2CampProp :: struct { kit: int; dx: f32; dz: f32; yaw: f32; scale: f32; }
+// The kits: the Dungeon kit's Woodfire, and the Fantasy Props kit's stall (the camp's tent), wooden and
+// metal crates, a barrel and a bench. Each mesh's bounds from its middle at its foot (metres, the
+// kit's own):
+// half across (x), half deep (z), and its height. A round one (the fire, the barrel) is upright. The bounds
+// are the meshes the bake writes (verse/tools/assets/animal_bake.py e2: the kits' OBJ exports, Crate_Wooden
+// at its file's 0.78 scale).
+E2_CAMP_KITS :: 6;
+E2_CAMP_KIT :: [6] string.["Woodfire", "Stall_Empty", "Crate_Wooden", "Crate_Metal", "Barrel", "Bench"];
+E2_CAMP_HALF :: [6][3] f32.[[3] f32.[0.39, 0.41, 0.82], [3] f32.[0.92, 0.47, 2.62], [3] f32.[0.43, 0.45, 0.88],
+                            [3] f32.[0.43, 0.43, 0.87], [3] f32.[0.35, 0.35, 0.90], [3] f32.[1.39, 0.27, 0.53]];
+E2_CAMP_ROUND :: [6] bool.[true, false, false, false, true, false];
+E2_CAMP_PROPS :: 8;
+E2_CAMP :: [8] E2CampProp.[
+  E2CampProp.{kit = 0, dx = 0, dz = 0, yaw = 0, scale = 1.3},
+  E2CampProp.{kit = 1, dx = 4.6, dz = -2.2, yaw = -2.2, scale = 1.5},
+  E2CampProp.{kit = 1, dx = -3.4, dz = -4.4, yaw = 0.5, scale = 1.4},
+  E2CampProp.{kit = 2, dx = -2.6, dz = 2.9, yaw = 0.3, scale = 1.0},
+  E2CampProp.{kit = 2, dx = -1.4, dz = 3.7, yaw = 1.1, scale = 0.77},
+  E2CampProp.{kit = 3, dx = 3.4, dz = 1.4, yaw = 0.7, scale = 0.85},
+  E2CampProp.{kit = 4, dx = 2.6, dz = 3.0, yaw = 0, scale = 1.0},
+  E2CampProp.{kit = 5, dx = 0.2, dz = -2.6, yaw = 0.05, scale = 1.0}];
+e2_camp_px :: (p: E2CampProp) -> f32 { return e2_camp_x() + p.dx; }
+e2_camp_pz :: (p: E2CampProp) -> f32 { return E2_CAMP_Z + p.dz; }
+// Whether (x, z) stands within `pad` m of a prop's footprint.
+e2_camp_near :: (x: f32, z: f32, pad: f32) -> bool {
+  for i: 0..<E2_CAMP_PROPS {
+    p := E2_CAMP[i]; h := E2_CAMP_HALF[p.kit];
+    dx := x - e2_camp_px(p); dz := z - e2_camp_pz(p); c := cos(p.yaw); sn := sin(p.yaw);
+    a := dx * c - dz * sn; b := dx * sn + dz * c;
+    if abs(a) <= h[0] * p.scale + pad && abs(b) <= h[1] * p.scale + pad { return true; }
+  }
+  return false;
+}
+// The two archers' perches: the highest ground on a ring 7 to 10 m round the fire that is open meadow and
+// clear of the props, the second at least 6 m from the first.
+e2_camp_perch :: (n: int) -> [2] f32 {
+  best: [2][3] f32; best[0][2] = -100000; best[1][2] = -100000;
+  for r: 0..<4 { for a: 0..<24 {
+    ang := f32(a) * 0.2617994; rad := 7.0f32 + f32(r);
+    x := e2_camp_x() + cos(ang) * rad; z := E2_CAMP_Z + sin(ang) * rad;
+    if e2_clearing(x, z) < 0.6 || e2_camp_near(x, z, 1.2) || e2_road_dist(x, z) < 4 { continue; }
+    y := e2_height(x, z);
+    if y > best[0][2] { best[1] = best[0]; best[0] = [3] f32.[x, z, y]; }
+    else if y > best[1][2] && (x - best[0][0]) * (x - best[0][0]) + (z - best[0][1]) * (z - best[0][1]) > 36 { best[1] = [3] f32.[x, z, y]; }
+  }}
+  q := ifx n == 0 then 0 else 1;
+  return [2] f32.[best[q][0], best[q][1]];
+}
+
+#test "the camp stands in the clearing's open meadow, off the path, its archers on its higher ground" {
+  for i: 0..<E2_CAMP_PROPS {
+    p := E2_CAMP[i]; x := e2_camp_px(p); z := e2_camp_pz(p);
+    #assert e2_clearing(x, z) > 0.6 && e2_road_dist(x, z) > 6;
+  }
+  a := e2_camp_perch(0); b := e2_camp_perch(1);
+  #assert e2_clearing(a[0], a[1]) >= 0.6 && e2_clearing(b[0], b[1]) >= 0.6 && !e2_camp_near(a[0], a[1], 1) && !e2_camp_near(b[0], b[1], 1);
+  #assert (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) > 36;
+  #assert e2_height(a[0], a[1]) >= e2_height(e2_camp_x(), E2_CAMP_Z) - 0.05;
+  #assert e2_camp_near(e2_camp_x(), E2_CAMP_Z, 0) && !e2_camp_near(e2_camp_x() + 9, E2_CAMP_Z + 9, 0.5);
+}

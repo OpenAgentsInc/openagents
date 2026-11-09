@@ -7,6 +7,7 @@
 #load "everglade-move-types.coax";
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/rock-hulls.coax";
+#load "../../verse/everglade2/camp.coax";   // the goblin camp's props (coax/web/room/room-e2-monsters.coax)
 
 E2_NEAR_BODIES :: 48;         // trunks the controller walks round
 // Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/locomotion.coax:
@@ -106,6 +107,50 @@ e2_trunk :: (kind: int, x: f32, z: f32, yaw: f32, sh: f32) -> [3] f32 {
   f := E2_TRUNK_FIT[kind]; c := cos(yaw); sn := sin(yaw);
   return [3] f32.[x + sh * (f[0] * c + f[1] * sn), z + sh * (-f[0] * sn + f[1] * c), f[2] * sh];
 }
+// A box standing on the land at (x, z), turned by yaw, half extents hx across and hz deep, h tall: its
+// hull (as e2_rock_hull's: six faces, n . p <= d inside) into `out` at `at`; where the next one starts.
+e2_box_hull :: (out: [] f32, at: int, x: f32, z: f32, yaw: f32, hx: f32, hz: f32, h: f32) -> int {
+  end := at + E2_HULL_HEAD + 6 * E2_HULL_FACE;
+  if at < 0 || end > out.count { return at; }
+  c := cos(yaw); sn := sin(yaw);
+  out[at] = 6; out[at + 1] = -0.2; out[at + 2] = h;
+  // the box's own across (c, -sn) and deep (sn, c) in the world, as a placed piece turns (cg_instance_point)
+  f := [6][4] f32.[[4] f32.[c, 0, -sn, hx], [4] f32.[-c, 0, sn, hx], [4] f32.[sn, 0, c, hz], [4] f32.[-sn, 0, -c, hz], [4] f32.[0, 1, 0, h], [4] f32.[0, -1, 0, 0.2]];
+  for q: 0..<6 {
+    o := at + E2_HULL_HEAD + q * E2_HULL_FACE;
+    out[o] = f[q][0]; out[o + 1] = f[q][1]; out[o + 2] = f[q][2]; out[o + 3] = f[q][3] + f[q][0] * x + f[q][2] * z;
+  }
+  return end;
+}
+// Whether one of the n numbers' hulls holds (x, 1 m up, z).
+e2_hulls_hold :: (hulls: [] f32, n: int, x: f32, z: f32) -> bool {
+  at := 0;
+  while at < n {
+    faces := cast(int) hulls[at]; ok := true;
+    for q: 0..<faces { o := at + E2_HULL_HEAD + q * E2_HULL_FACE; if hulls[o] * x + hulls[o + 1] + hulls[o + 2] * z > hulls[o + 3] + 0.0001 { ok = false; } }
+    if ok { return true; }
+    at += E2_HULL_HEAD + faces * E2_HULL_FACE;
+  }
+  return false;
+}
+#test "the camp's props stop you where they are drawn, and nowhere off them" {
+  body: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32; items: [8] f32; kinds: [1] u8; first: [2] int;
+  stall := E2_CAMP[1]; sx := e2_camp_px(stall); sz := e2_camp_pz(stall);
+  w := e2m_world(items[..], kinds[..], first[..], false, body[..], hulls[..], sx, sz);
+  #assert w.hulls > 0 && w.bodies >= 1;
+  // the stall's hull holds its middle and its corners, and not a point a metre past its side
+  h := E2_CAMP_HALF[stall.kit]; c := cos(stall.yaw); sn := sin(stall.yaw); a := h[0] * stall.scale * 0.95; b := h[1] * stall.scale * 0.95;
+  #assert e2_hulls_hold(hulls[..], w.hulls, sx, sz) && e2_hulls_hold(hulls[..], w.hulls, sx + a * c + b * sn, sz - a * sn + b * c) && e2_hulls_hold(hulls[..], w.hulls, sx - a * c - b * sn, sz + a * sn - b * c);
+  #assert !e2_hulls_hold(hulls[..], w.hulls, sx + (a + 1) * c, sz - (a + 1) * sn) && !e2_hulls_hold(hulls[..], w.hulls, sx + (b + 1) * sn, sz + (b + 1) * c);
+  // the fire is an upright body its own size
+  fire := E2_CAMP[0]; fx := e2_camp_px(fire); fz := e2_camp_pz(fire);
+  w = e2m_world(items[..], kinds[..], first[..], false, body[..], hulls[..], fx, fz);
+  found := false; for q: 0..<w.bodies { if body[q * 7] == fx && body[q * 7 + 2] == fz && abs(body[q * 7 + 6] - E2_CAMP_HALF[0][0] * fire.scale) < 0.001 { found = true; } }
+  #assert found;
+  // far from the camp, no prop
+  w = e2m_world(items[..], kinds[..], first[..], false, body[..], hulls[..], e2_road_x(-300), -300);
+  #assert w.hulls == 0 && w.bodies == 0;
+}
 e2m_body :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32, r: f32) -> int {
   if n >= E2_NEAR_BODIES || (n + 1) * 7 > out.count { return n; }
   m := n * 7;
@@ -142,6 +187,13 @@ e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: []
     if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, e2_glade_rock(gt), x, z); if next > at { rocks += 1; } at = next; }
   }
   for i: 0..<E2_GLADE_STONES { if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, e2_glade_stone(i), x, z); if next > at { rocks += 1; } at = next; } }
+  // the goblin camp's props (verse/everglade2/camp.coax): a round one an upright body, the rest a box
+  for i: 0..<E2_CAMP_PROPS {
+    p := E2_CAMP[i]; h := E2_CAMP_HALF[p.kit]; px := e2_camp_px(p); pz := e2_camp_pz(p);
+    if abs(px - x) > 6 || abs(pz - z) > 6 { continue; }
+    if E2_CAMP_ROUND[p.kit] { n = e2m_body(out, n, px, pz, px, pz, 0.2, h[2] * p.scale, h[0] * p.scale); continue; }
+    if rocks < E2_NEAR_HULLS { next := e2_box_hull(hulls, at, px, pz, p.yaw, h[0] * p.scale, h[1] * p.scale, h[2] * p.scale); if next > at { rocks += 1; } at = next; }
+  }
   w.bodies = n; w.hulls = at; return w;
 }
 

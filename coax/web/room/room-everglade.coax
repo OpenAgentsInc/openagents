@@ -157,6 +157,7 @@ EgSeat :: struct {
   revivify_diamond_used:bool;
   familiar_hash:int; familiar_sent:int; familiar_sense_sent:int;
   guard_hash: int; guard_sent: int;   // the path guard's state it last heard (room-e2-guard.coax e2_guard_snapshot)
+  monster_hash: int; monster_sent: int;   // the monsters it last heard (room-e2-monsters.coax e2_monsters_snapshot)
   // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)
@@ -231,6 +232,7 @@ EgRoom :: struct {
   seat: [EG_SEATS] EgSeat;
   familiar_reactions: [EG_SEATS] E2StepReactions;
   guard: [1] E2Guard;   // Everglade II's path guard (room-e2-guard.coax)
+  monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (room-e2-monsters.coax)
   tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   casts: [EG_CASTS] EgCast; cast_order: int;
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals
@@ -373,6 +375,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
       rules[0].b[0].h=E5R_SIDE+E5RR_E2_Z_SHIFT;
       e2_rest_start(v,q); e5rr_enable_familiars(rules);
       v[0].eg[q].guard[0] = E2Guard.{};
+      v[0].eg[q].monsters[0] = E2Monsters.{};
     }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
@@ -876,13 +879,16 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
   r:=v[0].eg[k].rules[..];
   revive:=e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY;
-  // aimed at the path's guard, a harmful cast is at him (room-e2-guard.coax): the shared rules' strike
-  foe := ifx revive || e5rr_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
+  // aimed at the path's guard or a monster, a harmful cast is at it (room-e2-guard.coax,
+  // room-e2-monsters.coax): the shared rules' strike
+  gfoe := ifx revive || e5rr_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
+  foe := ifx gfoe >= 0 || revive || e5rr_helps(e.ab) then gfoe else e2_monster_target(v, k, wc.ax, wc.az);
   foe_hp := ifx foe >= 0 then r[0].b[0].c[foe].hp else 0;
   done:=ifx revive then e2r_use_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,eg_e2_corpse(v,k,seat))
     else e2r_use_at_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,e5r_sq(wc.ax),e5rr_z_cell(r,wc.az),foe);
   if !done { eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return; }
-  if foe >= 0 { e2_guard_struck(v, k, seat, foe_hp); }
+  if gfoe >= 0 { e2_guard_struck(v, k, seat, foe_hp); }
+  else if foe >= 0 { e2_monster_struck(v, k, seat, foe, foe_hp); }
   if e.ab.kind==FB_SPELL && e.ab.sp==SP_PROTECTION_GOOD_EVIL { st[0].protection_water_used=true; }
   if revive { st[0].revivify_diamond_used=true; }
   st[0].last_cast = t;
@@ -1013,6 +1019,9 @@ e2_stand_near :: (x: f32, z: f32, tx: f32, tz: f32) -> E2Spot {
 rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #export_c #effects(all) { s := s_id.value;
   if !rm_eg_live(v, k) || s < 0 || s >= EG_SEATS || out.count < 3 || !v[0].eg[k].seat[s].live { return false; }
   st := v[0].eg[k].seat[s];
+  // a local --dev room (room-dev.coax) takes the page's own place as it is: a capture's or a check's
+  // ?at= start down the path (everglade2.coax e2_query_local); production never does
+  if v[0].dev.on && st.claim && e2_may_stand(st.claim_x, st.claim_z) { out[0] = st.claim_x; out[1] = st.claim_z; out[2] = st.claim_yaw; return true; }
   if !st.back { return false; }
   // a place pressed against the walkable land's edge, which the wire's and the save's rounding put
   // just past it, is drawn back onto it (e2_stand_near); one farther out goes toward the spawn
@@ -1039,6 +1048,8 @@ rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #expo
   #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[1] == -25 && out[2] == 3.0;
   // farther than it could have run: where the room had it
   st[0].claim_z = -40; #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[1] == -10;
+  // a local --dev room takes the page's place as it is (a capture's ?at=)
+  v[0].dev.on = true; #assert rm_e2_place(v[..], 0, SeatId.{value = 0}, out[..]) && out[1] == -40; v[0].dev.on = false;
   // a centimetre past the glade's edge (east): drawn back onto it, within 5 cm
   // a centimetre past the glade's edge (its east, where the woods are thick): drawn back onto it
   edge := f32(E2_GLADE_WALK); e := edge + 0.01; while e2_may_stand(e, 0) { e += 0.01; }
@@ -1088,10 +1099,10 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_ends_due(v, k);
   rc_tick_first(v, k);
   fg_sync(v,k);
-  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); }
+  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   if v[0].eg[k].e2 { e2_admin_after(v,k); }
-  e2_guard_after(v,k);
+  e2_guard_after(v,k); e2_monsters_after(v,k);
   if v[0].eg[k].e2 { e2_rest_tell_all(v, k); e2_kit_tell_all(v, k); }
   fg_hits(v,k);
   rc_tick_last(v, k);
@@ -1104,7 +1115,7 @@ rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   for s:0..<EG_SEATS {
     if !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed || v[0].eg[k].seat[s].conn<0 { continue; }
     eg_send(v,k,SeatId.{value=s});
-    if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); e2_guard_snapshot(v,k,s); }
+    if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); e2_guard_snapshot(v,k,s); e2_monsters_snapshot(v,k,s); }
   }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }

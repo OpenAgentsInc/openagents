@@ -305,8 +305,8 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c #effects(reads,writes,traps) 
   e5rr_zones_check(r);
   e5rr_beasts_check(r);
 }
-// A patrolling guard's turn (coax/web/room/room-e2-guard.coax walks it): a melee blow at the creature it is
-// set on, its own stat block's weapon through the shared attack, once the room has brought it within
+// A patrolling guard's turn (coax/web/room/room-e2-guard.coax walks it): an Attack action at the creature it
+// is set on, its own stat block's weapon through the shared attack (Extra Attack's blows with it), once the room has brought it within
 // reach. It never chooses a foe: the room sets one only on a creature that harmed it. forge_swing keeps
 // the battle's clock of its last blow, which the room tells the pages.
 e5rp_turn :: (r: [] E5rRoom, q: int) {
@@ -314,8 +314,12 @@ e5rp_turn :: (r: [] E5rRoom, q: int) {
   foe := bt[0].foe;
   if foe < 0 { return; }
   if foe >= b[0].n || b[0].c[foe].dead || b[0].c[foe].hp <= 0 || b[0].c[foe].x == E5R_AWAY { bt[0].foe = -1; return; }
+  // a Fighter's: Second Wind below half its Hit Points, and its Action Surge for a second Attack
+  // action while the foe still stands (a stat block without them does neither)
+  if b[0].c[i].hp * 2 < b[0].c[i].hp_max { _ := rs_second_wind(b, i); }
   was := b[0].turn.action;
   _ := rs_attack(b, i, foe, false, -1);
+  if b[0].turn.action && !b[0].c[foe].dead && b[0].c[foe].hp > 0 && rs_action_surge(b, i) { _ = rs_attack(b, i, foe, false, -1); }
   if b[0].turn.action && !was { bt[0].forge_swing = b[0].clock; }
 }
 // A zone whose caster's concentration ended is off: its id goes.
@@ -587,7 +591,7 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
     i := E5RR_BEAST0 + q;
     raid := bt.form >= E5RR_FORM_RAID;   // a raider's is the raid's, no seat's (everglade5e-room-raid.coax)
     me := E5RR_SEAT + rs_max(bt.by, 0);
-    held := raid || b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
+    held := raid || bt.wild || b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
     if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held {
       // Retain a dead source if its authoritative result cannot be reserved.
       if raid && bt.forge_id==0 && !bt.patrol && !e5rd_down(r, q) { continue; }

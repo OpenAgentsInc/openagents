@@ -16,6 +16,7 @@
 #load "experimental-sound.coax" as exsound;
 #load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "everglade2-guard.coax";  // the path's guard, as the room walks him
+#load "everglade2-monsters.coax";   // the wolves and the goblins, as the room moves them
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
@@ -114,6 +115,7 @@ E2 :: struct {
   guard: [1] E2GuardLook;                        // the path's guard as drawn (everglade2-guard.coax)
   mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade2-mouse.coax)
   adm: [1] E2Admin;                              // admin mode (everglade2-admin.coax): set and read in dev builds only
+  monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade2-monsters.coax)
 }
 E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; fade: f32 = 1; sy: f32; name: [NET_NAME] u8; name_n: int; }
 
@@ -197,14 +199,34 @@ e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
     s[0].play = e2c_play_page(t);
     e2_material_facts(s, t); e2c_facts(s, t); s[0].light_view = envd.env_view_query(t);
     if !s[0].cz[0].on { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
-    // a staged shot (?at=, ?walk) and a film stand where they are put: no room
-    s[0].staged = s[0].start_z < 0 || s[0].autowalk || s[0].film;
+    // a staged shot (?at=, ?walk) and a film stand where they are put: no room; but ?at= with a local
+    // room (?relay=ws://localhost:PORT, a check's or a capture's) starts you there in that room, told to
+    // it as a kept place is (e2_place_take)
+    local := e2_query_local(t);
+    s[0].staged = (s[0].start_z < 0 && !local) || s[0].autowalk || s[0].film;
     e2n_facts(s[0].net[..], t, s[0].staged);
+    if local && s[0].start_z < 0 && !s[0].autowalk && !s[0].film {
+      z := s[0].start_z; s[0].start_x = e2_road_x(z); s[0].start_face = figs.atan2(e2_road_x(z - 2) - s[0].start_x, -2.0f32);
+      s[0].start_kept = true; s[0].net[0].sat_before = true;
+    }
     e2_net_look(s);
     #if BUILD_DEBUG { e2a_facts(s, t); }
     return;
   }
   if kind >= 256 && kind < 512 { seen := e2n_event(s[0].net[..], kind, t); return; }
+}
+// Whether the page's room is a local one (?relay=ws://localhost:PORT).
+e2_query_local :: (t: string) -> bool {
+  url := fact_of(t, "url"); r := net_query(url, "relay");
+  if r.count <= 15 || r.count >= 40 || r[0..<15] != "ws://localhost:" { return false; }
+  for c: r[15..<r.count] { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+#test "?at= with a local room starts you there in the room; without one it is a staged shot" #steps 200000000 {
+  u: [1] E2; e2_message(u[..], E2_HOST_PAGE, "url=http://127.0.0.1:8863/worlds/everglade2?at=120&relay=ws://localhost:8971\n");
+  #assert !u[0].staged && u[0].start_kept && abs(u[0].start_z + 120) < 0.001 && abs(u[0].start_x - e2_road_x(-120)) < 0.001 && u[0].net[0].sat_before;
+  w: [1] E2; e2_message(w[..], E2_HOST_PAGE, "url=http://127.0.0.1:8863/worlds/everglade2?at=120&relay=wss://example.com:1\n");
+  #assert w[0].staged && !w[0].start_kept;
 }
 #test "a page's ?at= says how far down the path you start" {
   #assert e2_query_at("url=http://127.0.0.1:8863/worlds/everglade2?at=120\n") == 120;
@@ -755,8 +777,8 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   u[E2_U_LIGHT_VIEW] = envd.env_view_word(s[0].light_view);
   e2_shadows(s, u);
   e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s));
-  e2k_step(s); e2m_step(s, dt); e2gd_hits(s);
-  hud := e2_light_hud(s, out, e2_fps(s, out, e2_reticle(s, out, e2_plates(s, out, e2gd_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))), dt));
+  e2k_step(s); e2m_step(s, dt); e2gd_hits(s); e2mn_hits(s);
+  hud := e2_light_hud(s, out, e2_fps(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2gd_hud(s, out, e2k_hud(s, out, e2c_hud(s, out)))))), dt));
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   return hud;
 }
@@ -1155,6 +1177,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   d = e2_familiars_draw(s,d);
   d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade2-net.coax)
   d = e2gd_draw(s, d, bdt);          // the path's guard (everglade2-guard.coax)
+  d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade2-monsters.coax)
   rec = d.rec; n = d.n; sn = d.sn;
   n = e2_pieces(s, s[0].draws[..], n, false);
   n = e2_field(s, s[0].draws[..], n);

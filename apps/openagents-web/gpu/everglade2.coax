@@ -91,6 +91,9 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst);}
  o:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);
+ // a monster's frame (18) or a held weapon (19, coax/web/room/room-e2-monsters.coax, everglade2-guard.coax):
+ // its record's f.w is the share of its pixels the dither drops as it thins in or out
+ if (instance<cast(u32)65536) {m0:=objects[cast(int)instance];if (m0.d.w>17.5f32 && m0.d.w<19.5f32) {o.dye.x=m0.f.w;}}
  // Character Create's arrival (everglade2-create.coax): your character pops up from its feet, u[99]
  // the share it is still short of its size (below 0 a little over it), for your records,
  // u[101] up to u[102]
@@ -277,7 +280,8 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
  if (!front && !foliage) {n=scale3(n,-1);}
  sun:=cg_sun_dir(u);eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
- if (foliage || kind>7.5f32) {albedo=cg_decode(s.tint);}
+ // 9: a model shaded by its vertex colour alone; 10: its texture times it (the monsters, their camp, the Sword)
+ if (foliage || (kind>7.5f32 && kind<9.5f32)) {albedo=cg_decode(s.tint);}
  // the ground's colour is the admitted material table's at this point (the pack's vertex colours
  // are no longer read); the hand-set gold, woods and trail below are this realm's look on top
  if (ground) {albedo=e2_ground_albedo(s.world.x,s.world.z,table);}
@@ -304,7 +308,7 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
   albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
  }
  if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
- if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+ if (kind>6.5f32 && kind<8.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
  town:f32= -1.0f32;
  if (kind>3.5f32 && kind<4.5f32 && town<0) {
   // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on

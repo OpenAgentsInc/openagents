@@ -132,7 +132,7 @@ in the clearing, and that trees crowd the path.
 ## The pack
 
 `verse/tools/assets/everglade2_pack.coax` writes `realms/everglade2/assets/everglade2.pack`
-(48 MB). The pack holds:
+(57 MB). The pack holds:
 
 - Character Create's people pack (the wardrobe and the rig).
 - The glade's own composition, placed on Everglade II's land.
@@ -146,15 +146,33 @@ in the clearing, and that trees crowd the path.
 Build it from the repository root:
 
 ```sh
-coax/web/tool.sh verse/tools/assets/everglade2_pack.coax \
-  "$(coax/web/tool.sh verse/tools/assets/registry.coax source nature "$HOME/.openagents/assets")" \
+A="$HOME/.openagents/assets"; src() { coax/web/tool.sh verse/tools/assets/registry.coax source "$1" "$A"; }
+M="$A/cache/everglade2-monsters"; B=/Applications/Blender.app/Contents/MacOS/Blender
+$B --background --factory-startup --disable-autoexec --python-exit-code 1 --python verse/tools/assets/animal_bake.py -- \
+  "$(src ultimate-animals)" "$M" e2 "$(src dungeon)" "$(src fantasy-props)" "$(src ultimate-rpg)"
+$B --background --factory-startup --disable-autoexec --python-exit-code 1 --python verse/tools/assets/bestiary_bake.py -- \
+  "$(src bestiary-dungeon)" "$M" "$(src ual)/Unreal-Godot/UAL1_Standard.glb" e2
+coax/web/tool.sh verse/tools/assets/everglade2_pack.coax "$(src nature)" \
   apps/openagents-web/realms/character-creator/assets/fantasy.pack \
-  apps/openagents-web/realms/everglade2/assets/everglade2.pack
+  apps/openagents-web/realms/everglade2/assets/everglade2.pack "$M" "$(src bestiary-dungeon)"
 ```
+
+The two bakes write the monsters' frames (the Wolf's Idle, Gallop, Attack and Death; the goblin
+Puglin's Idle, Jog, Sword, Shoot and Death, eight frames each), the goblin camp's props (the Dungeon
+Woodfire and the Fantasy Props stall, crates, barrel and bench) and the guard's Sword. The pack holds
+them as `glade/monster0..31`, `glade/gremlin0..39` and `glade/weapon1`; the camp stands in the glade's
+environment where `verse/everglade2/camp.coax` puts it.
+
+The path's guard is the SRD Fighter at level 10 (`rs_path_guard` in `aethyr/rules/srd/npcs.coax`):
+AC 19 (Chain Mail, a Shield and the Defense style), 84 Hit Points, Str 18, Proficiency +4, and two
+Longsword attacks a turn at +8 for 1d8 + 4, with Second Wind and Action Surge. He never strikes first.
+Once you strike him, he fights until you drop, leave his 28 m leash, or stop fighting for 15 s. You
+see and hear each of his attacks, 0.7 s apart. The room check
+`e2 guard: an SRD level 10 Fighter` covers his numbers and his attacks a turn.
 
 Then add the characters' material maps (#13012). The tool appends the Fantasy Source's normal and
 ORM maps for each outfit family, and the base bodies' normal and roughness maps, as 14 linear
-data layers at 512 px, between the colour layers and the sounds. That brings the pack to 48 MB.
+data layers at 512 px, between the colour layers and the sounds. That brings the pack to 57 MB.
 `build.sh` then writes the range-loaded `everglade2.vpk3` from it:
 
 ```sh

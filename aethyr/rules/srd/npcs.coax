@@ -95,6 +95,22 @@ rs_guard :: (name: string, team: int) -> RsCreature {
   c[0].weapon = W_SPEAR;
   return c[0];
 }
+// Everglade II's path guard (coax/web/room/room-e2-guard.coax): no stat block of the SRD's but its
+// Fighter (p. 47-49) at level 10, a Champion. Str 18 Dex 12 Con 14 Int 10 Wis 12 Cha 10, Proficiency
+// Bonus +4. Hit Points 84 (10d10 + 20: 10 + 2 at level 1, then 6 + 2 each level). Armor Class 19
+// (Chain Mail 16, a Shield +2, the Defense fighting style +1). Longsword, one-handed beside the
+// Shield: +8 to hit (Str +4, Proficiency +4), 1d8 + 4 Slashing, Sap mastery. Extra Attack: two
+// attacks each Attack action. Second Wind (four uses, 1d10 + 10, a Bonus Action), Action Surge (one
+// use), Improved Critical (19 or 20), Remarkable Athlete, Tactical Mind and Tactical Shift.
+rs_path_guard :: (name: string, team: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_fighter(name, team, 10);
+  c[0].score = [6] int.[18, 12, 14, 10, 12, 10];
+  c[0].hp_max = 84; c[0].hp = 84;
+  c[0].ac = 16 + 2 + 1;
+  c[0].weapon = W_LONGSWORD; c[0].masteries = c[0].masteries | (1 << M_SAP);
+  return c[0];
+}
 // Warrior Veteran (p. 337): AC 17 (Splint Armor), HP 65 (10d8 + 20), Str 16 Dex 13 Con 14 Int 10
 // Wis 11 Cha 10, CR 3 (PB +2). Multiattack: two Greatsword (+5, 2d6 + 3 Slashing) or Heavy
 // Crossbow (+3, range 100/400 ft., 2d10 + 1 Piercing) attacks. Parry.
