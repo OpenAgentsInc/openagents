@@ -1,0 +1,117 @@
+// The Shapechange dragon's baked frames, appended to a glade pack (loaded by character_glade_pack.coax).
+// dragon_bake.py writes FRAMES_DIR/dragon-K.bin for K in 0..<DR_TOTAL, in everglade/dragon-clips.coax's
+// order: a u32 corner count, an f32 clip length, then per corner x y z, a flat face normal (f32s) and
+// an sRGB colour byte triple plus a flag byte (128 marks the eyes). Each frame becomes its own mesh,
+// glade/dragonK, drawn with the familiars' flat-colour kind and placed by a kind 18 draw record.
+//   coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-dragon IN.pack OUT.pack FRAMES_DIR
+#load "../../../everglade/dragon-clips.coax";
+
+GP_DRAGON_SOURCE :: 246;   // (247 is the horse's, horse_pack.coax)
+// Room for the model's 4,000-triangle budget: three corners each.
+GP_DRAGON_CORNERS :: 12288;
+
+// One baked frame into the store: identical corners share a vertex, every three corners a triangle.
+// Returns the frame's index count, or -1 when its file is missing or malformed.
+gp_dragon_frame :: (w:[]Gp,path:string)->int {
+  b:[8+GP_DRAGON_CORNERS*28]u8; n:=fs_read(path,b[..]);
+  if n<8 { return -1; }
+  count:=gl_u32(b[..],0);
+  if count<=0 || count%3!=0 || count>GP_DRAGON_CORNERS || n!=8+count*28 { return -1; }
+  first:=w[0].ni; seen:[32768]int; mapped:[GP_DRAGON_CORNERS]int;
+  for v:0..<count {
+    at:=8+v*28; hash:=0;
+    for k:0..<28 { hash=(hash*33+int(b[at+k]))%32768; }
+    while seen[hash]!=0 {
+      other:=8+(seen[hash]-1)*28; same:=true;
+      for k:0..<28 { if b[at+k]!=b[other+k] { same=false; break; } }
+      if same { break; }
+      hash=(hash+1)%32768;
+    }
+    if seen[hash]!=0 { mapped[v]=mapped[seen[hash]-1]; }
+    else {
+      seen[hash]=v+1; p:[3]f32; normal:[3]f32; colour:[3]f32;
+      for k:0..<3 {
+        p[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+k*4));
+        normal[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));
+        colour[k]=f32(b[at+24+k])/255;
+      }
+      mapped[v]=gp_v(w,p,normal,[2]f32.[0.5,0.5],colour,0,GP_FAMILIAR_KIND);
+    }
+    if v%3==2 { gp_tri(w,mapped[v-2],mapped[v-1],mapped[v]); }
+  }
+  return w[0].ni-first;
+}
+
+gp_dragon_catalog :: (c:[]Sb,first:[]int,count:[]int,index_base:int,vertex_word:int) {
+  sb_put(c,"L "); sb_int(c,GP_DRAGON_SOURCE);
+  sb_put(c," OpenAgents Dragon (scripts/blender/dragon.py)|CC0 1.0 Universal|https://creativecommons.org/publicdomain/zero/1.0/\n");
+  for k:0..<DR_TOTAL {
+    sb_put(c,"C glade/dragon"); sb_int(c,k); sb_byte(c,' ');
+    sb_int(c,index_base+first[k]); sb_byte(c,' '); sb_int(c,count[k]);
+    sb_byte(c,' '); sb_int(c,GP_DRAGON_SOURCE);
+    sb_byte(c,' '); sb_int(c,vertex_word); sb_put(c," 0 0\n");
+  }
+}
+
+gp_append_dragon :: (input:string,output:string,frames:string)->int {
+  w:[1]Gp; src:=w[0].out[..];
+  size:=fs_read(input,src);
+  if size<32 || cast(string)src[0..<4]!="VPK1" || gl_u32(src,8)!=size { return 1; }
+  table:=gl_u32(src,16); entries:=gl_u32(src,4);
+  if table!=32 || entries<3 || entries>(size-table)/48 { return 1; }
+  start:=table+entries*48;
+  vc:=table+48; ic:=table+96;
+  if src[table]!=1 || src[vc]!=2 || src[ic]!=3 { return 1; }
+  vertex_bytes:=gl_u32(src,vc+8); index_bytes:=gl_u32(src,ic+8);
+  if vertex_bytes%32!=0 || index_bytes%4!=0 { return 1; }
+  for q:0..<entries {
+    row:=table+q*48; off:=gl_u32(src,row+4); n:=gl_u32(src,row+8);
+    if off<start || off>size || n>size-off { return 1; }
+  }
+  cat_at:=gl_u32(src,table+4); cat_n:=gl_u32(src,table+8);
+  cat:=cast(string)src[cat_at..<cat_at+cat_n];
+  size_at:=-1; at:=0;
+  while at<cat.count {
+    end:=at;
+    while end<cat.count && cat[end]!='\n' { end+=1; }
+    line:=cat[at..<end];
+    if starts(line,"C glade/dragon") || starts(line,"L 246 ") { tool_errln("pack already contains the dragon or uses source 246"); return 1; }
+    if starts(line,"bytes ") && line.count==16 { size_at=at+6; }
+    at=end+1;
+  }
+  if size_at<0 { return 1; }
+
+  first:[DR_TOTAL]int; count:[DR_TOTAL]int;
+  for k:0..<DR_TOTAL {
+    pb:[4096]u8; s:[1]Sb; s[0]=sb(pb[..]);
+    sb_put(s[..],frames); sb_put(s[..],"/dragon-"); sb_int(s[..],k); sb_put(s[..],".bin");
+    first[k]=w[0].ni; count[k]=gp_dragon_frame(w[..],sb_text(s[..]));
+    if count[k]<0 { tool_errln("missing or malformed baked dragon frame"); return 1; }
+  }
+  extra:[8192]u8; c:[1]Sb; c[0]=sb(extra[..]);
+  sb_byte(c[..],'\n');
+  gp_dragon_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4);
+  appendix:=sb_text(c[..]);
+  out:[536870912]u8;
+  new_size:=size+appendix.count+w[0].nv*32+w[0].ni*4+4;
+  if new_size>out.count || new_size>gl_u32(src,12) { tool_errln("dragon frames exceed the pack budget"); return 1; }
+  for i:0..<start { out[i]=src[i]; }
+  pos:=start;
+  for q:0..<entries {
+    row:=table+q*48; off:=gl_u32(src,row+4); n:=gl_u32(src,row+8);
+    here:=pos;
+    for i:0..<n { out[pos]=src[off+i]; pos+=1; }
+    if q==0 { for ch:appendix { out[pos]=ch; pos+=1; } }
+    if q==1 { for i:0..<w[0].nv*32 { out[pos]=w[0].v[i]; pos+=1; } }
+    if q==2 { for i:0..<w[0].ni*4 { out[pos]=w[0].i[i]; pos+=1; } }
+    put_u32(out[..],row+4,here);
+    put_u32(out[..],row+8,pos-here);
+    pos=((pos+3)/4)*4;
+  }
+  put_u32(out[..],8,pos);
+  value:=pos;
+  for i:0..<10 { out[start+size_at+9-i]=cast(u8)(48+value%10); value/=10; }
+  if !fs_write(output,cast(string)out[0..<pos]) { return 1; }
+  print("Appended % dragon frames (% vertices, % indices) to % (% bytes)\n",DR_TOTAL,w[0].nv,w[0].ni,output,pos);
+  return 0;
+}

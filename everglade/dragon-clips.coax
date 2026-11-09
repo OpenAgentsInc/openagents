@@ -1,0 +1,68 @@
+#module "everglade.dragonclips";
+// The Shapechange dragon's clips as baked frames (Everglade's game layer, shared by every Everglade
+// zone). The model is assets/verse/beasts/dragon.gltf, made by scripts/blender/dragon.py (CC0). The
+// baker (verse/tools/assets/dragon_bake.py) writes the clips in this order, DR_FRAMES[c] frames
+// each, and the pack names them glade/dragon0 to glade/dragon(DR_TOTAL - 1) in the same order. A loop's
+// frames run round the clip (its last frame is not its first again); a clip played once runs to its
+// last pose.
+//   coax/bin/coax test everglade/dragon-clips.coax
+
+DR_IDLE :: 0; DR_WALK :: 1; DR_FLY :: 2; DR_GLIDE :: 3; DR_BITE :: 4; DR_BREATH :: 5; DR_ROAR :: 6; DR_SWEEP :: 7;
+// The mount's clips: standing for a rider, taking off, hovering, landing, and banking left or right.
+DR_IDLE_SADDLED :: 8; DR_TAKEOFF :: 9; DR_HOVER :: 10; DR_LAND :: 11; DR_BANK_LEFT :: 12; DR_BANK_RIGHT :: 13;
+DR_CLIPS :: 14;
+DR_CLIP_NAME :: [14] string.["idle", "walk", "fly", "glide", "bite", "breath", "roar", "sweep", "idle_saddled", "takeoff", "hover", "land", "bank_left", "bank_right"];
+DR_FRAMES :: [14] int.[4, 8, 8, 4, 5, 6, 5, 5, 4, 7, 6, 7, 3, 3];
+DR_LOOPS :: [14] bool.[true, true, true, true, false, false, false, false, true, false, true, false, true, true];
+// Each clip's length in the model, seconds (its glTF keys run from 1/24 s, so the span is last key - first key).
+DR_SECONDS :: [14] f32.[4.0, 2.0, 1.0, 4.0, 1.0833, 1.9167, 1.9167, 1.4167, 4.0, 1.5833, 1.0, 1.5833, 4.0, 4.0];
+DR_TOTAL :: 75;
+// Where a rider sits: the model's `saddle` bone at rest, astride the base of the neck, in metres
+// in the dragon's own unscaled frame (x to its left, y up from its feet, z forward). Multiply by
+// the drawn scale. In motion the saddle rides the chest; this is its standing place.
+DR_SADDLE_X :: 0.0; DR_SADDLE_Y :: 3.62; DR_SADDLE_Z :: 1.2;
+// The model's size: about 5.8 m to the top of its horns (its folded wings' tips rise to 7.9 m), 14 m from
+// snout to tail and 22.5 m across its spread wings, standing on its feet at
+// the origin, facing +z.
+DR_HEIGHT :: 5.8;
+
+// The first baked frame of clip c.
+dr_first :: (c: int) -> int {
+  n := 0;
+  for k: 0..<DR_CLIPS { if k == c { return n; } n += DR_FRAMES[k]; }
+  return n;
+}
+// The baked frame clip c shows `t` seconds after it began: round and round for a loop, held on its
+// last pose once a clip played once is over.
+dr_frame :: (c: int, t: f32) -> int {
+  k := ifx c < 0 || c >= DR_CLIPS then DR_IDLE else c;
+  n := DR_FRAMES[k]; at := ifx t > 0 then t else 0.0f32;
+  if DR_LOOPS[k] {
+    i := cast(int) floor(at / DR_SECONDS[k] * f32(n));
+    return dr_first(k) + i % n;
+  }
+  i := cast(int) floor(at / DR_SECONDS[k] * f32(n - 1) + 0.5);
+  if i > n - 1 { i = n - 1; }
+  return dr_first(k) + i;
+}
+
+#test "the dragon's clips cover every baked frame once, in order" {
+  sum := 0;
+  for c: 0..<DR_CLIPS { #assert dr_first(c) == sum; sum += DR_FRAMES[c]; }
+  #assert sum == DR_TOTAL;
+}
+#test "a loop goes round; a clip played once holds its last pose" {
+  #assert dr_frame(DR_IDLE, 0) == 0 && dr_frame(DR_IDLE, DR_SECONDS[DR_IDLE]) == 0;
+  #assert dr_frame(DR_WALK, DR_SECONDS[DR_WALK] * 0.5) == dr_first(DR_WALK) + DR_FRAMES[DR_WALK] / 2;
+  #assert dr_frame(DR_BITE, 0) == dr_first(DR_BITE) && dr_frame(DR_BITE, 100) == dr_first(DR_BITE) + DR_FRAMES[DR_BITE] - 1;
+  #assert dr_frame(DR_SWEEP, -1) == dr_first(DR_SWEEP) && dr_frame(-3, 0) == 0;
+}
+#test "the mount's clips: standing, hovering and banking go round; takeoff and landing end on their last pose" {
+  #assert DR_CLIP_NAME[DR_IDLE_SADDLED] == "idle_saddled" && DR_CLIP_NAME[DR_BANK_RIGHT] == "bank_right";
+  #assert DR_LOOPS[DR_IDLE_SADDLED] && DR_LOOPS[DR_HOVER] && DR_LOOPS[DR_BANK_LEFT] && DR_LOOPS[DR_BANK_RIGHT];
+  #assert dr_frame(DR_TAKEOFF, 100) == dr_first(DR_TAKEOFF) + DR_FRAMES[DR_TAKEOFF] - 1;
+  #assert dr_frame(DR_LAND, DR_SECONDS[DR_LAND]) == dr_first(DR_LAND) + DR_FRAMES[DR_LAND] - 1;
+  #assert dr_frame(DR_HOVER, DR_SECONDS[DR_HOVER]) == dr_first(DR_HOVER);
+  #assert dr_first(DR_BANK_RIGHT) + DR_FRAMES[DR_BANK_RIGHT] == DR_TOTAL;
+  #assert DR_SADDLE_Y > 3 && DR_SADDLE_Y < DR_HEIGHT && DR_SADDLE_Z > 0;
+}

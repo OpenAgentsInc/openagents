@@ -1,0 +1,9 @@
+Shapechange's dragon for Everglade
+
+dragon.gltf and dragon.bin: generated from primitives by scripts/blender/dragon.py
+(OpenAgents), with no source asset.
+
+License:
+CC0 1.0 Universal (CC0 1.0)
+Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/
