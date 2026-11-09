@@ -846,12 +846,12 @@ cc_bow_pieces_w :: (pal:[]f32,bind:[][3]f32,w:[12]f32,k:f32,nocked:bool,out:[]ov
 // draw and its release), every frame, on both bodies.
 cc_bow_sweep :: (c0:int,c1:int)->overlap.OverlapHit {
  own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
- pal:[figs.BD_ROWS*4]f32;sweep:overlap.OverlapHit;
+ pal:[figs.BD_ROWS*4]f32;sweep:overlap.OverlapHit;sk:[1]figs.Skin;
  for body:0..<2 {female:=body==1;rig:=figs.people_rig(ppl[..],female);
   bind:[figs.PEOPLE_JOINTS][3]f32;for j:0..<figs.PEOPLE_JOINTS {bind[j]=figs.bd_bind_at(rig.bind[j*12..<j*12+12]);}
   for c:c0..<c1+1 {n:=ifx c==figs.BD_BOW then figs.BOW_POSE_FRAMES else figs.BD_FRAMES[c];
    for f:0..<n {
-    cc_pose(own[..],ppl[..],female,c,f,pal[..]);
+    cc_pose(own[..],ppl[..],sk[..],female,c,f,pal[..]);
     nocked:=c==figs.BD_BOW && f<figs.BOW_POSE_DRAWS;k:=ifx nocked then f32(f)/f32(figs.BOW_POSE_DRAWS-1) else 0.0f32;
     bones:[CC_BODY_N]overlap.OverlapCapsule;nb:=cc_body_capsules(pal[..],bind[..],bones[..]);
     splay:=bow_fall(c,f32(f)/f32(figs.BD_FPS));   // the bow swings as you fall or reel
