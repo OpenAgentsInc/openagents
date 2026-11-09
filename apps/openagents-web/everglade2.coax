@@ -59,8 +59,6 @@ E2_POP :: 0.25;               // a body cut off while more than this of it showe
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
 E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
 E2_BUCKETS :: E2_KITS * E2_LODS;
-E2_CAM_TRUNKS :: 64;          // trunks the follow camera keeps in front of
-E2_LOOK_DRAG :: 0.0055; E2_WHEEL_ZOOM :: 0.006;
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
 HOLD_JUMP :: 1024; HOLD_ALL :: 2047;
 KEY_SHIFT :: -13; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
@@ -93,7 +91,7 @@ E2 :: struct {
   play: bool; start_x: f32; start_face: f32; start_kept: bool; kept_at: f32 = -100; kept_x: f32; kept_z: f32; kept_any: bool;
   anim: [1] figs.BdAnim;
   airborne: bool; air_at: f32; land_at: f32 = -100;   // the jump's takeoff and landing (e2_jump_figure)
-  press: f32; eye_pitch: f32;                        // the eye's pitch, held on the land, and how far the look has gone past it (e2_follow)
+  press: f32; eye_pitch: f32;                        // the eye's pitch, held on the land, and how far the look has gone past it (e2_chase_step)
   ground: [1] figs.CamGround;                         // the land round you for the camera (figs.cam_ground_next, filled from e2_height)
   view: figs.CamMode;                                 // Everglade II's follow mode (e2_mode)
   q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/quality.coax): the pixels drawn
@@ -124,7 +122,7 @@ E2 :: struct {
   plates: [1] cc.HudPlates;                      // the frame's plates over bodies (e2_heads: aethyr/ui/hud-plates.coax)
   // what floats over each body shows while the body does (everglade2-sight.coax): each one's share, fading
   sight_rem: [E2_REMOTES] cc.HudSight; sight_mon: [12] cc.HudSight; sight_guard: cc.HudSight; sight_dt: f32 = 1; sight_at: f32 = -1;
-  cy: f32;                                       // the picture's centre row (e2c_lens: the studio frames you off centre)
+  cy: f32;                                       // the picture's centre row (e2c_view_lens: the studio frames you off centre)
   env: [1] envf.EnvFrame;                        // the light: the world's environment set, its clock and the record each frame writes (e2_light)
   light_view: int; light_text: [1] envd.EnvDebugText;   // ?light=VIEW (developer-only, off by default) and its readout (e2_light_hud)
   guard: [1] E2GuardLook;                        // the path's guard as drawn (everglade2-guard.coax)
@@ -546,7 +544,7 @@ e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
   // a press on the world (not the bar): the mouse looks again (mouselook; the drag still orbits without it)
   if phase == 0 { mlook.ml_press(s[0].ml[..], kind); s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
   if phase == 1 && s[0].dragging {
-    s[0].look_yaw -= (x - s[0].drag_x) / s[0].k * f32(E2_LOOK_DRAG); s[0].look_pitch -= (y - s[0].drag_y) / s[0].k * f32(E2_LOOK_DRAG);
+    d := figs.cam_drag(x - s[0].drag_x, y - s[0].drag_y, s[0].k); s[0].look_yaw += d[0]; s[0].look_pitch += d[1];
     s[0].drag_x = x; s[0].drag_y = y; return true;
   }
   if phase == 2 { s[0].dragging = false; return true; }
@@ -564,8 +562,7 @@ e2_pointer_buttons :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int,
 e2_wheel :: (s: [] E2, dy: f32) -> bool #export_c #effects(all) {
   if e2c_wheel(s, dy) { return true; }
   #if BUILD_DEBUG { if e2a_wheel(s, dy) { return true; } }
-  d := ifx dy > 400 then 400.0f32 else ifx dy < -400 then -400.0f32 else dy;
-  s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, d * f32(E2_WHEEL_ZOOM)); return true;
+  s[0].orbit = figs.cam_wheel(s[0].orbit, dy); return true;
 }
 // Mouselook, the host's face: whether the pointer is wanted, the mouse's travel while held, and what
 // the browser did (aethyr/cam/mouselook.coax). The turn goes the way a drag's does.
@@ -603,29 +600,18 @@ e2_show_face :: (s: [] E2) -> f32 {
   m := s[0].ml[0].shown; if m <= 0 { return s[0].you_face; }
   return figs.wrap_angle(s[0].you_face + figs.wrap_angle(s[0].orbit.yaw - s[0].you_face) * m);
 }
-E2_SHOULDER :: 0.7;   // metres the mouselook camera sits right of you
-E2_LIFT :: 0.55;      // and above, so you stand below and left of the reticle
-// Mouselook's framing: the eye and its aim both move right and up, as far as the fade has come.
-e2_ml_shot :: (s: [] E2, shot: figs.Shot) -> figs.Shot {
-  m := s[0].ml[0].shown; if m <= 0 { return shot; }
-  fx := shot.at.x - shot.eye.x; fz := shot.at.z - shot.eye.z; l := sqrt(fx * fx + fz * fz); if l < 0.0001 { return shot; }
-  rx := -fz / l * f32(E2_SHOULDER) * m; rz := fx / l * f32(E2_SHOULDER) * m; up := f32(E2_LIFT) * m;
-  t := shot;
-  t.eye = figs.v3(shot.eye.x + rx, shot.eye.y + up, shot.eye.z + rz); t.at = figs.v3(shot.at.x + rx, shot.at.y + up, shot.at.z + rz);
-  return t;
-}
 #test "mouselook faces you the camera's way and frames you below and left of the reticle" {
   s: [1] E2; s[0].you_face = 0; s[0].orbit.yaw = 1.0;
   #assert e2_show_face(s[..]) == 0;
   s[0].ml[0].shown = 1; #assert abs(e2_show_face(s[..]) - 1.0) < 0.001;
   shot := figs.Shot.{}; shot.eye = figs.v3(0, 2, 4); shot.at = figs.v3(0, 1.5, 0);   // looking down -z
-  t := e2_ml_shot(s[..], shot);
+  t := figs.cam_shoulder_shot(shot, s[0].ml[0].shown);
   #assert t.eye.x > 0.6 && t.at.x > 0.6 && t.eye.y > 2.5 && abs(t.eye.z - 4) < 0.001;   // right and up: you below and left
-  s[0].ml[0].shown = 0; t = e2_ml_shot(s[..], shot); #assert t.eye.x == 0;
+  s[0].ml[0].shown = 0; t = figs.cam_shoulder_shot(shot, s[0].ml[0].shown); #assert t.eye.x == 0;
 }
 e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
   s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
-  if zoom != 0 { s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, zoom * f32(E2_WHEEL_ZOOM)); }
+  s[0].orbit = figs.cam_pinch(s[0].orbit, zoom);
 }
 
 // ---- the frame: the follow camera, the uniforms
@@ -638,14 +624,6 @@ e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all)
 // The mode's record: the shared defaults are Everglade II's.
 e2_mode :: () -> figs.CamMode { return figs.CamMode.{id = figs.CamModeId.follow}; }
 E2_CAM_REACH :: 13.0;   // metres of land round the pivot the camera's ground ring holds (the farthest zoom and a cell)
-// The camera's ring of land round p, from the land itself (e2_height): only the cells it lacks.
-e2_cam_ground :: (s: [] E2, p: figs.Point) {
-  cells: [7000] int;
-  n := figs.cam_ground_next(s[0].ground[..], p.x, p.z, f32(E2_CAM_REACH), cells[..]);
-  for k: 0..<n { i := cells[k * 2]; j := cells[k * 2 + 1]; figs.cam_ground_put(s[0].ground[..], i, j, e2_height(figs.cam_ground_x(s[0].ground[..], i), figs.cam_ground_x(s[0].ground[..], j))); }
-}
-// What to draw: the mode's shot of the orbit.
-e2_shot :: (s: [] E2) -> figs.Shot { return figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press); }
 e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
   f:=e2n_familiar_view(s[0].net[..]);
   if !f.live { return shot; }
@@ -664,8 +642,8 @@ e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
   _ := e2_pointer(s[..], 700, 0, 0, 0, 1);
   for i: 0..<120 {
     _ = e2_pointer(s[..], 700, f32(900 - i * 15), 1, 0, 1);
-    e2_follow(s[..], 1.0f32 / 30);
-    shot := e2_shot(s[..]);
+    e2_chase_step(s[..], 1.0f32 / 30);
+    shot := figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press);
     #assert figs.cam_off_axis(shot, s[0].you_x, s[0].you_z) < 0.01;
     #assert shot.eye.y >= e2_height(shot.eye.x, shot.eye.z) + 0.19;
     if s[0].press > 0 { pressed = true; }
@@ -681,7 +659,7 @@ e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
   #assert pressed && s[0].orbit.pitch < -1.0 && s[0].orbit.pitch >= -1.2;
   // all the way up on the land: the eye stays back from you (you don't fill the view), and it
   // looks up over your head, so you stand low in the middle of the screen
-  shot := e2_shot(s[..]);
+  shot := figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press);
   ex := s[0].you_x - shot.eye.x; ez := s[0].you_z - shot.eye.z;
   #assert sqrt(ex * ex + ez * ez) > 2.5;
   vx := shot.at.x - shot.eye.x; vy := shot.at.y - shot.eye.y; vz := shot.at.z - shot.eye.z; vl := sqrt(vx * vx + vy * vy + vz * vz);
@@ -690,37 +668,26 @@ e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
   hx := s[0].you_x - shot.eye.x; hy := s[0].you_y + 1.7 - shot.eye.y; hz := s[0].you_z - shot.eye.z; hl := sqrt(hx * hx + hy * hy + hz * hz);
   #assert hy / hl < vy / vl;
 }
-e2_follow :: (s: [] E2, dt: f32) {
+// The follow camera this frame (aethyr/cam/chase.coax): the look, the keys and the walk move the
+// orbit, then its room before this zone's land (the camera's ground ring, from e2_height) and the
+// trunks round the pivot.
+e2_chase_step :: (s: [] E2, dt: f32) {
   s[0].ml[0].able = s[0].placed && !e2c_creating(s) && !e2c_running(s) && !e2_wants_text(s) && !s[0].cz[0].menu;
   mlook.ml_step(s[0].ml[..], dt);
-  if s[0].autowalk || e2c_running(s) {
-    // the camera eases round behind the walk (and Character Create's run)
-    want := e2_auto_heading(s[0].you_x, s[0].you_z);
-    turn := figs.wrap_angle(want - s[0].orbit.yaw);
-    s[0].orbit.yaw = figs.wrap_angle(s[0].orbit.yaw + turn * (ifx dt * 1.5 < 1 then dt * 1.5 else 1.0f32));
-  }
-  // the turn is the shared orbit's; the tilt is Everglade II's own, up to E2_PITCH_UP above the horizon
-  o := figs.verse_orbit_look(s[0].orbit, s[0].look_yaw, 0);
   h := s[0].held;
-  o = figs.verse_orbit_keys(o, axis(h, HOLD_LEFT, HOLD_RIGHT), 0, dt);
-  tilt := s[0].look_pitch + axis(h, HOLD_UP, HOLD_DOWN) * f32(figs.FREE_KEY_TURN) * 0.6 * (ifx dt < 0.25 then dt else 0.25f32);
+  in := figs.CamChaseIn.{look_yaw = s[0].look_yaw, look_pitch = s[0].look_pitch, turn = axis(h, HOLD_LEFT, HOLD_RIGHT), tilt = axis(h, HOLD_UP, HOLD_DOWN),
+    zoom = axis(h, HOLD_OUT, HOLD_IN), feet = figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), heading = s[0].you_face, moving = s[0].anim[0].speed > 0.6,
+    held = mlook.ml_on(s[0].ml[0]), look_up = true};
+  // the camera eases round behind the walk (and Character Create's run)
+  if s[0].autowalk || e2c_running(s) { in.behind = true; in.behind_heading = e2_auto_heading(s[0].you_x, s[0].you_z); }
   s[0].look_yaw = 0; s[0].look_pitch = 0;
-  mode := s[0].view;
-  if tilt != 0 { o.pitch = figs.cam_pitch(mode, o, o.pitch - tilt); o.idle = 0; }
-  if axis(h, HOLD_OUT, HOLD_IN) != 0 { o = figs.verse_orbit_zoom(o, axis(h, HOLD_OUT, HOLD_IN) * 6 * (ifx dt < 0.1 then dt else 0.1f32)); }
-  feet := figs.v3(s[0].you_x, s[0].you_y, s[0].you_z);
-  sp := s[0].anim[0].speed;
-  p0 := o.pitch;
-  // while the mouse looks, the walk never eases the camera's tilt back: the mouse holds it
-  if mlook.ml_on(s[0].ml[0]) { o.idle = 0; }
-  o = figs.verse_orbit_follow(o, feet, s[0].you_face, sp > 0.6, dt);
-  // the shared follow eases a look past its own range back into it; here a look up holds until the
-  // walk's own recentring, a while after the last look
-  if p0 < f32(figs.FREE_PITCH_MIN) && !(sp > 0.6 && o.idle >= f32(figs.FREE_RECENTRE_AFTER)) { o.pitch = figs.cam_pitch(mode, o, p0); }
-  // the eye's line, straight back from your head; on the land the eye holds where it met it
-  e2_cam_ground(s, o.pivot);
-  // and in front of the trunks between the eye and you: three spheres up each trunk near the ray
-  spheres: [E2_CAM_TRUNKS * 3 * 4] f32; sn := 0; pv := o.pivot;
+  o := figs.cam_chase_orbit(s[0].view, s[0].orbit, in, dt);
+  // the land round the pivot: only the cells the ring lacks
+  cells: [7000] int; g := s[0].ground[..];
+  n := figs.cam_ground_next(g, o.pivot.x, o.pivot.z, f32(E2_CAM_REACH), cells[..]);
+  for k: 0..<n { i := cells[k * 2]; j := cells[k * 2 + 1]; figs.cam_ground_put(g, i, j, e2_height(figs.cam_ground_x(g, i), figs.cam_ground_x(g, j))); }
+  // the trunks between the eye and you, in the cells round the pivot
+  spheres: [figs.CAM_TRUNKS * 3 * 4] f32; sn := 0; pv := o.pivot;
   ci := cast(int) floor((pv.x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - pv.z) / f32(E2_CELL));
   for dj: -1..<2 { for di: -1..<2 {
     i := ci + di; j := cj + dj;
@@ -728,18 +695,14 @@ e2_follow :: (s: [] E2, dt: f32) {
     c := j * E2_CELLS_X + i;
     for q: s[0].first[c]..<s[0].first[c + 1] {
       kit := cast(int) s[0].kinds[q];
-      if kit >= E2_TREES || sn >= E2_CAM_TRUNKS { continue; }
-      qo := q * E2_ITEM_FLOATS; px := s[0].items[qo]; pz := s[0].items[qo + 2];
-      if (px - pv.x) * (px - pv.x) + (pz - pv.z) * (pz - pv.z) > 100 { continue; }
+      if kit >= E2_TREES { continue; }
+      qo := q * E2_ITEM_FLOATS;
       // a pine's boughs reach out at the eye's height; the others' crowns start above it
-      r := ifx kit >= 10 then 2.2 * s[0].items[qo + 5] else 0.30 * s[0].items[qo + 5] + 0.35;
-      for k: 0..<3 { m := (sn * 3 + k) * 4; spheres[m] = px; spheres[m + 1] = pv.y - 0.5 + f32(k) * 1.6; spheres[m + 2] = pz; spheres[m + 3] = r; }
-      sn += 1;
+      sn = figs.cam_trunk(spheres[..], sn, pv, s[0].items[qo], s[0].items[qo + 2], ifx kit >= 10 then 2.2 * s[0].items[qo + 5] else 0.30 * s[0].items[qo + 5] + 0.35);
     }
   }}
-  c := figs.cam_centred(mode, s[0].ground[..], o, spheres[0..<sn * 12]);
-  s[0].eye_pitch = c.eye_pitch; s[0].press = c.press;
-  s[0].orbit = figs.verse_orbit_limit(o, c.room, dt);
+  c := figs.cam_chase_settle(s[0].view, g, o, spheres[0..<sn * 12], dt);
+  s[0].orbit = c.orbit; s[0].eye_pitch = c.eye_pitch; s[0].press = c.press;
 }
 // ---- the graphics governor (aethyr/quality.coax, as Everglade's everglade-quality.coax): in AUTO
 // it draws fewer pixels when frames run long and more again when they keep on time, so the page
@@ -1114,16 +1077,17 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   if !s[0].ground_done && s[0].catalog_in { e2_ground(s); }
   step := ifx still || dt <= 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].clock += step;
-  e2_follow(s, step);
+  e2_chase_step(s, step);
   e2c_arrive_step(s, step);
   e2w_step(s, step);
-  shot := e2st_shot(s, e2w_shot(s, e2_familiar_shot(s,e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_ml_shot(s, e2_shot(s)), step))));
+  chase := figs.cam_shoulder_shot(figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press), s[0].ml[0].shown);
+  shot := e2st_shot(s, e2w_shot(s, e2_familiar_shot(s,e2c_view(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), chase, step))));
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
   up := [3]f32.[r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
   fy := (w / h) * 1.25; fy = ifx fy < 0.95 then 0.95f32 else ifx fy > 1.9 then 1.9f32 else fy;
-  lens := e2c_lens(s, fy * h / 2, w * 0.5, h * 0.5);
+  lens := e2c_view_lens(s, fy * h / 2, w * 0.5, h * 0.5);
   s[0].focal = lens[0]; s[0].cy = lens[2];
   s[0].eye = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z]; s[0].fwd = f; s[0].right = r; s[0].up = up;
   // the shadow casters' centre: the eye (e2_shadows draws the tiles round it)
@@ -2666,7 +2630,7 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   #assert e2k_tap_pet(s[..],EG_DO_ORDER+6);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M7 4000001";
-  base:=e2_shot(s[..]);
+  base:=figs.cam_shot(s[0].view,s[0].orbit,s[0].eye_pitch,s[0].press);
   e2n_record(n,"m7 4000001");
   #assert !e2n_familiar_view(n).live && e2n_familiar_message(n)=="BORROWED FAMILIAR SENSES";
   e2n_record(n,"m8 2");

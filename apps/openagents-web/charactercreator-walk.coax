@@ -196,31 +196,26 @@ walk_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
 #test "walk camera swings from the studio shot to behind the walker and stays above the ground" {
   s:[1]Creator;ensure(s[..]);u:[104]f32;out:[64000]f32;n:=frame(s[..],out[..],u[..],1440,900,1,0,true);
   studio:=[3]f32.[u[16],u[17],u[18]];s[0].profile_go=true;walk_begin(s[..],false);
-  walk_camera(s[..],u[..],1440,900,1);#assert abs(u[16]-studio[0])<0.001 && abs(u[18]-studio[2])<0.001;
+  walk_view(s[..],u[..],1440,900,1);#assert abs(u[16]-studio[0])<0.001 && abs(u[18]-studio[2])<0.001;
   for i:0..<330 {walk_step(s[..],0.1);
-    camera(s[0],u[..],1440,900,1);walk_camera(s[..],u[..],1440,900,1);
+    cc_view(s[0],u[..],1440,900,1);walk_view(s[..],u[..],1440,900,1);
     #assert u[17]>=glade.cg_height(u[16],u[18])+0.99;
     f:=[3]f32.[u[20],u[21],u[22]];#assert abs(f[0]*f[0]+f[1]*f[1]+f[2]*f[2]-1)<0.001 && f[2]< -0.5;
     #assert abs(u[24]*f[0]+u[25]*f[1]+u[26]*f[2])<0.001 && abs(u[28]*f[0]+u[29]*f[1]+u[30]*f[2])<0.001 && u[29]>0.8;
     if i>40 {p:=walk_point(s[0].walk,walk_distance(s[0].walk,s[0].walk.t));#assert u[18]>p[2]+2 && u[18]<p[2]+6;}
   }
 }
-// Behind the walker and above, looking a little past it down the road.
-walk_camera :: (s:[]Creator,u:[]f32,w:f32,h:f32,k:f32) {
+// Behind the walker and above, looking a little past it down the road (aethyr/cam/studio.coax
+// cam_walk_view), eased from the studio's shot, held a metre over the glade.
+walk_view :: (s:[]Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if !s[0].walk.on {return;}
   if !s[0].walk.captured {s[0].walk.captured=true;for i:0..<3 {s[0].walk.eye0[i]=u[16+i];s[0].walk.fwd0[i]=u[20+i];}s[0].walk.focal0=u[19];s[0].walk.cx0=u[23];s[0].walk.cy0=u[27];}
   c:=s[0].walk;if c.still {for i:0..<3 {u[16+i]=c.eye0[i];}return;}
-  d:=walk_distance(c,c.t);back:=walk_point(c,d-4.2);ahead:=walk_point(c,d+2.6);
-  eye:=[3]f32.[back[0],back[1]+2.1,back[2]];target:=[3]f32.[ahead[0],ahead[1]+1.3,ahead[2]];
-  b:=walk_ease(c.t/f32(CC_WALK_CAMERA));fwd:[3]f32;
-  for i:0..<3 {fwd[i]=target[i]-eye[i];}fl:=sqrt(fwd[0]*fwd[0]+fwd[1]*fwd[1]+fwd[2]*fwd[2]);
-  for i:0..<3 {eye[i]=c.eye0[i]+(eye[i]-c.eye0[i])*b;fwd[i]=c.fwd0[i]+(fwd[i]/fl-c.fwd0[i])*b;}
-  fl=sqrt(fwd[0]*fwd[0]+fwd[1]*fwd[1]+fwd[2]*fwd[2]);for i:0..<3 {fwd[i]/=fl;}
+  d:=walk_distance(c,c.t);b:=walk_ease(c.t/f32(CC_WALK_CAMERA));
+  v:=figs.cam_walk_view(c.eye0,c.fwd0,walk_point(c,d-4.2),walk_point(c,d+2.6),b);eye:=v.eye;fwd:=v.fwd;
   floor_y:=glade.cg_height(eye[0],eye[2])+1.0;if eye[1]<floor_y {eye[1]=floor_y;}
-  // right = forward x up, up = right x forward (the studio camera's frame, turned).
-  rl:=sqrt(fwd[2]*fwd[2]+fwd[0]*fwd[0]);r:=[3]f32.[-fwd[2]/rl,0,fwd[0]/rl];
-  up:=[3]f32.[r[1]*fwd[2]-r[2]*fwd[1],r[2]*fwd[0]-r[0]*fwd[2],r[0]*fwd[1]-r[1]*fwd[0]];
-  for i:0..<3 {u[16+i]=eye[i];u[20+i]=fwd[i];u[24+i]=r[i];u[28+i]=up[i];}
+  ru:=figs.cam_right_up(fwd);
+  for i:0..<3 {u[16+i]=eye[i];u[20+i]=fwd[i];u[24+i]=ru[0][i];u[28+i]=ru[1][i];}
   // The controls are gone, so the shot fills the screen.
   full_focal:=ifx h*0.89<w*1.25 then h*0.89 else w*1.25;
   u[19]=c.focal0+(full_focal-c.focal0)*b;u[23]=c.cx0+(w*0.5-c.cx0)*b;u[27]=c.cy0+(h*0.5-c.cy0)*b;
@@ -234,7 +229,7 @@ walk_frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool
   walk_step(s,dt);
   for i:0..<u.count {u[i]=0;}
   u[0]=w;u[1]=h;u[2]=s[0].clock;u[4]=k;u[10]=shadow_frame(s);u[11]=ifx s[0].scene_only then 1 else 0;
-  camera(s[0],u,w,h,k);walk_camera(s,u,w,h,k);
+  cc_view(s[0],u,w,h,k);walk_view(s,u,w,h,k);
   c:=s[0].walk;controls:=walk_controls(c);
   // u[40] fades the control panel's glass, u[41] is the fade to black (gpu/character-glade.coax).
   u[40]=1-controls;u[41]=walk_veil(c);

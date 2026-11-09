@@ -1,0 +1,113 @@
+// The over-the-shoulder boom (GitHub #13087): Everglade Experimental's follow camera, a boom from a
+// pivot over your feet out behind you, over your right shoulder when mouselook or a drawn bow frames
+// you below and left of the reticle, and into your head when zoomed all the way in (firstperson.coax).
+// The boom pulls in before walls (cam_boom_walls, the collision boxes the realm passes) and before the
+// land along its whole length, shoulder and all (CamSweep: the realm feeds it its heights). Looking up,
+// it swings out to the side so you never fill the view. Experimental's charactercreator.coax
+// (cc_view) wires it.
+//
+//   coax/bin/coax test aethyr/cam/boom.coax --library
+
+#load "../points.coax";
+#load "../follow.coax" as boom_follow;
+#load "../query.coax" as boom_query;
+#load "../space.coax" as boom_space;
+#load "firstperson.coax" as boom_fp;
+#load "chase.coax";
+
+CAM_BOOM_PIVOT :: 1.2;      // metres over your feet the boom swings from
+CAM_BOOM_AIM_DIST :: 2.1;   // metres out a drawn bow brings it in to
+CAM_BOOM_CLEAR :: 0.35;     // metres the boom keeps over the land
+
+// The look and its framing: the view's yaw and pitch (radians, pitch positive down), the zoom asked for
+// (metres), how far a bow's aim has come in (0 to 1) and mouselook's fade (0 to 1).
+CamBoomIn :: struct { yaw: f32; pitch: f32; dist: f32; aim: f32; look: f32; first: f32; }
+// The boom from the pivot (x, y, z metres) and how much the pivot rises for the framing.
+CamBoom :: struct { boom: [3] f32; lift: f32; length: f32; }
+cam_boom :: (in: CamBoomIn) -> CamBoom {
+  sy := sin(in.pitch); sx := sin(in.yaw); cz := cos(in.yaw);
+  fp := in.first; far := boom_fp.fp_far(fp); ahead := boom_fp.fp_ahead(fp);
+  // over your right shoulder, one offset family: mouselook frames you below and left of the reticle,
+  // as far as its fade has come; a drawn bow keeps that offset and tightens in, as far as the aim has
+  // come in. Nothing jumps between them. Zoomed in to first person they all give way to the eye.
+  mlv := in.look; off := ifx mlv > in.aim then mlv else in.aim;
+  dist := (in.dist + (f32(CAM_BOOM_AIM_DIST) - in.dist) * in.aim) * far;
+  side := -sy * 3.0; side = ifx side < 0 then 0.0f32 else ifx side > 2.5 then 2.5f32 else side;
+  shoulder := (side + f32(CAM_SHOULDER) * off) * far; ox := cz * shoulder - sx * ahead; oz := -sx * shoulder - cz * ahead;
+  lift := f32(CAM_LIFT) * mlv; if 0.38 * in.aim > lift { lift = 0.38 * in.aim; }
+  // drawn, the boom comes level behind the shoulder, whatever the pitch: the view still looks along
+  // the pitch (the aim), so you see the arrow's line and not the top of your head
+  bp := in.pitch * (1 - 0.85 * in.aim); bcy := cos(bp); bsy := sin(bp);
+  out: CamBoom;
+  out.boom = [3] f32.[ox + sx * bcy * dist, bsy * dist, oz + cz * bcy * dist];
+  out.length = sqrt(out.boom[0] * out.boom[0] + out.boom[1] * out.boom[1] + out.boom[2] * out.boom[2]);
+  out.lift = lift * far + boom_fp.fp_lift(fp, f32(CAM_BOOM_PIVOT));
+  return out;
+}
+// How far along the boom from (x, y, z) before the walls (boxes, six numbers each).
+cam_boom_walls :: (walls: [] f32, x: f32, y: f32, z: f32, boom: [3] f32) -> f32 {
+  length := sqrt(boom[0] * boom[0] + boom[1] * boom[1] + boom[2] * boom[2]); if length < 0.00001 { return 0; }
+  target := boom_space.world_point(x, y, z); direction := boom_space.world_point(boom[0] / length, boom[1] / length, boom[2] / length);
+  return boom_follow.follow_room(boom_query.Colliders.{boxes = walls, ground_enabled = false}, length, target, direction, length);
+}
+// The share of the boom the eye goes out along: the room before the walls, the land and the eye's
+// last distance, over its length.
+cam_boom_share :: (length: f32, room: f32) -> f32 {
+  if length <= 0 { return 0; }
+  v := room / length; return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
+}
+
+// The land along the boom: sixteen samples from the pivot out, then a binary search back to where it
+// first comes within clear of the land. The realm feeds it the land's height at each point it asks
+// for: `while !s[0].done { p := cam_sweep_at(s[0]); cam_sweep_feed(s, height(p[0], p[1])); }`.
+CamSweep :: struct { x: f32; y: f32; z: f32; boom: [3] f32; length: f32; clear: f32; i: int = 1; prev: f32; lo: f32; hi: f32; j: int; bisect: bool; done: bool; room: f32; }
+cam_sweep :: (x: f32, y: f32, z: f32, boom: [3] f32, clear: f32) -> CamSweep {
+  s := CamSweep.{x = x, y = y, z = z, boom = boom, clear = clear};
+  s.length = sqrt(boom[0] * boom[0] + boom[1] * boom[1] + boom[2] * boom[2]);
+  if s.length < 0.00001 { s.done = true; s.room = 0; }
+  return s;
+}
+cam_sweep_t :: (s: CamSweep) -> f32 { return ifx s.bisect then (s.lo + s.hi) * 0.5 else f32(s.i) / 16; }
+// Where on the ground (x, z) the sweep wants the land's height next.
+cam_sweep_at :: (s: CamSweep) -> [2] f32 { t := cam_sweep_t(s); return [2] f32.[s.x + s.boom[0] * t, s.z + s.boom[2] * t]; }
+cam_sweep_feed :: (s: [] CamSweep, h: f32) {
+  if s[0].done { return; }
+  t := cam_sweep_t(s[0]); over := s[0].y + s[0].boom[1] * t >= h + s[0].clear;
+  if s[0].bisect {
+    if over { s[0].lo = t; } else { s[0].hi = t; }
+    s[0].j += 1; if s[0].j >= 12 { s[0].done = true; s[0].room = s[0].length * s[0].lo; }
+    return;
+  }
+  if !over { s[0].bisect = true; s[0].lo = s[0].prev; s[0].hi = t; return; }
+  s[0].prev = t; s[0].i += 1;
+  if s[0].i >= 17 { s[0].done = true; s[0].room = s[0].length; }
+}
+
+#test "the boom: behind you out, over the shoulder in mouselook and a drawn bow, into your head zoomed in" {
+  b := cam_boom(CamBoomIn.{yaw = 0, pitch = 0.2, dist = 4});
+  #assert abs(b.length - 4) < 0.001 && b.boom[2] > 3.8 && abs(b.boom[0]) < 0.001 && b.lift == 0;
+  m := cam_boom(CamBoomIn.{yaw = 0, pitch = 0.2, dist = 4, look = 1});
+  #assert abs(m.boom[0] - f32(CAM_SHOULDER)) < 0.001 && abs(m.lift - f32(CAM_LIFT)) < 0.001;
+  a := cam_boom(CamBoomIn.{yaw = 0, pitch = 0.2, dist = 4, aim = 1}); #assert a.length < 2.3 && abs(a.boom[1]) < 0.07;
+  f := cam_boom(CamBoomIn.{yaw = 0, pitch = 0.2, dist = 0.65, look = 1, first = 1});
+  #assert abs(f.boom[0]) < 0.0001 && abs(f.boom[2] + f32(boom_fp.FP_AHEAD)) < 0.0001 && abs(f.lift - (f32(boom_fp.FP_EYE) - f32(CAM_BOOM_PIVOT))) < 0.0001;
+  up := cam_boom(CamBoomIn.{yaw = 0, pitch = -1, dist = 4}); #assert up.boom[0] > 2;   // looking up, out to the side
+}
+#test "the boom pulls in before a wall and keeps the shoulder clear" {
+  wall := [6] f32.[-2, 0, 1, 2, 3, 1.2];
+  blocked := cam_boom_walls(wall[..], 0, 1.2, 0, [3] f32.[0, 0, 4]); #assert blocked > 0.7 && blocked < 0.81;
+  #assert cam_boom_walls(wall[..], 0, 1.2, 0, [3] f32.[0, 0, -4]) == 4;
+  side := [6] f32.[0.8, 0, -2, 1.0, 3, 2];
+  s := cam_boom_walls(side[..], 0, 1.2, 0, [3] f32.[2, 0, 0]); #assert s > 0.5 && s < 0.61;
+  #assert cam_boom_share(4, 2) == 0.5 && cam_boom_share(4, 9) == 1 && cam_boom_share(0, 1) == 0;
+}
+#test "the sweep finds where the boom first comes within clear of a slope, and the whole boom over flat land" {
+  // land rising 1 m a metre out along +z from z = 2: the boom at 1.2 m keeps 0.35 over it until z = 2.85
+  s: [1] CamSweep; s[0] = cam_sweep(0, 1.2, 0, [3] f32.[0, 0, 4], 0.35);
+  n := 0; while !s[0].done { p := cam_sweep_at(s[0]); z := p[1]; cam_sweep_feed(s[..], ifx z > 2 then z - 2 else 0.0f32); n += 1; }
+  #assert abs(s[0].room - 2.85) < 0.01 && n < 40;
+  s[0] = cam_sweep(0, 1.2, 0, [3] f32.[0, 0, 4], 0.35);
+  while !s[0].done { cam_sweep_feed(s[..], 0); }
+  #assert s[0].room == 4;
+  s[0] = cam_sweep(0, 1.2, 0, [3] f32.[0, 0, 0], 0.35); #assert s[0].done && s[0].room == 0;
+}

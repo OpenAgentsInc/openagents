@@ -22,12 +22,17 @@
 #module "openagents.fivelab.bodies";
 
 #load "../../verse/everglade/people-rig.coax";
-// Player mode's camera (fivelab.coax follow_cam): Everglade's follow camera, aethyr/camera.coax's free
+// Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, aethyr/camera.coax's free
 // orbit. It loads here, not in fivelab.coax, as it shares points.coax with the figures' skin.
 #load "../../aethyr/camera.coax";
 // Aethyr's shared camera modes and cinematic hand-back (#12994), in the same module as the orbit.
 #load "../../aethyr/cam/modes.coax";
 #load "../../aethyr/cam/handback.coax";
+// The zones' follow, Character Create, over-the-shoulder and overhead cameras (#13087): every zone's.
+#load "../../aethyr/cam/chase.coax";
+#load "../../aethyr/cam/studio.coax";
+#load "../../aethyr/cam/boom.coax";
+#load "../../aethyr/cam/overhead.coax";
 
 BD_SLOTS :: 17408;        // the battle's creatures (fivelab.coax LAB_MAX: 1024 heroes and 16384 of the dead)
 BD_CORPSES :: 128;        // bodies still lying after their square was taken

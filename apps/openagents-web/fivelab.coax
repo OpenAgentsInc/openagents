@@ -216,7 +216,7 @@ Lab :: struct {
   asked: [3] int;   // a number asked past a slider's most (the address or a key), shown in red; 0 none
   ms: f32;   // the frame's time, milliseconds, averaged with the frames a second
   unlabelled: int;   // labels this frame left off for want of room in the strokes (SCENE_VERTS)
-  cam_siege: bool;   // the Siege's camera is the home one (cam_home)
+  cam_siege: bool;   // the Siege's camera is the home one (lab_view_home)
   scene_top: f32;    // floating numbers stay below this (the sliders)
   plates: [NP_MAX] Rect; plates_n: int;   // this frame's names over the figures (lab_heads3), which floating numbers keep off
   heads: [1] cc.HudPlates;                 // the frame's plates over the figures (lab_heads3: aethyr/ui/hud-plates.coax)
@@ -574,7 +574,7 @@ size_grid :: (s: [] Lab) {
   while 2 * r * r < area && r < ROWS_MAX { r += 1; }
   was := s[0].cols;
   s[0].rows = r; s[0].cols = 2 * r;
-  if s[0].cols != was || s[0].siege != s[0].cam_siege { cam_home(s); }   // a grid of another size or the Siege: the camera backs off to see it all
+  if s[0].cols != was || s[0].siege != s[0].cam_siege { lab_view_home(s); }   // a grid of another size or the Siege: the camera backs off to see it all
 }
 // The ring d squares in from the grid's edge: its squares, and its n-th square (y * cols + x),
 // clockwise from its top-left corner.
@@ -1843,7 +1843,6 @@ set_player :: (s: [] Lab, on: bool) {
 LAB_NEAR_BODIES :: 24;    // figures round you the controller walks round, capsules of 7 floats
 LAB_NEAR_M :: 6.0;        // metres: as far as they are looked for
 LAB_BODY_R :: 0.42;       // a figure's capsule round its feet's line
-LOOK_DRAG :: 0.0055; WHEEL_ZOOM :: 0.006;   // Everglade's (everglade.coax): a drag's look, the wheel's zoom
 BLEND_TIME :: 1.0;        // seconds the camera takes to swing between the spectator's and the follow camera
 // Your body's square: the one under its feet.
 you_square_x :: (s: [] Lab) -> int { return cast(int) floor((s[0].you_x + f32(s[0].cols) * f32(SQ) / 2) / f32(SQ)); }
@@ -2090,26 +2089,18 @@ lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch:
 // A thumb's look and pinch (aethyr/sticks.coax), as a drag and the wheel.
 lab_look :: (s: [] Lab, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
   s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
-  if zoom != 0 { s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, zoom * f32(WHEEL_ZOOM)); }
+  s[0].orbit = figs.cam_pinch(s[0].orbit, zoom);
 }
-// The follow camera this frame: the look asked for, the arrow keys, after your body (Everglade's
-// camera_frame), kept above the glade's ground.
-follow_cam :: (s: [] Lab, dt: f32) {
-  o := figs.verse_orbit_look(s[0].orbit, s[0].look_yaw, s[0].look_pitch);
-  s[0].look_yaw = 0; s[0].look_pitch = 0;
-  h := s[0].held;
-  o = figs.verse_orbit_keys(o, axis(h, HOLD_LEFT, HOLD_RIGHT), axis(h, HOLD_UP, HOLD_DOWN), dt);
-  if axis(h, HOLD_OUT, HOLD_IN) != 0 { o = figs.verse_orbit_zoom(o, axis(h, HOLD_OUT, HOLD_IN) * 6 * lo(dt, 0.1)); }
-  feet := figs.v3(s[0].you_x, s[0].you_y, s[0].you_z);
-  me := s[0].me;
+// The follow camera this frame (aethyr/cam/chase.coax): the look asked for, the arrow keys, after
+// your body, kept above the glade's ground.
+lab_chase_step :: (s: [] Lab, dt: f32) {
+  h := s[0].held; me := s[0].me;
   vx := 0.0f32; vz := 0.0f32;
   if me >= 0 && me < figs.BD_SLOTS { sp := s[0].bodies[0].slot[me].speed; vx = sin(s[0].you_face) * sp; vz = cos(s[0].you_face) * sp; }
-  speed := sqrt(vx * vx + vz * vz);
-  o = figs.verse_orbit_follow(o, feet, figs.yaw_of(vx, vz), speed > 0.6, dt);
-  ray := figs.verse_orbit_ray(o);
-  room := ray.far;
-  if ray.dir.y < -0.0001 { room = lo(room, (ray.from.y - 0.3) / -ray.dir.y); }
-  s[0].orbit = figs.verse_orbit_limit(o, room, dt);
+  in := figs.CamChaseIn.{look_yaw = s[0].look_yaw, look_pitch = s[0].look_pitch, turn = axis(h, HOLD_LEFT, HOLD_RIGHT), tilt = axis(h, HOLD_UP, HOLD_DOWN),
+    zoom = axis(h, HOLD_OUT, HOLD_IN), feet = figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), heading = figs.yaw_of(vx, vz), moving = sqrt(vx * vx + vz * vz) > 0.6};
+  s[0].look_yaw = 0; s[0].look_pitch = 0;
+  s[0].orbit = figs.cam_chase_floor(figs.cam_chase_orbit(figs.CamMode.{}, s[0].orbit, in, dt), 0.3, dt);
 }
 
 // ---- whose turn: battle.coax rs_due's choice (the earliest due, the lowest index on a tie), from a
@@ -2373,7 +2364,7 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   r := s[0].right; f := s[0].fwd;
   s[0].up = P3.{x = r.y * f.z - r.z * f.y, y = r.z * f.x - r.x * f.z, z = r.x * f.y - r.y * f.x};
   s[0].focal = lo((rx1 - rx0) * 27 / (30 * f32(COLS) / 16), (ry1 - ry0) * 27 / (19 * f32(ROWS) / 10));   // fitted at the default orbit (it backs off as the grid grows); + and - zoom from there
-  // Player mode: Everglade's follow camera (follow_cam), with Everglade's lens (everglade-face.c:
+  // Player mode: Everglade's follow camera (lab_chase_step), with Everglade's lens (everglade-face.c:
   // its vertical scale from the view's shape), swung in from the spectator's over BLEND_TIME
   if s[0].blend > 0 {
     sp := figs.Shot.{eye = figs.v3(s[0].eye.x, s[0].eye.y, s[0].eye.z), at = figs.v3(shot.at.x, shot.at.y, shot.at.z)};
@@ -3272,7 +3263,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
   if s[0].film != FILM_NONE { film_step(s, dt, still); }
   put_bodies(s);
   // Player mode's follow camera, and the swing to it from the spectator's camera and back
-  if s[0].player && s[0].you_me >= 0 && s[0].me == s[0].you_me { follow_cam(s, lo(dt, 0.1)); }
+  if s[0].player && s[0].you_me >= 0 && s[0].me == s[0].you_me { lab_chase_step(s, lo(dt, 0.1)); }
   want := ifx s[0].player && s[0].you_me >= 0 && s[0].view == VIEW_GLADE then 1.0f32 else 0.0f32;
   if s[0].golden { s[0].blend = want; }
   else if s[0].blend < want { s[0].blend = lo(want, s[0].blend + lo(dt, 0.1) / f32(BLEND_TIME)); }
@@ -3668,7 +3659,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   if s[0].view == VIEW_GLADE {
     h := hold_bit(key);
     if h != 0 { s[0].held |= h; return true; }
-    if key == 'c' || key == 'C' { cam_home(s); return true; }
+    if key == 'c' || key == 'C' { lab_view_home(s); return true; }
     if key == KEY_SHIFT { s[0].shift = true; return false; }
   }
   return false;
@@ -3726,7 +3717,7 @@ fly :: (s: [] Lab, dt: f32) {
   ease := lo(1, t * 9);
   h := s[0].held;
   if s[0].view != VIEW_GLADE { h = 0; }
-  // in Player mode the keys walk your hero and turn the follow camera (follow_cam): the
+  // in Player mode the keys walk your hero and turn the follow camera (lab_chase_step): the
   // spectator's camera waits where it was, for when you leave
   if s[0].player { h = 0; }
   speed := s[0].dist * 0.9;   // metres a second: a long way out, it flies faster
@@ -3743,40 +3734,36 @@ fly :: (s: [] Lab, dt: f32) {
   s[0].px = lo(hx, hi(-hx, s[0].px)); s[0].pz = lo(hz, hi(-hz, s[0].pz));
   s[0].yaw += s[0].vyaw * t;
   s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + s[0].vpitch * t));
-  cam_zoom(s, 1 + s[0].vzoom * t);
+  lab_view_zoom(s, 1 + s[0].vzoom * t);
 }
-// The camera's zoom: its distance times `by`, held between near and far.
-cam_zoom :: (s: [] Lab, by: f32) { s[0].dist = lo(ZOOM_FAR * grid_scale(s), hi(ZOOM_NEAR, s[0].dist * by)); }
+// The spectator's camera is Aethyr's overhead camera (aethyr/cam/overhead.coax) over the grid.
+// Its zoom: its distance times `by`, held between near and far.
+lab_view_zoom :: (s: [] Lab, by: f32) { s[0].dist = figs.cam_overhead_zoom(s[0].dist, by, ZOOM_NEAR, ZOOM_FAR * grid_scale(s)); }
 // How much bigger the grid is than the lab's 40 by 20: the camera's orbit backs off by as much.
 grid_scale :: (s: [] Lab) -> f32 { return f32(s[0].cols) / f32(COLS); }
-// The camera's default orbit, the whole grid in view.
-cam_home :: (s: [] Lab) {
-  s[0].yaw = 0; s[0].pitch = 0.6; s[0].dist = DIST * grid_scale(s); s[0].px = 0; s[0].pz = PIVOT_Z; s[0].vx = 0; s[0].vz = 0;
+// Its home view, the whole grid in view.
+lab_view_home :: (s: [] Lab) {
+  h := figs.cam_overhead_home(DIST * grid_scale(s), PIVOT_Z);
+  s[0].yaw = h.yaw; s[0].pitch = h.pitch; s[0].dist = h.dist; s[0].px = h.px; s[0].pz = h.pz; s[0].vx = 0; s[0].vz = 0;
   s[0].cam_siege = s[0].siege;
   // the Siege: from behind the watch's line, looking out at the cult (its leader at the back),
   // near enough that the figures read; the wheel backs off from there
   if s[0].siege { s[0].yaw = SIEGE_YAW; s[0].pitch = 0.42; s[0].dist = 0.55 * DIST * grid_scale(s); s[0].px = wx(s, f32(s[0].cols) * 0.36); s[0].pz = PIVOT_Z; }
 }
 SIEGE_YAW :: -1.5707963;
-// A pan: the ground follows the pointer, dx right and dy down (device px), so the pivot moves the
-// other way along the camera's level right and forward. It stays over the grid.
-cam_pan :: (s: [] Lab, dx: f32, dy: f32) {
-  m := s[0].dist / hi(s[0].focal, 1);   // metres per px at the pivot
-  ahead := m / hi(sin(s[0].pitch), 0.3);  // the ground is foreshortened along the view
-  ax := s[0].fwd.x; az := s[0].fwd.z; al := sqrt(ax * ax + az * az);
-  if al > 0.0001 { ax /= al; az /= al; }
-  s[0].px += -s[0].right.x * dx * m + ax * dy * ahead;
-  s[0].pz += -s[0].right.z * dx * m + az * dy * ahead;
-  hx := f32(s[0].cols) * f32(SQ) / 2; hz := f32(s[0].rows) * f32(SQ) / 2;
-  s[0].px = lo(hx, hi(-hx, s[0].px)); s[0].pz = lo(hz, hi(-hz, s[0].pz));
+// A pan: the ground follows the pointer, dx right and dy down (device px). It stays over the grid.
+lab_view_pan :: (s: [] Lab, dx: f32, dy: f32) {
+  p := figs.cam_overhead_pan(s[0].px, s[0].pz, s[0].dist, s[0].focal, s[0].pitch, s[0].fwd.x, s[0].fwd.z, s[0].right.x, s[0].right.z, dx, dy,
+    f32(s[0].cols) * f32(SQ) / 2, f32(s[0].rows) * f32(SQ) / 2);
+  s[0].px = p[0]; s[0].pz = p[1];
 }
 // The wheel (CSS px, down is out) zooms.
 lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
   if s[0].creator[0].on {cc.wheel(s[0].creator[..],dy);return true;}
   lab_start(s);
   if s[0].view != VIEW_GLADE { return false; }
-  if s[0].player { s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, lo(400, hi(-400, dy)) * f32(WHEEL_ZOOM)); return true; }
-  cam_zoom(s, 1 + lo(200, hi(-200, dy)) * 0.0012);
+  if s[0].player { s[0].orbit = figs.cam_wheel(s[0].orbit, dy); return true; }
+  lab_view_zoom(s, 1 + lo(200, hi(-200, dy)) * 0.0012);
   return true;
 }
 lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
@@ -3826,18 +3813,17 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
       mx0 := (s[0].fing_x[0] + s[0].fing_x[1]) / 2; my0 := (s[0].fing_y[0] + s[0].fing_y[1]) / 2;
       s[0].fing_x[f] = x; s[0].fing_y[f] = y;
       gap1 := sqrt((s[0].fing_x[0] - s[0].fing_x[1]) * (s[0].fing_x[0] - s[0].fing_x[1]) + (s[0].fing_y[0] - s[0].fing_y[1]) * (s[0].fing_y[0] - s[0].fing_y[1]));
-      if gap0 > 1 && gap1 > 1 { cam_zoom(s, gap0 / gap1); }
-      cam_pan(s, (s[0].fing_x[0] + s[0].fing_x[1]) / 2 - mx0, (s[0].fing_y[0] + s[0].fing_y[1]) / 2 - my0);
+      if gap0 > 1 && gap1 > 1 { lab_view_zoom(s, gap0 / gap1); }
+      lab_view_pan(s, (s[0].fing_x[0] + s[0].fing_x[1]) / 2 - mx0, (s[0].fing_y[0] + s[0].fing_y[1]) / 2 - my0);
       return true;
     }
     if !s[0].dragging { return false; }
     if s[0].player {
       // playing, a drag looks round (Everglade's drag look)
       k := hi(s[0].dpr, 0.5);
-      s[0].look_yaw -= (x - s[0].drag_x) / k * f32(LOOK_DRAG);
-      s[0].look_pitch -= (y - s[0].drag_y) / k * f32(LOOK_DRAG);
+      d := figs.cam_drag(x - s[0].drag_x, y - s[0].drag_y, k); s[0].look_yaw += d[0]; s[0].look_pitch += d[1];
     }
-    else if s[0].panning { cam_pan(s, x - s[0].drag_x, y - s[0].drag_y); }
+    else if s[0].panning { lab_view_pan(s, x - s[0].drag_x, y - s[0].drag_y); }
     else {
       k := hi(s[0].dpr, 0.5);
       s[0].yaw -= (x - s[0].drag_x) * 0.005 / k;
@@ -4342,7 +4328,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   for f: 0..<4 {
     // a second and more of the battle's turns, a zoom, and a frame
     for q: 0..<24 { step(s[..], f32(STEP)); }
-    cam_zoom(s[..], ifx f % 2 == 0 then 0.6 else 1.5);
+    lab_view_zoom(s[..], ifx f % 2 == 0 then 0.6 else 1.5);
     n = lab_frame(s[..], out[..], u[..], 1600, 1000, 1, 0.05, false);
     for k: 0..<4 { #assert u[U_BOUNDS + k] == first[k]; }
     #assert s[0].cols == cols && s[0].rows == rows;

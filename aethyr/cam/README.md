@@ -15,6 +15,10 @@ colliders.
 | `eye.coax` | Checked head-to-eye sphere sweep over a semantic selection: body categories, roles and ignored self identities come from the owner; stale selections and query failures report their exact status, and an embedded start cannot claim a safe view |
 | `semantic.coax` | Source-part adapters `cam_centred_selected` and `cam_shake_selected` for the existing follow/shot owner; collision tests the displaced shake segment, and the accepted eye displacement moves the aim while the listener retains the unshaken base |
 | `track.coax` | A camera track any zone can load from a stage (#13107): keys of time, eye, look and easing as table rows (`cam_track_load`), flown through `cinematic.coax`'s Catmull-Rom at a clock the zone owns (`cam_track_at`, whole game steps by `cam_track_clock`), so a recording gives the same frames every run; a sky clock (`cam_track_day`) sweeps the day over the shot |
+| `chase.coax` | The follow layer a zone wires (#13087): one step of the orbit from the frame's look, keys and walk (`cam_chase_orbit`; with `look_up`, the centred mode's look up past the horizon, held until the walk recentres), its room over the ground ring and before trunks (`cam_trunk`, `cam_chase_settle`) or over a level floor (`cam_chase_floor`), a drag's turn (`cam_drag`), the wheel and a pinch (`cam_wheel`, `cam_pinch`) and mouselook's over-the-shoulder framing (`cam_shoulder_shot`) |
+| `studio.coax` | Character Create's cameras: the studio (`cam_studio`, `cam_studio_shot`), the run into the world (`cam_run_track`, then `cam_run_show` through a retain cinematic and its hand-back), a phone's gap lens (`cam_gap_lens`) and the walk behind you down the road (`cam_walk_view`, `cam_right_up`); a zone holds the eye over its own land (`cam_hold_eye`) |
+| `boom.coax` | The over-the-shoulder boom: mouselook and a drawn bow over your right shoulder, first person zoomed all the way in (`cam_boom`), pulled in before walls (`cam_boom_walls`) and before the land along its whole length (`CamSweep`, fed the realm's heights) |
+| `overhead.coax` | A spectator's overhead orbit over a board: its home view, zoom between near and far, and a pan that moves the ground with the pointer |
 
 `attn_step_selected` consumes a sight selection from `query-scene.coax`. It
 rechecks its epoch and referenced entities before running the same bounded
@@ -40,6 +44,13 @@ whole-mode/cinematic mutation coverage or complete camera frame-rate parity.
 
 ## Adoption
 
+- **The zones' follow layer** (#13087): Everglade II and Experimental keep no camera of
+  their own. Everglade II wires `chase.coax` (`e2_chase_step`) and `studio.coax`
+  (`e2c_view`, `e2c_view_lens`); Experimental's 5E Lab wires `chase.coax`
+  (`lab_chase_step`) and `overhead.coax` (`lab_view_*`), and its world wires `boom.coax`
+  and `studio.coax` (`cc_view`, `walk_view`). A camera trace of each zone's old and new
+  code over the same walk, looks, keys, zooms, mouselook, autowalk, Character Create run
+  and village walls gives the same bits.
 - **Everglade II** (`apps/openagents-web/everglade2.coax`): the follow camera's
   look up, ground clamp, press and trunk pull-in are `cam_centred` with
   Everglade II's mode (`e2_mode`); the former `e2_pitch`, `e2_ray`,
@@ -80,5 +91,9 @@ coax/bin/coax test aethyr/cam/handback.coax --library
 coax/bin/coax test aethyr/cam/filters.coax --library
 coax/bin/coax test aethyr/cam/parity.coax --library
 coax/bin/coax test aethyr/cam/track.coax --library
+coax/bin/coax test aethyr/cam/chase.coax --library
+coax/bin/coax test aethyr/cam/studio.coax --library
+coax/bin/coax test aethyr/cam/boom.coax --library
+coax/bin/coax test aethyr/cam/overhead.coax --library
 coax/bin/coax test --library apps/openagents-web/everglade2.coax
 ```

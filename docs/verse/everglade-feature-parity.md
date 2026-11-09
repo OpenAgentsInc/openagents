@@ -174,13 +174,14 @@ starts) and `verse/everglade/gpu-fx.coax`.
 ### Camera
 
 The shared modules are `aethyr/camera.coax` (the orbit), `aethyr/cam/` (modes,
-mouselook, attention, the reticle), `aethyr/shot.coax` and
-`aethyr/follow.coax`.
+mouselook, attention, the reticle, first person, and the zones' follow layer:
+`chase.coax`, `studio.coax`, `boom.coax` and `overhead.coax`), `aethyr/shot.coax`
+and `aethyr/follow.coax`.
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared orbit, modes and mouselook; a local follow layer on top: `e2_follow` everglade2.coax:668, `e2_shot` :623, `e2_ml_shot` :584, `e2_cam_ground` :617, and Character Create's `e2c_shot` everglade2-create.coax:671. |
-| Experimental | Shared orbit in the 5E Lab (`follow_cam` fivelab.coax:2216 over `verse_orbit_*`), with local `cam_zoom` :3700, `cam_home` :3704, `cam_pan` :3714; the Experimental world computes its own orbit and boom in `camera` charactercreator.coax:1068 and `cc_camera_boom` :1054, and the walk in `walk_camera` charactercreator-walk.coax:209. |
+| Everglade II | Shared: the follow step, ground ring, trunks and mouselook framing (`aethyr/cam/chase.coax`, wired in `e2_chase_step` everglade2.coax), and Character Create's studio, run and lens (`aethyr/cam/studio.coax`, wired in `e2c_view` and `e2c_view_lens` everglade2-create.coax). |
+| Experimental | Shared: the 5E Lab's follow step (`chase.coax`, `lab_chase_step` fivelab.coax) and spectator camera (`aethyr/cam/overhead.coax`, `lab_view_zoom`, `lab_view_home`, `lab_view_pan`); the world's over-the-shoulder boom (`aethyr/cam/boom.coax`, `cc_view` charactercreator.coax), studio and walk (`studio.coax`, `cc_view` and `walk_view` charactercreator-walk.coax). |
 | Everglade v1 | Shared orbit (`aethyr/camera.coax`, everglade.coax:62); local framing in `camera_frame` everglade.coax:3547, `cz_frame_shot` everglade-create.coax:500 and `everglade_place_camera` everglade-place.coax:63. |
 
 ## The manifest
@@ -328,8 +329,7 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### Camera (#13087)
 
-22 zone-local copies.
+5 zone-local copies, all in Everglade v1, which is frozen. Everglade II and
+Experimental wire the shared modules.
 
-- Everglade II: `e2c_shot` everglade2-create.coax:671, `e2c_lens` everglade2-create.coax:699, `E2_CAM_TRUNKS` everglade2.coax:56, `E2_LOOK_DRAG` everglade2.coax:57, `e2_ml_shot` everglade2.coax:584, `e2_cam_ground` everglade2.coax:617, `e2_shot` everglade2.coax:623, `e2_follow` everglade2.coax:668.
-- Experimental: `walk_camera` charactercreator-walk.coax:209, `cc_camera_boom` charactercreator.coax:1054, `cc_camera_terrain_room` charactercreator.coax:1060, `camera` charactercreator.coax:1068, `LOOK_DRAG` fivelab.coax:1972, `follow_cam` fivelab.coax:2216, `cam_zoom` fivelab.coax:3700, `cam_home` fivelab.coax:3704, `cam_pan` fivelab.coax:3714.
 - Everglade v1: `cz_frame_shot` everglade-create.coax:500, `everglade_place_camera` everglade-place.coax:63, `LOOK_DRAG` everglade.coax:374, `CAM_TRUNK_CLEAR` everglade.coax:3445, `camera_frame` everglade.coax:3547.
