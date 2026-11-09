@@ -54,6 +54,7 @@
 #load "../../aethyr/action/sensor.coax" as sense;
 #load "../../aethyr/query.coax" as aq;
 #load "../../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
+#load "../../aethyr/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
 #load "../../aethyr/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
 #load "../../aethyr/action/bow.coax" as bow;
 #load "../../aethyr/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
@@ -1083,14 +1084,25 @@ xc_bow_puffs :: (s: [] Lab, pf: [] FxPuffs) {
     fxp_arrow_at(pf, fxp_v(at[0], at[1], at[2]), fxp_v(dir[0], dir[1], dir[2]), bow.arrow_alpha(a, now), a.state == bow.ARROW_FLYING, f32(i) * 1.7 + 0.3);
   }
 }
-// The crosshair: the shared reticle (aethyr/cam/reticle.coax) on the camera's centre ray, its arms
-// in with the aim and closing as the draw builds.
+// The crosshair: the shared reticle (aethyr/cam/reticle.coax) on the camera's centre ray: a small
+// crosshair while the mouse looks (aethyr/cam/mouselook.coax), a little warmer over a monster, and the
+// bow's arms in with the aim, closing as the draw builds. One crosshair for both.
 xc_crosshair :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
-  x := s[0].xc[0]; n := at;
+  x := s[0].xc[0]; n := at; ml := s[0].creator[0].ml[0];
   if !x.seen { return n; }
+  cx := x.u[23]; cy := x.u[27]; hs := s[0].creator[0].hostiles[..];
   st: [reticle.RETICLE_MAX] reticle.ReticleStroke;
-  m := reticle.reticle_strokes(st[..], x.u[23], x.u[27], k, 0, bow.bow_aim(x.draw[0]), bow.bow_strength(x.draw[0], s[0].creator[0].clock));
-  for i: 0..<m { q := st[i]; if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width, q.alpha, 0.5, q.r, q.g, q.b, 0) { n += 6; } }
+  m := reticle.reticle_strokes(st[..], cx, cy, k, ml.shown * 0.9, bow.bow_aim(x.draw[0]), bow.bow_strength(x.draw[0], s[0].creator[0].clock));
+  if m == 0 { return n; }
+  over := false;
+  for i: 0..<XC_FOES {
+    e := hs[0].enemies[i]; if e.dead { continue; }
+    p := xc_proj(s[0].xc[..], e.x, meadow_y(e.x, e.z) + 0.8, e.z);
+    if p.ok && (p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy) < 30 * k * 30 * k { over = true; }
+  }
+  // a dark edge under it, so it reads on a bright coat or the sky
+  for i: 0..<m { q := st[i]; if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width + 1.6 * k, q.alpha * 0.45, 0.5, 0.05, 0.05, 0.06, 0) { n += 6; } }
+  for i: 0..<m { q := xlook.ml_tint(st[i], over); if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width, q.alpha, 0.5, q.r, q.g, q.b, 0) { n += 6; } }
   return n;
 }
 xc_press :: (s: [] Lab, k: int) -> bool {

@@ -26,6 +26,8 @@
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../../verse/everglade2/environment.coax";   // the world's places and their light (#13065)
 #load "../../aethyr/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
+#load "../../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held, as Neverwinter's
+#load "../../aethyr/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 16384;     // strokes: the frame rate in the bottom right corner
@@ -68,6 +70,7 @@ E2 :: struct {
   move_hulls: [E2_HULL_ROOM] f32;   // the rocks' hulls round you this step (everglade2-move.coax e2m_world)
   bake: [figs.BD_BAKE_FLOATS] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
+  ml: [1] mlook.Mouselook;   // mouselook (aethyr/cam/mouselook.coax): in the world, not Character Create's studio
   held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
   you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32; autowalk: bool;
   // everglade.world's /play (e2c_play_page): one address for Character Create and the world; where you
@@ -448,6 +451,7 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
 // ---- input
 e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   if e2c_key(s, key) { return true; }
+  if mlook.ml_key(s[0].ml[..], key) { return true; }
   if e2k_key(s, key) { return true; }
   if key == ' ' { s[0].held |= HOLD_JUMP; return true; }
   if key == KEY_SHIFT { s[0].shift = true; return true; }
@@ -456,16 +460,19 @@ e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
 }
 e2_key_up :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == KEY_SHIFT { s[0].shift = false; }
+  if mlook.ml_key_up(s[0].ml[..], key) { return true; }
   h := ifx key == ' ' then HOLD_JUMP else hold_bit(key);
   s[0].held = s[0].held & (HOLD_ALL - h); return h != 0;
 }
-e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = false; s[0].dragging = false; }
+e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = false; s[0].dragging = false; mlook.ml_blur(s[0].ml[..]); }
 // A mouse drag looks round (a finger is the face's: aethyr/sticks.coax).
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  if phase == 0 { s[0].ml[0].touch = kind != 0; }
   if e2c_pointer(s, x, y, phase, id) { return true; }
   if e2k_pointer(s, x, y, phase) { return true; }
   if kind != 0 { return false; }
-  if phase == 0 { s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
+  // a press on the world (not the bar): the mouse looks again (mouselook; the drag still orbits without it)
+  if phase == 0 { mlook.ml_press(s[0].ml[..], kind); s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y; return true; }
   if phase == 1 && s[0].dragging {
     s[0].look_yaw -= (x - s[0].drag_x) / s[0].k * f32(E2_LOOK_DRAG); s[0].look_pitch -= (y - s[0].drag_y) / s[0].k * f32(E2_LOOK_DRAG);
     s[0].drag_x = x; s[0].drag_y = y; return true;
@@ -477,6 +484,34 @@ e2_wheel :: (s: [] E2, dy: f32) -> bool #export_c #effects(all) {
   if e2c_wheel(s, dy) { return true; }
   d := ifx dy > 400 then 400.0f32 else ifx dy < -400 then -400.0f32 else dy;
   s[0].orbit = figs.verse_orbit_zoom(s[0].orbit, d * f32(E2_WHEEL_ZOOM)); return true;
+}
+// Mouselook, the host's face: whether the pointer is wanted, the mouse's travel while held, and what
+// the browser did (aethyr/cam/mouselook.coax). The turn goes the way a drag's does.
+e2_mouselook :: (s: [] E2) -> int #export_c #effects(all) { return mlook.ml_host(s[0].ml[0]); }
+e2_look_delta :: (s: [] E2, dx: f32, dy: f32) #export_c #effects(all) {
+  t := mlook.ml_turn(s[0].ml[0], dx, dy); s[0].look_yaw -= t[0]; s[0].look_pitch -= t[1];
+}
+e2_pointer_lock :: (s: [] E2, status: int) #export_c #effects(all) { mlook.ml_lock(s[0].ml[..], status); if status == 1 { s[0].dragging = false; } }
+// The reticle at the view's centre while the mouse looks (the shared one: aethyr/cam/reticle.coax),
+// warmer over one of the others.
+e2_reticle :: (s: [] E2, out: [] f32, at: int) -> int {
+  m := s[0].ml[0]; if m.shown <= 0.01 { return at; }
+  k := s[0].k; cx := s[0].width * 0.5; cy := s[0].cy;
+  over := false; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up;
+  for i: 0..<s[0].plate_n {
+    p := s[0].plates[i]; dx := p.x - e[0]; dy := p.y - 0.8 - e[1]; dz := p.z - e[2];
+    z := dx * f[0] + dy * f[1] + dz * f[2]; if z < 0.5 { continue; }
+    sx := cx + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / z; sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / z;
+    reach := 26 * k + s[0].focal * 0.5 / z;
+    if (sx - cx) * (sx - cx) + (sy - cy) * (sy - cy) < reach * reach { over = true; }
+  }
+  st: [reticle.RETICLE_MAX] reticle.ReticleStroke;
+  sn := reticle.reticle_strokes(st[..], cx, cy, k, m.shown * 0.9, 0, 0);
+  n := at;
+  // a dark edge under it, so it reads on a bright coat or the sky
+  for i: 0..<sn { q := st[i]; if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width + 1.6 * k, q.alpha * 0.45, 0.5, 0.05, 0.05, 0.06, 0) { n += 6; } }
+  for i: 0..<sn { q := mlook.ml_tint(st[i], over); if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width, q.alpha, 0.5, q.r, q.g, q.b, 0) { n += 6; } }
+  return n;
 }
 e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
   s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
@@ -546,6 +581,8 @@ e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
   #assert hy / hl < vy / vl;
 }
 e2_follow :: (s: [] E2, dt: f32) {
+  s[0].ml[0].able = s[0].placed && !e2c_creating(s) && !e2c_running(s) && !e2_wants_text(s);
+  mlook.ml_step(s[0].ml[..], dt);
   if s[0].autowalk || e2c_running(s) {
     // the camera eases round behind the walk (and Character Create's run)
     want := e2_auto_heading(s[0].you_x, s[0].you_z);
@@ -564,6 +601,8 @@ e2_follow :: (s: [] E2, dt: f32) {
   feet := figs.v3(s[0].you_x, s[0].you_y, s[0].you_z);
   sp := s[0].anim[0].speed;
   p0 := o.pitch;
+  // while the mouse looks, the walk never eases the camera's tilt back: the mouse holds it
+  if mlook.ml_on(s[0].ml[0]) { o.idle = 0; }
   o = figs.verse_orbit_follow(o, feet, s[0].you_face, sp > 0.6, dt);
   // the shared follow eases a look past its own range back into it; here a look up holds until the
   // walk's own recentring, a while after the last look
@@ -663,7 +702,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2_shadows(s, u);
   e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s));
   e2k_step(s);
-  return e2_light_hud(s, out, e2_fps(s, out, e2_plates(s, out, e2k_hud(s, out, e2c_hud(s, out))), dt));
+  return e2_light_hud(s, out, e2_fps(s, out, e2_reticle(s, out, e2_plates(s, out, e2k_hud(s, out, e2c_hud(s, out)))), dt));
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
@@ -1080,6 +1119,12 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 5 { return cast(int)(s[0].you_z * 100); }
   // 6 the camera's room along its ray, 7 the eye's height over your feet, 8 your feet over the land (cm)
   if field == 6 { return cast(int)(s[0].orbit.shown * 100); }
+  // mouselook: 140 what the host is told, 141 the pointer held, 142 the reticle (percent), 143 the camera's turn, 144 its tilt (milliradians)
+  if field == 140 { return mlook.ml_host(s[0].ml[0]); } if field == 141 { return ifx s[0].ml[0].locked then 1 else 0; }
+  if field == 142 { return cast(int)(s[0].ml[0].shown * 100); } if field == 143 { return cast(int)(s[0].orbit.yaw * 1000); } if field == 144 { return cast(int)(s[0].orbit.pitch * 1000); }
+  // 145, 146 the bar's first slot's middle (device pixels), 147 the slot the pointer is over (-1 none)
+  if field == 145 || field == 146 { k := s[0].casts[..]; b := e2k_box(k, 0, s[0].width, s[0].height, s[0].k); return cast(int)(ifx field == 145 then (b[0] + b[2]) / 2 else (b[1] + b[3]) / 2); }
+  if field == 147 { return s[0].casts[0].hover; }
   if field == 7 { return cast(int)((s[0].eye[1] - s[0].you_y) * 100); }
   if field == 8 { return cast(int)((s[0].you_y - e2_height(s[0].you_x, s[0].you_z)) * 100); }
   // 9 the bake's publish status (0 live, -1 not yet), 10 the baked AO at you (thousandths), 11 its crowns

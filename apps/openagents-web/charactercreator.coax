@@ -16,6 +16,7 @@
 #load "../../aethyr/character-appearance.coax" as appearance;
 VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
+#load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's world: the mouse looks round with no button held
 
 // Shared with Everglade II: sampled frames over the last half second.
 FpsCounter :: struct {fps:f32;frames:int;time:f32;}
@@ -54,6 +55,7 @@ Creator :: struct {
   weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (experimental-combat.coax)
   aim:f32;           // a drawn bow's aim, 0 to 1 (aethyr/action/bow.coax bow_aim): the camera over your shoulder and the aiming pose
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
+  ml:[1]mlook.Mouselook;   // Experimental's mouselook (aethyr/cam/mouselook.coax); the studio never asks for it
   dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
   shadow:[1]CcShadow;   // the key light's two shadow tiles (shadow_frame)
@@ -958,7 +960,7 @@ pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int)->bool {
   if s[0].walk.on {return true;}
   if s[0].experimental {
     if dev_pointer(s,x,y,phase) {return true;}
-    if phase==0 {s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
+    if phase==0 {mlook.ml_press(s[0].ml[..],ifx s[0].ml[0].touch then 1 else 0);s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
     else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,-1.2,1.2);s[0].dx=x;s[0].dy=y;}
     else if phase==2 || phase==3 {s[0].dragging=false;}return true;
   }
@@ -1192,7 +1194,7 @@ mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
   if s[0].walk.on {return true;}
   if s[0].experimental {
     if dev_pointer(s,x,y,phase) {return true;}
-    if phase==0 {s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
+    if phase==0 {mlook.ml_press(s[0].ml[..],ifx s[0].ml[0].touch then 1 else 0);s[0].dragging=true;s[0].drag_id=id;s[0].dx=x;s[0].dy=y;}
     else if id==s[0].drag_id && phase==1 && s[0].dragging {s[0].yaw-=(x-s[0].dx)*0.0055;s[0].pitch=cc_clamp(s[0].pitch+(y-s[0].dy)*0.0055,-1.2,1.2);s[0].dx=x;s[0].dy=y;}
     else if phase==2 || phase==3 {s[0].dragging=false;}return true;
   }

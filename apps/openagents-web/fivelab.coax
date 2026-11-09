@@ -45,6 +45,7 @@
 #load "../../verse/experimental-comparison.coax" as compare;
 #load "../../verse/experimental-biomes.coax" as biomes;
 #load "../../verse/experimental-aribeth.coax" as nwna;
+#load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 #load "experimental-objects.coax";
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
@@ -3215,6 +3216,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
       hostile.hostile_start(s[0].creator[0].hostiles[..]);
       xc_start(s[0].xc[..],s[0].xc[0].klass); xc_sync_vitals(s); xc_sync_permissions(s);
     }
+    lab_mouselook_step(s, ifx still then 0.0f32 else dt);
     n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
     if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
       if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
@@ -3581,7 +3583,7 @@ lab_respawn_pointer :: (s:[]Lab,x:f32,y:f32,phase:int,id:int)->bool {
  if s[0].respawn_id!=id {return false;}if phase==2 {s[0].respawn_id= -1;if inside {_:=lab_respawn(s);}return true;}if phase==3 {s[0].respawn_id= -1;return true;}return true;
 }
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
-  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
+  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
   if s[0].creator[0].on {return cc.key(s[0].creator[..],key);}
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)
@@ -3617,6 +3619,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
 }
 lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == KEY_SHIFT { s[0].shift = false; }
+  if mlook.ml_key_up(s[0].creator[0].ml[..], key) { return true; }
   h := ifx key == ' ' then HOLD_JUMP else hold_bit(key);
   s[0].held = s[0].held & (HOLD_ALL - h);   // h is one HOLD_ bit or none
   return h != 0;
@@ -3637,7 +3640,7 @@ target_next :: (s: [] Lab) {
   }
   s[0].target = ifx best >= 0 then best else first;
 }
-lab_blur :: (s: [] Lab) #export_c #effects(all) { s[0].creator[0].dragging=false;s[0].creator[0].down=-1; s[0].stick_on = false; s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; s[0].xc[0].arranging=false; s[0].xc[0].down= -100; }
+lab_blur :: (s: [] Lab) #export_c #effects(all) { s[0].creator[0].dragging=false;s[0].creator[0].down=-1; s[0].stick_on = false; s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; s[0].xc[0].arranging=false; s[0].xc[0].down= -100; mlook.ml_blur(s[0].creator[0].ml[..]); }
 // The keys that fly the camera while they are held.
 hold_bit :: (key: int) -> int {
   if key == 'w' || key == 'W' { return HOLD_W; }
@@ -3720,6 +3723,7 @@ lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
   return true;
 }
 lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
   if s[0].creator[0].on {if s[0].creator[0].experimental && lab_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
   lab_start(s);
   if phase == 0 {
@@ -3812,6 +3816,30 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   return false;
 }
 lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
+// Experimental's mouselook, the host's face (aethyr/cam/mouselook.coax): in the world while you stand
+// (dead, the cursor is free for the respawn), never in Character Create's studio or the walk out of it.
+// The mouse turns the camera as a drag does, its tilt held to the drag's.
+lab_mouselook :: (s: [] Lab) -> int #export_c #effects(all) { return mlook.ml_host(s[0].creator[0].ml[0]); }
+lab_look_delta :: (s: [] Lab, dx: f32, dy: f32) #export_c #effects(all) {
+  c := s[0].creator[..]; t := mlook.ml_turn(c[0].ml[0], dx, dy);
+  c[0].yaw = figs.wrap_angle(c[0].yaw - t[0]); c[0].pitch = cc.cc_clamp(c[0].pitch + t[1], -1.2, 1.2);
+}
+lab_pointer_lock :: (s: [] Lab, status: int) #export_c #effects(all) { mlook.ml_lock(s[0].creator[0].ml[..], status); if status == 1 { s[0].creator[0].dragging = false; } }
+#test "Experimental's mouse looks round in the world, not in the studio, and a dead hero gets the cursor" {
+  s: [1] Lab; s[0].creator[0].on = true; s[0].creator[0].experimental = true; s[0].creator[0].hostiles[0].ready = true; s[0].creator[0].hostiles[0].hp = 10;
+  lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == mlook.ML_LOOK;
+  lab_pointer_lock(s[..], 1); yaw := s[0].creator[0].yaw; pitch := s[0].creator[0].pitch;
+  lab_look_delta(s[..], 100, 40); #assert s[0].creator[0].yaw < yaw && s[0].creator[0].pitch > pitch;
+  #assert lab_key(s[..], KEY_TAB, 0) && lab_mouselook(s[..]) == mlook.ML_FREE;
+  #assert lab_key(s[..], KEY_TAB, 0) && lab_mouselook(s[..]) == mlook.ML_LOOK;
+  s[0].creator[0].hostiles[0].hp = 0; lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == 0;
+  s[0].creator[0].experimental = false; lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == 0;
+}
+lab_mouselook_step :: (s: [] Lab, dt: f32) {
+  c := s[0].creator[..];
+  c[0].ml[0].able = c[0].on && c[0].experimental && !c[0].walk.on && !(c[0].hostiles[0].ready && c[0].hostiles[0].hp <= 0);
+  mlook.ml_step(c[0].ml[..], dt);
+}
 HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
 lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind==12 { _ := xc_order_load(s[0].xc[..], t); return; }
@@ -4386,7 +4414,9 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert hit == 8 && gold == 1 && nums == 4;   // the 3 biggest, and your target's
 }
 
-lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {if f>=900 {return xc_probe(s,f);}return cc.probe(s[0].creator[0],f);}
+// 840 mouselook's word to the host, 841 the pointer held, 842 the reticle (percent), 843 the camera's turn, 844 its tilt (milliradians), 845 the bar slot under the pointer
+lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {if f>=900 {return xc_probe(s,f);}
+  c:=s[0].creator[0];if f==840 {return mlook.ml_host(c.ml[0]);}if f==841 {return ifx c.ml[0].locked then 1 else 0;}if f==842 {return cast(int)(c.ml[0].shown*100);}if f==843 {return cast(int)(c.yaw*1000);}if f==844 {return cast(int)(c.pitch*1000);}if f==845 {return s[0].xc[0].hover;}return cc.probe(s[0].creator[0],f);}
 
 #test "creator restores a kept appearance before the host identifies its page" #steps 20000000 {
   s:[1]Lab;appearance:[1]cc.Creator;cc.ensure(appearance[..]);cc.change(appearance[..],1,1);
@@ -4399,6 +4429,7 @@ lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {if f>=900 {re
 
 // Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
 lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int)->bool #export_c #effects(all) {
+  if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
   // the bow (docs/verse/bow-combat.md): the right button held draws and its release looses; the left
   // button while drawing lets it down. The drag still turns the camera, which is the aim.
   if s[0].creator[0].on && kind==0 && s[0].creator[0].experimental {

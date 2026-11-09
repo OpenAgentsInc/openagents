@@ -26,6 +26,10 @@
 //   coaxial_pointer_buttons_v1(state, x, y, phase, kind, id, button) optional additive DOM button hook;
 //                             button 0 left, 2 right, -1 on ordinary pointer moves
 //   coaxial_wheel(state, dy)  the wheel, CSS pixels down (the page doesn't scroll)
+//   coaxial_mouselook(state)  optional: 0 no mouselook here, 1 its cursor is free, 2 hold the pointer
+//                             (Pointer Lock, inside a user gesture; aethyr/cam/mouselook.coax)
+//   coaxial_look_delta(state, dx, dy) the mouse moved while the pointer is held, CSS pixels
+//   coaxial_pointer_lock(state, status) 1 the pointer is held, 0 let go (Escape too), 2 refused
 //   coaxial_tilt(state, dyaw, dpitch) the phone turned, radians (the OpenAgents app's gyro: coaxial.tilt)
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
 //                             text in: kind 1 is typed or pasted text; kind 2 the page's data-text,
@@ -3077,7 +3081,7 @@ function draw(now) {
 
 // ---- input: keys, the pointer and typed text go to the app; its actions come out
 const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
-  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13, Control: -14, Tab: -15 };
+  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13, Control: -14, Tab: -15, Alt: -16 };
 // Input waits while a lost device is replaced (its state is put back as the loss found it), and a
 // trap here stops the engine as one in a frame does.
 const call = (name, ...args) => {
@@ -3463,6 +3467,7 @@ function after(gesture, tap = false) {
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
+  syncLook();
   const cursor = ["", "pointer", "crosshair", "text"][call("coaxial_cursor")] || "";
   if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;
 }
@@ -3510,7 +3515,7 @@ const modsOf = (e) => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4
 addEventListener("keydown", (e) => {
   if (!engine || e.isComposing) return;
   // the accessible layer's own keys: Tab moves through it, Enter and Space press what has focus
-  if (a11y.root && (e.key === "Tab" || (a11y.root.contains(e.target) && (e.key === "Enter" || e.key === " ")))) return;
+  if (a11y.root && ((e.key === "Tab" && !(call("coaxial_mouselook") > 0)) || (a11y.root.contains(e.target) && (e.key === "Enter" || e.key === " ")))) return;
   startAudio();
   const named = KEYS[e.key];
   // Paste is the browser's: it lands in the field, whose input event brings the text.
@@ -3555,6 +3560,11 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
     if (touch) touchAt = now;
     else if (now - touchAt < AFTER_TOUCH_MS) return;
     let x = e.clientX, y = e.clientY, ph = phase;
+    // the pointer held (mouselook): a move only turns the camera, and a press is at the reticle
+    if (!touch && looking()) {
+      if (phase === 1) { call("coaxial_look_delta", e.movementX || 0, e.movementY || 0); return; }
+      const r = canvas.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height / 2;
+    }
     if (touch) {
       if (phase === 0) touches.set(e.pointerId, { t: now, x0: x, y0: y, x, y });
       const p = touches.get(e.pointerId);
@@ -3573,6 +3583,38 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
     else call("coaxial_pointer", x * dpr, y * dpr, ph, touch ? 1 : 0, e.pointerId);
     after(ph === 2, ph === 2);
   });
+
+// Mouselook (aethyr/cam/mouselook.coax): the app says when it wants the pointer held; the host asks the
+// browser inside a user gesture (a press or a key; Chrome lets a lock let go by the page come back
+// without one), lets it go when the app frees the cursor, and says what the browser did. A refusal
+// is the app's to answer (its drag orbit), never an error here. Dev pages can stand in for the
+// browser's lock (coaxial.pointerLock) so headless checks can drive it.
+let lookHeld = false, lookAsked = false, lookFake = false;
+const looking = () => lookHeld || lookFake;
+function syncLook() {
+  const want = call("coaxial_mouselook");
+  if (!canvas || !engine?.exports.coaxial_mouselook) return;
+  if (lookFake) { if (want !== 2) { lookFake = false; call("coaxial_pointer_lock", 0); } return; }
+  if (want === 2 && !lookHeld && !lookAsked && navigator.userActivation?.isActive !== false && document.hasFocus()) {
+    lookAsked = true;
+    try {
+      const p = canvas.requestPointerLock?.();
+      if (p?.catch) p.catch(() => { lookAsked = false; if (!lookHeld) call("coaxial_pointer_lock", 2); });
+    } catch { lookAsked = false; call("coaxial_pointer_lock", 2); }
+  } else if (want !== 2 && lookHeld) document.exitPointerLock?.();
+}
+document.addEventListener("pointerlockchange", () => {
+  const held = document.pointerLockElement === canvas;
+  lookAsked = false;
+  if (held === lookHeld) return;
+  lookHeld = held; call("coaxial_pointer_lock", held ? 1 : 0);
+});
+document.addEventListener("pointerlockerror", () => { lookAsked = false; call("coaxial_pointer_lock", 2); });
+// Development checks only: 1 holds the pointer as the browser would (moves then turn the camera), 0 lets it go.
+if (dev) globalThis.coaxial.pointerLock = (status) => {
+  lookFake = status === 1; if (lookHeld && status !== 1) document.exitPointerLock?.();
+  call("coaxial_pointer_lock", status); return call("coaxial_mouselook");
+};
 
 function runProbe(w, h, dpr) {
   for (const step of probeDo.split(";").filter(Boolean)) {

@@ -68,7 +68,8 @@ fairy 695000
 # Devotion Protection adds persistent effect and component handling, measured at 2,674,265 bytes (#13030).
 # Zone of Truth world anchoring and shared saves, measured at 2,679,040 bytes (#13030).
 # Revivify: recorded combat deaths, corpse targeting and the diamond supply, measured at 2,685,797 bytes (#13030).
-fivelab 2686500
+# Experimental's mouselook (aethyr/cam/mouselook.coax) and the shared reticle drawn while it looks, on main with bow combat (b9ef099b71, about 2,694,800): 2,701,385 bytes measured.
+fivelab 2705000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
@@ -95,7 +96,9 @@ fivelab 2686500
 # Devotion Protection adds the hotbar and effect handling, measured at 720,314 bytes (#13030).
 # Zone of Truth hotbar and shared saves, measured at 721,014 bytes (#13030).
 # Rock hulls in aethyr walk/collide/query (7afe501d33) and Revivify's room target (#13030): 755,675 bytes measured.
-everglade2 757000
+# Mouselook (aethyr/cam/mouselook.coax: the mouse turns the camera with no button held, Tab and Alt
+# free the cursor) and its shared reticle (aethyr/cam/reticle.coax), on main with its rock colliders at 755,675: 758,899 bytes measured.
+everglade2 762000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1740000

@@ -12,8 +12,8 @@ RETICLE_MAX :: 5;
 // A stroke from (ax, ay) to (bx, by), screen pixels, `width` wide, `alpha` visible, coloured r g b.
 ReticleStroke :: struct { ax: f32; ay: f32; bx: f32; by: f32; width: f32; alpha: f32; r: f32; g: f32; b: f32; }
 
-// The strokes at the centre (cx, cy), k pixels a point: the dot, `idle` visible (0 hides it when
-// nothing aims), and the arms as far as `aim` (0 to 1) has come in, at draw `strength` (0 to 1).
+// The strokes at the centre (cx, cy), k pixels a point: the dot and a small crosshair round it, `idle`
+// visible (0 hides them when nothing aims), and the arms as far as `aim` (0 to 1) has come in, at draw `strength` (0 to 1).
 // Returns how many it wrote into out (at most RETICLE_MAX).
 reticle_strokes :: (out: [] ReticleStroke, cx: f32, cy: f32, k: f32, idle: f32, aim: f32, strength: f32) -> int {
   n := 0;
@@ -24,8 +24,10 @@ reticle_strokes :: (out: [] ReticleStroke, cx: f32, cy: f32, k: f32, idle: f32, 
   if dot > 0.01 && n < out.count {
     out[n] = ReticleStroke.{ax = cx - 1.2 * k, ay = cy, bx = cx + 1.2 * k, by = cy, width = 2.2 * k, alpha = dot, r = r, g = g, b = b}; n += 1;
   }
-  if aim <= 0.01 { return n; }
-  gap := (14 - 8 * strength) * k; arm := 7 * k; a := aim * 0.9;
+  // idle (mouselook), four short arms close round the dot, a small crosshair; a drawing bow's take their place
+  if aim <= 0.01 && idle <= 0.01 { return n; }
+  w := ifx aim > 0.01 then 1.0f32 else 0.0f32;
+  gap := ((1 - w) * 5 + w * (14 - 8 * strength)) * k; arm := ((1 - w) * 4 + w * 7) * k; a := ifx aim > 0.01 then aim * 0.9 else idle * 0.75;
   dx := [4] f32.[-1, 1, 0, 0]; dy := [4] f32.[0, 0, -1, 1];
   for i: 0..<4 {
     if n >= out.count { break; }
@@ -35,10 +37,10 @@ reticle_strokes :: (out: [] ReticleStroke, cx: f32, cy: f32, k: f32, idle: f32, 
   return n;
 }
 
-#test "idle shows only the dot; a drawn bow adds four arms that close in and turn gold at full draw" {
+#test "idle shows the dot in a small crosshair; a drawn bow adds four arms that close in and turn gold at full draw" {
   s: [RETICLE_MAX] ReticleStroke;
   #assert reticle_strokes(s[..], 100, 50, 1, 0, 0, 0) == 0;
-  #assert reticle_strokes(s[..], 100, 50, 1, 0.8, 0, 0) == 1 && s[0].alpha == 0.8 && s[0].ay == 50;
+  #assert reticle_strokes(s[..], 100, 50, 1, 0.8, 0, 0) == 5 && s[0].alpha == 0.8 && s[0].ay == 50 && abs(s[1].ax - 95) < 0.001;
   #assert reticle_strokes(s[..], 100, 50, 1, 0, 1, 0) == 5;
   loose := s[1].ax;
   #assert reticle_strokes(s[..], 100, 50, 1, 0, 1, 1) == 5 && s[1].ax > loose && s[1].b < 0.9 && s[1].r == 1;
