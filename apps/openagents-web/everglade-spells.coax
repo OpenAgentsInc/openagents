@@ -46,6 +46,7 @@
 
 #load "../../verse/rules/srd5.coax";
 #load "../../verse/demolish.coax";
+#load "../../aethyr/action/deed.coax";   // ask, act, present: a cast plays only once the room takes it (docs/verse/action-pipeline.md, #13072)
 #load "../../verse/water-spells.coax";
 #load "everglade-hotbar.coax";
 #load "everglade-arrange.coax";
@@ -188,6 +189,8 @@ Spells :: struct {
   aim: Point; aim_n: Point; aim_ok: bool; far: bool;   // aim_n: the face it points at (up on the ground or a roof)
   shot: Shot; fx: f32; fy: f32;
   casting: int; cast_t: f32; cast_at: Point; cast_n: Point; cast_from: Point;
+  deeds: [1] DeedBar;        // the bar's asks and the room's answers (aethyr/action/deed.coax, #13072)
+  ask_seq: int; ask_n: Point;   // your cast waiting for the room, and the face it was aimed at
   dmg: SrdDamage;
   meteors: [SP_METEORS * 2] SpMeteor;   // this page's, then the room server's (everglade-net.coax net_play)
   blasts: [SP_BLASTS] SpBlast;
@@ -675,6 +678,18 @@ sp_cast :: (s: [] Everglade) {
   if slot >= SP_SLOTS { egt_note(s, slot, false); rangers_you_cast(s); ab_cast(s, slot - SP_SLOTS); return; }
   if !s[0].sp.aim_ok { cr_refused(s, slot, CR_AIM); return; }
   if s[0].sp.far { cr_refused(s, slot, CR_RANGE); return; }
+  // ask first (#13072): held fast or down, or still waiting on the room, nothing gathers in your hand
+  tick := deed_tick(f32(s[0].time));
+  seq := deed_ask(s[0].sp.deeds[..], slot, tick, sp_bearing(s), sp_feel(slot));
+  if seq == 0 { return; }
+  if net_live(s) {
+    // the room takes it or refuses it; its cast bar starts on its word (sp_taken), never before
+    s[0].sp.ask_seq = seq; s[0].sp.ask_n = s[0].sp.aim_n; s[0].sp.armed = -1;
+    egt_note(s, slot, false); rangers_you_cast(s);
+    if !net_cast(s, slot, s[0].sp.aim, -1) { _ := deed_answer(s[0].sp.deeds[..], seq, false, tick, 0); }
+    return;
+  }
+  _ := deed_answer(s[0].sp.deeds[..], seq, true, tick, 0);   // offline the page's own rules take it at once
   s[0].sp.cast_seed = (srd_next(s[0].sp.dice[..]) >> 34) | 1;   // under 2^30: it goes out as a whole number
   egt_note(s, slot, false);
   s[0].sp.casting = slot; s[0].sp.cast_t = 0; s[0].sp.cast_at = s[0].sp.aim; s[0].sp.cast_n = s[0].sp.aim_n;
@@ -682,7 +697,38 @@ sp_cast :: (s: [] Everglade) {
   s[0].sp.armed = -1;
   rangers_you_cast(s);
   if slot == SP_ORB { s[0].sp.orb_live = true; s[0].sp.orb_t = 0; s[0].sp.orb_remote = false; }
-  _ := net_cast(s, slot, s[0].sp.aim, -1);   // in a room the server rolls it and says where it falls (f)
+}
+// The room took your cast (its e cast for your seat): its cast bar starts now, at the room's point and
+// seed. A word for a cast no longer waiting (refused, or timed out) starts nothing.
+sp_taken :: (s: [] Everglade, slot: int, at: Point, seed: int) {
+  if slot < 0 || slot >= SP_SLOTS || s[0].sp.casting >= 0 { return; }
+  if !deed_waiting(s[0].sp.deeds[0], s[0].sp.ask_seq) || s[0].sp.deeds[0].asked != slot { return; }
+  _ := deed_answer(s[0].sp.deeds[..], s[0].sp.ask_seq, true, deed_tick(f32(s[0].time)), 0);
+  s[0].sp.cast_seed = cast(u64) hi_int(seed, 1);
+  s[0].sp.casting = slot; s[0].sp.cast_t = 0; s[0].sp.cast_at = at; s[0].sp.cast_n = s[0].sp.ask_n;
+  s[0].sp.cast_from = add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.6, 0));
+  if slot == SP_ORB { s[0].sp.orb_live = true; s[0].sp.orb_t = 0; s[0].sp.orb_remote = false; }
+}
+// Your bearing, from the one status state (everglade-status.coax): down at 0 Hit Points, held while
+// something stops you. v1's page has no SRD engine of its own; the room's rules decide the rest.
+sp_bearing :: (s: [] Everglade) -> DeedBearing {
+  b: DeedBearing;
+  if st_down(s, ST_YOU) { b = deed_bear(b, DeedPose.down, DEED_LOCK_ALL); }
+  if (st_cond(s, ST_YOU) & (WC_PARALYZED | WC_PETRIFIED | WC_STUNNED | WC_UNCONSCIOUS)) != 0 { b = deed_bear(b, DeedPose.still, DEED_LOCK_ALL); }
+  return b;
+}
+// The four aimed spells' feel: the cast pose, the sparks gathering in your hand, the cast's sound, and
+// you stand to cast (everglade-sound.coax egs_sp_look).
+SP_FEEL_CAST :: 0;    // the cast pose (casting >= 0)
+sp_feel :: (slot: int) -> DeedFeel {
+  if slot == SP_METEOR { return DeedFeel.{anim = SP_FEEL_CAST, fx = 1, sound = "fire-cast", move = DeedMove.plant}; }
+  if slot == SP_BOLT || slot == SP_MEGA { return DeedFeel.{anim = SP_FEEL_CAST, fx = 1, sound = "bolt-cast", move = DeedMove.plant}; }
+  if slot == SP_ORB { return DeedFeel.{anim = SP_FEEL_CAST, fx = 1, sound = "arcane-cast", move = DeedMove.plant}; }
+  return DeedFeel.{};
+}
+#test "v1: every aimed spell declares its feel, and a cast in a room waits for the room's word (#13072)" {
+  for slot: 0..<SP_SLOTS { #assert deed_feel_ok(sp_feel(slot)); }
+  #assert !deed_feel_ok(sp_feel(SP_SLOTS));
 }
 // The cast bar ends: the damage is rolled once and the strike set going.
 sp_release :: (s: [] Everglade, slot: int) {
@@ -1334,6 +1380,8 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   cl_frame(s);   // a class's aim (everglade-classes.coax)
   mend_frame(s, dt);   // a Repair on its bar (everglade-repair.coax)
   rest_frame(s, dt);   // fighting, for the Long Rest (everglade-rest.coax)
+  // a cast the room never answered is let go after 1.5 s (aethyr/action/deed.coax DEED_WAIT)
+  deed_expire(s[0].sp.deeds[..], deed_tick(f32(s[0].time)));
   // the cast bar
   if s[0].sp.casting >= 0 {
     slot := s[0].sp.casting;

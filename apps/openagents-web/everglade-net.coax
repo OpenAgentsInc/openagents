@@ -811,6 +811,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
     if !r[0].ok || ce.slot < 0 || cr_repair(ce.slot) || (ce.slot >= SP_REBUILD && (ce.slot < WL_SLOT0 || ce.slot >= WL_SLOT0 + WL_SLOTS) && (ce.slot < CL_SLOT0 || ce.slot >= CL_SLOT0 + CL_N)) { return; }   // a Repair plays nothing until e mend
     k := net_ent(n, ce.ss, false);
     if k >= 0 { n[0].ents[k].cast_slot = ce.slot; n[0].ents[k].cast_at = n[0].tick_t; }
+    if ce.ss == n[0].seat && s[0].started { sp_taken(s, ce.slot, v3(ce.ax, ce.ay, ce.az), ce.seed); }   // yours, taken: its cast bar starts now (#13072)
     for q: 0..<NET_FX {
       if n[0].fx[q].live { continue; }
       // the server says the cast at its press: the strike plays once the cast bar is done (the meteors
