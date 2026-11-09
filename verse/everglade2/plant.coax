@@ -4,6 +4,7 @@
 // the pieces named here; the page (apps/openagents-web/everglade2.coax) plants them at load and
 // draws the ones in view. The glade's own composition stays in the glade's pack mesh.
 #load "forest.coax";
+#load "meadow.coax";   // the open meadow's understory, shared with the druid's field
 
 // The kit: the pack's templates, in this order. Trees have three levels of detail (0 whole, 1 two of the
 // crown's cards in three and a plain trunk, 2 one card in three: the same cards in the same places,
@@ -89,19 +90,15 @@ e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
   o:=e2_wooded(x,z);if o<0.2 || e2_path(x,z)>0.3 {continue;}
   rd:=e2_road_dist(x,z);f:=e2_forest(x,z);cl:=e2_clearing(x,z);au:=e2_autumn(x,z);
   verge:=rd>1.6 && rd<6 && cl<0.5;
-  p:=ifx verge then 0.95f32 else ifx cl>0.5 then 0.45f32 else ifx f>0.2 then (ifx rd<35 then 0.8f32 else 0.15f32) else 0.12f32;
+  p:=ifx verge then 0.95f32 else ifx cl>0.5 then f32(E2_MEADOW_DENSITY) else ifx f>0.2 then (ifx rd<35 then 0.8f32 else 0.15f32) else 0.12f32;
   if cg_hash(h,13)>p {continue;}
   r:=cg_hash(h,14);sz:=cg_hash(h,15);yaw:=cg_hash(h,16)*6.283;y:=e2_height(x,z);
   green:=[3]f32.[0.36,0.80,0.08];fern:=ifx cg_hash(h,17)<0.5 then [3]f32.[0.32,0.65,0.045] else [3]f32.[0.23,0.53,0.035];
   orange:=ifx cg_hash(h,17)<0.5 then [3]f32.[1,0.30,0.03] else [3]f32.[1,0.44,0.05];
   rock:=[3]f32.[0.60+0.08*cg_hash(h,18),0.62+0.06*cg_hash(h,18),0.50];
   bush:=ifx au>0.6 && cg_hash(h,19)<0.5 then [3]f32.[0.70,0.62,0.10] else [3]f32.[0.35,0.78,0.055];
-  if cl>0.5 {
-   if r<0.55 {k:=25+int(cg_hash(h,20)*2.999);s:=0.12+sz*0.13;n=e2_put(out,kinds,n,k,x,y,z,yaw,s,s,[3]f32.[0.4,0.75,0.05]);}
-   else if r<0.72 {s:=0.3+sz*0.3;n=e2_put(out,kinds,n,31,x,y,z,yaw,s,s,green);}
-   else if r<0.82 {s:=0.25+sz*0.4;n=e2_put(out,kinds,n,20+int(cg_hash(h,20)*2.999),x,y-0.1*s,z,yaw,s,s,rock);}
-   else if r<0.92 {s:=0.3+sz*0.25;n=e2_put(out,kinds,n,29+int(cg_hash(h,20)*1.999),x,y,z,yaw,s,s,ifx au>0.4 then orange else green);}
-   else {s:=0.5+sz*0.3;n=e2_put(out,kinds,n,28,x,y,z,yaw,s*0.75,s,[3]f32.[1,1,1]);}
+  if cl>0.5 {   // open meadow: the shared meadow's understory (meadow.coax)
+   pk:=e2_meadow_pick(h,au);n=e2_put(out,kinds,n,pk.kit,x,y-pk.sink,z,yaw,pk.sv,pk.sh,pk.tint);
    continue;
   }
   if verge {
