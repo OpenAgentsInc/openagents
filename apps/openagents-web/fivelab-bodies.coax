@@ -190,6 +190,7 @@ BdAnim :: struct {
   state: int; fell_at: f32;
   marks: f32; outlined: f32;
   y: f32; own: bool;   // the hero you play: its feet's height (a jump) and its own facing (bd_own)
+  lay: bool; lay_up: f32; lay_low: f32;   // an action layered over the gait (bd_layer): clip on the upper body, prev the gait
 }
 
 BdCam :: struct { ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32; rx: f32; ry: f32; rz: f32; ux: f32; uy: f32; uz: f32; focal: f32; cx: f32; cy: f32; w: f32; h: f32; }
@@ -472,8 +473,58 @@ bd_blow :: (b: [] Bodies, female: bool, c: int) -> f32 {
 }
 // The right (or left) hand's pose (three rows of four) between bake rows ra and rb (bd_record's out[4],
 // out[5]) at mix.
-bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix: f32, left: bool) -> [12] f32 {
+// ---- the action layer: on the move a cast or a blow plays on the upper body only, the gait keeps the
+// hips and legs. A record's mix (its b.z) below 1.5 is the whole body's share of the second row, as
+// before; from 2 up it is a layer's code, 2 + the upper body's gait share * 255 + 256 * the legs'
+// * 255, and each joint takes its share by BD_UPPER, the mask gpu/fivelab.coax fivelab_upper keeps
+// the same. The people rig's 65 joints (people-rig.coax PEOPLE_PARENT): 0 the root, 1 the pelvis,
+// 2 to 4 the spine, 5 the neck, 6 the head, 7 to 54 the arms and hands, 55 to 64 the legs.
+BD_LAYER_FADE :: 0.15;    // seconds a layered action eases in and out
+BD_UPPER_SPINE :: [3] f32.[0.4, 0.75, 1.0];   // spine_01 to spine_03: the boundary, partly, so the torso never snaps
+bd_upper :: (j: int) -> f32 {
+  if j <= 1 || j >= 55 { return 0; }
+  if j <= 4 { return BD_UPPER_SPINE[j - 2]; }
+  return 1;
+}
+bd_layer_code :: (up: f32, low: f32) -> f32 {
+  return 2 + floor(clamp01(up) * 255 + 0.5) + 256 * floor(clamp01(low) * 255 + 0.5);
+}
+// Joint j's share of the second row (the gait) under a record's mix.
+bd_gait_share :: (mix: f32, j: int) -> f32 {
+  if mix < 1.5 { return mix; }
+  c := mix - 2; low := floor(c / 256); up := c - low * 256;
+  m := bd_upper(j);
+  return (up / 255) * m + (low / 255) * (1 - m);
+}
+// A gait that moves the legs: the walk, the run, a two-hander's run.
+bd_moving :: (c: int) -> bool {
+  return c == BD_WALK || c == BD_RUN || c == BD_OWN + TWOHAND_AXE_RUN_LOOP || c == BD_OWN + TWOHAND_SWORD_RUN_LOOP;
+}
+// How much of a gait is on the move at `now`, through its own blend from the clip before.
+bd_move_share :: (a: BdAnim, now: f32) -> f32 {
+  m := ifx bd_moving(a.clip) then 1.0f32 else 0.0f32;
+  if a.prev < 0 { return m; }
+  fade := clamp01((now - a.fade_at) / f32(BD_FADE)); fade = fade * fade * (3 - 2 * fade);
+  return m * fade + (ifx bd_moving(a.prev) then 1.0f32 else 0.0f32) * (1 - fade);
+}
+// An action's weight t seconds into a clip of d seconds: in and out over BD_LAYER_FADE, smoothly.
+bd_layer_weight :: (t: f32, d: f32) -> f32 {
+  i := clamp01(t / f32(BD_LAYER_FADE)); o := clamp01((d - t) / f32(BD_LAYER_FADE));
+  return i * i * (3 - 2 * i) * o * o * (3 - 2 * o);
+}
+// Action clip `clip` (from t0 at phase) at weight w over the gait a0: the whole body standing, the
+// upper body only on the move. Root, facing and the gait's own clock stay a0's.
+bd_layer :: (a0: BdAnim, clip: int, t0: f32, phase: f32, w: f32, now: f32) -> BdAnim {
+  a := a0;
+  a.prev = a0.clip; a.pt0 = a0.t0; a.pphase = a0.phase;
+  a.clip = clip; a.t0 = t0; a.phase = phase;
+  a.lay = true; a.lay_up = 1 - w; a.lay_low = 1 - w * (1 - bd_move_share(a0, now));
+  a.fade_at = now - f32(BD_FADE) * w;
+  return a;
+}
+bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32, left: bool) -> [12] f32 {
   side := ifx left then 12 else 0;
+  mix := bd_gait_share(mix0, ifx left then BD_HAND_L else BD_HAND);
   fa := clamp_int(int(ra) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 24 + side; fb := clamp_int(int(rb) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 24 + side;
   h: [12] f32;
   for k: 0..<12 { h[k] = b[0].hand[fa + k] * (1 - mix) + b[0].hand[fb + k] * mix; }
@@ -489,6 +540,7 @@ bd_record :: (a: BdAnim, l: BdLook, word: int, far: bool, now: f32, out: [] f32,
   fade = fade * fade * (3 - 2 * fade);
   rb := ra; mixb := 0.0f32;
   if fade < 1 && a.prev >= 0 { rb = bd_row(l.female, a.prev, bd_frame_of(a.prev, a.pt0, a.pphase, now)); mixb = 1 - fade; }
+  if a.lay && a.prev >= 0 { rb = bd_row(l.female, a.prev, bd_frame_of(a.prev, a.pt0, a.pphase, now)); mixb = bd_layer_code(a.lay_up, a.lay_low); }
   out[o + 4] = f32(ra); out[o + 5] = f32(rb); out[o + 6] = mixb; out[o + 7] = f32(word);
   for k: 0..<3 { out[o + 8 + k] = l.skin[k]; out[o + 12 + k] = l.hair_rgb[k]; out[o + 16 + k] = l.dye[k]; }
   out[o + 11] = f32(l.variant);
@@ -641,6 +693,47 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   // on the game's bodies (the clips retargeted from the library's rig, whose arms differ) the gap stays
   // within BD_GAP_SLACK of the authored spacing; the weapon runs through both fists either way
   for c: 0..<TWOHAND_CLIPS { #assert worst[c] < BD_GAP_SLACK; }
+}
+#test "the action layer's mask: legs and pelvis the gait's, the spine partly, arms and head the action's" {
+  for j: 0..<PEOPLE_JOINTS {
+    m := bd_upper(j);
+    if j <= 1 || j >= 55 { #assert m == 0; } else if j >= 5 { #assert m == 1; } else { #assert m > 0 && m <= 1; }
+    if j >= 3 && j <= 4 { #assert m > bd_upper(j - 1); }
+  }
+  #assert PEOPLE_PARENT[55] == 1 && PEOPLE_PARENT[60] == 1 && PEOPLE_PARENT[7] == 4 && PEOPLE_PARENT[31] == 4 && PEOPLE_PARENT[5] == 4;
+  #assert bd_upper(BD_HAND) == 1 && bd_upper(BD_HAND_L) == 1;
+}
+#test "a layer's code gives each joint its share, and an old mix reads as it did" {
+  #assert bd_gait_share(0.3, 60) == 0.3 && bd_gait_share(0, 6) == 0;
+  c := bd_layer_code(0.2, 1);
+  #assert abs(bd_gait_share(c, 6) - 0.2) < 0.003 && abs(bd_gait_share(c, 34) - 0.2) < 0.003;
+  #assert abs(bd_gait_share(c, 1) - 1) < 0.003 && abs(bd_gait_share(c, 57) - 1) < 0.003 && abs(bd_gait_share(c, 62) - 1) < 0.003;
+  s2 := bd_gait_share(c, 2); s3 := bd_gait_share(c, 3);
+  #assert s2 < 1 && s2 > s3 && s3 > bd_gait_share(c, 4);
+}
+#forall "every pair of shares survives a layer's code" i: 0..<21, j: 0..<21 {
+  up := f32(i) / 20; low := f32(j) / 20;
+  k := bd_layer_code(up, low);
+  #assert k >= 2 && abs(bd_gait_share(k, 6) - up) < 0.003 && abs(bd_gait_share(k, 58) - low) < 0.003;
+}
+#test "a cast on the run plays on the arms and the gait keeps the legs; standing it takes the whole body" {
+  run: BdAnim; run.clip = BD_RUN; run.phase = 0.4;
+  #assert bd_layer_weight(0, 1) == 0 && bd_layer_weight(0.5, 1) == 1 && bd_layer_weight(1, 1) == 0;
+  w := bd_layer_weight(0.075, 1); #assert w > 0 && w < 1;
+  for i: 0..<100 { t := f32(i) * 0.01; #assert abs(bd_layer_weight(t + 0.01, 1) - bd_layer_weight(t, 1)) < 0.12; }
+  a := bd_layer(run, BD_SPELL, 2, 0.3, 1, 3);
+  #assert a.clip == BD_SPELL && a.prev == BD_RUN && a.pphase == 0.4 && a.lay && a.lay_up == 0 && a.lay_low == 1;
+  idle: BdAnim; idle.clip = BD_IDLE;
+  b := bd_layer(idle, BD_SPELL, 2, 0.3, 1, 3); #assert b.lay_up == 0 && b.lay_low == 0;
+  // stopping mid-cast: the legs come back to the cast with the gait's own blend, never at once
+  stop: BdAnim; stop.clip = BD_IDLE; stop.prev = BD_RUN; stop.fade_at = 3 - f32(BD_FADE) * 0.5;
+  c := bd_layer(stop, BD_SPELL, 2, 0.3, 1, 3); #assert c.lay_low > 0.1 && c.lay_low < 0.9;
+  // the record: the cast's row, the run's row, and the code
+  out: [BD_REC_FLOATS] f32; bd_record(a, BdLook.{}, 0, false, 3, out[..], 0);
+  #assert out[4] == f32(bd_row(false, BD_SPELL, bd_frame_of(BD_SPELL, 2, 0.3, 3))) && out[5] == f32(bd_row(false, BD_RUN, bd_frame_of(BD_RUN, 0, 0.4, 3)));
+  #assert bd_gait_share(out[6], 6) < 0.003 && bd_gait_share(out[6], 57) > 0.997;
+  // easing out, the arms go back to the run's
+  e := bd_layer(run, BD_SPELL, 2, 0.3, bd_layer_weight(0.95, 1), 3); #assert e.lay_up > 0 && e.lay_up < 1 && e.lay_low == 1;
 }
 #test "the catalog names the sixteen parts; without them nothing draws" {
   b: [1] Bodies;

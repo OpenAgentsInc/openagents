@@ -1,7 +1,7 @@
 // Everglade II's crowd check (#13057): N headless Chromes (2 to 3: the machine's cap) take the whole
 // journey into one Everglade II room of their own, as players do, and say what each saw and how
 // smooth the others were.
-//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest] [--levels]
+//   coax/web/tool.sh everglade2-crowd URL [--players N] [--seconds S] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--layer] [--rest] [--levels]
 // URL is the Character Create page (…/worlds/character-creator), with ?relay=ws://localhost:PORT for a
 // local room (coax/web/room/local.coax); the room is a fresh pair-e2-<hex> (?room=), which the rooms
 // list leaves out, unless --room names one (a load run's pair-e2-load-STAMP-1, to stand among its
@@ -33,6 +33,10 @@
 //      (105, 106, 110 + i); page 0's Action Surge (key 3) is taken and its count drops; page 1's Rage
 //      (key 1) is taken and holds (120), and a second Rage is refused by the room, and its predicted
 //      sound and puffs are undone and fade (107, 108). With --shot, DIR/levels-K.jpg.
+//   --layer, after the runs and before the walk: page 0 runs (W held) and casts (key 1), and with --shot
+//      DIR/layer-run-0..2.jpg are three of its frames mid-cast (the legs in the run's stride, the arms
+//      casting: fivelab-bodies.coax bd_layer) and DIR/layer-remote-1.jpg page 1's view of it; then it
+//      stands, casts again, and DIR/layer-stand-0.jpg is the standing cast, the whole body's.
 // Nothing opens on screen and no sound plays. Each Chrome this starts is closed before it exits.
 #import "Basic";
 #load "../lib/net/cdp.coax";
@@ -176,6 +180,21 @@ ec_casts :: (c: [] Cdp, shot: string) -> bool {
   ok = ec_check(all_heard, "every cast played its sound on every page") && ok;
   return ok;
 }
+// --layer: a cast on the run (three frames of it, and page 1's view of it), then one standing.
+ec_layer :: (c: [] Cdp, shot: string) -> bool {
+  p := c[0..<1];
+  sent := ec_probe(p, 82);
+  _ := ec_key(p, true); proc_sleep(1500);
+  _ = ec_digit(p, 1);
+  proc_sleep(250); ec_shot(p, shot, "layer-run", 0);
+  if c.count > 1 { ec_shot(c[1..<2], shot, "layer-remote", 1); }
+  ec_shot(p, shot, "layer-run", 1);
+  proc_sleep(150); ec_shot(p, shot, "layer-run", 2);
+  proc_sleep(1500); _ = ec_key(p, false); proc_sleep(2000);
+  _ = ec_digit(p, 1); proc_sleep(500); ec_shot(p, shot, "layer-stand", 0);
+  proc_sleep(2000);
+  return ec_check(ec_probe(p, 82) >= sent + 2, "page 0 cast on the run and standing, and sent both to the room");
+}
 // The rest controls (#13046): their codes and requests as the room and the rules have them
 // (everglade-wire.coax WIRE_REST_*, aethyr/rules/srd/rest-control.coax RS_REST_*).
 EC_NONE :: 0; EC_SHORT :: 1; EC_SLEEP :: 3; EC_WATCH :: 4; EC_BROKEN :: 6;
@@ -238,10 +257,10 @@ tool_main :: () -> int #export_c #effects(all) {
   wh := args_size(args_value(a[..], "--size", "1280x720"));
   room := args_value(a[..], "--room", "");
   shot := args_value(a[..], "--shot", "");
-  casts := args_has(a[..], "--cast"); rests := args_has(a[..], "--rest"); levels := args_has(a[..], "--levels");
+  casts := args_has(a[..], "--cast"); layer := args_has(a[..], "--layer"); rests := args_has(a[..], "--rest"); levels := args_has(a[..], "--levels");
   origin := ec_origin(url);
   if !ok || url.count == 0 || url[0] == '-' || origin.count == 0 || !players.ok || !seconds.ok || !wh.ok || players.value < (ifx room.count > 0 then 1.0 else 2.0) || players.value > f64(E2C_MAX) || seconds.value < 3 {
-    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3, or 1 with --room] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--rest] [--levels] (from the repository's root)"); return 2;
+    tool_errln("usage: coax/web/tool.sh everglade2-crowd URL [--players 2..3, or 1 with --room] [--seconds S >= 3] [--size WxH] [--room CODE] [--shot DIR] [--cast] [--layer] [--rest] [--levels] (from the repository's root)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade2-crowd.js", js[..]);
@@ -261,12 +280,12 @@ tool_main :: () -> int #export_c #effects(all) {
     if !cdp_launch(c[i..<i + 1], wh.w, wh.h, "coax-e2crowd-") { tool_err("everglade2-crowd: "); tool_errln(cdp_error(c[i..<i + 1])); break; }
     up += 1;
   }
-  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value, shot, casts, rests, levels) else 1;
+  status := ifx up == n then ec_run(c[0..<n], btext(ub[..]), origin, btext(mb[..]), wh.w, wh.h, cast(string) js[0..<jn], cast(int) seconds.value, shot, casts, layer, rests, levels) else 1;
   for i: 0..<up { cdp_close(c[i..<i + 1]); }
   return status;
 }
 
-ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int, shot: string, casts: bool, rests: bool, levels: bool) -> int {
+ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string, seconds: int, shot: string, casts: bool, layer: bool, rests: bool, levels: bool) -> int {
   n := c.count;
   for i: 0..<n { if !ec_open(c[i..<i + 1], url, origin, mark, w, h, script) { tool_errln("everglade2-crowd: can't open a page"); print("fails\n"); return 1; } }
   print("room %, % players, mark %\n", url, n, mark);
@@ -349,6 +368,7 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
     t := ec_str(c[i..<i + 1], "__e2.report()", run_report[i * 2048..<(i + 1) * 2048]); ro[i] = i * 2048; rn[i] = t.count;
   }
   if casts { all = ec_casts(c, shot) && all; }
+  if layer { all = ec_layer(c, shot) && all; }
   if rests { all = ec_rests(c, shot) && all; }
   if levels { all = ec_levels(c, shot) && all; }
   // 4. all walk on together (W), then stand

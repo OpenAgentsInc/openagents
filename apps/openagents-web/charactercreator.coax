@@ -359,22 +359,18 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
   a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_jump_weight(s);
  }
  if !(s.dev_animations && s.preview_clip>=0) && s.swing_clip>=0 && s.clock-s.swing_at<figs.bd_seconds(s.swing_clip) {
-  // a blow: its clip over what you were doing, the way the jump blends (experimental_swing_weight)
-  a.prev=a.clip;a.pt0=a.t0;a.pphase=a.phase;
+  // a blow: its clip over what you were doing (fivelab-bodies.coax bd_layer): standing the whole body,
+  // on the run the upper body only, the run keeping the legs
+  g:=a;
   // a two-hander's blow is over its hold, never over the jump's free arms (they'd carry the weapon into you)
-  if experimental_hold(s)>=0 {a.prev=experimental_stance(s);a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);}
-  a.clip=s.swing_clip;a.t0=s.swing_at;a.phase=(s.clock-s.swing_at)/figs.bd_seconds(s.swing_clip);
-  a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_swing_weight(s);
+  if experimental_hold(s)>=0 {g.clip=experimental_stance(s);g.t0=0;g.phase=s.clock/figs.bd_seconds(g.clip);g.prev= -1;}
+  a=figs.bd_layer(g,s.swing_clip,s.swing_at,(s.clock-s.swing_at)/figs.bd_seconds(s.swing_clip),experimental_swing_weight(s),s.clock);
  }
  return a;
 }
-// A blow eases in over its first tenth of a second and out over its last quarter; on the run the legs
-// keep a little of the run.
+// A blow eases in and out over BD_LAYER_FADE.
 experimental_swing_weight :: (s:Creator)->f32 {
- t:=s.clock-s.swing_at;d:=figs.bd_seconds(s.swing_clip);
- // (a two-hander's blow takes the whole body: a fifth of the run's arms would pull the weapon into you)
- top:=ifx s.moving && experimental_hold(s)<0 then 0.8f32 else 1.0f32;
- return top*cc_clamp(t/0.1,0,1)*cc_clamp((d-t)/0.25,0,1);
+ return figs.bd_layer_weight(s.clock-s.swing_at,figs.bd_seconds(s.swing_clip));
 }
 // ---- the weapon in your hand (#13025): a melee class's kit, on the right hand's bone, its grip in the fist.
 // A kit: which of the pack's weapons (glade/weapon0 Axe_Double, 1 Sword, 2 Sword_Golden, 3 Sword_big), its scale

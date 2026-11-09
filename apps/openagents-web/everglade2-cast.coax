@@ -186,18 +186,28 @@ e2k_step :: (s: [] E2) {
   _ := fxp_close(pf);
 }
 
-// A body's cast over its gait: it eases in over a tenth of a second and out over its last quarter,
-// as Experimental's blow does (charactercreator.coax experimental_swing_weight), so nothing pops.
+// A body's cast or blow over its gait (fivelab-bodies.coax bd_layer): standing it takes the whole
+// body; on the move only the upper body, the walk or run keeping the hips and legs. It eases in and
+// out over BD_LAYER_FADE, so nothing pops. A remote's gait comes from its own motion and its act from
+// the wire, so others see the same layered pose.
 e2k_figure :: (a0: figs.BdAnim, act: E2kAct, clock: f32) -> figs.BdAnim {
   if act.clip < 0 || a0.clip < 0 { return a0; }
   d := figs.bd_seconds(act.clip); t := clock - act.at;
   if t < 0 || t >= d { return a0; }
-  a := a0;
-  a.prev = a0.clip; a.pt0 = a0.t0; a.pphase = a0.phase;
-  a.clip = act.clip; a.t0 = act.at; a.phase = t / d;
-  w := e2_sat(t / 0.1) * e2_sat((d - t) / 0.25);
-  a.fade_at = clock - f32(figs.BD_FADE) * w;
-  return a;
+  return figs.bd_layer(a0, act.clip, act.at, t / d, figs.bd_layer_weight(t, d), clock);
+}
+#test "a cast on the run keeps the run's legs; standing it takes the whole body" {
+  run: figs.BdAnim; run.clip = figs.BD_RUN; run.x = 3; run.yaw = 1.2;
+  act := E2kAct.{at = 10, clip = figs.BD_SPELL};
+  a := e2k_figure(run, act, 10.5);
+  #assert a.clip == figs.BD_SPELL && a.prev == figs.BD_RUN && a.lay && a.lay_up == 0 && a.lay_low == 1 && a.x == 3 && a.yaw == 1.2;
+  idle: figs.BdAnim; idle.clip = figs.BD_IDLE;
+  b := e2k_figure(idle, act, 10.5); #assert b.lay_up == 0 && b.lay_low == 0;
+  // it eases in and out over BD_LAYER_FADE
+  c := e2k_figure(run, act, 10.05); #assert c.lay_up > 0 && c.lay_up < 1;
+  #assert !e2k_figure(run, act, 9.9).lay && !e2k_figure(run, act, 10 + figs.bd_seconds(figs.BD_SPELL)).lay;
+  m := E2kAct.{at = 10, clip = figs.BD_SLASH};
+  #assert e2k_figure(run, m, 10.4).lay_low == 1 && e2k_figure(run, m, 10.4).prev == figs.BD_RUN;
 }
 
 // ---- the bar: each slot's picture, its key, its cooldown; a card over the slot the pointer is on
