@@ -359,12 +359,11 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
   a.prev=experimental_stance(s);a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);
   a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_jump_weight(s);
  }
- // a drawn bow: the aiming pose over what you were doing, as far as the aim has come in (a little
- // less on the move, so the legs keep some of the walk)
+ // a drawn bow: the aiming pose over what you were doing, as far as the aim has come in, through the
+ // shared upper-body layer (fivelab-bodies.coax bd_layer): standing the whole body, on the move the
+ // upper body only, the walk keeping the legs
  if !(s.dev_animations && s.preview_clip>=0) && s.aim>0.001 && !s.airborne {
-  a.prev=a.clip;a.pt0=a.t0;a.pphase=a.phase;
-  a.clip=figs.BD_CLIPS+CC_AIM_CLIP;a.t0=0;a.phase=0.5;
-  a.fade_at=s.clock-f32(figs.BD_FADE)*s.aim*(ifx s.moving then 0.8f32 else 1.0f32);
+  a=figs.bd_layer(a,figs.BD_CLIPS+CC_AIM_CLIP,0,0.5,s.aim,s.clock);
  }
  if !(s.dev_animations && s.preview_clip>=0) && s.swing_clip>=0 && s.clock-s.swing_at<figs.bd_seconds(s.swing_clip) {
   // a blow: its clip over what you were doing (fivelab-bodies.coax bd_layer): standing the whole body,

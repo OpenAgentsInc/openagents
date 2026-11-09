@@ -83,11 +83,10 @@ launch.
 ## Animation
 
 The Universal Animation Library has no bow clips. The draw and hold use
-`ual1_pistol_aim_neutral`, blended in with the aim (a little less while moving,
-so the legs keep some of the walk). The release is `ual1_pistol_shoot`'s recoil.
-These blend over the whole body. When the upper-body layering for
-cast-while-running lands, the aim pose should take its upper-body mask instead.
-Bow clips authored on the UAL rig, with the right hand drawing the string to the
+`ual1_pistol_aim_neutral`, blended in with the aim through the shared upper-body
+layer (`fivelab-bodies.coax` `bd_layer`): standing, the whole body takes the aim;
+on the move, only the spine, arms and head do, and the walk keeps the legs. The
+release is `ual1_pistol_shoot`'s recoil. Bow clips authored on the UAL rig, with the right hand drawing the string to the
 cheek, would replace these two library clips.
 
 ## How another realm adopts it
