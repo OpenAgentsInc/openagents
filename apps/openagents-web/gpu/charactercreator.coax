@@ -52,7 +52,7 @@ charactercreator_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj
  if (s.dye.w>11.5f32 && s.local.x<0.5f32) {
   sky:=mix3(cg_decode(cg_sky(u,normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
  }
- if (tex.w<0.35f32) {gpu_demote_helper();}
+ if (tex.w<0.35f32 || (s.dye.w>12.5f32 && s.local.z>0.0f32)) {gpu_demote_helper();}
  c:V4;
  if (s.dye.w>11.5f32) {c=cg_environment_fs(s,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
  else {c=cc_player_fs(s,tex,front,u,objects,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}

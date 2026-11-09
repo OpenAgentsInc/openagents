@@ -247,7 +247,7 @@ fn coax_p_scene_fs(p_s: coax_t15, p_front: bool) -> coax_t24 {
     l_sky = coax_p_mix3(coax_p_cg_decode(coax_p_cg_sky(coax_p_normalize3(l_ray), coax_p_wg_at3(32i), coax_at_u(i32(2i)))), coax_p_v3(l_tex.x, l_tex.y, l_tex.z), coax_p_cg_sky_plate_weight(l_plate));
     l_tex = coax_p_v4(l_sky.x, l_sky.y, l_sky.z, 0x1.000000p0f);
   }
-  if ((l_tex.w < 0x1.666666p-2f))
+  if (((l_tex.w < 0x1.666666p-2f) || ((l_s.f6.w > 0x1.900000p3f) && (l_s.f7.z > 0.0f))))
   {
     discard;
   }
@@ -1229,6 +1229,11 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t1
   l_o.f6 = coax_p_v4(0.0f, 0.0f, 0.0f, 0x1.800000p3f);
   l_o.f7 = coax_p_v3(f32(l_kind), bitcast<f32>(vertices[i32((l_b + 7u))]), 0.0f);
   l_o.f8 = l_instance;
+  if (((l_m.w.w > 0x1.280000p4f) && (l_m.x.w > 0.0f)))
+  {
+    l_o.f7.z = (l_tint.w - (0x1.000000p0f - l_m.x.w));
+    l_o.f6.w = 0x1.a00000p3f;
+  }
   return l_o;
 }
 fn coax_p_wg_fmod(p_a: f32, p_b: f32) -> f32 {

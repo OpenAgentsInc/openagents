@@ -169,7 +169,7 @@ Lab :: struct {
   over: bool; over_t: f32; winner: int;
   army: [LAB_MAX] RsCreature; squares: [LAB_SQUARES] int;   // the battle's room (bt: rs_use)
   frame: [FRAME_FLOATS] f32;       // the frame store: the tokens and squares bg_fs reads
-  shadow_draws: [176] u32; shadow_n: int;
+  shadow_draws: [4096] u32; shadow_n: int;
   records: [figs.BD_RECORDS * figs.BD_REC_FLOATS] f32;   // the figures' instances (fivelab-face.c's objects store)
   dx: [LAB_MAX] f32; dy: [LAB_MAX] f32;   // where each token is drawn, in squares
   acted: [LAB_MAX] f32;            // when each last took its turn
@@ -458,6 +458,8 @@ lab_shadow_select :: (s: [] Lab) {
       if s[0].creator[0].shadow[0].on && !s[0].creator[0].shadow[0].now && s[0].records[cast(int) base*24+15] > 11.5 { continue; }
       // the dungeon's inside (charactercreator.coax): under its roof, it casts no sun shadow
       if s[0].records[cast(int) base*24+15] > 15.5 && s[0].records[cast(int) base*24+15] < 16.5 && s[0].records[cast(int) base*24+14] > 0.5 { continue; }
+      // a build site's parts (charactercreator.coax build_record): they grow, so the cached glade tile can't hold them
+      if s[0].records[cast(int) base*24+15] > 18.5 && s[0].records[cast(int) base*24+13] > 6.5 { continue; }
     }
     j := s[0].shadow_n;
     for k: 0..<4 { s[0].shadow_draws[j*4+k] = s[0].bodies[0].draws[i*4+k]; }
@@ -3851,7 +3853,7 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
-  if kind==HOST_PAGE && cc.experimental_page(t) {if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
+  if kind==HOST_PAGE && cc.experimental_page(t) {if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].build_review=cc.build_review_page(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }

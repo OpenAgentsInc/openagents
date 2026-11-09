@@ -55,6 +55,17 @@ Medieval Village kit's wall, door, window and roof modules. Colliders match
 what each stage shows: you can walk between bare frame posts, and finished
 walls block you everywhere except through the doorway.
 
+A build site can also show any progress between stages (#13106). The packer
+stores each part once, with a reveal key from 0 to 1 on every vertex, and the
+scene draws one instanced record per part. The record carries the part's pose
+and how far it has arrived, so a post swings up from the ground, a beam is
+raised into place, wattle is woven row by row, daub spreads in patches and
+thatch goes on course by course. `bs_fractions`, `bs_arrival` and `bs_used`
+in `aethyr/world/build-site.coax` give each part's progress, the part that
+is arriving and where, and the materials used so far. A whole-number progress
+draws exactly that stage. Open `?stage=build-cottage` to watch one
+wattle-and-daub cottage go up on the meadow at (62, 74), two seconds a stage.
+
 ## Fight back
 
 You fight the monsters with your class's level 1 kit
@@ -248,6 +259,16 @@ gzip -n -6 -c apps/openagents-web/realms/everglade-experimental/assets/glade.pac
 ```
 
 Run the oracle before you append the horse: it checks the scene pack's own vertex and index layout, which the appended horse meshes extend.
+
+A full scene pack already holds the build parts. To add them to a pack that
+lacks them without a full repack, append them:
+
+```sh
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-build \
+  apps/openagents-web/realms/everglade-experimental/assets/glade.pack /tmp/glade-build.pack "$village_root"
+```
+
+The append refuses a pack that already has build parts.
 
 The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
 

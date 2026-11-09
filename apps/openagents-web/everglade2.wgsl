@@ -1929,6 +1929,11 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t1
   l_o.f6 = coax_p_v4(0.0f, 0.0f, 0.0f, 0x1.800000p3f);
   l_o.f7 = coax_p_v3(f32(l_kind), bitcast<f32>(vertices[i32((l_b + 7u))]), 0.0f);
   l_o.f8 = l_instance;
+  if (((l_m.w.w > 0x1.280000p4f) && (l_m.x.w > 0.0f)))
+  {
+    l_o.f7.z = (l_tint.w - (0x1.000000p0f - l_m.x.w));
+    l_o.f6.w = 0x1.a00000p3f;
+  }
   return l_o;
 }
 fn coax_p_wg_fmod(p_a: f32, p_b: f32) -> f32 {

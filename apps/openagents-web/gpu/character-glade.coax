@@ -42,7 +42,11 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  if (m.d.w>18.5f32) {p=add3(v3(m.a.x,m.a.y,m.a.z),add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),p.x),scale3(v3(m.e.x,m.e.y,m.e.z),p.y)),scale3(v3(m.f.x,m.f.y,m.f.z),p.z)));normal3=normalize3(add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),normal3.x),scale3(v3(m.e.x,m.e.y,m.e.z),normal3.y)),scale3(v3(m.f.x,m.f.y,m.f.z),normal3.z)));}
  // 18: a monster's frame, turned to face c.x, c.y and scaled by c.z (0 is its baked size; experimental-dungeon.coax dg_kind_scale)
  else if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));if (m.c.z>0.0f32) {local=scale3(local,m.c.z);}cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
- o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;return o;
+ o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;
+ // a build-site part growing (aethyr/world/build-site.coax): a.w is 1 less its fraction, the tint's
+ // alpha the vertex's reveal key; the pixels past the fraction are dropped (charactercreator_scene_fs)
+ if (m.d.w>18.5f32 && m.a.w>0.0f32) {o.local.z=tint.w-(1.0f32-m.a.w);o.dye.w=13.0f32;}
+ return o;
 }
 #test "glade source mesh instances retain source shape and independent scale" {
  p:=cg_instance_point(v3(1,2,0),v3(4,0,-5),0.5,0.25,0);
