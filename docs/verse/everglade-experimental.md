@@ -306,13 +306,14 @@ playing, add `?ride=1` (in the saddle), `?ride=2` (galloping) or `?ride=3&class=
 
 A red dragon stands in the open ahead and to the left of spawn, facing back over
 the village. E mounts it from its flank; you sit at the base of its neck. Space
-takes off, beats the wings and (held) climbs, Shift dives, A and D bank it round,
+takes off, beats the wings and (held) climbs, Shift dives, A and D turn it (level, under you),
 and X lands. E in the air says "Land first". It walks at 10 m/s and flies at 20 m/s
 (the SRD Adult Red Dragon's Speed 40 ft and Fly 80 ft), on the shared winged flight
 (`aethyr/action/flight.coax`). Two staged shots ride on their own and hide the HUD:
 `?stage=dragonback` (up off the meadow and over the village and castle) and
 `?stage=horseback` (a gallop down the meadow past the autumn trees), recorded with
-`coax/web/tool.sh clip`.
+`coax/web/tool.sh clip`. Add `&view=side` or `&view=rear` to either to watch the
+seat close up from beside or behind the rider.
 
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
 

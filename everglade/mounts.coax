@@ -30,7 +30,8 @@ EG_HORSE_CLIP :: 12;       // frames a clip
 // 7.5 m/s; the horse walks 4 m/s and gallops 14 (the spec's "Speeds in action combat").
 EG_RIDING_HORSE :: MountTune.{walk = 4.0, gallop = 14.0};
 // The saddle: the horse rig's Torso2 bone (horse_bake.py saddle.txt) in the packed model's space, a
-// frame each in glade/horse order, and EG_SEAT_UP from the bone up through the back to the saddle.
+// frame each in glade/horse order. Your pelvis sits EG_HORSE_SEAT_UP above it: the back's top is
+// 0.33 m over the bone, and you sit on it, not in it.
 EG_SADDLE :: [108] f32.[
   0.0, 1.4284, -0.2718, 0.0, 1.4277, -0.272, 0.0, 1.4257, -0.2725, 0.0, 1.423, -0.2731, 0.0, 1.4207, -0.2737, 0.0, 1.4196, -0.2739,
   0.0, 1.4198, -0.2739, 0.0, 1.4208, -0.2736, 0.0, 1.4226, -0.2732, 0.0, 1.4247, -0.2727, 0.0, 1.4267, -0.2722, 0.0, 1.428, -0.2719,
@@ -38,7 +39,50 @@ EG_SADDLE :: [108] f32.[
   -0.0328, 1.3232, -0.2796, -0.0301, 1.3433, -0.2803, -0.0197, 1.3464, -0.2798, -0.0038, 1.3414, -0.2807, 0.0126, 1.3252, -0.2853, 0.0243, 1.307, -0.2935,
   0.0284, 1.4929, -0.2881, 0.0284, 1.477, -0.293, 0.0284, 1.4397, -0.3039, 0.0284, 1.3979, -0.3094, 0.0284, 1.3717, -0.3019, 0.0191, 1.3636, -0.2813,
   0.0031, 1.3639, -0.2562, 0.0026, 1.3807, -0.2314, 0.0213, 1.4293, -0.1685, 0.0284, 1.4557, -0.1481, 0.0284, 1.4729, -0.1887, 0.0284, 1.4869, -0.2551];
-EG_SEAT_UP :: 0.16;
+EG_HORSE_SEAT_UP :: 0.47;
+EG_DRAGON_SEAT_UP :: 0.17;   // above the dragon's saddle bone, on the ridge of its neck
+// The horse's barrel round the saddle a frame, as aethyr/action/ride-pose.coax reads a hull: at
+// RIDE_HULL_ROWS heights from 0.5 m above the saddle bone down in 0.1 m steps, how far its surface
+// is out to its left, then to its right (0: no body there), from the baked frames' triangles 0.2 m
+// behind to 0.3 m ahead of the bone, in the packed model's metres. The rider's legs are checked
+// against it (apps/openagents-web/experimental-horse.coax), as the dragon's are against DR_HULL.
+EG_HORSE_HULL :: [1008] f32.[
+  0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.15, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.16, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.2, 0, 0, 0, 0, 0,
+  0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0, 0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.16, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0, 0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0,
+  0, 0.16, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.2, 0, 0, 0, 0, 0, 0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0,
+  0, 0.16, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0, 0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0,
+  0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0, 0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0,
+  0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0, 0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0,
+  0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0, 0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.16, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.2, 0, 0, 0, 0, 0,
+  0, 0.13, 0.23, 0.27, 0.28, 0.29, 0.28, 0.26, 0.23, 0, 0, 0, 0, 0, 0, 0.09, 0.24, 0.27, 0.29, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0.11, 0.23, 0.27, 0.28, 0.29, 0.28, 0.26, 0.23, 0, 0, 0, 0, 0, 0, 0.08, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.28, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.22, 0, 0, 0, 0, 0,
+  0, 0, 0.23, 0.27, 0.28, 0.29, 0.28, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.06, 0.25, 0.27, 0.28, 0.29, 0.28, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0.03, 0.23, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.17, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.15, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.17, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.18, 0.25, 0.27, 0.28, 0.29, 0.27, 0.26, 0.21, 0, 0, 0, 0, 0, 0, 0.16, 0.24, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0.03, 0.24, 0.27, 0.28, 0.29, 0.28, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0.01, 0.23, 0.27, 0.28, 0.29, 0.27, 0.25, 0.21, 0, 0, 0, 0, 0,
+  0, 0, 0.22, 0.27, 0.28, 0.29, 0.28, 0.26, 0.23, 0, 0, 0, 0, 0, 0, 0, 0.23, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0.04, 0.22, 0.27, 0.28, 0.29, 0.28, 0.26, 0.23, 0, 0, 0, 0, 0, 0, 0.06, 0.24, 0.27, 0.29, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
+  0, 0.07, 0.22, 0.27, 0.28, 0.29, 0.28, 0.26, 0.23, 0.02, 0, 0, 0, 0, 0, 0.09, 0.24, 0.27, 0.29, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0];
 EG_RIDE_CAM_BACK :: 1.5;   // metres the follow camera pulls back while you ride, and up
 EG_RIDE_CAM_UP :: 0.5;
 EG_GALLOP_STICK :: 0.92;   // a phone's stick pushed this far gallops
@@ -47,6 +91,8 @@ EG_REFUSED_S :: 2.0;       // seconds "No room to step down" shows
 EG_PRESS_NONE :: 0; EG_PRESS_MOUNTED :: 1; EG_PRESS_DISMOUNTED :: 2; EG_PRESS_NO_ROOM :: 3; EG_PRESS_REFUSED :: 4; EG_PRESS_LAND_FIRST :: 5;
 // The kinds of mount.
 EG_HORSE :: 0; EG_DRAGON :: 1;
+// The seat a rider's legs take on each kind (fivelab-bodies.coax BD_SEAT_*: the same order).
+EG_SEAT_OF :: [2] int.[0, 1];
 // SRD 5.2.1, Adult Red Dragon: Huge, Speed 40 ft, Fly 80 ft. The model is 14 m from snout to tail; its
 // body's capsule, the reach to mount from its flank, and the step off clear of a folded wing.
 EG_RED_DRAGON :: MountTune.{walk = 10.0, gallop = 10.0, back = 2.0, accel = 8.0, turn_walk = 1.6, turn_gallop = 1.6, turn_still = 1.2,
@@ -198,24 +244,27 @@ eg_mounts_fly :: (m: [] EgMounts, i: MountIn, dt: f32, now: f32, ground: f32, wa
   if m[0].riding >= 0 && m[0].mounts[m[0].riding].state == MOUNT_FREE { m[0].riding = -1; return false; }
   return true;
 }
-// Horse k's saddle in the world, its hooves on `ground`.
-eg_saddle :: (m: EgMounts, k: int, ground: f32) -> [3] f32 {
+// Mount k's saddle in the world at `now` (where your pelvis goes), its feet on `ground`.
+eg_saddle :: (m: EgMounts, k: int, ground: f32, now: f32) -> [3] f32 {
   h := m.mounts[k];
   if m.kind[k] == EG_DRAGON {
-    // the neck's base, turned with the dragon's lean: banked and pitched, the seat swings with the body
-    sc := f32(EG_DRAGON_SCALE); lp := eg_dragon_pitch(h); lb := h.wing.bank;
-    y0 := f32(DR_SADDLE_Y) * sc + f32(EG_SEAT_UP); z0 := f32(DR_SADDLE_Z) * sc;
-    sb := sin(lb); cb := cos(lb); sp := sin(lp); cp := cos(lp);
-    return mount_seat(h, h.wing.y, [3] f32.[sb * y0, cb * cp * y0 + sp * z0, -cb * sp * y0 + cp * z0]);
+    // the saddle bone in this frame (the clip rears the chest to take off and hover), turned with
+    // the dragon's pitch: the seat swings with the body
+    sc := f32(EG_DRAGON_SCALE); lp := eg_dragon_pitch(h); f := eg_dragon_frame(m, k, now);
+    x0 := DR_SEAT[f * 3] * sc; y0 := DR_SEAT[f * 3 + 1] * sc + f32(EG_DRAGON_SEAT_UP); z0 := DR_SEAT[f * 3 + 2] * sc;
+    sp := sin(lp); cp := cos(lp);
+    return mount_seat(h, h.wing.y, [3] f32.[x0, cp * y0 + sp * z0, -sp * y0 + cp * z0]);
   }
   f := mount_frame(h, EG_HORSE_CLIP);
-  return mount_seat(h, ground, [3] f32.[EG_SADDLE[f * 3], EG_SADDLE[f * 3 + 1] + f32(EG_SEAT_UP), EG_SADDLE[f * 3 + 2]]);
+  return mount_seat(h, ground, [3] f32.[EG_SADDLE[f * 3], EG_SADDLE[f * 3 + 1] + f32(EG_HORSE_SEAT_UP), EG_SADDLE[f * 3 + 2]]);
 }
+// The seat your legs take on what you ride (fivelab-bodies.coax BD_SEAT_*).
+eg_seat :: (m: EgMounts) -> int { return ifx m.riding >= 0 then EG_SEAT_OF[m.kind[m.riding]] else 0; }
 // Where you are while you ride (ground: under the horse) and your pelvis's height standing (hip): from
 // where you stood to the saddle and back as you mount and get off.
 eg_rider :: (m: EgMounts, now: f32, ground: f32, standing_ground: f32, hip: f32) -> EgRider {
   if m.riding < 0 { return EgRider.{}; }
-  h := m.mounts[m.riding]; s := mount_seated(h, eg_tune(m, m.riding), now); seat := eg_saddle(m, m.riding, ground);
+  h := m.mounts[m.riding]; s := mount_seated(h, eg_tune(m, m.riding), now); seat := eg_saddle(m, m.riding, ground, now);
   stand := [3] f32.[h.from_x, standing_ground + hip, h.from_z];
   return EgRider.{on = true, seated = s, face = h.face,
     x = stand[0] + (seat[0] - stand[0]) * s, y = stand[1] + (seat[1] - stand[1]) * s, z = stand[2] + (seat[2] - stand[2]) * s};
@@ -256,32 +305,36 @@ eg_horse_record :: (m: EgMounts, k: int, ground: f32, out: [] f32, rec: int) -> 
 // ---- the red dragon's look
 
 // Its clip for the flight's (WING_CLIP_*): it stands saddled, walks, takes off, flies, glides (and
-// dives on folded wings), hovers, banks and lands.
-EG_DRAGON_CLIP :: [10] int.[DR_IDLE_SADDLED, DR_WALK, DR_TAKEOFF, DR_FLY, DR_GLIDE, DR_HOVER, DR_BANK_LEFT, DR_BANK_RIGHT, DR_GLIDE, DR_LAND];
+// dives on folded wings), hovers and lands. It turns flying level: its rider sits upright, and a
+// body rolled into a bank (the bank clips, or a lean) would swing the neck into the rider's legs.
+EG_DRAGON_CLIP :: [10] int.[DR_IDLE_SADDLED, DR_WALK, DR_TAKEOFF, DR_FLY, DR_GLIDE, DR_HOVER, DR_FLY, DR_FLY, DR_GLIDE, DR_LAND];
 // The baked frame dragon k shows at `now`: its walk by the ground covered, the rest by their own clock.
 eg_dragon_frame :: (m: EgMounts, k: int, now: f32) -> int {
   h := m.mounts[k]; c := ifx h.clip >= 0 && h.clip < 10 then h.clip else 0; dc := EG_DRAGON_CLIP[c];
   t := ifx c == WING_CLIP_WALK then h.phase * DR_SECONDS[DR_WALK] else now - m.clip_at[k];
   return dr_frame(dc, t);
 }
-// Its nose up as it climbs and down as it dives, in the air only.
+// Its nose up as it climbs and down as it dives, in the air only: never so far down that its neck
+// rises into the upright rider's thighs (EG_DRAGON_DIVE_PITCH, checked with the legs).
+EG_DRAGON_DIVE_PITCH :: -0.2;
+EG_DRAGON_CLIMB_PITCH :: 0.3;
 eg_dragon_pitch :: (h: Mount) -> f32 {
   if h.wing.phase != WING_AIR { return 0; }
-  return mt_clamp(h.wing.vy * 0.05, -0.35, 0.3);
+  return mt_clamp(h.wing.vy * 0.05, f32(EG_DRAGON_DIVE_PITCH), f32(EG_DRAGON_CLIMB_PITCH));
 }
-// Dragon k as a placed mesh record (the shared mode 19: its feet, and its turned, pitched, banked and
-// scaled axes) and its frame's draw at `now`.
+// Dragon k as a placed mesh record (the shared mode 19: its feet, and its turned, pitched and scaled
+// axes) and its frame's draw at `now`.
 eg_dragon_record :: (m: EgMounts, k: int, now: f32, out: [] f32, rec: int) -> EgHorseDraw {
   at := rec * 24;
   if at + 24 > out.count || !eg_dragon_ready(m) { return EgHorseDraw.{}; }
   h := m.mounts[k]; f := eg_dragon_frame(m, k, now);
   if f < 0 || f >= DR_TOTAL || m.dcount[f] <= 0 { return EgHorseDraw.{}; }
   for i: 0..<24 { out[at + i] = 0; }
-  sc := f32(EG_DRAGON_SCALE); yaw := h.face; pitch := eg_dragon_pitch(h); bank := h.wing.bank;
-  cy := cos(yaw); sy := sin(yaw); cp := cos(pitch); sp := sin(pitch); cb := cos(bank); sb := sin(bank);
-  // the model's axes (x its left, y up, z ahead): rolled by the bank (a left turn leans it left, to
-  // +x), pitched nose up by the climb, then turned to its heading (eg_saddle turns the seat the same)
-  ax := [9] f32.[cb, -sb * cp, sb * sp,   sb, cb * cp, -cb * sp,   0, sp, cp];
+  sc := f32(EG_DRAGON_SCALE); yaw := h.face; pitch := eg_dragon_pitch(h);
+  cy := cos(yaw); sy := sin(yaw); cp := cos(pitch); sp := sin(pitch);
+  // the model's axes (x its left, y up, z ahead): pitched nose up by the climb, then turned to its
+  // heading (eg_saddle turns the seat the same)
+  ax := [9] f32.[1, 0, 0,   0, cp, -sp,   0, sp, cp];
   base := [3] int.[8, 16, 20];
   for j: 0..<3 {
     lx := ax[j * 3]; ly := ax[j * 3 + 1]; lz := ax[j * 3 + 2];
@@ -390,8 +443,11 @@ EG_TEST_CATALOG :: "C glade/environment 9 12 250 100 8 0\nC glade/horse0 300 60 
   // standing for its rider: the saddled stand's first frame; its z axis (ahead) turned to +X
   #assert d.first == 1000 + dr_first(DR_IDLE_SADDLED) * 10 && d.count == 9 && out[24] == 3 && out[25] == 1 && out[26] == 4 && out[39] == 19 && out[31] == 5;
   #assert abs(out[44] - 1) < 0.0001 && abs(out[46]) < 0.0001 && abs(out[41] - 1) < 0.0001;
-  // a left turn in the air: its up leans to its left, and so does its rider's seat
-  m[0].mounts[0].face = 0; m[0].mounts[0].wing.phase = WING_AIR; m[0].mounts[0].wing.bank = 0.5;
-  d = eg_dragon_record(m[0], 0, 0, out[..], 0); #assert out[16] > 0.4;
-  s := eg_saddle(m[0], 0, 0); #assert s[0] > 3 + 1.5 && s[1] < 1 + DR_SADDLE_Y + 0.2;
+  // a left turn in the air: it turns level under its upright rider (no lean, no bank clip); climbing,
+  // its nose comes up and the seat swings back with it
+  m[0].mounts[0].face = 0; m[0].mounts[0].wing.phase = WING_AIR; m[0].mounts[0].wing.bank = 0.5; m[0].mounts[0].clip = WING_CLIP_BANK_LEFT;
+  d = eg_dragon_record(m[0], 0, 0, out[..], 0); #assert abs(out[16]) < 0.0001 && abs(out[17] - 1) < 0.0001 && d.first == 1000 + dr_first(DR_FLY) * 10;
+  s := eg_saddle(m[0], 0, 0, 0); #assert abs(s[0] - 3) < 0.05 && abs(s[1] - (1 + DR_SEAT[dr_first(DR_FLY) * 3 + 1] + f32(EG_DRAGON_SEAT_UP))) < 0.01;
+  m[0].mounts[0].wing.vy = 20;
+  c := eg_saddle(m[0], 0, 0, 0); #assert eg_dragon_pitch(m[0].mounts[0]) == f32(EG_DRAGON_CLIMB_PITCH) && c[2] < s[2] - 0.5;
 }

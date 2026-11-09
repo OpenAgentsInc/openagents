@@ -93,6 +93,9 @@ lab_ride_stage :: (s: [] Lab, d: int) {
   } else {
     s[0].held = HOLD_W; s[0].shift = true; cr[0].pitch = 0.1; side = 0.7;
   }
+  // to look at the seat: &view=side puts the camera square off the rider's left, &view=rear right behind, both close and low
+  if s[0].stage_view == 1 { side = -1.5707964; } if s[0].stage_view == 2 { side = 0; }
+  if s[0].stage_view > 0 { cr[0].pitch = 0.05; cr[0].dist = 2.2; }
   // the camera eases round behind (and a little off the shoulder of) the way it goes
   want := h.face + 3.1415927 + side; dy := want - cr[0].yaw;
   while dy > 3.1415927 { dy -= 6.2831853; } while dy < -3.1415927 { dy += 6.2831853; }

@@ -304,10 +304,21 @@ summoning lands.
 
 - **The rider's seat.** The saddle point is the horse rig's `Torso2` bone,
   baked per frame, so the rider rises and falls with the horse's back in
-  every gait. The rider's pelvis sits on that point.
+  every gait. The rider's pelvis sits 0.47 m above that point, on top of the
+  back (the back's top is 0.33 m above the bone). On the dragon it is the
+  model's `saddle` bone, baked per frame, so the seat rears with the chest
+  as it takes off and hovers.
 - **The rider's legs.** A keyed riding pose (`aethyr/action/ride-pose.coax`)
   turns the thighs out and forward around the horse's barrel, bends the knees
-  and hangs the lower legs down the horse's sides, astride. The upper body
+  and hangs the lower legs down the horse's sides, astride, with the feet at
+  stirrup height by the lower ribs. The dragon has its own seat: the legs
+  splay down the flanks of its neck, which widens to 0.65 m a side under you.
+  Each mount's body round the saddle is measured from its baked frames (a
+  hull table: how far the surface is out a side at each height), and a check
+  holds every leg bone outside it in every frame a rider sees: all 36 horse
+  frames and every frame of the dragon's mount clips, pitched as far as it
+  climbs or dives. The dragon turns level under its rider, since the rider
+  sits upright and a rolled neck would swing into the legs. The upper body
   plays the idle or an action (the bow, a cast, a swing) through the shared
   upper-body layer.
 - **The horse's gaits.** Walk, trot, canter and gallop. The baked clips are

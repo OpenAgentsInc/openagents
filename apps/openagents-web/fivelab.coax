@@ -157,6 +157,7 @@ Lab :: struct {
   respawn_id:int = -1;
   ride_dev: int;   // a local page's ?ride= or ?stage= (experimental-ride.coax lab_ride_dev): mounted, galloping, drawing on the horse, or a stage
   stage_at: f32;   // when a riding stage's rider sat down
+  stage_view: int; // a stage's &view=side or &view=rear: the camera beside or behind the rider, close (0: the stage's own)
   ride_land: bool; // X pressed on the dragon in the air: it comes down to land
   xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
   creator: [1] cc.Creator;
@@ -3485,7 +3486,7 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
   }
   cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].xc[..],cl);}
   rd:=url_number(q,"ride");if rd>0 && rd<=3 {s[0].ride_dev=rd;}
-  if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].xc[0].open=false;}
+  if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].xc[0].open=false;} if url_has(q,"view=side") {s[0].stage_view=1;} if url_has(q,"view=rear") {s[0].stage_view=2;}
   // px, pz: any spot, metres plus 1000 (px=970&pz=1010 is (-30, 10)); yaw the way you face in degrees
   // (0 is +z), the camera behind you; dist the camera's metres; pitch its tilt down in degrees; class a
   // class's row (fivebar.coax FB_CL_*)

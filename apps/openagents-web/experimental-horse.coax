@@ -65,7 +65,7 @@ xh_figure :: (s:[]Creator, a0: figs.BdAnim) -> figs.BdAnim {
   r := xh_rider(s, s[0].clock); if !r.on { return a0; }
   a := a0; a.yaw = r.face;
   // seated, the upper body sits still (no run's arms) unless an action is layered on it
-  if r.seated > 0.5 { if !a.lay { a.clip = figs.BD_IDLE; a.t0 = 0; a.phase = s[0].clock / figs.bd_seconds(figs.BD_IDLE); } a = figs.bd_ride(a); }
+  if r.seated > 0.5 { if !a.lay { a.clip = figs.BD_IDLE; a.t0 = 0; a.phase = s[0].clock / figs.bd_seconds(figs.BD_IDLE); } a = figs.bd_ride(a, egm.eg_seat(s[0].mounts[0])); }
   return a;
 }
 // The zone's horses and dragon as moved meshes, into the scene's records from n; the next free record.
@@ -141,4 +141,42 @@ xh_records :: (s:[]Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -
   h := s[0].mounts[0].mounts[k]; #assert !mount.mount_aloft(h) && abs(h.wing.y - meadow.exp_height(h.x, h.z)) < 0.01;
   r := xh_rider(s[..], now); s[0].player_x = r.x; s[0].player_z = r.z;
   #assert xh_press(s[..], now + 3, DeedBearing.{}) == egm.EG_PRESS_DISMOUNTED;
+}
+#test "astride the horse and the dragon, no leg bone sits inside the mount's body at any frame it shows a rider (mounts)" #steps 900000000 {
+  // each seat matches its mount, and the rows of a hull are the engine's
+  #assert egm.EG_SEAT_OF[egm.EG_HORSE] == figs.BD_SEAT_HORSE && egm.EG_SEAT_OF[egm.EG_DRAGON] == figs.BD_SEAT_DRAGON && figs.RIDE_HULL_ROWS == 14;
+  d: [1] figs.People; figs.people_load(d[..]); rows: [figs.BD_ROWS * 4] f32;
+  w := 2 * figs.RIDE_HULL_ROWS;
+  for body: 0..<2 {
+    // the horse: every frame of its idle, walk and gallop; thighs out round the barrel, knees bent,
+    // the feet below the barrel's widest at the stirrups, the pelvis on the back over the saddle bone
+    h := figs.bd_ride_posed(d[..], body, figs.BD_SEAT_HORSE, rows[..]);
+    hip := h.leg_a[0]; knee := h.leg_a[1]; ankle := h.leg_a[2];
+    #assert knee.x > hip.x + 0.25 && knee.z > hip.z && ankle.y < knee.y - 0.3 && ankle.y < h.pelvis.y - 0.7;
+    bend := figs.dot(figs.unit_or(figs.sub(hip, knee), figs.v3(0, 1, 0)), figs.unit_or(figs.sub(ankle, knee), figs.v3(0, -1, 0)));
+    #assert bend > -0.9 && bend < 0;   // the knee bent between 90 and about 155 degrees
+    left: [14] f32; right: [14] f32;
+    for f: 0..<egm.EG_HORSE_FRAMES {
+      for i: 0..<14 { left[i] = egm.EG_HORSE_HULL[f * w + i]; right[i] = egm.EG_HORSE_HULL[f * w + 14 + i]; }
+      #assert figs.ride_clearance(h, f32(egm.EG_HORSE_SEAT_UP), left[..], right[..], 0, 0.04) > 0;
+    }
+    // the dragon: every frame of each clip it plays under a rider, level and pitched as far as it goes
+    r := figs.bd_ride_posed(d[..], body, figs.BD_SEAT_DRAGON, rows[..]);
+    #assert r.leg_a[2].x > r.leg_a[0].x + 0.5 && r.leg_b[2].x < r.leg_b[0].x - 0.5 && r.leg_a[1].z > r.leg_a[0].z;
+    for c: 0..<egm.EG_DRAGON_CLIP.count {
+      clip := egm.EG_DRAGON_CLIP[c];
+      for k: 0..<dragon.DR_FRAMES[clip] {
+        f := dragon.dr_first(clip) + k;
+        for i: 0..<14 { left[i] = dragon.DR_HULL[f * w + i]; right[i] = dragon.DR_HULL[f * w + 14 + i]; }
+        for p: 0..<3 {
+          pitch := ifx p == 0 then f32(egm.EG_DRAGON_DIVE_PITCH) else ifx p == 1 then 0.0f32 else f32(egm.EG_DRAGON_CLIMB_PITCH);
+          #assert figs.ride_clearance(r, f32(egm.EG_DRAGON_SEAT_UP), left[..], right[..], pitch, 0.04) > 0;
+        }
+      }
+    }
+  }
+  // the seat a rider takes is the one for what's under them
+  m: [1] egm.EgMounts; none: [6] f32;
+  _ := egm.eg_mount_add(m[..], 0, 0, 0); _ = egm.eg_dragon_add(m[..], 30, 0, 0, 0);
+  #assert egm.eg_mount_press(m[..], 0, 1.5, 0, 0, DeedBearing.{}, none[..], 0) == egm.EG_PRESS_MOUNTED && egm.eg_seat(m[0]) == figs.BD_SEAT_HORSE;
 }

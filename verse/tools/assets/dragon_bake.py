@@ -11,6 +11,8 @@ is OUT_DIR/dragon-k.bin, the record animal_bake.py writes: the corner count (u32
 seconds (f32), then per triangle corner x, y, z, the flat face normal (6 x f32, glTF space: +y up,
 the dragon facing +z, its feet at y 0) and an sRGB colour from the corner's material
 (baseColorFactor) whose fourth byte is 255, or 128 on the glowing eye material (Dragon_Eye).
+OUT_DIR/saddle.txt holds the `saddle` bone's head a line a frame, in the same order and space: where
+a rider sits as the clip moves the chest (everglade/dragon-clips.coax DR_SEAT).
 """
 import bpy, math, re, struct, sys
 from pathlib import Path
@@ -45,7 +47,7 @@ def action(name):
             return a
     raise ValueError(f'the dragon has no {name} clip: {[a.name for a in bpy.data.actions]}')
 
-index = 0; corners = None; colours = {}
+index = 0; corners = None; colours = {}; seats = []
 for c, name in enumerate(names):
     act = action(name); arm.animation_data.action = act
     start, end = act.frame_range
@@ -55,6 +57,8 @@ for c, name in enumerate(names):
         at = start + (end - start) * i / (n if loops[c] else max(n - 1, 1))
         bpy.context.scene.frame_set(math.floor(at), subframe=at - math.floor(at))
         deps = bpy.context.evaluated_depsgraph_get(); data = bytearray(); count = 0
+        seat = arm.matrix_world @ arm.pose.bones['saddle'].head
+        seats.append(f'{seat.x:.4f} {seat.z:.4f} {-seat.y:.4f}')
         for obj in meshes:
             ev = obj.evaluated_get(deps); mesh = ev.to_mesh(); mesh.calc_loop_triangles()
             m = ev.matrix_world
@@ -72,4 +76,5 @@ for c, name in enumerate(names):
         (output / f'dragon-{index}.bin').write_bytes(struct.pack('<If', count, seconds) + data)
         index += 1
     print(f'{name}: {n} frames, {seconds:.4f} s', flush=True)
+(output / 'saddle.txt').write_text('\n'.join(seats) + '\n')
 print(f'dragon: {index} frames of {corners} corners ({corners // 3} triangles)', flush=True)
