@@ -15,6 +15,8 @@ SFX_LAYERS :: 6;
 // Waves.
 SFX_SINE :: 0; SFX_SAW :: 1; SFX_SQUARE :: 2; SFX_NOISE :: 3;
 SFX_CRACKLE :: 4;           // sparse random clicks, f0 of them a second: fire, ice, rubble, sparks
+SFX_PLUCK :: 5;             // a plucked string (Karplus-Strong): a noise burst round a delay of one period at f0,
+                            // each pass averaged and damped (f1 the thousandths kept a pass): a bowstring's twang
 
 // One layer. Times in milliseconds, pitches and filter corners in hertz (a corner of 0 is
 // open), gain in thousandths. The pitch eases from f0 to f1 (fast at first), the lowpass
@@ -283,9 +285,11 @@ sfx_env :: (l: SfxLayer, i: int, n: int, a: int) -> int {
 }
 
 // One layer added into mix.
+SFX_PLUCK_MAX :: 2048;      // the longest period a pluck holds (about 11 Hz at SFX_RATE)
 sfx_layer :: (l: SfxLayer, seed: int, rate: int, mix: [] int) {
   start := l.at * rate / 1000; n := l.ms * rate / 1000; a := au_min(n, l.att * rate / 1000);
   if n <= 0 { return; }
+  if l.wave == SFX_PLUCK { sfx_pluck(l, seed, rate, mix, start, n, a); return; }
   z := au_noise(seed);
   p := au_noise_phase(au_noise_next(z)); vp := 0; lp := 0; hpy := 0; click := 0;
   vinc := au_inc_mhz(l.vhz * 1000, rate);
@@ -314,6 +318,27 @@ sfx_layer :: (l: SfxLayer, seed: int, rate: int, mix: [] int) {
       corner := l.lp0 + (l.lp1 - l.lp0) * k / AU_ONE;
       lp = au_pole(lp, x, sfx_pole(corner, rate)); x = lp;
     }
+    if chp > 0 { hpy = au_pole(hpy, x, chp); x -= hpy; }
+    mix[at] += au_gain(x, sfx_env(l, i, n, a)) * l.gain / 1000;
+  }
+}
+
+// A pluck (SFX_PLUCK): the string's delay line filled with a burst of noise, then each sample the
+// mean of the two oldest, kept f1 thousandths, so the high partials die first, as a string's do.
+sfx_pluck :: (l: SfxLayer, seed: int, rate: int, mix: [] int, start: int, n: int, a: int) {
+  period := au_max(2, au_min(SFX_PLUCK_MAX, rate / au_max(1, l.f0)));
+  keep := ifx l.f1 > 0 then au_min(1000, l.f1) else 996;
+  d: [SFX_PLUCK_MAX] int;
+  z := au_noise(seed);
+  for i: 0..<period { z = au_noise_next(z); d[i] = au_noise_value(z); }
+  lp := 0; hpy := 0; chp := ifx l.hp > 0 then sfx_pole(l.hp, rate) else 0;
+  for i: 0..<n {
+    at := start + i;
+    if at >= mix.count { break; }
+    k := i % period; q := (k + 1) % period;
+    x := d[k];
+    d[k] = (d[k] + d[q]) / 2 * keep / 1000;
+    if l.lp0 > 0 || l.lp1 > 0 { corner := l.lp0 + (l.lp1 - l.lp0) * (i * AU_ONE / n) / AU_ONE; lp = au_pole(lp, x, sfx_pole(corner, rate)); x = lp; }
     if chp > 0 { hpy = au_pole(hpy, x, chp); x -= hpy; }
     mix[at] += au_gain(x, sfx_env(l, i, n, a)) * l.gain / 1000;
   }

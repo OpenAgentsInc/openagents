@@ -12,8 +12,17 @@ The Ranger starts with a Longbow. Its SRD 5.2.1 starting gear includes a Longbow
 and a quiver, and its Weapon Mastery covers the Longbow's Slow
 (`aethyr/rules/srd/engine.coax` `rs_ranger`: `ranged = W_LONGBOW`). In
 Experimental it holds Quaternius' `Bow_Wooden` (`quaternius/ultimate-rpg/bow-wooden`,
-packed as `glade/weapon4`) in its left hand. The Fighter keeps its greatsword for
-now.
+packed as `glade/weapon4` without its string) in its left hand. The string is packed
+on its own as `glade/weapon5`, and an `Arrow` as `glade/weapon6`. The Fighter keeps
+its greatsword for now.
+
+The bow sits on one attach basis in the left fist, the same in every pose
+(`charactercreator.coax` `bow_basis`). The rig binds in a T-pose, so in the hand's
+bind frame the arm runs +X and the fist's hole, the thumb's side, runs +Z. The
+bow's limbs run through the fist along that hole, and its string side runs back
+along the forearm, canted 10 degrees out from the body. Carried, the arm hangs
+and the bow lies along the leg with the string square to the arm. Drawn, the arm
+points at the aim with the thumb up, so the bow stands upright.
 
 Character Create's own preview shows no held gear, so the bow appears only in
 Experimental.
@@ -50,9 +59,9 @@ every monster's hurt capsule.
 
 - **It reaches a monster:** the SRD rolls the attack. A hit ends the arrow in the
   monster, with sparks, a hit sound, the damage number and a short hit stop. A miss
-  shows **MISS**, plays a whiz and flies on through.
-- **It meets the ground, a wall or a prop:** it sticks with a puff of dust and a
-  thunk. It stays for 4 s, then fades out over 1 s.
+  shows **MISS**, plays a whoosh and flies on through.
+- **It meets the ground, a wall or a prop:** it sticks with a puff of dust, a soft
+  swish into grass or a thunk into wood or stone. It stays for 4 s, then fades out over 1 s.
 
 The Goblins' shortbow arrows are the same arrows in the same pool. Each Goblin
 arrow arcs from its hand to where you stood and arrives as the Goblin's attack
@@ -82,12 +91,50 @@ launch.
 
 ## Animation
 
-The Universal Animation Library has no bow clips. The draw and hold use
-`ual1_pistol_aim_neutral`, blended in with the aim through the shared upper-body
-layer (`fivelab-bodies.coax` `bd_layer`): standing, the whole body takes the aim;
-on the move, only the spine, arms and head do, and the walk keeps the legs. The
-release is `ual1_pistol_shoot`'s recoil. Bow clips authored on the UAL rig, with the right hand drawing the string to the
-cheek, would replace these two library clips.
+No library has bow clips for the Universal Animation Library's rig, so the draw
+is keyed in Coax on the rig (`aethyr/action/bow-pose.coax`) and baked once with
+the other clips, as clip `BD_BOW` (`fivelab-bodies.coax` `bd_bake_bow`). It has
+13 frames: 11 draws from strength 0 to 1, then two of the release. Each frame
+starts from the idle stance:
+
+- The chest turns the bow shoulder 0.6 radians toward the aim, and the head turns
+  back to it.
+- The bow arm reaches straight ahead at shoulder height (two-bone IK), and the bow
+  hand turns thumb up.
+- The draw hand comes to the string, which is the nock at strength 0, and pulls it
+  back to the anchor at the jaw as the strength builds. The elbow goes back and out
+  at shoulder height.
+- On the release, the draw hand follows through back past the ear and the bow arm
+  drops a little.
+
+The frame shown follows the draw strength (`bow_pose_frame`), so a partial draw
+is a partial pull. It plays through the shared upper-body layer (`bd_layer`):
+standing, the whole body draws; on the move, only the spine, arms and head do,
+and the walk keeps the legs.
+
+The string is two pieces of the packed string, one from each tip to the nock
+point, so it bends into a V at the draw hand's fingers. On the release it snaps
+back straight. From the nock until the release, an arrow sits on the string at
+the draw hand and lies along the bow arm past the grip.
+
+While you draw, the camera's boom comes level behind your right shoulder, 0.8 m
+out and 0.38 m up, whatever the pitch, and the view still looks along the pitch
+(the aim).
+
+## Sound
+
+The bow's sounds are synthesized (`aethyr/audio/experimental-sfx.coax`, CC0, made
+by OpenAgents). Each plays at the position it comes from, with a small random
+pitch and level, like every other combat sound.
+
+| Sound | What it is |
+| --- | --- |
+| `bow-draw` | The limbs creaking and the string stretching, over the 0.76 s of a full draw |
+| `bow-release` | A plucked-string twang (Karplus-Strong, `SFX_PLUCK`) with a low thump of the limbs, louder for a stronger draw |
+| `arrow-whiz` | Band-passed air sweeping down, as an arrow leaves you or flies past |
+| `arrow-hit` | A low thunk with a click and the shaft's quiver, into wood or stone |
+| `arrow-flesh` | A dull meaty thud and a wet tear, into a creature |
+| `arrow-grass` | A soft swish and a muffled tap, into the grass |
 
 ## How another realm adopts it
 

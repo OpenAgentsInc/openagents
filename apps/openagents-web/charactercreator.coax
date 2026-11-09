@@ -51,10 +51,12 @@ Creator :: struct {
   width:f32; height:f32; scale:f32 = 1; mobile:bool;
   pan_mode:bool; drag_pan:bool; drag_button:int; pan_x:f32; pan_y:f32; profile_request:bool;profile_pending:bool;profile_ok:bool;profile_failed:bool;profile_go:bool;profile_want_go:bool;profile_revision:int = -1;profile_at:int;profile_bytes:[56]u8; boxes:[18]Box; down:int = -1; dragging:bool; drag_id:int; dx:f32; dy:f32;
   klass:int = -1; level:int = 1;   // and its level (CC4, #13046)
-  weapon_first:[5]int; weapon_count:[5]int;   // the pack's held weapons (glade/weapon0..4)
+  weapon_first:[7]int; weapon_count:[7]int;   // the pack's held weapons (glade/weapon0..4), the bow's string (5) and an arrow (6)
   weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (experimental-combat.coax)
   backpedal:bool;    // mouselook with S held: the run plays backwards while you face the camera (no backpedal clip in the rig)
   aim:f32;           // a drawn bow's aim, 0 to 1 (aethyr/action/bow.coax bow_aim): the camera over your shoulder and the aiming pose
+  draw:f32; loose_at:f32 = -100; nocked:bool;   // the draw's strength (bow_strength), the last loose, and an arrow on the string
+  orbit:f32;         // a check's camera turn round you (radians), apart from your aim: side and back frames
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
   ml:[1]mlook.Mouselook;   // Experimental's mouselook (aethyr/cam/mouselook.coax); the studio never asks for it
   dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
@@ -367,7 +369,8 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
  // shared upper-body layer (fivelab-bodies.coax bd_layer): standing the whole body, on the move the
  // upper body only, the walk keeping the legs
  if !(s.dev_animations && s.preview_clip>=0) && s.aim>0.001 && !s.airborne {
-  a=figs.bd_layer(a,figs.BD_CLIPS+CC_AIM_CLIP,0,0.5,s.aim,s.clock);
+  f:=figs.bow_pose_frame(s.draw,ifx s.nocked then -1.0f32 else s.clock-s.loose_at);
+  a=figs.bd_layer(a,figs.BD_BOW,0,(f32(f)+0.5)/f32(figs.BOW_POSE_FRAMES),s.aim,s.clock);
  }
  if !(s.dev_animations && s.preview_clip>=0) && s.swing_clip>=0 && s.clock-s.swing_at<figs.bd_seconds(s.swing_clip) {
   // a blow: its clip over what you were doing (fivelab-bodies.coax bd_layer): standing the whole body,
@@ -394,9 +397,8 @@ CC_KIT_TWO :: [5]bool.[true,true,false,false,false];  // held in both hands: the
 CC_KIT_HOLD :: [5]int.[0,3,0,0,0];               // a two-hander's first owned clip (verse/everglade/two-hand-rig.coax): the axe's, the sword's
 CC_KIT_BOW :: 4;
 CC_BOW_GRIP_X :: -0.127;   // source units from the bow's middle (as packed) to its grip, across the limbs
-CC_AIM_CLIP :: 19;
 CC_SHOULDER :: 0.7;        // metres the over-the-shoulder camera sits right of you (mouselook and the bow)
-CC_LIFT :: 0.55;           // and above, in mouselook, so you stand below the reticle         // the drawn bow's pose: ual1_pistol_aim_neutral (the library has no bow clips; docs/verse/bow-combat.md)
+CC_LIFT :: 0.55;           // and above, in mouselook, so you stand below the reticle
 // The left fist's middle from its joint, in the bind pose (the mirror of CC_FIST).
 CC_FIST_L :: [3]f32.[0.075,-0.03,0.0];
 // The fist's middle from the hand's joint, in the bind pose (metres: toward the fingers, then under the palm).
@@ -415,7 +417,61 @@ held_weapon :: (s:Creator,b:[]figs.Bodies,out:[]f32,n:int)->int {
  at:=[4]int.[0,8,16,20];for i:0..<4 {for r:0..<3 {out[n*24+at[i]+r]=w[i*3+r];}}
  out[n*24+7]=f32(s.glade_word);out[n*24+15]=19;
  b[0].draws[n*4]=cast(u32)s.weapon_first[m];b[0].draws[n*4+1]=cast(u32)s.weapon_count[m];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;
+ if s.weapon==CC_KIT_BOW {return bow_string(s,b,out,n+1,w);}
  return n+1;
+}
+// One held piece's record: mesh m (glade/weapon m) placed by w (translation, then X, Y, Z columns).
+weapon_record :: (s:Creator,b:[]figs.Bodies,out:[]f32,n:int,m:int,w:[12]f32)->int {
+ if n>=43 || s.weapon_count[m]<=0 {return n;}
+ for k:0..<24 {out[n*24+k]=0;}
+ at:=[4]int.[0,8,16,20];for i:0..<4 {for r:0..<3 {out[n*24+at[i]+r]=w[i*3+r];}}
+ out[n*24+7]=f32(s.glade_word);out[n*24+15]=19;
+ b[0].draws[n*4]=cast(u32)s.weapon_first[m];b[0].draws[n*4+1]=cast(u32)s.weapon_count[m];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;
+ return n+1;
+}
+// The bow's string (packed apart from the bow as glade/weapon5, at its rest in the bow's own space)
+// as two pieces, each tip to the nock point, so the string bends into a V at the draw hand's fingers;
+// and while drawn, an arrow (glade/weapon6) from the nock along the bow arm. At rest the nock point is
+// the string's middle; drawn it is the draw hand's fist, as far as the aim has come in; loosed it
+// snaps back straight.
+CC_STRING_X :: 0.2425;     // the string in the bow's packed space: X, and its tips at +-CC_STRING_Y
+CC_STRING_Y :: 0.925;
+CC_ARROW_SCALE :: 0.52;    // the packed arrow (1.456 long, head +Y) to about 0.76 m
+CC_ARROW_NOCK :: 0.728;
+bow_string :: (s:Creator,b:[]figs.Bodies,out:[]f32,n0:int,w:[12]f32)->int {
+ n:=n0;
+ o:=ifx s.female then 3 else 0;
+ // the bow's frame (w: origin, then X, Y, Z columns, each scaled by the kit's scale)
+ org:=[3]f32.[w[0],w[1],w[2]];bx:=[3]f32.[w[3],w[4],w[5]];by:=[3]f32.[w[6],w[7],w[8]];bz:=[3]f32.[w[9],w[10],w[11]];
+ up:=[3]f32.[org[0]+bx[0]*f32(CC_STRING_X)+by[0]*f32(CC_STRING_Y),org[1]+bx[1]*f32(CC_STRING_X)+by[1]*f32(CC_STRING_Y),org[2]+bx[2]*f32(CC_STRING_X)+by[2]*f32(CC_STRING_Y)];
+ dn:=[3]f32.[org[0]+bx[0]*f32(CC_STRING_X)-by[0]*f32(CC_STRING_Y),org[1]+bx[1]*f32(CC_STRING_X)-by[1]*f32(CC_STRING_Y),org[2]+bx[2]*f32(CC_STRING_X)-by[2]*f32(CC_STRING_Y)];
+ rest:=[3]f32.[(up[0]+dn[0])*0.5,(up[1]+dn[1])*0.5,(up[2]+dn[2])*0.5];
+ // the draw hand's fist, in the world
+ hr:=figs.bd_hand(b,out[4],out[5],out[6],false);
+ f:=cc_pose_point(hr,[3]f32.[b[0].hand_at[o]+CC_FIST[0],b[0].hand_at[o+1]+CC_FIST[1],b[0].hand_at[o+2]+CC_FIST[2]]);
+ c:=cos(out[3]);sn:=sin(out[3]);
+ fist:=[3]f32.[f[0]*c+f[2]*sn+out[0],f[1]+out[1],-f[0]*sn+f[2]*c+out[2]];
+ k:=ifx s.nocked then s.aim else 0.0f32;
+ nock:=[3]f32.[rest[0]+(fist[0]-rest[0])*k,rest[1]+(fist[1]-rest[1])*k,rest[2]+(fist[2]-rest[2])*k];
+ for half:0..<2 {
+  tip:=ifx half==0 then up else dn;
+  // the string's mesh maps by Y from -CC_STRING_Y (this tip) to +CC_STRING_Y (the nock)
+  ys:=[3]f32.[(nock[0]-tip[0])/(2*f32(CC_STRING_Y)),(nock[1]-tip[1])/(2*f32(CC_STRING_Y)),(nock[2]-tip[2])/(2*f32(CC_STRING_Y))];
+  mid:=[3]f32.[(nock[0]+tip[0])*0.5,(nock[1]+tip[1])*0.5,(nock[2]+tip[2])*0.5];
+  q:=[12]f32.[mid[0]-bx[0]*f32(CC_STRING_X),mid[1]-bx[1]*f32(CC_STRING_X),mid[2]-bx[2]*f32(CC_STRING_X),bx[0],bx[1],bx[2],ys[0],ys[1],ys[2],bz[0],bz[1],bz[2]];
+  n=weapon_record(s,b,out,n,5,q);
+ }
+ if s.nocked && s.aim>0.05 {
+  // the arrow: its nock at the string, its shaft forward past the bow's grip
+  grip:=[3]f32.[org[0]+bx[0]*f32(CC_BOW_GRIP_X),org[1]+bx[1]*f32(CC_BOW_GRIP_X),org[2]+bx[2]*f32(CC_BOW_GRIP_X)];
+  d:=cc_unit([3]f32.[grip[0]-nock[0],grip[1]-nock[1],grip[2]-nock[2]]);
+  e:=cc_unit([3]f32.[d[1]*bz[2]-d[2]*bz[1],d[2]*bz[0]-d[0]*bz[2],d[0]*bz[1]-d[1]*bz[0]]);
+  g:=[3]f32.[e[1]*d[2]-e[2]*d[1],e[2]*d[0]-e[0]*d[2],e[0]*d[1]-e[1]*d[0]];
+  a:=f32(CC_ARROW_SCALE);l:=a*f32(CC_ARROW_NOCK);
+  q:=[12]f32.[nock[0]+d[0]*l,nock[1]+d[1]*l,nock[2]+d[2]*l,e[0]*a,e[1]*a,e[2]*a,d[0]*a,d[1]*a,d[2]*a,g[0]*a,g[1]*a,g[2]*a];
+  n=weapon_record(s,b,out,n,6,q);
+ }
+ return n;
 }
 // Kit k's place in the world: its translation, then its X, Y and Z columns (four by three), from the
 // hand's pose h (three rows of four, bd_hand), the hand's bind position, and the figure's turn and place.
@@ -437,18 +493,50 @@ weapon_matrix :: (h:[12]f32,hand:[3]f32,k:int,yaw:f32,at:[3]f32)->[12]f32 {
 }
 // The bow's place: its grip in the left fist (hl, the hand's pose; hand_l, its bind position), its limbs
 // up and its string toward you, leaning a little forward at rest and upright as the aim comes in.
+// The bow's attach basis in the left hand: one frame from the hand bone, the same in every pose. The
+// rig binds in a T-pose with the left arm along +X and the palm down, so in the hand's bind frame the
+// arm runs +X and the fist's hole (the thumb's side) runs +Z. The bow's limbs (model Y) go through the
+// fist along that hole, its string side (model X) back along the forearm toward you, canted
+// CC_BOW_CANT about the arm, out from the body. Carried, the arm hangs and the bow lies along the leg,
+// the string square to the arm; drawn, the arm points ahead, the thumb up and the bow stands upright.
+CC_BOW_CANT :: 0.17;       // radians, about 10 degrees
+bow_basis :: (hl:[12]f32)->[3][3]f32 {
+ a:=cc_unit([3]f32.[-hl[0],-hl[4],-hl[8]]);
+ t:=[3]f32.[hl[2],hl[6],hl[10]];d:=t[0]*a[0]+t[1]*a[1]+t[2]*a[2];
+ y0:=cc_unit([3]f32.[t[0]-d*a[0],t[1]-d*a[1],t[2]-d*a[2]]);
+ ay:=[3]f32.[a[1]*y0[2]-a[2]*y0[1],a[2]*y0[0]-a[0]*y0[2],a[0]*y0[1]-a[1]*y0[0]];
+ c:=cos(f32(CC_BOW_CANT));sn:=sin(f32(CC_BOW_CANT));
+ y:=[3]f32.[y0[0]*c+ay[0]*sn,y0[1]*c+ay[1]*sn,y0[2]*c+ay[2]*sn];
+ z:=[3]f32.[a[1]*y[2]-a[2]*y[1],a[2]*y[0]-a[0]*y[2],a[0]*y[1]-a[1]*y[0]];
+ return [3][3]f32.[a,y,z];
+}
+// The bow's place: its grip in the left fist (hl the hand's pose, hand_l its bind position), on bow_basis.
 bow_matrix :: (hl:[12]f32,hand_l:[3]f32,aim:f32,yaw:f32,at:[3]f32)->[12]f32 {
  sc:=CC_KIT_SCALE[CC_KIT_BOW];
  l:=cc_pose_point(hl,[3]f32.[hand_l[0]+CC_FIST_L[0],hand_l[1]+CC_FIST_L[1],hand_l[2]+CC_FIST_L[2]]);
- lean:=0.35*(1-aim);ly:=cos(lean);lz:=sin(lean);
- // model space: X (across the limbs, toward the string) back at you, Y up the limbs, Z the figure's left
- y:=[3]f32.[0,ly,lz];xc:=[3]f32.[0,lz,-ly];z:=[3]f32.[xc[1]*y[2]-xc[2]*y[1],xc[2]*y[0]-xc[0]*y[2],xc[0]*y[1]-xc[1]*y[0]];
+ f:=bow_basis(hl);xc:=f[0];y:=f[1];z:=f[2];
  g:=f32(CC_BOW_GRIP_X);
  v:=[4][3]f32.[[3]f32.[l[0]-sc*g*xc[0],l[1]-sc*g*xc[1],l[2]-sc*g*xc[2]],[3]f32.[sc*xc[0],sc*xc[1],sc*xc[2]],[3]f32.[sc*y[0],sc*y[1],sc*y[2]],[3]f32.[sc*z[0],sc*z[1],sc*z[2]]];
  c:=cos(yaw);sn:=sin(yaw);w:[12]f32;
  for i:0..<4 {w[i*3]=v[i][0]*c+v[i][2]*sn;w[i*3+1]=v[i][1];w[i*3+2]= -v[i][0]*sn+v[i][2]*c;}
  for r:0..<3 {w[r]+=at[r];}
  return w;
+}
+cc_dot :: (p:[3]f32,q:[3]f32)->f32 {return p[0]*q[0]+p[1]*q[1]+p[2]*q[2];}
+// A hand pose from its bind axes' new directions (columns), for checks.
+cc_test_hand :: (ax:[3]f32,ay:[3]f32,az:[3]f32)->[12]f32 {return [12]f32.[ax[0],ay[0],az[0],0,ax[1],ay[1],az[1],0,ax[2],ay[2],az[2],0];}
+#test "the bow's attach basis: carried it lies along the leg, string square to the arm; drawn it stands upright" {
+ // bind (T-pose): limbs along the hole (+Z, a little canted), string side back along the arm (-X)
+ b:=bow_basis(cc_test_hand([3]f32.[1,0,0],[3]f32.[0,1,0],[3]f32.[0,0,1]));
+ #assert b[0][0]< -0.999 && b[1][2]>0.95 && abs(b[1][0])<0.001;
+ // carried: the arm hangs (+X to -Y), the back of the hand out (+Y to +X), the thumb ahead (+Z)
+ arm:=[3]f32.[0,-1,0];k:=bow_basis(cc_test_hand(arm,[3]f32.[1,0,0],[3]f32.[0,0,1]));
+ #assert abs(k[1][1])<0.05 && abs(cc_dot(k[1],arm))<0.001 && k[0][1]>0.999;
+ // drawn: the arm ahead (+X to +Z), the thumb up (+Z to +Y), the palm in
+ arm=[3]f32.[0,0,1];d:=bow_basis(cc_test_hand(arm,[3]f32.[1,0,0],[3]f32.[0,1,0]));
+ #assert d[1][1]>0.95 && abs(cc_dot(d[1],arm))<0.001 && d[0][2]< -0.999;
+ // every basis is orthonormal
+ for f:[3][3][3]f32.[b,k,d] {#assert abs(cc_dot(f[0],f[1]))<0.001 && abs(cc_dot(f[1],f[2]))<0.001 && abs(cc_dot(f[2],f[2])-1)<0.001;}
 }
 // A two-hander's place: its haft runs from the right fist through the left (both hands' poses hr and hl,
 // their bind positions), the right fist at its grip, the edge along the right hand's knuckles.
@@ -527,6 +615,7 @@ two_hand_room :: (pal:[]f32,bind:[6][3]f32,k:int)->[3]f32 {
 // The baked pose (palette rows) of clip c at frame f, sampled from its rig as fivelab-bodies.coax bakes it.
 cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,female:bool,c:int,f:int,out:[]f32) {
  sk:[1]figs.Skin;
+ if c==figs.BD_BOW {figs.bd_bow_pose(ppl,ifx female then 1 else 0,f,out);return;}
  if c>=figs.BD_OWN {rig:=figs.twohand_rig(own,female);t:=f32(f)*rig.duration[c-figs.BD_OWN]/f32(figs.BD_OWN_FRAMES[c-figs.BD_OWN]);
   for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,c-figs.BD_OWN,j,t);}figs.skin_palette(rig,sk[..],out);return;}
  rig:=figs.people_rig(ppl,female);cl:=figs.BD_CLIP[c];t:=f32(f)*rig.duration[cl]/f32(figs.BD_FRAMES[c]);
@@ -937,14 +1026,17 @@ cc_camera_terrain_room :: (x:f32,y:f32,z:f32,boom:[3]f32)->f32 {
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.experimental {
     target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
-    cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw); cz:=cos(s.yaw);
+    cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw+s.orbit); cz:=cos(s.yaw+s.orbit);
     // over your right shoulder, one offset family: mouselook (aethyr/cam/mouselook.coax) frames you
     // below and left of the reticle, as far as its fade has come (ml shown); a drawn bow keeps that
     // offset and tightens in, as far as the aim has come in (s.aim). Nothing jumps between them.
     mlv:=s.ml[0].shown;off:=ifx mlv>s.aim then mlv else s.aim;
     dist:=s.dist+(2.1-s.dist)*s.aim;shoulder:=cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off;ox:=cz*shoulder;oz:= -sx*shoulder;
-    lift:=f32(CC_LIFT)*mlv;if 0.22*s.aim>lift {lift=0.22*s.aim;}target+=lift;
-    boom:=[3]f32.[ox+sx*cy*dist,sy*dist,oz+cz*cy*dist];length:=sqrt(boom[0]*boom[0]+boom[1]*boom[1]+boom[2]*boom[2]);near:[1]village.EvNear;village.ev_camera_near(near[..],s.player_x,s.player_z);room:=cc_camera_boom(near[0].walls[0..<near[0].wall_n*6],s.player_x,s.player_y+1.2,s.player_z,boom);
+    lift:=f32(CC_LIFT)*mlv;if 0.38*s.aim>lift {lift=0.38*s.aim;}target+=lift;
+    // drawn, the boom comes level behind the shoulder, whatever the pitch: the view still looks along
+    // the pitch (the aim), so you see the arrow's line and not the top of your head
+    bp:=s.pitch*(1-0.85*s.aim);bcy:=cos(bp);bsy:=sin(bp);
+    boom:=[3]f32.[ox+sx*bcy*dist,bsy*dist,oz+cz*bcy*dist];length:=sqrt(boom[0]*boom[0]+boom[1]*boom[1]+boom[2]*boom[2]);near:[1]village.EvNear;village.ev_camera_near(near[..],s.player_x,s.player_z);room:=cc_camera_boom(near[0].walls[0..<near[0].wall_n*6],s.player_x,s.player_y+1.2,s.player_z,boom);
     ground_room:=cc_camera_terrain_room(s.player_x,target,s.player_z,boom);if ground_room<room {room=ground_room;}if s.camera_room>=0 && s.camera_room<room {room=s.camera_room;}share:=ifx length>0 then cc_clamp(room/length,0,1) else 0;
     u[16]=s.player_x+boom[0]*share;u[17]=target+boom[1]*share;u[18]=s.player_z+boom[2]*share;u[19]=h*0.89*(1+0.18*s.aim);
     u[20]= -sx*cy;u[21]= -sy;u[22]= -cz*cy;u[23]=w*0.5;
@@ -1056,7 +1148,7 @@ ensure :: (s:[]Creator) {if !s[0].configured {preset(s,s[0].outfit);}}
 reset :: (s:[]Creator) { s[0].pan_x=0;s[0].pan_y=0;s[0].pan_mode=false;s[0].piece=18;s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].eye_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
 catalog :: (s:[]Creator,t:string) {
   if s[0].aribeth.count>0 {aribeth.arb_catalog(s[0].aribeth,t);}
-  s[0].comparison_present=false;s[0].biomes_present=false;s[0].source_n=0;s[0].glade_count=0;s[0].zero_ad_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].dungeon_n=0;for i:0..<8 {s[0].dungeon_count[i]=0;}s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<4 {s[0].weapon_count[i]=0;}
+  s[0].comparison_present=false;s[0].biomes_present=false;s[0].source_n=0;s[0].glade_count=0;s[0].zero_ad_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].dungeon_n=0;for i:0..<8 {s[0].dungeon_count[i]=0;}s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<7 {s[0].weapon_count[i]=0;}
   for i:0..<11 {s[0].familiar_count[i]=0;}
   for i:0..<80 {s[0].source_count[i]=0;}
   at:=0;
@@ -1084,7 +1176,7 @@ catalog :: (s:[]Creator,t:string) {
       i:=figs.bd_whole_at(name,12);if i>=0 && i<10 {p:=ne;s[0].animal_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].animal_count[i]=figs.bd_whole_at(row,p);if s[0].animal_count[i]>0 {s[0].animal_n+=1;}}
     }
     if name.count>12 && name[0..<12]=="glade/weapon" {
-      i:=figs.bd_whole_at(name,12);if i>=0 && i<5 {p:=ne;s[0].weapon_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].weapon_count[i]=figs.bd_whole_at(row,p);}
+      i:=figs.bd_whole_at(name,12);if i>=0 && i<7 {p:=ne;s[0].weapon_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].weapon_count[i]=figs.bd_whole_at(row,p);}
     }
     if name.count>13 && name[0..<13]=="glade/dungeon" {
       i:=figs.bd_whole_at(name,13);if i>=0 && i<dungeon.DG_CHUNKS {p:=ne;s[0].dungeon_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].dungeon_count[i]=figs.bd_whole_at(row,p);if s[0].dungeon_count[i]>0 {s[0].dungeon_n+=1;}}

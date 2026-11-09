@@ -78,7 +78,7 @@ gp_village_tile :: (material:string)->int {
  box:=gp_vertex_bounds(b[..],0,2,false);#assert box[0]<=2000 && box[3]>=3000 && box[2]<= -3000 && box[5]>= -2000;
 }
 GP_VERTS :: 8000000;
-Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;zero_first:int;zero_count:int;zero_tex_first:int;zero_tex_end:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;weaponfirst:[5]int;weaponcount:[5]int;dungeonfirst:[8]int;dungeoncount:[8]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
+Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;zero_first:int;zero_count:int;zero_tex_first:int;zero_tex_end:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;weaponfirst:[7]int;weaponcount:[7]int;mat_only:string;mat_skip:string;dungeonfirst:[8]int;dungeoncount:[8]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
 // Capture exactly the world-space vertices emitted for one placed asset.
 // Tree trunks use their bark geometry so a broad canopy does not become a wall.
 gp_vertex_bounds :: (vertices:[]u8,first:int,last:int,bark:bool)->[6]int {
@@ -289,7 +289,7 @@ gp_showcase_mesh :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:strin
 gp_showcase_at :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,place:[2]f32,atlas:int,model_scale:f32,yaw:f32,lift:f32,marker:f32) {
  gl_load(g,object_path);anchor:=gp_showcase_bounds(g);base:=meadow.exp_height(place[0],place[1])+lift;cs:=cos(yaw);sn:=sin(yaw);
  for node_i:0..<g[0].nx[GA_NODE] {node:=gl_at(g,GA_NODE,node_i);mesh_i:=gl_int(g,node,"mesh",-1);if mesh_i<0 {continue;}translation:[3]f64;rotation:=[4]f64.[0,0,0,1];scale:=[3]f64.[1,1,1];unused:=gl_nums(g,node,"translation",translation[..]);unused=gl_nums(g,node,"rotation",rotation[..]);unused=gl_nums(g,node,"scale",scale[..]);q:=[4]f32.[f32(rotation[0]),f32(rotation[1]),f32(rotation[2]),f32(rotation[3])];
-  mesh:=gl_at(g,GA_MESH,mesh_i);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;idx:[262144]f64;nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;unused_acc:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;mat:=gl_at(g,GA_MAT,gl_int(g,pr,"material",0));colour:=gp_showcase_colour(source,name,gl_str(g,mat,"name"),w[0].txt[..]);first:=w[0].nv;
+  mesh:=gl_at(g,GA_MESH,mesh_i);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;idx:[262144]f64;nv:=gl_acc(g,gl_int(g,attr,"POSITION",0),pos[..]).count;unused_acc:=gl_acc(g,gl_int(g,attr,"NORMAL",0),nor[..]);ni:=gl_acc(g,gl_int(g,pr,"indices",0),idx[..]).count;mat:=gl_at(g,GA_MAT,gl_int(g,pr,"material",0));mname:=gl_str(g,mat,"name");if (w[0].mat_only.count>0 && mname!=w[0].mat_only) || (w[0].mat_skip.count>0 && mname==w[0].mat_skip) {continue;}colour:=gp_showcase_colour(source,name,gl_str(g,mat,"name"),w[0].txt[..]);first:=w[0].nv;
    for v:0..<nv {p:=gp_showcase_rotate([3]f32.[f32(pos[v*3]*scale[0]),f32(pos[v*3+1]*scale[1]),f32(pos[v*3+2]*scale[2])],q);n:=gp_showcase_rotate([3]f32.[f32(nor[v*3]/scale[0]),f32(nor[v*3+1]/scale[1]),f32(nor[v*3+2]/scale[2])],q);length:=sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);if length>0 {for k:0..<3 {n[k]/=length;}}lx:=p[0]+f32(translation[0])-anchor[0];lz:=p[2]+f32(translation[2])-anchor[2];normal:=[3]f32.[n[0]*cs+n[2]*sn,n[1],-n[0]*sn+n[2]*cs];id:=gp_v(w,[3]f32.[place[0]+model_scale*(lx*cs+lz*sn),base+model_scale*(p[1]+f32(translation[1])-anchor[1]),place[1]+model_scale*(-lx*sn+lz*cs)],normal,[2]f32.[0.5,0.5],colour,atlas,4);gp_word(w[0].v[..],id*32+28,f32_bits(marker));}
    for k:0..<ni/3 {gp_tri(w,first+int(idx[k*3]),first+int(idx[k*3+1]),first+int(idx[k*3+2]));}
   }
@@ -299,14 +299,18 @@ gp_showcase_at :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,
 // Ranger's or Rogue's shortsword), Sword_Golden (a Paladin's longsword) and Sword_big (a Fighter's greatsword),
 // from the showcase's Ultimate RPG rows. Each is meshed in its own space, the blade up +Y and centred
 // on X and Z, at its source size, marked 115.4375: the runtime sets its grip, scale and the hand's pose (flag 19).
-// Bow_Wooden (a Ranger's longbow, docs/verse/bow-combat.md) is the fifth: its limbs up +Y, the string along -X.
-GP_WEAPONS :: [5]string.["Axe_Double","Sword","Sword_Golden","Sword_big","Bow_Wooden"];
+// Bow_Wooden (a Ranger's longbow, docs/verse/bow-combat.md) is the fifth, its limbs up +Y, without its
+// string, which is the sixth alone (its White material) in the same space, so the runtime can bend it
+// to the draw hand; the seventh is an Arrow (head +Y), the one on the string while drawn.
+GP_WEAPONS :: [7]string.["Axe_Double","Sword","Sword_Golden","Sword_big","Bow_Wooden","Bow_Wooden","Arrow"];
+GP_WEAPON_ONLY :: [7]string.["","","","","","White",""];
+GP_WEAPON_SKIP :: [7]string.["","","","","White","",""];
 gp_weapons :: (w:[]Gp,g:[]Gltf,layout:string,objects:string,rpg:string) {
  b:[65536]u8;n:=fs_read(layout,b[..]);if n<0 {ph_die("missing showcase layout");}
  for k:0..<GP_WEAPONS.count {lines:[1]Lines;lines[0].text=cast(string)b[0..<n];found:=false;
   while !lines_done(lines[0]) {row:=lines_next(lines[..]);a:=0;while a<row.count && row[a]!='|' {a+=1;}c:=a+1;while c<row.count && row[c]!='|' {c+=1;}if c>=row.count || row[0..<a]!="ultimate-rpg" || row[a+1..<c]!=GP_WEAPONS[k] {continue;}
    path:=txt_cat3(w[0].txt[..],objects,"/",row[c+1..<row.count]);gl_load(g,path);anchor:=gp_showcase_bounds(g);
-   w[0].weaponfirst[k]=w[0].ni;gp_showcase_at(w,g,path,rpg,GP_WEAPONS[k],[2]f32.[0,0],w[0].village_layer,1,0,-meadow.exp_height(0,0)+anchor[1],115.4375);w[0].weaponcount[k]=w[0].ni-w[0].weaponfirst[k];found=true;break;}
+   w[0].weaponfirst[k]=w[0].ni;w[0].mat_only=GP_WEAPON_ONLY[k];w[0].mat_skip=GP_WEAPON_SKIP[k];gp_showcase_at(w,g,path,rpg,GP_WEAPONS[k],[2]f32.[0,0],w[0].village_layer,1,0,-meadow.exp_height(0,0)+anchor[1],115.4375);w[0].weaponcount[k]=w[0].ni-w[0].weaponfirst[k];w[0].mat_only="";w[0].mat_skip="";found=true;break;}
   if !found {ph_die("missing weapon in the showcase layout");}
  }
 }

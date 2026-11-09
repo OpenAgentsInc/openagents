@@ -15,13 +15,16 @@ XSFX_GREMLIN_HURT :: 14; XSFX_GREMLIN_DEATH :: 15;
 // the monsters' ranged attacks (experimental-combat.coax xc_shots_step): the release, the flight
 // past you and the impact, for an arrow and for a thrown rock
 XSFX_BOW :: 16; XSFX_ARROW_WHIZ :: 17; XSFX_ARROW_HIT :: 18; XSFX_HURL :: 19; XSFX_ROCK_HIT :: 20;
-XSFX_COUNT :: 21;
+// the bow's own (docs/verse/bow-combat.md): the draw's creak, an arrow into a creature, and one into grass
+XSFX_BOW_DRAW :: 21; XSFX_ARROW_FLESH :: 22; XSFX_ARROW_GRASS :: 23;
+XSFX_COUNT :: 24;
 XSFX_NAMES :: [XSFX_COUNT] string.[
   "psychic-cast", "psychic-hit", "choir", "rage-roar", "grunt",
   "swing-heavy", "fizzle", "second-wind", "surge", "dash",
   "flurry", "entangle", "imp-hurt", "imp-death",
   "gremlin-hurt", "gremlin-death",
-  "bow-release", "arrow-whiz", "arrow-hit", "hurl", "rock-hit"];
+  "bow-release", "arrow-whiz", "arrow-hit", "hurl", "rock-hit",
+  "bow-draw", "arrow-flesh", "arrow-grass"];
 XSFX_MAX_MS :: 1400;
 
 xsfx_id :: (name: string) -> int {
@@ -98,16 +101,18 @@ xsfx_recipe :: (id: int) -> Sfx {
     s = sfx_add(s, sl(SFX_SAW, 0, 850, 20, 140, 60, 800, 250, 0, 500));
     s = sfx_add(s, sl_curve(sl(SFX_NOISE, 800, 300, 2, 0, 0, 600, 150, 30, 900), 3));
     s = sfx_add(s, sl(SFX_SINE, 800, 280, 2, 70, 35, 0, 0, 0, 700));
-  } else if id == XSFX_BOW {            // a shortbow loosed: the string's twang and the arrow leaving
-    s = sfx_add(s, sl(SFX_SAW, 0, 180, 2, 210, 150, 2400, 600, 0, 700));
-    s = sfx_add(s, sl(SFX_SINE, 0, 220, 2, 420, 300, 0, 0, 0, 400));
-    s = sfx_add(s, sl(SFX_NOISE, 20, 260, 30, 0, 0, 2200, 4200, 900, 500));
-  } else if id == XSFX_ARROW_WHIZ {     // an arrow flying past: a thin rising-falling whistle of air
-    s = sfx_add(s, sl(SFX_NOISE, 0, 420, 180, 0, 0, 3000, 6000, 1800, 800));
-    s = sfx_add(s, sl(SFX_SINE, 0, 380, 160, 1500, 1100, 0, 0, 0, 160));
-  } else if id == XSFX_ARROW_HIT {      // an arrow striking: a short thunk and a quiver
-    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 140, 1, 0, 0, 2200, 500, 150, 900), 3));
-    s = sfx_add(s, sl_vib(sl(SFX_SINE, 0, 260, 2, 190, 160, 0, 0, 0, 500), 40, 28));
+  } else if id == XSFX_BOW {            // a bow loosed: the string's twang (a pluck, low and bright), the limbs' thump, the slap
+    s = sfx_add(s, sl(SFX_PLUCK, 0, 420, 1, 98, 993, 5200, 1400, 60, 1000));
+    s = sfx_add(s, sl(SFX_PLUCK, 0, 260, 1, 196, 985, 6000, 2000, 120, 450));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 160, 2, 130, 46, 0, 0, 0, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 40, 1, 0, 0, 7000, 2500, 800, 500), 3));
+  } else if id == XSFX_ARROW_WHIZ {     // an arrow flying past: band-passed air sweeping down as it goes by
+    s = sfx_add(s, sl(SFX_NOISE, 0, 460, 200, 0, 0, 3800, 1200, 500, 900));
+    s = sfx_add(s, sl(SFX_NOISE, 60, 360, 150, 0, 0, 2600, 1100, 400, 500));
+  } else if id == XSFX_ARROW_HIT {      // an arrow into wood or earth: a short low thunk, a click, the shaft's quiver
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 150, 1, 180, 85, 0, 0, 0, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 30, 1, 0, 0, 4500, 1500, 300, 700), 3));
+    s = sfx_add(s, sl_vib(sl(SFX_PLUCK, 10, 260, 2, 150, 990, 1600, 600, 80, 250), 30, 24));
   } else if id == XSFX_HURL {           // a rock heaved: a grunt and a low heavy whoosh
     s = sfx_add(s, sl_vib(sl(SFX_SAW, 0, 300, 15, 150, 95, 800, 350, 0, 600), 50, 8));
     s = sfx_add(s, sl(SFX_NOISE, 80, 520, 260, 0, 0, 300, 1100, 90, 1000));
@@ -115,6 +120,17 @@ xsfx_recipe :: (id: int) -> Sfx {
     s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 320, 2, 0, 0, 1400, 250, 40, 1000), 3));
     s = sfx_add(s, sl(SFX_SINE, 0, 300, 2, 75, 38, 0, 0, 0, 800));
     s = sfx_add(s, sl(SFX_CRACKLE, 40, 650, 10, 140, 30, 4000, 1500, 400, 500));
+  } else if id == XSFX_BOW_DRAW {       // a bow drawn: the limbs creaking and the string stretching as it comes back
+    s = sfx_add(s, sl(SFX_CRACKLE, 0, 760, 120, 40, 140, 1300, 900, 150, 380));
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 0, 760, 300, 58, 82, 520, 900, 40, 800), 1), 30, 7));
+    s = sfx_add(s, sl(SFX_NOISE, 0, 760, 450, 0, 0, 1100, 1900, 300, 260));
+  } else if id == XSFX_ARROW_FLESH {    // an arrow into a creature: a dull meaty thud and a wet tear
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 200, 1, 110, 55, 0, 0, 0, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 180, 2, 0, 0, 1500, 400, 120, 850), 3));
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 15, 160, 4, 140, 90, 900, 300, 60, 260), 3), 60, 31));
+  } else if id == XSFX_ARROW_GRASS {    // an arrow into grass: a soft swish and a muffled tap in the earth
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 220, 8, 0, 0, 2400, 700, 350, 800), 2));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 20, 110, 1, 120, 70, 0, 0, 0, 450), 3));
   }
   return s;
 }

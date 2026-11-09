@@ -688,7 +688,7 @@ xc_shots_step :: (s: [] Lab) {
     q[0].ended = true;
     if q[0].hit {
       fx_start_at(s, ifx arrow then FXR_HIT else FXR_DUST, now, from, to, fxp_v(0.8, 0.7, 0.55), ifx arrow then 0.7f32 else big, 1);
-      xc_cue(s, ifx arrow then "arrow-hit" else "rock-hit", 0.7, q[0].tx, q[0].tz, 1);
+      xc_cue(s, ifx arrow then "arrow-flesh" else "rock-hit", 0.7, q[0].tx, q[0].tz, 1);
       // the arrow ends in you
       ai := s[0].xc[0].shot_arrow[k] - 1;
       if arrow && ai >= 0 && s[0].xc[0].arrows[0].a[ai].state == bow.ARROW_FLYING {
@@ -917,7 +917,6 @@ XC_BOW_HAND :: 1.45;     // m up from your feet the arrow leaves
 XC_BOW_LOOK :: 150.0;    // m the crosshair's ray looks for what it points at
 XC_BOW_PAST :: 60.0;     // and where it points when it meets nothing
 XC_BOW_BODY :: 0.42;     // m round a monster's middle an arrow meets it (times its scale)
-XC_BOW_RECOIL :: 23;     // the release's clip: ual1_pistol_shoot (verse/everglade/preview-rig.coax)
 xc_has_bow :: (s: [] Lab) -> bool {
   x := s[0].xc[0]; cr := s[0].creator[0];
   return cr.experimental && x.started && xc_kit(x.klass) == XC_KIT_BOW && !cr.walk.on && cr.hostiles[0].hp > 0;
@@ -950,7 +949,7 @@ xc_bow_begin :: (s: [] Lab, self_loose: bool) -> bool {
   if now - x[0].cool_at < f32(XC_COOL) { x[0].refused += 1; return false; }
   if !x[0].seeded { x[0].seeded = true; x[0].b[0].dice[0].state = x[0].b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
   bow.bow_begin(x[0].draw[..], now, self_loose);
-  xc_cue(s, "swing", 0.25, cr[0].player_x, cr[0].player_z, 0.6);   // the string drawn back
+  xc_cue(s, "bow-draw", 0.4, cr[0].player_x, cr[0].player_z, 1);   // the limbs creak as the string comes back
   return true;
 }
 xc_bow_cancel :: (s: [] Lab) -> bool {
@@ -1001,6 +1000,7 @@ xc_bow_loose :: (s: [] Lab) -> bool {
   if !x[0].draw[0].on { return false; }
   if !xc_has_bow(s) || !x[0].seen { _ := xc_bow_cancel(s); return false; }
   strength := bow.bow_release(x[0].draw[..], now);
+  cr[0].loose_at = now; cr[0].nocked = false;
   x[0].bow_touch = -100;
   aim := xc_bow_point(s);
   f := cr[0].yaw + 3.14159265;   // you face where the camera looks
@@ -1010,8 +1010,8 @@ xc_bow_loose :: (s: [] Lab) -> bool {
   k := bow.bow_speed(strength) / bow.bow_speed(1);
   _ := bow.arrow_loose(x[0].arrows[..], 0, from, [3] f32.[v[0] * k, v[1] * k, v[2] * k], now, aim.foe, strength);
   x[0].bow_shots += 1; x[0].cool_at = now; x[0].used = xc_slot_of(x, FB_ATTACK);
-  cr[0].swing_clip = figs.BD_CLIPS + XC_BOW_RECOIL; cr[0].swing_at = now;
-  xc_cue(s, "bow-release", 0.7, cr[0].player_x, cr[0].player_z, 0.85 + 0.25 * strength);
+  xc_cue(s, "bow-release", 0.4 + 0.3 * strength, cr[0].player_x, cr[0].player_z, 0.9 + 0.15 * strength);
+  xc_cue(s, "arrow-whiz", 0.12 + 0.12 * strength, cr[0].player_x, cr[0].player_z, 1);   // the arrow leaving
   return true;
 }
 // An arrow of yours reached monster foe: the SRD Attack with your Longbow on it. Whether it hit.
@@ -1035,18 +1035,19 @@ xc_bow_step :: (s: [] Lab, dt: f32) {
   bow.bow_step(x[0].draw[..], dt);
   if bow.bow_due(x[0].draw[0], now) { _ := xc_bow_loose(s); }
   cr[0].aim = ifx xc_has_bow(s) || x[0].draw[0].aim > 0 then bow.bow_aim(x[0].draw[0]) else 0.0f32;
+  cr[0].nocked = x[0].draw[0].on; if x[0].draw[0].on { cr[0].draw = bow.bow_strength(x[0].draw[0], now); } else if now - cr[0].loose_at > 0.3 { cr[0].draw = 0; }
   p := x[0].arrows[..];
   for i: 0..<bow.ARROWS {
     if p[0].a[i].state != bow.ARROW_FLYING { continue; }
     seg := bow.arrow_segment(p, i, now);
     if seg.count == 0 { continue; }
     // the first of the ground, a wall, or (yours) a monster's body along it
-    stop := 2.0f32; body := -1;
+    stop := 2.0f32; body := -1; grass := false;
     sx := seg.p1[0] - seg.p0[0]; sy := seg.p1[1] - seg.p0[1]; sz := seg.p1[2] - seg.p0[2];
     n := cast(int) (sqrt(sx * sx + sy * sy + sz * sz) / 0.4) + 1; if n > 64 { n = 64; }
     for j: 1..<n + 1 {
       u := f32(j) / f32(n); qx := seg.p0[0] + sx * u; qy := seg.p0[1] + sy * u; qz := seg.p0[2] + sz * u;
-      if xc_bow_wall(qx, qy, qz) { stop = u; break; }
+      if xc_bow_wall(qx, qy, qz) { stop = u; grass = qy <= meadow_y(qx, qz) + 0.02; break; }
     }
     if p[0].a[i].owner == 0 {
       for e: 0..<XC_FOES {
@@ -1067,7 +1068,7 @@ xc_bow_step :: (s: [] Lab, dt: f32) {
       q := p[0].a[i].at;
       if p[0].a[i].owner == 0 { x[0].bow_stuck += 1; }
       fx_start_at(s, FXR_DUST, now, fxp_v(q[0], q[1], q[2]), fxp_v(q[0], q[1], q[2]), fxp_v(0.55, 0.48, 0.38), 0.35, 0.5);
-      xc_cue(s, "arrow-hit", 0.35, q[0], q[2], 0.7);
+      xc_cue(s, ifx grass then "arrow-grass" else "arrow-hit", 0.45, q[0], q[2], 1);   // into the grass, or a thunk into wood or stone
     }
   }
   bow.arrow_tidy(p, now);
@@ -2127,6 +2128,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   if f == 1018 { return xc_bow_point(s).foe; }
   if f >= 1019 && f < 1022 { return cast(int) (xc_bow_point(s).at[f - 1019] * 100); }
   if f >= 1030 && f < 1048 { e := hs[0].enemies[(f - 1030) / 3]; c := (f - 1030) % 3; return cast(int) (100 * (ifx c == 0 then e.x else ifx c == 1 then meadow_y(e.x, e.z) else e.z)); }
+  if f >= 2000 && f < 2361 { s[0].creator[0].orbit = f32(f - 2000) * 3.14159265 / 180; return 1; }   // a check turns the camera round you
   if f == 1009 { return cast(int) x[0].u[23]; }
   if f == 1010 { return cast(int) x[0].u[27]; }
   return -1;

@@ -274,7 +274,7 @@ xc_sound :: (a: FbAb, klass: int) -> XcSnd {
     if heavy { return xs("swing-heavy", "", "hit-heavy", "", ifx kit == 0 then 0.88 else 1.0); }   // the greataxe is the heavier
     return xs("swing", "", "hit", "", ifx kit == 3 then 1.1 else 1.0);
   }
-  if a.kind == FB_SHOOT { return xs("", "", "arrow-hit", "arrow-whiz", 1); }   // its release is played as it is loosed
+  if a.kind == FB_SHOOT { return xs("", "", "arrow-flesh", "arrow-whiz", 1); }   // its release is played as it is loosed
   if a.kind == FB_RECKLESS { return xs("grunt", "swing-heavy", "hit-heavy", "", 0.9); }
   if a.kind == FB_RAGE { return xs("rage-roar", "", "", "", 1); }
   if a.kind == FB_FLURRY { return xs("flurry", "", "hit", "", 1); }
