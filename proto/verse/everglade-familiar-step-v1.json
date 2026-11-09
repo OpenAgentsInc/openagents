@@ -1,0 +1,8 @@
+{
+  "identity": "everglade-familiar-step-v1",
+  "base_session": "everglade-session-v5",
+  "scope": "Everglade II only",
+  "request": "M5 SEQ",
+  "success": "m5 SEQ",
+  "refusal": "r SEQ familiar"
+}

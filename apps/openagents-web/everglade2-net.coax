@@ -306,10 +306,11 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
-  if wire_is(t,"m4") {
+  step:=wire_is(t,"m5");
+  if step || wire_is(t,"m4") {
     rd:=[1]WireRd.[wire_rd(t,2)];
-    seq:=wire_num(t,rd[..]); order:=wire_num(t,rd[..]);
-    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && order>0 && order==n[0].familiar_order {
+    seq:=wire_num(t,rd[..]); order:=ifx step then 4 else wire_num(t,rd[..]);
+    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && order>0 && (step || order<=3) && order==n[0].familiar_order {
       n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
     }
     return;
@@ -669,13 +670,14 @@ e2n_familiar :: (n:[]E2Net)->bool {
   return true;
 }
 e2n_familiar_order :: (n:[]E2Net,order:int)->bool {
-  if !e2n_open(n) || order<1 || order>3 || n[0].familiar_cast==1 ||
+  if !e2n_open(n) || order<1 || order>4 || n[0].familiar_cast==1 ||
     (n[0].familiar_cast==4 && n[0].mono-n[0].familiar_at<4000) { return false; }
   n[0].familiar_seq=add_sat(n[0].familiar_seq,1);
   n[0].familiar_order=order; n[0].familiar_at=-100000; n[0].familiar_cast=0;
   out:=n[0].out[..];
-  count:=wire_int(out,wire_put(out,0,"M4"),n[0].familiar_seq);
-  e2n_send(n,wire_int(out,count,order));
+  count:=wire_int(out,wire_put(out,0,ifx order==4 then "M5" else "M4"),n[0].familiar_seq);
+  if order!=4 { count=wire_int(out,count,order); }
+  e2n_send(n,count);
   return true;
 }
 e2n_familiar_message :: (n:[]E2Net)->string {
@@ -685,7 +687,7 @@ e2n_familiar_message :: (n:[]E2Net)->string {
   age:=n[0].mono-n[0].familiar_at;
   if age<0 || age>=4000 { return ""; }
   if n[0].familiar_order>0 {
-    messages:=[3]string.["FAMILIAR POCKETED","FAMILIAR RECALLED","FAMILIAR RELEASED"];
+    messages:=[4]string.["FAMILIAR POCKETED","FAMILIAR RECALLED","FAMILIAR RELEASED","FAMILIAR MOVED"];
     return ifx n[0].familiar_ok then messages[n[0].familiar_order-1] else "FAMILIAR COMMAND REFUSED";
   }
   if wizard {

@@ -1708,7 +1708,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
   box:=e2k_familiar_orders_box(s[..]);
-  #assert e2_pointer(s[..],(box[0]+box[2])/2,(box[1]+box[3])/2,0,0,1);
+  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.375,(box[1]+box[3])/2,0,0,1);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M4 4000001 2";
   e2n_record(n,"m4 4000000 2");
@@ -1719,4 +1719,9 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2n_familiar_order(n,3);
   e2n_record(n,"r 4000002 familiar");
   #assert e2n_familiar_message(n)=="FAMILIAR COMMAND REFUSED";
+  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.875,(box[1]+box[3])/2,0,0,1);
+  q:=n[0].pipe[0]; step:=q.n-1;
+  #assert cast(string)q.buf[q.from[step]..<q.from[step]+q.len[step]]=="M5 4000003";
+  e2n_record(n,"m4 4000003 4"); #assert e2n_familiar_message(n)=="";
+  e2n_record(n,"m5 4000003"); #assert e2n_familiar_message(n)=="FAMILIAR MOVED";
 }

@@ -963,3 +963,13 @@ The room checks ownership and the saved Magic action. Pocket and recall
 preserve Hit Points, and an obstructed recall or replay spends no action.
 Release retires the familiar. The room fixture exercises the full sequence
 and the page fixture verifies request encoding and matching acknowledgments.
+
+Everglade II's Step button now asks the room to move the familiar one
+square in the direction the owner faces. The room checks clearance from
+the familiar's position and uses its saved turn and movement budget.
+The room's hostile Opportunity Attack selection for familiar movement
+still needs integration.
+
+The room still maps SRD actors onto Everglade's grid, whose Z origin is
+−110 m. Everglade II's path continues to a clearing at −470 m. Familiar
+placement and movement need grid coverage through that clearing.

@@ -7581,3 +7581,8 @@ Everglade II familiar lifecycle requests resolve through the owner's saved
 Magic action. A pocketed familiar retains Hit Points while absent. Recall
 requires room collision clearance, and refusal does not spend the action.
 Release retires the familiar. The room rejects replayed familiar requests.
+
+Everglade II's familiar Step uses the owner's admitted facing and the
+familiar's room position, saved turn, movement and telepathic link.
+The world collision query starts at the familiar. A blocked Step leaves
+its movement unspent, and the owner's turn is unchanged.
