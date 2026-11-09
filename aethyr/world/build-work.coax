@@ -59,6 +59,13 @@ bw_left :: (s:BuildStock,parts:[]bs.BuildPart,done:[]f32)->int {
 bw_ceil :: (x:f32)->int {return -int(floor(-x));}
 // The most items a pile draws: a pile of 300 stones shows 36, each standing for several.
 BW_SHOWN :: [BW_SHAPES]int.[14,30,18,24,36,16,8,20];
+// The items a full pile draws.
+bw_most :: (s:BuildStock)->int {m:=BW_SHOWN[s.shape];return ifx s.count<m then s.count else m;}
+// A pile packed whole with item i's reveal key i / bw_most (build-work-mesh.coax), as the fraction
+// that shows its first `shown` items: half an item short of the next key, so a key rounded down to
+// 1/255 never lets one more through; -1 when none show. The carried item is item 0 alone.
+bw_pile_frac :: (s:BuildStock,shown:int)->f32 {if shown<=0 {return -1;}return (f32(shown)-0.5)/f32(bw_most(s));}
+bw_carry_frac :: (s:BuildStock)->f32 {return 0.5/f32(bw_most(s));}
 // How many items a pile with `left` of its stock draws: as many as it holds up to the shape's
 // most, fewer as it is used, and one while any is left.
 bw_shown :: (s:BuildStock,left:int)->int {
@@ -237,6 +244,11 @@ bw_loudest :: (counts:[]int)->int {k:= -1;m:=0;for i:0..<counts.count {if counts
  bs.bs_fractions(parts[..],2,d[..]);#assert bw_left(s,parts[..],d[..])==0 && bw_shown(s,0)==0 && bs.bs_arrival(parts[..],2).part== -1;
  // a pile never goes up as the build goes on, and draws one item while any is left
  last:=61;for k:0..<41 {bs.bs_fractions(parts[..],f32(k)*0.05,d[..]);n:=bw_left(s,parts[..],d[..]);#assert n<=last;last=n;if n>0 {#assert bw_shown(s,n)>=1 && bw_shown(s,n)<=BW_SHOWN[BW_RODS];}}
+}
+#test "a packed pile shows exactly its first items, its keys rounded to bytes" {
+ for sh:0..<BW_SHAPES {st:=BuildStock.{shape=sh,count=300};most:=bw_most(st);
+  for n:1..<most+1 {f:=bw_pile_frac(st,n);for i:0..<most {key:=f32(int(f32(i)/f32(most)*255))/255;#assert (key<=f)==(i<n);}}
+  #assert bw_pile_frac(st,0)<0 && f32(int(1.0/f32(most)*255))/255>bw_carry_frac(st);}
 }
 #test "a stock feeds only its material, its stage and kit pieces as asked" {
  p:=bs.BuildPart.{stage=7,form=bs.BS_SLAB,mat=bs.BS_EARTH};t:=p;t.stage=1;t.form=bs.BS_TRENCH;

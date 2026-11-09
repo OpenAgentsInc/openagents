@@ -9,6 +9,7 @@
 #load "../../aethyr/world/build-site.coax" as bsite;
 #load "../../aethyr/world/building.coax" as bframe;
 #load "../../everglade/world/housewright.coax" as hwc;
+#load "../../aethyr/world/build-work-mesh.coax" as bwm;
 
 CC_CREWS :: 32;            // as many as the glade's build sites
 CC_TRIP :: 1.2;            // seconds a builder's trip takes on the page clock
@@ -62,6 +63,29 @@ cc_crew_anim :: (s:Creator,c:CcCrew)->figs.BdAnim {
  else {a.phase=s.clock/figs.bd_seconds(a.clip);}
  return a;
 }
+// Each site's piles beside it, as many left as its parts have not used (bw.bw_left), and its
+// builder's load in its hands while it carries: one build instance a pile (build_instance, the
+// pile's mesh packed whole with a reveal key an item, "C glade/pile<row>"), and one more for the
+// load, item 0 of its pile moved to the hands (bwm.bwm_carry_pose).
+cc_crew_piles_draw :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n:int,cap:int)->int {
+ if s[0].pile_n!=hwc.HW_STOCKS {return n;}
+ c:=n;id:=[12]f32.[1,0,0,0,1,0,0,0,1,0,0,0];
+ for i:0..<CC_CREWS {cr:=s[0].crews[i];if !cr.on {continue;}
+  p:[hwc.HW_MOST_PARTS]bsite.BuildPart;pn:=hwc.hw_tier_parts(cr.tier,p[..]);fr:[hwc.HW_MOST_PARTS]f32;bsite.bs_fractions(p[0..<pn],cr.progress,fr[..]);
+  st:[hwc.HW_MOST_STOCKS]bw.BuildStock;rows:[hwc.HW_MOST_STOCKS]int;m:=hwc.hw_tier_stocks(cr.tier,st[..],rows[..]);reach:=hwc.HW_REACH[cr.tier];
+  ph:=s[0].clock/CC_TRIP-floor(s[0].clock/CC_TRIP);w:=cc_crew_worker(s[0],cr,ph);
+  for k:0..<m {r:=rows[k];if s[0].pile_count[r]<=0 {continue;}
+   left:=bw.bw_left(st[k],p[0..<pn],fr[0..<pn]);f:=bw.bw_pile_frac(st[k],bw.bw_shown(st[k],left));
+   if f>=0 && c<cap && (c+1)*24<=out.count {build_instance(out,c,s[0].pile_word,cr.f,cr.y,id,f);
+    b[0].draws[c*4]=cast(u32)s[0].pile_first[r];b[0].draws[c*4+1]=cast(u32)s[0].pile_count[r];b[0].draws[c*4+2]=cast(u32)c;b[0].draws[c*4+3]=1;c+=1;}
+   // the load: carried at the hands, in front of the chest, across the body
+   if w.carry && w.stock==k && c<cap && (c+1)*24<=out.count {
+    hands:=[3]f32.[w.x+sin(w.yaw)*0.36,0.98,w.z+cos(w.yaw)*0.36];
+    build_instance(out,c,s[0].pile_word,cr.f,cr.y,bwm.bwm_carry_pose(st[k],k,m,reach,hands,w.yaw),bw.bw_carry_frac(st[k]));
+    b[0].draws[c*4]=cast(u32)s[0].pile_first[r];b[0].draws[c*4+1]=cast(u32)s[0].pile_count[r];b[0].draws[c*4+2]=cast(u32)c;b[0].draws[c*4+3]=1;c+=1;}
+  }}
+ return c;
+}
 // The material sounds of every site since the last frame (bw.bw_sounds), summed into counts.
 cc_crew_sounds :: (s:[]Creator,counts:[]int) {
  for k:0..<counts.count {counts[k]=0;}
@@ -82,4 +106,19 @@ cc_crew_sounds :: (s:[]Creator,counts:[]int) {
  // the hut's weaving creaks, its posts knock
  cnt:[bw.BW_SOUNDS]int;s[0].crews[0].heard=1;s[0].crews[0].progress=2;cc_crew_sounds(s[..],cnt[..]);#assert cnt[bw.BW_SOUND_WITHY]>0 && s[0].crews[0].heard==2;
  cc_crew_clear(s[..],0);#assert !s[0].crews[0].on;
+}
+#test "a site's piles draw what is left, and the builder's load while it carries" {
+ s:[1]Creator;b:[1]figs.Bodies;out:[256*24]f32;s[0].pile_n=hwc.HW_STOCKS;s[0].pile_word=5;
+ for r:0..<hwc.HW_STOCKS {s[0].pile_first[r]=r*1000;s[0].pile_count[r]=600;}
+ f:=bframe.BuildingFrame.{x=10,z=4,turn=2};
+ // before the hut starts: its four piles, full
+ s[0].clock=0.3;cc_crew_set(s[..],0,hwc.HW_HUT,f,0,0);n:=cc_crew_piles_draw(s[..],b[..],out[..],0,256);
+ #assert n>=4 && out[3]>0 && out[3]<1;
+ // done: no piles and no load
+ s[0].crews[0].progress=4;s[0].crews[0].v_last=4;s[0].crews[0].v_now=4;#assert cc_crew_piles_draw(s[..],b[..],out[..],0,256)==0;
+ // half way through the weaving the withies' pile shows about half its items
+ s[0].crews[0].progress=1.5;s[0].crews[0].v_last=1.5;s[0].crews[0].v_now=1.5;s[0].clock=0;n=cc_crew_piles_draw(s[..],b[..],out[..],0,256);
+ found:=false;w:=hwc.hw_stock_row(hwc.HW_HUT,"withies");for r:0..<n {if b[0].draws[r*4]==cast(u32)(w*1000) {found=true;fr:=1-out[r*24+3];#assert fr>0.4 && fr<0.6;}}#assert found;
+ // a carrying builder adds its load: one more record than the piles
+ s[0].clock=CC_TRIP*0.5;k:=cc_crew_piles_draw(s[..],b[..],out[..],0,256);#assert cc_crew_worker(s[0],s[0].crews[0],0.5).carry && k==n+1;
 }

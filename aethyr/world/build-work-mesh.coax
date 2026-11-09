@@ -84,9 +84,12 @@ bwm_thing :: (m:[]bsm.BsMesh,s:bw.BuildStock,o:[3]f32,turn:f32,seed:f32) {
  a:=bsm.bm_mul(along,s.len*0.5);b:=bsm.bm_mul(across,s.size*0.5);
  bsm.bm_card(m,o,a,b,bsm.bm_shade(seed*0.7,0.2),s.mat);bsm.bm_card(m,bsm.bm_add(o,bwm_v3(0,0.02,0)),bsm.bm_mul(b,1.4),bsm.bm_mul(a,0.7),bsm.bm_shade(seed*1.9,0.2),s.mat);
 }
-// The pile with `items` drawn (bw.bw_shown), at pile k of n beside a site of reach `reach`.
+// The pile with `items` drawn (bw.bw_shown), at pile k of n beside a site of reach `reach`. Item i
+// carries reveal key i / bw_most, so a pile packed whole shows its first n items at bw_pile_frac.
 bwm_pile :: (m:[]bsm.BsMesh,s:bw.BuildStock,items:int,k:int,n:int,reach:[3]f32) {
- at:=bw.bw_pile_at(k,n,reach);for i:0..<items {bwm_item(m,s,i,at[0],at[1]);}
+ at:=bw.bw_pile_at(k,n,reach);most:=bw.bw_most(s);
+ for i:0..<items {bsm.bm_key(m,f32(i)/f32(most),-1);bwm_item(m,s,i,at[0],at[1]);}
+ bsm.bm_key(m,0,-1);
 }
 // What the builder carries from a pile: item 0's thing at `o` (the hands' middle, in the building's
 // frame), lying across the body when it faces `yaw`: a pole on the shoulder, a sheaf, a stone.
@@ -95,6 +98,23 @@ bwm_carried :: (m:[]bsm.BsMesh,s:bw.BuildStock,o:[3]f32,yaw:f32) {
  bwm_thing(m,s,o,ifx s.shape==bw.BW_LOGS || s.shape==bw.BW_SHEAVES || s.shape==bw.BW_BOARDS then yaw else yaw+1.5707963,0);
 }
 
+// The pose (columns x, y, z, then the translation, in the building's frame) that lifts a packed
+// pile's item 0 off pile k of n and holds it at `hands`, lying across a builder facing `yaw`:
+// draw the pile at bw.bw_carry_frac with it and only that item shows, in the builder's hands.
+bwm_carry_pose :: (s:bw.BuildStock,k:int,n:int,reach:[3]f32,hands:[3]f32,yaw:f32)->[12]f32 {
+ at:=bw.bw_pile_at(k,n,reach);q:=bwm_place(s,0);ix:=at[0]+q[0];iy:=q[1];iz:=at[1]+q[2];
+ th:=yaw+1.5707963-q[3];c:=cos(th);sn:=sin(th);
+ return [12]f32.[c,0,-sn, 0,1,0, sn,0,c, hands[0]-(c*ix+sn*iz),hands[1]-iy,hands[2]-(-sn*ix+c*iz)];
+}
+#test "the carried item leaves its pile and lies across the builder's hands" {
+ s:=bw.BuildStock.{shape=bw.BW_LOGS,mat=bs.BS_BARK,count=8,size=0.065,len=2.4};reach:=[3]f32.[1.5,1.5,1.5];
+ m:=bwm_carry_pose(s,0,3,reach,[3]f32.[1,1,2],0);at:=bw.bw_pile_at(0,3,reach);q:=bwm_place(s,0);
+ x:=at[0]+q[0];y:=q[1];z:=at[1]+q[2];
+ h:=[3]f32.[m[0]*x+m[3]*y+m[6]*z+m[9],m[1]*x+m[4]*y+m[7]*z+m[10],m[2]*x+m[5]*y+m[8]*z+m[11]];
+ #assert abs(h[0]-1)<0.0001 && abs(h[1]-1)<0.0001 && abs(h[2]-2)<0.0001;
+ // a pole lying along z in the pile lies along x (across the body) for a builder facing +z
+ d:=[3]f32.[m[6],m[7],m[8]];#assert abs(abs(d[0])-1)<0.05 && abs(d[2])<0.05;
+}
 #test "every pile shape makes its items, each in the vertex budget and beside its site" #steps 400000000 {
  reach:=[3]f32.[2,2,2];m:[1]bsm.BsMesh;
  for sh:0..<bw.BW_SHAPES {

@@ -83,6 +83,7 @@ Creator :: struct {
   hud_floor:f32;   // device px: Experimental's bar and side bar reach up to here at the bottom right, 0 clear (experimental-combat.coax); the coordinates and FPS sit over it
   dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
   crews:[CC_CREWS]CcCrew;   // the build sites' builders (charactercreator-crew.coax)
+  pile_first:[hw.HW_STOCKS]int; pile_count:[hw.HW_STOCKS]int; pile_word:int; pile_n:int;   // their piles ("C glade/pile<row>")
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
   shadow:[1]CcShadow;   // the key light's two shadow tiles (shadow_frame)
 }
@@ -1149,6 +1150,7 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)g.n;n+=1;
   }
   n=build_sites_draw(s,b,out,n,b[0].draws.count/4-reserved);
+  n=cc_crew_piles_draw(s,b,out,n,b[0].draws.count/4-reserved);   // the builders' piles and loads
   b[0].draw_n=n;return n;
 }
 
@@ -1647,6 +1649,7 @@ catalog :: (s:[]Creator,t:string) {
     }
     if name=="glade/nwn-biomes" {p:=figs.bd_word_end(row,ne+1);s[0].biomes_present=figs.bd_whole_at(row,p)>0;}
     if name=="glade/nwn-comparison" {p:=figs.bd_word_end(row,ne+1);s[0].comparison_present=figs.bd_whole_at(row,p)>0;}
+    if name.count>10 && name[0..<10]=="glade/pile" {i:=figs.bd_whole_at(name,10);if i>=0 && i<hw.HW_STOCKS {p:=ne;s[0].pile_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].pile_count[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);s[0].pile_word=figs.bd_whole_at(row,p);if s[0].pile_count[i]>0 {s[0].pile_n+=1;}}}
     if name.count>11 && name[0..<11]=="glade/build" {i:=figs.bd_whole_at(name,11);if i>=0 && i<hw.HW_PARTS {p:=ne;s[0].build_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].build_count[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);s[0].build_word=figs.bd_whole_at(row,p);if s[0].build_count[i]>0 {s[0].build_n+=1;}}}
     if name=="glade/0ad" {p:=ne;s[0].zero_ad_first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].zero_ad_count=figs.bd_whole_at(row,p);}
     if name.count>14 && name[0..<14]=="glade/familiar" {
