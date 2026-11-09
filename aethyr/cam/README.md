@@ -14,6 +14,7 @@ colliders.
 | `handback.coax` | A cinematic that starts on the live shot and hands back by one outcome (resume the saved orbit, reset behind the subject, retain the track's look), easing to the follow camera's own shot; cancel hands back from where it is; a teleport or lost target cuts with no sweep |
 | `eye.coax` | Checked head-to-eye sphere sweep over a semantic selection: body categories, roles and ignored self identities come from the owner; stale selections and query failures report their exact status, and an embedded start cannot claim a safe view |
 | `semantic.coax` | Source-part adapters `cam_centred_selected` and `cam_shake_selected` for the existing follow/shot owner; collision tests the displaced shake segment, and the accepted eye displacement moves the aim while the listener retains the unshaken base |
+| `track.coax` | A camera track any zone can load from a stage (#13107): keys of time, eye, look and easing as table rows (`cam_track_load`), flown through `cinematic.coax`'s Catmull-Rom at a clock the zone owns (`cam_track_at`, whole game steps by `cam_track_clock`), so a recording gives the same frames every run; a sky clock (`cam_track_day`) sweeps the day over the shot |
 
 `attn_step_selected` consumes a sight selection from `query-scene.coax`. It
 rechecks its epoch and referenced entities before running the same bounded
@@ -78,5 +79,6 @@ coax/bin/coax test aethyr/cam/frame.coax --library
 coax/bin/coax test aethyr/cam/handback.coax --library
 coax/bin/coax test aethyr/cam/filters.coax --library
 coax/bin/coax test aethyr/cam/parity.coax --library
+coax/bin/coax test aethyr/cam/track.coax --library
 coax/bin/coax test --library apps/openagents-web/everglade2.coax
 ```

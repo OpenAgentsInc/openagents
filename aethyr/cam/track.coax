@@ -1,0 +1,127 @@
+// A camera track any zone can load (GitHub #13107, book chapter 78): keys of time, eye, look and
+// easing, flown at a clock the caller owns, so the same clock always gives the same shot. A stage
+// (`?stage=NAME`) authors its track as a table of rows and loads it with cam_track_load; each frame it
+// asks cam_track_at for the shot at its own game time (whole game steps, for coax/web/clip.coax), so
+// two recordings give the same frames.
+//
+// The flight itself is aethyr/cinematic.coax's: Catmull-Rom through the keys, eased per key, a cut
+// where a key says so. A track adds what a stage needs on top: rows as data, a clock that is game
+// time rather than the wall, and a sky clock (the day it is at each moment) so a stage can sweep a
+// day over its shot. Nothing here hands back to a follow camera: a stage owns its camera outright.
+//
+//   coax/bin/coax test aethyr/cam/track.coax --library
+#module "aethyr.cam.track";
+#load "../cinematic.coax";
+
+CAM_TRACK_ROW :: 8;   // floats a key: at, eye x y z, look x y z, ease (+ CAM_TRACK_CUT for a cut)
+CAM_TRACK_CUT :: 10;  // added to a row's ease: the camera jumps to this key
+
+// What the camera sees at a moment: its eye and the point it looks at.
+CamView :: struct { ex: f32; ey: f32; ez: f32; lx: f32; ly: f32; lz: f32; }
+
+// A stage's track: its flight, and its sky clock (the day fraction at time 0 and the days that pass
+// a second; 0.5 is noon, 1 a day later's midnight).
+CamTrack :: struct { flight: Flight; day0: f32; day_rate: f32; }
+
+// The keys from a table, CAM_TRACK_ROW floats each, in time order (a key out of order, past the
+// bound or not finite is skipped, as verse_flight_key refuses it). The first key is always a cut.
+cam_track_load :: (rows: [] f32, day0: f32, day_rate: f32) -> CamTrack {
+  t := CamTrack.{day0 = day0, day_rate = day_rate};
+  f := verse_flight_new();
+  n := rows.count / CAM_TRACK_ROW;
+  for i: 0..<n {
+    r := i * CAM_TRACK_ROW;
+    e := int(rows[r + 7]);
+    cut := e >= CAM_TRACK_CUT;
+    if cut { e -= CAM_TRACK_CUT; }
+    f = verse_flight_key(f, rows[r], v3(rows[r + 1], rows[r + 2], rows[r + 3]), v3(rows[r + 4], rows[r + 5], rows[r + 6]), cut, e);
+  }
+  t.flight = f;
+  if !finite(day0) { t.day0 = 0.5; }
+  if !finite(day_rate) { t.day_rate = 0; }
+  return t;
+}
+
+// The shot `t` seconds into the track (before the first key its first, after the last its last).
+cam_track_at :: (k: CamTrack, t: f32) -> CamView {
+  s := fl_flown(k.flight, ifx finite(t) then t else 0);
+  return CamView.{ex = s.eye.x, ey = s.eye.y, ez = s.eye.z, lx = s.at.x, ly = s.at.y, lz = s.at.z};
+}
+
+// How long the track's keys run, seconds.
+cam_track_length :: (k: CamTrack) -> f32 { return verse_flight_length(k.flight); }
+
+// The day `t` seconds in: its fraction from 0 (midnight) to 1, wrapped.
+cam_track_day :: (k: CamTrack, t: f32) -> f32 {
+  d := k.day0 + k.day_rate * (ifx finite(t) then t else 0);
+  d = d - floor(d);
+  return ifx d >= 1 then 0 else d;
+}
+
+// A stage's clock from the game steps it has run: whole steps of `hz`, so the recorder's fixed
+// steps give the same seconds on every run.
+cam_track_clock :: (steps: int, hz: int) -> f32 {
+  if hz <= 0 || steps <= 0 { return 0; }
+  return f32(steps) / f32(hz);
+}
+
+// ---- Checks ----
+
+TRK_DEMO :: [32] f32.[
+  0, 0, 10, -20,   0, 0, 0,   0,
+  2, 10, 8, -10,   0, 0, 0,   1,
+  4, 10, 4, 0,     0, 1, 5,   1,
+  6, -5, 3, 20,    0, 1, 25,  10];
+
+trk_near :: (v: CamView, x: f32, y: f32, z: f32, e: f32) -> bool {
+  dx := v.ex - x; dy := v.ey - y; dz := v.ez - z;
+  return sqrt(dx * dx + dy * dy + dz * dz) <= e;
+}
+
+#test "a track loads its rows and passes through every key at its time" {
+  d := TRK_DEMO; k := cam_track_load(d[..], 0.25, 0.1);
+  #assert k.flight.count == 4 && cam_track_length(k) == 6;
+  #assert trk_near(cam_track_at(k, 0), 0, 10, -20, 0.0001);
+  #assert trk_near(cam_track_at(k, 2), 10, 8, -10, 0.0001);
+  #assert trk_near(cam_track_at(k, 4), 10, 4, 0, 0.0001);
+  // the cut at 6 s holds the key before it, then jumps
+  #assert trk_near(cam_track_at(k, 5.99), 10, 4, 0, 0.0001);
+  #assert trk_near(cam_track_at(k, 6), -5, 3, 20, 0.0001);
+  #assert trk_near(cam_track_at(k, 60), -5, 3, 20, 0.0001);
+  #assert trk_near(cam_track_at(k, -1), 0, 10, -20, 0.0001);
+  v := cam_track_at(k, 4); #assert v.lx == 0 && v.ly == 1 && v.lz == 5;
+}
+
+#test "rows out of order, past the bound or not finite are skipped" {
+  r: [8 * 20] f32;
+  for i: 0..<20 { r[i * 8] = f32(i); r[i * 8 + 3] = 1; r[i * 8 + 6] = 2; }
+  #assert cam_track_load(r[..], 0.5, 0).flight.count == FLIGHT_KEYS;
+  b := TRK_DEMO; b[8] = 5;   // the second key after the third's time: refused only when the third comes
+  #assert cam_track_load(b[..], 0.5, 0).flight.count == 3;
+  d := TRK_DEMO; #assert cam_track_load(d[0..<7], 0.5, 0).flight.count == 0;
+  z := cam_track_load(d[..], 0.0 / 0.0, 1.0 / 0.0);
+  #assert z.day0 == 0.5 && z.day_rate == 0;
+}
+
+#test "the sky clock sweeps the day from its start and wraps at midnight" {
+  d := TRK_DEMO; k := cam_track_load(d[..], 0.25, 0.1);
+  #assert abs(cam_track_day(k, 0) - 0.25) < 0.00001 && abs(cam_track_day(k, 2.5) - 0.5) < 0.00001;
+  #assert abs(cam_track_day(k, 10) - 0.25) < 0.0001;
+  for i: 0..<100 { y := cam_track_day(k, f32(i) * 0.37); #assert y >= 0 && y < 1; }
+}
+
+#test "the clock is whole steps: the same steps, the same seconds and the same shot" {
+  #assert cam_track_clock(0, 60) == 0 && cam_track_clock(90, 60) == 1.5 && cam_track_clock(30, 0) == 0;
+  d := TRK_DEMO; k := cam_track_load(d[..], 0.5, 0);
+  for s: 0..<360 {
+    a := cam_track_at(k, cam_track_clock(s, 60)); b := cam_track_at(k, cam_track_clock(s, 60));
+    #assert a.ex == b.ex && a.ey == b.ey && a.ez == b.ez && a.lx == b.lx && a.lz == b.lz;
+  }
+}
+
+#forall "between keys the camera moves smoothly, the cut its one jump" i: 0..<300 {
+  d := TRK_DEMO; k := cam_track_load(d[..], 0.5, 0);
+  t := f32(i) * 0.02;
+  a := cam_track_at(k, t); b := cam_track_at(k, t + 0.005);
+  if !(t < 6 && t + 0.005 >= 6) { #assert trk_near(a, b.ex, b.ey, b.ez, 0.25); }
+}
