@@ -75,9 +75,11 @@ fo_text :: (o: [] FoBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 // The path file as the hash's text ("0,1,2,3,4,5,6~7,..."), written into out: ok, its length,
 // and the first line that is not a key of seven numbers (0 when the lines are keys but
 // aethyr/flyover.coax refuses the path: too few or many keys, times not rising from 0). A point that
-// starts with @NAME is read from the map's table (zone, names, points); unnamed is the first NAME
-// the map lacks (not found, its line in line).
-FoPathText :: struct { ok: bool; n: int; line: int; unnamed: MapPoint; }
+// starts with @NAME is read from the map's table (zone, names, points); unnamed says a NAME the map
+// lacks stopped it, at file[name_at..<name_at + name_n] (its line in line).
+FoPathText :: struct { ok: bool; n: int; line: int; unnamed: bool; name_at: int; name_n: int; }
+// The name an unnamed path stopped at, as the map's lookup sees it (not found).
+fo_unnamed :: (file: string, r: FoPathText) -> string { return file[r.name_at..<r.name_at + r.name_n]; }
 fo_path_text :: (file: string, out: [] u8) -> FoPathText {
   names: [1] string; points: [1] f32;
   return fo_path_text_at(file, "", names[0..<0], points[0..<0], out);
@@ -103,7 +105,7 @@ fo_path_text_at :: (file: string, zone: string, names: [] string, points: [] f32
   while at < file.count {
     end := at; while end < file.count && file[end] != '\n' { end += 1; }
     line += 1;
-    row := file[at..<end]; at = end + 1;
+    row_at := at; row := file[at..<end]; at = end + 1;
     cut := 0; while cut < row.count && row[cut] != '#' { cut += 1; }
     row = row[0..<cut];
     fields := 0; i := 0;
@@ -113,12 +115,12 @@ fo_path_text_at :: (file: string, zone: string, names: [] string, points: [] f32
       while i < row.count && (row[i] == ' ' || row[i] == '\t' || row[i] == '\r') { i += 1; }
       if i >= row.count { break; }
       e := i; while e < row.count && row[e] != ' ' && row[e] != '\t' && row[e] != '\r' { e += 1; }
-      word := row[i..<e]; i = e;
+      word_at := row_at + i; word := row[i..<e]; i = e;
       if word.count > 0 && word[0] == '@' {
         // a name only where a point starts (the eye's x, the look's x)
         if (fields != 1 && fields != 4) || anchored > 0 || word.count < 2 { r.line = line; return r; }
         anchor = map_point(zone, names, points, word[1..<word.count]);
-        if !anchor.found { r.line = line; r.unnamed = anchor; return r; }
+        if !anchor.found { r.line = line; r.unnamed = true; r.name_at = word_at + 1; r.name_n = word.count - 1; return r; }
         anchored = 3;
         continue;
       }
@@ -183,8 +185,10 @@ fo_over :: (us: [] int, n: int, limit: int) -> int { k := 0; for i: 0..<n { if u
   names := [2] string.["gate-south", "commons"]; points := [8] f32.[0, 0, -56, 0,   0, 0, 0, 0];
   r := fo_path_text_at("0 @gate-south 0 40 -104  @gate-south 0 2 -4\n6  -6 6 -52  @commons 10 3 20.5\n", "Test (here)", names[..], points[..], out[..]);
   #assert r.ok && cast(string) out[0..<r.n] == "0,0,40,-160,0,2,-60~6,-6,6,-52,10,3,20.5";
-  m := fo_path_text_at("0 0 0 0 0 0 0\n6 @raid-front 0 1 0 0 0 0\n", "Test (here)", names[..], points[..], out[..]);
-  #assert !m.ok && m.line == 2 && !m.unnamed.found && m.unnamed.name == "raid-front" && m.unnamed.zone == "Test (here)";
+  mf := "0 0 0 0 0 0 0\n6 @raid-front 0 1 0 0 0 0\n";
+  m := fo_path_text_at(mf, "Test (here)", names[..], points[..], out[..]);
+  #assert !m.ok && m.line == 2 && m.unnamed && fo_unnamed(mf, m) == "raid-front";
+  #assert !map_point("Test (here)", names[..], points[..], fo_unnamed(mf, m)).found;
   #assert fo_path_text_at("0 0 @commons 0 0 0 0 0\n", "Test (here)", names[..], points[..], out[..]).line == 1;   // not where a point starts
   #assert fo_path_text_at("0 @commons 0 0 0 0 0\n", "Test (here)", names[..], points[..], out[..]).line == 1;      // its triple cut short
   #assert fo_path_text("0 @commons 0 0 0 0 0 0\n1 1 2 3 4 5 6\n", out[..]).line == 1;                             // no map: no names
@@ -334,11 +338,12 @@ tool_main :: () -> int #export_c #effects(all) {
   if fn < 0 { tool_err("flyover: cannot read the path "); tool_errln(path_file); tool_errln(usage); return 2; }
   // a key's @NAME from the realm's map: Everglade's (verse/everglade/points.coax); a realm without one has no names
   map_names := EG_POINT_NAME; map_at := EG_POINT_AT; everglade := slug == "everglade";
-  text: [4096] u8; pt := fo_path_text_at(cast(string) file[0..<fn], ifx everglade then EG_POINTS_ZONE else slug,
-    ifx everglade then map_names[..] else map_names[0..<0], ifx everglade then map_at[..] else map_at[0..<0], text[..]);
+  zone := ifx everglade then EG_POINTS_ZONE else slug; path_text := cast(string) file[0..<fn];
+  zone_names := ifx everglade then map_names[..] else map_names[0..<0]; zone_at := ifx everglade then map_at[..] else map_at[0..<0];
+  text: [4096] u8; pt := fo_path_text_at(path_text, zone, zone_names, zone_at, text[..]);
   if !pt.ok {
     tool_err("flyover: refused the path "); tool_err(path_file);
-    if pt.line > 0 && pt.unnamed.name.count > 0 { l: [1] FoBuf; fo_put(l[..], ": line "); fo_int(l[..], pt.line); tool_errln(fo_text(l[..])); _ := map_need(pt.unnamed); }
+    if pt.line > 0 && pt.unnamed { l: [1] FoBuf; fo_put(l[..], ": line "); fo_int(l[..], pt.line); tool_errln(fo_text(l[..])); _ := map_need(map_point(zone, zone_names, zone_at, fo_unnamed(path_text, pt))); }
     else if pt.line > 0 { l: [1] FoBuf; fo_put(l[..], ": line "); fo_int(l[..], pt.line); fo_put(l[..], " is not SECONDS and six numbers"); tool_errln(fo_text(l[..])); }
     else { tool_errln(": it needs 2 to 16 keys, the first at 0 s and each later than the one before"); }
     return 2;

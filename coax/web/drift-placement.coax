@@ -9,14 +9,14 @@
 DrMap :: struct { gx: int; gz: int; front_z: int; }
 // The map the drift reads (eg_point: the tool asks for both points first, map_need_all, so a
 // missing one has stopped it before any walk).
-dr_map :: () -> DrMap {
+dr_map :: () -> DrMap #effects(reads,traps) {
   g := eg_point("gate-south"); f := eg_point("raid-front");
   return DrMap.{gx = map_mm(g.x), gz = map_mm(g.z), front_z = map_mm(f.z)};
 }
 // The points the drift stands by, for map_need_all.
 DR_MAP_POINTS :: [2] string.["gate-south", "raid-front"];
 // The map as the checks' fixtures were taken (11-09): the gap at (0, -56 m), the line's hold at -61 m.
-drp_test_map :: () -> DrMap { return DrMap.{gx = 0, gz = -56000, front_z = -61000}; }
+drp_test_map :: () -> DrMap #effects() { return DrMap.{gx = 0, gz = -56000, front_z = -61000}; }
 #test "the drift reads the South Gate and the raid front from Everglade's map" {
   g := eg_point("gate-south"); f := eg_point("raid-front"); m := dr_map();
   #assert g.found && f.found && m.gx == map_mm(g.x) && m.gz == map_mm(g.z) && m.front_z == map_mm(f.z);
@@ -37,11 +37,11 @@ drp_test_map :: () -> DrMap { return DrMap.{gx = 0, gz = -56000, front_z = -6100
 }
 // The open-road rectangle past the South Gate's gap g: 0.5 to 2.5 m from its middle across, 2 to
 // 3.5 m out past it (x 0.5 to 2.5 m, z -58 to -59.5 m on 11-09).
-drp_road_at :: (g:DrMap,x:int,z:int)->bool #effects() {
+drp_road_at :: (g:DrMap,x:int,z:int)->bool #effects(traps) {
   return x>=g.gx+500 && x<=g.gx+2500 && z<= g.gz-2000 && z>= g.gz-3500;
 }
 // The rectangle on the map's own gate; none when the map has no gate-south.
-drp_road :: (x:int,z:int)->bool #effects() {
+drp_road :: (x:int,z:int)->bool #effects(reads,traps) {
   if !eg_point("gate-south").found { return false; }
   return drp_road_at(dr_map(),x,z);
 }
