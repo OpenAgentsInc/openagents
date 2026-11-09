@@ -66,7 +66,9 @@ bounded() {
 
 # The page checks a starts walk failed, without the URL or error detail: "waterlab: no errors".
 starts_fails() { sed -n 's/^  FAIL  //p' | sed -E 's# https?://[^ ]*##; s/ \(.*$//' | sort -u; }
-starts() { bounded 900 bun "$tree/coax/web/goldens.ts" "$1" --starts 2>&1 || true; }
+# 1800 s: on a loaded Mac (agents' builds and recordings) the walk has taken over 900 s, and a cut-off
+# walk stops the release with no failure in it.
+starts() { bounded 1800 bun "$tree/coax/web/goldens.ts" "$1" --starts 2>&1 || true; }
 # new_starts STAGING_OUT BASE_FAILS URL: failures new against BASE, still failing on a second walk.
 new_starts() {
   local broke again
@@ -155,7 +157,7 @@ lap smoke "$t"
 
 t=$(now)
 out=$(starts "$staging")
-grep -q '^goldens ' <<< "$out" || { echo "release $commit: STOPPED. the staging starts walk did not run:" >&2; tail -5 <<< "$out" >&2; exit 1; }
+grep -q '^goldens ' <<< "$out" || { echo "release $commit: STOPPED. the staging starts walk did not finish within 1800 s, or did not run (Mac load: $(uptime | sed 's/.*averages*: //')):" >&2; tail -5 <<< "$out" >&2; exit 1; }
 broke=$(new_starts "$out" "$base_starts" "$staging")
 [[ -z "$broke" ]] || { echo "release $commit: STOPPED. pages fail on staging that pass on production; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
 echo "  starts     staging $(starts_fails <<< "$out" | sed '/^$/d' | wc -l | tr -d ' ') failing check(s), production $(sed '/^$/d' <<< "$base_starts" | wc -l | tr -d ' '); none new"
