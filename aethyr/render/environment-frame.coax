@@ -215,6 +215,17 @@ env_frame_admit :: (f: [] EnvFrame, next: [] EnvironmentSet) -> EnvCheck #effect
   return c;
 }
 // Take `c` as the page's clock when the page's world admits it.
+// The time of day the frame's clock reads at tick (0 midnight to 1), for a HUD's clock; the
+// middle of the day when the clock refuses.
+env_frame_day :: (f: [] EnvFrame, tick: s64) -> f32 #effects(all) {
+  r := day.day_at(f[0].clock, f[0].world, tick);
+  return ifx r.refusal == day.DayRefusal.none then cast(f32) r.day else 0.5f32;
+}
+#test "a frame's day: its fixed clock's time, the room's as it runs" {
+  f: [1] EnvFrame; c := day.day_from_room(90, 30, 0, 2880000);
+  #assert env_frame_clock(f[..], c, day.DayWorld.shared) == day.DayRefusal.none;
+  #assert abs(env_frame_day(f[..], 90) - cast(f32) day.day_at(c, day.DayWorld.shared, 90).day) < 0.0001;
+}
 env_frame_clock :: (f: [] EnvFrame, c: day.DayClock, world: day.DayWorld) -> day.DayRefusal #effects(all) {
   r := day.day_check(c, world);
   if r == day.DayRefusal.none { f[0].clock = c; f[0].world = world; }

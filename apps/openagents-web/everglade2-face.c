@@ -348,6 +348,10 @@ EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
+// Everglade's HUD is the FANTASY style (aethyr/ui/hud-style.coax): its strokes blend straight alpha, each
+// sealed with its coverage (charactercreator.coax hud_seal, gpu/fivelab.coax fivelab_hud_fs), so dark
+// iron can sit over the world.
+EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   if (!track_state.page_n) track_init(tr(), track_cstr("everglade2"));

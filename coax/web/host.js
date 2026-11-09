@@ -1179,7 +1179,7 @@ function frameUpload(x) {
 // and the font must match it.
 const SANS_EXTRA = [183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
 const SANS_FONT = 'Helvetica, Arial, "Liberation Sans", "Nimbus Sans", sans-serif';
-let pageFontFamily = null;
+let pageFontFamily = null, pageTitleFont = null;
 async function loadPageFont() {
   const source = script?.dataset.uiFontSrc, family = script?.dataset.uiFontFamily;
   if (!source || !family) return;
@@ -1187,6 +1187,16 @@ async function loadPageFont() {
   if (!response.ok) throw Error(`UI font HTTP ${response.status}`);
   const font = new FontFace(family, await response.arrayBuffer());
   await font.load();document.fonts.add(font);pageFontFamily = JSON.stringify(family);
+  // A HUD style's title face (aethyr/ui/hud-style.coax, docs/verse/hud-styles.md): data-ui-title-font-src,
+  // -family and -weight. The atlas then holds two faces in one set of cells: the reading face in red, the
+  // title face in green; only a realm whose strokes ask for a channel (gpu/fivelab.coax fivelab_hud_fs) has one.
+  const titleSource = script?.dataset.uiTitleFontSrc, titleFamily = script?.dataset.uiTitleFontFamily;
+  if (!titleSource || !titleFamily) return;
+  const titleResponse = await fetch(new URL(titleSource, location.href));
+  if (!titleResponse.ok) throw Error(`UI title font HTTP ${titleResponse.status}`);
+  const title = new FontFace(titleFamily, await titleResponse.arrayBuffer(), { weight: "100 900" });
+  await title.load();document.fonts.add(title);
+  pageTitleFont = { family: JSON.stringify(titleFamily), weight: script?.dataset.uiTitleFontWeight || "400" };
 }
 function sansAtlas(device) {
   const codes = [...Array.from({ length: 95 }, (_, i) => 32 + i), ...SANS_EXTRA];
@@ -1196,9 +1206,14 @@ function sansAtlas(device) {
   for (let level = 0; level < levels; level++) {
     const c = cell >> level, w = cols * c, h = rows * c;
     const canvas = new OffscreenCanvas(w, h), g = canvas.getContext("2d");
-    g.fillStyle = "#fff"; g.textBaseline = "alphabetic";
+    g.fillStyle = pageTitleFont ? "#f00" : "#fff"; g.textBaseline = "alphabetic";
     g.font = `${64 / (1 << level)}px ${pageFontFamily || SANS_FONT}`;
     codes.forEach((code, i) => g.fillText(String.fromCodePoint(code), (i % cols) * c + 16 / (1 << level), Math.floor(i / cols) * c + 72 / (1 << level)));
+    if (pageTitleFont) {
+      g.globalCompositeOperation = "lighter"; g.fillStyle = "#0f0";
+      g.font = `${pageTitleFont.weight} ${64 / (1 << level)}px ${pageTitleFont.family}`;
+      codes.forEach((code, i) => g.fillText(String.fromCodePoint(code), (i % cols) * c + 16 / (1 << level), Math.floor(i / cols) * c + 72 / (1 << level)));
+    }
     device.queue.copyExternalImageToTexture({ source: canvas }, { texture, mipLevel: level, premultipliedAlpha: true }, [w, h]);
   }
   return texture;
@@ -3436,6 +3451,7 @@ async function warmCache(path) {
     if (!d) return;
     const urls = [d.wasm || `/build/${d.app}.wasm`, d.wgsl || `/${d.app}.wgsl`];
     if (d.uiFontSrc) urls.push(d.uiFontSrc);
+    if (d.uiTitleFontSrc) urls.push(d.uiTitleFontSrc);
     for (const entry of (d.assets || "").split(/\s+/).filter(Boolean)) {
       const k = entry.indexOf(":"), kind = entry.slice(0, k), rest = entry.slice(k + 1);
       if (kind !== "sound" && kind !== "sounds" && kind !== "private" && rest.startsWith("/") && !rest.startsWith("//")) urls.push(rest);

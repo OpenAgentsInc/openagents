@@ -1,0 +1,28 @@
+// Everglade's HUD faces (aethyr/ui/hud-style.coax FANTASY, docs/verse/hud-styles.md): their advance
+// widths for ASCII 32..126 in thousandths of an em, as the browser measures them at the weight the
+// host's atlas draws (coax/web/host.js loadPageFont, sansAtlas). Both are SIL Open Font License 1.1;
+// the font files and their licences are in realms/everglade2/assets/fonts/.
+//  - the reading face: Spectral Medium (Production Type), numbers and lines, the atlas's red.
+//    SHA-256 f385bc588599c879112272711d4acecc126674009d747a27284f59e93a240e83
+//  - the title face: Cinzel, variable, drawn at weight 600 (The Cinzel Project), names, places and
+//    banners in small capitals, the atlas's green.
+//    SHA-256 f4d83d34d1f6c741193e4acf4b3dff9531e5a67b6aa65228d00a7db72a4e0f34
+EG_FONT_UPM :: 1000;
+EG_BODY_CAP :: 0.660;    // cap height, ems
+EG_TITLE_CAP :: 0.700;
+EG_BODY_WIDTH :: [95]u16.[
+  250, 254, 450, 514, 514, 760, 712, 250, 253, 253, 361, 514, 254, 374, 254, 250, 514, 514, 514, 514, 514, 514, 514, 514,
+  514, 514, 254, 254, 514, 514, 514, 479, 812, 756, 669, 722, 781, 659, 618, 765, 816, 395, 400, 732, 636, 968, 803, 803,
+  649, 803, 677, 541, 680, 816, 746, 995, 749, 727, 659, 253, 250, 253, 514, 500, 270, 495, 565, 480, 565, 487, 349, 545,
+  590, 318, 318, 569, 301, 870, 590, 542, 572, 563, 404, 433, 362, 568, 479, 747, 509, 479, 487, 253, 250, 253, 514
+];
+EG_TITLE_WIDTH :: [95]u16.[
+  250, 256, 347, 562, 528, 722, 753, 190, 395, 395, 388, 481, 215, 380, 208, 419, 634, 376, 596, 543, 607, 536, 607, 530,
+  586, 607, 208, 215, 489, 481, 481, 445, 986, 715, 645, 773, 821, 613, 577, 824, 845, 370, 364, 724, 598, 946, 857, 865,
+  630, 867, 724, 544, 650, 809, 732, 975, 707, 689, 658, 389, 419, 389, 543, 500, 504, 650, 593, 690, 752, 558, 531, 734,
+  749, 347, 330, 657, 545, 868, 779, 776, 575, 770, 648, 497, 592, 703, 646, 880, 642, 637, 607, 365, 253, 365, 493
+];
+#test "the faces' widths: a space narrower than an M, digits all one width in the reading face" {
+  #assert EG_BODY_WIDTH[0] < EG_BODY_WIDTH[45] && EG_TITLE_WIDTH[0] < EG_TITLE_WIDTH[45];
+  for d: 16..<26 { #assert EG_BODY_WIDTH[d] == EG_BODY_WIDTH[16]; }
+}

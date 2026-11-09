@@ -801,6 +801,7 @@ fivelab_fx_vs :: (_vid2:u32,_iid3:u32,in_:fivelab_fx_vs_in,u:[]f32)->FivelabV {
 }
 // A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach.
 fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if (v.bar.w>0.5f32) { return fivelab_hud_fs(v,u,sans_atlas,sans_sampler); }
   if (v.tint.w>3.5f32) {
     lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
     alpha:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
@@ -812,6 +813,56 @@ fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 
   g:f32=d/fmax(v.shape.w,1.0f32);
   halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
   return wg_make_f4_f3f(scale3(scale3(scale3(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// A HUD style's strokes (aethyr/ui/hud-style.coax, docs/verse/hud-styles.md): a realm whose fx
+// pipeline blends straight alpha marks every vertex (bar.w 1, charactercreator.coax hud_seal) and
+// this writes each one's coverage as its alpha, so a HUD can lay dark iron over the world as well as
+// light. Unmarked vertices (every other realm, under max blending) never come here.
+//  - tint.w >= 10: a primitive, tint.w its kind times ten plus its alpha (hud_emit): place the
+//    point's offset from the box's centre (pixels, in the box's own turn), shape its half width,
+//    half height, corner radius and width (a fill's edge softness, a ring's thickness, a shadow's
+//    reach, a sweep's share); its colour runs from tint.xyz at the top to bar.xyz at the bottom.
+//  - tint.w 4: text in the reading face, the atlas's red; 5: the title face, its green.
+//  - else a capsule, as above, its core and halo the coverage.
+fivelab_hud_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  m:f32=v.tint.w;
+  if (m>9.5f32) {
+    kind:f32=floor(m/10.0f32);
+    a:f32=m-(kind*10.0f32);
+    hw:f32=v.shape.x; hh:f32=v.shape.y; r:f32=v.shape.z; wd:f32=v.shape.w;
+    qx:f32=(abs(v.place.x)-hw)+r; qy:f32=(abs(v.place.y)-hh)+r;
+    d:f32=(wg_length2(v2(fmax(qx,0.0f32),fmax(qy,0.0f32)))+fmin(fmax(qx,qy),0.0f32))-r;
+    t:f32=clampf(((v.place.y/fmax(hh,0.001f32))+1.0f32)*0.5f32,0.0f32,1.0f32);
+    c:V3=mix3(v3(v.tint.x,v.tint.y,v.tint.z),v3(v.bar.x,v.bar.y,v.bar.z),t);
+    cov:f32=1.0f32-smoothstep(-wd,wd,d);
+    if (kind>1.5f32) {
+      cov=(1.0f32-smoothstep(-0.6f32,0.6f32,d))*smoothstep((-wd)-0.6f32,(-wd)+0.6f32,d);
+    }
+    if (kind>2.5f32) {
+      e:f32=1.0f32-smoothstep(-wd,0.0f32,d);
+      cov=e*e;
+    }
+    if (kind>3.5f32) {
+      turn:f32=wg_atan2(v.place.x,-v.place.y);
+      if (turn<0.0f32) { turn=turn+6.2831853f32; }
+      cov=(1.0f32-smoothstep(-0.6f32,0.6f32,d))*(1.0f32-smoothstep((wd*6.2831853f32)-0.02f32,wd*6.2831853f32,turn));
+    }
+    return v4(c.x,c.y,c.z,saturate(cov*a*u[3]));
+  }
+  if (m>3.5f32) {
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    g:V4=gpu_sample_level(sans_atlas,sans_sampler,v.place,lod);
+    face:f32=g.x;
+    if (m>4.5f32) { face=g.y; }
+    return v4(v.tint.x,v.tint.y,v.tint.z,saturate(pow(face,0.85f32)*fmin(v.shape.z*1.15f32,1.0f32)*u[3]));
+  }
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  dd:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,dd);
+  gg:f32=dd/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*gg)*gg)*0.28f32;
+  return v4(v.tint.x,v.tint.y,v.tint.z,saturate((core+halo)*v.shape.z*u[3]));
 }
 
 // ---- the vector helpers this file calls

@@ -9,6 +9,9 @@
 #load "../../aethyr/query.coax" as query;
 #load "../../aethyr/space.coax" as world;
 #load "charactercreator-font.coax";
+#load "everglade-fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
+#load "../../aethyr/ui/hud-style.coax";   // the HUD style Everglade draws in: FANTASY (docs/verse/hud-styles.md)
+#load "everglade-hud.coax";   // Everglade's HUD parts in that style
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as dungeon;
 #load "../../verse/experimental-aribeth.coax" as aribeth;
@@ -35,7 +38,7 @@ fps_draw :: (f:FpsCounter,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  buf:[16]u8;n:=0;v:=cast(int)(f.fps+0.5);if v>999 {v=999;}
  if v>=100 {buf[n]=cast(u8)(48+v/100);n+=1;}if v>=10 {buf[n]=cast(u8)(48+v/10%10);n+=1;}buf[n]=cast(u8)(48+v%10);n+=1;
  buf[n]=32;buf[n+1]=70;buf[n+2]=80;buf[n+3]=83;n+=4;cap:=13*k;em:=sans_em(cap);wide:f32=0;
- for i:0..<n {wide+=f32(CC_FONT_WIDTH[cast(int)buf[i]-32])/f32(CC_FONT_UPM)*em;}
+ for i:0..<n {wide+=f32(EG_BODY_WIDTH[cast(int)buf[i]-32])/f32(EG_FONT_UPM)*em;}
  return text(out,at,cast(string)buf[0..<n],w-16*k-wide,h-16*k,cap,ink(k,0.95,0.93,0.82));
 }
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
@@ -74,7 +77,7 @@ coord_label :: (out:[]u8,x:f32,y:f32,z:f32)->string {
 }
 coord_draw :: (s:Creator,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  b:[64]u8;label:=coord_label(b[..],s.player_x,meadow.exp_height(s.player_x,s.player_z)+s.player_y,s.player_z);cap:=10*k;em:=sans_em(cap);wide:f32=0;
- for c:label {wide+=f32(CC_FONT_WIDTH[cast(int)c-32])/f32(CC_FONT_UPM)*em;}
+ for c:label {wide+=f32(EG_BODY_WIDTH[cast(int)c-32])/f32(EG_FONT_UPM)*em;}
  return text(out,at,label,w-16*k-wide,h-38*k,cap,ink(k,0.95,0.93,0.82));
 }
 #test "coordinates show signed world positions at one decimal" {
@@ -303,9 +306,12 @@ combat_hud :: (s:Creator,out:[]f32,u:[]f32,at:int,w:f32,k:f32)->int {
  n:=at;hp:=s.hostiles[0].hp;maximum:=ifx s.hostiles[0].max_hp>0 then s.hostiles[0].max_hp else 1;if hp<0 {hp=0;}if hp>maximum {hp=maximum;}
  x:=w-226*k;y:=39*k;
  label:[96]u8;
+ // Everglade Experimental's health is on its portrait plate (experimental-combat.coax xc_frame)
+ if !s.experimental {
  n=text(out,n,cc_hp_label(label[..],hp,maximum,s.hostiles[0].temp),x+10*k,y-1*k,10*k,ink(k,0.98,0.94,0.85));
  bx:=x+10*k;end:=x+190*k;by:=y+20*k;if lit(out,n,bx,by,end,by,3*k,1,0,0.35,0.22,0.20,0) {n+=6;}
  if hp>0 && lit(out,n,bx,by,bx+(end-bx)*f32(hp)/f32(maximum),by,3*k,1,0,0.85,0.13,0.10,0) {n+=6;}
+ }
  if hp==0 {n=text(out,n,ifx s.hostiles[0].shared && !s.hostiles[0].player_dead then "UNCONSCIOUS" else "YOU DIED",w*0.5-50*k,95*k,15*k,ink(k,1,0.3,0.25));n=text(out,n,"R / CLICK TO RESPAWN",w*0.5-100*k,137*k,10*k,ink(k,0.98,0.94,0.82));}
  for i:0..<8 {p:=s.hostiles[0].pops[i];age:=s.hostiles[0].time-p.born;if p.amount<=0 || age<0 || age>=1.2 {continue;}
   t:=age/1.2;rise:=0.8*(1-(1-t)*(1-t));rx:=p.x-u[16];ry:=p.y+rise-u[17];rz:=p.z-u[18];depth:=rx*u[20]+ry*u[21]+rz*u[22];if depth<=0.5 {continue;}
@@ -948,16 +954,97 @@ value :: (s:Creator,f:int)->string {
   return [4]string.["IDLE","WALK","RUN","CAST"][s.pose];
 }
 ink :: (k:f32,r:f32,g:f32,b:f32)->Ink { return Ink.{core=0.55*k,light=1,glow=0.5*k,red=r,green=g,blue=b,scale=k,sans=false}; }
-// Every Character Create label uses AR Kai C; other realms retain their own font.
+// Every Everglade label is set in its reading face (Spectral, everglade-fonts.coax), a soft dark copy
+// under it so it reads over the bright glade; other realms retain their own font.
 text :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,k:Ink)->int {
+  d:=cc_text_drop(cap);under:=k;under.red=0;under.green=0;under.blue=0;under.light=k.light*0.55;
+  v:=face_text(out,n,t,x+d,y+d,cap,under,HUD_FACE_BODY);
+  return face_text(out,v,t,x,y,cap,k,HUD_FACE_BODY);
+}
+cc_text_drop :: (cap:f32)->f32 {d:=cap*0.09;return ifx d<1 then 1.0f32 else d;}
+// One run of text in a face (HUD_FACE_BODY or HUD_FACE_TITLE), no shadow: the title face's glyphs
+// are the atlas's green (tint.w 5, gpu/fivelab.coax fivelab_hud_fs).
+face_text :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,k:Ink,face:int)->int {
   pen:=x;v:=n;i:=0;em:=sans_em(cap);
   while i<t.count {d:=decode(t,i);end:=i+d.len;code:=d.code;
-    v=draw_sans(out,v,t[i..<end],pen,y,cap,k);
-    advance:=ifx code>=32 && code<=126 then int(CC_FONT_WIDTH[int(code)-32]) else int(CC_FONT_WIDTH[31]);
-    pen+=f32(advance)/f32(CC_FONT_UPM)*em;i=end;
+    at:=v;v=draw_sans(out,v,t[i..<end],pen,y,cap,k);
+    if face==HUD_FACE_TITLE {for q:at..<v {out[q*VERTEX_FLOATS+11]=MODE_SANS+1;}}
+    pen+=face_advance(code,face)*em;i=end;
   }
   return v;
 }
+face_advance :: (code:u32,face:int)->f32 {
+  c:=ifx code>=32 && code<=126 then int(code)-32 else 31;
+  return f32(ifx face==HUD_FACE_TITLE then int(EG_TITLE_WIDTH[c]) else int(EG_BODY_WIDTH[c]))/f32(EG_FONT_UPM);
+}
+// How wide t is in a face at cap.
+face_width :: (t:string,cap:f32,face:int)->f32 {w:f32=0;em:=sans_em(cap);for ch:t {w+=face_advance(cast(u32)ch,face)*em;}return w;}
+// Text in a HUD style's role (aethyr/ui/hud-style.coax hud_text): its face, colour and size, a drop
+// shadow, or an outline (damage, banners), at alpha a. x is its left end; centred when centre.
+hud_say :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,r:HudText,a:f32,k:f32,centre:bool)->int {
+  c:=cap*r.scale;left:=ifx centre then x-face_width(t,c,r.face)*0.5 else x;v:=n;
+  base:=ink(k,r.ink.r,r.ink.g,r.ink.b);base.light=r.ink.a*a;
+  dark:=base;dark.red=0.03;dark.green=0.02;dark.blue=0.01;
+  if r.outline {
+    o:=ifx c*0.07<1.2*k then 1.2*k else c*0.07;dark.light=0.85*a;
+    for q:0..<8 {ang:=f32(q)*0.7853982;v=face_text(out,v,t,left+cos(ang)*o,y+sin(ang)*o,c,dark,r.face);}
+  } else if r.shadow {
+    dark.light=0.6*a;d:=cc_text_drop(c);v=face_text(out,v,t,left+d,y+d,c,dark,r.face);
+  }
+  return face_text(out,v,t,left,y,c,base,r.face);
+}
+#test "text in the title face is the atlas's green, the reading face its red, and both are measured" {
+  out:[8192]f32;n:=face_text(out[..],0,"Ab",0,20,10,ink(1,1,1,1),HUD_FACE_TITLE);
+  #assert n==12;for q:0..<n {#assert out[q*VERTEX_FLOATS+11]==MODE_SANS+1;}
+  m:=face_text(out[..],0,"Ab",0,20,10,ink(1,1,1,1),HUD_FACE_BODY);for q:0..<m {#assert out[q*VERTEX_FLOATS+11]==MODE_SANS;}
+  #assert face_width("MMM",10,HUD_FACE_TITLE)>face_width("iii",10,HUD_FACE_TITLE);
+  // a role's outline draws eight dark copies under the word; a shadow one
+  t:=hud_tokens(HUD_FANTASY);
+  #assert hud_say(out[..],0,"7",50,50,10,hud_text(t,HUD_TEXT_DAMAGE),1,1,true)==54;
+  #assert hud_say(out[..],0,"7",50,50,10,hud_text(t,HUD_TEXT_NAME),1,1,false)==12;
+}
+
+// ---- Everglade's HUD style: the primitives aethyr/ui/hud-style.coax's drawers write, as this
+// realm's vertices (gpu/fivelab.coax fivelab_hud_fs), and the mark that has the shader blend them.
+EG_HUD :: HUD_FANTASY;
+eg_tokens :: ()->HudTokens {return hud_tokens(EG_HUD);}
+hud_emit :: (out:[]f32,at:int,l:[]HudList)->int {
+  v:=at;
+  for i:0..<l[0].n {
+    p:=l[0].p[i];
+    if (v+6)*VERTEX_FLOATS>out.count {return v;}
+    hw:=(p.x1-p.x0)*0.5;hh:=(p.y1-p.y0)*0.5;cx:=p.x0+hw;cy:=p.y0+hh;
+    m:=hw;if hh<m {m=hh;} r:=p.radius;if r>m {r=m;}if r<0 {r=0;}
+    a:=p.top.a;if a>1 {a=1;}if !(a>0) {continue;}
+    pad:=1.5f32;ex:=hw+pad;ey:=hh+pad;co:=cos(p.turn);si:=sin(p.turn);
+    lx:=[6]f32.[-ex,ex,ex,-ex,ex,-ex];ly:=[6]f32.[-ey,-ey,ey,-ey,ey,ey];
+    wd:=ifx p.kind==HUD_PRIM_SWEEP then p.share else p.width;
+    for q:0..<6 {
+      o:=(v+q)*VERTEX_FLOATS;
+      out[o]=cx+lx[q]*co-ly[q]*si;out[o+1]=cy+lx[q]*si+ly[q]*co;out[o+2]=lx[q];out[o+3]=ly[q];
+      out[o+4]=hw;out[o+5]=hh;out[o+6]=r;out[o+7]=wd;
+      out[o+8]=p.top.r;out[o+9]=p.top.g;out[o+10]=p.top.b;out[o+11]=f32(p.kind)*10+a;
+      out[o+12]=p.bottom.r;out[o+13]=p.bottom.g;out[o+14]=p.bottom.b;out[o+15]=1;
+    }
+    v+=6;
+  }
+  return v;
+}
+// Every vertex in [from, to) blends by its coverage (the realm's host blends straight alpha:
+// everglade2-face.c and fivelab-face.c coaxial_fx_alpha_v1). Run once a frame over all it drew.
+hud_seal :: (out:[]f32,from:int,to:int) {for q:from..<to {o:=q*VERTEX_FLOATS+15;if o<out.count {out[o]=1;}}}
+#test "a primitive becomes one quad round its box, turned about its centre, and sealed" {
+  l:[1]HudList;hud_fill(l[..],hud_box(10,20,50,40),4,hud_rgba(1,0,0,0.5),hud_rgba(0,0,1,1));
+  out:[256]f32;n:=hud_emit(out[..],0,l[..]);#assert n==6;
+  #assert out[0]==30-21.5 && out[1]==30-11.5 && out[4]==20 && out[5]==10 && out[6]==4;
+  #assert out[11]==10.5 && out[12]==0 && out[14]==1 && out[15]==1;
+  hud_clear(l[..]);hud_diamond(l[..],0,0,10,hud_rgba(1,1,1,1),hud_rgba(1,1,1,1));n=hud_emit(out[..],0,l[..]);
+  // a quarter-turned square: its first corner straight up
+  #assert n==6 && abs(out[0])<0.001 && out[1]< -8;
+  short:[40]f32;#assert hud_emit(short[..],0,l[..])==0;
+  hud_seal(out[..],0,2);#assert out[15]==1 && out[31]==1;
+}
+
 line :: (out:[]f32,n:int,x:f32,y:f32,bx:f32,by:f32,k:f32,r:f32,g:f32,b:f32)->int {
   if lit(out,n,x,y,bx,by,0.6*k,1,0,r,g,b,0) { return n+6; } return n;
 }
@@ -982,9 +1069,9 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   if s[0].walk.on || s[0].profile_go {ensure(s);layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
   if s[0].experimental {
     ensure(s);layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
-    for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=1;u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
+    for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=ifx s[0].experimental then 0.0f32 else 1.0f32;u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
     if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
-    camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);n=coord_draw(s[0],out,n,w,h,k);return fps_draw(s[0].fps[0],out,n,w,h,k);
+    camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);n=coord_draw(s[0],out,n,w,h,k);return ifx s[0].experimental then eg_fps(s[0].fps[0],out,n,w,h,k) else fps_draw(s[0].fps[0],out,n,w,h,k);
   }
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.70,0.76,0.74); gold:=ink(k,0.83,0.69,0.43);
@@ -1401,9 +1488,9 @@ scene_capture :: (facts:string)->bool {
  for i:0..<e*16 {#assert out[i]==expected[i];}
 }
 
-#test "creator main font uses textured glyphs at heading and control sizes" {
+#test "creator main font uses textured glyphs at heading and control sizes, each over its shadow" {
   out:[4096]f32;k:=ink(1,1,1,1);
-  for cap:0..<2 {n:=text(out[..],0,"Character Create",0,50,ifx cap==0 then 8 else 22,k);#assert n==90;
+  for cap:0..<2 {n:=text(out[..],0,"Character Create",0,50,ifx cap==0 then 8 else 22,k);#assert n==180;
     for i:0..<n {#assert out[i*16+11]==MODE_SANS;}}
 }
 

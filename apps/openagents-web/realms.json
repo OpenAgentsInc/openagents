@@ -122,7 +122,7 @@
         "alt": "A character exploring the Character Create glade",
         "style": "painterly", "clock": "fixed:0.5",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "ui_font_src": "/realms/character-creator/assets/arkai_c.ttf", "ui_font_family": "CharacterCreateARKaiC",
+        "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
         "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/fivelab-fx.wgsl",
           "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg", "sound:swing-e1=/realms/everglade/sfx/swing-e1.ogg", "sound:hit-e1=/realms/everglade/sfx/hit-e1.ogg", "sound:death-e1=/realms/everglade/sfx/death-e1.ogg", "sound:stand-e1=/realms/everglade/sfx/stand-e1.ogg"]
       } },
@@ -380,7 +380,7 @@
         "title": "Character Studio", "description": "Create a Quaternius human in Aethyr. Mix all 76 Fantasy Source clothing parts, three colourways, skin, hair and details with a live animated preview.",
         "share": "Make someone yours: a live Aethyr character wardrobe.", "alt": "A Quaternius human in a sunlit Nature glade with live clothing and appearance controls",
         "module": "everglade2", "slot": "everglade2", "arrival": "portal",
-        "ui_font_src": "/realms/character-creator/assets/arkai_c.ttf", "ui_font_family": "CharacterCreateARKaiC",
+        "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
@@ -390,6 +390,7 @@
         "title": "Everglade II", "description": "Walk out of Character Create's glade along one winding path through dense autumn woods to a clearing at its end.",
         "share": "One path through the woods, from the glade to the clearing.", "alt": "A character on a dirt path through dense green and autumn woods under a cyan sky",
         "module": "everglade2", "slot": "everglade2",
+        "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "cull:/everglade2-cull.wgsl", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"],
         "domain": {
