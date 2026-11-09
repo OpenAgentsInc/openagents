@@ -92,6 +92,7 @@ rs_familiar_publish :: (b:[]RsBattle,i:int,j:int,m:int,x:int,y:int,spirit:int,un
   b[0].c[j].familiar_spirit=spirit;
   b[0].c[j].fiend=spirit==RS_FAMILIAR_FIEND;
   b[0].c[j].celestial=spirit==RS_FAMILIAR_CELESTIAL;
+  b[0].c[j].fey=spirit==RS_FAMILIAR_FEY;
   b[0].c[j].familiar_until_rest=until_rest;
 }
 rs_familiar_schedule :: (b:[]RsBattle,j:int) #effects(all) {
@@ -136,7 +137,7 @@ rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effe
   #assert rs_hidden_at(b[0].c[0])<0 && b[0].c[0].long_rest.phase==2;
   #assert rs_recent_at(b[0].book[..],0).kind==RS_EV_CAST;
   j:=rs_familiar_of(b[..],0);
-  #assert j==2 && b[0].n==3 && b[0].c[j].familiar_spirit==RS_FAMILIAR_FEY;
+  #assert j==2 && b[0].n==3 && b[0].c[j].familiar_spirit==RS_FAMILIAR_FEY && b[0].c[j].fey;
   #assert b[0].c[j].hp==2 && b[0].c[j].initiative==12 && b[0].c[j].turn_at==4.21875 && b[0].c[j].round_at==4.21875;
   #assert b[0].c[0].uses[RS_USE_WILD]==used-1 && b[0].turn.action && b[0].turn.leveled;
   rs_fresh(b[..],j);
@@ -327,7 +328,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
   #assert !rs_familiar_finish(b[..],i,MON_RAT,4,3,2);
   #assert rs_familiar_finish(b[..],i,MON_RAT,RS_FAMILIAR_CELESTIAL,3,2);
   j:=rs_familiar_of(b[..],i);
-  #assert j==1 && b[0].c[j].celestial && !b[0].c[j].fiend && b[0].c[j].familiar_spirit==RS_FAMILIAR_CELESTIAL;
+  #assert j==1 && b[0].c[j].celestial && !b[0].c[j].fiend && !b[0].c[j].fey && b[0].c[j].familiar_spirit==RS_FAMILIAR_CELESTIAL;
   #assert c[0].slots[1]==slots && !b[0].turn.slot_spent && c[0].materials[0].count==0;
 }
 

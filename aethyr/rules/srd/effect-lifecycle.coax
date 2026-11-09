@@ -21,6 +21,7 @@ rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) -> bool #effects(all) {
   f := e;
   if f.kind==EF_COND || f.kind==EF_TURNED || f.kind==EF_DAZED {
     f.cond=rs_effect_condition_mask(b[0].c[j],f.cond);
+    if rs_protected_from(b,j,f.by) { f.cond=rs_clear(f.cond,RS_PROTECTION_CONDITIONS); }
     if f.cond==0 { return true; }
   }
   c: [1] RsCreature; c[0] = b[0].c[j];

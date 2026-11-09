@@ -65,7 +65,8 @@ fairy 695000
 # Life Cleric Lesser Restoration and its effect and cue: 2,667,302 bytes measured.
 # Aid effect storage and the Cleric and Paladin controls: 2,669,720 bytes measured.
 # Blessed Warrior Guidance and its skill picker: 2,672,742 bytes measured.
-fivelab 2673300
+# Devotion Protection adds persistent effect and component handling, measured at 2,674,265 bytes (#13030).
+fivelab 2676500
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
@@ -89,7 +90,8 @@ fivelab 2673300
 # set and its index admitted whole, the day from the room's clock, the camera's resolution and the GPU
 # record each frame, and Everglade II's places from verse/everglade2/environment.coax): 687,298
 # measured; about 4% headroom.
-everglade2 720000
+# Devotion Protection adds the hotbar and effect handling, measured at 720,314 bytes (#13030).
+everglade2 721000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1740000

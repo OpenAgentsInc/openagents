@@ -31,6 +31,7 @@
 #load "familiar-touch.coax";
 #load "familiar-senses.coax";
 #load "lesser-restoration.coax";
+#load "protection-good-evil.coax";
 
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
@@ -586,7 +587,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   // Charmed (p.177): no damaging ability or magical effect targets the charmer
   for j: picks { if chosen && (!rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j) || rs_charmed_by(me,j)) { return false; } }
   if !rs_options_valid(sp,picks.count,options) { return false; }
-  if sp==SP_GUIDANCE && target!=i {
+  if (sp==SP_GUIDANCE || sp==SP_PROTECTION_GOOD_EVIL) && target!=i {
     option:=rs_option_at(options,0);
     if !option.willing { return false; }
   }
@@ -890,6 +891,7 @@ rs_attack_edge_from :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: b
   if rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) && rs_obscured(b,i) != 2 { downs += 1; }
   // Frightened: Disadvantage on attack rolls while a source of its fear is in line of sight (p.182)
   if rs_fear_sighted(b, i) { downs += 1; }
+  if rs_protected_from(b,j,i) { downs+=1; }
   if rs_grapple_down(b[0].c[i],j) { downs += 1; }
   // Guiding Bolt's light, Vex, and Steady Aim: each spent by this roll
   if rs_take_pending(b, j, EF_EXPOSED, -1) { ups += 1; }
@@ -1167,7 +1169,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       _ := rs_put_effect(b, j, RsEffect.{kind = st.a, cond = st.b, by = i, spell = sp, until = ifx s.concentration then b[0].c[i].conc_until else b[0].clock + s.duration_s, save = -1, dc = ifx st.a==EF_GUIDANCE then b[0].book[0].seq else 0});
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j);
-      rs_add_text(l[..], ifx st.a == EF_BLESS then " is blessed: 1d4 more on its attack rolls and saves" else ifx st.a == EF_BANE then " is baned: 1d4 less on its attack rolls and saves" else ifx st.a==EF_GUIDANCE then " is guided: 1d4 more on checks with the chosen skill" else " has +2 AC");
+      rs_add_text(l[..], ifx st.a == EF_BLESS then " is blessed: 1d4 more on its attack rolls and saves" else ifx st.a == EF_BANE then " is baned: 1d4 less on its attack rolls and saves" else ifx st.a==EF_GUIDANCE then " is guided: 1d4 more on checks with the chosen skill" else ifx st.a==EF_PROTECTION then " is protected from Evil and Good" else " has +2 AC");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_HALT {
       if ran_save && saved { continue; }
@@ -1411,7 +1413,8 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   for k: 0..<RS_EFFECTS {
     e := b[0].c[i].eff[k];
     if e.kind == EF_NONE || e.save < 0 || b[0].c[i].dead || !b[0].turn.new_round { continue; }
-    saving := ifx e.spell >= 0 then rs_saving_throw_magic(b,i,e.save,e.dc,0) else rs_saving_throw(b,i,e.save,e.dc);
+    ups:=rs_magic_save_ups(b[0].c[i],e.spell>=0)+rs_protection_save_ups(b,i,e);
+    saving:=rs_saving_throw_edges(b,i,e.save,e.dc,ups,0);
     total := saving.total; ok := saving.passed;
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[e.save]); rs_add_text(l[..], " save against ");

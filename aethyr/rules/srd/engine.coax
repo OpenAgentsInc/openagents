@@ -158,6 +158,7 @@ EF_READY :: 23; // the Ready action (ready.coax): cond the response and slot, dc
 EF_INFLUENCED :: 24; // a failed Influence (actions.coax): by the urger, cond the check's skill, until the 24-hour wait ends
 EF_AID :: 25; // Aid (p. 107): cond is the current and maximum Hit Point increase
 EF_GUIDANCE :: 26; // Guidance (p. 138): cond is the selected skill
+EF_PROTECTION :: 27; // Protection from Evil and Good (p. 157)
 EF_SENSE :: 22; // Divine Sense (p. 54), on the Paladin: Celestials, Fiends and Undead within 60 feet known
 
 // The classes a creature can be built as (-1 for a stat block).
@@ -275,6 +276,7 @@ RsCreature :: struct {
   undead: bool;             // its creature type is Undead (Turn Undead, Divine Smite)
   fiend: bool;              // its creature type is Fiend (Divine Smite)
   celestial: bool;          // its creature type is Celestial (Divine Sense)
+  aberration: bool; elemental: bool; fey: bool;
   order: int;               // its Divine Order or Primal Order (RS_ORDER_*, 0 none)
   construct: bool;          // its creature type is Construct (Shatter's save Disadvantage)
   // Bard: the Bardic Inspiration die it gives, the one it holds (0 none), the College of Lore's Cutting Words

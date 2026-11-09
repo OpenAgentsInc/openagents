@@ -7647,3 +7647,13 @@ record supplies one d4 to each rolled check using the chosen skill.
 Passive Perception rolls no die. Concentration or expiry retires the
 record. Experimental's skill badge chooses the skill, and Everglade II's
 self control currently uses Perception.
+
+## Protection from Evil and Good tracks the effect's source
+
+The Devotion Paladin prepares the spell from level 3. The cast requires
+a willing Touch target and consumes one qualified holy-water flask.
+The ward gives attacks by the six named creature types Disadvantage.
+New Charmed and Frightened conditions from those sources are removed
+from the attempted effect mask. Existing conditions remain and grant
+Advantage on subsequent saves against that effect. A preset change
+preserves the used flask in both world adapters.

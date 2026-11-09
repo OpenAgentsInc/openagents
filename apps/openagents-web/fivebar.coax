@@ -58,6 +58,9 @@ FbAb :: struct {
 fb_feature :: (kind: int, name: string, art: string) -> FbAb { return FbAb.{kind = kind, sp = -1, name = name, art = art}; }
 fb_spell :: (sp: int, lvl: int, tg: int) -> FbAb { s := rs_spell(sp); return FbAb.{kind = FB_SPELL, sp = sp, lvl = lvl, tg = tg, name = s.name, art = s.id}; }
 fb_art_spell :: (sp: int, tg: int, art: string) -> FbAb { a := fb_spell(sp, rs_spell(sp).level, tg); a.art = art; return a; }
+fb_paladin_protection_preset :: (c:[]RsCreature,used:bool) {
+  c[0].materials[1]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_PROTECTION_GOOD_EVIL],count=ifx used then 0 else 1};
+}
 
 // ---- 5E MMO: a class's bar at level 6, in slot order (the abilities its rules in the engine support)
 

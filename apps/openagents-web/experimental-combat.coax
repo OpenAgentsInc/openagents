@@ -74,6 +74,7 @@ XcCombat :: struct {
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
   familiar_incense:int=1; // one Lab supply, carried across preset changes
+  protection_water_used:bool;
   objects:[XC_OBJECTS]XcObject;
   started: bool; klass: int = 11; level: int = 1;
   rest_seen:bool; rest_settled:bool; rest_refused:bool;
@@ -228,6 +229,7 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   if f>=0 && (c!=x[0].klass || b[0].c[0].level!=x[0].level) { rs_familiar_retire(b,f); }
   b[0].c[0] = fb_cl_hero(c, "You", 0, x[0].level);
   if c==FB_CL_WIZARD { fb_wizard_familiar_preset(b[0].c[0..<1],x[0].familiar_incense); }
+  if c==FB_CL_PALADIN { fb_paladin_protection_preset(b[0].c[0..<1],x[0].protection_water_used); }
   if same_druid { b[0].c[0].wild_known=known; b[0].c[0].wild_swap=swap; }
   b[0].c[0].turn_at = t; b[0].c[0].round_at = ro;
   rs_place(b, 0, XC_MID, XC_MID);
@@ -1215,6 +1217,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     if ok { x[0].told = k; x[0].told_at = now; x[0].told_ok = r.passed; }
     if ok && r.passed && foe >= 0 { if rs_max(a.opt, 0) == 1 { x[0].studied[foe] = true; } else { x[0].calm[foe] = true; } }
   } else { ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, 0); }
+  if ok && a.kind==FB_SPELL && a.sp==SP_PROTECTION_GOOD_EVIL { x[0].protection_water_used=true; }
   rs_cover_clear(b);
   gain := rs_max(b[0].c[0].hp-hp_before,0);
   temp_gain := rs_max(b[0].c[0].temp-temp_before,0);
@@ -2456,6 +2459,8 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
 xc_play_kit :: (c: int) {
   s: [1] Lab; xc_test_lab(s[..],c,0);
   for level: 1..<7 {
+    // Each level is a separate preset trial with its initial supplies.
+    s[0].xc[0].protection_water_used=false;
     xc_set_level(s[0].xc[..],level);
     x := s[0].xc[..]; b := x[0].b[..]; h := s[0].creator[0].hostiles[..];
     for k: 0..<x[0].bar_n {
@@ -2608,6 +2613,24 @@ xc_play_kit :: (c: int) {
   guided:=false;
   for e:b[0].c[0].eff { if e.kind==EF_GUIDANCE && e.cond==SK_PERFORMANCE { guided=true; } }
   #assert guided;
+}
+#test "Experimental Protection consumes its flask once across preset changes" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_PALADIN,0);
+  x:=s[0].xc[..]; xc_set_level(x,3);
+  slot:=-1;
+  for i:0..<x[0].bar_n { if x[0].bar[i].sp==SP_PROTECTION_GOOD_EVIL { slot=i; } }
+  #assert slot>=0;
+  b:=x[0].b[..];
+  #assert b[0].c[0].materials[1].count==1;
+  s[0].creator[0].clock=5;
+  #assert xc_use(s[..],slot);
+  #assert x[0].protection_water_used && b[0].c[0].materials[1].count==0;
+  xc_set_class(x,FB_CL_WIZARD);
+  xc_set_class(x,FB_CL_PALADIN);
+  #assert b[0].c[0].materials[1].count==0;
+  slots:=b[0].c[0].slots[1];
+  s[0].creator[0].clock=8;
+  #assert !xc_use(s[..],slot) && b[0].c[0].slots[1]==slots;
 }
 #test "experimental combat: a clicked monster in reach takes a cone spell; out of reach or fallen it is let go (#13038)" #steps 2000000000 {
   c: [1] Lab; xc_test_lab(c[..], FB_CL_CLERIC, 0);

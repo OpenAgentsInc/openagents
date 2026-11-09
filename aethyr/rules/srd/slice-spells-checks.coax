@@ -7,6 +7,36 @@
 #load "catalog.coax";
 #load "executable-source-ids.coax";
 
+#test "Devotion Protection from Evil and Good needs holy water and hinders attacks from a Fiend" {
+  sp:=-1;
+  for k:0..<RS_MORE_END { if rs_spell(k).id=="protection-from-evil-and-good" { sp=k; } }
+  #assert sp>=0 && rs_executable_spell(sp);
+  #assert !rs_class_spell_granted(rs_paladin("Paladin",0,2),sp);
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
+  a:=rs_add(b[..],rs_paladin("Paladin",0,3),2,2);
+  imp:=rs_add(b[..],rs_monster(MON_IMP,"Imp",1),3,2);
+  fighter:=rs_add(b[..],rs_fighter("Fighter",1,1),2,3);
+  #assert rs_class_spell_granted(c[a],sp) && rs_attack_edge(b[..],imp,a,true,true)==0;
+  rs_start_turn(b[..],a);
+  slots:=c[a].slots[1];
+  #assert !rs_cast(b[..],a,sp,1,0,0,a) && c[a].slots[1]==slots && !b[0].turn.action;
+  c[a].materials[1]=RsMaterialStock.{key=RS_EXEC_SOURCE[sp],count=1};
+  #assert rs_cast(b[..],a,sp,1,0,0,a);
+  #assert c[a].slots[1]==slots-1 && c[a].materials[1].count==0 && c[a].conc==sp;
+  #assert rs_attack_edge(b[..],imp,a,true,true)==-1 && rs_attack_edge(b[..],fighter,a,true,true)==0;
+  rs_end_concentration(b[..],a,"");
+  #assert rs_attack_edge(b[..],imp,a,true,true)==0;
+  rs_start_turn(b[..],a);
+  c[a].materials[1].count=1;
+  targets:=[1]int.[fighter];
+  option:[1]RsCastOptions;
+  #assert !rs_cast_creatures_with(b[..],a,sp,1,targets[..],false,option[..]);
+  #assert c[a].materials[1].count==1 && !b[0].turn.action;
+  option[0].willing=true;
+  #assert rs_cast_creatures_with(b[..],a,sp,1,targets[..],false,option[..]);
+  #assert c[a].materials[1].count==0 && rs_effect(c[fighter],EF_PROTECTION);
+}
+
 #test "Blessed Warrior Guidance adds a d4 only to its chosen skill while the Paladin concentrates" {
   sp:=-1;
   for k:0..<RS_MORE_END { if rs_spell(k).id=="guidance" { sp=k; } }

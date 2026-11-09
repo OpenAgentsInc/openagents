@@ -89,7 +89,7 @@ rs_option_valid :: (sp: int, option: RsCastOptions) -> bool #effects(all) {
   } else if option.hex_ability != RS_STR { return false; }
   if sp==SP_GUIDANCE {
     if option.guidance<0 || option.guidance>=RS_SKILLS { return false; }
-  } else if option.guidance!=SK_PERCEPTION || option.willing { return false; }
+  } else if option.guidance!=SK_PERCEPTION || (option.willing && sp!=SP_PROTECTION_GOOD_EVIL) { return false; }
   if option.restoration!=0 {
     if sp!=SP_LESSER_RESTORATION { return false; }
     for condition:RS_RESTORABLE { if option.restoration==condition { return true; } }
