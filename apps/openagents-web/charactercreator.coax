@@ -1010,6 +1010,8 @@ face_advance :: (code:u32,face:int)->f32 {
 }
 // How wide t is in a face at cap.
 face_width :: (t:string,cap:f32,face:int)->f32 {w:f32=0;em:=sans_em(cap);for ch:t {w+=face_advance(cast(u32)ch,face)*em;}return w;}
+// Each byte's advance in face at cap, into out (as many as fit); the filled part. face_width is their sum.
+face_advances :: (t:string,cap:f32,face:int,out:[]f32)->[]f32 {em:=sans_em(cap);n:=0;for ch:t {if n>=out.count {break;}out[n]=face_advance(cast(u32)ch,face)*em;n+=1;}return out[0..<n];}
 // Text in a HUD style's role (aethyr/ui/hud-style.coax hud_text): its face, colour and size, a drop
 // shadow, or an outline (damage, banners), at alpha a. x is its left end; centred when centre.
 hud_say :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,r:HudText,a:f32,k:f32,centre:bool)->int {

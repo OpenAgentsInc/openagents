@@ -121,8 +121,9 @@ EG_DO_KIT :: 30; EG_DO_KNOCK :: 31;   // the Healer's Kit and knock-out buttons:
 // Which menu is open (-1 none), and which button and row the pointer is over (-1 none).
 EgSideState :: struct { menu: int = -1; side_hover: int = -1; menu_hover: int = -1; }
 EgSideGeo :: struct { ids: [EG_SIDE_N] int; n: int; wd: [EG_SIDE_N] f32; x0: f32; x1: f32; y1: f32; h: f32; gap: f32; w: f32; k: f32; }
-// A finger's size on a phone or a tablet, smaller with a mouse on a desktop.
-eg_side_h :: (w: f32, h: f32, k: f32) -> f32 { tall := w < 840 * k || h < 560 * k; return ifx tall then 44 * k else 30 * k; }
+// A finger's size on a phone or a tablet, smaller with a mouse on a desktop (aethyr/ui/hud-menu.coax
+// hud_touch_size, hud_row_h).
+eg_side_h :: (w: f32, h: f32, k: f32) -> f32 { return cc.hud_row_h(cc.hud_touch_size(w, h, k, false), k); }
 eg_side_geo :: (f: EgBarFacts, w: f32, h: f32, k: f32, bar_top: f32) -> EgSideGeo {
   g: EgSideGeo; g.n = eg_side_items(f, g.ids[..]); g.w = w; g.k = k; b: [48] u8;
   for i: 0..<g.n { c := eg_side_label(f, g.ids[i], b[..]); g.wd[i] = cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; }
@@ -138,6 +139,13 @@ eg_menu_of :: (f: EgBarFacts, g: EgSideGeo, id: int) -> cc.HudMenu {
   cw := EG_MENU_W * k; b: [48] u8;
   for r: 0..<m { c := eg_menu_label(f, rows[r], b[..]); x := cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; if x > cw { cw = x; } }
   return cc.hud_menu(eg_side_box(g, j), m, cw, g.h, EG_MENU_HEAD * k, g.gap, EG_MENU_TOP * k, eg_side_top(g) - 12 * k, 8 * k, g.w - 8 * k);
+}
+// What the open menu covers: its panel and the room over it a row's tip takes; nothing when shut. A
+// short page's menu may reach the top, and the zone's map and plate step aside under it.
+eg_menu_cover :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState) -> cc.HudPrim {
+  if st.menu < 0 || eg_side_find(g, st.menu) < 0 { return cc.HudPrim.{}; }
+  p := eg_menu_of(f, g, st.menu).panel; if !(p.x1 > p.x0) { return p; }
+  return cc.hud_box(p.x0, p.y0 - 40 * g.k, p.x1, p.y1);
 }
 // What a press did: taken (the side bar had it), the action for the room (0 none), and the bar's state.
 EgPress :: struct { taken: bool; act: int; st: EgSideState; }
@@ -182,9 +190,10 @@ eg_side_draw :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: 
     cc.hud_menu_draw(l[..], ws[..], t, menu, eg_menu_title(f, st.menu), ml[..], m, st.menu_hover, cap, k);
     if st.menu_hover >= 0 && st.menu_hover < m { tip = eg_menu_tip(f, rows[st.menu_hover]); anchor = menu.panel; }
   } else if st.side_hover >= 0 && st.side_hover < g.n {
-    tip = eg_side_tip(f, g.ids[st.side_hover]); anchor = eg_side_box(g, st.side_hover);
+    tip = eg_side_tip(f, g.ids[st.side_hover]); anchor = cc.hud_side_tip_anchor(wd[..], g.n, st.side_hover, g.x0, g.x1, g.y1, g.h, g.gap, k);
   }
-  tc := EG_TIP_CAP * k;
-  cc.hud_tip(l[..], ws[..], t, tip, cc.face_width(tip, tc * 0.9, cc.HUD_FACE_BODY), anchor, tc, 8 * k, g.w - 8 * k, k);
+  // the tip's line measured as it is set: the LABEL role's face, at its scale
+  tc := EG_TIP_CAP * k; role := cc.hud_text(t, cc.HUD_TEXT_LABEL); adv: [256] f32;
+  cc.hud_tip(l[..], ws[..], t, tip, cc.face_advances(tip, tc * role.scale, role.face, adv[..]), anchor, tc, 8 * k, g.w - 8 * k, k);
   return cc.hud_draw(out, at, l[..], ws[..], 1, k);
 }

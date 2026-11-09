@@ -3,7 +3,9 @@
 // over. Any realm uses them with its own data: the labels, their widths in its faces, and what each
 // press does. They return boxes and add primitives and words (HudList, HudWords); the realm's
 // renderer draws both. Rows wrap to the page's width, so nothing overlaps at any width; on a phone
-// the realm passes a 44 px row for a finger. docs/verse/hud-styles.md.
+// the realm passes a 44 px row for a finger (hud_row_h). Text always fits its box: a menu grows
+// taller before its columns get narrower than their labels, and a tip wraps and sizes its plaque to
+// its lines. docs/verse/hud-styles.md.
 //   coax/bin/coax test aethyr/ui/hud-menu.coax --library
 #load "hud-style.coax";
 #load "hud-sight.coax";   // what floats over a body shows while the body does
@@ -22,6 +24,14 @@ hud_word_ink :: (ws: [] HudWords, t: string, x: f32, y: f32, cap: f32, role: int
 hud_word :: (ws: [] HudWords, t: string, x: f32, y: f32, cap: f32, role: int, centre: bool) { hud_word_ink(ws, t, x, y, cap, role, centre, false, HudRgba.{}); }
 hud_word_text :: (ws: [] HudWords, i: int) -> string { w := ws[0].w[i]; return cast(string) ws[0].text[w.at..<w.at + w.len]; }
 
+HUD_TAP :: 44.0;   // CSS px: the least a button is either way on a touch screen
+HUD_ROW :: 30.0;   // CSS px: a row for a mouse
+// A side-bar or menu row's height, device px: a finger's on a touch screen, smaller with a mouse.
+hud_row_h :: (touch: bool, k: f32) -> f32 { return ifx touch then HUD_TAP * k else HUD_ROW * k; }
+// Whether a w by h screen (device px, k a CSS px) takes a finger's sizes: once a finger has pressed
+// (touched), or when it is a tablet's size or smaller (narrower than 1100 CSS px or shorter than 700).
+hud_touch_size :: (w: f32, h: f32, k: f32, touched: bool) -> bool { return touched || w < 1100 * k || h < 700 * k; }
+
 hud_in :: (b: HudPrim, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 hud_apart :: (a: HudPrim, b: HudPrim) -> bool { return a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0; }
 
@@ -31,36 +41,54 @@ hud_side_box :: (wd: [] f32, n: int, j: int, x0: f32, x1: f32, y1: f32, h: f32, 
   if j < 0 || j >= n { return HudPrim.{}; }
   room := x1 - x0; first := 0; row := 0;
   while first < n {
-    last := first; total := wd[first];
-    while last + 1 < n && total + gap + wd[last + 1] <= room { last += 1; total += gap + wd[last]; }
+    last := first; total := hud_side_w(wd[first], room);
+    while last + 1 < n && total + gap + hud_side_w(wd[last + 1], room) <= room { last += 1; total += gap + hud_side_w(wd[last], room); }
     if j <= last {
-      x := x0 + (room - total) * 0.5; for i: first..<j { x += wd[i] + gap; }
+      x := x0 + (room - total) * 0.5; for i: first..<j { x += hud_side_w(wd[i], room) + gap; }
       yb := y1 - f32(row) * (h + gap);
-      return hud_box(x, yb - h, x + wd[j], yb);
+      return hud_box(x, yb - h, x + hud_side_w(wd[j], room), yb);
     }
     first = last + 1; row += 1;
   }
   return HudPrim.{};
 }
+// A side button's width: its own, or the room when it is wider (its label then sets smaller to fit).
+hud_side_w :: (w: f32, room: f32) -> f32 { return ifx w > room then room else w; }
+// How far a side-bar row's tray reaches round its buttons: less than half the gap, so the trays of
+// two rows never meet.
+hud_side_margin :: (gap: f32, k: f32) -> f32 { m := 5 * k; if m > gap * 0.4 { m = gap * 0.4; } return m; }
 // The highest top of the side bar's buttons; y1 - h when it has none.
 hud_side_top :: (wd: [] f32, n: int, x0: f32, x1: f32, y1: f32, h: f32, gap: f32) -> f32 {
   top := y1 - h; for j: 0..<n { b := hud_side_box(wd, n, j, x0, x1, y1, h, gap); if b.y0 < top { top = b.y0; } }
   return top;
 }
+// The anchor a tip over side button j takes: the button, raised to the top of the highest tray, so
+// the tip never sits on a row above it.
+hud_side_tip_anchor :: (wd: [] f32, n: int, j: int, x0: f32, x1: f32, y1: f32, h: f32, gap: f32, k: f32) -> HudPrim {
+  b := hud_side_box(wd, n, j, x0, x1, y1, h, gap); if b.x1 <= b.x0 { return b; }
+  b.y0 = hud_side_top(wd, n, x0, x1, y1, h, gap) - hud_side_margin(gap, k);
+  return b;
+}
 
 // A menu over an anchor (its button): a title head tall, then rows rows h tall, in as many columns
-// as fit between top (the highest it may reach) and y1 (its foot), each col_w wide, inside x0..x1.
-HudMenu :: struct { panel: HudPrim; cols: int; per: int; col_w: f32; h: f32; head: f32; gap: f32; }
+// as fit between top (where it would rather stop) and y1 (its foot), each col_w wide (the widest
+// label and its padding), inside x0..x1. The labels come first: when the columns would not fit
+// across x0..x1, the menu takes fewer and grows above top instead of narrowing them. Only when one
+// column is wider than x0..x1 does it narrow, and then fit (under 1) scales its words to match.
+HudMenu :: struct { panel: HudPrim; cols: int; per: int; col_w: f32; h: f32; head: f32; gap: f32; fit: f32 = 1; }
 hud_menu :: (anchor: HudPrim, rows: int, col_w: f32, h: f32, head: f32, gap: f32, top: f32, y1: f32, x0: f32, x1: f32) -> HudMenu {
   m: HudMenu; if rows <= 0 { return m; }
   step := h + gap * 0.5; room := y1 - top - head - 2 * gap;
   per := ifx room > step then int(room / step) else 1; if per > rows { per = rows; }
-  cols := (rows + per - 1) / per; per = (rows + cols - 1) / cols;
-  w := f32(cols) * col_w + f32(cols + 1) * gap; if w > x1 - x0 { w = x1 - x0; }
+  cols := (rows + per - 1) / per;
+  across := int((x1 - x0 - gap) / (col_w + gap)); if across < 1 { across = 1; } if cols > across { cols = across; }
+  per = (rows + cols - 1) / cols;
+  w := f32(cols) * col_w + f32(cols + 1) * gap; fit := 1.0f32;
+  if w > x1 - x0 { w = x1 - x0; fit = (w - f32(cols + 1) * gap) / (f32(cols) * col_w); }
   hh := 2 * gap + head + f32(per) * step - gap * 0.5;
   px := (anchor.x0 + anchor.x1 - w) * 0.5; if px < x0 { px = x0; } if px + w > x1 { px = x1 - w; }
   m.panel = hud_box(px, y1 - hh, px + w, y1); m.cols = cols; m.per = per; m.h = h; m.head = head; m.gap = gap;
-  m.col_w = (w - f32(cols + 1) * gap) / f32(cols);
+  m.col_w = (w - f32(cols + 1) * gap) / f32(cols); m.fit = fit;
   return m;
 }
 hud_menu_row :: (m: HudMenu, r: int) -> HudPrim {
@@ -78,14 +106,15 @@ hud_side_draw :: (l: [] HudList, ws: [] HudWords, t: HudTokens, wd: [] f32, labe
   while j < n {
     a := hud_side_box(wd, n, j, x0, x1, y1, h, gap); last := j;
     while last + 1 < n && hud_side_box(wd, n, last + 1, x0, x1, y1, h, gap).y0 == a.y0 { last += 1; }
-    z := hud_side_box(wd, n, last, x0, x1, y1, h, gap); m := 5 * k; tray := hud_box(a.x0 - m, a.y0 - m, z.x1 + m, a.y1 + m);
+    z := hud_side_box(wd, n, last, x0, x1, y1, h, gap); m := hud_side_margin(gap, k); tray := hud_box(a.x0 - m, a.y0 - m, z.x1 + m, a.y1 + m);
     hud_fill(l, tray, 8 * k, hud_fade(t.frame_dark, 0.9), hud_fade(t.frame_dark, 1));
     hud_ring(l, tray, 8 * k, 1.2 * k, t.frame_light, t.frame_mid);
     j = last + 1;
   }
   for i: 0..<n {
     b := hud_side_box(wd, n, i, x0, x1, y1, h, gap); hud_button(l, t, b, k, lit[i]);
-    hud_word(ws, labels[i], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, HUD_TEXT_TITLE, true);
+    c := cap; if wd[i] > b.x1 - b.x0 { c = cap * (b.x1 - b.x0) / wd[i]; }   // held to the page: its words with it
+    hud_word(ws, labels[i], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + c * 0.5, c, HUD_TEXT_TITLE, true);
   }
 }
 // Draw a menu: its framed panel, its title, and a button per row (lit: the row under the pointer, -1 none).
@@ -94,19 +123,51 @@ hud_menu_draw :: (l: [] HudList, ws: [] HudWords, t: HudTokens, m: HudMenu, titl
   hud_panel(l, t, m.panel, k);
   hud_word(ws, title, (m.panel.x0 + m.panel.x1) * 0.5, m.panel.y0 + m.gap + m.head * 0.5 + cap * 0.6, cap * 1.15, HUD_TEXT_TITLE, true);
   for r: 0..<n {
-    b := hud_menu_row(m, r); hud_button(l, t, b, k, r == lit);
-    hud_word(ws, labels[r], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, HUD_TEXT_TITLE, true);
+    b := hud_menu_row(m, r); hud_button(l, t, b, k, r == lit); c := cap * m.fit;
+    hud_word(ws, labels[r], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + c * 0.5, c, HUD_TEXT_TITLE, true);
   }
 }
-// A tip over anchor: a dark plaque with one line, tw wide in its face at cap, inside x0..x1.
-hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, tw: f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) {
+// A tip's lines: line wrapped at its spaces so no line is wider than room, given each byte's advance
+// (adv). A word wider than room alone breaks between letters. Each line's start, length and width go
+// in at, cnt and wide; returns how many (at most at.count).
+hud_tip_wrap :: (line: string, adv: [] f32, room: f32, at: [] int, cnt: [] int, wide: [] f32) -> int {
+  n := 0; i := 0; count := line.count; if adv.count < count { count = adv.count; }
+  while i < count && n < at.count {
+    while i < count && line[i] == ' ' { i += 1; }
+    if i >= count { break; }
+    s := i; w := 0.0f32; end := i; j := i;
+    while j < count {
+      e := j; ww := 0.0f32; while e < count && line[e] != ' ' { ww += adv[e]; e += 1; }
+      sp := 0.0f32; for q: end..<j { sp += adv[q]; }
+      if end > s && w + sp + ww > room { break; }   // the word starts the next line
+      if end == s && ww > room {                   // a word wider than the room: as much as fits
+        e = j + 1; ww = adv[j]; while e < count && line[e] != ' ' && ww + adv[e] <= room { ww += adv[e]; e += 1; }
+        w = ww; end = e; break;
+      }
+      w += sp + ww; end = e; j = e; while j < count && line[j] == ' ' { j += 1; }
+    }
+    at[n] = s; cnt[n] = end - s; wide[n] = w; n += 1; i = end;
+  }
+  return n;
+}
+HUD_TIP_LINES :: 8;
+// A tip over anchor: a dark plaque with line in the LABEL role at cap, inside x0..x1. Text is the
+// realm's, so the realm measures it: adv holds each byte's advance in that role's face and size
+// (hud_text(t, HUD_TEXT_LABEL): its face, at cap times its scale). The tip wraps the line to the
+// room x0..x1 leaves and sizes the plaque to the lines, so no word comes out of it.
+hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, adv: [] f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) {
   if line.count == 0 { return; }
-  pad := 10 * k; w := tw + 2 * pad; px := (anchor.x0 + anchor.x1 - w) * 0.5;
+  pad := 10 * k; at: [HUD_TIP_LINES] int; cnt: [HUD_TIP_LINES] int; wide: [HUD_TIP_LINES] f32;
+  lines := hud_tip_wrap(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]); if lines == 0 { return; }
+  tw := 0.0f32; for q: 0..<lines { if wide[q] > tw { tw = wide[q]; } }
+  step := cap * 1.6; w := tw + 2 * pad; px := (anchor.x0 + anchor.x1 - w) * 0.5;
   if px < x0 { px = x0; } if px + w > x1 { px = x1 - w; }
-  y1 := anchor.y0 - 6 * k; b := hud_box(px, y1 - cap * 2.6, px + w, y1);
+  y1 := anchor.y0 - 6 * k; b := hud_box(px, y1 - cap * 2.6 - f32(lines - 1) * step, px + w, y1);
   hud_fill(l, b, 6 * k, hud_fade(t.frame_dark, 0.9), hud_fade(t.frame_dark, 1));
   hud_ring(l, b, 6 * k, 1 * k, hud_fade(t.frame_light, 0.7), hud_fade(t.frame_mid, 0.7));
-  hud_word_ink(ws, line, px + pad, (b.y0 + b.y1) * 0.5 + cap * 0.45, cap, HUD_TEXT_LABEL, false, true, t.text);
+  for q: 0..<lines {
+    hud_word_ink(ws, cast(string) line[at[q]..<at[q] + cnt[q]], px + pad, b.y0 + cap * 1.75 + f32(q) * step, cap, HUD_TEXT_LABEL, false, true, t.text);
+  }
 }
 
 #test "hud side bar: rows wrap inside the page and never overlap; a menu fits over its button" {
@@ -120,7 +181,7 @@ hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, tw: f32,
   #assert hud_side_top(wd[..], 3, 12, 378, 700, 44, 8) < 700 - 44 - 8;
   anchor := hud_side_box(wd[..], 3, 1, 12, 378, 700, 44, 8);
   m := hud_menu(anchor, 10, 200, 44, 26, 8, 100, 600, 8, 382);
-  #assert m.panel.x0 >= 8 && m.panel.x1 <= 382 && m.panel.y0 >= 100 && m.panel.y1 == 600 && m.cols * m.per >= 10;
+  #assert m.panel.x0 >= 8 && m.panel.x1 <= 382 && m.panel.y0 >= 0 && m.panel.y1 == 600 && m.cols * m.per >= 10 && m.col_w == 200;   // one column of whole labels, taller than top asked
   for r: 0..<10 { b := hud_menu_row(m, r); #assert b.x0 >= m.panel.x0 && b.x1 <= m.panel.x1 && b.y0 >= m.panel.y0 && b.y1 <= m.panel.y1;
     for r2: 0..<r { #assert hud_apart(b, hud_menu_row(m, r2)); } }
   // a short page: more columns, still on it
@@ -132,4 +193,39 @@ hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, tw: f32,
   #assert ws[0].n == 1 && hud_word_text(ws[..], 0) == "REST" && ws[0].w[0].centre;
   for i: 0..<HUD_WORDS + 4 { hud_word(ws[..], "x", 0, 0, 9, HUD_TEXT_LABEL, false); }
   #assert ws[0].n == HUD_WORDS;
+}
+#test "hud tip: a long line wraps to the room and the plaque holds every line; a word too wide breaks" {
+  line := "Take a short or a long rest here"; adv: [32] f32; for q: 0..<32 { adv[q] = 10; }
+  at: [8] int; cnt: [8] int; wide: [8] f32;
+  n := hud_tip_wrap(line, adv[..], 120, at[..], cnt[..], wide[..]);
+  #assert n >= 3; total := 0;
+  for q: 0..<n { #assert wide[q] <= 120 && cnt[q] > 0 && line[at[q]] != ' ' && line[at[q] + cnt[q] - 1] != ' '; total += cnt[q]; }
+  #assert total + n - 1 == line.count;   // every letter on a line, one space between lines
+  #assert hud_tip_wrap(line, adv[..], 1000, at[..], cnt[..], wide[..]) == 1 && wide[0] == 320;
+  #assert hud_tip_wrap("ABCDEFGHIJ", adv[..], 35, at[..], cnt[..], wide[..]) == 4 && cnt[0] == 3 && wide[0] <= 35;
+  // the plaque (the tip's first fill): inside x0..x1 and round each line
+  l: [1] HudList; ws: [1] HudWords; t := hud_tokens(HUD_FANTASY);
+  anchor := hud_box(300, 700, 380, 744);
+  hud_tip(l[..], ws[..], t, line, adv[..], anchor, 9, 12, 200, 1);
+  p := l[0].p[0]; #assert p.x0 >= 12 && p.x1 <= 200 && p.y1 <= 700 && ws[0].n == hud_tip_wrap(line, adv[..], 200 - 12 - 20, at[..], cnt[..], wide[..]) && ws[0].n >= 2;
+  for q: 0..<ws[0].n { w := ws[0].w[q]; #assert w.x >= p.x0 && w.x + f32(w.len) * 10 <= p.x1 && w.y < p.y1 && w.y - w.cap > p.y0; }
+}
+#test "hud menu: labels keep their width; a short wide page gets fewer columns and a taller menu" {
+  anchor := hud_box(400, 300, 500, 344);
+  // nine rows of 260 on an 844 page with room for one row: three columns, not nine squeezed ones
+  m := hud_menu(anchor, 9, 260, 44, 26, 8, 250, 300, 8, 836);
+  #assert m.cols == 3 && m.per == 3 && m.col_w == 260 && m.fit == 1 && m.panel.x0 >= 8 && m.panel.x1 <= 836 && m.panel.y0 < 250;
+  // one column wider than the page: narrowed, and its words scaled to match
+  n := hud_menu(anchor, 2, 500, 44, 26, 8, 100, 300, 8, 382);
+  #assert n.cols == 1 && n.panel.x1 - n.panel.x0 <= 374.01 && n.fit < 1 && abs(n.col_w - 500 * n.fit) < 0.01;
+}
+#test "hud side bar: two rows' trays never meet, a button wider than the page is held to it, a touch row is 44" {
+  wd := [3] f32.[205, 250, 500];
+  for i: 0..<3 { b := hud_side_box(wd[..], 3, i, 12, 378, 700, 44, 8); #assert b.x0 >= 12 && b.x1 <= 378; }
+  a := hud_side_box(wd[..], 3, 0, 12, 378, 700, 44, 8); c := hud_side_box(wd[..], 3, 1, 12, 378, 700, 44, 8);
+  m := hud_side_margin(8, 1); #assert c.y1 + m < a.y0 - m || a.y1 + m < c.y0 - m;
+  tip := hud_side_tip_anchor(wd[..], 3, 0, 12, 378, 700, 44, 8, 1);
+  #assert tip.y0 <= hud_side_top(wd[..], 3, 12, 378, 700, 44, 8) - m;
+  #assert hud_row_h(true, 3) == 132 && hud_row_h(false, 1) == 30;
+  #assert hud_touch_size(1170, 2532, 3, false) && hud_touch_size(2048, 1536, 2, false) && !hud_touch_size(1920, 1080, 1, false) && hud_touch_size(1920, 1080, 1, true);
 }

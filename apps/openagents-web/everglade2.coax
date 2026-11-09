@@ -1080,7 +1080,7 @@ e2_world_view :: (s: [] E2, out: [] f32, at: int) -> int {
   gl := s[0].guard[0]; if gl.up && gl.fade > 0.05 && nd < 64 { dots[nd] = cc.EgDot.{x = gl.x, z = gl.z, kind = cc.EG_DOT_GUARD}; nd += 1; }
   cb: [8] u8; cn := cc.eg_clock(s[0].hud_day, cb[..]);
   conds: [E2K_HEALTH] u8; p := e2_portrait(s, conds[..]);
-  wd := cc.EgWorld.{you_x = s[0].you_x, you_z = s[0].you_z, fx = s[0].fwd[0], fz = s[0].fwd[2], reach = reach, place = E2_ZONES[z], clock = cast(string) cb[0..<cn], since = s[0].clock - s[0].zone_at};
+  wd := cc.EgWorld.{you_x = s[0].you_x, you_z = s[0].you_z, fx = s[0].fwd[0], fz = s[0].fwd[2], reach = reach, place = E2_ZONES[z], clock = cast(string) cb[0..<cn], since = s[0].clock - s[0].zone_at, cover = eg_menu_cover(e2k_facts(s), e2k_side_geo(s), e2k_side_st(s))};
   return cc.eg_world(out, at, s[0].width, s[0].height, s[0].k, wd, dots[..], nd, p);
 }
 #test "the frame rate is the frames over the last half second" {
@@ -2511,7 +2511,8 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   out:[32768*16]f32; shut:=e2k_hud(s[..],out[..],0);
   pc:=e2k_side_centre(s[..],EG_SIDE_PET); #assert e2_pointer(s[..],pc[0],pc[1],0,0,1) && s[0].casts[0].menu==EG_SIDE_PET;
   #assert e2k_hud(s[..],out[..],0)>shut;
-  #assert e2_pointer(s[..],s[0].width*0.5,40,0,0,1) && s[0].casts[0].menu== -1;
+  // a press outside the menu (a short page's menu grows up toward the top, so the corner)
+  #assert e2_pointer(s[..],2,2,0,0,1) && s[0].casts[0].menu== -1;
 }
 #test "Everglade II rest controls follow the room's rest: a click asks it, sleep holds the keys, and the label says it (#13046)" #steps 1000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_FIGHTER); n:=s[0].net[..]; n[0].mono=100;
