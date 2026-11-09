@@ -1,7 +1,7 @@
 # Episode 293 show notes: what to put on screen
 
 Written 2026-11-09 for [Episode 293: Everglade](293.md). The edited talk is
-4:04 of Christopher speaking to the camera. These notes say what to show
+3:49 of Christopher speaking to the camera. These notes say what to show
 over each part of it, how to make each shot, and what must be built first.
 
 The model is the Verse trailer for Enter the Verse (#12458), where each
@@ -28,22 +28,22 @@ Times are from the edited video.
 
 | Time | What is said | Show | Source |
 | --- | --- | --- | --- |
-| 0:00–0:19 | Every gamer has a game they wish existed. A button called Create Game. | Christopher on camera. No overlay for the first line. At "magic button", cut to a bare Grid with one glowing button; a press makes the Grid floor turn into the glade's grass and trees, spreading out from the button. | New shot. The Grid and the glade both exist. The spread is the trailer's "world reveals over the Grid" idea, done in Aethyr. |
-| 0:19–0:31 | Our engine, our metaverse, creation tools. | Three quick cuts, about 3 s each: the engine (a frame of Everglade II with the wireframe or collider view toggled on, then off), the Verse (the home page's project towers, then walking through a gate), creation tools (a realm made at `/realms/new`). | Capture today. |
-| 0:31–0:41 | "My dream game, which I'm calling Everglade." | The title. The camera rises out of the Character Create glade through the canopy, autumn light, and the word EVERGLADE sets in. Hold 3 s. | Capture today, with a keyed camera. The title is an overlay. |
-| 0:41–1:15 | Old-school MMORPG on the D&D 5E SRD, and the mechanics list. | One short clip for each item, cut on his words. See [the mechanics montage](#the-mechanics-montage). | Mixed. |
-| 1:15–1:46 | Built around a city, like Neverwinter Nights and Baldur's Gate. It begins as an empty glade. | The empty city clearing by its brook, at dawn, nobody there. Hold it for a full 4 s so the emptiness reads. Then one player walks in. | Needs the city clearing (#13093). Until it lands, use the glade and the clearing at the end of the path. |
-| 1:46–2:00 | Be a founder. Get an early patch of land. | A top-down view of the clearing. Plot outlines draw themselves on the ground. One plot fills with a name. A player stands on it. | New shot. Plots are specified and not built. Label it. |
-| 2:00–2:45 | The Housewright profession. Collect clay, stone and wood. Build simple houses. | **The house time-lapses.** Gathering first: hands pull branches, cut reeds at the brook, lift fieldstones. Then the lean-to, the hut and the cottage rise. See [the house time-lapses](#the-house-time-lapses). | Needs build progress between stages. Gathering is specified and not built. |
-| 2:45–2:58 | The city grows over time, so at full release there is a whole city, built by players. | **The town time-lapse.** One fixed high camera over the clearing. Days pass as the light sweeps. Houses rise one after another, each at its own pace, small ones first, until the clearing is a town. End on the same framing as the empty clearing at 1:15. | Needs the same feature, plus many build sites at once. |
-| 2:58–3:23 | AI friendly, used with taste. Real artists, designers and voice artists. | Split screen. Left: a realm changing as someone speaks to it. Right: the reference picture that set the glade's light, next to the glade as built. Then a row of the art kits' names as credits. | Capture today. See the note on credits below. |
-| 3:23–3:41 | The game and its engine are open source. Fork our worlds and make your own rules. | The repository page, then one file of real game code (a spell or a house's parts), then FORK pressed on a realm and the same world with a changed rule: lower gravity or a different sky. | Capture today. |
-| 3:41–4:01 | Connecting the worlds into the Verse. Get in, walk around. PRs welcome. | A player runs from the glade through a gate into the Grid, with other realms' gates visible. Then the link, large: `everglade.world`. | Capture today. Confirm the gate you want shown. |
-| 4:01–4:04 | "We'll put cats in there." "Stay tuned." | A cat sits in the glade and looks at the camera. Cut to black on "Stay tuned." | Needs a cat. The asset registry has an animated animals pack; check whether it holds a cat. If not, end on Pantone, the real cat, and keep the promise for the game. |
+| 0:00–0:18 | Every gamer has a game they wish existed. A button called Create Game. | Christopher on camera. No overlay for the first line. At "magic button", cut to a bare Grid with one glowing button; a press makes the Grid floor turn into the glade's grass and trees, spreading out from the button. | New shot. The Grid and the glade both exist. The spread is the trailer's "world reveals over the Grid" idea, done in Aethyr. |
+| 0:18–0:30 | Our engine, our metaverse, creation tools. | Three quick cuts, about 3 s each: the engine (a frame of Everglade II with the wireframe or collider view toggled on, then off), the Verse (the home page's project towers, then walking through a gate), creation tools (a realm made at `/realms/new`). | Capture today. |
+| 0:30–0:40 | "My dream game, which I'm calling Everglade." | The title. The camera rises out of the Character Create glade through the canopy, autumn light, and the word EVERGLADE sets in. Hold 3 s. | Capture today, with a keyed camera. The title is an overlay. |
+| 0:40–1:17 | Old-school MMORPG on the D&D 5E SRD, and the mechanics list. | One short clip for each item, cut on his words. See [the mechanics montage](#the-mechanics-montage). | Mixed. |
+| 1:17–1:45 | Built around a city, like Neverwinter Nights and Baldur's Gate. It begins as an empty glade. | The empty city clearing by its brook, at dawn, nobody there. Hold it for a full 4 s so the emptiness reads. Then one player walks in. | Needs the city clearing (#13093). Until it lands, use the glade and the clearing at the end of the path. |
+| 1:45–1:59 | Be a founder. Get an early patch of land. | A top-down view of the clearing. Plot outlines draw themselves on the ground. One plot fills with a name. A player stands on it. | New shot. Plots are specified and not built. Label it. |
+| 1:59–2:33 | Build differently from other MMOs, with players present at every phase. Then the Housewright profession: collect clay, stone and wood, build simple houses. | **The house time-lapses.** Gathering first: hands pull branches, cut reeds at the brook, lift fieldstones. Then the lean-to, the hut and the cottage rise. See [the house time-lapses](#the-house-time-lapses). | Needs build progress between stages. Gathering is specified and not built. |
+| 2:33–2:49 | The city grows over time, so at full release there is a whole city, built by players. | **The town time-lapse.** One fixed high camera over the clearing. Days pass as the light sweeps. Houses rise one after another, each at its own pace, small ones first, until the clearing is a town. End on the same framing as the empty clearing at 1:17. | Needs the same feature, plus many build sites at once. |
+| 2:49–3:08 | AI friendly, used with taste. Real artists, designers and voice artists. | Split screen. Left: a realm changing as someone speaks to it. Right: the reference picture that set the glade's light, next to the glade as built. Then a row of the art kits' names as credits. | Capture today. See the note on credits below. |
+| 3:08–3:25 | The game and its engine are open source. Fork our worlds and make your own rules. | The repository page, then one file of real game code (a spell or a house's parts), then FORK pressed on a realm and the same world with a changed rule: lower gravity or a different sky. | Capture today. |
+| 3:25–3:44 | Connecting the worlds into the Verse. Get in, walk around. PRs welcome. | A player runs from the glade through a gate into the Grid, with other realms' gates visible. Then the link, large: `everglade.world`. | Capture today. Confirm the gate you want shown. |
+| 3:44–3:49 | "I guess we'll put cats in there." "Pantone, you can be the cat." "Stay tuned." | A cat sits in the glade and looks at the camera. Cut to black on "Stay tuned." | Needs a cat. The asset registry has an animated animals pack; check whether it holds a cat. If not, end on Pantone, the real cat, and keep the promise for the game. |
 
 ### The mechanics montage
 
-He lists six things in 34 seconds. Each gets one clip of 3 to 5 seconds,
+He lists six things in 34 seconds (0:40–1:14). Each gets one clip of 3 to 5 seconds,
 with its name set small in a corner.
 
 | Words | Clip | Status |
@@ -120,7 +120,7 @@ fixed game steps, so the clip is the same every time it is made.
 | 4 | Timber house | 8 s | The frame going up is the image. Hold on the bare frame against the sky for a moment before the boards fill it. |
 | 5 | Stone cottage | 10 s | Course by course. Pass a full day and night over it, since this one takes 10 workdays. End on the chimney. |
 | 6 | All five in a row | 6 s | The five finished houses side by side, small to large, with the tool that unlocks each one named under it: bare hands, stone blade, stone axe, Carpenter's Tools, Mason's Tools. |
-| 7 | The town | 12 s | The fixed high camera over the clearing. See the 2:45 row above. |
+| 7 | The town | 12 s | The fixed high camera over the clearing. See the 2:33 row above. |
 
 Details that make these read as real:
 
@@ -222,13 +222,13 @@ Render review cuts at 1080p, and capture headless.
   join).
 - **Open on the glade, not on him.** Three seconds of the empty glade with
   birdsong before the first word tells the viewer what this is.
-- **Use the same framing twice.** The empty clearing at 1:15 and the built
-  town at 2:58 from one camera is the whole pitch in two frames. It also
+- **Use the same framing twice.** The empty clearing at 1:17 and the built
+  town at 2:49 from one camera is the whole pitch in two frames. It also
   makes a good thumbnail as a split image.
 - **Put the numbers on screen.** "20 branches, 30 boughs, 5 minutes" under
   the lean-to. Players of old MMOs want the numbers. The spec calls them
   starting values, so say so in small type.
-- **Name the link early and late.** `everglade.world` at about 1:20, when he
+- **Name the link early and late.** `everglade.world` at about 1:21, when he
   says you can play, and again at the end.
 - **Credit the art.** He says he wants real artists involved. A line at the
   end naming the art kits and their makers backs that up, and the SRD needs
@@ -236,18 +236,54 @@ Render review cuts at 1080p, and capture headless.
   description and a short form on the end card.
 - **Keep AI pictures out.** Every frame should come from the engine. A
   generated clip in a video that promises taste with AI would undercut the
-  line at 2:58.
+  line at 2:49.
 - **Don't show what a new player can't find.** If the link opens the glade
   and a path, a video full of towns, dragons and duels sets up a letdown.
   Label what is coming, and end on what is there today.
 - **The cat.** Deliver it. One cat in the glade at launch costs little and
   closes the video's last promise.
 
-## Corrections made to the transcript
+## Edit notes and corrections
 
-The transcript wrote the profession as "House Rite". The profession is
-Housewright ([spec](../../everglade/docs/housewright-profession-spec.md)).
-The transcript now says Housewright.
+- **Housewright is named once.** The two short clips that introduced
+  Housewright were cut. It is now said once, at 2:22 ("the first
+  profession, which is called Housewright"). Put a lower-third with the name
+  at that moment, and start the first house time-lapse there.
+- **The cat is in the video.** At 2:29 he says "You want to play?" to his
+  cat. Cut to the glade's cat (or leave on him) for that line, and don't
+  talk over it.
+- **Trims.** The first second of the first take is cut, the first take ends
+  after "AI slopocalypse," and the pauses between sentences are kept as
+  spoken. Spoken "like" is still in the audio; only the written transcript
+  drops it.
+- **Spelling.** The transcript wrote the profession as "House Rite". The
+  profession is Housewright
+  ([spec](../../everglade/docs/housewright-profession-spec.md)). The
+  transcript now says Housewright.
+
+### Timeline of the edited video
+
+| Time | Beat |
+| --- | --- |
+| 0:00 | Every gamer has a game they wish existed |
+| 0:09 | The magic Create Game button |
+| 0:18 | OpenAgents: engine, metaverse, creation tools |
+| 0:30 | Building the dream game, Everglade |
+| 0:40 | Old-school MMORPG on the D&D 5E SRD; mechanics list |
+| 1:14 | "That's the starting point" |
+| 1:17 | Play it and help build the city; the city begins as an empty glade |
+| 1:45 | Be a founder; early patches of land |
+| 1:59 | Build differently: participate at every phase |
+| 2:09 | The first Everglade is just a glade; Housewright (2:22) |
+| 2:23 | Collecting clay, stone and wood to build simple houses |
+| 2:29 | "You want to play?" (to the cat) |
+| 2:30 | Those are the first houses of Everglade |
+| 2:33 | The city grows, player-built |
+| 2:49 | AI friendly, used with taste; real artists (3:04: "AI slopocalypse") |
+| 3:08 | Game and engine are open source; fork the worlds |
+| 3:25 | Connecting the worlds into the Verse; get in; PRs welcome; cats |
+| 3:46 | "Pantone, you can be the cat" |
+| 3:48 | "Stay tuned" |
 
 ## Open questions
 
