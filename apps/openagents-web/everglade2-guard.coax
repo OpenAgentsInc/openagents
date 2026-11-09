@@ -115,27 +115,10 @@ e2gd_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   return d;
 }
 
-// His Sword (the pack's glade/weapon1, the Ultimate RPG Sword) in his right fist, as Character Create's
-// held weapon is placed (charactercreator.coax weapon_matrix: the shortsword's grip, its blade out of
-// the thumb's side): from his first record's pose, a flag-19 record its whole matrix, thinned as he is.
+// His Sword (the pack's glade/weapon1, the Ultimate RPG Sword) in his right fist: the shared held kit
+// (charactercreator.coax held_pieces, everglade2.coax e2_held) as the shortsword's, thinned as he is.
 E2GD_SWORD :: 3;   // the shortsword's kit (charactercreator.coax CC_KIT_MESH 1, the Sword)
-e2gd_sword :: (s: [] E2, at: E2Drawn, from: int, drop: f32) -> E2Drawn {
-  c := s[0].creator[..]; b := s[0].bodies[..]; out := s[0].records[..]; d := at;
-  m := cc.CC_KIT_MESH[E2GD_SWORD];
-  if c[0].weapon_count[m] <= 0 || d.rec >= E2_RECORDS || d.n >= E2_DRAWS { return d; }
-  o := from * 24;
-  hr := figs.bd_hand(b, out[o + 4], out[o + 5], out[o + 6], false);
-  w := cc.weapon_matrix(hr, [3] f32.[b[0].hand_at[0], b[0].hand_at[1], b[0].hand_at[2]], E2GD_SWORD, out[o + 3], [3] f32.[out[o], out[o + 1], out[o + 2]]);
-  q := d.rec * 24;
-  for k: 0..<24 { out[q + k] = 0; }
-  put := [4] int.[0, 8, 16, 20];
-  for i: 0..<4 { for r: 0..<3 { out[q + put[i] + r] = w[i * 3 + r]; } }
-  out[q + 7] = f32(c[0].glade_word); out[q + 15] = 19; out[q + 23] = drop;
-  d.n = e2_draw(s[0].draws[..], d.n, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
-  d.sn = e2_draw(s[0].shadow[..], d.sn, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
-  d.rec += 1;
-  return d;
-}
+e2gd_sword :: (s: [] E2, at: E2Drawn, from: int, drop: f32) -> E2Drawn { return e2_held(s, at, from, E2GD_SWORD, false, 0, false, drop); }
 
 // The blows the drawn picture has reached: a mark over the one struck, and the sound of it there.
 e2gd_hits :: (s: [] E2) {

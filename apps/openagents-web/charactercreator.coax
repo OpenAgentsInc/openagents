@@ -417,18 +417,38 @@ CC_TILT :: 0.45;   // radians the blade leans from straight ahead toward the fin
 // The grip, from the bind pose's T: the blade out the thumb's side (ahead of you, leaning CC_TILT toward the
 // fingers), its edges up and down.
 held_weapon :: (s:Creator,b:[]figs.Bodies,out:[]f32,n:int)->int {
- if s.weapon<0 || s.weapon>=CC_KITS {return n;}m:=CC_KIT_MESH[s.weapon];if s.weapon_count[m]<=0 {return n;}
- o:=ifx s.female then 3 else 0;
- hr:=figs.bd_hand(b,out[4],out[5],out[6],false);hand:=[3]f32.[b[0].hand_at[o],b[0].hand_at[o+1],b[0].hand_at[o+2]];
- w:=ifx s.weapon==CC_KIT_BOW then bow_matrix(figs.bd_hand(b,out[4],out[5],out[6],true),[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],s.aim,out[3],[3]f32.[out[0],out[1],out[2]])
-  else ifx CC_KIT_TWO[s.weapon] then two_hand_matrix(hr,figs.bd_hand(b,out[4],out[5],out[6],true),hand,[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],s.weapon,out[3],[3]f32.[out[0],out[1],out[2]])
-  else weapon_matrix(hr,hand,s.weapon,out[3],[3]f32.[out[0],out[1],out[2]]);
- for k:0..<24 {out[n*24+k]=0;}
- at:=[4]int.[0,8,16,20];for i:0..<4 {for r:0..<3 {out[n*24+at[i]+r]=w[i*3+r];}}
- out[n*24+7]=f32(s.glade_word);out[n*24+15]=19;
- b[0].draws[n*4]=cast(u32)s.weapon_first[m];b[0].draws[n*4+1]=cast(u32)s.weapon_count[m];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;
- if s.weapon==CC_KIT_BOW {return bow_string(s,b,out,n+1,w);}
- return n+1;
+ if s.weapon<0 || s.weapon>=CC_KITS || s.weapon_count[CC_KIT_MESH[s.weapon]]<=0 {return n;}
+ // a single piece (every kit but the bow) goes straight to its record: no pieces list on the way
+ if s.weapon!=CC_KIT_BOW {return weapon_record(s,b,out,n,CC_KIT_MESH[s.weapon],held_matrix(s.weapon,s.female,s.aim,b,out[0..<24]));}
+ h:[1]HeldPieces;held_pieces(h[..],s.weapon,s.female,s.aim,s.nocked,b,out[0..<24]);   // the body's first record (record 0)
+ m:=n;for i:0..<h[0].n {m=weapon_record(s,b,out,m,h[0].mesh[i],h[0].w[i]);}
+ return m;
+}
+// ---- the held weapon's pieces, for any body (#13025): Character Create, Everglade Experimental and every
+// Everglade zone place a class's kit through this one call, from the body's first record (its place,
+// turn and the three pose words, figs.bd_record): the weapon (a bow on bow_matrix in the left fist, a
+// two-hander in both, else the right fist), and for the bow its string in two halves to the nock and, while
+// nocked and drawn, the arrow. Each piece a pack mesh (glade/weapon M) and its matrix: the caller
+// writes the records and draws (weapon_record here, everglade2.coax e2_held its own lists).
+CC_HELD :: 4;
+HeldPieces :: struct { n:int; mesh:[CC_HELD]int; w:[CC_HELD][12]f32; }
+held_put :: (h:[]HeldPieces,m:int,w:[12]f32) { if h[0].n<CC_HELD {h[0].mesh[h[0].n]=m;h[0].w[h[0].n]=w;h[0].n+=1;} }
+// The kit's own matrix (the bow on bow_matrix in the left fist, a two-hander in both, else the right
+// fist) from the body's first record.
+held_matrix :: (weapon:int,female:bool,aim:f32,b:[]figs.Bodies,body:[]f32)->[12]f32 {
+ o:=ifx female then 3 else 0;
+ hr:=figs.bd_hand(b,body[4],body[5],body[6],false);hand:=[3]f32.[b[0].hand_at[o],b[0].hand_at[o+1],b[0].hand_at[o+2]];
+ return ifx weapon==CC_KIT_BOW then bow_matrix(figs.bd_hand(b,body[4],body[5],body[6],true),[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],aim,body[3],[3]f32.[body[0],body[1],body[2]])
+  else ifx CC_KIT_TWO[weapon] then two_hand_matrix(hr,figs.bd_hand(b,body[4],body[5],body[6],true),hand,[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],weapon,body[3],[3]f32.[body[0],body[1],body[2]])
+  else weapon_matrix(hr,hand,weapon,body[3],[3]f32.[body[0],body[1],body[2]]);
+}
+// Into h[0] (written in place, never copied: the pieces are a body's every frame).
+held_pieces :: (h:[]HeldPieces,weapon:int,female:bool,aim:f32,nocked:bool,b:[]figs.Bodies,body:[]f32) {
+ h[0].n=0;
+ if weapon<0 || weapon>=CC_KITS || body.count<7 {return;}
+ w:=held_matrix(weapon,female,aim,b,body);
+ held_put(h,CC_KIT_MESH[weapon],w);
+ if weapon==CC_KIT_BOW {bow_string(h,female,aim,nocked,b,body,w);}
 }
 // One held piece's record: mesh m (glade/weapon m) placed by w (translation, then X, Y, Z columns).
 weapon_record :: (s:Creator,b:[]figs.Bodies,out:[]f32,n:int,m:int,w:[12]f32)->int {
@@ -448,9 +468,8 @@ CC_STRING_X :: 0.2425;     // the string in the bow's packed space: X, and its t
 CC_STRING_Y :: 0.925;
 CC_ARROW_SCALE :: 0.52;    // the packed arrow (1.456 long, head +Y) to about 0.76 m
 CC_ARROW_NOCK :: 0.728;
-bow_string :: (s:Creator,b:[]figs.Bodies,out:[]f32,n0:int,w:[12]f32)->int {
- n:=n0;
- o:=ifx s.female then 3 else 0;
+bow_string :: (h:[]HeldPieces,female:bool,aim:f32,nocked:bool,b:[]figs.Bodies,out:[]f32,w:[12]f32) {
+ o:=ifx female then 3 else 0;
  // the bow's frame (w: origin, then X, Y, Z columns, each scaled by the kit's scale)
  org:=[3]f32.[w[0],w[1],w[2]];bx:=[3]f32.[w[3],w[4],w[5]];by:=[3]f32.[w[6],w[7],w[8]];bz:=[3]f32.[w[9],w[10],w[11]];
  up:=[3]f32.[org[0]+bx[0]*f32(CC_STRING_X)+by[0]*f32(CC_STRING_Y),org[1]+bx[1]*f32(CC_STRING_X)+by[1]*f32(CC_STRING_Y),org[2]+bx[2]*f32(CC_STRING_X)+by[2]*f32(CC_STRING_Y)];
@@ -461,7 +480,7 @@ bow_string :: (s:Creator,b:[]figs.Bodies,out:[]f32,n0:int,w:[12]f32)->int {
  f:=cc_pose_point(hr,[3]f32.[b[0].hand_at[o]+CC_FIST[0],b[0].hand_at[o+1]+CC_FIST[1],b[0].hand_at[o+2]+CC_FIST[2]]);
  c:=cos(out[3]);sn:=sin(out[3]);
  fist:=[3]f32.[f[0]*c+f[2]*sn+out[0],f[1]+out[1],-f[0]*sn+f[2]*c+out[2]];
- k:=ifx s.nocked then s.aim else 0.0f32;
+ k:=ifx nocked then aim else 0.0f32;
  nock:=[3]f32.[rest[0]+(fist[0]-rest[0])*k,rest[1]+(fist[1]-rest[1])*k,rest[2]+(fist[2]-rest[2])*k];
  for half:0..<2 {
   tip:=ifx half==0 then up else dn;
@@ -469,9 +488,9 @@ bow_string :: (s:Creator,b:[]figs.Bodies,out:[]f32,n0:int,w:[12]f32)->int {
   ys:=[3]f32.[(nock[0]-tip[0])/(2*f32(CC_STRING_Y)),(nock[1]-tip[1])/(2*f32(CC_STRING_Y)),(nock[2]-tip[2])/(2*f32(CC_STRING_Y))];
   mid:=[3]f32.[(nock[0]+tip[0])*0.5,(nock[1]+tip[1])*0.5,(nock[2]+tip[2])*0.5];
   q:=[12]f32.[mid[0]-bx[0]*f32(CC_STRING_X),mid[1]-bx[1]*f32(CC_STRING_X),mid[2]-bx[2]*f32(CC_STRING_X),bx[0],bx[1],bx[2],ys[0],ys[1],ys[2],bz[0],bz[1],bz[2]];
-  n=weapon_record(s,b,out,n,5,q);
+  held_put(h,5,q);
  }
- if s.nocked && s.aim>0.05 {
+ if nocked && aim>0.05 {
   // the arrow: its nock at the string, its shaft forward past the bow's grip
   grip:=[3]f32.[org[0]+bx[0]*f32(CC_BOW_GRIP_X),org[1]+bx[1]*f32(CC_BOW_GRIP_X),org[2]+bx[2]*f32(CC_BOW_GRIP_X)];
   d:=cc_unit([3]f32.[grip[0]-nock[0],grip[1]-nock[1],grip[2]-nock[2]]);
@@ -479,9 +498,8 @@ bow_string :: (s:Creator,b:[]figs.Bodies,out:[]f32,n0:int,w:[12]f32)->int {
   g:=[3]f32.[e[1]*d[2]-e[2]*d[1],e[2]*d[0]-e[0]*d[2],e[0]*d[1]-e[1]*d[0]];
   a:=f32(CC_ARROW_SCALE);l:=a*f32(CC_ARROW_NOCK);
   q:=[12]f32.[nock[0]+d[0]*l,nock[1]+d[1]*l,nock[2]+d[2]*l,e[0]*a,e[1]*a,e[2]*a,d[0]*a,d[1]*a,d[2]*a,g[0]*a,g[1]*a,g[2]*a];
-  n=weapon_record(s,b,out,n,6,q);
+  held_put(h,6,q);
  }
- return n;
 }
 // Kit k's place in the world: its translation, then its X, Y and Z columns (four by three), from the
 // hand's pose h (three rows of four, bd_hand), the hand's bind position, and the figure's turn and place.

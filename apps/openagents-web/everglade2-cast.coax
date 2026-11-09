@@ -98,7 +98,8 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
     e2k_later(k, now + fly, ifx d.miss.count > 0 then d.miss else "fizzle", ax, az, d.rate, mine);
   }
   // a blow's slash or a spell's cast, as Experimental's (cast-pose.coax; no weapon drawn here, so no cleave)
-  act[0].at = now; act[0].clip = cp_cast_clip(xc_kit(c), e.aim.kind == XC_AIM_MELEE, false);
+  // a bow's arrow is the bow's own pose (its draw and follow-through, everglade2-mouse.coax and e2_remote_aim)
+  act[0].at = now; act[0].clip = ifx xc_kit(c) == XC_KIT_BOW && e.ab.kind == FB_ATTACK then -1 else cp_cast_clip(xc_kit(c), e.aim.kind == XC_AIM_MELEE, false);
   return started;
 }
 
