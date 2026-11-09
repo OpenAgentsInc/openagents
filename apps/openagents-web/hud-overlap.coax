@@ -1,0 +1,81 @@
+// The HUD overlap check's shared half (GitHub #13076): the four screens every HUD is laid out on,
+// and the report. A realm's harness (apps/openagents-web/hud-overlap-<realm>.coax)
+// draws each of its HUD's states on each screen with a layout trace attached (aethyr/ui/trace.coax,
+// which its loader's charactercreator.coax loads, as cc), and hands the trace to hud_screen. Each
+// finding (a fault and the widgets in it, whatever the screen) is printed once, with the first screen
+// and state it shows on, marked NEW unless the harness's hud_known says it is already reported
+// (docs/verification/hud-overlap-*.md). A finding in a developer's tool (cc.uit_debug: the animation
+// list, the admin panel) is marked debug and counted apart. With HUD_GATE on in the harness, a NEW
+// finding in the player's HUD fails the run.
+// Its loader loads charactercreator.coax as cc and defines hud_known :: (key: string) -> bool.
+#import "Basic";
+
+HUD_VIEWS :: 4;
+HUD_VIEW_W :: [4] f32.[390, 844, 1024, 1920];     // CSS px
+HUD_VIEW_H :: [4] f32.[844, 390, 768, 1080];
+HUD_VIEW_DPR :: [4] f32.[3, 3, 2, 1];             // a phone's, a tablet's, a desktop's
+HUD_VIEW_TOUCH :: [4] bool.[true, true, true, false];
+HUD_VIEW_NAME :: [4] string.["390x844", "844x390", "1024x768", "1920x1080"];
+// Screen v, device px, as the HUD draws it.
+hud_view :: (v: int) -> cc.UitView {
+  k := HUD_VIEW_DPR[v];
+  return cc.UitView.{w = HUD_VIEW_W[v] * k, h = HUD_VIEW_H[v] * k, k = k, touch = HUD_VIEW_TOUCH[v]};
+}
+
+HUD_KEYS :: 4096;
+HUD_KEY_BYTES :: 1048576;
+HUD_FINDINGS :: 1024;   // findings kept from one screen
+HudRun :: struct {
+  bytes: [HUD_KEY_BYTES] u8; used: int;    // every finding's key printed so far
+  at: [HUD_KEYS] int; len: [HUD_KEYS] int; n: int;
+  screens: int; findings: int; fresh: int; known: int; debug: int; full: bool;
+}
+hud_key_at :: (r: [] HudRun, i: int) -> string { return cast(string) r[0].bytes[r[0].at[i]..<r[0].at[i] + r[0].len[i]]; }
+// Whether the run has printed key.
+hud_has :: (r: [] HudRun, key: string) -> bool {
+  for i: 0..<r[0].n { if r[0].len[i] == key.count && hud_key_at(r, i) == key { return true; } }
+  return false;
+}
+// Keeps key; false when there is no room.
+hud_keep :: (r: [] HudRun, key: string) -> bool {
+  if r[0].n >= HUD_KEYS || r[0].used + key.count > HUD_KEY_BYTES { r[0].full = true; return false; }
+  r[0].at[r[0].n] = r[0].used; r[0].len[r[0].n] = key.count;
+  for c: key { r[0].bytes[r[0].used] = c; r[0].used += 1; }
+  r[0].n += 1;
+  return true;
+}
+// One screen's findings: screen v, in `state` (studio, world, a menu open ...). In a `dev` state (a
+// developer's tool open) every finding is a developer tool's, kept apart from the same pair's in play.
+hud_screen :: (r: [] HudRun, t: [] cc.UitTrace, v: int, state: string, dev: bool) {
+  r[0].screens += 1;
+  view := hud_view(v);
+  f: [HUD_FINDINGS] cc.UitFinding;
+  m := cc.uit_check(t, view, f[..]);
+  if m > HUD_FINDINGS { print("hud-overlap: % % has % findings; the first % are read\n", HUD_VIEW_NAME[v], state, m, HUD_FINDINGS); m = HUD_FINDINGS; }
+  for i: 0..<m {
+    kb: [512] u8; kn := cc.uit_text_put(kb[..], 0, ifx dev then "dev: " else ""); kn = cc.uit_key(t, f[i], kb[..], kn);
+    key := cast(string) kb[0..<kn];
+    if hud_has(r, key) || !hud_keep(r, key) { continue; }
+    r[0].findings += 1;
+    debug := dev || cc.uit_debug_finding(t, f[i]);
+    known := !debug && hud_known(key);
+    if debug { r[0].debug += 1; } else if known { r[0].known += 1; } else { r[0].fresh += 1; }
+    lb: [1024] u8; ln := cc.uit_line(t, f[i], view, lb[..], 0);
+    print("% % %: %\n", ifx debug then "debug" else ifx known then "known" else "NEW  ", HUD_VIEW_NAME[v], state, cast(string) lb[0..<ln]);
+  }
+}
+// Whether the known finding `key` was seen this run; when not, it says so, so the key comes out of
+// the known list once its fix lands.
+hud_seen :: (r: [] HudRun, key: string) -> bool {
+  if hud_has(r, key) { return true; }
+  print("gone  %: fixed, take it out of the known list\n", key);
+  return false;
+}
+// The summary; what the run exits with: 1 when gating and a finding in the player's HUD is NEW.
+hud_done :: (r: [] HudRun, realm: string, gate: bool) -> int {
+  if r[0].full { print("hud-overlap %: the key store filled, so some findings are not shown\n", realm); }
+  print("hud-overlap %: % screens, % findings: player HUD % (% NEW, % known), developer tools %\n", realm, r[0].screens, r[0].findings,
+        r[0].fresh + r[0].known, r[0].fresh, r[0].known, r[0].debug);
+  if gate && (r[0].fresh > 0 || r[0].full) { return 1; }
+  return 0;
+}

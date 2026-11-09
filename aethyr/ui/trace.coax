@@ -1,0 +1,319 @@
+// Aethyr's layout trace (GitHub #13076): the HUD's widgets as rectangles, recorded as they are
+// drawn, and a check that finds the ones that collide. A HUD part that draws a button, a run of
+// words, a panel or a bar also puts its rectangle here when a trace is attached; with none attached
+// (an empty view, the default) every call returns at once and nothing is kept, so a shipped frame
+// pays one count test per widget.
+//
+// The check (uit_check) reads one frame's trace on one screen and reports:
+//   - overlap: two widgets that share area, where neither holds the other;
+//   - overflow: a widget that comes out of the widget that holds it (words past their button);
+//   - small: a button smaller than UIT_TAP CSS px either way, on a touch screen;
+//   - offscreen: a widget that goes past the screen's edge;
+//   - lost: more widgets than UIT_MAX, so the trace is not whole.
+// Each fault is reported once, where it starts: a panel over a button is not reported again for every
+// widget the panel holds, a widget off the screen is not reported for the ones it holds, and words
+// that overflow their own button are one overflow, not also an overlap with each neighbour.
+// A part marked with uit_debug (the animation list, the admin panel) is a developer's tool; its
+// findings are kept apart from the player's HUD (uit_debug_finding).
+// Rectangles are device px, y down, as the HUD draws them; the view's k turns them into CSS px.
+// The harnesses that lay out every realm's screens are apps/openagents-web/hud-overlap-*.coax.
+//   coax/bin/coax test aethyr/ui/trace.coax --library
+
+UIT_PANEL :: 1;     // a backing that holds other widgets
+UIT_TEXT :: 2;      // a run of words
+UIT_BUTTON :: 3;    // something tapped or clicked
+UIT_BAR :: 4;       // a meter: Hit Points, a cooldown, a swatch
+UIT_KINDS :: 5;
+UIT_NONE :: -1;
+UIT_MAX :: 768;     // widgets in one frame's trace
+UIT_NAME :: 40;     // bytes kept of a part's or a widget's name
+UIT_TAP :: 44.0;    // CSS px: the least a button may be either way on a touch screen
+UIT_SLACK :: 1.0;   // CSS px two widgets may share, or a widget may stand out, before it counts
+UIT_DESCENT :: 0.25;   // of a run's cap height, kept below its baseline for descenders
+
+UitRect :: struct {
+  kind: int;
+  x0: f32; y0: f32; x1: f32; y1: f32;
+  parent: int = UIT_NONE;            // the widget that holds it, an earlier index, or UIT_NONE
+  part: [UIT_NAME] u8; part_n: int;  // the HUD part that drew it (uit_part)
+  name: [UIT_NAME] u8; name_n: int;  // what it is: a run's own words, or a button's label
+  debug: bool;                       // drawn by a developer's tool, not the player's HUD
+}
+UitTrace :: struct {
+  n: int;
+  lost: int;                          // widgets past UIT_MAX
+  part: [UIT_NAME] u8; part_n: int;   // the part now drawing
+  debug: bool;                        // the part now drawing is a developer's tool (uit_debug)
+  rects: [UIT_MAX] UitRect;
+}
+// One screen: its size in device px, its scale and whether it is touched.
+UitView :: struct { w: f32; h: f32; k: f32 = 1; touch: bool; }
+
+UIT_OVERLAP :: 1; UIT_OVERFLOW :: 2; UIT_SMALL :: 3; UIT_OFFSCREEN :: 4; UIT_LOST :: 5;
+UitFinding :: struct { what: int; a: int = UIT_NONE; b: int = UIT_NONE; }
+
+uit_on :: (t: [] UitTrace) -> bool { return t.count > 0; }
+uit_clear :: (t: [] UitTrace) { if t.count == 0 { return; } t[0].n = 0; t[0].lost = 0; t[0].part_n = 0; t[0].debug = false; }
+uit_copy :: (dst: [] u8, src: string) -> int {
+  n := 0;
+  for c: src { if n >= dst.count { break; } dst[n] = c; n += 1; }
+  return n;
+}
+// Names the part whose widgets follow ("class-menu", "create", "bar").
+uit_part :: (t: [] UitTrace, part: string) { if t.count == 0 { return; } t[0].part_n = uit_copy(t[0].part[..], part); t[0].debug = false; }
+// Marks the part now drawing, until the next uit_part, as a developer's tool.
+uit_debug :: (t: [] UitTrace) { if t.count == 0 { return; } t[0].debug = true; }
+
+// Puts one widget; its index, for the widgets it holds, or UIT_NONE (no trace, or no room).
+uit_put :: (t: [] UitTrace, parent: int, kind: int, x0: f32, y0: f32, x1: f32, y1: f32, name: string) -> int {
+  if t.count == 0 { return UIT_NONE; }
+  if t[0].n >= UIT_MAX { t[0].lost += 1; return UIT_NONE; }
+  i := t[0].n; t[0].n += 1;
+  r := UitRect.{kind = kind, x0 = x0, y0 = y0, x1 = x1, y1 = y1, parent = ifx parent >= 0 && parent < i then parent else UIT_NONE};
+  r.part = t[0].part; r.part_n = t[0].part_n; r.debug = t[0].debug;
+  r.name_n = uit_copy(r.name[..], name);
+  t[0].rects[i] = r;
+  return i;
+}
+// uit_put, where the index isn't wanted.
+uit_add :: (t: [] UitTrace, parent: int, kind: int, x0: f32, y0: f32, x1: f32, y1: f32, name: string) {
+  if t.count == 0 { return; }
+  if uit_put(t, parent, kind, x0, y0, x1, y1, name) == UIT_NONE { return; }
+}
+// a and b joined by a space, in out: "AGE value".
+uit_join :: (out: [] u8, a: string, b: string) -> string {
+  n := uit_copy(out, a); n = uit_text_put(out, n, " "); n = uit_text_put(out, n, b);
+  return cast(string) out[0..<n];
+}
+// Whether t is only spaces: a run that draws nothing.
+uit_blank :: (t: string) -> bool { for c: t { if c != ' ' { return false; } } return true; }
+// The same, its name followed by a number: "slot 3".
+uit_put_i :: (t: [] UitTrace, parent: int, kind: int, x0: f32, y0: f32, x1: f32, y1: f32, name: string, index: int) -> int {
+  if t.count == 0 { return UIT_NONE; }
+  b: [UIT_NAME] u8; n := uit_copy(b[..], name);
+  n = uit_text_put(b[..], n, " "); n = uit_int(b[..], n, index);
+  return uit_put(t, parent, kind, x0, y0, x1, y1, cast(string) b[0..<n]);
+}
+// A run of words `wide` across whose baseline is y at cap height `cap`.
+uit_words :: (t: [] UitTrace, parent: int, words: string, x: f32, y: f32, cap: f32, wide: f32) -> int {
+  if t.count == 0 { return UIT_NONE; }
+  return uit_put(t, parent, UIT_TEXT, x, y - cap, x + wide, y + cap * UIT_DESCENT, words);
+}
+
+// ---- the check
+uit_empty :: (r: UitRect) -> bool { return !(r.x1 > r.x0) || !(r.y1 > r.y0); }
+// a and b share more than `slack` both ways
+uit_meet :: (a: UitRect, b: UitRect, slack: f32) -> bool {
+  wide := (ifx a.x1 < b.x1 then a.x1 else b.x1) - (ifx a.x0 > b.x0 then a.x0 else b.x0);
+  tall := (ifx a.y1 < b.y1 then a.y1 else b.y1) - (ifx a.y0 > b.y0 then a.y0 else b.y0);
+  return wide > slack && tall > slack;
+}
+// a lies within b, give or take `slack`
+uit_within :: (a: UitRect, b: UitRect, slack: f32) -> bool {
+  return a.x0 >= b.x0 - slack && a.y0 >= b.y0 - slack && a.x1 <= b.x1 + slack && a.y1 <= b.y1 + slack;
+}
+// Whether `a` holds `b`, through any number of parents.
+uit_holds :: (t: [] UitTrace, a: int, b: int) -> bool {
+  at := t[0].rects[b].parent;
+  for step: 0..<UIT_MAX {
+    if at == UIT_NONE { return false; }
+    if at == a { return true; }
+    at = t[0].rects[at].parent;
+  }
+  return false;
+}
+// a's own parent is not empty and a comes out of it
+uit_spills :: (t: [] UitTrace, a: int, slack: f32) -> bool {
+  p := t[0].rects[a].parent;
+  return p != UIT_NONE && !uit_empty(t[0].rects[p]) && !uit_within(t[0].rects[a], t[0].rects[p], slack);
+}
+// a and b share area and neither holds the other
+uit_clash :: (t: [] UitTrace, a: int, b: int, slack: f32) -> bool {
+  if uit_empty(t[0].rects[a]) || uit_empty(t[0].rects[b]) || !uit_meet(t[0].rects[a], t[0].rects[b], slack) { return false; }
+  return !uit_holds(t, a, b) && !uit_holds(t, b, a);
+}
+// Whether a finding involves a developer's tool.
+uit_debug_finding :: (t: [] UitTrace, g: UitFinding) -> bool {
+  return (g.a != UIT_NONE && t[0].rects[g.a].debug) || (g.b != UIT_NONE && t[0].rects[g.b].debug);
+}
+uit_note :: (f: [] UitFinding, n: int, what: int, a: int, b: int) -> int {
+  if n < f.count { f[n] = UitFinding.{what = what, a = a, b = b}; }
+  return n + 1;
+}
+// Every finding on screen v, into f (the first f.count of them); how many there are.
+uit_check :: (t: [] UitTrace, v: UitView, f: [] UitFinding) -> int {
+  if t.count == 0 { return 0; }
+  n := 0; slack := UIT_SLACK * v.k; tap := UIT_TAP * v.k;
+  screen := UitRect.{x0 = 0, y0 = 0, x1 = v.w, y1 = v.h};
+  m := t[0].n;
+  for i: 0..<m {
+    r := t[0].rects[i];
+    if uit_empty(r) { continue; }
+    up := r.parent;
+    if !uit_within(r, screen, slack) && (up == UIT_NONE || uit_empty(t[0].rects[up]) || uit_within(t[0].rects[up], screen, slack)) { n = uit_note(f, n, UIT_OFFSCREEN, i, UIT_NONE); }
+    if v.touch && r.kind == UIT_BUTTON && (r.x1 - r.x0 < tap - slack || r.y1 - r.y0 < tap - slack) { n = uit_note(f, n, UIT_SMALL, i, UIT_NONE); }
+    if uit_spills(t, i, slack) { n = uit_note(f, n, UIT_OVERFLOW, i, up); }
+  }
+  for i: 0..<m {
+    if uit_empty(t[0].rects[i]) || uit_spills(t, i, slack) { continue; }   // its overflow is the finding
+    pa := t[0].rects[i].parent;
+    for j: i + 1..<m {
+      if !uit_clash(t, i, j, slack) || uit_spills(t, j, slack) { continue; }
+      // reported once, at the outermost pair: not again for what either side holds
+      pb := t[0].rects[j].parent;
+      if pa != UIT_NONE && uit_clash(t, pa, j, slack) { continue; }
+      if pb != UIT_NONE && uit_clash(t, i, pb, slack) { continue; }
+      n = uit_note(f, n, UIT_OVERLAP, i, j);
+    }
+  }
+  if t[0].lost > 0 { n = uit_note(f, n, UIT_LOST, UIT_NONE, UIT_NONE); }
+  return n;
+}
+
+// ---- saying what it found
+uit_text_put :: (out: [] u8, at: int, t: string) -> int {
+  n := at;
+  for c: t { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+uit_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  if x < 0 { n = uit_text_put(out, n, "-"); x = -x; }
+  d: [20] u8; c := 0;
+  while true { d[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  while c > 0 { c -= 1; if n < out.count { out[n] = d[c]; n += 1; } }
+  return n;
+}
+uit_what :: (what: int) -> string {
+  if what == UIT_OVERLAP { return "overlap"; }
+  if what == UIT_OVERFLOW { return "overflow"; }
+  if what == UIT_SMALL { return "small"; }
+  if what == UIT_OFFSCREEN { return "offscreen"; }
+  if what == UIT_LOST { return "lost"; }
+  return "unknown";
+}
+uit_kind :: (kind: int) -> string {
+  if kind == UIT_PANEL { return "panel"; }
+  if kind == UIT_TEXT { return "text"; }
+  if kind == UIT_BUTTON { return "button"; }
+  if kind == UIT_BAR { return "bar"; }
+  return "widget";
+}
+// part/kind "name"
+uit_who :: (out: [] u8, at: int, t: [] UitTrace, i: int) -> int {
+  r := t[0].rects[i..<i + 1];
+  n := uit_text_put(out, at, cast(string) r[0].part[0..<r[0].part_n]); n = uit_text_put(out, n, "/");
+  n = uit_text_put(out, n, uit_kind(r[0].kind)); n = uit_text_put(out, n, " \"");
+  n = uit_text_put(out, n, cast(string) r[0].name[0..<r[0].name_n]); return uit_text_put(out, n, "\"");
+}
+// [x0 y0 x1 y1], CSS px
+uit_where :: (out: [] u8, at: int, r: UitRect, k: f32) -> int {
+  e := [4] f32.[r.x0, r.y0, r.x1, r.y1]; n := uit_text_put(out, at, "[");
+  for q: 0..<4 { if q > 0 { n = uit_text_put(out, n, " "); } n = uit_int(out, n, cast(int) floor(e[q] / k + 0.5)); }
+  return uit_text_put(out, n, "]");
+}
+// What a finding is, without where: the same on every frame that has it, so a list of known ones
+// can be kept ("overlap create/text \"<\" | create/text \"CLEAN SHAVEN\"").
+uit_key :: (t: [] UitTrace, g: UitFinding, out: [] u8, at: int) -> int {
+  n := uit_text_put(out, at, uit_what(g.what));
+  if g.a != UIT_NONE { n = uit_text_put(out, n, " "); n = uit_who(out, n, t, g.a); }
+  if g.b != UIT_NONE { n = uit_text_put(out, n, " | "); n = uit_who(out, n, t, g.b); }
+  return n;
+}
+// The key, then where each widget is.
+uit_line :: (t: [] UitTrace, g: UitFinding, v: UitView, out: [] u8, at: int) -> int {
+  n := uit_key(t, g, out, at);
+  if g.a != UIT_NONE { n = uit_text_put(out, n, "  at "); n = uit_where(out, n, t[0].rects[g.a], v.k); }
+  if g.b != UIT_NONE { n = uit_text_put(out, n, " and "); n = uit_where(out, n, t[0].rects[g.b], v.k); }
+  return n;
+}
+
+// ---- checks
+#test "with no trace attached nothing is kept and nothing is found" {
+  none: [1] UitTrace;
+  #assert uit_put(none[0..<0], UIT_NONE, UIT_BUTTON, 0, 0, 10, 10, "A") == UIT_NONE;
+  #assert uit_words(none[0..<0], UIT_NONE, "A", 0, 10, 8, 20) == UIT_NONE;
+  f: [4] UitFinding; #assert uit_check(none[0..<0], UitView.{w = 100, h = 100}, f[..]) == 0;
+  #assert !uit_on(none[0..<0]) && uit_on(none[..]);
+}
+#test "two buttons that share area overlap; side by side they don't" {
+  t: [1] UitTrace; uit_part(t[..], "bar");
+  a := uit_put(t[..], UIT_NONE, UIT_BUTTON, 0, 0, 50, 50, "A");
+  b := uit_put(t[..], UIT_NONE, UIT_BUTTON, 50, 0, 100, 50, "B");   // touching: no area shared
+  v := UitView.{w = 400, h = 400};
+  f: [8] UitFinding; #assert uit_check(t[..], v, f[..]) == 0;
+  uit_add(t[..], UIT_NONE, UIT_BUTTON, 40, 10, 90, 60, "C");
+  #assert uit_check(t[..], v, f[..]) == 2;
+  #assert f[0].what == UIT_OVERLAP && f[0].a == a && f[0].b == 2 && f[1].a == b && f[1].b == 2;
+  o: [256] u8; n := uit_key(t[..], f[0], o[..], 0);
+  #assert cast(string) o[0..<n] == "overlap bar/button \"A\" | bar/button \"C\"";
+  n = uit_line(t[..], f[1], v, o[..], 0);
+  #assert cast(string) o[0..<n] == "overlap bar/button \"B\" | bar/button \"C\"  at [50 0 100 50] and [40 10 90 60]";
+}
+#test "words inside their button are held; words past its edge overflow it" {
+  t: [1] UitTrace; v := UitView.{w = 400, h = 400};
+  b := uit_put(t[..], UIT_NONE, UIT_BUTTON, 10, 10, 110, 60, "SAVE");
+  #assert uit_words(t[..], b, "SAVE", 20, 40, 10, 40) == 1;
+  f: [8] UitFinding; #assert uit_check(t[..], v, f[..]) == 0;
+  w := uit_words(t[..], b, "A LONGER LABEL", 20, 40, 10, 120);
+  #assert uit_check(t[..], v, f[..]) == 1;   // not also an overlap with the other words
+  #assert f[0].what == UIT_OVERFLOW && f[0].a == w && f[0].b == b;
+  // a widget held two levels down is held still
+  p: [1] UitTrace;
+  pn := uit_put(p[..], UIT_NONE, UIT_PANEL, 0, 0, 300, 300, "pane");
+  pb := uit_put(p[..], pn, UIT_BUTTON, 10, 10, 110, 60, "OK");
+  #assert uit_words(p[..], pb, "OK", 20, 40, 10, 20) == 2;
+  #assert uit_check(p[..], v, f[..]) == 0 && uit_holds(p[..], pn, 2) && !uit_holds(p[..], 2, pn);
+}
+#test "a button under 44 CSS px is small on a touch screen only, at the screen's scale" {
+  t: [1] UitTrace;
+  uit_add(t[..], UIT_NONE, UIT_BUTTON, 0, 0, 120, 40, "SHORT");
+  uit_add(t[..], UIT_NONE, UIT_BUTTON, 0, 50, 132, 182, "TALL");   // 44 px at k = 3
+  uit_add(t[..], UIT_NONE, UIT_TEXT, 0, 200, 10, 210, "words");   // not tapped
+  f: [8] UitFinding;
+  #assert uit_check(t[..], UitView.{w = 400, h = 400}, f[..]) == 0;
+  #assert uit_check(t[..], UitView.{w = 400, h = 400, touch = true}, f[..]) == 1 && f[0].what == UIT_SMALL && f[0].a == 0;
+  #assert uit_check(t[..], UitView.{w = 1200, h = 1200, k = 3, touch = true}, f[..]) == 1 && f[0].a == 0;
+  #assert uit_check(t[..], UitView.{w = 1200, h = 1200, k = 0.5, touch = true}, f[..]) == 0;
+}
+#test "past the screen's edge is offscreen; an empty widget is never anything; a full trace says so" {
+  t: [1] UitTrace;
+  uit_add(t[..], UIT_NONE, UIT_TEXT, -20, 0, 30, 10, "left");
+  uit_add(t[..], UIT_NONE, UIT_BUTTON, 5, 5, 5, 60, "hidden");
+  f: [8] UitFinding;
+  #assert uit_check(t[..], UitView.{w = 100, h = 100, touch = true}, f[..]) == 1 && f[0].what == UIT_OFFSCREEN && f[0].a == 0;
+  full: [1] UitTrace;
+  for i: 0..<UIT_MAX + 3 { uit_add(full[..], UIT_NONE, UIT_TEXT, 0, 0, 0, 0, ""); }
+  #assert full[0].n == UIT_MAX && full[0].lost == 3;
+  #assert uit_check(full[..], UitView.{w = 100, h = 100}, f[..]) == 1 && f[0].what == UIT_LOST;
+  // more findings than room: all counted, the first kept
+  many: [1] UitTrace;
+  for i: 0..<4 { uit_add(many[..], UIT_NONE, UIT_TEXT, 0, 0, 10, 10, "x"); }
+  #assert uit_check(many[..], UitView.{w = 100, h = 100}, f[0..<2]) == 6 && f[1].a == 0 && f[1].b == 2;
+}
+#test "names are cut to UIT_NAME bytes and a numbered name says its number" {
+  t: [1] UitTrace; uit_part(t[..], "a part name that runs on well past the forty bytes kept");
+  i := uit_put_i(t[..], UIT_NONE, UIT_BUTTON, 0, 0, 1, 1, "slot", 12);
+  #assert t[0].rects[i].part_n == UIT_NAME && cast(string) t[0].rects[i].name[0..<t[0].rects[i].name_n] == "slot 12";
+  o: [16] u8; #assert cast(string) o[0..<uit_int(o[..], 0, -305)] == "-305";
+}
+#test "a fault is reported once where it starts, and a developer's tool is told apart" {
+  t: [1] UitTrace; v := UitView.{w = 400, h = 400};
+  uit_part(t[..], "bar");
+  slot := uit_put(t[..], UIT_NONE, UIT_BUTTON, 0, 0, 100, 50, "slot");
+  #assert uit_words(t[..], slot, "SLOT", 10, 30, 10, 40) == 1;
+  uit_part(t[..], "animations"); uit_debug(t[..]);
+  pane := uit_put(t[..], UIT_NONE, UIT_PANEL, 50, 0, 300, 300, "pane");
+  for r: 0..<3 { uit_add(t[..], pane, UIT_BUTTON, 50, f32(r) * 20, 300, f32(r) * 20 + 20, "row"); }
+  uit_part(t[..], "bar");
+  #assert !t[0].rects[slot].debug && t[0].rects[pane].debug && t[0].rects[3].debug;
+  f: [16] UitFinding;
+  // the panel over the slot, once: not each row over the slot, nor over its words
+  #assert uit_check(t[..], v, f[..]) == 1 && f[0].what == UIT_OVERLAP && f[0].a == slot && f[0].b == pane;
+  #assert uit_debug_finding(t[..], f[0]);
+  // a panel off the screen is offscreen; what it holds is not reported again
+  o: [1] UitTrace;
+  op := uit_put(o[..], UIT_NONE, UIT_PANEL, 0, -50, 100, 100, "column");
+  uit_add(o[..], op, UIT_BUTTON, 0, -40, 100, -10, "row");
+  #assert uit_check(o[..], v, f[..]) == 1 && f[0].what == UIT_OFFSCREEN && f[0].a == op && !uit_debug_finding(o[..], f[0]);
+}
