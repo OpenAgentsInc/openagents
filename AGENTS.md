@@ -179,6 +179,11 @@ tests for what you touched, not everything.
   another change also touched (a version number, error codes, the grammar),
   merge both changes; don't overwrite theirs.
 - End commit messages with a `Co-Authored-By` line for the model that
-  wrote them.
+  wrote them, and an `Agent: <id>` line with your agent ID (the one your
+  brief gives you), so a failure on `main` reaches the agent that caused it
+  ([docs/verse/green-main-pipeline.md](docs/verse/green-main-pipeline.md)).
+- Before you investigate a failure on `main`, check the red list
+  (`coax/remote/after.sh red`). A failure listed there is already owned. When
+  an entry names your commit, fixing it comes before new work.
 - Owner actions (taps, keys, payments, sign-offs) go in the workspace's
   `NEEDS_OWNER.md`, not only in chat.
