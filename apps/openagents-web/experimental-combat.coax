@@ -70,7 +70,6 @@ XcWave :: struct { x: f32; z: f32; y: f32; fx: f32; fz: f32; left: f32; right: f
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XC_FAMILIAR :: 29;
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
-XC_FAMILIAR_FORMS :: [3]int.[MON_CAT,MON_RAT,MON_SPIDER];
 XcCombat :: struct {
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
@@ -756,8 +755,8 @@ xc_grapple_step :: (s: [] Lab) {
 xc_familiar_arrive :: (s:[]Lab,a:FbAb,timed:bool,recall:bool)->bool {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[0];
   xc_sync_world(s);
-  form:=XC_FAMILIAR_FORMS[a.opt%XC_FAMILIAR_FORMS.count];
-  spirit:=RS_FAMILIAR_FEY+a.opt/XC_FAMILIAR_FORMS.count;
+  form:=RS_FAMILIAR_FORMS[a.opt%RS_FAMILIAR_FORMS.count];
+  spirit:=RS_FAMILIAR_FEY+a.opt/RS_FAMILIAR_FORMS.count;
   f:=rs_familiar_of(b,0);
   reform:=!recall && f>=0 && b[0].c[f].hp>0;
   for step:0..<8 {
@@ -1075,7 +1074,7 @@ xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
       return true;
     }
     if py>=r.y1-f32(XC_BADGE)*k {
-      count:=XC_FAMILIAR_FORMS.count;
+      count:=RS_FAMILIAR_FORMS.count;
       if !x[0].b[0].c[0].companion && px>=r.x1-24*k { a[0].opt=(a[0].opt+count)%(3*count); }
       else { a[0].opt=a[0].opt/count*count+(a[0].opt+1)%count; }
       return true;
@@ -1603,8 +1602,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       n=cc.text(out,n,ifx x[0].familiar_touch then "Fam" else "Hand",r.x0+3*k,r.y1-4*k,7*k,head);
     }
     if a.kind==XC_FAMILIAR {
-      count:=XC_FAMILIAR_FORMS.count;
-      label:=rs_monster_block(XC_FAMILIAR_FORMS[a.opt%count]).name;
+      count:=RS_FAMILIAR_FORMS.count;
+      label:=rs_monster_block(RS_FAMILIAR_FORMS[a.opt%count]).name;
       n=cc.text(out,n,label,r.x0+4*k,r.y1-4*k,7*k,head);
       druid:=x[0].b[0].c[0].companion;
       if !druid {
@@ -3121,4 +3120,17 @@ xc_check_ai_rate :: (speed:int)->bool {
   b[0].c[f].cond=0;
   b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
   #assert !xc_familiar_view(s[..],u[..]) && u[16]==99 && u[65]==0;
+}
+
+#test "Experimental familiar badge can choose and summon the Owl" #steps 100000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
+  x[0].level=2; xc_set_class(x,FB_CL_DRUID);
+  x[0].k=1; x[0].w=1100; x[0].h=840;
+  k:=xc_slot_of(x,XC_FAMILIAR); r:=xc_slot_box(x,k);
+  for n:0..<8 { #assert xc_choose(s[..],k,r.x0+6,r.y1-6); }
+  cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
+  #assert xc_press(s[..],k);
+  f:=rs_familiar_of(b,0);
+  #assert f>=0 && b[0].c[f].familiar_form==MON_OWL && rs_familiar_darkvision(b[0].c[f])==120;
 }

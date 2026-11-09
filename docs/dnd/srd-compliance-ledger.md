@@ -817,9 +817,11 @@ the selected Rat and two Temporary Hit Points.
 The shared Wild Companion entry spends the Druid's Magic action and the
 chosen spell slot or Wild Shape use. It retains Verbal and Somatic checks
 and omits Material components. A legal unoccupied square within two grid
-steps admits one Fey familiar per owner. The currently represented choices
-are Rat, Spider and Cat. Recasting with a different form changes the ally in
-place, retaining its current HP up to the new maximum and its initiative.
+steps admits one Fey familiar per owner. The catalog and Experimental
+picker represent the eleven named forms, including Bat, Cat, Frog, Hawk,
+Lizard, Octopus, Owl, Rat, Raven, Spider and Weasel. Recasting with a
+different form changes the ally in place, retaining its current HP up to
+the new maximum and its initiative.
 The actor leaves the grid at 0 HP or when its owner completes a Long Rest.
 A familiar can take non-attack actions. Shared weapon, stat-block, Unarmed
 Strike, Ready Attack and Opportunity Attack paths refuse its attacks.
@@ -827,7 +829,7 @@ Strike, Ready Attack and Opportunity Attack paths refuse its attacks.
 The Wizard's prepared cast takes one hour, while Ritual Adept can cast it
 from the spellbook in seventy minutes. Both require Concentration and a
 Magic action each turn. On successful completion both consume incense, and
-the prepared cast also spends its selected slot. Rat, Spider and Cat can be
+the prepared cast also spends its selected slot. Each named form can be
 Celestial, Fey or Fiend. The regular familiar persists across Long Rests.
 A Magic action dismisses the familiar temporarily or permanently. Another
 Magic action returns a temporarily dismissed familiar within 30 feet.
@@ -839,8 +841,7 @@ or audible orders through a world fact. It routes steps through ordinary
 movement and Opportunity Attack resolution. A Bonus Action borrows sight
 and hearing until the owner's next turn. Casting sight checks can use either
 viewpoint. The represented forms expose their source darkvision range for
-world adapters. More eligible forms, familiar gear, and world controls,
-camera and audio integration remain open.
+world adapters. Familiar gear and the Everglade II controls remain open.
 
 The native witness passed the spell-slot path, attack refusal and Long Rest
 retirement. Scoped mutation runs killed 1,221 mutants with zero survivors
@@ -864,7 +865,7 @@ checks and a native witness. The three changed authority units killed 146
 mutants with zero survivors. Experimental Wasm built at 2,647,739 bytes.
 
 Experimental now exposes Wild Companion at Druid level 2 and Find Familiar
-as a Wizard spellbook ritual. The hotbar cycles Cat, Rat and Spider. The
+as a Wizard spellbook ritual. The hotbar cycles the eleven named forms. The
 Druid can spend a Wild Shape use or a level 1 spell slot. The Wizard has one
 incense supply per visit, tracked across class changes. The familiar has a
 world position, a projected marker and an independent turn seat. The hotbar
@@ -913,3 +914,16 @@ modules match their Coax sources. The site-wide checker found no stale
 modules and could not lower two unchanged compute modules with the local
 compiler. Muted headless WebGPU showed the familiar's low viewpoint.
 Lab Wasm built at 2,660,961 bytes against the 2,661,000-byte cap.
+
+The new stat rows come from SRD pp. 345, 348–349, 355, 357–359 and 364.
+They preserve armor class, hit points, ability scores, the printed attack,
+movement and special-sense distances. Frog and Octopus use the shared Swim
+Speed where terrain supplies swimming. Darkvision comes from the catalog.
+Flight, Bat blindsight behavior, remaining creature traits and skill
+bonuses, and other eligible CR 0 Beasts still need work.
+
+The named-form fixture covers summoning and reforming all eleven, including
+the attack restriction and resetting Swim Speed on a change of form. All
+478 monster checks passed. Familiar and senses mutation gates killed all
+431 mutants. The Owl picker passed a world fixture and a muted headless
+WebGPU click. Lab Wasm is 2,662,702 bytes against a 2,664,500-byte cap.

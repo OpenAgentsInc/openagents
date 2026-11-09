@@ -45,8 +45,10 @@ rs_familiar_return :: (b:[]RsBattle,owner:int,x:int,y:int)->bool #effects(all) {
   return true;
 }
 
+RS_FAMILIAR_FORMS :: [11]int.[MON_CAT,MON_RAT,MON_SPIDER,MON_BAT,MON_FROG,MON_HAWK,MON_LIZARD,MON_OCTOPUS,MON_OWL,MON_RAVEN,MON_WEASEL];
 rs_familiar_form :: (m:int)->bool #effects(all) {
-  return m==MON_RAT || m==MON_SPIDER || m==MON_CAT;
+  for form:RS_FAMILIAR_FORMS { if m==form { return true; } }
+  return false;
 }
 rs_familiar_destination :: (b:[]RsBattle,i:int,x:int,y:int,steps:int)->bool #effects(all) {
   me:=b[0].c[i];
@@ -80,6 +82,7 @@ rs_familiar_publish :: (b:[]RsBattle,i:int,j:int,m:int,x:int,y:int,spirit:int,un
     b[0].c[j].hp=rs_min(b[0].c[j].hp,fresh.hp_max);
     b[0].c[j].speed=fresh.speed;
     b[0].c[j].climb=fresh.climb;
+    b[0].c[j].swim=fresh.swim;
     b[0].c[j].jumper=fresh.jumper;
     b[0].c[j].form=fresh.form;
   }
@@ -457,4 +460,32 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
   #assert rs_long_rest_apply(b[..],0) && c[j].hp==0;
   rs_fresh(b[..],0);
   #assert !rs_familiar_return(b[..],0,2,1);
+}
+
+#test "All eleven named SRD familiars use their source stat blocks and remain non-attacking" {
+  forms:=[11]int.[MON_BAT,MON_CAT,MON_FROG,MON_HAWK,MON_LIZARD,MON_OCTOPUS,MON_OWL,MON_RAT,MON_RAVEN,MON_SPIDER,MON_WEASEL];
+  ac:=[11]int.[12,12,11,13,10,12,11,10,12,12,13];
+  hp:=[11]int.[1,2,1,1,2,3,1,1,2,1,1];
+  swim:=[11]int.[0,0,20,0,0,30,0,0,0,0,0];
+  dark:=[11]int.[0,60,30,0,30,30,120,30,0,30,60];
+  for k:0..<forms.count {
+    b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+    i:=rs_add(b[..],rs_druid("Owner",0,2),1,1);
+    j:=rs_add(b[..],rs_guard("Guard",1),3,1);
+    rs_fresh(b[..],i);
+    #assert rs_wild_companion(b[..],i,0,forms[k],2,1);
+    f:=rs_familiar_of(b[..],i);
+    #assert f==2 && c[f].ac==ac[k] && c[f].hp==hp[k] && c[f].swim==swim[k];
+    #assert rs_familiar_darkvision(c[f])==dark[k];
+    rs_fresh(b[..],f);
+    #assert !rs_stat_attack(b[..],f,j,rs_monster_action(forms[k]).attacks[0]);
+    rs_fresh(b[..],i);
+    next:=ifx forms[k]==MON_OCTOPUS then MON_LIZARD else MON_OCTOPUS;
+    #assert rs_wild_companion(b[..],i,0,next,0,0);
+    #assert rs_familiar_of(b[..],i)==f && c[f].x==2 && c[f].y==1;
+    #assert c[f].swim==(ifx next==MON_OCTOPUS then 30 else 0);
+  }
+  #assert !rs_familiar_form(MON_NONE) && !rs_familiar_form(MON_N) && !rs_familiar_form(MON_WOLF);
+  #assert rs_monster_block(MON_BAT).blindsight==60 && rs_monster_block(MON_HAWK).fly==60;
+  #assert rs_monster_block(MON_OWL).darkvision==120 && rs_monster_block(MON_RAVEN).fly==50;
 }

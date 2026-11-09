@@ -81,9 +81,7 @@ rs_familiar_observer :: (b:[]RsBattle,owner:int)->int #effects(all) {
 }
 // Special sense distances for the currently represented forms, in feet.
 rs_familiar_darkvision :: (f:RsCreature)->int #effects(all) {
-  if f.familiar_form==MON_CAT { return 60; }
-  if f.familiar_form==MON_RAT || f.familiar_form==MON_SPIDER { return 30; }
-  return 0;
+  return rs_monster_block(f.familiar_form).darkvision;
 }
 
 // A world may supply audible speech beyond the telepathic link. The actor

@@ -7554,3 +7554,7 @@ dungeon selects torches around that eye. Unlit surfaces within the form's
 darkvision range render in gray. Spatial combat cues use the familiar's
 position when it can hear. The owner and familiar keep their world
 positions, and the view and listener return when the shared link ends.
+
+The eleven named SRD familiar forms use stable monster IDs and the same
+picker and admission list. A change of form preserves the existing actor
+and replaces its Swim Speed along with the other movement statistics.

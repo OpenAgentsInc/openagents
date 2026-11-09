@@ -59,7 +59,8 @@ fairy 695000
 # Familiar hotbar, independent seat, and world marker (#13030).
 # Familiar lifecycle and commanded steps with hostile Reactions (#13030).
 # Familiar Touch targeting, cover, and saved-turn payment (#13030).
-fivelab 2661000
+# Eight additional named familiar stat blocks and the shared picker (#13030).
+fivelab 2664500
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.

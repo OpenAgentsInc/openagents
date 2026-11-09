@@ -26,13 +26,22 @@ MON_NONE :: 0; MON_IMP :: 1; MON_QUASIT :: 2; MON_GOBLIN_WARRIOR :: 3; MON_OGRE 
 MON_WOLF :: 6; MON_ZOMBIE :: 7;
 MON_RAT :: 8; MON_RIDING_HORSE :: 9; MON_SPIDER :: 10; MON_BLACK_BEAR :: 11; MON_WARHORSE :: 12;   // Wild Shape's forms (wild-shape.coax)
 MON_CAT :: 13;
-MON_N :: 14;
+MON_BAT :: 14;
+MON_FROG :: 15;
+MON_HAWK :: 16;
+MON_LIZARD :: 17;
+MON_OCTOPUS :: 18;
+MON_OWL :: 19;
+MON_RAVEN :: 20;
+MON_WEASEL :: 21;
+MON_N :: 22;
 RsMonsterBlock :: struct {
   id: string; name: string; page: int; xp: int; pb: int;
   size: int; ac: int; hp: int; speed: int;
   score: [6] int; saves: int;               // save proficiencies, bits of 1 << RS_STR...
   resist: int; immune: int; immune_cond: int;
   undead: bool; fiend: bool; pack: bool; magic: bool; nimble: bool; fortitude: bool; beast: bool; climb: int; jumper: bool;
+  swim: int; fly: int; darkvision: int; blindsight: int;
   action: RsStatAction;
 }
 // The blocks' numbers, as printed (page, then the Monsters chapter's order of entries):
@@ -86,10 +95,12 @@ RsMonsterBlock :: struct {
 // sides and kind, the Advantage dice and sides, its RS_RIDE_* rider and the largest size it holds.
 MF_UNDEAD :: 1; MF_FIEND :: 2; MF_PACK :: 4; MF_MAGIC :: 8; MF_NIMBLE :: 16; MF_FORTITUDE :: 32; MF_BEAST :: 64; MF_CLIMB :: 128; MF_JUMPER :: 256;
 RS_MON_ROW :: 21; RS_MON_ATTACK_ROW :: 16;
-RS_MON_ID :: [13] string.["monster/imp", "monster/quasit", "monster/goblin-warrior", "monster/ogre", "monster/hill-giant", "monster/wolf", "monster/zombie",
-  "monster/rat", "monster/riding-horse", "monster/spider", "monster/black-bear", "monster/warhorse", "monster/cat"];
-RS_MON_NAME :: [13] string.["Imp", "Quasit", "Goblin Warrior", "Ogre", "Hill Giant", "Wolf", "Zombie", "Rat", "Riding Horse", "Spider", "Black Bear", "Warhorse", "Cat"];
-RS_MON_ROWS :: [273] u16.[
+RS_MON_ID :: [21] string.["monster/imp", "monster/quasit", "monster/goblin-warrior", "monster/ogre", "monster/hill-giant", "monster/wolf", "monster/zombie",
+  "monster/rat", "monster/riding-horse", "monster/spider", "monster/black-bear", "monster/warhorse", "monster/cat",
+  "monster/bat", "monster/frog", "monster/hawk", "monster/lizard", "monster/octopus", "monster/owl", "monster/raven", "monster/weasel"];
+RS_MON_NAME :: [21] string.["Imp", "Quasit", "Goblin Warrior", "Ogre", "Hill Giant", "Wolf", "Zombie", "Rat", "Riding Horse", "Spider", "Black Bear", "Warhorse", "Cat",
+  "Bat", "Frog", "Hawk", "Lizard", "Octopus", "Owl", "Raven", "Weasel"];
+RS_MON_ROWS :: [441] u16.[
   300, 200, 2, 1, 13, 21, 20,   6, 17, 13, 11, 12, 14,   0, 8, 528, 1024, 10,   0, 1, 1,
   317, 200, 2, 1, 13, 25, 40,   5, 17, 10, 7, 10, 10,    0, 88, 512, 1024, 10,  1, 1, 1,
   290, 50, 2, 2, 15, 10, 30,    8, 15, 10, 10, 8, 8,     0, 0, 0, 0, 16,        2, 2, 1,
@@ -102,12 +113,22 @@ RS_MON_ROWS :: [273] u16.[
   361, 10, 2, 1, 12, 1, 20,     2, 14, 8, 1, 10, 2,      0, 0, 0, 0, 192,       12, 1, 1,
   345, 100, 2, 3, 11, 19, 30,   15, 12, 14, 2, 12, 7,    0, 0, 0, 0, 192,       13, 1, 2,
   364, 100, 2, 4, 11, 19, 60,   18, 12, 13, 2, 12, 7,    16, 0, 0, 0, 64,       14, 1, 1,
-  346, 10, 2, 1, 12, 2, 40,     3, 15, 10, 3, 12, 7,    2, 0, 0, 0, 448,       15, 1, 1];
-RS_MON_ATTACK_ID :: [16] string.["monster/imp/sting", "monster/quasit/rend", "monster/goblin-warrior/scimitar", "monster/goblin-warrior/shortbow",
+  346, 10, 2, 1, 12, 2, 40,     3, 15, 10, 3, 12, 7,    2, 0, 0, 0, 448,       15, 1, 1,
+  345, 10, 2, 1, 12, 1, 5, 2, 15, 8, 2, 12, 4, 0, 0, 0, 0, 64, 16, 1, 1,
+  348, 10, 2, 1, 11, 1, 20, 1, 13, 8, 1, 8, 3, 0, 0, 0, 0, 64, 17, 1, 1,
+  355, 10, 2, 1, 13, 1, 10, 5, 16, 8, 2, 14, 6, 0, 0, 0, 0, 64, 18, 1, 1,
+  357, 10, 2, 1, 10, 2, 20, 2, 11, 10, 1, 8, 3, 0, 0, 0, 0, 192, 19, 1, 1,
+  357, 10, 2, 2, 12, 3, 5, 4, 15, 11, 3, 10, 4, 0, 0, 0, 0, 64, 20, 1, 1,
+  358, 10, 2, 1, 11, 1, 5, 3, 13, 8, 2, 12, 7, 0, 0, 0, 0, 64, 21, 1, 1,
+  359, 10, 2, 1, 12, 2, 10, 2, 14, 10, 5, 13, 6, 0, 0, 0, 0, 64, 22, 1, 1,
+  364, 10, 2, 1, 13, 1, 30, 3, 16, 8, 2, 12, 3, 0, 0, 0, 0, 192, 23, 1, 1];
+RS_MON_ATTACK_ID :: [24] string.["monster/imp/sting", "monster/quasit/rend", "monster/goblin-warrior/scimitar", "monster/goblin-warrior/shortbow",
   "monster/ogre/greatclub", "monster/ogre/javelin", "monster/hill-giant/tree-club", "monster/hill-giant/trash-lob", "monster/wolf/bite", "monster/zombie/slam",
-  "monster/rat/bite", "monster/riding-horse/hooves", "monster/spider/bite", "monster/black-bear/rend", "monster/warhorse/hooves", "monster/cat/scratch"];
-RS_MON_ATTACK_NAME :: [16] string.["Sting", "Rend", "Scimitar", "Shortbow", "Greatclub", "Javelin", "Tree Club", "Trash Lob", "Bite", "Slam", "Bite", "Hooves", "Bite", "Rend", "Hooves", "Scratch"];
-RS_MON_ATTACKS :: [256] u16.[
+  "monster/rat/bite", "monster/riding-horse/hooves", "monster/spider/bite", "monster/black-bear/rend", "monster/warhorse/hooves", "monster/cat/scratch",
+  "monster/bat/bite", "monster/frog/bite", "monster/hawk/talons", "monster/lizard/bite", "monster/octopus/tentacles", "monster/owl/talons", "monster/raven/beak", "monster/weasel/bite"];
+RS_MON_ATTACK_NAME :: [24] string.["Sting", "Rend", "Scimitar", "Shortbow", "Greatclub", "Javelin", "Tree Club", "Trash Lob", "Bite", "Slam", "Bite", "Hooves", "Bite", "Rend", "Hooves", "Scratch",
+  "Bite", "Bite", "Talons", "Bite", "Tentacles", "Talons", "Beak", "Bite"];
+RS_MON_ATTACKS :: [384] u16.[
   5, 1, 6, 3, 8, 1, 5,    0, 0,    2, 6, 9,  0, 0,  0, 0,   // Sting
   5, 1, 4, 3, 12, 1, 5,   0, 0,    0, 0, 0,  0, 0,  2, 0,   // Rend
   4, 1, 6, 2, 12, 1, 5,   0, 0,    0, 0, 0,  1, 4,  0, 0,   // Scimitar
@@ -123,7 +144,15 @@ RS_MON_ATTACKS :: [256] u16.[
   4, 0, 0, 1, 8, 1, 5,    0, 0,    1, 4, 9,  0, 0,  0, 0,   // the Spider's Bite
   4, 1, 6, 2, 12, 0, 5,   0, 0,    0, 0, 0,  0, 0,  0, 0,   // the Black Bear's Rend
   6, 2, 4, 4, 2, 0, 5,    0, 0,    0, 0, 0,  0, 0,  0, 0,   // the Warhorse's Hooves
-  4, 0, 0, 1, 12, 1, 5,   0, 0,    0, 0, 0,  0, 0,  0, 0];  // the Cat's Scratch
+  4, 0, 0, 1, 12, 1, 5,   0, 0,    0, 0, 0,  0, 0,  0, 0,   // the Cat's Scratch
+  4, 0, 0, 1, 8, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  3, 0, 0, 1, 8, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  5, 0, 0, 1, 12, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  2, 0, 0, 1, 8, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  4, 0, 0, 1, 2, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  3, 0, 0, 1, 12, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  4, 0, 0, 1, 8, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  5, 0, 0, 1, 8, 1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 rs_mon_attack :: (q: int) -> RsStatAttack {
   t := q * RS_MON_ATTACK_ROW; v: [RS_MON_ATTACK_ROW] int;
   for f: 0..<RS_MON_ATTACK_ROW { v[f] = cast(int) RS_MON_ATTACKS[t + f]; }
@@ -131,6 +160,11 @@ rs_mon_attack :: (q: int) -> RsStatAttack {
                        ability = v[5], reach = v[6], range_ft = v[7], long_ft = v[8], plus_dice = v[9], plus_sides = v[10], plus_kind = v[11],
                        adv_dice = v[12], adv_sides = v[13], ride = v[14], ride_size = v[15]};
 }
+// Movement and senses used by the familiar catalog, indexed by monster ID.
+RS_MON_SWIM :: [22]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20,0,0,30,0,0,0];
+RS_MON_FLY :: [22]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,0,60,0,0,60,50,0];
+RS_MON_DARKVISION :: [22]u8.[0,0,0,0,0,0,0,0,30,0,30,0,0,60,0,30,0,30,30,120,0,60];
+RS_MON_BLINDSIGHT :: [22]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,0,0,0,0,0,0,0];
 rs_monster_block :: (m: int) -> RsMonsterBlock {
   k: RsMonsterBlock;
   if m < 1 || m >= MON_N { return k; }
@@ -144,6 +178,8 @@ rs_monster_block :: (m: int) -> RsMonsterBlock {
   k.magic = (v[17] & MF_MAGIC) != 0; k.nimble = (v[17] & MF_NIMBLE) != 0; k.fortitude = (v[17] & MF_FORTITUDE) != 0;
   k.beast = (v[17] & MF_BEAST) != 0; k.climb = ifx (v[17] & MF_CLIMB) != 0 then k.speed else 0;
   k.jumper = (v[17] & MF_JUMPER) != 0;
+  k.swim=int(RS_MON_SWIM[m]); k.fly=int(RS_MON_FLY[m]);
+  k.darkvision=int(RS_MON_DARKVISION[m]); k.blindsight=int(RS_MON_BLINDSIGHT[m]);
   k.action.n = v[19]; k.action.count = v[20];
   for q: 0..<k.action.n { k.action.attacks[q] = rs_mon_attack(v[18] + q); }
   return k;
@@ -159,7 +195,7 @@ rs_monster :: (m: int, name: string, team: int) -> RsCreature {
   c[0].team = team; c[0].level = rs_pb_level(k.pb); c[0].klass = RS_MONSTER;
   c[0].score = k.score;
   for ab: 0..<6 { c[0].save_prof[ab] = (k.saves & (1 << ab)) != 0; }
-  c[0].ac = k.ac; c[0].hp_max = k.hp; c[0].hp = k.hp; c[0].speed = k.speed; c[0].climb=k.climb; c[0].jumper=k.jumper;
+  c[0].ac = k.ac; c[0].hp_max = k.hp; c[0].hp = k.hp; c[0].speed = k.speed; c[0].climb=k.climb; c[0].swim=k.swim; c[0].jumper=k.jumper;
   c[0].form = rs_form(k.size, (ifx k.pack then RS_TRAIT_PACK else 0) | (ifx k.magic then RS_TRAIT_MAGIC else 0) | (ifx k.nimble then RS_TRAIT_NIMBLE else 0));
   c[0].resist = k.resist; c[0].immune = k.immune; c[0].immune_cond = k.immune_cond;
   c[0].undead = k.undead; c[0].fiend = k.fiend; c[0].fortitude = k.fortitude;
