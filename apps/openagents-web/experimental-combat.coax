@@ -49,6 +49,7 @@
 #load "../../aethyr/rules/srd/press-budget.coax";
 #load "class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
+#load "class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
 #load "class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "../../verse/experimental-terrain.coax" as xmeadow;
@@ -108,6 +109,7 @@ XcCombat :: struct {
   casts: int; landed: int; kills: int; refused: int; last_dmg: int;   // for the checks (lab_creator_probe 900+)
   whiffs: int;                      // bolts that flew to their range and blows that met no one
   fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
+  deeds: [1] DeedBar;   // the bar's asks and the rules' answers (aethyr/action/deed.coax, docs/verse/action-pipeline.md, #13072)
   seeded: bool;                     // the dice mixed with the clock at the first press, so each visit rolls its own
   knockout: bool;                   // KNOCK OUT: your melee blows leave a monster at 1 HP and Unconscious (SRD p.17)
   pend: int = -1;                   // a blow swinging: its slot (xc_swing_step), -1 none
@@ -949,6 +951,8 @@ xc_bow_begin :: (s: [] Lab, self_loose: bool) -> bool {
   if !xc_has_bow(s) { return false; }
   if x[0].draw[0].on { bow.bow_begin(x[0].draw[..], now, self_loose); return true; }
   if now - x[0].cool_at < f32(XC_COOL) { x[0].refused += 1; return false; }
+  // the draw is the Attack's wind-up: it asks first (#13072), so a downed or held-still archer draws nothing
+  if !deed_can_act(rs_bearing(x[0].b[0].c[0])) { deed_grey(x[0].deeds[..], xc_slot_of(x, FB_ATTACK), deed_tick(now)); x[0].refused += 1; return false; }
   if !x[0].seeded { x[0].seeded = true; x[0].b[0].dice[0].state = x[0].b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
   bow.bow_begin(x[0].draw[..], now, self_loose);
   xc_cue(s, "bow-draw", 0.4, cr[0].player_x, cr[0].player_z, 1);   // the limbs creak as the string comes back
@@ -1119,12 +1123,20 @@ xc_press :: (s: [] Lab, k: int) -> bool {
   xc_strike_due(s);
   a := x[0].bar[k];
   b := x[0].b[..];
+  // ask first (#13072): your conditions (rs_bearing) must let you act and the ability declares its
+  // feel (class-feel.coax); a no greys the slot, and nothing swings, draws, sounds or shines
+  asked := deed_tick(now);
+  seq := deed_ask(x[0].deeds[..], k, asked, rs_bearing(b[0].c[0]), xf_feel(x[0].klass, a));
+  if seq == 0 { x[0].refused += 1; return false; }
   // a Ranger's Attack is the bow: a press draws and looses itself at full draw (xc_bow_begin)
-  if a.kind == FB_ATTACK && xc_kit(x[0].klass) == XC_KIT_BOW { return xc_bow_begin(s, true); }
+  if a.kind == FB_ATTACK && xc_kit(x[0].klass) == XC_KIT_BOW { drawn := xc_bow_begin(s, true); _ := deed_answer(x[0].deeds[..], seq, drawn, asked, 0); return drawn; }
   if !x[0].seeded { x[0].seeded = true; b[0].dice[0].state = b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
   // a blow with a weapon in hand is an action: it swings first and lands where the blade meets a monster
   kit := xc_kit(x[0].klass);
   if kit >= 0 && !(x[0].familiar_touch && xc_touch_spell(a)) && xc_aim_kind(s, a).kind == XC_AIM_MELEE {
+    // the rules take the blow (its action is there to spend) before it swings; it lands on contact
+    if !fb_ready(b, 0, a) { _ := deed_answer(x[0].deeds[..], seq, false, asked, 0); x[0].refused += 1; return false; }
+    _ := deed_answer(x[0].deeds[..], seq, true, asked, 0);
     clip := cp_blow_clip(kit, true);   // a two-hander's owned cleave (cast-pose.coax, shared with Everglade II)
     cr[0].weapon = kit; cr[0].swing_clip = clip; cr[0].swing_at = now;
     tick := xc_tick(now);
@@ -1136,7 +1148,9 @@ xc_press :: (s: [] Lab, k: int) -> bool {
     xc_cast_sound(s, a);   // the whoosh as the swing starts; the blow's hit when it lands (xc_use)
     return true;
   }
-  return xc_use(s, k);
+  ok := xc_use(s, k);   // the local rules resolve it first, then it presents (xc_use_ab)
+  _ := deed_answer(x[0].deeds[..], seq, ok, asked, 0);
+  return ok;
 }
 // The fixed tick a creator clock time falls in.
 xc_tick :: (t: f32) -> int { return cast(int) floor(f64(t) * f64(XC_TICK)); }
@@ -1402,7 +1416,7 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
   foe := aim.foe;
   snd := xc_sound(a, x[0].klass);
   swung := !via && xc_kit(x[0].klass) >= 0 && aim.kind == XC_AIM_MELEE;   // its whoosh played at the press (xc_press)
-  if !via && aim.kind == XC_AIM_CONE && foe < 0 { x[0].fizzle = k; x[0].fizzle_at = now; x[0].refused += 1; xc_cue(s, snd.miss, 0.35, px, pz, 1); return false; }   // no one ahead: the icon fizzles
+  if !via && aim.kind == XC_AIM_CONE && foe < 0 { x[0].fizzle = k; x[0].fizzle_at = now; x[0].refused += 1; return false; }   // no one ahead: the icon fizzles, silent (refused plays nothing, #13072)
   if !via && (aim.kind == XC_AIM_BOLT || aim.kind == XC_AIM_MELEE) && foe < 0 {
     if aim.kind==XC_AIM_BOLT && a.kind==FB_SPELL && rs_object_spell(a.sp) {
       object:=xc_object_pick(s,aim.fx,aim.fz,aim.reach);
@@ -1851,6 +1865,13 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
       m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
       m = xc_box_text(x[0].media[..], m, dim); m = put(x[0].media[..], m, " 35 0 "); m = put_int(x[0].media[..], m, cast(int) (share * 1000)); m = put(x[0].media[..], m, "\n");
+    }
+    // refused, or held by your conditions: the slot greys (#13072), no words
+    grey := deed_look(x[0].deeds[0], i, deed_tick(now), 0).grey; held := deed_bar_dim(rs_bearing(x[0].b[0].c[0])); if held > grey { grey = held; }
+    if grey > 0 {
+      m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
+      m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
+      m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, " "); m = put_int(x[0].media[..], m, cast(int) (100 - 65 * grey)); m = put(x[0].media[..], m, " 0 1000\n");
     }
     if i < 9 && xc_draw_slot_key(i,art) {key: [2] u8; key[0] = cast(u8) (49 + i);
      n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));}
