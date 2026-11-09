@@ -382,6 +382,10 @@ not set up.
 
 ## Verse OS V0: the Verse on tty3 of coderos-4080 (2026-11-02)
 
+Update (2026-11-09): steps 1 and 2 are done. The realms are installed, and
+coderos-4080 runs the module on tty3 (coder `890e81be0`, switched, no package
+changes). What's left is step 3 at the desk, and your answer on tty1.
+
 The boot session is built (docs/os/2026-11-02-verse-os.md, "Status"):
 `os/verse-session.coax`, `vk-realm --leave-to`, `verse/gpu/realm.sh local
 install`, and the NixOS module `os/nix/modules/verse-os.nix`. Turning it on
