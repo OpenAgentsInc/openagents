@@ -130,6 +130,7 @@ E2 :: struct {
   hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
   zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
   hero_class: int = -1; hero_level: int; hero_ac: int; hero_slots: [10] int;   // your class's AC and spell slots by level, as the rules build it (fb_cl_hero)
+  floats: [1] fl.Floats;                         // the numbers over whoever a blow struck: the room's hit words (e2_float)
 }
 E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; fade: f32 = 1; sy: f32; name: [NET_NAME] u8; name_n: int; }
 
@@ -1784,6 +1785,86 @@ e2_body_of :: (s: [] E2, c: cc.Creator, fig: figs.BdAnim, at: E2Drawn, any: bool
   } }
   for i: from..<rec { for k: 0..<3 { out[i * 24 + 20 + k] = cc.EYES[c.eye_color][k]; } out[i * 24 + 23] = 2; }
   return E2Drawn.{rec = rec, n = n, sn = sn};
+}
+// A body down (its bearing's pose, aethyr/rules/srd/condition-bearing.coax: Unconscious or dead): it
+// falls (the rig's fall, once, then held) and lies Prone until the rules have it up again, when it
+// stands back into its gait.
+e2_fall :: (a: [] figs.BdAnim, b: DeedBearing, now: f32) {
+  lie := b.pose == DeedPose.down;
+  if lie && a[0].state == 0 { a[0].state = 1; a[0].fell_at = now; }
+  if !lie && a[0].state != 0 { a[0].state = 0; }
+}
+// A blow's number over (x, y, z) from source (0 the guard struck, 1 his blows, 2 + M monster M's): the
+// room's own amount (aethyr/action/floats.coax: red when you took it, "miss" when it missed, a
+// critical hit larger), so the number is the Hit Points you lost.
+// It is the present of an accepted action (aethyr/action/deed.coax deed_show, docs/verse/action-pipeline.md):
+// feel is the action's (class-feel.coax), and only a result the show plays puts a number up.
+e2_float :: (s: [] E2, feel: DeedFeel, source: int, x: f32, y: f32, z: f32, kind: int, crit: bool, amount: int) -> DeedShow {
+  show := deed_show(feel, ifx amount > 0 then DeedResult.hit else DeedResult.miss);
+  if show.play { _ := fl.floats_amount(s[0].floats[..], source, x, y, z, s[0].clock, kind, crit, amount); }
+  return show;
+}
+// Each live number where it has risen to, its size and colour by kind, thinning as it goes.
+e2_floats_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+  v := at; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up; k := s[0].k; now := s[0].clock;
+  cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
+  for q: 0..<fl.FLOATS {
+    l := fl.floats_look(s[0].floats[0].items[q], now);
+    if !l.ok { s[0].floats[0].items[q].on = false; continue; }
+    n := s[0].floats[0].items[q];
+    dx := l.x - e[0]; dy := l.y - e[1]; dz := l.z - e[2];
+    ahead := dx * f[0] + dy * f[1] + dz * f[2];
+    // only while the body it rose off shows (everglade2-sight.coax)
+    if ahead < 0.5 || !e2_sight_shows(s, n.x, n.y - 1.2, n.z, 1.2) { continue; }
+    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
+    sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
+    // the HUD's own number (everglade/hud/parts.coax eg_float): red when you took it, small "miss"; a
+    // critical hit drawn larger over it (floats_look's size)
+    t := fl.floats_text(s[0].floats[..], q);
+    kind := ifx n.kind == fl.FLOAT_TAKEN then cc.EG_FLOAT_HARM else ifx n.kind == fl.FLOAT_MISS then cc.EG_FLOAT_MISS else ifx n.kind == fl.FLOAT_HEAL then cc.EG_FLOAT_HEAL else cc.EG_FLOAT_DEALT;
+    v = cc.eg_float(out, v, t, sx, sy, k * l.size, kind, l.alpha);
+  }
+  fl.floats_frame(s[0].floats[..]);
+  return v;
+}
+// The kit a class's body carries here (class-kit.coax xc_kit, charactercreator.coax CC_KITS): the Ranger
+// starts with the Longbow in hand (SRD 5.2.1 p.58). The melee kits wait for Everglade II's hold clips.
+e2_kit_of :: (klass: int) -> int { k := xc_kit(klass); return ifx k == XC_KIT_BOW then k else -1; }
+// A body's kit after its records (its first record, from, its pose): the shared held pieces
+// (charactercreator.coax held_pieces: the bow on its attach, its string and a nocked arrow), each a
+// flag-19 record thinned as the body is (drop).
+e2_held :: (s: [] E2, at: E2Drawn, from: int, kit: int, female: bool, aim: f32, nocked: bool, drop: f32) -> E2Drawn {
+  c := s[0].creator[..]; out := s[0].records[..]; d := at;
+  if kit < 0 || from >= d.rec { return d; }
+  h: [1] cc.HeldPieces; cc.held_pieces(h[..], kit, female, aim, nocked, s[0].bodies[..], out[from * 24..<from * 24 + 24]);
+  for i: 0..<h[0].n {
+    m := h[0].mesh[i];
+    if c[0].weapon_count[m] <= 0 || d.rec >= E2_RECORDS || d.n >= E2_DRAWS { continue; }
+    q := d.rec * 24;
+    for k: 0..<24 { out[q + k] = 0; }
+    put := [4] int.[0, 8, 16, 20];
+    for j: 0..<4 { for r: 0..<3 { out[q + put[j] + r] = h[0].w[i][j * 3 + r]; } }
+    out[q + 7] = f32(c[0].glade_word); out[q + 15] = 19; out[q + 23] = drop;
+    d.n = e2_draw(s[0].draws[..], d.n, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
+    d.sn = e2_draw(s[0].shadow[..], d.sn, c[0].weapon_first[m], c[0].weapon_count[m], d.rec, 1);
+    d.rec += 1;
+  }
+  return d;
+}
+// Another player's class as the room names it (-1 none), and how far their bow's aim is in: up as
+// their Attack's arrow looses (its act, the room's e cast) and down over the follow-through.
+e2_remote_class :: (s: [] E2, slot: int) -> int { return ifx slot >= 0 && slot < E2N_ENTS then s[0].net[0].ent_class[slot] else -1; }
+e2_remote_aim :: (s: [] E2, slot: int) -> f32 {
+  if slot < 0 || slot >= E2N_ENTS || e2_kit_of(e2_remote_class(s, slot)) != XC_KIT_BOW { return 0; }
+  t := s[0].clock - s[0].casts[0].them[slot].at;
+  return ifx t < 0 || t > f32(bow.BOW_FOLLOW) then 0.0f32 else 1 - t / f32(bow.BOW_FOLLOW);
+}
+// Your own kit: the class Character Create has (in the studio the one picked), drawn and nocked as
+// the mouse draws it (everglade2-mouse.coax).
+e2_my_held :: (s: [] E2, d: E2Drawn, from: int) -> E2Drawn {
+  m := s[0].mouse[0];
+  klass := ifx e2c_creating(s) then e2c_class_of(s) else s[0].casts[0].klass;
+  return e2_held(s, d, from, e2_kit_of(klass), s[0].creator[0].female, bow.bow_aim(m.draw[0]), m.draw[0].on, 0);
 }
 // The others, as the room has them drawn this frame: each on the land, its own walk and run from how
 // fast it goes, its jump from its feet off the ground, its own look; and its name for e2_plates.

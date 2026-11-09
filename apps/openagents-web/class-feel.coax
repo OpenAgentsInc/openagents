@@ -44,6 +44,10 @@ xf_feel :: (klass: int, a: FbAb) -> DeedFeel {
   return f;
 }
 
+// A player's blow or spell landing on a creature the room has struck (its number over it, its thud):
+// the struck end of an action that already played from its own feel.
+xf_struck_feel :: () -> DeedFeel { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_HIT, sound = "hit", move = DeedMove.still}; }
+
 // The monster actions Everglade fields: Everglade II's wolves, goblins and path guard
 // (everglade2-monsters.coax, everglade2-guard.coax) and Experimental's dungeon (verse/experimental-hostiles.coax).
 XF_MON_WOLF_BITE :: 0; XF_MON_GOBLIN_BLADE :: 1; XF_MON_GOBLIN_SHOT :: 2; XF_MON_GUARD_BLOW :: 3;
@@ -78,6 +82,7 @@ xf_monster_feel :: (m: int) -> DeedFeel {
 
 #test "every monster action Everglade fields declares its feel" {
   for m: 0..<XF_MONS { #assert deed_feel_ok(xf_monster_feel(m)); }
+  #assert deed_feel_ok(xf_struck_feel());
   #assert !deed_feel_ok(xf_monster_feel(XF_MONS));
 }
 

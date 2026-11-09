@@ -14,7 +14,6 @@ E2MN_GONE :: 4; E2MN_DEAD :: 3;          // the room's states (room-e2-monsters.
 E2MN_FAR :: 90.0; E2MN_EDGE :: 12.0;     // m: past FAR not drawn; it thins over the EDGE before it
 E2MN_FADE_IN :: 1.0;                     // s a new one thins in over
 E2MN_LIE :: 5.0; E2MN_OUT :: 1.2;        // s the fallen lie after their death plays, then thin out over
-E2MN_MARKS :: 12; E2MN_MARK_S :: 1.2;
 E2MN_WEDGE_S :: 1.2;
 // The clips: first frame, frames, seconds round (the death once, the others round their loop)
 E2MN_IDLE :: 0; E2MN_RUN :: 1; E2MN_BLOW :: 2; E2MN_SHOT :: 3; E2MN_FALL :: 4;
@@ -23,7 +22,6 @@ E2MN_CLIP_S :: [2][5] f32.[[5] f32.[2.0, 0.55, 0.6, 0.6, 1.1], [5] f32.[1.6, 0.7
 E2MN_NAME :: [2] string.["Wolf", "Goblin"];
 E2MN_TALL :: [2] f32.[1.05, 1.25];       // m from its feet its plate stands over, and its middle for aim
 E2MN_TELL :: [2] f32.[0.45, 0.6];        // s of a blow's swing (room-e2-monsters.coax E2M_TELL_BLOW); a draw's 0.6
-E2mnMark :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; amount: int; harm: bool; }
 E2mnLook :: struct {
   life: int = -1; born: f32 = -100; fell: bool; fell_at: f32;
   act_seen: int = -1; act_at: f32 = -100; act: int;
@@ -31,7 +29,7 @@ E2mnLook :: struct {
   shown_at: f32 = -100;
 }
 E2MonLooks :: struct {
-  mon: [E2MN_N] E2mnLook; marks: [E2MN_MARKS] E2mnMark;
+  mon: [E2MN_N] E2mnLook;
   wedge_at: f32 = -100; wedge_x: f32; wedge_z: f32;
   drawn: int; arrows: int; hits: int; fades: int;   // what the checks and e2_probe read
 }
@@ -140,9 +138,6 @@ e2mn_seat_at :: (s: [] E2, seat: int) -> [4] f32 {
   if !rr.ok { return [4] f32.[0, 0, 0, 0]; }
   return [4] f32.[rr.x, e2_height(rr.x, rr.z) + rr.y, rr.z, 1];
 }
-e2mn_mark :: (ml: [] E2MonLooks, x: f32, y: f32, z: f32, now: f32, amount: int, harm: bool) {
-  for q: 0..<E2MN_MARKS { if !ml[0].marks[q].on || now - ml[0].marks[q].t0 > f32(E2MN_MARK_S) { ml[0].marks[q] = E2mnMark.{on = true, x = x, y = y, z = z, t0 = now, amount = amount, harm = harm}; return; } }
-}
 // The room's words on their blows the drawn picture has reached: an arrow flying, a mark over the one
 // struck and the sound of it there, a fall's cry.
 e2mn_hits :: (s: [] E2) {
@@ -165,7 +160,7 @@ e2mn_hits :: (s: [] E2) {
     if e.kind == 4 { e2k_cue(s, ifx goblin then "gremlin-death" else "imp-death", 0.8, g.x, g.z, ifx goblin then 1.0f32 else 0.7f32); continue; }
     if e.kind == 2 {
       // a player's harm at it (the guard's when SEAT is -1): over it
-      e2mn_mark(ml, g.x, g.y + E2MN_TALL[g.kind] + 0.3, g.z, now, e.amount, false); ml[0].hits += 1;
+      _ := e2_float(s, xf_struck_feel(), 2 + e.m, g.x, g.y + E2MN_TALL[g.kind] + 0.3, g.z, fl.FLOAT_DEALT, false, e.amount); ml[0].hits += 1;
       // the guard's: each of his attacks a swing of his Longsword, seen and heard
       if e.seat < 0 { s[0].guard[0].act = E2kAct.{at = now, clip = figs.BD_SLASH}; e2k_cue(s, "swing-heavy", 0.55, g.x, g.z, 0.9); }
       if e.amount > 0 { e2k_cue(s, ifx goblin then "gremlin-hurt" else "imp-hurt", 0.7, g.x, g.z, ifx goblin then 1.0f32 else 0.75f32); }
@@ -174,7 +169,7 @@ e2mn_hits :: (s: [] E2) {
     // its blow or arrow at a seat: over that player, the wedge toward it when it is you
     p := e2mn_seat_at(s, e.seat);
     if p[3] == 0 { continue; }
-    e2mn_mark(ml, p[0], p[1] + 2.1, p[2], now, e.amount, true); ml[0].hits += 1;
+    _ := e2_float(s, xf_monster_feel(ifx !goblin then XF_MON_WOLF_BITE else ifx g.act == 2 then XF_MON_GOBLIN_SHOT else XF_MON_GOBLIN_BLADE), 2 + e.m, p[0], p[1] + 2.1, p[2], ifx e.seat == n[0].seat then fl.FLOAT_TAKEN else fl.FLOAT_DEALT, false, e.amount); ml[0].hits += 1;   // red over you
     if e.seat == n[0].seat && e.amount > 0 { ml[0].wedge_at = now; ml[0].wedge_x = g.x; ml[0].wedge_z = g.z; }
     if e.amount > 0 { e2k_cue(s, ifx goblin && e.amount > 0 && g.act == 2 then "arrow-hit" else "hit-heavy", 0.8, p[0], p[2], 1); e2k_cue(s, "grunt", 0.4, p[0], p[2], 1); }
     else { e2k_cue(s, "swing-heavy", 0.45, p[0], p[2], ifx goblin then 1.1f32 else 1.3f32); }
@@ -200,19 +195,6 @@ e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     v = cc.eg_plate(out, v, E2MN_NAME[g.kind], sx, sy, k, f32(rw.hp) / f32(rw.max), true, false, alpha);
-  }
-  for mk: ml.marks {
-    if !mk.on { continue; }
-    t := (now - mk.t0) / f32(E2MN_MARK_S);
-    if t < 0 || t >= 1 { continue; }
-    y := mk.y + 0.6 * t; dx := mk.x - e[0]; dy := y - e[1]; dz := mk.z - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    if ahead < 0.5 || !e2_sight_shows(s, mk.x, mk.y - 1.2, mk.z, 1.2) { continue; }
-    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-    sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    alpha := 1 - t * t;
-    b: [8] u8; bn := ifx mk.amount > 0 then e2k_int(b[..], e2k_put(b[..], 0, "-"), mk.amount) else e2k_put(b[..], 0, "MISS");
-    v = cc.eg_float(out, v, cast(string) b[0..<bn], sx, sy, k, ifx mk.amount <= 0 then cc.EG_FLOAT_MISS else ifx mk.harm then cc.EG_FLOAT_HARM else cc.EG_FLOAT_DEALT, alpha);
   }
   // the wedge: only when the one that struck you is off the screen
   age := now - ml.wedge_at;

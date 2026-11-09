@@ -14,16 +14,14 @@ E2GD_FAR :: 110.0;           // m: past this he is not drawn; from E2GD_FAR - E2
 E2GD_EDGE :: 12.0;
 E2GD_FADE_IN :: 1.0;         // s a new guard thins in over
 E2GD_LIE :: 3.5; E2GD_GONE :: 1.2;   // s the fallen lie, and thin out over
-E2GD_MARKS :: 8; E2GD_MARK_S :: 1.2;
 E2GD_ARMOUR :: [6] int.[0, 3, 4, 6, 7, 9];   // the knight's round pauldrons, arms, cuirass, sabatons, armet, greaves (charactercreator-parts.coax)
-E2gdMark :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; amount: int; harm: bool; }
 E2GuardLook :: struct {
   anim: [1] figs.BdAnim;
   life: int = -1; born: f32 = -100;   // the life drawn and when it began here
   fade: f32; fell: bool; fell_at: f32;
   swing_seen: int = -1; act: E2kAct;
   x: f32; y: f32; z: f32; yaw: f32; up: bool;   // where he is drawn this frame; up: standing (a body to walk round)
-  marks: [E2GD_MARKS] E2gdMark; drawn: int; fades: int;
+  drawn: int; fades: int;
 }
 
 // The guard's body: the creator's catalog with his armour on, nothing else worn.
@@ -128,18 +126,34 @@ e2gd_hits :: (s: [] E2) {
     if !e.live || e.t > n[0].rt { continue; }
     n[0].guard_hits[h].live = false;
     x := gl[0].x; z := gl[0].z; y := gl[0].y + 2.1;
-    if e.kind == 2 {
-      // each of his attacks a swing of his Longsword, seen and heard, hit or miss
-      gl[0].act = E2kAct.{at = now, clip = figs.BD_SLASH}; e2k_cue(s, "swing-heavy", 0.55, gl[0].x, gl[0].z, 0.9);
+    // 4: his critical hit; 5 his arrow, 6 its critical hit (room-e2-guard.coax)
+    crit := e.kind == 4 || e.kind == 6; arrow := e.kind == 5 || e.kind == 6; harm := e.kind == 2 || e.kind == 4 || arrow;
+    if harm {
       if e.seat == n[0].seat { x = s[0].you_x; z = s[0].you_z; y = s[0].you_y + 2.1; }
       else { rr := e2n_remote_seat(n, e.seat); if !rr.ok { continue; } x = rr.x; z = rr.z; y = e2_height(rr.x, rr.z) + rr.y + 2.1; }
+      if arrow { e2gd_arrow(s, x, y - 1.1, z); }
+      // each of his attacks a swing of his Longsword, seen and heard, hit or miss
+      else { gl[0].act = E2kAct.{at = now, clip = figs.BD_SLASH}; e2k_cue(s, "swing-heavy", 0.55, gl[0].x, gl[0].z, 0.9); }
     }
-    for m: 0..<E2GD_MARKS { if !gl[0].marks[m].on || now - gl[0].marks[m].t0 > f32(E2GD_MARK_S) { gl[0].marks[m] = E2gdMark.{on = true, x = x, y = y, z = z, t0 = now, amount = e.amount, harm = e.kind == 2}; break; } }
-    if e.amount > 0 { e2k_cue(s, ifx e.kind == 2 then "hit-heavy" else "hit", 0.8, x, z, 1); if e.kind == 1 { e2k_cue(s, "grunt", 0.45, x, z, 1); } }
+    // the number over the one struck (aethyr/action/floats.coax): red over you, as much as the room took
+    feel := ifx arrow then xf_monster_feel(XF_MON_GUARD_SHOT) else ifx harm then xf_monster_feel(XF_MON_GUARD_BLOW) else xf_struck_feel();
+    _ := e2_float(s, feel, ifx harm then 1 else 0, x, y, z, ifx harm && e.seat == n[0].seat then fl.FLOAT_TAKEN else fl.FLOAT_DEALT, crit, e.amount);
+    if e.amount > 0 { e2k_cue(s, ifx harm then "hit-heavy" else "hit", 0.8, x, z, 1); if e.kind == 1 { e2k_cue(s, "grunt", 0.45, x, z, 1); } }
   }
 }
 
-// His name and Hit Points over his head, and the marks of the blows, rising and thinning.
+// His arrow at (x, y, z): the Longbow's shot as a Ranger's looks and sounds (class-look.coax, the
+// Attack of the Ranger's bar), from where he is drawn.
+e2gd_arrow :: (s: [] E2, x: f32, y: f32, z: f32) {
+  gl := s[0].guard[..];
+  bar: [XC_SLOTS] FbAb; bn := xk_bar(FB_CL_RANGER, bar[..]); at := -1;
+  for i: 0..<bn { if at < 0 && bar[i].kind == FB_ATTACK { at = i; } }
+  if at < 0 { return; }
+  act: [1] E2kAct;
+  face := figs.atan2(x - gl[0].x, z - gl[0].z);
+  _ := e2k_play(s, FB_CL_RANGER, xk_slot(FB_CL_RANGER, at), gl[0].x, gl[0].y, gl[0].z, face, x, y, z, 7, act[..], false);
+}
+// His name and Hit Points over his head (the blows' numbers: e2_float).
 e2gd_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   v := at; gl := s[0].guard[0]; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up; k := s[0].k; now := s[0].clock;
   cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
@@ -154,19 +168,6 @@ e2gd_hud :: (s: [] E2, out: [] f32, at: int) -> int {
       sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
       v = cc.eg_plate(out, v, "Guard", sx, sy, k, f32(rw.hp) / f32(rw.max), false, false, alpha);
     }
-  }
-  for m: gl.marks {
-    if !m.on { continue; }
-    t := (now - m.t0) / f32(E2GD_MARK_S);
-    if t < 0 || t >= 1 { continue; }
-    y := m.y + 0.6 * t; dx := m.x - e[0]; dy := y - e[1]; dz := m.z - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    if ahead < 0.5 || !e2_sight_shows(s, m.x, m.y - 1.2, m.z, 1.2) { continue; }
-    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-    sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    alpha := 1 - t * t;
-    b: [8] u8; bn := ifx m.amount > 0 then e2k_int(b[..], e2k_put(b[..], 0, "-"), m.amount) else e2k_put(b[..], 0, "MISS");
-    v = cc.eg_float(out, v, cast(string) b[0..<bn], sx, sy, k, ifx m.amount <= 0 then cc.EG_FLOAT_MISS else ifx m.harm then cc.EG_FLOAT_HARM else cc.EG_FLOAT_DEALT, alpha);
   }
   return v;
 }
