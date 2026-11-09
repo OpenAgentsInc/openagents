@@ -877,10 +877,19 @@ currently exposes the ritual. The hotbar's top-left badge cycles Cast,
 Pocket or Recall, Free, and Step. Pocketing and recall preserve HP and
 initiative. Step uses the familiar's movement, and a hostile Opportunity
 Attack can stop its departure. The owner chooses the direction by facing
-it. Sensory presentation, additional command choices, touch delivery in
-the worlds, animal models, and Everglade II integration still need work.
+it. Experimental's Touch badge switches between Hand and Fam. Fam
+delivers Chill Touch to the clicked foe using the familiar's reach, cover,
+and Reaction. It uses the owner's saved action and spell resources.
+Sensory presentation, additional command choices, animal models, and
+Everglade II integration still need work.
 
 Three familiar world fixtures and all 51 existing Experimental combat
 checks passed. A muted headless WebGPU playthrough ran Summon, Pocket,
 Recall, Step and Free from the hotbar. Lab Wasm is 2,655,903 bytes against
 a revised 2,657,500-byte cap.
+
+The Experimental Touch fixture exercised the badge and hotbar press against
+a clicked creature beyond the Wizard's own reach. Missing or distant
+targets and a spent familiar Reaction refused without taking another
+action. The 51 existing combat checks passed. Lab Wasm built at 2,659,260
+bytes against a revised 2,661,000-byte cap.

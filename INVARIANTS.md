@@ -7540,3 +7540,8 @@ Its top-left badge selects the lifecycle action or a Step command. Pocket,
 Recall and Free use the owner's Magic action. Step uses the familiar's own
 movement in the direction the owner faces. A blocked step spends no
 movement, and a hostile Opportunity Attack resolves before departure.
+
+Experimental's Touch spell badge switches between Hand and Fam. Fam
+targets the clicked creature for offensive spells and uses the familiar's
+position for reach and cover. The owner's saved turn and actual slot
+balance are authoritative, and the familiar's Reaction must be available.
