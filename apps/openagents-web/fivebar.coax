@@ -38,6 +38,7 @@ FB_HIDE :: 23; FB_GRAPPLE :: 24; FB_SHOVE :: 25; FB_READY :: 26;
 // Search, Study and Influence (p.176) on one slot, its option the action; a Ritual (pp.104-105) of
 // the ritual spell the creature may cast so (fb_ritual_spell): begun, kept going, then cast
 FB_SKILL :: 27; FB_RITUAL :: 28;
+FB_SHOOT :: 30;     // the Attack action with your ranged weapon (rs_shoot): a bow's arrow on the creature it reached (docs/verse/bow-combat.md)
 FB_SKILL_DC :: 15;   // the world's DC for what is sought or recalled: Medium (p.8, Typical Difficulty Classes)
 // how it is aimed: your target, a point (the ground under your target, or where you point), you,
 // the friend most hurt, the friends round a point (up to six)
@@ -415,6 +416,7 @@ fb_use :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: in
   if a.kind == FB_WORLD { return true; }
   if a.kind == FB_SPELL { return fb_cast(b, i, a, foe, tx, ty, ally); }
   if a.kind == FB_ATTACK { if at >= 0 { return rs_attack(b, i, at, false, -1); } return false; }
+  if a.kind == FB_SHOOT { if at >= 0 { return rs_shoot(b, i, at); } return false; }
   if a.kind == FB_DASH { return rs_dash(b, i); }
   if a.kind == FB_CDASH { return rs_cunning_dash(b, i); }
   if a.kind == FB_WIND { return rs_step_of_the_wind_focus(b, i); }   // its Focus Point: Disengage and Dash (p. 50)

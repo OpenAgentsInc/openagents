@@ -78,7 +78,7 @@ gp_village_tile :: (material:string)->int {
  box:=gp_vertex_bounds(b[..],0,2,false);#assert box[0]<=2000 && box[3]>=3000 && box[2]<= -3000 && box[5]>= -2000;
 }
 GP_VERTS :: 8000000;
-Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;zero_first:int;zero_count:int;zero_tex_first:int;zero_tex_end:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;weaponfirst:[4]int;weaponcount:[4]int;dungeonfirst:[8]int;dungeoncount:[8]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
+Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;zero_first:int;zero_count:int;zero_tex_first:int;zero_tex_end:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;weaponfirst:[5]int;weaponcount:[5]int;dungeonfirst:[8]int;dungeoncount:[8]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
 // Capture exactly the world-space vertices emitted for one placed asset.
 // Tree trunks use their bark geometry so a broad canopy does not become a wall.
 gp_vertex_bounds :: (vertices:[]u8,first:int,last:int,bark:bool)->[6]int {
@@ -299,10 +299,11 @@ gp_showcase_at :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,
 // Ranger's or Rogue's shortsword), Sword_Golden (a Paladin's longsword) and Sword_big (a Fighter's greatsword),
 // from the showcase's Ultimate RPG rows. Each is meshed in its own space, the blade up +Y and centred
 // on X and Z, at its source size, marked 115.4375: the runtime sets its grip, scale and the hand's pose (flag 19).
-GP_WEAPONS :: [4]string.["Axe_Double","Sword","Sword_Golden","Sword_big"];
+// Bow_Wooden (a Ranger's longbow, docs/verse/bow-combat.md) is the fifth: its limbs up +Y, the string along -X.
+GP_WEAPONS :: [5]string.["Axe_Double","Sword","Sword_Golden","Sword_big","Bow_Wooden"];
 gp_weapons :: (w:[]Gp,g:[]Gltf,layout:string,objects:string,rpg:string) {
  b:[65536]u8;n:=fs_read(layout,b[..]);if n<0 {ph_die("missing showcase layout");}
- for k:0..<4 {lines:[1]Lines;lines[0].text=cast(string)b[0..<n];found:=false;
+ for k:0..<GP_WEAPONS.count {lines:[1]Lines;lines[0].text=cast(string)b[0..<n];found:=false;
   while !lines_done(lines[0]) {row:=lines_next(lines[..]);a:=0;while a<row.count && row[a]!='|' {a+=1;}c:=a+1;while c<row.count && row[c]!='|' {c+=1;}if c>=row.count || row[0..<a]!="ultimate-rpg" || row[a+1..<c]!=GP_WEAPONS[k] {continue;}
    path:=txt_cat3(w[0].txt[..],objects,"/",row[c+1..<row.count]);gl_load(g,path);anchor:=gp_showcase_bounds(g);
    w[0].weaponfirst[k]=w[0].ni;gp_showcase_at(w,g,path,rpg,GP_WEAPONS[k],[2]f32.[0,0],w[0].village_layer,1,0,-meadow.exp_height(0,0)+anchor[1],115.4375);w[0].weaponcount[k]=w[0].ni-w[0].weaponfirst[k];found=true;break;}
@@ -796,7 +797,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=16 {for i:0..<48 {sb_put(c[..],"C glade/monster");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].monsterfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].monstercount[i]);sb_put(c[..]," 254 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
  if args_count(args[..])>=16 {for i:0..<48 {for kind:0..<2 {sb_put(c[..],ifx kind==0 then "C glade/imp" else "C glade/gremlin");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].monsterpartfirst[i][kind]);sb_byte(c[..],' ');sb_int(c[..],w[0].monsterpartcount[i][kind]);sb_put(c[..]," 254 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}}
  if args_count(args[..])>=14 {for i:0..<dungeon.DG_CHUNKS {sb_put(c[..],"C glade/dungeon");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].dungeonfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].dungeoncount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
- if args_count(args[..])>=14 {for i:0..<4 {sb_put(c[..],"C glade/weapon");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].weaponfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].weaponcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
+ if args_count(args[..])>=14 {for i:0..<GP_WEAPONS.count {sb_put(c[..],"C glade/weapon");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].weaponfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].weaponcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
   if args_count(args[..])>=14 {for i:0..<10 {sb_put(c[..],"C glade/animal");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].animalfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].animalcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
  for group:0..<3 {sb_put(c[..],"C glade/grass");sb_int(c[..],group);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].grassfirst[group]);sb_byte(c[..],' ');sb_int(c[..],w[0].grasscount[group]);sb_byte(c[..],' ');sb_int(c[..],lic);sb_byte(c[..],' ');sb_int(c[..],vn/4+w[0].seedfirst[group]*8);sb_byte(c[..],' ');sb_int(c[..],w[0].seedn[group]);sb_put(c[..]," 0\n");}
  if experimental && !zone { gp_familiar_catalog(c[..],famfirst[..],famcount[..],in/4,vn/4); }

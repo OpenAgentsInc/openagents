@@ -694,6 +694,17 @@ fxp_shaft :: (p: [] FxPuffs, c: FxCause, t: f32) {
     ok = fxp_spark(p, fxp_sub(head, fxp_mul(dir, 0.85 + back * 0.5)), 0.025 * a, fxp_mul(fxp_v(0.55, 0.55, 0.6), a * 0.5), fxp_mul(dir, back * 0.5), c.seed + 0.9);
   }
 }
+// One arrow drawn where it is (aethyr/action/bow.coax keeps them): its head at `head`, pointing
+// `dir` (unit), `a` how visible. The shaft, 0.9 m drawn a little long so it reads at range, its
+// head's glint and its fletching; in flight (`flying`) a faint streak of the air it cuts.
+fxp_arrow_at :: (p: [] FxPuffs, head: FxV, dir: FxV, a: f32, flying: bool, seed: f32) {
+  if a <= 0 { return; }
+  mid := fxp_sub(head, fxp_mul(dir, 0.42));
+  ok := fxp_spark(p, mid, 0.045 * a, fxp_mul(fxp_v(0.95, 0.82, 0.55), a), fxp_mul(dir, 0.45), seed);
+  ok = fxp_glow(p, head, 0.08 * a, fxp_mul(fxp_v(1.0, 0.95, 0.85), a), 0.8, seed + 0.3);
+  ok = fxp_glow(p, fxp_sub(head, fxp_mul(dir, 0.85)), 0.07 * a, fxp_mul(fxp_v(0.9, 0.35, 0.25), a), 0.4, seed + 0.6);
+  if flying { ok = fxp_spark(p, fxp_sub(head, fxp_mul(dir, 1.6)), 0.025 * a, fxp_mul(fxp_v(0.55, 0.55, 0.6), a * 0.5), fxp_mul(dir, 0.7), seed + 0.9); }
+}
 // Where a thrown rock is u of the way: a higher arc than a bolt's.
 fxp_lob :: (c: FxCause, u: f32) -> FxV {
   q := fxp_lerp(c.from, c.to, u);

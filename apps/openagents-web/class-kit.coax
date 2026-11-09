@@ -183,13 +183,15 @@ xc_aim_point :: (a: FbAb, m: XcAim, px: f32, pz: f32, fx: f32, fz: f32) -> [2] f
   return [2] f32.[px + fx * d, pz + fz * d];
 }
 // The weapon a class holds (charactercreator.coax CC_KITS), as close to its SRD starting weapon as the
-// Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's greatsword, the Paladin's longsword, the Ranger's
-// and Rogue's shortswords. The Monk fights unarmed and the casters hold none: -1.
+// Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's greatsword, the Paladin's longsword, the Rogue's
+// shortsword and the Ranger's longbow (SRD 5.2.1 p.58: a Longbow and a quiver; docs/verse/bow-combat.md). The Monk fights unarmed and the casters hold none: -1.
+XC_KIT_BOW :: 4;   // charactercreator.coax CC_KITS: the longbow, in the left hand
 xc_kit :: (c: int) -> int {
   if c == FB_CL_BARBARIAN { return 0; }
   if c == FB_CL_FIGHTER { return 1; }
   if c == FB_CL_PALADIN { return 2; }
-  if c == FB_CL_RANGER || c == FB_CL_ROGUE { return 3; }
+  if c == FB_CL_ROGUE { return 3; }
+  if c == FB_CL_RANGER { return XC_KIT_BOW; }
   return -1;
 }
 // ---- sound: every ability its own (experimental-sound.coax plays them, varied each time)
@@ -272,6 +274,7 @@ xc_sound :: (a: FbAb, klass: int) -> XcSnd {
     if heavy { return xs("swing-heavy", "", "hit-heavy", "", ifx kit == 0 then 0.88 else 1.0); }   // the greataxe is the heavier
     return xs("swing", "", "hit", "", ifx kit == 3 then 1.1 else 1.0);
   }
+  if a.kind == FB_SHOOT { return xs("", "", "arrow-hit", "arrow-whiz", 1); }   // its release is played as it is loosed
   if a.kind == FB_RECKLESS { return xs("grunt", "swing-heavy", "hit-heavy", "", 0.9); }
   if a.kind == FB_RAGE { return xs("rage-roar", "", "", "", 1); }
   if a.kind == FB_FLURRY { return xs("flurry", "", "hit", "", 1); }

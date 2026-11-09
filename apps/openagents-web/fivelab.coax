@@ -2053,7 +2053,7 @@ lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z);if s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until {w.link_flags=512;}return w;}
+  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until {w.link_flags=512;}return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }
@@ -2191,9 +2191,15 @@ lab_rest_motion :: (s:[]Lab,origin:EgBody,body:EgBody,walking:bool,jumping:bool)
   b:=bt(s); i:=s[0].me; if i<0 || i>=b[0].n { return; }
   rs_rest_motion(b[0].c[i..<i+1],walked,jumped);
 }
+// A drawn bow turns you to face where the camera looks, as far as its aim has come in (docs/verse/bow-combat.md).
+lab_aim_face :: (s:[]Lab,face:f32)->f32 {
+  a:=s[0].creator[0].aim; if a<=0 { return face; }
+  d:=figs.wrap_angle(s[0].creator[0].yaw+3.14159265-face);
+  return figs.wrap_angle(face+d*a);
+}
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
-  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=face;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || (s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until);}
+  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || (s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until);}
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -4393,6 +4399,13 @@ lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {if f>=900 {re
 
 // Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
 lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int)->bool #export_c #effects(all) {
+  // the bow (docs/verse/bow-combat.md): the right button held draws and its release looses; the left
+  // button while drawing lets it down. The drag still turns the camera, which is the aim.
+  if s[0].creator[0].on && kind==0 && s[0].creator[0].experimental {
+    if button==2 && phase==0 {_:=xc_bow_begin(s,false);}
+    else if button==2 && phase==2 {_:=xc_bow_loose(s);}
+    else if button==0 && phase==0 && s[0].xc[0].draw[0].on && !s[0].xc[0].draw[0].self_loose && xc_bow_cancel(s) {return true;}
+  }
   if s[0].creator[0].on && kind==0 {if s[0].creator[0].experimental && button!=1 && button!=2 && lab_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && button!=1 && button!=2 && xc_pointer(s,x,y,phase,id) {return true;}return cc.mouse_pointer(s[0].creator[..],x,y,phase,id,button);}
   return lab_pointer(s,x,y,phase,kind,id);
 }
