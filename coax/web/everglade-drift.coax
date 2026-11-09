@@ -503,6 +503,36 @@ dr_rg_patrols :: (x: int, z: int) -> bool {
   #assert dr_rg_patrols(-6300, -56700) && dr_rg_patrols(0,-56800) && dr_rg_patrols(-300,-56800);
   #assert !dr_rg_patrols(6300,-55300) && !dr_rg_patrols(-6300,-55300); // the opposite gate post misses Bram's road endpoint
 }
+// The route's holds are wall-clock: on a loaded machine (the 100 ms profile of a room deploy, #13070)
+// it can end a metre off the admitted rectangle. Short strafes, the same on both pages at the same
+// steps (dr_both), bring both into its middle (x 0.8 to 2.2 m, z -58.3 to -59.2 m) by their places.
+dr_rg_nudge :: (x: int, z: int) -> int {
+  if x < 800 { return 3; } if x > 2200 { return 2; }
+  if z > -58300 { return 0; } if z < -59200 { return 1; }
+  return -1;
+}
+#test "the gravity rehearsal's settle strafes into the rectangle's middle and stops there (#13070)" {
+  #assert dr_rg_nudge(-80, -58800) == 3 && dr_rg_nudge(2600, -58800) == 2;
+  #assert dr_rg_nudge(1500, -57900) == 0 && dr_rg_nudge(1500, -59400) == 1;
+  #assert dr_rg_nudge(1140, -58680) == -1;
+  for x: [2]int.[800, 2200] { for z: [2]int.[-58300, -59200] { #assert drp_road(x, z); } }
+}
+dr_rg_settle :: (p: DrPair) {
+  keys := [4] string.["w", "s", "a", "d"]; codes := [4] string.["KeyW", "KeyS", "KeyA", "KeyD"]; vks := [4] int.[87, 83, 65, 68];
+  for attempt: 0..<16 {
+    proc_sleep(300);
+    k := -1;
+    for side: 0..<2 {
+      c := ifx side == 0 then p.a else p.b;
+      x := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
+      z := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
+      if x == -999999 || z == -999999 { return; }
+      if k < 0 { k = dr_rg_nudge(x, z); }
+    }
+    if k < 0 { return; }
+    dr_both_key(p, true, keys[k], codes[k], vks[k]); proc_sleep(120); dr_both_key(p, false, keys[k], codes[k], vks[k]);
+  }
+}
 dr_rg_ready :: (c: [] Cdp) -> bool {
   x := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
   z := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
@@ -557,6 +587,7 @@ dr_script :: (p: DrPair, dir: string) -> bool {
   // the field instead of clipping their centers at its 15.24 m boundary.
   dr_both_key(p,true,"w","KeyW",87);proc_sleep(300);dr_both_key(p,false,"w","KeyW",87);
   dr_both_key(p,true,"d","KeyD",68);proc_sleep(200);dr_both_key(p,false,"d","KeyD",68);proc_sleep(500);
+  dr_rg_settle(p);
   dr_mark(p, "rg");
   rg_ready := dr_rg_ready(p.a); rg_ready_b := dr_rg_ready(p.b);
   // a round (6 s) between casts: the rules' one action a round
