@@ -14,6 +14,9 @@
 // (a dead end), M the passage south, O the storeroom (a dead end), K the hall's south passage, Q the
 // treasure nook (a dead end), L the antechamber and N the boss's hall at the far end.
 #module "verse.experimentaldungeon";
+#load "../aethyr/visibility.coax" as vis;   // lines of sight through the walls (#13073)
+#load "../aethyr/query.coax" as dq;
+#load "../aethyr/space.coax" as dsp;
 
 DG_X0 :: -48.0;       // the block's west edge
 DG_Z0 :: -44.0;       // its north edge (the entrance side); rows run south, to lower z
@@ -249,13 +252,44 @@ dg_blocked :: (x:f32,z:f32,pad:f32)->bool {
  for i:0..<n {o:=i*6;if b[o+1]>1.5 || b[o+4]<0.2 {continue;}if x>b[o]-pad && x<b[o+3]+pad && z>b[o+2]-pad && z<b[o+5]+pad {return true;}}return false;
 }
 // Whether one standing at (x0, z0) sees (x1, z1): no wall or arch between, inside the dungeon or
-// across its outer wall. Furnishings do not hide you.
+// across its outer wall. Furnishings do not hide you. The line runs DG_SIGHT_EYE over the floor
+// through Aethyr's visibility service (aethyr/visibility.coax, #13073), against the walls' and
+// arches' boxes (dg_boxes, tall), gathered DG_SIGHT_CHUNK metres of the line at a time.
+DG_SIGHT_EYE :: 1.5;
+DG_SIGHT_CHUNK :: 10.0;
+DG_SIGHT_BOXES :: 200;   // boxes one chunk may gather: about three times the most a 10 m chunk meets
 dg_sight :: (x0:f32,z0:f32,x1:f32,z1:f32)->bool {
  if !dg_inside(x0,z0,1) && !dg_inside(x1,z1,1) {return true;}
- dx:=x1-x0;dz:=z1-z0;d:=sqrt(dx*dx+dz*dz);steps:=cast(int)(d/0.4)+1;
- for k:1..<steps {t:=f32(k)/f32(steps);px:=x0+dx*t;pz:=z0+dz*t;
-  if dg_solid(px,pz) {return false;}}
+ dx:=x1-x0;dz:=z1-z0;d:=sqrt(dx*dx+dz*dz);parts:=cast(int)(d/f32(DG_SIGHT_CHUNK))+1;
+ land:vis.VisTerrain;
+ for k:0..<parts {
+  a:=f32(k)/f32(parts);b:=f32(k+1)/f32(parts);
+  boxes:[DG_SIGHT_BOXES*6]f32;n:=dg_boxes(x0+dx*(a+b)*0.5,z0+dz*(a+b)*0.5,d*(b-a)*0.5+1,boxes[..],0,true);
+  if n>=DG_SIGHT_BOXES {return false;}   // full: some box may be missing, so don't claim a clear line
+  q:=vis.VisQuery.{eye=dsp.world_point(x0+dx*a,f32(DG_SIGHT_EYE),z0+dz*a),target=vis.VisTarget.{at=dsp.world_point(x0+dx*b,f32(DG_SIGHT_EYE),z0+dz*b),slack=0}};
+  v:=vis.vis_line(dq.Colliders.{ground_enabled=false,boxes=boxes[0..<n*6]},land,q);
+  if v.status!=vis.VisStatus.visible {return false;}
+ }
  return true;
+}
+// The walk dg_sight used before the visibility service: points 0.4 m apart against dg_solid. The
+// checks hold the service to it.
+dg_sight_sampled :: (x0:f32,z0:f32,x1:f32,z1:f32)->bool {
+ if !dg_inside(x0,z0,1) && !dg_inside(x1,z1,1) {return true;}
+ dx:=x1-x0;dz:=z1-z0;d:=sqrt(dx*dx+dz*dz);steps:=cast(int)(d/0.4)+1;
+ for k:1..<steps {t:=f32(k)/f32(steps);if dg_solid(x0+dx*t,z0+dz*t) {return false;}}
+ return true;
+}
+#test "the service's line of sight sees nothing the sampled walk did not, and agrees almost everywhere" #steps 3000000000 {
+ same:=0;all:=0;
+ for i:0..<48 {for j:0..<12 {
+  a:=DG_SPAWN[i%DG_SPAWNS];c0:=(i*7+j*3)%DG_COLS;r0:=(i*5+j*11)%DG_ROWS;if !dg_floor(c0,r0) {continue;}
+  x1:=dg_x(c0)+1.3+f32(j%3);z1:=dg_z(r0)-1.1-f32(j%4)*0.8;
+  s:=dg_sight(a[0],a[1],x1,z1);o:=dg_sight_sampled(a[0],a[1],x1,z1);
+  if s {#assert o;}
+  all+=1;if s==o {same+=1;}
+ }}
+ #assert all>200 && same*100>=all*97;
 }
 // Whether (x, z) is inside a wall or an arch's post: the walls round its cell and the arches near it.
 dg_solid :: (x:f32,z:f32)->bool {

@@ -20,6 +20,7 @@
 #load "../../aethyr/character-appearance.coax" as appearance;
 VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
+#load "../../aethyr/action/attach-overlap.coax" as overlap;   // a held item through the body (#13073)
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's world: the mouse looks round with no button held
 #load "../../aethyr/cam/firstperson.coax" as fpcam;   // zoomed all the way in, the camera is your eyes
 #load "../../aethyr/action/mount.coax" as mount;
@@ -486,17 +487,13 @@ CC_ARROW_NOCK :: 0.728;
 bow_string :: (h:[]HeldPieces,female:bool,aim:f32,nocked:bool,b:[]figs.Bodies,out:[]f32,w:[12]f32) {
  o:=ifx female then 3 else 0;
  // the bow's frame (w: origin, then X, Y, Z columns, each scaled by the kit's scale)
- org:=[3]f32.[w[0],w[1],w[2]];bx:=[3]f32.[w[3],w[4],w[5]];by:=[3]f32.[w[6],w[7],w[8]];bz:=[3]f32.[w[9],w[10],w[11]];
- up:=[3]f32.[org[0]+bx[0]*f32(CC_STRING_X)+by[0]*f32(CC_STRING_Y),org[1]+bx[1]*f32(CC_STRING_X)+by[1]*f32(CC_STRING_Y),org[2]+bx[2]*f32(CC_STRING_X)+by[2]*f32(CC_STRING_Y)];
- dn:=[3]f32.[org[0]+bx[0]*f32(CC_STRING_X)-by[0]*f32(CC_STRING_Y),org[1]+bx[1]*f32(CC_STRING_X)-by[1]*f32(CC_STRING_Y),org[2]+bx[2]*f32(CC_STRING_X)-by[2]*f32(CC_STRING_Y)];
- rest:=[3]f32.[(up[0]+dn[0])*0.5,(up[1]+dn[1])*0.5,(up[2]+dn[2])*0.5];
+ org:=[3]f32.[w[0],w[1],w[2]];bx:=[3]f32.[w[3],w[4],w[5]];bz:=[3]f32.[w[9],w[10],w[11]];
  // the draw hand's fist, in the world
  hr:=figs.bd_hand(b,out[4],out[5],out[6],false);
  f:=cc_pose_point(hr,[3]f32.[b[0].hand_at[o]+CC_FIST[0],b[0].hand_at[o+1]+CC_FIST[1],b[0].hand_at[o+2]+CC_FIST[2]]);
  c:=cos(out[3]);sn:=sin(out[3]);
  fist:=[3]f32.[f[0]*c+f[2]*sn+out[0],f[1]+out[1],-f[0]*sn+f[2]*c+out[2]];
- k:=ifx nocked then aim else 0.0f32;
- nock:=[3]f32.[rest[0]+(fist[0]-rest[0])*k,rest[1]+(fist[1]-rest[1])*k,rest[2]+(fist[2]-rest[2])*k];
+ pts:=bow_string_points(w,fist,ifx nocked then aim else 0.0f32);up:=pts[0];dn:=pts[1];nock:=pts[2];
  for half:0..<2 {
   tip:=ifx half==0 then up else dn;
   // the string's mesh maps by Y from -CC_STRING_Y (this tip) to +CC_STRING_Y (the nock)
@@ -515,6 +512,17 @@ bow_string :: (h:[]HeldPieces,female:bool,aim:f32,nocked:bool,b:[]figs.Bodies,ou
   q:=[12]f32.[nock[0]+d[0]*l,nock[1]+d[1]*l,nock[2]+d[2]*l,e[0]*a,e[1]*a,e[2]*a,d[0]*a,d[1]*a,d[2]*a,g[0]*a,g[1]*a,g[2]*a];
   held_put(h,6,q);
  }
+}
+// The string's tips (up, then down) and its nock point, from the bow's frame w (bow_matrix) and the
+// draw hand's fist: at rest the nock is the string's middle, pulled `k` of the way to the fist.
+// bow_string draws these, and the overlap check (#13073) tests them against the body.
+bow_string_points :: (w:[12]f32,fist:[3]f32,k:f32)->[3][3]f32 {
+ org:=[3]f32.[w[0],w[1],w[2]];bx:=[3]f32.[w[3],w[4],w[5]];by:=[3]f32.[w[6],w[7],w[8]];
+ up:=[3]f32.[org[0]+bx[0]*f32(CC_STRING_X)+by[0]*f32(CC_STRING_Y),org[1]+bx[1]*f32(CC_STRING_X)+by[1]*f32(CC_STRING_Y),org[2]+bx[2]*f32(CC_STRING_X)+by[2]*f32(CC_STRING_Y)];
+ dn:=[3]f32.[org[0]+bx[0]*f32(CC_STRING_X)-by[0]*f32(CC_STRING_Y),org[1]+bx[1]*f32(CC_STRING_X)-by[1]*f32(CC_STRING_Y),org[2]+bx[2]*f32(CC_STRING_X)-by[2]*f32(CC_STRING_Y)];
+ rest:=[3]f32.[(up[0]+dn[0])*0.5,(up[1]+dn[1])*0.5,(up[2]+dn[2])*0.5];
+ nock:=[3]f32.[rest[0]+(fist[0]-rest[0])*k,rest[1]+(fist[1]-rest[1])*k,rest[2]+(fist[2]-rest[2])*k];
+ return [3][3]f32.[up,dn,nock];
 }
 // Kit k's place in the world: its translation, then its X, Y and Z columns (four by three), from the
 // hand's pose h (three rows of four, bd_hand), the hand's bind position, and the figure's turn and place.
@@ -723,6 +731,79 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
 #test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends" #steps 2000000000 {
  room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,1);two_hand_rooms(room[..],1,true,1);
  for r:12..<18 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
+}
+// ---- the bow through the body (#13073): every pose the Ranger shows, the bow's limbs, its string and
+// the nocked arrow tested against the body's capsules with Aethyr's attachment overlap check
+// (aethyr/action/attach-overlap.coax). The bow is placed as held_weapon places it (bow_matrix,
+// bow_string_points); the body's capsules are joint to joint, metres round:
+CC_BODY_N :: 11;
+CC_BODY :: [11][3]int.[
+ [3]int.[8,9,45],[3]int.[9,10,38],[3]int.[32,33,45],[3]int.[33,34,38],   // upper arms and forearms (mm round)
+ [3]int.[55,56,70],[3]int.[56,57,50],[3]int.[60,61,70],[3]int.[61,62,50],   // thighs and shins
+ [3]int.[2,4,140],[3]int.[5,6,55],[3]int.[6,-1,110]];                       // the torso, the neck, the skull (up the head joint)
+CC_STRING_R :: 0.004;    // metres round the string, the limbs and the arrow's shaft
+CC_LIMB_R :: 0.018;
+CC_ARROW_R :: 0.005;
+CC_ARROW_LONG :: 0.757;  // the arrow, nock to point (CC_ARROW_SCALE times the packed 1.456)
+cc_wp :: (p:[3]f32)->overlap.WorldPoint {return overlap.world_point(p[0],p[1],p[2]);}
+// The body's capsules in pose pal, from its joints' bind positions.
+cc_body_capsules :: (pal:[]f32,bind:[][3]f32,out:[]overlap.OverlapCapsule)->int {
+ for i:0..<CC_BODY_N {r:=CC_BODY[i];a:=cc_joint_at(pal,r[0],bind[r[0]]);b:=a;
+  if r[1]>=0 {b=cc_joint_at(pal,r[1],bind[r[1]]);}
+  else {u:=cc_joint_up(pal,r[0]);b=[3]f32.[a[0]+u[0]*0.18,a[1]+u[1]*0.18,a[2]+u[2]*0.18];a=[3]f32.[a[0]+u[0]*0.08,a[1]+u[1]*0.08,a[2]+u[2]*0.08];}
+  out[i]=overlap.OverlapCapsule.{id=r[0],a=cc_wp(a),b=cc_wp(b),radius=f32(r[2])*0.001};
+ }
+ return CC_BODY_N;
+}
+// The bow's pieces in pose pal, its string pulled k of the way to the draw fist (nocked: the arrow too):
+// 0 and 1 the limbs, grip to tip; 2 and 3 the string's halves, tip to nock; 4 the arrow.
+cc_bow_pieces :: (pal:[]f32,bind:[][3]f32,k:f32,nocked:bool,out:[]overlap.OverlapPiece)->int {
+ hl:[12]f32;hr:[12]f32;for i:0..<12 {hl[i]=pal[figs.BD_HAND_L*12+i];hr[i]=pal[figs.BD_HAND*12+i];}
+ w:=bow_matrix(hl,bind[figs.BD_HAND_L],k,0,[3]f32.[0,0,0]);
+ hand:=bind[figs.BD_HAND];fist:=cc_pose_point(hr,[3]f32.[hand[0]+CC_FIST[0],hand[1]+CC_FIST[1],hand[2]+CC_FIST[2]]);
+ pts:=bow_string_points(w,fist,ifx nocked then k else 0.0f32);
+ g:=f32(CC_BOW_GRIP_X);grip:=[3]f32.[w[0]+w[3]*g,w[1]+w[4]*g,w[2]+w[5]*g];
+ out[0]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=0,a=cc_wp(grip),b=cc_wp(pts[0]),radius=f32(CC_LIMB_R)}};
+ out[1]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=1,a=cc_wp(grip),b=cc_wp(pts[1]),radius=f32(CC_LIMB_R)}};
+ out[2]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=2,a=cc_wp(pts[0]),b=cc_wp(pts[2]),radius=f32(CC_STRING_R)}};
+ out[3]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=3,a=cc_wp(pts[1]),b=cc_wp(pts[2]),radius=f32(CC_STRING_R)}};
+ if !nocked || k<=0.05 {return 4;}
+ n:=pts[2];d:=cc_unit([3]f32.[grip[0]-n[0],grip[1]-n[1],grip[2]-n[2]]);l:=f32(CC_ARROW_LONG);
+ out[4]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=4,a=cc_wp(n),b=cc_wp([3]f32.[n[0]+d[0]*l,n[1]+d[1]*l,n[2]+d[2]*l]),radius=f32(CC_ARROW_R)}};
+ return 5;
+}
+// The deepest overlap of the bow with the body over clips c0 to c1 (base clips, or figs.BD_BOW for the
+// draw and its release), every frame, on both bodies.
+cc_bow_sweep :: (c0:int,c1:int)->overlap.OverlapHit {
+ own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
+ pal:[figs.BD_ROWS*4]f32;sweep:overlap.OverlapHit;
+ for body:0..<2 {female:=body==1;rig:=figs.people_rig(ppl[..],female);
+  bind:[figs.PEOPLE_JOINTS][3]f32;for j:0..<figs.PEOPLE_JOINTS {bind[j]=figs.bd_bind_at(rig.bind[j*12..<j*12+12]);}
+  for c:c0..<c1+1 {n:=ifx c==figs.BD_BOW then figs.BOW_POSE_FRAMES else figs.BD_FRAMES[c];
+   for f:0..<n {
+    cc_pose(own[..],ppl[..],female,c,f,pal[..]);
+    nocked:=c==figs.BD_BOW && f<figs.BOW_POSE_DRAWS;k:=ifx nocked then f32(f)/f32(figs.BOW_POSE_DRAWS-1) else 0.0f32;
+    bones:[CC_BODY_N]overlap.OverlapCapsule;nb:=cc_body_capsules(pal[..],bind[..],bones[..]);
+    pieces:[5]overlap.OverlapPiece;np:=cc_bow_pieces(pal[..],bind[..],k,nocked,pieces[..]);
+    sweep=overlap.overlap_keep(sweep,overlap.overlap_pose(bones[0..<nb],pieces[0..<np],0),c+body*1000,f);
+   }}
+ }
+ return sweep;
+}
+#test "the drawn bow's limbs, string and arrow stay out of the body, both bodies, every frame" #steps 2000000000 {
+ h:=cc_bow_sweep(figs.BD_BOW,figs.BD_BOW);#assert h.status==overlap.OverlapStatus.clear && h.poses==2*figs.BOW_POSE_FRAMES;
+}
+#test "the carried bow stays out of the body standing, walking and running" #steps 2000000000 {
+ h:=cc_bow_sweep(figs.BD_IDLE,figs.BD_RUN);#assert h.status==overlap.OverlapStatus.clear;
+}
+#test "the carried bow stays out of the body through a jump" #steps 2000000000 {
+ h:=cc_bow_sweep(figs.BD_JUMP_START,figs.BD_JUMP_LAND);#assert h.status==overlap.OverlapStatus.clear;
+}
+#test "the carried bow stays out of the body through a blow, a cast and a knock back" #steps 2000000000 {
+ h:=cc_bow_sweep(figs.BD_SLASH,figs.BD_KNOCK);#assert h.status==overlap.OverlapStatus.clear;
+}
+#test "the carried bow stays out of the body as you fall" #steps 2000000000 {
+ h:=cc_bow_sweep(figs.BD_DIE,figs.BD_DIE);#assert h.status==overlap.OverlapStatus.clear;
 }
 #test "a two-hander's haft runs from the right fist through the left" {
  id:=[12]f32.[1,0,0,0, 0,1,0,0, 0,0,1,0];hand:=[3]f32.[-0.1,1.0,0.3];hl:=[3]f32.[-0.1-0.075-0.075,1.0+0.4,0.3];

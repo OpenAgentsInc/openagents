@@ -86,11 +86,35 @@ and off screen count as hidden.
 
 | Layer | Owns | Files |
 | --- | --- | --- |
-| Engine | The query, both sources, the settle state | `aethyr/visibility.coax` |
-| Game | The world's colliders and land for a line | `verse/experimental-dungeon.coax` (`dg_sight`), `verse/experimental-village.coax` |
+| Engine | The query, both sources, the settle state; the overlap geometry | `aethyr/visibility.coax`, `aethyr/action/attach-overlap.coax` |
+| Game | The world's colliders and land for a line; posing an item for the check | `verse/experimental-dungeon.coax` (`dg_sight`), `verse/experimental-village.coax` (`ev_sight`), `charactercreator.coax` (`cc_bow_sweep`) |
 | Zone | Wiring: which eye, which target, which hold | the zone's HUD and combat files |
 
+`dg_sight` is the dungeon's line of sight. Monster sight (`hostile_sees`),
+targeting through walls, the familiar's line and the dungeon's draw culling
+all call it, so they all run on the service. `ev_sight` is Experimental's
+line for plates, bars and numbers: the village's and castle's walls, the
+scene's solid props, the dungeon and its roof, and the meadow's land.
+
 Zones only wire the service in. A zone never walks its own line.
+
+## Attachment overlap
+
+A held item that passes through its holder is the same kind of bug: the
+bowstring ran through the forearm. `aethyr/action/attach-overlap.coax` checks
+it in every pose. A realm describes a pose as capsules: the body's bones and
+the item's pieces (a bow's limbs, the string's halves, the nocked arrow, a
+blade). `overlap_pose(bones, pieces, slack)` returns the deepest overlap and
+which piece and bone; a piece names up to two bones it may touch, such as the
+hand that grips it. `overlap_keep` keeps the deepest pose over a sweep, with
+its clip and frame, so a failing check says where to look.
+
+The realm owns the posing. Experimental's check (`cc_bow_sweep` in
+`apps/openagents-web/charactercreator.coax`) samples every frame of every
+base clip and of the bow's draw and release, on both bodies, and places the
+bow with the same `bow_matrix` and `bow_string_points` that draw it. The
+body's capsules run joint to joint: upper arms and forearms, thighs and
+shins, the torso, the neck and the skull. A check fails on any overlap.
 
 ## Rules
 

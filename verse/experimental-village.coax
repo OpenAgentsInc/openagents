@@ -15,6 +15,7 @@
 #load "../aethyr/collide.coax" as collision;
 #load "../aethyr/query.coax" as query;
 #load "../aethyr/space.coax" as space;
+#load "../aethyr/visibility.coax" as vis;   // what an eye sees through the village (#13073)
 
 EV_WALLS :: 1024;
 EV_FLOORS :: 16;
@@ -236,6 +237,52 @@ ev_castle_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
  for i:0..<castle.CASTLE_SEGMENTS {p:=castle.castle_segment(i);hx:=ifx p[2]==0 then 1.02f32 else 0.23f32;hz:=ifx p[2]==0 then 0.23f32 else 1.02f32;
   if abs(x-p[0])>reach+hx || abs(z-p[1])>reach+hz {continue;}site:=terrain.ExpSite.{x=p[0],z=p[1]};y:=terrain.exp_height(p[0],p[1])-ground;ev_house_box(out,site,0,[6]f32.[-hx,y-0.15,-hz,hx,y+6.1,hz]);
  }
+}
+// ---- sight (#13073): the village's and castle's walls, the scene's solid props, the dungeon (its
+// roof too) and the meadow's land, as Aethyr's visibility service takes them. Bushes don't hide.
+// The walls are gathered EV_SIGHT_CHUNK metres of the line at a time, in world heights.
+EV_SIGHT_CHUNK :: 8.0;
+EV_SIGHT_BOXES :: 1024;
+EvSight :: struct {near:[1]EvNear;boxes:[EV_SIGHT_BOXES*6]f32;n:int;full:bool;}
+// The boxes round the line from the eye to (x, z), in world heights, into s.
+ev_sight_gather :: (s:[]EvSight,ex:f32,ez:f32,x:f32,z:f32) {
+ s[0].n=0;s[0].full=false;dx:=x-ex;dz:=z-ez;d:=sqrt(dx*dx+dz*dz);parts:=cast(int)(d/f32(EV_SIGHT_CHUNK))+1;
+ for k:0..<parts {
+  a:=f32(k)/f32(parts);b:=f32(k+1)/f32(parts);mx:=ex+dx*(a+b)*0.5;mz:=ez+dz*(a+b)*0.5;
+  ev_near_radius(s[0].near[..],mx,mz,d*(b-a)*0.5+1,true);g:=terrain.exp_height(mx,mz);
+  if s[0].near[0].overflow {s[0].full=true;}
+  for i:0..<s[0].near[0].wall_n {
+   if s[0].n>=EV_SIGHT_BOXES {s[0].full=true;return;}
+   o:=i*6;t:=s[0].n*6;for c:0..<6 {s[0].boxes[t+c]=s[0].near[0].walls[o+c];}s[0].boxes[t+1]+=g;s[0].boxes[t+4]+=g;s[0].n+=1;
+  }
+ }
+}
+// Whether an eye at (ex, ey, ez) sees a target standing at (x, y, z): `points` points from there up
+// `rise` metres (a body's feet to its head). For name plates, health bars and damage numbers. An
+// answer whose walls didn't all fit is invalid, so the caller keeps what it showed.
+ev_sight :: (s:[]EvSight,ex:f32,ey:f32,ez:f32,x:f32,y:f32,z:f32,rise:f32,points:int)->vis.Visibility {
+ q:=vis.VisQuery.{eye=space.world_point(ex,ey,ez),target=vis.VisTarget.{at=space.world_point(x,y,z),rise=rise,points=points}};
+ land:vis.VisTerrain;land.count=vis.vis_terrain_count(q);
+ for k:0..<land.count {p:=vis.vis_terrain_point(q,k);land.heights[k]=terrain.exp_height(p.x,p.z);}
+ ev_sight_gather(s,ex,ez,x,z);
+ if s[0].full {return vis.Visibility.{source=vis.VisSource.line};}
+ return vis.vis_line(query.Colliders.{ground_enabled=false,boxes=s[0].boxes[0..<s[0].n*6]},land,q);
+}
+#test "the village's walls, the dungeon's roof and the meadow's land hide what is behind them" #steps 400000000 {
+ s:[1]EvSight;
+ // in the open: 10 m apart on the spawn's clear ground
+ g:=terrain.exp_height(0,0);
+ v:=ev_sight(s[..],0,g+1.7,0,0,terrain.exp_height(0,-10),-10,1.8,3);#assert v.status==vis.VisStatus.visible && v.seen==3;
+ // a house: its four walls and roof hide the middle from outside (site 9's 4 m square)
+ h:=terrain.exp_site(9);hy:=terrain.exp_height(h.x,h.z);
+ w:=ev_sight(s[..],h.x,hy+1.6,h.z-9,h.x,hy,h.z,1.5,3);#assert w.status==vis.VisStatus.occluded && w.blocker==vis.VisBlocker.collider;
+ // above the dungeon's roof, looking down at a monster in the entrance hall: the roof hides it
+ dy:=terrain.exp_height(-38,-54);
+ r:=ev_sight(s[..],-38,dy+12,-45,-38,dy,-54,1.5,3);#assert r.status==vis.VisStatus.occluded && !s[0].full;
+ // inside the hall it shows
+ i:=ev_sight(s[..],-45,dy+1.7,-47,-31,dy,-58,1.5,3);#assert i.status==vis.VisStatus.visible;
+ // an eye under the land is hidden by it
+ u:=ev_sight(s[..],0,g-3,0,0,terrain.exp_height(0,-10),-10,1.8,3);#assert u.status==vis.VisStatus.occluded && u.blocker==vis.VisBlocker.terrain;
 }
 ev_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,4,true);}
 ev_camera_near :: (out:[]EvNear,x:f32,z:f32) {ev_near_radius(out,x,z,9,true);}
