@@ -7,21 +7,25 @@
 
 E2rPoint :: struct { x:int; y:int; }
 e2r_use :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int)->bool #effects(all) {
-  return e2r_request(b,seats,klass,slot,null);
+  return e2r_request(b,seats,klass,slot,null,-1);
 }
 e2r_use_at :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,x:int,y:int)->bool #effects(all) {
-  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}));
+  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),-1);
 }
-e2r_request :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?)->bool #effects(all) {
-  switch e2r_atomic(b,seats,klass,slot,point) { case none { return false; } case some(ok) { return ok; } }
+// A creature the room chose for a Touch spell such as Revivify; the shared rules judge it.
+e2r_use_on :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,target:int)->bool #effects(all) {
+  return e2r_request(b,seats,klass,slot,null,target);
 }
-e2r_atomic :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?)->bool? #effects(all) {
+e2r_request :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool #effects(all) {
+  switch e2r_atomic(b,seats,klass,slot,point,target) { case none { return false; } case some(ok) { return ok; } }
+}
+e2r_atomic :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool? #effects(all) {
   #transaction {
-    if !e2r_apply(b,seats,klass,slot,point) { return null; }
+    if !e2r_apply(b,seats,klass,slot,point,target) { return null; }
   }
   return some(true);
 }
-e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?)->bool #effects(all) {
+e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool #effects(all) {
   i:=seats[0].me;
   if i<0 || i>=b[0].n { return false; }
   e:=xk_entry_at(klass,b[0].c[i].level,slot);   // the seat's own level's bar (#13046)
@@ -40,6 +44,8 @@ e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?)->b
         }
       }
     }
+  } else if e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY {
+    ok=target>=0 && target<b[0].n && fb_cast(b,i,e.ab,-1,b[0].c[i].x,b[0].c[i].y,target);
   } else { ok=e2r_dispatch(b,i,e.ab); }
   fb_seat_out(b,seats);
   return ok;

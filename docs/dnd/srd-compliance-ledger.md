@@ -611,7 +611,7 @@ Each feature then resolves against its text with fixed dice in
 | Monk (Open Hand) | Martial Arts, Unarmored Defense, Monk's Focus (Flurry, Patient Defense, Step of the Wind), Unarmored Movement, Uncanny Metabolism, Deflect Attacks, Open Hand Technique, ASI, Slow Fall, Extra Attack, Stunning Strike, Empowered Strikes, Wholeness of Body; `monk-features.coax` | Step of the Wind doubles the shared jump envelope in Experimental |
 | Paladin (Devotion) | Lay On Hands, Spellcasting, Weapon Mastery (Sap, Slow), Fighting Style (Blessed Warrior: Sacred Flame and Guidance at 2), Paladin's Smite, Channel Divinity (Divine Sense, in `paladin-features.coax`), Oath of Devotion Spells (Protection from Evil and Good, Shield of Faith, Aid, Zone of Truth), Sacred Weapon, ASI, Extra Attack, Faithful Steed (its use), Aura of Protection | Find Steed still needs execution. Zone of Truth records saves in both worlds. World chat has no declared-lie action. Experimental offers Guidance's skill choices. Everglade II currently uses Perception for its self control. Both worlds provide one Protection flask per visit. The used creature subset has no possession executor. |
 | Ranger (Hunter) | Spellcasting, Favored Enemy, Weapon Mastery (Vex, Slow), Deft Explorer (Survival Expertise), Fighting Style (Archery), Hunter's Lore (in `ranger-features.coax`), Hunter's Prey (Colossus Slayer), ASI, Extra Attack, Roving | Done; Deft Explorer's languages are the world's |
-| Cleric (Life) | Spellcasting, Divine Order (Protector), Channel Divinity (Divine Spark, in `cleric-features.coax`, and Turn Undead), Life Domain Spells (Aid, Bless, Cure Wounds and Lesser Restoration at 3, Mass Healing Word and Revivify at 5), Disciple of Life, Preserve Life, ASI, Sear Undead, Blessed Healer (now told as its own feature) | Revivify runs in the shared battle for recorded combat deaths. Both world controls and diamond supply are still pending. Protector's equipment training still needs a model. Aid and Lesser Restoration have self hotbar controls. The shared cast requests support up to three Aid targets and an explicit Lesser Restoration target and condition. |
+| Cleric (Life) | Spellcasting, Divine Order (Protector), Channel Divinity (Divine Spark, in `cleric-features.coax`, and Turn Undead), Life Domain Spells (Aid, Bless, Cure Wounds and Lesser Restoration at 3, Mass Healing Word and Revivify at 5), Disciple of Life, Preserve Life, ASI, Sear Undead, Blessed Healer (now told as its own feature) | Revivify runs in the shared battle for recorded combat deaths. Experimental touches the nearest fallen monster and Everglade II the nearest dead, unblocked player; each world supplies one diamond a visit. Protector's equipment training still needs a model. Aid and Lesser Restoration have self hotbar controls. The shared cast requests support up to three Aid targets and an explicit Lesser Restoration target and condition. |
 | Bard (Lore) | Bardic Inspiration (d6, d8 at 5), Spellcasting, Expertise, Jack of All Trades, Bonus Proficiencies, Cutting Words, ASI, Font of Inspiration, Magical Discoveries (Fireball, Spirit Guardians) | Done |
 | Wizard (Evoker) | Spellcasting (a book of six level 1 spells and two a level), Ritual Adept, Arcane Recovery, Scholar (Arcana Expertise), Evocation Savant (two free Evocation spells at 3, one more at 5), Potent Cantrip, ASI, Memorize Spell (in `wizard-features.coax`), Sculpt Spells | Done; Ritual Adept casts a spellbook Ritual through `ritual-cast.coax` (#13038) |
 | Warlock (Fiend) | Eldritch Invocations (Armor of Shadows; Agonizing and Repelling Blast at 2; Fiendish Vigor and Eldritch Mind at 5), Pact Magic, Magical Cunning (in `warlock-features.coax`), Dark One's Blessing, Fiend Spells, ASI, Dark One's Own Luck | Fiend Spells still needs Suggestion at 3 and Stinking Cloud at 5 (p. 75). |
@@ -1037,7 +1037,7 @@ declared-lie input or affected-creature prompt. The world fixtures verify
 sphere placement and saves on the shared grid. They do not establish
 occlusion for the persistent sphere in world geometry.
 
-### Epic #13030 acceptance audit in progress
+### Epic #13030 acceptance audit
 
 Reviewed against main at `03bda2786f`. All nine active child issues are
 closed as completed. The epic's five acceptance items need their own
@@ -1069,3 +1069,21 @@ Owl's indexed draw (first index 2,512,927, 240 indices, packed vertex word
 from before the familiar snapshot change also accepted an Owl summon
 from a level 2 Druid and spent one Wild Shape use. The current native
 room-to-browser playthrough is still pending.
+
+Closing record, 2026-11-08. Revivify now runs in both worlds. With it,
+the Life Cleric and Devotion Paladin grants at levels 1–5 have shared
+execution, except Find Steed. The epic closes on its five active items
+with these slice limitations. Each one moves to
+[#13069](https://github.com/OpenAgentsInc/openagents/issues/13069):
+
+- Find Steed, five Draconic Sorcerer spells (Alter Self, Chromatic Orb,
+  Dragon's Breath, Fear, Fly) and two Fiend Warlock spells (Suggestion,
+  Stinking Cloud). Neither preset offers these spells on its hotbar, so no
+  displayed control is left without a resolver.
+- Protector equipment training, a Hide control, familiar flight and the
+  remaining form traits, and Zone of Truth's chat input.
+- A current native Everglade II room-to-browser familiar receipt.
+
+Everglade II keeps its declared social profile and fields no monsters.
+The owner never chose another profile, so the slice keeps the current
+one.

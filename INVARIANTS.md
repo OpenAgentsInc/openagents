@@ -7665,3 +7665,11 @@ Failure belongs to that sphere and prevents deliberate lies while inside.
 Releasing the zone clears only its own save state. Experimental keeps the
 center in world coordinates while projecting the rules grid around the
 player. The Everglade II room tests entry after applying a seat's pose.
+
+## Revivify needs a recorded combat death within the last minute
+
+Lethal damage and a third failed death save record the battle time of
+death. Revivify admits only a dead creature with that record from the last
+60 seconds, within Touch and not behind Total Cover. It consumes the
+diamond and slot only on admission, then restores 1 Hit Point. Each world
+supplies one diamond a visit, and a preset change does not refill it.

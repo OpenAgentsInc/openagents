@@ -67,7 +67,8 @@ fairy 695000
 # Blessed Warrior Guidance and its skill picker: 2,672,742 bytes measured.
 # Devotion Protection adds persistent effect and component handling, measured at 2,674,265 bytes (#13030).
 # Zone of Truth world anchoring and shared saves, measured at 2,679,040 bytes (#13030).
-fivelab 2680000
+# Revivify: recorded combat deaths, corpse targeting and the diamond supply, measured at 2,685,797 bytes (#13030).
+fivelab 2686500
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
@@ -93,7 +94,8 @@ fivelab 2680000
 # measured; about 4% headroom.
 # Devotion Protection adds the hotbar and effect handling, measured at 720,314 bytes (#13030).
 # Zone of Truth hotbar and shared saves, measured at 721,014 bytes (#13030).
-everglade2 722000
+# Rock hulls in aethyr walk/collide/query (7afe501d33) and Revivify's room target (#13030): 755,675 bytes measured.
+everglade2 757000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1740000

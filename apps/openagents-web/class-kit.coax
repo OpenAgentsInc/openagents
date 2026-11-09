@@ -98,6 +98,9 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
   if n<out.count && rs_class_spell_granted(hero,SP_PROTECTION_GOOD_EVIL) {
     out[n]=fb_art_spell(SP_PROTECTION_GOOD_EVIL,FB_SELF,"shield"); n+=1;
   }
+  if n<out.count && rs_class_spell_granted(hero,SP_REVIVIFY) {
+    out[n]=fb_art_spell(SP_REVIVIFY,FB_ALLY,"healing-word"); n+=1;
+  }
   if n<out.count && rs_class_spell_granted(hero,SP_ZONE_OF_TRUTH) {
     out[n]=fb_art_spell(SP_ZONE_OF_TRUTH,FB_POINT,"hypnotic-pattern"); n+=1;
   }
@@ -232,6 +235,7 @@ xc_spell_sound :: (sp: int) -> XcSnd {
   if sp == SP_AID { return xs("arcane-cast", "heal", "", "", 0.95); }
   if sp == SP_GUIDANCE { return xs("levitate", "choir", "", "", 1.05); }
   if sp == SP_PROTECTION_GOOD_EVIL { return xs("hold", "choir", "", "", 1); }
+  if sp == SP_REVIVIFY { return xs("necro-cast", "heal", "", "", 0.9); }
   if sp == SP_ZONE_OF_TRUTH { return xs("entangle", "choir", "", "", 0.92); }
   if sp == SP_THUNDERWAVE { return xs("thunderwave", "thunder", "hit-heavy", "", 1); }
   if sp == SP_ENTANGLE { return xs("entangle", "", "", "", 1); }
@@ -364,6 +368,12 @@ xk_wire :: (c: int, a: FbAb) -> int {
   #assert wire>=0 && !xk_entry_at(FB_CL_PALADIN,2,wire).ok;
   entry:=xk_entry_at(FB_CL_PALADIN,3,wire);
   #assert entry.ok && entry.ab.sp==SP_PROTECTION_GOOD_EVIL && entry.ab.lvl==1 && entry.ab.tg==FB_SELF;
+}
+#test "the Life Cleric kit exposes Revivify from level 5" {
+  wire:=xk_wire(FB_CL_CLERIC,fb_spell(SP_REVIVIFY,3,FB_ALLY));
+  #assert wire>=0 && !xk_entry_at(FB_CL_CLERIC,4,wire).ok;
+  entry:=xk_entry_at(FB_CL_CLERIC,5,wire);
+  #assert entry.ok && entry.ab.sp==SP_REVIVIFY && entry.ab.lvl==3 && entry.ab.tg==FB_ALLY;
 }
 // The weapon class c's hero holds (its Attack's reach).
 xk_weapon :: (c: int) -> int { return ifx c >= 0 && c < FB_CL_N then fb_cl_hero(c, "", 0, XK_LEVEL).weapon else 0; }

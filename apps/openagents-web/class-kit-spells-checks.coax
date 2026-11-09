@@ -18,7 +18,7 @@
 
 // Spell, and the check that resolves it (aethyr/rules/srd/):
 //   C kit-cantrips-checks.coax, 1 kit-spells-checks.coax, H kit-spells-high-checks.coax
-XK_MANIFEST :: [29] int.[
+XK_MANIFEST :: [30] int.[
   SP_FIRE_BOLT,          // C  Sorcerer, Wizard
   SP_CHILL_TOUCH,        // C  Sorcerer, Warlock, Wizard
   SP_ELDRITCH_BLAST,     // C  Warlock
@@ -47,7 +47,8 @@ XK_MANIFEST :: [29] int.[
   SP_AID,                // slice-spells-checks.coax, Life Cleric 3 and Devotion Paladin 5
   SP_GUIDANCE,           // slice-spells-checks.coax, Blessed Warrior 2
   SP_PROTECTION_GOOD_EVIL, // slice-spells-checks.coax, Devotion Paladin 3
-  SP_ZONE_OF_TRUTH       // slice-spells-checks.coax, Devotion Paladin 5
+  SP_ZONE_OF_TRUTH,      // slice-spells-checks.coax, Devotion Paladin 5
+  SP_REVIVIFY            // slice-spells-checks.coax, Life Cleric 5
 ];
 xk_in_manifest :: (sp: int) -> bool { for m: XK_MANIFEST { if m == sp { return true; } } return false; }
 // Every spell a class's hero at `level` can use: its displayed kit and the Reactions it casts itself.

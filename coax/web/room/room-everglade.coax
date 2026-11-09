@@ -154,6 +154,7 @@ EgSeat :: struct {
   familiar:E2Familiar;
   familiar_incense_used:bool;
   protection_water_used:bool;
+  revivify_diamond_used:bool;
   familiar_hash:int; familiar_sent:int; familiar_sense_sent:int;
   // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
@@ -769,6 +770,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
       c[0].healer_kit=kit;
       if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,ifx st[0].familiar_incense_used then 0 else 1); }
       if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,st[0].protection_water_used); }
+      if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,st[0].revivify_diamond_used); }
     }
     ev_class(v, k, seat_id);
   }
@@ -863,16 +865,32 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   reach := ifx e.aim.kind == XC_AIM_SELF then 0.0f32 else e.aim.reach;
   if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
   r:=v[0].eg[k].rules[..];
-  if !e2r_use_at(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,e5r_sq(wc.ax),e5rr_z_cell(r,wc.az)) {
-    eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return;
-  }
+  revive:=e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY;
+  done:=ifx revive then e2r_use_on(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,eg_e2_corpse(v,k,seat))
+    else e2r_use_at(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,e5r_sq(wc.ax),e5rr_z_cell(r,wc.az));
+  if !done { eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return; }
   if e.ab.kind==FB_SPELL && e.ab.sp==SP_PROTECTION_GOOD_EVIL { st[0].protection_water_used=true; }
+  if revive { st[0].revivify_diamond_used=true; }
   st[0].last_cast = t;
   v[0].eg[k].e2_casts += 1;
   e2_kit_tell(v, k, seat_id, false);   // what the cast spent, at once
   b: [128] u8;
   n := wire_put_cast_e(b[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
   eg_event(v, k, cast(string) b[0..<n], me.x, me.z, false);
+}
+// Revivify's creature: the nearest dead player within Touch whom neither seat has blocked. The
+// shared rules judge the death's timing, reach and cover (aethyr/rules/srd/revivify.coax).
+eg_e2_corpse :: (v: [] RmServer, k: int, s: int) -> int {
+  room:=v[0].eg[k..<k+1]; rules:=room[0].rules[..]; b:=rules[0].b[..];
+  best:=1.524f32*1.524f32*2; target:=-1;
+  for j:0..<EG_SEATS {
+    if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
+    if (room[0].im[0].blocks[s] & (1 << j))!=0 || (room[0].im[0].blocks[j] & (1 << s))!=0 { continue; }
+    if !b[0].c[E5RR_SEAT+j].dead { continue; }
+    d:=e2_aid_distance(room[0].seat[s].pose,room[0].seat[j].pose);
+    if d<=best && (target<0 || d<best) { best=d; target=j; }
+  }
+  return ifx target<0 then -1 else E5RR_SEAT+target;
 }
 // L SEQ: a Long Rest. Between raids and out of combat only (room-events.coax ev_rest_ok); then the seat
 // is whole again and hears e rest SEAT, its page its own rest (everglade-rest.coax).
@@ -2518,6 +2536,38 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert b[0].book[0].seq==events+1 && b[0].c[target].truth_entered==1;
   rm_eg_moved(v[..],k,SeatId.{value=1},2,ax,p.y,az,0,0,0,0,1,0,0);
   #assert b[0].book[0].seq==events+1;
+}
+
+#test "Everglade II Revivify restores a dead player within Touch and spends the seat's one diamond" #steps 4000000000 {
+  v:[1]RmServer; rm_init(v[..]); rm_clock(v[..],0,1762190000000);
+  path:="GET /api/room/relay/everglade/pair-e2-revivify HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..],0,path)==0 && rm_join(v[..],1,path)==1;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-cleric-5 0 -");
+  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-fighter-5 0 -");
+  for q:0..<3 { eg_test_tick(v[..],k); }
+  room:=v[0].eg[k..<k+1]; b:=room[0].rules[0].b[..];
+  me:=E5RR_SEAT; ally:=me+1;
+  #assert b[0].c[me].materials[1].count==1;
+  slot:=xk_wire(FB_CL_CLERIC,fb_spell(SP_REVIVIFY,3,FB_ALLY));
+  room[0].seat[1].pose=room[0].seat[0].pose; room[0].seat[1].pose.x+=4;
+  for q:0..<2 { eg_test_tick(v[..],k); }
+  rs_damage(b,-1,ally,b[0].c[ally].hp+b[0].c[ally].hp_max,RS_FORCE,false,-1);
+  #assert b[0].c[ally].dead;
+  p:=room[0].seat[0].pose; msg:[128]u8;
+  slots:=b[0].c[me].slots[3];
+  n:=wire_put_cast(msg[..],0,WireCast.{seq=1,slot=slot,ax=p.x,ay=1,az=p.z});
+  rm_heard(v[..],0,cast(string)msg[0..<n]);
+  #assert b[0].c[ally].dead && b[0].c[me].slots[3]==slots && b[0].c[me].materials[1].count==1;
+  room[0].seat[1].pose.x-=3;
+  for q:0..<2 { eg_test_tick(v[..],k); }
+  #assert b[0].c[ally].dead;
+  n=wire_put_cast(msg[..],0,WireCast.{seq=2,slot=slot,ax=p.x,ay=1,az=p.z});
+  rm_heard(v[..],0,cast(string)msg[0..<n]);
+  #assert !b[0].c[ally].dead && b[0].c[ally].hp==1 && b[0].c[me].slots[3]==slots-1;
+  #assert room[0].seat[0].revivify_diamond_used && b[0].c[me].materials[1].count==0;
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-cleric-6 0 -");
+  #assert b[0].c[me].materials[1].count==0;
 }
 
 #test "everglade II room: a seat sits at the level its hello says, casts that level's kit, and hears its bar's counts (#13046)" #steps 4000000000 {

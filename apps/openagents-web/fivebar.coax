@@ -61,6 +61,10 @@ fb_art_spell :: (sp: int, tg: int, art: string) -> FbAb { a := fb_spell(sp, rs_s
 fb_paladin_protection_preset :: (c:[]RsCreature,used:bool) {
   c[0].materials[1]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_PROTECTION_GOOD_EVIL],count=ifx used then 0 else 1};
 }
+// The Life Cleric's one 300 GP diamond a visit, consumed by Revivify (p. 159).
+fb_cleric_revivify_preset :: (c:[]RsCreature,used:bool) {
+  c[0].materials[1]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_REVIVIFY],count=ifx used then 0 else 1};
+}
 
 // ---- 5E MMO: a class's bar at level 6, in slot order (the abilities its rules in the engine support)
 

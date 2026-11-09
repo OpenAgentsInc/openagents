@@ -75,6 +75,7 @@ XcCombat :: struct {
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
   familiar_incense:int=1; // one Lab supply, carried across preset changes
   protection_water_used:bool;
+  revivify_diamond_used:bool; // one Lab diamond, carried across preset changes
   truth_x:[RS_ZONES]f32; truth_z:[RS_ZONES]f32;
   truth_inside:[XC_FOES+2]int;
   objects:[XC_OBJECTS]XcObject;
@@ -232,6 +233,7 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   b[0].c[0] = fb_cl_hero(c, "You", 0, x[0].level);
   if c==FB_CL_WIZARD { fb_wizard_familiar_preset(b[0].c[0..<1],x[0].familiar_incense); }
   if c==FB_CL_PALADIN { fb_paladin_protection_preset(b[0].c[0..<1],x[0].protection_water_used); }
+  if c==FB_CL_CLERIC { fb_cleric_revivify_preset(b[0].c[0..<1],x[0].revivify_diamond_used); }
   if same_druid { b[0].c[0].wild_known=known; b[0].c[0].wild_swap=swap; }
   b[0].c[0].turn_at = t; b[0].c[0].round_at = ro;
   rs_place(b, 0, XC_MID, XC_MID);
@@ -1182,12 +1184,22 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   // casts cover the same width on both sides as casts along a world axis.
   facing_cube := a.kind == FB_SPELL && rs_spell(a.sp).area == RS_A_CUBE_SELF;
   if b[0].truth_zones!=0 { xc_sync_world(s); }
+  // Revivify (p. 159) touches the nearest fallen monster; the shared rules judge its death and reach
+  corpse:=-1;
+  if !via && a.kind==FB_SPELL && a.sp==SP_REVIVIFY {
+    best:=0.0f32;
+    for i:0..<XC_FOES {
+      e:=h[0].enemies[i]; dx:=e.x-px; dz:=e.z-pz; d:=dx*dx+dz*dz;
+      if e.dead && (corpse<0 || d<best) { corpse=i; best=d; }
+    }
+    if corpse<0 { x[0].refused+=1; return false; }
+  }
   // the monsters on the engine's squares round you
   rs_place(b, 0, XC_MID, XC_MID);
   for i: 0..<XC_FOES {
     e := h[0].enemies[i];
     j := 1 + i;
-    if e.dead { rs_place(b, j, XC_AWAY, XC_AWAY); continue; }
+    if e.dead && i!=corpse { rs_place(b, j, XC_AWAY, XC_AWAY); continue; }
     dx := e.x - px; dz := e.z - pz;
     qx := xc_square(ifx facing_cube then dx * aim.fz - dz * aim.fx else dx);
     qz := xc_square(ifx facing_cube then dx * aim.fx + dz * aim.fz else dz);
@@ -1216,6 +1228,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && hostile.hostile_sees(h[0].enemies[i], px, pz) { unseen = false; } }
   if unseen && !via { _ := rs_cover_put(b, -1, 0, RS_COVER_TOTAL); }
   for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && !hostile.hostile_sees(h[0].enemies[i], px, pz) { _ := rs_cover_put(b, 0, 1 + i, RS_COVER_TOTAL); } }
+  if corpse>=0 && !xdungeon.dg_sight(px,pz,h[0].enemies[corpse].x,h[0].enemies[corpse].z) { _:=rs_cover_put(b,0,1+corpse,RS_COVER_TOTAL); }
   // an area cast at a point reads its cover from that point (p.15): a wall between it and a monster
   if a.kind == FB_SPELL && rs_area_from_point(rs_spell(a.sp)) {
     ox := px + f32(tx - XC_MID) * f32(XC_SQ); oz := pz + f32(ty - XC_MID) * f32(XC_SQ);
@@ -1248,10 +1261,15 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     ok = r.accepted;
     if ok { x[0].told = k; x[0].told_at = now; x[0].told_ok = r.passed; }
     if ok && r.passed && foe >= 0 { if rs_max(a.opt, 0) == 1 { x[0].studied[foe] = true; } else { x[0].calm[foe] = true; } }
-  } else { ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, 0); }
+  } else { ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, ifx corpse>=0 then 1+corpse else 0); }
   if facing_cube { b[0].truth_zones=old_truth; }
   if ok && a.kind==FB_SPELL && a.sp==SP_ZONE_OF_TRUTH { xc_truth_project(s,rs_clear(b[0].truth_zones,old_truth)); }
   if ok && a.kind==FB_SPELL && a.sp==SP_PROTECTION_GOOD_EVIL { x[0].protection_water_used=true; }
+  if corpse>=0 {
+    e:=h[0].enemies[corpse..<corpse+1];
+    if ok { x[0].revivify_diamond_used=true; e[0].dead=false; e[0].moving=false; e[0].swing=-1; }
+    else { rs_place(b,1+corpse,XC_AWAY,XC_AWAY); }
+  }
   rs_cover_clear(b);
   gain := rs_max(b[0].c[0].hp-hp_before,0);
   temp_gain := rs_max(b[0].c[0].temp-temp_before,0);
@@ -2494,7 +2512,7 @@ xc_play_kit :: (c: int) {
   s: [1] Lab; xc_test_lab(s[..],c,0);
   for level: 1..<7 {
     // Each level is a separate preset trial with its initial supplies.
-    s[0].xc[0].protection_water_used=false;
+    s[0].xc[0].protection_water_used=false; s[0].xc[0].revivify_diamond_used=false;
     xc_set_level(s[0].xc[..],level);
     x := s[0].xc[..]; b := x[0].b[..]; h := s[0].creator[0].hostiles[..];
     for k: 0..<x[0].bar_n {
@@ -2504,6 +2522,8 @@ xc_play_kit :: (c: int) {
       rs_end_concentration(b,0,""); for q: 0..<RS_EFFECTS { b[0].c[1].eff[q] = RsEffect.{}; } b[0].c[1].cond = 0;
       for q: 0..<10 { b[0].c[0].slots[q] = b[0].c[0].slots_max[q]; }
       s[0].creator[0].clock += 2; s[0].experimental_audio[0].n = 0;
+      // Revivify's monster has just fallen in combat, within Touch
+      if a.sp==SP_REVIVIFY { h[0].enemies[0].z=1; rs_damage(b,0,1,b[0].c[1].hp,RS_FORCE,false,-1); h[0].enemies[0].dead=true; }
       ok := xc_use(s[..],k);
       #assert ok == (a.sp != SP_DIVINE_SMITE);
       if ok {
@@ -3250,4 +3270,26 @@ xc_familiar_draw :: (s:[]Lab,out:[]f32,n:int)->int {
   #assert save.kind==RS_EV_SAVE && save.spell==SP_ZONE_OF_TRUTH && save.to==1;
   xc_sync_world(s[..]);
   #assert b[0].book[0].seq==events+1;
+}
+
+#test "Experimental Revivify restores a nearby corpse and keeps the diamond spent after a preset change" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_CLERIC,0);
+  x:=s[0].xc[..]; xc_set_level(x,5);
+  cr:=s[0].creator[..]; b:=x[0].b[..];
+  k:=-1;
+  for i:0..<x[0].bar_n { if x[0].bar[i].sp==SP_REVIVIFY { k=i; } }
+  #assert k>=0;
+  cr[0].clock=5;
+  e:=cr[0].hostiles[0].enemies[0..<1];
+  e[0].x=cr[0].player_x; e[0].z=cr[0].player_z+3;
+  rs_damage(b,0,1,b[0].c[1].hp,RS_FORCE,false,-1);
+  e[0].dead=true;
+  slots:=b[0].c[0].slots[3];
+  #assert !xc_use(s[..],k);
+  #assert b[0].c[0].slots[3]==slots && b[0].c[0].materials[1].count==1 && e[0].dead;
+  e[0].z=cr[0].player_z+1;
+  #assert xc_use(s[..],k);
+  #assert !e[0].dead && !b[0].c[1].dead && b[0].c[1].hp==1 && b[0].c[0].slots[3]==slots-1;
+  xc_set_class(x,FB_CL_WIZARD); xc_set_class(x,FB_CL_CLERIC);
+  #assert b[0].c[0].materials[1].count==0;
 }
