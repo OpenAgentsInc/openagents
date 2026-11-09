@@ -214,21 +214,6 @@ xc_start :: (x: [] XcCombat, klass: int) {
   xc_objects_start(x);
   xc_set_class(x, klass);
 }
-// The Lab's Wizard preset includes a copied Find Familiar and prepares it
-// in place of Mage Armor, whose executor is unavailable on this hotbar.
-xc_wizard_familiar_preset :: (c:[]RsCreature,incense:int) {
-  key:=rs_component_key(SP_FIND_FAMILIAR);
-  if !rs_spellbook_add(c,key) { return; }
-  selected:=c[0].spells.selected;
-  prepared:[32]int; n:=0;
-  for pick:0..<RS_SPELL_KEYS.count {
-    if (selected[pick/64] & (cast(u64) 1 << (pick%64)))==0 { continue; }
-    prepared[n]=ifx pick==RS_KEY_MAGE_ARMOR then key else pick;
-    n+=1;
-  }
-  _:=rs_set_spells(c,prepared[0..<n]);
-  c[0].materials[0]=RsMaterialStock.{key=key,count=incense};
-}
 // You become class c at the selected level. The monsters keep their wounds.
 xc_set_class :: (x: [] XcCombat, c: int) {
   if c < 0 || c >= FB_CL_N { return; }
@@ -242,7 +227,7 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   f:=rs_familiar_of(b,0);
   if f>=0 && (c!=x[0].klass || b[0].c[0].level!=x[0].level) { rs_familiar_retire(b,f); }
   b[0].c[0] = fb_cl_hero(c, "You", 0, x[0].level);
-  if c==FB_CL_WIZARD { xc_wizard_familiar_preset(b[0].c[0..<1],x[0].familiar_incense); }
+  if c==FB_CL_WIZARD { fb_wizard_familiar_preset(b[0].c[0..<1],x[0].familiar_incense); }
   if same_druid { b[0].c[0].wild_known=known; b[0].c[0].wild_swap=swap; }
   b[0].c[0].turn_at = t; b[0].c[0].round_at = ro;
   rs_place(b, 0, XC_MID, XC_MID);
@@ -3066,7 +3051,7 @@ xc_check_ai_rate :: (speed:int)->bool {
 #test "Experimental Wizard can switch to the prepared one-hour familiar cast" #steps 100000000 {
   for level:1..<7 {
     hero:[1]RsCreature; hero[0]=rs_wizard("Wizard",0,level);
-    xc_wizard_familiar_preset(hero[..],1);
+    fb_wizard_familiar_preset(hero[..],1);
     #assert rs_spell_ready(hero[0],SP_FIND_FAMILIAR);
     #assert hero[0].spells.prepared==rs_prepared_limit(RS_WIZARD,level);
     #assert hero[0].spells.cantrips==rs_cantrip_limit(RS_WIZARD,level);

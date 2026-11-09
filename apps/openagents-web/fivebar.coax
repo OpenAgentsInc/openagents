@@ -238,6 +238,21 @@ fb_cl_kind_at :: (c: int, level: int, out: [] u8) -> int {
   #assert fb_cl_of_kind("srd-fighter-7") == -1 && fb_cl_level_of_kind("srd-fighter-7") == 1 && fb_cl_of_kind("srd-fighter-1") == -1;
   #assert fb_cl_of_kind("druid") == -1 && fb_cl_level_of_kind("-2") == 1 && fb_cl_of_kind("srd-x-3") == -1;
 }
+// Everglade's familiar Wizard preset includes a copied Find Familiar and prepares it
+// in place of Mage Armor, whose executor is unavailable on this hotbar.
+fb_wizard_familiar_preset :: (c:[]RsCreature,incense:int) {
+  key:=rs_component_key(SP_FIND_FAMILIAR);
+  if !rs_spellbook_add(c,key) { return; }
+  selected:=c[0].spells.selected;
+  prepared:[32]int; n:=0;
+  for pick:0..<RS_SPELL_KEYS.count {
+    if (selected[pick/64] & (cast(u64) 1 << (pick%64)))==0 { continue; }
+    prepared[n]=ifx pick==RS_KEY_MAGE_ARMOR then key else pick;
+    n+=1;
+  }
+  _:=rs_set_spells(c,prepared[0..<n]);
+  c[0].materials[0]=RsMaterialStock.{key=key,count=incense};
+}
 // Class c at `level`, as the engine builds it.
 fb_cl_hero :: (c: int, name: string, team: int, level: int) -> RsCreature {
   l := ifx level < 1 then 1 else level;

@@ -948,3 +948,13 @@ The replication fixture checks owner and peer delivery, block filtering and
 Long Rest removal. The client fixture checks replacement, stale and
 malformed records, and marker drawing and removal. All 22 focused
 Everglade II page checks passed. Wasm built at 705,466 bytes.
+
+Everglade II now offers both Wizard Find Familiar casting modes and the
+three spirit choices. The room continues the cast with the owner's saved
+Magic action, derives a clear position on completion and publishes the
+familiar through the room snapshot. The preset provides one incense
+supply per seat visit. The room fixtures cover the ritual, the paid cast,
+and blocked completion preserving both incense and the spell slot. The
+page fixture verifies the mode and spirit request and the room's status
+messages. Wizard familiar lifecycle commands, touch delivery and borrowed
+senses still need Everglade II integration.

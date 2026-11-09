@@ -152,6 +152,7 @@ EgSeat :: struct {
   last_cast: int = -1000;
   aid: E2Aid;
   familiar:E2Familiar;
+  familiar_incense_used:bool;
   familiar_hash:int; familiar_sent:int;
   // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
@@ -433,6 +434,7 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat
 eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].conn = -1; v[0].eg[k].seat[s].held = true; v[0].eg[k].seat[s].held_at = v[0].mono_ms;
   v[0].eg[k].seat[s].ends_n = 0;
+  if v[0].eg[k].seat[s].familiar.active>0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s].rite==SP_FIND_FAMILIAR { rs_rite_fail(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s," (disconnected)"); }
   v[0].eg[k].seat[s].familiar=E2Familiar.{};
   v[0].eg[k].seat[s].familiar_hash=0;
   rv_note_seat(v, k, s_id); v[0].vit.flush = true;
@@ -510,7 +512,7 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
 // A seat's frame (past the relay's rate limits and pings).
 eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1"))) { return; }
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3"))) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
@@ -755,7 +757,10 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
     kit:=c[0].healer_kit;
     st[0].familiar=E2Familiar.{last=st[0].familiar.last};
     e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
-    if v[0].eg[k].e2 { c[0].healer_kit=kit; }
+    if v[0].eg[k].e2 {
+      c[0].healer_kit=kit;
+      if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,ifx st[0].familiar_incense_used then 0 else 1); }
+    }
     ev_class(v, k, seat_id);
   }
   st[0].flags = eg_clamp(h.flags, 0, 255);

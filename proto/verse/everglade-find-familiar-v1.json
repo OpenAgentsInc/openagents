@@ -1,0 +1,10 @@
+{
+  "identity": "everglade-find-familiar-v1",
+  "base_session": "everglade-session-v5",
+  "form_index": "everglade-familiar-v1",
+  "scope": "Everglade II only",
+  "request": "M3 SEQ FORM SLOT SPIRIT",
+  "progress": "m3 SEQ STATUS",
+  "refusal": "r SEQ familiar",
+  "status": {"casting": 1, "complete": 2, "interrupted": 3}
+}

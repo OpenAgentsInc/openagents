@@ -7570,3 +7570,9 @@ snapshot. Visible rows carry the form, position and Hit Points, ordered by
 owner seat. Either player's block removes the row from that recipient's
 view. A complete empty snapshot removes all markers. The client applies
 complete, strictly newer snapshots and forgets them on disconnect.
+
+Everglade II's Wizard Find Familiar takes the shared one-hour prepared or
+seventy-minute ritual path. The room keeps the owner's saved turn and
+Concentration, and only a completed cast consumes incense and any slot.
+Placement uses the room collision query. A seat's one preset incense
+supply is tracked across class or level changes during that seat's visit.

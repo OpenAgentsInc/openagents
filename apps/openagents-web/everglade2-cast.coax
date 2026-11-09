@@ -278,9 +278,14 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     form:=rs_monster_block(RS_FAMILIAR_FORMS[net[0].familiar_form]).name;
     n=e2k_line(out,n,r[0],r[3],r[2],r[3],1.2*kk,0.55,0.9,1);
     ink:=cc.ink(kk,0.55,0.9,1);
-    n=cc.text(out,n,"COMPANION",r[0]+4*kk,r[1]+14*kk,8*kk,ink);
+    wizard:=net[0].klass==FB_CL_WIZARD;
+    n=cc.text(out,n,ifx wizard then "FIND FAMILIAR" else "COMPANION",r[0]+4*kk,r[1]+14*kk,8*kk,ink);
+    if wizard {
+      spirits:=[3]string.["FEY","CEL","FND"];
+      n=cc.text(out,n,spirits[net[0].familiar_spirit-RS_FAMILIAR_FEY],r[2]-121*kk,r[1]+14*kk,8*kk,ink);
+    }
     n=cc.text(out,n,form,r[2]-73*kk,r[1]+14*kk,8*kk,ink);
-    n=cc.text(out,n,ifx net[0].familiar_slot==0 then "WS" else "1",r[2]-18*kk,r[1]+14*kk,8*kk,ink);
+    n=cc.text(out,n,ifx net[0].familiar_slot==0 then (ifx wizard then "R" else "WS") else "1",r[2]-18*kk,r[1]+14*kk,8*kk,ink);
   }
   refused:=e2n_cast_message(s[0].net[..]);
   if refused.count == 0 { refused = e2n_rest_message(s[0].net[..]); }
@@ -316,7 +321,9 @@ e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
       if phase==0 {
         if x>=r[2]-23*kk { net[0].familiar_slot=1-net[0].familiar_slot; }
         else if x>=r[2]-77*kk { net[0].familiar_form=(net[0].familiar_form+1)%RS_FAMILIAR_FORMS.count; }
-        else { _:=e2n_familiar(net); }
+        else if net[0].klass==FB_CL_WIZARD && x>=r[2]-125*kk {
+          net[0].familiar_spirit=RS_FAMILIAR_FEY+(net[0].familiar_spirit-RS_FAMILIAR_FEY+1)%3;
+        } else { _:=e2n_familiar(net); }
       }
       return true;
     }
@@ -420,9 +427,10 @@ e2k_aid_box :: (s:[] E2)->[4]f32 {
 }
 
 e2k_familiar_on :: (s:[]E2)->bool {
-  return e2k_aid_on(s) && s[0].net[0].klass==FB_CL_DRUID && s[0].net[0].level>=2;
+  return e2k_aid_on(s) && (s[0].net[0].klass==FB_CL_WIZARD || (s[0].net[0].klass==FB_CL_DRUID && s[0].net[0].level>=2));
 }
 e2k_familiar_box :: (s:[]E2)->[4]f32 {
   r:=e2k_aid_box(s); k:=s[0].k;
-  return [4]f32.[r[0]-20*k,r[1]-24*k,r[2]+20*k,r[3]-24*k];
+  extra:=ifx s[0].net[0].klass==FB_CL_WIZARD then 48*k else 20*k;
+  return [4]f32.[r[0]-extra,r[1]-24*k,r[2]+extra,r[3]-24*k];
 }
