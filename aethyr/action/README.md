@@ -10,6 +10,7 @@ ruleset's adapter a reaction to apply.
 | `action.coax` | Versioned `ActionDef` (stable ID, clip reference, movement owner, length and events in 1/64 s ticks, sensor and cancel windows, multi-hit) admitted whole; instances advanced to a tick hand back every crossed event exactly once at any frame rate, stall or catch-up; rational time scale; sampling never emits |
 | `sensor.coax` | Blade/fist sensors as swept capsules against hurt capsules, active only in the action window; motion profile 1 for rotating blades (sampled actual poses, no end-pose-only sweep), declared work exhaustion; contacts deduplicated by attack-instance ID and target identity/generation, same-tick merge ordered by sample then target; self, team, stale, blocked-line and stale-source contacts never apply |
 | `react.coax` | Separate tables: `AttackAttrs`, `TargetResponse`, `Reaction` (guard arc, immunity, weakness, resistance, zero-damage flinch, environmental-only, reflection) with named hit-stop and knockback profiles; scoped hit stops that never pause the world; a presentation queue with per-source caps and counted suppression; reflected projectiles as new owned instances whose old events are refused |
+| `deed.coax` | The action pipeline (docs/verse/action-pipeline.md, #13072): ask, act, present. `deed_ask` asks whether an actor can act now from its bearing (one pose and one set of move/act/react/speak locks, from its conditions), its cooldown and its feel; the authority's answer (`deed_answer`) or a 1.5 s timeout decides; only an accepted answer presents (`deed_show`). A refusal greys the slot (`deed_look`) and plays nothing. `DeedFeel` is the presentation contract: animation, effect, sound and movement, checked by `deed_feel_missing` |
 | `break.coax` | Breakables (debris, kinematic, structural cost profiles) that break once and hand back the declared fact patch, a sound stimulus and a bounded cosmetic debris burst; attachments with one parent authority, parent-before-child order and refused detach when no placement is free |
 
 ## Order within one tick
@@ -65,7 +66,21 @@ Interpolated drawing never senses.
 - Root motion and attachments are checked here only (`attach_*`); no realm
   plays a root-motion action under collision-resolved movement.
 
+## The action pipeline (#13072)
+
+- **Everglade II** (`everglade2-cast.coax`): a press asks with your bearing from the room's row of
+  you (`rs_bearing_of`) and plays only when the room's `e cast` for your seat comes back. A refusal
+  or a timeout greys the slot. The bow's draw asks before it starts (`e2k_ready`).
+- **Everglade Experimental** (`experimental-combat.coax xc_press`): the local rules answer in the
+  same frame. A blow swings only once `fb_ready` takes it, and the bow draws only for a bearing
+  that can act.
+- **Everglade v1** (`everglade-spells.coax sp_cast`): in a room, the cast bar and its sparks start
+  on the room's `e cast` for your seat (`sp_taken`), never on the press.
+- The SRD mapping is `aethyr/rules/srd/condition-bearing.coax`. Everglade's feel for every class
+  ability and monster action is `apps/openagents-web/class-feel.coax`.
+
 ```sh
+coax/bin/coax test aethyr/action/deed.coax --library
 coax/bin/coax test aethyr/action/action.coax --library
 coax/bin/coax test aethyr/action/sensor.coax --library
 coax/bin/coax test aethyr/action/react.coax --library
