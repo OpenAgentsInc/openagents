@@ -970,21 +970,23 @@ async function openDevice(made = () => {}) {
   const ladder = [features, features.filter((f) => !compression(f)), features.filter((f) => !compression(f) && f !== "timestamp-query")]
     .filter((f, i, all) => i === 0 || f.length !== all[i - 1].length);
   let device = null, refused = null;
-  const tryAdapter = async (a) => {
-    for (const asked of ladder) {
-      if (!asked.every((f) => a.features.has(f))) continue;
-      const options = asked.length ? { requiredFeatures: asked } : {};
-      if (storage) options.requiredLimits = { maxStorageBufferBindingSize: Math.min(storage, a.limits.maxStorageBufferBindingSize) };
-      try { const d = await a.requestDevice(options); return { d, asked }; } catch (e) { refused = e; console.warn(`coaxial: the GPU refused a device (${asked.join(", ") || "no features"}): ${e.message}`); }
-    }
-    return null;
+  // An adapter makes one device at most, refused or not ("consumed"), so every attempt after the
+  // first asks for a fresh adapter.
+  const attempt = async (a, asked) => {
+    if (!a || !asked.every((f) => a.features.has(f))) return null;
+    const options = asked.length ? { requiredFeatures: asked } : {};
+    if (storage) options.requiredLimits = { maxStorageBufferBindingSize: Math.min(storage, a.limits.maxStorageBufferBindingSize) };
+    try { return { d: await a.requestDevice(options), asked, a }; }
+    catch (e) { refused = e; console.warn(`coaxial: the GPU refused a device (${asked.join(", ") || "no features"}): ${e.message}`); return null; }
   };
-  let got = await tryAdapter(adapter);
-  for (const powerPreference of ["low-power", "high-performance"]) {
-    if (got) break;
-    const other = await navigator.gpu.requestAdapter({ powerPreference }).catch(() => null);
-    if (other && other !== adapter) { got = await tryAdapter(other); if (got) adapter = other; }
+  let got = await attempt(adapter, ladder[0]);
+  for (const preference of [undefined, "low-power", "high-performance"]) {
+    for (const asked of preference === undefined ? ladder.slice(1) : ladder) {
+      if (got) break;
+      got = await attempt(await navigator.gpu.requestAdapter(preference ? { powerPreference: preference } : undefined).catch(() => null), asked);
+    }
   }
+  if (got) adapter = got.a;
   if (!got) throw refused ?? new Error("the GPU refused every device request");
   device = got.d;
   const granted = got.asked;
