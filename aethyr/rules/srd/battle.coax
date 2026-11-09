@@ -519,7 +519,7 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   rite := slot == 0 && !quick && rs_rite_due_now(b, i, sp);
   if !rite && !rs_spell_ready(b[0].c[i], sp) { return false; }
   if !rs_cast_components_ready(b[0].c[i],sp) { return false; }
-  if s.cast_time == RS_T_REACTION { return false; }
+  if s.cast_time >= RS_T_REACTION { return false; }
   t := s.cast_time;
   if quick {
     if t != RS_T_ACTION || !b[0].c[i].quickened || b[0].c[i].uses[RS_USE_SORCERY] < 2 || b[0].turn.leveled || b[0].turn.quickened { return false; }

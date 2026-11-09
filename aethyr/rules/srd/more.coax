@@ -37,7 +37,8 @@ SP_BLESS :: 74; SP_BANE :: 75; SP_SHIELD_OF_FAITH :: 76; SP_COMMAND :: 77;
 // the levels 1-6 slice's (#13043): spells the closed step set already expresses
 SP_INFLICT_WOUNDS :: 78; SP_ACID_SPLASH :: 79; SP_MAGIC_MISSILE :: 80; SP_MASS_HEALING_WORD :: 81;
 SP_SHATTER :: 82;
-RS_MORE_END :: 83;
+SP_FIND_FAMILIAR :: 83;
+RS_MORE_END :: 84;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -261,6 +262,10 @@ rs_more_spell :: (i: int) -> RsSpell {
     s.components = "V"; s.targets = 1; s.target_growth = 1;
     s.text = "You speak a one-word command to a creature you can see within range. The target must succeed on a Wisdom saving throw or follow the command on its next turn. Choose the command from these options: Approach. The target moves toward you by the shortest and most direct route, ending its turn if it moves within 5 feet of you. Drop. The target drops whatever it is holding and then ends its turn. Flee. The target spends its turn moving away from you by the fastest available means. Grovel. The target has the Prone condition and then ends its turn. Halt. On its turn, the target doesn't move and takes no action or Bonus Action. Using a Higher-Level Spell Slot. You can affect one additional creature for each spell slot level above 1.";
     s.steps[0] = rs_step(RS_S_SAVE, RS_WIS, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_HALT, 0, 0, 0, 0); s.step_n = 2;
+  } else if i == SP_FIND_FAMILIAR {
+    s = rs_more("find-familiar", "Find Familiar", 1, "Conjuration", "Wizard", RS_T_LONG, 10, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S, M (burning incense worth 10+ GP, consumed)";
+    s.ritual = true; s.page = 130;
   }
   return s;
 }

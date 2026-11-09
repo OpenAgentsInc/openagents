@@ -144,15 +144,18 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   rt_turn(b[..],a); #assert b[0].c[a].rite == -1 && rt_kept(b[..],a,was);
 }
 
-#test "every executable record carries the source Ritual tag and no executable spell has a timed casting" #steps 400000000 {
+#test "every executable record carries the source Ritual tag and timed casts have a dedicated workflow" #steps 400000000 {
   rituals := 0;
   for sp: 0..<RS_MORE_END {
     s := rs_spell(sp); src := srd_source_lookup(RS_EXECUTABLE_SOURCE_IDS[sp]);
     #assert s.ritual == (src.ritual && s.part_of < 0);
-    #assert src.cast_kind != SRD_CAST_TIMED;
-    if s.ritual { rituals += 1; #assert src.cast_text == "Action or Ritual"; }
+    #assert (src.cast_kind == SRD_CAST_TIMED) == (sp == SP_FIND_FAMILIAR);
+    if sp == SP_FIND_FAMILIAR {
+      #assert s.cast_time == RS_T_LONG && src.cast_seconds == int(RS_FIND_FAMILIAR_SECONDS);
+    } else if s.ritual { #assert src.cast_text == "Action or Ritual"; }
+    if s.ritual { rituals += 1; }
   }
-  #assert rituals == 3;
+  #assert rituals == 4;
   for sp: RS_HOUSE..<RS_HOUSE_END { #assert !rs_spell(sp).ritual; }
 }
 
@@ -177,7 +180,8 @@ rc_joined :: (text: string, out: [] u8) -> string {
 #test "the reviewed sight list matches every executable description that chooses what you can see" #steps 400000000 {
   // Dimension Door's destination may also be pictured or described; Feather Fall's sight is in
   // its Reaction trigger, which the world supplies (fivebar.coax), not a choice admitted here.
-  reviewed := [2] string.["dimension-door","feather-fall"];
+  // Find Familiar uses the phrase for seeing through the familiar’s eyes.
+  reviewed := [3] string.["dimension-door","feather-fall","find-familiar"];
   buf: [8192] u8;
   for sp: 0..<RS_MORE_END {
     src := srd_source_lookup(RS_EXECUTABLE_SOURCE_IDS[sp]);

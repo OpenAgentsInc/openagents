@@ -17,14 +17,21 @@ rs_ritual_begin :: (b: [] RsBattle, i: int, sp: int) -> bool {
   book := c.klass == RS_WIZARD && rs_spell_access(c, sp) && rs_rite_book_has(c.spells.known, RS_EXEC_SOURCE[sp]);
   if !rs_rite_admits(s.ritual, ready, book, c.ritual, b[0].turn.action, b[0].turn.quickened) { return false; }
   if !rs_cast_components_ready(c, sp) { return false; }
-  rs_rest_cast_before(b, i, s.level);
-  rs_end_concentration(b, i, "");
-  b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + RS_RITE_SECONDS + 3600;
-  b[0].c[i].rite = sp; b[0].c[i].rite_until = b[0].clock + RS_RITE_SECONDS; b[0].c[i].rite_owed = false;
-  b[0].turn.action = true; b[0].turn.leveled = true;
+  seconds:=ifx sp==SP_FIND_FAMILIAR then RS_FIND_FAMILIAR_SECONDS+RS_RITE_SECONDS else RS_RITE_SECONDS;
+  rs_rite_open(b,i,sp,f32(seconds),0);
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " begins "); rs_add_text(l[..], s.name); rs_add_text(l[..], " as a Ritual");
   rs_tell(b, RS_EV_TEXT, sp, i, -1, 0, 0, l[..]);
   return true;
+}
+// An admitted ritual or longer casting time uses the same held Concentration.
+rs_rite_open :: (b:[]RsBattle,i:int,sp:int,seconds:f32,slot:int) {
+  s:=rs_spell(sp);
+  rs_rest_cast_before(b, i, s.level);
+  rs_end_concentration(b, i, "");
+  b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + seconds + 3600;
+  b[0].c[i].rite = sp; b[0].c[i].rite_until = b[0].clock + seconds; b[0].c[i].rite_owed = false;
+  b[0].c[i].familiar_slot=slot;
+  b[0].turn.action = true; b[0].turn.leveled = true;
 }
 // This turn's Magic action keeps an unfinished rite going.
 rs_ritual_continue :: (b: [] RsBattle, i: int) -> bool {
@@ -45,13 +52,16 @@ rs_rite_turn :: (b: [] RsBattle, i: int) {
 // The rite's Concentration is lost: the spell fails and nothing is expended.
 rs_rite_fail :: (b: [] RsBattle, i: int, why: string) {
   sp := b[0].c[i].rite;
+  timed:=b[0].c[i].familiar_slot>0;
+  b[0].c[i].familiar_slot=0;
   b[0].c[i].rite = -1; b[0].c[i].rite_owed = false; b[0].c[i].rite_until = 0;
   if b[0].c[i].conc == sp { b[0].c[i].conc = -1; b[0].c[i].conc_until = 0; }
-  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " Ritual fails"); rs_add_text(l[..], why);
+  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], ifx timed then " casting fails" else " Ritual fails"); rs_add_text(l[..], why);
   rs_tell(b, RS_EV_END, sp, i, -1, 0, 0, l[..]);
 }
 // Accepted completion: the rite's Concentration hand-off is silent.
 rs_rite_complete :: (c: [] RsCreature) {
+  c[0].familiar_slot=0;
   if c[0].conc == c[0].rite { c[0].conc = -1; c[0].conc_until = 0; }
   c[0].rite = -1; c[0].rite_owed = false; c[0].rite_until = 0;
 }

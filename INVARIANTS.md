@@ -6728,8 +6728,9 @@ failed Concentration save, incapacitation, Rage or a new Concentration spell
 fails the Ritual with no slot or free use spent, and never ends an earlier
 copy's effects. The final turn's action is the ordinary cast at slot 0, so the
 same target, component and capacity preflight applies; a refused completion
-keeps the rite. No executable spell has a timed casting time, which the
-catalog comparison enforces; adding one requires its long-cast wiring.
+keeps the rite. Find Familiar adds its hour of casting time to the Ritual.
+Its dedicated completion checks the destination and familiar capacity before
+paying incense and, for the prepared one-hour cast, the chosen spell slot.
 
 ## A you-can-see choice refuses an unseen creature or point before costs
 
