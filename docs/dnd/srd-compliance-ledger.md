@@ -755,3 +755,11 @@ turn. A successful use leaves the ally Stable at 0 HP and reports the remaining
 charges. The room regression puts a second player at 0 HP through shared damage
 and exercises range, obstructed contact, replay refusal and success. Page
 checks exercise the normal click, reply matching and disconnect handling.
+
+### Experimental Fireball origin cover regression (#13030)
+
+A level 5 Wizard casts Fireball past the dungeon's north wall through the
+Experimental hotbar adapter. An enemy visible from the blast's origin loses
+HP even though the caster cannot see it. A second enemy within the blast's
+radius keeps its HP because the wall is between it and the origin. The test
+fails when the adapter publishes caster cover in place of origin cover.

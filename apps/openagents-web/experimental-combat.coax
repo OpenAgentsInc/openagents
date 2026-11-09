@@ -2573,3 +2573,29 @@ xc_check_ai_rate :: (speed:int)->bool {
   #assert b[0].dice[0].rolled==rolled && x[0].seat[0].open==seat.open && x[0].seat[0].turn.action==seat.turn.action;
   #assert x[0].casts==0 && x[0].refused==1;
 }
+
+#test "Experimental Fireball reads cover from its origin across the dungeon wall" #steps 2000000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  x:=s[0].xc[..]; xc_set_level(x,5);
+  cr:=s[0].creator[..]; cr[0].player_x=-40.5; cr[0].player_z=-40;
+  foes:=cr[0].hostiles[..];
+  // The aim goes south past the north wall. One enemy stands inside the
+  // dungeon and one is outside, in the blast but off the aim's assist cone.
+  foes[0].enemies[0].x=-40.5; foes[0].enemies[0].z=-47.5;
+  foes[0].enemies[1].x=-37.5; foes[0].enemies[1].z=-42.5;
+  b:=x[0].b[..]; b[0].dice[0].fixed=true;
+  for i:1..<3 {
+    b[0].c[i]=rs_monster(MON_GOBLIN_WARRIOR,"Goblin",1);
+    b[0].c[i].hp=100; b[0].c[i].hp_max=100;
+  }
+  slot:=-1;
+  for j:0..<x[0].bar_n { if x[0].bar[j].kind==FB_SPELL && x[0].bar[j].sp==SP_FIREBALL { slot=j; } }
+  #assert slot>=0;
+  aim:=xc_aim(s[..],x[0].bar[slot]);
+  #assert aim.reach==6;
+  origin_z:=-40-f32(4)*f32(XC_SQ);
+  #assert !xdungeon.dg_sight(-40.5,-40,-40.5,-47.5) && xdungeon.dg_sight(-40.5,origin_z,-40.5,-47.5);
+  #assert xdungeon.dg_sight(-40.5,-40,-37.5,-42.5) && !xdungeon.dg_sight(-40.5,origin_z,-37.5,-42.5);
+  #assert xc_use_on(s[..],slot,-2);
+  #assert b[0].c[1].hp<100 && b[0].c[2].hp==100;
+}
