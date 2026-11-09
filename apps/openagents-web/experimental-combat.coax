@@ -53,6 +53,7 @@
 #load "cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
 #load "class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "../../verse/experimental-terrain.coax" as xmeadow;
+#load "../../verse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
 #load "../../aethyr/action/action.coax" as act;
 #load "../../aethyr/action/sensor.coax" as sense;
 #load "../../aethyr/query.coax" as aq;
@@ -77,6 +78,7 @@ XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n:
 XC_FAMILIAR :: 29;
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
 XcCombat :: struct {
+  sight: [XC_FOES] f32; sight_at: f32 = -1;   // each foe's plate's share shown while its body shows (xc_sight_shows), fading
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
   familiar_incense:int=1; // one Lab supply, carried across preset changes
@@ -1618,6 +1620,48 @@ xc_look :: (s: [] Lab, a: FbAb, foe: int, ax: f32, az: f32) {
 
 // ---- the screen: where a point in the world falls (charactercreator.coax camera's uniforms)
 XcAt :: struct { x: f32; y: f32; ok: bool; }
+// Whether a body standing at (bx, foot, bz), tall m, shows from the camera: a line to its head, chest
+// or knees clear of the land and the village's, castle's and dungeon's walls (aethyr/ui/hud-sight.coax).
+xc_sight_shows :: (x: [] XcCombat, bx: f32, foot: f32, bz: f32, tall: f32) -> bool {
+  u := x[0].u[..]; e := [3] f32.[u[16], u[17], u[18]];
+  dx := bx - e[0]; dz := bz - e[2]; mx := (e[0] + bx) * 0.5; mz := (e[2] + bz) * 0.5;
+  near: [1] xvillage.EvNear; xvillage.ev_near_radius(near[..], mx, mz, 0.5 * sqrt(dx * dx + dz * dz) + 1, true);
+  g := xmeadow.exp_height(mx, mz);
+  for i: 0..<cc.HUD_SIGHT_POINTS {
+    b := cc.hud_sight_point(bx, foot, bz, tall, i);
+    ground: [cc.HUD_SIGHT_SAMPLES] f32;
+    for q: 0..<cc.HUD_SIGHT_SAMPLES { p := cc.hud_sight_at(e, b, f32(q + 1) / f32(cc.HUD_SIGHT_SAMPLES + 1)); ground[q] = meadow_y(p[0], p[2]); }
+    if !cc.hud_sight_ground_clear(e, b, ground[..], cc.HUD_SIGHT_SAMPLES) { continue; }
+    blocked := false;
+    for w: 0..<near[0].wall_n {
+      o := w * 6; box := [6] f32.[near[0].walls[o], near[0].walls[o + 1] + g, near[0].walls[o + 2], near[0].walls[o + 3], near[0].walls[o + 4] + g, near[0].walls[o + 5]];
+      if cc.hud_sight_box_blocks(e, b, box[..]) { blocked = true; break; }
+    }
+    if !blocked { return true; }
+  }
+  return false;
+}
+#test "experimental: a foe behind a village wall has no plate's sight; one in the open has" #steps 400000000 {
+  x: [1] XcCombat;
+  // in the open at the spawn: shows
+  x[0].u[16] = 0; x[0].u[17] = meadow_y(0, 0) + 1.8; x[0].u[18] = 0;
+  #assert xc_sight_shows(x[..], 0, meadow_y(0, 10), 10, 1.7);
+  // the first wall near the village's houses: the eye 8 m before its thin side, the foe 2 m past it
+  near: [1] xvillage.EvNear; xvillage.ev_near_radius(near[..], -18, -23, 4, true); #assert near[0].wall_n > 0;
+  w := near[0].walls; g := xmeadow.exp_height(-18, -23);
+  found := false;
+  for i: 0..<near[0].wall_n {
+    o := i * 6; if w[o + 4] - w[o + 1] < 2.5 { continue; }
+    cx := (w[o] + w[o + 3]) * 0.5; cz := (w[o + 2] + w[o + 5]) * 0.5; thin_x := w[o + 3] - w[o] < w[o + 5] - w[o + 2];
+    if thin_x && w[o + 5] - w[o + 2] < 3 { continue; } if !thin_x && w[o + 3] - w[o] < 3 { continue; }
+    ex := ifx thin_x then w[o] - 8 else cx; ez := ifx thin_x then cz else w[o + 2] - 8;
+    bx := ifx thin_x then w[o + 3] + 2 else cx; bz := ifx thin_x then cz else w[o + 5] + 2;
+    x[0].u[16] = ex; x[0].u[17] = g + w[o + 1] + 1.2; x[0].u[18] = ez;
+    #assert !xc_sight_shows(x[..], bx, g + w[o + 1], bz, 1.7);
+    found = true; break;
+  }
+  #assert found;
+}
 xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
   u := x[0].u[..];
   dx := wx - u[16]; dy := wy - u[17]; dz := wz - u[18];
@@ -1818,6 +1862,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     }
   }
   // the monsters' names and Hit Points over them, your target's in gold
+  sight_dt := ifx x[0].sight_at < 0 then 1.0f32 else ifx now - x[0].sight_at > 0.1 then 0.1f32 else ifx now < x[0].sight_at then 0.0f32 else now - x[0].sight_at;
+  x[0].sight_at = now;
   view_x:=ifx observing then x[0].familiar_x else cr[0].player_x;
   view_z:=ifx observing then x[0].familiar_z else cr[0].player_z;
   for i: 0..<XC_FOES {
@@ -1825,14 +1871,16 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     c := x[0].b[0].c[1 + i];
     if e.dead { continue; }
     dx := e.x - view_x; dz := e.z - view_z;
-    if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, view_x, view_z) { continue; }
+    if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, view_x, view_z) { x[0].sight[i] = 0; continue; }
+    x[0].sight[i] = cc.hud_sight_fade(x[0].sight[i], xc_sight_shows(x, e.x, meadow_y(e.x, e.z), e.z, 1.7), sight_dt);
+    if x[0].sight[i] <= 0 { continue; }
     p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 1.55, e.z);
     if !p.ok || p.x < 0 || p.x > w || p.y < 0 || p.y > h { continue; }
     if p.x < 400 * k && p.y > x[0].top - 20 * k && p.y < bottom + 20 * k { continue; }   // not over the CLASSES column
     name := XC_FOE_NAMES[e.kind];
     on := i == x[0].target || (wave_on && xc_wave_contains(wave,e.x,e.z));
     nb: [32] u8;
-    n = cc.eg_plate(out, n, cc.eg_title(nb[..], name), p.x, p.y, k, f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, 1);
+    n = cc.eg_plate(out, n, cc.eg_title(nb[..], name), p.x, p.y, k, f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i]);
   }
   // A world-anchored familiar marker is drawn at the actor's position.
   familiar:=rs_familiar_of(x[0].b[..],0);
@@ -1853,7 +1901,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if a < 0 || a > 1 { x[0].fl[q].on = false; continue; }
     base := ifx f.heal then f.y else meadow_y(f.x, f.z) + f.y;
     p := xc_proj(x, f.x, base + a * 0.9, f.z);
-    if !p.ok { continue; }
+    if !p.ok || !xc_sight_shows(x, f.x, meadow_y(f.x, f.z), f.z, 1.6) { continue; }
     t := cast(string) f.text[0..<f.n];
     n = cc.eg_float(out, n, t, p.x, p.y, k, ifx f.heal then cc.EG_FLOAT_HEAL else cc.EG_FLOAT_DEALT, ifx a < 0.7 then 1.0f32 else (1 - a) / 0.3);
   }

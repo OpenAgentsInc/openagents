@@ -15,6 +15,7 @@
 #load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)
 #load "experimental-sound.coax" as exsound;
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: class features and rest, every zone's (the game)
+#load "everglade2-sight.coax";   // ... from this zone's land, trunks, rocks and camp
 #load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "everglade2-guard.coax";  // the path's guard, as the room walks him
 #load "everglade2-monsters.coax";   // the wolves and the goblins, as the room moves them
@@ -117,6 +118,8 @@ E2 :: struct {
   rtmp: [1] cc.Creator;                  // a remote's look: your creator's catalog with its record (e2_remote_look)
   plates: [E2_REMOTES] E2Plate; plate_n: int;   // the names over the others' heads this frame (e2_plates)
   plates_drawn: int;                             // the names e2_plates drew in the last frame
+  // what floats over each body shows while the body does (everglade2-sight.coax): each one's share, fading
+  sight_rem: [E2_REMOTES] f32; sight_mon: [12] f32; sight_guard: f32; sight_dt: f32 = 1; sight_at: f32 = -1;
   cy: f32;                                       // the picture's centre row (e2c_lens: the studio frames you off centre)
   env: [1] envf.EnvFrame;                        // the light: the world's environment set, its clock and the record each frame writes (e2_light)
   light_view: int; light_text: [1] envd.EnvDebugText;   // ?light=VIEW (developer-only, off by default) and its readout (e2_light_hud)
@@ -1110,6 +1113,9 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2_shadows(s, u);
   e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s));
   e2k_step(s); e2m_step(s, dt); e2gd_hits(s); e2mn_hits(s);
+  // the frame's step for the plates' fades (the first frame snaps them)
+  s[0].sight_dt = ifx s[0].sight_at < 0 then 1.0f32 else ifx s[0].clock - s[0].sight_at > 0.1 then 0.1f32 else ifx s[0].clock < s[0].sight_at then 0.0f32 else s[0].clock - s[0].sight_at;
+  s[0].sight_at = s[0].clock;
   hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_hud(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2gd_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))), dt));
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
@@ -1884,8 +1890,10 @@ e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
     ahead := dx * f[0] + dy * f[1] + dz * f[2];
     dist := sqrt(dx * dx + dy * dy + dz * dz);
     s[0].plates[i].alpha = 0;
-    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) || !e2_plate_seen(e, hx, hy, hz) { continue; }
-    alpha := ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR);
+    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) { s[0].sight_rem[i] = 0; continue; }
+    sight := e2_sight_share(s, s[0].sight_rem[i], hx, hy - 2.05, hz, 1.8); s[0].sight_rem[i] = sight;
+    if sight <= 0 { continue; }
+    alpha := sight * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
     sx := w * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := (ifx s[0].cy > 0 then s[0].cy else h * 0.5) - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     cap := 12 * k;
@@ -1912,7 +1920,7 @@ e2_familiar_plates :: (s: [] E2, out: [] f32, at: int) -> int {
     y := e2_height(row.x, row.z) + 0.65;
     dx := row.x - e[0]; dy := y - e[1]; dz := row.z - e[2];
     ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    if ahead < 0.5 || dx * dx + dy * dy + dz * dz > 900 || !e2_plate_seen(e, row.x, y, row.z) { continue; }
+    if ahead < 0.5 || dx * dx + dy * dy + dz * dz > 900 || !e2_sight_shows(s, row.x, e2_height(row.x, row.z), row.z, 0.6) { continue; }
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := (ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5) - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     if sx < 0 || sx > s[0].width || sy < 0 || sy > s[0].height { continue; }
@@ -1957,6 +1965,26 @@ e2_plate_seen :: (e: [3] f32, x: f32, y: f32, z: f32) -> bool {
   for i: 0..<3 { s[0].plates[i].name[0] = 'A'; s[0].plates[i].name[1] = 'r'; s[0].plates[i].name_n = 2; }
   v := e2_plates(s[..], out[..], 0);
   #assert s[0].plates_drawn == 1 && v > 0 && s[0].plates[0].alpha == 1 && s[0].plates[1].alpha == 0 && s[0].plates[2].alpha == 0;
+}
+#test "a plate shows only while its body does: behind the camp's stall none is drawn, beside it one is, fading over 0.15 s" {
+  s: [1] E2; out: [4096 * E2_VERTEX_FLOATS] f32; s[0].k = 1; s[0].width = 1280; s[0].height = 720; s[0].focal = 900;
+  st := E2_CAMP[1]; sx := e2_camp_px(st); sz := e2_camp_pz(st); c := cos(st.yaw); sn := sin(st.yaw);
+  // the eye 9 m off the stall's deep side, low; a body 3 m past its far side, and one 12 m to the side
+  ex := sx - 9 * sn; ez := sz - 9 * c; s[0].eye = [3] f32.[ex, e2_height(ex, ez) + 0.9, ez];
+  hx := sx + 3 * sn; hz := sz + 3 * c; ox := hx + 12 * c; oz := hz - 12 * sn;
+  #assert !e2_sight_shows(s[..], hx, e2_height(hx, hz), hz, 1.8) && e2_sight_shows(s[..], ox, e2_height(ox, oz), oz, 1.8);
+  for q: 0..<2 {
+    bx := ifx q == 0 then hx else ox; bz := ifx q == 0 then hz else oz;
+    dx := bx - ex; dz := bz - ez; l := sqrt(dx * dx + dz * dz);
+    s[0].fwd = [3] f32.[dx / l, 0, dz / l]; s[0].right = [3] f32.[-dz / l, 0, dx / l]; s[0].up = [3] f32.[0, 1, 0];
+    s[0].plate_n = 1; s[0].plates[0].x = bx; s[0].plates[0].y = e2_height(bx, bz) + 2.05; s[0].plates[0].z = bz;
+    s[0].plates[0].name[0] = 'A'; s[0].plates[0].name_n = 1; s[0].sight_rem[0] = 0; s[0].sight_dt = 1;
+    _ := e2_plates(s[..], out[..], 0);
+    #assert (q == 0) == (s[0].plates_drawn == 0);
+  }
+  // coming into view, it fades in over 0.15 s, not at once
+  s[0].sight_rem[0] = 0; s[0].sight_dt = 0.05; _ := e2_plates(s[..], out[..], 0);
+  #assert s[0].plates_drawn == 1 && s[0].sight_rem[0] > 0.3 && s[0].sight_rem[0] < 0.4;
 }
 #test "a name over a head fades with distance and hides behind the land" {
   #assert e2_plate_seen([3] f32.[0, e2_height(0, 0) + 2, 0], 0, e2_height(0, -10) + 2, -10);

@@ -1,0 +1,91 @@
+// Sight for what floats over a body: a plate, a name, a damage number shows only while the body
+// itself shows from the camera. A realm asks whether the line from the eye to each of a few points
+// on the body (its head, chest and knees) is clear of its ground and its blockers; any clear line
+// shows the plate, none hides it. The plate fades in and out over HUD_SIGHT_FADE s, so it doesn't
+// flicker at a wall's edge. The realm supplies its ground (heights sampled along the line) and its
+// blockers (upright cylinders, and convex hulls tested at points); these functions decide.
+// docs/verse/hud-styles.md.
+//   coax/bin/coax test aethyr/ui/hud-sight.coax --library
+
+HUD_SIGHT_FADE :: 0.15;   // s: a plate's fade in or out
+HUD_SIGHT_SAMPLES :: 24;  // ground samples along a line of sight
+HUD_SIGHT_POINTS :: 3;    // points on a body: head, chest, knees
+
+// Where on a body the lines go: its head, chest and knees, from its feet (y up) and its height.
+hud_sight_point :: (x: f32, foot: f32, z: f32, tall: f32, i: int) -> [3] f32 {
+  share := ifx i == 0 then 0.92f32 else ifx i == 1 then 0.62f32 else 0.25f32;
+  return [3] f32.[x, foot + tall * share, z];
+}
+// The line from a to b at t.
+hud_sight_at :: (a: [3] f32, b: [3] f32, t: f32) -> [3] f32 { return [3] f32.[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+// Whether the ground stays under the line: ground[q] is its height under the line at t = (q + 1) / (n + 1).
+hud_sight_ground_clear :: (a: [3] f32, b: [3] f32, ground: [] f32, n: int) -> bool {
+  for q: 0..<n { t := f32(q + 1) / f32(n + 1); if ground[q] > a[1] + (b[1] - a[1]) * t { return false; } }
+  return true;
+}
+// An upright cylinder: round (x, z), r across, from y0 to y1 (world heights).
+HudSightCyl :: struct { x: f32; z: f32; r: f32; y0: f32; y1: f32; }
+// Whether the cylinder cuts the line from a to b (short of b's own body: the last 0.4 m is the body's).
+hud_sight_cyl_blocks :: (a: [3] f32, b: [3] f32, c: HudSightCyl) -> bool {
+  dx := b[0] - a[0]; dz := b[2] - a[2]; ll := dx * dx + dz * dz; if ll < 0.0001 { return false; }
+  t := ((c.x - a[0]) * dx + (c.z - a[2]) * dz) / ll; span := sqrt(ll);
+  stop := 1 - 0.4 / span; if t <= 0 || t >= stop { return false; }
+  px := a[0] + dx * t - c.x; pz := a[2] + dz * t - c.z; if px * px + pz * pz > c.r * c.r { return false; }
+  // the line's height through the cylinder, either side of its nearest point
+  half := sqrt(c.r * c.r - (px * px + pz * pz)) / span;
+  y0 := a[1] + (b[1] - a[1]) * (t - half); y1 := a[1] + (b[1] - a[1]) * (t + half);
+  lo := ifx y0 < y1 then y0 else y1; hi := ifx y0 < y1 then y1 else y0;
+  return hi >= c.y0 && lo <= c.y1;
+}
+// Whether a box (x0, y0, z0, x1, y1, z1, world) cuts the line from a to b, short of b's own body.
+hud_sight_box_blocks :: (a: [3] f32, b: [3] f32, box: [] f32) -> bool {
+  t0 := 0.0f32; span := sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]) + (b[2] - a[2]) * (b[2] - a[2]));
+  if span < 0.5 { return false; }
+  t1 := 1 - 0.4 / span;
+  for ax: 0..<3 {
+    d := b[ax] - a[ax]; lo := box[ax]; hi := box[ax + 3];
+    if abs(d) < 0.000001 { if a[ax] < lo || a[ax] > hi { return false; } continue; }
+    u0 := (lo - a[ax]) / d; u1 := (hi - a[ax]) / d;
+    if u0 > u1 { tt := u0; u0 = u1; u1 = tt; }
+    if u0 > t0 { t0 = u0; } if u1 < t1 { t1 = u1; }
+    if t0 > t1 { return false; }
+  }
+  return true;
+}
+// Whether a convex hull holds point (x, y, z): faces planes (nx, ny, nz, d) with n . p <= d inside.
+hud_sight_hull_holds :: (planes: [] f32, faces: int, x: f32, y: f32, z: f32) -> bool {
+  for q: 0..<faces { o := q * 4; if planes[o] * x + planes[o + 1] * y + planes[o + 2] * z > planes[o + 3] + 0.0001 { return false; } }
+  return true;
+}
+// A plate's share shown after dt s, from its share before and whether its body shows now.
+hud_sight_fade :: (share: f32, seen: bool, dt: f32) -> f32 {
+  step := ifx dt > 0 then dt / HUD_SIGHT_FADE else 0.0f32;
+  v := ifx seen then share + step else share - step;
+  return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
+}
+
+#test "hud sight: a wall between hides the body, one beside it doesn't; a hill hides it, low ground doesn't" {
+  eye := [3] f32.[0, 2, 0]; head := hud_sight_point(0, 0, 20, 1.8, 0); knees := hud_sight_point(0, 0, 20, 1.8, 2);
+  #assert head[1] > knees[1] && head[2] == 20;
+  wall := HudSightCyl.{x = 0, z = 10, r = 1, y0 = 0, y1 = 5};
+  #assert hud_sight_cyl_blocks(eye, head, wall) && hud_sight_cyl_blocks(eye, knees, wall);
+  #assert !hud_sight_cyl_blocks(eye, head, HudSightCyl.{x = 3, z = 10, r = 1, y0 = 0, y1 = 5});
+  // a low wall: the head shows over it, the knees don't
+  low := HudSightCyl.{x = 0, z = 10, r = 1, y0 = 0, y1 = 1.2};
+  #assert !hud_sight_cyl_blocks(eye, head, low) && hud_sight_cyl_blocks(eye, knees, low);
+  // the body's own cylinder is not in its way
+  #assert !hud_sight_cyl_blocks(eye, head, HudSightCyl.{x = 0, z = 20, r = 0.35, y0 = 0, y1 = 2});
+  hill: [HUD_SIGHT_SAMPLES] f32; flat: [HUD_SIGHT_SAMPLES] f32;
+  for q: 0..<HUD_SIGHT_SAMPLES { t := f32(q + 1) / f32(HUD_SIGHT_SAMPLES + 1); hill[q] = ifx t > 0.4 && t < 0.6 then 4.0f32 else 0.0f32; }
+  #assert !hud_sight_ground_clear(eye, head, hill[..], HUD_SIGHT_SAMPLES) && hud_sight_ground_clear(eye, head, flat[..], HUD_SIGHT_SAMPLES);
+  // a wall as a box across the line, and one off it
+  wb := [6] f32.[-3, 0, 9, 3, 4, 11]; ob := [6] f32.[5, 0, 9, 8, 4, 11];
+  #assert hud_sight_box_blocks(eye, head, wb[..]) && !hud_sight_box_blocks(eye, head, ob[..]);
+  // a box hull 1 m round (0, 1, 10)
+  box := [24] f32.[1, 0, 0, 1,  -1, 0, 0, 1,  0, 1, 0, 2,  0, -1, 0, 0,  0, 0, 1, 11,  0, 0, -1, -9];
+  #assert hud_sight_hull_holds(box[..], 6, 0, 1, 10) && !hud_sight_hull_holds(box[..], 6, 0, 3, 10) && !hud_sight_hull_holds(box[..], 6, 2, 1, 10);
+}
+#test "hud sight: a plate fades over 0.15 s, in and out, and holds between" {
+  a := hud_sight_fade(0, true, 0.075); #assert abs(a - 0.5) < 0.001;
+  #assert hud_sight_fade(a, true, 0.2) == 1 && hud_sight_fade(1, false, 0.15) == 0 && hud_sight_fade(0.3, false, 0) == 0.3;
+}

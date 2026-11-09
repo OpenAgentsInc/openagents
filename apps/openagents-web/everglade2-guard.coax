@@ -164,8 +164,9 @@ e2gd_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     y := gl.y + 2.05; dx := gl.x - e[0]; dy := y - e[1]; dz := gl.z - e[2];
     ahead := dx * f[0] + dy * f[1] + dz * f[2]; dist := sqrt(dx * dx + dy * dy + dz * dz);
     rw := e2n_guard_at(s[0].net[..], s[0].net[0].rt);
-    if ahead > 0.5 && dist < f32(E2_PLATE_FAR) && e2_plate_seen(e, gl.x, y, gl.z) && rw.max > 0 {
-      alpha := gl.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
+    sight := ifx ahead > 0.5 && dist < f32(E2_PLATE_FAR) then e2_sight_share(s, s[0].sight_guard, gl.x, gl.y, gl.z, 1.9) else 0.0f32; s[0].sight_guard = sight;
+    if sight > 0 && rw.max > 0 {
+      alpha := sight * gl.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
       sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
       sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
       v = cc.eg_plate(out, v, "Guard", sx, sy, k, f32(rw.hp) / f32(rw.max), false, false, alpha);
@@ -177,7 +178,7 @@ e2gd_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     if t < 0 || t >= 1 { continue; }
     y := m.y + 0.6 * t; dx := m.x - e[0]; dy := y - e[1]; dz := m.z - e[2];
     ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    if ahead < 0.5 { continue; }
+    if ahead < 0.5 || !e2_sight_shows(s, m.x, m.y - 1.2, m.z, 1.2) { continue; }
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     alpha := 1 - t * t;

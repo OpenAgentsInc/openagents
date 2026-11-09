@@ -71,7 +71,10 @@ fairy 695000
 # Revivify: recorded combat deaths, corpse targeting and the diamond supply, measured at 2,685,797 bytes (#13030).
 # Experimental's mouselook (aethyr/cam/mouselook.coax) and the shared reticle drawn while it looks, on main with bow combat (b9ef099b71, about 2,694,800): 2,701,385 bytes measured.
 # Monsters leave the dungeon after you by its doorways and walk home on a leash; drawn nearest first, never folded flat: 2,720,155 bytes measured on main with the keyed Longbow draw (8faf847c27).
-fivelab 2725000
+# The fantasy HUD in Everglade Experimental (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax and
+# everglade/hud/): the portrait, bar tray, plates that show only while their body does, and the 5E Lab's
+# straight-alpha switch: 2,751,223 bytes measured before sight; about 2.9% headroom.
+fivelab 2830000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
@@ -107,8 +110,11 @@ fivelab 2725000
 # Sword and a swing for each of his attacks), on main with the mouse's cast and bow and admin mode (b089816462):
 # 793,466 bytes measured; about 2.7% headroom.
 # Analytics (everglade2-track.coax and the Track, docs/analytics/2026-11-09-everglade-analytics-audit.md) on main with
-# #13071's GFX control: 818,675 bytes measured on macOS; about 2.8% headroom.
-everglade2 842000
+# #13071's GFX control: 818,675 bytes measured on macOS.
+# The fantasy HUD (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax; everglade/hud/): the portrait plate,
+# map ring, bar tray, side bar and menus, the phone studio, and plates that show only while their body
+# does: MEASURED_E2 bytes measured on top of that; about 3% headroom.
+everglade2 920000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1750000

@@ -192,8 +192,11 @@ e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     y := g.y + E2MN_TALL[g.kind] + 0.15; dx := g.x - e[0]; dy := y - e[1]; dz := g.z - e[2];
     ahead := dx * f[0] + dy * f[1] + dz * f[2]; dist := sqrt(dx * dx + dy * dy + dz * dz);
     rw := e2n_mon_at(s[0].net[..], m, s[0].net[0].rt);
-    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) || !e2_plate_seen(e, g.x, y, g.z) || rw.max <= 0 { continue; }
-    alpha := g.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
+    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) || rw.max <= 0 { s[0].sight_mon[m] = 0; continue; }
+    // shown while the body shows (everglade2-sight.coax): fading over 0.15 s
+    sight := e2_sight_share(s, s[0].sight_mon[m], g.x, g.y, g.z, E2MN_TALL[g.kind]); s[0].sight_mon[m] = sight;
+    if sight <= 0 { continue; }
+    alpha := sight * g.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     v = cc.eg_plate(out, v, E2MN_NAME[g.kind], sx, sy, k, f32(rw.hp) / f32(rw.max), true, false, alpha);
@@ -204,7 +207,7 @@ e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     if t < 0 || t >= 1 { continue; }
     y := mk.y + 0.6 * t; dx := mk.x - e[0]; dy := y - e[1]; dz := mk.z - e[2];
     ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    if ahead < 0.5 { continue; }
+    if ahead < 0.5 || !e2_sight_shows(s, mk.x, mk.y - 1.2, mk.z, 1.2) { continue; }
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     alpha := 1 - t * t;
