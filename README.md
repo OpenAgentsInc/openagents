@@ -50,6 +50,10 @@ Read our six books on GitBook:
   OpenAgents' coding agent, built in Coax, and what we learn from every coding
   agent we can read.
 
+In progress: [**Building Everglade**](everglade/book/README.md), an MMORPG
+built from scratch on Aethyr in Coax, from one forest glade to a city. Its
+structure is proposed; no chapter is written yet.
+
 To choose a route through them (write current Coax, build a playable realm,
 run an original model, train a small model or sign and verify a Nostr event), see
 [Paths through the books](docs/books/paths.md).
