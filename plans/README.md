@@ -26,12 +26,16 @@ step, so the advisor chose these seven by leverage.
 | Plan | Title | Priority | Effort | Depends on | Status |
 | --- | --- | --- | --- | --- | --- |
 | [001](001-make-the-book-checks-pass-and-report-everything.md) | The book checks pass on main, and one stale review no longer hides the rest | P1 | S–M | — | TODO |
-| [002](002-serialize-credit-purchases-and-the-first-tip-bonus.md) | A credit purchase and a first-tip bonus each happen once | P1 | S | — | TODO |
-| [003](003-accept-only-tips-the-wallet-can-pay-out.md) | The API accepts only tips and prices the wallet can pay out | P1 | S | — | TODO |
-| [004](004-test-the-payout-runners-untested-branches.md) | The payout runner's untested branches have tests | P2 | M | 002, 003 | TODO |
 | [005](005-refresh-the-spot-recovery-manifest.md) | The spot-recovery manifest matches its files | P2 | S | — | TODO |
-| [006](006-one-source-list-for-the-api-binary.md) | Every local build of the API uses one source list | P2 | M | — (after 002–004 if in flight) | TODO |
+| [006](006-one-source-list-for-the-api-binary.md) | Every local build of the API uses one source list | P2 | M | — | TODO |
 | [007](007-agents-md-and-readme-match-the-tree.md) | AGENTS.md, the README and the transcript index match the tree | P3 | S | — | TODO |
+| [002](002-serialize-credit-purchases-and-the-first-tip-bonus.md) | A credit purchase and a first-tip bonus each happen once | P3 | S | — | TODO |
+| [003](003-accept-only-tips-the-wallet-can-pay-out.md) | The API accepts only tips and prices the wallet can pay out | P3 | S | — | TODO |
+| [004](004-test-the-payout-runners-untested-branches.md) | The payout runner's untested branches have tests | P3 | M | 002, 003 | TODO |
+
+Plans 002 to 004 concern maker tips and upgrades. That feature is not live
+and is not part of Everglade, so they wait until it is about to launch.
+Priorities follow the current focus, the Everglade release.
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with a one-line reason)
 | REJECTED (with a one-line rationale)
