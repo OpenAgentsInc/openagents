@@ -1,0 +1,291 @@
+// The work at a build site (engine): who builds a structure and what it is built from, for
+// staged construction (aethyr/world/build-site.coax). Three things, all from how far each part has
+// got (its fraction, 0 to 1, from the site's progress: build-site.coax bs_fractions):
+//
+// - The piles. Each material sits in a pile beside the site and shrinks as the parts it feeds go
+//   up: 60 withies before the weaving, 30 half way, none when the walls are done. A pile is a
+//   stock: how many of a thing, what one looks like (a pole, a rod, a sheaf, a stone...), and which
+//   parts take it (a material, kit pieces, and at which stage). The game names its stocks
+//   (Everglade: everglade/world/housewright.coax HW_STOCKS); the meshes are build-work-mesh.coax.
+// - The builder. One worker walks back to the pile, picks the next part's material up, carries it
+//   to where the part goes and works it into place, a trip at a time on the page's clock. The worker
+//   is what it is doing and where: the page plays its own clips for each act (a carry walk, a
+//   kneel, a reach) and draws the carried thing in its hands.
+// - The sounds. A part makes its material's sound as it lands: once for a pole or a stone, once a
+//   row for a woven wall, once a course for thatch (bw_beats). The recipes are
+//   aethyr/audio/build-sfx.coax.
+//
+// Nothing here draws or plays: the page asks and does both.
+#module "aethyr.buildwork";
+#load "build-site.coax" as bs;
+
+// What a pile looks like.
+BW_LOGS :: 0;      // poles or branches lying stacked, each `size` round and `len` long
+BW_RODS :: 1;      // withies: thin rods lying in a loose bundle
+BW_SHEAVES :: 2;   // reed or straw bundles lying stacked, each `size` round at its butt
+BW_ROCKS :: 3;     // fieldstones heaped, each `size` across
+BW_BLOCKS :: 4;    // dressed stones stacked in courses, each `size` long
+BW_BOARDS :: 5;    // boards or flagstones stacked flat, each `len` long and `size` wide
+BW_MOUND :: 6;     // clay or earth heaped in lumps that go from the top as it is used
+BW_SPRAYS :: 7;    // leafy boughs heaped
+BW_SHAPES :: 8;
+
+BW_KIT :: -1;      // a stock's `feed` for the game's kit pieces (bs.BS_KIT) of any kind
+
+// A stock: `count` of a thing in a pile shaped `shape`, drawn in the engine's material `mat`
+// (bs.BS_*), one item `size` across and `len` long. It feeds every part of material `feed` (or
+// every kit piece, BW_KIT) at stage `stage`, or at every stage when `stage` is 0.
+BuildStock :: struct {shape:int;mat:int;count:int;size:f32;len:f32;feed:int;stage:int;}
+
+// Whether a part takes from a stock.
+bw_feeds :: (s:BuildStock,p:bs.BuildPart)->bool {
+ if s.stage>0 && p.stage!=s.stage {return false;}
+ if s.feed==BW_KIT {return p.form==bs.BS_KIT;}
+ return p.form!=bs.BS_KIT && p.mat==s.feed;
+}
+// The share of a stock its parts have used, 0 to 1, from each part's fraction (bs.bs_fractions).
+// A part takes from its stock by how much work it is (bs.bs_work): a wall twice as long takes
+// twice the withies.
+bw_used :: (s:BuildStock,parts:[]bs.BuildPart,done:[]f32)->f32 {
+ all:f32=0;used:f32=0;
+ for i:0..<parts.count {if !bw_feeds(s,parts[i]) {continue;}w:=bs.bs_work(parts[i]);all+=w;d:=done[i];used+=w*(ifx d<0 then 0.0f32 else ifx d>1 then 1.0f32 else d);}
+ return ifx all<=0 then 0.0f32 else used/all;
+}
+// How many are left in the pile: all of them before its parts start, none once they are done.
+bw_left :: (s:BuildStock,parts:[]bs.BuildPart,done:[]f32)->int {
+ u:=bw_used(s,parts,done);if u>=0.9999 {return 0;}
+ n:=bw_ceil(f32(s.count)*(1-u)-0.0001);return ifx n<0 then 0 else ifx n>s.count then s.count else n;
+}
+bw_ceil :: (x:f32)->int {return -int(floor(-x));}
+// The most items a pile draws: a pile of 300 stones shows 36, each standing for several.
+BW_SHOWN :: [BW_SHAPES]int.[14,30,18,24,36,16,8,20];
+// How many items a pile with `left` of its stock draws: as many as it holds up to the shape's
+// most, fewer as it is used, and one while any is left.
+bw_shown :: (s:BuildStock,left:int)->int {
+ if left<=0 {return 0;}
+ most:=BW_SHOWN[s.shape];if s.count<most {most=s.count;}
+ n:=bw_ceil(f32(most)*f32(left)/f32(s.count)-0.0001);return ifx n<1 then 1 else ifx n>most then most else n;
+}
+
+// Where pile k of n sits, in the building's frame: in a column beside the site's east side
+// (+x), past its reach (half its width x and its depth front z and back, as HW_REACH holds them),
+// a second column further out for more than four.
+bw_pile_at :: (k:int,n:int,reach:[3]f32)->[2]f32 {
+ col:=k/4;row:=k%4;rows:=ifx n-col*4>4 then 4 else n-col*4;
+ z:=(f32(row)-f32(rows-1)*0.5)*1.5+(reach[1]-reach[2])*0.5;
+ return [2]f32.[reach[0]+1.5+f32(col)*1.7,z];
+}
+
+// Where a part goes: the point of it the builder brings its material to, in the building's frame
+// (y the height of its foot).
+bw_anchor :: (p:bs.BuildPart)->[3]f32 {
+ f:=p.form;
+ if f==bs.BS_POLE || f==bs.BS_BEAM {return [3]f32.[(p.x0+p.x1)*0.5,ifx p.y0<p.y1 then p.y0 else p.y1,(p.z0+p.z1)*0.5];}
+ if f==bs.BS_WALL || f==bs.BS_RING || f==bs.BS_GABLE_END || f==bs.BS_TRENCH {q:=bs.bs_path(p,0.5);return [3]f32.[q[0],p.y0,q[1]];}
+ if f==bs.BS_STONES || f==bs.BS_CONE {return [3]f32.[p.x0,p.y0,p.z0];}
+ if f==bs.BS_KIT {return [3]f32.[p.x0,p.y0,p.z0];}
+ return [3]f32.[(p.x0+p.x1)*0.5,ifx p.y0<p.y1 then p.y0 else p.y1,(p.z0+p.z1)*0.5];
+}
+// Where the builder stands to work a part: beside its anchor on the side away from the site's
+// middle, on the ground; under a roof, out in front of the eaves (front z the reach's).
+bw_stand :: (p:bs.BuildPart,reach:[3]f32)->[2]f32 {
+ f:=p.form;
+ if f==bs.BS_SHED || f==bs.BS_GABLE || f==bs.BS_CONE {return [2]f32.[0,reach[1]+0.6];}
+ a:=bw_anchor(p);
+ if f==bs.BS_SLAB && a[1]<0.2 {return [2]f32.[a[0],a[2]];}   // a floor or a hearth: kneel on it
+ l:=sqrt(a[0]*a[0]+a[2]*a[2]);
+ if l<0.3 {return [2]f32.[a[0],a[2]+0.7];}
+ return [2]f32.[a[0]+a[0]/l*0.7,a[2]+a[2]/l*0.7];
+}
+
+// What the builder is doing.
+BW_IDLE :: 0;      // standing by: nothing is arriving
+BW_FETCH :: 1;     // walking back to the pile, hands empty
+BW_PICK :: 2;      // stooping at the pile to take up the part's material
+BW_CARRY :: 3;     // carrying it to where the part goes
+BW_WORK :: 4;      // working it in: the part grows
+// How the work looks, for the page's choice of clip.
+BW_HANDS_LOW :: 0;    // kneeling: stones on a course, a floor, a hearth, a fire ring
+BW_HANDS_MID :: 1;    // standing, hands at the wall: weaving, daubing, lashing
+BW_HANDS_HIGH :: 2;   // reaching up: roof poles, thatch, plates and rafters
+BW_HANDS_DIG :: 3;    // digging: a ditch
+BW_HANDS_SET :: 4;    // setting a post or a kit piece upright
+
+bw_hands :: (p:bs.BuildPart)->int {
+ f:=p.form;
+ if f==bs.BS_TRENCH {return BW_HANDS_DIG;}
+ if f==bs.BS_STONES || f==bs.BS_SLAB {return BW_HANDS_LOW;}
+ if f==bs.BS_SHED || f==bs.BS_GABLE || f==bs.BS_CONE {return BW_HANDS_HIGH;}
+ if f==bs.BS_POLE || f==bs.BS_BEAM {lo:=ifx p.y0<p.y1 then p.y0 else p.y1;return ifx lo>1.5 then BW_HANDS_HIGH else BW_HANDS_SET;}
+ if f==bs.BS_KIT {return BW_HANDS_SET;}
+ if p.mat==bs.BS_FIELDSTONE || p.mat==bs.BS_ASHLAR {return ifx p.y0>1.2 then BW_HANDS_HIGH else BW_HANDS_LOW;}
+ return ifx p.y0>1.6 then BW_HANDS_HIGH else BW_HANDS_MID;
+}
+
+// The builder at one moment: where it stands (the building's frame), which way it faces (radians,
+// 0 facing +z), what it does and how far through that act (0 to 1), whether it carries, how the
+// work looks, which stock it carries from (the k of the site's piles, -1 none) and the part it
+// works (-1 none).
+BuildWorker :: struct {x:f32;z:f32;yaw:f32;act:int;t:f32;carry:bool;hands:int;stock:int;part:int;}
+
+// The builder works in trips, each of a fixed time on the page's clock (a time-lapse lays dozens
+// of withy rows a second, and one trip a row would only flicker): back to the pile, a stoop, the
+// carry, then the work at the part growing at the trip's middle. A trip's share of its time:
+BW_FETCH_END :: 0.22;
+BW_PICK_END :: 0.34;
+BW_CARRY_END :: 0.62;
+BW_TRIP_WORK :: 0.8;   // where in a trip its part is chosen: well into the work
+
+bw_mix :: (a:[2]f32,b:[2]f32,t:f32)->[2]f32 {return [2]f32.[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];}
+bw_face :: (from:[2]f32,to:[2]f32,keep:f32)->f32 {dx:=to[0]-from[0];dz:=to[1]-from[1];return ifx dx*dx+dz*dz<0.0001 then keep else bw_atan2(dx,dz);}
+bw_ease :: (t:f32)->f32 {u:=ifx t<0 then 0.0f32 else ifx t>1 then 1.0f32 else t;return u*u*(3-2*u);}
+bw_dist :: (a:[2]f32,b:[2]f32)->f32 {dx:=b[0]-a[0];dz:=b[1]-a[1];return sqrt(dx*dx+dz*dz);}
+bw_hi :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+// The angle of (y, x) from +x towards +y, in radians, to about 0.0001.
+bw_atan2 :: (y:f32,x:f32)->f32 {
+ ay:=abs(y);ax:=abs(x);if ay<0.0000001 && ax<0.0000001 {return 0;}
+ a:=bs.bs_elevation(ay,ax);if ax<0.0000001 {a=1.5707963;}
+ if x<0 {a=3.1415927-a;}return ifx y<0 then -a else a;
+}
+
+// One trip at `phase` (0 to 1): from `from` (where the last trip's work was) to the pile at
+// `pile`, then to `stand` to work facing `face`.
+bw_trip :: (phase:f32,from:[2]f32,pile:[2]f32,stand:[2]f32,face:[2]f32)->BuildWorker {
+ w:=BuildWorker.{stock= -1,part= -1};f:=ifx phase<0 then 0.0f32 else ifx phase>1 then 1.0f32 else phase;
+ // stop a little short of the pile, on the side towards the work
+ at:=bw_mix(pile,stand,0.55/bw_hi(0.55,bw_dist(pile,stand)));
+ if f<BW_FETCH_END {t:=f/BW_FETCH_END;q:=bw_mix(from,at,bw_ease(t));w.x=q[0];w.z=q[1];w.yaw=bw_face(from,at,bw_face(at,pile,0));w.act=BW_FETCH;w.t=t;return w;}
+ if f<BW_PICK_END {w.x=at[0];w.z=at[1];w.yaw=bw_face(at,pile,0);w.act=BW_PICK;w.t=(f-BW_FETCH_END)/(BW_PICK_END-BW_FETCH_END);return w;}
+ if f<BW_CARRY_END {t:=(f-BW_PICK_END)/(BW_CARRY_END-BW_PICK_END);q:=bw_mix(at,stand,bw_ease(t));w.x=q[0];w.z=q[1];w.yaw=bw_face(at,stand,bw_face(stand,face,0));w.act=BW_CARRY;w.t=t;w.carry=true;return w;}
+ w.x=stand[0];w.z=stand[1];w.yaw=bw_face(stand,face,bw_face(at,stand,0));w.act=BW_WORK;w.t=(f-BW_CARRY_END)/(1-BW_CARRY_END);return w;
+}
+// The builder with nothing to do: standing at `at`, facing the site's middle.
+bw_idle :: (at:[2]f32)->BuildWorker {return BuildWorker.{x=at[0],z=at[1],yaw=bw_face(at,[2]f32.[0,0],0),act=BW_IDLE,stock= -1,part= -1};}
+// The pile a part's material comes from: the first of `stocks` that feeds it, or -1.
+bw_stock_of :: (stocks:[]BuildStock,p:bs.BuildPart)->int {for k:0..<stocks.count {if bw_feeds(stocks[k],p) {return k;}}return -1;}
+// Where the builder works the part arriving at progress v, or -1 when the build is done.
+bw_target :: (parts:[]bs.BuildPart,v:f32)->int {return bs.bs_arrival(parts,v).part;}
+
+// The builder of a site in trip `phase`: `v_last` is the progress at the last trip's work (where
+// it comes from) and `v_now` this trip's (BW_TRIP_WORK into each trip on the page's clock). It
+// fetches from the pile of the part arriving at `v_now`, carries one of its stock, and works it
+// facing where the work is now (bs_spot at progress `v`). Done, it stands by its last work.
+bw_builder :: (parts:[]bs.BuildPart,stocks:[]BuildStock,reach:[3]f32,v_last:f32,v_now:f32,v:f32,phase:f32)->BuildWorker {
+ n:=stocks.count;
+ last:=bw_target(parts,v_last);i:=bw_target(parts,v_now);
+ from:=ifx last>=0 then bw_stand(parts[last],reach) else bw_pile_at(0,n,reach);
+ if i<0 {if last<0 {k:=parts.count-1;if k>=0 {return bw_idle(bw_stand(parts[k],reach));}return bw_idle(from);}return bw_idle(from);}
+ p:=parts[i];k:=bw_stock_of(stocks,p);pile:=ifx k>=0 then bw_pile_at(k,n,reach) else from;
+ now:=bs.bs_arrival(parts,v);sp:=ifx now.part==i then now.spot else bs.bs_spot(p,0.5);
+ w:=bw_trip(phase,from,pile,bw_stand(p,reach),[2]f32.[sp[0],sp[2]]);
+ w.hands=bw_hands(p);w.part=i;w.stock=k;if k<0 {w.carry=false;}
+ return w;
+}
+
+// The sound a part makes landing (aethyr/audio/build-sfx.coax BSFX_*): wood knocks, withies
+// creak, stone clacks, thatch and boughs rustle, earth and clay take a spade.
+BW_SOUND_WOOD :: 0; BW_SOUND_WITHY :: 1; BW_SOUND_STONE :: 2; BW_SOUND_THATCH :: 3; BW_SOUND_EARTH :: 4;
+bw_sound :: (p:bs.BuildPart)->int {
+ if p.form==bs.BS_KIT {return BW_SOUND_WOOD;}
+ if p.form==bs.BS_TRENCH {return BW_SOUND_EARTH;}
+ m:=p.mat;
+ if m==bs.BS_WITHY {return BW_SOUND_WITHY;}
+ if m==bs.BS_FIELDSTONE || m==bs.BS_ASHLAR || m==bs.BS_FLAG {return BW_SOUND_STONE;}
+ if m==bs.BS_REED || m==bs.BS_LEAF {return BW_SOUND_THATCH;}
+ if m==bs.BS_EARTH || m==bs.BS_DAUB {return BW_SOUND_EARTH;}
+ return BW_SOUND_WOOD;
+}
+// How many times a part sounds as it grows: once for a thing set down whole (a pole, a stone ring,
+// a kit piece), once a row or a course for what goes up in rows (walls, thatch, a floor, a ditch).
+bw_beats :: (p:bs.BuildPart)->int {
+ f:=p.form;
+ if f==bs.BS_POLE || f==bs.BS_BEAM || f==bs.BS_KIT {return 1;}
+ if f==bs.BS_STONES {return 3;}
+ if f==bs.BS_WALL || f==bs.BS_RING || f==bs.BS_GABLE_END {n:=int(abs(p.y1-p.y0)/0.4+0.5);return ifx n<2 then 2 else ifx n>6 then 6 else n;}
+ if f==bs.BS_SHED || f==bs.BS_GABLE || f==bs.BS_CONE {return 4;}
+ return 2;
+}
+// How many beats a part sounds as its fraction goes from f0 to f1: beat j lands as the fraction
+// passes (j + 1) / beats, so the last lands as the part is done.
+bw_landed :: (p:bs.BuildPart,f0:f32,f1:f32)->int {
+ if f1<=f0 {return 0;}g0:=f0;g1:=f1;n:=bw_beats(p);c:=0;
+ for j:0..<n {at:=f32(j+1)/f32(n);if g0<at-0.00001 && g1>=at-0.00001 {c+=1;}}
+ return c;
+}
+
+// The sounds a site makes as it goes from progress v0 to v1, into out (one count a sound,
+// BW_SOUNDS slots): every beat of every part that lands between them. A page plays them, a few a
+// second at most (a time-lapse lands dozens of withy rows a second).
+BW_SOUNDS :: 5;
+bw_sounds :: (parts:[]bs.BuildPart,v0:f32,v1:f32,out:[]int) {
+ for k:0..<BW_SOUNDS {out[k]=0;}if v1<=v0 {return;}
+ for i:0..<parts.count {f0:=bs.bs_fraction(parts,i,v0);f1:=bs.bs_fraction(parts,i,v1);if f1>f0 {out[bw_sound(parts[i])]+=bw_landed(parts[i],f0,f1);}}
+}
+// The one sound to play for a stretch: the most landed, or -1 for none.
+bw_loudest :: (counts:[]int)->int {k:= -1;m:=0;for i:0..<counts.count {if counts[i]>m {m=counts[i];k=i;}}return k;}
+
+#test "a pile shrinks with its parts, 60 withies then 30 then none" {
+ parts:=[3]bs.BuildPart.[
+  bs.BuildPart.{stage=1,form=bs.BS_RING,mat=bs.BS_BARK,x0=0,z0=0,x1=1.5,z1=0.36,a=5.92,y0=0,y1=1.8,t=0.065},
+  bs.BuildPart.{stage=2,form=bs.BS_WALL,mat=bs.BS_WITHY,x0= -1,z0=0,x1=1,z1=0,y0=0,y1=1.5,t=0.1},
+  bs.BuildPart.{stage=2,form=bs.BS_WALL,mat=bs.BS_WITHY,x0= -1,z0=1,x1=1,z1=1,y0=0,y1=1.5,t=0.1}];
+ s:=BuildStock.{shape=BW_RODS,mat=bs.BS_WITHY,count=60,size=0.012,len=2.2,feed=bs.BS_WITHY};
+ d:[3]f32;
+ bs.bs_fractions(parts[..],1,d[..]);#assert d[0]==1 && d[1]==0 && bw_left(s,parts[..],d[..])==60;
+ bs.bs_fractions(parts[..],1.5,d[..]);#assert d[1]==1 && d[2]==0 && bw_left(s,parts[..],d[..])==30;
+ bs.bs_fractions(parts[..],1.75,d[..]);#assert bw_left(s,parts[..],d[..])==15 && bs.bs_arrival(parts[..],1.75).part==2;
+ bs.bs_fractions(parts[..],2,d[..]);#assert bw_left(s,parts[..],d[..])==0 && bw_shown(s,0)==0 && bs.bs_arrival(parts[..],2).part== -1;
+ // a pile never goes up as the build goes on, and draws one item while any is left
+ last:=61;for k:0..<41 {bs.bs_fractions(parts[..],f32(k)*0.05,d[..]);n:=bw_left(s,parts[..],d[..]);#assert n<=last;last=n;if n>0 {#assert bw_shown(s,n)>=1 && bw_shown(s,n)<=BW_SHOWN[BW_RODS];}}
+}
+#test "a stock feeds only its material, its stage and kit pieces as asked" {
+ p:=bs.BuildPart.{stage=7,form=bs.BS_SLAB,mat=bs.BS_EARTH};t:=p;t.stage=1;t.form=bs.BS_TRENCH;
+ s:=BuildStock.{feed=bs.BS_EARTH,stage=7};#assert bw_feeds(s,p) && !bw_feeds(s,t);
+ k:=bs.BuildPart.{stage=4,form=bs.BS_KIT,mat=bs.BS_EARTH};#assert !bw_feeds(s,k) && bw_feeds(BuildStock.{feed=BW_KIT},k) && !bw_feeds(BuildStock.{feed=BW_KIT},p);
+}
+#test "the builder fetches, stoops, carries and works, and never jumps" {
+ p:=bs.BuildPart.{stage=1,form=bs.BS_POLE,mat=bs.BS_BARK,x0=1,y0=0,z0=1,x1=1,y1=1.8,z1=1,t=0.06};
+ reach:=[3]f32.[1.5,1.5,1.5];pile:=bw_pile_at(0,3,reach);st:=bw_stand(p,reach);a:=bw_anchor(p);from:=[2]f32.[-2,0];face:=[2]f32.[a[0],a[2]];
+ w:=bw_trip(0,from,pile,st,face);#assert w.act==BW_FETCH && abs(w.x+2)<0.001 && !w.carry;
+ w=bw_trip(0.3,from,pile,st,face);#assert w.act==BW_PICK && bw_dist([2]f32.[w.x,w.z],pile)<0.6;
+ w=bw_trip(0.5,from,pile,st,face);#assert w.act==BW_CARRY && w.carry;
+ w=bw_trip(0.8,from,pile,st,face);#assert w.act==BW_WORK && w.x==st[0] && w.z==st[1];
+ // it stands outside the post, facing it
+ #assert bw_dist(st,[2]f32.[0,0])>bw_dist(face,[2]f32.[0,0]) && abs(w.yaw-bw_face(st,face,0))<0.0001;
+ prev:=bw_trip(0,from,pile,st,face);
+ for k:1..<401 {q:=bw_trip(f32(k)/400,from,pile,st,face);#assert bw_dist([2]f32.[q.x,q.z],[2]f32.[prev.x,prev.z])<0.2;prev=q;}
+}
+#test "the builder takes each trip's material from its own pile and stands by when the house is done" {
+ parts:=[2]bs.BuildPart.[
+  bs.BuildPart.{stage=1,form=bs.BS_POLE,mat=bs.BS_BARK,x0=1,y0=0,z0=1,x1=1,y1=1.8,z1=1,t=0.06},
+  bs.BuildPart.{stage=2,form=bs.BS_WALL,mat=bs.BS_WITHY,x0= -1,z0=1,x1=1,z1=1,y0=0,y1=1.5,t=0.1}];
+ stocks:=[2]BuildStock.[BuildStock.{shape=BW_LOGS,mat=bs.BS_BARK,count=8,feed=bs.BS_BARK},BuildStock.{shape=BW_RODS,mat=bs.BS_WITHY,count=60,feed=bs.BS_WITHY}];
+ reach:=[3]f32.[1.5,1.5,1.5];
+ w:=bw_builder(parts[..],stocks[..],reach,0,0.5,0.5,0.3);#assert w.part==0 && w.stock==0 && w.act==BW_PICK && bw_dist([2]f32.[w.x,w.z],bw_pile_at(0,2,reach))<0.6;
+ w=bw_builder(parts[..],stocks[..],reach,0.5,1.5,1.5,0.5);#assert w.part==1 && w.stock==1 && w.carry && w.hands==BW_HANDS_MID;
+ w=bw_builder(parts[..],stocks[..],reach,1.5,2,2,0.5);#assert w.act==BW_IDLE && w.part== -1 && !w.carry;
+}
+#test "the builder faces where it goes" {
+ #assert abs(bw_atan2(1,0)-1.5707963)<0.001 && abs(bw_atan2(0,-1)-3.1415927)<0.001 && abs(bw_atan2(-1,-1)+2.3561945)<0.001 && abs(bw_atan2(1,1)-0.7853982)<0.001;
+ #assert bw_ceil(2.0)==2 && bw_ceil(2.01)==3 && bw_ceil(-0.5)==0;
+}
+#test "each material lands with its own sound, a wall once a row" {
+ w:=bs.BuildPart.{stage=1,form=bs.BS_WALL,mat=bs.BS_WITHY,x0= -1,z0=0,x1=1,z1=0,y0=0,y1=1.8,t=0.1};
+ #assert bw_sound(w)==BW_SOUND_WITHY && bw_beats(w)==5;
+ n:=0;for k:0..<100 {n+=bw_landed(w,f32(k)/100,f32(k+1)/100);}#assert n==5;
+ #assert bw_landed(w,0,1)==5 && bw_landed(w,0.5,0.5)==0;
+ p:=w;p.form=bs.BS_POLE;p.mat=bs.BS_BARK;#assert bw_sound(p)==BW_SOUND_WOOD && bw_landed(p,0,0.99)==0 && bw_landed(p,0.99,1)==1;
+ s:=w;s.mat=bs.BS_FIELDSTONE;#assert bw_sound(s)==BW_SOUND_STONE;
+ r:=w;r.form=bs.BS_CONE;r.mat=bs.BS_REED;#assert bw_sound(r)==BW_SOUND_THATCH;
+ t:=w;t.form=bs.BS_TRENCH;t.mat=bs.BS_EARTH;#assert bw_sound(t)==BW_SOUND_EARTH;
+}
+#test "a site sounds each landing between two progresses, and never twice" {
+ parts:=[2]bs.BuildPart.[
+  bs.BuildPart.{stage=1,form=bs.BS_POLE,mat=bs.BS_BARK,x0=1,y0=0,z0=1,x1=1,y1=1.8,z1=1,t=0.06},
+  bs.BuildPart.{stage=1,form=bs.BS_WALL,mat=bs.BS_WITHY,x0= -1,z0=1,x1=1,z1=1,y0=0,y1=1.8,t=0.1}];
+ c:[BW_SOUNDS]int;all:[BW_SOUNDS]int;
+ for k:0..<100 {bw_sounds(parts[..],f32(k)/100,f32(k+1)/100,c[..]);for j:0..<BW_SOUNDS {all[j]+=c[j];}}
+ #assert all[BW_SOUND_WOOD]==1 && all[BW_SOUND_WITHY]==5 && all[BW_SOUND_STONE]==0;
+ bw_sounds(parts[..],0,1,c[..]);#assert c[BW_SOUND_WITHY]==5 && bw_loudest(c[..])==BW_SOUND_WITHY;
+ bw_sounds(parts[..],0.5,0.5,c[..]);#assert bw_loudest(c[..])== -1;
+}

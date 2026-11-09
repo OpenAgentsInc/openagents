@@ -8,6 +8,7 @@
 #module "everglade.housewright";
 #load "../../aethyr/world/build-site.coax" as bs;
 #load "../../aethyr/world/building.coax" as building;
+#load "../../aethyr/world/build-work.coax" as bw;
 
 HW_TIERS :: 5;
 HW_LEANTO :: 0;
@@ -184,4 +185,65 @@ hw_tier_parts :: (tier:int,out:[]bs.BuildPart)->int {n:=0;for i:HW_FIRST[tier]..
  for t:0..<HW_TIERS {n:=hw_tier_parts(t,p[..]);#assert n==HW_FIRST[t+1]-HW_FIRST[t] && n<=HW_MOST_PARTS;
   for k:0..<hw_stages(t)+1 {bs.bs_fractions(p[0..<n],f32(k),fr[..]);for i:0..<n {#assert fr[i]==(ifx p[i].stage<=k then 1.0f32 else 0.0f32);}}
   #assert bs.bs_arrival(p[0..<n],f32(hw_stages(t))).part== -1;}
+}
+
+// What each tier is built from, as the piles beside its site (the engine's stocks,
+// aethyr/world/build-work.coax): the spec's material counts (section 6; starting values for
+// playtests), what one looks like, and which parts take it. A row is: tier, pile shape (bw.BW_*),
+// the material it is drawn in (bs.BS_*), count, one item's size and length in metres, the material
+// of the parts it feeds (or bw.BW_KIT for kit pieces), and the stage it feeds (0 every stage).
+// Clay and straw both go into the daub; the cottage's earth goes into its floor, not its ditch.
+HW_STOCKS :: 25;
+HW_STOCK_ROWS :: [HW_STOCKS][8]f32.[
+ // the branch lean-to: branches, leafy boughs, the stones of the fire ring
+ [8]f32.[0, 0,0,20, 0.035,2.2, 0,0],[8]f32.[0, 7,7,30, 0.5,1.0, 7,0],[8]f32.[0, 3,4,8, 0.2,0, 4,0],
+ // the woven hut: poles, withies, reed bundles, fieldstones
+ [8]f32.[1, 0,0,8, 0.065,2.4, 0,0],[8]f32.[1, 1,2,60, 0.012,2.2, 2,0],[8]f32.[1, 2,6,40, 0.14,1.2, 6,0],[8]f32.[1, 3,4,12, 0.2,0, 4,0],
+ // the wattle-and-daub cottage: fieldstones, posts, withies, clay, straw, earth, reed bundles, a hearthstone
+ [8]f32.[2, 3,4,40, 0.24,0, 4,0],[8]f32.[2, 0,1,6, 0.11,2.6, 1,0],[8]f32.[2, 1,2,120, 0.012,2.2, 2,0],[8]f32.[2, 6,3,30, 0.9,0, 3,0],
+ [8]f32.[2, 2,6,20, 0.12,0.9, 3,0],[8]f32.[2, 6,8,20, 0.8,0, 8,7],[8]f32.[2, 2,6,120, 0.14,1.2, 6,0],[8]f32.[2, 5,9,4, 0.4,0.5, 9,0],
+ // the timber house: fieldstones for the sill, timbers, planks (its kit's boards)
+ [8]f32.[3, 3,4,30, 0.24,0, 4,0],[8]f32.[3, 0,1,24, 0.1,3.0, 1,0],[8]f32.[3, 5,10,40, 0.22,2.0, -1,0],
+ // the stone cottage: fieldstones for the footings, dressed stones, roof timbers, reed bundles,
+ // flagstones, a door's boards
+ [8]f32.[4, 3,4,60, 0.26,0, 4,0],[8]f32.[4, 4,5,300, 0.4,0, 5,0],[8]f32.[4, 0,1,12, 0.09,3.2, 1,0],[8]f32.[4, 2,6,120, 0.14,1.2, 6,0],
+ [8]f32.[4, 5,9,12, 0.5,0.6, 9,0],[8]f32.[4, 5,10,6, 0.2,2.0, 10,0],
+ // the cottage's door boards
+ [8]f32.[2, 5,10,6, 0.2,2.0, 10,0]];
+HW_STOCK_NAMES :: [HW_STOCKS]string.["branches","leafy boughs","fieldstones", "poles","withies","reed bundles","fieldstones",
+ "fieldstones","posts","withies","clay","straw","earth","reed bundles","hearthstones", "fieldstones","timbers","planks",
+ "fieldstones","dressed stones","roof timbers","reed bundles","flagstones","boards", "boards"];
+HW_MOST_STOCKS :: 9;
+hw_stock :: (i:int)->bw.BuildStock {
+ r:=HW_STOCK_ROWS[i];return bw.BuildStock.{shape=int(r[1]),mat=int(r[2]),count=int(r[3]),size=r[4],len=r[5],feed=int(r[6]),stage=int(r[7])};
+}
+// A tier's stocks, in pile order (bw.bw_pile_at's k): written into out, and their rows into rows.
+hw_tier_stocks :: (tier:int,out:[]bw.BuildStock,rows:[]int)->int {
+ n:=0;for i:0..<HW_STOCKS {if int(HW_STOCK_ROWS[i][0])==tier && n<out.count {out[n]=hw_stock(i);if n<rows.count {rows[n]=i;}n+=1;}}return n;
+}
+// How many of stock row i are left in its pile at a progress (0 to the tier's last stage).
+hw_pile_left :: (i:int,progress:f32)->int {
+ t:=int(HW_STOCK_ROWS[i][0]);p:[HW_MOST_PARTS]bs.BuildPart;fr:[HW_MOST_PARTS]f32;n:=hw_tier_parts(t,p[..]);
+ bs.bs_fractions(p[0..<n],progress,fr[..]);return bw.bw_left(hw_stock(i),p[0..<n],fr[0..<n]);
+}
+hw_stock_row :: (tier:int,name:string)->int {for i:0..<HW_STOCKS {if int(HW_STOCK_ROWS[i][0])==tier && HW_STOCK_NAMES[i]==name {return i;}}return -1;}
+
+#test "every pile is full before its house starts, empty when it is done, and never grows" #steps 600000000 {
+ for i:0..<HW_STOCKS {t:=int(HW_STOCK_ROWS[i][0]);s:=hw_stock(i);
+  #assert hw_pile_left(i,0)==s.count && hw_pile_left(i,f32(hw_stages(t)))==0;
+  last:=s.count;for k:0..<hw_stages(t)*20+1 {n:=hw_pile_left(i,f32(k)/20);#assert n<=last;last=n;}}
+ // every tier has a pile, and no more than a site lays out
+ st:[HW_MOST_STOCKS]bw.BuildStock;r:[HW_MOST_STOCKS]int;
+ for t:0..<HW_TIERS {n:=hw_tier_stocks(t,st[..],r[..]);#assert n>0 && n<=HW_MOST_STOCKS;}
+}
+#test "the hut's withies go 60, then 30 half way through the weaving, then none" {
+ w:=hw_stock_row(HW_HUT,"withies");#assert w>=0;
+ #assert hw_pile_left(w,1)==60 && hw_pile_left(w,1.5)==30 && hw_pile_left(w,2)==0 && hw_pile_left(w,4)==0;
+ // the reed waits for the thatch; the posts are used before the weaving starts
+ r:=hw_stock_row(HW_HUT,"reed bundles");#assert hw_pile_left(r,3)==40 && hw_pile_left(r,3.5)<40 && hw_pile_left(r,3.5)>0;
+ p:=hw_stock_row(HW_HUT,"poles");#assert hw_pile_left(p,0.5)<8 && hw_pile_left(p,2)<8 && hw_pile_left(p,2)>0 && hw_pile_left(p,3)==0;
+ // the cottage's earth goes into its floor, so the ditch leaves the pile alone
+ e:=hw_stock_row(HW_COTTAGE,"earth");#assert hw_pile_left(e,1)==20 && hw_pile_left(e,6)==20 && hw_pile_left(e,7)==0;
+ c:=hw_stock_row(HW_COTTAGE,"clay");s:=hw_stock_row(HW_COTTAGE,"straw");#assert hw_pile_left(c,4)==30 && hw_pile_left(s,4.5)<20 && hw_pile_left(c,5)==0;
+ d:=hw_stock_row(HW_STONE,"dressed stones");#assert hw_pile_left(d,1)==300 && hw_pile_left(d,2)<300 && hw_pile_left(d,2)>0 && hw_pile_left(d,3)>0 && hw_pile_left(d,4)==0;   // the chimney takes the last
 }

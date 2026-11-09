@@ -7,6 +7,7 @@
 // build and target.
 //   coax/bin/coax test aethyr/audio/experimental-sfx.coax --library
 #load "sfx.coax";
+#load "build-sfx.coax";   // the build-site sounds (a part landing), played by their own names
 
 XSFX_PSYCHIC_CAST :: 0; XSFX_PSYCHIC_HIT :: 1; XSFX_CHOIR :: 2; XSFX_RAGE_ROAR :: 3; XSFX_GRUNT :: 4;
 XSFX_SWING_HEAVY :: 5; XSFX_FIZZLE :: 6; XSFX_SECOND_WIND :: 7; XSFX_SURGE :: 8; XSFX_DASH :: 9;
@@ -17,14 +18,17 @@ XSFX_GREMLIN_HURT :: 14; XSFX_GREMLIN_DEATH :: 15;
 XSFX_BOW :: 16; XSFX_ARROW_WHIZ :: 17; XSFX_ARROW_HIT :: 18; XSFX_HURL :: 19; XSFX_ROCK_HIT :: 20;
 // the bow's own (docs/verse/bow-combat.md): the draw's creak, an arrow into a creature, and one into grass
 XSFX_BOW_DRAW :: 21; XSFX_ARROW_FLESH :: 22; XSFX_ARROW_GRASS :: 23;
-XSFX_COUNT :: 24;
+// the build site's (build-sfx.coax): XSFX_BUILD + BSFX_*, a part landing in each material
+XSFX_BUILD :: 24;
+XSFX_COUNT :: XSFX_BUILD + BSFX_COUNT;
 XSFX_NAMES :: [XSFX_COUNT] string.[
   "psychic-cast", "psychic-hit", "choir", "rage-roar", "grunt",
   "swing-heavy", "fizzle", "second-wind", "surge", "dash",
   "flurry", "entangle", "imp-hurt", "imp-death",
   "gremlin-hurt", "gremlin-death",
   "bow-release", "arrow-whiz", "arrow-hit", "hurl", "rock-hit",
-  "bow-draw", "arrow-flesh", "arrow-grass"];
+  "bow-draw", "arrow-flesh", "arrow-grass",
+  "build-wood", "build-withy", "build-stone", "build-thatch", "build-earth"];
 XSFX_MAX_MS :: 1400;
 
 xsfx_id :: (name: string) -> int {
@@ -133,6 +137,8 @@ xsfx_recipe :: (id: int) -> Sfx {
   } else if id == XSFX_ARROW_GRASS {    // an arrow into grass: a soft swish and a muffled tap in the earth
     s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 220, 8, 0, 0, 2400, 700, 350, 800), 2));
     s = sfx_add(s, sl_curve(sl(SFX_SINE, 20, 110, 1, 120, 70, 0, 0, 0, 450), 3));
+  } else if id >= XSFX_BUILD && id < XSFX_COUNT {
+    s = bsfx_recipe(id - XSFX_BUILD);
   }
   return s;
 }
@@ -194,4 +200,8 @@ xsfx_render :: (id: int, rate: int, mix: [] int, out: [] u8) -> SfxRender {
     #assert same;
   }
   #assert !xsfx_render(XSFX_COUNT, SFX_RATE, mix[..], a[..]).ok && !xsfx_render(0, SFX_RATE, mix[0..<10], a[..]).ok;
+}
+
+#test "the build-site sounds play in Experimental by their own names" {
+  for k: 0..<BSFX_COUNT { #assert xsfx_id(BSFX_NAMES[k]) == XSFX_BUILD + k && xsfx_recipe(XSFX_BUILD + k).ms == bsfx_recipe(k).ms; }
 }
