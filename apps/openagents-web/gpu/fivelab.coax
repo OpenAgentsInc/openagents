@@ -628,7 +628,7 @@ fivelab_block_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->Fivela
   return o;
 }
 fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4)->FivelabS {
-  if (u[10]>1.5f32 && instance>=65536) {return cg_instanced_vs(id,instance,objects[cast(int)((instance>>16)-1)],u,vertices);}
+  if (u[10]>1.5f32 && instance>=65536) {m0:=objects[cast(int)((instance>>16)-1)];if (m0.d.w>19.5f32) {return cg_meadow_vs(id,instance,m0,u,vertices);}return cg_instanced_vs(id,instance,m0,u,vertices);}   // 20: the open meadow (character-glade.coax)
   m:FivelabObj=objects[cast(int)instance];
   if (m.d.w>15.5f32) {return cg_environment_vs(id,instance,m,u,vertices);}
   if (wg_fmod(m.d.w,8.0f32)>3.5f32) { return fivelab_block_vs(id,instance,m,u,bake); }

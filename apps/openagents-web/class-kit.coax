@@ -129,7 +129,13 @@ xc_art :: (a: FbAb, slot: int) -> string {
   return a.art;
 }
 // A slot's picture: the class's own (cl-*) are Everglade's, the rest 5E MMO's.
-xc_url :: (art: string) -> string { return ifx art.count > 3 && art[0] == 'c' && art[1] == 'l' && art[2] == '-' then XC_EG_URL else XC_MMO_URL; }
+// Everglade also has a few spells' own pictures that 5E MMO lacks (the druid's grove uses them).
+XC_EG_ONLY :: [3] string.["shapechange", "fire-storm", "gust-of-wind"];
+xc_url :: (art: string) -> string {
+  if art.count > 3 && art[0] == 'c' && art[1] == 'l' && art[2] == '-' { return XC_EG_URL; }
+  for e: XC_EG_ONLY { if art == e { return XC_EG_URL; } }
+  return XC_MMO_URL;
+}
 // Character Create class icons already have their slot 1 key baked into the art.
 xc_draw_slot_key :: (slot:int,art:string)->bool {return slot!=0 || xc_url(art)!=XC_EG_URL;}
 // ---- aim: everything goes the way you face (#13025 owner feedback). Nothing picks a target for you.

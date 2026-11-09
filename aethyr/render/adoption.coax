@@ -71,6 +71,7 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert r.tracked_legacy && !r.shared && r.profile == -1;
   #assert !render_adoption("everglade-experimental", "everglade").tracked_legacy;
   #assert !render_adoption("everglade-experiment", "fivelab").tracked_legacy;
+  #assert render_adoption("druid", "fivelab").tracked_legacy && !render_adoption("druid", "everglade").tracked_legacy;
 }
 #test "Everglade on the 5E module and Everglade Classic are tracked legacy consumers" {
   route := render_adoption("everglade", "everglade5e");
@@ -165,6 +166,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-experimental" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "druid" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }   // the druid's grove: Experimental's world and passes
   if slug == "everglade" && app == "everglade5e" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "everglade-classic" && app == "everglade" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "metahuman-lab" && app == "metahumanlab" { return RenderAdoption.{tracked_legacy = true}; }

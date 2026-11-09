@@ -1087,3 +1087,34 @@ with these slice limitations. Each one moves to
 Everglade II keeps its declared social profile and fields no monsters.
 The owner never chose another profile, so the slice keeps the current
 one.
+
+### Shapechange, the Adult Red Dragon and the druid's field (2026-11-09)
+
+A level 17 Druid now casts Shapechange (SRD 5.2.1) with a 9th-level slot, an
+Action, Concentration and the jade circlet. It takes the shape of an eligible
+creature (not Undead, Challenge Rating no higher than its level) and keeps its
+own mind, Hit Points and saves. It gains the form's numbers and the form's Hit
+Points as Temporary Hit Points. A Magic action changes the form without new
+Temporary Hit Points. Ending Concentration or Return to Form gives everything
+back (`aethyr/rules/srd/shapechange.coax`). The engine's Druid has its full
+slot table to level 20. The Adult Red Dragon is a monster block
+(`monsters.coax`, AC 19, 256 HP, Fly 80, Fire immunity). Its Fire Breath is a
+60-foot cone, DC 21 Dexterity, 17d6 Fire with half on a success, Recharge 5–6
+at the start of its turn (`dragon-actions.coax`). A 3D world passes the
+creatures in the cone that it measured. The checks are `battle.coax`
+"Shapechange" and "Fire Breath", "the cone", "Recharge" and "Burning".
+
+House actions and mappings, all declared:
+
+- Burning: a creature that fails the breath's save burns for 1d4 Fire at the
+  start of each of its turns for three rounds. An action spent Prone puts it
+  out. The SRD's breath has no lasting fire.
+- Tail Sweep (15 feet, Dexterity save, Prone), Wing Buffet (10 feet, Strength
+  save, pushed 15 feet) and Frightful Roar (60 feet, Wisdom save, Frightened
+  for six seconds) are the demo's actions, with the SRD's DC formula
+  (8 + modifier + Proficiency Bonus). They aren't in the 5.2.1 block.
+- The block's Multiattack is three Rends, as the SRD has it. Its Spellcasting,
+  Legendary Resistance and Legendary Actions aren't modelled.
+- The field at /druid gives back the 9th-level slot and Wild Shape whenever
+  you stand in your own shape again, as a long rest would, so you can change
+  again.

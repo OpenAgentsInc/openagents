@@ -68,9 +68,10 @@ export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // page: the module's data-page (coaxial_page), when one module draws several pages: the Grid is the homepage's (newland, page 1).
 // project_asset: an owner-local asset (local:/private/NAME.EXT) that ?project=SLUG swaps for /private/SLUG.EXT
 // before the host starts (Animation Lab's project bundles).
+// short: a top-level path that serves the same page too (/druid), written to DIR/index.html for the site bucket.
 // place_of: the realm this page opens a place in (Character Create, at Everglade's glade, #13018): one
 // world, so the page is that realm's, its module, slot and room; only its address and its first place differ.
-export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; ui_title_font_src?: string; ui_title_font_family?: string; ui_title_font_weight?: string; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; arrival?: "portal"; domain?: Domain; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; short?: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; ui_title_font_src?: string; ui_title_font_family?: string; ui_title_font_weight?: string; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; arrival?: "portal"; domain?: Domain; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 // domain: the realm on a domain of its own (docs/verse/everglade-domain.md): a front door at the
 // domain's / (realms/<slug>/domain/index.html, an MMORPG landing page in plain HTML, an owner
 // decision 2026-11-08), /play (the realm's page under the domain's name) and a 404. Its pictures,
@@ -156,6 +157,8 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     if (w.kind === "open" && w.listed !== false && (typeof r.line !== "string" || !/^[^|\n"\\]{1,60}$/.test(r.line)))
       throw new Error(`realms.json: ${r.slug}: a listed realm needs line, its one line on /worlds (at most 60, no | or ")`)
     for (const a of r.assets) if (!/^[a-z]+:\S+$/.test(a)) throw new Error(`realms.json: ${r.slug}: asset ${a}`)
+    if (r.short !== undefined && (!/^\/[a-z][a-z0-9-]{1,31}$/.test(r.short) || ["/worlds", "/realms", "/realm", "/coaxial", "/verse"].includes(r.short))) throw new Error(`realms.json: ${r.slug}: short is a free top-level path such as /druid, not ${JSON.stringify(r.short)}`)
+    if (r.short !== undefined) once(`short ${r.short}`)
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
   }
@@ -675,6 +678,8 @@ if (import.meta.main) {
   const out: [string, string][] = [[join(SITE, "realms.coax"), coax(list)], [join(SITE, "realms", "list.coax"), listCoax(list)],
     [join(SITE, "realms", "index.md"), listMarkdown(list)], [join(SITE, "realms", "index.html"), listPage(list)]]
   for (const w of list) if (w.realm) out.push([join(SITE, "realms", w.realm.slug, "index.html"), page(w.realm, w.listed !== false)])
+  // short: the same page at a top-level path (openagents.com/druid); the site bucket serves DIR/index.html for /DIR
+  for (const w of list) if (w.realm?.short) out.push([join(SITE, w.realm.short.slice(1), "index.html"), page(w.realm, w.listed !== false)])
   for (const w of list) if (w.realm?.domain) out.push(...domainPages(w.realm, list).map(([f, t]) => [join(SITE, "realms", w.realm!.slug, "domain", f), t] as [string, string]))
   const behind: string[] = []
   for (const [file, text] of out) {

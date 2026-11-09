@@ -29,6 +29,7 @@ RS_BREATH_FT :: 60; RS_BREATH_DC :: 21; RS_BREATH_DICE :: 17; RS_BREATH_SIDES ::
 RS_BURN_ROUNDS :: 3; RS_BURN_SIDES :: 4;
 RS_SWEEP_FT :: 15; RS_BUFFET_FT :: 10; RS_BUFFET_PUSH_FT :: 15; RS_ROAR_FT :: 60; RS_ROAR_S :: 6.0;
 
+// book:begin breath-cone
 // Whether point (dx, dy) from a cone's origin is inside a cone of `length` aimed along (fx, fy),
 // any units so long as they're the same: no further than length along the aim, and no further to
 // the side than half the distance along it.
@@ -40,6 +41,7 @@ rs_in_cone :: (dx: f32, dy: f32, fx: f32, fy: f32, length: f32) -> bool #effects
   side := abs(dx * uy - dy * ux);
   return along >= 0 && along <= length && side * 2 <= along + 0.0001;
 }
+// book:end breath-cone
 
 // The same in three dimensions, for a flier aiming down or up: (dx, dy, dz) from the origin, the aim
 // (fx, fy, fz). The cone is round its aim, its radius half the distance along it.
@@ -182,11 +184,13 @@ rs_burning_douse :: (b: [] RsBattle, j: int) -> bool #effects(all) {
   _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_PRONE, by = -1, spell = -1, until = 0, save = -1, dc = 0});
   return true;
 }
+// book:begin recharge-burning
 // The start of i's turn: Burning, then the Recharge roll.
 rs_dragon_turn_start :: (b: [] RsBattle, i: int) #effects(all) {
   if b[0].c[i].burning > 0 { _ := rs_burning_tick(b, i); }
   if rs_breather(b[0].c[i]) && b[0].c[i].breath_spent && rs_recharges(rs_roll(b[0].dice[..], 6)) { b[0].c[i].breath_spent = false; }
 }
+// book:end recharge-burning
 
 // ---- checks
 

@@ -1,0 +1,301 @@
+// Everglade's shapeshifting: a druid's Wild Shape and Shapechange as the player sees them, shared by
+// every Everglade zone. The rules are the SRD engine's (aethyr/rules/srd/wild-shape.coax,
+// shapechange.coax, dragon-actions.coax); this is the body, the change and the dragon's moves:
+//   - the change: a rune circle and a vortex of leaves, the druid spinning faster as it dissolves, a
+//     flash and a shockwave at SH_FLASH_S when the body swaps, then the new body growing in with an
+//     overshoot and, for the dragon, a roar. Return to Form plays it the other way.
+//   - the camera pulls back to SH_CAM_DRAGON times its distance round the dragon.
+//   - the dragon walks, takes off with Jump, flies and lands through the shared winged flight
+//     (aethyr/action/flight.coax), at its SRD Speeds: walking 40 ft and flying 80 ft against the
+//     druid's 30.
+//   - Fire Breath: hold to aim (the cone shows), release to breathe. The cone is the SRD's, 60 feet
+//     (18.288 m) from the dragon's mouth with a half-angle of atan(1/2), round the aim in three
+//     dimensions, so a flier breathes down on what's below. Every creature in it saves (the engine's
+//     rs_fire_breath_on); the flames play from SH_BREATH_START to SH_BREATH_END after the release.
+//   - Burning and the breath's Recharge come at the start of each turn's round (the engine's
+//     rs_dragon_turn_start); a burning creature shows flames (sh_burning).
+// A dragon mount uses the same flight and the same breath: its rider aims.
+//   coax/bin/coax test everglade/shapeshift.coax --library
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+#module "everglade.shapeshift";
+#load "../aethyr/rules/srd/battle.coax";
+#load "../aethyr/action/flight.coax";
+#load "dragon-clips.coax";
+
+SH_DRUID :: 0; SH_WOLF :: 1; SH_DRAGON :: 2;
+SH_FLASH_S :: 1.0;      // the flash, and the body swaps
+SH_GROW_S :: 0.6;       // the new body grows in after the flash
+SH_CHANGE_S :: 1.6;     // the whole change
+SH_CAM_DRAGON :: 4.0;   // the camera's distance round the dragon, times the druid's
+SH_CAM_WOLF :: 1.15;
+SH_BREATH_M :: 18.288;  // 60 feet
+SH_BREATH_START :: 0.55; SH_BREATH_END :: 1.6;   // the flames after the release, s
+SH_MOUTH_UP :: 0.62; SH_MOUTH_AHEAD :: 0.62;     // the mouth, as shares of the body's height, above and ahead of its feet
+// the change's moments (sh_moments): bits
+SH_FX_RUNE :: 1; SH_FX_VORTEX :: 2; SH_FX_FLASH :: 4; SH_FX_ROAR :: 8;
+// the dragon's own actions on the bar and their clips
+SH_ACT_NONE :: 0; SH_ACT_REND :: 1; SH_ACT_BREATH :: 2; SH_ACT_SWEEP :: 3; SH_ACT_BUFFET :: 4; SH_ACT_ROAR :: 5;
+
+Shapeshift :: struct {
+  form: int;                    // the body shown once any change is done
+  from: int;                    // the body before the change
+  at: f32 = -100;               // when the change began
+  wing: WingState;              // the dragon's walking and flight
+  aiming: bool; aim_at: f32;    // Fire Breath held
+  breath_at: f32 = -100;        // released
+  breath_yaw: f32; breath_pitch: f32;
+  act: int; act_at: f32 = -100; // the last action's clip
+}
+
+sh_changing :: (s: Shapeshift, now: f32) -> bool { return now - s.at < f32(SH_CHANGE_S); }
+sh_lo :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+sh_hi :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+sh_clamp :: (a: f32, l: f32, h: f32) -> f32 { return sh_lo(h, sh_hi(l, a)); }
+sh_smooth :: (t: f32) -> f32 { u := sh_clamp(t, 0, 1); return u * u * (3 - 2 * u); }
+
+// Begin a change to `to` at `now` (the engine has already said yes). False while one is under way or
+// to the body it already has.
+sh_begin :: (s: [] Shapeshift, to: int, now: f32) -> bool {
+  if sh_changing(s[0], now) || to == s[0].form || to < SH_DRUID || to > SH_DRAGON { return false; }
+  s[0].from = s[0].form; s[0].form = to; s[0].at = now;
+  s[0].aiming = false; s[0].breath_at = -100; s[0].act = SH_ACT_NONE;
+  if to != SH_DRAGON { s[0].wing.phase = WING_GROUND; s[0].wing.speed = 0; s[0].wing.vy = 0; }
+  return true;
+}
+
+// What to draw now: the body, its scale (1 its own), its extra spin about its feet and how much of
+// it shows (1 whole, 0 dissolved).
+ShBody :: struct { kind: int; scale: f32 = 1; spin: f32; show: f32 = 1; }
+sh_body :: (s: Shapeshift, now: f32) -> ShBody {
+  t := now - s.at;
+  if t >= f32(SH_CHANGE_S) || t < 0 { return ShBody.{kind = s.form}; }
+  if t < f32(SH_FLASH_S) {
+    // the old body spins faster and faster, dissolving, shrinking a little
+    u := t / f32(SH_FLASH_S);
+    return ShBody.{kind = s.from, scale = 1 - 0.35 * u * u, spin = 6.0 * u * u * u, show = 1 - u * u};
+  }
+  // the new body grows in: from 0.3 to 1.12, then settles at 1
+  u := (t - f32(SH_FLASH_S)) / f32(SH_GROW_S);
+  g := ifx u < 0.6 then 0.3 + (1.12 - 0.3) * sh_smooth(u / 0.6) else 1.12 - 0.12 * sh_smooth((u - 0.6) / 0.4);
+  return ShBody.{kind = s.form, scale = g, spin = 2.0 * (1 - u) * (1 - u), show = sh_smooth(u * 3)};
+}
+// The change's moments that fell between `before` and `now`: the rune circle and the vortex at the
+// start, the flash at SH_FLASH_S, and a dragon's roar when it has grown in.
+sh_moments :: (s: Shapeshift, before: f32, now: f32) -> int {
+  m := 0; a := before - s.at; b := now - s.at;
+  if a < 0 && b >= 0 { m |= SH_FX_RUNE | SH_FX_VORTEX; }
+  if a < f32(SH_FLASH_S) && b >= f32(SH_FLASH_S) { m |= SH_FX_FLASH; }
+  if s.form == SH_DRAGON && a < f32(SH_CHANGE_S) && b >= f32(SH_CHANGE_S) { m |= SH_FX_ROAR; }
+  return m;
+}
+// The camera's distance, times the druid's: easing out with the dragon's growth.
+sh_cam_scale :: (s: Shapeshift, now: f32) -> f32 {
+  want := [3] f32.[1, f32(SH_CAM_WOLF), f32(SH_CAM_DRAGON)];
+  t := sh_smooth((now - s.at) / f32(SH_CHANGE_S));
+  return want[s.from] + (want[s.form] - want[s.from]) * t;
+}
+
+// The dragon's flight profile: the SRD's Speeds against the druid's pace (metres a second at 30 ft).
+sh_dragon_profile :: (pace: f32) -> WingProfile {
+  k := rs_monster_block(MON_ADULT_RED_DRAGON);
+  return wing_profile_srd(k.speed, k.fly, pace);
+}
+// One fixed step of the dragon's body. Only a dragon flies; a change under way holds it still.
+sh_step :: (s: [] Shapeshift, p: WingProfile, in: WingInput, ground: f32, dt: f32, now: f32) {
+  if s[0].form != SH_DRAGON || sh_changing(s[0], now) { s[0].wing.y = ifx s[0].wing.y < ground then ground else s[0].wing.y; return; }
+  s[0].wing = wing_step(p, s[0].wing, in, ground, dt);
+}
+
+// ---- Fire Breath
+
+// Hold to aim: false when the breath isn't ready (the engine's Recharge) or the body isn't a dragon's.
+sh_aim :: (s: [] Shapeshift, ready: bool, now: f32) -> bool {
+  if s[0].form != SH_DRAGON || sh_changing(s[0], now) || !ready || s[0].aiming { return false; }
+  s[0].aiming = true; s[0].aim_at = now;
+  return true;
+}
+sh_aim_cancel :: (s: [] Shapeshift) { s[0].aiming = false; }
+// The mouth, where the cone begins: ahead of and above the feet by the body's size.
+sh_mouth :: (x: f32, y: f32, z: f32, yaw: f32, height: f32) -> [3] f32 {
+  return [3] f32.[x + sin(yaw) * height * f32(SH_MOUTH_AHEAD), y + height * f32(SH_MOUTH_UP), z + cos(yaw) * height * f32(SH_MOUTH_AHEAD)];
+}
+// The aim's unit direction from a yaw and a pitch (down is negative).
+sh_dir :: (yaw: f32, pitch: f32) -> [3] f32 { c := cos(pitch); return [3] f32.[sin(yaw) * c, sin(pitch), cos(yaw) * c]; }
+// Whether point (px, py, pz) is in the breath's cone from `mouth` along (yaw, pitch).
+sh_in_breath :: (mouth: [3] f32, yaw: f32, pitch: f32, px: f32, py: f32, pz: f32) -> bool {
+  d := sh_dir(yaw, pitch);
+  return rs_in_cone3(px - mouth[0], py - mouth[1], pz - mouth[2], d[0], d[1], d[2], f32(SH_BREATH_M));
+}
+// Release: the breath goes along (yaw, pitch). The caller then has the engine resolve the creatures
+// sh_in_breath finds (rs_fire_breath_on).
+sh_release :: (s: [] Shapeshift, yaw: f32, pitch: f32, now: f32) -> bool {
+  if !s[0].aiming { return false; }
+  s[0].aiming = false; s[0].breath_at = now; s[0].breath_yaw = yaw; s[0].breath_pitch = pitch;
+  s[0].act = SH_ACT_BREATH; s[0].act_at = now;
+  return true;
+}
+// How far out the flames reach now, 0 to 1 of the cone, and 0 when there are none.
+sh_flames :: (s: Shapeshift, now: f32) -> f32 {
+  t := now - s.breath_at;
+  if t < f32(SH_BREATH_START) || t > f32(SH_BREATH_END) { return 0; }
+  return sh_clamp((t - f32(SH_BREATH_START)) / 0.3, 0.05, 1);
+}
+
+// Another action's clip (Rend, Tail Sweep, Wing Buffet, Frightful Roar).
+sh_act :: (s: [] Shapeshift, act: int, now: f32) { s[0].act = act; s[0].act_at = now; }
+
+// The dragon's clip and the time into it now: an action's while it plays, else its flight's.
+ShClip :: struct { clip: int; t: f32; }
+sh_dragon_clip :: (s: Shapeshift, p: WingProfile, now: f32) -> ShClip {
+  acts := [6] int.[-1, DR_BITE, DR_BREATH, DR_SWEEP, DR_SWEEP, DR_ROAR];
+  if sh_changing(s, now) && now - s.at >= f32(SH_FLASH_S) { return ShClip.{clip = DR_IDLE, t = now - s.at}; }
+  if !sh_changing(s, now) && now - s.at < f32(SH_CHANGE_S) + DR_SECONDS[DR_ROAR] { return ShClip.{clip = DR_ROAR, t = now - s.at - f32(SH_CHANGE_S)}; }
+  if s.aiming { return ShClip.{clip = DR_BREATH, t = sh_lo(now - s.aim_at, 0.5)}; }
+  if s.act > SH_ACT_NONE && s.act < 6 { c := acts[s.act]; if now - s.act_at < DR_SECONDS[c] { return ShClip.{clip = c, t = now - s.act_at}; } }
+  w := wing_clip(p, s.wing);
+  c := ifx w == WING_CLIP_WALK then DR_WALK
+       else ifx w == WING_CLIP_GLIDE || w == WING_CLIP_DIVE then DR_GLIDE
+       else ifx w == WING_CLIP_FLY || w == WING_CLIP_TAKEOFF || w == WING_CLIP_HOVER || w == WING_CLIP_BANK_LEFT || w == WING_CLIP_BANK_RIGHT then DR_FLY
+       else DR_IDLE;
+  return ShClip.{clip = c, t = now};
+}
+
+// The body's whole matrix as a static-mesh record (24 floats, kind 19: columns c, e, f and the
+// translation a; character-glade.coax): turned to yaw, pitched and banked, scaled.
+sh_record :: (out: [] f32, rec: int, word: int, x: f32, y: f32, z: f32, yaw: f32, pitch: f32, bank: f32, scale: f32) {
+  at := rec * 24;
+  for i: 0..<24 { out[at + i] = 0; }
+  sc := sh_hi(scale, 0.001);
+  cy := cos(yaw); sy := sin(yaw); cp := cos(pitch); sp := sin(pitch); cb := cos(bank); sb := sin(bank);
+  // R = Ry(yaw) · Rx(-pitch) · Rz(-bank): the model faces +Z; a right bank dips the right wing (-X side up)
+  // columns of Rx(-pitch)·Rz(-bank)
+  r0 := [3] f32.[cb, -sb * cp, -sb * sp];
+  r1 := [3] f32.[sb, cb * cp, cb * sp];
+  r2 := [3] f32.[0, -sp, cp];
+  cols := [3][3] f32.[r0, r1, r2];
+  for k: 0..<3 {
+    c := cols[k];
+    wx := c[0] * cy + c[2] * sy; wy := c[1]; wz := -c[0] * sy + c[2] * cy;
+    base := ifx k == 0 then 8 else ifx k == 1 then 16 else 20;
+    out[at + base] = wx * sc; out[at + base + 1] = wy * sc; out[at + base + 2] = wz * sc;
+  }
+  out[at] = x; out[at + 1] = y; out[at + 2] = z;
+  out[at + 7] = f32(word);
+  out[at + 15] = 19;
+}
+
+// Whether creature j shows flames: Burning, which the engine ticks at the start of each of its
+// turns (rs_dragon_turn_start through rs_start_turn), as it recharges the breath.
+sh_burning :: (b: [] RsBattle, j: int) -> bool { return j >= 0 && j < b[0].n && b[0].c[j].burning > 0 && !b[0].c[j].dead; }
+
+// ---- checks
+
+sh_battle :: (b: [] RsBattle) {
+  b[0].w = 48; b[0].h = 48; b[0].dice[0].fixed = true;
+  d := rs_add(b, rs_druid("Rowan", 0, 17), 24, 24);
+  _ := rs_shapechange_ready(b[0].c[0..<1]);
+  rs_fresh(b, d);
+}
+
+#test "the change swaps the body and its stats, and Return to Form reverses both" {
+  b: [1] RsBattle; sh_battle(b[..]);
+  own := b[0].c[0];
+  s: [1] Shapeshift;
+  #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON) && sh_begin(s[..], SH_DRAGON, 10);
+  #assert !sh_begin(s[..], SH_DRUID, 10.5);   // one change at a time
+  #assert sh_body(s[0], 10.2).kind == SH_DRUID && sh_body(s[0], 10.2).show < 1 && sh_body(s[0], 10.2).spin > 0;
+  #assert sh_body(s[0], 11.05).kind == SH_DRAGON && sh_body(s[0], 11.05).scale < 1;
+  mid := sh_body(s[0], 11.4); #assert mid.kind == SH_DRAGON && mid.scale > 1;   // the overshoot
+  done := sh_body(s[0], 12); #assert done.kind == SH_DRAGON && done.scale == 1 && done.show == 1 && done.spin == 0;
+  #assert sh_moments(s[0], 9.9, 10.1) == SH_FX_RUNE | SH_FX_VORTEX && sh_moments(s[0], 10.9, 11.1) == SH_FX_FLASH && sh_moments(s[0], 11.5, 11.7) == SH_FX_ROAR;
+  #assert abs(sh_cam_scale(s[0], 12) - f32(SH_CAM_DRAGON)) < 0.001 && sh_cam_scale(s[0], 10) == 1;
+  #assert b[0].c[0].shape_form == MON_ADULT_RED_DRAGON && b[0].c[0].ac == 19 && b[0].c[0].temp == 256 && b[0].c[0].fly == 80;
+  // back
+  #assert rs_shapechange_leave(b[..], 0) && sh_begin(s[..], SH_DRUID, 20);
+  #assert sh_body(s[0], 20.5).kind == SH_DRAGON && sh_body(s[0], 21.2).kind == SH_DRUID && sh_body(s[0], 22).scale == 1;
+  #assert sh_moments(s[0], 21.5, 21.7) == 0;   // no roar for the druid
+  #assert abs(sh_cam_scale(s[0], 22) - 1) < 0.001;
+  #assert b[0].c[0].shape_form == 0 && b[0].c[0].ac == own.ac && b[0].c[0].temp == 0 && b[0].c[0].fly == 0;
+}
+#test "Wild Shape's wolf is a body too, with its own camera" {
+  b: [1] RsBattle; sh_battle(b[..]);
+  s: [1] Shapeshift;
+  #assert rs_wild_shape(b[..], 0, MON_WOLF) && sh_begin(s[..], SH_WOLF, 0) && sh_body(s[0], 2).kind == SH_WOLF;
+  #assert abs(sh_cam_scale(s[0], 2) - f32(SH_CAM_WOLF)) < 0.001 && sh_moments(s[0], 1.5, 1.7) == 0;
+}
+#test "the fire cone: inside 18 m and its angle it hits, outside it misses; a flier aims down" {
+  mouth := sh_mouth(0, 0, 0, 0, 5);
+  #assert abs(mouth[1] - 3.1) < 0.001 && abs(mouth[2] - 3.1) < 0.001;
+  // aimed level along +Z from the mouth
+  #assert sh_in_breath(mouth, 0, 0, 0, mouth[1], mouth[2] + 18.0);
+  #assert !sh_in_breath(mouth, 0, 0, 0, mouth[1], mouth[2] + 18.6);
+  a := 0.4636476f32;   // atan(1/2)
+  #assert sh_in_breath(mouth, 0, 0, sin(a - 0.02) * 12, mouth[1], mouth[2] + cos(a - 0.02) * 12);
+  #assert !sh_in_breath(mouth, 0, 0, sin(a + 0.02) * 12, mouth[1], mouth[2] + cos(a + 0.02) * 12);
+  #assert !sh_in_breath(mouth, 0, 0, 0, mouth[1], mouth[2] - 2);   // behind
+  // turned: yaw a quarter turn aims along +X
+  #assert sh_in_breath(mouth, 1.5707964, 0, mouth[0] + 10, mouth[1], mouth[2]) && !sh_in_breath(mouth, 1.5707964, 0, 0, mouth[1], mouth[2] + 10);
+  // 12 m up, aimed 45° down at a foe 10 m ahead on the ground
+  m2 := [3] f32.[0, 12, 0];
+  #assert sh_in_breath(m2, 0, -0.785398, 0, 0, 12) && !sh_in_breath(m2, 0, 0, 0, 0, 12);
+}
+#test "hold to aim, release to breathe: the engine's save and damage, then the cone is spent until it recharges" {
+  b: [1] RsBattle; sh_battle(b[..]);
+  f := rs_fighter("Foe", 1, 3); f.hp = 200; f.hp_max = 200; foe := rs_add(b[..], f, 24, 28);
+  rs_fresh(b[..], 0);
+  #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON);
+  s: [1] Shapeshift; #assert sh_begin(s[..], SH_DRAGON, 0);
+  #assert !sh_aim(s[..], rs_breath_ready(b[0].c[0]), 1);   // not while changing
+  #assert sh_aim(s[..], rs_breath_ready(b[0].c[0]), 3) && s[0].aiming;
+  p := sh_dragon_profile(3);
+  #assert sh_dragon_clip(s[0], p, 4).clip == DR_BREATH;
+  #assert sh_release(s[..], 0, 0, 4) && !s[0].aiming;
+  rs_fresh(b[..], 0);
+  pick := [1] int.[foe];
+  #assert rs_fire_breath_on(b[..], 0, pick[..]) == 1 && b[0].c[foe].hp == 200 - 51 && b[0].c[foe].burning == RS_BURN_ROUNDS;
+  #assert sh_flames(s[0], 4.2) == 0 && sh_flames(s[0], 4.7) > 0 && sh_flames(s[0], 5.0) == 1 && sh_flames(s[0], 5.7) == 0;
+  #assert !sh_aim(s[..], rs_breath_ready(b[0].c[0]), 6);   // spent: Recharge 5–6
+  #assert sh_burning(b[..], foe) && !sh_burning(b[..], 0);
+  // burning ticks at the start of each of its rounds, through the engine's turn
+  b[0].clock = 6; b[0].c[foe].turn_at = 6; b[0].c[foe].round_at = 6;
+  rs_start_turn(b[..], foe); #assert b[0].c[foe].hp == 200 - 51 - 2 && b[0].c[foe].burning == RS_BURN_ROUNDS - 1;
+}
+#test "the dragon flies faster than the druid walks, and lands" {
+  p := sh_dragon_profile(3.0);
+  #assert abs(p.walk - 4.0) < 0.001 && abs(p.fly - 8.0) < 0.001;   // 40 and 80 ft against 30 ft at 3 m/s
+  s: [1] Shapeshift; s[0].form = SH_DRAGON; s[0].at = -100;
+  dt := 1.0f32 / 64;
+  sh_step(s[..], p, WingInput.{jump = true}, 0, dt, 0);
+  #assert s[0].wing.phase == WING_TAKEOFF;
+  for k: 0..<64 * 2 { sh_step(s[..], p, WingInput.{climb = true}, 0, dt, 0); }
+  z0 := s[0].wing.z;
+  for k: 0..<64 * 3 { sh_step(s[..], p, WingInput.{mz = 1, climb = true}, 0, dt, 0); }
+  flown := s[0].wing.z - z0;
+  #assert flown > 3.0 * 3 * 1.5 && s[0].wing.phase == WING_AIR;   // well past the druid's 9 m in 3 s
+  #assert sh_dragon_clip(s[0], p, 50).clip == DR_FLY;
+  n := 0;
+  while s[0].wing.phase == WING_AIR && n < 64 * 30 { sh_step(s[..], p, WingInput.{land = true}, 0, dt, 0); n += 1; }
+  #assert s[0].wing.phase == WING_LANDING && s[0].wing.y == 0;
+  for k: 0..<64 { sh_step(s[..], p, WingInput.{}, 0, dt, 0); }
+  #assert s[0].wing.phase == WING_GROUND && sh_dragon_clip(s[0], p, 50).clip == DR_IDLE;
+  // the druid doesn't fly
+  d: [1] Shapeshift; sh_step(d[..], p, WingInput.{jump = true}, 0, dt, 0); #assert d[0].wing.phase == WING_GROUND;
+}
+#test "the dragon's other actions play their clips; the record carries its turn, lean and size" {
+  s: [1] Shapeshift; s[0].form = SH_DRAGON; p := sh_dragon_profile(3.0);
+  sh_act(s[..], SH_ACT_SWEEP, 10); #assert sh_dragon_clip(s[0], p, 10.5).clip == DR_SWEEP && sh_dragon_clip(s[0], p, 13).clip == DR_IDLE;
+  sh_act(s[..], SH_ACT_REND, 20); #assert sh_dragon_clip(s[0], p, 20.5).clip == DR_BITE;
+  sh_act(s[..], SH_ACT_ROAR, 30); #assert sh_dragon_clip(s[0], p, 30.5).clip == DR_ROAR;
+  out: [24] f32;
+  sh_record(out[..], 0, 7, 1, 2, 3, 0, 0, 0, 2);
+  #assert out[0] == 1 && out[1] == 2 && out[2] == 3 && out[7] == 7 && out[15] == 19;
+  #assert abs(out[8] - 2) < 0.0001 && abs(out[17] - 2) < 0.0001 && abs(out[22] - 2) < 0.0001;   // X, Y, Z columns at scale 2
+  sh_record(out[..], 0, 7, 0, 0, 0, 1.5707964, 0, 0, 1);
+  #assert abs(out[20] - 1) < 0.0001 && abs(out[22]) < 0.0001;   // its +Z faces +X
+  sh_record(out[..], 0, 7, 0, 0, 0, 0, 0, 0.5, 1);
+  #assert out[9] < 0 && out[16] > 0;   // banked right: its +X dips, its up leans right
+}

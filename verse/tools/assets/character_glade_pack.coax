@@ -18,6 +18,7 @@
 #load "horse_pack.coax";   // the rideable white horse (everglade/docs/mounts-spec.md)
 #load "cat_pack.coax";     // Everglade's cat (everglade/creatures/cat.coax)
 #load "dragon_pack.coax";
+#load "meadow_pack.coax";
 
 #load "../../character-glade.coax";
 #load "../../experimental-terrain.coax" as meadow;
@@ -894,6 +895,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-cat" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_CAT,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-build" {return gp_append_build(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-dragon" {return gp_append_dragon(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
+ if args_count(args[..])==4 && args_at(args[..],0)=="--append-meadow" {return gp_append_meadow(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
  if (args_count(args[..])!=3 && args_count(args[..])!=4 && args_count(args[..])!=6 && args_count(args[..])!=7 && args_count(args[..])!=14 && args_count(args[..])!=16 && args_count(args[..])!=17 && args_count(args[..])!=18 && args_count(args[..])!=19 && args_count(args[..])!=20) {tool_errln("glade pack: SOURCE_ROOT BASE.pack OUTPUT.pack [--experimental|zone]");return 2;}
  experimental:=args_count(args[..])>=4 && args_at(args[..],3)=="--experimental";zone:=args_count(args[..])==4 && args_at(args[..],3)=="zone";if args_count(args[..])>=4 && !experimental && !zone {return 2;}buildings:=args_count(args[..])>=6;
  w:[1]Gp;g:[1]Gltf;iw:[1]ImgWork;root:=args_at(args[..],0);w[0].oldn=fs_read(args_at(args[..],1),w[0].old[..]);if w[0].oldn<32 {return 1;}

@@ -2,6 +2,8 @@
 // Loaded after verse/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
 #load "../../../verse/character-glade.coax";
 #load "character-glade-light.coax";
+#load "../../../verse/everglade2/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)
+#load "../../../verse/experimental-terrain.coax";   // the ground it stands on (exp_height)
 // The sky, the soil seams and the cloud shadows are the shared painterly default's
 // (aethyr/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
 // shadows and the sky read the frame's resolved environment (u at PAINT_ENV_U, #13066).
@@ -42,7 +44,8 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  if (m.d.w>18.5f32) {p=add3(v3(m.a.x,m.a.y,m.a.z),add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),p.x),scale3(v3(m.e.x,m.e.y,m.e.z),p.y)),scale3(v3(m.f.x,m.f.y,m.f.z),p.z)));normal3=normalize3(add3(add3(scale3(v3(m.c.x,m.c.y,m.c.z),normal3.x),scale3(v3(m.e.x,m.e.y,m.e.z),normal3.y)),scale3(v3(m.f.x,m.f.y,m.f.z),normal3.z)));}
  // 18: a monster's frame, turned to face c.x, c.y and scaled by c.z (0 is its baked size; experimental-dungeon.coax dg_kind_scale)
  else if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));if (m.c.z>0.0f32) {local=scale3(local,m.c.z);}cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
- o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;
+ o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(ifx m.d.w<16.5f32 && m.c.x>0.5f32 then 1.0f32 else 0.0f32,0.0f32,0.0f32,12.0f32);   // dye.x 1: the open meadow's ground (record c.x)
+ o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;
  // a build-site part growing (aethyr/world/build-site.coax): a.w is 1 less its fraction, the tint's
  // alpha the vertex's reveal key; the pixels past the fraction are dropped (charactercreator_scene_fs)
  if (m.d.w>18.5f32 && m.a.w>0.0f32) {o.local.z=tint.w-(1.0f32-m.a.w);o.dye.w=13.0f32;}
@@ -78,6 +81,52 @@ cg_instanced_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fi
  rust:=saturate((center.x-0.5f32)/3.0f32)*smoothstep(0.50f32,0.72f32,cg_noise(v2(center.x*0.8f32,center.z*0.8f32)))*(1.0f32-autumn);
  bottom:=mix3(v3(base.x,base.y,base.z),v3(0.56f32,0.17f32,0.025f32),rust);top:=mix3(v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),v3(0.95f32,0.41f32,0.035f32),rust);o.tint=mix3(bottom,top,height);
  o.dye=v4(0,0,0,12);o.local=v3(2,height,1);o.who=(instance>>16)-1;return o;
+}
+// ---- The open meadow (verse/everglade2/meadow.coax), placed here: a record of kind 20 draws one kit
+// (a.x, its mesh at the record's b.w) over a grid of a.z by a.z cells round the eye, one instance a
+// cell. Kit 33 is the grass, by field.coax's nested tier a.y; the rest are the understory, one grid
+// a kit. Each piece's place, turn, size and tint are its cell's hash alone; distance only shrinks it.
+cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
+ o:FivelabS;o.pos=v4(0,0,-2,1);o.dye=v4(0,0,0,12);o.who=(instance>>16)-1;
+ i:=instance&65535;kit:=cast(int)m.a.x;side:=cast(u32)m.a.z;iz:=i/side;ix:=i-iz*side;half:=side/2;
+ origin:=f32(E2_MEADOW_ORIGIN);ex:=u[16];ez:=u[18];
+ if (kit==33) {
+  t:=cast(int)m.a.y;c:=e2_field_cell(t);
+  gx:=add_wrap(cast(u32)floor((ex-origin)/c),ix)-half;gz:=add_wrap(cast(u32)floor((ez-origin)/c),iz)-half;
+  fx:=e2_field_fine_x(t,gx,gz);fz:=e2_field_fine_z(t,gx,gz);
+  x:=origin+(cast(f32)fx+e2_unit(e2_field_hash(fx,fz,cast(u32)1)))*0.5f32;z:=origin+(cast(f32)fz+e2_unit(e2_field_hash(fx,fz,cast(u32)2)))*0.5f32;
+  dx:=x-ex;dz:=z-ez;d:=sqrt(dx*dx+dz*dz);
+  if (d<e2_field_start(t) || d>=e2_field_out(t)) {return o;}
+  shown:=e2_field_shown(e2_field_rel(t,d),e2_field_rank(t,gx,gz,fx,fz));
+  if (shown<=0.0f32) {return o;}
+  au:=e2_meadow_gold(x,z);
+  return cg_meadow_place(id,v4(x,exp_height_gpu(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),e2_meadow_tuft_sv(fx,fz)*shown,e2_meadow_tuft_sh(fx,fz)*shown,v3(0.30f32+0.26f32*au,0.48f32,0.055f32),au,m,u,vertices,o.who);
+ }
+ c:=e2_meadow_cell(kit);
+ gx:=add_wrap(cast(u32)floor((ex-origin)/c),ix)-half;gz:=add_wrap(cast(u32)floor((ez-origin)/c),iz)-half;
+ if (!e2_meadow_held(gx,gz,kit)) {return o;}
+ x:=e2_meadow_at_x(gx,gz,kit);z:=e2_meadow_at_z(gx,gz,kit);dx:=x-ex;dz:=z-ez;
+ k:=e2_meadow_fade(kit,sqrt(dx*dx+dz*dz));
+ if (k<=0.0f32) {return o;}
+ h:=e2_meadow_seed(gx,gz,kit);au:=e2_meadow_gold(x,z);p:=e2_meadow_piece(kit,h,au);
+ return cg_meadow_place(id,v4(x,exp_height_gpu(x,z)-p.sink,z,cg_hash(h,16)*6.283f32),p.sv*k,p.sh*k,v3(p.tint[0],p.tint[1],p.tint[2]),au,m,u,vertices,o.who);
+}
+// One vertex of a meadow piece: the kit's mesh at the origin, placed at a (x y z yaw), scaled sv up
+// and sh across, tinted as Everglade II tints its kit (e2_kit_place); a grass tuft shaded as the glade's grass.
+cg_meadow_place :: (id:u32,a:V4,sv:f32,sh:f32,tint:V3,autumn:f32,m:FivelabObj,u:[]f32,vertices:[]u32,who:u32)->FivelabS {
+ b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,8));
+ source:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
+ normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
+ p:=cg_instance_point(source,v3(a.x,a.y,a.z),sv,sh,a.w);
+ if ((kind==1)||(kind==2)||(kind==3)) {sway:=sin(a.x*0.37f32+a.z*0.21f32+u[2]*1.1f32)+sin(a.z*0.53f32+u[2]*0.7f32)*0.35f32;p.x=p.x+sway*0.05f32*saturate(source.y*0.18f32)*sv;}
+ nw:V4=wg_unpack4x8snorm(normal);cs:=cos(a.w);sn:=sin(a.w);
+ o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=normalize3(v3((nw.x*cs+nw.z*sn)/sh,nw.y/sv,(-nw.x*sn+nw.z*cs)/sh));
+ o.uv=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);if (kind==6) {o.uv=v2(o.uv.x*64.0f32-32.0f32,o.uv.y*64.0f32-32.0f32);}
+ vt:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,5)]);o.slice=vertices[cast(int)add_wrap(b,6)];
+ o.tint=ifx kind==1 then tint else ifx kind==4 then mul3(v3(vt.x,vt.y,vt.z),tint) else v3(vt.x,vt.y,vt.z);
+ o.dye=v4(1,0,0,12);o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0);o.who=who;   // dye.x 1: the open meadow (cg_environment_fs)
+ if (kind==2) {height:=saturate(source.y);o.tint=mix3(tint,v3(0.65f32+0.28f32*autumn,0.88f32-0.20f32*autumn,0.07f32),height);o.local=v3(2,height,1);}
+ return o;
 }
 // The town at the end of the road (verse/character-glade.coax cg_city, packed on the rock layer
 // with one flat tint a material, character_glade_pack.coax gp_town_block): which material a tint is,
@@ -139,12 +188,13 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  sun:=cg_sun_dir(u);eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
  if (foliage || ground) {albedo=cg_decode(s.tint);}
- if (ground) {trail:=cg_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
+ field:=s.dye.x>0.5f32;   // the open meadow (verse/everglade2/meadow.coax): no glade trail, its own gold already in its tint
+ if (ground) {trail:=ifx field then 0.0f32 else cg_path(s.world.x,s.world.z);// the gold is a sunlit hilltop's: steep banks keep more of their olive, and broad patches vary
   steep:=0.55f32+0.45f32*smoothstep(0.80f32,0.95f32,n.y);
   // inside the ridge cut on the walk to Everglade (past the main shot's view) the banks stay a grassy olive
   cut:=(1.0f32-cg_ramp(3.0f32,10.0f32,abs(s.world.x-cg_road_x(s.world.z))))*cg_ramp(-17.0f32,-22.0f32,s.world.z);
   steep=steep*(1.0f32-0.65f32*cut);
-  albedo=mix3(albedo,cg_decode(v3(0.82f32,0.58f32,0.16f32)),cg_autumn(s.world.x,s.world.z)*0.80f32*steep*(1.0f32-trail));
+  albedo=mix3(albedo,cg_decode(v3(0.82f32,0.58f32,0.16f32)),(ifx field then 0.0f32 else cg_autumn(s.world.x,s.world.z))*0.80f32*steep*(1.0f32-trail));
   albedo=scale3(albedo,0.84f32+0.32f32*cg_noise(v2(s.world.x*0.35f32+4.0f32,s.world.z*0.35f32)));
   // The reference trail is packed olive earth, darker than sand.
   albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);}
@@ -179,7 +229,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);scatter:=(0.15f32+0.60f32*back)*(1.0f32-abs(ndl)*0.65f32)*visibility;
   colour=add3(colour,mul3(albedo,scale3(v3(1.35f32,1.16f32,0.62f32),scatter*(ifx grass then s.local.y else 1.0f32))));
  }
- if (ground) {mottle:=cg_noise(v2(s.world.x*2,s.world.z*2));meadow:=1.0f32-cg_path(s.world.x,s.world.z);grain:=cg_noise(v2(s.world.x*14,s.world.z*14));surface:=(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1,meadow);colour=scale3(colour,surface);indirect=scale3(indirect,surface);}
+ if (ground) {mottle:=cg_noise(v2(s.world.x*2,s.world.z*2));meadow:=ifx field then 1.0f32 else 1.0f32-cg_path(s.world.x,s.world.z);grain:=cg_noise(v2(s.world.x*14,s.world.z*14));surface:=(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1,meadow);colour=scale3(colour,surface);indirect=scale3(indirect,surface);}
  dark:=cg_dungeon_in(s.world,u);
  if (dark) {
   // the dungeon's air carries no sky haze

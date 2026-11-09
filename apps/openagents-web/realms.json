@@ -126,6 +126,17 @@
         "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/fivelab-fx.wgsl",
           "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg", "sound:swing-e1=/realms/everglade/sfx/swing-e1.ogg", "sound:hit-e1=/realms/everglade/sfx/hit-e1.ogg", "sound:death-e1=/realms/everglade/sfx/death-e1.ogg", "sound:stand-e1=/realms/everglade/sfx/stand-e1.ogg"]
       } },
+    { "id": "druid", "name": "DRUID", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 4.4, "size": 0.02 },
+      "realm": {
+        "slug": "druid", "title": "Druid", "module": "fivelab", "slot": "druid", "short": "/druid",
+        "description": "An unlisted open meadow: a level 17 Druid who takes the shape of an Adult Red Dragon, flies and breathes fire.",
+        "alt": "A druid turning into a red dragon in an open meadow",
+        "style": "painterly", "clock": "fixed:0.5",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "ui_font_src": "/realms/character-creator/assets/arkai_c.ttf", "ui_font_family": "CharacterCreateARKaiC",
+        "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/fivelab-fx.wgsl",
+          "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg", "sound:swing-e1=/realms/everglade/sfx/swing-e1.ogg", "sound:hit-e1=/realms/everglade/sfx/hit-e1.ogg", "sound:death-e1=/realms/everglade/sfx/death-e1.ogg", "sound:stand-e1=/realms/everglade/sfx/stand-e1.ogg"]
+      } },
     { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
       "realm": {
         "slug": "fairy-forest",

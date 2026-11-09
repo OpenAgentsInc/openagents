@@ -141,6 +141,7 @@ XcCombat :: struct {
   draw: [1] bow.BowDraw; arrows: [1] bow.Arrows;
   bow_touch: int = -100; bow_touch_at: f32; bow_touch_x: f32; bow_touch_y: f32; bow_dragged: f32;
   shot_arrow: [hostile.HS_SHOTS] int;
+  dr: XcDruid;                      // the druid's grove (druid-scene.coax), off elsewhere
   bow_shots: int; bow_hits: int; bow_misses: int; bow_stuck: int; bow_far: int;
 }
 XC_TICK :: 64.0;           // aethyr/loop.coax: ticks a second
@@ -210,7 +211,7 @@ xc_order_load :: (x: [] XcCombat, text: string) -> bool {
       if digits >= 6 { return false; }
       id = id * 10 + cast(int) text[at] - '0'; digits += 1; at += 1;
     }
-    if digits == 0 || at >= text.count || text[at] != ' ' || id >= (XC_FAMILIAR + 1) * 10000 || counts[c] >= XC_SLOTS { return false; }
+    if digits == 0 || at >= text.count || text[at] != ' ' || id >= (FB_ROAR + 1) * 10000 || counts[c] >= XC_SLOTS { return false; }
     for i: 0..<counts[c] { if order[c][i] == id { return false; } }
     order[c][counts[c]] = id; counts[c] += 1; at += 1;
   }
@@ -261,6 +262,7 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   x[0].klass = c;
   x[0].bar_n = xc_actions(x[0].bar[..], xc_bar_level(c, x[0].level, x[0].bar[..]), b[0].c[0]);
   xc_order_bar(x); x[0].arranging = false;
+  if x[0].dr.on { xd_bar(x); }
   x[0].used = -1; x[0].hover = -1; x[0].pend = -1;
 }
 // The actions every creature has (#13040), after the class kit: Hide, Grapple, Shove, Ready, and
@@ -403,7 +405,7 @@ xc_stops_step :: (s: [] Lab) {
 // Ability a's aim from where you stand and face: its kind, its reach, your forward and its monster.
 xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
-  m := xc_aim_kind(s, a);
+  m := xd_reach(s, a, xc_aim_kind(s, a));
   m.fx = sin(cr[0].player_face); m.fz = cos(cr[0].player_face);   // aethyr/walk.coax: you face atan2(x, z)
   if m.kind == XC_AIM_SELF { return m; }
   best := 1e9f32;
@@ -1519,7 +1521,8 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
     ok = r.accepted;
     if ok { x[0].told = k; x[0].told_at = now; x[0].told_ok = r.passed; }
     if ok && r.passed && foe >= 0 { if rs_max(a.opt, 0) == 1 { x[0].studied[foe] = true; } else { x[0].calm[foe] = true; } }
-  } else { ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, ifx corpse>=0 then 1+corpse else 0); }
+  } else if a.kind == FB_BREATH && x[0].dr.on { ok = xd_breathe(s); }
+  else { ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, ifx corpse>=0 then 1+corpse else 0); }
   if facing_cube { b[0].truth_zones=old_truth; }
   if ok && a.kind==FB_SPELL && a.sp==SP_ZONE_OF_TRUTH { xc_truth_project(s,rs_clear(b[0].truth_zones,old_truth)); }
   if ok && a.kind==FB_SPELL && a.sp==SP_PROTECTION_GOOD_EVIL { x[0].protection_water_used=true; }
@@ -1547,6 +1550,7 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
     sprint.sprint_start(x[0].dash[..], now, cr[0].player_face, eg_dash_gain(f32(b[0].c[0].speed)));
   }
   x[0].cool_at = now; x[0].used = k; x[0].casts += 1;
+  xd_after(s, a);
   if foe >= 0 { xc_lock_on(s, foe); }   // the one struck at: your target, its Hit Points over the bar
   if gain > 0 {
     xc_float_int(x, px, cr[0].player_y + 2.1, pz, now, gain, true);
@@ -1765,7 +1769,7 @@ XcLayout :: struct { pick: CmPick; side: EgSideGeo; }
 xc_layout :: (s:[]Lab)->XcLayout {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; w:=x[0].w; h:=x[0].h; k:=x[0].k;
   lay:XcLayout; bar:=xc_bar_top(x);
-  lay.side=eg_side_geo(xc_facts(s),w,h,k,bar);
+  if !x[0].dr.on { lay.side=eg_side_geo(xc_facts(s),w,h,k,bar); }   // the druid has no side bar
   beside:=w-(f32(cc.EG_PORTRAIT_W)+16)*k-24*k; room:=beside>=320*k;
   wide:=ifx room then beside else w-24*k; if wide>460*k { wide=460*k; }
   y0:=ifx room then 20*k else (XC_PORTRAIT_FOOT+8)*k;
@@ -1851,6 +1855,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
   x[0].present = react.react_present_drain(x[0].present);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
+  xd_frame(s, dt);
   xc_objects_tick(s);
   xc_rite_step(s); xc_glide_step(s);
   xc_hostile_contacts(s);
@@ -1859,6 +1864,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   for i: 0..<36 { x[0].u[i] = ifx i < u.count then u[i] else 0; }
   xc_bow_step(s, dt);
   n = xc_crosshair(s, out, n, w, h, k);
+  n = xd_hud(s, out, n, k);
   if observing { n=cc.text(out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1)); }
   n=xc_portrait(s,out,n,w,k);
   n=cc.combat_hud(cr[0],out,u,n,w,k);
@@ -1882,7 +1888,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   head := ink_col(k, 0.95, 0.9, 0.7);
   wild_words := [3]string.["", "", "REPLACE"];
   if pick.wild { choice:=xc_wild_options(x); wild_words[0]=rs_monster_block(choice[0]).name; wild_words[1]=rs_monster_block(choice[1]).name; }
-  n = cm_pick_draw(out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words);   // class-menu.coax
+  if !x[0].dr.on { n = cm_pick_draw(out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
@@ -2111,7 +2117,7 @@ xc_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, 
 xc_key :: (s: [] Lab, key: int) -> bool {
   x := s[0].xc[..];
   if key == -1 && xc_bow_cancel(s) { return true; }   // Escape lets the draw down
-  if key >= '1' && key <= '9' { i := key - '1'; if i < x[0].bar_n { _ := xc_press(s, i); return true; } }
+  if key >= '1' && key <= '9' { i := key - '1'; if xd_aim(s, i) { x[0].dr.breath_key = key; return true; } if i < x[0].bar_n { _ := xc_press(s, i); return true; } }
   return false;
 }
 // The column and the bar are pressed; a click (no drag) on a monster makes it your target. False
@@ -2124,7 +2130,7 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   for i: 0..<x[0].bar_n { if xc_in(xc_slot_box(x, i), px, py) { over = i; } }
   x[0].hover = over;
   lay := xc_layout(s); pick := lay.pick;
-  in_col := cm_in(cm_pick_panel(pick), px, py);
+  in_col := !x[0].dr.on && cm_in(cm_pick_panel(pick), px, py);
   x[0].pick_hover = ifx in_col then cm_pick_hit(pick, px, py) else CmHit.{};
   // the side bar first: its buttons and menu act on the press (everglade/hud/class-bar.coax)
   if x[0].bow_touch != id {
@@ -2153,6 +2159,10 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     if xc_bow_begin(s, false) { x[0].bow_touch = id; x[0].bow_touch_at = cr[0].clock; x[0].bow_touch_x = px; x[0].bow_touch_y = py; x[0].bow_dragged = 0; }
     return true;
   }
+  if over < 0 && x[0].dr.breath_touch != id && xd_pointer(s, px, py, phase, id) { return true; }   // a phone's thumbs in the grove
+  // Fire Breath: a finger held on its slot aims, lifting it breathes (druid-scene.coax)
+  if x[0].dr.breath_touch == id && (phase == 2 || phase == 3) { x[0].dr.breath_touch = -100; if phase == 3 { sh_aim_cancel(x[0].dr.sh[..]); x[0].dr.breath_slot = -1; } else { _ := xd_release(s); } return true; }
+  if phase == 0 && over >= 0 && !s[0].shift && xd_aim(s, over) { x[0].dr.breath_touch = id; return true; }
   if phase == 0 {
     x[0].down = -100; x[0].down_x = px; x[0].down_y = py; x[0].down_id = id;
     if over >= 0 { x[0].down = over; x[0].arranging = s[0].shift; x[0].drag_x = px; x[0].drag_y = py; return true; }

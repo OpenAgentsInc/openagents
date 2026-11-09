@@ -2,8 +2,10 @@
 // no cloned geometry or per-outfit skeleton. Used by fivelab's character-creator route.
 #module "openagents.charactercreator";
 #load "font.coax";
+#load "../../everglade/dragon-clips.coax" as dragon;   // the Shapechange dragon's baked frames
 #load "../../verse/character-glade.coax" as glade;
 #load "../../verse/experimental-terrain.coax" as meadow;
+#load "../../verse/everglade2/meadow-grid.coax" as grid;   // the open field's scatter grids (verse/everglade2/meadow.coax)
 #load "../../verse/experimental-village.coax" as village;
 #load "../../aethyr/follow.coax" as follow;
 #load "../../aethyr/query.coax" as query;
@@ -62,7 +64,7 @@ Creator :: struct {
   hostile_external:bool; // owner stages AI through shared combat before publication
   aribeth:[]aribeth.Aribeth;
   experimental:bool; fps:[1]FpsCounter; dev_animations:bool; preview_collapsed:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
-  on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;zero_ad_first:int;zero_ad_count:int;comparison_present:bool;biomes_present:bool;animal_first:[10]int;animal_count:[10]int;animal_n:int;familiar_first:[11]int;familiar_count:[11]int;familiar_word:[11]int;monster_first:[48]int;monster_count:[48]int;monster_n:int;dungeon_first:[8]int;dungeon_count:[8]int;dungeon_n:int;torches:[540]f32;torch_n:int;npc_first:[2][48]int;npc_count:[2][48]int;npc_n:[2]int;hostiles:[1]hostile.Hostiles;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
+  on:bool; configured:bool; scene_only:bool; female:bool; worn:[40]bool; piece:int = 18; source_first:[80]int; source_count:[80]int; source_word:[80]int; source_n:int;glade_first:int;glade_count:int;glade_word:int;zero_ad_first:int;zero_ad_count:int;comparison_present:bool;biomes_present:bool;animal_first:[10]int;animal_count:[10]int;animal_n:int;familiar_first:[11]int;familiar_count:[11]int;familiar_word:[11]int;dragon_first:int;dragon_count:int;dragon_word:int;dragon_n:int;field:bool;field_first:int;field_count:int;field_word:int;kit_first:[14]int;kit_count:[14]int;kit_word:[14]int;body_hidden:bool;body_spin:f32;cam_k:f32=1;monster_first:[48]int;monster_count:[48]int;monster_n:int;dungeon_first:[8]int;dungeon_count:[8]int;dungeon_n:int;torches:[540]f32;torch_n:int;npc_first:[2][48]int;npc_count:[2][48]int;npc_n:[2]int;hostiles:[1]hostile.Hostiles;grass:[3]GrassDraw;grass_groups:int; outfit:int = 2; hood:bool; hair:int; beard:bool;
   dye:int = 8; skin:int = 1; hair_color:int; eye_color:int; variant:int; pose:int;
   yaw:f32 = -0.22; pitch:f32 = 0.1; dist:f32 = 3.1; camera_room:f32 = -1;
   clock:f32; surprise_seed:int; pose_at:f32; revision:int; saved:int; focused:int;
@@ -1017,6 +1019,23 @@ familiar_record :: (out:[]f32,rec:int,word:int,x:f32,y:f32,z:f32,yaw:f32) {
   out[at+8]=sin(yaw); out[at+9]=cos(yaw);
   out[at+15]=18;
 }
+// The dragon's baked frame at the druid's feet: like a familiar, scaled (1 = the model's own
+// metres, about dragon.DR_HEIGHT tall), never to nothing.
+dragon_record :: (out:[]f32,rec:int,word:int,x:f32,y:f32,z:f32,yaw:f32,scale:f32) {
+  familiar_record(out,rec,word,x,y,z,yaw);
+  out[rec*24+10]=ifx scale>0.001 then scale else 0.001f32;
+}
+#test "the dragon's frames read from the catalog and its record scales the model" {
+  s:[1]Creator;catalog(s[..],"C glade/dragon0 500 30 247 900 0 0\nC glade/dragon1 530 30 247 900 0 0\nC glade/dragon75 1 3 247 900 0 0\n");
+  #assert s[0].dragon_n==2 && s[0].dragon_first==500 && s[0].dragon_count==30 && s[0].dragon_word==900;
+  // a frame out of line (not where the first frame and the size put it) leaves the dragon undrawn
+  catalog(s[..],"C glade/dragon0 500 30 247 900 0 0\nC glade/dragon1 531 30 247 900 0 0\n");#assert s[0].dragon_n<0;
+  catalog(s[..],"C glade/dragon1 530 30 247 900 0 0\nC glade/dragon0 500 30 247 900 0 0\n");#assert s[0].dragon_n==2 && s[0].dragon_first==500;
+  out:[48]f32;dragon_record(out[..],1,900,2,3,4,0,0.5);
+  #assert out[24]==2 && out[25]==3 && out[26]==4 && out[31]==900 && out[33]==1 && out[34]==0.5 && out[39]==18;
+  dragon_record(out[..],0,900,0,0,0,0,0);
+  #assert out[10]==0.001f32;
+}
 // The records of a figure wearing your character's parts, playing a: its worn pieces, head, hair and
 // beard, from record n; returns the count after them.
 figure_records :: (s:[]Creator,b:[]figs.Bodies,l:figs.BdLook,a:figs.BdAnim,out:[]f32,n0:int)->int {
@@ -1046,22 +1065,30 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   a.t0=s[0].pose_at; a.fade_at=-100; a.phase=(s[0].clock-s[0].pose_at)/figs.bd_seconds(a.clip); a.yaw=s[0].yaw;
   if s[0].pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s[0].pose_at+floor((s[0].clock-s[0].pose_at)/dur)*dur; }
   if s[0].walk.on {a=walk_figure(s[0],a);}
-  if s[0].experimental {a=experimental_figure(s,a);}
+  if s[0].experimental {a=experimental_figure(s,a);a.yaw+=s[0].body_spin;}
   n:=figure_records(s,b,l,a,out,0);
   // first person: the camera is in your head, so your body's draws are left out of the view (not the shadows)
   b[0].self_n=ifx s[0].experimental && !s[0].scene_only && cc_self_hidden(s[0]) then n else 0;
   if s[0].experimental && !s[0].scene_only && n>0 && n<43 {n=held_weapon(s[0],b,out,n);}
   // and what your hands hold, unless it is up in front of you (a drawn bow): carried at your side it would float, handless, across the view
   if b[0].self_n>0 && s[0].aim<0.3 {b[0].self_n=n;}
-  if s[0].scene_only {n=0;}
+  if s[0].scene_only || s[0].body_hidden {n=0;b[0].self_n=0;}   // body_hidden: a shape stands in for you (druid-scene.coax)
+  // The open field (Creator.field, once its meadow is in the pack) stands in for the glade, its
+  // village and its showcases: only the meadow, its grass and the creatures on it.
+  open_field:=s[0].field && s[0].field_count>0;
+  if open_field && n<43 {
+    for k:0..<24 {out[n*24+k]=0;}
+    out[n*24+7]=f32(s[0].field_word);out[n*24+8]=1;out[n*24+15]=16;   // c.x 1: the open meadow's ground, shaded as Everglade II's (cg_environment_fs)
+    b[0].draws[n*4]=cast(u32)s[0].field_first;b[0].draws[n*4+1]=cast(u32)s[0].field_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+  }
   // the builders at the build sites (charactercreator-crew.coax): each the character you made, at work
-  if s[0].experimental {for ci:0..<CC_CREWS {if !s[0].crews[ci].on || n>=36 {continue;}n=figure_records(s,b,l,cc_crew_anim(s[0],s[0].crews[ci]),out,n);}}
-  if s[0].glade_count>0 && n<43 {
+  if s[0].experimental && !open_field {for ci:0..<CC_CREWS {if !s[0].crews[ci].on || n>=36 {continue;}n=figure_records(s,b,l,cc_crew_anim(s[0],s[0].crews[ci]),out,n);}}
+  if !open_field && s[0].glade_count>0 && n<43 {
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s[0].glade_first;b[0].draws[n*4+1]=cast(u32)s[0].glade_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s[0].experimental && s[0].aribeth.count>0 && n<43 {
+  if s[0].experimental && !open_field && s[0].aribeth.count>0 && n<43 {
     pose:=aribeth.arb_sample(s[0].aribeth[0],s[0].clock);
     if pose.valid {
       for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(pose.word);out[n*24+15]=16;
@@ -1070,22 +1097,22 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   }
   // the dungeon's inside, only the parts you can see into (experimental-dungeon.coax dg_seen); its
   // shadows are the shell's[0], so these cast none (fivelab.coax lab_shadow_select reads out[14])
-  if s[0].experimental && s[0].dungeon_n==dungeon.DG_CHUNKS {seen:=dungeon.dg_seen(s[0].player_x,s[0].player_z);for part:0..<dungeon.DG_CHUNKS {
+  if s[0].experimental && !open_field && s[0].dungeon_n==dungeon.DG_CHUNKS {seen:=dungeon.dg_seen(s[0].player_x,s[0].player_z);for part:0..<dungeon.DG_CHUNKS {
     if n>=43 || (seen&(1<<part))==0 {continue;}
     for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(s[0].glade_word);out[n*24+14]=1;out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s[0].dungeon_first[part];b[0].draws[n*4+1]=cast(u32)s[0].dungeon_count[part];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}
-  if s[0].experimental && s[0].zero_ad_count>0 && n<43 {
+  if s[0].experimental && !open_field && s[0].zero_ad_count>0 && n<43 {
     for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s[0].zero_ad_first;b[0].draws[n*4+1]=cast(u32)s[0].zero_ad_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s[0].experimental && s[0].animal_n==10 && n<43 {
+  if s[0].experimental && !open_field && s[0].animal_n==10 && n<43 {
     take:=animal_frame(s[0].clock);for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s[0].animal_first[take];b[0].draws[n*4+1]=cast(u32)s[0].animal_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s[0].experimental && n<43 {n=xh_records(s,b,out,n,43);}
-  if s[0].experimental && s[0].monster_n==48 && n<43 {
+  if s[0].experimental && !open_field && n<43 {n=xh_records(s,b,out,n,43);}
+  if s[0].experimental && !open_field && s[0].monster_n==48 && n<43 {
     take:=monster_frame(s[0].clock);for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s[0].monster_first[take];b[0].draws[n*4+1]=cast(u32)s[0].monster_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
@@ -1108,7 +1135,14 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     out[n*24+4]=ifx kind==0 then 6 else 9;out[n*24+5]=meadow.exp_height(out[n*24+4],-7);out[n*24+6]= -7;out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=18;
     b[0].draws[n*4]=cast(u32)s[0].npc_first[kind][take];b[0].draws[n*4+1]=cast(u32)s[0].npc_count[kind][take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}
-  for gi:0..<s[0].grass_groups {if n>=44-reserved {break;}g:=s[0].grass[gi];
+  // its grass and understory: each kit's mesh once (kit_first, glade/meadowkitK, slot K-20), placed by
+  // the GPU over a grid of cells round the eye (record kind 20, gpu/character-glade.coax cg_meadow_vs)
+  if open_field {for j:0..<14 {kit:=20+j;for t:0..<(ifx kit==grid.E2_MEADOW_GRASS then 4 else 1) {side:=grid.e2_meadow_side(kit,t);if side<=0 || s[0].kit_count[j]<3 || n>=44-reserved {break;}
+    for k:0..<24 {out[n*24+k]=0;}
+    out[n*24]=f32(kit);out[n*24+1]=f32(t);out[n*24+2]=f32(side);out[n*24+7]=f32(s[0].kit_word[j]);out[n*24+15]=20;
+    b[0].draws[n*4]=cast(u32)s[0].kit_first[j];b[0].draws[n*4+1]=cast(u32)s[0].kit_count[j];b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)(side*side);n+=1;
+  }}}
+  for gi:0..<(ifx open_field then 0 else s[0].grass_groups) {if n>=44-reserved {break;}g:=s[0].grass[gi];
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24]=f32(g.word);out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=17;
     b[0].draws[n*4]=cast(u32)g.first;b[0].draws[n*4+1]=cast(u32)g.count;
@@ -1321,7 +1355,7 @@ line :: (out:[]f32,n:int,x:f32,y:f32,bx:f32,by:f32,k:f32,r:f32,g:f32,b:f32)->int
 // cg_dungeon_light): its block and ceiling in u[60..64], then the nine torches nearest you, each
 // x, y, z and a flickering brightness, in u[68..103]. Nothing when the scene has no dungeon.
 dungeon_light :: (s:[]Creator,u:[]f32,x:f32,z:f32) {
-  if s[0].dungeon_n!=dungeon.DG_CHUNKS || u.count<104 {return;}
+  if s[0].dungeon_n!=dungeon.DG_CHUNKS || u.count<104 || (s[0].field && s[0].field_count>0) {return;}   // the open field has no dungeon
   if s[0].torch_n==0 {t:[dungeon.DG_TORCHES_MAX]dungeon.DgTorch;n:=dungeon.dg_torches(t[..]);for i:0..<n {f:=dungeon.dg_flame(t[i]);for k:0..<3 {s[0].torches[i*3+k]=f[k];}}
     // and the fire bowls, lights too
     for i:0..<dungeon.DG_PROPS {p:=dungeon.dg_prop(i);if p.piece!=dungeon.DG_P_FIRE || (n+1)*3>s[0].torches.count {continue;}s[0].torches[n*3]=p.x;s[0].torches[n*3+1]=0.9*p.scale;s[0].torches[n*3+2]=p.z;n+=1;}
@@ -1472,7 +1506,8 @@ stage_camera :: (s:Creator,u:[]f32,w:f32,h:f32) {
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.stage_on {stage_camera(s,u,w,h);return;}
   if s.experimental {
-    target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
+    ck:=ifx s.cam_k>1 then s.cam_k else 1.0f32;   // a bigger body's camera: further out and higher (druid-scene.coax)
+    target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2+(ck-1)*1.6;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw+s.orbit); cz:=cos(s.yaw+s.orbit);
     fp:=cc_first_person(s);far:=fpcam.fp_far(fp);ahead:=fpcam.fp_ahead(fp);
     // over your right shoulder, one offset family: mouselook (aethyr/cam/mouselook.coax) frames you
@@ -1481,7 +1516,7 @@ camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
     // Zoomed in to first person (fp) they all give way to the eye.
     mlv:=s.ml[0].shown;off:=ifx mlv>s.aim then mlv else s.aim;
     ride:=egm.eg_ride_cam(s.mounts[0],s.clock);target+=egm.eg_ride_cam_up(s.mounts[0])*ride;   // riding, the camera pulls back and up to see the horse
-    base:=s.dist+egm.eg_ride_cam_back(s.mounts[0])*ride;dist:=(base+(2.1-base)*s.aim)*far;shoulder:=(cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off)*far;ox:=cz*shoulder-sx*ahead;oz:= -sx*shoulder-cz*ahead;
+    base:=s.dist*ck+egm.eg_ride_cam_back(s.mounts[0])*ride;dist:=(base+(2.1-base)*s.aim)*far;shoulder:=(cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off)*far;ox:=cz*shoulder-sx*ahead;oz:= -sx*shoulder-cz*ahead;
     lift:=f32(CC_LIFT)*mlv;if 0.38*s.aim>lift {lift=0.38*s.aim;}target+=lift*far+fpcam.fp_lift(fp,1.2);
     // drawn, the boom comes level behind the shoulder, whatever the pitch: the view still looks along
     // the pitch (the aim), so you see the arrow's line and not the top of your head
@@ -1601,6 +1636,7 @@ catalog :: (s:[]Creator,t:string) {
   if s[0].aribeth.count>0 {aribeth.arb_catalog(s[0].aribeth,t);}
   s[0].build_n=0;s[0].comparison_present=false;s[0].biomes_present=false;s[0].source_n=0;s[0].glade_count=0;s[0].zero_ad_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].dungeon_n=0;for i:0..<8 {s[0].dungeon_count[i]=0;}s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<7 {s[0].weapon_count[i]=0;}
   for i:0..<11 {s[0].familiar_count[i]=0;}
+  s[0].dragon_n=0;s[0].dragon_count=0;s[0].field_count=0;for i:0..<14 {s[0].kit_count[i]=0;}
   for i:0..<80 {s[0].source_count[i]=0;}
   at:=0;
   while at<t.count {e:=at;while e<t.count && t[e]!='\n' {e+=1;} row:=t[at..<e];at=e+1;
@@ -1623,6 +1659,26 @@ catalog :: (s:[]Creator,t:string) {
         p=figs.bd_word_end(row,p+1);
         s[0].familiar_word[i]=figs.bd_whole_at(row,p);
       }
+    }
+    // The dragon's frames lie one after another, the same size and vertex word (dragon_pack.coax), so
+    // the Creator keeps frame 0's place and the size: frame k starts at dragon_first + k * dragon_count.
+    // A frame out of that line leaves the dragon undrawn (dragon_n never reaches DR_TOTAL).
+    if name.count>12 && name[0..<12]=="glade/dragon" {
+      i:=figs.bd_whole_at(name,12);
+      if i>=0 && i<dragon.DR_TOTAL && s[0].dragon_n>=0 {
+        first:=figs.bd_whole_at(row,ne);p:=figs.bd_word_end(row,ne+1);count:=figs.bd_whole_at(row,p);
+        p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);word:=figs.bd_whole_at(row,p);
+        if s[0].dragon_n==0 {s[0].dragon_first=first-i*count;s[0].dragon_count=count;s[0].dragon_word=word;}
+        if count>0 && count==s[0].dragon_count && word==s[0].dragon_word && first==s[0].dragon_first+i*count {s[0].dragon_n+=1;}else{s[0].dragon_n= -1;}
+      }
+    }
+    // The open field (meadow_pack.coax): Everglade II's meadow, drawn in place of the glade where
+    // the page asks for the field (Creator.field): its ground, and each kit the GPU scatters over it.
+    if name=="glade/meadow" {
+      p:=ne;s[0].field_first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].field_count=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);s[0].field_word=figs.bd_whole_at(row,p);
+    }
+    if name.count>15 && name[0..<15]=="glade/meadowkit" {
+      j:=figs.bd_whole_at(name,15)-20;if j>=0 && j<14 {p:=ne;s[0].kit_first[j]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].kit_count[j]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);s[0].kit_word[j]=figs.bd_whole_at(row,p);}
     }
     if name.count>12 && name[0..<12]=="glade/animal" {
       i:=figs.bd_whole_at(name,12);if i>=0 && i<10 {p:=ne;s[0].animal_first[i]=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);s[0].animal_count[i]=figs.bd_whole_at(row,p);if s[0].animal_count[i]>0 {s[0].animal_n+=1;}}
@@ -1874,6 +1930,22 @@ load_player :: (s:[]Creator,t:string) {
  catalog(s[..],"C glade/grass 0 465 250 100 65536 0\n");#assert s[0].grass_groups==0;
 }
 
+#test "the open field draws Everglade II's meadow, its grass and its understory in place of the glade" {
+ s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);
+ catalog(s[..],"C glade/environment 9 12 250 100 8 0\nC glade/grass 21 465 250 164 20000 0\nC glade/meadow 40 600 250 300 0 0\nC glade/meadowkit33 700 90 250 310 0 0\nC glade/meadowkit25 800 120 250 320 0 0\nC glade/meadowkit23 900 50 250 300 0 0\n");
+ for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}b[0].ready=true;s[0].scene_only=true;
+ n:=scene(s[..],b[..],out[..]);#assert n==2;#assert b[0].draws[0]==9;#assert out[15]==16;#assert out[24]==164;
+ s[0].field=true;n=scene(s[..],b[..],out[..]);
+ // the meadow's ground, then the flowers' one grid (kit 25) and the grass's four tiers (kit 33); the
+ // glade's own grass, and a kit the meadow does not scatter (23), stay out
+ #assert n==6 && b[0].draws[0]==40 && b[0].draws[1]==600 && out[7]==300 && out[8]==1;
+ #assert b[0].draws[4]==800 && b[0].draws[5]==120 && b[0].draws[6]==cast(u32)(2<<16) && b[0].draws[7]==49*49 && out[24+15]==20 && out[24]==25 && out[24+7]==320;
+ // and no dungeon darkens it (cg_dungeon_in): the field has none
+ lu:[104]f32;s[0].dungeon_n=dungeon.DG_CHUNKS;dungeon_light(s[..],lu[..],0,0);#assert lu[64]==0;s[0].dungeon_n=0;
+ for t:0..<4 {r:=2+t;#assert b[0].draws[r*4]==700 && out[r*24+7]==310 && out[r*24]==33 && out[r*24+1]==f32(t) && b[0].draws[r*4+3]==cast(u32)(grid.e2_meadow_side(33,t)*grid.e2_meadow_side(33,t));}
+ // with no meadow in the pack the field shows the glade, never nothing
+ catalog(s[..],"C glade/environment 9 12 250 100 8 0\n");for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}n=scene(s[..],b[..],out[..]);#assert n==1 && b[0].draws[0]==9;
+}
 #test "creator texture detail is bounded independently for desktop and phone layouts" {
  s:Creator;s.on=true;s.width=1440;#assert texture_side(s)==1024;
  s.width=390;#assert texture_side(s)==512;s.on=false;#assert texture_side(s)==0;

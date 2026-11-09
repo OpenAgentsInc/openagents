@@ -5,7 +5,8 @@
 // Everglade II plants it through plant.coax and field.coax, and the druid's field bakes it into the
 // glade's pack.
 #module "verse.everglade2meadow";
-#load "forest.coax";
+#load "field.coax";   // its hashes (and forest.coax)
+#load "meadow-grid.coax";   // each grid's side
 
 // A meadow: its middle (x, z), its open radius r, the band over which it gives way to what is round
 // it (edge, metres), and how ragged that edge is (rag: 0 a true circle, 1 the clearing's own edge).
@@ -29,19 +30,72 @@ e2_meadow_keep :: (m: E2Meadow, x: f32, z: f32) -> bool { return true; }
 // mushroom. kit is the pack's template (plant.coax E2_KIT_NAME), sv and sh its vertical and
 // horizontal scale, sink how far it sits into the ground, tint its colour.
 E2MeadowPiece :: struct { kit: int; sv: f32; sh: f32; sink: f32; tint: [3] f32; }
-e2_meadow_pick :: (h: f32, autumn: f32) -> E2MeadowPiece {
-  r := cg_hash(h, 14); sz := cg_hash(h, 15);
-  green := [3] f32.[0.36, 0.80, 0.08];
-  orange := ifx cg_hash(h, 17) < 0.5 then [3] f32.[1, 0.30, 0.03] else [3] f32.[1, 0.44, 0.05];
-  rock := [3] f32.[0.60 + 0.08 * cg_hash(h, 18), 0.62 + 0.06 * cg_hash(h, 18), 0.50];
-  p: E2MeadowPiece;
-  if r < 0.55 { s := 0.12 + sz * 0.13; p = E2MeadowPiece.{kit = 25 + int(cg_hash(h, 20) * 2.999), sv = s, sh = s, tint = [3] f32.[0.4, 0.75, 0.05]}; }   // Flower_3, 2 or 4 _Group
-  else if r < 0.72 { s := 0.3 + sz * 0.3; p = E2MeadowPiece.{kit = 31, sv = s, sh = s, tint = green}; }   // Clover_1
-  else if r < 0.82 { s := 0.25 + sz * 0.4; p = E2MeadowPiece.{kit = 20 + int(cg_hash(h, 20) * 2.999), sv = s, sh = s, sink = 0.1 * s, tint = rock}; }   // Rock_Medium_1 to 3
-  else if r < 0.92 { s := 0.3 + sz * 0.25; p = E2MeadowPiece.{kit = 29 + int(cg_hash(h, 20) * 1.999), sv = s, sh = s, tint = ifx autumn > 0.4 then orange else green}; }   // Plant_1 or Plant_3
-  else { s := 0.5 + sz * 0.3; p = E2MeadowPiece.{kit = 28, sv = s * 0.75, sh = s, tint = [3] f32.[1, 1, 1]}; }   // Mushroom_Common
+e2_meadow_pick :: (h: f32, autumn: f32) -> E2MeadowPiece { return e2_meadow_piece(e2_meadow_kit(h), h, autumn); }
+// Which kit the pick draws from seed h.
+e2_meadow_kit :: (h: f32) -> int {
+  r := cg_hash(h, 14); v := cg_hash(h, 20);
+  if r < 0.55 { return 25 + int(v * 2.999); }   // Flower_3, 2 or 4 _Group
+  if r < 0.72 { return 31; }                    // Clover_1
+  if r < 0.82 { return 20 + int(v * 2.999); }   // Rock_Medium_1 to 3
+  if r < 0.92 { return 29 + int(v * 1.999); }   // Plant_1 or Plant_3
+  return 28;                                    // Mushroom_Common
+}
+// The piece a kit makes from seed h: its scale, how far it sinks and its tint.
+e2_meadow_piece :: (kit: int, h: f32, autumn: f32) -> E2MeadowPiece {
+  sz := cg_hash(h, 15);
+  p: E2MeadowPiece; p.kit = kit;
+  if kit >= 25 && kit <= 27 { s := 0.12 + sz * 0.13; p.sv = s; p.sh = s; p.tint = [3] f32.[0.4, 0.75, 0.05]; }
+  else if kit == 31 { s := 0.3 + sz * 0.3; p.sv = s; p.sh = s; p.tint = [3] f32.[0.36, 0.80, 0.08]; }
+  else if kit >= 20 && kit <= 22 { s := 0.25 + sz * 0.4; p.sv = s; p.sh = s; p.sink = 0.1 * s; g := cg_hash(h, 18); p.tint = [3] f32.[0.60 + 0.08 * g, 0.62 + 0.06 * g, 0.50]; }
+  else if kit == 29 || kit == 30 {
+    s := 0.3 + sz * 0.25; p.sv = s; p.sh = s; p.tint = [3] f32.[0.36, 0.80, 0.08];
+    if autumn > 0.4 { p.tint = [3] f32.[1, 0.30, 0.03]; if cg_hash(h, 17) >= 0.5 { p.tint[1] = 0.44; p.tint[2] = 0.05; } }   // (no array ifx: the shader reads this too)
+  }
+  else { s := 0.5 + sz * 0.3; p.sv = s * 0.75; p.sh = s; p.tint = [3] f32.[1, 1, 1]; }
   return p;
 }
+
+// ---- The meadow scattered to the horizon (the druid's field, drawn on the GPU: apps/openagents-web/
+// gpu/character-glade.coax cg_meadow_vs). Every piece of one kit stands in its own cell of a grid
+// fixed to the land, sized so the kit is as common as the pick makes it, and everything about it
+// (whether the cell holds one, where in the cell, its seed for e2_meadow_piece) is that cell's hash
+// alone, so a piece never moves as you walk. A kit is drawn out to its reach and shrinks away over
+// its last quarter. The pack holds each kit's mesh once.
+E2_MEADOW_AREA :: 0.2109375;   // understory pieces a square metre on open meadow: 120 tries x E2_MEADOW_DENSITY / 256 m2
+E2_MEADOW_KEEP :: 0.7;         // the share of a kit's cells that hold a piece
+E2_MEADOW_ORIGIN :: -32768.0;  // the grids' corner (metres), so every cell's index is positive
+E2_MEADOW_KITS :: 10;
+// The understory's kits in drawing order (plant.coax E2_KIT_NAME).
+e2_meadow_kit_at :: (i: int) -> int { return ifx i < 3 then 20 + i else 22 + i; }
+// The share of the pick's pieces that are this kit.
+e2_meadow_share :: (kit: int) -> f32 {
+  if kit >= 25 && kit <= 27 { return 0.55 / 3; }
+  if kit == 31 { return 0.17; }
+  if kit >= 20 && kit <= 22 { return 0.10 / 3; }
+  if kit == 29 || kit == 30 { return 0.05; }
+  if kit == 28 { return 0.08; }
+  return 0;
+}
+// A kit's cell side (metres) and how far from the eye it is drawn: rocks to the horizon, plants
+// farther than the small flowers, clover and mushrooms.
+e2_meadow_cell :: (kit: int) -> f32 { s := e2_meadow_share(kit); return ifx s <= 0 then 0.0f32 else sqrt(f32(E2_MEADOW_KEEP) / (f32(E2_MEADOW_AREA) * s)); }
+e2_meadow_reach :: (kit: int) -> f32 { return ifx kit >= 20 && kit <= 22 then 320.0f32 else ifx kit == 29 || kit == 30 then 140.0f32 else ifx kit >= 25 && kit <= 27 then 100.0f32 else 80.0f32; }
+// Cell (gx, gz) of a kit's grid: whether it holds a piece, the piece's place and its seed.
+e2_meadow_held :: (gx: u32, gz: u32, kit: int) -> bool { return e2_unit(e2_field_hash(gx, gz, cast(u32)(100 + kit))) < f32(E2_MEADOW_KEEP); }
+e2_meadow_at_x :: (gx: u32, gz: u32, kit: int) -> f32 { return f32(E2_MEADOW_ORIGIN) + (cast(f32)gx + 0.1f32 + 0.8f32 * e2_unit(e2_field_hash(gx, gz, cast(u32)(60 + kit)))) * e2_meadow_cell(kit); }
+e2_meadow_at_z :: (gx: u32, gz: u32, kit: int) -> f32 { return f32(E2_MEADOW_ORIGIN) + (cast(f32)gz + 0.1f32 + 0.8f32 * e2_unit(e2_field_hash(gx, gz, cast(u32)(80 + kit)))) * e2_meadow_cell(kit); }
+e2_meadow_seed :: (gx: u32, gz: u32, kit: int) -> f32 { return e2_unit(e2_field_hash(gx, gz, cast(u32)(40 + kit))) * 97.0f32 + 0.5f32; }
+// How much of its size a piece d metres from the eye keeps: all, shrinking to none over the last
+// quarter of its kit's reach.
+e2_meadow_fade :: (kit: int, d: f32) -> f32 { r := e2_meadow_reach(kit); return 1 - cg_ramp(0.75 * r, r, d); }
+// The grass, by field.coax's nested tiers on a grid from E2_MEADOW_ORIGIN: a fine cell's tuft's
+// height (as a scale of Grass_Common_Short) and width, as Everglade II's open ground grows it.
+e2_meadow_tuft_sv :: (fx: u32, fz: u32) -> f32 { return (0.22f32 + 0.26f32 * e2_unit(e2_field_hash(fx, fz, cast(u32)4))) / f32(E2_FIELD_MESH); }
+e2_meadow_tuft_sh :: (fx: u32, fz: u32) -> f32 { return (0.55f32 + 0.35f32 * e2_unit(e2_field_hash(fx, fz, cast(u32)7))) * 0.85f32; }
+
+// How gold an open meadow is at (x, z): Everglade II's gentle gold patches on open ground (forest.coax
+// e2_gold away from the woods), 0 to 0.3. The druid's field tints its grass, plants and ground by it.
+e2_meadow_gold :: (x: f32, z: f32) -> f32 { return e2_smooth(0.40, 0.62, e2_noise(x / 60 + 3.1, z / 60 - 1.7)) * 0.3; }
 
 // How thick the grass grows (field.coax's cover) on ground open by `open`: full on open meadow.
 e2_meadow_cover :: (open: f32) -> f32 { return ifx open < 0 then 0.0f32 else ifx open > 1 then 1.0f32 else open; }
@@ -78,4 +132,40 @@ e2_meadow_weights :: (autumn: f32) -> [4] f32 {
   }
   #assert flowers > 900 && flowers < 1300;
   #assert e2_meadow_cover(1) == 1 && e2_meadow_cover(-1) == 0 && e2_meadow_weights(0)[0] == 1 && e2_meadow_weights(1)[1] == 1;
+}
+#test "the pick is its kit's piece, and the scattered kits share the pick's mix" {
+  for i: 0..<500 {
+    h := f32(i) * 3.1 + 0.5; p := e2_meadow_pick(h, 0.5); q := e2_meadow_piece(e2_meadow_kit(h), h, 0.5);
+    #assert p.kit == q.kit && p.sv == q.sv && p.sh == q.sh && p.sink == q.sink && p.tint[0] == q.tint[0];
+  }
+  total: f32 = 0;
+  for i: 0..<E2_MEADOW_KITS { k := e2_meadow_kit_at(i); total += e2_meadow_share(k); #assert e2_meadow_cell(k) > 1 && e2_meadow_reach(k) / e2_meadow_cell(k) < 127; }
+  #assert abs(total - 1) < 0.0001 && e2_meadow_kit_at(3) == 25 && e2_meadow_kit_at(9) == 31 && e2_meadow_share(23) == 0;
+}
+#test "a scattered piece is its cell's alone, inside its cell, and as thick as the clearing's understory" {
+  for kk: 0..<E2_MEADOW_KITS {
+    k := e2_meadow_kit_at(kk); c := e2_meadow_cell(k); held := 0;
+    for i: 0..<400 {
+      gx := cast(u32)(3200 + i % 20); gz := cast(u32)(3200 + i / 20);   // cells round the land's middle
+      x := e2_meadow_at_x(gx, gz, k); z := e2_meadow_at_z(gx, gz, k);
+      #assert x >= f32(E2_MEADOW_ORIGIN) + cast(f32)gx * c && x < f32(E2_MEADOW_ORIGIN) + cast(f32)(gx + 1) * c;
+      #assert z >= f32(E2_MEADOW_ORIGIN) + cast(f32)gz * c && z < f32(E2_MEADOW_ORIGIN) + cast(f32)(gz + 1) * c;
+      #assert x == e2_meadow_at_x(gx, gz, k) && e2_meadow_seed(gx, gz, k) == e2_meadow_seed(gx, gz, k);
+      if e2_meadow_held(gx, gz, k) { held += 1; }
+    }
+    #assert held > 230 && held < 330;
+    // pieces a square metre: the clearing's, kit by kit
+    #assert abs(f32(E2_MEADOW_KEEP) / (c * c) - f32(E2_MEADOW_AREA) * e2_meadow_share(k)) < 0.0001;
+    #assert e2_meadow_fade(k, 0) == 1 && e2_meadow_fade(k, e2_meadow_reach(k)) == 0;
+  }
+  #assert e2_meadow_tuft_sv(3, 4) > 0.15 && e2_meadow_tuft_sh(3, 4) > 0.4;
+}
+#test "each grid round the eye reaches as far as its kit is drawn" {
+  for i: 0..<E2_MEADOW_KITS { k := e2_meadow_kit_at(i); #assert e2_meadow_side(k, 0) == 2 * int(-floor(-e2_meadow_reach(k) / e2_meadow_cell(k))) + 1; }
+  for t: 0..<4 { #assert e2_meadow_side(E2_MEADOW_GRASS, t) == 2 * int(-floor(-e2_field_out(t) / e2_field_cell(t))) + 1 && e2_meadow_side(E2_MEADOW_GRASS, t) * e2_meadow_side(E2_MEADOW_GRASS, t) <= 65535; }
+  #assert e2_meadow_side(23, 0) == 0 && e2_meadow_side(E2_MEADOW_GRASS, 4) == 0;
+}
+#test "an open meadow's gold is Everglade II's patches away from the woods" {
+  for i: 0..<300 { x := f32(i) * 7.3 - 900; z := f32(i % 37) * 11.1 - 200; g := e2_meadow_gold(x, z); #assert g >= 0 && g <= 0.3; }
+  hi := 0; for i: 0..<400 { if e2_meadow_gold(f32(i) * 13.0, f32(i) * -7.0) > 0.15 { hi += 1; } } #assert hi > 0 && hi < 400;
 }

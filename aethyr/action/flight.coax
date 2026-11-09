@@ -89,6 +89,7 @@ wf_toward :: (a: f32, b: f32, step: f32) -> f32 #effects(all) {
   return wf_hi(b, a - step);
 }
 
+// book:begin wing-profile-srd
 // A profile from SRD speeds in feet: walk_ft on the ground, fly_ft in the air, against the realm's
 // pace (pace_mps metres a second for a 30-ft Speed).
 wing_profile_srd :: (walk_ft: int, fly_ft: int, pace_mps: f32) -> WingProfile #effects(all) {
@@ -100,6 +101,7 @@ wing_profile_srd :: (walk_ft: int, fly_ft: int, pace_mps: f32) -> WingProfile #e
   p.vertical.flap_up = 6.0; p.vertical.climb = 4.0; p.vertical.glide = -1.2; p.vertical.dive = -12.0;
   return p;
 }
+// book:end wing-profile-srd
 // A body on the ground at (x, y, z) facing yaw.
 wing_at :: (x: f32, y: f32, z: f32, yaw: f32) -> WingState #effects(all) {
   return WingState.{phase = WING_GROUND, x = x, y = y, z = z, yaw = yaw};

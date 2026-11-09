@@ -54,6 +54,7 @@
 #load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in experimental-combat.coax xc_sprint_frame)
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: rest and knock-out over Experimental's bar (#13092)
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
+#load "druid-scene.coax";   // the druid's field at /druid: Shapechange into the Adult Red Dragon, flight and Fire Breath
 #load "experimental-objects.coax";
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "experimental-ride.coax";               // Experimental's riding: E, the saddle, the prompt
@@ -471,7 +472,7 @@ lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
   if s[0].creator[0].on {
     n := cc.scene_reserved(s[0].creator[..],s[0].bodies[..],out,ifx s[0].creator[0].experimental then 2 else 0);
     if s[0].creator[0].experimental {
-      n=xc_familiar_draw(s,out,n);
+      n=xc_familiar_draw(s,out,n);n=xd_draw(s,out,n);
       if n<s[0].bodies[0].draws.count/4 { n=xc_objects_draw(s,out,n); }
     }
     lab_shadow_select(s);
@@ -1873,8 +1874,8 @@ lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
   if sprint.sprint_on(s[0].xc[0].dash[0], s[0].creator[0].clock) {
     return EgMoveIn.{key_y = 1, run = true, theta = s[0].xc[0].dash[0].face - 3.14159265, link_flags = 512};
   }
-  return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
-                   jump = h & HOLD_JUMP != 0, theta = ifx s[0].creator[0].experimental then s[0].creator[0].yaw else you_theta(s)};
+  return xd_move_in(s, EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
+                   jump = h & HOLD_JUMP != 0, theta = ifx s[0].creator[0].experimental then s[0].creator[0].yaw else you_theta(s)});
 }
 // The world where you stand, for Everglade's step: the figures round you (lab_move_bodies), your
 // Speed as the walk's pace (30 feet Everglade's own), still while you can't move. `deck` keeps
@@ -1910,7 +1911,8 @@ lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock) {w.link_flags=512;}return w;}
+  if s[0].creator[0].experimental && s[0].creator[0].field {w.bodies=0;w.pace=xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}return w;}   // the open field: no village, its walls or its bushes
+  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}if sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock) {w.link_flags=512;}return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }
@@ -1957,6 +1959,7 @@ lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
 lab_jump_plan :: (s:[] Lab,origin:EgBody,intent:EgMotionIntent,pending:bool)->EgJump #export_c #effects(all) {
   x:=s[0].xc[..];
   if !s[0].creator[0].experimental || !x[0].started { return EgJump.{}; }
+  if xd_jump(s,pending) { return EgJump.{mode=EG_JUMP_DENIED}; }   // the dragon's wings take the jump (druid-scene.coax)
   if !origin.ground { return x[0].jump; }
   x[0].jump=EgJump.{};
   if !pending { return x[0].jump; }
@@ -2060,6 +2063,7 @@ lab_aim_face :: (s:[]Lab,face:f32)->f32 {
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
   if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y+lab_ride_lift(s);s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].backpedal=s[0].creator[0].ml[0].shown>0.5 && axis(s[0].held,HOLD_W,HOLD_S)<0;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock);xc_sprint_frame(s);}
+  if s[0].creator[0].experimental { xd_you(s); }
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -3033,7 +3037,7 @@ lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  s:[1]Lab;b:[16]f32;#assert lab_biome_labels(s[..],b[..],0,1600,1000,1)==0;
 }
 lab_biome_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
- if !s[0].creator[0].biomes_present {return at;}n:=at;x:=s[0].xc[..];
+ if !s[0].creator[0].biomes_present || s[0].creator[0].field {return at;}n:=at;x:=s[0].xc[..];
  for i:0..<biomes.BIO_N {p:=biomes.bio_site(i);a:=xc_proj(x,p.x,0.25,p.z+10.5);
   if !a.ok || a.x<70*k || a.x>w-70*k || a.y<45*k || a.y>h-90*k {continue;}
   if n+4000>MAX_VERTICES {break;}
@@ -3079,7 +3083,7 @@ lab_showcase_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  return n;
 }
 lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
- if !s[0].creator[0].comparison_present {return at;}n:=at;x:=s[0].xc[..];
+ if !s[0].creator[0].comparison_present || s[0].creator[0].field {return at;}n:=at;x:=s[0].xc[..];
  for i:0..<compare.CMP_N {p:=compare.cmp_site(i);a:=xc_proj(x,p.x,0.35+p.span,p.z);
   if !a.ok || a.x<40*k || a.x>w-40*k || a.y<45*k || a.y>h-90*k {continue;}
   if n+4000>MAX_VERTICES {break;}
@@ -3629,6 +3633,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
 }
 lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == KEY_SHIFT { s[0].shift = false; }
+  if s[0].xc[0].dr.breath_slot >= 0 && key == s[0].xc[0].dr.breath_key && xd_release(s) { return true; }
   if mlook.ml_key_up(s[0].creator[0].ml[..], key) { return true; }
   h := ifx key == ' ' then HOLD_JUMP else hold_bit(key);
   s[0].held = s[0].held & (HOLD_ALL - h);   // h is one HOLD_ bit or none
@@ -3863,7 +3868,7 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
-  if kind==HOST_PAGE && cc.experimental_page(t) {if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].build_review=cc.build_review_page(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
+  if kind==HOST_PAGE && (cc.experimental_page(t) || xd_page(t)) {if xd_page(t) {xd_enter(s);}if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].build_review=cc.build_review_page(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }

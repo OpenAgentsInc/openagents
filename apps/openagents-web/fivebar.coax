@@ -39,6 +39,10 @@ FB_HIDE :: 23; FB_GRAPPLE :: 24; FB_SHOVE :: 25; FB_READY :: 26;
 // the ritual spell the creature may cast so (fb_ritual_spell): begun, kept going, then cast
 FB_SKILL :: 27; FB_RITUAL :: 28;
 FB_SHOOT :: 30;     // the Attack action with your ranged weapon (rs_shoot): a bow's arrow on the creature it reached (docs/verse/bow-combat.md)
+// Shapechange (aethyr/rules/srd/shapechange.coax): into the stat block `opt` (MON_*) with a 9th-level slot, or
+// back; and a dragon's own actions in that form (dragon-actions.coax): Fire Breath at the square (tx, ty)'s
+// way, Tail Sweep, Wing Buffet and Frightful Roar
+FB_SHAPECHANGE :: 31; FB_BREATH :: 32; FB_TAIL :: 33; FB_BUFFET :: 34; FB_ROAR :: 35;
 FB_SKILL_DC :: 15;   // the world's DC for what is sought or recalled: Medium (p.8, Typical Difficulty Classes)
 // how it is aimed: your target, a point (the ground under your target, or where you point), you,
 // the friend most hurt, the friends round a point (up to six)
@@ -378,6 +382,9 @@ fb_ready :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
   if a.kind == FB_RESURGE { return c.resurgence && (c.uses[RS_USE_WILD] > 0 || fb_free_slot(b, i, 1) > 0); }
   if a.kind == FB_TURN || a.kind == FB_PRESERVE || a.kind == FB_SACRED { return c.uses[RS_USE_CHANNEL] > 0; }
   if a.kind == FB_RITUAL { return !rs_casting_barred(c) && rs_cast_components_ready(c, a.sp); }
+  if a.kind == FB_SHAPECHANGE { return c.shape_form != 0 || (c.slots[9] > 0 && rs_shape_eligible(c, a.opt) && rs_cast_components_ready(c, SP_SHAPECHANGE)); }
+  if a.kind == FB_BREATH { return rs_breath_ready(c); }
+  if a.kind == FB_TAIL || a.kind == FB_BUFFET || a.kind == FB_ROAR { return rs_breather(c); }
   return true;
 }
 // What an entry has left to show in its corner: slots at its level, uses, Rages or Focus (-1: none).
@@ -394,6 +401,7 @@ fb_left :: (b: [] RsBattle, i: int, a: FbAb) -> int {
   if a.kind == FB_INNATE { return c.uses[RS_USE_INNATE]; }
   if a.kind == FB_LANDS || a.kind == FB_RESURGE || a.kind == FB_WILD { return c.uses[RS_USE_WILD]; }
   if a.kind == FB_TURN || a.kind == FB_PRESERVE || a.kind == FB_SACRED { return c.uses[RS_USE_CHANNEL]; }
+  if a.kind == FB_SHAPECHANGE { return ifx c.shape_form != 0 then -1 else c.slots[9]; }
   return -1;
 }
 // When the slot an entry spends next comes back on the action clock (0: nothing to wait for).
@@ -450,6 +458,11 @@ fb_use :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: in
   if a.kind == FB_READY { r := RD_ATTACK + rs_min(rs_max(a.opt, 0), 2); return rs_ready(b, i, r, -1, ifx r == RD_SPELL then a.sp else -1, ifx r == RD_SPELL then a.lvl else 0); }
   if a.kind == FB_SKILL { return fb_skill(b, i, a, at, SK_ARCANA).accepted; }
   if a.kind == FB_RITUAL { return fb_ritual(b, i, a.sp); }
+  if a.kind == FB_SHAPECHANGE { if b[0].c[i].shape_form != 0 { return rs_shapechange_leave(b, i); } return rs_shapechange(b, i, a.opt); }
+  if a.kind == FB_BREATH { return rs_fire_breath(b, i, f32(tx - b[0].c[i].x), f32(ty - b[0].c[i].y)) >= 0; }
+  if a.kind == FB_TAIL { return rs_tail_sweep(b, i) >= 0; }
+  if a.kind == FB_BUFFET { return rs_wing_buffet(b, i) >= 0; }
+  if a.kind == FB_ROAR { return rs_dragon_roar(b, i) >= 0; }
   return false;
 }
 // The skill slot's action (p.176) at creature `at`: Search with Perception, finding the hidden;
