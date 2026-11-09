@@ -16,7 +16,7 @@ lw_abilities :: (out: [] Ab) -> int {
   out[0] = spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = spell_ab(SP_HEX, 1, TG_FOE);
   out[2] = spell_ab(SP_FIREBALL, 5, TG_POINT); out[3] = spell_ab(SP_BLIGHT, 5, TG_FOE);
   out[4] = spell_ab(SP_CIRCLE_OF_DEATH, 6, TG_POINT); out[5] = spell_ab(SP_FINGER_OF_DEATH, 7, TG_FOE);
-  out[6] = spell_ab(SP_DIMENSION_DOOR, 5, TG_BESIDE); out[7] = mk_ab(AB_DASH, "DASH");
+  out[6] = spell_ab(SP_DIMENSION_DOOR, 5, TG_BESIDE); out[7] = mk_ab(FB_DASH, "DASH");
   return 8;
 }
 // A Mystic Arcanum slot (6th level and up) casts only its own spell, at its own level.
@@ -117,7 +117,7 @@ lw_test_turn :: (s: [] Lab, me: int, foe: int, a: Ab) -> bool {
   #assert me >= 0 && b[0].c[me].klass == RS_WARLOCK && b[0].c[me].level == LW_LEVEL;
   #assert b[0].c[me].slots[5] == 4 && b[0].c[me].slots[6] == 1 && b[0].c[me].slots[7] == 1 && b[0].c[me].slots[3] == 0;
   list: [SLOTS] Ab; nab := abilities(RS_WARLOCK, list[..]);
-  #assert nab == 8 && list[4].sp == SP_CIRCLE_OF_DEATH && list[5].sp == SP_FINGER_OF_DEATH && list[7].kind == AB_DASH;
+  #assert nab == 8 && list[4].sp == SP_CIRCLE_OF_DEATH && list[5].sp == SP_FINGER_OF_DEATH && list[7].kind == FB_DASH;
   // an Arcanum slot never pays for a Pact spell: Fireball waits for a Pact slot
   #assert free_slot(s[..], me, 5) == 5 && free_slot(s[..], me, 6) == 6;
   b[0].c[me].slots[5] = 0;

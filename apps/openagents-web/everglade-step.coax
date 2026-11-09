@@ -292,9 +292,9 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
   #assert dash.pos.z > 1 && dash.pos.z < 2 && walk.walk_collision_refusals(dash) == 0;
 }
 
-// Everglade's Dash (everglade-dash.coax on aethyr/action/sprint.coax), through the controller as
+// A step at a pace scale, for Everglade's Dash (everglade/dash.coax on aethyr/action/sprint.coax), through the controller as
 // fivelab-face.c steps it: the sprint's pace is the scale, on link flag 512. Speed 30: 9.144 m over a 7.5 m/s run.
-eg_test_dash_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f32, scale: f32) -> walk.Player #effects(all) {
+eg_test_scaled_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f32, scale: f32) -> walk.Player #effects(all) {
   empty: [1] f32; f := 1.0f32 / 64;
   return eg_step_advance_jump(eg_step_begin(p, i, w, f), w, empty[0..<0], walls, empty[0..<0], f, scale, EgJump.{});
 }
@@ -303,11 +303,11 @@ eg_test_dash_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f32
   i := EgMoveIn.{key_y = 1, run = true, theta = walk.PI}; di := EgMoveIn.{key_y = 1, run = true, theta = walk.PI, link_flags = 512};
   w := eg_step_world(EgMoveWorld.{}, i); dw := eg_step_world(EgMoveWorld.{}, di);
   run := walk.walk_place(0, 0, 0, 0);
-  for k: 0..<64 { run = eg_test_dash_step(run, i, w, none[0..<0], 1); }   // already running, 7.5 m/s
+  for k: 0..<64 { run = eg_test_scaled_step(run, i, w, none[0..<0], 1); }   // already running, 7.5 m/s
   dash := run; start := run.pos.z; peak: f32 = 0; g := sprint.sprint_gain(9.144, 7.5);
   for k: 0..<128 {   // two seconds: the sprint's 1.8 and a little after
-    run = eg_test_dash_step(run, i, w, none[0..<0], 1);
-    dash = eg_test_dash_step(dash, di, dw, none[0..<0], sprint.sprint_rate(f32(k) / 64, g));
+    run = eg_test_scaled_step(run, i, w, none[0..<0], 1);
+    dash = eg_test_scaled_step(dash, di, dw, none[0..<0], sprint.sprint_rate(f32(k) / 64, g));
     if dash.vel.z > peak { peak = dash.vel.z; }
     #assert dash.collision_status == scaled_collision.CollideStatus.ok;
   }
@@ -319,7 +319,7 @@ eg_test_dash_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f32
   wall := [6] f32.[-3, 0, 6, 3, 3, 6.4];
   p := walk.walk_place(0, 0, 0, 0);
   for k: 0..<128 {
-    p = eg_test_dash_step(p, di, dw, wall[..], sprint.sprint_rate(f32(k) / 64, g));
+    p = eg_test_scaled_step(p, di, dw, wall[..], sprint.sprint_rate(f32(k) / 64, g));
     #assert p.collision_status == scaled_collision.CollideStatus.ok && p.pos.z < 6;
   }
   #assert p.pos.z > 5.3 && walk.walk_collision_refusals(p) == 0;

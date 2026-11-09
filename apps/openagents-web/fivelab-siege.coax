@@ -380,13 +380,13 @@ siege_abilities :: (c: RsCreature, out: [] Ab) -> int {
   if npc == RS_NPC_WARLOCK {
     out[0] = spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = spell_ab(SP_HEX, 1, TG_FOE); out[2] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE);
     out[3] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[4] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[5] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE);
-    out[6] = mk_ab(AB_DASH, "DASH"); return 7;
+    out[6] = mk_ab(FB_DASH, "DASH"); return 7;
   }
   out[0] = mk_ab(AB_ATTACK, "ATTACK");
-  if npc == RS_NPC_PRIEST { out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF); out[3] = mk_ab(AB_DASH, "DASH"); return 4; }
-  if npc == RS_NPC_MAGE { out[1] = spell_ab(SP_FIREBALL, 4, TG_POINT); out[2] = spell_ab(SP_CONE_OF_COLD, 5, TG_POINT); out[3] = mk_ab(AB_DASH, "DASH"); return 4; }
-  if npc == RS_NPC_FANATIC { out[1] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE); out[2] = mk_ab(AB_DASH, "DASH"); return 3; }
-  out[1] = mk_ab(AB_DASH, "DASH");
+  if npc == RS_NPC_PRIEST { out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF); out[3] = mk_ab(FB_DASH, "DASH"); return 4; }
+  if npc == RS_NPC_MAGE { out[1] = spell_ab(SP_FIREBALL, 4, TG_POINT); out[2] = spell_ab(SP_CONE_OF_COLD, 5, TG_POINT); out[3] = mk_ab(FB_DASH, "DASH"); return 4; }
+  if npc == RS_NPC_FANATIC { out[1] = spell_ab(SP_HOLD_PERSON, 2, TG_FOE); out[2] = mk_ab(FB_DASH, "DASH"); return 3; }
+  out[1] = mk_ab(FB_DASH, "DASH");
   return 2;
 }
 // The figure you play in the Siege: the first of the picked kind still up, on either side.

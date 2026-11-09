@@ -51,7 +51,7 @@
 #load "../../aethyr/world/building.coax" as building;
 #load "../../everglade/world/housewright.coax" as hw;   // the housewright showcase's labels (lab_showcase_labels)
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
-#load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (experimental-combat.coax xc_dash_frame)
+#load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in experimental-combat.coax xc_sprint_frame)
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: rest and knock-out over Experimental's bar (#13092)
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 #load "experimental-objects.coax";
@@ -1576,8 +1576,7 @@ player_turn :: (s: [] Lab, i: int) {
   if !ab_ready(s, i, a) { a = list[0]; }
   // the dashes come before the walk
   ok := false;
-  if a.kind == AB_DASH { ok = rs_dash(b, i); }
-  if a.kind == AB_CDASH { ok = rs_cunning_dash(b, i); }
+  if a.kind == FB_DASH || a.kind == FB_CDASH { ok = fb_use(b, i, fb_feature(a.kind, a.name, ""), -1, 0, 0, -1); }   // the shared bar's Dash (fivebar.coax)
   if a.kind == AB_WIND { ok = rs_step_of_the_wind(b, i); }
   // your token walks the squares to where your body stands (Everglade's controller moves it,
   // fivelab-face.c), a square at a time on the rules' movement: Speed, Difficult Terrain, the
@@ -1603,13 +1602,13 @@ player_turn :: (s: [] Lab, i: int) {
   }
   s[0].my_sx = b[0].c[i].x; s[0].my_sy = b[0].c[i].y;
   foe := ifx tgt >= 0 then tgt else nearest_foe(s, i);
-  if a.kind == AB_DASH || a.kind == AB_CDASH || a.kind == AB_WIND { if !b[0].turn.action { default_attack(s, i, foe); } return; }
+  if a.kind == FB_DASH || a.kind == FB_CDASH || a.kind == AB_WIND { if !b[0].turn.action { default_attack(s, i, foe); } return; }
   use_ab(s, i, a, foe);
 }
 // ---- the hotbar: each class's own abilities, a slot each
 SLOTS :: 9;
-AB_ATTACK :: 0; AB_DASH :: 1; AB_SPELL :: 2; AB_RECKLESS :: 3; AB_RAGE :: 4; AB_FLURRY :: 5; AB_PATIENT :: 6;
-AB_WIND :: 7; AB_WHOLE :: 8; AB_SECOND :: 9; AB_SURGE :: 10; AB_LAY :: 11; AB_SACRED :: 12; AB_CDASH :: 13;
+AB_ATTACK :: 0; AB_SPELL :: 2; AB_RECKLESS :: 3; AB_RAGE :: 4; AB_FLURRY :: 5; AB_PATIENT :: 6;
+AB_WIND :: 7; AB_WHOLE :: 8; AB_SECOND :: 9; AB_SURGE :: 10; AB_LAY :: 11; AB_SACRED :: 12;   // Dash and Cunning Dash are fivebar.coax FB_DASH (1), FB_CDASH (13)
 AB_AIM :: 14; AB_INNATE :: 15; AB_INSPIRE :: 16; AB_TURN :: 17; AB_PRESERVE :: 18; AB_LANDS :: 19;
 TG_FOE :: 0; TG_POINT :: 1; TG_SELF :: 2; TG_ALLY :: 3; TG_BESIDE :: 4;   // a spell's aim: your target, the ground under it, you, the friend most hurt, the free square nearest your target
 Ab :: struct { kind: int; sp: int; lvl: int; tg: int; name: string; }
@@ -1621,40 +1620,40 @@ abilities :: (kl: int, out: [] Ab) -> int {
   if kl == RS_DRUID {
     out[0] = spell_ab(SP_STARRY_WISP, 0, TG_FOE); out[1] = spell_ab(SP_PRODUCE_FLAME, 0, TG_SELF); out[2] = spell_ab(SP_FLAME_HURL, 0, TG_FOE);
     out[3] = spell_ab(SP_THUNDERWAVE, 1, TG_POINT); out[4] = spell_ab(SP_ENTANGLE, 1, TG_POINT); out[5] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY);
-    out[6] = spell_ab(SP_CALL_LIGHTNING, 3, TG_POINT); out[7] = mk_ab(AB_LANDS, "LAND'S AID"); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
+    out[6] = spell_ab(SP_CALL_LIGHTNING, 3, TG_POINT); out[7] = mk_ab(AB_LANDS, "LAND'S AID"); out[8] = mk_ab(FB_DASH, "DASH"); n = 9;
   } else if kl == RS_WIZARD {
     out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_RAY_OF_SICKNESS, 1, TG_FOE);
     out[3] = spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = spell_ab(SP_MAGIC_MISSILE, 1, TG_FOE); out[5] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE);
-    out[6] = spell_ab(SP_BLINDNESS, 2, TG_FOE); out[7] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
+    out[6] = spell_ab(SP_BLINDNESS, 2, TG_FOE); out[7] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[8] = mk_ab(FB_DASH, "DASH"); n = 9;
   } else if kl == RS_WARLOCK {
     n = lw_abilities(out);   // the Warlock you play is level 17 (fivelab-warlock.coax)
   } else if kl == RS_SORCERER {
     out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_ACID_SPLASH, 0, TG_POINT); out[2] = spell_ab(SP_MAGIC_MISSILE, 1, TG_FOE);
     out[3] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[4] = spell_ab(SP_SHATTER, 2, TG_POINT); out[5] = spell_ab(SP_FIREBALL, 3, TG_POINT);
-    out[6] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
+    out[6] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[7] = mk_ab(FB_DASH, "DASH"); n = 8;
   } else if kl == RS_BARD {
     out[0] = spell_ab(SP_VICIOUS_MOCKERY, 0, TG_FOE); out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = mk_ab(AB_INSPIRE, "BARDIC INSPIRATION");
     out[3] = spell_ab(SP_SHATTER, 2, TG_POINT); out[4] = spell_ab(SP_HYPNOTIC_PATTERN, 3, TG_POINT); out[5] = spell_ab(SP_MASS_HEALING_WORD, 3, TG_ALLY);
-    out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(AB_DASH, "DASH"); n = 8;
+    out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(FB_DASH, "DASH"); n = 8;
   } else if kl == RS_CLERIC {
     out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[2] = spell_ab(SP_GUIDING_BOLT, 1, TG_FOE);
     out[3] = spell_ab(SP_INFLICT_WOUNDS, 1, TG_FOE); out[4] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[5] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF);
-    out[6] = mk_ab(AB_TURN, "TURN UNDEAD"); out[7] = mk_ab(AB_PRESERVE, "PRESERVE LIFE"); out[8] = mk_ab(AB_DASH, "DASH"); n = 9;
+    out[6] = mk_ab(AB_TURN, "TURN UNDEAD"); out[7] = mk_ab(AB_PRESERVE, "PRESERVE LIFE"); out[8] = mk_ab(FB_DASH, "DASH"); n = 9;
   } else if kl == RS_FIGHTER {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_SECOND, "SECOND WIND"); out[2] = mk_ab(AB_SURGE, "ACTION SURGE"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_SECOND, "SECOND WIND"); out[2] = mk_ab(AB_SURGE, "ACTION SURGE"); out[3] = mk_ab(FB_DASH, "DASH"); n = 4;
   } else if kl == RS_PALADIN {
     out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_DIVINE_SMITE, 1, TG_FOE); out[2] = mk_ab(AB_LAY, "LAY ON HANDS");
-    out[3] = mk_ab(AB_SACRED, "SACRED WEAPON"); out[4] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
+    out[3] = mk_ab(AB_SACRED, "SACRED WEAPON"); out[4] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[5] = mk_ab(FB_DASH, "DASH"); n = 6;
   } else if kl == RS_BARBARIAN {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_RECKLESS, "RECKLESS ATTACK"); out[2] = mk_ab(AB_RAGE, "RAGE"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_RECKLESS, "RECKLESS ATTACK"); out[2] = mk_ab(AB_RAGE, "RAGE"); out[3] = mk_ab(FB_DASH, "DASH"); n = 4;
   } else if kl == RS_MONK {
     out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_FLURRY, "FLURRY OF BLOWS"); out[2] = mk_ab(AB_PATIENT, "PATIENT DEFENSE");
-    out[3] = mk_ab(AB_WIND, "STEP OF THE WIND"); out[4] = mk_ab(AB_WHOLE, "WHOLENESS OF BODY"); out[5] = mk_ab(AB_DASH, "DASH"); n = 6;
+    out[3] = mk_ab(AB_WIND, "STEP OF THE WIND"); out[4] = mk_ab(AB_WHOLE, "WHOLENESS OF BODY"); out[5] = mk_ab(FB_DASH, "DASH"); n = 6;
   } else if kl == RS_ROGUE {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_AIM, "STEADY AIM"); out[2] = mk_ab(AB_CDASH, "CUNNING DASH"); out[3] = mk_ab(AB_DASH, "DASH"); n = 4;
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_AIM, "STEADY AIM"); out[2] = mk_ab(FB_CDASH, "CUNNING DASH"); out[3] = mk_ab(FB_DASH, "DASH"); n = 4;
   } else if kl == RS_RANGER {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_HUNTERS_MARK, 1, TG_FOE); out[2] = mk_ab(AB_DASH, "DASH"); n = 3;
-  } else { out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_DASH, "DASH"); n = 2; }
+    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_HUNTERS_MARK, 1, TG_FOE); out[2] = mk_ab(FB_DASH, "DASH"); n = 3;
+  } else { out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(FB_DASH, "DASH"); n = 2; }
   return n;
 }
 // The panel's row q (two columns of SIDE): the first 48 heroes; in the Siege, the watch on the
@@ -1870,8 +1869,8 @@ lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
 // is held: verse_runs), Space to jump. The face adds the thumb's stick.
 lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
-  // a Dash's sprint runs you ahead the way it heads (xc_dash_frame steers it), at its pace (lab_move_scale)
-  if xc_dashing(s) {
+  // a Dash's sprint runs you ahead the way it heads (xc_sprint_frame steers it), at its pace (lab_move_scale)
+  if sprint.sprint_on(s[0].xc[0].dash[0], s[0].creator[0].clock) {
     return EgMoveIn.{key_y = 1, run = true, theta = s[0].xc[0].dash[0].face - 3.14159265, link_flags = 512};
   }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
@@ -1905,13 +1904,13 @@ lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
   if !s[0].creator[0].experimental || !s[0].xc[0].started { return 1; }
   xc_sync_world(s);
   // dragging what you grapple costs a foot more each foot (grapple.coax rs_drag_feet): half the pace
-  // and a Dash's sprint over your run (experimental-combat.coax xc_dash_rate)
-  return rs_walk_scale(s[0].xc[0].b[..],0) / f32(1 + rs_drag_feet(s[0].xc[0].b[..],0,XC_AWAY,XC_AWAY)/5) * xc_dash_rate(s);
+  // and a Dash's sprint over your run (aethyr/action/sprint.coax sprint_pace)
+  return rs_walk_scale(s[0].xc[0].b[..],0) / f32(1 + rs_drag_feet(s[0].xc[0].b[..],0,XC_AWAY,XC_AWAY)/5) * sprint.sprint_pace(s[0].xc[0].dash[0], s[0].creator[0].clock);
 }
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if xc_dashing(s) {w.link_flags=512;}return w;}
+  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock) {w.link_flags=512;}return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }
@@ -2060,7 +2059,7 @@ lab_aim_face :: (s:[]Lab,face:f32)->f32 {
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
-  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y+lab_ride_lift(s);s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].backpedal=s[0].creator[0].ml[0].shown>0.5 && axis(s[0].held,HOLD_W,HOLD_S)<0;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || xc_dashing(s);xc_dash_frame(s);}
+  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y+lab_ride_lift(s);s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].backpedal=s[0].creator[0].ml[0].shown>0.5 && axis(s[0].held,HOLD_W,HOLD_S)<0;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock);xc_sprint_frame(s);}
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -2826,7 +2825,7 @@ ab_icon :: (out: [] f32, at: int, r: Rect, a: Ab, k: f32, c: Col) -> int {
     n = seg(out, n, cx - e, cy + e, cx + e, cy - e, w, 0.95, c);
     n = seg(out, n, cx - e * 0.75, cy + e * 0.15, cx - e * 0.15, cy + e * 0.75, w, 0.95, c);
     if a.kind != AB_ATTACK { n = seg(out, n, cx - e, cy - e, cx + e, cy + e, w, 0.95, ifx a.kind == AB_RECKLESS then RED else c); }
-  } else if a.kind == AB_DASH || a.kind == AB_CDASH || a.kind == AB_WIND {
+  } else if a.kind == FB_DASH || a.kind == FB_CDASH || a.kind == AB_WIND {
     for v: 0..<2 { ox := f32(v) * e * 0.8 - e * 0.5; n = seg(out, n, cx + ox - e * 0.4, cy - e * 0.6, cx + ox + e * 0.2, cy, w, 0.95, c); n = seg(out, n, cx + ox + e * 0.2, cy, cx + ox - e * 0.4, cy + e * 0.6, w, 0.95, c); }
   } else {
     col := ifx a.kind == AB_RAGE then RED else GOLD;
@@ -4105,7 +4104,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   // every class's hotbar holds its own abilities, Attack or a cantrip first and Dash last
   for c: 0..<12 {
     list: [SLOTS] Ab; nab := abilities(ROSTER[c], list[..]);
-    #assert nab >= 3 && nab <= SLOTS && list[nab - 1].kind == AB_DASH;
+    #assert nab >= 3 && nab <= SLOTS && list[nab - 1].kind == FB_DASH;
   }
   list: [SLOTS] Ab;
   #assert abilities(RS_BARBARIAN, list[..]) == 4 && list[2].kind == AB_RAGE;

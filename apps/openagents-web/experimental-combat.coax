@@ -52,7 +52,7 @@
 #load "class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
 #load "class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
-#load "everglade-dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
+#load "../../everglade/dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
 #load "../../aethyr/action/sprint.coax" as sprint;   // the sprint (engine): its pace and steering
 #load "../../verse/experimental-terrain.coax" as xmeadow;
 #load "../../verse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
@@ -920,28 +920,17 @@ xc_has_bow :: (s: [] Lab) -> bool {
 // Your pace while drawn (fivelab.coax lab_move_world): down to a walk as the aim comes in.
 xc_bow_pace :: (s: [] Lab) -> f32 { return bow.bow_pace(s[0].xc[0].draw[0]); }
 // ---- Dash as a sprint: the engine's (aethyr/action/sprint.coax) at Everglade's distance
-// (everglade-dash.coax), begun when the pipeline accepts an action whose feel moves `dash`
-// (class-feel.coax xf_feel, aethyr/action/deed.coax deed_show). Here it is only wired in.
-xc_dashing :: (s: [] Lab) -> bool {
-  cr := s[0].creator[..];
-  return cr[0].experimental && cr[0].hostiles[0].hp > 0 && sprint.sprint_on(s[0].xc[0].dash[0], cr[0].clock);
-}
-// Your pace over your run now (lab_move_scale).
-xc_dash_rate :: (s: [] Lab) -> f32 { return ifx xc_dashing(s) then sprint.sprint_pace(s[0].xc[0].dash[0], s[0].creator[0].clock) else 1.0f32; }
-// A frame of the sprint, after your step (fivelab.coax lab_you): your keys or thumb steer it, your
-// stride quickens with it (charactercreator.coax experimental_figure), and dust kicks up behind you.
-xc_dash_frame :: (s: [] Lab) {
-  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock; d := x[0].dash[..];
-  h := s[0].held; kx := axis(h, HOLD_D, HOLD_A); ky := axis(h, HOLD_W, HOLD_S);
-  if s[0].stick_on && s[0].stick_px * s[0].stick_px + s[0].stick_py * s[0].stick_py > 0.04 { kx = s[0].stick_px; ky = s[0].stick_py; }
-  if cr[0].hostiles[0].hp <= 0 { sprint.sprint_stop(d); }
-  puff := sprint.sprint_frame(d, now, cr[0].yaw, kx, ky, !cr[0].airborne);
-  cr[0].stride = d[0].stride;
+// (everglade/dash.coax), begun when the pipeline accepts an action whose feel moves `dash`
+// (class-feel.coax xf_feel, aethyr/action/deed.coax deed_show). Here it is only wired in: a frame
+// after your step (fivelab.coax lab_you) hands it your keys or thumb, your stride follows it
+// (charactercreator.coax experimental_figure), and its dust is the glade's puff.
+xc_sprint_frame :: (s: [] Lab) {
+  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock; h := s[0].held;
+  puff := eg_dash_frame(x[0].dash[..], now, cr[0].yaw, axis(h, HOLD_D, HOLD_A), axis(h, HOLD_W, HOLD_S), s[0].stick_on, s[0].stick_px, s[0].stick_py, !cr[0].airborne, cr[0].hostiles[0].hp <= 0);
+  cr[0].stride = x[0].dash[0].stride;
   if puff {
-    // behind the feet, to one side and then the other
-    fx := sin(d[0].face); fz := cos(d[0].face); side := ifx cast(int) floor(now / f32(sprint.SPRINT_TRAIL_EVERY)) % 2 == 0 then 0.22f32 else -0.22f32;
-    bx := cr[0].player_x - fx * 0.4 + fz * side; bz := cr[0].player_z - fz * 0.4 - fx * side;
-    fx_start_at(s, FXR_DUST, now, fxp_v(bx, meadow_y(bx, bz) + 0.15, bz), fxp_v(bx, meadow_y(bx, bz) + 0.15, bz), fxp_v(0.62, 0.55, 0.44), 0.6, 0.6);
+    p := eg_dash_dust(x[0].dash[0], now, cr[0].player_x, cr[0].player_z); y := meadow_y(p[0], p[1]) + 0.15;
+    fx_start_at(s, FXR_DUST, now, fxp_v(p[0], y, p[1]), fxp_v(p[0], y, p[1]), fxp_v(0.62, 0.55, 0.44), 0.6, 0.6);
   }
 }
 // The squares between you and monster foe, along a line: its true distance in 5-foot squares.
@@ -2651,7 +2640,7 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   s: [1] Lab; xc_test_lab(s[..], FB_CL_BARBARIAN, 0.5); cr := s[0].creator[..]; x := s[0].xc[..];
   base := lab_move_scale(s[..]); speed := x[0].b[0].c[0].speed;
   dash := -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_DASH { dash = i; } }
-  #assert dash >= 0 && xc_press(s[..], dash) && xc_dashing(s[..]);
+  #assert dash >= 0 && xc_press(s[..], dash) && sprint.sprint_on(x[0].dash[0], cr[0].clock);
   input := lab_move_in(s[..]);
   #assert input.key_y == 1 && input.key_x == 0 && input.run && input.link_flags & 512 != 0;
   #assert lab_move_world(s[..], 0, 0).link_flags & 512 != 0;
@@ -2660,21 +2649,21 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   extra: f32 = 0; peak: f32 = 0; dt := 1.0f32 / 60;
   for k: 0..<120 {
     rate := lab_move_scale(s[..]); extra += 7.5 * (rate - base) * dt; if rate > peak { peak = rate; }
-    cr[0].clock += dt; xc_dash_frame(s[..]);
+    cr[0].clock += dt; xc_sprint_frame(s[..]);
   }
   // the SRD's extra movement, your Speed in feet as metres, at about twice the run at its peak
   #assert abs(extra - f32(speed) * 0.3048) < 0.15 && peak > base * 1.85 && peak < base * 1.95;
   // ended after its 1.8 s: your own keys again, at your run
-  #assert !xc_dashing(s[..]) && lab_move_scale(s[..]) == base && cr[0].stride > 1;
+  #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && lab_move_scale(s[..]) == base && cr[0].stride > 1;
   input = lab_move_in(s[..]); #assert input.link_flags & 512 == 0 && input.key_y == 0;
   // steered: D held while it runs turns it to your right, a little at a time
   cr[0].clock += 1; cr[0].yaw = 0; #assert xc_press(s[..], dash);
   face := x[0].dash[0].face; s[0].held = HOLD_D;
-  for k: 0..<6 { cr[0].clock += dt; xc_dash_frame(s[..]); }
+  for k: 0..<6 { cr[0].clock += dt; xc_sprint_frame(s[..]); }
   #assert x[0].dash[0].face != face && abs(x[0].dash[0].face - face) <= 6 * dt * f32(sprint.SPRINT_TURN) + 0.001;
   #assert abs(lab_move_in(s[..]).theta - (x[0].dash[0].face - 3.14159265)) < 0.001;
   // down, it carries you no more
-  s[0].held = 0; cr[0].hostiles[0].hp = 0; #assert !xc_dashing(s[..]) && lab_move_in(s[..]).link_flags & 512 == 0;
+  s[0].held = 0; cr[0].hostiles[0].hp = 0; xc_sprint_frame(s[..]); #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && lab_move_in(s[..]).link_flags & 512 == 0;
 }
 #test "experimental Dash kicks up dust behind you as it runs" #steps 2000000000 {
   s: [1] Lab; xc_test_lab(s[..], FB_CL_ROGUE, 0); cr := s[0].creator[..]; x := s[0].xc[..];
@@ -2682,7 +2671,7 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   fxp_clear(s[0].puffs[..]); #assert dash >= 0 && xc_press(s[..], dash);
   // standing still here, each puff joins the last (fxp_start's merge); on the move each is its own
   before := s[0].puffs[0].started + s[0].puffs[0].merged;
-  for k: 0..<30 { cr[0].clock += 1.0f32 / 60; xc_dash_frame(s[..]); }
+  for k: 0..<30 { cr[0].clock += 1.0f32 / 60; xc_sprint_frame(s[..]); }
   #assert s[0].puffs[0].started + s[0].puffs[0].merged - before >= 4;
 }
 

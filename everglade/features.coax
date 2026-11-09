@@ -42,7 +42,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "EgClass =cl_bar =cl_cast CL_ABILITY =abilities E2nKit e2n_kit class_bar resource_bar",
     files = "classes"},
   EfFeature.{name = "dash", title = "Dash", required = true, issue = 13085,
-    owners = "aethyr/rules/srd/",
+    owners = "aethyr/rules/srd/ aethyr/action/sprint.coax everglade/dash.coax",
     marks = "_dash dash_ =dash _DASH DASH_ CDASH =Dash",
     files = "dash"},
   EfFeature.{name = "mounts", title = "mounts", required = false, issue = 0,
@@ -88,7 +88,7 @@ EF_ZONES :: [3] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [190] string.[
+EF_KNOWN :: [188] string.[
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
   "conditions apps/openagents-web/everglade2-cast.coax e2k_health_text",
   "conditions apps/openagents-web/everglade2-cast.coax E2K_CONDITION",
@@ -143,8 +143,6 @@ EF_KNOWN :: [190] string.[
   "damage-numbers apps/openagents-web/fivelab.coax hit_groups",
   "damage-numbers apps/openagents-web/fivelab.coax hit_shown",
   "conditions apps/openagents-web/fivelab.coax fx_lasting",
-  "dash apps/openagents-web/fivelab.coax AB_DASH",
-  "dash apps/openagents-web/fivelab.coax AB_CDASH",
   "class-bars apps/openagents-web/fivelab.coax abilities",
   "camera apps/openagents-web/fivelab.coax LOOK_DRAG",
   "camera apps/openagents-web/fivelab.coax follow_cam",

@@ -71,7 +71,7 @@ Creator :: struct {
   klass:int = -1; level:int = 1;   // and its level (CC4, #13046)
   weapon_first:[7]int; weapon_count:[7]int;   // the pack's held weapons (glade/weapon0..4), the bow's string (5) and an arrow (6)
   weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (experimental-combat.coax)
-  stride:f32;        // seconds the run's clip is ahead of the clock: a Dash's sprint quickens your stride (experimental-combat.coax xc_dash_frame)
+  stride:f32;        // seconds the run's clip is ahead of the clock: a Dash's sprint quickens your stride (experimental-combat.coax xc_sprint_frame)
   backpedal:bool;    // mouselook with S held: the run plays backwards while you face the camera (no backpedal clip in the rig)
   aim:f32;           // a drawn bow's aim, 0 to 1 (aethyr/action/bow.coax bow_aim): the camera over your shoulder and the aiming pose
   draw:f32; loose_at:f32 = -100; nocked:bool;   // the draw's strength (bow_strength), the last loose, and an arrow on the string

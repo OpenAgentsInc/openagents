@@ -1,0 +1,57 @@
+// Everglade's Dash, for every zone (Experimental, Everglade II and its room): the SRD 5.2.1 Dash, Cunning Action's
+// Dash and Step of the Wind each spend what the ruleset says (the bar's press: fivebar.coax
+// fb_seat_use, aethyr/rules/srd rs_dash) and give extra movement equal to your Speed this turn. Their
+// feel moves `dash` (class-feel.coax xf_moves); a zone starts the sprint from the pipeline's yes.
+// Everglade spends that movement at once, as the engine's sprint (aethyr/action/sprint.coax): the
+// extra is your Speed in feet as metres (0.3048 m a foot), over Everglade's run, 7.5 m/s at Speed
+// 30 (aethyr/locomotion.coax run_speed, scaled by Speed/30: rs_walk_scale), so 0.25 m/s a foot.
+// Speed 30: 9.14 m more than the run's 13.5 m in the sprint's 1.8 s, at up to 1.91 times the run.
+// A creature the world moves (Everglade II's path guard) runs at its run times eg_dash_rate from the
+// moment it takes the Dash action, so it gains the same distance a player does.
+// A zone keeps a Sprint, starts it with eg_dash_gain, and each frame hands eg_dash_frame its keys or
+// thumb; eg_dash_dust says where the puff of dust a frame asks for goes.
+//   coax/bin/coax test everglade/dash.coax --library
+#load "../aethyr/action/sprint.coax" as sprint;
+
+EG_DASH_RUN_PER_FOOT :: 0.25;     // m/s of Everglade's run a foot of Speed
+EG_DASH_METRES_PER_FOOT :: 0.3048;
+
+// The sprint's extra metres for a Speed of `feet`.
+eg_dash_extra :: (feet: f32) -> f32 { return feet * f32(EG_DASH_METRES_PER_FOOT); }
+// The sprint's peak over the run for a Speed of `feet`: the same at every Speed (1.2192 / SPRINT_AREA).
+eg_dash_gain :: (feet: f32) -> f32 { return sprint.sprint_gain(eg_dash_extra(feet), feet * f32(EG_DASH_RUN_PER_FOOT)); }
+// The pace over your run t seconds into a Dash with a Speed of `feet`.
+eg_dash_rate :: (t: f32, feet: f32) -> f32 { return sprint.sprint_rate(t, eg_dash_gain(feet)); }
+
+// A frame of a body's Dash, after its step: keys kx, ky steer it (or a thumb at tx, ty, -1 to 1, when
+// `thumb` is on and pushed past a fifth of the way) with the camera at yaw, its stride quickens, and
+// it ends when the body is down. True when a puff of dust is due (eg_dash_dust).
+eg_dash_frame :: (d: [] sprint.Sprint, now: f32, yaw: f32, kx: f32, ky: f32, thumb: bool, tx: f32, ty: f32, grounded: bool, down: bool) -> bool {
+  x := kx; y := ky;
+  if thumb && tx * tx + ty * ty > 0.04 { x = tx; y = ty; }
+  if down { sprint.sprint_stop(d); }
+  return sprint.sprint_frame(d, now, yaw, x, y, grounded);
+}
+// Where a Dash's puff of dust goes for a body at (x, z): behind its feet, to one side and then the other.
+eg_dash_dust :: (d: sprint.Sprint, now: f32, x: f32, z: f32) -> [2] f32 {
+  fx := sin(d.face); fz := cos(d.face);
+  side := ifx cast(int) floor(now / f32(sprint.SPRINT_TRAIL_EVERY)) % 2 == 0 then 0.22f32 else -0.22f32;
+  return [2] f32.[x - fx * 0.4 + fz * side, z - fz * 0.4 - fx * side];
+}
+
+#test "Everglade's Dash adds your Speed in feet as metres over your run, at any Speed" {
+  for feet: [3] f32.[25, 30, 45] {
+    #assert abs(sprint.sprint_extra(f32(sprint.SPRINT_SECONDS), eg_dash_gain(feet), feet * f32(EG_DASH_RUN_PER_FOOT)) - feet * 0.3048) < 0.001;
+  }
+  #assert abs(eg_dash_gain(30) - eg_dash_gain(45)) < 0.0001 && eg_dash_rate(0.5, 30) > 1.9;
+}
+#test "Everglade's Dash steers by the thumb over the keys, ends when the body is down, and puffs behind it" {
+  d: [1] sprint.Sprint; sprint.sprint_start(d[..], 0, 0, eg_dash_gain(30));
+  for k: 1..<7 { _ := eg_dash_frame(d[..], f32(k) / 60, 0, 0, 0, true, 1, 0, true, false); }
+  #assert d[0].face > 0 && d[0].stride > 0;   // the thumb pushed it right
+  f := d[0].face;
+  for k: 7..<13 { _ := eg_dash_frame(d[..], f32(k) / 60, 0, 0, 0, true, 0.1, 0.1, true, false); }
+  #assert d[0].face == f;                     // a thumb barely pushed doesn't steer
+  p := eg_dash_dust(d[0], 0, 0, 0); #assert abs(p[0] * p[0] + p[1] * p[1] - (0.16 + 0.0484)) < 0.001;
+  _ := eg_dash_frame(d[..], 0.3, 0, 0, 0, false, 0, 0, true, true); #assert !sprint.sprint_on(d[0], 0.3);
+}

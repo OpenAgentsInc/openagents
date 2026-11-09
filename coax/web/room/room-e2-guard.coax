@@ -12,11 +12,11 @@
 //                                                   6 his arrow's critical hit (AMOUNT 0 a miss);
 //                                                   each of his turn's attacks is its own, E2G_BLOW_S apart
 // The pages draw him a jitter buffer behind, as they draw each other (everglade2-guard.coax).
+// His Dash is Everglade's (everglade/dash.coax): his run times eg_dash_rate from when he takes it.
+#load "../../../everglade/dash.coax";
 
 E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, fivelab-bodies.coax BD_RUN_FROM)
 E2G_CHASE :: E2_RUN_SPEED; // m/s: after the one who struck him, a run as fast as yours (everglade2-move.coax)
-E2G_DASH :: 1.3;            // his run while he takes the Dash action (SRD 5.2.1 p.15: more movement), times E2G_CHASE
-E2G_DASH_S :: 1.5;          // s a Dash carries him: the room's beat (RS_EVERGLADE_WORLD's action timing)
 E2G_REACH_FT :: 5;          // his Longsword's reach (feet), measured as the rules measure an Opportunity Attack
 E2G_NEAR :: 24;             // trunks round him, for his steering (room-tick.c E2G_NEAR_C)
 E2G_TURN :: 1.6;            // rad/s he turns at the path's ends: half round in two seconds
@@ -216,7 +216,7 @@ e2g_walk :: (v: [] RmServer, k: int, dt: f32) {
 e2g_fight :: (v: [] RmServer, k: int, g: [] E2Guard, on: int, tx: f32, tz: f32, tyaw: f32, dt: f32) {
   a := g[0].nav[..]; t := E2G_NAV;
   bt := v[0].eg[k].rules[0].beasts[g[0].q]; clock := v[0].eg[k].rules[0].b[0].clock;
-  t.speed = f32(E2G_CHASE) * (ifx clock - bt.dash_at < f32(E2G_DASH_S) then f32(E2G_DASH) else 1.0f32);
+  t.speed = f32(E2G_CHASE) * eg_dash_rate(clock - bt.dash_at, f32(v[0].eg[k].rules[0].b[0].c[E5RR_BEAST0 + g[0].q].speed));
   if g[0].nav_on != on {
     a[0] = nav_agent(g[0].x, g[0].z, g[0].life * 31 + on);
     a[0].face_x = sin(g[0].yaw); a[0].face_z = cos(g[0].yaw);
@@ -615,7 +615,7 @@ e2gt_fight :: (v: [] RmServer, path: string) -> int {
   }
   #assert g[0].foe == 0 && g[0].state == E2G_FIGHTING;
   #assert near <= f32(E2G_REACH) + 0.2;                                     // he caught you up
-  #assert most <= f32(E2G_CHASE) * f32(E2G_DASH) / f32(EG_HZ) + 0.001;     // never faster than his Dash
+  #assert most <= f32(E2G_CHASE) * eg_dash_rate(0.5, 30) / f32(EG_HZ) + 0.001;     // never faster than his Dash at its peak
   #assert v[0].eg[k].rules[0].beasts[g[0].q].dash_at > 0;                  // he took the Dash action to do it
 }
 #test "e2 guard: in reach he keeps you there, and follows your sidesteps" #steps 4000000000 #traversal 1073741824 {
