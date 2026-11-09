@@ -927,3 +927,16 @@ the attack restriction and resetting Swim Speed on a change of form. All
 478 monster checks passed. Familiar and senses mutation gates killed all
 431 mutants. The Owl picker passed a world fixture and a muted headless
 WebGPU click. Lab Wasm is 2,662,702 bytes against a 2,664,500-byte cap.
+
+Everglade II's level 2+ Druid Companion control selects a named form and a
+Wild Shape use or level 1 slot. The room derives the destination, asks its
+collision world for clearance, and resolves the request through the
+shared saved turn. The reserved familiar actor has its own turn and
+expires with the owner's Long Rest. The first room control reports
+success or refusal to the owner. Replicated familiar presentation,
+Wizard casting and the remaining room actions still need integration.
+
+Nine focused room checks and 21 Everglade II page checks passed. The
+protocol fixture covers obstruction, replay, the saved action, and Long
+Rest expiry. The page fixture verifies the selected form and payment and
+ignores a stale reply. Everglade II Wasm built at 704,767 bytes.

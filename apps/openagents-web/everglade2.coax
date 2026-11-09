@@ -1619,3 +1619,22 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   e2n_record(n,"r 3000002 kit"); #assert n[0].aid_left==9 && e2n_aid_message(n)=="CAN'T USE HEALER'S KIT";
   e2n_down(n); #assert n[0].aid_left==-1 && e2n_aid_message(n)=="";
 }
+
+#test "Everglade II Wild Companion control sends the selected form and payment to the room" #steps 1000000000 {
+  s:[1]E2; e2_test_cast_state(s[..],FB_CL_DRUID);
+  n:=s[0].net[..]; n[0].mono=100;
+  e2k_set_class(s[0].casts[..],FB_CL_DRUID,2); e2n_set_class(n,FB_CL_DRUID,2);
+  frame:[1024]u8; row:[WIRE_SF]s32; zero:[WIRE_SF]s32;
+  wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=5,max=12},row[..]);
+  count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
+  count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
+  e2n_record(n,cast(string)frame[0..<count]);
+  box:=e2k_familiar_box(s[..]); y:=(box[1]+box[3])/2;
+  #assert e2_pointer(s[..],box[2]-45,y,0,0,1);
+  #assert e2_pointer(s[..],box[2]-8,y,0,0,1);
+  #assert e2_pointer(s[..],box[0]+10,y,0,0,1);
+  p:=n[0].pipe[0]; last:=p.n-1;
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M1 4000001 1 1";
+  e2n_record(n,"m1 4000000 1"); #assert e2n_familiar_message(n)=="";
+  e2n_record(n,"m1 4000001 1"); #assert e2n_familiar_message(n)=="COMPANION SUMMONED";
+}

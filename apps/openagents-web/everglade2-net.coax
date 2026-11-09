@@ -74,6 +74,7 @@ E2Net :: struct {
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
   // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
   // only once this socket's room has said it; your last rest request's number and when it was refused
+  familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
   rest_known: bool; rest_code: int; rest_dice: int; rest_seq: int; rest_sent: int; rest_refused: int; rest_refused_at: int = -100000;
   // your bar as the room's rules hold it (b N V ..., #13046): known once this socket's room has said it
@@ -258,7 +259,7 @@ e2n_opened :: (n: [] E2Net, id: int) { if id < 0 { e2n_down(n); return; } n[0].s
 // again after a wait that doubles to a minute, 75% to 125% of it, so a restarted room's pages spread.
 e2n_down :: (n: [] E2Net) {
   if n[0].seat >= 0 && n[0].lost_at == 0 { n[0].lost_at = ifx n[0].mono > 0 then n[0].mono else 1; }
-  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000;
+  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
   n[0].tries += 1;
   wait := 1000;
   for q: 0..<nc_lo(n[0].tries - 1, 6) { wait *= 2; }
@@ -300,6 +301,14 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 // One frame from the room.
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
+  if wire_is(t,"m1") {
+    rd:=[1]WireRd.[wire_rd(t,2)];
+    seq:=wire_num(t,rd[..]); form:=wire_num(t,rd[..]);
+    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && seq>4000000 && form>=0 && form<RS_FAMILIAR_FORMS.count {
+      n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
+    }
+    return;
+  }
   if wire_is(t,"u1") {
     aid:=[1]WireRd.[wire_rd(t,2)];
     seq:=wire_num(t,aid[..]); left:=wire_num(t,aid[..]);
@@ -314,7 +323,7 @@ e2n_record :: (n: [] E2Net, t: string) {
   if c == 'y' {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
-    n[0].seat = seat; n[0].sat = true; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000;
+    n[0].seat = seat; n[0].sat = true; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
     n[0].again = n[0].sat_before; n[0].sat_before = true; n[0].back_pending = n[0].again;
     wire_mirror_forget(n[0].mir[..]);
     for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
@@ -382,6 +391,9 @@ e2n_record :: (n: [] E2Net, t: string) {
       if n[0].sock >= 0 { _ := pipe_close(n[0].pipe[..], n[0].sock); }
       e2n_tell(n, "RESTARTING · BACK IN A MOMENT"); n[0].ticket_n = 0; n[0].tries = 0; e2n_down(n);
       return;
+    }
+    if r[0].ok && why=="familiar" && seq==n[0].familiar_seq && seq>4000000 {
+      n[0].familiar_ok=false; n[0].familiar_at=n[0].mono; return;
     }
     if r[0].ok && why=="kit" && seq==n[0].aid_seq && seq>3000000 {
       n[0].aid_ok=false; n[0].aid_at=n[0].mono; return;
@@ -567,7 +579,7 @@ e2n_class :: (n: [] E2Net) -> int { return ifx n[0].klass >= 0 && n[0].klass < F
 e2n_set_class :: (n: [] E2Net, c: int, level: int) {
   l := xk_level(level);
   if c < 0 || c >= FB_CL_N || (c == n[0].klass && l == n[0].level) { return; }
-  n[0].klass = c; n[0].level = l; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000;   // the room says the new bar's
+  n[0].klass = c; n[0].level = l; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;   // the room says the new bar's
   if e2n_open(n) { n[0].hello_due = true; }
 }
 // A cast (C SEQ SLOT AX AY AZ -1): the slot (class-kit.coax xk_slot) at the point it aims at. False
@@ -593,6 +605,21 @@ e2n_aid_message :: (n:[] E2Net)->string {
   age:=n[0].mono-n[0].aid_at;
   if age<0 || age>=4000 || !e2n_open(n) { return ""; }
   return ifx n[0].aid_ok then "ALLY STABILIZED" else "CAN'T USE HEALER'S KIT";
+}
+
+e2n_familiar :: (n:[]E2Net)->bool {
+  if !e2n_open(n) || n[0].klass!=FB_CL_DRUID || n[0].level<2 { return false; }
+  n[0].familiar_seq=add_sat(n[0].familiar_seq,1); n[0].familiar_at=-100000;
+  out:=n[0].out[..];
+  count:=wire_int(out,wire_put(out,0,"M1"),n[0].familiar_seq);
+  count=wire_int(out,count,n[0].familiar_form);
+  e2n_send(n,wire_int(out,count,n[0].familiar_slot));
+  return true;
+}
+e2n_familiar_message :: (n:[]E2Net)->string {
+  age:=n[0].mono-n[0].familiar_at;
+  if age<0 || age>=4000 || !e2n_open(n) { return ""; }
+  return ifx n[0].familiar_ok then "COMPANION SUMMONED" else "CAN'T SUMMON COMPANION";
 }
 
 // A rest request (Z SEQ REQ: RS_REST_*): the room decides it from the body it steps.

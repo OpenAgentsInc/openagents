@@ -52,6 +52,8 @@ E5rRoom :: struct {
   b: [1] RsBattle;
   seat: [E5RR_SEATS] FbSeat;
   live: [E5RR_SEATS] bool;
+  familiar: [E5RR_SEATS] FbSeat;
+  familiar_ready: bool;
   zones: [E5RR_ZONES] FbZone;
   zone_id: [E5RR_ZONES] int;                 // each zone's id while on (0 off); ids count up from 1
   zone_slot: [E5RR_ZONES] int;               // the bar slot that made it
@@ -131,8 +133,37 @@ e5rr_start :: (r: [] E5rRoom, seed: int) #export_c #effects(reads,writes,traps) 
   for s: 0..<E5RR_SEATS { r[0].klass[s] = 0; r[0].last_foe[s] = -1; }
   r[0].seen = b[0].book[0].seq;
   r[0].started = true;
+  r[0].familiar_ready=false;
 }
 
+// Everglade II reserves one stable actor per seat, beyond other summons.
+e5rr_enable_familiars :: (r:[]E5rRoom) {
+  if r[0].familiar_ready { return; }
+  b:=r[0].b[..];
+  if b[0].n+E5RR_SEATS>b[0].c.count { return; }
+  for s:0..<E5RR_SEATS {
+    f:=b[0].n;
+    b[0].c[f]=RsCreature.{dead=true,familiar_owner=E5RR_SEAT+s+1,x=-1,y=-1};
+    b[0].n+=1;
+    r[0].familiar[s]=FbSeat.{me=f};
+  }
+  r[0].familiar_ready=true;
+}
+e5rr_reset_familiar :: (r:[]E5rRoom,s:int) {
+  if !r[0].familiar_ready { return; }
+  f:=r[0].familiar[s].me;
+  rs_familiar_retire(r[0].b[..],f);
+  r[0].familiar[s]=FbSeat.{me=f};
+}
+e5rr_wild_companion :: (r:[]E5rRoom,s:int,slot:int,form:int,x:int,y:int)->bool {
+  if !r[0].familiar_ready || s<0 || s>=E5RR_SEATS || !r[0].live[s] { return false; }
+  b:=r[0].b[..]; seat:=r[0].seat[s..<s+1];
+  if !seat[0].open { return false; }
+  fb_seat_in(b,seat);
+  ok:=rs_wild_companion(b,E5RR_SEAT+s,slot,form,x,y);
+  fb_seat_out(b,seat);
+  return ok;
+}
 // A player sits at seat s: a fresh caster, full Hit Points, at (x, z).
 e5rr_join :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c #effects(reads,writes,traps) { e5rr_join_as(r, s, x, z, 0); }
 // The same, as class klass (the H frame's CLASS): 0 Everglade's druid, 1 the level 17 Warlock,
@@ -144,6 +175,7 @@ e5rr_join_level :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int, level: in
   b := r[0].b[..];
   i := E5RR_SEAT + s;
   t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
+  e5rr_reset_familiar(r,s);
   r[0].klass[s] = e5r_klass_ok(klass);
   r[0].last_foe[s] = -1;
   b[0].c[i] = e5rr_hero_of(r[0].klass[s], ifx r[0].klass[s] >= E5R_CL0 then level else 0);
@@ -167,6 +199,7 @@ e5rr_leave :: (r: [] E5rRoom, s: int) #export_c #effects(reads,writes,traps) {
   // Retain the off-map caster for owned effects until duration/death/replacement.
   b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY;
   r[0].live[s] = false;
+  e5rr_reset_familiar(r,s);
   e5rr_zones_check(r);
   e5rr_beasts_check(r);
 }
@@ -237,7 +270,11 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c #effects(reads,writes,traps) 
   dt := clock - b[0].clock;
   if dt <= 0 { return; }
   rs_tick(b, dt);
-  for s: 0..<E5RR_SEATS { if r[0].live[s] { fb_seat_step(b, r[0].seat[s..<s + 1]); } }
+  for s: 0..<E5RR_SEATS {
+    if !r[0].live[s] { continue; }
+    fb_seat_step(b,r[0].seat[s..<s+1]);
+    if r[0].familiar_ready { fb_seat_step(b,r[0].familiar[s..<s+1]); }
+  }
   // each creature read in place, not copied whole, every tick (a raid's hundreds: #12717)
   for j: 0..<E5R_FOLK {
     i := e5rr_folk(j);

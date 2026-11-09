@@ -151,6 +151,7 @@ EgSeat :: struct {
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
   aid: E2Aid;
+  familiar:E2Familiar;
   // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)
@@ -359,7 +360,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
-    if v[0].eg[q].e2 { e2_rest_start(v, q); }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
+    if v[0].eg[q].e2 { e2_rest_start(v,q); e5rr_enable_familiars(v[0].eg[q].rules[..]); }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
     v[0].eg[q].initialized=true;
@@ -431,6 +432,7 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat
 eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].conn = -1; v[0].eg[k].seat[s].held = true; v[0].eg[k].seat[s].held_at = v[0].mono_ms;
   v[0].eg[k].seat[s].ends_n = 0;
+  v[0].eg[k].seat[s].familiar=E2Familiar.{};
   rv_note_seat(v, k, s_id); v[0].vit.flush = true;
   for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
   v[0].st.held += 1;
@@ -506,11 +508,12 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
 // A seat's frame (past the relay's rate limits and pings).
 eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1"))) { return; }
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1"))) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if c=='M' { if v[0].eg[k].e2 { e2_familiar_ask(v,k,seat_id,text); } return; }
   if c == 'U' { if v[0].eg[k].e2 { e2_aid_ask(v,k,seat_id,text); } return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
   if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
@@ -748,6 +751,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= E5R_CL0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level != lv) {
     c:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat..<E5RR_SEAT + seat + 1];
     kit:=c[0].healer_kit;
+    st[0].familiar=E2Familiar.{last=st[0].familiar.last};
     e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
     if v[0].eg[k].e2 { c[0].healer_kit=kit; }
     ev_class(v, k, seat_id);
@@ -1030,7 +1034,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_ends_due(v, k);
   rc_tick_first(v, k);
   fg_sync(v,k);
-  if v[0].eg[k].e2 { e2_aid_commit(v,k); }
+  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   if v[0].eg[k].e2 { e2_rest_tell_all(v, k); e2_kit_tell_all(v, k); }
   fg_hits(v,k);

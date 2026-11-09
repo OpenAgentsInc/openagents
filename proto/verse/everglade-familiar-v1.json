@@ -1,0 +1,10 @@
+{
+  "identity": "everglade-familiar-v1",
+  "base_session": "everglade-session-v5",
+  "scope": "Everglade II only",
+  "request": "M1 SEQ FORM SLOT",
+  "accepted": "m1 SEQ FORM",
+  "refused": "r SEQ familiar",
+  "forms": ["cat", "rat", "spider", "bat", "frog", "hawk", "lizard", "octopus", "owl", "raven", "weasel"],
+  "admission": "Positive increasing request sequence per connection. The room derives an open adjacent destination and asks the world for line of sight. The shared rules spend the owner's saved Magic action and a Wild Shape use or the selected spell slot."
+}

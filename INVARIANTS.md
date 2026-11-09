@@ -7558,3 +7558,9 @@ positions, and the view and listener return when the shared link ends.
 The eleven named SRD familiar forms use stable monster IDs and the same
 picker and admission list. A change of form preserves the existing actor
 and replaces its Swim Speed along with the other movement statistics.
+
+Everglade II reserves one familiar actor per seat. Its Wild Companion
+request uses the room's position and world collision query, and spends the
+owner's saved turn through shared rules. Replay, blocked placement and
+invalid class or resource requests do not spend a use. A completed Long
+Rest, retired seat or replaced preset removes the companion.

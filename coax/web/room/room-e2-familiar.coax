@@ -1,0 +1,103 @@
+// Everglade II's Wild Companion request, resolved on the shared room battle.
+#test "e2 familiar: room checks geometry and spends one saved Wild Companion use" #steps 4000000000 {
+  v:[1]RmServer; rm_init(v[..]); rm_clock(v[..],0,1762190000000);
+  path:="GET /api/room/relay/everglade/pair-e2-familiar HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..],0,path)==0 && rm_join(v[..],1,path)==1;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-druid-2 0 -");
+  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-fighter 0 -");
+  for q:0..<3 { eg_test_tick(v[..],k); }
+  r:=v[0].eg[k].rules[..]; b:=r[0].b[..];
+  f:=rs_familiar_of(b,0); #assert f>=E5RR_BEAST0+E5RR_BEASTS && b[0].c[f].dead;
+  #assert b[0].c[0].companion && v[0].eg[k].seat[0].placed;
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+
+  #assert r[0].seat[0].open;
+  uses:=b[0].c[0].uses[RS_USE_WILD];
+  rm_heard(v[..],0,"M1 1 8 0");
+  rc_test_tick(v[..],k,false);
+  #assert b[0].c[f].dead && b[0].c[0].uses[RS_USE_WILD]==uses;
+  rm_heard(v[..],1,"M1 1 0 0");
+  rm_heard(v[..],0,"M1 2 8 0");
+  #assert v[0].eg[k].seat[0].familiar.pending==2;
+  rc_test_tick(v[..],k,true);
+  #assert rs_up(b[0].c[f]) && b[0].c[f].familiar_form==MON_OWL && b[0].c[f].familiar_spirit==RS_FAMILIAR_FEY;
+  #assert b[0].c[0].uses[RS_USE_WILD]==uses-1 && r[0].seat[0].turn.action;
+  #assert b[0].c[rs_familiar_of(b,1)].dead;
+  out:[16384]u8; #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"m1 2 8");
+  rm_heard(v[..],0,"M1 2 0 0");
+  rc_test_tick(v[..],k,true);
+  #assert b[0].c[f].familiar_form==MON_OWL && b[0].c[0].uses[RS_USE_WILD]==uses-1;
+  e5rr_step(r,b[0].c[f].turn_at+0.1);
+  #assert r[0].familiar[0].open;
+  b[0].c[0].long_rest.phase=3;
+  #assert rs_long_rest_apply(b,0) && b[0].c[f].dead;
+}
+
+E2Familiar :: struct { last:int; pending:int; form:int; slot:int; ray:int=-1; x:int; y:int; clear:bool; }
+e2_familiar_ask :: (v:[]RmServer,k:int,id:SeatId,text:string) {
+  rd:=[1]WireRd.[wire_rd(text,2)];
+  seq:=wire_num(text,rd[..]); form:=wire_num(text,rd[..]); slot:=wire_num(text,rd[..]);
+  if !wire_is(text,"M1") || !rd[0].ok || eg_fields(text)!=4 || seq<=0 { return; }
+  req:=v[0].eg[k].seat[id.value].familiar;
+  if seq<=req.last { return; }
+  req.last=seq;
+  if req.pending>0 || form<0 || form>=RS_FAMILIAR_FORMS.count || slot<0 || slot>9 { eg_refuse(v,k,id,seq,"familiar"); }
+  else { req.pending=seq; req.form=form; req.slot=slot; }
+  v[0].eg[k].seat[id.value].familiar=req;
+}
+e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
+  room:=v[0].eg[k..<k+1]; b:=room[0].rules[0].b[..]; next:=first;
+  for s:0..<EG_SEATS {
+    st:=room[0].seat[s..<s+1]; req:=st[0].familiar;
+    if req.pending<=0 { continue; }
+    req.ray=-1; req.clear=false;
+    if st[0].live && st[0].placed && room[0].rules[0].live[s] && b[0].c[s].companion {
+      for step:0..<8 {
+        angle:=st[0].pose.yaw+f32(step)*0.7853982;
+        x:=b[0].c[s].x+int(floor(sin(angle)+0.5));
+        y:=b[0].c[s].y+int(floor(cos(angle)+0.5));
+        if !rs_familiar_destination(b,s,x,y,2) { continue; }
+        req.x=x; req.y=y; req.ray=next; next+=1; break;
+      }
+    }
+    st[0].familiar=req;
+  }
+  return next;
+}
+e2_familiar_ray :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool {
+  seats:=v[0].eg[k].seat[..];
+  for s:0..<EG_SEATS {
+    req:=seats[s].familiar;
+    if req.pending<=0 || req.ray!=q { continue; }
+    p:=seats[s].pose;
+    out[0]=p.x; out[1]=p.y; out[2]=p.z;
+    out[3]=f32(E5R_X0)+(f32(req.x)+0.5)*f32(E5R_SQ); out[4]=p.y;
+    out[5]=f32(E5R_X0)+(f32(req.y)+0.5)*f32(E5R_SQ);
+    return true;
+  }
+  return false;
+}
+e2_familiar_seen :: (v:[]RmServer,k:int,q:int,clear:bool) {
+  for s:0..<EG_SEATS {
+    st:=v[0].eg[k].seat[s..<s+1];
+    if st[0].familiar.pending>0 && st[0].familiar.ray==q { st[0].familiar.clear=clear; return; }
+  }
+}
+e2_familiar_commit :: (v:[]RmServer,k:int) {
+  room:=v[0].eg[k..<k+1];
+  for s:0..<EG_SEATS {
+    st:=room[0].seat[s..<s+1]; req:=st[0].familiar;
+    if req.pending<=0 { continue; }
+    st[0].familiar=E2Familiar.{last=req.last};
+    if !st[0].live || st[0].conn<0 { continue; }
+    id:=SeatId.{value=s}; ok:=false;
+    if req.clear && !eg_travel_drops(v,k,id) && !rm_checkpoint_paused(v,k) && ck_can_play(v,k,id) {
+      ok=e5rr_wild_companion(room[0].rules[..],s,req.slot,RS_FAMILIAR_FORMS[req.form],req.x,req.y);
+    }
+    if !ok { eg_refuse(v,k,id,req.pending,"familiar"); continue; }
+    out:[64]u8;
+    n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"m1"),req.pending),req.form);
+    rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
+  }
+}
