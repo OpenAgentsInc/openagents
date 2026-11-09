@@ -38,7 +38,8 @@ SP_BLESS :: 74; SP_BANE :: 75; SP_SHIELD_OF_FAITH :: 76; SP_COMMAND :: 77;
 SP_INFLICT_WOUNDS :: 78; SP_ACID_SPLASH :: 79; SP_MAGIC_MISSILE :: 80; SP_MASS_HEALING_WORD :: 81;
 SP_SHATTER :: 82;
 SP_FIND_FAMILIAR :: 83;
-RS_MORE_END :: 84;
+SP_LESSER_RESTORATION :: 84;
+RS_MORE_END :: 85;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -266,6 +267,10 @@ rs_more_spell :: (i: int) -> RsSpell {
     s = rs_more("find-familiar", "Find Familiar", 1, "Conjuration", "Wizard", RS_T_LONG, 10, "Instantaneous", 0, false, RS_A_NONE, 0);
     s.components = "V, S, M (burning incense worth 10+ GP, consumed)";
     s.ritual = true; s.page = 130;
+  } else if i == SP_LESSER_RESTORATION {
+    s = rs_more("lesser-restoration", "Lesser Restoration", 2, "Abjuration", "Bard, Cleric, Druid, Paladin, Ranger", RS_T_BONUS, 5, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S"; s.page = 144;
+    s.steps[0] = rs_step(RS_S_RESTORE, 0, 0, 0, 0); s.step_n = 1;
   }
   return s;
 }

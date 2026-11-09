@@ -84,7 +84,8 @@ fb_class_bar :: (kl: int, out: [] FbAb) -> int {
   } else if kl == RS_CLERIC {
     out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_spell(SP_SACRED_FLAME, 0, FB_FOE); out[2] = fb_spell(SP_GUIDING_BOLT, 1, FB_FOE);
     out[3] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); out[4] = fb_spell(SP_SPIRIT_GUARDIANS, 3, FB_SELF); out[5] = fb_feature(FB_TURN, "TURN UNDEAD", "turn-undead");
-    out[6] = fb_feature(FB_PRESERVE, "PRESERVE LIFE", "preserve-life"); out[7] = fb_feature(FB_DASH, "DASH", "dash"); n = 8;
+    out[6] = fb_feature(FB_PRESERVE, "PRESERVE LIFE", "preserve-life"); out[7] = fb_feature(FB_DASH, "DASH", "dash");
+    out[8] = fb_art_spell(SP_LESSER_RESTORATION, FB_ALLY, "healing-word"); n = 9;
   } else if kl == RS_FIGHTER {
     out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_feature(FB_SECOND, "SECOND WIND", "second-wind");
     out[2] = fb_feature(FB_SURGE, "ACTION SURGE", "action-surge"); out[3] = fb_feature(FB_DASH, "DASH", "dash"); n = 4;

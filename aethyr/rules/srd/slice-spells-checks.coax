@@ -7,6 +7,46 @@
 #load "catalog.coax";
 #load "executable-source-ids.coax";
 
+#test "Life Cleric always prepares Lesser Restoration at level 3 and spends a Bonus Action at Touch range" {
+  sp:=-1;
+  for k:0..<RS_MORE_END { if rs_spell(k).id=="lesser-restoration" { sp=k; } }
+  #assert sp>=0 && rs_executable_spell(sp);
+  #assert !rs_class_spell_granted(rs_cleric("Cleric",0,2),sp);
+  for condition:[4]int.[RS_BLINDED,RS_DEAFENED,RS_PARALYZED,RS_POISONED] {
+    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=6; b[0].h=4;
+    a:=rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
+    j:=rs_add(b[..],rs_fighter("Ally",0,3),3,1);
+    #assert rs_class_spell_granted(c[a],sp);
+    #assert rs_effect_add(c[j..<j+1],RsEffect.{kind=EF_COND,cond=condition|RS_FRIGHTENED,until=60});
+    c[j].cond|=RS_PRONE;
+    rs_start_turn(b[..],a);
+    slots:=c[a].slots[2];
+    #assert !rs_cast(b[..],a,sp,2,0,0,j);
+    #assert c[a].slots[2]==slots && !b[0].turn.bonus && rs_has(c[j],condition);
+    rs_place(b[..],j,2,1);
+    #assert rs_cast(b[..],a,sp,2,0,0,j);
+    #assert c[a].slots[2]==slots-1 && b[0].turn.bonus && !b[0].turn.action;
+    #assert !rs_has(c[j],condition) && c[j].cond==(RS_FRIGHTENED|RS_PRONE);
+    #assert c[j].eff[0].kind==EF_COND && c[j].eff[0].cond==RS_FRIGHTENED && c[j].eff[0].until==60;
+  }
+}
+
+#test "Lesser Restoration chooses one of two active conditions and rejects an invalid choice before payment" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=5; b[0].h=4;
+  a:=rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
+  j:=rs_add(b[..],rs_fighter("Ally",0,3),2,1);
+  c[j].cond=RS_BLINDED|RS_POISONED;
+  picks:=[1]int.[j];
+  choices:=[1]RsCastOptions.[RsCastOptions.{restoration=RS_PRONE}];
+  rs_start_turn(b[..],a);
+  slots:=c[a].slots[2];
+  #assert !rs_cast_creatures_with(b[..],a,SP_LESSER_RESTORATION,2,picks[..],false,choices[..]);
+  #assert c[a].slots[2]==slots && !b[0].turn.bonus;
+  choices[0].restoration=RS_POISONED;
+  #assert rs_cast_creatures_with(b[..],a,SP_LESSER_RESTORATION,2,picks[..],false,choices[..]);
+  #assert c[j].cond==RS_BLINDED && c[a].slots[2]==slots-1 && b[0].turn.bonus;
+}
+
 sl_learn :: (b: [] RsBattle, i: int, sp: int) {
   keys := [1] int.[RS_EXEC_SOURCE[sp]];
   // A Wizard prepares only from its spellbook: copy the spell in first, as a Wizard would.

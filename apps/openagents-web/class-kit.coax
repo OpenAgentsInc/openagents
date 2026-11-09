@@ -216,6 +216,7 @@ xc_spell_sound :: (sp: int) -> XcSnd {
   if sp == SP_DIVINE_SMITE { return xs("radiant", "", "hit-heavy", "", 0.9); }
   if sp == SP_STARRY_WISP { return xs("arcane-cast", "missile", "arcane-hit", "fizzle", 1); }
   if sp == SP_HEALING_WORD || sp == SP_CURE_WOUNDS { return xs("heal", "", "", "", 1); }
+  if sp == SP_LESSER_RESTORATION { return xs("shield", "heal", "", "", 1.05); }
   if sp == SP_THUNDERWAVE { return xs("thunderwave", "thunder", "hit-heavy", "", 1); }
   if sp == SP_ENTANGLE { return xs("entangle", "", "", "", 1); }
   if sp == SP_CALL_LIGHTNING { return xs("bolt-cast", "thunder", "bolt-travel", "fizzle", 1); }
@@ -309,6 +310,16 @@ xk_wire :: (c: int, a: FbAb) -> int {
   cat: [XC_SLOTS] FbAb; n := xk_catalog(c, cat[..]);
   for i: 0..<n { if xc_id(cat[i]) == xc_id(a) { return xk_slot(c, i); } }
   return -1;
+}
+
+#test "the level 3 Life Cleric bar gains Lesser Restoration at a stable shared wire slot" {
+  a:=fb_spell(SP_LESSER_RESTORATION,2,FB_ALLY);
+  wire:=xk_wire(FB_CL_CLERIC,a);
+  #assert wire>=0 && !xk_entry_at(FB_CL_CLERIC,2,wire).ok;
+  entry:=xk_entry_at(FB_CL_CLERIC,3,wire);
+  #assert entry.ok && entry.ab.sp==SP_LESSER_RESTORATION && entry.ab.lvl==2;
+  sound:=xc_sound(entry.ab,FB_CL_CLERIC);
+  #assert entry.ab.tg==FB_ALLY && sound.start=="shield";
 }
 // The weapon class c's hero holds (its Attack's reach).
 xk_weapon :: (c: int) -> int { return ifx c >= 0 && c < FB_CL_N then fb_cl_hero(c, "", 0, XK_LEVEL).weapon else 0; }

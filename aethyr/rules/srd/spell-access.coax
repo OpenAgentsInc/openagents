@@ -144,8 +144,12 @@ rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
     // Draconic Spells, p.70.
     if level >= 3 { _ := rs_grant_class_spell(c, SP_COMMAND); }
   } else if c[0].klass == RS_CLERIC {
-    // Life Domain Spells, p.40 (Aid, Lesser Restoration and Revivify aren't records yet)
-    if level >= 3 { _ := rs_grant_class_spell(c, SP_BLESS); _ = rs_grant_class_spell(c, SP_CURE_WOUNDS); }
+    // Life Domain Spells, p.40. Aid and Revivify still need execution.
+    if level >= 3 {
+      _ := rs_grant_class_spell(c, SP_BLESS);
+      _ = rs_grant_class_spell(c, SP_CURE_WOUNDS);
+      _ = rs_grant_class_spell(c, SP_LESSER_RESTORATION);
+    }
     if level >= 5 { _ := rs_grant_class_spell(c, SP_MASS_HEALING_WORD); }
   } else if c[0].klass == RS_RANGER {
     _ := rs_grant_class_spell(c, SP_HUNTERS_MARK);

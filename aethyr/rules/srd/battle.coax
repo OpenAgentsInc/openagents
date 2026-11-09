@@ -30,6 +30,7 @@
 #load "familiar.coax";
 #load "familiar-touch.coax";
 #load "familiar-senses.coax";
+#load "lesser-restoration.coax";
 
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
@@ -1041,6 +1042,8 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       if was_down && b[0].c[j].hp > 0 && !rs_has(b[0].c[j],RS_UNCONSCIOUS) { rs_add_text(l[..], " and wakes"); }
       if rs_effect(b[0].c[j], EF_NOHEAL) { rs_add_text(l[..], ": the grave's chill stops it"); }
       rs_tell(b, RS_EV_HEAL, sp, i, j, got, 0, l[..]);
+    } else if st.kind == RS_S_RESTORE {
+      if rs_lesser_restore(b[0].c[j..<j+1],st.a) { rs_say(b,RS_EV_CONDITION,i,j,sp," ends a condition"); }
     } else if st.kind == RS_S_CONDITION {
       if ran_save && saved { continue; }
       if (b[0].c[j].immune_cond & st.a) != 0 { continue; }

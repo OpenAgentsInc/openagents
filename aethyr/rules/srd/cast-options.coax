@@ -1,7 +1,7 @@
 // SRD 5.2.1 pp.113 and 140: per-recipient condition/ability choices. These
 // modify a request-local program, never a global spell record or stable ID.
 #authority;
-RsCastOptions :: struct { blindness: int = RS_BLINDED; hex_ability: int = RS_STR; }
+RsCastOptions :: struct { blindness: int = RS_BLINDED; hex_ability: int = RS_STR; restoration: int; }
 
 #test "option capacity aggregates repeated assignments without borrowing an existing zone lease" {
   b: [1] RsBattle;
@@ -18,6 +18,10 @@ RsCastOptions :: struct { blindness: int = RS_BLINDED; hex_ability: int = RS_STR
   s.step_n = 1; s.steps[0] = RsStep.{kind=RS_S_CONDITION,a=RS_RESTRAINED};
   b[0].c[t].eff[0] = RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,by=a,spell=SP_BLESS};
   #assert !rs_options_effect_room(b[..],a,s,SP_BLESS,1,picks[0..<1],options[0..<1]);
+  s.humanoid_only=true;
+  #assert rs_options_effect_room(b[..],a,s,SP_BLESS,1,picks[0..<1],options[0..<1]);
+  b[0].c[t].humanoid=true;
+  #assert !rs_options_effect_room(b[..],a,s,SP_BLESS,1,picks[0..<1],options[0..<1]);
 }
 
 #test "spell options accept only the named condition or ability on its own spell" {
@@ -32,6 +36,8 @@ RsCastOptions :: struct { blindness: int = RS_BLINDED; hex_ability: int = RS_STR
   #assert !rs_options_valid(SP_BLESS,2,options[..]);
   #assert rs_options_valid(SP_BLESS,2,options[0..<0]) && rs_options_valid(SP_BLESS,1,options[0..<1]);
   #assert rs_option_at(options[0..<0],99).blindness == RS_BLINDED && rs_option_at(options[..],1).blindness == RS_DEAFENED;
+  restore:=RsCastOptions.{restoration=RS_POISONED};
+  #assert rs_option_valid(SP_LESSER_RESTORATION,restore) && !rs_option_valid(SP_BLESS,restore);
 }
 #test "request-local program choices retain unrelated instructions and source identity" {
   s := rs_spell(SP_BLINDNESS);
@@ -48,6 +54,10 @@ RsCastOptions :: struct { blindness: int = RS_BLINDED; hex_ability: int = RS_STR
   #assert unchanged.steps[0].a == 2;
   other := rs_spell_variant(s,SP_BLESS,3,RsCastOptions.{});
   #assert other.steps[1].a == RS_BLINDED && other.duration_s == 60;
+  restored:=rs_spell(SP_LESSER_RESTORATION);
+  restored.steps[1]=rs_step(RS_S_DAMAGE,2,4,RS_FIRE,0); restored.step_n=2;
+  restored=rs_spell_variant(restored,SP_LESSER_RESTORATION,2,RsCastOptions.{restoration=RS_POISONED});
+  #assert restored.steps[0].a==RS_POISONED && restored.steps[1].a==2;
 }
 #test "Hex source duration follows every slot band including a base free cast" {
   for slot: 0..<10 {
@@ -63,6 +73,11 @@ rs_option_valid :: (sp: int, option: RsCastOptions) -> bool #effects(all) {
   if sp == SP_HEX {
     if option.hex_ability < RS_STR || option.hex_ability > RS_CHA { return false; }
   } else if option.hex_ability != RS_STR { return false; }
+  if option.restoration!=0 {
+    if sp!=SP_LESSER_RESTORATION { return false; }
+    for condition:RS_RESTORABLE { if option.restoration==condition { return true; } }
+    return false;
+  }
   return true;
 }
 rs_options_valid :: (sp: int, count: int, options: [] const RsCastOptions) -> bool #effects(all) {
@@ -79,6 +94,7 @@ rs_spell_variant :: (base: RsSpell, sp: int, slot: int, option: RsCastOptions) -
   for k: 0..<s.step_n {
     if sp == SP_BLINDNESS && s.steps[k].kind == RS_S_TIMED { s.steps[k].a = option.blindness; }
     if sp == SP_HEX && s.steps[k].kind == RS_S_HEX { s.steps[k].a = option.hex_ability; }
+    if sp == SP_LESSER_RESTORATION && s.steps[k].kind == RS_S_RESTORE { s.steps[k].a = option.restoration; }
   }
   if sp == SP_HEX {
     s.duration_s = ifx slot >= 5 then 86400 else ifx slot >= 3 then 28800 else ifx slot >= 2 then 14400 else 3600;

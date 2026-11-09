@@ -1,0 +1,43 @@
+// Lesser Restoration, SRD 5.2.1 p. 144. Conditions do not stack.
+#authority;
+
+RS_RESTORABLE :: [4]int.[RS_BLINDED,RS_DEAFENED,RS_PARALYZED,RS_POISONED];
+
+#test "Lesser Restoration ends the chosen condition across its sources and preserves compound riders" {
+  c:[1]RsCreature;
+  c[0].cond=RS_PRONE|RS_DEAFENED;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_POISONED|RS_BLINDED,by=1,until=20});
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_POISONED,by=2,until=30});
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_HEX,cond=RS_DEX,by=3,until=40});
+  #assert !rs_lesser_restore(c[..],RS_FRIGHTENED);
+  #assert !rs_lesser_restore(c[..],RS_BLINDED|RS_POISONED);
+  #assert !rs_lesser_restore(c[..],RS_PARALYZED);
+  #assert rs_lesser_restore(c[..],RS_POISONED);
+  #assert c[0].cond==(RS_PRONE|RS_DEAFENED|RS_BLINDED);
+  #assert c[0].eff[0].kind==EF_COND && c[0].eff[0].cond==RS_BLINDED;
+  #assert c[0].eff[0].by==1 && c[0].eff[0].until==20;
+  #assert c[0].eff[1].kind==EF_NONE;
+  #assert rs_lesser_restore(c[..],RS_DEAFENED);
+  #assert c[0].cond==(RS_PRONE|RS_BLINDED);
+  #assert rs_lesser_restore(c[..],0);
+  #assert c[0].cond==RS_PRONE && c[0].eff[0].kind==EF_NONE;
+  #assert c[0].eff[2].kind==EF_HEX && c[0].eff[2].cond==RS_DEX;
+  #assert !rs_lesser_restore(c[..],0);
+}
+
+// Zero lets adapters without an explicit choice pick the first active option.
+rs_lesser_restore :: (c:[]RsCreature,choice:int)->bool #effects(all) {
+  condition:=0;
+  for option:RS_RESTORABLE {
+    if (choice==0 || choice==option) && rs_has(c[0],option) { condition=option; break; }
+  }
+  if condition==0 { return false; }
+  for k:0..<RS_EFFECTS {
+    imposed:=rs_effect_conditions(c[0].eff[k]);
+    if (imposed&condition)==0 { continue; }
+    if imposed==condition { rs_effect_end(c,k); }
+    else { c[0].eff[k].cond=rs_clear(c[0].eff[k].cond,condition); }
+  }
+  c[0].cond=rs_clear(c[0].cond,condition);
+  return true;
+}

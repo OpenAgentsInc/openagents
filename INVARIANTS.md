@@ -7620,3 +7620,12 @@ stable named-form order and model-space metres, with positive Z forward.
 Familiar draw records use the packed model's own index range and vertex
 base. They use the rules actor's world position and are hidden when that
 actor disappears or lends its viewpoint to its owner.
+
+## Lesser Restoration ends one named condition
+
+The spell uses the shared Bonus Action, Touch and slot rules. The Life
+Cleric gains it at level 3 without spending a preparation choice. A cast
+can remove only Blinded, Deafened, Paralyzed or Poisoned. Removing a
+condition clears it from every imposing record and preserves the other
+riders, source and deadline of compound effects. An explicit unsupported
+choice refuses before payment.

@@ -62,6 +62,7 @@ RS_S_BOON :: 27;      // effect a (EF_BLESS, EF_BANE, EF_FAITH) on the target fo
                       // concentrates; after SAVE, only on a failure
 RS_S_HALT :: 29;      // Command's Halt: on a failed save, until the end of the target's next turn it doesn't move and takes
                       // no action or Bonus Action
+RS_S_RESTORE :: 30;   // end one eligible condition, chosen by the request
 RS_ON_SAVE_HALF :: 1; RS_ON_SAVE_NONE :: 0;
 
 RsStep :: struct { kind: int; a: int; b: int; c: int; d: int; }
