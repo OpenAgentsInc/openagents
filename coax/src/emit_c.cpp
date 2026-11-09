@@ -4084,7 +4084,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
 
 // A native check binary (#13122, coax/docs/native-checks.md): the program's
 // procedures, its checks' bodies and a driver main. The driver runs the
-// checks from argv[1] on, each #forall over its cases in the evaluator's
+// checks argv[1], argv[1]+argv[2], ... (argv[2] defaults to 1), each #forall over its cases in the evaluator's
 // order, on a thread with a large stack, and writes one line per event to
 // file descriptor 3: "B i" before check i, "E i cases procs..." after it
 // passes (procs: the coverage ids it ran), "T case\tline\tpath\twhat" when
@@ -4182,14 +4182,14 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "                                    (int)(path_count < 4000 ? path_count : 4000), path, (int)(what_count < 2000 ? what_count : 2000), what);\n"
        "  if (n > 0) coax_nc_write(text, (size_t)(n < (int)sizeof text ? n : (int)sizeof text - 1));\n"
        "}\n"
-       "static int64_t coax_nc_start;\n"
+       "static int64_t coax_nc_start, coax_nc_step = 1;\n"
        "static void *coax_nc_main(void *unused) {\n"
        "  (void)unused;\n"
        "  int64_t count = 0;\n"
        "  const Coax_VerificationCheck_v2 *table = coax_verification_checks_v2(&count);\n"
        "  uint64_t words[64];\n"
        "  char text[64];\n"
-       "  for (int64_t i = coax_nc_start; i < count; i++) {\n"
+       "  for (int64_t i = coax_nc_start; i < count; i += coax_nc_step) {\n"
        "    const Coax_VerificationCheck_v2 *c = &table[i];\n"
        "    int n = snprintf(text, sizeof text, \"B %lld\\n\", (long long)i); coax_nc_write(text, (size_t)n);\n"
        "    memset(coax_nc_cov, 0, sizeof coax_nc_cov);\n"
@@ -4211,6 +4211,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "}\n"
        "int main(int argc, char **argv) {\n"
        "  coax_nc_start = argc > 1 ? atoll(argv[1]) : 0;\n"
+       "  if (argc > 2 && atoll(argv[2]) > 0) coax_nc_step = atoll(argv[2]);\n"
        "  coax_verification_trap_handler_v1 = coax_nc_trap;\n"
        "  pthread_attr_t attr; pthread_attr_init(&attr);\n"
        "  pthread_attr_setstacksize(&attr, (size_t)1 << 30);\n"

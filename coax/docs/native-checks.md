@@ -20,29 +20,45 @@ With `COAX_NATIVE_CHECKS=1`, every place that runs a unit's checks (an
 `#authority` compile, a loaded unit's standalone library check, `coax test`)
 first runs them as native code:
 
-1. **Plan.** The binary holds every procedure the program's C holds (each
-   non-generic procedure and each generic instance the program calls), plus
-   each selected check's body and the instances only that check calls. A
-   check is left to the evaluator when its body reaches an unevaluated `#run`,
-   when a `#forall` has more than 64 bindings, or when its bounds can't be
-   evaluated. A `#forall`'s bounds are evaluated once, in the evaluator, as
-   they are for an evaluator run, so the cases and their order are the same.
+1. **Plan.** The binary holds each selected check's body and the procedures
+   it can call (the call closure, generic instances included), plus the
+   procedures struct defaults call. A check is left to the evaluator when its
+   body reaches an unevaluated `#run`, when a `#forall` has more than 64
+   bindings, or when its bounds can't be evaluated. A `#forall`'s bounds are
+   evaluated once, in the evaluator, as they are for an evaluator run, so the
+   cases and their order are the same.
 2. **Emit.** `emit_check_binary_c` is the ordinary C emitter in verification
    mode (private names for every procedure, the source-mapped trap runtime)
    with three changes: output (`print`), `bytes_overlap` and foreign
    procedures stop the check with a refusal, since the evaluator rejects them
    (`E0404`); each procedure marks itself in a coverage array on entry; and a
    driver `main` follows the verification ABI 2 table. Arithmetic is always
-   checked, as in the evaluator, whatever the compile's profile.
-3. **Compile.** `$COAX_CC` (default `cc`) at `-O1` (`COAX_NATIVE_CHECKS_OPT`),
-   C11, `-ffp-contract=off`, `-fno-builtin-sin`, `-fno-builtin-cos`, as
-   `coax build` does.
-4. **Run.** The driver runs the checks in order on a thread with a 1 GiB
-   stack. For each it writes `B i` to file descriptor 3, then `E i cases
-   procs...` when it passes, `T case line path what` when it traps (the runtime
-   then aborts) or `R what` when it refuses. A check that stops the binary, or
-   runs longer than `COAX_CHECK_SECONDS` (default 120) of wall time, ends that
-   process; the runner starts the binary again at the next check.
+   checked, as in the evaluator, whatever the compile's profile. The C is
+   split into up to `COAX_NATIVE_CHECKS_PARTS` translation units (default:
+   the cores, at most 32; about one per 128 KB of C), largest procedures
+   first.
+3. **Compile.** `$COAX_CC` (default `cc`) compiles every part at once, then
+   links them: C11, `-O0` (`COAX_NATIVE_CHECKS_OPT`), `-ffp-contract=off`,
+   `-fno-builtin-sin`, `-fno-builtin-cos`, as `coax build` does. `-O0` wins
+   for checks: on fivelab, as one translation unit, `-O1` took 19 s more to compile and saved 5 s of
+   running.
+4. **Run.** The binary runs as several processes at once
+   (`COAX_NATIVE_CHECKS_JOBS`; default: the cores, at most 16, and about one
+   per 8 checks). Process `w` of `n` runs checks `w`, `w+n`, `w+2n`, and so
+   on, each on a thread with a 1 GiB stack. coax0 has no global variables,
+   so checks share no state and the split changes no verdict. For each
+   check, the driver writes `B i` to file descriptor 3, then `E i cases
+   procs...` when it passes, `T case line path what` when it traps (the
+   runtime then aborts) or `R what` when it refuses. A check that stops its
+   process, or runs longer than `COAX_CHECK_SECONDS` (default 120) of wall
+   time, ends that process; the runner starts it again at the process's next
+   check.
+
+`COAX_NATIVE_CHECKS_TRACE=1` prints one line per native run on stderr
+(eligible, passed, trapped, refused, timed out and crashed counts, and the
+emit, compile and run times). Set it to a file name to append the lines to
+that file instead: a loaded unit's standalone check runs in a child whose
+stderr is discarded. `COAX_NATIVE_CHECKS_KEEP=1` keeps the C and the binary.
 
 A check that passes natively is taken as passed, with its case count, its
 time and the procedures it ran. The procedures feed `#authority` execution

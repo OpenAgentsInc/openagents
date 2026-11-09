@@ -136,6 +136,25 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   g_native.results.assign(n, NativeResult{});
   const auto began = std::chrono::steady_clock::now();
   TimedLaps laps;  // --timings: native.plan, native.emit, native.compile, native.run
+  // COAX_NATIVE_CHECKS_TRACE: one line per run on stderr (counts, times, why).
+  struct Trace {
+    size_t n;
+    ~Trace() {
+      const char *to = getenv("COAX_NATIVE_CHECKS_TRACE");  // 1: stderr; else a file to append to
+      if (!to || !*to) return;
+      FILE *out = strcmp(to, "1") == 0 ? stderr : fopen(to, "a");
+      if (!out) return;
+      size_t states[6] = {};
+      for (const NativeResult &r : g_native.results) states[r.state]++;
+      const CheckDecl *first = n ? g_native.file->checks[0] : nullptr;
+      fprintf(out, "coax: native checks: %zu of %zu eligible, %zu passed, %zu trapped, %zu refused, %zu timed out, %zu crashed;"
+              " emit %.2f s, compile %.2f s, run %.2f s%s%s (first: %.*s)\n",
+              g_native.eligible, n, states[NativeResult::passed], states[NativeResult::trapped], states[NativeResult::refused],
+              states[NativeResult::timed_out], states[NativeResult::crashed], g_native.emit, g_native.compile, g_native.run,
+              g_native.why.empty() ? "" : "; ", g_native.why.c_str(), first ? (int)first->name.count : 0, first ? first->name.data : "");
+      if (out != stderr) fclose(out);
+    }
+  } trace{n};
   // The procedures every struct default calls (the binary's init helpers
   // hold them all), then each eligible check's body and what it calls.
   std::set<const ProcDecl *> have;
@@ -220,98 +239,140 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
     if (getenv("COAX_NATIVE_CHECKS_KEEP")) fprintf(stderr, "coax: native checks: %s in %s\n", g_native.why.c_str(), dir.c_str());
     return;
   }
-  // Run the binary, from the first check on, and again after each check that stops it.
+  // Run the binary as `jobs` processes at once, process w taking checks w,
+  // w+jobs, w+2*jobs...; a process a check stops starts again at its next one.
+  // Checks share no state (coax0 has no globals), so the split changes no verdict.
   double limit = 120;
   if (const char *s = getenv("COAX_CHECK_SECONDS")) { double v = strtod(s, nullptr); if (v > 0) limit = v; }
   t0 = std::chrono::steady_clock::now();
   const size_t rows = plan.checks.size();
-  size_t start = 0;
-  while (start < rows) {
-    int fds[2];
-    if (pipe(fds) != 0) break;
-    fcntl(fds[0], F_SETFD, FD_CLOEXEC);
-    pid_t pid;
-    if (native_spawn({exe, std::to_string(start)}, fds[1], &pid) != 0) { close(fds[0]); close(fds[1]); break; }
-    close(fds[1]);
-    int64_t current = -1;
-    auto check_began = std::chrono::steady_clock::now();
+  const char *jobs_env = getenv("COAX_NATIVE_CHECKS_JOBS");
+  size_t jobs = jobs_env && *jobs_env ? (size_t)strtoull(jobs_env, nullptr, 10) : std::min<size_t>((size_t)available_cores(), std::min<size_t>(16, (rows + 7) / 8));
+  jobs = std::max<size_t>(1, std::min(jobs, rows));
+  struct Worker {
+    size_t start;              // the next check this process runs
+    pid_t pid = -1;
+    int fd = -1;
+    int64_t current = -1;      // the check it is in (-1: between checks)
+    std::chrono::steady_clock::time_point began;
     std::string buffer;
     bool killed = false;
-    NativeResult pending;  // what the current check reported before it stopped
-    for (;;) {
-      int wait_ms = -1;
-      if (current >= 0) {
-        const double left = limit - seconds_since(check_began);
-        wait_ms = left <= 0 ? 0 : (int)(left * 1000) + 1;
+    NativeResult pending;      // what the current check reported before it stopped
+  };
+  std::vector<Worker> workers(jobs);
+  for (size_t w = 0; w < jobs; w++) workers[w].start = w;
+  auto launch = [&](Worker &k) {
+    k.pid = -1;
+    k.fd = -1;
+    if (k.start >= rows) return;
+    int fds[2];
+    if (pipe(fds) != 0) return;
+    fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    pid_t pid;
+    if (native_spawn({exe, std::to_string(k.start), std::to_string(jobs)}, fds[1], &pid) != 0) { close(fds[0]); close(fds[1]); return; }
+    close(fds[1]);
+    k.pid = pid;
+    k.fd = fds[0];
+    k.current = -1;
+    k.buffer.clear();
+    k.killed = false;
+  };
+  auto line_in = [&](Worker &k, const std::string &line) {
+    if (line.size() < 2) return;
+    if (line[0] == 'B') {
+      k.current = strtoll(line.c_str() + 2, nullptr, 10);
+      k.began = std::chrono::steady_clock::now();
+      k.pending = NativeResult{};
+    } else if (line[0] == 'E' && k.current >= 0 && (size_t)k.current < rows) {
+      NativeResult &out = g_native.results[(size_t)plan.checks[(size_t)k.current].declaration_index];
+      out.state = NativeResult::passed;
+      out.seconds = seconds_since(k.began);
+      const char *at = line.c_str() + 2;
+      char *end;
+      strtoll(at, &end, 10);
+      out.cases = strtoull(end, &end, 10);
+      for (;;) {
+        while (*end == ' ') end++;
+        if (!*end) break;
+        const size_t id = strtoull(end, &end, 10);
+        if (id < plan.procedures.size()) out.executed.push_back(plan.procedures[id]);
       }
-      pollfd p{fds[0], POLLIN, 0};
-      const int r = poll(&p, 1, wait_ms);
-      if (r < 0 && errno == EINTR) continue;
-      if (r == 0) {  // the check ran past its limit
-        kill(pid, SIGKILL);
-        killed = true;
-        break;
+      g_native.passed++;
+      k.start = (size_t)k.current + jobs;
+      k.current = -1;
+    } else if (line[0] == 'T') {
+      k.pending.state = NativeResult::trapped;
+      const char *at = line.c_str() + 2;
+      char *end;
+      k.pending.fail_case = strtoull(at, &end, 10);
+      if (*end == '\t') end++;
+      k.pending.line = strtoll(end, &end, 10);
+      if (*end == '\t') end++;
+      const std::string rest = end;
+      const size_t tab = rest.find('\t');
+      k.pending.path = rest.substr(0, tab);
+      k.pending.what = tab == std::string::npos ? "" : rest.substr(tab + 1);
+    } else if (line[0] == 'R') {
+      k.pending.state = NativeResult::refused;
+      k.pending.what = line.substr(2);
+    }
+  };
+  // A process ended (or was killed): record the check it stopped in, start the next.
+  auto ended = [&](Worker &k) {
+    close(k.fd);
+    const int st = native_wait(k.pid);
+    k.fd = -1;
+    k.pid = -1;
+    if (k.current < 0) {
+      // Stopped between checks: done when it exited normally, else a broken binary.
+      if (!(st >= 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0) && k.start < rows) g_native.why = "the check binary stopped between checks";
+      return;
+    }
+    NativeResult &out = g_native.results[(size_t)plan.checks[(size_t)k.current].declaration_index];
+    out = k.pending;
+    out.seconds = seconds_since(k.began);
+    if (k.killed) out.state = NativeResult::timed_out;
+    else if (out.state == NativeResult::not_run) out.state = NativeResult::crashed;
+    k.start = (size_t)k.current + jobs;
+    launch(k);
+  };
+  for (Worker &k : workers) launch(k);
+  for (;;) {
+    std::vector<pollfd> polls;
+    std::vector<size_t> which;
+    int wait_ms = -1;
+    for (size_t w = 0; w < jobs; w++) {
+      Worker &k = workers[w];
+      if (k.fd < 0) continue;
+      polls.push_back(pollfd{k.fd, POLLIN, 0});
+      which.push_back(w);
+      if (k.current >= 0) {
+        const double left = limit - seconds_since(k.began);
+        const int ms = left <= 0 ? 0 : (int)(left * 1000) + 1;
+        if (wait_ms < 0 || ms < wait_ms) wait_ms = ms;
+      }
+    }
+    if (polls.empty()) break;
+    const int r = poll(polls.data(), (nfds_t)polls.size(), wait_ms);
+    if (r < 0 && errno == EINTR) continue;
+    if (r < 0) break;
+    for (size_t j = 0; j < polls.size(); j++) {
+      Worker &k = workers[which[j]];
+      if (polls[j].revents == 0) {
+        if (k.current >= 0 && seconds_since(k.began) >= limit) {  // the check ran past its limit
+          kill(k.pid, SIGKILL);
+          k.killed = true;
+          ended(k);
+        }
+        continue;
       }
       char chunk[65536];
-      const ssize_t got = read(fds[0], chunk, sizeof chunk);
+      const ssize_t got = read(k.fd, chunk, sizeof chunk);
       if (got < 0 && errno == EINTR) continue;
-      if (got <= 0) break;
-      buffer.append(chunk, (size_t)got);
-      for (size_t nl; (nl = buffer.find('\n')) != std::string::npos; buffer.erase(0, nl + 1)) {
-        const std::string line = buffer.substr(0, nl);
-        if (line.size() < 2) continue;
-        if (line[0] == 'B') {
-          current = strtoll(line.c_str() + 2, nullptr, 10);
-          check_began = std::chrono::steady_clock::now();
-          pending = NativeResult{};
-        } else if (line[0] == 'E' && current >= 0 && (size_t)current < rows) {
-          NativeResult &out = g_native.results[(size_t)plan.checks[(size_t)current].declaration_index];
-          out.state = NativeResult::passed;
-          out.seconds = seconds_since(check_began);
-          const char *at = line.c_str() + 2;
-          char *end;
-          strtoll(at, &end, 10);
-          out.cases = strtoull(end, &end, 10);
-          for (;;) {
-            while (*end == ' ') end++;
-            if (!*end) break;
-            const size_t id = strtoull(end, &end, 10);
-            if (id < plan.procedures.size()) out.executed.push_back(plan.procedures[id]);
-          }
-          g_native.passed++;
-          start = (size_t)current + 1;
-          current = -1;
-        } else if (line[0] == 'T') {
-          pending.state = NativeResult::trapped;
-          const char *at = line.c_str() + 2;
-          char *end;
-          pending.fail_case = strtoull(at, &end, 10);
-          if (*end == '\t') end++;
-          pending.line = strtoll(end, &end, 10);
-          if (*end == '\t') end++;
-          const std::string rest = end;
-          const size_t tab = rest.find('\t');
-          pending.path = rest.substr(0, tab);
-          pending.what = tab == std::string::npos ? "" : rest.substr(tab + 1);
-        } else if (line[0] == 'R') {
-          pending.state = NativeResult::refused;
-          pending.what = line.substr(2);
-        }
-      }
+      if (got <= 0) { ended(k); continue; }
+      k.buffer.append(chunk, (size_t)got);
+      for (size_t nl; (nl = k.buffer.find('\n')) != std::string::npos; k.buffer.erase(0, nl + 1)) line_in(k, k.buffer.substr(0, nl));
     }
-    close(fds[0]);
-    const int st = native_wait(pid);
-    if (current < 0) {
-      // Stopped between checks: done when it exited normally, else a broken binary.
-      if (!(st >= 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0) && start < rows) g_native.why = "the check binary stopped between checks";
-      break;
-    }
-    NativeResult &out = g_native.results[(size_t)plan.checks[(size_t)current].declaration_index];
-    out = pending;
-    out.seconds = seconds_since(check_began);
-    if (killed) out.state = NativeResult::timed_out;
-    else if (out.state == NativeResult::not_run) out.state = NativeResult::crashed;
-    start = (size_t)current + 1;
   }
   g_native.run = seconds_since(t0);
   laps.lap("native.run");
