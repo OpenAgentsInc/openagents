@@ -35,7 +35,8 @@ everglade5e 2250000
 # Shared Ocarina movement profile and versioned J1 input: 1,067,794 measured 2026-11-06; about 5% room.
 # 1,123,731 on 2026-11-08 after the engine's spell access and prepared-spell checks; about 5% room.
 # 1,199,435 on main 82961a04b8 (already over 1,180,000); 1,210,275 with cover, grappling, Ready and movement modes (#13040); about 2% room.
-everglade-room 1235000
+# 1,244,296 on main 5f3aa40254 after the SRD familiar steps, lifecycle and borrowed Blindsight (#13030); about 5% room.
+everglade-room 1310000
 fairy 695000
 # Character Studio adds the full Source wardrobe UI and appearance codec to the existing people producer: 590,971 bytes measured; about 5% headroom.
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
@@ -179,3 +180,6 @@ cullstream 40000
 
 # Standalone NWN world: shared controller, procedural HUD; private media excluded.
 nights 180000
+
+# Portal Lab (9b89fc02a4): an owner-local baked portal scene; 73,068 bytes as the dev build writes it; about 10% room.
+portallab 80000
