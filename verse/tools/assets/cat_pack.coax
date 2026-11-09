@@ -1,0 +1,47 @@
+// Everglade's cat (everglade/creatures/cat.coax), from cat_bake.py's Cat-e2-N.bin: Idle, Walk and Sit,
+// GP_CAT_CLIP frames each, as glade/cat0..29. Each frame in model-space metres: its first frame's middle
+// over the origin, its paws on it, the head toward +Z, scaled from the source by GP_CAT_SCALE so the cat
+// stands about 0.3 m at the head and 0.5 m nose to rump. They draw on the shared moved-mesh record
+// (charactercreator.coax mode 18), shaded by their vertex colour alone (kind 9, as Everglade II's wolves). Loaded by character_glade_pack.coax:
+//   coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-cat IN.pack OUT.pack FRAMES_DIR
+
+GP_CAT_SOURCE :: 245;   // (246 the dragon's, 247 the horse's)
+GP_CAT_FRAMES :: 30;
+GP_CAT_CLIP :: 10;
+GP_CAT_SCALE :: 0.17;
+GP_CAT_KIND :: 9;       // gpu/everglade2.coax: a model shaded by its vertex colour alone (everglade2_pack.coax GP_E2_MODEL)
+
+gp_cat_meshes :: (w:[]Gp,root:string,first:[]int,count:[]int) {
+  anchor:[3]f32;
+  for frame:0..<GP_CAT_FRAMES {
+    pb:[4096]u8;s:[1]Sb;s[0]=sb(pb[..]);sb_put(s[..],root);sb_put(s[..],"/Cat-e2-");sb_int(s[..],frame);sb_put(s[..],".bin");
+    b:[262144]u8;n:=fs_read(sb_text(s[..]),b[..]);if n<8 {ph_die("missing baked cat frame");}
+    corners:=gl_u32(b[..],0);if corners<=0 || corners%3!=0 || n!=8+corners*28 {ph_die("invalid baked cat frame");}
+    if frame==0 {
+      lo:=[3]f32.[100000,100000,100000];hi:=[3]f32.[-100000,-100000,-100000];
+      for v:0..<corners {for k:0..<3 {x:=f32_from_bits(cast(u32)gl_u32(b[..],8+v*28+k*4));if x<lo[k] {lo[k]=x;}if x>hi[k] {hi[k]=x;}}}
+      anchor=[3]f32.[(lo[0]+hi[0])*0.5,0,(lo[2]+hi[2])*0.5];
+    }
+    first[frame]=w[0].ni;seen:[32768]int;mapped:[16384]int;if corners>mapped.count {ph_die("cat frame has too many corners");}
+    for v:0..<corners {at:=8+v*28;hash:=0;for k:0..<28 {hash=(hash*33+int(b[at+k]))%32768;}
+      while seen[hash]!=0 {other:=8+(seen[hash]-1)*28;same:=true;for k:0..<28 {if b[at+k]!=b[other+k] {same=false;break;}}if same {break;}hash=(hash+1)%32768;}
+      if seen[hash]!=0 {mapped[v]=mapped[seen[hash]-1];}
+      else {seen[hash]=v+1;p:[3]f32;normal:[3]f32;colour:[3]f32;
+        for k:0..<3 {p[k]=(f32_from_bits(cast(u32)gl_u32(b[..],at+k*4))-anchor[k])*f32(GP_CAT_SCALE);normal[k]=f32_from_bits(cast(u32)gl_u32(b[..],at+12+k*4));colour[k]=f32(b[at+24+k])/255;}
+        mapped[v]=gp_v(w,p,normal,[2]f32.[0.5,0.5],colour,0,GP_CAT_KIND);gp_word(w[0].v[..],mapped[v]*32+28,f32_bits(1));}
+      if v%3==2 {gp_tri(w,mapped[v-2],mapped[v-1],mapped[v]);}
+    }
+    count[frame]=w[0].ni-first[frame];
+  }
+}
+
+gp_cat_catalog :: (c:[]Sb,first:[]int,count:[]int,index_base:int,vertex_word:int) {
+  sb_put(c,"L "); sb_int(c,GP_CAT_SOURCE);
+  sb_put(c," Quaternius Ultimate Animated Animals, Fox (made a cat: cat_bake.py)|CC0 1.0 Universal|https://quaternius.com/\n");
+  for frame:0..<GP_CAT_FRAMES {
+    sb_put(c,"C glade/cat"); sb_int(c,frame); sb_byte(c,' ');
+    sb_int(c,index_base+first[frame]); sb_byte(c,' '); sb_int(c,count[frame]);
+    sb_byte(c,' '); sb_int(c,GP_CAT_SOURCE);
+    sb_byte(c,' '); sb_int(c,vertex_word); sb_put(c," 0 0\n");
+  }
+}

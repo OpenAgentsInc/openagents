@@ -19,6 +19,7 @@
 #load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "everglade2-guard.coax";  // the path's guard, as the room walks him
 #load "everglade2-monsters.coax";   // the wolves and the goblins, as the room moves them
+#load "everglade2-wild.coax";   // the glade's cat (everglade/creatures/cat.coax), and ?stage=cat
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
@@ -129,6 +130,7 @@ E2 :: struct {
   mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade2-mouse.coax)
   adm: [1] E2Admin;                              // admin mode (everglade2-admin.coax): set and read in dev builds only
   monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade2-monsters.coax)
+  wild: [1] E2Wild;                              // the glade's cat (everglade2-wild.coax)
   hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
   zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
   hero_class: int = -1; hero_level: int; hero_ac: int; hero_slots: [10] int;   // your class's AC and spell slots by level, as the rules build it (fb_cl_hero)
@@ -145,7 +147,7 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   n := e2g_record_from_catalog(whole, rec);
   s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1; s[0].catalog_in = true;
   text := e2_catalog_rest(whole, rest);
-  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text);
+  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text);
   s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]); s[0].mats_v += 1;
   for b: 0..<E2_BUCKETS { s[0].kit_first[b] = 0; s[0].kit_count[b] = 0; }
   at := 0; any := false;
@@ -221,7 +223,9 @@ e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
     // room (?relay=ws://localhost:PORT, a check's or a capture's) starts you there in that room, told to
     // it as a kept place is (e2_place_take)
     local := e2_query_local(t);
-    s[0].staged = (s[0].start_z < 0 && !local) || s[0].autowalk || s[0].film;
+    s[0].wild[0].stage = e2w_stage(t);
+    if s[0].wild[0].stage { e2w_stage_you(s); }   // you stand out of the shot
+    s[0].staged = (s[0].start_z < 0 && !local) || s[0].autowalk || s[0].film || s[0].wild[0].stage;
     e2n_facts(s[0].net[..], t, s[0].staged);
     if local && s[0].start_z < 0 && !s[0].autowalk && !s[0].film {
       z := s[0].start_z; s[0].start_x = e2_road_x(z); s[0].start_face = figs.atan2(e2_road_x(z - 2) - s[0].start_x, -2.0f32);
@@ -1110,7 +1114,8 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].clock += step;
   e2_follow(s, step);
   e2c_arrive_step(s, step);
-  shot := e2_familiar_shot(s,e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_ml_shot(s, e2_shot(s)), step));
+  e2w_step(s, step);
+  shot := e2w_shot(s, e2_familiar_shot(s,e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_ml_shot(s, e2_shot(s)), step)));
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
@@ -1140,6 +1145,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].sight_at = s[0].clock;
   hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2gd_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out)))))))))), dt));
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
+  if s[0].wild[0].stage { hud = 0; s[0].media_n = 0; }   // ?stage=cat is a shot: no HUD
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
   return hud;
 }
@@ -1551,6 +1557,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   s[0].cz[0].fig1 = d.rec;
   if d.n > 0 { s[0].cz[0].drawn += 1; }
   d = e2_familiars_draw(s,d);
+  d = e2w_draw(s, d);               // the glade's cat (everglade2-wild.coax)
   d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade2-net.coax)
   d = e2gd_draw(s, d, bdt);          // the path's guard (everglade2-guard.coax)
   d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade2-monsters.coax)

@@ -1,0 +1,164 @@
+// Everglade's cat: ambient wildlife every Everglade zone can place. It wanders round its home, sits
+// a while, washes its time away standing, and when a player comes near it stops, sits and turns to
+// look at them. The game layer owns the cat's frames in a zone's pack (glade/cat0..29: Idle, Walk and
+// Sit, ten frames each; verse/tools/assets/cat_pack.coax from cat_bake.py) and what it does; a zone
+// places its cats (eg_cat_place), steps them with the nearest player (eg_cat_step) and draws the frame
+// eg_cat_frame names at the cat's place and yaw. A cat is the page's own: no room moves it, and the
+// same seed and inputs give the same cat. Nothing here knows a zone.
+//
+// A yaw faces (sin yaw, cos yaw) on the ground (x, z), as the moved-mesh record turns a model whose
+// head is toward +Z.
+//   coax/bin/coax test everglade/creatures/cat.coax --library
+#module "everglade.cat";
+#load "../../aethyr/rand.coax";
+
+EG_CAT_FRAMES :: 30;
+EG_CAT_CLIP :: 10;                     // frames a clip
+EG_CAT_IDLE :: 0; EG_CAT_WALK :: 1; EG_CAT_SIT :: 2;
+EG_CAT_CLIP_S :: [3] f32.[3.333, 1.067, 3.333];   // each clip's loop, as cat_bake.py baked it
+EG_CAT_PACE :: 0.45;                   // m/s at a walk
+EG_CAT_TURN :: 3.0;                    // rad/s it turns
+EG_CAT_ROAM :: 5.0;                    // m from home it wanders at most
+EG_CAT_NOTICE :: 4.0;                  // m: a player this near, it sits and looks at them
+EG_CAT_FORGET :: 6.0;                  // m: and once they are this far, it goes about its day again
+EG_CAT_SIT_S :: [2] f32.[5.0, 11.0];   // s it sits, at least and at most
+EG_CAT_IDLE_S :: [2] f32.[2.0, 4.0];   // s it stands
+
+EgCat :: struct {
+  home_x: f32; home_z: f32; x: f32; z: f32; yaw: f32;
+  mode: int = EG_CAT_SIT; until: f32;  // what it does, and till when (a walk, till it gets there)
+  goal_x: f32; goal_z: f32;
+  seed: int; draws: int;               // its own stream of choices
+  noticed: bool;                       // a player is near: it sits and looks at them
+  held: bool;                          // a shot's: it sits where it was put and looks the way it was set
+}
+// The pack's frames: "C glade/catN FIRST COUNT SOURCE WORD 0 0" a frame.
+EgCatFrames :: struct { first: [EG_CAT_FRAMES] int; count: [EG_CAT_FRAMES] int; word: [EG_CAT_FRAMES] int; n: int; }
+
+eg_cat_word_end :: (t: string, from: int) -> int { e := from; while e < t.count && t[e] != ' ' { e += 1; } return e; }
+eg_cat_whole_at :: (t: string, from: int) -> int {
+  v := 0; p := from; while p < t.count && t[p] == ' ' { p += 1; }
+  if p >= t.count || t[p] < '0' || t[p] > '9' { return -1; }
+  while p < t.count && t[p] >= '0' && t[p] <= '9' { v = v * 10 + cast(int)(t[p] - '0'); p += 1; }
+  return v;
+}
+eg_cat_catalog :: (f: [] EgCatFrames, text: string) {
+  f[0].n = 0; at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    row := text[at..<e]; at = e + 1;
+    if row.count < 14 || row[0..<11] != "C glade/cat" { continue; }
+    ne := eg_cat_word_end(row, 2); i := eg_cat_whole_at(row[0..<ne], 11);
+    if i < 0 || i >= EG_CAT_FRAMES { continue; }
+    p := ne; first := eg_cat_whole_at(row, p); p = eg_cat_word_end(row, p + 1); count := eg_cat_whole_at(row, p);
+    p = eg_cat_word_end(row, p + 1); p = eg_cat_word_end(row, p + 1); word := eg_cat_whole_at(row, p);
+    if first < 0 || count <= 0 || word < 0 { continue; }
+    f[0].first[i] = first; f[0].count[i] = count; f[0].word[i] = word; f[0].n += 1;
+  }
+}
+#test "the pack's cat rows" {
+  f: [1] EgCatFrames;
+  eg_cat_catalog(f[..], "C glade/horse0 1 2 247 9 0 0\nC glade/cat0 100 30 245 7000 0 0\nC glade/cat29 400 33 245 7000 0 0\n");
+  #assert f[0].n == 2 && f[0].first[0] == 100 && f[0].count[0] == 30 && f[0].word[0] == 7000 && f[0].first[29] == 400;
+}
+
+eg_cat_wrap :: (a: f32) -> f32 { tau: f32 = 6.2831853; return a - tau * floor((a + 3.14159265) / tau); }
+// The yaw that faces (dx, dz), to within a few thousandths.
+eg_cat_heading :: (dx: f32, dz: f32) -> f32 {
+  ax := abs(dx); az := abs(dz);
+  if ax < 0.000001 && az < 0.000001 { return 0; }
+  t := ifx ax < az then ax / az else az / ax;
+  a := t * (0.7853982 - (t - 1) * (0.2447 + 0.0663 * t));   // atan(t), t in [0, 1]
+  r := ifx ax < az then a else 1.5707963 - a;              // from +z toward +x
+  if dz < 0 { r = 3.14159265 - r; }
+  return ifx dx < 0 then -r else r;
+}
+#test "a heading faces the way it was asked" {
+  for k: 0..<16 { a := eg_cat_wrap(f32(k) * 0.39 - 3.0); h := eg_cat_heading(sin(a), cos(a)); #assert abs(eg_cat_wrap(h - a)) < 0.01; }
+}
+eg_cat_turn :: (yaw: f32, want: f32, dt: f32) -> f32 {
+  d := eg_cat_wrap(want - yaw); m := f32(EG_CAT_TURN) * dt;
+  return eg_cat_wrap(yaw + (ifx d > m then m else ifx d < -m then -m else d));
+}
+eg_cat_draw :: (c: [] EgCat) -> f32 { c[0].draws += 1; return rand_unit(c[0].seed, 31, c[0].draws); }
+
+// A cat at home (x, z), facing yaw, sitting to begin.
+eg_cat_place :: (c: [] EgCat, x: f32, z: f32, yaw: f32, seed: int, now: f32) {
+  c[0] = EgCat.{home_x = x, home_z = z, x = x, z = z, yaw = yaw, seed = seed, mode = EG_CAT_SIT};
+  c[0].until = now + EG_CAT_SIT_S[0] + eg_cat_draw(c) * (EG_CAT_SIT_S[1] - EG_CAT_SIT_S[0]);
+}
+// A shot's cat: it sits at (x, z) facing yaw and stays so.
+eg_cat_hold :: (c: [] EgCat, x: f32, z: f32, yaw: f32) { c[0] = EgCat.{home_x = x, home_z = z, x = x, z = z, yaw = yaw, mode = EG_CAT_SIT, held = true}; }
+
+// One step: (px, pz) the nearest player, near whether there is one at all.
+eg_cat_step :: (c: [] EgCat, now: f32, dt: f32, near: bool, px: f32, pz: f32) {
+  if c[0].held { return; }
+  dx := px - c[0].x; dz := pz - c[0].z; d := sqrt(dx * dx + dz * dz);
+  if near && d < f32(EG_CAT_NOTICE) { c[0].noticed = true; }
+  if !near || d > f32(EG_CAT_FORGET) {
+    if c[0].noticed { c[0].noticed = false; c[0].until = now + EG_CAT_IDLE_S[0]; }
+  }
+  if c[0].noticed {
+    // it sits where it is and turns to look at them
+    c[0].mode = EG_CAT_SIT; c[0].yaw = eg_cat_turn(c[0].yaw, eg_cat_heading(dx, dz), dt);
+    return;
+  }
+  if c[0].mode == EG_CAT_WALK {
+    gx := c[0].goal_x - c[0].x; gz := c[0].goal_z - c[0].z; g := sqrt(gx * gx + gz * gz);
+    c[0].yaw = eg_cat_turn(c[0].yaw, eg_cat_heading(gx, gz), dt);
+    step := f32(EG_CAT_PACE) * dt;
+    if g <= step || now > c[0].until {
+      c[0].mode = EG_CAT_SIT; c[0].until = now + EG_CAT_SIT_S[0] + eg_cat_draw(c) * (EG_CAT_SIT_S[1] - EG_CAT_SIT_S[0]);
+    } else {
+      // it walks the way it faces, so it curves round to its goal
+      c[0].x += sin(c[0].yaw) * step; c[0].z += cos(c[0].yaw) * step;
+    }
+    return;
+  }
+  if now < c[0].until { return; }
+  if c[0].mode == EG_CAT_SIT {
+    c[0].mode = EG_CAT_IDLE; c[0].until = now + EG_CAT_IDLE_S[0] + eg_cat_draw(c) * (EG_CAT_IDLE_S[1] - EG_CAT_IDLE_S[0]);
+    return;
+  }
+  // stood long enough: somewhere else near home
+  a := eg_cat_draw(c) * 6.2831853; r := f32(EG_CAT_ROAM) * sqrt(eg_cat_draw(c));
+  c[0].goal_x = c[0].home_x + sin(a) * r; c[0].goal_z = c[0].home_z + cos(a) * r;
+  gx := c[0].goal_x - c[0].x; gz := c[0].goal_z - c[0].z;
+  c[0].mode = EG_CAT_WALK; c[0].until = now + sqrt(gx * gx + gz * gz) / f32(EG_CAT_PACE) * 2 + 2;
+}
+
+// Its frame now: its clip round its loop.
+eg_cat_frame :: (c: EgCat, now: f32) -> int {
+  clip := c.mode; span := EG_CAT_CLIP_S[clip];
+  f := cast(int) floor(now / span * f32(EG_CAT_CLIP)) % EG_CAT_CLIP;
+  if f < 0 { f += EG_CAT_CLIP; }
+  return clip * EG_CAT_CLIP + f;
+}
+
+#test "a cat sits, stands, wanders near home, and comes back to sitting" {
+  c: [1] EgCat; eg_cat_place(c[..], 10, -5, 0, 7, 0);
+  #assert c[0].mode == EG_CAT_SIT && c[0].until >= f32(EG_CAT_SIT_S[0]);
+  walked := false; far: f32 = 0; now: f32 = 0;
+  for i: 0..<3000 {
+    now += 0.05; eg_cat_step(c[..], now, 0.05, false, 0, 0);
+    if c[0].mode == EG_CAT_WALK { walked = true; }
+    dx := c[0].x - 10; dz := c[0].z + 5; d := sqrt(dx * dx + dz * dz); if d > far { far = d; }
+  }
+  #assert walked && far > 0.3 && far < f32(EG_CAT_ROAM) + 1;
+}
+#test "a player near it: it sits and turns to look at them; gone, it goes about its day" {
+  c: [1] EgCat; eg_cat_place(c[..], 0, 0, 0, 3, 0); c[0].mode = EG_CAT_WALK; c[0].goal_x = 4; c[0].until = 100;
+  now: f32 = 0;
+  for i: 0..<40 { now += 0.05; eg_cat_step(c[..], now, 0.05, true, -2, 0); }
+  #assert c[0].noticed && c[0].mode == EG_CAT_SIT;
+  #assert abs(eg_cat_wrap(c[0].yaw - eg_cat_heading(-2 - c[0].x, -c[0].z))) < 0.05;   // it looks at them
+  for i: 0..<200 { now += 0.05; eg_cat_step(c[..], now, 0.05, true, 20, 0); }
+  #assert !c[0].noticed;
+}
+#test "a shot's cat stays put, sitting, and its frames loop through the sit" {
+  c: [1] EgCat; eg_cat_hold(c[..], 1, 2, 3.0);
+  for i: 0..<100 { eg_cat_step(c[..], f32(i) * 0.1, 0.1, true, 1.5, 2.5); }
+  #assert c[0].x == 1 && c[0].z == 2 && c[0].yaw == 3.0 && c[0].mode == EG_CAT_SIT;
+  #assert eg_cat_frame(c[0], 0) == 20 && eg_cat_frame(c[0], 3.3) == 29 && eg_cat_frame(c[0], 3.34) == 20;
+  c[0].mode = EG_CAT_WALK; #assert eg_cat_frame(c[0], 0.11) == 11;
+}

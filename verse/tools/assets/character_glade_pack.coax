@@ -16,6 +16,7 @@
 #load "../humans/ph_outfits.coax";
 #load "familiar_pack.coax";
 #load "horse_pack.coax";   // the rideable white horse (everglade/docs/mounts-spec.md)
+#load "cat_pack.coax";     // Everglade's cat (everglade/creatures/cat.coax)
 #load "dragon_pack.coax";
 
 #load "../../character-glade.coax";
@@ -740,9 +741,11 @@ gp_entry :: (out:[]u8,row:int,kind:int,license:int,name:string,offset:int,size:i
 }
 // Append the shared meshes to an existing world pack without rebuilding its
 // other assets. The appended model indices start at their own vertex base.
-// horse: the rideable horse's frames from horse_bake.py's output in `frames`, instead of the familiars.
-gp_append_familiars :: (input:string,output:string)->int {return gp_append_models(input,output,false,"");}
-gp_append_models :: (input:string,output:string,horse:bool,frames:string)->int {
+// model: GP_APPEND_FAMILIARS, or the horse's (horse_bake.py) or the cat's (cat_bake.py) frames in `frames`.
+GP_APPEND_FAMILIARS :: 0; GP_APPEND_HORSE :: 1; GP_APPEND_CAT :: 2;
+gp_append_familiars :: (input:string,output:string)->int {return gp_append_models(input,output,GP_APPEND_FAMILIARS,"");}
+gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
+  horse:=model==GP_APPEND_HORSE; kitty:=model==GP_APPEND_CAT;
   w:[1]Gp; src:=w[0].out[..];
   size:=fs_read(input,src);
   if size<32 || cast(string)src[0..<4]!="VPK1" || gl_u32(src,8)!=size { return 1; }
@@ -765,18 +768,19 @@ gp_append_models :: (input:string,output:string,horse:bool,frames:string)->int {
     end:=at;
     while end<cat.count && cat[end]!='\n' { end+=1; }
     line:=cat[at..<end];
-    if !horse && (starts(line,"C glade/familiar") || starts(line,"L 248 ")) { tool_errln("pack already contains familiar models or uses source 248"); return 1; }
+    if model==GP_APPEND_FAMILIARS && (starts(line,"C glade/familiar") || starts(line,"L 248 ")) { tool_errln("pack already contains familiar models or uses source 248"); return 1; }
     if horse && (starts(line,"C glade/horse") || starts(line,"L 247 ")) { tool_errln("pack already contains the horse or uses source 247"); return 1; }
+    if kitty && (starts(line,"C glade/cat") || starts(line,"L 245 ")) { tool_errln("pack already contains the cat or uses source 245"); return 1; }
     if starts(line,"bytes ") && line.count==16 { size_at=at+6; }
     at=end+1;
   }
   if size_at<0 { return 1; }
 
   first:[GP_HORSE_FRAMES]int; count:[GP_HORSE_FRAMES]int;
-  if horse { gp_horse_meshes(w[..],frames,first[..],count[..]); } else { gp_familiar_meshes(w[..],first[..],count[..]); }
+  if horse { gp_horse_meshes(w[..],frames,first[..],count[..]); } else if kitty { gp_cat_meshes(w[..],frames,first[..],count[..]); } else { gp_familiar_meshes(w[..],first[..],count[..]); }
   extra:[4096]u8; c:[1]Sb; c[0]=sb(extra[..]);
   sb_byte(c[..],'\n');
-  if horse { gp_horse_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else { gp_familiar_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); }
+  if horse { gp_horse_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else if kitty { gp_cat_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else { gp_familiar_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); }
   appendix:=sb_text(c[..]);
   out:[536870912]u8;
   new_size:=size+appendix.count+w[0].nv*32+w[0].ni*4+4;
@@ -798,14 +802,15 @@ gp_append_models :: (input:string,output:string,horse:bool,frames:string)->int {
   value:=pos;
   for i:0..<10 { out[start+size_at+9-i]=cast(u8)(48+value%10); value/=10; }
   if !fs_write(output,cast(string)out[0..<pos]) { return 1; }
-  print("Appended % % meshes to % (% bytes)\n",ifx horse then GP_HORSE_FRAMES else FAM_FORMS,ifx horse then "horse" else "familiar",output,pos);
+  print("Appended % % meshes to % (% bytes)\n",ifx horse then GP_HORSE_FRAMES else ifx kitty then GP_CAT_FRAMES else FAM_FORMS,ifx horse then "horse" else ifx kitty then "cat" else "familiar",output,pos);
   return 0;
 }
 
 tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) {return 2;}
  if args_count(args[..])==3 && args_at(args[..],0)=="--append-familiars" {return gp_append_familiars(args_at(args[..],1),args_at(args[..],2));}
- if args_count(args[..])==4 && args_at(args[..],0)=="--append-horse" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),true,args_at(args[..],3));}
+ if args_count(args[..])==4 && args_at(args[..],0)=="--append-horse" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_HORSE,args_at(args[..],3));}
+ if args_count(args[..])==4 && args_at(args[..],0)=="--append-cat" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_CAT,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-dragon" {return gp_append_dragon(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
  if (args_count(args[..])!=3 && args_count(args[..])!=4 && args_count(args[..])!=6 && args_count(args[..])!=7 && args_count(args[..])!=14 && args_count(args[..])!=16 && args_count(args[..])!=17 && args_count(args[..])!=18 && args_count(args[..])!=19 && args_count(args[..])!=20) {tool_errln("glade pack: SOURCE_ROOT BASE.pack OUTPUT.pack [--experimental|zone]");return 2;}
  experimental:=args_count(args[..])>=4 && args_at(args[..],3)=="--experimental";zone:=args_count(args[..])==4 && args_at(args[..],3)=="zone";if args_count(args[..])>=4 && !experimental && !zone {return 2;}buildings:=args_count(args[..])>=6;

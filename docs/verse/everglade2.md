@@ -205,6 +205,22 @@ shades with `aethyr/render/character-material.coax`. Roughness never goes below 
 metal, so characters stay matte. `?maps=0` turns the maps off, and `?film` adds skin wrap, cloth
 sheen and hair highlights.
 
+### The cat (#13112)
+
+The glade has a cat (`everglade/creatures/cat.coax`, the game layer's, wired in by
+`apps/openagents-web/everglade2-wild.coax`). It sits, stands, wanders within 5 m of its home
+south-east of where you start, and when you come within 4 m it sits and turns to look at you.
+`?stage=cat` is its shot: it sits on the glade's path and looks at a low camera that closes in
+over ten seconds, with no HUD and no room. The pack holds its 30 frames as `glade/cat0..29`
+(Idle, Walk and Sit; `assets/registry/README.md` has where the cat comes from). Append them to the
+pack with the tool, then rebuild the `.vpk3`:
+
+```sh
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-cat \
+  BASE.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack ~/.openagents/assets/cache/cat-e2
+coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp4 --size 1920x1080 --seconds 10
+```
+
 ## The page
 
 `apps/openagents-web/everglade2.coax` and `everglade2-face.c` run the page:
