@@ -1288,6 +1288,25 @@ e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
     taken[tn * 4] = sx - wide * 0.5; taken[tn * 4 + 1] = sy - cap * 1.3; taken[tn * 4 + 2] = sx + wide * 0.5; taken[tn * 4 + 3] = sy; tn += 1;
     s[0].plates[i].alpha = alpha * p.fade; s[0].plates_drawn += 1; s[0].plates[i].sy = sy;
   }
+  return e2_familiar_plates(s, out, v);
+}
+e2_familiar_plates :: (s: [] E2, out: [] f32, at: int) -> int {
+  v := at; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up;
+  for row: s[0].net[0].familiar_rows {
+    if !row.live { continue; }
+    y := e2_height(row.x, row.z) + 0.65;
+    dx := row.x - e[0]; dy := y - e[1]; dz := row.z - e[2];
+    ahead := dx * f[0] + dy * f[1] + dz * f[2];
+    if ahead < 0.5 || dx * dx + dy * dy + dz * dz > 900 || !e2_plate_seen(e, row.x, y, row.z) { continue; }
+    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
+    sy := (ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5) - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
+    if sx < 0 || sx > s[0].width || sy < 0 || sy > s[0].height { continue; }
+    k := s[0].k;
+    name := rs_monster_block(RS_FAMILIAR_FORMS[row.form]).name;
+    v = cc.text(out, v, name, sx - 14 * k, sy - 12 * k, 11 * k, cc.ink(k, 0.54, 0.88, 1));
+    v = e2k_line(out, v, sx - 14 * k, sy, sx + 14 * k, sy, 2 * k, 0.18, 0.30, 0.36);
+    v = e2k_line(out, v, sx - 14 * k, sy, sx - 14 * k + 28 * k * f32(row.hp) / f32(row.max), sy, 2 * k, 0.54, 0.88, 1);
+  }
   return v;
 }
 #test "two names in the same place in the picture: the farther one moves up clear of the nearer" {
@@ -1637,4 +1656,24 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M1 4000001 1 1";
   e2n_record(n,"m1 4000000 1"); #assert e2n_familiar_message(n)=="";
   e2n_record(n,"m1 4000001 1"); #assert e2n_familiar_message(n)=="COMPANION SUMMONED";
+}
+
+#test "Everglade II familiar snapshots replace visible rows and reject malformed or stale updates" #steps 1000000000 {
+  s:[1]E2; e2_test_cast_state(s[..],FB_CL_DRUID);
+  n:=s[0].net[..];
+  e2n_record(n,"m2 4 2 0 8 1500 -2000 1 1 2 0 -4000 5500 2 2");
+  #assert n[0].familiar_rows[0].live && n[0].familiar_rows[0].form==8 && n[0].familiar_rows[0].x==1.5;
+  #assert n[0].familiar_rows[2].live && n[0].familiar_rows[2].z==5.5;
+  e2n_record(n,"m2 5 2 0 8 1500 -2000 1 1 0 0 -4000 5500 2 2");
+  e2n_record(n,"m2 3 0");
+  #assert n[0].familiar_tick==4 && n[0].familiar_rows[2].live;
+  e2n_record(n,"m2 5 1 2 0 -4000 5500 2 2");
+  #assert !n[0].familiar_rows[0].live && n[0].familiar_rows[2].live;
+  s[0].k=1; s[0].width=1280; s[0].height=720; s[0].focal=900;
+  s[0].eye=[3]f32.[-4,e2_height(-4,13.5)+2,13.5];
+  s[0].fwd=[3]f32.[0,0,-1]; s[0].right=[3]f32.[1,0,0]; s[0].up=[3]f32.[0,1,0];
+  out:[8192 * E2_VERTEX_FLOATS]f32;
+  #assert e2_plates(s[..],out[..],0)>0;
+  e2n_record(n,"m2 6 0");
+  #assert !n[0].familiar_rows[2].live && e2_plates(s[..],out[..],0)==0;
 }

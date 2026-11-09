@@ -933,10 +933,18 @@ Wild Shape use or level 1 slot. The room derives the destination, asks its
 collision world for clearance, and resolves the request through the
 shared saved turn. The reserved familiar actor has its own turn and
 expires with the owner's Long Rest. The first room control reports
-success or refusal to the owner. Replicated familiar presentation,
-Wizard casting and the remaining room actions still need integration.
+success or refusal to the owner. The room now replicates visible familiar
+positions and Hit Points, and the page shows the form name and health at
+that position. A block or the end of the familiar removes its marker.
+Animal models, Wizard casting and the remaining room actions still need
+integration.
 
 Nine focused room checks and 21 Everglade II page checks passed. The
 protocol fixture covers obstruction, replay, the saved action, and Long
 Rest expiry. The page fixture verifies the selected form and payment and
 ignores a stale reply. Everglade II Wasm built at 704,767 bytes.
+
+The replication fixture checks owner and peer delivery, block filtering and
+Long Rest removal. The client fixture checks replacement, stale and
+malformed records, and marker drawing and removal. All 22 focused
+Everglade II page checks passed. Wasm built at 705,466 bytes.

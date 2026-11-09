@@ -1,0 +1,9 @@
+{
+  "identity": "everglade-familiar-state-v1",
+  "base_session": "everglade-session-v5",
+  "form_index": "everglade-familiar-v1",
+  "scope": "Everglade II only",
+  "snapshot": "m2 TICK COUNT [OWNER FORM X Z HP MAX]...",
+  "position_unit": "integer millimetres",
+  "max_rows": 16
+}

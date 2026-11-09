@@ -152,6 +152,7 @@ EgSeat :: struct {
   last_cast: int = -1000;
   aid: E2Aid;
   familiar:E2Familiar;
+  familiar_hash:int; familiar_sent:int;
   // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)
@@ -433,6 +434,7 @@ eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].conn = -1; v[0].eg[k].seat[s].held = true; v[0].eg[k].seat[s].held_at = v[0].mono_ms;
   v[0].eg[k].seat[s].ends_n = 0;
   v[0].eg[k].seat[s].familiar=E2Familiar.{};
+  v[0].eg[k].seat[s].familiar_hash=0;
   rv_note_seat(v, k, s_id); v[0].vit.flush = true;
   for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
   v[0].st.held += 1;
@@ -1045,7 +1047,11 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
 }
 rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
-  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed && v[0].eg[k].seat[s].conn >= 0 { eg_send(v, k, SeatId.{value = s}); } }
+  for s:0..<EG_SEATS {
+    if !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed || v[0].eg[k].seat[s].conn<0 { continue; }
+    eg_send(v,k,SeatId.{value=s});
+    if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); }
+  }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }
 // Where a TGT code is now (a seat's place, a summoned creature's), else (x, z).

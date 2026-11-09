@@ -30,6 +30,8 @@ E2N_CASTS :: 16;                // the others' casts heard and not yet played (e
 // drawn picture reaches the tick it came with (t, the room's clock), at that player as drawn.
 E2nCast :: struct { live: bool; ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; t: int; }
 
+E2N_FAMILIARS :: 16;
+E2nFamiliar :: struct { live:bool; form:int; x:f32; z:f32; hp:int; max:int; }
 E2Net :: struct {
   want: bool;                   // a room: the page facts named a host and this is not a staged shot
   state: int; sock: int = -1; tries: int; retry: int;
@@ -72,10 +74,11 @@ E2Net :: struct {
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
-  // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
-  // only once this socket's room has said it; your last rest request's number and when it was refused
+  familiar_rows:[E2N_FAMILIARS]E2nFamiliar; familiar_tick:int=-1;
   familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
+  // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
+  // only once this socket's room has said it; your last rest request's number and when it was refused
   rest_known: bool; rest_code: int; rest_dice: int; rest_seq: int; rest_sent: int; rest_refused: int; rest_refused_at: int = -100000;
   // your bar as the room's rules hold it (b N V ..., #13046): known once this socket's room has said it
   kit_known: bool; kit: [1] WireKit;
@@ -266,6 +269,7 @@ e2n_down :: (n: [] E2Net) {
   wait = nc_lo(wait, 60000);
   j := ((n[0].mono * 7919 + n[0].tries * 104729 + n[0].pid_n * 31) % 1000 + 1000) % 1000;
   n[0].retry = n[0].mono + wait * 3 / 4 + wait * j / 2000;
+  e2n_clear_familiars(n);
   for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
   wire_mirror_forget(n[0].mir[..]);
   n[0].fix_due = false; n[0].off_x = 0; n[0].off_y = 0; n[0].off_z = 0; n[0].ticks = 0;
@@ -301,6 +305,7 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 // One frame from the room.
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
+  if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
   if wire_is(t,"m1") {
     rd:=[1]WireRd.[wire_rd(t,2)];
     seq:=wire_num(t,rd[..]); form:=wire_num(t,rd[..]);
@@ -323,6 +328,7 @@ e2n_record :: (n: [] E2Net, t: string) {
   if c == 'y' {
     seat := wire_num(t, r[..]); _ := wire_num(t, r[..]); clock := wire_num(t, r[..]);
     if seat < 0 { return; }
+    e2n_clear_familiars(n);
     n[0].seat = seat; n[0].sat = true; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
     n[0].again = n[0].sat_before; n[0].sat_before = true; n[0].back_pending = n[0].again;
     wire_mirror_forget(n[0].mir[..]);
@@ -607,6 +613,28 @@ e2n_aid_message :: (n:[] E2Net)->string {
   return ifx n[0].aid_ok then "ALLY STABILIZED" else "CAN'T USE HEALER'S KIT";
 }
 
+e2n_clear_familiars :: (n:[]E2Net) {
+  n[0].familiar_tick=-1;
+  for s:0..<E2N_FAMILIARS { n[0].familiar_rows[s].live=false; }
+}
+e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
+  if !e2n_open(n) { return; }
+  rd:=[1]WireRd.[wire_rd(t,2)];
+  tick:=wire_num(t,rd[..]); count:=wire_num(t,rd[..]);
+  if !rd[0].ok || tick<0 || tick<=n[0].familiar_tick || count<0 || count>E2N_FAMILIARS { return; }
+  rows:[E2N_FAMILIARS]E2nFamiliar; prior:=-1;
+  for q:0..<count {
+    s:=wire_num(t,rd[..]); form:=wire_num(t,rd[..]);
+    x:=wire_num(t,rd[..]); z:=wire_num(t,rd[..]);
+    hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]);
+    if !rd[0].ok || s<=prior || s>=E2N_FAMILIARS || form<0 || form>=RS_FAMILIAR_FORMS.count || hp<=0 || max<hp ||
+      x < -200000 || x > 200000 || z < -200000 || z > 200000 { return; }
+    rows[s]=E2nFamiliar.{live=true,form=form,x=f32(x)/1000,z=f32(z)/1000,hp=hp,max=max};
+    prior=s;
+  }
+  if wire_more(t,rd[..]) { return; }
+  n[0].familiar_rows=rows; n[0].familiar_tick=tick;
+}
 e2n_familiar :: (n:[]E2Net)->bool {
   if !e2n_open(n) || n[0].klass!=FB_CL_DRUID || n[0].level<2 { return false; }
   n[0].familiar_seq=add_sat(n[0].familiar_seq,1); n[0].familiar_at=-100000;

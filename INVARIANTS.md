@@ -7564,3 +7564,9 @@ request uses the room's position and world collision query, and spends the
 owner's saved turn through shared rules. Replay, blocked placement and
 invalid class or resource requests do not spend a use. A completed Long
 Rest, retired seat or replaced preset removes the companion.
+
+Everglade II familiar presentation follows the room's separate v1 state
+snapshot. Visible rows carry the form, position and Hit Points, ordered by
+owner seat. Either player's block removes the row from that recipient's
+view. A complete empty snapshot removes all markers. The client applies
+complete, strictly newer snapshots and forgets them on disconnect.

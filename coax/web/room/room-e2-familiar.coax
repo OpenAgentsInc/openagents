@@ -24,14 +24,34 @@
   #assert rs_up(b[0].c[f]) && b[0].c[f].familiar_form==MON_OWL && b[0].c[f].familiar_spirit==RS_FAMILIAR_FEY;
   #assert b[0].c[0].uses[RS_USE_WILD]==uses-1 && r[0].seat[0].turn.action;
   #assert b[0].c[rs_familiar_of(b,1)].dead;
-  out:[16384]u8; #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"m1 2 8");
+  out:[16384]u8; wire:[128]u8;
+  prefix:=wire_int(wire[..],wire_put(wire[..],0,"m2"),v[0].eg[k].tick);
+  n:=wire_put(wire[..],prefix," 1 0 8 ");
+  ack:=false; seen_owner:=false; seen_peer:=false;
+  while true {
+    got:=rm_relay_next(v[..]); if got==0 { break; }
+    frame:=cast(string)v[0].rout[0..<got];
+    if eg_test_has(frame,"m1 2 8") && v[0].rto[0] { ack=true; }
+    if !eg_test_has(frame,cast(string)wire[0..<n]) { continue; }
+    if v[0].rto[0] { seen_owner=true; }
+    if v[0].rto[1] { seen_peer=true; }
+  }
+  #assert ack && seen_owner && seen_peer;
+  v[0].eg[k].im[0].blocks[1]=1;
   rm_heard(v[..],0,"M1 2 0 0");
   rc_test_tick(v[..],k,true);
+  prefix=wire_int(wire[..],wire_put(wire[..],0,"m2"),v[0].eg[k].tick);
+  n=wire_put(wire[..],prefix," 0");
+  #assert eg_test_has(e2rt_heard(v[..],1,out[..]),cast(string)wire[0..<n]);
   #assert b[0].c[f].familiar_form==MON_OWL && b[0].c[0].uses[RS_USE_WILD]==uses-1;
   e5rr_step(r,b[0].c[f].turn_at+0.1);
   #assert r[0].familiar[0].open;
   b[0].c[0].long_rest.phase=3;
   #assert rs_long_rest_apply(b,0) && b[0].c[f].dead;
+  rc_test_tick(v[..],k,true);
+  prefix=wire_int(wire[..],wire_put(wire[..],0,"m2"),v[0].eg[k].tick);
+  n=wire_put(wire[..],prefix," 0");
+  #assert eg_test_has(e2rt_heard(v[..],0,out[..]),cast(string)wire[0..<n]);
 }
 
 E2Familiar :: struct { last:int; pending:int; form:int; slot:int; ray:int=-1; x:int; y:int; clear:bool; }
@@ -100,4 +120,34 @@ e2_familiar_commit :: (v:[]RmServer,k:int) {
     n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"m1"),req.pending),req.form);
     rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
   }
+}
+
+// A complete, filtered list. Periodic refresh covers an output queue that
+// dropped a changed snapshot while the seat was behind.
+e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
+  room:=v[0].eg[k..<k+1]; rules:=room[0].rules[..]; b:=rules[0].b[..];
+  if !rules[0].familiar_ready { return; }
+  st:=room[0].seat[s..<s+1];
+  rows:[960]u8; size:=0; count:=0;
+  for owner:0..<EG_SEATS {
+    if !room[0].seat[owner].live || !room[0].seat[owner].placed { continue; }
+    if (room[0].im[0].blocks[s]&(1<<owner))!=0 || (room[0].im[0].blocks[owner]&(1<<s))!=0 { continue; }
+    f:=rules[0].familiar[owner].me; c:=b[0].c[f..<f+1];
+    if c[0].dead || c[0].hp<=0 { continue; }
+    form:=-1;
+    for q:0..<RS_FAMILIAR_FORMS.count { if c[0].familiar_form==RS_FAMILIAR_FORMS[q] { form=q; } }
+    if form<0 { continue; }
+    x:=int((f32(E5R_X0)+(f32(c[0].x)+0.5)*f32(E5R_SQ))*1000);
+    z:=int((f32(E5R_X0)+(f32(c[0].y)+0.5)*f32(E5R_SQ))*1000);
+    size=wire_int(rows[..],wire_int(rows[..],wire_int(rows[..],size,owner),form),x);
+    size=wire_int(rows[..],wire_int(rows[..],wire_int(rows[..],size,z),c[0].hp),c[0].hp_max);
+    count+=1;
+  }
+  hash:=eg_hash(cast(string)rows[0..<size]);
+  if st[0].familiar_hash==hash && room[0].tick-st[0].familiar_sent<EG_HZ { return; }
+  st[0].familiar_hash=hash; st[0].familiar_sent=room[0].tick;
+  out:[1024]u8;
+  n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"m2"),room[0].tick),count);
+  n=wire_put(out[..],n,cast(string)rows[0..<size]);
+  rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
 }
