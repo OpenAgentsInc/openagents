@@ -243,20 +243,18 @@ Then import `OUT_DIR` with `License_Source.txt` and `provenance.json` beside it
 
 ## Everglade's cat
 
-`openagents-cat` records `openagents/beasts/cat`, Everglade's cat (CC0). No CC0 animated cat
-with a sit clip was found on 2026-11-09: Quaternius's two CC0 cats (on poly.pizza) are a blocky
-toy and a chibi head, and neither sits. So the cat is the Ultimate Animated Animals Fox
-(`quaternius/ultimate-animals-source/fox`, its parent by revision), made a cat by
-`verse/tools/assets/cat_bake.py`: shorter legs and muzzle, smaller ears, a thin tail, a grey tabby
-coat, and a Sit posed on the rig's own IK. `recipe_sha256` pins the script, and `Cat.glb` (the
-shaped cat with the Fox's Idle and Walk clips) is the interchange artifact. The bake also writes
-the frames a zone's pack holds (`glade/cat0..29`, `verse/tools/assets/cat_pack.coax`):
+`openagents-cat` records `openagents/beasts/cat`, Everglade's cat, an OpenAgents original (CC0).
+No CC0 animated cat with a sit clip was found on 2026-11-09, so
+`verse/tools/assets/cat_bake.py` builds one from primitives: a black and white tuxedo cat with a
+round, wide head, a short white muzzle, green eyes, upright triangular ears, a white bib and paws
+and a long black tail. The in-house package `openagents-cat` holds the script, `Cat.glb` (the
+sit's first frame, the interchange artifact), `license.txt` and `PROVENANCE.md`; `recipe_sha256`
+pins the script. The bake also writes the frames a zone's pack holds (`glade/cat0..63`: Idle,
+Walk and Sit, `verse/tools/assets/cat_pack.coax`):
 
 ```sh
 Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
-  --python verse/tools/assets/cat_bake.py -- \
-  ~/.openagents/assets/originals/8dbd5d8c483ea0b6528bfde8c1bbbbf30980b0fcdabf3bd7d1692db3e7e52a16/source \
-  ~/.openagents/assets/cache/cat-e2
+  --python verse/tools/assets/cat_bake.py -- ~/.openagents/assets/cache/cat-e2
 ```
 
 ## External asset discovery

@@ -4,18 +4,19 @@
 // the land, as a moved-mesh record (charactercreator.coax familiar_record).
 //
 // ?stage=cat is the cat's shot (docs/verse/clips.md): it sits in the glade's light and looks at the
-// camera, which sits low at its eye level and closes in slowly over ten seconds. A staged shot opens
-// no room.
+// camera, which sits low at its eye level, where its turned head looks (egcat.EG_CAT_LOOK off its
+// body's facing, so the sit shows in three-quarter view), and closes in slowly over ten seconds. A
+// staged shot opens no room.
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only cat
 #load "../../everglade/creatures/cat.coax" as egcat;
 
 E2W_CAT_X :: 2.4; E2W_CAT_Z :: -4.2; E2W_CAT_YAW :: 2.6;   // its home in the glade, south-east of you
 E2W_CAT_SEED :: 293;
 // The stage: the cat sits on the glade's path (the grass would hide it), STAGE_Z down it, facing
-// back along it; the camera EYE_UP over the ground and FAR in front of it, closing to NEAR over
+// back along it; the camera EYE_UP over the ground and FAR out where it looks, closing to NEAR over
 // CLOSE_S seconds, looking at AIM_UP over the ground, so the glade stands behind the cat.
-E2W_STAGE_Z :: -7.0; E2W_STAGE_YAW :: 3.0; E2W_STAGE_FAR :: 1.25; E2W_STAGE_NEAR :: 0.95; E2W_STAGE_CLOSE_S :: 10.0;
-E2W_STAGE_EYE_UP :: 0.30; E2W_STAGE_AIM_UP :: 0.21;
+E2W_STAGE_Z :: -7.0; E2W_STAGE_YAW :: 3.0; E2W_STAGE_FAR :: 1.05; E2W_STAGE_NEAR :: 0.8; E2W_STAGE_CLOSE_S :: 10.0;
+E2W_STAGE_EYE_UP :: 0.28; E2W_STAGE_AIM_UP :: 0.17;
 
 E2Wild :: struct {
   cat: [1] egcat.EgCat; frames: [1] egcat.EgCatFrames;
@@ -45,7 +46,7 @@ e2w_step :: (s: [] E2, dt: f32) {
   if !w[0].cat[0].held { c := w[0].cat[0]; k := e2m_keep(c.x, c.z, c.x, c.z); w[0].cat[0].x = k.x; w[0].cat[0].z = k.z; }
 }
 
-// The stage's shot: low, at the cat's eye, in front of its face, closing in.
+// The stage's shot: low, at the cat's eye, where its head looks, closing in.
 e2w_shot :: (s: [] E2, shot: figs.Shot) -> figs.Shot {
   w := s[0].wild[..];
   if !w[0].stage || !w[0].placed { return shot; }
@@ -55,7 +56,8 @@ e2w_shot :: (s: [] E2, shot: figs.Shot) -> figs.Shot {
   far := f32(E2W_STAGE_FAR) + (f32(E2W_STAGE_NEAR) - f32(E2W_STAGE_FAR)) * e;
   y := e2g_y(s[0].eg[..], c.x, c.z);
   seen := shot;
-  seen.eye = figs.v3(c.x + sin(c.yaw) * far, y + f32(E2W_STAGE_EYE_UP), c.z + cos(c.yaw) * far);
+  look := c.yaw + f32(egcat.EG_CAT_LOOK);
+  seen.eye = figs.v3(c.x + sin(look) * far, y + f32(E2W_STAGE_EYE_UP), c.z + cos(look) * far);
   seen.at = figs.v3(c.x, y + f32(E2W_STAGE_AIM_UP), c.z);
   return seen;
 }
@@ -81,7 +83,8 @@ e2w_draw :: (s: [] E2, at: E2Drawn) -> E2Drawn {
   #assert c.held && c.mode == egcat.EG_CAT_SIT && abs(c.x - e2_road_x(f32(E2W_STAGE_Z))) < 0.01;
   shot := e2w_shot(s[..], figs.Shot.{});
   dx := shot.eye.x - c.x; dz := shot.eye.z - c.z;
-  #assert abs(sqrt(dx * dx + dz * dz) - f32(E2W_STAGE_FAR)) < 0.01 && (dx * sin(c.yaw) + dz * cos(c.yaw)) > 1.2;   // before its face
+  look := c.yaw + f32(egcat.EG_CAT_LOOK);
+  #assert abs(sqrt(dx * dx + dz * dz) - f32(E2W_STAGE_FAR)) < 0.01 && (dx * sin(look) + dz * cos(look)) > 1.0;   // where its head looks
   s[0].clock = 20; shot = e2w_shot(s[..], figs.Shot.{}); dx = shot.eye.x - c.x; dz = shot.eye.z - c.z;
   #assert abs(sqrt(dx * dx + dz * dz) - f32(E2W_STAGE_NEAR)) < 0.01;
   // the page's frames in the catalog, then its record

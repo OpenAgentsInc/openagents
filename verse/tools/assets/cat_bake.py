@@ -1,199 +1,202 @@
-# Firm reason: 6 (Blender bpy evaluates the vendor's rig, its IK legs and animation).
-"""Bake Everglade's cat (everglade/creatures/cat.coax) into portable frames.
+# Firm reason: 6 (Blender bpy and bmesh build the cat's surfaces and export the registry's GLB).
+"""Build and bake Everglade's cat (everglade/creatures/cat.coax): a black and white tuxedo cat.
 
-No CC0 animated cat with a sit clip exists in the packs we hold, so the cat is made here from
-Quaternius Ultimate Animated Animals' Fox (CC0 1.0), the same rig family as the horse and the wolf:
-the muzzle is shortened, the ears made smaller and the brush thinned to a cat's tail, and the coat
-recoloured grey tabby with a white muzzle, chest and paws. Its Idle and Walk clips are the Fox's; its
-Sit is posed here on the rig's own IK: the hips drop and the body pitches up about them, the front
-paws stay planted under the chest, the hind legs fold under the hips, the neck levels the head and the
-tail curls round on the ground. Sit plays over the Idle clip, so the cat breathes and its ears move.
+No CC0 animated cat with a sit exists, so this script builds one, an OpenAgents original (CC0), as a
+stylised low-poly cat for the Verse's look. It is made of smooth closed surfaces placed as a cat's
+anatomy: a round, wide head with a very short muzzle, a small pink nose, large green eyes and big
+upright triangular ears; a short neck and a compact body; a long tail. The coat is a tuxedo: black
+head, back, body and tail, with a white bib, muzzle, chin and paws, and pale whiskers.
 
-Each clip is CB_FRAMES frames round its loop, as Cat-e2-N.bin (N = clip * CB_FRAMES + frame, clips
-Idle, Walk, Sit), the same triangle record as animal_bake.py (<If count, seconds> then <6f4s> a corner:
-position x, z, -y, the normal likewise, sRGB colour), in the source's units.
+The clips, a frame each pose:
+  Idle  (EG_CAT_STAND frames) standing, the head looking round a little
+  Walk  (EG_CAT_STEP frames) the diagonal gait, a full stride
+  Sit   (EG_CAT_SITS frames) the sit: haunches on the ground, the front legs straight and close
+        together, the tail curled round the front paws. The head is turned SIT_LOOK to the cat's left
+        (the game turns the body so the head faces who it looks at, and the shot sits the camera
+        there, so the body shows in three-quarter view). Over the clip it blinks twice, turns its
+        head away and back, twitches an ear and flicks its tail's tip.
 
-Run Blender in background with --disable-autoexec; the source files are data only:
-  Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
-    --python verse/tools/assets/cat_bake.py -- ANIMALS_SOURCE_ROOT OUTPUT_DIR [PREVIEW_DIR]
-ANIMALS_SOURCE_ROOT is the ultimate-animals-source snapshot (it holds Blends/Fox.blend).
-It also writes Cat.glb, the shaped cat on its rig with the Fox's Idle and Walk clips (its colours as
-materials), the interchange artifact the asset registry records (openagents/beasts/cat).
-With PREVIEW_DIR it also renders a still of each clip's first frame there, for a look.
+Each frame is Cat-e2-N.bin (N runs through the clips in order), the triangle record animal_bake.py
+writes (<If count, seconds> then <6f4s> a corner: position x, z, -y, the normal likewise, sRGB
+colour), in metres, the head toward +Z. It also writes Cat.glb (the sit's first frame, vertex
+coloured), the interchange artifact the asset registry records (openagents/beasts/cat).
+
+  Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \\
+    --python verse/tools/assets/cat_bake.py -- OUTPUT_DIR [PREVIEW_DIR]
+With PREVIEW_DIR it also renders stills of the sit and the stand there, for a look.
 """
-import bpy, math, struct, sys
+import bpy, bmesh, math, struct, sys
 from pathlib import Path
 from mathutils import Matrix, Vector
 
 args = sys.argv[sys.argv.index('--') + 1:]
-root, output = Path(args[0]), Path(args[1])
-preview = Path(args[2]) if len(args) > 2 else None
-output.mkdir(parents=True, exist_ok=True)
-FRAMES = 10
-CLIPS = [('Idle', False), ('Walk', False), ('Idle', True)]   # the third is Sit, over the Idle clip
-# grey tabby: the coat, a white muzzle, chest and paws, dark ear tips and nose
-COAT = {'Main': (0.26, 0.25, 0.24), 'Main_Light': (0.80, 0.79, 0.76), 'Black': (0.11, 0.11, 0.12),
-        'Grey': (0.62, 0.62, 0.60), 'Eyes': (0.02, 0.02, 0.02)}
+output = Path(args[0]); output.mkdir(parents=True, exist_ok=True)
+preview = Path(args[1]) if len(args) > 1 else None
+STAND, STEP, SITS = 8, 8, 48                  # frames a clip (everglade/creatures/cat.coax)
+STAND_S, STEP_S, SIT_S = 2.4, 0.8, 8.0        # seconds a loop
+SIT_LOOK = 0.8                                 # rad the sitting cat's head turns to its left
+
+BLACK = (0.022, 0.022, 0.026); WHITE = (0.80, 0.80, 0.77); NOSE = (0.60, 0.30, 0.32)
+IRIS = (0.30, 0.50, 0.04); PUPIL = (0.004, 0.004, 0.004); INNER = (0.24, 0.12, 0.13); WHISKER = (0.75, 0.75, 0.72)
 
 def srgb(v):
     return max(0, min(255, round(255 * (12.92*v if v <= .0031308 else 1.055*v**(1/2.4)-.055))))
+def rgba(c): return bytes([*(srgb(v) for v in c), 255])
 
-bpy.ops.wm.open_mainfile(filepath=str(root / 'Blends' / 'Fox.blend'), load_ui=False)
+class Cat:
+    def __init__(self): self.corners = []
+    def emit(self, bm, m, colour, flat=False):
+        bm.transform(m); bmesh.ops.triangulate(bm, faces=bm.faces[:]); bm.normal_update()
+        c = rgba(colour)
+        for f in bm.faces:
+            for v in f.verts:
+                self.corners.append((v.co.copy(), (f.normal if flat else v.normal).copy(), c))
+        bm.free()
+    def ellipsoid(self, at, radii, colour, m=Matrix.Identity(4), rot=Matrix.Identity(4), subdiv=2):
+        bm = bmesh.new(); bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=1.0)
+        self.emit(bm, m @ Matrix.Translation(Vector(at)) @ rot @ Matrix.Diagonal((*radii, 1)), colour)
+    def tube(self, points, r0, r1, colour, m=Matrix.Identity(4), sides=8):
+        # a closed tube through the points, its radius r0 at the start to r1 at the end, capped
+        pts = [m @ Vector(p) for p in points]; n = len(pts); bm = bmesh.new(); rings = []
+        for i, p in enumerate(pts):
+            d = (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)]).normalized()
+            a = Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))
+            u = d.cross(a).normalized(); w = d.cross(u).normalized(); r = r0 + (r1 - r0) * i / (n - 1)
+            rings.append([bm.verts.new(p + (u * math.cos(k * 2 * math.pi / sides) + w * math.sin(k * 2 * math.pi / sides)) * r) for k in range(sides)])
+        for i in range(n - 1):
+            for k in range(sides):
+                bm.faces.new((rings[i][k], rings[i][(k + 1) % sides], rings[i + 1][(k + 1) % sides], rings[i + 1][k]))
+        start = bm.verts.new(pts[0] - (pts[1] - pts[0]).normalized() * r0 * 0.6); end = bm.verts.new(pts[-1] + (pts[-1] - pts[-2]).normalized() * r1 * 0.8)
+        for k in range(sides):
+            bm.faces.new((rings[0][(k + 1) % sides], rings[0][k], start)); bm.faces.new((rings[-1][k], rings[-1][(k + 1) % sides], end))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        self.emit(bm, Matrix.Identity(4), colour)
+    def ear(self, base, tilt, scale, colour, m, ahead=0.0):
+        # a triangular ear: a three-sided pyramid, one flat face forward, tipped out by tilt
+        bm = bmesh.new()
+        w, d, h = 0.027 * scale, 0.016 * scale, 0.052 * scale
+        a = bm.verts.new((-w, -d * 0.35 + ahead, 0)); b = bm.verts.new((w, -d * 0.35 + ahead, 0)); c = bm.verts.new((0, d, 0)); t = bm.verts.new((0, ahead * 0.5, h))
+        for f in ((a, b, t), (b, c, t), (c, a, t), (a, c, b)): bm.faces.new(f)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        self.emit(bm, m @ Matrix.Translation(Vector(base)) @ Matrix.Rotation(tilt, 4, 'Y') @ Matrix.Rotation(-0.12, 4, 'X'), colour, flat=True)
+    def whisker(self, root, tip, m):
+        bm = bmesh.new(); r = m @ Vector(root); t = m @ Vector(tip); up = Vector((0, 0, 0.0007))
+        q = [bm.verts.new(r - up), bm.verts.new(r + up), bm.verts.new(t + up * 0.5), bm.verts.new(t - up * 0.5)]
+        bm.faces.new(q); bm.faces.new(tuple(reversed([bm.verts.new(v.co) for v in q])))
+        self.emit(bm, Matrix.Identity(4), WHISKER, flat=True)
+
+def head(cat, neck, yaw, pitch, blink, ear_twitch):
+    # the head, in a frame at the neck: +X the cat's left... its right is -X, it looks along -Y
+    m = Matrix.Translation(Vector(neck)) @ Matrix.Rotation(yaw, 4, 'Z') @ Matrix.Rotation(pitch, 4, 'X')
+    cat.ellipsoid((0, 0, 0.040), (0.064, 0.056, 0.053), BLACK, m)            # the round skull
+    cat.ellipsoid((0, -0.016, 0.022), (0.062, 0.043, 0.034), BLACK, m)       # the wide cheeks
+    for s in (-1, 1):
+        cat.ellipsoid((s * 0.0125, -0.053, 0.019), (0.016, 0.013, 0.012), WHITE, m, subdiv=1)   # muzzle
+        lid = 0.12 if blink else 1.0
+        cat.ellipsoid((s * 0.025, -0.046, 0.047), (0.0145, 0.0085, 0.0135 * lid), IRIS, m, subdiv=2)
+        cat.ellipsoid((s * 0.025, -0.0535, 0.047), (0.004, 0.0025, 0.0095 * lid), PUPIL, m, subdiv=1)
+        tw = ear_twitch if s < 0 else 0.0
+        cat.ear((s * 0.037, -0.004, 0.072), s * (0.30 + tw), 1.0, BLACK, m)
+        cat.ear((s * 0.037, -0.0085, 0.077), s * (0.30 + tw), 0.62, INNER, m)
+        for k in (-1, 0, 1):
+            cat.whisker((s * 0.022, -0.058, 0.019 + k * 0.002), (s * 0.080, -0.064 + abs(k) * 0.004, 0.024 + k * 0.009), m)
+    cat.ellipsoid((0, -0.047, 0.007), (0.014, 0.011, 0.009), WHITE, m, subdiv=1)     # the chin
+    cat.ellipsoid((0, -0.0605, 0.031), (0.0072, 0.005, 0.0048), NOSE, m, subdiv=1)  # the nose
+
+def smooth(t): t = max(0.0, min(1.0, t)); return t * t * (3 - 2 * t)
+
+def sit(t, f):
+    cat = Cat()
+    cat.ellipsoid((0, 0.048, 0.072), (0.066, 0.068, 0.072), BLACK)          # the rump on the ground
+    for s in (-1, 1):
+        cat.ellipsoid((s * 0.047, 0.028, 0.056), (0.042, 0.074, 0.056), BLACK)   # the haunches
+        cat.ellipsoid((s * 0.055, -0.022, 0.010), (0.016, 0.030, 0.011), WHITE, subdiv=1)   # hind paws
+    tilt = Matrix.Rotation(-0.28, 4, 'X')
+    cat.ellipsoid((0, -0.004, 0.148), (0.057, 0.054, 0.100), BLACK, rot=tilt)     # the upright chest
+    cat.ellipsoid((0, -0.043, 0.162), (0.041, 0.028, 0.074), WHITE, rot=tilt)     # the white bib
+    for s in (-1, 1):
+        cat.tube([(s * 0.021, -0.040, 0.125), (s * 0.020, -0.050, 0.060)], 0.0135, 0.0125, BLACK)
+        cat.tube([(s * 0.020, -0.049, 0.064), (s * 0.019, -0.056, 0.018)], 0.0125, 0.012, WHITE)
+        cat.ellipsoid((s * 0.019, -0.065, 0.010), (0.0155, 0.022, 0.011), WHITE, subdiv=1)  # front paws
+    # the tail: out behind, round the cat's left side and over the front paws; its tip flicks
+    flick = 0.010 * math.sin(2 * math.pi * t * 3)
+    path = [(0, 0.098, 0.04), (0.04, 0.122, 0.02), (0.084, 0.094, 0.0145), (0.104, 0.030, 0.013),
+            (0.092, -0.038, 0.013), (0.058, -0.080, 0.013 + flick * 0.3), (0.018 + flick, -0.094, 0.016 + abs(flick))]
+    pts = []
+    for i in range(len(path) - 1):
+        a, b = Vector(path[i]), Vector(path[i + 1])
+        for k in range(3): pts.append(a.lerp(b, k / 3))
+    pts.append(Vector(path[-1]))
+    cat.tube(pts, 0.0125, 0.0085, BLACK)
+    # the head: SIT_LOOK to its left, turning away a little and back in the middle of the clip
+    turn = 0.32 * (smooth((t - 0.30) / 0.12) - smooth((t - 0.58) / 0.12))
+    nod = 0.05 * math.sin(2 * math.pi * t * 2)
+    blink = f in (9, 10, 37)
+    twitch = 0.35 if f in (23, 24) else 0.0
+    head(cat, (0, -0.032, 0.212), SIT_LOOK + turn, nod, blink, twitch)
+    return cat
+
+def standing(t, walking):
+    cat = Cat(); bob = 0.004 * math.sin(4 * math.pi * t) if walking else 0.0
+    cat.ellipsoid((0, 0.020, 0.150 + bob), (0.054, 0.122, 0.058), BLACK)     # the body
+    cat.ellipsoid((0, 0.075, 0.150 + bob), (0.056, 0.060, 0.060), BLACK)     # the hips
+    cat.ellipsoid((0, -0.078, 0.128 + bob), (0.040, 0.038, 0.050), WHITE)    # the chest
+    for front, y in ((True, -0.072), (False, 0.098)):
+        for s in (-1, 1):
+            phase = (0.0 if (s > 0) == front else math.pi)
+            a = 0.42 * math.sin(2 * math.pi * t + phase) if walking else 0.0
+            hip = Vector((s * 0.030, y, 0.128 + bob)); L = 0.118
+            down = Vector((0, L * math.sin(a), -L * math.cos(a)))
+            knee = hip + down * 0.55; foot = hip + down
+            cat.tube([hip, knee], 0.0145, 0.0125, BLACK)
+            cat.tube([knee, foot], 0.0125, 0.012, WHITE if front else BLACK)
+            cat.ellipsoid((foot.x, foot.y - 0.008, max(foot.z - 0.002, 0.010)), (0.015, 0.021, 0.0105), WHITE, subdiv=1)
+    sway = 0.03 * math.sin(2 * math.pi * t)
+    tail = [(0, 0.128, 0.165), (sway * 0.3, 0.160, 0.195), (sway * 0.7, 0.180, 0.240), (sway, 0.182, 0.285), (sway * 1.4, 0.165, 0.315)]
+    cat.tube([Vector(p) for p in tail], 0.012, 0.009, BLACK)
+    look = 0.25 * math.sin(2 * math.pi * t) if not walking else 0.0
+    head(cat, (0, -0.110, 0.168 + bob), look, -0.05, False, 0.0)
+    return cat
+
+def write(cat, index, seconds):
+    data = bytearray()
+    for p, n, c in cat.corners:
+        data.extend(struct.pack('<6f4s', p.x, p.z, -p.y, n.x, n.z, -n.y, c))
+    (output / f'Cat-e2-{index}.bin').write_bytes(struct.pack('<If', len(cat.corners), seconds) + data)
+    return len(cat.corners)
+
+index = 0
+for f in range(STAND): write(standing(f / STAND, False), index, STAND_S); index += 1
+for f in range(STEP): write(standing(f / STEP, True), index, STEP_S); index += 1
+for f in range(SITS): n = write(sit(f / SITS, f), index, SIT_S); index += 1
+print(f'Cat: {index} frames, the sit {n // 3} triangles', flush=True)
+
+def mesh_of(cat, name):
+    me = bpy.data.meshes.new(name); verts = [tuple(p) for p, _, _ in cat.corners]
+    me.from_pydata(verts, [], [(i, i + 1, i + 2) for i in range(0, len(verts), 3)])
+    col = me.color_attributes.new('Col', 'BYTE_COLOR', 'CORNER')
+    for i, (_, _, c) in enumerate(cat.corners): col.data[i].color_srgb = (c[0] / 255, c[1] / 255, c[2] / 255, 1)
+    me.update(); ob = bpy.data.objects.new(name, me); bpy.context.scene.collection.objects.link(ob)
+    for poly in me.polygons: poly.use_smooth = True
+    return ob
+
+bpy.ops.wm.read_factory_settings(use_empty=True)
 sc = bpy.context.scene
-arm = next(o for o in sc.objects if o.type == 'ARMATURE')
-mesh_obj = next(o for o in sc.objects if o.type == 'MESH' and o.parent == arm)
-arm.animation_data.use_nla = False   # the strips would key the sit back; one clip plays at a time
-for o in list(sc.objects):
-    if o.type == 'MESH' and o is not mesh_obj: bpy.data.objects.remove(o)
-colors = {}
-for m in mesh_obj.data.materials:
-    if m.name not in COAT: raise ValueError(f'Fox has an unknown material {m.name}')
-    colors[m.name] = bytes([*(srgb(v) for v in COAT[m.name]), 255])
-
-# ---- the cat's shape, on the rest mesh and the rig together (the clips are keyed against the rest
-# pose, so they play on the new shape): the legs squashed shorter below the shoulder, then the face
-LEG_TOP = 1.45; LEG_K = 0.72      # below LEG_TOP the height is LEG_K of the fox's
-def squash(p):
-    q = p.copy(); q.z = q.z * LEG_K if q.z < LEG_TOP else q.z - LEG_TOP * (1 - LEG_K); return q
-bpy.context.view_layer.objects.active = arm
-bpy.ops.object.mode_set(mode='EDIT')
-ends = {b.name: (squash(b.head), squash(b.tail)) for b in arm.data.edit_bones}
-for b in arm.data.edit_bones:
-    if b.use_connect: b.tail = ends[b.name][1]
-for b in arm.data.edit_bones:
-    if not b.use_connect: b.head, b.tail = ends[b.name]
-bpy.ops.object.mode_set(mode='OBJECT')
-bones = arm.data.bones
-groups = {g.index: g.name for g in mesh_obj.vertex_groups}
-def weight_of(v, prefix):
-    return sum(g.weight for g in v.groups if groups.get(g.group, '').startswith(prefix))
-head = bones['Head'].head_local
-eye_y = head.y - 0.16            # the muzzle starts in front of the eyes
-for v in mesh_obj.data.vertices:
-    co = squash(v.co)
-    hw = weight_of(v, 'Head') + weight_of(v, 'Neck3')
-    if hw > 0.5 and co.y < eye_y:
-        # the muzzle: pulled back toward the eyes and a little up, so the face is round and short
-        co.y = eye_y + (co.y - eye_y) * 0.22
-        co.z = co.z + (head.z - 0.12 - co.z) * 0.22
-    if hw > 0.5:
-        # a cat's head is broad for its size
-        co.x *= 1.22
-    ew = weight_of(v, 'Ear')
-    if ew > 0.5:
-        base = bones['Ear1.' + ('L' if co.x > 0 else 'R')].head_local
-        co = base + (co - base) * 0.66
-    tw = weight_of(v, 'Tail')
-    if tw > 0.5:
-        # the brush thinned to a cat's tail round its bones' line
-        best = None
-        for name in ('Tail1', 'Tail2', 'Tail3', 'Tail4', 'Tail5', 'Tail6', 'Tail7', 'Tail8'):
-            a, b = bones[name].head_local, bones[name].tail_local
-            ab = b - a; t = max(0.0, min(1.0, (co - a).dot(ab) / ab.length_squared)); p = a + ab * t
-            if best is None or (co - p).length < (co - best).length: best = p
-        co = best + (co - best) * 0.42
-    v.co = co
-mesh_obj.data.update()
-# the tabby's stripes: bands of darker coat across the back, the flanks, the legs and the tail (the
-# face stays plain), each face by where it sits at rest
-STRIPE = bytes([*(srgb(v) for v in (0.085, 0.085, 0.09)), 255])
-stripe = set()
-for poly in mesh_obj.data.polygons:
-    if mesh_obj.data.materials[poly.material_index].name != 'Main': continue
-    v0 = mesh_obj.data.vertices[poly.vertices[0]]
-    if weight_of(v0, 'Head') + weight_of(v0, 'Neck') + weight_of(v0, 'Ear') > 0.3: continue
-    c = poly.center
-    band = math.sin(c.y * 7.0 + abs(c.x) * 2.5 - c.z * 1.5)
-    if band > 0.45: stripe.add(poly.index)
-
-# ---- the sit: a pose laid over whatever the clip has keyed at this frame
-PITCH = math.radians(38)   # the body tilts up about the hips
-DROP = 0.84                # and the hips come down
-def pose_matrix(name):
-    return arm.pose.bones[name].matrix.copy()
-def set_pose(name, m):
-    arm.pose.bones[name].matrix = m
-    bpy.context.view_layer.update()
-def about(pivot, rot):
-    return Matrix.Translation(pivot) @ rot @ Matrix.Translation(-pivot)
-def sit():
-    hips = arm.pose.bones['BackShoulder.L'].head.copy(); hips.x = 0
-    lift = Matrix.Translation(Vector((0, 0, -DROP))) @ about(hips, Matrix.Rotation(-PITCH, 4, 'X'))
-    set_pose('Body', lift @ pose_matrix('Body'))
-    # the front paws under the chest, on the ground
-    for side in ('L', 'R'):
-        shoulder = arm.pose.bones['FrontUpperLeg.' + side].head
-        ik = pose_matrix('IKFrontLeg.' + side)
-        ik.translation = Vector((ik.translation.x, shoulder.y - 0.02, ik.translation.z))
-        set_pose('IKFrontLeg.' + side, ik)
-    # the hind paws flat on the ground beside the hips, a little forward
-    for side in ('L', 'R'):
-        hip = arm.pose.bones['BackLeg.' + side].head
-        ik = pose_matrix('IKBackLeg.' + side)
-        ik.translation = Vector((ik.translation.x * 1.15, hip.y - 0.45, bones['IKBackLeg.' + side].head_local.z))
-        set_pose('IKBackLeg.' + side, ik)
-    # the neck levels the head again: the cat looks ahead, not up
-    neck = arm.pose.bones['Neck1'].head
-    set_pose('Neck1', about(neck, Matrix.Rotation(PITCH * 0.55, 4, 'X')) @ pose_matrix('Neck1'))
-    nb = arm.pose.bones['Neck3'].head
-    set_pose('Neck3', about(nb, Matrix.Rotation(PITCH * 0.45, 4, 'X')) @ pose_matrix('Neck3'))
-    # the tail lies along the ground and curls round the side
-    for k, name in enumerate(('Tail1', 'Tail2', 'Tail3', 'Tail4', 'Tail5', 'Tail6', 'Tail7', 'Tail8')):
-        p = arm.pose.bones[name].head
-        bend = Matrix.Rotation(math.radians(24 if k == 0 else 2), 4, 'X') @ Matrix.Rotation(math.radians(0 if k < 2 else 22), 4, 'Z')
-        set_pose(name, about(p, bend) @ pose_matrix(name))
-
-counts = []
-for ci, (clip, sitting) in enumerate(CLIPS):
-    action = bpy.data.actions.get(clip)
-    if action is None: raise ValueError(f'Fox has no {clip} clip')
-    arm.animation_data.action = action
-    span = action.frame_range[1] - action.frame_range[0]
-    seconds = span / sc.render.fps
-    for frame in range(FRAMES):
-        at = action.frame_range[0] + span * frame / FRAMES
-        arm.animation_data.action = action
-        sc.frame_set(math.floor(at), subframe=at - math.floor(at))
-        if sitting:
-            # the clip's pose at this frame held, then the sit laid over it (an action would key it back)
-            held = {pb.name: (pb.location.copy(), pb.rotation_quaternion.copy(), pb.scale.copy()) for pb in arm.pose.bones}
-            arm.animation_data.action = None
-            for pb in arm.pose.bones: pb.location, pb.rotation_quaternion, pb.scale = held[pb.name]
-            bpy.context.view_layer.update(); sit()
-        deps = bpy.context.evaluated_depsgraph_get(); data = bytearray(); count = 0
-        ev = mesh_obj.evaluated_get(deps); mesh = ev.to_mesh(); mesh.calc_loop_triangles()
-        normal_matrix = ev.matrix_world.to_3x3().inverted().transposed()
-        for triangle in mesh.loop_triangles:
-            color = STRIPE if triangle.polygon_index in stripe else colors[mesh.materials[mesh.polygons[triangle.polygon_index].material_index].name]
-            for li in triangle.loops:
-                loop = mesh.loops[li]; p = ev.matrix_world @ mesh.vertices[loop.vertex_index].co
-                normal = (normal_matrix @ loop.normal).normalized()
-                data.extend(struct.pack('<6f4s', p.x, p.z, -p.y, normal.x, normal.z, -normal.y, color)); count += 1
-        ev.to_mesh_clear()
-        counts.append(count)
-        (output / f'Cat-e2-{ci * FRAMES + frame}.bin').write_bytes(struct.pack('<If', count, seconds) + data)
-        if preview and frame == 0:
-            for view, yaw in (('side', 1.5708), ('front', 0.35)):
-                cam = bpy.data.objects.get('cb_cam') or bpy.data.objects.new('cb_cam', bpy.data.cameras.new('cb_cam'))
-                if cam.name not in sc.collection.objects: sc.collection.objects.link(cam)
-                sc.camera = cam; c = Vector((0, -0.4, 1.4))
-                cam.location = c + Vector((math.sin(yaw) * 7, -math.cos(yaw) * 7, 0.8))
-                cam.rotation_euler = (c - cam.location).to_track_quat('-Z', 'Y').to_euler()
-                sc.render.engine = 'BLENDER_WORKBENCH'; sc.display.shading.light = 'STUDIO'; sc.display.shading.color_type = 'MATERIAL'
-                for m in mesh_obj.data.materials: m.diffuse_color = (*COAT[m.name], 1)
-                sc.render.resolution_x = 640; sc.render.resolution_y = 480
-                sc.render.filepath = str(preview / f'cat-{["idle", "walk", "sit"][ci]}-{view}.png')
-                bpy.ops.render.render(write_still=True)
-    print(f'Cat {["Idle", "Walk", "Sit"][ci]}: {counts[-1]} triangle vertices, {seconds:.3f}s', flush=True)
-if len(set(counts)) != 1 or not counts[0]: raise ValueError(f'Cat: unstable frame topology {counts}')
-# the registry's interchange artifact: the shaped cat at rest, its rig and the clips it plays
-for m in mesh_obj.data.materials:
-    m.use_nodes = True; bsdf = next((n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
-    if bsdf: bsdf.inputs['Base Color'].default_value = (*COAT[m.name], 1)
-keep = {'Idle', 'Walk'}
-for a in list(bpy.data.actions):
-    if a.name not in keep: bpy.data.actions.remove(a)
-for o in list(sc.objects):
-    if o not in (arm, mesh_obj): bpy.data.objects.remove(o)
-arm.animation_data.action = None
-bpy.ops.export_scene.gltf(filepath=str(output / 'Cat.glb'), export_format='GLB', export_animations=True, export_animation_mode='ACTIONS', export_apply=False)
+ob = mesh_of(sit(0, 0), 'Cat')
+mat = bpy.data.materials.new('Cat'); mat.use_nodes = True
+nodes = mat.node_tree.nodes; attr = nodes.new('ShaderNodeVertexColor'); attr.layer_name = 'Col'
+mat.node_tree.links.new(attr.outputs['Color'], nodes['Principled BSDF'].inputs['Base Color']); ob.data.materials.append(mat)
+bpy.ops.export_scene.gltf(filepath=str(output / 'Cat.glb'), export_format='GLB', export_animations=False)
+if preview:
+    preview.mkdir(parents=True, exist_ok=True)
+    cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam')); sc.collection.objects.link(cam); sc.camera = cam
+    sc.render.engine = 'BLENDER_WORKBENCH'; sc.display.shading.light = 'STUDIO'; sc.display.shading.color_type = 'VERTEX'
+    sc.render.resolution_x = 640; sc.render.resolution_y = 640
+    shots = [('sit-three-quarter', sit(0, 0), SIT_LOOK, 0.16), ('sit-side', sit(0, 0), 1.5708, 0.14), ('sit-blink', sit(0.2, 9), SIT_LOOK, 0.16), ('stand', standing(0, False), 0.7, 0.14), ('walk', standing(0.25, True), 1.5708, 0.14)]
+    for name, cat, yaw, aim in shots:
+        for o in list(sc.objects):
+            if o.type == 'MESH': bpy.data.objects.remove(o)
+        mesh_of(cat, name); c = Vector((0, -0.01, aim))
+        cam.location = c + Vector((math.sin(yaw) * 0.75, -math.cos(yaw) * 0.75, 0.05))
+        cam.rotation_euler = (c - cam.location).to_track_quat('-Z', 'Y').to_euler()
+        sc.render.filepath = str(preview / f'cat-{name}.png'); bpy.ops.render.render(write_still=True)

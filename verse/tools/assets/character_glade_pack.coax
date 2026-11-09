@@ -857,9 +857,9 @@ gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
   }
   if size_at<0 { return 1; }
 
-  first:[GP_HORSE_FRAMES]int; count:[GP_HORSE_FRAMES]int;
+  first:[GP_CAT_FRAMES]int; count:[GP_CAT_FRAMES]int;   // the most frames a model appends (the cat's 64; the horse's 36)
   if horse { gp_horse_meshes(w[..],frames,first[..],count[..]); } else if kitty { gp_cat_meshes(w[..],frames,first[..],count[..]); } else { gp_familiar_meshes(w[..],first[..],count[..]); }
-  extra:[4096]u8; c:[1]Sb; c[0]=sb(extra[..]);
+  extra:[8192]u8; c:[1]Sb; c[0]=sb(extra[..]);
   sb_byte(c[..],'\n');
   if horse { gp_horse_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else if kitty { gp_cat_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else { gp_familiar_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); }
   appendix:=sb_text(c[..]);

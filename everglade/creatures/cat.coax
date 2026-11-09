@@ -1,7 +1,9 @@
 // Everglade's cat: ambient wildlife every Everglade zone can place. It wanders round its home, sits
 // a while, washes its time away standing, and when a player comes near it stops, sits and turns to
-// look at them. The game layer owns the cat's frames in a zone's pack (glade/cat0..29: Idle, Walk and
-// Sit, ten frames each; verse/tools/assets/cat_pack.coax from cat_bake.py) and what it does; a zone
+// look at them. The game layer owns the cat's frames in a zone's pack (glade/cat0..63: Idle, Walk and
+// Sit in turn, EG_CAT_CLIP_N frames each; verse/tools/assets/cat_pack.coax from cat_bake.py) and what
+// it does. The sitting cat's head is turned EG_CAT_LOOK to its left, so a cat that looks at someone
+// turns its body that much away and they see it in three-quarter view. A zone
 // places its cats (eg_cat_place), steps them with the nearest player (eg_cat_step) and draws the frame
 // eg_cat_frame names at the cat's place and yaw. A cat is the page's own: no room moves it, and the
 // same seed and inputs give the same cat. Nothing here knows a zone.
@@ -12,10 +14,12 @@
 #module "everglade.cat";
 #load "../../aethyr/rand.coax";
 
-EG_CAT_FRAMES :: 30;
-EG_CAT_CLIP :: 10;                     // frames a clip
+EG_CAT_FRAMES :: 64;
 EG_CAT_IDLE :: 0; EG_CAT_WALK :: 1; EG_CAT_SIT :: 2;
-EG_CAT_CLIP_S :: [3] f32.[3.333, 1.067, 3.333];   // each clip's loop, as cat_bake.py baked it
+EG_CAT_CLIP_AT :: [3] int.[0, 8, 16];        // each clip's first frame, as cat_bake.py baked them
+EG_CAT_CLIP_N :: [3] int.[8, 8, 48];         // and its frames
+EG_CAT_CLIP_S :: [3] f32.[2.4, 0.8, 8.0];    // and its loop, in seconds
+EG_CAT_LOOK :: 0.8;                          // rad the sitting cat's head turns to its left
 EG_CAT_PACE :: 0.45;                   // m/s at a walk
 EG_CAT_TURN :: 3.0;                    // rad/s it turns
 EG_CAT_ROAM :: 5.0;                    // m from home it wanders at most
@@ -58,8 +62,8 @@ eg_cat_catalog :: (f: [] EgCatFrames, text: string) {
 }
 #test "the pack's cat rows" {
   f: [1] EgCatFrames;
-  eg_cat_catalog(f[..], "C glade/horse0 1 2 247 9 0 0\nC glade/cat0 100 30 245 7000 0 0\nC glade/cat29 400 33 245 7000 0 0\n");
-  #assert f[0].n == 2 && f[0].first[0] == 100 && f[0].count[0] == 30 && f[0].word[0] == 7000 && f[0].first[29] == 400;
+  eg_cat_catalog(f[..], "C glade/horse0 1 2 247 9 0 0\nC glade/cat0 100 30 245 7000 0 0\nC glade/cat63 400 33 245 7000 0 0\n");
+  #assert f[0].n == 2 && f[0].first[0] == 100 && f[0].count[0] == 30 && f[0].word[0] == 7000 && f[0].first[63] == 400;
 }
 
 eg_cat_wrap :: (a: f32) -> f32 { tau: f32 = 6.2831853; return a - tau * floor((a + 3.14159265) / tau); }
@@ -99,8 +103,8 @@ eg_cat_step :: (c: [] EgCat, now: f32, dt: f32, near: bool, px: f32, pz: f32) {
     if c[0].noticed { c[0].noticed = false; c[0].until = now + EG_CAT_IDLE_S[0]; }
   }
   if c[0].noticed {
-    // it sits where it is and turns to look at them
-    c[0].mode = EG_CAT_SIT; c[0].yaw = eg_cat_turn(c[0].yaw, eg_cat_heading(dx, dz), dt);
+    // it sits where it is and turns so its head looks at them
+    c[0].mode = EG_CAT_SIT; c[0].yaw = eg_cat_turn(c[0].yaw, eg_cat_heading(dx, dz) - f32(EG_CAT_LOOK), dt);
     return;
   }
   if c[0].mode == EG_CAT_WALK {
@@ -129,10 +133,10 @@ eg_cat_step :: (c: [] EgCat, now: f32, dt: f32, near: bool, px: f32, pz: f32) {
 
 // Its frame now: its clip round its loop.
 eg_cat_frame :: (c: EgCat, now: f32) -> int {
-  clip := c.mode; span := EG_CAT_CLIP_S[clip];
-  f := cast(int) floor(now / span * f32(EG_CAT_CLIP)) % EG_CAT_CLIP;
-  if f < 0 { f += EG_CAT_CLIP; }
-  return clip * EG_CAT_CLIP + f;
+  clip := c.mode; span := EG_CAT_CLIP_S[clip]; n := EG_CAT_CLIP_N[clip];
+  f := cast(int) floor(now / span * f32(n)) % n;
+  if f < 0 { f += n; }
+  return EG_CAT_CLIP_AT[clip] + f;
 }
 
 #test "a cat sits, stands, wanders near home, and comes back to sitting" {
@@ -151,7 +155,7 @@ eg_cat_frame :: (c: EgCat, now: f32) -> int {
   now: f32 = 0;
   for i: 0..<40 { now += 0.05; eg_cat_step(c[..], now, 0.05, true, -2, 0); }
   #assert c[0].noticed && c[0].mode == EG_CAT_SIT;
-  #assert abs(eg_cat_wrap(c[0].yaw - eg_cat_heading(-2 - c[0].x, -c[0].z))) < 0.05;   // it looks at them
+  #assert abs(eg_cat_wrap(c[0].yaw + f32(EG_CAT_LOOK) - eg_cat_heading(-2 - c[0].x, -c[0].z))) < 0.05;   // its head looks at them
   for i: 0..<200 { now += 0.05; eg_cat_step(c[..], now, 0.05, true, 20, 0); }
   #assert !c[0].noticed;
 }
@@ -159,6 +163,7 @@ eg_cat_frame :: (c: EgCat, now: f32) -> int {
   c: [1] EgCat; eg_cat_hold(c[..], 1, 2, 3.0);
   for i: 0..<100 { eg_cat_step(c[..], f32(i) * 0.1, 0.1, true, 1.5, 2.5); }
   #assert c[0].x == 1 && c[0].z == 2 && c[0].yaw == 3.0 && c[0].mode == EG_CAT_SIT;
-  #assert eg_cat_frame(c[0], 0) == 20 && eg_cat_frame(c[0], 3.3) == 29 && eg_cat_frame(c[0], 3.34) == 20;
-  c[0].mode = EG_CAT_WALK; #assert eg_cat_frame(c[0], 0.11) == 11;
+  #assert eg_cat_frame(c[0], 0) == 16 && eg_cat_frame(c[0], 7.95) == 63 && eg_cat_frame(c[0], 8.01) == 16;
+  c[0].mode = EG_CAT_WALK; #assert eg_cat_frame(c[0], 0.11) == 9;
+  c[0].mode = EG_CAT_IDLE; #assert eg_cat_frame(c[0], 2.39) == 7;
 }

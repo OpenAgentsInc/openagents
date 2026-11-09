@@ -208,14 +208,18 @@ sheen and hair highlights.
 ### The cat (#13112)
 
 The glade has a cat (`everglade/creatures/cat.coax`, the game layer's, wired in by
-`apps/openagents-web/everglade2-wild.coax`). It sits, stands, wanders within 5 m of its home
-south-east of where you start, and when you come within 4 m it sits and turns to look at you.
+`apps/openagents-web/everglade2-wild.coax`): a black and white tuxedo cat. It sits, stands, wanders
+within 5 m of its home south-east of where you start, and when you come within 4 m it sits and
+turns to look at you. Its sitting head is turned 0.8 rad to its left (`EG_CAT_LOOK`), so the cat
+turns its body that much away from you and you see the sit in three-quarter view.
 `?stage=cat` is its shot: it sits on the glade's path and looks at a low camera that closes in
-over ten seconds, with no HUD and no room. The pack holds its 30 frames as `glade/cat0..29`
-(Idle, Walk and Sit; `assets/registry/README.md` has where the cat comes from). Append them to the
-pack with the tool, then rebuild the `.vpk3`:
+over ten seconds, with no HUD and no room. The pack holds its 64 frames as `glade/cat0..63`
+(Idle 8, Walk 8 and Sit 48; `assets/registry/README.md` has how the cat is built). Bake the frames,
+append them to the pack with the tool, then rebuild the `.vpk3`:
 
 ```sh
+Blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
+  --python verse/tools/assets/cat_bake.py -- ~/.openagents/assets/cache/cat-e2
 coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-cat \
   BASE.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack ~/.openagents/assets/cache/cat-e2
 coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp4 --size 1920x1080 --seconds 10

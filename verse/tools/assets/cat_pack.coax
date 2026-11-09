@@ -1,14 +1,12 @@
-// Everglade's cat (everglade/creatures/cat.coax), from cat_bake.py's Cat-e2-N.bin: Idle, Walk and Sit,
-// GP_CAT_CLIP frames each, as glade/cat0..29. Each frame in model-space metres: its first frame's middle
-// over the origin, its paws on it, the head toward +Z, scaled from the source by GP_CAT_SCALE so the cat
-// stands about 0.3 m at the head and 0.5 m nose to rump. They draw on the shared moved-mesh record
+// Everglade's cat (everglade/creatures/cat.coax), from cat_bake.py's Cat-e2-N.bin: Idle (8 frames), Walk
+// (8) and Sit (48), as glade/cat0..63. Each frame in model-space metres: its first frame's middle over
+// the origin, its paws on it, the head toward +Z. The tuxedo cat sits about 0.3 m to its ear tips. They draw on the shared moved-mesh record
 // (charactercreator.coax mode 18), shaded by their vertex colour alone (kind 9, as Everglade II's wolves). Loaded by character_glade_pack.coax:
 //   coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-cat IN.pack OUT.pack FRAMES_DIR
 
 GP_CAT_SOURCE :: 245;   // (246 the dragon's, 247 the horse's)
-GP_CAT_FRAMES :: 30;
-GP_CAT_CLIP :: 10;
-GP_CAT_SCALE :: 0.17;
+GP_CAT_FRAMES :: 64;
+GP_CAT_SCALE :: 1.0;   // cat_bake.py bakes it in metres
 GP_CAT_KIND :: 9;       // gpu/everglade2.coax: a model shaded by its vertex colour alone (everglade2_pack.coax GP_E2_MODEL)
 
 gp_cat_meshes :: (w:[]Gp,root:string,first:[]int,count:[]int) {
@@ -37,7 +35,7 @@ gp_cat_meshes :: (w:[]Gp,root:string,first:[]int,count:[]int) {
 
 gp_cat_catalog :: (c:[]Sb,first:[]int,count:[]int,index_base:int,vertex_word:int) {
   sb_put(c,"L "); sb_int(c,GP_CAT_SOURCE);
-  sb_put(c," Quaternius Ultimate Animated Animals, Fox (made a cat: cat_bake.py)|CC0 1.0 Universal|https://quaternius.com/\n");
+  sb_put(c," OpenAgents tuxedo cat (verse/tools/assets/cat_bake.py)|CC0 1.0 Universal|https://openagents.com/\n");
   for frame:0..<GP_CAT_FRAMES {
     sb_put(c,"C glade/cat"); sb_int(c,frame); sb_byte(c,' ');
     sb_int(c,index_base+first[frame]); sb_byte(c,' '); sb_int(c,count[frame]);
