@@ -1,0 +1,216 @@
+// Housewright time-lapses (game; GitHub #13107, Episode 293's shots 1 to 6): the `?stage=house-*`
+// setups any zone can stage. Each names its house, how its build runs over the clip (progress keys:
+// seconds, progress from 0 to the tier's last stage), its camera track and sky clock (aethyr/cam/
+// track.coax), and what the corner and the caption under the house say. Everything is in the site's
+// frame: the house's middle at (0, 0), its front facing +z, the ground at y 0, so a zone stands it
+// wherever it has clear ground and adds that place. The clock is the zone's game steps, so a recording
+// gives the same frames every run.
+//   coax/bin/coax test everglade/world/housewright-stage.coax --library
+#module "everglade.housewright_stage";
+#load "housewright.coax" as hw;
+#load "../../aethyr/cam/track.coax" as trk;
+#load "../../aethyr/world/building.coax" as building;
+
+HWS_N :: 6;
+HWS_ROW :: 5;          // the five finished houses side by side
+HWS_HZ :: 60;          // the zone's game steps a second
+HWS_NAMES :: [HWS_N] string.["house-leanto", "house-hut", "house-cottage", "house-timber", "house-stone", "house-row"];
+HWS_SECONDS :: [HWS_N] f32.[5, 8, 10, 8, 10, 6];   // the show notes' lengths
+HWS_WORKDAYS :: [5] f32.[0.25, 1, 3, 5, 10];       // the spec's work (a workday is 20 real minutes)
+HWS_WORKDAY_S :: 1200;
+// What each tier takes (everglade/docs/housewright-profession-spec.md, section 6: starting values).
+HWS_BILL :: [5] string.["20 branches, 30 leafy boughs", "8 poles, 60 withies, 40 reed bundles, 12 fieldstones",
+  "40 fieldstones, 6 posts, 120 withies, 30 clay, 20 straw, 20 earth, 120 reed bundles",
+  "24 timbers, 40 planks, a stone sill, roof thatch", "300 dressed stones, lime mortar, roof timbers"];
+HWS_WORK :: [5] string.["5 minutes", "20 minutes", "1 hour", "1 hour 40 minutes", "3 hours 20 minutes"];
+HWS_TOOL :: [5] string.["Bare hands", "Stone blade", "Stone axe", "Carpenter's Tools", "Mason's Tools"];
+
+// The build over the clip: (seconds, progress) keys, linear between, held before and after. Each
+// shot's beats are the show notes': the hut's posts while the camera looks down, the cottage's daub
+// its own long beat, the timber house holding on its bare frame before the boards.
+HWS_KEYS :: 10;
+HWS_PROGRESS :: [5][HWS_KEYS * 2] f32.[
+  [HWS_KEYS * 2] f32.[0, 0,  0.3, 0,  4.3, 3,  5, 3,  0, -1,  0, -1,  0, -1,  0, -1,  0, -1,  0, -1],
+  [HWS_KEYS * 2] f32.[0, 0,  0.6, 0,  1.9, 1,  5.0, 2,  6.0, 3,  7.3, 4,  8, 4,  0, -1,  0, -1,  0, -1],
+  [HWS_KEYS * 2] f32.[0, 0,  0.3, 0,  1.0, 1,  1.6, 2,  2.6, 3,  3.6, 4,  6.0, 5,  7.8, 6,  9.0, 7,  10, 7],
+  [HWS_KEYS * 2] f32.[0, 0,  0.3, 0,  1.0, 1,  2.8, 2,  4.2, 2,  5.2, 3,  6.4, 4,  7.4, 5,  8, 5,  0, -1],
+  [HWS_KEYS * 2] f32.[0, 0,  0.3, 0,  1.6, 1,  4.0, 2,  6.4, 3,  8.0, 4,  9.3, 5,  10, 5,  0, -1,  0, -1]];
+
+// The camera tracks, aethyr/cam/track.coax rows (seconds, eye, look, ease), in the site's frame.
+HWS_TRACK_ROWS :: 4;
+HWS_TRACKS :: [HWS_N][HWS_TRACK_ROWS * trk.CAM_TRACK_ROW] f32.[
+  // 1 the lean-to: a low three-quarter view, drifting in
+  [32] f32.[0, 4.4, 1.0, 4.8,  0, 0.8, 0, 0,   5, 3.7, 0.9, 4.1,  0, 0.8, 0, 1,   -1, 0, 0, 0, 0, 0, 0, 0,  -1, 0, 0, 0, 0, 0, 0, 0],
+  // 2 the hut: top-down on the ring of posts, then down to eye level as the walls weave up
+  [32] f32.[0, 0.35, 11, 0.8,  0, 0, 0, 0,   1.9, 0.35, 10.4, 0.8,  0, 0, 0, 1,   5.2, 3.7, 1.7, 5.8,  0, 1.3, 0, 1,   8, 3.1, 1.6, 5.1,  0, 1.7, 0, 1],
+  // 3 the cottage: a slow arc in, ending up on the roof
+  [32] f32.[0, 8.8, 2.6, 8.6,  0, 1.6, 0, 0,   6, 5.4, 2.0, 8.0,  0, 1.5, 0.4, 1,   10, 2.6, 3.0, 10.6,  0, 3.4, 0, 1,   -1, 0, 0, 0, 0, 0, 0, 0],
+  // 4 the timber house: low, looking up, so the frame stands against the sky
+  [32] f32.[0, 6.2, 0.6, 7.6,  0, 2.6, 0, 0,   8, 5.0, 0.55, 6.9,  0, 2.8, 0, 1,   -1, 0, 0, 0, 0, 0, 0, 0,  -1, 0, 0, 0, 0, 0, 0, 0],
+  // 5 the stone cottage: course by course, pushing in to end on the chimney
+  [32] f32.[0, 11.5, 4.2, 11.5,  0, 2.0, 0, 0,   10, 7.4, 3.4, 9.2,  0, 3.6, -0.8, 1,   -1, 0, 0, 0, 0, 0, 0, 0,  -1, 0, 0, 0, 0, 0, 0, 0],
+  // 6 the row: a slow pan along the five houses, small to large
+  [32] f32.[0, -9, 4.2, 23,  -6, 1.8, 0, 0,   6, 9, 4.2, 23,  6, 1.8, 0, 1,   -1, 0, 0, 0, 0, 0, 0, 0,  -1, 0, 0, 0, 0, 0, 0, 0]];
+// The sky clock: the day at 0 s and the days a second (0.5 noon). The stone cottage passes a full
+// day and night; the others let the sun move and the shadows sweep.
+HWS_DAY0 :: [HWS_N] f32.[0.42, 0.36, 0.30, 0.56, 0.30, 0.5];
+HWS_DAY_RATE :: [HWS_N] f32.[0.03, 0.03, 0.045, 0.02, 0.1, 0];
+
+// The stage named in a page address's query (`stage=house-hut`), or -1.
+hws_find :: (q: string) -> int {
+  i := 0;
+  while i + 6 < q.count {
+    if (i == 0 || q[i - 1] == '?' || q[i - 1] == '&') && q[i..<i + 6] == "stage=" {
+      j := i + 6; e := j; while e < q.count && q[e] != '&' && q[e] != '#' { e += 1; }
+      v := q[j..<e];
+      for k: 0..<HWS_N { if v == HWS_NAMES[k] { return k; } }
+      return -1;
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+hws_tier :: (stage: int) -> int { return ifx stage >= 0 && stage < HWS_ROW then stage else -1; }
+
+// The tier's progress `t` seconds in.
+hws_progress :: (stage: int, t: f32) -> f32 {
+  tier := hws_tier(stage);
+  if tier < 0 { return 0; }
+  k := HWS_PROGRESS[tier];
+  if t <= k[0] { return k[1]; }
+  last := k[1];
+  for i: 1..<HWS_KEYS {
+    a := k[i * 2]; p := k[i * 2 + 1];
+    if p < 0 { break; }
+    if t < a { b := k[i * 2 - 2]; q := k[i * 2 - 1]; return q + (p - q) * (t - b) / (a - b); }
+    last = p;
+  }
+  return last;
+}
+
+hws_track :: (stage: int) -> trk.CamTrack {
+  r := HWS_TRACKS[stage];
+  n := 0; while n < HWS_TRACK_ROWS && r[n * trk.CAM_TRACK_ROW] >= 0 { n += 1; }
+  return trk.cam_track_load(r[0..<n * trk.CAM_TRACK_ROW], HWS_DAY0[stage], HWS_DAY_RATE[stage]);
+}
+
+// The shot `t` seconds in, the site's middle at (x, y, z) in the world.
+hws_view :: (stage: int, t: f32, x: f32, y: f32, z: f32) -> trk.CamView {
+  v := trk.cam_track_at(hws_track(stage), t);
+  return trk.CamView.{ex = v.ex + x, ey = v.ey + y, ez = v.ez + z, lx = v.lx + x, ly = v.ly + y, lz = v.lz + z};
+}
+hws_day :: (stage: int, t: f32) -> f32 { return trk.cam_track_day(hws_track(stage), t); }
+
+// The houses a stage stands: one, or the row of five, each a tier at a progress in a frame (front
+// +z) about the site's middle (x, z).
+HwsHouse :: struct { tier: int; frame: building.BuildingFrame; progress: f32; }
+HWS_ROW_GAP :: 2.0;
+hws_houses :: (stage: int, t: f32, x: f32, z: f32, out: [] HwsHouse) -> int {
+  if stage < 0 || stage >= HWS_N || out.count < 1 { return 0; }
+  if stage < HWS_ROW {
+    out[0] = HwsHouse.{tier = stage, frame = building.BuildingFrame.{x = x, z = z}, progress = hws_progress(stage, t)};
+    return 1;
+  }
+  width: f32 = HWS_ROW_GAP * f32(HWS_ROW - 1);
+  for i: 0..<HWS_ROW { width += hw.HW_REACH[i][0] * 2; }
+  at := x - width * 0.5; n := 0;
+  for i: 0..<HWS_ROW {
+    if n >= out.count { break; }
+    r := hw.HW_REACH[i][0];
+    out[n] = HwsHouse.{tier = i, frame = building.BuildingFrame.{x = at + r, z = z}, progress = f32(hw.hw_stages(i))};
+    at += r * 2 + HWS_ROW_GAP; n += 1;
+  }
+  return n;
+}
+
+// The corner: the speed and the workday, as "360x speed" and "Workday 2 of 3" (the lean-to's work is
+// a quarter of one). The speed is the tier's work over the clip's length.
+hws_speed :: (stage: int) -> int {
+  tier := hws_tier(stage); if tier < 0 { return 0; }
+  return int(HWS_WORKDAYS[tier] * f32(HWS_WORKDAY_S) / HWS_SECONDS[stage] + 0.5);
+}
+hws_workday :: (stage: int, t: f32) -> int {
+  tier := hws_tier(stage); if tier < 0 { return 0; }
+  w := HWS_WORKDAYS[tier]; if w < 1 { return 1; }
+  x := hws_progress(stage, t) / f32(hw.hw_stages(tier)) * w; d := int(floor(x)); if f32(d) < x { d += 1; }
+  return ifx d < 1 then 1 else ifx d > int(w) then int(w) else d;
+}
+hws_put :: (out: [] u8, n: int, t: string) -> int { m := n; for c: t { if m < out.count { out[m] = c; m += 1; } } return m; }
+hws_put_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [12] u8; c := 0; x := ifx v < 0 then 0 else v;
+  while x >= 10 { d[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; }
+  d[c] = cast(u8) (48 + x); c += 1;
+  m := n; while c > 0 { c -= 1; if m < out.count { out[m] = d[c]; m += 1; } }
+  return m;
+}
+hws_speed_text :: (stage: int, out: [] u8) -> int { n := hws_put_int(out, 0, hws_speed(stage)); return hws_put(out, n, "x speed"); }
+hws_workday_text :: (stage: int, t: f32, out: [] u8) -> int {
+  tier := hws_tier(stage); if tier < 0 { return 0; }
+  if HWS_WORKDAYS[tier] < 1 { return hws_put(out, 0, "A quarter of a workday"); }
+  n := hws_put(out, 0, "Workday "); n = hws_put_int(out, n, hws_workday(stage, t));
+  n = hws_put(out, n, " of "); return hws_put_int(out, n, int(HWS_WORKDAYS[tier]));
+}
+
+// ---- Checks ----
+
+#test "every stage is found by its name, and nothing else is" {
+  #assert hws_find("?stage=house-leanto") == 0 && hws_find("?stage=house-hut") == 1 && hws_find("?stage=house-cottage") == 2;
+  #assert hws_find("?stage=house-timber") == 3 && hws_find("?stage=house-row") == 5;
+  #assert hws_find("?x=1&stage=house-stone&card=1") == 4 && hws_find("?stage=house-hutt") == -1;
+  #assert hws_find("?mystage=house-hut") == -1 && hws_find("") == -1 && hws_find("?stage=") == -1;
+}
+
+#test "each build starts bare, ends finished and never goes back" {
+  for s: 0..<HWS_ROW {
+    last := f32(hw.hw_stages(s));
+    #assert hws_progress(s, 0) == 0 && hws_progress(s, HWS_SECONDS[s]) == last && hws_progress(s, 99) == last;
+    p: f32 = 0;
+    for i: 0..<601 { q := hws_progress(s, HWS_SECONDS[s] * f32(i) / 600); #assert q >= p && q <= last; p = q; }
+  }
+  // the timber house holds on its bare frame
+  #assert hws_progress(3, 3.0) == 2 && hws_progress(3, 4.1) == 2;
+  // the cottage's daub (stage 5) has the longest beat
+  #assert hws_progress(2, 4.8) > 4.4 && hws_progress(2, 4.8) < 4.6;
+}
+
+#test "the tracks load, start on their first key and stay in the site's neighbourhood" {
+  for s: 0..<HWS_N {
+    k := hws_track(s); #assert k.flight.count >= 2 && trk.cam_track_length(k) == HWS_SECONDS[s];
+    for i: 0..<61 {
+      v := hws_view(s, HWS_SECONDS[s] * f32(i) / 60, 100, 2, -50);
+      #assert v.ey > 2.4 && abs(v.ex - 100) < 30 && abs(v.ez + 50) < 30;
+    }
+  }
+  // the hut starts looking down and ends at eye level
+  a := hws_view(1, 0, 0, 0, 0); b := hws_view(1, 8, 0, 0, 0);
+  #assert a.ey > 10 && b.ey < 2;
+}
+
+#test "the stone cottage passes a full day and night; the row is noon" {
+  #assert abs(hws_day(4, 0) - 0.3) < 0.0001 && abs(hws_day(4, 7) - 0.0) < 0.0001 && abs(hws_day(4, 10) - 0.3) < 0.001;
+  #assert hws_day(5, 3) == 0.5;
+}
+
+#test "the row stands the five houses side by side, small to large, finished, without touching" {
+  h: [8] HwsHouse;
+  #assert hws_houses(5, 0, 0, 0, h[..]) == 5;
+  for i: 0..<5 {
+    #assert h[i].tier == i && h[i].progress == f32(hw.hw_stages(i));
+    if i > 0 { #assert h[i].frame.x - hw.HW_REACH[i][0] > h[i - 1].frame.x + hw.HW_REACH[i - 1][0] + 1.9; }
+  }
+  #assert abs(h[0].frame.x - hw.HW_REACH[0][0] + h[4].frame.x + hw.HW_REACH[4][0]) < 0.001;
+  #assert hws_houses(2, 5, 7, 8, h[..]) == 1 && h[0].tier == 2 && h[0].frame.x == 7 && h[0].frame.z == 8;
+  #assert hws_houses(-1, 0, 0, 0, h[..]) == 0;
+}
+
+#test "the corner says the speed and the workday" {
+  b: [64] u8;
+  n := hws_speed_text(2, b[..]); #assert cast(string) b[0..<n] == "360x speed";
+  n = hws_speed_text(4, b[..]); #assert cast(string) b[0..<n] == "1200x speed";
+  n = hws_workday_text(2, 0, b[..]); #assert cast(string) b[0..<n] == "Workday 1 of 3";
+  n = hws_workday_text(2, 10, b[..]); #assert cast(string) b[0..<n] == "Workday 3 of 3";
+  n = hws_workday_text(4, 10, b[..]); #assert cast(string) b[0..<n] == "Workday 10 of 10";
+  n = hws_workday_text(0, 2, b[..]); #assert cast(string) b[0..<n] == "A quarter of a workday";
+  #assert hws_workday_text(5, 1, b[..]) == 0;
+}
