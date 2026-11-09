@@ -49,6 +49,7 @@
 #load "../../aethyr/rules/srd/press-budget.coax";
 #load "class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
+#load "cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
 #load "class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "../../verse/experimental-terrain.coax" as xmeadow;
 #load "../../aethyr/action/action.coax" as act;
@@ -1122,7 +1123,7 @@ xc_press :: (s: [] Lab, k: int) -> bool {
   // a blow with a weapon in hand is an action: it swings first and lands where the blade meets a monster
   kit := xc_kit(x[0].klass);
   if kit >= 0 && !(x[0].familiar_touch && xc_touch_spell(a)) && xc_aim_kind(s, a).kind == XC_AIM_MELEE {
-    clip := ifx cc.CC_KIT_TWO[kit] then figs.BD_OWN + cc.CC_KIT_HOLD[kit] + 2 else figs.BD_SLASH;   // a two-hander's owned cleave
+    clip := cp_blow_clip(kit, true);   // a two-hander's owned cleave (cast-pose.coax, shared with Everglade II)
     cr[0].weapon = kit; cr[0].swing_clip = clip; cr[0].swing_at = now;
     tick := xc_tick(now);
     x[0].swing_def = xc_swing_def(s, clip);

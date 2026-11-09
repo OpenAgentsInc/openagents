@@ -305,6 +305,11 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   if (kind != 0) { sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
+EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
+  if (e2_pointer_buttons(at(state), x, y, phase, kind, id, button)) return 1u;
+  if (kind != 0) { sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
+  return 0u;
+}
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return e2_wheel(at(state), dy) ? 1u : 0u; }
 /* Mouselook (aethyr/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
 EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(uint32_t state) { return (int32_t)e2_mouselook(at(state)); }

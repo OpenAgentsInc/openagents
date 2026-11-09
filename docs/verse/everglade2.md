@@ -298,9 +298,11 @@ answers.
 ## Admin mode (this machine only)
 
 Admin mode is a panel for doing anything in the world while you build it. It is Everglade
-Experimental's left column: ANIMATIONS plays any clip on your character, CLASSES switches among
-the twelve classes, LEVEL sets 1 to 6, and REST sends SHORT, SLEEP, WATCH, HIT DIE, and END REST to
-the room. KNOCK OUT makes the guard you drop stay at 1 HP, Unconscious. Under them are the admin
+Experimental's left column: ANIMATIONS lists the clips, CLASSES switches among the twelve
+classes, LEVEL sets 1 to 6, and REST sends SHORT, SLEEP, WATCH, HIT DIE, and END REST to the room.
+Everglade II does not bake the ANIMATIONS clips yet: their 1.4 MB of keys does not fit beside its
+state, so a chosen clip does not play. CLASSES and LEVEL also tell the room (`X class srd-CLASS-L`),
+so your casts are the new class's even when your seat's ticket holds later hellos. KNOCK OUT makes the guard you drop stay at 1 HP, Unconscious. Under them are the admin
 rows:
 
 - FULL HEAL, and GOD, which keeps your Hit Points full.
@@ -311,7 +313,20 @@ rows:
 - GUARD KILL, GUARD RESET (a new guard now), GUARD OFF, and GUARD ON.
 - Your position and distance down the path. The frame rate is in the bottom-right corner.
 
-Backquote (`` ` ``) shows and hides the panel. It starts shown.
+Backquote (`` ` ``) shows and hides the panel. It starts shown. The panel does not hold the
+cursor: a click on the world takes the mouse for looking, and Tab or Escape frees it for the panel.
+
+## Mouse buttons
+
+As in Everglade Experimental, while the mouse looks round (`everglade2-mouse.coax`):
+
+- The left button casts your last pressed slot, or your Attack.
+- A Ranger's right button held draws the Longbow and its release looses the arrow at the reticle,
+  through the room as the Attack. The left button while drawing lets the bow down.
+- Every other press is the world's: a click takes the mouse back for looking, and a drag turns.
+
+A cast plays the same body clip as Experimental's (`cast-pose.coax`): a slash for a blow, the spell
+clip for a spell, and the bow's draw pose while the bow is drawn.
 
 To open it, build a dev `everglade2.wasm` and run a local room and page server:
 

@@ -760,24 +760,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   // a capture's class bit says Everglade's druid or Warlock; a Character Create class (srd-*, #13024)
   // comes with the hello and stands
   if tk.schema == 2 && tk.capture.ok && fb_cl_of_kind(kind) < 0 { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
-  st[0].klass_n = eg_word(kind, st[0].klass[..]);
-  // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero); srd-*: that
-  // SRD class at level 1, srd-*-L at level L (fb_cl_hero, #13046); else the druid
-  wl := e5rr_klass_of(cast(string) st[0].klass[0..<st[0].klass_n]);
-  lv := fb_cl_level_of_kind(cast(string) st[0].klass[0..<st[0].klass_n]);
-  if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= E5R_CL0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level != lv) {
-    c:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat..<E5RR_SEAT + seat + 1];
-    kit:=c[0].healer_kit;
-    st[0].familiar=E2Familiar.{last=st[0].familiar.last};
-    e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
-    if v[0].eg[k].e2 {
-      c[0].healer_kit=kit;
-      if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,ifx st[0].familiar_incense_used then 0 else 1); }
-      if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,st[0].protection_water_used); }
-      if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,st[0].revivify_diamond_used); }
-    }
-    ev_class(v, k, seat_id);
-  }
+  eg_seat_kind(v, k, seat_id, kind);
   st[0].flags = eg_clamp(h.flags, 0, 255);
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
@@ -827,6 +810,29 @@ eg_ticket :: (v: [] RmServer, k: int, seat_id: SeatId) -> Ticket { seat := seat_
   if !v[0].eg[k].seat[seat].live { return Ticket.{}; }
   if c < 0 || c >= CONNS || !v[0].conns[c].live { return v[0].eg[k].tk[seat]; }   // held, or its socket closing (eg_left): the one it sat with
   return v[0].conns[c].ticket;
+}
+// Seat seat_id's class (a hello's CLASS, or a local admin's "X class", room-e2-admin.coax): its rules
+// seat sits again as that class at its level when either changed.
+eg_seat_kind :: (v: [] RmServer, k: int, seat_id: SeatId, kind: string) { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  st[0].klass_n = eg_word(kind, st[0].klass[..]);
+  // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero); srd-*: that
+  // SRD class at level 1, srd-*-L at level L (fb_cl_hero, #13046); else the druid
+  wl := e5rr_klass_of(cast(string) st[0].klass[0..<st[0].klass_n]);
+  lv := fb_cl_level_of_kind(cast(string) st[0].klass[0..<st[0].klass_n]);
+  if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= E5R_CL0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level != lv) {
+    c:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat..<E5RR_SEAT + seat + 1];
+    kit:=c[0].healer_kit;
+    st[0].familiar=E2Familiar.{last=st[0].familiar.last};
+    e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
+    if v[0].eg[k].e2 {
+      c[0].healer_kit=kit;
+      if c[0].klass==RS_WIZARD { fb_wizard_familiar_preset(c,ifx st[0].familiar_incense_used then 0 else 1); }
+      if c[0].klass==RS_PALADIN { fb_paladin_protection_preset(c,st[0].protection_water_used); }
+      if c[0].klass==RS_CLERIC { fb_cleric_revivify_preset(c,st[0].revivify_diamond_used); }
+    }
+    ev_class(v, k, seat_id);
+  }
 }
 // C SEQ SLOT AX AY AZ TGT: a cast at the aim. The checks that need no place here (the slot, the class,
 // the level); the rest at its start, once the inputs before it are stepped (room-casts.coax).

@@ -1,0 +1,88 @@
+// Everglade II's mouse buttons, as Everglade Experimental's (fivelab.coax lab_pointer_buttons,
+// experimental-combat.coax xc_bow_*): while the mouse looks (aethyr/cam/mouselook.coax), the left
+// button casts, and a Ranger's right button held draws the Longbow (aethyr/action/bow.coax) and its
+// release looses it at the reticle (docs/verse/bow-combat.md). The left button while drawing lets it
+// down. Any other press is the world's (everglade2.coax e2_pointer): a click looks again, a drag turns.
+// The arrow is the Ranger's Attack through the room, as the bar's (everglade2-cast.coax e2k_press).
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 mouse"
+
+E2Mouse :: struct {
+  draw: [1] bow.BowDraw;      // the Longbow's draw, the aim pose's ease
+  loose_at: f32 = -100;       // the last loose, for the pose's follow-through
+  strength: f32;              // how far the string is back, for the pose
+  casts: int; draws: int; looses: int; cancels: int;   // what the checks count (e2m_probe)
+}
+
+// The slot the left button casts: the last you pressed, else your Attack, else the first.
+e2m_slot :: (k: [] E2Cast) -> int {
+  if k[0].used >= 0 && k[0].used < k[0].bar_n { return k[0].used; }
+  for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_ATTACK { return i; } }
+  return 0;
+}
+e2m_attack :: (k: [] E2Cast) -> int { for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_ATTACK { return i; } } return -1; }
+e2m_archer :: (s: [] E2) -> bool { return e2k_on(s) && xc_kit(s[0].casts[0].klass) == XC_KIT_BOW && e2m_attack(s[0].casts[..]) >= 0; }
+
+// Draw (self_loose: a left click, which looses itself at full draw). False when you can't now.
+e2m_draw :: (s: [] E2, self_loose: bool) -> bool {
+  m := s[0].mouse[..]; k := s[0].casts[..]; now := s[0].clock;
+  if !e2m_archer(s) { return false; }
+  if m[0].draw[0].on { bow.bow_begin(m[0].draw[..], now, self_loose); return true; }
+  if now - k[0].cool_at < f32(XC_COOL) { return false; }
+  bow.bow_begin(m[0].draw[..], now, self_loose); m[0].draws += 1;
+  e2k_cue(s, "bow-draw", 0.4, s[0].you_x, s[0].you_z, 1);   // the limbs creak as the string comes back
+  return true;
+}
+// Let go: the Attack's arrow toward the reticle (the room resolves it).
+e2m_loose :: (s: [] E2) -> bool {
+  m := s[0].mouse[..]; now := s[0].clock;
+  if !m[0].draw[0].on { return false; }
+  if !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); return false; }
+  _ := bow.bow_release(m[0].draw[..], now);
+  m[0].loose_at = now; m[0].looses += 1;
+  return e2k_press(s, e2m_attack(s[0].casts[..]));
+}
+
+// A button: true when it was the cast's or the bow's. button 0 left, 2 right (host.js).
+e2m_buttons :: (s: [] E2, phase: int, kind: int, button: int) -> bool {
+  if kind != 0 || !e2k_on(s) { return false; }
+  m := s[0].mouse[..]; looking := mlook.ml_on(s[0].ml[0]);
+  if button == 2 && e2m_archer(s) {
+    if phase == 0 { _ := e2m_draw(s, false); mlook.ml_press(s[0].ml[..], 0); return true; }
+    if phase == 2 || phase == 3 { if phase == 3 { bow.bow_cancel(m[0].draw[..]); m[0].cancels += 1; } else { _ := e2m_loose(s); } return true; }
+    return false;
+  }
+  if button == 0 && phase == 0 && looking {
+    if m[0].draw[0].on && !m[0].draw[0].self_loose { bow.bow_cancel(m[0].draw[..]); m[0].cancels += 1; return true; }
+    k := s[0].casts[..]; i := e2m_slot(k);
+    if e2m_archer(s) && k[0].bar[i].kind == FB_ATTACK { m[0].casts += 1; _ := e2m_draw(s, true); return true; }   // a Ranger's Attack draws and looses itself
+    if e2k_press(s, i) { m[0].casts += 1; }
+    return true;
+  }
+  return false;
+}
+
+// The frame: the aim eases, a left click's draw looses at full, the pose's strength.
+e2m_step :: (s: [] E2, dt: f32) {
+  m := s[0].mouse[..]; now := s[0].clock;
+  if m[0].draw[0].on && !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); }
+  bow.bow_step(m[0].draw[..], dt);
+  if bow.bow_due(m[0].draw[0], now) { _ := e2m_loose(s); }
+  if m[0].draw[0].on { m[0].strength = bow.bow_strength(m[0].draw[0], now); } else if now - m[0].loose_at > 0.3 { m[0].strength = 0; }
+}
+// Your figure with the bow drawn: its aim pose over what you were doing (cast-pose.coax).
+e2m_figure :: (s: [] E2, a0: figs.BdAnim) -> figs.BdAnim {
+  m := s[0].mouse[0]; if s[0].airborne { return a0; }
+  return cp_bow_layer(a0, bow.bow_aim(m.draw[0]), m.strength, m.draw[0].on, s[0].clock - m.loose_at, s[0].clock);
+}
+// What the checks read (e2_probe 150 on): 150 left-button casts, 151 draws, 152 looses, 153 drawing
+// now (1), 154 the aim (percent), 155 cancels, 156 your cast's clip on your body (-1 none or done),
+// 157 how long since it began (ms).
+e2m_probe :: (s: [] E2, field: int) -> int {
+  m := s[0].mouse[0];
+  if field == 150 { return m.casts; } if field == 151 { return m.draws; } if field == 152 { return m.looses; }
+  if field == 153 { return ifx m.draw[0].on then 1 else 0; } if field == 154 { return cast(int)(bow.bow_aim(m.draw[0]) * 100); }
+  if field == 155 { return m.cancels; }
+  if field == 156 || field == 157 { a := s[0].casts[0].me[0]; t := s[0].clock - a.at; on := a.clip >= 0 && t >= 0 && t < figs.bd_seconds(a.clip);
+    return ifx field == 156 then (ifx on then a.clip else -1) else cast(int)(t * 1000); }
+  return -1;
+}

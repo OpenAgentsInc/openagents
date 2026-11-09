@@ -38,6 +38,7 @@ E2Admin :: struct {
   down: bool;               // a press began on the panel
   said: [48] u8; said_n: int; said_at: f32 = -100;   // what the last action did
   sent: int; warps: int;    // X lines sent, teleports asked (e2_probe 996, 997)
+  class_due: bool;          // CLASSES or LEVEL chosen: the room is told (X class) once the bar has it
 }
 
 // ---- turning it on: the page facts' url (message 600)
@@ -222,8 +223,8 @@ e2a_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
     a[0].down = false;
     h := cm_hit(a[0].top, a[0].open, s[0].k, x, y);
     if h.kind == CM_TOGGLE { a[0].open = !a[0].open; }
-    else if h.kind == CM_CLASS { cr[0].klass = h.index; cr[0].revision += 1; e2a_say(s, XC_CL_UP[h.index]); }
-    else if h.kind == CM_LEVEL { cr[0].level = h.index; cr[0].revision += 1; }
+    else if h.kind == CM_CLASS { cr[0].klass = h.index; cr[0].revision += 1; a[0].class_due = true; e2a_say(s, XC_CL_UP[h.index]); }
+    else if h.kind == CM_LEVEL { cr[0].level = h.index; cr[0].revision += 1; a[0].class_due = true; }
     else if h.kind == CM_REST { ok := e2n_rest(s[0].net[..], E2A_REQUESTS[h.index]); if !ok { e2a_say(s, "NO ROOM: START THE LOCAL ROOM"); } }
     else if h.kind == CM_KNOCKOUT { if e2a_flag(s, "X ko", !a[0].ko) { a[0].ko = !a[0].ko; } }
     else { for i: 0..<E2A_BOXES { if cm_in(e2a_box(s, E2A_FIRST + i), x, y) { e2a_press(s, i); } } }
@@ -275,9 +276,13 @@ e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
   a := s[0].adm[..]; cr := s[0].creator[..];
   if !e2a_on(s) { cr[0].dev_animations = false; return at; }
   e2a_fly(s, dt);
+  // the room sits your seat as the class and level chosen (its hellos can be held by its ticket's checkpoint)
+  if a[0].class_due && e2n_open(s[0].net[..]) {
+    n := s[0].net[..]; kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
+    o := n[0].out[..]; if e2a_send(s, wire_put(o, wire_put(o, 0, "X class "), cast(string) kind[0..<kn])) { a[0].class_due = false; }
+  }
   if !a[0].shown { cr[0].dev_animations = false; return at; }
   w := s[0].width; h := s[0].height; k := s[0].k;
-  s[0].ml[0].free = true;   // the cursor stays free while the panel shows
   cr[0].dev_animations = true; cr[0].width = w; cr[0].height = h; cr[0].scale = k;
   col := e2a_height(s);
   cr[0].dev_below = col + f32(CM_GAP);

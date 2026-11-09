@@ -103,7 +103,8 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
     fly = ifx fly < 0.15 then 0.15f32 else ifx fly > 0.8 then 0.8f32 else fly;
     e2k_later(k, now + fly, ifx d.miss.count > 0 then d.miss else "fizzle", ax, az, d.rate, mine);
   }
-  act[0].at = now; act[0].clip = ifx e.aim.kind == XC_AIM_MELEE then figs.BD_SLASH else figs.BD_SPELL;
+  // a blow's slash or a spell's cast, as Experimental's (cast-pose.coax; no weapon drawn here, so no cleave)
+  act[0].at = now; act[0].clip = cp_cast_clip(xc_kit(c), e.aim.kind == XC_AIM_MELEE, false);
   return started;
 }
 
