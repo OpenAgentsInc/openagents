@@ -201,12 +201,15 @@ hostile_tune :: (e:Enemy)->NavTune {
  return NavTune.{speed=2.4*e.walk_scale,home_speed=2.4*e.walk_scale,body=0.35*e.scale,reach=reach,ring=0.8,circle=1.2*e.walk_scale,turn_s=3,lead=0.8,leash=f32(HS_LEASH),replan=0.5,span=12,cell=0.5};
 }
 // Its steering's own record of where it stands and its home: the monster's, as the zone (and the checks) set them.
-hostile_nav_sync :: (e:[]Enemy) {a:=e[0].nav[..];a[0].x=e[0].x;a[0].z=e[0].z;a[0].home_x=e[0].home_x;a[0].home_z=e[0].home_z;}
+// The zone's word on whether it is going home is final: a leash its steering saw that the zone didn't take
+// (mid-swing, or a monster not awake) is let go, so no stale return outlives a tick.
+hostile_nav_sync :: (e:[]Enemy) {a:=e[0].nav[..];a[0].x=e[0].x;a[0].z=e[0].z;a[0].home_x=e[0].home_x;a[0].home_z=e[0].home_z;if !e[0].returning {a[0].returning=false;}}
 // One step of monster i after you at (px, pz): the dungeon's doorways (hostile_goal) as its waypoints
 // when a wall stands between, its window filled from the walls (hostile_blocked_pad) when a wall holds
 // it back, the others and you as bodies, and its walk's slide (hostile_walk) the last word.
 hostile_steer :: (s:[]Hostiles,i:int,px:f32,pz:f32,dt:f32,c:[]HsNear) {
  e:=s[0].enemies[i..<i+1];a:=e[0].nav[..];t:=hostile_tune(e[0]);
+ if !e[0].returning {a[0].returning=false;}   // the zone hasn't sent it home (hostile_nav_sync)
  g:=hostile_goal(e[0].x,e[0].z,px,pz);if g[0]!=px || g[1]!=pz {nav_via(a,g[0],g[1]);}
  if a[0].plan_s<=0 {
   // its planning window, only while it plans: the page copies Hostiles each frame (experimental-combat.coax xc_hostile_tick)
@@ -333,7 +336,9 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
   if e[0].sleeper && !e[0].awake {if safe || gap>dungeon.dg_kind_wake(e[0].kind) || !hostile_sees(e[0],px,pz) {continue;}e[0].awake=true;}e[0].cool-=dt;
   // the leash, the steering service's (aethyr/ai/steer.coax nav_think): too far from home and not in
   // the middle of a fight with someone still within it, or you safe, and it turns back (never mid-swing)
-  if e[0].awake && !e[0].returning {hostile_nav_sync(e);_:=nav_think(e[0].nav[..],hostile_tune(e[0]),px,pz,dt);if safe {nav_return(e[0].nav[..]);}
+  // Every monster past here tells its steering where it and you are, each tick, before anything else.
+  if !e[0].returning {hostile_nav_sync(e);_:=nav_think(e[0].nav[..],hostile_tune(e[0]),px,pz,dt);}
+  if e[0].awake && !e[0].returning {if safe {nav_return(e[0].nav[..]);}
    if e[0].swing<0 && e[0].nav[0].returning {e[0].returning=true;}}
   if e[0].returning {
    if e[0].held {continue;}
