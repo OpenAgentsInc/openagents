@@ -736,8 +736,9 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player #effects(all) {
   #assert q.on_ground && !walk_place(0, 0.41, 0, 0).on_ground;
 }
 
-// Measured 20,700,304 steps: keep more than 25% headroom below the near-limit note (#12950).
-#forall "speed never passes the top, and changes no faster than ACCEL" run: bool, ix: -3..<4, iy: -3..<4 #steps 28000000 {
+// One stick push, walking or running, for 90 steps. Split by gait into two checks (#13094): the 98
+// cases together came to 23,374,506 steps, 83% of the 28,000,000 the one check had.
+walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   w: World;
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 0, f32(ix) * 0.5, f32(iy) * 0.5, run, false, 0, 0);
@@ -753,7 +754,10 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player #effects(all) {
   // A held stick past the dead zone reaches the top speed.
   if ix * ix + iy * iy > 0 { #assert near(flat_speed(p), top, 0.001); }
   else { #assert flat_speed(p) == 0; }
+  return true;
 }
+#forall "speed never passes the top, and changes no faster than ACCEL, walking" ix: -3..<4, iy: -3..<4 { #assert walk_speed_holds(false, ix, iy); }
+#forall "speed never passes the top, and changes no faster than ACCEL, running" ix: -3..<4, iy: -3..<4 { #assert walk_speed_holds(true, ix, iy); }
 
 #test "on ice (a grip under one) the same wish takes you up to speed slower, and you slide on" {
   p := walk_place(0, 0, 0, 0);

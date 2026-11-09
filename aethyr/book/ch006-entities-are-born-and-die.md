@@ -349,15 +349,18 @@ same values, and nothing else.
 
 <!-- source: aethyr/entity.coax model -->
 ```jai
-#forall "a store matches a plain list of IDs and values after every flush" seed: 0..<24 {
+oracle_model_run :: (seed: int) -> bool #effects(all) {
   b: [1] OracleBacking; w := oracle_store(b[..]);
   m: [1] OracleModel;
   for s: 0..<60 {
     oracle_session(w, b[0].value[..], m[..], seed, s, s + 1);
-    #assert oracle_agrees(w, b[0].value[..], m[..]);
+    if !oracle_agrees(w, b[0].value[..], m[..]) { return false; }
   }
-  #assert m[0].next_id == w.n[ENTITY_NEXT_ID] && m[0].next_id > 30;
+  return m[0].next_id == w.n[ENTITY_NEXT_ID] && m[0].next_id > 30;
 }
+// 24 seeds, as two checks of 12 so each keeps clear of its step budget
+#forall "a store matches a plain list of IDs and values after every flush" seed: 0..<12 { #assert oracle_model_run(seed); }
+#forall "a store matches a plain list of IDs and values after every flush, seeds 12 to 23" seed: 12..<24 { #assert oracle_model_run(seed); }
 ```
 
 Despawning while walking is checked over 32 random walks. Each walk
