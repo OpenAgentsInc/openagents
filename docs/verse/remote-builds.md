@@ -51,6 +51,17 @@ seconds on the Mac.
    `node_modules`) comes back into the checkout as a tar stream: modules,
    timings reports, test logs. The exit status is the command's.
 
+`remote.sh run --commit REV --out DIR -- CMD` runs CMD from the root of commit
+REV instead of a snapshot: the green-main pipeline's checks
+([green-main-pipeline.md](green-main-pipeline.md)) use it to check exact
+commits. The files CMD writes go to DIR. Such a job never falls back to the
+Mac.
+
+When the picked host's slots filled after it was picked, the host sends the job
+back, and `remote.sh` asks the hosts again every 10 seconds until one has a
+free slot (for up to `OA_REMOTE_WAIT` seconds, 1800 by default; then it waits
+on one host).
+
 A command that passed is kept on the host under a key of the source
 fingerprint, the command, its directory and its settings. The same job again
 replays the output and files without running (results go after 3 days).

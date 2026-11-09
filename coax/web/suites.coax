@@ -2,10 +2,13 @@
 // and the Coax libraries (coax/lib), each run at the budget
 // its own header declares.
 //   coax/web/tool.sh suites                    # every suite
-//   coax/web/tool.sh suites --since REF        # only suites whose sources changed since REF (coax deps)
+//   coax/web/tool.sh suites --since REF        # only suites whose sources changed since REF (the #load graph, else coax deps)
+//   coax/web/tool.sh suites --since REF --deps # the same, asking coax deps for every suite
+//   coax/web/tool.sh suites --since REF --affected  # every .coax file whose #load closure holds a changed file (exit 3: can't tell)
 //   coax/web/tool.sh suites --list             # the suites and their budgets; nothing runs
 //   coax/web/tool.sh suites --only PATH,PATH   # these suites (paths from the repo root)
 //   coax/web/tool.sh suites --jobs N           # suites side by side (default 6)
+//   coax/web/tool.sh suites --part I/N         # the I-th of N parts: suites I, I+N, I+2N... (after --since and --only)
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,
@@ -37,10 +40,10 @@
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
 
-SU_FILES :: 4096;            // tracked .coax files read
-SU_LOADS :: 16384;           // #load lines kept, as repo paths
+SU_FILES :: 16384;           // tracked .coax files read (6,776 on 2026-11-09)
+SU_LOADS :: 65536;           // #load lines kept, as repo paths (about 10,600 on 2026-11-09)
 SU_ARENA :: 4194304;         // their bytes and the suites' paths
-SU_SUITES :: 1024;
+SU_SUITES :: 4096;
 SU_TEXT :: 8388608;          // the largest .coax file read
 SU_HEAD_LINES :: 80;
 SU_TIMEOUT_MS :: 3600000;    // one suite's longest run, 60 minutes: a hang guard, not a budget (Everglade takes ~41 on a loaded Mac)
@@ -311,6 +314,16 @@ tool_main :: () -> int #export_c #effects(all) {
   jobs := SU_JOBS;
   if args_has(a[..], "--jobs") { j := args_number(args_value(a[..], "--jobs", "")); if !j.ok || j.value < 1 { tool_errln("suites: --jobs N"); return 2; } jobs = cast(int) j.value; }
   if jobs > 16 { jobs = 16; }
+  // --part I/N: the green-main pipeline's full run splits the suites across host slots.
+  part := args_value(a[..], "--part", ""); part_i := 0; part_n := 1;
+  if part.count > 0 {
+    cut := -1;
+    for k: 0..<part.count { if part[k] == '/' { cut = k; } }
+    if cut < 0 { tool_errln("suites: --part I/N"); return 2; }
+    pi := args_number(part[0..<cut]); pn := args_number(part[cut + 1..<part.count]);
+    if !pi.ok || !pn.ok || pn.value < 1 || pi.value < 1 || pi.value > pn.value { tool_errln("suites: --part I/N, 1 <= I <= N"); return 2; }
+    part_i = cast(int) pi.value - 1; part_n = cast(int) pn.value;
+  }
 
   big: [SU_TEXT] u8;
   av1 := [3] string.["git", "rev-parse", "--show-toplevel"];
@@ -324,7 +337,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // A compiler built from an older tree fails suites that use newer language
   // (a stale coax/bin/coax once failed every suite loading cdp.coax), so the
   // run refuses unless the provenance record matches this tree's inputs.
-  if !list_only {
+  if !list_only && !args_has(a[..], "--affected") {
     av0 := [6] string.["coax/provenance.sh", "verify", root, "coax/bin/coax", "coax/bin/provenance-check", "coax/bin/provenance.record"];
     pv := su_run(av0[..], root, big[..]);
     if pv.started != 0 || pv.status != 0 { tool_err("suites: "); tool_err(coax); tool_errln(" was not built from this tree; run coax/build.sh"); return 2; }
@@ -413,7 +426,80 @@ tool_main :: () -> int #export_c #effects(all) {
     if d.started != 0 || d.status != 0 { tool_err("suites: git diff "); tool_err(since); tool_errln(" failed"); return 2; }
     keep := 0;
     db: [4096] u8;
+    // The #load graph answers first when every changed file is a tracked
+    // .coax file or a document: a suite is touched when its #load closure
+    // holds a changed file. A changed file no file loads might be reached
+    // another way, and any other changed file (a .c face, a .pb, data) can be
+    // an input coax deps knows of, so then every suite asks coax deps, as
+    // before. Native suites always do: their linked unit isn't #loaded.
+    hit: [SU_FILES] bool;      // a changed .coax file
+    loaded_by_any: [SU_FILES] bool;
+    for l: 0..<nl { if load_to[l] >= 0 { loaded_by_any[load_to[l]] = true; } }
+    by_graph := !args_has(a[..], "--deps"); any_changed := false;
+    c0 := 0;
+    while c0 < d.out_n {
+      e := c0;
+      while e < d.out_n && changed[e] != '\n' { e += 1; }
+      if e > c0 {
+        path := cast(string) changed[c0..<e];
+        doc := su_starts(path, 0, "docs/") || (path.count > 3 && su_starts(path, path.count - 3, ".md"));
+        if !doc {
+          found := -1;
+          for f: 0..<nf { if files[f] == path { found = f; break; } }
+          if found < 0 { by_graph = false; }
+          else {
+            hit[found] = true; any_changed = true;
+            is_suite := false;
+            for t: 0..<ns { if suites[t].path == path { is_suite = true; break; } }
+            if !loaded_by_any[found] && !is_suite { by_graph = false; }
+          }
+        }
+      }
+      c0 = e + 1;
+    }
+    // --affected: every tracked .coax file whose #load closure holds a
+    // changed file, by the graph (check.sh picks the web modules to build
+    // from it); exit 3 when the graph can't tell.
+    if args_has(a[..], "--affected") {
+      if !by_graph { tool_errln("suites: --affected: a changed file isn't a .coax file the #load graph reaches"); return 3; }
+      affected: [SU_FILES] bool;
+      for f: 0..<nf { affected[f] = hit[f]; }
+      grew2 := true;
+      while grew2 {
+        grew2 = false;
+        for l: 0..<nl { to := load_to[l]; if to >= 0 && affected[to] && !affected[load_by[l]] { affected[load_by[l]] = true; grew2 = true; } }
+      }
+      for f: 0..<nf { if affected[f] { su_say(files[f]); su_say("\n"); } }
+      return 0;
+    }
+    // The graph as edges from each file (counting sort of the loads by file).
+    first: [SU_FILES + 1] int; edges: [SU_LOADS] int;
+    for l: 0..<nl { first[load_by[l] + 1] += 1; }
+    for f: 0..<nf { first[f + 1] += first[f]; }
+    fill: [SU_FILES] int;
+    for f: 0..<nf { fill[f] = first[f]; }
+    for l: 0..<nl { edges[fill[load_by[l]]] = load_to[l]; fill[load_by[l]] += 1; }
+    seen: [SU_FILES] int;      // the suite (plus one) whose walk last reached it
+    todo: [SU_FILES] int;
     for s: 0..<ns {
+      if by_graph && suites[s].native.count == 0 {
+        start := -1;
+        for f: 0..<nf { if files[f] == suites[s].path { start = f; break; } }
+        touched := start < 0;   // can't tell: run it
+        if start >= 0 && any_changed {
+          sp := 1; todo[0] = start; seen[start] = s + 1;
+          while sp > 0 && !touched {
+            sp -= 1; f := todo[sp];
+            if hit[f] { touched = true; }
+            for k: first[f]..<first[f + 1] {
+              to := edges[k];
+              if to >= 0 && seen[to] != s + 1 { seen[to] = s + 1; todo[sp] = to; sp += 1; }
+            }
+          }
+        }
+        if touched { suites[keep] = suites[s]; keep += 1; }
+        continue;
+      }
       dir := fs_join(root, su_dir(suites[s].path), db[..]);
       av4 := [3] string.[coax, "deps", su_base(suites[s].path)];
       deps := su_run(av4[..], dir, big[..]);
@@ -444,6 +530,11 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       if touched { suites[keep] = suites[s]; keep += 1; }
     }
+    ns = keep;
+  }
+  if part_n > 1 {
+    keep := 0;
+    for s: 0..<ns { if s % part_n == part_i { suites[keep] = suites[s]; keep += 1; } }
     ns = keep;
   }
 

@@ -9,6 +9,10 @@
 #                              host: the checkout's commit and its uncommitted
 #                              changes (untracked files too) go there, and the
 #                              files CMD writes come back
+#   coax/remote/remote.sh run --commit REV [--out DIR] [--no-fallback] -- CMD ...
+#                              run CMD from the root of commit REV instead (the
+#                              green-main pipeline's checks): no snapshot, and
+#                              the files CMD writes go to DIR (or nowhere)
 #   coax/remote/remote.sh up      start (or create) a host and wait until it is ready
 #   coax/remote/remote.sh status  hosts, free slots, and spend
 #   coax/remote/remote.sh cost    spend over the last 24 hours and 30 days, from the ledger
@@ -23,6 +27,9 @@
 #   OA_REMOTE_IDLE_MINUTES       a host stops itself after this long idle (default 15)
 #   OA_REMOTE_SLOTS              jobs at once on one host (default 3)
 #   OA_REMOTE_ZONES              zones to create in, in turn (default us-central1-a,b,c,f)
+#   OA_REMOTE_TIMEOUT            seconds the command may run on the host (default no limit)
+#   OA_REMOTE_WAIT               seconds to look for a free slot on any host before
+#                                waiting on one (default 1800)
 #   CLOUDSDK_CONFIG              gcloud's configuration (default the automation account's)
 set -uo pipefail
 export LC_ALL=C
@@ -170,17 +177,23 @@ local_run() {   # the Mac's own slots
 }
 
 run() {
-  local fallback=1 force_local=0
+  local fallback=1 force_local=0 at_commit="" out_dir=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --local) force_local=1; shift ;;
       --no-fallback) fallback=0; shift ;;
+      --commit) at_commit="$2"; shift 2 ;;
+      --out) out_dir="$2"; shift 2 ;;
       --) shift; break ;;
       *) break ;;
     esac
   done
   [[ $# -gt 0 ]] || { echo "usage: remote.sh run [--local] [--no-fallback] -- CMD [ARGS...]" >&2; exit 2; }
-  if [[ "$force_local" == 1 || "${OA_REMOTE:-}" == 0 ]]; then local_run "" "$@"; fi
+  if [[ -n "$at_commit" ]]; then
+    # A commit's own files only run on a host: the Mac's slots would need a
+    # checkout of it, so no fallback.
+    fallback=0
+  elif [[ "$force_local" == 1 || "${OA_REMOTE:-}" == 0 ]]; then local_run "" "$@"; fi
   fail() {   # why CMD...: the Mac's slots run CMD (or, with --no-fallback, exit 97)
     local why="$1"; shift
     [[ -z "${tmp:-}" ]] || rm -rf "$tmp"
@@ -190,23 +203,37 @@ run() {
   started=$(now)
   root="$(git rev-parse --show-toplevel 2> /dev/null)" || { say "not in a Git checkout"; exit 2; }
   rel="$(git rev-parse --show-prefix)"; rel="${rel%/}"; [[ -n "$rel" ]] || rel=.
-  # The snapshot: the checkout's files as they are, untracked ones too (not
-  # ignored ones), as a commit on HEAD made with a scratch index, so the
-  # checkout's own index and refs don't change. Its tree is the job's source
-  # fingerprint.
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/oa-remote.XXXXXXXX")"
   trap 'rm -rf "$tmp"' EXIT
-  local big
-  big="$(cd "$root" && git ls-files -o --exclude-standard -z | xargs -0 du -k 2> /dev/null | awk '{ s += $1 } END { print s * 1024 }')"
-  (( big < 200000000 )) || fail "untracked files hold $((big / 1000000)) MB (more than 200 MB): too much to send" "$@"
-  cp "$(git -C "$root" rev-parse --path-format=absolute --git-path index)" "$tmp/index" 2> /dev/null
   local tree commit
-  tree="$(cd "$root" && GIT_INDEX_FILE="$tmp/index" git add -A . && GIT_INDEX_FILE="$tmp/index" git write-tree)" || fail "could not snapshot the checkout" "$@"
-  commit="$(cd "$root" && GIT_AUTHOR_NAME=remote GIT_AUTHOR_EMAIL=remote@localhost GIT_COMMITTER_NAME=remote GIT_COMMITTER_EMAIL=remote@localhost \
-    GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z' git commit-tree "$tree" -p HEAD -m 'remote.sh snapshot')" || fail "could not snapshot the checkout" "$@"
-  (cd "$root" && git update-ref "refs/oa-remote/$commit" "$commit" && \
-    { git bundle create "$tmp/bundle" "refs/oa-remote/$commit" --not origin/main > /dev/null 2>&1 || \
-      git bundle create "$tmp/bundle" "refs/oa-remote/$commit" > /dev/null 2>&1; }; s=$?; git update-ref -d "refs/oa-remote/$commit"; exit $s) \
+  if [[ -n "$at_commit" ]]; then
+    rel=.
+    commit="$(git -C "$root" rev-parse --verify -q "$at_commit^{commit}")" || fail "no commit $at_commit" "$@"
+    tree="$(git -C "$root" rev-parse "$commit^{tree}")"
+  else
+    # The snapshot: the checkout's files as they are, untracked ones too (not
+    # ignored ones), as a commit on HEAD made with a scratch index, so the
+    # checkout's own index and refs don't change. Its tree is the job's source
+    # fingerprint.
+    local big
+    big="$(cd "$root" && git ls-files -o --exclude-standard -z | xargs -0 du -k 2> /dev/null | awk '{ s += $1 } END { print s * 1024 }')"
+    (( big < 200000000 )) || fail "untracked files hold $((big / 1000000)) MB (more than 200 MB): too much to send" "$@"
+    cp "$(git -C "$root" rev-parse --path-format=absolute --git-path index)" "$tmp/index" 2> /dev/null
+    tree="$(cd "$root" && GIT_INDEX_FILE="$tmp/index" git add -A . && GIT_INDEX_FILE="$tmp/index" git write-tree)" || fail "could not snapshot the checkout" "$@"
+    commit="$(cd "$root" && GIT_AUTHOR_NAME=remote GIT_AUTHOR_EMAIL=remote@localhost GIT_COMMITTER_NAME=remote GIT_COMMITTER_EMAIL=remote@localhost \
+      GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z' git commit-tree "$tree" -p HEAD -m 'remote.sh snapshot')" || fail "could not snapshot the checkout" "$@"
+  fi
+  # What the host lacks: the commits since origin/main, or, for a commit main
+  # already has, that commit alone (its parents come with the host's fetch of
+  # main). The ref is named for this process too, so jobs on one commit side by
+  # side don't delete each other's.
+  local bref="refs/oa-remote/$$/$commit" since=(origin/main)
+  if git -C "$root" merge-base --is-ancestor "$commit" origin/main 2> /dev/null; then
+    read -r -a since <<< "$(git -C "$root" rev-parse "$commit^@")"
+  fi
+  (cd "$root" && git update-ref "$bref" "$commit" && \
+    { git bundle create "$tmp/bundle" "$bref" --not "${since[@]}" > /dev/null 2>&1 || \
+      git bundle create "$tmp/bundle" "$bref" > /dev/null 2>&1; }; s=$?; git update-ref -d "$bref"; exit $s) \
     || fail "could not bundle the snapshot" "$@"
   # The command, with this checkout's path written @ROOT@ (the host's tree
   # replaces it), and the Coax build settings it would have seen here.
@@ -224,23 +251,40 @@ run() {
     printf 'argv=('; printf '%q ' "${argv[@]}"; printf ')\n'
     printf 'env_vars=('; [[ ${#env_vars[@]} -eq 0 ]] || printf '%q ' "${env_vars[@]}"; printf ')\n'; } > "$tmp/spec"
   under_budget || fail "the hosts cost about \$$(spent 86400) over 24 hours (OA_REMOTE_DAILY_USD is \$$daily)" "$@"
-  local host name ip
-  host="$(cached_host || lock "$state/acquire.lock" "$0" _acquire)" || fail "no build host could take the job" "$@"
-  read -r name ip <<< "$host"; echo "$name $ip" > "$state/host"
-  local inbox="$job.$$"
+  local host name ip inbox="$job.$$" sent attempt=1 nowait status
   cp "$here/host-job.sh" "$tmp/host-job.sh"
-  (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
-    || fail "could not send the job to $name" "$@"
-  local sent=$(now)
-  ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
-  local status=$?
+  # A host whose slots filled since it was picked sends the job back (96), and
+  # the hosts are asked again until one has a free slot.
+  while true; do
+    if (( attempt == 1 )); then host="$(cached_host || lock "$state/acquire.lock" "$0" _acquire)"
+    else host="$(lock "$state/acquire.lock" "$0" _acquire)"; fi || fail "no build host could take the job" "$@"
+    read -r name ip <<< "$host"; echo "$name $ip" > "$state/host"
+    (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
+      || fail "could not send the job to $name" "$@"
+    sent=$(now)
+    # Every host full: look again every 10 s for the first slot any host frees,
+    # for up to OA_REMOTE_WAIT seconds (default 1800), then wait on this host.
+    nowait=1; (( $(now) - started < ${OA_REMOTE_WAIT:-1800} )) || nowait=0
+    ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
+    status=$?
+    [[ $status == 96 && $nowait == 1 ]] || break
+    # A command of its own that exited 96 left its result.
+    ssh_to "$name" "$ip" "grep -qx 96 ~/results/$job/status" < /dev/null 2> /dev/null && break
+    (( attempt > 1 )) || say "$name's slots are full; waiting for a free slot on any host"
+    rm -f "$state/host"; attempt=$((attempt + 1)); sleep 10
+  done
   if [[ $status == 255 || $status == 97 ]]; then
     record job "$name" "$(( $(now) - started ))" "failed to run: $*"
     fail "$name could not run the job (ssh status $status)" "$@"
   fi
   # The files the command wrote, into this checkout.
-  ssh_to "$name" "$ip" "cat ~/results/$job/files.tar" < /dev/null | tar -xf - -C "$root" 2> /dev/null \
-    || say "could not bring the files back from $name"
+  local dest="$root"
+  [[ -z "$at_commit" ]] || dest="$out_dir"
+  if [[ -n "$dest" ]]; then
+    mkdir -p "$dest"
+    ssh_to "$name" "$ip" "cat ~/results/$job/files.tar" < /dev/null | tar -xf - -C "$dest" 2> /dev/null \
+      || say "could not bring the files back from $name"
+  fi
   local back; back="$(ssh_to "$name" "$ip" "cat ~/results/$job/times" < /dev/null 2> /dev/null)"
   local total=$(( $(now) - started ))
   record job "$name" "$total" "status $status: $*"

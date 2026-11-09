@@ -7,7 +7,8 @@
 #   bash ~/inbox/JOB/host-job.sh run JOB   # ~/inbox/JOB: spec (bash, from remote.sh), bundle and this file
 #
 # Exit status: the command's, or 97 when the host could not run it (remote.sh
-# then runs the command on the Mac's own slots).
+# then runs the command on the Mac's own slots), or 96 when every slot is busy
+# and OA_REMOTE_NO_WAIT=1 (remote.sh then tries another host).
 set -uo pipefail
 cmd="${1:-}"
 slots="${OA_REMOTE_SLOTS:-3}"
@@ -46,6 +47,8 @@ while [[ -z "$slot" ]]; do
     exec 9>&-
   done
   if [[ -z "$slot" ]]; then
+    # OA_REMOTE_NO_WAIT=1: the caller tries another host first (exit 96).
+    if [[ "${OA_REMOTE_NO_WAIT:-0}" == 1 ]]; then rm -rf "$in"; exit 96; fi
     [[ $waited == 1 ]] || echo "remote: $(hostname): all $slots slots busy, waiting" >&2
     waited=1; sleep 5
   fi
@@ -89,7 +92,11 @@ for a in "${argv[@]}"; do args+=("${a//@ROOT@/$tree}"); done
 tmp="$res.$$"; rm -rf "$tmp"; mkdir -p "$tmp"
 marker=~/slots/$slot/marker; touch "$marker"
 cd "$tree/$relcwd" || infra "no directory $relcwd"
-"${args[@]}" > >(tee "$tmp/out") 2> >(tee "$tmp/err" >&2)
+# OA_REMOTE_TIMEOUT (seconds): the command stops there even if its caller is
+# gone (a killed caller's job would otherwise hold its slot to the end).
+deadline=()
+[[ "${OA_REMOTE_TIMEOUT:-0}" =~ ^[1-9][0-9]*$ ]] && deadline=(timeout --kill-after=30 "$OA_REMOTE_TIMEOUT")
+${deadline[@]+"${deadline[@]}"} "${args[@]}" > >(tee "$tmp/out") 2> >(tee "$tmp/err" >&2)
 status=$?
 wait
 ended=$(date +%s)
