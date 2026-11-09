@@ -395,7 +395,7 @@
         "domain": {
           "host": "everglade.world", "title": "Everglade", "tagline": "A painted forest MMO. Make your hero and walk in.",
           "description": "Make your hero in the glade and walk into a painted forest with other players. Twelve classes on D&D 5E SRD rules, free in your browser.",
-          "entry": "/worlds/character-creator?via=portal",
+          "entry": "/play", "create": "character-creator",
           "features": [
             { "title": "12 classes", "line": "Barbarian to Wizard, each with its own spells and moves." },
             { "title": "Real 5E rules", "line": "Levels 1 to 6 on the D&D 5E SRD." },

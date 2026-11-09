@@ -77,7 +77,7 @@ export type Realm = { slug: string; place_of?: string; title: string; descriptio
 // icon and wordmark (coax/web/everglade-wordmark.coax) and index.md sit beside them, made by hand.
 export type Feature = { title: string; line: string }
 export type Shot = { src: string; alt: string }
-export type Domain = { host: string; title: string; description: string; tagline: string; entry: string; features: Feature[]; shots: Shot[] }
+export type Domain = { host: string; title: string; description: string; tagline: string; entry: string; create?: string; features: Feature[]; shots: Shot[] }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -159,7 +159,13 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
   }
-  for (const w of list) if (w.realm?.domain) domainChecked(w.realm)
+  for (const w of list) if (w.realm?.domain) {
+    domainChecked(w.realm)
+    // create: the place in this realm whose studio /play opens when the browser keeps no character yet
+    const c = w.realm.domain.create
+    if (c !== undefined && !list.some((x) => x.realm?.slug === c && x.realm.place_of === w.realm!.slug && x.realm.module === w.realm!.module))
+      throw new Error(`realms.json: ${w.realm.slug}: domain: create is a place of it (place_of) on its module`)
+  }
   // a place in another realm is that realm's page: its module and its slot
   for (const w of list) {
     const r = w.realm
@@ -379,7 +385,8 @@ function domainChecked(r: Realm) {
   if (!/^[^<>"|\n]{1,40}$/.test(d.title ?? "")) throw new Error(`${at}: title, at most 40`)
   if (!/^[^<>"\n]{50,200}$/.test(d.description ?? "")) throw new Error(`${at}: description, 50 to 200 characters`)
   if (!/^[^<>"\n]{10,80}$/.test(d.tagline ?? "")) throw new Error(`${at}: tagline, one line of 10 to 80`)
-  if (!/^\/worlds\/[a-z0-9-]+(\?[a-z0-9=&-]*)?$/.test(d.entry ?? "")) throw new Error(`${at}: entry is a /worlds/ page on the same site`)
+  // entry: the domain's one address for play (/play), with no query: the front door opens it with ?via=portal
+  if (!/^\/[a-z0-9-]+$/.test(d.entry ?? "")) throw new Error(`${at}: entry is a path on the domain itself, such as /play`)
   if (!Array.isArray(d.features) || d.features.length < 3 || d.features.length > 4 || d.features.some((f) => !/^[^<>"\n]{3,32}$/.test(f?.title ?? "") || !/^[^<>"\n]{10,90}$/.test(f?.line ?? "")))
     throw new Error(`${at}: features, 3 or 4 of a title (at most 32) and a line (at most 90)`)
   if (!Array.isArray(d.shots) || d.shots.length < 2 || d.shots.some((p) => !/^[a-z0-9-]+\.jpg$/.test(p?.src ?? "") || !/^[^<>"\n]{10,120}$/.test(p?.alt ?? "")))
@@ -491,7 +498,7 @@ ${shots}
 <script>
 // Firm reason: 1 (browser glue: the entry page opened in place under the front door, as zone-host.js does)
 (() => {
-  const ENTRY = ${JSON.stringify(d.entry)}, TITLE = ${JSON.stringify(d.title)};
+  const ENTRY = ${JSON.stringify(d.entry)}, TITLE = ${JSON.stringify(d.title)};   // the address bar says ENTRY all the way in
   const door = document.getElementById("door"), root = document.documentElement;
   root.classList.add("js");
   const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } }, { rootMargin: "0px 0px -8% 0px" }) : null;
@@ -524,7 +531,7 @@ ${shots}
     frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;margin:0;padding:0;background:#000;pointer-events:none;opacity:0";
     z = { frame, state: 0, loaded: false, paused: false, timer: 0, t0: performance.now() };
     frame.addEventListener("load", () => { z.loaded = true; poll(); });
-    frame.src = ENTRY;
+    frame.src = ENTRY + "?via=portal";
     document.body.prepend(frame);
     z.timer = setInterval(poll, 150);
   };
@@ -549,7 +556,7 @@ ${shots}
     const over = () => {
       if (done) return; done = true;
       door.remove(); document.body.style.overflow = "hidden";
-      try { history.pushState(null, "", win.location.href); } catch {}
+      try { history.pushState(null, "", ENTRY); } catch {}
       document.title = TITLE;
       addEventListener("popstate", () => location.reload());
       frame.focus(); try { win.focus(); } catch {}
@@ -574,9 +581,12 @@ ${shots}
 `
 }
 
-// /play: the realm's own page, straight in, under the domain's name, icon and preview.
-function domainPlay(r: Realm): string {
-  const d = r.domain!, html = page(r, false)
+// /play: the realm's own page under the domain's name, icon and preview: one address for all of it.
+// With a create place (d.create), the page also carries that place's arrival and interface font: the
+// module opens its studio when this browser keeps no character yet, else the world where you stood.
+function domainPlay(r: Realm, list: World[] = worlds()): string {
+  const d = r.domain!, c = d.create ? list.find((w) => w.realm?.slug === d.create)?.realm : undefined
+  const html = page(c ? { ...r, arrival: c.arrival, ui_font_src: c.ui_font_src, ui_font_family: c.ui_font_family } : r, false)
   const head = html.slice(html.indexOf("<head>") + 7, html.indexOf("<script>"))
   return html.replace(head, domainHead(r, d.title, "/play", "noindex, nofollow") + "\n")
     .replaceAll(`/worlds/${r.slug}/index.md`, `/worlds/${r.slug}/domain/index.md`)
@@ -610,8 +620,8 @@ a{display:inline-block;padding:14px 30px;border:1px solid #fff3c9;border-radius:
 `
 }
 
-export function domainPages(r: Realm): [string, string][] {
-  return [["index.html", frontDoor(r)], ["play/index.html", domainPlay(r)], ["404.html", domainNotFound(r)]]
+export function domainPages(r: Realm, list: World[] = worlds()): [string, string][] {
+  return [["index.html", frontDoor(r)], ["play/index.html", domainPlay(r, list)], ["404.html", domainNotFound(r)]]
 }
 
 // The ?project= swap for a realm's project_asset: an inline script after the host's module script runs
@@ -637,7 +647,7 @@ if (import.meta.main) {
   const out: [string, string][] = [[join(SITE, "realms.coax"), coax(list)], [join(SITE, "realms", "list.coax"), listCoax(list)],
     [join(SITE, "realms", "index.md"), listMarkdown(list)], [join(SITE, "realms", "index.html"), listPage(list)]]
   for (const w of list) if (w.realm) out.push([join(SITE, "realms", w.realm.slug, "index.html"), page(w.realm, w.listed !== false)])
-  for (const w of list) if (w.realm?.domain) out.push(...domainPages(w.realm).map(([f, t]) => [join(SITE, "realms", w.realm!.slug, "domain", f), t] as [string, string]))
+  for (const w of list) if (w.realm?.domain) out.push(...domainPages(w.realm, list).map(([f, t]) => [join(SITE, "realms", w.realm!.slug, "domain", f), t] as [string, string]))
   const behind: string[] = []
   for (const [file, text] of out) {
     if (existsSync(file) && readFileSync(file, "utf8") === text) continue

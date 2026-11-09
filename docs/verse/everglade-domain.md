@@ -4,11 +4,18 @@ Status, 2026-11-08: live at `everglade.world` (DNS done; the owner chose the nam
 `/` is a standard MMORPG front door (owner: "standard mmorpg landing page then right
 into the game world"): a hero capture, the EVERGLADE wordmark in CharacterCreateARKaiC
 (`coax/web/everglade-wordmark.coax` draws it as SVG outlines), PLAY NOW, four features,
-three screenshots and a footer. It opens Character Create (`?via=portal`) out of sight
-under itself as soon as it has painted, so PLAY NOW fades into the glade in about half a
-second with no page load. `/play` is Everglade II under the domain's name. Any other path
-shows Everglade's 404 (status 404; the bucket's 404 page writes it in on this host).
-The pages are `realms/everglade2/domain/`, written by `realms.ts` from the `domain`
+three screenshots and a footer. `/play` is the one address for playing (owner, 2026-11-08: the
+address bar says `everglade.world/play` all the way in, never `/worlds/...` or `?via=`). It is
+Everglade II with Character Create's arrival and font (`domain.create` in `realms.json`): with no
+character kept in this browser (`aethyr.player.appearance.v1`) it opens Character Create in the glade
+and runs you into the world on the same page and address; with one it opens the world with that look,
+class and level, where you stood last (kept in this browser as `coaxial.everglade2.place`, host action
+11, and told to the room as the hello's `A`, #13057; the room's character checkpoint brings back class,
+level and health). The front door opens `/play?via=portal` out of sight under itself as soon as it has
+painted, so PLAY NOW fades into the game in about half a second with no page load, and says `/play`.
+`/worlds/character-creator` and `/worlds/everglade2` on this host 301 to `/play` with the query
+dropped. Any other path shows Everglade's 404 (status 404; the bucket's 404 page writes it in on this
+host). The pages are `realms/everglade2/domain/`, written by `realms.ts` from the `domain`
 block in `realms.json`. Not built yet: host-aware login, the host field in analytics,
 the release smoke and golden for the domain, and `staging.everglade.world`. The URL map's
 `everglade` matcher was set by hand (below); `lb.sh everglade-domain` is still to write.

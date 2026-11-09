@@ -65,7 +65,7 @@ footer{padding:28px 16px 36px;text-align:center;color:#8f8a78;font:400 12px/1.6 
 <header class="hero">
 <h1 style="margin:0"><img class="mark" src="/worlds/everglade2/domain/wordmark.svg" alt="Everglade" width="760" height="100"></h1>
 <p class="tag">A painted forest MMO. Make your hero and walk in.</p>
-<a class="play" href="/worlds/character-creator?via=portal" data-play>PLAY NOW</a>
+<a class="play" href="/play" data-play>PLAY NOW</a>
 <p class="free">Free in your browser. No download.</p>
 </header>
 <section>
@@ -84,13 +84,13 @@ footer{padding:28px 16px 36px;text-align:center;color:#8f8a78;font:400 12px/1.6 
 <li class="in"><img src="/worlds/everglade2/domain/shot-run.jpg" alt="Running down the forest path toward the trees" width="960" height="510" loading="lazy" decoding="async"></li>
 </ul>
 </section>
-<section class="again"><a class="play in" href="/worlds/character-creator?via=portal" data-play>PLAY NOW</a></section>
+<section class="again"><a class="play in" href="/play" data-play>PLAY NOW</a></section>
 <footer>Everglade · Hosted by OpenAgents</footer>
 </div>
 <script>
 // Firm reason: 1 (browser glue: the entry page opened in place under the front door, as zone-host.js does)
 (() => {
-  const ENTRY = "/worlds/character-creator?via=portal", TITLE = "Everglade";
+  const ENTRY = "/play", TITLE = "Everglade";   // the address bar says ENTRY all the way in
   const door = document.getElementById("door"), root = document.documentElement;
   root.classList.add("js");
   const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } }, { rootMargin: "0px 0px -8% 0px" }) : null;
@@ -123,7 +123,7 @@ footer{padding:28px 16px 36px;text-align:center;color:#8f8a78;font:400 12px/1.6 
     frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;margin:0;padding:0;background:#000;pointer-events:none;opacity:0";
     z = { frame, state: 0, loaded: false, paused: false, timer: 0, t0: performance.now() };
     frame.addEventListener("load", () => { z.loaded = true; poll(); });
-    frame.src = ENTRY;
+    frame.src = ENTRY + "?via=portal";
     document.body.prepend(frame);
     z.timer = setInterval(poll, 150);
   };
@@ -148,7 +148,7 @@ footer{padding:28px 16px 36px;text-align:center;color:#8f8a78;font:400 12px/1.6 
     const over = () => {
       if (done) return; done = true;
       door.remove(); document.body.style.overflow = "hidden";
-      try { history.pushState(null, "", win.location.href); } catch {}
+      try { history.pushState(null, "", ENTRY); } catch {}
       document.title = TITLE;
       addEventListener("popstate", () => location.reload());
       frame.focus(); try { win.focus(); } catch {}

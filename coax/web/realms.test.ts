@@ -246,7 +246,7 @@ test("a realm's own domain: a plain host, no openagents.com, and pages under the
     expect(html.replace("Hosted by OpenAgents</footer>", "")).not.toMatch(/openagents\.com|OpenAgents/)
     expect(html).toContain(`<link rel="icon" type="image/svg+xml" href="/worlds/${r.slug}/domain/icon.svg">`)
     expect(html).toContain(`content="https://${r.domain!.host}/worlds/${r.slug}/domain/card.jpg"`)
-    if (file === "index.html") { expect(html).toContain(`href="${r.domain!.entry}" data-play>PLAY NOW</a>`); expect(html).toContain("Hosted by OpenAgents</footer>") }
-    if (file === "play/index.html") { expect(html).toContain(`data-app="${r.module}"`); expect(html).toContain(`<title>${r.domain!.title}</title>`) }
+    if (file === "index.html") { expect(html).toContain(`href="${r.domain!.entry}" data-play>PLAY NOW</a>`); expect(html).toContain(`history.pushState(null, "", ENTRY)`); expect(html).toContain("Hosted by OpenAgents</footer>") }
+    if (file === "play/index.html") { expect(html).toContain(`data-app="${r.module}"`); expect(html).toContain(`data-ui-font-family="CharacterCreateARKaiC"`); expect(html).toContain("cull:/everglade2-cull.wgsl"); expect(html).toContain(`<title>${r.domain!.title}</title>`) }
   }
 })
