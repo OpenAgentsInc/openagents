@@ -44,10 +44,11 @@ class FakeGcs(http.server.BaseHTTPRequestHandler):
             return self.answer(200, b"{}")
         if self.headers.get("Authorization") == "Bearer test-gcs" and "/rewriteTo/b/site-test/o/" in u.path:
             src, dest = u.path.split("/storage/v1/b/drops-test/o/", 1)[1].split("/rewriteTo/b/site-test/o/")
+            meta = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
             data = bucket["objects"].get(urllib.parse.unquote(src))
             if data is None:
                 return self.answer(404)
-            bucket["site"][urllib.parse.unquote(dest)] = {"meta": {}, "data": data}
+            bucket["site"][urllib.parse.unquote(dest)] = {"meta": meta, "data": data}
             return self.answer(200, b'{"kind": "storage#rewriteResponse", "done": true}')
         if self.headers.get("Authorization") != "Bearer test-gcs" or u.path != "/upload/storage/v1/b/drops-test/o":
             return self.answer(403)
@@ -382,6 +383,8 @@ pfiles = [k for k in bucket["site"] if k.startswith("projects/moon-villa/files/"
 kept_files = sql(f"SELECT string_agg(object, ' ') FROM drops.files WHERE drop_id = '{d}' AND status = 'scanned'").split()
 check("publish: the kept files are copied next to the page", len(pfiles) == len(kept_files) >= 1
       and sorted(bucket["site"][k]["data"] for k in pfiles) == sorted(bucket["objects"][o] for o in kept_files), (pfiles, kept_files))
+check("publish: each copy sets the file's kept type on the site's object",
+      pfiles and all(bucket["site"][k]["meta"] == {"contentType": "text/markdown; charset=utf-8"} for k in pfiles), [bucket["site"][k]["meta"] for k in pfiles])
 check("publish: index.md for agents names the design and the relay",
       b"## Design" in bucket["site"]["projects/moon-villa/index.md"]["data"] and pk.encode() in bucket["site"]["projects/moon-villa/index.md"]["data"])
 n_events = len(evs)
@@ -506,6 +509,71 @@ def realm_checks():
           and f'<meta property="og:url" content="{API}/projects/lantern-garden">' in ppage, (cover_at, ppage[:900]))
     check("realm: kept once", sql("SELECT realm_ms IS NOT NULL FROM drops.projects WHERE slug = 'lantern-garden'") == "t"
           and "broken.glb" in sql("SELECT realm_note FROM drops.projects WHERE slug = 'lantern-garden'"))
+
+    # A model's offsets, lengths, counts and strides are whole numbers inside its binary chunk, or it is left out.
+    view = {"buffer": 0, "byteOffset": 0, "byteLength": 36}
+    tri = {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"}
+    acc_sql = lambda a, v: sql(f"SELECT coalesce(drops.glb_acc('{json.dumps({'accessors': [a], 'bufferViews': [v]})}'::jsonb, 0), 'none')")
+    check("models: a plain accessor reads where its buffer view says", acc_sql(tri, view) == "0 3 5126 3 0 36 0", acc_sql(tri, view))
+    for why, a, v in [("an accessor offset below 0", dict(tri, byteOffset=-36), view), ("a buffer view offset below 0", tri, dict(view, byteOffset=-1000)),
+                      ("a count too large for any chunk", dict(tri, count=2 ** 40), dict(view, byteStride=252)),
+                      ("a fractional offset", dict(tri, byteOffset=1.5), view), ("an offset as text", dict(tri, byteOffset="4"), view),
+                      ("a stride below 0", tri, dict(view, byteStride=-12)), ("a length below 0", tri, dict(view, byteLength=-36)),
+                      ("a count below 0", dict(tri, count=-1), view)]:
+        check(f"models: {why} leaves the accessor out", acc_sql(a, v) == "none", acc_sql(a, v))
+    img_sql = lambda v: sql(f"SELECT count(*) FROM drops.glb_images('{json.dumps({'images': [{'bufferView': 0, 'mimeType': 'image/png'}], 'bufferViews': [v]})}'::jsonb)")
+    check("models: an image lies where its buffer view says, and an offset or length below 0 leaves it out",
+          img_sql(view) == "1" and img_sql(dict(view, byteOffset=-8)) == "0" and img_sql(dict(view, byteLength=-1)) == "0"
+          and img_sql(dict(view, byteOffset=2 ** 40)) == "0")
+    shelf_bin = struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0)
+    model = lambda accessor, bv, extra=None: glb(dict({"asset": {"version": "2.0"}, "nodes": [{"mesh": 0}], "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+                                                       "accessors": [accessor], "bufferViews": bv}, **(extra or {})), shelf_bin + tex)
+    shelf = model(tri, [view])
+    odd = [("offset.glb", model(dict(tri, byteOffset=-36), [view])), ("view.glb", model(tri, [dict(view, byteOffset=-1000)])),
+           ("count.glb", model(dict(tri, count=2 ** 40), [dict(view, byteStride=252)]))]
+    framed = model(tri, [view, {"buffer": 0, "byteOffset": -8, "byteLength": len(tex) + 8}],
+                   {"images": [{"bufferView": 1, "mimeType": "image/png"}], "textures": [{"source": 0}],
+                    "materials": [{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}]})
+    logo = b'<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>\n'
+    d = dcall("POST", "/api/drops", {}, cookie=jar)[1]["id"]
+    ids = {}
+    for name, data in [("shelf.glb", shelf)] + odd + [("framed.glb", framed), ("logo.svg", logo), ("older.svg", logo)]:
+        status, added, _ = dcall("POST", f"/api/drops/{d}/files", {"name": name, "bytes": len(data)}, cookie=jar)
+        if name.endswith(".svg"):
+            check(f"files: {name} is uploaded as plain text", bucket["opened"][-1]["type"] == "text/plain; charset=utf-8", bucket["opened"][-1])
+        put(added["upload"], data)
+        status, done, _ = dcall("POST", f"/api/drops/{d}/files/{added['file']['id']}/done", {}, cookie=jar)
+        ids[name] = added["file"]["id"]
+        check(f"models: {name} is kept", done["file"]["status"] == "scanned", done)
+    check("files: an SVG is kept as plain text", sql(f"SELECT content_type FROM drops.files WHERE id = '{ids['logo.svg']}'") == "text/plain; charset=utf-8"
+          and sql("SELECT drops.content_type('svg')") == "text/plain; charset=utf-8" and sql("SELECT drops.content_type('png')") == "image/png")
+    sql(f"UPDATE drops.files SET content_type = 'image/svg+xml' WHERE id = '{ids['older.svg']}'")   # a row kept before 0138
+    bucket["draft"] = json.loads(json.dumps(bucket["draft"]))
+    bucket["draft"]["card"].update({"name": "Model Shelf", "slug": "model-shelf", "cover": ""})
+    bucket["draft"]["assets"] = []
+    dcall("POST", f"/api/drops/{d}/draft", {}, cookie=jar)
+    status, pub, _ = dcall("POST", f"/api/drops/{d}/publish", {}, cookie=jar)
+    check("models: the drop is published", status == 200 and pub.get("published", {}).get("slug") == "model-shelf", pub)
+    site_of = lambda stem: [v for k, v in bucket["site"].items() if k.startswith(f"projects/model-shelf/files/{stem}-")]
+    logo_at, older_at, shelf_at = site_of("logo"), site_of("older"), site_of("shelf")
+    check("files: a published SVG is plain text on the site", len(logo_at) == 1 and logo_at[0]["meta"] == {"contentType": "text/plain; charset=utf-8"}
+          and logo_at[0]["data"] == logo, logo_at and logo_at[0]["meta"])
+    check("files: a kept type outside the published list goes out as bytes to save",
+          len(older_at) == 1 and older_at[0]["meta"] == {"contentType": "application/octet-stream", "contentDisposition": "attachment"}, older_at and older_at[0]["meta"])
+    check("files: other types are published as kept", len(shelf_at) == 1 and shelf_at[0]["meta"] == {"contentType": "model/gltf-binary"}, shelf_at and shelf_at[0]["meta"])
+    raw = bucket["site"].get("projects/model-shelf/realm/realm.pack", {}).get("data", b"")
+    names = []
+    if raw[:4] == b"VPK1":
+        for k in range(struct.unpack_from("<I", raw, 4)[0]):
+            off, n = struct.unpack_from("<II", raw, 32 + 48 * k + 4)
+            names.append((raw[32 + 48 * k + 16:32 + 48 * k + 48].rstrip(b"\0").decode(), raw[off:off + n]))
+    cat = names[0][1].decode() if names else ""
+    check("models: the plain models pack, an image outside its chunk left out",
+          [n for n, _ in names] == ["catalog", "vertices", "indices", "white"] and "L 0 shelf.glb|" in cat and "L 1 framed.glb|" in cat
+          and len(names[1][1]) == 6 * 48, ([n for n, _ in names], cat))
+    note = sql("SELECT realm_note FROM drops.projects WHERE slug = 'model-shelf'")
+    check("models: a model whose accessors lie outside its chunk is named in the note, not packed",
+          all(f"{n}: no triangles" in note for n, _ in odd) and not any(f" {n}|" in cat for n, _ in odd), (note, cat))
 
 realm_checks()
 

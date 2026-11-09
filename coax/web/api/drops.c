@@ -508,17 +508,34 @@ static bool site_put(const char *tok, const char *name, const char *type, const 
   return site_put_bytes(tok, name, type, (const unsigned char *)data, strlen(data));
 }
 
-// Copies a kept file from the drops bucket into the site's (a rewrite: the bytes never pass through here).
-static bool site_copy(const char *tok, const char *object, const char *dest) {
+// The types a kept file is published with: 0016's drops.content_type (0138), none of them one a browser opens
+// as a page of the site. A file of any other type goes out as bytes to save.
+static const char *const SITE_TYPES[] = {
+  "text/plain; charset=utf-8", "text/markdown; charset=utf-8", "text/csv; charset=utf-8", "application/json", "application/pdf",
+  "application/rtf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.oasis.opendocument.text",
+  "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/heic", "image/ktx2",
+  "audio/mpeg", "audio/wav", "audio/mp4", "audio/aac", "audio/ogg", "audio/flac", "audio/webm",
+  "model/gltf-binary", "model/gltf+json", "model/obj", "model/mtl", "model/stl", "model/vnd.usdz+zip",
+  "video/mp4", "video/quicktime", "application/zip", "application/octet-stream"};
+static void site_meta(const char *type, char *out, size_t cap) {
+  for (size_t i = 0; type && i < sizeof SITE_TYPES / sizeof *SITE_TYPES; i++)
+    if (!strcmp(type, SITE_TYPES[i])) { snprintf(out, cap, "{\"contentType\":\"%s\"}", SITE_TYPES[i]); return; }
+  snprintf(out, cap, "{\"contentType\":\"application/octet-stream\",\"contentDisposition\":\"attachment\"}");
+}
+
+// Copies a kept file from the drops bucket into the site's (a rewrite: the bytes never pass through here), its
+// type set from SITE_TYPES, never carried over from the drops bucket.
+static bool site_copy(const char *tok, const char *object, const char *dest, const char *type) {
   const char *bucket = getenv("OA_SITE_BUCKET");
   if (!bucket || !*bucket) return false;
-  char from[1024], to[1024], url[4096], rt[2048] = "";
+  char from[1024], to[1024], url[4096], rt[2048] = "", meta[200];
   enc(from, sizeof from, object); enc(to, sizeof to, dest);
+  site_meta(type, meta, sizeof meta);
   for (int i = 0; i < 20; i++) {
     snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s/rewriteTo/b/%s/o/%s%s%s", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"),
              env_or("OA_DROPS_BUCKET", "openagentsgemini-project-drops"), from, bucket, to, rt[0] ? "?rewriteToken=" : "", rt);
     buf b = {0};
-    long status = gcs_body(url, tok, "application/json", "{}", 2, &b);
+    long status = gcs_body(url, tok, "application/json", meta, strlen(meta), &b);
     bool done = status == 200 && b.p && (strstr(b.p, "\"done\": true") || strstr(b.p, "\"done\":true"));
     bool more = status == 200 && !done && b.p && str_of(b.p, "rewriteToken", rt, sizeof rt);
     free(b.p);
@@ -592,16 +609,36 @@ static bool fetch_object(const char *tok, const char *object, bytes *out) {
 // An accessor as drops.glb_acc writes it: where its elements lie and what they are.
 typedef struct { unsigned long long at, count, end; int comp, n, stride, norm; bool ok; } acc;
 static int comp_bytes(int comp) { return comp == 5126 || comp == 5125 ? 4 : comp == 5123 || comp == 5122 ? 2 : comp == 5121 || comp == 5120 ? 1 : 0; }
+// A whole number from 0 to top at *s, after spaces, up to a space or the end; false for a sign, a fraction or more
+// than top. *s moves past it.
+static bool whole(const char **s, unsigned long long top, unsigned long long *out) {
+  const char *p = *s;
+  while (*p == ' ') p++;
+  if (*p < '0' || *p > '9') return false;
+  unsigned long long v = 0;
+  for (; *p >= '0' && *p <= '9'; p++)
+    if (__builtin_mul_overflow(v, 10ull, &v) || __builtin_add_overflow(v, (unsigned long long)(*p - '0'), &v)) return false;
+  if (v > top || (*p && *p != ' ')) return false;
+  *out = v; *s = p;
+  return true;
+}
+// ok only when every byte the accessor's elements span lies in [at, end) and end is inside the chunk of bin bytes.
 static acc acc_of(const char *text, size_t bin) {
   acc a = {0};
-  if (!text || !*text) return a;
-  if (sscanf(text, "%llu %llu %d %d %d %llu %d", &a.at, &a.count, &a.comp, &a.n, &a.stride, &a.end, &a.norm) != 7) return a;
+  if (!text) return a;
+  const unsigned long long top[7] = {~0ull, REALM_INDICES, 65535, 4, 255, ~0ull, 1};
+  unsigned long long f[7];
+  for (int i = 0; i < 7; i++) if (!whole(&text, top[i], &f[i])) return a;
+  if (*text) return a;
+  a.at = f[0]; a.count = f[1]; a.comp = (int)f[2]; a.n = (int)f[3]; a.stride = (int)f[4]; a.end = f[5]; a.norm = (int)f[6];
   int size = comp_bytes(a.comp) * a.n;
-  if (size <= 0 || a.count == 0 || a.count > REALM_INDICES) return a;
+  if (size <= 0 || a.count == 0) return a;
   if (!a.stride) a.stride = size;
   if (a.stride < size || a.stride > 252) return a;
-  unsigned long long last = a.at + (a.count - 1) * (unsigned long long)a.stride + (unsigned long long)size;
-  a.ok = last <= a.end && a.end <= bin;
+  unsigned long long span, last;
+  if (__builtin_mul_overflow(a.count - 1, (unsigned long long)a.stride, &span) || __builtin_add_overflow(span, (unsigned long long)size, &span)
+      || __builtin_add_overflow(a.at, span, &last)) return a;
+  a.ok = a.at <= a.end && last <= a.end && a.end <= bin;
   return a;
 }
 // Component k of element i, as a float (normalized integers to 0..1).
@@ -652,7 +689,7 @@ static const char *realm_model(PGconn *c, realm_pack *rp, const unsigned char *g
   if (le32(g + 16) != 0x4e4f534a || 20ull + jlen > n) return "its JSON is missing";
   const unsigned char *bin = NULL; size_t binlen = 0;
   size_t at = 20 + (size_t)jlen;
-  if (at + 8 <= n && le32(g + at + 4) == 0x004e4942) { binlen = le32(g + at); bin = g + at + 8; if (at + 8 + binlen > n) return "its binary chunk is cut short"; }
+  if (at <= n && n - at >= 8 && le32(g + at + 4) == 0x004e4942) { binlen = le32(g + at); bin = g + at + 8; if (binlen > n - at - 8) return "its binary chunk is cut short"; }
   if (!bin) return "it has no binary chunk (its data lives in other files)";
   char *json = malloc(jlen + 1);
   if (!json) return "memory";
@@ -663,8 +700,10 @@ static const char *realm_model(PGconn *c, realm_pack *rp, const unsigned char *g
   PGresult *im = PQexecParams(c, "SELECT image, at, len FROM drops.glb_images($1::jsonb)", 1, NULL, (const char *[]){json}, NULL, NULL, 0);
   for (int i = 0; PQresultStatus(im) == PGRES_TUPLES_OK && i < PQntuples(im); i++) {
     int k = atoi(PQgetvalue(im, i, 0));
-    unsigned long long iat = strtoull(PQgetvalue(im, i, 1), NULL, 10), ilen = strtoull(PQgetvalue(im, i, 2), NULL, 10);
-    if (k < 0 || k >= 64 || iat + ilen > binlen || ilen == 0 || ilen > REALM_LAYER_MAX || rp->layer_n >= REALM_LAYERS) continue;
+    const char *sat = PQgetvalue(im, i, 1), *slen = PQgetvalue(im, i, 2);
+    unsigned long long iat, ilen;   // the image's bytes, [iat, iat + ilen), lie inside the chunk
+    if (!whole(&sat, binlen, &iat) || *sat || !whole(&slen, binlen, &ilen) || *slen || ilen > binlen - iat) continue;
+    if (k < 0 || k >= 64 || ilen == 0 || ilen > REALM_LAYER_MAX || rp->layer_n >= REALM_LAYERS) continue;
     layer *l = &rp->layers[rp->layer_n];
     image_size(bin + iat, (size_t)ilen, &l->w, &l->h);
     if (l->w <= 0 || l->h <= 0 || l->w > 8192 || l->h > 8192) continue;
@@ -900,9 +939,9 @@ static const char *publish_steps(PGconn *c, const char *slug, bool has_key) {
   free(sql_text(c, "SELECT drops.publish_step($1, 'sent')::text", 1, (const char *[]){slug}));
   char tok[4096];
   if (!token(tok, sizeof tok)) return "no token";
-  PGresult *f = PQexecParams(c, "SELECT object, dest FROM drops.publish_files($1)", 1, NULL, (const char *[]){slug}, NULL, NULL, 0);
+  PGresult *f = PQexecParams(c, "SELECT object, dest, content_type FROM drops.publish_files($1)", 1, NULL, (const char *[]){slug}, NULL, NULL, 0);
   bool copied = PQresultStatus(f) == PGRES_TUPLES_OK;
-  for (int i = 0; copied && i < PQntuples(f); i++) copied = site_copy(tok, PQgetvalue(f, i, 0), PQgetvalue(f, i, 1));
+  for (int i = 0; copied && i < PQntuples(f); i++) copied = site_copy(tok, PQgetvalue(f, i, 0), PQgetvalue(f, i, 1), PQgetvalue(f, i, 2));
   PQclear(f);
   if (!copied) return "the files";
   free(sql_text(c, "SELECT drops.publish_step($1, 'files')::text", 1, (const char *[]){slug}));
@@ -1018,9 +1057,10 @@ static const char *grow_steps(PGconn *c, const char *pk, const char *drop, const
   if (why) { if (err[0]) api_log("drops: grow: %s", err); return why; }
   char tok[4096];
   if (!token(tok, sizeof tok)) return "no token";
-  PGresult *f = PQexecParams(c, "SELECT object, dest FROM drops.grow_files($1)", 1, NULL, (const char *[]){drop}, NULL, NULL, 0);
+  PGresult *f = PQexecParams(c, "SELECT g.object, g.dest, f.content_type FROM drops.grow_files($1) g JOIN drops.files f ON f.object = g.object AND f.drop_id = $1",
+                             1, NULL, (const char *[]){drop}, NULL, NULL, 0);
   bool copied = PQresultStatus(f) == PGRES_TUPLES_OK;
-  for (int i = 0; copied && i < PQntuples(f); i++) copied = site_copy(tok, PQgetvalue(f, i, 0), PQgetvalue(f, i, 1));
+  for (int i = 0; copied && i < PQntuples(f); i++) copied = site_copy(tok, PQgetvalue(f, i, 0), PQgetvalue(f, i, 1), PQgetvalue(f, i, 2));
   PQclear(f);
   if (!copied) return "the files";
   free(sql_text(c, "SELECT drops.grow_done($1)::text", 1, (const char *[]){drop}));
