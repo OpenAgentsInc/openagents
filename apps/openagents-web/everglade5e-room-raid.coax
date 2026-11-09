@@ -1412,7 +1412,7 @@ e5rd_test_room :: (r: [] E5rRoom) {
   #assert (looks & (1 << RT_K_COMMAND)) != 0 && ((looks & (1 << RT_K_BLESS)) != 0 || (looks & (1 << RT_K_FAITH)) != 0);
 }
 
-#test "room raid: the horde acts apart: at any moment some move and some hold to cast, its casts spread over the beat (#12771)" #steps 30000000000 {
+#test "room raid: the horde acts apart: at any moment some move and some hold to cast, its casts spread over the beat (#12771)" #steps 30000000000 #traversal 200000000 {
   r: [1] E5rRoom;
   e5rd_test_room(r[..]);
   e5rr_join(r[..], 0, 0, -34);
