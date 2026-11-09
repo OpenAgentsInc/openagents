@@ -45,10 +45,13 @@ layer that lets an agent operate a running app:
 - a retained UI tree, so `tree` and `layout` have something to answer;
 - a first frame baked at compile time.
 
-[03-what-to-adapt.md](03-what-to-adapt.md) orders this into eight pieces of
-work. The first three are the agent driver, the agent clock and driver test
-scripts. They reuse what Coaxial already has (`?probe`, `shot`,
-`coaxial.*` probes, `replay-hosts`) and pay off in every realm and app at
+[03-what-to-adapt.md](03-what-to-adapt.md) orders this into nine phases of
+work. Its review section adapts the plan to worlds: the driver targets world
+entities, agent tools are deeds, the agent clock steps the room too, and drive
+scripts are replay streams. The first three phases are the agent driver, the
+agent clock and drive scripts. They reuse what Coaxial already has (`?probe`, `shot`,
+`coaxial.*` probes, the layout trace, the deed pipeline, the offline room and
+`replay-hosts`) and pay off in every realm and app at
 once.
 
 ## What was verified

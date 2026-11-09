@@ -289,18 +289,82 @@ contract between page and host).
   "releases never blocked", lean-verification and no-shortcut-phases
   rules already cover the same ground.
 
+## Review: changes for worlds, the room and today's engine
+
+The items above read Coaxial as an app framework. Our main product is
+worlds, Everglade is server-authoritative, and some of the pieces the items
+plan to build already landed on 2026-11-09. This review changes the plan
+in six places. Where it disagrees with an item above, the review wins.
+
+**1. `tree` and `layout` come from the layout trace first.**
+`aethyr/ui/trace.coax` (#13076) records every HUD widget's rectangle as it
+is drawn, with nesting, and `apps/openagents-web/hud-overlap.coax` lays out
+every realm's screens with it. `coaxial_tree` and `layout` read that trace,
+not the `coaxial_a11y` text lines. That gives agents most of what item 4
+promises without a retained tree, so item 4 and item 6 move to the end.
+
+**2. The driver targets world entities, not only UI.**
+`tree` lists world entities with stable ids next to the HUD: the player,
+monsters, non-player characters, mounts and placed objects (for example
+`goblin-3`, `guard`, `horse-white`, `door-north`). The driver gains world
+operations: `walk-to <id>`, `face <id>`, `use <ability> on <id>`,
+`mount <id>`. These are engine-wide in `aethyr/`, so every realm gets them.
+
+**3. Agent-callable tools are deeds.**
+Every player action already goes through the deed pipeline
+(`aethyr/action/deed.coax`: ask, act, present), and the room applies the
+same deeds. Item 7's tools are deeds exposed with their schemas:
+
+- a deed's ask step is the tool's `available when`;
+- its effects are checked against the consequence word, as item 7 says;
+- the room stays the authority, so an agent's tool call is exactly what a
+  player's input would be;
+- a session of tool calls replays like any other input.
+
+The world operations in point 2 lower to deeds where one exists.
+
+**4. The agent clock includes the room.**
+A clock that freezes only the browser leaves the room server running. In
+agent mode the page uses the offline room (`coax/web/room/worker.coax`
+built as `everglade-room.wasm`, run by `coax/web/room-worker.js`), and the
+driver's `clock` steps the page and the room together. `settle` waits until
+both report nothing scheduled.
+
+**5. Drive scripts are replay streams.**
+Driver input goes through the same input stream that replay records
+(`aethyr/replay.coax`). A drive script and a replay recording are then the
+same file, `replay-hosts.coax` checks drive scripts across hosts for free,
+and a playtest recording can become a test.
+
+**6. Two Exact rules to adopt.**
+
+- **Fix loops get three rounds.** After three failed rounds on one
+  problem, the agent changes approach or asks a person. On 2026-11-09 the
+  bow pose took seven diagnostic rounds (diag5 to diag11) before the
+  approach changed.
+- **A pitfalls list with a deletion rule.** `coax/DEBUGGING.md` keeps only
+  pitfalls reproduced on `main`, and deletes an entry when a diagnostic
+  catches it.
+
+Stale-build refusal (item 1) also covers stale bases: the driver refuses a
+build older than its sources, and worktrees start from `main-green`
+([../../verse/green-main-pipeline.md](../../verse/green-main-pipeline.md)).
+
+Headless runs still don't prove behaviour that differs in a real browser,
+such as zone hand-offs. Keep a real-Chrome check for those.
+
 ## Sequencing
 
-| Order | Item | Depends on | Size |
-| --- | --- | --- | --- |
-| 1 | `coax drive` on web (state through reflection, screenshot, tap and type by id, logs, perf) | `coaxial_tree` from the existing `coaxial_a11y` lines at first | Small to medium |
-| 2 | `?agent` clock and `settle` | 1 | Small |
-| 3 | Drive scripts and evidence | 1, 2 | Medium |
-| 5 | Field-by-field state carry | none | Small |
-| 8 | `start-here`, `vocab`, idiom repairs | none | Small |
-| 7 | `#tool` and WebMCP | 1 for testing | Medium |
-| 4 | Retained UI tree and flex layout | 1 to prove it | Large |
-| 6 | Baked first frame | 4 for UI; possible for worlds now | Medium |
-| — | Mac and iOS drive hosts | 1, 4 | Medium |
+Each phase lands on `main` on its own, with its checks.
 
-Items 5 and 8 have no dependencies and can run in parallel with 1–3.
+| Phase | Work | Depends on | Size |
+| --- | --- | --- | --- |
+| 1 | `coax drive` on the web: a live CDP session; `tree` from the layout trace plus world entities; `state` through reflection; `screenshot`, `tap` and `type` by id; world operations as deeds; `logs`; `perf`; stale-build refusal | none | Medium |
+| 2 | The agent clock: `?agent` mode, the offline room stepped with the page, `clock +ms`, `settle`, `until`, a pinned seed, locale, zone and epoch | 1 | Small to medium |
+| 3 | Drive scripts as replay streams, text comparisons node by node, results in `coax.evidence.v1`, run by the after-landing check | 1, 2 | Medium |
+| 4 | Field-by-field state carry on reload | none; can run beside 1 to 3 | Small |
+| 5 | Deeds as agent tools through MCP (`apps/openagents-cli/mcp.coax`) and WebMCP, checked against the effects inventory | 1 for testing | Medium |
+| 6 | The on-ramp: `coax/start-here.md`, `coax vocab`, idiom repairs in `errors.cpp`, the pitfalls deletion rule | none | Small |
+| 7 | Mac and iOS drive hosts | 1 to 3 | Medium |
+| 8 | A retained UI tree with flex layout, checked against Chrome | 1 to prove it | Large |
+| 9 | A baked first frame | 8 for UI; worlds earlier | Medium |
