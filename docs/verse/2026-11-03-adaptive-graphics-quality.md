@@ -114,15 +114,48 @@ At load the world picks a rung from the page's facts (`host.js` `pageFacts`:
 world reads them with one parser, `quality_device_from_facts`, and reads the
 player's pick with `quality_mode_from_facts`:
 
-- A handheld device starts at MED (rung 8), or LOW (rung 2) with 4 cores or
-  fewer or 3 GB or less. A device is handheld when it is touched, its pointer
-  is coarse, its screen's short side is under 700 CSS pixels, or the page is
-  under 700 CSS pixels across (`quality_handheld`). A phone held sideways and
-  a tablet are handheld, so neither starts at HIGH.
-- A computer starts at HIGH (rung 11), or MED with 2 cores or fewer or 2 GB or
-  less.
-- A number the browser doesn't give (Safari has no `deviceMemory`) counts for
-  nothing.
+- The device falls in one of five classes (`quality_device_class`), and
+  each class starts at its own rung (`QUALITY_CLASS_RUNG`):
+
+  | Class | When | Start rung | Tier |
+  | --- | --- | ---: | --- |
+  | Weak phone | Handheld with 4 cores or fewer, 3 GB or less, or a software GPU | 2 | LOW |
+  | Phone | Handheld, screen's short side under 700 CSS pixels | 5 | MED |
+  | Tablet | Handheld, screen's short side 700 CSS pixels or more | 8 | MED |
+  | Laptop | A computer with 2 cores or fewer, 2 GB or less, or a built-in or software GPU | 9 | MED |
+  | Desktop | Any other computer | 11 | HIGH |
+
+  A device is handheld when it is touched, its pointer is coarse, its
+  screen's short side is under 700 CSS pixels, or the page is under 700 CSS
+  pixels across (`quality_handheld`). A phone held sideways and a tablet are
+  handheld, so neither starts at HIGH.
+- The GPU comes from WebGPU's adapter (`adapter.info`). The host sends
+  `gpu_vendor`, `gpu_arch` and `gpu_fallback` as message 613 when the adapter
+  opens, and in every later page fact. `quality_gpu` reads them: a fallback
+  adapter or SwiftShader is software, Intel is built in, Qualcomm, Arm,
+  Imagination, Samsung and MediaTek are a phone's, NVIDIA and AMD are a
+  card, and Apple is Apple's.
+- A number or GPU the browser doesn't give (Safari has no `deviceMemory`)
+  counts for nothing.
+
+#### The measured start
+
+When the scene first draws, the governor times the next 1.5 s of frames,
+leaving out the first 0.3 s while shaders compile (`quality_probe_begin`).
+If the median frame is over budget, it steps down at once as many rungs as
+the cost table (`QUALITY_COST`, each rung's frame cost as a share of the
+top's) says the budget needs. It never steps up; the governor does that
+later. A tier the player picked is never measured.
+
+#### The settled rung
+
+Once AUTO holds a rung for 20 s, the realm tells the host (action 33), which
+keeps `LADDER/CLASS/RUNG` in `verse.quality.settled`. The next visit's page
+facts carry it as `settled=`. When the ladder version and the device's class
+match, AUTO starts at that rung instead of the class's
+(`quality_start_settled`), and the measured start can still step it down.
+Reads and writes of `localStorage` sit in `try`/`catch`, so a private window
+starts from the class.
 
 ### The governor
 

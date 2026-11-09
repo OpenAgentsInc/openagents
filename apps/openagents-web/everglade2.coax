@@ -91,6 +91,7 @@ E2 :: struct {
   view: figs.CamMode;                                 // Everglade II's follow mode (e2_mode)
   q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/quality.coax): the pixels drawn
   q_dev: QualityDevice; q_facts: bool; q_mode: int = QUALITY_AUTO; q_tell: bool;   // the page's device and the player's pick (e2_quality_facts)
+  q_settled: [QUALITY_CLASSES] int;                 // the rung each class settled at on an earlier visit (-1 none)
   kn: QualityKnobs; kn_ready: bool; casc_n: int;     // the rung's knobs as the frame uses them, eased in (e2_knobs_frame); the host's shadow tiles
   q_box: cc.Box; q_finger: int = -1; golden: bool;   // the GFX control beside the frame rate, the finger on it; a golden frame
   fps_counter:[1]cc.FpsCounter;          // the frame rate shown, and the frames since it was last worked out
@@ -199,6 +200,7 @@ e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   if kind == E2C_KEPT { e2c_reply(s, t); return; }
   if kind == E2_HOST_PLACE { e2_place_take(s, t); return; }
   if kind == E2_HOST_HIDDEN || kind == E2_HOST_SHOWN { e2c_seen(s, kind == E2_HOST_SHOWN, t); return; }
+  if kind == E2_HOST_GPU { e2_quality_gpu(s, t); return; }
   if kind == E2_HOST_PAGE {
     s[0].play = e2c_play_page(t);
     e2_material_facts(s, t); e2c_facts(s, t); s[0].light_view = envd.env_view_query(t); e2_quality_facts(s, t);
@@ -722,7 +724,18 @@ ACT_QUALITY :: 6;   // host.js: the tier to keep in verse.quality
 e2_quality_facts :: (s: [] E2, t: string) {
   s[0].q_dev = quality_device_from_facts(t); s[0].q_mode = quality_mode_from_facts(t);
   s[0].q_tell = quality_url_new(t); s[0].q_facts = true;
+  for c: 0..<QUALITY_CLASSES { s[0].q_settled[c] = quality_settled_from_facts(t, c); }
   s[0].q_ready = false;   // started again from these facts on the next frame
+}
+// The GPU's facts (host.js message 613, once the adapter opens): the device's class may change
+// with them, so the governor starts again, unless the measured start has already begun.
+E2_HOST_GPU :: 613;
+ACT_SETTLED :: 33;   // host.js: the rung AUTO settled at, kept in verse.quality.settled
+e2_quality_gpu :: (s: [] E2, t: string) {
+  g := quality_gpu_from_facts(t);
+  if g == s[0].q_dev.gpu { return; }
+  s[0].q_dev.gpu = g;
+  if !s[0].q[0].probed && s[0].q[0].probe < 0 { s[0].q_ready = false; }
 }
 e2_quality_device :: (s: [] E2, w: f32, h: f32, dpr: f32) -> QualityDevice {
   d: QualityDevice; if s[0].q_facts && !s[0].golden { d = s[0].q_dev; }
@@ -739,9 +752,16 @@ e2_quality_govern :: (s: [] E2, dt: f32, w: f32, h: f32, dpr: f32, golden: bool)
     if w < 1 || h < 1 { return; }
     d := e2_quality_device(s, w, h, dpr);
     if golden { quality_start(s[0].q[..], d, QUALITY_AUTO); s[0].q_ready = true; return; }
-    quality_start(s[0].q[..], d, s[0].q_mode); s[0].q_ready = true; return;
+    k := quality_device_class(d);
+    quality_start_settled(s[0].q[..], d, s[0].q_mode, ifx s[0].q_facts then s[0].q_settled[k] else -1); s[0].q_ready = true; return;
   }
+  // the measured start: the first frames once the scene draws (quality_probe_begin)
+  if !s[0].q[0].probed && s[0].q[0].probe < 0 && s[0].plant_done && s[0].kits && s[0].draw_n > 0 { quality_probe_begin(s[0].q[..]); }
   _ := quality_frame(s[0].q[..], dt);
+  if quality_settled_due(s[0].q[..]) && s[0].action == 0 && !s[0].q_tell {
+    s[0].out_n = quality_settled_text(s[0].outbox[..], s[0].q[0].kind, s[0].q[0].rung);
+    s[0].action = ACT_SETTLED; quality_settled_kept(s[0].q[..]); return;
+  }
   if s[0].q_tell && s[0].action == 0 {
     s[0].out_n = quality_put(s[0].outbox[..], 0, QUALITY_HOST[s[0].q[0].mode]);
     s[0].action = ACT_QUALITY; s[0].q_tell = false;
@@ -896,6 +916,30 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
   s[0].kn.shadow = 0; e2_shadows(s[..], u[..]); #assert u[E2_U_CASCADE] == 0 && s[0].casc[0].draw == -1;
   // back to the full set: the tiles left out are drawn again before they are used
   s[0].kn.shadow = 1; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == s[0].casc_n && !s[0].casc[0].slot[s[0].casc_n - 1].drawn;
+}
+#test "e2 quality: the GPU's facts and the kept rung start it; the measured start runs once the scene draws, and a settled rung is told to the host" #steps 80000000 {
+  s: [1] E2;
+  e2_message(s[..], E2_HOST_PAGE, "url=https://everglade.world/play\nvw=1366\nvh=657\nsw=1366\nsh=768\ndpr=1\ncores=8\nmemory=8\nquality=");
+  e2_quality_frame(s[..], 0, 1366, 657, 1, false); #assert s[0].q[0].kind == QUALITY_DESKTOP && quality_tier(s[0].q[..]) == QUALITY_HIGH;
+  // an Intel laptop's GPU, said once the adapter opens: started again as a laptop
+  e2_message(s[..], E2_HOST_GPU, "gpu_vendor=intel\ngpu_arch=gen-12lp\ngpu_fallback=0");
+  #assert !s[0].q_ready; e2_quality_frame(s[..], 0, 1366, 657, 1, false);
+  #assert s[0].q[0].kind == QUALITY_LAPTOP && s[0].q[0].rung == QUALITY_CLASS_RUNG[QUALITY_LAPTOP] && e2_probe(s[..], 170) == QUALITY_GPU_BUILTIN;
+  // no scene yet: no measuring; once it draws, slow frames step it down at once
+  for i: 0..<30 { e2_quality_frame(s[..], 0.05, 1366, 657, 1, false); } #assert s[0].q[0].probe < 0 && !s[0].q[0].probed;
+  s[0].plant_done = true; s[0].kits = true; s[0].draw_n = 1;
+  for i: 0..<60 { if s[0].q[0].probed { break; } e2_quality_frame(s[..], 0.05, 1366, 657, 1, false); }
+  #assert s[0].q[0].probed && e2_probe(s[..], 171) == QUALITY_CLASS_RUNG[QUALITY_LAPTOP] && e2_probe(s[..], 172) == s[0].q[0].rung && s[0].q[0].rung < QUALITY_CLASS_RUNG[QUALITY_LAPTOP] - 1;
+  // held 20 s: the host keeps it (action 33), once
+  for i: 0..<1300 { e2_quality_frame(s[..], 0.0178, 1366, 657, 1, false); if s[0].action == ACT_SETTLED { break; } }
+  told := cast(string) s[0].outbox[0..<s[0].out_n];
+  #assert s[0].action == ACT_SETTLED && told.count >= 5 && told[0..<4] == "2/3/";
+  e2_action_done(s[..]);
+  for i: 0..<100 { e2_quality_frame(s[..], 0.0178, 1366, 657, 1, false); } #assert s[0].action != ACT_SETTLED;
+  // the next visit: the kept rung is where AUTO starts
+  n: [1] E2;
+  e2_message(n[..], E2_HOST_PAGE, "url=https://everglade.world/play\nvw=1366\nvh=657\nsw=1366\nsh=768\ndpr=1\ncores=8\ngpu_vendor=intel\nsettled=2/3/4\nquality=");
+  e2_quality_frame(n[..], 0, 1366, 657, 1, false); #assert n[0].q[0].rung == 4 && n[0].q[0].start == 4;
 }
 #test "e2 quality: golden frames hold the screen's rung; the GFX control is hidden there" {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_INTEL);
@@ -1424,6 +1468,9 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 163 { return cast(int) (s[0].kn.grass * 100 + 0.5); } if field == 164 { return cast(int) (s[0].kn.scenery * 100 + 0.5); }
   if field == 165 { return cast(int) (s[0].kn.shadow * 100 + 0.5); } if field == 166 { return cast(int) (s[0].kn.post * 100 + 0.5); }
   if field == 167 { return cast(int) (s[0].kn.crowd * 100 + 0.5); } if field == 168 { return e2_bloom_passes(s); }
+  // 169 to 172: the device's class and GPU, the rungs the measured start stepped from and to
+  if field == 169 { return s[0].q[0].kind; } if field == 170 { return s[0].q_dev.gpu; }
+  if field == 171 { return s[0].q[0].probe_from; } if field == 172 { return s[0].q[0].probe_to; }
   if field == 4 { n := 0; for b: 0..<E2_BUCKETS { if s[0].kit_count[b] > 0 { n += 1; } } return n; }
   if field == 5 { return cast(int)(s[0].you_z * 100); }
   // 6 the camera's room along its ray, 7 the eye's height over your feet, 8 your feet over the land (cm)

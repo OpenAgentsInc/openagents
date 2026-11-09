@@ -102,6 +102,8 @@
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each,
 //   612 the network: "1" back online (a socket from before is likely dead), "0" offline (#12856)
+//   613 the GPU, once the adapter opens: gpu_vendor, gpu_arch, gpu_fallback (also in every later 600), and
+//       action 33 keeps the graphics rung the app settled at (verse.quality.settled, the next 600's settled=)
 // and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
 // /api/drops, private to who dropped them. Message 40 is their state, a line each: "S|signed|signer|
 // dragging|note" (signer: the browser has a Nostr signer), then "F|name|kind|bytes|permille|status|note"
@@ -904,6 +906,8 @@ function styleFacts() {
   out.day = ((t.getHours() * 3600 + t.getMinutes() * 60 + t.getSeconds()) / 86400).toFixed(5);
   return out;
 }
+const GPU_KIND = 613;
+let gpuFacts = {};
 function pageFacts() {
   const [tab, fresh] = kept(sessionStorage, "coaxial.tab"), [visitor] = kept(localStorage, "coaxial.visitor");
   let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
@@ -914,6 +918,7 @@ function pageFacts() {
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
     cores: navigator.hardwareConcurrency || 0, memory: navigator.deviceMemory || 0, quality: storedQuality(),
+    settled: (() => { try { return localStorage.getItem("verse.quality.settled") || ""; } catch { return ""; } })(), ...gpuFacts,
     frame_hz: globalThis.coaxialPreferredFrameRate || 0, minimum_hz: globalThis.coaxialMinimumFrameRate || 0,
     sound: (() => { try { return localStorage.getItem("verse.sound") || ""; } catch { return ""; } })(),
     settings: (() => { try { return localStorage.getItem("verse.settings") || ""; } catch { return ""; } })(),
@@ -961,6 +966,11 @@ async function openDevice(made = () => {}) {
   if (!navigator.gpu) return null;
   let adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return null;
+  // the GPU's facts for the graphics quality's device class (aethyr/quality.coax quality_gpu):
+  // in every later pageFacts, and told to the app now (message 613)
+  gpuFacts = { gpu_vendor: String(adapter.info?.vendor || "").toLowerCase().slice(0, 32), gpu_arch: String(adapter.info?.architecture || "").toLowerCase().slice(0, 32),
+    gpu_fallback: (adapter.info?.isFallbackAdapter ?? adapter.isFallbackAdapter) ? 1 : 0 };
+  if (engine?.exports.coaxial_message) send(GPU_KIND, Object.entries(gpuFacts).map(([k, v]) => `${k}=${v}`).join("\n"));
   if(roomTraceEnabled)globalThis.coaxial.gpuAdapterInfo={vendor:adapter.info?.vendor,architecture:adapter.info?.architecture,device:adapter.info?.device,description:adapter.info?.description,fallback:adapter.info?.isFallbackAdapter??adapter.isFallbackAdapter??null};
   // a page with data-timing asks for the GPU's timestamps (message 610), when the adapter has them
   let timing = !!script?.dataset.timing && adapter.features.has("timestamp-query");
@@ -3501,6 +3511,7 @@ function after(gesture, tap = false) {
     else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
     else if (code === BAR_KIND) { if (!golden) try { localStorage.setItem(barKey, text); } catch {} }
     else if (code === 6) setQuality(text);
+    else if (code === 33) { if (!golden) try { localStorage.setItem("verse.quality.settled", text.slice(0, 16)); } catch {} }
     // a realm's sound settings, "VOLUME MUTED" (0..100, 0 or 1), back in its facts as sound=
     else if (code === 13) { if (!golden) try { localStorage.setItem("verse.sound", text.slice(0, 16)); } catch {} }
     // a realm's input and reading settings (aethyr/ui/settings.coax), back in its facts as settings=

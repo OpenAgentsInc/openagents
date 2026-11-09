@@ -47,7 +47,11 @@ It does this without any piece moving, growing or popping in front of you.
 - **The governor.** `e2_quality_frame` feeds each frame's time to the
   governor, and `e2_pixel_budget` tells the host how many pixels to draw. It
   steps down a ladder of twelve rungs when frames run slow and back up when
-  there's room. A phone starts no higher than MED.
+  there's room. The start comes from the device's class: a weak phone at
+  LOW, a phone and a tablet at MED, a laptop with a built-in GPU at MED's
+  top, a computer at HIGH. When the scene first draws, the governor times
+  1.5 s of frames and, if they run slow, steps down several rungs at once.
+  The rung it settles at is kept for your next visit.
 - **The knobs.** Each rung sets how much the frame draws: the pixels, the
   grass's reach, the scenery's reach, the shadow tiles, the post pass and the
   other players drawn (`quality_rung_knobs`, `e2_knobs_frame`).
@@ -162,6 +166,12 @@ In `aethyr/quality.coax`:
 - `#test "quality: each rung down costs no more than the one above it"`.
 - `#test "quality: the page's facts give the device; a phone held sideways or a
   tablet never starts at HIGH"`.
+- `#test "quality: the device's class: a weak phone, a phone, a tablet, a
+  laptop's built-in GPU, a computer; each starts at its rung"`.
+- `#test "quality: the measured start steps down as many rungs as the frames
+  need, at once, and never up"`.
+- `#test "quality: the rung AUTO settles at is kept for the next visit, for its
+  class and its ladder only"`.
 
 [Aethyr chapter 16](../../aethyr/book/ch016-budgets-that-refuse.md) builds the
 budgets that refuse work a frame can't pay for.
