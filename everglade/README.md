@@ -8,6 +8,8 @@ the Verse.
 
 - To play, go to [everglade.world/play](https://everglade.world/play).
 - To build it from scratch, read [Building Everglade](book/README.md).
+- For system specs that aren't book chapters yet, see [Everglade design docs](docs/README.md),
+  such as [Agentics](docs/agentics-profession-spec.md), the profession for commanding agents.
 
 Everglade's code is moving into this folder from `verse/everglade2/` and
 `apps/openagents-web/`. For what moves and when, see
