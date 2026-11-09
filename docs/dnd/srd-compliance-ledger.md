@@ -829,8 +829,10 @@ from the spellbook in seventy minutes. Both require Concentration and a
 Magic action each turn. On successful completion both consume incense, and
 the prepared cast also spends its selected slot. Rat, Spider and Cat can be
 Celestial, Fey or Fiend. The regular familiar persists across Long Rests.
-Other eligible forms, dismissal and return, commands, shared senses, touch
-spell delivery and world controls remain open.
+A Magic action dismisses the familiar temporarily or permanently. Another
+Magic action returns a temporarily dismissed familiar within 30 feet.
+Other eligible forms, commands, shared senses, touch spell delivery and
+world controls remain open. Familiar gear is not yet modeled.
 
 The native witness passed the spell-slot path, attack refusal and Long Rest
 retirement. Scoped mutation runs killed 1,221 mutants with zero survivors
@@ -841,3 +843,6 @@ The timed casting slice passed 427 workflow checks and the native completion
 witness. The familiar and cast-request authority units killed 343 mutants
 with zero survivors. The generated spell index matches the pinned catalog,
 and Lab Wasm built at 2,648,987 bytes against the 2,650,000-byte cap.
+
+The dismissal lifecycle passed a native witness and 375 familiar authority
+mutants with zero survivors. Experimental Wasm remained at 2,648,987 bytes.

@@ -7512,3 +7512,8 @@ request spends the Magic action and the selected resource. The familiar
 leaves the grid at 0 HP, and the Druid's Fey familiar also leaves when its
 owner completes a Long Rest. Attack admission rejects familiars across
 weapon, natural attack, Unarmed Strike, Ready Attack and Opportunity Attack.
+Temporary dismissal spends the owner's Magic action and removes the familiar
+from the grid and turn scheduler while preserving HP and initiative. Returning
+spends another Magic action and requires an unoccupied square within 30 feet.
+Permanent dismissal retires the familiar. Recasting can change a pocketed
+familiar's form without bringing it back into the world.
