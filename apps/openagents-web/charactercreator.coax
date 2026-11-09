@@ -612,8 +612,8 @@ bow_fall_row :: (row:f32)->f32 {
 #test "the bow's swing follows the die and knock back frames a body's pose row shows, in either body" {
  r:=f32(figs.BD_ROWS);
  #assert bow_fall_row(f32(figs.BD_FIRST[figs.BD_DIE]+30)*r)==bow_fall(figs.BD_DIE,1.0) && bow_fall(figs.BD_DIE,1.0)==f32(CC_BOW_FALL);
- #assert bow_fall_row(f32(figs.BD_TOTAL+figs.BD_FIRST[figs.BD_DIE]+71)*r)==bow_fall(figs.BD_DIE,71.0/30) && abs(bow_fall(figs.BD_DIE,71.0/30)-f32(CC_BOW_LIE))<0.0001;
- #assert bow_fall_row(f32(figs.BD_FIRST[figs.BD_KNOCK]+10)*r)==f32(CC_BOW_REEL) && bow_fall(figs.BD_KNOCK,24.0/30)==0;
+ #assert abs(bow_fall_row(f32(figs.BD_TOTAL+figs.BD_FIRST[figs.BD_DIE]+71)*r)-f32(CC_BOW_LIE))<0.0001;
+ #assert bow_fall_row(f32(figs.BD_FIRST[figs.BD_KNOCK]+10)*r)==f32(CC_BOW_REEL) && bow_fall(figs.BD_KNOCK,f32(figs.BD_FRAMES[figs.BD_KNOCK]-1)/f32(figs.BD_FPS))==0;
  #assert bow_fall_row(0)==0 && bow_fall_row(f32(figs.BD_FIRST[figs.BD_DIE]-1)*r)==0 && bow_fall_row(f32(figs.BD_FIRST[figs.BD_DIE]+figs.BD_FRAMES[figs.BD_DIE])*r)==0;
 }
 // As you draw, the bow turns about its limbs until its string faces CC_BOW_ANCHOR, a point at your chin
