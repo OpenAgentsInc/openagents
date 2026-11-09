@@ -3118,4 +3118,29 @@ xc_check_ai_rate :: (speed:int)->bool {
   #assert xc_press(s[..],k);
   f:=rs_familiar_of(b,0);
   #assert f>=0 && b[0].c[f].familiar_form==MON_OWL && rs_familiar_darkvision(b[0].c[f])==120;
+  cc.catalog(cr,"C glade/environment 9 12 250 100 8 0\nC glade/familiar8 50 240 248 100 0 0\n");
+  draw:[24]f32;
+  #assert xc_familiar_draw(s[..],draw[..],0)==1;
+  #assert s[0].bodies[0].draws[0]==50 && s[0].bodies[0].draws[1]==240 && draw[0]==x[0].familiar_x && draw[2]==x[0].familiar_z;
+  rs_familiar_retire(b,f);
+  #assert xc_familiar_draw(s[..],draw[..],0)==0;
+}
+
+xc_familiar_draw :: (s:[]Lab,out:[]f32,n:int)->int {
+  x:=s[0].xc[..]; c:=s[0].creator[..]; b:=x[0].b[..];
+  if !x[0].started || n>=s[0].bodies[0].draws.count/4 || (n+1)*24>out.count { return n; }
+  f:=rs_familiar_of(b,0);
+  if f<0 || !rs_up(b[0].c[f]) || b[0].c[0].familiar_sensing && rs_familiar_observer(b,0)==f { return n; }
+  fx:=x[0].familiar_x; fz:=x[0].familiar_z;
+  if !xdungeon.dg_sight(c[0].player_x,c[0].player_z,fx,fz) { return n; }
+  for i:0..<RS_FAMILIAR_FORMS.count {
+    if RS_FAMILIAR_FORMS[i]!=b[0].c[f].familiar_form || c[0].familiar_count[i]<=0 { continue; }
+    cc.familiar_record(out,n,c[0].familiar_word[i],fx,meadow_y(fx,fz),fz,c[0].player_face);
+    d:=s[0].bodies[0].draws[..];
+    d[n*4]=cast(u32)c[0].familiar_first[i]; d[n*4+1]=cast(u32)c[0].familiar_count[i];
+    d[n*4+2]=cast(u32)n; d[n*4+3]=1;
+    s[0].bodies[0].draw_n=n+1;
+    return n+1;
+  }
+  return n;
 }

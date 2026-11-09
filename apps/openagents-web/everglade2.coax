@@ -1050,6 +1050,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   d := e2_body(s, c, fig, E2Drawn.{rec = rec, n = n, sn = sn});
   s[0].cz[0].fig1 = d.rec;
   if d.n > 0 { s[0].cz[0].drawn += 1; }
+  d = e2_familiars_draw(s,d);
   d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade2-net.coax)
   rec = d.rec; n = d.n; sn = d.sn;
   n = e2_pieces(s, s[0].draws[..], n, false);
@@ -1267,6 +1268,22 @@ e2_body :: (s: [] E2, c: cc.Creator, fig: figs.BdAnim, at: E2Drawn) -> E2Drawn {
 }
 // The others, as the room has them drawn this frame: each on the land, its own walk and run from how
 // fast it goes, its jump from its feet off the ground, its own look; and its name for e2_plates.
+e2_familiars_draw :: (s:[]E2,at:E2Drawn)->E2Drawn {
+  d:=at; net:=s[0].net[..]; c:=s[0].creator[..];
+  for i:0..<E2N_FAMILIARS {
+    f:=net[0].familiar_rows[i];
+    if !f.live || (i==net[0].seat && net[0].familiar_sense>0) || d.rec>=E2_RECORDS || d.n>=E2_DRAWS { continue; }
+    count:=c[0].familiar_count[f.form];
+    if count<=0 { continue; }
+    yaw:=ifx i==net[0].seat then s[0].you_face else e2n_remote_seat(net,i).yaw;
+    cc.familiar_record(s[0].records[..],d.rec,c[0].familiar_word[f.form],f.x,e2_height(f.x,f.z),f.z,yaw);
+    first:=c[0].familiar_first[f.form];
+    d.n=e2_draw(s[0].draws[..],d.n,first,count,d.rec,1);
+    d.sn=e2_draw(s[0].shadow[..],d.sn,first,count,d.rec,1);
+    d.rec+=1;
+  }
+  return d;
+}
 e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   d := at; s[0].plate_n = 0; s[0].ghosts = 0;
   step := ifx bdt > 0 then bdt / f32(E2_FADE_S) else 0.0f32;
@@ -1869,4 +1886,19 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2_familiar_shot(s[..],base).eye.x==4 && n[0].familiar_sense==1;
   e2n_record(n,"m8 0");
   #assert e2_familiar_shot(s[..],base).eye.x==base.eye.x && !e2n_familiar_view(n).live;
+}
+
+#test "Everglade II familiar meshes use replicated forms and positions" {
+  s:[1]E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
+  cc.catalog(s[0].creator[..],"C glade/environment 9 12 250 100 8 0\nC glade/familiar8 50 240 248 120 0 0\n");
+  n:=s[0].net[..];
+  e2n_record(n,"m2 1 1 1 8 4000 -470000 1 1");
+  d:=e2_familiars_draw(s[..],E2Drawn.{});
+  #assert d.n==1 && d.sn==1 && d.rec==1 && s[0].draws[0]==50 && s[0].draws[1]==240;
+  #assert s[0].records[0]==4 && s[0].records[2]== -470 && s[0].records[7]==120 && s[0].records[15]==18;
+  e2n_record(n,"m8 2");
+  #assert e2_familiars_draw(s[..],E2Drawn.{}).n==0;
+  e2n_record(n,"m8 0");
+  e2n_record(n,"m2 2 0");
+  #assert e2_familiars_draw(s[..],E2Drawn.{}).n==0;
 }

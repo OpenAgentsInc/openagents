@@ -7612,3 +7612,7 @@ spatial spell listener.
 The Experimental and Everglade II pack builders share the original
 familiar mesh source. Their glade/familiar catalog rows use the room's
 stable named-form order and model-space metres, with positive Z forward.
+
+Familiar draw records use the packed model's own index range and vertex
+base. They use the rules actor's world position and are hidden when that
+actor disappears or lends its viewpoint to its owner.

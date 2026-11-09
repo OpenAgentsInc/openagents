@@ -704,9 +704,16 @@ fn coax_p_cg_environment_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_shadow
   {
     l_albedo = coax_p_scale3(coax_p_cg_decode(coax_p_v3(0x1.000000p0f, 0x1.ae147ap-2f, 0x1.47ae14p-2f)), (0x1.666666p-1f + (0x1.333334p-2f * sqrt(coax_p_saturate(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z))))));
   }
-  if ((l_kind > 0x1.a00000p2f))
+  if ((l_kind > 0x1.e00000p2f))
   {
-    l_albedo = coax_p_scale3(coax_p_cg_decode(select(coax_p_v3(0x1.b851ecp-1f, 0x1.8f5c28p-1f, 0x1.333334p-1f), coax_p_v3(0x1.000000p0f, 0x1.333334p-1f, 0x1.eb851ep-4f), (l_n.y > 0x1.333334p-3f))), (0x1.70a3d8p-1f + (0x1.1eb852p-2f * sqrt(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z)))));
+    l_albedo = coax_p_cg_decode(l_s.f5);
+  }
+  else
+  {
+    if ((l_kind > 0x1.a00000p2f))
+    {
+      l_albedo = coax_p_scale3(coax_p_cg_decode(select(coax_p_v3(0x1.b851ecp-1f, 0x1.8f5c28p-1f, 0x1.333334p-1f), coax_p_v3(0x1.000000p0f, 0x1.333334p-1f, 0x1.eb851ep-4f), (l_n.y > 0x1.333334p-3f))), (0x1.70a3d8p-1f + (0x1.1eb852p-2f * sqrt(coax_p_verse_style_luma(l_tex.x, l_tex.y, l_tex.z)))));
+    }
   }
   l_town = select((-0x1.000000p0f), coax_p_cg_town_material(l_s.f5), ((((!l_village) && (l_kind > 0x1.c00000p1f)) && (l_kind < 0x1.200000p2f)) && (l_s.y.z < (-0x1.040000p5f))));
   if ((l_town >= 0.0f))
@@ -1159,7 +1166,7 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t1
   l_seed_uv = coax_p_wg_unpack2x16unorm(vertices[i32((l_b + 4u))]);
   l_uv = l_seed_uv;
   l_normal = vertices[i32((l_b + 3u))];
-  l_kind = ((l_normal >> u32(24u)) & 7u);
+  l_kind = ((l_normal >> u32(24u)) & 15u);
   if ((l_kind == 0u))
   {
     l_p = coax_p_add3(coax_p_wg_at3(16i), coax_p_scale3(coax_p_cg_sky_ray(l_p.x, l_p.y), 0x1.680000p7f));

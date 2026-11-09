@@ -995,4 +995,8 @@ presentation remain separate work.
 The eleven named familiar forms now have original low-poly geometry in
 Coax. Both world pack builders use the same mesh writer and stable form
 order. The geometry check verifies distinct bounded meshes for every form.
-The renderers still need to read and draw the new catalog entries.
+Both scene renderers now draw the admitted catalog model at the familiar's
+world position and hide it in its owner's borrowed viewpoint. The draw
+fixtures cover Experimental's Owl, room replication at the distant
+clearing, viewpoint hiding and removal. Updating the shipped packs and
+checking the actual rendered models in both worlds remain open.

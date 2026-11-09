@@ -30,7 +30,7 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  sky_clip:=v4(p.x,p.y,0.999999f32,1);
  seed_uv:V2=wg_unpack2x16unorm(vertices[cast(int)add_wrap(b,4)]);
  uv:V2=seed_uv;
- normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&7;
+ normal:u32=vertices[cast(int)add_wrap(b,3)];kind:u32=(normal>>24)&15;
  if (kind==0) {p=add3(wg_at3(u,16),scale3(cg_sky_ray(p.x,p.y),180.0f32));}
  if (kind==6) {uv=v2(seed_uv.x*64.0f32-32.0f32,seed_uv.y*64.0f32-32.0f32);}
  if (kind==4 && f32_from_bits(vertices[cast(int)add_wrap(b,7)])>=100.0f32) {uv=v2(seed_uv.x*8.0f32-4.0f32,seed_uv.y*8.0f32-4.0f32);}
@@ -149,7 +149,8 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
  }
  if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
- if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+ if (kind>7.5f32) {albedo=cg_decode(s.tint);}
+ else if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
  town:=ifx !village && kind>3.5f32 && kind<4.5f32 && s.world.z< -32.5f32 then cg_town_material(s.tint) else -1.0f32;
  if (town>=0) {albedo=cg_decode(cg_town_albedo(town,s.tint,s.world,n));}
  if (kind>3.5f32 && kind<4.5f32 && town<0 && !village) {

@@ -850,7 +850,7 @@ fn coax_p_e2_environment_fs(p_s: coax_t15, p_tex: vec4f, p_front: bool, p_shadow
   l_eye = coax_p_wg_at3(16i);
   l_view = coax_p_normalize3(coax_p_sub3(l_eye, l_s.y));
   l_albedo = coax_p_mul3(coax_p_v3(l_tex.x, l_tex.y, l_tex.z), coax_p_cg_decode(l_s.f5));
-  if (l_foliage)
+  if ((l_foliage || (l_kind > 0x1.e00000p2f)))
   {
     l_albedo = coax_p_cg_decode(l_s.f5);
   }
@@ -1726,7 +1726,7 @@ fn coax_p_cg_environment_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t1
   l_seed_uv = coax_p_wg_unpack2x16unorm(vertices[i32((l_b + 4u))]);
   l_uv = l_seed_uv;
   l_normal = vertices[i32((l_b + 3u))];
-  l_kind = ((l_normal >> u32(24u)) & 7u);
+  l_kind = ((l_normal >> u32(24u)) & 15u);
   if ((l_kind == 0u))
   {
     l_p = coax_p_add3(coax_p_wg_at3(16i), coax_p_scale3(coax_p_cg_sky_ray(l_p.x, l_p.y), 0x1.680000p7f));

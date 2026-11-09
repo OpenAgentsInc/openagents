@@ -277,7 +277,7 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
  if (!front && !foliage) {n=scale3(n,-1);}
  sun:=cg_sun_dir(u);eye:=wg_at3(u,16);view:=normalize3(sub3(eye,s.world));
  albedo:=mul3(v3(tex.x,tex.y,tex.z),cg_decode(s.tint));
- if (foliage) {albedo=cg_decode(s.tint);}
+ if (foliage || kind>7.5f32) {albedo=cg_decode(s.tint);}
  // the ground's colour is the admitted material table's at this point (the pack's vertex colours
  // are no longer read); the hand-set gold, woods and trail below are this realm's look on top
  if (ground) {albedo=e2_ground_albedo(s.world.x,s.world.z,table);}
