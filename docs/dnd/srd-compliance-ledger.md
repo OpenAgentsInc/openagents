@@ -872,8 +872,11 @@ fixture covers summoning, turn refresh, projection, ritual continuation and
 payment. All 51 existing Experimental combat checks passed. Lab Wasm is
 2,653,366 bytes against the revised 2,655,000-byte cap.
 
-The Wizard's prepared cast is available in the shared rules. Experimental
-currently exposes the ritual. The hotbar's top-left badge cycles Cast,
+Experimental's Wizard preset prepares Find Familiar in place of Mage Armor
+without changing the cantrip or preparation counts. Its top-right badge
+switches between the seventy-minute ritual and the one-hour prepared cast.
+The player can choose a Fey, Celestial or Fiend from the bottom-right badge.
+The hotbar's top-left badge cycles Cast,
 Pocket or Recall, Free, and Step. Pocketing and recall preserve HP and
 initiative. Step uses the familiar's movement, and a hostile Opportunity
 Attack can stop its departure. The owner chooses the direction by facing
@@ -893,3 +896,10 @@ a clicked creature beyond the Wizard's own reach. Missing or distant
 targets and a spent familiar Reaction refused without taking another
 action. The 51 existing combat checks passed. Lab Wasm built at 2,659,260
 bytes against a revised 2,661,000-byte cap.
+
+The prepared-cast fixture covers levels 1–6, a canceled cast with no
+payment, and completion with one slot and one incense supply spent. It
+also checks that changing the badge during the cast preserves the pending
+cost. The 51 existing Experimental combat checks passed, and muted
+headless WebGPU verified starting a prepared Celestial cast. Lab Wasm is
+2,660,451 bytes against the unchanged 2,661,000-byte cap.

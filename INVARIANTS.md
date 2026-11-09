@@ -7532,8 +7532,10 @@ uses the familiar's own turn and shared movement, Opportunity Attack and
 action rules.
 
 Experimental's familiar hotbar uses the real turn seat and shared summoning
-rules. The Wizard has a copied spellbook ritual and one incense supply per
-visit. Preset changes preserve the supply count. A level 2 or higher Druid
+rules. The Wizard's preset has Find Familiar copied into the spellbook and
+prepared in place of Mage Armor. The hotbar offers both the seventy-minute
+ritual and one-hour prepared cast, and lets the player choose a spirit.
+The Wizard has one incense supply per visit. Preset changes preserve the supply count. A level 2 or higher Druid
 can choose a Wild Shape use or level 1 slot. Each summoned familiar retains
 a world position, an independent turn seat, and a marker at its position.
 Its top-left badge selects the lifecycle action or a Step command. Pocket,
