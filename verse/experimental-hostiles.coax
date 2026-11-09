@@ -11,7 +11,7 @@
 // stopped: a scoped hit stop holds this one for the frame (its owner's react_held, aethyr/action/react.coax); the rest of the world goes on
 // kind: experimental-dungeon.coax's DG_KIND_*, scale its size; a sleeper waits where it stands until it sees you near
 // (every monster is one since #13066: the village's six wait at home too, so none hunts you from your spawn)
-Enemy :: struct {walk_scale:f32=1;x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32=1;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;shot:bool;returning:bool;}   // shot: its swing is a ranged attack; returning: leashed, it walks home
+Enemy :: struct {walk_scale:f32=1;x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32=1;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;shot:bool;returning:bool;provoked:bool;}   // shot: its swing is a ranged attack; returning: leashed, it walks home; provoked: you attacked it, so your spawn's safe radius no longer turns it back
 // face: the way it looks, a unit vector (+z, its model's own front, until it first turns)
 // the village's six (two of them, 2 and 5, in the dungeon's entrance hall) and the dungeon's own
 HS_N :: HC_MAX;
@@ -31,12 +31,14 @@ hostile_shot_speed :: (kind:int)->f32 {return ifx kind==dungeon.DG_KIND_GREMLIN 
 HS_DRAW :: 0.6; HS_SHOT_END :: 1.0;
 // A safe spawn (#13066): nothing wakes, starts an attack or lands one while you are within
 // `safe_r` metres of the spawn (0, 0), nor before `calm_until` (Hostiles.time) after you appear.
+// A monster you attack (hostile_provoke) is the exception: it comes after you even there, until its
+// leash takes it home or you respawn.
 HS_SAFE_R :: 12.0; HS_CALM :: 3.0;
 Hostiles :: struct {ready:bool;enemies:[HS_N]Enemy;hp:int;max_hp:int=44;temp:int;player_dead:bool;shared:bool;contacts:[1]HcContacts;hits:int;time:f32;died_at:f32;pops:[8]DamagePop;pop_next:int;dice:[1]SrdDice;last:int= -1;shots:[HS_SHOTS]HsShot;safe_r:f32=HS_SAFE_R;calm_until:f32=HS_CALM;}   // last: the enemy whose blow landed last
 // Whether you stand safe from every monster at (x, z): in the spawn's safe radius, or still calm.
 hostile_safe :: (s:[]Hostiles,x:f32,z:f32)->bool {return s[0].time<s[0].calm_until || x*x+z*z<s[0].safe_r*s[0].safe_r;}
 // Starts calm again (a respawn): HS_CALM seconds from now nothing engages you, and no shot flies.
-hostile_calm :: (s:[]Hostiles) {s[0].calm_until=s[0].time+HS_CALM;for i:0..<HS_SHOTS {s[0].shots[i]=HsShot.{};}}
+hostile_calm :: (s:[]Hostiles) {s[0].calm_until=s[0].time+HS_CALM;for i:0..<HS_SHOTS {s[0].shots[i]=HsShot.{};}for i:0..<HS_N {s[0].enemies[i].provoked=false;}}
 #test "six enemies pursue and inflict real melee damage" #steps 200000000 {
  s:[1]Hostiles;hostile_test_start(s[..]);#assert s[0].ready && s[0].hp==44;
  before:=abs(s[0].enemies[0].x)+abs(s[0].enemies[0].z);
@@ -169,7 +171,7 @@ hostile_fly :: (s:[]Hostiles,px:f32,py:f32,pz:f32,safe:bool) {
  for k:0..<HS_SHOTS {q:=s[0].shots[k..<k+1];if q[0].state==HS_FREE {continue;}
   if (q[0].state==HS_LANDED && q[0].ended) || s[0].time-q[0].t0>q[0].fly+3 {q[0]=HsShot.{};continue;}
   if q[0].state!=HS_FLYING || s[0].time-q[0].t0<q[0].fly {continue;}
-  dx:=px-q[0].tx;dz:=pz-q[0].tz;there:=dx*dx+dz*dz<=1.0 && abs(py)<2 && !safe && s[0].hp>0 && !s[0].enemies[q[0].foe].dead;
+  dx:=px-q[0].tx;dz:=pz-q[0].tz;there:=dx*dx+dz*dz<=1.0 && abs(py)<2 && (!safe || s[0].enemies[q[0].foe].provoked) && s[0].hp>0 && !s[0].enemies[q[0].foe].dead;
   if !there {q[0].state=HS_LANDED;q[0].hit=false;continue;}
   if s[0].shared {q[0].state=HS_LANDING;if !hc_offer(s[0].contacts[..],q[0].foe) {q[0].state=HS_LANDED;}continue;}
   hit:=srd_attack(s[0].dice[..],hostile_blow(q[0].kind),15);q[0].state=HS_LANDED;q[0].hit=hit.hit;
@@ -185,7 +187,7 @@ hostile_shot_result :: (s:[]Hostiles,foe:int,hit:bool) {
 HS_LEASH :: 35.0;
 // Hit, shot at or spelled by you from wherever you stand (experimental-combat.coax xc_use_ab): it
 // wakes and comes after you, out through the doorways if it must.
-hostile_provoke :: (s:[]Hostiles,i:int) {if i<0 || i>=HS_N || s[0].enemies[i].dead {return;}s[0].enemies[i].awake=true;s[0].enemies[i].returning=false;}
+hostile_provoke :: (s:[]Hostiles,i:int) {if i<0 || i>=HS_N || s[0].enemies[i].dead {return;}s[0].enemies[i].awake=true;s[0].enemies[i].returning=false;s[0].enemies[i].provoked=true;}
 // One step of at most `pace` metres toward (gx, gz), sliding along what blocks it; faces the way it goes.
 hostile_walk :: (e:[]Enemy,gx:f32,gz:f32,pace:f32) {
  dx:=gx-e[0].x;dz:=gz-e[0].z;distance:=sqrt(dx*dx+dz*dz);if distance<0.01 {return;}
@@ -247,8 +249,8 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
  hostile_start(s);if dt<=0 || dt>0.25 {return;}s[0].time+=dt;
  if s[0].hp<=0 {for i:0..<HS_N {e:=s[0].enemies[i..<i+1];e[0].swing= -1;e[0].moving=false;if e[0].dead || e[0].held || e[0].stopped {continue;}dx:=e[0].home_x-e[0].x;dz:=e[0].home_z-e[0].z;if dx*dx+dz*dz<0.01 {continue;}g:=hostile_goal(e[0].x,e[0].z,e[0].home_x,e[0].home_z);hostile_walk(e,g[0],g[1],dt*1.5*e[0].walk_scale);if e[0].moving {gx:=g[0]-e[0].x;gz:=g[1]-e[0].z;gl:=sqrt(gx*gx+gz*gz);if gl>0.001 {e[0].face_x=gx/gl;e[0].face_z=gz/gl;}}}return;}
  ox:=[6]f32.[0,1.1,1.1,0,-1.1,-1.1];oz:=[6]f32.[-1.2,-0.6,0.6,1.2,0.6,-0.6];
- safe:=hostile_safe(s,px,pz);hostile_fly(s,px,py,pz,safe);
- for i:0..<HS_N {if s[0].hp<=0 {break;}e:=s[0].enemies[i..<i+1];if e[0].dead {e[0].moving=false;e[0].swing= -1;continue;}dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;
+ safe_all:=hostile_safe(s,px,pz);hostile_fly(s,px,py,pz,safe_all);
+ for i:0..<HS_N {if s[0].hp<=0 {break;}e:=s[0].enemies[i..<i+1];if e[0].dead {e[0].moving=false;e[0].swing= -1;continue;}safe:=safe_all && !e[0].provoked;dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;
   if e[0].inactive {e[0].swing= -1;e[0].struck=false;}
   if e[0].stopped {continue;}
   if e[0].sleeper && !e[0].awake {if safe || gap>dungeon.dg_kind_wake(e[0].kind) || !hostile_sees(e[0],px,pz) {continue;}e[0].awake=true;}e[0].cool-=dt;
@@ -257,7 +259,7 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
   if e[0].returning {
    if e[0].held {continue;}
    hx:=e[0].home_x-e[0].x;hz:=e[0].home_z-e[0].z;
-   if hx*hx+hz*hz<0.04 {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].returning=false;e[0].awake=!e[0].sleeper;continue;}
+   if hx*hx+hz*hz<0.04 {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].returning=false;e[0].provoked=false;e[0].awake=!e[0].sleeper;continue;}
    g:=hostile_goal(e[0].x,e[0].z,e[0].home_x,e[0].home_z);hostile_walk(e,g[0],g[1],dt*2.4*e[0].walk_scale);
    gx:=g[0]-e[0].x;gz:=g[1]-e[0].z;gl:=sqrt(gx*gx+gz*gz);if gl>0.001 {e[0].face_x=gx/gl;e[0].face_z=gz/gl;}
    continue;
@@ -394,4 +396,21 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
     #assert m==HS_OUT;
   } }
   #assert hostile_node(-30.5,-30)==HS_OUT && hostile_node(-30.5,-44.3)==dungeon.DG_ENTRY;
+}
+
+#test "a monster you shoot from the safe spawn comes after you until a respawn calms it" #steps 4000000000 {
+  s: [1] Hostiles; hostile_start(s[..]); s[0].calm_until = -1;
+  i := 3; e := s[0].enemies[i];
+  // you stand in the spawn's safe radius, far enough that it would never wake on its own
+  px := 0.0f32; pz := 0.0f32;
+  d0 := (e.x-px)*(e.x-px)+(e.z-pz)*(e.z-pz);
+  for k:0..<20 {hostile_tick(s[..],px,0,pz,0.016);}
+  #assert !s[0].enemies[i].awake;
+  hostile_provoke(s[..],i);
+  for k:0..<60 {hostile_tick(s[..],px,0,pz,0.016);}
+  f := s[0].enemies[i];
+  #assert f.awake && !f.returning && f.provoked;
+  #assert (f.x-px)*(f.x-px)+(f.z-pz)*(f.z-pz) < d0;
+  // a respawn calms it again
+  hostile_calm(s[..]); #assert !s[0].enemies[i].provoked;
 }

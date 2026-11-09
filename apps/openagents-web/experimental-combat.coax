@@ -1022,6 +1022,8 @@ xc_bow_strike :: (s: [] Lab, foe: int) -> bool {
   shot := fb_feature(FB_SHOOT, "Longbow", "attack");
   e := s[0].creator[0].hostiles[0].enemies[foe];
   if f32(xc_bow_squares(s, foe)) * 5 > f32(rs_weapon(W_LONGBOW).range_ft) { x[0].bow_far += 1; }
+  // the arrow reached it: it wakes and comes after you, whether the rules let the shot count or not
+  hostile.hostile_provoke(s[0].creator[0].hostiles[..], foe);
   landed := x[0].landed; kills := x[0].kills;
   slot := xc_slot_of(x, FB_ATTACK);
   ok := xc_use_ab(s, ifx slot >= 0 then slot else 0, shot, foe);
