@@ -1,6 +1,6 @@
 # Everglade
 
-A painted forest MMO you play free in your browser, at https://everglade.world/.
+An MMORPG on the D&D 5E SRD, faithful to its rules, with real-time combat. Play free in your browser at https://everglade.world/.
 
 - **Play:** https://everglade.world/ opens on the portal, then Character Create in the glade, then the path into the forest. https://everglade.world/play goes straight into the forest.
 - **12 classes**, Barbarian to Wizard, on the D&D 5E SRD (5.2.1), levels 1 to 6.

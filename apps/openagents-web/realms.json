@@ -393,14 +393,14 @@
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "cull:/everglade2-cull.wgsl", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"],
         "domain": {
-          "host": "everglade.world", "title": "Everglade", "tagline": "A painted forest MMO. Make your hero and walk in.",
-          "description": "Make your hero in the glade and walk into a painted forest with other players. Twelve classes on D&D 5E SRD rules, free in your browser.",
+          "host": "everglade.world", "title": "Everglade", "tagline": "A D&D MMORPG in your browser. Make your hero and walk in.",
+          "description": "An MMORPG on the D&D 5E SRD, faithful to its rules, with real-time combat. Make your hero and play with other people, free in your browser.",
           "entry": "/play", "create": "character-creator",
           "features": [
             { "title": "12 classes", "line": "Barbarian to Wizard, each with its own spells and moves." },
             { "title": "Real 5E rules", "line": "Levels 1 to 6 on the D&D 5E SRD." },
             { "title": "One shared world", "line": "Everyone plays together in the same forest." },
-            { "title": "A painted forest", "line": "Autumn woods drawn like a storybook." }
+            { "title": "Real-time combat", "line": "Fight as it happens; the SRD's rolls decide every hit." }
           ],
           "shots": [
             { "src": "shot-create.jpg", "alt": "Character Create: a druid in the glade, with the class and wardrobe panels" },

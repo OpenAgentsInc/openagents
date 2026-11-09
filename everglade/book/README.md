@@ -1,169 +1,213 @@
 # Building Everglade
 
 **Status: proposal.** This page sets out the book's structure and flow. No
-chapter is written yet.
+chapter is complete yet.
 
-Everglade is a painted-forest MMORPG that runs in your browser at
-[everglade.world](https://everglade.world). This book builds it from scratch,
-one working piece at a time, with the tools we already have:
+Everglade is an MMORPG built on the
+[D&D 5E System Reference Document](https://www.dndbeyond.com/srd) (SRD 5.2.1).
+It aims to follow the SRD's rules faithfully: classes, spells, conditions,
+attack rolls, saving throws and turn timing. It changes only what real-time
+play needs. You aim, move and act as things happen, and the SRD's rules decide
+the outcome. You play it free in your browser at
+[everglade.world](https://everglade.world).
 
-- [Coax](../../coax/book/README.md), the language. Everything in Everglade is
-  written in it, from the land and the rules to the shaders it generates.
+This book shows you how to build Everglade from scratch, one working piece at a
+time, with these tools:
+
+- [Coax](../../coax/book/README.md), the language. You write everything in it:
+  the land, the rules, the network code and the shaders it generates.
 - [Aethyr](../../aethyr/book/README.md), the world engine. Everglade uses its
-  frame loop, terrain tiles, renderer, lighting, physics, animation and room
-  server.
+  frame loop, terrain, renderer, lighting, physics, animation and room server.
 - The Verse, where Everglade is one realm among many.
 
 The Aethyr book builds the engine. This book builds a game on it. Each chapter
-starts from a question a player would ask, such as "can I stand on that rock?"
-or "why did the guard hit back?", and ends with the code that answers it and
-the checks that keep it answered.
+starts from a question a player asks, such as "Can I stand on that rock?" or
+"Why did the guard hit back?" It ends with the code that answers the question
+and the checks that keep the answer true.
 
-## How we build: text first, no editor
+## The SRD and action combat
+
+Everglade has two goals that pull against each other:
+
+- **Follow the SRD.** A Fireball deals 8d6 fire damage in a 20-foot-radius
+  sphere, with a Dexterity saving throw for half. A longbow deals 1d8 piercing
+  damage plus your Dexterity modifier. Conditions, spell slots, rests and class
+  features work as the SRD says.
+- **Play as action combat.** No one waits for a turn. You hold right-click to
+  draw a bow, aim with a crosshair and release to shoot. You cast while you
+  run.
+
+The book treats every difference from the SRD as a design decision with a
+reason. For example:
+
+- **Turns become time.** An SRD round is 6 seconds. Everglade spends your
+  action, bonus action, reaction and movement over the same 6 seconds, in real
+  time.
+- **Aim picks the target, and the roll decides the hit.** Your aim chooses what
+  an arrow or spell can hit. The SRD attack roll against Armor Class still
+  decides whether it hits.
+- **Range stays in feet.** The SRD's ranges and areas convert to the world's
+  metres, so a 150-foot longbow shot is about 45 metres.
+
+Each rules chapter lists what follows the SRD exactly, what changes and why,
+and the checks that keep each rule true.
+
+## How you build: text first, no editor
 
 Most people will make realms with Aethyrforge's tools and the Verse's maker
-flows. We are building Everglade the other way: every tree, path, rule and
-light is a Coax function in a text file, built and checked from the command
-line, and verified in a headless browser. No level editor, no UI.
+flows. In this book, you build Everglade without them. Every tree, path, rule
+and light is a Coax function in a text file. You build it from the command line
+and verify it in a headless browser. You don't use a level editor or any other
+UI.
 
-We do this for two reasons:
+The book works this way for two reasons:
 
-- It shows what the engine can do underneath the tools. Each tool a maker uses
-  later wraps something this book builds by hand.
-- Some people will want to build this way, as code and checks with no UI. This
-  book is their guide.
+- It shows what the engine does underneath the tools. Each maker tool wraps
+  something this book builds by hand.
+- Some people prefer to build as code and checks, with no UI. This book is
+  their guide.
 
-Where a chapter does something a maker tool will do later, it says so and
-links the tool's chapter in the Aethyr book.
+When a chapter does something a maker tool will do later, it links to that
+tool's chapter in the Aethyr book.
 
 ## Where Everglade came from
 
-Everglade wasn't built in one pass. We built prototypes first, each to answer
-one question:
+Everglade started as prototypes, each built to answer one question:
 
-- **Everglade v1** (`/worlds/everglade`) proved a whole town could run in the
-  browser: a gate, walls, townspeople, a raid and SRD 5E combat. It is frozen
+- **Everglade v1** (`/worlds/everglade`) showed that a whole town can run in a
+  browser: a gate, walls, townspeople, a raid and SRD combat. It stays frozen
   as it is.
 - **Everglade Experimental** (`/worlds/everglade-experimental`) is the test
-  bench for systems: biomes, hostiles, a dungeon, imported characters and new
-  combat. A system proves itself there before it moves into the world.
+  bench. New systems, such as hostiles, a dungeon, imported characters and
+  action combat, prove themselves there before they move into the world.
 - **Character Create**
   ([`docs/verse/character-creator.md`](../../docs/verse/character-creator.md))
-  built the glade where you make your hero, lit from one reference image: a
-  Quaternius forest scene, warm autumn light through the canopy
-  ([its reference light](../../docs/verification/character-glade-reference-light-2026-11-07/)).
+  is the glade where you make your hero. Its look and light come from one
+  reference image: a Quaternius forest scene with warm autumn light through the
+  canopy
+  ([reference light](../../docs/verification/character-glade-reference-light-2026-11-07/)).
 
-That glade was the most beautiful thing we had made. So the final version,
-**Everglade II** ([`docs/verse/everglade2.md`](../../docs/verse/everglade2.md)),
-is rebuilt from scratch outward from it, one piece at a time (#13023): the
-glade, one path through dense woods, a clearing, and next a city. The glade's
-light became the default for every painterly realm
+The glade became the starting point for the final version, **Everglade II**
+([`docs/verse/everglade2.md`](../../docs/verse/everglade2.md)). It is rebuilt
+from scratch outward from the glade, one piece at a time (#13023): the glade,
+one path through dense woods, a clearing and next a city. The glade's light is
+now the default for every realm in that art style
 ([`docs/verse/lighting/README.md`](../../docs/verse/lighting/README.md)).
 
 ## The flow of the book
 
-The book follows the order we build the game in. A part ends with something
-you can walk around in and test.
+The book follows the order in which you build the game. Each part ends with
+something you can walk around in and test.
 
-**Part I. One picture to build toward**
+### Part I: One picture to build toward
 
-1. A reference image. Why one picture beats a feature list, and how we turned
-   the Quaternius forest scene into numbers: light, colour, density, scale.
-2. What the prototypes taught us. v1, Experimental and Character Create: what
-   each one settled, and what we threw away.
-3. A realm with no editor. The text-first workflow: a realm's files, building
-   one unit, a headless capture and the checks that run while compiling.
+1. **A reference image.** Turn one picture into numbers: light, colour,
+   density and scale.
+2. **What the prototypes taught.** What v1, Experimental and Character Create
+   settled, and what you throw away.
+3. **A realm with no editor.** A realm's files, building one unit, a headless
+   capture and the checks that run while compiling.
 
-**Part II. The glade**
+### Part II: The glade
 
-4. Ground you can stand on. Terrain tiles, seams and why your feet and the
-   drawn ground must agree at every sample.
-5. Planting a forest as a function. 100,000 pieces placed from the land, with
+4. **Ground you can stand on.** Terrain tiles and seams, and why your feet and
+   the drawn ground must agree at every sample.
+5. **Plant a forest with a function.** Place 100,000 pieces from the land, with
    tests that keep the path clear.
-6. The glade's light. One lighting record, resolved per place, that every
-   painterly realm now starts from.
-7. Character Create stands in the world. The studio is a place in Everglade,
-   and you walk out of it.
-8. If you can see it, you can walk to it. Colliders that match what you see:
-   rock hulls, trunks, and why an invisible wall is a bug.
+6. **The glade's light.** One lighting record, resolved for each place, that
+   every realm in the art style starts from.
+7. **Character Create in the world.** Make the studio a place in Everglade that
+   you walk out of.
+8. **If you can see it, you can walk to it.** Make colliders match what you
+   see, from rock hulls to tree trunks, and treat an invisible wall as a bug.
 
-**Part III. The path out**
+### Part III: The path out
 
-9. A path through dense woods. A road curve, a grade limit and a canopy that
-   closes around it.
-10. Holding 60 frames a second. Culling, budgets that refuse and measuring on a
-    phone.
-11. One address. everglade.world, its landing page and `/play`: no character
-    means Character Create; otherwise you're back where you stood.
+9. **A path through dense woods.** A road curve, a grade limit and a canopy
+   that closes around it.
+10. **Hold 60 frames per second.** Culling, budgets that refuse and measuring on
+    a phone.
+11. **One address.** everglade.world, its landing page and `/play`. A new
+    player goes to Character Create; a returning player goes back to where
+    they stood.
 
-**Part IV. Other players**
+### Part IV: Other players
 
-12. The room. One server-authoritative simulation that every player sees the
-    same way.
-13. Coming back. What the server keeps, what the browser keeps and why.
+12. **The room.** One server-authoritative simulation that every player sees
+    the same way.
+13. **Coming back.** What the server keeps, what the browser keeps and why.
 
-**Part V. The guard: NPC pathing and aggro**
+### Part V: The SRD as code
 
-14. A guard walks the path. Patrol routes, turning at the ends and stepping
+14. **Ability scores, proficiency and the d20.** The core roll and its
+    modifiers.
+15. **Classes, levels 1 to 6.** Twelve classes, their features and their
+    choices.
+16. **Spells and slots.** Casting, concentration, areas and saving throws.
+17. **Conditions.** Each condition's effect in real-time play.
+18. **Turns become time.** Actions, bonus actions, reactions and movement
+    across a 6-second round.
+19. **Familiars and Wild Shape.** Creatures you command and forms you take.
+
+### Part VI: The guard
+
+20. **A guard walks the path.** Patrol routes, turning at each end and stepping
     around players.
-15. Attacking the guard. He doesn't strike first. When you hit him, he fights
-    back on SRD rules. What a player sees and hears on every hit.
-16. Death and respawn. A death animation, then a respawn that fades in.
+21. **Attack the guard.** He doesn't strike first. When you attack him, he
+    fights back on SRD rules, and you see and hear every hit.
+22. **Death and respawn.** A death animation, then a respawn that fades in.
 
-**Part VI. The Ranger: action combat**
+### Part VII: The Ranger and action combat
 
-17. Mouse look and the reticle. A Neverwinter-style camera that follows the
-    cursor, and Tab to free it.
-18. A bow. Hold right-click to draw, release to loose. An arrow flies on a real
-    arc while the SRD attack roll decides hit or miss.
-19. Casting while running. Upper-body actions layered over the legs'
-    locomotion.
+23. **Mouse look and the crosshair.** A camera that follows your mouse, and
+    Tab to free the cursor.
+24. **The longbow.** Draw, aim and release. The arrow flies on a real arc, and
+    the SRD attack roll decides whether it hits.
+25. **Cast while you run.** Upper-body actions layered over the legs'
+    movement.
 
-**Part VII. The rules**
+### Part VIII: The city
 
-20. SRD 5.2.1 as code. Classes at levels 1 to 6, spells, conditions and turn
-    timing, run by the room in real time.
-21. Familiars and Wild Shape. Creatures you control, and bodies you swap into.
+26. **Walk into a city.** From the clearing to a gate, walls and streets.
+27. **Townspeople.** Routines and crowds that hold the frame rate.
+28. **Interactions.** Talking, trading, quests and what the city remembers.
 
-**Part VIII. The city**
+### Part IX: Run an MMORPG
 
-22. Walking into a city. From the clearing to a gate, walls and streets, built
-    out from the same land and light.
-23. Townspeople. Routines, schedules and crowds that hold the frame rate.
-24. Interactions. Talking, trading, quests and what the city remembers.
+29. **Many rooms.** Shards, capacity and moving between places.
+30. **Accounts and persistence.** Your character on every device.
+31. **Ship it.** One release script, staging checks and rollback.
+32. **Run a live world.** Monitor it, fix it while it runs and learn from
+    incidents.
 
-**Part IX. An MMORPG**
-
-25. Many rooms. Shards, capacity and moving between places.
-26. Accounts and persistence. Your character on every device.
-27. Shipping. One release script, staging checks and rolling back.
-28. Running a live world. Watching it, fixing it live and the incidents we
-    learned from.
-
-Parts I to III exist today. Parts V and VI are being built now: an armoured
-guard on the path to test NPC pathing and aggro, and the Ranger's bow to
-attack him. Parts VIII and IX are the plan.
+Parts I through V exist today. Parts VI and VII are in progress: an armoured
+guard on the path to test NPC pathing and aggro, and the Ranger's longbow to
+attack him with. Parts VIII and IX are planned.
 
 ## How a chapter works
 
 Chapters follow the Aethyr book's rules:
 
-- A chapter starts as a design draft with a status marker, and becomes a
+- A chapter starts as a design draft with a status marker. It becomes a
   teaching chapter when its code lands.
 - Listings are copied from source between `// book:begin` and `// book:end`
-  markers, never retyped.
-- Each chapter names the checks that keep its claim true, and the headless
-  capture that shows it.
+  markers. They are never retyped.
+- Each chapter names the checks that keep its claims true, and the headless
+  capture that shows them.
 - Each chapter keeps its mistakes. When something broke for a player, such as
-  an invisible wall, arrows nobody could see or a spell bar with missing
-  pictures, the chapter shows what happened and the check that now catches
-  it.
+  an invisible wall, arrows that couldn't be seen or a spell bar with missing
+  pictures, the chapter shows what happened and the check that now catches it.
+
+The book uses the
+[Google developer documentation style guide](https://developers.google.com/style):
+second person, active voice, present tense, short sentences and
+sentence-case headings.
 
 ## Where Everglade's code lives
 
-Today Everglade's code is spread across the repository:
+Everglade's code is currently spread across the repository:
 
-| What | Where today |
+| What | Where it is now |
 | --- | --- |
 | The land, planting, ground and light | `verse/everglade2/` |
 | The page, movement, casting, room and Character Create in the world | `apps/openagents-web/everglade2*.coax` |
@@ -172,31 +216,28 @@ Today Everglade's code is spread across the repository:
 | SRD rules | `aethyr/rules/srd/` |
 | The domain's pages | `apps/openagents-web/realms/everglade2/domain/` |
 
-We propose moving Everglade's own code into this folder, so the book and the
-game live together:
+Everglade's own code moves into this folder, so the book and the game live
+together:
 
 ```text
 everglade/
   README.md     what Everglade is and how to run it
   book/         this book
-  world/        the land, planting, ground, light (from verse/everglade2/)
+  world/        the land, planting, ground and light (from verse/everglade2/)
   game/         the page and its units (from apps/openagents-web/everglade2*.coax)
   tools/        the asset pack and capture tools
   docs/         design notes (from docs/verse/everglade*.md)
 ```
 
-The line between engine and game:
+The line between the engine and the game:
 
-- **Stays in Aethyr:** anything another realm can reuse. That covers SRD
-  rules, the bow system, NPC patrol and aggro, layered animation, the
-  mouse-look camera, collision and terrain tiles.
-- **Moves here:** only what is Everglade's own: its land, its planting, its
-  places, its NPCs and its tuning.
+- **Stays in Aethyr:** anything another realm can reuse, such as the SRD rules,
+  the bow system, NPC patrol and aggro, layered animation, the mouse-look
+  camera, collision and terrain tiles.
+- **Moves here:** what belongs only to Everglade, such as its land, planting,
+  places, NPCs and tuning.
 
-When the guard or the bow lands, its general system goes into `aethyr/` and
-Everglade's use of it goes here.
-
-The move needs care. Builds, `realms.json` module paths, `#load` paths and the
-release's site layout all name today's paths, and several agents are changing
-those files now. We move one directory per commit, after the current work
-lands, and each commit keeps every build and check green.
+Builds, `realms.json` module paths, `#load` paths and the release's site layout
+all name the current paths. The move happens one directory per commit, after
+the work in progress lands, and each commit keeps every build and check
+passing.

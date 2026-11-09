@@ -1,14 +1,14 @@
 # Everglade
 
-Everglade is a painted-forest MMORPG on the Aethyr engine, written in Coax and
-running in the Verse. You make your hero in a glade, walk out through dense
-woods and play with other people on D&D 5E SRD rules.
+Everglade is an MMORPG built on the D&D 5E System Reference Document (SRD
+5.2.1). It follows the SRD's rules faithfully and adapts them for action
+combat: you aim, move and act in real time, and the SRD's rules decide the
+outcome. It runs on the Aethyr engine, is written in Coax and is a realm in
+the Verse.
 
-- Play it at [everglade.world/play](https://everglade.world/play).
-- Read [Building Everglade](book/README.md), the book that builds it from
-  scratch.
+- To play, go to [everglade.world/play](https://everglade.world/play).
+- To build it from scratch, read [Building Everglade](book/README.md).
 
-This folder will become Everglade's home: the book now, and its code as it
-moves here from `verse/everglade2/` and `apps/openagents-web/`. The book's
-[last section](book/README.md#where-everglades-code-lives) lists where the
-code lives today and what moves.
+Everglade's code is moving into this folder from `verse/everglade2/` and
+`apps/openagents-web/`. For what moves and when, see
+[Where Everglade's code lives](book/README.md#where-everglades-code-lives).
