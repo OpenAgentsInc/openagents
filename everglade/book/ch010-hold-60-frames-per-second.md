@@ -51,7 +51,9 @@ It does this without any piece moving, growing or popping in front of you.
   LOW, a phone and a tablet at MED, a laptop with a built-in GPU at MED's
   top, a computer at HIGH. When the scene first draws, the governor times
   1.5 s of frames and, if they run slow, steps down several rungs at once.
-  The rung it settles at is kept for your next visit.
+  The rung it settles at is kept for your next visit. At 20 s one
+  `graphics` analytics event reports the device's class, its GPU, the rungs
+  and the median frame rate from 10 s on.
 - **The knobs.** Each rung sets how much the frame draws: the pixels, the
   grass's reach, the scenery's reach, the shadow tiles, the post pass and the
   other players drawn (`quality_rung_knobs`, `e2_knobs_frame`).

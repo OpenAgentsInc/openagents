@@ -19,6 +19,9 @@
 //   death         you fell (id: what last hurt you: wolf, goblin, guard, or other)
 //   level-up      the room raised your level (n)
 //   fail create-save   Character Create's record wasn't kept
+//   graphics      the graphics quality 20 s in, once (aethyr/quality.coax quality_report_due): the device's
+//                 class, its GPU (gpu, and the adapter's vendor and arch), the mode, the start rung, the rung
+//                 now, the rung kept for the next visit (-1 none), and the median FPS from 10 s to 20 s
 // counted in the 30 s tally: cast_<spell> (your casts the room took), refused (casts it turned down),
 // bow (arrows loosed), hit_<foe> and hurt_<foe> (blows that landed, by you and on you), kill_<foe>
 // (foes that fell after you hurt them), xp (XP gained).
@@ -52,6 +55,17 @@ e2t_spell :: (slot: int) -> string {
 e2_track :: (s: [] E2, w: [] E2Seen, t: [] Track, drawn: bool) #export_c #effects(all) {
   if !t[0].ready { return; }
   c := s[0].cz[0]; cr := s[0].creator[0]; n := s[0].net[..];
+  // the graphics quality, once, 20 s in (golden frames never)
+  if s[0].q_ready && !s[0].golden && quality_report_due(s[0].q[..]) {
+    q := s[0].q[0];
+    if track_begin(t, "graphics") {
+      track_str(t, "class", QUALITY_CLASS_NAMES[q.kind]); track_str(t, "gpu", QUALITY_GPU_NAMES[s[0].q_dev.gpu]);
+      track_str(t, "vendor", cast(string) s[0].gpu_vendor[0..<s[0].gpu_vendor_n]); track_str(t, "arch", cast(string) s[0].gpu_arch[0..<s[0].gpu_arch_n]);
+      track_str(t, "mode", QUALITY_HOST[q.mode]); track_int(t, "start", q.start); track_int(t, "rung", q.rung); track_int(t, "settled", q.told);
+      track_int(t, "fps", quality_median_fps(s[0].q[..])); tw_world(t); track_end(t);
+    }
+    quality_reported(s[0].q[..]);
+  }
   if !w[0].started {
     w[0].started = true; w[0].hidden = c.hidden && c.arriving; w[0].rev = cr.revision; w[0].klass = cr.klass; w[0].level = cr.level;   // a background tab is only hidden
     w[0].walking = c.walking; w[0].handed = c.handed; w[0].state = n[0].state;
@@ -219,4 +233,23 @@ e2_track_pointer :: (s: [] E2, t: [] Track, x: f32, y: f32, phase: int, kind: in
   e2n_guard_hit(n[..], "g3 10 1 2 6");      // your blow at the guard
   e2n_guard_row(n[..], "g2 11 1 3 0 -20000 0 0 11 0 -1");   // he is down
   #assert n[0].hit_n[E2N_FOE_GUARD] == 1 && n[0].fell_n[E2N_FOE_GUARD] == 1;
+}
+
+#test "the graphics quality is one event 20 s in: the device's class, its GPU, the rungs and the median frame rate" #steps 400000000 {
+  s: [1] E2; w: [1] E2Seen; t: [1] Track;
+  track_init(t[..], "everglade2");
+  facts := "tab=0123456789abcdef\nfresh=1\nvisitor=ab12cd34\nnow=1000\nnav=0\nurl=https://everglade.world/play\nvw=390\nvh=844\nsw=390\nsh=844\ndpr=3\ncoarse=1\ntouch=5\nquality=";
+  #assert track_message(t[..], HOST_PAGE, facts);
+  e2_message(s[..], E2_HOST_PAGE, facts); e2_message(s[..], E2_HOST_GPU, "gpu_vendor=apple\ngpu_arch=apple-7\ngpu_fallback=0");
+  track_sent(t[..]); t[0].buf_n = 0; t[0].count = 0; track_world(t[..], "everglade2");
+  for i: 0..<1100 { e2_quality_frame(s[..], 1.0 / 60.0, 1170, 2532, 3, false); e2_track(s[..], w[..], t[..], true); }
+  sent := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert !text_has(sent, "\"ev\":\"graphics\"");
+  for i: 0..<150 { e2_quality_frame(s[..], 1.0 / 60.0, 1170, 2532, 3, false); e2_track(s[..], w[..], t[..], true); }
+  sent = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(sent, "\"ev\":\"graphics\"") && text_has(sent, "\"class\":\"phone\"") && text_has(sent, "\"gpu\":\"apple\"") && text_has(sent, "\"vendor\":\"apple\"");
+  #assert text_has(sent, "\"arch\":\"apple-7\"") && text_has(sent, "\"mode\":\"auto\"") && text_has(sent, "\"start\":5") && text_has(sent, "\"fps\":61");
+  // once
+  t[0].buf_n = 0; for i: 0..<120 { e2_quality_frame(s[..], 1.0 / 60.0, 1170, 2532, 3, false); e2_track(s[..], w[..], t[..], true); }
+  #assert !text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"ev\":\"graphics\"");
 }

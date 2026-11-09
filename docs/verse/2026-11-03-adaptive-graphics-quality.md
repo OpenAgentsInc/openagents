@@ -157,6 +157,15 @@ match, AUTO starts at that rung instead of the class's
 Reads and writes of `localStorage` sit in `try`/`catch`, so a private window
 starts from the class.
 
+#### What a visit reports
+
+At 20 s the realm sends one `graphics` analytics event
+(`everglade2-track.coax`, `quality_report_due`): the device's class, its GPU
+(`gpu`, and the adapter's `vendor` and `arch`), the mode, the start rung, the
+rung now, the rung kept for the next visit (`settled`, -1 for none) and the
+median frame rate from 10 s to 20 s (`fps`, `quality_median_fps`). It tells
+us which devices start too high or too low.
+
 ### The governor
 
 In AUTO, the governor moves the rung. It keeps a long average of the frame's

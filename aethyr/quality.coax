@@ -103,6 +103,11 @@ QUALITY_PROBE_SKIP_S :: 0.3;
 QUALITY_PROBE_N :: 128;
 // The rung kept for the next visit (verse.quality.settled) once AUTO has held it this long.
 QUALITY_SETTLED_S :: 20.0;
+// The frame rate a visit reports (quality_report_due): the median frame of QUALITY_REPORT_FROM_S
+// to QUALITY_REPORT_TO_S, in whole milliseconds (QUALITY_HIST bins; a longer frame counts in the last).
+QUALITY_REPORT_FROM_S :: 10.0;
+QUALITY_REPORT_TO_S :: 20.0;
+QUALITY_HIST :: 128;
 QUALITY_LADDER :: 2;          // the ladder's version: a kept rung from another ladder is dropped
 
 QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; grass: f32 = 1; shadow: f32 = 1; post: f32 = 1; crowd: f32 = 1; }
@@ -128,6 +133,8 @@ Quality :: struct {
   probe_ms: [QUALITY_PROBE_N] f32; probe_n: int;
   probe_from: int = -1; probe_to: int = -1;   // the rungs the measured start stepped from and to
   told: int = -1;             // the rung last kept for the next visit
+  hist: [QUALITY_HIST] int; hist_n: int;   // frames' ms from QUALITY_REPORT_FROM_S to _TO_S
+  reported: bool;
 }
 
 quality_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
@@ -329,6 +336,18 @@ quality_settled_due :: (q: [] Quality) -> bool {
   return q[0].mode == QUALITY_AUTO && q[0].probed && q[0].since >= f32(QUALITY_SETTLED_S) && q[0].rung != q[0].told;
 }
 quality_settled_kept :: (q: [] Quality) { q[0].told = q[0].rung; }
+// The median frame rate from QUALITY_REPORT_FROM_S to QUALITY_REPORT_TO_S (frames a second, from the
+// median frame's whole milliseconds, its bin's middle), 0 with no frames counted.
+quality_median_fps :: (q: [] Quality) -> int {
+  n := q[0].hist_n; if n <= 0 { return 0; }
+  seen := 0;
+  for b: 0..<QUALITY_HIST { seen += q[0].hist[b]; if seen * 2 >= n { return cast(int) (1000.0 / (f32(b) + 0.5) + 0.5); } }
+  return 0;
+}
+// Whether the visit's graphics are due to be reported (once, at QUALITY_REPORT_TO_S): the realm
+// sends its class, GPU, start, rung now and quality_median_fps, then calls quality_reported.
+quality_report_due :: (q: [] Quality) -> bool { return !q[0].reported && q[0].time >= f32(QUALITY_REPORT_TO_S); }
+quality_reported :: (q: [] Quality) { q[0].reported = true; }
 
 // The rung a start takes: the tier the player picked, else the device's.
 quality_start_rung :: (d: QualityDevice, mode: int) -> int {
@@ -409,6 +428,9 @@ quality_frame :: (q: [] Quality, dt: f32) -> bool {
   if !(dt > 0) || dt > f32(QUALITY_GAP_S) { q[0].over = 0; q[0].burst = 0; return false; }
   ms := dt * 1000;
   q[0].time += dt; q[0].since += dt;
+  if q[0].time >= f32(QUALITY_REPORT_FROM_S) && q[0].time < f32(QUALITY_REPORT_TO_S) {
+    b := cast(int) ms; q[0].hist[ifx b < QUALITY_HIST then b else QUALITY_HIST - 1] += 1; q[0].hist_n += 1;
+  }
   if q[0].probe >= 0 {
     q[0].probe += dt;
     if q[0].probe > f32(QUALITY_PROBE_SKIP_S) && q[0].probe_n < QUALITY_PROBE_N { q[0].probe_ms[q[0].probe_n] = ms; q[0].probe_n += 1; }
@@ -598,6 +620,25 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   // a picked tier is never kept as settled
   m: [1] Quality; quality_start_settled(m[..], quality_device_from_facts(QUALITY_FACTS_IPHONE), QUALITY_LOW, 3);
   #assert m[0].rung == QUALITY_TIER_RUNG[QUALITY_LOW]; quality_probe_begin(m[..]); for i: 0..<1500 { _ := quality_frame(m[..], 0.016); } #assert !quality_settled_due(m[..]);
+}
+#test "quality: a visit reports its median frame rate from 10 s to 20 s, once" {
+  q: [1] Quality; quality_start(q[..], quality_device_from_facts(QUALITY_FACTS_MAC), QUALITY_HIGH);
+  #assert quality_median_fps(q[..]) == 0 && !quality_report_due(q[..]);
+  // 10 s of 50 ms frames (the shaders, the pack) then 10 s at 60: the report is 60, not the start
+  for i: 0..<200 { _ := quality_frame(q[..], 0.05); }
+  for i: 0..<590 { _ := quality_frame(q[..], 1.0 / 60.0); }
+  #assert !quality_report_due(q[..]);
+  for i: 0..<20 { _ := quality_frame(q[..], 1.0 / 60.0); }
+  #assert quality_report_due(q[..]) && quality_median_fps(q[..]) == 61;
+  quality_reported(q[..]); #assert !quality_report_due(q[..]);
+  // 30 FPS frames: 30 (33 ms is the 33.5 ms bin's middle, 29.9)
+  h: [1] Quality; quality_start(h[..], QualityDevice.{}, QUALITY_LOW);
+  for i: 0..<700 { _ := quality_frame(h[..], 1.0 / 30.0); }
+  #assert quality_median_fps(h[..]) == 30;
+  // a frame longer than the last bin counts in it; a hidden tab's gap isn't a frame
+  l: [1] Quality; quality_start(l[..], QualityDevice.{}, QUALITY_LOW);
+  for i: 0..<120 { _ := quality_frame(l[..], 0.2); }
+  #assert quality_median_fps(l[..]) == 8 && l[0].hist[QUALITY_HIST - 1] > 0;
 }
 #test "quality: ?quality= in the URL wins over the kept tier, and is told to the host to keep" {
   #assert quality_mode_from_facts(QUALITY_FACTS_IPHONE) == QUALITY_AUTO;

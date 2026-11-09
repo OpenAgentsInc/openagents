@@ -55,6 +55,7 @@ says otherwise. Paths are relative to the repository root.
 | Run out into the glade | none | `run-end` (seconds) | `everglade2-track.coax:99` | HOW FAR VISITS GOT |
 | First spawn | none | `spawn` (`id` create or kept, class, level, `ms`) | `everglade2-track.coax:105` | HOW FAR VISITS GOT, SESSIONS |
 | Joined the shared room | none | `room-join` (`ms`); `fail` room, version or elsewhere | `everglade2-track.coax:111-117` | HOW FAR VISITS GOT, LOADING |
+| The graphics quality, 20 s in | none | `graphics` (`class`, `gpu`, `vendor`, `arch`, `mode`, `start`, `rung`, `settled`, `fps`) | `everglade2-track.coax` `e2_track` | none yet |
 | Combat | none | 30-second `tally`: `cast_<spell>`, `refused`, `bow`, `hit_<foe>`, `hurt_<foe>`, `kill_<foe>` | `everglade2-track.coax:120-129` | WHAT THEY DID, HOW FAR VISITS GOT |
 | Death | none | `death` (`id` the foe, or other) | `everglade2-track.coax:138` | WHAT THEY DID |
 | XP and level-ups | none | `tally` `xp`; `level-up` (`n`) | `everglade2-track.coax:132-134` | WHAT THEY DID |

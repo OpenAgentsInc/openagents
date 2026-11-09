@@ -92,6 +92,7 @@ E2 :: struct {
   q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/quality.coax): the pixels drawn
   q_dev: QualityDevice; q_facts: bool; q_mode: int = QUALITY_AUTO; q_tell: bool;   // the page's device and the player's pick (e2_quality_facts)
   q_settled: [QUALITY_CLASSES] int;                 // the rung each class settled at on an earlier visit (-1 none)
+  gpu_vendor: [24] u8; gpu_vendor_n: int; gpu_arch: [24] u8; gpu_arch_n: int;   // the adapter's, as host.js said them (the graphics event)
   kn: QualityKnobs; kn_ready: bool; casc_n: int;     // the rung's knobs as the frame uses them, eased in (e2_knobs_frame); the host's shadow tiles
   q_box: cc.Box; q_finger: int = -1; golden: bool;   // the GFX control beside the frame rate, the finger on it; a golden frame
   fps_counter:[1]cc.FpsCounter;          // the frame rate shown, and the frames since it was last worked out
@@ -732,6 +733,9 @@ e2_quality_facts :: (s: [] E2, t: string) {
 E2_HOST_GPU :: 613;
 ACT_SETTLED :: 33;   // host.js: the rung AUTO settled at, kept in verse.quality.settled
 e2_quality_gpu :: (s: [] E2, t: string) {
+  v := quality_fact(t, "gpu_vendor"); a := quality_fact(t, "gpu_arch");
+  s[0].gpu_vendor_n = 0; for c: v { if s[0].gpu_vendor_n < 24 { s[0].gpu_vendor[s[0].gpu_vendor_n] = c; s[0].gpu_vendor_n += 1; } }
+  s[0].gpu_arch_n = 0; for c: a { if s[0].gpu_arch_n < 24 { s[0].gpu_arch[s[0].gpu_arch_n] = c; s[0].gpu_arch_n += 1; } }
   g := quality_gpu_from_facts(t);
   if g == s[0].q_dev.gpu { return; }
   s[0].q_dev.gpu = g;
