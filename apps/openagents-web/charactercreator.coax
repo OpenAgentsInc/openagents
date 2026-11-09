@@ -1482,7 +1482,7 @@ cc_camera_terrain_room :: (x:f32,y:f32,z:f32,boom:[3]f32)->f32 {
 // How far into first person the camera is, 0 (behind you) to 1 (your eyes): the zoom, eased.
 cc_first_person :: (s:Creator)->f32 { if !s.experimental || s.walk.on {return 0;} return fpcam.fp_share(s.dist); }
 // Whether your own body is left undrawn: the camera is in your head.
-cc_self_hidden :: (s:Creator)->bool { return fpcam.fp_hidden(cc_first_person(s)); }
+cc_self_hidden :: (s:Creator)->bool { return s.stage_on || fpcam.fp_hidden(cc_first_person(s)); }   // a ?stage= setup films the scene, not you
 // A ?stage= setup (apps/openagents-web/fivelab.coax lab_stage, #13107) sets the shot and the day each
 // frame: the camera is its eye and look, the frame draws no HUD, and the glade's shadow is redrawn
 // every frame so it follows the sun (fivelab.coax lab_light writes that day's light).
