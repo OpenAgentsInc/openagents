@@ -80,7 +80,7 @@ thatch goes on course by course. `bs_fractions`, `bs_arrival` and `bs_used`
 in `aethyr/world/build-site.coax` give each part's progress, the part that
 is arriving and where, and the materials used so far. A whole-number progress
 draws exactly that stage. Open `?stage=build-cottage` to watch one
-wattle-and-daub cottage go up on the meadow at (62, 74), two seconds a stage.
+wattle-and-daub cottage go up on the meadow at (62, 66), two seconds a stage.
 
 ## Fight back
 
