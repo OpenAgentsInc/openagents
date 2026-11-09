@@ -3085,8 +3085,7 @@ lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 // ?stage=NAME (#13107): a named setup owns the camera, the sun and the clock, with no HUD, and runs
 // on whole game steps so coax/web/clip.coax records the same frames every run. The housewright
 // time-lapses (everglade/world/housewright-stage.coax, ?stage=house-*) stand their house in the
-// glade; until build sites draw at any progress (#13106) the house is the showcase's at each whole
-// stage (verse/experimental-terrain.coax exp_showcase), the camera keeping the same place about it.
+// glade as build sites drawn at their progress (#13106; ?stage=house-row stands the five finished).
 lab_stage :: (s: [] Lab, facts: string) {
   i := 0;
   while i < facts.count {
@@ -3094,28 +3093,56 @@ lab_stage :: (s: [] Lab, facts: string) {
     line := facts[i..<e]; i = e + 1;
     if line.count < 4 || line[0..<4] != "url=" { continue; }
     st := hws.hws_find(line[4..<line.count]);
-    if st >= 0 && st < hws.HWS_ROW { s[0].stage = st; s[0].stage_steps = 0; s[0].xc[0].open = false; }
+    if st >= 0 { s[0].stage = st; s[0].stage_steps = 0; s[0].xc[0].open = false; }
   }
 }
 lab_stage_t :: (s: [] Lab) -> f32 { return trk.cam_track_clock(s[0].stage_steps, hws.HWS_HZ); }
-// The showcase's house standing for the stage's whole stage at `t`, and its middle's ground.
-lab_stage_frame :: (s: [] Lab, t: f32) -> building.BuildingFrame {
-  tier := hws.hws_tier(s[0].stage); last := hw.hw_stages(tier);
-  k := int(floor(hws.hws_progress(s[0].stage, t))); if k < 1 { k = 1; } if k > last { k = last; }
-  return xterrain.exp_showcase(tier, k);
-}
+// Where the time-lapses stand: the clear, level meadow east of the showcase yard, south of the
+// village's last houses. Every house fronts +z, so the camera looks back over the village and the
+// castle, and the glade's sun stands behind the house.
+LAB_STAGE_X :: 62.0;
+LAB_STAGE_Z :: 74.0;
+LAB_STAGE_TURN :: 0;
+LAB_STAGE_SLOTS :: 5;
+lab_stage_site :: () -> building.BuildingFrame { return building.BuildingFrame.{x = LAB_STAGE_X, z = LAB_STAGE_Z, turn = LAB_STAGE_TURN}; }
 lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
-  t := lab_stage_t(s);
-  f := lab_stage_frame(s, t); g := xterrain.exp_height(f.x, f.z);
+  t := lab_stage_t(s); site := lab_stage_site(); g := xterrain.exp_height(site.x, site.z);
+  // the houses: each a build site at its progress (aethyr/world/build-site.coax, #13106)
+  h: [LAB_STAGE_SLOTS] hws.HwsHouse; n := hws.hws_houses(s[0].stage, t, 0, 0, h[..]);
+  for i: 0..<LAB_STAGE_SLOTS {
+    if i >= n { cc.build_site_clear(s[0].creator[..], i); continue; }
+    p := building.building_point(site, h[i].frame.x, h[i].frame.z);
+    f := building.BuildingFrame.{x = p[0], z = p[1], turn = LAB_STAGE_TURN};
+    cc.build_site_set(s[0].creator[..], i, h[i].tier, f, xterrain.exp_height(p[0], p[1]), h[i].progress);
+  }
   v := hws.hws_view(s[0].stage, t, 0, 0, 0);
-  e := building.building_point(f, v.ex, v.ez); l := building.building_point(f, v.lx, v.lz);
+  e := building.building_point(site, v.ex, v.ez); l := building.building_point(site, v.lx, v.lz);
   cc.stage_set(s[0].creator[..], trk.CamView.{ex = e[0], ey = v.ey + g, ez = e[1], lx = l[0], ly = v.ly + g, lz = l[1]}, hws.hws_day(s[0].stage, t));
   // whole game steps of the frame's time (a clip's fixed 1/30 s is exactly 2), so any frame rate keeps time
   if dt > 0 && dt < 1 && !still { q := int(dt * f32(hws.HWS_HZ) + 0.5); s[0].stage_steps += ifx q < 1 then 1 else q; }
 }
+lab_stage_at :: (u: [] f32, px: f32, py: f32, pz: f32) -> [3] f32 {
+  dx := px - u[16]; dy := py - u[17]; dz := pz - u[18];
+  z := dx * u[20] + dy * u[21] + dz * u[22];
+  if z < 0.2 { return [3] f32.[0, 0, 0]; }
+  r := dx * u[24] + dy * u[25] + dz * u[26]; up := dx * u[28] + dy * u[29] + dz * u[30];
+  return [3] f32.[u[23] + u[19] * r / z, u[27] - u[19] * up / z, 1];
+}
 // The corner (the speed and the workday) and, under the house, what it takes.
 lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32) -> int {
   n := at; st := s[0].stage; t := lab_stage_t(s); tier := hws.hws_tier(st);
+  if st == hws.HWS_ROW {
+    // the row: under each finished house, the tool that unlocks it
+    site := lab_stage_site(); rh: [LAB_STAGE_SLOTS] hws.HwsHouse; m := hws.hws_houses(st, t, 0, 0, rh[..]);
+    for i: 0..<m {
+      p := building.building_point(site, rh[i].frame.x, rh[i].frame.z + hw.HW_REACH[rh[i].tier][1] + 0.6);
+      q := lab_stage_at(u, p[0], xterrain.exp_height(p[0], p[1]), p[1]);
+      if q[2] < 1 { continue; }
+      tool := hws.HWS_TOOL[rh[i].tier]; c3 := 15 * k;
+      n = cc.text(out, n, tool, q[0] - cc.face_width(tool, c3, 0) * 0.5, q[1] + 18 * k, c3, ink_col(k, 1, 0.95, 0.8));
+    }
+    return n;
+  }
   if tier < 0 { return n; }
   b: [64] u8; col := ink_col(k, 1, 0.95, 0.8); cap := 15 * k;
   m := hws.hws_speed_text(st, b[..]); line := cast(string) b[0..<m];
