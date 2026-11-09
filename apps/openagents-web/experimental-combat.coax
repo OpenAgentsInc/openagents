@@ -802,18 +802,18 @@ xc_grapple_step :: (s: [] Lab) {
 // Place the familiar in an open neighboring square, preferring the facing
 // direction. The same world coordinates are projected back into the grid.
 xc_familiar_arrive :: (s:[]Lab,a:FbAb,timed:bool,recall:bool)->bool {
-  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[0];
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr := s[0].creator[..];
   xc_sync_world(s);
   form:=RS_FAMILIAR_FORMS[a.opt%RS_FAMILIAR_FORMS.count];
   spirit:=RS_FAMILIAR_FEY+a.opt/RS_FAMILIAR_FORMS.count;
   f:=rs_familiar_of(b,0);
   reform:=!recall && f>=0 && b[0].c[f].hp>0;
   for step:0..<8 {
-    theta:=cr.player_face+f32(step)*0.7853982;
+    theta:=cr[0].player_face+f32(step)*0.7853982;
     dx:=cast(int) floor(sin(theta)+0.5); dz:=cast(int) floor(cos(theta)+0.5);
-    px:=cr.player_x+f32(dx)*f32(XC_SQ); pz:=cr.player_z+f32(dz)*f32(XC_SQ);
+    px:=cr[0].player_x+f32(dx)*f32(XC_SQ); pz:=cr[0].player_z+f32(dz)*f32(XC_SQ);
     gx:=XC_MID+dx; gz:=XC_MID+dz;
-    if !reform && (xc_blocked(s,px,pz) || !xdungeon.dg_sight(cr.player_x,cr.player_z,px,pz) || !rs_familiar_destination(b,0,gx,gz,2)) { continue; }
+    if !reform && (xc_blocked(s,px,pz) || !xdungeon.dg_sight(cr[0].player_x,cr[0].player_z,px,pz) || !rs_familiar_destination(b,0,gx,gz,2)) { continue; }
     ok:=ifx recall then rs_familiar_return(b,0,gx,gz) else ifx timed then rs_familiar_finish(b,0,form,spirit,gx,gz) else rs_wild_companion(b,0,a.lvl,form,gx,gz);
     if !ok { return false; }
     if !reform {

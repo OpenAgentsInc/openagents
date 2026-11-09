@@ -341,63 +341,63 @@ experimental_air :: (s:[]Creator,air:bool) {
  if !air && s[0].airborne {s[0].land_at=s[0].clock;}
  s[0].airborne=air;
 }
-experimental_clip :: (s:Creator)->int {
- if s.airborne {return ifx s.clock-s.air_at<0.2 then figs.BD_JUMP_START else figs.BD_JUMP_LOOP;}
- if s.clock-s.land_at<0.35 {return figs.BD_JUMP_LAND;}
+experimental_clip :: (s:[]Creator)->int {
+ if s[0].airborne {return ifx s[0].clock-s[0].air_at<0.2 then figs.BD_JUMP_START else figs.BD_JUMP_LOOP;}
+ if s[0].clock-s[0].land_at<0.35 {return figs.BD_JUMP_LAND;}
  return experimental_stance(s);
 }
 // Standing or running: with a two-handed weapon, the owned two-handed hold (both hands on the haft) over
 // the idle's or the run's legs; otherwise the plain idle or run.
-experimental_stance :: (s:Creator)->int {
+experimental_stance :: (s:[]Creator)->int {
  h:=experimental_hold(s);
- if h>=0 {return h+(ifx s.moving then 1 else 0);}
- return ifx s.moving then figs.BD_RUN else figs.BD_IDLE;
+ if h>=0 {return h+(ifx s[0].moving then 1 else 0);}
+ return ifx s[0].moving then figs.BD_RUN else figs.BD_IDLE;
 }
 // The first of a two-hander's owned clips (its idle; then its run and its cleave), or -1 for none.
-experimental_hold :: (s:Creator)->int {
- if s.weapon<0 || s.weapon>=CC_KITS || !CC_KIT_TWO[s.weapon] {return -1;}
- return figs.BD_OWN+CC_KIT_HOLD[s.weapon];
+experimental_hold :: (s:[]Creator)->int {
+ if s[0].weapon<0 || s[0].weapon>=CC_KITS || !CC_KIT_TWO[s[0].weapon] {return -1;}
+ return figs.BD_OWN+CC_KIT_HOLD[s[0].weapon];
 }
 // Blend the authored jump over the locomotion pose, easing in during takeoff and
 // back out shortly after landing. The jump never fully replaces the arms.
 // With a two-hander only a little of the jump: its arms are free, and more would swing the weapon into you.
 CC_TWO_JUMP :: 0.1;
-experimental_jump_weight :: (s:Creator)->f32 {
+experimental_jump_weight :: (s:[]Creator)->f32 {
  w:=ifx experimental_hold(s)>=0 then CC_TWO_JUMP else 0.45f32;
- if s.airborne {return w*cc_clamp((s.clock-s.air_at)/0.12,0,1);}
- return w*(1-cc_clamp((s.clock-s.land_at)/0.18,0,1));
+ if s[0].airborne {return w*cc_clamp((s[0].clock-s[0].air_at)/0.12,0,1);}
+ return w*(1-cc_clamp((s[0].clock-s[0].land_at)/0.18,0,1));
 }
-experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
- a:=a0;a.x=s.player_x;a.z=s.player_z;a.y=meadow.exp_height(a.x,a.z)+s.player_y;a.yaw=s.player_face;
- if s.hostiles[0].ready && s.hostiles[0].hp<=0 {a.clip=figs.BD_DIE;a.t0=s.clock-(s.hostiles[0].time-s.hostiles[0].died_at);a.prev= -1;return a;}
- a.clip=ifx s.dev_animations && s.preview_clip>=0 then figs.BD_CLIPS+s.preview_clip else experimental_clip(s);
- a.t0=ifx a.clip==figs.BD_JUMP_START then s.clock-(s.clock-s.air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s.clock-(s.clock-s.land_at)*figs.bd_seconds(a.clip)/0.35 else 0;
- a.phase=(s.clock-(ifx s.dev_animations && s.preview_clip>=0 then s.preview_at else -s.stride))/figs.bd_seconds(a.clip);
- if s.backpedal && s.moving && !s.airborne && !(s.dev_animations && s.preview_clip>=0) {a.phase= -a.phase;}
- if !(s.dev_animations && s.preview_clip>=0) && (s.airborne || s.clock-s.land_at<0.35) {
-  a.prev=experimental_stance(s);a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);
-  a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_jump_weight(s);
+experimental_figure :: (s:[]Creator,a0:figs.BdAnim)->figs.BdAnim {
+ a:=a0;a.x=s[0].player_x;a.z=s[0].player_z;a.y=meadow.exp_height(a.x,a.z)+s[0].player_y;a.yaw=s[0].player_face;
+ if s[0].hostiles[0].ready && s[0].hostiles[0].hp<=0 {a.clip=figs.BD_DIE;a.t0=s[0].clock-(s[0].hostiles[0].time-s[0].hostiles[0].died_at);a.prev= -1;return a;}
+ a.clip=ifx s[0].dev_animations && s[0].preview_clip>=0 then figs.BD_CLIPS+s[0].preview_clip else experimental_clip(s);
+ a.t0=ifx a.clip==figs.BD_JUMP_START then s[0].clock-(s[0].clock-s[0].air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s[0].clock-(s[0].clock-s[0].land_at)*figs.bd_seconds(a.clip)/0.35 else 0;
+ a.phase=(s[0].clock-(ifx s[0].dev_animations && s[0].preview_clip>=0 then s[0].preview_at else -s[0].stride))/figs.bd_seconds(a.clip);
+ if s[0].backpedal && s[0].moving && !s[0].airborne && !(s[0].dev_animations && s[0].preview_clip>=0) {a.phase= -a.phase;}
+ if !(s[0].dev_animations && s[0].preview_clip>=0) && (s[0].airborne || s[0].clock-s[0].land_at<0.35) {
+  a.prev=experimental_stance(s);a.pt0=0;a.pphase=s[0].clock/figs.bd_seconds(a.prev);
+  a.fade_at=s[0].clock-f32(figs.BD_FADE)*experimental_jump_weight(s);
  }
  // a drawn bow: the aiming pose over what you were doing, as far as the aim has come in, through the
  // shared upper-body layer (fivelab-bodies.coax bd_layer): standing the whole body, on the move the
  // upper body only, the walk keeping the legs
- if !(s.dev_animations && s.preview_clip>=0) && s.aim>0.001 && !s.airborne {
-  f:=figs.bow_pose_frame(s.draw,ifx s.nocked then -1.0f32 else s.clock-s.loose_at);
-  a=figs.bd_layer(a,figs.BD_BOW,0,(f32(f)+0.5)/f32(figs.BOW_POSE_FRAMES),s.aim,s.clock);
+ if !(s[0].dev_animations && s[0].preview_clip>=0) && s[0].aim>0.001 && !s[0].airborne {
+  f:=figs.bow_pose_frame(s[0].draw,ifx s[0].nocked then -1.0f32 else s[0].clock-s[0].loose_at);
+  a=figs.bd_layer(a,figs.BD_BOW,0,(f32(f)+0.5)/f32(figs.BOW_POSE_FRAMES),s[0].aim,s[0].clock);
  }
- if !(s.dev_animations && s.preview_clip>=0) && s.swing_clip>=0 && s.clock-s.swing_at<figs.bd_seconds(s.swing_clip) {
+ if !(s[0].dev_animations && s[0].preview_clip>=0) && s[0].swing_clip>=0 && s[0].clock-s[0].swing_at<figs.bd_seconds(s[0].swing_clip) {
   // a blow: its clip over what you were doing (fivelab-bodies.coax bd_layer): standing the whole body,
   // on the run the upper body only, the run keeping the legs
   g:=a;
   // a two-hander's blow is over its hold, never over the jump's free arms (they'd carry the weapon into you)
-  if experimental_hold(s)>=0 {g.clip=experimental_stance(s);g.t0=0;g.phase=s.clock/figs.bd_seconds(g.clip);g.prev= -1;}
-  a=figs.bd_layer(g,s.swing_clip,s.swing_at,(s.clock-s.swing_at)/figs.bd_seconds(s.swing_clip),experimental_swing_weight(s),s.clock);
+  if experimental_hold(s)>=0 {g.clip=experimental_stance(s);g.t0=0;g.phase=s[0].clock/figs.bd_seconds(g.clip);g.prev= -1;}
+  a=figs.bd_layer(g,s[0].swing_clip,s[0].swing_at,(s[0].clock-s[0].swing_at)/figs.bd_seconds(s[0].swing_clip),experimental_swing_weight(s),s[0].clock);
  }
- return xh_figure(s,a);
+ return xh_figure(s[0],a);
 }
 // A blow eases in and out over BD_LAYER_FADE.
-experimental_swing_weight :: (s:Creator)->f32 {
- return figs.bd_layer_weight(s.clock-s.swing_at,figs.bd_seconds(s.swing_clip));
+experimental_swing_weight :: (s:[]Creator)->f32 {
+ return figs.bd_layer_weight(s[0].clock-s[0].swing_at,figs.bd_seconds(s[0].swing_clip));
 }
 // ---- the weapon in your hand (#13025): a melee class's kit, on the right hand's bone, its grip in the fist.
 // A kit: which of the pack's weapons (glade/weapon0 Axe_Double, 1 Sword, 2 Sword_Golden, 3 Sword_big), its scale
@@ -689,7 +689,7 @@ two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int) {
     if take==0 || take==1 || take==4 {if i==30 {s[0].swing_clip=figs.BD_OWN+CC_KIT_HOLD[k]+2;s[0].swing_at=now;}}
     if take==2 || take==3 || take==4 {experimental_air(s[..],i>=24 && i<70);}
     if take==5 {s[0].moving=(i/40)%2==1;}
-    a:=experimental_figure(s[0],figs.BdAnim.{});
+    a:=experimental_figure(s[..],figs.BdAnim.{});
     fa:=figs.bd_frame_of(a.clip,a.t0,a.phase,now);cc_pose(own[..],ppl[..],female,a.clip,fa,pa[..]);
     fade:=cc_clamp((now-a.fade_at)/f32(figs.BD_FADE),0,1);fade=fade*fade*(3-2*fade);
     if fade<1 && a.prev>=0 {
@@ -706,13 +706,11 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
  room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,false,0);two_hand_rooms(room[..],1,false,0);
  for r:0..<6 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
-// The blend checks copy the whole Creator into experimental_hold at each pose sample, and cc_pose's v3 points
-// add millions more visits: each check needs twice the default traversal.
-#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greataxe's blends" #steps 2000000000 #traversal 268435456 {
+#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greataxe's blends" #steps 2000000000 {
  room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,0);two_hand_rooms(room[..],1,true,0);
  for r:6..<12 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
-#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends" #steps 2000000000 #traversal 268435456 {
+#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends" #steps 2000000000 {
  room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,1);two_hand_rooms(room[..],1,true,1);
  for r:12..<18 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
@@ -728,11 +726,11 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
  #assert abs((1.0-0.03+0.4)-(w[1]+0.6*0.3067))<0.001;
 }
 #test "a two-hander plays the owned two-handed hold; a one-hander the plain idle and run" {
- s:[1]Creator;s[0].weapon=0;#assert experimental_clip(s[0])==figs.BD_OWN+figs.TWOHAND_AXE_IDLE_LOOP;
- s[0].moving=true;#assert experimental_clip(s[0])==figs.BD_OWN+figs.TWOHAND_AXE_RUN_LOOP;
- s[0].weapon=1;#assert experimental_clip(s[0])==figs.BD_OWN+figs.TWOHAND_SWORD_RUN_LOOP;
- s[0].weapon=2;#assert experimental_clip(s[0])==figs.BD_RUN;
- s[0].weapon= -1;s[0].moving=false;#assert experimental_clip(s[0])==figs.BD_IDLE;
+ s:[1]Creator;s[0].weapon=0;#assert experimental_clip(s[..])==figs.BD_OWN+figs.TWOHAND_AXE_IDLE_LOOP;
+ s[0].moving=true;#assert experimental_clip(s[..])==figs.BD_OWN+figs.TWOHAND_AXE_RUN_LOOP;
+ s[0].weapon=1;#assert experimental_clip(s[..])==figs.BD_OWN+figs.TWOHAND_SWORD_RUN_LOOP;
+ s[0].weapon=2;#assert experimental_clip(s[..])==figs.BD_RUN;
+ s[0].weapon= -1;s[0].moving=false;#assert experimental_clip(s[..])==figs.BD_IDLE;
 }
 #test "a held weapon's grip sits in the fist and its blade points ahead of the hand" {
  id:=[12]f32.[1,0,0,0, 0,1,0,0, 0,0,1,0];hand:=[3]f32.[-0.68,1.45,-0.06];
@@ -773,28 +771,28 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
 }
 #test "experimental jumps ease in and out over the moving or idle pose" {
  s:[1]Creator;s[0].experimental=true;s[0].clock=1;experimental_air(s[..],true);
- #assert experimental_jump_weight(s[0])==0;
- s[0].clock=1.06;w:=experimental_jump_weight(s[0]);#assert w>0 && w<0.45;
- s[0].clock=1.3;#assert abs(experimental_jump_weight(s[0])-0.45)<0.001;
- a:=experimental_figure(s[0],figs.BdAnim.{});#assert a.clip==figs.BD_JUMP_LOOP && a.prev==figs.BD_IDLE;
+ #assert experimental_jump_weight(s[..])==0;
+ s[0].clock=1.06;w:=experimental_jump_weight(s[..]);#assert w>0 && w<0.45;
+ s[0].clock=1.3;#assert abs(experimental_jump_weight(s[..])-0.45)<0.001;
+ a:=experimental_figure(s[..],figs.BdAnim.{});#assert a.clip==figs.BD_JUMP_LOOP && a.prev==figs.BD_IDLE;
  out:[24]f32;figs.bd_record(a,figs.BdLook.{},0,false,s[0].clock,out[..],0);#assert out[6]>0.55 && out[6]<0.60;
- s[0].moving=true;a=experimental_figure(s[0],figs.BdAnim.{});#assert a.prev==figs.BD_RUN;
- s[0].dev_animations=true;s[0].preview_clip=0;a=experimental_figure(s[0],figs.BdAnim.{});#assert a.prev== -1;
+ s[0].moving=true;a=experimental_figure(s[..],figs.BdAnim.{});#assert a.prev==figs.BD_RUN;
+ s[0].dev_animations=true;s[0].preview_clip=0;a=experimental_figure(s[..],figs.BdAnim.{});#assert a.prev== -1;
  s[0].preview_clip= -1;
- experimental_air(s[..],false);s[0].clock=1.39;w=experimental_jump_weight(s[0]);#assert w>0 && w<0.45;
- s[0].clock=1.49;#assert experimental_jump_weight(s[0])==0;
+ experimental_air(s[..],false);s[0].clock=1.39;w=experimental_jump_weight(s[..]);#assert w>0 && w<0.45;
+ s[0].clock=1.49;#assert experimental_jump_weight(s[..])==0;
 }
 #test "death overrides animation previews and holds the death pose" {
- s:Creator;s.experimental=true;s.hostiles[0].ready=true;s.hostiles[0].hp=0;s.hostiles[0].time=2;s.hostiles[0].died_at=1;s.clock=9;s.dev_animations=true;s.preview_clip=4;s.airborne=true;
- a:=experimental_figure(s,figs.BdAnim.{});#assert a.clip==figs.BD_DIE && a.t0==8 && a.prev== -1;
- #assert figs.bd_frame_of(a.clip,a.t0,0,s.clock+100)==figs.BD_FRAMES[figs.BD_DIE]-1;
+ s:[1]Creator;s[0].experimental=true;s[0].hostiles[0].ready=true;s[0].hostiles[0].hp=0;s[0].hostiles[0].time=2;s[0].hostiles[0].died_at=1;s[0].clock=9;s[0].dev_animations=true;s[0].preview_clip=4;s[0].airborne=true;
+ a:=experimental_figure(s[..],figs.BdAnim.{});#assert a.clip==figs.BD_DIE && a.t0==8 && a.prev== -1;
+ #assert figs.bd_frame_of(a.clip,a.t0,0,s[0].clock+100)==figs.BD_FRAMES[figs.BD_DIE]-1;
 }
 #test "experimental character selects jump takeoff air and landing" {
  s:[1]Creator;s[0].experimental=true;s[0].clock=1;experimental_air(s[..],true);
- #assert experimental_clip(s[0])==figs.BD_JUMP_START;
- s[0].clock=1.3;#assert experimental_clip(s[0])==figs.BD_JUMP_LOOP;
- experimental_air(s[..],false);#assert experimental_clip(s[0])==figs.BD_JUMP_LAND;
- s[0].clock=2;#assert experimental_clip(s[0])==figs.BD_IDLE;
+ #assert experimental_clip(s[..])==figs.BD_JUMP_START;
+ s[0].clock=1.3;#assert experimental_clip(s[..])==figs.BD_JUMP_LOOP;
+ experimental_air(s[..],false);#assert experimental_clip(s[..])==figs.BD_JUMP_LAND;
+ s[0].clock=2;#assert experimental_clip(s[..])==figs.BD_IDLE;
 }
 #test "showcase animals loop through all ten baked run frames" {
  #assert animal_frame(0)==0 && animal_frame(0.3)==5 && animal_frame(0.6)==0;
@@ -829,7 +827,7 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
   s[0].player_x=e.x+0.5;s[0].player_z=e.z;
   for pass:0..<2 {
    if pass==1 {s[0].hostiles[0].enemies[i].face_x=0;s[0].hostiles[0].enemies[i].face_z=0;}   // even a zero facing draws
-   n:=scene(s[0],b[..],out[..]);found:=false;
+   n:=scene(s[..],b[..],out[..]);found:=false;
    for d:0..<n {r:=d*24;if out[r+15]!=18 || out[r]!=e.x || out[r+2]!=e.z {continue;}found=true;
     mesh:=dungeon.dg_kind_mesh(e.kind);w:=b[0].draws[d*4+2];
     #assert b[0].draws[d*4+1]>0 && b[0].draws[d*4+3]==1 && cast(int)w==d;
@@ -857,92 +855,92 @@ familiar_record :: (out:[]f32,rec:int,word:int,x:f32,y:f32,z:f32,yaw:f32) {
   out[at+8]=sin(yaw); out[at+9]=cos(yaw);
   out[at+15]=18;
 }
-scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int { return scene_reserved(s,b,out,0); }
-scene_reserved :: (s:Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
+scene :: (s:[]Creator,b:[]figs.Bodies,out:[]f32)->int { return scene_reserved(s,b,out,0); }
+scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   b[0].draw_n=0;b[0].self_n=0;
-  if !b[0].ready || !catalog_ready(s) { return 0; }
-  l:=look(s); l.variant=0;
-  a:figs.BdAnim; a.on=true; a.clip=[4]int.[figs.BD_IDLE,figs.BD_WALK,figs.BD_RUN,figs.BD_SPELL][s.pose];
-  a.t0=s.pose_at; a.fade_at=-100; a.phase=(s.clock-s.pose_at)/figs.bd_seconds(a.clip); a.yaw=s.yaw;
-  if s.pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s.pose_at+floor((s.clock-s.pose_at)/dur)*dur; }
-  if s.walk.on {a=walk_figure(s,a);}
-  if s.experimental {a=experimental_figure(s,a);}
+  if !b[0].ready || !catalog_ready(s[0]) { return 0; }
+  l:=look(s[0]); l.variant=0;
+  a:figs.BdAnim; a.on=true; a.clip=[4]int.[figs.BD_IDLE,figs.BD_WALK,figs.BD_RUN,figs.BD_SPELL][s[0].pose];
+  a.t0=s[0].pose_at; a.fade_at=-100; a.phase=(s[0].clock-s[0].pose_at)/figs.bd_seconds(a.clip); a.yaw=s[0].yaw;
+  if s[0].pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s[0].pose_at+floor((s[0].clock-s[0].pose_at)/dur)*dur; }
+  if s[0].walk.on {a=walk_figure(s[0],a);}
+  if s[0].experimental {a=experimental_figure(s,a);}
   n:=0;
-  for i:0..<40 { if s.worn[i] && available(s,i) && s.source_count[i+(ifx s.female then 0 else 40)]>0 {
-    p:=i+ifx s.female then 0 else 40;
-    figs.bd_record(a,l,s.source_word[p],false,s.clock,out,n);out[n*24+11]=f32(s.variant);
-    b[0].draws[n*4]=cast(u32)s.source_first[p];b[0].draws[n*4+1]=cast(u32)s.source_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+  for i:0..<40 { if s[0].worn[i] && available(s[0],i) && s[0].source_count[i+(ifx s[0].female then 0 else 40)]>0 {
+    p:=i+ifx s[0].female then 0 else 40;
+    figs.bd_record(a,l,s[0].source_word[p],false,s[0].clock,out,n);out[n*24+11]=f32(s[0].variant);
+    b[0].draws[n*4]=cast(u32)s[0].source_first[p];b[0].draws[n*4+1]=cast(u32)s[0].source_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   } }
   parts:[3]int;pn:=0;
-  if !s.worn[7] { parts[pn]=l.head;pn+=1; }
-  if l.hair>=0 && !s.worn[7] && !s.worn[26] {parts[pn]=l.hair;pn+=1;}
-  if l.extra==figs.BP_BEARD && !s.worn[7] {parts[pn]=l.extra;pn+=1;}
+  if !s[0].worn[7] { parts[pn]=l.head;pn+=1; }
+  if l.hair>=0 && !s[0].worn[7] && !s[0].worn[26] {parts[pn]=l.hair;pn+=1;}
+  if l.extra==figs.BP_BEARD && !s[0].worn[7] {parts[pn]=l.extra;pn+=1;}
   for i:0..<pn {
-    p:=parts[i];figs.bd_record(a,l,b[0].part_word[p],false,s.clock,out,n);
+    p:=parts[i];figs.bd_record(a,l,b[0].part_word[p],false,s[0].clock,out,n);
     b[0].draws[n*4]=cast(u32)b[0].part_first[p];b[0].draws[n*4+1]=cast(u32)b[0].part_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  for i:0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s.eye_color][k];}out[i*24+23]=2;}
+  for i:0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s[0].eye_color][k];}out[i*24+23]=2;}
   // first person: the camera is in your head, so your body's draws are left out of the view (not the shadows)
-  b[0].self_n=ifx s.experimental && !s.scene_only && cc_self_hidden(s) then n else 0;
-  if s.experimental && !s.scene_only && n>0 && n<43 {n=held_weapon(s,b,out,n);}
+  b[0].self_n=ifx s[0].experimental && !s[0].scene_only && cc_self_hidden(s[0]) then n else 0;
+  if s[0].experimental && !s[0].scene_only && n>0 && n<43 {n=held_weapon(s[0],b,out,n);}
   // and what your hands hold, unless it is up in front of you (a drawn bow): carried at your side it would float, handless, across the view
-  if b[0].self_n>0 && s.aim<0.3 {b[0].self_n=n;}
-  if s.scene_only {n=0;}
-  if s.glade_count>0 && n<43 {
+  if b[0].self_n>0 && s[0].aim<0.3 {b[0].self_n=n;}
+  if s[0].scene_only {n=0;}
+  if s[0].glade_count>0 && n<43 {
     for k:0..<24 {out[n*24+k]=0;}
-    out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
-    b[0].draws[n*4]=cast(u32)s.glade_first;b[0].draws[n*4+1]=cast(u32)s.glade_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+    out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
+    b[0].draws[n*4]=cast(u32)s[0].glade_first;b[0].draws[n*4+1]=cast(u32)s[0].glade_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s.experimental && s.aribeth.count>0 && n<43 {
-    pose:=aribeth.arb_sample(s.aribeth[0],s.clock);
+  if s[0].experimental && s[0].aribeth.count>0 && n<43 {
+    pose:=aribeth.arb_sample(s[0].aribeth[0],s[0].clock);
     if pose.valid {
       for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(pose.word);out[n*24+15]=16;
       b[0].draws[n*4]=cast(u32)pose.first;b[0].draws[n*4+1]=cast(u32)pose.count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
     }
   }
   // the dungeon's inside, only the parts you can see into (experimental-dungeon.coax dg_seen); its
-  // shadows are the shell's, so these cast none (fivelab.coax lab_shadow_select reads out[14])
-  if s.experimental && s.dungeon_n==dungeon.DG_CHUNKS {seen:=dungeon.dg_seen(s.player_x,s.player_z);for part:0..<dungeon.DG_CHUNKS {
+  // shadows are the shell's[0], so these cast none (fivelab.coax lab_shadow_select reads out[14])
+  if s[0].experimental && s[0].dungeon_n==dungeon.DG_CHUNKS {seen:=dungeon.dg_seen(s[0].player_x,s[0].player_z);for part:0..<dungeon.DG_CHUNKS {
     if n>=43 || (seen&(1<<part))==0 {continue;}
-    for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(s.glade_word);out[n*24+14]=1;out[n*24+15]=16;
-    b[0].draws[n*4]=cast(u32)s.dungeon_first[part];b[0].draws[n*4+1]=cast(u32)s.dungeon_count[part];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+    for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(s[0].glade_word);out[n*24+14]=1;out[n*24+15]=16;
+    b[0].draws[n*4]=cast(u32)s[0].dungeon_first[part];b[0].draws[n*4+1]=cast(u32)s[0].dungeon_count[part];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}
-  if s.experimental && s.zero_ad_count>0 && n<43 {
-    for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
-    b[0].draws[n*4]=cast(u32)s.zero_ad_first;b[0].draws[n*4+1]=cast(u32)s.zero_ad_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+  if s[0].experimental && s[0].zero_ad_count>0 && n<43 {
+    for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
+    b[0].draws[n*4]=cast(u32)s[0].zero_ad_first;b[0].draws[n*4+1]=cast(u32)s[0].zero_ad_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s.experimental && s.animal_n==10 && n<43 {
-    take:=animal_frame(s.clock);for k:0..<24 {out[n*24+k]=0;}
-    out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
-    b[0].draws[n*4]=cast(u32)s.animal_first[take];b[0].draws[n*4+1]=cast(u32)s.animal_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+  if s[0].experimental && s[0].animal_n==10 && n<43 {
+    take:=animal_frame(s[0].clock);for k:0..<24 {out[n*24+k]=0;}
+    out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
+    b[0].draws[n*4]=cast(u32)s[0].animal_first[take];b[0].draws[n*4+1]=cast(u32)s[0].animal_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s.experimental && n<43 {n=xh_records(s,b,out,n,43);}
-  if s.experimental && s.monster_n==48 && n<43 {
-    take:=monster_frame(s.clock);for k:0..<24 {out[n*24+k]=0;}
-    out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
-    b[0].draws[n*4]=cast(u32)s.monster_first[take];b[0].draws[n*4+1]=cast(u32)s.monster_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+  if s[0].experimental && n<43 {n=xh_records(s[0],b,out,n,43);}
+  if s[0].experimental && s[0].monster_n==48 && n<43 {
+    take:=monster_frame(s[0].clock);for k:0..<24 {out[n*24+k]=0;}
+    out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
+    b[0].draws[n*4]=cast(u32)s[0].monster_first[take];b[0].draws[n*4+1]=cast(u32)s[0].monster_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s.experimental && s.npc_n[0]==48 && s.npc_n[1]==48 {seen:=dungeon.dg_seen(s.player_x,s.player_z);in_dungeon:=dungeon.dg_inside(s.player_x,s.player_z,0);
+  if s[0].experimental && s[0].npc_n[0]==48 && s[0].npc_n[1]==48 {seen:=dungeon.dg_seen(s[0].player_x,s[0].player_z);in_dungeon:=dungeon.dg_inside(s[0].player_x,s[0].player_z,0);
    // the monsters you could see: near, and in the dungeon only in a part you see into; nearest first,
    // so the slots left always hold the ones by you (their names show within 30 m)
    near:[hostile.HS_N]int;far:[hostile.HS_N]f32;nn:=0;
-   for i:0..<hostile.HS_N {e:=s.hostiles[0].enemies[i];if e.dead && s.clock-e.died>2.4 {continue;}
-    dx:=e.x-s.player_x;dz:=e.z-s.player_z;if dx*dx+dz*dz>48*48 {continue;}
+   for i:0..<hostile.HS_N {e:=s[0].hostiles[0].enemies[i];if e.dead && s[0].clock-e.died>2.4 {continue;}
+    dx:=e.x-s[0].player_x;dz:=e.z-s[0].player_z;if dx*dx+dz*dz>48*48 {continue;}
     if dungeon.dg_inside(e.x,e.z,0) {part:=dungeon.dg_cell_chunk(dungeon.dg_col(e.x),dungeon.dg_row(e.z));if part>=0 && (seen&(1<<part))==0 {continue;}}else if in_dungeon {continue;}
     near[nn]=i;far[nn]=dx*dx+dz*dz;nn+=1;}
    for pick:0..<nn {if n>=41 {break;}best:=pick;for j:pick+1..<nn {if far[j]<far[best] {best=j;}}
     ti:=near[pick];tf:=far[pick];near[pick]=near[best];far[pick]=far[best];near[best]=ti;far[best]=tf;
-    e:=s.hostiles[0].enemies[near[pick]];sink:=ifx e.dead then (s.clock-e.died)*0.9*e.scale else 0.0f32;
-    kind:=dungeon.dg_kind_mesh(e.kind);take:=(ifx e.swing>=0 then 32 else ifx e.moving then 16 else 0)+int(floor(s.clock*8))%8;
+    e:=s[0].hostiles[0].enemies[near[pick]];sink:=ifx e.dead then (s[0].clock-e.died)*0.9*e.scale else 0.0f32;
+    kind:=dungeon.dg_kind_mesh(e.kind);take:=(ifx e.swing>=0 then 32 else ifx e.moving then 16 else 0)+int(floor(s[0].clock*8))%8;
     // its turn (sin, cos): a unit facing, never zero (a zero one folds the body flat to an unseen line)
     fl:=sqrt(e.face_x*e.face_x+e.face_z*e.face_z);fx:=ifx fl>0.001 then e.face_x/fl else 0.0f32;fz:=ifx fl>0.001 then e.face_z/fl else 1.0f32;
     for k:0..<24 {out[n*24+k]=0;}out[n*24]=e.x;out[n*24+1]=meadow.exp_height(e.x,e.z)-sink;out[n*24+2]=e.z;out[n*24+8]=fx;out[n*24+9]=fz;out[n*24+10]=ifx e.scale>0 then e.scale else 1.0f32;
-    out[n*24+4]=ifx kind==0 then 6 else 9;out[n*24+5]=meadow.exp_height(out[n*24+4],-7);out[n*24+6]= -7;out[n*24+7]=f32(s.glade_word);out[n*24+15]=18;
-    b[0].draws[n*4]=cast(u32)s.npc_first[kind][take];b[0].draws[n*4+1]=cast(u32)s.npc_count[kind][take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
+    out[n*24+4]=ifx kind==0 then 6 else 9;out[n*24+5]=meadow.exp_height(out[n*24+4],-7);out[n*24+6]= -7;out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=18;
+    b[0].draws[n*4]=cast(u32)s[0].npc_first[kind][take];b[0].draws[n*4+1]=cast(u32)s[0].npc_count[kind][take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}
-  for gi:0..<s.grass_groups {if n>=44-reserved {break;}g:=s.grass[gi];
+  for gi:0..<s[0].grass_groups {if n>=44-reserved {break;}g:=s[0].grass[gi];
     for k:0..<24 {out[n*24+k]=0;}
-    out[n*24]=f32(g.word);out[n*24+7]=f32(s.glade_word);out[n*24+15]=17;
+    out[n*24]=f32(g.word);out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=17;
     b[0].draws[n*4]=cast(u32)g.first;b[0].draws[n*4+1]=cast(u32)g.count;
     b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)g.n;n+=1;
   }
@@ -1161,13 +1159,13 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
  #assert abs(u[17]-eye_y)<0.001 && abs(dx*cz-dz*sx)<0.001 && abs(dx*sx+dz*cz+f32(fpcam.FP_AHEAD))<0.001;
  // still looking along the aim: the crosshair (the view's centre) is where the arrow goes
  #assert abs(u[20]+sx*cos(s[0].pitch))<0.001 && abs(u[21]+sin(s[0].pitch))<0.001 && u[23]==640;
- n:=scene(s[0],b[..],out[..]);#assert n>0 && b[0].self_n>0 && b[0].self_n<=n;
- s[0].aim=0;n=scene(s[0],b[..],out[..]);#assert b[0].self_n==n;   // a weapon carried at your side isn't drawn either
+ n:=scene(s[..],b[..],out[..]);#assert n>0 && b[0].self_n>0 && b[0].self_n<=n;
+ s[0].aim=0;n=scene(s[..],b[..],out[..]);#assert b[0].self_n==n;   // a weapon carried at your side isn't drawn either
  s[0].aim=0.7;
  // zoomed out it is the over-the-shoulder view again, with your body drawn
  wheel(s[..],1000);#assert s[0].dist>f32(fpcam.FP_FAR) && cc_first_person(s[0])==0;
  camera(s[0],u[..],1280,720,1);dx=u[16]-70;dz=u[18]-0;#assert dx*cz-dz*sx>0.5 && dx*sx+dz*cz>1;
- n=scene(s[0],b[..],out[..]);#assert b[0].self_n==0;
+ n=scene(s[..],b[..],out[..]);#assert b[0].self_n==0;
  // in between it blends: the camera slides from the shoulder into the head
  last:f32=1000;for k:0..<9 {s[0].dist=f32(fpcam.FP_FAR)-f32(k)*(f32(fpcam.FP_FAR)-f32(fpcam.FP_NEAR))/8;camera(s[0],u[..],1280,720,1);
   dx=u[16]-70;dz=u[18]-0;side:=dx*cz-dz*sx;#assert side<=last+0.0001;last=side;}
@@ -1408,16 +1406,16 @@ catalog :: (s:[]Creator,t:string) {
 
 #test "creator page identity accepts absolute host URLs and rejects other routes" { #assert page("url=http://127.0.0.1:8812/worlds/character-creator?x=1\n");#assert page("url=/worlds/character-creator/\n");#assert !page("url=https://openagents.com/worlds/5e-lab?next=/worlds/character-creator\n"); }
 
-probe :: (s:Creator,f:int)->int {
-  if f==0 {return s.source_n;} if f==1 {return s.outfit;}if f==2 {return ifx s.female then 1 else 0;}
-  if f==3 {return s.variant;}if f==4 {return s.dye;}if f==5 {return s.skin;}if f==6 {return s.pose;}
-  if f==7 {return s.piece;}if f==8 {return ifx s.worn[s.piece] then 1 else 0;}if f==9 {return s.revision;}if f==10 {return s.eye_color;}if f==11 {return int(s.pan_x*1000);}if f==12 {return int(s.pan_y*1000);}if f==13 {return int(s.yaw*1000);}if f==18 {return ifx s.profile_ok then 1 else 0;}if f==19 {return ifx s.profile_failed then 1 else 0;}if f==14 {return s.glade_count;}
-  if f==29 && s.experimental {return s.preview_clip;}
-  if f==30 && s.experimental {return s.preview_scroll;}
-  if f==28 && s.experimental {return experimental_clip(s);}
-  if f==26 && s.experimental {return int(s.player_x*1000);}
-  if f==27 && s.experimental {return int(s.player_z*1000);}
-  if f>=20 && f<=25 {return walk_probe(s,f);}
+probe :: (s:[]Creator,f:int)->int {
+  if f==0 {return s[0].source_n;} if f==1 {return s[0].outfit;}if f==2 {return ifx s[0].female then 1 else 0;}
+  if f==3 {return s[0].variant;}if f==4 {return s[0].dye;}if f==5 {return s[0].skin;}if f==6 {return s[0].pose;}
+  if f==7 {return s[0].piece;}if f==8 {return ifx s[0].worn[s[0].piece] then 1 else 0;}if f==9 {return s[0].revision;}if f==10 {return s[0].eye_color;}if f==11 {return int(s[0].pan_x*1000);}if f==12 {return int(s[0].pan_y*1000);}if f==13 {return int(s[0].yaw*1000);}if f==18 {return ifx s[0].profile_ok then 1 else 0;}if f==19 {return ifx s[0].profile_failed then 1 else 0;}if f==14 {return s[0].glade_count;}
+  if f==29 && s[0].experimental {return s[0].preview_clip;}
+  if f==30 && s[0].experimental {return s[0].preview_scroll;}
+  if f==28 && s[0].experimental {return experimental_clip(s);}
+  if f==26 && s[0].experimental {return int(s[0].player_x*1000);}
+  if f==27 && s[0].experimental {return int(s[0].player_z*1000);}
+  if f>=20 && f<=25 {return walk_probe(s[0],f);}
   return -1;
 }
 append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}return at+t.count;}
@@ -1427,7 +1425,7 @@ append :: (out:[]u8,at:int,t:string)->int {for i:0..<t.count {out[at+i]=t[i];}re
   catalog(s[..],cast(string)buf[0..<at]);#assert s[0].source_n==76;
   for i:0..<80 {if appearance.PART_NAMES[i].count>0 {#assert s[0].source_first[i]==100 && s[0].source_count[i]==300 && s[0].source_word[i]==600;}}
   b[0].ready=true;for i:0..<39 {s[0].worn[i]=true;}out:[44*24]f32;
-  for body:0..<2 {s[0].female=body==1;n:=scene(s[0],b[..],out[..]);#assert n==26-body*1 && b[0].draw_n==n;
+  for body:0..<2 {s[0].female=body==1;n:=scene(s[..],b[..],out[..]);#assert n==26-body*1 && b[0].draw_n==n;
     for i:0..<n {#assert b[0].draws[i*4+2]==cast(u32)i && b[0].draws[i*4+3]==1;}
   }
 }
@@ -1451,7 +1449,7 @@ catalog_ready :: (s:Creator)->bool {for i:0..<80 {if appearance.PART_NAMES[i]!="
   s:[1]Creator;ensure(s[..]);change(s[..],8,1);change(s[..],2,1);
   #assert s[0].beard && s[0].hood && look(s[0]).extra==figs.BP_BEARD;
   b:[1]figs.Bodies;b[0].ready=true;s[0].source_n=76;for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=1;}}b[0].part_word[figs.BP_BEARD]=12345;
-  out:[44*24]f32;n:=scene(s[0],b[..],out[..]);found:=false;
+  out:[44*24]f32;n:=scene(s[..],b[..],out[..]);found:=false;
   for i:0..<n {if out[i*24+7]==12345 {found=true;}}#assert found;
   s[0].piece=15;change(s[..],10,1);#assert s[0].piece==17;
   s[0].piece=16;change(s[..],11,1);#assert !s[0].worn[16] && !available(s[0],16);
@@ -1526,7 +1524,7 @@ mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
   #assert s[0].glade_first==9 && s[0].glade_count==12 && s[0].glade_word==100 && s[0].source_n==0;
   // A scenery draw needs no animation palette and never receives the eye-color marker.
   ensure(s[..]);for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
-  b:[1]figs.Bodies;b[0].ready=true;out:[44*24]f32;n:=scene(s[0],b[..],out[..]);
+  b:[1]figs.Bodies;b[0].ready=true;out:[44*24]f32;n:=scene(s[..],b[..],out[..]);
   #assert n>1 && out[(n-1)*24+15]==16 && out[(n-1)*24+7]==100;
   #assert b[0].draws[(n-1)*4]==9 && b[0].draws[(n-1)*4+1]==12;
   saved:[64]u8;size:=save(s[0],saved[..]);t:[1]Creator;
@@ -1601,9 +1599,9 @@ load_player :: (s:[]Creator,t:string) {
  s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
  catalog(s[..],"C glade/environment 9 12 250 100 8 0\nC glade/grass 21 465 250 164 20000 0\n");
  for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}b[0].ready=true;
- n:=scene(s[0],b[..],out[..]);#assert out[(n-1)*24+15]==17 && out[(n-1)*24]==164;
+ n:=scene(s[..],b[..],out[..]);#assert out[(n-1)*24+15]==17 && out[(n-1)*24]==164;
  #assert b[0].draws[(n-1)*4+2]==cast(u32)(n<<16) && b[0].draws[(n-1)*4+3]==20000;
- s[0].scene_only=true;n=scene(s[0],b[..],out[..]);#assert n==2;
+ s[0].scene_only=true;n=scene(s[..],b[..],out[..]);#assert n==2;
  catalog(s[..],"C glade/grass 0 465 250 100 65536 0\n");#assert s[0].grass_groups==0;
 }
 
@@ -1639,18 +1637,18 @@ texture_side :: (s:Creator)->int {if !s.on {return 0;}return ifx s.width>=840*s.
  s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);s[0].aribeth=storage[..];
  catalog(s[..],"C glade/aribeth0 10 3 248 20 0 0\nC glade/aribeth1 13 3 248 28 0 0\nA aribeth walk 0 2 1000\n");
  for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}b[0].ready=true;s[0].scene_only=true;
- #assert scene(s[0],b[..],out[..])==0;s[0].experimental=true;s[0].clock=0.5;
- #assert scene(s[0],b[..],out[..])==1 && b[0].draw_n==1;
+ #assert scene(s[..],b[..],out[..])==0;s[0].experimental=true;s[0].clock=0.5;
+ #assert scene(s[..],b[..],out[..])==1 && b[0].draw_n==1;
  #assert b[0].draws[0]==13 && b[0].draws[1]==3 && b[0].draws[3]==1;
  #assert out[7]==28 && out[15]==16 && out[23]==0;
  catalog(s[..],"");for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
- #assert scene(s[0],b[..],out[..])==0;
+ #assert scene(s[..],b[..],out[..])==0;
 }
 #test "creator scene reserves requested world draw slots" {
   s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);
   for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
   s[0].scene_only=true;s[0].experimental=true;s[0].glade_count=3;s[0].glade_word=100;
   s[0].grass_groups=3;for i:0..<3 {s[0].grass[i].first=3;s[0].grass[i].count=3;s[0].grass[i].n=1;}
-  b[0].ready=true;n:=scene_reserved(s[0],b[..],out[..],43);
+  b[0].ready=true;n:=scene_reserved(s[..],b[..],out[..],43);
   #assert n==1 && b[0].draw_n==n;
 }
