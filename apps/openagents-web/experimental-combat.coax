@@ -1690,7 +1690,7 @@ xc_slot_box :: (x:[]XcCombat, i: int) -> cc.Box {
 xc_in :: (r: cc.Box, px: f32, py: f32) -> bool { return px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1; }
 xc_text_w :: (t: string, cap: f32) -> f32 {
   em := cc.sans_em(cap); w := 0.0f32;
-  for i: 0..<t.count { c := cast(int) t[i]; if c >= 32 && c <= 126 { w += f32(cc.CC_FONT_WIDTH[c - 32]) / f32(cc.CC_FONT_UPM) * em; } }
+  for i: 0..<t.count { c := cast(int) t[i]; if c >= 32 && c <= 126 { w += f32(cc.EG_BODY_WIDTH[c - 32]) / f32(cc.EG_FONT_UPM) * em; } }
   return w;
 }
 
@@ -1738,6 +1738,16 @@ xc_familiar_view :: (s:[]Lab,u:[]f32)->bool {
   return true;
 }
 // ---- the frame: after Character Create's (cc.frame), in Experimental
+// Your portrait plate, top right (the CLASSES column has the left): your class, its level, your
+// Hit Points, your AC and spell slots, as the rules hold them for you.
+xc_portrait :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32) -> int {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0]; me := x[0].b[0].c[0];
+  p: cc.EgPortrait; nb: [32] u8; p.klass = cc.eg_title(nb[..], XC_CL_UP[x[0].klass]); p.name = p.klass; p.level = x[0].level;
+  p.max = hs.max_hp; p.hp = ifx hs.hp < 0 then 0 else hs.hp; p.temp = hs.temp; p.ac = me.ac;
+  for lv: 0..<10 { p.slot_max[lv] = me.slots_max[lv]; p.slot_left[lv] = me.slots[lv]; }
+  wide := f32(cc.EG_PORTRAIT_W);
+  return cc.eg_portrait(out, at, w - (wide + 16) * k, 14 * k, wide, k, p, 1);
+}
 xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32, dt: f32) -> int {
   x := s[0].xc[..]; cr := s[0].creator[..]; hs := cr[0].hostiles[..];
   n := at;
@@ -1756,6 +1766,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   xc_bow_step(s, dt);
   n = xc_crosshair(s, out, n, w, h, k);
   if observing { n=cc.text(out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1)); }
+  n=xc_portrait(s,out,n,w,k);
   n=cc.combat_hud(cr[0],out,u,n,w,k);
   n=xc_hit_mark(x,cr[0],out,n,w,h,k,now);
   xc_strike_due(s);
@@ -1820,11 +1831,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if p.x < 400 * k && p.y > x[0].top - 20 * k && p.y < bottom + 20 * k { continue; }   // not over the CLASSES column
     name := XC_FOE_NAMES[e.kind];
     on := i == x[0].target || (wave_on && xc_wave_contains(wave,e.x,e.z));
-    cap := 9 * k;
-    n = cc.text(out, n, name, p.x - xc_text_w(name, cap) / 2, p.y - 8 * k, cap, ifx on then ink_col(k, 1, 0.82, 0.4) else ink_col(k, 0.92, 0.9, 0.84));
-    half := 26 * k; share := f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1));
-    n = xc_line(out, n, p.x - half, p.y, p.x + half, p.y, 3 * k, 0.18, 0.06, 0.05);
-    if share > 0 { n = xc_line(out, n, p.x - half, p.y, p.x - half + 2 * half * share, p.y, 3 * k, 0.86, 0.16, 0.12); }
+    nb: [32] u8;
+    n = cc.eg_plate(out, n, cc.eg_title(nb[..], name), p.x, p.y, k, f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, 1);
   }
   // A world-anchored familiar marker is drawn at the actor's position.
   familiar:=rs_familiar_of(x[0].b[..],0);
@@ -1847,10 +1855,12 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     p := xc_proj(x, f.x, base + a * 0.9, f.z);
     if !p.ok { continue; }
     t := cast(string) f.text[0..<f.n];
-    cap := 14 * k;
-    n = cc.text(out, n, t, p.x - xc_text_w(t, cap) / 2, p.y, cap, ifx f.heal then ink_col(k, 0.5, 0.95, 0.55) else ink_col(k, 1, 0.55, 0.35));
+    n = cc.eg_float(out, n, t, p.x, p.y, k, ifx f.heal then cc.EG_FLOAT_HEAL else cc.EG_FLOAT_DEALT, ifx a < 0.7 then 1.0f32 else (1 - a) / 0.3);
   }
-  // the bar: each slot's key over its picture; your class and your target over it
+  // the bar: its iron round the pictures (everglade-hud.coax), each slot's key over its picture; your class and your target over it
+  slots: [XC_SLOTS * 4] f32;
+  for i: 0..<x[0].bar_n { r := xc_slot_box(x, i); slots[i * 4] = r.x0; slots[i * 4 + 1] = r.y0; slots[i * 4 + 2] = r.x1; slots[i * 4 + 3] = r.y1; }
+  n = cc.eg_bar_frame(out, n, slots[..], x[0].bar_n, k, XC_CL_UP[x[0].klass][0], 1);
   m := 0;
   for i: 0..<x[0].bar_n {
     r := xc_slot_box(x, i);
