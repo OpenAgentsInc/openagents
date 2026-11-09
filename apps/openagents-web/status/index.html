@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Status — OpenAgents</title>
+<meta name="description" content="How a change reaches production at OpenAgents: main's commits, the release path and the green-main pipeline.">
+<link rel="canonical" href="https://openagents.com/status">
+<link rel="alternate" type="text/markdown" href="/status/index.md">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script>if("gpu" in navigator)document.documentElement.classList.add("gpu")</script>
+<style>
+html,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.6}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}canvas[data-cursor=pointer]{cursor:pointer}main{max-width:760px;margin:auto;padding:32px 20px}a{color:#b9e8e8}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>OpenAgents status</h1>
+<p><a href="/status/index.md">Read the status as Markdown</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="status" data-wgsl="/newland.wgsl" data-lines="61:https://api.github.com/repos/OpenAgentsInc/openagents/commits?sha=main&amp;per_page=30" data-text="build 63e092cf684ef2778be89a337732d40fa27a402b 1794260745
+green -
+queue 0
+rejected 0
+red 0
+day 222
+week 1822
+trailers 9
+hosts 6 3 411 1455
+c 63e092cf684ef2778be89a337732d40fa27a402b 1794260185 - Everglade Experimental: the red dragon as a flying mount, and riding stages (#13113)
+c 683ab0cd9ef4a14f66456f2c1da21edeb2014244 1794260004 - Aethyr: the camera orbit check splits in two, each well under its step budget (#13115)
+c 575281d3e37bd1c08bf7a7cc3886dfec6d3734e1 1794260004 - wasm.sh: a unit past its compile headroom line stops a release build (#13115)
+c a8c3a052a5fb4f9f0c71d0f97f3af142599d9d0e 1794260003 - Experimental terrain: the building sites are a constant table, not a chain of tests (#13115)
+c 739fe14cfa99c3eb75428456a6fcec4679652f2c 1794259972 ab1bb60c Agent workflow audit: where agent time and tokens go, and the green-main cutover (#13102)
+c 272d885c76f573a54f8fdf9658f503040cadb763 1794259584 builder Experimental: a builder at each build site, and its landings' sounds (#13108)
+c c4c2d2723859b3555ef5bd0f510f4317dc7e3513 1794259465 - Housewright stages: a check that the camera never enters a house (#13107)
+c 7697b0f16a86ad20262afa19eba063de6485cd86 1794259412 - Everglade's side bar: an open menu and its tip push the frame-rate plaque aside (#13103)
+c e5c48a8edfa5ebde8a15d1ee6e900b5525218f6b 1794259222 green-main after.sh: a full run at most once an hour
+c eec10a9c44c1efb7250e268149892adb5d12b55c 1794259012 green-main check.sh: report module sizes against a start stamp
+c e023e90f621deaee3e0ffd34fdae674797e464ab 1794258989 - Everglade Experimental: ?stage=house-* time-lapses own the camera, the sun and the clock (#13107)
+c f0e14a9ae5222fafa4b14c184114d69f0853b022 1794258771 - Everglade parity: spell effects through one shared module (#13086)
+c d1526b6bb2f8bca9d04c80f5082c9b4cfa056cbc 1794258648 - docs(293): owner decisions, the production format and what to collect for each beat
+c ebdb24733735cfd4765cb4ec32a9b00ffb1e20d7 1794258560 green-main AGENTS.md: the Agent: trailer and the red list
+c 22dac5ed1e60749d4130f51a7f512b4447216c77 1794258550 green-main release.sh: release origin/main-green by default
+c e1e0cc4fb0d7e4017bf7770b611abce072aaa514 1794258524 green-main Green-main pipeline: after.sh runs the full check on main and bisects a failure to its commit
+c 25b11c2f466101b1a3ded1cd22d1a403d02749f3 1794258490 - Plots and many build sites in Aethyr, Everglade's 16-plot town and its stages (#13109)
+c e3593722519c8cb8012ccb5e2bd46da685f2947c 1794258413 - Experimental: a build site sounds its busiest material in a quick rhythm (#13108)
+c 35a64551c21e149dfa7d9a8ebbcc5f0f328e320d 1794258364 - Plans: seven implementation plans from a full audit, with an index
+c ae4888602ec7e3d868247cf3e70a7aaa870af2c9 1794258287 - Build sites: the piles' meshes, bottom first, and the carried item (#13108)
+c 42b9c975e14594b154af71db3c21eac279c79fd2 1794258129 - Build sites: material piles, a builder's trips and material sounds (#13108)
+c 30374a987d0835b666ea22fce5f59b0c2bf1d0c3 1794258112 green-main Green-main pipeline: the integrator checks queued branches and lands the green prefix
+c c9e47701e8bd79e2a57c6909349715b54ffed7de 1794258102 - remote builds: daily cap to $50 (owner, 2026-11-09)
+c 6785c3d2a38529712c9bf946fbf795f324a9b14f 1794258055 - Episode 293: retime transcript and show notes to the recut video
+c e50c65e29570c63bf3df4be2326383f5adb1ff07 1794257712 - Everglade: the housewright time-lapse setups (#13107)
+c 661a7e2bbc9f8a380be2873db27c3631d77de2fa 1794257499 - Aethyr: the glade's day profile, so any realm can sweep a day (#13107)
+c 95362abaca352f3956683dfa3d2e947e2ef91f26 1794257423 - Aethyr: a camera track any zone can load from a stage (#13107)
+c 909813c186be6028df3b922bfdd94942df5a4507 1794257381 - Aethyr build sites: one progress value, the arriving part and the materials used (#13106)
+c c54fb1176f5cb2ae3e716f07ba887faa24d73650 1794257351 - Aethyr HUD widgets: text fits its box, and side-bar rows are touch-sized on a tablet (#13103)
+c b2046998bf691676513867c0fc4dea0ae0c82771 1794257263 - Everglade: the red dragon model, its clips and its place in the glade pack
+"></script>
+</body>
+</html>

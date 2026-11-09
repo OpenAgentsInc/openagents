@@ -49,6 +49,8 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   byAddress["connect-pylon-phone"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon",size:[390,844]}
   byAddress["coax-changelog"] = {path:"/coax/changelog",lit:0.004,settle:1200,blocks:4,module:"changelog"}
   byAddress["coax-changelog-phone"] = {path:"/coax/changelog",lit:0.004,settle:1200,blocks:4,module:"changelog",size:[390,844]}
+  byAddress["status"] = {path:"/status",lit:0.004,settle:1500,blocks:4,module:"status"}
+  byAddress["status-phone"] = {path:"/status",lit:0.004,settle:1500,blocks:4,module:"status",size:[390,844]}
   byAddress["pylon"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon"}
   byAddress["pylon-phone"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon",size:[390,844]}
   // /login/device with no code: what it says, and no account made (private.coax page 7).

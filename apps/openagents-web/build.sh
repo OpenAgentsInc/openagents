@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -240,6 +240,13 @@ newland=$!
 # /docs/connect-a-pylon: the Pylon quickstart on the homepage's Grid (connect-pylon.coax loads newland.coax).
 "$here/../../coax/web/wasm.sh" "$here/connect-pylon.coax" "$here/connect-pylon-face.c" "$here/build/connect-pylon.wasm" &
 connectpylon=$!
+# /status: how a change reaches production, on the homepage's Grid (status.coax loads newland.coax;
+# docs/verse/status-page.md). A release writes the page's snapshot from the commit it ships.
+if [[ "${COAXIAL_MODE:-release}" != dev ]]; then
+  (cd "$here/../.." && coax/web/tool.sh coax/web/status-data.coax --write)
+fi
+"$here/../../coax/web/wasm.sh" "$here/status.coax" "$here/status-face.c" "$here/build/status.wasm" &
+status_page=$!
 # /coax/changelog: the compiler's complete release history, drawn in Coax.
 "$here/../../coax/web/wasm.sh" "$here/changelog.coax" "$here/changelog-face.c" "$here/build/changelog.wasm" &
 changelog=$!
@@ -378,6 +385,7 @@ wait "$animelab"
 [[ -z "$newland" ]] || wait "$newland"
 wait "$connectpylon"
 wait "$changelog"
+wait "$status_page"
 
 wait "$state_lab"
 wait "$actor_lab"

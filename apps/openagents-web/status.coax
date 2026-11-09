@@ -1,0 +1,491 @@
+// /status: how a change reaches production, drawn on the homepage's Grid
+// (docs/verse/status-page.md). The Grid, text, frames and buttons are
+// newland.coax's. Two texts feed it, both through the host's existing
+// messages: the snapshot the build wrote into the page (message 2,
+// coax/web/status-data.coax) and main's newest commits from GitHub's public
+// API (message 61). Nothing here decides anything: it draws what it is told.
+//   coax/bin/coax test apps/openagents-web/status.coax
+#load "newland.coax";
+
+ST_MSG_SNAPSHOT :: 2;    // data-text: the build's snapshot
+ST_MSG_LIVE :: 61;       // data-lines: GitHub's commit list for main, as JSON
+ST_MSG_PAGE :: 600;      // the host's page facts: now=<milliseconds>
+ST_COMMITS :: 30;
+ST_MAX_VERTICES :: 220000;
+ST_REPO :: "https://github.com/OpenAgentsInc/openagents/commit/";
+
+#test "snapshot lines fill the counts, the refs and the commits" {
+  s:[1]St;
+  st_snapshot(s[..],"build 0123456789abcdef0123456789abcdef01234567 1794259000\ngreen -\nqueue 3\nrejected 1\nred 2\nday 208\nweek 1834\ntrailers 8\nhosts 6 3 389 1194\nc 0123456789abcdef0123456789abcdef01234567 1794258000 ab1bb60c Agent workflow audit: where time goes\nc 89abcdef0123456789abcdef0123456789abcdef 1794257000 - Build sites: material piles\n");
+  #assert s[0].build_n==40 && s[0].build_time==1794259000 && s[0].green_n==0;
+  #assert s[0].queue==3 && s[0].rejected==1 && s[0].red==2 && s[0].day==208 && s[0].week==1834 && s[0].trailers==8;
+  #assert s[0].hosts==6 && s[0].slots==3 && s[0].jobs==389 && s[0].cents==1194;
+  #assert s[0].n==2 && s[0].commits[0].time==1794258000 && s[0].commits[0].agent_n==8 && s[0].commits[1].agent_n==0;
+  #assert cast(string)s[0].commits[1].subject[0..<s[0].commits[1].subject_n]=="Build sites: material piles";
+  #assert st_behind(s[..])==0;
+}
+ST_LIVE_FIXTURE :: "[\n  {\n    \"sha\": \"aaaaaaaaaabbbbbbbbbbccccccccccdddddddddd\",\n    \"node_id\": \"C_1\",\n    \"commit\": {\n      \"author\": {\"name\": \"A\",\"email\": \"a@b.c\",\n        \"date\": \"2026-11-09T21:00:00Z\"},\n      \"committer\": {\"name\": \"A\",\"email\": \"a@b.c\",\n        \"date\": \"2026-11-09T21:27:43Z\"},\n      \"message\": \"Say \\\"hi\\\" to main\\n\\nBody text.\\n\\nAgent: a7c6cf10\\nCo-Authored-By: X <x@y.z>\",\"tree\":{\"sha\":\"1111111111111111111111111111111111111111\",\"url\":\"u\"}},\"parents\":[{\"sha\":\"2222222222222222222222222222222222222222\",\"url\":\"u\"}]},{\"sha\":\"0123456789abcdef0123456789abcdef01234567\",\"node_id\":\"C_2\",\"commit\":{\"author\":{\"name\":\"A\",\"email\":\"a@b.c\",\"date\":\"2026-11-09T20:00:00Z\"},\"committer\":{\"name\":\"A\",\"email\":\"a@b.c\",\"date\":\"2026-11-09T20:00:00Z\"},\"message\":\"One line\",\"tree\":{\"sha\":\"3333333333333333333333333333333333333333\",\"url\":\"u\"}},\"parents\":[]}]";
+#test "GitHub's commit list gives each commit's hash, time, subject and agent, and nothing from trees or parents" {
+  s:[1]St;
+  st_snapshot(s[..],"build 0123456789abcdef0123456789abcdef01234567 1794259000\nc 0123456789abcdef0123456789abcdef01234567 1794258000 - One line\n");
+  st_live(s[..],ST_LIVE_FIXTURE);
+  #assert s[0].live && s[0].n==2;
+  #assert cast(string)s[0].commits[0].sha[0..<7]=="aaaaaaa";
+  #assert cast(string)s[0].commits[0].subject[0..<s[0].commits[0].subject_n]=="Say \"hi\" to main";
+  #assert cast(string)s[0].commits[0].agent[0..<s[0].commits[0].agent_n]=="a7c6cf10";
+  #assert s[0].commits[0].time==st_unix("2026-11-09T21:27:43Z");
+  #assert s[0].commits[1].agent_n==0 && cast(string)s[0].commits[1].subject[0..<s[0].commits[1].subject_n]=="One line";
+  #assert st_behind(s[..])==1;
+}
+#test "a reply that is not a commit list changes nothing" {
+  s:[1]St;
+  st_snapshot(s[..],"build 0123456789abcdef0123456789abcdef01234567 1794259000\nc 0123456789abcdef0123456789abcdef01234567 1794258000 - One line\n");
+  st_live(s[..],"{\"message\":\"API rate limit exceeded\"}");
+  #assert !s[0].live && s[0].n==1;
+}
+#test "dates turn into seconds and seconds into a short age" {
+  #assert st_unix("1970-01-01T00:00:00Z")==0 && st_unix("2000-03-01T00:00:00Z")==951868800;
+  #assert st_unix("2026-11-09T21:27:43Z")==1794259663;
+  b:[32]u8;
+  #assert cast(string)b[0..<st_age(b[..],0,42)]=="42 s ago";
+  #assert cast(string)b[0..<st_age(b[..],0,3*60)]=="3 min ago";
+  #assert cast(string)b[0..<st_age(b[..],0,5*3600)]=="5 h ago";
+  #assert cast(string)b[0..<st_age(b[..],0,3*86400)]=="3 d ago";
+  #assert cast(string)b[0..<st_add_int(b[..],0,1834)]=="1,834" && cast(string)b[0..<st_add_int(b[..],0,7)]=="7";
+}
+#test "a flow's boxes stay inside its width and never overlap, on a phone and a desktop" {
+  for k:0..<2 {
+    w:=ifx k==0 then 326.0f32 else 1100.0f32;per:=st_per(w,7);
+    for i:0..<7 {
+      a:=st_node(i,per,10,20,w);
+      #assert a.x0>=10 && a.x1<=10+w+0.01 && a.x1-a.x0>=130;
+      for j:0..<i {c:=st_node(j,per,10,20,w);#assert a.x0>=c.x1 || a.x1<=c.x0 || a.y0>=c.y1 || a.y1<=c.y0;}
+    }
+    #assert st_flow_h(w,7)>=58;
+  }
+}
+#test "the page fits a phone and a desktop, and its wheel clamps at both ends" #steps 400000000 {
+  s:[1]St;
+  for i:0..<2 {
+    s[0].w=ifx i==0 then 390.0f32 else 1440.0f32;s[0].h=844;s[0].dpr=1;st_layout(s[..]);
+    #assert s[0].body.x0>=16 && s[0].body.x1<=s[0].w-16 && s[0].body.y1<=s[0].h-16 && s[0].body.x1-s[0].body.x0<=1160;
+    #assert s[0].home.x1<=s[0].w-16 && s[0].home.y1<s[0].body.y0;
+  }
+  s[0].limit=500;st_wheel(s[..],123);#assert s[0].scroll==123;
+  st_wheel(s[..],100000);#assert s[0].scroll==500;
+  st_wheel(s[..],-100000);#assert s[0].scroll==0;
+}
+#test "a tap on HOME goes home, a drag scrolls and goes nowhere" #steps 400000000 {
+  s:[1]St;s[0].w=390;s[0].h=844;s[0].dpr=2;st_layout(s[..]);s[0].limit=500;
+  x:=(s[0].home.x0+10)*2;y:=(s[0].home.y0+10)*2;
+  #assert st_pointer(s[..],x,y,0,1,7);#assert st_pointer(s[..],x,y,2,1,7);
+  #assert s[0].action==1 && cast(string)s[0].outbox[0..<s[0].out_n]=="/";
+  st_done(s[..]);#assert s[0].action==0;
+  bx:=(s[0].body.x0+40)*2;by:=(s[0].body.y0+200)*2;
+  #assert st_pointer(s[..],bx,by,0,1,7);#assert st_pointer(s[..],bx,by-80,1,1,7);#assert st_pointer(s[..],bx,by-80,2,1,7);
+  #assert s[0].action==0 && s[0].scroll==40;
+}
+
+st_max_vertices :: ()->int #export_c #effects(all) {return ST_MAX_VERTICES;}
+StCommit :: struct {full:[40]u8;sha:[7]u8;time:int;agent:[20]u8;agent_n:int;subject:[120]u8;subject_n:int;}
+St :: struct {
+  ready:bool;w:f32;h:f32;dpr:f32;time:f32;scroll:f32;limit:f32;body:Box;home:Box;
+  px:f32;py:f32;down:bool;id:int;down_x:f32;down_y:f32;start_scroll:f32;dragged:bool;pressed:int=-1;focus:int=-1;
+  action:int;outbox:[256]u8;out_n:int;
+  build:[40]u8;build_n:int;build_time:int;green:[40]u8;green_n:int;
+  queue:int;rejected:int;red:int;day:int;week:int;trailers:int;hosts:int;slots:int;jobs:int;cents:int;
+  n:int;commits:[ST_COMMITS]StCommit;live:bool;now:int;now_at:f32;
+  rail_x:f32;rail_y:f32;rail_step:f32;rail_n:int;rows_y:f32;rows_n:int;pick:int=-1;
+}
+
+// ---------------------------------------------------------------- text in, text out
+st_int :: (t:string)->int {n:=0;for i:0..<t.count {c:=cast(int)t[i];if c<48 || c>57 {break;}n=n*10+c-48;}return n;}
+// The k-th word of a line (words part at one space); with rest, everything from that word on.
+st_field :: (t:string,k:int,rest:bool)->string {
+  at:=0;
+  for i:0..<k {while at<t.count && t[at]!=32 {at+=1;}if at<t.count {at+=1;}}
+  end:=at;while end<t.count && (rest || t[end]!=32) {end+=1;}
+  return t[at..<end];
+}
+st_add :: (b:[]u8,at:int,t:string)->int {n:=at;for i:0..<t.count {if n<b.count {b[n]=t[i];n+=1;}}return n;}
+st_add_int :: (b:[]u8,at:int,v:int)->int {
+  digits:[24]u8;c:=0;x:=v;if x<=0 {digits[0]=48;c=1;}
+  while x>0 && c<23 {digits[c]=cast(u8)(48+x%10);x=x/10;c+=1;}
+  n:=at;for i:0..<c {k:=c-1-i;if n<b.count {b[n]=digits[k];n+=1;}if k>0 && k%3==0 && n<b.count {b[n]=44;n+=1;}}
+  return n;
+}
+st_age :: (b:[]u8,at:int,seconds:int)->int {
+  x:=ifx seconds<0 then 0 else seconds;
+  if x<90 {return st_add(b,st_add_int(b,at,x)," s ago");}
+  if x<5400 {return st_add(b,st_add_int(b,at,x/60)," min ago");}
+  if x<172800 {return st_add(b,st_add_int(b,at,x/3600)," h ago");}
+  return st_add(b,st_add_int(b,at,x/86400)," d ago");
+}
+// "2026-11-09T21:27:43Z" as seconds since 1970 (UTC).
+st_unix :: (t:string)->int {
+  if t.count<19 {return 0;}
+  y0:=st_int(t[0..<4]);m:=st_int(t[5..<7]);d:=st_int(t[8..<10]);
+  y:=ifx m<=2 then y0-1 else y0;era:=y/400;yoe:=y-era*400;mp:=(m+9)%12;
+  doy:=(153*mp+2)/5+d-1;doe:=yoe*365+yoe/4-yoe/100+doy;days:=era*146097+doe-719468;
+  return days*86400+st_int(t[11..<13])*3600+st_int(t[14..<16])*60+st_int(t[17..<19]);
+}
+st_commit :: (s:[]St,i:int,full:string,time:int,agent:string,subject:string) {
+  if i<0 || i>=ST_COMMITS || full.count<40 {return;}
+  for j:0..<40 {s[0].commits[i].full[j]=full[j];}
+  for j:0..<7 {s[0].commits[i].sha[j]=full[j];}
+  s[0].commits[i].time=time;
+  an:=lo_int(agent.count,20);for j:0..<an {s[0].commits[i].agent[j]=agent[j];}s[0].commits[i].agent_n=an;
+  sn:=lo_int(subject.count,120);for j:0..<sn {s[0].commits[i].subject[j]=subject[j];}s[0].commits[i].subject_n=sn;
+}
+// The build's snapshot: one fact a line (coax/web/status-data.coax writes it).
+st_snapshot :: (s:[]St,text:string) {
+  at:=0;n:=0;
+  while at<text.count {
+    end:=at;while end<text.count && text[end]!=10 {end+=1;}
+    line:=text[at..<end];at=end+1;
+    key:=st_field(line,0,false);a:=st_field(line,1,false);
+    if key=="build" && a.count==40 {for j:0..<40 {s[0].build[j]=a[j];}s[0].build_n=40;s[0].build_time=st_int(st_field(line,2,false));}
+    if key=="green" {s[0].green_n=0;if a.count==40 {for j:0..<40 {s[0].green[j]=a[j];}s[0].green_n=40;}}
+    if key=="queue" {s[0].queue=st_int(a);}
+    if key=="rejected" {s[0].rejected=st_int(a);}
+    if key=="red" {s[0].red=st_int(a);}
+    if key=="day" {s[0].day=st_int(a);}
+    if key=="week" {s[0].week=st_int(a);}
+    if key=="trailers" {s[0].trailers=st_int(a);}
+    if key=="hosts" {s[0].hosts=st_int(a);s[0].slots=st_int(st_field(line,2,false));s[0].jobs=st_int(st_field(line,3,false));s[0].cents=st_int(st_field(line,4,false));}
+    if key=="c" && a.count==40 && n<ST_COMMITS {
+      agent:=st_field(line,3,false);if agent=="-" {agent=agent[0..<0];}
+      st_commit(s,n,a,st_int(st_field(line,2,false)),agent,st_field(line,4,true));n+=1;
+    }
+  }
+  if n>0 {s[0].n=n;}
+}
+st_is :: (t:string,at:int,pat:string)->bool {
+  if at<0 || at+pat.count>t.count {return false;}
+  for i:0..<pat.count {if t[at+i]!=pat[i] {return false;}}return true;
+}
+// Where the text after the next pat begins, or -1.
+st_after :: (t:string,from:int,pat:string)->int {
+  if from<0 {return -1;}
+  i:=from;while i+pat.count<=t.count {if st_is(t,i,pat) {return i+pat.count;}i+=1;}return -1;
+}
+// Where the value of the next "name" member begins (past the colon and any space), or -1.
+st_member :: (t:string,from:int,name:string)->int {
+  at:=from;
+  while at>=0 {
+    q:=st_after(t,at,"\"");if q<0 {return -1;}
+    if st_is(t,q,name) && st_is(t,q+name.count,"\"") {
+      i:=q+name.count+1;while i<t.count && (t[i]==32 || t[i]==10 || t[i]==13 || t[i]==9) {i+=1;}
+      if i<t.count && t[i]==58 {i+=1;while i<t.count && (t[i]==32 || t[i]==10 || t[i]==13 || t[i]==9) {i+=1;}return i;}
+    }
+    at=q;
+  }
+  return -1;
+}
+// main's commits as GitHub lists them (GET /repos/OWNER/REPO/commits). A
+// commit object is the one whose "sha" is followed by "node_id": a tree's and
+// a parent's are not. Its committer date and message follow in that order.
+st_live :: (s:[]St,text:string) {
+  at:=0;n:=0;
+  while n<ST_COMMITS {
+    p:=st_member(text,at,"sha");if p<0 || p+42>text.count {break;}
+    at=p+1;
+    i:=p+42;while i<text.count && (text[i]==44 || text[i]==32 || text[i]==10 || text[i]==13 || text[i]==9) {i+=1;}
+    if text[p]!=34 || text[p+41]!=34 || !st_is(text,i,"\"node_id\"") {continue;}
+    c:=st_member(text,p,"committer");d:=ifx c<0 then -1 else st_member(text,c,"date");m:=ifx d<0 then -1 else st_member(text,d,"message");
+    if m<0 || d+21>text.count || text[m]!=34 {break;}
+    subject:[120]u8;sn:=0;agent:[20]u8;an:=0;first:=true;i=m+1;
+    while i<text.count && text[i]!=34 {
+      if text[i]==92 && i+1<text.count {
+        e:=text[i+1];
+        if e==110 {first=false;if st_is(text,i+2,"Agent: ") {an=0;j:=i+9;while j<text.count && text[j]!=92 && text[j]!=34 && text[j]!=32 && an<20 {agent[an]=text[j];an+=1;j+=1;}}}
+        else if first && e!=117 && e!=114 && e!=116 && sn<120 {subject[sn]=e;sn+=1;}
+        i+=ifx e==117 then 6 else 2;
+      } else {
+        if first && sn<120 {subject[sn]=text[i];sn+=1;}
+        i+=1;
+      }
+    }
+    st_commit(s,n,text[p+1..<p+41],st_unix(text[d+1..<d+21]),cast(string)agent[0..<an],cast(string)subject[0..<sn]);n+=1;
+    at=i;
+  }
+  if n>0 {s[0].n=n;s[0].live=true;}
+}
+st_facts :: (s:[]St,text:string) {
+  p:=ifx st_is(text,0,"now=") then 4 else st_after(text,0,"\nnow=");
+  if p>=0 {s[0].now=st_int(text[p..<text.count])/1000;s[0].now_at=s[0].time;}
+}
+st_message :: (s:[]St,kind:int,text:string) #export_c #effects(all) {
+  if s.count<1 {return;}
+  if kind==ST_MSG_SNAPSHOT {st_snapshot(s,text);}
+  if kind==ST_MSG_LIVE {st_live(s,text);}
+  if kind==ST_MSG_PAGE {st_facts(s,text);}
+}
+st_same :: (a:[]u8,b:[]u8)->bool {for i:0..<40 {if a[i]!=b[i] {return false;}}return true;}
+// How many commits main is ahead of the one production runs: -1 when that commit is older than the list.
+st_behind :: (s:[]St)->int {
+  if s[0].build_n!=40 {return -1;}
+  for i:0..<s[0].n {if st_same(s[0].commits[i].full[..],s[0].build[..]) {return i;}}return -1;
+}
+st_green_at :: (s:[]St)->int {
+  if s[0].green_n!=40 {return -1;}
+  for i:0..<s[0].n {if st_same(s[0].commits[i].full[..],s[0].green[..]) {return i;}}return -1;
+}
+st_now :: (s:[]St,still:bool)->int {
+  if still || s[0].now<=0 {return ifx still then s[0].build_time else 0;}
+  return s[0].now+cast(int)(s[0].time-s[0].now_at);
+}
+
+// ---------------------------------------------------------------- layout and input
+st_layout :: (s:[]St) {
+  w:=hi(240,s[0].w);h:=hi(260,s[0].h);margin:=ifx w<760 then 16.0f32 else 32.0f32;
+  left:=hi(margin,(w-1160)*0.5);right:=w-left;
+  s[0].home=Box.{x0=right-64,y0=22,x1=right,y1=58};
+  s[0].body=Box.{x0=left,y0=100,x1=right,y1=h-20};
+  s[0].scroll=clamp(s[0].scroll,0,s[0].limit);
+}
+st_hit :: (s:[]St,x:f32,y:f32)->int #export_c #effects(all) {
+  if inside(s[0].home,x,y) {return 0;}
+  if !inside(s[0].body,x,y) {return -1;}
+  if s[0].rows_n>0 && y>=s[0].rows_y && x>=s[0].body.x0+16 && x<=s[0].body.x1-16 {
+    i:=cast(int)floor((y-s[0].rows_y)/22);if i>=0 && i<s[0].rows_n {return 10+i;}
+  }
+  if s[0].rail_n>0 && abs(y-s[0].rail_y)<=12 {
+    i:=cast(int)floor((s[0].rail_x-x)/s[0].rail_step+0.5);if i>=0 && i<s[0].rail_n {return 10+i;}
+  }
+  return -1;
+}
+st_go :: (s:[]St,id:int) {
+  n:=0;
+  if id==0 {n=st_add(s[0].outbox[..],0,"/");}
+  if id>=10 && id-10<s[0].n {n=st_add(s[0].outbox[..],0,ST_REPO);n=st_add(s[0].outbox[..],n,cast(string)s[0].commits[id-10].full[..]);}
+  if n>0 {s[0].out_n=n;s[0].action=1;}
+}
+st_done :: (s:[]St) #export_c #effects(all) {s[0].action=0;s[0].out_n=0;}
+st_wheel :: (s:[]St,dy:f32) #export_c #effects(all) {s[0].scroll=clamp(s[0].scroll+dy,0,s[0].limit);}
+st_pointer :: (s:[]St,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
+  d:=hi(1,s[0].dpr);px:=x/d;py:=y/d;s[0].px=px;s[0].py=py;
+  if phase==0 {
+    if s[0].down {s[0].dragged=true;return true;}
+    s[0].down=true;s[0].id=id;s[0].down_x=px;s[0].down_y=py;s[0].start_scroll=s[0].scroll;s[0].dragged=false;s[0].pressed=st_hit(s,px,py);return true;
+  }
+  if !s[0].down || s[0].id!=id {return false;}
+  if phase==1 {
+    if abs(px-s[0].down_x)>6 || abs(py-s[0].down_y)>6 {s[0].dragged=true;}
+    if inside(s[0].body,s[0].down_x,s[0].down_y) {s[0].scroll=clamp(s[0].start_scroll+s[0].down_y-py,0,s[0].limit);}return true;
+  }
+  if phase==2 || phase==3 {
+    s[0].down=false;if phase==2 && !s[0].dragged && s[0].pressed>=0 && st_hit(s,px,py)==s[0].pressed {st_go(s,s[0].pressed);}return true;
+  }return false;
+}
+st_key :: (s:[]St,key:int)->bool #export_c #effects(all) {
+  page:=s[0].body.y1-s[0].body.y0-50;
+  if key==-7 || key==-11 {st_wheel(s,ifx key==-7 then 36.0f32 else page);return true;}
+  if key==-6 || key==-10 {st_wheel(s,ifx key==-6 then -36.0f32 else -page);return true;}
+  if key==-8 {s[0].scroll=0;return true;}if key==-9 {s[0].scroll=s[0].limit;return true;}
+  if key==-15 {s[0].focus=0;return true;}
+  if key==-2 && s[0].focus>=0 {st_go(s,s[0].focus);return true;}return false;
+}
+
+// ---------------------------------------------------------------- drawing
+// Reading text: the quickstart's sans. Labels keep the Grid's stroke capitals.
+st_text :: (p:Pen,kind:int)->Ink {k:=ink(p,kind);k.sans=true;k.scale=0;k.glow=1.1*p.d;k.core=0.45*p.d;return k;}
+// The page stays grayscale. Three tones carry state and nothing else: passing, failing, not switched on.
+st_tone :: (p:Pen,tone:int)->Ink {
+  k:=ink(p,INK_BRIGHT);
+  if tone==1 {k.red=0.36;k.green=0.86;k.blue=0.52;}
+  if tone==2 {k.red=0.95;k.green=0.38;k.blue=0.34;}
+  if tone==3 {k.red=0.93;k.green=0.72;k.blue=0.34;}
+  return k;
+}
+st_break :: (text:string,start:int,width:f32,cap:f32,k:Ink)->int {
+  at:=start;space:=-1;
+  while at<text.count {
+    if text_width(text[start..<at+1],cap,k)>width {if space>start {return space;}return hi_int(start+1,at);}
+    if text[at]==32 {space=at;}at+=1;
+  }return at;
+}
+// A paragraph wrapped to width (CSS pixels); returns the vertex count, and its height through tall.
+st_para :: (out:[]f32,at:int,text:string,x:f32,y:f32,width:f32,cap:f32,k:Ink,d:f32,tall:[]f32)->int {
+  v:=at;from:=0;line:=y+cap;
+  while from<text.count {
+    end:=st_break(text,from,width*d,cap*d,k);v=put(out,v,text[from..<end],x*d,line*d,cap*d,k);
+    from=end;while from<text.count && text[from]==32 {from+=1;}line+=cap*2.1;
+  }
+  tall[0]=line-cap-y;return v;
+}
+st_box :: (b:Box,d:f32)->Box {return Box.{x0=b.x0*d,y0=b.y0*d,x1=b.x1*d,y1=b.y1*d};}
+st_tile :: (out:[]f32,at:int,p:Pen,b:Box,label:string,value:string,sub:string,tone:Ink)->int {
+  d:=p.d;v:=frame(out,at,st_box(b,d),7*d,ink(p,INK_DIM),0.5,p);room:=(b.x1-b.x0-24)*d;
+  v=put(out,v,label,(b.x0+12)*d,(b.y0+20)*d,6.2*d,ink(p,INK_DIM));
+  v=put_fit(out,v,value,(b.x0+12)*d,(b.y0+45)*d,11.5*d,tone,room);
+  tall:[1]f32;return st_para(out,v,sub,b.x0+12,b.y0+56,b.x1-b.x0-24,8.0,st_text(p,INK_DIM),d,tall[..]);
+}
+ST_GAP :: 30.0;ST_NODE_H :: 58.0;ST_ROW :: 88.0;
+st_per :: (w:f32,n:int)->int {per:=cast(int)floor((w+ST_GAP)/(132+ST_GAP));return hi_int(1,lo_int(n,per));}
+st_node :: (i:int,per:int,x:f32,y:f32,w:f32)->Box {
+  bw:=(w-cast(f32)(per-1)*ST_GAP)/cast(f32)per;col:=i%per;row:=i/per;
+  x0:=x+cast(f32)col*(bw+ST_GAP);y0:=y+cast(f32)row*ST_ROW;
+  return Box.{x0=x0,y0=y0,x1=x0+bw,y1=y0+ST_NODE_H};
+}
+st_flow_h :: (w:f32,n:int)->f32 {per:=st_per(w,n);rows:=(n+per-1)/per;return cast(f32)(rows-1)*ST_ROW+ST_NODE_H;}
+// A row of stages joined by arrows, wrapped to the width. While it runs, a dash travels each arrow.
+st_flow :: (out:[]f32,at:int,p:Pen,x:f32,y:f32,w:f32,titles:[]string,subs:[]string,on:bool,t:f32,tone:Ink)->int {
+  d:=p.d;v:=at;n:=titles.count;per:=st_per(w,n);
+  edge:=ink(p,ifx on then INK_WHITE else INK_DIM);light:f32=ifx on then 0.7f32 else 0.35f32;
+  for i:0..<n {
+    b:=st_node(i,per,x,y,w);
+    v=frame(out,v,st_box(b,d),7*d,ink(p,ifx on then INK_BRIGHT else INK_DIM),ifx on then 0.75f32 else 0.4f32,p);
+    v=put_fit(out,v,titles[i],(b.x0+11)*d,(b.y0+23)*d,7.0*d,chrome(ink(p,ifx on then INK_WHITE else INK_DIM)),(b.x1-b.x0-22)*d);
+    v=put_fit(out,v,subs[i],(b.x0+11)*d,(b.y0+43)*d,7.8*d,st_text(p,INK_DIM),(b.x1-b.x0-22)*d);
+    if i+1>=n {continue;}
+    c:=st_node(i+1,per,x,y,w);my:=(b.y0+b.y1)*0.5;
+    if c.y0==b.y0 {
+      v=rule(out,v,(b.x1+4)*d,my*d,(c.x0-4)*d,my*d,edge,light);
+      v=rule(out,v,(c.x0-4)*d,my*d,(c.x0-10)*d,(my-4)*d,edge,light);
+      v=rule(out,v,(c.x0-4)*d,my*d,(c.x0-10)*d,(my+4)*d,edge,light);
+      if on && !p.still {f:=fract(t*0.55-cast(f32)i*0.19);px:=b.x1+4+(c.x0-b.x1-8-8)*f;v=rule(out,v,px*d,my*d,(px+8)*d,my*d,tone,1);}
+    } else {
+      bx:=(b.x0+b.x1)*0.5;cx:=(c.x0+c.x1)*0.5;ty:=(b.y1+c.y0)*0.5;
+      v=rule(out,v,bx*d,(b.y1+4)*d,bx*d,ty*d,edge,light);
+      v=rule(out,v,bx*d,ty*d,cx*d,ty*d,edge,light);
+      v=rule(out,v,cx*d,ty*d,cx*d,(c.y0-4)*d,edge,light);
+      v=rule(out,v,cx*d,(c.y0-4)*d,(cx-4)*d,(c.y0-10)*d,edge,light);
+      v=rule(out,v,cx*d,(c.y0-4)*d,(cx+4)*d,(c.y0-10)*d,edge,light);
+      if on && !p.still {f:=fract(t*0.55-cast(f32)i*0.19);px:=bx+(cx-bx)*f;v=rule(out,v,(px-4)*d,ty*d,(px+4)*d,ty*d,tone,1);}
+    }
+  }
+  return v;
+}
+ST_LIVE_TITLES :: [6]string.["BUILDERS","CHECKS","PUSH MAIN","RELEASE.SH","STAGING","PRODUCTION"];
+ST_LIVE_SUBS :: [6]string.["own worktree","touched units","rebase, then push","builds main once","checked first","the same files"];
+ST_NEXT_TITLES :: [7]string.["SUBMIT","QUEUE","INTEGRATOR","MAIN","FULL CHECK","MAIN-GREEN","RELEASE"];
+
+// Everything in the scrolling body, in CSS pixels from the body's top; sets the scroll limit.
+st_body :: (s:[]St,out:[]f32,at:int,p:Pen,still:bool)->int {
+  d:=p.d;b:=s[0].body;v:=at;x:=b.x0+20;w:=b.x1-b.x0-40;y:=b.y0+18-s[0].scroll;top:=y;
+  now:=st_now(s,still);t:=s[0].time;tall:[1]f32;
+  ok:=st_tone(p,1);bad:=st_tone(p,2);off:=st_tone(p,3);white:=chrome(ink(p,INK_WHITE));dim:=ink(p,INK_DIM);
+  buf:[200]u8;sub:[200]u8;n:=0;m:=0;behind:=st_behind(s);green:=st_green_at(s);
+
+  // Four facts.
+  cols:=ifx w>=860 then 4 else 2;th:f32=ifx cols==4 then 96.0f32 else 112.0f32;tw:=(w-cast(f32)(cols-1)*12)/cast(f32)cols;
+  for i:0..<4 {
+    col:=i%cols;row:=i/cols;tb:=Box.{x0=x+cast(f32)col*(tw+12),y0=y+cast(f32)row*(th+12),x1=x+cast(f32)col*(tw+12)+tw,y1=y+cast(f32)row*(th+12)+th};
+    n=0;m=0;
+    if i==0 {
+      if s[0].n>0 {n=st_add(buf[..],0,cast(string)s[0].commits[0].sha[..]);if now>0 {m=st_age(sub[..],0,now-s[0].commits[0].time);m=st_add(sub[..],m,ifx s[0].live then ", live" else ", at the last release");}}
+      else {n=st_add(buf[..],0,"-");}
+      v=st_tile(out,v,p,tb,"MAIN",cast(string)buf[0..<n],cast(string)sub[0..<m],white);
+    }
+    if i==1 {
+      if s[0].build_n==40 {n=st_add(buf[..],0,cast(string)s[0].build[0..<7]);} else {n=st_add(buf[..],0,"-");}
+      if behind==0 {m=st_add(sub[..],0,"level with main");}
+      else if behind>0 {m=st_add_int(sub[..],0,behind);m=st_add(sub[..],m,ifx behind==1 then " commit behind main" else " commits behind main");}
+      else if s[0].n>0 {m=st_add(sub[..],0,"over ");m=st_add_int(sub[..],m,s[0].n);m=st_add(sub[..],m," commits behind main");}
+      if now>0 && s[0].build_time>0 {m=st_add(sub[..],m,", released ");m=st_age(sub[..],m,now-s[0].build_time);}
+      v=st_tile(out,v,p,tb,"PRODUCTION",cast(string)buf[0..<n],cast(string)sub[0..<m],ifx behind==0 then ok else white);
+    }
+    if i==2 {
+      if s[0].green_n==40 {n=st_add(buf[..],0,cast(string)s[0].green[0..<7]);m=st_add(sub[..],0,"passed the full check");}
+      else {n=st_add(buf[..],0,"NOT SET");m=st_add(sub[..],0,"nothing has passed the full check yet");}
+      v=st_tile(out,v,p,tb,"MAIN-GREEN",cast(string)buf[0..<n],cast(string)sub[0..<m],ifx s[0].green_n==40 then ok else off);
+    }
+    if i==3 {
+      n=st_add_int(buf[..],0,s[0].day);n=st_add(buf[..],n," COMMITS");
+      m=st_add_int(sub[..],0,s[0].week);m=st_add(sub[..],m," in 7 days. ");m=st_add_int(sub[..],m,s[0].trailers);m=st_add(sub[..],m," today name their agent");
+      v=st_tile(out,v,p,tb,"LAST 24 HOURS",cast(string)buf[0..<n],cast(string)sub[0..<m],white);
+    }
+  }
+  y+=cast(f32)((4+cols-1)/cols)*(th+12)+10;
+
+  // main, newest on the right.
+  v=put(out,v,"MAIN, NEWEST ON THE RIGHT",x*d,(y+8)*d,6.2*d,dim);y+=40;
+  rn:=lo_int(s[0].n,hi_int(2,cast(int)floor((w-16)/22)+1));step:=ifx rn>1 then lo(34,(w-16)/cast(f32)(rn-1)) else 34.0f32;rx:=x+w-8;
+  s[0].rail_x=rx;s[0].rail_y=y;s[0].rail_step=step;s[0].rail_n=rn;
+  over:=st_hit(s,s[0].px,s[0].py);pick:=ifx over>=10 then over-10 else 0;
+  if rn>1 {v=rule(out,v,(rx-cast(f32)(rn-1)*step)*d,y*d,rx*d,y*d,dim,0.5);}
+  if rn>1 && !still {lx:=rx-cast(f32)(rn-1)*step;f:=fract(t*0.25);v=rule(out,v,(lx+(rx-lx-12)*f)*d,y*d,(lx+(rx-lx-12)*f+12)*d,y*d,ink(p,INK_BRIGHT),1);}
+  for i:0..<rn {
+    cx:=rx-cast(f32)i*step;r:f32=ifx i==0 then 5.5f32+(ifx still then 0.0f32 else 1.2f32*sin(t*3)) else 4.0f32;
+    k:=ifx i==behind then ok else ifx i==pick && over>=10 then ink(p,INK_BLUE) else ink(p,ifx i==0 then INK_BRIGHT else INK_WHITE);
+    v=ring(out,v,cx*d,y*d,r*d,k,ifx i==0 || i==behind || i==green then 1.0f32 else 0.7f32);
+    if i==behind {v=ring(out,v,cx*d,y*d,8.5*d,ok,0.8);v=put_centred(out,v,"PRODUCTION",clamp(cx,x+38,x+w-38)*d,(y+26)*d,5.6*d,ok);}
+    if i==green {v=ring(out,v,cx*d,y*d,11*d,ok,0.5);v=put_centred(out,v,"GREEN",clamp(cx,x+20,x+w-20)*d,(y-16)*d,5.6*d,ok);}
+  }
+  if behind<0 && s[0].n>0 {v=put(out,v,"PRODUCTION IS FURTHER BACK",x*d,(y+26)*d,5.6*d,dim);}
+  y+=44;
+  if s[0].n>0 && pick<s[0].n {
+    n=st_add(buf[..],0,cast(string)s[0].commits[pick].sha[..]);n=st_add(buf[..],n,"  ");
+    n=st_add(buf[..],n,cast(string)s[0].commits[pick].subject[0..<s[0].commits[pick].subject_n]);
+    v=put_fit(out,v,cast(string)buf[0..<n],x*d,(y+8)*d,8.4*d,st_text(p,INK_WHITE),w*d);
+  }
+  y+=34;
+
+  // Today.
+  v=put(out,v,"LIVE NOW",x*d,(y+8)*d,6.6*d,ok);y+=20;
+  v=st_para(out,v,"How a change reaches production today. Agents push main directly. A release stops only for a check that fails on staging and passes on production.",x,y,w,8.2,st_text(p,INK_DIM),d,tall[..]);y+=tall[0]+12;
+  lt:=ST_LIVE_TITLES;ls:=ST_LIVE_SUBS;nt:=ST_NEXT_TITLES;
+  v=st_flow(out,v,p,x,y,w,lt[..],ls[..],true,t,ok);y+=st_flow_h(w,6)+34;
+
+  // The green-main pipeline.
+  v=put(out,v,"BUILT, NOT SWITCHED ON",x*d,(y+8)*d,6.6*d,off);y+=20;
+  v=st_para(out,v,"The green-main pipeline. Builders hand a branch to an integrator, which checks branches side by side and lands the passing ones in order. A full check runs after landing, and releases ship the last commit that passed it.",x,y,w,8.2,st_text(p,INK_DIM),d,tall[..]);y+=tall[0]+12;
+  q:[40]u8;qn:=st_add_int(q[..],0,s[0].queue);qn=st_add(q[..],qn," waiting");
+  g:[40]u8;gn:=ifx s[0].green_n==40 then st_add(g[..],0,cast(string)s[0].green[0..<7]) else st_add(g[..],0,"not set");
+  subs:=[7]string.["branch hand-off",cast(string)q[0..<qn],"parallel checks","lands in order","after landing",cast(string)g[0..<gn],"ships main-green"];
+  v=st_flow(out,v,p,x,y,w,nt[..],subs[..],false,t,off);y+=st_flow_h(w,7)+14;
+  n=st_add(buf[..],0,"A failure is traced to its commit, filed as an issue for that commit's agent and put on the red list (");
+  n=st_add_int(buf[..],n,s[0].red);n=st_add(buf[..],n,ifx s[0].red==1 then " entry, " else " entries, ");n=st_add_int(buf[..],n,s[0].rejected);
+  n=st_add(buf[..],n,ifx s[0].rejected==1 then " branch sent back). After 30 minutes without a fix the commit is reverted." else " branches sent back). After 30 minutes without a fix the commit is reverted.");
+  v=st_para(out,v,cast(string)buf[0..<n],x,y,w,8.2,st_text(p,ifx s[0].red>0 then INK_WHITE else INK_DIM),d,tall[..]);y+=tall[0]+34;
+
+  // The commits themselves.
+  v=put(out,v,"RECENT COMMITS",x*d,(y+8)*d,6.6*d,dim);y+=24;
+  rows:=lo_int(s[0].n,14);s[0].rows_y=y;s[0].rows_n=rows;wide:=w>=700;
+  for i:0..<rows {
+    ry:=y+cast(f32)i*22;hot:=over==10+i;
+    v=put(out,v,cast(string)s[0].commits[i].sha[..],x*d,(ry+13)*d,8.0*d,st_text(p,ifx i==behind then INK_BRIGHT else ifx hot then INK_BLUE else INK_WHITE));
+    m=0;if now>0 {m=st_age(sub[..],0,now-s[0].commits[i].time);}
+    v=put(out,v,cast(string)sub[0..<m],(x+66)*d,(ry+13)*d,8.0*d,st_text(p,INK_DIM));
+    sx:=x+150;
+    if wide {v=put_fit(out,v,ifx s[0].commits[i].agent_n>0 then cast(string)s[0].commits[i].agent[0..<s[0].commits[i].agent_n] else "-",sx*d,(ry+13)*d,8.0*d,st_text(p,INK_DIM),84*d);sx+=96;}
+    v=put_fit(out,v,cast(string)s[0].commits[i].subject[0..<s[0].commits[i].subject_n],sx*d,(ry+13)*d,8.0*d,st_text(p,ifx hot then INK_BLUE else INK_WHITE),(x+w-sx)*d);
+  }
+  y+=cast(f32)rows*22+30;
+
+  // The build hosts, then where the numbers come from.
+  v=put(out,v,"BUILD HOSTS",x*d,(y+8)*d,6.6*d,dim);y+=20;
+  n=st_add_int(buf[..],0,s[0].hosts);n=st_add(buf[..],n," hosts with ");n=st_add_int(buf[..],n,s[0].slots);n=st_add(buf[..],n," job slots each. ");
+  n=st_add_int(buf[..],n,s[0].jobs);n=st_add(buf[..],n," jobs in the 24 hours before the last release, billed at $");
+  n=st_add_int(buf[..],n,s[0].cents/100);n=st_add(buf[..],n,".");if s[0].cents%100<10 {n=st_add(buf[..],n,"0");}n=st_add_int(buf[..],n,s[0].cents%100);n=st_add(buf[..],n,".");
+  v=st_para(out,v,cast(string)buf[0..<n],x,y,w,8.2,st_text(p,INK_DIM),d,tall[..]);y+=tall[0]+22;
+  v=st_para(out,v,ifx s[0].live then "Commits are read from GitHub when the page opens. Every other number is from the last release." else "Every number here is from the last release.",x,y,w,7.6,st_text(p,INK_FAINT),d,tall[..]);y+=tall[0]+24;
+
+  s[0].limit=hi(0,y-top-(b.y1-b.y0)+18);
+  return v;
+}
+st_frame :: (s:[]St,world:[]LandState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c #effects(all) {
+  if s.count<1 || u.count<UNIFORM_FLOATS || width<1 || height<1 {return 0;}
+  d:=hi(1,dpr);w:=width/d;h:=height/d;
+  if !s[0].ready {s[0].ready=true;s[0].focus=-1;s[0].pressed=-1;}
+  if s[0].w!=w || s[0].h!=h {s[0].w=w;s[0].h=h;st_layout(s);}
+  s[0].dpr=d;s[0].time+=clamp(dt,0,0.1);
+  p:=Pen.{d=d,fade=1,time=5+s[0].time,still=still,phone=w<760};
+  for i:0..<UNIFORM_FLOATS {u[i]=0;}u[0]=width;u[1]=height;u[2]=ifx still then 20.0f32 else 20+s[0].time;u[3]=1;u[4]=ifx still then 1.0f32 else 0.0f32;u[6]=0;
+  look:=fv(0,0,0);c:=cam(look,0.785,0.74,40,width*0.5,height*0.62,width,Box.{x0=0,y0=0,x1=width,y1=height},width,height);
+  v:=floor_grid(out,0,world,c,look,p);
+  b:=s[0].body;paper:=st_box(b,d);
+  // The Grid stays visible around the panel and faint beneath it.
+  for i:0..<v {out[i*VERTEX_FLOATS+6]*=ifx inside(paper,out[i*VERTEX_FLOATS],out[i*VERTEX_FLOATS+1]) then 0.22f32 else 0.75f32;}
+  glass(u,0,paper,10*d,0.84,0);u[5]=1;
+  first:=v;top:=b.y0*d;bottom:=b.y1*d;
+  v=st_body(s,out,v,p,still);
+  for i:first..<v {if out[i*VERTEX_FLOATS+1]<top+6*d || out[i*VERTEX_FLOATS+1]>bottom-6*d {out[i*VERTEX_FLOATS+6]=0;}}
+  s[0].scroll=clamp(s[0].scroll,0,s[0].limit);
+  v=frame(out,v,paper,10*d,ink(p,INK_DIM),0.55,p);
+  if s[0].limit>0 {rail:=b.y1-b.y0-24;thumb:=hi(28,rail*rail/(rail+s[0].limit));sy:=b.y0+12+(rail-thumb)*s[0].scroll/s[0].limit;v=rule(out,v,(b.x1-6)*d,sy*d,(b.x1-6)*d,(sy+thumb)*d,ink(p,INK_DIM),0.8);}
+  v=put(out,v,"OPENAGENTS / STATUS",b.x0*d,39*d,6.8*d,ink(p,INK_DIM));
+  v=put(out,v,"PIPELINE",b.x0*d,80*d,(ifx p.phone then 14.0f32 else 18.0f32)*d,chrome(ink(p,INK_WHITE)));
+  return button(out,v,st_box(s[0].home,d),"HOME",false,st_hit(s,s[0].px,s[0].py)==0 || s[0].focus==0,false,p,1);
+}

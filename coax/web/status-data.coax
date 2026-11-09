@@ -1,0 +1,162 @@
+// /status's snapshot (docs/verse/status-page.md): what this checkout's commit,
+// main's history, the green-main pipeline's refs and the build hosts' ledger
+// say now, written into the page (apps/openagents-web/status/index.html, as
+// the text status.coax reads) and its Markdown twin. A release runs it, so
+// production's page names the commit production runs.
+//   coax/web/tool.sh coax/web/status-data.coax --write     (from the repository root)
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+SD_OUT :: 131072;
+SdBuf :: struct {bytes:[]u8;n:int;bad:bool;}
+
+#test "numbers, fields and counts read from command output" {
+  #assert sd_int("389")==389 && sd_int("12x")==12 && sd_int("")==0;
+  #assert sd_field("a\tbb\tccc",1)=="bb" && sd_field("a\tbb\tccc",2)=="ccc" && sd_field("a",3)=="";
+  #assert sd_lines("x\n\ny\n",false)==3 && sd_lines("x\n\ny\n",true)==2 && sd_lines("",false)==0;
+  #assert sd_default("slots=\"${OA_REMOTE_SLOTS:-3}\"","OA_REMOTE_SLOTS:-")==3 && sd_default("none","OA_REMOTE_SLOTS:-")==0;
+}
+#test "the ledger counts the last day's jobs and their cost in cents" {
+  r:=sd_ledger("100\tjob\toa-build-1\t72\t0.0055\tx\n90000\tjob\toa-build-1\t72\t0.5000\tx\n90500\tstart\toa-build-2\t900\t0.0700\tx\n91000\tjob\toa-build-2\t10\t0.2550\tx\n",91000+3600);
+  #assert r.jobs==2 && r.cents==83;
+}
+#test "page text is escaped for an attribute and for Markdown-free HTML" {
+  bytes:[64]u8;b:[1]SdBuf;b[0].bytes=bytes[..];
+  sd_html(b[..],"a<b> & \"c\"");
+  #assert cast(string)bytes[0..<b[0].n]=="a&lt;b&gt; &amp; &quot;c&quot;";
+}
+
+sd_int :: (t:string)->int {n:=0;for i:0..<t.count {c:=cast(int)t[i];if c<48 || c>57 {break;}n=n*10+c-48;}return n;}
+sd_field :: (t:string,k:int)->string {
+  at:=0;
+  for i:0..<k {while at<t.count && t[at]!=9 {at+=1;}if at<t.count {at+=1;} else {return t[0..<0];}}
+  end:=at;while end<t.count && t[end]!=9 {end+=1;}
+  return t[at..<end];
+}
+sd_lines :: (t:string,filled:bool)->int {
+  n:=0;at:=0;
+  while at<t.count {end:=at;while end<t.count && t[end]!=10 {end+=1;}if !filled || end>at {n+=1;}at=end+1;}
+  return n;
+}
+// The number after key in a script's "${NAME:-N}" default.
+sd_default :: (t:string,key:string)->int {
+  i:=0;
+  while i+key.count<=t.count {
+    hit:=true;for j:0..<key.count {if t[i+j]!=key[j] {hit=false;break;}}
+    if hit {return sd_int(t[i+key.count..<t.count]);}
+    i+=1;
+  }
+  return 0;
+}
+SdLedger :: struct {jobs:int;cents:int;}
+// coax/remote/remote.sh's ledger: time, kind, host, seconds, dollars, note. The last 24 hours' lines.
+sd_ledger :: (t:string,now:int)->SdLedger {
+  r:SdLedger;micro:=0;at:=0;
+  while at<t.count {
+    end:=at;while end<t.count && t[end]!=10 {end+=1;}
+    line:=t[at..<end];at=end+1;
+    if sd_int(sd_field(line,0))<now-86400 {continue;}
+    if sd_field(line,1)=="job" {r.jobs+=1;}
+    usd:=sd_field(line,4);dot:=0;while dot<usd.count && usd[dot]!=46 {dot+=1;}
+    micro+=sd_int(usd[0..<dot])*10000;
+    if dot<usd.count {frac:=usd[dot+1..<usd.count];scale:=1000;for i:0..<frac.count {if i<4 && frac[i]>=48 && frac[i]<=57 {micro+=(cast(int)frac[i]-48)*scale;scale=scale/10;}}}
+  }
+  r.cents=(micro+50)/100;return r;
+}
+sd_add :: (b:[]SdBuf,t:string) {for i:0..<t.count {if b[0].n<b[0].bytes.count {b[0].bytes[b[0].n]=t[i];b[0].n+=1;} else {b[0].bad=true;}}}
+sd_num :: (b:[]SdBuf,v:int) {
+  digits:[24]u8;c:=0;x:=v;if x<=0 {digits[0]=48;c=1;}
+  while x>0 && c<23 {digits[c]=cast(u8)(48+x%10);x=x/10;c+=1;}
+  for i:0..<c {one:[1]u8;one[0]=digits[c-1-i];sd_add(b,cast(string)one[..]);}
+}
+sd_html :: (b:[]SdBuf,t:string) {
+  for i:0..<t.count {
+    c:=t[i];
+    if c==38 {sd_add(b,"&amp;");} else if c==60 {sd_add(b,"&lt;");} else if c==62 {sd_add(b,"&gt;");} else if c==34 {sd_add(b,"&quot;");}
+    else {one:[1]u8;one[0]=c;sd_add(b,cast(string)one[..]);}
+  }
+}
+// A command's output, or "" when it could not run or failed.
+sd_run :: (argv:[]string,out:[]u8)->string {
+  err:[1024]u8;r:=proc_run(argv,30000,out,err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out {return cast(string)out[0..<0];}
+  return cast(string)out[0..<r.out_n];
+}
+sd_write :: (path:string,text:string)->bool {
+  if fs_write(path,text) {return true;}
+  tool_err("status-data: cannot write ");tool_errln(path);return false;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;
+  if !args_load(args[..]) || args_count(args[..])!=1 || args_at(args[..],0)!="--write" {tool_errln("usage: status-data --write (from the repository root)");return 2;}
+  a:[4096]u8;c:[65536]u8;d:[4096]u8;e:[65536]u8;f:[16384]u8;g:[262144]u8;h:[8192]u8;
+  cmd1:=[3]string.["git","rev-parse","HEAD"];
+  head:=sd_run(cmd1[..],a[..]);
+  if head.count!=40 {tool_errln("status-data: not a git checkout; the page keeps its last snapshot");return 0;}
+  cmd2:=[2]string.["date","+%s"];
+  now:=sd_int(sd_run(cmd2[..],d[..]));
+  cmd3:=[5]string.["git","log","-30","--format=%H%x09%ct%x09%(trailers:key=Agent,valueonly,separator=%x2C)%x09%s","HEAD"];
+  commits:=sd_run(cmd3[..],c[..]);
+  cmd4:=[5]string.["git","log","--since=24.hours","--format=%h","HEAD"];
+  day:=sd_lines(sd_run(cmd4[..],e[..]),true);
+  cmd5:=[5]string.["git","log","--since=24.hours","--format=%(trailers:key=Agent,valueonly,separator=%x2C)","HEAD"];
+  trailers:=sd_lines(sd_run(cmd5[..],e[..]),true);
+  cmd6:=[5]string.["git","log","--since=7.days","--format=%h","HEAD"];
+  week:=sd_lines(sd_run(cmd6[..],e[..]),true);
+  // The pipeline's refs on the remote: main-green, the queue and the branches sent back.
+  cmd7:=[6]string.["git","ls-remote","origin","refs/heads/main-green","refs/heads/queue/*","refs/heads/rejected/*"];
+  refs:=sd_run(cmd7[..],f[..]);
+  green:=refs[0..<0];queue:=0;rejected:=0;at:=0;
+  while at<refs.count {
+    end:=at;while end<refs.count && refs[end]!=10 {end+=1;}
+    line:=refs[at..<end];at=end+1;name:=sd_field(line,1);
+    if name=="refs/heads/main-green" {green=sd_field(line,0);}
+    if name.count>17 && name[0..<17]=="refs/heads/queue/" {queue+=1;}
+    if name.count>20 && name[0..<20]=="refs/heads/rejected/" {rejected+=1;}
+  }
+  home:[1024]u8;path:[1200]u8;dir:=proc_getenv("HOME",home[..]);
+  red:=0;rn:=fs_read(fs_join(dir,".openagents/pipeline/releases/after/red.json",path[..]),h[..]);
+  if rn>0 {t:=cast(string)h[0..<rn];i:=0;while i+9<=t.count {if t[i..<i+9]=="\"check\":" {red+=1;}i+=1;}}
+  led:SdLedger;ln:=fs_read(fs_join(dir,".openagents/remote/ledger.tsv",path[..]),g[..]);
+  if ln>0 {led=sd_ledger(cast(string)g[0..<ln],now);}
+  hosts:=6;slots:=3;sn:=fs_read("coax/remote/remote.sh",g[..]);
+  if sn>0 {t:=cast(string)g[0..<sn];x:=sd_default(t,"OA_REMOTE_MAX_HOSTS:-");y:=sd_default(t,"OA_REMOTE_SLOTS:-");if x>0 {hosts=x;}if y>0 {slots=y;}}
+
+  // The snapshot, as status.coax's st_snapshot reads it.
+  snap_bytes:[SD_OUT]u8;snap:[1]SdBuf;snap[0].bytes=snap_bytes[..];
+  sd_add(snap[..],"build ");sd_add(snap[..],head);sd_add(snap[..]," ");sd_num(snap[..],now);
+  sd_add(snap[..],"\ngreen ");sd_add(snap[..],ifx green.count==40 then green else "-");
+  sd_add(snap[..],"\nqueue ");sd_num(snap[..],queue);sd_add(snap[..],"\nrejected ");sd_num(snap[..],rejected);sd_add(snap[..],"\nred ");sd_num(snap[..],red);
+  sd_add(snap[..],"\nday ");sd_num(snap[..],day);sd_add(snap[..],"\nweek ");sd_num(snap[..],week);sd_add(snap[..],"\ntrailers ");sd_num(snap[..],trailers);
+  sd_add(snap[..],"\nhosts ");sd_num(snap[..],hosts);sd_add(snap[..]," ");sd_num(snap[..],slots);sd_add(snap[..]," ");sd_num(snap[..],led.jobs);sd_add(snap[..]," ");sd_num(snap[..],led.cents);
+  sd_add(snap[..],"\n");
+  md_bytes:[SD_OUT]u8;md:[1]SdBuf;md[0].bytes=md_bytes[..];
+  sd_add(md[..],"# OpenAgents status\n\nHow a change reaches production, and where things stand. The page at https://openagents.com/status draws this on the Grid; its commit list updates from GitHub when the page opens.\n\n");
+  sd_add(md[..],"## Now\n\n- Production runs `");sd_add(md[..],head);sd_add(md[..],"`.\n- main-green: ");
+  if green.count==40 {sd_add(md[..],"`");sd_add(md[..],green);sd_add(md[..],"`.\n");} else {sd_add(md[..],"not set. No commit has passed the full check yet.\n");}
+  sd_add(md[..],"- ");sd_num(md[..],day);sd_add(md[..]," commits on main in the 24 hours before this release, ");sd_num(md[..],week);sd_add(md[..]," in 7 days. ");sd_num(md[..],trailers);sd_add(md[..]," of the day's commits name their agent.\n");
+  sd_add(md[..],"- Queue: ");sd_num(md[..],queue);sd_add(md[..]," waiting, ");sd_num(md[..],rejected);sd_add(md[..]," sent back. Red list: ");sd_num(md[..],red);sd_add(md[..],".\n");
+  sd_add(md[..],"- Build hosts: ");sd_num(md[..],hosts);sd_add(md[..]," with ");sd_num(md[..],slots);sd_add(md[..]," job slots each; ");sd_num(md[..],led.jobs);sd_add(md[..]," jobs in 24 hours.\n\n");
+  sd_add(md[..],"## Live now\n\n1. Builders work in a worktree from main.\n2. They check the units they touched on the build hosts.\n3. They rebase and push main.\n4. `coax/web/release.sh` builds main once.\n5. Staging gets the build: smoke checks, and every page starts.\n6. Production gets the same files and is checked again. A release stops only for a check that fails on staging and passes on production.\n\n");
+  sd_add(md[..],"## Built, not switched on\n\nThe green-main pipeline ([design](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/green-main-pipeline.md)): submit, queue, an integrator that checks branches in parallel and lands the passing ones in order, a full check after landing, main-green, and releases from main-green. A failure is traced to its commit and filed for that commit's agent.\n\n## Recent commits\n\n");
+  at=0;
+  while at<commits.count {
+    end:=at;while end<commits.count && commits[end]!=10 {end+=1;}
+    line:=commits[at..<end];at=end+1;sha:=sd_field(line,0);if sha.count!=40 {continue;}
+    agent:=sd_field(line,2);first:=0;while first<agent.count && agent[first]!=44 && agent[first]!=32 {first+=1;}agent=agent[0..<first];
+    subject:=line[0..<0];tabs:=0;for i:0..<line.count {if line[i]==9 {tabs+=1;if tabs==3 {subject=line[i+1..<line.count];break;}}}
+    sd_add(snap[..],"c ");sd_add(snap[..],sha);sd_add(snap[..]," ");sd_add(snap[..],sd_field(line,1));sd_add(snap[..]," ");sd_add(snap[..],ifx agent.count>0 then agent else "-");sd_add(snap[..]," ");sd_add(snap[..],subject);sd_add(snap[..],"\n");
+    sd_add(md[..],"- `");sd_add(md[..],sha[0..<7]);sd_add(md[..],"` ");sd_add(md[..],subject);sd_add(md[..],"\n");
+  }
+  page_bytes:[SD_OUT]u8;page:[1]SdBuf;page[0].bytes=page_bytes[..];
+  sd_add(page[..],"<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>Status — OpenAgents</title>\n<meta name=\"description\" content=\"How a change reaches production at OpenAgents: main's commits, the release path and the green-main pipeline.\">\n<link rel=\"canonical\" href=\"https://openagents.com/status\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/status/index.md\">\n<meta name=\"theme-color\" content=\"#000000\">\n<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\n<script>if(\"gpu\" in navigator)document.documentElement.classList.add(\"gpu\")</script>\n<style>\nhtml,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.6}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}canvas[data-cursor=pointer]{cursor:pointer}main{max-width:760px;margin:auto;padding:32px 20px}a{color:#b9e8e8}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}\n</style>\n</head>\n<body>\n<canvas id=\"coaxial\" aria-hidden=\"true\"></canvas>\n<main>\n<h1>OpenAgents status</h1>\n<p><a href=\"/status/index.md\">Read the status as Markdown</a></p>\n</main>\n<script type=\"module\" src=\"/coaxial/host.js\" data-app=\"status\" data-wgsl=\"/newland.wgsl\" data-lines=\"61:https://api.github.com/repos/OpenAgentsInc/openagents/commits?sha=main&amp;per_page=30\" data-text=\"");
+  sd_html(page[..],cast(string)snap_bytes[0..<snap[0].n]);
+  sd_add(page[..],"\"></script>\n</body>\n</html>\n");
+  if snap[0].bad || md[0].bad || page[0].bad {tool_errln("status-data: the snapshot is larger than its buffer");return 1;}
+  if !fs_mkdir("apps/openagents-web/status") && !fs_exists("apps/openagents-web/status") {tool_errln("status-data: cannot create apps/openagents-web/status");return 1;}
+  if !sd_write("apps/openagents-web/status/index.html",cast(string)page_bytes[0..<page[0].n]) {return 1;}
+  if !sd_write("apps/openagents-web/status/index.md",cast(string)md_bytes[0..<md[0].n]) {return 1;}
+  print("status-data: % commits, main-green %, % queued\n",sd_lines(commits,true),ifx green.count==40 then "set" else "not set",queue);return 0;
+}
