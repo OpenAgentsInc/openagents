@@ -113,7 +113,8 @@ og 60000
 # /oneshot: 273,171 measured 2026-11-08 after the engine's spell access and prepared-spell checks (7f7d7302e5, 31a30eb2dd); about 5% room
 # The SRD engine's class features through level 6 (Wild Shape 5271a52711 +6,251, knockout and Healer's Kit
 # 8a7a268650 +2,239, rituals c98934bc94 +1,887, the rest #13044/#13039): 314,068 measured 2026-11-08; about 5% room
-oneshot 330000
+# Rock hulls in aethyr walk/collide/query (7afe501d33): 330,940 bytes; about 5% room
+oneshot 347000
 # Orbit v2 adds authoritative input/snapshot codecs while retaining the published legacy profile.
 # 292,500 final Linux release bytes at #12845; 2.5% room in this 300,000-byte bound.
 orbitleague 300000
@@ -159,7 +160,8 @@ valleylab 160000
 # Named face admission, sparse morph playback and source-rate facial-bone overlays (#12962): 85,271 bytes.
 # TF0290's orb Rect Light, the face view's turned hero rig and the orb hand's shadow capsules: 96,601 bytes.
 # The depth-of-field lens uniforms and the spell orbit camera (M): 101,258 bytes.
-valleycanyon 104000
+# Rock hulls in aethyr walk/collide/query (7afe501d33): 104,986 bytes; about 5% room
+valleycanyon 110000
 # The character pass's runtime beside a world (Echo's idle body and face, pack admission, the SceneLights block): 41,715 bytes.
 # Her idle life (aethyr/character/idle.coax: blinks, glances, breath) and her placement from the world's stage (#12987): 47,788 bytes.
 # Her motion when a world moves her (#12996): the locomotion graph at the world's pace, TF0290's shot
