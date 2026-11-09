@@ -745,7 +745,7 @@ CC_STRING_R :: 0.004;    // metres round the string, the limbs and the arrow's s
 CC_LIMB_R :: 0.018;
 CC_ARROW_R :: 0.005;
 CC_ARROW_LONG :: 0.757;  // the arrow, nock to point (CC_ARROW_SCALE times the packed 1.456)
-cc_wp :: (p:[3]f32)->overlap.WorldPoint {return overlap.world_point(p[0],p[1],p[2]);}
+cc_wp :: (p:[3]f32)->world.WorldPoint {return world.world_point(p[0],p[1],p[2]);}
 // The body's capsules in pose pal, from its joints' bind positions.
 cc_body_capsules :: (pal:[]f32,bind:[][3]f32,out:[]overlap.OverlapCapsule)->int {
  for i:0..<CC_BODY_N {r:=CC_BODY[i];a:=cc_joint_at(pal,r[0],bind[r[0]]);b:=a;
