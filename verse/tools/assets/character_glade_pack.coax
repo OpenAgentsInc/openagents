@@ -14,6 +14,7 @@
 #load "../humans/ph_pack.coax";
 #load "../humans/ph_face.coax";
 #load "../humans/ph_outfits.coax";
+#load "familiar_pack.coax";
 
 #load "../../character-glade.coax";
 #load "../../experimental-terrain.coax" as meadow;
@@ -719,6 +720,8 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
  if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),-1);gp_castle(w[..],g[..],args_at(args[..],4),args_at(args[..],8),args_at(args[..],11));}
  w[0].envni=w[0].ni;if args_count(args[..])>=14 {for part:0..<dungeon.DG_CHUNKS {w[0].dungeonfirst[part]=w[0].ni;gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),part);w[0].dungeoncount[part]=w[0].ni-w[0].dungeonfirst[part];}}if args_count(args[..])>=20 {w[0].zero_first=w[0].ni;w[0].zero_tex_first=w[0].nt;gp_0ad(w[..],g[..],iw[..],args_at(args[..],19));w[0].zero_count=w[0].ni-w[0].zero_first;w[0].zero_tex_end=w[0].nt;}if args_count(args[..])>=16 {gp_bestiary_frames(w[..],args_at(args[..],15));}if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));gp_weapons(w[..],g[..],args_at(args[..],7),args_at(args[..],8),args_at(args[..],10));}
+ famfirst:[FAM_FORMS]int; famcount:[FAM_FORMS]int;
+ if experimental && !zone { gp_familiar_meshes(w[..],famfirst[..],famcount[..]); }
  for group:0..<3 {
   w[0].grassfirst[group]=w[0].ni;name:=ifx group==0 then "Grass_Common_Short" else ifx group==1 then "Grass_Wide_Short" else "Grass_Wispy_Short";
   gp_mesh(w[..],g[..],iw[..],root,name,0,0,1,0,[3]f32.[1,1,1]);w[0].grasscount[group]=w[0].ni-w[0].grassfirst[group];
@@ -733,6 +736,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=14 {for i:0..<4 {sb_put(c[..],"C glade/weapon");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].weaponfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].weaponcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
   if args_count(args[..])>=14 {for i:0..<10 {sb_put(c[..],"C glade/animal");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].animalfirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].animalcount[i]);sb_put(c[..]," 253 ");sb_int(c[..],vn/4);sb_put(c[..]," 0 0\n");}}
  for group:0..<3 {sb_put(c[..],"C glade/grass");sb_int(c[..],group);sb_byte(c[..],' ');sb_int(c[..],in/4+w[0].grassfirst[group]);sb_byte(c[..],' ');sb_int(c[..],w[0].grasscount[group]);sb_byte(c[..],' ');sb_int(c[..],lic);sb_byte(c[..],' ');sb_int(c[..],vn/4+w[0].seedfirst[group]*8);sb_byte(c[..],' ');sb_int(c[..],w[0].seedn[group]);sb_put(c[..]," 0\n");}
+ if experimental && !zone { gp_familiar_catalog(c[..],famfirst[..],famcount[..],in/4,vn/4); }
  for i:0..<w[0].nt {sb_put(c[..],"T ");sb_int(c[..],w[0].layers+i);sb_put(c[..]," glade/");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],ifx i>=w[0].zero_tex_first && i<w[0].zero_tex_end then 249 else ifx w[0].layers+i==w[0].village_layer then 251 else ifx w[0].layers+i==w[0].bestiary_layer then 254 else lic);sb_byte(c[..],'\n');}
  count:=ne+w[0].nt;at:=32+count*48;gp_word(w[0].out[..],0,ifx zone && count>48 then 0x324b5056 else 0x314b5056);put_u32(w[0].out[..],4,count);budget:=ifx args_count(args[..])>=14 then 536870912 else ifx buildings then 67108864 else 33554432;put_u32(w[0].out[..],12,budget);put_u32(w[0].out[..],16,32);put_u32(w[0].out[..],20,at);
  for i:0..<ne {r:=table+i*48;kind:=int(old[r]);off:=gl_u32(old,r+4);size:=gl_u32(old,r+8);start:=at;

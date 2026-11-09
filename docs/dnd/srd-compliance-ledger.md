@@ -991,3 +991,8 @@ and spatial spell cues use it when the familiar can hear. The camera
 returns when the link ends or the owner's next turn starts. The outdoor
 view uses its existing lighting. Special-sense lighting and animal
 presentation remain separate work.
+
+The eleven named familiar forms now have original low-poly geometry in
+Coax. Both world pack builders use the same mesh writer and stable form
+order. The geometry check verifies distinct bounded meshes for every form.
+The renderers still need to read and draw the new catalog entries.

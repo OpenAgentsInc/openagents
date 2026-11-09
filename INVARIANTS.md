@@ -7608,3 +7608,7 @@ Action. The room publishes viewpoint state only to the owner. The
 shared link and start of the owner's next turn determine when it ends.
 The client also requires a current familiar row to move its camera or
 spatial spell listener.
+
+The Experimental and Everglade II pack builders share the original
+familiar mesh source. Their glade/familiar catalog rows use the room's
+stable named-form order and model-space metres, with positive Z forward.

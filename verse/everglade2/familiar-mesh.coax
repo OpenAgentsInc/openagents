@@ -1,0 +1,117 @@
+// Original low-poly meshes for the eleven named SRD familiar forms.
+// Form order matches RS_FAMILIAR_FORMS and the familiar room protocol.
+// Cat, Rat, Spider, Bat, Frog, Hawk, Lizard, Octopus, Owl, Raven, Weasel.
+// Coordinates are metres in model space, with the front along positive Z.
+
+FamPart :: struct { x:f32; y:f32; z:f32; rx:f32; ry:f32; rz:f32; colour:[3]f32; }
+FamVertex :: struct { p:[3]f32; n:[3]f32; colour:[3]f32; }
+FAM_FORMS :: 11;
+FAM_PARTS :: 16;
+FAM_VERTICES :: FAM_PARTS*24;
+
+#test "familiar models have distinct bounded geometry for all eleven named forms" {
+  out:[FAM_VERTICES]FamVertex; marks:[FAM_FORMS]int;
+  for form:0..<FAM_FORMS {
+    n:=fam_mesh(form,out[..]); #assert n>=72 && n<=out.count && n%3==0;
+    mark:=0;
+    for i:0..<n {
+      p:=out[i].p;
+      #assert abs(p[0])<1 && p[1]>=0 && p[1]<1 && abs(p[2])<1;
+      mark+=int((p[0]*p[0]+p[1]*p[1]+p[2]*p[2])*10000);
+    }
+    for old:0..<form { #assert mark!=marks[old]; }
+    marks[form]=mark;
+  }
+  #assert fam_mesh(-1,out[..])==0 && fam_mesh(FAM_FORMS,out[..])==0;
+  #assert fam_mesh(0,out[0..<3])==0;
+}
+
+fam_part :: (x:f32,y:f32,z:f32,rx:f32,ry:f32,rz:f32,colour:[3]f32)->FamPart {
+  return FamPart.{x=x,y=y,z=z,rx=rx,ry=ry,rz=rz,colour=colour};
+}
+
+fam_parts :: (form:int,out:[]FamPart)->int {
+  dark:=[3]f32.[0.14,0.09,0.10]; gold:=[3]f32.[0.82,0.52,0.14];
+  if form==2 || form==7 {
+    spider:=form==2;
+    colour:=ifx spider then dark else [3]f32.[0.68,0.29,0.38];
+    out[0]=fam_part(0,0.14,0,0.14,0.13,0.14,colour);
+    out[1]=fam_part(0,0.105,0.11,0.085,0.07,0.07,colour);
+    for i:0..<8 {
+      side:=ifx i<4 then -1.0f32 else 1.0f32;
+      z:=f32(i%4)*0.068-0.102;
+      out[i+2]=fam_part(side*0.165,0.057,z,0.14,0.055,ifx spider then 0.02 else 0.047,colour);
+    }
+    return 10;
+  }
+  if form==3 || form==5 || form==8 || form==9 {
+    owl:=form==8; bat:=form==3;
+    colour:=ifx owl then [3]f32.[0.49,0.31,0.20] else ifx form==5 then [3]f32.[0.46,0.25,0.14] else dark;
+    wing:=ifx bat then 0.26f32 else ifx owl then 0.19f32 else ifx form==5 then 0.23f32 else 0.21f32;
+    out[0]=fam_part(0,0.28,0,0.105,0.17,0.16,colour);
+    out[1]=fam_part(0,0.43,0.09,ifx owl then 0.128 else 0.09,0.092,0.095,colour);
+    out[2]=fam_part(-wing*0.74,0.29,-0.02,wing,0.035,0.11,colour);
+    out[3]=fam_part(wing*0.74,0.29,-0.02,wing,0.035,0.11,colour);
+    out[4]=fam_part(0,0.24,-0.15,0.07,0.03,0.12,colour);
+    out[5]=fam_part(0,0.415,0.18,0.038,0.025,0.049,ifx bat then dark else gold);
+    for i:0..<2 {
+      x:=f32(i*2-1);
+      out[6+i]=fam_part(x*0.053,0.448,0.165,0.026,0.028,0.023,ifx owl then gold else dark);
+      out[8+i]=ifx bat || owl then fam_part(x*0.064,0.50,0.07,0.035,0.06,0.024,colour)
+        else fam_part(x*0.047,0.057,0.034,0.034,0.056,0.054,gold);
+    }
+    return 10;
+  }
+  if form==4 {
+    green:=[3]f32.[0.29,0.55,0.19];
+    out[0]=fam_part(0,0.11,0,0.14,0.105,0.135,green);
+    out[1]=fam_part(0,0.13,0.10,0.129,0.067,0.087,green);
+    for i:0..<2 {
+      x:=f32(i*2-1);
+      out[2+i]=fam_part(x*0.092,0.194,0.122,0.035,0.035,0.034,gold);
+      out[4+i]=fam_part(x*0.14,0.057,-0.025,0.076,0.052,0.101,green);
+    }
+    return 6;
+  }
+  cat:=form==0; rat:=form==1; lizard:=form==6;
+  colour:=ifx cat then [3]f32.[0.72,0.40,0.18] else ifx rat then [3]f32.[0.43,0.39,0.38]
+    else ifx lizard then [3]f32.[0.39,0.48,0.20] else [3]f32.[0.49,0.28,0.16];
+  y:=ifx cat then 0.20f32 else ifx lizard then 0.07f32 else 0.11f32;
+  length:=ifx cat then 0.20f32 else ifx rat then 0.14f32 else 0.18f32;
+  out[0]=fam_part(0,y,0,0.10,y*0.60,length,colour);
+  out[1]=fam_part(0,y+0.04,length,0.077,0.065,0.086,colour);
+  out[2]=fam_part(0,y+0.015,length+0.067,0.045,0.035,0.050,ifx lizard then colour else dark);
+  out[3]=fam_part(0,y*0.72,-length-0.09,0.029,0.029,ifx rat then 0.18 else 0.135,colour);
+  for i:0..<4 {
+    x:=f32(i%2*2-1); z:=f32(i/2*2-1);
+    out[4+i]=fam_part(x*0.068,y*0.49,z*length*0.69,0.033,y*0.48,0.046,colour);
+  }
+  if lizard { return 8; }
+  for i:0..<2 {
+    x:=f32(i*2-1);
+    out[8+i]=fam_part(x*0.05,y+0.10,length,0.033,ifx cat then 0.055 else 0.032,0.025,colour);
+  }
+  return 10;
+}
+
+fam_mesh :: (form:int,out:[]FamVertex)->int {
+  if form<0 || form>=FAM_FORMS { return 0; }
+  parts:[FAM_PARTS]FamPart;
+  count:=fam_parts(form,parts[..]);
+  if out.count<count*24 { return 0; }
+  axis:=[6][3]f32.[[3]f32.[1,0,0],[3]f32.[0,0,1],[3]f32.[-1,0,0],[3]f32.[0,0,-1],[3]f32.[0,1,0],[3]f32.[0,-1,0]];
+  n:=0;
+  for i:0..<count {
+    p:=parts[i];
+    for face:0..<8 {
+      a:=face%4; b:=(a+1)%4;
+      corners:=[3]int.[ifx face<4 then 4 else 5,ifx face<4 then b else a,ifx face<4 then a else b];
+      for corner:corners {
+        d:=axis[corner];
+        out[n]=FamVertex.{p=[3]f32.[p.x+d[0]*p.rx,p.y+d[1]*p.ry,p.z+d[2]*p.rz],n=d,colour=p.colour};
+        n+=1;
+      }
+    }
+  }
+  return n;
+}

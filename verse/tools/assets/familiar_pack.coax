@@ -1,0 +1,31 @@
+// Shared model writer for the Experimental glade and Everglade II packs.
+// Loaded by the two builders with their existing packed vertex writer.
+#load "../../everglade2/familiar-mesh.coax";
+
+GP_FAMILIAR_SOURCE :: 248;
+GP_FAMILIAR_KIND :: 8;
+
+gp_familiar_meshes :: (w:[]Gp,first:[]int,count:[]int) {
+  vertices:[FAM_VERTICES]FamVertex;
+  for form:0..<FAM_FORMS {
+    first[form]=w[0].ni;
+    n:=fam_mesh(form,vertices[..]);
+    count[form]=n;
+    for i:0..<n {
+      v:=vertices[i];
+      id:=gp_v(w,v.p,v.n,[2]f32.[0.5,0.5],v.colour,0,GP_FAMILIAR_KIND);
+      if i%3==2 { gp_tri(w,id-2,id-1,id); }
+    }
+  }
+}
+
+gp_familiar_catalog :: (c:[]Sb,first:[]int,count:[]int,index_base:int,vertex_word:int) {
+  sb_put(c,"L "); sb_int(c,GP_FAMILIAR_SOURCE);
+  sb_put(c," OpenAgents Familiar Models|Apache-2.0|https://github.com/OpenAgentsInc/openagents\n");
+  for form:0..<FAM_FORMS {
+    sb_put(c,"C glade/familiar"); sb_int(c,form); sb_byte(c,' ');
+    sb_int(c,index_base+first[form]); sb_byte(c,' '); sb_int(c,count[form]);
+    sb_byte(c,' '); sb_int(c,GP_FAMILIAR_SOURCE);
+    sb_byte(c,' '); sb_int(c,vertex_word); sb_put(c," 0 0\n");
+  }
+}
