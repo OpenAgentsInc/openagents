@@ -1,0 +1,16 @@
+// Native witness of Experimental's world adapter; not an independent rules oracle.
+#load "../../apps/openagents-web/fivelab.coax";
+#load "../../coax/lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  s:[1]Lab;xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  cr:=s[0].creator[..];cr[0].glade_first=XC_OBJECT_ENV_FIRST;cr[0].glade_count=XC_OBJECT_ENV_COUNT;cr[0].glade_word=XC_OBJECT_WORD;
+  x:=s[0].xc[..];x[0].b[0].dice[0].fixed=true;
+  if xc_object_pick(s[..],0,-1,40)!=0 || !xc_object_blocked(s[..],0,-6,0.3) {return 1;}
+  if !xc_use_on(s[..],0,-1) || x[0].b[0].dice[0].rolled==0 {return 2;}
+  o:=x[0].objects[0].rules[..];o[0].hp=1;o[0].burning=true;x[0].objects[0].burn_at=6000000;
+  x[0].b[0].rest_clock.ticks=6000000;xc_objects_tick(s[..]);
+  if !o[0].destroyed || xc_object_blocked(s[..],0,-6,0.3) {return 3;}
+  out:[2048]f32;
+  if xc_objects_draw(s[..],out[..],10)!=11 || s[0].bodies[0].draws[43]!=2 {return 4;}
+  tool_errln("PASS EXPERIMENTAL-OBJECTS: cast, burn, destruction, collision and compact draw");return 0;
+}

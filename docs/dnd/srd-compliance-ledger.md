@@ -733,3 +733,14 @@ line of sight, and refuses a willing step closer to it; a raw bit with no
 source keeps the old always-in-sight reading (p.182). A knockout an Opportunity
 Attack deals starts its Short Rest when the Reaction ends (p.17). Checks:
 actions 416, condition-roll 427, knockout 419.
+
+### Experimental placed objects (2026-11-08, #13030)
+
+Three independently tracked supply crates near spawn now use the shared
+object spell executor for compatible aimed bolts without a creature target.
+Wood AC/HP, typed damage, ignition and six-second burning remain engine rules;
+destruction removes the instance and movement collision. Existing baked props
+remain scenery. The current registered crate mesh is reused without a pack
+change, with a Coax verifier binding its captured geometry range. See
+[the receipt](../verification/srd-placed-objects-2026-11-08/README.md) for
+provenance, focused verification and remaining world limitations.

@@ -664,7 +664,8 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
 }
 monster_frame :: (clock:f32)->int {clip:=int(floor(clock/3))%6;sample:=int(floor(clock*8))%8;return clip*8+sample;}
 animal_frame :: (clock:f32)->int {return int(floor(clock*(10.0/0.6)))%10;}
-scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
+scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int { return scene_reserved(s,b,out,0); }
+scene_reserved :: (s:Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   b[0].draw_n=0;
   if !b[0].ready || !catalog_ready(s) { return 0; }
   l:=look(s); l.variant=0;
@@ -733,7 +734,7 @@ scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int {
     out[n*24+4]=ifx kind==0 then 6 else 9;out[n*24+5]=meadow.exp_height(out[n*24+4],-7);out[n*24+6]= -7;out[n*24+7]=f32(s.glade_word);out[n*24+15]=18;
     b[0].draws[n*4]=cast(u32)s.npc_first[kind][take];b[0].draws[n*4+1]=cast(u32)s.npc_count[kind][take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}
-  for gi:0..<s.grass_groups {if n>=44 {break;}g:=s.grass[gi];
+  for gi:0..<s.grass_groups {if n>=44-reserved {break;}g:=s.grass[gi];
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24]=f32(g.word);out[n*24+7]=f32(s.glade_word);out[n*24+15]=17;
     b[0].draws[n*4]=cast(u32)g.first;b[0].draws[n*4+1]=cast(u32)g.count;
@@ -1297,4 +1298,12 @@ texture_side :: (s:Creator)->int {if !s.on {return 0;}return ifx s.width>=840*s.
  #assert out[7]==28 && out[15]==16 && out[23]==0;
  catalog(s[..],"");for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
  #assert scene(s[0],b[..],out[..])==0;
+}
+#test "creator scene reserves requested world draw slots" {
+  s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);
+  for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
+  s[0].scene_only=true;s[0].experimental=true;s[0].glade_count=3;s[0].glade_word=100;
+  s[0].grass_groups=3;for i:0..<3 {s[0].grass[i].first=3;s[0].grass[i].count=3;s[0].grass[i].n=1;}
+  b[0].ready=true;n:=scene_reserved(s[0],b[..],out[..],43);
+  #assert n==1 && b[0].draw_n==n;
 }

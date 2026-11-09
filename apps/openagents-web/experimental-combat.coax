@@ -69,6 +69,7 @@ XC_HEAD :: 32.0; XC_ROW :: 24.0; XC_ROWS_TOP :: 40.0; XC_GAP :: 8.0;
 XcWave :: struct { x: f32; z: f32; y: f32; fx: f32; fz: f32; left: f32; right: f32; near: f32; far: f32; }
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XcCombat :: struct {
+  objects:[XC_OBJECTS]XcObject;
   started: bool; klass: int = 11; level: int = 1;
   rest_seen:bool; rest_settled:bool; rest_refused:bool;
   dash_until: f32 = -1; dash_face: f32;
@@ -203,6 +204,7 @@ xc_start :: (x: [] XcCombat, klass: int) {
   rs_begin(b);
   for i: 0..<XC_FOES { x[0].npc_seat[i]=FbSeat.{me=i+1}; }
   x[0].started = true;
+  xc_objects_start(x);
   xc_set_class(x, klass);
 }
 // You become class c at the selected level. The monsters keep their wounds.
@@ -414,6 +416,7 @@ xc_sync_world :: (s: [] Lab) {
 xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
   x:=s[0].xc[..]; if !x[0].started || foe<0 || foe>=XC_FOES { return; }
   b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..]; old:=h[0].enemies[foe];
+  if xc_object_blocked(s,proposed.x,proposed.z,0.3*proposed.scale) { return; }
   moving:=proposed.moving && (old.x!=proposed.x || old.z!=proposed.z);
   if moving {
     xc_sync_world(s);
@@ -694,7 +697,7 @@ xc_grapple_step :: (s: [] Lab) {
   dx := e[0].x - cr[0].player_x; dz := e[0].z - cr[0].player_z; d := sqrt(dx * dx + dz * dz); keep := f32(XC_REACH) * 0.8;
   if d > keep {
     nx := cr[0].player_x + dx * keep / d; nz := cr[0].player_z + dz * keep / d;
-    if !hostile.hostile_blocked(nx, nz) { e[0].x = nx; e[0].z = nz; }
+    if !xc_blocked(s,nx,nz) { e[0].x = nx; e[0].z = nz; }
   }
   xc_sync_world(s); rs_grapple_lapse(b, 0); xc_sync_permission(s, g - 1);
 }
@@ -713,7 +716,7 @@ xc_glide_step :: (s: [] Lab) {
   step := 0.25f32;
   if d < step || cr[0].clock > x[0].glide_until { x[0].glide_until = -1; if d >= step { return; } }
   nx := ifx d < step then x[0].glide_x else cr[0].player_x + dx / d * step; nz := ifx d < step then x[0].glide_z else cr[0].player_z + dz / d * step;
-  if hostile.hostile_blocked(nx, nz) { x[0].glide_until = -1; return; }
+  if xc_blocked(s,nx,nz) { x[0].glide_until = -1; return; }
   s[0].put_on = true; s[0].put_x = nx; s[0].put_y = cr[0].player_y; s[0].put_z = nz; s[0].put_face = cr[0].player_face;
   cr[0].player_x = nx; cr[0].player_z = nz;
 }
@@ -964,6 +967,10 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   swung := xc_kit(x[0].klass) >= 0 && aim.kind == XC_AIM_MELEE;   // its whoosh played at the press (xc_press)
   if aim.kind == XC_AIM_CONE && foe < 0 { x[0].fizzle = k; x[0].fizzle_at = now; x[0].refused += 1; xc_cue(s, snd.miss, 0.35, px, pz, 1); return false; }   // no one ahead: the icon fizzles
   if (aim.kind == XC_AIM_BOLT || aim.kind == XC_AIM_MELEE) && foe < 0 {
+    if aim.kind==XC_AIM_BOLT && a.kind==FB_SPELL && rs_object_spell(a.sp) {
+      object:=xc_object_pick(s,aim.fx,aim.fz,aim.reach);
+      if object>=0 {return xc_use_object(s,k,a,object);}
+    }
     // the bolt flies on to its range and fizzles; the blow swings at the air. No roll, no damage.
     x[0].cool_at = now; x[0].used = k; x[0].casts += 1; x[0].whiffs += 1;
     xc_look(s, a, -1, px + aim.fx * aim.reach, pz + aim.fz * aim.reach);
@@ -1062,7 +1069,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     if !facing_cube && !c.dead && !e[0].dead && bx[i] != XC_AWAY && (c.x != bx[i] || c.y != bz[i]) {
       // Shove's push (and any grid move a press made): swept square by square, stopping at a wall
       dx := f32(c.x - bx[i]) * f32(XC_SQ) / 10; dz := f32(c.y - bz[i]) * f32(XC_SQ) / 10;
-      for step: 0..<10 { nx := e[0].x + dx; nz := e[0].z + dz; if hostile.hostile_blocked(nx, nz) { break; } e[0].x = nx; e[0].z = nz; }
+      for step: 0..<10 { nx := e[0].x + dx; nz := e[0].z + dz; if xc_blocked(s,nx,nz) { break; } e[0].x = nx; e[0].z = nz; }
     }
     if facing_cube && !c.dead && !e[0].dead {
       gx := c.x - bx[i]; gz := c.y - bz[i];
@@ -1073,7 +1080,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
         dz := (-lx*aim.fx + lz*aim.fz) / length * dist / 20;
         for step: 0..<20 {
           nx := e[0].x + dx; nz := e[0].z + dz;
-          if hostile.hostile_blocked(nx, nz) { break; }
+          if xc_blocked(s,nx,nz) { break; }
           e[0].x = nx; e[0].z = nz;
         }
       }
@@ -1202,6 +1209,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
   x[0].present = react.react_present_drain(x[0].present);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
+  xc_objects_tick(s);
   xc_rite_step(s); xc_glide_step(s);
   xc_hostile_contacts(s);
   xc_shots_step(s);
@@ -1255,6 +1263,18 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   wave := x[0].wave;
   if wave_preview { wave=xc_wave_make(x,cr[0].player_x,cr[0].player_z,cr[0].player_face); wave.y=cr[0].player_y; }
   if wave_on { n=xc_wave_draw(x,wave,out,n,k,ifx wave_preview then 0.8 else 1.0); }
+  if xc_objects_ready(s) {
+    for i:0..<XC_OBJECTS {
+      o:=x[0].objects[i].rules[0];if o.destroyed {continue;}
+      pos:=XC_OBJECT_POS[i];p:=xc_proj(x,pos[0],xmeadow.exp_height(pos[0],pos[1])+1.25,pos[1]);
+      if !p.ok || p.x<0 || p.x>w || p.y<0 || p.y>h {continue;}
+      label:=ifx o.burning then "BURNING CRATE" else "SUPPLY CRATE";
+      n=cc.text(out,n,label,p.x-xc_text_w(label,8*k)/2,p.y-8*k,8*k,ink_col(k,1,0.78,0.35));
+      share:=f32(o.hp)/f32(rs_object_hp(o.size,o.resilient));
+      n=xc_line(out,n,p.x-20*k,p.y,p.x+20*k,p.y,3*k,0.18,0.06,0.05);
+      n=xc_line(out,n,p.x-20*k,p.y,p.x-20*k+40*k*share,p.y,3*k,0.86,0.45,0.12);
+    }
+  }
   // the monsters' names and Hit Points over them, your target's in gold
   for i: 0..<XC_FOES {
     e := hs[0].enemies[i];
@@ -2506,4 +2526,50 @@ xc_check_ai_rate :: (speed:int)->bool {
     #assert rs_sleeping(b[0].c[0]) && x[0].klass==FB_CL_FIGHTER && x[0].level==1;
     #assert xc_rest_label(b[0].c[0])=="REST: SLEEPING";
   }
+}
+
+#test "Experimental placed-object Fire Bolt uses the shared attack instead of the empty bolt path" #steps 2000000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  cr:=s[0].creator[..]; cr[0].glade_first=1137376; cr[0].glade_count=7059666; cr[0].glade_word=2525712;
+  b:=s[0].xc[0].b[..]; b[0].dice[0].fixed=true; before:=b[0].dice[0].rolled;
+  k:=0;
+  #assert xc_use_on(s[..],k,-1) && b[0].dice[0].rolled>before;
+}
+
+#test "Experimental placed-object picking destruction and packed-scene admission" #steps 2000000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  cr:=s[0].creator[..];
+  #assert xc_object_pick(s[..],0,-1,40)==-1;
+  cr[0].glade_first=XC_OBJECT_ENV_FIRST;cr[0].glade_count=XC_OBJECT_ENV_COUNT;cr[0].glade_word=XC_OBJECT_WORD;
+  #assert xc_object_pick(s[..],0,-1,40)==0;
+  #assert xc_object_pick(s[..],0,1,40)==-1 && xc_object_pick(s[..],0,-1,5)==-1;
+  #assert xc_object_blocked(s[..],0,-6,0.3);
+  out:[2048]f32;
+  #assert xc_objects_draw(s[..],out[..],10)==11 && s[0].bodies[0].draws[43]==3;
+  s[0].xc[0].objects[0].rules[0].destroyed=true;
+  #assert !xc_object_blocked(s[..],0,-6,0.3) && xc_object_pick(s[..],0,-1,40)==-1;
+  #assert xc_objects_draw(s[..],out[..],10)==11 && s[0].bodies[0].draws[43]==2;
+  #assert out[240]==XC_OBJECT_POS[1][0]-XC_OBJECT_ANCHOR[0];
+  cr[0].glade_word+=1;
+  #assert xc_objects_draw(s[..],out[..],10)==10 && !xc_object_blocked(s[..],-4,-9,0.3);
+}
+#test "Experimental placed-object burning uses elapsed rounds and removes destroyed collision" #steps 2000000000 {
+  s:[1]Lab;xc_test_lab(s[..],FB_CL_WIZARD,0);
+  cr:=s[0].creator[..];cr[0].glade_first=XC_OBJECT_ENV_FIRST;cr[0].glade_count=XC_OBJECT_ENV_COUNT;cr[0].glade_word=XC_OBJECT_WORD;
+  x:=s[0].xc[..];o:=x[0].objects[0].rules[..];o[0].burning=true;o[0].hp=1;x[0].objects[0].burn_at=6000000;
+  x[0].b[0].rest_clock.ticks=5999999;xc_objects_tick(s[..]);#assert o[0].hp==1;
+  x[0].b[0].rest_clock.ticks=6000000;xc_objects_tick(s[..]);
+  #assert o[0].destroyed && !o[0].burning && !xc_object_blocked(s[..],0,-6,0.3);
+  rolled:=x[0].b[0].dice[0].rolled;xc_objects_tick(s[..]);#assert x[0].b[0].dice[0].rolled==rolled;
+  xc_set_class(x,FB_CL_FIGHTER);#assert o[0].destroyed;
+}
+#test "Experimental placed-object refused cast preserves RNG resources object and saved action" #steps 2000000000 {
+  s:[1]Lab;xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  cr:=s[0].creator[..];cr[0].glade_first=XC_OBJECT_ENV_FIRST;cr[0].glade_count=XC_OBJECT_ENV_COUNT;cr[0].glade_word=XC_OBJECT_WORD;
+  x:=s[0].xc[..];b:=x[0].b[..];b[0].c[0].cond|=RS_INCAPACITATED;
+  hp:=x[0].objects[0].rules[0].hp;rolled:=b[0].dice[0].rolled;seat:=x[0].seat[0];
+  #assert !xc_use_on(s[..],0,-1);
+  #assert x[0].objects[0].rules[0].hp==hp && x[0].objects[0].rules[0].x==0 && x[0].objects[0].rules[0].y==0;
+  #assert b[0].dice[0].rolled==rolled && x[0].seat[0].open==seat.open && x[0].seat[0].turn.action==seat.turn.action;
+  #assert x[0].casts==0 && x[0].refused==1;
 }

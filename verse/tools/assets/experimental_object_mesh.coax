@@ -1,0 +1,52 @@
+// Verify the existing packed crate range before reusing it in dynamic draws.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#load "../../experimental-object-mesh.coax";
+om_u32 :: (b:[]u8,i:int)->int {
+  return int(cast(u32)b[i] | (cast(u32)b[i+1]<<8) | (cast(u32)b[i+2]<<16) | (cast(u32)b[i+3]<<24));
+}
+om_hash :: (bytes:[]u8,wanted:string)->bool {
+  digest:[32]u8; if sha256_hash_checked(bytes,digest[..],false)!=0 { return false; }
+  hex:="0123456789abcdef"; out:[64]u8;
+  for i:0..<32 {out[i*2]=hex[int(digest[i])/16];out[i*2+1]=hex[int(digest[i])%16];}
+  return cast(string)out[..]==wanted;
+}
+#test "packed-range oracle reads little endian offsets and rejects changed geometry" {
+  bytes:=[4]u8.[1,2,3,4]; #assert om_u32(bytes[..],0)==67305985;
+  #assert om_hash(bytes[..],"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a");
+  bytes[0]=0; #assert !om_hash(bytes[..],"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a");
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args; if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+  path:=args_at(args[..],0); header:[32]u8; n:=fs_size(path);
+  if n<32 || fs_read_at(path,0,header[..])!=32 {return 1;}
+  magic:=om_u32(header[..],0); if magic!=0x314b5056 && magic!=0x324b5056 {return 1;}
+  entries:=om_u32(header[..],4); table_at:=om_u32(header[..],16); table:[12288]u8;
+  if entries<1 || entries>256 || table_at>n || entries*48>n-table_at || fs_read_at(path,table_at,table[0..<entries*48])!=entries*48 {return 1;}
+  vo:=0; vn:=0; io:=0; ins:=0; co:=0; cn:=0;
+  for i:0..<entries {
+    off:=om_u32(table[..],i*48+4); size:=om_u32(table[..],i*48+8);
+    if off>n || size>n-off {return 1;}
+    if table[i*48]==1 {co=off;cn=size;}
+    if table[i*48]==2 {vo=off;vn=size;}
+    if table[i*48]==3 {io=off;ins=size;}
+  }
+  catalog:[32768]u8; if cn<1 || cn>catalog.count || fs_read_at(path,co,catalog[0..<cn])!=cn {return 1;}
+  row:="C glade/environment 1137376 7059666 250 2525712 5258636 0\n"; found:=false;
+  for i:0..<cn-row.count+1 {if cast(string)catalog[i..<i+row.count]==row {found=true;break;}}
+  if !found {return 1;}
+  vstart:=XC_OBJECT_WORD*4+XC_OBJECT_VERTEX_FIRST*32; vsize:=XC_OBJECT_VERTEX_COUNT*32;
+  istart:=XC_OBJECT_MESH_FIRST*4; isize:=XC_OBJECT_MESH_COUNT*4;
+  if vstart>vn || vsize>vn-vstart || istart>ins || isize>ins-istart {return 1;}
+  vertices:[XC_OBJECT_VERTEX_COUNT*32]u8; indices:[XC_OBJECT_MESH_COUNT*4]u8;
+  if fs_read_at(path,vo+vstart,vertices[..])!=vsize || fs_read_at(path,io+istart,indices[..])!=isize {return 1;}
+  if !om_hash(vertices[..],"36c4af43d31ec59a40153419134603fa83700c632acefd9479b738ef473259d9") ||
+    !om_hash(indices[..],"a44a323e48b0d2c413684960e66989db95c159b913d716c74f329c95ba7ea277") {return 1;}
+  for i:0..<XC_OBJECT_MESH_COUNT {
+    v:=om_u32(indices[..],i*4);
+    if v<XC_OBJECT_VERTEX_FIRST || v>=XC_OBJECT_VERTEX_FIRST+XC_OBJECT_VERTEX_COUNT {return 1;}
+  }
+  tool_errln("PASS OBJECT-MESH: pinned crate vertex/index hashes and scene catalog"); return 0;
+}

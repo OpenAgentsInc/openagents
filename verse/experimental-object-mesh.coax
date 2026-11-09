@@ -1,0 +1,10 @@
+// Interactive copies of the pinned Fantasy Props crate already in glade.pack.
+// quaternius/fantasy-props/crate-wooden @ 7b3a0340c09253f5cad302b46a53316affd387844335cc4dbc447120a0d5506b.
+// The mesh verifier binds these captured ranges to the actual packed bytes.
+XC_OBJECTS :: 3;
+XC_OBJECT_MESH_FIRST :: 4929229; XC_OBJECT_MESH_COUNT :: 4728;
+XC_OBJECT_VERTEX_FIRST :: 1226033; XC_OBJECT_VERTEX_COUNT :: 1426;
+XC_OBJECT_ENV_FIRST :: 1137376; XC_OBJECT_ENV_COUNT :: 7059666; XC_OBJECT_WORD :: 2525712;
+XC_OBJECT_ANCHOR :: [3]f32.[-18,2.84234619140625,-17.2];
+XC_OBJECT_BOUNDS :: [6]f32.[-0.517157,0,-0.509303,0.500935,0.930928,0.509939];
+XC_OBJECT_POS :: [3][2]f32.[[2]f32.[0,-6],[2]f32.[-4,-9],[2]f32.[4,-9]];

@@ -46,6 +46,7 @@
 #load "../../verse/experimental-biomes.coax" as biomes;
 #load "../../verse/experimental-aribeth.coax" as nwna;
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
+#load "experimental-objects.coax";
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 
 VERTEX_FLOATS :: 16;
@@ -468,7 +469,11 @@ lab_shadow_select :: (s: [] Lab) {
 }
 // The figures' instances for the frame (the objects store) and their draws; the count of draws.
 lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
-  if s[0].creator[0].on { n := cc.scene(s[0].creator[0],s[0].bodies[..],out); lab_shadow_select(s); return n; }
+  if s[0].creator[0].on {
+    n := cc.scene_reserved(s[0].creator[0],s[0].bodies[..],out,ifx s[0].creator[0].experimental then 1 else 0);
+    if s[0].creator[0].experimental {n=xc_objects_draw(s,out,n);}
+    lab_shadow_select(s); return n;
+  }
   if !s[0].started || s[0].view != VIEW_GLADE { s[0].bodies[0].draw_n = 0; s[0].shadow_n = 0; return 0; }
   c := figs.BdCam.{ex = s[0].eye.x, ey = s[0].eye.y, ez = s[0].eye.z, fx = s[0].fwd.x, fy = s[0].fwd.y, fz = s[0].fwd.z,
               rx = s[0].right.x, ry = s[0].right.y, rz = s[0].right.z, ux = s[0].up.x, uy = s[0].up.y, uz = s[0].up.z,
@@ -2045,7 +2050,7 @@ lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z);if s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until {w.link_flags=512;}return w;}
+  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z);if s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until {w.link_flags=512;}return w;}
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }

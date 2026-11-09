@@ -1,0 +1,105 @@
+#load "../../aethyr/rules/srd/object-cast.coax";
+
+#load "../../verse/experimental-object-mesh.coax";
+XcObject :: struct { rules:[1]RsObject; burn_at:int; }
+xc_objects_start :: (x:[]XcCombat) {
+  for i:0..<XC_OBJECTS { x[0].objects[i].rules[0]=rs_object("Supply crate",0,0,RS_OBJ_WOOD,RS_MEDIUM,true); }
+}
+xc_objects_ready :: (s:[]Lab)->bool {
+  return s[0].xc[0].started && s[0].creator[0].glade_first==XC_OBJECT_ENV_FIRST &&
+    s[0].creator[0].glade_count==XC_OBJECT_ENV_COUNT && s[0].creator[0].glade_word==XC_OBJECT_WORD;
+}
+xc_object_blocked :: (s:[]Lab,x:f32,z:f32,pad:f32)->bool {
+  if !xc_objects_ready(s) { return false; }
+  for i:0..<XC_OBJECTS {
+    if s[0].xc[0].objects[i].rules[0].destroyed { continue; }
+    p:=XC_OBJECT_POS[i]; b:=XC_OBJECT_BOUNDS;
+    if x>p[0]+b[0]-pad && x<p[0]+b[3]+pad && z>p[1]+b[2]-pad && z<p[1]+b[5]+pad { return true; }
+  }
+  return false;
+}
+xc_objects_walls :: (s:[]Lab,x:f32,z:f32) {
+  if !xc_objects_ready(s) { return; }
+  for i:0..<XC_OBJECTS {
+    if s[0].xc[0].objects[i].rules[0].destroyed { continue; }
+    p:=XC_OBJECT_POS[i]; if abs(p[0]-x)>5 || abs(p[1]-z)>5 { continue; }
+    village.ev_house_box(s[0].village_near[..],xmeadow.ExpSite.{x=p[0],z=p[1]},
+      xmeadow.exp_height(p[0],p[1])-xmeadow.exp_height(x,z),XC_OBJECT_BOUNDS);
+  }
+}
+xc_object_pick :: (s:[]Lab,fx:f32,fz:f32,reach:f32)->int {
+  if !xc_objects_ready(s) { return -1; }
+  cr:=s[0].creator[..]; best := -1; along:=reach+1;
+  for i:0..<XC_OBJECTS {
+    if s[0].xc[0].objects[i].rules[0].destroyed { continue; }
+    p:=XC_OBJECT_POS[i]; dx:=p[0]-cr[0].player_x; dz:=p[1]-cr[0].player_z;
+    a:=dx*fx+dz*fz; cross:=abs(dx*fz-dz*fx);
+    if a<0 || a>reach || a>=along || cross>0.6 || !xdungeon.dg_sight(cr[0].player_x,cr[0].player_z,p[0],p[1]) { continue; }
+    best=i; along=a;
+  }
+  return best;
+}
+xc_object_apply :: (b:[]RsBattle,seat:[]FbSeat,o:[]RsObject,a:FbAb)->bool? #effects(all) {
+  #transaction {
+    fb_seat_in(b,seat);
+    if a.conjure && b[0].c[0].flame_until<=b[0].clock {
+      if !rs_cast(b,0,SP_PRODUCE_FLAME,0,0,0,0) { return null; }
+    }
+    if !rs_cast_object(b,0,a.sp,o) { return null; }
+    fb_seat_out(b,seat);
+  }
+  return some(true);
+}
+xc_use_object :: (s:[]Lab,k:int,a:FbAb,i:int)->bool {
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..]; p:=XC_OBJECT_POS[i];
+  xc_sync_world(s);
+  o:=x[0].objects[i].rules[..];
+  // Keep physical placement in the existing action grid's coordinate frame.
+  old_x:=o[0].x; old_y:=o[0].y;
+  o[0].x=xc_square(p[0]-cr[0].player_x); o[0].y=xc_square(p[1]-cr[0].player_z);
+  me:=b[0].c[0..<1]; turn:[1]RsTurn; turn[0]=x[0].seat[0].turn;
+  saved:=rs_press_budget(me[0],turn[0]); was_open:=x[0].seat[0].open;
+  prepared:=rs_press_prepare(me,turn[..],b[0].press); x[0].seat[0].turn=turn[0]; x[0].seat[0].open=true;
+  hp:=o[0].hp; was_burning:=o[0].burning;
+  accepted:=false; switch xc_object_apply(b,x[0].seat[..],o,a) {case none {} case some(ok) {accepted=ok;}}
+  if !accepted {
+    o[0].x=old_x; o[0].y=old_y;
+    turn[0]=x[0].seat[0].turn; rs_press_restore(me,turn[..],saved); x[0].seat[0].turn=turn[0]; x[0].seat[0].open=was_open;
+    x[0].refused+=1; return false;
+  }
+  if o[0].burning && !was_burning { x[0].objects[i].burn_at=add_sat(b[0].rest_clock.ticks,6000000); }
+  x[0].cool_at=cr[0].clock; x[0].used=k; x[0].casts+=1;
+  lost:=hp-o[0].hp;
+  if lost>0 {xc_float_int(x,p[0],1.5,p[1],cr[0].clock,lost,false);}
+  if o[0].destroyed {fx_start_at(s,FXR_DUST,cr[0].clock,fxp_v(p[0],0.5,p[1]),fxp_v(p[0],0.5,p[1]),fxp_v(0.6,0.5,0.4),1,1);}
+  xc_look(s,a,-1,p[0],p[1]); xc_cast_sound(s,a); return true;
+}
+xc_objects_tick :: (s:[]Lab) {
+  if !xc_objects_ready(s) { return; }
+  x:=s[0].xc[..]; b:=x[0].b[..]; now:=b[0].rest_clock.ticks;
+  for i:0..<XC_OBJECTS {
+    while x[0].objects[i].rules[0].burning && !x[0].objects[i].rules[0].destroyed && x[0].objects[i].burn_at<=now {
+      damage:=rs_object_burn(b,x[0].objects[i].rules[..]);
+      old:=x[0].objects[i].burn_at; x[0].objects[i].burn_at=add_sat(old,6000000);
+      if x[0].objects[i].burn_at==old {x[0].objects[i].rules[0].burning=false;}
+    }
+  }
+}
+// One instanced mesh draw: each surviving crate has its own translated record.
+xc_objects_draw :: (s:[]Lab,out:[]f32,n:int)->int {
+  if !xc_objects_ready(s) {return n;}
+  live:=0;
+  for i:0..<XC_OBJECTS {
+    if s[0].xc[0].objects[i].rules[0].destroyed {continue;}
+    at:=(n+live)*24; if at+24>out.count {return n;}
+    for k:0..<24 {out[at+k]=0;}
+    p:=XC_OBJECT_POS[i]; out[at]=p[0]-XC_OBJECT_ANCHOR[0];out[at+1]=xmeadow.exp_height(p[0],p[1])-XC_OBJECT_ANCHOR[1];out[at+2]=p[1]-XC_OBJECT_ANCHOR[2];
+    out[at+7]=f32(XC_OBJECT_WORD);out[at+8]=1;out[at+17]=1;out[at+22]=1;out[at+15]=19;live+=1;
+  }
+  if live==0 {return n;}
+  d:=s[0].bodies[0].draws[..];d[n*4]=cast(u32)XC_OBJECT_MESH_FIRST;d[n*4+1]=cast(u32)XC_OBJECT_MESH_COUNT;d[n*4+2]=cast(u32)n;d[n*4+3]=cast(u32)live;
+  s[0].bodies[0].draw_n=n+1;return n+1;
+}
+xc_blocked :: (s:[]Lab,x:f32,z:f32)->bool {
+  return hostile.hostile_blocked(x,z) || xc_object_blocked(s,x,z,0.3);
+}
