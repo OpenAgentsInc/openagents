@@ -997,6 +997,8 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  // both on a dark plaque, so they read over the bright glade
  fw:=e2c_text_w(cast(string)buf[0..<m],13*k);gl:[32]u8;gw:=ifx s[0].golden || !s[0].q_ready then 0.0f32 else e2c_text_w(quality_label(s[0].q[..],gl[..]),13*k)+24*k;
  base:=e2_fps_clear(s,s[0].width-16*k-fw-14*k-gw,s[0].width-8*k,h-16*k);
+ // an open side-bar menu on a short page reaches over it: it steps aside under the menu
+ if e2k_on(s) && cc.eg_meets(eg_menu_cover(e2k_facts(s),e2k_side_geo(s),e2k_side_st(s)),cc.hud_box(s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k)) {return at;}
  p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k,k);
  n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,base);
  return cc.fps_draw(s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);

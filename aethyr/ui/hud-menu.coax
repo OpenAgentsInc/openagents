@@ -155,18 +155,24 @@ HUD_TIP_LINES :: 8;
 // realm's, so the realm measures it: adv holds each byte's advance in that role's face and size
 // (hud_text(t, HUD_TEXT_LABEL): its face, at cap times its scale). The tip wraps the line to the
 // room x0..x1 leaves and sizes the plaque to the lines, so no word comes out of it.
-hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, adv: [] f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) {
-  if line.count == 0 { return; }
+// The plaque a tip over anchor takes (hud_tip): empty for no line.
+hud_tip_box :: (line: string, adv: [] f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) -> HudPrim {
+  if line.count == 0 { return HudPrim.{}; }
   pad := 10 * k; at: [HUD_TIP_LINES] int; cnt: [HUD_TIP_LINES] int; wide: [HUD_TIP_LINES] f32;
-  lines := hud_tip_wrap(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]); if lines == 0 { return; }
+  lines := hud_tip_wrap(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]); if lines == 0 { return HudPrim.{}; }
   tw := 0.0f32; for q: 0..<lines { if wide[q] > tw { tw = wide[q]; } }
-  step := cap * 1.6; w := tw + 2 * pad; px := (anchor.x0 + anchor.x1 - w) * 0.5;
+  w := tw + 2 * pad; px := (anchor.x0 + anchor.x1 - w) * 0.5;
   if px < x0 { px = x0; } if px + w > x1 { px = x1 - w; }
-  y1 := anchor.y0 - 6 * k; b := hud_box(px, y1 - cap * 2.6 - f32(lines - 1) * step, px + w, y1);
+  y1 := anchor.y0 - 6 * k; return hud_box(px, y1 - cap * 2.6 - f32(lines - 1) * cap * 1.6, px + w, y1);
+}
+hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, adv: [] f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) {
+  b := hud_tip_box(line, adv, anchor, cap, x0, x1, k); if b.x1 <= b.x0 { return; }
+  pad := 10 * k; at: [HUD_TIP_LINES] int; cnt: [HUD_TIP_LINES] int; wide: [HUD_TIP_LINES] f32;
+  lines := hud_tip_wrap(line, adv, x1 - x0 - 2 * pad, at[..], cnt[..], wide[..]);
   hud_fill(l, b, 6 * k, hud_fade(t.frame_dark, 0.9), hud_fade(t.frame_dark, 1));
   hud_ring(l, b, 6 * k, 1 * k, hud_fade(t.frame_light, 0.7), hud_fade(t.frame_mid, 0.7));
   for q: 0..<lines {
-    hud_word_ink(ws, cast(string) line[at[q]..<at[q] + cnt[q]], px + pad, b.y0 + cap * 1.75 + f32(q) * step, cap, HUD_TEXT_LABEL, false, true, t.text);
+    hud_word_ink(ws, cast(string) line[at[q]..<at[q] + cnt[q]], b.x0 + pad, b.y0 + cap * 1.75 + f32(q) * cap * 1.6, cap, HUD_TEXT_LABEL, false, true, t.text);
   }
 }
 
@@ -207,7 +213,8 @@ hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, adv: [] 
   l: [1] HudList; ws: [1] HudWords; t := hud_tokens(HUD_FANTASY);
   anchor := hud_box(300, 700, 380, 744);
   hud_tip(l[..], ws[..], t, line, adv[..], anchor, 9, 12, 200, 1);
-  p := l[0].p[0]; #assert p.x0 >= 12 && p.x1 <= 200 && p.y1 <= 700 && ws[0].n == hud_tip_wrap(line, adv[..], 200 - 12 - 20, at[..], cnt[..], wide[..]) && ws[0].n >= 2;
+  p := l[0].p[0]; tb := hud_tip_box(line, adv[..], anchor, 9, 12, 200, 1); #assert tb.x0 == p.x0 && tb.y0 == p.y0 && tb.x1 == p.x1 && tb.y1 == p.y1;
+  #assert p.x0 >= 12 && p.x1 <= 200 && p.y1 <= 700 && ws[0].n == hud_tip_wrap(line, adv[..], 200 - 12 - 20, at[..], cnt[..], wide[..]) && ws[0].n >= 2;
   for q: 0..<ws[0].n { w := ws[0].w[q]; #assert w.x >= p.x0 && w.x + f32(w.len) * 10 <= p.x1 && w.y < p.y1 && w.y - w.cap > p.y0; }
 }
 #test "hud menu: labels keep their width; a short wide page gets fewer columns and a taller menu" {

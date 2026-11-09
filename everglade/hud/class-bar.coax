@@ -140,12 +140,34 @@ eg_menu_of :: (f: EgBarFacts, g: EgSideGeo, id: int) -> cc.HudMenu {
   for r: 0..<m { c := eg_menu_label(f, rows[r], b[..]); x := cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; if x > cw { cw = x; } }
   return cc.hud_menu(eg_side_box(g, j), m, cw, g.h, EG_MENU_HEAD * k, g.gap, EG_MENU_TOP * k, eg_side_top(g) - 12 * k, 8 * k, g.w - 8 * k);
 }
-// What the open menu covers: its panel and the room over it a row's tip takes; nothing when shut. A
-// short page's menu may reach the top, and the zone's map and plate step aside under it.
+// The tip the side bar shows for what the pointer is over: its line and what it sits over.
+EgTip :: struct { line: string; anchor: cc.HudPrim; }
+eg_side_tip_now :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState) -> EgTip {
+  p := EgTip.{};
+  if st.menu >= 0 && eg_side_find(g, st.menu) >= 0 {
+    rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, st.menu, rows[..]);
+    if st.menu_hover >= 0 && st.menu_hover < m { p.line = eg_menu_tip(f, rows[st.menu_hover]); p.anchor = eg_menu_of(f, g, st.menu).panel; }
+  } else if st.side_hover >= 0 && st.side_hover < g.n {
+    wd := g.wd; p.line = eg_side_tip(f, g.ids[st.side_hover]); p.anchor = cc.hud_side_tip_anchor(wd[..], g.n, st.side_hover, g.x0, g.x1, g.y1, g.h, g.gap, g.k);
+  }
+  return p;
+}
+// A tip's plaque, its line measured as it is set: the LABEL role's face, at its scale.
+eg_tip_box :: (g: EgSideGeo, tp: EgTip, adv: [] f32) -> cc.HudPrim {
+  k := g.k; tc := EG_TIP_CAP * k; role := cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_LABEL);
+  return cc.hud_tip_box(tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv), tp.anchor, tc, 8 * k, g.w - 8 * k, k);
+}
+// What the side bar's open menu and its tip cover above the bar; nothing when both are shut. A short
+// page's menu may reach the top, and what the zone draws there steps aside under it (eg_world).
 eg_menu_cover :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState) -> cc.HudPrim {
-  if st.menu < 0 || eg_side_find(g, st.menu) < 0 { return cc.HudPrim.{}; }
-  p := eg_menu_of(f, g, st.menu).panel; if !(p.x1 > p.x0) { return p; }
-  return cc.hud_box(p.x0, p.y0 - 40 * g.k, p.x1, p.y1);
+  c := cc.HudPrim.{};
+  if st.menu >= 0 && eg_side_find(g, st.menu) >= 0 { c = eg_menu_of(f, g, st.menu).panel; }
+  adv: [256] f32; b := eg_tip_box(g, eg_side_tip_now(f, g, st), adv[..]);
+  if b.x1 > b.x0 {
+    if !(c.x1 > c.x0) { return b; }
+    if b.x0 < c.x0 { c.x0 = b.x0; } if b.y0 < c.y0 { c.y0 = b.y0; } if b.x1 > c.x1 { c.x1 = b.x1; } if b.y1 > c.y1 { c.y1 = b.y1; }
+  }
+  return c;
 }
 // What a press did: taken (the side bar had it), the action for the room (0 none), and the bar's state.
 EgPress :: struct { taken: bool; act: int; st: EgSideState; }
@@ -182,18 +204,13 @@ eg_side_draw :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: 
   bufs: [EG_SIDE_N * 48] u8; labels: [EG_SIDE_N] string; lit: [EG_SIDE_N] bool;
   for i: 0..<g.n { c := eg_side_label(f, g.ids[i], bufs[i * 48..<i * 48 + 48]); labels[i] = cast(string) bufs[i * 48..<i * 48 + c]; lit[i] = st.menu == g.ids[i] || st.side_hover == i; }
   wd := g.wd; cc.hud_side_draw(l[..], ws[..], t, wd[..], labels[..], lit[..], g.n, g.x0, g.x1, g.y1, g.h, g.gap, cap, k);
-  tip := ""; anchor := cc.HudPrim.{};
   if st.menu >= 0 && eg_side_find(g, st.menu) >= 0 {
     rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, st.menu, rows[..]); mb: [EG_MENU_ROWS * 32] u8; ml: [EG_MENU_ROWS] string;
     for r: 0..<m { c := eg_menu_label(f, rows[r], mb[r * 32..<r * 32 + 32]); ml[r] = cast(string) mb[r * 32..<r * 32 + c]; }
-    menu := eg_menu_of(f, g, st.menu);
-    cc.hud_menu_draw(l[..], ws[..], t, menu, eg_menu_title(f, st.menu), ml[..], m, st.menu_hover, cap, k);
-    if st.menu_hover >= 0 && st.menu_hover < m { tip = eg_menu_tip(f, rows[st.menu_hover]); anchor = menu.panel; }
-  } else if st.side_hover >= 0 && st.side_hover < g.n {
-    tip = eg_side_tip(f, g.ids[st.side_hover]); anchor = cc.hud_side_tip_anchor(wd[..], g.n, st.side_hover, g.x0, g.x1, g.y1, g.h, g.gap, k);
+    cc.hud_menu_draw(l[..], ws[..], t, eg_menu_of(f, g, st.menu), eg_menu_title(f, st.menu), ml[..], m, st.menu_hover, cap, k);
   }
   // the tip's line measured as it is set: the LABEL role's face, at its scale
-  tc := EG_TIP_CAP * k; role := cc.hud_text(t, cc.HUD_TEXT_LABEL); adv: [256] f32;
-  cc.hud_tip(l[..], ws[..], t, tip, cc.face_advances(tip, tc * role.scale, role.face, adv[..]), anchor, tc, 8 * k, g.w - 8 * k, k);
+  tp := eg_side_tip_now(f, g, st); tc := EG_TIP_CAP * k; role := cc.hud_text(t, cc.HUD_TEXT_LABEL); adv: [256] f32;
+  cc.hud_tip(l[..], ws[..], t, tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv[..]), tp.anchor, tc, 8 * k, g.w - 8 * k, k);
   return cc.hud_draw(out, at, l[..], ws[..], 1, k);
 }
