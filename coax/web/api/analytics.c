@@ -243,7 +243,42 @@ static void realm_visits(const request *q) {
   api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, cached, cached_n);
 }
 
+// GET /api/analytics/team?t=TOKEN on another host this site serves (everglade.world): an admin's
+// one-use team link (admin.c team_link) marks this browser as our team here (oa_team), as logging in
+// marks it on openagents.com, and goes on to the host's front page. The link is good for ten minutes,
+// once, on the host it was made for.
+static void team_mark(const request *q) {
+  char t[64], host[256];
+  api_query(q, "t", t, sizeof t);
+  api_header(q, "Host", host, sizeof host);
+  bool shaped = strlen(t) == 48;
+  for (const char *c = t; *c && shaped; c++) shaped = (*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f');
+  PGconn *db = shaped ? api_db() : NULL;
+  int marked = 0;
+  if (db) {
+    char now[32]; snprintf(now, sizeof now, "%lld", (long long)api_now_ms());
+    const char *v[3] = {t, host, now};
+    PGresult *r = PQexecParams(db, "UPDATE analytics.team_links SET used_ms = $3::bigint "
+                                   "WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') AND host = $2 "
+                                   "AND used_ms IS NULL AND expires_ms > $3::bigint", 3, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_COMMAND_OK) marked = atoi(PQcmdTuples(r));
+    else api_log("team mark: %s", PQerrorMessage(db));
+    PQclear(r);
+  }
+  if (marked != 1) {
+    const char *say = "This link has been used or has expired. Open a new one from openagents.com while logged in as an admin.\n";
+    api_respond(q->fd, 400, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", say, strlen(say));
+    return;
+  }
+  api_respond(q->fd, 303, "text/plain", "Location: /\r\nCache-Control: no-store\r\n" TEAM_COOKIE, "", 0);
+}
+
 bool analytics_route(const request *q) {
+  if (!strcmp(q->path, "/api/analytics/team")) {
+    if (strcmp(q->method, "GET")) api_json(q->fd, 405, "{\"error\":\"GET\"}");
+    else team_mark(q);
+    return true;
+  }
   if (!strcmp(q->path, "/api/analytics/realms")) {
     if (strcmp(q->method, "GET")) api_json(q->fd, 405, "{\"error\":\"GET\"}");
     else realm_visits(q);

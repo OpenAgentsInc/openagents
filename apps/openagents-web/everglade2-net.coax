@@ -15,6 +15,7 @@
 #load "everglade-net-core.coax";
 #load "player-name.coax";
 #load "class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
+#load "analytics.coax";   // fact_of; and the page's Track (everglade2-track.coax)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -94,6 +95,20 @@ E2Net :: struct {
   rest_known: bool; rest_code: int; rest_dice: int; rest_seq: int; rest_sent: int; rest_refused: int; rest_refused_at: int = -100000;
   // your bar as the room's rules hold it (b N V ..., #13046): known once this socket's room has said it
   kit_known: bool; kit: [1] WireKit;
+  // What you did and what befell you, counted as the room says it, for analytics (everglade2-track.coax
+  // reads the counts each frame): by foe, 0 a wolf, 1 a goblin, 2 the guard (E2N_FOE_*), your blows that
+  // landed, theirs that landed on you, the ones that fell after you hurt them; your XP gained and the
+  // level the room last raised you to (e xp, e level); your last cast's slot; who last hurt you.
+  hit_n: [3] int; hurt_n: [3] int; fell_n: [3] int; xp_n: int; level_got: int; cast_slot: int = -1; hurt_by: int = -1;
+  mine: [E2N_MONS + 1] bool;   // a monster (or, last, the guard) you hurt and that hasn't fallen yet
+}
+E2N_FOE_WOLF :: 0; E2N_FOE_GOBLIN :: 1; E2N_FOE_GUARD :: 2;
+E2N_FOE_NAMES :: [3] string.["wolf", "goblin", "guard"];
+// Monster m's kind as the room last said it (0 a wolf, 1 a goblin).
+e2n_mon_kind :: (n: [] E2Net, m: int) -> int {
+  if m < 0 || m >= E2N_MONS || n[0].mon_n[m] == 0 { return E2N_FOE_WOLF; }
+  k := n[0].mon_rows[m * E2N_MON_ROWS + n[0].mon_n[m] - 1].kind;
+  return ifx k == 1 then E2N_FOE_GOBLIN else E2N_FOE_WOLF;
 }
 
 e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >= 0; }
@@ -139,16 +154,6 @@ e2n_facts :: (n: [] E2Net, facts: string, alone: bool) {
   n[0].account = fact_of(facts, "account").count > 0;
   wall := net_number(fact_of(facts, "now")); nav := net_number(fact_of(facts, "nav"));
   if wall > 0 && nav >= 0 && n[0].synced == 0 { n[0].offset = wall - nav; }
-}
-// A page fact's value: the line "KEY=VALUE".
-fact_of :: (facts: string, key: string) -> string {
-  at := 0;
-  while at < facts.count {
-    e := at; while e < facts.count && facts[e] != '\n' { e += 1; }
-    if e - at > key.count && facts[at..<at + key.count] == key && facts[at + key.count] == '=' { return facts[at + key.count + 1..<e]; }
-    at = e + 1;
-  }
-  return "";
 }
 // The rooms Everglade II plays in: its realm's instances, and its checks' (the room's eg_e2_code).
 e2n_code_ok :: (code: string) -> bool {
@@ -477,6 +482,14 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     en[0].name_n = nm;
     return;
   }
+  if c == 'e' && (wire_is(t, "e xp") || wire_is(t, "e level")) {   // aimed at your seat: counted (everglade2-track.coax)
+    xp := wire_is(t, "e xp");
+    r[0] = wire_rd(t, ifx xp then 4 else 7);
+    ss := wire_num(t, r[..]); v := wire_num(t, r[..]);
+    if !r[0].ok || ss != n[0].seat || v < 0 || v > 1000000 { return; }
+    if xp { n[0].xp_n += v; } else { n[0].level_got = v; }
+    return;
+  }
   if c == 'e' && wire_is(t, "e cast") {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);
@@ -635,7 +648,7 @@ e2n_cast :: (n: [] E2Net, slot: int, ax: f32, ay: f32, az: f32) -> bool {
   if !e2n_open(n) { return false; }
   n[0].cast_said="";
   n[0].cast_seq = n[0].seq + 1000000 + n[0].cast_sent;   // apart from the inputs' numbers
-  n[0].cast_sent += 1;
+  n[0].cast_sent += 1; n[0].cast_slot = slot;
   e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az}));
   return true;
 }
@@ -687,6 +700,7 @@ e2n_guard_row :: (n:[]E2Net,t:string) {
   hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]); swing:=wire_num(t,rd[..]); foe:=wire_num(t,rd[..]);
   if !rd[0].ok || wire_more(t,rd[..]) || tick<=n[0].guard_tick || life<0 || state<0 || state>4 || hp<0 || max<hp ||
     x < -200000 || x > 200000 || z < -650000 || z > 200000 || yaw < -7000 || yaw > 7000 || foe < -1 || foe >= 64 { return; }
+  if state==3 && (n[0].guard_n==0 || n[0].guard_rows[n[0].guard_n-1].state!=3) && n[0].mine[E2N_MONS] { n[0].fell_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=false; }
   row:=E2nGuard.{t=e2n_tick_t(n,tick),life=life,state=state,x=f32(x)/1000,z=f32(z)/1000,yaw=f32(yaw)/1000,hp=hp,max=max,swing=ifx swing>=0 then e2n_tick_t(n,swing) else -1,foe=foe};
   if n[0].guard_n==E2N_GUARD_ROWS { for q:1..<E2N_GUARD_ROWS { n[0].guard_rows[q-1]=n[0].guard_rows[q]; } n[0].guard_n-=1; }
   n[0].guard_rows[n[0].guard_n]=row; n[0].guard_n+=1; n[0].guard_tick=tick;
@@ -697,6 +711,8 @@ e2n_guard_hit :: (n:[]E2Net,t:string) {
   rd:=[1]WireRd.[wire_rd(t,2)];
   tick:=wire_num(t,rd[..]); kind:=wire_num(t,rd[..]); seat:=wire_num(t,rd[..]); amount:=wire_num(t,rd[..]);
   if !rd[0].ok || wire_more(t,rd[..]) || kind<1 || kind>2 || seat< -1 || seat>=64 || amount<0 || amount>999 { return; }
+  if seat==n[0].seat && amount>0 && kind==1 { n[0].hit_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=true; }
+  if seat==n[0].seat && amount>0 && kind==2 { n[0].hurt_n[E2N_FOE_GUARD]+=1; n[0].hurt_by=E2N_FOE_GUARD; }
   for h:0..<E2N_GUARD_HITS { if !n[0].guard_hits[h].live { n[0].guard_hits[h]=E2nGuardHit.{live=true,t=e2n_tick_t(n,tick),kind=kind,seat=seat,amount=amount}; return; } }
 }
 // Where the guard is at the room's time rt (ms): between the two words round it, else the nearest.
@@ -774,6 +790,10 @@ e2n_mon_hit :: (n:[]E2Net,t:string) {
     if fly<0 || fly>5000 { return; }
   }
   if !rd[0].ok || wire_more(t,rd[..]) || kind<1 || kind>4 || m<0 || m>=E2N_MONS || seat< -1 || seat>=64 || amount<0 || amount>999 { return; }
+  foe:=e2n_mon_kind(n,m);
+  if kind==1 && seat==n[0].seat && amount>0 { n[0].hurt_n[foe]+=1; n[0].hurt_by=foe; }
+  if kind==2 && seat==n[0].seat && amount>0 { n[0].hit_n[foe]+=1; n[0].mine[m]=true; }
+  if kind==4 && n[0].mine[m] { n[0].fell_n[foe]+=1; n[0].mine[m]=false; }
   for h:0..<E2N_MON_HITS { if !n[0].mon_hits[h].live { n[0].mon_hits[h]=e; return; } }
 }
 // Monster m at the room's time rt (ms): between its two words round it, else the nearest; state 4 (gone)

@@ -1,0 +1,222 @@
+// What a player does in Everglade (Everglade II: everglade.world/play, openagents.com/worlds/everglade2
+// and Character Create), as analytics.coax events (docs/analytics/2026-11-09-everglade-analytics-audit.md
+// lists each with the admin view that counts it). The face (everglade2-face.c) keeps one E2Seen and calls
+// e2_track once a frame after the world's frame; this compares the world with what it saw last frame,
+// so nothing in the game itself changes for analytics. No words, no names: a name is only whether the
+// API took it, an id is the game's own name for a thing (a field, a class, a spell's picture, a foe).
+//
+//   load-world    the world first drawn (ms since the navigation), once
+//   portal-shown  a page opened out of sight (under everglade.world's front door or the homepage's
+//                 portal) shown: PLAY NOW or "Create your character" pressed (ms; id door or lander)
+//   create-open   Character Create on screen (id portal or direct), once
+//   create-pick   a wardrobe field changed (id: body, clothes, hood, ... eye-color), once a field
+//   create-class  a class picked (id: druid ...), once a class; create-level (n), once a level
+//   create-name   a name sent and answered (ok true or false; never the name)
+//   create-done   USE IN EVERGLADE (id the class, n the level, s seconds in Character Create)
+//   run-end       the run out of the glade over, the keys yours (s)
+//   spawn         in Everglade, yours to move (id create or kept: a returning player's kept character)
+//   room-join     the room seated you (ms); fail room (a lost room), fail version, fail elsewhere
+//   death         you fell (id: what last hurt you: wolf, goblin, guard, or other)
+//   level-up      the room raised your level (n)
+//   fail create-save   Character Create's record wasn't kept
+// counted in the 30 s tally: cast_<spell> (your casts the room took), refused (casts it turned down),
+// bow (arrows loosed), hit_<foe> and hurt_<foe> (blows that landed, by you and on you), kill_<foe>
+// (foes that fell after you hurt them), xp (XP gained).
+E2Seen :: struct {
+  started: bool; drawn: bool; spawned: bool;
+  hidden: bool; shown: bool;          // opened out of sight through a portal (?via=portal); shown since
+  open: bool; walking: bool; handed: bool; naming: bool; failed: bool;
+  open_at: f64;                       // s (the Track's clock) Character Create came on screen
+  run_at: f64;
+  rev: int; klass: int; level: int;
+  sat: bool; state: int; stale: bool; elsewhere: bool;
+  casts: int; refused: int; looses: int; xp: int; level_got: int;
+  hit: [3] int; hurt: [3] int; fell: [3] int;
+  hp: int = -1;
+}
+
+E2T_FIELDS :: [13] string.["body", "clothes", "hood", "colorway", "cloth-dye", "skin-tone", "hair-style", "hair-color", "beard", "animation", "modular-part", "wear-part", "eye-color"];
+E2T_CLASSES :: [12] string.["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"];
+e2t_class :: (k: int) -> string { return ifx k >= 0 && k < 12 then E2T_CLASSES[k] else "druid"; }
+e2t_level_id :: (l: int) -> string { return ifx l >= 1 && l <= 6 then E2C_LEVEL_NAMES[l - 1] else "1"; }
+
+// The spell's picture name (its art: "ice-knife") for a wire slot, else "other".
+e2t_spell :: (slot: int) -> string {
+  if slot < 0 { return "other"; }
+  e := xk_entry(xk_slot_class(slot), slot);
+  if !e.ok || e.ab.art.count == 0 { return "other"; }
+  return e.ab.art;
+}
+
+// Once a frame. drawn: the world drew its scene this frame.
+e2_track :: (s: [] E2, w: [] E2Seen, t: [] Track, drawn: bool) #export_c #effects(all) {
+  if !t[0].ready { return; }
+  c := s[0].cz[0]; cr := s[0].creator[0]; n := s[0].net[..];
+  if !w[0].started {
+    w[0].started = true; w[0].hidden = c.hidden && c.arriving; w[0].rev = cr.revision; w[0].klass = cr.klass; w[0].level = cr.level;   // a background tab is only hidden
+    w[0].walking = c.walking; w[0].handed = c.handed; w[0].state = n[0].state;
+  }
+  // the world first drawn
+  if drawn && !w[0].drawn {
+    w[0].drawn = true;
+    if track_begin(t, "load-world") { track_num(t, "ms", track_now_ms(t)); track_bool(t, "mobile", t[0].mobile); tw_world(t); track_end(t); }
+  }
+  // shown after opening out of sight: the front door's PLAY NOW, the homepage portal's button
+  if w[0].hidden && !w[0].shown && !c.hidden {
+    w[0].shown = true;
+    if track_begin(t, "portal-shown") {
+      track_str(t, "id", ifx s[0].play then "door" else "lander"); track_num(t, "ms", track_now_ms(t)); tw_world(t); track_end(t);
+    }
+  }
+  // Character Create
+  if c.on && !c.hidden && !w[0].open {
+    w[0].open = true; w[0].open_at = t[0].t;
+    _ := track_once(t, "create-open", ifx w[0].hidden then "portal" else "direct");
+  }
+  if c.on && !c.walking && cr.revision != w[0].rev {
+    f := cr.focused;
+    if f >= 0 && f < 13 { _ := track_once(t, "create-pick", E2T_FIELDS[f]); }
+    if cr.klass != w[0].klass { _ := track_once(t, "create-class", e2t_class(cr.klass)); }
+    if cr.level != w[0].level { _ := track_once(t, "create-level", e2t_level_id(cr.level)); }
+  }
+  w[0].rev = cr.revision; w[0].klass = cr.klass; w[0].level = cr.level;
+  if w[0].naming && !c.naming {
+    if track_begin(t, "create-name") { track_bool(t, "ok", c.said_n == 0); tw_world(t); track_end(t); }
+  }
+  w[0].naming = c.naming;
+  if c.failed && !w[0].failed { track_fail(t, "create-save", 0); }
+  w[0].failed = c.failed;
+  if c.walking && !w[0].walking {
+    w[0].run_at = t[0].t;
+    if track_begin(t, "create-done") {
+      track_str(t, "id", e2t_class(cr.klass)); track_int(t, "n", e2c_level_of(s));
+      if w[0].open { track_num(t, "s", t[0].t - w[0].open_at); }
+      tw_world(t); track_end(t);
+    }
+  }
+  w[0].walking = c.walking;
+  if c.handed && !w[0].handed {
+    if track_begin(t, "run-end") { track_num(t, "s", t[0].t - w[0].run_at); tw_world(t); track_end(t); }
+  }
+  w[0].handed = c.handed;
+  // in Everglade, yours to move
+  if !w[0].spawned && w[0].drawn && ((c.on && c.handed) || (!c.on && s[0].placed && !s[0].staged)) {
+    w[0].spawned = true;
+    if track_begin(t, "spawn") {
+      track_str(t, "id", ifx c.on then "create" else "kept"); track_str(t, "class", e2t_class(n[0].klass)); track_int(t, "n", n[0].level);
+      track_num(t, "ms", track_now_ms(t)); tw_world(t); track_end(t);
+    }
+  }
+  // the room
+  if n[0].sat && !w[0].sat { if track_begin(t, "room-join") { track_num(t, "ms", track_now_ms(t)); tw_world(t); track_end(t); } }
+  w[0].sat = n[0].sat;
+  if n[0].state == E2N_DOWN && w[0].state != E2N_DOWN && w[0].state != E2N_OFF { track_fail(t, "room", n[0].tries); }
+  w[0].state = n[0].state;
+  if n[0].stale && !w[0].stale { track_fail(t, "version", 0); }
+  w[0].stale = n[0].stale;
+  if n[0].elsewhere && !w[0].elsewhere { track_fail(t, "elsewhere", 0); }
+  w[0].elsewhere = n[0].elsewhere;
+  // the fight: casts, the bow, blows, falls, XP, levels and your deaths
+  if n[0].cast_sent > w[0].casts { track_tally_n(t, "cast", e2t_spell(n[0].cast_slot), n[0].cast_sent - w[0].casts); }
+  w[0].casts = n[0].cast_sent;
+  if n[0].cast_refused > w[0].refused { track_tally_n(t, "refused", "", n[0].cast_refused - w[0].refused); }
+  w[0].refused = n[0].cast_refused;
+  if s[0].mouse[0].looses > w[0].looses { track_tally_n(t, "bow", "", s[0].mouse[0].looses - w[0].looses); }
+  w[0].looses = s[0].mouse[0].looses;
+  for f: 0..<3 {
+    if n[0].hit_n[f] > w[0].hit[f] { track_tally_n(t, "hit", E2N_FOE_NAMES[f], n[0].hit_n[f] - w[0].hit[f]); }
+    if n[0].hurt_n[f] > w[0].hurt[f] { track_tally_n(t, "hurt", E2N_FOE_NAMES[f], n[0].hurt_n[f] - w[0].hurt[f]); }
+    if n[0].fell_n[f] > w[0].fell[f] { track_tally_n(t, "kill", E2N_FOE_NAMES[f], n[0].fell_n[f] - w[0].fell[f]); }
+    w[0].hit[f] = n[0].hit_n[f]; w[0].hurt[f] = n[0].hurt_n[f]; w[0].fell[f] = n[0].fell_n[f];
+  }
+  if n[0].xp_n > w[0].xp { track_tally_n(t, "xp", "", n[0].xp_n - w[0].xp); }
+  w[0].xp = n[0].xp_n;
+  if n[0].level_got > w[0].level_got && w[0].level_got > 0 { track_act_n(t, "level-up", "", n[0].level_got); }
+  if n[0].level_got > w[0].level_got { w[0].level_got = n[0].level_got; }
+  v := e2n_vitals(n);
+  if v.id >= 0 {
+    if v.hp == 0 && w[0].hp > 0 { track_act(t, "death", ifx n[0].hurt_by >= 0 then E2N_FOE_NAMES[n[0].hurt_by] else "other"); }
+    w[0].hp = v.hp;
+  }
+}
+
+// Keys and the pointer: in Character Create every press is recorded, as on every page (click, key); in
+// the world a click or an action key is a cast or the bar, which the tally counts by what it did, so only
+// walking is counted there (alive's walked), never each press. A key into NAME is never recorded.
+e2_track_key :: (s: [] E2, t: [] Track, key: int) #export_c #effects(all) {
+  typing := e2_wants_text(s);
+  if e2c_creating(s) || typing || track_walk_key(key) { track_key(t, key, typing); return; }
+  track_key(t, key, true);   // held, so its repeat isn't walking either; not recorded
+}
+e2_track_pointer :: (s: [] E2, t: [] Track, x: f32, y: f32, phase: int, kind: int) #export_c #effects(all) {
+  if e2c_creating(s) { track_pointer(t, x, y, phase, kind, ""); return; }
+  if phase == 0 && kind != 0 && t[0].ready { t[0].walked += 1; }   // a thumb on the world walks, as the playtest counts it
+}
+
+#test "Everglade's flow as events: Character Create's steps, the run, the spawn and the fight" #steps 2000000000 {
+  s: [1] E2; w: [1] E2Seen; t: [1] Track;
+  track_init(t[..], "everglade2");
+  facts := "tab=0123456789abcdef\nfresh=1\nvisitor=ab12cd34\nnow=1000\nnav=0\nurl=https://everglade.world/play?via=portal";
+  #assert track_message(t[..], HOST_PAGE, facts);
+  e2_message(s[..], E2_HOST_PAGE, facts);
+  e2_message(s[..], E2_HOST_HIDDEN, "");
+  #assert track_message(t[..], HOST_HIDDEN, "");
+  track_sent(t[..]); t[0].buf_n = 0; t[0].count = 0;
+  track_world(t[..], "everglade2");
+  e2_track(s[..], w[..], t[..], true);
+  sent := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(sent, "\"ev\":\"load-world\"") && !text_has(sent, "portal-shown") && !text_has(sent, "create-open");
+  // PLAY NOW: shown, and Character Create on screen
+  e2_message(s[..], E2_HOST_SHOWN, "now=2000\n");
+  track_frame(t[..], 1.0, 1440, 900, 1);
+  e2_track(s[..], w[..], t[..], true);
+  sent = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(sent, "\"ev\":\"portal-shown\",\"page\":\"everglade2\",\"ct\":2000,\"p\":{\"id\":\"door\"") && text_has(sent, "\"ev\":\"create-open\",\"page\":\"everglade2\",\"ct\":2000,\"p\":{\"id\":\"portal\"");
+  // a field twice, a class, the level: each once
+  e2c_change(s[..], 6, 1); e2_track(s[..], w[..], t[..], true);
+  e2c_change(s[..], 6, 1); e2_track(s[..], w[..], t[..], true);
+  e2c_change(s[..], E2C_CLASS, 1); e2_track(s[..], w[..], t[..], true);
+  e2c_change(s[..], E2C_LEVEL, 1); e2_track(s[..], w[..], t[..], true);
+  sent = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(sent, "\"p\":{\"id\":\"hair-style\",\"world\":\"everglade2\"}") && text_has(sent, "\"ev\":\"create-class\"") && text_has(sent, "\"id\":\"fighter\"");
+  #assert text_has(sent, "\"ev\":\"create-level\"") && text_has(sent, "\"id\":\"2\"");
+  hs := 0; i := 0; while i + 10 <= sent.count { if cast(string) sent[i..<i + 10] == "hair-style" { hs += 1; } i += 1; }
+  #assert hs == 1;
+  // a name sent and turned down: only whether it was taken
+  s[0].cz[0].naming = true; e2_track(s[..], w[..], t[..], true);
+  s[0].cz[0].naming = false; s[0].cz[0].said_n = 4; e2_track(s[..], w[..], t[..], true);
+  #assert text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"ev\":\"create-name\",\"page\":\"everglade2\",\"ct\":2000,\"p\":{\"ok\":false");
+  // USE IN EVERGLADE, the run, the spawn
+  track_frame(t[..], 4.0, 1440, 900, 1);
+  e2c_walk(s[..]); e2_track(s[..], w[..], t[..], true);
+  sent = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(sent, "\"ev\":\"create-done\"") && text_has(sent, "\"id\":\"fighter\",\"n\":2,\"s\":4");
+  track_frame(t[..], 2.0, 1440, 900, 1);
+  s[0].cz[0].handed = true; e2_track(s[..], w[..], t[..], true);
+  sent = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(sent, "\"ev\":\"run-end\"") && text_has(sent, "\"p\":{\"s\":2,") && text_has(sent, "\"ev\":\"spawn\"") && text_has(sent, "\"id\":\"create\"");
+  // the fight, counted in the tally; a death says what last hurt you
+  n := s[0].net[..];
+  n[0].state = E2N_OPEN; n[0].seat = 0;
+  e2n_mon_hit(n, "h3 90 2 3 0 4");          // your blow at monster 3 (a wolf: no row yet)
+  e2n_mon_hit(n, "h3 91 1 3 0 2");          // its bite on you
+  e2n_mon_hit(n, "h3 92 4 3 -1 0");         // it fell
+  e2n_mon_hit(n, "h3 93 4 5 -1 0");         // one you never hurt
+  n[0].cast_sent = 2; n[0].cast_slot = -1; s[0].mouse[0].looses = 1; n[0].xp_n = 25;
+  e2_track(s[..], w[..], t[..], true);
+  track_tally_send(t[..]);
+  sent = cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(sent, "\"ev\":\"tally\"") && text_has(sent, "\"cast_other\":2") && text_has(sent, "\"bow\":1");
+  #assert text_has(sent, "\"hit_wolf\":1") && text_has(sent, "\"hurt_wolf\":1") && text_has(sent, "\"kill_wolf\":1") && text_has(sent, "\"xp\":25");
+  #assert n[0].fell_n[E2N_FOE_WOLF] == 1;
+}
+
+#test "the room's XP and level-ups for your seat are counted, another seat's are not" #steps 200000000 {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].seat = 2;
+  d: WireD;
+  e2n_entry(n[..], "e xp 2 50", d); e2n_entry(n[..], "e xp 3 70", d); e2n_entry(n[..], "e level 2 2", d);
+  #assert n[0].xp_n == 50 && n[0].level_got == 2;
+  e2n_guard_hit(n[..], "g3 10 1 2 6");      // your blow at the guard
+  e2n_guard_row(n[..], "g2 11 1 3 0 -20000 0 0 11 0 -1");   // he is down
+  #assert n[0].hit_n[E2N_FOE_GUARD] == 1 && n[0].fell_n[E2N_FOE_GUARD] == 1;
+}

@@ -22,6 +22,7 @@ autos = lambda sid: sql(f"select coalesce(string_agg(coalesce(auto, '-'), ',' or
 
 # (1) the browser an admin logs in from
 def login_cookies(key):
+    __import__("time").sleep(1.1)   # a signed login in the same second as an earlier file's is a replay
     auth = subprocess.run([os.environ["SIGN"], "--key", key, "GET", API + "/api/admin/login"], capture_output=True, text=True, check=True).stdout.strip()
     url = API + "/api/admin/login?auth=" + urllib.parse.quote(auth, safe="")
     try:

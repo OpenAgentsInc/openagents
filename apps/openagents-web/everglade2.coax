@@ -35,6 +35,7 @@
 #load "everglade2-mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws
 #load "class-menu.coax";        // Experimental's CLASSES column, for admin mode
 #load "everglade2-admin.coax";  // admin mode: dev builds on this machine only, every call below in #if BUILD_DEBUG
+#load "everglade2-track.coax";  // what players do, as analytics.coax events (the face keeps the Track)
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 16384;     // strokes: the frame rate in the bottom right corner

@@ -106,7 +106,9 @@ fivelab 2725000
 # The wolves and goblins (everglade2-monsters.coax: their frames, fades, arrows, plates, marks and wedge; the guard's
 # Sword and a swing for each of his attacks), on main with the mouse's cast and bow and admin mode (b089816462):
 # 793,466 bytes measured; about 2.7% headroom.
-everglade2 815000
+# Analytics (everglade2-track.coax and the Track, docs/analytics/2026-11-09-everglade-analytics-audit.md) on main with
+# #13071's GFX control: 818,675 bytes measured on macOS; about 2.8% headroom.
+everglade2 842000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1750000

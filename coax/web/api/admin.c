@@ -12,10 +12,15 @@
 //                                              (?next=chat: to /chat; the cookie opens /api/chat too);
 //                                              and oa_team=1 (Path=/, two years): the team's browser
 //   GET /api/admin/logout                      ends that session
-//   GET /api/admin/analytics?view=overview|sessions|session&days=N&space=web|kiki|dev|all&auto=1&team=1&sid=S
+//   GET /api/admin/analytics?view=overview|sessions|everglade|session&days=N&space=web|kiki|dev|all&auto=1&team=1&sid=S
 //                                              the reports, for admin.coax (our team's own testing,
 //                                              auto = 'team', left out unless team=1); a cookie or an
 //                                              Authorization: Nostr header for this exact URL
+//   GET /api/admin/team-link?host=everglade.world   marks this browser as our team on that host too
+//                                              (its cookies are its own, so the oa_team cookie
+//                                              set here doesn't reach it): a one-use link, good for
+//                                              ten minutes, to that host's /api/analytics/team
+//                                              (analytics.c), which sets oa_team there
 //   GET /api/admin/rooms                       the rooms' vitals (/admin/rooms): each shard's numbers
 //                                              over the last 10 minutes and its seats (#12791)
 //   GET /api/admin/reports, POST .../<kind>/<ref>/hide|keep|restore
@@ -304,12 +309,12 @@ static void section(out_buf *o, PGconn *db, const char *title, const char *flags
 #define REALM_ACT "(ev NOT IN (" REALM_NOISE ") AND ev NOT LIKE 'load-%')"
 #define REALM_PAGES \
   "'haunt', 'sandbox', 'the-grid', 'everglade', 'dead-gears', 'ice-cream-man', 'fairy-forest', 'hecates-cemetery', " \
-  "'realm-made', 'realm', 'realm-builder', 'galaxy', 'landing', 'home', 'app'"
+  "'realm-made', 'realm', 'realm-builder', 'galaxy', 'landing', 'home', 'app', 'everglade2'"
 static const struct { const char *page, *title; } realm_cards[] = {
   {"home", "HOMEPAGE"}, {"galaxy", "GALAXY"}, {"haunt", "HAUNTED HOUSE"}, {"sandbox", "SANDBOX"}, {"the-grid", "THE GRID"},
   {"everglade", "EVERGLADE"}, {"dead-gears", "DEAD GEARS"}, {"ice-cream-man", "ICE CREAM MAN"}, {"fairy-forest", "FAIRY FOREST"},
   {"hecates-cemetery", "HECATE'S CEMETERY: WHAT THEY DID"}, {"realm-builder", "REALM BUILDER"}, {"realm-made", "MADE REALMS"},
-  {"app", "IPHONE APP"}, {NULL, NULL}};
+  {"everglade2", "EVERGLADE.WORLD"}, {"app", "IPHONE APP"}, {NULL, NULL}};
 
 static void overview(out_buf *o, PGconn *db, const char *const *f) {
   section(o, db, "HEALTH", "", "SURFACE|LAST EVENT|LAST HOUR|LAST DAY|CONTRACT EVENTS MISSING",
@@ -416,6 +421,105 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "ORDER BY at DESC LIMIT 100", 4, f);
 }
 
+// Everglade (everglade.world, Everglade II and Character Create: page 'everglade2', its events in
+// apps/openagents-web/everglade2-track.coax and coax/web/host.js lifeBeacon;
+// docs/analytics/2026-11-09-everglade-analytics-audit.md): how far each visit got, step by step, where
+// they came in, each day, what went wrong and what they did, and the sessions. Same filter as the rest:
+// the team and automation are left out unless asked for.
+#define EG_E ", ee AS (SELECT * FROM e WHERE page = 'everglade2') "
+// The furthest step an event says a visit reached (the steps' names below, in order).
+#define EG_STEP \
+  "CASE WHEN ev = 'load-engine' THEN 2 WHEN ev = 'load-world' THEN 3 WHEN ev = 'portal-shown' THEN 4 WHEN ev = 'create-open' THEN 5 " \
+  "WHEN ev IN ('create-pick', 'create-class', 'create-level') THEN 6 WHEN ev = 'create-name' THEN 7 WHEN ev = 'create-done' THEN 8 " \
+  "WHEN ev = 'run-end' THEN 9 WHEN ev = 'spawn' THEN 10 WHEN ev = 'room-join' THEN 11 " \
+  "WHEN ev = 'tally' AND EXISTS (SELECT 1 FROM jsonb_object_keys(p) j WHERE left(j, 5) = 'kill_') THEN 13 " \
+  "WHEN ev = 'tally' AND EXISTS (SELECT 1 FROM jsonb_object_keys(p) j WHERE left(j, 5) IN ('cast_', 'hurt_') OR left(j, 4) = 'hit_' OR j = 'bow') THEN 12 " \
+  "WHEN ev IN ('death', 'level-up') THEN 12 ELSE 1 END"
+#define EG_STEPS "ARRAY['Opened the game', 'The game loaded', 'The world showed', 'Past the front door or the portal', " \
+  "'Character Create showed', 'Changed their look or class', 'Named their character', 'Pressed USE IN EVERGLADE', " \
+  "'Ran out of the glade', 'In Everglade', 'Joined the other players', 'Fought', 'Felled a wolf, goblin or the guard']"
+// Where a visit came in: its first page view.
+#define EG_WAY \
+  ", way AS (SELECT DISTINCT ON (sid) sid, CASE " \
+  "  WHEN p->>'path' IN ('/play', '/play/') OR p->>'path' LIKE '%/domain/play%' THEN " \
+  "    CASE WHEN coalesce(p->>'q', '') LIKE '%via=portal%' THEN 'everglade.world front door' ELSE 'everglade.world/play' END " \
+  "  WHEN p->>'path' LIKE '%character-creator%' THEN " \
+  "    CASE WHEN coalesce(p->>'q', '') LIKE '%via=portal%' THEN 'openagents.com homepage portal' ELSE 'openagents.com Character Create' END " \
+  "  WHEN p->>'path' LIKE '%everglade2%' THEN 'openagents.com/worlds/everglade2' ELSE 'other' END AS way, host " \
+  "  FROM ee WHERE ev = 'page-view' ORDER BY sid, coalesce(ct, ms), id) "
+#define EG_PROBLEM "ev IN ('load-fail', 'gpu-lost', 'crash', 'error', 'fail')"
+
+static void everglade(out_buf *o, PGconn *db, const char *const *f) {
+  section(o, db, "EVERGLADE: HOW FAR VISITS GOT", "w", "STEP|GOT THIS FAR|OF ALL WHO OPENED IT|STOPPED HERE", KEPT EG_E
+    ", reach AS (SELECT sid, max(" EG_STEP ") AS far FROM ee GROUP BY sid), "
+    "steps(i, label) AS (SELECT i, (" EG_STEPS ")[i] FROM generate_series(1, 13) i) "
+    "SELECT label, count(r.sid)::text, CASE WHEN (SELECT count(*) FROM reach) > 0 "
+    "  THEN round(100.0 * count(r.sid) / (SELECT count(*) FROM reach))::text || '%' ELSE '-' END, "
+    "  (SELECT count(*) FROM reach x WHERE x.far = steps.i)::text "
+    "FROM steps LEFT JOIN reach r ON r.far >= steps.i GROUP BY i, label ORDER BY i", 4, f);
+  section(o, db, "EVERGLADE: WAYS IN", "", "WAY IN|VISITS|GOT INTO EVERGLADE|FAILED TO LOAD", KEPT EG_E EG_WAY
+    "SELECT way.way, count(*)::text, "
+    "  count(*) FILTER (WHERE EXISTS (SELECT 1 FROM ee WHERE ee.sid = way.sid AND ee.ev = 'spawn'))::text, "
+    "  count(*) FILTER (WHERE EXISTS (SELECT 1 FROM ee WHERE ee.sid = way.sid AND ee.ev = 'load-fail'))::text "
+    "FROM way GROUP BY way.way ORDER BY count(*) DESC", 4, f);
+  section(o, db, "EVERGLADE: BY DAY", "w",
+    "DAY|VISITS|PEOPLE|CAME BACK|LOADED|MADE A CHARACTER|IN EVERGLADE|FOUGHT|FAILED TO LOAD|MEDIAN MINUTES", KEPT EG_E
+    ", per AS (SELECT sid, min(coalesce(ct, ms)) AS a, max(coalesce(ct, ms)) AS b, max(" EG_STEP ") AS far, "
+    "  bool_or(ev = 'load-fail') AS failed, bool_or(ev = 'create-done') AS made, "
+    "  min(p->>'pid') FILTER (WHERE ev IN ('session-start', 'page-view') AND p->>'pid' <> '') AS pid FROM ee GROUP BY sid), "
+    "d AS (SELECT *, to_char(to_timestamp(a / 1000.0) AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD') AS day FROM per), "
+    "first AS (SELECT pid, min(day) AS day FROM d WHERE pid IS NOT NULL GROUP BY pid) "
+    "SELECT d.day, count(*)::text, count(DISTINCT d.pid)::text, "
+    "  count(DISTINCT d.pid) FILTER (WHERE first.day < d.day)::text, "
+    "  count(*) FILTER (WHERE far >= 2)::text, count(*) FILTER (WHERE made)::text, count(*) FILTER (WHERE far >= 10)::text, "
+    "  count(*) FILTER (WHERE far >= 12)::text, count(*) FILTER (WHERE failed)::text, "
+    "  round((percentile_cont(0.5) WITHIN GROUP (ORDER BY (b - a) / 60000.0))::numeric, 1)::text "
+    "FROM d LEFT JOIN first USING (pid) GROUP BY d.day ORDER BY d.day DESC LIMIT 60", 4, f);
+  section(o, db, "EVERGLADE: LOADING", "", "WHAT|VALUE", KEPT EG_E
+    ", v AS (SELECT count(DISTINCT sid) AS n FROM ee), "
+    "le AS (SELECT (p->>'ms')::numeric AS ms FROM ee WHERE ev = 'load-engine' AND p ? 'ms'), "
+    "lw AS (SELECT (p->>'ms')::numeric AS ms FROM ee WHERE ev = 'load-world' AND p ? 'ms') "
+    "SELECT 'Visits', n::text FROM v "
+    "UNION ALL SELECT 'Game loaded, median seconds', coalesce(round((percentile_cont(0.5) WITHIN GROUP (ORDER BY ms) / 1000)::numeric, 1)::text, '-') FROM le "
+    "UNION ALL SELECT 'Game loaded, slowest tenth from (seconds)', coalesce(round((percentile_cont(0.9) WITHIN GROUP (ORDER BY ms) / 1000)::numeric, 1)::text, '-') FROM le "
+    "UNION ALL SELECT 'World showed, median seconds', coalesce(round((percentile_cont(0.5) WITHIN GROUP (ORDER BY ms) / 1000)::numeric, 1)::text, '-') FROM lw "
+    "UNION ALL SELECT 'World showed, slowest tenth from (seconds)', coalesce(round((percentile_cont(0.9) WITHIN GROUP (ORDER BY ms) / 1000)::numeric, 1)::text, '-') FROM lw "
+    "UNION ALL SELECT 'Browser without WebGPU', count(DISTINCT sid)::text FROM ee WHERE (ev = 'session-start' AND p->>'gpu' = 'false') OR (ev = 'load-fail' AND p->>'webgpu' = 'false') "
+    "UNION ALL SELECT 'Failed to load', count(DISTINCT sid)::text FROM ee WHERE ev = 'load-fail' "
+    "UNION ALL SELECT 'Left before the world showed', count(*)::text FROM (SELECT sid FROM ee GROUP BY sid "
+    "  HAVING NOT bool_or(ev IN ('load-world', 'load-fail'))) l "
+    "UNION ALL SELECT 'Lost the GPU', count(DISTINCT sid)::text FROM ee WHERE ev = 'gpu-lost' "
+    "UNION ALL SELECT 'The game stopped', count(DISTINCT sid)::text FROM ee WHERE ev = 'crash' "
+    "UNION ALL SELECT 'Page errors', count(DISTINCT sid)::text FROM ee WHERE ev = 'error' "
+    "UNION ALL SELECT 'Lost the other players', count(DISTINCT sid)::text FROM ee WHERE ev = 'fail' AND p->>'id' = 'room' "
+    "UNION ALL SELECT 'Failure rate', CASE WHEN (SELECT n FROM v) > 0 THEN round(100.0 * count(DISTINCT sid) / (SELECT n FROM v))::text || '%' ELSE '-' END "
+    "  FROM ee WHERE ev IN ('load-fail', 'gpu-lost', 'crash')", 4, f);
+  section(o, db, "EVERGLADE: WHAT WENT WRONG", "w", "WHAT|MESSAGE|TIMES|VISITS|LAST", KEPT EG_E
+    "SELECT CASE ev WHEN 'load-fail' THEN 'Failed to load' WHEN 'gpu-lost' THEN 'Lost the GPU' WHEN 'crash' THEN 'The game stopped' "
+    "  WHEN 'error' THEN 'Page error' ELSE 'Didn''t work' END, "
+    "  coalesce(p->>'msg', p->>'id', '') || coalesce(' (' || (p->>'src') || coalesce(':' || (p->>'line'), '') || ')', ''), "
+    "  count(*)::text, count(DISTINCT sid)::text, " CHI("max(ms)") " "
+    "FROM ee WHERE " EG_PROBLEM " GROUP BY 1, 2 ORDER BY max(ms) DESC LIMIT 25", 4, f);
+  section(o, db, "EVERGLADE: WHAT THEY DID", "", "WHAT|VISITS|TIMES", KEPT EG_E
+    ", acts AS (SELECT sid, ev || coalesce(' ' || coalesce(p->>'id', p->>'n'), '') AS what, 1::bigint AS n FROM ee "
+    "  WHERE ev IN ('create-class', 'create-done', 'death', 'level-up', 'spawn') "
+    "  UNION ALL SELECT ee.sid, j.key, (j.value #>> '{}')::numeric::bigint FROM ee, jsonb_each(ee.p) j "
+    "  WHERE ee.ev = 'tally' AND jsonb_typeof(j.value) = 'number') "
+    "SELECT what, count(DISTINCT sid)::text, sum(n)::text FROM acts GROUP BY what ORDER BY sum(n) DESC, what LIMIT 30", 4, f);
+  section(o, db, "EVERGLADE: SESSIONS", "s", "SESSION|STARTED|WAY IN|FURTHEST|MINUTES|CLASS|FELLED|DIED|PLACE|DEVICE", KEPT EG_E EG_WAY
+    ", per AS (SELECT sid, min(coalesce(ct, ms)) AS a, max(coalesce(ct, ms)) AS b, max(" EG_STEP ") AS far, "
+    "  (array_agg(coalesce(p->>'class', p->>'id') ORDER BY coalesce(ct, ms) DESC) FILTER (WHERE ev IN ('spawn', 'create-done')))[1] AS klass, "
+    "  coalesce(sum((SELECT sum((j.value #>> '{}')::numeric) FROM jsonb_each(p) j WHERE left(j.key, 5) = 'kill_' AND jsonb_typeof(j.value) = 'number')) FILTER (WHERE ev = 'tally'), 0) AS kills, "
+    "  count(*) FILTER (WHERE ev = 'death') AS deaths FROM ee GROUP BY sid) "
+    "SELECT per.sid, " CHI("per.a") ", coalesce(way.way, ''), (" EG_STEPS ")[per.far], round((per.b - per.a) / 60000.0, 1)::text, "
+    "  coalesce(per.klass, ''), per.kills::text, per.deaths::text, "
+    "  coalesce(x.region, '') || coalesce(' ' || initcap(x.city), ''), "
+    "  coalesce(st.p->>'os', '') || coalesce(' ' || regexp_replace(st.p->>'browser', ' [0-9.]+$', ''), '') || CASE WHEN st.p->>'mobile' = 'true' THEN ' phone' ELSE '' END "
+    "FROM per LEFT JOIN way USING (sid) LEFT JOIN analytics.sessions x USING (sid) "
+    "LEFT JOIN LATERAL (SELECT p FROM e WHERE e.sid = per.sid AND e.ev = 'session-start' LIMIT 1) st ON true "
+    "ORDER BY per.a DESC LIMIT 200", 4, f);
+}
+
 static void sessions(out_buf *o, PGconn *db, const char *const *f) {
   section(o, db, "SESSIONS", "s", "SESSION|STARTED|SPACE|FIRST PAGE|EVENTS|MINUTES|FURTHEST|PLACE|DEVICE|AUTOMATED", KEPT
     "SELECT k.sid, " CHI("k.first_ms") ", k.space, coalesce(nullif(st.p->>'entry', ''), fp.page, ''), k.n::text, "
@@ -470,6 +574,7 @@ static void reports(const request *q, PGconn *db) {
     if (!sid[0]) { api_json(q->fd, 400, "{\"error\":\"which session?\"}"); return; }
     one_session(&o, db, sid);
   } else if (!strcmp(view, "sessions")) sessions(&o, db, f);
+  else if (!strcmp(view, "everglade")) everglade(&o, db, f);
   else overview(&o, db, f);
   api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, o.p ? o.p : "", o.n);
   free(o.p);
@@ -603,6 +708,34 @@ static void rooms(const request *q, PGconn *db) {
   free(o.p);
 }
 
+// The hosts this site also serves (docs/verse/everglade-domain.md), whose browsers a team link may mark.
+static bool team_host(const char *h) {
+  static const char *hosts[] = {"everglade.world", "www.everglade.world", "staging.everglade.world", NULL};
+  for (int i = 0; hosts[i]; i++) if (!strcmp(h, hosts[i])) return true;
+  const char *extra = getenv("OA_TEAM_HOSTS");   // a check's local host (test.sh)
+  return extra && *extra && !strcmp(h, extra);
+}
+static void team_link(const request *q, PGconn *db, const char *who) {
+  char host[96];
+  if (!api_query(q, "host", host, sizeof host) || !team_host(host)) { api_json(q->fd, 400, "{\"error\":\"which host?\"}"); return; }
+  unsigned char raw[24]; char token[49];
+  int fd = open("/dev/urandom", O_RDONLY);
+  if (fd < 0 || read(fd, raw, sizeof raw) != (ssize_t)sizeof raw) { if (fd >= 0) close(fd); api_json(q->fd, 503, "{\"error\":\"no randomness\"}"); return; }
+  close(fd);
+  for (size_t i = 0; i < sizeof raw; i++) snprintf(token + 2 * i, 3, "%02x", raw[i]);
+  char until[32]; snprintf(until, sizeof until, "%lld", (long long)api_now_ms() + 600000LL);
+  const char *v[4] = {token, who, host, until};
+  PGresult *r = PQexecParams(db, "INSERT INTO analytics.team_links (token_sha256, pubkey, host, expires_ms) "
+                                 "VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2, $3, $4::bigint)", 4, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
+  if (!ok) api_log("team link: %s", PQerrorMessage(db));
+  PQclear(r);
+  if (!ok) { api_json(q->fd, 503, "{\"error\":\"not now\"}"); return; }
+  char headers[400];
+  snprintf(headers, sizeof headers, "Location: https://%s/api/analytics/team?t=%s\r\nCache-Control: no-store\r\n", host, token);
+  api_respond(q->fd, 303, "text/plain", headers, "", 0);
+}
+
 bool admin_route(const request *q) {
   if (strncmp(q->path, "/api/admin/", 11)) return false;
   PGconn *db = api_db();
@@ -611,11 +744,13 @@ bool admin_route(const request *q) {
   if (!strcmp(q->path, "/api/admin/logout")) { logout(q, db); return true; }
   bool queue = !strncmp(q->path, "/api/admin/reports", 18) && (q->path[18] == 0 || q->path[18] == '/');
   bool room_view = !strcmp(q->path, "/api/admin/rooms");
-  if (strcmp(q->path, "/api/admin/analytics") && !queue && !room_view) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+  bool link = !strcmp(q->path, "/api/admin/team-link");
+  if (strcmp(q->path, "/api/admin/analytics") && !queue && !room_view && !link) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
   char who[65];
   int status = site_who(q, db, who);
   if (status) { refuse(q->fd, status); return true; }
-  if (room_view) rooms(q, db);
+  if (link) team_link(q, db, who);
+  else if (room_view) rooms(q, db);
   else if (queue) review(q, db, who);
   else reports(q, db);
   return true;

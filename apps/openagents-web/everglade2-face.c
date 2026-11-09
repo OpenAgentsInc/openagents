@@ -8,6 +8,8 @@
 // In a room (everglade2-net.coax, #13054) the controller steps at the room's rate, 1/30 s, each step's
 // input sent; the room's word on you starts you again where it has you and re-runs the inputs it
 // hasn't stepped, the difference eased out of the draw (as everglade5e-face.c does for Everglade).
+// Analytics (analytics.coax, everglade2-track.coax): the face keeps the page's Track and what e2_track
+// saw last frame, hands it the page's messages, keys and pointer, and sends its batches (analytics-face.h).
 #include "everglade2.h"
 #include "Everglade-step.h"
 #include "Sticks.h"
@@ -48,10 +50,22 @@ static bool ticket_due;
 static int32_t name_id = -1;
 static char name_body[128]; static uint32_t name_body_n;
 static bool name_due;
+static coax_t_Track track_state;
+static coax_t_E2Seen track_seen;   /* what e2_track saw last frame */
+static bool entered;
+static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 #define PLAYER_URL "/api/playtest/player"
 #define NAME_URL "/api/playtest/player/name"
 
 static uint32_t quality_state;   /* the state the pixel budget reads (coaxial_pixel_budget) */
+static coax_string track_cstr(const char *c) { int64_t n = 0; while (c[n]) n++; return (coax_string){c, n}; }
+/* The Track's batch to the host's HTTP import, after every call that may have written one (analytics-face.h). */
+static void track_drain(void) {
+  if (track_state.out_n <= 0) return;
+  coax_string url = track_url();
+  coaxial_http((uint32_t)(uintptr_t)url.data, (uint32_t)url.count, (uint32_t)(uintptr_t)track_state.out.e, (uint32_t)track_state.out_n, (int32_t)track_state.flags);
+  track_sent(tr());
+}
 static coax_t_E2 *e2_at(uint32_t state) { return (coax_t_E2 *)(uintptr_t)state; }
 static coax_v_t_E2 at(uint32_t state) { return (coax_v_t_E2){e2_at(state), 1}; }
 
@@ -230,6 +244,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   net_drain(state);
   if (key_wait > 0 && e2_at(state)->player_key_n == 0 && --key_wait == 0) has_player = true;
   ticket_out();
+  e2_track(at(state), (coax_v_t_E2Seen){&track_seen, 1}, tr(), draw_n > 0);
+  track_frame(tr(), dt, w, h, scale);
+  if (n > 0 && !entered && track_state.ready) { entered = true; track_world(tr(), track_cstr("everglade2")); track_loaded(tr(), track_cstr("load-engine")); }
+  track_drain();
   frames += 1;
   return n < 0 ? 0u : (uint32_t)n;
 }
@@ -299,16 +317,22 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, i
 static float field_box[4];
 EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return e2_wants_text(at(state)) ? 1u : 0u; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { e2_text_field(at(state), (coax_v_f32){field_box, 4}); return (uint32_t)(uintptr_t)field_box; }
-EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return e2_key(at(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return e2_key_up(at(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { e2_blur(at(state)); sticks = verse_sticks_reset(); }
+EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
+  e2_track_key(at(state), tr(), key);   /* in Character Create; in the world only walking counts */
+  track_drain();
+  return e2_key(at(state), key, mods) ? 1u : 0u;
+}
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { track_key_up(tr(), key); return e2_key_up(at(state), key, mods) ? 1u : 0u; }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { e2_blur(at(state)); sticks = verse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
+  e2_track_pointer(at(state), tr(), x, y, phase, kind); track_drain();
   if (e2_pointer(at(state), x, y, phase, kind, id)) return 1u;
   // a finger is a thumb's: the stick, the look, a tap's jump
   if (kind != 0) { sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
 EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
+  e2_track_pointer(at(state), tr(), x, y, phase, kind); track_drain();
   if (e2_pointer_buttons(at(state), x, y, phase, kind, id, button)) return 1u;
   if (kind != 0) { sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
@@ -324,6 +348,8 @@ EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; re
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
+  if (!track_state.page_n) track_init(tr(), track_cstr("everglade2"));
+  if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain();
   if (kind == 600) { facts_seen = true; if (has_line(length, "player=")) has_player = true; }
   if (mint_id >= 0 && kind == 512 + mint_id) {
     mint_id = -1;

@@ -931,6 +931,19 @@ addEventListener("pagehide", () => { leaving = true;send(LEAVE_KIND); httpReques
 addEventListener("pageshow", () => { leaving = false; });
 addEventListener("error", (e) => send(ERROR_KIND, `${String(e.message || "").slice(0, 200)}\n${String(e.filename || "").split("/").pop()}\n${e.lineno || 0}`));
 addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reason?.message || e.reason || "").slice(0, 200)}\npromise\n0`));
+// What stopped the page, which the page's own analytics (analytics.coax) can't say because its engine
+// may be gone or never came: a load that failed (load-fail), a lost GPU device (gpu-lost) and an engine
+// or renderer that stopped (crash). One event in analytics.coax's batch shape, sent as a beacon to the
+// same ingest, in this tab's session ("c" and the tab id, as analytics.coax names it) under the realm's
+// page name (data-realm, else the app). The message only, no page data.
+function lifeBeacon(ev, msg) {
+  if (location.protocol === "file:" || !navigator.sendBeacon) return;
+  const [tab] = kept(sessionStorage, "coaxial.tab");
+  if (!/^[0-9a-f]{8,64}$/.test(tab)) return;
+  const body = { sid: `c${tab}`, events: [{ ev, page: realmId || app, ct: Date.now(), p: { msg: String(msg || "").slice(0, 80), webgpu: !!navigator.gpu } }] };
+  if (navigator.webdriver) body.auto = "webdriver";
+  try { navigator.sendBeacon("/api/analytics/events", new Blob([JSON.stringify(body)], { type: "text/plain" })); } catch {}
+}
 
 // ---- GPU: device, the two pipelines from the app's WGSL, buffers
 async function startGpu() {
@@ -1036,6 +1049,7 @@ async function deviceLost(device, info) {
   gpu.retired = true;
   const retainedOptional = new Set(firstAssets.filter(a => engine.exports.coaxial_asset_optional_v1?.(a.i) && a.done && !a.failed));
   hostLifeEvent(8,Math.floor(t0*1000));
+  lifeBeacon("gpu-lost", `${info.reason || "unknown"}${info.message ? `: ${info.message}` : ""}`);
   losses = losses.filter((t) => t0 - t < LOSSES_WINDOW_MS);losses.push(t0);
   say(`GPU device lost (${info.reason}${info.message ? `: ${info.message}` : ""}); taking a new one`, true);
   gpu.bg = null;
@@ -2851,7 +2865,7 @@ function draw(now) {
       if (gpu.renderer.observation) report(gpu.renderer.observation, gpu.renderer.lastTexture);
       if (!hostTransport&&engine.exports.coaxial_sounds) playSounds(engine.exports);
       after(false);
-    } catch (e) { say(`${app} renderer: ${e.message}`, true);loading.fail(`RENDERER STOPPED: ${e.message}`);gpu.bg = null; }
+    } catch (e) { say(`${app} renderer: ${e.message}`, true);loading.fail(`RENDERER STOPPED: ${e.message}`);lifeBeacon("crash", `RENDERER STOPPED: ${e.message}`);gpu.bg = null; }
     return;
   }
   n = Math.min(n, arena.maxVertices);
@@ -3187,6 +3201,7 @@ function trapped(e) {
 // The reload message: what stopped, and one action. With the state to save, the save goes first
 // and the reload puts it back; without, the realm starts over.
 function stopped(what, bytes, action = "") {
+  lifeBeacon("crash", what);
   const saving = bytes && engineBytes && arena ? rescueIdentity(engineBytes).then((wasm) => wasm
     ? rescueWrite({ wasm, layout: arena.layout, size: bytes.length, bytes: bytes.buffer, at: Date.now() }) : false) : Promise.resolve(false);
   const told = globalThis.coaxial.stopped = { what, saved: null };
@@ -3761,7 +3776,11 @@ async function main() {
     // No usable WebGPU after all: show the page's text, as written (a realm's loader says so).
     loading.step("gpu");
     const started = await startGpu();
-    if (!started) { document.documentElement.classList.remove("gpu"); loading.fail("SHADERS FAILED TO COMPILE", !gpu); return; }
+    if (!started) {
+      document.documentElement.classList.remove("gpu"); loading.fail("SHADERS FAILED TO COMPILE", !gpu);
+      lifeBeacon("load-fail", !navigator.gpu ? "no WebGPU" : !gpu ? "no GPU adapter" : "shaders failed to compile");
+      return;
+    }
     observeSize();
     if (!worldPaused) frameRequest = requestAnimationFrame(frame);
     // The heavy ones first; sounds are fetched when first played.
@@ -3771,6 +3790,7 @@ async function main() {
   } catch (e) {
     document.documentElement.classList.remove("gpu");
     loading.fail(`${gpu || /gpu|adapter|device/i.test(e.message) ? "GPU" : "ENGINE"} FAILED: ${e.message}`);
+    lifeBeacon("load-fail", `${gpu || /gpu|adapter|device/i.test(e.message) ? "GPU" : "ENGINE"} FAILED: ${e.message}`);
     say(`${app}: ${e.message}`, true);
   }
   // a clip is one pass: no live swap (a changed file's "wasm", "wgsl" or "page") mid-recording, which
