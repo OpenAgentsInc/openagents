@@ -20,6 +20,7 @@
 VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's world: the mouse looks round with no button held
+#load "../../aethyr/cam/firstperson.coax" as fpcam;   // zoomed all the way in, the camera is your eyes
 
 // Shared with Everglade II: sampled frames over the last half second.
 FpsCounter :: struct {fps:f32;frames:int;time:f32;}
@@ -406,6 +407,8 @@ CC_KIT_BOW :: 4;
 CC_BOW_GRIP_X :: -0.127;   // source units from the bow's middle (as packed) to its grip, across the limbs
 CC_SHOULDER :: 0.7;        // metres the over-the-shoulder camera sits right of you (mouselook and the bow)
 CC_LIFT :: 0.55;           // and above, in mouselook, so you stand below the reticle
+// First person (aethyr/cam/firstperson.coax): zoomed all the way in (the wheel's nearest, 0.65 m) the
+// camera is your eyes; camera blends into it and scene_reserved leaves your body out of the view.
 // The left fist's middle from its joint, in the bind pose (the mirror of CC_FIST).
 CC_FIST_L :: [3]f32.[0.075,-0.03,0.0];
 // The fist's middle from the hand's joint, in the bind pose (metres: toward the fingers, then under the palm).
@@ -833,7 +836,7 @@ familiar_record :: (out:[]f32,rec:int,word:int,x:f32,y:f32,z:f32,yaw:f32) {
 }
 scene :: (s:Creator,b:[]figs.Bodies,out:[]f32)->int { return scene_reserved(s,b,out,0); }
 scene_reserved :: (s:Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
-  b[0].draw_n=0;
+  b[0].draw_n=0;b[0].self_n=0;
   if !b[0].ready || !catalog_ready(s) { return 0; }
   l:=look(s); l.variant=0;
   a:figs.BdAnim; a.on=true; a.clip=[4]int.[figs.BD_IDLE,figs.BD_WALK,figs.BD_RUN,figs.BD_SPELL][s.pose];
@@ -856,7 +859,11 @@ scene_reserved :: (s:Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     b[0].draws[n*4]=cast(u32)b[0].part_first[p];b[0].draws[n*4+1]=cast(u32)b[0].part_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
   for i:0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s.eye_color][k];}out[i*24+23]=2;}
+  // first person: the camera is in your head, so your body's draws are left out of the view (not the shadows)
+  b[0].self_n=ifx s.experimental && !s.scene_only && cc_self_hidden(s) then n else 0;
   if s.experimental && !s.scene_only && n>0 && n<43 {n=held_weapon(s,b,out,n);}
+  // and what your hands hold, unless it is up in front of you (a drawn bow): carried at your side it would float, handless, across the view
+  if b[0].self_n>0 && s.aim<0.3 {b[0].self_n=n;}
   if s.scene_only {n=0;}
   if s.glade_count>0 && n<43 {
     for k:0..<24 {out[n*24+k]=0;}
@@ -1118,6 +1125,30 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
  u:[40]f32;camera(s[0],u[..],1280,720,1);#assert u[21]>0.8 && u[17]>=meadow.exp_height(u[16],u[18])+0.19;
  s[0].dragging=false;s[0].pitch=0.35;used=pointer(s[..],700,400,0,2);used=pointer(s[..],700,0,1,2);#assert s[0].pitch< -1.0;
 }
+#test "experimental zoomed all the way in is first person: the camera at your eyes, no shoulder, your body not drawn" {
+ s:[1]Creator;s[0].experimental=true;s[0].player_x=70;s[0].player_z=0;s[0].yaw=0.4;s[0].pitch=0.2;s[0].ml[0].shown=1;s[0].aim=0.7;
+ s[0].source_n=76;for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=1;}}
+ b:[1]figs.Bodies;b[0].ready=true;out:[44*24]f32;u:[40]f32;
+ eye_y:=meadow.exp_height(70,0)+f32(fpcam.FP_EYE);sx:=sin(s[0].yaw);cz:=cos(s[0].yaw);
+ wheel(s[..],-10000);#assert s[0].dist<f32(fpcam.FP_NEAR) && cc_first_person(s[0])==1 && cc_self_hidden(s[0]);
+ camera(s[0],u[..],1280,720,1);
+ // at the eye: its height, a hand's width ahead of the head's middle along the view, none of it to the side
+ dx:=u[16]-70;dz:=u[18]-0;
+ #assert abs(u[17]-eye_y)<0.001 && abs(dx*cz-dz*sx)<0.001 && abs(dx*sx+dz*cz+f32(fpcam.FP_AHEAD))<0.001;
+ // still looking along the aim: the crosshair (the view's centre) is where the arrow goes
+ #assert abs(u[20]+sx*cos(s[0].pitch))<0.001 && abs(u[21]+sin(s[0].pitch))<0.001 && u[23]==640;
+ n:=scene(s[0],b[..],out[..]);#assert n>0 && b[0].self_n>0 && b[0].self_n<=n;
+ s[0].aim=0;n=scene(s[0],b[..],out[..]);#assert b[0].self_n==n;   // a weapon carried at your side isn't drawn either
+ s[0].aim=0.7;
+ // zoomed out it is the over-the-shoulder view again, with your body drawn
+ wheel(s[..],1000);#assert s[0].dist>f32(fpcam.FP_FAR) && cc_first_person(s[0])==0;
+ camera(s[0],u[..],1280,720,1);dx=u[16]-70;dz=u[18]-0;#assert dx*cz-dz*sx>0.5 && dx*sx+dz*cz>1;
+ n=scene(s[0],b[..],out[..]);#assert b[0].self_n==0;
+ // in between it blends: the camera slides from the shoulder into the head
+ last:f32=1000;for k:0..<9 {s[0].dist=f32(fpcam.FP_FAR)-f32(k)*(f32(fpcam.FP_FAR)-f32(fpcam.FP_NEAR))/8;camera(s[0],u[..],1280,720,1);
+  dx=u[16]-70;dz=u[18]-0;side:=dx*cz-dz*sx;#assert side<=last+0.0001;last=side;}
+ #assert abs(last)<0.001;
+}
 #test "experimental camera pulls in before a wall and keeps the shoulder clear" {
  wall:=[6]f32.[-2,0,1,2,3,1.2];
  blocked:=cc_camera_boom(wall[..],0,1.2,0,[3]f32.[0,0,4]);
@@ -1161,16 +1192,22 @@ cc_camera_terrain_room :: (x:f32,y:f32,z:f32,boom:[3]f32)->f32 {
  }
  return length;
 }
+// How far into first person the camera is, 0 (behind you) to 1 (your eyes): the zoom, eased.
+cc_first_person :: (s:Creator)->f32 { if !s.experimental || s.walk.on {return 0;} return fpcam.fp_share(s.dist); }
+// Whether your own body is left undrawn: the camera is in your head.
+cc_self_hidden :: (s:Creator)->bool { return fpcam.fp_hidden(cc_first_person(s)); }
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.experimental {
     target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw+s.orbit); cz:=cos(s.yaw+s.orbit);
+    fp:=cc_first_person(s);far:=fpcam.fp_far(fp);ahead:=fpcam.fp_ahead(fp);
     // over your right shoulder, one offset family: mouselook (aethyr/cam/mouselook.coax) frames you
     // below and left of the reticle, as far as its fade has come (ml shown); a drawn bow keeps that
     // offset and tightens in, as far as the aim has come in (s.aim). Nothing jumps between them.
+    // Zoomed in to first person (fp) they all give way to the eye.
     mlv:=s.ml[0].shown;off:=ifx mlv>s.aim then mlv else s.aim;
-    dist:=s.dist+(2.1-s.dist)*s.aim;shoulder:=cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off;ox:=cz*shoulder;oz:= -sx*shoulder;
-    lift:=f32(CC_LIFT)*mlv;if 0.38*s.aim>lift {lift=0.38*s.aim;}target+=lift;
+    dist:=(s.dist+(2.1-s.dist)*s.aim)*far;shoulder:=(cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off)*far;ox:=cz*shoulder-sx*ahead;oz:= -sx*shoulder-cz*ahead;
+    lift:=f32(CC_LIFT)*mlv;if 0.38*s.aim>lift {lift=0.38*s.aim;}target+=lift*far+fpcam.fp_lift(fp,1.2);
     // drawn, the boom comes level behind the shoulder, whatever the pitch: the view still looks along
     // the pitch (the aim), so you see the arrow's line and not the top of your head
     bp:=s.pitch*(1-0.85*s.aim);bcy:=cos(bp);bsy:=sin(bp);

@@ -207,6 +207,7 @@ Bodies :: struct {
   corpse: [BD_CORPSES] BdAnim; corpse_at: int;
   now: f32;
   draws: [176] u32; draw_n: int;  // a draw a part worn, and one of the blocks
+  self_n: int;              // the first draws are your own body, not drawn from your eyes in first person (charactercreator.coax scene_reserved; they still cast shadows)
   shown: int;               // figures drawn this frame
   blocks: int;              // of them, drawn as blocks
   hand: [BD_HAND_FLOATS] f32;  // the right then left hand's skinning rows, every baked frame (bd_keep_hands)

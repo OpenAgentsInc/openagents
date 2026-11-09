@@ -477,7 +477,10 @@ lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
       n=xc_familiar_draw(s,out,n);
       if n<s[0].bodies[0].draws.count/4 { n=xc_objects_draw(s,out,n); }
     }
-    lab_shadow_select(s); return n;
+    lab_shadow_select(s);
+    // first person (charactercreator.coax cc_self_hidden): your body still casts its shadow, but isn't drawn from your eyes
+    for i: 0..<s[0].bodies[0].self_n { s[0].bodies[0].draws[i*4+1] = 0; }
+    return n;
   }
   if !s[0].started || s[0].view != VIEW_GLADE { s[0].bodies[0].draw_n = 0; s[0].shadow_n = 0; return 0; }
   c := figs.BdCam.{ex = s[0].eye.x, ey = s[0].eye.y, ez = s[0].eye.z, fx = s[0].fwd.x, fy = s[0].fwd.y, fz = s[0].fwd.z,
