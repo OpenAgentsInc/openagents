@@ -500,7 +500,7 @@ weapon_matrix :: (h:[12]f32,hand:[3]f32,k:int,yaw:f32,at:[3]f32)->[12]f32 {
 // CC_BOW_CANT about the arm, out from the body. Carried, the arm hangs and the bow lies along the leg,
 // the string square to the arm; drawn, the arm points ahead, the thumb up and the bow stands upright.
 CC_BOW_CANT :: 0.17;       // radians, about 10 degrees
-bow_basis :: (hl:[12]f32)->[3][3]f32 {
+bow_basis :: (hl:[12]f32,aim:f32)->[3][3]f32 {
  a:=cc_unit([3]f32.[-hl[0],-hl[4],-hl[8]]);
  t:=[3]f32.[hl[2],hl[6],hl[10]];d:=t[0]*a[0]+t[1]*a[1]+t[2]*a[2];
  y0:=cc_unit([3]f32.[t[0]-d*a[0],t[1]-d*a[1],t[2]-d*a[2]]);
@@ -508,13 +508,19 @@ bow_basis :: (hl:[12]f32)->[3][3]f32 {
  c:=cos(f32(CC_BOW_CANT));sn:=sin(f32(CC_BOW_CANT));
  y:=[3]f32.[y0[0]*c+ay[0]*sn,y0[1]*c+ay[1]*sn,y0[2]*c+ay[2]*sn];
  z:=[3]f32.[a[1]*y[2]-a[2]*y[1],a[2]*y[0]-a[0]*y[2],a[0]*y[1]-a[1]*y[0]];
- return [3][3]f32.[a,y,z];
+ // carried (aim 0), the string back along the forearm would run through it: the bow turns a
+ // quarter about its limbs so the string faces out from the body; it turns back as the aim comes in
+ q:=(1-cc_clamp01(aim))*1.5707963;cq:=cos(q);sq:=sin(q);
+ x2:=[3]f32.[a[0]*cq+z[0]*sq,a[1]*cq+z[1]*sq,a[2]*cq+z[2]*sq];
+ z2:=[3]f32.[z[0]*cq-a[0]*sq,z[1]*cq-a[1]*sq,z[2]*cq-a[2]*sq];
+ return [3][3]f32.[x2,y,z2];
 }
+cc_clamp01 :: (v:f32)->f32 {return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
 // The bow's place: its grip in the left fist (hl the hand's pose, hand_l its bind position), on bow_basis.
 bow_matrix :: (hl:[12]f32,hand_l:[3]f32,aim:f32,yaw:f32,at:[3]f32)->[12]f32 {
  sc:=CC_KIT_SCALE[CC_KIT_BOW];
  l:=cc_pose_point(hl,[3]f32.[hand_l[0]+CC_FIST_L[0],hand_l[1]+CC_FIST_L[1],hand_l[2]+CC_FIST_L[2]]);
- f:=bow_basis(hl);xc:=f[0];y:=f[1];z:=f[2];
+ f:=bow_basis(hl,aim);xc:=f[0];y:=f[1];z:=f[2];
  g:=f32(CC_BOW_GRIP_X);
  v:=[4][3]f32.[[3]f32.[l[0]-sc*g*xc[0],l[1]-sc*g*xc[1],l[2]-sc*g*xc[2]],[3]f32.[sc*xc[0],sc*xc[1],sc*xc[2]],[3]f32.[sc*y[0],sc*y[1],sc*y[2]],[3]f32.[sc*z[0],sc*z[1],sc*z[2]]];
  c:=cos(yaw);sn:=sin(yaw);w:[12]f32;
@@ -525,15 +531,16 @@ bow_matrix :: (hl:[12]f32,hand_l:[3]f32,aim:f32,yaw:f32,at:[3]f32)->[12]f32 {
 cc_dot :: (p:[3]f32,q:[3]f32)->f32 {return p[0]*q[0]+p[1]*q[1]+p[2]*q[2];}
 // A hand pose from its bind axes' new directions (columns), for checks.
 cc_test_hand :: (ax:[3]f32,ay:[3]f32,az:[3]f32)->[12]f32 {return [12]f32.[ax[0],ay[0],az[0],0,ax[1],ay[1],az[1],0,ax[2],ay[2],az[2],0];}
-#test "the bow's attach basis: carried it lies along the leg, string square to the arm; drawn it stands upright" {
+#test "the bow's attach basis: carried it lies along the leg, its string out from the body, clear of the arm; drawn it stands upright" {
  // bind (T-pose): limbs along the hole (+Z, a little canted), string side back along the arm (-X)
- b:=bow_basis(cc_test_hand([3]f32.[1,0,0],[3]f32.[0,1,0],[3]f32.[0,0,1]));
+ b:=bow_basis(cc_test_hand([3]f32.[1,0,0],[3]f32.[0,1,0],[3]f32.[0,0,1]),1);
  #assert b[0][0]< -0.999 && b[1][2]>0.95 && abs(b[1][0])<0.001;
  // carried: the arm hangs (+X to -Y), the back of the hand out (+Y to +X), the thumb ahead (+Z)
- arm:=[3]f32.[0,-1,0];k:=bow_basis(cc_test_hand(arm,[3]f32.[1,0,0],[3]f32.[0,0,1]));
- #assert abs(k[1][1])<0.05 && abs(cc_dot(k[1],arm))<0.001 && k[0][1]>0.999;
+ arm:=[3]f32.[0,-1,0];k:=bow_basis(cc_test_hand(arm,[3]f32.[1,0,0],[3]f32.[0,0,1]),0);
+ // the string faces out from the leg (+X, the back of the hand), never up the forearm into the arm
+ #assert abs(k[1][1])<0.05 && abs(cc_dot(k[1],arm))<0.001 && k[0][0]>0.95 && abs(cc_dot(k[0],arm))<0.001;   // out, less its 10-degree cant
  // drawn: the arm ahead (+X to +Z), the thumb up (+Z to +Y), the palm in
- arm=[3]f32.[0,0,1];d:=bow_basis(cc_test_hand(arm,[3]f32.[1,0,0],[3]f32.[0,1,0]));
+ arm=[3]f32.[0,0,1];d:=bow_basis(cc_test_hand(arm,[3]f32.[1,0,0],[3]f32.[0,1,0]),1);
  #assert d[1][1]>0.95 && abs(cc_dot(d[1],arm))<0.001 && d[0][2]< -0.999;
  // every basis is orthonormal
  for f:[3][3][3]f32.[b,k,d] {#assert abs(cc_dot(f[0],f[1]))<0.001 && abs(cc_dot(f[1],f[2]))<0.001 && abs(cc_dot(f[2],f[2])-1)<0.001;}
