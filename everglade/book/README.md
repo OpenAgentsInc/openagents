@@ -198,9 +198,16 @@ something you can walk around in and test.
 32. **Run a live world.** Monitor it, fix it while it runs and learn from
     incidents.
 
+### Part X: Beasts and mounts
+
+33. **Let's build a dragon.** A dragon modelled by a script, one flight module
+    from the SRD's speeds, Fire Breath as SRD rules, a druid's Shapechange and
+    riding the dragon as a mount.
+
 Parts I through V exist today. Parts VI and VII are in progress: an armoured
 guard on the path to test NPC pathing and aggro, and the Ranger's longbow to
-attack him with. Parts VIII and IX are planned.
+attack him with. Parts VIII and IX are planned. Part X has begun with the
+druid's dragon at `/druid`.
 
 ## Where the other books come in
 
