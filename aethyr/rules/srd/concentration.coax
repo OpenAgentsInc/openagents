@@ -103,6 +103,7 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) #effects(all) {
     }
   }
   if sp==SP_SPIRIT_GUARDIANS { b[0].guards=rs_max(b[0].guards-1,0); }
+  if sp==SP_SHAPECHANGE { rs_shape_end(b,i," takes back its own shape"); }
   l: [1] RsLine;
   rs_add_name(l[..],b,i); rs_add_text(l[..],"'s "); rs_add_text(l[..],rs_spell(sp).name); rs_add_text(l[..]," ends"); rs_add_text(l[..],why);
   rs_tell(b,RS_EV_END,sp,i,-1,0,0,l[..]);

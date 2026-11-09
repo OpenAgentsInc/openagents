@@ -203,6 +203,8 @@ RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save
 RS_NAME :: 24;
 // What Wild Shape replaces with a Beast's stat block (SRD 5.2.1 p. 42) and gives back after.
 RsWildKeep :: struct { str: int; dex: int; con: int; ac: int; speed: int; climb: int; form: int; weapon: int; ranged: int; jumper: bool; }
+// Shapechange's (shapechange.coax): everything the new form's stat block replaces, back when the spell ends
+RsShapeKeep :: struct { wild: RsWildKeep; swim: int; fly: int; resist: int; immune: int; immune_cond: int; saves: int; }
 RsCreature :: struct {
   name: [RS_NAME] u8; name_n: int;
   team: int;
@@ -351,6 +353,13 @@ RsCreature :: struct {
   wild_form: int;           // Wild Shape: the Beast form it is in (monsters.coax MON_*, 0 none), wild-shape.coax
   wild_until: f32;          // when the form's hours (half its Druid level) are up
   wild_keep: RsWildKeep;    // its own numbers the form replaced, back when it leaves the form
+  shape_form: int;          // Shapechange: the stat block it has become (monsters.coax MON_*, 0 none), shapechange.coax
+  shape_keep: RsShapeKeep;  // its own numbers that form replaced
+  fly: int;                 // its Fly Speed in feet (0 none)
+  dragon: bool;             // an Adult Red Dragon's own stat block (rs_monster), dragon-actions.coax
+  breath_spent: bool;       // a Recharge 5-6 action (Fire Breath) used and not yet back, dragon-actions.coax
+  burning: int;             // Burning (the Rules Glossary hazard): rounds left, 0 none, dragon-actions.coax
+  burn_by: int;             // who set it alight
   // its size (RS_TINY..RS_GARGANTUAN, the low 3 bits) and a stat block's traits (RS_TRAIT_*:
   // Pack Tactics, Magic Resistance, Nimble Escape), monster-traits.coax
   form: int = RS_MEDIUM;
@@ -405,6 +414,14 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   l := rs_min(level, 4);
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
   if level >= 5 { c[0].slots_max[3] = ifx level >= 6 then 3 else 2; }
+  // levels 7 to 20, the full caster's rows (p. 41): 4th at 7, 5th at 9, 6th 11, 7th 13, 8th 15, 9th 17
+  if level >= 7 {
+    hi := [6] int.[7, 9, 11, 13, 15, 17];
+    for k: 0..<6 { if level >= hi[k] { c[0].slots_max[4 + k] = 1; } }
+    if level >= 8 { c[0].slots_max[4] = 2; } if level >= 9 { c[0].slots_max[4] = 3; }
+    if level >= 10 { c[0].slots_max[5] = 2; } if level >= 18 { c[0].slots_max[5] = 3; }
+    if level >= 19 { c[0].slots_max[6] = 2; } if level >= 20 { c[0].slots_max[7] = 2; }
+  }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   // Primal Order: Warden (p. 42). Wild Companion at 2 (p. 43), Wild Resurgence at 5 (p. 43), Call
@@ -447,6 +464,14 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   l := rs_min(level, 4);
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
   if level >= 5 { c[0].slots_max[3] = ifx level >= 6 then 3 else 2; }
+  // levels 7 to 20, the full caster's rows (p. 41): 4th at 7, 5th at 9, 6th 11, 7th 13, 8th 15, 9th 17
+  if level >= 7 {
+    hi := [6] int.[7, 9, 11, 13, 15, 17];
+    for k: 0..<6 { if level >= hi[k] { c[0].slots_max[4 + k] = 1; } }
+    if level >= 8 { c[0].slots_max[4] = 2; } if level >= 9 { c[0].slots_max[4] = 3; }
+    if level >= 10 { c[0].slots_max[5] = 2; } if level >= 18 { c[0].slots_max[5] = 3; }
+    if level >= 19 { c[0].slots_max[6] = 2; } if level >= 20 { c[0].slots_max[7] = 2; }
+  }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].slots[1] -= 1;   // Mage Armor
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
@@ -687,6 +712,14 @@ rs_full_slots :: (c: [] RsCreature, level: int) {
   l := rs_min(rs_max(level, 1), 4);
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
   if level >= 5 { c[0].slots_max[3] = ifx level >= 6 then 3 else 2; }
+  // levels 7 to 20, the full caster's rows (p. 41): 4th at 7, 5th at 9, 6th 11, 7th 13, 8th 15, 9th 17
+  if level >= 7 {
+    hi := [6] int.[7, 9, 11, 13, 15, 17];
+    for k: 0..<6 { if level >= hi[k] { c[0].slots_max[4 + k] = 1; } }
+    if level >= 8 { c[0].slots_max[4] = 2; } if level >= 9 { c[0].slots_max[4] = 3; }
+    if level >= 10 { c[0].slots_max[5] = 2; } if level >= 18 { c[0].slots_max[5] = 3; }
+    if level >= 19 { c[0].slots_max[6] = 2; } if level >= 20 { c[0].slots_max[7] = 2; }
+  }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
 }
 rs_half_slots :: (c: [] RsCreature, level: int) {

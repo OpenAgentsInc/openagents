@@ -27,6 +27,8 @@
 #load "warlock-features.coax";
 #load "sorcerer-features.coax";
 #load "wild-shape.coax";
+#load "shapechange.coax";
+#load "dragon-actions.coax";
 #load "familiar.coax";
 #load "familiar-touch.coax";
 #load "familiar-senses.coax";
@@ -1382,6 +1384,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].c[i].reacted = false;
   rs_truth_start(b,i);
   rs_rite_turn(b,i);
+  if b[0].turn.new_round && (b[0].c[i].burning > 0 || b[0].c[i].breath_spent) { rs_dragon_turn_start(b,i); }   // Burning and Recharge, dragon-actions.coax
   if b[0].c[i].raging && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
     if b[0].c[i].stable || !b[0].turn.new_round { return; }
@@ -1765,6 +1768,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
 rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) -> bool {
   if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) { return false; }
   if b[0].c[i].wild_form != 0 { return rs_stat_multiattack(b, i, j, rs_monster_action(b[0].c[i].wild_form)); }   // Wild Shape: the Beast's Action
+  if b[0].c[i].shape_form != 0 { return rs_stat_multiattack(b, i, j, rs_monster_action(b[0].c[i].shape_form)); }   // Shapechange: the form's Action
   if j < 0 || j >= b[0].n || b[0].c[j].dead || j == i || rs_feet_to(b, i, j) > 5 || rs_charmed_by(b[0].c[i],j) { return false; }
   if !rs_strikes_fit(b,i,j,b[0].c[i].weapon,1+b[0].c[i].extra_attack,true) { return false; }
   b[0].turn.action = true;

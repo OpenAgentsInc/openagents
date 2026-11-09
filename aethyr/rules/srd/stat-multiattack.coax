@@ -27,7 +27,7 @@ rs_stat_melee_pick :: (m: RsStatAction) -> int #effects(all) {
 // admitted (a miss still spends the Action).
 rs_stat_multiattack :: (b: [] RsBattle, i: int, j: int, m: RsStatAction) -> bool #effects(all) {
   if !rs_stat_action_valid(m) || i<0 || j<0 || j>=b[0].n || i==j { return false; }
-  if b[0].who!=i || b[0].turn.action || (b[0].c[i].klass!=RS_MONSTER && b[0].c[i].wild_form==0) || !rs_can_act(b[0].c[i]) || b[0].c[j].dead { return false; }
+  if b[0].who!=i || b[0].turn.action || (b[0].c[i].klass!=RS_MONSTER && b[0].c[i].wild_form==0 && b[0].c[i].shape_form==0) || !rs_can_act(b[0].c[i]) || b[0].c[j].dead { return false; }
   if rs_stat_pick(b,i,j,m)<0 { return false; }
   room := 0;
   for k: 0..<m.n { room = rs_max(room, rs_stat_rider_room(b,j,m.attacks[k])); }

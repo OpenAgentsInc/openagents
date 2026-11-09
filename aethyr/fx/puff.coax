@@ -22,6 +22,7 @@
 #load "../render/noise.coax";
 #load "abilities.coax";   // the class features' recipes (FXR_SURGE on) and the lasting looks
 #load "warlock.coax";     // the Warlock's spells (FXR_ELDRITCH on)
+#load "dragon.coax";      // shapeshifting and a dragon's actions (FXR_RUNE on)
 
 FX_PUFF_FLOATS :: 12;
 PF_FIRE :: 0; PF_SMOKE :: 1; PF_GLOW :: 2; PF_RING :: 3;
@@ -87,7 +88,7 @@ FXR_PORTAL :: 48;       // Dimension Door: a tear closing at `from`, a puff at `
 // seconds, so the puffs arrive exactly when the attack resolves.
 FXR_SHAFT :: 49;        // an arrow flying from → to: its shaft, its head's glint and a faint trail; it fades out on arrival
 FXR_STONE :: 50;        // a thrown rock arcing from → to, tumbling, dust trailing; it fades out on arrival
-FXR_KINDS :: 51;
+FXR_KINDS :: 59;        // FXR_RUNE..FXR_BUFFET are in dragon.coax
 
 FxV :: struct { x: f32; y: f32; z: f32; }
 FxCause :: struct { recipe: int; seed: f32; t0: f32; from: FxV; to: FxV; col: FxV; big: f32 = 1; reach: f32 = 1; }
@@ -199,6 +200,7 @@ fxp_life :: (c: FxCause) -> f32 {
   if r == FXR_DUST { return 1.0; }
   if r == FXR_SHAFT { return fxp_max(c.reach, 0.05) + FXP_MISSILE_FADE; }
   if r == FXR_STONE { return fxp_max(c.reach, 0.05) + FXP_MISSILE_FADE; }
+  if r >= FXR_RUNE { return fxd_life(c); }
   if r >= FXR_ELDRITCH { return fxw_life(c); }
   if r >= FXR_SURGE { return fxa_life(c); }
   return 0;
@@ -312,7 +314,7 @@ fxp_emit :: (p: [] FxPuffs, c: FxCause, age: f32) {
   if r == FXR_DUST { fxp_dust(p, c, age); }
   if r == FXR_SHAFT { fxp_shaft(p, c, age); return; }
   if r == FXR_STONE { fxp_stone(p, c, age); return; }
-  if r >= FXR_ELDRITCH { fxw_emit(p, c, age); } else if r >= FXR_SURGE { fxa_emit(p, c, age); }
+  if r >= FXR_RUNE { fxd_emit(p, c, age); } else if r >= FXR_ELDRITCH { fxw_emit(p, c, age); } else if r >= FXR_SURGE { fxa_emit(p, c, age); }
 }
 
 // Sparks thrown from `at` in directions about `toward` (zero: all round), gravity pulling them down.

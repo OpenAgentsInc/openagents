@@ -1,0 +1,279 @@
+// An Adult Red Dragon's actions (SRD 5.2.1 p. 318) and Burning, shared by every dragon Everglade
+// fields: a druid in the dragon's form (Shapechange, shapechange.coax), a dragon mount whose rider
+// aims for it, and a wild dragon. Whoever aims passes the direction; the rules are the same.
+//
+// From the stat block:
+//   Multiattack: three Rends (+14, reach 10 ft, 1d10 + 8 Slashing plus 2d4 Fire): the stat block's
+//     Action (monsters.coax, stat-multiattack.coax), rs_attack for a creature in the form.
+//   Fire Breath (Recharge 5–6): Dexterity save DC 21, each creature in a 60-foot Cone, 59 (17d6)
+//     Fire on a failure, half on a success. The cone (Areas of Effect, p. 191): it extends from you
+//     in a direction you choose, its width at any point along its length equal to that distance from
+//     you, so its half-angle is atan(1/2), about 26.57°.
+//   Recharge 5–6: at the start of each of its turns it rolls a d6; on a 5 or 6 the action is back.
+//
+// Everglade adaptations (docs/dnd/srd-compliance-ledger.md, "Adult Red Dragon in Everglade"), so the
+// form plays as a dragon on Everglade's bar. Their DCs are the SRD's formula, 8 + the ability's
+// modifier + the Proficiency Bonus:
+//   Fire Breath sets alight: a creature that fails its save has Burning (the Rules Glossary's hazard,
+//     1d4 Fire at the start of each of its turns), which burns out after RS_BURN_ROUNDS rounds; an
+//     action spent on the ground (Prone) puts it out early (rs_burning_douse).
+//   Tail Sweep: each creature within 15 feet, Dexterity save (Strength-based DC, 22 for the dragon),
+//     1d10 + 8 Bludgeoning and Prone on a failure, half the damage on a success.
+//   Wing Buffet: each creature within 10 feet, Strength save (DC 22), 1d10 + 8 Bludgeoning and
+//     pushed 15 feet away on a failure, half the damage on a success.
+//   Frightful Roar: each creature of another team within 60 feet, Wisdom save (Charisma-based DC,
+//     20), Frightened for 1 minute on a failure (6 seconds in Everglade's real time, RS_ROAR_S).
+#authority;
+
+RS_BREATH_FT :: 60; RS_BREATH_DC :: 21; RS_BREATH_DICE :: 17; RS_BREATH_SIDES :: 6;
+RS_BURN_ROUNDS :: 3; RS_BURN_SIDES :: 4;
+RS_SWEEP_FT :: 15; RS_BUFFET_FT :: 10; RS_BUFFET_PUSH_FT :: 15; RS_ROAR_FT :: 60; RS_ROAR_S :: 6.0;
+
+// Whether point (dx, dy) from a cone's origin is inside a cone of `length` aimed along (fx, fy),
+// any units so long as they're the same: no further than length along the aim, and no further to
+// the side than half the distance along it.
+rs_in_cone :: (dx: f32, dy: f32, fx: f32, fy: f32, length: f32) -> bool #effects(all) {
+  n := sqrt(fx * fx + fy * fy);
+  if !(n > 0) || !(length > 0) { return false; }
+  ux := fx / n; uy := fy / n;
+  along := dx * ux + dy * uy;
+  side := abs(dx * uy - dy * ux);
+  return along >= 0 && along <= length && side * 2 <= along + 0.0001;
+}
+
+// The same in three dimensions, for a flier aiming down or up: (dx, dy, dz) from the origin, the aim
+// (fx, fy, fz). The cone is round its aim, its radius half the distance along it.
+rs_in_cone3 :: (dx: f32, dy: f32, dz: f32, fx: f32, fy: f32, fz: f32, length: f32) -> bool #effects(all) {
+  n := sqrt(fx * fx + fy * fy + fz * fz);
+  if !(n > 0) || !(length > 0) { return false; }
+  ux := fx / n; uy := fy / n; uz := fz / n;
+  along := dx * ux + dy * uy + dz * uz;
+  sx := dx - ux * along; sy := dy - uy * along; sz := dz - uz * along;
+  side := sqrt(sx * sx + sy * sy + sz * sz);
+  return along >= 0 && along <= length && side * 2 <= along + 0.0001;
+}
+
+// Whether c breathes fire: a dragon's own block or a creature in its form.
+rs_breather :: (c: RsCreature) -> bool #effects(all) { return c.dragon || c.shape_form == MON_ADULT_RED_DRAGON; }
+rs_breath_ready :: (c: RsCreature) -> bool #effects(all) { return rs_breather(c) && !c.breath_spent; }
+rs_recharges :: (d6: int) -> bool #effects(all) { return d6 >= 5; }
+// The dragon's save DC for an ability-based house action: 8 + the ability's modifier + its Proficiency Bonus.
+rs_dragon_dc :: (c: RsCreature, ability: int) -> int #effects(all) { return 8 + rs_mod(c.score[ability]) + rs_proficiency(c.level); }
+
+// One creature's save against an area: the damage it takes (resistances counted) and whether it failed.
+RsAreaHit :: struct { j: int; damage: int; failed: bool; }
+rs_area_save :: (b: [] RsBattle, i: int, j: int, ability: int, dc: int, rolled: int, kind: int) -> RsAreaHit #effects(all) {
+  r := rs_saving_throw(b, j, ability, dc);
+  amount := ifx r.passed then rolled / 2 else rolled;
+  dealt := rs_resisted(b, j, amount, kind);
+  rs_damage(b, i, j, dealt, kind, false, -1);
+  return RsAreaHit.{j = j, damage = dealt, failed = !r.passed};
+}
+rs_area_target :: (b: [] RsBattle, i: int, j: int) -> bool #effects(all) {
+  return j >= 0 && j < b[0].n && j != i && !b[0].c[j].dead && rs_up(b[0].c[j]) && b[0].c[j].team != b[0].c[i].team;
+}
+
+// Fire Breath on the creatures the aimer's world found in the cone (`picks`, from rs_in_cone in its
+// own space), with i's Action. The number it reached, or -1 when it can't breathe now.
+rs_fire_breath_on :: (b: [] RsBattle, i: int, picks: [] const int) -> int #effects(all) {
+  if i < 0 || i >= b[0].n || !rs_action_free(b, i) || !rs_breath_ready(b[0].c[i]) { return -1; }
+  b[0].turn.action = true; b[0].c[i].breath_spent = true;
+  rolled := rs_sum(b[0].dice[..], RS_BREATH_DICE, RS_BREATH_SIDES);
+  rs_say(b, RS_EV_CONDITION, i, i, rolled, " breathes fire");
+  n := 0;
+  for j: picks {
+    if !rs_area_target(b, i, j) { continue; }
+    h := rs_area_save(b, i, j, RS_DEX, RS_BREATH_DC, rolled, RS_FIRE);
+    if h.failed && !b[0].c[j].dead && (b[0].c[j].immune & (1 << RS_FIRE)) == 0 { b[0].c[j].burning = RS_BURN_ROUNDS; b[0].c[j].burn_by = i; }
+    n += 1;
+  }
+  return n;
+}
+// The same aimed on the battle's own grid: the cone from i's square along (fx, fy).
+rs_fire_breath :: (b: [] RsBattle, i: int, fx: f32, fy: f32) -> int #effects(all) {
+  picks: [RS_MAX] int; n := 0;
+  for j: 0..<b[0].n {
+    if !rs_area_target(b, i, j) { continue; }
+    dx := f32((b[0].c[j].x - b[0].c[i].x) * RS_SQUARE); dy := f32((b[0].c[j].y - b[0].c[i].y) * RS_SQUARE);
+    if rs_in_cone(dx, dy, fx, fy, f32(RS_BREATH_FT)) { picks[n] = j; n += 1; }
+  }
+  return rs_fire_breath_on(b, i, picks[0..<n]);
+}
+
+// The creatures within `feet` of i on the grid.
+rs_dragon_near :: (b: [] RsBattle, i: int, feet: int, picks: [] int) -> int #effects(all) {
+  n := 0;
+  for j: 0..<b[0].n { if rs_area_target(b, i, j) && rs_feet_to(b, i, j) <= feet && n < picks.count { picks[n] = j; n += 1; } }
+  return n;
+}
+rs_dragon_acting :: (b: [] RsBattle, i: int) -> bool #effects(all) { return i >= 0 && i < b[0].n && rs_breather(b[0].c[i]) && rs_action_free(b, i); }
+
+// Tail Sweep on `picks` (the creatures within 15 feet in the caller's world); -1 when it can't act.
+rs_tail_sweep_on :: (b: [] RsBattle, i: int, picks: [] const int) -> int #effects(all) {
+  if !rs_dragon_acting(b, i) { return -1; }
+  b[0].turn.action = true;
+  rolled := rs_roll(b[0].dice[..], 10) + rs_mod(b[0].c[i].score[RS_STR]);
+  dc := rs_dragon_dc(b[0].c[i], RS_STR);
+  n := 0;
+  for j: picks {
+    if !rs_area_target(b, i, j) { continue; }
+    h := rs_area_save(b, i, j, RS_DEX, dc, rolled, RS_BLUDGEONING);
+    if h.failed && !b[0].c[j].dead { _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_PRONE, by = i, spell = -1, until = 0, save = -1, dc = 0}); }
+    n += 1;
+  }
+  rs_say(b, RS_EV_CONDITION, i, i, n, " sweeps its tail");
+  return n;
+}
+rs_tail_sweep :: (b: [] RsBattle, i: int) -> int #effects(all) { p: [RS_MAX] int; n := rs_dragon_near(b, i, RS_SWEEP_FT, p[..]); return rs_tail_sweep_on(b, i, p[0..<n]); }
+
+// Wing Buffet on `picks` (the creatures within 10 feet); a failure is pushed 15 feet straight away.
+rs_wing_buffet_on :: (b: [] RsBattle, i: int, picks: [] const int) -> int #effects(all) {
+  if !rs_dragon_acting(b, i) { return -1; }
+  b[0].turn.action = true;
+  rolled := rs_roll(b[0].dice[..], 10) + rs_mod(b[0].c[i].score[RS_STR]);
+  dc := rs_dragon_dc(b[0].c[i], RS_STR);
+  n := 0;
+  for j: picks {
+    if !rs_area_target(b, i, j) { continue; }
+    h := rs_area_save(b, i, j, RS_STR, dc, rolled, RS_BLUDGEONING);
+    if h.failed && !b[0].c[j].dead {
+      dx := rs_sign(b[0].c[j].x - b[0].c[i].x); dy := rs_sign(b[0].c[j].y - b[0].c[i].y);
+      for k: 0..<(RS_BUFFET_PUSH_FT / RS_SQUARE) {
+        nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
+        if (dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
+        rs_truth_move(b, j, nx, ny);
+      }
+    }
+    n += 1;
+  }
+  rs_say(b, RS_EV_CONDITION, i, i, n, " beats its wings");
+  return n;
+}
+rs_wing_buffet :: (b: [] RsBattle, i: int) -> int #effects(all) { p: [RS_MAX] int; n := rs_dragon_near(b, i, RS_BUFFET_FT, p[..]); return rs_wing_buffet_on(b, i, p[0..<n]); }
+
+// Frightful Roar on `picks` (the creatures within 60 feet): Frightened of the dragon on a failed Wisdom save.
+rs_dragon_roar_on :: (b: [] RsBattle, i: int, picks: [] const int) -> int #effects(all) {
+  if !rs_dragon_acting(b, i) { return -1; }
+  b[0].turn.action = true;
+  dc := rs_dragon_dc(b[0].c[i], RS_CHA);
+  n := 0;
+  for j: picks {
+    if !rs_area_target(b, i, j) { continue; }
+    r := rs_saving_throw(b, j, RS_WIS, dc);
+    if !r.passed { _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_FRIGHTENED, by = i, spell = -1, until = b[0].clock + RS_ROAR_S, save = -1, dc = 0}); n += 1; }
+  }
+  rs_say(b, RS_EV_CONDITION, i, i, n, " roars");
+  return n;
+}
+rs_dragon_roar :: (b: [] RsBattle, i: int) -> int #effects(all) { p: [RS_MAX] int; n := rs_dragon_near(b, i, RS_ROAR_FT, p[..]); return rs_dragon_roar_on(b, i, p[0..<n]); }
+
+// Burning at the start of j's turn: 1d4 Fire, and one round fewer. The damage dealt.
+rs_burning_tick :: (b: [] RsBattle, j: int) -> int #effects(all) {
+  if j < 0 || j >= b[0].n || b[0].c[j].burning <= 0 || b[0].c[j].dead { return 0; }
+  dealt := rs_resisted(b, j, rs_roll(b[0].dice[..], RS_BURN_SIDES), RS_FIRE);
+  rs_damage(b, b[0].c[j].burn_by, j, dealt, RS_FIRE, false, -1);
+  b[0].c[j].burning -= 1;
+  return dealt;
+}
+// The acting j spends its Action and goes Prone to put the fire out.
+rs_burning_douse :: (b: [] RsBattle, j: int) -> bool #effects(all) {
+  if !rs_action_free(b, j) || b[0].c[j].burning <= 0 { return false; }
+  b[0].turn.action = true; b[0].c[j].burning = 0;
+  _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_PRONE, by = -1, spell = -1, until = 0, save = -1, dc = 0});
+  return true;
+}
+// The start of i's turn: Burning, then the Recharge roll.
+rs_dragon_turn_start :: (b: [] RsBattle, i: int) #effects(all) {
+  if b[0].c[i].burning > 0 { _ := rs_burning_tick(b, i); }
+  if rs_breather(b[0].c[i]) && b[0].c[i].breath_spent && rs_recharges(rs_roll(b[0].dice[..], 6)) { b[0].c[i].breath_spent = false; }
+}
+
+// ---- checks
+
+dragon_field :: (b: [] RsBattle) #effects(all) {
+  b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
+  d := rs_add(b, rs_monster(MON_ADULT_RED_DRAGON, "", 0), 10, 10);
+  rs_fresh(b, d);
+}
+dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
+  f := rs_fighter("Foe", 1, 3); f.hp = 200; f.hp_max = 200;
+  return rs_add(b, f, x, y);
+}
+
+#test "the cone: 60 feet long, a half-angle of atan(1/2); in front and inside, never behind or wide" {
+  #assert rs_in_cone(0, 30, 0, 1, 60) && rs_in_cone(0, 60, 0, 1, 60) && !rs_in_cone(0, 60.5, 0, 1, 60);
+  #assert rs_in_cone(15, 30, 0, 1, 60) && rs_in_cone(-15, 30, 0, 1, 60) && !rs_in_cone(15.5, 30, 0, 1, 60);
+  #assert !rs_in_cone(0, -5, 0, 1, 60) && !rs_in_cone(10, 0, 0, 1, 60) && rs_in_cone(0, 0, 0, 1, 60);
+  // the edge: 26.57° from the aim
+  a := 0.4636476f32;   // atan(0.5)
+  #assert rs_in_cone(sin(a - 0.01) * 50, cos(a - 0.01) * 50, 0, 1, 60) && !rs_in_cone(sin(a + 0.01) * 50, cos(a + 0.01) * 50, 0, 1, 60);
+  // any aim, any units: metres, 18.288 m for 60 feet, aimed along +X
+  #assert rs_in_cone(18.0, 0, 2, 0, 18.288) && !rs_in_cone(18.5, 0, 2, 0, 18.288) && !rs_in_cone(5, 3, 2, 0, 18.288);
+  #assert !rs_in_cone(1, 1, 0, 0, 60) && !rs_in_cone(1, 1, 1, 0, 0);
+  // in three dimensions: a flier 10 m up aims down at a target 12 m ahead on the ground
+  #assert rs_in_cone3(0, -10, 12, 0, -10, 12, 18.288) && !rs_in_cone3(0, -10, 12, 0, 0, 1, 18.288) && rs_in_cone3(0, 0, 18, 0, 0, 1, 18.288);
+  #assert rs_in_cone3(4.4, 0, 9, 0, 0, 1, 18.288) && !rs_in_cone3(4.6, 0, 9, 0, 0, 1, 18.288) && !rs_in_cone3(0, 0, 18.5, 0, 0, 1, 18.288);
+}
+#test "Fire Breath: DC 21 Dexterity, 17d6 Fire to each foe in the cone, half on a success; then it's spent" {
+  b: [1] RsBattle; dragon_field(b[..]);
+  near := dragon_foe(b[..], 10, 14);     // 20 ft ahead
+  far := dragon_foe(b[..], 10, 23);      // 65 ft: past the cone
+  wide := dragon_foe(b[..], 16, 14);     // 30 ft aside at 20 ft along: outside its width
+  back := dragon_foe(b[..], 10, 6);      // behind
+  rs_fresh(b[..], 0);
+  #assert rs_fire_breath(b[..], 0, 0, 1) == 1;
+  // fixed dice: 17 × 3 = 51; a 10 on the save (+1 Dex) fails DC 21
+  #assert b[0].c[near].hp == 200 - 51 && b[0].c[near].burning == RS_BURN_ROUNDS && b[0].c[near].burn_by == 0;
+  #assert b[0].c[far].hp == 200 && b[0].c[wide].hp == 200 && b[0].c[back].hp == 200 && b[0].c[far].burning == 0;
+  #assert b[0].c[0].breath_spent && b[0].turn.action && !rs_breath_ready(b[0].c[0]);
+  rs_fresh(b[..], 0); #assert rs_fire_breath(b[..], 0, 0, 1) == -1 && b[0].c[near].hp == 200 - 51;
+  // a success halves it: a foe whose Dexterity save makes 21
+  s: [1] RsBattle; dragon_field(s[..]); q := dragon_foe(s[..], 10, 14); s[0].c[q].score[RS_DEX] = 20; s[0].c[q].save_prof[RS_DEX] = true; s[0].c[q].level = 20;
+  rs_fresh(s[..], 0);
+  #assert rs_fire_breath(s[..], 0, 0, 1) == 1 && s[0].c[q].hp == 200 - 25 && s[0].c[q].burning == 0;
+  // Fire immunity: nothing, and nothing burns
+  m: [1] RsBattle; dragon_field(m[..]); r := dragon_foe(m[..], 10, 14); m[0].c[r].immune = 1 << RS_FIRE; rs_fresh(m[..], 0);
+  #assert rs_fire_breath(m[..], 0, 0, 1) == 1 && m[0].c[r].hp == 200 && m[0].c[r].burning == 0;
+  // a druid out of the form doesn't breathe
+  #assert !rs_breather(rs_druid("D", 0, 17)) && rs_breather(rs_monster(MON_ADULT_RED_DRAGON, "", 0));
+}
+#test "Recharge 5–6: a 5 or a 6 at the start of its turn brings Fire Breath back" {
+  for d6: 1..<7 { #assert rs_recharges(d6) == (d6 >= 5); }
+  b: [1] RsBattle; dragon_field(b[..]); b[0].c[0].breath_spent = true;
+  rs_dragon_turn_start(b[..], 0); #assert b[0].c[0].breath_spent;   // fixed dice roll a 3
+  b[0].dice[0].fixed = false; b[0].dice[0].state = 7;
+  back := 0;
+  for k: 0..<600 { b[0].c[0].breath_spent = true; rs_dragon_turn_start(b[..], 0); if !b[0].c[0].breath_spent { back += 1; } }
+  #assert back > 150 && back < 250;   // a third of the time
+}
+#test "Burning: 1d4 Fire at the start of each turn for three rounds; an action Prone puts it out" {
+  b: [1] RsBattle; dragon_field(b[..]); f := dragon_foe(b[..], 10, 14); rs_fresh(b[..], 0);
+  b[0].c[f].burning = RS_BURN_ROUNDS; b[0].c[f].burn_by = 0;
+  #assert rs_burning_tick(b[..], f) == 2 && b[0].c[f].hp == 198 && b[0].c[f].burning == 2;
+  rs_dragon_turn_start(b[..], f); #assert b[0].c[f].hp == 196 && b[0].c[f].burning == 1;
+  rs_dragon_turn_start(b[..], f); #assert b[0].c[f].hp == 194 && b[0].c[f].burning == 0;
+  #assert rs_burning_tick(b[..], f) == 0 && b[0].c[f].hp == 194;
+  b[0].c[f].burning = 3; rs_fresh(b[..], f);
+  #assert rs_burning_douse(b[..], f) && b[0].c[f].burning == 0 && rs_has(b[0].c[f], RS_PRONE);
+  #assert !rs_burning_douse(b[..], f);
+}
+#test "Tail Sweep, Wing Buffet and Frightful Roar: the SRD's DC formula, their reach, damage and conditions" {
+  d := rs_monster(MON_ADULT_RED_DRAGON, "", 0);
+  #assert rs_dragon_dc(d, RS_STR) == 22 && rs_dragon_dc(d, RS_CHA) == 20 && rs_proficiency(d.level) == 6;
+  b: [1] RsBattle; dragon_field(b[..]);
+  a := dragon_foe(b[..], 12, 10);   // 10 ft
+  c := dragon_foe(b[..], 13, 13);   // 15 ft
+  e := dragon_foe(b[..], 14, 10);   // 20 ft
+  rs_fresh(b[..], 0);
+  // fixed: 1d10 + 8 = 13 Bludgeoning; a 10 on the save fails
+  #assert rs_tail_sweep(b[..], 0) == 2 && b[0].c[a].hp == 187 && b[0].c[c].hp == 187 && b[0].c[e].hp == 200;
+  #assert rs_has(b[0].c[a], RS_PRONE) && rs_has(b[0].c[c], RS_PRONE) && !rs_has(b[0].c[e], RS_PRONE);
+  rs_fresh(b[..], 0); #assert rs_wing_buffet(b[..], 0) == 1 && b[0].c[a].hp == 174 && b[0].c[a].x == 13 && b[0].c[c].hp == 187;   // pushed one square, stopped by the foe behind it
+  rs_fresh(b[..], 0); #assert rs_dragon_roar(b[..], 0) == 3 && rs_has(b[0].c[e], RS_FRIGHTENED);
+  rs_tick(b[..], 7); #assert !rs_has(b[0].c[e], RS_FRIGHTENED);
+  // one Action each
+  rs_fresh(b[..], 0); #assert rs_tail_sweep(b[..], 0) >= 0 && rs_wing_buffet(b[..], 0) == -1 && rs_dragon_roar(b[..], 0) == -1;
+  // not a dragon
+  n: [1] RsBattle; n[0].w = 20; n[0].h = 20; n[0].dice[0].fixed = true; nd := rs_add(n[..], rs_druid("D", 0, 17), 5, 5); _ := dragon_foe(n[..], 6, 5); rs_fresh(n[..], nd);
+  #assert rs_tail_sweep(n[..], 0) == -1 && rs_fire_breath(n[..], 0, 1, 0) == -1;
+}
