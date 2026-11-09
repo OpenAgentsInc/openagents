@@ -402,6 +402,18 @@ bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]) {
 /* The path guard's body this tick (room-e2-guard.coax rm_e2_guard_body), which every seat's step walks round. */
 static bool guard_on[WORLD_ROOMS]; static float guard_xz[WORLD_ROOMS][2];
 void world2_guard(int k, bool on, float x, float z) { if (k >= 0 && k < WORLD_ROOMS) { guard_on[k] = on; guard_xz[k][0] = x; guard_xz[k][1] = z; } }
+/* The trunks and round props near (x, z) as circles (x, z, radius each) into out, at most cap of them:
+   what the guard steers round (room-e2-guard.coax rm_e2_guard_near, for the shared steering service). */
+int world2_near(float x, float z, float *out, int cap) {
+  if (!world2_prepare()) return 0;
+  coax_t_EgMoveWorld w = e2mg_move_world(e2mg(), x, z, false);
+  coax_v_f32 bodies = e2mg_bodies(e2mg());
+  int n = 0;
+  for (int64_t q = 0; q < w.bodies && n < cap; q++, n++) {
+    out[n * 3] = bodies.data[q * 7]; out[n * 3 + 1] = bodies.data[q * 7 + 2]; out[n * 3 + 2] = bodies.data[q * 7 + 6];
+  }
+  return n;
+}
 bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]) {
   if (k < 0 || k >= WORLD_ROOMS || s < 0 || s >= WORLD_SEATS || !world2_prepare()) return false;
   const float dt = 1.0f / WORLD_HZ;

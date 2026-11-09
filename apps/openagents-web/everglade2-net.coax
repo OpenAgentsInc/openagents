@@ -714,9 +714,9 @@ e2n_guard_hit :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
   rd:=[1]WireRd.[wire_rd(t,2)];
   tick:=wire_num(t,rd[..]); kind:=wire_num(t,rd[..]); seat:=wire_num(t,rd[..]); amount:=wire_num(t,rd[..]);
-  if !rd[0].ok || wire_more(t,rd[..]) || kind<1 || kind>2 || seat< -1 || seat>=64 || amount<0 || amount>999 { return; }
+  if !rd[0].ok || wire_more(t,rd[..]) || kind<1 || kind>6 || kind==3 || seat< -1 || seat>=64 || amount<0 || amount>999 { return; }   // 4: his critical hit at a seat, 5 his arrow, 6 its critical hit
   if seat==n[0].seat && amount>0 && kind==1 { n[0].hit_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=true; }
-  if seat==n[0].seat && amount>0 && kind==2 { n[0].hurt_n[E2N_FOE_GUARD]+=1; n[0].hurt_by=E2N_FOE_GUARD; }
+  if seat==n[0].seat && amount>0 && kind>=2 { n[0].hurt_n[E2N_FOE_GUARD]+=1; n[0].hurt_by=E2N_FOE_GUARD; }
   for h:0..<E2N_GUARD_HITS { if !n[0].guard_hits[h].live { n[0].guard_hits[h]=E2nGuardHit.{live=true,t=e2n_tick_t(n,tick),kind=kind,seat=seat,amount=amount}; return; } }
 }
 // Where the guard is at the room's time rt (ms): between the two words round it, else the nearest.

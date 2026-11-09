@@ -36,6 +36,7 @@ E5rBeast :: struct {
   bite_at: f32;
   forge_id: int; forge_action: int; forge_building: bool;
   forge_hit: int; forge_swing: f32 = -100;
+  dash_at: f32 = -100; shot_at: f32 = -100; // a patrolling guard's last Dash and last ranged attack (the battle's clock)
   patrol: bool;                              // a room's patrolling guard (coax/web/room/room-e2-guard.coax): its room walks it, e5rp_turn strikes
   wild: bool;                                // an Everglade II monster (coax/web/room/room-e2-monsters.coax): its room moves it and strikes for it
 }

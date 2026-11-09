@@ -309,6 +309,7 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c #effects(reads,writes,traps) 
 // is set on, its own stat block's weapon through the shared attack (Extra Attack's blows with it), once the room has brought it within
 // reach. It never chooses a foe: the room sets one only on a creature that harmed it. forge_swing keeps
 // the battle's clock of its last blow, which the room tells the pages.
+E5RP_SHOOT_FT :: 30;   // feet past which a patrolling guard shoots rather than Dashes
 e5rp_turn :: (r: [] E5rRoom, q: int) {
   bt := r[0].beasts[q..<q + 1]; b := r[0].b[..]; i := E5RR_BEAST0 + q;
   foe := bt[0].foe;
@@ -317,6 +318,13 @@ e5rp_turn :: (r: [] E5rRoom, q: int) {
   // a Fighter's: Second Wind below half its Hit Points, and its Action Surge for a second Attack
   // action while the foe still stands (a stat block without them does neither)
   if b[0].c[i].hp * 2 < b[0].c[i].hp_max { _ := rs_second_wind(b, i); }
+  // out of reach: far off, his ranged weapon (its Attack action); nearer, the Dash action to close
+  // (the room runs him faster while it lasts: room-e2-guard.coax E2G_DASH)
+  if rs_feet_to(b, i, foe) > 5 {
+    if b[0].c[i].ranged >= 0 && rs_feet_to(b, i, foe) > E5RP_SHOOT_FT && rs_shoot(b, i, foe) { bt[0].shot_at = b[0].clock; return; }
+    if rs_dash(b, i) { bt[0].dash_at = b[0].clock; }
+    return;
+  }
   was := b[0].turn.action;
   _ := rs_attack(b, i, foe, false, -1);
   if b[0].turn.action && !b[0].c[foe].dead && b[0].c[foe].hp > 0 && rs_action_surge(b, i) { _ = rs_attack(b, i, foe, false, -1); }

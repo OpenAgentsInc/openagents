@@ -109,6 +109,7 @@ rs_path_guard :: (name: string, team: int) -> RsCreature {
   c[0].hp_max = 84; c[0].hp = 84;
   c[0].ac = 16 + 2 + 1;
   c[0].weapon = W_LONGSWORD; c[0].masteries = c[0].masteries | (1 << M_SAP);
+  c[0].ranged = W_LONGBOW;   // a Fighter's Martial ranged weapon (its starting kit's B), for a foe out of reach: Extra Attack's two arrows
   return c[0];
 }
 // Warrior Veteran (p. 337): AC 17 (Splint Armor), HP 65 (10d8 + 20), Str 16 Dex 13 Con 14 Int 10

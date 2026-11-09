@@ -52,9 +52,11 @@ xf_struck_feel :: () -> DeedFeel { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FX
 // (everglade2-monsters.coax, everglade2-guard.coax) and Experimental's dungeon (verse/experimental-hostiles.coax).
 XF_MON_WOLF_BITE :: 0; XF_MON_GOBLIN_BLADE :: 1; XF_MON_GOBLIN_SHOT :: 2; XF_MON_GUARD_BLOW :: 3;
 XF_MON_IMP :: 4; XF_MON_GREMLIN :: 5; XF_MON_BRUTE :: 6; XF_MON_FIEND :: 7; XF_MON_BOSS :: 8;
-XF_MONS :: 9;
+XF_MON_GUARD_SHOT :: 9;   // the path guard's Longbow, out of his reach (room-e2-guard.coax)
+XF_MONS :: 10;
 xf_monster_feel :: (m: int) -> DeedFeel {
   if m == XF_MON_WOLF_BITE { return DeedFeel.{anim = XF_ANIM_BITE, fx = FXR_HIT, sound = "swing-heavy", move = DeedMove.lunge}; }
+  if m == XF_MON_GUARD_SHOT { return DeedFeel.{anim = XF_ANIM_SHOOT, fx = FXR_ARROW, sound = "bow-release", move = DeedMove.plant}; }
   if m == XF_MON_GOBLIN_SHOT { return DeedFeel.{anim = XF_ANIM_SHOOT, fx = FXR_SHAFT, sound = "bow-release", move = DeedMove.plant}; }
   if m == XF_MON_GUARD_BLOW || m == XF_MON_BRUTE || m == XF_MON_BOSS { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_HIT, sound = "swing-heavy", move = DeedMove.lunge}; }
   if m == XF_MON_FIEND { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_FIEND, sound = "swing-heavy", move = DeedMove.lunge}; }
