@@ -1,7 +1,10 @@
 # Building Everglade
 
-**Status: proposal.** This page sets out the book's structure and flow. No
-chapter is complete yet.
+**Status: drafting.** This page sets out the book's structure and flow.
+Chapters 1 to 11 and 14 to 18 are drafted, each marked partly implemented.
+They copy listings only from source that already has `// book:begin` markers;
+the rest wait until the code moves into `everglade/`. The
+[contents](SUMMARY.md) list them. The other chapters are planned.
 
 Everglade is an MMORPG built on the
 [D&D 5E System Reference Document](https://www.dndbeyond.com/srd) (SRD 5.2.1).
@@ -40,14 +43,15 @@ Everglade has two goals that pull against each other:
 The book treats every difference from the SRD as a design decision with a
 reason. For example:
 
-- **Turns become time.** An SRD round is 6 seconds. Everglade spends your
-  action, bonus action, reaction and movement over the same 6 seconds, in real
-  time.
+- **Turns become time.** An SRD round is 6 seconds. Everglade gives every
+  creature a short turn every 1.5 seconds, a quarter of a round, with its own
+  action, bonus action, reaction and a quarter of its movement. Death saves,
+  repeated saves and durations still run on the SRD's 6-second round.
 - **Aim picks the target, and the roll decides the hit.** Your aim chooses what
   an arrow or spell can hit. The SRD attack roll against Armor Class still
   decides whether it hits.
 - **Range stays in feet.** The SRD's ranges and areas convert to the world's
-  metres, so a 150-foot longbow shot is about 45 metres.
+  metres, so a 150-foot longbow shot is about 46 metres (45.72 m).
 
 Each rules chapter lists what follows the SRD exactly, what changes and why,
 and the checks that keep each rule true.
