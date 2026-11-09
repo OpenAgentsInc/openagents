@@ -1,6 +1,6 @@
 # Several monitors, turned monitors and the main screen in the Coax compositor (plan)
 
-Written 2026-11-09. Status: plan. Nothing here is built in Coax yet. It
+Written 2026-11-09. Status: steps 1 to 3 built (see Progress at the end); 4 to 6 are still plans. It
 extends [2026-11-02-verse-os.md](2026-11-02-verse-os.md), whose display row
 lists "more than one connector; hotplug" as missing.
 
@@ -107,3 +107,36 @@ shows the main monitor rather than the side one until step 3 lands.
 A screenshot or screencopy of the turned screen comes out garbled, though
 the monitor itself shows the picture upright (checked by the owner on
 2026-11-09). Screen recording of that screen is affected until it is fixed.
+
+## Progress
+
+**2026-11-09: steps 1 to 3.**
+
+- `os/screens.coax`: the arrangement file, the order, the turn and its
+  arithmetic, with `#test` and `#forall` checks (run through
+  `coax test os/compositor.coax`, which loads it).
+- `coax/platform/screen-native.c`: `cxscr_open_all` takes every connected
+  monitor on every card (the boot card first, or the cards
+  `CODEROS_COMPOSITOR_CARD` names, split by `:`), each with its own CRTC,
+  buffers and page flips (`page_flip_handler2`, so two monitors on one card
+  are told apart). A card another program holds is passed over.
+  `cxscr_open`, `cxscr_present` and the rest still work, as monitor 0.
+- `os/compositor.coax`: `--screens-file` (default
+  `/etc/coderos/screens.json`); each screen keeps its monitor, turn and own
+  size; every monitor's rows are filled from the picture through
+  `sc_walk` and shown with `cxscr_head_present`; `wl_output` sends the
+  monitor's own mode with the turn as its transform; the desk socket's
+  `screens` answer lists every screen; `--screens WxH@DEG` gives a headless
+  screen a turned monitor, and the `panel N PATH` command writes what a
+  monitor shows.
+- Checked headless (`--screens 1920x1080@90,2560x1440`: a 3640 x 1920
+  picture, the turned monitor's rows turned a quarter counter-clockwise),
+  and on `coderos-4080`'s side monitor, which showed a terminal upright
+  with `rotate = { "HDMI-A-2" = 90; }`, as the Rust compositor does with
+  the same file (owner, 2026-11-09).
+
+Not done in step 3: the screens still share one picture of at most
+3840 x 2160 (enough for this machine's 3640 x 1920), rather than one frame
+each; the pointer can wander into the part of the picture no screen
+shows when the screens differ in height; and only one card has been
+driven on hardware so far, because the Rust desktop holds the other.

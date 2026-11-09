@@ -1,0 +1,202 @@
+// The screens' arrangement for os/compositor.coax: the order the monitors stand in from left to
+// right, how far each one's picture is turned, and the arithmetic that turns it
+// (docs/os/2026-11-09-coax-compositor-screens.md, step 1). The host writes it to
+// /etc/coderos/screens.json (or the file CODER_COMPOSITOR_SCREENS names), the same file the Rust
+// coder-compositor reads:
+//   { "order": ["HDMI-A-2", "HDMI-A-3"], "rotate": { "HDMI-A-2": 90 }, "leave": ["HDMI-A-2"] }
+// `order` names the screens from left to right; one it leaves out stands to the right of those it
+// names, in the order it arrived. `rotate` turns a screen's picture 0, 90, 180 or 270 degrees
+// counter-clockwise, as the wl_output transform of the same number does, for a monitor standing on
+// its side; any other number leaves it upright. `leave` is the Rust compositor's (the screens it
+// hands to another program), and this file does not read it.
+// A panel is the monitor's own pixels, pw x ph; the screen is the picture as it stands, the size
+// the window policy tiles. A quarter turn swaps the two.
+#load "../coax/lib/json/json.coax";
+
+SC_MAX :: 8; SC_NAME :: 64;
+ScName :: struct { b: [SC_NAME] u8; n: int; }
+ScArrangement :: struct {
+  order: [SC_MAX] ScName; norder: int;
+  turned: [SC_MAX] ScName; quarter: [SC_MAX] int; nturned: int;
+}
+
+// Quarter turns for a number of degrees: 0..3, or -1 when it is not a quarter turn.
+sc_quarter :: (degrees: int) -> int {
+  if degrees == 0 { return 0; } if degrees == 90 { return 1; } if degrees == 180 { return 2; } if degrees == 270 { return 3; }
+  return -1;
+}
+// The screen's size for a panel of pw x ph turned q quarters.
+sc_stood_w :: (pw: int, ph: int, q: int) -> int { return ifx q == 1 || q == 3 then ph else pw; }
+sc_stood_h :: (pw: int, ph: int, q: int) -> int { return ifx q == 1 || q == 3 then pw else ph; }
+
+// The screen's pixel a panel pixel (u, v) shows: out[0] = x, out[1] = y.
+sc_from_panel :: (u: int, v: int, pw: int, ph: int, q: int, out: [] int) {
+  if q == 1 { out[0] = ph - 1 - v; out[1] = u; }
+  else if q == 2 { out[0] = pw - 1 - u; out[1] = ph - 1 - v; }
+  else if q == 3 { out[0] = v; out[1] = pw - 1 - u; }
+  else { out[0] = u; out[1] = v; }
+}
+// The panel pixel that shows the screen's pixel (x, y): out[0] = u, out[1] = v.
+sc_to_panel :: (x: int, y: int, pw: int, ph: int, q: int, out: [] int) {
+  if q == 1 { out[0] = y; out[1] = ph - 1 - x; }
+  else if q == 2 { out[0] = pw - 1 - x; out[1] = ph - 1 - y; }
+  else if q == 3 { out[0] = pw - 1 - y; out[1] = x; }
+  else { out[0] = x; out[1] = y; }
+}
+// Panel row v as a walk over the screen: it starts at (out[0], out[1]) for u = 0 and each step of u
+// moves (out[2], out[3]). The compositor copies a row with it, one add a pixel.
+sc_walk :: (v: int, pw: int, ph: int, q: int, out: [] int) {
+  if q == 1 { out[0] = ph - 1 - v; out[1] = 0; out[2] = 0; out[3] = 1; }
+  else if q == 2 { out[0] = pw - 1; out[1] = ph - 1 - v; out[2] = -1; out[3] = 0; }
+  else if q == 3 { out[0] = v; out[1] = pw - 1; out[2] = 0; out[3] = -1; }
+  else { out[0] = 0; out[1] = v; out[2] = 1; out[3] = 0; }
+}
+// The panel rows a box of the screen (x0, y0)..(x1, y1), ends excluded, lands on: out[0]..out[1],
+// end excluded; empty (out[1] <= out[0]) for an empty box.
+sc_panel_rows :: (x0: int, y0: int, x1: int, y1: int, pw: int, ph: int, q: int, out: [] int) {
+  out[0] = 0; out[1] = 0;
+  if x1 <= x0 || y1 <= y0 { return; }
+  a: [2] int; b: [2] int;
+  sc_to_panel(x0, y0, pw, ph, q, a[..]); sc_to_panel(x1 - 1, y1 - 1, pw, ph, q, b[..]);
+  out[0] = ifx a[1] < b[1] then a[1] else b[1];
+  out[1] = (ifx a[1] > b[1] then a[1] else b[1]) + 1;
+}
+
+sc_name_is :: (n: ScName, name: string) -> bool {
+  if n.n != name.count { return false; }
+  for i: 0..<n.n { if n.b[i] != name[i] { return false; } }
+  return true;
+}
+sc_name_of :: (d: Jv, at: int, out: [] ScName) -> bool {
+  k := jv_str(d, at, out[0].b[..]);
+  if k < 0 { return false; }
+  out[0].n = k; return true;
+}
+// Reads the host's file into a: false (and a empty) when it is not the object above.
+sc_parse :: (a: [] ScArrangement, text: string) -> bool {
+  a[0].norder = 0; a[0].nturned = 0;
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  order := jv_get(d[0], 0, "order");
+  if order >= 0 {
+    if jv_kind(d[0], order) != JV_ARRAY { return false; }
+    for i: 0..<jv_len(d[0], order) {
+      e := jv_at(d[0], order, i);
+      if jv_kind(d[0], e) != JV_STRING || a[0].norder >= SC_MAX { a[0].norder = 0; return false; }
+      if !sc_name_of(d[0], e, a[0].order[a[0].norder..<SC_MAX]) { a[0].norder = 0; return false; }
+      a[0].norder += 1;
+    }
+  }
+  rotate := jv_get(d[0], 0, "rotate");
+  if rotate >= 0 {
+    if jv_kind(d[0], rotate) != JV_OBJECT { a[0].norder = 0; return false; }
+    e := d[0].nodes[rotate].first;
+    while e >= 0 {
+      if jv_kind(d[0], e) != JV_NUMBER || a[0].nturned >= SC_MAX { a[0].norder = 0; a[0].nturned = 0; return false; }
+      key := jv_key(d[0], e);
+      if key.count > SC_NAME { a[0].norder = 0; a[0].nturned = 0; return false; }
+      t := a[0].nturned;
+      for i: 0..<key.count { a[0].turned[t].b[i] = key[i]; } a[0].turned[t].n = key.count;
+      a[0].quarter[t] = sc_quarter(jv_int(d[0], e, -1));
+      a[0].nturned += 1;
+      e = d[0].nodes[e].next;
+    }
+  }
+  return true;
+}
+// The quarter turns a screen takes: 0 unless the file turns it a whole quarter.
+sc_turn :: (a: ScArrangement, name: string) -> int {
+  for i: 0..<a.nturned { if sc_name_is(a.turned[i], name) { return ifx a.quarter[i] < 0 then 0 else a.quarter[i]; } }
+  return 0;
+}
+// A screen's place in `order`: its index, or norder when it is left out.
+sc_rank :: (a: ScArrangement, name: string) -> int {
+  for i: 0..<a.norder { if sc_name_is(a.order[i], name) { return i; } }
+  return a.norder;
+}
+// Stands n screens left to right by rank, the order they arrived in among equal ranks, tops at 0:
+// xs[i] is screen i's left edge.
+sc_lay_out :: (ranks: [] int, widths: [] int, n: int, xs: [] int) {
+  left := 0; placed: [SC_MAX] bool;
+  for k: 0..<n {
+    best := -1;
+    for i: 0..<n { if !placed[i] && (best < 0 || ranks[i] < ranks[best]) { best = i; } }
+    placed[best] = true; xs[best] = left; left += widths[best];
+  }
+}
+
+#test "a quarter turn names its count, and anything else none" {
+  #assert sc_quarter(0) == 0 && sc_quarter(90) == 1 && sc_quarter(180) == 2 && sc_quarter(270) == 3;
+  #assert sc_quarter(45) == -1 && sc_quarter(360) == -1 && sc_quarter(-90) == -1;
+}
+#test "a quarter turn swaps the width and the height" {
+  #assert sc_stood_w(1920, 1080, 0) == 1920 && sc_stood_h(1920, 1080, 0) == 1080;
+  #assert sc_stood_w(1920, 1080, 1) == 1080 && sc_stood_h(1920, 1080, 1) == 1920;
+  #assert sc_stood_w(1920, 1080, 2) == 1920 && sc_stood_w(1920, 1080, 3) == 1080 && sc_stood_h(1920, 1080, 3) == 1920;
+}
+#test "a turn of 90 puts the picture's top along the panel's left edge" {
+  // counter-clockwise: the screen's top left shows at the panel's bottom left, its top right at
+  // the panel's top left
+  p: [2] int;
+  sc_to_panel(0, 0, 1920, 1080, 1, p[..]); #assert p[0] == 0 && p[1] == 1079;
+  sc_to_panel(1079, 0, 1920, 1080, 1, p[..]); #assert p[0] == 0 && p[1] == 0;
+  sc_to_panel(0, 1919, 1920, 1080, 1, p[..]); #assert p[0] == 1919 && p[1] == 1079;
+  sc_to_panel(0, 0, 1920, 1080, 3, p[..]); #assert p[0] == 1919 && p[1] == 0;
+  sc_to_panel(0, 0, 1920, 1080, 2, p[..]); #assert p[0] == 1919 && p[1] == 1079;
+}
+#forall "a turn and its reverse give the pixel back" pw: 1..<5, ph: 1..<5, q: 0..<4, u: 0..<4, v: 0..<4 {
+  if u < pw && v < ph {
+    s: [2] int; p: [2] int;
+    sc_from_panel(u, v, pw, ph, q, s[..]);
+    #assert s[0] >= 0 && s[0] < sc_stood_w(pw, ph, q) && s[1] >= 0 && s[1] < sc_stood_h(pw, ph, q);
+    sc_to_panel(s[0], s[1], pw, ph, q, p[..]);
+    #assert p[0] == u && p[1] == v;
+  }
+}
+#forall "a panel row's walk visits the pixels the turn names" pw: 1..<5, ph: 1..<5, q: 0..<4, v: 0..<4 {
+  if v < ph {
+    w: [4] int; s: [2] int;
+    sc_walk(v, pw, ph, q, w[..]);
+    for u: 0..<pw {
+      sc_from_panel(u, v, pw, ph, q, s[..]);
+      #assert s[0] == w[0] + u * w[2] && s[1] == w[1] + u * w[3];
+    }
+  }
+}
+#forall "a box lands on the panel rows that show it" pw: 1..<5, ph: 1..<5, q: 0..<4, x0: 0..<4, y0: 0..<4, x1: 1..<5, y1: 1..<5 {
+  sw := sc_stood_w(pw, ph, q); sh := sc_stood_h(pw, ph, q);
+  if x0 < x1 && y0 < y1 && x1 <= sw && y1 <= sh {
+    r: [2] int; p: [2] int;
+    sc_panel_rows(x0, y0, x1, y1, pw, ph, q, r[..]);
+    #assert r[0] >= 0 && r[1] <= ph && r[0] < r[1];
+    lo := ph; hi := -1;
+    for y: y0..<y1 { for x: x0..<x1 { sc_to_panel(x, y, pw, ph, q, p[..]); lo = ifx p[1] < lo then p[1] else lo; hi = ifx p[1] > hi then p[1] else hi; } }
+    #assert r[0] == lo && r[1] == hi + 1;
+  }
+}
+#test "an empty box lands on no rows" {
+  r: [2] int;
+  sc_panel_rows(3, 3, 3, 9, 1920, 1080, 1, r[..]); #assert r[1] <= r[0];
+  sc_panel_rows(3, 9, 8, 2, 1920, 1080, 0, r[..]); #assert r[1] <= r[0];
+}
+#test "the file names the order and the turns" {
+  a: [1] ScArrangement;
+  #assert sc_parse(a[..], "{\"leave\":[\"HDMI-A-2\"],\"order\":[\"HDMI-A-2\",\"HDMI-A-3\"],\"rotate\":{\"HDMI-A-2\":90,\"DP-1\":270,\"DP-2\":45}}");
+  #assert a[0].norder == 2 && sc_rank(a[0], "HDMI-A-2") == 0 && sc_rank(a[0], "HDMI-A-3") == 1 && sc_rank(a[0], "DP-3") == 2;
+  #assert sc_turn(a[0], "HDMI-A-2") == 1 && sc_turn(a[0], "DP-1") == 3 && sc_turn(a[0], "DP-2") == 0 && sc_turn(a[0], "HDMI-A-3") == 0;
+  #assert sc_parse(a[..], "{}") && a[0].norder == 0 && a[0].nturned == 0 && sc_turn(a[0], "HDMI-A-2") == 0;
+}
+#test "a file that is not the arrangement is refused and turns nothing" {
+  a: [1] ScArrangement;
+  #assert !sc_parse(a[..], "not json") && !sc_parse(a[..], "[]") && !sc_parse(a[..], "{\"order\":\"HDMI-A-2\"}");
+  #assert !sc_parse(a[..], "{\"order\":[1]}") && !sc_parse(a[..], "{\"rotate\":[90]}");
+  #assert !sc_parse(a[..], "{\"order\":[\"A\"],\"rotate\":{\"A\":\"left\"}}") && a[0].norder == 0 && a[0].nturned == 0;
+}
+#test "the screens stand left to right by rank, in arrival order among equals" {
+  xs: [3] int;
+  // the main screen arrives first; the file stands the side monitor to its left
+  r2 := [2] int.[1, 0]; w2 := [2] int.[2560, 1080];
+  sc_lay_out(r2[..], w2[..], 2, xs[..]); #assert xs[0] == 1080 && xs[1] == 0;
+  r3 := [3] int.[2, 0, 2]; w3 := [3] int.[100, 200, 300];
+  sc_lay_out(r3[..], w3[..], 3, xs[..]); #assert xs[1] == 0 && xs[0] == 200 && xs[2] == 300;
+}

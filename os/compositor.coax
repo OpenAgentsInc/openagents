@@ -1,4 +1,4 @@
-// `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,...] [--xwayland] [--screen] [--input FILE] [--check]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH[@DEG],...] [--screens-file FILE] [--xwayland] [--screen] [--input FILE] [--check]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
 // step 2 row 6). It serves real Wayland clients on SOCKET (WAYLAND_DISPLAY may name it as a full path):
 // wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (the clipboard),
 // zxdg_decoration_manager_v1 (server-side: the compositor draws the borders) and xdg_wm_base, and it places every
@@ -9,14 +9,19 @@
 // LAUNCH-DIR/start, when there is one, runs once the socket is up: the session's start list.
 // KEYMAP is the XKB keymap text clients get (os/compositor-us.xkb is the US layout, compiled once by
 // `xkbcli compile-keymap --layout us`; it is data, not a tool).
-// With --screen it takes the first connected screen through KMS (from a free VT; Ctrl+Alt+Backspace
-// leaves and puts the screen back) and grabs the keyboards and mice. Without it, it is headless.
+// With --screen it takes every connected monitor through KMS (from a free VT; Ctrl+Alt+Backspace
+// leaves and puts the screens back) and grabs the keyboards and mice. Without it, it is headless.
+// The monitors stand left to right as --screens-file (default /etc/coderos/screens.json, read by
+// os/screens.coax) orders them, each picture turned as it says; the first card's first monitor is
+// the main screen: desk 1 and the focus. --screens WxH@DEG gives a headless screen a monitor of
+// W x H turned DEG degrees, and the `panel N PATH` command writes what monitor N shows.
 // On a VT it owns switching: Ctrl+Alt+F1..F12 shows that VT, and the screen and the devices are let
 // go while another VT shows (another session takes them back). --leave-to N shows VT N on leaving.
 // --input FILE plays a file of evdev records through the same path, on the file's own clock.
 // Either way a test channel on stdin, one command a line, answered on stdout:
 //   list                     every window: id, desk, rectangle in pixels, focus, app id, title
 //   shot PATH                composites the screen and writes it to PATH as a PPM image
+//   panel N PATH             what screen N's monitor shows, its own rows, turned, as a PPM image
 //   frame PATH               draws only what changed since the last picture, then writes it (checks damage)
 //   move X Y | click         the pointer: moves (focus follows it, as Hyprland's follow_mouse) or clicks
 //   key CODE | text TEXT     a key by evdev code, or US-layout text, through the bindings
@@ -39,6 +44,7 @@
 #load "../coax/lib/sys/fs.coax";
 #load "../coax/lib/sys/args.coax";
 #load "wm.coax";
+#load "screens.coax";
 #load "xwm.coax";
 #load "desk-buffer-policy.coax";
 #load "desk-dmabuf.coax";
@@ -98,6 +104,11 @@ cxscr_width :: () -> int #foreign #effects(all);
 cxscr_height :: () -> int #foreign #effects(all);
 cxscr_present :: (rgb: [] u8, y0: int, y1: int) -> int #foreign #effects(all);
 cxscr_close :: () -> int #foreign #effects(all);
+cxscr_open_all :: () -> int #foreign #effects(all);
+cxscr_head_width :: (i: int) -> int #foreign #effects(all);
+cxscr_head_height :: (i: int) -> int #foreign #effects(all);
+cxscr_head_name :: (i: int, out: [] u8) -> int #foreign #effects(all);
+cxscr_head_present :: (i: int, rgb: [] u8, y0: int, y1: int) -> int #foreign #effects(all);
 cxin_open :: (path: [] u8) -> int #foreign #effects(all);
 cxin_read :: () -> int #foreign #effects(all);
 cxin_type :: (i: int) -> int #foreign #effects(all);
@@ -153,7 +164,8 @@ CX_SOURCES :: 64; CX_SERVER_ID :: 4278190080;   // 0xff000000: ids the server ma
 CxPos :: struct { used: bool; w: int; h: int; ax: int; ay: int; aw: int; ah: int; anchor: int; gravity: int; dx: int; dy: int; }
 CxDue :: struct { client: int; id: int; }
 // The composited screen, RGB, with room for a PPM header in front.
-CxFrame :: struct { b: [CX_MAXW * CX_MAXH * 3 + 64] u8; }
+// b: the picture every screen shares; p: one monitor's own rows, turned, filled just before it is shown.
+CxFrame :: struct { b: [CX_MAXW * CX_MAXH * 3 + 64] u8; p: [CX_MAXW * CX_MAXH * 3 + 64] u8; }
 CxMsg :: struct { b: [16384] u8; n: int; start: int; op: int; }
 // The X11 window manager's view of Xwayland (os/xwm.coax): each X window it heard of, the wl_surface
 // Xwayland named for it (WL_SURFACE_ID), and the replies it waits for.
@@ -176,6 +188,7 @@ CxXw :: struct {
 }
 Cx :: struct {
   w: int; h: int;
+  head: [9] int; turn: [9] int; pw: [9] int; ph: [9] int;   // per screen: its monitor (-1 headless), quarter turns, the monitor's own size
   clients: [CX_CLIENTS] CxClient;
   pools: [CX_POOLS] CxPool; bufs: [CX_BUFS] CxBuf; surfs: [CX_SURFS] CxSurf; pos: [CX_POS] CxPos;
   win_surf: [WM_WINS] int;
@@ -474,8 +487,9 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
     else if kind == K_SEAT { mg_begin(g, id, 0); mg_put(g, 3); mg_end(g); if ver >= 2 { mg_begin(g, id, 1); mg_str(g, "seat0"); mg_end(g); } }
     else if kind == K_OUTPUT {
       sc := cx_output_screen(name); c := x[0].wm[0].screens[sc];
-      mg_begin(g, id, 0); mg_put(g, c.x); mg_put(g, c.y); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_str(g, "Coax"); mg_str(g, cast(string) c.name[0..<c.nn]); mg_put(g, 0); mg_end(g);
-      mg_begin(g, id, 1); mg_put(g, 3); mg_put(g, c.w); mg_put(g, c.h); mg_put(g, 60000); mg_end(g);
+      // the mode is the monitor's own size and the transform its turn, so a client knows the screen stands c.w x c.h
+      mg_begin(g, id, 0); mg_put(g, c.x); mg_put(g, c.y); mg_put(g, 0); mg_put(g, 0); mg_put(g, 0); mg_str(g, "Coax"); mg_str(g, cast(string) c.name[0..<c.nn]); mg_put(g, x[0].turn[sc]); mg_end(g);
+      mg_begin(g, id, 1); mg_put(g, 3); mg_put(g, x[0].pw[sc]); mg_put(g, x[0].ph[sc]); mg_put(g, 60000); mg_end(g);
       if ver >= 2 { mg_begin(g, id, 3); mg_put(g, 1); mg_end(g); mg_begin(g, id, 2); mg_end(g); }
       if x[0].clients[ci].no < 8 { x[0].clients[ci].outs[x[0].clients[ci].no] = id; x[0].clients[ci].outsc[x[0].clients[ci].no] = sc; x[0].clients[ci].no += 1; }
     }
@@ -859,6 +873,48 @@ cx_shot :: (x: [] Cx, o: [] CxFrame, path: string, full: bool) -> bool {
   ok := fs_write(path, cast(string) o[0].b[0..<n + hn]);
   for j: 0..<n { o[0].b[j] = o[0].b[j + hn]; }
   return ok;
+}
+// Fills rows r0..r1 of screen sc's monitor from the picture: each monitor row is a walk over the
+// screen (os/screens.coax's sc_walk), so a turned screen costs one add a pixel.
+cx_panel_rows :: (x: [] Cx, o: [] CxFrame, sc: int, r0: int, r1: int) {
+  c := x[0].wm[0].screens[sc]; pw := x[0].pw[sc]; ph := x[0].ph[sc]; q := x[0].turn[sc];
+  wv: [4] int;
+  for v: cx_max(r0, 0)..<cx_min(r1, ph) {
+    sc_walk(v, pw, ph, q, wv[..]);
+    at := 3 * ((c.y + wv[1]) * x[0].w + c.x + wv[0]); step := 3 * (wv[3] * x[0].w + wv[2]); to := 3 * v * pw;
+    for u: 0..<pw { o[0].p[to] = o[0].b[at]; o[0].p[to + 1] = o[0].b[at + 1]; o[0].p[to + 2] = o[0].b[at + 2]; to += 3; at += step; }
+  }
+}
+// Shows the box (x0, y0)..(x1, y1) of the picture on every monitor it reaches: false when a monitor
+// had not shown its last frame yet, so the box waits for the next tick.
+cx_present :: (x: [] Cx, o: [] CxFrame, x0: int, y0: int, x1: int, y1: int) -> bool {
+  ok := true;
+  for sc: 0..<x[0].wm[0].ns {
+    hd := x[0].head[sc]; if hd < 0 { continue; }
+    c := x[0].wm[0].screens[sc];
+    bx0 := cx_max(x0, c.x) - c.x; by0 := cx_max(y0, c.y) - c.y; bx1 := cx_min(x1, c.x + c.w) - c.x; by1 := cx_min(y1, c.y + c.h) - c.y;
+    if bx1 <= bx0 || by1 <= by0 { continue; }
+    r: [2] int; sc_panel_rows(bx0, by0, bx1, by1, x[0].pw[sc], x[0].ph[sc], x[0].turn[sc], r[..]);
+    cx_panel_rows(x, o, sc, r[0], r[1]);
+    if cxscr_head_present(hd, o[0].p[0..<3 * x[0].pw[sc] * x[0].ph[sc]], r[0], r[1]) != 0 { ok = false; }
+  }
+  return ok;
+}
+// Writes what screen sc's monitor shows, its own rows, as a PPM.
+cx_panel_shot :: (x: [] Cx, o: [] CxFrame, sc: int, path: string) -> bool {
+  if sc < 0 || sc >= x[0].wm[0].ns { return false; }
+  cx_damage_all(x); cx_composite(x, o);
+  pw := x[0].pw[sc]; ph := x[0].ph[sc];
+  head: [64] u8; hn := 0;
+  for c: "P6\n" { head[hn] = c; hn += 1; }
+  hn = cx_num_into(head[..], hn, pw); head[hn] = ' '; hn += 1; hn = cx_num_into(head[..], hn, ph);
+  for c: "\n255\n" { head[hn] = c; hn += 1; }
+  // the rows go after the header in p, which holds nothing between frames
+  n := 3 * pw * ph;
+  cx_panel_rows(x, o, sc, 0, ph);
+  i := n - 1; while i >= 0 { o[0].p[i + hn] = o[0].p[i]; i -= 1; }
+  for j: 0..<hn { o[0].p[j] = head[j]; }
+  return fs_write(path, cast(string) o[0].p[0..<n + hn]);
 }
 cx_num_into :: (b: [] u8, at: int, value: int) -> int {
   v := value; d: [24] u8; k := 0;
@@ -1557,10 +1613,16 @@ cx_desk_answer :: (x: [] Cx, o: [] CxFrame, line: string, b: [] u8) -> int {
     return cx_put(b, k, "}\n");
   }
   if ty == "screens" {
-    k := cx_put(b, 0, "{\"generation\":1,\"type\":\"screens\",\"screens\":[{\"name\":\"verse\",\"at\":{\"x\":0,\"y\":0},\"size\":{\"width\":");
-    k = cx_num_into(b, k, x[0].w); k = cx_put(b, k, ",\"height\":"); k = cx_num_into(b, k, x[0].h);
-    k = cx_put(b, k, "},\"scale\":1.0,\"desk\":"); f := wm_focus(m); k = cx_num_into(b, k, ifx f > 0 then wm_desk_of(m, f) else 1);
-    return cx_put(b, k, "}]}\n");
+    k := cx_put(b, 0, "{\"generation\":1,\"type\":\"screens\",\"screens\":[");
+    for sc: 0..<m[0].ns {
+      c := m[0].screens[sc];
+      if sc > 0 { k = cx_put(b, k, ","); }
+      k = cx_put(b, k, "{\"name\":\""); k = cx_put(b, k, cast(string) c.name[0..<c.nn]);
+      k = cx_put(b, k, "\",\"at\":{\"x\":"); k = cx_num_into(b, k, c.x); k = cx_put(b, k, ",\"y\":"); k = cx_num_into(b, k, c.y);
+      k = cx_put(b, k, "},\"size\":{\"width\":"); k = cx_num_into(b, k, c.w); k = cx_put(b, k, ",\"height\":"); k = cx_num_into(b, k, c.h);
+      k = cx_put(b, k, "},\"scale\":1.0,\"desk\":"); k = cx_num_into(b, k, c.desk + 1); k = cx_put(b, k, "}");
+    }
+    return cx_put(b, k, "]}\n");
   }
   if ty == "open" {
     cmd := cx_jtext(line, "command");
@@ -1616,6 +1678,7 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
   c := w[0]; m := x[0].wm[..];
   if c == "list" { cx_list(x); }
   else if c == "shot" && nw == 2 { cx_say(ifx cx_shot(x, o, w[1], true) then "shot" else "shot failed"); }
+  else if c == "panel" && nw == 3 { cx_say(ifx cx_panel_shot(x, o, cx_num(w[1]), w[2]) then "panel" else "panel failed"); }
   else if c == "move" && nw == 3 { cx_pointer(x, cx_num(w[1]), cx_num(w[2])); cx_say("ok"); }
   else if c == "click" { cx_click(x); cx_say("ok"); }
   else if c == "keydown" && nw == 3 { cx_input_key(x, cx_num(w[1]), w[2] == "1"); cx_say("ok"); }   // one key, held (1) or let go (0)
@@ -1695,16 +1758,31 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
   else { cx_say("unknown command"); }
 }
 
-// "WxH,WxH": the count read into w and h, 0 for "", or -1.
-cx_screens_parse :: (text: string, w: [] int, h: [] int) -> int {
+// Says a monitor the compositor took: its name, where it stands, its size as it stands and its turn.
+cx_say_screen :: (c: WmScreen, q: int) {
+  b: [256] u8; k := 0;
+  for ch: "screen " { b[k] = ch; k += 1; } for i: 0..<c.nn { b[k] = c.name[i]; k += 1; }
+  b[k] = ' '; k += 1; k = cx_num_into(b[..], k, c.x); b[k] = ','; k += 1; k = cx_num_into(b[..], k, c.y);
+  b[k] = ' '; k += 1; k = cx_num_into(b[..], k, c.w); b[k] = 'x'; k += 1; k = cx_num_into(b[..], k, c.h);
+  for ch: " turned " { b[k] = ch; k += 1; } k = cx_num_into(b[..], k, 90 * q);
+  cx_say(cast(string) b[0..<k]);
+}
+// "WxH,WxH@DEG": the count read into w, h and q (quarter turns), 0 for "", or -1.
+cx_screens_parse :: (text: string, w: [] int, h: [] int, q: [] int) -> int {
   if text.count == 0 { return 0; }
   n := 0; st := 0;
   for e: 0..<text.count + 1 {
     if e < text.count && text[e] != ',' { continue; }
-    p := text[st..<e]; st = e + 1; xat := -1;
-    for i: 0..<p.count { if p[i] == 'x' { xat = i; } else if p[i] < '0' || p[i] > '9' { return -1; } }
-    if xat <= 0 || xat == p.count - 1 || n >= w.count { return -1; }
-    w[n] = cx_num(p[0..<xat]); h[n] = cx_num(p[xat + 1..<p.count]);
+    p := text[st..<e]; st = e + 1; xat := -1; at := p.count;
+    for i: 0..<p.count { if p[i] == '@' && at == p.count { at = i; } }
+    for i: 0..<at { if p[i] == 'x' { xat = i; } else if p[i] < '0' || p[i] > '9' { return -1; } }
+    if xat <= 0 || xat == at - 1 || n >= w.count { return -1; }
+    w[n] = cx_num(p[0..<xat]); h[n] = cx_num(p[xat + 1..<at]); q[n] = 0;
+    if at < p.count {
+      d := p[at + 1..<p.count];
+      if d.count == 0 { return -1; } for c: d { if c < '0' || c > '9' { return -1; } }
+      q[n] = sc_quarter(cx_num(d)); if q[n] < 0 { return -1; }
+    }
     if w[n] < 64 || h[n] < 64 { return -1; }
     n += 1;
   }
@@ -1714,11 +1792,13 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; ok := args_load(a[..]);
   desk_sock := ""; render_node := "/dev/dri/renderD128";
   pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; want_x := false; check := false; ai := 0; leave_to := 0;
+  screens_file := "/etc/coderos/screens.json";
   while ok && ai < args_count(a[..]) {
     v := args_at(a[..], ai);
     if v == "--screen" { want_screen = true; }
     else if v == "--input" && ai + 1 < args_count(a[..]) { ai += 1; input = args_at(a[..], ai); }
     else if v == "--screens" && ai + 1 < args_count(a[..]) { ai += 1; screens = args_at(a[..], ai); }
+    else if v == "--screens-file" && ai + 1 < args_count(a[..]) { ai += 1; screens_file = args_at(a[..], ai); }
     else if v == "--xwayland" { want_x = true; }
     else if v == "--render-node" && ai + 1 < args_count(a[..]) { ai += 1; render_node = args_at(a[..], ai); }
     else if v == "--leave-to" && ai + 1 < args_count(a[..]) { ai += 1; leave_to = cx_num(args_at(a[..], ai)); }
@@ -1727,7 +1807,7 @@ tool_main :: () -> int #export_c #effects(all) {
     else if np < 5 { pos[np] = v; np += 1; } else { ok = false; }
     ai += 1;
   }
-  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,WxH...] [--xwayland] [--screen] [--leave-to VT] [--input FILE] [--desk-socket PATH]"); return 2; }
+  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH[@DEG],WxH...] [--screens-file FILE] [--xwayland] [--screen] [--leave-to VT] [--input FILE] [--desk-socket PATH]"); return 2; }
   cc: [1] Cx; x := cc[..]; ff: [1] CxFrame; fr := ff[..];
   nonce: [7] u8; if cxrand_draw(nonce[..], 7) != 0 { tool_errln("compositor: no session entropy"); return 1; }
   for i: 0..<6 { x[0].session |= cast(int) nonce[i] << (8 * i); }
@@ -1735,17 +1815,40 @@ tool_main :: () -> int #export_c #effects(all) {
   if x[0].session == 0 { return 1; }
   x[0].w = 1280; x[0].h = 720;
   if np == 5 { x[0].w = cx_num(pos[3]); x[0].h = cx_num(pos[4]); }
-  // --screens: headless screens side by side, left to right, each WxH
-  sw: [8] int; sh: [8] int; ns := cx_screens_parse(screens, sw[..], sh[..]);
-  if ns < 0 { tool_errln("compositor: --screens is WxH,WxH... (up to 8)"); return 2; }
-  if ns > 0 { x[0].w = 0; x[0].h = 0; for i: 0..<ns { x[0].w += sw[i]; x[0].h = cx_max(x[0].h, sh[i]); } }
+  // The screens: every monitor (--screen), the --screens list, or one headless screen of W x H. Each
+  // is a monitor of pw x ph turned q quarters; os/screens.coax stands them left to right.
+  sw: [8] int; sh: [8] int; sq: [8] int; ns := cx_screens_parse(screens, sw[..], sh[..], sq[..]);
+  if ns < 0 { tool_errln("compositor: --screens is WxH[@DEG],WxH... (up to 8; DEG 0, 90, 180 or 270)"); return 2; }
+  arr: [1] ScArrangement; at: [65536] u8; an := fs_read(screens_file, at[..]);
+  if an > 0 && !sc_parse(arr[..], cast(string) at[0..<an]) { tool_errln("compositor: the screens file is not the arrangement os/screens.coax reads; the screens stand as they come, upright"); }
+  names: [8] ScName; hd: [8] int;
   if want_screen {
     vt := cxvt_open();   // before the screen: the VT's switches are ours, its text off
-    r := cxscr_open();
-    if r < 0 { q := cxvt_close(0); }
-    if r < 0 { tool_err("compositor: cannot take the screen (step "); tool_err(ifx r == -2 then "2: another program holds it; run from a free VT" else ifx r == -1 then "1: no display device" else "3-6: no usable screen or mode"); tool_errln(")"); return 1; }
-    x[0].w = cxscr_width(); x[0].h = cxscr_height(); x[0].screen = true; x[0].show_pointer = true;
+    r := cxscr_open_all();
+    if r <= 0 { q := cxvt_close(0); }
+    if r <= 0 { tool_err("compositor: cannot take a screen (step "); tool_err(ifx r == -2 then "2: another program holds every card; run from a free VT" else ifx r == -1 then "1: no display device" else "3-6: no usable screen or mode"); tool_errln(")"); return 1; }
+    ns = cx_min(r, 8);
+    for i: 0..<ns {
+      names[i].n = cx_max(0, cxscr_head_name(i, names[i].b[..]));
+      sw[i] = cxscr_head_width(i); sh[i] = cxscr_head_height(i); sq[i] = sc_turn(arr[0], cast(string) names[i].b[0..<names[i].n]); hd[i] = i;
+    }
+    x[0].screen = true; x[0].show_pointer = true;
+  } else if ns > 0 {
+    for i: 0..<ns {
+      nm := ifx i == 0 then "headless-1" else ifx i == 1 then "headless-2" else ifx i == 2 then "headless-3" else "headless-n";
+      for c: nm { names[i].b[names[i].n] = c; names[i].n += 1; } hd[i] = -1;
+    }
+  } else {
+    ns = 1; sw[0] = x[0].w; sh[0] = x[0].h; sq[0] = 0; hd[0] = -1;
+    for c: "headless" { names[0].b[names[0].n] = c; names[0].n += 1; }
   }
+  ranks: [8] int; widths: [8] int; xs: [8] int;
+  for i: 0..<ns { ranks[i] = sc_rank(arr[0], cast(string) names[i].b[0..<names[i].n]); widths[i] = sc_stood_w(sw[i], sh[i], sq[i]); }
+  if !want_screen { for i: 0..<ns { ranks[i] = i; } }   // headless screens stand in the order given
+  sc_lay_out(ranks[..], widths[..], ns, xs[..]);
+  x[0].w = 0; x[0].h = 0;
+  for i: 0..<ns { x[0].w = cx_max(x[0].w, xs[i] + widths[i]); x[0].h = cx_max(x[0].h, sc_stood_h(sw[i], sh[i], sq[i])); }
+  for i: 0..<ns { x[0].head[i] = hd[i]; x[0].turn[i] = sq[i]; x[0].pw[i] = sw[i]; x[0].ph[i] = sh[i]; }
   if want_screen || input.count > 0 {
     ip: [1024] u8; ipn := 0; for c: input { if ipn < 1024 { ip[ipn] = c; ipn += 1; } }
     r := cxin_open(ip[0..<ipn]);
@@ -1758,14 +1861,12 @@ tool_main :: () -> int #export_c #effects(all) {
   if n <= 0 { tool_errln("compositor: cannot read the keymap"); return 1; }
   x[0].nkeymap = n; x[0].keymap[n] = 0;
   wm_new(x[0].wm[..]);
-  if ns == 0 { wm_set_screen(x[0].wm[..], 0, wm_screen("headless", 0, 0, x[0].w, x[0].h)); }
-  else {
-    left := 0;
-    for i: 0..<ns {
-      if i == 0 { wm_set_screen(x[0].wm[..], 0, wm_screen("headless-1", 0, 0, sw[0], sh[0])); }
-      else if wm_add_screen(x[0].wm[..], wm_screen(ifx i == 1 then "headless-2" else ifx i == 2 then "headless-3" else "headless-n", left, 0, sw[i], sh[i])) < 0 { tool_errln("compositor: too many screens"); return 2; }
-      left += sw[i];
-    }
+  // screen 0 is the main one (desk 1, the focus): the first monitor of the first card, wherever it stands
+  for i: 0..<ns {
+    sc := wm_screen(cast(string) names[i].b[0..<names[i].n], xs[i], 0, widths[i], sc_stood_h(sw[i], sh[i], sq[i]));
+    if i == 0 { wm_set_screen(x[0].wm[..], 0, sc); }
+    else if wm_add_screen(x[0].wm[..], sc) < 0 { tool_errln("compositor: too many screens"); return 2; }
+    if want_screen { cx_say_screen(sc, sq[i]); }
   }
   for i: 0..<WM_WINS { x[0].win_surf[i] = -1; }
   x[0].kfocus = -1; x[0].pfocus = -1; x[0].sel = -1; x[0].cursor = -1;
@@ -1841,12 +1942,12 @@ tool_main :: () -> int #export_c #effects(all) {
     now := cxwl_ms();
     if now - last >= 16 {
       if x[0].screen && x[0].dirty {
-        // the back buffer last showed the frame before, so it takes this damage and that frame's
-        y0 := x[0].dmg[1]; y1 := x[0].dmg[3];
-        if x[0].prev[3] > x[0].prev[1] { y0 = cx_min(y0, x[0].prev[1]); y1 = cx_max(y1, x[0].prev[3]); }
-        for i: 0..<4 { x[0].prev[i] = x[0].dmg[i]; }   // (a frame the screen refuses is drawn again next tick)
+        // the back buffers last showed the frame before, so they take this damage and that frame's
+        b0 := x[0].dmg[0]; b1 := x[0].dmg[1]; b2 := x[0].dmg[2]; b3 := x[0].dmg[3];
+        if x[0].prev[2] > x[0].prev[0] && x[0].prev[3] > x[0].prev[1] { b0 = cx_min(b0, x[0].prev[0]); b1 = cx_min(b1, x[0].prev[1]); b2 = cx_max(b2, x[0].prev[2]); b3 = cx_max(b3, x[0].prev[3]); }
+        for i: 0..<4 { x[0].prev[i] = x[0].dmg[i]; }   // (a frame a monitor refuses is drawn again next tick)
         cx_composite(x, fr);
-        if cxscr_present(fr[0].b[..], y0, y1) == 0 { x[0].dirty = false; } else { for i: 0..<4 { x[0].dmg[i] = x[0].prev[i]; } }
+        if cx_present(x, fr, b0, b1, b2, b3) { x[0].dirty = false; } else { for i: 0..<4 { x[0].dmg[i] = x[0].prev[i]; } }
       }   // the frame clock: every waiting frame callback hears it
       last = now; g := x[0].g[..];
       for i: 0..<x[0].ndue {
@@ -1888,8 +1989,12 @@ tool_main :: () -> int #export_c #effects(all) {
 }
 #test "the --screens list" {
   w: [8] int; h: [8] int;
-  #assert cx_screens_parse("", w[..], h[..]) == 0 && cx_screens_parse("800x600,640x480", w[..], h[..]) == 2 && w[1] == 640 && h[0] == 600;
-  #assert cx_screens_parse("800", w[..], h[..]) == -1 && cx_screens_parse("x600", w[..], h[..]) == -1 && cx_screens_parse("800x600,", w[..], h[..]) == -1 && cx_screens_parse("8x8", w[..], h[..]) == -1;
+  q: [8] int;
+  #assert cx_screens_parse("", w[..], h[..], q[..]) == 0 && cx_screens_parse("800x600,640x480", w[..], h[..], q[..]) == 2 && w[1] == 640 && h[0] == 600 && q[0] == 0 && q[1] == 0;
+  #assert cx_screens_parse("800", w[..], h[..], q[..]) == -1 && cx_screens_parse("x600", w[..], h[..], q[..]) == -1 && cx_screens_parse("800x600,", w[..], h[..], q[..]) == -1 && cx_screens_parse("8x8", w[..], h[..], q[..]) == -1;
+  #assert cx_screens_parse("1920x1080@90,2560x1440", w[..], h[..], q[..]) == 2 && w[0] == 1920 && h[0] == 1080 && q[0] == 1 && q[1] == 0;
+  #assert cx_screens_parse("800x600@270", w[..], h[..], q[..]) == 1 && q[0] == 3;
+  #assert cx_screens_parse("800x600@45", w[..], h[..], q[..]) == -1 && cx_screens_parse("800x600@", w[..], h[..], q[..]) == -1 && cx_screens_parse("800x600@9x", w[..], h[..], q[..]) == -1;
 }
 #test "window rules: patterns and the file format" {
   rs: [1] CxRules;

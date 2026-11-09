@@ -14,7 +14,11 @@ extern "C" {
 typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 #endif
 /* The compositor's screen and input (os/compositor.coax). Effects only.
-   cxscr_open: the first connected screen at its preferred mode (0, or a negative failing step);
+   cxscr_open_all: every connected monitor on the cards CODEROS_COMPOSITOR_CARD names (split by ':',
+   the main card first) or on every card, the boot card first, each at its preferred mode: the count,
+   or a negative failing step; cxscr_heads, cxscr_head_width/height/refresh/name(i), and
+   cxscr_head_present(i, rgb, y0, y1), which shows head i's own w*h*3 bytes.
+   cxscr_open: cxscr_open_all, 0 when it took a monitor (or a negative failing step);
    cxscr_width/height/refresh; cxscr_present(rgb, y0, y1): shows w*h*3 bytes, copying rows y0..y1, at the next vertical
    blank (-1 while the last is still waiting); cxscr_close puts back what was shown before.
    cxin_open(path): keyboards and mice under /dev/input, grabbed, or with path a file of
@@ -22,6 +26,13 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
    cxvt_open: the session's VT handed to this process (its number, 0 for none); cxvt_poll: 1 when it
    let go for another VT, 2 when it is back; cxvt_switch(n): show VT n; cxvt_close(to): give the VT
    back, showing VT `to` when it is above 0. While another VT shows, present waits and input is dropped. */
+int64_t cxscr_open_all(void);
+int64_t cxscr_heads(void);
+int64_t cxscr_head_width(int64_t i);
+int64_t cxscr_head_height(int64_t i);
+int64_t cxscr_head_refresh(int64_t i);
+int64_t cxscr_head_name(int64_t i, coax_v_u8 out);
+int64_t cxscr_head_present(int64_t i, coax_v_u8 rgb, int64_t y0, int64_t y1);
 int64_t cxscr_open(void);
 int64_t cxscr_width(void);
 int64_t cxscr_height(void);

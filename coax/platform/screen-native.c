@@ -1,4 +1,4 @@
-/* The compositor's faces to the machine (os/compositor.coax): one screen through DRM/KMS dumb buffers,
+/* The compositor's faces to the machine (os/compositor.coax): every monitor on every card through DRM/KMS dumb buffers,
    and keyboards and mice through evdev, grabbed so keys reach the compositor and not the console
    under it. Effects only: what to draw and what a key means are Coax. Modelled on verse/kms.
    Linux only, and the screen needs a free VT (no other program may hold the display). Input can also
@@ -29,114 +29,197 @@
 #include <xf86drmMode.h>
 
 typedef struct { uint32_t handle, pitch, fb; uint64_t size; uint32_t *map; } ScrBuf;
-static int scr_fd = -1, scr_w, scr_h, scr_back, scr_flip_pending;
-static uint32_t scr_crtc, scr_conn;
-static drmModeModeInfo scr_mode;
-static drmModeCrtc *scr_saved;
-static ScrBuf scr_buf[2];
+/* One monitor: a connector on a card, the CRTC that drives it, its mode and two dumb buffers. */
+typedef struct {
+  int fd, w, h, back, flip_pending;
+  uint32_t crtc, conn;
+  drmModeModeInfo mode;
+  drmModeCrtc *saved;
+  ScrBuf buf[2];
+  char name[32];
+} ScrHead;
+#define SCR_HEADS 8
+#define SCR_CARDS 8
+static ScrHead scr_head[SCR_HEADS];
+static int scr_heads;
+static int scr_card[SCR_CARDS], scr_cards;   /* the cards this process is master of, the main one first */
 /* The VT the session runs on, when it has one: switches away and back are this process's to grant. */
 static int vt_fd = -1, vt_num, vt_kb = -1, vt_active = 1;
 static volatile sig_atomic_t vt_rel, vt_acq;
 
-static int scr_make(ScrBuf *b) {
-  struct drm_mode_create_dumb c = {.width = (uint32_t)scr_w, .height = (uint32_t)scr_h, .bpp = 32};
-  if (drmIoctl(scr_fd, DRM_IOCTL_MODE_CREATE_DUMB, &c) < 0) return -1;
+static int scr_make(int fd, int w, int h, ScrBuf *b) {
+  struct drm_mode_create_dumb c = {.width = (uint32_t)w, .height = (uint32_t)h, .bpp = 32};
+  if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &c) < 0) return -1;
   b->handle = c.handle; b->pitch = c.pitch; b->size = c.size;
-  if (drmModeAddFB(scr_fd, (uint32_t)scr_w, (uint32_t)scr_h, 24, 32, b->pitch, b->handle, &b->fb) < 0) return -1;
+  if (drmModeAddFB(fd, (uint32_t)w, (uint32_t)h, 24, 32, b->pitch, b->handle, &b->fb) < 0) return -1;
   struct drm_mode_map_dumb m = {.handle = b->handle};
-  if (drmIoctl(scr_fd, DRM_IOCTL_MODE_MAP_DUMB, &m) < 0) return -1;
-  b->map = mmap(0, b->size, PROT_READ | PROT_WRITE, MAP_SHARED, scr_fd, (off_t)m.offset);
+  if (drmIoctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &m) < 0) return -1;
+  b->map = mmap(0, b->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)m.offset);
   if (b->map == MAP_FAILED) { b->map = NULL; return -1; }
   memset(b->map, 0, b->size);
   return 0;
 }
-static void scr_free(ScrBuf *b) {
+static void scr_free(int fd, ScrBuf *b) {
   if (b->map) munmap(b->map, b->size);
-  if (b->fb) drmModeRmFB(scr_fd, b->fb);
+  if (b->fb) drmModeRmFB(fd, b->fb);
   struct drm_mode_destroy_dumb d = {.handle = b->handle};
-  if (b->handle) drmIoctl(scr_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &d);
+  if (b->handle) drmIoctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &d);
   memset(b, 0, sizeof *b);
 }
-static void scr_on_flip(int fd, unsigned seq, unsigned s, unsigned us, void *data) { (void)fd; (void)seq; (void)s; (void)us; (void)data; scr_flip_pending = 0; }
-
-/* Takes the first connected screen at its preferred mode: 0, or a negative step that failed
-   (-1 no device, -2 another program holds it, -3 no screen, -4 no CRTC, -5 buffers, -6 mode set). */
-int64_t cxscr_open(void) {
-  const char *card = getenv("CODEROS_COMPOSITOR_CARD");
-  if (card) scr_fd = open(card, O_RDWR | O_CLOEXEC);
-  for (int i = 0; scr_fd < 0 && i < 8; i++) {
-    char path[32]; snprintf(path, sizeof path, "/dev/dri/card%d", i);
-    int fd = open(path, O_RDWR | O_CLOEXEC); if (fd < 0) continue;
-    drmModeRes *r = drmModeGetResources(fd);
-    int ok = r && r->count_connectors > 0; if (r) drmModeFreeResources(r);
-    if (ok) scr_fd = fd; else close(fd);
-  }
-  if (scr_fd < 0) return -1;
-  for (int i = 0; i < 50 && drmSetMaster(scr_fd) < 0 && errno == EBUSY; i++) usleep(100000);
-  if (drmSetMaster(scr_fd) < 0 && !drmIsMaster(scr_fd)) { close(scr_fd); scr_fd = -1; return -2; }
-  drmModeRes *res = drmModeGetResources(scr_fd);
-  drmModeConnector *conn = NULL;
-  for (int i = 0; res && i < res->count_connectors; i++) {
-    drmModeConnector *c = drmModeGetConnector(scr_fd, res->connectors[i]);
-    if (c && c->connection == DRM_MODE_CONNECTED && c->count_modes > 0) { conn = c; break; }
-    if (c) drmModeFreeConnector(c);
-  }
-  if (!conn) { if (res) drmModeFreeResources(res); return -3; }
-  scr_mode = conn->modes[0];
-  for (int i = 0; i < conn->count_modes; i++) if (conn->modes[i].type & DRM_MODE_TYPE_PREFERRED) { scr_mode = conn->modes[i]; break; }
-  drmModeEncoder *enc = conn->encoder_id ? drmModeGetEncoder(scr_fd, conn->encoder_id) : NULL;
-  if (enc && enc->crtc_id) scr_crtc = enc->crtc_id;
-  for (int i = 0; !scr_crtc && i < conn->count_encoders; i++) {
-    drmModeEncoder *e = drmModeGetEncoder(scr_fd, conn->encoders[i]);
-    for (int j = 0; e && j < res->count_crtcs; j++) if (e->possible_crtcs & (1u << j)) { scr_crtc = res->crtcs[j]; break; }
-    if (e) drmModeFreeEncoder(e);
-  }
-  if (enc) drmModeFreeEncoder(enc);
-  scr_conn = conn->connector_id; drmModeFreeConnector(conn); drmModeFreeResources(res);
-  if (!scr_crtc) return -4;
-  scr_saved = drmModeGetCrtc(scr_fd, scr_crtc);
-  scr_w = scr_mode.hdisplay; scr_h = scr_mode.vdisplay;
-  if (scr_make(&scr_buf[0]) < 0 || scr_make(&scr_buf[1]) < 0) return -5;
-  if (drmModeSetCrtc(scr_fd, scr_crtc, scr_buf[0].fb, 0, 0, &scr_conn, 1, &scr_mode) < 0) return -6;
-  drmModeSetCursor(scr_fd, scr_crtc, 0, 0, 0);   /* a cursor another session left on the CRTC: off (the pointer is drawn in the frame) */
-  scr_back = 1;
-  return 0;
+static void scr_on_flip(int fd, unsigned seq, unsigned s, unsigned us, unsigned crtc, void *data) {
+  (void)seq; (void)s; (void)us; (void)data;
+  for (int i = 0; i < scr_heads; i++) if (scr_head[i].fd == fd && scr_head[i].crtc == crtc) scr_head[i].flip_pending = 0;
 }
-int64_t cxscr_width(void) { return scr_w; }
-int64_t cxscr_height(void) { return scr_h; }
-int64_t cxscr_refresh(void) { return scr_mode.vrefresh; }
-/* Shows rgb (w*h*3 bytes) on the screen at the next vertical blank, copying only rows y0..y1 into
-   the back buffer (the rest of it already holds them): 0, -1 when the last one has not been shown
-   yet (nothing changes), -2 on an error. */
-int64_t cxscr_present(coax_v_u8 rgb, int64_t y0, int64_t y1) {
-  if (scr_fd < 0) return -2;
-  if (!vt_active) return -1;   /* another VT is showing: the frame waits for this one */
-  if (scr_flip_pending) {
-    struct pollfd p = {scr_fd, POLLIN, 0};
-    if (poll(&p, 1, 0) > 0) { drmEventContext ev = {.version = 2, .page_flip_handler = scr_on_flip}; drmHandleEvent(scr_fd, &ev); }
-    if (scr_flip_pending) return -1;
+/* Reads every flip a card has finished. */
+static void scr_drain(int fd) {
+  struct pollfd p = {fd, POLLIN, 0};
+  if (poll(&p, 1, 0) > 0) { drmEventContext ev = {.version = 3, .page_flip_handler2 = scr_on_flip}; drmHandleEvent(fd, &ev); }
+}
+/* Whether the firmware showed its console on this card: the main card, the one whose monitor shows
+   desk 1, when no card is named. */
+static int scr_boot_card(const char *path) {
+  const char *slash = strrchr(path, '/');
+  char sys[96]; snprintf(sys, sizeof sys, "/sys/class/drm/%s/device/boot_vga", slash ? slash + 1 : path);
+  FILE *f = fopen(sys, "r"); if (!f) return 0;
+  int c = fgetc(f); fclose(f);
+  return c == '1';
+}
+/* Takes one card: master, then a head for each connected connector at its preferred mode, each on
+   a CRTC of its own. The heads it added, or a negative step: -1 no device, -2 another program
+   holds it. */
+static int scr_take_card(const char *path) {
+  int fd = open(path, O_RDWR | O_CLOEXEC);
+  if (fd < 0) return -1;
+  drmModeRes *probe = drmModeGetResources(fd);
+  int any = probe && probe->count_connectors > 0; if (probe) drmModeFreeResources(probe);
+  if (!any) { close(fd); return 0; }
+  for (int i = 0; i < 50 && drmSetMaster(fd) < 0 && errno == EBUSY; i++) usleep(100000);
+  if (drmSetMaster(fd) < 0 && !drmIsMaster(fd)) { close(fd); return -2; }
+  drmModeRes *res = drmModeGetResources(fd);
+  int added = 0;
+  uint32_t used = 0;   /* the CRTCs (by index) this card's heads took */
+  for (int i = 0; res && i < res->count_connectors && scr_heads < SCR_HEADS; i++) {
+    drmModeConnector *conn = drmModeGetConnector(fd, res->connectors[i]);
+    if (!conn || conn->connection != DRM_MODE_CONNECTED || conn->count_modes == 0) { if (conn) drmModeFreeConnector(conn); continue; }
+    ScrHead *h = &scr_head[scr_heads]; memset(h, 0, sizeof *h);
+    h->fd = fd; h->conn = conn->connector_id;
+    h->mode = conn->modes[0];
+    for (int m = 0; m < conn->count_modes; m++) if (conn->modes[m].type & DRM_MODE_TYPE_PREFERRED) { h->mode = conn->modes[m]; break; }
+    const char *type = drmModeGetConnectorTypeName(conn->connector_type);
+    snprintf(h->name, sizeof h->name, "%s-%u", type ? type : "Unknown", conn->connector_type_id);
+    /* the CRTC the connector already shows on, when no other head took it; else the first free one it can reach */
+    drmModeEncoder *enc = conn->encoder_id ? drmModeGetEncoder(fd, conn->encoder_id) : NULL;
+    for (int j = 0; enc && enc->crtc_id && j < res->count_crtcs; j++)
+      if (res->crtcs[j] == enc->crtc_id && !(used & (1u << j))) { h->crtc = enc->crtc_id; used |= 1u << j; }
+    if (enc) drmModeFreeEncoder(enc);
+    for (int e = 0; !h->crtc && e < conn->count_encoders; e++) {
+      drmModeEncoder *x = drmModeGetEncoder(fd, conn->encoders[e]);
+      for (int j = 0; x && j < res->count_crtcs; j++) if ((x->possible_crtcs & (1u << j)) && !(used & (1u << j))) { h->crtc = res->crtcs[j]; used |= 1u << j; break; }
+      if (x) drmModeFreeEncoder(x);
+    }
+    drmModeFreeConnector(conn);
+    if (!h->crtc) continue;   /* every CRTC it can reach drives another monitor: it stays dark */
+    h->saved = drmModeGetCrtc(fd, h->crtc);
+    h->w = h->mode.hdisplay; h->h = h->mode.vdisplay;
+    if (scr_make(fd, h->w, h->h, &h->buf[0]) < 0 || scr_make(fd, h->w, h->h, &h->buf[1]) < 0 ||
+        drmModeSetCrtc(fd, h->crtc, h->buf[0].fb, 0, 0, &h->conn, 1, &h->mode) < 0) {
+      scr_free(fd, &h->buf[0]); scr_free(fd, &h->buf[1]);
+      if (h->saved) { drmModeFreeCrtc(h->saved); h->saved = NULL; }
+      continue;
+    }
+    drmModeSetCursor(fd, h->crtc, 0, 0, 0);   /* a cursor another session left on the CRTC: off (the pointer is drawn in the frame) */
+    h->back = 1;
+    scr_heads++; added++;
   }
-  if (rgb.count < (int64_t)scr_w * scr_h * 3) return -2;
-  if (y0 < 0) y0 = 0; if (y1 > scr_h) y1 = scr_h;
-  ScrBuf *b = &scr_buf[scr_back];
+  if (res) drmModeFreeResources(res);
+  if (added == 0) { drmDropMaster(fd); close(fd); return 0; }
+  scr_card[scr_cards++] = fd;
+  return added;
+}
+/* Takes every monitor: the cards CODEROS_COMPOSITOR_CARD names (one path, or several split by ':',
+   the main card first), or else every /dev/dri/card0..7, the card the firmware booted on first. A
+   card another program holds is passed over. The count of monitors, or a negative step when there
+   is none: -1 no device, -2 another program holds every card, -3 no monitor is connected. */
+int64_t cxscr_open_all(void) {
+  if (scr_heads > 0) return scr_heads;
+  char paths[SCR_CARDS][64]; int n = 0;
+  const char *named = getenv("CODEROS_COMPOSITOR_CARD");
+  if (named && *named) {
+    const char *p = named;
+    while (*p && n < SCR_CARDS) {
+      const char *e = strchr(p, ':'); size_t len = e ? (size_t)(e - p) : strlen(p);
+      if (len > 0 && len < 64) { memcpy(paths[n], p, len); paths[n][len] = 0; n++; }
+      if (!e) break;
+      p = e + 1;
+    }
+  } else {
+    for (int boot = 1; boot >= 0; boot--)
+      for (int i = 0; i < SCR_CARDS && n < SCR_CARDS; i++) {
+        char path[64]; snprintf(path, sizeof path, "/dev/dri/card%d", i);
+        if (access(path, F_OK) != 0 || scr_boot_card(path) != boot) continue;
+        snprintf(paths[n++], 64, "%s", path);
+      }
+  }
+  int opened = 0, held = 0;
+  for (int i = 0; i < n; i++) {
+    int r = scr_take_card(paths[i]);
+    if (r == -2) held++; else if (r >= 0) opened++;
+  }
+  if (scr_heads > 0) return scr_heads;
+  return opened == 0 && held == 0 ? -1 : held > 0 ? -2 : -3;
+}
+int64_t cxscr_heads(void) { return scr_heads; }
+int64_t cxscr_head_width(int64_t i) { return i >= 0 && i < scr_heads ? scr_head[i].w : 0; }
+int64_t cxscr_head_height(int64_t i) { return i >= 0 && i < scr_heads ? scr_head[i].h : 0; }
+int64_t cxscr_head_refresh(int64_t i) { return i >= 0 && i < scr_heads ? scr_head[i].mode.vrefresh : 0; }
+/* The head's connector name, as the kernel names it (HDMI-A-2): its length, or -1. */
+int64_t cxscr_head_name(int64_t i, coax_v_u8 out) {
+  if (i < 0 || i >= scr_heads) return -1;
+  size_t len = strlen(scr_head[i].name);
+  if ((int64_t)len > out.count) return -1;
+  memcpy(out.data, scr_head[i].name, len);
+  return (int64_t)len;
+}
+/* Shows rgb (the head's w*h*3 bytes, its own rows) on head i at the next vertical blank, copying
+   only rows y0..y1 into the back buffer (the rest of it already holds them): 0, -1 when the last
+   one has not been shown yet (nothing changes), -2 on an error. */
+int64_t cxscr_head_present(int64_t i, coax_v_u8 rgb, int64_t y0, int64_t y1) {
+  if (i < 0 || i >= scr_heads) return -2;
+  ScrHead *h = &scr_head[i];
+  if (!vt_active) return -1;   /* another VT is showing: the frame waits for this one */
+  if (h->flip_pending) { scr_drain(h->fd); if (h->flip_pending) return -1; }
+  if (rgb.count < (int64_t)h->w * h->h * 3) return -2;
+  if (y0 < 0) y0 = 0;
+  if (y1 > h->h) y1 = h->h;
+  ScrBuf *b = &h->buf[h->back];
   const uint8_t *s = rgb.data;
   uint32_t row[8192];
-  int w = scr_w < 8192 ? scr_w : 8192;
+  int w = h->w < 8192 ? h->w : 8192;
   for (int y = (int)y0; y < (int)y1; y++) {   // whole rows: the buffer is write-combined
-    const uint8_t *p = s + (size_t)y * scr_w * 3;
+    const uint8_t *p = s + (size_t)y * h->w * 3;
     for (int x = 0; x < w; x++) row[x] = ((uint32_t)p[3 * x] << 16) | ((uint32_t)p[3 * x + 1] << 8) | p[3 * x + 2];
     memcpy((char *)b->map + (size_t)y * b->pitch, row, (size_t)w * 4);
   }
-  if (drmModePageFlip(scr_fd, scr_crtc, b->fb, DRM_MODE_PAGE_FLIP_EVENT, NULL) < 0) return -2;
-  scr_flip_pending = 1; scr_back ^= 1;
+  if (drmModePageFlip(h->fd, h->crtc, b->fb, DRM_MODE_PAGE_FLIP_EVENT, NULL) < 0) return -2;
+  h->flip_pending = 1; h->back ^= 1;
   return 0;
 }
-/* Puts back what the screen showed before and lets go of it. */
+/* The first monitor alone, as before there were several: 0, or the negative step. */
+int64_t cxscr_open(void) { int64_t r = cxscr_open_all(); return r > 0 ? 0 : r; }
+int64_t cxscr_width(void) { return cxscr_head_width(0); }
+int64_t cxscr_height(void) { return cxscr_head_height(0); }
+int64_t cxscr_refresh(void) { return cxscr_head_refresh(0); }
+int64_t cxscr_present(coax_v_u8 rgb, int64_t y0, int64_t y1) { return cxscr_head_present(0, rgb, y0, y1); }
+/* Puts back what each monitor showed before and lets go of every card. */
 int64_t cxscr_close(void) {
-  if (scr_fd < 0) return 0;
-  if (scr_saved) { drmModeSetCrtc(scr_fd, scr_saved->crtc_id, scr_saved->buffer_id, scr_saved->x, scr_saved->y, &scr_conn, 1, &scr_saved->mode); drmModeFreeCrtc(scr_saved); scr_saved = NULL; }
-  scr_free(&scr_buf[0]); scr_free(&scr_buf[1]);
-  drmDropMaster(scr_fd); close(scr_fd); scr_fd = -1;
+  for (int i = 0; i < scr_heads; i++) {
+    ScrHead *h = &scr_head[i];
+    if (h->saved) { drmModeSetCrtc(h->fd, h->saved->crtc_id, h->saved->buffer_id, h->saved->x, h->saved->y, &h->conn, 1, &h->saved->mode); drmModeFreeCrtc(h->saved); h->saved = NULL; }
+    scr_free(h->fd, &h->buf[0]); scr_free(h->fd, &h->buf[1]);
+  }
+  scr_heads = 0;
+  for (int c = 0; c < scr_cards; c++) { drmDropMaster(scr_card[c]); close(scr_card[c]); }
+  scr_cards = 0;
   return 0;
 }
 
@@ -243,7 +326,7 @@ int64_t cxvt_poll(void) {
   if (vt_fd < 0) return 0;
   if (vt_rel) {
     vt_rel = 0;
-    if (scr_fd >= 0) drmDropMaster(scr_fd);
+    for (int c = 0; c < scr_cards; c++) drmDropMaster(scr_card[c]);
     for (int i = 0; i < in_n; i++) if (!in_file) ioctl(in_fd[i], EVIOCGRAB, 0);
     vt_active = 0;
     ioctl(vt_fd, VT_RELDISP, 1);
@@ -253,13 +336,12 @@ int64_t cxvt_poll(void) {
     vt_acq = 0;
     ioctl(vt_fd, VT_RELDISP, VT_ACKACQ);
     ioctl(vt_fd, KDSETMODE, KD_GRAPHICS);
-    if (scr_fd >= 0) {
-      drmSetMaster(scr_fd);
-      struct pollfd q = {scr_fd, POLLIN, 0};
-      if (poll(&q, 1, 0) > 0) { drmEventContext ev = {.version = 2, .page_flip_handler = scr_on_flip}; drmHandleEvent(scr_fd, &ev); }
-      scr_flip_pending = 0;
-      drmModeSetCrtc(scr_fd, scr_crtc, scr_buf[scr_back ^ 1].fb, 0, 0, &scr_conn, 1, &scr_mode);
-      drmModeSetCursor(scr_fd, scr_crtc, 0, 0, 0);
+    for (int c = 0; c < scr_cards; c++) { drmSetMaster(scr_card[c]); scr_drain(scr_card[c]); }
+    for (int i = 0; i < scr_heads; i++) {
+      ScrHead *h = &scr_head[i];
+      h->flip_pending = 0;
+      drmModeSetCrtc(h->fd, h->crtc, h->buf[h->back ^ 1].fb, 0, 0, &h->conn, 1, &h->mode);
+      drmModeSetCursor(h->fd, h->crtc, 0, 0, 0);
     }
     struct input_event junk[64];
     for (int i = 0; i < in_n; i++) { if (in_file) continue; while (read(in_fd[i], junk, sizeof junk) > 0) {} ioctl(in_fd[i], EVIOCGRAB, 1); }
@@ -285,6 +367,13 @@ int64_t cxvt_close(int64_t to) {
   return 0;
 }
 #else
+int64_t cxscr_open_all(void) { return -1; }
+int64_t cxscr_heads(void) { return 0; }
+int64_t cxscr_head_width(int64_t i) { (void)i; return 0; }
+int64_t cxscr_head_height(int64_t i) { (void)i; return 0; }
+int64_t cxscr_head_refresh(int64_t i) { (void)i; return 0; }
+int64_t cxscr_head_name(int64_t i, coax_v_u8 out) { (void)i; (void)out; return -1; }
+int64_t cxscr_head_present(int64_t i, coax_v_u8 rgb, int64_t y0, int64_t y1) { (void)i; (void)rgb; (void)y0; (void)y1; return -2; }
 int64_t cxscr_open(void) { return -1; }
 int64_t cxscr_width(void) { return 0; }
 int64_t cxscr_height(void) { return 0; }
