@@ -43,7 +43,7 @@ lab_ride_body :: (s: [] Lab, origin: EgBody, proposed: EgBody) -> EgBody {
 }
 // Your feet's height over the ground while you ride (the figure, the bow's launch and the camera all
 // read it from your body): the saddle less your pelvis.
-lab_ride_lift :: (s: [] Lab) -> f32 { if !lab_riding(s) { return 0; } return cc.xh_lift(s[0].creator[0], s[0].creator[0].clock); }
+lab_ride_lift :: (s: [] Lab) -> f32 { if !lab_riding(s) { return 0; } return cc.xh_lift(s[0].creator[..], s[0].creator[0].clock); }
 // A local page's ?ride= (lab_dev_cell), for looking at riding headless: 1 puts you in the saddle, 2
 // gallops (W and Shift held), 3 draws the bow in the saddle (a Ranger: add ?class=). Once.
 lab_ride_dev :: (s: [] Lab) {
@@ -54,7 +54,7 @@ lab_ride_dev :: (s: [] Lab) {
     cr[0].player_x = h.x + cos(h.face) * 1.2; cr[0].player_z = h.z - sin(h.face) * 1.2;
     _ := lab_mount_key(s); cr[0].yaw = h.face + 3.1415927; return;
   }
-  if cc.xh_rider(cr[0], cr[0].clock).seated < 1 { return; }
+  if cc.xh_rider(cr, cr[0].clock).seated < 1 { return; }
   if d == 2 { s[0].held = HOLD_W; s[0].shift = true; }
   if d == 3 { _ := xc_bow_begin(s, false); }
   s[0].ride_dev = 0;
@@ -118,7 +118,7 @@ lab_ride_hud :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int
   body := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
   for k: 0..<60 { cr[0].clock += 1.0 / 60; body = lab_keep_body(s[..], body, body); }
   lab_you(s[..], body.x, 0, body.z, 0, false, false, false, 0, 0, 0, 0);
-  r := cc.xh_rider(cr[0], cr[0].clock); #assert r.on && r.seated == 1;
+  r := cc.xh_rider(cr, cr[0].clock); #assert r.on && r.seated == 1;
   g := 3; h[0].enemies[g].x = body.x; h[0].enemies[g].z = body.z + 20; b[0].c[1 + g].ac = 1; b[0].c[1 + g].hp = 40; b[0].c[1 + g].hp_max = 40;
   // the camera behind and over the rider, as the riding camera sits
   x[0].u[16] = body.x; x[0].u[17] = r.y + 0.6; x[0].u[18] = body.z - 4; x[0].u[21] = -0.05;
@@ -126,7 +126,7 @@ lab_ride_hud :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int
   #assert xc_bow_loose(s[..]) && x[0].bow_shots == 1;
   a := x[0].arrows[0].a[0];
   // the hand: chest high over the saddle (your pelvis in it), beside the rider, not at a walker's height
-  hand := r.y + f32(XC_BOW_HAND) - cc.xh_hip(cr[0]);
+  hand := r.y + f32(XC_BOW_HAND) - cc.xh_hip(cr);
   #assert abs(a.from[1] - hand) < 0.05 && a.from[1] > meadow_y(body.x, body.z) + 1.45 + 0.4;
   #assert abs(a.from[0] - r.x) < 0.6 && abs(a.from[2] - r.z) < 0.6;
   xc_test_fly(s[..], 1.0);

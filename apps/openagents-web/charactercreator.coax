@@ -393,7 +393,7 @@ experimental_figure :: (s:[]Creator,a0:figs.BdAnim)->figs.BdAnim {
   if experimental_hold(s)>=0 {g.clip=experimental_stance(s);g.t0=0;g.phase=s[0].clock/figs.bd_seconds(g.clip);g.prev= -1;}
   a=figs.bd_layer(g,s[0].swing_clip,s[0].swing_at,(s[0].clock-s[0].swing_at)/figs.bd_seconds(s[0].swing_clip),experimental_swing_weight(s),s[0].clock);
  }
- return xh_figure(s[0],a);
+ return xh_figure(s,a);
 }
 // A blow eases in and out over BD_LAYER_FADE.
 experimental_swing_weight :: (s:[]Creator)->f32 {
@@ -652,9 +652,9 @@ two_hand_room :: (pal:[]f32,bind:[6][3]f32,k:int)->[3]f32 {
  torso:=cc_capsule_room(w,k,s1,[3]f32.[s3[0]+su[0]*0.08,s3[1]+su[1]*0.08,s3[2]+su[2]*0.08],0.15);
  return [3]f32.[head,neck,torso];
 }
-// The baked pose (palette rows) of clip c at frame f, sampled from its rig as fivelab-bodies.coax bakes it.
-cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,female:bool,c:int,f:int,out:[]f32) {
- sk:[1]figs.Skin;
+// The baked pose (palette rows) of clip c at frame f, sampled from its rig as fivelab-bodies.coax bakes it,
+// through the caller's scratch Skin sk (each joint's pose is written before it is read), not a new one a call.
+cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,sk:[]figs.Skin,female:bool,c:int,f:int,out:[]f32) {
  if c==figs.BD_BOW {figs.bd_bow_pose(ppl,ifx female then 1 else 0,f,out);return;}
  if c>=figs.BD_OWN {rig:=figs.twohand_rig(own,female);t:=f32(f)*rig.duration[c-figs.BD_OWN]/f32(figs.BD_OWN_FRAMES[c-figs.BD_OWN]);
   for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,c-figs.BD_OWN,j,t);}figs.skin_palette(rig,sk[..],out);return;}
@@ -669,14 +669,14 @@ cc_pose :: (own:[]figs.Twohand,ppl:[]figs.People,female:bool,c:int,f:int,out:[]f
 CC_ROOM_ROWS :: 18;
 two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int) {
  own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
- pa:[figs.BD_ROWS*4]f32;pb:[figs.BD_ROWS*4]f32;
+ pa:[figs.BD_ROWS*4]f32;pb:[figs.BD_ROWS*4]f32;sk:[1]figs.Skin;
  {
   female:=body==1;
   bind:[6][3]f32;br:=figs.twohand_rig(own[..],female);js:=[6]int.[figs.BD_HAND,figs.BD_HAND_L,CC_J_HEAD,CC_J_NECK,CC_J_SPINE1,CC_J_SPINE3];
   for i:0..<6 {bind[i]=figs.bd_bind_at(br.bind[js[i]*12..<js[i]*12+12]);}
   // the clips alone, between their keys too
   if !blends {for c:0..<figs.TWOHAND_CLIPS {
-   rig:=figs.twohand_rig(own[..],female);sk:[1]figs.Skin;n:=cast(int)(rig.duration[c]*60)+1;
+   rig:=figs.twohand_rig(own[..],female);n:=cast(int)(rig.duration[c]*60)+1;
    for i:0..<n {t:=f32(i)/60;for j:0..<figs.PEOPLE_JOINTS {sk[0].now[j]=figs.skin_sample(rig,c,j,t);}figs.skin_palette(rig,sk[..],pa[..]);
     cc_room_min(room,c,two_hand_room(pa[..],bind,c/3));}
   }}
@@ -690,10 +690,10 @@ two_hand_rooms :: (room:[]f32,body:int,blends:bool,kit:int) {
     if take==2 || take==3 || take==4 {experimental_air(s[..],i>=24 && i<70);}
     if take==5 {s[0].moving=(i/40)%2==1;}
     a:=experimental_figure(s[..],figs.BdAnim.{});
-    fa:=figs.bd_frame_of(a.clip,a.t0,a.phase,now);cc_pose(own[..],ppl[..],female,a.clip,fa,pa[..]);
+    fa:=figs.bd_frame_of(a.clip,a.t0,a.phase,now);cc_pose(own[..],ppl[..],sk[..],female,a.clip,fa,pa[..]);
     fade:=cc_clamp((now-a.fade_at)/f32(figs.BD_FADE),0,1);fade=fade*fade*(3-2*fade);
     if fade<1 && a.prev>=0 {
-     fb:=figs.bd_frame_of(a.prev,a.pt0,a.pphase,now);cc_pose(own[..],ppl[..],female,a.prev,fb,pb[..]);
+     fb:=figs.bd_frame_of(a.prev,a.pt0,a.pphase,now);cc_pose(own[..],ppl[..],sk[..],female,a.prev,fb,pb[..]);
      m:=1-fade;for q:0..<figs.BD_ROWS*4 {pa[q]=pa[q]*(1-m)+pb[q]*m;}
     }
     cc_room_min(room,6+k*6+take,two_hand_room(pa[..],bind,k));
@@ -914,7 +914,7 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s[0].animal_first[take];b[0].draws[n*4+1]=cast(u32)s[0].animal_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  if s[0].experimental && n<43 {n=xh_records(s[0],b,out,n,43);}
+  if s[0].experimental && n<43 {n=xh_records(s,b,out,n,43);}
   if s[0].experimental && s[0].monster_n==48 && n<43 {
     take:=monster_frame(s[0].clock);for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;
