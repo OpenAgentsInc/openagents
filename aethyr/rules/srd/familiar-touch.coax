@@ -1,0 +1,82 @@
+// Find Familiar, SRD 5.2.1 p.130. The owner casts; the familiar delivers.
+#authority;
+
+#test "Familiar touch delivery uses the owner's spell and the familiar's Reaction and reach" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=25; b[0].h=8; b[0].dice[0].fixed=true;
+  i:=rs_add(b[..],rs_druid("Druid",0,2),1,1);
+  j:=rs_add(b[..],rs_fighter("Ally",0,3),22,1);
+  picks:=[1]int.[RS_EXEC_SOURCE[SP_CURE_WOUNDS]];
+  #assert rs_set_spells(c[0..<1],picks[..]);
+  rs_fresh(b[..],i);
+  #assert rs_wild_companion(b[..],i,0,MON_CAT,2,1);
+  f:=rs_familiar_of(b[..],i);
+  rs_place(b[..],f,21,1);
+  c[j].hp=1;
+  rs_fresh(b[..],i);
+  slots:=c[i].slots[1]; rolls:=b[0].dice[0].rolled;
+  #assert !rs_cast(b[..],i,SP_CURE_WOUNDS,1,0,0,j);
+  #assert rs_cover_put(b[..],f,j,RS_COVER_TOTAL);
+  #assert !rs_familiar_touch(b[..],i,SP_CURE_WOUNDS,1,j);
+  #assert !c[f].reacted && c[i].slots[1]==slots && !b[0].turn.action && b[0].dice[0].rolled==rolls;
+  #assert rs_cover_put(b[..],f,j,RS_COVER_NONE) && rs_cover_put(b[..],i,j,RS_COVER_TOTAL);
+  #assert rs_familiar_touch(b[..],i,SP_CURE_WOUNDS,1,j);
+  #assert c[f].reacted && !c[i].reacted && c[i].slots[1]==slots-1 && b[0].turn.action && c[j].hp==12;
+  rs_fresh(b[..],i);
+  #assert !rs_familiar_touch(b[..],i,SP_CURE_WOUNDS,1,j);
+}
+
+rs_familiar_touch_ready :: (b:[]RsBattle,i:int,sp:int,origin:int)->bool #effects(all) {
+  if origin<0 || origin>=b[0].n { return false; }
+  key:=rs_component_key(sp);
+  if key == -1 || RS_SPELL_KEYS[key].range_kind!=SRD_RANGE_TOUCH { return false; }
+  f:=b[0].c[origin];
+  return f.familiar_owner==i+1 && rs_capable(f) && !f.reacted && rs_feet_to(b,i,origin)/RS_SQUARE<=20;
+}
+
+#test "Touch delivery rejects unavailable familiars and preserves the caster's attack and spell DC" {
+  b:[1]RsBattle; c:[4]RsCreature; b[0].c=c[..]; b[0].w=25; b[0].h=25; b[0].dice[0].fixed=true;
+  f:=rs_add(b[..],rs_monster(MON_RAT,"Familiar",0),20,20);
+  i:=rs_add(b[..],rs_wizard("Wizard",0,2),0,0);
+  j:=rs_add(b[..],rs_fighter("Target",1,3),21,20);
+  #assert f==0 && i==1 && j==2;
+  #assert rs_grant_spell(c[1..<2],SP_INFLICT_WOUNDS);
+  picks:=[1]int.[RS_EXEC_SOURCE[SP_CHILL_TOUCH]];
+  #assert rs_set_spells(c[1..<2],picks[..]);
+  c[f].familiar_owner=i+1;
+  c[3]=c[f];
+  #assert !rs_familiar_touch_ready(b[..],i,SP_CHILL_TOUCH,-1);
+  #assert !rs_familiar_touch_ready(b[..],i,SP_CHILL_TOUCH,3);
+  #assert !rs_familiar_touch_ready(b[..],i,-1,f);
+  #assert !rs_familiar_touch_ready(b[..],i,RS_MORE_END,f);
+  #assert !rs_familiar_touch_ready(b[..],i,SP_FIND_FAMILIAR,f);
+  rs_fresh(b[..],i);
+  c[j].ac=15;
+  c[j].cond=RS_PARALYZED;
+  hp:=c[j].hp;
+  rolls:=b[0].dice[0].rolled;
+  #assert !rs_familiar_touch(b[..],i,SP_CHILL_TOUCH,0,-1);
+  for mode:0..<6 {
+    if mode==0 { c[f].familiar_owner=j+1; }
+    if mode==1 { c[f].cond=RS_INCAPACITATED; }
+    if mode==2 { c[f].dead=true; }
+    if mode==3 { rs_place(b[..],f,21,19); }
+    if mode==4 { rs_place(b[..],f,20,21); }
+    if mode==5 { c[i].speech_blocked=true; }
+    #assert !rs_familiar_touch(b[..],i,SP_CHILL_TOUCH,0,j);
+    #assert !c[f].reacted && !b[0].turn.action && b[0].dice[0].rolled==rolls && c[j].hp==hp;
+    c[f].familiar_owner=i+1; c[f].cond=0; c[f].dead=false; c[i].speech_blocked=false;
+    rs_place(b[..],f,20,20);
+  }
+  #assert !rs_familiar_touch_ready(b[..],j,SP_CHILL_TOUCH,f);
+  #assert rs_cover_put(b[..],f,j,RS_COVER_HALF);
+  #assert rs_familiar_touch(b[..],i,SP_CHILL_TOUCH,0,j);
+  #assert c[j].hp==hp && c[f].reacted;
+  rs_fresh(b[..],f); rs_fresh(b[..],i);
+  #assert rs_cover_put(b[..],f,j,RS_COVER_NONE);
+  #assert rs_familiar_touch(b[..],i,SP_CHILL_TOUCH,0,j);
+  #assert c[j].hp==hp-10 && rs_effect(c[j],EF_NOHEAL);
+  rs_fresh(b[..],f); rs_fresh(b[..],i);
+  c[j].cond=0; c[j].score[RS_CON]=10;
+  #assert rs_familiar_touch(b[..],i,SP_INFLICT_WOUNDS,1,j);
+  #assert c[j].hp==hp-20 && c[f].reacted && b[0].turn.slot_spent;
+}

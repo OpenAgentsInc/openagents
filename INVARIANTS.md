@@ -7517,3 +7517,8 @@ from the grid and turn scheduler while preserving HP and initiative. Returning
 spends another Magic action and requires an unoccupied square within 30 feet.
 Permanent dismissal retires the familiar. Recasting can change a pocketed
 familiar's form without bringing it back into the world.
+
+A living, capable familiar within 100 feet can use its Reaction to deliver
+an executable Touch spell. The casting path checks reach and cover at the
+familiar. The owner supplies the spell, action, components, slot, attack
+modifier and save DC. A refused cast spends neither actor's resources.

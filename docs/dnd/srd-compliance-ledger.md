@@ -831,8 +831,11 @@ the prepared cast also spends its selected slot. Rat, Spider and Cat can be
 Celestial, Fey or Fiend. The regular familiar persists across Long Rests.
 A Magic action dismisses the familiar temporarily or permanently. Another
 Magic action returns a temporarily dismissed familiar within 30 feet.
-Other eligible forms, commands, shared senses, touch spell delivery and
-world controls remain open. Familiar gear is not yet modeled.
+The shared casting path lets a familiar within 100 feet deliver Cure Wounds,
+Chill Touch and Inflict Wounds with its Reaction. Touch reach and cover use
+the familiar's position. The spell's resource costs and statistics come from
+the owner. Other eligible forms, commands, shared senses and world controls
+remain open. Familiar gear is not yet modeled.
 
 The native witness passed the spell-slot path, attack refusal and Long Rest
 retirement. Scoped mutation runs killed 1,221 mutants with zero survivors
@@ -846,3 +849,7 @@ and Lab Wasm built at 2,648,987 bytes against the 2,650,000-byte cap.
 
 The dismissal lifecycle passed a native witness and 375 familiar authority
 mutants with zero survivors. Experimental Wasm remained at 2,648,987 bytes.
+
+Touch delivery passed the casting target, workflow and class-kit suites and
+a native witness. The touch admission unit killed 25 mutants with zero
+survivors. Experimental Wasm built at 2,647,369 bytes.
