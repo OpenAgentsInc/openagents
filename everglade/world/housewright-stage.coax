@@ -10,6 +10,7 @@
 #load "housewright.coax" as hw;
 #load "../../aethyr/cam/track.coax" as trk;
 #load "../../aethyr/world/building.coax" as building;
+#load "../../aethyr/world/build-site.coax" as bs;
 
 HWS_N :: 6;
 HWS_ROW :: 5;          // the five finished houses side by side
@@ -185,6 +186,23 @@ hws_workday_text :: (stage: int, t: f32, out: [] u8) -> int {
   // the hut starts looking down and ends at eye level
   a := hws_view(1, 0, 0, 0, 0); b := hws_view(1, 8, 0, 0, 0);
   #assert a.ey > 10 && b.ey < 2;
+}
+
+#test "the camera never enters a house: it stays outside each tier's walls plus a margin, or above its roof" {
+  parts: [64] bs.BuildPart;
+  for st: 0..<HWS_ROW {
+    n := hw.hw_tier_parts(st, parts[..]); top: f32 = 0;
+    for i: 0..<n { top = ifx parts[i].y1 > top then parts[i].y1 else top; top = ifx parts[i].y0 > top then parts[i].y0 else top; }
+    r := hw.HW_REACH[st];
+    for i: 0..<201 {
+      v := hws_view(st, HWS_SECONDS[st] * f32(i) / 200, 0, 0, 0);
+      outside := abs(v.ex) > r[0] + 1.5 || v.ez > r[1] + 1.5 || v.ez < -r[2] - 1.5;
+      #assert outside || v.ey > top + 1.5;
+    }
+  }
+  // the row's pan stays in front of the row
+  h: [8] HwsHouse; m := hws_houses(5, 0, 0, 0, h[..]);
+  for i: 0..<61 { v := hws_view(5, 6 * f32(i) / 60, 0, 0, 0); #assert v.ez > 3.1 + 6; }
 }
 
 #test "the stone cottage passes a full day and night; the row is noon" {
