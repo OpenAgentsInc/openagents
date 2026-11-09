@@ -184,7 +184,7 @@ rm_forge_motion :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool #export_c #effects
 }
 rm_forge_moved :: (v:[]RmServer,k:int,q:int,out:[]f32) #export_c #effects(all) {
   bt:=v[0].eg[k].rules[0].beasts[q..<q+1];bt[0].x=out[0];bt[0].z=out[1];bt[0].yaw=out[2];bt[0].y=out[3];bt[0].grounded=true;bt[0].moving=out[4]>0.5;
-  i:=E5RR_BEAST0+q;v[0].eg[k].rules[0].b[0].c[i].x=e5r_sq(bt[0].x);v[0].eg[k].rules[0].b[0].c[i].y=e5r_sq(bt[0].z);
+  i:=E5RR_BEAST0+q;v[0].eg[k].rules[0].b[0].c[i].x=e5r_sq(bt[0].x);v[0].eg[k].rules[0].b[0].c[i].y=e5rr_z_cell(v[0].eg[k].rules[..],bt[0].z);
 }
 fg_hits :: (v:[]RmServer,k:int) {
   r:=v[0].eg[k].rules[..];

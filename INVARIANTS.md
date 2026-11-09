@@ -7586,3 +7586,8 @@ Everglade II's familiar Step uses the owner's admitted facing and the
 familiar's room position, saved turn, movement and telepathic link.
 The world collision query starts at the familiar. A blocked Step leaves
 its movement unspent, and the owner's turn is unchanged.
+
+Everglade II extends the room grid south through its distant clearing.
+Room Z conversions use the room's grid offset in both directions. The
+original Everglade grid and the world coordinates on the wire retain their
+existing origins and units.

@@ -646,7 +646,7 @@ e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
     x:=wire_num(t,rd[..]); z:=wire_num(t,rd[..]);
     hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]);
     if !rd[0].ok || s<=prior || s>=E2N_FAMILIARS || form<0 || form>=RS_FAMILIAR_FORMS.count || hp<=0 || max<hp ||
-      x < -200000 || x > 200000 || z < -200000 || z > 200000 { return; }
+      x < -200000 || x > 200000 || z < -650000 || z > 200000 { return; }
     rows[s]=E2nFamiliar.{live=true,form=form,x=f32(x)/1000,z=f32(z)/1000,hp=hp,max=max};
     prior=s;
   }

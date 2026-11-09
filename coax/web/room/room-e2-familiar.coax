@@ -174,7 +174,7 @@ e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
   return next;
 }
 e2_familiar_ray :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool {
-  seats:=v[0].eg[k].seat[..];
+  seats:=v[0].eg[k].seat[..]; rules:=v[0].eg[k].rules[..];
   for s:0..<EG_SEATS {
     req:=seats[s].familiar;
     if req.ray!=q || (req.pending<=0 && req.active<=0) { continue; }
@@ -182,12 +182,12 @@ e2_familiar_ray :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool {
     out[0]=p.x; out[1]=p.y; out[2]=p.z;
     if req.order==4 {
       f:=v[0].eg[k].rules[0].familiar[s].me; b:=v[0].eg[k].rules[0].b[..];
-      out[0]=f32(E5R_X0)+(f32(b[0].c[f].x)+0.5)*f32(E5R_SQ);
+      out[0]=e5rr_cell_m(b[0].c[f].x);
       out[1]=0;
-      out[2]=f32(E5R_X0)+(f32(b[0].c[f].y)+0.5)*f32(E5R_SQ);
+      out[2]=e5rr_cell_z(rules,b[0].c[f].y);
     }
-    out[3]=f32(E5R_X0)+(f32(req.x)+0.5)*f32(E5R_SQ); out[4]=out[1];
-    out[5]=f32(E5R_X0)+(f32(req.y)+0.5)*f32(E5R_SQ);
+    out[3]=e5rr_cell_m(req.x); out[4]=out[1];
+    out[5]=e5rr_cell_z(rules,req.y);
     return true;
   }
   return false;
@@ -302,8 +302,8 @@ e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
     form:=-1;
     for q:0..<RS_FAMILIAR_FORMS.count { if c[0].familiar_form==RS_FAMILIAR_FORMS[q] { form=q; } }
     if form<0 { continue; }
-    x:=int((f32(E5R_X0)+(f32(c[0].x)+0.5)*f32(E5R_SQ))*1000);
-    z:=int((f32(E5R_X0)+(f32(c[0].y)+0.5)*f32(E5R_SQ))*1000);
+    x:=int(e5rr_cell_m(c[0].x)*1000);
+    z:=int(e5rr_cell_z(rules,c[0].y)*1000);
     size=wire_int(rows[..],wire_int(rows[..],wire_int(rows[..],size,owner),form),x);
     size=wire_int(rows[..],wire_int(rows[..],wire_int(rows[..],size,z),c[0].hp),c[0].hp_max);
     count+=1;
@@ -347,24 +347,43 @@ e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
   #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"m4 6 3");
 }
 
-#test "e2 familiar: Step uses the familiar's saved movement and world clearance" #steps 4000000000 {
+#test "e2 familiar: Step uses the familiar's saved movement and world clearance in the distant clearing" #steps 4000000000 {
   v:[1]RmServer; rm_init(v[..]); rm_clock(v[..],0,1762190000000);
   #assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-e2-step HTTP/1.1\r\n\r\n")==0;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
   rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-druid-2 0 -");
   for q:0..<3 { eg_test_tick(v[..],k); }
+  rm_eg_moved(v[..],k,SeatId.{value=0},0,0,0,-470,0,0,0,0,1,0,0);
   r:=v[0].eg[k].rules[..]; b:=r[0].b[..]; f:=rs_familiar_of(b,0);
   e5rr_step(r,b[0].c[0].turn_at+0.1);
   rm_heard(v[..],0,"M1 1 8 0"); rc_test_tick(v[..],k,true);
   #assert !b[0].c[f].dead;
+  #assert b[0].c[f].y>=0 && b[0].c[f].y<b[0].h;
   e5rr_step(r,b[0].c[f].turn_at+0.1);
   x:=b[0].c[f].x; y:=b[0].c[f].y;
   owner_turn:=r[0].seat[0].turn;
   rm_heard(v[..],0,"M5 2"); rc_test_tick(v[..],k,false);
   #assert b[0].c[f].x==x && b[0].c[f].y==y && !r[0].familiar[0].turn.moved;
-  rm_heard(v[..],0,"M5 3"); rc_test_tick(v[..],k,true);
+  rm_heard(v[..],0,"M5 3");
+  rays:=rm_eg_sights(v[..],k); ray:[6]f32;
+  #assert rays>0 && rm_eg_sight(v[..],k,rays-1,ray[..]);
+  #assert abs(ray[2]+470)<3 && abs(ray[5]+470)<4;
+  rc_test_tick(v[..],k,true);
   #assert rs_feet(x,y,b[0].c[f].x,b[0].c[f].y)==RS_SQUARE && r[0].familiar[0].turn.moved;
   #assert r[0].seat[0].turn.action==owner_turn.action && r[0].seat[0].turn.moved==owner_turn.moved;
-  out:[16384]u8;
-  #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"m5 3");
+  moved:=false; visible:=false;
+  while true {
+    got:=rm_relay_next(v[..]); if got==0 { break; }
+    if !v[0].rto[0] { continue; }
+    frame:=cast(string)v[0].rout[0..<got];
+    if frame=="m5 3" { moved=true; }
+    if !wire_is(frame,"m2") { continue; }
+    rd:=[1]WireRd.[wire_rd(frame,2)];
+    tick:=wire_num(frame,rd[..]); rows:=wire_num(frame,rd[..]);
+    if tick!=v[0].eg[k].tick || rows!=1 { continue; }
+    for q:0..<3 { _:=wire_num(frame,rd[..]); }   // owner, form and X
+    z:=wire_num(frame,rd[..]);
+    visible=rd[0].ok && z< -466000 && z> -474000;
+  }
+  #assert moved && visible;
 }

@@ -362,7 +362,12 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     for c: 0..<CR_PLACED_MAX { v[0].eg[q].placed_burn[c] = false; v[0].eg[q].placed_gone[c] = false; }
     e5rr_start(v[0].eg[q].rules[..], v[0].eg[q].seed);
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
-    if v[0].eg[q].e2 { e2_rest_start(v,q); e5rr_enable_familiars(v[0].eg[q].rules[..]); }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
+    if v[0].eg[q].e2 {
+      rules:=v[0].eg[q].rules[..];
+      rules[0].z_shift=E5RR_E2_Z_SHIFT;
+      rules[0].b[0].h=E5R_SIDE+E5RR_E2_Z_SHIFT;
+      e2_rest_start(v,q); e5rr_enable_familiars(rules);
+    }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
     v[0].eg[q].initialized=true;

@@ -970,6 +970,8 @@ the familiar's position and uses its saved turn and movement budget.
 The room's hostile Opportunity Attack selection for familiar movement
 still needs integration.
 
-The room still maps SRD actors onto Everglade's grid, whose Z origin is
-−110 m. Everglade II's path continues to a clearing at −470 m. Familiar
-placement and movement need grid coverage through that clearing.
+Everglade II extends its combat grid south through the distant clearing.
+The room converts placement, casts, NPCs, effects, collision queries and
+familiar snapshots at the world boundary. The distant-clearing regression
+checks summoning, Step, collision endpoints and replicated coordinates
+near −470 m. The original Everglade grid keeps its existing origin.

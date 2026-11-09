@@ -1676,6 +1676,8 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2_plates(s[..],out[..],0)>0;
   e2n_record(n,"m2 6 0");
   #assert !n[0].familiar_rows[2].live && e2_plates(s[..],out[..],0)==0;
+  e2n_record(n,"m2 7 1 2 0 -4000 -470000 2 2");
+  #assert n[0].familiar_rows[2].live && n[0].familiar_rows[2].z== -470;
 }
 
 #test "Everglade II Wizard Find Familiar control sends the mode and spirit and reports casting" #steps 1000000000 {

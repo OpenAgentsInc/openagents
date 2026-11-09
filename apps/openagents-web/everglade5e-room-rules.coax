@@ -48,8 +48,10 @@ E5RR_SCENT :: 3.048;                         // m: a pack sets on whoever is wit
 // The beasts themselves (E5rBeast, their forms, runs, bites and slams) are everglade5e-beasts.coax's,
 // the page's own battle's too, so a Zombie offline is the room's Zombie.
 
+E5RR_E2_Z_SHIFT :: 352;   // add squares south of the old origin, through the -640 m terrain edge
 E5rRoom :: struct {
   b: [1] RsBattle;
+  z_shift: int;
   seat: [E5RR_SEATS] FbSeat;
   live: [E5RR_SEATS] bool;
   familiar: [E5RR_SEATS] FbSeat;
@@ -100,8 +102,13 @@ e5rr_of_tgt :: (t: int) -> int {
   return -1;
 }
 
+e5rr_z_cell :: (r:[]E5rRoom,z:f32)->int { return e5r_sq(z)+r[0].z_shift; }
+e5rr_cell_z :: (r:[]E5rRoom,y:int)->f32 { return e5rr_cell_m(y-r[0].z_shift); }
+e5rr_cell_m :: (q:int)->f32 { return f32(E5R_X0)+(f32(q)+0.5)*f32(E5R_SQ); }
+
 e5rr_start :: (r: [] E5rRoom, seed: int) #export_c #effects(reads,writes,traps) {
   b := r[0].b[..];
+  r[0].z_shift=0;
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
   world_selected := rs_set_world(b,RS_EVERGLADE_WORLD);   // every declared deviation: world-profile.coax
   for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
@@ -182,7 +189,7 @@ e5rr_join_level :: (r: [] E5rRoom, s: int, x: f32, z: f32, klass: int, level: in
   // the seat's last player's Zombies go with it
   for q: 0..<E5RR_BEASTS { if r[0].beasts[q].id != 0 && r[0].beasts[q].by == s && r[0].beasts[q].form == E5RR_FORM_ZOMBIE { b[0].c[E5RR_BEAST0 + q].dead = true; } }
   b[0].c[i].turn_at = hi_r(t, b[0].clock); b[0].c[i].round_at = ro;
-  b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5r_sq(z);
+  b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5rr_z_cell(r,z);
   r[0].seat[s] = FbSeat.{me = i};
   r[0].live[s] = true;
   // the seat's last player's spells end with the new one (its Concentration is the new caster's)
@@ -228,14 +235,14 @@ e5rr_entry :: (r: [] E5rRoom, k: int) -> FbAb { return ifx k >= FB_CL0 then r[0]
 e5rr_seat_at :: (r: [] E5rRoom, s: int, out: [] f32) -> bool #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] || out.count < 2 { return false; }
   c := r[0].b[0].c[E5RR_SEAT + s];
-  out[0] = f32(E5R_X0) + (f32(c.x) + 0.5) * f32(E5R_SQ); out[1] = f32(E5R_X0) + (f32(c.y) + 0.5) * f32(E5R_SQ);
+  out[0] = e5rr_cell_m(c.x); out[1] = e5rr_cell_z(r,c.y);
   return true;
 }
 // Where seat s stands now (Everglade's metres).
 e5rr_place :: (r: [] E5rRoom, s: int, x: f32, z: f32) #export_c #effects(reads,writes,traps) {
   if !r[0].started || s < 0 || s >= E5RR_SEATS || !r[0].live[s] { return; }
   i := E5RR_SEAT + s;
-  r[0].b[0].c[i].x = e5r_sq(x); r[0].b[0].c[i].y = e5r_sq(z);
+  r[0].b[0].c[i].x = e5r_sq(x); r[0].b[0].c[i].y = e5rr_z_cell(r,z);
 }
 // Everglade's people, E5R_FOLK_FLOATS each (here, x, z, hp, temp, max, ac,
 // block): the town's step owns where they are; the engine keeps their Hit Points once they are in.
@@ -260,7 +267,7 @@ e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c #effects(rea
       b[0].c[i].dead = b[0].c[i].hp <= 0;
       b[0].c[i].turn_at = t; b[0].c[i].round_at = ro;
     }
-    b[0].c[i].x = e5r_sq(folk[f + 1]); b[0].c[i].y = e5r_sq(folk[f + 2]);
+    b[0].c[i].x = e5r_sq(folk[f + 1]); b[0].c[i].y = e5rr_z_cell(r,folk[f + 2]);
   }
 }
 // The room's clock on to `clock` (seconds): turns, the saves people repeat and the zones' rounds.
@@ -352,7 +359,7 @@ e5rr_use_apply :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> b
   press_turn:[1] RsTurn; press_turn[0]=r[0].seat[s].turn;
   prepared:=rs_press_prepare(c,press_turn[..],b[0].press);
   r[0].seat[s].turn=press_turn[0]; r[0].seat[s].open=true;
-  tx := e5r_sq(x); ty := e5r_sq(z);
+  tx := e5r_sq(x); ty := e5rr_z_cell(r,z);
   foe := ifx tgt > E5RR_TGT_BEAST then e5rr_beast_of_tgt(r, tgt) else e5rr_of_tgt(tgt);
   if foe >= 0 && foe < E5RR_FOLK0 && !e5rr_helps(a) && !r[0].pvp { foe = -1; }   // PvP off: no harm aimed at a player
   if foe >= E5RR_SEAT && foe < E5RR_SEAT + E5RR_SEATS && e5rr_apart(r, s, foe - E5RR_SEAT) { foe = -1; }   // a blocked pair: neither aims at the other
@@ -522,7 +529,7 @@ e5rr_conjure :: (r: [] E5rRoom, s: int, x: f32, z: f32) -> bool {
     t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
     b[0].c[i] = e5rr_wolf();
     b[0].c[i].turn_at = hi_r(t, b[0].clock); b[0].c[i].round_at = ro;
-    b[0].c[i].x = e5r_sq(bx); b[0].c[i].y = e5r_sq(bz);
+    b[0].c[i].x = e5r_sq(bx); b[0].c[i].y = e5rr_z_cell(r,bz);
     r[0].beasts[q] = E5rBeast.{id = r[0].next_id, tag = r[0].next_id, by = s, spell = SP_CONJURE_ANIMALS, form = E5RR_FORM_WOLF,
                               x = bx, z = bz, yaw = a, goal_x = x, goal_z = z, foe = foe, bite_at = b[0].clock};
     r[0].next_id += 1;
@@ -555,7 +562,7 @@ e5rr_hold_folk :: (r: [] E5rRoom, x: f32, z: f32, reach: f32) -> int #export_c #
   return i;
 }
 // Each summoned creature's dt seconds (everglade5e-beasts.coax e5b_step).
-e5rr_beasts_step :: (r: [] E5rRoom, dt: f32) { e5b_step(r[0].b[..], r[0].beasts[..], E5RR_BEAST0, E5RR_FOLK0, r[0].folk_x[..], r[0].folk_z[..], dt); }
+e5rr_beasts_step :: (r: [] E5rRoom, dt: f32) { e5b_step(r[0].b[..], r[0].beasts[..], E5RR_BEAST0, E5RR_FOLK0, r[0].folk_x[..], r[0].folk_z[..], r[0].z_shift, dt); }
 // A summoned creature at 0 Hit Points, or whose caster's Concentration on its spell ended, is gone.
 e5rr_beasts_check :: (r: [] E5rRoom) {
   b := r[0].b[..];
@@ -648,7 +655,7 @@ e5rr_zone :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c #effects(read
   if q < 0 || q >= E5RR_ZONES || !r[0].zones[q].on || out.count < E5RR_ZONE_FLOATS { return 0; }
   z := r[0].zones[q];
   out[0] = f32(z.spell); out[1] = f32(e5rr_tgt(z.by));
-  out[2] = f32(E5R_X0) + (f32(z.cx) + 0.5) * f32(E5R_SQ); out[3] = f32(E5R_X0) + (f32(z.cy) + 0.5) * f32(E5R_SQ);
+  out[2] = e5rr_cell_m(z.cx); out[3] = e5rr_cell_z(r,z.cy);
   out[4] = f32(z.r_ft) * 0.3048; out[5] = f32(r[0].zone_slot[q]);
   return r[0].zone_id[q];
 }
@@ -668,7 +675,7 @@ e5rr_events :: (r: [] E5rRoom, out: [] f32) -> int #export_c #effects(reads,writ
     o := n * E5RR_EV_FLOATS;
     out[o] = f32(e.kind); out[o + 1] = f32(e.spell); out[o + 2] = f32(e5rr_tgt_in(r, e.by)); out[o + 3] = f32(e5rr_tgt_in(r, e.to));
     out[o + 4] = f32(e.amount); out[o + 5] = f32(e.damage);
-    out[o + 6] = f32(E5R_X0) + (f32(e.x) + 0.5) * f32(E5R_SQ); out[o + 7] = f32(E5R_X0) + (f32(e.y) + 0.5) * f32(E5R_SQ);
+    out[o + 6] = e5rr_cell_m(e.x); out[o + 7] = e5rr_cell_z(r,e.y);
     n += 1;
   }
   return n;
@@ -757,7 +764,7 @@ e5rr_test_people :: (r: [] E5rRoom) {
   e5rr_seat_out(r[..], 5, out[..]); #assert out[0] > 27;
 }
 // Square q's middle in metres (e5r_sq's inverse).
-e5rr_test_m :: (q: int) -> f32 { return f32(E5R_X0) + (f32(q) + 0.5) * f32(E5R_SQ); }
+e5rr_test_m :: (q: int) -> f32 { return e5rr_cell_m(q); }
 // Four guards: three on squares round (px, py) and one 40 squares off; seat 0 two squares west.
 e5rr_test_ring :: (r: [] E5rRoom, px: int, py: int) {
   folk: [E5R_FOLK * E5R_FOLK_FLOATS] f32;

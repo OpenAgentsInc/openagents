@@ -33,7 +33,7 @@ e5rf_spawn :: (r:[]E5rRoom,p:ForgeNpc)->int {
   if q<0 {return -1;}i:=E5RR_BEAST0+q;b:=r[0].b[..];
   c:RsCreature;
   if p.kind==0 {c=rs_cultist("Cultist",3);}else if p.kind==2 {c=rs_guard("Guard",1);}else{c=fb_folk("Villager",1,10,4,e5r_scores(0));}
-  c.x=e5r_sq(f32(p.x)/100);c.y=e5r_sq(f32(p.z)/100);c.turn_at=b[0].clock+0.1;c.round_at=b[0].clock;
+  c.x=e5r_sq(f32(p.x)/100);c.y=e5rr_z_cell(r,f32(p.z)/100);c.turn_at=b[0].clock+0.1;c.round_at=b[0].clock;
   b[0].c[i]=c;id:=r[0].next_id;r[0].next_id+=1;
   form:=E5RR_FORM_RAID+(ifx p.kind==1 then E5RF_VILLAGER else c.npc);
   r[0].beasts[q]=E5rBeast.{id=id,tag=id,by=-1,spell=-1,form=form,forge_id=p.id,x=f32(p.x)/100,z=f32(p.z)/100,goal_x=f32(p.x)/100,goal_z=f32(p.z)/100};

@@ -95,7 +95,7 @@ e5b_gone :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, q: int) {
 // Each summoned creature's dt seconds: it runs to its quarry, or to where it was sent, and bites
 // its quarry when in reach and its bite is due (once a beat, the battle's turn). Person j (creature
 // folk0 + j) stands at (folk_x[j], folk_z[j]).
-e5b_step :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, folk0: int, folk_x: [] f32, folk_z: [] f32, dt: f32) {
+e5b_step :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, folk0: int, folk_x: [] f32, folk_z: [] f32, z_shift:int, dt: f32) {
   for q: 0..<beasts.count {
     if beasts[q].id == 0 || beasts[q].form >= E5RR_FORM_RAID { continue; }
     i := beast0 + q;
@@ -124,7 +124,7 @@ e5b_step :: (b: [] RsBattle, beasts: [] E5rBeast, beast0: int, folk0: int, folk_
       bt[0].moving = step > 0.001;
     }
     if d > 0.01 { bt[0].yaw = e5rr_heading(dx, dz); }
-    b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z);
+    b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z)+z_shift;
     if foe >= 0 && d <= E5RR_REACH && b[0].clock >= bt[0].bite_at && rs_can_act(b[0].c[i]) {
       bt[0].bite_at = b[0].clock + rs_beat(b);
       if bt[0].form == E5RR_FORM_ZOMBIE { e5b_slam(b, beast0, q, foe); } else { e5b_bite(b, beasts, beast0, q, foe); }

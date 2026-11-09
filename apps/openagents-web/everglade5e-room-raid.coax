@@ -182,12 +182,12 @@ e5rd_npc :: (form: int) -> int { return ifx form == E5RR_FORM_WARD then 0 else f
 e5rd_mx :: (r: [] E5rRoom, i: int) -> f32 {
   if i >= E5RR_FOLK0 && i < E5RR_FOLK0 + E5R_FOLK { return r[0].folk_x[i - E5RR_FOLK0]; }
   if i >= E5RR_BEAST0 && i < E5RR_BEAST0 + E5RR_BEASTS { return r[0].beasts[i - E5RR_BEAST0].x; }
-  return f32(E5R_X0) + (f32(r[0].b[0].c[i].x) + 0.5) * f32(E5R_SQ);
+  return e5rr_cell_m(r[0].b[0].c[i].x);
 }
 e5rd_mz :: (r: [] E5rRoom, i: int) -> f32 {
   if i >= E5RR_FOLK0 && i < E5RR_FOLK0 + E5R_FOLK { return r[0].folk_z[i - E5RR_FOLK0]; }
   if i >= E5RR_BEAST0 && i < E5RR_BEAST0 + E5RR_BEASTS { return r[0].beasts[i - E5RR_BEAST0].z; }
-  return f32(E5R_X0) + (f32(r[0].b[0].c[i].y) + 0.5) * f32(E5R_SQ);
+  return e5rr_cell_z(r,r[0].b[0].c[i].y);
 }
 // Whether creature i is up and here: a player at their seat, a person out of doors.
 e5rd_up :: (r: [] E5rRoom, i: int) -> bool {
@@ -224,7 +224,7 @@ e5rd_join :: (r: [] E5rRoom, c: RsCreature, form: int, x0: f32, z0: f32, g: RtGa
   b[0].c[i] = c;
   b[0].c[i].team = E5RD_TEAM;
   b[0].c[i].turn_at = hi_r(t, b[0].clock) + 0.05 * f32(q % 17); b[0].c[i].round_at = ro;
-  b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5r_sq(z);
+  b[0].c[i].x = e5r_sq(x); b[0].c[i].y = e5rr_z_cell(r,z);
   // its squad: a new one takes the place, its calls from now; a caster takes its turns on them
   w := r[0].raid[..];
   s := squad % RT_SQUADS;
@@ -379,7 +379,7 @@ e5rd_hero_step :: (r: [] E5rRoom) {
   }
   who := b[0].who; kept := b[0].turn;
   b[0].who = i; b[0].turn = RsTurn.{};
-  rolled := rs_cast(b, i, a.sp, rs_max(a.lvl, rs_spell(a.sp).level), e5r_sq(h.x), e5r_sq(h.z), -1);
+  rolled := rs_cast(b, i, a.sp, rs_max(a.lvl, rs_spell(a.sp).level), e5r_sq(h.x), e5rr_z_cell(r,h.z), -1);
   if rolled { w[0].hero.rolled += 1; }
   b[0].who = who; b[0].turn = kept;
   for s: 0..<E5RR_SEATS { c := E5RR_SEAT + s; b[0].c[c].x = kx[s]; b[0].c[c].y = ky[s]; }
@@ -831,7 +831,7 @@ e5rd_door :: (r: [] E5rRoom, q: int) -> bool {
   rs_tell(b, RS_EV_END, SP_DIMENSION_DOOR, i, i, 0, 0, l[..]);
   e5rd_cast(r, q, E5RD_K_DOOR, -1, o[0], o[1]);
   bt[0].x = o[0]; bt[0].z = o[1];
-  b[0].c[i].x = e5r_sq(o[0]); b[0].c[i].y = e5r_sq(o[1]);
+  b[0].c[i].x = e5r_sq(o[0]); b[0].c[i].y = e5rr_z_cell(r,o[1]);
   return true;
 }
 // Darian with no foe in reach, the stables standing within Fireball's 150 feet at his gate: a
@@ -1041,7 +1041,7 @@ e5rd_step :: (r: [] E5rRoom, dt: f32) {
     if mm > 0.01 { bt[0].yaw = e5rr_heading(mx, mz); }
     // one at its foe faces it
     if foe >= 0 { bt[0].yaw = e5rr_heading(e5rd_mx(r, foe) - bt[0].x, e5rd_mz(r, foe) - bt[0].z); }
-    b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5r_sq(bt[0].z);
+    b[0].c[i].x = e5r_sq(bt[0].x); b[0].c[i].y = e5rr_z_cell(r,bt[0].z);
     w[0].xs[q] = bt[0].x; w[0].zs[q] = bt[0].z;
   }
 }
