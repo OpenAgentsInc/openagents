@@ -3,8 +3,8 @@
 // refuses an unseen choice before any cost: the caster cannot make that
 // choice, so this is a malformed request rather than a p.106 invalid target.
 // Vicious Mockery accepts a creature the caster can see or hear. Sight is the
-// open-grid flag model of attack-sight.coax; Total Cover, obscurement and
-// alternate senses are world facts not yet admitted here.
+// open-grid flag model for the caster. A borrowed viewpoint also uses its
+// own Total Cover, obscurement and the familiar form's Blindsight.
 #authority;
 RS_SIGHT_NONE :: 0; RS_SIGHT_SEE :: 1; RS_SIGHT_SEE_OR_HEAR :: 2;
 // Reviewed against each canonical description; cast-workflow-checks.coax compares them.
@@ -53,6 +53,50 @@ rs_sight_admits :: (form: int, blind: bool, deaf: bool, hidden: bool) -> bool #e
   if !blind && !hidden { return true; }
   return form == RS_SIGHT_SEE_OR_HEAR && !deaf;
 }
+
+#test "Borrowed Bat Blindsight sees invisible creatures through darkness within 60 feet and stops at Total Cover" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=4;
+  owner:=rs_add(b[..],rs_druid("Owner",0,2),1,1);
+  target:=rs_add(b[..],rs_fighter("Target",1,1),14,1);
+  rs_fresh(b[..],owner);
+  #assert rs_wild_companion(b[..],owner,0,MON_BAT,2,1);
+  bat:=rs_familiar_of(b[..],owner);
+  c[owner].cond=RS_BLINDED;
+  c[bat].cond=RS_BLINDED|RS_DEAFENED;
+  c[target].cond=RS_INVISIBLE;
+  #assert rs_terrain_put(b[..],TR_HEAVY,14,1,14,1);
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  #assert rs_familiar_borrow_senses(b[..],owner);
+  #assert rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  #assert rs_cover_put(b[..],bat,target,RS_COVER_TOTAL);
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  #assert rs_cover_put(b[..],bat,target,RS_COVER_THREE);
+  #assert rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  rs_place(b[..],target,15,1);
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  rs_place(b[..],target,13,1);
+  #assert rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  c[bat].familiar_form=MON_OWL;
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  #assert !rs_cast_sees(b[..],owner,bat,SP_HOLD_PERSON);
+  c[bat].cond=0;
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  #assert rs_cast_sees(b[..],owner,target,SP_VICIOUS_MOCKERY);
+  c[target].cond=0;
+  #assert rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  c[target].cond=RS_BLINDED;
+  #assert rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  c[bat].cond=RS_BLINDED;
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  c[bat].cond=0;
+  rs_place(b[..],target,14,1);
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  rs_place(b[..],target,13,1);
+  #assert rs_cover_put(b[..],bat,target,RS_COVER_TOTAL);
+  #assert !rs_cast_sees(b[..],owner,target,SP_HOLD_PERSON);
+  c[bat].cond=RS_INVISIBLE;
+  #assert rs_cast_sees(b[..],owner,bat,SP_HOLD_PERSON);
+}
 rs_spell_sight :: (sp: int) -> int #effects(all) {
   if sp == SP_VICIOUS_MOCKERY { return RS_SIGHT_SEE_OR_HEAR; }
   for s: RS_SIGHT_SPELLS { if s == sp { return RS_SIGHT_SEE; } }
@@ -62,12 +106,17 @@ rs_spell_sight :: (sp: int) -> int #effects(all) {
 rs_cast_sees :: (b: [] RsBattle, i: int, j: int, sp: int) -> bool #effects(all) {
   if i < 0 || i >= b[0].n || j < 0 || j >= b[0].n { return false; }
   form:=rs_spell_sight(sp);
-  if rs_creature_sight_from(b,i,j,form) { return true; }
-  return rs_creature_sight_from(b,rs_familiar_observer(b,i),j,form);
+  if rs_creature_sight_from(b,i,j,form,false) { return true; }
+  f:=rs_familiar_observer(b,i);
+  if f==i { return false; }
+  covered:=rs_cover_fact(b,f,j)==RS_COVER_TOTAL;
+  range:=rs_monster_block(b[0].c[f].familiar_form).blindsight;
+  if !covered && range!=0 && rs_feet_to(b,f,j)<=range { return true; }
+  return rs_creature_sight_from(b,f,j,form,covered || rs_obscured(b,j)==2);
 }
-rs_creature_sight_from :: (b:[]RsBattle,i:int,j:int,form:int)->bool #effects(all) {
+rs_creature_sight_from :: (b:[]RsBattle,i:int,j:int,form:int,obscured:bool)->bool #effects(all) {
   hidden := j != i && rs_has(b[0].c[j], RS_INVISIBLE);
-  return rs_sight_admits(form, rs_has(b[0].c[i], RS_BLINDED), rs_has(b[0].c[i], RS_DEAFENED), hidden);
+  return rs_sight_admits(form, obscured || rs_has(b[0].c[i], RS_BLINDED), rs_has(b[0].c[i], RS_DEAFENED), hidden);
 }
 // Whether caster i can choose a point for spell sp ("a point you can see").
 rs_point_sees :: (b: [] RsBattle, i: int, sp: int) -> bool #effects(all) {

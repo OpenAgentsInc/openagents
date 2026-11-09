@@ -1189,6 +1189,13 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     ox := px + f32(tx - XC_MID) * f32(XC_SQ); oz := pz + f32(ty - XC_MID) * f32(XC_SQ);
     for i: 0..<XC_FOES { if !h[0].enemies[i].dead && b[0].c[1 + i].x != XC_AWAY && !hostile.hostile_sees(h[0].enemies[i], ox, oz) { _ := rs_cover_put(b, RS_COVER_ORIGIN, 1 + i, RS_COVER_TOTAL); } }
   }
+  // The borrowed viewpoint needs its own wall fact for a selected creature.
+  if !via && a.kind==FB_SPELL && foe>=0 {
+    f:=rs_familiar_observer(b,0);
+    if f!=0 && !xdungeon.dg_sight(x[0].familiar_x,x[0].familiar_z,h[0].enemies[foe].x,h[0].enemies[foe].z) {
+      _:=rs_cover_put(b,f,1+foe,RS_COVER_TOTAL);
+    }
+  }
   ok := false;
   if via {
     f:=rs_familiar_of(b,0);

@@ -919,8 +919,14 @@ The new stat rows come from SRD pp. 345, 348–349, 355, 357–359 and 364.
 They preserve armor class, hit points, ability scores, the printed attack,
 movement and special-sense distances. Frog and Octopus use the shared Swim
 Speed where terrain supplies swimming. Darkvision comes from the catalog.
-Flight, Bat blindsight behavior, remaining creature traits and skill
-bonuses, and other eligible CR 0 Beasts still need work.
+The Bat's borrowed Blindsight can satisfy a spell's creature sight
+requirement within 60 feet, including while Blinded and against Invisible
+creatures in darkness (SRD pp. 177, 345). Total Cover is measured from the
+familiar. Experimental submits the wall fact from that viewpoint. The 436
+casting workflow checks passed and the changed casting sight authority
+killed all 73 mutants. Point sight, flight, special-sense rendering,
+remaining creature traits and skill bonuses, and other eligible CR 0 Beasts
+still need work.
 
 The named-form fixture covers summoning and reforming all eleven, including
 the attack restriction and resetting Swim Speed on a change of form. All

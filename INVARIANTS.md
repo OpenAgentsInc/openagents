@@ -7526,7 +7526,11 @@ modifier and save DC. A refused cast spends neither actor's resources.
 The owner can borrow a linked familiar's sight and hearing for one Bonus
 Action until the start of the owner's next turn. The shared casting sight
 checks can use either viewpoint, and world adapters can read the familiar's
-special-sense range. Commands can reach a familiar by telepathy within 100
+special-sense range. For creature choices, borrowed Bat Blindsight uses
+its own 60-foot range and respects Total Cover from the familiar. Blinded,
+Darkness and Invisible do not defeat that sense. Experimental supplies
+the familiar's own wall fact when the player selects a creature.
+Commands can reach a familiar by telepathy within 100
 feet or through audible speech supplied by the world. An admitted command
 uses the familiar's own turn and shared movement, Opportunity Attack and
 action rules.
