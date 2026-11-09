@@ -136,8 +136,8 @@ rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
     // This Lore Bard chooses Fireball and Spirit Guardians at level 6, p.35.
     if level >= 6 { _ := rs_grant_class_spell(c, SP_FIREBALL); _ = rs_grant_class_spell(c, SP_SPIRIT_GUARDIANS); }
   } else if c[0].klass == RS_PALADIN {
-    // Blessed Warrior's chosen Sacred Flame, p.54.
-    if level >= 2 { _ := rs_grant_class_spell(c, SP_SACRED_FLAME); }
+    // Blessed Warrior's recommended cantrips, p.54.
+    if level >= 2 { _ := rs_grant_class_spell(c, SP_SACRED_FLAME); _ = rs_grant_class_spell(c, SP_GUIDANCE); }
     if level >= 2 { _ := rs_grant_class_spell(c, SP_DIVINE_SMITE); }
     if level >= 3 { _ := rs_grant_class_spell(c, SP_SHIELD_OF_FAITH); }
     if level >= 5 { _ := rs_grant_class_spell(c, SP_AID); }

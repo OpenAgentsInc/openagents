@@ -157,6 +157,7 @@ EF_KNOCKOUT :: 21; // knocked out at 1 HP (knockout.coax): Unconscious until its
 EF_READY :: 23; // the Ready action (ready.coax): cond the response and slot, dc the trigger creature (-1 any)
 EF_INFLUENCED :: 24; // a failed Influence (actions.coax): by the urger, cond the check's skill, until the 24-hour wait ends
 EF_AID :: 25; // Aid (p. 107): cond is the current and maximum Hit Point increase
+EF_GUIDANCE :: 26; // Guidance (p. 138): cond is the selected skill
 EF_SENSE :: 22; // Divine Sense (p. 54), on the Paladin: Celestials, Fiends and Undead within 60 feet known
 
 // The classes a creature can be built as (-1 for a stat block).

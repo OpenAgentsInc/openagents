@@ -2591,6 +2591,24 @@ xc_play_kit :: (c: int) {
   #assert fb_option(SP_HEX, 4).hex_ability == RS_WIS && fb_option(SP_FIRE_BOLT, 0).blindness == RS_BLINDED && fb_option(SP_FIRE_BOLT, 1).blindness == -1;
   #assert fb_option_n(SP_FIRE_BOLT) == 0;
 }
+#test "Experimental Guidance's skill badge changes the ability check benefit of the cast" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_PALADIN,0);
+  x:=s[0].xc[..]; xc_set_level(x,2);
+  x[0].seen=true; x[0].k=1; x[0].w=1200; x[0].h=800;
+  slot:=-1;
+  for i:0..<x[0].bar_n { if x[0].bar[i].sp==SP_GUIDANCE { slot=i; } }
+  #assert slot>=0;
+  r:=xc_slot_box(x,slot);
+  #assert xc_choose(s[..],slot,r.x0+3,r.y1-3);
+  #assert x[0].bar[slot].opt==1 && fb_option_label(SP_GUIDANCE,1)=="PRF";
+  s[0].creator[0].clock=5;
+  #assert xc_use(s[..],slot);
+  b:=x[0].b[..];
+  #assert b[0].c[0].conc==SP_GUIDANCE;
+  guided:=false;
+  for e:b[0].c[0].eff { if e.kind==EF_GUIDANCE && e.cond==SK_PERFORMANCE { guided=true; } }
+  #assert guided;
+}
 #test "experimental combat: a clicked monster in reach takes a cone spell; out of reach or fallen it is let go (#13038)" #steps 2000000000 {
   c: [1] Lab; xc_test_lab(c[..], FB_CL_CLERIC, 0);
   x := c[0].xc[..]; g := c[0].creator[0].hostiles[..]; flame := x[0].bar[0];

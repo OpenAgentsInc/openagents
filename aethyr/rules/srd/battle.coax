@@ -586,6 +586,10 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   // Charmed (p.177): no damaging ability or magical effect targets the charmer
   for j: picks { if chosen && (!rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j) || rs_charmed_by(me,j)) { return false; } }
   if !rs_options_valid(sp,picks.count,options) { return false; }
+  if sp==SP_GUIDANCE && target!=i {
+    option:=rs_option_at(options,0);
+    if !option.willing { return false; }
+  }
   if !chosen && !rs_self_request(rs_spell_self_range(sp), s.area == RS_A_NONE, smite, i == target) { return false; }
   if s.area == RS_A_NONE && !chosen {
     exists := target >= 0 && target < b[0].n;
@@ -1160,10 +1164,10 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     } else if st.kind == RS_S_BOON {
       if ran_save && saved { continue; }
       // one of the caster's while it concentrates on the spell
-      _ := rs_put_effect(b, j, RsEffect.{kind = st.a, by = i, spell = sp, until = ifx s.concentration then b[0].c[i].conc_until else b[0].clock + s.duration_s, save = -1, dc = 0});
+      _ := rs_put_effect(b, j, RsEffect.{kind = st.a, cond = st.b, by = i, spell = sp, until = ifx s.concentration then b[0].c[i].conc_until else b[0].clock + s.duration_s, save = -1, dc = ifx st.a==EF_GUIDANCE then b[0].book[0].seq else 0});
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j);
-      rs_add_text(l[..], ifx st.a == EF_BLESS then " is blessed: 1d4 more on its attack rolls and saves" else ifx st.a == EF_BANE then " is baned: 1d4 less on its attack rolls and saves" else " has +2 AC");
+      rs_add_text(l[..], ifx st.a == EF_BLESS then " is blessed: 1d4 more on its attack rolls and saves" else ifx st.a == EF_BANE then " is baned: 1d4 less on its attack rolls and saves" else ifx st.a==EF_GUIDANCE then " is guided: 1d4 more on checks with the chosen skill" else " has +2 AC");
       rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
     } else if st.kind == RS_S_HALT {
       if ran_save && saved { continue; }

@@ -92,6 +92,9 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
   if n<out.count && rs_class_spell_granted(hero,SP_AID) {
     out[n]=fb_art_spell(SP_AID,FB_ALLY,"healing-word"); n+=1;
   }
+  if n<out.count && rs_class_spell_granted(hero,SP_GUIDANCE) {
+    out[n]=fb_art_spell(SP_GUIDANCE,FB_SELF,"healing-word"); n+=1;
+  }
   // The preset's selected spells, not slot availability alone, determine the
   // playable bar. Stable ability identities preserve saved ordering/sounds.
   selected := 0;
@@ -221,6 +224,7 @@ xc_spell_sound :: (sp: int) -> XcSnd {
   if sp == SP_HEALING_WORD || sp == SP_CURE_WOUNDS { return xs("heal", "", "", "", 1); }
   if sp == SP_LESSER_RESTORATION { return xs("shield", "heal", "", "", 1.05); }
   if sp == SP_AID { return xs("arcane-cast", "heal", "", "", 0.95); }
+  if sp == SP_GUIDANCE { return xs("levitate", "choir", "", "", 1.05); }
   if sp == SP_THUNDERWAVE { return xs("thunderwave", "thunder", "hit-heavy", "", 1); }
   if sp == SP_ENTANGLE { return xs("entangle", "", "", "", 1); }
   if sp == SP_CALL_LIGHTNING { return xs("bolt-cast", "thunder", "bolt-travel", "fizzle", 1); }
@@ -334,6 +338,16 @@ xk_wire :: (c: int, a: FbAb) -> int {
     entry:=xk_entry_at(klass,min_level,wire);
     #assert entry.ok && entry.ab.sp==SP_AID && entry.ab.lvl==2 && entry.ab.tg==FB_ALLY;
   }
+}
+
+#test "the Blessed Warrior kit exposes Guidance from level 2 with all skill choices" {
+  a:=fb_spell(SP_GUIDANCE,0,FB_SELF);
+  wire:=xk_wire(FB_CL_PALADIN,a);
+  #assert wire>=0 && !xk_entry_at(FB_CL_PALADIN,1,wire).ok;
+  entry:=xk_entry_at(FB_CL_PALADIN,2,wire);
+  #assert entry.ok && entry.ab.sp==SP_GUIDANCE && fb_ab_option_n(entry.ab)==RS_SKILLS;
+  first:=fb_option(SP_GUIDANCE,0);
+  #assert first.guidance==SK_PERCEPTION && fb_option_label(SP_GUIDANCE,0)=="PER";
 }
 // The weapon class c's hero holds (its Attack's reach).
 xk_weapon :: (c: int) -> int { return ifx c >= 0 && c < FB_CL_N then fb_cl_hero(c, "", 0, XK_LEVEL).weapon else 0; }

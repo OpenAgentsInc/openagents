@@ -64,7 +64,8 @@ fairy 695000
 # Borrowed Blindsight and the layered cast animation on main: 2,665,130 bytes.
 # Life Cleric Lesser Restoration and its effect and cue: 2,667,302 bytes measured.
 # Aid effect storage and the Cleric and Paladin controls: 2,669,720 bytes measured.
-fivelab 2670200
+# Blessed Warrior Guidance and its skill picker: 2,672,742 bytes measured.
+fivelab 2673300
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.

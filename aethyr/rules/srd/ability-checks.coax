@@ -19,6 +19,12 @@ rs_ability_check :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbilityRe
   if p.automatic { return r; }
   d := rs_d20(b[0].dice[..],p.edge);
   r.total = d.roll+p.bonus-p.penalty;
+  // The newest Guidance supplies one die, only for its selected skill.
+  guided:=-1; sequence:=-1;
+  for e:b[0].c[j].eff {
+    if e.kind==EF_GUIDANCE && e.dc>sequence { sequence=e.dc; guided=e.cond; }
+  }
+  if guided>=0 && guided==q.skill { r.total+=rs_roll(b[0].dice[..],4); }
   r.inspiration = rs_inspired_roll(b,j,r.total,q.dc); r.total += r.inspiration;
   r.luck = rs_own_luck(b,j,r.total,q.dc); r.total += r.luck;
   if r.total < q.dc && b[0].c[j].tactical && b[0].c[j].uses[RS_USE_WIND] > 0 {
@@ -50,4 +56,33 @@ rs_passive_perception :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbil
   #assert r.accepted && r.passed && r.total == 10 && b[0].dice[0].rolled == 1;
   r = rs_passive_perception(b[..],0,RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=10});
   #assert r.accepted && r.passed && r.total == 10 && b[0].dice[0].rolled == 1;
+}
+
+#test "Guidance rolls exactly one d4 on the latest selected skill" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].dice[0].fixed=true;
+  c[0].level=1; c[0].score=[6]int.[10,10,10,10,10,10];
+  c[0].eff[0]=RsEffect.{kind=EF_GUIDANCE,cond=SK_ATHLETICS,dc=2};
+  c[0].eff[1]=RsEffect.{kind=EF_GUIDANCE,cond=SK_PERCEPTION,dc=1};
+  c[0].eff[2]=RsEffect.{kind=EF_HEX,cond=SK_PERCEPTION,dc=3};
+  r:=rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS,dc=12});
+  #assert r.total==12 && r.passed && b[0].dice[0].rolled==2;
+  r=rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=12});
+  #assert r.total==10 && !r.passed && b[0].dice[0].rolled==3;
+  c[0].eff[0].kind=EF_NONE; c[0].eff[1].dc=0;
+  r=rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=12});
+  #assert r.total==12 && r.passed && b[0].dice[0].rolled==5;
+  c[0].eff[0]=RsEffect.{kind=EF_GUIDANCE,cond=SK_ACROBATICS,dc=2};
+  c[0].eff[1].dc=2;
+  distinct:=false;
+  for seed:0..<4 {
+    expected:[1]RsDice; expected[0].state=cast(u64)seed;
+    roll:=rs_d20(expected[..],0);
+    alternate:=expected;
+    bonus:=rs_roll(expected[..],4);
+    if bonus!=rs_roll(alternate[..],5) { distinct=true; }
+    b[0].dice[0].fixed=false; b[0].dice[0].state=cast(u64)seed;
+    r=rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_DEX,skill=SK_ACROBATICS,dc=12});
+    #assert r.total==roll.roll+bonus;
+  }
+  #assert distinct;
 }

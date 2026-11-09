@@ -7,6 +7,65 @@
 #load "catalog.coax";
 #load "executable-source-ids.coax";
 
+#test "Blessed Warrior Guidance adds a d4 only to its chosen skill while the Paladin concentrates" {
+  sp:=-1;
+  for k:0..<RS_MORE_END { if rs_spell(k).id=="guidance" { sp=k; } }
+  #assert sp>=0 && rs_executable_spell(sp);
+  #assert !rs_class_spell_granted(rs_paladin("Paladin",0,1),sp);
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  a:=rs_add(b[..],rs_paladin("Paladin",0,2),1,1);
+  #assert rs_class_spell_granted(c[a],sp);
+  skill:=RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=30};
+  unrelated:=RsAbilityRequest.{ability=RS_WIS,skill=SK_SURVIVAL,dc=30};
+  ordinary:=rs_ability_check(b[..],a,skill);
+  other:=rs_ability_check(b[..],a,unrelated);
+  rs_start_turn(b[..],a);
+  slots:=c[a].slots[1];
+  #assert rs_cast(b[..],a,sp,0,0,0,a) && c[a].conc==sp;
+  #assert b[0].turn.action && !b[0].turn.slot_spent && c[a].slots[1]==slots;
+  rolls:=b[0].dice[0].rolled;
+  passive:=rs_passive_perception(b[..],a,skill);
+  #assert passive.total==ordinary.total && b[0].dice[0].rolled==rolls;
+  for trial:0..<2 {
+    guided:=rs_ability_check(b[..],a,skill);
+    unaffected:=rs_ability_check(b[..],a,unrelated);
+    #assert guided.total==ordinary.total+2 && unaffected.total==other.total;
+  }
+  rs_end_concentration(b[..],a,"");
+  again:=rs_ability_check(b[..],a,skill);
+  #assert again.total==ordinary.total;
+}
+
+#test "Guidance needs a willing recipient and only the newest overlapping cast applies" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  a:=rs_add(b[..],rs_paladin("Paladin",0,2),1,1);
+  j:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
+  second:=rs_add(b[..],rs_paladin("Other",0,2),3,1);
+  picks:=[1]int.[j];
+  options:=[1]RsCastOptions.[RsCastOptions.{guidance=SK_ATHLETICS}];
+  rs_start_turn(b[..],a);
+  #assert !rs_cast_creatures_with(b[..],a,SP_GUIDANCE,0,picks[..],false,options[..]);
+  #assert !b[0].turn.action && c[a].conc<0;
+  options[0].willing=true;
+  #assert rs_cast_creatures_with(b[..],a,SP_GUIDANCE,0,picks[..],false,options[..]);
+  athletics:=RsAbilityRequest.{ability=RS_STR,skill=SK_ATHLETICS,dc=30};
+  perception:=RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=30};
+  before:=rs_ability_check(b[..],j,athletics);
+  ordinary:=rs_ability_check(b[..],j,perception);
+  rs_start_turn(b[..],second);
+  options[0].guidance=RS_SKILLS;
+  #assert !rs_cast_creatures_with(b[..],second,SP_GUIDANCE,0,picks[..],false,options[..]);
+  #assert !b[0].turn.action;
+  options[0].guidance=SK_PERCEPTION;
+  #assert rs_cast_creatures_with(b[..],second,SP_GUIDANCE,0,picks[..],false,options[..]);
+  newer:=rs_ability_check(b[..],j,perception);
+  ignored:=rs_ability_check(b[..],j,athletics);
+  #assert newer.total==ordinary.total+2 && ignored.total==before.total-2;
+  rs_end_concentration(b[..],second,"");
+  resumed:=rs_ability_check(b[..],j,athletics);
+  #assert resumed.total==before.total;
+}
+
 #test "Aid increases current and maximum Hit Points for up to three creatures for eight hours" {
   sp:=-1;
   for k:0..<RS_MORE_END { if rs_spell(k).id=="aid" { sp=k; } }

@@ -7638,3 +7638,12 @@ record keeps its own deadline. Only the strongest active record raises
 current and maximum Hit Points, and its expiry reveals any weaker record
 still active. Applying or ending the increase preserves Temporary Hit
 Points. The self hotbar control submits a single explicit target.
+
+## Guidance modifies checks for one chosen skill
+
+Blessed Warrior grants Sacred Flame and Guidance at Paladin level 2.
+Guidance requires a willing creature in Touch range. Its newest active
+record supplies one d4 to each rolled check using the chosen skill.
+Passive Perception rolls no die. Concentration or expiry retires the
+record. Experimental's skill badge chooses the skill, and Everglade II's
+self control currently uses Perception.

@@ -508,7 +508,11 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   }
   if !fb_conjure(b, i, a) { return false; }
   ok := false;
-  if a.sp==SP_AID && a.tg==FB_ALLY {
+  if a.sp==SP_GUIDANCE && a.tg==FB_SELF {
+    picks:=[1]int.[i];
+    options:=[1]RsCastOptions.[fb_option(a.sp,rs_max(0,a.opt))];
+    ok=rs_cast_creatures_with(b,i,a.sp,sl,picks[..],false,options[..]);
+  } else if a.sp==SP_AID && a.tg==FB_ALLY {
     picks:=[1]int.[ifx ally>=0 then ally else i];
     ok=rs_cast_creatures(b,i,a.sp,sl,picks[..],false);
   } else if a.tg == FB_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
@@ -563,9 +567,12 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
 fb_option :: (sp: int, k: int) -> RsCastOptions {
   if sp == SP_HEX { return RsCastOptions.{hex_ability = k}; }
   if sp == SP_BLINDNESS { return RsCastOptions.{blindness = ifx k == 0 then RS_BLINDED else ifx k == 1 then RS_DEAFENED else -1}; }
+  if sp==SP_GUIDANCE { return RsCastOptions.{guidance=fb_guidance_skill(k)}; }
   return ifx k == 0 then RsCastOptions.{} else RsCastOptions.{blindness = -1};
 }
 FB_HEX_OPTIONS :: [6] string.["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+FB_SKILL_OPTIONS :: [RS_SKILLS]string.["ACR","ANI","ARC","ATH","DEC","HIS","INS","INT","INV","MED","NAT","PER","PRF","PRS","REL","SLE","STE","SUR"];
+fb_guidance_skill :: (k:int)->int { return ifx k>=0 && k<RS_SKILLS then (k+SK_PERCEPTION)%RS_SKILLS else -1; }
 // A feature slot's options, on its bottom strip: Shove's Prone or push, Ready's attack, move or
 // spell, and the skill slot's action.
 FB_KIND_OPTIONS :: [8] string.["PRONE", "PUSH", "ATTACK", "MOVE", "SPELL", "SEARCH", "STUDY", "INFLUENCE"];
@@ -579,9 +586,10 @@ fb_ab_option_label :: (a: FbAb, k: int) -> string {
   return FB_KIND_OPTIONS[base + rs_min(rs_max(k, 0), fb_ab_option_n(a) - 1)];
 }
 // How many named options spell sp offers (0: none), and option k's short label.
-fb_option_n :: (sp: int) -> int { return ifx sp == SP_HEX then 6 else ifx sp == SP_BLINDNESS then 2 else 0; }
+fb_option_n :: (sp: int) -> int { return ifx sp == SP_HEX then 6 else ifx sp == SP_BLINDNESS then 2 else ifx sp==SP_GUIDANCE then RS_SKILLS else 0; }
 fb_option_label :: (sp: int, k: int) -> string {
   if sp == SP_HEX && k >= 0 && k < 6 { return FB_HEX_OPTIONS[k]; }
+  if sp==SP_GUIDANCE { skill:=fb_guidance_skill(k); return ifx skill>=0 then FB_SKILL_OPTIONS[skill] else ""; }
   return ifx k == 1 then "DEAF" else "BLIND";
 }
 // The slot levels hero can cast kit spell a with (the spell's own level up), into out; how many.
