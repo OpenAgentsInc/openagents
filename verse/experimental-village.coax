@@ -17,6 +17,15 @@
 
 EV_WALLS :: 1024;
 EV_FLOORS :: 16;
+// VC_BOXES comes grouped by kind (village_collision.coax writes each group's boxes together): where
+// each kind's run begins, so a site reads only its own kind's boxes, through a view, not all of them
+// copied one by one.
+VC_KINDS :: 4;
+VC_KIND_FROM :: [VC_KINDS + 1]int.[0,354,606,1255,1567];
+#test "each kind's run of VC_BOXES starts where VC_KIND_FROM says" {
+ #assert VC_KIND_FROM[VC_KINDS]==VC_BOXES.count;
+ for k:0..<VC_KINDS {for i:VC_KIND_FROM[k]..<VC_KIND_FROM[k+1] {#assert VC_BOXES[i][0]==k;}}
+}
 EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floor_n:int;scene_begin:int;scene_end:int;overflow:bool;}
 #test "village collision supplies nearby walls and ignores the empty spawn" {
  a:[1]EvNear;ev_near(a[..],0,0);#assert a[0].floor_n==0 && !a[0].overflow;for i:0..<a[0].wall_n {o:=i*6;#assert !(a[0].walls[o]<0 && a[0].walls[o+3]>0 && a[0].walls[o+2]<0 && a[0].walls[o+5]>0 && a[0].walls[o+1]<0.5 && a[0].walls[o+4]>0.5);}
@@ -206,7 +215,8 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
    for i:0..<building.ROOM4_BOXES {ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,building.room4_box(f,i));}
    continue;
   }
-  for b:VC_BOXES {if b[0]!=kind {continue;}x0:=site.x+f32(b[1])*0.001;z0:=site.z+f32(b[3])*0.001;x1:=site.x+f32(b[4])*0.001;z1:=site.z+f32(b[6])*0.001;
+  if kind<0 || kind>=VC_KINDS {continue;}
+  for bi:VC_KIND_FROM[kind]..<VC_KIND_FROM[kind+1] {b:[] const int=VC_BOXES[bi][..];x0:=site.x+f32(b[1])*0.001;z0:=site.z+f32(b[3])*0.001;x1:=site.x+f32(b[4])*0.001;z1:=site.z+f32(b[6])*0.001;
    if x<x0-reach || x>x1+reach || z<z0-reach || z>z1+reach {continue;}
    if out[0].wall_n>=EV_WALLS {out[0].overflow=true;return;}o:=out[0].wall_n*6;out[0].walls[o]=x0;out[0].walls[o+1]=dy+f32(b[2])*0.001;out[0].walls[o+2]=z0;out[0].walls[o+3]=x1;out[0].walls[o+4]=dy+f32(b[5])*0.001;out[0].walls[o+5]=z1;out[0].wall_n+=1;
   }
