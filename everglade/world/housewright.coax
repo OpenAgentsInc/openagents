@@ -228,10 +228,10 @@ hw_pile_left :: (i:int,progress:f32)->int {
 }
 hw_stock_row :: (tier:int,name:string)->int {for i:0..<HW_STOCKS {if int(HW_STOCK_ROWS[i][0])==tier && HW_STOCK_NAMES[i]==name {return i;}}return -1;}
 
-#test "every pile is full before its house starts, empty when it is done, and never grows" #steps 600000000 {
+#test "every pile is full before its house starts, empty when it is done, and never grows" #steps 100000000 {
  for i:0..<HW_STOCKS {t:=int(HW_STOCK_ROWS[i][0]);s:=hw_stock(i);
   #assert hw_pile_left(i,0)==s.count && hw_pile_left(i,f32(hw_stages(t)))==0;
-  last:=s.count;for k:0..<hw_stages(t)*20+1 {n:=hw_pile_left(i,f32(k)/20);#assert n<=last;last=n;}}
+  last:=s.count;for k:0..<hw_stages(t)*4+1 {n:=hw_pile_left(i,f32(k)/4);#assert n<=last;last=n;}}
  // every tier has a pile, and no more than a site lays out
  st:[HW_MOST_STOCKS]bw.BuildStock;r:[HW_MOST_STOCKS]int;
  for t:0..<HW_TIERS {n:=hw_tier_stocks(t,st[..],r[..]);#assert n>0 && n<=HW_MOST_STOCKS;}

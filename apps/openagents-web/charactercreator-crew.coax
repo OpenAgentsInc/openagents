@@ -1,0 +1,85 @@
+// The builders at the glade's build sites (#13108): one worker a site, who walks back to the
+// materials, picks up, carries and works the part going up now (aethyr/world/build-work.coax
+// bw_builder), drawn as the character you made, playing the Universal Animation Library's carry,
+// pick-up, kneel, reach and chop clips. A zone or a stage sets each site's tier, place and progress
+// every frame (cc_crew_set); the builder keeps its own trips on the page clock. Its piles and
+// sounds read the same sites (cc_crew_sounds).
+// Loaded into charactercreator.coax, so it shares its Creator, figs and meadow.
+#load "../../aethyr/world/build-work.coax" as bw;
+#load "../../aethyr/world/build-site.coax" as bsite;
+#load "../../aethyr/world/building.coax" as bframe;
+#load "../../everglade/world/housewright.coax" as hwc;
+
+CC_CREWS :: 32;            // as many as the glade's build sites
+CC_TRIP :: 1.2;            // seconds a builder's trip takes on the page clock
+CcCrew :: struct {on:bool;tier:int;f:bframe.BuildingFrame;y:f32;progress:f32;trip:int = -1;v_start:f32;v_last:f32;v_now:f32;heard:f32;}
+
+// A site's builder this frame: its tier at a progress (0 to the tier's last stage) in frame f, its
+// ground at height y. The builder's next trip aims at the part arriving most of a trip ahead, from
+// how fast the build went over the last one.
+cc_crew_set :: (s:[]Creator,slot:int,tier:int,f:bframe.BuildingFrame,y:f32,progress:f32) {
+ if slot<0 || slot>=CC_CREWS || tier<0 || tier>=hwc.HW_TIERS {return;}
+ c:=s[0].crews[slot];k:=int(floor(s[0].clock/CC_TRIP));
+ if !c.on || c.tier!=tier {c=CcCrew.{on=true,tier=tier,trip=k,v_start=progress,v_last=progress,v_now=progress,heard=progress};}
+ if k!=c.trip {rate:=progress-c.v_start;c.v_last=c.v_now;c.v_now=progress+(ifx rate>0 then rate else 0.0f32)*bw.BW_TRIP_WORK;c.v_start=progress;c.trip=k;}
+ c.f=f;c.y=y;c.progress=progress;s[0].crews[slot]=c;
+}
+cc_crew_clear :: (s:[]Creator,slot:int) {if slot>=0 && slot<CC_CREWS {s[0].crews[slot].on=false;}}
+
+// The builder of crew c now, in its building's frame.
+cc_crew_worker :: (s:Creator,c:CcCrew,phase:f32)->bw.BuildWorker {
+ p:[hwc.HW_MOST_PARTS]bsite.BuildPart;n:=hwc.hw_tier_parts(c.tier,p[..]);
+ st:[hwc.HW_MOST_STOCKS]bw.BuildStock;r:[hwc.HW_MOST_STOCKS]int;m:=hwc.hw_tier_stocks(c.tier,st[..],r[..]);
+ return bw.bw_builder(p[0..<n],st[0..<m],hwc.HW_REACH[c.tier],c.v_last,c.v_now,c.progress,phase);
+}
+// The clip a builder's act plays (fivelab-bodies.coax numbers: BD_CLIPS + a preview clip).
+cc_crew_clip :: (w:bw.BuildWorker)->int {
+ if w.act==bw.BW_FETCH {return figs.BD_WALK;}
+ if w.act==bw.BW_PICK {return figs.BD_CLIPS+figs.PREVIEW_UAL1_PICKUP_TABLE;}
+ if w.act==bw.BW_CARRY {return figs.BD_CLIPS+figs.PREVIEW_UAL2_WALK_CARRY_LOOP;}
+ if w.act==bw.BW_WORK {
+  if w.hands==bw.BW_HANDS_LOW {return figs.BD_CLIPS+figs.PREVIEW_UAL1_FIXING_KNEELING;}
+  if w.hands==bw.BW_HANDS_DIG || w.hands==bw.BW_HANDS_SET {return figs.BD_CLIPS+figs.PREVIEW_UAL2_TREECHOPPING_LOOP;}
+  return figs.BD_CLIPS+figs.PREVIEW_UAL1_INTERACT;
+ }
+ return figs.BD_IDLE;
+}
+// The builder's figure for crew c: where it stands in the world, which way it faces, its clip and
+// how far into it. A walk's or carry's stride keeps pace with the ground it covers in the trip.
+cc_crew_anim :: (s:Creator,c:CcCrew)->figs.BdAnim {
+ a:figs.BdAnim;a.on=true;a.fade_at= -100;
+ ph:=s.clock/CC_TRIP-floor(s.clock/CC_TRIP);w:=cc_crew_worker(s,c,ph);
+ q:=bframe.building_point(c.f,w.x,w.z);a.x=q[0];a.z=q[1];a.y=c.y;
+ a.yaw=w.yaw+f32(((c.f.turn%4)+4)%4)*1.5707963;
+ a.clip=cc_crew_clip(w);
+ if w.act==bw.BW_FETCH || w.act==bw.BW_CARRY {
+  // the ground covered so far this act, over the metres one loop of the clip covers
+  span:=ifx w.act==bw.BW_FETCH then bw.BW_FETCH_END else bw.BW_CARRY_END-bw.BW_PICK_END;
+  a0:=ifx w.act==bw.BW_FETCH then 0.0f32 else bw.BW_PICK_END;b0:=cc_crew_worker(s,c,a0+0.0001);
+  d:=sqrt((w.x-b0.x)*(w.x-b0.x)+(w.z-b0.z)*(w.z-b0.z));loop:=ifx w.act==bw.BW_FETCH then 1.3f32 else 1.25f32;
+  a.phase=d/loop;if span<=0 {a.phase=0;}
+ } else if w.act==bw.BW_PICK {a.phase=w.t*0.98;}
+ else {a.phase=s.clock/figs.bd_seconds(a.clip);}
+ return a;
+}
+// The material sounds of every site since the last frame (bw.bw_sounds), summed into counts.
+cc_crew_sounds :: (s:[]Creator,counts:[]int) {
+ for k:0..<counts.count {counts[k]=0;}
+ for i:0..<CC_CREWS {c:=s[0].crews[i];if !c.on {continue;}
+  if c.progress>c.heard {p:[hwc.HW_MOST_PARTS]bsite.BuildPart;n:=hwc.hw_tier_parts(c.tier,p[..]);o:[bw.BW_SOUNDS]int;
+   bw.bw_sounds(p[0..<n],c.heard,c.progress,o[..]);for k:0..<bw.BW_SOUNDS {if k<counts.count {counts[k]+=o[k];}}}
+  s[0].crews[i].heard=c.progress;}
+}
+
+#test "a crew's builder carries to the part going up, and stands by the house when it is done" {
+ s:[1]Creator;f:=bframe.BuildingFrame.{x=10,z=4};
+ for k:0..<40 {s[0].clock=f32(k)*0.1;cc_crew_set(s[..],0,hwc.HW_HUT,f,0,f32(k)*0.05);}
+ c:=s[0].crews[0];#assert c.on && c.v_now>=c.v_last;
+ a:=cc_crew_anim(s[0],c);#assert abs(a.x-10)<9 && abs(a.z-4)<9 && a.clip>=0;
+ // it plays the carry clip while carrying
+ w:=cc_crew_worker(s[0],c,0.5);#assert w.carry && cc_crew_clip(w)==figs.BD_CLIPS+figs.PREVIEW_UAL2_WALK_CARRY_LOOP;
+ done:=c;done.v_last=4;done.v_now=4;done.progress=4;#assert cc_crew_worker(s[0],done,0.5).act==bw.BW_IDLE;
+ // the hut's weaving creaks, its posts knock
+ cnt:[bw.BW_SOUNDS]int;s[0].crews[0].heard=1;s[0].crews[0].progress=2;cc_crew_sounds(s[..],cnt[..]);#assert cnt[bw.BW_SOUND_WITHY]>0 && s[0].crews[0].heard==2;
+ cc_crew_clear(s[..],0);#assert !s[0].crews[0].on;
+}

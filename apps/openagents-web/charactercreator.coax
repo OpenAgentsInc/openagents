@@ -16,6 +16,7 @@
 #load "../../verse/experimental-dungeon.coax" as dungeon;
 #load "../../verse/experimental-aribeth.coax" as aribeth;
 #load "charactercreator-walk.coax";
+#load "charactercreator-crew.coax";   // the builders at the build sites (#13108)
 #load "../../aethyr/character-appearance.coax" as appearance;
 VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
@@ -73,6 +74,7 @@ Creator :: struct {
   ml:[1]mlook.Mouselook;   // Experimental's mouselook (aethyr/cam/mouselook.coax); the studio never asks for it
   hud_floor:f32;   // device px: Experimental's bar and side bar reach up to here at the bottom right, 0 clear (experimental-combat.coax); the coordinates and FPS sit over it
   dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
+  crews:[CC_CREWS]CcCrew;   // the build sites' builders (charactercreator-crew.coax)
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
   shadow:[1]CcShadow;   // the key light's two shadow tiles (shadow_frame)
 }
@@ -858,17 +860,10 @@ familiar_record :: (out:[]f32,rec:int,word:int,x:f32,y:f32,z:f32,yaw:f32) {
   out[at+8]=sin(yaw); out[at+9]=cos(yaw);
   out[at+15]=18;
 }
-scene :: (s:[]Creator,b:[]figs.Bodies,out:[]f32)->int { return scene_reserved(s,b,out,0); }
-scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
-  b[0].draw_n=0;b[0].self_n=0;
-  if !b[0].ready || !catalog_ready(s[0]) { return 0; }
-  l:=look(s[0]); l.variant=0;
-  a:figs.BdAnim; a.on=true; a.clip=[4]int.[figs.BD_IDLE,figs.BD_WALK,figs.BD_RUN,figs.BD_SPELL][s[0].pose];
-  a.t0=s[0].pose_at; a.fade_at=-100; a.phase=(s[0].clock-s[0].pose_at)/figs.bd_seconds(a.clip); a.yaw=s[0].yaw;
-  if s[0].pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s[0].pose_at+floor((s[0].clock-s[0].pose_at)/dur)*dur; }
-  if s[0].walk.on {a=walk_figure(s[0],a);}
-  if s[0].experimental {a=experimental_figure(s,a);}
-  n:=0;
+// The records of a figure wearing your character's parts, playing a: its worn pieces, head, hair and
+// beard, from record n; returns the count after them.
+figure_records :: (s:[]Creator,b:[]figs.Bodies,l:figs.BdLook,a:figs.BdAnim,out:[]f32,n0:int)->int {
+  n:=n0;
   for i:0..<40 { if s[0].worn[i] && available(s[0],i) && s[0].source_count[i+(ifx s[0].female then 0 else 40)]>0 {
     p:=i+ifx s[0].female then 0 else 40;
     figs.bd_record(a,l,s[0].source_word[p],false,s[0].clock,out,n);out[n*24+11]=f32(s[0].variant);
@@ -882,13 +877,28 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     p:=parts[i];figs.bd_record(a,l,b[0].part_word[p],false,s[0].clock,out,n);
     b[0].draws[n*4]=cast(u32)b[0].part_first[p];b[0].draws[n*4+1]=cast(u32)b[0].part_count[p];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
-  for i:0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s[0].eye_color][k];}out[i*24+23]=2;}
+  for i:n0..<n {for k:0..<3 {out[i*24+20+k]=EYES[s[0].eye_color][k];}out[i*24+23]=2;}
+  return n;
+}
+scene :: (s:[]Creator,b:[]figs.Bodies,out:[]f32)->int { return scene_reserved(s,b,out,0); }
+scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
+  b[0].draw_n=0;b[0].self_n=0;
+  if !b[0].ready || !catalog_ready(s[0]) { return 0; }
+  l:=look(s[0]); l.variant=0;
+  a:figs.BdAnim; a.on=true; a.clip=[4]int.[figs.BD_IDLE,figs.BD_WALK,figs.BD_RUN,figs.BD_SPELL][s[0].pose];
+  a.t0=s[0].pose_at; a.fade_at=-100; a.phase=(s[0].clock-s[0].pose_at)/figs.bd_seconds(a.clip); a.yaw=s[0].yaw;
+  if s[0].pose==3 { dur:=figs.bd_seconds(figs.BD_SPELL); a.t0=s[0].pose_at+floor((s[0].clock-s[0].pose_at)/dur)*dur; }
+  if s[0].walk.on {a=walk_figure(s[0],a);}
+  if s[0].experimental {a=experimental_figure(s,a);}
+  n:=figure_records(s,b,l,a,out,0);
   // first person: the camera is in your head, so your body's draws are left out of the view (not the shadows)
   b[0].self_n=ifx s[0].experimental && !s[0].scene_only && cc_self_hidden(s[0]) then n else 0;
   if s[0].experimental && !s[0].scene_only && n>0 && n<43 {n=held_weapon(s[0],b,out,n);}
   // and what your hands hold, unless it is up in front of you (a drawn bow): carried at your side it would float, handless, across the view
   if b[0].self_n>0 && s[0].aim<0.3 {b[0].self_n=n;}
   if s[0].scene_only {n=0;}
+  // the builders at the build sites (charactercreator-crew.coax): each the character you made, at work
+  if s[0].experimental {for ci:0..<CC_CREWS {if !s[0].crews[ci].on || n>=36 {continue;}n=figure_records(s,b,l,cc_crew_anim(s[0],s[0].crews[ci]),out,n);}}
   if s[0].glade_count>0 && n<43 {
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=16;

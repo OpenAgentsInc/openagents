@@ -3198,6 +3198,8 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     }
     if s[0].creator[0].experimental { cc.hud_seal(out,0,n); }
     cr := s[0].creator[..];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr[0].experimental && !cr[0].walk.on,cr[0].player_x,cr[0].player_z,cr[0].airborne,cr[0].hostiles[0].hp,cr[0].hostiles[0].hits,ifx still then 0.0f32 else dt);
+    // the build sites' landings (charactercreator-crew.coax): a part lands with its material's sound
+    if cr[0].experimental && !still {bc:[5]int;cc.cc_crew_sounds(cr,bc[..]);exsound.experimental_sound_build(s[0].experimental_audio[..],bc[..],0.45,0);}
     return n;
   }
   lab_start(s);
