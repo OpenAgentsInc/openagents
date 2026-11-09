@@ -25,13 +25,14 @@
 MON_NONE :: 0; MON_IMP :: 1; MON_QUASIT :: 2; MON_GOBLIN_WARRIOR :: 3; MON_OGRE :: 4; MON_HILL_GIANT :: 5;
 MON_WOLF :: 6; MON_ZOMBIE :: 7;
 MON_RAT :: 8; MON_RIDING_HORSE :: 9; MON_SPIDER :: 10; MON_BLACK_BEAR :: 11; MON_WARHORSE :: 12;   // Wild Shape's forms (wild-shape.coax)
-MON_N :: 13;
+MON_CAT :: 13;
+MON_N :: 14;
 RsMonsterBlock :: struct {
   id: string; name: string; page: int; xp: int; pb: int;
   size: int; ac: int; hp: int; speed: int;
   score: [6] int; saves: int;               // save proficiencies, bits of 1 << RS_STR...
   resist: int; immune: int; immune_cond: int;
-  undead: bool; fiend: bool; pack: bool; magic: bool; nimble: bool; fortitude: bool; beast: bool; climb: int;
+  undead: bool; fiend: bool; pack: bool; magic: bool; nimble: bool; fortitude: bool; beast: bool; climb: int; jumper: bool;
   action: RsStatAction;
 }
 // The blocks' numbers, as printed (page, then the Monsters chapter's order of entries):
@@ -74,18 +75,21 @@ RsMonsterBlock :: struct {
 //   Warhorse (p. 364): Large Beast, AC 11, HP 19 (3d10 + 3), Speed 60 ft., Str 18 Dex 12 Con 13 Int 2
 //     Wis 12 (save +3) Cha 7; CR 1/2 (XP 100; PB +2). Hooves: +6, reach 5 ft., 9 (2d4 + 4)
 //     Bludgeoning (its charge's extra 2d4 and Prone after a 20-foot straight run isn't run).
+//   Cat (p. 346): Tiny Beast, AC 12, HP 2 (1d4), Speed and Climb 40 ft., Str 3 Dex 15
+//     (save +4) Con 10 Int 3 Wis 12 Cha 7; CR 0 (XP 10; PB +2). Jumper. Scratch: +4,
+//     reach 5 ft., 1 Slashing.
 // The Beasts' Climb, the Rat's Agile and the Spider's webs are kept as its climb Speed only.
 // They are kept as compact rows (the Lab's Wasm budget): a block's row is page, XP, PB, size, AC,
 // HP, Speed, the six scores, save bits, resistance, immunity and condition-immunity bits, MF_*
 // flags, its first attack row, the Action's records and Multiattack's count. An attack's row is
 // bonus, dice, sides, flat, damage kind, ability, reach, range, long range, second damage's dice,
 // sides and kind, the Advantage dice and sides, its RS_RIDE_* rider and the largest size it holds.
-MF_UNDEAD :: 1; MF_FIEND :: 2; MF_PACK :: 4; MF_MAGIC :: 8; MF_NIMBLE :: 16; MF_FORTITUDE :: 32; MF_BEAST :: 64; MF_CLIMB :: 128;
+MF_UNDEAD :: 1; MF_FIEND :: 2; MF_PACK :: 4; MF_MAGIC :: 8; MF_NIMBLE :: 16; MF_FORTITUDE :: 32; MF_BEAST :: 64; MF_CLIMB :: 128; MF_JUMPER :: 256;
 RS_MON_ROW :: 21; RS_MON_ATTACK_ROW :: 16;
-RS_MON_ID :: [12] string.["monster/imp", "monster/quasit", "monster/goblin-warrior", "monster/ogre", "monster/hill-giant", "monster/wolf", "monster/zombie",
-  "monster/rat", "monster/riding-horse", "monster/spider", "monster/black-bear", "monster/warhorse"];
-RS_MON_NAME :: [12] string.["Imp", "Quasit", "Goblin Warrior", "Ogre", "Hill Giant", "Wolf", "Zombie", "Rat", "Riding Horse", "Spider", "Black Bear", "Warhorse"];
-RS_MON_ROWS :: [252] u16.[
+RS_MON_ID :: [13] string.["monster/imp", "monster/quasit", "monster/goblin-warrior", "monster/ogre", "monster/hill-giant", "monster/wolf", "monster/zombie",
+  "monster/rat", "monster/riding-horse", "monster/spider", "monster/black-bear", "monster/warhorse", "monster/cat"];
+RS_MON_NAME :: [13] string.["Imp", "Quasit", "Goblin Warrior", "Ogre", "Hill Giant", "Wolf", "Zombie", "Rat", "Riding Horse", "Spider", "Black Bear", "Warhorse", "Cat"];
+RS_MON_ROWS :: [273] u16.[
   300, 200, 2, 1, 13, 21, 20,   6, 17, 13, 11, 12, 14,   0, 8, 528, 1024, 10,   0, 1, 1,
   317, 200, 2, 1, 13, 25, 40,   5, 17, 10, 7, 10, 10,    0, 88, 512, 1024, 10,  1, 1, 1,
   290, 50, 2, 2, 15, 10, 30,    8, 15, 10, 10, 8, 8,     0, 0, 0, 0, 16,        2, 2, 1,
@@ -97,12 +101,13 @@ RS_MON_ROWS :: [252] u16.[
   360, 50, 2, 4, 11, 13, 60,    16, 13, 12, 2, 11, 7,    0, 0, 0, 0, 64,        11, 1, 1,
   361, 10, 2, 1, 12, 1, 20,     2, 14, 8, 1, 10, 2,      0, 0, 0, 0, 192,       12, 1, 1,
   345, 100, 2, 3, 11, 19, 30,   15, 12, 14, 2, 12, 7,    0, 0, 0, 0, 192,       13, 1, 2,
-  364, 100, 2, 4, 11, 19, 60,   18, 12, 13, 2, 12, 7,    16, 0, 0, 0, 64,       14, 1, 1];
-RS_MON_ATTACK_ID :: [15] string.["monster/imp/sting", "monster/quasit/rend", "monster/goblin-warrior/scimitar", "monster/goblin-warrior/shortbow",
+  364, 100, 2, 4, 11, 19, 60,   18, 12, 13, 2, 12, 7,    16, 0, 0, 0, 64,       14, 1, 1,
+  346, 10, 2, 1, 12, 2, 40,     3, 15, 10, 3, 12, 7,    2, 0, 0, 0, 448,       15, 1, 1];
+RS_MON_ATTACK_ID :: [16] string.["monster/imp/sting", "monster/quasit/rend", "monster/goblin-warrior/scimitar", "monster/goblin-warrior/shortbow",
   "monster/ogre/greatclub", "monster/ogre/javelin", "monster/hill-giant/tree-club", "monster/hill-giant/trash-lob", "monster/wolf/bite", "monster/zombie/slam",
-  "monster/rat/bite", "monster/riding-horse/hooves", "monster/spider/bite", "monster/black-bear/rend", "monster/warhorse/hooves"];
-RS_MON_ATTACK_NAME :: [15] string.["Sting", "Rend", "Scimitar", "Shortbow", "Greatclub", "Javelin", "Tree Club", "Trash Lob", "Bite", "Slam", "Bite", "Hooves", "Bite", "Rend", "Hooves"];
-RS_MON_ATTACKS :: [240] u16.[
+  "monster/rat/bite", "monster/riding-horse/hooves", "monster/spider/bite", "monster/black-bear/rend", "monster/warhorse/hooves", "monster/cat/scratch"];
+RS_MON_ATTACK_NAME :: [16] string.["Sting", "Rend", "Scimitar", "Shortbow", "Greatclub", "Javelin", "Tree Club", "Trash Lob", "Bite", "Slam", "Bite", "Hooves", "Bite", "Rend", "Hooves", "Scratch"];
+RS_MON_ATTACKS :: [256] u16.[
   5, 1, 6, 3, 8, 1, 5,    0, 0,    2, 6, 9,  0, 0,  0, 0,   // Sting
   5, 1, 4, 3, 12, 1, 5,   0, 0,    0, 0, 0,  0, 0,  2, 0,   // Rend
   4, 1, 6, 2, 12, 1, 5,   0, 0,    0, 0, 0,  1, 4,  0, 0,   // Scimitar
@@ -117,7 +122,8 @@ RS_MON_ATTACKS :: [240] u16.[
   5, 1, 8, 3, 2, 0, 5,    0, 0,    0, 0, 0,  0, 0,  0, 0,   // the Riding Horse's Hooves
   4, 0, 0, 1, 8, 1, 5,    0, 0,    1, 4, 9,  0, 0,  0, 0,   // the Spider's Bite
   4, 1, 6, 2, 12, 0, 5,   0, 0,    0, 0, 0,  0, 0,  0, 0,   // the Black Bear's Rend
-  6, 2, 4, 4, 2, 0, 5,    0, 0,    0, 0, 0,  0, 0,  0, 0];  // the Warhorse's Hooves
+  6, 2, 4, 4, 2, 0, 5,    0, 0,    0, 0, 0,  0, 0,  0, 0,   // the Warhorse's Hooves
+  4, 0, 0, 1, 12, 1, 5,   0, 0,    0, 0, 0,  0, 0,  0, 0];  // the Cat's Scratch
 rs_mon_attack :: (q: int) -> RsStatAttack {
   t := q * RS_MON_ATTACK_ROW; v: [RS_MON_ATTACK_ROW] int;
   for f: 0..<RS_MON_ATTACK_ROW { v[f] = cast(int) RS_MON_ATTACKS[t + f]; }
@@ -137,6 +143,7 @@ rs_monster_block :: (m: int) -> RsMonsterBlock {
   k.undead = (v[17] & MF_UNDEAD) != 0; k.fiend = (v[17] & MF_FIEND) != 0; k.pack = (v[17] & MF_PACK) != 0;
   k.magic = (v[17] & MF_MAGIC) != 0; k.nimble = (v[17] & MF_NIMBLE) != 0; k.fortitude = (v[17] & MF_FORTITUDE) != 0;
   k.beast = (v[17] & MF_BEAST) != 0; k.climb = ifx (v[17] & MF_CLIMB) != 0 then k.speed else 0;
+  k.jumper = (v[17] & MF_JUMPER) != 0;
   k.action.n = v[19]; k.action.count = v[20];
   for q: 0..<k.action.n { k.action.attacks[q] = rs_mon_attack(v[18] + q); }
   return k;
@@ -152,7 +159,7 @@ rs_monster :: (m: int, name: string, team: int) -> RsCreature {
   c[0].team = team; c[0].level = rs_pb_level(k.pb); c[0].klass = RS_MONSTER;
   c[0].score = k.score;
   for ab: 0..<6 { c[0].save_prof[ab] = (k.saves & (1 << ab)) != 0; }
-  c[0].ac = k.ac; c[0].hp_max = k.hp; c[0].hp = k.hp; c[0].speed = k.speed;
+  c[0].ac = k.ac; c[0].hp_max = k.hp; c[0].hp = k.hp; c[0].speed = k.speed; c[0].climb=k.climb; c[0].jumper=k.jumper;
   c[0].form = rs_form(k.size, (ifx k.pack then RS_TRAIT_PACK else 0) | (ifx k.magic then RS_TRAIT_MAGIC else 0) | (ifx k.nimble then RS_TRAIT_NIMBLE else 0));
   c[0].resist = k.resist; c[0].immune = k.immune; c[0].immune_cond = k.immune_cond;
   c[0].undead = k.undead; c[0].fiend = k.fiend; c[0].fortitude = k.fortitude;

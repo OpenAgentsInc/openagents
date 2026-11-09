@@ -6,20 +6,10 @@
 // Wild Shape again, has the Incapacitated condition or dies; it can leave early as a Bonus Action.
 // Known forms (the Beast Shapes table): four of CR 1/4 or lower without a Fly Speed at level 2, six
 // of CR 1/2 or lower at level 4. This preset knows the SRD's recommended Rat, Riding Horse, Spider and
-// Wolf, then the Black Bear and the Warhorse (monsters.coax). Swapping a known form on a Long Rest
-// isn't offered.
-//   coax/bin/coax test --library aethyr/rules/srd/class-druid-checks.coax
+// Wolf, then the Black Bear and the Warhorse (monsters.coax).
+#load "wild-known.coax";
 #authority;
 
-RS_WILD_FORMS :: [6] int.[MON_RAT, MON_RIDING_HORSE, MON_SPIDER, MON_WOLF, MON_BLACK_BEAR, MON_WARHORSE];
-
-// Does c know Beast form m?
-rs_wild_knows :: (c: RsCreature, m: int) -> bool #effects(all) {
-  if c.klass != RS_DRUID || c.level < 2 { return false; }
-  n := ifx c.level >= 4 then 6 else 4;
-  for k: 0..<n { if RS_WILD_FORMS[k] == m { return true; } }
-  return false;
-}
 // No spellcasting: in a Rage (p. 28) or a Wild Shape form.
 rs_casting_barred :: (c: RsCreature) -> bool #effects(all) { return c.raging || c.wild_form != 0; }
 
@@ -29,6 +19,7 @@ rs_wild_shape_end :: (b: [] RsBattle, i: int, why: string) #effects(all) {
   k := b[0].c[i].wild_keep;
   b[0].c[i].score[RS_STR] = k.str; b[0].c[i].score[RS_DEX] = k.dex; b[0].c[i].score[RS_CON] = k.con;
   b[0].c[i].ac = k.ac; b[0].c[i].speed = k.speed; b[0].c[i].climb = k.climb; b[0].c[i].form = k.form;
+  b[0].c[i].jumper = k.jumper;
   b[0].c[i].weapon = k.weapon; b[0].c[i].ranged = k.ranged;
   b[0].c[i].wild_form = 0; b[0].c[i].wild_until = 0;
   rs_say_ft(b, RS_EV_END, i, i, 0, RS_FT_WILD_SHAPE, why);
@@ -40,9 +31,10 @@ rs_wild_shape :: (b: [] RsBattle, i: int, m: int) -> bool #effects(all) {
   rs_wild_shape_end(b, i, " leaves its form for another");
   k := rs_monster_block(m); c := b[0].c[i];
   b[0].c[i].wild_keep = RsWildKeep.{str = c.score[RS_STR], dex = c.score[RS_DEX], con = c.score[RS_CON], ac = c.ac, speed = c.speed, climb = c.climb,
-                                    form = c.form, weapon = c.weapon, ranged = c.ranged};
+                                    form = c.form, weapon = c.weapon, ranged = c.ranged, jumper = c.jumper};
   b[0].c[i].score[RS_STR] = k.score[RS_STR]; b[0].c[i].score[RS_DEX] = k.score[RS_DEX]; b[0].c[i].score[RS_CON] = k.score[RS_CON];
   b[0].c[i].ac = k.ac; b[0].c[i].speed = k.speed; b[0].c[i].climb = k.climb;
+  b[0].c[i].jumper = k.jumper;
   b[0].c[i].form = rs_monster(m, "", c.team).form;   // its size and traits (Pack Tactics)
   b[0].c[i].weapon = W_UNARMED; b[0].c[i].ranged = -1;
   b[0].c[i].wild_form = m; b[0].c[i].wild_until = b[0].clock + f32(c.level / 2 * 3600);

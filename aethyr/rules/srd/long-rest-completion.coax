@@ -54,5 +54,6 @@ rs_long_rest_apply :: (b:[]RsBattle,i:int)->bool #effects(all) {
   journal:[1]RsLongRest; journal[0]=b[0].c[i].long_rest;
   committed:=rs_long_rest_commit(journal[..]);
   b[0].c[i].long_rest=journal[0];
+  rs_wild_rest(b[0].c[i..<i+1]);
   return true;
 }

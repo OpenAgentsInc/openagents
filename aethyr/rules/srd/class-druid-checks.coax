@@ -78,3 +78,23 @@
   #assert !rs_druid("D", 0, 5).natural_recovery && rs_rest_slot_budget(rs_druid("D", 0, 5), false) == 0;
   c := rs_druid("D", 0, 6); #assert c.natural_recovery && c.free_spell == SP_HOLD_PERSON && rs_rest_slot_budget(c, false) == 3;
 }
+
+#test "Wild Shape trades one known form after a completed Long Rest" {
+  b:[1]RsBattle; cf_field(b[..],rs_druid("Rowan",0,4),10);
+  c:=b[0].c[0..<1];
+  #assert !rs_wild_knows(c[0],MON_CAT) && rs_wild_knows(c[0],MON_WOLF);
+  #assert !rs_wild_swap(c,MON_WOLF,MON_CAT) && !rs_long_rest_apply(b[..],0);
+  c[0].long_rest.phase=3;
+  #assert rs_long_rest_apply(b[..],0);
+  #assert !rs_wild_swap(c,MON_CAT,MON_WOLF) && !rs_wild_swap(c,MON_WOLF,MON_OGRE);
+  #assert !rs_wild_swap(c,MON_WOLF,MON_RAT);
+  #assert rs_wild_swap(c,MON_WOLF,MON_CAT);
+  #assert !rs_wild_knows(c[0],MON_WOLF) && rs_wild_knows(c[0],MON_CAT);
+  #assert !rs_wild_swap(c,MON_CAT,MON_WOLF) && !rs_long_rest_apply(b[..],0);
+  rs_fresh(b[..],0);
+  #assert rs_wild_shape(b[..],0,MON_CAT) && c[0].ac==12 && c[0].climb==40 && rs_jump_score(c[0])==15;
+  rs_fresh(b[..],0);
+  #assert rs_wild_shape_leave(b[..],0) && !c[0].jumper && c[0].climb==0;
+  c[0].long_rest.phase=3;
+  #assert rs_long_rest_apply(b[..],0) && rs_wild_swap(c,MON_CAT,MON_WOLF);
+}

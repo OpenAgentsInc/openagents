@@ -7479,3 +7479,13 @@ Jump. The saved turn supplies the jump score, doubling and remaining movement.
 A refused controller step spends no movement. An admitted rise pays through
 the shared rules, and the body remains within the admitted horizontal reach.
 The ordinary controller keeps its own jump profile for other worlds.
+
+## Wild Shape exchanges one known form after Long Rest
+
+The shared creature keeps its Wild Shape known-form mask. An unset mask uses
+the level's recommended forms. Completing a Long Rest grants an eligible
+Druid one choice to replace a known form with an eligible unfamiliar form.
+Rejection preserves the mask and choice. The Cat is a CR 0 option from the
+pinned SRD. Wild Shape borrows and restores Jumper along with the rest of its
+physical form. Experimental shows the outgoing and incoming choices in its
+rest panel, and the Wild Shape slot selects among the forms still known.

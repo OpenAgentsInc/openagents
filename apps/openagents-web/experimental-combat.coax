@@ -73,6 +73,7 @@ XcCombat :: struct {
   started: bool; klass: int = 11; level: int = 1;
   rest_seen:bool; rest_settled:bool; rest_refused:bool;
   jump:EgJump; jump_run:f32; jump_x:f32; jump_z:f32;
+  wild_old:int; wild_new:int;
   dash_until: f32 = -1; dash_face: f32;
   wave: XcWave; wave_until: f32 = -1;
   bar: [XC_SLOTS] FbAb; bar_n: int;
@@ -214,13 +215,16 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   if !x[0].started { xc_start(x, c); return; }
   b := x[0].b[..];
   t := b[0].c[0].turn_at; ro := b[0].c[0].round_at;
+  same_druid:=c==FB_CL_DRUID && b[0].c[0].klass==RS_DRUID && b[0].c[0].level==x[0].level;
+  known:=b[0].c[0].wild_known; swap:=b[0].c[0].wild_swap;
   rs_end_concentration(b,0," (class preset changed)");
   rs_release_turned(b,0);
   b[0].c[0] = fb_cl_hero(c, "You", 0, x[0].level);
+  if same_druid { b[0].c[0].wild_known=known; b[0].c[0].wild_swap=swap; }
   b[0].c[0].turn_at = t; b[0].c[0].round_at = ro;
   rs_place(b, 0, XC_MID, XC_MID);
   x[0].seat[0] = FbSeat.{me = 0};
-  x[0].jump_run=0;
+  x[0].jump_run=0; x[0].wild_old=0; x[0].wild_new=0;
   x[0].klass = c;
   x[0].bar_n = xc_actions(x[0].bar[..], xc_bar_level(c, x[0].level, x[0].bar[..]), b[0].c[0]);
   xc_order_bar(x); x[0].arranging = false;
@@ -922,8 +926,14 @@ xc_pick_live :: (s: [] Lab, reach: f32) -> bool {
 XC_BADGE :: 18.0;   // CSS px: the corner's tap square, and the bottom strip's height
 xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
   x := s[0].xc[..]; k := x[0].k;
-  if i < 0 || i >= x[0].bar_n || fb_ab_option_n(x[0].bar[i]) == 0 && x[0].bar[i].kind != FB_SPELL { return false; }
+  if i < 0 || i >= x[0].bar_n { return false; }
   r := xc_slot_box(x, i); a := x[0].bar[i..<i + 1];
+  if a[0].kind==FB_WILD && py>=r.y1-f32(XC_BADGE)*k {
+    c:=x[0].b[0].c[0];
+    a[0].opt=xc_wild_next(rs_wild_mask(c),fb_wild_form(c,a[0].opt));
+    return true;
+  }
+  if fb_ab_option_n(a[0])==0 && a[0].kind!=FB_SPELL { return false; }
   levels: [9] int; n := ifx a[0].kind == FB_SPELL then fb_cast_levels(x[0].b[0].c[0], a[0], levels[..]) else 0;
   if n > 1 && px >= r.x1 - f32(XC_BADGE) * k && py <= r.y0 + f32(XC_BADGE) * k {
     next := levels[0];
@@ -1134,7 +1144,38 @@ xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
 }
 // The column's height, CSS px: its header, and when open its twelve rows.
 xc_class_height :: (x:[]XcCombat) -> f32 { return ifx x[0].open then f32(XC_ROWS_TOP) + 12 * f32(XC_ROW) + 8 else f32(XC_HEAD); }
-xc_column :: (x:[]XcCombat) -> f32 { return xc_class_height(x) + 110; }
+xc_column :: (x:[]XcCombat) -> f32 {
+  return xc_class_height(x) + ifx x[0].b[0].c[0].wild_swap then 154 else 110;
+}
+xc_wild_next :: (mask:int,after:int)->int {
+  for k:1..<MON_N { form:=(after+k)%MON_N; if (mask&(1<<form))!=0 { return form; } }
+  return after;
+}
+xc_wild_choice :: (mask:int,choice:int)->int {
+  if (mask&(1<<choice))!=0 { return choice; }
+  return xc_wild_next(mask,0);
+}
+xc_wild_options :: (x:[]XcCombat)->[2]int {
+  c:=x[0].b[0].c[0]; known:=rs_wild_mask(c);
+  eligible:=rs_wild_default(c)|RS_WILD_CAT;
+  return [2]int.[xc_wild_choice(known,x[0].wild_old),xc_wild_choice(eligible-known,x[0].wild_new)];
+}
+xc_wild_click :: (x:[]XcCombat,px:f32,py:f32)->bool {
+  c:=x[0].b[0].c[0..<1];
+  if !c[0].wild_swap { return false; }
+  choice:=xc_wild_options(x);
+  known:=rs_wild_mask(c[0]); eligible:=rs_wild_default(c[0])|RS_WILD_CAT;
+  if xc_in(xc_rest_box(x,9),px,py) { x[0].wild_old=xc_wild_next(known,choice[0]); return true; }
+  if xc_in(xc_rest_box(x,10),px,py) { x[0].wild_new=xc_wild_next(eligible-known,choice[1]); return true; }
+  if !xc_in(xc_rest_box(x,11),px,py) { return false; }
+  if rs_wild_swap(c,choice[0],choice[1]) {
+    slot:=xc_slot_of(x,FB_WILD);
+    if slot>=0 { x[0].bar[slot].opt=choice[1]; }
+    x[0].wild_old=0; x[0].wild_new=0;
+  }
+  return true;
+}
+
 xc_rest_box :: (x:[]XcCombat,i:int)->cc.Box {
   left:=(32+f32(i%3)*106)*x[0].k; top:=x[0].top+(xc_class_height(x)+58+f32(i/3)*23)*x[0].k;
   return cc.Box.{x0=left,y0=top,x1=left+96*x[0].k,y1=top+21*x[0].k};
@@ -1258,6 +1299,16 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   ko:=xc_rest_box(x,5);
   n=cc.text(out,n,ifx x[0].knockout then "KNOCK OUT: ON" else "KNOCK OUT",ko.x0,ko.y0+16*k,8*k,
     ifx x[0].knockout then ink_col(k,1,0.75,0.3) else ink_col(k,0.91,0.93,0.88));
+  if x[0].b[0].c[0].wild_swap {
+    choice:=xc_wild_options(x);
+    r:=xc_rest_box(x,6);
+    n=cc.text(out,n,"REPLACE ONE KNOWN FORM",r.x0,r.y0+16*k,8*k,head);
+    labels:=[3]string.[rs_monster_block(choice[0]).name,rs_monster_block(choice[1]).name,"REPLACE"];
+    for i:0..<3 {
+      box:=xc_rest_box(x,9+i);
+      n=cc.text(out,n,labels[i],box.x0,box.y0+16*k,8*k,head);
+    }
+  }
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
@@ -1332,6 +1383,11 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if a.kind == FB_SPELL && fb_cast_levels(x[0].b[0].c[0], a, levels[..]) > 1 {
       lv: [2] u8; lv[0] = cast(u8) (48 + a.lvl);
       n = cc.text(out, n, cast(string) lv[0..<1], r.x1 - 10 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 1, 0.82, 0.35));
+    }
+    if a.kind==FB_WILD {
+      form:=fb_wild_form(x[0].b[0].c[0],a.opt);
+      label:=ifx form==MON_RIDING_HORSE then "Horse" else ifx form==MON_BLACK_BEAR then "Bear" else rs_monster_block(form).name;
+      n=cc.text(out,n,label,r.x0+4*k,r.y1-4*k,6*k,head);
     }
     if fb_ab_option_n(a) > 0 {
       n = cc.text(out, n, fb_ab_option_label(a, rs_max(a.opt, 0)), r.x0 + 4 * k, r.y1 - 4 * k, 8 * k, ink_col(k, 1, 0.82, 0.35));
@@ -1453,6 +1509,7 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     if d == -3 && abs(px - x[0].down_x) + abs(py - x[0].down_y) < 6 * k { return xc_pick_at(s, px, py); }
     if d == -2 {
       if in_col {
+        if xc_wild_click(x,px,py) { return true; }
         if py >= x[0].top + (xc_class_height(x)+34) * k {
           for i:0..<5 { if xc_in(xc_rest_box(x,i),px,py) { accepted:=xc_rest_request(s,XC_REST_REQUESTS[i]); } }
           if xc_in(xc_rest_box(x,5),px,py) { x[0].knockout = !x[0].knockout; }
@@ -2627,4 +2684,24 @@ xc_check_ai_rate :: (speed:int)->bool {
   #assert body.y>0 && body.x==0 && x[0].seat[0].turn.moved && x[0].jump_run==0;
   b[0].c[0].cond|=RS_PRONE;
   #assert lab_jump_plan(s[..],ground,intent,true).mode==EG_JUMP_DENIED;
+}
+
+#test "Experimental replaces a known Wild Shape with the Cat through the Long Rest controls" #steps 2000000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  x:=s[0].xc[..]; xc_set_level(x,4);
+  x[0].seen=true; x[0].open=true; x[0].top=60; x[0].k=1; x[0].w=1200; x[0].h=800;
+  b:=x[0].b[..]; c:=b[0].c[0..<1];
+  c[0].long_rest.phase=3;
+  #assert rs_long_rest_apply(b,0);
+  outgoing:=xc_rest_box(x,9);
+  #assert xc_pointer(s[..],outgoing.x0+5,outgoing.y0+5,0,1);
+  #assert xc_pointer(s[..],outgoing.x0+5,outgoing.y0+5,2,1);
+  replace:=xc_rest_box(x,11);
+  #assert xc_pointer(s[..],replace.x0+5,replace.y0+5,0,1);
+  #assert xc_pointer(s[..],replace.x0+5,replace.y0+5,2,1);
+  #assert !c[0].wild_swap && !rs_wild_knows(c[0],MON_RAT) && rs_wild_knows(c[0],MON_CAT);
+  slot:=xc_slot_of(x,FB_WILD);
+  #assert slot>=0 && xc_use_on(s[..],slot,-2) && c[0].wild_form==MON_CAT;
+  xc_set_class(x,FB_CL_DRUID);
+  #assert rs_wild_knows(c[0],MON_CAT) && !rs_wild_knows(c[0],MON_RAT) && !c[0].wild_swap;
 }

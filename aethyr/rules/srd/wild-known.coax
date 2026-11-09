@@ -1,0 +1,75 @@
+// SRD 5.2.1 p.42. The imported eligible Beast pool for levels 1–6.
+// Existing creatures with an unset mask know the recommended preset.
+#authority;
+RS_WILD_FORMS :: [6] int.[MON_RAT, MON_RIDING_HORSE, MON_SPIDER, MON_WOLF, MON_BLACK_BEAR, MON_WARHORSE];
+RS_WILD_BASE :: (1 << MON_RAT) | (1 << MON_RIDING_HORSE) | (1 << MON_SPIDER) | (1 << MON_WOLF);
+RS_WILD_EXTRA :: (1 << MON_BLACK_BEAR) | (1 << MON_WARHORSE);
+RS_WILD_CAT :: 1 << MON_CAT;
+
+rs_wild_default :: (c:RsCreature)->int #effects(all) {
+  if c.klass!=RS_DRUID || c.level<2 { return 0; }
+  return ifx c.level>=4 then RS_WILD_BASE | RS_WILD_EXTRA else RS_WILD_BASE;
+}
+rs_wild_mask :: (c:RsCreature)->int #effects(all) {
+  preset:=rs_wild_default(c);
+  if c.wild_known==0 { return preset; }
+  if preset==0 { return 0; }
+  return c.wild_known & (preset | RS_WILD_CAT);
+}
+rs_wild_bit :: (m:int)->int #effects(all) {
+  return ifx m>=0 && m<MON_N then 1<<m else 0;
+}
+rs_wild_knows :: (c:RsCreature,m:int)->bool #effects(all) {
+  return (rs_wild_mask(c)&rs_wild_bit(m))!=0;
+}
+rs_wild_rest :: (c:[]RsCreature) #effects(all) {
+  c[0].wild_swap=rs_wild_default(c[0])!=0;
+}
+rs_wild_swap :: (c:[]RsCreature,old:int,replacement:int)->bool #effects(all) {
+  me:=c[0];
+  if !me.wild_swap || me.dead || !rs_wild_knows(me,old) { return false; }
+  bit:=rs_wild_bit(replacement);
+  if ((rs_wild_default(me)|RS_WILD_CAT)&bit)==0 || rs_wild_knows(me,replacement) { return false; }
+  c[0].wild_known=(rs_wild_mask(me) - rs_wild_bit(old)) | bit;
+  c[0].wild_swap=false;
+  return true;
+}
+
+#test "Wild Shape swaps preserve the known count and consume only an admitted choice" {
+  c:[1]RsCreature;
+  #assert rs_wild_bit(-1)==0 && rs_wild_bit(MON_N)==0;
+  for m:0..<MON_N { #assert rs_wild_bit(m)==(1<<m); }
+  for level:1..<7 {
+    c[0]=rs_druid("Druid",0,level);
+    rs_wild_rest(c[..]);
+    #assert c[0].wild_swap==(level>=2);
+    #assert !rs_wild_knows(c[0],-1) && !rs_wild_knows(c[0],MON_N);
+    for old:0..<MON_N {
+      for replacement:0..<MON_N {
+        base:=c[0];
+        expected:=level>=2 && (old==MON_RAT || old==MON_SPIDER || old==MON_WOLF || old==MON_RIDING_HORSE ||
+          (level>=4 && (old==MON_BLACK_BEAR || old==MON_WARHORSE))) && replacement==MON_CAT;
+        #assert rs_wild_swap(c[..],old,replacement)==expected;
+        if expected {
+          #assert !c[0].wild_swap && !rs_wild_knows(c[0],old) && rs_wild_knows(c[0],replacement);
+          for m:1..<MON_N {
+            if m!=old && m!=replacement { #assert rs_wild_knows(c[0],m)==rs_wild_knows(base,m); }
+          }
+        } else { #assert c[0].wild_known==base.wild_known && c[0].wild_swap==base.wild_swap; }
+        c[0]=base;
+      }
+    }
+  }
+  c[0]=rs_druid("Druid",0,2);
+  rs_wild_rest(c[..]);
+  #assert !rs_wild_swap(c[..],MON_WOLF,-1) && !rs_wild_swap(c[..],MON_WOLF,MON_N);
+  c[0].dead=true;
+  #assert !rs_wild_swap(c[..],MON_WOLF,MON_CAT) && c[0].wild_swap;
+  c[0].dead=false;
+  #assert rs_wild_swap(c[..],MON_WOLF,MON_CAT);
+  c[0].wild_known=RS_WILD_CAT|1;
+  #assert rs_wild_mask(c[0])==RS_WILD_CAT;
+  c[0].klass=RS_RANGER; rs_wild_rest(c[..]);
+  #assert rs_wild_mask(c[0])==0;
+  #assert !c[0].wild_swap && !rs_wild_knows(c[0],MON_CAT);
+}

@@ -350,7 +350,7 @@ fb_ready :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
   if a.kind == FB_INSPIRE { return c.uses[RS_USE_INSPIRE] > 0; }
   if a.kind == FB_INNATE { return c.uses[RS_USE_INNATE] > 0; }
   if a.kind == FB_LANDS { return c.uses[RS_USE_WILD] > 0; }
-  if a.kind == FB_WILD { return c.wild_form != 0 || (c.uses[RS_USE_WILD] > 0 && rs_wild_knows(c, fb_wild_form(c))); }
+  if a.kind == FB_WILD { return c.wild_form != 0 || (c.uses[RS_USE_WILD] > 0 && rs_wild_knows(c, fb_wild_form(c,a.opt))); }
   if a.kind == FB_RESURGE { return c.resurgence && (c.uses[RS_USE_WILD] > 0 || fb_free_slot(b, i, 1) > 0); }
   if a.kind == FB_TURN || a.kind == FB_PRESERVE || a.kind == FB_SACRED { return c.uses[RS_USE_CHANNEL] > 0; }
   if a.kind == FB_RITUAL { return !rs_casting_barred(c) && rs_cast_components_ready(c, a.sp); }
@@ -416,7 +416,7 @@ fb_use :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: in
   if a.kind == FB_PRESERVE { return rs_preserve_life(b, i); }
   if a.kind == FB_LANDS { if foe >= 0 { return rs_lands_aid(b, i, b[0].c[foe].x, b[0].c[foe].y, ally); } return rs_lands_aid(b, i, tx, ty, ally); }
   if a.kind == FB_RESURGE { return fb_wild_shape(b, i); }
-  if a.kind == FB_WILD { if b[0].c[i].wild_form != 0 { return rs_wild_shape_leave(b, i); } return rs_wild_shape(b, i, fb_wild_form(b[0].c[i])); }
+  if a.kind == FB_WILD { if b[0].c[i].wild_form != 0 { return rs_wild_shape_leave(b, i); } return rs_wild_shape(b, i, fb_wild_form(b[0].c[i],a.opt)); }
   // Hide: concealed when the world's cover facts hide you from every enemy (cover.coax)
   if a.kind == FB_HIDE { return rs_hide(b, i, rs_hide_concealed(b, i, true), false).accepted; }
   if a.kind == FB_GRAPPLE { return at >= 0 && rs_attack_unarmed(b, i, at, UO_GRAPPLE); }
@@ -458,7 +458,14 @@ fb_ritual_spell :: (c: RsCreature) -> int {
 }
 // The form a class kit's Wild Shape slot takes: the Black Bear's two Rends once it is known (level
 // 4), else the Wolf's Pack Tactics and knocking Bite.
-fb_wild_form :: (c: RsCreature) -> int { return ifx rs_wild_knows(c, MON_BLACK_BEAR) then MON_BLACK_BEAR else MON_WOLF; }
+fb_wild_form :: (c:RsCreature,option:int)->int {
+  if option>0 { return option; }
+  if rs_wild_knows(c,MON_BLACK_BEAR) { return MON_BLACK_BEAR; }
+  if rs_wild_knows(c,MON_WOLF) { return MON_WOLF; }
+  mask:=rs_wild_mask(c);
+  for form:1..<MON_N { if (mask & (1<<form))!=0 { return form; } }
+  return MON_NONE;
+}
 // Wild Resurgence for a use of Wild Shape (a slot spent when none is left, the SRD's Druid level 5),
 // and the Wild Shape taken at once: Temporary Hit Points equal to the Druid level.
 fb_wild_shape :: (b: [] RsBattle, i: int) -> bool {

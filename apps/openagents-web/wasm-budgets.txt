@@ -54,7 +54,9 @@ fairy 695000
 # Experimental's HIDE, GRAPPLE, SHOVE and READY slots (#13040): 2,609,769 bytes measured
 # 2026-11-08 (2,594,021 before); 2,618,248 on a54ec180dc with the environment frame (#13066);
 # about 1% headroom.
-fivelab 2645000
+# Known Wild Shape swaps and its form controls (#13030): 2,647,552 bytes.
+
+fivelab 2650000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
