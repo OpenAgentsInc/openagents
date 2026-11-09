@@ -16,6 +16,7 @@
 #load "../../aethyr/collide.coax" as scaled_collision;
 #load "../../aethyr/query.coax" as hull_query;
 #load "everglade-move-types.coax";
+#load "../../aethyr/action/sprint.coax" as sprint;   // the engine's sprint, for the Dash checks
 #load "../../aethyr/math.coax" as link_math;
 #load "../../aethyr/collision-profiles.coax" as link_collision;
 #load "../../verse/ocarina/locomotion.coax" as link_motion;
@@ -291,6 +292,39 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
   #assert dash.pos.z > 1 && dash.pos.z < 2 && walk.walk_collision_refusals(dash) == 0;
 }
 
+// Everglade's Dash (everglade-dash.coax on aethyr/action/sprint.coax), through the controller as
+// fivelab-face.c steps it: the sprint's pace is the scale, on link flag 512. Speed 30: 9.144 m over a 7.5 m/s run.
+eg_test_dash_step :: (p: walk.Player, i: EgMoveIn, w: EgMoveWorld, walls: [] f32, scale: f32) -> walk.Player #effects(all) {
+  empty: [1] f32; f := 1.0f32 / 64;
+  return eg_step_advance_jump(eg_step_begin(p, i, w, f), w, empty[0..<0], walls, empty[0..<0], f, scale, EgJump.{});
+}
+#test "Everglade's Dash sprints 30 feet past a run in its 1.8 s, stops at a wall and ends on time" #steps 2000000000 {
+  none: [1] f32;
+  i := EgMoveIn.{key_y = 1, run = true, theta = walk.PI}; di := EgMoveIn.{key_y = 1, run = true, theta = walk.PI, link_flags = 512};
+  w := eg_step_world(EgMoveWorld.{}, i); dw := eg_step_world(EgMoveWorld.{}, di);
+  run := walk.walk_place(0, 0, 0, 0);
+  for k: 0..<64 { run = eg_test_dash_step(run, i, w, none[0..<0], 1); }   // already running, 7.5 m/s
+  dash := run; start := run.pos.z; peak: f32 = 0; g := sprint.sprint_gain(9.144, 7.5);
+  for k: 0..<128 {   // two seconds: the sprint's 1.8 and a little after
+    run = eg_test_dash_step(run, i, w, none[0..<0], 1);
+    dash = eg_test_dash_step(dash, di, dw, none[0..<0], sprint.sprint_rate(f32(k) / 64, g));
+    if dash.vel.z > peak { peak = dash.vel.z; }
+    #assert dash.collision_status == scaled_collision.CollideStatus.ok;
+  }
+  // 30 feet (9.14 m) more than the run in the same two seconds, less the moment it takes to speed up
+  #assert dash.pos.z - run.pos.z > 8.6 && dash.pos.z - run.pos.z < 9.3 && run.pos.z - start > 14.9;
+  #assert peak > 13.5 && peak < 14.4;   // about twice the run at its peak
+  #assert abs(dash.vel.z - run.vel.z) < 0.05 && sprint.sprint_shape(f32(sprint.SPRINT_SECONDS)) == 0;   // and back to the run when it ends
+  // a wall 6 m ahead: the sprint stops at it, every step admitted
+  wall := [6] f32.[-3, 0, 6, 3, 3, 6.4];
+  p := walk.walk_place(0, 0, 0, 0);
+  for k: 0..<128 {
+    p = eg_test_dash_step(p, di, dw, wall[..], sprint.sprint_rate(f32(k) / 64, g));
+    #assert p.collision_status == scaled_collision.CollideStatus.ok && p.pos.z < 6;
+  }
+  #assert p.pos.z > 5.3 && walk.walk_collision_refusals(p) == 0;
+}
+
 // Experimental combat's proportional walking rate. This is an opt-in native
 // surface; the ordinary shared/replayed controller export remains unchanged.
 eg_step_advance_scaled :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32)->walk.Player #export_c #effects(reads,writes,traps) {
@@ -300,7 +334,9 @@ eg_step_advance_jump :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,f
   p:=p0;
   if jump.mode==EG_JUMP_DENIED { p.jumps.waiting=0; }
   shaped:=jump.mode==EG_JUMP_HIGH || jump.mode==EG_JUMP_LONG;
-  if scale==1 && !shaped { return eg_step_advance(p,w,bodies,walls,floors,frame); }
+  // a Dash's sprint (link flag 512, aethyr/action/sprint.coax) always takes the scaled path: its pace is
+  // the scale, the sprint over the run, in as many collision steps as it needs
+  if scale==1 && !shaped && (w.link_flags&512)==0 { return eg_step_advance(p,w,bodies,walls,floors,frame); }
   if !walk.finite(scale) || scale<0 || w.aboard || (w.link_flags&32)!=0 {
     return walk.collision_report(p0,scaled_collision.CollideResult.{status=scaled_collision.CollideStatus.bad_profile});
   }
@@ -308,7 +344,6 @@ eg_step_advance_jump :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,f
   profile:=link_collision.collision_profile_lookup("everglade");
   world:=walk.World.{bodies=bodies,walls=walls,floors=floors,collision=profile.profile};
   if !w.deck && bodies.count>=7 && p.pos.y>0.6 { bodies[4]=1.9; bodies[6]=0.62; }
-  if (w.link_flags&512)!=0 { world.locomotion.run_speed=9.2; }
   world.locomotion.walk_speed*=scale; world.locomotion.run_speed*=scale;
   if shaped && walk.walk_counts(p,frame)>0 {
     launch:=p.on_ground && p.jumps.waiting>0;

@@ -799,7 +799,8 @@ fxp_mark :: (p: [] FxPuffs, c: FxCause, t: f32) {
 }
 
 fxp_dust :: (p: [] FxPuffs, c: FxCause, t: f32) {
-  fxp_rise_smoke(p, c, t, fxp_v(c.to.x, 0.2, c.to.z), 5, 0.6, 0.3, 1.0, fxp_v(0.5, 0.45, 0.36), 0.5, 0);
+  // on the ground: 0.2 m up, or higher where `to` says the ground is (a hill, a Dash's trail)
+  fxp_rise_smoke(p, c, t, fxp_v(c.to.x, fxp_max(c.to.y, 0.2), c.to.z), 5, 0.6, 0.3, 1.0, fxp_v(0.5, 0.45, 0.36), 0.5, 0);
 }
 
 // ---- checks

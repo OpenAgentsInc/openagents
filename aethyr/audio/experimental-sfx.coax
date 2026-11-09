@@ -76,9 +76,11 @@ xsfx_recipe :: (id: int) -> Sfx {
     s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 800, 500, 110, 330, 600, 3000, 0, 600), 1));
     s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 800, 600, 0, 0, 800, 4000, 300, 600), 1));
     s = sfx_add(s, sl(SFX_SINE, 0, 800, 400, 55, 110, 0, 0, 0, 500));
-  } else if id == XSFX_DASH {           // Dash: two quick rushes of air
-    s = sfx_add(s, sl(SFX_NOISE, 0, 300, 120, 0, 0, 700, 2600, 300, 900));
-    s = sfx_add(s, sl(SFX_NOISE, 140, 300, 90, 0, 0, 1200, 3000, 500, 700));
+  } else if id == XSFX_DASH {           // Dash: a kick off, then the air rushing past as you sprint and slow
+    s = sfx_add(s, sl(SFX_NOISE, 0, 140, 4, 0, 0, 2200, 900, 150, 650));
+    s = sfx_add(s, sl(SFX_SINE, 0, 160, 4, 120, 60, 0, 0, 0, 450));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 20, 420, 160, 0, 0, 700, 3400, 300, 900), 1));
+    s = sfx_add(s, sl(SFX_NOISE, 300, 1050, 120, 0, 0, 3000, 800, 250, 750));
   } else if id == XSFX_FLURRY {         // Flurry of Blows: three fast whooshes
     for k: 0..<3 { s = sfx_add(s, sl(SFX_NOISE, k * 170, 180, 70, 0, 0, 900, 2400, 300, 900)); }
   } else if id == XSFX_ENTANGLE {       // Entangle: creaking vines and groaning wood
