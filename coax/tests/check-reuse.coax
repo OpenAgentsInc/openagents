@@ -22,6 +22,8 @@
 //   - --run-steps, the build profile and the compiler binary each run all
 //     five again;
 //   - coax test runs every check;
+//   - two checkouts of the same sources (each under a directory holding
+//     .git) share passes and per-check records (#13077);
 //   - the cache stays within COAX_CHECK_CACHE_FILES entries, oldest out first.
 #import "Basic";
 #load "../lib/sys/tool.coax";
@@ -140,6 +142,17 @@ tool_main :: () -> int #export_c #effects(all) {
   r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" test \"$D/w/main.coax\" 2>&1", out[..]);
   t = cast(string) out[0..<r.out_n];
   bad += check(r.status == 0 && has(t, "5 checks, 5 passed, 0 failed"), "coax test runs every check");
+
+  // Two checkouts of the same sources share one cache (#13077): units are
+  // named by their path inside the checkout (below the directory holding
+  // .git), so a pass recorded in one is the other's: t2 reuses t1's whole
+  // pass, and after the same edit in both, t1 runs only the edited check and
+  // t2 reuses t1's new pass.
+  r = run(compiler, dir, "one2() { COAX_CHECK_CACHE=\"$D/trees\" \"$C\" check \"$D/$1/src/main.coax\" --timings \"$D/$1-$2.json\" > /dev/null 2>&1; echo \"$1-$2 status=$? $(grep -o '\"authority_checks\":{[^}]*}' \"$D/$1-$2.json\" | sed 's/[^0-9,]//g; s/^/cached=/; s/,/ checked=/') $(grep -o '\"check_reuse\":{[^}]*}' \"$D/$1-$2.json\" | sed 's/[^0-9,]//g; s/^/reused=/; s/,/ run=/')\"; }; for t in t1 t2; do mkdir -p \"$D/$t/.git\" \"$D/$t/src\" && cp \"$D/w/\"*.coax \"$D/$t/src/\"; done; one2 t1 a; one2 t2 a; for t in t1 t2; do sed 's/^RATE :: .*;$/RATE :: 21;/' \"$D/$t/src/b.coax\" > \"$D/$t/b.new\" && mv \"$D/$t/b.new\" \"$D/$t/src/b.coax\"; done; one2 t1 b; one2 t2 b", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "t1-a status=0 cached=0 checked=1 reused=0 run=5\nt2-a status=0 cached=1 checked=0"), "a second checkout of the same sources reuses the first's whole pass");
+  bad += check(has(t, "t1-b status=0 cached=0 checked=1 reused=4 run=1\nt2-b status=0 cached=1 checked=0"), "after the same edit in both, one runs only the check it reaches and the other reuses that pass");
+  if !has(t, "t2-a status=0 cached=1") || !has(t, "t1-b status=0 cached=0 checked=1 reused=4") { print("%", t); }
 
   // The cache keeps at most COAX_CHECK_CACHE_FILES entries; a compile after
   // an eviction is still a cold one's.

@@ -1192,10 +1192,16 @@ refund_ok :: (paid: int, refund: int) -> bool {
   compile's output, exit status and E0380 coverage are a cold compile's. A
   failing check is never recorded. `--timings` reports `check_reuse`
   (`reused`, `run`) and marks each reused check.
+- Verdicts and reuse records name each unit by its path inside its Git
+  checkout (relative to the nearest directory above it holding `.git`), not
+  by its absolute path, so a pass recorded in one worktree, clone or
+  temporary release tree is reused by another with the same sources
+  (#13077). A unit outside any checkout is named by its absolute path.
 - The check cache is bounded: when a compile ends it removes the least
   recently used records until at most `$COAX_CHECK_CACHE_FILES` (default
-  4096) records and `$COAX_CHECK_CACHE_BYTES` bytes (default 256 MiB) are
-  left.
+  65,536) records and `$COAX_CHECK_CACHE_BYTES` bytes (default 2 GiB) are
+  left. (At 4,096, agents' builds filled it in about 90 minutes, so a
+  record rarely lived to be reused.)
 - `#authority;` marks a file whose rules guard money, signatures or grants.
   Every procedure authored in that physical source unit except `main` and `#foreign` imports must actually execute
   in a check, directly or through calls (E0380). Dead references, short-circuited

@@ -878,6 +878,8 @@ struct ReuseIndex {
     // Identities: unit, name and which of the unit's items so named.
     std::map<std::pair<int32_t, std::string>, int32_t> seen;
     std::unordered_map<std::string, std::vector<int32_t>> by_name;
+    std::vector<std::string> unit_paths;  // each unit by its path in the checkout (tree_path), as keys name it
+    for (const auto &unit : src->units) unit_paths.push_back(tree_path(unit->canonical));
     for (size_t k = 0; k < items.size(); k++) {
       Item &it = items[k];
       if (!it.named && !it.check) continue;
@@ -886,7 +888,7 @@ struct ReuseIndex {
         for (const auto &[c, at] : check_item) if (at == (int32_t)k) name = std::string(c->forall ? "#forall " : "#test ") + to_std(c->name);
       }
       const int32_t ordinal = seen[{it.unit, name}]++;
-      it.id = (it.unit < 0 ? std::string("?") : src->units[(size_t)it.unit]->canonical) + "\x1f" + name + "\x1f" + std::to_string(ordinal);
+      it.id = (it.unit < 0 ? std::string("?") : unit_paths[(size_t)it.unit]) + "\x1f" + name + "\x1f" + std::to_string(ordinal);
       if (it.id.find('\n') != std::string::npos) it.id.clear();  // no record can name it
       if (it.named) by_name[it.name].push_back((int32_t)k);
     }
@@ -917,7 +919,7 @@ struct ReuseIndex {
     }
     // Everything outside a named item, by unit, and the units.
     std::string bytes;
-    for (const auto &unit : src->units) bytes += unit->canonical + "\n";
+    for (const std::string &path : unit_paths) bytes += path + "\n";
     for (const Item &it : items) {
       if (it.named || it.check) continue;
       bytes += "\x1e" + std::to_string(it.unit) + "\n";
@@ -1105,7 +1107,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     head = g_check_reuse.prefix + "start\t" + std::to_string(slots) + " " + std::to_string(containers) + " " + std::to_string(strings) + " " +
            std::to_string(frozen) + " " + std::to_string(pending) + " limits " + std::to_string(memory.slot_limit) + " " +
            std::to_string(memory.container_limit) + " " + std::to_string(CB_string_live_limit()) + " steps " + std::to_string(max_steps) + "\n";
-    record_path = g_check_reuse.dir + "/" + debug_source_hash("coax.check-reuse-record.v1\n" + g_check_reuse.src->units[0]->canonical + "\n" + g_check_reuse.prefix);
+    record_path = g_check_reuse.dir + "/" + debug_source_hash("coax.check-reuse-record.v2\n" + tree_path(g_check_reuse.src->units[0]->canonical) + "\n" + g_check_reuse.prefix);
     record.load(record_path);
     for (size_t i = 0; i < n; i++) {
       const auto at = index.check_item.find(file->checks[(int32_t)i]);

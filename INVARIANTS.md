@@ -5406,8 +5406,11 @@ name with a newline, means that check isn't recorded.
 
 The check cache is bounded. When a process that used it exits, it evicts
 the least recently modified records (a hit touches its record) until at
-most `$COAX_CHECK_CACHE_FILES` (4096) records and `$COAX_CHECK_CACHE_BYTES`
-(256 MiB) remain, and removes temporary files older than an hour.
+most `$COAX_CHECK_CACHE_FILES` (65,536) records and `$COAX_CHECK_CACHE_BYTES`
+(2 GiB) remain, and removes temporary files older than an hour. Keys and
+records name each unit by its path inside its Git checkout, never by the
+checkout's absolute path, so worktrees with the same sources share passes
+(#13077).
 
 Check: `coax/tests/check-reuse.coax`. An edited procedure, constant,
 compile-time-run procedure or called signature runs only the checks that

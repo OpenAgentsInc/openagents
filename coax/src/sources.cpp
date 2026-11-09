@@ -291,4 +291,25 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
   }
   return aliased;
 }
+// A unit's path inside its checkout (ax-check-reuse-trees): its canonical path
+// relative to the nearest directory above it that holds .git (a clone's
+// directory or a worktree's file). Check verdicts and reuse records are keyed
+// by it, so a check that passed in one worktree, or in release.sh's temporary
+// tree, is reused by another with the same sources (#13077: keyed by the
+// absolute path, a fresh worktree reused none of fivelab's 1,049 checks). A
+// unit outside any checkout keeps its canonical path.
+std::string tree_path(const std::string &canonical) {
+  std::error_code ec;
+  std::filesystem::path dir = std::filesystem::path(canonical).parent_path();
+  for (std::filesystem::path at = dir; !at.empty(); at = at.parent_path()) {
+    if (std::filesystem::exists(at / ".git", ec)) {
+      const std::string root = at.string();
+      if (canonical.size() > root.size() + 1 && canonical.compare(0, root.size(), root) == 0 && canonical[root.size()] == '/')
+        return canonical.substr(root.size() + 1);
+      return canonical;
+    }
+    if (at == at.parent_path()) break;
+  }
+  return canonical;
+}
 } // namespace coax

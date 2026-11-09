@@ -1246,7 +1246,7 @@ static std::string library_cache_dir() {
 // The check cache is bounded (ax-check-cache-bound): when a process that used
 // it ends, it removes the least recently used records (by modification time; a
 // record read is touched) until at most $COAX_CHECK_CACHE_FILES records
-// (default 4096) and $COAX_CHECK_CACHE_BYTES bytes (default 256 MiB) are left,
+// (default 65,536) and $COAX_CHECK_CACHE_BYTES bytes (default 2 GiB) are left,
 // and any temporary file older than an hour. A record that is gone only costs
 // the work it saved. Forked children leave with _exit and evict nothing.
 static std::string *g_check_cache_dir = nullptr;
@@ -1257,7 +1257,7 @@ static uint64_t cache_limit(const char *name, uint64_t fallback) {
 }
 static void check_cache_evict() {
   if (!g_check_cache_dir) return;
-  const uint64_t files = cache_limit("COAX_CHECK_CACHE_FILES", 4096), bytes = cache_limit("COAX_CHECK_CACHE_BYTES", 256ull << 20);
+  const uint64_t files = cache_limit("COAX_CHECK_CACHE_FILES", 65536), bytes = cache_limit("COAX_CHECK_CACHE_BYTES", 2048ull << 20);
   struct Entry { int64_t when; std::string path; uint64_t size; };
   std::vector<Entry> entries;
   uint64_t total = 0;
@@ -1392,7 +1392,7 @@ static bool run_compilation_checks(File *file) {
   // Each check's time in the last parallel run, beside the check cache
   // ("seconds<TAB>name" lines), so the next run starts the slowest first.
   std::map<std::string, double> times;
-  const std::string sha = debug_source_hash("coax.check-times.v1\n" + file->src->units[0]->canonical);
+  const std::string sha = debug_source_hash("coax.check-times.v2\n" + tree_path(file->src->units[0]->canonical));
   const std::string dir = library_cache_dir(), path = sha.empty() ? "" : dir + "/" + sha;
   std::string text;
   if (!path.empty() && read_record(path, &text))
@@ -1489,12 +1489,12 @@ static std::string authority_options(const File *file, const EmitOptions &opts) 
 static std::string authority_key(const Source *src, const File *file, const EmitOptions &opts, const std::vector<bool> &dropped) {
   const std::string options = authority_options(file, opts);
   if (options.empty()) return "";
-  std::string text = "coax.authority-check.v2\n" + options;
+  std::string text = "coax.authority-check.v3\n" + options;
   for (size_t u = 0; u < src->units.size(); u++) {
     const SourceUnit &unit = *src->units[u];
     const std::string sha = debug_source_hash(unit.text);
     if (sha.empty()) return "";
-    text += unit.canonical + "\t" + sha + (u < dropped.size() && dropped[u] ? "\tlibrary" : "") + "\n";
+    text += tree_path(unit.canonical) + "\t" + sha + (u < dropped.size() && dropped[u] ? "\tlibrary" : "") + "\n";
   }
   const std::string all = debug_source_hash(src->text);
   if (all.empty()) return "";
@@ -1517,7 +1517,7 @@ static bool authority_checks(const Source *src, File *file, const EmitOptions &o
   const int errors = g_error_count;
   if (!key.empty()) {
     std::string prefix = authority_options(file, opts);
-    for (size_t u = 0; u < dropped.size(); u++) if (dropped[u]) prefix += "library\t" + src->units[u]->canonical + "\n";
+    for (size_t u = 0; u < dropped.size(); u++) if (dropped[u]) prefix += "library\t" + tree_path(src->units[u]->canonical) + "\n";
     g_check_reuse.on = true;
     g_check_reuse.dir = dir;
     g_check_reuse.prefix = prefix;

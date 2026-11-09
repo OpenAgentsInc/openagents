@@ -140,6 +140,8 @@ const SourceUnit *source_unit_at(const Source *src, Loc loc);
 // The nominal declaration ID "coax.decl.v1:MODULE:KIND:NAME" (kind 0 proc,
 // 1 struct, 2 enum, 3 const), or "" when the declaring unit has no owner.
 std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc);
+// A unit's path inside its Git checkout, for cache keys shared by worktrees (sources.cpp).
+std::string tree_path(const std::string &canonical);
 
 // Prints "path:line:col: error[Exxxx]: message", the source line, a caret,
 // and "fix: ..." when there is one; or one JSON object per line with
