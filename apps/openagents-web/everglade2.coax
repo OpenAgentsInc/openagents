@@ -1541,6 +1541,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   #if BUILD_DEBUG { fig = e2a_figure(s, fig); }
   s[0].cz[0].fig0 = rec;
   d := e2_body(s, c, fig, E2Drawn.{rec = rec, n = n, sn = sn});
+  if d.rec > rec { d = e2_my_held(s, d, rec); }   // the class's kit in hand: the Ranger's Longbow
   s[0].cz[0].fig1 = d.rec;
   if d.n > 0 { s[0].cz[0].drawn += 1; }
   d = e2_familiars_draw(s,d);
@@ -1940,12 +1941,15 @@ e2_remote_body :: (s: [] E2, r: E2Remote, slot: int, at: E2Drawn, bdt: f32) -> E
   if !air && s[0].rair[slot] { s[0].rland_at[slot] = s[0].clock; }
   s[0].rair[slot] = air;
   fig := e2k_figure(e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[slot], s[0].rland_at[slot]), s[0].casts[0].them[slot], s[0].clock);
+  aim := e2_remote_aim(s, slot);   // a Ranger's loose: the drawn bow's pose, then its follow-through
+  if aim > 0 && !air { fig = cp_bow_layer(fig, aim, 1, false, s[0].clock - s[0].casts[0].them[slot].at, s[0].clock); }
   look := cast(string) s[0].rlook[slot * NET_LOOK..<slot * NET_LOOK + s[0].rlook_n[slot]];
   _ := e2_remote_look(s, look); c := s[0].rtmp[0];
   from := at.rec;
   d := e2_body(s, c, fig, at);
   drop := e2_fade_drop(s[0].rfade[slot]);
   for i: from..<d.rec { s[0].records[i * 24 + 23] = 2 + drop; }
+  if d.rec > from { d = e2_held(s, d, from, e2_kit_of(e2_remote_class(s, slot)), c.female, e2_remote_aim(s, slot), false, drop); }
   return d;
 }
 // The share of a body's pixels the dither drops at fade f (0 gone, 1 whole): eased, and never all of
@@ -2145,6 +2149,112 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   // a key past the bar is left alone; in the studio the bar is away
   #assert !e2_key(s[..], '1' + k[0].bar_n, 0) || k[0].bar_n >= 9;
   s[0].cz[0].on = true; #assert !e2k_on(s[..]);
+}
+// Your own row in the room's mirror for a check: Hit Points, conditions and the saves' word.
+e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
+  m := s[0].net[0].mir[..]; seat := s[0].net[0].seat;
+  e := wire_mirror_find(m, seat); if e < 0 { e = 0; }
+  m[0].ents[e].live = true; m[0].ents[e].id = seat; m[0].ents[e].n = 1; m[0].ents[e].at = 1; m[0].ents[e].tick[0] = 1;
+  wire_s_pack(WireS.{id = seat, kind = WK_PLAYER, hp = hp, max = max, cond = cond, p2 = word}, m[0].ents[e].f[0..<WIRE_SF]);
+}
+#test "at 0 Hit Points you are down: what you were casting stops, no cast or draw starts, the body lies Prone and the line says the saves; healed, you get up" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_RANGER); k := s[0].casts[..]; n := s[0].net[..];
+  e2_test_vitals(s[..], 20, 20, 0, 0);
+  #assert e2k_press(s[..], 0);
+  e2_test_taken(s[..], k[0].wire[0], 0, -12);   // the room took it: it plays
+  #assert k[0].me[0].clip >= 0 && fxp_live(k[0].puffs[..]) + k[0].audio[0].played > 0;
+  sent := n[0].cast_sent; pressed := k[0].pressed;
+  // 0 Hit Points, Unconscious, one save made and two failed
+  dying: RsCreature; dying.hp = 0; dying.death_ok = 1; dying.death_fail = 2;
+  e2_test_vitals(s[..], 0, 20, RS_UNCONSCIOUS | RS_PRONE, rs_death_word(dying));
+  e2k_lock_step(s[..]);
+  #assert k[0].me[0].clip < 0 && k[0].stopped == 1;   // its pose gone
+  s[0].clock += 5; played := k[0].audio[0].played; live := fxp_live(k[0].puffs[..]);
+  for i: 0..<k[0].bar_n { #assert !e2k_press(s[..], i); }
+  #assert !e2m_draw(s[..], false) && !s[0].mouse[0].draw[0].on;
+  #assert n[0].cast_sent == sent && k[0].pressed == pressed && k[0].audio[0].played == played && fxp_live(k[0].puffs[..]) <= live && k[0].me[0].clip < 0;
+  a: [1] figs.BdAnim; e2_fall(a[..], e2k_bearing(s[..]), s[0].clock); #assert a[0].state == 1;
+  row := e2n_vitals(n); line: [64] u8; ln := rs_death_line(rs_death_saves(row.hp, false, row.p2), line[..]);
+  #assert cast(string) line[0..<ln] == "You are down · death saves: 1 saved, 2 failed";
+  out: [8192] f32; #assert e2k_down_hud(s[..], out[..], 0) > 0;
+  // healed: up, and the bar is yours again
+  e2_test_vitals(s[..], 4, 20, RS_PRONE, 0); e2k_lock_step(s[..]);
+  e2_fall(a[..], e2k_bearing(s[..]), s[0].clock); #assert a[0].state == 0 && e2k_press(s[..], 0) && n[0].cast_sent == sent + 1;
+}
+#test "e2 mouse: every draw of the Longbow looses an arrow, and when the rules wouldn't allow it no draw starts" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_RANGER); k := s[0].casts[..]; m := s[0].mouse[..]; n := s[0].net[..];
+  e2_test_vitals(s[..], 20, 20, 0, 0);
+  // held and let go at many timings, some during the cooldown, some after another slot's press
+  holds := [8] f32.[0.9, 0.2, 1.4, 0.05, 0.8, 2.0, 0.4, 1.1];
+  for q: 0..<24 {
+    draws := m[0].draws; arrows := n[0].cast_sent;
+    if q % 5 == 3 { _ := e2k_press(s[..], (e2m_attack(k) + 1) % k[0].bar_n); arrows = n[0].cast_sent; }
+    pressed := e2m_buttons(s[..], 0, 0, 2);
+    drew := m[0].draw[0].on;
+    s[0].clock += holds[q % 8]; e2m_step(s[..], holds[q % 8]);
+    released := e2m_buttons(s[..], 2, 0, 2);
+    shot := n[0].cast_sent - arrows;
+    #assert (drew && m[0].draws == draws + 1 && shot == 1) || (!drew && m[0].draws == draws && shot == 0);
+    s[0].clock += 0.15 * f32(q % 4);
+  }
+  #assert m[0].looses > 4 && m[0].draws == m[0].looses;
+  // down: no draw at all
+  e2_test_vitals(s[..], 0, 20, RS_UNCONSCIOUS | RS_PRONE, 0); s[0].clock += 3;
+  draws := m[0].draws; _ := e2m_buttons(s[..], 0, 0, 2); #assert !m[0].draw[0].on && m[0].draws == draws;
+}
+#test "a Ranger carries the Longbow on the body from the start, and every other Ranger is drawn with one" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_RANGER);
+  #assert e2_kit_of(s[0].casts[0].klass) == XC_KIT_BOW && e2_kit_of(FB_CL_WIZARD) < 0 && e2_kit_of(FB_CL_FIGHTER) < 0;
+  body: [24] f32;
+  h: [1] cc.HeldPieces; cc.held_pieces(h[..], XC_KIT_BOW, false, 0, false, s[0].bodies[..], body[..]);
+  #assert h[0].n >= 2 && h[0].mesh[0] == cc.CC_KIT_MESH[XC_KIT_BOW];   // the bow, and its string
+  // the kit's meshes loaded: your body's records carry them, at rest and drawn
+  for i: 0..<h[0].n { s[0].creator[0].weapon_count[h[0].mesh[i]] = 1; }
+  d := e2_my_held(s[..], E2Drawn.{rec = 1}, 0); #assert d.rec >= 1 + h[0].n;
+  s[0].mouse[0].draw[0].on = true; drawn := e2_my_held(s[..], E2Drawn.{rec = 1}, 0); #assert drawn.rec >= d.rec;
+}
+#test "a blow of the room's at you shows one red number over your head, the Hit Points it took; a critical hit larger; a miss says miss" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_RANGER); n := s[0].net[..]; n[0].seat = 0; n[0].hz = 30; n[0].worlds = 1;
+  e2n_record(n, "g3 0 2 0 7"); n[0].rt = 1000000; e2gd_hits(s[..]);
+  shown := 0; at := -1; for q: 0..<fl.FLOATS { if s[0].floats[0].items[q].on { shown += 1; at = q; } }
+  #assert shown == 1 && fl.floats_text(s[0].floats[..], at) == "-7" && s[0].floats[0].items[at].kind == fl.FLOAT_TAKEN;
+  #assert abs(s[0].floats[0].items[at].x - s[0].you_x) < 0.01 && s[0].floats[0].items[at].y > s[0].you_y + 1.5;
+  e2n_record(n, "g3 0 4 0 19"); e2n_record(n, "g3 0 2 0 0"); e2gd_hits(s[..]);
+  crit := false; miss := false;
+  for q: 0..<fl.FLOATS { it2 := s[0].floats[0].items[q]; if it2.on && it2.crit && fl.floats_text(s[0].floats[..], q) == "-19" { crit = true; } if it2.on && it2.kind == fl.FLOAT_MISS { miss = true; } }
+  #assert crit && miss;
+}
+#test "Entangle aims on the ground: its square follows the crosshair, held to 90 feet, and the cast lands where it showed" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_DRUID);
+  k := s[0].casts[..];
+  en := -1; for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_SPELL && k[0].bar[i].sp == SP_ENTANGLE { en = i; } }
+  #assert en >= 0 && en < 9;
+  // looking up over the hill ahead (the glade's 11 m rise 24 m down the path, verse/everglade2/forest.coax
+  // e2_height): the crosshair meets no ground, so the square stops at 90 feet along the line
+  s[0].eye = [3] f32.[0, s[0].you_y + 2, -10]; l := sqrt(1.25f32); s[0].fwd = [3] f32.[0, 0.5f32 / l, -1.0f32 / l]; s[0].up = [3] f32.[0, 1, 0];
+  sent := s[0].net[0].cast_sent;
+  #assert e2_key(s[..], '1' + en, 0) && k[0].area[0].on && k[0].pressed == 0 && s[0].net[0].cast_sent == sent;   // armed, not cast
+  a := k[0].area[0];
+  dx := a.x - s[0].you_x; dz := a.z - s[0].you_z;
+  #assert a.far && a.shape == aa.AREA_SQUARE;
+  #assert abs(sqrt(dx * dx + dz * dz) - 90 * f32(XC_FT)) < 0.01;   // held at 90 feet
+  #assert abs(a.half - 10 * f32(XC_FT)) < 0.01;                     // a 20-foot square
+  s[0].focal = 800; out: [16384] f32; #assert e2k_area_hud(s[..], out[..], 0) > 0;   // its outline drawn
+  // nearer: it follows the crosshair onto the ground in range
+  l = sqrt(1.09f32); s[0].fwd = [3] f32.[0, -0.3f32 / l, -1.0f32 / l]; e2k_area_step(s[..]);
+  // looking down onto the ground within range: the square sits where the crosshair meets the ground,
+  // not far and not held
+  a = k[0].area[0]; dz = a.z - s[0].you_z; #assert !a.far && dz < -3 && dz > -12;
+  hit := e2k_crosshair_ground(s[..]); #assert abs(a.x - hit[0]) < 0.001 && abs(a.z - hit[1]) < 0.001;
+  #assert abs(e2_height(hit[0], hit[1]) - (s[0].eye[1] + s[0].fwd[1] * abs(hit[1] - s[0].eye[2]) / abs(s[0].fwd[2]))) < 0.3;   // on the ground there
+  // a left click casts it there: the room is sent that point
+  #assert e2_pointer_buttons(s[..], 700, 450, 0, 0, 1, 0) && !k[0].area[0].on && k[0].pressed == 1 && s[0].net[0].cast_sent == sent + 1;
+  last := s[0].net[0].pipe[0].n - 1; p := s[0].net[0].pipe[0];
+  cw := cast(string) p.buf[p.from[last]..<p.from[last] + p.len[last]];
+  r: [1] WireRd; r[0] = wire_rd(cw, 1); wc := wire_read_cast(cw, r[..]);
+  #assert abs(wc.ax - a.x) < 0.01 && abs(wc.az - a.z) < 0.01 && k[0].aimed_x == a.x && k[0].aimed_z == a.z;
+  // armed again, Esc lets it go: nothing cast
+  s[0].clock += 2; #assert e2_key(s[..], '1' + en, 0) && k[0].area[0].on && e2_key(s[..], -1, 0) && !k[0].area[0].on && k[0].pressed == 1 && !s[0].cz[0].menu;
 }
 #test "another's e cast plays when the picture reaches its tick, at it as drawn: a blow swings and sounds there (#13058)" #steps 1000000000 {
   s: [1] E2; e2_test_cast_state(s[..], FB_CL_WIZARD);

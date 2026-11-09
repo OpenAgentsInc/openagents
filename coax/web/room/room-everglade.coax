@@ -865,7 +865,8 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
 // ability's reach of where the room has the seat (EG_E2_CAST_SLACK m more, for the steps not yet stepped).
 // Shared execution must commit before every page within EG_VIEW hears e cast SS SLOT AX AY AZ SEED, the caster's too,
 // at once (the casts' own queue is v1's: its rules roll against the town and the seats).
-EG_E2_GAP :: 24;      // ticks (0.8 s at EG_HZ 30)
+EG_E2_GAP :: 15;      // ticks (0.5 s at EG_HZ 30): half the page's XC_COOL of 1 s, so a cast held up on the way and the next on time
+                      // are both taken (at 0.8 s a late arrow then an on-time one was refused: a bow drawn and no arrow)
 EG_E2_CAST_SLACK :: 3.0;   // m
 eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];

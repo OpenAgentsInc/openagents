@@ -22,7 +22,10 @@ e2m_slot :: (k: [] E2Cast) -> int {
 e2m_attack :: (k: [] E2Cast) -> int { for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_ATTACK { return i; } } return -1; }
 e2m_archer :: (s: [] E2) -> bool { return e2k_on(s) && xc_kit(s[0].casts[0].klass) == XC_KIT_BOW && e2m_attack(s[0].casts[..]) >= 0; }
 
-// Draw (self_loose: a left click, which looses itself at full draw). False when you can't now.
+// Draw (self_loose: a left click, which looses itself at full draw). False when you can't now: a
+// draw starts only when its loose would be an Attack the rules allow (e2k_ready: cooled down, and
+// not down or held by a condition), so every draw looses an arrow; when it can't, no pose and no
+// creak, and the Attack's icon shows why (its cooldown sweep, or dimmed whole).
 e2m_draw :: (s: [] E2, self_loose: bool) -> bool {
   m := s[0].mouse[..]; k := s[0].casts[..]; now := s[0].clock;
   if !e2m_archer(s) { return false; }
@@ -35,7 +38,7 @@ e2m_draw :: (s: [] E2, self_loose: bool) -> bool {
 }
 // Let go: the Attack's arrow toward the reticle (the room resolves it).
 e2m_loose :: (s: [] E2) -> bool {
-  m := s[0].mouse[..]; now := s[0].clock;
+  m := s[0].mouse[..]; k := s[0].casts[..]; now := s[0].clock;
   if !m[0].draw[0].on { return false; }
   if !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); return false; }
   _ := bow.bow_release(m[0].draw[..], now);
