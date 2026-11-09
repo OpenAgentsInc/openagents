@@ -85,6 +85,8 @@ for f in pages:
         rest = re.sub(r'\sdata-wgsl="[^"]+"', "", m.group(1))
         # The page's UI font (data-ui-font-src, realms.json ui_font_src): named by its content too, or it isn't on the site.
         rest = re.sub(r'data-ui-font-src="(/[^"]+)"', lambda r: 'data-ui-font-src="' + put(os.path.join(app, r.group(1)[1:]), "build/" + r.group(1)[1:]) + '"', rest)
+        # A HUD style's title face (data-ui-title-font-src, realms.json ui_title_font_src) ships the same way.
+        rest = re.sub(r'data-ui-title-font-src="(/[^"]+)"', lambda r: 'data-ui-title-font-src="' + put(os.path.join(app, r.group(1)[1:]), "build/" + r.group(1)[1:]) + '"', rest)
         rest = re.sub(r'data-render="([^"]+)"', lambda r: 'data-render="' + stage_package(Path(app), r.group(1), Path(stage)) + '"', rest)
         # A scene's assets (data-assets): each URL named by its content too,
         # under /build/ (the page's directory's assets/ in development). A local: asset stays as it
