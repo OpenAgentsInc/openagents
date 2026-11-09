@@ -1245,9 +1245,9 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   const uint64_t jobs = std::min<uint64_t>(check_jobs(), n);
   if (jobs < 2) return sequential("one job");
   CtMemory &memory = *file->ct_memory;
-  const uint64_t slots = memory.slots, containers = memory.containers, strings = memory.string_bytes;
-  const size_t frozen = file->frozen_values.size();
-  const int64_t pending = defaults_pending(file);
+  uint64_t slots = memory.slots, containers = memory.containers, strings = memory.string_bytes;
+  size_t frozen = file->frozen_values.size();
+  int64_t pending = defaults_pending(file);
   enum { MAGIC, PASSED, STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS,
          END_SLOTS, END_CONTAINERS, END_STRINGS, SHARED, DIAGNOSTICS, NEAR_BYTES, EXECUTED, FIELDS };
   static constexpr uint64_t REPORT = 0x636f61782d636b33ULL;  // "coax-ck3"
@@ -1365,6 +1365,11 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     std::vector<bool> want(n);
     for (size_t i = 0; i < n; i++) want[i] = !prefilled[i];
     native_run(file, want, max_steps);
+    // A #forall's bounds, evaluated for the binary, may evaluate struct
+    // defaults or freeze values; the children start from that state.
+    frozen = file->frozen_values.size();
+    pending = defaults_pending(file);
+    slots = memory.slots; containers = memory.containers; strings = memory.string_bytes;
     for (size_t i = 0; native_mode() == NativeMode::on && i < n; i++) {
       if (!native_passed(file, i)) continue;
       const NativeResult &nr = g_native.results[i];

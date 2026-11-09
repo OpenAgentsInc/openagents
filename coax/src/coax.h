@@ -726,8 +726,10 @@ bool plan_native_checks_c(const File *file, const EmitOptions &opts, const char 
 // Mutable evaluation prepares checked range facts before the const emitter.
 bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t steps);
 std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan);
-// A native check binary: plan's procedures (all of the program's) and checks, and a driver main.
-std::string emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan);
+// A native check binary: plan's procedures and checks and a driver main, as
+// C translation units: the first holds the driver, helpers and values, the
+// others at most `parts` shares of the procedures.
+std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan, size_t parts);
 // The domains of one check's bindings, evaluated as a #forall's are; false,
 // printing nothing, when they can't be (the evaluator then runs that check).
 bool native_check_domains_quiet(File *file, NativeCheckCEntry *entry, uint64_t steps);

@@ -4091,19 +4091,39 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
 // it traps (the runtime then aborts) and "R what" when it refuses (output or
 // a host effect: the evaluator decides that check). The parent restarts the
 // driver after the check that stopped it.
-std::string emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan) {
+std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan, size_t parts) {
   Emitter em{file, opts};
   em.verification = true;
   em.check_binary = true;
+  em.split = true;  // procedures and helpers are defined once, across the parts
   for (size_t i = 0; i < plan.procedures.size(); ++i) {
     em.verification_names.emplace(plan.procedures[i], "coax_verification_body_" + std::to_string(i));
     em.coverage_ids.emplace(plan.procedures[i], i);
   }
-  std::string functions;
+  if (parts < 1) parts = 1;
+  // Each procedure goes to the part with the fewest bytes so far, largest first.
+  std::vector<std::string> bodies(plan.procedures.size());
+  size_t total = 0;
+  for (size_t i = 0; i < plan.procedures.size(); ++i) { bodies[i] = em.function(plan.procedures[i]); total += bodies[i].size(); }
   g_instance_c_bytes = 0;
-  for (const ProcDecl *p : plan.procedures) functions += em.function(p);
-  std::string inits = init_functions(file, em);
-  std::string shows = show_functions(file, em);
+  parts = std::max<size_t>(1, std::min(parts, total / (128 << 10) + 1));
+  std::vector<size_t> order(bodies.size());
+  for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+  std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return bodies[a].size() > bodies[b].size(); });
+  std::vector<std::string> part_text(parts);
+  std::vector<size_t> part_bytes(parts, 0);
+  for (size_t i : order) {
+    size_t at = (size_t)(std::min_element(part_bytes.begin(), part_bytes.end()) - part_bytes.begin());
+    part_text[at] += bodies[i];
+    part_bytes[at] += bodies[i].size();
+  }
+  std::string init_protos, show_protos;
+  std::string inits = init_functions(file, em, &init_protos);
+  std::string all_functions;
+  for (const std::string &b : bodies) all_functions += b;
+  const std::string uses = inits + all_functions;
+  std::string shows = show_functions(file, em, &uses, &show_protos);
+  std::string table = native_check_table_v2(file, em, plan);
   TypeWriter types;
   types.forward_structs(file);
   std::vector<Type> all;
@@ -4111,11 +4131,20 @@ std::string emit_check_binary_c(const File *file, const EmitOptions &opts, const
   for (Type type : all) types.need(type);
   types.layout_asserts(file);
 
-  std::string s = "/* A native check binary (coax native checks). Not product emission. */\n"
-                  "#include <errno.h>\n#include <pthread.h>\n#include <unistd.h>\n";
-  s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
-  s += source_runtime(file, true);
-  s += "static unsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
+  std::string runtime = source_runtime(file, true);
+  {  // one trap handler for every part, which the driver sets
+    const std::string handler = "static Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n";
+    size_t at = runtime.find(handler);
+    if (at != std::string::npos) runtime.replace(at, handler.size(), "extern Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n");
+    const std::string setter = "void coax_verification_set_trap_v1(Coax_VerificationTrapHandler_v1 handler) { coax_verification_trap_handler_v1 = handler; }\n";
+    at = runtime.find(setter);
+    if (at != std::string::npos) runtime.erase(at, setter.size());
+  }
+  std::string prelude = "/* A native check binary (coax native checks). Not product emission. */\n"
+                        "#include <errno.h>\n#include <pthread.h>\n#include <unistd.h>\n";
+  prelude += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
+  prelude += runtime;
+  prelude += "extern unsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
        "static void coax_nc_write(const char *at, size_t n) {\n"
        "  while (n) { ssize_t w = write(3, at, n); if (w < 0 && errno == EINTR) continue; if (w <= 0) _exit(97); at += w; n -= (size_t)w; }\n"
        "}\n"
@@ -4123,30 +4152,30 @@ std::string emit_check_binary_c(const File *file, const EmitOptions &opts, const
        "  char line[256]; int n = snprintf(line, sizeof line, \"R %s\\n\", what);\n"
        "  coax_nc_write(line, (size_t)n); _exit(98);\n"
        "}\n";
-  if (em.strict_math) s += strict_math_runtime();
-  if (em.transactions) s += transaction_runtime();
-  if (em.erasure) s += ZERO_RUNTIME;
-  if (em.barrier) s += BARRIER_RUNTIME;
-  if (em.wrapping) s += WRAP_RUNTIME;
-  if (em.intops) s += INTOPS_RUNTIME;
-  if (em.versioned) s += IV_RUNTIME;
-  s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
-  s += "\n/* Types */\n" + types.out;
-  if (em.wide) s += WIDE_RUNTIME;
-  s += view_helpers();
-  if (em.transactions) s += transaction_captures(types.done);
-  if (!em.ct_values.empty()) {
-    s += "\n/* Values computed at compile time */\n";
-    for (size_t i = 0; i < em.ct_values.size(); ++i) {
-      const Expr *e = em.ct_values[i];
-      s += "static const " + c_type(e->type) + " coax_k" + std::to_string(i) + " = " + em.init_list(*e->ct) + ";\n";
-    }
+  if (em.strict_math) prelude += strict_math_runtime();
+  if (em.transactions) prelude += transaction_runtime();
+  if (em.erasure) prelude += ZERO_RUNTIME;
+  if (em.barrier) prelude += BARRIER_RUNTIME;
+  if (em.wrapping) prelude += WRAP_RUNTIME;
+  if (em.intops) prelude += INTOPS_RUNTIME;
+  if (em.versioned) prelude += IV_RUNTIME;
+  prelude += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
+  prelude += "\n/* Types */\n" + types.out;
+  if (em.wide) prelude += WIDE_RUNTIME;
+  prelude += view_helpers();
+  if (em.transactions) prelude += transaction_captures(types.done);
+  std::string values;
+  for (size_t i = 0; i < em.ct_values.size(); ++i) {
+    const Expr *e = em.ct_values[i];
+    prelude += "extern const " + c_type(e->type) + " coax_k" + std::to_string(i) + ";\n";
+    values += "const " + c_type(e->type) + " coax_k" + std::to_string(i) + " = " + em.init_list(*e->ct) + ";\n";
   }
-  s += "\n" + inits + shows + "\n";
-  for (const ProcDecl *p : plan.procedures) s += em.prototype(p) + ";\n";
-  s += functions;
-  s += native_check_table_v2(file, em, plan);
-  s += "\n/* The driver. */\n"
+  prelude += "\n" + init_protos + show_protos + "\n";
+  for (const ProcDecl *p : plan.procedures) prelude += em.prototype(p) + ";\n";
+
+  std::string shared = prelude + "\nunsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
+                       "Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n" + values + "\n" + inits + shows + table;
+  shared += "\n/* The driver. */\n"
        "static uint64_t coax_nc_case;\n"
        "static void coax_nc_trap(const char *what, int64_t what_count, const char *path, int64_t path_count, int64_t line) {\n"
        "  char text[8192]; int n = snprintf(text, sizeof text, \"T %llu\\t%lld\\t%.*s\\t%.*s\\n\", (unsigned long long)coax_nc_case, (long long)line,\n"
@@ -4182,7 +4211,7 @@ std::string emit_check_binary_c(const File *file, const EmitOptions &opts, const
        "}\n"
        "int main(int argc, char **argv) {\n"
        "  coax_nc_start = argc > 1 ? atoll(argv[1]) : 0;\n"
-       "  coax_verification_set_trap_v1(coax_nc_trap);\n"
+       "  coax_verification_trap_handler_v1 = coax_nc_trap;\n"
        "  pthread_attr_t attr; pthread_attr_init(&attr);\n"
        "  pthread_attr_setstacksize(&attr, (size_t)1 << 30);\n"
        "  pthread_t thread;\n"
@@ -4190,7 +4219,9 @@ std::string emit_check_binary_c(const File *file, const EmitOptions &opts, const
        "  else pthread_join(thread, 0);\n"
        "  return 0;\n"
        "}\n";
-  return s;
+  std::vector<std::string> out{shared};
+  for (std::string &text : part_text) if (!text.empty()) out.push_back(prelude + text);
+  return out;
 }
 
 std::string emit_header(const File *file) {

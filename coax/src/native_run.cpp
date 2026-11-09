@@ -174,27 +174,49 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   opts.debug_info = false;
   opts.metal = opts.cuda = opts.metal_compute = false;
   auto t0 = std::chrono::steady_clock::now();
-  const std::string c = emit_check_binary_c(file, opts, plan);
+  const char *parts_env = getenv("COAX_NATIVE_CHECKS_PARTS");
+  const size_t parts = parts_env && *parts_env ? (size_t)strtoull(parts_env, nullptr, 10) : (size_t)std::min<uint64_t>(available_cores(), 32);
+  const std::vector<std::string> units = emit_check_binary_c(file, opts, plan, parts);
   g_native.emit = seconds_since(t0);
   laps.lap("native.emit");
   const char *tmp = getenv("TMPDIR");
   std::string dir = std::string(tmp && *tmp ? tmp : "/tmp") + "/coax-native-checks.XXXXXX";
   if (!mkdtemp(dir.data())) { g_native.why = "no temporary directory"; return; }
   struct Cleanup { std::string dir; ~Cleanup() { std::error_code ec; if (!getenv("COAX_NATIVE_CHECKS_KEEP")) std::filesystem::remove_all(dir, ec); } } cleanup{dir};
-  const std::string source = dir + "/checks.c", exe = dir + "/checks";
-  if (!native_write(source, c)) { g_native.why = "can't write the C"; return; }
+  const std::string exe = dir + "/checks";
   const char *cc = getenv("COAX_CC");
   const char *opt = getenv("COAX_NATIVE_CHECKS_OPT");
-  std::vector<std::string> args = {cc && *cc ? cc : "cc", "-std=c11", "-w", std::string("-O") + (opt && *opt ? opt : "0"),
-                                   "-ffp-contract=off", "-fno-builtin-sin", "-fno-builtin-cos", "-pthread", "-o", exe, source, "-lm"};
+  const std::string compiler = cc && *cc ? cc : "cc";
+  // Each translation unit compiles in its own process, all at once; then one link.
   t0 = std::chrono::steady_clock::now();
-  pid_t pid;
-  if (native_spawn(args, -1, &pid) != 0) { g_native.why = "no C compiler"; return; }
-  const int status = native_wait(pid);
+  std::vector<pid_t> compiling;
+  std::vector<std::string> objects;
+  bool failed = false;
+  for (size_t u = 0; u < units.size(); u++) {
+    const std::string source = dir + "/checks" + std::to_string(u) + ".c", object = dir + "/checks" + std::to_string(u) + ".o";
+    if (!native_write(source, units[u])) { g_native.why = "can't write the C"; failed = true; break; }
+    pid_t pid;
+    if (native_spawn({compiler, "-std=c11", "-w", std::string("-O") + (opt && *opt ? opt : "0"), "-ffp-contract=off", "-fno-builtin-sin",
+                      "-fno-builtin-cos", "-pthread", "-c", "-o", object, source}, -1, &pid) != 0) { g_native.why = "no C compiler"; failed = true; break; }
+    compiling.push_back(pid);
+    objects.push_back(object);
+  }
+  for (pid_t pid : compiling) {
+    const int status = native_wait(pid);
+    if (status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) failed = true;
+  }
+  if (!failed) {
+    std::vector<std::string> link = {compiler, "-pthread", "-o", exe};
+    link.insert(link.end(), objects.begin(), objects.end());
+    link.push_back("-lm");
+    pid_t pid;
+    const int status = native_spawn(link, -1, &pid) == 0 ? native_wait(pid) : -1;
+    failed = status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0;
+  }
   g_native.compile = seconds_since(t0);
   laps.lap("native.compile");
-  if (status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-    g_native.why = "the C compiler failed on the check binary (a coax bug; COAX_NATIVE_CHECKS_KEEP=1 keeps it)";
+  if (failed) {
+    if (g_native.why.empty()) g_native.why = "the C compiler failed on the check binary (a coax bug; COAX_NATIVE_CHECKS_KEEP=1 keeps it)";
     if (getenv("COAX_NATIVE_CHECKS_KEEP")) fprintf(stderr, "coax: native checks: %s in %s\n", g_native.why.c_str(), dir.c_str());
     return;
   }
@@ -208,6 +230,7 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
     int fds[2];
     if (pipe(fds) != 0) break;
     fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    pid_t pid;
     if (native_spawn({exe, std::to_string(start)}, fds[1], &pid) != 0) { close(fds[0]); close(fds[1]); break; }
     close(fds[1]);
     int64_t current = -1;
