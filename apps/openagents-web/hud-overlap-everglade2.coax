@@ -1,0 +1,149 @@
+// The HUD overlap check for Everglade II and its Character Create (GitHub #13076): e2_hud (the
+// studio's wardrobe and class pane, the bar, its card and the room's rest and aid controls, the GFX
+// control and the frame rate) and, in a dev build, admin mode's CLASSES column, drawn on the four
+// screens of hud-overlap.coax: the studio for every class, the world for every class, in the room
+// with its rest controls, a slot's card shown, and admin mode. It prints each finding once; see
+// hud-overlap.coax.
+//   coax/web/tool.sh apps/openagents-web/hud-overlap-everglade2.coax
+#load "everglade2.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "hud-overlap.coax";
+
+HUD_GATE :: true;   // a NEW finding in the player's HUD fails the run
+// The findings already reported (docs/verification/hud-overlap-2026-11-09.md), each under the issue
+// that fixes it: their keys, as printed, with the screen and state each first shows on. When a fix
+// lands, the run says "gone" for its keys; take them out here.
+H2_KNOWN :: [59] string.[
+  // #13089, Character Create
+  "small create/button \"BODY\"",   // 1024x768 studio
+  "small create/button \"BODY <\"",   // 1024x768 studio
+  "small create/button \"BODY >\"",   // 1024x768 studio
+  "small create/button \"CLOTHES\"",   // 1024x768 studio
+  "small create/button \"CLOTHES <\"",   // 1024x768 studio
+  "small create/button \"CLOTHES >\"",   // 1024x768 studio
+  "small create/button \"HOOD\"",   // 1024x768 studio
+  "small create/button \"HOOD <\"",   // 1024x768 studio
+  "small create/button \"HOOD >\"",   // 1024x768 studio
+  "small create/button \"COLORWAY\"",   // 1024x768 studio
+  "small create/button \"COLORWAY <\"",   // 1024x768 studio
+  "small create/button \"COLORWAY >\"",   // 1024x768 studio
+  "small create/button \"CLOTH DYE\"",   // 1024x768 studio
+  "small create/button \"CLOTH DYE <\"",   // 1024x768 studio
+  "small create/button \"CLOTH DYE >\"",   // 1024x768 studio
+  "small create/button \"SKIN TONE\"",   // 1024x768 studio
+  "small create/button \"SKIN TONE <\"",   // 1024x768 studio
+  "small create/button \"SKIN TONE >\"",   // 1024x768 studio
+  "small create/button \"HAIR STYLE\"",   // 1024x768 studio
+  "small create/button \"HAIR STYLE <\"",   // 1024x768 studio
+  "small create/button \"HAIR STYLE >\"",   // 1024x768 studio
+  "small create/button \"HAIR COLOR\"",   // 1024x768 studio
+  "small create/button \"HAIR COLOR <\"",   // 1024x768 studio
+  "small create/button \"HAIR COLOR >\"",   // 1024x768 studio
+  "small create/button \"BEARD\"",   // 1024x768 studio
+  "small create/button \"BEARD <\"",   // 1024x768 studio
+  "small create/button \"BEARD >\"",   // 1024x768 studio
+  "small create/button \"ANIMATION\"",   // 1024x768 studio
+  "small create/button \"ANIMATION <\"",   // 1024x768 studio
+  "small create/button \"ANIMATION >\"",   // 1024x768 studio
+  "small create/button \"MODULAR PART\"",   // 1024x768 studio
+  "small create/button \"MODULAR PART <\"",   // 1024x768 studio
+  "small create/button \"MODULAR PART >\"",   // 1024x768 studio
+  "small create/button \"WEAR PART\"",   // 1024x768 studio
+  "small create/button \"WEAR PART <\"",   // 1024x768 studio
+  "small create/button \"WEAR PART >\"",   // 1024x768 studio
+  "small create/button \"EYE COLOR\"",   // 1024x768 studio
+  "small create/button \"EYE COLOR <\"",   // 1024x768 studio
+  "small create/button \"EYE COLOR >\"",   // 1024x768 studio
+  "small create/button \"RESET\"",   // 1024x768 studio
+  "small create/button \"SURPRISE ME\"",   // 1024x768 studio
+  "small create/button \"SAVE\"",   // 1024x768 studio
+  "small create/button \"USE\"",   // 1024x768 studio
+  "small create/button \"CLASS\"",   // 1024x768 studio
+  "small create/button \"CLASS <\"",   // 1024x768 studio
+  "small create/button \"CLASS >\"",   // 1024x768 studio
+  "small create/button \"NAME\"",   // 1024x768 studio
+  "small create/button \"LEVEL\"",   // 1024x768 studio
+  "small create/button \"LEVEL <\"",   // 1024x768 studio
+  "small create/button \"LEVEL >\"",   // 1024x768 studio
+  "overflow create/text \"title\" | create/panel \"card\"",   // 1024x768 studio
+  "overflow create/text \"USE IN EVERGLADE\" | create/button \"USE\"",   // 1024x768 studio
+  // #13090, the GFX and frame-rate plaque
+  "overlap bar/panel \"emblem\" | gfx/button \"GFX\"",   // 390x844 world
+  "overlap side bar/panel \"side tray\" | gfx/button \"GFX\"",   // 390x844 world, rest controls
+  "overlap bar/panel \"card\" | gfx/button \"GFX\"",   // 390x844 card
+  "overlap bar/panel \"card\" | fps/text \"FPS\"",   // 390x844 card
+  "overlap bar/panel \"bar tray\" | gfx/button \"GFX\"",   // 844x390 world
+  // #13092, the bar, its emblem, the CLASSES picker and the side bar's place on the page
+  "overlap bar/panel \"emblem\" | side bar/panel \"side tray\"",   // 390x844 world, rest controls
+  "overlap bar/panel \"emblem\" | bar/panel \"card\""   // 390x844 card
+];
+hud_known :: (key: string) -> bool { for i: 0..<H2_KNOWN.count { if H2_KNOWN[i] == key { return true; } } return false; }
+
+H2_OUT :: 1048576;   // floats: 65536 stroke vertices
+// The page's screen v: its size, and the graphics control ready (e2_frame does both).
+h2_screen :: (s: [] E2, v: int) {
+  view := hud_view(v);
+  s[0].width = view.w; s[0].height = view.h; s[0].k = view.k;
+  cc.ensure(s[0].creator[..]); s[0].creator[0].clock = s[0].clock;
+  e2_quality_frame(s, 0, view.w, view.h, view.k, false);
+}
+// The HUD of s on screen v, as e2_frame draws it: its trace in t.
+h2_draw :: (s: [] E2, t: [] cc.UitTrace, out: [] f32, v: int) {
+  h2_screen(s, v);
+  cc.uit_clear(t); s[0].creator[0].ui = t;
+  n := e2_hud(s, out, 0);
+  #if BUILD_DEBUG { n = e2a_frame(s, out, n, 0); }
+  s[0].creator[0].ui = t[0..<0];
+}
+// In the world as class c, seated in the room (e2_test_cast_state), on screen v.
+h2_world :: (s: [] E2, c: int, v: int) {
+  e2_test_cast_state(s, c); h2_screen(s, v);
+}
+// The room says your Hit Points and your rest: the rest and aid controls (and a familiar's) show.
+h2_room :: (s: [] E2) {
+  n := s[0].net[..]; n[0].mono = 100;
+  frame: [1024] u8; row: [WIRE_SF] s32; zero: [WIRE_SF] s32;
+  wire_s_pack(WireS.{id = 1, kind = WK_PLAYER, hp = 5, max = 12}, row[..]);
+  count := wire_put_d(frame[..], 0, WireD.{tick = 1, f = 1}); count = wire_put_s(frame[..], count, 1, 0, zero[..], row[..]);
+  e2n_record(n, cast(string) frame[0..<count]);
+  e2n_record(n, "z 0 0 1");
+}
+tool_main :: () -> int #export_c #effects(all) {
+  r: [1] HudRun; t: [1] cc.UitTrace; out: [H2_OUT] f32;
+  for v: 0..<HUD_VIEWS {
+    for c: 0..<E2C_CLASSES {
+      s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n"); s[0].creator[0].klass = c;
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "studio", false);
+    }
+    for tab: 0..<E2C_TABS {   // a phone's tabs (a wider screen shows every row at once)
+      s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n"); s[0].cz[0].tab = tab;
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, E2C_TAB_NAMES[tab], false);
+    }
+    for c: 0..<FB_CL_N {
+      s: [1] E2; h2_world(s[..], c, v);
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world", false);
+      h2_room(s[..]);
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, rest controls", false);
+      // each side-bar button's tip, then its menu open with a row's tip
+      ids: [3] int; sn := e2k_side(s[..], ids[..]);
+      for j: 0..<sn {
+        s[0].casts[0].menu = -1; s[0].casts[0].side_hover = j; s[0].casts[0].menu_hover = -1;
+        h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, side tip", false);
+        s[0].casts[0].menu = ids[j]; s[0].casts[0].side_hover = -1; s[0].casts[0].menu_hover = 0;
+        h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, side menu", false);
+      }
+    }
+    {
+      s: [1] E2; h2_world(s[..], FB_CL_WIZARD, v); s[0].casts[0].hover = 0;
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "card", false);
+    }
+    #if BUILD_DEBUG {
+      s: [1] E2; h2_world(s[..], FB_CL_WIZARD, v); s[0].adm[0].on = true;
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "admin", true);
+      s[0].adm[0].open = false;
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "admin, classes shut", true);
+    }
+  }
+  for i: 0..<H2_KNOWN.count { if !hud_seen(r[..], H2_KNOWN[i]) { continue; } }
+  return hud_done(r[..], "everglade2", HUD_GATE);
+}
