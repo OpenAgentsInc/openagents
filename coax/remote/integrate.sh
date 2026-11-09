@@ -120,6 +120,7 @@ queue_reverts() {
   local cutoff=$(( $(date +%s) - revert_minutes * 60 ))
   jq -r --argjson cut "$cutoff" '.[] | select(.status == "open" and (.revert // "") == "" and .opened <= $cut) | "\(.id)|\(.culprit)|\(.opened)|\(.issue // "")"' "$pl_red" |
   while IFS='|' read -r id culprit opened issue; do
+    [[ -n "$culprit" ]] || continue   # failing before the first green run: nothing to revert
     [[ -n "$id" ]] || continue
     local head tree msg commit name check
     head="$(git rev-parse "$main_ref")"

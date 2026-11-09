@@ -211,19 +211,63 @@ passes on production stops it) stays as it is.
 | Release checks that compare against production | `release.sh` |
 | Zone parity report | `coax/web/tool.sh everglade-parity` (#13075) |
 
-## What to build
+## What is built
 
-1. `coax/remote/submit.sh` and the queue refs.
-2. `coax/remote/integrate.sh`: parallel branch checks on stacked rebases,
-   touched units from `coax deps`, wasm sizes, compile-limit warnings, and
-   in-order landing of the green prefix.
-3. `coax/remote/after.sh`: full runs on the newest head, the `main-green` push,
-   per-commit totals, the bisect, the issue, the agent message and the red
-   list.
-4. The revert step, with its 30-minute window.
-5. `release.sh` defaulting to `origin/main-green`.
-6. `AGENTS.md` and agent briefs: start from `main-green`, add the `Agent:`
-   trailer, submit instead of pushing.
+Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
+
+| Part | Script |
+| --- | --- |
+| Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
+| The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `modules I/N`, `wasm`, `tools`) |
+| The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `red`, `history`) |
+| The revert | `coax/remote/integrate.sh --revert` |
+| Releases from `main-green` | `coax/web/release.sh` |
+| Shared settings | `coax/remote/pipeline-lib.sh` |
+
+`remote.sh run --commit REV --out DIR` runs a check on a commit's own files
+instead of a snapshot of the checkout, so the integrator and `after.sh` check
+exact commits without a worktree. `coax/web/tool.sh suites --part I/N` splits
+the suites across host slots.
+
+The coordinator runs the integrator and the after-landing check on the Mac:
+
+```sh
+coax/remote/integrate.sh            # a round whenever a branch is queued
+coax/remote/after.sh --watch        # a full run on main's newest head, at most every 15 minutes
+```
+
+The integrator starts `after.sh --once` after each landing as well. Logs, each
+job's output and the red list are under `~/.openagents/pipeline/`
+(`releases/after/COMMIT/`, `releases/after/red.json`,
+`releases/after/history.tsv`). A message to an agent goes to
+`~/.openagents/pipeline/inbox/AGENT.log`, which `submit.sh status --agent ID`
+prints, and to `OA_PIPELINE_NOTIFY` when it is set.
+
+### Differences from the design
+
+- The queue runs in the order of each branch's newest commit time. A
+  resubmitted branch keeps its place only if its commits are unchanged.
+- A branch that conflicts only with a branch ahead of it waits for the next
+  round instead of going back.
+- Compile-limit totals come from the web build's near-limit notes (75% and
+  up). `tool.sh suites` doesn't pass a suite's notes on, so a touched test
+  suite's totals aren't reported.
+- The full run leaves out the drift check: it needs a browser, and the hosts
+  have none. `coax/tests/run.sh` runs only when compiler sources changed since
+  `main-green`.
+- A failure that passes when run again on the same head is flaky: it is
+  recorded in `releases/after/flaky.txt`, and if every failure of a run was
+  flaky, `main-green` moves.
+- Before the first green run there is no `main-green` to bisect against.
+  Each failure of that run goes on the red list owned by nobody, under one
+  issue, so later runs don't bisect it, and it is never reverted.
+  `main-green` is first set at the head where every check passes.
+- The full run builds the web modules in three parts, each module as
+  `build.sh` runs it. It leaves out `project` and `projects`, which need the
+  tables `build.sh` bakes from Nostr first.
+- A culprit's revert waits for `--revert`, off until agents submit instead of
+  pushing.
 
 ## Capacity and cost
 
